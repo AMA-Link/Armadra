@@ -255,8 +255,8 @@ importers:
   apps/desktop:
     dependencies:
       '@armadra/platform-protocol':
-        specifier: file:../../tools/vendor/armadra-platform-protocol-0.3.10.tgz
-        version: file:tools/vendor/armadra-platform-protocol-0.3.10.tgz(@opentelemetry/api@1.9.1)(zod@4.4.3)
+        specifier: file:../../tools/vendor/armadra-platform-protocol-0.4.0.tgz
+        version: file:tools/vendor/armadra-platform-protocol-0.4.0.tgz(@opentelemetry/api@1.9.1)(zod@4.4.3)
       '@armadra/shared':
         specifier: workspace:*
         version: link:../../packages/shared
@@ -268,7 +268,7 @@ importers:
         version: 1.15.4(@opentelemetry/api@1.9.1)(ws@8.21.0)
       '@sentry/electron':
         specifier: 7.20.0
-        version: 7.20.0(supports-color@7.2.0)
+        version: 7.20.0(@opentelemetry/core@2.11.0(@opentelemetry/api@1.9.1))(supports-color@7.2.0)
       '@simplewebauthn/server':
         specifier: 14.0.3
         version: 14.0.3
@@ -414,8 +414,8 @@ importers:
   apps/web:
     dependencies:
       '@armadra/platform-protocol':
-        specifier: file:../../tools/vendor/armadra-platform-protocol-0.3.10.tgz
-        version: file:tools/vendor/armadra-platform-protocol-0.3.10.tgz(@opentelemetry/api@1.9.1)(zod@4.4.3)
+        specifier: file:../../tools/vendor/armadra-platform-protocol-0.4.0.tgz
+        version: file:tools/vendor/armadra-platform-protocol-0.4.0.tgz(@opentelemetry/api@1.9.1)(zod@4.4.3)
       '@armadra/shared':
         specifier: workspace:*
         version: link:../../packages/shared
@@ -625,8 +625,8 @@ importers:
   packages/shared:
     dependencies:
       '@armadra/platform-protocol':
-        specifier: file:../../tools/vendor/armadra-platform-protocol-0.3.10.tgz
-        version: file:tools/vendor/armadra-platform-protocol-0.3.10.tgz(@opentelemetry/api@1.9.1)(zod@4.4.3)
+        specifier: file:../../tools/vendor/armadra-platform-protocol-0.4.0.tgz
+        version: file:tools/vendor/armadra-platform-protocol-0.4.0.tgz(@opentelemetry/api@1.9.1)(zod@4.4.3)
       '@noble/curves':
         specifier: 2.4.0
         version: 2.4.0
@@ -657,9 +657,9 @@ packages:
     engines: {node: '>=22'}
     hasBin: true
 
-  '@armadra/platform-protocol@file:tools/vendor/armadra-platform-protocol-0.3.10.tgz':
-    resolution: {integrity: sha512-yILPWyq3uz36AGI6fXLCNxMd74qJnnCORBkgcmoiCSx+uawRCsd4kO34NvmbCO2OR7CJezyKvaYhHfYa7bv2KA==, tarball: file:tools/vendor/armadra-platform-protocol-0.3.10.tgz}
-    version: 0.3.10
+  '@armadra/platform-protocol@file:tools/vendor/armadra-platform-protocol-0.4.0.tgz':
+    resolution: {integrity: sha512-YDT2b7snZsKXVrblGT5l693H44fBmOEEB2rWbbAOrZAgkugnAlrhwzJDjSLBjWzVkttHI8PgjCAB0+VXt04IBg==, tarball: file:tools/vendor/armadra-platform-protocol-0.4.0.tgz}
+    version: 0.4.0
     peerDependencies:
       zod: '>=4.0.0 <5'
 
@@ -7275,7 +7275,7 @@ snapshots:
 
   '@armadra/agent@0.6.8': {}
 
-  '@armadra/platform-protocol@file:tools/vendor/armadra-platform-protocol-0.3.10.tgz(@opentelemetry/api@1.9.1)(zod@4.4.3)':
+  '@armadra/platform-protocol@file:tools/vendor/armadra-platform-protocol-0.4.0.tgz(@opentelemetry/api@1.9.1)(zod@4.4.3)':
     dependencies:
       '@orpc/contract': 1.15.4(@opentelemetry/api@1.9.1)
       zod: 4.4.3
@@ -9632,7 +9632,7 @@ snapshots:
     dependencies:
       '@sentry/conventions': 0.16.0
 
-  '@sentry/electron@7.20.0(supports-color@7.2.0)':
+  '@sentry/electron@7.20.0(@opentelemetry/core@2.11.0(@opentelemetry/api@1.9.1))(supports-color@7.2.0)':
     dependencies:
       '@sentry/browser': 10.75.0
       '@sentry/conventions': 0.16.0
