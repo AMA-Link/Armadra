@@ -172,7 +172,7 @@ async function openAdvanced() {
 async function openAddRelay() {
   await openAdvanced();
   fireEvent.click(
-    await screen.findByRole("button", { name: "Add relay account" }),
+    await screen.findByRole("button", { name: "Add remote access account" }),
   );
 }
 
@@ -197,7 +197,7 @@ describe("远程访问页", () => {
     expect(toggle.getAttribute("aria-checked")).toBe("false");
     // 关着时没有可达范围；没有中转账号时不单列一张空的账号卡。
     expect(screen.queryByRole("combobox", { name: "Reach" })).toBeNull();
-    expect(screen.queryByText("Relay accounts")).toBeNull();
+    expect(screen.queryByText("Remote access accounts")).toBeNull();
     expect(screen.getByText("My other computers")).toBeTruthy();
     expect(
       screen.getByRole("button", { name: "Pair another computer of mine" }),
@@ -207,10 +207,12 @@ describe("远程访问页", () => {
     expect(screen.queryByText(/switch service/i)).toBeNull();
     expect(screen.queryByText(/saas|cloud/i)).toBeNull();
     // 没登录任何中转账号时没有「从中转添加」。
-    expect(screen.queryByRole("button", { name: "Add from relay" })).toBeNull();
+    expect(
+      screen.queryByRole("button", { name: "Add from account" }),
+    ).toBeNull();
     await openAdvanced();
     expect(
-      await screen.findByRole("button", { name: "Add relay account" }),
+      await screen.findByRole("button", { name: "Add remote access account" }),
     ).toBeTruthy();
     await waitFor(() =>
       expect(boot.applySourceTable).toHaveBeenCalledWith([local]),
@@ -888,8 +890,8 @@ describe("中继侧待清理（契约 §31.4）", () => {
     expect(api.stopSharing).not.toHaveBeenCalled();
     fireEvent.click(within(confirm).getByRole("button", { name: "Turn off" }));
     await waitFor(() =>
-      expect(toasts.warning).toHaveBeenCalledWith("Sharing stopped", {
-        description: "Relay cleanup pending · Cannot reach this remote service",
+      expect(toasts.warning).toHaveBeenCalledWith("Internet route turned off", {
+        description: "Cleanup pending · Can't reach this remote access service",
       }),
     );
     expect(toasts.success).not.toHaveBeenCalled();
@@ -902,7 +904,7 @@ describe("中继侧待清理（契约 §31.4）", () => {
     ]);
     api.retryRelayCleanup.mockResolvedValue(null);
     mount();
-    expect(await screen.findByText("Relay cleanup pending")).toBeTruthy();
+    expect(await screen.findByText("Cleanup pending")).toBeTruthy();
     openMenu(relay.label);
     fireEvent.click(
       await screen.findByRole("menuitem", { name: "Retry cleanup" }),
@@ -911,7 +913,7 @@ describe("中继侧待清理（契约 §31.4）", () => {
       expect(api.retryRelayCleanup).toHaveBeenCalledWith(ISSUER),
     );
     await waitFor(() =>
-      expect(toasts.success).toHaveBeenCalledWith("Relay cleaned up"),
+      expect(toasts.success).toHaveBeenCalledWith("Cleaned up"),
     );
   });
 
@@ -947,12 +949,12 @@ describe("中继侧待清理（契约 §31.4）", () => {
     await openAdvanced();
     expect(await screen.findByText("relay.test:8102")).toBeTruthy();
     expect(
-      screen.getByText("Sign in to this remote service, then retry"),
+      screen.getByText("Sign in to this account, then retry"),
     ).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Retry cleanup" }));
     await waitFor(() =>
       expect(toasts.error).toHaveBeenCalledWith(
-        "Sign in to this remote service, then retry",
+        "Sign in to this account, then retry",
       ),
     );
   });

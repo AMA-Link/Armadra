@@ -366,7 +366,7 @@ export const modals: MessageModule = {
     "settings.scope.hostNamed": "Host · {name}",
     "settings.scope.account": "Account",
     "settings.scope.accountNamed": "Account · {name}",
-    "settings.scope.local": "This machine",
+    "settings.scope.local": "This computer",
     "settings.scope.localNamed": "This computer · {name}",
 
     "settings.theme": "Theme",

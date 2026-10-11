@@ -79,14 +79,14 @@ describe("中继托管页面的通知条", () => {
         <Banners />
       </TestProviders>,
     );
-    expect(await screen.findByText("中转服务不可用，正在重连")).toBeTruthy();
+    expect(await screen.findByText("中转不可用，正在重连")).toBeTruthy();
     expect(screen.queryByText("等待上线")).toBeNull();
     expect(screen.queryByText("本地服务已断开")).toBeNull();
     expect(screen.queryByRole("button")).toBeNull();
 
     health.fail = false;
     act(() => fake.set({ relayDown: false, state: "ready", lastError: null }));
-    expect(screen.queryByText("中转服务不可用，正在重连")).toBeNull();
+    expect(screen.queryByText("中转不可用，正在重连")).toBeNull();
   });
 
   it("只是主机下线：仍是「等待上线」", async () => {
@@ -103,14 +103,14 @@ describe("中继托管页面的通知条", () => {
       </TestProviders>,
     );
     expect(await screen.findByText("等待上线")).toBeTruthy();
-    expect(screen.queryByText("中转服务不可用，正在重连")).toBeNull();
+    expect(screen.queryByText("中转不可用，正在重连")).toBeNull();
   });
 });
 
 describe("手机经中继的连接", () => {
   const RELAY = "https://relay.example";
 
-  it("运行时断开、中继也连不上：同一条「中转服务不可用」，盖过运行时断开", async () => {
+  it("运行时断开、中继也连不上：同一条「中转不可用」，盖过运行时断开", async () => {
     health.fail = true;
     const probe = vi.fn(async () => false);
     resetMobileRelayStatus({ origin: RELAY, probe });
@@ -119,7 +119,7 @@ describe("手机经中继的连接", () => {
         <Banners />
       </TestProviders>,
     );
-    expect(await screen.findByText("中转服务不可用，正在重连")).toBeTruthy();
+    expect(await screen.findByText("中转不可用，正在重连")).toBeTruthy();
     expect(screen.queryByText("本地服务已断开")).toBeNull();
     expect(screen.queryByRole("button")).toBeNull();
     expect(probe).toHaveBeenCalledWith(RELAY);
@@ -134,7 +134,7 @@ describe("手机经中继的连接", () => {
       </TestProviders>,
     );
     expect(await screen.findByText("本地服务已断开")).toBeTruthy();
-    expect(screen.queryByText("中转服务不可用，正在重连")).toBeNull();
+    expect(screen.queryByText("中转不可用，正在重连")).toBeNull();
   });
 
   it("直连或运行时正常：不去问中继", async () => {
@@ -147,6 +147,6 @@ describe("手机经中继的连接", () => {
     );
     await new Promise((resolve) => setTimeout(resolve, 50));
     expect(probe).not.toHaveBeenCalled();
-    expect(screen.queryByText("中转服务不可用，正在重连")).toBeNull();
+    expect(screen.queryByText("中转不可用，正在重连")).toBeNull();
   });
 });

@@ -148,9 +148,11 @@ ClientHello 的 ALPN 分流，`core/gateway/alpn.ts`）、证书在 `<数据目�
 证书钉扎、扫码、推送解密与深链，不含业务。见
 [客户端平台](client-platforms.md#原生-appcapacitor-手机壳g3-1)。连接表非空时启动落在「选择服务」
 （`apps/web/src/services/ServicePicker.tsx`，`mobile/entry.ts::startupTarget`）：点一行记下进入意图再重载，
-推送切换（`#push=`）与偏好 `services.autoEnter` 才直接进；同一个列表也是中继托管页面登录后挑主机的那一步、
-桌面「切换服务」对话框（换当前源，桌面壳另可经 `window:open { sourceId }` 在新窗口打开，新窗口页面读
-`?source=` 定初始当前源；它不是主窗口，`sendToWindow` 与抢占的快捷键只对主窗口）。
+推送切换（`#push=`）与偏好 `services.autoEnter` 才直接进；同一个列表也是中继托管页面登录后挑主机的那一步。
+手机连接页分「我的电脑 / 他人分享」两组，换到已挂着的连接不重载，只有「管理连接」回连接页。
+桌面与浏览器没有手动「切换服务」：侧栏分「这台电脑 / 我的其他电脑 / 他人分享」三组，点哪个工作空间就打开哪个
+画布，当前源由打开的工作空间推出（`sources/follow-workspace.ts`，#301）。桌面壳经 `window:open { sourceId }`
+另开的窗口读 `?source=` 定初始当前源（它不是主窗口，`sendToWindow` 与抢占的快捷键只对主窗口）。
 
 ## 3. 画布层
 
@@ -652,9 +654,11 @@ core 关停与启动中途失败走同一条收尾（`main.ts` 的 `teardown`）
     把它装成本机源：请求全部同源，访问令牌只在内存，两把刷新令牌与上次进的主机记在这个标签页的
     `sessionStorage`，刷新页面静默续上（关标签、登出、被拒即清）；目录里其余主机（手机是连接表里其余连接）
     经 `sources/mounts.ts` 同时作为远程源挂进页面源表。中继自己停了（`me.stream` 回不到 open）与主机
-    下线分开提示。设置页按 `panels/settings/remote-access.ts` 判断设置作用的 core 在不在眼前（经中继、
-    直连远端源、当前源是远程源）：只对本机有意义的分区不列，「在访达中打开」不出，更新页只读报主机
-    版本；页面正走的中继与当前源在远程访问页上不给停用、登出与移除。
+    下线分开提示。设置页恒指本机（#301）：除「当前工作空间」页跟随打开的工作空间外一律读写本机 core，
+    页头写「本机 · <电脑名>」；`panels/settings/remote-access.ts` 只判断页面的本机 core 在不在眼前
+    （经中继、直连 Gateway）：在别处时只对眼前设备有意义的分区不列，「在访达中打开」不出，更新页只读报
+    主机版本；ownerOnly 的页在这时按那台 core 的身份会话判（`app/use-access.ts`）。页面正走的路在
+    远程访问页上不给关闭、登出与移除。
     CSRF 只在
     Cookie 会话上核对，Bearer 不是环境凭据（`identity/http.ts::csrfRequired`）。Gateway 的每个答案带
     HSTS 与 `nosniff`，接口答案再带沙箱 CSP 与缺省 `no-store`（`gateway/csp.ts`）。
