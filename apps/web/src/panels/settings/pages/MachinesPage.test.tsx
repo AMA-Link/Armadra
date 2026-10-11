@@ -49,25 +49,12 @@ vi.mock("../use-runtime-settings", () => ({
 import { MachinesPage } from "./MachinesPage";
 
 const boxSsh = { id: "build-box", name: "Build box", host: "build.example" };
-const box = {
-  executionHostId: "build-box",
-  name: "Build box",
-  kind: "ssh" as const,
-  ssh: { ...boxSsh, user: "ci", port: 2222 },
-  workerConfigured: true,
-  workspaceCount: 2,
-};
-const worker = {
-  version: "0.1.0",
-  capabilities: [],
-  outdated: false,
-  connected: true,
-  checkedAt: "2026-10-03T00:00:00Z",
-};
 
 beforeEach(() => {
   usePreferencesStore.setState({ locale: "en", settingsSubpage: null });
-  runtime.hosts = [{ ...boxSsh, worker: { path: "/opt/armadra" } }];
+  runtime.hosts = [
+    { ...boxSsh, user: "ci", port: 2222, worker: { path: "/opt/armadra" } },
+  ];
   compact.value = false;
 });
 afterEach(() => {
@@ -95,30 +82,23 @@ async function click(element: Element) {
   });
 }
 
-describe("设置 → 远程机器", () => {
-  it("一张表：名称 · 地址 · Worker · 工作区数 · 验证；本机不列", async () => {
-    api.executionHosts.mockResolvedValue([
-      {
-        executionHostId: "",
-        name: "",
-        kind: "local",
-        workerConfigured: true,
-        workspaceCount: 1,
-      },
-      { ...box, worker },
-    ]);
+describe("设置 → SSH", () => {
+  it("一张表：名称 · 地址 · 验证；不列 Worker 与工作区数，不再查执行主机表", async () => {
     mount();
     const table = await screen.findByRole("table");
-    const row = (await within(table).findByText("Build box")).closest("tr")!;
+    const row = within(table).getByText("Build box").closest("tr")!;
     expect(within(row).getByText("ci@build.example:2222")).toBeTruthy();
-    expect(within(row).getByText("0.1.0")).toBeTruthy();
-    expect(within(row).getByText("2")).toBeTruthy();
     expect(within(row).getByRole("button", { name: "Validate" })).toBeTruthy();
-    expect(within(table).queryByText("This machine")).toBeNull();
+    expect(within(table).getAllByRole("columnheader")).toHaveLength(3);
+    expect(screen.queryByText("Worker")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Resync all" })).toBeNull();
+    expect(
+      screen.queryByRole("button", { name: "Import / export" }),
+    ).toBeNull();
+    expect(api.executionHosts).not.toHaveBeenCalled();
   });
 
   it("验证一步问完：只跑终端的机器连得上就是答案，Worker 握手成功说版本", async () => {
-    api.executionHosts.mockResolvedValue([box]);
     api.validateExecutionHost.mockResolvedValue({
       executionHostId: "build-box",
       reachable: true,
@@ -166,83 +146,7 @@ describe("设置 → 远程机器", () => {
     );
   });
 
-  it("Worker 过期用 destructive 徽标，没配置用 outline 徽标", async () => {
-    runtime.hosts = [
-      { ...boxSsh, worker: { path: "/opt/armadra" } },
-      { id: "bare", name: "Bare", host: "bare.example" },
-    ];
-    api.executionHosts.mockResolvedValue([
-      { ...box, worker: { ...worker, version: "0.0.9", outdated: true } },
-      {
-        ...box,
-        executionHostId: "bare",
-        name: "Bare",
-        workerConfigured: false,
-      },
-    ]);
-    mount();
-    const outdated = await screen.findByText("Worker outdated");
-    expect(outdated.getAttribute("data-variant")).toBe("destructive");
-    expect(
-      screen.getByText("No Worker configured").getAttribute("data-variant"),
-    ).toBe("outline");
-  });
-
-  it("全部重新同步逐台来，说清哪几台没成；只有一台时不给", async () => {
-    runtime.hosts = [
-      { ...boxSsh, worker: { path: "/opt/armadra" } },
-      { id: "far", name: "Far", host: "far.example", worker: { path: "/w" } },
-    ];
-    api.executionHosts.mockResolvedValue([
-      { ...box, worker },
-      { ...box, executionHostId: "far", name: "Far", worker },
-    ]);
-    api.resyncExecutionHost.mockImplementation(async (id: string) => {
-      if (id === "far") throw new Error("unavailable");
-      return { ...box, worker };
-    });
-    mount();
-    await click(await screen.findByRole("button", { name: "Resync all" }));
-    await waitFor(() =>
-      expect(toasts.error).toHaveBeenCalledWith("1 hosts did not resync", {
-        description: "Far",
-      }),
-    );
-    expect(api.resyncExecutionHost.mock.calls.map((call) => call[0])).toEqual([
-      "build-box",
-      "far",
-    ]);
-
-    cleanup();
-    runtime.hosts = [{ ...boxSsh, worker: { path: "/opt/armadra" } }];
-    api.executionHosts.mockResolvedValue([{ ...box, worker }]);
-    mount();
-    await screen.findByText("Build box");
-    expect(screen.queryByRole("button", { name: "Resync all" })).toBeNull();
-  });
-
-  it("点名称进子页：连接参数、重新同步、在那台机器上打开项目、健康记录", async () => {
-    api.executionHosts.mockResolvedValue([
-      {
-        ...box,
-        worker,
-        health: [
-          {
-            at: "2026-10-03T00:00:00Z",
-            event: "handshake",
-            ok: true,
-            version: "0.1.0",
-          },
-          {
-            at: "2026-10-03T00:02:00Z",
-            event: "failed",
-            ok: false,
-            code: "unreachable",
-          },
-        ],
-      },
-    ]);
-    api.resyncExecutionHost.mockResolvedValue({ ...box, worker });
+  it("点名称进子页：连接参数、在那台机器上打开项目、主机密钥；Worker 填过时「高级」展开", async () => {
     mount();
     await click(await screen.findByRole("button", { name: "Build box" }));
     expect(usePreferencesStore.getState().settingsSubpage).toBe(
@@ -251,36 +155,60 @@ describe("设置 → 远程机器", () => {
     expect((screen.getByLabelText("Host") as HTMLInputElement).value).toBe(
       "build.example",
     );
+    expect(
+      (screen.getByLabelText("Worker path") as HTMLInputElement).value,
+    ).toBe("/opt/armadra");
     expect(screen.getByLabelText("Remote project path")).toBeTruthy();
     expect(screen.getByRole("button", { name: "Host key" })).toBeTruthy();
-    expect(await screen.findByText("Health history")).toBeTruthy();
-    expect(screen.getByText("Handshake")).toBeTruthy();
-    expect(screen.getByText("Unreachable")).toBeTruthy();
+    expect(screen.queryByText("Health history")).toBeNull();
+    api.resyncExecutionHost.mockResolvedValue({
+      executionHostId: "build-box",
+      name: "Build box",
+    });
     await click(screen.getByRole("button", { name: "Resync" }));
     await waitFor(() =>
       expect(toasts.success).toHaveBeenCalledWith("Resynced Build box"),
     );
   });
 
-  it("没有机器：一句话加「添加」；导入 / 导出收在对话框里", async () => {
+  it("新建主机：五项平铺，额外参数与 Worker 收在「高级」里，保存带上已有主机", async () => {
+    runtime.hosts = [boxSsh];
+    mount();
+    await click(await screen.findByRole("button", { name: "Add" }));
+    expect(screen.getByLabelText("Name")).toBeTruthy();
+    expect(screen.getByLabelText("Key")).toBeTruthy();
+    expect(screen.queryByLabelText("Worker path")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Resync" })).toBeNull();
+    await click(screen.getByRole("button", { name: "Advanced" }));
+    expect(screen.getByLabelText("Worker path")).toBeTruthy();
+    fireEvent.change(screen.getByLabelText("Name"), {
+      target: { value: "Far" },
+    });
+    fireEvent.change(screen.getByLabelText("Host"), {
+      target: { value: "far.example" },
+    });
+    await click(screen.getByRole("button", { name: "Save" }));
+    const saved = runtime.mutate.mock.calls[0]![0] as {
+      ssh: { hosts: Array<{ name: string; host: string }> };
+    };
+    expect(saved.ssh.hosts.map((host) => host.host)).toEqual([
+      "build.example",
+      "far.example",
+    ]);
+  });
+
+  it("没有主机：一句话加「添加」", async () => {
     runtime.hosts = [];
-    api.executionHosts.mockResolvedValue([]);
     mount();
     expect(await screen.findByText("No hosts yet")).toBeTruthy();
     expect(screen.getByRole("button", { name: "Add" })).toBeTruthy();
-    await click(screen.getByRole("button", { name: "Import / export" }));
-    const dialog = await screen.findByRole("dialog");
-    expect(within(dialog).getByRole("button", { name: "Export" })).toBeTruthy();
   });
 
   it("窄屏：一台一张条目，不画表格", async () => {
     compact.value = true;
-    api.executionHosts.mockResolvedValue([{ ...box, worker }]);
     mount();
     expect(await screen.findByText("Build box")).toBeTruthy();
     expect(screen.queryByRole("table")).toBeNull();
-    expect(
-      await screen.findByText(/ci@build\.example:2222 · 0\.1\.0/),
-    ).toBeTruthy();
+    expect(screen.getByText("ci@build.example:2222")).toBeTruthy();
   });
 });
