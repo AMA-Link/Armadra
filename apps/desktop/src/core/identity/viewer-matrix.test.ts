@@ -79,12 +79,7 @@ const BASELINE_READS = new Set(["identity:read"]);
  *     1 MiB），`route-scopes.ts` 的 `exports/` 一行只写了 `read: "assets:read"`，写方法
  *     沿用它；域里的 `permissions.write` 判的是工作空间是否只读打开，不是这个人。
  */
-const KNOWN_GAPS: Record<string, string> = {
-  "POST /api/workspaces/{workspaceId}/exports/{exportId}/png":
-    "host-viewer,ws-viewer",
-  "POST /api/workspaces/{workspaceId}/exports/{exportId}/text":
-    "host-viewer,ws-viewer",
-};
+const KNOWN_GAPS: Record<string, string> = {};
 
 const PARAMS: Record<string, string> = {
   workspaceId: "w1",
@@ -328,6 +323,4 @@ describe("只读分享的全量矩阵：契约的每一条 procedure", () => {
 });
 
 /** 同 {@link KNOWN_GAPS}，按 procedure 名（`files.exportText` 就是导出文本那一条）。 */
-const KNOWN_PROCEDURE_GAPS: Record<string, string> = {
-  "files.exportText": "host-viewer,ws-viewer",
-};
+const KNOWN_PROCEDURE_GAPS: Record<string, string> = {};
