@@ -101,7 +101,12 @@ import {
   settleKeyIntent,
 } from "./menu";
 import { applyShortcuts, releaseShortcuts } from "./shortcuts";
-import { createTray, destroyTray, refreshGateway } from "./tray";
+import {
+  createTray,
+  destroyTray,
+  refreshGateway,
+  setUpdateStaged,
+} from "./tray";
 import { ownsRuntime } from "../shell-core/runtime/identity";
 import { versionLine } from "./version-flag";
 
@@ -143,6 +148,14 @@ const lifecycle = new DesktopLifecycle();
 const runtime = new RuntimeProcess();
 const development = !app.isPackaged;
 const updates = installUpdates(lifecycle, runtime);
+// 托盘「重启以完成更新」：只在更新已暂存、且这份安装能装它时出现；按下去走与
+// 设置页同一个重启（`updates:install`）。系统通知由 `installUpdates` 自己发。
+updates.onStaged((staged) =>
+  setUpdateStaged(
+    staged.ready && staged.installable,
+    () => void updates.install(),
+  ),
+);
 /**
  * 可选崩溃上报（外部服务 §11.2）：设置里没填 DSN 就什么都不加载。在 ready
  * 之前装，好让启动阶段的异常也算数；core 交来的错误经同一个通道。
