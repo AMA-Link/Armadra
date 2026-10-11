@@ -9,6 +9,7 @@ import { useCanvasStore } from "../store/canvas-store";
 import { useEnabledAgents } from "./use-agents";
 import { openQuickOpen } from "../panels/quick-open-seed";
 import { switchService } from "../services/switcher";
+import { openTerminalFind, terminalNodeOf } from "../nodes/terminal-registry";
 
 /** Git 工具窗口的提交页监听它来触发提交（⌘⏎，§13.5）。 */
 export const SCM_COMMIT_EVENT = "armadra:scm-commit";
@@ -127,6 +128,14 @@ export function useCommandDispatch(): CommandDispatch {
         // 的监听器，带着那个节点的路径。
         case "editor.goToLine":
           openQuickOpen({ query: ":" });
+          return;
+        // 焦点所在的终端优先，其次是选中的那个节点。
+        case "terminal.search":
+          openTerminalFind(
+            terminalNodeOf(document.activeElement) ??
+              state.selectedNodeIds[0] ??
+              null,
+          );
           return;
         case "scm.commit":
           // 窗口先开到底部，事件再发：提交页要先挂上才听得到这一次。
