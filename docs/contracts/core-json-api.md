@@ -78,6 +78,8 @@ R7a 之前 GitHub 与自动化两块面板走的是 `/rpc/armadra.v1.*`：二进
 
 **本机设备复用**：回环明文来源的票兑换时，复用主人名下同名、没被撤销、且签过的会话全都来自回环明文来源的那台设备（`core/identity/service.ts` 的 `consumeBootstrap`），只多一条会话；页面每次加载、托盘每次启动不再各建一台「本机桌面」。经 Gateway（HTTPS 来源）配对的设备每次都是新的，也不会被本机配对认领。
 
+**Cookie 会话的页面**（服务器壳托管、手机浏览器经 Gateway）：访问 Cookie 过期后，发往本机源的请求遇会话失效的 401（`unauthenticated` 或没有码）先续一次会话再重放一次（`apps/web/src/sources/transport.ts::cookieFetch`），重放的写请求换上续期后的 CSRF；身份面、具名 401 与流式请求体不重放。续期（`api/identity.ts::renewCookieSession`）同一窗口内共用一次，跨窗口在 Web Lock `armadra.identity.session-refresh` 里排队，拿到锁先 `GET /api/identity/session`，别的窗口已经续上（Cookie 共用）就不再刷新；内存里没有 CSRF 先 `POST session/csrf`。流被 4401 关掉后经同一个续期续上再重连，不再停在「已断开」。
+
 ### 3.3 稳定的 `code`
 
 GitHub 那一面（§5、§41.1）的 `code` 自协议 1.11 起是 snake_case，与其余 `/api/` 一致，取自错误码注册表（`packages/shared/src/contract/errors.ts`）；从前的 UPPER_SNAKE 拼法（延续自历史上 `/rpc/` 兼容面，R7 已删除）已换掉，状态与固定的英文原话不变：
