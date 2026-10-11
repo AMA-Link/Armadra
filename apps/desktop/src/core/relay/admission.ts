@@ -177,6 +177,9 @@ export function createTunnelGate(options: TunnelGateOptions): ListenerGate {
           : {
               principalId: identity.subject.principalId,
               deviceId: identity.device?.deviceId ?? "",
+              ...(socket.tunnel?.channel === undefined
+                ? {}
+                : { channelDeviceId: socket.tunnel.channel.deviceId }),
             },
       );
     }

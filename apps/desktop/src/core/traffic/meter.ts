@@ -44,6 +44,8 @@ export interface TrafficPeer {
 export interface PeerIdentity {
   readonly principalId: string;
   readonly deviceId: string;
+  /** 经端到端通道来的：通道对端的设备钥（`trusted_devices.device_id`）。 */
+  readonly channelDeviceId?: string;
 }
 
 export interface StreamScope {
@@ -165,12 +167,20 @@ export class TrafficMeter {
     this.now = options.now ?? Date.now;
     this.resolve =
       options.resolvePeer ??
-      ((_issuer, who) => ({
-        kind: "legacy",
-        peerId: who.deviceId,
-        principalId: who.principalId,
-        linkId: "",
-      }));
+      ((_issuer, who) =>
+        who.channelDeviceId === undefined
+          ? {
+              kind: "legacy",
+              peerId: who.deviceId,
+              principalId: who.principalId,
+              linkId: "",
+            }
+          : {
+              kind: "device",
+              peerId: who.channelDeviceId,
+              principalId: who.principalId,
+              linkId: "",
+            });
   }
 
   /** 一条内层流开始：拿一个计数器，读写都记到它上面。 */
@@ -209,6 +219,28 @@ export class TrafficMeter {
         row,
       });
     }
+    row.bytesIn += bytesIn;
+    row.bytesOut += bytesOut;
+  }
+
+  /**
+   * 端到端通道的线上字节（`transport`，契约 §76）：记到通道对端的设备那一行。中继
+   * 统计的 `e2e` 字节就是这些（每个单元 4 + 体长），两边对得上。
+   */
+  channelWire(
+    scope: WireScope,
+    deviceId: string,
+    bytesIn: number,
+    bytesOut: number,
+  ): void {
+    if (bytesIn === 0 && bytesOut === 0) return;
+    const row = this.row(
+      bucketStart(this.now()),
+      scope.route,
+      scope.issuer,
+      { kind: "device", peerId: deviceId, principalId: "", linkId: "" },
+      "transport",
+    );
     row.bytesIn += bytesIn;
     row.bytesOut += bytesOut;
   }

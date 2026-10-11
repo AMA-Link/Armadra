@@ -510,9 +510,14 @@ class TunnelConnection {
     ws.on("message", (data: RawData, isBinary: boolean) => {
       this.lastHeardAt = performance.now();
       const bytes = bytesOf(data);
-      this.wire(bytes.length, 0);
-      if (isBinary) this.receive(bytes);
-      else void this.onText(bytes.toString("utf8"));
+      if (isBinary) {
+        // 端到端外层流的密文由通道记到设备那一行（契约 §76 的 `transport`），这里
+        // 只记其余的（帧头、控制帧、明文流），两行加起来是整条隧道。
+        this.wire(bytes.length - this.receive(bytes), 0);
+      } else {
+        this.wire(bytes.length, 0);
+        void this.onText(bytes.toString("utf8"));
+      }
     });
     ws.on("close", (code: number) => this.finish(code));
     ws.on("error", (error: Error & { code?: string }) => {
@@ -632,11 +637,12 @@ class TunnelConnection {
 
   /* ------------------------------- 帧 ------------------------------- */
 
-  private receive(bytes: Uint8Array): void {
-    if (this.phase === "closed") return;
+  /** 处理一条二进制消息；答其中端到端外层流的 `DATA` 载荷字节（通道自己记）。 */
+  private receive(bytes: Uint8Array): number {
+    if (this.phase === "closed") return 0;
     if (this.phase === "handshake") {
       this.protocolError("ready 之前收到二进制帧");
-      return;
+      return 0;
     }
     let frame: Frame;
     try {
@@ -649,28 +655,32 @@ class TunnelConnection {
           : CLOSE.badFrame,
         "bad_frame",
       );
-      return;
+      return 0;
     }
+    if (frame.type === "data") {
+      const length = frame.bytes.length;
+      const stream = this.streams.get(frame.streamId);
+      if (length > this.recvRemaining) {
+        this.flowViolation(frame.streamId);
+        return 0;
+      }
+      this.recvRemaining -= length;
+      if (stream === undefined) {
+        this.consumed(length);
+        return 0;
+      }
+      if (!stream.receiveData(frame.bytes)) this.flowViolation(frame.streamId);
+      return stream.tunnel?.open.kind === "e2e" ? length : 0;
+    }
+    this.dispatch(frame);
+    return 0;
+  }
+
+  private dispatch(frame: Exclude<Frame, { type: "data" }>): void {
     switch (frame.type) {
       case "open":
         this.accept(frame.streamId, frame.open);
         return;
-      case "data": {
-        const length = frame.bytes.length;
-        if (length > this.recvRemaining) {
-          this.flowViolation(frame.streamId);
-          return;
-        }
-        this.recvRemaining -= length;
-        const stream = this.streams.get(frame.streamId);
-        if (stream === undefined) {
-          this.consumed(length);
-          return;
-        }
-        if (!stream.receiveData(frame.bytes))
-          this.flowViolation(frame.streamId);
-        return;
-      }
       case "end":
         this.streams.get(frame.streamId)?.receiveEnd();
         return;
@@ -745,7 +755,12 @@ class TunnelConnection {
     if (this.ws?.readyState !== WebSocket.OPEN) return;
     if (this.phase === "closed" || this.phase === "handshake") return;
     const encoded = encodeFrame(frame);
-    this.wire(0, encoded.length);
+    const sealed =
+      frame.type === "data" &&
+      this.streams.get(frame.streamId)?.tunnel?.open.kind === "e2e"
+        ? frame.bytes.length
+        : 0;
+    this.wire(0, encoded.length - sealed);
     this.ws.send(encoded, { binary: true });
   }
 

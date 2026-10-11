@@ -30,6 +30,7 @@ import {
   TrafficMeter,
   type TrafficPeer,
 } from "./meter";
+import { e2eDevices } from "../relay/e2e/peer";
 import { type StoredBucket, TrafficStore } from "./store";
 
 export const FLUSH_INTERVAL_MS = 30_000;
@@ -187,6 +188,13 @@ export class TrafficService {
           peer: input.groupBy === "peer" ? bucket : undefined,
         };
         groups.set(key, group);
+      } else if (
+        group.peer !== undefined &&
+        group.peer.principalId === "" &&
+        bucket.principalId !== ""
+      ) {
+        // 同一把设备钥：通道的线上字节那一行没有主体，用内层流那一行的主体与种类代表它。
+        group.peer = bucket;
       }
       addInto(group.totals, bucket);
     }
@@ -298,7 +306,7 @@ export class TrafficService {
   /* -------------------------------- 对端 -------------------------------- */
 
   private resolvePeer(issuer: string, who: PeerIdentity): TrafficPeer {
-    const key = `${issuer}\u0000${who.principalId}\u0000${who.deviceId}`;
+    const key = `${issuer}\u0000${who.principalId}\u0000${who.deviceId}\u0000${who.channelDeviceId ?? ""}`;
     const cached = this.peers.get(key);
     if (cached !== undefined) return cached;
     let linkId = "";
@@ -320,9 +328,15 @@ export class TrafficService {
     } catch {
       // 身份表读不到：按会话设备记，不挡流。
     }
+    // 经端到端通道来的按设备钥记（契约 §77），访客仍标 guest。
     const peer: TrafficPeer = {
-      kind: linkId === "" ? "legacy" : "guest",
-      peerId: who.deviceId,
+      kind:
+        linkId !== ""
+          ? "guest"
+          : who.channelDeviceId === undefined
+            ? "legacy"
+            : "device",
+      peerId: who.channelDeviceId ?? who.deviceId,
       principalId: who.principalId,
       linkId,
     };
@@ -338,6 +352,25 @@ export class TrafficService {
   }): string {
     if (peer.peerKind === "anonymous" || peer.peerKind === "tunnel") return "";
     try {
+      // 经端到端通道来的对端是设备钥（契约 §77）：名字取已信任设备的那一行。
+      const trusted =
+        peer.peerId === ""
+          ? undefined
+          : e2eDevices()
+              ?.list()
+              .find(
+                (row) =>
+                  row.deviceId === peer.peerId &&
+                  (peer.principalId === "" ||
+                    row.principalId === peer.principalId),
+              );
+      if (trusted !== undefined) {
+        const name = trusted.label;
+        const owner = trusted.principalName ?? "";
+        if (owner !== "" && name !== "" && owner !== name)
+          return `${name} · ${owner}`;
+        if (name !== "" || owner !== "") return name || owner;
+      }
       const device =
         peer.peerId === "" ? undefined : this.identity.device(peer.peerId);
       const principal =
@@ -356,11 +389,31 @@ export class TrafficService {
   }
 }
 
+/**
+ * 按对端分组的键。经端到端通道来的对端（`device`，以及经通道来的访客 `guest`）按设备钥
+ * 一组：通道的线上字节（没有主体）与内层流（有主体）落在同一行（契约 §76）。
+ */
 function peerGroupKey(bucket: StoredBucket): string {
+  if (
+    (bucket.peerKind === "device" || bucket.peerKind === "guest") &&
+    bucket.peerId !== "" &&
+    isDeviceKeyId(bucket)
+  )
+    return `device\u0000${bucket.peerId}`;
   return [
     bucket.peerKind,
     bucket.peerId,
     bucket.principalId,
     bucket.linkId,
   ].join("\u0000");
+}
+
+/** 这一行的对端是不是一把端到端设备钥（访客经明文来时 `peerId` 是会话设备，不并）。 */
+function isDeviceKeyId(bucket: StoredBucket): boolean {
+  if (bucket.peerKind === "device") return true;
+  return (
+    e2eDevices()
+      ?.list()
+      .some((row) => row.deviceId === bucket.peerId) ?? false
+  );
 }

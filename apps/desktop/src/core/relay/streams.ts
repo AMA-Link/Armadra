@@ -110,7 +110,12 @@ export interface StreamTrafficCounter {
   /** 准入认出了请求主体；没认出（匿名面）给 `undefined`。 */
   identify(
     who:
-      | { readonly principalId: string; readonly deviceId: string }
+      | {
+          readonly principalId: string;
+          readonly deviceId: string;
+          /** 经端到端通道来的：通道对端的设备钥（契约 §77）。 */
+          readonly channelDeviceId?: string;
+        }
       | undefined,
   ): void;
   close(): void;

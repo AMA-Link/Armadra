@@ -209,7 +209,26 @@ export function installRelay(
   });
   const openChannel = (issuer: string) => (stream: TunnelDuplex) => {
     const channelId = nextChannelId++;
-    const channel = new E2eChannel(stream, {
+    // 通道的线上字节（契约 §76 `transport`）记到对端设备那一行；握手完成之前还不
+    // 知道是谁，先攒着，握手失败就记到隧道那一行。
+    const pending = { bytesIn: 0, bytesOut: 0 };
+    let channel: E2eChannel | undefined;
+    const wire = (bytesIn: number, bytesOut: number) => {
+      if (traffic === undefined) return;
+      const peer = channel?.peer;
+      if (peer === undefined) {
+        pending.bytesIn += bytesIn;
+        pending.bytesOut += bytesOut;
+        return;
+      }
+      traffic.meter.channelWire(
+        { route: "relay", issuer },
+        peer.deviceId,
+        bytesIn,
+        bytesOut,
+      );
+    };
+    channel = new E2eChannel(stream, {
       sourceId: identity.hostId(),
       issuer,
       identity: identitySigner,
@@ -217,7 +236,41 @@ export function installRelay(
       listener,
       channelId,
       log: context.log,
-      onClose: (closed) => channels.delete(closed.channelId),
+      ...(traffic === undefined
+        ? {}
+        : {
+            meter: {
+              wireIn: (bytes: number) => wire(bytes, 0),
+              wireOut: (bytes: number) => wire(0, bytes),
+            },
+            streamCounter: (open) =>
+              traffic.meter.stream({
+                route: "relay",
+                issuer,
+                kind: open.kind,
+                path: open.path,
+              }),
+          }),
+      onReady: (ready) => {
+        if (traffic === undefined || ready.peer === undefined) return;
+        traffic.meter.channelWire(
+          { route: "relay", issuer },
+          ready.peer.deviceId,
+          pending.bytesIn,
+          pending.bytesOut,
+        );
+        pending.bytesIn = 0;
+        pending.bytesOut = 0;
+      },
+      onClose: (closed) => {
+        channels.delete(closed.channelId);
+        if (traffic !== undefined && closed.peer === undefined)
+          traffic.meter.wire(
+            { route: "relay", issuer },
+            pending.bytesIn,
+            pending.bytesOut,
+          );
+      },
     });
     channels.set(channelId, channel);
     channel.start();
