@@ -32,7 +32,12 @@ import {
   RuntimeRequestError,
   csrfRefusal,
 } from "./request";
-import { type Source, currentSource, localSource } from "./source";
+import {
+  type Source,
+  currentSource,
+  localSource,
+  pinLocal,
+} from "./source";
 import {
   type ControlChannel,
   type ControlSocketOpener,
@@ -326,3 +331,9 @@ export const runtimeApi = {
   ...githubApiFor(sourceClient),
   ...automationsApi,
 };
+
+/**
+ * 本机 core 的 `runtimeApi`：设置页读写的永远是这台电脑，打开的是别人的工作空间
+ * 也一样（重设计 B4）。「当前工作空间」那一页才用 `runtimeApi`。
+ */
+export const localRuntimeApi: typeof runtimeApi = pinLocal(runtimeApi);
