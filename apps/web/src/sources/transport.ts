@@ -152,6 +152,78 @@ export function bearerFetch(
   };
 }
 
+/** Cookie 会话的源（服务器壳托管的页面、手机浏览器经 Gateway）。 */
+export interface CookieTransport {
+  /** 这个源的 HTTP 来源；只重放发往它的请求。 */
+  readonly origin: string;
+  /** 访问 Cookie 过期后续一次；成功答 `true`。几个请求同时被拒共用一次。 */
+  refresh(): Promise<boolean>;
+  /** 续上之后的 CSRF 令牌；重放的写请求带着旧的那枚时换成它。没有是空串。 */
+  csrf(): string;
+}
+
+const CSRF_HEADER = "x-armadra-csrf";
+
+/** 这份请求体能不能原样再发一次：流只能读一次。 */
+function replayableBody(
+  input: RequestInfo | URL,
+  body: RequestInit["body"],
+): boolean {
+  if (body === undefined || body === null) {
+    return !(input instanceof Request) || input.body === null;
+  }
+  return (
+    typeof body === "string" ||
+    body instanceof URLSearchParams ||
+    body instanceof FormData ||
+    body instanceof Blob ||
+    body instanceof ArrayBuffer ||
+    ArrayBuffer.isView(body)
+  );
+}
+
+/** 相对地址按页面地址补全；补不全原样返回。 */
+function absoluteUrl(target: string): string {
+  try {
+    return new URL(target, globalThis.location?.href).href;
+  } catch {
+    return target;
+  }
+}
+
+/**
+ * 包一层 `fetch`：发往 Cookie 会话源的请求遇到「会话不认了」的 401，先续一次
+ * 会话（`refresh`），续上了重放一次（契约 §3.2）。Cookie 由浏览器带，这里不加
+ * 任何凭据；原请求带着 `X-Armadra-CSRF` 的换成续期后的那枚（刷新会轮换它）。
+ *
+ * 不重放：发往别处的、身份面自己的（它自己管刷新）、具名的 401（两步验证码不对
+ * 之类）、流式请求体。续不上就把原来那次 401 交出去。
+ */
+export function cookieFetch(
+  base: typeof fetch,
+  transport: CookieTransport,
+): typeof fetch {
+  return async (input, init) => {
+    const response = await base(input, init);
+    if (response.status !== 401) return response;
+    const target = absoluteUrl(requestUrl(input));
+    if (
+      !sameOrigin(target, transport.origin) ||
+      identityPath(target) ||
+      !replayableBody(input, init?.body) ||
+      !(await sessionRefusal(response))
+    )
+      return response;
+    if (!(await transport.refresh().catch(() => false))) return response;
+    const headers = new Headers(
+      init?.headers ?? (input instanceof Request ? input.headers : undefined),
+    );
+    const csrf = transport.csrf();
+    if (headers.has(CSRF_HEADER) && csrf) headers.set(CSRF_HEADER, csrf);
+    return base(input, { ...init, headers });
+  };
+}
+
 type SocketCtor = typeof WebSocket;
 
 /**
