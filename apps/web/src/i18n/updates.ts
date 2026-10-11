@@ -35,6 +35,7 @@ export const updates: MessageModule = {
     "updates.state.upToDate": "已是最新版本",
     "updates.state.available": "有新版本可用",
     "updates.state.unsupported": "未配置",
+    "updates.state.notConfigured": "此构建不能自动更新",
     "updates.state.unavailable": "无法确认",
     "updates.state.shellUnsupported": "此环境不能自动更新",
     "updates.state.downloading": "正在下载",
@@ -47,14 +48,13 @@ export const updates: MessageModule = {
     "updates.notify": "更新下载完成",
     "updates.notify.note":
       "关掉后只有托盘菜单里会出现「重启以完成更新」，不再发系统通知。",
-    "updates.missing.pubkey": "此构建没有内置签名公钥，无法验证任何安装包。",
+    "updates.missing.pubkey": "此构建无法验证更新包。",
     "updates.missing.endpoints":
       "此构建没有内置发布地址；更新地址来自后台服务给出的同一次发布。",
     "updates.unsupported.notDesktop": "浏览器里的页面无法替换应用本体。",
     "updates.unsupported.remoteHost":
       "后台服务在另一台机器上，更新它不等于更新这里的应用。",
-    "updates.unsupported.managedPackage":
-      "此版本由包管理器安装，更新交给包管理器。",
+    "updates.unsupported.managedPackage": "这种安装方式需要下载新安装包来更新。",
     "updates.partial.hostNotChecked": "后台服务未给出结果。",
     "updates.partial.shellNotChecked": "桌面壳未检查。",
     "updates.progress": "已下载",
@@ -67,6 +67,7 @@ export const updates: MessageModule = {
     "updates.action.restart": "重启并更新",
     "updates.action.retry": "重试",
     "updates.action.notes": "查看发布说明",
+    "updates.action.installer": "下载新安装包",
     "updates.restart.completed": "已更新到 {value}。",
     "updates.restart.incomplete":
       "更新未完成：{value} 没有报告新版本。请从发布页手动安装，或回到上一版。",
@@ -155,6 +156,7 @@ export const updates: MessageModule = {
     "updates.state.upToDate": "This is the newest release",
     "updates.state.available": "A newer release is available",
     "updates.state.unsupported": "Not configured",
+    "updates.state.notConfigured": "This build cannot update itself",
     "updates.state.unavailable": "Could not be confirmed",
     "updates.state.shellUnsupported": "This build cannot update itself",
     "updates.state.downloading": "Downloading",
@@ -167,8 +169,7 @@ export const updates: MessageModule = {
     "updates.notify": "Update downloaded",
     "updates.notify.note":
       "With this off, only the tray menu offers \u201cRestart to finish updating\u201d; no system notification is sent.",
-    "updates.missing.pubkey":
-      "This build carries no signing key, so it could not verify any package.",
+    "updates.missing.pubkey": "This build cannot verify update packages.",
     "updates.missing.endpoints":
       "This build carries no release address; the manifest comes from the release the background service describes.",
     "updates.unsupported.notDesktop":
@@ -176,7 +177,7 @@ export const updates: MessageModule = {
     "updates.unsupported.remoteHost":
       "The background service runs on another machine; updating it is not updating this application.",
     "updates.unsupported.managedPackage":
-      "A package manager installed this build and updates it.",
+      "This kind of installation updates by downloading a new installer.",
     "updates.partial.hostNotChecked": "The background service did not answer.",
     "updates.partial.shellNotChecked": "The desktop shell did not check.",
     "updates.progress": "Downloaded",
@@ -189,6 +190,7 @@ export const updates: MessageModule = {
     "updates.action.restart": "Restart and update",
     "updates.action.retry": "Try again",
     "updates.action.notes": "Read the release notes",
+    "updates.action.installer": "Download the new installer",
     "updates.restart.completed": "Updated to {value}.",
     "updates.restart.incomplete":
       "The update did not finish: {value} did not report the new version. Install it by hand from the release page, or go back to the previous one.",

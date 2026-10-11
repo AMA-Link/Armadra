@@ -282,7 +282,7 @@ describe("设置 → 关于：版本与更新", () => {
       [
         { state: "notConfigured", missing: { pubkey: true, endpoints: true } },
         answered("upToDate"),
-        "未配置",
+        "此构建不能自动更新",
       ],
       [{ state: "localBuild" }, answered("upToDate"), "本地构建"],
       [
@@ -354,13 +354,13 @@ describe("设置 → 关于：版本与更新", () => {
       { state: "notConfigured", missing: { pubkey: true, endpoints: false } },
       answered("upToDate"),
     );
-    await waitFor(() => expect(status()).toBe("未配置"));
-    expect(
-      screen.getByText("此构建没有内置签名公钥，无法验证任何安装包。"),
-    ).toBeTruthy();
+    await waitFor(() => expect(status()).toBe("此构建不能自动更新"));
+    expect(screen.getByText("此构建无法验证更新包。")).toBeTruthy();
     expect(screen.queryByText(/没有内置发布地址/)).toBeNull();
-    fireEvent.click(screen.getByRole("button", { name: "前往本机服务设置" }));
-    expect(usePreferencesStore.getState().lastSettingsSection).toBe("service");
+    // 缺公钥不是哪条设置能改的：没有去服务设置的按钮。
+    expect(
+      screen.queryByRole("button", { name: "前往本机服务设置" }),
+    ).toBeNull();
   });
 
   it("routes a blocked release side to the background service settings", async () => {
