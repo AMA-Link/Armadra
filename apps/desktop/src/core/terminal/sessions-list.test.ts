@@ -1,3 +1,5 @@
+import { mkdirSync } from "node:fs";
+import { join } from "node:path";
 import { describe, expect, it, afterEach } from "vitest";
 
 import { fixture, type Fixture } from "../workspaces/fixture";
@@ -129,5 +131,53 @@ describe("工作空间的会话列表", () => {
     expect(listed.find((row) => row.nodeId === "node-b")).not.toHaveProperty(
       "programStatus",
     );
+  });
+
+  it("带上 Agent 会话的阶段：刚启动与已退出都清了 state，只有它能分开", async () => {
+    const { core, workspaceId, boardId } = await board();
+    node(core, boardId, "node-a", "A");
+    node(core, boardId, "node-b", "B");
+    node(core, boardId, "node-c", "C");
+    session(core, workspaceId, "node-a", "s-a", "2026-09-01T00:00:00Z");
+    session(core, workspaceId, "node-b", "s-b", "2026-09-02T00:00:00Z");
+    session(core, workspaceId, "node-c", "s-c", "2026-09-03T00:00:00Z");
+    const status = core.database.prepare(
+      "INSERT INTO agent_status (node_id, workspace_id, agent_id, session_phase, updated_at) " +
+        "VALUES (?, ?, 'claude', ?, '2026-09-04T00:00:00Z')",
+    );
+    status.run("node-a", workspaceId, "start");
+    status.run("node-b", workspaceId, "end");
+
+    const listed = listSessions(core.database, workspaceId, () => true);
+    const byNode = new Map(listed.map((row) => [row.nodeId, row]));
+    expect(byNode.get("node-a")?.sessionPhase).toBe("start");
+    expect(byNode.get("node-b")?.sessionPhase).toBe("end");
+    expect(byNode.get("node-c")).not.toHaveProperty("sessionPhase");
+    expect(byNode.get("node-a")).not.toHaveProperty("state");
+  });
+
+  it("节点所在画布不属于这个工作空间时不列", async () => {
+    const { core, workspaceId, boardId } = await board();
+    const otherRoot = join(core.directory, "other");
+    mkdirSync(otherRoot);
+    const other = await core.call("POST", "/api/workspaces", {
+      name: "Other",
+      rootPath: otherRoot,
+    });
+    const otherId = (other.body as { id: string }).id;
+    expect(otherId).not.toBe(workspaceId);
+    const at = new Date().toISOString();
+    core.database
+      .prepare(
+        "INSERT INTO boards (id, workspace_id, name, sort_order, created_at, updated_at) VALUES ('board-2', ?, 'B2', 0, ?, ?)",
+      )
+      .run(otherId, at, at);
+    node(core, boardId, "node-a", "A");
+    node(core, "board-2", "node-b", "B");
+    session(core, workspaceId, "node-a", "s-a", "2026-09-01T00:00:00Z");
+    session(core, workspaceId, "node-b", "s-b", "2026-09-02T00:00:00Z");
+
+    const listed = listSessions(core.database, workspaceId, () => true);
+    expect(listed.map((row) => row.nodeId)).toEqual(["node-a"]);
   });
 });
