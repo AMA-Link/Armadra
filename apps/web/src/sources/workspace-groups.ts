@@ -107,3 +107,28 @@ export function initialOf(name: string): string {
   const first = [...name.trim()][0];
   return first === undefined ? "?" : first.toLocaleUpperCase();
 }
+
+/** 一台电脑的名字：改过的名字，没有就用它自己报的主机名，再没有用标识。 */
+export function sourceNameOf(connection: SourceConnection): string {
+  return (
+    connection.descriptor.label ||
+    connection.hello?.hostName ||
+    connection.descriptor.defaultLabel ||
+    connection.descriptor.sourceId
+  );
+}
+
+/**
+ * 分享来的电脑的主人：源表报的主人名，其次那台 core `system.hello` 报的
+ * `ownerName`（契约 §68，旧 core 没有），再退回电脑的名字。
+ */
+export function ownerNameOf(connection: SourceConnection): string {
+  const hello = connection.hello as { ownerName?: unknown } | null;
+  const fromHello =
+    typeof hello?.ownerName === "string" && hello.ownerName.trim() !== ""
+      ? hello.ownerName.trim()
+      : undefined;
+  return (
+    connection.descriptor.ownerName ?? fromHello ?? sourceNameOf(connection)
+  );
+}

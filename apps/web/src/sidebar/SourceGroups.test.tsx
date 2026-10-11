@@ -5,17 +5,41 @@ import {
   render,
   renderHook,
   screen,
+  within,
 } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const open = vi.hoisted(() => vi.fn());
-const listed = vi.hoisted(() => ({ data: [] as unknown[] }));
-vi.mock("../app/workspace-actions", () => ({ useOpenWorkspace: () => open }));
-vi.mock("../app/workspaces-query", () => ({
-  useWorkspaces: () => ({ data: listed.data }),
+const listed = vi.hoisted(() => ({
+  data: [] as { sourceId: string; workspace: { id: string; name: string } }[],
+  pending: new Set<string>(),
 }));
+vi.mock("../app/workspace-actions", () => ({ useOpenWorkspace: () => open }));
+vi.mock("../app/workspaces-query", async () => {
+  const { useSources, useSourceStates } = await import("../sources/context");
+  return {
+    useWorkspaces: () => {
+      const sources = useSources();
+      const states = useSourceStates(sources);
+      const perSource = new Map();
+      for (const source of sources) {
+        const sourceId = source.descriptor.sourceId;
+        const local = source.descriptor.kind === "local";
+        if (!local && states[sourceId] !== "ready") continue;
+        perSource.set(sourceId, {
+          isPending: listed.pending.has(sourceId),
+          isError: false,
+          workspaces: listed.data
+            .filter((one) => one.sourceId === sourceId)
+            .map((one) => one.workspace),
+        });
+      }
+      return { data: listed.data, perSource, states };
+    },
+  };
+});
 const desktop = vi.hoisted(() => ({ on: false }));
 vi.mock("../platform", async (original) => ({
   ...(await original<typeof import("../platform")>()),
@@ -31,17 +55,19 @@ import {
 } from "../app/use-sources-bootstrap";
 import type { SourceConnection } from "../sources/connection";
 import { SourcesProvider } from "../sources/context";
+import { markJoinedByLink } from "../sources/origin";
 import {
   createSourceRegistry,
   selectCurrentSource,
   type SourceRegistry,
 } from "../sources/registry";
 import type { SourceDescriptor, SourceStatus } from "../sources/types";
-import { SourceGroups, applyOrder } from "./SourceGroups";
+import { rememberWorkspaces } from "../sources/workspace-cache";
+import { WorkspaceGroups, applyOrder } from "./SourceGroups";
 
 /**
- * 侧栏按源分组：只有本机什么也不画；别的源各一组（状态点、离线灰显），就绪
- * 的源列出工作空间，点一行打开它；切源清掉不带源前缀的查询。
+ * 侧栏三组：这台电脑、我的其他电脑、他人分享。当前那台是树，其余各段列出
+ * 工作空间；离线的灰着列上次的名字；分享的带主人头像、名字与权限。
  */
 
 function connection(
@@ -83,6 +109,7 @@ function connection(
 const descriptor = (
   sourceId: string,
   orderIndex: number,
+  patch: Partial<SourceDescriptor> = {},
 ): SourceDescriptor => ({
   sourceId,
   kind: "direct",
@@ -92,19 +119,24 @@ const descriptor = (
   cloudIssuer: "",
   fingerprint: "",
   orderIndex,
+  ...patch,
 });
 
 let registry: SourceRegistry;
 beforeEach(async () => {
+  localStorage.clear();
   usePreferencesStore.setState({ locale: "en" });
   const states: Record<string, SourceStatus["state"]> = {
     a: "ready",
     b: "offline",
+    c: "connecting",
+    ann: "ready",
   };
   registry = createSourceRegistry({
     connect: (d) => connection(d, states[d.sourceId] ?? "idle"),
   });
   listed.data = [];
+  listed.pending.clear();
 });
 afterEach(() => {
   cleanup();
@@ -114,118 +146,165 @@ afterEach(() => {
   desktop.on = false;
 });
 
-function mount(children: ReactNode) {
+function mount() {
   return render(
     <QueryClientProvider client={new QueryClient()}>
-      <SourcesProvider registry={registry}>{children}</SourcesProvider>
+      <SourcesProvider registry={registry}>
+        <WorkspaceGroups
+          tree={<div data-testid="tree" />}
+          renderLocal={(content, current) => (
+            <section aria-label="local-shell" data-current={current}>
+              {content}
+            </section>
+          )}
+        />
+      </SourcesProvider>
     </QueryClientProvider>,
   );
 }
+
+const hydrate = (descriptors: SourceDescriptor[]) =>
+  act(async () => {
+    await registry.hydrate(async () => descriptors);
+  });
 
 const order = () =>
   [...document.querySelectorAll("[data-source-group]")].map((one) =>
     one.getAttribute("data-source-group"),
   );
 
-describe("侧栏按源分组", () => {
-  it("只有本机：什么也不画", () => {
-    mount(<SourceGroups />);
-    expect(document.querySelector("[data-source-group]")).toBeNull();
+describe("侧栏三组", () => {
+  it("只有本机：只有这台电脑一组，内容是树", () => {
+    mount();
+    expect(document.querySelectorAll("[data-workspace-group]")).toHaveLength(0);
+    const shell = screen.getByRole("region", { name: "local-shell" });
+    expect(shell.getAttribute("data-current")).toBe("true");
+    expect(within(shell).getByTestId("tree")).toBeTruthy();
   });
 
-  it("挂载的源各一组：在线正常，离线灰显，状态有读屏文字", async () => {
-    await act(async () => {
-      await registry.hydrate(async () => [
-        descriptor("a", 1),
-        descriptor("b", 2),
-      ]);
-    });
-    mount(<SourceGroups />);
-    const groups = [...document.querySelectorAll("[data-source-group]")];
-    expect(groups.map((one) => one.getAttribute("data-source-group"))).toEqual([
-      "a",
-      "b",
+  it("我的其他电脑与他人分享各一组；分享的带头像、主人名与权限", async () => {
+    markJoinedByLink("joined");
+    await hydrate([
+      descriptor("a", 1),
+      descriptor("ann", 2, {
+        origin: "shared",
+        ownerName: "ann",
+        shareRole: "editor",
+      }),
+      descriptor("joined", 3),
     ]);
-    expect(groups[0]!.className).not.toContain("opacity-60");
-    expect(groups[1]!.className).toContain("opacity-60");
-    expect(screen.getByRole("region", { name: "b-label" })).toBeTruthy();
-    expect(screen.getByText("Offline")).toBeTruthy();
+    mount();
+    const mine = screen.getByRole("region", { name: "My other computers" });
+    const shared = screen.getByRole("region", { name: "Shared with me" });
+    expect(within(mine).getByRole("region", { name: "a-label" })).toBeTruthy();
+    const ann = within(shared).getByRole("region", { name: "ann" });
+    expect(within(ann).getByText("A")).toBeTruthy();
+    expect(within(ann).getByText("Can edit")).toBeTruthy();
+    // 旧 core 不报权限：经链接加入的按只读显示，没有主人名用电脑名。
+    const joined = within(shared).getByRole("region", {
+      name: "joined-label",
+    });
+    expect(within(joined).getByText("View only")).toBeTruthy();
+    expect(order()).toEqual(["local", "a", "ann", "joined"]);
   });
 
-  it("就绪的源列出工作空间；点一行打开它，本机成为一组", async () => {
-    await act(async () => {
-      await registry.hydrate(async () => [descriptor("a", 1)]);
-    });
+  it("点一行打开那个工作空间（带上它的源）；当前那台换成树", async () => {
+    await hydrate([descriptor("a", 1)]);
     listed.data = [
       { sourceId: "a", workspace: { id: "w-remote", name: "Remote project" } },
-      {
-        sourceId: registry.local().descriptor.sourceId,
-        workspace: { id: "w-local", name: "Local" },
-      },
+      { sourceId: "local", workspace: { id: "w-local", name: "Local" } },
     ];
-    mount(<SourceGroups />);
-    // 当前源（本机）的工作空间在树里，不在分组里。
+    mount();
     expect(screen.queryByText("Local")).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Remote project" }));
     expect(open).toHaveBeenCalledWith(
       { id: "w-remote", name: "Remote project" },
       "a",
     );
-    // 打开之后当前源跟过去（`follow-workspace.ts`），本机成为一组。
     act(() => selectCurrentSource(registry, "a"));
-    expect(await screen.findByText("Local")).toBeTruthy();
-    expect(screen.getByRole("region", { name: "This machine" })).toBeTruthy();
+    const a = screen.getByRole("region", { name: "a-label" });
+    expect(within(a).getByTestId("tree")).toBeTruthy();
+    expect(screen.queryByText("Remote project")).toBeNull();
+    // 本机不再是当前：列出本机的工作空间，外壳知道不是当前（不给添加项目）。
+    const shell = screen.getByRole("region", { name: "local-shell" });
+    expect(shell.getAttribute("data-current")).toBe("false");
+    expect(within(shell).getByText("Local")).toBeTruthy();
+  });
+
+  it("离线与在连的电脑灰着列上次记下的名字、点不开，不挡本机", async () => {
+    rememberWorkspaces("b", [{ id: "w-old", name: "Old project" }]);
+    rememberWorkspaces("c", [{ id: "w-slow", name: "Slow project" }]);
+    await hydrate([descriptor("b", 1), descriptor("c", 2)]);
+    mount();
+    expect(screen.getByTestId("tree")).toBeTruthy();
+    const b = screen.getByRole("region", { name: "b-label" });
+    expect(b.getAttribute("data-state")).toBe("offline");
+    expect(within(b).getByText("Offline")).toBeTruthy();
+    const old = within(b).getByRole("button", { name: "Old project" });
+    expect((old as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(old);
+    expect(open).not.toHaveBeenCalled();
+    const c = screen.getByRole("region", { name: "c-label" });
+    expect(c.getAttribute("data-state")).toBe("loading");
+    expect(
+      (
+        within(c).getByRole("button", {
+          name: "Slow project",
+        }) as HTMLButtonElement
+      ).disabled,
+    ).toBe(true);
+  });
+
+  it("就绪但列表还在路上：这一段在连，用记下的", async () => {
+    rememberWorkspaces("a", [{ id: "w1", name: "Cached" }]);
+    listed.pending.add("a");
+    await hydrate([descriptor("a", 1)]);
+    mount();
+    const a = screen.getByRole("region", { name: "a-label" });
+    expect(a.getAttribute("data-state")).toBe("loading");
+    expect(within(a).getByText("Cached")).toBeTruthy();
   });
 });
 
 describe("拖动排序", () => {
   it("applyOrder：认得的按拖出的顺序，其余按原顺序跟在后面", async () => {
-    await act(async () => {
-      await registry.hydrate(async () => [
-        descriptor("a", 1),
-        descriptor("b", 2),
-        descriptor("c", 3),
-      ]);
-    });
-    const remotes = registry
+    await hydrate([descriptor("a", 1), descriptor("b", 2), descriptor("c", 3)]);
+    const sections = registry
       .list()
-      .filter((one) => one.descriptor.kind !== "local");
-    const ids = (list: readonly SourceConnection[]) =>
-      list.map((one) => one.descriptor.sourceId);
-    expect(ids(applyOrder(remotes, null))).toEqual(["a", "b", "c"]);
-    expect(ids(applyOrder(remotes, ["c", "a"]))).toEqual(["c", "a", "b"]);
-    expect(ids(applyOrder(remotes, ["gone", "b"]))).toEqual(["b", "a", "c"]);
+      .filter((one) => one.descriptor.kind !== "local")
+      .map((connection) => ({ connection }));
+    const ids = (list: readonly { connection: SourceConnection }[]) =>
+      list.map((one) => one.connection.descriptor.sourceId);
+    expect(ids(applyOrder(sections, null))).toEqual(["a", "b", "c"]);
+    expect(ids(applyOrder(sections, ["c", "a"]))).toEqual(["c", "a", "b"]);
+    expect(ids(applyOrder(sections, ["gone", "b"]))).toEqual(["b", "a", "c"]);
   });
 
-  it("浏览器页面（源表不在本机 core）：组头不可拖", async () => {
-    await act(async () => {
-      await registry.hydrate(async () => [
-        descriptor("a", 1),
-        descriptor("b", 2),
-      ]);
-    });
-    mount(<SourceGroups />);
+  it("浏览器页面（源表不在本机 core）：段头不可拖", async () => {
+    await hydrate([descriptor("a", 1), descriptor("b", 2)]);
+    mount();
     expect(
       screen.queryByRole("button", { name: /Drag to reorder/ }),
     ).toBeNull();
   });
 
-  it("桌面壳：组头用键盘拖到下一位，侧栏先按新顺序画，按位置写回 orderIndex", async () => {
+  it("桌面壳：段头用键盘拖到下一位，侧栏先按新顺序画，分享的跟在后面写回", async () => {
     desktop.on = true;
-    await act(async () => {
-      await registry.hydrate(async () => [
-        descriptor("a", 1),
-        descriptor("b", 2),
-      ]);
-    });
-    mount(<SourceGroups />);
-    expect(order()).toEqual(["a", "b"]);
+    await hydrate([
+      descriptor("a", 1),
+      descriptor("b", 2),
+      descriptor("ann", 3, { origin: "shared" }),
+    ]);
+    mount();
+    expect(order()).toEqual(["local", "a", "b", "ann"]);
     const handle = screen.getByRole("button", {
       name: "Drag to reorder a-label",
     });
-    // jsdom 没有布局：给两组各一个不重叠的位置，键盘传感器才找得到下一位。
+    // jsdom 没有布局：给两段各一个不重叠的位置，键盘传感器才找得到下一位。
     for (const [index, group] of document
-      .querySelectorAll<HTMLElement>("[data-source-group]")
+      .querySelectorAll<HTMLElement>(
+        '[data-workspace-group="mine"] [data-source-group]',
+      )
       .entries()) {
       group.getBoundingClientRect = () =>
         ({
@@ -250,8 +329,8 @@ describe("拖动排序", () => {
     await act(async () => {
       fireEvent.keyDown(handle, { key: " ", code: "Space" });
     });
-    expect(order()).toEqual(["b", "a"]);
-    expect(reorder).toHaveBeenCalledWith(["b", "a"]);
+    expect(order()).toEqual(["local", "b", "a", "ann"]);
+    expect(reorder).toHaveBeenCalledWith(["b", "a", "ann"]);
   });
 });
 
@@ -260,15 +339,15 @@ describe("切源清缓存", () => {
     const client = new QueryClient();
     client.setQueryData(["settings"], { a: 1 });
     client.setQueryData(["src", "local", "workspaces"], []);
-    await act(async () => {
-      await registry.hydrate(async () => [descriptor("a", 1)]);
-    });
+    await hydrate([descriptor("a", 1)]);
     renderHook(() => useSourceSwitchCacheReset(() => registry), {
-      wrapper: ({ children }) => (
+      wrapper: ({ children }: { children: ReactNode }) => (
         <QueryClientProvider client={client}>{children}</QueryClientProvider>
       ),
     });
-    act(() => selectCurrentSource(registry, registry.local().descriptor.sourceId));
+    act(() =>
+      selectCurrentSource(registry, registry.local().descriptor.sourceId),
+    );
     expect(client.getQueryData(["settings"])).toEqual({ a: 1 });
     act(() => selectCurrentSource(registry, "a"));
     expect(client.getQueryData(["settings"])).toBeUndefined();

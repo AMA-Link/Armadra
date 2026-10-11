@@ -20,8 +20,6 @@ import { CSS } from "@dnd-kit/utilities";
 import { Folder } from "lucide-react";
 import { toast } from "sonner";
 
-import type { WorkspaceSummary } from "@armadra/shared";
-
 import { reorderSources } from "../api/remote-services";
 import { RUNTIME_VIA_SERVER_SHELL } from "../api/request";
 import { useT } from "../app/preferences-store";
@@ -32,29 +30,142 @@ import { sourcePill } from "../panels/settings/source-status";
 import {
   type SourceConnection,
   useCurrentSource,
-  useSourceStatus,
   useSources,
 } from "../sources";
+import { shareRoleOf } from "../sources/origin";
+import { cachedWorkspaces } from "../sources/workspace-cache";
+import {
+  type SourceSection,
+  type WorkspaceGroupKey,
+  groupWorkspaces,
+  initialOf,
+  ownerNameOf,
+  sourceNameOf,
+} from "../sources/workspace-groups";
 import { cn } from "@/lib/cn";
+import { Avatar, AvatarFallback } from "@/ui/avatar";
+import { Badge } from "@/ui/badge";
 import { Button } from "@/ui/button";
 import { ColorDot } from "@/ui/color-dot";
+import { Spinner } from "@/ui/spinner";
 import { TONE_COLOR } from "@/ui/status-pill";
 
 /**
- * 侧栏按源分组（客户端包 §3.3）：当前源的工作空间在上面的「项目」里（树本身），
- * 其余每个源各一组跟在后面——组头是源的名字加状态点，离线与失权的组灰显；
- * 就绪的源列出它的工作空间（`useWorkspaces()`，每个就绪源一次查询），点一行
- * 就切到那个源再打开它。零配置时只有本机，这里什么也不画。
+ * 侧栏的三组（#301）：这台电脑、我的其他电脑、他人分享。点哪个工作空间就
+ * 打开哪个画布，当前源跟着打开的工作空间走（`sources/follow-workspace.ts`），
+ * 没有手动切换。
  *
- * 挂载的源按组头拖动排序（桌面壳与服务器壳的页面，源表在本机 core）：新顺序
- * 写回 `sources.update.orderIndex`。写回期间与之后侧栏先按新顺序画，不为此
- * 重连各源；源表下次读到时（启动、设置页）编号就是新的。
+ * 打开着的工作空间所在的那台电脑，这一段是 `tree`（已打开的工作空间与它们的
+ * 画布）；其余每台各一段，列出它的全部工作空间。每段各自的状态：在连、离线
+ * 时灰着列上次记下的名字，点不开，也不挡本机那一段。
+ *
+ * 「我的其他电脑」按段头拖动排序（桌面壳与服务器壳的页面，源表在本机 core）：
+ * 新顺序写回 `sources.update.orderIndex`，侧栏先按新顺序画，不为此重连。
  */
-export function SourceGroups() {
+interface WorkspaceGroupsProps {
+  /** 当前那台电脑的那一段（已打开的工作空间树）。 */
+  tree: React.ReactNode;
+  /** 「这台电脑」组的外壳（组标题、添加项目、拖入目录），内容由这里给。 */
+  renderLocal: (content: React.ReactNode, current: boolean) => React.ReactNode;
+}
+
+export function WorkspaceGroups(props: WorkspaceGroupsProps) {
   const sources = useSources();
-  // 零配置不挂分组，也就不多发一次工作空间查询。
-  if (sources.length < 2) return null;
-  return <Groups sources={sources} />;
+  // 零配置只有本机：不多发一次各源的工作空间查询。
+  if (sources.length < 2)
+    return props.renderLocal(
+      <div
+        data-source-group={sources[0]?.descriptor.sourceId}
+        data-state="ready"
+      >
+        {props.tree}
+      </div>,
+      true,
+    );
+  return <Groups {...props} sources={sources} />;
+}
+
+function Groups({
+  tree,
+  renderLocal,
+  sources,
+}: WorkspaceGroupsProps & { sources: readonly SourceConnection[] }) {
+  const t = useT();
+  const current = useCurrentSource();
+  const workspaces = useWorkspaces();
+  const [order, setOrder] = React.useState<readonly string[] | null>(null);
+  const groups = groupWorkspaces({
+    sources,
+    states: workspaces.states,
+    listings: workspaces.perSource,
+    cached: cachedWorkspaces,
+  });
+  const openWorkspace = useOpenWorkspace();
+  const currentId = current.descriptor.sourceId;
+  // 当前源跟着打开的工作空间换过去（`sources/follow-workspace.ts`）。
+  const open = (sourceId: string, workspaceId: string) => {
+    const found = workspaces.data.find(
+      (one) => one.sourceId === sourceId && one.workspace.id === workspaceId,
+    );
+    if (found) openWorkspace(found.workspace as never, sourceId);
+  };
+  const contentOf = (section: SourceSection) =>
+    section.connection.descriptor.sourceId === currentId ? (
+      tree
+    ) : (
+      <WorkspaceRows section={section} onOpen={open} />
+    );
+
+  return (
+    <>
+      {groups.map((group) => {
+        if (group.key === "local") {
+          const section = group.sections[0]!;
+          return (
+            <React.Fragment key="local">
+              {renderLocal(
+                <div
+                  data-source-group={section.connection.descriptor.sourceId}
+                  data-state={section.state}
+                >
+                  {contentOf(section)}
+                </div>,
+                section.connection.descriptor.sourceId === currentId,
+              )}
+            </React.Fragment>
+          );
+        }
+        return (
+          <section
+            key={group.key}
+            aria-label={t(`workspaceGroups.${group.key}`)}
+            data-workspace-group={group.key}
+            className="mt-2"
+          >
+            <GroupHeading>{t(`workspaceGroups.${group.key}`)}</GroupHeading>
+            <RemoteSections
+              kind={group.key}
+              sections={group.sections}
+              order={order}
+              onOrder={setOrder}
+              allSources={sources}
+              contentOf={contentOf}
+            />
+          </section>
+        );
+      })}
+    </>
+  );
+}
+
+function GroupHeading({ children }: { children: string }) {
+  return (
+    <div className="flex h-7 items-center px-1.5">
+      <h2 className="min-w-0 flex-1 truncate text-[length:var(--text-caption)] font-medium tracking-[.04em] text-muted-foreground uppercase">
+        {children}
+      </h2>
+    </div>
+  );
 }
 
 /** 源表在本机 core 里、能写回顺序的页面（同 `sources/bootstrap.ts` 的判断）。 */
@@ -63,133 +174,130 @@ function canReorder(): boolean {
 }
 
 /** 拖动定下的顺序先盖在源表的顺序上：认得的按它排，其余按原顺序跟在后面。 */
-export function applyOrder(
-  sources: readonly SourceConnection[],
+export function applyOrder<T extends { connection: SourceConnection }>(
+  sections: readonly T[],
   order: readonly string[] | null,
-): SourceConnection[] {
-  if (order === null) return [...sources];
+): T[] {
+  if (order === null) return [...sections];
   const rank = new Map(order.map((sourceId, index) => [sourceId, index]));
-  return sources
-    .map((source, index) => ({ source, index }))
+  const idOf = (entry: T) => entry.connection.descriptor.sourceId;
+  return sections
+    .map((section, index) => ({ section, index }))
     .sort(
       (a, b) =>
-        (rank.get(a.source.descriptor.sourceId) ?? order.length + a.index) -
-        (rank.get(b.source.descriptor.sourceId) ?? order.length + b.index),
+        (rank.get(idOf(a.section)) ?? order.length + a.index) -
+        (rank.get(idOf(b.section)) ?? order.length + b.index),
     )
-    .map((entry) => entry.source);
+    .map((entry) => entry.section);
 }
 
-function Groups({ sources }: { sources: readonly SourceConnection[] }) {
+function RemoteSections({
+  kind,
+  sections,
+  order,
+  onOrder,
+  allSources,
+  contentOf,
+}: {
+  kind: Exclude<WorkspaceGroupKey, "local">;
+  sections: readonly SourceSection[];
+  order: readonly string[] | null;
+  onOrder: (order: readonly string[] | null) => void;
+  allSources: readonly SourceConnection[];
+  contentOf: (section: SourceSection) => React.ReactNode;
+}) {
   const t = useT();
   const client = useQueryClient();
-  const current = useCurrentSource();
-  const workspaces = useWorkspaces();
-  const [order, setOrder] = React.useState<readonly string[] | null>(null);
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
     useSensor(KeyboardSensor, {
       coordinateGetter: sortableKeyboardCoordinates,
     }),
   );
-  const others = sources.filter(
-    (source) => source.descriptor.sourceId !== current.descriptor.sourceId,
-  );
-  // 本机（当前源是别的源时它也在这里）总在最前，不参与排序。
-  const fixed = others.filter((source) => source.descriptor.kind === "local");
-  const movable = applyOrder(
-    others.filter((source) => source.descriptor.kind !== "local"),
-    order,
-  );
-  const sortable = canReorder() && movable.length > 1;
-  const workspacesOf = (source: SourceConnection) =>
-    workspaces.data
-      .filter((one) => one.sourceId === source.descriptor.sourceId)
-      .map((one) => one.workspace);
+  const ordered = applyOrder(sections, order);
+  const sortable = kind === "mine" && canReorder() && ordered.length > 1;
+
+  if (!sortable) {
+    return ordered.map((section) => (
+      <SourceBlock
+        key={section.connection.descriptor.sourceId}
+        kind={kind}
+        section={section}
+      >
+        {contentOf(section)}
+      </SourceBlock>
+    ));
+  }
 
   const onDragEnd = (event: DragEndEvent) => {
     const over = event.over;
     if (!over || event.active.id === over.id) return;
-    const ids = movable.map((source) => source.descriptor.sourceId);
+    const ids = ordered.map(
+      (section) => section.connection.descriptor.sourceId,
+    );
     const next = arrayMove(
       ids,
       ids.indexOf(String(event.active.id)),
       ids.indexOf(String(over.id)),
     );
-    setOrder(next);
-    // 当前源不在侧栏的分组里：它留在源表里原来的位置，其余按新顺序填进去。
-    const queue = [...next];
-    const all = sources
-      .filter((source) => source.descriptor.kind !== "local")
-      .map((source) =>
-        source.descriptor.sourceId === current.descriptor.sourceId
-          ? source.descriptor.sourceId
-          : (queue.shift() ?? source.descriptor.sourceId),
-      );
-    void reorderSources(all).then(
+    onOrder(next);
+    // 我的电脑按新顺序在前，分享来的按原顺序跟在后面。
+    const rest = allSources
+      .filter(
+        (source) =>
+          source.descriptor.kind !== "local" &&
+          !next.includes(source.descriptor.sourceId),
+      )
+      .map((source) => source.descriptor.sourceId);
+    void reorderSources([...next, ...rest]).then(
       () => client.invalidateQueries({ queryKey: ["sources"] }),
       (error: Error) => {
-        setOrder(null);
+        onOrder(null);
         toast.error(error.message);
       },
     );
   };
 
   return (
-    <>
-      {fixed.map((source) => (
-        <SourceGroup
-          key={source.descriptor.sourceId}
-          source={source}
-          workspaces={workspacesOf(source)}
-        />
-      ))}
-      {sortable ? (
-        <DndContext
-          sensors={sensors}
-          collisionDetection={closestCenter}
-          onDragEnd={onDragEnd}
-        >
-          <SortableContext
-            items={movable.map((source) => source.descriptor.sourceId)}
-            strategy={verticalListSortingStrategy}
+    <DndContext
+      sensors={sensors}
+      collisionDetection={closestCenter}
+      onDragEnd={onDragEnd}
+    >
+      <SortableContext
+        items={ordered.map((section) => section.connection.descriptor.sourceId)}
+        strategy={verticalListSortingStrategy}
+      >
+        {ordered.map((section) => (
+          <SortableSourceBlock
+            key={section.connection.descriptor.sourceId}
+            section={section}
+            reorderLabel={(name) => t("remote.sources.reorder", { name })}
           >
-            {movable.map((source) => (
-              <SortableSourceGroup
-                key={source.descriptor.sourceId}
-                source={source}
-                workspaces={workspacesOf(source)}
-                reorderLabel={(name) => t("remote.sources.reorder", { name })}
-              />
-            ))}
-          </SortableContext>
-        </DndContext>
-      ) : (
-        movable.map((source) => (
-          <SourceGroup
-            key={source.descriptor.sourceId}
-            source={source}
-            workspaces={workspacesOf(source)}
-          />
-        ))
-      )}
-    </>
+            {contentOf(section)}
+          </SortableSourceBlock>
+        ))}
+      </SortableContext>
+    </DndContext>
   );
 }
 
-function SortableSourceGroup({
-  source,
-  workspaces,
+function SortableSourceBlock({
+  section,
   reorderLabel,
+  children,
 }: {
-  source: SourceConnection;
-  workspaces: readonly WorkspaceSummary[];
+  section: SourceSection;
   reorderLabel(name: string): string;
+  children: React.ReactNode;
 }) {
-  const sortable = useSortable({ id: source.descriptor.sourceId });
+  const sortable = useSortable({
+    id: section.connection.descriptor.sourceId,
+  });
   return (
-    <SourceGroup
-      source={source}
-      workspaces={workspaces}
+    <SourceBlock
+      kind="mine"
+      section={section}
       sortable={{
         ref: sortable.setNodeRef,
         style: {
@@ -201,7 +309,9 @@ function SortableSourceGroup({
         label: reorderLabel,
         dragging: sortable.isDragging,
       }}
-    />
+    >
+      {children}
+    </SourceBlock>
   );
 }
 
@@ -213,75 +323,115 @@ interface SortableProps {
   readonly dragging: boolean;
 }
 
-function SourceGroup({
-  source,
-  workspaces,
+/** 段的状态 → 状态点与读屏文字（在连用转圈）。 */
+function pillOf(section: SourceSection) {
+  const state = section.connection.status.state;
+  if (section.state === "ready") return sourcePill("ready");
+  if (section.state === "loading")
+    return sourcePill(state === "ready" ? "connecting" : state);
+  return sourcePill(state === "unauthorized" ? state : "offline");
+}
+
+/** 一台电脑那一段：段头（我的：状态点与名字；分享的：主人头像、名字与权限）与内容。 */
+function SourceBlock({
+  kind,
+  section,
   sortable,
+  children,
 }: {
-  source: SourceConnection;
-  workspaces: readonly WorkspaceSummary[];
+  kind: Exclude<WorkspaceGroupKey, "local">;
+  section: SourceSection;
   sortable?: SortableProps;
+  children: React.ReactNode;
 }) {
   const t = useT();
-  const status = useSourceStatus(source);
-  const openWorkspace = useOpenWorkspace();
-  const local = source.descriptor.kind === "local";
-  const state = local ? "ready" : status.state;
-  const pill = sourcePill(state);
-  const sourceId = source.descriptor.sourceId;
-  const label =
-    source.descriptor.label || (local ? t("remote.kind.local") : sourceId);
-  const dimmed = state !== "ready" && state !== "connecting";
+  const connection = section.connection;
+  const sourceId = connection.descriptor.sourceId;
+  const shared = kind === "shared";
+  const name = shared ? ownerNameOf(connection) : sourceNameOf(connection);
+  const pill = pillOf(section);
   return (
     <section
       ref={sortable?.ref}
       style={sortable?.style}
-      aria-label={label}
+      aria-label={name}
       data-source-group={sourceId}
-      data-state={state}
+      data-state={section.state}
       data-dragging={sortable?.dragging || undefined}
       className={cn(
-        "relative mt-2",
-        dimmed && "opacity-60",
+        "relative",
         sortable?.dragging && "rounded-md bg-sidebar shadow-sm",
       )}
     >
       <div
         {...sortable?.handle}
-        aria-label={sortable ? sortable.label(label) : undefined}
+        aria-label={sortable ? sortable.label(name) : undefined}
         className={cn(
           "flex h-7 items-center gap-2 rounded-md px-1.5",
+          section.state === "offline" && "opacity-60",
           sortable &&
             "cursor-grab touch-none outline-none focus-visible:ring-3 focus-visible:ring-ring/50 active:cursor-grabbing",
         )}
         title={t(pill.key)}
       >
-        <ColorDot color={TONE_COLOR[pill.tone]} size={6} />
-        <h2 className="min-w-0 flex-1 truncate text-[length:var(--text-caption)] font-medium tracking-[.04em] text-muted-foreground uppercase">
-          {label}
-        </h2>
+        {shared ? (
+          <Avatar size="sm" className="size-5" aria-hidden>
+            <AvatarFallback className="text-[length:var(--text-caption)]">
+              {initialOf(name)}
+            </AvatarFallback>
+          </Avatar>
+        ) : section.state === "loading" ? (
+          <Spinner aria-hidden className="size-3 text-muted-foreground" />
+        ) : (
+          <ColorDot color={TONE_COLOR[pill.tone]} size={6} />
+        )}
+        <h3 className="min-w-0 flex-1 truncate text-[length:var(--text-body)] text-muted-foreground">
+          {name}
+        </h3>
+        {shared && section.state === "loading" && (
+          <Spinner aria-hidden className="size-3 text-muted-foreground" />
+        )}
+        {shared && (
+          <Badge variant="secondary" data-share-role>
+            {t(`workspaceGroups.role.${shareRoleOf(connection.descriptor)}`)}
+          </Badge>
+        )}
         <span className="sr-only">{t(pill.key)}</span>
       </div>
-      {state === "ready" && workspaces.length > 0 && (
-        <ul>
-          {workspaces.map((workspace) => (
-            <li key={workspace.id}>
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                data-source-workspace={workspace.id}
-                className="h-7 w-full justify-start gap-2 px-1.5 font-normal"
-                // 当前源跟着打开的工作空间换过去（`sources/follow-workspace.ts`）。
-                onClick={() => openWorkspace(workspace as never, sourceId)}
-              >
-                <Folder className="size-4 shrink-0 text-muted-foreground" />
-                <span className="min-w-0 truncate">{workspace.name}</span>
-              </Button>
-            </li>
-          ))}
-        </ul>
-      )}
+      {children}
     </section>
+  );
+}
+
+/** 不是当前那台的电脑：列出它的工作空间；在连、离线时灰着、点不开。 */
+function WorkspaceRows({
+  section,
+  onOpen,
+}: {
+  section: SourceSection;
+  onOpen: (sourceId: string, workspaceId: string) => void;
+}) {
+  const sourceId = section.connection.descriptor.sourceId;
+  if (section.workspaces.length === 0) return null;
+  const usable = section.state === "ready" && !section.stale;
+  return (
+    <ul data-stale={section.stale || undefined}>
+      {section.workspaces.map((workspace) => (
+        <li key={workspace.id}>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            disabled={!usable}
+            data-source-workspace={workspace.id}
+            className="h-7 w-full justify-start gap-2 px-1.5 font-normal"
+            onClick={() => onOpen(sourceId, workspace.id)}
+          >
+            <Folder className="size-4 shrink-0 text-muted-foreground" />
+            <span className="min-w-0 truncate">{workspace.name}</span>
+          </Button>
+        </li>
+      ))}
+    </ul>
   );
 }
