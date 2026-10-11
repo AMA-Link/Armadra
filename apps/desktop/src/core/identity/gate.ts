@@ -163,10 +163,14 @@ export function accessChanged(): void {
  * `filter` 给「放行但只给看得见的那部分」的路由：工作空间列表对成员放行，
  * 答案里只留他有 `canvas:read` 的那几块。它也能只看不改——终端创建成功之后
  * 记下创建者，靠的就是这一步。
+ *
+ * `readOnly` 给「放行但只读」的流（契约 §60）：终端 socket 对只有读权限的人照样
+ * 升级，流里的写帧一律丢掉。只对 WebSocket 升级有意义。
  */
 export interface RouteVerdict {
   readonly allowed: boolean;
   readonly filter?: (body: unknown) => unknown;
+  readonly readOnly?: boolean;
 }
 
 export type RouteGuard = (

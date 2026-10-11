@@ -2,7 +2,7 @@ import {
   cloudBindInputSchema,
   cloudBindOutputSchema,
   cloudLoginInputSchema,
-  cloudLoginOutputSchema,
+  cloudLoginOutputSchema as protocolCloudLoginOutputSchema,
   cloudRegisterInputSchema,
   cloudRegisterOutputSchema,
   cloudRevokeInputSchema,
@@ -28,12 +28,23 @@ import { meta, oc } from "./meta.js";
  * 别的答案、日志与审计。
  */
 
-export {
-  cloudLoginInputSchema,
-  cloudLoginOutputSchema,
-  cloudStatusOutputSchema,
-  tunnelStatusSchema,
-};
+/**
+ * `cloud/login` 答的分享信息（契约 §68）：这个人经这个签发方拿到的授予——角色取最高
+ * 的那条，到期取最晚的那条（0 = 不过期）——与这台主机主人的名字。owner 自己登录时
+ * 没有。只作展示，权限照旧由这台 core 判定。
+ */
+export const cloudLoginShareSchema = z.object({
+  ownerName: z.string(),
+  role: z.enum(["viewer", "editor", "operator", "driver"]),
+  expiresAtMs: z.number().int(),
+});
+
+/** 协议包的形状加可选的 `share`（§68）；协议包的字段逐个沿用同一个对象。 */
+export const cloudLoginOutputSchema = protocolCloudLoginOutputSchema.extend({
+  share: cloudLoginShareSchema.optional(),
+});
+
+export { cloudLoginInputSchema, cloudStatusOutputSchema, tunnelStatusSchema };
 
 const denied = errors.pick("unauthenticated", "forbidden");
 

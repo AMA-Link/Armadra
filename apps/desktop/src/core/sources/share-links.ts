@@ -8,8 +8,9 @@
  *
  * **范围**（契约 §60）：整台 / 工作空间 / 会话，可选只读。范围落在本机邀请上
  * （`targetHost` / `targetWorkspaceId` / `targetSessionId`，只读压成 viewer），core 是
- * 判定点；远程服务报 `links.scope` 能力时再把范围交给它，访客的断言带 `scp`、只读的
- * 中继令牌带 `ro`（边缘的纵深防御）。撤链接时连同经它进来的访客一起停用。
+ * 判定点；远程服务报 `links.scope` 能力时再把工作空间 / 会话范围交给它，访客的断言
+ * 带 `scp`。只读不交给远程服务（见 {@link linkScopeOf}）。撤链接时连同经它进来的访客
+ * 一起停用。
  *
  * **凭据边界**：整条链接只在 SecretStore、`shareLinkCreate` 与 `shareLinkUrl` 的
  * 答案里；不进 SQLite、日志与列表。链接撤销、过期、用尽，或远程服务上已经没有
@@ -106,21 +107,18 @@ export function shareScopeOf(input: {
   };
 }
 
-/** 范围 → 远程服务的 `linkScope`（与协议包 `scopeClaims` 同一套语义）。整台可写答 undefined。 */
+/**
+ * 范围 → 远程服务的 `linkScope`（与协议包 `scopeClaims` 同一套语义）。整台答 undefined。
+ *
+ * 不交只读（#308）：远程服务据 `readOnly`——以及任何带 `sessionId` 的范围（它把会话
+ * 范围一律当只读）——签 `ro` 的中继令牌，边缘只放行 GET 与身份域，而 core 的 RPC 只收
+ * POST：只读的访客连 `system.hello` 都过不去，什么也看不到。所以会话分享只交它所在的
+ * 工作空间。只读与「只看这一条会话」都落在本机邀请上（压成 viewer、指向会话），由
+ * core 的路由门判定，用不着边缘再拦一道。
+ */
 export function linkScopeOf(scope: ShareScope): LinkScope | undefined {
-  if (scope.target === "host") {
-    return scope.readOnly ? { readOnly: true } : undefined;
-  }
-  if (scope.target === "session") {
-    return {
-      workspaceId: scope.workspaceId,
-      sessionId: scope.sessionId,
-      readOnly: true,
-    };
-  }
-  return scope.readOnly
-    ? { workspaceId: scope.workspaceId, readOnly: true }
-    : { workspaceId: scope.workspaceId };
+  if (scope.target === "host") return undefined;
+  return { workspaceId: scope.workspaceId };
 }
 
 /** 本机到远程服务的登记（契约 §31）里这一模块要的两件事。 */
