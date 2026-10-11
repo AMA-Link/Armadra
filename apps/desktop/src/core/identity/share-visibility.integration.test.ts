@@ -275,7 +275,8 @@ async function setup() {
   return { core, owner, ...(await seed(owner, root)) };
 }
 
-describe("分享出去的人看得见内容（契约 §60，#308）", () => {
+// 终端用 /bin/sh 与 cat，Windows 上没有。
+describe.skipIf(process.platform === "win32")("分享出去的人看得见内容（契约 §60，#308）", () => {
   for (const [target, role] of [
     ["host", "viewer"],
     ["host", "editor"],
