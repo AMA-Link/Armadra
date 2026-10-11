@@ -13,10 +13,12 @@
  * "could not be confirmed" or "not configured". Not looking is not the same as
  * looking and finding nothing, and only the second one is reassuring.
  */
-import type {
-  ShellOffer,
-  ShellReason,
-  ShellUpdateState,
+import {
+  shellManaged,
+  type ShellManaged,
+  type ShellOffer,
+  type ShellReason,
+  type ShellUpdateState,
 } from "./shell-updater";
 
 /** The eleven rows of design §4.1. */
@@ -49,6 +51,8 @@ export type UpdatesAction =
   | "restart"
   | "retry"
   | "notes"
+  /** A managed installation: download the new installer by hand. */
+  | "installer"
   | "openHostSettings";
 
 /**
@@ -103,6 +107,8 @@ export interface UpdatesView {
   actions: UpdatesAction[];
   offer: ShellOffer | null;
   release: HostRelease | null;
+  /** The package that owns this installation (`managedPackage` only). */
+  managed: ShellManaged | null;
   progress: { receivedBytes: number; totalBytes: number } | null;
   retryAfterMs: number;
   checkedAtMs: number;
@@ -161,6 +167,7 @@ function view(
     actions: [],
     offer: null,
     release: null,
+    managed: null,
     progress: null,
     retryAfterMs: 0,
     checkedAtMs: 0,
@@ -181,16 +188,16 @@ export function mergeUpdatesState(
   shell: ShellUpdateState,
 ): UpdatesView {
   // ---- what this build is ------------------------------------------------
+  // Nothing about this is a setting a person could change: the build itself
+  // carries no key to verify a package with, or no index to ask.
   if (shell.state === "notConfigured") {
     return view({
       state: "notConfigured",
-      statusKey: "updates.state.unsupported",
       detailKeys: [
         shell.missing.pubkey ? "updates.missing.pubkey" : null,
         shell.missing.endpoints ? "updates.missing.endpoints" : null,
         ...hostNotes(host),
       ].filter((key): key is string => key !== null),
-      actions: ["openHostSettings"],
     });
   }
   if (shell.state === "localBuild") {
@@ -203,17 +210,25 @@ export function mergeUpdatesState(
   if (shell.state === "unsupported") {
     // A browser, or a Host on another machine. The Host's answer is still worth
     // showing; installing is a manual act here.
+    // A browser gets the server's upgrade commands and a managed package the
+    // installer download, both drawn by the page from the release history;
+    // only a remote Host is left with "install it by hand".
     const release = host.kind === "answered" ? host.release : null;
+    const managed = shellManaged(shell);
     return view({
       state: "shellUnsupported",
       statusKey: "updates.state.shellUnsupported",
       detailKeys: [
         `updates.unsupported.${shell.reason}`,
         ...hostNotes(host),
-        "updates.install.manual",
-      ],
+        shell.reason === "remoteHost" ? "updates.install.manual" : null,
+      ].filter((key): key is string => key !== null),
       release,
-      actions: release?.notesUrl ? ["notes"] : [],
+      managed,
+      actions: [
+        ...(managed ? (["installer"] as const) : []),
+        ...(release?.notesUrl ? (["notes"] as const) : []),
+      ],
     });
   }
 
@@ -223,7 +238,8 @@ export function mergeUpdatesState(
       state: "notConfigured",
       statusKey: "updates.state.unsupported",
       detailKeys: [`updates.blocked.${host.reason}`],
-      actions: ["openHostSettings"],
+      // No release source is a fact about the build; no setting changes it.
+      actions: host.reason === "noReleaseSource" ? [] : ["openHostSettings"],
     });
   }
   if (host.kind === "failed") {

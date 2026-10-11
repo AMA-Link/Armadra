@@ -304,6 +304,43 @@ describe("forge：读", () => {
     expect(JSON.stringify(withCredentials.body)).not.toContain("s3cret");
   });
 
+  it("账号与列仓库（§29.7）", async () => {
+    const accounts = await same({
+      method: "GET",
+      path: "/api/forge/accounts",
+      procedure: "forge.accounts",
+      input: {},
+    });
+    expect(accounts.body).toEqual({
+      accounts: [
+        { host: HOST, forge: "gitea", accountLogin: FAKE_GITEA.login },
+      ],
+    });
+    const listed = await same({
+      method: "GET",
+      path: `/api/forge/accounts/${HOST}/repos?limit=2`,
+      procedure: "forge.repositories",
+      input: { host: HOST, limit: 2 },
+    });
+    expect(listed.body).toMatchObject({
+      items: [{ owner: FAKE_GITEA.owner, name: FAKE_GITEA.repo }],
+      nextCursor: "2",
+    });
+    await same({
+      method: "GET",
+      path: `/api/forge/accounts/${HOST}/repos?limit=2&cursor=2`,
+      procedure: "forge.repositories",
+      input: { host: HOST, limit: "2", cursor: "2" },
+    });
+    const missing = await same({
+      method: "GET",
+      path: "/api/forge/accounts/github.com/repos",
+      procedure: "forge.repositories",
+      input: { host: "github.com" },
+    });
+    expect(missing.body).toMatchObject({ code: "forge_not_configured" });
+  });
+
   it("issue 与 PR 的列表、详情、文件、检查与合并选项", async () => {
     const list = await same({
       method: "GET",
@@ -781,7 +818,7 @@ describe("契约与路由表", () => {
     const entries = contractEntries().filter(
       (entry) => entry.path[0] === "forge",
     );
-    expect(entries).toHaveLength(20);
+    expect(entries).toHaveLength(22);
     for (const entry of entries) {
       const legacyRoute = entry.meta.legacy!;
       expect(

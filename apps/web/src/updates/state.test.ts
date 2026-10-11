@@ -156,16 +156,80 @@ describe("mergeUpdatesState", () => {
     });
     expect(view.detailKeys).toContain("updates.missing.pubkey");
     expect(view.detailKeys).not.toContain("updates.missing.endpoints");
-    expect(view.actions).toEqual(["openHostSettings"]);
+    expect(view.statusKey).toBe("updates.state.notConfigured");
+    // 缺公钥是这份构建的事实，不是哪条设置能改的：不给去设置页的按钮。
+    expect(view.actions).toEqual([]);
   });
 
-  it("shows the Host's answer and the manual route where nothing can install", () => {
-    const view = mergeUpdatesState(answered("available"), {
+  it("no release source offers no settings link either", () => {
+    const view = mergeUpdatesState(NO_RELEASE_SOURCE, { state: "idle" });
+    expect(view.detailKeys).toEqual(["updates.blocked.noReleaseSource"]);
+    expect(view.actions).toEqual([]);
+  });
+
+  it("a browser gets no manual-install sentence; a remote Host does", () => {
+    const browser = mergeUpdatesState(answered("available"), {
       state: "unsupported",
       reason: "notDesktop",
     });
-    expect(view.detailKeys).toContain("updates.unsupported.notDesktop");
-    expect(view.detailKeys).toContain("updates.install.manual");
+    expect(browser.detailKeys).toContain("updates.unsupported.notDesktop");
+    expect(browser.detailKeys).not.toContain("updates.install.manual");
+    const remote = mergeUpdatesState(
+      { kind: "notAsked" },
+      { state: "unsupported", reason: "remoteHost" },
+    );
+    expect(remote.detailKeys).toContain("updates.install.manual");
+  });
+
+  it("a managed package carries its installer and offers the download", () => {
+    const view = mergeUpdatesState(
+      { kind: "notAsked" },
+      {
+        state: "unsupported",
+        reason: "managedPackage",
+        managed: {
+          package: "deb",
+          download: {
+            version: "0.6.1",
+            url: "https://github.invalid/Armadra_0.6.1_linux-x86_64.deb",
+            notesUrl: "javascript:alert(1)",
+          },
+        },
+      },
+    );
+    expect(view.actions).toEqual(["installer"]);
+    expect(view.managed).toEqual({
+      package: "deb",
+      download: {
+        version: "0.6.1",
+        url: "https://github.invalid/Armadra_0.6.1_linux-x86_64.deb",
+        notesUrl: "",
+      },
+    });
+  });
+
+  it("a managed package from an older shell (no managed field) offers nothing", () => {
+    const view = mergeUpdatesState(
+      { kind: "notAsked" },
+      { state: "unsupported", reason: "managedPackage" },
+    );
+    expect(view.managed).toBeNull();
+    expect(view.actions).toEqual([]);
+  });
+
+  it("drops a managed download that is not https", () => {
+    const view = mergeUpdatesState(
+      { kind: "notAsked" },
+      {
+        state: "unsupported",
+        reason: "managedPackage",
+        managed: {
+          package: "dmg",
+          download: { version: "0.6.1", url: "http://x", notesUrl: "" },
+        },
+      },
+    );
+    expect(view.managed).toEqual({ package: "dmg", download: null });
   });
 
   it("treats a session it could not open as not configured, never as fine", () => {

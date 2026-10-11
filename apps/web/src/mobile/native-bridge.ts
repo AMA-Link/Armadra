@@ -28,6 +28,7 @@ import { isNativeAppPage } from "../api/runtime-url";
  * | `ackPushRotation()`                   | —（重新登记成功之后清掉上面那个标记）                |
  * | `openExternal({ url })`               | —（系统浏览器打开；只收 https / 回环 http）          |
  * | `appInfo()`                           | `{ version, build }`（App 自己的版本名与构建号，取自安装包） |
+ * | `installApk({ url, sha256 })`         | `{ status, message? }`（Android 下载、核对、拉起安装器；从不 reject；iOS 固定 `failed`） |
  *
  * 事件（`addListener`）：`pushTokenRotated`——App 开着时令牌换了（Android
  * `onNewToken`、UnifiedPush 新端点、iOS 启动时 APNs 给了新令牌）。
@@ -87,9 +88,28 @@ export interface NativeAppInfo {
   readonly build: string;
 }
 
+/**
+ * `installApk` 的结果（#288 §4）。`permissionRequired`：系统设置页已打开，授权
+ * 后再调一次（已下好、核对过的包会复用）。
+ */
+export type InstallApkStatus =
+  | "started"
+  | "permissionRequired"
+  | "checksumMismatch"
+  | "failed";
+
+export interface InstallApkResult {
+  readonly status: InstallApkStatus;
+  readonly message?: string;
+}
+
+/** 原生 App 跑在哪个系统上；不在原生 App 里是 `null`。 */
+export type NativePlatform = "android" | "ios";
+
 export interface NativeBridge {
   /** 真在原生 App 里，且插件在。 */
   readonly available: boolean;
+  readonly platform: NativePlatform | null;
   /** 原生 App 能扫码（相机）。 */
   readonly canScan: boolean;
   getSessions(): Promise<StoredSession[]>;
@@ -113,6 +133,8 @@ export interface NativeBridge {
   openExternal(url: string): Promise<boolean>;
   /** App 的版本与构建号；不在原生 App 里、或旧安装包没有这个方法是 `null`。 */
   appInfo(): Promise<NativeAppInfo | null>;
+  /** 下载并安装新 APK；没有这个方法（旧安装包、iOS 以外的旧插件）答 `failed`。 */
+  installApk(url: string, sha256: string): Promise<InstallApkResult>;
 }
 
 interface PluginListenerHandle {
@@ -137,6 +159,7 @@ interface ArmadraNativePlugin {
   ackPushRotation?(): Promise<unknown>;
   openExternal?(options: { url: string }): Promise<unknown>;
   appInfo?(): Promise<unknown>;
+  installApk?(options: { url: string; sha256: string }): Promise<unknown>;
   addListener?(
     event: string,
     listener: () => void,
@@ -300,6 +323,36 @@ function appInfo(value: unknown): NativeAppInfo | null {
   return { version, build: text };
 }
 
+const INSTALL_STATUSES: readonly string[] = [
+  "started",
+  "permissionRequired",
+  "checksumMismatch",
+  "failed",
+];
+
+/** 不认识的状态按失败处理：页面不会把一个看不懂的答案说成「已开始」。 */
+export function installApkResult(value: unknown): InstallApkResult {
+  const { status, message } = (value ?? {}) as Record<string, unknown>;
+  const known = typeof status === "string" && INSTALL_STATUSES.includes(status);
+  return {
+    status: known ? (status as InstallApkStatus) : "failed",
+    ...(typeof message === "string" && message !== "" ? { message } : {}),
+  };
+}
+
+/**
+ * 原生 App 的系统：Capacitor 运行时报的 `getPlatform()`，没有就看 UA（与证书
+ * 安装指引同一条判断）。
+ */
+export function nativePlatform(): NativePlatform {
+  const reported = (
+    globalThis as { Capacitor?: { getPlatform?: () => unknown } }
+  ).Capacitor?.getPlatform?.();
+  if (reported === "android" || reported === "ios") return reported;
+  const agent = typeof navigator === "undefined" ? "" : navigator.userAgent;
+  return /android/i.test(agent) ? "android" : "ios";
+}
+
 /** 交给系统浏览器的地址：https，或回环上的 http（开发与 dev-stack）。 */
 export function externalUrl(value: string): boolean {
   try {
@@ -317,6 +370,7 @@ export function externalUrl(value: string): boolean {
 
 const WEB_BRIDGE: NativeBridge = {
   available: false,
+  platform: null,
   canScan: false,
   getSessions: () => Promise.resolve([]),
   setSession: () => Promise.resolve(),
@@ -333,6 +387,7 @@ const WEB_BRIDGE: NativeBridge = {
   onPushRotated: () => () => undefined,
   openExternal: () => Promise.resolve(false),
   appInfo: () => Promise.resolve(null),
+  installApk: () => Promise.resolve({ status: "failed" }),
 };
 
 /**
@@ -356,6 +411,7 @@ export function nativeBridge(): NativeBridge {
   };
   return {
     available: true,
+    platform: nativePlatform(),
     canScan: typeof native.scan === "function",
     getSessions: () =>
       quiet(
@@ -457,6 +513,14 @@ export function nativeBridge(): NativeBridge {
         : Promise.resolve(false),
     appInfo: () =>
       quiet(native.appInfo && (() => native.appInfo!()), appInfo, null),
+    installApk: (url, sha256) =>
+      externalUrl(url) && /^[0-9a-f]{64}$/i.test(sha256)
+        ? quiet(
+            native.installApk && (() => native.installApk!({ url, sha256 })),
+            installApkResult,
+            { status: "failed" },
+          )
+        : Promise.resolve({ status: "failed" }),
   };
 }
 

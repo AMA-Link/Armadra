@@ -31,6 +31,8 @@ import {
 const REPO = "/api/forge/repos/{host}/{owner}/{name}";
 
 export const FORGE_ROUTES = {
+  accounts: "/api/forge/accounts",
+  repositories: "/api/forge/accounts/{host}/repos",
   configs: "/api/forge/configs",
   hostConfig: "/api/forge/configs/{host}",
   repoConfig: "/api/forge/configs/{host}/{owner}/{name}",
@@ -160,6 +162,11 @@ function listOptions(args: Args) {
   if (state !== "open" && state !== "closed" && state !== "all") {
     bad("state 只能是 open、closed 或 all");
   }
+  return { state: state as "open" | "closed" | "all", ...pageOptions(args) };
+}
+
+/** 翻页：`cursor` 是页码串（2–1000），`limit` 1–100。 */
+function pageOptions(args: Args) {
   const cursor = args.cursor === undefined ? "" : text(args, "cursor");
   let page = 1;
   if (cursor !== "") {
@@ -179,7 +186,7 @@ function listOptions(args: Args) {
     limit = Number(rawLimit);
     if (limit < 1 || limit > MAX_LIMIT) bad("limit 不对");
   }
-  return { state: state as "open" | "closed" | "all", page, limit };
+  return { page, limit };
 }
 
 function stringField(
@@ -265,6 +272,12 @@ function operations(service: ForgeService) {
     },
 
     detect: (args: Args) => service.detect(repoOf(args)),
+
+    // 列仓库（§29.7）：新建工作空间从这里挑一个克隆。
+    accounts: () => ({ accounts: service.accounts() }),
+
+    repositories: (args: Args) =>
+      service.repositories(text(args, "host"), pageOptions(args)),
 
     async issues(args: Args) {
       const repo = repoOf(args);
@@ -442,6 +455,8 @@ export function installRoutes(server: CoreServer, service: ForgeService): void {
       scope,
     );
 
+  route("GET", FORGE_ROUTES.accounts, {}, () => run.accounts());
+  route("GET", FORGE_ROUTES.repositories, { query: true }, run.repositories);
   route("GET", FORGE_ROUTES.configs, {}, () => run.configs());
   route("PUT", FORGE_ROUTES.hostConfig, { body: true }, run.configure);
   route("DELETE", FORGE_ROUTES.hostConfig, { query: true }, run.removeConfig);
@@ -488,6 +503,8 @@ export function installRoutes(server: CoreServer, service: ForgeService): void {
     removeRepoConfig: procedure(run.removeConfig),
     resolve: procedure(run.resolve),
     detect: procedure(run.detect),
+    accounts: procedure(() => run.accounts()),
+    repositories: procedure(run.repositories),
     issues: procedure(run.issues),
     issue: procedure(run.issue),
     setIssueState: procedure(run.setIssueState),

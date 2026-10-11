@@ -11,19 +11,14 @@ import { adapterInstallKey } from "@/acp/adapter-install";
 import { AgentRow } from "@/panels/settings/pages/AgentsPage";
 import { AgentDetailPage } from "@/panels/settings/pages/AgentDetailPage";
 import { SettingsGroup } from "@/panels/settings/SettingsGroup";
-import {
-  HealthTable,
-  MachinesTable,
-} from "@/panels/settings/pages/execution-hosts/MachinesTable";
+import { MachinesTable } from "@/panels/settings/pages/execution-hosts/MachinesTable";
 import { integrationKey } from "@/panels/settings/pages/integration/use-integration";
-import { CLI_GROUP, FLEET, GPU_NODE, idleJob } from "../fixtures/integration";
+import { CLI_GROUP, FLEET, idleJob } from "../fixtures/integration";
 import {
   FORGE_CONFIGS,
   GITEA_DETECTION,
+  GITEA_ISSUES,
   GITEA_PULLS,
-  GITLAB_CHECKS,
-  GITLAB_DETECTION,
-  GITLAB_FILES,
   GITLAB_MR,
 } from "../fixtures/forge";
 
@@ -48,14 +43,13 @@ function Sample({
 
 /**
  * `integration` 分区（设计展示页 §2.1，设计系统 §5.15）：设置页真的 Agent CLI
- * 主表、一家的子页与远程机器表，喂假数据。
+ * 主表、一家的子页与 SSH 主机表，喂假数据。
  *
  * 主表：正常 · 注入待更新 · 启动器异常 · 安装失败 · CLI 未检测到各一行；集成状态
  * 与安装任务预先放进 query 缓存（永不过期，不去请求 core）。子页：注入待更新、
- * 带两条本产品旧版本残留的那一家。远程机器：宽屏表格、窄屏条目与一台机器的
- * 健康记录。
+ * 带两条本产品旧版本残留的那一家。SSH 主机：宽屏表格与窄屏条目。
  *
- * 托管平台（{@link ForgeSamples}）：Gitea 的 PR 列表、GitLab 的 MR 详情与设置页
+ * 托管平台（{@link ForgeSamples}）：Gitea 的 issue 列表、GitLab 的 MR 详情与设置页
  * 的配置行。
  */
 function useCliCache() {
@@ -99,7 +93,7 @@ function CliDetail() {
 }
 
 /**
- * 托管平台（G5-15）：Git 托管面板里 Gitea 的 PR 列表、GitLab 的 MR 详情，与
+ * 托管平台：代码托管面板里 Gitea 的 issue 列表、GitLab 的 MR 详情（只读），与
  * 设置页的按主机 / 仓库配置。数据预先放进 query 缓存（永不过期），不请求 core。
  */
 function ForgeSamples() {
@@ -108,16 +102,14 @@ function ForgeSamples() {
   const client = useQueryClient();
   useState(() => {
     client.setQueryDefaults(["forge"], { staleTime: Infinity, retry: false });
+    client.setQueryData(forgeKeys.issues(GITEA_DETECTION.repository, "open"), {
+      pages: [{ items: GITEA_ISSUES, nextCursor: null }],
+      pageParams: [null],
+    });
     client.setQueryData(forgeKeys.pulls(GITEA_DETECTION.repository, "open"), {
       pages: [{ items: GITEA_PULLS, nextCursor: null }],
       pageParams: [null],
     });
-    const repo = GITLAB_DETECTION.repository;
-    client.setQueryData(forgeKeys.files(repo, GITLAB_MR.number), GITLAB_FILES);
-    client.setQueryData(
-      forgeKeys.checks(repo, GITLAB_MR.number),
-      GITLAB_CHECKS,
-    );
     client.setQueryData(forgeConfigKeys.all, FORGE_CONFIGS);
     return true;
   });
@@ -126,25 +118,14 @@ function ForgeSamples() {
       <div className="flex min-w-0 flex-col gap-6">
         <Sample caption={t("forge.showcase.gitea")}>
           <div className="rounded-lg border border-border">
-            <ForgeHosted
-              detection={GITEA_DETECTION}
-              locale={locale}
-              canWrite
-              open
-            />
+            <ForgeHosted detection={GITEA_DETECTION} locale={locale} open />
           </div>
         </Sample>
       </div>
       <div className="flex min-w-0 flex-col gap-6">
         <Sample caption={t("forge.showcase.gitlab")}>
           <div className="min-w-0 space-y-3 rounded-lg border border-border p-3">
-            <PullBody
-              forge="gitlab"
-              repo={GITLAB_DETECTION.repository}
-              pull={GITLAB_MR}
-              locale={locale}
-              canWrite
-            />
+            <PullBody pull={GITLAB_MR} locale={locale} />
           </div>
         </Sample>
         <Sample caption={t("forge.showcase.settings")}>
@@ -157,7 +138,7 @@ function ForgeSamples() {
 
 export default function IntegrationSection() {
   const t = useT();
-  const machines = FLEET.filter((host) => host.kind === "ssh");
+  const machines = FLEET.flatMap((host) => (host.ssh ? [host.ssh] : []));
   const table = {
     hosts: machines,
     validating: null,
@@ -185,7 +166,6 @@ export default function IntegrationSection() {
             <MachinesTable {...table} compact />
           </div>
         </Sample>
-        <HealthTable samples={GPU_NODE.health ?? []} />
       </div>
       <ForgeSamples />
     </div>

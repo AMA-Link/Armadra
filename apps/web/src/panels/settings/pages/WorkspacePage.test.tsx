@@ -115,10 +115,19 @@ describe("设置 → 工作空间", () => {
   it("执行权限、运行主机、默认 Agent、语言服务与实时协同都在这一页", async () => {
     mount();
     expect(screen.getByTestId("execution")).toBeTruthy();
-    expect(screen.getByText("Runs on")).toBeTruthy();
-    expect(await screen.findByText("This machine")).toBeTruthy();
+    expect(await screen.findByText("Runs on")).toBeTruthy();
+    expect(screen.getByText("This machine")).toBeTruthy();
     expect(screen.getByTestId("language")).toBeTruthy();
     expect(screen.getByTestId("realtime")).toBeTruthy();
+  });
+
+  it("只有本机时不给「运行主机」这一行", async () => {
+    api.executionHosts.mockResolvedValue([local]);
+    mount();
+    await waitFor(() => expect(api.executionHosts).toHaveBeenCalled());
+    await act(async () => undefined);
+    expect(screen.queryByText("Runs on")).toBeNull();
+    expect(screen.getByTestId("execution")).toBeTruthy();
   });
 
   it("没有工作空间时一句话，实时协同照常在", () => {

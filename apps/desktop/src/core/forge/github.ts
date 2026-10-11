@@ -39,7 +39,9 @@ import {
   type ForgePage,
   type ForgePull,
   type ForgeRepo,
+  type ForgeRepository,
   type ListOptions,
+  type RepositoryListOptions,
   MAX_FILES,
   MAX_LIMIT,
   MAX_NUMBER,
@@ -49,6 +51,12 @@ import {
   validRefName,
   validSha,
 } from "./types";
+import {
+  type WireRepository,
+  fromWireRepository,
+  present,
+  repositoryLimit,
+} from "./repositories";
 
 function ms(value: bigint): number {
   return Number(value);
@@ -261,6 +269,31 @@ export class GithubForge implements Forge {
       }
       throw fromGithubError(error);
     }
+  }
+
+  /** 令牌所属账号能看到的仓库（§29.7）：`GET /user/repos`，最近更新的在前。 */
+  repositories(
+    host: string,
+    options: RepositoryListOptions,
+  ): Promise<ForgePage<ForgeRepository>> {
+    return this.run(async () => {
+      const client = this.service.client();
+      const query: Record<string, string> = {
+        per_page: String(repositoryLimit(options.limit)),
+        sort: "updated",
+        affiliation: "owner,collaborator,organization_member",
+      };
+      if (options.page > 1) query.page = String(options.page);
+      const response = await client.get("/user/repos", query);
+      return {
+        items: present(
+          decodeArray<WireRepository>(response.body).map((value) =>
+            fromWireRepository(host, "github", value),
+          ),
+        ),
+        nextCursor: response.nextPage > 1 ? String(response.nextPage) : null,
+      };
+    });
   }
 
   listIssues(
