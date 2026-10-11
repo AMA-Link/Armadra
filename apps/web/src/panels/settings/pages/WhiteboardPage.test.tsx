@@ -37,7 +37,6 @@ describe("设置 → 画布（§2.2 映射）", () => {
     for (const key of [
       "settings.whiteboard.grid",
       "settings.whiteboard.snap",
-      "settings.whiteboard.toolLock",
       "settings.whiteboard.wrap",
       "settings.whiteboard.dynamicSize",
       "settings.whiteboard.pasteAtCursor",

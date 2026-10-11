@@ -120,14 +120,6 @@ export function WhiteboardPage() {
           />
         </SettingsRow>
 
-        <SettingsRow label={t("settings.whiteboard.toolLock")}>
-          <Switch
-            checked={whiteboard.toolLock}
-            aria-label={t("settings.whiteboard.toolLock")}
-            onCheckedChange={(next) => set("toolLock", next)}
-          />
-        </SettingsRow>
-
         <SettingsRow label={t("settings.whiteboard.wrap")}>
           <Switch
             checked={whiteboard.wrap}

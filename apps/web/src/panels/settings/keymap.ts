@@ -129,6 +129,14 @@ export function parseStoredKeymap(raw: unknown): StoredKeymap {
   return stored;
 }
 
+/**
+ * 快捷键总开关（`settings.keymap.enabled`，契约 §66）。没写或读不懂都是开。
+ */
+export function keymapEnabled(raw: unknown): boolean {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return true;
+  return (raw as Record<string, unknown>).enabled !== false;
+}
+
 /** 旧格式里所有「值是字符串」的顶层键，迁移时要显式删掉。 */
 export function legacyKeymapKeys(raw: unknown): string[] {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return [];

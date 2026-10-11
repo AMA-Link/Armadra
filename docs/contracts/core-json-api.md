@@ -4075,3 +4075,12 @@ mod 在 `session.start` 用 `$.command.register` 注册七条命令（都是 `im
 | `git.clone.repositories` | query | 可省 `{}` | `{ connected: boolean, account: string \| null, repositories: { fullName: string, cloneUrl: string, private: boolean, updatedAt: string }[] }` | `forbidden`、`forge_credential_rejected`、`forge_unavailable` | `git:read` | 1.38 | `GET /api/git/clone-repositories` |
 
 <!-- rpc:end -->
+
+## 66. 设置 `keymap.enabled`：快捷键总开关
+
+`settings.keymap` 一节是页面的键位表（各配置档、各平台的覆盖），core 原样存取；只有 `keymap.enabled` 一个键由 core 收敛。
+
+- 布尔，缺省（没有这个键）为 `true`。`false` 时页面不装任何应用快捷键监听器、终端里的按键全部交给 shell、系统全局热键全部释放；窗口关闭键（⌘W / Ctrl+W、⌘Q、Alt+F4）仍归系统与壳。
+- `normalize`：不是布尔就删掉这个键（回到缺省）；没有 `keymap` 一节时不建。写入走 `PATCH /api/settings` 的递归合并，`{ "keymap": { "enabled": false } }`。
+- 读写权限同 `settings`（owner）；服务器壳上的成员读不到，按缺省「开」处理，只能改本设备的键位。
+- 不写数据库迁移；清单与规则见 [键盘快捷键](../guides/keyboard-shortcuts.md)。
