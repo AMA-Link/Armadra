@@ -97,9 +97,12 @@ export function createBoardSlice(
     setWorkspace: (workspace, sourceId) =>
       set((state) => {
         const same = state.workspace?.id === workspace?.id;
+        // 当前源由这里推出（`sources/follow-workspace.ts`）：关掉工作空间回到本机。
         const nextSource =
-          sourceId ??
-          (same && state.workspace ? state.sourceId : activeSourceId());
+          workspace === null
+            ? LOCAL_SOURCE_ID
+            : (sourceId ??
+              (same && state.workspace ? state.sourceId : activeSourceId()));
         if (same && nextSource === state.sourceId) return { workspace };
         resetHistory();
         clearLocalEdits();

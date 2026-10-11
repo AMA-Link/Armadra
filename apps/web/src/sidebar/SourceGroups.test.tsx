@@ -31,13 +31,17 @@ import {
 } from "../app/use-sources-bootstrap";
 import type { SourceConnection } from "../sources/connection";
 import { SourcesProvider } from "../sources/context";
-import { createSourceRegistry, type SourceRegistry } from "../sources/registry";
+import {
+  createSourceRegistry,
+  selectCurrentSource,
+  type SourceRegistry,
+} from "../sources/registry";
 import type { SourceDescriptor, SourceStatus } from "../sources/types";
 import { SourceGroups, applyOrder } from "./SourceGroups";
 
 /**
  * 侧栏按源分组：只有本机什么也不画；别的源各一组（状态点、离线灰显），就绪
- * 的源列出工作空间，点一行先切当前源再打开；切源清掉不带源前缀的查询。
+ * 的源列出工作空间，点一行打开它；切源清掉不带源前缀的查询。
  */
 
 function connection(
@@ -148,7 +152,7 @@ describe("侧栏按源分组", () => {
     expect(screen.getByText("Offline")).toBeTruthy();
   });
 
-  it("就绪的源列出工作空间；点一行先切当前源再打开，本机成为一组", async () => {
+  it("就绪的源列出工作空间；点一行打开它，本机成为一组", async () => {
     await act(async () => {
       await registry.hydrate(async () => [descriptor("a", 1)]);
     });
@@ -163,12 +167,12 @@ describe("侧栏按源分组", () => {
     // 当前源（本机）的工作空间在树里，不在分组里。
     expect(screen.queryByText("Local")).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Remote project" }));
-    expect(registry.current().descriptor.sourceId).toBe("a");
     expect(open).toHaveBeenCalledWith(
       { id: "w-remote", name: "Remote project" },
       "a",
     );
-    // 切过去之后，本机成为一组。
+    // 打开之后当前源跟过去（`follow-workspace.ts`），本机成为一组。
+    act(() => selectCurrentSource(registry, "a"));
     expect(await screen.findByText("Local")).toBeTruthy();
     expect(screen.getByRole("region", { name: "This machine" })).toBeTruthy();
   });
@@ -264,9 +268,9 @@ describe("切源清缓存", () => {
         <QueryClientProvider client={client}>{children}</QueryClientProvider>
       ),
     });
-    act(() => registry.setCurrent(registry.local().descriptor.sourceId));
+    act(() => selectCurrentSource(registry, registry.local().descriptor.sourceId));
     expect(client.getQueryData(["settings"])).toEqual({ a: 1 });
-    act(() => registry.setCurrent("a"));
+    act(() => selectCurrentSource(registry, "a"));
     expect(client.getQueryData(["settings"])).toBeUndefined();
     expect(client.getQueryData(["src", "local", "workspaces"])).toEqual([]);
     dropUnscopedQueries(client);

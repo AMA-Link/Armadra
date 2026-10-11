@@ -32,9 +32,12 @@ export interface SourceRegistry {
   list(): readonly SourceConnection[];
   get(sourceId: string): SourceConnection | undefined;
   local(): SourceConnection;
-  /** 当前源：省略了源的 `api/*` 调用发往它。缺省本机。 */
+  /**
+   * 当前源：省略了源的 `api/*` 调用发往它。缺省本机。它由打开的工作空间
+   * 决定（`follow-workspace.ts` 把 `canvas-store.sourceId` 镜像过来），没有
+   * 手动切换；要换源就打开那个源的工作空间。
+   */
   current(): SourceConnection;
-  setCurrent(sourceId: string): void;
   /** 加一个远程源（同一个标识已有就换掉旧的）并在后台连。 */
   add(descriptor: SourceDescriptor): SourceConnection;
   /** 移除一个远程源并断开；本机源移不掉。 */
@@ -131,6 +134,13 @@ export function createSourceRegistry(
     return connection;
   };
 
+  const setCurrent = (sourceId: string) => {
+    const next = registry.get(sourceId) ? sourceId : local.descriptor.sourceId;
+    if (next === currentId) return;
+    currentId = next;
+    changed();
+  };
+
   const registry: SourceRegistry = {
     list: () => snapshot,
     get: (sourceId) =>
@@ -139,14 +149,6 @@ export function createSourceRegistry(
         : remotes.get(sourceId)?.connection,
     local: () => local,
     current: () => registry.get(currentId) ?? local,
-    setCurrent(sourceId) {
-      const next = registry.get(sourceId)
-        ? sourceId
-        : local.descriptor.sourceId;
-      if (next === currentId) return;
-      currentId = next;
-      changed();
-    },
     add(descriptor) {
       if (
         descriptor.kind === "local" ||
@@ -207,8 +209,25 @@ export function createSourceRegistry(
     },
   };
 
+  currentSetters.set(registry, setCurrent);
   if (options.global) setCurrentSourceResolver(() => registry.current().source);
   return registry;
+}
+
+const currentSetters = new WeakMap<
+  SourceRegistry,
+  (sourceId: string) => void
+>();
+
+/**
+ * 换当前源。只给镜像打开的工作空间的那一个订阅者（`follow-workspace.ts`）与
+ * 测试用；源表里没有这个源时退回本机。
+ */
+export function selectCurrentSource(
+  registry: SourceRegistry,
+  sourceId: string,
+): void {
+  currentSetters.get(registry)?.(sourceId);
 }
 
 /* ------------------------------ 本机 core 的源表 ----------------------------- */

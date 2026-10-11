@@ -14,6 +14,7 @@ import { usePreferencesStore } from "../app/preferences-store";
 import { followInitialSource } from "../app/use-sources-bootstrap";
 import type { SourceConnection } from "../sources/connection";
 import { SourcesProvider } from "../sources/context";
+import { clearJoinOpen, pendingJoinOpen } from "../sources/join-intent";
 import { type SourceRegistry, createSourceRegistry } from "../sources/registry";
 import type { SourceDescriptor, SourceState } from "../sources/types";
 import { memoryStorage } from "../mobile/testing";
@@ -314,6 +315,7 @@ describe("桌面「切换服务」对话框", () => {
     registry?.dispose();
     registry = null;
     useServiceSwitcher.setState({ open: false });
+    clearJoinOpen();
   });
 
   const mount = () => {
@@ -350,14 +352,15 @@ describe("桌面「切换服务」对话框", () => {
     ).toHaveLength(2);
   });
 
-  it("「切换」换当前源并关掉对话框；没有桌面壳时不给「在新窗口打开」", () => {
-    const table = mount();
+  it("「切换」去打开那台电脑上的工作空间并关掉对话框；没有桌面壳时不给「在新窗口打开」", () => {
+    mount();
     expect(screen.queryByRole("button", { name: "在新窗口打开" })).toBeNull();
     const row = document.querySelector('[data-service-row="far"]')!;
     act(() => {
       fireEvent.click(within(row as HTMLElement).getByText("切换"));
     });
-    expect(table.current().descriptor.sourceId).toBe("far");
+    // 没有手动换源：还没列出工作空间，等它连上再开（当前源随打开的工作空间走）。
+    expect(pendingJoinOpen()).toBe("far");
     expect(useServiceSwitcher.getState().open).toBe(false);
   });
 
@@ -387,18 +390,11 @@ describe("新窗口的初始当前源（?source=）", () => {
     expect(initialSourceParam("")).toBeNull();
   });
 
-  it("那个源挂上之后设为当前，只设一次", () => {
-    const registry = createSourceRegistry({
-      connect: (d) => fakeConnection(d),
-    });
-    const stop = followInitialSource(registry, "lan");
-    expect(registry.current().descriptor.sourceId).toBe("local");
-    registry.add(viaLan("lan"));
-    expect(registry.current().descriptor.sourceId).toBe("lan");
-    registry.setCurrent("local");
-    registry.add(viaLan("other"));
-    expect(registry.current().descriptor.sourceId).toBe("local");
-    stop();
-    registry.dispose();
+  it("记下等那个源连上后打开它的工作空间；没有参数什么也不做", () => {
+    followInitialSource(null);
+    expect(pendingJoinOpen()).toBeNull();
+    followInitialSource("lan");
+    expect(pendingJoinOpen()).toBe("lan");
+    clearJoinOpen();
   });
 });

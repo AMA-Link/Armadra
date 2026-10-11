@@ -9,12 +9,11 @@ import { SOURCES_QUERY_KEY } from "../panels/settings/pages/RemoteAccessPage";
 import { isDesktop } from "../platform";
 import { applySourceTable } from "../sources/bootstrap";
 import type { SourceConnection } from "../sources/connection";
-import {
-  useCurrentSource,
-  useSourceRegistry,
-  useSources,
-} from "../sources/context";
+import { useOpenWorkspace } from "../app/workspace-actions";
+import { useWorkspaces } from "../app/workspaces-query";
+import { useCurrentSource, useSources } from "../sources/context";
 import { hostedRelay } from "../sources/hosted";
+import { openWhenReady } from "../sources/join-intent";
 import type { SourceState } from "../sources/types";
 import { useCanvasStore } from "../store/canvas-store";
 import {
@@ -77,8 +76,12 @@ function hasLocalCore(): boolean {
 
 /**
  * 桌面「切换服务」对话框（A7-1，多端入口设计 §1.3）：同一个列表，行尾「切换」
- * 换当前源（不带源前缀的查询随之重置，`useSourceSwitchCacheReset`），桌面壳
- * 再多一个「在新窗口打开」。手机宽度是底部 Sheet（`ResponsiveDialog`）。
+ * 打开那台电脑上的工作空间（当前源跟着打开的工作空间换过去），桌面壳再多一个
+ * 「在新窗口打开」。手机宽度是底部 Sheet（`ResponsiveDialog`）。
+ *
+ * TODO(#301)：侧栏三组之后它与 `ServicesSettingsGroup`、`app.switchService`
+ * 命令一起删掉；引用它们的 `app/{Overlays,lazy,commands}`、设置页与展示页
+ * 不在 B2 的范围里。
  */
 export function SwitchServiceDialog() {
   const open = useServiceSwitcher((state) => state.open);
@@ -105,8 +108,9 @@ function SwitchTitle() {
 
 function SwitchBody({ onDone }: { onDone: () => void }) {
   const t = useT();
-  const registry = useSourceRegistry();
   const connections = useSources();
+  const workspaces = useWorkspaces();
+  const openWorkspace = useOpenWorkspace();
   const current = useCurrentSource();
   const statuses = useStates(connections);
   const table = useQuery({
@@ -166,7 +170,10 @@ function SwitchBody({ onDone }: { onDone: () => void }) {
   const newWindow = canOpenSourceWindow();
 
   const select = (sourceId: string) => {
-    registry.setCurrent(sourceId);
+    // 没有手动换源：打开那台电脑上的工作空间；还没列出来就等它连上再开。
+    const found = workspaces.data.find((one) => one.sourceId === sourceId);
+    if (found === undefined) openWhenReady(sourceId);
+    else openWorkspace(found.workspace as never, sourceId);
     onDone();
     // 侧栏滚到那一组（组头带着 `data-source-group`）。
     globalThis.requestAnimationFrame?.(() => {

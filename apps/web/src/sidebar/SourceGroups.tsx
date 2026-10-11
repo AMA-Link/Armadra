@@ -32,7 +32,6 @@ import { sourcePill } from "../panels/settings/source-status";
 import {
   type SourceConnection,
   useCurrentSource,
-  useSourceRegistry,
   useSourceStatus,
   useSources,
 } from "../sources";
@@ -226,7 +225,6 @@ function SourceGroup({
   const t = useT();
   const status = useSourceStatus(source);
   const openWorkspace = useOpenWorkspace();
-  const registry = useSourceRegistry();
   const local = source.descriptor.kind === "local";
   const state = local ? "ready" : status.state;
   const pill = sourcePill(state);
@@ -274,11 +272,8 @@ function SourceGroup({
                 size="sm"
                 data-source-workspace={workspace.id}
                 className="h-7 w-full justify-start gap-2 px-1.5 font-normal"
-                onClick={() => {
-                  // 先切当前源：打开、事件流与不带源前缀的查询都跟着它走。
-                  registry.setCurrent(sourceId);
-                  openWorkspace(workspace as never, sourceId);
-                }}
+                // 当前源跟着打开的工作空间换过去（`sources/follow-workspace.ts`）。
+                onClick={() => openWorkspace(workspace as never, sourceId)}
               >
                 <Folder className="size-4 shrink-0 text-muted-foreground" />
                 <span className="min-w-0 truncate">{workspace.name}</span>
