@@ -301,12 +301,12 @@ export function pointer(
  * Cross-checks the fetched manifest against the Host's answer and produces the
  * one offer both sides describe.
  *
- * `pubkey` is the configured minisign public key; when it names a key id, the
- * manifest entry has to be signed by that key. This is not the signature check
- * — the updater performs that over the downloaded bytes — it only refuses a
- * manifest that was signed by somebody else before any bytes are fetched. An
- * electron-updater build configures no minisign key, so the comparison is
- * skipped there and every other check still applies.
+ * `pubkey` is the release public key the package ships; when it names a key
+ * id, a `latest.json` entry has to be signed by that key. This is not the
+ * signature check — the shell verifies `<asset>.sig` over the downloaded bytes
+ * — it only refuses a manifest signed by somebody else before any bytes are
+ * fetched. Without a key (`""`) the comparison is skipped and every other
+ * check still applies.
  */
 export function resolve(
   answer: HostAnswer,
@@ -365,7 +365,10 @@ function fromEntry(
     );
     if (!feed.ok) return feed;
   }
-  if (expected !== null) {
+  // Only `latest.json` carries a signature to compare; an entry read from an
+  // electron-updater feed has none, and its bundle's `<asset>.sig` is verified
+  // over the bytes after the download instead (`minisign.ts`).
+  if (expected !== null && entry.dialect === "json") {
     const signedBy = keyIdOfSignature(entry.signature);
     if (signedBy === null || signedBy !== expected) {
       return fail("signatureMismatch");

@@ -88,6 +88,12 @@ asarUnpack:
 # page as `resources/server/web/`, placed by the same hook (`serverResources()`).
 # Its node-pty is the one unpacked above, reached through NODE_PATH.
 #
+# The release signing public key (`build/armadra-release.pub`, minisign, key id
+# A5B7DA4722E242F7) is one of those placements too: it lands at
+# `resources/armadra-release.pub`, where the updater reads it to verify each
+# downloaded bundle's `<asset>.sig`. It is placed by the hook rather than
+# listed under `extraResources` for the same EBUSY reason as everything else.
+#
 # Only Windows ships the session host (T01: ConPTY sessions have to outlive the
 # core there; tmux already does that job on macOS/Linux); the per-platform list
 # is `bundleResources()` in after-pack.mjs, so nothing here can drift from what

@@ -21,6 +21,7 @@ vi.mock("electron", () => ({
 
 const {
   macSignatureState,
+  releasePublicKey,
   signatureState,
   windowsPowerShellEnv,
   windowsSignatureState,
@@ -177,6 +178,49 @@ describe("the other platforms", () => {
     expect(signatureState("freebsd", "/usr/local/bin/armadra", true)).toBe(
       "unknown",
     );
+  });
+});
+
+describe("the release key the package carries", () => {
+  const KEY = [
+    "untrusted comment: minisign public key A5B7DA4722E242F7",
+    "RWT3QuIiR9q3pe2A7aVRzSDuCiscVPa4IPRYhr2br/516iIu5pl13Il3",
+    "",
+  ].join("\n");
+
+  it("reads resources/armadra-release.pub in a package", () => {
+    const asked: string[] = [];
+    const read = (path: string) => {
+      asked.push(path);
+      return KEY;
+    };
+    expect(releasePublicKey({}, read, true, "/R")).toBe(KEY);
+    expect(asked).toEqual([join("/R", "armadra-release.pub")]);
+  });
+
+  it("is no key when the file is missing or not a legacy Ed key", () => {
+    const missing = () => {
+      throw new Error("ENOENT");
+    };
+    expect(releasePublicKey({}, missing, true, "/R")).toBeNull();
+    expect(releasePublicKey({}, () => "garbage", true, "/R")).toBeNull();
+    // A development build carries none.
+    expect(releasePublicKey({}, () => KEY, false, "/R")).toBeNull();
+  });
+
+  it("takes another key from the environment only with the development override", () => {
+    const read = (path: string) => (path === "/k.pub" ? KEY : "garbage");
+    expect(
+      releasePublicKey(
+        { ARMADRA_UPDATER_PUBKEY: "/k.pub", ARMADRA_UPDATES_DEV: "1" },
+        read,
+        false,
+        "/R",
+      ),
+    ).toBe(KEY);
+    expect(
+      releasePublicKey({ ARMADRA_UPDATER_PUBKEY: "/k.pub" }, read, true, "/R"),
+    ).toBeNull();
   });
 });
 

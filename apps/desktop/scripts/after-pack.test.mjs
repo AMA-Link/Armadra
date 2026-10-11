@@ -125,7 +125,7 @@ test("a platform's placements are its out/ bundles, the notices and every migrat
   for (const platform of ["darwin", "linux"]) {
     assert.deepEqual(
       bundleResources(platform).map((r) => r.to),
-      ["cli/armadra-hook.js", "tray.png", ...ama],
+      ["cli/armadra-hook.js", "tray.png", "armadra-release.pub", ...ama],
     );
   }
   assert.deepEqual(
@@ -133,6 +133,7 @@ test("a platform's placements are its out/ bundles, the notices and every migrat
     [
       "cli/armadra-hook.js",
       "tray.png",
+      "armadra-release.pub",
       ...ama,
       "session-host/host.cjs",
       "session-host/shutdown-if-idle.cjs",

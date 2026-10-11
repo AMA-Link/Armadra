@@ -1,9 +1,11 @@
+import { Notification, app } from "electron";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 
 import { IPC } from "../../shared/ipc";
+import { localeFromTag } from "../../shell-core/messages";
 import { dataDir } from "../../shell-core/paths";
-import type { Staged } from "../../shell-core/updates/notify";
+import type { Locale, Staged } from "../../shell-core/updates/notify";
 import type { DesktopLifecycle } from "../lifecycle";
 import {
   type RuntimeProcess,
@@ -11,6 +13,7 @@ import {
   socketHealth,
 } from "../runtime-process";
 import { markQuitting } from "../window";
+import { defaultInstallers } from "./install";
 import { UpdatesController, type UpdatesDeps } from "./updater";
 
 /**
@@ -29,12 +32,28 @@ let controller: UpdatesController | null = null;
 export interface UpdatesAssembly {
   readonly handlers: Record<string, (...args: unknown[]) => unknown>;
   /**
-   * The staged-update announcement, for the tray item W2.1 adds: subscribe,
-   * show "restart to finish updating" while `ready`, and call
-   * `updates:install` when it is pressed — the same confirmed restart the
-   * settings page runs.
+   * The staged-update announcement, for the tray: subscribe, show "restart to
+   * finish updating" while `ready` and `installable`, and call `install` when
+   * it is pressed — the same restart the settings page runs.
    */
   readonly onStaged: (listener: (staged: Staged) => void) => () => void;
+  /** `updates:install`, for the tray item. */
+  readonly install: () => Promise<unknown>;
+}
+
+/** One system notification, when the platform draws them. */
+export function showNotification(title: string, body: string): void {
+  try {
+    if (!Notification.isSupported()) return;
+    new Notification({ title, body }).show();
+  } catch {
+    // Best-effort: the settings page and the tray say the same thing.
+  }
+}
+
+/** The notification's language: the system UI's, as the tray reads it. */
+export function notificationLocale(): Locale {
+  return localeFromTag(app.getLocale()) === "zh-CN" ? "zhCn" : "en";
 }
 
 export function installUpdates(
@@ -54,6 +73,11 @@ export function installUpdates(
     // core 写的 `<data dir>/settings.json`：`updates.channel`、`updates.autoCheck`、
     // `updates.notify` 都在这份文档里。读不到就是默认值（stable、自动检查、通知）。
     settings: () => readFile(join(dataDir(), "settings.json")),
+    // 「更新已下载」的系统通知（`updates.notify` 关掉时不发），语言跟系统界面。
+    notify: showNotification,
+    locale: notificationLocale,
+    // 未签名包的安装路径最后一步是退出，由辅助脚本 / 安装器接手。
+    installers: defaultInstallers(() => app.quit()),
     ...overrides,
   };
   const updates = new UpdatesController(deps);
@@ -78,6 +102,7 @@ export function installUpdates(
       [IPC.updatesRestartReport.channel]: () => updates.restartReport(),
     },
     onStaged: (listener) => updates.onStaged(listener),
+    install: () => updates.install(),
   };
 }
 
