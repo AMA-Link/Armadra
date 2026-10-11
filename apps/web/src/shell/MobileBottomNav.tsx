@@ -11,6 +11,7 @@ import { useCompactLayout } from "../platform/layout";
 import { useCanvasStore, type PanelState } from "../store/canvas-store";
 import { cn } from "@/lib/cn";
 import { Button } from "@/ui/button";
+import { panelHidden } from "@/lib/features";
 
 /**
  * 手机底部导航（客户端平台设计，移动端能力矩阵）。
@@ -103,7 +104,11 @@ export function MobileBottomNav() {
         "pr-[var(--safe-right)] pb-[var(--safe-bottom)] pl-[var(--safe-left)]",
       )}
     >
-      {DESTINATIONS.map((destination) => {
+      {DESTINATIONS.filter(
+        // 定时任务暂时下线（#295）时「自动化」这一格不出现。
+        (destination) =>
+          destination.panel === null || !panelHidden(destination.panel),
+      ).map((destination) => {
         const Icon = destination.icon;
         const current = active === destination.id;
         return (

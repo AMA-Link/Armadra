@@ -5,6 +5,8 @@ import {
   emptyKeymap,
   exportKeymap,
   importKeymap,
+  keymapConflicts,
+  keymapEnabled,
   keymapSource,
   keysBelow,
   resolveKeymap,
@@ -226,5 +228,29 @@ describe("导入 / 导出带上配置档", () => {
     expect(() =>
       importKeymap(JSON.stringify({ version: 99, global })),
     ).toThrow();
+  });
+});
+
+describe("内置配置档没有重复绑定", () => {
+  it("每个内置档在两个平台上都没有冲突", () => {
+    for (const id of BUILTIN_PROFILE_IDS)
+      for (const mac of [true, false]) {
+        const conflicts = keymapConflicts(
+          resolveKeymap(profilePreset(id)),
+          mac,
+        );
+        expect([...conflicts], `${id} / ${mac ? "mac" : "other"}`).toEqual([]);
+      }
+  });
+});
+
+describe("快捷键总开关（契约 §66）", () => {
+  it("没写、写坏都是开，只有 false 是关", () => {
+    expect(keymapEnabled(undefined)).toBe(true);
+    expect(keymapEnabled({})).toBe(true);
+    expect(keymapEnabled({ enabled: "no" })).toBe(true);
+    expect(keymapEnabled({ enabled: false })).toBe(false);
+    // 开关不是键位：读键位表时不会把它当成一条覆盖。
+    expect(activeGlobalLayer({ enabled: false })).toEqual(emptyKeymap());
   });
 });

@@ -438,6 +438,16 @@ Node 直接打桌面壳起的 core 时用 `tools/probes/probe-session.mjs`（经
 分进程时代的票据链见 [桌面壳原生 Host 会话](../history/host-native-session.md) 与
 [设备认证](../history/host-device-auth.md)，两份都是历史文档。
 
+## 暂时下线的功能
+
+凭据与密钥、用量统计、活动卡片、定时任务、工作流五项暂时不露入口（#295），开关集中在
+`packages/shared/src/feature-flags.ts` 的 `FEATURE_FLAGS`，改回 `true` 即恢复。页面经
+`apps/web/src/lib/features.ts` 读它：设置导航与新建菜单（命令面板共用）不列，`setPanel` 拒绝打开
+自动化、工作流、用量三块工作面板；桌面托盘不列用量读数。代码、数据库数据与 `/api/*` 接口都保留，
+已保存画布里的计划卡片与活动卡片照常加载、只读显示（去掉打开隐藏面板的按钮）。定时任务关着时 core
+不启动调度循环（探针用 `ARMADRA_SCHEDULE_LOOP=1` 打开），效果等同于应用没开着，恢复后错过的执行按各计划的
+错过策略处理。
+
 ## 环境变量与数据
 
 | 变量                                            | 作用                                                                                                                                                                                                   |
@@ -452,6 +462,7 @@ Node 直接打桌面壳起的 core 时用 `tools/probes/probe-session.mjs`（经
 | `ARMADRA_LOG`                                   | 日志级别，默认 `info`                                                                                                                                                                                  |
 | `ARMADRA_CRASH_REPORT_DSN`                      | 服务器壳的可选崩溃上报 DSN（自托管 GlitchTip / Sentry 协议）；设了就以它为准，不设时读设置 `diagnostics.crashReportDsn`，两处都空则不发（外部服务 §11.2）                                              |
 | `ARMADRA_LOOPBACK_OWNER`                        | `=1` 让裸 core 不装回环监听上的门，把明文回环上没带凭据的调用当成本机主人（契约 §3.2）。只给探针（`tools/probes/probe-home.mjs` 统一设）与 `armadra.sh run web`；桌面壳不把它带给 core，服务器壳不听它 |
+| `ARMADRA_SCHEDULE_LOOP`                         | `=1` 在定时任务暂时下线（`FEATURE_FLAGS.scheduledTasks` 为 `false`）时仍起 core 的调度循环；只给验到点执行的探针（`tools/probes/workflow-e2e.mjs`）                                                    |
 | `ARMADRA_RPC_VALIDATE_OUTPUT`                   | RPC procedure 的出参按契约校验（`1` / `0`）；缺省开发与测试开、打包的生产构建关（契约 §34.1）                                                                                                          |
 | `ARMADRA_ACP_WARMUP`                            | `=0` 关掉 core 起来空闲 10 s 后对已装 ACP 适配器的预热（`initialize` 与自带 CLI 的 `--version`，契约 §51）；`ARMADRA_NO_GLOBAL_WRITES=1`（探针）与用例里本来就不做                                     |
 | `ARMADRA_RPC_TRACE`                             | `=1` 记每条 RPC 调用的耗时                                                                                                                                                                             |
