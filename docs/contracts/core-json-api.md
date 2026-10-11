@@ -4011,3 +4011,51 @@ mod 在 `session.start` 用 `$.command.register` 注册七条命令（都是 `im
 | `updates.releases` | query | 可省 `{ refresh?: boolean \| string }` | `{ current: string, channel: "stable" \| "beta", checkedAt: integer \| null, latest: string \| null, releases: { version: string, tag: string, publishedAt: string, prerelease: boolean, notes: string, url: string, assets: {…}[] }[], error: { code: "unreachable" \| "rateLimited", message: string, retryAfterMs: integer } \| null }` | `unauthenticated`、`forbidden` | `updates:read` | 1.37 | `GET /api/updates/releases` |
 
 <!-- rpc:end -->
+
+## 65. 新建工作空间：克隆的缺省父目录与已连接账号的仓库
+
+> 协议 1.38。新建工作空间对话框有三种来源：已连接的 GitHub 账号里的仓库（克隆到本地）、本地文件夹（`POST /api/workspaces`，§20）、粘贴的 Git 地址（克隆到本地）。克隆仍走 §40.1 的 `git.clone.start` / `status` / `cancel`（目标已存在就 `409`，不覆盖）；这里只加对话框要的两条读。实现在 `core/git/clone-sources.ts`，路由在 `core/git/routes.ts`。
+
+### 65.1 `git.clone.defaults`
+
+- **`GET /api/git/clone-defaults`** → `{ "parent": "/Users/me/Projects" }`，`git:read`，本机主人。家目录下按 `Projects`、`projects`、`Developer`、`code`、`src` 的顺序取第一个存在的目录，都没有就是家目录；拿不到家目录是空串。只是缺省值，页面可以改。
+
+<!-- rpc:begin contract=§65.1 -->
+
+| procedure            | kind  | input     | output               | errors      | scope      | 自   | 原路径                        |
+| -------------------- | ----- | --------- | -------------------- | ----------- | ---------- | ---- | ----------------------------- |
+| `git.clone.defaults` | query | 可省 `{}` | `{ parent: string }` | `forbidden` | `git:read` | 1.38 | `GET /api/git/clone-defaults` |
+
+<!-- rpc:end -->
+
+### 65.2 `git.clone.repositories`
+
+- **`GET /api/git/clone-repositories`** → `GitCloneRepositories`，`git:read`，本机主人。用这台 core 已配好的 GitHub 凭据（`gh` 登录或密钥后端里的令牌，§41）问 `GET /user/repos?per_page=100&sort=updated&affiliation=owner,collaborator,organization_member`（出站登记 `githubApi`，企业版走配置的 API 根）。令牌不进答案。
+
+```json
+{
+  "connected": true,
+  "account": "octo",
+  "repositories": [
+    {
+      "fullName": "octo/demo",
+      "cloneUrl": "https://github.com/octo/demo.git",
+      "private": true,
+      "updatedAt": "2026-10-10T00:00:00Z"
+    }
+  ]
+}
+```
+
+- **未连接**：GitHub 域没装、没配凭据或凭据此刻取不出来，答 `200` 与 `connected: false`、`account: null`、空列表，不联网。
+- **条目**：按 GitHub 给的顺序（最近推送在前），一页最多 100 个。`cloneUrl` 是 GitHub 的 `clone_url`，不在 §40.1 克隆名单（`https://`、`ssh://`、`user@host:path`）里的条目丢掉；`updatedAt` 取 `pushed_at`，缺时取 `updated_at`。仓库描述等远端文本不往外传。
+- **失败**：GitHub 拒绝凭据（`401` / `403`）答 `502 forge_credential_rejected`，其余失败与答的不是数组答 `502 forge_unavailable`；两者都记一次凭据失败，设置页的状态据此显示。
+- **克隆凭据**：克隆私有仓库用用户自己的 Git 设置（credential helper、SSH 密钥），core 不把 API 令牌交给 `git`。
+
+<!-- rpc:begin contract=§65.2 -->
+
+| procedure                | kind  | input     | output                                                                                                                                         | errors                                                        | scope      | 自   | 原路径                            |
+| ------------------------ | ----- | --------- | ---------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------- | ---------- | ---- | --------------------------------- |
+| `git.clone.repositories` | query | 可省 `{}` | `{ connected: boolean, account: string \| null, repositories: { fullName: string, cloneUrl: string, private: boolean, updatedAt: string }[] }` | `forbidden`、`forge_credential_rejected`、`forge_unavailable` | `git:read` | 1.38 | `GET /api/git/clone-repositories` |
+
+<!-- rpc:end -->
