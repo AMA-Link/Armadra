@@ -21,12 +21,39 @@ env:
   NODE_VERSION: "24"
 
 jobs:
+  # 定时触发时，main 的提交与上次成功的 nightly 相同就跳过（workspace#9）；手动触发照跑。
+  gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      actions: read
+    outputs:
+      run: ${{ steps.last.outputs.run }}
+    steps:
+      - id: last
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          run=true
+          if [ "$GITHUB_EVENT_NAME" = schedule ]; then
+            last=$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/nightly.yml/runs?branch=main&status=success&per_page=1" --jq '.workflow_runs[0].head_sha // ""')
+            if [ "$last" = "$GITHUB_SHA" ]; then
+              run=false
+              echo "::notice::main 自上次成功的 nightly 以来没有新提交，跳过"
+            fi
+          fi
+          echo "run=$run" >> "$GITHUB_OUTPUT"
+
   # Linux：在发布同一个 runner（22.04，glibc 基线）上打 AppImage / deb / rpm，
   # 断言 glibc 基线，再跑 B 档里 platforms 含 linux 的条目——xvfb 下起 AppImage
   # 的打包冒烟、ubuntu:22.04 容器里装 deb、服务器壳性能、对着镜像跑的
   # server-e2e（只构建不推送）、update-e2e。devStack 条目要的替身由
   # ARMADRA_DEV_STACK=1 让 e2e.mjs 先 `pnpm dev-stack up`、跑完 down。
   linux:
+    needs: gate
+    if: ${{ needs.gate.outputs.run == 'true' }}
     name: Linux 打包与 B 档
     runs-on: ubuntu-22.04
     timeout-minutes: 120
@@ -111,6 +138,8 @@ jobs:
   # 见 scripts/dist.mjs 的 ARM64_APPIMAGE_TOOLSET）。其余 B 档条目与架构无关，只在
   # 上面的 x64 作业跑。
   linux-arm64:
+    needs: gate
+    if: ${{ needs.gate.outputs.run == 'true' }}
     name: Linux arm64 打包与安装
     runs-on: ubuntu-22.04-arm
     timeout-minutes: 90
@@ -160,6 +189,8 @@ jobs:
   # macOS：现有的打包冒烟（迁移全局安装、PDF 与视频、终端、控制台）。不签名不
   # 公证，直接执行 release 目录里的 .app。
   macos:
+    needs: gate
+    if: ${{ needs.gate.outputs.run == 'true' }}
     name: macOS 打包与 B 档
     runs-on: macos-14
     timeout-minutes: 120
@@ -213,6 +244,8 @@ jobs:
   # （version.mjs print，三端同一版本）；版本名与构建号由 sync 里的
   # app-version.mjs 写给两个原生工程。真机、签名与商店上传要用户的证书。
   mobile-ios:
+    needs: gate
+    if: ${{ needs.gate.outputs.run == 'true' }}
     name: mobile (ios simulator)
     runs-on: macos-latest
     timeout-minutes: 90
@@ -269,6 +302,8 @@ jobs:
           if-no-files-found: warn
 
   mobile-android:
+    needs: gate
+    if: ${{ needs.gate.outputs.run == 'true' }}
     name: mobile (android emulator)
     runs-on: ubuntu-latest
     timeout-minutes: 90
@@ -344,6 +379,8 @@ jobs:
   # 分钟）、杀主进程后接回、ConPTY 关闭、静默卸载、用户配置未动。真机上的长时间
   # 保活与真 CLI 仍要用户跑（docs/guides/development.md「Windows 真机验收」）。
   windows-acceptance:
+    needs: gate
+    if: ${{ needs.gate.outputs.run == 'true' }}
     name: windows acceptance (NSIS + session host)
     runs-on: windows-latest
     timeout-minutes: 90
@@ -399,6 +436,8 @@ jobs:
   # 依赖与死代码报告（工程规范化 §5 第 1 步）：knip 只出报告上传产物、不判失败；
   # 生产依赖里出现 high 及以上的漏洞时本作业失败，由 report 开 issue，不阻断合并。
   hygiene:
+    needs: gate
+    if: ${{ needs.gate.outputs.run == 'true' }}
     name: 依赖审计与 knip 报告
     runs-on: ubuntu-latest
     timeout-minutes: 20
