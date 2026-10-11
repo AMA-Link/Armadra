@@ -8,6 +8,7 @@ import { ConnectScreen, type ConnectFailure } from "./ConnectScreen";
 import {
   connectNative,
   connectWeb,
+  connectNativeWithCode,
   connectWithCode,
   createRelayEnrollment,
   forgetConnection,
@@ -146,13 +147,11 @@ function NativeConnect({
       canScan={bridge.canScan}
       onScan={() => bridge.scan()}
       onConnect={(link) => connectNative(link)}
-      // 配对码只对已经钉过信任锚的 Gateway：App 不装 CA（契约 §24）。
-      {...(origin
-        ? {
-            onCode: (code: string) =>
-              connectWithCode(code, { mode: "native", origin }),
-          }
-        : {})}
+      // 配对码（契约 §24、§73）：人输配对卡上的地址；没钉过锚的首次连接走 PAKE。
+      codeAddress
+      onCode={(code: string, address: string) =>
+        connectNativeWithCode(address, code)
+      }
     />
   );
 }

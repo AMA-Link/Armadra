@@ -263,5 +263,4 @@ G5 合入后，各包「没做 / 限制」里还有一些不依赖账号、证�
 - **推送、协同与评论**：桌面系统通知与内存徽标没有改成读 `resources.threshold` 事件；设置页不能逐台改别的设备的推送偏好（G5-10）。手动平移不取消跟随（G5-11）。评论编辑框没有 Markdown 实时预览，点开聚合钉不自动放大（G5-12）。
 - **托管平台**：Gitea / GitLab 没有评审与 issue 分组；配置整台机器一份、不按工作空间；Gitea 的合并方式不读仓库的 `allow_*`，`merge_when_checks_succeed` 没接；fork 检出按远端名字选远端；子组连接的徽标不定位到具体 MR（G5-15、G5-29、G5-30）。
 - **用量与发布**：`UsageService` 的 `claudeWindowLimits` 没有接进装配，缺订阅档额度的来源（G5-25）。客户端更新地址 `ARMADRA_UPDATER_ENDPOINTS` 只写 GitHub，镜像域名定了再加（G5-18）。
-- **Windows**：安装程序环境里的数据目录与用户的 core 不同时，找不到要请走的会话宿主，退回结束进程（G5-21）。
-- **测试与 CI**：R-90（headless 后台标签页 `DOM.getDocument` 不答）根因没查明；R-89 的修复是推断的（G5-27）。展示页缺 `resizable`、`chart`、`sonner`、`context-menu` 的样本（[设计展示页](../design/design-showcase.md)）。2026-10-05 的 main CI 与夜间作业有三处偶发失败（场景 11 的 `inbox` 超时、Windows 验收的 `restart.survives` 与 `userConfig.untouched`、iOS 配对点按落空），修复见 PR #125。
+- **测试与 CI**：R-90（headless 后台标签页 `DOM.getDocument` 不答）根因没查明；R-89 的修复是推断的（G5-27）。2026-10-05 的 main CI 与夜间作业有三处偶发失败（场景 11 的 `inbox` 超时、Windows 验收的 `restart.survives` 与 `userConfig.untouched`、iOS 配对点按落空），修复见 PR #125。

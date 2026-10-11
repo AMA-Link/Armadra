@@ -216,7 +216,9 @@ export function createLocalConnection(
 async function renewCredentials(
   credentials: SourceCredentials,
 ): Promise<boolean> {
-  if (credentials.mode !== "bearer") return false;
+  // Cookie 会话的 `renew` 续的是共用的会话 Cookie，不认哪一枚（`access` 恒为
+  // `null`）；没有凭据的源无从续起。
+  if (credentials.mode === "none") return false;
   const used = await credentials.access().catch(() => null);
   return credentials.renew(used).catch(() => false);
 }

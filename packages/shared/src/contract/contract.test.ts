@@ -127,12 +127,12 @@ describe("契约树", () => {
     }
   });
 
-  it("匿名的只能经旧路径，且只在身份面、健康检查或配对短码换票下", () => {
+  it("匿名的只能经旧路径，且只在身份面、健康检查或配对短码（换票与 PAKE）下", () => {
     for (const entry of entries) {
       if (entry.meta.scope !== null) continue;
       expect(entry.meta.legacy, entry.name).toBeDefined();
       expect(entry.meta.legacy?.path, entry.name).toMatch(
-        /^\/api\/identity\/|^\/(api\/)?health$|^\/api\/gateway\/pairing-code\/exchange$/,
+        /^\/api\/identity\/|^\/(api\/)?health$|^\/api\/gateway\/pairing-code\/(exchange|pake\/start|pake\/finish)$/,
       );
     }
   });
@@ -389,15 +389,19 @@ describe("§31 与协议包同一份", () => {
     }
   });
 
-  it("匿名 procedure 只有 login 与配对短码换票，且都只经旧路径", () => {
+  it("匿名 procedure 只有 login、配对短码换票与它的 PAKE，且都只经旧路径", () => {
     const anonymous = entries.filter((entry) => entry.meta.scope === null);
     expect(anonymous.map((entry) => entry.name)).toEqual([
       "identity.cloud.login",
       "gateway.exchangePairingCode",
+      "gateway.pakeStart",
+      "gateway.pakeFinish",
     ]);
     expect(anonymous.map((entry) => entry.meta.legacy?.path)).toEqual([
       "/api/identity/cloud/login",
       "/api/gateway/pairing-code/exchange",
+      "/api/gateway/pairing-code/pake/start",
+      "/api/gateway/pairing-code/pake/finish",
     ]);
   });
 

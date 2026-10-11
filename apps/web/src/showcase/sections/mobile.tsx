@@ -113,6 +113,18 @@ function Screen({
             onConnect={never}
           />
         );
+      case "codeNative":
+        return (
+          <ConnectScreen
+            mode="native"
+            codeAddress
+            initialView="code"
+            initialAddress={new URL(MOBILE_ORIGIN).host}
+            initialCode={MOBILE_CODE}
+            onCode={never}
+            onConnect={never}
+          />
+        );
       case "error":
         return (
           <ConnectScreen

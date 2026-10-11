@@ -1,7 +1,7 @@
 {
   "info": {
     "title": "Armadra core",
-    "version": "1.38",
+    "version": "1.43",
     "description": "契约 procedure 的入参与出参（docs/contracts/core-json-api.md §34）。线上是 `POST /api/rpc/<域>/<动词>`，体按 `{ json }` 编码，下列 schema 是 `json` 那一格；失败一律是 `CoreError`。由 tools/contract/generate.mjs 生成，不要手改。"
   },
   "openapi": "3.1.1",
@@ -73235,6 +73235,252 @@
           "legacy": {
             "method": "POST",
             "path": "/api/gateway/pairing-code/exchange"
+          }
+        }
+      }
+    },
+    "/api/rpc/gateway/pakeStart": {
+      "post": {
+        "operationId": "gateway.pakeStart",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "sid": {
+                    "type": "string"
+                  },
+                  "share": {
+                    "type": "string"
+                  }
+                },
+                "required": ["sid", "share"],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "session": {
+                      "type": "string",
+                      "pattern": "^[A-Za-z0-9_-]{22}$"
+                    },
+                    "offers": {
+                      "type": "array",
+                      "maxItems": 32,
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "share": {
+                            "type": "string"
+                          },
+                          "confirm": {
+                            "type": "string"
+                          }
+                        },
+                        "required": ["share", "confirm"]
+                      }
+                    }
+                  },
+                  "required": ["session", "offers"]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "400",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CoreError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "403",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CoreError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "409",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CoreError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "429",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CoreError"
+                }
+              }
+            }
+          }
+        },
+        "x-armadra": {
+          "contract": "§73.1",
+          "scope": null,
+          "since": "1.43",
+          "legacy": {
+            "method": "POST",
+            "path": "/api/gateway/pairing-code/pake/start"
+          }
+        }
+      }
+    },
+    "/api/rpc/gateway/pakeFinish": {
+      "post": {
+        "operationId": "gateway.pakeFinish",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "session": {
+                    "type": "string",
+                    "pattern": "^[A-Za-z0-9_-]{22}$"
+                  },
+                  "index": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 31
+                  },
+                  "confirm": {
+                    "type": "string"
+                  }
+                },
+                "required": ["session", "index", "confirm"],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "origin": {
+                      "type": "string",
+                      "format": "uri"
+                    },
+                    "ticket": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "fingerprint": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "expiresAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "webUrl": {
+                      "type": "string",
+                      "format": "uri"
+                    },
+                    "deepLink": {
+                      "type": "string",
+                      "pattern": "^armadra:\\/\\/pair\\?.*"
+                    },
+                    "code": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "pattern": "^[A-Z2-9]{4}-[A-Z2-9]{4}$"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  },
+                  "required": [
+                    "origin",
+                    "ticket",
+                    "fingerprint",
+                    "expiresAt",
+                    "webUrl",
+                    "deepLink"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "400",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CoreError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "403",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CoreError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "404",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CoreError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "409",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CoreError"
+                }
+              }
+            }
+          }
+        },
+        "x-armadra": {
+          "contract": "§73.2",
+          "scope": null,
+          "since": "1.43",
+          "legacy": {
+            "method": "POST",
+            "path": "/api/gateway/pairing-code/pake/finish"
           }
         }
       }
