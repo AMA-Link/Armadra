@@ -27,7 +27,7 @@
 | 资源面板 `app.resources`                                         | ⇧⌘U                  | Ctrl+Shift+U                      | 是   | 是   |                                                                  |
 | 快速打开 `app.quickOpen`                                         | ⌘P                   | Ctrl+P                            | 是   | 是   |                                                                  |
 | 项目搜索 `app.projectSearch`                                     | ⇧⌘H                  | Ctrl+Shift+H                      | 是   | 是   |                                                                  |
-| Git 托管 / 问题 / 引用面板、切换服务                             | 无                   | 无                                |      |      | 命令面板进入                                                     |
+| Git 托管 / 问题 / 引用面板                                       | 无                   | 无                                |      |      | 命令面板进入                                                     |
 | 新建终端 `canvas.newTerminal`                                    | ⌘T                   | Ctrl+T                            |      |      |                                                                  |
 | 新建 Agent `canvas.newAgent`                                     | ⇧⌘C                  | Ctrl+Shift+C                      |      |      |                                                                  |
 | 焦点模式 `canvas.focusMode`                                      | ⇧⌘F                  | Ctrl+Shift+F                      |      |      |                                                                  |
