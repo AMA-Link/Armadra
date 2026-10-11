@@ -70,6 +70,11 @@ export interface Principal {
   readonly deviceEpoch: number;
   readonly accessExpiresAtMs: number;
   readonly scopes: readonly Scope[];
+  /**
+   * 会话绑的端到端通道设备钥（契约 §78）；不经通道签的会话是空串。经隧道的准入
+   * 拿它与这条通道的设备比。
+   */
+  readonly channelDeviceId?: string;
 }
 
 export interface SessionCredentials {
@@ -529,6 +534,8 @@ export class IdentityService {
     method: LoginMethod;
     remoteIp?: string;
     userAgent?: string;
+    /** 经中继端到端通道登录时那条通道的设备钥（契约 §78）。 */
+    channelDeviceId?: string;
   }): SessionCredentials {
     if (
       !ID_PATTERN.test(request.principalId) ||
@@ -578,6 +585,7 @@ export class IdentityService {
         lastSeenAtMs: now,
         remoteIp: request.remoteIp ?? "",
         userAgent: request.userAgent ?? "",
+        channelDeviceId: request.channelDeviceId ?? "",
       };
       tx.createSession(session);
       tx.accounts.appendAudit({
@@ -1078,6 +1086,9 @@ function principalOf(
     deviceEpoch: device.epoch,
     accessExpiresAtMs: session.accessExpiresAtMs,
     scopes,
+    ...(session.channelDeviceId
+      ? { channelDeviceId: session.channelDeviceId }
+      : {}),
   };
 }
 

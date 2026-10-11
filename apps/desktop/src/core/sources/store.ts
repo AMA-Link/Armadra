@@ -272,6 +272,22 @@ export class SourcesStore {
       .run(share.ownerLabel, share.shareRole, share.shareExpiresAtMs, sourceId);
   }
 
+  /** 钉住的对端 core 身份公钥（契约 §78）；没钉是 `null`。 */
+  identityPub(sourceId: string): Uint8Array | null {
+    const row = this.database
+      .prepare("SELECT identity_pub FROM client_sources WHERE source_id = ?")
+      .get(sourceId) as { identity_pub?: Uint8Array } | undefined;
+    const pub = row?.identity_pub;
+    return pub === undefined || pub.length !== 32 ? null : new Uint8Array(pub);
+  }
+
+  /** 钉上（或 `null` 忘掉）对端 core 的身份公钥。 */
+  setIdentityPub(sourceId: string, identityPub: Uint8Array | null): void {
+    this.database
+      .prepare("UPDATE client_sources SET identity_pub = ? WHERE source_id = ?")
+      .run(identityPub ?? new Uint8Array(0), sourceId);
+  }
+
   touchOk(sourceId: string, atMs: number): void {
     this.database
       .prepare(
