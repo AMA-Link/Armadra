@@ -8,6 +8,19 @@ import {
 } from "@testing-library/react";
 import type { CanvasNode } from "@armadra/shared";
 
+/** 功能开关（#295）：这里测的是功能本身，按开着测。 */
+const featureFlags = vi.hoisted(() => ({
+  credentials: true,
+  usage: true,
+  activityCards: true,
+  scheduledTasks: true,
+  workflows: true,
+}));
+vi.mock("@armadra/shared", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@armadra/shared")>()),
+  FEATURE_FLAGS: featureFlags,
+}));
+
 const compact = vi.hoisted(() => ({ value: true }));
 vi.mock("../platform/layout", () => ({
   useCompactLayout: () => compact.value,
@@ -120,6 +133,17 @@ describe("the phone bottom navigation", () => {
       expect(
         screen.getByRole("button", { name }).hasAttribute("disabled"),
       ).toBe(true);
+  });
+
+  it("定时任务暂时下线（#295）时没有「自动化」这一格", () => {
+    featureFlags.scheduledTasks = false;
+    try {
+      render(<MobileBottomNav />);
+      expect(screen.queryByRole("button", { name: "自动化" })).toBeNull();
+      expect(screen.getByRole("button", { name: "设置" })).toBeTruthy();
+    } finally {
+      featureFlags.scheduledTasks = true;
+    }
   });
 
   it("steps aside while a node is open full screen", () => {

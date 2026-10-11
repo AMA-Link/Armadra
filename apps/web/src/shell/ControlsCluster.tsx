@@ -16,6 +16,7 @@ import { cn } from "@/lib/cn";
 import { DropdownMenu, DropdownMenuTrigger } from "@/ui/dropdown-menu";
 import { IconButton } from "@/ui/icon-button";
 import { ClusterUsage } from "./ClusterUsage";
+import { featureEnabled } from "@/lib/features";
 import { noDragProps } from "./window-region";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/ui/tooltip";
 import { useMenuTooltip } from "./menu-tooltip";
@@ -131,7 +132,8 @@ export function ControlsCluster() {
           <Activity />
         </ClusterButton>
 
-        <ClusterUsage />
+        {/* 用量暂时下线（#295）：胶囊不挂，它背后的轮询也就不发。 */}
+        {featureEnabled("usage") ? <ClusterUsage /> : null}
 
         {focusNodeId && (
           <ClusterButton

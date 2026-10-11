@@ -4,6 +4,7 @@ import { Badge } from "@/ui/badge";
 import { Button } from "@/ui/button";
 import { StatusPill } from "@/ui/status-pill";
 import { proposePlanFromNative } from "@/panels/automation/open";
+import { featureEnabled } from "@/lib/features";
 import { useAgentStatus } from "@/agent/status-store";
 import { useSubagentCards } from "@/agent/subagent-store";
 import { useCanvasStore } from "@/store/canvas-store";
@@ -117,39 +118,44 @@ export function AgentActivityNode({ id, node, selected }: NodeBodyProps) {
             <p className="text-[11px] text-muted-foreground">
               {t("activity.hideOnly")}
             </p>
-            {/*
-              「转为平台计划」不是转换：这张卡片和它观察的 CLI 循环都留在原处，
-              点它只是把创建向导预填好打开，由人确认后建一份**草稿**。自动复制
-              成一份已启用的平台计划会让同一件事被触发两次。
-            */}
-            <Button
-              type="button"
-              size="sm"
-              variant="secondary"
-              className="min-h-8 w-full"
-              disabled={!canConvert}
-              onClick={() =>
-                proposePlanFromNative({
-                  targetKind: "agent",
-                  nodeId: sourceId,
-                  title: source.title,
-                  origin: "native",
-                  // 卡片读到过的重复规则原样带过去；能翻的向导会预填，翻不
-                  // 动的把原文摆出来（`native-recurrence.ts`）。没读到规则的
-                  // 卡片什么也不带——不给它编一个。
-                  ...(data?.nativeRecurrence
-                    ? { recurrence: data.nativeRecurrence }
-                    : {}),
-                })
-              }
-            >
-              {t("activity.convert")}
-            </Button>
-            <p className="text-[11px] text-muted-foreground">
-              {canConvert
-                ? t("activity.convertNote")
-                : t("activity.convertUnavailable")}
-            </p>
+            {/* 定时任务暂时下线（#295）时没有「转为平台计划」的去处，整段不出。 */}
+            {featureEnabled("scheduledTasks") ? (
+              <>
+                {/*
+                  「转为平台计划」不是转换：这张卡片和它观察的 CLI 循环都留在原处，
+                  点它只是把创建向导预填好打开，由人确认后建一份**草稿**。自动复制
+                  成一份已启用的平台计划会让同一件事被触发两次。
+                */}
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="secondary"
+                  className="min-h-8 w-full"
+                  disabled={!canConvert}
+                  onClick={() =>
+                    proposePlanFromNative({
+                      targetKind: "agent",
+                      nodeId: sourceId,
+                      title: source.title,
+                      origin: "native",
+                      // 卡片读到过的重复规则原样带过去；能翻的向导会预填，翻不
+                      // 动的把原文摆出来（`native-recurrence.ts`）。没读到规则的
+                      // 卡片什么也不带——不给它编一个。
+                      ...(data?.nativeRecurrence
+                        ? { recurrence: data.nativeRecurrence }
+                        : {}),
+                    })
+                  }
+                >
+                  {t("activity.convert")}
+                </Button>
+                <p className="text-[11px] text-muted-foreground">
+                  {canConvert
+                    ? t("activity.convertNote")
+                    : t("activity.convertUnavailable")}
+                </p>
+              </>
+            ) : null}
           </>
         )}
       </div>
