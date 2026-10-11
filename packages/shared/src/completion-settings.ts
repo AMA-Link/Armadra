@@ -94,6 +94,13 @@ export const COMPLETION_SETTINGS_DEFAULTS = {
   agents: { defaultDriver: "acp" },
   canvas: { layoutDirection: "vertical" },
   collab: { realtime: true },
+  security: {
+    /**
+     * 经中继的访问一律走端到端通道（契约 §78）：开着时明文中继路径上的请求答
+     * `403 e2e_required`。
+     */
+    requireE2e: false,
+  },
   usage: {
     /** `api.anthropic.com/api/oauth/usage`，默认关（外部服务 §12.3）。 */
     claudeUsage: false,

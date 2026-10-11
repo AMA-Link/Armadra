@@ -257,6 +257,15 @@ export const completionSettingsSchema = z.looseObject({
     })
     .catch({ ...D.collab })
     .default({ ...D.collab }),
+  security: z
+    .looseObject({
+      requireE2e: z
+        .boolean()
+        .catch(D.security.requireE2e)
+        .default(D.security.requireE2e),
+    })
+    .catch({ ...D.security })
+    .default({ ...D.security }),
   usage: z
     .looseObject({
       claudeUsage: z.boolean().catch(false).default(false),
