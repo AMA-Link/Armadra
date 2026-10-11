@@ -24,6 +24,11 @@ export interface SessionRow {
   state?: AgentState;
   unread: boolean;
   pendingId?: string;
+  /**
+   * 最近一条 hook 事件所属 Agent 会话的阶段。hook 归约在 `SessionStart` 与
+   * `SessionEnd` 时都清掉 `state`，只有它能分开「刚启动、空闲」和「已退出」。
+   */
+  sessionPhase?: AgentStatus["sessionPhase"];
   updatedAt: string;
   /** 该 Runtime 实例里进程还活着。 */
   alive: boolean;
@@ -59,7 +64,19 @@ export function sessionBucket(row: SessionRow): SessionBucket {
   if (row.state === "working") return "working";
   if (row.unread) return "unread";
   if (row.state) return "idle";
+  // 新开的 CLI 是空闲的，不是未知：hook 归约规则 4 只是把上一轮的状态清掉了。
+  if (row.sessionPhase === "start") return "idle";
   return "unknown";
+}
+
+/**
+ * 终端里的 Agent 已经退出：`SessionEnd` 之后进程还在（退回了 shell），但那
+ * 已经不是一个 Agent 了。正在跑或在等人的状态比阶段新，按它算。
+ */
+export function agentExited(row: SessionRow): boolean {
+  return (
+    row.sessionPhase === "end" && row.state !== "working" && !isAttention(row)
+  );
 }
 
 /** 会话摘要 + 状态镜像 → 列表行。状态镜像更新时它比摘要新，因此优先。 */
@@ -85,6 +102,7 @@ export function mergeSessions(
         state: fresher ? status.state : summary.state,
         unread: fresher ? status.unread : summary.unread,
         pendingId: fresher ? status.pendingId : summary.pendingId,
+        sessionPhase: fresher ? status.sessionPhase : summary.sessionPhase,
         updatedAt,
         alive: summary.alive,
         ...(summary.backend ? { backend: summary.backend } : {}),
