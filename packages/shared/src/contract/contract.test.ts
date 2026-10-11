@@ -295,17 +295,31 @@ describe("§55 在协议包的形状上追加", () => {
     superset(
       slot("sources.addDirect", "outputSchema"),
       protocol.clientSourceSchema,
-      ["routes", "defaultLabel"],
+      [
+        "routes",
+        "defaultLabel",
+        "origin",
+        "ownerLabel",
+        "shareRole",
+        "shareExpiresAtMs",
+      ],
     );
     superset(
       slot("sources.mount", "outputSchema"),
       protocol.clientSourceSchema,
-      ["routes", "defaultLabel"],
+      [
+        "routes",
+        "defaultLabel",
+        "origin",
+        "ownerLabel",
+        "shareRole",
+        "shareExpiresAtMs",
+      ],
     );
     superset(
       slot("sources.remoteUpdate", "outputSchema"),
       protocol.remoteServiceSchema,
-      ["defaultLabel"],
+      ["defaultLabel", "guest"],
     );
     superset(
       slot("sources.remoteAdd", "outputSchema"),
@@ -325,12 +339,26 @@ describe("§55 在协议包的形状上追加", () => {
   });
 });
 
+describe("§68 cloud/login 的出参在协议包的形状上追加 share", () => {
+  it("协议包的字段逐个沿用，只多 share", async () => {
+    const protocol = await import("@armadra/platform-protocol/core-api");
+    type Shaped = { shape: Record<string, unknown> };
+    const entry = entries.find((one) => one.name === "identity.cloud.login");
+    const ours = (def(entry!).outputSchema as unknown as Shaped).shape;
+    const theirs = (protocol.cloudLoginOutputSchema as unknown as Shaped).shape;
+    for (const key of Object.keys(theirs))
+      expect(ours[key], key).toBe(theirs[key]);
+    expect(Object.keys(ours).filter((key) => !(key in theirs))).toEqual([
+      "share",
+    ]);
+  });
+});
+
 describe("§31 与协议包同一份", () => {
   it("identity.cloud.* 的出入参就是协议包 core-api 的 schema 对象", async () => {
     const protocol = await import("@armadra/platform-protocol/core-api");
     const pairs: [string, "inputSchema" | "outputSchema", unknown][] = [
       ["identity.cloud.login", "inputSchema", protocol.cloudLoginInputSchema],
-      ["identity.cloud.login", "outputSchema", protocol.cloudLoginOutputSchema],
       [
         "identity.cloud.register",
         "inputSchema",

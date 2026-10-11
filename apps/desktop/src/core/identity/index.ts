@@ -27,6 +27,7 @@ import { HEARTBEAT_MS } from "./protocol";
 import { installCloud } from "./cloud";
 import { installOAuth } from "./oauth";
 import { installIdentityProcedures } from "./procedures";
+import { ownerDisplayName } from "./grant-sync";
 import { resolveBreachMode } from "./policy";
 import { createRouteGuard } from "./route-access";
 import { IdentityService } from "./service";
@@ -159,6 +160,8 @@ export function installIdentity(context: CoreContext): void {
         version: VERSION,
         hostName: hello.hostName,
         systemHostName: systemHostName(),
+        // 契约 §68：主人的显示名，没有时用主机名称。
+        ownerName: ownerDisplayName(store, hello.hostName || systemHostName()),
       };
     },
     ping: ({ ts }) => ({ ts, serverTs: Date.now() }),

@@ -32,6 +32,38 @@ export interface NativeCredentials {
   readonly accessExpiresAtMs: number;
   /** 这把会话是谁：设备显示名或主体名，只作提示。 */
   readonly principalHint: string;
+  /**
+   * `cloud/login` 答的分享信息（契约 §68）：分享方 core 报的主人名字、这个人经这个
+   * 签发方拿到的角色与到期。旧对端、owner 自己登录时没有。
+   */
+  readonly share?: CloudLoginShare;
+}
+
+/** `cloud/login` 的 `share`（契约 §68）。 */
+export interface CloudLoginShare {
+  readonly ownerName: string;
+  /** viewer / editor / operator / driver；对端报了别的是空串。 */
+  readonly role: "" | "viewer" | "editor" | "operator" | "driver";
+  /** 0 = 不过期。 */
+  readonly expiresAtMs: number;
+}
+
+const SHARE_ROLES = new Set(["viewer", "editor", "operator", "driver"]);
+
+/** 对端报的 `share`：形状不对就当没报（只作展示，不参与授权）。 */
+function shareOf(value: unknown): CloudLoginShare | undefined {
+  if (typeof value !== "object" || value === null) return undefined;
+  const share = value as Record<string, unknown>;
+  const role = str(share.role);
+  const expires = share.expiresAtMs;
+  return {
+    ownerName: str(share.ownerName).trim().slice(0, 128),
+    role: SHARE_ROLES.has(role) ? (role as CloudLoginShare["role"]) : "",
+    expiresAtMs:
+      typeof expires === "number" && Number.isFinite(expires) && expires > 0
+        ? Math.floor(expires)
+        : 0,
+  };
 }
 
 export interface PairTicket {
@@ -211,6 +243,11 @@ export class SourceClient {
         ...(invitationToken === undefined ? {} : { invitationToken }),
       }),
     );
-    return credentialsOf(body, str(record(body.principal).displayName));
+    const credentials = credentialsOf(
+      body,
+      str(record(body.principal).displayName),
+    );
+    const share = shareOf(body.share);
+    return share === undefined ? credentials : { ...credentials, share };
   }
 }

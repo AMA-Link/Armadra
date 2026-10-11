@@ -972,7 +972,11 @@ export class AccountsService {
     const lease =
       provenance === undefined
         ? {}
-        : { origin: provenance.origin, expiresAtMs: provenance.leaseUntilMs };
+        : {
+            origin: provenance.origin,
+            // 契约 §68：租约不超过这张邀请（也就是分享链接）的到期。
+            expiresAtMs: Math.min(provenance.leaseUntilMs, row.expiresAtMs),
+          };
     if (row.targetHost) {
       putGrantRow(accounts, {
         subjectKind: "principal",
