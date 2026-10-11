@@ -179,16 +179,31 @@ function harness() {
       confirmWorkspace: () => "",
     },
   });
-  return (method: string, path: string, body?: unknown) =>
-    PEOPLE.filter((who) => {
+  const verdicts = (method: string, path: string, body?: unknown) =>
+    PEOPLE.map((who) => {
       const request = {
         ...emptyRequest(method, path),
         json: <T>() => body as T,
       };
-      return runAs({ subject: subject(who) }, () =>
-        guard(request, router.requiredScope(method, path)),
-      ).allowed;
-    }).join(",");
+      return {
+        who,
+        verdict: runAs({ subject: subject(who) }, () =>
+          guard(request, router.requiredScope(method, path)),
+        ),
+      };
+    });
+  const allowed = (method: string, path: string, body?: unknown) =>
+    verdicts(method, path, body)
+      .filter((one) => one.verdict.allowed)
+      .map((one) => one.who)
+      .join(",");
+  /** 放行为只读的那些人（只对 WebSocket 升级有意义）。 */
+  allowed.readOnly = (method: string, path: string) =>
+    verdicts(method, path)
+      .filter((one) => one.verdict.allowed && one.verdict.readOnly === true)
+      .map((one) => one.who)
+      .join(",");
+  return allowed;
 }
 
 describe("§60 路由门：整台 / 工作空间 / 会话", () => {
@@ -230,11 +245,20 @@ describe("§60 路由门：整台 / 工作空间 / 会话", () => {
     for (const [method, path, body] of [
       ["POST", "/api/terminals/t1/paste", { text: "y\n" }],
       ["POST", "/api/terminals", { workspaceId: "w1", cwd: "/" }],
-      ["GET", "/api/terminals/t1/ws"],
       ["POST", "/api/acp/sessions/t1/prompt", { text: "hi" }],
     ] as const) {
       expect(allowed(method, path, body), `${method} ${path}`).toBe("");
     }
+    // 附着终端（#308）：读得到这条会话的人都附得上，但一律只读，输入进不去。
+    expect(allowed("GET", "/api/terminals/t1/ws")).toBe(
+      "host-editor,host-viewer,ws-viewer,sess-viewer",
+    );
+    expect(allowed.readOnly("GET", "/api/terminals/t1/ws")).toBe(
+      "host-editor,host-viewer,ws-viewer,sess-viewer",
+    );
+    expect(allowed("GET", "/api/terminals/t2/ws")).toBe(
+      "host-editor,host-viewer,ws-viewer",
+    );
     // 画布与文件写：只有整台 editor 过得去。
     expect(allowed("POST", "/api/workspaces/w1/boards")).toBe("host-editor");
     expect(allowed("PUT", "/api/workspaces/w1/boards/b1")).toBe("host-editor");

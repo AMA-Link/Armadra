@@ -537,11 +537,14 @@ export class CoreServer {
   ): void {
     const path = core.path;
     // 升级前和 HTTP 同一道路由门：终端的 socket 能写，事件流能读，都得先过它。
-    if (!routeGuard()(core, this.router.requiredScope("GET", path)).allowed) {
+    // 门可以放行为只读（只有读权限的人附着终端，契约 §60），交给流自己丢写帧。
+    const admitted = routeGuard()(core, this.router.requiredScope("GET", path));
+    if (!admitted.allowed) {
       socket.write("HTTP/1.1 403 Forbidden\r\nConnection: close\r\n\r\n");
       socket.destroy();
       return;
     }
+    const readOnly = admitted.readOnly === true;
     void (async () => {
       // The guard answers BEFORE the upgrade, as the Rust runtime does: a
       // missing workspace is an HTTP 404, not a socket that opens and closes.
@@ -562,12 +565,15 @@ export class CoreServer {
       const websockets = this.websocketsFor(registration.maxPayload);
       websockets.handleUpgrade(request, socket, head, (connection) => {
         this.track(connection);
-        registration.open(connection, found.params, core);
+        registration.open(connection, found.params, core, { readOnly });
         if (identity === undefined) return;
-        const permitted = (subject: AuthorizationSubject) =>
-          runAs({ ...identity, subject }, () =>
+        // 原来可写、现在只能读的流也关掉：它是按可写开的，重连就按只读开。
+        const permitted = (subject: AuthorizationSubject) => {
+          const verdict = runAs({ ...identity, subject }, () =>
             routeGuard()(core, this.router.requiredScope("GET", path)),
-          ).allowed;
+          );
+          return verdict.allowed && (readOnly || verdict.readOnly !== true);
+        };
         const stop = onAccessChanged(() => {
           if (connection.readyState !== connection.OPEN) return;
           const subject =
@@ -752,7 +758,14 @@ export type StreamHandler = (
   connection: WebSocket,
   params: Readonly<Record<string, string>>,
   request: CoreRequest,
+  access: StreamAccess,
 ) => void;
+
+/** 路由门对这次升级的裁决里流要知道的部分。 */
+export interface StreamAccess {
+  /** 只读放行（契约 §60）：流里的写帧要丢掉。 */
+  readonly readOnly: boolean;
+}
 
 /** Answer a status to refuse the upgrade, or `undefined` to let it through. */
 export type StreamGuard = (

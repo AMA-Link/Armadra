@@ -348,7 +348,7 @@ describe.skipIf(!enabled)("个人中转联调（契约 §31）", () => {
     ) as Record<string, unknown>;
   }
 
-  it("会话范围的链接（契约 §60）：经 core 建链接，中继签 scp 与 ro，core 授予只读会话；撤链接连同访客停用", async () => {
+  it("会话范围的链接（契约 §60）：经 core 建链接，中继签 scp，core 授予只读会话；撤链接连同访客停用", async () => {
     const { serviceId } = await remoteRow();
     const created = await rpc(
       "sources.shareLinkCreate",
@@ -383,11 +383,7 @@ describe.skipIf(!enabled)("个人中转联调（契约 §31）", () => {
       (listed.body.links as { linkId: string; scope?: unknown }[]).find(
         (one) => one.linkId === link.linkId,
       )?.scope,
-    ).toEqual({
-      workspaceId: "ws-devstack",
-      sessionId: "t-devstack",
-      readOnly: true,
-    });
+    ).toEqual({ workspaceId: "ws-devstack" });
 
     const accepted = await relay(
       "POST",
@@ -402,10 +398,9 @@ describe.skipIf(!enabled)("个人中转联调（契约 §31）", () => {
     expect(accepted.status, JSON.stringify(accepted.body)).toBe(200);
     expect(claimsOf(accepted.body.assertion as string).scp).toEqual([
       "ws:ws-devstack",
-      "sess:t-devstack",
-      "ro",
     ]);
-    expect(claimsOf(accepted.body.relayToken as string).ro).toBe(true);
+    // 只读由 core 判定（#308）：中继令牌不带 `ro`，否则边缘把 POST 的 RPC 全挡掉。
+    expect(claimsOf(accepted.body.relayToken as string).ro).toBeUndefined();
     const login = await call("POST", "/api/identity/cloud/login", {
       assertion: accepted.body.assertion,
       invitationToken,
