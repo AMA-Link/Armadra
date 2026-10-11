@@ -6,7 +6,7 @@
  * 留在 `app/test-harness.tsx`。
  */
 
-import { beforeEach } from "vitest";
+import { afterAll, beforeEach } from "vitest";
 
 /**
  * React Flow 的容器用 `ResizeObserver` 量自己的尺寸（`useResizeHandler`），
@@ -109,4 +109,17 @@ if (typeof document !== "undefined") {
       if (style.textContent?.includes("[data-sonner-toaster]")) style.remove();
     }
   });
+}
+
+/**
+ * Radix 的 FocusScope 卸载时用 `setTimeout(0)` 派发 `focusScope.autoFocusOnUnmount`
+ * 再把焦点还回去。文件里最后一条用例在 afterEach 里 cleanup 卸掉对话框 / 下拉，
+ * 这个计时器还没跑，vitest 就拆了 jsdom 环境；计时器随后在 Node 里触发，
+ * `CustomEvent` 已经不是 jsdom 的，`dispatchEvent` 抛「parameter 1 is not of type
+ * 'Event'」，算作未处理错误让整个包失败（CI 上偶发，取决于拆环境与计时器谁先）。
+ * 本文件的钩子最先注册、最后执行：所有 cleanup 之后让过一个宏任务，挂着的 0 ms
+ * 计时器在环境还在时跑完。
+ */
+if (typeof document !== "undefined") {
+  afterAll(() => new Promise<void>((resolve) => setTimeout(resolve, 0)));
 }
