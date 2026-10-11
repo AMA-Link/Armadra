@@ -235,8 +235,9 @@ describe("SettingsDialog", () => {
         .getByTestId("settings-heading")
         .parentElement?.querySelector("[data-settings-scope]")?.textContent;
     expect(scope()).toBe(zh("settings.scope.device"));
+    // 设置恒指本机（#301）：主机页写「本机」（取到名字时带上名字）。
     fireEvent.click(navItem(zh("settings.section.about")));
-    expect(scope()).toBe(zh("settings.scope.host"));
+    expect(scope()).toBe(zh("settings.scope.local"));
     fireEvent.click(navItem(zh("settings.section.security")));
     expect(scope()).toBe(zh("settings.scope.account"));
     fireEvent.click(navItem(zh("settings.section.remoteAccess")));

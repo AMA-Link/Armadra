@@ -3,19 +3,19 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ChevronRight } from "lucide-react";
 import { toast } from "sonner";
 
-import { currentClient, runtimeApi } from "../../../api/client";
+import { localClient, localRuntimeApi } from "../../../api/client";
 import { hasPairingFragment } from "../../../api/identity";
 import { usePreferencesStore, useT } from "../../../app/preferences-store";
 import { useAccess } from "../../../app/use-access";
 import { useHostConnection } from "../../../host/use-host-connection";
 import { revealPath } from "../../../platform";
+import { lk } from "../local-key";
 import { LocalSourceBadge } from "../local-source";
 import { useRemoteAccess } from "../remote-access";
 import { SettingsGroup } from "../SettingsGroup";
 import { SettingsRow } from "../SettingsRow";
 import { useRuntimeSettings } from "../use-runtime-settings";
 import { CONTROL_WIDTH, CrashReportGroup } from "./GeneralPage";
-import { DATA_INFO_KEY } from "./SessionsPage";
 import { Button } from "@/ui/button";
 import {
   Collapsible,
@@ -109,7 +109,7 @@ const GRACE_CHOICES = [
 const RETENTION_CHOICES = [7, 30, 90, 0] as const;
 
 /**
- * 设置 → 本机服务（§2.1）：设置作用的那台 core。
+ * 设置 → 本机服务（§2.1）：恒指本机 core（#301），与打开的工作空间在哪台无关。
  *
  * 连接状态（服务 ID、能力折进「诊断」）谁都看得到；终端会话策略、电源与
  * 资源、数据与崩溃上报读写整台机器的设置，只给 owner。
@@ -245,11 +245,11 @@ export function ConnectionGroup() {
 function HostNameGroup() {
   const t = useT();
   const queryClient = useQueryClient();
-  const { settings, save } = useRuntimeSettings();
+  const { settings, save } = useRuntimeSettings({ scope: "local" });
   const saved = settings.data?.host?.name ?? "";
   const hello = useQuery({
-    queryKey: ["system", "hello"],
-    queryFn: () => currentClient().system.hello({}),
+    queryKey: lk("system", "hello"),
+    queryFn: () => localClient().system.hello({}),
     retry: false,
     staleTime: 60_000,
   });
@@ -263,7 +263,9 @@ function HostNameGroup() {
       { host: { name } },
       {
         onSuccess: () =>
-          void queryClient.invalidateQueries({ queryKey: ["system", "hello"] }),
+          void queryClient.invalidateQueries({
+            queryKey: lk("system", "hello"),
+          }),
       },
     );
   };
@@ -294,7 +296,7 @@ function HostNameGroup() {
 /** 终端会话：后端、休眠、节能、断开保留（Runtime 侧）。 */
 function TerminalSessionGroup() {
   const t = useT();
-  const { settings, save } = useRuntimeSettings();
+  const { settings, save } = useRuntimeSettings({ scope: "local" });
   const runtimeTerminal = settings.data?.terminal;
   return (
     <SettingsGroup title={t("host.group.terminal")}>
@@ -435,7 +437,7 @@ function PowerGroup() {
   const setMemoryWarnBytes = usePreferencesStore(
     (state) => state.setSessionMemoryWarnBytes,
   );
-  const { settings, save } = useRuntimeSettings();
+  const { settings, save } = useRuntimeSettings({ scope: "local" });
   const memoryWarnBytes =
     settings.data?.resources?.memoryWarnBytes ?? localMemoryWarnBytes;
   return (
@@ -558,17 +560,17 @@ function PowerGroup() {
 function DataGroup() {
   const t = useT();
   const queryClient = useQueryClient();
-  const { settings, save } = useRuntimeSettings();
+  const { settings, save } = useRuntimeSettings({ scope: "local" });
   // 数据目录在设置作用的那台 core 上：远端时「在访达中打开」打开的是眼前这台
   // 机器上一个不存在的路径，不列。
   const { remote } = useRemoteAccess();
   const info = useQuery({
-    queryKey: DATA_INFO_KEY,
-    queryFn: runtimeApi.dataInfo,
+    queryKey: lk("data-info"),
+    queryFn: localRuntimeApi.dataInfo,
     retry: false,
   });
   const backup = useMutation({
-    mutationFn: runtimeApi.backupData,
+    mutationFn: localRuntimeApi.backupData,
     onSuccess: (result) =>
       toast.success(t("settings.backup.done", { path: result.path })),
     onError: (cause: Error) =>
@@ -635,7 +637,7 @@ function DataGroup() {
               {
                 onSuccess: () =>
                   void queryClient.invalidateQueries({
-                    queryKey: DATA_INFO_KEY,
+                    queryKey: lk("data-info"),
                   }),
               },
             );

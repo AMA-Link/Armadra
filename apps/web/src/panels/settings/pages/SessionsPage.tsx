@@ -23,9 +23,7 @@ import {
 } from "@/ui/select";
 import { Switch } from "@/ui/switch";
 
-/** 数据目录信息的查询键：本机服务页的「数据」组读同一份。 */
-export const DATA_INFO_KEY = ["data-info"] as const;
-/** 对话索引页读的是本机的数据目录。 */
+/** 数据目录信息的查询键（本机）：本机服务页的「数据」组读同一份。 */
 const LOCAL_DATA_INFO_KEY = lk("data-info");
 
 /**

@@ -660,12 +660,12 @@ try {
   };
   await openRemoteSettings();
   const shareSwitch = await page.evaluate(
-    `const s = document.querySelector('[role="dialog"] [role="switch"][aria-label="经中转"]');
+    `const s = document.querySelector('[role="dialog"] [role="switch"][aria-label="允许其他设备访问这台电脑"]');
      return s ? { on: s.getAttribute("aria-checked"), disabled: s.disabled } : null;`,
   );
   run.check(
     shareSwitch?.on === "true" && shareSwitch.disabled === true,
-    "远程访问页：正走的中继标「本页经此连接」，经中转开着且不给停",
+    "远程访问页：正走的中继标「本页经此连接」，访问开着且不给关",
     shareSwitch,
   );
   await run.shot(page, "06-settings-remote-1440-light");

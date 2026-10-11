@@ -39,7 +39,7 @@ vi.mock("./HostIdentityPanel", async () => {
 vi.mock("./security/LoginSessions", () => ({ LoginSessions: () => null }));
 
 import { DevicesPage } from "./DevicesPage";
-import { GatewayConfigSection } from "./gateway/GatewaySection";
+import { HostAccess } from "./remote-access/HostAccess";
 import { usePreferencesStore } from "../../../app/preferences-store";
 import {
   IdentityRequestError,
@@ -50,11 +50,11 @@ import {
 import { TestProviders } from "../../../app/test-harness";
 import { parsePairingQr } from "../../../host/qr";
 
-/** 远程访问页的局域网直连与设备与会话页放在一起：配置与设备表各一份。 */
+/** 远程访问页的开关一块与设备与会话页放在一起：配置与设备表各一份。 */
 function HostPage() {
   return (
     <>
-      <GatewayConfigSection />
+      <HostAccess />
       <DevicesPage />
     </>
   );
@@ -323,14 +323,18 @@ describe("DevicesPage", () => {
   });
 });
 
-describe("局域网直连与已配对设备", () => {
-  it("is absent for anyone the core refuses /api/gateway to", async () => {
+describe("允许其他设备访问与已配对设备", () => {
+  it("without /api/gateway only the switch is left (for the Internet route), no pairing", async () => {
     const calls = fakeCore({ status: 403 });
     render(<HostPage />);
     await waitFor(() =>
       expect(calls.some((call) => call.path === "/api/gateway")).toBe(true),
     );
-    expect(screen.queryByRole("switch", { name: "局域网直连" })).toBeNull();
+    const toggle = screen.getByRole("switch", {
+      name: "允许其他设备访问这台电脑",
+    });
+    expect(toggle.getAttribute("aria-checked")).toBe("false");
+    expect(screen.queryByRole("img", { name: "配对二维码" })).toBeNull();
   });
 
   it("a member on the server shell does not even ask", async () => {
@@ -343,15 +347,19 @@ describe("局域网直连与已配对设备", () => {
     expect(
       calls.filter((call) => call.path.startsWith("/api/gateway")),
     ).toEqual([]);
-    expect(screen.queryByRole("switch", { name: "局域网直连" })).toBeNull();
+    expect(
+      screen.queryByRole("switch", { name: "允许其他设备访问这台电脑" }),
+    ).toBeNull();
   });
 
   it("off shows only the switch; turning it on PUTs /api/gateway and shows a pairing QR", async () => {
     const calls = fakeCore({});
     render(<HostPage />);
-    const toggle = await screen.findByRole("switch", { name: "局域网直连" });
+    const toggle = await screen.findByRole("switch", {
+      name: "允许其他设备访问这台电脑",
+    });
     expect(toggle.getAttribute("aria-checked")).toBe("false");
-    expect(screen.queryByRole("combobox", { name: "监听地址" })).toBeNull();
+    expect(screen.queryByRole("combobox", { name: "可达范围" })).toBeNull();
     expect(screen.queryByRole("img", { name: "配对二维码" })).toBeNull();
 
     fireEvent.click(toggle);
@@ -371,7 +379,7 @@ describe("局域网直连与已配对设备", () => {
       ticket: TICKET,
       fingerprint: FP,
     });
-    expect(screen.getByRole("combobox", { name: "监听地址" })).toBeTruthy();
+    expect(screen.getByRole("combobox", { name: "可达范围" })).toBeTruthy();
     expect(screen.getByText(/2:00|1:59/)).toBeTruthy();
     expect(
       screen.getByRole("link", { name: "下载 CA" }).getAttribute("href"),
@@ -387,7 +395,9 @@ describe("局域网直连与已配对设备", () => {
     await screen.findByRole("img", { name: "配对二维码" });
     expect(await screen.findByText("iPhone")).toBeTruthy();
 
-    fireEvent.click(screen.getByRole("switch", { name: "局域网直连" }));
+    fireEvent.click(
+      screen.getByRole("switch", { name: "允许其他设备访问这台电脑" }),
+    );
     await waitFor(() =>
       expect(screen.queryByRole("img", { name: "配对二维码" })).toBeNull(),
     );
@@ -418,8 +428,11 @@ describe("局域网直连与已配对设备", () => {
     render(<HostPage />);
     await screen.findByRole("img", { name: "配对二维码" });
     expect(
-      (screen.getByRole("switch", { name: "局域网直连" }) as HTMLButtonElement)
-        .disabled,
+      (
+        screen.getByRole("switch", {
+          name: "允许其他设备访问这台电脑",
+        }) as HTMLButtonElement
+      ).disabled,
     ).toBe(true);
   });
 
@@ -461,7 +474,9 @@ describe("局域网直连与已配对设备", () => {
     const table = await screen.findByRole("table");
     expect(within(table).getByText("Mac")).toBeTruthy();
     expect(within(table).queryByRole("button")).toBeNull();
-    expect(screen.queryByRole("switch", { name: "局域网直连" })).toBeNull();
+    expect(
+      screen.queryByRole("switch", { name: "允许其他设备访问这台电脑" }),
+    ).toBeNull();
   });
 
   it("says when ACME renewal keeps failing and when it retries", async () => {

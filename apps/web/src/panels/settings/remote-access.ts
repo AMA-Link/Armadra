@@ -1,33 +1,27 @@
 import { localRuntime } from "../../api/local-runtime";
 import { isNativeAppPage } from "../../api/runtime-url";
 import { isDesktop } from "../../platform";
-import { useCurrentSource } from "../../sources/context";
 import { hostedRelay } from "../../sources/hosted";
-import type { SourceKind, Via } from "../../sources/types";
+import type { Via } from "../../sources/types";
 
 /**
  * 设置作用的那台 core 在不在眼前这台设备上。
  *
- * 不新造概念，全从已有的源描述推出来：
- *
- * - 页面的本机源本身就在别处：中继托管的页面（`sources/hosted.ts`）、原生 App
- *   （连接页记下的 Gateway 或中继）、经 Gateway / 服务器壳打开的网页（同源
- *   HTTPS）。这时 `via` 是页面到达本机源的那条路，`relayIssuer` / 直连就是
- *   页面正在走的隧道——停用或删掉它等于自断。
- * - 当前源是挂载的远程源（`descriptor.kind !== "local"`）：`api/*` 的请求发往
- *   它（`currentSource()`），设置页读写的就是那台机器。
+ * 设置页恒指本机（#301）：只看页面的本机源在不在眼前，与打开的是谁的工作空间
+ * 无关。页面的本机源本身就在别处：中继托管的页面（`sources/hosted.ts`）、原生
+ * App（连接页记下的 Gateway 或中继）、经 Gateway / 服务器壳打开的网页（同源
+ * HTTPS）。这时 `via` 是页面到达本机源的那条路，`relayIssuer` / 直连就是页面
+ * 正在走的路——停用或删掉它等于自断。
  *
  * 桌面窗口里的本机源永远在本机；开发服务器（回环 HTTP）也算本机。
  */
 export interface RemoteAccess {
-  /** 设置作用的 core 不在眼前这台设备上。 */
+  /** 页面的本机 core 不在眼前这台设备上。 */
   readonly remote: boolean;
   /** 页面到达本机源的那条路；本机源就在这台设备上是 `null`。 */
   readonly via: Exclude<Via, "local"> | null;
   /** 页面正经它到达本机源的中继（签发方来源）；不经中继是 `null`。 */
   readonly relayIssuer: string | null;
-  /** 当前源的 id（远程源时是那台的 `sourceId`）。 */
-  readonly currentSourceId: string;
 }
 
 /** 推断用到的事实；测试直接造。 */
@@ -40,8 +34,6 @@ export interface AccessFacts {
   readonly viaServerShell: boolean;
   /** 本机源的地址。 */
   readonly localHttpBase: string;
-  readonly currentKind: SourceKind;
-  readonly currentSourceId: string;
 }
 
 function originOf(base: string): string | null {
@@ -82,18 +74,11 @@ function pageRoute(
 
 export function remoteAccessOf(facts: AccessFacts): RemoteAccess {
   const route = pageRoute(facts);
-  return {
-    ...route,
-    remote: route.via !== null || facts.currentKind !== "local",
-    currentSourceId: facts.currentSourceId,
-  };
+  return { ...route, remote: route.via !== null };
 }
 
 /** 页面这一侧的事实（一次加载里不变，除了中继托管页面何时挂上）。 */
-export function pageAccessFacts(): Omit<
-  AccessFacts,
-  "currentKind" | "currentSourceId"
-> {
+export function pageAccessFacts(): AccessFacts {
   const local = localRuntime();
   return {
     desktop: isDesktop(),
@@ -104,14 +89,9 @@ export function pageAccessFacts(): Omit<
   };
 }
 
-/** 设置页用：页面事实加上当前源（切源时跟着变）。 */
+/** 设置页用：页面的本机源在不在眼前（打开别人的工作空间不改变它）。 */
 export function useRemoteAccess(): RemoteAccess {
-  const current = useCurrentSource();
-  return remoteAccessOf({
-    ...pageAccessFacts(),
-    currentKind: current.descriptor.kind,
-    currentSourceId: current.descriptor.sourceId,
-  });
+  return remoteAccessOf(pageAccessFacts());
 }
 
 /** 两个来源是不是同一个（大小写、尾斜杠、缺省端口都不算差别）。 */

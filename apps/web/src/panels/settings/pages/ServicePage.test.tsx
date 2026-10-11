@@ -33,13 +33,12 @@ const settingsState = vi.hoisted(() => ({
   mutate: vi.fn(),
 }));
 vi.mock("../../../api/client", () => ({
-  currentClient: () => ({
+  localClient: () => ({
     system: {
       hello: async () => ({ hostName: "mbp", systemHostName: "mbp" }),
     },
   }),
-  localRuntimeApi: {},
-  runtimeApi: {
+  localRuntimeApi: {
     dataInfo: async () => ({
       dataDir: "/Users/dev/Library/Application Support/Armadra",
       dbBytes: 1024,

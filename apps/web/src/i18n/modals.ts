@@ -51,6 +51,7 @@ export const modals: MessageModule = {
     "settings.scope.account": "账号",
     "settings.scope.accountNamed": "账号 · {name}",
     "settings.scope.local": "本机",
+    "settings.scope.localNamed": "本机 · {name}",
 
     "settings.theme": "主题",
     "settings.theme.dark": "深色",
@@ -366,6 +367,7 @@ export const modals: MessageModule = {
     "settings.scope.account": "Account",
     "settings.scope.accountNamed": "Account · {name}",
     "settings.scope.local": "This machine",
+    "settings.scope.localNamed": "This computer · {name}",
 
     "settings.theme": "Theme",
     "settings.theme.dark": "Dark",

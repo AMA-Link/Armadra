@@ -1,7 +1,10 @@
+import * as React from "react";
 import { useQuery } from "@tanstack/react-query";
 
 import { resumeIdentity, type IdentitySession } from "../api/identity";
 import { RUNTIME_VIA_SERVER_SHELL } from "../api/request";
+import { isNativeAppPage } from "../api/runtime-url";
+import { hostedRelay } from "../sources/hosted";
 import { runtimeApi } from "../api/client";
 
 /**
@@ -51,11 +54,23 @@ export function accessOf(session: IdentitySession | null | undefined): Access {
   };
 }
 
-export function useAccess(server: boolean = RUNTIME_VIA_SERVER_SHELL): Access {
-  // `server` 是页面装载时就定下的常量（这张页面由不由服务器壳托管），同一个
-  // 组件实例里它不会变，所以按它跳过查询不会打乱 hook 的顺序；桌面壳上也就
-  // 不要求外面包着 QueryClientProvider。
-  if (!server) return OWNER;
+/**
+ * 页面的本机 core 不在眼前这台设备上（服务器壳托管、原生 App、中继托管页面）：
+ * 眼前的人是不是 owner 要问那台 core 的身份会话（#301「ownerOnly 按本机身份判」）。
+ * 桌面窗口与回环开发服务器上眼前的人就是 owner。
+ */
+export function identityGated(): boolean {
+  return (
+    RUNTIME_VIA_SERVER_SHELL || isNativeAppPage() || hostedRelay() !== null
+  );
+}
+
+export function useAccess(server?: boolean): Access {
+  // 判定在组件第一次渲染时定下（中继托管页面挂上之后不会再摘），同一个组件
+  // 实例里它不会变，所以按它跳过查询不会打乱 hook 的顺序；桌面壳上也就不要求
+  // 外面包着 QueryClientProvider。
+  const [gated] = React.useState(() => server ?? identityGated());
+  if (!gated) return OWNER;
   // eslint-disable-next-line react-hooks/rules-of-hooks
   return accessOf(useServerSession());
 }
