@@ -207,6 +207,12 @@ const CANVAS: Record<ControlVerb, Row> = {
       worktree: str(
         "a worktree name or path; the node goes in that checkout's Frame (created if missing)",
       ),
+      cwd: str(
+        "a directory inside the workspace to start in, relative to its root or absolute",
+      ),
+      resume: str(
+        "continue that CLI's own session: its session id, or a same-CLI member's node id",
+      ),
       ...LAUNCH_OPTIONS,
       "dry-run": DRY_RUN,
     },
@@ -312,8 +318,11 @@ const CANVAS: Record<ControlVerb, Row> = {
       "Open up to 6 agents at once, optionally chained or gathered, each linked as your sub.",
     properties: {
       member: strings(
-        'one per agent: "AGENT[@MODEL]|TITLE|TASK[|worktree=DIR]"',
+        'one per agent: "AGENT[@MODEL]|TITLE|TASK[|worktree=DIR][|cwd=DIR][|resume=SESSION]"',
         1,
+      ),
+      cwd: str(
+        "default directory inside the workspace for members without their own cwd= or worktree=",
       ),
       chain: bool("each member waits for the previous one"),
       gather: str('"AGENT|TITLE|TASK" for one more that waits for all'),
