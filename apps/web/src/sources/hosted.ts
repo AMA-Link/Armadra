@@ -586,7 +586,7 @@ export function createHostedRelay(options: HostedRelayOptions): HostedRelay {
     share: () => backing.share(),
     clear: () => backing.clear(),
   };
-  const useGuest = (key: string, expiresAtMs?: number) => {
+  const switchToGuest = (key: string, expiresAtMs?: number) => {
     backing = createSessionRelayVault(issuer, guestStorage, {
       key,
       now,
@@ -595,7 +595,7 @@ export function createHostedRelay(options: HostedRelayOptions): HostedRelay {
     guest = true;
     return backing;
   };
-  const useAccount = () => {
+  const switchToAccount = () => {
     backing = accountVault;
     guest = false;
   };
@@ -844,7 +844,7 @@ export function createHostedRelay(options: HostedRelayOptions): HostedRelay {
           : guestSession.expiresAtMs > now()
             ? guestSession.expiresAtMs
             : now() + GUEST_FALLBACK_MS;
-      useGuest(guestKey(issuer, link.linkId), expiresAtMs);
+      switchToGuest(guestKey(issuer, link.linkId), expiresAtMs);
       try {
         await vault.saveCloudRefreshToken(issuer, guestSession.refreshToken);
         cloudSessions.adopt(
@@ -869,7 +869,7 @@ export function createHostedRelay(options: HostedRelayOptions): HostedRelay {
         });
       } catch (error) {
         vault.clear();
-        useAccount();
+        switchToAccount();
         throw error;
       }
       // 名字是锦上添花：访客的目录里只有这一台，取不到就空着。
@@ -904,7 +904,7 @@ export function createHostedRelay(options: HostedRelayOptions): HostedRelay {
         throw new CloudError(502, "bad_response");
       // 账号登录是明确换身份：访客记录不再续。
       clearGuestRecords(guestStorage, issuer);
-      useAccount();
+      switchToAccount();
       await vault.saveCloudRefreshToken(issuer, session.refreshToken);
       cloudSessions.adopt(
         issuer,
@@ -994,12 +994,12 @@ export function createHostedRelay(options: HostedRelayOptions): HostedRelay {
     async resume() {
       // 先试访客的记录（按链接各一份，没到期的），再回账号登录。
       for (const key of guestKeys(guestStorage, issuer, now())) {
-        useGuest(key);
+        switchToGuest(key);
         const resumed = await resumeWith();
         if (resumed !== undefined) return resumed;
         vault.clear();
       }
-      useAccount();
+      switchToAccount();
       return (await resumeWith()) ?? null;
     },
     guest: () => (guest ? vault.share() : null),
