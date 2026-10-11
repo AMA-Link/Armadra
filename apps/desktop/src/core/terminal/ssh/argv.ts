@@ -181,9 +181,21 @@ export function sshArgv(dataDir: string, host: SshHost): string[] {
  */
 export function remoteShellCommand(
   env: readonly (readonly [string, string])[],
+  options: {
+    /**
+     * 执行主机上的工作目录（G5-07）：经 {@link REMOTE_CWD_VARIABLE} 带过去，
+     * 先 `cd` 进去，进不去就退出——不在登录目录里悄悄起。
+     */
+    readonly directory?: string | undefined;
+  } = {},
 ): string {
   const words = ["env"];
-  for (const [key, value] of env) {
+  const directory = options.directory;
+  const pairs =
+    directory === undefined
+      ? env
+      : [...env, [REMOTE_CWD_VARIABLE, directory] as const];
+  for (const [key, value] of pairs) {
     if (!/^[A-Z_][A-Z0-9_]*$/u.test(key)) {
       throw new Error(`Cannot forward ${key} to the remote shell`);
     }
@@ -192,13 +204,21 @@ export function remoteShellCommand(
     }
     words.push(`${key}='${value}'`);
   }
-  words.push(
-    "/bin/sh",
-    "-c",
-    `'PATH="$ARMADRA_SHIMS:$PATH"; export PATH; exec "\${SHELL:-/bin/sh}" -l'`,
-  );
+  const enter =
+    directory === undefined
+      ? ""
+      : `cd -- "$${REMOTE_CWD_VARIABLE}" || exit 1; unset ${REMOTE_CWD_VARIABLE}; `;
+  // 没有垫片（注入没准备好）时不动 `PATH`：空的 `ARMADRA_SHIMS` 会给 `PATH`
+  // 前面加一个空项，也就是当前目录。
+  const shims = env.some(([key]) => key === "ARMADRA_SHIMS")
+    ? 'PATH="$ARMADRA_SHIMS:$PATH"; export PATH; '
+    : "";
+  words.push("/bin/sh", "-c", `'${enter}${shims}exec "\${SHELL:-/bin/sh}" -l'`);
   return words.join(" ");
 }
+
+/** 远端工作目录经这个变量交给 {@link remoteShellCommand} 的 `sh -c`。 */
+export const REMOTE_CWD_VARIABLE = "ARMADRA_REMOTE_CWD";
 
 /**
  * The reachability probe: no TTY, no password prompt, five seconds, `true` as
