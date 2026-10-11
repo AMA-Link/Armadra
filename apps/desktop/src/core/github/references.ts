@@ -163,7 +163,11 @@ export function linkReference(
     // API 根与主机来自托管平台域的配置，不来自请求。
     const check = service.externalRepository;
     if (check === undefined) throw githubError("invalid");
-    ref = check(forge as "gitea" | "gitlab", reference.repository);
+    ref = check(
+      forge as "gitea" | "gitlab",
+      reference.repository,
+      caller.workspaceId,
+    );
   }
   const kind = referenceKindValue(reference.kind);
   const target = targetKindValue(reference.targetKind);

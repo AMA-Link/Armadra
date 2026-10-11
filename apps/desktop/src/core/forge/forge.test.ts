@@ -298,6 +298,7 @@ describe("配置与令牌（§29.3）", () => {
     const h = await harness();
     const saved = await configureHost(h);
     expect(saved).toEqual({
+      workspaceId: null,
       repoKey: "127.0.0.1",
       forge: "gitea",
       apiBase: `${h.gitea.root}/api/v1`,

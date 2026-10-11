@@ -9,6 +9,10 @@
  * 与 `registerProcedures(server, "forge", …)` 调同一份，拒绝的码与原话因此一样。
  * 入参是一个键值表：旧 handler 把路径参数、查询串与体并成它，procedure 的入参
  * 就是它。令牌只在 `configure` 里经过一次，不留在入参上，也不进错误细节。
+ *
+ * 每个动作都收可选的 `workspaceId`（契约 §75）：读与识别先用那个工作空间自己的
+ * 配置，配置的增删改落在它自己的那份上。读的旧路径从查询串取，写的从请求体取
+ * （写不开查询串：令牌不能有机会出现在地址里）。
  */
 
 import { CoreFailure, fail } from "../http/errors";
@@ -116,6 +120,21 @@ export function forgeFailure(error: unknown): HandlerResult {
 function text(args: Args, key: string): string {
   const value = args[key];
   return typeof value === "string" ? value : "";
+}
+
+/** 可选的工作空间；不给或 `""` 是整台机器。 */
+function workspaceOf(args: Args): string {
+  const value = args.workspaceId;
+  if (value === undefined || value === null || value === "") return "";
+  if (
+    typeof value !== "string" ||
+    value.length > 256 ||
+    value.trim() !== value ||
+    /[\x00-\x1f\x7f]/.test(value)
+  ) {
+    return bad("workspaceId 不对");
+  }
+  return value;
 }
 
 function repoOf(args: Args): ForgeRepo {
@@ -235,19 +254,26 @@ function withoutBodies<T extends { body: string }>(page: {
 /** 每个动作的实现；旧 handler 与 procedure 都调它。 */
 function operations(service: ForgeService) {
   return {
-    configs: () => ({ configs: service.configs() }),
+    configs: (args: Args) => ({ configs: service.configs(workspaceOf(args)) }),
 
     async configure(args: Args) {
       try {
         const token = args.token;
         if (token !== undefined && typeof token !== "string")
           bad("token 要是字符串");
-        return await service.configure(configKeyOf(args), {
-          forge: stringField(args, "forge", { required: true, max: 32 }),
-          apiBase: stringField(args, "apiBase", { required: true, max: 2048 }),
-          ...(token === undefined ? {} : { token: token as string }),
-          expectedRevision: revisionOf(args.expectedRevision),
-        });
+        return await service.configure(
+          configKeyOf(args),
+          {
+            forge: stringField(args, "forge", { required: true, max: 32 }),
+            apiBase: stringField(args, "apiBase", {
+              required: true,
+              max: 2048,
+            }),
+            ...(token === undefined ? {} : { token: token as string }),
+            expectedRevision: revisionOf(args.expectedRevision),
+          },
+          workspaceOf(args),
+        );
       } finally {
         // 令牌只在这一次请求里经过；不留在解析出来的对象上。
         if (typeof args.token === "string") args.token = "";
@@ -258,6 +284,7 @@ function operations(service: ForgeService) {
       await service.remove(
         configKeyOf(args),
         removalRevision(args.expectedRevision),
+        workspaceOf(args),
       );
       return { removed: true };
     },
@@ -268,29 +295,39 @@ function operations(service: ForgeService) {
         required: true,
         max: 2048,
       });
-      return service.resolve(remoteUrl);
+      return service.resolve(remoteUrl, workspaceOf(args));
     },
 
-    detect: (args: Args) => service.detect(repoOf(args)),
+    detect: (args: Args) => service.detect(repoOf(args), workspaceOf(args)),
 
     // 列仓库（§29.7）：新建工作空间从这里挑一个克隆。
-    accounts: () => ({ accounts: service.accounts() }),
+    accounts: (args: Args) => ({
+      accounts: service.accounts(workspaceOf(args)),
+    }),
 
     repositories: (args: Args) =>
-      service.repositories(text(args, "host"), pageOptions(args)),
+      service.repositories(
+        text(args, "host"),
+        pageOptions(args),
+        workspaceOf(args),
+      ),
 
     async issues(args: Args) {
       const repo = repoOf(args);
       const options = listOptions(args);
       return withoutBodies(
-        await service.forgeFor(repo).listIssues(repo, options),
+        await service
+          .forgeFor(repo, workspaceOf(args))
+          .listIssues(repo, options),
       );
     },
 
     async issue(args: Args) {
       const repo = repoOf(args);
       const number = numberOf(args);
-      return await service.forgeFor(repo).getIssue(repo, number);
+      return await service
+        .forgeFor(repo, workspaceOf(args))
+        .getIssue(repo, number);
     },
 
     async setIssueState(args: Args) {
@@ -300,7 +337,7 @@ function operations(service: ForgeService) {
       if (state !== "open" && state !== "closed")
         bad("state 只能是 open 或 closed");
       return await service
-        .forgeFor(repo)
+        .forgeFor(repo, workspaceOf(args))
         .setIssueState(repo, number, state as "open" | "closed");
     },
 
@@ -308,7 +345,9 @@ function operations(service: ForgeService) {
       const repo = repoOf(args);
       const options = listOptions(args);
       return withoutBodies(
-        await service.forgeFor(repo).listPulls(repo, options),
+        await service
+          .forgeFor(repo, workspaceOf(args))
+          .listPulls(repo, options),
       );
     },
 
@@ -317,7 +356,7 @@ function operations(service: ForgeService) {
       const draft = args.draft;
       if (draft !== undefined && typeof draft !== "boolean")
         bad("draft 要是布尔值");
-      return await service.forgeFor(repo).createPull(repo, {
+      return await service.forgeFor(repo, workspaceOf(args)).createPull(repo, {
         title: stringField(args, "title", { required: true, max: MAX_TITLE }),
         body: stringField(args, "body", { required: false, max: MAX_BODY }),
         head: stringField(args, "head", { required: true, max: 255 }),
@@ -329,19 +368,27 @@ function operations(service: ForgeService) {
     async pull(args: Args) {
       const repo = repoOf(args);
       const number = numberOf(args);
-      return await service.forgeFor(repo).getPull(repo, number);
+      return await service
+        .forgeFor(repo, workspaceOf(args))
+        .getPull(repo, number);
     },
 
     async pullFiles(args: Args) {
       const repo = repoOf(args);
       const number = numberOf(args);
-      return { files: await service.forgeFor(repo).pullFiles(repo, number) };
+      return {
+        files: await service
+          .forgeFor(repo, workspaceOf(args))
+          .pullFiles(repo, number),
+      };
     },
 
     async pullChecks(args: Args) {
       const repo = repoOf(args);
       const number = numberOf(args);
-      return await service.forgeFor(repo).checks(repo, number);
+      return await service
+        .forgeFor(repo, workspaceOf(args))
+        .checks(repo, number);
     },
 
     // 流水线 / 检查通过后合并（GitLab、Gitea，§29.6）：没有这个能力的平台答 400。
@@ -349,7 +396,7 @@ function operations(service: ForgeService) {
       const repo = repoOf(args);
       const number = numberOf(args);
       const input = mergeInput(args);
-      const forge = service.forgeFor(repo);
+      const forge = service.forgeFor(repo, workspaceOf(args));
       if (forge.autoMerge === undefined) bad("这个平台没有流水线通过后合并");
       return await forge.autoMerge(repo, number, input);
     },
@@ -357,7 +404,7 @@ function operations(service: ForgeService) {
     async cancelAutoMerge(args: Args) {
       const repo = repoOf(args);
       const number = numberOf(args);
-      const forge = service.forgeFor(repo);
+      const forge = service.forgeFor(repo, workspaceOf(args));
       if (forge.cancelAutoMerge === undefined) {
         bad("这个平台没有流水线通过后合并");
       }
@@ -371,20 +418,22 @@ function operations(service: ForgeService) {
       const number = numberOf(args);
       const headSha = args.headSha === undefined ? "" : text(args, "headSha");
       if (headSha === "") bad("headSha 不能为空");
-      const forge = service.forgeFor(repo);
+      const forge = service.forgeFor(repo, workspaceOf(args));
       if (forge.deleteBranch === undefined) bad("这个平台在这里不删分支");
       return await forge.deleteBranch(repo, number, headSha);
     },
 
     async mergeOptions(args: Args) {
       const repo = repoOf(args);
-      return await service.forgeFor(repo).mergeOptions(repo);
+      return await service.forgeFor(repo, workspaceOf(args)).mergeOptions(repo);
     },
 
     async merge(args: Args) {
       const repo = repoOf(args);
       const number = numberOf(args);
-      return await service.forgeFor(repo).merge(repo, number, mergeInput(args));
+      return await service
+        .forgeFor(repo, workspaceOf(args))
+        .merge(repo, number, mergeInput(args));
     },
   };
 }
@@ -455,9 +504,9 @@ export function installRoutes(server: CoreServer, service: ForgeService): void {
       scope,
     );
 
-  route("GET", FORGE_ROUTES.accounts, {}, () => run.accounts());
+  route("GET", FORGE_ROUTES.accounts, { query: true }, run.accounts);
   route("GET", FORGE_ROUTES.repositories, { query: true }, run.repositories);
-  route("GET", FORGE_ROUTES.configs, {}, () => run.configs());
+  route("GET", FORGE_ROUTES.configs, { query: true }, run.configs);
   route("PUT", FORGE_ROUTES.hostConfig, { body: true }, run.configure);
   route("DELETE", FORGE_ROUTES.hostConfig, { query: true }, run.removeConfig);
   route("PUT", FORGE_ROUTES.repoConfig, { body: true }, run.configure);
@@ -465,9 +514,9 @@ export function installRoutes(server: CoreServer, service: ForgeService): void {
   route("POST", FORGE_ROUTES.resolve, { body: true }, run.resolve, {
     scope: "github:read",
   });
-  route("GET", FORGE_ROUTES.repo, {}, run.detect);
+  route("GET", FORGE_ROUTES.repo, { query: true }, run.detect);
   route("GET", FORGE_ROUTES.issues, { query: true }, run.issues);
-  route("GET", FORGE_ROUTES.issue, {}, run.issue);
+  route("GET", FORGE_ROUTES.issue, { query: true }, run.issue);
   route("PATCH", FORGE_ROUTES.issue, { body: true }, run.setIssueState);
   route("GET", FORGE_ROUTES.pulls, { query: true }, run.pulls);
   route(
@@ -476,13 +525,18 @@ export function installRoutes(server: CoreServer, service: ForgeService): void {
     { body: true, status: 201 },
     run.createPull,
   );
-  route("GET", FORGE_ROUTES.pull, {}, run.pull);
-  route("GET", FORGE_ROUTES.pullFiles, {}, run.pullFiles);
-  route("GET", FORGE_ROUTES.pullChecks, {}, run.pullChecks);
+  route("GET", FORGE_ROUTES.pull, { query: true }, run.pull);
+  route("GET", FORGE_ROUTES.pullFiles, { query: true }, run.pullFiles);
+  route("GET", FORGE_ROUTES.pullChecks, { query: true }, run.pullChecks);
   route("POST", FORGE_ROUTES.pullAutoMerge, { body: true }, run.autoMerge);
-  route("DELETE", FORGE_ROUTES.pullAutoMerge, {}, run.cancelAutoMerge);
+  route(
+    "DELETE",
+    FORGE_ROUTES.pullAutoMerge,
+    { query: true },
+    run.cancelAutoMerge,
+  );
   route("DELETE", FORGE_ROUTES.pullBranch, { query: true }, run.deleteBranch);
-  route("GET", FORGE_ROUTES.mergeOptions, {}, run.mergeOptions);
+  route("GET", FORGE_ROUTES.mergeOptions, { query: true }, run.mergeOptions);
   route("POST", FORGE_ROUTES.pullMerge, { body: true }, run.merge);
 
   // procedure：入参已由门面按契约解析，拒绝抛 `CoreFailure`，答案原样交回。
@@ -496,14 +550,14 @@ export function installRoutes(server: CoreServer, service: ForgeService): void {
       }
     };
   registerProcedures(server, "forge", {
-    configs: procedure(() => run.configs()),
+    configs: procedure(run.configs),
     putHostConfig: procedure(run.configure),
     removeHostConfig: procedure(run.removeConfig),
     putRepoConfig: procedure(run.configure),
     removeRepoConfig: procedure(run.removeConfig),
     resolve: procedure(run.resolve),
     detect: procedure(run.detect),
-    accounts: procedure(() => run.accounts()),
+    accounts: procedure(run.accounts),
     repositories: procedure(run.repositories),
     issues: procedure(run.issues),
     issue: procedure(run.issue),

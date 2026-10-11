@@ -51,8 +51,8 @@ export function install(context: CoreContext): ForgeService | undefined {
   // GitHub 域的外部连接经这里核对 Gitea / GitLab 仓库（`ExternalReference.forge`）。
   const github = githubDomain()?.service;
   if (github !== undefined) {
-    github.externalRepository = (forge, ref) =>
-      service.referenceRepository(forge, ref);
+    github.externalRepository = (forge, ref, workspaceId) =>
+      service.referenceRepository(forge, ref, workspaceId);
   }
   context.log.info("托管平台域已装配");
   return service;
