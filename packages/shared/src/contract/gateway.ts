@@ -4,6 +4,11 @@ import {
   gatewayPairingPayloadSchema,
   gatewayStatusSchema,
 } from "../api/gateway.js";
+import {
+  pairingPakeFinishSchema,
+  pairingPakeOffersSchema,
+  pairingPakeStartSchema,
+} from "../pairing-pake.js";
 import { errors } from "./errors.js";
 import { meta, oc } from "./meta.js";
 
@@ -118,6 +123,55 @@ export const gateway = {
         contract: section,
         scope: null,
         legacy: { method: "POST", path: "/api/gateway/pairing-code/exchange" },
+      }),
+    ),
+  /**
+   * 匿名：原生 App 首次连接，用配对码做口令认证的密钥交换（§73）。第一步：
+   * 每一枚活着的配对码一个候选。只经旧路径。
+   */
+  pakeStart: oc
+    .input(pairingPakeStartSchema)
+    .output(pairingPakeOffersSchema)
+    .errors(
+      errors.pick(
+        "bad_request",
+        "gateway_not_running",
+        "pairing_code_disabled",
+        "rate_limited",
+      ),
+    )
+    .meta(
+      meta({
+        since: "1.43",
+        contract: "§73.1",
+        scope: null,
+        legacy: {
+          method: "POST",
+          path: "/api/gateway/pairing-code/pake/start",
+        },
+      }),
+    ),
+  /** 匿名：第二步，App 的确认标签对上就答配对载荷（与 §17.3 同形）。 */
+  pakeFinish: oc
+    .input(pairingPakeFinishSchema)
+    .output(gatewayPairingPayloadSchema)
+    .errors(
+      errors.pick(
+        "bad_request",
+        "gateway_not_running",
+        "pairing_code_disabled",
+        "pairing_code_invalid",
+      ),
+    )
+    .meta(
+      meta({
+        since: "1.43",
+        contract: "§73.2",
+        scope: null,
+        legacy: {
+          method: "POST",
+          path: "/api/gateway/pairing-code/pake/finish",
+        },
       }),
     ),
 };

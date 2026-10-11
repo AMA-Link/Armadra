@@ -48,12 +48,21 @@ import {
   GATEWAY_MANAGED,
   GATEWAY_NOT_RUNNING,
   type PairingCodeExchange,
+  type PairingPakeFinishInput,
+  type PairingPakeStartInput,
   gatewayOperations,
   getGateway,
   postPairing,
   postPairingCodeExchange,
+  postPairingPakeFinish,
+  postPairingPakeStart,
   putGateway,
 } from "./routes";
+import { PairingPake } from "./pairing-pake";
+import {
+  PAIRING_PAKE_FINISH_PATH,
+  PAIRING_PAKE_START_PATH,
+} from "../identity/transport";
 import {
   type GatewayConfigView,
   type GatewayFailure,
@@ -83,6 +92,8 @@ export interface GatewayDomainOptions {
   readonly acme?: Omit<AcmeManagerOptions, "log">;
   /** 测试用：短码表（时钟与生成器）。 */
   readonly pairingCodes?: PairingCodes;
+  /** 测试用：PAKE 会话的时钟。 */
+  readonly now?: () => number;
 }
 
 /**
@@ -141,12 +152,15 @@ export class GatewayDomain {
   private openedWith = "";
   /** 配对短码（契约 §24）：随票签、只在内存里；换掉 Gateway 时全部作废。 */
   private readonly codes: PairingCodes;
+  /** 配对码的 PAKE 会话（契约 §73）：原生 App 首次连接。 */
+  private readonly pake: PairingPake;
 
   constructor(
     private readonly context: CoreContext,
     private readonly options: GatewayDomainOptions = {},
   ) {
     this.codes = options.pairingCodes ?? new PairingCodes();
+    this.pake = new PairingPake(this.codes, options.now);
   }
 
   config(): GatewayConfigView {
@@ -161,6 +175,7 @@ export class GatewayDomain {
   /** 服务器壳把它打开的那个交给这里；之后设置不再驱动 Gateway。 */
   adopt(gateway: Gateway, acme?: AcmeManager): void {
     this.codes.clear();
+    this.pake.clear();
     this.managed = true;
     this.current = gateway;
     this.acme = acme;
@@ -252,13 +267,7 @@ export class GatewayDomain {
   exchangeCode(input: PairingCodeExchange): HandlerResult {
     const gateway = this.current;
     if (gateway === undefined) return GATEWAY_NOT_RUNNING;
-    if (!this.codesOpen(gateway)) {
-      return coreError(
-        403,
-        "pairing_code_disabled",
-        "公网档位上不能用配对码，请扫码或贴配对链接",
-      );
-    }
+    if (!this.codesOpen(gateway)) return PAIRING_CODE_DISABLED;
     const store = new IdentityStore(this.context.db.database);
     const result = this.codes.exchange(input.code, input.remoteIp, (ticket) => {
       const ticketId = parseToken(ticket.ticket);
@@ -271,14 +280,7 @@ export class GatewayDomain {
     });
     if (!result.ok) {
       if (result.reason === "rate_limited") {
-        return {
-          ...coreError(429, "rate_limited", "配对码试错太多，请稍后再试"),
-          headers: {
-            "retry-after": String(
-              Math.max(1, Math.ceil((result.retryAfterMs ?? 0) / 1000)),
-            ),
-          },
-        };
+        return rateLimitedAnswer(result.retryAfterMs ?? 0);
       }
       if (result.reason === "origin_mismatch") {
         return coreError(
@@ -304,6 +306,61 @@ export class GatewayDomain {
     return { status: 200, body: pairingJson(result.ticket) };
   }
 
+  /**
+   * 配对码 PAKE 的第一步（契约 §73.1）：对每一枚活着的短码各出一份候选。
+   * 档位与 `exchange` 相同；每次 start 扣一次猜测的令牌。
+   */
+  pakeStart(input: PairingPakeStartInput): HandlerResult {
+    const gateway = this.current;
+    if (gateway === undefined) return GATEWAY_NOT_RUNNING;
+    if (!this.codesOpen(gateway)) return PAIRING_CODE_DISABLED;
+    const result = this.pake.start(input);
+    if (result.ok) return { status: 200, body: result.body };
+    if (result.reason === "rate_limited") {
+      return rateLimitedAnswer(result.retryAfterMs);
+    }
+    return coreError(400, "bad_request", "share 不是合法的群元素");
+  }
+
+  /**
+   * 第二步（§73.2）：核对 App 的确认标签，对了取走那枚短码、答配对载荷；
+   * 会话不论对错都作废。
+   */
+  pakeFinish(input: PairingPakeFinishInput): HandlerResult {
+    const gateway = this.current;
+    if (gateway === undefined) return GATEWAY_NOT_RUNNING;
+    if (!this.codesOpen(gateway)) return PAIRING_CODE_DISABLED;
+    const store = new IdentityStore(this.context.db.database);
+    const result = this.pake.finish(input, (ticket) => {
+      const ticketId = parseToken(ticket.ticket);
+      const row =
+        ticketId === undefined
+          ? undefined
+          : store.transaction((tx) => tx.ticket(ticketId));
+      return row === undefined || row.consumedAtMs !== 0 ? "dead" : "ok";
+    });
+    if (!result.ok) {
+      audit({
+        action: "gateway.pairing.code.reject",
+        detail: { remoteIp: input.remoteIp, via: "pake" },
+      });
+      return coreError(
+        404,
+        "pairing_code_invalid",
+        "配对码不对、已用过或已过期",
+      );
+    }
+    audit({
+      action: "gateway.pairing.code.exchange",
+      detail: {
+        origin: result.ticket.origin,
+        remoteIp: input.remoteIp,
+        via: "pake",
+      },
+    });
+    return { status: 200, body: pairingJson(result.ticket) };
+  }
+
   private codesOpen(gateway: Gateway): boolean {
     return pairingCodesOpen({
       mode: gateway.mode,
@@ -317,6 +374,7 @@ export class GatewayDomain {
     this.stopped = true;
     this.stopPolling();
     this.codes.clear();
+    this.pake.clear();
     await this.queue;
     const gateway = this.current;
     const acme = this.acme;
@@ -450,6 +508,7 @@ export class GatewayDomain {
   private async shut(): Promise<void> {
     this.stopPolling();
     this.codes.clear();
+    this.pake.clear();
     const gateway = this.current;
     const acme = this.acme;
     this.current = undefined;
@@ -505,6 +564,21 @@ export function defaultGatewayWebRoot(
   );
 }
 
+const PAIRING_CODE_DISABLED = coreError(
+  403,
+  "pairing_code_disabled",
+  "公网档位上不能用配对码，请扫码或贴配对链接",
+);
+
+function rateLimitedAnswer(retryAfterMs: number): HandlerResult {
+  return {
+    ...coreError(429, "rate_limited", "配对码试错太多，请稍后再试"),
+    headers: {
+      "retry-after": String(Math.max(1, Math.ceil(retryAfterMs / 1000))),
+    },
+  };
+}
+
 /**
  * 按 core 的 `CoreServer` 找这次装配的 Gateway 域。不用模块级单例：同一个进程
  * 里起两个 core（用例）时，后起的那个不该让先起的停错 Gateway。
@@ -528,6 +602,8 @@ export function install(
     pair: (input: { origin?: string; deviceName?: string }) =>
       domain.pair(input),
     exchangeCode: (input: PairingCodeExchange) => domain.exchangeCode(input),
+    pakeStart: (input: PairingPakeStartInput) => domain.pakeStart(input),
+    pakeFinish: (input: PairingPakeFinishInput) => domain.pakeFinish(input),
   };
   // procedure（契约 §43.7）：与下面三条旧路径同一份操作。短码换票是匿名面，
   // 只经旧路径，RPC 上不登记（答 501）。
@@ -537,7 +613,10 @@ export function install(
     status: () => run.status() as never,
     configure: async (body) => (await run.configure(body)) as never,
     pair: (body) => run.pair(body) as never,
-  } satisfies Omit<DomainHandlers<"gateway">, "exchangePairingCode">;
+  } satisfies Omit<
+    DomainHandlers<"gateway">,
+    "exchangePairingCode" | "pakeStart" | "pakeFinish"
+  >;
   registerProcedures(
     context.server,
     "gateway",
@@ -554,6 +633,13 @@ export function install(
     "POST",
     "/api/gateway/pairing-code/exchange",
     (_match, request) => postPairingCodeExchange(deps, request),
+  );
+  // 原生 App 首次连接的配对码 PAKE（契约 §73）：同样匿名、只经旧路径。
+  router.handle("POST", PAIRING_PAKE_START_PATH, (_match, request) =>
+    postPairingPakeStart(deps, request),
+  );
+  router.handle("POST", PAIRING_PAKE_FINISH_PATH, (_match, request) =>
+    postPairingPakeFinish(deps, request),
   );
   // 装配是同步的，监听是异步的：起不来不该拖住 core，状态里报原因。服务器壳
   // 不走设置——它在 `run()` 之后自己 `adopt`，所以这里只在设置开着时开。

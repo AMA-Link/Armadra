@@ -413,6 +413,30 @@ describe("匿名面不经 RPC", () => {
     expect(handle.implemented).not.toContain("gateway.exchangePairingCode");
   });
 
+  it("gateway.pakeStart / pakeFinish 同样只经旧路径（契约 §73）", async () => {
+    const bytes = (n: number) => Buffer.alloc(n, 1).toString("base64url");
+    const inputs: Record<string, unknown> = {
+      "gateway.pakeStart": { sid: bytes(16), share: bytes(32) },
+      "gateway.pakeFinish": {
+        session: bytes(16),
+        index: 0,
+        confirm: bytes(32),
+      },
+    };
+    for (const [name, input] of Object.entries(inputs)) {
+      const answer = await kit.procedure(name, input, "owner");
+      expect(answer.status, name).toBe(501);
+      expect(handle.implemented).not.toContain(name);
+    }
+    // 旧路径上匿名过得了路由门：形状不对由域答 400，不是 401 / 403。
+    const rest = await kit.legacy(
+      "POST",
+      "/api/gateway/pairing-code/pake/start",
+      { sid: "x", share: "y" },
+    );
+    expect([400, 409]).toContain(rest.status);
+  });
+
   it("旧路径上匿名（没有会话）也过得了路由门，由 Gateway 域自己限流与判档位", async () => {
     const rest = await kit.legacy("POST", EXCHANGE, { code: "ABCD2345" });
     expect([404, 409, 429]).toContain(rest.status);
@@ -482,19 +506,28 @@ describe("契约与 core 的两张表（gateway）", () => {
     entry.name.startsWith("gateway."),
   );
 
-  it("4 条都在契约里，每条都有旧路径；只有换票是匿名的", () => {
+  it("6 条都在契约里，每条都有旧路径；只有换票与它的 PAKE 是匿名的", () => {
     expect(entries.map((entry) => entry.name).sort()).toEqual([
       "gateway.configure",
       "gateway.exchangePairingCode",
       "gateway.pair",
+      "gateway.pakeFinish",
+      "gateway.pakeStart",
       "gateway.status",
     ]);
     for (const entry of entries) {
       expect(entry.meta.legacy, entry.name).toBeDefined();
     }
     expect(
-      entries.filter((entry) => entry.meta.scope === null).map((e) => e.name),
-    ).toEqual(["gateway.exchangePairingCode"]);
+      entries
+        .filter((entry) => entry.meta.scope === null)
+        .map((e) => e.name)
+        .sort(),
+    ).toEqual([
+      "gateway.exchangePairingCode",
+      "gateway.pakeFinish",
+      "gateway.pakeStart",
+    ]);
   });
 
   it("meta.scope 与路由表给旧路径的要求一致；旧路径都在路由表里并有人认领", () => {

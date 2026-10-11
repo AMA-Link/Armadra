@@ -13,3 +13,4 @@ export * from "./contract/errors.js";
 export * from "./contract/index.js";
 export * from "./join-link.js";
 export * from "./feature-flags.js";
+export * from "./pairing-pake.js";
