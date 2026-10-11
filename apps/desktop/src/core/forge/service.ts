@@ -23,6 +23,7 @@ import {
   normalizeApiBase,
   parseRemote,
   validName,
+  webHostFor,
 } from "../github/remote";
 import { GITHUB_SOURCE_NONE } from "../github/store";
 import type { GithubService } from "../github/service";
@@ -39,8 +40,12 @@ import {
   CONFIGURABLE_FORGES,
   type ConfigurableForge,
   type Forge,
+  type ForgeAccount,
   type ForgeKind,
+  type ForgePage,
   type ForgeRepo,
+  type ForgeRepository,
+  type RepositoryListOptions,
   forgeError,
 } from "./types";
 
@@ -435,6 +440,71 @@ export class ForgeService {
       apiBase: detection.apiBase,
       host: repo.host,
     });
+  }
+
+  /* ------------------------------- 列仓库 -------------------------------- */
+
+  /**
+   * 能列仓库的账号（§29.7）：配了凭据的 GitHub（主机是公有的 `github.com` 或
+   * 企业版的主机），加上带令牌的主机级 Gitea / GitLab 配置。仓库级配置只管一个
+   * 仓库，不算账号。
+   */
+  accounts(): ForgeAccount[] {
+    const accounts: ForgeAccount[] = [];
+    const side = this.githubSide();
+    if (side.configured) {
+      accounts.push({
+        host: webHostFor(side.base),
+        forge: "github",
+        accountLogin: side.login === "" ? null : side.login,
+      });
+    }
+    for (const row of this.options.store.list()) {
+      if (row.repoKey.includes("/") || row.credentialRef === "") continue;
+      if (row.forge === "github") continue;
+      accounts.push({
+        host: row.repoKey,
+        forge: row.forge,
+        accountLogin: row.accountLogin === "" ? null : row.accountLogin,
+      });
+    }
+    return accounts;
+  }
+
+  /**
+   * 一个账号能看到的仓库，一页（§29.7）。主机必须是 {@link accounts} 里的一个；
+   * 没有凭据抛 `notConfigured`，不发匿名请求。
+   */
+  async repositories(
+    host: string,
+    options: RepositoryListOptions,
+  ): Promise<ForgePage<ForgeRepository>> {
+    const normalized = host.toLowerCase().replace(/\.$/, "");
+    if (!validHost(normalized)) throw forgeError("invalid", "HOST_INVALID");
+    if (this.githubHost(normalized)) {
+      const side = this.githubSide();
+      const publicHost = GITHUB_PUBLIC_HOSTS.includes(normalized);
+      const apiBase = publicHost ? PUBLIC_API_BASE : side.base;
+      const service = this.options.github?.();
+      if (!side.configured || side.base !== apiBase || service === undefined) {
+        throw forgeError("notConfigured", "NO_CREDENTIAL");
+      }
+      return await new GithubForge(service).repositories(
+        webHostFor(apiBase),
+        options,
+      );
+    }
+    const row = this.options.store.get(normalized);
+    if (
+      row === undefined ||
+      row.credentialRef === "" ||
+      row.forge === "github"
+    ) {
+      throw forgeError("notConfigured", "NOT_CONFIGURED");
+    }
+    return await this.client(row.forge, row.apiBase, () =>
+      this.token(row.credentialRef),
+    ).repositories(normalized, options);
   }
 
   /* --------------------------------- 配置 --------------------------------- */

@@ -34,6 +34,10 @@ describe("不在原生 App 里时是空实现", () => {
     await expect(bridge.pushRegistration()).resolves.toBeNull();
     await expect(bridge.pin(ORIGIN, FP)).resolves.toBeUndefined();
     await expect(bridge.appInfo()).resolves.toBeNull();
+    expect(bridge.platform).toBeNull();
+    await expect(
+      bridge.installApk("https://x.invalid/a.apk", "a".repeat(64)),
+    ).resolves.toEqual({ status: "failed" });
   });
 
   it("浏览器停在 https://localhost 上也不算 App", () => {
@@ -118,6 +122,65 @@ describe("原生插件", () => {
     await expect(nativeBridge().appInfo()).resolves.toBeNull();
     inApp({});
     await expect(nativeBridge().appInfo()).resolves.toBeNull();
+  });
+
+  it("installApk：只把认识的状态交给页面，不认识的、抛错的、地址不对的都是 failed", async () => {
+    const SHA = "b".repeat(64);
+    const URL_OK = "https://github.invalid/armadra-mobile_0.6.1_android.apk";
+    const installApk = vi.fn(async () => ({ status: "started" }));
+    inApp({ installApk });
+    await expect(nativeBridge().installApk(URL_OK, SHA)).resolves.toEqual({
+      status: "started",
+    });
+    expect(installApk).toHaveBeenCalledWith({ url: URL_OK, sha256: SHA });
+    installApk.mockResolvedValueOnce({
+      status: "permissionRequired",
+      message: "grant",
+    } as never);
+    await expect(nativeBridge().installApk(URL_OK, SHA)).resolves.toEqual({
+      status: "permissionRequired",
+      message: "grant",
+    });
+    installApk.mockResolvedValueOnce({ status: "installed" } as never);
+    await expect(nativeBridge().installApk(URL_OK, SHA)).resolves.toEqual({
+      status: "failed",
+    });
+    installApk.mockRejectedValueOnce(new Error("boom"));
+    await expect(nativeBridge().installApk(URL_OK, SHA)).resolves.toEqual({
+      status: "failed",
+    });
+    installApk.mockClear();
+    await expect(
+      nativeBridge().installApk("http://evil.invalid/a.apk", SHA),
+    ).resolves.toEqual({ status: "failed" });
+    await expect(nativeBridge().installApk(URL_OK, "nope")).resolves.toEqual({
+      status: "failed",
+    });
+    expect(installApk).not.toHaveBeenCalled();
+    inApp({});
+    await expect(nativeBridge().installApk(URL_OK, SHA)).resolves.toEqual({
+      status: "failed",
+    });
+  });
+
+  it("系统：Capacitor 报的平台优先，没有就看 UA", () => {
+    inApp({});
+    vi.stubGlobal("Capacitor", {
+      isNativePlatform: () => true,
+      getPlatform: () => "android",
+      Plugins: { ArmadraNative: {} },
+    });
+    expect(nativeBridge().platform).toBe("android");
+    vi.stubGlobal("Capacitor", {
+      isNativePlatform: () => true,
+      Plugins: { ArmadraNative: {} },
+    });
+    vi.stubGlobal("navigator", { userAgent: "Mozilla/5.0 (iPhone)" });
+    expect(nativeBridge().platform).toBe("ios");
+    vi.stubGlobal("navigator", {
+      userAgent: "Mozilla/5.0 (Linux; Android 15)",
+    });
+    expect(nativeBridge().platform).toBe("android");
   });
 
   it("扫码：取消是 null", async () => {

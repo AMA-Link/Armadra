@@ -164,7 +164,7 @@ function SettingsBody({ onClose }: { onClose: () => void }) {
           data-section={active}
           className="settings-page flex min-h-0 flex-1 flex-col overflow-y-auto px-6 pt-5 pb-8 duration-150 animate-in fade-in motion-reduce:animate-none"
         >
-          {/* 正文列随弹窗变宽：表格页（远程机器、快捷键、设备）天然受益。 */}
+          {/* 正文列随弹窗变宽：表格页（SSH、快捷键、设备）天然受益。 */}
           <div
             data-slot="settings-column"
             className="flex w-full flex-col gap-6"

@@ -16,9 +16,15 @@ import {
   listWorkspaces,
   validWorkspaceName,
 } from "../workspaces/table";
+import { homeDir } from "../history/home";
 import { executeOn, isRemote } from "../remote/execute";
 import { remoteGitOperations } from "../remote/git-operations";
 import { cancelClone, cloneStatus, startClone } from "./clone";
+import {
+  type RepositoryAccount,
+  defaultCloneParent,
+  listCloneRepositories,
+} from "./clone-sources";
 import type { DiffScope } from "./diff";
 import { invalidate } from "./discovery";
 import type { GitHunkScope } from "./hunks";
@@ -78,6 +84,8 @@ export interface GitRouteDeps {
   readonly service: RepositoryService;
   /** Which workspace started which operation; a controller-side fact. */
   readonly owners: Map<string, string>;
+  /** 已连接的 GitHub 凭据（契约 §65）；GitHub 域没装时是 `undefined`。 */
+  readonly account?: () => RepositoryAccount | undefined;
 }
 
 export function installRoutes(deps: GitRouteDeps): void {
@@ -341,6 +349,10 @@ export function installRoutes(deps: GitRouteDeps): void {
     cloneCancel: (jobId: string) => {
       cancelClone(jobId);
     },
+
+    // 新建工作空间对话框（契约 §65）：缺省父目录与已连接账号的仓库。
+    cloneDefaults: () => defaultCloneParent(homeDir()),
+    cloneRepositories: () => listCloneRepositories(deps.account?.()),
   };
 
   type Input = Args & { workspaceId: string };
@@ -377,6 +389,8 @@ export function installRoutes(deps: GitRouteDeps): void {
       start: (input: Args) => operations.cloneStart(input),
       status: ({ jobId }: { jobId: string }) => operations.cloneStatus(jobId),
       cancel: ({ jobId }: { jobId: string }) => operations.cloneCancel(jobId),
+      defaults: () => operations.cloneDefaults(),
+      repositories: () => operations.cloneRepositories(),
     },
   };
   registerProcedures(
@@ -505,6 +519,14 @@ export function installRoutes(deps: GitRouteDeps): void {
 
   handle("POST", "/api/git/clone", async (_match, request) =>
     ok(operations.cloneStart(jsonObject(request.body))),
+  );
+
+  handle("GET", "/api/git/clone-defaults", async () =>
+    ok(operations.cloneDefaults()),
+  );
+
+  handle("GET", "/api/git/clone-repositories", async () =>
+    ok(await operations.cloneRepositories()),
   );
 
   handle("GET", "/api/git/clone/{jobId}", async (match) =>

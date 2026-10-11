@@ -12,12 +12,11 @@ import { useCanvasStore } from "@/store/canvas-store";
 export type GithubTab = "issues" | "pulls";
 
 /**
- * A Gitea / GitLab item lives in a repository of its own, which the page has
- * to look up before it can show the item; a GitHub one is shown in whatever
- * repository the page already has.
+ * The repository a revealed item lives in: the page looks it up before it can
+ * show the item.
  */
 export interface ForgeFocusTarget {
-  readonly forge: "gitea" | "gitlab";
+  readonly forge: "github" | "gitea" | "gitlab";
   readonly host: string;
   readonly owner: string;
   readonly name: string;
@@ -26,7 +25,7 @@ export interface ForgeFocusTarget {
 export const useGithubFocus = create<{
   tab: GithubTab;
   number: bigint | null;
-  /** The hosted repository of the last revealed item; `null` for GitHub. */
+  /** The repository of the last revealed item; `null` when unknown. */
   target: ForgeFocusTarget | null;
   reveal: number;
   focus: (tab: GithubTab, number: bigint | null) => void;
@@ -46,8 +45,8 @@ export const useGithubFocus = create<{
 }));
 
 /**
- * Opens the GitHub page, on one Issue or pull request when given a number; a
- * Gitea / GitLab item also names its repository.
+ * Opens the code-hosting page, on one Issue or pull request of the named
+ * repository when given a number.
  */
 export function openGithubPanel(
   tab: GithubTab = "issues",
