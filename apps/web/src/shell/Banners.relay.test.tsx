@@ -110,7 +110,7 @@ describe("中继托管页面的通知条", () => {
 describe("手机经中继的连接", () => {
   const RELAY = "https://relay.example";
 
-  it("运行时断开、中继也连不上：同一条「中转服务不可用」，盖过运行时断开", async () => {
+  it("运行时断开、中继也连不上：同一条「中转不可用」，盖过运行时断开", async () => {
     health.fail = true;
     const probe = vi.fn(async () => false);
     resetMobileRelayStatus({ origin: RELAY, probe });

@@ -81,10 +81,17 @@ const home = probeHome("armadra-challenge-probe-home-");
 const visibleDialogs = `return [...document.querySelectorAll('[role=dialog]')].map((d) => d.querySelector('h2')?.textContent ?? '')`;
 
 async function openAddRelay() {
+  // 「添加中转账号」在远程访问页的「高级」里（#301）：先展开。
+  await page.evaluate(
+    `const more = [...document.querySelectorAll('button[aria-expanded="false"]')]
+       .find((b) => /^(高级|Advanced)$/.test(b.textContent.trim()));
+     more?.click();
+     return true;`,
+  );
   await page.clickOn(
     `const buttons = [...document.querySelectorAll('button')].filter((b) => !b.closest('form'));
      const named = (pattern) => buttons.find((b) => pattern.test(b.textContent.trim()));
-     return named(/^(添加中转账号|Add relay account)$/) ?? named(/^(添加|Add)$/);`,
+     return named(/^(添加中转账号|Add remote access account)$/) ?? named(/^(添加|Add)$/);`,
     "「添加中转账号」",
   );
   await page.until(

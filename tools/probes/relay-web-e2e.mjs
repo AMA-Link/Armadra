@@ -395,7 +395,7 @@ try {
     `return document.querySelector('[data-slot="relay-sign-in"]').innerText;`,
   );
   run.check(
-    signInText.includes("登录个人中转") &&
+    signInText.includes("登录中转账号") &&
       signInText.includes(`127.0.0.1:${relayPort}`),
     "页面认出自己由中继托管：登录页写着中转的地址",
   );
@@ -585,8 +585,8 @@ try {
   // 中继自己停了：专门的一条（不是「等待上线」），运行时断开那条不出。
   await page.until(
     `const texts = [...document.querySelectorAll('[data-slot="banner"]')].map((b) => b.innerText);
-     return texts.some((t) => t.includes("中转服务不可用")) && !texts.some((t) => /等待上线|本地服务已断开/.test(t));`,
-    "中继停了，页面出现「中转服务不可用」",
+     return texts.some((t) => t.includes("中转不可用")) && !texts.some((t) => /等待上线|本地服务已断开/.test(t));`,
+    "中继停了，页面出现「中转不可用」",
     { timeout: 30_000 },
   );
   await run.shot(page, "04-relay-down-1440");
@@ -607,7 +607,7 @@ try {
   await terminalRoundTrip(page, terminal.id, "again");
   const recoveredMs = Date.now() - downAt;
   await page.until(
-    `return ![...document.querySelectorAll('[data-slot="banner"]')].some((b) => /等待上线|断开|中转服务不可用/.test(b.innerText))`,
+    `return ![...document.querySelectorAll('[data-slot="banner"]')].some((b) => /等待上线|断开|中转不可用/.test(b.innerText))`,
     "通知条收起",
     { timeout: 30_000 },
   );
