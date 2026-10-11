@@ -8,7 +8,8 @@ import { localSource } from "../api/source";
 import { SourcesProvider } from "../sources/context";
 import { createSourceRegistry } from "../sources/registry";
 import type { SourceConnection } from "../sources/connection";
-import type { SourceDescriptor } from "../sources/types";
+import type { SourceDescriptor, SourceState } from "../sources/types";
+import { cachedWorkspaces } from "../sources/workspace-cache";
 
 const calls: string[] = [];
 const rows: Record<string, { id: string; name: string }[]> = {
@@ -52,9 +53,12 @@ function remoteDescriptor(): SourceDescriptor {
   };
 }
 
-function fakeRemote(d: SourceDescriptor): SourceConnection {
+function fakeRemote(
+  d: SourceDescriptor,
+  state: SourceState = "ready",
+): SourceConnection {
   const status = {
-    state: "ready" as const,
+    state,
     via: "direct" as const,
     since: 1,
     lastError: null,
@@ -78,6 +82,7 @@ function fakeRemote(d: SourceDescriptor): SourceConnection {
 
 afterEach(() => {
   calls.length = 0;
+  localStorage.clear();
 });
 
 function wrapperFor(registry: ReturnType<typeof createSourceRegistry>) {
@@ -129,6 +134,30 @@ describe("useWorkspaces", () => {
     await waitFor(() => expect(result.current.many.data).toHaveLength(1));
     expect(result.current.many.data[0]!.sourceId).toBe("local");
     expect(calls).toEqual(["local"]);
+    registry.dispose();
+  });
+
+  it("别的电脑列出的名字记下来；离线的那台不发请求、不挡本机", async () => {
+    const registry = createSourceRegistry({
+      connect: (d) =>
+        fakeRemote(d, d.sourceId === "down" ? "offline" : "ready"),
+    });
+    registry.add(remoteDescriptor());
+    registry.add({ ...remoteDescriptor(), sourceId: "down", orderIndex: 2 });
+    const { Wrapper } = wrapperFor(registry);
+    const { result } = renderHook(() => useWorkspaces(), { wrapper: Wrapper });
+    await waitFor(() => expect(result.current.data).toHaveLength(2));
+    expect(calls.sort()).toEqual(["local", "remote"]);
+    expect(result.current.perSource.has("down")).toBe(false);
+    expect(result.current.perSource.get("local")).toMatchObject({
+      isPending: false,
+      isError: false,
+    });
+    await waitFor(() =>
+      expect(cachedWorkspaces("remote")).toEqual([{ id: "w1", name: "远程" }]),
+    );
+    // 本机的列表总在，不记。
+    expect(cachedWorkspaces("local")).toEqual([]);
     registry.dispose();
   });
 });

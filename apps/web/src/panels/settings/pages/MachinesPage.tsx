@@ -1,13 +1,13 @@
 import * as React from "react";
+import { lk } from "../local-key";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { ChevronRight, FolderInput, Plus, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 import { sshHostSchema, type SshHost } from "@armadra/shared";
 
-import { runtimeApi } from "../../../api/client";
+import { localRuntimeApi } from "../../../api/client";
 import { useT } from "../../../app/preferences-store";
 import { useOpenWorkspace } from "../../../app/workspace-actions";
-import { sk } from "../../../sources/scope";
 import { useCompactLayout } from "@/platform/layout";
 import { SettingsGroup } from "../SettingsGroup";
 import { SettingsRow } from "../SettingsRow";
@@ -57,14 +57,15 @@ export function MachinesPage() {
   const t = useT();
   const compact = useCompactLayout();
   const subpage = useSubpage();
-  const { settings, save } = useRuntimeSettings();
+  const { settings, save } = useRuntimeSettings({ scope: "local" });
   const ssh = React.useMemo(
     () => settings.data?.ssh?.hosts ?? [],
     [settings.data],
   );
 
   const validate = useMutation({
-    mutationFn: (hostId: string) => runtimeApi.validateExecutionHost(hostId),
+    mutationFn: (hostId: string) =>
+      localRuntimeApi.validateExecutionHost(hostId),
     onSuccess: (result) => {
       if (result.workerOk) {
         toast.success(
@@ -170,10 +171,10 @@ function MachineActions({ host }: { host: SshHost }) {
   const t = useT();
   const client = useQueryClient();
   const resync = useMutation({
-    mutationFn: () => runtimeApi.resyncExecutionHost(host.id),
+    mutationFn: () => localRuntimeApi.resyncExecutionHost(host.id),
     onSuccess: (result) => {
-      void client.invalidateQueries({ queryKey: ["execution-hosts"] });
-      void client.invalidateQueries({ queryKey: ["agent-integration"] });
+      void client.invalidateQueries({ queryKey: lk("execution-hosts") });
+      void client.invalidateQueries({ queryKey: lk("agent-integration") });
       toast.success(
         t("executionHosts.resynced", {
           name: result.name || result.executionHostId,
@@ -220,7 +221,7 @@ function OpenRemoteProject({ host }: { host: SshHost }) {
   const [path, setPath] = React.useState("");
   const open = useMutation({
     mutationFn: (rootPath: string) =>
-      runtimeApi.openRemoteWorkspace({
+      localRuntimeApi.openRemoteWorkspace({
         name: rootPath.split("/").filter(Boolean).at(-1) ?? host.name,
         executionHostId: host.id,
         rootPath,
@@ -229,7 +230,7 @@ function OpenRemoteProject({ host }: { host: SshHost }) {
       setPath("");
       // 根已在那台机器上证明过，直接切过去，而不是让人再去列表里找一遍。
       openWorkspace(workspace);
-      void client.invalidateQueries({ queryKey: sk("workspaces") });
+      void client.invalidateQueries({ queryKey: lk("workspaces") });
       toast.success(t("ssh.remote.opened", { name: workspace.name }));
     },
     onError: (cause: Error) =>

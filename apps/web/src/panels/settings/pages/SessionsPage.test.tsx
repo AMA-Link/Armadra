@@ -14,7 +14,7 @@ const api = vi.hoisted(() => ({
   dataInfo: vi.fn(),
   refreshConversations: vi.fn(),
 }));
-vi.mock("../../../api/client", () => ({ runtimeApi: api }));
+vi.mock("../../../api/client", () => ({ localRuntimeApi: api }));
 vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 vi.mock("../use-runtime-settings", () => ({
   useRuntimeSettings: () => ({

@@ -1,8 +1,9 @@
 import * as React from "react";
 import { toast } from "sonner";
 
-import { runtimeApi } from "../api/client";
+import { clientFor, runtimeApi } from "../api/client";
 import { LOCAL_SOURCE_ID } from "../api/source";
+import { workspacesApiFor } from "../api/workspaces";
 import { useT } from "../app/preferences-store";
 import { useOpenWorkspace } from "../app/workspace-actions";
 import { PUSH_OPEN_MESSAGE } from "../push/service-worker";
@@ -212,11 +213,15 @@ export function usePushOpen(): void {
         state.workspace?.id !== target.workspaceId ||
         state.sourceId !== sourceId
       ) {
-        // 先切当前源：列表、打开与事件流都跟着它走（同侧栏从别的源组里打开）。
-        const registry = sourceRegistry();
-        if (registry.current().descriptor.sourceId !== sourceId)
-          registry.setCurrent(sourceId);
-        const list = await runtimeApi.listWorkspaces().catch(() => null);
+        // 向那个源要列表；打开之后当前源跟过去（`sources/follow-workspace.ts`）。
+        const connection = sourceRegistry().get(sourceId);
+        const list = await (
+          connection === undefined
+            ? runtimeApi
+            : workspacesApiFor(() => clientFor(connection.source))
+        )
+          .listWorkspaces()
+          .catch(() => null);
         const workspace = list?.find((item) => item.id === target.workspaceId);
         if (disposed || workspace === undefined) return;
         openRef.current(workspace, sourceId);

@@ -344,7 +344,7 @@ export const files = {
         since: "1.18",
         contract: "§37.3",
         workspaceKey: "workspaceId",
-        scope: "assets:read",
+        scope: "assets:write",
         legacy: {
           method: "POST",
           path: `${WORKSPACE}/exports/{exportId}/text`,

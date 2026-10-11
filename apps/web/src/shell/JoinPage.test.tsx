@@ -46,6 +46,22 @@ afterEach(() => {
 });
 
 describe("JoinPage", () => {
+  it("只有一次明确的「加入」点击：不点就不加入", async () => {
+    const net = routedFetch({ [`GET /v1/links/${LINK_ID}`]: info });
+    const join = vi.fn(async () => HOST);
+    render(
+      <JoinPage
+        href={HREF}
+        cloud={{ fetch: net.fetch }}
+        join={join}
+        onJoined={vi.fn()}
+      />,
+    );
+    await screen.findByText("studio");
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(join).not.toHaveBeenCalled();
+  });
+
   it("显示源、权限与有效期；「加入」按链接以访客加入，地址换成 /app/，记下打开工作空间", async () => {
     const net = routedFetch({ [`GET /v1/links/${LINK_ID}`]: info });
     const join = vi.fn(async () => HOST);

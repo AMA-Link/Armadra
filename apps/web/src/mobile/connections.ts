@@ -1,4 +1,31 @@
-import type { SourceDescriptor, SourceRoute } from "../sources/types";
+import { isShareRole } from "../sources/origin";
+import type {
+  ShareRole,
+  SourceDescriptor,
+  SourceOrigin,
+  SourceRoute,
+} from "../sources/types";
+
+/** 这一行是怎么来的：自己的电脑，还是别人通过分享链接给的。 */
+export type ConnectionOrigin = SourceOrigin;
+
+/**
+ * 手机连接表的一行：{@link SourceDescriptor} 加上「怎么来的」。分享的几项只在
+ * 链接加入时有；core 与页面源模型也带同名字段时都是可选的，缺省按 `mine`。
+ */
+export type StoredConnection = SourceDescriptor & {
+  readonly shareExpiresAtMs?: number;
+};
+
+/** 访客槽（`credentials.ts::guestPrincipal` 的拼法；这里不引它，免得循环依赖）。 */
+const GUEST_SLOT = /:guest\.[^:]*$/;
+
+/** 一行的来历；老数据、没有这一项的是 `mine`。 */
+export function originOf(row: {
+  readonly origin?: ConnectionOrigin | undefined;
+}): ConnectionOrigin {
+  return row.origin === "shared" ? "shared" : "mine";
+}
 
 /**
  * 手机的连接表（客户端包 §4，契约 §55）：每个连接一行 {@link SourceDescriptor}，
@@ -12,12 +39,14 @@ import type { SourceDescriptor, SourceRoute } from "../sources/types";
  *
  * 表的版本在 `armadra.sources.version`：1（§55 之前，一源一路）读到时一次性拆成
  * 路；远程服务的槽从按源改成按 `(源, 来源)`，旧槽搬到它那条中继上。3（§61）在行上
- * 加 `defaultLabel`（服务端报的名字），更早的行回填成 `label`。都一次性写回成 3。
+ * 加 `defaultLabel`（服务端报的名字），更早的行回填成 `label`。4（远程访问重设计）
+ * 加 `origin`（`mine` / `shared`）：记过访客槽的行回填成 `shared`（链接加入的），
+ * 其余是 `mine`。都一次性写回成 4。
  */
 const TABLE_KEY = "armadra.sources";
 const ACTIVE_KEY = "armadra.sources.active";
 const VERSION_KEY = "armadra.sources.version";
-const TABLE_VERSION = 3;
+const TABLE_VERSION = 4;
 /** 经中继的连接用钥匙串里哪一份远程服务登录（`serviceId`），见 {@link remoteSlotOf}。 */
 const SLOTS_KEY = "armadra.sources.remoteSlots";
 
@@ -96,9 +125,13 @@ function withMirror(
     label: string;
     defaultLabel: string;
     orderIndex: number;
+    origin: ConnectionOrigin;
+    ownerName?: string | undefined;
+    shareRole?: ShareRole | undefined;
+    shareExpiresAtMs?: number | undefined;
   },
   routes: readonly SourceRoute[],
-): SourceDescriptor | null {
+): StoredConnection | null {
   const list = normalized(routes);
   const preferred = list.find((route) => route.preferred);
   if (preferred === undefined) return null;
@@ -123,10 +156,16 @@ function withMirror(
     fingerprint: direct?.fingerprint ?? "",
     orderIndex: base.orderIndex,
     routes: list,
+    origin: base.origin,
+    ...(base.ownerName ? { ownerName: base.ownerName } : {}),
+    ...(base.shareRole ? { shareRole: base.shareRole } : {}),
+    ...(base.shareExpiresAtMs
+      ? { shareExpiresAtMs: base.shareExpiresAtMs }
+      : {}),
   };
 }
 
-function descriptorOf(value: unknown): SourceDescriptor | null {
+function descriptorOf(value: unknown): StoredConnection | null {
   if (!value || typeof value !== "object") return null;
   const row = value as Record<string, unknown>;
   const sourceId = text(row.sourceId);
@@ -146,12 +185,18 @@ function descriptorOf(value: unknown): SourceDescriptor | null {
       defaultLabel:
         typeof row.defaultLabel === "string" ? row.defaultLabel : label,
       orderIndex: typeof row.orderIndex === "number" ? row.orderIndex : 0,
+      // v4 之前没有：先当自己的，升级时按访客槽回填（`upgrade`）。
+      origin: row.origin === "shared" ? "shared" : "mine",
+      ownerName: text(row.ownerName),
+      shareRole: isShareRole(row.shareRole) ? row.shareRole : undefined,
+      shareExpiresAtMs:
+        typeof row.shareExpiresAtMs === "number" ? row.shareExpiresAtMs : 0,
     },
     routes,
   );
 }
 
-function readTable(): SourceDescriptor[] {
+function readTable(): StoredConnection[] {
   try {
     const raw = storage()?.getItem(TABLE_KEY);
     const parsed: unknown = raw ? JSON.parse(raw) : [];
@@ -168,7 +213,27 @@ function readTable(): SourceDescriptor[] {
 }
 
 /**
- * 升到 v3，一次性：行按读出来的形状写回（v1 拆成路，v3 之前的行带上回填的
+ * v4 回填 `origin`：这个源的哪条中继记着访客槽，就是链接加入的（`shared`）；
+ * 其余是自己的。已经带着 `shared` 的行不动。
+ */
+function stamped(
+  rows: readonly StoredConnection[],
+  slots: Readonly<Record<string, string>>,
+): StoredConnection[] {
+  return rows.map((row) => {
+    if (row.origin === "shared") return row;
+    const viaGuest = [
+      slots[row.sourceId],
+      ...(row.routes ?? []).map(
+        (route) => slots[slotKey(row.sourceId, route.origin)],
+      ),
+    ].some((slot) => slot !== undefined && GUEST_SLOT.test(slot));
+    return viaGuest ? { ...row, origin: "shared" } : row;
+  });
+}
+
+/**
+ * 升到 v4，一次性：行按读出来的形状写回（v1 拆成路，v3 之前的行带上回填的
  * `defaultLabel`）；v1 按源记的远程服务槽搬到那个源的中继那条路上（v1 一源只有
  * 一条中继），v2 的槽已经是新的拼法，不动。读不出来的表不动、不标版本——不丢东西。
  */
@@ -185,7 +250,7 @@ function upgrade(): void {
     }
     const rows = readTable();
     if (version === "2") {
-      save(rows);
+      save(stamped(rows, loadSlots()));
       store.setItem(VERSION_KEY, String(TABLE_VERSION));
       return;
     }
@@ -201,7 +266,7 @@ function upgrade(): void {
       // 没有中继那条路的旧槽（行已删）照旧留着，读的时候还落得回来。
       moved[relay === undefined ? key : slotKey(key, relay.origin)] = serviceId;
     }
-    save(rows);
+    save(stamped(rows, moved));
     saveSlots(moved);
     store.setItem(VERSION_KEY, String(TABLE_VERSION));
   } catch {
@@ -210,12 +275,12 @@ function upgrade(): void {
 }
 
 /** 读连接表；损坏的行丢掉，整张读不出来是空表。 */
-export function loadConnections(): SourceDescriptor[] {
+export function loadConnections(): StoredConnection[] {
   upgrade();
   return readTable();
 }
 
-function save(rows: readonly SourceDescriptor[]): void {
+function save(rows: readonly StoredConnection[]): void {
   storage()?.setItem(TABLE_KEY, JSON.stringify(rows));
 }
 
@@ -225,7 +290,7 @@ function save(rows: readonly SourceDescriptor[]): void {
  * 人亲手给的时候才带。
  */
 function namesOf(
-  existing: SourceDescriptor | undefined,
+  existing: StoredConnection | undefined,
   incoming: { label: string; defaultLabel?: string | undefined },
 ): { label: string; defaultLabel: string } {
   const defaultLabel =
@@ -248,8 +313,13 @@ function namesOf(
  * 直连；中继只在没有首选时成为首选。返回合并后的行。
  */
 export function upsertConnection(
-  incoming: Omit<SourceDescriptor, "kind" | "orderIndex" | "routes">,
-): SourceDescriptor {
+  incoming: Omit<SourceDescriptor, "kind" | "orderIndex" | "routes"> & {
+    readonly origin?: ConnectionOrigin;
+    readonly ownerName?: string;
+    readonly shareRole?: ShareRole;
+    readonly shareExpiresAtMs?: number;
+  },
+): StoredConnection {
   const rows = loadConnections();
   const existing = rows.find((row) => row.sourceId === incoming.sourceId);
   let routes: SourceRoute[] = [...(existing?.routes ?? [])];
@@ -298,6 +368,11 @@ export function upsertConnection(
       orderIndex:
         existing?.orderIndex ??
         rows.reduce((top, row) => Math.max(top, row.orderIndex), -1) + 1,
+      // 没说来历就沿用旧行的；新行是自己的。
+      origin: incoming.origin ?? (existing ? originOf(existing) : "mine"),
+      ownerName: incoming.ownerName ?? existing?.ownerName,
+      shareRole: incoming.shareRole ?? existing?.shareRole,
+      shareExpiresAtMs: incoming.shareExpiresAtMs ?? existing?.shareExpiresAtMs,
     },
     routes,
   );
@@ -332,7 +407,7 @@ export function upsertConnection(
 export function renameConnection(
   sourceId: string,
   label: string,
-): SourceDescriptor | null {
+): StoredConnection | null {
   const rows = loadConnections();
   const row = rows.find((one) => one.sourceId === sourceId);
   if (row === undefined) return null;
@@ -458,7 +533,7 @@ export function setActiveConnection(sourceId: string): void {
 }
 
 /** 当前连接：选中的那个，没有（或已删）就是表里第一个。 */
-export function activeConnection(): SourceDescriptor | null {
+export function activeConnection(): StoredConnection | null {
   const rows = loadConnections();
   const id = activeConnectionId();
   return rows.find((row) => row.sourceId === id) ?? rows[0] ?? null;

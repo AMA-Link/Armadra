@@ -1,8 +1,9 @@
+import { lk } from "../local-key";
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { CopilotLoginProgress } from "@armadra/shared";
 
-import { runtimeApi } from "../../../api/client";
+import { localRuntimeApi } from "../../../api/client";
 import { useT } from "../../../app/preferences-store";
 import { SettingsGroup } from "../SettingsGroup";
 import { SettingsRow } from "../SettingsRow";
@@ -31,21 +32,21 @@ export function CopilotSignIn({
   const [progress, setProgress] = useState<CopilotLoginProgress | null>(null);
 
   const auth = useQuery({
-    queryKey: ["copilot-auth"],
-    queryFn: () => runtimeApi.copilotAuth(),
+    queryKey: lk("copilot-auth"),
+    queryFn: () => localRuntimeApi.copilotAuth(),
     retry: false,
   });
   const login = useMutation({
-    mutationFn: () => runtimeApi.copilotLogin(),
+    mutationFn: () => localRuntimeApi.copilotLogin(),
     onMutate: () => setProgress("pending"),
-    onSuccess: (next) => queryClient.setQueryData(["copilot-auth"], next),
+    onSuccess: (next) => queryClient.setQueryData(lk("copilot-auth"), next),
     onError: () => setProgress("error"),
   });
   const logout = useMutation({
-    mutationFn: () => runtimeApi.copilotLogout(),
+    mutationFn: () => localRuntimeApi.copilotLogout(),
     onSuccess: (next) => {
       setProgress(null);
-      queryClient.setQueryData(["copilot-auth"], next);
+      queryClient.setQueryData(lk("copilot-auth"), next);
       void queryClient.invalidateQueries({ queryKey: ["usage"] });
     },
   });
@@ -59,10 +60,10 @@ export function CopilotSignIn({
     let cancelled = false;
     const timer = window.setInterval(async () => {
       try {
-        const next = await runtimeApi.copilotPoll();
+        const next = await localRuntimeApi.copilotPoll();
         if (cancelled) return;
         setProgress(next.progress);
-        queryClient.setQueryData(["copilot-auth"], {
+        queryClient.setQueryData(lk("copilot-auth"), {
           signedIn: next.signedIn,
           backend: next.backend,
           pending: next.pending,

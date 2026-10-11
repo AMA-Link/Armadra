@@ -1,11 +1,14 @@
+import { useEffect } from "react";
 import { useQueries, useQuery } from "@tanstack/react-query";
 import type { WorkspaceSummary } from "@armadra/shared";
 
 import { clientFor, runtimeApi } from "../api/client";
 import { workspacesApiFor } from "../api/workspaces";
-import { useSources } from "../sources/context";
+import { useSourceStates, useSources } from "../sources/context";
 import { srcKey } from "../sources/scope";
 import { sk } from "../sources/scope";
+import { rememberWorkspaces } from "../sources/workspace-cache";
+import type { SourceListing } from "../sources/workspace-groups";
 
 /**
  * 工作空间列表（`GET /api/workspaces`）。
@@ -41,13 +44,18 @@ export interface SourcedWorkspace {
 /**
  * 全部「就绪」的源各发一次，合并成 `{ sourceId, workspace }[]`（客户端包 §2）。
  * 本机在前；只有本机源时与 {@link useWorkspacesQuery} 是同一份缓存、同一个请求。
+ *
+ * `perSource` 是各源自己的查询状态（侧栏按它画每一段，一台慢不挡别的）；
+ * 别的电脑列出来的名字顺手记下，离线时侧栏灰着列（`sources/workspace-cache.ts`）。
  */
 export function useWorkspaces() {
   const sources = useSources();
+  const states = useSourceStates(sources);
   const ready = sources.filter(
     (connection) =>
       connection.descriptor.kind === "local" ||
-      connection.status.state === "ready",
+      (states[connection.descriptor.sourceId] ?? connection.status.state) ===
+        "ready",
   );
   const results = useQueries({
     queries: ready.map((connection) => ({
@@ -61,14 +69,32 @@ export function useWorkspaces() {
     })),
   });
   const data: SourcedWorkspace[] = [];
+  const perSource = new Map<string, SourceListing>();
+  const remembered: [string, { id: string; name: string }[]][] = [];
   results.forEach((result, index) => {
-    const sourceId = ready[index]!.source.sourceId;
+    const connection = ready[index]!;
+    const sourceId = connection.source.sourceId;
     for (const workspace of result.data ?? []) {
       data.push({ sourceId, workspace });
     }
+    const names = (result.data ?? []).map(({ id, name }) => ({ id, name }));
+    perSource.set(sourceId, {
+      isPending: result.isPending,
+      isError: result.isError,
+      workspaces: names,
+    });
+    if (connection.descriptor.kind !== "local" && result.isSuccess)
+      remembered.push([sourceId, names]);
   });
+  const signature = JSON.stringify(remembered);
+  useEffect(() => {
+    for (const [sourceId, names] of JSON.parse(signature) as typeof remembered)
+      rememberWorkspaces(sourceId, names);
+  }, [signature]);
   return {
     data,
+    perSource,
+    states,
     isPending: results.some((result) => result.isPending),
     isError: results.length > 0 && results.every((result) => result.isError),
     results,

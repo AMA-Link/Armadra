@@ -1,8 +1,14 @@
 import { useEffect, useRef, useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  useInfiniteQuery,
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from "@tanstack/react-query";
 import { FolderOpen, Lock } from "lucide-react";
 import type { Workspace } from "@armadra/shared";
 import { runtimeApi } from "../api/client";
+import { forgeAccounts, forgeRepositories } from "../api/forge";
 import { isDesktop, pickDirectory } from "../platform";
 import { useT } from "../app/preferences-store";
 import { useCreateWorkspace } from "../app/workspace-actions";
@@ -20,6 +26,13 @@ import {
 import { Input } from "@/ui/input";
 import { Progress } from "@/ui/progress";
 import { Spinner } from "@/ui/spinner";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/ui/tabs";
 import {
   ResponsiveDialog,
@@ -57,7 +70,8 @@ export interface NewWorkspaceDialogProps {
 /**
  * 添加项目（契约 §65）：一个对话框、三种来源。
  *
- *   * 仓库：已连接 GitHub 账号里的仓库，克隆到父目录下再打开；
+ *   * 仓库：代码托管账号（契约 §29.7，GitHub / Gitea / GitLab）里的仓库，克隆到
+ *     父目录下再打开；账号多于一个时先选账号，列表按游标加载更多；
  *   * 本地：已存在的文件夹，直接登记成工作空间；
  *   * 地址：粘贴的 Git 地址，克隆到父目录下再打开。
  *
@@ -74,6 +88,7 @@ export function NewWorkspaceDialog({
   const queryClient = useQueryClient();
   const createWorkspace = useCreateWorkspace();
   const [mode, setMode] = useState<NewWorkspaceMode>("repository");
+  const [accountHost, setAccountHost] = useState<string | null>(null);
   const [repository, setRepository] = useState<string | null>(null);
   const [url, setUrl] = useState("");
   const [path, setPath] = useState("");
@@ -89,6 +104,7 @@ export function NewWorkspaceDialog({
   useEffect(() => {
     if (!open) return;
     setMode("repository");
+    setAccountHost(null);
     setRepository(null);
     setUrl("");
     setPath("");
@@ -111,13 +127,26 @@ export function NewWorkspaceDialog({
     }
   }, [defaultParent, open]);
 
-  const repositories = useQuery({
-    queryKey: ["git-clone-repositories"],
-    queryFn: () => runtimeApi.cloneRepositories(),
+  const accounts = useQuery({
+    queryKey: ["forge-accounts"],
+    queryFn: () => forgeAccounts(),
     enabled: open && mode === "repository",
     staleTime: 60_000,
     retry: false,
   });
+  const accountList = accounts.data ?? [];
+  const host = accountHost ?? accountList[0]?.host ?? null;
+
+  const repositories = useInfiniteQuery({
+    queryKey: ["forge-repositories", host],
+    queryFn: ({ pageParam }) => forgeRepositories(host as string, pageParam),
+    initialPageParam: null as string | null,
+    getNextPageParam: (last) => last.nextCursor,
+    enabled: open && mode === "repository" && host !== null,
+    staleTime: 60_000,
+    retry: false,
+  });
+  const listed = repositories.data?.pages.flatMap((page) => page.items) ?? [];
 
   const finish = (workspace: Workspace) => {
     void queryClient.invalidateQueries({ queryKey: sk("workspaces") });
@@ -212,8 +241,6 @@ export function NewWorkspaceDialog({
     else start.mutate();
   };
 
-  const listed = repositories.data;
-
   return (
     <ResponsiveDialog open={open} onOpenChange={onOpenChange}>
       <ResponsiveDialogContent className="z-[var(--z-dialog)]">
@@ -243,49 +270,93 @@ export function NewWorkspaceDialog({
           </TabsList>
 
           <TabsContent value="repository">
-            {repositories.isPending ? (
+            {accounts.isPending || (host !== null && repositories.isPending) ? (
               <div className="flex h-40 items-center justify-center">
                 <Spinner aria-label={t("newWorkspace.loading")} />
               </div>
-            ) : listed && !listed.connected ? (
+            ) : host === null ? (
               <div className="flex h-40 items-center justify-center text-muted-foreground">
-                {t("newWorkspace.notConnected")}
+                {accounts.isError
+                  ? (accounts.error as Error).message
+                  : t("newWorkspace.notConnected")}
               </div>
             ) : (
-              <Command className="rounded-[var(--r-card)]! border border-border bg-[var(--card)]">
-                <CommandInput
-                  className={COMMAND_INPUT_FOCUS}
-                  placeholder={t("newWorkspace.search")}
-                  aria-label={t("newWorkspace.search")}
-                  disabled={busy}
-                />
-                <CommandList className="h-56 max-h-56">
-                  <CommandEmpty>
-                    {repositories.isError
-                      ? (repositories.error as Error).message
-                      : t("newWorkspace.noRepositories")}
-                  </CommandEmpty>
-                  {(listed?.repositories ?? []).map((entry) => (
-                    <CommandItem
-                      key={entry.cloneUrl}
-                      value={entry.fullName}
-                      disabled={busy}
-                      data-checked={entry.cloneUrl === repository}
-                      onSelect={() => setRepository(entry.cloneUrl)}
+              <div className="flex flex-col gap-2">
+                {accountList.length > 1 && (
+                  <Select
+                    value={host}
+                    disabled={busy}
+                    onValueChange={(next) => {
+                      setAccountHost(next);
+                      setRepository(null);
+                    }}
+                  >
+                    <SelectTrigger
+                      className="w-full"
+                      aria-label={t("newWorkspace.account")}
                     >
-                      <span className="min-w-0 flex-1 truncate">
-                        {entry.fullName}
-                      </span>
-                      {entry.private && (
-                        <Lock
-                          aria-label={t("newWorkspace.private")}
-                          className="size-3.5 text-muted-foreground"
-                        />
-                      )}
-                    </CommandItem>
-                  ))}
-                </CommandList>
-              </Command>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent className="z-[var(--z-dialog)]">
+                      {accountList.map((account) => (
+                        <SelectItem key={account.host} value={account.host}>
+                          {account.accountLogin
+                            ? `${account.host} · ${account.accountLogin}`
+                            : account.host}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
+                <Command className="rounded-[var(--r-card)]! border border-border bg-[var(--card)]">
+                  <CommandInput
+                    className={COMMAND_INPUT_FOCUS}
+                    placeholder={t("newWorkspace.search")}
+                    aria-label={t("newWorkspace.search")}
+                    disabled={busy}
+                  />
+                  <CommandList className="h-56 max-h-56">
+                    <CommandEmpty>
+                      {repositories.isError
+                        ? (repositories.error as Error).message
+                        : t("newWorkspace.noRepositories")}
+                    </CommandEmpty>
+                    {listed.map((entry) => (
+                      <CommandItem
+                        key={`${entry.owner}/${entry.name}`}
+                        value={`${entry.owner}/${entry.name}`}
+                        disabled={busy || entry.cloneUrl === ""}
+                        data-checked={entry.cloneUrl === repository}
+                        onSelect={() => setRepository(entry.cloneUrl)}
+                      >
+                        <span className="min-w-0 flex-1 truncate">
+                          {entry.owner}/{entry.name}
+                        </span>
+                        {entry.private && (
+                          <Lock
+                            aria-label={t("newWorkspace.private")}
+                            className="size-3.5 text-muted-foreground"
+                          />
+                        )}
+                      </CommandItem>
+                    ))}
+                  </CommandList>
+                </Command>
+                {repositories.hasNextPage && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    disabled={busy || repositories.isFetchingNextPage}
+                    onClick={() => void repositories.fetchNextPage()}
+                  >
+                    {repositories.isFetchingNextPage ? (
+                      <Spinner aria-label={t("newWorkspace.loading")} />
+                    ) : (
+                      t("forge.more")
+                    )}
+                  </Button>
+                )}
+              </div>
             )}
           </TabsContent>
 

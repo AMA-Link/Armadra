@@ -1,10 +1,17 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import type { AgentInfo, BoardDocument, CanvasNode } from "@armadra/shared";
+import {
+  LAYER_GAP,
+  SIBLING_GAP,
+  type AgentInfo,
+  type BoardDocument,
+  type CanvasNode,
+} from "@armadra/shared";
 
 import { useCanvasStore } from "@/store/canvas-store";
 import { canUndo, resetHistory, undo } from "@/store/canvas/history";
 import { setLayoutDirectionForTest } from "../layout-direction";
-import { makeNode } from "../test-support";
+import { makeItem, makeNode } from "../test-support";
+import { emptyWhiteboard } from "../whiteboard/model";
 import { buildSpawnItems, spawnSubordinate } from "./add-menu";
 
 /**
@@ -66,7 +73,7 @@ beforeEach(() => {
 afterEach(() => {
   resetHistory();
   setLayoutDirectionForTest("vertical");
-  useCanvasStore.setState({ document: null });
+  useCanvasStore.setState({ document: null, whiteboard: emptyWhiteboard() });
 });
 
 describe("spawnSubordinate", () => {
@@ -78,7 +85,10 @@ describe("spawnSubordinate", () => {
     const document = useCanvasStore.getState().document!;
     expect(document.nodes).toHaveLength(2);
     const child = document.nodes.find((node) => node.id === id)!;
-    expect(child.position).toEqual({ x: 100, y: 100 + 600 + 48 });
+    expect(child.position).toEqual({
+      x: 100,
+      y: 100 + 600 + LAYER_GAP.vertical,
+    });
     expect(child.data).toMatchObject({
       kind: "terminal",
       agent: { id: "codex" },
@@ -97,6 +107,29 @@ describe("spawnSubordinate", () => {
     expect(useCanvasStore.getState().document!.edges).toHaveLength(0);
   });
 
+  it("白板对象也是障碍：落点让开画在主下面的框（#319）", () => {
+    const parent = main();
+    load([parent]);
+    // 一个框正好压在默认落点上（主下面一层、左对齐）。
+    const shape = makeItem("shape", {
+      x: 200,
+      y: 100 + 600 + LAYER_GAP.vertical + 100,
+      w: 300,
+      h: 200,
+    });
+    useCanvasStore.setState({
+      whiteboard: { ...emptyWhiteboard(), items: [shape] },
+    });
+    const id = spawnSubordinate(agent("codex"), parent.id)!;
+    const child = useCanvasStore
+      .getState()
+      .document!.nodes.find((node) => node.id === id)!;
+    expect(child.position).toEqual({
+      x: 200 + 300 + SIBLING_GAP,
+      y: 100 + 600 + LAYER_GAP.vertical,
+    });
+  });
+
   it("第二个从接在第一个右边；横向时放在主右侧", () => {
     const parent = main();
     load([parent]);
@@ -106,12 +139,13 @@ describe("spawnSubordinate", () => {
       useCanvasStore.getState().document!.nodes.find((node) => node.id === id)!
         .position;
     expect(at(second).y).toBe(at(first).y);
-    expect(at(second).x).toBeGreaterThan(at(first).x);
+    // 兄弟之间隔一个兄弟间距（#319），连线有通道可走。
+    expect(at(second).x).toBe(at(first).x + 960 + SIBLING_GAP);
 
     setLayoutDirectionForTest("horizontal");
     load([parent]);
     const across = spawnSubordinate(agent("codex"), parent.id)!;
-    expect(at(across)).toEqual({ x: 100 + 960 + 60, y: 100 });
+    expect(at(across)).toEqual({ x: 100 + 960 + LAYER_GAP.horizontal, y: 100 });
   });
 
   it("给了落点就以它为中心；父的权限模式这家支持就继承", () => {

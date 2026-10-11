@@ -467,10 +467,29 @@ describe("连接页 · 多连接（添加连接）", () => {
     expect(screen.getByRole("heading", { name: "选择服务" })).toBeTruthy();
     expect(screen.getByText("在线")).toBeTruthy();
     expect(screen.getByText("离线")).toBeTruthy();
-    expect(screen.getByText("经 relay.example.com")).toBeTruthy();
-    // 两组（中转、直连）各有组头。
-    expect(screen.getByText("中转 · relay.example.com")).toBeTruthy();
-    expect(screen.getByText("直连", { selector: "h3" })).toBeTruthy();
+    expect(screen.getByText("互联网")).toBeTruthy();
+    expect(screen.getByText("局域网")).toBeTruthy();
+    // 都是自己的电脑：只有一组，没有组头。
+    expect(screen.queryByRole("heading", { level: 3 })).toBeNull();
+  });
+
+  it("有他人分享时分两组：我的电脑 / 他人分享，不出现“这台电脑”", () => {
+    render(
+      <ConnectScreen
+        {...base}
+        relay={outcomes()}
+        connections={[
+          RELAYED_ROW,
+          { ...DIRECT_ROW, origin: "shared", ownerName: "小王" },
+        ]}
+        activeId="s1"
+      />,
+    );
+    expect(
+      screen.getAllByRole("heading", { level: 3 }).map((h) => h.textContent),
+    ).toEqual(["我的电脑", "他人分享"]);
+    expect(screen.queryByText("本机")).toBeNull();
+    expect(screen.queryByText("这台电脑")).toBeNull();
   });
 
   it("进不去的那一行：失败挂在它下面；经中继而需要重新登录时给「登录」", () => {

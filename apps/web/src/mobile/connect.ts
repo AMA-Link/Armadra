@@ -11,6 +11,7 @@ import { parsePairingQr } from "../host/qr";
 import { LOCAL_SOURCE_ID } from "../api/source";
 import { openAfterJoin } from "../sources/join-intent";
 import { forgetRecent, setEnterIntent } from "../services/recent";
+import { isShareRole } from "../sources/origin";
 import { helloHostName, routesOf } from "../sources/routing";
 import { type SourceDescriptor, SourceError } from "../sources/types";
 import {
@@ -22,13 +23,17 @@ import {
   type CloudSource,
   cloudAcceptLink,
   cloudAssertion,
+  cloudLinkInfo,
   cloudLogin,
   cloudSources,
   coreCloudLogin,
   thisDevice,
 } from "../sources/cloud-client";
 import {
+  type ConnectionOrigin,
+  activeConnection,
   loadConnections,
+  originOf,
   remoteSlotOf,
   removeConnection,
   setActiveConnection,
@@ -428,10 +433,19 @@ export function createRelayEnrollment(
   };
 
   // 名字是目录里那台主机登记的「主机名称」：作缺省名，改过名的行不跟着变（§61）。
-  const connectionOf = (sourceId: string, name: string, slot: string) => {
+  const connectionOf = (
+    sourceId: string,
+    name: string,
+    slot: string,
+    origin: ConnectionOrigin = "mine",
+    share: { readonly role?: string; readonly expiresAtMs?: number } = {},
+  ) => {
     upsertConnection({
       sourceId,
       label: "",
+      origin,
+      ...(isShareRole(share.role) ? { shareRole: share.role } : {}),
+      ...(share.expiresAtMs ? { shareExpiresAtMs: share.expiresAtMs } : {}),
       ...(name ? { defaultLabel: name } : {}),
       baseUrl: "",
       relayOrigin: issuer,
@@ -456,6 +470,12 @@ export function createRelayEnrollment(
       return gate(parsed.issuer, async () => {
         try {
           const device = thisDevice();
+          // 权限与到期只为连接页上那一行的标注：取不到不影响加入。
+          const info = await cloudLinkInfo(
+            issuer,
+            parsed.linkId,
+            deps.cloud,
+          ).catch(() => null);
           const accepted = await cloudAcceptLink(
             issuer,
             parsed.linkId,
@@ -492,10 +512,20 @@ export function createRelayEnrollment(
                   ?.name ?? "",
             )
             .catch(() => "");
-          connectionOf(accepted.sourceId, name, slot);
-          enterNext(accepted.sourceId);
-          // 重载进画布后打开链接指向的工作空间（本机源此时就是这条连接）。
-          openAfterJoin(LOCAL_SOURCE_ID);
+          connectionOf(accepted.sourceId, name, slot, "shared", {
+            ...(info?.role ? { role: info.role } : {}),
+            ...(info?.expiresAtMs ? { expiresAtMs: info.expiresAtMs } : {}),
+          });
+          // 加入的主机不顶替这个页面的主连接：有自己的电脑就仍以它为主，加入的
+          // 作为同伴挂上、直接打开它的工作空间；一台自己的都没有时它只好当主连接。
+          const own = ownPrimary(accepted.sourceId);
+          if (own === null) {
+            enterNext(accepted.sourceId);
+            openAfterJoin(LOCAL_SOURCE_ID);
+          } else {
+            enterNext(own);
+            openAfterJoin(accepted.sourceId);
+          }
         } catch (error) {
           return failed(cloudFailureOf(error));
         }
@@ -570,6 +600,22 @@ export function createRelayEnrollment(
       return { kind: "done" };
     },
   };
+}
+
+/** 页面的主连接：当前连接若是自己的电脑就是它，否则表里第一台自己的；没有是 `null`。 */
+function ownPrimary(except: string): string | null {
+  const active = activeConnection();
+  if (
+    active !== null &&
+    active.sourceId !== except &&
+    originOf(active) === "mine"
+  )
+    return active.sourceId;
+  return (
+    loadConnections().find(
+      (row) => row.sourceId !== except && originOf(row) === "mine",
+    )?.sourceId ?? null
+  );
 }
 
 /** 点一个连接：记为当前并重新加载（本机源的地址在一次加载里只算一次）。 */

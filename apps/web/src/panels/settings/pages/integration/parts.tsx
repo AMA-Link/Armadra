@@ -9,7 +9,7 @@ import type {
   LegacyIntegrationFinding,
 } from "@armadra/shared";
 
-import { runtimeApi } from "@/api/client";
+import { localRuntimeApi } from "@/api/client";
 import { useT, type Translate } from "@/app/preferences-store";
 import { Button } from "@/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/ui/popover";
@@ -161,7 +161,7 @@ export function useIntegrationActions(agent: AgentInfo) {
   const t = useT();
   const refresh = useIntegrationRefresh();
   const regenerate = useMutation({
-    mutationFn: () => runtimeApi.installAgentIntegration(agent.id),
+    mutationFn: () => localRuntimeApi.installAgentIntegration(agent.id),
     onSuccess: () => {
       refresh(agent.id);
       toast.success(t("integration.regenerated"));
@@ -170,7 +170,7 @@ export function useIntegrationActions(agent: AgentInfo) {
       toast.error(t("integration.failed"), { description: cause.message }),
   });
   const repair = useMutation({
-    mutationFn: () => runtimeApi.repairAgentIntegration(agent.id),
+    mutationFn: () => localRuntimeApi.repairAgentIntegration(agent.id),
     onSuccess: (report) => {
       refresh(agent.id);
       toast.success(t("integration.repair.done"), {

@@ -17,6 +17,7 @@ import { loadConnections, renameConnection } from "./connections";
 import type { Entry } from "./entry";
 import { nativeBridge } from "./native-bridge";
 import { NativeMfa } from "./NativeMfa";
+import { GuestFrame } from "./GuestBar";
 import { PushPermission } from "./PushPermission";
 import { RelaySignIn } from "../shell/RelaySignIn";
 import { hostedRelay } from "../sources/hosted";
@@ -169,7 +170,9 @@ function ConnectedApp() {
   }, []);
   return (
     <>
-      <App />
+      <GuestFrame>
+        <App />
+      </GuestFrame>
       <PushPermission />
     </>
   );

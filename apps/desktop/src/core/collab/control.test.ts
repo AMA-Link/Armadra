@@ -2,6 +2,7 @@ import { execFileSync } from "node:child_process";
 import { existsSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { LAYER_GAP, SIBLING_GAP, boxesTooClose } from "@armadra/shared";
 import { type AgentFixture, agentFixture, callerFor } from "../agent/fixture";
 import { loadBoard } from "../canvas/documents";
 import { placement } from "./control/board";
@@ -439,6 +440,25 @@ describe("team", () => {
     expect(at(review).x).toBeGreaterThan(at(build).x);
     expect(at(summary).y).toBeGreaterThan(at(build).y);
     expect(at(summary).x).toBe((at(build).x + at(review).x) / 2);
+    // #319：调用者、成员、汇总两两之间至少隔一个兄弟间距（尺寸按 960×600 算），
+    // 主到成员那一层隔层距，派发线和标签有地方走。
+    const boxOf = (id: string) => {
+      const node = document.nodes.find((entry) => entry.id === id)!;
+      return {
+        ...node.position,
+        width: node.size?.width ?? 960,
+        height: node.size?.height ?? 600,
+      };
+    };
+    const all = [me, build, review, summary];
+    for (const [index, a] of all.entries()) {
+      for (const b of all.slice(index + 1)) {
+        expect(boxesTooClose(boxOf(a), boxOf(b), SIBLING_GAP)).toBe(false);
+      }
+    }
+    expect(at(build).y).toBeGreaterThanOrEqual(
+      boxOf(me).y + boxOf(me).height + LAYER_GAP.vertical,
+    );
   });
 
   it("chains members so each waits for the one before it", async () => {

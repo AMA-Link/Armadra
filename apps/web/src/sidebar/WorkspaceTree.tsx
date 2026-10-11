@@ -1,7 +1,9 @@
 /**
- * 侧栏主体（§26 →§28）：新建画布 → 置顶 → 项目。
+ * 侧栏主体（§26 →§28，#301）：新建画布 → 置顶 → 这台电脑 / 我的其他电脑 /
+ * 他人分享（`SourceGroups.tsx`）。
  *
- * 「项目」= 已打开的工作空间，一行一个，展开后缩进列出它的画布；点画布 =
+ * 打开着的工作空间所在的那台电脑，那一段是这里的树：已打开的工作空间，一行
+ * 一个，展开后缩进列出它的画布；点画布 =
  * 需要时先切工作空间，再切板。「置顶」是跨工作空间的一组画布，偏好里存 id。
  * 当前工作空间的画布取 store（`setBoards` 已按 `sortOrder` 排好），其余
  * 工作空间取列表接口里的 `boards[]`。
@@ -28,7 +30,7 @@ import type { WorkspaceSummary } from "@armadra/shared";
 import { isAttention } from "../agent/status-store";
 import { useSessions } from "../agent/sessions";
 import { useT, usePreferencesStore } from "../app/preferences-store";
-import { SourceGroups } from "./SourceGroups";
+import { WorkspaceGroups } from "./SourceGroups";
 import { useOpenWorkspace } from "../app/workspace-actions";
 import { useProjectFolderImport } from "../app/use-project-folder-import";
 import { isDesktop } from "../platform";
@@ -217,60 +219,38 @@ export function WorkspaceTree() {
             </section>
           )}
 
-          <section
-            aria-label={t("sidebar.projects")}
-            aria-busy={folderImport.busy}
-            data-project-drop-zone="true"
-            data-dragging={folderImport.dragging}
-            className="min-h-36 rounded-lg transition-colors data-[dragging=true]:bg-accent/60"
-            {...folderImport.events}
-          >
-            <GroupTitle action={<AddProjectButton busy={folderImport.busy} />}>
-              {t("sidebar.projects")}
-            </GroupTitle>
-            {(folderImport.dragging || folderImport.busy) && (
-              <p
-                role="status"
-                className="flex items-center gap-2 px-2 py-2 text-xs leading-relaxed text-muted-foreground"
-              >
-                {folderImport.busy && (
-                  <LoaderCircle
-                    aria-hidden
-                    className="size-3.5 shrink-0 animate-spin"
+          <WorkspaceGroups
+            tree={
+              <ul>
+                {rows.map((summary) => (
+                  <WorkspaceRow
+                    key={summary.id}
+                    summary={summary}
+                    active={summary.id === workspace?.id}
+                    boards={boardsOf(summary)}
+                    activeBoardId={
+                      summary.id === workspace?.id ? boardId : null
+                    }
+                    signals={signals}
+                    pinnedBoardIds={pinnedBoardIds}
+                    pinned={pinnedWorkspaceIds.includes(summary.id)}
+                    collapsed={collapsedIds.includes(summary.id)}
+                    onToggle={(next) => setCollapsed(summary.id, next)}
+                    onSelectBoard={(id) => openBoard(summary.id, id)}
+                    onTogglePin={(id, next) => setBoardPinned(id, next)}
+                    onTogglePinWorkspace={(next) =>
+                      setWorkspacePinned(summary.id, next)
+                    }
                   />
-                )}
-                {t(
-                  folderImport.busy
-                    ? "folderImport.busy"
-                    : isDesktop()
-                      ? "folderImport.dropOpen"
-                      : "folderImport.dropCopy",
-                )}
-              </p>
+                ))}
+              </ul>
+            }
+            renderLocal={(content, current) => (
+              <LocalGroup folderImport={folderImport} current={current}>
+                {content}
+              </LocalGroup>
             )}
-            <ul>
-              {rows.map((summary) => (
-                <WorkspaceRow
-                  key={summary.id}
-                  summary={summary}
-                  active={summary.id === workspace?.id}
-                  boards={boardsOf(summary)}
-                  activeBoardId={summary.id === workspace?.id ? boardId : null}
-                  signals={signals}
-                  pinnedBoardIds={pinnedBoardIds}
-                  pinned={pinnedWorkspaceIds.includes(summary.id)}
-                  collapsed={collapsedIds.includes(summary.id)}
-                  onToggle={(next) => setCollapsed(summary.id, next)}
-                  onSelectBoard={(id) => openBoard(summary.id, id)}
-                  onTogglePin={(id, next) => setBoardPinned(id, next)}
-                  onTogglePinWorkspace={(next) =>
-                    setWorkspacePinned(summary.id, next)
-                  }
-                />
-              ))}
-            </ul>
-          </section>
-          <SourceGroups />
+          />
         </div>
       </ScrollArea>
     </div>
@@ -295,8 +275,64 @@ function GroupTitle({
 }
 
 /**
- * 「项目」组标题右边的 `+`：打开添加项目对话框（仓库、本地、地址三种来源，
- * 契约 §65），建好即开。拖目录进项目区仍走文件夹导入。
+ * 「这台电脑」组：添加项目与拖入目录都落在本机，所以只在打开的是本机的
+ * 工作空间时给（打开着别的电脑时它们会落到那台去）。
+ */
+function LocalGroup({
+  folderImport,
+  current,
+  children,
+}: {
+  folderImport: ReturnType<typeof useProjectFolderImport>;
+  current: boolean;
+  children: ReactNode;
+}) {
+  const t = useT();
+  return (
+    <section
+      aria-label={t("workspaceGroups.local")}
+      aria-busy={folderImport.busy}
+      data-workspace-group="local"
+      data-project-drop-zone={current || undefined}
+      data-dragging={folderImport.dragging}
+      className="min-h-36 rounded-lg transition-colors data-[dragging=true]:bg-accent/60"
+      {...(current ? folderImport.events : {})}
+    >
+      <GroupTitle
+        action={
+          current ? <AddProjectButton busy={folderImport.busy} /> : undefined
+        }
+      >
+        {t("workspaceGroups.local")}
+      </GroupTitle>
+      {(folderImport.dragging || folderImport.busy) && (
+        <p
+          role="status"
+          className="flex items-center gap-2 px-2 py-2 text-xs leading-relaxed text-muted-foreground"
+        >
+          {folderImport.busy && (
+            <LoaderCircle
+              aria-hidden
+              className="size-3.5 shrink-0 animate-spin"
+            />
+          )}
+          {t(
+            folderImport.busy
+              ? "folderImport.busy"
+              : isDesktop()
+                ? "folderImport.dropOpen"
+                : "folderImport.dropCopy",
+          )}
+        </p>
+      )}
+      {children}
+    </section>
+  );
+}
+
+/**
+ * 「这台电脑」组标题右边的 `+`：走系统目录选择器，选完即建即开；浏览器里没有
+ * 选择器，退回手填路径的新建文件夹对话框（对已存在的目录就是「打开」）。
  */
 function AddProjectButton({ busy }: { busy: boolean }) {
   const t = useT();

@@ -8,6 +8,9 @@
  *   页面（CSP），所以这一项记在 `sessionStorage`，重载后接着做；只存源标识。
  */
 
+import { LOCAL_SOURCE_ID } from "../api/source";
+import { markJoinedByLink } from "./origin";
+
 const OPEN_KEY = "armadra.sources.openAfterJoin";
 
 type Listener = () => void;
@@ -51,8 +54,16 @@ function session(): Storage | null {
   }
 }
 
-/** 挂载成功：记下要打开的源，重载之后也还在。 */
+/**
+ * 挂载成功：记下这个源是经链接加入的（归到「他人分享」），再等它连上打开。
+ */
 export function openAfterJoin(sourceId: string): void {
+  if (sourceId !== LOCAL_SOURCE_ID) markJoinedByLink(sourceId);
+  openWhenReady(sourceId);
+}
+
+/** 记下要打开的源（连上、列出工作空间后打开第一个），重载之后也还在。 */
+export function openWhenReady(sourceId: string): void {
   try {
     session()?.setItem(OPEN_KEY, sourceId);
   } catch {

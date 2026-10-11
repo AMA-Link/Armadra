@@ -131,6 +131,7 @@ export function KeybindingsPage() {
   const { member } = useAccess();
   const { settings, save: runtimeSave } = useRuntimeSettings({
     enabled: !member,
+    scope: "local",
   });
   const save = React.useMemo(
     () => ({

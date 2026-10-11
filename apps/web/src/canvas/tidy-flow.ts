@@ -1,12 +1,14 @@
-import type { Position } from "@armadra/shared";
+import type { CanvasNode, Position } from "@armadra/shared";
 
 import type { CanvasState } from "@/store/canvas/types";
 import { beginCoalesce, endCoalesce } from "@/store/canvas/history";
 import { useCanvasStore } from "@/store/canvas-store";
 import { isCanvasLocked } from "./canvas-lock";
+import { getFlow } from "./flow/flow-context";
 import { nodeBox, type Box } from "./geometry";
 import {
   GRID,
+  clearOffset,
   tidy,
   tidyKindOf,
   type TidyKind,
@@ -29,6 +31,13 @@ import { moveItems } from "./whiteboard/store";
  * 组员（`parentId` 指向某个 Frame 的节点与白板对象）不单独参与，Frame
  * 整体移动时它们靠相对坐标跟着走，内部布局一点不变。
  *
+ * **矩形取实际占地**（#319）：节点取文档尺寸与 React Flow 实测尺寸的较大者；
+ * Frame 取「组框 ∪ 所有组员」的包围盒——组员伸出框外时也不会压到别人。
+ * 排完按包围盒的位移平移 Frame 本身。
+ *
+ * **只整理选区**时，排好的块若离选区外的对象不足簇间距，就整块往下或往右
+ * 让开（取位移小的，`clearOffset`），不会压住没选中的东西。
+ *
  * **链接**取两处：`document.edges`（上下文连线）与 `whiteboard.references`
  * （内容引用）。两端各自上溯到自己的顶层容器，连在一起的东西才不会被拆到
  * 画布两头。
@@ -44,8 +53,42 @@ import { moveItems } from "./whiteboard/store";
 
 interface Movable {
   id: string;
+  /** 参与排布的矩形（Frame 含组员）。 */
   box: Box;
+  /** 对象自己的左上角；Frame 的组员伸出框外时与 `box` 的左上角不同。 */
+  origin: Position;
   kind: TidyKind;
+}
+
+/** React Flow 量到的尺寸；画布没挂载或还没量过时为 null。 */
+function measuredSize(id: string): { width: number; height: number } | null {
+  const node = getFlow()?.getNode(id);
+  const width = node?.measured?.width;
+  const height = node?.measured?.height;
+  if (!width || !height || !Number.isFinite(width) || !Number.isFinite(height))
+    return null;
+  return { width, height };
+}
+
+/** 节点实际占地：文档尺寸与实测尺寸取大；折叠的节点信实测。 */
+function footprint(nodes: readonly CanvasNode[], node: CanvasNode): Box {
+  const box = nodeBox(nodes, node);
+  const measured = measuredSize(node.id);
+  if (!measured) return box;
+  if (node.collapsed) return { ...box, ...measured };
+  return {
+    ...box,
+    width: Math.max(box.width, measured.width),
+    height: Math.max(box.height, measured.height),
+  };
+}
+
+function union(boxes: readonly Box[]): Box {
+  const left = Math.min(...boxes.map((box) => box.x));
+  const top = Math.min(...boxes.map((box) => box.y));
+  const right = Math.max(...boxes.map((box) => box.x + box.width));
+  const bottom = Math.max(...boxes.map((box) => box.y + box.height));
+  return { x: left, y: top, width: right - left, height: bottom - top };
 }
 
 /** 对象 id 上溯到它的顶层容器（节点只嵌套一层，组不能进组）。 */
@@ -76,8 +119,11 @@ export function tidySelection(state: CanvasState): ReadonlySet<string> | null {
   return tops.size >= 2 ? tops : null;
 }
 
-/** 顶层节点的矩形；组员跟着自己的 Frame 一起动，不单独参与。 */
-function movableNodes(): Movable[] {
+/**
+ * 顶层节点的矩形；组员跟着自己的 Frame 一起动，不单独参与，但它们的占地并进
+ * Frame 的矩形。
+ */
+function movableNodes(items: readonly Item[]): Movable[] {
   const document = useCanvasStore.getState().document;
   const nodes = document?.nodes ?? [];
   // 主从边两端都算 Agent：主从关系只在 Agent 之间建立。
@@ -87,16 +133,42 @@ function movableNodes(): Movable[] {
     supervised.add(edge.source);
     supervised.add(edge.target);
   }
+  const members = new Map<string, Box[]>();
+  const addMember = (parent: string, box: Box) => {
+    const list = members.get(parent);
+    if (list) list.push(box);
+    else members.set(parent, [box]);
+  };
+  for (const node of nodes) {
+    if (node.parentId) addMember(node.parentId, footprint(nodes, node));
+  }
+  const byId = new Map(nodes.map((node) => [node.id, node]));
+  for (const item of items) {
+    const frame = item.parentId ? byId.get(item.parentId) : undefined;
+    if (!frame) continue;
+    const at = nodeBox(nodes, frame);
+    addMember(frame.id, {
+      x: at.x + item.x,
+      y: at.y + item.y,
+      width: item.w,
+      height: item.h,
+    });
+  }
   return nodes
     .filter((node) => !node.parentId)
-    .map((node) => ({
-      id: node.id,
-      box: nodeBox(nodes, node),
-      kind:
-        node.type !== "group" && supervised.has(node.id)
-          ? "agent"
-          : tidyKindOf(node),
-    }));
+    .map((node) => {
+      const own = footprint(nodes, node);
+      const inside = members.get(node.id);
+      return {
+        id: node.id,
+        box: inside ? union([own, ...inside]) : own,
+        origin: { x: own.x, y: own.y },
+        kind:
+          node.type !== "group" && supervised.has(node.id)
+            ? "agent"
+            : tidyKindOf(node),
+      };
+    });
 }
 
 /** 顶层白板对象的矩形。id 用 `wb:` 前缀，和节点共用一张排布表。 */
@@ -106,6 +178,7 @@ function movableItems(items: readonly Item[]): Movable[] {
     .map((item) => ({
       id: toItemId(item.id),
       box: { x: item.x, y: item.y, width: item.w, height: item.h },
+      origin: { x: item.x, y: item.y },
       kind: "wb" as const,
     }));
 }
@@ -158,7 +231,8 @@ export function arrangeCanvas(
   const state = useCanvasStore.getState();
   const items = state.whiteboard.items;
   const only = options.only ?? null;
-  const movable = [...movableNodes(), ...movableItems(items)].filter(
+  const everything = [...movableNodes(items), ...movableItems(items)];
+  const movable = everything.filter(
     (entry) => only === null || only.has(entry.id),
   );
   if (movable.length === 0) return {};
@@ -182,8 +256,25 @@ export function arrangeCanvas(
   );
 
   // 排布结果的原点是 (0,0)；平移回原来那块内容的左上角，画布不会突然跳走。
-  const originX = snap(Math.min(...movable.map((entry) => entry.box.x)));
-  const originY = snap(Math.min(...movable.map((entry) => entry.box.y)));
+  let originX = snap(Math.min(...movable.map((entry) => entry.box.x)));
+  let originY = snap(Math.min(...movable.map((entry) => entry.box.y)));
+  if (only !== null) {
+    // 只整理选区：排好的块不许压到选区外的对象（#319）。
+    const block = movable.flatMap((entry) => {
+      const packed = positions[entry.id];
+      return packed
+        ? [{ ...entry.box, x: originX + packed.x, y: originY + packed.y }]
+        : [];
+    });
+    const shift = clearOffset(
+      block,
+      everything
+        .filter((entry) => !only.has(entry.id))
+        .map((entry) => entry.box),
+    );
+    originX += shift.x;
+    originY += shift.y;
+  }
   const nodeMoves: { id: string; position: Position }[] = [];
   const itemMoves = new Map<string, Position>();
   const applied: Record<string, Position> = {};
@@ -191,9 +282,16 @@ export function arrangeCanvas(
   for (const entry of movable) {
     const packed = positions[entry.id];
     if (!packed) continue;
-    const position = { x: originX + packed.x, y: originY + packed.y };
+    // `packed` 是矩形左上角；对象自己的左上角按原来的差值跟上（Frame 的组员
+    // 伸出框外时两者不同）。
+    const position = {
+      x: originX + packed.x + (entry.origin.x - entry.box.x),
+      y: originY + packed.y + (entry.origin.y - entry.box.y),
+    };
     applied[entry.id] = position;
-    if (position.x === entry.box.x && position.y === entry.box.y) continue;
+    if (position.x === entry.origin.x && position.y === entry.origin.y) {
+      continue;
+    }
     if (entry.kind === "wb") {
       itemMoves.set(entry.id, position);
     } else {

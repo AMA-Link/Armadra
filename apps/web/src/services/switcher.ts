@@ -1,6 +1,11 @@
 import { create } from "zustand";
 
+import { activeConnectionId, setActiveConnection } from "../mobile/connections";
 import { isNativeApp } from "../mobile/native-bridge";
+import { openAfterJoin } from "../sources/join-intent";
+import { LOCAL_SOURCE_ID } from "../api/source";
+import { selectCurrentSource, sourceRegistry } from "../sources/registry";
+import { setEnterIntent } from "./recent";
 
 /**
  * 「切换服务」的去处（A7-1，多端入口设计 §1.4）：原生 App 回选择页（地址换成
@@ -31,6 +36,37 @@ export function returnToPicker(
     /* 写不进地址栏：重载后照样落在选择页（缺省就是它）。 */
   }
   reload();
+}
+
+/** 「管理连接」：唯一回到连接页的入口（原生 App）。 */
+export function manageConnections(
+  reload: () => void = () => globalThis.location.reload(),
+): void {
+  returnToPicker(reload);
+}
+
+/**
+ * 打开另一个连接里的工作空间。这个页面已经把它挂着（主连接或同伴）就只切
+ * 当前源并打开，不重载；没挂着（刚加入、表里新增）才记下进入意图重载一次。
+ */
+export function openSource(
+  sourceId: string,
+  reload: () => void = () => globalThis.location.reload(),
+): "switched" | "reloaded" {
+  const registry = sourceRegistry();
+  if (sourceId === activeConnectionId()) {
+    selectCurrentSource(registry, LOCAL_SOURCE_ID);
+    return "switched";
+  }
+  if (registry.get(sourceId) !== undefined) {
+    selectCurrentSource(registry, sourceId);
+    openAfterJoin(sourceId);
+    return "switched";
+  }
+  setActiveConnection(sourceId);
+  setEnterIntent(sourceId);
+  reload();
+  return "reloaded";
 }
 
 export function switchService(): void {

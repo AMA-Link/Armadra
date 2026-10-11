@@ -16,6 +16,7 @@ const settings = vi.fn();
 const updateSettings = vi.fn();
 
 vi.mock("@/api/client", () => ({
+  localRuntimeApi: {},
   runtimeApi: {
     languageService: (...args: unknown[]) => languageService(...args),
     restartLanguageServer: (...args: unknown[]) =>

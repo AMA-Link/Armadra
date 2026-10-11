@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 
 import { runtimeApi } from "../../../api/client";
 import { RealtimeSetting } from "../../../realtime/RealtimeSetting";
+import { sk } from "../../../sources/scope";
 import { useSubpage } from "../subpage";
 import { SwitchExecutionHost } from "./execution-hosts/SwitchExecutionHost";
 import { executionHostLabel } from "./MachinesPage";
@@ -35,13 +36,13 @@ const INHERIT = "__inherit__";
 export function WorkspacePage() {
   const t = useT();
   const agents = useAgentsQuery();
-  const { settings, save } = useRuntimeSettings();
+  const { settings, save } = useRuntimeSettings({ scope: "current" });
 
   const subpage = useSubpage();
   const workspace = useCanvasStore((state) => state.workspace);
   const workspaceId = workspace?.id ?? null;
   const hosts = useQuery({
-    queryKey: ["execution-hosts"],
+    queryKey: sk("execution-hosts"),
     queryFn: runtimeApi.executionHosts,
     retry: false,
     enabled: workspaceId !== null,

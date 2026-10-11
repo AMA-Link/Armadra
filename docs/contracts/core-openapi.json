@@ -12724,7 +12724,7 @@
         },
         "x-armadra": {
           "contract": "§37.3",
-          "scope": "assets:read",
+          "scope": "assets:write",
           "since": "1.18",
           "workspaceKey": "workspaceId",
           "legacy": {
@@ -19930,104 +19930,6 @@
           "legacy": {
             "method": "GET",
             "path": "/api/git/clone-defaults"
-          }
-        }
-      }
-    },
-    "/api/rpc/git/clone/repositories": {
-      "post": {
-        "operationId": "git.clone.repositories",
-        "requestBody": {
-          "required": false,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "OK",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "connected": {
-                      "type": "boolean"
-                    },
-                    "account": {
-                      "anyOf": [
-                        {
-                          "type": "string"
-                        },
-                        {
-                          "type": "null"
-                        }
-                      ]
-                    },
-                    "repositories": {
-                      "type": "array",
-                      "items": {
-                        "type": "object",
-                        "properties": {
-                          "fullName": {
-                            "type": "string"
-                          },
-                          "cloneUrl": {
-                            "type": "string"
-                          },
-                          "private": {
-                            "type": "boolean"
-                          },
-                          "updatedAt": {
-                            "type": "string"
-                          }
-                        },
-                        "required": [
-                          "fullName",
-                          "cloneUrl",
-                          "private",
-                          "updatedAt"
-                        ]
-                      }
-                    }
-                  },
-                  "required": ["connected", "account", "repositories"]
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "403",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/CoreError"
-                }
-              }
-            }
-          },
-          "502": {
-            "description": "502",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/CoreError"
-                }
-              }
-            }
-          }
-        },
-        "x-armadra": {
-          "contract": "§65.2",
-          "scope": "git:read",
-          "since": "1.38",
-          "legacy": {
-            "method": "GET",
-            "path": "/api/git/clone-repositories"
           }
         }
       }

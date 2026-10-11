@@ -8,7 +8,7 @@ import { CopilotSignIn } from "./CopilotSignIn";
  * 每一样只说「有没有、叫什么」，值写进去之后不再出现。
  */
 export function CredentialsPage() {
-  const { settings, save } = useRuntimeSettings();
+  const { settings, save } = useRuntimeSettings({ scope: "local" });
   const busy = !settings.data || save.isPending;
   // Copilot 的额度要借用登录令牌，另有一个默认关的出站键（外部服务 §9.3）：
   // 用量页那个开关关着时不能开始登录，已登录的仍可登出。

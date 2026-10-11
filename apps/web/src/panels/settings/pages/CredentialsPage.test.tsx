@@ -13,7 +13,7 @@ const copilotLogin = vi.fn();
 const copilotPoll = vi.fn();
 const copilotLogout = vi.fn();
 vi.mock("../../../api/client", () => ({
-  runtimeApi: {
+  localRuntimeApi: {
     settings: () => getSettings(),
     updateSettings: vi.fn(),
     copilotAuth: () => copilotAuth(),

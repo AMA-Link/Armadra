@@ -1,7 +1,9 @@
 import { useEffect, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import type { AgentInfo } from "@armadra/shared";
-import { runtimeApi } from "../api/client";
+import { localRuntimeApi, runtimeApi } from "../api/client";
+import { LOCAL_SOURCE_ID } from "../api/source";
+import { srcKey } from "../sources/scope";
 import { setAgentRegistry } from "../agent/launch";
 import { ensureCoreHost } from "./core-host";
 import { agentIsEnabled, usePreferencesStore } from "./preferences-store";
@@ -13,17 +15,20 @@ import { agentIsEnabled, usePreferencesStore } from "./preferences-store";
  * 拿到结果后同步推给 `agent/launch`：自定义 Agent 的名字、颜色与启动程序
  * 只有这个接口知道，而查显示名的地方（节点头、画布卡、会话卡）都是同步的。
  */
-export function useAgentsQuery() {
+export function useAgentsQuery(scope: "current" | "local" = "current") {
+  const local = scope === "local";
   const query = useQuery({
-    queryKey: ["agents"],
-    queryFn: runtimeApi.agents,
+    // 设置页（除「当前工作空间」外）看的是本机的 Agent 清单，不随打开的工作空间变。
+    queryKey: local ? srcKey(LOCAL_SOURCE_ID, "agents") : ["agents"],
+    queryFn: local ? localRuntimeApi.agents : runtimeApi.agents,
     staleTime: 60_000,
     retry: false,
   });
   const agents = query.data;
   useEffect(() => {
-    if (agents) setAgentRegistry(agents);
-  }, [agents]);
+    // 注册表是启动用的：只由当前源的清单推。
+    if (agents && !local) setAgentRegistry(agents);
+  }, [agents, local]);
   // 启动行按 core 的缺省 shell 引用（`agent/launch.ts::launchDialect`），在
   // 第一个节点要敲行之前先问到。
   useEffect(() => {

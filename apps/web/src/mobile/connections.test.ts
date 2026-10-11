@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   activeConnection,
+  originOf,
   loadConnections,
   remoteSlotOf,
   removeConnection,
@@ -162,7 +163,7 @@ describe("连接表 v2：一源多路（§55）", () => {
     expect(localStorage.getItem("armadra.sources.remoteSlots")).toBe("{}");
   });
 
-  it("v1 的表一次性升到最新（v3）：行拆成路，按源记的槽搬到那条中继上，什么都不丢", () => {
+  it("v1 的表一次性升到最新（v4）：行拆成路，按源记的槽搬到那条中继上，什么都不丢", () => {
     localStorage.setItem(
       "armadra.sources",
       JSON.stringify([
@@ -182,7 +183,7 @@ describe("连接表 v2：一源多路（§55）", () => {
       JSON.stringify({ h1: "personal:relay.example.com:acct-1", gone: "x" }),
     );
     const rows = loadConnections();
-    expect(localStorage.getItem("armadra.sources.version")).toBe("3");
+    expect(localStorage.getItem("armadra.sources.version")).toBe("4");
     expect(rows.map((row) => row.sourceId)).toEqual(["h1", "h2"]);
     expect(rows[0]).toMatchObject({
       kind: "relayed",
@@ -235,7 +236,7 @@ describe("连接表 v2：一源多路（§55）", () => {
 });
 
 describe("连接表 v3：名字（§61）", () => {
-  it("v2 的表升到 v3：行上回填 defaultLabel = label，槽不动", () => {
+  it("v2 的表升到最新：行上回填 defaultLabel = label，槽不动", () => {
     localStorage.setItem("armadra.sources.version", "2");
     localStorage.setItem(
       "armadra.sources",
@@ -260,7 +261,7 @@ describe("连接表 v3：名字（§61）", () => {
     const slots = JSON.stringify({ h1: "legacy-slot" });
     localStorage.setItem("armadra.sources.remoteSlots", slots);
     const rows = loadConnections();
-    expect(localStorage.getItem("armadra.sources.version")).toBe("3");
+    expect(localStorage.getItem("armadra.sources.version")).toBe("4");
     expect(rows[0]).toMatchObject({
       label: "MacBook",
       defaultLabel: "MacBook",
@@ -301,5 +302,104 @@ describe("连接表 v3：名字（§61）", () => {
     expect(renameConnection("h1", " ")).toMatchObject({ label: "laptop-3" });
     expect(loadConnections()[0]?.label).toBe("laptop-3");
     expect(renameConnection("nope", "x")).toBeNull();
+  });
+});
+
+describe("连接表 v4：来历 origin", () => {
+  const ROUTE = {
+    via: "relayed",
+    origin: RELAYED.relayOrigin,
+    cloudIssuer: RELAYED.cloudIssuer,
+    fingerprint: "",
+    preferred: true,
+    lastOkAtMs: 0,
+  };
+
+  it("v3 的表升到 v4：记过访客槽的行回填成 shared，其余是 mine，槽不动", () => {
+    localStorage.setItem("armadra.sources.version", "3");
+    localStorage.setItem(
+      "armadra.sources",
+      JSON.stringify([
+        {
+          ...RELAYED,
+          sourceId: "own",
+          kind: "relayed",
+          orderIndex: 0,
+          defaultLabel: "A",
+          routes: [ROUTE],
+        },
+        {
+          ...RELAYED,
+          sourceId: "joined",
+          kind: "relayed",
+          orderIndex: 1,
+          defaultLabel: "B",
+          routes: [ROUTE],
+        },
+        {
+          ...RELAYED,
+          sourceId: "noslot",
+          kind: "relayed",
+          orderIndex: 2,
+          defaultLabel: "C",
+          routes: [ROUTE],
+        },
+      ]),
+    );
+    const slots = JSON.stringify({
+      [`own\u0000${RELAYED.relayOrigin}`]: "personal:relay.example.com:acct-1",
+      [`joined\u0000${RELAYED.relayOrigin}`]:
+        "personal:relay.example.com:guest.joined",
+    });
+    localStorage.setItem("armadra.sources.remoteSlots", slots);
+    const rows = loadConnections();
+    expect(rows.map((row) => [row.sourceId, originOf(row)])).toEqual([
+      ["own", "mine"],
+      ["joined", "shared"],
+      ["noslot", "mine"],
+    ]);
+    expect(localStorage.getItem("armadra.sources.version")).toBe("4");
+    expect(localStorage.getItem("armadra.sources.remoteSlots")).toBe(slots);
+    // 写回了存储，再读不再回填。
+    const stored = JSON.parse(
+      localStorage.getItem("armadra.sources") ?? "[]",
+    ) as {
+      origin?: string;
+    }[];
+    expect(stored.map((row) => row.origin)).toEqual(["mine", "shared", "mine"]);
+    expect(loadConnections()).toEqual(rows);
+  });
+
+  it("v1 的表一路升到 v4 也回填（按源记的访客槽）", () => {
+    localStorage.setItem(
+      "armadra.sources",
+      JSON.stringify([
+        { ...RELAYED, sourceId: "g", kind: "relayed", orderIndex: 0 },
+      ]),
+    );
+    localStorage.setItem(
+      "armadra.sources.remoteSlots",
+      JSON.stringify({ g: "personal:relay.example.com:guest.g" }),
+    );
+    expect(originOf(loadConnections()[0]!)).toBe("shared");
+  });
+
+  it("新加的行默认 mine；明确给 shared 就是 shared，之后不带来历的合并沿用它", () => {
+    upsertConnection(RELAYED);
+    expect(originOf(loadConnections()[0]!)).toBe("mine");
+    upsertConnection({
+      ...RELAYED,
+      sourceId: "j",
+      origin: "shared",
+      shareRole: "viewer",
+      shareExpiresAtMs: 99,
+    });
+    upsertConnection({ ...RELAYED, sourceId: "j", label: "改了" });
+    const joined = loadConnections().find((row) => row.sourceId === "j")!;
+    expect(joined).toMatchObject({
+      origin: "shared",
+      shareRole: "viewer",
+      shareExpiresAtMs: 99,
+    });
   });
 });

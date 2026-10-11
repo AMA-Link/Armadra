@@ -1,8 +1,9 @@
 import * as React from "react";
+import { lk } from "../local-key";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 
-import { runtimeApi } from "../../../api/client";
+import { localRuntimeApi } from "../../../api/client";
 import { useT } from "../../../app/preferences-store";
 import { SettingsGroup } from "../SettingsGroup";
 import { SettingsRow } from "../SettingsRow";
@@ -17,7 +18,7 @@ import {
   SelectValue,
 } from "@/ui/select";
 
-const QUERY_KEY = ["ama-credentials"] as const;
+const QUERY_KEY = lk("ama-credentials");
 
 /**
  * 设置 → Agent → Armadra Agent 的模型密钥（协调 Agent §7）。
@@ -31,7 +32,7 @@ export function AmaKeys({ disabled }: { disabled?: boolean }) {
   const queryClient = useQueryClient();
   const status = useQuery({
     queryKey: QUERY_KEY,
-    queryFn: () => runtimeApi.amaCredentials(),
+    queryFn: () => localRuntimeApi.amaCredentials(),
     retry: false,
   });
   const providers = status.data?.providers ?? [];
@@ -41,7 +42,7 @@ export function AmaKeys({ disabled }: { disabled?: boolean }) {
 
   const save = useMutation({
     mutationFn: () =>
-      runtimeApi.setAmaCredential(selected as string, key.trim()),
+      localRuntimeApi.setAmaCredential(selected as string, key.trim()),
     onSuccess: (next) => {
       setKey("");
       queryClient.setQueryData(QUERY_KEY, next);
@@ -50,7 +51,7 @@ export function AmaKeys({ disabled }: { disabled?: boolean }) {
     onError: () => toast.error(t("agent.amaKeys.failed")),
   });
   const clear = useMutation({
-    mutationFn: (id: string) => runtimeApi.clearAmaCredential(id),
+    mutationFn: (id: string) => localRuntimeApi.clearAmaCredential(id),
     onSuccess: (next) => queryClient.setQueryData(QUERY_KEY, next),
     onError: () => toast.error(t("agent.amaKeys.failed")),
   });

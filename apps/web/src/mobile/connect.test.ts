@@ -8,11 +8,15 @@ import {
   failureOf,
 } from "./connect";
 import {
+  activeConnection,
   activeConnectionId,
   loadConnections,
+  originOf,
   remoteSlotOf,
+  setActiveConnection,
   upsertConnection,
 } from "./connections";
+import { takeEnterIntent } from "../services/recent";
 import { guestPrincipal, serviceIdOf } from "./credentials";
 import {
   createRelayEnrollment,
@@ -632,6 +636,66 @@ describe("添加连接 · 分享链接 / 二维码", () => {
     expect(sessionStorage.getItem("armadra.sources.openAfterJoin")).toBe(
       "local",
     );
+  });
+
+  it("加入的主机记为 shared，不顶替页面的主连接：仍进自己的电脑，加入的直接打开", async () => {
+    upsertConnection({
+      sourceId: "own-pc",
+      label: "我的 Mac",
+      baseUrl: "https://192.168.1.8:8443",
+      relayOrigin: "",
+      cloudIssuer: "",
+      fingerprint: FP,
+    });
+    setActiveConnection("own-pc");
+    const { bridge } = fakeBridge({
+      peek: { fingerprint: RELAY_FP, trusted: false, pinned: true },
+    });
+    const net = routedFetch({
+      [`GET /v1/links/${LINK_ID}`]: () => ({
+        body: {
+          label: "",
+          role: "viewer",
+          sourceName: "MacBook",
+          expiresAtMs: 4_102_444_800_000,
+          exhausted: false,
+        },
+      }),
+      [`POST /v1/links/${LINK_ID}/accept`]: () => ({
+        body: {
+          sourceId: HOST,
+          relayOrigin: ISSUER,
+          relayBaseUrl: `${ISSUER}/s/${HOST}`,
+          assertion: "jws.guest",
+          relayToken: "relay.guest",
+          guestSession: {
+            accessToken: "guest-access",
+            refreshToken: "guest-refresh",
+            accessExpiresAtMs: Date.now() + 900_000,
+            expiresAtMs: Date.now() + 9_000_000,
+          },
+        },
+      }),
+      [`POST /s/${HOST}/api/identity/cloud/login`]: () => coreLogin(),
+    });
+    const reload = vi.fn();
+    const enroll = createRelayEnrollment({
+      bridge,
+      cloud: { fetch: net.fetch },
+      reload,
+    });
+    await expect(enroll.join(SHARE)).resolves.toEqual({ kind: "done" });
+    expect(activeConnection()?.sourceId).toBe("own-pc");
+    expect(takeEnterIntent()).toBe("own-pc");
+    expect(sessionStorage.getItem("armadra.sources.openAfterJoin")).toBe(HOST);
+    const joined = loadConnections().find((row) => row.sourceId === HOST)!;
+    expect(joined).toMatchObject({
+      origin: "shared",
+      shareRole: "viewer",
+      shareExpiresAtMs: 4_102_444_800_000,
+    });
+    expect(originOf(loadConnections()[0]!)).toBe("mine");
+    expect(reload).toHaveBeenCalledOnce();
   });
 
   it("深链形式同样挂载；新的自签中转要先核对指纹；失效的链接说明原因", async () => {

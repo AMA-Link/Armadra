@@ -1,9 +1,17 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import type { BoardDocument, CanvasNode, Position } from "@armadra/shared";
+import {
+  SIBLING_GAP,
+  boxesTooClose,
+  type BoardDocument,
+  type CanvasNode,
+  type Position,
+} from "@armadra/shared";
 
 import { useCanvasStore } from "@/store/canvas-store";
 import { canUndo, resetHistory, undo } from "@/store/canvas/history";
 import { resetCanvasLock, setCanvasLocked } from "./canvas-lock";
+import { setFlow, type FlowHandle } from "./flow/flow-context";
+import type { TidyRect } from "./tidy";
 import { makeEdge, makeItem, makeNode } from "./test-support";
 import {
   emptyWhiteboard,
@@ -324,5 +332,240 @@ describe("§6.4 / §6.5", () => {
     resetHistory();
     arrangeCanvas({ aspect: 16 / 9 });
     expect(canUndo()).toBe(false);
+  });
+});
+
+/* ------------------------------ 不重叠（#319） ------------------------------ */
+
+/** 顶层对象排完之后的占地：Frame 含组员，节点按文档尺寸。 */
+function footprints(): { id: string; wb: boolean; box: TidyRect }[] {
+  const state = useCanvasStore.getState();
+  const nodes = state.document?.nodes ?? [];
+  const items = state.whiteboard.items;
+  const result: { id: string; wb: boolean; box: TidyRect }[] = [];
+  for (const node of nodes.filter((entry) => !entry.parentId)) {
+    const size = node.size ?? { width: 240, height: 200 };
+    const parts: TidyRect[] = [{ ...node.position, ...size }];
+    for (const member of nodes.filter((entry) => entry.parentId === node.id)) {
+      parts.push({
+        x: node.position.x + member.position.x,
+        y: node.position.y + member.position.y,
+        ...(member.size ?? { width: 240, height: 200 }),
+      });
+    }
+    for (const item of items.filter((entry) => entry.parentId === node.id)) {
+      parts.push({
+        x: node.position.x + item.x,
+        y: node.position.y + item.y,
+        width: item.w,
+        height: item.h,
+      });
+    }
+    const left = Math.min(...parts.map((part) => part.x));
+    const top = Math.min(...parts.map((part) => part.y));
+    result.push({
+      id: node.id,
+      wb: false,
+      box: {
+        x: left,
+        y: top,
+        width: Math.max(...parts.map((part) => part.x + part.width)) - left,
+        height: Math.max(...parts.map((part) => part.y + part.height)) - top,
+      },
+    });
+  }
+  for (const item of items.filter((entry) => !entry.parentId)) {
+    result.push({
+      id: item.id,
+      wb: true,
+      box: { x: item.x, y: item.y, width: item.w, height: item.h },
+    });
+  }
+  return result;
+}
+
+/** 任意两个顶层对象（两个都是白板对象的除外：孤岛内部是用户自己摆的）。 */
+function crowded(gap: number): string[] {
+  const all = footprints();
+  const hits: string[] = [];
+  for (const [index, a] of all.entries()) {
+    for (const b of all.slice(index + 1)) {
+      if (a.wb && b.wb) continue;
+      if (boxesTooClose(a.box, b.box, gap)) hits.push(`${a.id}×${b.id}`);
+    }
+  }
+  return hits;
+}
+
+function seeded(seed: number): () => number {
+  let state = seed >>> 0;
+  return () => {
+    state = (state + 0x6d2b79f5) >>> 0;
+    let t = state;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+describe("不重叠（#319）", () => {
+  afterEach(() => setFlow(null));
+
+  it("组员伸出框外：Frame 按「框 ∪ 组员」占地，排完不压别人，组员相对位置不变", () => {
+    const frame = makeNode("group", {
+      position: { x: 0, y: 0 },
+      size: { width: 400, height: 300 },
+    });
+    const member = makeNode("terminal", {
+      parentId: frame.id,
+      position: { x: 350, y: 250 },
+      size: { width: 600, height: 400 },
+    });
+    const loose = makeNode("terminal", {
+      position: { x: 420, y: 0 },
+      size: { width: 960, height: 600 },
+    });
+    load([frame, member, loose]);
+    arrangeCanvas({ aspect: 100 });
+    expect(crowded(SIBLING_GAP)).toEqual([]);
+    expect(positionOf(member.id)).toEqual({ x: 350, y: 250 });
+  });
+
+  it("只整理选区：排好的块让开没选中的对象", () => {
+    const one = makeNode("terminal", {
+      position: { x: 900, y: 40 },
+      size: { width: 960, height: 600 },
+    });
+    const two = makeNode("terminal", {
+      position: { x: 40, y: 900 },
+      size: { width: 960, height: 600 },
+    });
+    // 正好挡在选区包围盒左上角的落点上。
+    const blocker = makeNode("sticky", { position: { x: 300, y: 100 } });
+    load([one, two, blocker]);
+    useCanvasStore.setState({ selectedNodeIds: [one.id, two.id] });
+    arrangeCanvas({
+      aspect: 1,
+      only: tidySelection(useCanvasStore.getState()),
+    });
+    expect(positionOf(blocker.id)).toEqual({ x: 300, y: 100 });
+    expect(crowded(SIBLING_GAP)).toEqual([]);
+    // 一次撤销全回。
+    undo();
+    expect(canUndo()).toBe(false);
+    expect(positionOf(one.id)).toEqual({ x: 900, y: 40 });
+  });
+
+  it("React Flow 量到的尺寸比文档大时按实测占地", () => {
+    const big = makeNode("sticky", {
+      position: { x: 0, y: 0 },
+      size: { width: 240, height: 200 },
+    });
+    const next = makeNode("sticky", { position: { x: 300, y: 0 } });
+    load([big, next]);
+    setFlow({
+      getNode: (id: string) =>
+        id === big.id ? { measured: { width: 900, height: 700 } } : undefined,
+    } as unknown as FlowHandle);
+    arrangeCanvas({ aspect: 100 });
+    const a = positionOf(big.id);
+    const b = positionOf(next.id);
+    expect(
+      boxesTooClose(
+        { ...a, width: 900, height: 700 },
+        { ...b, width: 240, height: 200 },
+        SIBLING_GAP,
+      ),
+    ).toBe(false);
+  });
+
+  it("随机画布（含大终端、组、白板对象、派发线）：排完不挤、组员不动、再整理不动、一次撤销全回", () => {
+    for (let seed = 1; seed <= 60; seed += 1) {
+      const random = seeded(seed);
+      const nodes: CanvasNode[] = [];
+      const items: Item[] = [];
+      const count = 2 + Math.floor(random() * 14);
+      for (let index = 0; index < count; index += 1) {
+        const at = {
+          x: Math.round(random() * 2400),
+          y: Math.round(random() * 1600),
+        };
+        const roll = random();
+        if (roll < 0.15) {
+          const frame = makeNode("group", {
+            position: at,
+            size: { width: 500, height: 400 },
+          });
+          nodes.push(
+            frame,
+            makeNode("terminal", {
+              parentId: frame.id,
+              position: { x: 40, y: 60 },
+              size: { width: 640, height: 440 },
+            }),
+          );
+          items.push(makeItem("shape", { parentId: frame.id, x: 20, y: 20 }));
+        } else if (roll < 0.3) {
+          items.push(makeItem("shape", { ...at, w: 160, h: 90 }));
+        } else {
+          nodes.push(
+            makeNode("terminal", {
+              position: at,
+              size:
+                roll < 0.7
+                  ? { width: 960, height: 600 }
+                  : { width: 240, height: 200 },
+              data: {
+                kind: "terminal",
+                agent: { id: "claude" },
+              } as CanvasNode["data"],
+            }),
+          );
+        }
+      }
+      const tops = nodes.filter((node) => !node.parentId);
+      const edges = [];
+      for (let index = 0; index < tops.length; index += 1) {
+        if (tops.length < 2 || random() < 0.4) continue;
+        const source = tops[Math.floor(random() * tops.length)]!;
+        const target = tops[Math.floor(random() * tops.length)]!;
+        if (source.id === target.id) continue;
+        edges.push(
+          random() < 0.6
+            ? { ...makeEdge(source.id, target.id), role: "supervises" as const }
+            : makeEdge(source.id, target.id),
+        );
+      }
+      resetHistory();
+      load(nodes, { edges, items });
+      const before = new Map(nodes.map((node) => [node.id, node.position]));
+      const direction = seed % 2 === 0 ? "vertical" : "horizontal";
+
+      arrangeCanvas({ aspect: 16 / 9, direction });
+      expect(crowded(SIBLING_GAP), `seed ${seed}`).toEqual([]);
+      for (const node of nodes.filter((entry) => entry.parentId)) {
+        expect(positionOf(node.id), `seed ${seed}`).toEqual(node.position);
+      }
+
+      // 已经整齐：再整理一次不提交。
+      const tidyHistory = canUndo();
+      resetHistory();
+      arrangeCanvas({ aspect: 16 / 9, direction });
+      expect(canUndo(), `seed ${seed}`).toBe(false);
+
+      // 一次撤销回到原位（第一次整理有改动时）。
+      if (tidyHistory) {
+        resetHistory();
+        load(nodes, { edges, items });
+        arrangeCanvas({ aspect: 16 / 9, direction });
+        undo();
+        expect(canUndo(), `seed ${seed}`).toBe(false);
+        for (const node of nodes) {
+          expect(positionOf(node.id), `seed ${seed}`).toEqual(
+            before.get(node.id),
+          );
+        }
+      }
+    }
   });
 });

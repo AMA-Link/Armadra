@@ -92,6 +92,16 @@ describe("路由要求的 scope", () => {
     ).toBe("terminal:create");
   });
 
+  it("导出是写文件，要 assets 写权限", () => {
+    for (const kind of ["png", "text"]) {
+      expect(
+        routeScope("POST", `/api/workspaces/{workspaceId}/exports/e1/${kind}`)
+          ?.permission,
+        kind,
+      ).toBe("assets:write");
+    }
+  });
+
   it("健康检查不要求任何权限", () => {
     expect(routeScope("GET", "/health")).toBeUndefined();
     expect(routeScope("GET", "/api/health")).toBeUndefined();

@@ -14,6 +14,7 @@ import { usePreferencesStore } from "../app/preferences-store";
 import { followInitialSource } from "../app/use-sources-bootstrap";
 import type { SourceConnection } from "../sources/connection";
 import { SourcesProvider } from "../sources/context";
+import { clearJoinOpen, pendingJoinOpen } from "../sources/join-intent";
 import { type SourceRegistry, createSourceRegistry } from "../sources/registry";
 import type { SourceDescriptor, SourceState } from "../sources/types";
 import { memoryStorage } from "../mobile/testing";
@@ -24,7 +25,12 @@ import {
   setEnterIntent,
   takeEnterIntent,
 } from "./recent";
-import { layoutServices, serviceRowOf, type ServiceRow } from "./rows";
+import {
+  layoutByOrigin,
+  layoutServices,
+  serviceRowOf,
+  type ServiceRow,
+} from "./rows";
 import { ServicePicker } from "./ServicePicker";
 import { SwitchServiceDialog } from "./SwitchServiceDialog";
 import { initialSourceParam, useServiceSwitcher } from "./switcher";
@@ -140,7 +146,7 @@ describe("选择服务 · 整页", () => {
     serviceRowOf(viaLan("d", "Studio")),
   ];
 
-  it("最近使用在前，组头分中转与直连，状态胶囊与「当前」在行上", () => {
+  it("最近使用在前，只有自己的电脑时不分组头，状态胶囊与「当前」在行上", () => {
     render(
       <ServicePicker
         variant="page"
@@ -154,8 +160,7 @@ describe("选择服务 · 整页", () => {
     const recent = screen.getByText("最近使用").closest("section")!;
     expect(within(recent as HTMLElement).getByText("Studio")).toBeTruthy();
     expect(screen.getByText("全部")).toBeTruthy();
-    expect(screen.getByText("中转 · relay.example.com")).toBeTruthy();
-    expect(screen.getByText("直连", { selector: "h3" })).toBeTruthy();
+    expect(screen.queryByRole("heading", { level: 3 })).toBeNull();
     expect(screen.getByText("当前")).toBeTruthy();
     expect(screen.getAllByText("离线")).toHaveLength(2);
     // 未知只呼吸、文字只给读屏。
@@ -246,7 +251,36 @@ describe("选择服务 · 整页", () => {
     expect(screen.queryByRole("button", { name: "重命名 Studio" })).toBeNull();
   });
 
-  it("失败挂在那一行下面，带动作；登录失效的组头给「登录」", () => {
+  it("两组：我的电脑 / 他人分享；分享的行写主人、权限与到期，不写路", () => {
+    const shared = serviceRowOf({
+      ...viaRelay("s", "设计稿"),
+      origin: "shared",
+      ownerName: "小王",
+      shareRole: "viewer",
+      shareExpiresAtMs: Date.UTC(2030, 0, 2),
+    } as SourceDescriptor);
+    const all = [...rows.slice(3), shared];
+    expect(layoutByOrigin(all).map((group) => group.key)).toEqual([
+      "mine",
+      "shared",
+    ]);
+    render(<ServicePicker variant="page" rows={all} onEnter={vi.fn()} />);
+    const heads = screen
+      .getAllByRole("heading", { level: 3 })
+      .map((head) => head.textContent);
+    expect(heads).toEqual(["我的电脑", "他人分享"]);
+    const sharedRow = document.querySelector('[data-service-row="s"]')!;
+    expect(sharedRow.textContent).toContain("小王 · 查看 · 有效至");
+    expect(sharedRow.textContent).not.toContain("互联网");
+    expect(document.body.textContent).not.toMatch(/中转|中继|签发方|挂载|隧道/);
+  });
+
+  it("没有分享时只有一组，旧数据（无来历）当作自己的", () => {
+    expect(layoutByOrigin(rows).map((group) => group.key)).toEqual(["mine"]);
+    expect(layoutByOrigin([])).toEqual([]);
+  });
+
+  it("失败挂在那一行下面，带动作；登录失效的账号，那几行给「登录」", () => {
     const run = vi.fn();
     const onSignIn = vi.fn();
     render(
@@ -267,8 +301,8 @@ describe("选择服务 · 整页", () => {
     expect(failure.textContent).toContain("这台主机不在线");
     fireEvent.click(within(failure as HTMLElement).getByText("重试"));
     expect(run).toHaveBeenCalled();
-    expect(screen.getByText("已登出")).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "登录" }));
+    expect(screen.getAllByText("已登出").length).toBeGreaterThan(0);
+    fireEvent.click(screen.getAllByRole("button", { name: "登录" })[0]!);
     expect(onSignIn).toHaveBeenCalledWith(ISSUER);
   });
 
@@ -314,6 +348,7 @@ describe("桌面「切换服务」对话框", () => {
     registry?.dispose();
     registry = null;
     useServiceSwitcher.setState({ open: false });
+    clearJoinOpen();
   });
 
   const mount = () => {
@@ -350,14 +385,15 @@ describe("桌面「切换服务」对话框", () => {
     ).toHaveLength(2);
   });
 
-  it("「切换」换当前源并关掉对话框；没有桌面壳时不给「在新窗口打开」", () => {
-    const table = mount();
+  it("「切换」去打开那台电脑上的工作空间并关掉对话框；没有桌面壳时不给「在新窗口打开」", () => {
+    mount();
     expect(screen.queryByRole("button", { name: "在新窗口打开" })).toBeNull();
     const row = document.querySelector('[data-service-row="far"]')!;
     act(() => {
       fireEvent.click(within(row as HTMLElement).getByText("切换"));
     });
-    expect(table.current().descriptor.sourceId).toBe("far");
+    // 没有手动换源：还没列出工作空间，等它连上再开（当前源随打开的工作空间走）。
+    expect(pendingJoinOpen()).toBe("far");
     expect(useServiceSwitcher.getState().open).toBe(false);
   });
 
@@ -387,18 +423,11 @@ describe("新窗口的初始当前源（?source=）", () => {
     expect(initialSourceParam("")).toBeNull();
   });
 
-  it("那个源挂上之后设为当前，只设一次", () => {
-    const registry = createSourceRegistry({
-      connect: (d) => fakeConnection(d),
-    });
-    const stop = followInitialSource(registry, "lan");
-    expect(registry.current().descriptor.sourceId).toBe("local");
-    registry.add(viaLan("lan"));
-    expect(registry.current().descriptor.sourceId).toBe("lan");
-    registry.setCurrent("local");
-    registry.add(viaLan("other"));
-    expect(registry.current().descriptor.sourceId).toBe("local");
-    stop();
-    registry.dispose();
+  it("记下等那个源连上后打开它的工作空间；没有参数什么也不做", () => {
+    followInitialSource(null);
+    expect(pendingJoinOpen()).toBeNull();
+    followInitialSource("lan");
+    expect(pendingJoinOpen()).toBe("lan");
+    clearJoinOpen();
   });
 });

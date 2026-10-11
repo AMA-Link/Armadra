@@ -119,7 +119,7 @@ export function isCrashReportDsn(text: string): boolean {
  */
 export function CrashReportGroup() {
   const t = useT();
-  const { settings, save } = useRuntimeSettings();
+  const { settings, save } = useRuntimeSettings({ scope: "local" });
   const saved = settings.data?.diagnostics?.crashReportDsn ?? "";
   const pageErrors = settings.data?.diagnostics?.reportPageErrors === true;
   const [opened, setOpened] = useState(false);
