@@ -169,7 +169,7 @@ stateDiagram-v2
 1. `pnpm tauri signer generate -w <本机私钥路径>`；公钥写入 `tauri.conf.json` 的 `plugins.updater.pubkey`（可提交），私钥与口令进入 GitHub secret `TAURI_SIGNING_PRIVATE_KEY` / `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`，本机副本进入密码管理器后删除。
    在此之前 `apps/desktop/scripts/signing.mjs` 在打包开工前就判定这一次是签、是跳过还是拒绝，
    不让「缺私钥」变成二十分钟之后的 `Missing comment in public key`；步骤与判定表写在[开发指南](../guides/development.md#更新签名)。
-2. `bundle.createUpdaterArtifacts: true`；`plugins.updater.active: true`；`endpoints` 留空，由 CI 用 `--config` 注入 `https://github.com/yovinchen/Armadra/releases/latest/download/latest.json`。
+2. `bundle.createUpdaterArtifacts: true`；`plugins.updater.active: true`；`endpoints` 留空，由 CI 用 `--config` 注入 `https://github.com/AMA-Link/Armadra/releases/latest/download/latest.json`。
 3. `updates.rs` 的 `a_complete_updater_block_is_configured` 测试改为断言「源码配置有 pubkey、无 endpoints」，防止把地址写死进仓库。
 4. 首个带签名的版本发布后，旧的无签名安装只能手动升级一次；发布说明写明。
 
