@@ -38,6 +38,7 @@ vi.mock("../../../api/client", () => ({
       hello: async () => ({ hostName: "mbp", systemHostName: "mbp" }),
     },
   }),
+  localRuntimeApi: {},
   runtimeApi: {
     dataInfo: async () => ({
       dataDir: "/Users/dev/Library/Application Support/Armadra",

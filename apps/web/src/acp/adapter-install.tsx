@@ -1,3 +1,5 @@
+import { LOCAL_SOURCE_ID } from "@/api/source";
+import { srcKey } from "@/sources/scope";
 import * as React from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Download } from "lucide-react";
@@ -11,7 +13,7 @@ import {
   agentCliInstallable,
 } from "@armadra/shared";
 
-import { runtimeApi } from "@/api/client";
+import { localRuntimeApi } from "@/api/client";
 import { type Translate, useT } from "@/app/preferences-store";
 import { integrationKey } from "@/panels/settings/pages/integration/use-integration";
 import { Alert, AlertAction, AlertTitle } from "@/ui/alert";
@@ -64,7 +66,7 @@ export function failureText(t: Translate, job: AdapterInstallJob): string {
 export const adapterInstallKey = (
   agentId: string | null,
   target: AdapterInstallTarget = "adapter",
-) => ["acp-adapter-install", agentId, target] as const;
+) => srcKey(LOCAL_SOURCE_ID, "acp-adapter-install", agentId, target);
 
 function codeOf(error: unknown): string | undefined {
   const code = (error as { code?: unknown } | null)?.code;
@@ -98,7 +100,7 @@ export function useInstallJob(
   const [rejected, setRejected] = React.useState<string | undefined>();
   const query = useQuery({
     queryKey: key,
-    queryFn: () => runtimeApi.acpAdapterInstall(agentId as string, target),
+    queryFn: () => localRuntimeApi.acpAdapterInstall(agentId as string, target),
     enabled: agentId !== null,
     retry: false,
     refetchInterval: (current) =>
@@ -112,7 +114,7 @@ export function useInstallJob(
       reinstall: boolean;
       rollback: boolean;
     }) =>
-      runtimeApi.installAcpAdapter(
+      localRuntimeApi.installAcpAdapter(
         agentId as string,
         reinstall,
         target,

@@ -1,7 +1,8 @@
+import { lk } from "../local-key";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 
-import { runtimeApi } from "../../../api/client";
+import { localRuntimeApi } from "../../../api/client";
 import {
   CONVERSATION_SCOPES,
   type ConversationScope,
@@ -24,6 +25,8 @@ import { Switch } from "@/ui/switch";
 
 /** 数据目录信息的查询键：本机服务页的「数据」组读同一份。 */
 export const DATA_INFO_KEY = ["data-info"] as const;
+/** 对话索引页读的是本机的数据目录。 */
+const LOCAL_DATA_INFO_KEY = lk("data-info");
 
 /**
  * 设置 → 会话（§2.1）：自动命名（本设备）与会话索引——索引范围、条数、重建。
@@ -31,18 +34,18 @@ export const DATA_INFO_KEY = ["data-info"] as const;
 export function SessionsPage() {
   const t = useT();
   const queryClient = useQueryClient();
-  const { settings, save } = useRuntimeSettings();
+  const { settings, save } = useRuntimeSettings({ scope: "local" });
   const autoTitle = usePreferencesStore((state) => state.autoTitle);
   const setAutoTitle = usePreferencesStore((state) => state.setAutoTitle);
   const info = useQuery({
-    queryKey: DATA_INFO_KEY,
-    queryFn: runtimeApi.dataInfo,
+    queryKey: LOCAL_DATA_INFO_KEY,
+    queryFn: localRuntimeApi.dataInfo,
     retry: false,
   });
   const rebuild = useMutation({
-    mutationFn: runtimeApi.refreshConversations,
+    mutationFn: localRuntimeApi.refreshConversations,
     onSuccess: (report) => {
-      void queryClient.invalidateQueries({ queryKey: DATA_INFO_KEY });
+      void queryClient.invalidateQueries({ queryKey: LOCAL_DATA_INFO_KEY });
       void queryClient.invalidateQueries({ queryKey: ["conversations"] });
       toast.success(t("settings.rebuild.done", { value: report.total }));
     },

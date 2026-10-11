@@ -8,7 +8,9 @@ import * as React from "react";
 import { toast } from "sonner";
 import { SettingsGroup } from "../SettingsGroup";
 import { SettingsRow } from "../SettingsRow";
-import { useWorkspacesQuery } from "../../../app/workspaces-query";
+import { useQuery } from "@tanstack/react-query";
+import { localRuntimeApi } from "../../../api/client";
+import { lk } from "../local-key";
 import { clearBrowsingData } from "@/nodes/browser/data";
 import { searchOrUrl } from "@/nodes/browser/webview";
 import {
@@ -42,7 +44,12 @@ export function BrowserPage() {
   const t = useT();
   const browser = usePreferencesStore((state) => state.browser);
   const set = usePreferencesStore((state) => state.setBrowserPreference);
-  const workspaces = useWorkspacesQuery();
+  // 浏览数据在这台设备上，按本机的工作空间清。
+  const workspaces = useQuery({
+    queryKey: lk("workspaces"),
+    queryFn: localRuntimeApi.listWorkspaces,
+    retry: false,
+  });
   const [startPage, setStartPage] = React.useState(browser.startPage);
   const [confirming, setConfirming] = React.useState(false);
   const [clearing, setClearing] = React.useState(false);

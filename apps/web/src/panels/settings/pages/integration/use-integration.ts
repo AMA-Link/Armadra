@@ -1,17 +1,18 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { lk } from "../../local-key";
 import type { AgentInfo } from "@armadra/shared";
 
-import { runtimeApi } from "@/api/client";
+import { localRuntimeApi } from "@/api/client";
 
 export function integrationKey(agentId: string) {
-  return ["agent-integration", agentId] as const;
+  return lk("agent-integration", agentId);
 }
 
 /** 设置页「集成」一行的全部状态：注入方式、Hook、技能、旧残留，一次读出。 */
 export function useAgentIntegration(agent: AgentInfo) {
   const query = useQuery({
     queryKey: integrationKey(agent.id),
-    queryFn: ({ signal }) => runtimeApi.agentIntegration(agent.id, signal),
+    queryFn: ({ signal }) => localRuntimeApi.agentIntegration(agent.id, signal),
   });
   return {
     integration: query.data ?? null,
@@ -26,5 +27,6 @@ export function useIntegrationRefresh() {
   return (agentId: string) => {
     void client.invalidateQueries({ queryKey: integrationKey(agentId) });
     void client.invalidateQueries({ queryKey: ["agents"] });
+    void client.invalidateQueries({ queryKey: lk("agents") });
   };
 }

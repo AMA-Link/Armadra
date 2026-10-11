@@ -1,4 +1,6 @@
 import * as React from "react";
+import { lk } from "../local-key";
+import { onLocal } from "../../../api/source";
 import { useQuery } from "@tanstack/react-query";
 import type { PasswordResetIssued } from "@armadra/shared";
 import { toast } from "sonner";
@@ -172,8 +174,8 @@ export function MailLinkForm({
   const locale = usePreferencesStore((state) => state.locale);
   const fieldId = React.useId();
   const status = useQuery({
-    queryKey: ["mail", "status"],
-    queryFn: () => mailConfigured(),
+    queryKey: lk("mail", "status"),
+    queryFn: () => onLocal(() => mailConfigured()),
     enabled: fixed === undefined,
     staleTime: 60_000,
     retry: false,

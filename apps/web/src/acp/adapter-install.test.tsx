@@ -24,7 +24,7 @@ vi.mock("@/api/client", async () => {
   const request = await import("@/api/request");
   return {
     ...request,
-    runtimeApi: {
+    localRuntimeApi: {
       agents: () => mock.agents(),
       acpAdapterInstall: (agentId: string, target: string) =>
         mock.status(agentId, target),

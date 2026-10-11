@@ -46,7 +46,7 @@ import { Empty, EmptyContent, EmptyHeader, EmptyTitle } from "@/ui/empty";
 export function CustomAgentsPage() {
   const t = useT();
   const subpage = useSubpage();
-  const { settings, save } = useRuntimeSettings();
+  const { settings, save } = useRuntimeSettings({ scope: "local" });
   const custom = React.useMemo(
     () => settings.data?.agents?.custom ?? [],
     [settings.data],
@@ -201,7 +201,7 @@ function CustomAgentForm({
   onCancel: () => void;
 }) {
   const t = useT();
-  const agents = useAgentsQuery();
+  const agents = useAgentsQuery("local");
   const existing = custom.find((agent) => agent.id === reference);
   const [form, setForm] = React.useState<AgentForm>(() => toForm(existing));
   const [pendingDelete, setPendingDelete] = React.useState(false);

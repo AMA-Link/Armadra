@@ -147,13 +147,54 @@ export function installLocalTransport(next: BearerTransport | null): void {
 /* --------------------------------- 当前源 --------------------------------- */
 
 let resolveCurrent: () => Source = () => localSource;
+let pinned: Source | null = null;
 
 /**
  * 当前源：省略了源的 `api/*` 调用发往它。源表（`sources/registry.ts`）装好
  * 之前、或没有选中别的源时是本机。
  */
 export function currentSource(): Source {
-  return resolveCurrent();
+  return pinned ?? resolveCurrent();
+}
+
+/**
+ * 在 `source` 上同步执行 `run`：期间省略了源的 `api/*` 调用（`request()`、
+ * `currentClient()`）发往它，不管此刻打开的是哪个源的工作空间。
+ *
+ * 只覆盖 `run` 的同步部分——`api/*` 的方法在第一个 `await` 之前就取了源，这是它们
+ * 现有的写法；`await` 之后再发的请求不受影响，所以别用它包一段自己 `await` 的流程。
+ */
+export function withCurrentSource<T>(source: Source, run: () => T): T {
+  const previous = pinned;
+  pinned = source;
+  try {
+    return run();
+  } finally {
+    pinned = previous;
+  }
+}
+
+/**
+ * 把一组 `api/*` 方法钉在本机源上（设置页恒指本机，重设计 B4）：每个方法调用时
+ * 都发往本机 core，当前打开的是别人的工作空间也一样。非函数成员原样保留。
+ */
+export function pinLocal<T extends object>(api: T): T {
+  const pinnedApi: Record<string, unknown> = {};
+  for (const [name, member] of Object.entries(api)) {
+    pinnedApi[name] =
+      typeof member === "function"
+        ? (...args: unknown[]) =>
+            withCurrentSource(localSource, () =>
+              (member as (...a: unknown[]) => unknown)(...args),
+            )
+        : member;
+  }
+  return pinnedApi as T;
+}
+
+/** 在本机源上执行 `run`（{@link withCurrentSource} 的本机特例）。 */
+export function onLocal<T>(run: () => T): T {
+  return withCurrentSource(localSource, run);
 }
 
 /** 源表把「当前源」接到自己身上；传 `null` 退回本机。 */

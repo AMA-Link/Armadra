@@ -4,7 +4,7 @@ import { KeyRound } from "lucide-react";
 import { toast } from "sonner";
 import type { SshHost, SshHostKey, SshHostKeyScan } from "@armadra/shared";
 
-import { runtimeApi } from "@/api/client";
+import { localRuntimeApi } from "@/api/client";
 import { useT } from "@/app/preferences-store";
 import { Badge } from "@/ui/badge";
 import { Button } from "@/ui/button";
@@ -41,14 +41,14 @@ export function HostKeyDialog({ host }: { host: SshHost }) {
   const [pending, setPending] = React.useState<SshHostKey | null>(null);
 
   const rescan = useMutation({
-    mutationFn: () => runtimeApi.scanSshHostKeys(host.id),
+    mutationFn: () => localRuntimeApi.scanSshHostKeys(host.id),
     onSuccess: (result) => setScan(result),
     onError: (cause: Error) =>
       toast.error(t("ssh.hostKey.failed"), { description: cause.message }),
   });
   const trust = useMutation({
     mutationFn: (input: { line: string; replace: boolean }) =>
-      runtimeApi.trustSshHostKey(host.id, input.line, input.replace),
+      localRuntimeApi.trustSshHostKey(host.id, input.line, input.replace),
     // The answer is a fresh scan, so what is shown is the new state rather
     // than an assertion that the write did what was asked.
     onSuccess: (result) => {
@@ -60,7 +60,7 @@ export function HostKeyDialog({ host }: { host: SshHost }) {
       toast.error(t("ssh.hostKey.saveFailed"), { description: cause.message }),
   });
   const forget = useMutation({
-    mutationFn: () => runtimeApi.forgetSshHostKeys(host.id),
+    mutationFn: () => localRuntimeApi.forgetSshHostKeys(host.id),
     onSuccess: () => rescan.mutate(),
     onError: (cause: Error) =>
       toast.error(t("ssh.hostKey.saveFailed"), { description: cause.message }),

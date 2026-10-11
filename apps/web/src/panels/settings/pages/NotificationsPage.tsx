@@ -110,7 +110,7 @@ export function NotificationsPage() {
 
 function UpdateNotifyRow() {
   const t = useT();
-  const { settings, save } = useRuntimeSettings();
+  const { settings, save } = useRuntimeSettings({ scope: "local" });
   return (
     <SettingsRow
       label={t("updates.notify")}

@@ -1,3 +1,5 @@
+import { onLocal } from "../../../api/source";
+import { lk } from "../local-key";
 import * as React from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
@@ -26,7 +28,7 @@ import {
 } from "../../../api/forge";
 
 export const forgeConfigKeys = {
-  all: ["forge", "configs"] as const,
+  all: lk("forge", "configs"),
 };
 
 const PLATFORMS: readonly ConfigurableForge[] = ["gitea", "gitlab"];
@@ -65,7 +67,7 @@ export function ForgeConfigs() {
   const client = useQueryClient();
   const configs = useQuery({
     queryKey: forgeConfigKeys.all,
-    queryFn: forgeConfigs,
+    queryFn: () => onLocal(forgeConfigs),
     retry: false,
   });
   const [draft, setDraft] = React.useState<Draft | null>(null);
@@ -77,16 +79,18 @@ export function ForgeConfigs() {
 
   const save = useMutation({
     mutationFn: (input: Draft & { clearToken?: boolean }) =>
-      putForgeConfig(input.repoKey.trim().toLowerCase(), {
-        forge: input.forge,
-        apiBase: input.apiBase.trim(),
-        ...(input.clearToken
-          ? { token: "" }
-          : input.token.trim()
-            ? { token: input.token.trim() }
-            : {}),
-        expectedRevision: input.revision,
-      }),
+      onLocal(() =>
+        putForgeConfig(input.repoKey.trim().toLowerCase(), {
+          forge: input.forge,
+          apiBase: input.apiBase.trim(),
+          ...(input.clearToken
+            ? { token: "" }
+            : input.token.trim()
+              ? { token: input.token.trim() }
+              : {}),
+          expectedRevision: input.revision,
+        }),
+      ),
     onSuccess: () => {
       // 令牌在 core 收下的那一刻离开这个组件。
       setDraft(null);
@@ -98,7 +102,7 @@ export function ForgeConfigs() {
 
   const remove = useMutation({
     mutationFn: (config: ForgeConfig) =>
-      deleteForgeConfig(config.repoKey, config.revision),
+      onLocal(() => deleteForgeConfig(config.repoKey, config.revision)),
     onSuccess: () => {
       toast.success(t("forge.settings.removed"));
       refresh();
