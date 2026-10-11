@@ -21,7 +21,11 @@ import {
   shimsDirectory,
 } from "./launcher";
 import { posixQuote } from "../../terminal/shell";
-import { remoteIntegrationFiles, runDirectory as remoteRun } from "./remote";
+import {
+  remoteAmaHost,
+  remoteIntegrationFiles,
+  runDirectory as remoteRun,
+} from "./remote";
 
 /**
  * POSIX 启动器与垫片（docs/design/canvas-launcher.md §4、§13.1）。
@@ -328,7 +332,7 @@ describe("the environment fallback (contract §57)", () => {
 });
 
 describe("the copy synced to an execution host", () => {
-  function remoteFiles(remoteRoot: string) {
+  function remoteFiles(remoteRoot: string, amaHost?: string) {
     const release = installCollaborationSkill();
     try {
       return remoteIntegrationFiles(
@@ -340,11 +344,45 @@ describe("the copy synced to an execution host", () => {
           tokenDir: posix.join(remoteRoot, "tokens"),
         },
         "// bundle\n",
+        amaHost,
       );
     } finally {
       release();
     }
   }
+
+  it("syncs ama's profile and host adapter, with a launcher that redeems no key", () => {
+    const remoteRoot = "/srv/armadra/integration/7";
+    const byPath = new Map(
+      remoteFiles(remoteRoot, "// ama host\n").map((entry) => [
+        entry.path,
+        entry,
+      ]),
+    );
+    const layout = artifactLayout(remoteRoot, "ama", posix.join);
+    const profile = JSON.parse(
+      byPath.get(layout.profile as string)?.content ?? "{}",
+    ) as Record<string, unknown>;
+    expect(profile).toMatchObject({
+      host: remoteAmaHost(remoteRoot),
+      config: layout.config,
+      sessionDir: posix.join(remoteRoot, "ama", "sessions"),
+    });
+    expect(byPath.get(remoteAmaHost(remoteRoot))?.content).toBe(
+      "// ama host\n",
+    );
+    const launcher = byPath.get(posix.join(remoteRun(remoteRoot), "ama"));
+    expect(launcher?.content).toContain(`--profile ${layout.profile}`);
+    expect(launcher?.content).not.toContain("--ama");
+    // 没有适配器包：profile 不带 host，包也不同步。
+    const bare = new Map(
+      remoteFiles(remoteRoot).map((entry) => [entry.path, entry]),
+    );
+    expect(bare.has(remoteAmaHost(remoteRoot))).toBe(false);
+    expect(
+      JSON.parse(bare.get(layout.profile as string)?.content ?? "{}"),
+    ).not.toHaveProperty("host");
+  });
 
   it("writes a launcher and a delegating shim per CLI", () => {
     const files = remoteFiles("/srv/armadra/integration/7");
