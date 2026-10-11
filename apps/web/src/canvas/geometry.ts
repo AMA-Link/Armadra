@@ -196,8 +196,8 @@ export interface BezierControls {
 }
 
 /**
- * 两个控制点。`bezierPath` 与 link shape 的命中几何 / 指示器共用同一条曲线，
- * 所以控制点必须只有这一处定义（`shapes/link-path.ts` 要按同样的曲线采样）。
+ * 两个控制点。`bezierPath` 与小地图（`flow/minimap-links.ts`）共用同一条
+ * 曲线，所以控制点只有这一处定义。画布上的连线走 `flow/edges/route.ts`。
  */
 export function bezierControls(geometry: EdgeGeometry): BezierControls {
   const dx = geometry.targetX - geometry.sourceX;

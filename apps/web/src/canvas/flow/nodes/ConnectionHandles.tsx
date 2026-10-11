@@ -38,7 +38,7 @@ import { useT } from "@/app/preferences-store";
 
 /**
  * 四边中点各一个起笔把手（ui-wave2 §3.3）。四个把手不分进出：线怎么走由
- * 两端的相对位置与边的角色决定（`link-path.ts`），不读把手坐标。
+ * 两端的相对位置与边的角色决定（`edges/route.ts`），不读把手坐标。
  */
 const SIDES = [
   ["top", Position.Top],

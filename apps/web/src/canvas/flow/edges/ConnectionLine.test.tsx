@@ -2,7 +2,8 @@ import { afterEach, describe, expect, it } from "vitest";
 import { cleanup, render } from "@testing-library/react";
 import { Position, type ConnectionLineComponentProps } from "@xyflow/react";
 
-import { linkCurve } from "./link-path";
+import { CORNER_RADIUS, routeFor } from "./link-visual";
+import { roundedPath } from "./route";
 import { ConnectionLine } from "./ConnectionLine";
 
 /**
@@ -54,20 +55,22 @@ function path(container: HTMLElement): SVGPathElement {
 }
 
 describe("ConnectionLine", () => {
-  it("落在目标上时画的就是 `LinkEdge` 那条曲线", () => {
+  it("落在目标上时画的就是 `LinkEdge` 那种线", () => {
     const { container } = renderLine(internalNode(300, 0));
-    const expected = linkCurve(
+    const expected = routeFor(
       { x: 0, y: 0, width: 100, height: 100 },
       { x: 300, y: 0, width: 100, height: 100 },
     );
-    expect(path(container).getAttribute("d")).toBe(expected.d);
+    expect(path(container).getAttribute("d")).toBe(
+      roundedPath(expected.points, CORNER_RADIUS),
+    );
   });
 
   it("还没落到目标上时把指针当成零尺寸矩形，仍然贴边起笔", () => {
     const { container } = renderLine(null);
     const d = path(container).getAttribute("d") ?? "";
     // 起点是起笔节点右侧边的中点，不是节点中心也不是把手坐标。
-    expect(d).toMatch(/^M 100,50 C /u);
+    expect(d).toMatch(/^M 100,50 /u);
     expect(d).toMatch(/ 300,50$/u);
   });
 

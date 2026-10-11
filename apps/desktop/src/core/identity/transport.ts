@@ -19,6 +19,18 @@ export const PAIRING_PAKE_START_PATH = "/api/gateway/pairing-code/pake/start";
 export const PAIRING_PAKE_FINISH_PATH = "/api/gateway/pairing-code/pake/finish";
 
 /**
+ * 配对短码的三条（换票与 PAKE，契约 §24、§73）。只给局域网直连的 Gateway：
+ * 经中继隧道进来的一律不放行（中继首连走扫码，§73 末尾）。
+ */
+export function pairingCodePath(path: string): boolean {
+  return (
+    path === PAIRING_CODE_EXCHANGE_PATH ||
+    path === PAIRING_PAKE_START_PATH ||
+    path === PAIRING_PAKE_FINISH_PATH
+  );
+}
+
+/**
  * 不需要会话的那几条：健康探针、身份域自己的登录面（配对、hello、刷新、登录
  * 都在这里，各自认自己的凭据），配对短码换票与它的 PAKE（契约 §24、§73：
  * 手机还没有身份，短码就是凭据，限流与档位在 Gateway 域里判），以及媒体票的

@@ -36,6 +36,7 @@ import {
   WS_TICKET_PATH,
   type WsTickets,
   anonymousPath,
+  pairingCodePath,
   mediaPath,
   protocolTicket,
   sessionIdentity,
@@ -155,6 +156,14 @@ export function createTunnelGate(options: TunnelGateOptions): ListenerGate {
     const path = request.path;
     if (loopbackOnlyPath(path)) {
       return refuse(403, { code: "forbidden", message: "这条路径只在本机" });
+    }
+    // 8 位配对码只给局域网直连（契约 §24、§73）：中继在公网上，经它进来的
+    // 换票与 PAKE 一律不放行，首连走扫码。
+    if (pairingCodePath(path)) {
+      return refuse(403, {
+        code: "pairing_code_disabled",
+        message: "经中继不能用配对码，请在局域网直连或扫码",
+      });
     }
     if (!sameDeclaredOrigin(request.headers, clientOrigin)) {
       return refuse(403, FORBIDDEN_BODY);

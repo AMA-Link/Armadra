@@ -75,8 +75,8 @@ export interface SettingsSection {
    */
   ownerOnly?: boolean;
   /**
-   * 只对眼前这台设备有意义：设置作用的 core 在别处（经中继、直连远端源，或
-   * 当前源是挂载的远程源，`remote-access.ts`）时不列。
+   * 只对眼前这台设备有意义：页面的本机 core 在别处（经中继、直连 Gateway，
+   * `remote-access.ts`）时不列。
    */
   localOnly?: boolean;
   /**
@@ -84,6 +84,11 @@ export interface SettingsSection {
    * 页头徽标恒为「本机」。
    */
   pinnedLocal?: boolean;
+  /**
+   * 跟随打开的工作空间所在的那台 core（只有「当前工作空间」页）；其余设置页
+   * 恒指本机（#301）。
+   */
+  followsWorkspace?: boolean;
   /** 所属功能；开关关着时整页不列（#295，`packages/shared/src/feature-flags.ts`）。 */
   feature?: FeatureFlag;
 }
@@ -192,6 +197,7 @@ export const SETTINGS_SECTIONS: readonly SettingsSection[] = [
     icon: LayoutGrid,
     scope: "host",
     ownerOnly: true,
+    followsWorkspace: true,
   },
   {
     // 成员只见连接状态（页内判断），所以整页不带 ownerOnly。
@@ -290,8 +296,8 @@ export function canonicalSectionId(value: string): string {
 /**
  * 这台机器上真正能进的分区。壳不在时少几行，而不是几行点不动的。
  *
- * `remote`：设置作用的 core 不在眼前这台设备上（`remote-access.ts`），只对
- * 本机有意义的分区不列。
+ * `remote`：页面的本机 core 不在眼前这台设备上（`remote-access.ts`），只对
+ * 眼前这台设备有意义的分区不列。
  */
 export function visibleSettingsSections(
   server: boolean = RUNTIME_VIA_SERVER_SHELL,

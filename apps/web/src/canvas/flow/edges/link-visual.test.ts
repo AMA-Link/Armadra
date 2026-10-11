@@ -12,15 +12,15 @@ import {
 /**
  * 连线的画法（React Flow 计划 F06）。
  *
- * 「谁读谁」的箭头方向、标签、以及沿切线的箭头几何——全是纯函数，
- * 不需要挂画布。曲线本身在 `link-path.test.ts`。
+ * 「谁读谁」的箭头方向、标签、以及沿末段的箭头几何——全是纯函数，
+ * 不需要挂画布。路由本身在 `route.test.ts`。
  */
 
 const LEFT: Box = { x: 0, y: 0, width: 100, height: 100 };
 const RIGHT: Box = { x: 300, y: 0, width: 100, height: 100 };
 
 describe("箭头方向与标签（§21）", () => {
-  it("终端 ↔ 终端：双箭头，标签是「上下文」", () => {
+  it("终端 ↔ 终端：双箭头，标签是「共享上下文」", () => {
     const view = linkView(LEFT, RIGHT, "terminal", "terminal");
     expect(view.arrowStart).toBe(true);
     expect(view.arrowEnd).toBe(true);
@@ -49,15 +49,15 @@ describe("箭头方向与标签（§21）", () => {
 });
 
 describe("派发线（ui-wave2 §3.2）", () => {
-  it("只在子那一端画箭头，没有常驻标签", () => {
+  it("只在子那一端画箭头，标签是「派发」", () => {
     const view = linkView(LEFT, RIGHT, "terminal", "terminal", "supervises");
     expect(view.arrowStart).toBe(false);
     expect(view.arrowEnd).toBe(true);
-    expect(view.labelKey).toBeNull();
+    expect(view.labelKey).toBe("edge.role.dispatch");
   });
 
   it("纵向锚走底 → 顶，对等线缺省走就近边", () => {
-    const below: Box = { x: 300, y: 400, width: 100, height: 100 };
+    const below: Box = { x: 0, y: 400, width: 100, height: 100 };
     const dispatch = linkView(
       LEFT,
       RIGHT,
@@ -66,13 +66,13 @@ describe("派发线（ui-wave2 §3.2）", () => {
       "supervises",
       "vertical",
     );
-    expect([dispatch.curve.sourceSide, dispatch.curve.targetSide]).toEqual([
+    expect([dispatch.route.sourceSide, dispatch.route.targetSide]).toEqual([
       "bottom",
       "top",
     ]);
     const peer = linkView(LEFT, below, "terminal", "terminal", "peer");
     expect(peer.labelKey).toBe("edge.context");
-    expect([peer.curve.sourceSide, peer.curve.targetSide]).toEqual([
+    expect([peer.route.sourceSide, peer.route.targetSide]).toEqual([
       "bottom",
       "top",
     ]);
@@ -81,15 +81,19 @@ describe("派发线（ui-wave2 §3.2）", () => {
 
 describe("贴边起笔", () => {
   it("目标在右边时从右侧边中点出发、落在目标左侧边中点", () => {
-    const { curve } = linkView(LEFT, RIGHT, "terminal", "terminal");
-    expect([curve.sourceX, curve.sourceY]).toEqual([100, 50]);
-    expect([curve.targetX, curve.targetY]).toEqual([300, 50]);
+    const { route } = linkView(LEFT, RIGHT, "terminal", "terminal");
+    expect(route.points).toEqual([
+      { x: 100, y: 50 },
+      { x: 300, y: 50 },
+    ]);
   });
 
   it("目标在左边时两端整个换边（不从头部上方绕过去）", () => {
-    const { curve } = linkView(RIGHT, LEFT, "terminal", "terminal");
-    expect([curve.sourceX, curve.sourceY]).toEqual([300, 50]);
-    expect([curve.targetX, curve.targetY]).toEqual([100, 50]);
+    const { route } = linkView(RIGHT, LEFT, "terminal", "terminal");
+    expect(route.points).toEqual([
+      { x: 300, y: 50 },
+      { x: 100, y: 50 },
+    ]);
   });
 });
 

@@ -85,7 +85,12 @@ describe("仓库视图", () => {
     expect(await screen.findByText("second")).toBeTruthy();
     fireEvent.click(screen.getByText("加载更多"));
     expect(await screen.findByText("first")).toBeTruthy();
-    expect(forgeApi.forgeIssues).toHaveBeenLastCalledWith(REPO, "open", "2");
+    expect(forgeApi.forgeIssues).toHaveBeenLastCalledWith(
+      REPO,
+      "open",
+      "2",
+      null,
+    );
     expect(screen.queryByText("加载更多")).toBeNull();
   });
 
@@ -95,7 +100,12 @@ describe("仓库视图", () => {
     expect(await screen.findByText("没有条目")).toBeTruthy();
     await chooseOption(screen.getByRole("combobox"), "已关闭");
     await waitFor(() =>
-      expect(forgeApi.forgeIssues).toHaveBeenCalledWith(REPO, "closed", null),
+      expect(forgeApi.forgeIssues).toHaveBeenCalledWith(
+        REPO,
+        "closed",
+        null,
+        null,
+      ),
     );
   });
 

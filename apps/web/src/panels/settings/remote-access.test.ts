@@ -8,8 +8,6 @@ const base: AccessFacts = {
   nativeApp: false,
   viaServerShell: false,
   localHttpBase: "http://127.0.0.1:43120",
-  currentKind: "local",
-  currentSourceId: "local",
 };
 
 describe("设置作用的 core 在不在眼前", () => {
@@ -18,24 +16,8 @@ describe("设置作用的 core 在不在眼前", () => {
       remote: false,
       via: null,
       relayIssuer: null,
-      currentSourceId: "local",
     });
     expect(remoteAccessOf(base).remote).toBe(false);
-  });
-
-  it("桌面窗口里当前源是挂载的远程源：远端，但页面自己没走隧道", () => {
-    const access = remoteAccessOf({
-      ...base,
-      desktop: true,
-      currentKind: "relayed",
-      currentSourceId: "s1",
-    });
-    expect(access).toEqual({
-      remote: true,
-      via: null,
-      relayIssuer: null,
-      currentSourceId: "s1",
-    });
   });
 
   it("中继托管的页面：经中继，隧道就是签发方", () => {

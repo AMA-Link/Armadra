@@ -68,9 +68,13 @@ export function usePresenceBarVisible(): boolean {
   );
 }
 
-export function PresenceBar() {
+export function PresenceBar({ className }: { className?: string } = {}) {
   const realtime = useCanvasStore(isRealtimeBoard);
-  return realtime ? <RealtimePresence /> : <LeasePresence />;
+  return realtime ? (
+    <RealtimePresence className={className} />
+  ) : (
+    <LeasePresence className={className} />
+  );
 }
 
 /** 头像堆叠里最多画几个（含自己），其余收成「+N」（设计系统 §5.6）。 */
@@ -88,7 +92,7 @@ function initialOf(name: string): string {
  * 头像堆叠，自己在最前（成员色 1），别人按 awareness 的颜色；点别人的头像
  * 跟随他的光标，再点取消。断线时头像置灰、写「已断开」；只读写「只读」。
  */
-function RealtimePresence() {
+function RealtimePresence({ className }: { className?: string }) {
   const peers = useRealtimeStore((view) => view.peers);
   const status = useRealtimeStore((view) => view.status);
   const following = useRealtimeStore((view) => view.following);
@@ -102,6 +106,7 @@ function RealtimePresence() {
       readOnly={readOnly}
       following={following}
       onFollow={follow}
+      className={className}
     />
   );
 }
@@ -220,7 +225,7 @@ function MemberAvatar({ color, label }: { color: string; label: string }) {
 }
 
 /** 租约模式（非实时板，core JSON §9）：设备点、租约持有者与「接管」。 */
-function LeasePresence() {
+function LeasePresence({ className }: { className?: string }) {
   const t = useT();
   const queryClient = useQueryClient();
   const presence = useCanvasStore(currentPresence);
@@ -267,7 +272,7 @@ function LeasePresence() {
         data-slot="presence-bar"
         {...noDragProps()}
         aria-label={t("presence.label")}
-        className={BAR_CLASS}
+        className={cn(BAR_CLASS, className)}
       >
         <div className="flex items-center gap-1.5">
           {clients.map((client) => {

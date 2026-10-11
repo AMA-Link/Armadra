@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+
 import {
   type ErrorResponse,
   methodNotAllowed,
@@ -58,6 +60,28 @@ export interface HandlerResult {
   readonly headers?: Readonly<Record<string, string>>;
   /** A pre-encoded body sent verbatim (files, assets); `body` is ignored. */
   readonly raw?: Buffer;
+  /**
+   * 一份本机文件，由服务器边读盘边写进响应（契约 §37.2），不把整份读进内存；
+   * `content-length` 取 `size`，`raw` 与 `body` 都不看。头已经发出去之后读盘
+   * 失败只能断开连接。进程内的调用方（测试）用 {@link handlerBytes} 取字节。
+   */
+  readonly file?: LocalFileBody;
+}
+
+export interface LocalFileBody {
+  readonly absolute: string;
+  readonly size: number;
+}
+
+/**
+ * 一个答复的正文字节（进程内调用路由表的人用）：`file` 读盘、`raw` 原样、
+ * 其余没有。服务器自己不走这里——它流式写 `file`。
+ */
+export function handlerBytes(answer: HandlerResult): Buffer | undefined {
+  if (answer.file !== undefined) {
+    return readFileSync(answer.file.absolute).subarray(0, answer.file.size);
+  }
+  return answer.raw;
 }
 
 interface Compiled {

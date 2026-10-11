@@ -82,7 +82,9 @@ export function GithubDrawer() {
         )
       : sk("forge", "detect", workspaceId ?? "", resolveUrl),
     queryFn: () =>
-      resolveRepo ? detectForge(resolveRepo) : resolveForge(resolveUrl),
+      resolveRepo
+        ? detectForge(resolveRepo, workspaceId)
+        : resolveForge(resolveUrl, workspaceId),
     enabled:
       open &&
       Boolean(sessionClient) &&
@@ -231,6 +233,7 @@ export function GithubDrawer() {
                 key={`${found.repository.host}/${found.repository.owner}/${found.repository.name}`}
                 detection={found}
                 locale={locale}
+                workspaceId={workspaceId}
                 open={open}
                 focus={focusFor(found.repository)}
               />

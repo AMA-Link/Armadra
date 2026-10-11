@@ -1,4 +1,5 @@
-import { onLocal } from "../../../api/source";
+import { LOCAL_SOURCE_ID, currentSource, onLocal } from "../../../api/source";
+import { useCanvasStore } from "../../../store/canvas-store";
 import { lk } from "../local-key";
 import * as React from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -29,6 +30,8 @@ import {
 
 export const forgeConfigKeys = {
   all: lk("forge", "configs"),
+  scope: (workspaceId: string | null) =>
+    lk("forge", "configs", workspaceId ?? ""),
 };
 
 const PLATFORMS: readonly ConfigurableForge[] = ["gitea", "gitlab"];
@@ -59,20 +62,35 @@ const EMPTY: Draft = {
  * 设置 → Git 托管里 GitHub 以外的平台（契约 §29.3）：按主机或按仓库选 Gitea /
  * GitLab、地址与令牌。
  *
+ * 范围（契约 §75）：整台机器，或当前打开的工作空间自己的一份——它在这个工作
+ * 空间里盖过整机的配置。工作空间在别的源上时只有整台机器（设置写本机）。
+ *
  * 令牌只往外走一次：password 输入框，永远不回填；core 先用它核验再存，成功后
  * 立即从组件状态清掉。答复只说「有没有令牌」与它属于哪个账号。
  */
 export function ForgeConfigs() {
   const t = useT();
   const client = useQueryClient();
+  const workspace = useCanvasStore((state) => state.workspace);
+  // 设置写本机：别的源上的工作空间在本机库里没有。
+  const localWorkspace =
+    workspace && currentSource().sourceId === LOCAL_SOURCE_ID
+      ? workspace
+      : null;
+  const [scopeChoice, setScopeChoice] = React.useState<"machine" | "workspace">(
+    "machine",
+  );
+  const scope =
+    scopeChoice === "workspace" && localWorkspace ? localWorkspace.id : null;
   const configs = useQuery({
-    queryKey: forgeConfigKeys.all,
-    queryFn: () => onLocal(forgeConfigs),
+    queryKey: forgeConfigKeys.scope(scope),
+    queryFn: () => onLocal(() => forgeConfigs(scope)),
     retry: false,
   });
   const [draft, setDraft] = React.useState<Draft | null>(null);
 
   const refresh = () => {
+    void client.invalidateQueries({ queryKey: forgeConfigKeys.all });
     void client.invalidateQueries({ queryKey: ["forge"] });
   };
   const fail = (error: unknown) => toast.error(t(forgeFailureKey(error)));
@@ -80,16 +98,20 @@ export function ForgeConfigs() {
   const save = useMutation({
     mutationFn: (input: Draft & { clearToken?: boolean }) =>
       onLocal(() =>
-        putForgeConfig(input.repoKey.trim().toLowerCase(), {
-          forge: input.forge,
-          apiBase: input.apiBase.trim(),
-          ...(input.clearToken
-            ? { token: "" }
-            : input.token.trim()
-              ? { token: input.token.trim() }
-              : {}),
-          expectedRevision: input.revision,
-        }),
+        putForgeConfig(
+          input.repoKey.trim().toLowerCase(),
+          {
+            forge: input.forge,
+            apiBase: input.apiBase.trim(),
+            ...(input.clearToken
+              ? { token: "" }
+              : input.token.trim()
+                ? { token: input.token.trim() }
+                : {}),
+            expectedRevision: input.revision,
+          },
+          scope,
+        ),
       ),
     onSuccess: () => {
       // 令牌在 core 收下的那一刻离开这个组件。
@@ -102,7 +124,7 @@ export function ForgeConfigs() {
 
   const remove = useMutation({
     mutationFn: (config: ForgeConfig) =>
-      onLocal(() => deleteForgeConfig(config.repoKey, config.revision)),
+      onLocal(() => deleteForgeConfig(config.repoKey, config.revision, scope)),
     onSuccess: () => {
       toast.success(t("forge.settings.removed"));
       refresh();
@@ -115,6 +137,34 @@ export function ForgeConfigs() {
 
   return (
     <SettingsGroup title={t("forge.settings.others")}>
+      {localWorkspace && (
+        <div className="px-4 pt-3" data-slot="forge-config-scope">
+          <Field label={t("forge.settings.scope")}>
+            <Select
+              value={scopeChoice}
+              disabled={busy}
+              onValueChange={(next) => {
+                setDraft(null);
+                setScopeChoice(next as "machine" | "workspace");
+              }}
+            >
+              <SelectTrigger className="h-9 w-full min-w-0">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent className="z-[var(--z-dialog)]">
+                <SelectItem value="machine">
+                  {t("forge.settings.scopeMachine")}
+                </SelectItem>
+                <SelectItem value="workspace">
+                  {t("forge.settings.scopeWorkspace", {
+                    name: localWorkspace.name,
+                  })}
+                </SelectItem>
+              </SelectContent>
+            </Select>
+          </Field>
+        </div>
+      )}
       {configs.isError && (
         <p
           role="status"

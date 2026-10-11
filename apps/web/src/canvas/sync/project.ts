@@ -300,15 +300,15 @@ const EDGE_LABEL_KEYS: Record<string, string> = {
  * 标签说的是「Agent 读到的是什么」：终端 ↔ 终端是互相读转录，写「上下文」；
  * 一端是内容节点时按那一端的类型写（便签 / 文件 / 目录 / 网页 / 差异）。
  *
- * 派发线（`role: "supervises"`）没有常驻标签（ui-wave2 §3.2）：簇色与单向
- * 箭头已经说明了关系，返回 `null`。
+ * 派发线（`role: "supervises"`）写「派发」（#318）：簇色与单向箭头说了方向，
+ * 但一眼认出「这是派发、那是共享上下文」还得靠字。
  */
 export function edgeLabelKey(
   sourceType?: string,
   targetType?: string,
   role?: CanvasEdgeRole,
-): string | null {
-  if (role === "supervises") return null;
+): string {
+  if (role === "supervises") return "edge.role.dispatch";
   const content =
     sourceType && sourceType !== "terminal"
       ? sourceType

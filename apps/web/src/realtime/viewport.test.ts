@@ -4,7 +4,12 @@ import { useCanvasStore } from "@/store/canvas-store";
 import type { Peer } from "./awareness";
 import type { SocketLike } from "./client";
 import { BOARD, ONE, boardDocument, terminal } from "./realtime.fixture";
-import { startRealtime, stopRealtime } from "./session";
+import {
+  followMoveHandlers,
+  startRealtime,
+  stopRealtime,
+  useRealtimeStore,
+} from "./session";
 import {
   followTarget,
   loadBoardViewport,
@@ -140,5 +145,37 @@ describe("实时板开板与刷新", () => {
       BOARD.viewport,
     );
     stop();
+  });
+});
+
+describe("手动移动视口取消跟随（#327）", () => {
+  afterEach(() => useRealtimeStore.setState({ following: null }));
+
+  it("有事件的移动（人拖动、滚轮、捏合）就不再跟随", () => {
+    useRealtimeStore.setState({ following: 7 });
+    followMoveHandlers.onMove(new MouseEvent("mousemove"));
+    expect(useRealtimeStore.getState().following).toBeNull();
+  });
+
+  it("滚轮平移的第一下只报开始，也取消", () => {
+    useRealtimeStore.setState({ following: 7 });
+    followMoveHandlers.onMoveStart(new WheelEvent("wheel"));
+    expect(useRealtimeStore.getState().following).toBeNull();
+  });
+
+  it("按下空白处（拖动的开始）与程序化移动都不取消", () => {
+    useRealtimeStore.setState({ following: 7 });
+    followMoveHandlers.onMoveStart(new MouseEvent("mousedown"));
+    followMoveHandlers.onMoveStart(null);
+    followMoveHandlers.onMove(null);
+    expect(useRealtimeStore.getState().following).toBe(7);
+  });
+
+  it("没在跟随时不写 store", () => {
+    let writes = 0;
+    const stop = useRealtimeStore.subscribe(() => (writes += 1));
+    followMoveHandlers.onMove(new MouseEvent("mousemove"));
+    stop();
+    expect(writes).toBe(0);
   });
 });

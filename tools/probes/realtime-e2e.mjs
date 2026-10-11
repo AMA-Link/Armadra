@@ -16,9 +16,12 @@
 //      消失。
 //   7. 评论：A 在便签上放钉，B 经事件看到；
 //   8. 白板对象上的评论：A 在一个白板形状上放钉、正文写 Markdown，B 看到
-//      渲染后的加粗与 http(s) 链接，裸 HTML 不出现；评论锚在 item 上。
+//      渲染后的加粗与 http(s) 链接，裸 HTML 不出现；评论锚在 item 上。发送前
+//      输入框的「预览」页签按同一套规则渲染（#328）；
+//  8b. 两枚挨得近的钉聚成「+2」，B 点开后放大到分开、居中在它们中间（#328）。
 //   9. 跟随视口：B 点 A 的头像跟随，A 缩放、平移，B 的视口中心与缩放对上 A，
-//      画布四周描一圈 A 的成员色；
+//      画布四周描一圈 A 的成员色；再跟随一次，B 自己滚轮平移画布即取消跟随，
+//      之后 A 再动 B 不跟（#327）；
 //  10. 刷新后视口不变：B 刷新页面，回到刷新前自己的视口（本机记着，不进
 //      文档、也不 PUT 回 core）。
 //
@@ -460,6 +463,34 @@ try {
   await a.type(
     "**加粗** [链接](https://example.com) [坏](javascript:alert(1)) <b>raw</b>",
   );
+  // 发送前看一眼「预览」页签：同一套规则实时渲染（#328）。
+  await a.clickOn(
+    `return [...document.querySelectorAll('[data-slot="popover-content"] [data-slot="comment-composer"] [role="tab"]')].find((node) => node.textContent.trim() === "预览")`,
+    "A 切到预览",
+  );
+  const previewed = await a.until(
+    `const panel = document.querySelector('[data-slot="popover-content"] [data-slot="comment-composer"] [role="tabpanel"]:not([hidden])');
+     if (!panel?.querySelector("strong")) return null;
+     return {
+       strong: panel.querySelector("strong").textContent,
+       hrefs: [...panel.querySelectorAll("a")].map((a) => a.getAttribute("href")),
+       raw: !!panel.querySelector("b"),
+     };`,
+    "A 的预览渲染出正文",
+  );
+  run.check(
+    previewed.strong === "加粗" &&
+      previewed.hrefs.length === 1 &&
+      previewed.hrefs[0] === "https://example.com" &&
+      !previewed.raw,
+    "评论输入框的预览与正文同一套规则：加粗、只开 http(s)、裸 HTML 不出现",
+    previewed,
+  );
+  await run.shot(a, "realtime-8-comment-preview-a");
+  await a.clickOn(
+    `return [...document.querySelectorAll('[data-slot="popover-content"] [data-slot="comment-composer"] [role="tab"]')].find((node) => node.textContent.trim() === "编辑")`,
+    "A 切回编辑",
+  );
   await a.clickOn(
     `return [...document.querySelectorAll('[data-slot="popover-content"] [data-slot="comment-composer"] button')].find((node) => node.textContent.trim() === "发送")`,
     "A 发送白板对象上的评论",
@@ -505,6 +536,45 @@ try {
     rendered,
   );
   await run.shot(b, "realtime-8-item-comment-b");
+
+  /* ------------------- 8b. 点开聚合钉放大到能分开（#328） ------------------- */
+  await b.key("Escape");
+  const bView = await viewportOf(b);
+  // 两枚钉在画布上相距 12：缩放 1 时屏幕上 12px，聚成「+2」。
+  const spot = { x: Math.round(bView.cx - 220), y: Math.round(bView.cy + 160) };
+  for (const dx of [0, 12]) {
+    await stack.api(commentsPath, {
+      method: "POST",
+      body: JSON.stringify({
+        anchor: { kind: "point", x: spot.x + dx, y: spot.y },
+        body: `聚合 ${dx}`,
+      }),
+    });
+  }
+  const mergedPin = `[...document.querySelectorAll('[data-comment-pin]')].find((pin) => pin.textContent.trim() === "+2")`;
+  await b.until(`return !!${mergedPin}`, "B 看到聚成「+2」的钉");
+  await run.shot(b, "realtime-8b-merged-pin-b");
+  await b.clickOn(`return ${mergedPin}`, "B 点开聚合钉");
+  await until(
+    async () => (await viewportOf(b)).zoom > bView.zoom * 2,
+    "B 放大",
+  );
+  await sleep(400);
+  const separated = await b.evaluate(
+    `return [...document.querySelectorAll('[data-comment-pin]')].map((pin) => pin.textContent.trim());`,
+  );
+  const zoomed = await viewportOf(b);
+  run.check(
+    !separated.includes("+2") &&
+      Math.abs(zoomed.cx - (spot.x + 6)) < 3 &&
+      Math.abs(zoomed.cy - spot.y) < 3 &&
+      !(await b.evaluate(
+        `return !!document.querySelector('[data-slot="popover-content"] [data-slot="comment"]')`,
+      )),
+    "点开聚合钉放大到两枚钉分开、居中在它们中间，不再弹出列表",
+    { before: bView, after: zoomed, pins: separated },
+  );
+  await run.shot(b, "realtime-8b-pins-separated-b");
 
   /* ------------------------ 9. 跟随视口（§16.4） ------------------------ */
   // 收起上一步打开的评论弹层。
@@ -564,6 +634,47 @@ try {
   await b.until(
     `return !document.querySelector('[data-slot="follow-frame"]')`,
     "B 的跟随描边消失",
+  );
+
+  // 手动平移取消跟随（#327）：再跟随一次，B 自己滚一下画布。
+  await b.clickOn(
+    `return document.querySelector('[data-slot="presence-bar"] [data-peer][aria-pressed="false"]')`,
+    "B 再次跟随 A",
+  );
+  await b.until(
+    `return !!document.querySelector('[data-slot="follow-frame"]')`,
+    "B 又描上 A 的成员色",
+  );
+  await sleep(400);
+  const bPane = await b.centerOf(
+    `return document.querySelector('.react-flow__pane')`,
+    "B 的画布",
+  );
+  await b.call("Input.dispatchMouseEvent", {
+    type: "mouseWheel",
+    x: bPane.x - 200,
+    y: bPane.y - 120,
+    deltaX: 0,
+    deltaY: 200,
+    modifiers: 0,
+  });
+  await b.until(
+    `return !document.querySelector('[data-slot="follow-frame"]')`,
+    "B 滚轮平移后跟随描边消失",
+  );
+  await run.shot(b, "realtime-9-pan-stops-follow-b");
+  await sleep(400);
+  const released = await viewportOf(b);
+  for (let step = 0; step < 2; step += 1) await wheel(120, 2);
+  await until(async () => {
+    const now = await viewportOf(a);
+    return now && !sameView(now, target);
+  }, "A 又动了视口");
+  await sleep(800);
+  run.check(
+    sameView(await viewportOf(b), released),
+    "B 手动平移后不再跟随：A 再动，B 的视口不变",
+    { released, b: await viewportOf(b), a: await viewportOf(a) },
   );
 
   /* ------------------------ 10. 刷新后视口不变 ------------------------- */

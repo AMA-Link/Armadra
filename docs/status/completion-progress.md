@@ -971,7 +971,7 @@
 
 **没做 / 限制**
 
-- 原生 App 首次连接（还没钉过信任锚）不能用配对码：App 不装 CA，连不上未钉扎的 Gateway，仍需扫码或贴链接。
+- 原生 App 首次连接（还没钉过信任锚）不能用配对码：App 不装 CA，连不上未钉扎的 Gateway，仍需扫码或贴链接。（已由「身份与传输残项」一节补上：配对码 PAKE，契约 §73。）
 - 设计系统首行状态里「8 位配对码没有做」一句没改，留给汇总时一起更新，以免与并行包冲突。
 
 ## G5-02 身份 core：重置链接、passkey 改名、设备两列（R-02 核心、R-03、R-05、R-08、R-09）
@@ -1442,7 +1442,7 @@
 
 **没做 / 限制**
 
-- 浏览器（Cookie 模式）页面的 HTTP 请求在访问令牌过期后不会自动刷新，这是原有的限制，本包没改。因此 Cookie 会话的流到期关掉后，要等页面做下一次 `resumeIdentity` / 刷新才连得回来。
+- 浏览器（Cookie 模式）页面的 HTTP 请求在访问令牌过期后不会自动刷新，这是原有的限制，本包没改。因此 Cookie 会话的流到期关掉后，要等页面做下一次 `resumeIdentity` / 刷新才连得回来。（已由「身份与传输残项」一节补上。）
 - ama 运行中换到另一家的模型时拿不到那家的密钥，要在节点上改模型后重启。
 
 ## G5-21 Windows 会话宿主退出（R-68）
@@ -1694,8 +1694,8 @@
 
 - 本机设备复用：`consumeBootstrap` 对回环明文来源的票复用主人名下同名、未撤销、会话全来自回环明文来源的那台设备（`service.ts::reusableLocalDevice`，`store.ts::deviceSessionOrigins`），页面与托盘反复配对设备列表不再增长；经 Gateway 配对的设备不受影响。用例 `service.test`「本机设备复用」3 例、`main.test`「反复配对设备列表不增长」。
 - Windows 接管 / 外接的 core：壳没有 IPC 通道时取票答 `channelUnavailable`（`shell-core/ticket.ts`、`shared/ipc.ts`），页面记下壳签不出票的原因（`identity.ts::shellSessionFailure`）并在顶部挂通知条，文案请人重开应用，「重连」再试一次；配上对即消失。用例 `core-ticket.test`、`Banners.session.test`。没有另开取票退路：hook 服务的应用令牌节点进程也拿得到，用它签主人票会把权限放大给 Agent。
-- 下载把整个文件读进内存再存；很大的文件会占内存。（已由「核心流与浮层安全区」一节改成流式，只剩 Bearer 源且没有保存对话框时仍经 Blob。）
-- 语言服务与浏览器画面两条流只经全局 `WebSocket` 覆盖，没有单独实测。
+- 下载把整个文件读进内存再存；很大的文件会占内存。（已由「核心流与浮层安全区」一节改成流式，只剩 Bearer 源且没有保存对话框时仍经 Blob；core 一侧整份读盘已由「身份与传输残项」一节改成流式。）
+- 语言服务与浏览器画面两条流只经全局 `WebSocket` 覆盖，没有单独实测。（已由「身份与传输残项」一节补上。）
 
 ## G5-29 G5 残项：本地额度开关、手机 MFA、GitLab 子组 / 变基 / 自动合并、Gitea 与 GitLab 补齐
 
@@ -4236,3 +4236,21 @@ nightly 在 `b8353492`（运行 37338174906）之后连续失败。逐个作业�
 
 - 页面消息：`{ type: "armadra-challenge", status: "ready" | "error" }`（`isChallengeStatus`）；`ChallengeFrame` 的 `readyTimeoutMs`、`CHALLENGE_READY_TIMEOUT_MS`。
 - `startWorkerd({ …, vars })`。
+
+## 身份与传输残项：Cookie 会话透明续期、整份下载流式、两条流实测、首次连接配对码（#336、#337、#338、#361，2026-10-12）
+
+做了什么：
+
+- **G5-20 Cookie 会话透明续期**（PR #343）：Cookie 会话的页面（服务器壳托管、手机浏览器经 Gateway）发往本机源的请求遇会话失效的 401，先续一次再重放一次（`sources/transport.ts::cookieFetch`），重放的写请求换上新 CSRF；身份面、具名 401、流式请求体不重放。续期 `api/identity.ts::renewCookieSession` 同一窗口内共用一次，跨窗口在 Web Lock `armadra.identity.session-refresh` 里排队，拿到锁先 `GET session`，别的窗口续过就不再刷新。流被 4401 关掉后经同一个续期续上再重连。契约 §3.2 追加一段。
+- **G5-28 整份下载流式**（PR #345）：`HandlerResult.file` + `http/server.ts::sendFile`，本机工作空间的 `file-download` 不带 `Range` 时边读盘边写，不再整份读进内存，也不再有整份下载的 16 MiB 上限；读盘失败或文件途中变短就断开。远端工作空间不变。契约 §37.2 追加一段。
+- **G5-28 两条流实测**（PR #345）：`language/socket.loopback.integration.test.ts`、`browser/stream.loopback.integration.test.ts` 在不开回环匿名的真 core 上验：没票 401、带票往返（诊断、画面帧与 `viewport`）、票一次性、绑来源；页面 `shell-transport.test` 验两条流经本机源先换票。
+- **G5-01 首次连接配对码**（PR #351）：配对码做 CPace（ristretto255）口令认证的密钥交换，确认标签绑来源与信任锚指纹（`packages/shared/src/pairing-pake.ts`、`core/gateway/pairing-pake.ts`、`apps/web/src/mobile/pairing-pake.ts`）。App 输配对卡上的地址与码，`peek` 取锚并暂钉，Gateway 的标签核对通过才 finish 换票；连接表里同一来源钉的锚不同则拒绝。契约 §73，协议 minor 43；`@noble/curves` 2.4.0 进依赖。按协调决定只给局域网直连：经个人中转隧道进来的换票与 PAKE 一律 403 `pairing_code_disabled`（#361，PR #362）。
+
+实测：见各 PR 正文（web / desktop / shared / server 全量、`pnpm check`，真 TLS Gateway 集成测试）。
+
+没做 / 限制：
+
+- Cookie 会话没有按到期时刻主动轮转，首个过期请求多一次往返；刷新 Cookie 也失效时照旧交给登录流程。
+- 远端工作空间的整份下载仍先分块取回再发，16 MiB 上限不变；画面流用例用替身后端。
+- 首次连接核对失败时暂钉的指纹撤不掉（原生插件没有撤销钉扎），这个来源上没有会话与连接记录；证书轮换仍需扫码。真机未验证。
+- 经中继的首次连接不开放 8 位码，仍需扫码；设备背书 / SAS 留给 E4。
