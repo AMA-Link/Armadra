@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import type { AgentStatus, SessionSummary } from "@armadra/shared";
 
 import {
+  agentExited,
   basename,
   filterSessions,
   groupSessionsByStatus,
@@ -94,6 +95,31 @@ describe("mergeSessions", () => {
     );
     expect(rows[0]!.state).toBe("working");
   });
+
+  it("carries the session phase from whichever side is fresher", () => {
+    const rows = mergeSessions(
+      [
+        summary({ nodeId: "a", sessionPhase: "start", updatedAt: at(0) }),
+        summary({ nodeId: "b", sessionPhase: "start", updatedAt: at(0) }),
+      ],
+      {
+        [scoped("a")]: {
+          nodeId: "a",
+          workspaceId: "w",
+          agentId: "claude",
+          sessionPhase: "end",
+          unread: false,
+          verified: true,
+          restored: false,
+          updatedAt: at(1_000),
+        },
+      },
+      BASE + 2_000,
+    );
+    const byNode = new Map(rows.map((entry) => [entry.nodeId, entry]));
+    expect(byNode.get("a")!.sessionPhase).toBe("end");
+    expect(byNode.get("b")!.sessionPhase).toBe("start");
+  });
 });
 
 describe("sessionBucket", () => {
@@ -115,6 +141,31 @@ describe("sessionBucket", () => {
     );
     expect(sessionBucket(row({ nodeId: "a", state: "done" }))).toBe("idle");
     expect(sessionBucket(row({ nodeId: "a" }))).toBe("unknown");
+  });
+
+  it("新开的 CLI（SessionStart 清掉了 state）是空闲，不是未知", () => {
+    expect(sessionBucket(row({ nodeId: "a", sessionPhase: "start" }))).toBe(
+      "idle",
+    );
+  });
+});
+
+describe("agentExited", () => {
+  it("SessionEnd 之后 Agent 已退出，除非还有正在跑或在等人的状态", () => {
+    expect(agentExited(row({ nodeId: "a", sessionPhase: "end" }))).toBe(true);
+    expect(
+      agentExited(row({ nodeId: "a", sessionPhase: "end", state: "done" })),
+    ).toBe(true);
+    expect(
+      agentExited(row({ nodeId: "a", sessionPhase: "end", state: "working" })),
+    ).toBe(false);
+    expect(
+      agentExited(row({ nodeId: "a", sessionPhase: "end", pendingId: "p" })),
+    ).toBe(false);
+    expect(agentExited(row({ nodeId: "a", sessionPhase: "start" }))).toBe(
+      false,
+    );
+    expect(agentExited(row({ nodeId: "a" }))).toBe(false);
   });
 });
 

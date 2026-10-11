@@ -95,7 +95,11 @@ export interface WhiteboardPreferences {
   dynamicSize: boolean;
   /** 视口动画：`flow/use-flow-viewport.duration()`，关掉就是 0ms 直接跳。 */
   animation: boolean;
-  /** 画完一个对象后工具不退回选择：`tools/use-tool-pointer.finish`。 */
+  /**
+   * 已弃用：画完一个对象后工具不退回选择（`tools/use-tool-pointer.finish`）。
+   * 工具现在用完一直保持选中（#299），界面入口与 Q 键都已撤掉；字段留着，
+   * 旧设置读得进来、不报错。
+   */
   toolLock: boolean;
   /** 框选判据：`<ReactFlow selectionMode>` 的 `Full`（开）/ `Partial`（关）。 */
   wrap: boolean;

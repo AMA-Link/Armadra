@@ -195,8 +195,8 @@ function Comments({
   const selfId = access.session?.device.principalId ?? "";
   const scale = zoom > 0 ? 1 / zoom : 1;
 
-  // 换板时退出评论模式：草稿与打开的钉都属于上一块板。
-  React.useEffect(() => () => setCommentMode(false), [boardId]);
+  // 换板不退出评论模式：它和白板工具一样粘住，只有用户自己关（Dock 按钮、
+  // Esc、抽屉的关闭钮）。属于上一块板的草稿与打开的钉由 `followBoard` 清掉。
 
   // 评论模式：点画布放钉。捕获阶段先于 React Flow 的选择与拖动拿到按下。
   React.useEffect(() => {

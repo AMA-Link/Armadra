@@ -208,7 +208,6 @@ const zh = {
      文案一起删（§2.10）。 */
   "wb.menu": "画布偏好",
   "wb.snap": "始终吸附",
-  "wb.toolLock": "工具锁定",
   "wb.grid": "显示网格",
   "wb.wrap": "整体框住才选中",
   "wb.focus": "专注模式",
@@ -422,7 +421,6 @@ const en: Record<keyof typeof zh, string> = {
 
   "wb.menu": "Canvas preferences",
   "wb.snap": "Always snap",
-  "wb.toolLock": "Tool lock",
   "wb.grid": "Show grid",
   "wb.wrap": "Select fully enclosed",
   "wb.focus": "Distraction-free",

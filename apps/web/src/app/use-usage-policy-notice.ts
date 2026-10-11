@@ -4,6 +4,7 @@ import { toast } from "sonner";
 import type { Usage } from "@armadra/shared";
 
 import { runtimeApi } from "../api/client";
+import { featureEnabled } from "../lib/features";
 import { useCanvasStore } from "../store/canvas-store";
 import { t, usePreferencesStore } from "./preferences-store";
 
@@ -52,7 +53,8 @@ export function useUsagePolicyNotice(): void {
   const providers = policyOffProviders(usage.data);
   const key = providers.join(",");
   useEffect(() => {
-    if (key === "" || noticeShown()) return;
+    // 用量页暂时下线（#295）：那个按钮没有去处，提示也就不说。
+    if (key === "" || !featureEnabled("usage") || noticeShown()) return;
     markNoticeShown();
     const names = key
       .split(",")

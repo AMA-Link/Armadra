@@ -149,6 +149,39 @@ export function isWindowShortcut(
   );
 }
 
+/**
+ * 终端里的控制键：Ctrl（不带 Shift）或 Alt 单独加一个键，且没有 ⌘ / Win。
+ *
+ * 这一类在 shell 里都有意思——Ctrl+K 删到行尾、Ctrl+P 上一条历史、Ctrl+F
+ * 前进一格、Ctrl+B 是 tmux 前缀、Alt+B / Alt+F 按词移动。Windows / Linux 上
+ * `Mod` 就是 Ctrl，所以「⌘K 在终端里也归应用」到了那两个平台就成了
+ * 「Ctrl+K 永远进不了 shell」。焦点在终端里时这一类一律交给终端；
+ * Ctrl+Shift+字母（终端模拟器的惯例）与 ⌘ 组合不受影响。
+ */
+export function isTerminalControlEvent(
+  event: Pick<KeyboardEvent, "ctrlKey" | "metaKey" | "altKey" | "shiftKey">,
+): boolean {
+  if (event.metaKey) return false;
+  return (event.ctrlKey && !event.shiftKey) || (event.altKey && !event.ctrlKey);
+}
+
+/** 同一条规则，按写法判断（终端按键分流预先算表时用）。 */
+export function isTerminalControlChord(
+  chord: string,
+  mac = isMacPlatform(),
+): boolean {
+  const parsed = parseChord(chord, mac);
+  return (
+    !!parsed &&
+    isTerminalControlEvent({
+      ctrlKey: parsed.ctrl,
+      metaKey: parsed.meta,
+      altKey: parsed.alt,
+      shiftKey: parsed.shift,
+    })
+  );
+}
+
 export function isReservedChord(chord: string, mac = isMacPlatform()): boolean {
   const parsed = parseChord(chord, mac);
   return (

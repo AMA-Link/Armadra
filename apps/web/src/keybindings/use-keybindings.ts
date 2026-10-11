@@ -12,10 +12,20 @@
  */
 import * as React from "react";
 
-import { isMacPlatform, isWindowShortcut, matchKeyboardEvent } from "./chords";
+import {
+  isMacPlatform,
+  isTerminalControlEvent,
+  isWindowShortcut,
+  matchKeyboardEvent,
+} from "./chords";
 import { COMMANDS, type CommandId, type CommandScope } from "./commands";
 import type { MatchOptions } from "./chords";
-import { commandWhen, getActiveKeymap, type ActiveKeymap } from "./active";
+import {
+  commandWhen,
+  getActiveKeymap,
+  shortcutsEnabled,
+  type ActiveKeymap,
+} from "./active";
 import { keybindingContext } from "./context";
 import { evaluateWhen } from "./when";
 
@@ -77,6 +87,9 @@ export function useKeybindings(
       // 输入法组词过程中的按键不是命令
       if (keyboardEvent.isComposing || keyboardEvent.keyCode === 229) return;
 
+      // 总开关关着：一个键都不接，原样交给终端、编辑器与浏览器。
+      if (!shortcutsEnabled()) return;
+
       const current = optionsRef.current;
       const mac = current.mac ?? isMacPlatform();
       if (keybindingSuspensions > 0 || isWindowShortcut(keyboardEvent, mac))
@@ -88,6 +101,8 @@ export function useKeybindings(
       });
       const inTerminal = context.terminalFocus === true;
       const typing = context.editing === true;
+      // 终端里的控制键（Ctrl+K、Alt+B……）不论绑给了谁都归 shell。
+      if (inTerminal && isTerminalControlEvent(keyboardEvent)) return;
 
       const keymap = current.keymap ?? getActiveKeymap();
       for (const command of COMMANDS) {

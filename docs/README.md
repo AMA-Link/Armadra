@@ -24,6 +24,7 @@
 | [客户端平台](guides/client-platforms.md)               | 各平台职责、Gateway 配对与原生 App               |
 | [服务器部署](guides/server-deployment.md)              | 镜像、证书与 ACME、外网访问、备份升级            |
 | [原生白板参考](guides/native-whiteboard-references.md) | 原生对象作为 Agent 资料的规则                    |
+| [键盘快捷键](guides/keyboard-shortcuts.md)             | 全部快捷键清单、总开关、终端与系统冲突规则       |
 
 代码边界与验证入口见[项目约定](../AGENTS.md)。
 
