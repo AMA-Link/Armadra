@@ -39,6 +39,7 @@ export function fakeBridge(
   const { peek, ...rest } = overrides;
   const bridge = {
     available: true,
+    platform: "android",
     canScan: true,
     getSessions: vi.fn(async () => [...sessions.values()]),
     setSession: vi.fn(async (session: StoredSession) => {
@@ -71,6 +72,7 @@ export function fakeBridge(
     onPushRotated: () => () => undefined,
     openExternal: vi.fn(async () => false),
     appInfo: vi.fn(async () => null),
+    installApk: vi.fn(async () => ({ status: "failed" })),
     ...rest,
   } as unknown as NativeBridge;
   return { bridge, sessions, remotes, pins };

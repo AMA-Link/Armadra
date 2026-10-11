@@ -2139,6 +2139,20 @@ GitLab（自托管与 gitlab.com 同一套 `/api/v4`）记作 `gitlab`，经 §2
   页面按远端地址认基仓库：本地远端里 fetch 地址的主机与路径（去掉 `.git`，http(s) 允许站点前缀）对上 `repository` 的那一个作 `remote` 的缺省，认不出才退回 `origin` / 第一个（P1 追加）。
 - **Gitea 的合并方式与检查通过后合并**（P1 追加）：`GET merge-options` 读仓库（`GET /repos/{owner}/{repo}`）的 `allow_merge_commits` → `merge`、`allow_squash_merge` → `squash`、`allow_rebase` → `rebase`（字段缺省按允许；`rebase-merge`、`fast-forward-only` 不在三种之内），`autoMerge` 为 `true`、`mergeTrain` 为 `false`。`POST pulls/{number}/auto-merge` 与合并一样先核 head、方式必须在 `methods` 里（否则 `400 bad_request`）、不重试：`POST …/merge` 带 `Do`、`head_commit_id` 与 `merge_when_checks_succeed: true`，远端 `201` 答 `{ merged: false, sha: null, train: false }`（排上了），`200` 答 `{ merged: true, sha, train: false }`（检查已过、当场合并，`sha` 从 PR 读回）。`DELETE pulls/{number}/auto-merge` 发 `DELETE …/merge`；PR 不是开着的、或远端答 404（没排上）都答 `409 conflict`。PR 上没有「已排上」字段：单条详情从 `issues/{n}/timeline` 取最后一条 `pull_scheduled_merge` / `pull_cancel_scheduled_merge` 定 `autoMerge`（至多 10 页，读不到按 `false`）。
 
+### 29.7 列仓库：`/api/forge/accounts*`
+
+新建工作空间从代码托管挑一个仓库克隆时用（协议 1.38 起，procedure 见 §41.2）。权限 `github:read`。
+
+| 方法与路径                             | 请求                                        | 答复                                                   |
+| -------------------------------------- | ------------------------------------------- | ------------------------------------------------------ |
+| `GET /api/forge/accounts`              |                                             | `{ accounts: [{ host, forge, accountLogin }] }`        |
+| `GET /api/forge/accounts/{host}/repos` | 查询 `cursor`（页码串 2–1000）、`limit≤100` | `{ items: [repository…], nextCursor }`，最近更新的在前 |
+
+- 账号：§5 配了凭据的 GitHub（`host` 是 `github.com`，配企业版时是企业版的主机），加上带令牌的**主机级** Gitea / GitLab 配置（§29.3）；仓库级配置只管一个仓库，不算账号。`accountLogin` 没核验过时为 `null`。
+- `{host}` 必须是上面的一个；没有凭据答 `409 forge_not_configured`，不发匿名请求。远端拒绝的码同 §29.5。
+- repository：`{ host, owner, name, forge, description, private, fork, archived, defaultBranch, cloneUrl, sshUrl, webUrl, updatedAtMs }`。`cloneUrl` 是 http(s) 克隆地址（没有的行不返回）；`sshUrl` 只收 `ssh://` 与 scp 写法，远端没给时为 `""`；`owner` 在 GitLab 上是完整的命名空间路径（`group/sub`）。
+- 来源：GitHub `GET /user/repos?sort=updated&affiliation=owner,collaborator,organization_member`；Gitea `GET /user/repos`；GitLab `GET /projects?membership=true&order_by=last_activity_at&sort=desc`。`updatedAtMs` 依次取 `pushed_at`、`updated_at`（GitLab 取 `last_activity_at`）。名字不合格的行丢掉。
+
 ## 30. 页面错误上报：`/api/diagnostics/client-error`
 
 > 自协议 1.14 起这两条路由同时是 `diagnostics.*` procedure（§43.8），旧路径与 procedure 调同一份实现。
@@ -3137,6 +3151,8 @@ core 校验远程服务地址与指纹的写法时用具名码（状态均 400�
 | `forge.removeRepoConfig` | mutation | `{ host: string, owner: string, name: string, expectedRevision: number \| string }`                                           | `{ removed: boolean }`                                                                                                                                                                                                                                                                                                                                                                                               | `bad_request`、`not_found`、`conflict`                                                                                                                                                                  | `github:write` | 1.11 | `DELETE /api/forge/configs/{host}/{owner}/{name}`                         |
 | `forge.resolve`          | mutation | `{ remoteUrl?: string }`                                                                                                      | `{ repository: { host: string, owner: string, name: string }, forge: "github" \| "gitea" \| "gitlab" \| null, source: "github" \| "config" \| null, configKey: string \| null, apiBase: string \| null, webUrl: string \| null, credential: boolean, accountLogin: string \| null }`                                                                                                                                 | `bad_request`                                                                                                                                                                                           | `github:read`  | 1.11 | `POST /api/forge/resolve`                                                 |
 | `forge.detect`           | query    | `{ host: string, owner: string, name: string }`                                                                               | `{ repository: { host: string, owner: string, name: string }, forge: "github" \| "gitea" \| "gitlab" \| null, source: "github" \| "config" \| null, configKey: string \| null, apiBase: string \| null, webUrl: string \| null, credential: boolean, accountLogin: string \| null }`                                                                                                                                 | `bad_request`                                                                                                                                                                                           | `github:read`  | 1.11 | `GET /api/forge/repos/{host}/{owner}/{name}`                              |
+| `forge.accounts`         | query    | `{}`                                                                                                                          | `{ accounts: ({ host: string, forge: "github" \| "gitea" \| "gitlab", accountLogin: string \| null })[] }`                                                                                                                                                                                                                                                                                                           | —                                                                                                                                                                                                       | `github:read`  | 1.38 | `GET /api/forge/accounts`                                                 |
+| `forge.repositories`     | query    | `{ host: string, cursor?: string, limit?: number \| string }`                                                                 | `{ items: ({ host: string, owner: string, name: string, forge: "github" \| "gitea" \| "gitlab", description: string, private: boolean, fork: boolean, archived: boolean, defaultBranch: string, cloneUrl: string, sshUrl: string, webUrl: string, updatedAtMs: integer })[], nextCursor: string \| null }`                                                                                                           | `bad_request`、`not_found`、`forge_not_configured`、`forge_credential_rejected`、`forge_forbidden`、`forge_scope`、`rate_limited`、`forge_unavailable`                                                  | `github:read`  | 1.38 | `GET /api/forge/accounts/{host}/repos`                                    |
 | `forge.issues`           | query    | `{ host: string, owner: string, name: string, state?: string, cursor?: string, limit?: number \| string }`                    | `{ items: ({ number: integer, title: string, body: string, state: "open" \| "closed", author: string \| null, labels: string[], commentCount: integer, url: string, createdAtMs: integer, updatedAtMs: integer, closedAtMs: integer \| null })[], nextCursor: string \| null }`                                                                                                                                      | `bad_request`、`not_found`、`forge_not_configured`、`forge_credential_rejected`、`forge_forbidden`、`forge_scope`、`rate_limited`、`forge_unavailable`                                                  | `github:read`  | 1.11 | `GET /api/forge/repos/{host}/{owner}/{name}/issues`                       |
 | `forge.issue`            | query    | `{ host: string, owner: string, name: string, number: number \| string }`                                                     | `{ number: integer, title: string, body: string, state: "open" \| "closed", author: string \| null, labels: string[], commentCount: integer, url: string, createdAtMs: integer, updatedAtMs: integer, closedAtMs: integer \| null }`                                                                                                                                                                                 | `bad_request`、`not_found`、`forge_not_configured`、`forge_credential_rejected`、`forge_forbidden`、`forge_scope`、`rate_limited`、`forge_unavailable`                                                  | `github:read`  | 1.11 | `GET /api/forge/repos/{host}/{owner}/{name}/issues/{number}`              |
 | `forge.setIssueState`    | mutation | `{ host: string, owner: string, name: string, number: number \| string, state?: string }`                                     | `{ number: integer, title: string, body: string, state: "open" \| "closed", author: string \| null, labels: string[], commentCount: integer, url: string, createdAtMs: integer, updatedAtMs: integer, closedAtMs: integer \| null }`                                                                                                                                                                                 | `bad_request`、`not_found`、`conflict`、`rebase_started`、`forge_not_configured`、`forge_credential_rejected`、`forge_forbidden`、`forge_scope`、`rate_limited`、`unknown_outcome`、`forge_unavailable` | `github:write` | 1.11 | `PATCH /api/forge/repos/{host}/{owner}/{name}/issues/{number}`            |
@@ -4009,6 +4025,54 @@ mod 在 `session.start` 用 `$.command.register` 注册七条命令（都是 `im
 | procedure          | kind  | input                                  | output                                                                                                                                                                                                                                                                                                                                     | errors                         | scope          | 自   | 原路径                      |
 | ------------------ | ----- | -------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------ | -------------- | ---- | --------------------------- |
 | `updates.releases` | query | 可省 `{ refresh?: boolean \| string }` | `{ current: string, channel: "stable" \| "beta", checkedAt: integer \| null, latest: string \| null, releases: { version: string, tag: string, publishedAt: string, prerelease: boolean, notes: string, url: string, assets: {…}[] }[], error: { code: "unreachable" \| "rateLimited", message: string, retryAfterMs: integer } \| null }` | `unauthenticated`、`forbidden` | `updates:read` | 1.37 | `GET /api/updates/releases` |
+
+<!-- rpc:end -->
+
+## 65. 新建工作空间：克隆的缺省父目录与已连接账号的仓库
+
+> 协议 1.38。新建工作空间对话框有三种来源：已连接的 GitHub 账号里的仓库（克隆到本地）、本地文件夹（`POST /api/workspaces`，§20）、粘贴的 Git 地址（克隆到本地）。克隆仍走 §40.1 的 `git.clone.start` / `status` / `cancel`（目标已存在就 `409`，不覆盖）；这里只加对话框要的两条读。实现在 `core/git/clone-sources.ts`，路由在 `core/git/routes.ts`。
+
+### 65.1 `git.clone.defaults`
+
+- **`GET /api/git/clone-defaults`** → `{ "parent": "/Users/me/Projects" }`，`git:read`，本机主人。家目录下按 `Projects`、`projects`、`Developer`、`code`、`src` 的顺序取第一个存在的目录，都没有就是家目录；拿不到家目录是空串。只是缺省值，页面可以改。
+
+<!-- rpc:begin contract=§65.1 -->
+
+| procedure            | kind  | input     | output               | errors      | scope      | 自   | 原路径                        |
+| -------------------- | ----- | --------- | -------------------- | ----------- | ---------- | ---- | ----------------------------- |
+| `git.clone.defaults` | query | 可省 `{}` | `{ parent: string }` | `forbidden` | `git:read` | 1.38 | `GET /api/git/clone-defaults` |
+
+<!-- rpc:end -->
+
+### 65.2 `git.clone.repositories`
+
+- **`GET /api/git/clone-repositories`** → `GitCloneRepositories`，`git:read`，本机主人。用这台 core 已配好的 GitHub 凭据（`gh` 登录或密钥后端里的令牌，§41）问 `GET /user/repos?per_page=100&sort=updated&affiliation=owner,collaborator,organization_member`（出站登记 `githubApi`，企业版走配置的 API 根）。令牌不进答案。
+
+```json
+{
+  "connected": true,
+  "account": "octo",
+  "repositories": [
+    {
+      "fullName": "octo/demo",
+      "cloneUrl": "https://github.com/octo/demo.git",
+      "private": true,
+      "updatedAt": "2026-10-10T00:00:00Z"
+    }
+  ]
+}
+```
+
+- **未连接**：GitHub 域没装、没配凭据或凭据此刻取不出来，答 `200` 与 `connected: false`、`account: null`、空列表，不联网。
+- **条目**：按 GitHub 给的顺序（最近推送在前），一页最多 100 个。`cloneUrl` 是 GitHub 的 `clone_url`，不在 §40.1 克隆名单（`https://`、`ssh://`、`user@host:path`）里的条目丢掉；`updatedAt` 取 `pushed_at`，缺时取 `updated_at`。仓库描述等远端文本不往外传。
+- **失败**：GitHub 拒绝凭据（`401` / `403`）答 `502 forge_credential_rejected`，其余失败与答的不是数组答 `502 forge_unavailable`；两者都记一次凭据失败，设置页的状态据此显示。
+- **克隆凭据**：克隆私有仓库用用户自己的 Git 设置（credential helper、SSH 密钥），core 不把 API 令牌交给 `git`。
+
+<!-- rpc:begin contract=§65.2 -->
+
+| procedure                | kind  | input     | output                                                                                                                                         | errors                                                        | scope      | 自   | 原路径                            |
+| ------------------------ | ----- | --------- | ---------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------- | ---------- | ---- | --------------------------------- |
+| `git.clone.repositories` | query | 可省 `{}` | `{ connected: boolean, account: string \| null, repositories: { fullName: string, cloneUrl: string, private: boolean, updatedAt: string }[] }` | `forbidden`、`forge_credential_rejected`、`forge_unavailable` | `git:read` | 1.38 | `GET /api/git/clone-repositories` |
 
 <!-- rpc:end -->
 

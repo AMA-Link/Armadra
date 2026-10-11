@@ -756,6 +756,19 @@ export const ROUTES: readonly RouteEntry[] = [
     surface: "runtime",
     implemented: true,
   },
+  // 新建工作空间对话框（契约 §65）：克隆的缺省父目录、已连接账号的仓库。
+  {
+    path: "/api/git/clone-defaults",
+    methods: ["GET"],
+    surface: "runtime",
+    implemented: true,
+  },
+  {
+    path: "/api/git/clone-repositories",
+    methods: ["GET"],
+    surface: "runtime",
+    implemented: true,
+  },
   {
     path: "/api/terminals",
     methods: ["POST"],
@@ -1457,6 +1470,18 @@ export const ROUTES: readonly RouteEntry[] = [
   },
   // 托管平台（契约 §29）：与 GitHub 同一档权限（`route-scopes.ts`）；
   // `resolve` 是读，登记时声明 `github:read`。
+  {
+    path: "/api/forge/accounts",
+    methods: ["GET"],
+    surface: "runtime",
+    implemented: true,
+  },
+  {
+    path: "/api/forge/accounts/{host}/repos",
+    methods: ["GET"],
+    surface: "runtime",
+    implemented: true,
+  },
   {
     path: "/api/forge/configs",
     methods: ["GET"],

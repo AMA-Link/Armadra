@@ -1,6 +1,8 @@
 import { z } from "zod";
 
 import {
+  gitCloneDefaultsSchema,
+  gitCloneRepositoriesSchema,
   gitCloneStartedSchema,
   gitCloneStateSchema,
 } from "../api/git-clone.js";
@@ -372,6 +374,41 @@ export const git = {
             path: "/api/git/clone/{jobId}",
             successStatus: 204,
           },
+        }),
+      ),
+    /** 克隆的缺省父目录（§65.1）。 */
+    defaults: oc
+      .input(z.object({}).optional())
+      .output(gitCloneDefaultsSchema)
+      .errors(errors.pick("forbidden"))
+      .meta(
+        meta({
+          scope: "git:read",
+          since: "1.38",
+          contract: "§65.1",
+          legacy: { method: "GET", path: "/api/git/clone-defaults" },
+        }),
+      ),
+    /**
+     * 已连接 GitHub 账号能克隆的仓库（§65.2），按最近更新排，最多 100 个。
+     * GitHub 拒绝凭据答 `forge_credential_rejected`，连不上答 `forge_unavailable`。
+     */
+    repositories: oc
+      .input(z.object({}).optional())
+      .output(gitCloneRepositoriesSchema)
+      .errors(
+        errors.pick(
+          "forbidden",
+          "forge_credential_rejected",
+          "forge_unavailable",
+        ),
+      )
+      .meta(
+        meta({
+          scope: "git:read",
+          since: "1.38",
+          contract: "§65.2",
+          legacy: { method: "GET", path: "/api/git/clone-repositories" },
         }),
       ),
   },

@@ -37,7 +37,7 @@ export const modals: MessageModule = {
     "settings.section.usage": "用量与额度",
     "settings.section.workspace": "工作空间",
     "settings.section.service": "本机服务",
-    "settings.section.machines": "远程机器",
+    "settings.section.machines": "SSH", // i18n-exempt
     "settings.section.forge": "代码托管",
     "settings.section.remoteAccess": "远程访问",
     "settings.section.devices": "设备与会话",
@@ -352,7 +352,7 @@ export const modals: MessageModule = {
     "settings.section.usage": "Usage & quotas",
     "settings.section.workspace": "Workspace",
     "settings.section.service": "Local service",
-    "settings.section.machines": "Remote machines",
+    "settings.section.machines": "SSH",
     "settings.section.forge": "Code hosting",
     "settings.section.remoteAccess": "Remote access",
     "settings.section.devices": "Devices & sessions",

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { WORKSPACE_COLORS } from "@armadra/shared";
 
 import {
+  isCloneUrl,
   pickWorkspaceColor,
   workspaceNameOf,
   workspaceRequest,
@@ -57,5 +58,35 @@ describe("workspaceRequest", () => {
       color: WORKSPACE_COLORS[2],
       createDirectory: true,
     });
+  });
+});
+
+describe("isCloneUrl", () => {
+  it("与 core 的克隆名单一致：https、ssh 与 user@host:path", () => {
+    for (const url of [
+      "https://github.com/octo/demo.git",
+      "ssh://git@example.test/octo/demo.git",
+      "git@github.com:octo/demo.git",
+      "  https://example.test/demo  ",
+    ]) {
+      expect(isCloneUrl(url), url).toBe(true);
+    }
+  });
+
+  it("拒绝其它协议、本地路径、参数注入与换行", () => {
+    for (const url of [
+      "",
+      "http://example.test/demo.git",
+      "file:///tmp/demo",
+      "/tmp/demo",
+      "ext::sh -c cat",
+      "--upload-pack=evil",
+      "https://example.test",
+      "https://example.test/demo\r\nHost: x",
+      "git@:demo",
+      "@host:demo",
+    ]) {
+      expect(isCloneUrl(url), url).toBe(false);
+    }
   });
 });

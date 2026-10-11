@@ -29,7 +29,7 @@ const INHERIT = "__inherit__";
 /**
  * 设置 → 工作空间（§2.1）：**当前**这块工作空间的开关。
  *
- * 允许执行命令、运行在哪台机器上（切换推入子页）、默认 Agent 覆盖（存在
+ * 允许执行命令、运行在哪台机器上（有 SSH 主机时才出现，切换推入子页）、默认 Agent 覆盖（存在
  * Runtime 的 `workspaces.<id>` 段里）、语言服务；最后是全局的实时协同。
  */
 export function WorkspacePage() {
@@ -76,23 +76,29 @@ export function WorkspacePage() {
   const current = (hosts.data ?? []).find(
     (host) => host.executionHostId === (workspace.executionHostId ?? ""),
   );
+  // 只有本机时没有可切换的地方：有 SSH 主机，或这块已经跑在远端时才给这一行。
+  const remote =
+    (workspace.executionHostId ?? "") !== "" ||
+    (hosts.data ?? []).some((host) => host.kind !== "local");
 
   return (
     <>
       <WorkspaceExecution />
       <SettingsGroup>
-        <SettingsRow label={t("executionHosts.runsOn")}>
-          <span className="max-w-[240px] truncate text-[13px] text-muted-foreground">
-            {executionHostLabel(current, workspace.executionHostId ?? "", t)}
-          </span>
-          <Button
-            size="sm"
-            variant="secondary"
-            onClick={() => subpage.open("executionHosts", "switch")}
-          >
-            {t("executionHosts.switch")}
-          </Button>
-        </SettingsRow>
+        {remote && (
+          <SettingsRow label={t("executionHosts.runsOn")}>
+            <span className="max-w-[240px] truncate text-[13px] text-muted-foreground">
+              {executionHostLabel(current, workspace.executionHostId ?? "", t)}
+            </span>
+            <Button
+              size="sm"
+              variant="secondary"
+              onClick={() => subpage.open("executionHosts", "switch")}
+            >
+              {t("executionHosts.switch")}
+            </Button>
+          </SettingsRow>
+        )}
         <SettingsRow label={t("settings.workspaceDefaultAgent")}>
           <Select
             value={defaultAgent}
