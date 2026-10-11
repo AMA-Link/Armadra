@@ -55,3 +55,39 @@ final class DeepLinkTests: XCTestCase {
         XCTAssertNil(DeepLink("armadra://oauthx?state=a"))
     }
 }
+
+/// 冷启动的深链写进第一个文档，不再载完重载（#281）。
+final class LaunchLinkTests: XCTestCase {
+    private let pair = "armadra://pair?host=127.0.0.1%3A9&ticket=t&fp=f"
+
+    func testOnlyLinksThatReloadGetALaunchScript() {
+        XCTAssertTrue(DeepLink(pair)!.reloadsPage)
+        XCTAssertTrue(DeepLink("armadra://oauth?state=s&code=c")!.reloadsPage)
+        XCTAssertFalse(DeepLink("armadra://w/ws_1")!.reloadsPage)
+        XCTAssertNil(DeepLink("armadra://w/ws_1")!.launchScript(token: "x"))
+        let script = DeepLink(pair)!.launchScript(token: "tok")!
+        // 只写地址片段、不重载；同一个 token 已记过就什么也不做。
+        XCTAssertFalse(script.contains("reload"))
+        XCTAssertTrue(script.contains(#"sessionStorage.getItem("armadra.launchLink")!=="tok""#))
+        XCTAssertTrue(script.contains(#"'#link='+encodeURIComponent("armadra:\/\/pair?host=127.0.0.1%3A9&ticket=t&fp=f")"#))
+    }
+
+    func testTheInjectedLinkIsConsumedOnce() {
+        let slot = LaunchLink()
+        slot.record(["https://example.com", pair])
+        XCTAssertNotNil(slot.take(token: "tok"))
+        XCTAssertNil(slot.take(token: "tok"), "taken once")
+        // Capacitor 在 viewDidAppear 补发同一条：认出来、不再重载；之后再来同一条（人又点了一次）照常处理。
+        XCTAssertFalse(slot.consume("armadra://pair?host=other&ticket=t&fp=f"))
+        XCTAssertTrue(slot.consume(pair))
+        XCTAssertFalse(slot.consume(pair))
+    }
+
+    func testNotificationLinksAndEmptyLaunchesInjectNothing() {
+        let slot = LaunchLink()
+        XCTAssertNil(slot.take())
+        slot.record(["armadra://w/ws_1/n/node_1"])
+        XCTAssertNil(slot.take())
+        XCTAssertFalse(slot.consume("armadra://w/ws_1/n/node_1"))
+    }
+}
