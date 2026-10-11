@@ -6,6 +6,8 @@
  * 留在 `app/test-harness.tsx`。
  */
 
+import { beforeEach } from "vitest";
+
 /**
  * React Flow 的容器用 `ResizeObserver` 量自己的尺寸（`useResizeHandler`），
  * jsdom 没有这个类。桩只需要存在并且能被 new / observe / disconnect —— 尺寸
@@ -90,5 +92,21 @@ if (
     writable: true,
     configurable: true,
     value: DOMMatrixReadOnlyStub,
+  });
+}
+
+/**
+ * sonner 在模块求值时往 `<head>` 塞一张约 15 KB 的样式表。jsdom 的
+ * `getComputedStyle` 每次都拿整张表去匹配元素，而 Testing Library 的
+ * `*ByRole` 判断可见性、算可访问名时对每个候选元素及其祖先都问一遍——一次查询
+ * 几百毫秒，慢的 Windows runner 上整条用例越过 5 s 的超时。jsdom 不排版，这张
+ * 表在测试里没有任何作用；每条用例前摘掉它（导入发生在本文件之后，只能放进
+ * beforeEach）。
+ */
+if (typeof document !== "undefined") {
+  beforeEach(() => {
+    for (const style of document.head.querySelectorAll("style")) {
+      if (style.textContent?.includes("[data-sonner-toaster]")) style.remove();
+    }
   });
 }
