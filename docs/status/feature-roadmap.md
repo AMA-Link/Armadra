@@ -259,6 +259,5 @@ Armadra 是 local-first 的 AI Coding 画布：把真实 CLI Agent（Claude Code
 G5 合入后，各包「没做 / 限制」里还有一些不依赖账号、证书或真机的条目，没有进[用户待办清单](./user-action-checklist.md)。按域列在这里，括号里是记下它的工作包（[补全进度](./completion-progress.md)）。这些都是已知限制，不是挂着的工作包；要做时另开计划。
 
 - **协调者与工作流**：分派抽屉靠 5 秒轮询、没有专门事件；重试后协调者若不再 `wait`，那一行停在「运行中」（G5-09）。冻结的工作流计划没有批量升级入口（G5-08）。runners 的 `--cwd` 只认本机工作区，`team` 不带 `--cwd` / `--resume`（G5-07）。远端 ACP 适配器不带启动器的注入与 ama 的 profile（G5-06）。
-- **推送、协同与评论**：手动平移不取消跟随（G5-11）。评论编辑框没有 Markdown 实时预览，点开聚合钉不自动放大（G5-12）。
 - **用量与发布**：`UsageService` 的 `claudeWindowLimits` 没有接进装配，缺订阅档额度的来源（G5-25）。客户端更新地址 `ARMADRA_UPDATER_ENDPOINTS` 只写 GitHub，镜像域名定了再加（G5-18）。
 - **测试与 CI**：R-90（headless 后台标签页 `DOM.getDocument` 不答）根因没查明；R-89 的修复是推断的（G5-27）。2026-10-05 的 main CI 与夜间作业有三处偶发失败（场景 11 的 `inbox` 超时、Windows 验收的 `restart.survives` 与 `userConfig.untouched`、iOS 配对点按落空），修复见 PR #125。
