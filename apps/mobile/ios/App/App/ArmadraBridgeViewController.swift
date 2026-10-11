@@ -20,6 +20,16 @@ class ArmadraBridgeViewController: CAPBridgeViewController {
 
     override open func capacitorDidLoad() {
         bridge?.registerPluginInstance(ArmadraNativePlugin())
+        // 冷启动带着配对 / 分享 / OAuth 深链（#281）：第一个文档开头就写进 `#link=`，入口直接拿到；
+        // 原先是页面载完再改写、重载一遍，慢的模拟器上第二遍会把启动拖过用例的等待。
+        if let script = LaunchLink.shared.take() {
+            Self.log.info("launch link goes into the first document")
+            webView?.configuration.userContentController.addUserScript(WKUserScript(
+                source: script,
+                injectionTime: .atDocumentStart,
+                forMainFrameOnly: true
+            ))
+        }
         #if DEBUG
         // UI 用例（`AppUITests`）带 `-ArmadraUITest` 启动：开屏动画先记成「这一页面会话已放过」
         // （`apps/web/src/splash/session.ts` 的键）。动画盖在页面上、按下即跳过，用例的第一下点按会

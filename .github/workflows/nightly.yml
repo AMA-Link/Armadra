@@ -297,7 +297,9 @@ jobs:
           path: |
             target/mobile/*.zip
             target/mobile-shell-e2e/ios/result.json
+            # simulator-stream.log：测试期间的 App 日志与进程退出；crash/：宿主上新出现的崩溃报告（#281）。
             target/mobile-shell-e2e/ios/*.log
+            target/mobile-shell-e2e/ios/crash/
             target/mobile-shell-e2e/ios/*.xcresult
           if-no-files-found: warn
 
