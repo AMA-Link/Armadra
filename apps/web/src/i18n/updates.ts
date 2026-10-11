@@ -54,7 +54,8 @@ export const updates: MessageModule = {
     "updates.unsupported.notDesktop": "浏览器里的页面无法替换应用本体。",
     "updates.unsupported.remoteHost":
       "后台服务在另一台机器上，更新它不等于更新这里的应用。",
-    "updates.unsupported.managedPackage": "这种安装方式需要下载新安装包来更新。",
+    "updates.unsupported.managedPackage":
+      "这种安装方式需要下载新安装包来更新。",
     "updates.partial.hostNotChecked": "后台服务未给出结果。",
     "updates.partial.shellNotChecked": "桌面壳未检查。",
     "updates.progress": "已下载",
@@ -96,11 +97,6 @@ export const updates: MessageModule = {
     "updates.shellReason.updaterUnavailable": "此构建的更新器不可用。",
     "updates.shellReason.notSigned":
       "更新已下载并通过校验，但当前安装未签名，不会安装。请从发布页手动安装。",
-    "updates.release": "新版本",
-    "updates.signature": "签名",
-    "updates.signature.present": "发布包附带签名，由安装程序验证",
-    "updates.signature.absent": "发布包没有附带签名",
-    "updates.signature.unconfigured": "本机没有配置公钥，无法验证任何签名",
     "updates.install.manual":
       "本版本不自动下载或安装。请按发布说明手动获取并安装。",
     "updates.reason.UPDATES_NOT_CONFIGURED":
@@ -127,6 +123,30 @@ export const updates: MessageModule = {
     "updates.blocked.noReleaseSource":
       "此版本没有可询问的发布来源，无法判断有没有新版本。",
     "updates.blocked.action": "前往本机服务设置",
+    "updates.history": "版本历史",
+    "updates.history.checkedAt": "上次检查",
+    "updates.history.never": "从未",
+    "updates.history.refresh": "刷新",
+    "updates.history.empty": "暂无发布",
+    "updates.history.loadFailed": "无法读取版本历史",
+    "updates.history.current": "当前",
+    "updates.history.latest": "最新",
+    "updates.history.open": "在 GitHub 查看",
+    "updates.history.error.unreachable":
+      "无法连接 GitHub，显示的是上次的结果。",
+    "updates.history.error.rateLimited":
+      "GitHub 暂时限制了请求，显示的是上次的结果。",
+    "updates.newVersion": "新版本 {version}",
+    "updates.server.docker": "容器",
+    "updates.server.binary": "裸机",
+    "updates.copy": "复制",
+    "updates.copied": "已复制",
+    "updates.copyFailed": "复制失败",
+    "updates.android.install": "下载并安装",
+    "updates.android.started": "已打开系统安装器。",
+    "updates.android.permissionRequired": "允许安装未知应用后再试一次。",
+    "updates.android.checksumMismatch": "安装包校验失败，已丢弃。",
+    "updates.android.failed": "无法安装更新。",
   },
   en: {
     "updates.nav": "Updates",
@@ -224,13 +244,6 @@ export const updates: MessageModule = {
       "This build's updater is unusable.",
     "updates.shellReason.notSigned":
       "The update was downloaded and verified, but this installation is unsigned, so it is not installed. Install it from the release page.",
-    "updates.release": "New release",
-    "updates.signature": "Signature",
-    "updates.signature.present":
-      "The release ships a signature; the installer verifies it",
-    "updates.signature.absent": "The release ships no signature",
-    "updates.signature.unconfigured":
-      "No public key is configured here, so nothing could be verified",
     "updates.install.manual":
       "This build neither downloads nor installs updates. Follow the release notes to install one yourself.",
     "updates.reason.UPDATES_NOT_CONFIGURED":
@@ -263,5 +276,31 @@ export const updates: MessageModule = {
     "updates.blocked.noReleaseSource":
       "This build has no release source to ask, so it cannot tell whether a newer version exists.",
     "updates.blocked.action": "Open local service settings",
+    "updates.history": "Release history",
+    "updates.history.checkedAt": "Last checked",
+    "updates.history.never": "Never",
+    "updates.history.refresh": "Refresh",
+    "updates.history.empty": "No releases yet",
+    "updates.history.loadFailed": "Could not load the release history",
+    "updates.history.current": "Current",
+    "updates.history.latest": "Latest",
+    "updates.history.open": "View on GitHub",
+    "updates.history.error.unreachable":
+      "Could not reach GitHub; showing the last result.",
+    "updates.history.error.rateLimited":
+      "GitHub is limiting requests; showing the last result.",
+    "updates.newVersion": "Version {version} is available",
+    "updates.server.docker": "Container",
+    "updates.server.binary": "Bare metal",
+    "updates.copy": "Copy",
+    "updates.copied": "Copied",
+    "updates.copyFailed": "Could not copy",
+    "updates.android.install": "Download and install",
+    "updates.android.started": "The system installer is open.",
+    "updates.android.permissionRequired":
+      "Allow installing unknown apps, then try again.",
+    "updates.android.checksumMismatch":
+      "The package failed verification and was discarded.",
+    "updates.android.failed": "Could not install the update.",
   },
 };

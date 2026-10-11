@@ -8,7 +8,7 @@ import {
   hostCompatibility,
   MINIMUM_HOST_PROTOCOL,
 } from "../../../mobile/host-compatibility";
-import { nativeBridge } from "../../../mobile/native-bridge";
+import { nativeBridge, type NativeBridge } from "../../../mobile/native-bridge";
 import { usePreferencesStore, useT } from "../../../app/preferences-store";
 import { useAccess } from "../../../app/use-access";
 import { useCanvasStore } from "../../../store/canvas-store";
@@ -22,14 +22,27 @@ import {
 import {
   CHECK_INTERVAL_MS,
   FIRST_CHECK_DELAY_MS,
+  detectTarget,
   useUpdateState,
 } from "../../../updates/use-update-state";
+import {
+  hasShellUpdater,
+  type ShellUpdateState,
+} from "../../../updates/shell-updater";
+import {
+  androidApkName,
+  androidUpdate,
+  latestAbove,
+  managedFallback,
+} from "../../../updates/releases";
+import { ReleaseHistory, useReleases } from "./about/ReleaseHistory";
+import { ServerUpgradeNotice } from "./about/ServerUpgradeNotice";
+import { AndroidUpdateGroup, MobileReleaseNotice } from "./about/MobileUpdate";
 import { SettingsGroup } from "../SettingsGroup";
 import { SettingsRow } from "../SettingsRow";
 import { useRemoteAccess } from "../remote-access";
 import { useRuntimeSettings } from "../use-runtime-settings";
 import { Alert, AlertDescription, AlertTitle } from "@/ui/alert";
-import { Badge } from "@/ui/badge";
 import { Button } from "@/ui/button";
 import {
   Select,
@@ -73,6 +86,9 @@ export function loadThirdPartyNotices(): Promise<string> {
  *
  * 设置作用的 core 在别处时，检查、下载、安装都由那台机器自己的壳做，这里
  * 够不着；成员读不到更新偏好所在的设置文档。两种情况都只读地报版本。
+ *
+ * 每个环境都有「版本历史」（契约 §64，core 去问 GitHub）：浏览器里有新版本时
+ * 给服务器的升级命令，手机上 Android 可以直接下载并安装新 APK。
  */
 export function AboutPage() {
   const { remote } = useRemoteAccess();
@@ -135,15 +151,26 @@ function LicensesGroup() {
   );
 }
 
+/** 页面里打开外部地址（桌面壳交给系统浏览器，浏览器开新标签）。 */
+function openUrl(url: string) {
+  void openExternal(url);
+}
+
 /**
  * 原生 App（手机与平板同一个 App）：App 自己的版本与构建号、所连主机的版本与
  * 协议。两边版本线各自独立，合不合得来只看协议（`mobile/host-compatibility.ts`），
- * 不合时说清楚该更新哪一边。App 没有自更新（商店分发），这里不出更新动作。
+ * 不合时说清楚该更新哪一边。
+ *
+ * 新版本按 App 自己的版本比：Android 有带 sha256 的签名 APK 时可以直接装，
+ * iOS 只给发布说明（只能经商店更新）。
  */
 export function MobileAbout({
   bridge,
 }: {
-  bridge: Pick<ReturnType<typeof nativeBridge>, "appInfo">;
+  bridge: Pick<
+    NativeBridge,
+    "appInfo" | "platform" | "installApk" | "openExternal"
+  >;
 }) {
   const t = useT();
   const app = useQuery({
@@ -164,6 +191,19 @@ export function MobileAbout({
   const protocol = hello.data?.protocol;
   const verdict = hostCompatibility(protocol);
   const unknown = t("updates.version.unknown");
+  const releases = useReleases();
+  const appVersion = app.data?.version ?? "";
+  const list = releases.data?.releases ?? [];
+  const newer = appVersion ? latestAbove(list, appVersion) : null;
+  const apk =
+    bridge.platform === "android" && appVersion
+      ? androidUpdate(list, appVersion)
+      : null;
+  const newest = newer ? list.find((entry) => entry.version === newer) : null;
+  const open = React.useCallback(
+    (url: string) => void bridge.openExternal(url),
+    [bridge],
+  );
   return (
     <>
       <SettingsGroup>
@@ -203,11 +243,71 @@ export function MobileAbout({
           </AlertDescription>
         </Alert>
       )}
+      {apk ? (
+        <AndroidUpdateGroup
+          update={apk}
+          install={(url, sha256) => bridge.installApk(url, sha256)}
+        />
+      ) : (
+        newest &&
+        newest.url.startsWith("https://") && (
+          <MobileReleaseNotice release={newest} onOpen={open} />
+        )
+      )}
+      <ReleaseHistory
+        data={releases.data}
+        current={appVersion}
+        latest={newer}
+        failed={releases.failed}
+        refreshing={releases.refreshing}
+        coolingDown={releases.coolingDown}
+        onRefresh={() => void releases.refresh()}
+        onOpen={open}
+        assets={(release) =>
+          bridge.platform === "android"
+            ? release.assets.filter(
+                (asset) => asset.name === androidApkName(release.version),
+              )
+            : []
+        }
+      />
     </>
   );
 }
 
-/** 远端主机的版本（`health.version`），只读。 */
+/**
+ * 版本历史，加上浏览器里的服务器升级命令。`current` / `latest` 是这台 core 的
+ * （§64 自己答的）；桌面壳里看的是本机或远端主机，不出命令。
+ */
+function HostReleases({
+  browser,
+  assets,
+}: {
+  /** 页面在浏览器里（没有桌面壳）：所看的是服务器壳。 */
+  browser: boolean;
+  assets?: React.ComponentProps<typeof ReleaseHistory>["assets"];
+}) {
+  const releases = useReleases();
+  const data = releases.data;
+  return (
+    <>
+      {browser && data?.latest && <ServerUpgradeNotice version={data.latest} />}
+      <ReleaseHistory
+        data={data}
+        current={data?.current ?? ""}
+        latest={data?.latest ?? null}
+        failed={releases.failed}
+        refreshing={releases.refreshing}
+        coolingDown={releases.coolingDown}
+        onRefresh={() => void releases.refresh()}
+        onOpen={openUrl}
+        assets={assets}
+      />
+    </>
+  );
+}
+
+/** 远端主机的版本（`health.version`）与它的版本历史，只读。 */
 function RemoteUpdates() {
   const t = useT();
   const health = useQuery({
@@ -216,13 +316,48 @@ function RemoteUpdates() {
     retry: false,
   });
   return (
-    <SettingsGroup>
-      <SettingsRow label={t("updates.hostVersion")}>
-        <span className="text-[13px] tabular-nums text-muted-foreground">
-          {health.data?.version || t("updates.version.unknown")}
-        </span>
-      </SettingsRow>
-    </SettingsGroup>
+    <>
+      <SettingsGroup>
+        <SettingsRow label={t("updates.hostVersion")}>
+          <span className="text-[13px] tabular-nums text-muted-foreground">
+            {health.data?.version || t("updates.version.unknown")}
+          </span>
+        </SettingsRow>
+      </SettingsGroup>
+      <HostReleases browser={!hasShellUpdater()} />
+    </>
+  );
+}
+
+/** 这台机器的发布目标（`darwin-aarch64` 这种）；判断不出是 `null`。 */
+function pageTarget(): string | null {
+  if (typeof navigator === "undefined") return null;
+  return detectTarget(navigator.platform ?? "", navigator.userAgent ?? "");
+}
+
+/**
+ * 受管安装「下载新安装包」的地址：壳给了就用壳的，否则按平台从 §64 的最新
+ * 发布里挑。都没有是空串（按钮不画）。
+ */
+export function installerUrl(
+  shell: ShellUpdateState,
+  view: UpdatesView,
+  releases: {
+    releases: Parameters<typeof managedFallback>[0];
+    latest: string | null;
+  } | null,
+  target: string | null,
+): string {
+  if (shell.state !== "unsupported" || view.managed === null) return "";
+  if (view.managed.download) return view.managed.download.url;
+  if (releases === null) return "";
+  return (
+    managedFallback(
+      releases.releases,
+      releases.latest,
+      view.managed.package,
+      target,
+    )?.url ?? ""
   );
 }
 
@@ -289,6 +424,11 @@ function LocalUpdates() {
 
   const busy = view.state === "checking";
   const notesUrl = view.offer?.notesUrl || view.release?.notesUrl || "";
+  const releases = useReleases();
+  const target = React.useMemo(pageTarget, []);
+  const installer = installerUrl(shell, view, releases.data, target);
+  const browser =
+    shell.state === "unsupported" && shell.reason === "notDesktop";
 
   function perform(action: UpdatesAction) {
     switch (action) {
@@ -306,6 +446,8 @@ function LocalUpdates() {
         return void download();
       case "notes":
         return void (notesUrl && openExternal(notesUrl));
+      case "installer":
+        return void (installer && openExternal(installer));
       case "openHostSettings":
         usePreferencesStore.getState().setLastSettingsSection("service");
         return setPanel("settings", true);
@@ -406,27 +548,34 @@ function LocalUpdates() {
           installed={installed}
           busy={busy}
           notesUrl={notesUrl}
+          installerUrl={installer}
           onAction={perform}
         />
       </SettingsGroup>
 
       <UpdateStatusNotes view={view} />
 
-      {view.release && (
-        <SettingsGroup title={t("updates.release")}>
-          <SettingsRow label={view.release.version}>
-            <Badge variant="secondary" className="h-5 px-1.5 text-[11px]">
-              {t(`updates.channel.${view.release.channel}`)}
-            </Badge>
-          </SettingsRow>
-          {view.release.signature !== "unknown" && (
-            <SettingsRow
-              label={t("updates.signature")}
-              footnote={t(`updates.signature.${view.release.signature}`)}
-            />
-          )}
-        </SettingsGroup>
+      {browser && releases.data?.latest && (
+        <ServerUpgradeNotice version={releases.data.latest} />
       )}
+      <ReleaseHistory
+        data={releases.data}
+        current={releases.data?.current ?? installed}
+        latest={releases.data?.latest ?? null}
+        failed={releases.failed}
+        refreshing={releases.refreshing}
+        coolingDown={releases.coolingDown}
+        onRefresh={() => void releases.refresh()}
+        onOpen={openUrl}
+        // 浏览器里下载桌面安装包没有意义；桌面壳只列本平台的。
+        assets={(release) =>
+          !browser && target
+            ? release.assets.filter((asset) =>
+                asset.name.startsWith(`Armadra_${release.version}_${target}`),
+              )
+            : []
+        }
+      />
     </>
   );
 }
@@ -441,16 +590,22 @@ export function UpdateStatusRows({
   installed,
   busy,
   notesUrl,
+  installerUrl = "",
   onAction,
 }: {
   view: UpdatesView;
   installed: string;
   busy: boolean;
   notesUrl: string;
+  /** 受管安装的新安装包；没有就不画「下载新安装包」。 */
+  installerUrl?: string;
   onAction(action: UpdatesAction): void;
 }) {
   const t = useT();
   const progress = view.progress;
+  const actions = view.actions.filter(
+    (action) => action !== "installer" || installerUrl !== "",
+  );
   return (
     <>
       <SettingsRow label={t("updates.status")}>
@@ -484,10 +639,10 @@ export function UpdateStatusRows({
         </SettingsRow>
       )}
 
-      {view.actions.length > 0 && (
+      {actions.length > 0 && (
         <SettingsRow label={null}>
           <div className="flex flex-wrap gap-2">
-            {view.actions.map((action, index) => (
+            {actions.map((action, index) => (
               <Button
                 key={action}
                 size="sm"
