@@ -46,6 +46,18 @@ export const clientSourceRouteSchema = z.object({
   lastOkAtMs: z.number().int(),
 });
 
+/** 源的归属（契约 §68）。 */
+export const sourceOriginSchema = z.enum(["mine", "shared"]);
+
+/** 分享给我的角色（契约 §68）；空串 = 未知。 */
+export const sourceShareRoleSchema = z.enum([
+  "",
+  "viewer",
+  "editor",
+  "operator",
+  "driver",
+]);
+
 /**
  * 源表的一行：协议包的形状加 `routes`（§55）。原有的地址字段照旧，是首选路由的
  * 镜像。协议包是 cloud 仓的，这一处追加只在 core 契约里，字段逐个沿用协议包的。
@@ -57,11 +69,27 @@ export const clientSourceSchema = protocolClientSourceSchema.extend({
    * 目录里的源名称、本机的「主机名称」。`label ≠ defaultLabel` 即本机改过名。
    */
   defaultLabel: z.string(),
+  /**
+   * 归属（契约 §68，迁移 0047）：`mine` = 我自己的电脑（本机、配对、用自己的账号挂上），
+   * `shared` = 别人经分享链接给我的（`sources.mountByLink`）。
+   */
+  origin: sourceOriginSchema,
+  /** §68：分享方报的主人名字；`mine` 与旧对端是空串。 */
+  ownerLabel: z.string(),
+  /** §68：分享给我的角色；空串 = 未知或 `mine`。只作展示，权限由分享方判定。 */
+  shareRole: sourceShareRoleSchema,
+  /** §68：分享到期的时刻；0 = 未知、不过期或 `mine`。 */
+  shareExpiresAtMs: z.number().int(),
 });
 
 /** 远程服务一行：协议包的形状加 `defaultLabel`（§61，platform.info 的 `name`）。 */
 export const remoteServiceSchema = protocolRemoteServiceSchema.extend({
   defaultLabel: z.string(),
+  /**
+   * §68：分享链接建的访客行（个人中转、没有账号）。它存着访客的刷新令牌、换票要用，
+   * 不能删；账号列表据此把它藏起来。
+   */
+  guest: z.boolean(),
 });
 
 const [personalAddInput, saasAddInput] = protocolRemoteAddInputSchema.options;
