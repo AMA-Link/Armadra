@@ -1,6 +1,5 @@
 import * as React from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { toast } from "sonner";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { RotateCw, X } from "lucide-react";
 
 import { Badge } from "@/ui/badge";
@@ -9,57 +8,27 @@ import { IconButton } from "@/ui/icon-button";
 import { ScrollArea } from "@/ui/scroll-area";
 import { SheetTitle } from "@/ui/sheet";
 import { WorkPanelSheet } from "../WorkPanelSheet";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/ui/tabs";
 import { usePreferencesStore, useT } from "@/app/preferences-store";
 import { useGithubSession } from "@/host/github-session";
 import { useCanvasStore } from "@/store/canvas-store";
-import { CreateIssueForm, type CreateIssueRequest } from "./CreateIssueForm";
-import { CreatePullForm, type CreatePullRequestInput } from "./CreatePullForm";
-import {
-  EMPTY_FILTER,
-  FilterBar,
-  filterKey,
-  issueFilter,
-  pullFilter,
-  type GithubFilterState,
-} from "./Filters";
 import { sk } from "../../sources/scope";
-import { IssueDetail } from "./IssueDetail";
-import { IssueList, type MoveIssueRequest } from "./IssueList";
-import { PullDetail } from "./PullDetail";
-import { PullList } from "./PullList";
+import { ForgeHosted, OpenRemote } from "./ForgeHosted";
 import { RepositoryPicker } from "./RepositoryPicker";
-import { StatusMappingEditor } from "./StatusMappingEditor";
-import { linkReferenceTo } from "./link-targets";
-import { failureKey, pollInterval, writeStateKey } from "./model";
-import { useGithubFocus, type GithubTab } from "./open";
-import { ForgeHosted } from "./ForgeHosted";
+import { useGithubFocus } from "./open";
 import {
   FORGE_NAMES,
   type ForgeRepo,
   detectForge,
-  forgeFailure,
   forgeFailureKey,
   resolveForge,
 } from "../../api/forge";
-import { allIssues, allPulls, githubKeys } from "./queries";
-import {
-  GithubIssue,
-  GithubIssueState,
-  GithubPullRequest,
-  GithubReferenceKind,
-} from "../../api/github";
 
 /**
- * 右侧工作面板的「Git 托管」页（Git/GitHub 设计 §1，画布平台设计 §4，契约 §29）。
+ * 右侧工作面板的「代码托管」页（契约 §29）：GitHub、Gitea、GitLab 同一面，
+ * 只读——仓库信息、issue 与 PR 的列表和详情（{@link ForgeHosted}）。
  *
- * 远端地址先经 `/api/forge/resolve` 认平台：GitHub 走原来那一面（状态映射、
- * 评审、检出……）；Gitea / GitLab 走 {@link ForgeHosted}；认不出就停在那里并
- * 指去设置。旧 core 没有托管平台域（501 / 404）时按 GitHub 处理，与以前一样。
- *
- * Host 没连上、没配对、没凭据时整页只显示原因和去设置的入口——不画一个点了
- * 会 401 的按钮。仓库来自解析一个 git 远端地址：解析结果说 host 不匹配时就
- * 停在那里，绝不改用公共服务再试一次。
+ * 远端地址经 `forge.resolve` 认平台与凭据；认不出或没有令牌时停在那里并指去
+ * 设置。Host 没连上、没配对时整页只显示原因和去设置的入口。
  */
 export function GithubDrawer() {
   const t = useT();
@@ -73,30 +42,19 @@ export function GithubDrawer() {
   const focusTab = useGithubFocus((store) => store.tab);
   const focusNumber = useGithubFocus((store) => store.number);
   const reveal = useGithubFocus((store) => store.reveal);
-  const focus = useGithubFocus((store) => store.focus);
   const focusTarget = useGithubFocus((store) => store.target);
   const queryClient = useQueryClient();
 
   const open = mode === "drawer";
   const workspaceId = workspace?.id ?? null;
-  const [tab, setTab] = React.useState<GithubTab>("issues");
   const [remoteUrl, setRemoteUrl] = React.useState("");
   const [resolveUrl, setResolveUrl] = React.useState("");
-  // 连接徽标点进来的 Gitea / GitLab 条目：按它记着的仓库认，不靠手填的地址。
+  // 连接徽标点进来的条目：按它记着的仓库认，不靠手填的地址。
   const [resolveRepo, setResolveRepo] = React.useState<ForgeRepo | null>(null);
-  const resolveRemote = (value: string) => {
-    setResolveRepo(null);
-    setResolveUrl(value);
-  };
-  const [draft, setDraft] = React.useState<GithubFilterState>(EMPTY_FILTER);
-  const [applied, setApplied] = React.useState<GithubFilterState>(EMPTY_FILTER);
 
   React.useEffect(() => {
     if (open) void connect(workspaceId);
   }, [connect, open, workspaceId]);
-  React.useEffect(() => {
-    if (open && reveal > 0) setTab(focusTab);
-  }, [focusTab, open, reveal]);
   React.useEffect(() => {
     if (!open || reveal === 0 || focusTarget === null) return;
     setResolveRepo({
@@ -106,14 +64,11 @@ export function GithubDrawer() {
     });
   }, [focusTarget, open, reveal]);
 
-  const client = state.status === "ready" ? state.client : null;
-  const canWrite = state.status === "ready" && state.canWrite;
-  const blocked = state.status === "blocked" ? state.reason : null;
-  // 拿不到 GitHub 凭据不挡 Gitea / GitLab：会话还在，只是 GitHub 那一面用不了。
-  const noGithubCredential = blocked === "noCredential";
-  const pageBlocked = noGithubCredential ? null : blocked;
-  const forgeCanWrite =
-    canWrite || (state.status === "blocked" && state.canWrite === true);
+  // 拿不到 GitHub 凭据不挡整页：识别结果会说这个仓库有没有令牌。
+  const blocked =
+    state.status === "blocked" && state.reason !== "noCredential"
+      ? state.reason
+      : null;
 
   const detection = useQuery({
     queryKey: resolveRepo
@@ -134,161 +89,8 @@ export function GithubDrawer() {
       (resolveRepo !== null || resolveUrl.length > 0),
     retry: false,
   });
-  const forgeUnsupported =
-    detection.isError && forgeFailure(detection.error) === "unsupported";
-  /** `undefined`：还没认（或在认）；`null`：认不出。 */
-  const forgeKind: string | null | undefined = forgeUnsupported
-    ? "github"
-    : detection.data?.forge;
-  const forgeLayout =
-    noGithubCredential ||
-    forgeKind === null ||
-    forgeKind === "gitea" ||
-    forgeKind === "gitlab" ||
-    (detection.isError && !forgeUnsupported);
-
-  const resolved = useQuery({
-    queryKey: githubKeys.repository(workspaceId ?? "", resolveUrl),
-    queryFn: () => client!.resolveRepository(resolveUrl),
-    enabled:
-      open &&
-      Boolean(client) &&
-      resolveUrl.length > 0 &&
-      forgeKind === "github",
-    retry: false,
-  });
-  const repository = resolved.data?.hostMismatch
-    ? undefined
-    : resolved.data?.repository?.ref;
-
-  const mapping = useQuery({
-    queryKey: githubKeys.mapping(workspaceId ?? "", repository),
-    queryFn: () => client!.getStatusMapping(repository!),
-    enabled: open && Boolean(client) && Boolean(repository),
-    retry: false,
-  });
-
-  const issues = useQuery({
-    queryKey: githubKeys.issues(
-      workspaceId ?? "",
-      repository,
-      filterKey("issues", applied),
-    ),
-    queryFn: () => allIssues(client!, repository!, issueFilter(applied)),
-    enabled: open && tab === "issues" && Boolean(client) && Boolean(repository),
-    retry: false,
-    // No webhook on a local Host: the panel polls at the interval the Host
-    // asked for, and never while the panel is closed.
-    refetchInterval: (query) =>
-      open && tab === "issues"
-        ? pollInterval(query.state.data?.pollIntervalMs)
-        : false,
-  });
-
-  const pulls = useQuery({
-    queryKey: githubKeys.pulls(
-      workspaceId ?? "",
-      repository,
-      filterKey("pulls", applied),
-    ),
-    queryFn: () => allPulls(client!, repository!, pullFilter(applied)),
-    enabled: open && tab === "pulls" && Boolean(client) && Boolean(repository),
-    retry: false,
-    refetchInterval: (query) =>
-      open && tab === "pulls"
-        ? pollInterval(query.state.data?.pollIntervalMs)
-        : false,
-  });
-
-  const invalidate = () =>
-    queryClient.invalidateQueries({ queryKey: githubKeys.all });
-  const fail = (error: unknown) => toast.error(t(failureKey(error)));
-
-  const move = useMutation({
-    mutationFn: (request: MoveIssueRequest) =>
-      client!.moveIssue({
-        repository: repository!,
-        number: request.issue.number,
-        toGroupId: request.toGroupId,
-        fromGroupId: request.fromGroupId,
-        expectedUpdatedAtUnixMs: request.expectedUpdatedAtUnixMs,
-        expectedMappingRevision: request.expectedMappingRevision,
-      }),
-    onSuccess: (result) => {
-      // Every write is reported per item: a partly applied move must not read
-      // as a clean success.
-      for (const item of result.outcomes)
-        toast.message(`${item.target} · ${t(writeStateKey(item.state))}`, {
-          description: item.reasonCode || undefined,
-        });
-      invalidate();
-    },
-    onError: fail,
-  });
-
-  const setIssueState = useMutation({
-    mutationFn: (input: { issue: GithubIssue; state: GithubIssueState }) =>
-      client!.setIssueState({
-        repository: repository!,
-        number: input.issue.number,
-        state: input.state,
-        expectedUpdatedAtUnixMs: input.issue.updatedAtUnixMs,
-      }),
-    onSuccess: invalidate,
-    onError: fail,
-  });
-
-  const createIssue = useMutation({
-    mutationFn: (request: CreateIssueRequest) =>
-      client!.createIssue({ repository: repository!, ...request }),
-    onSuccess: invalidate,
-    onError: fail,
-  });
-
-  const createPull = useMutation({
-    mutationFn: async ({ target, ...input }: CreatePullRequestInput) => {
-      const pull = await client!.createPull({
-        repository: repository!,
-        ...input,
-      });
-      // Only a target the user picked is linked, and a link that fails never
-      // turns the created pull request into a reported failure.
-      if (!target) return { pull, link: null };
-      try {
-        return {
-          pull,
-          link: await linkReferenceTo(client!, {
-            repository: repository!,
-            kind: GithubReferenceKind.PULL_REQUEST,
-            number: pull.number,
-            title: pull.title,
-            target,
-          }),
-        };
-      } catch {
-        return { pull, link: "failed" as const };
-      }
-    },
-    onSuccess: (result) => {
-      if (result.link === "failed") toast.error(t("github.link.failed"));
-      else if (result.link)
-        toast.success(
-          t(
-            result.link === "already"
-              ? "github.link.already"
-              : "github.link.linked",
-          ),
-        );
-      invalidate();
-    },
-    onError: fail,
-  });
-
-  const busy =
-    move.isPending ||
-    setIssueState.isPending ||
-    createIssue.isPending ||
-    createPull.isPending;
+  const found = detection.data;
+  const ready = found && found.forge !== null && found.credential;
 
   const toSettings = (section: "forge" | "service" | "devices") => {
     setPanel("github", "closed");
@@ -296,11 +98,8 @@ export function GithubDrawer() {
     setPanel("settings", true);
   };
 
-  const openIssue = (issue: GithubIssue) => focus("issues", issue.number);
-  const openPull = (pull: GithubPullRequest) => focus("pulls", pull.number);
-
-  /** 徽标点进来的那一条，仓库对得上才交给 Gitea / GitLab 那一面。 */
-  const forgeFocus = (repository: ForgeRepo) =>
+  /** 徽标点进来的那一条，仓库对得上才定位过去。 */
+  const focusFor = (repository: ForgeRepo) =>
     focusTarget !== null &&
     focusNumber !== null &&
     reveal > 0 &&
@@ -318,25 +117,15 @@ export function GithubDrawer() {
     >
       <div className="flex h-10 shrink-0 items-center gap-1 border-b border-border px-3">
         <SheetTitle className="shrink-0 truncate text-[13px] font-semibold">
-          {forgeKind === "github"
-            ? t("github.title")
-            : forgeKind
-              ? (FORGE_NAMES[forgeKind] ?? forgeKind)
-              : t("forge.title")}
+          {t("forge.title")}
         </SheetTitle>
-        {state.status === "ready" && !canWrite && (
-          <Badge variant="outline" className="ml-2 truncate">
-            {t("github.readOnly")}
-          </Badge>
-        )}
         <div className="flex-1" />
         {sessionClient && (
           <IconButton
             label={t("github.reload")}
-            onClick={() => {
-              invalidate();
-              void queryClient.invalidateQueries({ queryKey: ["forge"] });
-            }}
+            onClick={() =>
+              void queryClient.invalidateQueries({ queryKey: ["forge"] })
+            }
           >
             <RotateCw />
           </IconButton>
@@ -349,13 +138,13 @@ export function GithubDrawer() {
         </IconButton>
       </div>
 
-      {pageBlocked ? (
+      {blocked ? (
         <div
           role="status"
           className="min-w-0 space-y-3 p-4 text-[13px] leading-5"
         >
           <p className="text-muted-foreground">
-            {t(`github.blocked.${pageBlocked}`)}
+            {t(`github.blocked.${blocked}`)}
           </p>
           <Button
             size="sm"
@@ -363,9 +152,9 @@ export function GithubDrawer() {
             className="min-h-10"
             onClick={() =>
               toSettings(
-                pageBlocked === "signedOut" ||
-                  pageBlocked === "noPermission" ||
-                  pageBlocked === "nativeSession"
+                blocked === "signedOut" ||
+                  blocked === "noPermission" ||
+                  blocked === "nativeSession"
                   ? "devices"
                   : "service",
               )
@@ -374,271 +163,80 @@ export function GithubDrawer() {
             {t("github.blocked.action")}
           </Button>
         </div>
-      ) : noGithubCredential || (sessionClient && forgeLayout) ? (
-        <ScrollArea className="min-h-0 flex-1">
-          {noGithubCredential &&
-            (forgeKind === undefined || forgeKind === "github") && (
-              <div
-                role="status"
-                className="min-w-0 space-y-3 border-b border-border p-3 text-[13px] leading-5"
-              >
-                <p className="text-muted-foreground">
-                  {t("github.blocked.noCredential")}
-                </p>
-                <Button
-                  size="sm"
-                  variant="secondary"
-                  className="min-h-10"
-                  onClick={() => toSettings("forge")}
-                >
-                  {t("github.blocked.credentialAction")}
-                </Button>
-              </div>
-            )}
-          <RepositoryPicker
-            remoteUrl={remoteUrl}
-            onRemoteUrl={setRemoteUrl}
-            onResolve={() => resolveRemote(remoteUrl.trim())}
-            busy={detection.isFetching}
-            resolved={undefined}
-          />
-          {detection.isError && !forgeUnsupported && (
-            <p role="status" className="px-3 py-2 text-[12px] text-destructive">
-              {t(forgeFailureKey(detection.error))}
-            </p>
-          )}
-          {detection.data &&
-            (detection.data.forge === null || !detection.data.credential) &&
-            detection.data.forge !== "github" && (
-              <div
-                role="status"
-                data-slot="forge-unconfigured"
-                className="min-w-0 space-y-3 p-3 text-[13px] leading-5"
-              >
-                <p className="text-muted-foreground">
-                  {t(
-                    detection.data.forge === null
-                      ? "forge.unknown"
-                      : "forge.noCredential",
-                  )}
-                </p>
-                <Button
-                  size="sm"
-                  variant="secondary"
-                  className="min-h-10"
-                  onClick={() => toSettings("forge")}
-                >
-                  {t("forge.configure")}
-                </Button>
-              </div>
-            )}
-          {detection.data &&
-            detection.data.forge !== null &&
-            detection.data.forge !== "github" &&
-            detection.data.credential && (
-              <>
-                <div className="flex min-w-0 flex-wrap items-center gap-2 border-b border-border px-3 py-2 text-[12px]">
-                  <span
-                    data-slot="forge-repository"
-                    // GitLab 多级子组的路径可能很长：截断时悬停看全。
-                    title={`${detection.data.repository.owner}/${detection.data.repository.name}`}
-                    className="min-w-0 truncate font-medium select-text"
-                  >
-                    {detection.data.repository.owner}/
-                    {detection.data.repository.name}
-                  </span>
-                  <Badge variant="outline">
-                    {detection.data.repository.host}
-                  </Badge>
-                  {detection.data.accountLogin && (
-                    <Badge variant="secondary">
-                      {detection.data.accountLogin}
-                    </Badge>
-                  )}
-                </div>
-                <ForgeHosted
-                  // 同一主机一行配置下的不同仓库（含多级子组）各自一份状态。
-                  key={`${detection.data.repository.host}/${detection.data.repository.owner}/${detection.data.repository.name}`}
-                  detection={detection.data}
-                  locale={locale}
-                  canWrite={forgeCanWrite}
-                  open={open}
-                  workspaceId={workspaceId}
-                  focus={forgeFocus(detection.data.repository)}
-                />
-              </>
-            )}
-        </ScrollArea>
-      ) : !client ? (
+      ) : !sessionClient ? (
         <p role="status" className="p-4 text-[13px] text-muted-foreground">
           {t("github.loading")}
         </p>
       ) : (
-        <Tabs
-          value={tab}
-          onValueChange={(value) => {
-            setTab(value as GithubTab);
-            focus(value as GithubTab, null);
-          }}
-          className="min-h-0 min-w-0 flex-1 gap-0"
-        >
-          <TabsList
-            className="h-10 w-full shrink-0 rounded-none border-b border-border"
-            variant="line"
-          >
-            {(["issues", "pulls"] as const).map((value) => (
-              <TabsTrigger
-                key={value}
-                value={value}
-                className="min-w-0 text-xs"
-              >
-                {t(`github.tab.${value}`)}
-              </TabsTrigger>
-            ))}
-          </TabsList>
-
-          <ScrollArea className="min-h-0 flex-1">
-            <RepositoryPicker
-              remoteUrl={remoteUrl}
-              onRemoteUrl={setRemoteUrl}
-              onResolve={() => resolveRemote(remoteUrl.trim())}
-              busy={detection.isFetching || resolved.isFetching}
-              resolved={resolved.data}
-            />
-            {resolved.isError && (
-              <p
-                role="status"
-                className="px-3 py-2 text-[12px] text-destructive"
-              >
-                {t(failureKey(resolved.error))}
+        <ScrollArea className="min-h-0 flex-1">
+          <RepositoryPicker
+            remoteUrl={remoteUrl}
+            onRemoteUrl={setRemoteUrl}
+            onResolve={() => {
+              setResolveRepo(null);
+              setResolveUrl(remoteUrl.trim());
+            }}
+            busy={detection.isFetching}
+          />
+          {detection.isError && (
+            <p role="status" className="px-3 py-2 text-[12px] text-destructive">
+              {t(forgeFailureKey(detection.error))}
+            </p>
+          )}
+          {found && !ready && (
+            <div
+              role="status"
+              data-slot="forge-unconfigured"
+              className="min-w-0 space-y-3 p-3 text-[13px] leading-5"
+            >
+              <p className="text-muted-foreground">
+                {t(
+                  found.forge === null ? "forge.unknown" : "forge.noCredential",
+                )}
               </p>
-            )}
-            {repository && (
-              <FilterBar
-                tab={tab}
-                value={draft}
-                onChange={setDraft}
-                onApply={() => setApplied(draft)}
-                busy={busy}
+              <Button
+                size="sm"
+                variant="secondary"
+                className="min-h-10"
+                onClick={() => toSettings("forge")}
+              >
+                {t("forge.configure")}
+              </Button>
+            </div>
+          )}
+          {found && ready && (
+            <>
+              <div className="flex min-w-0 items-center gap-2 border-b border-border px-3 py-2 text-[12px]">
+                <span
+                  data-slot="forge-repository"
+                  // GitLab 多级子组的路径可能很长：截断时悬停看全。
+                  title={`${found.repository.owner}/${found.repository.name}`}
+                  className="min-w-0 truncate font-medium select-text"
+                >
+                  {found.repository.owner}/{found.repository.name}
+                </span>
+                <Badge variant="outline">
+                  {FORGE_NAMES[found.forge ?? ""] ?? found.forge}
+                </Badge>
+                {found.accountLogin && (
+                  <Badge variant="secondary" className="truncate">
+                    {found.accountLogin}
+                  </Badge>
+                )}
+                <div className="flex-1" />
+                <OpenRemote url={found.webUrl ?? ""} />
+              </div>
+              <ForgeHosted
+                // 同一主机下的不同仓库（含多级子组）各自一份状态。
+                key={`${found.repository.host}/${found.repository.owner}/${found.repository.name}`}
+                detection={found}
+                locale={locale}
+                open={open}
+                focus={focusFor(found.repository)}
               />
-            )}
-
-            <TabsContent
-              value="issues"
-              className="mt-0 min-w-0 data-[state=inactive]:hidden"
-            >
-              {!repository ? (
-                <p className="p-3 text-[12px] text-muted-foreground">
-                  {t("github.noRepository")}
-                </p>
-              ) : focusNumber !== null && focusTab === "issues" ? (
-                <IssueDetail
-                  client={client}
-                  workspaceId={workspaceId ?? ""}
-                  repository={repository}
-                  number={focusNumber}
-                  locale={locale}
-                  canWrite={canWrite}
-                  open={open}
-                  onBack={() => focus("issues", null)}
-                />
-              ) : (
-                <>
-                  <div className="min-w-0 px-3 pt-3">
-                    <StatusMappingEditor
-                      client={client}
-                      repository={repository}
-                      mapping={mapping.data}
-                      canWrite={canWrite}
-                    />
-                  </div>
-                  {issues.isError && (
-                    <p
-                      role="status"
-                      className="px-3 pt-3 text-[12px] text-destructive"
-                    >
-                      {t(failureKey(issues.error))}
-                    </p>
-                  )}
-                  {issues.data && (
-                    <IssueList
-                      page={issues.data}
-                      mapping={mapping.data}
-                      locale={locale}
-                      canWrite={canWrite}
-                      busy={busy}
-                      onOpen={openIssue}
-                      onMove={(request) => move.mutate(request)}
-                      onSetState={(issue, next) =>
-                        setIssueState.mutate({ issue, state: next })
-                      }
-                    />
-                  )}
-                  {canWrite && (
-                    <div className="min-w-0 p-3 pt-0">
-                      <CreateIssueForm
-                        busy={busy}
-                        onCreate={(request) => createIssue.mutate(request)}
-                      />
-                    </div>
-                  )}
-                </>
-              )}
-            </TabsContent>
-
-            <TabsContent
-              value="pulls"
-              className="mt-0 min-w-0 data-[state=inactive]:hidden"
-            >
-              {!repository ? (
-                <p className="p-3 text-[12px] text-muted-foreground">
-                  {t("github.noRepository")}
-                </p>
-              ) : focusNumber !== null && focusTab === "pulls" ? (
-                <PullDetail
-                  client={client}
-                  workspaceId={workspaceId ?? ""}
-                  repository={repository}
-                  number={focusNumber}
-                  locale={locale}
-                  canWrite={canWrite}
-                  open={open}
-                  onBack={() => focus("pulls", null)}
-                />
-              ) : (
-                <>
-                  {pulls.isError && (
-                    <p
-                      role="status"
-                      className="px-3 pt-3 text-[12px] text-destructive"
-                    >
-                      {t(failureKey(pulls.error))}
-                    </p>
-                  )}
-                  {pulls.data && (
-                    <PullList
-                      page={pulls.data}
-                      locale={locale}
-                      onOpen={openPull}
-                    />
-                  )}
-                  {canWrite && (
-                    <div className="min-w-0 p-3 pt-0">
-                      <CreatePullForm
-                        busy={busy}
-                        workspaceId={workspaceId ?? ""}
-                        defaultBaseRef={
-                          resolved.data?.repository?.defaultBranch ?? ""
-                        }
-                        onCreate={(input) => createPull.mutate(input)}
-                      />
-                    </div>
-                  )}
-                </>
-              )}
-            </TabsContent>
-          </ScrollArea>
-        </Tabs>
+            </>
+          )}
+        </ScrollArea>
       )}
     </WorkPanelSheet>
   );

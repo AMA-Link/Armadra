@@ -20,10 +20,8 @@ import { CLI_GROUP, FLEET, GPU_NODE, idleJob } from "../fixtures/integration";
 import {
   FORGE_CONFIGS,
   GITEA_DETECTION,
+  GITEA_ISSUES,
   GITEA_PULLS,
-  GITLAB_CHECKS,
-  GITLAB_DETECTION,
-  GITLAB_FILES,
   GITLAB_MR,
 } from "../fixtures/forge";
 
@@ -55,7 +53,7 @@ function Sample({
  * 带两条本产品旧版本残留的那一家。远程机器：宽屏表格、窄屏条目与一台机器的
  * 健康记录。
  *
- * 托管平台（{@link ForgeSamples}）：Gitea 的 PR 列表、GitLab 的 MR 详情与设置页
+ * 托管平台（{@link ForgeSamples}）：Gitea 的 issue 列表、GitLab 的 MR 详情与设置页
  * 的配置行。
  */
 function useCliCache() {
@@ -99,7 +97,7 @@ function CliDetail() {
 }
 
 /**
- * 托管平台（G5-15）：Git 托管面板里 Gitea 的 PR 列表、GitLab 的 MR 详情，与
+ * 托管平台：代码托管面板里 Gitea 的 issue 列表、GitLab 的 MR 详情（只读），与
  * 设置页的按主机 / 仓库配置。数据预先放进 query 缓存（永不过期），不请求 core。
  */
 function ForgeSamples() {
@@ -108,16 +106,14 @@ function ForgeSamples() {
   const client = useQueryClient();
   useState(() => {
     client.setQueryDefaults(["forge"], { staleTime: Infinity, retry: false });
+    client.setQueryData(forgeKeys.issues(GITEA_DETECTION.repository, "open"), {
+      pages: [{ items: GITEA_ISSUES, nextCursor: null }],
+      pageParams: [null],
+    });
     client.setQueryData(forgeKeys.pulls(GITEA_DETECTION.repository, "open"), {
       pages: [{ items: GITEA_PULLS, nextCursor: null }],
       pageParams: [null],
     });
-    const repo = GITLAB_DETECTION.repository;
-    client.setQueryData(forgeKeys.files(repo, GITLAB_MR.number), GITLAB_FILES);
-    client.setQueryData(
-      forgeKeys.checks(repo, GITLAB_MR.number),
-      GITLAB_CHECKS,
-    );
     client.setQueryData(forgeConfigKeys.all, FORGE_CONFIGS);
     return true;
   });
@@ -126,25 +122,14 @@ function ForgeSamples() {
       <div className="flex min-w-0 flex-col gap-6">
         <Sample caption={t("forge.showcase.gitea")}>
           <div className="rounded-lg border border-border">
-            <ForgeHosted
-              detection={GITEA_DETECTION}
-              locale={locale}
-              canWrite
-              open
-            />
+            <ForgeHosted detection={GITEA_DETECTION} locale={locale} open />
           </div>
         </Sample>
       </div>
       <div className="flex min-w-0 flex-col gap-6">
         <Sample caption={t("forge.showcase.gitlab")}>
           <div className="min-w-0 space-y-3 rounded-lg border border-border p-3">
-            <PullBody
-              forge="gitlab"
-              repo={GITLAB_DETECTION.repository}
-              pull={GITLAB_MR}
-              locale={locale}
-              canWrite
-            />
+            <PullBody pull={GITLAB_MR} locale={locale} />
           </div>
         </Sample>
         <Sample caption={t("forge.showcase.settings")}>
