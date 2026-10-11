@@ -145,6 +145,49 @@ export class PairingCodes {
     return { ok: true, ticket };
   }
 
+  /**
+   * 此刻活着的每一枚短码与它的票（PAKE 的 start，契约 §73）：口令认证的密钥
+   * 交换里 Gateway 不知道对方输的是哪一枚，只能对每一枚各出一份候选。
+   */
+  live(): readonly (readonly [code: string, ticket: PairingTicket])[] {
+    this.sweep();
+    return [...this.codes];
+  }
+
+  /**
+   * 一次 PAKE start 就是一次猜测：先看桶，有令牌就扣一个（来源与全局各一），
+   * 不论之后猜没猜对——start 时 Gateway 还不知道。没有令牌答要等多久。
+   */
+  admitGuess(
+    remoteIp: string,
+  ): { ok: true } | { ok: false; retryAfterMs: number } {
+    const now = this.now();
+    for (const bucket of [
+      this.perIp.peek(remoteIp, now),
+      this.global.peek(GLOBAL_KEY, now),
+    ]) {
+      if (!bucket.ok) return { ok: false, retryAfterMs: bucket.retryAfterMs };
+    }
+    this.perIp.take(remoteIp, now);
+    this.global.take(GLOBAL_KEY, now);
+    return { ok: true };
+  }
+
+  /**
+   * PAKE 认出了是哪一枚（finish 的客户端标签对上）：取走它。已经过期、被兑
+   * 掉或作废（`check` 答 `dead`）答 `undefined`，短码照样删掉。
+   */
+  take(
+    code: string,
+    check: (ticket: PairingTicket) => TicketCheck = () => "ok",
+  ): PairingTicket | undefined {
+    const ticket = this.codes.get(code);
+    if (ticket === undefined) return undefined;
+    this.codes.delete(code);
+    if (ticket.expiresAtMs <= this.now()) return undefined;
+    return check(ticket) === "ok" ? ticket : undefined;
+  }
+
   /** 关掉 Gateway 或换档时：全部作废。 */
   clear(): void {
     this.codes.clear();

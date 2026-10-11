@@ -14,11 +14,15 @@ import type { IdentityService, Principal } from "./service";
  */
 
 export const PAIRING_CODE_EXCHANGE_PATH = "/api/gateway/pairing-code/exchange";
+/** 原生 App 首次连接的配对码 PAKE（契约 §73），同样匿名。 */
+export const PAIRING_PAKE_START_PATH = "/api/gateway/pairing-code/pake/start";
+export const PAIRING_PAKE_FINISH_PATH = "/api/gateway/pairing-code/pake/finish";
 
 /**
  * 不需要会话的那几条：健康探针、身份域自己的登录面（配对、hello、刷新、登录
- * 都在这里，各自认自己的凭据），配对短码换票（契约 §24：手机还没有身份，
- * 短码就是凭据，限流与档位在 Gateway 域里判），以及媒体票的地址（§37.4）。
+ * 都在这里，各自认自己的凭据），配对短码换票与它的 PAKE（契约 §24、§73：
+ * 手机还没有身份，短码就是凭据，限流与档位在 Gateway 域里判），以及媒体票的
+ * 地址（§37.4）。
  */
 export function anonymousPath(path: string): boolean {
   return (
@@ -26,6 +30,8 @@ export function anonymousPath(path: string): boolean {
     path === "/api/health" ||
     path.startsWith("/api/identity/") ||
     path === PAIRING_CODE_EXCHANGE_PATH ||
+    path === PAIRING_PAKE_START_PATH ||
+    path === PAIRING_PAKE_FINISH_PATH ||
     mediaPath(path)
   );
 }

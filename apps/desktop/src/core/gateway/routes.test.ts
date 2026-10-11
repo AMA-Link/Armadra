@@ -7,10 +7,13 @@ import {
   parseConfig,
   postPairing,
   postPairingCodeExchange,
+  postPairingPakeFinish,
+  postPairingPakeStart,
   putGateway,
 } from "./routes";
 
 const noExchange = () => ({ status: 500 });
+const noPake = { pakeStart: noExchange, pakeFinish: noExchange };
 
 function request(body: unknown): CoreRequest {
   const encoded = Buffer.from(
@@ -103,6 +106,7 @@ describe("服务器壳托管的 Gateway", () => {
       configure: (patch: Record<string, never>) => domain.configure(patch),
       pair: (input: { origin?: string }) => domain.pair(input),
       exchangeCode: noExchange,
+      ...noPake,
     };
     const answer = await putGateway(deps, request({ enabled: false }));
     expect(answer.status).toBe(409);
@@ -123,6 +127,8 @@ describe("服务器壳托管的 Gateway", () => {
         configure: async () => undefined,
         pair: (input) => domain.pair(input),
         exchangeCode: noExchange,
+        ...noPake,
+        ...noPake,
       },
       request({}),
     );
@@ -136,6 +142,7 @@ describe("服务器壳托管的 Gateway", () => {
       configure: async () => undefined,
       pair: () => ({ ok: true }),
       exchangeCode: noExchange,
+      ...noPake,
     };
     expect(postPairing(deps, request({ deviceName: "" })).status).toBe(400);
     expect(
@@ -157,6 +164,7 @@ describe("POST /api/gateway/pairing-code/exchange 的请求体", () => {
         seen.push(input);
         return { status: 200, body: {} };
       },
+      ...noPake,
     };
     const withOrigin = (body: unknown): CoreRequest => {
       const base = request(body);
@@ -244,5 +252,55 @@ describe("配对短码的档位（Gateway 域）", () => {
       domain.exchangeCode({ code: "AAAAAAAA", remoteIp: "", origin: undefined })
         .status,
     ).toBe(409);
+  });
+});
+
+describe("POST /api/gateway/pairing-code/pake/* 的请求体（契约 §73）", () => {
+  const bytes = (n: number) => Buffer.alloc(n, 1).toString("base64url");
+  const from = (body: unknown): CoreRequest => ({
+    ...request(body),
+    raw: {
+      socket: { remoteAddress: "::ffff:192.168.1.30" },
+    } as unknown as CoreRequest["raw"],
+  });
+
+  it("形状对才交给域，带上来源地址；多余的键与坏的 base64url 400", () => {
+    const seen: unknown[] = [];
+    const deps = {
+      status: () => ({}),
+      configure: async () => undefined,
+      pair: () => ({}),
+      exchangeCode: noExchange,
+      pakeStart: (input: unknown) => {
+        seen.push(input);
+        return { status: 200, body: {} };
+      },
+      pakeFinish: (input: unknown) => {
+        seen.push(input);
+        return { status: 200, body: {} };
+      },
+    };
+    const start = { sid: bytes(16), share: bytes(32) };
+    const finish = { session: bytes(16), index: 0, confirm: bytes(32) };
+    expect(postPairingPakeStart(deps, from(start)).status).toBe(200);
+    expect(postPairingPakeFinish(deps, from(finish)).status).toBe(200);
+    expect(seen[0]).toMatchObject({ ...start, remoteIp: "192.168.1.30" });
+    expect(seen[1]).toMatchObject(finish);
+    for (const body of [
+      { ...start, code: "x" },
+      { sid: bytes(15), share: bytes(32) },
+      { sid: `${bytes(16)}=`, share: bytes(32) },
+      null,
+    ]) {
+      expect(postPairingPakeStart(deps, from(body)).status).toBe(400);
+    }
+    for (const body of [
+      { ...finish, index: 32 },
+      { ...finish, index: -1 },
+      { ...finish, confirm: bytes(31) },
+    ]) {
+      expect(postPairingPakeFinish(deps, from(body)).status).toBe(400);
+    }
+    expect(seen).toHaveLength(2);
   });
 });

@@ -57,7 +57,10 @@ export type ConnectFailure =
   | "offline"
   | "noSources"
   | "challengeInvalid"
-  | "address";
+  | "address"
+  | "codeMismatch"
+  | "anchorChanged"
+  | "codeUpgrade";
 
 /** 原生 App 里「添加连接」的几个视图（多连接）。 */
 export type ConnectView =
@@ -87,10 +90,20 @@ export interface ConnectScreenProps {
   /** 网页模式下的 CA 安装引导（`PageCaGuide`）；原生 App 按指纹钉扎，不装 CA。 */
   readonly caGuide?: React.ReactNode;
   /**
-   * 配对码（契约 §24）：8 位换票并配对。给了才有「输入配对码」这一入口；原生
-   * App 只在已经记下一个 Gateway 来源时给（没钉过信任锚就连不上）。
+   * 配对码（契约 §24、§73）：8 位换票并配对。给了才有「输入配对码」这一入口。
+   * `address` 是 {@link codeAddress} 那一栏里的地址（没有那一栏是空串）。
    */
-  readonly onCode?: (code: string) => Promise<ConnectFailure | null>;
+  readonly onCode?: (
+    code: string,
+    address: string,
+  ) => Promise<ConnectFailure | null>;
+  /**
+   * 配对码页多一栏地址（原生 App：首次连接要人输配对卡上的地址，§73）；初值是
+   * `origin` 的主机。
+   */
+  readonly codeAddress?: boolean;
+  /** 展示页用：钉住地址栏里的字。 */
+  readonly initialAddress?: string;
   /** 一打开就是配对码：手机浏览器没带 `#pair=` 地打开了 Gateway。 */
   readonly codeFirst?: boolean;
   /** 配对码页上的「账号登录」：有账号的人不用配对码，直接进页面登录。 */
@@ -189,6 +202,8 @@ export function ConnectScreen({
   busy: pinnedBusy,
   failure: pinnedFailure,
   onCode,
+  codeAddress = false,
+  initialAddress,
   codeFirst = false,
   onSignIn,
   initialCode = "",
@@ -227,6 +242,9 @@ export function ConnectScreen({
     () => hostOf(initialRelay?.issuer ?? "") ?? "",
   );
   const [code, setCode] = React.useState(codeOf(initialCode));
+  const [address, setAddress] = React.useState(
+    () => initialAddress ?? (origin ? new URL(origin).host : ""),
+  );
   // 选择页上「登录」那个远程服务：中转表单预填它的地址。
   const [relayIssuer, setRelayIssuer] = React.useState<string | null>(null);
   const [opening, setOpening] = React.useState<string | null>(null);
@@ -238,6 +256,7 @@ export function ConnectScreen({
   const shownFailure = pinnedFailure ?? failure;
   const fieldId = React.useId();
   const codeId = `${fieldId}-code`;
+  const addressId = `${fieldId}-address`;
   const errorId = `${fieldId}-error`;
 
   const connect = async (value: string) => {
@@ -255,10 +274,14 @@ export function ConnectScreen({
 
   const submitCode = async (value: string) => {
     if (shownBusy || !onCode || value.length !== CODE_LENGTH) return;
+    if (codeAddress && address.trim() === "") {
+      setFailure("address");
+      return;
+    }
     setBusy(true);
     setFailure(null);
     try {
-      const result = await onCode(value);
+      const result = await onCode(value, codeAddress ? address.trim() : "");
       setFailure(result);
       // 码是一次性的：没成功就清空重输，免得人对着一枚已作废的码再点一次。
       if (result !== null) setCode("");
@@ -376,7 +399,14 @@ export function ConnectScreen({
       : t(
           SHARED_FAILURE_KEY[shownFailure] ??
             `mobileConnect.error.${shownFailure}`,
-          { origin: origin ? new URL(origin).host : "" },
+          {
+            origin:
+              view === "code" && codeAddress
+                ? address.trim()
+                : origin
+                  ? new URL(origin).host
+                  : "",
+          },
         );
   const host = origin ? new URL(origin).host : null;
   const titleKey =
@@ -670,6 +700,30 @@ export function ConnectScreen({
       >
         {header}
 
+        {view === "code" && codeAddress && (
+          <Field>
+            <FieldLabel htmlFor={addressId}>
+              {t("mobileConnect.codeAddress")}
+            </FieldLabel>
+            <Input
+              id={addressId}
+              value={address}
+              inputMode="url"
+              autoCapitalize="off"
+              autoCorrect="off"
+              autoComplete="off"
+              spellCheck={false}
+              placeholder="192.168.1.5:8443"
+              disabled={shownBusy}
+              className="h-11 font-mono text-[length:var(--text-input-touch)] md:text-[length:var(--text-input-touch)]"
+              onChange={(event) => {
+                setAddress(event.target.value);
+                setFailure(null);
+              }}
+            />
+          </Field>
+        )}
+
         {view === "code" ? (
           <Field data-invalid={shownFailure !== null || undefined}>
             <FieldLabel htmlFor={codeId} className="justify-center">
@@ -685,7 +739,7 @@ export function ConnectScreen({
               autoCorrect="off"
               autoComplete="one-time-code"
               // 展示页钉住了字时不抢焦点。
-              autoFocus={initialCode === ""}
+              autoFocus={initialCode === "" && !(codeAddress && address === "")}
               value={code}
               disabled={shownBusy}
               aria-describedby={message ? errorId : undefined}
