@@ -1,16 +1,19 @@
-import type { SourceDescriptor, SourceRoute } from "../sources/types";
+import { isShareRole } from "../sources/origin";
+import type {
+  ShareRole,
+  SourceDescriptor,
+  SourceOrigin,
+  SourceRoute,
+} from "../sources/types";
 
 /** 这一行是怎么来的：自己的电脑，还是别人通过分享链接给的。 */
-export type ConnectionOrigin = "mine" | "shared";
+export type ConnectionOrigin = SourceOrigin;
 
 /**
  * 手机连接表的一行：{@link SourceDescriptor} 加上「怎么来的」。分享的几项只在
  * 链接加入时有；core 与页面源模型也带同名字段时都是可选的，缺省按 `mine`。
  */
 export type StoredConnection = SourceDescriptor & {
-  readonly origin?: ConnectionOrigin;
-  readonly ownerName?: string;
-  readonly shareRole?: string;
   readonly shareExpiresAtMs?: number;
 };
 
@@ -124,7 +127,7 @@ function withMirror(
     orderIndex: number;
     origin: ConnectionOrigin;
     ownerName?: string | undefined;
-    shareRole?: string | undefined;
+    shareRole?: ShareRole | undefined;
     shareExpiresAtMs?: number | undefined;
   },
   routes: readonly SourceRoute[],
@@ -185,7 +188,7 @@ function descriptorOf(value: unknown): StoredConnection | null {
       // v4 之前没有：先当自己的，升级时按访客槽回填（`upgrade`）。
       origin: row.origin === "shared" ? "shared" : "mine",
       ownerName: text(row.ownerName),
-      shareRole: text(row.shareRole),
+      shareRole: isShareRole(row.shareRole) ? row.shareRole : undefined,
       shareExpiresAtMs:
         typeof row.shareExpiresAtMs === "number" ? row.shareExpiresAtMs : 0,
     },
@@ -313,7 +316,7 @@ export function upsertConnection(
   incoming: Omit<SourceDescriptor, "kind" | "orderIndex" | "routes"> & {
     readonly origin?: ConnectionOrigin;
     readonly ownerName?: string;
-    readonly shareRole?: string;
+    readonly shareRole?: ShareRole;
     readonly shareExpiresAtMs?: number;
   },
 ): StoredConnection {

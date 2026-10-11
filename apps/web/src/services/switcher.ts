@@ -4,7 +4,7 @@ import { activeConnectionId, setActiveConnection } from "../mobile/connections";
 import { isNativeApp } from "../mobile/native-bridge";
 import { openAfterJoin } from "../sources/join-intent";
 import { LOCAL_SOURCE_ID } from "../api/source";
-import { sourceRegistry } from "../sources/registry";
+import { selectCurrentSource, sourceRegistry } from "../sources/registry";
 import { setEnterIntent } from "./recent";
 
 /**
@@ -55,11 +55,11 @@ export function openSource(
 ): "switched" | "reloaded" {
   const registry = sourceRegistry();
   if (sourceId === activeConnectionId()) {
-    registry.setCurrent(LOCAL_SOURCE_ID);
+    selectCurrentSource(registry, LOCAL_SOURCE_ID);
     return "switched";
   }
   if (registry.get(sourceId) !== undefined) {
-    registry.setCurrent(sourceId);
+    selectCurrentSource(registry, sourceId);
     openAfterJoin(sourceId);
     return "switched";
   }

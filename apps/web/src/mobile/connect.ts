@@ -11,6 +11,7 @@ import { parsePairingQr } from "../host/qr";
 import { LOCAL_SOURCE_ID } from "../api/source";
 import { openAfterJoin } from "../sources/join-intent";
 import { forgetRecent, setEnterIntent } from "../services/recent";
+import { isShareRole } from "../sources/origin";
 import { helloHostName, routesOf } from "../sources/routing";
 import { type SourceDescriptor, SourceError } from "../sources/types";
 import {
@@ -443,7 +444,7 @@ export function createRelayEnrollment(
       sourceId,
       label: "",
       origin,
-      ...(share.role ? { shareRole: share.role } : {}),
+      ...(isShareRole(share.role) ? { shareRole: share.role } : {}),
       ...(share.expiresAtMs ? { shareExpiresAtMs: share.expiresAtMs } : {}),
       ...(name ? { defaultLabel: name } : {}),
       baseUrl: "",
