@@ -19,6 +19,7 @@ import os
 /// | `pushRegistration()`          | APNs 令牌 + 设备 X25519 公钥；配了中继时先换中继令牌         |
 /// | `pushRotated()` / `ackPushRotation()` | 启动时 APNs 给了与上次登记不同的令牌（R-54，`PushTokenLedger`） |
 /// | `openExternal({ url })`       | 系统浏览器打开原生 OAuth 的授权页（R-56），只开 https 与回环 http |
+/// | `installApk({ url, sha256 })` | Android 的应用内更新（#288 §4）；iOS 只经商店更新，固定返回 `failed`（`unsupported`） |
 ///
 /// 令牌换过的那一刻还发 `pushTokenRotated` 事件。
 /// 另外两件页面不调用的事：深链（`armadra://…`，含 OAuth 回调）与点通知，都改写页面的地址片段
@@ -42,6 +43,7 @@ public class ArmadraNativePlugin: CAPPlugin, CAPBridgedPlugin, NotificationHandl
         CAPPluginMethod(name: "ackPushRotation", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "openExternal", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "appInfo", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "installApk", returnType: CAPPluginReturnPromise),
     ]
 
     private static let installedFlag = "dev.armadra.mobile.installed"
@@ -388,6 +390,11 @@ public class ArmadraNativePlugin: CAPPlugin, CAPBridgedPlugin, NotificationHandl
             "version": info["CFBundleShortVersionString"] as? String ?? "",
             "build": info["CFBundleVersion"] as? String ?? "",
         ])
+    }
+
+    /// 与 Android 同名同形；iOS 不能侧载，页面只显示版本与说明链接。
+    @objc func installApk(_ call: CAPPluginCall) {
+        call.resolve(["status": "failed", "message": "unsupported"])
     }
 
     // 前台也出横幅；点开按载荷里的深链进节点焦点页（NSE 解开后写进 `url`）。
