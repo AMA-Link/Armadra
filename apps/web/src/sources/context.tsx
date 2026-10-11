@@ -73,3 +73,41 @@ export function useSourceStatus(
     () => connection?.status ?? IDLE,
   );
 }
+
+/**
+ * 一批源各自的连接状态（任一个变了就重算）：侧栏分组与工作空间查询用它，
+ * 一台电脑连上、断开时跟着重画，不必等别处触发。
+ */
+export function useSourceStates(
+  connections: readonly SourceConnection[],
+): Readonly<Record<string, SourceStatus["state"]>> {
+  const read = React.useCallback(
+    () =>
+      Object.fromEntries(
+        connections.map((connection) => [
+          connection.descriptor.sourceId,
+          connection.status.state,
+        ]),
+      ),
+    [connections],
+  );
+  const [states, setStates] = React.useState(read);
+  React.useEffect(() => {
+    const refresh = () =>
+      setStates((previous) => {
+        const next = read();
+        const same =
+          Object.keys(next).length === Object.keys(previous).length &&
+          Object.entries(next).every(([id, state]) => previous[id] === state);
+        return same ? previous : next;
+      });
+    refresh();
+    const stops = connections.map((connection) =>
+      connection.subscribe(refresh),
+    );
+    return () => {
+      for (const stop of stops) stop();
+    };
+  }, [connections, read]);
+  return states;
+}

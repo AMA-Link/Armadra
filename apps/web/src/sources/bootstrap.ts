@@ -2,6 +2,7 @@ import type { ClientSource } from "@armadra/shared";
 
 import { RUNTIME_VIA_SERVER_SHELL } from "../api/request";
 import { isDesktop } from "../platform";
+import { shareFieldsOf } from "./origin";
 import {
   type SourceRegistry,
   loadSourcesFromLocalCore,
@@ -56,6 +57,8 @@ export function descriptorOf(source: ClientSource): SourceDescriptor {
     orderIndex: source.orderIndex,
     // 旧版 core（§55 之前）的答案里没有 `routes`：由镜像字段推出。
     ...(source.routes === undefined ? {} : { routes: source.routes }),
+    // 旧版 core（§68 之前）没有归属四项。
+    ...shareFieldsOf(source),
   };
 }
 

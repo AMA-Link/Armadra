@@ -8,7 +8,9 @@ import {
 import { RUNTIME_VIA_SERVER_SHELL } from "../api/request";
 import { isDesktop } from "../platform";
 import { createDesktopCloudAuth } from "../sources/credentials";
+import { followWorkspaceSource } from "../sources/follow-workspace";
 import { hostedRelay } from "../sources/hosted";
+import { openWhenReady } from "../sources/join-intent";
 import { type SourceRegistry, sourceRegistry } from "../sources/registry";
 import { attachRemoteStreams } from "../sources/remote-stream";
 import { initialSourceParam } from "../services/switcher";
@@ -16,8 +18,9 @@ import { useCanvasStore } from "../store/canvas-store";
 import { usePreferencesStore } from "./preferences-store";
 
 /**
- * 页面启动时的两件小事（客户端包 §3）：
+ * 页面启动时的几件小事（客户端包 §3）：
  *
+ * - 当前源跟着打开的工作空间走（`sources/follow-workspace.ts`，唯一的订阅者）；
  * - 挂过别的源才读本机 core 的源表，接进页面源表（零配置不发请求）；
  * - 经中继挂上的源各远程服务一条 `me.stream`（主机上线叫醒、撤销失权，客户端包
  *   §5）；源表里没有这类源时一条也不开。远程服务会话经本机 core 换。中继托管的
@@ -26,8 +29,9 @@ import { usePreferencesStore } from "./preferences-store";
  */
 export function useSourcesBootstrap(): void {
   useEffect(() => {
+    const stopFollow = followWorkspaceSource(sourceRegistry());
     hydrateSourcesAtStartup();
-    const stopInitial = followInitialSource(sourceRegistry());
+    followInitialSource();
     const section = takeSettingsReopen();
     if (section !== null) {
       usePreferencesStore.getState().setLastSettingsSection(section);
@@ -35,37 +39,26 @@ export function useSourcesBootstrap(): void {
     }
     // 背后有本机 core 的页面（桌面壳、服务器壳）才接；设置页中途挂上的源也跟着开。
     if ((!isDesktop() && !RUNTIME_VIA_SERVER_SHELL) || hostedRelay() !== null)
-      return stopInitial;
+      return stopFollow;
     const stopStreams = attachRemoteStreams(sourceRegistry(), {
       auth: createDesktopCloudAuth(),
     });
     return () => {
-      stopInitial();
+      stopFollow();
       stopStreams();
     };
   }, []);
 }
 
 /**
- * 「在新窗口打开」开的窗口（`?source=<sourceId>`，A7-1）：那个源挂上之后设为
- * 当前源，只设一次；之后人在这扇窗口里怎么切都随他。
+ * 「在新窗口打开」开的窗口（`?source=<sourceId>`，A7-1）：那个源连上之后打开
+ * 它的工作空间（当前源随之换过去），只做一次；之后人在这扇窗口里打开什么都
+ * 随他。等源连上与列出工作空间的是 `app/joined-source.tsx`。
  */
 export function followInitialSource(
-  registry: SourceRegistry,
   sourceId: string | null = initialSourceParam(),
-): () => void {
-  if (sourceId === null) return () => undefined;
-  let done = false;
-  let stop: () => void = () => undefined;
-  const apply = () => {
-    if (done || registry.get(sourceId) === undefined) return;
-    done = true;
-    registry.setCurrent(sourceId);
-    stop();
-  };
-  stop = registry.subscribe(apply);
-  apply();
-  return () => stop();
+): void {
+  if (sourceId !== null) openWhenReady(sourceId);
 }
 
 /**

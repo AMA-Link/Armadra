@@ -19,6 +19,7 @@ import {
   type SourceRegistry,
   createSourceRegistry,
   loadSourcesFromLocalCore,
+  selectCurrentSource,
 } from "./registry";
 import type { SourceDescriptor, SourceStatus } from "./types";
 
@@ -187,13 +188,13 @@ describe("源表", () => {
   it("本机源移不掉；当前源被移除时退回本机", () => {
     const { registry } = make();
     registry.add(descriptor("one", 1));
-    registry.setCurrent("one");
+    selectCurrentSource(registry, "one");
     expect(registry.current().descriptor.sourceId).toBe("one");
     registry.remove("local");
     expect(registry.get("local")).toBe(registry.local());
     registry.remove("one");
     expect(registry.current()).toBe(registry.local());
-    registry.setCurrent("nope");
+    selectCurrentSource(registry, "nope");
     expect(registry.current()).toBe(registry.local());
   });
 
@@ -205,7 +206,7 @@ describe("源表", () => {
     expect(sourceForUrl("https://one.example/api/workspaces/w/assets/a")).toBe(
       one.source,
     );
-    registry.setCurrent("one");
+    selectCurrentSource(registry, "one");
     expect(currentSource()).toBe(one.source);
     registry.remove("one");
     expect(currentSource()).toBe(localSource);
@@ -217,7 +218,7 @@ describe("源表", () => {
   it("测试里的源表不碰全局", () => {
     const { registry } = make();
     const one = registry.add(descriptor("one", 1));
-    registry.setCurrent("one");
+    selectCurrentSource(registry, "one");
     expect(currentSource()).toBe(localSource);
     expect(knownSources()).not.toContain(one.source);
   });
@@ -274,7 +275,7 @@ describe("React 钩子", () => {
     });
     expect(hook.result.current.sources).toHaveLength(2);
     expect(hook.result.current.status.state).toBe("ready");
-    act(() => registry.setCurrent("one"));
+    act(() => selectCurrentSource(registry, "one"));
     expect(hook.result.current.current.descriptor.sourceId).toBe("one");
   });
 });

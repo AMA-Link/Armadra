@@ -165,14 +165,14 @@ function asMacDesktopShell(): void {
 }
 
 describe("LeftSidebar", () => {
-  it("自上而下是标题栏、Armadra、新建画布、项目、设置", () => {
+  it("自上而下是标题栏、Armadra、新建画布、这台电脑、设置", () => {
     renderSidebar();
 
-    // 顶行写的是系统名；工作空间名只出现在「项目」组里那一行
+    // 顶行写的是系统名；工作空间名只出现在「这台电脑」组里那一行
     expect(screen.getByText("Armadra")).toBeTruthy();
     expect(screen.getAllByText("repo")).toHaveLength(1);
     expect(screen.getByText("新建画布")).toBeTruthy();
-    expect(screen.getByText("项目")).toBeTruthy();
+    expect(screen.getByText("这台电脑")).toBeTruthy();
     expect(screen.getByLabelText("添加项目")).toBeTruthy();
     expect(screen.getByText("设置")).toBeTruthy();
     expect(screen.getByTestId("window-titlebar-inset")).toBeTruthy();
@@ -228,25 +228,25 @@ describe("LeftSidebar", () => {
     expect(useCanvasStore.getState().panels.palette).toBe(false);
   });
 
-  it("通知在「项目」的位置展开 Agent 面板，再按一次收回", () => {
+  it("通知在「这台电脑」的位置展开 Agent 面板，再按一次收回", () => {
     renderSidebar();
     const bell = screen.getByLabelText("通知");
 
     fireEvent.click(bell);
-    expect(screen.queryByText("项目")).toBeNull();
+    expect(screen.queryByText("这台电脑")).toBeNull();
 
     fireEvent.click(bell);
-    expect(screen.getByText("项目")).toBeTruthy();
+    expect(screen.getByText("这台电脑")).toBeTruthy();
   });
 
   it("Esc 收回 Agent 面板", () => {
     renderSidebar();
 
     fireEvent.click(screen.getByLabelText("通知"));
-    expect(screen.queryByText("项目")).toBeNull();
+    expect(screen.queryByText("这台电脑")).toBeNull();
 
     fireEvent.keyDown(window, { key: "Escape" });
-    expect(screen.getByText("项目")).toBeTruthy();
+    expect(screen.getByText("这台电脑")).toBeTruthy();
   });
 
   it("折叠把宽度收到 0，展开再放回来", () => {

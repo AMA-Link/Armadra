@@ -10,7 +10,11 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { currentSource, localSource, type Source } from "../api/source";
 import { useSourceSwitchCacheReset } from "../app/use-sources-bootstrap";
 import type { SourceConnection } from "./connection";
-import { type SourceRegistry, createSourceRegistry } from "./registry";
+import {
+  type SourceRegistry,
+  createSourceRegistry,
+  selectCurrentSource,
+} from "./registry";
 import { sk } from "./scope";
 import type { SourceDescriptor } from "./types";
 
@@ -108,11 +112,11 @@ describe("切源时两个源的数据不串", () => {
     );
     await waitFor(() => expect(result.current.data).toBe("local"));
 
-    act(() => table.setCurrent("remote-a"));
+    act(() => selectCurrentSource(table, "remote-a"));
     await waitFor(() => expect(result.current.data).toBe("remote-a"));
     expect(client.getQueryData(["settings"])).toBe("remote-a");
 
-    act(() => table.setCurrent("local"));
+    act(() => selectCurrentSource(table, "local"));
     await waitFor(() => expect(result.current.data).toBe("local"));
   });
 
@@ -131,7 +135,7 @@ describe("切源时两个源的数据不串", () => {
     expect(reader.pending[0]!.sourceId).toBe("local");
 
     reader.holdNext(false);
-    act(() => table.setCurrent("remote-a"));
+    act(() => selectCurrentSource(table, "remote-a"));
     await waitFor(() => expect(result.current.data).toBe("remote-a"));
     // 本机那一份现在才答：已经作废，不覆盖 remote-a 的。
     await act(async () => reader.pending[0]!.resolve("local"));
@@ -155,7 +159,7 @@ describe("切源时两个源的数据不串", () => {
       ]),
     );
     client.setQueryData(["src", "remote-a", "workspaces"], ["remote-ws"]);
-    act(() => table.setCurrent("remote-a"));
+    act(() => selectCurrentSource(table, "remote-a"));
     expect(client.getQueryData(["src", "local", "workspaces"])).toEqual([
       "local-workspace",
     ]);

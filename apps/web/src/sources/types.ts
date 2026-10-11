@@ -28,6 +28,13 @@ export interface SourceRoute {
   readonly lastOkAtMs: number;
 }
 
+/** 这台电脑是谁的：我自己的，或者别人分享给我的（契约 §68）。 */
+export type SourceOrigin = "mine" | "shared";
+
+/** 分享给我的权限，由低到高（与 core `identity/roles.ts` 同一组）。 */
+export const SHARE_ROLES = ["viewer", "editor", "operator", "driver"] as const;
+export type ShareRole = (typeof SHARE_ROLES)[number];
+
 export interface SourceDescriptor {
   /** 源的标识，等于那台 core `system.hello` 的 `sourceId`。本机是 `local`。 */
   readonly sourceId: string;
@@ -52,6 +59,17 @@ export interface SourceDescriptor {
    * 描述）时由它们推出（`routing.ts::routesOf`）。
    */
   readonly routes?: readonly SourceRoute[];
+  /**
+   * 我的还是别人分享的（契约 §68）。旧 core 不报：由 `origin.ts::originOf`
+   * 推（经分享链接加入的算别人的，其余算我的）。
+   */
+  readonly origin?: SourceOrigin;
+  /** 主人的显示名；不知道时不出现。 */
+  readonly ownerName?: string;
+  /** 别人分享给我时的权限；我自己的电脑不出现。 */
+  readonly shareRole?: ShareRole;
+  /** 分享到期的时刻（毫秒）；不到期或不知道时不出现。 */
+  readonly shareExpiresAt?: number;
 }
 
 export type SourceState =
