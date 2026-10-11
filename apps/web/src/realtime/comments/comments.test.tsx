@@ -16,6 +16,8 @@ import {
   anchorPosition,
   clusterPins,
   pinGroups,
+  pointsCenter,
+  separatingZoom,
 } from "./CommentLayer";
 import { CommentPin } from "./CommentPin";
 import {
@@ -182,6 +184,47 @@ describe("钉按屏幕距离聚合", () => {
     expect(
       clusterPins([groupAt("a", 0, 0), groupAt("b", 24, 0)], 1),
     ).toHaveLength(2);
+  });
+
+  it("簇里记着每枚钉的画布坐标", () => {
+    const [cluster] = clusterPins([groupAt("a", 0, 0), groupAt("b", 10, 5)], 1);
+    expect(cluster?.points).toEqual([
+      { x: 0, y: 0 },
+      { x: 10, y: 5 },
+    ]);
+  });
+
+  it("点开聚合钉放大到最近的两枚也分得开，分不开时是 null", () => {
+    // 最近一对相距 10：24 × 1.25 / 10 = 3 恰好在上限内。
+    const pins = [
+      { x: 0, y: 0 },
+      { x: 10, y: 0 },
+      { x: 40, y: 30 },
+    ];
+    const zoom = separatingZoom(pins);
+    expect(zoom).toBeCloseTo(3);
+    // 放到这个缩放后重新聚合，每枚钉各自一簇。
+    expect(
+      clusterPins(
+        pins.map((at, index) => groupAt(String(index), at.x, at.y)),
+        zoom!,
+      ),
+    ).toHaveLength(3);
+    expect(pointsCenter(pins)).toEqual({ x: 20, y: 15 });
+    // 锚点重合、或要超过画布缩放上限才分得开：照旧列出全部线程。
+    expect(
+      separatingZoom([
+        { x: 5, y: 5 },
+        { x: 5, y: 5 },
+      ]),
+    ).toBeNull();
+    expect(
+      separatingZoom([
+        { x: 0, y: 0 },
+        { x: 2, y: 0 },
+      ]),
+    ).toBeNull();
+    expect(separatingZoom([{ x: 0, y: 0 }])).toBeNull();
   });
 
   it("聚合的钉画「+N」，单枚画条数", () => {
