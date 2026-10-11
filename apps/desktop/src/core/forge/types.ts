@@ -150,6 +150,38 @@ export interface ListOptions {
   readonly limit: number;
 }
 
+/**
+ * 账号能看到的一个仓库（契约 §29.7）。`owner` 可以是 GitLab 的多级子组；
+ * `cloneUrl` 是 http(s) 克隆地址，`sshUrl` 远端没给时为 `""`。
+ */
+export interface ForgeRepository {
+  readonly host: string;
+  readonly owner: string;
+  readonly name: string;
+  readonly forge: ForgeKind;
+  readonly description: string;
+  readonly private: boolean;
+  readonly fork: boolean;
+  readonly archived: boolean;
+  readonly defaultBranch: string;
+  readonly cloneUrl: string;
+  readonly sshUrl: string;
+  readonly webUrl: string;
+  readonly updatedAtMs: number;
+}
+
+/** 能列仓库的一个账号：配了凭据的 GitHub，或带令牌的主机级配置（§29.7）。 */
+export interface ForgeAccount {
+  readonly host: string;
+  readonly forge: ForgeKind;
+  readonly accountLogin: string | null;
+}
+
+export interface RepositoryListOptions {
+  readonly page: number;
+  readonly limit: number;
+}
+
 export interface CreatePullInput {
   readonly title: string;
   readonly body: string;
@@ -170,6 +202,11 @@ export interface MergeInput {
  */
 export interface Forge {
   readonly kind: ForgeKind;
+  /** 令牌所属账号能看到的仓库，最近更新的在前；`host` 是写进每一行的主机名。 */
+  repositories(
+    host: string,
+    options: RepositoryListOptions,
+  ): Promise<ForgePage<ForgeRepository>>;
   listIssues(
     repo: ForgeRepo,
     options: ListOptions,

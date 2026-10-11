@@ -37,13 +37,15 @@ export function referenceTab(
     : "issues";
 }
 
-/** Where a Gitea / GitLab reference's item lives; `null` for GitHub. */
+/** Where a reference's item lives; `null` when the link names no repository. */
 export function referenceTarget(
   reference: GithubExternalReference,
 ): ForgeFocusTarget | null {
-  const forge = reference.forge;
+  const forge = reference.forge || "github";
   const repository = reference.repository;
-  if ((forge !== "gitea" && forge !== "gitlab") || !repository) return null;
+  if (forge !== "github" && forge !== "gitea" && forge !== "gitlab")
+    return null;
+  if (!repository) return null;
   if (!repository.host || !repository.owner || !repository.name) return null;
   return {
     forge,

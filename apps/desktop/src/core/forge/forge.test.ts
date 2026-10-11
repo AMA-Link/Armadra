@@ -811,6 +811,156 @@ describe("/api/forge/repos/…（§29.4）", () => {
   });
 });
 
+describe("列仓库（§29.7）", () => {
+  it("没有凭据：账号表是空的，列仓库答 409，不发匿名请求", async () => {
+    const h = await harness();
+    expect(await h.call("GET", FORGE_ROUTES.accounts)).toEqual({
+      status: 200,
+      body: { accounts: [] },
+    });
+    for (const host of ["github.com", "127.0.0.1", "unknown.example"]) {
+      expect(
+        (await h.call("GET", `/api/forge/accounts/${host}/repos`)).body.code,
+        host,
+      ).toBe("forge_not_configured");
+    }
+    expect(h.github.github.requests).toEqual([]);
+    expect(h.gitea.requests).toEqual([]);
+  });
+
+  it("Gitea：主机级配置是账号、仓库级不是；带克隆地址、丢掉不合格的行、按页翻", async () => {
+    const h = await harness();
+    await configureHost(h);
+    expect(
+      (
+        await h.call(
+          "PUT",
+          `/api/forge/configs/127.0.0.2/${FAKE_GITEA.owner}/${FAKE_GITEA.repo}`,
+          { forge: "gitea", apiBase: h.gitea.root, token: FAKE_GITEA.token },
+        )
+      ).status,
+    ).toBe(200);
+    expect((await h.call("GET", FORGE_ROUTES.accounts)).body).toEqual({
+      accounts: [
+        { host: "127.0.0.1", forge: "gitea", accountLogin: FAKE_GITEA.login },
+      ],
+    });
+
+    const first = await h.call(
+      "GET",
+      "/api/forge/accounts/127.0.0.1/repos",
+      undefined,
+      { limit: "2" },
+    );
+    expect(first).toEqual({
+      status: 200,
+      body: {
+        items: [
+          {
+            host: "127.0.0.1",
+            owner: FAKE_GITEA.owner,
+            name: FAKE_GITEA.repo,
+            forge: "gitea",
+            description: "the app",
+            private: true,
+            fork: false,
+            archived: false,
+            defaultBranch: "main",
+            cloneUrl: `${h.gitea.root}/${FAKE_GITEA.owner}/${FAKE_GITEA.repo}.git`,
+            sshUrl: `git@127.0.0.1:${FAKE_GITEA.owner}/${FAKE_GITEA.repo}.git`,
+            webUrl: `${h.gitea.root}/${FAKE_GITEA.owner}/${FAKE_GITEA.repo}`,
+            updatedAtMs: expect.any(Number),
+          },
+        ],
+        nextCursor: "2",
+      },
+    });
+    const second = await h.call(
+      "GET",
+      "/api/forge/accounts/127.0.0.1/repos",
+      undefined,
+      { limit: "2", cursor: "2" },
+    );
+    expect(second.body.nextCursor).toBeNull();
+    expect(second.body.items).toMatchObject([
+      { owner: "team", name: "lib", fork: true, private: false, sshUrl: "" },
+    ]);
+    expect(
+      h.gitea.requests
+        .filter((r) => r.path.startsWith("/api/v1/user/repos"))
+        .every((r) => r.authorization === `token ${FAKE_GITEA.token}`),
+    ).toBe(true);
+
+    expect(
+      (
+        await h.call("GET", "/api/forge/accounts/127.0.0.1/repos", undefined, {
+          cursor: "1",
+        })
+      ).body.code,
+    ).toBe("bad_request");
+    expect(
+      (await h.call("GET", "/api/forge/accounts/127.0.0.2/repos")).body.code,
+    ).toBe("forge_not_configured");
+  });
+
+  it("GitHub：凭据配了就是 github.com 这个账号，经同一个客户端列 /user/repos", async () => {
+    const h = await harness();
+    await configureToken(h.github);
+    h.github.github.route("GET /user/repos", {
+      body: [
+        {
+          name: "repo",
+          owner: { login: "octo" },
+          description: null,
+          private: false,
+          fork: false,
+          archived: true,
+          default_branch: "main",
+          clone_url: "https://github.com/octo/repo.git",
+          ssh_url: "git@github.com:octo/repo.git",
+          html_url: "https://github.com/octo/repo",
+          updated_at: "2026-09-01T00:00:00Z",
+          pushed_at: "2026-09-03T00:00:00Z",
+        },
+        { name: "no-clone", owner: { login: "octo" } },
+      ],
+    });
+    expect((await h.call("GET", FORGE_ROUTES.accounts)).body).toEqual({
+      accounts: [
+        { host: "github.com", forge: "github", accountLogin: "octocat" },
+      ],
+    });
+    const listed = await h.call("GET", "/api/forge/accounts/github.com/repos");
+    expect(listed).toEqual({
+      status: 200,
+      body: {
+        items: [
+          {
+            host: "github.com",
+            owner: "octo",
+            name: "repo",
+            forge: "github",
+            description: "",
+            private: false,
+            fork: false,
+            archived: true,
+            defaultBranch: "main",
+            cloneUrl: "https://github.com/octo/repo.git",
+            sshUrl: "git@github.com:octo/repo.git",
+            webUrl: "https://github.com/octo/repo",
+            updatedAtMs: Date.parse("2026-09-03T00:00:00Z"),
+          },
+        ],
+        nextCursor: null,
+      },
+    });
+    const request = h.github.github.requests.find(
+      (r) => r.path === "/user/repos",
+    )!;
+    expect(request.headers.authorization).toBe("Bearer ghp_pasted_token_value");
+  });
+});
+
 describe("路由门", () => {
   it("读 github:read、写 github:write；resolve 虽是 POST 也只是读", () => {
     const router = new Router();

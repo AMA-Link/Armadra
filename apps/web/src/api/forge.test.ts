@@ -5,10 +5,12 @@ import {
   configTarget,
   deleteForgeBranch,
   deleteForgeConfig,
+  forgeAccounts,
   forgeConfigs,
   forgeFailure,
   forgeIssues,
   mergeForgePull,
+  forgeRepositories,
   putForgeConfig,
   resolveForge,
 } from "./forge";
@@ -118,6 +120,43 @@ describe("forge：经 RPC", () => {
       name: "app",
       expectedRevision: 1,
     });
+  });
+
+  it("列仓库（§29.7）：账号表，再按主机翻页，每行带克隆地址", async () => {
+    ok({
+      accounts: [{ host: "github.com", forge: "github", accountLogin: "octo" }],
+    });
+    expect(await forgeAccounts()).toEqual([
+      { host: "github.com", forge: "github", accountLogin: "octo" },
+    ]);
+    expect(procedure()).toBe("forge/accounts");
+
+    calls = [];
+    const row = {
+      host: "github.com",
+      owner: "octo",
+      name: "app",
+      forge: "github",
+      description: "",
+      private: true,
+      fork: false,
+      archived: false,
+      defaultBranch: "main",
+      cloneUrl: "https://github.com/octo/app.git",
+      sshUrl: "git@github.com:octo/app.git",
+      webUrl: "https://github.com/octo/app",
+      updatedAtMs: 1,
+    };
+    ok({ items: [row], nextCursor: "2" });
+    const page = await forgeRepositories("github.com");
+    expect(procedure()).toBe("forge/repositories");
+    expect(sent()).toEqual({ host: "github.com" });
+    expect(page).toEqual({ items: [row], nextCursor: "2" });
+
+    calls = [];
+    ok({ items: [], nextCursor: null });
+    await forgeRepositories("github.com", "2", 50);
+    expect(sent()).toEqual({ host: "github.com", cursor: "2", limit: 50 });
   });
 
   it("删配置带版本；列配置与识别", async () => {

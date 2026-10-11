@@ -50,7 +50,9 @@ import {
   type ForgePull,
   type ForgePullState,
   type ForgeRepo,
+  type ForgeRepository,
   type ListOptions,
+  type RepositoryListOptions,
   MAX_BODY,
   MAX_FILES,
   MAX_LIMIT,
@@ -70,6 +72,12 @@ import {
 } from "./transport";
 import { validName } from "../github/remote";
 import { count, numbered, text, webUrl } from "./wire";
+import {
+  type WireProject as WireRepoProject,
+  fromWireProject,
+  present,
+  repositoryLimit,
+} from "./repositories";
 
 const API_SUFFIX = "/api/v4";
 /** 差异按页取；三页一百个文件到 {@link MAX_FILES}。 */
@@ -420,6 +428,32 @@ export class GitlabForge implements Forge {
     const name = login(value);
     if (name === null) throw forgeError("unavailable", "RESPONSE_MALFORMED");
     return name;
+  }
+
+  /**
+   * 令牌所属账号是成员的项目（§29.7）：`GET /projects?membership=true`，按最近
+   * 活动排序；owner 是完整的命名空间路径。
+   */
+  async repositories(
+    host: string,
+    options: RepositoryListOptions,
+  ): Promise<ForgePage<ForgeRepository>> {
+    const query: Record<string, string> = {
+      membership: "true",
+      order_by: "last_activity_at",
+      sort: "desc",
+      per_page: String(repositoryLimit(options.limit)),
+    };
+    if (options.page > 1) query.page = String(options.page);
+    const response = await this.http.get("/projects", query);
+    return {
+      items: present(
+        array<WireRepoProject>(decodeJson(response)).map((value) =>
+          fromWireProject(host, value),
+        ),
+      ),
+      nextCursor: response.nextPage > 1 ? String(response.nextPage) : null,
+    };
   }
 
   async listIssues(
