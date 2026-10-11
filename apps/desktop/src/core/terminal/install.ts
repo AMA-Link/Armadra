@@ -895,12 +895,13 @@ export function install(
 
   context.server.stream(
     "/api/terminals/{sessionId}/ws",
-    (connection, params, request) => {
+    (connection, params, request, access) => {
       const sessionId = params.sessionId as string;
       void serveTerminalSocket(connection, {
         manager,
         sessionId,
         writer: validWriter(request.query.get("writer")) ?? "",
+        readOnly: access.readOnly,
         onError: (failure) =>
           context.log.warn("terminal socket", {
             sessionId,
