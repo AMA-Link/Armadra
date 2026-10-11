@@ -249,12 +249,17 @@ interface DeviceRow {
   readonly unifiedpush_endpoint: string;
   readonly created_at_ms: number;
   readonly revoked_at_ms: number;
+  readonly device_name: string;
+  readonly holder_kind: string | null;
 }
 
 const SELECT = `
   SELECT pd.device_id, d.principal_id, pd.platform, pd.transport, pd.token,
          pd.public_key, pd.auth_secret, pd.app_version, pd.locale,
-         pd.kinds_json, pd.unifiedpush_endpoint, pd.created_at_ms, pd.revoked_at_ms
+         pd.kinds_json, pd.unifiedpush_endpoint, pd.created_at_ms, pd.revoked_at_ms,
+         d.name AS device_name,
+         (SELECT kind FROM identity_principals
+           WHERE principal_id = d.principal_id) AS holder_kind
     FROM push_devices pd
     JOIN identity_devices d ON d.device_id = pd.device_id`;
 
@@ -273,6 +278,8 @@ function device(row: DeviceRow): PushDevice {
     unifiedpushEndpoint: row.unifiedpush_endpoint,
     createdAtMs: Number(row.created_at_ms),
     revokedAtMs: Number(row.revoked_at_ms),
+    deviceName: row.device_name,
+    ownerDevice: row.holder_kind === "owner",
   };
 }
 

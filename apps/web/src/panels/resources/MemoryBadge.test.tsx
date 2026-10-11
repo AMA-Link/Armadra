@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import type { ResourceSnapshot, SessionResources } from "@armadra/shared";
 
 const resources = vi.fn();
@@ -23,7 +23,7 @@ vi.mock("sonner", () => ({
 }));
 
 import { MemoryBadge } from "./MemoryBadge";
-import { resetAlerts } from "./memory-alert";
+import { handleThresholdEvent, useThresholdStore } from "./threshold-alerts";
 import { resetSampling, SLOW_INTERVAL_MS } from "./sampling";
 import { usePreferencesStore } from "@/app/preferences-store";
 
@@ -32,7 +32,8 @@ import { usePreferencesStore } from "@/app/preferences-store";
  *
  *  1. 显示进程树的内存，比如 `512 MB`；
  *  2. 测不出来显示 `unknown`，**不显示 0**；
- *  3. 越过阈值变色，并且**每个会话只提醒一次**；
+ *  3. 越线由 core 判、经 `resources.threshold` 报来：报过才变色，提醒只随
+ *     事件发一次，徽标自己不再判、不再发；
  *  4. 节点不可见时把采样节奏降到 30 秒。
  */
 
@@ -77,7 +78,7 @@ const snapshot = (sessions: SessionResources[]): ResourceSnapshot =>
 beforeEach(() => {
   vi.clearAllMocks();
   resetSampling();
-  resetAlerts();
+  useThresholdStore.setState({ over: {} });
   subscribeResources.mockResolvedValue({
     subscriptionId: "sub-1",
     workspaceId: "w-1",
@@ -138,23 +139,61 @@ describe("MemoryBadge", () => {
     await waitFor(() => expect(badge.textContent).toBe("unknown"));
   });
 
-  it("超过阈值变色，并且同一个会话只提醒一次", async () => {
+  it("样本越线但 core 没报：不变色、不提醒", async () => {
+    resources.mockResolvedValue(
+      snapshot([session({ memoryBytes: 3_000 * MB })]),
+    );
+    mount();
+    await waitFor(() =>
+      expect(screen.getByTestId("memory-badge-n-1").textContent).toBe("2.9 GB"),
+    );
+    expect(screen.getByTestId("memory-badge-n-1").dataset.over).toBeUndefined();
+    expect(toastWarning).not.toHaveBeenCalled();
+    expect(notify).not.toHaveBeenCalled();
+  });
+
+  it("core 报了越线：变色并只提醒一次，重挂不再提醒", async () => {
     resources.mockResolvedValue(
       snapshot([session({ memoryBytes: 3_000 * MB })]),
     );
     const view = mount();
+    act(() =>
+      handleThresholdEvent({
+        type: "resources.threshold",
+        sessionId: "s-1",
+        nodeId: "n-1",
+        metric: "memory",
+        value: 3_000 * MB,
+        threshold: 2_048 * MB,
+      }),
+    );
     await waitFor(() =>
       expect(screen.getByTestId("memory-badge-n-1").dataset.over).toBe("true"),
     );
-    await waitFor(() => expect(toastWarning).toHaveBeenCalledTimes(1));
-
-    // 采样每隔几秒来一次，每一份都还在越线上——重挂一次也不该再提醒。
+    expect(toastWarning).toHaveBeenCalledTimes(1);
     view.unmount();
     mount();
     await waitFor(() =>
       expect(screen.getByTestId("memory-badge-n-1").dataset.over).toBe("true"),
     );
     expect(toastWarning).toHaveBeenCalledTimes(1);
+  });
+
+  it("回落到阈值九成以下复原，并忘掉这次越线", async () => {
+    resources.mockResolvedValue(
+      snapshot([session({ memoryBytes: 1_500 * MB })]),
+    );
+    useThresholdStore
+      .getState()
+      .report("s-1", { value: 3_000 * MB, threshold: 2_048 * MB });
+    mount();
+    await waitFor(() =>
+      expect(screen.getByTestId("memory-badge-n-1").textContent).toBe("1.5 GB"),
+    );
+    await waitFor(() =>
+      expect(useThresholdStore.getState().over["s-1"]).toBeUndefined(),
+    );
+    expect(screen.getByTestId("memory-badge-n-1").dataset.over).toBeUndefined();
   });
 
   it("测不出来的内存不会触发提醒", async () => {

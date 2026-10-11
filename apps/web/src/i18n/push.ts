@@ -1,6 +1,6 @@
 import type { MessageModule } from "./index";
 
-/** 推送：开启之后「收哪些通知」那组开关（契约 §27.1）。 */
+/** 推送：「收哪些通知」那组开关与设置页的推送设备（契约 §27.1、§74）。 */
 export const push: MessageModule = {
   "zh-CN": {
     "push.kinds.title": "接收哪些通知",
@@ -14,6 +14,11 @@ export const push: MessageModule = {
     "push.kind.resources": "资源超过阈值",
     "push.kind.comment": "评论里提到我",
     "push.kind.workflowGate": "工作流等待确认",
+    "push.devices.title": "推送设备",
+    "push.device.current": "当前设备",
+    "push.platform.ios": "iOS",
+    "push.platform.android": "Android",
+    "push.platform.web": "浏览器",
   },
   en: {
     "push.kinds.title": "Notify me about",
@@ -27,5 +32,10 @@ export const push: MessageModule = {
     "push.kind.resources": "Resource thresholds",
     "push.kind.comment": "Mentions in comments",
     "push.kind.workflowGate": "Workflow gates",
+    "push.devices.title": "Push devices",
+    "push.device.current": "This device",
+    "push.platform.ios": "iOS",
+    "push.platform.android": "Android",
+    "push.platform.web": "Browser",
   },
 };

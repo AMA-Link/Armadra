@@ -320,6 +320,73 @@ describe("种类偏好与 UnifiedPush（契约 §27）", () => {
   });
 });
 
+describe("设置页逐台改偏好（契约 §74）", () => {
+  it("owner（含桌面本机）能改 owner 名下的设备，不能改成员的；视图带设备名与 editable", async () => {
+    const { call, ownerIdentity, member, identityOf } = setup();
+    const someone = member("同事", { w1: "viewer" });
+    const android = () => ({
+      platform: "android",
+      transport: "direct",
+      token: "t",
+      publicKey: generateDeviceKeyPair().publicKey,
+    });
+    expect(
+      (await call(ownerIdentity, "PUT", PUSH_ROUTES.devices, android())).status,
+    ).toBe(200);
+    expect(
+      (await call(identityOf(someone), "PUT", PUSH_ROUTES.devices, android()))
+        .status,
+    ).toBe(200);
+
+    // 桌面本机（没有请求身份）列出全部，只有 owner 自己的那台可改。
+    const listed = await call(undefined, "GET", PUSH_ROUTES.devices);
+    const byId = new Map<string, { editable?: boolean; deviceName?: string }>(
+      listed.body.devices.map((item: { deviceId: string }) => [
+        item.deviceId,
+        item,
+      ]),
+    );
+    const ownerDeviceId = ownerIdentity.device!.deviceId;
+    expect(byId.get(ownerDeviceId)).toMatchObject({ editable: true });
+    expect(byId.get(ownerDeviceId)?.deviceName).toBeTruthy();
+    expect(byId.get(someone.deviceId)).toMatchObject({ editable: false });
+
+    const ownerPath = `/api/push/devices/${ownerDeviceId}`;
+    const changed = await call(undefined, "PATCH", ownerPath, {
+      kinds: ["approval"],
+    });
+    expect(changed.status).toBe(200);
+    expect(changed.body.device).toMatchObject({
+      kinds: ["approval"],
+      editable: true,
+      current: false,
+    });
+    // 远端的 owner 会话同样可以。
+    expect(
+      (await call(ownerIdentity, "PATCH", ownerPath, { kinds: [] })).body.device
+        .kinds,
+    ).toEqual([]);
+    // 成员的设备：桌面本机与 owner 会话都答 404。
+    const memberPath = `/api/push/devices/${someone.deviceId}`;
+    expect(
+      (await call(undefined, "PATCH", memberPath, { kinds: [] })).status,
+    ).toBe(404);
+    expect(
+      (await call(ownerIdentity, "PATCH", memberPath, { kinds: [] })).status,
+    ).toBe(404);
+    // 成员改不了 owner 的。
+    expect(
+      (await call(identityOf(someone), "PATCH", ownerPath, { kinds: [] }))
+        .status,
+    ).toBe(404);
+    // 成员看自己的列表：自己的那台可改。
+    const mine = await call(identityOf(someone), "GET", PUSH_ROUTES.devices);
+    expect(mine.body.devices).toEqual([
+      expect.objectContaining({ deviceId: someone.deviceId, editable: true }),
+    ]);
+  });
+});
+
 describe("Web Push 一路到假端点", () => {
   it("登记 → 测试通知 → push-sink：VAPID 验签过、aes128gcm、浏览器能解", async () => {
     const { call, ownerIdentity, push } = setup();
