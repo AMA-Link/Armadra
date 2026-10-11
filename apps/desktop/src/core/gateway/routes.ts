@@ -13,6 +13,12 @@ import {
 } from "../settings/completion-settings";
 import { canonicalOrigin } from "../identity/origin";
 import { remoteAddress } from "../identity/http";
+import {
+  type PairingPakeFinish,
+  type PairingPakeStart,
+  pairingPakeFinishSchema,
+  pairingPakeStartSchema,
+} from "@armadra/shared";
 
 /**
  * `/api/gateway*` 的三条（契约 §17）。owner 才进得来——路由门按
@@ -25,6 +31,8 @@ import { remoteAddress } from "../identity/http";
  *     档位上连同一枚 8 位短码。
  *   * `POST /api/gateway/pairing-code/exchange`：短码换票（契约 §24）。匿名——
  *     手机还没有身份，短码就是凭据；档位与限流在 Gateway 域里判。
+ *   * `POST /api/gateway/pairing-code/pake/{start,finish}`：原生 App 首次连接时
+ *     用短码做口令认证的密钥交换（契约 §73），同样匿名。
  *
  * 前三条收成一份操作（{@link gatewayOperations}），旧路径的 handler 与
  * `registerProcedures(server, "gateway", …)`（契约 §43.7）调同一份，拒绝都是
@@ -40,6 +48,14 @@ export interface PairingCodeExchange {
   readonly origin: string | undefined;
 }
 
+export type PairingPakeStartInput = PairingPakeStart & {
+  readonly remoteIp: string;
+};
+
+export type PairingPakeFinishInput = PairingPakeFinish & {
+  readonly remoteIp: string;
+};
+
 export interface GatewayRouteDeps {
   status(): Record<string, unknown>;
   /** 写进设置并对账；壳托管（服务器壳）时答 409。 */
@@ -49,6 +65,8 @@ export interface GatewayRouteDeps {
     deviceName?: string;
   }): Record<string, unknown> | ErrorResponse;
   exchangeCode(input: PairingCodeExchange): HandlerResult;
+  pakeStart(input: PairingPakeStartInput): HandlerResult;
+  pakeFinish(input: PairingPakeFinishInput): HandlerResult;
 }
 
 /** 一个 `ErrorResponse` → 抛出的拒绝。 */
@@ -172,6 +190,43 @@ export function postPairingCodeExchange(
     remoteIp: remoteAddress(request),
     origin: typeof origin === "string" ? canonicalOrigin(origin) : undefined,
   });
+}
+
+/** 请求体按 schema 认；多余的键、错的形状一律 400。 */
+function pakeBody<T>(
+  request: CoreRequest,
+  schema: {
+    safeParse(value: unknown): { success: true; data: T } | { success: false };
+  },
+): T | ErrorResponse {
+  let body: unknown;
+  try {
+    body = request.json();
+  } catch {
+    return badRequest("请求体不是 JSON");
+  }
+  const parsed = schema.safeParse(body);
+  return parsed.success ? parsed.data : badRequest("请求体形状不对");
+}
+
+/** `POST /api/gateway/pairing-code/pake/start`（契约 §73.1）。 */
+export function postPairingPakeStart(
+  deps: GatewayRouteDeps,
+  request: CoreRequest,
+): HandlerResult {
+  const body = pakeBody<PairingPakeStart>(request, pairingPakeStartSchema);
+  if ("status" in body) return body;
+  return deps.pakeStart({ ...body, remoteIp: remoteAddress(request) });
+}
+
+/** `POST /api/gateway/pairing-code/pake/finish`（契约 §73.2）。 */
+export function postPairingPakeFinish(
+  deps: GatewayRouteDeps,
+  request: CoreRequest,
+): HandlerResult {
+  const body = pakeBody<PairingPakeFinish>(request, pairingPakeFinishSchema);
+  if ("status" in body) return body;
+  return deps.pakeFinish({ ...body, remoteIp: remoteAddress(request) });
 }
 
 const MAX_PATH = 4096;

@@ -1,5 +1,10 @@
 import { ensureKey } from "../core/terminal/session-host/auth";
 import { endpointFor } from "../core/terminal/session-host/link";
+import {
+  registerHost,
+  registryDir,
+  unregisterHost,
+} from "../core/terminal/session-host/registry";
 import { claimLock, releaseLock } from "./lock";
 import { AlreadyServing, SessionHost } from "./server";
 
@@ -64,6 +69,8 @@ export interface RunOptions {
   readonly log?: (line: string) => void;
   readonly idleExitMs?: number;
   readonly orphanExitMs?: number;
+  /** Where to record this host for the installer (`registry.ts`). */
+  readonly registryDir?: string;
 }
 
 /**
@@ -108,14 +115,17 @@ export async function run(options: RunOptions = {}): Promise<number> {
     return 2;
   }
   const dataDir = parsed.dataDir;
+  const registry =
+    options.registryDir ?? registryDir(options.env ?? process.env);
 
   let host: SessionHost;
+  let endpoint: string;
   try {
     // Before anything listens: a key file this user alone can read is what
     // replaced the pipe's DACL, and a host that could not tighten it must not
     // serve. `ensureKey` throws rather than continuing.
     const key = ensureKey(dataDir);
-    const endpoint = endpointFor(dataDir);
+    endpoint = endpointFor(dataDir);
     const claim = await claimLock(dataDir, endpoint);
     if (claim.kind === "taken") {
       log(
@@ -151,7 +161,15 @@ export async function run(options: RunOptions = {}): Promise<number> {
     return 1;
   }
 
+  // After listening: an entry for a host that never served would send the
+  // installer to a pipe nobody answers. The installer runs without the user's
+  // data directory, and this is how it finds this one.
+  const unregistered = registerHost(dataDir, endpoint, registry);
+  if (unregistered !== null) {
+    log(`could not record this host for the installer: ${unregistered}`);
+  }
   await served(host, dataDir, log);
+  unregisterHost(endpoint, registry);
   return 0;
 }
 

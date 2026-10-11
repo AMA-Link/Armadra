@@ -310,7 +310,7 @@ describe("契约与 core 的两张表", () => {
     }
     expect((hello.body as { protocol: unknown }).protocol).toEqual({
       major: 1,
-      minor: 39,
+      minor: 43,
     });
     // 契约 §68：主人的显示名，没有时是主机名称——总有一个非空的名字。
     const { ownerName, hostName } = hello.body as {

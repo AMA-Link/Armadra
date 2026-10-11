@@ -8,7 +8,10 @@
 ; on install, upgrade and uninstall alike, the host is asked to leave if it
 ; holds no live session (`shutdown-if-idle.cjs`, which waits up to five
 ; seconds for its process to end). A host that still owns a session stays,
-; and the stock step below handles it exactly as before.
+; and the stock step below handles it exactly as before. The helper also asks
+; the host of every other data directory a running host recorded under
+; %LOCALAPPDATA%\Armadra\session-hosts (a core started with its own
+; ARMADRA_DATA_DIR), so the directory passed here is only the first one asked.
 ;
 ; Defining `customCheckAppRunning` replaces the stock macro, so the stock body
 ; is inserted again at the end; the two things it needs that the template

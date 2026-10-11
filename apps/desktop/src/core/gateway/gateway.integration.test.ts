@@ -31,6 +31,16 @@ import {
   loopbackSession,
 } from "../testing/loopback-session";
 import { fingerprintOf } from "./tls";
+import {
+  fromBase64Url,
+  newPakeSid,
+  pairingPakeOffersSchema,
+  pakeConfirm,
+  pakeConfirmEquals,
+  pakeKey,
+  pakeShare,
+  toBase64Url,
+} from "@armadra/shared";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const migrationsDir = resolve(here, "../db/migrations");
@@ -449,6 +459,141 @@ describe("配对短码（契约 §24）", () => {
           method: "POST",
           body: { code: 7 },
           trust: ca,
+        })
+      ).status,
+    ).toBe(400);
+  });
+});
+
+describe("配对码 PAKE：原生 App 首次连接（契约 §73）", () => {
+  /**
+   * App 这一半：不信任何证书（还没钉），信任锚指纹从匿名的 `/ca.crt` 取——
+   * 与原生 `peek` 同一个来路，中间人可以换掉它，所以下面每一步都要靠 PAKE 的
+   * 确认标签把它认出来。
+   */
+  async function firstConnect(
+    code: string,
+    seen: { origin?: string; fingerprint?: string } = {},
+  ): Promise<{ finish: Answer | null; offers: number }> {
+    const anchor = await remote("/ca.crt", { origin: null });
+    const fingerprint =
+      seen.fingerprint ?? fingerprintOf(new X509Certificate(anchor.body));
+    const dialled = seen.origin ?? origin;
+    const sid = newPakeSid();
+    const mine = pakeShare(code, sid);
+    const started = await remote("/api/gateway/pairing-code/pake/start", {
+      method: "POST",
+      origin: APP,
+      body: { sid: toBase64Url(sid), share: toBase64Url(mine.share) },
+    });
+    expect(started.status).toBe(200);
+    expect(started.headers["access-control-allow-origin"]).toBe(APP);
+    const offers = pairingPakeOffersSchema.parse(JSON.parse(started.body));
+    for (const [index, offer] of offers.offers.entries()) {
+      const responder = fromBase64Url(offer.share, 32) as Uint8Array;
+      const isk = pakeKey({
+        secret: mine.secret,
+        peer: responder,
+        sid,
+        initiator: mine.share,
+        responder,
+      });
+      if (
+        isk === null ||
+        !pakeConfirmEquals(
+          pakeConfirm(isk, "server", dialled, fingerprint),
+          fromBase64Url(offer.confirm, 32) as Uint8Array,
+        )
+      )
+        continue;
+      const finish = await remote("/api/gateway/pairing-code/pake/finish", {
+        method: "POST",
+        origin: APP,
+        body: {
+          session: offers.session,
+          index,
+          confirm: toBase64Url(
+            pakeConfirm(isk, "client", dialled, fingerprint),
+          ),
+        },
+      });
+      return { finish, offers: offers.offers.length };
+    }
+    return { finish: null, offers: offers.offers.length };
+  }
+
+  it("PAKE 换票 → 按载荷钉锚并配对；短码随之失效", async () => {
+    const payload = (await pairing()) as Awaited<ReturnType<typeof pairing>> & {
+      code: string;
+    };
+    const { finish } = await firstConnect(payload.code.toLowerCase());
+    expect(finish?.status).toBe(200);
+    const exchanged = JSON.parse(finish!.body) as Record<string, unknown>;
+    expect(exchanged.ticket).toBe(payload.ticket);
+    expect(exchanged.fingerprint).toBe(payload.fingerprint);
+    expect(exchanged.origin).toBe(origin);
+
+    // 钉上载荷里的锚（= App 看到的那张）之后的配对：完整验证链。
+    const paired = await remote("/api/identity/pair", {
+      method: "POST",
+      origin: APP,
+      body: { ticket: exchanged.ticket },
+      trust: ca,
+    });
+    expect(paired.status).toBe(200);
+    const again = await remote("/api/gateway/pairing-code/exchange", {
+      method: "POST",
+      body: { code: payload.code },
+      trust: ca,
+    });
+    expect(again.status).toBe(404);
+  });
+
+  it("App 看到的锚不是 Gateway 的（中间人换了证书）：一个候选都对不上，不发 finish", async () => {
+    const payload = (await pairing()) as Awaited<ReturnType<typeof pairing>> & {
+      code: string;
+    };
+    const { finish, offers } = await firstConnect(payload.code, {
+      fingerprint: "e".repeat(64),
+    });
+    expect(offers).toBeGreaterThan(0);
+    expect(finish).toBeNull();
+    // 码没被取走：正常的 App 还能用它。
+    expect((await firstConnect(payload.code)).finish?.status).toBe(200);
+  });
+
+  it("码错：不发 finish；伪造的标签答 404；不认识的键 400", async () => {
+    const payload = (await pairing()) as Awaited<ReturnType<typeof pairing>> & {
+      code: string;
+    };
+    const wrong = payload.code.startsWith("A")
+      ? `B${payload.code.slice(1)}`
+      : `A${payload.code.slice(1)}`;
+    expect((await firstConnect(wrong)).finish).toBeNull();
+
+    const sid = newPakeSid();
+    const started = await remote("/api/gateway/pairing-code/pake/start", {
+      method: "POST",
+      origin: APP,
+      body: {
+        sid: toBase64Url(sid),
+        share: toBase64Url(pakeShare(wrong, sid).share),
+      },
+    });
+    const { session } = JSON.parse(started.body) as { session: string };
+    const forged = await remote("/api/gateway/pairing-code/pake/finish", {
+      method: "POST",
+      origin: APP,
+      body: { session, index: 0, confirm: toBase64Url(new Uint8Array(32)) },
+    });
+    expect(forged.status).toBe(404);
+    expect(JSON.parse(forged.body).code).toBe("pairing_code_invalid");
+    expect(
+      (
+        await remote("/api/gateway/pairing-code/pake/start", {
+          method: "POST",
+          origin: APP,
+          body: { sid: toBase64Url(sid), share: "x", code: payload.code },
         })
       ).status,
     ).toBe(400);

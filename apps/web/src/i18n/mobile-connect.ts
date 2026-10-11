@@ -17,12 +17,19 @@ export const mobileConnect: MessageModule = {
     "mobileConnect.error.codeDisabled": "这个地址不接受配对码，请扫码",
     "mobileConnect.error.codeOrigin": "请在配对卡上显示的地址输入",
     "mobileConnect.error.rateLimited": "试得太频繁，请稍后再试",
+    "mobileConnect.error.codeMismatch":
+      "配对码不对，或这个地址上不是配对卡上的那台主机",
+    "mobileConnect.error.anchorChanged": "这台主机的证书变了，请扫码重新配对",
+    "mobileConnect.error.codeUpgrade":
+      "这台主机还不支持首次用配对码连接，请扫码",
+    "mobileConnect.codeAddress": "地址",
     "mobileConnect.code": "配对码",
     "mobileConnect.enterCode": "输入配对码",
     "mobileConnect.useLink": "改用配对链接",
     "mobileConnect.signIn": "账号登录",
     "mobileConnect.backToConnect": "返回连接页",
     "mobileConnect.showcase.code": "输入配对码",
+    "mobileConnect.showcase.codeNative": "原生 App · 首次用配对码",
     "mobileConnect.push.title": "接收审批与完成通知",
     "mobileConnect.push.enable": "开启",
     "mobileConnect.push.later": "以后",
@@ -82,12 +89,20 @@ export const mobileConnect: MessageModule = {
     "mobileConnect.error.codeOrigin":
       "Enter the code at the address shown on the pairing card",
     "mobileConnect.error.rateLimited": "Too many tries. Try again later.",
+    "mobileConnect.error.codeMismatch":
+      "Wrong code, or the host at this address isn't the one on the pairing card",
+    "mobileConnect.error.anchorChanged":
+      "This host's certificate changed. Scan the QR code to pair again.",
+    "mobileConnect.error.codeUpgrade":
+      "This host can't pair by code on a first connection. Scan the QR code.",
+    "mobileConnect.codeAddress": "Address",
     "mobileConnect.code": "Pairing code",
     "mobileConnect.enterCode": "Enter pairing code",
     "mobileConnect.useLink": "Use a pairing link",
     "mobileConnect.signIn": "Sign in with an account",
     "mobileConnect.backToConnect": "Back to connect",
     "mobileConnect.showcase.code": "Enter pairing code",
+    "mobileConnect.showcase.codeNative": "Native app · first-time pairing code",
     "mobileConnect.push.title": "Get approval and completion alerts",
     "mobileConnect.push.enable": "Turn on",
     "mobileConnect.push.later": "Not now",

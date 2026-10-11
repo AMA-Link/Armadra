@@ -1336,6 +1336,19 @@ export const ROUTES: readonly RouteEntry[] = [
     surface: "runtime",
     implemented: true,
   },
+  // 原生 App 首次连接的配对码 PAKE（契约 §73）：匿名，同上。
+  {
+    path: "/api/gateway/pairing-code/pake/start",
+    methods: ["POST"],
+    surface: "runtime",
+    implemented: true,
+  },
+  {
+    path: "/api/gateway/pairing-code/pake/finish",
+    methods: ["POST"],
+    surface: "runtime",
+    implemented: true,
+  },
   // 页面错误上报（契约 §30）：登录即可，诊断域自己认会话、限流、再剥离。
   {
     path: "/api/diagnostics/client-error",

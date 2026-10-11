@@ -157,7 +157,8 @@ describe("连接页 · 配对码", () => {
     // 没有「改用配对链接」：这一页没有票。
     expect(screen.queryByRole("button", { name: "改用配对链接" })).toBeNull();
     typeCode("3f7k9q2m");
-    await waitFor(() => expect(onCode).toHaveBeenCalledWith("3F7K9Q2M"));
+    // 没有地址栏时第二个参数是空串。
+    await waitFor(() => expect(onCode).toHaveBeenCalledWith("3F7K9Q2M", ""));
     fireEvent.click(screen.getByRole("button", { name: "账号登录" }));
     expect(onSignIn).toHaveBeenCalled();
   });
@@ -198,9 +199,54 @@ describe("连接页 · 配对码", () => {
     fireEvent.click(screen.getByRole("button", { name: "输入配对码" }));
     expect(screen.queryByLabelText("配对链接")).toBeNull();
     typeCode("ABCD2345");
-    await waitFor(() => expect(onCode).toHaveBeenCalledWith("ABCD2345"));
+    await waitFor(() => expect(onCode).toHaveBeenCalledWith("ABCD2345", ""));
     fireEvent.click(screen.getByRole("button", { name: "改用配对链接" }));
     expect(screen.getByLabelText("配对链接")).toBeTruthy();
+  });
+
+  it("原生 App 首次连接（§73）：配对码页多一栏地址，地址随码一起交出", async () => {
+    const onCode = vi.fn(async () => null);
+    render(
+      <ConnectScreen
+        mode="native"
+        codeAddress
+        onCode={onCode}
+        onConnect={vi.fn()}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "输入配对码" }));
+    const address = screen.getByLabelText("地址") as HTMLInputElement;
+    expect(address.value).toBe("");
+    // 没填地址输满码：不交，提示地址不对。
+    typeCode("ABCD2345");
+    await waitFor(() => expect(screen.getByText("地址不对")).toBeTruthy());
+    expect(onCode).not.toHaveBeenCalled();
+    fireEvent.change(address, { target: { value: " 192.168.1.5:8443 " } });
+    fireEvent.click(screen.getByRole("button", { name: "连接" }));
+    await waitFor(() =>
+      expect(onCode).toHaveBeenCalledWith("ABCD2345", "192.168.1.5:8443"),
+    );
+  });
+
+  it("记下过来源时地址栏预填它的主机；失败文案带上输入的地址", async () => {
+    const onCode = vi.fn(async () => "unreachable" as const);
+    render(
+      <ConnectScreen
+        mode="native"
+        origin="https://10.0.0.2:8443"
+        codeAddress
+        onCode={onCode}
+        onConnect={vi.fn()}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "输入配对码" }));
+    expect((screen.getByLabelText("地址") as HTMLInputElement).value).toBe(
+      "10.0.0.2:8443",
+    );
+    typeCode("ABCD2345");
+    await waitFor(() =>
+      expect(screen.getByText("连不上 10.0.0.2:8443")).toBeTruthy(),
+    );
   });
 
   it("没给 onCode 就没有这个入口", () => {

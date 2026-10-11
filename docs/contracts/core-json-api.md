@@ -1875,6 +1875,8 @@ CSV 按 RFC 4180：`\r\n` 换行，首行表头 `id,time,principalId,deviceId,ac
 - 兑换成功与失败进审计：`gateway.pairing.code.exchange`（`origin`、`remoteIp`）、`gateway.pairing.code.reject`（`remoteIp`）；码与票都不记。
 - **页面**：设置页配对卡在倒计时旁显示配对码（过期即收起）。手机浏览器经 Gateway 打开、窄屏、没带 `#pair=` 也没有会话时，连接页先给 8 位 `InputOTP`（两组四位），输满自动兑换并配对；页上另有「账号登录」直接进页面。原生 App 只在已经记下（并钉过信任锚）一个 Gateway 来源时给「输入配对码」入口——App 不装 CA，没钉过的 Gateway 连不上；换出的 `fingerprint` 照样再钉一次，锚变了就失败，不自动信任新证书。
 
+自协议 1.43 起，原生 App 第一次连接（还没钉过信任锚）也能用配对码：不经本节的 `exchange`，而是用配对码做口令认证的密钥交换，见 §73。
+
 ## 25. 口令重置链接：`/api/identity/…/password-reset`
 
 设计见 [G5 剩余事项计划](../design/g5-remaining-plan.md) §0。邮箱是可选的，所以没有「输入邮箱自助重置」。做法是 owner（或组 admin 对本组成员）替某人签发一枚一次性、24 小时有效的令牌，链接 `<来源>/#reset=<令牌>` 由签发人亲手交给对方。代码在 `core/identity/password-reset.ts`（令牌原语），判定与事务在 `accounts.ts`，路由在 `accounts-http.ts`，表 `identity_password_resets`（迁移 `0036_password_resets.sql`），共享层 `identity-security.ts` 的 §25 小节。与 §10 / §18 同一个前缀、同一套认证；整段 `/api/identity/` 不经路由门，判定在身份域里。
@@ -4117,3 +4119,59 @@ mod 在 `session.start` 用 `$.command.register` 注册七条命令（都是 `im
 
 - 第一次兑换（带 `invitationToken`）：兑换出的授予直接封顶在那张邀请的 `expiresAtMs`（分享链接的到期就是它背后那张邀请的到期，§33.9）。
 - 之后的登录：断言带 `link.invitationId`（经链接来的访客每次都带）时按那张邀请封顶；邀请已过期则不再续租，也不立新授予，`share` 不出现。断言不带 `link`、也不带邀请令牌（SaaS 组织准入、owner 绑定）时照旧按断言租约。
+
+## 73. 配对码 PAKE：原生 App 首次连接 `/api/gateway/pairing-code/pake/*`
+
+§24 的 `exchange` 要求 App 已经钉过这个 Gateway 的信任锚：App 不装 CA，没钉过就连不上；而第一次连接时 App 只能从不带凭据的取锚（原生 `peek`，取 `/ca.crt` 或握手链最后一张）拿到一个指纹，局域网上的中间人可以换成自己的。把配对码明文发出去，中间人能转给真 Gateway 换走票；只发码与指纹的哈希，8 位码（约 2⁴⁰）可以离线穷举。所以首次连接改用配对码做 CPace（ristretto255）口令认证的密钥交换，确认标签绑上双方各自看到的来源与信任锚指纹。实现：两端共用 `packages/shared/src/pairing-pake.ts`，Gateway 一半在 `core/gateway/pairing-pake.ts`，App 一半在 `apps/web/src/mobile/pairing-pake.ts`。自协议 1.43（minor 43）起。
+
+**记号**：`DSI = "Armadra-PairingCode-CPace-ristretto255-v1"`；`lv(…)` 是每段前缀两字节大端长度后拼接；`code` 是规范拼法（§24，大写、去掉连字符与空白）；指纹是信任锚 DER 的 SHA-256 小写十六进制（比对前去冒号、转小写）；字节在线上一律是无填充的 base64url（只认规范拼法）。
+
+- 生成元 `G(code, sid) = hash_to_ristretto255(lv(code, sid), DST = DSI)`（RFC 9380）。
+- 每一方出随机标量 `y`，份额 `Y = y·G`；共享密钥 `ISK = SHA-512(lv(DSI‖"_ISK", sid, y·Y_对方, Y_App, Y_Gateway))`。对方份额不是合法编码或是单位元即拒绝。
+- 确认标签 `confirm(role) = HMAC-SHA-256(ISK, lv(role, origin, fingerprint))`，`role` 是 `server` / `client`。Gateway 用票绑定的来源与它自己的信任锚指纹；App 用它拨的来源与它取到的指纹。
+
+### 73.1 `POST /api/gateway/pairing-code/pake/start`
+
+请求体 `{ "sid": <16 字节>, "share": <32 字节> }`，不认识的键 400。Gateway 不知道 App 输的是哪一枚码，对此刻每一枚活着的码 i（≤32，次序打乱）各出一份候选：
+
+```json
+{
+  "session": "<22 字符>",
+  "offers": [
+    { "share": "<Y_i，32 字节>", "confirm": "<confirm_i(server)，32 字节>" }
+  ]
+}
+```
+
+- 每次 start 就是一次猜测：先看 §24.2 那两只桶（来源 20 次 / 分、全局 200 次 / 分），有令牌就扣一个，不论之后对不对；没有答 429 `rate_limited` 带 `Retry-After`。`share` 不是合法群元素答 400，不扣令牌。
+- 会话 30 秒、一次性、只在内存（最多 64 个，满了挤最老的）；Gateway 关闭、重开、换档时作废。候选的条数等于此刻活着的码数，这个数不是秘密。
+- 档位与 §24.1 相同：不签码的 Gateway 答 403 `pairing_code_disabled`；没在运行 409 `gateway_not_running`。
+
+<!-- rpc:begin contract=§73.1 -->
+
+| procedure           | kind     | input                            | output                                                              | errors                                                                        | scope | 自   | 原路径                                      |
+| ------------------- | -------- | -------------------------------- | ------------------------------------------------------------------- | ----------------------------------------------------------------------------- | ----- | ---- | ------------------------------------------- |
+| `gateway.pakeStart` | mutation | `{ sid: string, share: string }` | `{ session: string, offers: { share: string, confirm: string }[] }` | `bad_request`、`gateway_not_running`、`pairing_code_disabled`、`rate_limited` | 匿名  | 1.43 | `POST /api/gateway/pairing-code/pake/start` |
+
+<!-- rpc:end -->
+
+### 73.2 `POST /api/gateway/pairing-code/pake/finish`
+
+App 对每个候选算 `ISK_i` 并核对 `confirm_i(server)`；一个都对不上（码错，或证书被换），**不发 finish**。对上第 j 个才发：
+
+请求体 `{ "session": <22 字符>, "index": j, "confirm": <confirm_j(client)，32 字节> }`。Gateway 用自己的来源与指纹核对；对了就取走那枚码，答与 §17.3 / §24.2 同形的配对载荷。会话不论对错都作废；会话不存在或过期、`index` 越界、标签不对、码已过期、票已被扫码兑掉，一律 404 `pairing_code_invalid`。
+
+- 两条都是匿名路径（与 `exchange` 同列在 `identity/transport.ts::anonymousPath` 与 `route-scopes.ts` 的 `SELF_GUARDED`），Cookie 与 Bearer 两种准入都放行；契约登记为 `gateway.pakeStart` / `gateway.pakeFinish`（`scope: null`），只经旧路径。
+- 审计与 `exchange` 相同的两条，`detail.via = "pake"`；码、票、份额与标签都不记。
+
+<!-- rpc:begin contract=§73.2 -->
+
+| procedure            | kind     | input                                                  | output                                                                                                                                | errors                                                                                | scope | 自   | 原路径                                       |
+| -------------------- | -------- | ------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------- | ----- | ---- | -------------------------------------------- |
+| `gateway.pakeFinish` | mutation | `{ session: string, index: integer, confirm: string }` | `{ origin: string, ticket: string, fingerprint: string, expiresAt: string, webUrl: string, deepLink: string, code?: string \| null }` | `bad_request`、`gateway_not_running`、`pairing_code_disabled`、`pairing_code_invalid` | 匿名  | 1.43 | `POST /api/gateway/pairing-code/pake/finish` |
+
+<!-- rpc:end -->
+
+**App 的流程**（`apps/web/src/mobile/connect.ts::connectFirstWithCode`）：人输 Gateway 地址（配对卡上显示的那个）与配对码 → `peek` 取指纹 F′；这个来源已有连接记录、钉的指纹又不是 F′ 时直接拒绝，不覆盖原有钉扎（证书轮换仍需扫码）→ 暂钉 F′（之后的请求只认这张证书）→ start / 本地核对 / finish → 载荷里的指纹必须等于 F′ → 用票配对、记连接，与扫码相同。
+
+**安全性**：被动窃听拿不到可离线验证配对码的东西；冒充 App 每次 start 只能试一个码，限流与 §24.2 相同；冒充 Gateway 的中间人每次让 App 失败一次最多试 32 个码（≤ 32 / 34⁸ ≈ 1.8 × 10⁻¹¹），失败对人可见；码仍是两分钟、一次性、只在私网 / 回环档。核对失败时 App 已暂钉的 F′ 不撤销（原生插件没有撤销钉扎的方法），但这个来源上没有会话、没有连接记录，下一次扫码或配对会改钉。
