@@ -1,14 +1,18 @@
 import type { CanvasEdgeRole, Position } from "@armadra/shared";
 
-import type { Box, LinkAnchor } from "../../geometry";
+import {
+  facingSides,
+  type Box,
+  type LinkAnchor,
+  type Side,
+} from "../../geometry";
 import { edgeArrowheads, edgeLabelKey } from "../../sync/project";
-import { linkCurve, type LinkCurve } from "./link-path";
+import { roundedPath, routeEdge, type Route, type SidePair } from "./route";
 
 /**
  * 一条上下文连线画成什么样（纯函数，`LinkEdge.tsx` 与单测共用）。
  *
- * 从旧引擎的 `shapes/LinkShapeUtil.tsx` 搬过来的那一半：曲线、箭头方向、
- * 标签键、线宽。另一半（`ShapeUtil` 的 `getGeometry` / `getIndicatorPath` /
+ * 路线（`route.ts` 的避障正交折线 + 圆角）、箭头方向、标签键、线宽。另一半（`ShapeUtil` 的 `getGeometry` / `getIndicatorPath` /
  * 一堆 `hideXxx`）在 React Flow 里没有对应物——边的命中区由 `BaseEdge` 的
  * `interactionWidth` 给，选中框就是线本身变粗。
  */
@@ -24,13 +28,16 @@ export const INTERACTION_WIDTH = 24;
 export const ARROW_SIZE = 11;
 const ARROW_SPREAD = 0.45;
 
-/** 标签字号与「小于这个缩放就不画」的阈值（§2.3）。 */
-export const LABEL_FONT_SIZE = 11;
-export const LABEL_MIN_ZOOM = 0.5;
+/** 拐角圆角半径（画布单位）。 */
+export const CORNER_RADIUS = 14;
+
+const ALL_SIDES: readonly Side[] = ["top", "right", "bottom", "left"];
 
 export interface LinkView {
-  curve: LinkCurve;
-  /** 常驻标签的 i18n 键；派发线没有常驻标签（`null`）。 */
+  route: Route;
+  /** 给 `<path>` 的路径（折线 + 圆角）。 */
+  d: string;
+  /** 常驻标签的 i18n 键。 */
   labelKey: string | null;
   arrowStart: boolean;
   arrowEnd: boolean;
@@ -63,8 +70,32 @@ export function linkColor({
   return LINK_CONTEXT_COLOR;
 }
 
-/** 派发线只在选中时显示的那一个词。 */
+/** 派发线的标签。 */
 export const DISPATCH_LABEL_KEY = "edge.role.dispatch";
+
+/**
+ * 一条线允许从哪些边出入：派发线顺布局方向只有一对；`free` 四边都行，
+ * 正对的那一对优先（`route.ts` 给其余的边加代价）。
+ */
+export function routeFor(
+  source: Box,
+  target: Box,
+  obstacles: readonly Box[] = [],
+  anchor: LinkAnchor = "free",
+  previous?: SidePair,
+): Route {
+  const facing = facingSides(source, target, anchor);
+  const fixed = anchor !== "free";
+  return routeEdge({
+    source,
+    target,
+    obstacles,
+    sourceSides: fixed ? [facing.source] : ALL_SIDES,
+    targetSides: fixed ? [facing.target] : ALL_SIDES,
+    preferred: facing,
+    previous: fixed ? undefined : previous,
+  });
+}
 
 /**
  * 两端的矩形、节点类型与边的角色 → 画一条线需要的全部信息（ui-wave2 §3.2）。
@@ -73,9 +104,10 @@ export const DISPATCH_LABEL_KEY = "edge.role.dispatch";
  * 终端单向，终端 ↔ 终端双向，内容 ↔ 内容无箭头；分组的类型是 `"group"`，
  * 落在「内容」那一类里。
  *
- * 派发线（`supervises`）：只在子那一端画箭头，没有常驻标签。
+ * 派发线（`supervises`）：只在子那一端画箭头，标签「派发」。
  *
  * `anchor` 决定走哪条边：对等线 `free`（就近边），派发线按布局方向。
+ * `obstacles` 是附近要绕开的节点矩形，`previous` 是上一次的出入边（防抖）。
  */
 export function linkView(
   source: Box,
@@ -84,15 +116,24 @@ export function linkView(
   targetType?: string,
   role?: CanvasEdgeRole,
   anchor: LinkAnchor = "free",
+  options: { obstacles?: readonly Box[]; previous?: SidePair } = {},
 ): LinkView {
-  const curve = linkCurve(source, target, anchor);
+  const route = routeFor(
+    source,
+    target,
+    options.obstacles,
+    anchor,
+    options.previous,
+  );
+  const d = roundedPath(route.points, CORNER_RADIUS);
   const labelKey = edgeLabelKey(sourceType, targetType, role);
   if (role === "supervises") {
-    return { curve, labelKey, arrowStart: false, arrowEnd: true };
+    return { route, d, labelKey, arrowStart: false, arrowEnd: true };
   }
   const heads = edgeArrowheads(sourceType, targetType);
   return {
-    curve,
+    route,
+    d,
     labelKey,
     arrowStart: heads.start === "arrow",
     arrowEnd: heads.end === "arrow",
@@ -100,7 +141,7 @@ export function linkView(
 }
 
 /**
- * 端点处的一个「V」形箭头，沿曲线切线画。
+ * 端点处的一个「V」形箭头，沿末段线段的方向画（`from` 是那一段的另一头）。
  *
  * 不用 SVG `marker`：一条边一个 marker id，30 条线就是 30 个 `<defs>`，
  * 而且 marker 不跟着 `currentColor` 走，选中变色时还要再复制一份。

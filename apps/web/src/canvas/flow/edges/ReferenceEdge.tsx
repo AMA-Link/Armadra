@@ -1,87 +1,72 @@
 import * as React from "react";
-import { BaseEdge, EdgeLabelRenderer, useInternalNode } from "@xyflow/react";
-import type { EdgeProps, InternalNode, Node } from "@xyflow/react";
+import { BaseEdge, EdgeLabelRenderer } from "@xyflow/react";
+import type { EdgeProps } from "@xyflow/react";
 import { X } from "lucide-react";
 
 import { useT } from "@/app/preferences-store";
 import { Button } from "@/ui/button";
 import { removeContentReference } from "../../create-content-reference";
-import { edgeGeometry, type Box } from "../../geometry";
 import type { ReferenceFlowEdge } from "../../sync/project";
+import { EdgeLabel, useEdgeLayout } from "./EdgeLabel";
 import { arrowHead, INTERACTION_WIDTH, STROKE_WIDTH } from "./link-visual";
+import { midpointOf } from "./route";
 
 /**
  * 内容引用边（React Flow 计划 §2.3 / F29，归属 B5）。
  *
  * 与 `LinkEdge` 的三点不同，都是为了让它一眼就不像一条上下文连线：
  *
- *  - **直线**，不是贝塞尔。引用是「这块内容归那个 Agent 读」的记账，不是
- *    两个节点之间的关系，画得越轻越好。
+ *  - **虚线**。引用是「这块内容归那个 Agent 读」的记账，不是两个节点之间的
+ *    关系，画得越轻越好；路线与上下文线同一套避障折线（#318），标签「引用」。
  *  - **单箭头指向节点**（`source` 永远是 `wb:*`，`target` 永远是节点，
  *    `sync/project.projectReference` 定的），方向就是资料流向。
- *  - **静音配色** `--muted-foreground`，且没有中点标签。
+ *  - **静音配色** `--muted-foreground`。
  *
- * 端点用两端矩形相对边上的锚点（`geometry.edgeGeometry` 的 `free` 模式，
- * 上下左右四条边都可以出线），不是把手坐标：白板对象上根本没有左右把手，
- * 而一条从下方墨迹指上来的引用应该从墨迹的上边出发。
+ * 端点用两端矩形边中点（四条边都可以出线），不是把手坐标：白板对象上根本
+ * 没有左右把手，而一条从下方墨迹指上来的引用应该从墨迹的上边出发。
  *
  * 选中时在中点浮一个删除按钮。引用边的 id 不在 `document.edges` 里，
  * `tools.splitSelectionForDelete`（B0）因此认不出它，Delete 键当前删不掉
  * 一条引用——按钮是这一版里唯一不依赖右键菜单的出口（见交接记录）。
  */
 
-/** 一端的矩形；React Flow 还没量到尺寸时退回投影给的宽高。 */
-function boxOf(node: InternalNode<Node> | undefined): Box | null {
-  if (!node) return null;
-  const width = node.measured.width ?? node.width ?? 0;
-  const height = node.measured.height ?? node.height ?? 0;
-  if (width <= 0 || height <= 0) return null;
-  return {
-    x: node.internals.positionAbsolute.x,
-    y: node.internals.positionAbsolute.y,
-    width,
-    height,
-  };
-}
-
 export function ReferenceEdge({
   id,
-  source,
-  target,
   selected = false,
   style,
 }: EdgeProps<ReferenceFlowEdge>) {
   const t = useT();
-  const sourceNode = useInternalNode(source);
-  const targetNode = useInternalNode(target);
+  // 与上下文线同一套避障路由（#318），只是画成虚线。
+  const layout = useEdgeLayout(id);
+  if (!layout) return null;
 
-  const sourceBox = boxOf(sourceNode);
-  const targetBox = boxOf(targetNode);
-  if (!sourceBox || !targetBox) return null;
-
-  const geometry = edgeGeometry(sourceBox, targetBox, "free");
-  const from = { x: geometry.sourceX, y: geometry.sourceY };
-  const to = { x: geometry.targetX, y: geometry.targetY };
+  const { route } = layout.view;
+  const { text: label, label: labelBox } = layout;
+  const points = route.points;
+  const to = points[points.length - 1]!;
+  const before = points[points.length - 2]!;
+  const middle = midpointOf(points);
   const width = selected ? STROKE_WIDTH : STROKE_WIDTH - 0.5;
   const color = selected ? "var(--brand)" : "var(--muted-foreground)";
 
   return (
     <g style={{ color }} data-slot="reference-edge">
       <BaseEdge
-        path={`M ${from.x},${from.y} L ${to.x},${to.y}`}
+        path={layout.view.d}
         interactionWidth={INTERACTION_WIDTH}
         style={{
           ...style,
           stroke: "currentColor",
           strokeWidth: width,
           strokeLinecap: "round",
+          strokeLinejoin: "round",
           // 虚线：与实线的上下文连线一眼分得开，深浅色下都成立。
           strokeDasharray: "6 5",
           opacity: selected ? 1 : 0.75,
         }}
       />
       <path
-        d={arrowHead(to, from)}
+        d={arrowHead(to, before)}
         fill="none"
         stroke="currentColor"
         strokeWidth={width}
@@ -89,6 +74,7 @@ export function ReferenceEdge({
         strokeLinejoin="round"
         opacity={selected ? 1 : 0.75}
       />
+      {labelBox && !selected ? <EdgeLabel box={labelBox} text={label} /> : null}
       {selected ? (
         <EdgeLabelRenderer>
           <Button
@@ -100,8 +86,8 @@ export function ReferenceEdge({
             className="nodrag nopan pointer-events-auto absolute shadow-sm"
             style={{
               transform: `translate(-50%, -50%) translate(${
-                (from.x + to.x) / 2
-              }px, ${(from.y + to.y) / 2}px)`,
+                labelBox?.x ?? middle.x
+              }px, ${labelBox?.y ?? middle.y}px)`,
             }}
             onClick={(event) => {
               event.stopPropagation();
