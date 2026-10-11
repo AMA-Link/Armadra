@@ -81,7 +81,10 @@ export interface GatewayPanelProps {
   internet: boolean;
   /** 正在写配置或开关路线。 */
   busy: boolean;
-  /** 页面正经这台电脑的对外服务或互联网路线到达：关掉就是自断，不给关。 */
+  /**
+   * 页面正经互联网路线到达这台电脑：整个关掉就是自断，不给关。经局域网到达的
+   * 页面照样能关（关掉后它自己断开，与以前的局域网开关一致）。
+   */
   inUse?: boolean;
   /** 页面正经互联网路线到达：不给退回仅局域网。 */
   internetInUse?: boolean;

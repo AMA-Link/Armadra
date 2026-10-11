@@ -9,6 +9,7 @@ import {
   listSources,
   notifyShellSourcesChanged,
 } from "../../../../api/remote-services";
+import { useAccess } from "../../../../app/use-access";
 import { reloadIntoSettings } from "../../../../sources/bootstrap";
 import { RELAY_PENDING_KEY, SHARE_STATUS_KEY } from "../../RemoteShare";
 import { groupFingerprint } from "../gateway/PairingCard";
@@ -58,7 +59,14 @@ export function useLocalName(): string {
 }
 
 function useLocalNameQuery(): string {
-  const table = useSourceTable();
+  // 成员读不到源表（403）：徽标只写「本机」，不发这次请求。
+  const { member } = useAccess();
+  const table = useQuery({
+    queryKey: SOURCES_QUERY_KEY,
+    queryFn: listSources,
+    retry: false,
+    enabled: !member,
+  });
   return (
     table.data?.sources
       .find((source) => source.kind === "local")

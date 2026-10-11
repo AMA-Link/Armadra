@@ -128,7 +128,7 @@ function HostAccessBody() {
         status={status}
         internet={internet.on}
         busy={gateway.configure.isPending || internet.busy}
-        inUse={access.via !== null}
+        inUse={internetInUse}
         internetInUse={internetInUse}
         onToggle={toggle}
         onReach={reach}
