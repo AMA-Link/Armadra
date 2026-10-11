@@ -32,6 +32,23 @@ export type ActiveKeymap = Partial<Record<CommandId, ResolvedKeys>>;
 
 let activeKeymap: ActiveKeymap = {};
 
+/**
+ * 快捷键总开关（`settings.keymap.enabled`，契约 §66）。
+ *
+ * 和生效中的键位一样由 `useAppKeybindings` 推进来：关掉之后所有
+ * `useKeybindings` 监听器（含编辑器、浏览器节点各自装的那几个）、终端的按键
+ * 分流与菜单上显示的键位都读这一位，按键原样交给终端、编辑器与浏览器。
+ */
+let enabled = true;
+
+export function setShortcutsEnabled(next: boolean): void {
+  enabled = next;
+}
+
+export function shortcutsEnabled(): boolean {
+  return enabled;
+}
+
 export function setActiveKeymap(keymap: ActiveKeymap): void {
   activeKeymap = keymap;
 }
@@ -68,12 +85,16 @@ export function commandKeys(
   return mac ? platformKeys.mac : platformKeys.other;
 }
 
-/** 命令在当前平台上的显示串，命令面板与菜单右侧直接用。 */
+/**
+ * 命令在当前平台上的显示串，命令面板与菜单右侧直接用。
+ * 总开关关着时是空串：按下去不会生效的键不该写在菜单上。
+ */
 export function commandKeysLabel(
   id: CommandId,
   options: MatchOptions & {
     keymap?: ActiveKeymap;
   } = {},
 ): string {
+  if (!enabled && options.keymap === undefined) return "";
   return formatKeys(commandKeys(id, options), options);
 }

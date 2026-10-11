@@ -36,6 +36,10 @@ function row(sourceId: string, overrides: Partial<SourceRow> = {}): SourceRow {
     addedAtMs: 1_000,
     lastOkAtMs: 0,
     orderIndex: 1,
+    origin: "mine",
+    ownerLabel: "",
+    shareRole: "",
+    shareExpiresAtMs: 0,
     ...overrides,
   };
 }

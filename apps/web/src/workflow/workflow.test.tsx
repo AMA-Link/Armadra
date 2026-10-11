@@ -25,6 +25,19 @@ import { TestProviders, installDomPolyfills } from "@/app/test-harness";
 import { usePreferencesStore } from "@/app/preferences-store";
 import { useCanvasStore } from "@/store/canvas-store";
 
+/** 功能开关（#295）：这里测的是功能本身，按开着测。 */
+const featureFlags = vi.hoisted(() => ({
+  credentials: true,
+  usage: true,
+  activityCards: true,
+  scheduledTasks: true,
+  workflows: true,
+}));
+vi.mock("@armadra/shared", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@armadra/shared")>()),
+  FEATURE_FLAGS: featureFlags,
+}));
+
 const api = vi.hoisted(() => ({
   drafts: vi.fn(),
   confirmDraft: vi.fn(),

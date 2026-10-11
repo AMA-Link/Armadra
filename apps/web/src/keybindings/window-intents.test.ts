@@ -2,7 +2,15 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { clearCanvasCommands, registerCanvasCommand } from "../canvas/commands";
 import { useCanvasStore } from "../store/canvas-store";
-import { subscribeWindowIntents } from "./window-intents";
+import {
+  TERMINAL_NODE_ATTRIBUTE,
+  registerTerminalHandle,
+} from "../nodes/terminal-registry";
+import { setShortcutsEnabled } from "./active";
+import {
+  returnCloseToTerminal,
+  subscribeWindowIntents,
+} from "./window-intents";
 
 /**
  * 壳的两条窗口事件，页面这一半。
@@ -144,5 +152,64 @@ describe("不在桌面壳里", () => {
   it("什么也不订阅，退订是空操作", () => {
     expect(() => subscribeWindowIntents()()).not.toThrow();
     expect(intentListeners).toEqual([]);
+  });
+});
+
+describe("Windows / Linux 上终端里的 Ctrl+W", () => {
+  function focusTerminal(nodeId: string): () => void {
+    const node = document.createElement("div");
+    node.setAttribute(TERMINAL_NODE_ATTRIBUTE, nodeId);
+    const xterm = document.createElement("div");
+    xterm.className = "xterm";
+    const textarea = document.createElement("textarea");
+    xterm.append(textarea);
+    node.append(xterm);
+    document.body.append(node);
+    textarea.focus();
+    return () => node.remove();
+  }
+
+  it("还给终端一个 ^W，回「接了」，不关节点也不关窗口", async () => {
+    const closed = vi.fn();
+    registerCanvasCommand("canvas.closeNode", closed);
+    useCanvasStore.setState({ selectedNodeIds: ["node-1"] });
+    const sendKeys = vi.fn();
+    const off = registerTerminalHandle("node-1", { sendKeys } as never);
+    const remove = focusTerminal("node-1");
+    installBridge();
+    subscribeWindowIntents();
+
+    intentListeners[0]?.("close-window", "intent-6");
+    await Promise.resolve();
+
+    expect(sendKeys).toHaveBeenCalledWith("\x17");
+    expect(closed).not.toHaveBeenCalled();
+    expect(answers).toEqual([{ token: "intent-6", handled: true }]);
+    off();
+    remove();
+  });
+
+  it("macOS 的 ⌘W 不走这条：终端用不到它", () => {
+    const remove = focusTerminal("node-1");
+    expect(returnCloseToTerminal(true)).toBe(false);
+    expect(returnCloseToTerminal(false)).toBe(true);
+    remove();
+    expect(returnCloseToTerminal(false)).toBe(false);
+  });
+
+  it("总开关关着时不关节点，交给壳去关窗", async () => {
+    const closed = vi.fn();
+    registerCanvasCommand("canvas.closeNode", closed);
+    useCanvasStore.setState({ selectedNodeIds: ["node-1"] });
+    setShortcutsEnabled(false);
+    installBridge();
+    subscribeWindowIntents();
+
+    intentListeners[0]?.("close-window", "intent-7");
+    await Promise.resolve();
+    setShortcutsEnabled(true);
+
+    expect(closed).not.toHaveBeenCalled();
+    expect(answers).toEqual([{ token: "intent-7", handled: false }]);
   });
 });

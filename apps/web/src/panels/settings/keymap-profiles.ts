@@ -79,6 +79,8 @@ export const PROFILE_PRESETS: Record<BuiltinProfileId, StoredKeymap> = {
       // ⌘⇧F 归了项目搜索，专注模式换成 VS Code 的 Zen Mode 那一档的空位。
       "canvas.focusMode": "Mod+Shift+Backslash",
       "canvas.newTerminal": "Ctrl+Backquote",
+      // ⌘⇧M 给了问题面板；导入 Mermaid 从命令面板与新建菜单进。
+      "canvas.importMermaid": "",
     }),
     other: layer({
       "app.commandPalette": "Mod+Shift+P",
@@ -87,6 +89,8 @@ export const PROFILE_PRESETS: Record<BuiltinProfileId, StoredKeymap> = {
       "app.problems": "Mod+Shift+M",
       "canvas.focusMode": "Mod+Shift+Backslash",
       "canvas.newTerminal": "Ctrl+Backquote",
+      // ⌘⇧M 给了问题面板；导入 Mermaid 从命令面板与新建菜单进。
+      "canvas.importMermaid": "",
     }),
     when: {},
   },

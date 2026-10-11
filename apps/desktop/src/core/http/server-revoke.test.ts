@@ -38,6 +38,9 @@ afterEach(async () => {
   resetRouteGuard();
 });
 
+/** 每次升级时流拿到的「只读」标记。 */
+const opened: boolean[] = [];
+
 async function serve(identity: RequestIdentity): Promise<number> {
   const log = { error() {}, warn() {}, info() {}, debug() {} };
   const core = new CoreServer({
@@ -45,7 +48,8 @@ async function serve(identity: RequestIdentity): Promise<number> {
     bus: new EventBus(),
     version: "test",
   });
-  core.stream(PATH, (connection) => {
+  core.stream(PATH, (connection, _params, _request, access) => {
+    opened.push(access.readOnly);
     connection.on("message", () => {});
   });
   // 和 Gateway 一样：认证完的升级在这个人的身份下转给 core。
@@ -109,6 +113,25 @@ describe("长连接在授权变化后复核", () => {
     accessChanged();
     expect(await code).toBe(CLOSE_ACCESS_REVOKED);
     expect(seen.every((value) => value === "p-member")).toBe(true);
+  });
+
+  it("只读放行交给流；原来可写、现在只能读的流也关（重连就按只读开）", async () => {
+    opened.length = 0;
+    let readOnly = true;
+    const port = await serve({ subject: MEMBER, revalidate: () => MEMBER });
+    installRouteGuard(() => ({ allowed: true, readOnly }));
+    const first = await open(port);
+    // 只读开的流：授权变化后仍只读放行，照旧开着。
+    accessChanged();
+    expect(first.socket.readyState).toBe(WebSocket.OPEN);
+    first.socket.close();
+    readOnly = false;
+    const second = await open(port);
+    expect(opened).toEqual([true, false]);
+    // 可写开的流降成只读：关掉，免得一条按可写开的 socket 继续往里写。
+    readOnly = true;
+    accessChanged();
+    expect(await second.code).toBe(CLOSE_ACCESS_REVOKED);
   });
 
   it("没有请求身份（桌面壳）的流不受影响", async () => {

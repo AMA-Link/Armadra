@@ -291,8 +291,16 @@ describe("路由门的矩阵", () => {
     expect(row(decide, "GET", "/api/terminals/t1/capture")).toBe(
       "owner,driver,operator,editor,viewer",
     );
-    // 附着的 socket 能写：没记过创建者的会话按「别人的」判。
-    expect(row(decide, "GET", "/api/terminals/t1/ws")).toBe("owner,driver");
+    // 附着的 socket 能写：没记过创建者的会话按「别人的」判，只有 driver 可写；
+    // 只能读的人放行为只读附着（契约 §60，#308）。
+    expect(row(decide, "GET", "/api/terminals/t1/ws")).toBe(
+      "owner,driver,operator,editor,viewer",
+    );
+    const writable = PEOPLE.filter((who) => {
+      const verdict = decide(who, "GET", "/api/terminals/t1/ws");
+      return verdict.allowed && verdict.readOnly !== true;
+    });
+    expect(writable.join(",")).toBe("owner,driver");
     expect(row(decide, "POST", "/api/terminals/t1/paste")).toBe("owner,driver");
     // 不知道属于哪块画布的会话，成员一律不放。
     expect(row(decide, "GET", "/api/terminals/unknown/capture")).toBe("owner");
@@ -365,9 +373,9 @@ describe("路由门的矩阵", () => {
     expect(decide("operator", "POST", "/api/terminals/t1/paste").allowed).toBe(
       true,
     );
-    expect(decide("operator", "GET", "/api/terminals/t1/ws").allowed).toBe(
-      true,
-    );
+    expect(decide("operator", "GET", "/api/terminals/t1/ws")).toEqual({
+      allowed: true,
+    });
     // 别人仍然要 driver。
     expect(decide("editor", "POST", "/api/terminals/t1/paste").allowed).toBe(
       false,

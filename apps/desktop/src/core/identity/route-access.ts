@@ -36,7 +36,8 @@ import { type Scope, scope } from "./scopes";
  * **资源维度**（契约 §60）：只有终端与 ACP 会话的读路径带上会话 id 去问
  * （`terminal:read@ws#session`），所以「只看这一条会话」的授权只在这两处成立；
  * 其余一切判定照旧不带资源，受限授权在那里永远不满足——画布、文件、别的会话、
- * 一切写入对会话查看者都是 403。
+ * 一切写入对会话查看者都是 403。终端 socket（`…/ws`）对只能读的人放行为只读
+ * 附着（裁决带 `readOnly`），看得见画面、写不进去。
  */
 
 /**
@@ -96,6 +97,7 @@ export interface RouteAccessOptions {
 
 const ALLOW: RouteVerdict = { allowed: true };
 const DENY: RouteVerdict = { allowed: false };
+const READ_ONLY: RouteVerdict = { allowed: true, readOnly: true };
 
 /**
  * 无害的全局读：不带任何人的数据，画布上的日常操作离不开。只有 GET。
@@ -438,18 +440,27 @@ export function createRouteGuard(options: RouteAccessOptions): RouteGuard {
       const workspaceId = lookups.sessionWorkspace(sessionId);
       if (workspaceId === "") return DENY;
       if (requirement.permission === "credential:use") return DENY;
-      // 附着到终端的 socket 能写：`…/ws` 虽是 GET，按写入判。
       if (requirement.permission === "terminal:read" && !path.endsWith("/ws")) {
         return readsSession(subject, workspaceId, sessionId);
       }
       // 设计 S5：往自己开的终端里写只要 `terminal:create`，往别人的要
       // `terminal:drive`。「自己的」按会话行上记的创建者判，重启之后照旧。
-      return ownOrOthers(
+      const writes = ownOrOthers(
         subject,
         lookups.sessionCreator(sessionId),
         "terminal:drive",
         workspaceId,
       );
+      // 附着到终端的 socket 能写：`…/ws` 虽是 GET，能写的人按写入放行；只能读的
+      // 人（查看者、会话查看者）放行为只读附着，流里的输入一律丢掉（契约 §60）。
+      if (
+        !writes.allowed &&
+        requirement.permission === "terminal:read" &&
+        readsSession(subject, workspaceId, sessionId).allowed
+      ) {
+        return READ_ONLY;
+      }
+      return writes;
     }
 
     const status = AGENT_STATUS.exec(path);

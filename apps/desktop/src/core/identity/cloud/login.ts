@@ -16,7 +16,8 @@
  * 5. 契约 §60：断言带 `role` → 这个人经本签发方来的授予整份换成声明的范围（`scp`
  *    的会话 / 工作空间，都没有 = 整台），本地授予不动；不带 → 只续租。`ro` 或会话
  *    范围一律压成只读。SaaS 登记的签发方带 `org` + `role` 时不需要邀请就建成员。
- *    经云来的授予都有租约（断言到期后 30 天），每次登录续。
+ *    经云来的授予都有租约（断言到期后 30 天），每次登录续；经邀请（分享链接）来的
+ *    封顶在邀请到期（契约 §68）。答案带 `share`：角色、到期与主人的名字。
  * 6. 建设备与会话（`method = "cloud"`），审计 `cloud.login`（带 `jti` / `org` / `team`）。
  */
 
@@ -33,8 +34,11 @@ import {
   type AssertedGrant,
   GRANT_LEASE_MS,
   applyCloudGrants,
+  originShare,
+  ownerDisplayName,
   registerExternal,
 } from "../grant-sync";
+import { currentHostName } from "../../settings";
 import { IdentityError } from "../errors";
 import type { ShareRole } from "../roles";
 import type { IdentityService, SessionCredentials } from "../service";
@@ -60,6 +64,12 @@ export interface CloudLoginResult {
     readonly displayName: string;
   };
   readonly created: boolean;
+  /** 契约 §68：这个人经这个签发方拿到的授予；owner 与没有授予时没有。 */
+  readonly share?: {
+    readonly ownerName: string;
+    readonly role: ShareRole;
+    readonly expiresAtMs: number;
+  };
 }
 
 export interface CloudLoginOptions {
@@ -154,10 +164,19 @@ export class CloudLogin {
     });
 
     const scope = parseScopeClaims(claims.scp);
+    const token = input.invitationToken?.trim() ?? "";
+    // 这次登录背后的邀请（契约 §68）：经链接来的断言每次都带它；第一次兑换时就是
+    // 邀请令牌那一张。租约封顶在它的到期。
+    const leaseInvitation =
+      claims.link?.invitationId ??
+      (token === "" ? undefined : parseToken(token));
     const provenance = {
       origin: provider,
       leaseUntilMs: claims.exp * 1000 + GRANT_LEASE_MS,
       readOnly: scope.readOnly || scope.sessionIds.length > 0,
+      ...(leaseInvitation === undefined
+        ? {}
+        : { invitationId: leaseInvitation }),
     };
     const declaresScope =
       scope.workspaceIds.length > 0 || scope.sessionIds.length > 0;
@@ -165,7 +184,6 @@ export class CloudLogin {
     let principalId: string;
     let created = false;
     let invitationId: string | undefined;
-    const token = input.invitationToken?.trim() ?? "";
     if (mapped !== undefined) {
       principalId = mapped.principalId;
     } else if (
@@ -303,6 +321,10 @@ export class CloudLogin {
       }
       return row;
     });
+    const share =
+      principal?.kind === "owner"
+        ? undefined
+        : originShare(store, this.now(), principalId, provider);
     return {
       credentials,
       principal: {
@@ -311,6 +333,14 @@ export class CloudLogin {
         displayName: principal?.displayName ?? "",
       },
       created,
+      ...(share === undefined
+        ? {}
+        : {
+            share: {
+              ownerName: ownerDisplayName(store, currentHostName()),
+              ...share,
+            },
+          }),
     };
   }
 

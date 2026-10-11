@@ -21,7 +21,7 @@ import { chmodSync, mkdirSync, writeFileSync } from "node:fs";
 import { createServer } from "node:http";
 import { join } from "node:path";
 
-import { makeNode, root, sleep } from "./harness.mjs";
+import { featureEnabled, makeNode, root, sleep } from "./harness.mjs";
 
 /** 三家状态页的本机 fixture。 */
 export async function startStatusFixture() {
@@ -311,6 +311,50 @@ export default async function resources({
   );
 
   /* -------------------------------- 用量页 ------------------------------- */
+  // 用量暂时下线（#295）：工具簇里没有用量胶囊，看板也打不开。
+  const usage = await featureEnabled("usage");
+  if (!usage) run.ok("用量暂时下线（#295），跳过用量看板");
+  else await usageBadges(run, page, fixture);
+
+  /* -------------------------------- 窄屏 --------------------------------- */
+  const phone = await stack.browser.page(await stack.browser.context());
+  await phone.viewport(390, 844, true);
+  await phone.goto(stack.boardUrl(workspace.id, board.id));
+  await phone.settle();
+  await phone.clickOn(
+    `return document.querySelector("button[aria-label='资源']");`,
+    "手机资源按钮",
+  );
+  await phone.until(
+    `return document.body.innerText.includes("平台组件")`,
+    "手机资源面板",
+  );
+  await sleep(1500);
+  await run.shot(phone, "mobile-resources");
+  await phone.clickOn(
+    `return document.querySelector("button[aria-label='关闭资源面板']");`,
+    "手机关闭资源面板",
+  );
+  await phone.until(
+    `return !document.body.innerText.includes("平台组件")`,
+    "手机资源面板收起",
+  );
+  if (usage) {
+    await openUsage(phone);
+    await phone.until(
+      `return document.querySelectorAll('[data-slot="usage-provider-card"]').length >= 3`,
+      "手机用量看板",
+    );
+    await sleep(800);
+    await run.shot(phone, "mobile-usage");
+  }
+  run.consoleClean(page, phone);
+  await phone.close();
+  await page.close();
+  run.entry.status = "passed";
+}
+
+async function usageBadges(run, page, fixture) {
   await openUsage(page);
   const badges = await page.until(
     `const cards = [...document.querySelectorAll('[data-slot="usage-provider-card"]')];
@@ -344,39 +388,4 @@ export default async function resources({
   );
   await sleep(300);
   await run.shot(page, "usage-1-status-badges");
-
-  /* -------------------------------- 窄屏 --------------------------------- */
-  const phone = await stack.browser.page(await stack.browser.context());
-  await phone.viewport(390, 844, true);
-  await phone.goto(stack.boardUrl(workspace.id, board.id));
-  await phone.settle();
-  await phone.clickOn(
-    `return document.querySelector("button[aria-label='资源']");`,
-    "手机资源按钮",
-  );
-  await phone.until(
-    `return document.body.innerText.includes("平台组件")`,
-    "手机资源面板",
-  );
-  await sleep(1500);
-  await run.shot(phone, "mobile-resources");
-  await phone.clickOn(
-    `return document.querySelector("button[aria-label='关闭资源面板']");`,
-    "手机关闭资源面板",
-  );
-  await phone.until(
-    `return !document.body.innerText.includes("平台组件")`,
-    "手机资源面板收起",
-  );
-  await openUsage(phone);
-  await phone.until(
-    `return document.querySelectorAll('[data-slot="usage-provider-card"]').length >= 3`,
-    "手机用量看板",
-  );
-  await sleep(800);
-  await run.shot(phone, "mobile-usage");
-  run.consoleClean(page, phone);
-  await phone.close();
-  await page.close();
-  run.entry.status = "passed";
 }

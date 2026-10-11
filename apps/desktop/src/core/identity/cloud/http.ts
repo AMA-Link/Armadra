@@ -219,6 +219,8 @@ export class CloudHttp {
       session: this.sessionBody(request, result.credentials),
       principal: result.principal,
       created: result.created,
+      // 契约 §68：分享信息（owner 与没有授予时没有）。
+      ...(result.share === undefined ? {} : { share: result.share }),
     });
   }
 
