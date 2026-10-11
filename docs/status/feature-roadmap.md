@@ -178,7 +178,7 @@ Armadra 是 local-first 的 AI Coding 画布：把真实 CLI Agent（Claude Code
 | 无窗口服务器壳：TLS、静态页面托管、设备配对、`__Host-` 会话、CSRF、可撤销设备                                                               | ✅   | 进度 §11                                                                                                                                                                           |
 | 可选邮件通道：SMTP 发邀请与重置链接（`--smtp-url`，口令在密钥后端）；`secrets set` / `secrets rotate`                                       | 🔶   | G5-13；契约 §28；对 Mailpit 验过，真 SMTP 见 §4                                                                                                                                    |
 | 服务器部署：容器镜像（`/data` 卷、健康检查、不停服备份）、内建 ACME（`http-01`、续期热换、失败保留旧证书）、部署指南；GHCR 只在 `v*` 标签推 | ✅   | 补全 G3-5、G5-16；`tls-alpn-01`、Caddy 反代端到端、可选带 Chromium 的镜像；[服务器部署](../guides/server-deployment.md)；真域名见 §4                                               |
-| **桌面 Gateway**：设置 / 托盘开关、本地 CA / 指定文件 / ACME、二维码与链接配对、CA 安装引导、原生 App 的 Bearer 与一次性 WS 票、设备表      | ✅   | 补全 G1-10、G2-7、G3-11、G5-01、G5-02；契约 §17、§24；私网档 8 位配对码，设备表带平台与最近访问                                                                                    |
+| **桌面 Gateway**：设置 / 托盘开关、本地 CA / 指定文件 / ACME、二维码与链接配对、CA 安装引导、原生 App 的 Bearer 与一次性 WS 票、设备表      | ✅   | 补全 G1-10、G2-7、G3-11、G5-01、G5-02；契约 §17、§24、§73；私网档 8 位配对码（原生 App 局域网首连经 PAKE 也可用，经中继不开放），设备表带平台与最近访问                            |
 | 身份加固：口令策略、限流与锁定、passkey、TOTP 与恢复码、会话与锁定管理、审计筛选与 CSV 导出、两步登录页                                     | ✅   | 补全 G1-11、G2-8、G5-02、G5-03；契约 §18.1–§18.4、§18.6、§25；整页登录、owner 签发的口令重置链接、passkey 改名、owner 重置成员 MFA、策略拒绝码文案；passkey 在 IP 主机上如实不可用 |
 | OAuth / OIDC / SSO：GitHub 与通用 OIDC，绑定、登录、白名单建号、SSO 登出                                                                    | ✅   | 补全 G1-12、G2-8；契约 §18.5；dex / Keycloak 测过，真应用见 §4                                                                                                                     |
 | 口令泄露检查（HIBP k-匿名，`auto / off / warn / block`，`auto` 在服务器壳与开了 Gateway 的桌面上按 `warn`，查不成只记审计）                 | ✅   | 补全 G3-8；契约 §18.1                                                                                                                                                              |
@@ -259,7 +259,6 @@ Armadra 是 local-first 的 AI Coding 画布：把真实 CLI Agent（Claude Code
 G5 合入后，各包「没做 / 限制」里还有一些不依赖账号、证书或真机的条目，没有进[用户待办清单](./user-action-checklist.md)。按域列在这里，括号里是记下它的工作包（[补全进度](./completion-progress.md)）。这些都是已知限制，不是挂着的工作包；要做时另开计划。
 
 - **协调者与工作流**：分派抽屉靠 5 秒轮询、没有专门事件；重试后协调者若不再 `wait`，那一行停在「运行中」（G5-09）。冻结的工作流计划没有批量升级入口（G5-08）。runners 的 `--cwd` 只认本机工作区，`team` 不带 `--cwd` / `--resume`（G5-07）。远端 ACP 适配器不带启动器的注入与 ama 的 profile（G5-06）。
-- **身份与传输**：浏览器（Cookie 会话）页面的 HTTP 请求在访问令牌过期后不自动刷新（G5-20）。下载会把整个文件读进内存；语言服务与浏览器画面两条流在回环收紧后只经全局 `WebSocket` 覆盖，没有单独实测（G5-28）。原生 App 首次连接（还没钉过信任锚）不能用 8 位配对码（G5-01）。
 - **推送、协同与评论**：手动平移不取消跟随（G5-11）。评论编辑框没有 Markdown 实时预览，点开聚合钉不自动放大（G5-12）。
 - **托管平台**：Gitea / GitLab 没有评审与 issue 分组；配置整台机器一份、不按工作空间；Gitea 的合并方式不读仓库的 `allow_*`，`merge_when_checks_succeed` 没接；fork 检出按远端名字选远端；子组连接的徽标不定位到具体 MR（G5-15、G5-29、G5-30）。
 - **用量与发布**：`UsageService` 的 `claudeWindowLimits` 没有接进装配，缺订阅档额度的来源（G5-25）。客户端更新地址 `ARMADRA_UPDATER_ENDPOINTS` 只写 GitHub，镜像域名定了再加（G5-18）。
