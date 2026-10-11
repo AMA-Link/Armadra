@@ -375,16 +375,14 @@ describe("契约 §60：分享范围", () => {
   const bodyOf = (request: ReturnType<typeof sentScope>) =>
     (request?.body ?? {}) as Record<string, unknown>;
 
-  it("工作空间只读：邀请压成 viewer，中继报 links.scope 时把范围交给它", async () => {
+  it("工作空间只读：邀请压成 viewer，中继报 links.scope 时只交工作空间、不交只读", async () => {
     const created = await create({ role: "editor", readOnly: true });
     expect(issued.at(-1)).toMatchObject({
       role: "viewer",
       targetWorkspaceId: "ws-1",
     });
-    expect(bodyOf(sentScope()).scope).toEqual({
-      workspaceId: "ws-1",
-      readOnly: true,
-    });
+    // #308：交了 `readOnly` 中继就签 `ro` 的令牌，边缘把 POST 的 RPC 全挡掉。
+    expect(bodyOf(sentScope()).scope).toEqual({ workspaceId: "ws-1" });
     expect(created.link).toMatchObject({
       role: "viewer",
       target: "workspace",
@@ -405,11 +403,8 @@ describe("契约 §60：分享范围", () => {
       targetWorkspaceId: "ws-1",
       targetSessionId: "t1",
     });
-    expect(bodyOf(sentScope()).scope).toEqual({
-      workspaceId: "ws-1",
-      sessionId: "t1",
-      readOnly: true,
-    });
+    // 交了会话中继就当只读签 `ro`（#308）：只交它所在的工作空间，会话落在本机邀请上。
+    expect(bodyOf(sentScope()).scope).toEqual({ workspaceId: "ws-1" });
     expect(session.link).toMatchObject({
       target: "session",
       sessionId: "t1",
@@ -426,9 +421,19 @@ describe("契约 §60：分享范围", () => {
       targetWorkspaceId: "",
       targetHost: true,
     });
-    // 整台可写没有范围可交：请求里不出现 scope（与旧版同形）。
+    // 整台没有范围可交：请求里不出现 scope（与旧版同形）。
     expect("scope" in bodyOf(sentScope())).toBe(false);
     expect(host.link).toMatchObject({ target: "host", workspaceId: "" });
+
+    const readOnlyHost = await create({
+      target: "host",
+      workspaceId: "",
+      role: "editor",
+      readOnly: true,
+    });
+    expect(issued.at(-1)).toMatchObject({ role: "viewer", targetHost: true });
+    expect("scope" in bodyOf(sentScope())).toBe(false);
+    expect(readOnlyHost.link).toMatchObject({ target: "host", readOnly: true });
   });
 
   it("中继不报 links.scope：不发 scope，范围照样落在本机邀请上", async () => {

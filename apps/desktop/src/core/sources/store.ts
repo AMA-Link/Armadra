@@ -1,5 +1,5 @@
 /**
- * 客户端源表与远程服务的 SQL（迁移 0039、0044，契约 §33、§55）。
+ * 客户端源表与远程服务的 SQL（迁移 0039、0044、0047，契约 §33、§55、§68）。
  *
  * 一个源可以有几条到达方式（`client_source_routes`，一条路一行）；`client_sources`
  * 上的地址列是首选路由的镜像（{@link SourcesStore.mirror}），旧读者照旧读它们。
@@ -11,6 +11,19 @@ import type { DatabaseSync } from "node:sqlite";
 
 export type ClientSourceKind = "local" | "direct" | "relayed" | "hosted";
 export type RemoteServiceKind = "personal" | "saas";
+/** 源的归属（契约 §68，迁移 0047）：我自己的电脑，或别人经分享链接给我的。 */
+export type SourceOrigin = "mine" | "shared";
+/** 分享给我的角色（契约 §68）；空串 = 未知或 `mine`。 */
+export type SourceShareRole = "" | "viewer" | "editor" | "operator" | "driver";
+
+/** `shared` 源的分享信息（契约 §68）：只作展示，权限由分享方的 core 判定。 */
+export interface SourceShare {
+  /** 分享方报的主人名字；不知道是空串。 */
+  readonly ownerLabel: string;
+  readonly shareRole: SourceShareRole;
+  /** 分享到期的时刻；0 = 未知或不过期。 */
+  readonly shareExpiresAtMs: number;
+}
 
 export interface SourceRow {
   readonly sourceId: string;
@@ -27,6 +40,11 @@ export interface SourceRow {
   readonly addedAtMs: number;
   readonly lastOkAtMs: number;
   readonly orderIndex: number;
+  /** 归属（迁移 0047）。 */
+  readonly origin: SourceOrigin;
+  readonly ownerLabel: string;
+  readonly shareRole: SourceShareRole;
+  readonly shareExpiresAtMs: number;
 }
 
 export interface RemoteRow {
@@ -103,6 +121,10 @@ interface SourceRecord {
   added_at_ms: number;
   last_ok_at_ms: number;
   order_index: number;
+  origin: SourceOrigin;
+  owner_label: string;
+  share_role: SourceShareRole;
+  share_expires_at_ms: number;
 }
 
 interface RemoteRecord {
@@ -131,6 +153,10 @@ function sourceOf(record: SourceRecord): SourceRow {
     addedAtMs: Number(record.added_at_ms),
     lastOkAtMs: Number(record.last_ok_at_ms),
     orderIndex: Number(record.order_index),
+    origin: record.origin,
+    ownerLabel: record.owner_label,
+    shareRole: record.share_role,
+    shareExpiresAtMs: Number(record.share_expires_at_ms),
   };
 }
 
@@ -150,7 +176,8 @@ function remoteOf(record: RemoteRecord): RemoteRow {
 
 const SOURCE_COLUMNS =
   "source_id, kind, label, default_label, base_url, relay_origin, fingerprint, cloud_issuer, " +
-  "principal_hint, added_at_ms, last_ok_at_ms, order_index";
+  "principal_hint, added_at_ms, last_ok_at_ms, order_index, origin, owner_label, share_role, " +
+  "share_expires_at_ms";
 const REMOTE_COLUMNS =
   "service_id, kind, issuer, label, default_label, account_hint, fingerprint, added_at_ms, last_ok_at_ms";
 
@@ -181,13 +208,15 @@ export class SourcesStore {
   upsert(row: SourceRow): SourceRow {
     this.database
       .prepare(
-        `INSERT INTO client_sources(${SOURCE_COLUMNS}) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ` +
+        `INSERT INTO client_sources(${SOURCE_COLUMNS}) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ` +
           "ON CONFLICT(source_id) DO UPDATE SET kind = excluded.kind, label = excluded.label, " +
           "default_label = excluded.default_label, " +
           "base_url = excluded.base_url, relay_origin = excluded.relay_origin, " +
           "fingerprint = excluded.fingerprint, cloud_issuer = excluded.cloud_issuer, " +
           "principal_hint = excluded.principal_hint, last_ok_at_ms = excluded.last_ok_at_ms, " +
-          "order_index = excluded.order_index",
+          "order_index = excluded.order_index, origin = excluded.origin, " +
+          "owner_label = excluded.owner_label, share_role = excluded.share_role, " +
+          "share_expires_at_ms = excluded.share_expires_at_ms",
       )
       .run(
         row.sourceId,
@@ -202,6 +231,10 @@ export class SourcesStore {
         row.addedAtMs,
         row.lastOkAtMs,
         row.orderIndex,
+        row.origin,
+        row.ownerLabel,
+        row.shareRole,
+        row.shareExpiresAtMs,
       );
     return this.get(row.sourceId) as SourceRow;
   }
@@ -227,6 +260,16 @@ export class SourcesStore {
       )
       .run(sourceId);
     return Number(result.changes) > 0;
+  }
+
+  /** 只改分享信息（契约 §68：重新 `cloud/login` 时分享方报的新值）。 */
+  setShare(sourceId: string, share: SourceShare): void {
+    this.database
+      .prepare(
+        "UPDATE client_sources SET owner_label = ?, share_role = ?, share_expires_at_ms = ? " +
+          "WHERE source_id = ? AND origin = 'shared'",
+      )
+      .run(share.ownerLabel, share.shareRole, share.shareExpiresAtMs, sourceId);
   }
 
   touchOk(sourceId: string, atMs: number): void {
