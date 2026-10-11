@@ -11,7 +11,8 @@ const cloneRepository = vi.fn();
 const gitCloneStatus = vi.fn();
 const cancelClone = vi.fn();
 const cloneDefaults = vi.fn();
-const cloneRepositories = vi.fn();
+const forgeAccounts = vi.fn();
+const forgeRepositories = vi.fn();
 const createWorkspace = vi.fn();
 
 vi.mock("../api/client", () => ({
@@ -20,9 +21,14 @@ vi.mock("../api/client", () => ({
     gitCloneStatus: (jobId: string) => gitCloneStatus(jobId),
     cancelClone: (jobId: string) => cancelClone(jobId),
     cloneDefaults: () => cloneDefaults(),
-    cloneRepositories: () => cloneRepositories(),
   },
   isConflict: () => false,
+}));
+
+vi.mock("../api/forge", () => ({
+  forgeAccounts: () => forgeAccounts(),
+  forgeRepositories: (host: string, cursor?: string | null) =>
+    forgeRepositories(host, cursor ?? null),
 }));
 
 vi.mock("../files/gateway", () => ({
@@ -65,6 +71,25 @@ describe("cloneProgress", () => {
   });
 });
 
+function row(owner: string, name: string, extra: object = {}) {
+  return {
+    host: "github.com",
+    owner,
+    name,
+    forge: "github",
+    description: "",
+    private: false,
+    fork: false,
+    archived: false,
+    defaultBranch: "main",
+    cloneUrl: `https://github.com/${owner}/${name}.git`,
+    sshUrl: `git@github.com:${owner}/${name}.git`,
+    webUrl: `https://github.com/${owner}/${name}`,
+    updatedAtMs: 0,
+    ...extra,
+  };
+}
+
 describe("NewWorkspaceDialog", () => {
   beforeEach(() => {
     for (const mock of [
@@ -72,30 +97,20 @@ describe("NewWorkspaceDialog", () => {
       gitCloneStatus,
       cancelClone,
       cloneDefaults,
-      cloneRepositories,
+      forgeAccounts,
+      forgeRepositories,
       createWorkspace,
     ]) {
       mock.mockReset();
     }
     cancelClone.mockResolvedValue(undefined);
     cloneDefaults.mockResolvedValue({ parent: "/home/me/Projects" });
-    cloneRepositories.mockResolvedValue({
-      connected: true,
-      account: "octo",
-      repositories: [
-        {
-          fullName: "octo/demo",
-          cloneUrl: "https://github.com/octo/demo.git",
-          private: true,
-          updatedAt: "2026-10-10T00:00:00Z",
-        },
-        {
-          fullName: "octo/other",
-          cloneUrl: "https://github.com/octo/other.git",
-          private: false,
-          updatedAt: "2026-10-01T00:00:00Z",
-        },
-      ],
+    forgeAccounts.mockResolvedValue([
+      { host: "github.com", forge: "github", accountLogin: "octo" },
+    ]);
+    forgeRepositories.mockResolvedValue({
+      items: [row("octo", "demo", { private: true }), row("octo", "other")],
+      nextCursor: null,
     });
   });
 
@@ -156,15 +171,39 @@ describe("NewWorkspaceDialog", () => {
     expect(onOpenChange).toHaveBeenCalledWith(false);
   });
 
-  it("仓库：没有连接 GitHub 时只说未连接", async () => {
-    cloneRepositories.mockResolvedValue({
-      connected: false,
-      account: null,
-      repositories: [],
-    });
+  it("仓库：没有账号时只说未连接", async () => {
+    forgeAccounts.mockResolvedValue([]);
     open();
-    expect(await screen.findByText("未连接 GitHub")).toBeTruthy();
+    expect(await screen.findByText("未连接代码托管账号")).toBeTruthy();
+    expect(forgeRepositories).not.toHaveBeenCalled();
     expect(primary("克隆").disabled).toBe(true);
+  });
+
+  it("仓库：一个账号不显示账号选择；按游标加载更多", async () => {
+    forgeRepositories.mockImplementation(
+      async (_host: string, cursor: string | null) =>
+        cursor === null
+          ? { items: [row("octo", "demo")], nextCursor: "2" }
+          : { items: [row("octo", "later")], nextCursor: null },
+    );
+    open();
+    expect(await screen.findByText("octo/demo")).toBeTruthy();
+    expect(screen.queryByLabelText("账号")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "加载更多" }));
+    expect(await screen.findByText("octo/later")).toBeTruthy();
+    expect(forgeRepositories).toHaveBeenLastCalledWith("github.com", "2");
+    expect(screen.queryByRole("button", { name: "加载更多" })).toBeNull();
+  });
+
+  it("仓库：多个账号时出现账号选择，列表按所选主机取", async () => {
+    forgeAccounts.mockResolvedValue([
+      { host: "github.com", forge: "github", accountLogin: "octo" },
+      { host: "git.example.com", forge: "gitea", accountLogin: null },
+    ]);
+    open();
+    expect(await screen.findByText("octo/demo")).toBeTruthy();
+    expect(screen.getByLabelText("账号")).toBeTruthy();
+    expect(forgeRepositories).toHaveBeenCalledWith("github.com", null);
   });
 
   it("地址：非法地址不能提交；克隆失败显示原因", async () => {
