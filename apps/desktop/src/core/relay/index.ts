@@ -33,6 +33,7 @@ import type { E2eSigner } from "@armadra/platform-protocol/e2e";
 
 import { accessChanged } from "../identity/gate";
 import { type SecretBackend, secretsFor } from "../secrets";
+import { outboundChannels } from "../sources";
 import { createTunnelGate } from "./admission";
 import { E2eChannel } from "./e2e/channel";
 import { DeviceKey } from "./e2e/device-key";
@@ -143,7 +144,7 @@ export function installRelay(
     }),
   });
 
-  // 端到端通道（契约 §78、§79）：设备登记、通道表与几条路由。
+  // 端到端通道（契约 §77、§78）：设备登记、通道表与几条路由。
   const publishDevice = (event: DeviceEvent) => {
     const watched = eventStream()?.watchedWorkspaces() ?? [];
     for (const workspaceId of watched) {
@@ -198,6 +199,8 @@ export function installRelay(
     deviceKey: new DeviceKey(
       deps.secrets ?? (() => secretsFor(context).backend),
     ),
+    waitSource: async (sourceId, pendingId) =>
+      (await outboundChannels()?.wait(sourceId, pendingId)) ?? "pending",
   });
   const openChannel = (issuer: string) => (stream: TunnelDuplex) => {
     const channelId = nextChannelId++;

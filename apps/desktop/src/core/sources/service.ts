@@ -666,6 +666,7 @@ export class SourcesService {
       base: assertion.relayBaseUrl,
       fingerprint: relayFingerprint(assertion.relayBaseUrl, remote),
       relayToken: assertion.relayToken,
+      sourceId: row.sourceId,
     };
     const key = route.origin;
     let fresh: NativeCredentials;
@@ -1165,6 +1166,7 @@ export class SourcesService {
       base: assertion.relayBaseUrl,
       fingerprint: relayFingerprint(assertion.relayBaseUrl, remote),
       relayToken: assertion.relayToken,
+      sourceId: input.sourceId,
     };
     const credentials = await this.peer.cloudLogin(
       address,
@@ -1322,6 +1324,7 @@ export class SourcesService {
       base: accepted.relayBaseUrl,
       fingerprint: relayFingerprint(accepted.relayBaseUrl, endpoint),
       relayToken: accepted.relayToken,
+      sourceId: accepted.sourceId,
     };
     const credentials = await this.peer.cloudLogin(
       address,

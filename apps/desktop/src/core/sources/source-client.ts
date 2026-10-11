@@ -8,7 +8,7 @@
  */
 
 import { fail } from "../http/errors";
-import type { Transport } from "./http-client";
+import type { OutboundAnswer, OutboundRequest, Transport } from "./http-client";
 
 /** 本机 core 对别的源自称的来源：原生 App 的那一个，走 Bearer 模式。 */
 export const CLIENT_ORIGIN = "https://localhost";
@@ -22,7 +22,20 @@ export interface SourceAddress {
   readonly fingerprint: string;
   /** 经中继时的令牌。 */
   readonly relayToken?: string;
+  /**
+   * 经中继时对端的 `sourceId`：给了且装了端到端通道（契约 §78）就经通道发，
+   * 会话绑本机设备钥。
+   */
+  readonly sourceId?: string;
 }
+
+/** 经端到端通道发一个请求；通道不可用（过渡期的旧 core）答 `null`。 */
+export type ChannelRequest = (
+  address: Required<
+    Pick<SourceAddress, "base" | "fingerprint" | "relayToken" | "sourceId">
+  >,
+  request: OutboundRequest,
+) => Promise<{ answer: OutboundAnswer; sas: string } | null>;
 
 export interface NativeCredentials {
   readonly hostId: string;
@@ -135,7 +148,11 @@ function rejected(status: number, body: unknown): never {
 }
 
 export class SourceClient {
-  constructor(private readonly transport: Transport) {}
+  constructor(
+    private readonly transport: Transport,
+    /** 端到端通道（契约 §78）；不给一律明文。 */
+    private readonly channel?: ChannelRequest,
+  ) {}
 
   private async call(
     address: SourceAddress,
@@ -150,15 +167,45 @@ export class SourceClient {
     if (address.relayToken !== undefined && address.relayToken !== "") {
       headers[RELAY_TOKEN_HEADER] = address.relayToken;
     }
-    const answer = await this.transport({
+    const request: OutboundRequest = {
       method,
       url: `${address.base}${path}`,
       fingerprint: address.fingerprint,
       timeoutMs,
       headers,
       ...(body === undefined ? {} : { body }),
-    });
+    };
+    const { relayToken, sourceId } = address;
+    const sealed =
+      this.channel !== undefined &&
+      relayToken !== undefined &&
+      relayToken !== "" &&
+      sourceId !== undefined
+        ? await this.channel(
+            {
+              base: address.base,
+              fingerprint: address.fingerprint,
+              relayToken,
+              sourceId,
+            },
+            request,
+          )
+        : null;
+    const answer = sealed?.answer ?? (await this.transport(request));
     if (answer.status >= 200 && answer.status < 300) return answer.body;
+    // 这台设备在对端待确认（契约 §77）：把校验码交给页面，人在那台电脑上核对。
+    const refusal = record(answer.body);
+    if (sealed !== null && refusal.code === "device_pending") {
+      const pendingId = str(record(refusal.details).pendingId);
+      throw fail("device_pending", "等那台电脑的主人核对校验码", {
+        pendingId,
+        sas: sealed.sas,
+        sourceId: sourceId ?? "",
+      });
+    }
+    if (refusal.code === "device_rejected") {
+      throw fail("device_rejected", "那台电脑的主人没有允许这台设备");
+    }
     return rejected(answer.status, answer.body);
   }
 
