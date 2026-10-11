@@ -1,9 +1,15 @@
 import {
   type BearerTransport,
   bearerFetch,
+  cookieFetch,
   ticketedWebSocket,
 } from "../sources/transport";
-import { ensureCsrf, replaceRejectedCsrf } from "./identity";
+import {
+  currentCsrf,
+  ensureCsrf,
+  renewCookieSession,
+  replaceRejectedCsrf,
+} from "./identity";
 import { localRuntime } from "./local-runtime";
 import { RELAY_TOKEN_HEADER, sameOrigin } from "../sources/transport";
 
@@ -80,7 +86,8 @@ const bearerCredentials = (current: BearerTransport): SourceCredentials => ({
 const cookieCredentials: SourceCredentials = {
   mode: "cookie",
   access: async () => null,
-  renew: async () => false,
+  // 访问 Cookie 过期（流被 4401 关掉）：续一次会话再重连（契约 §3.2）。
+  renew: () => renewCookieSession(),
   csrf: async () => (await ensureCsrf()) || null,
   renewCsrf: async (rejected) => (await replaceRejectedCsrf(rejected)) || null,
 };
@@ -114,10 +121,11 @@ export const localSource: Source = {
     if (transport !== null) return bearerCredentials(transport);
     return localRuntime().viaServerShell ? cookieCredentials : noCredentials;
   },
-  fetch: (input, init) =>
-    transport === null
-      ? base(input, init)
-      : bearerFetch(base, transport)(input, init),
+  fetch: (input, init) => {
+    if (transport !== null) return bearerFetch(base, transport)(input, init);
+    if (localRuntime().viaServerShell) return cookieSessionFetch(input, init);
+    return base(input, init);
+  },
   // 中继托管的页面（`sources/route-entry.ts`）把经中继的那台源装成本机源，
   // 传输上带着中继令牌头：媒体票还要再换一张中继的（§37.4）。
   relayed: () => transport?.extraHeaders?.()[RELAY_TOKEN_HEADER] !== undefined,
@@ -133,6 +141,27 @@ export const localSource: Source = {
     return wrapped;
   },
 };
+
+/**
+ * Cookie 会话的本机源（服务器壳托管的页面、手机浏览器经 Gateway）：访问 Cookie
+ * 过期的 401 先续一次会话再重放（`sources/transport.ts::cookieFetch`）。
+ */
+const cookieSessionFetch: typeof fetch = (input, init) =>
+  cookieFetch(base, {
+    get origin() {
+      return originOf(localRuntime().httpBase);
+    },
+    refresh: () => renewCookieSession(),
+    csrf: () => currentCsrf(),
+  })(input, init);
+
+function originOf(url: string): string {
+  try {
+    return new URL(url, globalThis.location?.href).origin;
+  } catch {
+    return "";
+  }
+}
 
 /**
  * 给本机源装上 Bearer 传输（桌面壳 `api/shell-transport.ts`、原生 App

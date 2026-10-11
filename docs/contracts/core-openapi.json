@@ -70939,6 +70939,12 @@
                           },
                           "current": {
                             "type": "boolean"
+                          },
+                          "deviceName": {
+                            "type": "string"
+                          },
+                          "editable": {
+                            "type": "boolean"
                           }
                         },
                         "required": [
@@ -71142,6 +71148,12 @@
                         },
                         "current": {
                           "type": "boolean"
+                        },
+                        "deviceName": {
+                          "type": "string"
+                        },
+                        "editable": {
+                          "type": "boolean"
                         }
                       },
                       "required": [
@@ -71293,6 +71305,12 @@
                           "format": "date-time"
                         },
                         "current": {
+                          "type": "boolean"
+                        },
+                        "deviceName": {
+                          "type": "string"
+                        },
+                        "editable": {
                           "type": "boolean"
                         }
                       },

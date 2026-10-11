@@ -7,21 +7,21 @@
  *   它不是「独占内存」，Popover 里说明这一点（设计 §8）。
  * - 测不出来显示 `unknown`，不显示 0——0 的意思是「量到了，是零」，那是另
  *   一句话，而且是假的。
- * - 越过阈值只变色并提醒一次，不做任何处置：不终止、不休眠、不压缩。
+ * - 越过阈值只变色，不做任何处置：不终止、不休眠、不压缩。越线由 core 判、
+ *   经 `resources.threshold` 报来（`threshold-alerts.ts`，提醒也在那里发）；
+ *   徽标只看这个会话有没有被报过、样本回落到九成以下没有。
  *
  * **看不见的节点不催 Runtime 快采。** 节点折叠、滚出视口或者整个窗口切到
  * 后台时，徽标把自己的订阅节奏降到 30 秒；重新看得见就恢复。节奏是全局取
  * 最快的一档，所以一个可见的徽标就够把大家拉回正常速度。
  */
 import * as React from "react";
-import { toast } from "sonner";
 import type { SessionResources } from "@armadra/shared";
 
 import { usePreferencesStore, useT } from "@/app/preferences-store";
-import { notify } from "@/platform";
 import { Popover, PopoverContent, PopoverTrigger } from "@/ui/popover";
 import { formatMetricBytes, formatPercent, UNKNOWN } from "./metrics";
-import { claimAlert, crossedThreshold } from "./memory-alert";
+import { stillOver, useThresholdStore } from "./threshold-alerts";
 import { useSessionResources } from "./use-resources";
 import { useOnScreen, usePageVisible } from "./use-visibility";
 import { Button } from "@/ui/button";
@@ -36,20 +36,8 @@ export interface MemoryBadgeProps {
   generation: number | null;
   /** 节点自己知道的可见性：折叠 / 已退出的节点不需要快节奏。 */
   visible: boolean;
-  /** 测试注入；默认按浏览器的实际状态判断。 */
+  /** 测试注入：core 还没报过越线时显示的阈值；缺省是本机偏好。 */
   thresholdBytes?: number;
-}
-
-/** 窗口在后台时发系统通知，在前台时发一条 toast——总之要看得见。 */
-async function remind(title: string, body: string): Promise<void> {
-  const background =
-    typeof document !== "undefined" &&
-    (document.hidden || !document.hasFocus());
-  if (background) {
-    await notify(title, body);
-    return;
-  }
-  toast.warning(title, { description: body });
 }
 
 export function MemoryBadge({
@@ -62,7 +50,6 @@ export function MemoryBadge({
 }: MemoryBadgeProps) {
   const t = useT();
   const stored = usePreferencesStore((state) => state.sessionMemoryWarnBytes);
-  const threshold = thresholdBytes ?? stored;
 
   const anchor = React.useRef<HTMLButtonElement>(null);
   // 没有会话时下面提前 `return null`，按钮不在 DOM 上；会话 id 到了的那次提交
@@ -82,19 +69,19 @@ export function MemoryBadge({
   );
 
   const memory = session?.memoryBytes ?? null;
-  const over = crossedThreshold(memory, threshold);
+  const reported = useThresholdStore((state) =>
+    sessionId ? state.over[sessionId] : undefined,
+  );
+  // 阈值以 core 报来的为准；没报过时显示本机偏好（设置页同时写这两处）。
+  const threshold = reported?.threshold ?? thresholdBytes ?? stored;
+  const over = stillOver(reported, memory);
 
+  // 回落到九成以下：忘掉这次越线，下次再越线 core 会重新报。
   React.useEffect(() => {
-    if (!over || !sessionId) return;
-    if (!claimAlert(sessionId, session?.generation ?? generation ?? 0)) return;
-    void remind(
-      t("resources.memory.alertTitle"),
-      t("resources.memory.alertBody", {
-        value: formatMetricBytes(memory),
-        limit: formatMetricBytes(threshold),
-      }),
-    );
-  }, [over, sessionId, generation, session?.generation, memory, threshold, t]);
+    if (reported && sessionId && !over) {
+      useThresholdStore.getState().forget(sessionId);
+    }
+  }, [reported, sessionId, over]);
 
   if (!sessionId) return null;
 

@@ -12,7 +12,7 @@ import { usePreferencesStore, useT } from "../app/preferences-store";
 import { pushApi } from "../api/push";
 import { useCompactLayout } from "../platform/layout";
 import { useCanvasStore } from "../store/canvas-store";
-import { featureEnabled } from "../lib/features";
+import { toggledKinds, visiblePushKinds } from "../push/kinds";
 import { subscribeToPush } from "../push/service-worker";
 import { Button } from "@/ui/button";
 import {
@@ -148,10 +148,7 @@ export function PushKindsPrompt({
         <ItemTitle>{t("push.kinds.title")}</ItemTitle>
       </ItemContent>
       <ItemFooter className="flex-col items-stretch gap-2">
-        {PUSH_PREFERENCE_KINDS.filter(
-          // 定时任务暂时下线（#295）：它的推送开关不列，已存的选择原样保留。
-          (kind) => kind !== "schedule" || featureEnabled("scheduledTasks"),
-        ).map((kind) => (
+        {visiblePushKinds().map((kind) => (
           <label
             key={kind}
             className="flex items-center justify-between gap-3 text-sm"
@@ -260,9 +257,7 @@ export function PushPermission() {
   if (device !== null) {
     const toggle = (kind: PushPreferenceKind, on: boolean) => {
       const previous = device.kinds;
-      const next = PUSH_PREFERENCE_KINDS.filter((item) =>
-        item === kind ? on : previous.includes(item),
-      );
+      const next = toggledKinds(previous, kind, on);
       setDevice({ ...device, kinds: next });
       setBusy(true);
       void savePushKinds(device.deviceId, next)

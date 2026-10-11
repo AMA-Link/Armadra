@@ -132,6 +132,10 @@ export const pushDeviceSchema = z.object({
   createdAt: z.string().datetime({ offset: true }),
   /** This is the device the request came from. */
   current: z.boolean(),
+  /** The identity device's name (§74). */
+  deviceName: z.string().optional(),
+  /** Whether this request may change the device's kinds (§74). */
+  editable: z.boolean().optional(),
 });
 export type PushDevice = z.infer<typeof pushDeviceSchema>;
 

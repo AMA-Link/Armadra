@@ -3,6 +3,7 @@ import { playStatusSound } from "../../../app/notifications";
 import { useAccess } from "../../../app/use-access";
 import { useRemoteAccess } from "../remote-access";
 import { ScopeBadge } from "../scope-badge";
+import { PushDevices } from "./PushDevices";
 import { SettingsGroup } from "../SettingsGroup";
 import { SettingsRow } from "../SettingsRow";
 import { useRuntimeSettings } from "../use-runtime-settings";
@@ -19,6 +20,8 @@ import { Switch } from "@/ui/switch";
  * 「更新下载完成」是主机设置（`updates.notify`，从原更新页移来，§2.2）：
  * 行尾一枚作用范围徽标；成员读不到设置文档，远端主机的更新由那台自己的壳
  * 做，这两种情况都不画。
+ *
+ * 「推送设备」列出登记了推送的设备，逐台改收哪些种类（契约 §74）。
  */
 export function NotificationsPage() {
   const t = useT();
@@ -104,6 +107,8 @@ export function NotificationsPage() {
           </Button>
         </SettingsRow>
       </SettingsGroup>
+
+      <PushDevices />
     </>
   );
 }

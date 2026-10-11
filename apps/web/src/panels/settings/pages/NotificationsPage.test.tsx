@@ -17,6 +17,8 @@ vi.mock("../remote-access", () => ({
 vi.mock("../../../sources/context", () => ({
   useCurrentSource: () => ({ descriptor: { label: "" } }),
 }));
+// 推送设备有自己的用例（`PushDevices.test.tsx`）。
+vi.mock("./PushDevices", () => ({ PushDevices: () => null }));
 vi.mock("../use-runtime-settings", () => ({
   useRuntimeSettings: () => {
     runtimeSettings.calls += 1;
