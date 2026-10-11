@@ -487,4 +487,11 @@ describe("edgeLabelKey", () => {
     expect(edgeLabelKey("terminal", "diff")).toBe("edge.diff");
     expect(edgeLabelKey("terminal", "automation")).toBe("edge.context");
   });
+
+  it("派发线不看类型，一律是「派发」", () => {
+    expect(edgeLabelKey("terminal", "terminal", "supervises")).toBe(
+      "edge.role.dispatch",
+    );
+    expect(edgeLabelKey("sticky", "terminal", "peer")).toBe("edge.sticky");
+  });
 });
