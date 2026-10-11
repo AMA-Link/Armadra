@@ -18,7 +18,8 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import { type RunningCore, run } from "../main";
 import { AUTOMATION_CAPABILITY } from "./capabilities";
-import { scheduleDomain } from "./index";
+import { scheduleDomain, scheduleLoopEnabled } from "./index";
+import { FEATURE_FLAGS } from "@armadra/shared";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const migrationsDir = resolve(here, "../db/migrations");
@@ -75,7 +76,18 @@ describe("自动化域的装配", () => {
     await start();
     const domain = scheduleDomain();
     expect(domain).toBeDefined();
+    // 定时任务暂时下线（#295）时域照装、接口照答，只是循环不起。
+    expect(domain?.looping).toBe(scheduleLoopEnabled());
     domain?.stop();
     expect(scheduleDomain()).toBeUndefined();
+  });
+
+  it("调度循环跟着定时任务开关走，探针可以显式打开（#295）", () => {
+    const off = { ...FEATURE_FLAGS, scheduledTasks: false };
+    expect(scheduleLoopEnabled(off, {})).toBe(false);
+    expect(scheduleLoopEnabled(off, { ARMADRA_SCHEDULE_LOOP: "1" })).toBe(true);
+    expect(
+      scheduleLoopEnabled({ ...FEATURE_FLAGS, scheduledTasks: true }, {}),
+    ).toBe(true);
   });
 });
