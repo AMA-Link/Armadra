@@ -617,6 +617,8 @@ describe("cloud/login", () => {
         kind: "owner",
       });
       expect(answer.body.created).toBe(false);
+      // 契约 §68：owner 自己登录没有分享信息。
+      expect(answer.body.share).toBeUndefined();
       expect(answer.headers.get("set-cookie")).toBeNull();
       // 换来的会话真能用。
       const status = await call("GET", "/api/identity/cloud", undefined, {
@@ -989,7 +991,8 @@ describe("cloud/login 的范围、角色同步与租约（契约 §60）", () =>
       ["workspace", "ws-1", "", "editor", cloudProvider(ISSUER)],
     ]);
     const [row] = store.transaction((tx) => tx.accounts.grantsFor(principalId));
-    expect(row!.expiresAtMs).toBeGreaterThan(Date.now() + 29 * DAY);
+    // 契约 §68：经邀请兑换的租约封顶在邀请到期（断言租约是 30 天出头）。
+    expect(row!.expiresAtMs).toBe(invitation.expiresAtMs);
     expect(accounts.effectiveGrantScopes(principalId)).toEqual(
       roleScopes("editor", "ws-1"),
     );
@@ -1144,6 +1147,61 @@ describe("cloud/login 的范围、角色同步与租约（契约 §60）", () =>
     expect((await login("acct:lease", {})).status).toBe(200);
     expect(grantsOf(principalId)).toHaveLength(1);
     expect(grantsOf(principalId, Date.now() + 29 * DAY)).toHaveLength(1);
+  });
+
+  it("契约 §68：1 天的链接只换来 1 天的授予，经链接再登录也不续过邀请到期", async () => {
+    const invitation = accounts.issueInvitation(ownerSubject(), {
+      role: "viewer",
+      targetWorkspaceId: "ws-1",
+      ttlMs: DAY,
+      maxUses: 5,
+    });
+    const link = { linkId: "lnk_day", invitationId: invitation.invitationId };
+    const joined = await login("guest:lnk_day:a", { link }, invitation.token);
+    expect(joined.status, joined.text).toBe(200);
+    const principalId = principalOf(joined);
+    const expiry = () =>
+      store
+        .transaction((tx) => tx.accounts.grantsFor(principalId))
+        .map((grant) => grant.expiresAtMs);
+    expect(expiry()).toEqual([invitation.expiresAtMs]);
+    expect(invitation.expiresAtMs).toBeLessThanOrEqual(Date.now() + DAY);
+    expect(grantsOf(principalId, Date.now() + 2 * DAY)).toEqual([]);
+    // 答案带分享信息：角色、到期与主人的名字。
+    expect(joined.body.share).toEqual({
+      ownerName: expect.any(String),
+      role: "viewer",
+      expiresAtMs: invitation.expiresAtMs,
+    });
+    expect((joined.body.share as { ownerName: string }).ownerName).not.toBe("");
+
+    // 之后经同一条链接再登录（断言每次都带 link）：续租仍封顶在邀请到期。
+    const again = await login("guest:lnk_day:a", { link });
+    expect(again.status, again.text).toBe(200);
+    expect(expiry()).toEqual([invitation.expiresAtMs]);
+
+    // 邀请到期之后再登录：不再续，也不立新授予，答案里没有 share。
+    core.database
+      .prepare(
+        "UPDATE identity_invitations SET expires_at_ms = ? WHERE invitation_id = ?",
+      )
+      .run(Date.now() - 1, invitation.invitationId);
+    const late = await login("guest:lnk_day:a", { link });
+    expect(late.status, late.text).toBe(200);
+    expect(grantsOf(principalId)).toEqual([]);
+    expect(late.body.share).toBeUndefined();
+  });
+
+  it("契约 §68：成员的 share 报邀请给的角色与到期", async () => {
+    const invitation = accounts.issueInvitation(ownerSubject(), {
+      role: "editor",
+      targetWorkspaceId: "ws-1",
+    });
+    const member = await login("acct:share", {}, invitation.token);
+    expect(member.body.share).toMatchObject({
+      role: "editor",
+      expiresAtMs: invitation.expiresAtMs,
+    });
   });
 
   it("撤链接连同访客：经这条链接进来的人停用，之后登录 403", async () => {

@@ -30,6 +30,11 @@ export const systemHelloOutputSchema = z.object({
   hostName: z.string().optional(),
   /** 系统主机名（`host.name` 清空后用它）；与 `hostName` 同时出现。 */
   systemHostName: z.string().optional(),
+  /**
+   * 这台主机主人的显示名（契约 §68）：owner 主体的 `displayName`，没有或为空时是
+   * `hostName`。旧 core 不报，所以可选。
+   */
+  ownerName: z.string().optional(),
 });
 
 export type SystemHello = z.infer<typeof systemHelloOutputSchema>;

@@ -310,8 +310,16 @@ describe("契约与 core 的两张表", () => {
     }
     expect((hello.body as { protocol: unknown }).protocol).toEqual({
       major: 1,
-      minor: 38,
+      minor: 39,
     });
+    // 契约 §68：主人的显示名，没有时是主机名称——总有一个非空的名字。
+    const { ownerName, hostName } = hello.body as {
+      ownerName?: string;
+      hostName?: string;
+    };
+    expect(typeof ownerName).toBe("string");
+    expect(ownerName).not.toBe("");
+    expect(hostName).not.toBe("");
   });
 
   it("meta.scope 与路由表给旧路径的那一档一致", () => {

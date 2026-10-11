@@ -18,7 +18,6 @@ import { randomBytes } from "node:crypto";
 import { CoreFailure, fail } from "../http/errors";
 import {
   type ClientSource,
-  type ClientSourceRoute,
   type RemoteService,
   type RemoteSourceSummary,
   type SourceSession,
@@ -32,8 +31,18 @@ import type {
   SourceAssertion,
 } from "./remote-client";
 import { challengeTokenFor, PASSWORD_CHANGE_CAPABILITY } from "./remote-gate";
+import {
+  MINE,
+  checkLabel,
+  clip,
+  naming,
+  renameLabel,
+  routeJson,
+  shareColumns,
+} from "./rows";
 import type { SourceSecrets, StoredCredential } from "./secrets";
 import type {
+  CloudLoginShare,
   NativeCredentials,
   SourceAddress,
   SourceClient,
@@ -127,57 +136,6 @@ function wsBaseOf(httpBase: string): string {
   return httpBase.replace(/^http/, "ws");
 }
 
-function clip(value: string, max: number): string {
-  return value.length > max ? value.slice(0, max) : value;
-}
-
-/**
- * 名字（契约 §61）：`label` 是显示的，`defaultLabel` 是服务端报的。给了名字用它；
- * 否则改过名（`label ≠ defaultLabel`）的行留着本地名，没改过的跟着新的缺省名。
- * 服务端这次没报名字（旧对端、目录取不到）时缺省名不变，新行用 `fallback`。
- */
-function naming(
-  existing: { label: string; defaultLabel: string } | undefined,
-  given: string | undefined,
-  advertised: string,
-  fallback: string,
-): { label: string; defaultLabel: string } {
-  const defaultLabel =
-    clip(advertised.trim(), 128) ||
-    existing?.defaultLabel ||
-    existing?.label ||
-    clip(fallback.trim(), 128) ||
-    "Armadra";
-  const renamed =
-    existing !== undefined &&
-    existing.defaultLabel !== "" &&
-    existing.label !== existing.defaultLabel;
-  return {
-    label: given ?? (renamed ? existing.label : defaultLabel),
-    defaultLabel,
-  };
-}
-
-/**
- * 改名的名字（`sources.update` / `sources.remoteUpdate` 的 `label`）：空串（去首尾
- * 空白后）= 恢复缺省名，答 `null`；其余 1–128 个字符。不给是 `undefined`。
- */
-function renameLabel(value: string | undefined): string | null | undefined {
-  if (value === undefined) return undefined;
-  if (value.trim() === "") return null;
-  return checkLabel(value);
-}
-
-/** 显示名：1–128 个字符（表的约束）；不给就是 `undefined`。 */
-function checkLabel(value: string | undefined): string | undefined {
-  if (value === undefined) return undefined;
-  const trimmed = value.trim();
-  if (trimmed.length < 1 || trimmed.length > 128) {
-    throw fail("bad_request", "名称应为 1 到 128 个字符");
-  }
-  return trimmed;
-}
-
 /** `#pair=<票>&fp=<指纹>` 的网页链接，或 `armadra://pair?host=…&ticket=…&fp=…`。 */
 export function parsePairLink(link: string): {
   origin: string;
@@ -209,18 +167,6 @@ export function parsePairLink(link: string): {
     origin: normalizeOrigin(url.origin),
     ticket,
     fingerprint: fragment.get("fp") ?? "",
-  };
-}
-
-/** 一条路在答案里的样子（契约 §55）：没有凭据，只有地址与时刻。 */
-function routeJson(route: RouteRow): ClientSourceRoute {
-  return {
-    via: route.via,
-    origin: route.origin,
-    cloudIssuer: route.cloudIssuer,
-    fingerprint: route.fingerprint,
-    preferred: route.preferred,
-    lastOkAtMs: route.lastOkAtMs,
   };
 }
 
@@ -286,6 +232,7 @@ export class SourcesService {
       addedAtMs: existing?.addedAtMs ?? this.now(),
       lastOkAtMs: existing?.lastOkAtMs ?? 0,
       orderIndex: existing?.orderIndex ?? 0,
+      ...MINE,
     });
   }
 
@@ -323,6 +270,9 @@ export class SourcesService {
       // 本机是否登记到它（契约 §31 的登记表，迁移 0040）。
       registered: this.options.cloud?.()?.registered(row.issuer) ?? false,
       hasCredentials: (await this.secrets.remote(row.serviceId)) !== undefined,
+      // 分享链接建的那一行：账号提示为空的个人中转（契约 §68）。它存着访客的刷新令牌，
+      // 换票要用，不能删；页面据此把它从账号列表里藏起来。
+      guest: row.kind === "personal" && row.accountHint === "",
     };
   }
 
@@ -474,6 +424,8 @@ export class SourcesService {
       addedAtMs: existing?.addedAtMs ?? at,
       lastOkAtMs: at,
       orderIndex: existing?.orderIndex ?? this.store.nextOrder(),
+      // 配对票只有主人发得出：配对上的就是我自己的电脑（契约 §68）。
+      ...MINE,
     });
     // 新的直连地址顶替原来首选的直连地址；首选是中继时不抢（选路照样先探直连）。
     const current = this.store.routes(sourceId).find((one) => one.preferred);
@@ -732,6 +684,10 @@ export class SourcesService {
           refreshToken: logged.refreshToken,
           deviceId: logged.deviceId,
         });
+        // 分享方可能改了角色或到期（契约 §68）；只改 shared 的行。
+        if (logged.share !== undefined) {
+          this.store.setShare(row.sourceId, shareColumns(logged.share));
+        }
         return logged;
       });
     }
@@ -1245,6 +1201,8 @@ export class SourcesService {
       relayOrigin,
       issuer: remote.issuer,
       principalHint: credentials.principalHint,
+      // 用自己的账号挂上的：我的电脑（契约 §68）。
+      share: undefined,
     });
     this.options.log.info("mounted a relayed source", {
       sourceId: input.sourceId,
@@ -1265,9 +1223,15 @@ export class SourcesService {
     relayOrigin: string;
     issuer: string;
     principalHint: string;
+    /**
+     * 按分享链接加入时分享方报的信息（契约 §68）；`undefined` = 用自己的账号挂上
+     * （`mine`）。已经是 `mine` 的行按链接再加入一次仍是 `mine`。
+     */
+    share: CloudLoginShare | undefined | null;
   }): SourceRow {
     const at = this.now();
     const { existing } = input;
+    const shared = input.share !== undefined && existing?.origin !== "mine";
     this.store.upsert({
       sourceId: input.sourceId,
       kind: existing?.kind ?? "relayed",
@@ -1281,6 +1245,12 @@ export class SourcesService {
       addedAtMs: existing?.addedAtMs ?? at,
       lastOkAtMs: at,
       orderIndex: existing?.orderIndex ?? this.store.nextOrder(),
+      ...(shared
+        ? {
+            origin: "shared" as const,
+            ...shareColumns(input.share ?? undefined),
+          }
+        : MINE),
     });
     this.store.upsertRoute({
       sourceId: input.sourceId,
@@ -1419,6 +1389,8 @@ export class SourcesService {
       relayOrigin,
       issuer,
       principalHint: credentials.principalHint,
+      // 分享方没报（旧 core）时是 null：仍记成 shared，分享信息留空。
+      share: credentials.share ?? null,
     });
     this.options.log.info("mounted a source by share link", {
       sourceId: accepted.sourceId,
