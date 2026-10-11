@@ -108,7 +108,9 @@ describe("the install plan", () => {
     expect(result.ok).toBe(true);
     const script = join(work, MAC_HELPER_NAME);
     expect(readFileSync(script, "utf8")).toBe(MAC_HELPER_SCRIPT);
-    expect(statSync(script).mode & 0o777).toBe(0o700);
+    // Windows 没有 Unix 权限位（读回 0o666）；脚本只在 macOS 上运行，那里才校验。
+    if (process.platform !== "win32")
+      expect(statSync(script).mode & 0o777).toBe(0o700);
     expect(spawned[0]?.[0]).toBe("/bin/sh");
     expect(spawned[0]?.[1][0]).toBe(script);
   });
