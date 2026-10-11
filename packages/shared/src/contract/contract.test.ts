@@ -273,7 +273,7 @@ describe("§62 个人中转登录入参在协议包的形状上追加 challengeT
 });
 
 describe("§55 在协议包的形状上追加", () => {
-  // 协议包（cloud 仓，0.3.5）还没有 `routes` 与 `defaultLabel`（§61）：这几个
+  // 协议包（cloud 仓，0.3.10）还没有 `routes` 与 `defaultLabel`（§61）：这几个
   // schema 是它的 `extend`，协议包的每个字段逐个沿用同一个对象，只多这两节的字段。
   it("源表行、列表与 session 入参是协议包形状的超集", async () => {
     const protocol = await import("@armadra/platform-protocol/core-api");
