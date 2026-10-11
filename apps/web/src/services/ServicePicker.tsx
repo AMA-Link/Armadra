@@ -1,7 +1,7 @@
 import * as React from "react";
 import { ExternalLink, Pencil, Trash2 } from "lucide-react";
 
-import { useT } from "../app/preferences-store";
+import { usePreferencesStore, useT } from "../app/preferences-store";
 import { formatRelativeTime } from "../lib/format";
 import {
   ResponsiveAlertDialog,
@@ -29,7 +29,12 @@ import { Spinner } from "@/ui/spinner";
 import { StatusPill, type StatusTone } from "@/ui/status-pill";
 import type { ServiceStatus } from "./probe";
 import { RenameDialog } from "./RenameDialog";
-import { type ServiceGroup, type ServiceRow, layoutServices } from "./rows";
+import {
+  type ServiceGroup,
+  type ServiceRow,
+  layoutByOrigin,
+  layoutServices,
+} from "./rows";
 
 /** 挂在某一行下方的失败（进入失败、需要重新登录）。 */
 export interface ServiceRowFailure {
@@ -92,11 +97,32 @@ function ServiceStatusPill({ status }: { status: ServiceStatus }) {
   );
 }
 
+const ROLES = new Set(["viewer", "editor", "operator", "driver"]);
+
 function routeLine(
   row: ServiceRow,
   t: ReturnType<typeof useT>,
   now: number,
+  locale: string,
 ): string {
+  if (row.origin === "shared") {
+    // 他人分享：主人、权限、到期；加入的工作空间只有互联网一条路，不写路。
+    const role = row.shareRole ?? "";
+    const expires = row.shareExpiresAtMs ?? 0;
+    return [
+      row.ownerName ?? "",
+      ROLES.has(role) ? t(`sharing.role.${role}`) : "",
+      expires > 0
+        ? t("remote.invite.until", {
+            time: new Intl.DateTimeFormat(locale, {
+              dateStyle: "medium",
+            }).format(expires),
+          })
+        : "",
+    ]
+      .filter(Boolean)
+      .join(" · ");
+  }
   const parts = row.routes.map((route) =>
     route.via === "direct"
       ? t("services.via.direct")
@@ -138,12 +164,15 @@ export function ServicePicker({
   onRename,
 }: ServicePickerProps) {
   const t = useT();
+  const locale = usePreferencesStore((state) => state.locale);
   const [removing, setRemoving] = React.useState<ServiceRow | null>(null);
   const [renaming, setRenaming] = React.useState<ServiceRow | null>(null);
   const layout = React.useMemo(
     () => layoutServices(rows, recent),
     [rows, recent],
   );
+  // 整页（手机、托管页面）只分两组：我的电脑 / 他人分享。
+  const originGroups = React.useMemo(() => layoutByOrigin(rows), [rows]);
   const now = Date.now();
   const locked = disabled || busyId !== null;
 
@@ -160,8 +189,16 @@ export function ServicePicker({
   const renderRow = (row: ServiceRow, section: string) => {
     const current = row.sourceId === currentId;
     const status = statuses[row.sourceId] ?? "unknown";
-    const line = routeLine(row, t, now);
+    const line = routeLine(row, t, now, locale);
     const rowFailure = failure?.sourceId === row.sourceId ? failure : null;
+    // 整页没有分组头可挂「已登出 / 登录」：挂在用这个账号登录的行上。
+    const signedOutIssuer =
+      variant === "page" && row.origin !== "shared"
+        ? row.routes.find(
+            (route) =>
+              route.via === "relayed" && signedOut.includes(route.issuer),
+          )?.issuer
+        : undefined;
     const content = (
       <>
         <ItemContent className="min-w-0">
@@ -174,6 +211,9 @@ export function ServicePicker({
         </ItemContent>
         {current && (
           <Badge variant="outline">{t("mobileConnect.current")}</Badge>
+        )}
+        {signedOutIssuer !== undefined && (
+          <Badge variant="outline">{t("remote.signedOut")}</Badge>
         )}
         {!row.local && <ServiceStatusPill status={status} />}
         {busyId === row.sourceId && (
@@ -209,6 +249,17 @@ export function ServicePicker({
             </div>
           )}
           <ItemActions className="gap-1 pr-2">
+            {signedOutIssuer !== undefined && onSignIn && (
+              <Button
+                type="button"
+                size="xs"
+                variant="ghost"
+                disabled={locked}
+                onClick={() => onSignIn(signedOutIssuer)}
+              >
+                {t("remote.signIn")}
+              </Button>
+            )}
             {onRename &&
               (variant === "page" ? (
                 <Button
@@ -289,6 +340,7 @@ export function ServicePicker({
   };
 
   const showGroupHeads = layout.groups.length > 1 || variant === "dialog";
+  const showOriginHeads = originGroups.length > 1;
 
   return (
     <div data-slot="service-picker" className="flex flex-col gap-4">
@@ -303,43 +355,60 @@ export function ServicePicker({
       {layout.recent.length > 0 && (
         <h2 className={`${HEADING} -mb-2`}>{t("services.all")}</h2>
       )}
-      {layout.groups.map((group) => {
-        const out = group.kind === "relay" && signedOut.includes(group.issuer);
-        return (
+      {variant === "page" &&
+        originGroups.map((group) => (
           <section
             key={group.key}
             data-service-group={group.key}
             className="flex flex-col gap-2"
           >
-            {(showGroupHeads || out) && (
-              <div className="flex min-h-6 items-center gap-2">
-                <h3 className={`${HEADING} min-w-0 flex-1 truncate`}>
-                  {groupTitle(group, t)}
-                </h3>
-                {out && (
-                  <>
-                    <Badge variant="outline">{t("remote.signedOut")}</Badge>
-                    {onSignIn && (
-                      <Button
-                        type="button"
-                        size="xs"
-                        variant="ghost"
-                        disabled={locked}
-                        onClick={() => onSignIn(group.issuer)}
-                      >
-                        {t("remote.signIn")}
-                      </Button>
-                    )}
-                  </>
-                )}
-              </div>
+            {showOriginHeads && (
+              <h3 className={HEADING}>{t(`services.group.${group.key}`)}</h3>
             )}
             <ItemGroup className="gap-2">
               {group.rows.map((row) => renderRow(row, group.key))}
             </ItemGroup>
           </section>
-        );
-      })}
+        ))}
+      {variant === "dialog" &&
+        layout.groups.map((group) => {
+          const out =
+            group.kind === "relay" && signedOut.includes(group.issuer);
+          return (
+            <section
+              key={group.key}
+              data-service-group={group.key}
+              className="flex flex-col gap-2"
+            >
+              {(showGroupHeads || out) && (
+                <div className="flex min-h-6 items-center gap-2">
+                  <h3 className={`${HEADING} min-w-0 flex-1 truncate`}>
+                    {groupTitle(group, t)}
+                  </h3>
+                  {out && (
+                    <>
+                      <Badge variant="outline">{t("remote.signedOut")}</Badge>
+                      {onSignIn && (
+                        <Button
+                          type="button"
+                          size="xs"
+                          variant="ghost"
+                          disabled={locked}
+                          onClick={() => onSignIn(group.issuer)}
+                        >
+                          {t("remote.signIn")}
+                        </Button>
+                      )}
+                    </>
+                  )}
+                </div>
+              )}
+              <ItemGroup className="gap-2">
+                {group.rows.map((row) => renderRow(row, group.key))}
+              </ItemGroup>
+            </section>
+          );
+        })}
       {onRename && (
         <RenameDialog
           target={renaming}

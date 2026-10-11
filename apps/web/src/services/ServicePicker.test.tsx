@@ -24,7 +24,12 @@ import {
   setEnterIntent,
   takeEnterIntent,
 } from "./recent";
-import { layoutServices, serviceRowOf, type ServiceRow } from "./rows";
+import {
+  layoutByOrigin,
+  layoutServices,
+  serviceRowOf,
+  type ServiceRow,
+} from "./rows";
 import { ServicePicker } from "./ServicePicker";
 import { SwitchServiceDialog } from "./SwitchServiceDialog";
 import { initialSourceParam, useServiceSwitcher } from "./switcher";
@@ -140,7 +145,7 @@ describe("选择服务 · 整页", () => {
     serviceRowOf(viaLan("d", "Studio")),
   ];
 
-  it("最近使用在前，组头分中转与直连，状态胶囊与「当前」在行上", () => {
+  it("最近使用在前，只有自己的电脑时不分组头，状态胶囊与「当前」在行上", () => {
     render(
       <ServicePicker
         variant="page"
@@ -154,8 +159,7 @@ describe("选择服务 · 整页", () => {
     const recent = screen.getByText("最近使用").closest("section")!;
     expect(within(recent as HTMLElement).getByText("Studio")).toBeTruthy();
     expect(screen.getByText("全部")).toBeTruthy();
-    expect(screen.getByText("中转 · relay.example.com")).toBeTruthy();
-    expect(screen.getByText("直连", { selector: "h3" })).toBeTruthy();
+    expect(screen.queryByRole("heading", { level: 3 })).toBeNull();
     expect(screen.getByText("当前")).toBeTruthy();
     expect(screen.getAllByText("离线")).toHaveLength(2);
     // 未知只呼吸、文字只给读屏。
@@ -246,7 +250,36 @@ describe("选择服务 · 整页", () => {
     expect(screen.queryByRole("button", { name: "重命名 Studio" })).toBeNull();
   });
 
-  it("失败挂在那一行下面，带动作；登录失效的组头给「登录」", () => {
+  it("两组：我的电脑 / 他人分享；分享的行写主人、权限与到期，不写路", () => {
+    const shared = serviceRowOf({
+      ...viaRelay("s", "设计稿"),
+      origin: "shared",
+      ownerName: "小王",
+      shareRole: "viewer",
+      shareExpiresAtMs: Date.UTC(2030, 0, 2),
+    } as SourceDescriptor);
+    const all = [...rows.slice(3), shared];
+    expect(layoutByOrigin(all).map((group) => group.key)).toEqual([
+      "mine",
+      "shared",
+    ]);
+    render(<ServicePicker variant="page" rows={all} onEnter={vi.fn()} />);
+    const heads = screen
+      .getAllByRole("heading", { level: 3 })
+      .map((head) => head.textContent);
+    expect(heads).toEqual(["我的电脑", "他人分享"]);
+    const sharedRow = document.querySelector('[data-service-row="s"]')!;
+    expect(sharedRow.textContent).toContain("小王 · 查看 · 有效至");
+    expect(sharedRow.textContent).not.toContain("互联网");
+    expect(document.body.textContent).not.toMatch(/中转|中继|签发方|挂载|隧道/);
+  });
+
+  it("没有分享时只有一组，旧数据（无来历）当作自己的", () => {
+    expect(layoutByOrigin(rows).map((group) => group.key)).toEqual(["mine"]);
+    expect(layoutByOrigin([])).toEqual([]);
+  });
+
+  it("失败挂在那一行下面，带动作；登录失效的账号，那几行给「登录」", () => {
     const run = vi.fn();
     const onSignIn = vi.fn();
     render(
@@ -267,8 +300,8 @@ describe("选择服务 · 整页", () => {
     expect(failure.textContent).toContain("这台主机不在线");
     fireEvent.click(within(failure as HTMLElement).getByText("重试"));
     expect(run).toHaveBeenCalled();
-    expect(screen.getByText("已登出")).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "登录" }));
+    expect(screen.getAllByText("已登出").length).toBeGreaterThan(0);
+    fireEvent.click(screen.getAllByRole("button", { name: "登录" })[0]!);
     expect(onSignIn).toHaveBeenCalledWith(ISSUER);
   });
 
