@@ -11,6 +11,10 @@
 //                      链接再加入一次（链接可复用）；owner 撤销（要确认）后第三个访客被拒。
 //   手机（App 页面）：  钥匙串（假）里已有主人对这个中转的登录（旧版的单槽），扫同一条
 //                      链接以访客加入：访客的登录另存一槽，主人那一槽原样还在、还能用。
+//   会话分享（#253）：  owner 只分享一条终端会话（只读）。浏览器访客加入后直接落在那条
+//                      会话的只读查看页、看得到画面，打的字进不去；另一台桌面（第二个
+//                      隔离实例）按链接挂上，在侧栏「他人分享」里点开同一页；经中继的
+//                      写操作被 core 拒（403），中继不再挡 POST；撤链接后访客失效。
 //
 // 与 V1 `personal-roundtrip` 重叠的部分（中继、桌面壳、页面小工具、日志扫秘密）都来自
 // `platform-lib.mjs`；这里只有 owner 的界面流程和访客的计步。中继在容器里，来自
@@ -148,7 +152,7 @@ try {
   );
   const stickyId = seeded.nodes[0].id;
   // 中转账号是开互联网路线的前提；添加（口令、指纹核对）不在计步范围内。
-  await core.rpc("sources.remoteAdd", {
+  const added = await core.rpc("sources.remoteAdd", {
     kind: "personal",
     issuer: relay.issuer,
     account: relay.account,
@@ -549,7 +553,19 @@ try {
   await run.shot(guest, "05-guest3-revoked");
   run.ok("撤销后第三个访客打开同一条链接被拒");
 
+  /* ------------- 会话分享（#253）：只读查看页、写被拒、撤销后失效 ------------- */
+  await sessionShare({
+    run,
+    win,
+    core,
+    relay,
+    serviceId: added.remote.serviceId,
+    workspaceId: seeded.workspace.id,
+    project,
+  });
+
   /* ------------------ 截图：390 / 1440，明暗两主题 ------------------ */
+  await electron.page.call("Page.bringToFront", {}).catch(() => {});
   for (const theme of ["dark", "light"]) {
     for (const width of [1440, 390]) {
       await win.call("Emulation.setDeviceMetricsOverride", {
@@ -607,4 +623,214 @@ try {
   writeResult(output, report);
   console.log(`  报告  ${join(output, "result.json")}`);
   process.exit(report.status === "ok" ? 0 : 1);
+}
+
+/**
+ * 会话分享的一段（#253、契约 §71）。owner 开一个 `cat` 终端（谁的输入落进去，画面上
+ * 就有它），签一条只分享它的链接；浏览器访客与第二台桌面各看一次；再经中继直接调写
+ * 接口，最后撤链接。
+ */
+async function sessionShare({
+  run,
+  win,
+  core,
+  relay,
+  serviceId,
+  workspaceId,
+  project,
+}) {
+  const MARKER = "link-join-session";
+  const terminal = await core.owner("/api/terminals", {
+    method: "POST",
+    body: JSON.stringify({
+      workspaceId,
+      cwd: project,
+      command: "/bin/sh",
+      args: ["-c", `echo ${MARKER}; exec cat`],
+    }),
+  });
+  const shared = await core.rpc("sources.shareLinkCreate", {
+    serviceId,
+    workspaceId,
+    target: "session",
+    sessionId: terminal.id,
+    role: "viewer",
+    ttlMs: 3_600_000,
+    maxUses: 10,
+    label: "session",
+  });
+  run.check(
+    shared.link.target === "session" && shared.link.readOnly === true,
+    "会话链接：只读、只分享这一条终端",
+    { target: shared.link.target, readOnly: shared.link.readOnly },
+  );
+  // 片段是 `<秘密>.<邀请令牌>`，邀请令牌自己也带点。
+  const [linkSecret, ...rest] = new URL(shared.url).hash.slice(1).split(".");
+  const invitation = rest.join(".");
+  secret("会话链接秘密", linkSecret);
+  secret("会话链接邀请令牌", invitation);
+  const screen = async () =>
+    JSON.stringify(
+      await core.owner(`/api/terminals/${terminal.id}/capture?lines=50`),
+    );
+
+  // 边缘按来源 IP 限次：前面几位访客刚连过，先等窗口过去。
+  await sleep(RATE_WINDOW_MS);
+  guest = await stack.browser.page(await stack.browser.context());
+  guest.allowed.push(/WebSocket connection to .* failed/);
+  await guest.goto(shared.url);
+  await guest.settle();
+  await guest.until(buttonExists(["加入", "Join"]), "会话链接落地页的「加入」");
+  await guest.clickOn(buttonByText(["加入", "Join"]), "加入");
+  await guest.until(
+    `return document.querySelector('[data-slot="shared-session"][data-session="${terminal.id}"]') ? true : null;`,
+    "访客直接落在被分享会话的只读查看页",
+    { timeout: 60_000 },
+  );
+  const text = await guest.until(
+    `const rows = document.querySelector('[data-slot="shared-session"] .xterm-rows')?.innerText ?? "";
+     return rows.includes(${JSON.stringify(MARKER)}) ? rows : null;`,
+    "只读查看页上看得到终端画面",
+    { timeout: 60_000 },
+  );
+  run.ok("浏览器访客加入后看到那条终端的画面", text.trim().slice(0, 60));
+  run.check(
+    await guest.evaluate(
+      `return !!document.querySelector('[data-slot="shared-session"] [data-read-only]') &&
+        !document.querySelector('.react-flow');`,
+    ),
+    "查看页标着只读，没有画布",
+  );
+  await guest.clickOn(
+    `return document.querySelector('[data-slot="shared-session"] .xterm-screen')`,
+    "终端画面",
+  );
+  await guest.type("guest-typed-this");
+  await guest.key("Enter");
+  await sleep(1_500);
+  run.check(
+    !(await screen()).includes("guest-typed-this"),
+    "访客在查看页里打的字没有进终端",
+  );
+  await run.shot(guest, "07-session-guest-view");
+  run.consoleClean(guest);
+
+  // 第二个隔离实例：另一台桌面按链接挂上，侧栏「他人分享」里点开同一页。
+  const viewer = await launchElectron({
+    scratch: stack.scratch,
+    tag: "session-viewer",
+  });
+  try {
+    const viewerCore = ownerClient(viewer.session);
+    await viewerCore.rpc("sources.mountByLink", {
+      url: shared.url,
+      fingerprint: relay.fingerprint,
+    });
+    await reloadAfterMount(viewer.page);
+    await viewer.page.until(
+      `const row = document.querySelector('[data-shared-session="${terminal.id}"]');
+       if (!row) return null; row.click(); return true;`,
+      "侧栏「他人分享」里列出被分享的会话并点开",
+      { timeout: 90_000 },
+    );
+    await viewer.page.until(
+      `const rows = document.querySelector('[data-slot="shared-session"] .xterm-rows')?.innerText ?? "";
+       return rows.includes(${JSON.stringify(MARKER)}) ? true : null;`,
+      "第二台桌面的只读查看页上看得到终端画面",
+      { timeout: 60_000 },
+    );
+    await viewer.page.capture(join(output, "08-session-desktop-view.png"));
+    run.ok("第二台桌面按链接挂上，在侧栏点开同一条会话的只读查看页");
+  } finally {
+    await viewer.stop().catch(() => {});
+  }
+
+  // 经中继直接以访客身份调：读得到会话行，写被 core 拒；中继不再按 ro 挡 POST。
+  const accepted = await relay.must(
+    "POST",
+    `/v1/links/${shared.link.linkId}/accept`,
+    {
+      body: {
+        secret: linkSecret,
+        device: { platform: "browser", name: "probe-session-api" },
+      },
+    },
+  );
+  secret("会话访客的中继令牌", accepted.relayToken);
+  secret("会话访客的断言", accepted.assertion);
+  const headers = {
+    origin: "https://localhost",
+    "armadra-relay-token": accepted.relayToken,
+  };
+  const base = `/s/${accepted.sourceId}`;
+  const login = await relay.must("POST", `${base}/api/identity/cloud/login`, {
+    body: { assertion: accepted.assertion, invitationToken: invitation },
+    headers,
+  });
+  const token = secret(
+    "会话访客的 core 会话",
+    login.session.native.accessToken,
+  );
+  const rpc = (procedure, input) =>
+    relay.call("POST", `${base}/api/rpc/${procedure}`, {
+      body: { json: input },
+      token,
+      headers,
+    });
+  const read = await rpc("terminals/get", { sessionId: terminal.id });
+  run.check(read.status === 200, "访客经中继 POST /api/rpc 读得到会话行", {
+    status: read.status,
+  });
+  const paste = await rpc("terminals/paste", {
+    sessionId: terminal.id,
+    text: "guest-pasted-this",
+  });
+  const boards = await relay.call(
+    "GET",
+    `${base}/api/workspaces/${workspaceId}/boards`,
+    {
+      token,
+      headers,
+    },
+  );
+  run.check(
+    paste.status === 403 && boards.status === 403,
+    "写操作（粘贴进终端）与画布都被 core 拒 403",
+    { paste: paste.status, boards: boards.status },
+  );
+  run.check(
+    !(await screen()).includes("guest-pasted-this"),
+    "粘贴的字没有进终端",
+  );
+
+  // 撤链接：之后访客的会话失效，再开链接也被拒。
+  await core.rpc("sources.shareLinkRevoke", {
+    serviceId,
+    linkId: shared.link.linkId,
+  });
+  const after = await relay.call("POST", `${base}/api/rpc/terminals/get`, {
+    body: { json: { sessionId: terminal.id } },
+    token,
+    headers,
+  });
+  run.check(
+    after.status === 401 || after.status === 403,
+    "撤链接后访客读不到这条会话",
+    { status: after.status },
+  );
+  const again = await relay.call(
+    "POST",
+    `/v1/links/${shared.link.linkId}/accept`,
+    {
+      body: {
+        secret: linkSecret,
+        device: { platform: "browser", name: "probe-session-again" },
+      },
+    },
+  );
+  run.check(
+    again.status !== 200 && again.body?.code === "link_invalid",
+    "撤销后的会话链接不能再加入",
+    { status: again.status, code: again.body?.code },
+  );
 }
