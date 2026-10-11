@@ -1,5 +1,9 @@
 import {
+  CLUSTER_GAP,
   DEFAULT_LAYOUT_DIRECTION,
+  LAYER_GAP,
+  SIBLING_GAP,
+  boxesTooClose,
   type CanvasEdge,
   type CanvasNode,
   type LayoutDirection,
@@ -14,19 +18,29 @@ import { COLLAPSED_HEIGHT, defaultNodeSize } from "../store/defaults";
  *   1. **刚体化**：每个盒子先成一个「单元」；白板对象（`kind: "wb"`）之间
  *      包围盒相交或间距 ≤ 24px 的并成一个孤岛（并查集）。单元内部的相对
  *      位置永远不变——导入的一张图、手画的一组框线整体平移，不会被拆开。
- *   2. **阅读顺序**：单元按原位置排序，先按 `y` 以 `ROW_GAP` 量化成行，行内
- *      按 `x`。后面所有「谁先谁后」都用它，所以整理两次结果不变（幂等）。
+ *   2. **阅读顺序**：单元按原位置排序，先按 `y` 以 `READING_ROW` 量化成行，
+ *      行内按 `x`。兄弟、簇、列内的先后用它；排完之后这些先后不变，所以整理
+ *      两次结果不变（幂等）。「认哪个主、环从哪剪、附件挂谁」只看链接的输入
+ *      顺序，不看坐标——否则一次整理改了先后，下一次就换了结构。
  *   3. **主从树**：只取 `role: "supervises"` 的边建森林（一个单元最多一个主，
- *      先到的赢）。按布局方向（`options.direction`，缺省纵向）一层一层排：
+ *      先到的边赢；成环时剪掉环上最晚到的那条）。按布局方向（`options.direction`，缺省纵向）一层一层排：
  *      纵向子在主下面一行、横向子在主右侧一列，主居中于它的子（`layoutTree`）。
- *      对等边连着的非 Agent 单元作为「附件」挂在它连的那个树成员旁边（纵向在
- *      右侧同一行，横向在正下方）。每棵树（连同附件）是一个簇：多主各成簇。
- *   4. **其余分量**：剩下的单元按无向连通分量成簇，簇内拓扑分列；列内顺序
- *      第 0 列按阅读顺序，之后每列按上一列邻居的平均 y（重心法）排。
+ *      对等边连着的非 Agent 单元作为「附件」挂在第一条边连着的那个树成员旁边
+ *      （纵向在右侧同一行，横向在正下方）。每棵树（连同附件）是一个簇：多主各成簇。
+ *      超出 `MAX_DEPTH` 排不到的单元退回第 4 步，保证每个单元都有落点。
+ *   4. **其余分量**：剩下的单元按无向连通分量成簇，簇内沿连线方向拓扑分列
+ *      （列距 = 横向层距）；列内顺序第 0 列按阅读顺序，之后每列按上一列邻居
+ *      的平均 y（重心法）排。
  *   5. **裹行**：簇按阅读顺序塞进当前行，行宽超过
  *      `sqrt(总面积 × 视口宽高比) × 1.15` 就换行。
  *   6. **网格**：每个单元左上角吸到 8px。
  *   7. 原点 (0,0)：调用方负责平移回原来那块内容的左上角。
+ *
+ * **不重叠**（#319）：间距与派发放置共用（`@armadra/shared` 的 `LAYER_GAP` /
+ * `SIBLING_GAP` / `CLUSTER_GAP`）。层与层之间是层距，同层相邻是兄弟间距，簇与
+ * 簇之间是簇间距，所以排完任意两个单元的矩形相距至少 `SIBLING_GAP`——连线
+ * 总有一条通道可走，层距里还放得下扇出的弯折与连线标签。单元内部（白板孤岛）
+ * 是用户自己摆的，相对位置原样保留。
  *
  * 复杂度 O(n log n + e)（孤岛按 x 排序后扫描，最坏退化成 O(n²) 只在全部
  * 白板对象叠在一列上时出现）。
@@ -64,9 +78,8 @@ export interface TidyOptions {
   direction?: LayoutDirection;
 }
 
-/** 版式常量（§6.4）。 */
-export const ROW_GAP = 48;
-export const COLUMN_GAP = 60;
+/** 阅读顺序的行高：`y` 相差不到这么多算同一行（只用于排先后，不是间距）。 */
+export const READING_ROW = 48;
 export const MAX_DEPTH = 50;
 export const DEFAULT_ASPECT = 16 / 9;
 export const GRID = 8;
@@ -193,7 +206,8 @@ function unitsOf(boxes: readonly TidyBox[]): {
   // 第 2 步：阅读顺序。`sort` 是稳定的，坐标全缺省时就是输入顺序。
   const ordered = [...units].sort(
     (a, b) =>
-      Math.floor(a.y / ROW_GAP) - Math.floor(b.y / ROW_GAP) || a.x - b.x,
+      Math.floor(a.y / READING_ROW) - Math.floor(b.y / READING_ROW) ||
+      a.x - b.x,
   );
   ordered.forEach((unit, index) => {
     unit.rank = index;
@@ -226,11 +240,15 @@ function treeClusters(
 ): Cluster[] {
   const order = byRank(units);
   const parent = new Map<string, string>();
-  for (const link of [...links]
-    .filter((entry) => entry.supervises)
-    .sort((a, b) => order(a.target, b.target) || order(a.source, b.source))) {
+  /** 每个从认下的那条主从边在输入里的位置；环从最晚的那条剪断。 */
+  const parentRank = new Map<string, number>();
+  for (const [index, link] of links.entries()) {
     // 一个从只认一个主：先到的赢（`canvas/supervision.ts` 同一条规矩）。
-    if (!parent.has(link.target)) parent.set(link.target, link.source);
+    // 「先」按链接的输入顺序（文档里边的顺序），不按坐标：否则整理完另一个
+    // 主排到了前面，再整理一次就换了主，结果不幂等（#319）。
+    if (!link.supervises || parent.has(link.target)) continue;
+    parent.set(link.target, link.source);
+    parentRank.set(link.target, index);
   }
   if (parent.size === 0) return [];
 
@@ -242,7 +260,9 @@ function treeClusters(
   }
   for (const list of children.values()) list.sort(order);
 
-  // 根：在树里、没有主的单元；环里谁都有主，就从阅读顺序最靠前的那个剪断。
+  // 根：在树里、没有主的单元。环里谁都有主：每个单元最多一个主，所以一个
+  // 分量里最多一个环，从环上最晚到的那条主从边剪断（只看结构不看坐标，
+  // 整理之后再整理一次还是剪同一条）。
   const inTree = [...new Set([...parent.keys(), ...parent.values()])].sort(
     order,
   );
@@ -265,12 +285,19 @@ function treeClusters(
   }
   for (const id of inTree) {
     if (reached.has(id)) continue;
-    // 上溯到环上，从那里剪断。
+    // 上溯到环上，再绕环一圈找最晚到的那条边。
     const seen = new Set<string>();
     let cursor = id;
     while (parent.has(cursor) && !seen.has(cursor)) {
       seen.add(cursor);
       cursor = parent.get(cursor)!;
+    }
+    let walker = parent.get(cursor);
+    while (walker !== undefined && walker !== cursor) {
+      if ((parentRank.get(walker) ?? -1) > (parentRank.get(cursor) ?? -1)) {
+        cursor = walker;
+      }
+      walker = parent.get(walker);
     }
     const boss = parent.get(cursor);
     if (boss !== undefined) {
@@ -285,28 +312,9 @@ function treeClusters(
   }
   for (const id of reached) used.add(id);
 
-  // 结构顺序：树按成员里最靠前的阅读名次排，树内按先序。只看结构不看坐标，
-  // 整理之后再整理一次，附件仍然挂在同一个成员下面。
-  const preorder = new Map<string, number>();
-  const trees = roots.map((root) => {
-    const members: string[] = [];
-    const stack = [root];
-    while (stack.length > 0) {
-      const id = stack.pop()!;
-      members.push(id);
-      stack.push(...[...(children.get(id) ?? [])].reverse());
-    }
-    return {
-      members,
-      rank: Math.min(...members.map((id) => units.get(id)!.rank)),
-    };
-  });
-  trees.sort((a, b) => a.rank - b.rank);
-  for (const tree of trees) {
-    for (const id of tree.members) preorder.set(id, preorder.size);
-  }
-
-  // 附件：对等边连着树成员的非 Agent 单元，挂在结构顺序最靠前的那个成员下。
+  // 附件：对等边连着树成员的非 Agent 单元，挂在第一条（按链接的输入顺序）
+  // 连着它的树成员下。只看结构不看坐标：整理之后再整理一次，附件仍然挂在
+  // 同一个成员下面（#319；按坐标挑宿主时，簇的先后一变宿主就跟着变）。
   const host = new Map<string, string>();
   for (const link of links) {
     if (link.supervises) continue;
@@ -314,15 +322,9 @@ function treeClusters(
       [link.source, link.target],
       [link.target, link.source],
     ] as const) {
-      if (!reached.has(other) || used.has(mine)) continue;
+      if (!reached.has(other) || used.has(mine) || host.has(mine)) continue;
       if (units.get(mine)!.kind === "agent") continue;
-      const current = host.get(mine);
-      if (
-        current === undefined ||
-        preorder.get(other)! < preorder.get(current)!
-      ) {
-        host.set(mine, other);
-      }
+      host.set(mine, other);
     }
   }
   const attachments = new Map<string, string[]>();
@@ -334,9 +336,19 @@ function treeClusters(
   }
   for (const list of attachments.values()) list.sort(order);
 
-  return roots.map((root) =>
+  const clusters = roots.map((root) =>
     layoutTree(root, units, children, attachments, up, direction),
   );
+  // 超出 MAX_DEPTH 的子孙（连同挂在它们身上的附件）这里没有落点：还给第 4 步
+  // 按普通分量排，不能让它们留在原地压着别人。
+  const placed = new Set<string>();
+  for (const cluster of clusters) {
+    for (const id of cluster.offsets.keys()) placed.add(id);
+  }
+  for (const id of [...used]) {
+    if (!placed.has(id)) used.delete(id);
+  }
+  return clusters;
 }
 
 /**
@@ -364,8 +376,8 @@ function layoutTree(
   const vertical = direction === "vertical";
   const mainOf = (unit: Unit) => (vertical ? unit.height : unit.width);
   const crossOf = (unit: Unit) => (vertical ? unit.width : unit.height);
-  const mainGap = vertical ? ROW_GAP : COLUMN_GAP;
-  const crossGap = vertical ? COLUMN_GAP : ROW_GAP;
+  const mainGap = LAYER_GAP[direction];
+  const crossGap = SIBLING_GAP;
 
   // 深度与每层的厚度。超过 MAX_DEPTH 的子孙当作叶子之外的东西不排（与旧版
   // 同一个上限，病态长链才会碰到）。
@@ -532,11 +544,11 @@ function layoutComponent(
       offsets.set(unit.id, { x, y });
       centre.set(unit.id, y + unit.height / 2);
       height = Math.max(height, y + unit.height);
-      y = up(y + unit.height + ROW_GAP);
+      y = up(y + unit.height + SIBLING_GAP);
       width = Math.max(width, unit.width);
     }
     right = x + width;
-    x = up(right + COLUMN_GAP);
+    x = up(right + LAYER_GAP.horizontal);
     first = false;
   }
   return {
@@ -633,7 +645,7 @@ export function tidy(
     // `x > 0` 的守卫：比一整行还宽的簇自己独占一行，不会死循环换行。
     if (x > 0 && x + cluster.width > rowLimit) {
       x = 0;
-      y = up(y + rowHeight + ROW_GAP);
+      y = up(y + rowHeight + CLUSTER_GAP);
       rowHeight = 0;
     }
     for (const [id, offset] of cluster.offsets) {
@@ -646,7 +658,7 @@ export function tidy(
         positions[member.id] = { x: left + member.dx, y: top + member.dy };
       }
     }
-    x = up(x + cluster.width + COLUMN_GAP);
+    x = up(x + cluster.width + CLUSTER_GAP);
     rowHeight = Math.max(rowHeight, cluster.height);
   }
   return positions;
@@ -686,4 +698,84 @@ export function tidyPositions(
 export function tidyKindOf(node: Pick<CanvasNode, "type" | "data">): TidyKind {
   const data = node.data as { agent?: unknown } | undefined;
   return node.type === "terminal" && data?.agent != null ? "agent" : "node";
+}
+
+/* ------------------------------- 让开旁人 --------------------------------- */
+
+export interface TidyRect {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+/**
+ * 只整理选区时，排好的块（`block`，已经平移到落点）要让开选区外的对象
+ * （`obstacles`）：相距不足 `gap` 就整块平移。分别试「一直往下」与「一直往右」，
+ * 每一步都跳到挡路对象的另一侧，取位移小的那个（相等时往下）。块不动时返回
+ * `{0, 0}`。位移向上取整到网格，块内的相对位置不变。
+ */
+export function clearOffset(
+  block: readonly TidyRect[],
+  obstacles: readonly TidyRect[],
+  gap: number = CLUSTER_GAP,
+  grid: number = GRID,
+): Position {
+  const up = (value: number) =>
+    grid > 0 ? Math.ceil(value / grid - 1e-9) * grid : value;
+  const blocked = (dx: number, dy: number) =>
+    obstacles.filter((obstacle) =>
+      block.some((rect) =>
+        boxesTooClose(
+          { ...rect, x: rect.x + dx, y: rect.y + dy },
+          obstacle,
+          gap,
+        ),
+      ),
+    );
+  if (block.length === 0 || blocked(0, 0).length === 0) return { x: 0, y: 0 };
+
+  const slide = (axis: "x" | "y"): number => {
+    let shift = 0;
+    // 每一步至少越过一个障碍，所以最多 obstacles.length 步。
+    for (let step = 0; step <= obstacles.length; step += 1) {
+      const hit = blocked(axis === "x" ? shift : 0, axis === "y" ? shift : 0);
+      if (hit.length === 0) return shift;
+      const start = Math.min(...block.map((rect) => rect[axis]));
+      const far = Math.max(
+        ...hit.map((obstacle) =>
+          axis === "x"
+            ? obstacle.x + obstacle.width
+            : obstacle.y + obstacle.height,
+        ),
+      );
+      shift = Math.max(shift + grid, up(far + gap - start));
+    }
+    return shift;
+  };
+  const down = slide("y");
+  const right = slide("x");
+  return right < down ? { x: right, y: 0 } : { x: 0, y: down };
+}
+
+/**
+ * 两两检查：有没有两个矩形相距不足 `gap`。返回第一对的下标，没有返回 null。
+ * 测试与开发期断言用；O(n log n + 命中数)。
+ */
+export function firstCrowdedPair(
+  rects: readonly TidyRect[],
+  gap: number,
+): [number, number] | null {
+  const order = rects
+    .map((rect, index) => ({ rect, index }))
+    .sort((a, b) => a.rect.x - b.rect.x);
+  for (let i = 0; i < order.length; i += 1) {
+    const a = order[i]!;
+    for (let j = i + 1; j < order.length; j += 1) {
+      const b = order[j]!;
+      if (b.rect.x >= a.rect.x + a.rect.width + gap) break;
+      if (boxesTooClose(a.rect, b.rect, gap)) return [a.index, b.index];
+    }
+  }
+  return null;
 }
