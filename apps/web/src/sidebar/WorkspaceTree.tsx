@@ -18,12 +18,10 @@ import {
 } from "react";
 import {
   Folder,
-  FolderOpen,
   LoaderCircle,
   MoreHorizontal,
   Plus,
   SquarePen,
-  Upload,
 } from "lucide-react";
 import type { WorkspaceSummary } from "@armadra/shared";
 
@@ -39,7 +37,7 @@ import {
   RemoveWorkspaceDialog,
   useRemoveWorkspace,
 } from "../app/remove-workspace";
-import { NewFolderDialog } from "../panels/NewFolderDialog";
+import { NewWorkspaceDialog } from "../panels/NewWorkspaceDialog";
 import { useCanvasStore } from "../store/canvas-store";
 import { Button } from "@/ui/button";
 import {
@@ -227,14 +225,7 @@ export function WorkspaceTree() {
             className="min-h-36 rounded-lg transition-colors data-[dragging=true]:bg-accent/60"
             {...folderImport.events}
           >
-            <GroupTitle
-              action={
-                <AddProjectButton
-                  busy={folderImport.busy}
-                  choose={folderImport.choose}
-                />
-              }
-            >
+            <GroupTitle action={<AddProjectButton busy={folderImport.busy} />}>
               {t("sidebar.projects")}
             </GroupTitle>
             {(folderImport.dragging || folderImport.busy) && (
@@ -304,48 +295,25 @@ function GroupTitle({
 }
 
 /**
- * 「项目」组标题右边的 `+`：走系统目录选择器，选完即建即开；浏览器里没有
- * 选择器，退回手填路径的新建文件夹对话框（对已存在的目录就是「打开」）。
+ * 「项目」组标题右边的 `+`：打开添加项目对话框（仓库、本地、地址三种来源，
+ * 契约 §65），建好即开。拖目录进项目区仍走文件夹导入。
  */
-function AddProjectButton({
-  busy,
-  choose,
-}: {
-  busy: boolean;
-  choose: () => Promise<void>;
-}) {
+function AddProjectButton({ busy }: { busy: boolean }) {
   const t = useT();
   const openWorkspace = useOpenWorkspace();
   const [dialog, setDialog] = useState(false);
 
   return (
     <>
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <IconButton
-            label={t("sidebar.addProject")}
-            className="shrink-0"
-            disabled={busy}
-          >
-            <Plus />
-          </IconButton>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="end">
-          <DropdownMenuItem onSelect={() => void choose()}>
-            {isDesktop() ? <FolderOpen /> : <Upload />}
-            {t(
-              isDesktop()
-                ? "folderImport.chooseOpen"
-                : "folderImport.chooseCopy",
-            )}
-          </DropdownMenuItem>
-          <DropdownMenuItem onSelect={() => setDialog(true)}>
-            <Folder />
-            {t("launcher.newFolder")}
-          </DropdownMenuItem>
-        </DropdownMenuContent>
-      </DropdownMenu>
-      <NewFolderDialog
+      <IconButton
+        label={t("sidebar.addProject")}
+        className="shrink-0"
+        disabled={busy}
+        onClick={() => setDialog(true)}
+      >
+        <Plus />
+      </IconButton>
+      <NewWorkspaceDialog
         open={dialog}
         onOpenChange={setDialog}
         onCreated={openWorkspace}
