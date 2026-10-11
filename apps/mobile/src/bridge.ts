@@ -45,6 +45,8 @@ export interface ArmadraNativePlugin {
   pin(options: { origin: string; fingerprint: string }): Promise<void>;
   scan(): Promise<{ text?: string }>;
   appInfo(): Promise<{ version?: string; build?: string }>;
+  /** 端到端通道的设备钥种子（base64url，32 字节），没有就生成（契约 §78）。 */
+  e2eDeviceSeed(): Promise<{ seed?: string }>;
   pushRegistration(): Promise<{
     registration?: {
       platform: "ios" | "android";
