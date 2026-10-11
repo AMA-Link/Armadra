@@ -4163,6 +4163,7 @@ App 对每个候选算 `ISK_i` 并核对 `confirm_i(server)`；一个都对不�
 
 请求体 `{ "session": <22 字符>, "index": j, "confirm": <confirm_j(client)，32 字节> }`。Gateway 用自己的来源与指纹核对；对了就取走那枚码，答与 §17.3 / §24.2 同形的配对载荷。会话不论对错都作废；会话不存在或过期、`index` 越界、标签不对、码已过期、票已被扫码兑掉，一律 404 `pairing_code_invalid`。
 
+- **只给局域网直连**：Gateway 只在私网 / 回环档开放配对码（§24.1）；经个人中转隧道（§32）进来的 `exchange` 与这两条一律 403 `pairing_code_disabled`（`relay/admission.ts`，`identity/transport.ts::pairingCodePath`），经中继的首次连接走扫码，之后另做设备背书 / SAS。
 - 两条都是匿名路径（与 `exchange` 同列在 `identity/transport.ts::anonymousPath` 与 `route-scopes.ts` 的 `SELF_GUARDED`），Cookie 与 Bearer 两种准入都放行；契约登记为 `gateway.pakeStart` / `gateway.pakeFinish`（`scope: null`），只经旧路径。
 - 审计与 `exchange` 相同的两条，`detail.via = "pake"`；码、票、份额与标签都不记。
 
