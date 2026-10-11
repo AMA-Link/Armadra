@@ -208,7 +208,23 @@ Rust↔Go 的归档互通，以及需要受管二进制路径的 `agent:smoke` /
   `tools/release/assemble.mjs` 用 `ARMADRA_RELEASE_SIGNING_KEY` 在写清单之前签出
   （[发布、更新与服务安装 §2.5](../design/updates-and-service-install.md#25-引入步骤一次性)）。
 
-仓库里**没有**真实密钥。`pnpm --filter @armadra/desktop dist` 在开工前就决定这次要不要签名
+发布签名的**公钥**入库在 `apps/desktop/build/armadra-release.pub`（minisign，key id
+`A5B7DA4722E242F7`），由 `scripts/after-pack.mjs` 放进包里的 `resources/armadra-release.pub`。
+壳更新时按它判定（issue #288 §2，`shell-core/updates/availability.ts`）：
+
+- 包里带着公钥就能检查、下载、安装，不再要求平台代码签名；本机 `dist` 仍是 `localBuild`。
+- 下载后两道校验：sha256 等于 GitHub 资产的 `digest`，且同一发布里的 `<资产>.sig` 用内置公钥验过
+  （只认 `Ed`，trusted comment 须点名该资产）；任一不过就拒装，报 `digestMismatch` /
+  `signatureMismatch`。
+- 安装路径：平台签名有效走 electron-updater `quitAndInstall`；macOS 未签名由辅助脚本在应用退出后
+  用 `ditto` 替换 `.app`、去掉 quarantine、重新打开；Windows 未签名分离启动
+  `setup.exe --updated /S --force-run` 后退出；Linux AppImage 走 electron-updater。
+- 从 dmg 里直接运行、deb / rpm / pacman、Windows 便携版报 `unsupported{managedPackage}`，
+  检查后在 `managed.download` 给出对应安装包的下载地址。
+- 开发时 `ARMADRA_UPDATES_DEV=1` 加 `ARMADRA_UPDATER_PUBKEY=<.pub 路径>` 可换一把公钥
+  （例如 dev-stack 发布源现生成的那把）；不带开发开关时这个变量不生效。
+
+仓库里**没有**真实私钥。`pnpm --filter @armadra/desktop dist` 在开工前就决定这次要不要签名
 （`scripts/signing-electron.mjs`），而不是把失败留到打包最后一步：
 
 | `CSC_LINK` | 其余条件                          | 结果                                                          |
