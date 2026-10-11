@@ -151,7 +151,33 @@ export interface ShareLinksOptions {
     warn(message: string, fields?: Record<string, unknown>): void;
   };
   readonly now?: () => number;
+  /**
+   * 端到端通道（契约 §80）：链接片段第三段的身份指纹前缀、core 侧链接记录与访客设备。
+   * 不给（中继没装）就照旧两段、不记、不数。
+   */
+  readonly e2e?: () => ShareLinkE2e | undefined;
 }
+
+export interface ShareLinkE2e {
+  /** core 身份公钥指纹（52 字符 base32）。 */
+  fingerprint(): Promise<string>;
+  save(row: {
+    linkId: string;
+    issuer: string;
+    invitationId: string;
+    maxDevices: number | null;
+    identityFpShown: string;
+  }): void;
+  /** 链接记录的设备上限；没有记录是 `null`。 */
+  maxDevices(linkId: string): number | null;
+  /** 经这条链接绑定的设备数（已信任与待确认）。 */
+  devices(linkId: string): number;
+  /** 撤链接：记录标撤销、经它绑定的设备全部撤销并断开。 */
+  revoke(linkId: string): void;
+}
+
+/** 链接片段第三段的长度：身份指纹前 16 位（契约 §80）。 */
+export const LINK_FINGERPRINT_CHARS = 16;
 
 /** 身份域的失败 → 契约的码。 */
 function identity<T>(work: () => T): T {
@@ -288,6 +314,7 @@ export class ShareLinks {
         // 远程服务那边被撤销（例如另一台设备上撤的）：本机的邀请一并作废。
         if (states.get(linkId) === "revoked") {
           this.revokeInvitation(saved[linkId]?.invitationId ?? "");
+          this.options.e2e?.()?.revoke(linkId);
         }
       }
       await this.update(serviceId, (links) => {
@@ -295,8 +322,11 @@ export class ShareLinks {
         return links;
       });
     }
+    const e2e = this.options.e2e?.();
     const links = rows
-      .map((row) => shareLinkOf(row, states.get(row.linkId) ?? "active", saved))
+      .map((row) =>
+        shareLinkOf(row, states.get(row.linkId) ?? "active", saved, e2e),
+      )
       .sort((a, b) => b.createdAtMs - a.createdAtMs);
     return { links };
   }
@@ -402,11 +432,29 @@ export class ShareLinks {
       this.revokeInvitation(invitation.invitationId);
       throw error;
     }
+    const e2e = this.options.e2e?.();
+    // 第三段是 core 身份公钥指纹前 16 位：访客据此钉扎，中继换不了 core 的身份。
+    const fingerprint =
+      e2e === undefined
+        ? ""
+        : (await e2e.fingerprint().catch(() => "")).slice(
+            0,
+            LINK_FINGERPRINT_CHARS,
+          );
     const fragment =
-      created.secret === ""
+      (created.secret === ""
         ? invitation.token
-        : `${created.secret}.${invitation.token}`;
+        : `${created.secret}.${invitation.token}`) +
+      (fingerprint === "" ? "" : `.${fingerprint}`);
     const url = `${created.url}#${fragment}`;
+    e2e?.save({
+      linkId: created.linkId,
+      issuer,
+      invitationId: invitation.invitationId,
+      // D6：访客设备数缺省等于可用次数。
+      maxDevices: input.maxUses,
+      identityFpShown: fingerprint,
+    });
     try {
       await this.update(input.serviceId, (links) => ({
         ...links,
@@ -445,6 +493,8 @@ export class ShareLinks {
         revokedAtMs: null,
         state: "active",
         copyable: true,
+        devices: 0,
+        maxDevices: e2e === undefined ? null : input.maxUses,
       },
     };
   }
@@ -472,6 +522,8 @@ export class ShareLinks {
     const saved = (await this.options.secrets.shareLinks(serviceId))[linkId];
     if (saved !== undefined) this.revokeInvitation(saved.invitationId);
     this.disableGuests(this.options.issuerOf(serviceId), linkId);
+    // 契约 §80：经这条链接绑定的访客设备钥一并撤销、断开通道。
+    this.options.e2e?.()?.revoke(linkId);
     await this.update(serviceId, (links) => {
       if (!(linkId in links)) return undefined;
       delete links[linkId];
@@ -535,6 +587,7 @@ function shareLinkOf(
   row: LinkSummary,
   state: ShareLinkState,
   saved: Readonly<Record<string, SavedShareLink>>,
+  e2e?: ShareLinkE2e,
 ): ShareLink {
   const entry = state === "active" ? saved[row.linkId] : undefined;
   return {
@@ -550,6 +603,8 @@ function shareLinkOf(
     revokedAtMs: row.revokedAtMs,
     state,
     copyable: entry !== undefined,
+    devices: e2e?.devices(row.linkId) ?? 0,
+    maxDevices: e2e?.maxDevices(row.linkId) ?? null,
   };
 }
 
