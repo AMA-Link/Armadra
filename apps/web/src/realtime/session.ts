@@ -78,6 +78,29 @@ export const useRealtimeStore = create<RealtimeView>((set) => ({
   follow: (following) => set({ following }),
 }));
 
+/** 不再跟随（没在跟随时不写 store）。 */
+export function stopFollowing(): void {
+  const view = useRealtimeStore.getState();
+  if (view.following !== null) view.follow(null);
+}
+
+/**
+ * React Flow 视口回调：`event` 非空是用户自己拖动、滚轮或捏合移动了视口，
+ * 跟随就此结束；跟随自己的 `setCenter` 过渡与适应视图这类程序化移动没有
+ * 事件，不算。
+ *
+ * 滚轮平移（`panOnScroll`）的第一下只报 `onMoveStart`、不报 `onMove`，所以
+ * 开始时认滚轮；拖动的开始是按下，单击空白处不该取消，等真的动了（`onMove`）。
+ */
+export const followMoveHandlers = {
+  onMoveStart: (event: unknown) => {
+    if (event instanceof WheelEvent) stopFollowing();
+  },
+  onMove: (event: unknown) => {
+    if (event) stopFollowing();
+  },
+};
+
 /** 当前板在走实时协同吗（非 React 的调用方用）。 */
 export function realtimeActive(
   boardId?: string | null,
