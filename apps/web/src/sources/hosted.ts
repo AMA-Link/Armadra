@@ -11,6 +11,7 @@ import {
   browserDevice,
   cloudLogin,
   cloudAcceptLink,
+  cloudLinkInfo,
   cloudLogout,
   cloudPlatformInfo,
   coreCloudLogin,
@@ -52,6 +53,9 @@ import {
  *   另记一份在 `sessionStorage`（{@link createSessionRelayVault}）：只这个标签页、
  *   只中继这个来源能读，关标签即丢；刷新页面时用它们静默续上（{@link
  *   HostedRelay.resume}），登出、被拒时清掉。
+ * - 按分享链接加入的访客例外：刷新令牌按 签发方 + 链接 记在 `localStorage`
+ *   （{@link createSessionRelayVault} 的 `key`），寿命 = 链接到期；到期、被收回
+ *   （401、`accessRevoked`）即清。刷新后 {@link HostedRelay.resume} 先试它，再回账号登录。
  * - 所有请求同源（中继的 `/v1/*`、`/s/<源>/…`）：中继给页面的 CSP 是
  *   `connect-src 'self'`，core 认中继来源为可信来源（契约 §32）。
  * - `me.stream`：主机下线 → 等它上线（`waitingForSource`），上线 → 叫醒事件流；
@@ -144,6 +148,8 @@ interface ResumeRecord {
   readonly sources: Readonly<Record<string, string>>;
   /** 上次进的主机；还没进过是 `null`。 */
   readonly entered: { readonly sourceId: string; readonly name: string } | null;
+  /** 访客记录的寿命（毫秒时刻，= 链接到期）；账号那份没有。 */
+  readonly expiresAtMs?: number;
 }
 
 function browserSessionStorage(): Storage | null {
@@ -154,7 +160,12 @@ function browserSessionStorage(): Storage | null {
   }
 }
 
-function readResume(storage: Storage | null, issuer: string): ResumeRecord {
+function readResume(
+  storage: Storage | null,
+  issuer: string,
+  key: string = HOSTED_RESUME_KEY,
+  now: number = Date.now(),
+): ResumeRecord {
   const empty: ResumeRecord = {
     issuer,
     cloudRefreshToken: null,
@@ -162,17 +173,25 @@ function readResume(storage: Storage | null, issuer: string): ResumeRecord {
     entered: null,
   };
   try {
-    const raw = storage?.getItem(HOSTED_RESUME_KEY);
+    const raw = storage?.getItem(key);
     if (!raw) return empty;
     const value = JSON.parse(raw) as Partial<ResumeRecord>;
     // 别的签发方留下的（同一来源不会有，但别信它）：不用。
     if (value.issuer !== issuer) return empty;
+    // 访客记录到期即作废（连同存储里那份）。
+    if (typeof value.expiresAtMs === "number" && value.expiresAtMs <= now) {
+      storage?.removeItem(key);
+      return empty;
+    }
     const sources: Record<string, string> = {};
     for (const [id, token] of Object.entries(value.sources ?? {}))
       if (typeof token === "string" && token !== "") sources[id] = token;
     const entered = value.entered;
     return {
       issuer,
+      ...(typeof value.expiresAtMs === "number"
+        ? { expiresAtMs: value.expiresAtMs }
+        : {}),
       cloudRefreshToken:
         typeof value.cloudRefreshToken === "string" &&
         value.cloudRefreshToken !== ""
@@ -194,16 +213,86 @@ function readResume(storage: Storage | null, issuer: string): ResumeRecord {
   }
 }
 
-function writeResume(storage: Storage | null, record: ResumeRecord): void {
+function writeResume(
+  storage: Storage | null,
+  record: ResumeRecord,
+  key: string = HOSTED_RESUME_KEY,
+): void {
   try {
     if (record.cloudRefreshToken === null) {
-      storage?.removeItem(HOSTED_RESUME_KEY);
+      storage?.removeItem(key);
       return;
     }
-    storage?.setItem(HOSTED_RESUME_KEY, JSON.stringify(record));
+    storage?.setItem(key, JSON.stringify(record));
   } catch {
     /* 存不下只是刷新后要重新登录。 */
   }
+}
+
+/* ------------------------------- 访客保管处 ------------------------------- */
+
+/** 访客记录的键前缀：`armadra.guest.<签发方>|<链接>`，按 签发方 + 链接 各一份。 */
+export const GUEST_KEY_PREFIX = "armadra.guest.";
+
+export function guestKey(issuer: string, linkId: string): string {
+  return `${GUEST_KEY_PREFIX}${issuer}|${linkId}`;
+}
+
+function browserLocalStorage(): Storage | null {
+  try {
+    return globalThis.localStorage ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/** 这个签发方下还没到期的访客记录的键；到期的顺手清掉。 */
+export function guestKeys(
+  storage: Storage | null,
+  issuer: string,
+  now: number = Date.now(),
+): string[] {
+  if (storage === null) return [];
+  const prefix = `${GUEST_KEY_PREFIX}${issuer}|`;
+  const keys: string[] = [];
+  try {
+    for (let at = 0; at < storage.length; at += 1) {
+      const key = storage.key(at);
+      if (key?.startsWith(prefix)) keys.push(key);
+    }
+    return keys.filter(
+      (key) => readResume(storage, issuer, key, now).cloudRefreshToken !== null,
+    );
+  } catch {
+    return [];
+  }
+}
+
+/** 丢掉这个签发方下全部访客记录（账号登录是明确换身份）。 */
+export function clearGuestRecords(
+  storage: Storage | null,
+  issuer: string,
+): void {
+  if (storage === null) return;
+  try {
+    const prefix = `${GUEST_KEY_PREFIX}${issuer}|`;
+    const keys: string[] = [];
+    for (let at = 0; at < storage.length; at += 1) {
+      const key = storage.key(at);
+      if (key?.startsWith(prefix)) keys.push(key);
+    }
+    for (const key of keys) storage.removeItem(key);
+  } catch {
+    /* 清不掉只是下次刷新还试它。 */
+  }
+}
+
+export interface SessionVaultOptions {
+  /** 存储里的键；缺省是账号那一份 {@link HOSTED_RESUME_KEY}。 */
+  readonly key?: string;
+  /** 记录的寿命（毫秒时刻）；到期读不出来、写时带上。 */
+  readonly expiresAtMs?: number;
+  readonly now?: () => number;
 }
 
 export interface SessionRelayVault extends MemoryRelayVault {
@@ -221,18 +310,29 @@ export interface SessionRelayVault extends MemoryRelayVault {
 export function createSessionRelayVault(
   issuer: string,
   storage: Storage | null = browserSessionStorage(),
+  options: SessionVaultOptions = {},
 ): SessionRelayVault {
+  const key = options.key ?? HOSTED_RESUME_KEY;
   const memory = createMemoryRelayVault();
-  let record = readResume(storage, issuer);
+  const stamp = (next: ResumeRecord): ResumeRecord =>
+    options.expiresAtMs === undefined
+      ? next
+      : { ...next, expiresAtMs: options.expiresAtMs };
+  let record = stamp(readResume(storage, issuer, key, options.now?.()));
   const save = (next: ResumeRecord) => {
-    record = next;
-    writeResume(storage, record);
+    record = stamp(next);
+    writeResume(storage, record, key);
   };
   const clear = () => {
     memory.clear();
-    record = { issuer, cloudRefreshToken: null, sources: {}, entered: null };
+    record = stamp({
+      issuer,
+      cloudRefreshToken: null,
+      sources: {},
+      entered: null,
+    });
     try {
-      storage?.removeItem(HOSTED_RESUME_KEY);
+      storage?.removeItem(key);
     } catch {
       /* 没存下过。 */
     }
@@ -302,6 +402,9 @@ export interface HostedStatus {
 /** `me.stream` 断开多久还连不上中继，才算中继停了（重启、换节点的短暂断开不算）。 */
 export const RELAY_DOWN_AFTER_MS = 4_000;
 
+/** 链接没告诉到期时，访客记录最多留一周。 */
+const GUEST_FALLBACK_MS = 7 * 24 * 3_600_000;
+
 /** 登录、挑主机的失败原因；文案键 `remote.error.<原因>`。 */
 export type HostedFailure =
   | "credentials"
@@ -355,6 +458,10 @@ export interface HostedRelayOptions {
   readonly mount?: typeof mountSiblingSources;
   /** 刷新后续上用的存储（缺省 `sessionStorage`；`null` = 只在内存）。 */
   readonly storage?: Storage | null;
+  /** 访客刷新令牌的存储（缺省 `localStorage`；`null` = 只在内存）。 */
+  readonly guestStorage?: Storage | null;
+  /** 测试注入：现在的时刻（毫秒）。 */
+  readonly now?: () => number;
 }
 
 /** 目录里的一台主机 → 经这个中继到达的源描述。 */
@@ -400,6 +507,8 @@ export interface HostedRelay {
     readonly linkId: string;
     readonly secret: string;
     readonly invitationToken: string;
+    /** 链接到期（毫秒时刻）；落地页已经知道就带上，不知道由这里再问一次。 */
+    readonly expiresAtMs?: number;
   }): Promise<string>;
   /**
    * 刷新页面之后：用记下的刷新令牌静默续上远程服务，再进上次那台主机。没有
@@ -415,10 +524,44 @@ export interface HostedRelay {
 
 export function createHostedRelay(options: HostedRelayOptions): HostedRelay {
   const { issuer } = options;
-  const vault = createSessionRelayVault(
+  const now = options.now ?? Date.now;
+  const accountVault = createSessionRelayVault(
     issuer,
     options.storage === undefined ? browserSessionStorage() : options.storage,
   );
+  const guestStorage =
+    options.guestStorage === undefined
+      ? browserLocalStorage()
+      : options.guestStorage;
+  // 背后的保管处：账号登录是 sessionStorage 那一份；按链接加入的访客是
+  // localStorage 里按 签发方 + 链接 的那一份。下面各处都经这个代理读写。
+  let backing: SessionRelayVault = accountVault;
+  let guest = false;
+  const vault: SessionRelayVault = {
+    cloudRefreshToken: (of) => backing.cloudRefreshToken(of),
+    saveCloudRefreshToken: (of, token) =>
+      backing.saveCloudRefreshToken(of, token),
+    forgetCloud: (of) => backing.forgetCloud?.(of) ?? Promise.resolve(),
+    session: (sourceId) => backing.session(sourceId),
+    saveSession: (sourceId, of, session) =>
+      backing.saveSession(sourceId, of, session),
+    rememberEntered: (source) => backing.rememberEntered(source),
+    entered: () => backing.entered(),
+    clear: () => backing.clear(),
+  };
+  const useGuest = (key: string, expiresAtMs?: number) => {
+    backing = createSessionRelayVault(issuer, guestStorage, {
+      key,
+      now,
+      ...(expiresAtMs === undefined ? {} : { expiresAtMs }),
+    });
+    guest = true;
+    return backing;
+  };
+  const useAccount = () => {
+    backing = accountVault;
+    guest = false;
+  };
   const cloudSessions = createCloudSessions({
     vault,
     ...(options.cloud === undefined ? {} : { cloud: options.cloud }),
@@ -531,6 +674,14 @@ export function createHostedRelay(options: HostedRelayOptions): HostedRelay {
     },
     revoke(failure) {
       provider.invalidate(current ?? "");
+      // 访客的访问被收回 / 令牌被拒：记下的那份不再有用，刷新后别再试它。
+      if (
+        guest &&
+        (failure.code === SOURCE_ERROR.accessRevoked ||
+          failure.code === SOURCE_ERROR.revoked ||
+          failure.code === SOURCE_ERROR.unauthorized)
+      )
+        vault.clear();
       setStatus("unauthorized", failure);
     },
   };
@@ -591,6 +742,45 @@ export function createHostedRelay(options: HostedRelayOptions): HostedRelay {
     });
   };
 
+  /**
+   * 用背后保管处记下的东西续上：进了上次那台（或给目录与原因）；这份记录
+   * 没用了（没记、令牌被拒、那台不在目录里了）答 `undefined`，由调用方换下一份；
+   * 连不上中继答 `null`（不丢记录，回登录页）。
+   */
+  const resumeWith = async (): Promise<HostedResume | undefined> => {
+    const last = vault.entered();
+    if (last === null) return undefined;
+    let listed: CloudSource[];
+    try {
+      listed = await cloudSources(
+        issuer,
+        await cloudSessions.access(issuer),
+        options.cloud,
+      );
+    } catch (error) {
+      const failure = hostedFailureOf(error);
+      // 刷新令牌被拒（已从保管处忘掉）：重新登录。连不上：也只能先登录页。
+      if (failure === "unreachable") return null;
+      vault.clear();
+      return undefined;
+    }
+    directory = guest ? [] : listed;
+    const row = listed.find((item) => item.sourceId === last.sourceId);
+    if (row === undefined) {
+      // 访客的访问被收回了：那份记录作废；账号的给目录与原因。
+      if (guest) return undefined;
+      return { kind: "signedIn", hosts: listed, failure: "revoked" };
+    }
+    try {
+      await hosted.enter(row);
+      return { kind: "entered" };
+    } catch (error) {
+      const failure = hostedFailureOf(error);
+      if (guest && failure === "revoked") return undefined;
+      return { kind: "signedIn", hosts: listed, failure };
+    }
+  };
+
   const hosted: HostedRelay = {
     issuer,
     provider,
@@ -602,30 +792,57 @@ export function createHostedRelay(options: HostedRelayOptions): HostedRelay {
         browserDevice(),
         options.cloud,
       );
-      const guest = accepted.guestSession;
-      if (guest.refreshToken === undefined)
+      const guestSession = accepted.guestSession;
+      if (guestSession.refreshToken === undefined)
         throw new CloudError(502, "bad_response");
-      await vault.saveCloudRefreshToken(issuer, guest.refreshToken);
-      cloudSessions.adopt(issuer, guest.accessToken, guest.accessExpiresAtMs);
-      const login = await coreCloudLogin(
-        accepted.relayBaseUrl,
-        accepted.relayToken,
-        accepted.assertion,
-        link.invitationToken,
-        options.cloud,
-      );
-      await vault.saveSession(accepted.sourceId, issuer, {
-        accessToken: login.native.accessToken,
-        refreshToken: login.native.refreshToken,
-        expiresAtMs: login.expiresAtUnixMs,
-        ...(login.csrfToken === undefined
-          ? {}
-          : { csrfToken: login.csrfToken }),
-      });
+      // 寿命 = 链接到期；问不到就取访客会话的到期，再不行一周。
+      const expiresAtMs =
+        link.expiresAtMs && link.expiresAtMs > now()
+          ? link.expiresAtMs
+          : await cloudLinkInfo(issuer, link.linkId, options.cloud).then(
+              (info) =>
+                info.expiresAtMs > now()
+                  ? info.expiresAtMs
+                  : guestSession.expiresAtMs > now()
+                    ? guestSession.expiresAtMs
+                    : now() + GUEST_FALLBACK_MS,
+              () =>
+                guestSession.expiresAtMs > now()
+                  ? guestSession.expiresAtMs
+                  : now() + GUEST_FALLBACK_MS,
+            );
+      useGuest(guestKey(issuer, link.linkId), expiresAtMs);
+      try {
+        await vault.saveCloudRefreshToken(issuer, guestSession.refreshToken);
+        cloudSessions.adopt(
+          issuer,
+          guestSession.accessToken,
+          guestSession.accessExpiresAtMs,
+        );
+        const login = await coreCloudLogin(
+          accepted.relayBaseUrl,
+          accepted.relayToken,
+          accepted.assertion,
+          link.invitationToken,
+          options.cloud,
+        );
+        await vault.saveSession(accepted.sourceId, issuer, {
+          accessToken: login.native.accessToken,
+          refreshToken: login.native.refreshToken,
+          expiresAtMs: login.expiresAtUnixMs,
+          ...(login.csrfToken === undefined
+            ? {}
+            : { csrfToken: login.csrfToken }),
+        });
+      } catch (error) {
+        vault.clear();
+        useAccount();
+        throw error;
+      }
       // 名字是锦上添花：访客的目录里只有这一台，取不到就空着。
       const rows = await cloudSources(
         issuer,
-        guest.accessToken,
+        guestSession.accessToken,
         options.cloud,
       ).catch(() => [] as CloudSource[]);
       const name =
@@ -646,6 +863,9 @@ export function createHostedRelay(options: HostedRelayOptions): HostedRelay {
       );
       if (session.refreshToken === undefined)
         throw new CloudError(502, "bad_response");
+      // 账号登录是明确换身份：访客记录不再续。
+      clearGuestRecords(guestStorage, issuer);
+      useAccount();
       await vault.saveCloudRefreshToken(issuer, session.refreshToken);
       cloudSessions.adopt(
         issuer,
@@ -733,35 +953,15 @@ export function createHostedRelay(options: HostedRelayOptions): HostedRelay {
       startStream();
     },
     async resume() {
-      const last = vault.entered();
-      if (last === null) return null;
-      let listed: CloudSource[];
-      try {
-        listed = await cloudSources(
-          issuer,
-          await cloudSessions.access(issuer),
-          options.cloud,
-        );
-      } catch (error) {
-        const failure = hostedFailureOf(error);
-        // 刷新令牌被拒（已从保管处忘掉）：重新登录。连不上：也只能先登录页。
-        if (failure !== "unreachable") vault.clear();
-        return null;
+      // 先试访客的记录（按链接各一份，没到期的），再回账号登录。
+      for (const key of guestKeys(guestStorage, issuer, now())) {
+        useGuest(key);
+        const resumed = await resumeWith();
+        if (resumed !== undefined) return resumed;
+        vault.clear();
       }
-      directory = listed;
-      const row = listed.find((item) => item.sourceId === last.sourceId);
-      if (row === undefined)
-        return { kind: "signedIn", hosts: listed, failure: "revoked" };
-      try {
-        await hosted.enter(row);
-        return { kind: "entered" };
-      } catch (error) {
-        return {
-          kind: "signedIn",
-          hosts: listed,
-          failure: hostedFailureOf(error),
-        };
-      }
+      useAccount();
+      return (await resumeWith()) ?? null;
     },
     get status() {
       return status;
