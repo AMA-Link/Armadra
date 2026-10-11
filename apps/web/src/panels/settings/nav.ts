@@ -24,6 +24,7 @@ import {
 } from "lucide-react";
 
 import { RUNTIME_VIA_SERVER_SHELL } from "@/api/request";
+import { featureEnabled, type FeatureFlag } from "@/lib/features";
 import { isDesktop } from "@/platform";
 
 /**
@@ -83,6 +84,8 @@ export interface SettingsSection {
    * 页头徽标恒为「本机」。
    */
   pinnedLocal?: boolean;
+  /** 所属功能；开关关着时整页不列（#295，`packages/shared/src/feature-flags.ts`）。 */
+  feature?: FeatureFlag;
 }
 
 export const SETTINGS_SECTIONS: readonly SettingsSection[] = [
@@ -171,6 +174,7 @@ export const SETTINGS_SECTIONS: readonly SettingsSection[] = [
     icon: KeyRound,
     scope: "host",
     ownerOnly: true,
+    feature: "credentials",
   },
   {
     id: "usage",
@@ -179,6 +183,7 @@ export const SETTINGS_SECTIONS: readonly SettingsSection[] = [
     icon: Gauge,
     scope: "host",
     ownerOnly: true,
+    feature: "usage",
   },
   {
     id: "workspace",
@@ -299,7 +304,8 @@ export function visibleSettingsSections(
       (desktop || !section.desktopOnly) &&
       (server || !section.serverOnly) &&
       (!member || !section.ownerOnly) &&
-      (!remote || !section.localOnly),
+      (!remote || !section.localOnly) &&
+      (section.feature === undefined || featureEnabled(section.feature)),
   );
 }
 

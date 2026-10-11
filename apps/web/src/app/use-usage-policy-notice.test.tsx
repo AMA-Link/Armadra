@@ -3,6 +3,19 @@ import { cleanup, render, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { Usage } from "@armadra/shared";
 
+/** 功能开关（#295）：这里测的是功能本身，按开着测。 */
+const featureFlags = vi.hoisted(() => ({
+  credentials: true,
+  usage: true,
+  activityCards: true,
+  scheduledTasks: true,
+  workflows: true,
+}));
+vi.mock("@armadra/shared", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@armadra/shared")>()),
+  FEATURE_FLAGS: featureFlags,
+}));
+
 const info = vi.fn();
 vi.mock("sonner", () => ({
   toast: { info: (...args: unknown[]) => info(...args) },

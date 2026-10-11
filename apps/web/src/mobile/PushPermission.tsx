@@ -12,6 +12,7 @@ import { usePreferencesStore, useT } from "../app/preferences-store";
 import { pushApi } from "../api/push";
 import { useCompactLayout } from "../platform/layout";
 import { useCanvasStore } from "../store/canvas-store";
+import { featureEnabled } from "../lib/features";
 import { subscribeToPush } from "../push/service-worker";
 import { Button } from "@/ui/button";
 import {
@@ -147,7 +148,10 @@ export function PushKindsPrompt({
         <ItemTitle>{t("push.kinds.title")}</ItemTitle>
       </ItemContent>
       <ItemFooter className="flex-col items-stretch gap-2">
-        {PUSH_PREFERENCE_KINDS.map((kind) => (
+        {PUSH_PREFERENCE_KINDS.filter(
+          // 定时任务暂时下线（#295）：它的推送开关不列，已存的选择原样保留。
+          (kind) => kind !== "schedule" || featureEnabled("scheduledTasks"),
+        ).map((kind) => (
           <label
             key={kind}
             className="flex items-center justify-between gap-3 text-sm"
