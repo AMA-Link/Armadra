@@ -13,6 +13,7 @@ import "../styles/canvas.css";
 import { useCanvasReadOnly } from "../store/canvas/presence";
 import { PresenceBar } from "./PresenceBar";
 import { CursorLayer } from "../realtime/CursorLayer";
+import { followMoveHandlers, stopFollowing } from "../realtime/session";
 import { CommentLayer } from "../realtime/comments/CommentLayer";
 
 import {
@@ -192,7 +193,8 @@ function FlowWorkspaceInner() {
       if (!isZoomWheel(event)) return;
       event.preventDefault();
       event.stopPropagation();
-      zoomCanvasByWheel(event);
+      // 自己缩放走的是程序化 `setViewport`，`onMove` 认不出是人动的。
+      if (zoomCanvasByWheel(event)) stopFollowing();
     };
     stage.addEventListener("wheel", onWheel, { capture: true, passive: false });
     return () => stage.removeEventListener("wheel", onWheel, { capture: true });
@@ -509,6 +511,8 @@ function FlowWorkspaceInner() {
             // 方向键归 `canvas.focus*`，Tab 循环焦点会和节点体抢。
             disableKeyboardA11y
             {...menuHandlers}
+            // 自己拖动、滚轮或捏合移动视口就不再跟随别人（#327）。
+            {...followMoveHandlers}
             // 预览线与落成后的边共用同一条贝塞尔（§2.5，B1）。
             connectionLineComponent={ConnectionLine}
           >

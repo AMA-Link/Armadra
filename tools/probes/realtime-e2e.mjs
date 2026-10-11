@@ -20,7 +20,8 @@
 //      输入框的「预览」页签按同一套规则渲染（#328）；
 //  8b. 两枚挨得近的钉聚成「+2」，B 点开后放大到分开、居中在它们中间（#328）。
 //   9. 跟随视口：B 点 A 的头像跟随，A 缩放、平移，B 的视口中心与缩放对上 A，
-//      画布四周描一圈 A 的成员色；
+//      画布四周描一圈 A 的成员色；再跟随一次，B 自己滚轮平移画布即取消跟随，
+//      之后 A 再动 B 不跟（#327）；
 //  10. 刷新后视口不变：B 刷新页面，回到刷新前自己的视口（本机记着，不进
 //      文档、也不 PUT 回 core）。
 //
@@ -633,6 +634,47 @@ try {
   await b.until(
     `return !document.querySelector('[data-slot="follow-frame"]')`,
     "B 的跟随描边消失",
+  );
+
+  // 手动平移取消跟随（#327）：再跟随一次，B 自己滚一下画布。
+  await b.clickOn(
+    `return document.querySelector('[data-slot="presence-bar"] [data-peer][aria-pressed="false"]')`,
+    "B 再次跟随 A",
+  );
+  await b.until(
+    `return !!document.querySelector('[data-slot="follow-frame"]')`,
+    "B 又描上 A 的成员色",
+  );
+  await sleep(400);
+  const bPane = await b.centerOf(
+    `return document.querySelector('.react-flow__pane')`,
+    "B 的画布",
+  );
+  await b.call("Input.dispatchMouseEvent", {
+    type: "mouseWheel",
+    x: bPane.x - 200,
+    y: bPane.y - 120,
+    deltaX: 0,
+    deltaY: 200,
+    modifiers: 0,
+  });
+  await b.until(
+    `return !document.querySelector('[data-slot="follow-frame"]')`,
+    "B 滚轮平移后跟随描边消失",
+  );
+  await run.shot(b, "realtime-9-pan-stops-follow-b");
+  await sleep(400);
+  const released = await viewportOf(b);
+  for (let step = 0; step < 2; step += 1) await wheel(120, 2);
+  await until(async () => {
+    const now = await viewportOf(a);
+    return now && !sameView(now, target);
+  }, "A 又动了视口");
+  await sleep(800);
+  run.check(
+    sameView(await viewportOf(b), released),
+    "B 手动平移后不再跟随：A 再动，B 的视口不变",
+    { released, b: await viewportOf(b), a: await viewportOf(a) },
   );
 
   /* ------------------------ 10. 刷新后视口不变 ------------------------- */
