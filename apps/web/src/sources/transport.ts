@@ -6,6 +6,12 @@
  * 凭据。原生 App 与桌面壳的本机源用的是同一套，只是凭据的来路不同。
  */
 
+import {
+  type TransportMeter,
+  meterSocket,
+  meteredFetch,
+} from "./traffic-meter";
+
 /** Bearer 传输升级 WebSocket 时的票子协议前缀（core `gateway/admission.ts`）。 */
 export const WS_TICKET_PROTOCOL = "armadra-ticket.";
 
@@ -52,6 +58,11 @@ export interface BearerTransport {
    */
   baseFetch?(): typeof fetch | undefined;
   baseWebSocket?(): typeof WebSocket | undefined;
+  /**
+   * 经中继时的流量计量（`traffic-meter.ts`）：给了它，发往这个源的请求体、
+   * 响应体与流的每条消息都记到它的源上。
+   */
+  readonly meter?: TransportMeter;
 }
 
 /**
@@ -160,7 +171,11 @@ export function bearerFetch(
       }
       return { ...init, headers, credentials: "omit" as const };
     };
-    const response = await base(input, build());
+    const send =
+      transport.meter === undefined
+        ? base
+        : meteredFetch(base, transport.meter);
+    const response = await send(input, build());
     const replayable =
       init?.body === undefined ||
       init.body === null ||
@@ -174,7 +189,7 @@ export function bearerFetch(
     )
       return response;
     if (!(await transport.refresh(used).catch(() => false))) return response;
-    return base(input, build());
+    return send(input, build());
   };
 }
 
@@ -264,7 +279,7 @@ export function ticketedWebSocket(
   Base: SocketCtor,
   transport: Pick<
     BearerTransport,
-    "origin" | "socketOrigin" | "wsTicket" | "extraProtocols"
+    "origin" | "socketOrigin" | "wsTicket" | "extraProtocols" | "meter"
   >,
 ): SocketCtor {
   class TicketedWebSocket extends EventTarget {
@@ -304,6 +319,8 @@ export function ticketedWebSocket(
             `${WS_TICKET_PROTOCOL}${ticket}`,
             ...(transport.extraProtocols?.() ?? []),
           ]);
+          if (transport.meter !== undefined)
+            meterSocket(inner, this.url, transport.meter);
           inner.binaryType = this.type;
           this.inner = inner;
           for (const name of ["open", "message", "error", "close"] as const) {
