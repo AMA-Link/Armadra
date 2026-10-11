@@ -545,7 +545,6 @@ describe("全局路由的权限表", () => {
     ["GET", "/api/conversations", "owner"],
     ["POST", "/api/git/clone", "owner"],
     ["GET", "/api/git/clone-defaults", "owner"],
-    ["GET", "/api/git/clone-repositories", "owner"],
     ["GET", "/api/power", "owner"],
     ["POST", "/api/power/leases", "owner"],
     ["GET", "/api/github/status", "owner"],
