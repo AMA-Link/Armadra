@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { contractEntries } from "@armadra/shared";
 import { type AgentFixture, agentFixture } from "../agent/fixture";
 import { routeScope } from "../http/route-scopes";
@@ -33,7 +33,17 @@ const VOLATILE = new Set([
   "sourceUpdatedAt",
 ]);
 
+/**
+ * 钟停在一个毫秒不为 0 的时刻。`rfc3339()` 学 chrono：毫秒是 0 时不写小数
+ * 部分，时刻短 4 个字节；冻结时刻 `createdAt` 算在包里，`budget.usedBytes`
+ * 是整包编码后的长度，于是三份交接里恰好有一份冻在整秒上，它的 `usedBytes`
+ * 就少 4，对偶比较偶发不等。停住的钟上 `rfc3339()` 每次加 1 ms，三份包的时刻
+ * 等长，结果每次一样。
+ */
+const FROZEN = Date.parse("2099-01-01T00:00:00.001Z");
+
 beforeAll(async () => {
+  vi.useFakeTimers({ toFake: ["Date"], now: FROZEN });
   core = agentFixture();
   installContract(core.server, {
     validateOutput: true,
@@ -45,6 +55,7 @@ beforeAll(async () => {
 afterAll(async () => {
   await core.server.close();
   core.close();
+  vi.useRealTimers();
 });
 
 const handoffs = () => `/api/workspaces/${core.workspaceId}/handoffs`;
