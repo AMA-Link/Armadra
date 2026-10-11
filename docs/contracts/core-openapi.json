@@ -4674,6 +4674,43 @@
                                   "type": "object",
                                   "properties": {
                                     "type": {
+                                      "const": "workflow.task"
+                                    },
+                                    "taskId": {
+                                      "type": "string"
+                                    },
+                                    "boardId": {
+                                      "type": "string"
+                                    },
+                                    "coordinatorNodeId": {
+                                      "type": "string"
+                                    },
+                                    "nodeId": {
+                                      "type": "string"
+                                    },
+                                    "status": {
+                                      "enum": [
+                                        "running",
+                                        "done",
+                                        "failed",
+                                        "stopped"
+                                      ],
+                                      "type": "string"
+                                    }
+                                  },
+                                  "required": [
+                                    "type",
+                                    "taskId",
+                                    "boardId",
+                                    "coordinatorNodeId",
+                                    "nodeId",
+                                    "status"
+                                  ]
+                                },
+                                {
+                                  "type": "object",
+                                  "properties": {
+                                    "type": {
                                       "const": "schedule.fired"
                                     },
                                     "planId": {

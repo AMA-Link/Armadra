@@ -67,6 +67,7 @@ import { checkBody, refuse as sendRefusal } from "./send";
 import { launchRoleNode } from "../../workflow/dispatch";
 import {
   type TaskRun,
+  publishTask,
   rebindTask,
   recordTaskStart,
   taskRun,
@@ -429,6 +430,7 @@ export async function openAgent(
         task,
       });
     }
+    publishTask(context.database, context.publish, taskKey);
   }
   // runner 起的成员由 core 起终端、敲启动行（与工作流的角色节点同一条路），
   // 页面开不开都一样；有依赖时依赖服务本来就会起它。`--resume` 也走这一条：

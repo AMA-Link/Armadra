@@ -1,7 +1,12 @@
 import type { DatabaseSync } from "node:sqlite";
 import { type AgentStatus, getAgentStatus } from "../../agent/status";
 import { evaluate } from "../../dependencies/evaluate";
-import { type TaskRun, finishTask, taskRun } from "../../workflow/task-runs";
+import {
+  type TaskRun,
+  finishTask,
+  publishTask,
+  taskRun,
+} from "../../workflow/task-runs";
 import { loadNode, type Caller } from "../nodes";
 import { type Args, Refused } from "../refusals";
 import { type CollabContext, nowDate } from "../service";
@@ -122,11 +127,41 @@ interface Tracker {
   observedBusy: boolean;
 }
 
-const trackers = new Map<string, Tracker>();
+/**
+ * 一组基准。`wait` 用模块里这一份；core 自己盯任务行的 `task-watch.ts` 用它自己
+ * 的一份，免得它更早取的基准改变 `wait` 的判定。
+ */
+export type WaitTrackers = Map<string, Tracker>;
+
+const trackers: WaitTrackers = new Map();
+
+/** 正在等、或者刚等过的任务：`task-watch.ts` 让给 `wait` 落结束。 */
+const waiters = new Map<string, { active: number; lastAt: number }>();
+
+/**
+ * 协调者的 runner 一次 `wait` 答完就接着下一次；隔这么久没再等，才算「没人在
+ * 等」。
+ */
+export const WAIT_GRACE_MS = 30_000;
+
+/** 这个任务此刻有没有人在 `wait`（或者 {@link WAIT_GRACE_MS} 之内等过）。 */
+export function waitedOn(taskId: string, now = Date.now()): boolean {
+  const entry = waiters.get(taskId);
+  if (entry === undefined) return false;
+  return entry.active > 0 || now - entry.lastAt < WAIT_GRACE_MS;
+}
+
+function markWaiting(taskId: string, delta: 1 | -1): void {
+  const entry = waiters.get(taskId) ?? { active: 0, lastAt: 0 };
+  entry.active = Math.max(0, entry.active + delta);
+  entry.lastAt = Date.now();
+  waiters.set(taskId, entry);
+}
 
 /** 用例之间换一份干净的。 */
 export function resetWaitTrackers(): void {
   trackers.clear();
+  waiters.clear();
 }
 
 const BUSY_STATES: readonly string[] = ["working", "waiting", "blocked"];
@@ -197,6 +232,7 @@ export function observe(
   database: DatabaseSync,
   run: TaskRun,
   cursor: WaitCursor,
+  book: WaitTrackers = trackers,
 ): WaitAnswer {
   const base = { taskId: run.taskId, nodeId: run.nodeId };
   const events: WaitEvent[] = [];
@@ -231,8 +267,15 @@ export function observe(
   ): WaitAnswer => ({ ...base, status, since, events, ...extra });
 
   if (found !== undefined) return answer("done", { result: found });
+  // 行已经结束（core 的 `task-watch.ts` 在没人等的时候落的，或者上一次 `wait`）：
+  // 照库里的答，不再取一次基准、等到超时。
+  const ended = endedAnswer(run, answer);
+  if (ended !== undefined) {
+    book.delete(run.taskId);
+    return ended;
+  }
   if (node === undefined) {
-    trackers.delete(run.taskId);
+    book.delete(run.taskId);
     return answer("failed", { reason: "nodeDeleted" });
   }
 
@@ -240,7 +283,7 @@ export function observe(
   if (delivery !== undefined) {
     if (delivery.state === "queued" || delivery.state === "delivering") {
       // 还没投进去：这一轮还没开始，基准等投完再取。
-      trackers.set(run.taskId, {
+      book.set(run.taskId, {
         armed: false,
         baselineEventAt: null,
         observedBusy: false,
@@ -256,9 +299,9 @@ export function observe(
     }
   }
 
-  const tracker = trackers.get(run.taskId);
+  const tracker = book.get(run.taskId);
   if (tracker === undefined || !tracker.armed) {
-    trackers.set(run.taskId, {
+    book.set(run.taskId, {
       armed: true,
       baselineEventAt: status?.lastEventAt ?? null,
       observedBusy:
@@ -292,6 +335,33 @@ export function observe(
   }
 }
 
+/** 库里已经结束的行怎么答：`done` 带记下的正文，`failed` / `stopped` 带理由。 */
+function endedAnswer(
+  run: TaskRun,
+  answer: (status: WaitStatus, extra?: Partial<WaitAnswer>) => WaitAnswer,
+): WaitAnswer | undefined {
+  if (run.status === "running") return undefined;
+  const stored =
+    run.result !== null && typeof run.result === "object"
+      ? (run.result as { text?: unknown; reason?: unknown })
+      : {};
+  if (run.status === "done") {
+    return typeof stored.text === "string"
+      ? answer("done", {
+          result: { text: stored.text, key: resultKey(run.taskId) },
+        })
+      : answer("done");
+  }
+  return answer("failed", {
+    reason:
+      typeof stored.reason === "string"
+        ? stored.reason
+        : run.status === "stopped"
+          ? "stopped"
+          : "failed",
+  });
+}
+
 /** 还没结束：停在审批上、在等人回话，或者就是在做。 */
 function waiting(
   answer: (status: WaitStatus, extra?: Partial<WaitAnswer>) => WaitAnswer,
@@ -320,10 +390,17 @@ export function settle(
   database: DatabaseSync,
   answer: WaitAnswer,
   nowMs: number,
-): void {
-  if (answer.status !== "done" && answer.status !== "failed") return;
+  options: {
+    /**
+     * 把结果 post 标成已收。`wait` 替协调者取走了它所以标；core 自己盯着落库
+     * （`task-watch.ts`）时没人取走，不标，协调者的收件箱唤醒照旧会提示。
+     */
+    readonly acknowledge?: boolean;
+  } = {},
+): boolean {
+  if (answer.status !== "done" && answer.status !== "failed") return false;
   trackers.delete(answer.taskId);
-  finishTask(
+  const finished = finishTask(
     database,
     answer.taskId,
     answer.status,
@@ -332,7 +409,7 @@ export function settle(
       : { reason: answer.reason ?? null },
     nowMs,
   );
-  if (answer.result !== undefined) {
+  if (answer.result !== undefined && options.acknowledge !== false) {
     const seq = answer.events
       .filter(
         (event): event is Extract<WaitEvent, { type: "post" }> =>
@@ -347,6 +424,7 @@ export function settle(
         .run(Math.floor(nowMs / 1000), sequence);
     }
   }
+  return finished;
 }
 
 function readTimeout(args: Args): number {
@@ -426,16 +504,24 @@ export async function wait(
   }
 
   const deadline = Date.now() + timeout * 1000;
-  let answer = observe(context.database, run, cursor);
-  for (;;) {
-    const final = answer.status === "done" || answer.status === "failed";
-    const left = deadline - Date.now();
-    if (final || answer.events.length > 0 || left <= 0) break;
-    await sleep(Math.min(WAIT_POLL_MS, left));
-    const current = taskRun(context.database, taskId) ?? run;
-    answer = observe(context.database, current, cursor);
+  markWaiting(taskId, 1);
+  let answer: WaitAnswer;
+  try {
+    answer = observe(context.database, run, cursor);
+    for (;;) {
+      const final = answer.status === "done" || answer.status === "failed";
+      const left = deadline - Date.now();
+      if (final || answer.events.length > 0 || left <= 0) break;
+      await sleep(Math.min(WAIT_POLL_MS, left));
+      const current = taskRun(context.database, taskId) ?? run;
+      answer = observe(context.database, current, cursor);
+    }
+  } finally {
+    markWaiting(taskId, -1);
   }
-  settle(context.database, answer, nowDate(context).getTime());
+  if (settle(context.database, answer, nowDate(context).getTime())) {
+    publishTask(context.database, context.publish, taskId);
+  }
   return result(sentence(answer), answer);
 }
 
