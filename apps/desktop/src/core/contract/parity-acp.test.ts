@@ -239,13 +239,22 @@ async function session(prompt?: string) {
   return { nodeId, id: (created.body as { id: string }).id };
 }
 
+/**
+ * 等这一轮真的结束：替身先回 `echo: …` 的消息块，再报用量、最后答 `end_turn`。
+ * 只等到两条转录就读，镜像里的回合可能还是 `running`、用量还是 null，紧接着
+ * 再读一次就变了——两次读的比较便偶发不等。
+ */
 async function turnDone(sessionId: string): Promise<void> {
   await until(
     async () =>
       (await table("GET", `${SESSIONS}/${sessionId}/log`)).body as {
         entries: unknown[];
+        turns?: { state: string }[];
       },
-    (log) => log.entries.length >= 2,
+    (log) =>
+      log.entries.length >= 2 &&
+      (log.turns ?? []).length > 0 &&
+      (log.turns ?? []).every((turn) => turn.state !== "running"),
   );
 }
 
