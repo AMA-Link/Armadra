@@ -11,6 +11,11 @@ import {
   type UpdaterEnvironment,
 } from "../../shell-core/updates/availability";
 import { releaseSourceFor, shellTarget } from "../../shell-core/updates/offer";
+import {
+  detectManagedPackage,
+  type ManagedKind,
+} from "../../shell-core/updates/managed";
+import { parsePublicKey } from "../../shell-core/updates/minisign";
 
 /**
  * The four questions `shell-core/updates/availability.ts` needs answered about
@@ -239,7 +244,74 @@ export function updaterEnvironment(env = process.env): UpdaterEnvironment {
     publishConfigured: publishConfigured(env),
     signature: signatureState(),
     developmentOverride: developmentOverride(env),
+    platform: process.platform,
+    pubkey: releasePublicKey(env),
+    managed: managedPackage(env),
   };
+}
+
+/** The file name the release key is shipped under, in `process.resourcesPath`. */
+export const PUBKEY_FILE = "armadra-release.pub";
+
+/**
+ * `ARMADRA_UPDATER_PUBKEY`: a path to another minisign public key. Read only
+ * with `ARMADRA_UPDATES_DEV=1`, so a walkthrough against the dev-stack release
+ * server (which makes its own key) can verify what it serves; a release
+ * package never takes its key from the environment otherwise.
+ */
+export const PUBKEY_ENV = "ARMADRA_UPDATER_PUBKEY";
+
+/**
+ * The release signing key this package carries, as text, or `null`.
+ *
+ * Packaged: `resources/armadra-release.pub`, placed by `scripts/after-pack.mjs`.
+ * A development build carries none (its updater is the escape hatch's), unless
+ * `ARMADRA_UPDATER_PUBKEY` names one. A file that is not a legacy `Ed` minisign
+ * key is no key at all: refusing to verify is better than verifying with
+ * something unreadable.
+ */
+export function releasePublicKey(
+  env: Record<string, string | undefined> = process.env,
+  read: (path: string) => string = (path) => readFileSync(path, "utf8"),
+  packaged: boolean = app.isPackaged,
+  resourcesPath: string = process.resourcesPath,
+): string | null {
+  const override = (env[PUBKEY_ENV] ?? "").trim();
+  const path =
+    override.length > 0 && developmentOverride(env)
+      ? override
+      : packaged
+        ? join(resourcesPath, PUBKEY_FILE)
+        : null;
+  if (path === null) return null;
+  let text: string;
+  try {
+    text = read(path);
+  } catch {
+    return null;
+  }
+  return parsePublicKey(text) === null ? null : text;
+}
+
+/** Who owns this installation (`shell-core/updates/managed.ts`). */
+export function managedPackage(
+  env: Record<string, string | undefined> = process.env,
+): ManagedKind | null {
+  if (!app.isPackaged) return null;
+  return detectManagedPackage({
+    platform: process.platform,
+    execPath: process.execPath,
+    resourcesPath: process.resourcesPath,
+    env,
+    exists: existsSync,
+    read: (path) => {
+      try {
+        return readFileSync(path, "utf8");
+      } catch {
+        return null;
+      }
+    },
+  });
 }
 
 /** An explicit release index, `…/repos/{owner}/{repo}` (GitHub API shape). */

@@ -18,9 +18,11 @@ import {
   developmentOverride,
   initialState,
   installRefusal,
+  installPath,
   installable,
   markerDisables,
   missingUpdaterConfig,
+  requiresDetachedSignature,
   shouldEnableUpdater,
   type UpdaterEnvironment,
 } from "./availability";
@@ -34,6 +36,9 @@ function environment(
     publishConfigured: true,
     signature: "signed",
     developmentOverride: false,
+    platform: "darwin",
+    pubkey: null,
+    managed: null,
     ...overrides,
   };
 }
@@ -72,7 +77,11 @@ it("a complete configuration is configured", () => {
   expect(shouldEnableUpdater(environment())).toBe(true);
   // Linux packages carry no code signature; the feed's own digest plus the
   // Host's sha256 are what make their bytes trustworthy.
-  expect(initialState(environment({ signature: "notApplicable" }))).toEqual({
+  expect(
+    initialState(
+      environment({ signature: "notApplicable", platform: "linux" }),
+    ),
+  ).toEqual({
     state: "idle",
   });
 });
@@ -189,7 +198,7 @@ it("the release address comes from the environment, comma separated", () => {
  * G3-3: `ARMADRA_UPDATES_DEV=1` lets an unsigned package walk check → download
  * → verify → stage, and never lets it install.
  */
-it("only a signed or notApplicable package may install what it staged", () => {
+it("without the release key, only a signed or notApplicable package may install what it staged", () => {
   expect(installable("signed")).toBe(true);
   expect(installable("notApplicable")).toBe(true);
   expect(installable("unsigned")).toBe(false);
@@ -204,10 +213,111 @@ it("only a signed or notApplicable package may install what it staged", () => {
   }
   expect(installRefusal(environment())).toBeNull();
   expect(
-    installRefusal(environment({ signature: "notApplicable" })),
+    installRefusal(
+      environment({ signature: "notApplicable", platform: "linux" }),
+    ),
   ).toBeNull();
   // A development build is not a package to replace; electron-updater judges it.
   expect(
     installRefusal(environment({ packaged: false, signature: "unsigned" })),
   ).toBeNull();
+});
+
+/* ------------------------ the release key (issue #288) --------------------- */
+
+const PUBKEY = "untrusted comment: minisign public key X\nRWQ...\n";
+
+it("a package carrying the release key is configured, signed or not", () => {
+  for (const signature of ["unsigned", "unknown"] as const) {
+    for (const platform of ["darwin", "win32"]) {
+      const keyed = environment({ signature, platform, pubkey: PUBKEY });
+      expect(initialState(keyed)).toEqual({ state: "idle" });
+      expect(missingUpdaterConfig(keyed).pubkey).toBe(false);
+      expect(installRefusal(keyed)).toBeNull();
+      expect(requiresDetachedSignature(keyed)).toBe(true);
+    }
+  }
+  // Without it the same package is what it always was.
+  expect(
+    initialState(environment({ signature: "unsigned", pubkey: null })),
+  ).toEqual({
+    state: "notConfigured",
+    missing: { pubkey: true, endpoints: false },
+  });
+  expect(requiresDetachedSignature(environment())).toBe(false);
+  // A local `dist` stays a local build, key or no key.
+  expect(
+    initialState(
+      environment({
+        marker: "disabled",
+        signature: "unsigned",
+        pubkey: PUBKEY,
+      }),
+    ),
+  ).toEqual({ state: "localBuild" });
+});
+
+it("picks the installer from the platform and the signature", () => {
+  const cases: [Partial<UpdaterEnvironment>, string | null][] = [
+    [{ platform: "darwin", signature: "signed" }, "electronUpdater"],
+    [
+      { platform: "darwin", signature: "signed", pubkey: PUBKEY },
+      "electronUpdater",
+    ],
+    [
+      { platform: "darwin", signature: "unsigned", pubkey: PUBKEY },
+      "macReplace",
+    ],
+    // Ad-hoc signed (what a build without a Developer ID gets) is `unknown`;
+    // Squirrel.Mac would refuse it, so it goes through the helper too.
+    [
+      { platform: "darwin", signature: "unknown", pubkey: PUBKEY },
+      "macReplace",
+    ],
+    [{ platform: "darwin", signature: "unsigned" }, null],
+    [
+      { platform: "win32", signature: "signed", pubkey: PUBKEY },
+      "electronUpdater",
+    ],
+    [
+      { platform: "win32", signature: "unsigned", pubkey: PUBKEY },
+      "windowsInstaller",
+    ],
+    [
+      { platform: "win32", signature: "unknown", pubkey: PUBKEY },
+      "windowsInstaller",
+    ],
+    [{ platform: "win32", signature: "unsigned" }, null],
+    [
+      { platform: "linux", signature: "notApplicable", pubkey: PUBKEY },
+      "electronUpdater",
+    ],
+    [{ platform: "linux", signature: "notApplicable" }, "electronUpdater"],
+    // A development build has no package to replace.
+    [{ packaged: false, signature: "unsigned" }, "electronUpdater"],
+    [{ platform: "freebsd", signature: "unknown", pubkey: PUBKEY }, null],
+  ];
+  for (const [overrides, expected] of cases) {
+    expect(installPath(environment(overrides)), JSON.stringify(overrides)).toBe(
+      expected,
+    );
+  }
+});
+
+it("an installation someone else owns is unsupported, with the package named", () => {
+  for (const managed of ["dmg", "deb", "rpm", "pacman", "portable"] as const) {
+    const owned = environment({ managed, pubkey: PUBKEY });
+    expect(initialState(owned)).toEqual({
+      state: "unsupported",
+      reason: "managedPackage",
+      managed: { package: managed, download: null },
+    });
+    expect(shouldEnableUpdater(owned)).toBe(false);
+    expect(installPath(owned)).toBeNull();
+    expect(installRefusal(owned)).toBe("notSigned");
+  }
+  // The local marker still wins: a local dist is a local build wherever it runs.
+  expect(
+    initialState(environment({ managed: "dmg", marker: "disabled" })),
+  ).toEqual({ state: "localBuild" });
 });

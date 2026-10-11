@@ -25,6 +25,9 @@ import { createHash } from "node:crypto";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+import type { UpdaterEnvironment } from "../../shell-core/updates/availability";
+import type { Installers } from "./install";
+
 const RELEASE = "http://127.0.0.1:8123/v0.2.0";
 const BUNDLE = `${RELEASE}/Armadra-0.2.0-arm64-mac.zip`;
 const PAYLOAD = "armadra-0.2.0";
@@ -402,6 +405,9 @@ describe("an unsigned package stages but never installs", () => {
       publishConfigured: true,
       signature,
       developmentOverride: true,
+      platform: "darwin",
+      pubkey: null,
+      managed: null,
     });
   }
 
@@ -732,5 +738,377 @@ describe("checking the release index (external services §3.1, §3.4)", () => {
     expect(
       await controller.checkRelease({ manual: true, nowMs: 1 }),
     ).toMatchObject({ state: "unavailable", reason: "digestMismatch" });
+  });
+});
+
+/* ------------- the release key and the unsigned installers (#288) ---------- */
+
+describe("a package carrying the release key (issue #288 §2)", () => {
+  const NAME = "Armadra-0.2.0-arm64-mac.zip";
+
+  /** A throwaway minisign key, in the files `tools/release/minisign.mjs` writes. */
+  async function releaseKey() {
+    const { generateKeyPairSync, randomBytes, sign } = await import(
+      "node:crypto"
+    );
+    const { privateKey, publicKey } = generateKeyPairSync("ed25519");
+    const der = publicKey.export({ format: "der", type: "spki" });
+    const keyId = randomBytes(8);
+    const pub = `untrusted comment: minisign public key\n${Buffer.concat([
+      Buffer.from("Ed"),
+      keyId,
+      der.subarray(der.length - 32),
+    ]).toString("base64")}\n`;
+    const signFile = (data: string, comment = `file:${NAME}`) => {
+      const signature = sign(null, Buffer.from(data), privateKey);
+      const global = sign(
+        null,
+        Buffer.concat([signature, Buffer.from(comment)]),
+        privateKey,
+      );
+      return [
+        "untrusted comment: signature from armadra release key",
+        Buffer.concat([Buffer.from("Ed"), keyId, signature]).toString("base64"),
+        `trusted comment: ${comment}`,
+        global.toString("base64"),
+        "",
+      ].join("\n");
+    };
+    return { pub, signFile };
+  }
+
+  /** Serves the feed, the bundle and (unless told otherwise) its signature. */
+  function serveRelease(signature: string | null) {
+    const asked: string[] = [];
+    vi.stubGlobal("fetch", async (url: URL | string) => {
+      const href = String(url);
+      asked.push(href);
+      if (href === `${RELEASE}/latest-darwin-aarch64-mac.yml`) {
+        return new Response(FEED, { status: 200 });
+      }
+      if (href === BUNDLE) {
+        return new Response(PAYLOAD, {
+          status: 200,
+          headers: { "content-length": String(PAYLOAD.length) },
+        });
+      }
+      if (href === `${BUNDLE}.sig` && signature !== null) {
+        return new Response(signature, { status: 200 });
+      }
+      return new Response("", { status: 404 });
+    });
+    return asked;
+  }
+
+  interface Recorded {
+    staged: [string, string, string][];
+    helpers: unknown[];
+    installers: string[];
+    quits: number;
+  }
+
+  function fakeInstallers(
+    options: { replaceable?: boolean; stage?: "ok" | "sourceMalformed" } = {},
+  ) {
+    const recorded: Recorded = {
+      staged: [],
+      helpers: [],
+      installers: [],
+      quits: 0,
+    };
+    const installers: Installers = {
+      stageMacBundle: async (zip, version, workDir) => {
+        recorded.staged.push([zip, version, workDir]);
+        return options.stage === "sourceMalformed"
+          ? { ok: false, reason: "sourceMalformed" }
+          : { ok: true, value: join(workDir, "new", "Armadra.app") };
+      },
+      replaceable: () => options.replaceable ?? true,
+      launchMacHelper: (input) => {
+        recorded.helpers.push(input);
+        return { ok: true, value: undefined };
+      },
+      launchWindowsInstaller: (installer) => {
+        recorded.installers.push(installer);
+        return { ok: true, value: undefined };
+      },
+      quit: () => {
+        recorded.quits += 1;
+      },
+    };
+    return { installers, recorded };
+  }
+
+  function keyed(
+    pub: string,
+    overrides: Partial<UpdaterEnvironment> = {},
+  ): () => UpdaterEnvironment {
+    return () => ({
+      packaged: true,
+      marker: undefined,
+      publishConfigured: true,
+      signature: "unsigned",
+      developmentOverride: true,
+      platform: "darwin",
+      pubkey: pub,
+      managed: null,
+      ...overrides,
+    });
+  }
+
+  it("unsigned macOS: downloads itself, verifies digest and signature, hands over to the helper", async () => {
+    const key = await releaseKey();
+    const asked = serveRelease(key.signFile(PAYLOAD));
+    const { installers, recorded } = fakeInstallers();
+    updater.feed = null;
+    const notices: string[] = [];
+    const announcements: unknown[] = [];
+    const { controller } = await subject({
+      environment: keyed(key.pub),
+      installers,
+      appBundle: () => "/Applications/Armadra.app",
+      notify: (_title, body) => notices.push(body),
+      locale: () => "zhCn",
+    });
+    controller.onStaged((staged) => announcements.push(staged));
+    await controller.check(verdict());
+    expect((await controller.download()).state).toBe("downloaded");
+    // electron-updater was not involved; the shell fetched the bundle and its .sig.
+    expect(updater.feed).toBeNull();
+    expect(asked).toContain(BUNDLE);
+    expect(asked).toContain(`${BUNDLE}.sig`);
+    const file = join(directory, "updates", "download", NAME);
+    expect(readFileSync(file, "utf8")).toBe(PAYLOAD);
+    // The tray and the notification both say a restart will install it.
+    expect(announcements).toEqual([
+      { ready: true, version: "0.2.0", installable: true },
+    ]);
+    expect(notices).toEqual(["重启 Armadra 即可更新到 0.2.0。"]);
+
+    let stops = 0;
+    runtimeStops = async () => {
+      stops += 1;
+    };
+    const state = await controller.install();
+    expect(state).toMatchObject({ state: "downloaded", phase: "installing" });
+    const work = join(directory, "updates", "install");
+    expect(recorded.staged).toEqual([[file, "0.2.0", work]]);
+    expect(stops).toBe(1);
+    expect(recorded.helpers).toEqual([
+      {
+        pid: process.pid,
+        installed: "/Applications/Armadra.app",
+        replacement: join(work, "new", "Armadra.app"),
+        workDir: work,
+      },
+    ]);
+    expect(restarts).toBe(1);
+    expect(recorded.quits).toBe(1);
+    expect(updater.installs).toBe(0);
+    // The restart report has what it needs on the next start.
+    expect(
+      JSON.parse(
+        readFileSync(
+          join(directory, "updates", "pending-restart.json"),
+          "utf8",
+        ),
+      ),
+    ).toMatchObject({ expectedVersion: "0.2.0", previousVersion: "0.1.0" });
+  });
+
+  it("unsigned macOS: a bundle that cannot be replaced or unpacked stops nothing", async () => {
+    const key = await releaseKey();
+    serveRelease(key.signFile(PAYLOAD));
+    for (const options of [
+      { replaceable: false },
+      { stage: "sourceMalformed" as const },
+    ]) {
+      const { installers, recorded } = fakeInstallers(options);
+      const { controller } = await subject({
+        environment: keyed(key.pub),
+        installers,
+        appBundle: () => "/Applications/Armadra.app",
+      });
+      await controller.check(verdict());
+      await controller.download();
+      let stops = 0;
+      runtimeStops = async () => {
+        stops += 1;
+      };
+      expect(await controller.install()).toMatchObject({
+        state: "downloaded",
+        phase: "ready",
+        problem:
+          options.replaceable === false ? "installFailed" : "sourceMalformed",
+      });
+      expect(stops).toBe(0);
+      expect(recorded.quits).toBe(0);
+      expect(recorded.helpers).toEqual([]);
+    }
+  });
+
+  it("unsigned Windows: runs the verified installer and quits", async () => {
+    const key = await releaseKey();
+    serveRelease(key.signFile(PAYLOAD));
+    const { installers, recorded } = fakeInstallers();
+    const { controller } = await subject({
+      environment: keyed(key.pub, { platform: "win32" }),
+      installers,
+    });
+    await controller.check(verdict());
+    expect((await controller.download()).state).toBe("downloaded");
+    await controller.install();
+    expect(recorded.installers).toEqual([
+      join(directory, "updates", "download", NAME),
+    ]);
+    expect(recorded.staged).toEqual([]);
+    expect(recorded.quits).toBe(1);
+    expect(updater.installs).toBe(0);
+  });
+
+  it("signed: electron-updater installs, and the signature is still checked", async () => {
+    const key = await releaseKey();
+    const asked = serveRelease(key.signFile(PAYLOAD));
+    const { installers, recorded } = fakeInstallers();
+    const { controller } = await subject({
+      environment: keyed(key.pub, { signature: "signed" }),
+      installers,
+    });
+    await controller.check(verdict());
+    expect((await controller.download()).state).toBe("downloaded");
+    expect(asked).toContain(`${BUNDLE}.sig`);
+    expect(asked).not.toContain(BUNDLE);
+    await controller.install();
+    expect(updater.installs).toBe(1);
+    expect(recorded.quits).toBe(0);
+  });
+
+  it("a missing, foreign or mislabelled signature is refused on every path", async () => {
+    const ours = await releaseKey();
+    const theirs = await releaseKey();
+    const cases: [string | null, Partial<UpdaterEnvironment>][] = [
+      [null, {}],
+      [theirs.signFile(PAYLOAD), {}],
+      [ours.signFile("other bytes"), {}],
+      [ours.signFile(PAYLOAD, "file:SHA256SUMS"), {}],
+      [theirs.signFile(PAYLOAD), { signature: "signed" }],
+      [null, { platform: "win32" }],
+    ];
+    for (const [signature, overrides] of cases) {
+      serveRelease(signature);
+      const { installers } = fakeInstallers();
+      const { controller } = await subject({
+        environment: keyed(ours.pub, overrides),
+        installers,
+      });
+      await controller.check(verdict());
+      expect(await controller.download()).toMatchObject({
+        state: "failed",
+        reason: "signatureMismatch",
+      });
+    }
+  });
+
+  it("bytes that are not the published ones are refused before the signature is asked", async () => {
+    const key = await releaseKey();
+    const asked = serveRelease(key.signFile(PAYLOAD));
+    const { installers } = fakeInstallers();
+    const tampered = verdict();
+    tampered.answer.artifacts[1]!.sha256 = "0".repeat(64);
+    const { controller } = await subject({
+      environment: keyed(key.pub),
+      installers,
+    });
+    await controller.check(tampered);
+    expect(await controller.download()).toMatchObject({
+      state: "failed",
+      reason: "digestMismatch",
+    });
+    expect(asked).not.toContain(`${BUNDLE}.sig`);
+    expect(existsSync(join(directory, "updates", "download"))).toBe(false);
+  });
+});
+
+describe("a package someone else owns (issue #288 §2)", () => {
+  const SOURCE = "http://127.0.0.1:8123/repos/o/r";
+
+  beforeEach(() => {
+    process.env.ARMADRA_UPDATER_SOURCE = SOURCE;
+  });
+  afterEach(() => {
+    delete process.env.ARMADRA_UPDATER_SOURCE;
+  });
+
+  it("stays unsupported and learns which installer to download", async () => {
+    const { shellTarget } = await import("../../shell-core/updates/offer");
+    const own = shellTarget(process.platform, process.arch);
+    if (own === null) return;
+    const kind = own.startsWith("darwin-")
+      ? "dmg"
+      : own.startsWith("windows-")
+        ? "portable"
+        : "deb";
+    const name = own.startsWith("darwin-")
+      ? `Armadra_0.2.0_${own}.dmg`
+      : own.startsWith("windows-")
+        ? `Armadra_0.2.0_${own}-portable.zip`
+        : `Armadra_0.2.0_${own}.deb`;
+    const url = `https://github.com/AMA-Link/Armadra/releases/download/v0.2.0/${name}`;
+    vi.stubGlobal("fetch", async (href: URL | string) =>
+      String(href).startsWith(`${SOURCE}/releases`)
+        ? new Response(
+            JSON.stringify([
+              {
+                tag_name: "v0.2.0",
+                draft: false,
+                prerelease: false,
+                html_url:
+                  "https://github.com/AMA-Link/Armadra/releases/tag/v0.2.0",
+                assets: [
+                  {
+                    name,
+                    browser_download_url: url,
+                    size: 1,
+                    digest: `sha256:${"a".repeat(64)}`,
+                  },
+                ],
+              },
+            ]),
+            { status: 200 },
+          )
+        : new Response("", { status: 404 }),
+    );
+    const { controller } = await subject({
+      environment: () => ({
+        packaged: true,
+        marker: undefined,
+        publishConfigured: true,
+        signature: "unsigned",
+        developmentOverride: true,
+        platform: process.platform,
+        pubkey: "untrusted comment: x\nRWQ\n",
+        managed: kind,
+      }),
+    });
+    expect(controller.state()).toEqual({
+      state: "unsupported",
+      reason: "managedPackage",
+      managed: { package: kind, download: null },
+    });
+    expect(await controller.checkRelease({ manual: true, nowMs: 1 })).toEqual({
+      state: "unsupported",
+      reason: "managedPackage",
+      managed: {
+        package: kind,
+        download: {
+          version: "0.2.0",
+          url,
+          notesUrl: "https://github.com/AMA-Link/Armadra/releases/tag/v0.2.0",
+        },
+      },
+    });
+    // Nothing can be downloaded or installed through the shell.
+    expect((await controller.download()).state).toBe("unsupported");
+    expect((await controller.install()).state).toBe("unsupported");
   });
 });

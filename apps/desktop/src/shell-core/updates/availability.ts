@@ -1,20 +1,26 @@
 /**
- * What state a shell starts in, before anything is asked (design §2, §4.1).
+ * What state a shell starts in, before anything is asked (design §2, §4.1;
+ * issue #288 §2 for the trust model below).
  *
- * Ported from the Rust shell this one replaced, with the one substitution the
- * migration makes. Its rule was "no minisign public key configured = the
- * shell could verify nothing = `notConfigured`". electron-updater verifies the
- * platform code signature instead of a minisign detached signature, so the
- * same sentence becomes:
+ * The rule is the Rust shell's, restated for this shell:
  *
- *   **A build that is not packaged, or packaged but not signed, could verify
- *   nothing, and says `notConfigured`.** It never says `upToDate`.
+ *   **A build that carries nothing an update could be checked against says
+ *   `notConfigured`.** It never says `upToDate`.
  *
- * That is the whole point of the substitution. "Not looking" and "looking and
- * finding nothing" are different answers (design §2.1 rule 1), and an unsigned
- * build cannot look: electron-updater will refuse the install at the last step
- * anyway, and a shell that reported "you are on the newest release" in the
- * meantime would have told the user something it had no way of knowing.
+ * "Something to check against" is either of two things:
+ *
+ * - the release signing public key (`resources/armadra-release.pub`, minisign,
+ *   shipped in every package). Every downloaded bundle must then match the
+ *   GitHub asset digest AND verify against its `<asset>.sig` with that key —
+ *   with or without a platform code signature;
+ * - a valid platform code signature, which electron-updater checks at install
+ *   time. A package that has it but no public key keeps the old behaviour.
+ *
+ * Which installer runs is decided by `installPath`: a platform signature uses
+ * electron-updater's own `quitAndInstall`; an unsigned macOS bundle is replaced
+ * by a helper script, an unsigned Windows install re-runs the NSIS installer
+ * silently; a Linux AppImage uses electron-updater. Packages a package manager
+ * or a disk image owns (`managed.ts`) are `unsupported{managedPackage}`.
  *
  * The second half — `endpoints` — is where releases are published. Under
  * electron-builder that is the `publish` block, which lands in the packaged
@@ -24,6 +30,7 @@
  */
 
 import type { MissingUpdaterConfig, Reason, UpdateState } from "./machine";
+import type { ManagedKind } from "./managed";
 
 /**
  * Whether this package carries a platform signature that makes an update
@@ -34,12 +41,11 @@ import type { MissingUpdaterConfig, Reason, UpdateState } from "./machine";
  * Host published — both of which are checked whether or not anything is
  * signed.
  *
- * `unknown` is refused rather than assumed. Windows reads Authenticode
+ * `unknown` is never treated as `signed`. Windows reads Authenticode
  * (`Get-AuthenticodeSignature`): `Valid` is `signed`, `NotSigned` is
  * `unsigned`, and anything else — a self-signed rehearsal certificate
- * included — is `unknown`. Armadra requires this order:
- * **sign first, then turn on automatic updates**, because an unsigned
- * automatic update is a step backwards in trust.
+ * included — is `unknown`. An `unsigned` or `unknown` package installs only
+ * through the release key (`installPath`), never through electron-updater.
  */
 export type SignatureState =
   | "signed"
@@ -83,6 +89,60 @@ export interface UpdaterEnvironment {
   signature: SignatureState;
   /** `ARMADRA_UPDATES_DEV=1`: a development escape hatch, and only that. */
   developmentOverride: boolean;
+  /** `process.platform`. */
+  platform: string;
+  /**
+   * The release signing public key this package carries (minisign text, already
+   * parsed once), or `null` when it carries none.
+   */
+  pubkey: string | null;
+  /** Who owns this installation, when it is not the shell (`managed.ts`). */
+  managed: ManagedKind | null;
+}
+
+/** Which installer a staged update is handed to. */
+export type InstallPath =
+  /** electron-updater's `quitAndInstall` (platform signature, or AppImage). */
+  | "electronUpdater"
+  /** Unsigned macOS: a helper script replaces the `.app` after exit. */
+  | "macReplace"
+  /** Unsigned Windows: the NSIS installer, run silently, relaunches the app. */
+  | "windowsInstaller";
+
+/**
+ * The installer for this installation, or `null` when nothing may install
+ * here. A development (unpackaged) build is answered `electronUpdater`: it has
+ * no package to replace, and electron-updater refuses on its own.
+ */
+export function installPath(
+  environment: UpdaterEnvironment,
+): InstallPath | null {
+  if (!environment.packaged) return "electronUpdater";
+  if (environment.managed !== null) return null;
+  const signature = environment.signature;
+  const keyed = environment.pubkey !== null;
+  switch (environment.platform) {
+    case "darwin":
+      if (signature === "signed") return "electronUpdater";
+      return keyed ? "macReplace" : null;
+    case "win32":
+      if (signature === "signed") return "electronUpdater";
+      return keyed ? "windowsInstaller" : null;
+    case "linux":
+      return signature === "notApplicable" ? "electronUpdater" : null;
+    default:
+      return null;
+  }
+}
+
+/**
+ * Whether a downloaded bundle must verify against its `<asset>.sig`. Whenever
+ * the package carries the key — signed or not, on every path.
+ */
+export function requiresDetachedSignature(
+  environment: UpdaterEnvironment,
+): boolean {
+  return environment.pubkey !== null;
 }
 
 /**
@@ -106,28 +166,25 @@ export function installable(signature: SignatureState): boolean {
 /**
  * Why a staged update must not be installed here, or `null` when it may be.
  *
- * `ARMADRA_UPDATES_DEV=1` lets an unsigned package check, download, verify and
- * stage — that is how the whole path is walked without a certificate — but it
- * never lets one *install*: an installer started by a build that cannot be
- * checked against is exactly the unsigned automatic update the order above
- * rules out. A development (unpackaged) build is not judged here; it has no
- * package to replace, and electron-updater refuses on its own.
+ * A package with neither the release key nor a platform signature may still
+ * check, download and stage with `ARMADRA_UPDATES_DEV=1` — that is how the
+ * path is walked without either — but it never installs: nothing it could
+ * check the bytes against came with it. A development (unpackaged) build is
+ * not judged here; it has no package to replace.
  */
 export function installRefusal(environment: UpdaterEnvironment): Reason | null {
   if (!environment.packaged) return null;
-  return installable(environment.signature) ? null : "notSigned";
+  return installPath(environment) === null ? "notSigned" : null;
 }
 
 /** Whether anything about this build could make an update trustworthy. */
 function trustworthy(environment: UpdaterEnvironment): boolean {
-  // The escape hatch does not relax this: it lets a development build talk to
-  // a loopback release server, and electron-updater still refuses to install
-  // an unsigned package at the last step. What it must not do is let the shell
-  // claim it checked something it could not verify, so it is trustworthy only
-  // in the sense that the operator asked for exactly this.
+  // The escape hatch lets a development build talk to a loopback release
+  // server; it is trustworthy only in the sense that the operator asked for
+  // exactly this, and `installRefusal` still decides whether anything installs.
   if (environment.developmentOverride) return true;
   if (!environment.packaged) return false;
-  return installable(environment.signature);
+  return environment.pubkey !== null || installable(environment.signature);
 }
 
 /** Whether the local-package marker turns the updater off. */
@@ -158,6 +215,16 @@ export function initialState(environment: UpdaterEnvironment): UpdateState {
   // An unmarked build keeps the old order: it might really be a release whose
   // signing half is missing.
   if (markerDisables(environment.marker)) return { state: "localBuild" };
+  // A disk image, a package manager or a portable copy owns this installation:
+  // there is nothing the shell could replace, whatever it carries. The page
+  // offers the matching installer instead (`managed.ts`).
+  if (environment.packaged && environment.managed !== null) {
+    return {
+      state: "unsupported",
+      reason: "managedPackage",
+      managed: { package: environment.managed, download: null },
+    };
+  }
   if (missing.pubkey) return { state: "notConfigured", missing };
   if (!environment.packaged && !environment.developmentOverride) {
     return { state: "localBuild" };

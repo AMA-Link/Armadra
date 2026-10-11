@@ -448,6 +448,17 @@ describe("the electron-updater dialect", () => {
     expect(result.value.signed).toBe(false);
   });
 
+  it("has no signature to compare against the release key, and is not refused for it", () => {
+    // The bundle's own `<asset>.sig` is verified over the bytes after the
+    // download; the feed itself carries nothing to compare before it.
+    const result = resolveWith(
+      electronAnswer(),
+      YML,
+      wrapped(minisign("public", 3)),
+    );
+    expect(result.ok).toBe(true);
+  });
+
   it("still refuses a version that is not the one the host offered", () => {
     expect(
       reasonOf(

@@ -104,7 +104,9 @@ export const IPC = {
    * The seven update commands, one for one with the Rust shell's commands they
    * replace (W2.2). `updates:check` carries the Host's answer the page already
    * fetched with its own session; everything else takes no argument and
-   * answers with the state machine's state.
+   * answers with the state machine's state. A managed package answers
+   * `unsupported{managedPackage}` with `managed.download` (issue #288 §2; the
+   * shape is documented on the preload's `updates.state`).
    */
   updatesState: spec("updates:state", "invoke", "shared"),
   updatesCheck: spec("updates:check", "invoke", "window"),

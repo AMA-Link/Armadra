@@ -21,9 +21,14 @@
  *      check → available → download (electron-updater's sha512, then the
  *      Host's sha256) → staged; the staged file on disk is the served zip.
  *      Then the restart:
- *        - an **unsigned** package (`signatureState` unsigned / unknown) must
- *          answer `notSigned` and install nothing — nothing stopped, no
- *          pending-restart record, the app still running;
+ *        - a package with neither the release key (`resources/
+ *          armadra-release.pub`) nor a platform signature must answer
+ *          `notSigned` and install nothing — nothing stopped, no
+ *          pending-restart record, the app still running. Every package built
+ *          since issue #288 carries the key, and is then started with
+ *          `ARMADRA_UPDATER_PUBKEY` naming the throwaway key's public half;
+ *          it installs (macOS through the helper, Windows through the NSIS
+ *          installer) only with `--install --next`;
  *        - a **signed** package (or Linux, where there is no code signature)
  *          installs only with `--install --next <release dir>`: the next
  *          release is a second `dist` with `ARMADRA_DIST_VERSION=<higher>`, and
@@ -62,7 +67,11 @@ import { fileURLToPath } from "node:url";
 import { desktopAssets, updaterFeedFile } from "../release/artifacts.mjs";
 import { writeChecksums } from "../release/checksums.mjs";
 import { verifyServedRelease } from "../release/dry-run.mjs";
-import { generateKey, signDetached } from "../release/minisign.mjs";
+import {
+  generateKey,
+  publicKeyFile,
+  signDetached,
+} from "../release/minisign.mjs";
 import { startMockReleaseServer } from "../release/mock-release-server.mjs";
 import {
   findBundle,
@@ -352,6 +361,9 @@ async function waitForBridge(client) {
 }
 
 /** Starts the packaged app against `source`, isolated in `sandbox`. */
+/** The throwaway release key's public half, in the sandbox. */
+const RELEASE_PUB = "release.pub";
+
 async function launch({ executable, sandbox, source, extraEnv = {} }) {
   const port = await freePort();
   const args = [
@@ -369,6 +381,17 @@ async function launch({ executable, sandbox, source, extraEnv = {} }) {
     LOCALAPPDATA: join(sandbox, "home", "AppData", "Local"),
     ARMADRA_UPDATES_DEV: "1",
     ARMADRA_UPDATER_SOURCE: source,
+    // The package carries the real release key; the release served here is
+    // signed with a throwaway one, which `ARMADRA_UPDATES_DEV=1` lets this
+    // variable substitute (main/updates/environment.ts::releasePublicKey).
+    ...(existsSync(join(sandbox, RELEASE_PUB))
+      ? { ARMADRA_UPDATER_PUBKEY: join(sandbox, RELEASE_PUB) }
+      : {}),
+    // An AppImage started with APPIMAGE_EXTRACT_AND_RUN is told what it is, so
+    // the shell does not take it for an unpacked copy (shell-core/updates/managed.ts).
+    ...(process.platform === "linux" && executable.endsWith(".AppImage")
+      ? { APPIMAGE: executable }
+      : {}),
     ...(process.platform === "darwin" ? { PATH: LAUNCHD_PATH } : {}),
     ...(process.platform === "linux" ? { APPIMAGE_EXTRACT_AND_RUN: "1" } : {}),
     ...extraEnv,
@@ -537,12 +560,19 @@ async function packageLeg({ options, target, report }) {
       reason: `no updater bundle for ${target} in ${options.releaseDir}`,
     };
   const signature = expectedSignature(app);
-  const installs = signature === "signed" || signature === "notApplicable";
+  // A package that carries the release key installs on every platform
+  // (issue #288 §2): unsigned macOS through the helper, unsigned Windows
+  // through the NSIS installer. Only one without it refuses with notSigned.
+  const installs =
+    signature === "signed" ||
+    signature === "notApplicable" ||
+    carriesReleaseKey(app);
   const current = packagedVersion(app);
   const version = nextVersion(current);
 
   const sandbox = mkdtempSync(join(tmpdir(), "armadra-update-e2e-"));
   const key = generateKey();
+  writeFileSync(join(sandbox, RELEASE_PUB), publicKeyFile(key));
   const leg = {
     id: "package",
     app,
@@ -794,6 +824,15 @@ function packagedResources(app) {
   if (app.endsWith(".app")) return join(app, "Contents", "Resources");
   if (app.endsWith(".exe")) return join(dirname(app), "resources");
   return null;
+}
+
+/** Whether the package ships `resources/armadra-release.pub`. An AppImage is
+ * assumed to: its resources are not readable without mounting it. */
+function carriesReleaseKey(app) {
+  const resources = packagedResources(app);
+  return (
+    resources === null || existsSync(join(resources, "armadra-release.pub"))
+  );
 }
 
 /** The `armadraUpdates` marker in the packaged package.json (asar), if any. */

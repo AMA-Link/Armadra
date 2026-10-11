@@ -1,16 +1,38 @@
 import { app } from "electron";
 import type { CancellationToken } from "electron-updater";
 import { createHash } from "node:crypto";
-import { createReadStream } from "node:fs";
+import {
+  createReadStream,
+  createWriteStream,
+  mkdirSync,
+  rmSync,
+} from "node:fs";
+import { readFile } from "node:fs/promises";
+import { join } from "node:path";
+import { Readable, Transform } from "node:stream";
+import { pipeline } from "node:stream/promises";
 
 import { IPC } from "../../shared/ipc";
 import { dataDir } from "../../shell-core/paths";
 import {
   initialState,
+  installPath,
   installRefusal,
+  requiresDetachedSignature,
   shouldEnableUpdater,
+  type InstallPath,
   type UpdaterEnvironment,
 } from "../../shell-core/updates/availability";
+import {
+  appBundleOf,
+  assetNameOf,
+  stagedFileName,
+} from "../../shell-core/updates/install-plan";
+import { managedDownload } from "../../shell-core/updates/managed";
+import {
+  SIGNATURE_LIMIT_BYTES,
+  verifyDetached,
+} from "../../shell-core/updates/minisign";
 import { Cancellation } from "../../shell-core/updates/cancel";
 import * as coordinate from "../../shell-core/updates/coordinate";
 import {
@@ -22,6 +44,7 @@ import {
 } from "../../shell-core/updates/machine";
 import {
   STAGED_EVENT,
+  type Locale,
   localeFromEnvironment,
   notificationBody,
   notificationTitle,
@@ -44,6 +67,7 @@ import {
   releaseSource,
   updaterEnvironment,
 } from "./environment";
+import { defaultInstallers, type Installers } from "./install";
 
 /**
  * Shell-side application updates, on electron-updater
@@ -64,7 +88,19 @@ import {
  * - `cancel` is the shell's own handle on a transfer already running;
  * - `notify` holds the two out-of-page announcements and their strings;
  * - `coordinate` decides what may be stopped and whether a restart worked;
+ * - `availability` decides which installer runs (`installPath`), `minisign`
+ *   verifies each bundle's `<asset>.sig`, `managed` names packages the shell
+ *   must not replace;
+ * - `main/updates/install.ts` is the unsigned installers' process work;
  * - this file is the Electron surface: the seven handlers and one event.
+ *
+ * Every downloaded bundle passes two independent checks before it is staged
+ * (issue #288 §2): its sha256 equals the digest GitHub computed on upload, and,
+ * whenever the package carries the release key, its `<asset>.sig` verifies
+ * with that key. A platform-signed package then installs through
+ * electron-updater; an unsigned macOS one through a helper script that replaces
+ * the `.app` after this process exits; an unsigned Windows one by re-running
+ * the NSIS installer silently.
  *
  * Two Electron rules are obeyed here rather than remembered:
  *
@@ -115,6 +151,12 @@ export interface UpdatesDeps {
    * signature read is already memoised underneath.
    */
   readonly environment?: () => UpdaterEnvironment;
+  /** The unsigned installers' process work (`install.ts`). Tests inject. */
+  readonly installers?: Installers;
+  /** The running `.app` (macOS). Defaults to the one `process.execPath` is in. */
+  readonly appBundle?: () => string | null;
+  /** The language of the notification. Defaults to the environment's. */
+  readonly locale?: () => Locale;
 }
 
 declare const require: (id: string) => unknown;
@@ -130,13 +172,17 @@ export class UpdatesController {
   private machine: Machine | null = null;
   private readonly cancellation = new Cancellation();
   /** Set while a transfer is being awaited, so a cancel can stop the bytes. */
-  private transfer: CancellationToken | null = null;
+  private transfer: Pick<CancellationToken, "cancel"> | null = null;
   private staged: { offer: Offer; file: string } | null = null;
   private readonly stagedListeners = new Set<(staged: Staged) => void>();
   /** The channel of the last check; a download uses the same one. */
   private channel: offer.Channel = "stable";
 
   constructor(private readonly deps: UpdatesDeps) {}
+
+  private installers(): Installers {
+    return this.deps.installers ?? defaultInstallers(() => app.quit());
+  }
 
   /** electron-updater 本体。没人注入就走那次延迟的 `require`。 */
   private updater(): typeof import("electron-updater") {
@@ -184,7 +230,9 @@ export class UpdatesController {
   async check(input: unknown): Promise<UpdateState> {
     const started = this.apply({ type: "checkStarted" });
     if (started.state !== "checking") return started;
-    return this.apply(await evaluate(readVerdict(input)));
+    return this.apply(
+      await evaluate(readVerdict(input), null, this.environment().pubkey ?? ""),
+    );
   }
 
   /**
@@ -200,7 +248,14 @@ export class UpdatesController {
   async checkRelease(
     options: { manual?: boolean; nowMs?: number } = {},
   ): Promise<UpdateState> {
-    if (!shouldEnableUpdater(this.environment())) return this.state();
+    const now = this.state();
+    const managed =
+      now.state === "unsupported" && now.managed !== undefined
+        ? now.managed
+        : null;
+    if (managed === null && !shouldEnableUpdater(this.environment())) {
+      return this.state();
+    }
     const source = releaseSource();
     const target = currentTarget();
     if (source === null || target === null) return this.state();
@@ -216,6 +271,42 @@ export class UpdatesController {
       usable !== null &&
       nowMs - usable.checkedAtMs < coordinate.MIN_CHECK_INTERVAL_MS
     ) {
+      return this.state();
+    }
+    if (managed !== null) {
+      // A package the shell must not replace still learns which installer is
+      // newer, so the page can offer it for download. Nothing is staged.
+      const index = await fetchIndex(source, usable);
+      if (!index.ok) return this.state();
+      coordinate.writeReleaseCache(directory, {
+        key,
+        etag: index.etag,
+        body: index.body,
+        checkedAtMs: nowMs,
+      });
+      let parsed: unknown = null;
+      try {
+        parsed = JSON.parse(index.body);
+      } catch {
+        parsed = null;
+      }
+      this.machine = Machine.of({
+        state: "unsupported",
+        reason: "managedPackage",
+        managed: {
+          package: managed.package,
+          download: managedDownload(
+            parsed,
+            {
+              channel: this.channel,
+              currentVersion: app.getVersion(),
+              target,
+              checkedAtMs: nowMs,
+            },
+            managed.package,
+          ),
+        },
+      });
       return this.state();
     }
     const started = this.apply({ type: "checkStarted" });
@@ -248,7 +339,13 @@ export class UpdatesController {
       checkedAtMs: nowMs,
     });
     if (this.state().state !== "checking") return this.state();
-    return this.apply(await evaluate(verdict, coordinate.installId(directory)));
+    return this.apply(
+      await evaluate(
+        verdict,
+        coordinate.installId(directory),
+        this.environment().pubkey ?? "",
+      ),
+    );
   }
 
   /**
@@ -369,7 +466,137 @@ export class UpdatesController {
     return state;
   }
 
+  /**
+   * The bytes for the installer this installation will use, then the release
+   * key's statement about them. A bundle that fails either is never staged.
+   */
   private async transferBytes(pending: Offer): Promise<offer.Resolved<string>> {
+    const environment = this.environment();
+    // A package nothing may install (the development escape hatch on an
+    // unsigned build) still walks electron-updater's transfer, as it always did.
+    const path: InstallPath = installPath(environment) ?? "electronUpdater";
+    const fetched =
+      path === "electronUpdater"
+        ? await this.updaterTransfer(pending)
+        : await this.directTransfer(pending);
+    if (!fetched.ok) return fetched;
+    if (requiresDetachedSignature(environment)) {
+      const signed = await verifySignature(
+        pending,
+        fetched.value,
+        environment.pubkey ?? "",
+      );
+      if (!signed.ok) {
+        // Bytes the release key does not vouch for are not kept around.
+        if (path !== "electronUpdater") {
+          rmSync(downloadDir(), { recursive: true, force: true });
+        }
+        return signed;
+      }
+    }
+    return fetched;
+  }
+
+  /** One progress reading, to the machine and to the page. */
+  private progressed(pending: Offer, transferred: number, total: number): void {
+    this.apply({
+      type: "downloadProgressed",
+      receivedBytes: transferred,
+      totalBytes: total,
+    });
+    // Resolved at send time. See the rule at the top of this file.
+    sendToWindow(IPC.updatesProgress.channel, {
+      receivedBytes: transferred,
+      totalBytes: total || pending.sizeBytes,
+    });
+  }
+
+  /**
+   * The bundle fetched by the shell itself, for the installers that are not
+   * electron-updater's: into `<data>/updates/download/`, hashed while it
+   * streams, and never longer than the size GitHub published for it.
+   */
+  private async directTransfer(
+    pending: Offer,
+  ): Promise<offer.Resolved<string>> {
+    let feed: URL;
+    try {
+      feed = new URL(pending.manifestUrl);
+    } catch {
+      return { ok: false, reason: "sourceMalformed" };
+    }
+    // The same feed check as electron-updater's path: the release's own
+    // description of this target has to name exactly this bundle.
+    const checkedFeed = await verifiedFeed(pending, feed);
+    if (!checkedFeed.ok) return checkedFeed;
+    const directory = downloadDir();
+    const file = join(directory, stagedFileName(pending.packageUrl));
+    const abort = new AbortController();
+    this.transfer = { cancel: () => abort.abort() };
+    let oversized = false;
+    try {
+      rmSync(directory, { recursive: true, force: true });
+      mkdirSync(directory, { recursive: true });
+      const response = await fetch(pending.packageUrl, {
+        signal: abort.signal,
+        redirect: "follow",
+      });
+      if (!response.ok || response.body === null) {
+        return {
+          ok: false,
+          reason:
+            response.status === 404
+              ? "noArtifactForTarget"
+              : "downloadInterrupted",
+        };
+      }
+      const declared = Number(response.headers.get("content-length") ?? "0");
+      const limit = pending.sizeBytes > 0 ? pending.sizeBytes : Infinity;
+      if (declared > limit) return { ok: false, reason: "digestMismatch" };
+      const total = declared > 0 ? declared : pending.sizeBytes;
+      const hash = createHash("sha256");
+      let received = 0;
+      const meter = new Transform({
+        transform: (chunk: Buffer, _encoding, callback) => {
+          received += chunk.length;
+          if (received > limit) {
+            oversized = true;
+            callback(new Error("more bytes than the release published"));
+            return;
+          }
+          hash.update(chunk);
+          this.progressed(pending, received, total);
+          callback(null, chunk);
+        },
+      });
+      await pipeline(
+        Readable.fromWeb(
+          response.body as import("node:stream/web").ReadableStream,
+        ),
+        meter,
+        createWriteStream(file),
+      );
+      const verified = offer.verifyDigestHex(
+        hash.digest("hex"),
+        pending.sha256,
+      );
+      if (!verified.ok) {
+        rmSync(directory, { recursive: true, force: true });
+        return verified;
+      }
+      return { ok: true, value: file };
+    } catch (error) {
+      rmSync(directory, { recursive: true, force: true });
+      // More bytes than were published are not these bytes, whatever they are.
+      if (oversized) return { ok: false, reason: "digestMismatch" };
+      return { ok: false, reason: transferReason(error) };
+    }
+  }
+
+  /** electron-updater's own transfer, for the installers that are its. */
+  private async updaterTransfer(
+    pending: Offer,
+  ): Promise<offer.Resolved<string>> {
     let feed: URL;
     try {
       feed = new URL(pending.manifestUrl);
@@ -410,18 +637,8 @@ export class UpdatesController {
     // fails with ENOENT on that file and nothing says why.
     autoUpdater.forceDevUpdateConfig = !app.isPackaged;
 
-    const onProgress = (progress: { transferred: number; total: number }) => {
-      this.apply({
-        type: "downloadProgressed",
-        receivedBytes: progress.transferred,
-        totalBytes: progress.total,
-      });
-      // Resolved at send time. See the rule at the top of this file.
-      sendToWindow(IPC.updatesProgress.channel, {
-        receivedBytes: progress.transferred,
-        totalBytes: progress.total || pending.sizeBytes,
-      });
-    };
+    const onProgress = (progress: { transferred: number; total: number }) =>
+      this.progressed(pending, progress.transferred, progress.total);
     autoUpdater.on("download-progress", onProgress);
     const token = new CancellationToken();
     this.transfer = token;
@@ -459,7 +676,8 @@ export class UpdatesController {
 
   /**
    * Stops what this shell owns, records the restart, and installs. On success
-   * this call does not return: the process is replaced.
+   * this call does not return: the process is replaced, or it quits and a
+   * helper / the installer takes over.
    */
   async install(): Promise<UpdateState> {
     const preparing = this.apply({ type: "restartRequested" });
@@ -467,14 +685,44 @@ export class UpdatesController {
       return preparing;
     }
     const pending = preparing.offer;
+    const environment = this.environment();
 
-    // A package without a platform signature stages and verifies updates (with
-    // ARMADRA_UPDATES_DEV=1) but never hands them to an installer. Checked
-    // before anything is stopped: nothing about this restart is going to
-    // happen, so nothing should be interrupted for it.
-    const refusal = installRefusal(this.environment());
+    // A package that carries neither the release key nor a platform signature
+    // stages and verifies updates (with ARMADRA_UPDATES_DEV=1) but never hands
+    // them to an installer. Checked before anything is stopped: nothing about
+    // this restart is going to happen, so nothing should be interrupted for it.
+    const refusal = installRefusal(environment);
     if (refusal !== null) {
       return this.apply({ type: "restartAbandoned", reason: refusal });
+    }
+    const path = installPath(environment) ?? "electronUpdater";
+    if (this.staged === null && path !== "electronUpdater") {
+      return this.apply({ type: "restartAbandoned", reason: "installFailed" });
+    }
+
+    // Everything that can fail without stopping anything is done first: the
+    // macOS bundle is unpacked and its version read while the app still runs.
+    let macReplace: { installed: string; replacement: string } | null = null;
+    if (path === "macReplace" && this.staged !== null) {
+      const installed = (this.deps.appBundle ?? defaultAppBundle)();
+      if (installed === null || !this.installers().replaceable(installed)) {
+        return this.apply({
+          type: "restartAbandoned",
+          reason: "installFailed",
+        });
+      }
+      const unpacked = await this.installers().stageMacBundle(
+        this.staged.file,
+        pending.version,
+        installDir(),
+      );
+      if (!unpacked.ok) {
+        return this.apply({
+          type: "restartAbandoned",
+          reason: unpacked.reason,
+        });
+      }
+      macReplace = { installed, replacement: unpacked.value };
     }
 
     const stopped = await this.stopOwnedBackground();
@@ -499,6 +747,21 @@ export class UpdatesController {
     if (this.staged === null) {
       return this.failInstall("installFailed");
     }
+    if (path === "macReplace" && macReplace !== null) {
+      return this.handOver(
+        this.installers().launchMacHelper({
+          pid: process.pid,
+          installed: macReplace.installed,
+          replacement: macReplace.replacement,
+          workDir: installDir(),
+        }),
+      );
+    }
+    if (path === "windowsInstaller") {
+      return this.handOver(
+        this.installers().launchWindowsInstaller(this.staged.file),
+      );
+    }
     try {
       // 走到这一步必然已经下载过，模块早就加载好了；这里只是把句柄再取一次。
       const { autoUpdater } = this.updater();
@@ -520,6 +783,17 @@ export class UpdatesController {
     } catch (error) {
       return this.failInstall(transferReason(error));
     }
+  }
+
+  /**
+   * The helper or the installer is started; this process quits so it can do
+   * its work. A start that failed installs nothing and says so.
+   */
+  private handOver(launched: offer.Resolved<void>): UpdateState {
+    if (!launched.ok) return this.failInstall(launched.reason);
+    this.deps.onBeforeRestart();
+    this.installers().quit();
+    return this.state();
   }
 
   /**
@@ -565,7 +839,12 @@ export class UpdatesController {
       shell: app.getVersion(),
       runtime: await this.deps.runtimeVersion(),
     });
-    if (outcome.outcome === "completed") coordinate.clearPending(directory);
+    if (outcome.outcome === "completed") {
+      coordinate.clearPending(directory);
+      // The bytes that were installed are not needed any more.
+      rmSync(downloadDir(), { recursive: true, force: true });
+      rmSync(installDir(), { recursive: true, force: true });
+    }
     return outcome;
   }
 
@@ -590,7 +869,7 @@ export class UpdatesController {
       settings = "";
     }
     if (!wantsNotification(settings)) return;
-    const locale = localeFromEnvironment();
+    const locale = (this.deps.locale ?? localeFromEnvironment)();
     this.deps.notify(
       notificationTitle(locale),
       installable
@@ -617,13 +896,14 @@ export class UpdatesController {
 async function evaluate(
   verdict: HostVerdict,
   installId: string | null = null,
+  pubkey = "",
 ): Promise<Event> {
   const atMs = verdict.checkedAtMs;
   if (verdict.state === "upToDate") {
     return { type: "checkedUpToDate", atMs };
   }
   if (verdict.state === "available") {
-    const resolved = await resolveOffer(verdict);
+    const resolved = await resolveOffer(verdict, pubkey);
     // A staged rollout that does not include this installation is no offer
     // for it — the same answer electron-updater's own staging gives. The check
     // was made; the release is simply not this installation's yet.
@@ -655,6 +935,7 @@ async function evaluate(
 
 async function resolveOffer(
   verdict: HostVerdict,
+  pubkey: string,
 ): Promise<
   | { ok: true; value: Offer; rollout: offer.Rollout | null }
   | { ok: false; reason: Reason }
@@ -664,13 +945,13 @@ async function resolveOffer(
   if (!target.ok) return target;
   const manifest = await fetchManifest(target.value.url);
   if (!manifest.ok) return manifest;
-  // No minisign key exists in an Electron build; the manifest's own signature
-  // field is therefore not compared against one. See `offer.ts`.
+  // With the release key, a `latest.json` entry signed by another key is
+  // refused here, before any bytes are fetched. See `offer.ts`.
   const resolved = offer.resolve(
     verdict.answer,
     target.value,
     manifest.value,
-    "",
+    pubkey,
     insecure,
   );
   if (!resolved.ok) return resolved;
@@ -808,6 +1089,76 @@ async function fetchManifest(url: URL): Promise<offer.Resolved<string>> {
     return { ok: false, reason: "sourceMalformed" };
   }
   return { ok: true, value: body };
+}
+
+/** Where the shell's own transfer puts a bundle. */
+function downloadDir(): string {
+  return join(dataDir(), "updates", "download");
+}
+
+/** Where the macOS bundle is unpacked and the helper works. */
+function installDir(): string {
+  return join(dataDir(), "updates", "install");
+}
+
+function defaultAppBundle(): string | null {
+  return appBundleOf(process.execPath);
+}
+
+/**
+ * The release key's statement about a downloaded bundle: `<asset>.sig` from the
+ * same release, verified over the bytes with the key this package carries, and
+ * naming this asset in its trusted comment. A missing, malformed or foreign
+ * signature is `signatureMismatch`; only a transfer that failed is something
+ * else.
+ */
+async function verifySignature(
+  pending: Offer,
+  file: string,
+  pubkey: string,
+): Promise<offer.Resolved<void>> {
+  const url = offer.releaseUrl(
+    `${pending.packageUrl}.sig`,
+    allowInsecureLoopback(),
+  );
+  if (!url.ok) return url;
+  let text: string;
+  try {
+    const response = await fetch(url.value, {
+      signal: AbortSignal.timeout(15_000),
+      redirect: "follow",
+    });
+    if (!response.ok) {
+      return {
+        ok: false,
+        reason:
+          response.status === 404 || response.status === 410
+            ? "signatureMismatch"
+            : "sourceUnreachable",
+      };
+    }
+    text = await response.text();
+  } catch {
+    return { ok: false, reason: "sourceUnreachable" };
+  }
+  if (text.length > SIGNATURE_LIMIT_BYTES) {
+    return { ok: false, reason: "signatureMismatch" };
+  }
+  let bytes: Buffer;
+  try {
+    bytes = await readFile(file);
+  } catch {
+    return { ok: false, reason: "downloadInterrupted" };
+  }
+  const verdict = verifyDetached(
+    pubkey,
+    text,
+    bytes,
+    assetNameOf(pending.packageUrl),
+  );
+  return verdict.ok
+    ? { ok: true, value: undefined }
+    : { ok: false, reason: "signatureMismatch" };
 }
 
 /** The sha256 of a staged file, streamed. `null` when it could not be read. */

@@ -111,6 +111,13 @@ export interface ArmadraDesktopApi {
     showItemInFolder(path: string): Promise<{ ok: boolean }>;
   };
   readonly updates: {
+    /**
+     * The shell's update state (`shell-core/updates/machine.ts::UpdateState`).
+     * `unsupported` with `reason: "managedPackage"` also carries
+     * `managed: { package: "dmg" | "deb" | "rpm" | "pacman" | "portable",
+     * download: { version, url, notesUrl } | null }` — the installer to offer
+     * for download instead of an in-place update.
+     */
     state(): Promise<unknown>;
     /**
      * The Host's answer, handed over verbatim. The page already holds the
