@@ -365,6 +365,35 @@ describe("CommentComposer", () => {
     });
     expect(onSubmit).toHaveBeenCalledWith(`看 @[Vera](principal:${VERA}) 这里`);
   });
+
+  it("预览页签随输入实时渲染 Markdown 与提及，裸 HTML 不出现", async () => {
+    render(
+      <TestProviders>
+        <CommentComposer
+          people={PEOPLE}
+          placeholder="写评论"
+          initial={`**看** @[Vera](principal:${VERA}) <b>x</b>`}
+          onSubmit={() => undefined}
+        />
+      </TestProviders>,
+    );
+    expect(screen.getByRole("tab", { name: "编辑" })).toBeTruthy();
+    const preview = screen.getByRole("tab", { name: "预览" });
+    fireEvent.mouseDown(preview, { button: 0 });
+    const panel = await screen.findByRole("tabpanel");
+    expect(panel.querySelector("strong")?.textContent).toBe("看");
+    expect(panel.querySelector(`[data-mention="${VERA}"]`)?.textContent).toBe(
+      "@Vera",
+    );
+    expect(panel.querySelector("b")).toBeNull();
+    expect(screen.queryByRole("textbox", { name: "写评论" })).toBeNull();
+    // 回到编辑，原文还在。
+    fireEvent.mouseDown(screen.getByRole("tab", { name: "编辑" }), {
+      button: 0,
+    });
+    const box = await screen.findByRole("textbox", { name: "写评论" });
+    expect((box as HTMLTextAreaElement).value).toContain("**看** @Vera");
+  });
 });
 
 describe("CommentsPanelView", () => {
