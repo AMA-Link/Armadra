@@ -1,6 +1,21 @@
 # 更新记录
 
-每个版本一节，按发布倒序。括号里是合入的 PR 编号（github.com/Owlbay/Armadra）。兼容范围以 `tools/release/compatibility.json` 为准，发布说明里的 `armadra-compatibility` 围栏由它渲染。桌面、服务器与手机 / 平板 App 共用一条版本线和一个标签 `vX.Y.Z`（规则见 `docs/guides/ci-release.md`「版本规则」）；有手机端改动的版本，在「手机与平板」小节里写，其余写在「桌面 / 服务器」下。2026-10-10 之前手机端曾单独编号（1.0.0、1.1.0），内容并入对应的 0.2.5、0.2.6。
+每个版本一节，按发布倒序。括号里是合入的 PR 编号（github.com/AMA-Link/Armadra，2026-10-11 前为 Owlbay/Armadra，旧编号照常跳转）。兼容范围以 `tools/release/compatibility.json` 为准，发布说明里的 `armadra-compatibility` 围栏由它渲染。桌面、服务器与手机 / 平板 App 共用一条版本线和一个标签 `vX.Y.Z`（规则见 `docs/guides/ci-release.md`「版本规则」）；有手机端改动的版本，在「手机与平板」小节里写，其余写在「桌面 / 服务器」下。2026-10-10 之前手机端曾单独编号（1.0.0、1.1.0），内容并入对应的 0.2.5、0.2.6。
+
+## 0.5.1（2026-10-11）
+
+修复版。仓库迁到 GitHub 组织 AMA-Link（旧地址自动跳转）。
+
+### 桌面 / 服务器
+
+- 通行密钥：注册时只提供 EdDSA / ES256 / RS256，修复运行在 Node 24 上时浏览器登记后量子密钥、注册返回 409（#277）。
+- 服务器镜像改用 Node 24（`node:24.21.0-bookworm-slim`），发布到 `ghcr.io/ama-link/armadra-server`（#277、#278）。
+- 启动动画：兜底定时器在页面环境拆除后到达时不再抛错（#277）。
+- 协议包与开发环境的中转、控制面镜像对齐 armadra-cloud 0.3.10（#283）。
+
+### 手机与平板
+
+- GitHub Release 开始附带签名的 Android 安装包 `armadra-mobile_<版本>_android.apk`（#280）。
 
 ## 0.5.0（2026-10-10）
 
