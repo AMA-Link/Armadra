@@ -49,40 +49,60 @@ const toasts = vi.hoisted(() => ({
   error: vi.fn(),
   warning: vi.fn(),
 }));
-vi.mock("../../../api/remote-services", async (original) => ({
-  ...(await original<typeof import("../../../api/remote-services")>()),
+vi.mock("../../../../api/remote-services", async (original) => ({
+  ...(await original<typeof import("../../../../api/remote-services")>()),
   ...api,
 }));
-vi.mock("../../../sources/bootstrap", () => boot);
-vi.mock("../../../app/workspaces-query", () => ({
+vi.mock("../../../../sources/bootstrap", () => boot);
+vi.mock("../../../../app/workspaces-query", () => ({
   useWorkspacesQuery: () => ({ data: [{ id: "w1", name: "Project" }] }),
 }));
 vi.mock("sonner", () => ({ toast: toasts }));
-vi.mock("../../../agent/sessions", async (original) => ({
-  ...(await original<typeof import("../../../agent/sessions")>()),
+vi.mock("../../../../agent/sessions", async (original) => ({
+  ...(await original<typeof import("../../../../agent/sessions")>()),
   sessionsQuery: (workspaceId: string | null) => ({
     queryKey: ["test-sessions", workspaceId],
     queryFn: async () =>
       workspaceId === "w1" ? [{ sessionId: "s-build", title: "build" }] : [],
   }),
 }));
-/** 设置作用的 core 在不在眼前（缺省本机）。 */
+/** 页面的本机 core 在不在眼前（缺省本机）。 */
 const access = vi.hoisted(() => ({
   remote: false,
   via: null as "direct" | "relayed" | null,
   relayIssuer: null as string | null,
-  currentSourceId: "local",
 }));
-vi.mock("../remote-access", async (original) => ({
-  ...(await original<typeof import("../remote-access")>()),
+vi.mock("../../remote-access", async (original) => ({
+  ...(await original<typeof import("../../remote-access")>()),
   useRemoteAccess: () => access,
+}));
+/** 打开着的工作空间所在的那台（缺省本机）。 */
+const current = vi.hoisted(() => ({ sourceId: "local" }));
+vi.mock("../../../../sources/context", async (original) => ({
+  ...(await original<typeof import("../../../../sources/context")>()),
+  useCurrentSource: () => ({
+    descriptor: {
+      sourceId: current.sourceId,
+      kind: current.sourceId === "local" ? "local" : "direct",
+    },
+  }),
+}));
+/** 局域网那一半：缺省读不到（只剩互联网路线）。 */
+const gateway = vi.hoisted(() => ({
+  status: vi.fn(),
+  configure: vi.fn(),
+  pair: vi.fn(),
+}));
+vi.mock("../../../../api/gateway", async (original) => ({
+  ...(await original<typeof import("../../../../api/gateway")>()),
+  gatewayApi: gateway,
 }));
 
 import { RemoteAccessPage } from "./RemoteAccessPage";
-import { offerJoinLink } from "../../../sources/join-intent";
-import { useShowingStore } from "../RemoteShare";
-import { dispatchWorkspaceEvent } from "../../../api/events";
-import { localSource } from "../../../api/source";
+import { offerJoinLink } from "../../../../sources/join-intent";
+import { useShowingStore } from "../../RemoteShare";
+import { dispatchWorkspaceEvent } from "../../../../api/events";
+import { localSource } from "../../../../api/source";
 
 const FP = "ab".repeat(32);
 const ISSUER = "https://relay.test:8102";
@@ -119,21 +139,42 @@ beforeEach(() => {
   api.notifyShellSourcesChanged.mockResolvedValue(false);
   api.relayPending.mockResolvedValue([]);
   api.remotePasswordChangeable.mockResolvedValue(false);
+  api.shareStatus.mockResolvedValue({ sourceId: "h", registrations: [] });
+  api.listShareLinks.mockResolvedValue([]);
+  gateway.status.mockRejectedValue(new Error("forbidden"));
 });
 afterEach(() => {
   Object.assign(access, {
     remote: false,
     via: null,
     relayIssuer: null,
-    currentSourceId: "local",
   });
+  current.sourceId = "local";
   cleanup();
-  for (const spy of [...Object.values(api), ...Object.values(toasts)])
+  for (const spy of [
+    ...Object.values(api),
+    ...Object.values(toasts),
+    ...Object.values(gateway),
+  ])
     spy.mockReset();
   boot.reloadIntoSettings.mockReset();
   useShowingStore.setState({ byService: {} });
   delete (window as { armadra?: unknown }).armadra;
 });
+
+const ALLOW = "Allow other devices to access this computer";
+
+/** 「高级」默认收起：添加中转账号、待清理都在里面。 */
+async function openAdvanced() {
+  fireEvent.click(await screen.findByRole("button", { name: "Advanced" }));
+}
+
+async function openAddRelay() {
+  await openAdvanced();
+  fireEvent.click(
+    await screen.findByRole("button", { name: "Add relay account" }),
+  );
+}
 
 function mount() {
   const client = new QueryClient({
@@ -147,29 +188,86 @@ function mount() {
 }
 
 describe("远程访问页", () => {
-  it("零配置：只有本机一行与两个添加入口，没有 SaaS 入口", async () => {
+  it("零配置：A 这台电脑 / B 他人分享，一个开关，没有 SaaS 入口", async () => {
     api.listSources.mockResolvedValue({ sources: [local], remotes: [] });
     mount();
-    await screen.findByText("this-mac");
-    // 三段：谁能连进来（经中转一行的动作是添加中转账号）· 我连接的其他 Armadra；
-    // 没有中转账号时不单列一张空的账号卡。
-    expect(
-      screen.getByText("Let other devices reach this machine"),
-    ).toBeTruthy();
-    expect(screen.getByText("Via relay")).toBeTruthy();
-    expect(screen.getByText("Other Armadra hosts")).toBeTruthy();
+    expect(await screen.findByText("This computer")).toBeTruthy();
+    expect(screen.getByText("Shared with me")).toBeTruthy();
+    const toggle = await screen.findByRole("switch", { name: ALLOW });
+    expect(toggle.getAttribute("aria-checked")).toBe("false");
+    // 关着时没有可达范围；没有中转账号时不单列一张空的账号卡。
+    expect(screen.queryByRole("combobox", { name: "Reach" })).toBeNull();
     expect(screen.queryByText("Relay accounts")).toBeNull();
+    expect(screen.getByText("My other computers")).toBeTruthy();
     expect(
-      screen.getByRole("button", { name: "Add relay account" }),
+      screen.getByRole("button", { name: "Pair another computer of mine" }),
     ).toBeTruthy();
-    expect(
-      screen.getByRole("button", { name: "Add self-hosted" }),
-    ).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Join with link" })).toBeTruthy();
+    // 没有切换服务，也没有「加入他人」之外的入口。
+    expect(screen.queryByText(/switch service/i)).toBeNull();
     expect(screen.queryByText(/saas|cloud/i)).toBeNull();
-    // 没登录任何远程服务时没有「从远程服务添加」。
+    // 没登录任何中转账号时没有「从中转添加」。
     expect(screen.queryByRole("button", { name: "Add from relay" })).toBeNull();
+    await openAdvanced();
+    expect(
+      await screen.findByRole("button", { name: "Add relay account" }),
+    ).toBeTruthy();
     await waitFor(() =>
       expect(boot.applySourceTable).toHaveBeenCalledWith([local]),
+    );
+  });
+
+  it("分组：我的电脑在 A，别人分享的在 B（主人、权限、到期），访客行不在账号列表", async () => {
+    const mine = {
+      ...local,
+      sourceId: "m".repeat(32),
+      kind: "direct",
+      label: "studio",
+      baseUrl: "https://studio.test:8443",
+      origin: "mine",
+    };
+    const shared = {
+      ...local,
+      sourceId: "s".repeat(32),
+      kind: "relayed",
+      label: "alice-mac",
+      relayOrigin: ISSUER,
+      origin: "shared",
+      ownerLabel: "Alice",
+      shareRole: "viewer",
+      shareExpiresAtMs: Date.parse("2099-01-02T00:00:00Z"),
+    };
+    api.listSources.mockResolvedValue({
+      sources: [local, mine, shared],
+      remotes: [
+        relay,
+        { ...relay, serviceId: "guest", label: "guest-row", guest: true },
+      ],
+    });
+    api.removeSource.mockResolvedValue(undefined);
+    mount();
+    const host = (await screen.findByText("This computer")).closest(
+      "[data-remote-block]",
+    ) as HTMLElement;
+    const joined = screen
+      .getByText("Shared with me")
+      .closest("[data-remote-block]") as HTMLElement;
+    expect(await within(host).findByText("studio")).toBeTruthy();
+    expect(within(host).queryByText("Alice")).toBeNull();
+    expect(within(joined).getByText("Alice")).toBeTruthy();
+    expect(within(joined).getByText("View only")).toBeTruthy();
+    expect(within(joined).getByText(/alice-mac · Expires/)).toBeTruthy();
+    expect(within(host).getByText(relay.label)).toBeTruthy();
+    expect(screen.queryByText("guest-row")).toBeNull();
+    fireEvent.pointerDown(
+      within(joined).getByRole("button", { name: "Actions for Alice" }),
+      { button: 0, ctrlKey: false },
+    );
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Leave" }));
+    const confirm = await screen.findByRole("alertdialog");
+    fireEvent.click(within(confirm).getByRole("button", { name: "Leave" }));
+    await waitFor(() =>
+      expect(api.removeSource).toHaveBeenCalledWith(shared.sourceId),
     );
   });
 
@@ -180,9 +278,7 @@ describe("远程访问页", () => {
       .mockResolvedValueOnce({ kind: "done", value: {} });
     api.notifyShellSourcesChanged.mockResolvedValue(true);
     mount();
-    fireEvent.click(
-      await screen.findByRole("button", { name: "Add relay account" }),
-    );
+    await openAddRelay();
     fireEvent.change(screen.getByLabelText("Address"), {
       target: { value: ISSUER },
     });
@@ -224,9 +320,7 @@ describe("远程访问页", () => {
       .mockResolvedValueOnce({ kind: "done", value: {} });
     api.notifyShellSourcesChanged.mockResolvedValue(true);
     mount();
-    fireEvent.click(
-      await screen.findByRole("button", { name: "Add relay account" }),
-    );
+    await openAddRelay();
     fireEvent.change(screen.getByLabelText("Address"), {
       target: { value: ISSUER },
     });
@@ -272,9 +366,7 @@ describe("远程访问页", () => {
       new Error("Wrong account or password"),
     );
     mount();
-    fireEvent.click(
-      await screen.findByRole("button", { name: "Add relay account" }),
-    );
+    await openAddRelay();
     fireEvent.change(screen.getByLabelText("Address"), {
       target: { value: ISSUER },
     });
@@ -315,7 +407,7 @@ describe("远程访问页", () => {
     );
   });
 
-  it("分享区直接展开：开关分享本机 → 新建可多次使用的链接 → 二维码 → 列表里再复制、撤销要确认", async () => {
+  it("开关打开、选局域网 + 互联网：经账号开路线 → 新建可多次使用的链接 → 二维码 → 列表里再复制、撤销要确认", async () => {
     api.listSources.mockResolvedValue({ sources: [local], remotes: [relay] });
     const registered = {
       sourceId: local.sourceId,
@@ -361,9 +453,8 @@ describe("远程访问页", () => {
       value: { writeText },
     });
     mount();
-    const toggle = await screen.findByRole("switch", {
-      name: "Via relay",
-    });
+    // 局域网那一半读不到：开关只开互联网路线。
+    const toggle = await screen.findByRole("switch", { name: ALLOW });
     await waitFor(() => expect(toggle.hasAttribute("disabled")).toBe(false));
     fireEvent.click(toggle);
     await waitFor(() =>
@@ -449,13 +540,119 @@ describe("远程访问页", () => {
   });
 });
 
+describe("一个开关、两档可达范围（#301）", () => {
+  const off = {
+    enabled: false,
+    running: false,
+    managedBy: "settings",
+    listen: "private",
+    port: 0,
+    publicOrigin: "",
+    address: null,
+    origin: null,
+    origins: [],
+    tls: {
+      source: "localCa",
+      certFile: "",
+      keyFile: "",
+      acmeEmail: "",
+      fingerprint: null,
+      subject: null,
+      names: [],
+      notAfter: null,
+      caAvailable: false,
+    },
+    error: null,
+  };
+  const choose = (trigger: string, option: string) => {
+    fireEvent.pointerDown(screen.getByRole("combobox", { name: trigger }), {
+      button: 0,
+      ctrlKey: false,
+      pointerType: "mouse",
+    });
+    fireEvent.click(screen.getByRole("option", { name: option }));
+  };
+
+  it("打开 = 局域网（无需账号）；选局域网 + 互联网且没有账号：先登录，登录好了开路线", async () => {
+    gateway.status.mockResolvedValue(off);
+    gateway.configure.mockResolvedValue({ ...off, enabled: true });
+    api.listSources.mockResolvedValue({ sources: [local], remotes: [] });
+    api.addPersonalRelay.mockResolvedValue({ kind: "done", value: {} });
+    api.shareThisMachine.mockResolvedValue({ sourceId: local.sourceId });
+    mount();
+    fireEvent.click(await screen.findByRole("switch", { name: ALLOW }));
+    await waitFor(() =>
+      expect(gateway.configure).toHaveBeenCalledWith({ enabled: true }),
+    );
+    expect(
+      (await screen.findByRole("combobox", { name: "Reach" })).textContent,
+    ).toContain("Local network only");
+    choose("Reach", "Local network + Internet");
+    const dialog = await screen.findByRole("dialog");
+    fireEvent.change(within(dialog).getByLabelText("Address"), {
+      target: { value: ISSUER },
+    });
+    fireEvent.change(within(dialog).getByLabelText("Account"), {
+      target: { value: "dev" },
+    });
+    fireEvent.change(within(dialog).getByLabelText("Password"), {
+      target: { value: "pw" },
+    });
+    api.listSources.mockResolvedValue({ sources: [local], remotes: [relay] });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Sign in" }));
+    await waitFor(() =>
+      expect(api.shareThisMachine).toHaveBeenCalledWith({
+        serviceId: "svc",
+        issuer: ISSUER,
+        label: "this-mac",
+      }),
+    );
+  });
+
+  it("退回仅局域网：确认后停用互联网路线，局域网照开", async () => {
+    gateway.status.mockResolvedValue({ ...off, enabled: true });
+    api.listSources.mockResolvedValue({ sources: [local], remotes: [relay] });
+    api.shareStatus.mockResolvedValue({
+      sourceId: local.sourceId,
+      registrations: [
+        {
+          issuer: ISSUER,
+          mode: "personal",
+          tunnel: {
+            state: "ready",
+            node: null,
+            since: null,
+            streams: 0,
+            lastError: null,
+          },
+        },
+      ],
+    });
+    api.stopSharing.mockResolvedValue(null);
+    mount();
+    await waitFor(() =>
+      expect(
+        screen.getByRole("combobox", { name: "Reach" }).textContent,
+      ).toContain("Local network + Internet"),
+    );
+    choose("Reach", "Local network only");
+    const confirm = await screen.findByRole("alertdialog");
+    expect(
+      within(confirm).getByText("Turn off the Internet route?"),
+    ).toBeTruthy();
+    fireEvent.click(
+      within(confirm).getByRole("button", { name: "Turn off Internet route" }),
+    );
+    await waitFor(() => expect(api.stopSharing).toHaveBeenCalledWith(ISSUER));
+    expect(gateway.configure).not.toHaveBeenCalled();
+  });
+});
+
 describe("添加时的地址提示", () => {
   async function openPersonal(address: string) {
     api.listSources.mockResolvedValue({ sources: [local], remotes: [] });
     mount();
-    fireEvent.click(
-      await screen.findByRole("button", { name: "Add relay account" }),
-    );
+    await openAddRelay();
     fireEvent.change(screen.getByLabelText("Address"), {
       target: { value: address },
     });
@@ -503,7 +700,9 @@ describe("添加时的地址提示", () => {
     api.addDirectSource.mockResolvedValue({ kind: "done" });
     mount();
     fireEvent.click(
-      await screen.findByRole("button", { name: "Add self-hosted" }),
+      await screen.findByRole("button", {
+        name: "Pair another computer of mine",
+      }),
     );
     const address = screen.getByLabelText("Address or pairing link");
     fireEvent.change(screen.getByLabelText("Pairing code"), {
@@ -548,7 +747,7 @@ describe("添加时的地址提示", () => {
     ],
     ["credentials_invalid", "Wrong account or password"],
   ])("core 答 %s：按码显示文案", async (code, text) => {
-    const { RuntimeRequestError } = await import("../../../api/request");
+    const { RuntimeRequestError } = await import("../../../../api/request");
     api.addPersonalRelay.mockRejectedValue(
       new RuntimeRequestError(400, "中文原话", code),
     );
@@ -598,7 +797,7 @@ describe("通过链接加入（A4-3p）", () => {
   });
 
   it("失败按码说明：过期的链接", async () => {
-    const { RuntimeRequestError } = await import("../../../api/request");
+    const { RuntimeRequestError } = await import("../../../../api/request");
     api.listSources.mockResolvedValue({ sources: [local], remotes: [] });
     api.mountSourceByLink.mockRejectedValue(
       new RuntimeRequestError(410, "已过期", "link_expired"),
@@ -618,7 +817,7 @@ describe("通过链接加入（A4-3p）", () => {
   it("深链交来的链接：打开对话框并预填，人点了才挂载", async () => {
     api.listSources.mockResolvedValue({ sources: [local], remotes: [] });
     mount();
-    await screen.findByText("this-mac");
+    await screen.findByText("This computer");
     offerJoinLink(SHARE);
     const field = (await screen.findByLabelText(
       "Share link",
@@ -627,14 +826,21 @@ describe("通过链接加入（A4-3p）", () => {
     expect(api.mountSourceByLink).not.toHaveBeenCalled();
   });
 
-  it("访客的远程服务行（没有账号）不给「分享本机」", async () => {
+  it("没有账号名的中转行不给「启用互联网路线」", async () => {
     api.listSources.mockResolvedValue({
       sources: [local],
       remotes: [{ ...relay, accountHint: "" }],
     });
     mount();
     await screen.findByText(relay.label);
-    expect(screen.queryByRole("switch", { name: "Via relay" })).toBeNull();
+    fireEvent.pointerDown(
+      screen.getByRole("button", { name: `Actions for ${relay.label}` }),
+      { button: 0, ctrlKey: false },
+    );
+    await screen.findByRole("menuitem", { name: "Rename" });
+    expect(
+      screen.queryByRole("menuitem", { name: "Turn on Internet route" }),
+    ).toBeNull();
   });
 });
 
@@ -670,19 +876,17 @@ describe("中继侧待清理（契约 §31.4）", () => {
     });
     api.listShareLinks.mockResolvedValue([]);
     mount();
-    await screen.findByText("Sharing");
-    const toggle = await screen.findByRole("switch", {
-      name: "Via relay",
-    });
+    const toggle = await screen.findByRole("switch", { name: ALLOW });
     await waitFor(() =>
       expect(toggle.getAttribute("aria-checked")).toBe("true"),
     );
     fireEvent.click(toggle);
     const confirm = await screen.findByRole("alertdialog");
+    expect(
+      within(confirm).getByText("Turn off access to this computer?"),
+    ).toBeTruthy();
     expect(api.stopSharing).not.toHaveBeenCalled();
-    fireEvent.click(
-      within(confirm).getByRole("button", { name: "Stop sharing" }),
-    );
+    fireEvent.click(within(confirm).getByRole("button", { name: "Turn off" }));
     await waitFor(() =>
       expect(toasts.warning).toHaveBeenCalledWith("Sharing stopped", {
         description: "Relay cleanup pending · Cannot reach this remote service",
@@ -711,7 +915,7 @@ describe("中继侧待清理（契约 §31.4）", () => {
     );
   });
 
-  it("重命名（§61）：中转账号与本机一行都能改，占位是缺省名；清空即恢复", async () => {
+  it("重命名（§61）：中转账号能改，占位是缺省名；清空即恢复", async () => {
     api.listSources.mockResolvedValue({
       sources: [{ ...local, defaultLabel: "this-mac" }],
       remotes: [{ ...relay, label: "Home", defaultLabel: "home-relay" }],
@@ -731,15 +935,6 @@ describe("中继侧待清理（契约 §31.4）", () => {
       expect(api.renameRemote).toHaveBeenCalledWith("svc", ""),
     );
     await waitFor(() => expect(toasts.success).toHaveBeenCalledWith("Renamed"));
-
-    openMenu("this-mac");
-    fireEvent.click(await screen.findByRole("menuitem", { name: "Rename" }));
-    const name = await screen.findByRole("textbox", { name: "Name" });
-    fireEvent.change(name, { target: { value: " Studio " } });
-    fireEvent.click(screen.getByRole("button", { name: "Save" }));
-    await waitFor(() =>
-      expect(api.renameSource).toHaveBeenCalledWith(local.sourceId, "Studio"),
-    );
   });
 
   it("远程服务已删、中继侧还欠着：单独一行，重试失败按码说明", async () => {
@@ -749,6 +944,7 @@ describe("中继侧待清理（契约 §31.4）", () => {
     ]);
     api.retryRelayCleanup.mockResolvedValue("source_unauthorized");
     mount();
+    await openAdvanced();
     expect(await screen.findByText("relay.test:8102")).toBeTruthy();
     expect(
       screen.getByText("Sign in to this remote service, then retry"),
@@ -979,6 +1175,7 @@ describe("分享收尾（P4）", () => {
     ]);
     api.dismissRelayCleanup.mockResolvedValue(undefined);
     mount();
+    await openAdvanced();
     await screen.findByText("relay.test:8102");
     fireEvent.pointerDown(
       screen.getByRole("button", { name: "Actions for relay.test:8102" }),
@@ -1043,13 +1240,14 @@ describe("经远端访问时不自断", () => {
     expect(
       await screen.findByText(/This page connects through it/),
     ).toBeTruthy();
-    const toggle = await screen.findByRole("switch", {
-      name: "Via relay",
-    });
+    const toggle = await screen.findByRole("switch", { name: ALLOW });
     await waitFor(() =>
       expect(toggle.getAttribute("aria-checked")).toBe("true"),
     );
     expect(toggle.hasAttribute("disabled")).toBe(true);
+    expect(
+      screen.getByRole("combobox", { name: "Reach" }).hasAttribute("disabled"),
+    ).toBe(true);
     openMenu(relay.label);
     const signOut = await screen.findByRole("menuitem", { name: "Sign out" });
     const remove = screen.getByRole("menuitem", { name: "Remove" });
@@ -1060,7 +1258,7 @@ describe("经远端访问时不自断", () => {
     expect(api.logoutRemote).not.toHaveBeenCalled();
   });
 
-  it("别的中继照常；当前源是挂载的远程源：那一行不给忘掉凭据与移除", async () => {
+  it("别的中继照常；打开着的工作空间在我的另一台电脑上：那一行不给断开与移除", async () => {
     const mounted = {
       ...local,
       sourceId: "r".repeat(32),
@@ -1068,12 +1266,7 @@ describe("经远端访问时不自断", () => {
       label: "studio",
       baseUrl: "https://studio.test:8443",
     };
-    Object.assign(access, {
-      remote: true,
-      via: null,
-      relayIssuer: null,
-      currentSourceId: mounted.sourceId,
-    });
+    current.sourceId = mounted.sourceId;
     api.listSources.mockResolvedValue({
       sources: [local, mounted],
       remotes: [relay],
@@ -1107,13 +1300,13 @@ describe("经远端访问时不自断", () => {
   });
 
   it("中继托管的页面：不拿主机的源表覆盖页面源表", async () => {
-    const { resetHostedRelay } = await import("../../../sources/hosted");
+    const { resetHostedRelay } = await import("../../../../sources/hosted");
     resetHostedRelay({ issuer: ISSUER } as never);
     boot.applySourceTable.mockClear();
     try {
       api.listSources.mockResolvedValue({ sources: [local], remotes: [] });
       mount();
-      await screen.findByText("this-mac");
+      await screen.findByText("This computer");
       await waitFor(() => expect(api.listSources).toHaveBeenCalled());
       expect(boot.applySourceTable).not.toHaveBeenCalled();
     } finally {

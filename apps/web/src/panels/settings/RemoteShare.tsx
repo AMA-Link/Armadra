@@ -23,11 +23,8 @@ import {
   renameShareLink,
   revokeShareLink,
   shareLinkUrl,
-  shareStatus,
-  shareThisMachine,
   shareViaShell,
   shellCanShare,
-  stopSharing,
 } from "../../api/remote-services";
 import { onWorkspaceConnection, onWorkspaceEvent } from "../../api/events";
 import { sessionsQuery } from "../../agent/sessions";
@@ -81,7 +78,7 @@ import {
   SelectValue,
 } from "@/ui/select";
 import { Spinner } from "@/ui/spinner";
-import { StatusPill, type StatusTone } from "@/ui/status-pill";
+import type { StatusTone } from "@/ui/status-pill";
 import { Switch } from "@/ui/switch";
 
 /** 隧道状态 → 胶囊色调与文案（协议包 `tunnelStatusSchema`）。 */
@@ -213,108 +210,14 @@ export function useTunnelEvents(): void {
 }
 
 /**
- * 远程访问页「经中转」那一行（客户端包 §3.2）：分享本机的开关与隧道状态；
- * 分享着时列出经它发出的链接——生效的可复制、看二维码、系统分享、撤销；失效的
- * 折进历史。整条链接存在本机 core 的 SecretStore（契约 §33.9），随时可再取。
+ * 互联网路线上的分享链接（客户端包 §3.2）：经这个账号发出的链接——生效的可复制、
+ * 看二维码、系统分享、撤销；失效的折进历史。整条链接存在本机 core 的 SecretStore
+ * （契约 §33.9），随时可再取。远程访问页是分享唯一的管理处；路线的开关在页上。
  */
-export function RemoteShareSection({
-  remote,
-  localLabel,
-  inUse = false,
-  label,
-}: {
-  remote: RemoteService;
-  localLabel: string;
-  /** 页面正经这条隧道到达主机：分享开着时不给停（停了就是自断）。 */
-  inUse?: boolean;
-  /** 开关那一行的名字；缺省「分享本机」。 */
-  label?: string;
-}) {
-  const t = useT();
-  const client = useQueryClient();
-  const status = useQuery({
-    queryKey: SHARE_STATUS_KEY,
-    queryFn: shareStatus,
-    retry: false,
-  });
-  useTunnelEvents();
-  const registration = status.data?.registrations.find(
-    (one) => one.issuer === remote.issuer,
-  );
-  const [stopping, setStopping] = React.useState(false);
-  const refresh = () => {
-    void client.invalidateQueries({ queryKey: SHARE_STATUS_KEY });
-    void client.invalidateQueries({ queryKey: ["sources"] });
-    void client.invalidateQueries({
-      queryKey: shareLinksKey(remote.serviceId),
-    });
-  };
-  const start = useMutation({
-    mutationFn: () =>
-      shareThisMachine({
-        serviceId: remote.serviceId,
-        issuer: remote.issuer,
-        label: localLabel,
-      }),
-    onSuccess: refresh,
-    onError: (error: Error) => toast.error(error.message),
-  });
-  const stop = useMutation({
-    mutationFn: () => stopSharing(remote.issuer),
-    onSuccess: (pending) => {
-      refresh();
-      void client.invalidateQueries({ queryKey: RELAY_PENDING_KEY });
-      announceStopped(t, pending);
-    },
-    onError: (error: Error) => toast.error(error.message),
-  });
-  const busy = status.isPending || start.isPending || stop.isPending;
-  const pill = registration ? tunnelPill(registration.tunnel.state) : null;
-
+export function RemoteShareSection({ remote }: { remote: RemoteService }) {
   return (
-    <div
-      data-slot="remote-share"
-      className="flex min-w-0 flex-col gap-3 px-4 py-3"
-    >
-      <div className="flex min-h-8 min-w-0 items-center justify-between gap-3">
-        <div className="flex min-w-0 items-center gap-2">
-          <span className="text-[13px]">{label ?? t("remote.share")}</span>
-          {pill && <StatusPill tone={pill.tone} label={t(pill.key)} />}
-        </div>
-        <div className="flex shrink-0 items-center gap-2">
-          {busy && <Spinner aria-hidden />}
-          <Switch
-            aria-label={label ?? t("remote.share")}
-            checked={registration !== undefined}
-            disabled={busy || (inUse && registration !== undefined)}
-            onCheckedChange={(on) => {
-              if (on) start.mutate();
-              else setStopping(true);
-            }}
-          />
-        </div>
-      </div>
-      {registration && <ShareLinks remote={remote} />}
-      <ResponsiveAlertDialog open={stopping} onOpenChange={setStopping}>
-        <ResponsiveAlertDialogContent className="z-[var(--z-dialog)]">
-          <ResponsiveAlertDialogHeader>
-            <ResponsiveAlertDialogTitle>
-              {t("remote.share.stopConfirm", { name: remote.label })}
-            </ResponsiveAlertDialogTitle>
-          </ResponsiveAlertDialogHeader>
-          <ResponsiveAlertDialogFooter>
-            <ResponsiveAlertDialogCancel>
-              {t("remote.cancel")}
-            </ResponsiveAlertDialogCancel>
-            <ResponsiveAlertDialogAction
-              variant="destructive"
-              onClick={() => stop.mutate()}
-            >
-              {t("remote.share.stop")}
-            </ResponsiveAlertDialogAction>
-          </ResponsiveAlertDialogFooter>
-        </ResponsiveAlertDialogContent>
-      </ResponsiveAlertDialog>
+    <div data-slot="remote-share" className="flex min-w-0 flex-col px-4 py-3">
+      <ShareLinks remote={remote} />
     </div>
   );
 }

@@ -49,8 +49,10 @@ function Sample({
 export default function GatewaySection() {
   const t = useT();
   const panel = {
-    saving: false,
-    onConfigure: noop,
+    internet: false,
+    busy: false,
+    onToggle: noop,
+    onReach: noop,
     pairing: null,
     pairingBusy: false,
     onNewPairing: noop,

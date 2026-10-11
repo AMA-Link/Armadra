@@ -1,33 +1,17 @@
 import * as React from "react";
-import {
-  useInfiniteQuery,
-  useMutation,
-  useQuery,
-  useQueryClient,
-} from "@tanstack/react-query";
+import { useInfiniteQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import type {
-  GatewayConfigPatch,
-  GatewayPairingPayload,
-  GatewayStatus,
-} from "@armadra/shared";
 
 import { useT } from "../../../../app/preferences-store";
 import { useAccess } from "../../../../app/use-access";
-import {
-  GATEWAY_QUERY_KEY,
-  gatewayApi,
-  notifyShellGatewayChanged,
-} from "../../../../api/gateway";
+import { GATEWAY_QUERY_KEY } from "../../../../api/gateway";
 import { onIdentitySessionChange } from "../../../../api/identity";
 import {
   listIdentityDevices,
   revokeIdentityDevice,
 } from "../../../../api/security";
 import { GatewayDevices, type GatewayDevice } from "./GatewayDevices";
-import { SettingsGroup } from "../../SettingsGroup";
 import { useOrigins } from "../origins";
-import { GatewayPanel } from "./GatewayPanel";
 
 const DEVICES_QUERY_KEY = [...GATEWAY_QUERY_KEY, "devices"] as const;
 
@@ -109,73 +93,6 @@ export function GatewayDevicesSection({
       hasMore={devices.hasNextPage}
       loadingMore={devices.isFetchingNextPage}
       onMore={() => void devices.fetchNextPage()}
-    />
-  );
-}
-
-/**
- * 局域网直连（远程访问页）：对外服务的状态、配置与配对票。
- *
- * `GET /api/gateway` 只有 owner 答（契约 §17），成员 403——读不到时整块不出现。
- * 服务器壳上的成员连问都不问。
- */
-export function GatewayConfigSection({
-  extra,
-}: {
-  /** 同一张卡里接在开关后面的行；读不到对外服务时这几行自成一张卡。 */
-  extra?: React.ReactNode;
-} = {}) {
-  const t = useT();
-  const client = useQueryClient();
-  const owner = !useAccess().member;
-  const status = useQuery({
-    queryKey: GATEWAY_QUERY_KEY,
-    queryFn: ({ signal }) => gatewayApi.status(signal),
-    refetchInterval: GATEWAY_POLL_MS,
-    retry: false,
-    enabled: owner,
-  });
-
-  const configure = useMutation({
-    mutationFn: (patch: GatewayConfigPatch) => gatewayApi.configure(patch),
-    onSuccess: (next) => {
-      client.setQueryData<GatewayStatus>(GATEWAY_QUERY_KEY, next);
-      notifyShellGatewayChanged();
-    },
-    onError: () => toast.error(t("gateway.saveFailed")),
-  });
-
-  const [pairing, setPairing] = React.useState<GatewayPairingPayload | null>(
-    null,
-  );
-  const pair = useMutation({
-    mutationFn: (origin?: string) => gatewayApi.pair(origin),
-    onSuccess: (payload) => setPairing(payload),
-    onError: () => toast.error(t("gateway.pair.failed")),
-  });
-
-  const running = Boolean(status.data?.enabled && status.data.running);
-  const origin = status.data?.origin ?? null;
-  const fingerprint = status.data?.tls.fingerprint ?? null;
-  // 开起来（或来源、信任锚变了）就铸一张；关掉就丢。票只活两分钟，过期后
-  // 不自动续，等人点「新配对码」。
-  const { mutate: mint } = pair;
-  React.useEffect(() => {
-    setPairing(null);
-    if (running) mint(undefined);
-  }, [running, origin, fingerprint, mint]);
-
-  if (!owner || !status.data)
-    return extra ? <SettingsGroup>{extra}</SettingsGroup> : null;
-  return (
-    <GatewayPanel
-      extra={extra}
-      status={status.data}
-      saving={configure.isPending}
-      onConfigure={(patch) => configure.mutate(patch)}
-      pairing={pairing}
-      pairingBusy={pair.isPending}
-      onNewPairing={(next) => pair.mutate(next)}
     />
   );
 }
