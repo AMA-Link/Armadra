@@ -975,8 +975,10 @@ G5-25 追加：`GET /api/usage` 与 `POST /api/usage/refresh` 里 Claude 那一�
 - `task-id`：幂等键，1–100 个字母、数字或 `.` `_` `:` `-`（runner 用 `<ama 会话 id>:<ama 任务 id>`）。同一个协调者再用同一个 `task-id` 起：节点还在就答回那个节点（`result.reused: true`，不建、不投、不起）；节点已删就新建，任务行换绑过去。被别的协调者用过回 `409 task_conflict`。带它时 core 记一行 `workflow_task_runs`（`runner_id` = `agent`），并把节点交给依赖编排的启动路径起终端、敲启动行（与工作流角色节点同一条，页面开不开都一样）；`result` 多 `taskRunId` 与 `reused`。
 - `name`：节点标题，与 `title` 同义（两者都给时取 `title`）。
 - 权限模式这个 CLI 没有：`400 permission_mode_unsupported`，附 `supported: [...]`（与 §15.3 同码；`team` 同此）。
-- `cwd`：成员终端开在哪个目录。工作区根下的相对路径或落在工作区里的绝对路径，按 core 所在机器的路径规则解析并解开符号链接后判断；在工作区外（含经 `..` 或符号链接出去）回 `400 cwd_outside_workspace`，目录不存在或不是目录回 `400 bad_request`，与 `worktree` 同给回 `400 bad_request`，远端执行主机上的工作区回 `400 cwd_unsupported`。成立时写进节点数据的 `cwd`（解开链接后的绝对路径），`result` 与演练结果多 `cwd`。
+- `cwd`：成员终端开在哪个目录。工作区根下的相对路径或落在工作区里的绝对路径，按 core 所在机器的路径规则解析并解开符号链接后判断；在工作区外（含经 `..` 或符号链接出去）回 `400 cwd_outside_workspace`，目录不存在或不是目录回 `400 bad_request`，与 `worktree` 同给回 `400 bad_request`。成立时写进节点数据的 `cwd`（解开链接后的绝对路径），`result` 与演练结果多 `cwd`。工作区在远端执行主机上时（G5-07），判定交给那台主机的 Worker（`files.list`，同一条根约束与同样的拒绝码），`cwd` 是那台主机上的绝对路径；Worker 不可达回 `400 cwd_unsupported`。
 - `resume`：接回这个 CLI 自己的一段会话（1–200 个字母、数字或 `.` `_` `:` `-`），core 起节点时敲的是 `agent/launch.ts` 的 resume 行（Claude `--resume <id>`、Codex `resume <id>` …）。值是这块画布上一个成员节点的 id 时（runner 的 `sessionRef.sessionId` 就是节点 id），取那个节点上报过的会话 id。这个 CLI 不能续接（或自定义条目关掉了 `resume`）、节点跑的不是同一家、或节点从没报过会话 id，回 `400 resume_unsupported`。成立时写进节点数据的 `agent.resume`，节点交给依赖编排的启动路径由 core 起（不带 `task-id` 也一样），`result` 多 `resume`（实际接回的会话 id）。ama 的 runner 把 `request.cwd` / `request.resume` 映射成这两个参数，遇到 `cwd_outside_workspace` / `cwd_unsupported` / `resume_unsupported` 时去掉那一个再起一次（成员开在工作区根、或新开会话）。
+- 远端工作区的成员（G5-07）：`open-agent` 与 `team` 在执行主机上的工作区里建的成员带 `ssh: { hostId: <工作区的执行主机> }`，起在那台主机上。SSH 终端所属工作区的执行主机就是这台 SSH 主机时，会话的 `cwd` 是那台主机上的路径：远端命令先经 `ARMADRA_REMOTE_CWD` 进这个目录（进不去就退出），本机的 `ssh` 进程从家目录起。页面开的 SSH 终端同样如此。
+- `team` 的 `cwd` 与成员选项（G5-07）：`--cwd <目录>` 是整队缺省，带 `worktree=` 的成员仍开在检出里。`--member` 末尾可以追加 `cwd=<目录>` 与 `resume=<会话 id 或成员节点 id>`，与 `worktree=` 不分先后、每种一次，判定、拒绝码与上面的 `cwd` / `resume` 相同。`cwd=` 与 `worktree=` 同给回 `400 bad_request`。带 `resume=` 的成员由 core 起。成员行与演练行多 `cwd`、`resume`。任何一项不成立时整队不建。
 
 **`wait`**
 
