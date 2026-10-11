@@ -124,3 +124,13 @@ describe("命令面板的历史对话分组", () => {
     expect(screen.queryByText("重构保存队列")).toBeNull();
   });
 });
+
+describe("暂时下线的功能（#295）", () => {
+  it("命令面板里没有定时计划、工作流与活动卡片", async () => {
+    renderPalette();
+    // 新建菜单的其余项照常在：先等到它，再断言那三项不在。
+    expect(await screen.findByText("新建便签")).toBeTruthy();
+    for (const label of ["新建定时计划", "工作流", "新建活动卡片"])
+      expect(screen.queryByText(label)).toBeNull();
+  });
+});

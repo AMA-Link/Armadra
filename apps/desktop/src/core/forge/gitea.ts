@@ -34,7 +34,9 @@ import {
   type ForgePage,
   type ForgePull,
   type ForgeRepo,
+  type ForgeRepository,
   type ListOptions,
+  type RepositoryListOptions,
   MAX_BODY,
   MAX_FILES,
   MAX_LIMIT,
@@ -54,6 +56,12 @@ import {
 } from "./transport";
 import { validName } from "../github/remote";
 import { count, numbered, text, webUrl } from "./wire";
+import {
+  type WireRepository,
+  fromWireRepository,
+  present,
+  repositoryLimit,
+} from "./repositories";
 
 const API_SUFFIX = "/api/v1";
 
@@ -349,6 +357,28 @@ export class GiteaForge implements Forge {
     const name = login(value);
     if (name === null) throw forgeError("unavailable", "RESPONSE_MALFORMED");
     return name;
+  }
+
+  /** 令牌所属账号能看到的仓库（§29.7）：`GET /user/repos`，最近更新的在前。 */
+  async repositories(
+    host: string,
+    options: RepositoryListOptions,
+  ): Promise<ForgePage<ForgeRepository>> {
+    const query: Record<string, string> = {
+      limit: String(repositoryLimit(options.limit)),
+    };
+    if (options.page > 1) query.page = String(options.page);
+    const response = await this.http.get("/user/repos", query);
+    const values = decodeJson<WireRepository[]>(response);
+    if (!Array.isArray(values)) {
+      throw forgeError("unavailable", "RESPONSE_MALFORMED");
+    }
+    return {
+      items: present(
+        values.map((value) => fromWireRepository(host, "gitea", value)),
+      ),
+      nextCursor: response.nextPage > 1 ? String(response.nextPage) : null,
+    };
   }
 
   async listIssues(

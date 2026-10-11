@@ -112,6 +112,46 @@ export const forgePullPageSchema = z.object({
   nextCursor: z.string().nullable(),
 });
 
+/**
+ * One repository an account can see (§29.7). `owner` may be a GitLab
+ * namespace path; `cloneUrl` is the http(s) clone URL, `sshUrl` is `""` when
+ * the forge gave none.
+ */
+export const forgeRepositorySchema = z.object({
+  host: z.string(),
+  owner: z.string(),
+  name: z.string(),
+  forge: forgeKindSchema,
+  description: z.string(),
+  private: z.boolean(),
+  fork: z.boolean(),
+  archived: z.boolean(),
+  defaultBranch: z.string(),
+  cloneUrl: z.string(),
+  sshUrl: z.string(),
+  webUrl: z.string(),
+  updatedAtMs: z.number().int(),
+});
+export type ForgeRepository = z.infer<typeof forgeRepositorySchema>;
+
+export const forgeRepositoryPageSchema = z.object({
+  items: z.array(forgeRepositorySchema),
+  nextCursor: z.string().nullable(),
+});
+export type ForgeRepositoryPage = z.infer<typeof forgeRepositoryPageSchema>;
+
+/** An account that can list repositories: GitHub or a host-level config. */
+export const forgeAccountSchema = z.object({
+  host: z.string(),
+  forge: forgeKindSchema,
+  accountLogin: z.string().nullable(),
+});
+export type ForgeAccount = z.infer<typeof forgeAccountSchema>;
+
+export const forgeAccountListSchema = z.object({
+  accounts: z.array(forgeAccountSchema),
+});
+
 export const forgeFileSchema = z.object({
   path: z.string(),
   previousPath: z.string().nullable(),

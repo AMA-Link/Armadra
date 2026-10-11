@@ -102,6 +102,13 @@ vi.mock("./window", () => ({
 
 vi.mock("./repo-root", () => ({ repoRoot: () => "/repo" }));
 
+/** 用量开关（#295）：读数的用例按开着测，另有一条按关着测。 */
+const flags = vi.hoisted(() => ({ usage: true }));
+vi.mock("@armadra/shared", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@armadra/shared")>()),
+  featureEnabled: (flag: string) => (flag === "usage" ? flags.usage : false),
+}));
+
 const USAGE = JSON.stringify({
   providers: [
     {
@@ -135,6 +142,7 @@ beforeEach(() => {
   requested.length = 0;
   writes.length = 0;
   iconEmpty = false;
+  flags.usage = true;
   images.length = 0;
   templateFlags.length = 0;
   answers = {
@@ -227,6 +235,18 @@ describe("the usage readout", () => {
 
     expect(lastMenu().map((item) => item.label)).toEqual(before);
     module.destroyTray();
+  });
+});
+
+describe("用量暂时下线（#295）", () => {
+  it("托盘不列读数、不问 /api/usage", async () => {
+    flags.usage = false;
+    await startTray();
+    const labels = lastMenu().map((item) => item.label);
+    expect(labels).not.toContain("Claude · 5h 42% · 7d 13%");
+    expect(lastMenu()[0]?.type).not.toBe("separator");
+    expect(requested).not.toContain("/api/usage");
+    expect(requested).not.toContain("/api/usage/cost");
   });
 });
 

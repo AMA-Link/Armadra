@@ -1,7 +1,7 @@
 {
   "info": {
     "title": "Armadra core",
-    "version": "1.37",
+    "version": "1.38",
     "description": "契约 procedure 的入参与出参（docs/contracts/core-json-api.md §34）。线上是 `POST /api/rpc/<域>/<动词>`，体按 `{ json }` 编码，下列 schema 是 `json` 那一格；失败一律是 `CoreError`。由 tools/contract/generate.mjs 生成，不要手改。"
   },
   "openapi": "3.1.1",
@@ -13291,6 +13291,10 @@
                       "pendingId": {
                         "type": "string"
                       },
+                      "sessionPhase": {
+                        "enum": ["start", "end"],
+                        "type": "string"
+                      },
                       "updatedAt": {
                         "type": "string",
                         "format": "date-time"
@@ -19695,6 +19699,156 @@
             "method": "DELETE",
             "path": "/api/git/clone/{jobId}",
             "successStatus": 204
+          }
+        }
+      }
+    },
+    "/api/rpc/git/clone/defaults": {
+      "post": {
+        "operationId": "git.clone.defaults",
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "parent": {
+                      "type": "string"
+                    }
+                  },
+                  "required": ["parent"]
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "403",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CoreError"
+                }
+              }
+            }
+          }
+        },
+        "x-armadra": {
+          "contract": "§65.1",
+          "scope": "git:read",
+          "since": "1.38",
+          "legacy": {
+            "method": "GET",
+            "path": "/api/git/clone-defaults"
+          }
+        }
+      }
+    },
+    "/api/rpc/git/clone/repositories": {
+      "post": {
+        "operationId": "git.clone.repositories",
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "connected": {
+                      "type": "boolean"
+                    },
+                    "account": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "repositories": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "fullName": {
+                            "type": "string"
+                          },
+                          "cloneUrl": {
+                            "type": "string"
+                          },
+                          "private": {
+                            "type": "boolean"
+                          },
+                          "updatedAt": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "fullName",
+                          "cloneUrl",
+                          "private",
+                          "updatedAt"
+                        ]
+                      }
+                    }
+                  },
+                  "required": ["connected", "account", "repositories"]
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "403",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CoreError"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "502",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CoreError"
+                }
+              }
+            }
+          }
+        },
+        "x-armadra": {
+          "contract": "§65.2",
+          "scope": "git:read",
+          "since": "1.38",
+          "legacy": {
+            "method": "GET",
+            "path": "/api/git/clone-repositories"
           }
         }
       }
@@ -29146,6 +29300,264 @@
           "legacy": {
             "method": "GET",
             "path": "/api/forge/repos/{host}/{owner}/{name}"
+          }
+        }
+      }
+    },
+    "/api/rpc/forge/accounts": {
+      "post": {
+        "operationId": "forge.accounts",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "accounts": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "host": {
+                            "type": "string"
+                          },
+                          "forge": {
+                            "enum": ["github", "gitea", "gitlab"],
+                            "type": "string"
+                          },
+                          "accountLogin": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          }
+                        },
+                        "required": ["host", "forge", "accountLogin"]
+                      }
+                    }
+                  },
+                  "required": ["accounts"]
+                }
+              }
+            }
+          }
+        },
+        "x-armadra": {
+          "contract": "§41.2",
+          "scope": "github:read",
+          "since": "1.38",
+          "legacy": {
+            "method": "GET",
+            "path": "/api/forge/accounts"
+          }
+        }
+      }
+    },
+    "/api/rpc/forge/repositories": {
+      "post": {
+        "operationId": "forge.repositories",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "host": {
+                    "type": "string"
+                  },
+                  "cursor": {
+                    "type": "string"
+                  },
+                  "limit": {
+                    "anyOf": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "string"
+                      }
+                    ]
+                  }
+                },
+                "required": ["host"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "host": {
+                            "type": "string"
+                          },
+                          "owner": {
+                            "type": "string"
+                          },
+                          "name": {
+                            "type": "string"
+                          },
+                          "forge": {
+                            "enum": ["github", "gitea", "gitlab"],
+                            "type": "string"
+                          },
+                          "description": {
+                            "type": "string"
+                          },
+                          "private": {
+                            "type": "boolean"
+                          },
+                          "fork": {
+                            "type": "boolean"
+                          },
+                          "archived": {
+                            "type": "boolean"
+                          },
+                          "defaultBranch": {
+                            "type": "string"
+                          },
+                          "cloneUrl": {
+                            "type": "string"
+                          },
+                          "sshUrl": {
+                            "type": "string"
+                          },
+                          "webUrl": {
+                            "type": "string"
+                          },
+                          "updatedAtMs": {
+                            "type": "integer",
+                            "minimum": -9007199254740991,
+                            "maximum": 9007199254740991
+                          }
+                        },
+                        "required": [
+                          "host",
+                          "owner",
+                          "name",
+                          "forge",
+                          "description",
+                          "private",
+                          "fork",
+                          "archived",
+                          "defaultBranch",
+                          "cloneUrl",
+                          "sshUrl",
+                          "webUrl",
+                          "updatedAtMs"
+                        ]
+                      }
+                    },
+                    "nextCursor": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  },
+                  "required": ["items", "nextCursor"]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "400",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CoreError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "403",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CoreError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "404",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CoreError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "409",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CoreError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "429",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CoreError"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "502",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CoreError"
+                }
+              }
+            }
+          }
+        },
+        "x-armadra": {
+          "contract": "§41.2",
+          "scope": "github:read",
+          "since": "1.38",
+          "legacy": {
+            "method": "GET",
+            "path": "/api/forge/accounts/{host}/repos"
           }
         }
       }

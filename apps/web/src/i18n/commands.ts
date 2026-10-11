@@ -39,7 +39,6 @@ export const commands: MessageModule = {
     "cmd.canvas.paste": "粘贴",
 
     /* 画布偏好（2026-09-05） */
-    "cmd.canvas.toggleToolLock": "工具锁定",
     "cmd.canvas.toggleGrid": "显示网格",
     "cmd.canvas.toggleFocus": "专注模式",
 
@@ -107,7 +106,6 @@ export const commands: MessageModule = {
     "cmd.canvas.cut": "Cut",
     "cmd.canvas.paste": "Paste",
 
-    "cmd.canvas.toggleToolLock": "Tool lock",
     "cmd.canvas.toggleGrid": "Show grid",
     "cmd.canvas.toggleFocus": "Distraction-free",
 

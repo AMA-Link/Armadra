@@ -37,7 +37,9 @@ export const WHEN_KEYS = [
   "editorFocus",
   /** 焦点在浏览器节点的画面里。 */
   "browserFocus",
-  /** 焦点既不在上面三处，也不在任何输入控件里——也就是画布本身。 */
+  /** 焦点在 Git 工具窗口的提交页里（提交信息框、变更树）。 */
+  "scmFocus",
+  /** 焦点既不在上面四处，也不在任何输入控件里——也就是画布本身。 */
   "canvasFocus",
   /** 焦点在输入框 / textarea / contenteditable 里（终端与编辑器另算）。 */
   "editing",
@@ -229,6 +231,7 @@ export function whenContexts(): WhenContext[] {
     "terminalFocus",
     "editorFocus",
     "browserFocus",
+    "scmFocus",
     "canvasFocus",
   ] as const;
   for (const platform of ["mac", "windows", "linux"]) {

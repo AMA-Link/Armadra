@@ -32,6 +32,36 @@ export const gitCloneStatusSchema = z.object({
   error: z.string().nullish(),
 });
 
+/**
+ * `GET /api/git/clone-defaults`（契约 §65.1）：克隆的缺省父目录——家目录下
+ * 第一个存在的 `Projects` / `projects` / `Developer` / `code` / `src`，都没有
+ * 就是家目录；拿不到家目录是空串。
+ */
+export const gitCloneDefaultsSchema = z.object({
+  parent: z.string(),
+});
+
+/** 已连接 GitHub 账号能克隆的一个仓库；`cloneUrl` 是 `https://` 地址。 */
+export const gitCloneRepositorySchema = z.object({
+  fullName: z.string(),
+  cloneUrl: z.string(),
+  private: z.boolean(),
+  updatedAt: z.string(),
+});
+
+/**
+ * `GET /api/git/clone-repositories`（契约 §65.2）。没有可用的 GitHub 凭据时
+ * `connected` 为假、列表为空，不是错误。
+ */
+export const gitCloneRepositoriesSchema = z.object({
+  connected: z.boolean(),
+  account: z.string().nullable(),
+  repositories: z.array(gitCloneRepositorySchema),
+});
+
+export type GitCloneDefaults = z.infer<typeof gitCloneDefaultsSchema>;
+export type GitCloneRepository = z.infer<typeof gitCloneRepositorySchema>;
+export type GitCloneRepositories = z.infer<typeof gitCloneRepositoriesSchema>;
 export type GitCloneRequest = z.infer<typeof gitCloneRequestSchema>;
 export type GitCloneStarted = z.infer<typeof gitCloneStartedSchema>;
 export type GitCloneState = z.infer<typeof gitCloneStateSchema>;

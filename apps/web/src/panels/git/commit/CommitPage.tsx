@@ -346,7 +346,11 @@ export function CommitPage({
   // 整页可滚：停在底部的窗口默认只有 40vh，工具条 + 变更树下限 + 消息区在
   // 1440×900 下就超出它，不滚的话「提交」按钮落在视口之外。
   return (
-    <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto">
+    // `scm.commit`（⌘⏎）只在这一页里算数（`when: scmFocus`）。
+    <div
+      data-keybinding-scope="scm"
+      className="flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto"
+    >
       <div className="flex h-9 shrink-0 items-center gap-1 border-b border-border px-2">
         {compact && drilled ? (
           <Button

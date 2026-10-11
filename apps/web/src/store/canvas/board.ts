@@ -4,6 +4,7 @@ import { usePreferencesStore } from "../../app/preferences-store";
 import { mergeRemoteBoard } from "../../canvas/sync/merge";
 import { toItemId } from "../../canvas/whiteboard/model";
 import { parseWhiteboard } from "../../canvas/whiteboard/serialize";
+import { panelHidden } from "../../lib/features";
 import { resetHistory } from "./history";
 import { clearLocalEdits, localEdits } from "./pending";
 import { emptyBoardState, initialPanels } from "./internal";
@@ -260,6 +261,9 @@ export function createBoardSlice(
      * 那是用户明确要它常驻在旁边。
      */
     setPanel: (key, value) => {
+      // 暂时下线的功能（#295）的面板：任何入口（包括还没摘掉的旧入口）都打不开，
+      // 关是照常关的。
+      if (panelHidden(key) && value !== "closed") return;
       if (key === "sidebar") {
         usePreferencesStore.getState().setSidebarOpen(value === "open");
       }

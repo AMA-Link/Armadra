@@ -98,7 +98,7 @@ export const OUTBOUND = {
   },
   githubApi: {
     url: "https://api.github.com",
-    purpose: "Git 窗口（或配置的 GHES 根）",
+    purpose: "Git 窗口与新建工作空间的仓库列表（或配置的 GHES 根）",
     cadence: "用户动作 + 轮询",
     switch: null,
     defaultOn: false,

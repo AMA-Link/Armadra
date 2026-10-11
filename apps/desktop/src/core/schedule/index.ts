@@ -1,3 +1,9 @@
+import {
+  FEATURE_FLAGS,
+  type FeatureFlag,
+  featureEnabled,
+} from "@armadra/shared";
+
 import { collab } from "../agent";
 import type { CoreContext } from "../main";
 import { identityInstanceId } from "../identity";
@@ -41,7 +47,26 @@ export {
 export interface ScheduleDomain {
   readonly engine: ScheduleEngine;
   readonly service: ScheduleService;
+  /** 调度循环此刻在不在跑（定时任务暂时下线时不跑，#295）。 */
+  readonly looping: boolean;
   stop(): void;
+}
+
+/**
+ * 定时任务暂时下线（#295，`packages/shared/src/feature-flags.ts`）时不起调度
+ * 循环（`ARMADRA_SCHEDULE_LOOP=1` 例外）：页面上没有入口，用户看不见、也停不了的计划不该在背后到点执行。效果
+ * 等同于应用没开着——计划、运行记录与 `/api/automations/*` 都在，开关恢复后
+ * 循环照常起来，错过的那几次按各计划自己的错过策略处理。
+ */
+export function scheduleLoopEnabled(
+  flags: Readonly<Record<FeatureFlag, boolean>> = FEATURE_FLAGS,
+  env: NodeJS.ProcessEnv = process.env,
+): boolean {
+  // 端到端探针（`tools/probes/workflow-e2e.mjs`）验的正是「到点起一次运行」，
+  // 由它显式打开；产品里没人设这个变量。
+  return (
+    featureEnabled("scheduledTasks", flags) || env.ARMADRA_SCHEDULE_LOOP === "1"
+  );
 }
 
 let assembled: ScheduleDomain | undefined;
@@ -124,11 +149,14 @@ export function install(context: CoreContext): ScheduleDomain | undefined {
     }),
   );
 
-  engine.start();
+  const looping = scheduleLoopEnabled();
+  if (looping) engine.start();
+  else context.log.info("定时任务暂时下线：调度循环未启动，计划数据保留");
   const unregister = registerCapability(AUTOMATION_CAPABILITY);
   assembled = {
     engine,
     service,
+    looping,
     stop: () => {
       engine.stop();
       unregister();

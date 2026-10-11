@@ -57,7 +57,8 @@ type BooleanWhiteboardKey = {
 
 /**
  * 顺序照抄旧引擎的偏好子菜单，用户从别处过来时找得到同一行。
- * 只有三条在 `keybindings.ts` 里真的绑了键，其余不显示键位提示。
+ * 只有两条在 `keybindings.ts` 里真的绑了键，其余不显示键位提示。
+ * 「工具锁定」已撤掉：工具用完一直保持选中（#299），开关不再有作用。
  *
  * 这九条 2026-09-06 逐条在真实输入下复核过：网格进 `<Background>`、专注
  * 模式收起浮层、吸附同时管拖动与落点、整体框住才选中改 `selectionMode`、
@@ -66,11 +67,6 @@ type BooleanWhiteboardKey = {
  */
 export const CANVAS_PREFERENCE_TOGGLES: readonly ToggleSpec[] = [
   { key: "snap", labelKey: "wb.snap" },
-  {
-    key: "toolLock",
-    labelKey: "wb.toolLock",
-    command: "canvas.toggleToolLock",
-  },
   { key: "grid", labelKey: "wb.grid", command: "canvas.toggleGrid" },
   { key: "wrap", labelKey: "wb.wrap" },
   { key: "focus", labelKey: "wb.focus", command: "canvas.toggleFocus" },
