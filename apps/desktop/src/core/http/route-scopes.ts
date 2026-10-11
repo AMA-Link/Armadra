@@ -49,6 +49,8 @@ export const SELF_GUARDED: readonly RegExp[] = [
   /^\/api\/push\//,
   // 配对短码换票先于任何身份存在（契约 §24），与 `#pair=` 换票同一档。
   /^\/api\/gateway\/pairing-code\/exchange$/,
+  // 原生 App 首次连接的配对码 PAKE（契约 §73），同一档。
+  /^\/api\/gateway\/pairing-code\/pake\/(start|finish)$/,
   // 邮件：能签发那条链接的人才能发（owner，或组 admin 对本组成员），那是身份
   // 域的判定，路由门的全局 scope 说不出「本组」（契约 §28）。
   /^\/api\/mail\//,
@@ -182,6 +184,11 @@ export const ROUTE_SCOPE_RULES: readonly RouteScopeRule[] = [
   // owner 那一档。
   {
     pattern: /^\/api\/gateway\/pairing-code\/exchange$/,
+    read: null,
+    write: null,
+  },
+  {
+    pattern: /^\/api\/gateway\/pairing-code\/pake\/(start|finish)$/,
     read: null,
     write: null,
   },
