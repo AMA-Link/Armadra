@@ -15,8 +15,12 @@
  *     （`<注入根>/bin/armadra-hook mcp`），端点是 Worker 的中继 socket——与远端
  *     画布注入同一条（`remote/integration.ts::canvas`）。准备不成就不带，会话
  *     照常可用；
- *   * 凭据：远端不兑换（契约 §20）。节点凭据与 ama 模型密钥都不设，也不经远端
- *     命令行传任何值；
+ *   * 启动器注入（G5-06）：与本机 ACP 同一套裁剪（`remoteAcpInjection`），路径是
+ *     执行主机上同步过去的产物；ama 带那边的 `--profile`。节点身份（远端路径的
+ *     端点文件、令牌目录）经远端命令的 `env` 设给适配器，与本机适配器进程的
+ *     环境对齐；
+ *   * 凭据：远端不兑换（契约 §20）。节点凭据与 ama 模型密钥都不设，凭据条目名
+ *     也不带过去；
  *   * 远端命令里的每个词放在单引号里，值里有 `'`、`\`、`!` 或控制字符时拒绝，
  *     不猜远端登录 shell 是哪一种（与 `remoteShellCommand` 同一条规矩）。
  */
@@ -24,6 +28,7 @@
 import type { SshHost } from "../settings/ssh-hosts";
 import { remoteDomain } from "../remote";
 import { executeRemote } from "../remote/execute";
+import { remoteArtifacts } from "../hook/install/remote";
 import { streamArgv } from "../terminal/ssh/argv";
 import type { AcpAdapter } from "./adapters";
 import { AcpError } from "./client";
@@ -52,11 +57,21 @@ export interface AcpSshDeps {
     hostId: string,
     programs: readonly string[],
   ) => Promise<unknown>;
-  /** 执行主机上的 Hook 客户端与它的环境；准备不成答 `undefined`。 */
+  /**
+   * 执行主机上的 Hook 客户端、它的环境（远端路径的节点身份）与注入产物的根；
+   * 准备不成答 `undefined`。
+   */
   readonly canvas?: (
     hostId: string,
     env: EnvPairs,
-  ) => Promise<{ readonly client: string; readonly env: EnvPairs } | undefined>;
+  ) => Promise<
+    | {
+        readonly client: string;
+        readonly env: EnvPairs;
+        readonly root?: string | undefined;
+      }
+    | undefined
+  >;
 }
 
 let override: AcpSshDeps | undefined;
@@ -214,32 +229,92 @@ async function probeProgram(
   }
 }
 
-/** 画布那条 MCP 服务器（执行主机上的 Hook 客户端）；准备不成答空。 */
-async function remoteCanvas(
+/** 远端适配器要带的那一份：画布 MCP、裁剪过的注入与节点环境。 */
+interface RemotePrepared {
+  readonly mcpServers: AcpStdioMcpServer[];
+  /** 设给远端适配器的变量：节点身份（远端路径）与注入的环境。 */
+  readonly env: EnvPairs;
+  readonly profilePath?: string;
+  readonly injectionArgs?: readonly string[];
+}
+
+/**
+ * 启动器注入在 ACP 下还能用的那一半，路径换成执行主机上的（G5-06）。与本机的
+ * `acpInjection` 同一套裁剪：ama 只接 `--profile` 的路径；别家按适配器表的
+ * `reuse` 留环境或 argv。Claude 的 mod 不挂：适配器自带的 CLI 版本远端探不到，
+ * 未知即关（契约 §59 的门）。
+ */
+export function remoteAcpInjection(
+  adapter: AcpAdapter,
+  root: string,
+): {
+  readonly env: EnvPairs;
+  readonly args: readonly string[];
+  readonly profilePath?: string;
+} {
+  const injection = remoteArtifacts(root, adapter.agentId, {
+    amaHost: true,
+  }).injection;
+  if (injection === undefined) return { env: [], args: [] };
+  if (adapter.profileFlag !== undefined) {
+    const at = injection.args.indexOf(adapter.profileFlag);
+    const profilePath = at >= 0 ? injection.args[at + 1] : undefined;
+    return {
+      env: [],
+      args: [],
+      ...(profilePath === undefined ? {} : { profilePath }),
+    };
+  }
+  const reuse = adapter.injection.reuse;
+  return {
+    env: reuse.includes("env") ? injection.env : [],
+    args: reuse.includes("args") ? injection.args : [],
+  };
+}
+
+/**
+ * 在执行主机上备好画布注入（产物、节点令牌、中继），答画布 MCP、注入与节点
+ * 环境。不是画布节点、没有远端域或准备不成时什么都不带，会话照常起。
+ */
+async function prepareRemote(
   deps: AcpSshDeps,
   adapter: AcpAdapter,
   hostId: string,
   nodeEnv: EnvPairs | undefined,
-): Promise<AcpStdioMcpServer[]> {
-  if (!adapter.injection.mcp || nodeEnv === undefined) return [];
-  if (deps.canvas === undefined) return [];
+): Promise<RemotePrepared> {
+  if (nodeEnv === undefined || deps.canvas === undefined) {
+    return { mcpServers: [], env: [] };
+  }
   const prepared = await deps
     .canvas(
       hostId,
       nodeEnv.filter(([name]) => !NOT_FOR_MCP.has(name)),
     )
     .catch(() => undefined);
-  if (prepared === undefined) return [];
-  return [
-    {
-      name: CANVAS_MCP_NAME,
-      command: prepared.client,
-      args: ["mcp"],
-      env: prepared.env
-        .filter(([name]) => !NOT_FOR_MCP.has(name))
-        .map(([name, value]) => ({ name, value })),
-    },
-  ];
+  if (prepared === undefined) return { mcpServers: [], env: [] };
+  const nodeIdentity = prepared.env.filter(([name]) => !NOT_FOR_MCP.has(name));
+  const mcpServers: AcpStdioMcpServer[] = adapter.injection.mcp
+    ? [
+        {
+          name: CANVAS_MCP_NAME,
+          command: prepared.client,
+          args: ["mcp"],
+          env: nodeIdentity.map(([name, value]) => ({ name, value })),
+        },
+      ]
+    : [];
+  const injected =
+    prepared.root === undefined
+      ? { env: [], args: [] }
+      : remoteAcpInjection(adapter, prepared.root);
+  return {
+    mcpServers,
+    env: [...nodeIdentity, ...injected.env],
+    ...(injected.profilePath === undefined
+      ? {}
+      : { profilePath: injected.profilePath }),
+    ...(injected.args.length === 0 ? {} : { injectionArgs: injected.args }),
+  };
 }
 
 /**
@@ -273,14 +348,10 @@ export async function startRemoteAdapter(
   // askpass 的 socket 要在 `ssh` 子进程被告知用它之前就在。
   await deps.askpass?.start();
   await probeProgram(deps, host, adapter.program);
-  const mcpServers = await remoteCanvas(
-    deps,
-    adapter,
-    host.id,
-    options.nodeEnv,
-  );
+  const prepared = await prepareRemote(deps, adapter, host.id, options.nodeEnv);
   const askpass = deps.askpass?.childEnvironment(host.id) ?? [];
-  const remoteEnv = options.remoteEnv ?? [];
+  // 自定义条目的 `env` 放最后：与本机一样，条目自己的值优先。
+  const remoteEnv = [...prepared.env, ...(options.remoteEnv ?? [])];
   const transport: AcpTransport = (command) => {
     const argv = streamArgv(
       options.dataDir,
@@ -309,6 +380,12 @@ export async function startRemoteAdapter(
     ...rest,
     env: process.env,
     transport,
-    mcpServers,
+    mcpServers: prepared.mcpServers,
+    ...(prepared.profilePath === undefined
+      ? {}
+      : { profilePath: prepared.profilePath }),
+    ...(prepared.injectionArgs === undefined
+      ? {}
+      : { injectionArgs: prepared.injectionArgs }),
   });
 }

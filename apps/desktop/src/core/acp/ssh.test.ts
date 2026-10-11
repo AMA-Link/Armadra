@@ -7,11 +7,13 @@ import {
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, posix } from "node:path";
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { getAgentStatus } from "../agent/status";
+import { installCollaborationSkill } from "../collab/skill";
+import { artifactLayout } from "../hook/install/inject";
 import { probeAgents } from "../remote/node-probe";
 import {
   capabilityOf,
@@ -26,6 +28,7 @@ import { type AcpCore, FAKE_AGENT, acpCore, until } from "./fixture";
 import {
   type AcpSshDeps,
   remoteAcpCommand,
+  remoteAcpInjection,
   setAcpSshDeps,
   sshHostOf,
   startRemoteAdapter,
@@ -233,6 +236,136 @@ describe("starting a remote adapter", () => {
       ),
     ).toBe("acp_spawn_failed");
   });
+});
+
+describe("the launcher injection on an execution host (G5-06)", () => {
+  const ROOT = "/srv/armadra/integration/7";
+  const of = (agentId: string) =>
+    ACP_ADAPTERS.find((entry) => entry.agentId === agentId)!;
+  let release: () => void;
+  beforeEach(() => {
+    release = installCollaborationSkill();
+  });
+  afterEach(() => release());
+
+  it("trims the remote injection the way the local one is trimmed", () => {
+    const ama = remoteAcpInjection(of("ama"), ROOT);
+    expect(ama).toEqual({
+      env: [],
+      args: [],
+      profilePath: artifactLayout(ROOT, "ama", posix.join).profile,
+    });
+    const opencode = remoteAcpInjection(of("opencode"), ROOT);
+    expect(opencode.args).toEqual([]);
+    expect(new Map(opencode.env).get("OPENCODE_CONFIG_DIR")).toBe(
+      artifactLayout(ROOT, "opencode", posix.join).configDir,
+    );
+    const pi = remoteAcpInjection(of("pi"), ROOT);
+    expect(pi.env).toEqual([]);
+    expect(pi.args.length).toBeGreaterThan(0);
+    for (const value of pi.args.filter((arg) => arg.startsWith("/"))) {
+      expect(value.startsWith(ROOT)).toBe(true);
+    }
+    // Claude 在 ACP 下只走 MCP，mod 远端不挂。
+    expect(remoteAcpInjection(of("claude"), ROOT)).toEqual({
+      env: [],
+      args: [],
+    });
+  });
+
+  it.runIf(unix)(
+    "hands ama its remote profile and the node identity through the remote command",
+    async () => {
+      const log = join(scratch, "argv.log");
+      const fake = join(scratch, "fake-ssh");
+      writeFileSync(
+        fake,
+        `#!/bin/sh\nprintf '%s\\n' "$@" > ${JSON.stringify(log)}\nexit 1\n`,
+      );
+      chmodSync(fake, 0o755);
+      const seen: (readonly (readonly [string, string])[])[] = [];
+      await startRemoteAdapter(
+        of("ama"),
+        {
+          hostId: HOST.id,
+          dataDir: scratch,
+          cwd: "/srv/project",
+          nodeEnv: [
+            ["ARMADRA_NODE_ID", "n1"],
+            ["ARMADRA_CREDENTIAL_REF", "key-1"],
+          ],
+          remoteEnv: [["AMA_EXTRA", "x"]],
+        },
+        {
+          dataDir: scratch,
+          host: () => HOST,
+          launcher: fake,
+          probe: async () => ({
+            platform: "linux",
+            programs: { ama: "/usr/bin/ama" },
+          }),
+          canvas: async (_hostId, env) => {
+            seen.push(env);
+            return {
+              client: `${ROOT}/bin/armadra-hook`,
+              env: [
+                ["ARMADRA_NODE_ID", "n1"],
+                ["ARMADRA_ENDPOINT_FILE", `${ROOT}/endpoint.json`],
+              ],
+              root: ROOT,
+            };
+          },
+        },
+      ).catch(() => undefined);
+      expect(new Map(seen[0]).has("ARMADRA_CREDENTIAL_REF")).toBe(false);
+      const argv = readFileSync(log, "utf8").trimEnd().split("\n");
+      const remote = argv.at(-1) as string;
+      const profile = artifactLayout(ROOT, "ama", posix.join).profile as string;
+      expect(remote).toContain("ARMADRA_NODE_ID='n1'");
+      expect(remote).toContain(`ARMADRA_ENDPOINT_FILE='${ROOT}/endpoint.json'`);
+      expect(remote).toContain("AMA_EXTRA='x'");
+      expect(remote).not.toContain("ARMADRA_CREDENTIAL_REF");
+      expect(remote).toContain(`'--profile' '${profile}'`);
+      expect(remote).toContain("'/srv/project' 'ama' '--mode' 'acp'");
+    },
+  );
+
+  it.runIf(unix)(
+    "starts without the injection when the host cannot be prepared",
+    async () => {
+      const log = join(scratch, "argv.log");
+      const fake = join(scratch, "fake-ssh");
+      writeFileSync(
+        fake,
+        `#!/bin/sh\nprintf '%s\\n' "$@" > ${JSON.stringify(log)}\nexit 1\n`,
+      );
+      chmodSync(fake, 0o755);
+      await startRemoteAdapter(
+        of("ama"),
+        {
+          hostId: HOST.id,
+          dataDir: scratch,
+          cwd: "/srv/project",
+          nodeEnv: [["ARMADRA_NODE_ID", "n1"]],
+        },
+        {
+          dataDir: scratch,
+          host: () => HOST,
+          launcher: fake,
+          probe: async () => ({
+            platform: "linux",
+            programs: { ama: "/usr/bin/ama" },
+          }),
+          canvas: async () => {
+            throw new Error("Worker gone");
+          },
+        },
+      ).catch(() => undefined);
+      const remote = readFileSync(log, "utf8").trimEnd().split("\n").at(-1);
+      expect(remote).not.toContain("--profile");
+      expect(remote).toContain("'ama' '--mode' 'acp'");
+    },
+  );
 });
 
 describeUnix("an SSH node driven over ACP", () => {
