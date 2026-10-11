@@ -56,7 +56,7 @@ export function originOf(descriptor: SourceDescriptor): SourceOrigin {
   return joinedByLink(descriptor.sourceId) ? "shared" : "mine";
 }
 
-function isShareRole(value: unknown): value is ShareRole {
+export function isShareRole(value: unknown): value is ShareRole {
   return (SHARE_ROLES as readonly unknown[]).includes(value);
 }
 
