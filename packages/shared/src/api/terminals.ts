@@ -187,6 +187,12 @@ export const sessionSummarySchema = z.object({
   stateSource: agentStateSourceSchema.optional(),
   unread: z.boolean().default(false),
   pendingId: z.string().optional(),
+  /**
+   * `start` / `end` of the agent session the last hook event belonged to. The
+   * hook reducer clears `state` on both, so this is what tells a freshly
+   * started CLI (idle) from one that has exited (no longer an agent).
+   */
+  sessionPhase: z.enum(["start", "end"]).optional(),
   updatedAt: z.string().datetime({ offset: true }),
   /** The PTY is still running in this runtime instance. */
   alive: z.boolean(),

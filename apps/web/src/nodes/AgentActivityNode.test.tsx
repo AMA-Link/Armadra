@@ -2,6 +2,19 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import type { CanvasNode } from "@armadra/shared";
 
+/** 功能开关（#295）：这里测的是功能本身，按开着测。 */
+const featureFlags = vi.hoisted(() => ({
+  credentials: true,
+  usage: true,
+  activityCards: true,
+  scheduledTasks: true,
+  workflows: true,
+}));
+vi.mock("@armadra/shared", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@armadra/shared")>()),
+  FEATURE_FLAGS: featureFlags,
+}));
+
 const terminal = {
   id: "33333333-3333-4333-8333-333333333333",
   boardId: "b1",
@@ -91,6 +104,8 @@ function renderCard(override: CanvasNode = node) {
 }
 
 beforeEach(() => {
+  featureFlags.scheduledTasks = true;
+  featureFlags.activityCards = true;
   store.document.nodes = [terminal];
   agent.status = undefined;
   agent.cards = [];
@@ -98,6 +113,15 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe("agent activity card", () => {
+  it("活动卡片与定时任务暂时下线（#295）时旧卡片照常显示，不给「转为平台计划」", () => {
+    featureFlags.scheduledTasks = false;
+    featureFlags.activityCards = false;
+    renderCard();
+    expect(screen.getByText("只读观察")).toBeTruthy();
+    expect(screen.getByText("已观察 0 次")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "转为平台计划" })).toBeNull();
+  });
+
   it("observes a real node and says it is read-only", () => {
     renderCard();
     // 卡片标题与被观察节点标题同名，两处都出现。

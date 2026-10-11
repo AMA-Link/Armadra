@@ -28,6 +28,7 @@ import {
   exportKeymap,
   importKeymap,
   keymapConflicts,
+  keymapEnabled,
   keymapSource,
   keysBelow,
   otherPlatform,
@@ -81,6 +82,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/ui/select";
+import { Switch } from "@/ui/switch";
 import { Textarea } from "@/ui/textarea";
 import { isDesktop } from "@/platform";
 
@@ -146,6 +148,7 @@ export function KeybindingsPage() {
   const clearDevice = useDeviceKeymapStore((state) => state.clearAll);
 
   const raw = settings.data?.keymap;
+  const enabled = keymapEnabled(raw);
   const profiles = React.useMemo(() => storedProfiles(raw), [raw]);
   const profile = React.useMemo(() => activeProfileId(raw), [raw]);
   const preset = React.useMemo(() => profilePreset(profile), [profile]);
@@ -339,6 +342,16 @@ export function KeybindingsPage() {
       <SettingsGroup>
         {member ? null : (
           <>
+            {/* 总开关（契约 §66）。重新打开时删掉这个键，回到缺省。 */}
+            <SettingsRow label={t("settings.shortcut.enabled")}>
+              <Switch
+                checked={enabled}
+                aria-label={t("settings.shortcut.enabled")}
+                onCheckedChange={(next) =>
+                  save.mutate({ keymap: { enabled: next ? null : false } })
+                }
+              />
+            </SettingsRow>
             <SettingsRow
               label={t("settings.shortcut.profile")}
               footnote={t("settings.shortcut.profile.note")}

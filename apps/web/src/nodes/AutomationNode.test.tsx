@@ -11,6 +11,19 @@ import { cleanup, render, screen } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { CanvasNode } from "@armadra/shared";
 
+/** 功能开关（#295）：默认按开着测，另有一条按关着测。 */
+const featureFlags = vi.hoisted(() => ({
+  credentials: true,
+  usage: true,
+  activityCards: true,
+  scheduledTasks: true,
+  workflows: true,
+}));
+vi.mock("@armadra/shared", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@armadra/shared")>()),
+  FEATURE_FLAGS: featureFlags,
+}));
+
 const store = vi.hoisted(() => ({
   document: { nodes: [] as CanvasNode[] },
   focusNodeId: null as string | null,
@@ -126,12 +139,25 @@ function renderCard() {
 }
 
 beforeEach(() => {
+  featureFlags.scheduledTasks = true;
   session.state = { status: "idle" };
   session.connect.mockClear();
 });
 afterEach(cleanup);
 
 describe("automation card", () => {
+  it("定时任务暂时下线（#295）时旧画布里的卡片照常显示，只是没有打开抽屉的按钮", async () => {
+    ready();
+    renderCard();
+    expect(await screen.findByText("已启用")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "查看运行历史" })).toBeTruthy();
+    cleanup();
+    featureFlags.scheduledTasks = false;
+    renderCard();
+    expect(await screen.findByText("已启用")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "查看运行历史" })).toBeNull();
+  });
+
   it("reads the plan from the Host rather than from the board", async () => {
     ready();
     renderCard();

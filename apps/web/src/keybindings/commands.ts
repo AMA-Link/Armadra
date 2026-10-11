@@ -33,8 +33,11 @@ export type CommandScope =
   | "scm"
   | "global";
 
-/** 会在 DOM 上用 `data-keybinding-scope` 标出来的那两个。 */
-export const NODE_SCOPES = ["editor", "browser"] as const;
+/**
+ * 会在 DOM 上用 `data-keybinding-scope` 标出来的那几个：两种节点，外加 Git
+ * 工具窗口的提交页（`scm.commit` 只在那里算数）。
+ */
+export const NODE_SCOPES = ["editor", "browser", "scm"] as const;
 
 export type NodeScope = (typeof NODE_SCOPES)[number];
 
@@ -97,7 +100,9 @@ export const COMMANDS = [
     id: "app.commandPalette",
     labelKey: "cmd.app.commandPalette",
     scope: "app",
-    defaultKeys: both("Mod+K"),
+    // Windows / Linux 上 Ctrl+K 在终端里归 shell（删到行尾），所以另给一组
+    // 终端里也按得到的 Ctrl+Shift+P。
+    defaultKeys: { mac: "Mod+K", other: "Mod+K,Ctrl+Shift+P" },
     allowInTerminal: true,
     allowWhileTyping: true,
   },
@@ -387,17 +392,12 @@ export const COMMANDS = [
 
   // ── canvas：画布偏好（2026-09-05 用户反馈：偏好要能在系统里配） ──
   //
-  // 键位沿用 v3 / 旧引擎的那一组（Q / ⌘\' / ⌘.），换引擎不改肌肉记忆，
-  // 按下去是同一件事。三条都写 `preferences-store` 的 `whiteboard` 段，
+  // 键位沿用 v3 / 旧引擎的那一组（⌘\' / ⌘.），换引擎不改肌肉记忆，
+  // 按下去是同一件事。两条都写 `preferences-store` 的 `whiteboard` 段，
   // 偏好菜单与设置页读的是同一个值。
-  {
-    id: "canvas.toggleToolLock",
-    labelKey: "cmd.canvas.toggleToolLock",
-    scope: "canvas",
-    defaultKeys: both("Q"),
-    allowInTerminal: false,
-    allowWhileTyping: false,
-  },
+  //
+  // 「工具锁定」（Q）已经撤掉：工具用完一直保持选中（#299），这个开关不再
+  // 有作用。存过的 `canvas.toggleToolLock` 覆盖读键位时按未知命令丢掉。
   {
     id: "canvas.toggleGrid",
     labelKey: "cmd.canvas.toggleGrid",
@@ -648,6 +648,9 @@ export const COMMANDS = [
     allowInTerminal: false,
     // 提交信息输入框里按 ⌘⏎ 就是这条命令的主要用法，必须放行
     allowWhileTyping: true,
+    // 只在提交页里算数：别的输入框（评论框的 ⌘⏎ 发送）和画布上按下去，
+    // 不该打开 Git 窗口还顺手提交。
+    when: "scmFocus",
   },
 ] as const satisfies readonly CommandSpec[];
 

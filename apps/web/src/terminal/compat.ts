@@ -15,8 +15,15 @@
 
 import {
   COMMANDS,
+  commandWhen,
+  evaluateWhen,
+  getActiveKeymap,
   isMacPlatform,
+  isTerminalControlChord,
   isWindowShortcut,
+  shortcutsEnabled,
+  type ActiveKeymap,
+  type CommandId,
   type CommandSpec,
 } from "@/keybindings";
 
@@ -80,22 +87,72 @@ export interface KeyContext {
 /**
  * 应用要截走的组合键。从注册表现算，避免这里和 `keybindings.ts` 各写一份：
  * `allowInTerminal` 为真 = 焦点在终端里也归应用。
+ *
+ * 和那一个全局监听器用同一套规则：读**生效中**的键位（用户改过的键与条件
+ * 都算），终端控制键（`isTerminalControlChord`）一律留给 shell，总开关关着时
+ * 一条也不截。以前这里只读默认键，改过键之后旧组合在终端里既不进 shell 也
+ * 不触发命令，凭空消失。
  */
 export function appChordsInTerminal(
   commands: readonly CommandSpec[] = COMMANDS,
   mac = isMacPlatform(),
+  keymap: ActiveKeymap = getActiveKeymap(),
+  enabled = shortcutsEnabled(),
 ): Set<string> {
   const chords = new Set<string>();
+  if (!enabled) return chords;
+  const context = {
+    platform: mac ? "mac" : "windows",
+    terminalFocus: true,
+    editorFocus: false,
+    browserFocus: false,
+    scmFocus: false,
+    canvasFocus: false,
+    editing: false,
+  };
   for (const command of commands) {
     if (!command.allowInTerminal) continue;
-    const keys = mac ? command.defaultKeys.mac : command.defaultKeys.other;
+    const id = command.id as CommandId;
+    if (!evaluateWhen(commandWhen(id, keymap), context)) continue;
+    const resolved = keymap[id] ?? command.defaultKeys;
+    const keys = mac ? resolved.mac : resolved.other;
     if (!keys) continue;
     for (const chord of keys.split(",")) {
+      if (!chord.trim() || isTerminalControlChord(chord, mac)) continue;
       const normalized = normalizeChord(chord, mac);
       if (normalized) chords.add(normalized);
     }
   }
   return chords;
+}
+
+let cached: {
+  keymap: ActiveKeymap;
+  enabled: boolean;
+  mac: boolean;
+  chords: Set<string>;
+} | null = null;
+
+/**
+ * 每次按键都要的那张表。键位与总开关都是整体替换的对象 / 布尔，
+ * 比一下引用就知道要不要重算。
+ */
+export function currentAppChordsInTerminal(mac = isMacPlatform()): Set<string> {
+  const keymap = getActiveKeymap();
+  const enabled = shortcutsEnabled();
+  if (
+    !cached ||
+    cached.keymap !== keymap ||
+    cached.enabled !== enabled ||
+    cached.mac !== mac
+  )
+    cached = {
+      keymap,
+      enabled,
+      mac,
+      chords: appChordsInTerminal(COMMANDS, mac, keymap, enabled),
+    };
+  return cached.chords;
 }
 
 /** `Mod+Shift+K` → `meta+shift+k`（mac）/ `ctrl+shift+k`（其余）。 */

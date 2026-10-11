@@ -168,7 +168,6 @@ export const modals: MessageModule = {
     "settings.whiteboard.snap": "吸附对齐",
     "settings.whiteboard.dynamicSize": "字号跟随缩放",
     "settings.whiteboard.animation": "动画",
-    "settings.whiteboard.toolLock": "工具锁定",
     "settings.whiteboard.wrap": "整体框住才选中",
     "settings.whiteboard.focus": "专注模式",
     "settings.whiteboard.edgeScroll": "边缘滚动",
@@ -246,6 +245,7 @@ export const modals: MessageModule = {
     "settings.shortcut.windowOther":
       "Ctrl+W 和 Alt+F4 用于关闭窗口；退出应用及后台服务请使用托盘菜单。窗口快捷键不能绑定为节点操作。",
     "settings.shortcut.unbound": "未绑定",
+    "settings.shortcut.enabled": "启用快捷键",
     "settings.shortcut.note": "Esc 取消，Backspace 重置本层。", // i18n-exempt
     "settings.shortcut.source.default": "默认",
     "settings.shortcut.source.global": "全局",
@@ -490,7 +490,6 @@ export const modals: MessageModule = {
     "settings.whiteboard.snap": "Snap to objects",
     "settings.whiteboard.dynamicSize": "Scale text with zoom",
     "settings.whiteboard.animation": "Animation",
-    "settings.whiteboard.toolLock": "Tool lock",
     "settings.whiteboard.wrap": "Select fully enclosed",
     "settings.whiteboard.focus": "Distraction-free",
     "settings.whiteboard.edgeScroll": "Edge scrolling",
@@ -569,6 +568,7 @@ export const modals: MessageModule = {
     "settings.shortcut.windowOther":
       "Ctrl+W and Alt+F4 close the window. Use the tray menu to quit the app and its background services. Window shortcuts cannot be assigned to node actions.",
     "settings.shortcut.unbound": "Unbound",
+    "settings.shortcut.enabled": "Enable shortcuts",
     "settings.shortcut.note": "Esc cancels, Backspace resets this layer.",
     "settings.shortcut.source.default": "Default",
     "settings.shortcut.source.global": "Global",

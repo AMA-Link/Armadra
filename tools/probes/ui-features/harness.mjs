@@ -26,6 +26,17 @@ import { LOOPBACK_OWNER_ENV } from "../probe-home.mjs";
 export const root = fileURLToPath(new URL("../../../", import.meta.url));
 export const sleep = (ms) => new Promise((done) => setTimeout(done, ms));
 
+/**
+ * 暂时下线的功能开关（#295）：读 `packages/shared` 构建产物里的那一张表，
+ * 关着的功能没有入口，对应的场景跳过而不是点一个不存在的按钮。
+ */
+export async function featureEnabled(flag) {
+  const { FEATURE_FLAGS } = await import(
+    new URL("../../../packages/shared/dist/feature-flags.js", import.meta.url)
+  );
+  return FEATURE_FLAGS[flag] === true;
+}
+
 const RESERVED = [1420, 1421, 43120, 43121, 43122, 43123, 43124, 43125];
 
 export async function freePort() {

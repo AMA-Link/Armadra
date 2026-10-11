@@ -1,4 +1,5 @@
 import { Menu, Tray, app, nativeImage } from "electron";
+import { featureEnabled } from "@armadra/shared";
 import { join } from "node:path";
 import {
   localeFromTag,
@@ -108,9 +109,12 @@ function strings(): TrayStrings {
 }
 
 function buildMenu(): Menu {
-  const readout: string[] = summary
-    ? [...summary.providers, ...(summary.cost ? [summary.cost] : [])]
-    : [shellText(locale, "tray.usage.noData")];
+  // 用量暂时下线（#295，`packages/shared/src/feature-flags.ts`）：读数整段不列。
+  const readout: string[] = !featureEnabled("usage")
+    ? []
+    : summary
+      ? [...summary.providers, ...(summary.cost ? [summary.cost] : [])]
+      : [shellText(locale, "tray.usage.noData")];
   return Menu.buildFromTemplate([
     // A readout, not an action: the rows are disabled so clicking them does
     // nothing rather than doing something unstated.
@@ -121,7 +125,9 @@ function buildMenu(): Menu {
           enabled: false,
         }) satisfies Electron.MenuItemConstructorOptions,
     ),
-    { type: "separator" },
+    ...(readout.length > 0
+      ? [{ type: "separator" } satisfies Electron.MenuItemConstructorOptions]
+      : []),
     ...(gateway
       ? [
           {
@@ -300,14 +306,16 @@ async function poll(): Promise<void> {
   if (stopped) return;
   let interval = pollIntervalMs(null);
   try {
-    const [usage, cost] = await Promise.all([
-      fetchText("/api/usage"),
-      fetchText("/api/usage/cost"),
-    ]);
-    const next = traySummary(summary, { usage, cost }, strings());
-    if (next !== summary) {
-      summary = next;
-      redraw();
+    if (featureEnabled("usage")) {
+      const [usage, cost] = await Promise.all([
+        fetchText("/api/usage"),
+        fetchText("/api/usage/cost"),
+      ]);
+      const next = traySummary(summary, { usage, cost }, strings());
+      if (next !== summary) {
+        summary = next;
+        redraw();
+      }
     }
     setGateway(gatewayItemState(await fetchText("/api/gateway")));
     const settings = await fetchText("/api/settings");

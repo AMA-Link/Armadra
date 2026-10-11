@@ -133,8 +133,17 @@ describe("按键策略（§18.3 键盘行）", () => {
         other,
       ),
     ).toBe("copy");
+    // Ctrl+K 是 shell 的「删到行尾」：Windows / Linux 上不再被命令面板截走，
+    // 命令面板在终端里改用 Ctrl+Shift+P。
     expect(
       keyDisposition(key({ key: "k", ctrlKey: true }), context, other),
+    ).toBe("terminal");
+    expect(
+      keyDisposition(
+        key({ key: "P", ctrlKey: true, shiftKey: true }),
+        context,
+        other,
+      ),
     ).toBe("app");
   });
 
@@ -198,5 +207,61 @@ describe("OSC 标题（§18.3 标题行）", () => {
     } finally {
       (globalThis as { localStorage?: unknown }).localStorage = previous;
     }
+  });
+});
+
+describe("终端按键分流跟着生效中的键位与总开关走", () => {
+  const context = { mac: false, hasSelection: false };
+
+  it("总开关关着时一条也不截：Ctrl+Shift+P 也进终端", () => {
+    const none = appChordsInTerminal(undefined, false, {}, false);
+    expect(none.size).toBe(0);
+    expect(
+      keyDisposition(
+        key({ key: "P", ctrlKey: true, shiftKey: true }),
+        context,
+        none,
+      ),
+    ).toBe("terminal");
+  });
+
+  it("改过的键生效、旧的默认键还给终端", () => {
+    const chords = appChordsInTerminal(
+      undefined,
+      false,
+      { "app.sidebar": { mac: "Mod+Shift+L", other: "Ctrl+Shift+Y" } },
+      true,
+    );
+    expect(
+      keyDisposition(
+        key({ key: "Y", ctrlKey: true, shiftKey: true }),
+        context,
+        chords,
+      ),
+    ).toBe("app");
+    expect(
+      keyDisposition(
+        key({ key: "L", ctrlKey: true, shiftKey: true }),
+        context,
+        chords,
+      ),
+    ).toBe("terminal");
+  });
+
+  it("终端控制键即使被改绑也留给 shell（tmux 前缀 Ctrl+B、Alt+B）", () => {
+    const chords = appChordsInTerminal(
+      undefined,
+      false,
+      {
+        "app.sidebar": { mac: "Mod+B", other: "Mod+B" },
+        "app.explorer": { mac: "Alt+B", other: "Alt+B" },
+      },
+      true,
+    );
+    for (const event of [
+      key({ key: "b", ctrlKey: true }),
+      key({ key: "b", altKey: true }),
+    ])
+      expect(keyDisposition(event, context, chords)).toBe("terminal");
   });
 });

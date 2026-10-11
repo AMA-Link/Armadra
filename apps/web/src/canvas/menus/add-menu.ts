@@ -47,6 +47,7 @@ import { preferredDriver } from "../../acp/driver";
 import { defaultNodeSize } from "../../store/defaults";
 import { beginCoalesce, endCoalesce } from "../../store/canvas/history";
 import { layoutDirection } from "../layout-direction";
+import { featureEnabled, type FeatureFlag } from "../../lib/features";
 
 /**
  * 新建菜单（§13.3）。
@@ -160,6 +161,21 @@ export function sshMenuItems(hosts: SshHost[], t: Translate): AddMenuItem[] {
 }
 
 /**
+ * 暂时下线的功能（#295）的新建项。开关关着时整项不列——命令面板读的也是这份
+ * 菜单，所以两处一起消失。
+ */
+const ITEM_FEATURES: Readonly<Record<string, FeatureFlag>> = {
+  "add.automation": "scheduledTasks",
+  "add.workflow": "workflows",
+  "add.agentActivity": "activityCards",
+};
+
+function itemVisible(item: AddMenuItem): boolean {
+  const flag = ITEM_FEATURES[item.id];
+  return flag === undefined || featureEnabled(flag);
+}
+
+/**
  * 菜单项按 §3.2 的顺序：新建终端 → 各 Agent → 便签 → 文件管理器 → 打开文件…
  * → 浏览器 → ─ → 全选 / 适应视图 / 整理画布。选哪家就直接建哪家，没有向导
  * （ui-wave2 §6.1）。
@@ -205,7 +221,7 @@ export function buildAddMenu(
     disabledReason: () => (agent.resolvedPath ? null : t("add.notInstalled")),
   }));
 
-  return [
+  const items: AddMenuItem[] = [
     {
       id: "add.terminal",
       label: t("add.terminal"),
@@ -380,6 +396,7 @@ export function buildAddMenu(
       run: command("canvas.tidy"),
     },
   ];
+  return items.filter(itemVisible);
 }
 
 /* ------------------------------ 派生（§6.2） ------------------------------ */

@@ -566,7 +566,15 @@ describe("KeybindingsPage", { timeout: 15_000 }, () => {
     });
     await waitFor(() =>
       expect(patchSettings).toHaveBeenCalledWith({
-        keymap: { [here]: { "app.commandPalette": "Mod+K,Mod+Shift+J" } },
+        keymap: {
+          [here]: {
+            // Windows / Linux 的默认多一组终端里也按得到的 Ctrl+Shift+P。
+            "app.commandPalette":
+              here === "mac"
+                ? "Mod+K,Mod+Shift+J"
+                : "Mod+K,Ctrl+Shift+P,Mod+Shift+J",
+          },
+        },
       }),
     );
   });
