@@ -6,13 +6,14 @@
  * 块地方，侧栏不会越长越高。
  *
  * 数据是现成的：`GET /sessions` 给会话，`agent/status-store` 给实时状态，
- * `agent/sessions` 已经把两者合流并分好桶。一行 = 品牌色点 + 标题 + 所在
- * 画布 + 状态胶囊 + 相对时间；点一行就切到那块板并把画布居中过去。
+ * `agent/sessions` 已经把两者合流并分好桶。按 Agent 所在的画布分区（当前
+ * 画布在前），区内按状态先后排；一行 = 标题 + 状态胶囊 + 目录 + 相对时间，
+ * 点一行就切到那块板并把画布居中过去。哪些行算 Agent 见 `agent-panel.ts`。
  */
 import { useEffect, useMemo, useState } from "react";
 import { MoreHorizontal } from "lucide-react";
 
-import { useSessions, type SessionRow } from "../agent/sessions";
+import { basename, useSessions, type SessionRow } from "../agent/sessions";
 import { useT } from "../app/preferences-store";
 import { formatRelativeTime } from "../lib/format";
 import { useCanvasStore } from "../store/canvas-store";
@@ -38,10 +39,18 @@ export function AgentStatusPanel({ onClose }: { onClose: () => void }) {
   const t = useT();
   const workspace = useCanvasStore((state) => state.workspace);
   const boards = useCanvasStore((state) => state.boards);
-  const { sessions } = useSessions(workspace?.id ?? null);
+  const currentBoardId = useCanvasStore((state) => state.boardId);
+  const { sessions, isPending } = useSessions(workspace?.id ?? null);
   const [inspecting, setInspecting] = useState<AgentInspectTarget | null>(null);
 
-  const sections = useMemo(() => agentSections(sessions), [sessions]);
+  const sections = useMemo(
+    () =>
+      agentSections(sessions, {
+        currentBoardId,
+        boardOrder: boards.map((board) => board.id),
+      }),
+    [boards, currentBoardId, sessions],
+  );
   const boardNames = useMemo(
     () =>
       new Map(boards.map((board) => [board.id, displayName(board.name, t)])),
@@ -60,41 +69,48 @@ export function AgentStatusPanel({ onClose }: { onClose: () => void }) {
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
       <ScrollArea className="min-h-0 flex-1">
         <div className="px-2 pb-2">
-          {sections.map((section) => (
-            <section
-              key={section.bucket}
-              aria-label={t(`sessions.bucket.${section.bucket}`)}
-            >
-              <h2 className="flex h-7 items-center gap-1 px-1.5 text-[length:var(--text-caption)] font-medium tracking-[.04em] text-muted-foreground uppercase">
-                {t(`sessions.bucket.${section.bucket}`)}
-                <span className="tabular-nums">{section.rows.length}</span>
-              </h2>
-              <ul>
-                {section.rows.map((row) => (
-                  <AgentRow
-                    key={row.sessionId}
-                    row={row}
-                    boardName={boardNames.get(row.boardId) ?? ""}
-                    tone={bucketTone(section.bucket)}
-                    label={t(`sessions.bucket.${section.bucket}`)}
-                    onSelect={() => {
-                      onClose();
-                      gotoNode(row.boardId, row.nodeId);
-                    }}
-                    onInspect={(tab) =>
-                      setInspecting({
-                        workspaceId: workspace?.id ?? "",
-                        nodeId: row.nodeId,
-                        sessionId: row.sessionId,
-                        title: row.title,
-                        tab,
-                      })
-                    }
-                  />
-                ))}
-              </ul>
-            </section>
-          ))}
+          {!isPending && sections.length === 0 && (
+            <p className="px-1.5 py-2 text-[length:var(--text-caption)] text-muted-foreground">
+              {t("sidebar.agentsEmpty")}
+            </p>
+          )}
+          {sections.map((section) => {
+            const name =
+              boardNames.get(section.boardId) ?? t("sidebar.agentsOtherBoard");
+            return (
+              <section key={section.boardId} aria-label={name}>
+                <h2 className="flex h-7 min-w-0 items-center gap-1 px-1.5 text-[length:var(--text-caption)] font-medium text-muted-foreground">
+                  <span className="min-w-0 truncate">{name}</span>
+                  <span className="shrink-0 tabular-nums">
+                    {section.entries.length}
+                  </span>
+                </h2>
+                <ul>
+                  {section.entries.map(({ row, bucket }) => (
+                    <AgentRow
+                      key={row.nodeId}
+                      row={row}
+                      tone={bucketTone(bucket)}
+                      label={t(`sessions.bucket.${bucket}`)}
+                      onSelect={() => {
+                        onClose();
+                        gotoNode(row.boardId, row.nodeId);
+                      }}
+                      onInspect={(tab) =>
+                        setInspecting({
+                          workspaceId: workspace?.id ?? "",
+                          nodeId: row.nodeId,
+                          sessionId: row.sessionId,
+                          title: row.title,
+                          tab,
+                        })
+                      }
+                    />
+                  ))}
+                </ul>
+              </section>
+            );
+          })}
         </div>
       </ScrollArea>
       <AgentInspectDialog
@@ -107,14 +123,12 @@ export function AgentStatusPanel({ onClose }: { onClose: () => void }) {
 
 function AgentRow({
   row,
-  boardName,
   tone,
   label,
   onSelect,
   onInspect,
 }: {
   row: SessionRow;
-  boardName: string;
   tone: StatusTone;
   label: string;
   onSelect: () => void;
@@ -137,7 +151,9 @@ function AgentRow({
           <StatusPill tone={tone} label={label} className="shrink-0" />
         </span>
         <span className="flex w-full min-w-0 items-center gap-1.5 text-[length:var(--text-caption)] text-muted-foreground">
-          <span className="min-w-0 flex-1 truncate text-left">{boardName}</span>
+          <span className="min-w-0 flex-1 truncate text-left">
+            {basename(row.cwd)}
+          </span>
           <span className="shrink-0 tabular-nums">
             {formatRelativeTime(row.updatedAt)}
           </span>

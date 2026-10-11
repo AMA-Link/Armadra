@@ -1158,6 +1158,13 @@ export interface SessionSummary {
   readonly stateSource?: string;
   readonly unread: boolean;
   readonly pendingId?: string;
+  /**
+   * `start` / `end` of the agent session the last hook event belonged to.
+   * Rule 4 of the hook reducer clears `state` on both, so without this a
+   * freshly started CLI and one that has already exited look the same — the
+   * Agent panel needs it to tell "idle" from "gone".
+   */
+  readonly sessionPhase?: string;
   readonly updatedAt: string;
   readonly alive: boolean;
   /** 契约 §53：程序此刻自报的状态，只在会话活在这个进程里时有。 */
@@ -1182,6 +1189,10 @@ export interface SessionSummary {
  *
  * `agent_status` is R3's table but exists in the schema from migration 0001
  * onwards, so the join is written now and simply finds nothing until then.
+ *
+ * The node's board must belong to the same workspace as the session: the list
+ * is "cards on this workspace's boards", and a row whose card sits on a board
+ * elsewhere would show up under a canvas the panel cannot name.
  */
 export function listSessions(
   database: import("node:sqlite").DatabaseSync,
@@ -1197,9 +1208,11 @@ export function listSessions(
               n.board_id AS board_id, n.title AS title,
               st.agent_id AS status_agent_id, st.state AS state,
               st.state_source AS state_source, st.unread AS unread,
-              st.pending_id AS pending_id, st.updated_at AS status_updated_at
+              st.pending_id AS pending_id, st.session_phase AS session_phase,
+              st.updated_at AS status_updated_at
          FROM terminal_sessions s
          JOIN nodes n ON n.id = s.owner_node_id
+         JOIN boards b ON b.id = n.board_id AND b.workspace_id = s.workspace_id
          LEFT JOIN agent_status st ON st.node_id = s.owner_node_id
         WHERE s.workspace_id = ? AND s.owner_node_id IS NOT NULL
         ORDER BY s.created_at DESC LIMIT 500`,
@@ -1227,6 +1240,7 @@ export function listSessions(
     const state = row.state as string | null;
     const stateSource = row.state_source as string | null;
     const pendingId = row.pending_id as string | null;
+    const sessionPhase = row.session_phase as string | null;
     const programStatus = program(sessionId);
     return {
       nodeId: String(row.node_id),
@@ -1240,6 +1254,9 @@ export function listSessions(
       ...(stateSource === null ? {} : { stateSource }),
       unread: Number(row.unread ?? 0) !== 0,
       ...(pendingId === null ? {} : { pendingId }),
+      ...(sessionPhase === null || sessionPhase === undefined
+        ? {}
+        : { sessionPhase }),
       updatedAt: String(
         (row.status_updated_at as string | null) ?? row.created_at,
       ),
