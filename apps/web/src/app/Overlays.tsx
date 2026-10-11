@@ -18,6 +18,7 @@ import {
   ResourceDrawer,
   QuickOpen,
   SettingsDialog,
+  ShareDialog,
   GitToolWindow,
   SshPromptDialog,
   UsageDashboard,
@@ -31,6 +32,7 @@ import { useMountedOnce, useOverlayRequested } from "./overlay-gates";
 import { useLinkFragments } from "./use-link-fragments";
 import { useSourcesBootstrap } from "./use-sources-bootstrap";
 import { panelHidden } from "@/lib/features";
+import { useShareStore } from "@/canvas/share/share-store";
 
 /**
  * 所有浮层的挂载点。
@@ -61,6 +63,7 @@ export function Overlays() {
   const codeAction = useOverlayRequested("codeAction");
   const editPreview = useOverlayRequested("editPreview");
   const merge = useOverlayRequested("merge");
+  const share = useShareStore((state) => state.request !== null);
   useLinkFragments();
   useSourcesBootstrap();
 
@@ -102,6 +105,9 @@ export function Overlays() {
       </Gate>
       <Gate open={panels.settings}>
         <SettingsDialog />
+      </Gate>
+      <Gate open={share}>
+        <ShareDialog />
       </Gate>
       <Gate open={panels.palette}>
         <CommandPalette />

@@ -11,6 +11,12 @@ import { lazy } from "react";
  * 命名导出要在这里转成 default，`React.lazy` 只认 `{ default }`。
  */
 
+export const ShareDialog = lazy(() =>
+  import("@/canvas/share/ShareDialog").then((module) => ({
+    default: module.ShareDialog,
+  })),
+);
+
 export const SettingsDialog = lazy(() =>
   import("@/panels/SettingsDialog").then((module) => ({
     default: module.SettingsDialog,

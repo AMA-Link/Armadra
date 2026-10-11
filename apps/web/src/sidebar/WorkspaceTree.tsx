@@ -53,6 +53,9 @@ import { IconButton } from "@/ui/icon-button";
 import { ScrollArea } from "@/ui/scroll-area";
 import { InlineName } from "./InlineName";
 import { useWorkspaceRename } from "./use-workspace-rename";
+import { useAccess } from "../app/use-access";
+import { openShare } from "../canvas/share/share-store";
+import { useCurrentSource } from "../sources/context";
 import { BoardRow } from "./BoardRow";
 import {
   BOARD_PAGE_SIZE,
@@ -472,6 +475,10 @@ function WorkspaceRow({
   const { remove, rename } = useBoardMutations(summary.id);
   const renameWorkspace = useWorkspaceRename(summary.id);
   const [editing, setEditing] = useState(false);
+  // 侧栏这棵树列的是当前那台的工作空间：只有这台电脑上的、且是主人才给分享。
+  const { member } = useAccess();
+  const local = useCurrentSource().descriptor.kind === "local";
+  const canShare = !member && local;
 
   const [confirmRemove, setConfirmRemove] = useState(false);
   const [expandedAll, setExpandedAll] = useState(false);
@@ -522,6 +529,18 @@ function WorkspaceRow({
             <DropdownMenuItem onSelect={() => setEditing(true)}>
               {t("sidebar.rename")}
             </DropdownMenuItem>
+            {canShare && (
+              <DropdownMenuItem
+                onSelect={() =>
+                  openShare({
+                    workspaceId: summary.id,
+                    workspaceName: displayName(summary.name, t),
+                  })
+                }
+              >
+                {t("share.action")}
+              </DropdownMenuItem>
+            )}
             <DropdownMenuItem onSelect={() => onTogglePinWorkspace(!pinned)}>
               {pinned ? t("sidebar.unpin") : t("sidebar.pin")}
             </DropdownMenuItem>

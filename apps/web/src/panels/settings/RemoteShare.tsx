@@ -139,14 +139,14 @@ export function announceStopped(t: Translate, pending: string | null): void {
  * 有系统分享就出这个按钮：桌面壳的分享菜单（`app:share`），或浏览器的 Web
  * Share；都没有就只留复制。
  */
-function canShareNatively(): boolean {
+export function canShareNatively(): boolean {
   return (
     shellCanShare() ||
     (typeof navigator !== "undefined" && typeof navigator.share === "function")
   );
 }
 
-async function copyText(t: Translate, text: string): Promise<void> {
+export async function copyText(t: Translate, text: string): Promise<void> {
   try {
     await navigator.clipboard.writeText(text);
     toast.success(t("remote.invite.copied"));

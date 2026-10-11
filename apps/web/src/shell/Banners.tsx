@@ -20,6 +20,7 @@ import {
 import { useDeliveryStore } from "../agent/delivery-store";
 import { requestCenterOnNode } from "../canvas/flow/flow-context";
 import { usePresenceBarVisible } from "../canvas/PresenceBar";
+import { useSharedWorkspaceOpen } from "../canvas/SharedWorkspaceBar";
 import { usePreferencesStore, useT } from "../app/preferences-store";
 import { useAccess } from "../app/use-access";
 import { useEnabledAgents } from "../app/use-agents";
@@ -74,7 +75,9 @@ export function Banners() {
   const { left, right } = bannerBounds(panels, compact);
   // 多设备时右上多一条设备条（`canvas/PresenceBar`），宽度随设备与租约变，
   // 标题带里放不下两样：这时通知条退到设备条下面那一行。
-  const belowPresence = usePresenceBarVisible();
+  // 别人分享来的工作空间在同一排还有「<主人> 的 <工作空间>」（`canvas/share/CanvasTopBar`）。
+  const shared = useSharedWorkspaceOpen();
+  const belowPresence = usePresenceBarVisible() || shared;
   const nodeTitle = (nodeId: string) =>
     nodes?.find((node) => node.id === nodeId)?.title ?? nodeId;
 

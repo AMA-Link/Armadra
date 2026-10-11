@@ -3,6 +3,7 @@ import {
   FolderTree,
   GitBranch,
   GitPullRequest,
+  Share2,
   Shrink,
   SlidersHorizontal,
 } from "lucide-react";
@@ -10,6 +11,9 @@ import { commandKeysLabel, type CommandId } from "../keybindings";
 import { useCanvasStore } from "../store/canvas-store";
 import { useT } from "../app/preferences-store";
 import { CanvasPreferencesMenu } from "../canvas/menus/CanvasPreferencesMenu";
+import { openShare } from "../canvas/share/share-store";
+import { useCanShareCurrent } from "../canvas/share/use-can-share";
+import { displayName } from "../sidebar/display-name";
 import { WORK_PANEL_WIDTH, openRightDrawer } from "../panels/WorkPanelSheet";
 import { useCompactLayout } from "../platform/layout";
 import { cn } from "@/lib/cn";
@@ -62,6 +66,8 @@ export function ControlsCluster() {
   const setFocusNode = useCanvasStore((state) => state.setFocusNode);
   const compact = useCompactLayout();
   const drawer = compact ? null : openRightDrawer(panels);
+  const workspace = useCanvasStore((state) => state.workspace);
+  const canShare = useCanShareCurrent();
 
   return (
     <>
@@ -135,6 +141,21 @@ export function ControlsCluster() {
         {/* 用量暂时下线（#295）：胶囊不挂，它背后的轮询也就不发。 */}
         {featureEnabled("usage") ? <ClusterUsage /> : null}
 
+        {/* 分享这块工作空间（#301 B5）：只有主人、且它在这台电脑上。 */}
+        {canShare && workspace && (
+          <ClusterButton
+            label={t("share.action")}
+            onClick={() =>
+              openShare({
+                workspaceId: workspace.id,
+                workspaceName: displayName(workspace.name, t),
+              })
+            }
+          >
+            <Share2 />
+          </ClusterButton>
+        )}
+
         {focusNodeId && (
           <ClusterButton
             label={t("cluster.exitFocus")}
@@ -179,12 +200,12 @@ function ClusterButton({
   children,
 }: {
   label: string;
-  command: CommandId;
+  command?: CommandId;
   active?: boolean;
   onClick: () => void;
   children: ReactNode;
 }) {
-  const keys = commandKeysLabel(command);
+  const keys = command === undefined ? "" : commandKeysLabel(command);
   return (
     <Tooltip delayDuration={500}>
       <TooltipTrigger asChild>
