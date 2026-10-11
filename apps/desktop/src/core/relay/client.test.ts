@@ -181,6 +181,34 @@ describe("心跳、GOAWAY 与退避", () => {
     });
   });
 
+  it("本进程卡过一阵：积压在 socket 里的帧先读完再判，静默看门狗不误判", async () => {
+    // 计时器在事件循环里先于 socket 读：同步卡住超过静默阈值之后，到期的看门狗
+    // 先跑，那时中继其间发来的帧还没读。CI 上 GC、同步读盘、抢不到 CPU 都会这样卡。
+    const heartbeatMs = 100;
+    world = await relayCore({ relay: { heartbeatMs } });
+    await world.register();
+    const first = await world.relay.nextTunnel(0);
+    const current = world;
+    const issuer = current.cloud.registrations()[0]!.issuer;
+    await until(() => current.tunnels.status(issuer).state === "ready");
+    const chatter = setInterval(() => first.ping(), 10);
+    try {
+      await new Promise((resolve) => setTimeout(resolve, 3 * heartbeatMs));
+      const stalledUntil = performance.now() + 4 * heartbeatMs;
+      while (performance.now() < stalledUntil) {
+        // 同步卡住两倍静默阈值。
+      }
+      await new Promise((resolve) => setTimeout(resolve, 3 * heartbeatMs));
+    } finally {
+      clearInterval(chatter);
+    }
+    expect(first.closeCode).toBeUndefined();
+    expect(world.tunnels.status(issuer)).toMatchObject({
+      state: "ready",
+      lastError: null,
+    });
+  });
+
   it("中继发的 PING 立即回 PONG", async () => {
     world = await relayCore();
     await world.register();
