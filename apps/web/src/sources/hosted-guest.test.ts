@@ -189,7 +189,9 @@ describe("访客保管处（localStorage，按 签发方 + 链接）", () => {
       sources: { [SOURCE]: "core-gr" },
       entered: { sourceId: SOURCE },
       expiresAtMs: EXPIRES,
+      share: { role: "viewer", name: "studio", expiresAtMs: EXPIRES },
     });
+    expect(relay.guest()).toMatchObject({ role: "viewer", name: "studio" });
     // 访问令牌不落盘；账号的存储里没有它。
     expect(raw).not.toContain("guest-a");
     expect(raw).not.toContain("core-guest");

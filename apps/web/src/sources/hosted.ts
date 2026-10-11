@@ -150,6 +150,20 @@ interface ResumeRecord {
   readonly entered: { readonly sourceId: string; readonly name: string } | null;
   /** 访客记录的寿命（毫秒时刻，= 链接到期）；账号那份没有。 */
   readonly expiresAtMs?: number;
+  /** 访客看到的分享：权限、主人 / 工作空间名；账号那份没有。 */
+  readonly share?: GuestShare;
+}
+
+/** 访客加入的这份分享（顶栏显示用）。 */
+export interface GuestShare {
+  /** `viewer` / `editor` / `operator` / `driver`；不知道是空串。 */
+  readonly role: string;
+  /** 分享给你的工作空间 / 主机名；不知道是空串。 */
+  readonly name: string;
+  /** 主人名字；不知道是空串。 */
+  readonly ownerName: string;
+  /** 链接到期（毫秒时刻）。 */
+  readonly expiresAtMs: number;
 }
 
 function browserSessionStorage(): Storage | null {
@@ -187,10 +201,23 @@ function readResume(
     for (const [id, token] of Object.entries(value.sources ?? {}))
       if (typeof token === "string" && token !== "") sources[id] = token;
     const entered = value.entered;
+    const share = value.share;
     return {
       issuer,
       ...(typeof value.expiresAtMs === "number"
         ? { expiresAtMs: value.expiresAtMs }
+        : {}),
+      ...(share && typeof share === "object"
+        ? {
+            share: {
+              role: typeof share.role === "string" ? share.role : "",
+              name: typeof share.name === "string" ? share.name : "",
+              ownerName:
+                typeof share.ownerName === "string" ? share.ownerName : "",
+              expiresAtMs:
+                typeof share.expiresAtMs === "number" ? share.expiresAtMs : 0,
+            },
+          }
         : {}),
       cloudRefreshToken:
         typeof value.cloudRefreshToken === "string" &&
@@ -300,6 +327,9 @@ export interface SessionRelayVault extends MemoryRelayVault {
   rememberEntered(source: { sourceId: string; name: string } | null): void;
   /** 上次进的主机；没有可续的就是 `null`。 */
   entered(): { sourceId: string; name: string } | null;
+  /** 访客的分享信息（只有访客那份记）。 */
+  rememberShare(share: GuestShare): void;
+  share(): GuestShare | null;
 }
 
 /**
@@ -373,6 +403,11 @@ export function createSessionRelayVault(
       save({ ...record, entered: source });
     },
     entered: () => (record.cloudRefreshToken === null ? null : record.entered),
+    rememberShare(share) {
+      save({ ...record, share });
+    },
+    share: () =>
+      record.cloudRefreshToken === null ? null : (record.share ?? null),
     clear,
   };
 }
@@ -507,14 +542,14 @@ export interface HostedRelay {
     readonly linkId: string;
     readonly secret: string;
     readonly invitationToken: string;
-    /** 链接到期（毫秒时刻）；落地页已经知道就带上，不知道由这里再问一次。 */
-    readonly expiresAtMs?: number;
   }): Promise<string>;
   /**
    * 刷新页面之后：用记下的刷新令牌静默续上远程服务，再进上次那台主机。没有
    * 记下的、刷新令牌被拒：`null`（重新登录）。
    */
   resume(): Promise<HostedResume>;
+  /** 这个页面是不是以访客身份（分享链接）进来的；是就给那份分享，否则 `null`。 */
+  guest(): GuestShare | null;
   readonly status: HostedStatus;
   subscribe(listener: () => void): () => void;
   /** 登出远程服务并丢掉全部凭据（内存与 `sessionStorage`）。 */
@@ -547,6 +582,8 @@ export function createHostedRelay(options: HostedRelayOptions): HostedRelay {
       backing.saveSession(sourceId, of, session),
     rememberEntered: (source) => backing.rememberEntered(source),
     entered: () => backing.entered(),
+    rememberShare: (share) => backing.rememberShare(share),
+    share: () => backing.share(),
     clear: () => backing.clear(),
   };
   const useGuest = (key: string, expiresAtMs?: number) => {
@@ -796,21 +833,17 @@ export function createHostedRelay(options: HostedRelayOptions): HostedRelay {
       if (guestSession.refreshToken === undefined)
         throw new CloudError(502, "bad_response");
       // 寿命 = 链接到期；问不到就取访客会话的到期，再不行一周。
+      const info = await cloudLinkInfo(
+        issuer,
+        link.linkId,
+        options.cloud,
+      ).catch(() => null);
       const expiresAtMs =
-        link.expiresAtMs && link.expiresAtMs > now()
-          ? link.expiresAtMs
-          : await cloudLinkInfo(issuer, link.linkId, options.cloud).then(
-              (info) =>
-                info.expiresAtMs > now()
-                  ? info.expiresAtMs
-                  : guestSession.expiresAtMs > now()
-                    ? guestSession.expiresAtMs
-                    : now() + GUEST_FALLBACK_MS,
-              () =>
-                guestSession.expiresAtMs > now()
-                  ? guestSession.expiresAtMs
-                  : now() + GUEST_FALLBACK_MS,
-            );
+        info !== null && info.expiresAtMs > now()
+          ? info.expiresAtMs
+          : guestSession.expiresAtMs > now()
+            ? guestSession.expiresAtMs
+            : now() + GUEST_FALLBACK_MS;
       useGuest(guestKey(issuer, link.linkId), expiresAtMs);
       try {
         await vault.saveCloudRefreshToken(issuer, guestSession.refreshToken);
@@ -849,6 +882,12 @@ export function createHostedRelay(options: HostedRelayOptions): HostedRelay {
         rows.find((row) => row.sourceId === accepted.sourceId)?.name ?? "";
       // 访客只挂链接指向的这一台。
       directory = [];
+      vault.rememberShare({
+        role: info?.role ?? "",
+        name: name || info?.sourceName || "",
+        ownerName: "",
+        expiresAtMs,
+      });
       await hosted.enter({ sourceId: accepted.sourceId, name });
       return accepted.sourceId;
     },
@@ -963,6 +1002,7 @@ export function createHostedRelay(options: HostedRelayOptions): HostedRelay {
       useAccount();
       return (await resumeWith()) ?? null;
     },
+    guest: () => (guest ? vault.share() : null),
     get status() {
       return status;
     },
