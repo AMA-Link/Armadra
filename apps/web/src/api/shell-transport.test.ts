@@ -219,6 +219,32 @@ describe("桌面壳的请求层", () => {
     expect(FakeSocket.made[0]?.protocols).toEqual([`${WS_TICKET_PROTOCOL}T1`]);
   });
 
+  /**
+   * 语言服务会话流与浏览器画面流（#337）：两处都经 `openSourceSocket` 开，
+   * 不自己 `new WebSocket`，所以和事件流一样先换票、经子协议升级。
+   */
+  it("语言服务会话流与浏览器画面流同样先换票", async () => {
+    const { createSessionTransport } = await import(
+      "../editor/language/transport"
+    );
+    const { browserStreamUrl, languageSessionUrl } = await import("./sockets");
+    const { openSourceSocket } = await import("./source");
+    installShellTransport();
+    createSessionTransport(languageSessionUrl("w", "s1", localSource));
+    openSourceSocket(browserStreamUrl("w", "n1", localSource));
+    await vi.waitFor(() => expect(FakeSocket.made).toHaveLength(2));
+    const urls = FakeSocket.made.map((socket) => new URL(socket.url).pathname);
+    expect(urls).toEqual([
+      "/api/workspaces/w/language/sessions/s1/stream",
+      "/api/workspaces/w/browser/n1/stream",
+    ]);
+    for (const socket of FakeSocket.made)
+      expect(socket.protocols).toEqual([`${WS_TICKET_PROTOCOL}T1`]);
+    expect(
+      calls.filter((call) => path(call) === "/api/identity/ws-ticket"),
+    ).toHaveLength(2);
+  });
+
   it("发往别处的流不换票", () => {
     installShellTransport();
     new localSource.WebSocket("ws://example.invalid/socket");

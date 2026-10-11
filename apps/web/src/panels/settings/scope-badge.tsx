@@ -1,31 +1,42 @@
 import { useT } from "../../app/preferences-store";
 import { useCurrentSource } from "../../sources/context";
+import { useLocalName } from "./pages/remote-access/keys";
 import { useRemoteAccess } from "./remote-access";
 import type { SettingsScope } from "./nav";
 import { Badge } from "@/ui/badge";
 import { cn } from "@/lib/cn";
 
 /**
- * 作用范围的文案（§2.3）：本设备 / 主机 / 账号；设置作用的 core 在别处时
- * 主机与账号带上那台的名字，`pinnedLocal` 的页恒为「本机」。
+ * 作用范围的文案（§2.3）。设置恒指本机（#301）：主机与账号页写「本机 · <电脑名>」；
+ * 页面的本机源在别处（手机、经 Gateway 打开的网页）时写「主机 · <电脑名>」。
+ * 只有「当前工作空间」页（`followsWorkspace`）跟随打开的工作空间，打开的是别的
+ * 电脑时写那台的名字。
  */
 export function useScopeLabel(
   scope: SettingsScope,
   pinnedLocal = false,
+  followsWorkspace = false,
 ): string {
   const t = useT();
   const { remote } = useRemoteAccess();
-  const name = useCurrentSource().descriptor.label.trim();
-  if (pinnedLocal) return t("settings.scope.local");
-  if (scope === "device") return t("settings.scope.device");
-  const named = remote && name !== "";
-  if (scope === "host")
-    return named
-      ? t("settings.scope.hostNamed", { name })
-      : t("settings.scope.host");
-  return named
-    ? t("settings.scope.accountNamed", { name })
-    : t("settings.scope.account");
+  const current = useCurrentSource().descriptor;
+  const local = useLocalName();
+  if (scope === "device" && !pinnedLocal) return t("settings.scope.device");
+  if (followsWorkspace && current.kind !== "local") {
+    const name = current.label.trim();
+    return name === ""
+      ? t("settings.scope.host")
+      : t("settings.scope.hostNamed", { name });
+  }
+  if (scope === "account")
+    return remote && local !== ""
+      ? t("settings.scope.accountNamed", { name: local })
+      : t("settings.scope.account");
+  if (local === "")
+    return remote ? t("settings.scope.host") : t("settings.scope.local");
+  return t(remote ? "settings.scope.hostNamed" : "settings.scope.localNamed", {
+    name: local,
+  });
 }
 
 /**
@@ -35,13 +46,15 @@ export function useScopeLabel(
 export function ScopeBadge({
   scope,
   pinnedLocal,
+  followsWorkspace,
   className,
 }: {
   scope: SettingsScope;
   pinnedLocal?: boolean;
+  followsWorkspace?: boolean;
   className?: string;
 }) {
-  const label = useScopeLabel(scope, pinnedLocal);
+  const label = useScopeLabel(scope, pinnedLocal, followsWorkspace);
   return (
     <Badge
       variant="outline"

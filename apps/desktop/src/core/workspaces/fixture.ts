@@ -6,7 +6,7 @@ import { EventBus } from "../bus";
 import type { OpenedDatabase } from "../db/open";
 import { openFreshDatabase } from "../db/fresh.fixture";
 import { CoreServer } from "../http/server";
-import type { CoreRequest } from "../http/router";
+import { type CoreRequest, handlerBytes } from "../http/router";
 import type { CoreContext } from "../main";
 import { createLog, nodePlatform } from "../platform";
 import { canonicalize } from "./roots";
@@ -110,7 +110,9 @@ export function fixture(
         url.pathname,
         request,
       );
-      return answer as {
+      // 本机文件的下载是流式的（`file`）：测试照旧从 `raw` 读字节。
+      const raw = handlerBytes(answer);
+      return { ...answer, ...(raw === undefined ? {} : { raw }) } as {
         status: number;
         body: unknown;
         raw?: Buffer;

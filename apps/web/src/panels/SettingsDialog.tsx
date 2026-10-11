@@ -97,8 +97,8 @@ function SettingsBody({ onClose }: { onClose: () => void }) {
   // 成员看不到本机管理的那几页（`nav.ts` 的 `ownerOnly`）；上次停在其中一页
   // 的，回到第一页。
   const { member } = useAccess();
-  // 设置作用的 core 不在眼前（经中继、直连远端源、当前源是远程源）：只对本机
-  // 有意义的那几页不列（`nav.ts` 的 `localOnly`）。
+  // 页面的本机 core 不在眼前（经中继、直连 Gateway）：只对眼前这台设备有意义的
+  // 那几页不列（`nav.ts` 的 `localOnly`）。打开别人的工作空间不影响设置页。
   const { remote } = useRemoteAccess();
   // 存着的可能是上一版的分区 id（`LEGACY_SECTION_IDS`）：先映射再判断。
   const active = activeSectionId(stored, member, remote);
@@ -152,7 +152,11 @@ function SettingsBody({ onClose }: { onClose: () => void }) {
           >
             {t(subpage ? subpageTitleKey(subpage) : section.labelKey)}
           </h2>
-          <ScopeBadge scope={section.scope} pinnedLocal={section.pinnedLocal} />
+          <ScopeBadge
+            scope={section.scope}
+            pinnedLocal={section.pinnedLocal}
+            followsWorkspace={section.followsWorkspace}
+          />
           <IconButton size="cluster" label={t("tab.close")} onClick={onClose}>
             <X />
           </IconButton>

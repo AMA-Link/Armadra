@@ -34,9 +34,9 @@ import { deliveryTooltip } from "./LinkEdge";
 /**
  * 上下文连线的渲染（React Flow 计划 F06）。
  *
- * 断言的是「画出来的是不是那条贝塞尔」：路径的起点终点落在两个矩形相对的
+ * 断言的是「画出来的是不是那条路线」：路径的起点终点落在两个矩形相对的
  * 边中点上、箭头按类型出、标签在缩放够大时才画。几何本身在
- * `link-path.test.ts` 与 `link-visual.test.ts`。
+ * `route.test.ts`、`edge-label.test.ts` 与 `link-visual.test.ts`。
  */
 
 beforeAll(installDomPolyfills);
@@ -137,12 +137,12 @@ function edgeGroup(container: HTMLElement): SVGGElement {
 }
 
 describe("LinkEdge", () => {
-  it("画的是两个矩形相对边中点之间的贝塞尔，不是把手之间的直线", () => {
+  it("画的是两个矩形相对边中点之间的路线，不是把手之间的直线", () => {
     const { container } = renderEdge("terminal", "terminal");
     const path = edgeGroup(container).querySelector(
       ".react-flow__edge-path",
     ) as SVGPathElement;
-    expect(path.getAttribute("d")).toMatch(/^M 100,50 C /u);
+    expect(path.getAttribute("d")).toMatch(/^M 100,50/u);
     expect(path.getAttribute("d")).toMatch(/ 300,50$/u);
   });
 
@@ -161,10 +161,10 @@ describe("LinkEdge", () => {
     expect(edgeGroup(container).querySelectorAll("path")).toHaveLength(2);
   });
 
-  it("终端 ↔ 终端的标签是「上下文」", () => {
+  it("终端 ↔ 终端的标签是「共享上下文」", () => {
     const { container } = renderEdge("terminal", "terminal");
     expect(edgeGroup(container).querySelector("text")?.textContent).toBe(
-      "上下文",
+      "共享上下文",
     );
   });
 
@@ -175,9 +175,15 @@ describe("LinkEdge", () => {
     );
   });
 
-  it("缩放小于 0.5 时不画标签（那时它只剩一团墨点）", () => {
-    const { container } = renderEdge("sticky", "terminal", { zoom: 0.4 });
-    expect(edgeGroup(container).querySelector("text")).toBeNull();
+  it("缩小时标签按屏幕字号放大，小于 0.3 时不画", () => {
+    const small = renderEdge("sticky", "terminal", { zoom: 0.5 });
+    const text = edgeGroup(small.container).querySelector("text");
+    // 屏幕上仍是 11px：画布单位里是 22。
+    expect(text?.getAttribute("font-size")).toBe("22");
+    cleanup();
+
+    const tiny = renderEdge("sticky", "terminal", { zoom: 0.25 });
+    expect(edgeGroup(tiny.container).querySelector("text")).toBeNull();
   });
 
   it("选中时线变粗并换成品牌色", () => {
@@ -271,9 +277,11 @@ describe("LinkEdge", () => {
       );
     });
 
-    it("没有常驻标签；选中时写「派发」并换成品牌色", () => {
+    it("常驻标签「派发」；选中时换成品牌色", () => {
       const lead = renderEdge("terminal", "terminal", { role: "supervises" });
-      expect(edgeGroup(lead.container).querySelector("text")).toBeNull();
+      expect(edgeGroup(lead.container).querySelector("text")?.textContent).toBe(
+        "派发",
+      );
       cleanup();
 
       const picked = renderEdge("terminal", "terminal", {
@@ -294,7 +302,7 @@ describe("LinkEdge", () => {
         ".react-flow__edge-path",
       ) as SVGPathElement;
       // 主在 (0,0) 100×100，子在 (300,300)：底边中点 (50,100)，顶边中点 (350,300)。
-      expect(path.getAttribute("d")).toMatch(/^M 50,100 C /u);
+      expect(path.getAttribute("d")).toMatch(/^M 50,100/u);
       expect(path.getAttribute("d")).toMatch(/ 350,300$/u);
     });
 
@@ -306,7 +314,7 @@ describe("LinkEdge", () => {
       const path = edgeGroup(lead.container).querySelector(
         ".react-flow__edge-path",
       ) as SVGPathElement;
-      expect(path.getAttribute("d")).toMatch(/^M 50,0 C /u);
+      expect(path.getAttribute("d")).toMatch(/^M 50,0/u);
       expect(path.getAttribute("d")).toMatch(/ 70,-300$/u);
     });
 
@@ -315,7 +323,7 @@ describe("LinkEdge", () => {
       const path = edgeGroup(lead.container).querySelector(
         ".react-flow__edge-path",
       ) as SVGPathElement;
-      expect(path.getAttribute("d")).toMatch(/^M 100,50 C /u);
+      expect(path.getAttribute("d")).toMatch(/^M 100,50/u);
       expect(path.getAttribute("d")).toMatch(/ 300,50$/u);
     });
   });

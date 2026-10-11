@@ -337,9 +337,10 @@ export function install(context: CoreContext): void {
       const workspace = workspaceOf(database, workspaceId(match));
       const requested = requestedPath(request);
       const rangeHeader = singleRange(request);
-      // 本机工作空间带 `Range` 时只读那一段（契约 §37.2）：不把整份文件读进
-      // 内存，也不受整份下载的 16 MiB 上限。远端照旧整份取回再切。
-      if (!isRemote(workspace) && rangeHeader !== undefined) {
+      // 本机工作空间（契约 §37.2）：带 `Range` 只读那一段，不带就交给服务器
+      // 边读盘边写——都不把整份文件读进内存，也不受整份下载的 16 MiB 上限。
+      // 远端照旧整份取回再切。
+      if (!isRemote(workspace)) {
         const file = localFile(workspace.rootPath, requested);
         const range = parseRange(rangeHeader, file.size);
         if (range !== undefined) {
@@ -352,6 +353,11 @@ export function install(context: CoreContext): void {
               : readLocalRange(file, range),
           );
         }
+        return {
+          status: 200,
+          file: { absolute: file.absolute, size: file.size },
+          headers: downloadHeaders(file.relative),
+        };
       }
       const { path, bytes } = await downloadBytes(workspace, requested);
       const range = parseRange(rangeHeader, bytes.byteLength);

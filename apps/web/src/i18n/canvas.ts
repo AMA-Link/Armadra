@@ -144,7 +144,8 @@ const zh = {
   "node.delete": "删除",
 
   /* 连线（§3.3；标签按被读取的那一端的类型，§21） */
-  "edge.context": "上下文",
+  "edge.context": "共享上下文",
+  "edge.reference": "引用",
   "edge.sticky": "🗒 便签",
   "edge.file": "文件",
   "edge.dir": "目录",
@@ -367,7 +368,8 @@ const en: Record<keyof typeof zh, string> = {
   "node.duplicate": "Duplicate",
   "node.delete": "Delete",
 
-  "edge.context": "Context",
+  "edge.context": "Shared context",
+  "edge.reference": "Reference",
   "edge.sticky": "🗒 Sticky",
   "edge.file": "File",
   "edge.dir": "Folder",

@@ -2765,6 +2765,8 @@ core 校验远程服务地址与指纹的写法时用具名码（状态均 400�
 
 `Range`、`<img src>`、`<a href download>` 这类由浏览器直接取字节的用法只能走上面的 `GET` 路由：RPC 的 `POST` + JSON 编码既带不了 `Range`，也不是 `src` 能指的地址。下载的 URL 由页面按当前源拼出（`api/files.ts` 的 `fileDownloadUrl`），凭据照旧由 Cookie 或页面代取。自协议 1.21 起这条路由认单个 `Range` 区间，Bearer 的源可改用媒体票的地址让浏览器直接取（§37.4）。
 
+**整份下载流式**（#337）：本机工作空间的 `file-download` 不带 `Range` 时，core 边读盘边写响应（`HandlerResult.file`，`http/server.ts::sendFile`），`content-length` 取打开时的大小，不把整份读进内存，也不再有整份下载的 16 MiB 上限；读盘失败或文件在途中变短时断开连接，客户端得到的是中断的下载而不是截断却成功的文件。远端工作空间照旧分块取回，上限不变。
+
 ### 37.3 输出到画板的代码块
 
 自协议 1.18 起。§14.5 那条路由的 procedure 形式 `files.exportText`，实现在 `core/assets/routes.ts`，旧路径与 procedure 调同一份。

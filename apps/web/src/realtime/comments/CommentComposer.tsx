@@ -7,7 +7,9 @@ import { Button } from "@/ui/button";
 import { Command, CommandEmpty, CommandItem, CommandList } from "@/ui/command";
 import { IconButton } from "@/ui/icon-button";
 import { Popover, PopoverAnchor, PopoverContent } from "@/ui/popover";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/ui/tabs";
 import { Textarea } from "@/ui/textarea";
+import { CommentBody } from "./CommentBody";
 import { decodeMentions, encodeMentions } from "./store";
 
 /**
@@ -15,6 +17,9 @@ import { decodeMentions, encodeMentions } from "./store";
  * （`Command`，上下键选、回车确认），选中的人在发出前换成提及记号。
  *
  * 离线时发送禁用、草稿留着；`⌘/Ctrl + Enter` 发送。
+ *
+ * 「编辑 / 预览」两个页签：预览与发出后的正文同一个 `CommentBody`（同样的
+ * 收紧规则），随输入实时变化。
  */
 export interface CommentComposerProps {
   people: readonly CommentPerson[];
@@ -62,6 +67,7 @@ export function CommentComposer({
   } | null>(null);
   const [active, setActive] = React.useState(0);
   const [busy, setBusy] = React.useState(false);
+  const [tab, setTab] = React.useState<"write" | "preview">("write");
   const area = React.useRef<HTMLTextAreaElement>(null);
 
   const matches = React.useMemo(() => {
@@ -109,6 +115,7 @@ export function CommentComposer({
       setText("");
       setPicked([]);
       setMention(null);
+      setTab("write");
     } finally {
       setBusy(false);
     }
@@ -157,46 +164,67 @@ export function CommentComposer({
 
   return (
     <div data-slot="comment-composer" className="flex flex-col gap-2">
-      <Popover
-        open={mention !== null}
-        onOpenChange={(open) => !open && setMention(null)}
+      <Tabs
+        value={tab}
+        onValueChange={(value) => {
+          setTab(value === "preview" ? "preview" : "write");
+          setMention(null);
+        }}
+        className="gap-1.5"
       >
-        <PopoverAnchor asChild>
-          <Textarea
-            ref={area}
-            value={text}
-            rows={2}
-            autoFocus={autoFocus}
-            placeholder={placeholder}
-            aria-label={placeholder}
-            className="min-h-16 resize-none"
-            onChange={(event) =>
-              sync(event.target.value, event.target.selectionStart)
-            }
-            onKeyDown={onKeyDown}
+        <TabsList variant="line" className="h-7">
+          <TabsTrigger value="write">{t("comments.write")}</TabsTrigger>
+          <TabsTrigger value="preview">{t("comments.preview")}</TabsTrigger>
+        </TabsList>
+        <TabsContent value="write">
+          <Popover
+            open={mention !== null}
+            onOpenChange={(open) => !open && setMention(null)}
+          >
+            <PopoverAnchor asChild>
+              <Textarea
+                ref={area}
+                value={text}
+                rows={2}
+                autoFocus={autoFocus}
+                placeholder={placeholder}
+                aria-label={placeholder}
+                className="min-h-16 resize-none"
+                onChange={(event) =>
+                  sync(event.target.value, event.target.selectionStart)
+                }
+                onKeyDown={onKeyDown}
+              />
+            </PopoverAnchor>
+            <PopoverContent
+              align="start"
+              className="w-56 p-0"
+              onOpenAutoFocus={(event) => event.preventDefault()}
+            >
+              <Command value={activeId} shouldFilter={false}>
+                <CommandList>
+                  <CommandEmpty>{t("comments.noPeople")}</CommandEmpty>
+                  {matches.map((person) => (
+                    <CommandItem
+                      key={person.principalId}
+                      value={person.principalId}
+                      onSelect={() => pick(person)}
+                    >
+                      {person.name}
+                    </CommandItem>
+                  ))}
+                </CommandList>
+              </Command>
+            </PopoverContent>
+          </Popover>
+        </TabsContent>
+        <TabsContent value="preview">
+          <CommentBody
+            body={encodeMentions(trimmed, picked)}
+            className="max-h-48 min-h-16 overflow-auto rounded-md border border-input px-2.5 py-2"
           />
-        </PopoverAnchor>
-        <PopoverContent
-          align="start"
-          className="w-56 p-0"
-          onOpenAutoFocus={(event) => event.preventDefault()}
-        >
-          <Command value={activeId} shouldFilter={false}>
-            <CommandList>
-              <CommandEmpty>{t("comments.noPeople")}</CommandEmpty>
-              {matches.map((person) => (
-                <CommandItem
-                  key={person.principalId}
-                  value={person.principalId}
-                  onSelect={() => pick(person)}
-                >
-                  {person.name}
-                </CommandItem>
-              ))}
-            </CommandList>
-          </Command>
-        </PopoverContent>
-      </Popover>
+        </TabsContent>
+      </Tabs>
       <div className="flex items-center gap-2">
         <IconButton
           label={t("comments.mention")}

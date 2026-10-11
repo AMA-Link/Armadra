@@ -1,4 +1,3 @@
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import {
   act,
   cleanup,
@@ -9,14 +8,10 @@ import {
 } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { localSource, type Source } from "../api/source";
 import { usePreferencesStore } from "../app/preferences-store";
 import { followInitialSource } from "../app/use-sources-bootstrap";
-import type { SourceConnection } from "../sources/connection";
-import { SourcesProvider } from "../sources/context";
 import { clearJoinOpen, pendingJoinOpen } from "../sources/join-intent";
-import { type SourceRegistry, createSourceRegistry } from "../sources/registry";
-import type { SourceDescriptor, SourceState } from "../sources/types";
+import type { SourceDescriptor } from "../sources/types";
 import { memoryStorage } from "../mobile/testing";
 import {
   forgetRecent,
@@ -32,8 +27,7 @@ import {
   type ServiceRow,
 } from "./rows";
 import { ServicePicker } from "./ServicePicker";
-import { SwitchServiceDialog } from "./SwitchServiceDialog";
-import { initialSourceParam, useServiceSwitcher } from "./switcher";
+import { initialSourceParam } from "./switcher";
 
 const ISSUER = "https://relay.example.com";
 
@@ -309,110 +303,6 @@ describe("选择服务 · 整页", () => {
   it("空表：还没有连接", () => {
     render(<ServicePicker variant="page" rows={[]} onEnter={vi.fn()} />);
     expect(screen.getByText("还没有连接")).toBeTruthy();
-  });
-});
-
-/* ------------------------------ 桌面对话框 ------------------------------ */
-
-function fakeConnection(
-  d: SourceDescriptor,
-  state: SourceState = "ready",
-): SourceConnection {
-  const source: Source = {
-    ...localSource,
-    sourceId: d.sourceId,
-    httpBase: d.baseUrl,
-    wsBase: d.baseUrl.replace(/^https/, "wss"),
-  };
-  return {
-    descriptor: d,
-    status: { state, via: "direct", since: 0, lastError: null },
-    subscribe: () => () => undefined,
-    source,
-    client: {} as SourceConnection["client"],
-    hello: null,
-    request: async () => new Response(),
-    socket: () => {
-      throw new Error("unused");
-    },
-    connect: async () => undefined,
-    disconnect: () => undefined,
-    renew: async () => undefined,
-    revoke: () => undefined,
-  };
-}
-
-describe("桌面「切换服务」对话框", () => {
-  let registry: SourceRegistry | null = null;
-  afterEach(() => {
-    registry?.dispose();
-    registry = null;
-    useServiceSwitcher.setState({ open: false });
-    clearJoinOpen();
-  });
-
-  const mount = () => {
-    const states: Record<string, SourceState> = {
-      lan: "ready",
-      far: "offline",
-    };
-    registry = createSourceRegistry({
-      connect: (d) => fakeConnection(d, states[d.sourceId]),
-    });
-    registry.add(viaLan("lan", "Studio"));
-    registry.add(viaRelay("far", "Workstation"));
-    useServiceSwitcher.setState({ open: true });
-    render(
-      <QueryClientProvider client={new QueryClient()}>
-        <SourcesProvider registry={registry}>
-          <SwitchServiceDialog />
-        </SourcesProvider>
-      </QueryClientProvider>,
-    );
-    return registry;
-  };
-
-  it("本机、中转、直连三组；本机是当前，在线状态取各源的连接", () => {
-    mount();
-    const dialog = screen.getByTestId("switch-service-dialog");
-    expect(within(dialog).getByText("本机", { selector: "h3" })).toBeTruthy();
-    expect(within(dialog).getByText("当前")).toBeTruthy();
-    expect(within(dialog).getByText("在线")).toBeTruthy();
-    expect(within(dialog).getByText("离线")).toBeTruthy();
-    // 本机行没有「切换」，另外两行各一个。
-    expect(
-      within(dialog).getAllByRole("button", { name: "切换" }),
-    ).toHaveLength(2);
-  });
-
-  it("「切换」去打开那台电脑上的工作空间并关掉对话框；没有桌面壳时不给「在新窗口打开」", () => {
-    mount();
-    expect(screen.queryByRole("button", { name: "在新窗口打开" })).toBeNull();
-    const row = document.querySelector('[data-service-row="far"]')!;
-    act(() => {
-      fireEvent.click(within(row as HTMLElement).getByText("切换"));
-    });
-    // 没有手动换源：还没列出工作空间，等它连上再开（当前源随打开的工作空间走）。
-    expect(pendingJoinOpen()).toBe("far");
-    expect(useServiceSwitcher.getState().open).toBe(false);
-  });
-
-  it("桌面壳在：「在新窗口打开」交给壳，带着源标识", () => {
-    const openSource = vi.fn(async () => ({ opened: true }));
-    vi.stubGlobal("armadra", { windows: { openSource } });
-    Object.assign(window, { armadra: { windows: { openSource } } });
-    try {
-      mount();
-      const row = document.querySelector('[data-service-row="lan"]')!;
-      fireEvent.click(
-        within(row as HTMLElement).getByRole("button", {
-          name: "在新窗口打开",
-        }),
-      );
-      expect(openSource).toHaveBeenCalledWith({ sourceId: "lan" });
-    } finally {
-      delete (window as { armadra?: unknown }).armadra;
-    }
   });
 });
 

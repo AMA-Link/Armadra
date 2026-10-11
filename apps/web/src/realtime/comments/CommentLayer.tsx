@@ -5,8 +5,9 @@ import { toast } from "sonner";
 import type { BoardComment, CanvasNode, CommentAnchor } from "@armadra/shared";
 
 import { useAccess } from "@/app/use-access";
-import { useT } from "@/app/preferences-store";
+import { usePreferencesStore, useT } from "@/app/preferences-store";
 import { nodeBox } from "@/canvas/geometry";
+import { MAX_ZOOM } from "@/canvas/zoom";
 import type { Item } from "@/canvas/whiteboard/model";
 import { useCanvasStore } from "@/store/canvas-store";
 import { IconButton } from "@/ui/icon-button";
@@ -141,6 +142,8 @@ export interface PinCluster {
   key: string;
   at: { x: number; y: number };
   groups: PinGroup[];
+  /** 每枚钉的画布坐标，与 `groups` 一一对应：点开时据此放大到能分开。 */
+  points: { x: number; y: number }[];
 }
 
 /**
@@ -160,10 +163,61 @@ export function clusterPins(
       (cluster) =>
         Math.hypot(cluster.at.x - pin.at.x, cluster.at.y - pin.at.y) < limit,
     );
-    if (near) near.groups.push(pin.group);
-    else clusters.push({ key: pin.group.key, at: pin.at, groups: [pin.group] });
+    if (near) {
+      near.groups.push(pin.group);
+      near.points.push(pin.at);
+    } else {
+      clusters.push({
+        key: pin.group.key,
+        at: pin.at,
+        groups: [pin.group],
+        points: [pin.at],
+      });
+    }
   }
   return clusters;
+}
+
+/** 放大到刚好分开还会贴着，再多放一点。 */
+const SEPARATE_MARGIN = 1.25;
+
+/** 点开聚合钉时相机过渡的时长（关掉动画偏好时为 0）。 */
+const SEPARATE_DURATION_MS = 200;
+
+/**
+ * 能把这几枚钉分开的缩放：最近的两枚在屏幕上也隔开一枚钉的直径（再留点余量）。
+ * 锚点几乎重合、或要放大到超过画布上限才分得开时是 `null`——那时照旧打开
+ * 弹层列出全部线程。
+ */
+export function separatingZoom(
+  points: readonly { x: number; y: number }[],
+  radius = CLUSTER_RADIUS_PX,
+  maxZoom = MAX_ZOOM,
+): number | null {
+  let nearest = Infinity;
+  for (let i = 0; i < points.length; i += 1) {
+    for (let j = i + 1; j < points.length; j += 1) {
+      const a = points[i]!;
+      const b = points[j]!;
+      nearest = Math.min(nearest, Math.hypot(a.x - b.x, a.y - b.y));
+    }
+  }
+  if (!Number.isFinite(nearest) || nearest <= 0) return null;
+  const zoom = (radius * SEPARATE_MARGIN) / nearest;
+  return zoom > maxZoom ? null : zoom;
+}
+
+/** 几枚钉包围盒的中心：放大时相机对准它。 */
+export function pointsCenter(points: readonly { x: number; y: number }[]): {
+  x: number;
+  y: number;
+} {
+  const xs = points.map((point) => point.x);
+  const ys = points.map((point) => point.y);
+  return {
+    x: (Math.min(...xs) + Math.max(...xs)) / 2,
+    y: (Math.min(...ys) + Math.max(...ys)) / 2,
+  };
 }
 
 const NO_NODES: CanvasNode[] = [];
@@ -341,7 +395,22 @@ function Comments({
             >
               <Popover
                 open={!mode && pinKey !== null && members.includes(pinKey)}
-                onOpenChange={(value) => openPin(value ? cluster.key : null)}
+                onOpenChange={(value) => {
+                  // 聚合钉：先放大到能分开；分不开（锚点几乎重合）才列出全部。
+                  const zoomTo =
+                    value && merged ? separatingZoom(cluster.points) : null;
+                  if (zoomTo === null) {
+                    openPin(value ? cluster.key : null);
+                    return;
+                  }
+                  const center = pointsCenter(cluster.points);
+                  const animate =
+                    usePreferencesStore.getState().whiteboard.animation;
+                  void flow.setCenter(center.x, center.y, {
+                    zoom: zoomTo,
+                    duration: animate ? SEPARATE_DURATION_MS : 0,
+                  });
+                }}
               >
                 <PopoverTrigger asChild>
                   <CommentPin

@@ -31,7 +31,13 @@ import {
   readCompatibility,
   releaseNote,
 } from "./compatibility.mjs";
-import { assemble, verifyFeeds } from "./assemble.mjs";
+import { execFileSync } from "node:child_process";
+import {
+  assemble,
+  commitTime,
+  normalizePubDate,
+  verifyFeeds,
+} from "./assemble.mjs";
 
 function scratch() {
   return mkdtempSync(join(tmpdir(), "armadra-assemble-"));
@@ -728,4 +734,111 @@ test("the served-release check catches a corrupted bundle and a stale feed", asy
   } finally {
     rmSync(directory, { recursive: true, force: true });
   }
+});
+
+/** A throwaway repository with one commit at a fixed time, tagged. */
+function taggedRepository(seconds) {
+  const repository = scratch();
+  const git = (...args) =>
+    execFileSync("git", args, {
+      cwd: repository,
+      env: {
+        ...process.env,
+        GIT_AUTHOR_DATE: `@${seconds} +0800`,
+        GIT_COMMITTER_DATE: `@${seconds} +0800`,
+        GIT_CONFIG_NOSYSTEM: "1",
+        HOME: repository,
+      },
+      stdio: ["ignore", "pipe", "ignore"],
+    });
+  git("init", "-q");
+  git(
+    "-c",
+    "user.name=t",
+    "-c",
+    "user.email=t@example.invalid",
+    "commit",
+    "-q",
+    "--allow-empty",
+    "-m",
+    "release",
+  );
+  git(
+    "-c",
+    "user.name=t",
+    "-c",
+    "user.email=t@example.invalid",
+    "tag",
+    "-a",
+    "v0.2.0",
+    "-m",
+    "v0.2.0",
+  );
+  return repository;
+}
+
+test("pub_date is the tag's commit time, else HEAD's, in UTC", () => {
+  const repository = taggedRepository(1_760_000_000);
+  try {
+    const expected = new Date(1_760_000_000 * 1000).toISOString();
+    assert.equal(commitTime("v0.2.0", repository), expected);
+    // A dry run on a branch has no tag yet: the commit it builds stands in.
+    assert.equal(commitTime("v9.9.9", repository), expected);
+    assert.equal(commitTime("", repository), expected);
+  } finally {
+    rmSync(repository, { recursive: true, force: true });
+  }
+  const outside = scratch();
+  try {
+    assert.equal(commitTime("v0.2.0", outside), "");
+  } finally {
+    rmSync(outside, { recursive: true, force: true });
+  }
+});
+
+test("--pub-date takes ISO 8601 and writes it back as UTC", () => {
+  assert.equal(
+    normalizePubDate("2026-10-12T08:00:00+08:00"),
+    "2026-10-12T00:00:00.000Z",
+  );
+  for (const bad of ["yesterday", "1760000000", "2026-13-40T00:00:00Z"])
+    assert.throws(() => normalizePubDate(bad), /ISO 8601/);
+});
+
+test("assembling one tag twice writes the same latest.json with its pub_date", async () => {
+  const pub = new Date(1_760_000_000 * 1000).toISOString();
+  const runs = [];
+  for (let run = 0; run < 2; run += 1) {
+    const directory = scratch();
+    const out = scratch();
+    try {
+      stageAssets({ directory, version: "0.2.0" });
+      const key = generateKey();
+      const result = await assemble({
+        directory,
+        version: "0.2.0",
+        repo: "AMA-Link/Armadra",
+        tag: "v0.2.0",
+        secret: secretFromKey(key),
+        mirror: { base: "https://mirror.example.invalid", out },
+        pub,
+      });
+      assert.deepEqual(result.problems, []);
+      assert.equal(result.manifest.pub_date, pub);
+      const manifest = readFileSync(join(directory, "latest.json"), "utf8");
+      assert.equal(JSON.parse(manifest).pub_date, pub);
+      assert.equal(
+        JSON.parse(readFileSync(join(out, "latest.json"), "utf8")).pub_date,
+        pub,
+      );
+      runs.push(JSON.parse(manifest));
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+      rmSync(out, { recursive: true, force: true });
+    }
+  }
+  // Signatures differ per key; everything the clock could touch does not.
+  for (const run of runs)
+    for (const entry of Object.values(run.platforms)) delete entry.signature;
+  assert.deepEqual(runs[0], runs[1]);
 });

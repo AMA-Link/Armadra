@@ -13,7 +13,7 @@ import { GeneralPage } from "./GeneralPage";
 import { KeybindingsPage } from "./KeybindingsPage";
 import { MachinesPage } from "./MachinesPage";
 import { NotificationsPage } from "./NotificationsPage";
-import { RemoteAccessPage } from "./RemoteAccessPage";
+import { RemoteAccessPage } from "./remote-access/RemoteAccessPage";
 import { ServicePage } from "./ServicePage";
 import { SessionsPage } from "./SessionsPage";
 import { TerminalLookPage } from "./TerminalLookPage";

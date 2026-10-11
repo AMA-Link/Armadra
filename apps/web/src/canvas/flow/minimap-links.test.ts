@@ -1,8 +1,7 @@
 // @vitest-environment node
 import { describe, expect, it } from "vitest";
 
-import type { Box } from "../geometry";
-import { linkCurve } from "./edges/link-path";
+import { bezierControls, edgeGeometry, type Box } from "../geometry";
 import {
   boxesExtent,
   MINIMAP_LINK_MAX_WIDTH,
@@ -36,15 +35,16 @@ const edge = (
   }) as never;
 
 describe("minimapLinkSegment", () => {
-  it("和画布同一条曲线：相对边的中点之间的三次贝塞尔，坐标取整", () => {
+  it("相对边的中点之间的三次贝塞尔，坐标取整", () => {
     const source = box(0, 0);
     const target = box(300.4, 200.6);
-    const curve = linkCurve(source, target, "free");
+    const geometry = edgeGeometry(source, target, "free");
+    const { c1, c2 } = bezierControls(geometry);
     const r = Math.round;
     expect(minimapLinkSegment(source, target, "free")).toBe(
-      `M${r(curve.sourceX)},${r(curve.sourceY)}` +
-        `C${r(curve.c1.x)},${r(curve.c1.y)} ${r(curve.c2.x)},${r(curve.c2.y)} ` +
-        `${r(curve.targetX)},${r(curve.targetY)}`,
+      `M${r(geometry.sourceX)},${r(geometry.sourceY)}` +
+        `C${r(c1.x)},${r(c1.y)} ${r(c2.x)},${r(c2.y)} ` +
+        `${r(geometry.targetX)},${r(geometry.targetY)}`,
     );
   });
 
