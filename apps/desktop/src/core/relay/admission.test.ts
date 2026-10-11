@@ -122,6 +122,33 @@ describe("HTTP 准入", () => {
     }
   });
 
+  it("配对码的换票与 PAKE 只给局域网直连：经中继一律 403 pairing_code_disabled", async () => {
+    for (const path of [
+      "/api/gateway/pairing-code/exchange",
+      "/api/gateway/pairing-code/pake/start",
+      "/api/gateway/pairing-code/pake/finish",
+    ]) {
+      for (const clientOrigin of [ISSUER, null]) {
+        const answer = await tunnel.request({
+          method: "POST",
+          path,
+          headers: {
+            "content-type": "application/json",
+            ...(clientOrigin === null ? {} : { origin: clientOrigin }),
+          },
+          body: "{}",
+          clientOrigin,
+        });
+        expect(answer.status, `${path} ${clientOrigin}`).toBe(403);
+        if (clientOrigin !== null) {
+          expect(JSON.parse(answer.body.toString("utf8")).code).toBe(
+            "pairing_code_disabled",
+          );
+        }
+      }
+    }
+  });
+
   it("没有来源：只有 /health 与身份域的匿名面", async () => {
     expect((await get("/health")).status).toBe(200);
     // 这台测试 core 没装身份域的原样路由（答 501）：要看的是门放行了它。
