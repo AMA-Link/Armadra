@@ -1,5 +1,9 @@
 import { z } from "zod";
-import { healthSchema } from "@armadra/shared";
+import {
+  UPDATES_RELEASES_PATH,
+  healthSchema,
+  updateReleasesSchema,
+} from "@armadra/shared";
 import { request } from "./request";
 
 /* ------------------------------------ 数据 -------------------------------- */
@@ -26,6 +30,15 @@ export const systemApi = {
    * 存活探针，页面问的是 core 那份文档，所以走带 `/api` 前缀的那一条。
    */
   health: () => request("/api/health", healthSchema),
+  /**
+   * 发布历史（契约 §64）。`refresh` 绕过 core 的 6 小时缓存；取不到时 core 仍答
+   * 200，带上次缓存与 `error`。
+   */
+  updateReleases: (refresh = false) =>
+    request(
+      refresh ? `${UPDATES_RELEASES_PATH}?refresh=1` : UPDATES_RELEASES_PATH,
+      updateReleasesSchema,
+    ),
   /* ----------------------------------- 数据 ----------------------------- */
   /** 数据目录、数据库大小、对话索引条数、日志保留天数（§24.1 数据页）。 */
   dataInfo: () => request("/api/data/info", dataInfoSchema),
