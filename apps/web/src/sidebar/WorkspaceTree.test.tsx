@@ -36,10 +36,12 @@ vi.mock("../api/client", () => ({
     createWorkspace: vi.fn(),
     deliveries: vi.fn().mockResolvedValue([]),
     cloneDefaults: vi.fn().mockResolvedValue({ parent: "/home/me/Projects" }),
-    cloneRepositories: vi
-      .fn()
-      .mockResolvedValue({ connected: false, account: null, repositories: [] }),
   },
+}));
+
+vi.mock("../api/forge", () => ({
+  forgeAccounts: vi.fn().mockResolvedValue([]),
+  forgeRepositories: vi.fn().mockResolvedValue({ items: [], nextCursor: null }),
 }));
 
 vi.mock("../platform", () => ({

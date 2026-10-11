@@ -1,6 +1,5 @@
 import {
   gitCloneDefaultsSchema,
-  gitCloneRepositoriesSchema,
   gitCloneRequestSchema,
   gitCloneStartedSchema,
   gitCloneStatusSchema,
@@ -220,7 +219,4 @@ export const gitApiFor = (rpc: () => ArmadraClient) => ({
   /** 克隆的缺省父目录（§65.1）；拿不到家目录时是空串。 */
   cloneDefaults: async () =>
     gitCloneDefaultsSchema.parse(await rpc().git.clone.defaults({})),
-  /** 已连接 GitHub 账号能克隆的仓库（§65.2）；未连接时 `connected` 为假。 */
-  cloneRepositories: async () =>
-    gitCloneRepositoriesSchema.parse(await rpc().git.clone.repositories({})),
 });

@@ -1,4 +1,3 @@
-import { githubDomain } from "../github";
 import type { CoreContext } from "../main";
 import { affectsRepositories, invalidate } from "./discovery";
 import { RepositoryService } from "./repository/service";
@@ -57,7 +56,6 @@ export function install(context: CoreContext): void {
     database: context.db.database,
     service,
     owners,
-    account: () => githubDomain()?.credentials,
   });
   active = (workspaceId) =>
     [...owners]

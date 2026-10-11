@@ -4070,13 +4070,7 @@ mod 在 `session.start` 用 `$.command.register` 注册七条命令（都是 `im
 - **失败**：GitHub 拒绝凭据（`401` / `403`）答 `502 forge_credential_rejected`，其余失败与答的不是数组答 `502 forge_unavailable`；两者都记一次凭据失败，设置页的状态据此显示。
 - **克隆凭据**：克隆私有仓库用用户自己的 Git 设置（credential helper、SSH 密钥），core 不把 API 令牌交给 `git`。
 
-<!-- rpc:begin contract=§65.2 -->
-
-| procedure                | kind  | input     | output                                                                                                                                         | errors                                                        | scope      | 自   | 原路径                            |
-| ------------------------ | ----- | --------- | ---------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------- | ---------- | ---- | --------------------------------- |
-| `git.clone.repositories` | query | 可省 `{}` | `{ connected: boolean, account: string \| null, repositories: { fullName: string, cloneUrl: string, private: boolean, updatedAt: string }[] }` | `forbidden`、`forge_credential_rejected`、`forge_unavailable` | `git:read` | 1.38 | `GET /api/git/clone-repositories` |
-
-<!-- rpc:end -->
+> **已撤回（协议 1.38 发布前）**：`GET /api/git/clone-repositories` 与 `git.clone.repositories` 不再提供，上面 §65.2 的描述只作记录。新建工作空间的仓库列表改用 §29.7 的 `forge.accounts` / `forge.repositories`（GitHub、Gitea、GitLab，游标分页，带 `sshUrl` 与 `defaultBranch`）。§65.1 的 `GET /api/git/clone-defaults` 不变。
 
 ## 66. 设置 `keymap.enabled`：快捷键总开关
 
