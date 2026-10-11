@@ -123,9 +123,27 @@ describe("run and event shapes", () => {
         label: "l",
         state: "waiting",
       },
+      {
+        type: "workflow.task",
+        taskId: "sess:t1",
+        boardId: "b",
+        coordinatorNodeId: "lead",
+        nodeId: "m",
+        status: "done",
+      },
     ]) {
       expect(workspaceEventSchema.safeParse(event).success).toBe(true);
     }
+    expect(
+      workspaceEventSchema.safeParse({
+        type: "workflow.task",
+        taskId: "t",
+        boardId: "b",
+        coordinatorNodeId: "lead",
+        nodeId: "m",
+        status: "blocked",
+      }).success,
+    ).toBe(false);
   });
 });
 

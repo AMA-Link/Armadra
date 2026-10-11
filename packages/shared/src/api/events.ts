@@ -32,6 +32,7 @@ import { programStatusSchema } from "./terminals.js";
 import {
   workflowDraftEventSchema,
   workflowGateEventSchema,
+  workflowTaskEventSchema,
   workflowRunEventSchema,
 } from "./workflows.js";
 
@@ -286,6 +287,7 @@ export const workspaceEventSchema = z.discriminatedUnion("type", [
   workflowDraftEventSchema,
   workflowRunEventSchema,
   workflowGateEventSchema,
+  workflowTaskEventSchema,
   /**
    * 自动化计划的三种时刻（契约 §27）：到点起跑、一次运行失败、连续失败到要人
    * 处理。只带标识与稳定码，不带命令与输出。

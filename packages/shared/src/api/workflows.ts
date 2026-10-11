@@ -348,6 +348,16 @@ export const workflowGateEventSchema = z.object({
   nodeId: z.string().optional(),
 });
 
+/** 协调者分派出去的任务换了状态（§15.4、§15.7）；不带正文。 */
+export const workflowTaskEventSchema = z.object({
+  type: z.literal("workflow.task"),
+  taskId: z.string(),
+  boardId: z.string(),
+  coordinatorNodeId: z.string(),
+  nodeId: z.string(),
+  status: z.enum(["running", "done", "failed", "stopped"]),
+});
+
 /* ------------------------------- §15.6 ------------------------------------ */
 
 /** 自动化目标的种类名（`/api/automations/*` 的 `target.kind`）。 */
