@@ -297,6 +297,8 @@
   --z-dock: 20;
   --z-cluster: 26;
   --z-banners: 27;
+  /* 被分享会话的只读查看页（`shared-session/`），盖住画布上的浮层 */
+  --z-shared-session: 28;
   --z-tabbar: 30;
   --z-focus: 40;
   --z-menu: 46;
