@@ -42,3 +42,30 @@ export function workspaceRequest(
     ...(createDirectory ? { createDirectory: true } : {}),
   };
 }
+
+/**
+ * 克隆地址的名单，与 core 的 `validateCloneUrl`（契约 §40.1）同一套规则：只认
+ * `https://host/path`、`ssh://host/path` 与 `user@host:path`。页面先挡一道，
+ * 让按钮在地址明显不对时就不可点；最终由 core 判。
+ */
+export function isCloneUrl(raw: string): boolean {
+  const url = raw.trim();
+  if (url === "" || url.length > 2_048) return false;
+  if (!/^[A-Za-z0-9\-._~:/@%+=,]+$/.test(url)) return false;
+  for (const scheme of ["https://", "ssh://"]) {
+    if (!url.startsWith(scheme)) continue;
+    const rest = url.slice(scheme.length);
+    const slash = rest.indexOf("/");
+    if (slash < 0) return false;
+    const authority = rest.slice(0, slash);
+    const host = authority.slice(authority.lastIndexOf("@") + 1);
+    return host !== "" && rest.slice(slash + 1) !== "";
+  }
+  const at = url.indexOf("@");
+  if (at <= 0) return false;
+  const remainder = url.slice(at + 1);
+  const colon = remainder.indexOf(":");
+  if (colon <= 0) return false;
+  const host = remainder.slice(0, colon);
+  return !host.includes("/") && remainder.slice(colon + 1) !== "";
+}

@@ -7,7 +7,7 @@
 // 注入（技能、说明与 Hook，经 Worker 中继回到 core）；同一台主机上的 SSH 节点以
 // ACP 驱动（适配器经 ssh 起在那边，答一轮、切终端再切回）；本机工作空间里一个跑在
 // 假远端 SSH 终端里的 Agent 把交接材料交给本机 Agent，转录经那台主机的 Worker
-// 读（契约 §21.1），执行主机页显示 Worker 版本并重新同步（§21.2）。每一步都截图。
+// 读（契约 §21.1），执行主机行带 Worker 版本，SSH 主机子页重新同步（§21.2）。每一步都截图。
 //
 // 「远端」是这台机器自己，经一个**假 ssh**：core 的 `ARMADRA_REMOTE_WORKER_LAUNCHER`
 // 本来就替换每条 `ssh` 启动行的 argv[0]（`core/remote/index.ts`），探针把它指到
@@ -367,8 +367,8 @@ async function scenario(ctx) {
   /* --------------------------- 1. 建远端工作空间 --------------------------- */
 
   await attempt(ctx, "01-remote-workspace", async () => {
-    // 远程机器表里点名称进这台机器的子页：在那台机器上打开项目在那里。
-    await openSettings(page, "远程机器");
+    // SSH 主机表里点名称进这台机器的子页：在那台机器上打开项目在那里。
+    await openSettings(page, "SSH");
     await page.click('[role="dialog"] table button', HOST_NAME, {
       exact: true,
     });
@@ -1283,12 +1283,7 @@ async function scenario(ctx) {
       "集成状态给出 outdatedHosts（同一构建的 Worker 不在其中）",
       JSON.stringify(integration.outdatedHosts),
     );
-    await openSettings(page, "远程机器");
-    await page.waitFor(
-      `return [...document.querySelectorAll('[role="dialog"] table td')]
-         .some((cell) => cell.innerText.trim() === ${JSON.stringify(String(row.worker?.version ?? ""))});`,
-      { what: "远程机器表的 Worker 版本" },
-    );
+    await openSettings(page, "SSH");
     await page.click('[role="dialog"] table button', HOST_NAME, {
       exact: true,
     });

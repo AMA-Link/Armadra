@@ -686,6 +686,26 @@ describe("git.clone：任务模型（只起任务、答 jobId，进度轮询）"
   });
 });
 
+describe("git.clone.defaults / repositories：新建工作空间对话框（§65）", () => {
+  it("三条路答同一份缺省父目录与未连接的仓库列表", async () => {
+    expectParity(
+      await three("GET", "/api/git/clone-defaults", "git.clone.defaults", {}),
+    );
+    const repositories = await three(
+      "GET",
+      "/api/git/clone-repositories",
+      "git.clone.repositories",
+      {},
+    );
+    expectParity(repositories);
+    expect(repositories[0].body).toEqual({
+      connected: false,
+      account: null,
+      repositories: [],
+    });
+  });
+});
+
 describe("git 域：入参形状错只比码与状态", () => {
   it("缺字段、类型不对：旧路径与 procedure 由入参校验答 bad_request", async () => {
     const repo = repository("parity-git-shape");
@@ -725,7 +745,7 @@ describe("git 域：入参形状错只比码与状态", () => {
 
 describe("git 域：契约与路由表", () => {
   it("meta.scope 与路由表给旧路径的要求一致；旧路径都在路由表里", () => {
-    expect(entries.length).toBe(17);
+    expect(entries.length).toBe(19);
     for (const entry of entries) {
       const legacyRoute = entry.meta.legacy!;
       expect(

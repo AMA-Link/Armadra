@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import {
+  forgeAccountListSchema,
   forgeAutoMergeSchema,
   forgeBranchDeletionSchema,
   forgeChecksSchema,
@@ -14,6 +15,7 @@ import {
   forgeMergedSchema,
   forgePullPageSchema,
   forgePullSchema,
+  forgeRepositoryPageSchema,
 } from "../api/forge.js";
 import { errors } from "./errors.js";
 import { meta, oc } from "./meta.js";
@@ -194,6 +196,39 @@ export const forge = {
         ...base,
         scope: "github:read",
         legacy: { method: "GET", path: REPO },
+      }),
+    ),
+
+  /* ------------------------------ 列仓库 -------------------------------- */
+  /** 能列仓库的账号：配了凭据的 GitHub 与带令牌的主机级配置（§29.7）。 */
+  accounts: oc
+    .input(z.object({}))
+    .output(forgeAccountListSchema)
+    .meta(
+      meta({
+        ...base,
+        since: "1.38",
+        scope: "github:read",
+        legacy: { method: "GET", path: "/api/forge/accounts" },
+      }),
+    ),
+  /** 一个账号能看到的仓库，带克隆地址，最近更新的在前；翻页同 issues。 */
+  repositories: oc
+    .input(
+      z.object({
+        host: z.string(),
+        cursor: z.string().optional(),
+        limit: z.union([z.number(), z.string()]).optional(),
+      }),
+    )
+    .output(forgeRepositoryPageSchema)
+    .errors(read)
+    .meta(
+      meta({
+        ...base,
+        since: "1.38",
+        scope: "github:read",
+        legacy: { method: "GET", path: "/api/forge/accounts/{host}/repos" },
       }),
     ),
 

@@ -1,13 +1,8 @@
 import * as React from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { FolderInput, Plus, RefreshCw } from "lucide-react";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { ChevronRight, FolderInput, Plus, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
-import {
-  executionHostPackageSchema,
-  sshHostSchema,
-  type ExecutionHost,
-  type SshHost,
-} from "@armadra/shared";
+import { sshHostSchema, type SshHost } from "@armadra/shared";
 
 import { runtimeApi } from "../../../api/client";
 import { useT } from "../../../app/preferences-store";
@@ -18,7 +13,7 @@ import { SettingsGroup } from "../SettingsGroup";
 import { SettingsRow } from "../SettingsRow";
 import { useSubpage } from "../subpage";
 import { useRuntimeSettings } from "../use-runtime-settings";
-import { HealthTable, MachinesTable } from "./execution-hosts/MachinesTable";
+import { MachinesTable } from "./execution-hosts/MachinesTable";
 import { HostKeyDialog } from "./ssh/HostKeyDialog";
 import {
   ResponsiveAlertDialog,
@@ -28,19 +23,16 @@ import {
   ResponsiveAlertDialogFooter,
   ResponsiveAlertDialogHeader,
   ResponsiveAlertDialogTitle,
-  ResponsiveDialog,
-  ResponsiveDialogContent,
-  ResponsiveDialogHeader,
-  ResponsiveDialogTitle,
 } from "@/panels/ResponsiveDialog";
 import { Button } from "@/ui/button";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/ui/collapsible";
 import { Empty, EmptyContent, EmptyHeader, EmptyTitle } from "@/ui/empty";
 import { Input } from "@/ui/input";
 import { Spinner } from "@/ui/spinner";
-import { Switch } from "@/ui/switch";
-import { Textarea } from "@/ui/textarea";
-
-export const EXECUTION_HOSTS_KEY = ["execution-hosts"] as const;
 
 /** 执行主机的显示名；一台配置被删掉的主机不显示成「本机」。 */
 export function executionHostLabel(
@@ -53,59 +45,22 @@ export function executionHostLabel(
 }
 
 /**
- * 设置里的 SSH 主机与 core 的执行主机是同一台机器的两面：前者是连接参数，
- * 后者是 Worker 状态与工作区数。这里按 SSH 主机的顺序合成一行；core 还没答
- * 执行主机表时，用连接参数补一行，Worker 列显示「未配置」或空。
- */
-export function machineRows(
-  ssh: readonly SshHost[],
-  hosts: readonly ExecutionHost[],
-): ExecutionHost[] {
-  return ssh.map(
-    (entry) =>
-      hosts.find((host) => host.executionHostId === entry.id) ?? {
-        executionHostId: entry.id,
-        name: entry.name,
-        kind: "ssh",
-        ssh: entry,
-        workerConfigured: entry.worker !== undefined,
-        workspaceCount: 0,
-      },
-  );
-}
-
-/**
- * 设置 → 远程机器（§2.6）：SSH 主机与执行主机合成一张表。
+ * 设置 → SSH：主机表（名称 · 地址 · 验证），点名称进子页编辑。
  *
- * 「验证」一步问完两件事——`ssh` 通不通、那台机器上的 Worker 是不是这个
- * 构建——结果一句话。点名称进子页：连接参数、主机密钥、重新同步、在那台
- * 机器上打开项目、健康记录。表尾是添加、全部重新同步、导入 / 导出。当前
- * 工作区跑在哪台、怎么切换在「工作空间」页。
+ * 「验证」一步问完两件事——`ssh` 通不通、配了 Worker 时那台机器上的 Worker
+ * 是不是这个构建——结果一句话。当前工作区跑在哪台、怎么切换在「工作空间」页。
  *
  * 主机表存在 Runtime 的 `settings.json` 里：PATCH 对数组是整段替换，所以增删
  * 改都是「读整段、改一条、写整段」。
  */
 export function MachinesPage() {
   const t = useT();
-  const client = useQueryClient();
   const compact = useCompactLayout();
   const subpage = useSubpage();
   const { settings, save } = useRuntimeSettings();
-  const [packaging, setPackaging] = React.useState(false);
   const ssh = React.useMemo(
     () => settings.data?.ssh?.hosts ?? [],
     [settings.data],
-  );
-  const hosts = useQuery({
-    queryKey: EXECUTION_HOSTS_KEY,
-    queryFn: runtimeApi.executionHosts,
-    retry: false,
-    // Worker 在线与健康记录跟着 core 变，不等人刷新。
-    refetchInterval: 15_000,
-  });
-  const rows = React.useMemo(
-    () => machineRows(ssh, hosts.data ?? []),
-    [ssh, hosts.data],
   );
 
   const validate = useMutation({
@@ -138,37 +93,6 @@ export function MachinesPage() {
       }),
   });
 
-  // 全部重新同步：配了 Worker 的逐台来（每台都要重连 ssh），一台失败不挡
-  // 后面的；最后一句话说清成了几台、哪几台没成。
-  const syncable = rows.filter((host) => host.workerConfigured);
-  const resyncAll = useMutation({
-    mutationFn: async () => {
-      const failed: string[] = [];
-      for (const host of syncable) {
-        try {
-          await runtimeApi.resyncExecutionHost(host.executionHostId);
-        } catch {
-          failed.push(host.name || host.executionHostId);
-        }
-      }
-      return { done: syncable.length - failed.length, failed };
-    },
-    onSettled: () => {
-      void client.invalidateQueries({ queryKey: EXECUTION_HOSTS_KEY });
-      void client.invalidateQueries({ queryKey: ["agent-integration"] });
-    },
-    onSuccess: ({ done, failed }) => {
-      if (failed.length === 0) {
-        toast.success(t("executionHosts.fleet.resyncAllDone", { count: done }));
-        return;
-      }
-      toast.error(
-        t("executionHosts.fleet.resyncAllFailed", { count: failed.length }),
-        { description: failed.join(", ") },
-      );
-    },
-  });
-
   function write(next: SshHost[]) {
     save.mutate({ ssh: { hosts: next } });
     subpage.close();
@@ -177,7 +101,6 @@ export function MachinesPage() {
   if (subpage.current?.startsWith("ssh:")) {
     const reference = subpage.current.slice("ssh:".length);
     const existing = ssh.find((host) => host.id === reference);
-    const row = rows.find((host) => host.executionHostId === reference);
     return (
       <>
         <HostForm
@@ -195,7 +118,7 @@ export function MachinesPage() {
           }
           onCancel={subpage.close}
         />
-        {existing && <MachineActions host={existing} row={row} />}
+        {existing && <MachineActions host={existing} />}
       </>
     );
   }
@@ -213,7 +136,7 @@ export function MachinesPage() {
 
   return (
     <>
-      {rows.length === 0 ? (
+      {ssh.length === 0 ? (
         <SettingsGroup>
           <Empty className="py-6">
             <EmptyHeader>
@@ -226,68 +149,30 @@ export function MachinesPage() {
         </SettingsGroup>
       ) : (
         <MachinesTable
-          hosts={rows}
+          hosts={ssh}
           compact={compact}
           validating={validate.isPending ? (validate.variables ?? null) : null}
           onValidate={(hostId) => validate.mutate(hostId)}
           onOpen={(hostId) => subpage.open("ssh", hostId)}
         />
       )}
-      <div className="flex flex-wrap items-center gap-2">
-        {rows.length > 0 && add}
-        {syncable.length > 1 && (
-          <Button
-            size="sm"
-            variant="ghost"
-            disabled={resyncAll.isPending}
-            onClick={() => resyncAll.mutate()}
-          >
-            {resyncAll.isPending ? <Spinner aria-hidden /> : <RefreshCw />}
-            {t("executionHosts.fleet.resyncAll")}
-          </Button>
-        )}
-        <Button size="sm" variant="ghost" onClick={() => setPackaging(true)}>
-          {t("executionHosts.package")}
-        </Button>
-      </div>
-      <ResponsiveDialog open={packaging} onOpenChange={setPackaging}>
-        <ResponsiveDialogContent className="z-[var(--z-dialog)] sm:max-w-lg">
-          <ResponsiveDialogHeader>
-            <ResponsiveDialogTitle>
-              {t("executionHosts.package")}
-            </ResponsiveDialogTitle>
-          </ResponsiveDialogHeader>
-          <PackageGroup
-            onImported={() => {
-              setPackaging(false);
-              void client.invalidateQueries({ queryKey: EXECUTION_HOSTS_KEY });
-              void client.invalidateQueries({ queryKey: ["settings"] });
-            }}
-          />
-        </ResponsiveDialogContent>
-      </ResponsiveDialog>
+      {ssh.length > 0 && <div>{add}</div>}
     </>
   );
 }
 
 /**
- * 一台机器子页的下半：主机密钥、重新同步（配了 Worker 时）、在那台机器上
- * 打开项目（配了 Worker 时）、健康记录。
+ * 一台主机子页的下半：在那台机器上打开项目（配了 Worker 时）、主机密钥、
+ * 重新同步（配了 Worker 时：重连 Worker、重新握手，再把画布注入同步一次，
+ * 契约 §21.2；Worker 升级后靠它对齐）。
  */
-function MachineActions({
-  host,
-  row,
-}: {
-  host: SshHost;
-  row: ExecutionHost | undefined;
-}) {
+function MachineActions({ host }: { host: SshHost }) {
   const t = useT();
   const client = useQueryClient();
-  // 重新同步（契约 §21.2）：重连 Worker、重新握手，再把画布注入同步一次。
   const resync = useMutation({
     mutationFn: () => runtimeApi.resyncExecutionHost(host.id),
     onSuccess: (result) => {
-      void client.invalidateQueries({ queryKey: EXECUTION_HOSTS_KEY });
+      void client.invalidateQueries({ queryKey: ["execution-hosts"] });
       void client.invalidateQueries({ queryKey: ["agent-integration"] });
       toast.success(
         t("executionHosts.resynced", {
@@ -301,33 +186,23 @@ function MachineActions({
       }),
   });
   return (
-    <>
-      <SettingsGroup>
+    <SettingsGroup>
+      {host.worker && <OpenRemoteProject host={host} />}
+      <SettingsRow label={null}>
+        <HostKeyDialog host={host} />
         {host.worker && (
-          <SettingsRow label={t("executionHosts.column.worker")}>
-            <span className="text-[13px] text-muted-foreground tabular-nums">
-              {row?.worker?.outdated
-                ? t("executionHosts.worker.outdated")
-                : (row?.worker?.version ?? "—")}
-            </span>
-            <Button
-              size="sm"
-              variant="secondary"
-              disabled={resync.isPending}
-              onClick={() => resync.mutate()}
-            >
-              {resync.isPending ? <Spinner aria-hidden /> : <RefreshCw />}
-              {t("executionHosts.resync")}
-            </Button>
-          </SettingsRow>
+          <Button
+            size="sm"
+            variant="secondary"
+            disabled={resync.isPending}
+            onClick={() => resync.mutate()}
+          >
+            {resync.isPending ? <Spinner aria-hidden /> : <RefreshCw />}
+            {t("executionHosts.resync")}
+          </Button>
         )}
-        {host.worker && <OpenRemoteProject host={host} />}
-        <SettingsRow label={null}>
-          <HostKeyDialog host={host} />
-        </SettingsRow>
-      </SettingsGroup>
-      <HealthTable samples={row?.health ?? []} />
-    </>
+      </SettingsRow>
+    </SettingsGroup>
   );
 }
 
@@ -471,35 +346,60 @@ function HostForm({
   const [form, setForm] = React.useState<HostForm>(() => toForm(existing));
   const [pendingDelete, setPendingDelete] = React.useState(false);
 
-  const fields: Array<{ key: keyof HostForm; label: string }> = [
+  // 常用的五项平铺；额外参数与 Worker 只在要用时展开，已填过的默认展开。
+  const basic: Array<{ key: keyof HostForm; label: string }> = [
     { key: "name", label: t("ssh.field.name") },
     { key: "host", label: t("ssh.field.host") },
     { key: "user", label: t("ssh.field.user") },
     { key: "port", label: t("ssh.field.port") },
     { key: "identityFile", label: t("ssh.field.identity") },
+  ];
+  const advanced: Array<{ key: keyof HostForm; label: string }> = [
     { key: "extraArgs", label: t("ssh.field.extraArgs") },
     { key: "workerPath", label: t("ssh.field.workerPath") },
     { key: "workerStateDir", label: t("ssh.field.workerStateDir") },
   ];
+  const row = (field: { key: keyof HostForm; label: string }) => (
+    <SettingsRow key={field.key} label={field.label}>
+      <Input
+        className="h-8 w-[280px] text-xs"
+        aria-label={field.label}
+        value={form[field.key]}
+        onChange={(event) =>
+          setForm((current) => ({
+            ...current,
+            [field.key]: event.target.value,
+          }))
+        }
+      />
+    </SettingsRow>
+  );
 
   return (
     <>
       <SettingsGroup>
-        {fields.map((field) => (
-          <SettingsRow key={field.key} label={field.label}>
-            <Input
-              className="h-8 w-[280px] text-xs"
-              aria-label={field.label}
-              value={form[field.key]}
-              onChange={(event) =>
-                setForm((current) => ({
-                  ...current,
-                  [field.key]: event.target.value,
-                }))
-              }
-            />
-          </SettingsRow>
-        ))}
+        {basic.map(row)}
+        <Collapsible
+          className="group/advanced"
+          defaultOpen={advanced.some((field) => form[field.key].trim() !== "")}
+        >
+          <div className="px-4 py-1.5">
+            <CollapsibleTrigger asChild>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="-ml-2 text-[13px] font-normal text-muted-foreground"
+              >
+                <ChevronRight className="transition-transform group-data-[state=open]/advanced:rotate-90" />
+                {t("ssh.advanced")}
+              </Button>
+            </CollapsibleTrigger>
+          </div>
+          <CollapsibleContent className="divide-y divide-border/60 border-t border-border/60">
+            {advanced.map(row)}
+          </CollapsibleContent>
+        </Collapsible>
       </SettingsGroup>
 
       <div className="flex items-center justify-between gap-2">
@@ -560,102 +460,4 @@ function HostForm({
       </ResponsiveAlertDialog>
     </>
   );
-}
-
-/**
- * 导出 / 导入。
- *
- * 包里只有「机器在哪、Worker 怎么起」，没有任何能用来认证的东西——
- * `identityFile` 是一条路径，由那台机器自己解析。所以把它贴给自己的另一台
- * 设备是安全的，页脚把这一点说出来。
- */
-function PackageGroup({ onImported }: { onImported: () => void }) {
-  const t = useT();
-  const [text, setText] = React.useState("");
-  const [overwrite, setOverwrite] = React.useState(false);
-
-  const exportHosts = useMutation({
-    mutationFn: runtimeApi.exportExecutionHosts,
-    onSuccess: async (result) => {
-      const encoded = JSON.stringify(result, null, 2);
-      try {
-        await navigator.clipboard.writeText(encoded);
-        toast.success(t("executionHosts.exported"));
-      } catch {
-        // 剪贴板可能被拒；把 JSON 放进输入框总比什么都没有强。
-        setText(encoded);
-      }
-    },
-    onError: (cause: Error) =>
-      toast.error(t("executionHosts.exportFailed"), {
-        description: cause.message,
-      }),
-  });
-
-  const importHosts = useMutation({
-    mutationFn: () => {
-      const parsed = executionHostPackageSchema.safeParse(safeJson(text));
-      if (!parsed.success) throw new Error(t("executionHosts.importInvalid"));
-      return runtimeApi.importExecutionHosts({ ...parsed.data, overwrite });
-    },
-    onSuccess: (result) => {
-      setText("");
-      onImported();
-      toast.success(t("executionHosts.imported", { count: result.length - 1 }));
-    },
-    onError: (cause: Error) =>
-      toast.error(t("executionHosts.importFailed"), {
-        description: cause.message,
-      }),
-  });
-
-  return (
-    <SettingsGroup>
-      <SettingsRow label={null} footnote={t("executionHosts.packageNote")}>
-        <Button
-          size="sm"
-          variant="secondary"
-          disabled={exportHosts.isPending}
-          onClick={() => exportHosts.mutate()}
-        >
-          {t("executionHosts.export")}
-        </Button>
-      </SettingsRow>
-      <div className="flex flex-col gap-2 px-4 py-3">
-        <Textarea
-          value={text}
-          rows={4}
-          placeholder={t("executionHosts.importPlaceholder")}
-          aria-label={t("executionHosts.import")}
-          className="font-mono text-[11px]"
-          onChange={(event) => setText(event.target.value)}
-        />
-        <div className="flex items-center justify-between gap-2">
-          <label className="flex items-center gap-2 text-[12px] text-muted-foreground">
-            <Switch
-              checked={overwrite}
-              aria-label={t("executionHosts.importOverwrite")}
-              onCheckedChange={setOverwrite}
-            />
-            {t("executionHosts.importOverwrite")}
-          </label>
-          <Button
-            size="sm"
-            disabled={text.trim() === "" || importHosts.isPending}
-            onClick={() => importHosts.mutate()}
-          >
-            {t("executionHosts.importConfirm")}
-          </Button>
-        </div>
-      </div>
-    </SettingsGroup>
-  );
-}
-
-function safeJson(text: string): unknown {
-  try {
-    return JSON.parse(text);
-  } catch {
-    return null;
-  }
 }
