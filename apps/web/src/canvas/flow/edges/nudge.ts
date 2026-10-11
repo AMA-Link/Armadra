@@ -11,7 +11,8 @@ import { ROUTE_CLEARANCE } from "./route";
  * - 同一「束」（同一个主派出去的几条派发线）不错开——共用主干正是想要的；
  * - 错开后的线段仍要离障碍 {@link ROUTE_CLEARANCE} 以上，不行就换另一侧，
  *   两侧都不行就留在原地；
- * - 车道按优先级分：派发线留在中线，上下文线、引用线往外让。
+ * - 车道以原线为中心对称排开（两束时各让半个车道，窄缝两侧都留净距）；
+ *   对称放不下时按优先级逐束让：派发线留在原线，上下文线、引用线往外让。
  *
  * 正交折线挪一段只会让相邻两段变长或变短，仍然横平竖直。
  *
@@ -131,6 +132,37 @@ export function nudge(inputs: readonly NudgeInput[]): Map<string, Position[]> {
       const pb = Math.min(...sb.map((s) => s.input.priority));
       return pa === pb ? (a < b ? -1 : a > b ? 1 : 0) : pa - pb;
     });
+    const shift = (members: Segment[], offset: number): void => {
+      for (const segment of members) {
+        const points = pointsOf(segment.input);
+        for (const j of [segment.k, segment.k + 1]) {
+          if (horizontal) points[j]!.y = segment.at + offset;
+          else points[j]!.x = segment.at + offset;
+        }
+      }
+    };
+    // 先试以原线为中心对称排开（两束时各让半个车道）：窄缝里两侧都留得出
+    // 净距。哪一束放不下就退回下面的逐束让道。
+    const symmetric = ordered.map(
+      (_, index) => (index - (ordered.length - 1) / 2) * LANE_GAP,
+    );
+    const fitsAll = ordered.every(([, members], index) =>
+      members.every((segment) =>
+        clear(
+          horizontal,
+          segment.at + symmetric[index]!,
+          segment.lo,
+          segment.hi,
+          segment.input.obstacles,
+        ),
+      ),
+    );
+    if (fitsAll) {
+      ordered.forEach(([, members], index) => {
+        if (symmetric[index] !== 0) shift(members, symmetric[index]!);
+      });
+      return;
+    }
     const used = new Set<number>([0]);
     ordered.forEach(([, members], index) => {
       if (index === 0) return;
@@ -150,13 +182,7 @@ export function nudge(inputs: readonly NudgeInput[]): Map<string, Position[]> {
           );
           if (!fits) continue;
           used.add(offset);
-          for (const segment of members) {
-            const points = pointsOf(segment.input);
-            for (const j of [segment.k, segment.k + 1]) {
-              if (horizontal) points[j]!.y = segment.at + offset;
-              else points[j]!.x = segment.at + offset;
-            }
-          }
+          shift(members, offset);
           return;
         }
       }

@@ -38,15 +38,16 @@ const U = (x0: number, x1: number): Position[] => [
 ];
 
 describe("分道", () => {
-  it("不同束在同一条线上重叠的中间段错开一个车道，优先级高的留在原地", () => {
+  it("不同束在同一条线上重叠的中间段以原线为中心对称错开，相距一个车道", () => {
     const moved = nudge([
       input("dispatch", "d", U(100, 700), {}, 0),
       input("peer", "p", U(150, 650), {}, 1),
     ]);
-    expect(moved.has("dispatch")).toBe(false);
+    const dispatch = moved.get("dispatch")!;
     const peer = moved.get("peer")!;
-    expect(peer[1]!.y).toBe(200 + LANE_GAP);
-    expect(peer[2]!.y).toBe(200 + LANE_GAP);
+    expect(dispatch[1]!.y).toBe(200 - LANE_GAP / 2);
+    expect(peer[1]!.y).toBe(200 + LANE_GAP / 2);
+    expect(peer[2]!.y).toBe(200 + LANE_GAP / 2);
     // 首尾仍在原来的端点上。
     expect(peer[0]).toEqual({ x: 150, y: 100 });
     expect(peer[3]).toEqual({ x: 650, y: 100 });
@@ -60,7 +61,7 @@ describe("分道", () => {
     expect(moved.size).toBe(0);
   });
 
-  it("错开后会压到障碍就换另一侧", () => {
+  it("对称放不下时优先级高的留在原线，另一束往放得下的一侧让", () => {
     const wall: Box = { x: 0, y: 204, width: 900, height: 50 };
     const moved = nudge([
       input("a", "a", U(100, 700), {}, 0),
