@@ -25,7 +25,17 @@ import {
   markdownSource,
 } from "./CommentThread";
 import { CommentsPanelView } from "./CommentsPanel";
-import { bodyParts, decodeMentions, encodeMentions, threadsOf } from "./store";
+import {
+  bodyParts,
+  decodeMentions,
+  encodeMentions,
+  followBoard,
+  openPin,
+  setCommentMode,
+  startDraft,
+  threadsOf,
+  useCommentsStore,
+} from "./store";
 
 /** 评论（契约 §16.3，设计系统 §5.7）。 */
 
@@ -383,5 +393,26 @@ describe("CommentsPanelView", () => {
     cleanup();
     view(threads, true);
     expect(screen.queryByText("已解决 1")).toBeNull();
+  });
+});
+
+describe("评论模式粘住", () => {
+  it("放完钉、换板都不退出评论模式，只清掉上一块板的草稿与打开的钉", () => {
+    setCommentMode(true);
+    startDraft({ kind: "point", x: 1, y: 2 });
+    // 发出后：草稿清掉、钉打开，模式还在。
+    startDraft(null);
+    openPin("point:1:2");
+    expect(useCommentsStore.getState().mode).toBe(true);
+
+    followBoard(null, "b2");
+    const state = useCommentsStore.getState();
+    expect(state.mode).toBe(true);
+    expect(state.draft).toBeNull();
+    expect(state.openPin).toBeNull();
+
+    // 显式关掉才退出。
+    setCommentMode(false);
+    expect(useCommentsStore.getState().mode).toBe(false);
   });
 });
