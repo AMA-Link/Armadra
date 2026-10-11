@@ -206,6 +206,51 @@ export async function startFakeGitea(): Promise<FakeGitea> {
       send(200, { id: 9, login: FAKE_GITEA.login });
       return;
     }
+    if (path === "/user/repos" && method === "GET") {
+      // 两个仓库：这个夹具的仓库，与一个名字不合格、要被丢掉的。每页 `limit` 个。
+      const all = [
+        {
+          id: 1,
+          name: REPO,
+          owner: { login: OWNER },
+          description: "the app",
+          private: true,
+          fork: false,
+          archived: false,
+          default_branch: "main",
+          clone_url: `${root}/${OWNER}/${REPO}.git`,
+          ssh_url: `git@127.0.0.1:${OWNER}/${REPO}.git`,
+          html_url: `${root}/${OWNER}/${REPO}`,
+          updated_at: iso(10),
+        },
+        {
+          id: 2,
+          name: "../evil",
+          owner: { login: OWNER },
+          clone_url: `${root}/${OWNER}/evil.git`,
+        },
+        {
+          id: 3,
+          name: "lib",
+          owner: { login: "team" },
+          private: false,
+          fork: true,
+          default_branch: "trunk",
+          clone_url: `${root}/team/lib.git`,
+          ssh_url: "javascript:alert(1)",
+          html_url: `${root}/team/lib`,
+          updated_at: iso(5),
+        },
+      ];
+      const at = Number(url.searchParams.get("page") ?? "1");
+      const size = Number(url.searchParams.get("limit") ?? "30");
+      const headers: Record<string, string> = {};
+      if (at * size < all.length) {
+        headers.link = `<${root}/api/v1/user/repos?page=${at + 1}&limit=${size}>; rel="next"`;
+      }
+      send(200, all.slice((at - 1) * size, at * size), headers);
+      return;
+    }
     const prefix = `/repos/${OWNER}/${REPO}`;
     if (!path.startsWith(prefix)) {
       send(404, { message: "not found" });

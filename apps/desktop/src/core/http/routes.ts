@@ -1458,6 +1458,18 @@ export const ROUTES: readonly RouteEntry[] = [
   // 托管平台（契约 §29）：与 GitHub 同一档权限（`route-scopes.ts`）；
   // `resolve` 是读，登记时声明 `github:read`。
   {
+    path: "/api/forge/accounts",
+    methods: ["GET"],
+    surface: "runtime",
+    implemented: true,
+  },
+  {
+    path: "/api/forge/accounts/{host}/repos",
+    methods: ["GET"],
+    surface: "runtime",
+    implemented: true,
+  },
+  {
     path: "/api/forge/configs",
     methods: ["GET"],
     surface: "runtime",
