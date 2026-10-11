@@ -86,6 +86,7 @@ describe("契约树", () => {
       "credentials",
       "gateway",
       "diagnostics",
+      "updates",
     ]);
   });
 
