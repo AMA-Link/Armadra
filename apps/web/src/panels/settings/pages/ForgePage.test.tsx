@@ -130,17 +130,18 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe("GitHub credential settings", () => {
-  it("shows what the stored credential can do, including the degraded store", async () => {
+  it("shows one row of badges: availability, account and the degraded store", async () => {
     renderPage(client());
     expect(await screen.findByText("octocat")).toBeTruthy();
-    expect(screen.getByText("现在可以取得令牌")).toBeTruthy();
+    expect(screen.getByText("可用")).toBeTruthy();
     // The 0600 file fallback is named as a fallback, not as "stored securely".
     expect(screen.getByText("0600 文件（降级）")).toBeTruthy();
-    expect(screen.getByText(/系统钥匙串不可用/)).toBeTruthy();
-    expect(screen.getByText("repo, read:org")).toBeTruthy();
+    // No detail table, no notes.
+    expect(screen.queryByText("repo, read:org")).toBeNull();
+    expect(screen.queryByText(/系统钥匙串不可用/)).toBeNull();
   });
 
-  it("shows the machine reason code when no token can be produced", async () => {
+  it("says when no token can be produced, without the machine detail", async () => {
     renderPage(
       client({
         getCredential: vi.fn(async () =>
@@ -155,8 +156,8 @@ describe("GitHub credential settings", () => {
         ),
       }),
     );
-    expect(await screen.findByText("GH_CLI_NOT_LOGGED_IN")).toBeTruthy();
-    expect(screen.getByText("现在取不到令牌")).toBeTruthy();
+    expect(await screen.findByText("不可用")).toBeTruthy();
+    expect(screen.queryByText("GH_CLI_NOT_LOGGED_IN")).toBeNull();
   });
 
   it("keeps the token field a never-refilled password box", async () => {

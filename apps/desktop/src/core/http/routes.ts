@@ -13,6 +13,11 @@
  * 路径参数按 core 自己的 camelCase 拼。
  */
 import { IDENTITY_ROUTES } from "./routes-identity";
+import {
+  FORGE_REPO_ROUTES,
+  REMOTE_SERVICE_ROUTES,
+  WORKFLOW_ROUTES,
+} from "./routes-tables";
 
 export type RouteSurface = "runtime" | "hook";
 
@@ -27,70 +32,6 @@ export interface RouteEntry {
   /** 这个构建真的答。不是 `true` 的答 501。 */
   readonly implemented?: true;
 }
-
-/** `/api/workflows/*` 的路由（契约 §15、§43.2–§43.3）：路径与它收的方法。 */
-const WORKFLOW_ROUTES: readonly RouteEntry[] = (
-  [
-    ["/drafts", ["GET"]],
-    ["/drafts/{draftId}", ["GET"]],
-    ["/drafts/{draftId}/confirm", ["POST"]],
-    ["/drafts/{draftId}/discard", ["POST"]],
-    ["/templates", ["GET", "POST"]],
-    ["/templates/{templateId}", ["GET", "PUT", "DELETE"]],
-    ["/templates/{templateId}/upgrade-schedules", ["POST"]],
-    ["/runs", ["GET", "POST"]],
-    ["/runs/{runId}", ["GET"]],
-    ["/runs/{runId}/cancel", ["POST"]],
-    ["/runs/{runId}/gates/{stepId}", ["POST"]],
-    ["/tasks", ["GET"]],
-    ["/tasks/{taskId}/retry", ["POST"]],
-  ] as const
-).map(([path, methods]) => ({
-  path: `/api/workflows${path}`,
-  methods,
-  surface: "runtime",
-  implemented: true,
-}));
-
-/** `/api/forge/repos/{host}/{owner}/{name}/*` 的路由（契约 §41）：路径与它收的方法。 */
-const FORGE_REPO_ROUTES: readonly RouteEntry[] = (
-  [
-    ["", ["GET"]],
-    ["/issues", ["GET"]],
-    ["/issues/{number}", ["GET", "PATCH"]],
-    ["/pulls", ["GET", "POST"]],
-    ["/pulls/{number}", ["GET"]],
-    ["/pulls/{number}/files", ["GET"]],
-    ["/pulls/{number}/checks", ["GET"]],
-    ["/pulls/{number}/merge", ["POST"]],
-    ["/merge-options", ["GET"]],
-    ["/pulls/{number}/auto-merge", ["POST", "DELETE"]],
-    ["/pulls/{number}/branch", ["DELETE"]],
-  ] as const
-).map(([path, methods]) => ({
-  path: `/api/forge/repos/{host}/{owner}/{name}${path}`,
-  methods,
-  surface: "runtime",
-  implemented: true,
-}));
-
-/** `/api/sources/remotes/{serviceId}/*` 的路由（契约 §33.2、§33.6、§61、§63）。 */
-const REMOTE_SERVICE_ROUTES: readonly RouteEntry[] = (
-  [
-    ["", ["PUT", "DELETE"]],
-    ["/poll", ["POST"]],
-    ["/sources", ["GET"]],
-    ["/mount", ["POST"]],
-    ["/session", ["POST"]],
-    ["/logout", ["POST"]],
-    ["/password", ["POST"]],
-  ] as const
-).map(([path, methods]) => ({
-  path: `/api/sources/remotes/{serviceId}${path}`,
-  methods,
-  surface: "runtime",
-  implemented: true,
-}));
 
 export const ROUTES: readonly RouteEntry[] = [
   // 「被读取 N 次」：谁读过这个节点的上下文（设计 agent-delivery.md §13）。
@@ -753,6 +694,19 @@ export const ROUTES: readonly RouteEntry[] = [
   {
     path: "/api/git/clone/{jobId}",
     methods: ["GET", "DELETE"],
+    surface: "runtime",
+    implemented: true,
+  },
+  // 新建工作空间对话框（契约 §65）：克隆的缺省父目录、已连接账号的仓库。
+  {
+    path: "/api/git/clone-defaults",
+    methods: ["GET"],
+    surface: "runtime",
+    implemented: true,
+  },
+  {
+    path: "/api/git/clone-repositories",
+    methods: ["GET"],
     surface: "runtime",
     implemented: true,
   },
@@ -1457,6 +1411,18 @@ export const ROUTES: readonly RouteEntry[] = [
   },
   // 托管平台（契约 §29）：与 GitHub 同一档权限（`route-scopes.ts`）；
   // `resolve` 是读，登记时声明 `github:read`。
+  {
+    path: "/api/forge/accounts",
+    methods: ["GET"],
+    surface: "runtime",
+    implemented: true,
+  },
+  {
+    path: "/api/forge/accounts/{host}/repos",
+    methods: ["GET"],
+    surface: "runtime",
+    implemented: true,
+  },
   {
     path: "/api/forge/configs",
     methods: ["GET"],

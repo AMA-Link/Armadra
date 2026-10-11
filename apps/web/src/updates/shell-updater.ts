@@ -22,7 +22,7 @@
 export type ShellUpdateState =
   | { state: "notConfigured"; missing: { pubkey: boolean; endpoints: boolean } }
   | { state: "localBuild" }
-  | { state: "unsupported"; reason: ShellUnsupported }
+  | { state: "unsupported"; reason: ShellUnsupported; managed?: ShellManaged }
   | { state: "idle" }
   | { state: "checking" }
   | { state: "upToDate"; checkedAtMs: number }
@@ -48,6 +48,69 @@ export type ShellUpdateState =
   | { state: "failed"; reason: ShellReason; offer: ShellOffer | null };
 
 export type ShellUnsupported = "notDesktop" | "remoteHost" | "managedPackage";
+
+/** How a `managedPackage` installation was put there. */
+export type ShellManagedKind = "dmg" | "deb" | "rpm" | "pacman" | "portable";
+
+/**
+ * The installer to download instead, for an installation the shell must not
+ * replace. `download` is `null` until a check found a newer release that
+ * publishes one for this package.
+ */
+export interface ShellManaged {
+  package: ShellManagedKind;
+  download: { version: string; url: string; notesUrl: string } | null;
+}
+
+const MANAGED_KINDS: readonly string[] = [
+  "dmg",
+  "deb",
+  "rpm",
+  "pacman",
+  "portable",
+];
+
+function https(value: unknown): value is string {
+  if (typeof value !== "string") return false;
+  try {
+    return new URL(value).protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * The `managed` half of an `unsupported{managedPackage}` state, checked: an
+ * unknown package kind is no package, and a download that is not https is no
+ * download. Anything else in the state is the shell's own business.
+ */
+export function shellManaged(state: ShellUpdateState): ShellManaged | null {
+  if (state.state !== "unsupported" || state.reason !== "managedPackage") {
+    return null;
+  }
+  const managed = state.managed as Partial<ShellManaged> | undefined;
+  if (!managed || !MANAGED_KINDS.includes(managed.package as string)) {
+    return null;
+  }
+  const download = managed.download as
+    | Partial<NonNullable<ShellManaged["download"]>>
+    | null
+    | undefined;
+  return {
+    package: managed.package as ShellManagedKind,
+    download:
+      download &&
+      typeof download.version === "string" &&
+      download.version !== "" &&
+      https(download.url)
+        ? {
+            version: download.version,
+            url: download.url,
+            notesUrl: https(download.notesUrl) ? download.notesUrl : "",
+          }
+        : null,
+  };
+}
 
 /** The stable tokens the shell reports. Never a URL, never a message. */
 export const SHELL_REASONS = [

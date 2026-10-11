@@ -336,6 +336,21 @@ describe("the Git routes", () => {
     expect(cancelled.status).toBe(404);
   });
 
+  it("answers the clone defaults and, without GitHub, a disconnected list", async () => {
+    const defaults = await core.call("GET", "/api/git/clone-defaults");
+    expect(defaults.status).toBe(200);
+    expect(typeof (defaults.body as { parent: unknown }).parent).toBe("string");
+
+    // The fixture installs no GitHub domain: no request leaves the process.
+    const repositories = await core.call("GET", "/api/git/clone-repositories");
+    expect(repositories.status).toBe(200);
+    expect(repositories.body).toEqual({
+      connected: false,
+      account: null,
+      repositories: [],
+    });
+  });
+
   it("answers the AI provider list and the staged source", async () => {
     const repo = repository("routes-message");
     repo.write("src/main.ts", "export const one = 1;\n");

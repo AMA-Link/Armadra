@@ -1,3 +1,4 @@
+import type { UpdateReleases } from "@armadra/shared";
 import type { HostSide } from "@/updates/state";
 import type { ShellOffer, ShellUpdateState } from "@/updates/shell-updater";
 
@@ -65,6 +66,22 @@ export const UPDATE_STATES: readonly {
     host: answered("available"),
     shell: { state: "unsupported", reason: "notDesktop" },
   },
+  {
+    id: "managedPackage",
+    host: { kind: "notAsked" },
+    shell: {
+      state: "unsupported",
+      reason: "managedPackage",
+      managed: {
+        package: "dmg",
+        download: {
+          version: OFFER.version,
+          url: "https://releases.armadra.test/Armadra_0.9.0_darwin-aarch64.dmg",
+          notesUrl: OFFER.notesUrl,
+        },
+      },
+    },
+  },
   { id: "idle", host: { kind: "notAsked" }, shell: { state: "idle" } },
   { id: "checking", host: { kind: "checking" }, shell: { state: "checking" } },
   {
@@ -108,3 +125,56 @@ export const UPDATE_STATES: readonly {
     shell: { state: "failed", reason: "digestMismatch", offer: OFFER },
   },
 ];
+
+const asset = (name: string, size: number) => ({
+  name,
+  url: `https://releases.armadra.test/download/${name}`,
+  size,
+  sha256: "cd".repeat(32),
+});
+
+/** 版本历史（契约 §64）的一份答案：当前 0.8.4，最新 0.9.0，GitHub 限流中。 */
+export const RELEASES: UpdateReleases = {
+  current: INSTALLED,
+  channel: "stable",
+  checkedAt: Date.UTC(2026, 9, 3, 8, 0, 0),
+  latest: OFFER.version,
+  error: {
+    code: "rateLimited",
+    message: "rate limited",
+    retryAfterMs: 20 * 60_000,
+  },
+  releases: [
+    {
+      version: OFFER.version,
+      tag: "v0.9.0",
+      publishedAt: "2026-10-03T08:00:00Z",
+      prerelease: false,
+      notes:
+        "## 新功能\n\n- 关于页的版本历史\n- 手机端下载并安装新版本\n\n## 修复\n\n- 未签名的安装包也能验证后安装",
+      url: OFFER.notesUrl,
+      assets: [
+        asset("Armadra_0.9.0_darwin-aarch64.dmg", 120 * 1_048_576),
+        asset("armadra-mobile_0.9.0_android.apk", 42 * 1_048_576),
+      ],
+    },
+    {
+      version: "0.9.0-beta.1",
+      tag: "v0.9.0-beta.1",
+      publishedAt: "2026-09-28T08:00:00Z",
+      prerelease: true,
+      notes: "- 预览版",
+      url: "https://releases.armadra.test/notes/0.9.0-beta.1",
+      assets: [],
+    },
+    {
+      version: INSTALLED,
+      tag: `v${INSTALLED}`,
+      publishedAt: "2026-09-20T08:00:00Z",
+      prerelease: false,
+      notes: "- 稳定性修复",
+      url: "https://releases.armadra.test/notes/0.8.4",
+      assets: [],
+    },
+  ],
+};
