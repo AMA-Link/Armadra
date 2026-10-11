@@ -92,6 +92,7 @@ export const GITLAB_MR: ForgePull = pull(12, "Login rework", {
 
 export const FORGE_CONFIGS: ForgeConfig[] = [
   {
+    workspaceId: null,
     repoKey: "git.example.test",
     forge: "gitea",
     apiBase: "https://git.example.test/api/v1",
@@ -102,6 +103,7 @@ export const FORGE_CONFIGS: ForgeConfig[] = [
     updatedAtMs: AT,
   },
   {
+    workspaceId: null,
     repoKey: "gitlab.example.test/acme/app",
     forge: "gitlab",
     apiBase: "https://gitlab.example.test/api/v4",

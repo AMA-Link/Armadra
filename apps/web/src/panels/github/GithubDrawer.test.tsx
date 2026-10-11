@@ -230,10 +230,16 @@ describe("仓库、issue 与 PR", () => {
       document.querySelector("[data-slot=forge-repository]")?.textContent,
     ).toBe("acme/app");
     expect(screen.getByText("GitHub")).toBeTruthy();
+    // 识别与列表都带上打开面板的工作空间：它自己的托管配置优先（§75）。
+    expect(forgeApi.resolveForge).toHaveBeenCalledWith(
+      "https://github.com/acme/app.git",
+      "workspace-1",
+    );
     expect(forgeApi.forgeIssues).toHaveBeenCalledWith(
       { host: "github.com", owner: "acme", name: "app" },
       "open",
       null,
+      "workspace-1",
     );
     fireEvent.click(screen.getByText("Crash on start"));
     expect(await screen.findByText("Steps to reproduce")).toBeTruthy();
@@ -277,7 +283,12 @@ describe("仓库、issue 与 PR", () => {
     renderDrawer();
     await resolveRemote("git@git.example.test:platform/web/app.git");
     await waitFor(() =>
-      expect(forgeApi.forgeIssues).toHaveBeenCalledWith(nested, "open", null),
+      expect(forgeApi.forgeIssues).toHaveBeenCalledWith(
+        nested,
+        "open",
+        null,
+        "workspace-1",
+      ),
     );
     expect(
       document.querySelector("[data-slot=forge-repository]")?.textContent,
@@ -342,9 +353,9 @@ describe("画布上的连接徽标", () => {
     expect(store.setPanel).toHaveBeenCalledWith("github", "drawer");
     renderDrawer();
     expect(await screen.findByText("Subgroup change")).toBeTruthy();
-    expect(forgeApi.detectForge).toHaveBeenCalledWith(nested);
+    expect(forgeApi.detectForge).toHaveBeenCalledWith(nested, "workspace-1");
     expect(forgeApi.resolveForge).not.toHaveBeenCalled();
-    expect(forgeApi.forgePull).toHaveBeenCalledWith(nested, 31);
+    expect(forgeApi.forgePull).toHaveBeenCalledWith(nested, 31, "workspace-1");
     expect(forgeApi.forgePulls).not.toHaveBeenCalled();
   });
 });

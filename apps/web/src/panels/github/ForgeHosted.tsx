@@ -22,6 +22,7 @@ import {
   type ForgeListState,
   type ForgePull,
   type ForgeRepo,
+  type ForgeScope,
   forgeFailureKey,
   forgeIssue,
   forgeIssues,
@@ -38,20 +39,21 @@ import {
 
 export type ForgeTab = "issues" | "pulls";
 
-function repoKey(repo: ForgeRepo): string {
-  return `${repo.host}/${repo.owner}/${repo.name}`;
+/** 仓库加范围：两个工作空间对同一仓库可能用不同的配置（契约 §75）。 */
+function repoKey(repo: ForgeRepo, scope: ForgeScope): string {
+  return `${scope ?? ""}|${repo.host}/${repo.owner}/${repo.name}`;
 }
 
 export const forgeKeys = {
   all: ["forge"] as const,
-  issues: (repo: ForgeRepo, state: ForgeListState) =>
-    ["forge", "issues", repoKey(repo), state] as const,
-  issue: (repo: ForgeRepo, number: number) =>
-    ["forge", "issue", repoKey(repo), number] as const,
-  pulls: (repo: ForgeRepo, state: ForgeListState) =>
-    ["forge", "pulls", repoKey(repo), state] as const,
-  pull: (repo: ForgeRepo, number: number) =>
-    ["forge", "pull", repoKey(repo), number] as const,
+  issues: (repo: ForgeRepo, state: ForgeListState, scope: ForgeScope = null) =>
+    ["forge", "issues", repoKey(repo, scope), state] as const,
+  issue: (repo: ForgeRepo, number: number, scope: ForgeScope = null) =>
+    ["forge", "issue", repoKey(repo, scope), number] as const,
+  pulls: (repo: ForgeRepo, state: ForgeListState, scope: ForgeScope = null) =>
+    ["forge", "pulls", repoKey(repo, scope), state] as const,
+  pull: (repo: ForgeRepo, number: number, scope: ForgeScope = null) =>
+    ["forge", "pull", repoKey(repo, scope), number] as const,
 };
 
 function when(ms: number | null, locale: string): string {
@@ -91,6 +93,8 @@ function Failure({ error }: { error: unknown }) {
 export interface ForgeHostedProps {
   detection: ForgeDetection;
   locale: string;
+  /** 打开面板的工作空间：它自己的托管配置优先（契约 §75）。 */
+  workspaceId?: ForgeScope;
   /** 关着的面板不发请求。 */
   open: boolean;
   /**
@@ -107,6 +111,7 @@ export interface ForgeHostedProps {
 export function ForgeHosted({
   detection,
   locale,
+  workspaceId = null,
   open,
   focus = null,
 }: ForgeHostedProps) {
@@ -178,6 +183,7 @@ export function ForgeHosted({
         {selected !== null && tab === "issues" ? (
           <IssueDetail
             repo={repo}
+            scope={workspaceId}
             number={selected}
             locale={locale}
             onBack={() => setSelected(null)}
@@ -185,6 +191,7 @@ export function ForgeHosted({
         ) : (
           <IssueList
             repo={repo}
+            scope={workspaceId}
             state={state}
             locale={locale}
             enabled={open && tab === "issues"}
@@ -199,6 +206,7 @@ export function ForgeHosted({
         {selected !== null && tab === "pulls" ? (
           <PullDetail
             repo={repo}
+            scope={workspaceId}
             number={selected}
             locale={locale}
             onBack={() => setSelected(null)}
@@ -206,6 +214,7 @@ export function ForgeHosted({
         ) : (
           <PullList
             repo={repo}
+            scope={workspaceId}
             state={state}
             locale={locale}
             enabled={open && tab === "pulls"}
@@ -245,12 +254,14 @@ function More({
 
 function IssueList({
   repo,
+  scope,
   state,
   locale,
   enabled,
   onOpen,
 }: {
   repo: ForgeRepo;
+  scope: ForgeScope;
   state: ForgeListState;
   locale: string;
   enabled: boolean;
@@ -258,8 +269,8 @@ function IssueList({
 }) {
   const t = useT();
   const issues = useInfiniteQuery({
-    queryKey: forgeKeys.issues(repo, state),
-    queryFn: ({ pageParam }) => forgeIssues(repo, state, pageParam),
+    queryKey: forgeKeys.issues(repo, state, scope),
+    queryFn: ({ pageParam }) => forgeIssues(repo, state, pageParam, scope),
     initialPageParam: null as string | null,
     getNextPageParam: (page) => page.nextCursor,
     enabled,
@@ -294,12 +305,14 @@ function IssueList({
 
 function PullList({
   repo,
+  scope,
   state,
   locale,
   enabled,
   onOpen,
 }: {
   repo: ForgeRepo;
+  scope: ForgeScope;
   state: ForgeListState;
   locale: string;
   enabled: boolean;
@@ -307,8 +320,8 @@ function PullList({
 }) {
   const t = useT();
   const pulls = useInfiniteQuery({
-    queryKey: forgeKeys.pulls(repo, state),
-    queryFn: ({ pageParam }) => forgePulls(repo, state, pageParam),
+    queryKey: forgeKeys.pulls(repo, state, scope),
+    queryFn: ({ pageParam }) => forgePulls(repo, state, pageParam, scope),
     initialPageParam: null as string | null,
     getNextPageParam: (page) => page.nextCursor,
     enabled,
@@ -429,18 +442,20 @@ function Body({ text }: { text: string }) {
 
 function IssueDetail({
   repo,
+  scope,
   number,
   locale,
   onBack,
 }: {
   repo: ForgeRepo;
+  scope: ForgeScope;
   number: number;
   locale: string;
   onBack: () => void;
 }) {
   const issue = useQuery({
-    queryKey: forgeKeys.issue(repo, number),
-    queryFn: () => forgeIssue(repo, number),
+    queryKey: forgeKeys.issue(repo, number, scope),
+    queryFn: () => forgeIssue(repo, number, scope),
     retry: false,
   });
   return (
@@ -478,18 +493,20 @@ function IssueBody({ issue, locale }: { issue: ForgeIssue; locale: string }) {
 
 function PullDetail({
   repo,
+  scope,
   number,
   locale,
   onBack,
 }: {
   repo: ForgeRepo;
+  scope: ForgeScope;
   number: number;
   locale: string;
   onBack: () => void;
 }) {
   const pull = useQuery({
-    queryKey: forgeKeys.pull(repo, number),
-    queryFn: () => forgePull(repo, number),
+    queryKey: forgeKeys.pull(repo, number, scope),
+    queryFn: () => forgePull(repo, number, scope),
     retry: false,
   });
   return (
