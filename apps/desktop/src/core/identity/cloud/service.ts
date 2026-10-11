@@ -3,6 +3,7 @@
  * 隧道 A3-2、服务器壳 CLI A4-4）都经它，不直接碰里面的几块。
  */
 
+import type { ChannelPeer } from "../../relay/e2e/peer";
 import type { CloudLoginResult, CloudLogin } from "./login";
 import {
   type CloudRelay,
@@ -53,6 +54,7 @@ export class CloudService {
     readonly origin: string;
     readonly remoteIp: string;
     readonly userAgent: string;
+    readonly channel?: ChannelPeer | undefined;
   }): Promise<CloudLoginResult> {
     return this.logins.login(input);
   }
@@ -125,5 +127,14 @@ export class CloudService {
   /** 隧道握手的 `auth`：用源私钥签那几行字节。私钥不出这个域。 */
   signBytes(data: Uint8Array): Promise<Uint8Array> {
     return this.key.signBytes(data);
+  }
+
+  /**
+   * 源钥的公钥（Ed25519，32 字节）：端到端通道里它就是这台 core 的身份公钥，客户端
+   * 钉的就是它（契约 §78）。
+   */
+  async identityPublicKey(): Promise<Uint8Array> {
+    const jwk = await this.key.publicJwk();
+    return new Uint8Array(Buffer.from(jwk.x, "base64url"));
   }
 }

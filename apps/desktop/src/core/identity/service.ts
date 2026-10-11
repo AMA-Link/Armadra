@@ -71,7 +71,7 @@ export interface Principal {
   readonly accessExpiresAtMs: number;
   readonly scopes: readonly Scope[];
   /**
-   * 会话绑的端到端通道设备钥（契约 §78）；不经通道签的会话是空串。经隧道的准入
+   * 会话绑的端到端通道设备钥（契约 §77）；不经通道签的会话是空串。经隧道的准入
    * 拿它与这条通道的设备比。
    */
   readonly channelDeviceId?: string;
@@ -123,6 +123,11 @@ export interface RefreshRequest {
    * 的另一台 core）不要。缺省 `true`：只有 HTTP 层按 `csrfRequired` 判过才放宽。
    */
   readonly requireCsrf?: boolean;
+  /**
+   * 这次刷新从哪条端到端通道来（契约 §77）：给了就要求会话绑的就是这把设备钥
+   * （不经通道来的给空串，只能刷新不经通道签的会话）。不给不核（回环、Gateway）。
+   */
+  readonly channelDeviceId?: string;
 }
 
 /** 刷新与登出共用的 CSRF 判定：要核时格式与哈希都得对。 */
@@ -534,7 +539,7 @@ export class IdentityService {
     method: LoginMethod;
     remoteIp?: string;
     userAgent?: string;
-    /** 经中继端到端通道登录时那条通道的设备钥（契约 §78）。 */
+    /** 经中继端到端通道登录时那条通道的设备钥（契约 §77）。 */
     channelDeviceId?: string;
   }): SessionCredentials {
     if (
@@ -755,7 +760,9 @@ export class IdentityService {
       const live = this.liveSession(tx, sessionId, request.origin, now);
       if (
         !matches("refresh", request.refreshToken, live.session.refreshHash) ||
-        !refreshCsrfValid(request, live.session.csrfHash)
+        !refreshCsrfValid(request, live.session.csrfHash) ||
+        (request.channelDeviceId !== undefined &&
+          (live.session.channelDeviceId ?? "") !== request.channelDeviceId)
       ) {
         throw new IdentityError("unauthenticated");
       }

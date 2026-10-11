@@ -17,6 +17,12 @@ export const PAIRING_CODE_EXCHANGE_PATH = "/api/gateway/pairing-code/exchange";
 /** 原生 App 首次连接的配对码 PAKE（契约 §73），同样匿名。 */
 export const PAIRING_PAKE_START_PATH = "/api/gateway/pairing-code/pake/start";
 export const PAIRING_PAKE_FINISH_PATH = "/api/gateway/pairing-code/pake/finish";
+/**
+ * 端到端通道的两条匿名面（契约 §78）：core 的身份公钥（公开的），与新设备等主人
+ * 核对（只在通道上、只认这条通道自己的设备钥，域里判）。
+ */
+export const E2E_IDENTITY_PATH = "/api/e2e/identity";
+export const E2E_WAIT_PATH = "/api/e2e/wait";
 
 /**
  * 配对短码的三条（换票与 PAKE，契约 §24、§73）。只给局域网直连的 Gateway：
@@ -33,8 +39,8 @@ export function pairingCodePath(path: string): boolean {
 /**
  * 不需要会话的那几条：健康探针、身份域自己的登录面（配对、hello、刷新、登录
  * 都在这里，各自认自己的凭据），配对短码换票与它的 PAKE（契约 §24、§73：
- * 手机还没有身份，短码就是凭据，限流与档位在 Gateway 域里判），以及媒体票的
- * 地址（§37.4）。
+ * 手机还没有身份，短码就是凭据，限流与档位在 Gateway 域里判），端到端通道的
+ * 身份公钥与待确认长轮询（§78），以及媒体票的地址（§37.4）。
  */
 export function anonymousPath(path: string): boolean {
   return (
@@ -44,6 +50,8 @@ export function anonymousPath(path: string): boolean {
     path === PAIRING_CODE_EXCHANGE_PATH ||
     path === PAIRING_PAKE_START_PATH ||
     path === PAIRING_PAKE_FINISH_PATH ||
+    path === E2E_IDENTITY_PATH ||
+    path === E2E_WAIT_PATH ||
     mediaPath(path)
   );
 }

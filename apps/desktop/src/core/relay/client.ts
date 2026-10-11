@@ -32,6 +32,7 @@ import {
   type GoawayReason,
   LIMITS,
   RST,
+  TUNNEL_CAPABILITIES,
   TUNNEL_PATH,
   challengeSchema,
   challengeSigningInput,
@@ -88,6 +89,11 @@ export interface TunnelClientOptions {
   readonly signBytes: (data: Uint8Array) => Promise<Uint8Array>;
   /** 隧道流交给它（`CoreServer.createListener({ admitted: true, gate })`）。 */
   readonly listener: { emit(event: "connection", socket: Duplex): boolean };
+  /**
+   * `OPEN { kind: "e2e" }` 的流交给它（端到端通道，契约 §78）。给了就在 `hello` 里报
+   * `e2e` 能力，中继才会开 `_relay/e2e`；不给则这种流答 `RST refused`。
+   */
+  readonly e2e?: (stream: TunnelDuplex) => void;
   /** `wss://` 节点钉扎用的 CA（远程服务的指纹）；`undefined` = 系统信任。 */
   readonly ca: (url: URL) => Promise<string | undefined>;
   /** `ARMADRA_RELAY_ALLOW_INSECURE=1`：放行 `ws://`（探针）。 */
@@ -243,6 +249,7 @@ export class TunnelClient {
         tunnelToken: picked.tunnelToken,
         signBytes: this.options.signBytes,
         listener: this.options.listener,
+        ...(this.options.e2e === undefined ? {} : { e2e: this.options.e2e }),
         handshakeTimeoutMs:
           this.options.handshakeTimeoutMs ?? LIMITS.handshakeTimeoutMs,
         ...(this.options.meter === undefined
@@ -396,6 +403,7 @@ interface ConnectionDeps {
   readonly tunnelToken: string;
   readonly signBytes: (data: Uint8Array) => Promise<Uint8Array>;
   readonly listener: { emit(event: "connection", socket: Duplex): boolean };
+  readonly e2e?: (stream: TunnelDuplex) => void;
   readonly handshakeTimeoutMs: number;
   readonly meter?: TunnelTrafficMeter;
 }
@@ -492,7 +500,8 @@ class TunnelConnection {
         },
         sourceId: this.deps.sourceId,
         coreVersion: this.deps.coreVersion,
-        capabilities: [],
+        capabilities:
+          this.deps.e2e === undefined ? [] : [TUNNEL_CAPABILITIES.e2e],
         tunnelToken: this.deps.tunnelToken,
         nonce: this.nonce,
       });
@@ -700,7 +709,11 @@ class TunnelConnection {
       this.send({ type: "rst", streamId, code: RST.protocol });
       return;
     }
-    if (this.phase !== "ready" || this.streams.size >= this.maxStreams) {
+    if (
+      this.phase !== "ready" ||
+      this.streams.size >= this.maxStreams ||
+      (open.kind === "e2e" && this.deps.e2e === undefined)
+    ) {
       this.send({ type: "rst", streamId, code: RST.refused });
       return;
     }
@@ -709,18 +722,23 @@ class TunnelConnection {
       this.host,
       { streamWindow: this.streamWindow, maxDataChunk: LIMITS.maxDataChunk },
       { issuer: this.deps.issuer, open },
-      this.deps.meter?.stream({
-        route: "relay",
-        issuer: this.deps.issuer,
-        kind: open.kind,
-        path: open.path,
-      }),
+      // 端到端通道的外层流是密文，不按类别计；通道自己记线上字节与内层流。
+      open.kind === "e2e"
+        ? undefined
+        : this.deps.meter?.stream({
+            route: "relay",
+            issuer: this.deps.issuer,
+            kind: open.kind,
+            path: open.path,
+          }),
     );
     // 错误由 HTTP 层处理；这里只防止未处理的 error 事件。
     stream.on("error", () => undefined);
     this.streams.set(streamId, stream);
     this.events.streams();
-    this.deps.listener.emit("connection", stream);
+    // 端到端通道：外层流里是密文单元，交给通道，由它把内层流交给同一个监听。
+    if (open.kind === "e2e") this.deps.e2e?.(stream);
+    else this.deps.listener.emit("connection", stream);
   }
 
   private send(frame: Frame): void {

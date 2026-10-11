@@ -25,6 +25,12 @@ describe("路由要求的 scope", () => {
         if (entry.path === "/api/gateway/pairing-code/exchange") continue;
         // 它的 PAKE（原生 App 首次连接，契约 §73）同一档。
         if (entry.path.startsWith("/api/gateway/pairing-code/pake/")) continue;
+        // 端到端通道的身份公钥与待确认等候先于会话（契约 §78），等候只认通道自己的设备钥。
+        if (
+          entry.path === "/api/e2e/identity" ||
+          entry.path === "/api/e2e/wait"
+        )
+          continue;
         // 云登录同理：断言就是凭据，用它换的正是第一个会话（契约 §31）。
         if (entry.path === "/api/identity/cloud/login") continue;
         if (router.requiredScope(method, entry.path) === undefined) {

@@ -85,7 +85,9 @@ export function loopbackOnlyPath(path: string): boolean {
     path.startsWith("/control/") ||
     path.startsWith("/context-link/") ||
     path.startsWith("/browser/") ||
-    path === "/verify"
+    path === "/verify" ||
+    // 本机设备钥签名（契约 §78.3）：只给本机的页面。
+    path === "/api/e2e/sign"
   );
 }
 
