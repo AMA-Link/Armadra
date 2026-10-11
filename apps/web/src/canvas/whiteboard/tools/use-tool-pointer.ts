@@ -9,7 +9,6 @@ import {
   getNextStyle,
   isDrawingTool,
   setDerivedSize,
-  setTool,
   useTool,
 } from "../../interaction/tool-store";
 import { rememberPointer } from "../../interaction/pointer";
@@ -39,6 +38,11 @@ import { snapToGrid } from "./grid";
  * 已经建好，收不回来。所以「绘图工具不框选」只能由
  * `flow/flow-options.ts` 关掉 `selectionOnDrag` 来保证，这里的
  * `stopPropagation` 只负责挡住真正装在 DOM 上的那些监听器（d3-drag 等）。
+ *
+ * 选中的工具是粘住的：落成一个对象之后**不**切回选择（#299：
+ * 画笔、形状、文字用一次就跳回选择）。换工具只有用户自己的显式
+ * 动作——Dock、`canvas.tool.*` 快捷键与命令面板、`Esc`（`escape-to-select.ts`），
+ * 以及锁定视图（锁上之后除选择外一概不能用）。
  *
  * 手形工具**不在**这里：它是一次视口平移，与空格、中键是同一件事，所以
  * 归 `flow/flow-options.panOnDrag`（工具是「手」时含 0）。同一个手势有两份
@@ -108,7 +112,8 @@ export function useToolPointer(): ToolPointerState {
         addItems([item]);
         select([item.id]);
       }
-      if (!latest.current.preferences.toolLock) setTool("select");
+      // 工具不自己退回选择：画完一笔、放完一个形状，下一下还是同一个工具，
+      // 直到用户自己换（Dock、快捷键、命令面板、Esc）。
     };
 
     const onMove = (event: PointerEvent) => {
@@ -146,7 +151,6 @@ export function useToolPointer(): ToolPointerState {
         const item = textItemAt(at, createItemId());
         addItems([item]);
         select([item.id]);
-        if (!active.preferences.toolLock) setTool("select");
         return;
       }
 

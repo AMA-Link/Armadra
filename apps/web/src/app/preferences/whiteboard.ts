@@ -95,7 +95,10 @@ export interface WhiteboardPreferences {
   dynamicSize: boolean;
   /** 视口动画：`flow/use-flow-viewport.duration()`，关掉就是 0ms 直接跳。 */
   animation: boolean;
-  /** 画完一个对象后工具不退回选择：`tools/use-tool-pointer.finish`。 */
+  /**
+   * 已不改变行为：工具现在总是粘住，画完不退回选择（#299）。开关与 `Q` 键
+   * （`canvas.toggleToolLock`）的去留随快捷键审计（#296）一起定。
+   */
   toolLock: boolean;
   /** 框选判据：`<ReactFlow selectionMode>` 的 `Full`（开）/ `Partial`（关）。 */
   wrap: boolean;
