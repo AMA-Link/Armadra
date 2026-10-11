@@ -276,110 +276,118 @@ async function setup() {
 }
 
 // 终端用 /bin/sh 与 cat，Windows 上没有。
-describe.skipIf(process.platform === "win32")("分享出去的人看得见内容（契约 §60，#308）", () => {
-  for (const [target, role] of [
-    ["host", "viewer"],
-    ["host", "editor"],
-    ["workspace", "viewer"],
-  ] as const) {
-    it(`${target === "host" ? "整台" : "工作空间"} ${role}：列得出工作空间、打得开画板，终端只读附着`, async () => {
-      const { core, owner, workspaceId, boards, sessionId } = await setup();
+describe.skipIf(process.platform === "win32")(
+  "分享出去的人看得见内容（契约 §60，#308）",
+  () => {
+    for (const [target, role] of [
+      ["host", "viewer"],
+      ["host", "editor"],
+      ["workspace", "viewer"],
+    ] as const) {
+      it(`${target === "host" ? "整台" : "工作空间"} ${role}：列得出工作空间、打得开画板，终端只读附着`, async () => {
+        const { core, owner, workspaceId, boards, sessionId } = await setup();
+        const guest = await member(core, owner, {
+          targetKind: target,
+          workspaceId,
+          role,
+        });
+
+        const listed = await call(guest, "GET", "/api/workspaces");
+        expect(listed.status, JSON.stringify(listed.body)).toBe(200);
+        expect(
+          (listed.body as { id: string }[]).map((one) => one.id),
+        ).toContain(workspaceId);
+        const rpcListed = await call(
+          guest,
+          "POST",
+          "/api/rpc/workspaces/list",
+          {
+            json: {},
+          },
+        );
+        expect(rpcListed.status, JSON.stringify(rpcListed.body)).toBe(200);
+        expect(
+          (await call(guest, "POST", `/api/workspaces/${workspaceId}/open`, {}))
+            .status,
+        ).toBe(200);
+        const guestBoards = await call(
+          guest,
+          "GET",
+          `/api/workspaces/${workspaceId}/boards`,
+        );
+        expect(guestBoards.status).toBe(200);
+        expect(guestBoards.body).toEqual(boards);
+        expect(
+          (await call(guest, "GET", `/api/workspaces/${workspaceId}/sessions`))
+            .status,
+        ).toBe(200);
+
+        // 修之前：`…/ws` 按写入判，只能读的人一律 403，终端节点一片空白。
+        const attached = await attach(guest, sessionId);
+        expect(attached.status).toBe(101);
+        if (!("send" in attached)) return;
+        expect(
+          await eventually(async () => attached.output().includes("ready")),
+        ).toBe(true);
+        attached.send("guest-was-here");
+        await new Promise((done) => setTimeout(done, 400));
+        expect(await screen(owner, sessionId)).not.toContain("guest-was-here");
+        attached.close();
+      });
+    }
+
+    it("能驱动的人附着照旧可写", async () => {
+      const { core, owner, sessionId } = await setup();
       const guest = await member(core, owner, {
-        targetKind: target,
-        workspaceId,
-        role,
+        targetKind: "host",
+        role: "driver",
       });
+      const attached = await attach(guest, sessionId);
+      expect(attached.status).toBe(101);
+      if (!("send" in attached)) return;
+      attached.send("driver-was-here");
+      expect(
+        await eventually(async () =>
+          (await screen(owner, sessionId)).includes("driver-was-here"),
+        ),
+      ).toBe(true);
+      attached.close();
+    });
 
-      const listed = await call(guest, "GET", "/api/workspaces");
-      expect(listed.status, JSON.stringify(listed.body)).toBe(200);
-      expect((listed.body as { id: string }[]).map((one) => one.id)).toContain(
+    it("会话查看者：只读附着那一条会话，别的会话与画布照旧 403", async () => {
+      const { core, owner, workspaceId, sessionId, otherSessionId } =
+        await setup();
+      const guest = await member(core, owner, {
+        targetKind: "session",
         workspaceId,
-      );
-      const rpcListed = await call(guest, "POST", "/api/rpc/workspaces/list", {
-        json: {},
+        targetId: sessionId,
+        role: "viewer",
       });
-      expect(rpcListed.status, JSON.stringify(rpcListed.body)).toBe(200);
-      expect(
-        (await call(guest, "POST", `/api/workspaces/${workspaceId}/open`, {}))
-          .status,
-      ).toBe(200);
-      const guestBoards = await call(
-        guest,
-        "GET",
-        `/api/workspaces/${workspaceId}/boards`,
-      );
-      expect(guestBoards.status).toBe(200);
-      expect(guestBoards.body).toEqual(boards);
-      expect(
-        (await call(guest, "GET", `/api/workspaces/${workspaceId}/sessions`))
-          .status,
-      ).toBe(200);
-
-      // 修之前：`…/ws` 按写入判，只能读的人一律 403，终端节点一片空白。
       const attached = await attach(guest, sessionId);
       expect(attached.status).toBe(101);
       if (!("send" in attached)) return;
       expect(
         await eventually(async () => attached.output().includes("ready")),
       ).toBe(true);
-      attached.send("guest-was-here");
+      attached.send("session-viewer-was-here");
       await new Promise((done) => setTimeout(done, 400));
-      expect(await screen(owner, sessionId)).not.toContain("guest-was-here");
+      expect(await screen(owner, sessionId)).not.toContain(
+        "session-viewer-was-here",
+      );
       attached.close();
-    });
-  }
 
-  it("能驱动的人附着照旧可写", async () => {
-    const { core, owner, sessionId } = await setup();
-    const guest = await member(core, owner, {
-      targetKind: "host",
-      role: "driver",
+      expect((await attach(guest, otherSessionId)).status).toBe(403);
+      expect(
+        (await call(guest, "GET", `/api/workspaces/${workspaceId}/boards`))
+          .status,
+      ).toBe(403);
+      expect(
+        (
+          await call(guest, "POST", `/api/terminals/${sessionId}/paste`, {
+            text: "x",
+          })
+        ).status,
+      ).toBe(403);
     });
-    const attached = await attach(guest, sessionId);
-    expect(attached.status).toBe(101);
-    if (!("send" in attached)) return;
-    attached.send("driver-was-here");
-    expect(
-      await eventually(async () =>
-        (await screen(owner, sessionId)).includes("driver-was-here"),
-      ),
-    ).toBe(true);
-    attached.close();
-  });
-
-  it("会话查看者：只读附着那一条会话，别的会话与画布照旧 403", async () => {
-    const { core, owner, workspaceId, sessionId, otherSessionId } =
-      await setup();
-    const guest = await member(core, owner, {
-      targetKind: "session",
-      workspaceId,
-      targetId: sessionId,
-      role: "viewer",
-    });
-    const attached = await attach(guest, sessionId);
-    expect(attached.status).toBe(101);
-    if (!("send" in attached)) return;
-    expect(
-      await eventually(async () => attached.output().includes("ready")),
-    ).toBe(true);
-    attached.send("session-viewer-was-here");
-    await new Promise((done) => setTimeout(done, 400));
-    expect(await screen(owner, sessionId)).not.toContain(
-      "session-viewer-was-here",
-    );
-    attached.close();
-
-    expect((await attach(guest, otherSessionId)).status).toBe(403);
-    expect(
-      (await call(guest, "GET", `/api/workspaces/${workspaceId}/boards`))
-        .status,
-    ).toBe(403);
-    expect(
-      (
-        await call(guest, "POST", `/api/terminals/${sessionId}/paste`, {
-          text: "x",
-        })
-      ).status,
-    ).toBe(403);
-  });
-});
+  },
+);
