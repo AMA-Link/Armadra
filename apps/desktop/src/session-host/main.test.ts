@@ -110,6 +110,7 @@ describe("shutdown-if-idle", () => {
           asked.push(request);
           return { kind: "left", pid: 7 };
         },
+        registered: () => [],
       }),
     ).resolves.toBe(0);
     expect(asked).toEqual([
@@ -129,6 +130,7 @@ describe("shutdown-if-idle", () => {
         platform: "win32",
         log: () => {},
         request: async () => ({ kind: "failed", reason: "timed out" }),
+        registered: () => [],
       }),
     ).resolves.toBe(0);
   });
@@ -146,6 +148,67 @@ describe("shutdown-if-idle", () => {
         }),
       ).resolves.toBe(2);
     }
+  });
+
+  /**
+   * The installer only knows the default data directory; a core started with
+   * another `ARMADRA_DATA_DIR` has a host on another pipe with another key.
+   */
+  it("also asks every directory a running host recorded, once each", async () => {
+    const asked: string[] = [];
+    const forgotten: string[] = [];
+    const lines: string[] = [];
+    await expect(
+      runShutdownIfIdle({
+        argv: ["C:\\Users\\a\\AppData\\Local\\Armadra"],
+        platform: "win32",
+        log: (line) => lines.push(line),
+        request: async ({ dataDir }) => {
+          asked.push(dataDir);
+          return dataDir === "D:\\gone"
+            ? { kind: "absent", reason: "no key" }
+            : { kind: "busy", pid: 9 };
+        },
+        registered: () => [
+          { file: "a.json", dataDir: "D:\\work\\armadra", pid: 9 },
+          // The default directory again, spelled differently: asked once.
+          {
+            file: "b.json",
+            dataDir: "c:\\users\\a\\appdata\\local\\armadra",
+            pid: 10,
+          },
+          { file: "c.json", dataDir: "D:\\gone", pid: 11 },
+        ],
+        forget: (file) => forgotten.push(file),
+      }),
+    ).resolves.toBe(0);
+    expect(asked).toEqual([
+      "C:\\Users\\a\\AppData\\Local\\Armadra",
+      "D:\\work\\armadra",
+      "D:\\gone",
+    ]);
+    // Only the entry whose host is not there any more.
+    expect(forgotten).toEqual(["c.json"]);
+    expect(lines.join("\n")).toContain('"dataDir":"D:\\\\work\\\\armadra"');
+  });
+
+  it("still asks its own directory when the registry cannot be read", async () => {
+    const asked: string[] = [];
+    await expect(
+      runShutdownIfIdle({
+        argv: ["C:\\data"],
+        platform: "win32",
+        log: () => {},
+        request: async ({ dataDir }) => {
+          asked.push(dataDir);
+          return { kind: "left", pid: 1 };
+        },
+        registered: () => {
+          throw new Error("EACCES");
+        },
+      }),
+    ).resolves.toBe(0);
+    expect(asked).toEqual(["C:\\data"]);
   });
 
   it("does nothing off Windows", async () => {

@@ -11,6 +11,7 @@ import {
   pipeEndpoint,
 } from "../core/terminal/session-host/protocol";
 import { loadNodePty } from "../core/terminal/pty";
+import { registeredHosts } from "../core/terminal/session-host/registry";
 import { requestShutdownIfIdle } from "../core/terminal/session-host/shutdown";
 import { lockPath } from "./lock";
 import { run } from "./main";
@@ -382,6 +383,7 @@ describe.runIf(process.platform === "win32")(
       const code = await run({
         argv: [dataDir],
         orphanExitMs: 300,
+        registryDir: join(dataDir, "registry"),
         log: (line) => lines.push(line),
       });
       expect(code).toBe(0);
@@ -395,6 +397,7 @@ describe.runIf(process.platform === "win32")(
       const exited = run({
         argv: [dataDir],
         orphanExitMs: 60_000,
+        registryDir: join(dataDir, "registry"),
         log: (line) => lines.push(line),
       });
       let outcome: Awaited<ReturnType<typeof requestShutdownIfIdle>> = {
@@ -416,6 +419,9 @@ describe.runIf(process.platform === "win32")(
         "session host leaving: shutdownIfIdle",
       );
       expect(existsSync(lockPath(dataDir))).toBe(false);
+      // It recorded itself for the installer and removed the entry on leaving.
+      expect(lines.join("\n")).not.toContain("could not record this host");
+      expect(registeredHosts(join(dataDir, "registry"))).toEqual([]);
     }, 30_000);
   },
 );
