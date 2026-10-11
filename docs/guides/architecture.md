@@ -660,6 +660,10 @@ core 关停与启动中途失败走同一条收尾（`main.ts` 的 `teardown`）
     （经中继、直连 Gateway）：在别处时只对眼前设备有意义的分区不列，「在访达中打开」不出，更新页只读报
     主机版本；ownerOnly 的页在这时按那台 core 的身份会话判（`app/use-access.ts`）。页面正走的路在
     远程访问页上不给关闭、登出与移除。
+    经中继的流量由传输层自己记（`sources/traffic-meter.ts`，契约 §76 的客户端一侧）：`bearerFetch` /
+    `ticketedWebSocket` 与托管流按源与类别（与 core 共用 `trafficCategory`）累加请求体、响应体与每条消息的
+    载荷，每 60 秒与页面隐藏时按本地日并进 `localStorage`（保留 90 天）；连接页每行写本月上下行，「流量」
+    看今日 / 本月 / 全部与按类别的比例（`traffic/`）。
     CSRF 只在
     Cookie 会话上核对，Bearer 不是环境凭据（`identity/http.ts::csrfRequired`）。Gateway 的每个答案带
     HSTS 与 `nosniff`，接口答案再带沙箱 CSP 与缺省 `no-store`（`gateway/csp.ts`）。
