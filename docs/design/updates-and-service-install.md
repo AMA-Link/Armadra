@@ -26,7 +26,7 @@
 | 唯一版本源 | 写于 Rust/Go 阶段：根 `Cargo.toml` 的 `[workspace.package].version`，与 `tauri.conf.json`、各 `package.json`、Host 构建信息里的版本必须相等，一条脚本拦截不一致。`Cargo.toml`、Tauri 与 Go 构建信息已不存在，唯一版本源现状应是根 `package.json`（或等价的单一来源），具体校验脚本以现有 `tools/release/*` 为准 |
 | 标签       | `v<major>.<minor>.<patch>[-beta.N]`；带预发布后缀的标签在 GitHub 打 `prerelease`，Host 据此归入 BETA（`source.go` 已实现）                                                                                                                                                                                      |
 | 通道       | `stable` 只看最终版；`beta` 看最新（含预发布）；`development` 是没有经过 CI 的本地构建，永不更新（`ReasonDevelopment` 已实现）。CI 通过 `ARMADRA_RELEASE_CHANNEL` 注入，桌面壳与 Host 都从构建信息读取                                                                                                          |
-| 发布来源   | `https://api.github.com/repos/yovinchen/Armadra`。Host 用 `--updates-source` 配置；桌面壳在 CI 打包时经 `tauri build --config` 覆盖注入 `plugins.updater.endpoints`，源码里的 `tauri.conf.json` 保持为空                                                                                                        |
+| 发布来源   | `https://api.github.com/repos/AMA-Link/Armadra`。Host 用 `--updates-source` 配置；桌面壳在 CI 打包时经 `tauri build --config` 覆盖注入 `plugins.updater.endpoints`，源码里的 `tauri.conf.json` 保持为空                                                                                                         |
 | 发布形态   | CI 只创建 **draft** Release；人工审阅产物清单与说明后点击发布。Host 已跳过 draft，所以未发布前任何客户端都看不到                                                                                                                                                                                                |
 | 说明       | Release body = `CHANGELOG.md` 对应段落 + 一个 ` ```armadra-compatibility ` 围栏（§1.4）。围栏之外的内容 Host 不读                                                                                                                                                                                               |
 
@@ -169,7 +169,7 @@ stateDiagram-v2
 1. `pnpm tauri signer generate -w <本机私钥路径>`；公钥写入 `tauri.conf.json` 的 `plugins.updater.pubkey`（可提交），私钥与口令进入 GitHub secret `TAURI_SIGNING_PRIVATE_KEY` / `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`，本机副本进入密码管理器后删除。
    在此之前 `apps/desktop/scripts/signing.mjs` 在打包开工前就判定这一次是签、是跳过还是拒绝，
    不让「缺私钥」变成二十分钟之后的 `Missing comment in public key`；步骤与判定表写在[开发指南](../guides/development.md#更新签名)。
-2. `bundle.createUpdaterArtifacts: true`；`plugins.updater.active: true`；`endpoints` 留空，由 CI 用 `--config` 注入 `https://github.com/yovinchen/Armadra/releases/latest/download/latest.json`。
+2. `bundle.createUpdaterArtifacts: true`；`plugins.updater.active: true`；`endpoints` 留空，由 CI 用 `--config` 注入 `https://github.com/AMA-Link/Armadra/releases/latest/download/latest.json`。
 3. `updates.rs` 的 `a_complete_updater_block_is_configured` 测试改为断言「源码配置有 pubkey、无 endpoints」，防止把地址写死进仓库。
 4. 首个带签名的版本发布后，旧的无签名安装只能手动升级一次；发布说明写明。
 
