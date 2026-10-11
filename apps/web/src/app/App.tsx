@@ -29,6 +29,7 @@ import { useCompactLayout } from "@/platform/layout";
 import { TooltipProvider } from "@/ui/tooltip";
 import { useCommandDispatch } from "./commands";
 import { useAgentNotifications } from "./notifications";
+import { useThresholdAlerts } from "../panels/resources/threshold-alerts";
 import { syncDocumentPreferences } from "./preferences-store";
 import { useAppKeybindings } from "./use-app-keybindings";
 import { useLocaleMirror } from "./use-locale-mirror";
@@ -109,6 +110,7 @@ function AppShell() {
   // 节点徽标属于画布，不属于侧栏：镜像在这里补齐，与面板开合无关。
   useAgentStatusHydration(workspace?.id ?? null);
   useAgentNotifications();
+  useThresholdAlerts();
   useBoardSync();
   const dispatch = useCommandDispatch();
   useAppKeybindings(dispatch);
