@@ -2346,7 +2346,7 @@ GitLab（自托管与 gitlab.com 同一套 `/api/v4`）记作 `gitlab`，经 §2
 | `sources.update`    | mutation | `{ sourceId: string, label?: string, orderIndex?: integer, baseUrl?: string, relayOrigin?: string }`        | `{ sourceId: string, kind: "local" \| "direct" \| "relayed" \| "hosted", label: string, baseUrl: string, relayOrigin: string, fingerprint: string, cloudIssuer: string, principalHint: string, addedAtMs: integer, lastOkAtMs: integer, orderIndex: integer, hasCredentials: boolean, routes: ({ via: "direct" \| "relayed", origin: string, cloudIssuer: string, fingerprint: string, preferred: boolean, lastOkAtMs: integer })[], defaultLabel: string, origin: "mine" \| "shared", ownerLabel: string, shareRole: "" \| "viewer" \| "editor" \| "operator" \| "driver", shareExpiresAtMs: integer }`                                                                                                                                                        | `unauthenticated`、`forbidden`、`bad_request`、`address_invalid`、`address_https_only`、`address_plaintext_loopback_only`、`address_has_credentials`、`not_found`                                                                                            | `settings:write` | 1.3 | `PUT /api/sources/{sourceId}`          |
 | `sources.remove`    | mutation | `{ sourceId: string }`                                                                                      | `{}`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            | `unauthenticated`、`forbidden`、`not_found`、`conflict`                                                                                                                                                                                                      | `settings:write` | 1.3 | `DELETE /api/sources/{sourceId}`       |
 | `sources.forget`    | mutation | `{ sourceId: string }`                                                                                      | `{}`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            | `unauthenticated`、`forbidden`、`not_found`、`conflict`                                                                                                                                                                                                      | `settings:write` | 1.3 | `POST /api/sources/{sourceId}/forget`  |
-| `sources.session`   | mutation | `{ sourceId: string, via?: "direct" \| "relayed", route?: { via: "direct" \| "relayed", origin: string } }` | `{ accessToken: string, accessExpiresAtMs: integer, httpBase: string, wsBase: string, via: "direct" \| "relayed", relayToken?: string, relayTokenExpiresAtMs?: integer }`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       | `unauthenticated`、`forbidden`、`not_found`、`conflict`、`source_unauthorized`、`source_unreachable`                                                                                                                                                         | `settings:write` | 1.3 | `POST /api/sources/{sourceId}/session` |
+| `sources.session`   | mutation | `{ sourceId: string, via?: "direct" \| "relayed", route?: { via: "direct" \| "relayed", origin: string } }` | `{ accessToken: string, accessExpiresAtMs: integer, httpBase: string, wsBase: string, via: "direct" \| "relayed", relayToken?: string, relayTokenExpiresAtMs?: integer }`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       | `unauthenticated`、`forbidden`、`not_found`、`conflict`、`source_unauthorized`、`source_unreachable`、`device_pending`、`device_rejected`、`identity_changed`                                                                                                | `settings:write` | 1.3 | `POST /api/sources/{sourceId}/session` |
 
 <!-- rpc:end -->
 
@@ -2602,9 +2602,9 @@ core 校验远程服务地址与指纹的写法时用具名码（状态均 400�
 
 <!-- rpc:begin contract=§35.4 -->
 
-| procedure           | kind         | input                                                | output                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      | errors                                                                                     | scope         | 自  | 原路径 |
-| ------------------- | ------------ | ---------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ------------- | --- | ------ |
-| `workspaces.events` | subscription | `{ workspaceId: string, cursor?: "now" \| integer }` | 迭代：`agent.context`、`agent.status`、`agent.subagent`、`agent.approval`、`agent.delivery`、`acp.update`、`acp.turn`、`acp.driver`、`acp.starting`、`terminal.exit`、`terminal.lease`、`terminal.hibernation`、`terminal.program`、`board.changed`、`canvas.presence`、`board.comment`、`node.created`、`ssh.prompt`、`workspace.updated`、`control.confirm`、`resource.sample`、`browser.session`、`browser.download`、`browser.lease`、`browser.tabs`、`browser.dialog`、`browser.fileChooser`、`browser.activity`、`language.session`、`language.server`、`file.changed`、`workflow.draft`、`workflow.run`、`workflow.gate`、`schedule.fired`、`schedule.failed`、`schedule.attention`、`cloud.tunnel`、`resources.threshold`、`cursor` | `forbidden`、`not_found`、`snapshot_required`、`cursor_ahead`、`overflow`、`limit_reached` | `events:read` | 1.4 | —      |
+| procedure           | kind         | input                                                | output                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            | errors                                                                                     | scope         | 自  | 原路径 |
+| ------------------- | ------------ | ---------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ------------- | --- | ------ |
+| `workspaces.events` | subscription | `{ workspaceId: string, cursor?: "now" \| integer }` | 迭代：`agent.context`、`agent.status`、`agent.subagent`、`agent.approval`、`agent.delivery`、`acp.update`、`acp.turn`、`acp.driver`、`acp.starting`、`terminal.exit`、`terminal.lease`、`terminal.hibernation`、`terminal.program`、`board.changed`、`canvas.presence`、`board.comment`、`node.created`、`ssh.prompt`、`workspace.updated`、`control.confirm`、`resource.sample`、`browser.session`、`browser.download`、`browser.lease`、`browser.tabs`、`browser.dialog`、`browser.fileChooser`、`browser.activity`、`language.session`、`language.server`、`file.changed`、`workflow.draft`、`workflow.run`、`workflow.gate`、`schedule.fired`、`schedule.failed`、`schedule.attention`、`cloud.tunnel`、`devices.pending`、`devices.changed`、`resources.threshold`、`cursor` | `forbidden`、`not_found`、`snapshot_required`、`cursor_ahead`、`overflow`、`limit_reached` | `events:read` | 1.4 | —      |
 
 <!-- rpc:end -->
 
@@ -4300,5 +4300,120 @@ App 对每个候选算 `ISK_i` 并核对 `confirm_i(server)`；一个都对不�
 | procedure       | kind     | input     | output              | errors                         | scope            | 自   | 原路径                    |
 | --------------- | -------- | --------- | ------------------- | ------------------------------ | ---------------- | ---- | ------------------------- |
 | `traffic.clear` | mutation | 可省 `{}` | `{ cleared: true }` | `unauthenticated`、`forbidden` | `settings:write` | 1.44 | `POST /api/traffic/clear` |
+
+<!-- rpc:end -->
+
+## 77. 端到端通道的设备钥：`/api/devices/*`
+
+> 状态：实施契约（迁移 `0050_trusted_devices`，实现 `core/relay/e2e/devices.ts`、`routes.ts`）。自协议 1.45（minor 45）起。设计见工作区计划「中继端到端加密与流量统计」§4.8。
+
+经中继的客户端与 core 之间是一条端到端加密通道（§78）。每台客户端设备持一把 Ed25519 设备钥，握手里签转录；core 的 `trusted_devices` 把设备钥绑到本机主体。中继签的源访问断言（§31.3）只负责「这是谁」，设备钥负责「确实是他的设备」——没有已信任的设备钥，断言换不到会话。
+
+**表** `trusted_devices`：`device_id`（设备公钥 SHA-256 的前 16 字节，32 位小写十六进制）、`principal_id`、`public_key`（32 字节）、`label`、`platform`、`status`（`pending` / `trusted` / `rejected` / `revoked`）、`request_id`（待确认的标识，每次重新进入待确认时换新）、`approved_by`（`local` = 本机核对；`pairing` = 扫码配对；`endorse:<deviceId>` = 已信任设备背书；`link:<linkId>` = 访客链接首次加入）、`issuer` 与 `issuer_device_id`（断言里的 `device.deviceId`，对账用）、四个时刻。主键 `(device_id, principal_id)`：同一把钥对每个主体各自审批。`identity_sessions` 加 `channel_device_id`：经通道签的会话绑那把钥，旧会话与不经通道签的是空串。
+
+### 77.1 准入
+
+- `POST /api/identity/cloud/login`（§31.3）经通道来时多一关：断言认出主体之后，这把设备钥对这个主体必须是 `trusted`。没见过 → 建 / 续 `pending` 行，答 `403 device_pending`，`details.pendingId` 是这条记录；已 `rejected` 或 `revoked` → `403 device_rejected`。核对通过后登录照常，会话绑这把钥。`device_pending` 不计入登录失败的限流。
+- 经通道的已有会话：会话的 `channel_device_id` 必须等于这条通道的设备钥，且这把钥对会话主体仍是 `trusted`，否则 `401 unauthenticated`。不经通道签的会话进不了通道，经通道签的进不了明文中继路径（§32.3），WebSocket 票（§32.3 第 4 条）同样按兑换它的那条流判。
+- 新设备的屏幕与 core 各自从握手推出同一个 6 位校验码（§78）。主人在本机核对后 `approve`；中间人两侧的校验码必然不同。校验码只在 core 内存里，属于申请它的那条通道；core 重启或通道重建后由新通道重新登记，过期答 `409 sas_expired`。
+- 事件：工作空间事件流（§5）上的 `devices.pending { pendingId, deviceId, label, platform }`（有新的待确认）与 `devices.changed { deviceId }`（批准、拒绝、撤销、删除、改名），发给每块正被人看着的画布，不进 outbox；校验码不在事件里。
+
+<!-- rpc:begin contract=§77.1 -->
+
+| procedure      | kind  | input     | output                                                                                                                                                                                                                                                                                                                                                                               | errors                         | scope           | 自   | 原路径             |
+| -------------- | ----- | --------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------ | --------------- | ---- | ------------------ |
+| `devices.list` | query | 可省 `{}` | `{ devices: ({ deviceId: string, principalId: string, principalName: string, principalKind: string, label: string, platform: string, status: "pending" \| "trusted" \| "rejected" \| "revoked", pendingId: string \| null, approvedBy: string, issuer: string, fingerprint: string, createdAtMs: integer, approvedAtMs: integer, lastSeenAtMs: integer, revokedAtMs: integer })[] }` | `unauthenticated`、`forbidden` | `settings:read` | 1.45 | `GET /api/devices` |
+
+<!-- rpc:end -->
+
+### 77.2 核对与拒绝
+
+`approve { pendingId, sas }`：校验码对上 → `trusted`、`approved_by = local`，答这一行；不对 `400 sas_mismatch`（不作废申请，主人可以再核对），申请不存在或不再待确认 `404`。`reject { pendingId }`：→ `rejected`，断开这把钥的通道；同一把钥再来直接 `device_rejected`，要主人 `forget` 之后才能重新申请。
+
+<!-- rpc:begin contract=§77.2 -->
+
+| procedure         | kind     | input                                | output                                                                                                                                                                                                                                                                                                                                                                          | errors                                                                                    | scope            | 自   | 原路径                      |
+| ----------------- | -------- | ------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- | ---------------- | ---- | --------------------------- |
+| `devices.approve` | mutation | `{ pendingId: string, sas: string }` | `{ device: { deviceId: string, principalId: string, principalName: string, principalKind: string, label: string, platform: string, status: "pending" \| "trusted" \| "rejected" \| "revoked", pendingId: string \| null, approvedBy: string, issuer: string, fingerprint: string, createdAtMs: integer, approvedAtMs: integer, lastSeenAtMs: integer, revokedAtMs: integer } }` | `unauthenticated`、`forbidden`、`bad_request`、`not_found`、`sas_mismatch`、`sas_expired` | `settings:write` | 1.45 | `POST /api/devices/approve` |
+| `devices.reject`  | mutation | `{ pendingId: string }`              | `{ ok: true }`                                                                                                                                                                                                                                                                                                                                                                  | `unauthenticated`、`forbidden`、`bad_request`、`not_found`                                | `settings:write` | 1.45 | `POST /api/devices/reject`  |
+
+<!-- rpc:end -->
+
+### 77.3 撤销、删除与改名
+
+`revoke { deviceId, principalId }`：→ `revoked`，吊销经这把钥、以这个主体签的全部会话（长连接随即 `4401`），断开它的通道。`forget`：先撤销（还有效的话）再删掉这一行，让它能重新申请。`rename`：只改显示名（1–128 字符）。
+
+服务器壳没有界面：`armadra-server devices list`、`armadra-server devices approve <pendingId> --sas <6 位>`、`armadra-server devices reject <pendingId>`、`armadra-server devices revoke <deviceId> --principal <principalId>` 对运行中的服务器壳调同一组接口（取本机会话的方式同 `cloud` 子命令）。
+
+<!-- rpc:begin contract=§77.3 -->
+
+| procedure        | kind     | input                                                      | output         | errors                                                     | scope            | 自   | 原路径                     |
+| ---------------- | -------- | ---------------------------------------------------------- | -------------- | ---------------------------------------------------------- | ---------------- | ---- | -------------------------- |
+| `devices.revoke` | mutation | `{ deviceId: string, principalId: string }`                | `{ ok: true }` | `unauthenticated`、`forbidden`、`bad_request`、`not_found` | `settings:write` | 1.45 | `POST /api/devices/revoke` |
+| `devices.forget` | mutation | `{ deviceId: string, principalId: string }`                | `{ ok: true }` | `unauthenticated`、`forbidden`、`bad_request`、`not_found` | `settings:write` | 1.45 | `POST /api/devices/forget` |
+| `devices.rename` | mutation | `{ deviceId: string, principalId: string, label: string }` | `{ ok: true }` | `unauthenticated`、`forbidden`、`bad_request`、`not_found` | `settings:write` | 1.45 | `POST /api/devices/rename` |
+
+<!-- rpc:end -->
+
+## 78. 端到端通道 `armadra-e2e/1`：`/api/e2e/*`
+
+> 状态：实施契约（实现 `core/relay/e2e/channel.ts`；握手与记录层是协议包 `@armadra/platform-protocol/e2e`，cloud 契约 §20）。自协议 1.45（minor 45）起。
+
+客户端经中继的 `_relay/e2e`（cloud 契约 §20）建一条 WebSocket，中继把它变成一条隧道流 `OPEN { kind: "e2e", method: "GET", path: "/_relay/e2e", headers: [] }`。core 在隧道 `hello.capabilities` 里报 `e2e`，中继才对这台开 `_relay/e2e`。流里的字节是 `armadra-e2e/1`：
+
+1. 三条握手消息（m1 客户端临时钥与 `pinHint`、m2 core 临时钥与用握手密钥封着的身份公钥与签名、m3 用握手密钥封着的设备公钥、签名、平台、名字与可选 `proof`），格式、转录与密钥推导以协议包为准，本文不复制。`pinHint` 与这台的身份公钥不符时 core 不发 m2，直接重置这条流（不泄露公钥）。握手 10 秒。
+2. 之后是记录：AES-256-GCM，每个方向独立计数器，长度进 AAD；记录明文是一个或多个内层隧道帧（`OPEN` / `DATA` / `END` / `RST` / `WINDOW` / `PING` / `PONG`）。第一条 core → 客户端的记录是 `accept { deviceStatus: "trusted" | "pending" | "rejected", limits }`：`trusted` = 这把钥对某个主体已信任；`rejected` = 它的每一行都被拒或撤销；其余（没见过、待确认）`pending`。
+3. 每条内层流是一个完整的 HTTP/1.1 请求或一条 WebSocket，交给与隧道流相同的监听，按 §32.3 准入。内层流的来源与地址取外层流的（`OPEN.clientOrigin` / `remoteIp`，中继给的），客户端填的内层元数据只用于它自己的统计；准入另看这条通道的设备钥（§77.1）。内层 `DATA` 上限 65 523 字节（整帧装得进一条记录），窗口与隧道相同（流 256 KiB、通道 8 MiB，通道级 `WINDOW(0, …)`），流数上限 256。
+4. 解密失败（篡改、重放、乱序、截断）、内层帧格式错误、流控违规一律关闭整条通道（外层流 `RST`），不尝试恢复。客户端在每个方向 2³² 条记录或 1 小时后重建通道。
+
+core 的身份公钥就是源钥（§31.2，Ed25519）。指纹 `base32(SHA-256(pub))`（RFC 4648 小写无填充，52 字符），界面分组显示前 16 位。
+
+设置 `security.requireE2e`（缺省 `false`）：开着时明文中继路径上的请求一律 `403 e2e_required`，通道不受影响。存在本机那一半。
+
+### 78.1 `GET /api/e2e/identity`
+
+匿名：`{ sourceId, identityPub, fingerprint }`，`identityPub` 是 base64url（32 字节）。配对页与客户端首次连接用。
+
+<!-- rpc:begin contract=§78.1 -->
+
+| procedure      | kind  | input     | output                                                           | errors        | scope | 自   | 原路径                  |
+| -------------- | ----- | --------- | ---------------------------------------------------------------- | ------------- | ----- | ---- | ----------------------- |
+| `e2e.identity` | query | 可省 `{}` | `{ sourceId: string, identityPub: string, fingerprint: string }` | `unsupported` | 匿名  | 1.45 | `GET /api/e2e/identity` |
+
+<!-- rpc:end -->
+
+### 78.2 `POST /api/e2e/wait`
+
+匿名，只在端到端通道上：新设备在待确认时长轮询，`{ pendingId }` → 状态变了（或 25 秒）答 `{ status }`。只认这条通道自己的设备钥申请的记录，别的通道与非通道请求一律 `404`。
+
+<!-- rpc:begin contract=§78.2 -->
+
+| procedure  | kind     | input                   | output                                                          | errors                     | scope | 自   | 原路径               |
+| ---------- | -------- | ----------------------- | --------------------------------------------------------------- | -------------------------- | ----- | ---- | -------------------- |
+| `e2e.wait` | mutation | `{ pendingId: string }` | `{ status: "pending" \| "trusted" \| "rejected" \| "revoked" }` | `bad_request`、`not_found` | 匿名  | 1.45 | `POST /api/e2e/wait` |
+
+<!-- rpc:end -->
+
+### 78.3 `POST /api/e2e/sign`
+
+只在回环（`loopbackOnlyPath`，经 Gateway 与隧道 `403`）、owner：本机作为客户端连别的电脑时，设备钥由本机 core 保管（SecretStore `armadra-device-key`，Ed25519，私钥不出 core）。`{ transcript }`（base64url，32 字节转录哈希）→ `{ publicKey, signature }`，签名输入固定为 `"armadra-e2e/1 device" ‖ transcript ‖ publicKey`（协议包 m3 的签名输入），页面给不了别的字节。
+
+<!-- rpc:begin contract=§78.3 -->
+
+| procedure  | kind     | input                    | output                                     | errors                                                       | scope            | 自   | 原路径               |
+| ---------- | -------- | ------------------------ | ------------------------------------------ | ------------------------------------------------------------ | ---------------- | ---- | -------------------- |
+| `e2e.sign` | mutation | `{ transcript: string }` | `{ publicKey: string, signature: string }` | `unauthenticated`、`forbidden`、`bad_request`、`unsupported` | `settings:write` | 1.45 | `POST /api/e2e/sign` |
+
+<!-- rpc:end -->
+
+### 78.4 `POST /api/e2e/sources/wait`
+
+owner：本机作为客户端连别的电脑（`sources.session`，§33）时，本机 core 经它自己的端到端通道登录，会话绑本机设备钥（与 §78.3 同一把）。对端还没核对这台设备时 `sources.session` 答 `403 device_pending`，`details: { pendingId, sas, sourceId }`——`sas` 是本机这条通道推出来的校验码，页面显示给人去对端核对。`{ sourceId, pendingId }` → 经那条通道问对端的 `e2e.wait`，答 `{ status }`；通道已经不在答 `pending`，页面重新取会话即可（新的通道有新的校验码）。对端身份公钥钉在源表（`client_sources.identity_pub`，迁移 0050），变了 `sources.session` 答 `409 identity_changed`。服务器壳不开这条通道（它的页面签不了本机设备钥），代连仍走明文。
+
+<!-- rpc:begin contract=§78.4 -->
+
+| procedure        | kind     | input                                     | output                                                          | errors                                        | scope            | 自   | 原路径                       |
+| ---------------- | -------- | ----------------------------------------- | --------------------------------------------------------------- | --------------------------------------------- | ---------------- | ---- | ---------------------------- |
+| `e2e.waitSource` | mutation | `{ sourceId: string, pendingId: string }` | `{ status: "pending" \| "trusted" \| "rejected" \| "revoked" }` | `unauthenticated`、`forbidden`、`bad_request` | `settings:write` | 1.45 | `POST /api/e2e/sources/wait` |
 
 <!-- rpc:end -->
