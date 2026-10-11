@@ -29,6 +29,14 @@ export interface ServiceRow {
    */
   readonly defaultName: string;
   readonly local: boolean;
+  /** 自己的电脑，还是别人通过分享链接给的；没有这项的旧数据是自己的。 */
+  readonly origin?: "mine" | "shared";
+  /** 分享的主人名字；不知道是空串。 */
+  readonly ownerName?: string;
+  /** 分享的权限（`viewer` / `editor` / `operator` / `driver`）；不知道是空串。 */
+  readonly shareRole?: string;
+  /** 分享到期的时刻（毫秒）；不知道是 0。 */
+  readonly shareExpiresAtMs?: number;
   /** 到达方式，首选在前；本机没有。 */
   readonly routes: readonly ServiceRoute[];
   /** 上次进入成功的时刻；没进过是 `null`。 */
@@ -45,6 +53,12 @@ export interface ServiceGroup {
   readonly name: string;
   /** 中继组的签发方；其余是空串。 */
   readonly issuer: string;
+  readonly rows: readonly ServiceRow[];
+}
+
+/** 手机的两组：我的电脑在前，他人分享在后；空的组不出现。 */
+export interface OriginGroup {
+  readonly key: "mine" | "shared";
   readonly rows: readonly ServiceRow[];
 }
 
@@ -86,6 +100,13 @@ export function serviceRowOf(
       serviceName: options.serviceName?.(issuer) || hostOf(issuer),
     });
   }
+  // 分享的几项由连接表（手机）或页面源模型带来；还没带的就是缺省。
+  const extra = descriptor as {
+    readonly origin?: string;
+    readonly ownerName?: string;
+    readonly shareRole?: string;
+    readonly shareExpiresAtMs?: number;
+  };
   const used = options.recent?.find(
     (entry) => entry.sourceId === descriptor.sourceId,
   );
@@ -100,6 +121,10 @@ export function serviceRowOf(
     name: descriptor.label || descriptor.defaultLabel || fallback,
     defaultName: descriptor.defaultLabel || fallback,
     local,
+    origin: extra.origin === "shared" ? "shared" : "mine",
+    ownerName: extra.ownerName ?? "",
+    shareRole: extra.shareRole ?? "",
+    shareExpiresAtMs: extra.shareExpiresAtMs ?? 0,
     routes,
     lastUsedAt: used?.at ?? null,
   };
@@ -155,4 +180,14 @@ export function layoutServices(
     recent: rows.length > RECENT_LIMIT ? recentRows : [],
     groups: ordered,
   };
+}
+
+/** 手机的排版：按来历分两组，组内保持传入顺序。 */
+export function layoutByOrigin(rows: readonly ServiceRow[]): OriginGroup[] {
+  const mine = rows.filter((row) => row.origin !== "shared");
+  const shared = rows.filter((row) => row.origin === "shared");
+  return [
+    ...(mine.length > 0 ? [{ key: "mine" as const, rows: mine }] : []),
+    ...(shared.length > 0 ? [{ key: "shared" as const, rows: shared }] : []),
+  ];
 }
