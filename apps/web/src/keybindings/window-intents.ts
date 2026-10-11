@@ -22,6 +22,32 @@ import * as React from "react";
 import { runCanvasCommand } from "../canvas/commands";
 import { requestCenterOnNode } from "../canvas/flow/flow-context";
 import { useCanvasStore } from "../store/canvas-store";
+import { terminalHandle, terminalNodeOf } from "../nodes/terminal-registry";
+import { shortcutsEnabled } from "./active";
+import { isMacPlatform } from "./chords";
+
+/** Ctrl+W 在终端里的本义：readline 的「删掉前一个词」。 */
+const CTRL_W = "\x17";
+
+/**
+ * Windows / Linux 上 Ctrl+W 是 shell 最常用的键之一，可桌面壳在主进程里就把它
+ * 当成「关闭」拦下了（`shell-core/keydown-intercept.ts`，页面收不到原始按键）。
+ * 焦点在终端里时把它还给那个终端：写一个 `^W` 进去，答复「接住了」，壳就
+ * 既不关节点也不关窗口。macOS 上关闭键是 ⌘W，终端用不到，不走这里。
+ */
+export function returnCloseToTerminal(
+  mac = isMacPlatform(),
+  focused: Element | null = typeof document === "undefined"
+    ? null
+    : document.activeElement,
+): boolean {
+  if (mac) return false;
+  const nodeId = terminalNodeOf(focused);
+  if (!nodeId) return false;
+  terminalHandle(nodeId)?.sendKeys(CTRL_W);
+  // 句柄还没登记（终端正在重连）也算接住：总比把整个窗口关掉强。
+  return true;
+}
 
 /** 壳的桥，不在桌面壳里时是 `undefined`。 */
 function bridge(): Window["armadra"] {
@@ -65,7 +91,11 @@ export function subscribeWindowIntents(): () => void {
     return () => undefined;
 
   const offIntent = shell.window.onKeyIntent((intent, token) => {
-    const handled = intent === "close-window" ? closeFocusedNode() : false;
+    // 关节点是应用快捷键，受总开关管；还给终端与关窗口不是。
+    const handled =
+      intent === "close-window"
+        ? returnCloseToTerminal() || (shortcutsEnabled() && closeFocusedNode())
+        : false;
     void shell.window.resolveKeyIntent(token, handled).catch(() => {
       // 答复送不到就让壳的超时去收尾，它本来就是为这种情况留的。
     });

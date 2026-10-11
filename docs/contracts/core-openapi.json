@@ -13291,6 +13291,10 @@
                       "pendingId": {
                         "type": "string"
                       },
+                      "sessionPhase": {
+                        "enum": ["start", "end"],
+                        "type": "string"
+                      },
                       "updatedAt": {
                         "type": "string",
                         "format": "date-time"

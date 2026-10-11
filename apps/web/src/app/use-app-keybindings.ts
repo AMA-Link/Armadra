@@ -8,12 +8,17 @@ import {
   globalBindings,
   onGlobalShortcut,
   setActiveKeymap,
+  setShortcutsEnabled,
   useGlobalShortcuts,
   useKeybindings,
   type KeybindingHandlers,
 } from "../keybindings";
 import { useDeviceKeymapStore } from "../panels/settings/device-keymap-store";
-import { keymapMigrationPatch, resolveKeymap } from "../panels/settings/keymap";
+import {
+  keymapEnabled,
+  keymapMigrationPatch,
+  resolveKeymap,
+} from "../panels/settings/keymap";
 import { activeGlobalLayer } from "../panels/settings/keymap-profiles";
 import type { CommandDispatch } from "./commands";
 import { useAccess } from "./use-access";
@@ -48,6 +53,9 @@ export function useAppKeybindings(dispatch: CommandDispatch): void {
   const keymap = useMemo(() => resolveKeymap(global, device), [global, device]);
   // 命令面板、Dock 与右键菜单同步读键位；派发与显示必须是同一份。
   setActiveKeymap(keymap);
+  // 总开关（契约 §66）。成员读不到主机设置，按缺省「开」。
+  const enabled = keymapEnabled(settings.data?.keymap);
+  setShortcutsEnabled(enabled);
 
   // 旧格式（两个平台共用一条写法）迁移到分平台存储，一次。写入的是同样的
   // 键位，所以迁移前后这台机器上按下去的效果完全一样；失败就下次再说——
@@ -86,14 +94,20 @@ export function useAppKeybindings(dispatch: CommandDispatch): void {
     return map;
   }, [dispatch]);
 
-  useKeybindings(handlers, { keymap });
+  useKeybindings(handlers, { keymap, enabled });
 
   // 系统全局热键：键位一变就整表重新注册（壳先全部释放再装，所以不会残留
   // 上一轮的组合键）。浏览器里 `apply` 是空操作。
   const applyGlobal = useGlobalShortcuts((store) => store.apply);
+  // 总开关关着时整表以「未绑定」交过去：壳释放它手里的每一个系统热键。
   useEffect(() => {
-    void applyGlobal(globalBindings(keymap));
-  }, [applyGlobal, keymap]);
+    const bindings = globalBindings(keymap);
+    void applyGlobal(
+      enabled
+        ? bindings
+        : bindings.map((binding) => ({ ...binding, accelerator: "" })),
+    );
+  }, [applyGlobal, keymap, enabled]);
 
   // 热键触发时跑的是**同一条**画布命令，不是壳里另写一份：壳不知道什么是
   // 终端节点，让它自己去建就会有两套不一致的实现。

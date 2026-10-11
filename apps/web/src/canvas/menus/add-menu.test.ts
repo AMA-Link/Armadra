@@ -1,6 +1,19 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { AgentInfo, Position, SshHost, Workspace } from "@armadra/shared";
 
+/** 功能开关（#295）：这里测的是功能本身，按开着测。 */
+const featureFlags = vi.hoisted(() => ({
+  credentials: true,
+  usage: true,
+  activityCards: true,
+  scheduledTasks: true,
+  workflows: true,
+}));
+vi.mock("@armadra/shared", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@armadra/shared")>()),
+  FEATURE_FLAGS: featureFlags,
+}));
+
 /**
  * 新建菜单（§13.3；React Flow 计划 F18 / §4.2 的 `add-menu` 行）。
  *
@@ -145,6 +158,21 @@ describe("buildAddMenu", () => {
     ])
       fn.mockClear();
     state.document = { nodes: [] };
+    for (const key of Object.keys(featureFlags))
+      featureFlags[key as keyof typeof featureFlags] = true;
+  });
+
+  it("暂时下线的功能（#295）关着时，定时计划、工作流、活动卡片三项不列", () => {
+    const hidden = ["add.automation", "add.workflow", "add.agentActivity"];
+    const on = buildAddMenu([claude], t, [], true).map((item) => item.id);
+    for (const id of hidden) expect(on).toContain(id);
+    featureFlags.scheduledTasks = false;
+    featureFlags.workflows = false;
+    featureFlags.activityCards = false;
+    const off = buildAddMenu([claude], t, [], true).map((item) => item.id);
+    for (const id of hidden) expect(off).not.toContain(id);
+    // 其余各项原样，只少这三项。
+    expect(off).toEqual(on.filter((id) => !hidden.includes(id)));
   });
 
   // ui-wave2 §6.1：向导已删，选哪家就直接建哪家。

@@ -59,8 +59,8 @@ export interface ContextInput {
 /**
  * 事件目标 → `when` 上下文。
  *
- * 四个焦点键互斥，与 `whenContexts()` 穷举时的假设一致：焦点同一时刻只有
- * 一处，而 `canvasFocus` 的定义就是「不在上面三处、也不在任何输入控件里」。
+ * 五个焦点键互斥，与 `whenContexts()` 穷举时的假设一致：焦点同一时刻只有
+ * 一处，而 `canvasFocus` 的定义就是「不在上面四处、也不在任何输入控件里」。
  * 判定顺序是终端 → 编辑器 / 浏览器 → 其它，因为终端里那个 textarea 同时满足
  * 「在终端里」与「正在打字」，而终端优先是这套快捷键的第一条规则。
  */
@@ -77,6 +77,7 @@ export function keybindingContext({
     terminalFocus: terminal,
     editorFocus: scope === "editor",
     browserFocus: scope === "browser",
+    scmFocus: scope === "scm",
     canvasFocus: !terminal && scope === null && !typing,
     editing: typing,
   };

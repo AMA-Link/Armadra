@@ -12,7 +12,7 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
-import { makeNode, sleep } from "./harness.mjs";
+import { featureEnabled, makeNode, sleep } from "./harness.mjs";
 
 const rectOf = (selector) =>
   `const element = document.querySelector(${JSON.stringify(selector)});
@@ -174,23 +174,28 @@ export default async function layout({ stack, output, report, scenario }) {
   await run.shot(page, "layout-2-drawer-dock");
 
   // 宽抽屉（自动化，460px）：工具簇往左让了一个抽屉宽，提示条也得让开它。
-  await page.key("Escape");
-  await sleep(300);
-  await openAutomation(page);
-  const wide = await page.evaluate(`
-    const rect = (s) => document.querySelector(s)?.getBoundingClientRect();
-    const b = rect('[data-slot="banner"]');
-    const c = rect('[data-slot="controls-cluster"]');
-    const d = rect('[data-slot="sheet-content"]');
-    const toggle = rect('[data-slot="sidebar-toggle"]');
-    return { banner: [b.left, b.right], cluster: c.left, drawer: d.left, toggle: toggle?.right ?? 0 };
-  `);
-  run.check(
-    wide.banner[1] <= wide.cluster && wide.banner[1] <= wide.drawer,
-    "1440：开着 460px 抽屉时提示条不压工具簇、不伸进抽屉",
-    wide,
-  );
-  await run.shot(page, "layout-3-wide-drawer");
+  // 定时任务暂时下线（#295）时没有自动化抽屉，这一段与窄屏那一段跳过。
+  const automationOn = await featureEnabled("scheduledTasks");
+  if (!automationOn) run.ok("定时任务暂时下线（#295），跳过自动化宽抽屉");
+  else {
+    await page.key("Escape");
+    await sleep(300);
+    await openAutomation(page);
+    const wide = await page.evaluate(`
+      const rect = (s) => document.querySelector(s)?.getBoundingClientRect();
+      const b = rect('[data-slot="banner"]');
+      const c = rect('[data-slot="controls-cluster"]');
+      const d = rect('[data-slot="sheet-content"]');
+      const toggle = rect('[data-slot="sidebar-toggle"]');
+      return { banner: [b.left, b.right], cluster: c.left, drawer: d.left, toggle: toggle?.right ?? 0 };
+    `);
+    run.check(
+      wide.banner[1] <= wide.cluster && wide.banner[1] <= wide.drawer,
+      "1440：开着 460px 抽屉时提示条不压工具簇、不伸进抽屉",
+      wide,
+    );
+    await run.shot(page, "layout-3-wide-drawer");
+  }
 
   /* -------------------------------- 窄屏 --------------------------------- */
   const phone = await stack.browser.page(await stack.browser.context());
@@ -225,7 +230,7 @@ export default async function layout({ stack, output, report, scenario }) {
       return nav.contains(document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2));
     });
   `);
-  run.check(navHit, "390：底部导航五个去处都按得到");
+  run.check(navHit, "390：底部导航每个去处都按得到");
   const cluster = await phone.evaluate(
     rectOf('[data-slot="controls-cluster"]'),
   );
@@ -242,21 +247,23 @@ export default async function layout({ stack, output, report, scenario }) {
   );
   run.ok("390：点「画布」收起抽屉");
 
-  await phone.clickOn(buttonByText("自动化"), "手机底栏「自动化」");
-  await phone.until(
-    `return document.querySelector('[data-slot="sheet-content"]') ? true : null;`,
-    "手机上的自动化",
-  );
-  await sleep(400);
-  const automation = await phone.evaluate(
-    rectOf('[data-slot="sheet-content"]'),
-  );
-  run.check(
-    Math.abs(automation.width - 390) < 1 && automation.bottom <= nav.top + 1,
-    "390：自动化（460px 的那一档）同样铺满、停在导航上沿",
-    automation,
-  );
-  await run.shot(phone, "mobile-layout-3-automation");
+  if (automationOn) {
+    await phone.clickOn(buttonByText("自动化"), "手机底栏「自动化」");
+    await phone.until(
+      `return document.querySelector('[data-slot="sheet-content"]') ? true : null;`,
+      "手机上的自动化",
+    );
+    await sleep(400);
+    const automation = await phone.evaluate(
+      rectOf('[data-slot="sheet-content"]'),
+    );
+    run.check(
+      Math.abs(automation.width - 390) < 1 && automation.bottom <= nav.top + 1,
+      "390：自动化（460px 的那一档）同样铺满、停在导航上沿",
+      automation,
+    );
+    await run.shot(phone, "mobile-layout-3-automation");
+  }
 
   run.consoleClean(page, phone);
   await phone.close();

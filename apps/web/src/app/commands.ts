@@ -9,6 +9,7 @@ import { useCanvasStore } from "../store/canvas-store";
 import { useEnabledAgents } from "./use-agents";
 import { openQuickOpen } from "../panels/quick-open-seed";
 import { switchService } from "../services/switcher";
+import { openTerminalFind, terminalNodeOf } from "../nodes/terminal-registry";
 
 /** Git 工具窗口的提交页监听它来触发提交（⌘⏎，§13.5）。 */
 export const SCM_COMMIT_EVENT = "armadra:scm-commit";
@@ -106,19 +107,13 @@ export function useCommandDispatch(): CommandDispatch {
           state.setFocusNode(next);
           return;
         }
-        // 画布偏好的三条快捷键（§偏好菜单）。写的是 `preferences-store`，
+        // 画布偏好的两条快捷键（§偏好菜单）。写的是 `preferences-store`，
         // 那里是唯一真相：`use-canvas-preferences` 与 `flow-options` 单向
         // 读它，所以菜单、设置页、画布三处永远是同一个值。
-        case "canvas.toggleToolLock":
         case "canvas.toggleGrid":
         case "canvas.toggleFocus": {
           const prefs = usePreferencesStore.getState();
-          const key =
-            id === "canvas.toggleToolLock"
-              ? "toolLock"
-              : id === "canvas.toggleGrid"
-                ? "grid"
-                : "focus";
+          const key = id === "canvas.toggleGrid" ? "grid" : "focus";
           prefs.setWhiteboardPreference(key, !prefs.whiteboard[key]);
           return;
         }
@@ -127,6 +122,14 @@ export function useCommandDispatch(): CommandDispatch {
         // 的监听器，带着那个节点的路径。
         case "editor.goToLine":
           openQuickOpen({ query: ":" });
+          return;
+        // 焦点所在的终端优先，其次是选中的那个节点。
+        case "terminal.search":
+          openTerminalFind(
+            terminalNodeOf(document.activeElement) ??
+              state.selectedNodeIds[0] ??
+              null,
+          );
           return;
         case "scm.commit":
           // 窗口先开到底部，事件再发：提交页要先挂上才听得到这一次。
