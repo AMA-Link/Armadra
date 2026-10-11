@@ -203,6 +203,7 @@ export function normalize(raw: JsonValue): JsonObject {
   normalizeResources(document);
   normalizeBrowser(document);
   normalizeUi(document);
+  normalizeKeymap(document);
   normalizeHost(document);
   // Only the scalars are normalised; `servers` and `probes` are the user's map
   // and the probe cache, and both may hold ids this build has never heard of.
@@ -709,6 +710,21 @@ function normalizeUi(document: JsonObject): void {
     delete next.locale;
   }
   document.ui = next;
+}
+
+/**
+ * `keymap.enabled`，快捷键总开关（契约 §66）。`keymap` 的其余键是页面自己的
+ * 键位表，core 不认识也不动；只有这一个布尔由 core 收敛：不是布尔就删掉
+ * （回到缺省的「开」），没有 `keymap` 一节时不建。
+ */
+function normalizeKeymap(document: JsonObject): void {
+  const keymap = document.keymap;
+  if (!isJsonObject(keymap)) return;
+  if (keymap.enabled === undefined || asBool(keymap.enabled) !== undefined)
+    return;
+  const next = clone(keymap);
+  delete next.enabled;
+  document.keymap = next;
 }
 
 /** `host.name` 的上限：与源表 `label` 相同（契约 §61）。 */

@@ -32,6 +32,7 @@ import { useMountedOnce, useOverlayRequested } from "./overlay-gates";
 import { useLinkFragments } from "./use-link-fragments";
 import { useSourcesBootstrap } from "./use-sources-bootstrap";
 import { useServiceSwitcher } from "@/services/switcher";
+import { panelHidden } from "@/lib/features";
 
 /**
  * 所有浮层的挂载点。
@@ -93,10 +94,10 @@ export function Overlays() {
       <Gate open={panels.resources !== "closed"}>
         <ResourceDrawer />
       </Gate>
-      <Gate open={panels.automation !== "closed"}>
+      <Gate open={panels.automation !== "closed" && !panelHidden("automation")}>
         <AutomationDrawer />
       </Gate>
-      <Gate open={panels.usage !== "closed"}>
+      <Gate open={panels.usage !== "closed" && !panelHidden("usage")}>
         <UsageDashboard />
       </Gate>
       <Gate open={panels.github !== "closed"}>
@@ -117,7 +118,7 @@ export function Overlays() {
       <Gate open={panels.handoff !== "closed"}>
         <HandoffHistoryDrawer />
       </Gate>
-      <Gate open={panels.workflow !== "closed"}>
+      <Gate open={panels.workflow !== "closed" && !panelHidden("workflow")}>
         <WorkflowPanel />
       </Gate>
       <Gate open={panels.dispatch !== "closed"}>

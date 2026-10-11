@@ -33,6 +33,7 @@ import { Input } from "@/ui/input";
 import { Spinner } from "@/ui/spinner";
 import { Switch } from "@/ui/switch";
 import { formatBytes } from "@/lib/format";
+import { featureEnabled } from "@/lib/features";
 
 /**
  * `settings.terminal.backend`（§15.1 + T01）。
@@ -460,7 +461,14 @@ function PowerGroup() {
             <SelectValue />
           </SelectTrigger>
           <SelectContent className="z-[var(--z-dialog)]">
-            {POWER_POLICIES.map((policy) => (
+            {POWER_POLICIES.filter(
+              // 定时任务暂时下线（#295）：「有自动化运行时」不再给新选；已经
+              // 选着它的照常显示，免得下拉框对不上当前值。
+              (policy) =>
+                policy !== "automation" ||
+                featureEnabled("scheduledTasks") ||
+                settings.data?.power?.policy === "automation",
+            ).map((policy) => (
               <SelectItem key={policy} value={policy}>
                 {t(`resources.power.policy.${policy}`)}
               </SelectItem>

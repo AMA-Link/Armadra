@@ -62,7 +62,11 @@ import { GithubReferenceBadge } from "@/panels/github/GithubReferenceBadge";
 import { NodeShell } from "./NodeShell";
 import type { NodeBodyProps } from "./registry";
 import { answerApproval } from "./runtime-extras";
-import { registerTerminalHandle } from "./terminal-registry";
+import {
+  TERMINAL_NODE_ATTRIBUTE,
+  registerTerminalFind,
+  registerTerminalHandle,
+} from "./terminal-registry";
 import { canUseAcp, driverOf, switchDriver } from "@/acp/driver";
 // 副作用：注册 Agent 专属的右键菜单项（重启 / 权限模式 / 回收）
 import "./terminal-menu";
@@ -142,6 +146,13 @@ export function TerminalNode({ id, node, selected, collapsed }: NodeBodyProps) {
   }, []);
 
   const onFind = React.useCallback(() => setFindOpen(true), []);
+  // `terminal.search`（⌘F）经命令派发找到这里。
+  // 会话视图（ACP）没有终端可搜。
+  React.useEffect(
+    () =>
+      driver === "terminal" ? registerTerminalFind(id, onFind) : undefined,
+    [id, onFind, driver],
+  );
 
   /*
    * 模型选择（Agent 自动化设计 §1）。
@@ -553,21 +564,13 @@ export function TerminalNode({ id, node, selected, collapsed }: NodeBodyProps) {
   return (
     <div
       className="h-full w-full"
+      {...{ [TERMINAL_NODE_ATTRIBUTE]: id }}
       // 摸一下终端就算读过了（`markRead` 顺手把回执 POST 给 Runtime）。
       // 指针与鼠标两条路都挂：合成点击（自动化、部分输入设备）只发其中一种。
       onPointerDownCapture={() => markNodeRead(id)}
       onMouseDownCapture={() => markNodeRead(id)}
-      onKeyDown={(event) => {
-        // ⌘F / Ctrl+F 在终端里打开头部的搜索框，而不是浏览器查找
-        if (
-          driver === "terminal" &&
-          (event.metaKey || event.ctrlKey) &&
-          event.key.toLowerCase() === "f"
-        ) {
-          event.preventDefault();
-          setFindOpen(true);
-        }
-      }}
+      // 终端搜索走 `terminal.search` 命令（可改键、受总开关管）；这里以前另写死
+      // 一份 ⌘F / Ctrl+F，在 Windows / Linux 上把 shell 的 Ctrl+F 也截走了。
     >
       <NodeShell
         node={node}

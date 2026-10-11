@@ -5,7 +5,12 @@ import { Unicode11Addon } from "@xterm/addon-unicode11";
 
 import { t as translate } from "@/app/preferences-store";
 import { openExternal } from "@/platform";
-import { appChordsInTerminal, isMacPlatform, keyDisposition } from "../compat";
+import { commandKeys, matchKeyboardEvent } from "@/keybindings";
+import {
+  currentAppChordsInTerminal,
+  isMacPlatform,
+  keyDisposition,
+} from "../compat";
 import { isolateTerminalInput } from "../ime";
 import { loadRuntimePlatform, runtimePlatform } from "../platform";
 import {
@@ -115,20 +120,23 @@ export function useXtermInstance(
      * F1–F12、Home/End、Shift+方向 都归 CLI。
      */
     const mac = isMacPlatform();
-    const appChords = appChordsInTerminal(undefined, mac);
     terminal.attachCustomKeyEventHandler((event) => {
       if (event.isComposing || event.keyCode === 229) return false;
       if (event.type !== "keydown") return true;
       const disposition = keyDisposition(
         event,
         { mac, hasSelection: terminal.hasSelection() },
-        appChords,
+        // 每次现取：设置页改完键位或关掉总开关，下一下按键就按新的分。
+        currentAppChordsInTerminal(mac),
       );
       if (disposition === "app") {
-        // 壳还没接管键盘时（App 尚未挂 `useKeybindings`）⌘F 也要能用：
-        // 它是终端自己的搜索，没有别的接管者。
-        const primary = mac ? event.metaKey : event.ctrlKey;
-        if (primary && !event.shiftKey && event.key.toLowerCase() === "f") {
+        // 壳还没接管键盘时（App 尚未挂 `useKeybindings`）终端搜索也要能用：
+        // 它是终端自己的搜索，没有别的接管者。键位读生效中的那一份。
+        if (
+          matchKeyboardEvent(event, commandKeys("terminal.search", { mac }), {
+            mac,
+          })
+        ) {
           event.preventDefault();
           refs.onFindRef.current?.();
         }
