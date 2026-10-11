@@ -8,6 +8,7 @@ import {
   vi,
 } from "vitest";
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -34,6 +35,8 @@ const { DispatchDrawer, DispatchView } = await import("./DispatchDrawer");
 const { buildDispatch, memberCount } = await import("./model");
 const { openDispatchDrawer } = await import("./store");
 const { MembersChip } = await import("./MembersChip");
+const { useWorkflowEvents } = await import("@/workflow/store");
+const { dispatchWorkspaceEvent } = await import("@/api/events");
 
 /** 协调者分派抽屉（设计系统 §5.4、契约 §15.7）。 */
 
@@ -362,6 +365,33 @@ describe("DispatchDrawer", () => {
     expect(api.tasks).toHaveBeenCalledWith(BOARD);
     fireEvent.click(screen.getByRole("button", { name: "重试" }));
     await waitFor(() => expect(api.retry).toHaveBeenCalledWith("sess:pi"));
+  });
+
+  it("re-reads the task rows on a workflow.task frame instead of polling", async () => {
+    api.tasks.mockResolvedValue(TASKS);
+    openDispatchDrawer(ID.lead);
+    function Events() {
+      useWorkflowEvents();
+      return null;
+    }
+    render(
+      <TestProviders>
+        <Events />
+        <DispatchDrawer />
+      </TestProviders>,
+    );
+    await waitFor(() => expect(api.tasks).toHaveBeenCalledTimes(1));
+    act(() => {
+      dispatchWorkspaceEvent({
+        type: "workflow.task",
+        taskId: "sess:pi",
+        boardId: BOARD,
+        coordinatorNodeId: ID.lead,
+        nodeId: ID.pi,
+        status: "done",
+      });
+    });
+    await waitFor(() => expect(api.tasks).toHaveBeenCalledTimes(2));
   });
 
   it("closes with the header button", async () => {

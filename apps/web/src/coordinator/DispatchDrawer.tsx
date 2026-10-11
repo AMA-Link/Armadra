@@ -281,8 +281,23 @@ function MemberRow({
 
 /* ------------------------------- 真抽屉 ------------------------------- */
 
-/** 抽屉开着时多久重读一次任务行。没有专门的事件（契约 §15.7）。 */
-const POLL_MS = 5_000;
+/**
+ * 运行中的行多久重算一次耗时。任务行本身不轮询：`workflow.task` 帧到达时重读
+ * （契约 §15.4、§15.7，订阅在 `workflow/store.ts::useWorkflowEvents`）。
+ */
+const ELAPSED_TICK_MS = 15_000;
+
+/** 有运行中的行时每隔一会儿给一个新的「此刻」，耗时跟着走。 */
+function useTick(active: boolean): number {
+  const [now, setNow] = React.useState(() => Date.now());
+  React.useEffect(() => {
+    if (!active) return;
+    setNow(Date.now());
+    const timer = window.setInterval(() => setNow(Date.now()), ELAPSED_TICK_MS);
+    return () => window.clearInterval(timer);
+  }, [active]);
+  return now;
+}
 
 function useWorkspaceOnline(workspaceId: string | null): boolean {
   const [online, setOnline] = React.useState(true);
@@ -320,12 +335,22 @@ export function DispatchDrawer() {
     queryKey: coordinatorKeys.tasks(boardId ?? ""),
     queryFn: () => coordinatorApi.tasks(boardId as string),
     enabled: open && Boolean(boardId),
-    refetchInterval: open ? POLL_MS : false,
     retry: false,
   });
 
-  // 耗时跟着走：运行中的那几行每秒一跳太吵，跟着重读的节奏就够。
-  const now = tasks.dataUpdatedAt || Date.now();
+  // 断线期间的帧收不到：重新连上就重读一次。
+  const refetch = tasks.refetch;
+  const wasOnline = React.useRef(online);
+  React.useEffect(() => {
+    if (open && online && !wasOnline.current) void refetch();
+    wasOnline.current = online;
+  }, [open, online, refetch]);
+
+  // 耗时跟着走：运行中的那几行每秒一跳太吵，十几秒一跳就够。
+  const running =
+    open && (tasks.data ?? []).some((task) => task.status === "running");
+  const tick = useTick(running);
+  const now = Math.max(tick, tasks.dataUpdatedAt || 0) || Date.now();
   const model = React.useMemo(() => {
     const states: Record<string, (typeof statuses)[string]["state"]> = {};
     // 只取当前源的那些，键还原成节点 id。
