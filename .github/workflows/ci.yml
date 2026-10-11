@@ -24,7 +24,60 @@ env:
   NODE_VERSION: "24"
 
 jobs:
+  # 先判断改了什么（workspace#9）：只改文档（Markdown 与 docs/，契约与第三方声明
+  # 除外）时只跑下面的 docs 作业，完整检查与端到端跳过；推到 main 同理。
+  changes:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      code: ${{ steps.diff.outputs.code }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - id: diff
+        shell: bash
+        env:
+          BASE: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
+        run: |
+          set -euo pipefail
+          code=false
+          if [ -z "${BASE:-}" ] || ! git cat-file -e "$BASE^{commit}" 2>/dev/null || [ "$GITHUB_REF_TYPE" = tag ]; then
+            code=true
+          else
+            files=$(git diff --name-only "$BASE" HEAD)
+            [ -z "$files" ] && code=true
+            while IFS= read -r f; do
+              [ -z "$f" ] && continue
+              case "$f" in
+                THIRD_PARTY_NOTICES.md | docs/contracts/*) code=true ;;
+                *.md | docs/* | .github/ISSUE_TEMPLATE/*) ;;
+                *) code=true ;;
+              esac
+            done <<< "$files"
+          fi
+          echo "code=$code" >> "$GITHUB_OUTPUT"
+          echo "只改文档：$([ $code = false ] && echo 是 || echo 否)"
+
+  docs:
+    needs: changes
+    if: ${{ needs.changes.outputs.code != 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION || 24 }}
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile --ignore-scripts
+      - run: pnpm format:check
+      - run: pnpm repo:check
+
   check:
+    needs: changes
+    if: ${{ needs.changes.outputs.code == 'true' }}
     name: ${{ matrix.label }}
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 90
@@ -129,6 +182,8 @@ jobs:
   # socket。只在 Linux 上跑：探针要 tmux，而三平台的差异已经由上面的单测守着。
   # 失败阻断合并；每条的 result.json、截图与输出作为产物上传。
   e2e:
+    needs: changes
+    if: ${{ needs.changes.outputs.code == 'true' }}
     name: e2e (tier a)
     runs-on: ubuntu-latest
     timeout-minutes: 60
