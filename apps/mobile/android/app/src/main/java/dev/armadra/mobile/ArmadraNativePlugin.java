@@ -61,7 +61,9 @@ import org.unifiedpush.android.connector.UnifiedPush;
  *       X25519 公钥，配了中继时先换中继令牌；
  *   <li>{@code pushRotated / ackPushRotation}：令牌或端点换过的标记（R-54，{@link PushRotation}）；换的那一刻
  *       插件开着就发 {@code pushTokenRotated} 事件；
- *   <li>{@code openExternal}：系统浏览器打开原生 OAuth 的授权页（R-56），只开 https 与回环 http。
+ *   <li>{@code openExternal}：系统浏览器打开原生 OAuth 的授权页（R-56），只开 https 与回环 http；
+ *   <li>{@code installApk({ url, sha256 })}：应用内更新（#288 §4），下载、核对摘要、拉起系统安装器，结果
+ *       {@code { status: "started" | "permissionRequired" | "checksumMismatch" | "failed", message? }}，从不 reject。
  * </ul>
  *
  * 深链（{@code armadra://…}，含点通知与 OAuth 回调）改写页面的地址片段（{@link DeepLink#script()}）。
@@ -75,6 +77,9 @@ public class ArmadraNativePlugin extends Plugin {
     private static final long UNIFIEDPUSH_TIMEOUT_MS = 30_000;
 
     private final ExecutorService worker = Executors.newSingleThreadExecutor();
+    /** 安装包下载另开一条线程，不挡住钉扎与推送。 */
+    private final ExecutorService updates = Executors.newSingleThreadExecutor();
+    private final AtomicBoolean installing = new AtomicBoolean(false);
     private SecureStore store;
     /** 每个来源一份钉扎（Gateway 与个人中转各钉各的）；握手时按主机与端口找。 */
     private volatile List<Pin> pins = List.of();
@@ -531,6 +536,39 @@ public class ArmadraNativePlugin extends Plugin {
         } catch (Exception noBrowser) {
             call.reject("no browser");
         }
+    }
+
+    // ------------------------------------------------------------ 应用内更新
+
+    /**
+     * 下载 https 安装包到 {@code cache/updates/}，sha256 对上才继续；没有「安装未知应用」授权时打开对应设置页并返回
+     * {@code permissionRequired}（授权后页面再调一次，已下好的包直接复用），否则拉起系统安装器返回 {@code started}。
+     * 同一时间只跑一次，重复调用返回 {@code failed}（{@code busy}）。
+     */
+    @PluginMethod
+    public void installApk(PluginCall call) {
+        if (!installing.compareAndSet(false, true)) {
+            call.resolve(installResult(new ApkInstaller.Result(ApkInstaller.Status.FAILED, "busy")));
+            return;
+        }
+        String url = call.getString("url");
+        String sha256 = call.getString("sha256");
+        updates.execute(() -> {
+            try {
+                ApkInstaller.Result result = ApkInstaller.install(getActivity(), url, sha256);
+                Log.i(TAG, "installApk: " + result.status.wire);
+                call.resolve(installResult(result));
+            } finally {
+                installing.set(false);
+            }
+        });
+    }
+
+    private static JSObject installResult(ApkInstaller.Result result) {
+        JSObject out = new JSObject();
+        out.put("status", result.status.wire);
+        if (result.message != null) out.put("message", result.message);
+        return out;
     }
 
     /**
