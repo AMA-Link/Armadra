@@ -220,6 +220,12 @@ export const ROUTE_SCOPE_RULES: readonly RouteScopeRule[] = [
   },
   // Runtime 的健康数字（契约 §54）：登录即可（{@link SELF_GUARDED}），同一档。
   { pattern: /^\/api\/diagnostics\/runtime$/, read: "canvas:read" },
+  // 流量统计（契约 §76）：本机管理，只有 owner（全局 `settings:*`）。
+  {
+    pattern: /^\/api\/traffic\/(summary|series|live|clear)$/,
+    read: "settings:read",
+    write: "settings:write",
+  },
   // 发布历史（契约 §64）：公开信息，没有机密。成员按「无害的全局读」放行
   // （`identity/route-access.ts` 的 `SHARED_READS`）。
   { pattern: /^\/api\/updates\/releases$/, read: "updates:read" },

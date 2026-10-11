@@ -1363,6 +1363,31 @@ export const ROUTES: readonly RouteEntry[] = [
     surface: "runtime",
     implemented: true,
   },
+  // 流量统计（契约 §76）：经中继收发的字节，按对端 × 类别 × 小时桶；只有 owner。
+  {
+    path: "/api/traffic/summary",
+    methods: ["GET"],
+    surface: "runtime",
+    implemented: true,
+  },
+  {
+    path: "/api/traffic/series",
+    methods: ["GET"],
+    surface: "runtime",
+    implemented: true,
+  },
+  {
+    path: "/api/traffic/live",
+    methods: ["GET"],
+    surface: "runtime",
+    implemented: true,
+  },
+  {
+    path: "/api/traffic/clear",
+    methods: ["POST"],
+    surface: "runtime",
+    implemented: true,
+  },
   // 发布历史与最新版本（契约 §64）：core 代问 GitHub，带缓存。
   {
     path: "/api/updates/releases",
