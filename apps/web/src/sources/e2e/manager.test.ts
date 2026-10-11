@@ -88,24 +88,26 @@ describe("E2eChannels", () => {
     });
   });
 
-  it("从没建成过且连不上：答 null（过渡期走明文）；建成过就再不降级", async () => {
+  it("连不上就失败，不退回明文：旧 core（4404/4409）答 unsupported，其余 unreachable", async () => {
     const channels = await manager();
     vi.spyOn(E2eClientChannel, "open").mockRejectedValueOnce(
       new E2eChannelError("unreachable"),
     );
-    expect(await channels.channel(TARGET)).toBeNull();
-    vi.spyOn(E2eClientChannel, "open").mockResolvedValueOnce(
-      fakeChannel(IDENTITY),
-    );
-    await channels.channel(TARGET);
-    channels.close(TARGET.issuer, TARGET.sourceId);
-    // 中继拒绝开通道（降级攻击）：钉过的源不退回明文。
+    await expect(channels.channel(TARGET)).rejects.toMatchObject({
+      code: "unreachable",
+    });
     vi.spyOn(E2eClientChannel, "open").mockRejectedValueOnce(
-      new E2eChannelError("unreachable"),
+      new E2eChannelError("unreachable", "e2e_unsupported", 4404),
     );
-    await expect(channels.channel(TARGET)).rejects.toBeInstanceOf(
-      E2eChannelError,
+    await expect(channels.channel(TARGET)).rejects.toMatchObject({
+      code: "unsupported",
+    });
+    vi.spyOn(E2eClientChannel, "open").mockRejectedValueOnce(
+      new E2eChannelError("unreachable", "bad version", 4409),
     );
+    await expect(channels.channel(TARGET)).rejects.toMatchObject({
+      code: "unsupported",
+    });
   });
 
   it("钉住的与 m2 的不同（防御：协议包没比上时）也拒绝", async () => {

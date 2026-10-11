@@ -88,27 +88,47 @@ describe("桌面：经本机 core 换票", () => {
           JSON.stringify({
             accessToken: "A",
             accessExpiresAtMs: 5,
-            httpBase: "https://relay.example/s/x/",
-            wsBase: "wss://relay.example/s/x/",
-            via: "relayed",
-            relayToken: "RT",
-            relayTokenExpiresAtMs: 9,
+            httpBase: "https://192.168.1.8:8443/",
+            wsBase: "wss://192.168.1.8:8443/",
+            via: "direct",
           }),
         ),
     );
     vi.stubGlobal("fetch", fetch);
     const provider = createDesktopCredentialProvider();
-    await expect(provider.getAccess("x/1", "relayed")).resolves.toEqual({
+    await expect(provider.getAccess("x/1", "direct")).resolves.toEqual({
       accessToken: "A",
       expiresAtMs: 5,
-      httpBase: "https://relay.example/s/x",
-      wsBase: "wss://relay.example/s/x",
-      relayToken: "RT",
+      httpBase: "https://192.168.1.8:8443",
+      wsBase: "wss://192.168.1.8:8443",
     });
     const [url, init] = fetch.mock.calls[0]!;
     expect(url).toBe(`${localSource.httpBase}/api/sources/x%2F1/session`);
     expect(init?.method).toBe("POST");
-    expect(JSON.parse(String(init?.body))).toEqual({ via: "relayed" });
+    expect(JSON.parse(String(init?.body))).toEqual({ via: "direct" });
+  });
+
+  it("经中继只走端到端通道：这里拿不到设备钥就失败，不退回明文", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        async () =>
+          new Response(
+            JSON.stringify({
+              accessToken: "A",
+              accessExpiresAtMs: 5,
+              httpBase: "https://relay.example/s/x/",
+              wsBase: "wss://relay.example/s/x/",
+              via: "relayed",
+              relayToken: "RT",
+              relayTokenExpiresAtMs: 9,
+            }),
+          ),
+      ),
+    );
+    await expect(
+      createDesktopCredentialProvider().getAccess("x", "relayed"),
+    ).rejects.toMatchObject({ code: "e2e_device_unavailable" });
   });
 
   it("core 拒了（source_unauthorized）照原样抛", async () => {

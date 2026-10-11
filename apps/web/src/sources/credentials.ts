@@ -3,6 +3,7 @@ import { z } from "zod";
 import { RuntimeRequestError, json, request } from "../api/request";
 import { isDesktop } from "../platform";
 import { localSource } from "../api/source";
+import { desktopDeviceKey } from "./e2e/device-key";
 import {
   E2eAccessError,
   E2eChannels,
@@ -206,6 +207,14 @@ export async function withRemoteApproval<T>(
 /** 桌面窗口自己的端到端通道（设备钥由本机 core 保管，经 `e2e.sign` 签）。 */
 let desktopChannels: E2eChannels | null = null;
 
+const E2E_SOURCE_ERROR: Partial<Record<E2eAccessError["code"], string>> = {
+  identity_changed: SOURCE_ERROR.identityChanged,
+  device_rejected: SOURCE_ERROR.deviceRejected,
+  unsupported: SOURCE_ERROR.e2eUnsupported,
+  device_unavailable: SOURCE_ERROR.e2eDeviceUnavailable,
+  unreachable: SOURCE_ERROR.unreachable,
+};
+
 /**
  * 桌面与服务器壳的页面：经本机 core 换票（`POST /api/sources/{id}/session`，
  * 契约 §33）。刷新令牌与远程服务的会话都留在 core，页面只拿访问令牌；
@@ -239,13 +248,16 @@ export const exchangeViaLocalCore: AccessExchange = async (
   const answer = await withRemoteApproval(sourceId, ask);
   const httpBase = answer.httpBase.replace(/\/+$/, "");
   let e2e: SourceAccess["e2e"];
-  if (
-    answer.via === "relayed" &&
-    answer.relayToken !== undefined &&
-    isDesktop()
-  ) {
+  // 经中转只走端到端通道（契约 §78）。会话是本机 core 经它自己的通道签的、绑它的
+  // 设备钥，所以页面（桌面窗口，或经 Gateway 打开的服务器壳页面）也用这把钥开通道：
+  // 经 `e2e.sign` 请 core 签，私钥不进页面。
+  if (answer.via === "relayed" && answer.relayToken !== undefined) {
     desktopChannels ??= new E2eChannels({
-      deviceName: () => "Armadra Desktop",
+      deviceName: () => (isDesktop() ? "Armadra Desktop" : "Armadra Server"),
+      device: async () => ({
+        signer: await desktopDeviceKey(),
+        platform: "desktop",
+      }),
     });
     const channel = await desktopChannels
       .channel({
@@ -255,18 +267,16 @@ export const exchangeViaLocalCore: AccessExchange = async (
         relayToken: answer.relayToken,
       })
       .catch((error: unknown) => {
-        if (
-          error instanceof E2eAccessError &&
-          error.code === "identity_changed"
-        )
-          throw new SourceError(SOURCE_ERROR.identityChanged);
+        if (error instanceof E2eAccessError) {
+          const code = E2E_SOURCE_ERROR[error.code];
+          if (code !== undefined) throw new SourceError(code);
+        }
         throw error;
       });
-    if (channel !== null)
-      e2e = {
-        fetch: desktopChannels.fetchFor(channel, httpBase),
-        WebSocket: desktopChannels.socketFor(channel, httpBase),
-      };
+    e2e = {
+      fetch: desktopChannels.fetchFor(channel, httpBase),
+      WebSocket: desktopChannels.socketFor(channel, httpBase),
+    };
   }
   return {
     accessToken: answer.accessToken,

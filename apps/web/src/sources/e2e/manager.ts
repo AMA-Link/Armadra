@@ -16,9 +16,9 @@ import { type PinStore, storagePins } from "./pins";
  *
  * - 钉扎：第一次连上记下 core 的身份公钥（或用配对、访客链接给的），之后变了就拒绝
  *   （`identity_changed`），不退回明文。
- * - 过渡期（契约 §78 之前的 core、没报 `e2e` 能力的源）：从没在这个源上建成过通道
- *   时，连不上就答 `null`，调用方走明文路径；建成过（有钉扎）就再也不退回——中继
- *   拒绝开通道不能把一台已经加密过的电脑降成明文。
+ * - 不退回明文：中继不再转发明文的应用请求（cloud 0.5.0），源不报 `e2e` 能力（旧
+ *   core）答 `unsupported`（界面说「这台电脑需要升级」），这个环境没有 WebCrypto
+ *   的 Ed25519 / X25519（旧 WebView）答 `device_unavailable`（界面请人用 App）。
  * - 待确认：登录答 `device_pending` 时，{@link E2eChannels.awaitApproval} 把校验码交给
  *   界面（{@link pendingApprovals}），经通道长轮询 `e2e.wait`，主人在本机核对后继续。
  */
@@ -45,6 +45,8 @@ export class E2eAccessError extends Error {
       | "identity_changed"
       | "device_rejected"
       | "device_unavailable"
+      | "unsupported"
+      | "unreachable"
       | "cancelled",
     message: string = code,
   ) {
@@ -138,10 +140,7 @@ function same(a: Uint8Array, b: Uint8Array): boolean {
 
 export class E2eChannels {
   private readonly open = new Map<string, E2eClientChannel>();
-  private readonly opening = new Map<
-    string,
-    Promise<E2eClientChannel | null>
-  >();
+  private readonly opening = new Map<string, Promise<E2eClientChannel>>();
   private readonly fetches = new WeakMap<E2eClientChannel, typeof fetch>();
   private readonly sockets = new WeakMap<E2eClientChannel, typeof WebSocket>();
   private readonly pins: PinStore;
@@ -173,7 +172,7 @@ export class E2eChannels {
    * 这个源的通道：开着就复用，没有就建。答 `null` = 源不支持（过渡期，调用方走
    * 明文）；身份变了抛 `identity_changed`。
    */
-  channel(target: ChannelTarget): Promise<E2eClientChannel | null> {
+  channel(target: ChannelTarget): Promise<E2eClientChannel> {
     const name = `${target.issuer}\u0000${target.sourceId}`;
     const current = this.open.get(name);
     if (current !== undefined && !current.closed && !current.expired)
@@ -200,17 +199,13 @@ export class E2eChannels {
     return inflight;
   }
 
-  private async connect(
-    target: ChannelTarget,
-  ): Promise<E2eClientChannel | null> {
+  private async connect(target: ChannelTarget): Promise<E2eClientChannel> {
     let identity: DeviceIdentity;
     try {
       identity = await (this.options.device ?? deviceIdentity)();
     } catch {
-      // 这个环境没有 Ed25519（旧 WebView）或设备钥取不到：过渡期退回明文。
-      if (this.pinned(target.issuer, target.sourceId))
-        throw new E2eAccessError("device_unavailable");
-      return null;
+      // 这个环境没有 Ed25519（旧 WebView）或设备钥取不到。
+      throw new E2eAccessError("device_unavailable");
     }
     // 扫过这台电脑的配对二维码：身份不走 TOFU，握手带 proof（用过即删）。
     const offer =
@@ -243,9 +238,13 @@ export class E2eChannels {
         error.code === "identity_mismatch"
       )
         throw new E2eAccessError("identity_changed");
-      // 从没建成过：当它不支持（旧 core），走明文；建成过就不降级。
-      if (pinned === null) return null;
-      throw error;
+      // 中继答源不支持（4404 `e2e_unsupported`）或不认版本（4409）：旧 core。
+      if (
+        error instanceof E2eChannelError &&
+        (error.closeCode === 4404 || error.closeCode === 4409)
+      )
+        throw new E2eAccessError("unsupported");
+      throw new E2eAccessError("unreachable");
     }
     if (
       target.fingerprintPrefix !== undefined &&
@@ -381,8 +380,7 @@ export function resetE2eChannels(): void {
 
 /**
  * 第一次经访客链接加入（契约 §80）：先开通道（邀请令牌作 proof、链接里的指纹钉身份），
- * 源 core 的 `cloud/login` 走它；源不支持时（过渡期）照旧明文。答给 `coreCloudLogin`
- * 的选项。
+ * 源 core 的 `cloud/login` 走它。答给 `coreCloudLogin` 的选项。
  */
 export async function sealedJoinOptions<T extends { fetch?: typeof fetch }>(
   channels: E2eChannels | undefined,
@@ -390,14 +388,13 @@ export async function sealedJoinOptions<T extends { fetch?: typeof fetch }>(
   target: Omit<ChannelTarget, "proofSecret"> & {
     readonly invitationToken: string;
   },
-): Promise<T | (T & { fetch: typeof fetch }) | undefined> {
-  if (channels === undefined) return base;
+): Promise<T & { fetch: typeof fetch }> {
+  if (channels === undefined) throw new E2eAccessError("device_unavailable");
   const { invitationToken, ...rest } = target;
   const channel = await channels.channel({
     ...rest,
     proofSecret: new TextEncoder().encode(invitationToken),
   });
-  if (channel === null) return base;
   return {
     ...(base ?? ({} as T)),
     fetch: channels.fetchFor(channel, target.base),

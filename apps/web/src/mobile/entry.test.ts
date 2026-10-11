@@ -422,14 +422,15 @@ describe("原生 App：多连接", () => {
     await expect(prepareEntry()).resolves.toEqual({ kind: "app" });
     const transport = mocks.install.mock.calls[0]![0] as {
       origin: string;
-      extraHeaders: () => Record<string, string>;
-      extraProtocols: () => string[];
+      extraHeaders?: unknown;
+      extraProtocols?: unknown;
+      baseFetch?: unknown;
     };
     expect(transport.origin).toBe(ISSUER);
-    expect(transport.extraHeaders()).toEqual({
-      "armadra-relay-token": "relay.jwt",
-    });
-    expect(transport.extraProtocols()).toEqual(["armadra-relay.relay.jwt"]);
+    // 字节走端到端通道（契约 §78）：不再给请求与流带中继令牌。
+    expect(transport.extraHeaders).toBeUndefined();
+    expect(transport.extraProtocols).toBeUndefined();
+    expect(typeof transport.baseFetch).toBe("function");
     expect(runtimeBase()).toBe(RELAY_BASE);
     // 通知条据此分辨中继停了（`relay-status.ts`）。
     expect(mobileRelayRoute()).toBe(ISSUER);
@@ -503,7 +504,7 @@ describe("原生 App：多连接", () => {
     expect(mocks.install).not.toHaveBeenCalled();
   });
 
-  it("续期经凭据来源，换来的中继令牌立刻生效", async () => {
+  it("续期经凭据来源（经中继的那条）", async () => {
     mocks.app = true;
     mocks.restored = true;
     addRelayed();
@@ -520,7 +521,6 @@ describe("原生 App：多连接", () => {
     await prepareEntry();
     const transport = mocks.install.mock.calls[0]![0] as {
       refresh: () => Promise<boolean>;
-      extraHeaders: () => Record<string, string>;
     };
     mocks.refresh.mockResolvedValue({
       accessToken: "t2",
@@ -531,7 +531,6 @@ describe("原生 App：多连接", () => {
     });
     await expect(transport.refresh()).resolves.toBe(true);
     expect(mocks.refresh).toHaveBeenCalledWith(HOST, "relayed");
-    expect(transport.extraHeaders()["armadra-relay-token"]).toBe("relay.new");
   });
 
   it("分享深链：连接页直接挂载；#connections：管理页；两者都不选路", async () => {

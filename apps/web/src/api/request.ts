@@ -121,6 +121,8 @@ const MESSAGE_BY_CODE: Readonly<Record<string, string>> = {
   device_rejected: "error.deviceRejected",
   device_pending: "error.devicePending",
   e2e_required: "error.e2eRequired",
+  e2e_unsupported: "error.e2eUnsupported",
+  e2e_device_unavailable: "error.e2eDeviceUnavailable",
   sas_mismatch: "e2e.approve.mismatch",
   sas_expired: "e2e.approve.expired",
   // ACP prompt 的附件（契约 §56）。

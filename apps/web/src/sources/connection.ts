@@ -17,8 +17,6 @@ import { type ProbeOptions, pickRoute, probeDirect } from "./routing";
 import { type TransportMeter, meteredWebSocket } from "./traffic-meter";
 import {
   type BearerTransport,
-  RELAY_PROTOCOL,
-  RELAY_TOKEN_HEADER,
   bearerFetch,
   deferredWebSocket,
   ticketedWebSocket,
@@ -71,7 +69,7 @@ export interface SourceConnection {
 /** `socket()` 的选项：`ManagedSocket` 的回调与协商协议，地址与凭据由连接给。 */
 export type SourceSocketOptions = Omit<
   ManagedSocketOptions,
-  "url" | "ticket" | "relayToken" | "renew"
+  "url" | "ticket" | "renew"
 >;
 
 type Listener = () => void;
@@ -329,10 +327,6 @@ export function createRemoteConnection(
   const httpBase = () =>
     access?.httpBase ?? (descriptor.baseUrl || descriptor.relayOrigin);
   const wsBase = () => access?.wsBase ?? httpBase().replace(/^http/, "ws");
-  const relayToken = () =>
-    via === "relayed" && access?.e2e === undefined
-      ? (access?.relayToken ?? null)
-      : null;
 
   const setStatus = (
     state: SourceStatus["state"],
@@ -404,14 +398,6 @@ export function createRemoteConnection(
     },
     wsTicket: () => fetchTicket(),
     refresh: () => renewAccess(),
-    extraHeaders: (): Record<string, string> => {
-      const token = relayToken();
-      return token === null ? {} : { [RELAY_TOKEN_HEADER]: token };
-    },
-    extraProtocols: () => {
-      const token = relayToken();
-      return token === null ? [] : [`${RELAY_PROTOCOL}${token}`];
-    },
   };
 
   const sourceFetch = bearerFetch(baseFetch, transport);
@@ -506,7 +492,6 @@ export function createRemoteConnection(
         ),
         url: () => runtimeSocketUrl(wsBase(), path),
         ticket: () => fetchTicket(),
-        relayToken,
         renew: () => renewAccess(),
         onStateChange: (state: ManagedSocketState) => {
           if (state === "closed") sockets.delete(socket);

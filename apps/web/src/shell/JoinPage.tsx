@@ -49,10 +49,12 @@ function failureText(error: unknown, fallback: string): string {
  *
  * 1. 片段一读进内存就从地址栏抹掉（秘密不留在历史里）；`links.get` 显示指向
  *    哪台机器、什么权限、何时过期。
- * 2. 「加入」：托管中继（`sources/hosted.ts`）以访客加入——`links.accept`（匿名）
- *    → 经 `relayBaseUrl` `cloud/login`（断言 + 邀请令牌）→ 本机源指到那台 core
- *    （凭据只在内存）→ 地址换成 `/app/`、就地进画布，打开链接指向的工作空间。
- * 3. 「在 Armadra 中打开」：同一条链接的 `armadra://join` 深链（桌面与手机）。
+ * 2. 首选「在 Armadra 中打开」：同一条链接的 `armadra://join` 深链（桌面与手机）。
+ *    App 里的页面不由中转下发，端到端加密才完整（设计 §5）。
+ * 3. 「在浏览器中加入」：托管中继（`sources/hosted.ts`）以访客加入——
+ *    `links.accept`（匿名）→ 经端到端通道 `cloud/login`（断言 + 邀请令牌）→ 本机源
+ *    指到那台 core（凭据只在内存）→ 地址换成 `/app/`、就地进画布。页面由中转下发，
+ *    下面一行说明这个边界。
  */
 export function JoinPage({
   onJoined,
@@ -165,19 +167,25 @@ export function JoinPage({
                 <AlertTitle>{failure}</AlertTitle>
               </Alert>
             )}
+            <Button asChild size="lg" className="h-11 w-full">
+              <a href={joinDeepLink(link)}>{t("links.page.openApp")}</a>
+            </Button>
             <Button
               type="button"
               size="lg"
+              variant="ghost"
               className="h-11 w-full"
               disabled={busy || info?.exhausted === true}
               onClick={() => void join()}
             >
               {busy && <Spinner data-icon="inline-start" aria-hidden />}
-              {failure && !busy ? t("links.page.retry") : t("links.action")}
+              {failure && !busy
+                ? t("links.page.retry")
+                : t("links.page.joinInBrowser")}
             </Button>
-            <Button asChild size="lg" variant="ghost" className="h-11 w-full">
-              <a href={joinDeepLink(link)}>{t("links.page.openApp")}</a>
-            </Button>
+            <p className="text-center text-[12px] text-muted-foreground text-balance">
+              {t("e2e.browserNotice")}
+            </p>
           </div>
         )}
       </div>

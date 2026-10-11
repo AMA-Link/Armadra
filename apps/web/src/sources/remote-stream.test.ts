@@ -12,7 +12,7 @@ import {
   parseMeStreamEvent,
   resyncTargets,
 } from "./remote-stream";
-import { RELAY_PROTOCOL, WS_TICKET_PROTOCOL } from "./transport";
+import { WS_TICKET_PROTOCOL } from "./transport";
 import type {
   CloudAuth,
   CredentialProvider,
@@ -252,10 +252,7 @@ describe("接到源表上", () => {
     });
     await flush();
     const first = sourceSockets()[0]!;
-    expect(first.protocols).toEqual([
-      `${WS_TICKET_PROTOCOL}src-ticket`,
-      `${RELAY_PROTOCOL}RT`,
-    ]);
+    expect(first.protocols).toEqual([`${WS_TICKET_PROTOCOL}src-ticket`]);
     first.open();
     first.drop(CLOSE_SOURCE_OFFLINE);
     await flush();

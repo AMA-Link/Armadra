@@ -37,9 +37,6 @@ export function needsBearerFetch(
   return bearerSourceFor(url, sources) !== null;
 }
 
-/** 中继上签媒体票的路径（armadra-cloud cloud-api §12），相对源地址。 */
-export const RELAY_MEDIA_TICKET_PATH = "/_relay/media-tickets";
-
 export type MediaDisposition = "inline" | "attachment";
 
 /** 向 core 换一张媒体票（`files.mediaTicket`，契约 §37.4）。 */
@@ -53,12 +50,11 @@ export type IssueMediaTicket = (
  * 一个浏览器能直接取的地址（`<video src>`、`<img src>`、`<a href>`），不带头、
  * 按 `Range` 取，不把文件读进页面（契约 §37.4）：
  *
- * 1. 经带凭据的 `files.mediaTicket` 换 core 的 `/api/media/<票>`；
- * 2. 这个源眼下经中继到达时，再用带中继令牌的请求换一张中继的票
- *    （`POST <源地址>/_relay/media-tickets`），地址成了 `<源地址>/_relay/m/<票>`。
+ * 经带凭据的 `files.mediaTicket` 换 core 的 `/api/media/<票>`。地址里只有票：凭据、
+ * 工作空间与文件路径都不在 URL 上。
  *
- * 地址里只有票：凭据、工作空间与文件路径都不在 URL 上。老 core（没有这条
- * procedure）、老中继或任何一步失败答 `null`，调用方退回取回成 `blob:`。
+ * 经中继到达的源答 `null`：字节只走端到端通道（契约 §78），浏览器直接取的地址到不了
+ * 通道里，调用方经源的 `fetch` 取回。老 core（没有这条 procedure）或失败也答 `null`。
  */
 export async function directFileUrl(
   workspaceId: string,
@@ -67,6 +63,7 @@ export async function directFileUrl(
   issue: IssueMediaTicket,
   source: Source = currentSource(),
 ): Promise<string | null> {
+  if (source.relayed?.() === true) return null;
   let ticket: { readonly url: string };
   try {
     ticket = await issue(workspaceId, path, disposition);
@@ -74,23 +71,7 @@ export async function directFileUrl(
     return null;
   }
   if (!ticket.url.startsWith("/api/media/")) return null;
-  const base = source.httpBase.replace(/\/+$/, "");
-  if (source.relayed?.() !== true) return `${base}${ticket.url}`;
-  try {
-    const response = await source.fetch(`${base}${RELAY_MEDIA_TICKET_PATH}`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ path: ticket.url }),
-      cache: "no-store",
-    });
-    if (!response.ok) return null;
-    const body = (await response.json()) as { path?: unknown };
-    return typeof body.path === "string" && body.path.startsWith("/_relay/m/")
-      ? `${base}${body.path}`
-      : null;
-  } catch {
-    return null;
-  }
+  return `${source.httpBase.replace(/\/+$/, "")}${ticket.url}`;
 }
 
 /** File System Access 的保存对话框（`showSaveFilePicker`）里用到的那一点。 */

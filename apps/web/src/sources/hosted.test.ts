@@ -22,6 +22,7 @@ import { createSourceRegistry } from "./registry";
 import type { RemoteStreamOptions } from "./remote-stream";
 import type { EnterRouteOptions } from "./route-entry";
 import { SourceError } from "./types";
+import { plainE2e } from "./e2e/testing";
 
 /**
  * 中继托管的页面（客户端包 §5）：认出自己、口令登录、挑主机装成本机源、
@@ -164,6 +165,7 @@ function hosted(mount?: (options: SiblingMountOptions) => unknown) {
   const relay = createHostedRelay({
     issuer: ISSUER,
     cloud: { fetch: net.fetch },
+    e2e: plainE2e(net.fetch),
     enter: fakeEnter,
     wake,
     ...(mount === undefined
@@ -263,6 +265,7 @@ describe("中继自己停了", () => {
     const relay = createHostedRelay({
       issuer: ISSUER,
       cloud: { fetch: net.fetch },
+      e2e: plainE2e(net.fetch),
       enter: fakeEnter,
       wake: vi.fn(),
       createStream: (options) => {
@@ -480,6 +483,7 @@ describe("按分享链接以访客加入（A4-3p）", () => {
     const relay = createHostedRelay({
       issuer: ISSUER,
       cloud: { fetch: net.fetch },
+      e2e: plainE2e(net.fetch),
       enter: fakeEnter,
       wake: vi.fn(),
       createStream: () => ({
@@ -643,6 +647,7 @@ describe("刷新页面不丢登录", () => {
     return createHostedRelay({
       issuer: ISSUER,
       cloud: { fetch: net.fetch },
+      e2e: plainE2e(net.fetch),
       enter: fakeEnter,
       wake: vi.fn(),
       storage,

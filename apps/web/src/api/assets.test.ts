@@ -398,30 +398,19 @@ describe("directFileUrl（媒体票，契约 §37.4）", () => {
     expect(issue).toHaveBeenCalledWith("w1", "a.mp4", "inline");
   });
 
-  it("经中继的源：再用源的 fetch（带中继令牌）换中继的票", async () => {
+  it("经中继的源：答 null，不换票（字节只走端到端通道，调用方经源的 fetch 取）", async () => {
     const issue = vi.fn().mockResolvedValue({ url: "/api/media/CORE" });
-    const relayFetch = vi.fn(
-      async (input: RequestInfo | URL, init?: RequestInit) => {
-        expect(String(input)).toBe(`${RELAY}/_relay/media-tickets`);
-        expect(init?.method).toBe("POST");
-        expect(JSON.parse(String(init?.body))).toEqual({
-          path: "/api/media/CORE",
-        });
-        return new Response(
-          JSON.stringify({ ticket: "R", path: "/_relay/m/RELAYTICKET" }),
-          { status: 200 },
-        );
-      },
-    );
+    const relayFetch = vi.fn();
     const relayed: Source = {
       ...source(RELAY, "bearer"),
       fetch: relayFetch as typeof fetch,
       relayed: () => true,
     };
-    expect(await directFileUrl("w1", "a.mp4", "inline", issue, relayed)).toBe(
-      `${RELAY}/_relay/m/RELAYTICKET`,
-    );
-    expect(relayFetch).toHaveBeenCalledTimes(1);
+    expect(
+      await directFileUrl("w1", "a.mp4", "inline", issue, relayed),
+    ).toBeNull();
+    expect(issue).not.toHaveBeenCalled();
+    expect(relayFetch).not.toHaveBeenCalled();
   });
 
   it("换票失败、形状不对、老中继答错都给 null（调用方退回 blob）", async () => {
