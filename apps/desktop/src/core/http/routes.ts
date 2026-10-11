@@ -756,6 +756,19 @@ export const ROUTES: readonly RouteEntry[] = [
     surface: "runtime",
     implemented: true,
   },
+  // 新建工作空间对话框（契约 §65）：克隆的缺省父目录、已连接账号的仓库。
+  {
+    path: "/api/git/clone-defaults",
+    methods: ["GET"],
+    surface: "runtime",
+    implemented: true,
+  },
+  {
+    path: "/api/git/clone-repositories",
+    methods: ["GET"],
+    surface: "runtime",
+    implemented: true,
+  },
   {
     path: "/api/terminals",
     methods: ["POST"],
