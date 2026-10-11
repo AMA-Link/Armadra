@@ -402,6 +402,9 @@ describe("an unsigned package stages but never installs", () => {
       publishConfigured: true,
       signature,
       developmentOverride: true,
+      platform: "darwin",
+      pubkey: null,
+      managed: null,
     });
   }
 

@@ -29,6 +29,8 @@
  * settings page.
  */
 
+import type { ManagedDownload, ManagedKind } from "./managed";
+
 /**
  * Why something could not be done, as a stable machine token.
  *
@@ -45,7 +47,11 @@ export const REASONS = [
   "compatibilityRefused",
   /** The release publishes nothing for this target. */
   "noArtifactForTarget",
-  /** The manifest entry is signed by a key this build does not carry. */
+  /**
+   * The manifest entry is signed by a key this build does not carry, or the
+   * downloaded bundle's `<asset>.sig` is missing or does not verify with the
+   * release key this package ships.
+   */
   "signatureMismatch",
   /** The bytes that arrived are not the bytes the release described. */
   "digestMismatch",
@@ -63,10 +69,10 @@ export const REASONS = [
   /** The updater is present but unusable in this build. */
   "updaterUnavailable",
   /**
-   * The update is staged, but this installation carries no platform signature
-   * an installer could be checked against, so it is not installed. Only
-   * reachable with `ARMADRA_UPDATES_DEV=1` on an unsigned package: without it
-   * such a build never checks at all (`availability.ts`).
+   * The update is staged, but this installation carries neither the release
+   * key nor a platform signature, so it is not installed. Only reachable with
+   * `ARMADRA_UPDATES_DEV=1`: without it such a build never checks at all
+   * (`availability.ts`).
    */
   "notSigned",
 ] as const;
@@ -78,11 +84,10 @@ export type Reason = (typeof REASONS)[number];
  * before a check means anything: an endpoint says where releases are
  * published, and — under the Rust shell — a public key is what made one trustworthy.
  *
- * Under electron-updater the `pubkey` half carries the same meaning one step
- * over: it is true when this build carries nothing that could make an update
- * trustworthy, which is now "the package is not signed" rather than "no
- * minisign key was configured". The name is kept because it is the wire format
- * the settings page renders (`updates.missing.pubkey`).
+ * The `pubkey` half is true when this build carries nothing an update could be
+ * checked against: no release public key (`armadra-release.pub`) and no
+ * platform code signature (`availability.ts`). Every release package ships the
+ * key, so in practice only a hand-assembled package reports it.
  */
 export interface MissingUpdaterConfig {
   pubkey: boolean;
@@ -104,6 +109,16 @@ export type Unsupported =
   | "remoteHost"
   /** The package manager that installed this build owns its updates. */
   | "managedPackage";
+
+/**
+ * An installation the shell must not replace (`managed.ts`), and the installer
+ * a person can download instead. `download` is `null` until a check found a
+ * newer release that publishes one for this package.
+ */
+export interface ManagedInstall {
+  package: ManagedKind;
+  download: ManagedDownload | null;
+}
 
 /**
  * What a release offers this target, once the Host's answer and the release
@@ -142,8 +157,12 @@ export type UpdateState =
   | { state: "notConfigured"; missing: MissingUpdaterConfig }
   /** A build that never went through CI. It never auto-updates. */
   | { state: "localBuild" }
-  /** A shell that could not apply an update even if one existed. */
-  | { state: "unsupported"; reason: Unsupported }
+  /**
+   * A shell that could not apply an update even if one existed. For
+   * `managedPackage` the shell says which package it is and, once a check has
+   * found a newer release, which installer to download instead.
+   */
+  | { state: "unsupported"; reason: Unsupported; managed?: ManagedInstall }
   /** Configured, and nothing has been asked yet. */
   | { state: "idle" }
   | { state: "checking" }
