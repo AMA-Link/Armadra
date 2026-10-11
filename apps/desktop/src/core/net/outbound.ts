@@ -104,6 +104,17 @@ export const OUTBOUND = {
     defaultOn: false,
     documented: true,
   },
+  githubReleases: {
+    // 发布历史与新版本（契约 §64）：公开接口，不带任何令牌。仓库是
+    // `updates/service.ts` 的 `RELEASES_REPO`。
+    url: "https://api.github.com/repos/AMA-Link/Armadra/releases",
+    purpose: "版本历史与新版本检查（GitHub 发布列表）",
+    cadence:
+      "页面读版本历史时；ETag 条件请求、缓存 6 小时，强制刷新每分钟至多 1 次，限流时按 GitHub 给的时刻退避",
+    switch: null,
+    defaultOn: false,
+    documented: true,
+  },
   // 推送直连（契约 §19.5）：只在 `push.transport = "direct"` 且配了 APNs `.p8` /
   // FCM 服务账号时才连；Web Push 的端点是浏览器给的订阅地址、中继地址是用户
   // 配的，都不在这张表里。测试用 `ARMADRA_PUSH_APNS_ENDPOINT` /

@@ -23,7 +23,7 @@ import { type Scope, scope } from "./scopes";
  *     已有会话看会话行）、Agent 状态与「被读取」（看节点）、审批与关闭确认
  *     （看那条待答的请求）、ACP 会话（看会话行）、工作流（看草案 / 运行 /
  *     画板）。对象属于哪块画布，就按那块画布上的授权判。
- *   * **无害的全局读**：Agent 目录、模型目录、终端后端、公开状态页。新建菜单、
+ *   * **无害的全局读**：Agent 目录、模型目录、终端后端、公开状态页、发布历史。新建菜单、
  *     节点头、终端面板都要它们，而它们不带任何人的数据；只要这个成员至少被
  *     共享了一块画布就放行。
  *   * **本机管理**：设置、执行主机、SSH、数据与备份、用量与账号、对话索引、
@@ -110,6 +110,8 @@ const SHARED_READS: readonly RegExp[] = [
   /^\/api\/models\/catalog$/,
   /^\/api\/terminals\/backend$/,
   /^\/api\/usage\/status$/,
+  // 发布历史（契约 §64）：GitHub 上公开的发布说明与下载链接。
+  /^\/api\/updates\/releases$/,
 ];
 
 const TERMINAL_SESSION = /^\/api\/terminals\/([^/]+)(\/[^/]+)?(\/[^/]+)?$/;

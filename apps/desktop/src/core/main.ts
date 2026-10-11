@@ -65,6 +65,7 @@ import { install as installForge } from "./forge";
 import { install as installMail } from "./mail";
 import { install as installDiagnostics } from "./diagnostics";
 import { install as installSources } from "./sources";
+import { install as installUpdates } from "./updates";
 import { install as installRelay, relayDomain } from "./relay";
 
 /**
@@ -236,6 +237,10 @@ export const DOMAINS: readonly ((context: CoreContext) => void)[] = [
   // 不依赖别的域，放在 hook 服务之前即可。
   installMail,
   installDiagnostics,
+  // 发布历史（契约 §64）：装配不联网，第一次有人读才问 GitHub。读设置域的通道。
+  (context) => {
+    installUpdates(context);
+  },
   // 出站中继隧道（契约 §32）：隧道来的请求与 Gateway 交接进来的同样经全部路由，
   // 所以在每个域之后。装配不联网，真正连中继在回环监听开始之后（`run` 的第 5 步
   // 之后），而且不等。
