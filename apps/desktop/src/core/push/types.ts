@@ -65,6 +65,10 @@ export interface PushDevice {
   readonly unifiedpushEndpoint: string;
   readonly createdAtMs: number;
   readonly revokedAtMs: number;
+  /** 身份设备的名字（`identity_devices.device_name`，契约 §74）。 */
+  readonly deviceName?: string;
+  /** 设备属于 owner 主体：owner 可以替自己的这台改偏好（契约 §74）。 */
+  readonly ownerDevice?: boolean;
 }
 
 /**

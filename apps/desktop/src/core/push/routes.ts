@@ -35,6 +35,7 @@ export const PUSH_ROUTES = {
 export function deviceView(
   device: PushDevice,
   currentDeviceId: string | undefined,
+  who?: Caller,
 ): PushDeviceView {
   return {
     deviceId: device.deviceId,
@@ -49,10 +50,26 @@ export function deviceView(
     unifiedpush: device.unifiedpushEndpoint !== "",
     createdAt: new Date(device.createdAtMs).toISOString(),
     current: device.deviceId === currentDeviceId,
+    // 契约 §74：设备名与「这次请求能不能改它的偏好」，给设置页逐台改用。
+    ...(device.deviceName ? { deviceName: device.deviceName } : {}),
+    ...(who === undefined ? {} : { editable: mayEditKinds(who, device) }),
   };
 }
 
-interface Caller {
+/**
+ * 偏好只有设备的主人能改；owner 也不替成员决定他的手机响不响。唯一的放宽
+ * （契约 §74）：owner（含没有请求身份的桌面本机）可以改 owner 名下的设备——
+ * 那是他自己的手机，只是这次请求不是从那台发出的。
+ */
+function mayEditKinds(who: Caller, device: PushDevice): boolean {
+  if (device.revokedAtMs !== 0) return false;
+  if (who.principalId !== undefined && device.principalId === who.principalId) {
+    return true;
+  }
+  return who.owner && device.ownerDevice === true;
+}
+
+export interface Caller {
   /** `undefined` = 本机 owner（桌面壳，没有请求身份）。 */
   readonly principalId: string | undefined;
   readonly owner: boolean;
@@ -85,7 +102,7 @@ function operations(push: PushService) {
       return {
         devices: push.devices
           .list(who.principalId)
-          .map((device) => deviceView(device, who.deviceId)),
+          .map((device) => deviceView(device, who.deviceId, who)),
       };
     },
     register: (body: unknown) => {
@@ -102,17 +119,13 @@ function operations(push: PushService) {
       const parsed = parseRegistration(body);
       if (!parsed.ok) throw fail("bad_request", parsed.message);
       const device = push.devices.register(who.deviceId, parsed.registration);
-      return { device: deviceView(device, who.deviceId) };
+      return { device: deviceView(device, who.deviceId, who) };
     },
     setKinds: (deviceId: string, requested: unknown) => {
       const who = caller();
       const device = push.devices.get(deviceId);
-      // 偏好只有设备的主人能改；owner 也不替别人决定他的手机响不响。
-      if (
-        device === undefined ||
-        device.revokedAtMs !== 0 ||
-        device.principalId !== who.principalId
-      ) {
+      // 别人的、已撤销的、不存在的答同一句（见 {@link mayEditKinds}）。
+      if (device === undefined || !mayEditKinds(who, device)) {
         throw fail("not_found", "没有这台推送设备");
       }
       const kinds = parseKinds(requested);
@@ -128,7 +141,7 @@ function operations(push: PushService) {
         kinds.length === PREFERENCE_KINDS.length ? null : kinds,
       );
       const updated = push.devices.get(deviceId) as PushDevice;
-      return { device: deviceView(updated, who.deviceId) };
+      return { device: deviceView(updated, who.deviceId, who) };
     },
     revoke: (deviceId: string) => {
       const who = caller();
