@@ -243,10 +243,13 @@ function adoptCsrf(value: string): void {
 }
 
 /** 在跨窗口的那把锁里跑；没有 Web Locks 时直接跑。 */
-function withRenewLock<T>(task: () => Promise<T>): Promise<T> {
+function withRenewLock<T>(
+  task: () => Promise<T>,
+  name: string = CSRF_RENEW_LOCK,
+): Promise<T> {
   const locks = typeof navigator === "undefined" ? undefined : navigator.locks;
   if (!locks?.request) return task();
-  return locks.request(CSRF_RENEW_LOCK, task) as Promise<T>;
+  return locks.request(name, task) as Promise<T>;
 }
 
 /** 记住（或作废）一枚刚拿到的 CSRF 令牌；新的一枚告诉其它窗口。 */
@@ -302,6 +305,7 @@ export function resetIdentityCredentials(): void {
   forgotten = false;
   tokens.clear();
   renewing = null;
+  cookieRenewal = null;
   shellFailure = null;
   clearShellRefresh();
 }
@@ -672,6 +676,71 @@ export async function renewCsrf(): Promise<string> {
   );
   rememberCsrf(answer.csrfToken);
   return currentCsrf();
+}
+
+/* ---------------------------- Cookie 会话的续期 ---------------------------- */
+
+/**
+ * 同一浏览器的几个窗口共用一份会话 Cookie，`session/refresh` 每次都轮换刷新
+ * 密钥与 CSRF：两个窗口同时刷新，后到的那个带着已经作废的 CSRF，会被拒。
+ * 所以续期也在一把跨窗口的锁里，拿到锁先看一眼别的窗口是不是刚续过。
+ */
+const SESSION_REFRESH_LOCK = "armadra.identity.session-refresh";
+let cookieRenewal: Promise<boolean> | null = null;
+
+/**
+ * Cookie 会话（服务器壳托管的页面、手机浏览器经 Gateway）的访问 Cookie 过期
+ * 之后续一次（契约 §3.2）：请求层遇 401 先调它，续上了再重放一次；流被 4401
+ * 关掉后也经它续上再重连。
+ *
+ * 同一窗口里几处同时要只续一次；跨窗口经 Web Lock 排队，拿到锁先
+ * `GET session`——Cookie 是共用的，别的窗口刚续过就不必再续。还 401 才
+ * `POST session/refresh`（内存里没有 CSRF 先换一枚）；新的 CSRF 照常经广播
+ * 告诉其它窗口。续不上（刷新密钥也过期、被撤销）答 `false`，调用方把原来那次
+ * 401 交出去。Bearer 传输各有自己的续法，这里恒答 `false`。
+ */
+export function renewCookieSession(): Promise<boolean> {
+  if (bearerTransport()) return Promise.resolve(false);
+  cookieRenewal ??= withRenewLock(
+    renewCookieSessionLocked,
+    SESSION_REFRESH_LOCK,
+  )
+    .catch(() => false)
+    .finally(() => {
+      cookieRenewal = null;
+    });
+  return cookieRenewal;
+}
+
+function sessionRejected(error: unknown): boolean {
+  return (
+    error instanceof IdentityRequestError &&
+    (error.status === 401 || error.status === 403)
+  );
+}
+
+async function renewCookieSessionLocked(): Promise<boolean> {
+  try {
+    await call("session", identitySessionSchema);
+    return true;
+  } catch (error) {
+    if (!sessionRejected(error)) throw error;
+  }
+  if (!(await ensureCsrf())) return false;
+  try {
+    await refreshIdentity();
+    return true;
+  } catch (error) {
+    if (!sessionRejected(error)) throw error;
+  }
+  // 手里那枚 CSRF 已经被别处换掉（别的窗口只换了 CSRF、广播还没到）：凭刷新
+  // Cookie 换一枚再试一次。
+  const used = csrf;
+  forgetCsrf(used);
+  const renewed = await ensureCsrf();
+  if (!renewed || renewed === used) return false;
+  await refreshIdentity();
+  return true;
 }
 
 /** 结束这条会话。 */
