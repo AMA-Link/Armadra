@@ -2,8 +2,9 @@ import { statSync } from "node:fs";
 import { isAbsolute, resolve } from "node:path";
 
 import {
-  PLACEMENT_COLUMN_GAP,
-  PLACEMENT_ROW_GAP,
+  LAYER_GAP,
+  SIBLING_GAP,
+  boxesTooClose,
   type LayoutDirection,
 } from "@armadra/shared";
 
@@ -1267,9 +1268,9 @@ export function sticky(
 }
 
 /**
- * `team --gather` 的汇总节点：成员那一行再下一行、居中于成员（纵向）；横向时
- * 是成员那一列再右边一列、居中。成员有在分组里的（各自的 worktree Frame）或
- * 落点压着别的节点时返回 `undefined`，由调用方退回普通的 `placement`。
+ * `team --gather` 的汇总节点：成员那一行再下一层、居中于成员（纵向）；横向时
+ * 是成员那一列再右边一层、居中。成员有在分组里的（各自的 worktree Frame）或
+ * 落点离别的节点不足兄弟间距时返回 `undefined`，由调用方退回普通的 `placement`。
  */
 function gatherPlacement(
   working: BoardDocument,
@@ -1294,19 +1295,26 @@ function gatherPlacement(
     direction === "vertical"
       ? {
           x: (left + right) / 2 - ANCHOR_FALLBACK_WIDTH / 2,
-          y: bottom + PLACEMENT_ROW_GAP,
+          y: bottom + LAYER_GAP.vertical,
         }
       : {
-          x: right + PLACEMENT_COLUMN_GAP,
+          x: right + LAYER_GAP.horizontal,
           y: (top + bottom) / 2 - NODE_FALLBACK_HEIGHT / 2,
         };
+  // 和派发放置同一条「不重叠」：离任何顶层节点不足一个兄弟间距就算被占。
   const clash = working.nodes.some(
     (node) =>
       !node.parentId &&
-      node.position.x < at.x + ANCHOR_FALLBACK_WIDTH &&
-      at.x < node.position.x + width(node) &&
-      node.position.y < at.y + NODE_FALLBACK_HEIGHT &&
-      at.y < node.position.y + height(node),
+      boxesTooClose(
+        {
+          x: node.position.x,
+          y: node.position.y,
+          width: width(node),
+          height: height(node),
+        },
+        { ...at, width: ANCHOR_FALLBACK_WIDTH, height: NODE_FALLBACK_HEIGHT },
+        SIBLING_GAP,
+      ),
   );
   return clash ? undefined : at;
 }

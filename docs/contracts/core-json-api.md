@@ -3601,12 +3601,13 @@ human initiator。页面不接收任何 controller 凭据；body owner/controlle
 
 - **设置键**：`settings.get` / `settings.update`（`GET` / `PATCH /api/settings`）的文档多一段 `canvas: { layoutDirection: "vertical" | "horizontal" }`，缺省 `vertical`。缺席、类型不对或不在两值里时归一成 `vertical`（与其它段同一条「坏值退回缺省」规矩），归一后的文档总带这一段。旧 core 不认这一段：`looseObject` 原样透传，页面按缺省纵向读。
 - **放置规则**（`dispatchPlacement(boxes, parentId, size, direction, childIds)`）：
-  - `vertical`：`y = 主底 + 48`；`x` 接在主已有的从（`role: "supervises"` 边的目标）里最右那个的右边 + 60，没有从时与主左对齐。
-  - `horizontal`：`x = 主右 + 60`；`y` 接在已有的从里最下那个的下面 + 48，没有从时与主顶对齐。
-  - 落点与任何盒子包围盒相交（贴边不算）就沿同一行（纵向）/ 同一列（横向）让一格（新节点宽 + 60 / 高 + 48），64 次后放到所有盒子的最下方（纵向）/ 最右方（横向）。只和主在同一坐标系里的节点比：主在分组里时只比同组的兄弟。已有节点一概不动。
+  - 间距常量（`LAYER_GAP` / `SIBLING_GAP` / `CLUSTER_GAP`，与整理共用，自 #319 起）：层距（沿连线方向，主 → 从）纵向 128、横向 160；兄弟间距 80；互不相连的簇之间 96。
+  - `vertical`：`y = 主底 + 128`；`x` 接在主已有的从（`role: "supervises"` 边的目标）里最右那个的右边 + 80，没有从时与主左对齐。
+  - `horizontal`：`x = 主右 + 160`；`y` 接在已有的从里最下那个的下面 + 80，没有从时与主顶对齐。
+  - 落点与任何盒子相距不足 80（`boxesTooClose`，含相交；恰好 80 不算）就算被占：沿同一行（纵向）/ 同一列（横向）跳到挡路盒子的另一侧 + 80 再试，64 次后放到所有盒子的最下方 + 层距（纵向）/ 最右方 + 层距（横向）。只和主在同一坐标系里的节点比：主在分组里时只比同组的兄弟。已有节点一概不动。
   - core 不知道节点尺寸：没写 `size` 的节点按 960×600 算，新节点也按 960×600 让位。
-- **谁遵循**：`open-agent`、`open-terminal`、`open-browser`、`sticky`、`worktree` 等建节点的控制动词都经 `placement`；`team` 的成员依次排成一行（纵向）/ 一列（横向），`--gather` 的汇总节点在成员那一行的下一行、水平居中于成员（横向：下一列、垂直居中）；有成员进了 worktree 分组或落点被占时退回普通放置。
-- **页面**：节点菜单「派生」与拖线建从用同一个 `dispatchPlacement`（拖线时落点是松手处，以它为中心）；整理（`canvas.tidy`）按方向排主从树、主居中于子（Dock 整理钮的右键「纵向整理 / 横向整理」只覆盖这一次，不写设置）。
+- **谁遵循**：`open-agent`、`open-terminal`、`open-browser`、`sticky`、`worktree` 等建节点的控制动词都经 `placement`；`team` 的成员依次排成一行（纵向）/ 一列（横向），`--gather` 的汇总节点在成员那一行的下一层（+ 层距）、水平居中于成员（横向：下一层、垂直居中）；有成员进了 worktree 分组或落点离别的节点不足 80 时退回普通放置。
+- **页面**：节点菜单「派生」与拖线建从用同一个 `dispatchPlacement`（拖线时落点是松手处，以它为中心）；整理（`canvas.tidy`）按方向排主从树、主居中于子，层距与兄弟间距同上，保证任意两个整理单元（节点、组连同组员、白板孤岛）相距至少一个兄弟间距（Dock 整理钮的右键「纵向整理 / 横向整理」只覆盖这一次，不写设置）。
 - **链接文档带 role**（行为说明，形状见 §39.4 的 `agents.putContextLinks`）：页面推送的链接文档每一项都带 `role`——`supervises` 边对 `source` 一侧写 `"sub"`、对 `target` 一侧写 `"main"`，对等边写 `"peer"`；「派生」建出的从因此立刻得到 `send` 的授权，与 Agent 自己 `open-agent` 的结果一致。
 
 ## 51. ACP 起会话提速：`acp.starting`、`acp_session_timeout` 与 `POST /api/acp/prestart`

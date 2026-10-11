@@ -14,8 +14,12 @@ vi.mock("../nodes/registry", () => ({
 }));
 
 import type { CanvasEdge, CanvasNode } from "@armadra/shared";
-import { COLUMN_GAP, ROW_GAP, tidy, tidyPositions } from "./tidy";
+import { CLUSTER_GAP, LAYER_GAP, SIBLING_GAP } from "@armadra/shared";
+import { tidy, tidyPositions } from "./tidy";
 import { COLLAPSED_HEIGHT } from "../store/defaults";
+
+/** 无主从边的分量沿连线方向分列，列距是横向层距。 */
+const COLUMN = LAYER_GAP.horizontal;
 
 const box = (id: string, width = 200, height = 100) => ({ id, width, height });
 
@@ -77,8 +81,8 @@ describe("tidy", () => {
       ],
     );
     expect(positions.a).toEqual({ x: 0, y: 0 });
-    expect(positions.b).toEqual({ x: 200 + COLUMN_GAP, y: 0 });
-    expect(positions.c).toEqual({ x: (200 + COLUMN_GAP) * 2, y: 0 });
+    expect(positions.b).toEqual({ x: 200 + COLUMN, y: 0 });
+    expect(positions.c).toEqual({ x: (200 + COLUMN) * 2, y: 0 });
   });
 
   it("列内按行距堆叠，列宽取该列最宽的节点", () => {
@@ -89,8 +93,8 @@ describe("tidy", () => {
         { source: "a", target: "c" },
       ],
     );
-    expect(positions.b).toEqual({ x: 300 + COLUMN_GAP, y: 0 });
-    expect(positions.c).toEqual({ x: 300 + COLUMN_GAP, y: 80 + ROW_GAP });
+    expect(positions.b).toEqual({ x: 300 + COLUMN, y: 0 });
+    expect(positions.c).toEqual({ x: 300 + COLUMN, y: 80 + SIBLING_GAP });
   });
 
   it("有环也不会死循环，指向未知节点的边被忽略", () => {
@@ -105,7 +109,7 @@ describe("tidy", () => {
     expect(Object.keys(positions).sort()).toEqual(["a", "b"]);
     // 纯环里每个节点都有入边，谁都不是根，于是一起落到同一列。
     expect(positions.a).toEqual({ x: 0, y: 0 });
-    expect(positions.b).toEqual({ x: 0, y: 100 + ROW_GAP });
+    expect(positions.b).toEqual({ x: 0, y: 100 + SIBLING_GAP });
   });
 
   it("按连通分量分组，分量按阅读顺序摆放", () => {
@@ -114,9 +118,9 @@ describe("tidy", () => {
     const positions = raw(boxes, [{ source: "a", target: "b" }], {
       aspect: 100, // 极端扁平：一行放得下所有分量
     });
-    // 分量 1（a→b）占据 [0, 460]，接着是 c、d。
+    // 分量 1（a→b）占据 [0, 200 + COLUMN + 200]，接着是 c、d。
     expect(positions.a).toEqual({ x: 0, y: 0 });
-    expect(positions.b).toEqual({ x: 260, y: 0 });
+    expect(positions.b).toEqual({ x: 200 + COLUMN, y: 0 });
     expect(positions.c!.y).toBe(0);
     expect(positions.d!.y).toBe(0);
     expect(positions.c!.x).toBeGreaterThan(positions.b!.x);
@@ -131,8 +135,8 @@ describe("tidy", () => {
     const positions = raw(boxes, [], { aspect: 1 });
     const rows = new Set(boxes.map((item) => positions[item.id]!.y));
     expect(rows.size).toBeGreaterThan(1);
-    // 行距 = 上一行的行高 + ROW_GAP
-    expect(positions.b).toEqual({ x: 0, y: 100 + ROW_GAP });
+    // 行距 = 上一行的行高 + CLUSTER_GAP
+    expect(positions.b).toEqual({ x: 0, y: 100 + CLUSTER_GAP });
     expect(overlaps(boxes, positions)).toEqual([]);
   });
 
@@ -200,8 +204,8 @@ describe("tidyPositions", () => {
       aspect: 100,
       grid: 0,
     });
-    // 默认宽 240 → 第二列在 240 + COLUMN_GAP
-    expect(positions.b).toEqual({ x: 240 + COLUMN_GAP, y: 0 });
+    // 默认宽 240 → 第二列在 240 + 横向层距
+    expect(positions.b).toEqual({ x: 240 + COLUMN, y: 0 });
   });
 
   it("折叠的节点按 COLLAPSED_HEIGHT 参与排布", () => {
@@ -216,8 +220,8 @@ describe("tidyPositions", () => {
       [link("root", "x"), link("root", "y")],
       { aspect: 100, grid: 0 },
     );
-    expect(positions.x).toEqual({ x: 200 + COLUMN_GAP, y: 0 });
-    expect(positions.y!.y).toBe(COLLAPSED_HEIGHT + ROW_GAP);
+    expect(positions.x).toEqual({ x: 200 + COLUMN, y: 0 });
+    expect(positions.y!.y).toBe(COLLAPSED_HEIGHT + SIBLING_GAP);
   });
 
   it("组框整体参与排布，组员的相对坐标不动", () => {
@@ -247,9 +251,9 @@ describe("tidyPositions", () => {
     expect(positions.child2).toBeUndefined();
     expect(Object.keys(positions).sort()).toEqual(["frame", "solo"]);
 
-    // 组框按自己的 600×400 占位，排在 solo 右边一整个列距之外。
+    // 组框按自己的 600×400 占位，排在 solo 右边一个簇间距之外。
     expect(positions.solo).toEqual({ x: 0, y: 0 });
-    expect(positions.frame).toEqual({ x: 200 + COLUMN_GAP, y: 0 });
+    expect(positions.frame).toEqual({ x: 200 + CLUSTER_GAP, y: 0 });
 
     // 组一动，两个组员的**相对**偏移仍然是 236（= 260 - 24）。
     const frame = positions.frame;
@@ -328,7 +332,7 @@ describe("tidy · §6.4", () => {
     expect(at.main!.y).toBe(0);
     const ys = new Set(["s1", "s2", "s3"].map((id) => at[id]!.y));
     expect(ys.size).toBe(1);
-    expect(at.s1!.y).toBeGreaterThanOrEqual(200 + ROW_GAP);
+    expect(at.s1!.y).toBeGreaterThanOrEqual(200 + LAYER_GAP.vertical);
     expect(at.s1!.x).toBe(0);
     expect(at.s2!.x - at.s1!.x).toBe(at.s3!.x - at.s2!.x);
     expect(at.s2!.x).toBeGreaterThan(at.s1!.x);
@@ -356,11 +360,11 @@ describe("tidy · §6.4", () => {
       { aspect: 100, direction: "vertical", grid: 0 },
     );
     expect(at.g1!.y).toBe(at.g2!.y);
-    expect(at.g1!.y).toBe((100 + ROW_GAP) * 2);
-    expect(at.g2!.x).toBe(200 + COLUMN_GAP);
-    // 子块宽 460，子与根都居中于它。
-    expect(at.c!.x).toBe(130);
-    expect(at.r!.x).toBe(130);
+    expect(at.g1!.y).toBe((100 + LAYER_GAP.vertical) * 2);
+    expect(at.g2!.x).toBe(200 + SIBLING_GAP);
+    // 子块宽 480，子与根都居中于它。
+    expect(at.c!.x).toBe(140);
+    expect(at.r!.x).toBe(140);
     expect(overlaps(boxes, at)).toEqual([]);
   });
 
@@ -434,9 +438,9 @@ describe("tidy · §6.4", () => {
     ];
     const at = tidy(boxes, links, { aspect: 100, direction: "vertical" });
     expect(at.web!.y).toBe(at.sub!.y);
-    expect(at.web!.x).toBeGreaterThanOrEqual(at.sub!.x + 200 + COLUMN_GAP);
+    expect(at.web!.x).toBeGreaterThanOrEqual(at.sub!.x + 200 + SIBLING_GAP);
     expect(at.other!.y).toBe(at.sub!.y);
-    expect(at.other!.x).toBeGreaterThanOrEqual(at.web!.x + 300 + COLUMN_GAP);
+    expect(at.other!.x).toBeGreaterThanOrEqual(at.web!.x + 300 + SIBLING_GAP);
     expect(overlaps(boxes, at)).toEqual([]);
   });
 
@@ -523,11 +527,11 @@ describe("tidy · §6.4", () => {
       { aspect: 100, grid: 0 },
     );
     expect(at.a).toEqual({ x: 0, y: 0 });
-    expect(at.b).toEqual({ x: 200 + COLUMN_GAP, y: 0 });
-    expect(at.c).toEqual({ x: (200 + COLUMN_GAP) * 2, y: 0 });
+    expect(at.b).toEqual({ x: 200 + COLUMN, y: 0 });
+    expect(at.c).toEqual({ x: (200 + COLUMN) * 2, y: 0 });
   });
 
-  it("主从成环也不死循环，从阅读顺序最靠前的那个剪断", () => {
+  it("主从成环也不死循环，从最晚到的那条主从边剪断", () => {
     const boxes = [placed("x", 0, 0, "agent"), placed("y", 0, 500, "agent")];
     const at = tidy(boxes, [supervises("x", "y"), supervises("y", "x")], {
       aspect: 100,
@@ -535,7 +539,7 @@ describe("tidy · §6.4", () => {
       direction: "horizontal",
     });
     expect(at.x).toEqual({ x: 0, y: 0 });
-    expect(at.y).toEqual({ x: 200 + COLUMN_GAP, y: 0 });
+    expect(at.y).toEqual({ x: 200 + LAYER_GAP.horizontal, y: 0 });
   });
 
   it("重心法：第二列按上一列邻居的位置排，减少交叉", () => {
