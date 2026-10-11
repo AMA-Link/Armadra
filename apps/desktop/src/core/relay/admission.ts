@@ -15,6 +15,9 @@
  *      由这里签票；其余要 `Authorization: Bearer`，升级要 `armadra-ticket.<票>`。
  *      拒绝一律 `401 unauthenticated`。
  *
+ * 放行时把认出的主体交给这条流的流量计数器（契约 §76）：匿名面记成匿名，拒绝的
+ * 不认，流结束时按匿名记。
+ *
  * 会话绑在这个远程服务的中继来源上（`relayOrigins[0]`，缺省就是 issuer）：经隧道
  * 换来的会话只在隧道上有效，回环与 Gateway 的会话也进不了隧道。放行前把请求头的
  * `Origin` 换成它，并标成 Bearer 传输（`markBearerTransport`），身份域据此按原生
@@ -139,6 +142,32 @@ function anonymousWithoutOrigin(path: string): boolean {
 }
 
 export function createTunnelGate(options: TunnelGateOptions): ListenerGate {
+  const decide = tunnelVerdict(options);
+  return (request: CoreRequest, upgrade: boolean): ListenerVerdict => {
+    const verdict = decide(request, upgrade);
+    const socket = request.raw.socket as unknown;
+    if (
+      socket instanceof TunnelDuplex &&
+      socket.counter !== undefined &&
+      "identity" in verdict
+    ) {
+      const identity = verdict.identity;
+      socket.counter.identify(
+        identity === undefined || identity.subject.principalId === ""
+          ? undefined
+          : {
+              principalId: identity.subject.principalId,
+              deviceId: identity.device?.deviceId ?? "",
+            },
+      );
+    }
+    return verdict;
+  };
+}
+
+function tunnelVerdict(
+  options: TunnelGateOptions,
+): (request: CoreRequest, upgrade: boolean) => ListenerVerdict {
   const { service, tickets } = options;
   return (request: CoreRequest, upgrade: boolean): ListenerVerdict => {
     const socket = request.raw.socket as unknown;
