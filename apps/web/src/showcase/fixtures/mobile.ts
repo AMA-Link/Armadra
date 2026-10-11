@@ -62,6 +62,7 @@ export const MOBILE_SAMPLES = [
   "native",
   "web",
   "code",
+  "codeNative",
   "error",
   "list",
   "add",

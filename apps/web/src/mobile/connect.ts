@@ -5,7 +5,13 @@ import {
   pairWithGateway,
   takePairingTicket,
 } from "../api/identity";
-import { exchangePairingCode } from "../api/gateway";
+import {
+  exchangePairingCode,
+  pairingPakeFinish,
+  pairingPakeStart,
+} from "../api/gateway";
+import { normalizeFingerprint } from "@armadra/shared";
+import { runPairingPake } from "./pairing-pake";
 import { saveRuntimeOrigin } from "../api/runtime-url";
 import { parsePairingQr } from "../host/qr";
 import { LOCAL_SOURCE_ID } from "../api/source";
@@ -222,6 +228,22 @@ export async function connectWithCode(
   }
   const native = deps.native ?? nativeDeps();
   if (payload.origin !== target.origin) return "failed";
+  return pairNativePayload(payload, native);
+}
+
+/**
+ * 拿到配对载荷之后的那一段（扫码、换码、PAKE 都一样）：按载荷的指纹钉锚 →
+ * 用票配对 → 记连接 → 记下来源 → 重载。锚变了（重置 CA）钉扎这一步就失败，
+ * 不自动信任新证书。
+ */
+async function pairNativePayload(
+  payload: {
+    readonly origin: string;
+    readonly ticket: string;
+    readonly fingerprint: string;
+  },
+  native: NativeConnectDeps,
+): Promise<ConnectFailure | null> {
   try {
     await native.bridge.pin(payload.origin, payload.fingerprint);
   } catch {
@@ -247,6 +269,106 @@ export async function connectWithCode(
   native.reload();
   return null;
 }
+
+/** 连接表里发往这个来源的直连那一行钉的指纹；没有是 `null`。 */
+function recordedFingerprint(origin: string): string | null {
+  const row = loadConnections().find(
+    (connection) => connection.baseUrl === origin && connection.fingerprint,
+  );
+  return row?.fingerprint ?? null;
+}
+
+export interface NativeCodeDeps {
+  readonly native?: NativeConnectDeps;
+  readonly exchange?: typeof exchangePairingCode;
+  readonly start?: typeof pairingPakeStart;
+  readonly finish?: typeof pairingPakeFinish;
+  /** 这个来源在连接表里钉过的指纹（缺省读连接表）。 */
+  readonly recorded?: (origin: string) => string | null;
+}
+
+/**
+ * 原生 App 用配对码连接（契约 §24、§73）：人输配对卡上的地址与 8 位码。
+ *
+ *  - 这个来源已经钉过、服务端仍发着那张锚：照旧 `exchange`（§24）。
+ *  - 还没钉过（首次连接）：`peek` 取到的指纹 F′ 不能直接信——可能是中间人的。
+ *    连接表里这个来源钉的若不是 F′，直接拒绝，不覆盖原有钉扎（证书轮换要扫码）；
+ *    否则暂钉 F′（之后的请求只认这张证书），再用配对码跑 PAKE：Gateway 的确认
+ *    标签证明它知道这枚码、发的就是 F′，对上了才换票。对不上不发任何东西。
+ *
+ * 核对失败时暂钉的 F′ 撤不掉（原生插件没有撤销钉扎），但这个来源上没有会话
+ * 也没有连接记录，下一次扫码或配对会改钉。
+ */
+export async function connectNativeWithCode(
+  address: string,
+  code: string,
+  deps: NativeCodeDeps = {},
+): Promise<ConnectFailure | null> {
+  const origin = issuerOrigin(address);
+  if (origin === null || !origin.startsWith("https:")) return "address";
+  const native = deps.native ?? nativeDeps();
+  const peeked = await native.bridge.peek(origin).catch(() => null);
+  if (peeked === null) return "unreachable";
+  if (peeked.pinned) {
+    return connectWithCode(
+      code,
+      { mode: "native", origin },
+      {
+        native,
+        ...(deps.exchange ? { exchange: deps.exchange } : {}),
+      },
+    );
+  }
+  const recorded = (deps.recorded ?? recordedFingerprint)(origin);
+  if (
+    recorded !== null &&
+    normalizeFingerprint(recorded) !== normalizeFingerprint(peeked.fingerprint)
+  )
+    return "anchorChanged";
+  try {
+    await native.bridge.pin(origin, peeked.fingerprint);
+  } catch {
+    return "pin";
+  }
+  const start = deps.start ?? pairingPakeStart;
+  const finish = deps.finish ?? pairingPakeFinish;
+  let outcome: Awaited<ReturnType<typeof runPairingPake>>;
+  try {
+    outcome = await runPairingPake({
+      code,
+      origin,
+      fingerprint: peeked.fingerprint,
+      transport: {
+        start: async (body) => {
+          try {
+            return await start(origin, body);
+          } catch (error) {
+            // 旧版 core 没有这条路由：404 而不是配对码的拒绝。
+            if (error instanceof IdentityRequestError && error.status === 404)
+              throw new PakeUnsupported();
+            throw error;
+          }
+        },
+        finish: (body) => finish(origin, body),
+      },
+    });
+  } catch (error) {
+    if (error instanceof PakeUnsupported) return "codeUpgrade";
+    return failureOf(error);
+  }
+  if (outcome.kind === "mismatch") return "codeMismatch";
+  const payload = outcome.payload;
+  // 标签已经证明了来源与锚；载荷再对不上就是 Gateway 自己不一致，不信。
+  if (
+    payload.origin !== origin ||
+    normalizeFingerprint(payload.fingerprint) !==
+      normalizeFingerprint(peeked.fingerprint)
+  )
+    return "codeMismatch";
+  return pairNativePayload(payload, native);
+}
+
+class PakeUnsupported extends Error {}
 
 /* ------------------------------- 个人中转 ------------------------------- */
 

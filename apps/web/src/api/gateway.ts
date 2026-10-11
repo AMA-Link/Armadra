@@ -4,6 +4,10 @@ import {
   gatewayStatusSchema,
   type GatewayConfigPatch,
   type GatewayPairingPayload,
+  type PairingPakeFinish,
+  type PairingPakeOffers,
+  type PairingPakeStart,
+  pairingPakeOffersSchema,
 } from "@armadra/shared";
 
 import { currentClient } from "./client";
@@ -44,37 +48,68 @@ export async function exchangePairingCode(
   code: string,
   base: string = localSource.httpBase,
 ): Promise<GatewayPairingPayload> {
+  return gatewayPairingPayloadSchema.parse(
+    await postAnonymous(base, "/api/gateway/pairing-code/exchange", { code }),
+  );
+}
+
+/**
+ * 配对码 PAKE 的两步（契约 §73）：原生 App 首次连接、还没有任何身份时发，与
+ * 换票同一条匿名的旧路径。失败抛 {@link IdentityRequestError}，连不上抛
+ * {@link IdentityTransportError}。
+ */
+export async function pairingPakeStart(
+  base: string,
+  body: PairingPakeStart,
+): Promise<PairingPakeOffers> {
+  return pairingPakeOffersSchema.parse(
+    await postAnonymous(base, "/api/gateway/pairing-code/pake/start", body),
+  );
+}
+
+export async function pairingPakeFinish(
+  base: string,
+  body: PairingPakeFinish,
+): Promise<GatewayPairingPayload> {
+  return gatewayPairingPayloadSchema.parse(
+    await postAnonymous(base, "/api/gateway/pairing-code/pake/finish", body),
+  );
+}
+
+/** 匿名、不带 Cookie 也不带 CSRF 的一次 POST；答解析前的 JSON。 */
+async function postAnonymous(
+  base: string,
+  path: string,
+  body: unknown,
+): Promise<unknown> {
   let response: Response;
   try {
-    response = await localSource.fetch(
-      `${base}/api/gateway/pairing-code/exchange`,
-      {
-        method: "POST",
-        headers: {
-          Accept: "application/json",
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ code }),
-        credentials: "omit",
-        redirect: "error",
-        cache: "no-store",
+    response = await localSource.fetch(`${base}${path}`, {
+      method: "POST",
+      headers: {
+        Accept: "application/json",
+        "Content-Type": "application/json",
       },
-    );
+      body: JSON.stringify(body),
+      credentials: "omit",
+      redirect: "error",
+      cache: "no-store",
+    });
   } catch (cause) {
     throw new IdentityTransportError(cause);
   }
   const payload: unknown = await response.json().catch(() => null);
   if (!response.ok) {
-    const body = (payload ?? {}) as { code?: unknown; message?: unknown };
+    const failure = (payload ?? {}) as { code?: unknown; message?: unknown };
     const retry = Number(response.headers?.get?.("retry-after") ?? 0);
     throw new IdentityRequestError(
       response.status,
-      typeof body.code === "string" ? body.code : "UNKNOWN",
-      typeof body.message === "string" ? body.message : "",
+      typeof failure.code === "string" ? failure.code : "UNKNOWN",
+      typeof failure.message === "string" ? failure.message : "",
       Number.isFinite(retry) && retry > 0 ? Math.ceil(retry) : 0,
     );
   }
-  return gatewayPairingPayloadSchema.parse(payload);
+  return payload;
 }
 
 export const GATEWAY_QUERY_KEY = ["gateway"] as const;
