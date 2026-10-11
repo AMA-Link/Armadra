@@ -1,5 +1,7 @@
 import {
+  type E2ePairingPayload,
   type TrustedDevice,
+  e2ePairingPayloadSchema,
   trustedDeviceListSchema,
   trustedDeviceSchema,
 } from "@armadra/shared";
@@ -14,6 +16,9 @@ import { localSource } from "./source";
 const local = () => clientFor(localSource);
 
 export const devicesApi = {
+  /** 「配对新设备」的二维码载荷（契约 §80.1）。 */
+  pairingSecret: async (): Promise<E2ePairingPayload> =>
+    e2ePairingPayloadSchema.parse(await local().e2e.pairingSecret()),
   list: async (): Promise<TrustedDevice[]> =>
     trustedDeviceListSchema.parse(await local().devices.list()).devices,
   approve: async (pendingId: string, sas: string): Promise<TrustedDevice> =>

@@ -520,6 +520,13 @@ function LinkItem({
     link.maxUses === null
       ? t("remote.link.usedOpen", { uses: link.uses })
       : t("remote.link.used", { uses: link.uses, max: link.maxUses }),
+    // 契约 §80：经这条链接绑定的访客设备钥与上限。
+    link.maxDevices === null || link.maxDevices === undefined
+      ? ""
+      : t("e2e.link.devices", {
+          count: link.devices ?? 0,
+          max: link.maxDevices,
+        }),
   ].filter(Boolean);
   return (
     <Item

@@ -1,6 +1,6 @@
 import * as React from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import type { TrustedDevice } from "@armadra/shared";
+import type { E2ePairingPayload, TrustedDevice } from "@armadra/shared";
 import { MoreHorizontal } from "lucide-react";
 import { toast } from "sonner";
 
@@ -10,6 +10,7 @@ import { RuntimeRequestError } from "../../../../api/request";
 import { localSource } from "../../../../api/source";
 import { usePreferencesStore, useT } from "../../../../app/preferences-store";
 import { useAccess } from "../../../../app/use-access";
+import { QrImage } from "../gateway/PairingCard";
 import { Badge } from "@/ui/badge";
 import { Button } from "@/ui/button";
 import { Card } from "@/ui/card";
@@ -183,101 +184,107 @@ export function E2eDevices() {
       toast.error(failureText(t, error));
     }
   };
-  const rows = devices.data ?? [];
-  if (!owner || rows.length === 0) return null;
+  // 没有权限（成员）或这台没装中继时整块不出现。
+  if (!owner || devices.data === undefined) return null;
+  const rows = devices.data;
   return (
     <section className="flex min-w-0 flex-col gap-2">
-      <h3 className="px-0.5 text-[13px] font-medium">
-        {t("e2e.devices.title")}
-      </h3>
-      <Card className="gap-0 overflow-visible rounded-lg border border-border/70 px-2 py-0 text-[length:inherit] ring-0">
-        <Table className="text-[13px]">
-          <TableHeader>
-            <TableRow>
-              <TableHead>{t("e2e.devices.name")}</TableHead>
-              <TableHead>{t("e2e.devices.account")}</TableHead>
-              <TableHead>{t("e2e.devices.status")}</TableHead>
-              <TableHead>{t("e2e.devices.lastSeen")}</TableHead>
-              <TableHead className="w-0">
-                <span className="sr-only">{t("e2e.devices.actions")}</span>
-              </TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {rows.map((device) => (
-              <React.Fragment key={`${device.deviceId}:${device.principalId}`}>
-                <TableRow>
-                  <TableCell className="max-w-[16rem] truncate font-medium">
-                    {device.label || device.deviceId.slice(0, 8)}
-                    <span className="ml-2 text-muted-foreground">
-                      {t(`e2e.platform.${device.platform}`)}
-                    </span>
-                  </TableCell>
-                  <TableCell className="max-w-[10rem] truncate text-muted-foreground">
-                    {device.principalName || "—"}
-                  </TableCell>
-                  <TableCell>
-                    <Badge variant={STATUS_VARIANT[device.status]}>
-                      {t(`e2e.devices.status.${device.status}`)}
-                    </Badge>
-                  </TableCell>
-                  <TableCell className="text-muted-foreground tabular-nums">
-                    {device.lastSeenAtMs > 0
-                      ? dateTime.format(device.lastSeenAtMs)
-                      : "—"}
-                  </TableCell>
-                  <TableCell className="text-right">
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <IconButton label={t("e2e.devices.actions")}>
-                          <MoreHorizontal />
-                        </IconButton>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end">
-                        <DropdownMenuItem
-                          onSelect={() => {
-                            setLabel(device.label);
-                            setRenaming(device);
-                          }}
-                        >
-                          {t("e2e.devices.rename")}
-                        </DropdownMenuItem>
-                        {device.status === "trusted" && (
-                          <DropdownMenuItem
-                            variant="destructive"
-                            onSelect={() =>
-                              void act(() => devicesApi.revoke(device))
-                            }
-                          >
-                            {t("e2e.devices.revoke")}
-                          </DropdownMenuItem>
-                        )}
-                        {device.status !== "pending" && (
-                          <DropdownMenuItem
-                            variant="destructive"
-                            onSelect={() =>
-                              void act(() => devicesApi.forget(device))
-                            }
-                          >
-                            {t("e2e.devices.forget")}
-                          </DropdownMenuItem>
-                        )}
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  </TableCell>
-                </TableRow>
-                {device.status === "pending" && device.pendingId !== null && (
+      <div className="flex items-center justify-between gap-2 px-0.5">
+        <h3 className="text-[13px] font-medium">{t("e2e.devices.title")}</h3>
+        <PairDeviceButton />
+      </div>
+      {rows.length > 0 && (
+        <Card className="gap-0 overflow-visible rounded-lg border border-border/70 px-2 py-0 text-[length:inherit] ring-0">
+          <Table className="text-[13px]">
+            <TableHeader>
+              <TableRow>
+                <TableHead>{t("e2e.devices.name")}</TableHead>
+                <TableHead>{t("e2e.devices.account")}</TableHead>
+                <TableHead>{t("e2e.devices.status")}</TableHead>
+                <TableHead>{t("e2e.devices.lastSeen")}</TableHead>
+                <TableHead className="w-0">
+                  <span className="sr-only">{t("e2e.devices.actions")}</span>
+                </TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {rows.map((device) => (
+                <React.Fragment
+                  key={`${device.deviceId}:${device.principalId}`}
+                >
                   <TableRow>
-                    <TableCell colSpan={5} className="pb-3">
-                      <ApproveForm device={device} />
+                    <TableCell className="max-w-[16rem] truncate font-medium">
+                      {device.label || device.deviceId.slice(0, 8)}
+                      <span className="ml-2 text-muted-foreground">
+                        {t(`e2e.platform.${device.platform}`)}
+                      </span>
+                    </TableCell>
+                    <TableCell className="max-w-[10rem] truncate text-muted-foreground">
+                      {device.principalName || "—"}
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant={STATUS_VARIANT[device.status]}>
+                        {t(`e2e.devices.status.${device.status}`)}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="text-muted-foreground tabular-nums">
+                      {device.lastSeenAtMs > 0
+                        ? dateTime.format(device.lastSeenAtMs)
+                        : "—"}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <IconButton label={t("e2e.devices.actions")}>
+                            <MoreHorizontal />
+                          </IconButton>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem
+                            onSelect={() => {
+                              setLabel(device.label);
+                              setRenaming(device);
+                            }}
+                          >
+                            {t("e2e.devices.rename")}
+                          </DropdownMenuItem>
+                          {device.status === "trusted" && (
+                            <DropdownMenuItem
+                              variant="destructive"
+                              onSelect={() =>
+                                void act(() => devicesApi.revoke(device))
+                              }
+                            >
+                              {t("e2e.devices.revoke")}
+                            </DropdownMenuItem>
+                          )}
+                          {device.status !== "pending" && (
+                            <DropdownMenuItem
+                              variant="destructive"
+                              onSelect={() =>
+                                void act(() => devicesApi.forget(device))
+                              }
+                            >
+                              {t("e2e.devices.forget")}
+                            </DropdownMenuItem>
+                          )}
+                        </DropdownMenuContent>
+                      </DropdownMenu>
                     </TableCell>
                   </TableRow>
-                )}
-              </React.Fragment>
-            ))}
-          </TableBody>
-        </Table>
-      </Card>
+                  {device.status === "pending" && device.pendingId !== null && (
+                    <TableRow>
+                      <TableCell colSpan={5} className="pb-3">
+                        <ApproveForm device={device} />
+                      </TableCell>
+                    </TableRow>
+                  )}
+                </React.Fragment>
+              ))}
+            </TableBody>
+          </Table>
+        </Card>
+      )}
       <ResponsiveDialog
         open={renaming !== null}
         onOpenChange={(open) => !open && setRenaming(null)}
@@ -311,6 +318,63 @@ export function E2eDevices() {
         </ResponsiveDialogContent>
       </ResponsiveDialog>
     </section>
+  );
+}
+
+/** 指纹分组显示前 16 位（与服务器壳 CLI 一致）。 */
+function shortFingerprint(fingerprint: string): string {
+  return (fingerprint.slice(0, 16).match(/.{1,4}/g) ?? []).join(" ");
+}
+
+/**
+ * 「配对新设备」（契约 §80.1）：签一枚 5 分钟、一次性的配对秘密，二维码里是这台电脑
+ * 的身份公钥与秘密；新设备扫了就钉住身份、不必再核对校验码。下面是指纹前 16 位，
+ * 供人对照新设备上显示的那一串。
+ */
+function PairDeviceButton() {
+  const t = useT();
+  const [payload, setPayload] = React.useState<E2ePairingPayload | null>(null);
+  const [busy, setBusy] = React.useState(false);
+  const open = async () => {
+    setBusy(true);
+    try {
+      setPayload(await devicesApi.pairingSecret());
+    } catch (error) {
+      toast.error(failureText(t, error));
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <>
+      <Button
+        type="button"
+        size="sm"
+        variant="ghost"
+        disabled={busy}
+        onClick={() => void open()}
+      >
+        {t("e2e.pair.open")}
+      </Button>
+      <ResponsiveDialog
+        open={payload !== null}
+        onOpenChange={(next) => !next && setPayload(null)}
+      >
+        <ResponsiveDialogContent className="sm:max-w-sm">
+          <ResponsiveDialogHeader>
+            <ResponsiveDialogTitle>{t("e2e.pair.title")}</ResponsiveDialogTitle>
+          </ResponsiveDialogHeader>
+          {payload !== null && (
+            <div className="flex flex-col items-center gap-3">
+              <QrImage text={payload.uri} label={t("e2e.pair.title")} />
+              <p className="font-mono text-[13px] text-muted-foreground tabular-nums">
+                {shortFingerprint(payload.fingerprint)}
+              </p>
+            </div>
+          )}
+        </ResponsiveDialogContent>
+      </ResponsiveDialog>
+    </>
   );
 }
 

@@ -1,4 +1,5 @@
 import * as React from "react";
+import { parsePairingUri, storagePairings } from "../sources/e2e/pairing";
 import {
   ChevronLeft,
   KeyRound,
@@ -363,6 +364,14 @@ export function ConnectScreen({
 
   /** 链接 / 二维码：个人中转的分享链接直接挂载，其余按配对链接处理。 */
   const submitLink = async (value: string) => {
+    // 别的设备上的「配对新设备」二维码（契约 §80.1）：记下身份与一次性秘密，接着用
+    // 那台电脑登记的中转登录；之后连它时不必等主人核对。
+    const offer = parsePairingUri(value);
+    if (offer !== null) {
+      storagePairings().remember(offer);
+      signInTo(offer.issuers[0] ?? "");
+      return;
+    }
     if (relay && isJoinLink(value)) {
       setRelayHost(hostOf(value) ?? "");
       await step(() => relay.join(value));

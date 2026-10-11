@@ -110,6 +110,11 @@ const acceptSchema = z.object({
   relayToken: z.string().min(1),
   relayTokenExpiresAtMs: z.number().default(0),
   guestSession: sessionSchema,
+  /**
+   * 中继报的源身份指纹（cloud-api §20）：只作提示——访客按链接片段第三段钉扎，旧链接
+   * 没有第三段时才用它的前 16 位。
+   */
+  identityFp: z.string().optional(),
 });
 export type CloudAccept = z.infer<typeof acceptSchema>;
 
