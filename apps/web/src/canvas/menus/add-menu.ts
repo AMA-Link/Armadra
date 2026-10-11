@@ -403,22 +403,42 @@ function inheritedPermission(
 
 /**
  * 父节点的从放在哪：与 core 的 `open-agent` 同一条 `dispatchPlacement`（契约
- * §50）。只和父在同一个坐标系里的节点比（父在分组里时就是同组的兄弟）。
+ * §50）。只和父在同一个坐标系里的对象比（父在分组里时就是同组的兄弟）；白板
+ * 对象也算障碍，新从不会压到画好的框线上（#319）。
  */
 export function spawnPosition(
   nodes: readonly CanvasNode[],
   edges: readonly { source: string; target: string; role?: string }[],
   parentId: string,
+  items: readonly {
+    id: string;
+    x: number;
+    y: number;
+    w: number;
+    h: number;
+    parentId?: string | null;
+  }[] = [],
 ): Position | null {
   const parent = nodes.find((node) => node.id === parentId);
   if (!parent) return null;
   const frame = parent.parentId ?? null;
-  const boxes = nodes
-    .filter((node) => (node.parentId ?? null) === frame)
-    .map((node) => {
-      const size = node.size ?? defaultNodeSize(node.type);
-      return { id: node.id, ...node.position, ...size };
-    });
+  const boxes = [
+    ...nodes
+      .filter((node) => (node.parentId ?? null) === frame)
+      .map((node) => {
+        const size = node.size ?? defaultNodeSize(node.type);
+        return { id: node.id, ...node.position, ...size };
+      }),
+    ...items
+      .filter((item) => (item.parentId ?? null) === frame)
+      .map((item) => ({
+        id: `wb:${item.id}`,
+        x: item.x,
+        y: item.y,
+        width: item.w,
+        height: item.h,
+      })),
+  ];
   const children = edges
     .filter((edge) => edge.role === "supervises" && edge.source === parentId)
     .map((edge) => edge.target);
@@ -450,8 +470,12 @@ export function spawnSubordinate(
   const position =
     (anchor
       ? centeredAt(anchor, size)
-      : spawnPosition(document.nodes, document.edges, parentId)) ??
-    nodeDropPosition("terminal", {});
+      : spawnPosition(
+          document.nodes,
+          document.edges,
+          parentId,
+          state.whiteboard.items,
+        )) ?? nodeDropPosition("terminal", {});
   const permissionMode = inheritedPermission(agent, parent);
   beginCoalesce("canvas.spawn");
   let id = "";
