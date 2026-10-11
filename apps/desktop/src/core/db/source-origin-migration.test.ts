@@ -115,6 +115,8 @@ describe("0047 source_origin", () => {
         database.prepare(`UPDATE client_sources SET ${column} = ?`).run(value),
       ).toThrow();
     }
+    // 源表的读写跟着最新的表结构（之后的迁移还会加列），先补齐再用它。
+    after(47);
     const store = new SourcesStore(database);
     store.setShare(JOINED, {
       ownerLabel: "Alice",

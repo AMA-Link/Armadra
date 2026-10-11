@@ -20,6 +20,7 @@ import type { CoreServer } from "../../http/server";
 import { E2E_IDENTITY_PATH, E2E_WAIT_PATH } from "../../identity/transport";
 import type { DeviceKey } from "./device-key";
 import { DeviceError, type DeviceRegistry, type DeviceView } from "./devices";
+import type { PairingSecrets } from "./pairing";
 import { channelPeerOf } from "./peer";
 
 /** 等候一次最长多久。 */
@@ -79,6 +80,10 @@ export interface E2eRouteDeps {
   /** 这台 core 的 `sourceId` 与身份公钥（源钥）。 */
   readonly identity: () => Promise<{ sourceId: string; publicKey: Uint8Array }>;
   readonly deviceKey: DeviceKey;
+  /** 配对秘密（契约 §80.1）；不给不签。 */
+  readonly pairing?: PairingSecrets;
+  /** 这台电脑登记到的远程服务（二维码里交给新设备）。 */
+  readonly issuers?: () => string[];
 }
 
 function refusal(error: DeviceError): CoreFailure {
@@ -118,11 +123,23 @@ export function e2eOperations(deps: E2eRouteDeps) {
       );
   return {
     list: () => ({ devices: devices.list().map(deviceWire) }),
-    approve: (input: { pendingId: unknown; sas: unknown }) => {
+    approve: (
+      input: { pendingId: unknown; sas: unknown },
+      request?: CoreRequest,
+    ) => {
       const pendingId = text(input.pendingId, "pendingId", 64);
       const sas = text(input.sas, "sas", 16);
+      // 已信任设备经自己的通道代批：记成背书（契约 §80）。
+      const endorser =
+        request === undefined
+          ? undefined
+          : channelPeerOf(request.raw.socket)?.deviceId;
       try {
-        const row = devices.approve(pendingId, sas);
+        const row = devices.approve(
+          pendingId,
+          sas,
+          endorser === undefined ? "local" : `endorse:${endorser}`,
+        );
         const view = find(row.deviceId, row.principalId);
         if (view === undefined) throw fail("not_found", "没有这台设备");
         return { device: deviceWire(view) };
@@ -182,6 +199,32 @@ export function e2eOperations(deps: E2eRouteDeps) {
         sourceId,
         identityPub: Buffer.from(publicKey).toString("base64url"),
         fingerprint: keyFingerprint(publicKey),
+      };
+    },
+    pairingSecret: async () => {
+      if (deps.pairing === undefined)
+        throw fail("unsupported", "这台电脑没有装中继");
+      const { sourceId, publicKey } = await deps.identity();
+      const issued = deps.pairing.issue();
+      const payload = {
+        sourceId,
+        identityPub: Buffer.from(publicKey).toString("base64url"),
+        fingerprint: keyFingerprint(publicKey),
+        secret: Buffer.from(issued.secret).toString("base64url"),
+        issuers: deps.issuers?.() ?? [],
+        expiresAtMs: issued.expiresAtMs,
+      };
+      const compact = {
+        v: 1,
+        s: payload.sourceId,
+        k: payload.identityPub,
+        p: payload.secret,
+        i: payload.issuers,
+        e: payload.expiresAtMs,
+      };
+      return {
+        ...payload,
+        uri: `armadra://pair-e2e?d=${Buffer.from(JSON.stringify(compact)).toString("base64url")}`,
       };
     },
     sign: async (input: { transcript: unknown }) => {
@@ -248,7 +291,7 @@ export function installE2eRoutes(server: CoreServer, deps: E2eRouteDeps): void {
   const run = e2eOperations(deps);
   registerProcedures(server, "devices", {
     list: () => run.list(),
-    approve: (input) => run.approve(input),
+    approve: (input, call) => run.approve(input, call.request),
     reject: (input) => run.reject(input),
     revoke: (input) => run.revoke(input),
     forget: (input) => run.forget(input),
@@ -258,6 +301,7 @@ export function installE2eRoutes(server: CoreServer, deps: E2eRouteDeps): void {
   const procedures = {
     sign: (input) => run.sign(input),
     waitSource: (input) => run.waitSource(input),
+    pairingSecret: () => run.pairingSecret(),
   } satisfies Omit<DomainHandlers<"e2e">, "identity" | "wait">;
   registerProcedures(
     server,
@@ -267,13 +311,10 @@ export function installE2eRoutes(server: CoreServer, deps: E2eRouteDeps): void {
 
   const { router } = server;
   router.handle("GET", "/api/devices", () => answer(run.list));
-  for (const action of [
-    "approve",
-    "reject",
-    "revoke",
-    "forget",
-    "rename",
-  ] as const) {
+  router.handle("POST", "/api/devices/approve", (_match, request) =>
+    answer(() => run.approve(body(request) as never, request)),
+  );
+  for (const action of ["reject", "revoke", "forget", "rename"] as const) {
     router.handle("POST", `/api/devices/${action}`, (_match, request) =>
       answer(() => run[action](body(request) as never)),
     );
@@ -284,6 +325,9 @@ export function installE2eRoutes(server: CoreServer, deps: E2eRouteDeps): void {
   );
   router.handle("POST", "/api/e2e/sign", (_match, request) =>
     answer(() => run.sign(body(request) as never)),
+  );
+  router.handle("POST", "/api/e2e/pairing-secret", () =>
+    answer(run.pairingSecret),
   );
   router.handle("POST", "/api/e2e/sources/wait", (_match, request) =>
     answer(() => run.waitSource(body(request) as never)),

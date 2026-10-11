@@ -6,6 +6,7 @@
  */
 
 import type { DeviceRegistry } from "./devices";
+import type { PairingSecrets, ShareLinkStore } from "./pairing";
 
 /** 握手 m3 里客户端证明了的东西；通道上每条内层流都带着它。 */
 export interface ChannelPeer {
@@ -53,4 +54,23 @@ export function e2eDevices(): DeviceRegistry | undefined {
 
 export function setE2eDevices(registry: DeviceRegistry | undefined): void {
   devices = registry;
+}
+
+let pairing: PairingSecrets | undefined;
+let links: ShareLinkStore | undefined;
+
+/** 配对秘密与分享链接记录（契约 §80）；中继没装时 `undefined`。 */
+export function e2ePairing(): PairingSecrets | undefined {
+  return pairing;
+}
+
+export function e2eShareLinks(): ShareLinkStore | undefined {
+  return links;
+}
+
+export function setE2ePairing(
+  next: { pairing: PairingSecrets; links: ShareLinkStore } | undefined,
+): void {
+  pairing = next?.pairing;
+  links = next?.links;
 }

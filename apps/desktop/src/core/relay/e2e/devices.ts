@@ -447,8 +447,15 @@ export class DeviceRegistry {
     return { status: "pending", requestId };
   }
 
-  /** 主人核对校验码后放行。 */
-  approve(requestId: string, sas: string): TrustedDeviceRow {
+  /**
+   * 主人核对校验码后放行。`approvedBy` 缺省 `local`（本机）；已信任设备经自己的通道
+   * 代批时是 `endorse:<它的设备 id>`（契约 §80）。
+   */
+  approve(
+    requestId: string,
+    sas: string,
+    approvedBy = "local",
+  ): TrustedDeviceRow {
     const row = this.pendingRow(requestId);
     const known = this.sas.get(requestId);
     if (known === undefined || this.now() - known.atMs > SAS_TTL_MS) {
@@ -459,7 +466,7 @@ export class DeviceRegistry {
     }
     this.sas.delete(requestId);
     this.options.store.setStatus(row.deviceId, row.principalId, "trusted", {
-      approvedBy: "local",
+      approvedBy,
       atMs: this.now(),
     });
     this.changed(row.deviceId);
@@ -581,17 +588,62 @@ export class DeviceRegistry {
 }
 
 /**
- * 经通道登录时的设备关（契约 §77.1）：已信任答设备 id；待确认抛
- * `403 device_pending { pendingId }`；被拒、撤销或没有设备登记抛 `403 device_rejected`。
+ * 经通道登录时的设备关（契约 §77.1、§80）：已信任答设备 id；m3 带了 `proof` 且对得上
+ * 访客邀请令牌（第一次经链接加入）或一枚活着的配对秘密 → 直接信任；其余待确认抛
+ * `403 device_pending { pendingId }`；被拒、撤销或没有设备登记抛 `403 device_rejected`；
+ * 访客链接名额用完抛 `403 device_limit`。
  */
-export function requireTrustedDevice(
+export async function requireTrustedDevice(
   registry: DeviceRegistry | undefined,
-  input: Parameters<DeviceRegistry["admit"]>[0],
-): string {
+  input: Parameters<DeviceRegistry["admit"]>[0] & {
+    readonly device: ChannelDevice & {
+      readonly verifyProof?: (secret: Uint8Array) => Promise<boolean>;
+    };
+    /** 第一次经访客链接加入：链接与它背后的邀请令牌。 */
+    readonly invitation?: {
+      readonly linkId: string;
+      readonly token: string;
+      readonly maxDevices: number | null;
+    };
+    /** 活着的配对秘密。 */
+    readonly pairing?: {
+      consume(
+        verify: (secret: Uint8Array) => Promise<boolean>,
+      ): Promise<boolean>;
+    };
+  },
+): Promise<string> {
   if (registry === undefined) {
     throw fail("device_rejected", "这台电脑没有设备登记");
   }
-  const verdict = registry.admit(input);
+  const { device, invitation, pairing, ...rest } = input;
+  let approved: { approvedBy: string; maxDevices?: number | null } | undefined;
+  const verify = device.verifyProof;
+  if (
+    verify !== undefined &&
+    !registry.trusted(device.deviceId, input.principalId)
+  ) {
+    if (
+      invitation !== undefined &&
+      (await verify(new TextEncoder().encode(invitation.token)))
+    ) {
+      approved = {
+        approvedBy: `link:${invitation.linkId}`,
+        maxDevices: invitation.maxDevices,
+      };
+    } else if (pairing !== undefined && (await pairing.consume(verify))) {
+      approved = { approvedBy: "pairing" };
+    }
+  }
+  let verdict: DeviceVerdict;
+  try {
+    verdict = registry.admit({ ...rest, device, ...(approved ?? {}) });
+  } catch (error) {
+    if (error instanceof DeviceError && error.code === "device_limit") {
+      throw fail("device_limit", "这个链接的设备数已经用完");
+    }
+    throw error;
+  }
   if (verdict.status === "pending") {
     throw fail("device_pending", "等这台电脑的主人核对校验码", {
       pendingId: verdict.requestId,
@@ -600,5 +652,5 @@ export function requireTrustedDevice(
   if (verdict.status === "rejected") {
     throw fail("device_rejected", "这台电脑的主人没有允许这台设备");
   }
-  return input.device.deviceId;
+  return device.deviceId;
 }

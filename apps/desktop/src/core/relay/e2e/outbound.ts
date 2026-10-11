@@ -18,6 +18,7 @@ import {
   E2eClientChannel,
   channelFetch,
 } from "@armadra/shared/e2e";
+import { identityFingerprint } from "@armadra/platform-protocol/e2e";
 import { WebSocket as Ws } from "ws";
 
 import { fail } from "../../http/errors";
@@ -34,6 +35,10 @@ export interface OutboundTarget {
   readonly relayToken: string;
   /** 中继的 CA 指纹（个人中转自签）；空 = 系统信任。 */
   readonly fingerprint: string;
+  /** 第一次经访客链接加入时的邀请令牌（m3 的 `proof`，契约 §80）。 */
+  readonly proofSecret?: Uint8Array;
+  /** 链接片段给出的对端身份指纹前缀：对不上就拒绝，不走 TOFU。 */
+  readonly identityFp?: string;
 }
 
 export interface OutboundPins {
@@ -138,6 +143,9 @@ export class OutboundChannels {
         name: this.options.name(),
         pinned,
         WebSocket: pinnedSocket(ca),
+        ...(target.proofSecret === undefined
+          ? {}
+          : { proofSecret: target.proofSecret }),
       });
     } catch (error) {
       if (
@@ -147,6 +155,15 @@ export class OutboundChannels {
         throw fail("identity_changed", "这台电脑的身份变了");
       if (pinned === null) return null;
       throw fail("source_unreachable", "连不上这台电脑的端到端通道");
+    }
+    if (
+      target.identityFp !== undefined &&
+      !(await identityFingerprint(channel.coreIdentity)).startsWith(
+        target.identityFp,
+      )
+    ) {
+      channel.close();
+      throw fail("identity_changed", "这台电脑的身份与链接里的不符");
     }
     if (pinned === null) {
       this.options.pins.set(target.sourceId, channel.coreIdentity);
