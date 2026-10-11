@@ -12545,7 +12545,7 @@
         },
         "x-armadra": {
           "contract": "§37.3",
-          "scope": "assets:read",
+          "scope": "assets:write",
           "since": "1.18",
           "workspaceKey": "workspaceId",
           "legacy": {

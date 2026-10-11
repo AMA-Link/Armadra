@@ -2771,9 +2771,9 @@ core 校验远程服务地址与指纹的写法时用具名码（状态均 400�
 
 <!-- rpc:begin contract=§37.3 -->
 
-| procedure          | kind     | input                                                                        | output                                                  | errors                                  | scope         | 自   | 原路径                                                       |
-| ------------------ | -------- | ---------------------------------------------------------------------------- | ------------------------------------------------------- | --------------------------------------- | ------------- | ---- | ------------------------------------------------------------ |
-| `files.exportText` | mutation | `{ workspaceId: string, exportId: string, name?: string, content?: string }` | `{ path: string, relativePath: string, bytes: number }` | `bad_request`、`forbidden`、`not_found` | `assets:read` | 1.18 | `POST /api/workspaces/{workspaceId}/exports/{exportId}/text` |
+| procedure          | kind     | input                                                                        | output                                                  | errors                                  | scope          | 自   | 原路径                                                       |
+| ------------------ | -------- | ---------------------------------------------------------------------------- | ------------------------------------------------------- | --------------------------------------- | -------------- | ---- | ------------------------------------------------------------ |
+| `files.exportText` | mutation | `{ workspaceId: string, exportId: string, name?: string, content?: string }` | `{ path: string, relativePath: string, bytes: number }` | `bad_request`、`forbidden`、`not_found` | `assets:write` | 1.18 | `POST /api/workspaces/{workspaceId}/exports/{exportId}/text` |
 
 <!-- rpc:end -->
 

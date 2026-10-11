@@ -335,7 +335,12 @@ export const ROUTE_SCOPE_RULES: readonly RouteScopeRule[] = [
     read: "assets:read",
     write: "assets:write",
   },
-  { pattern: new RegExp(`^${WORKSPACE}/exports/`), read: "assets:read" },
+  // 导出（png / text）是往工作区写文件，不是读：写权限与 assets 写入同一档（editor 起有）。
+  {
+    pattern: new RegExp(`^${WORKSPACE}/exports/`),
+    read: "assets:read",
+    write: "assets:write",
+  },
 
   { pattern: new RegExp(`^${WORKSPACE}/sessions$`), read: "terminal:read" },
   {

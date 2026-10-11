@@ -194,6 +194,18 @@ describe("路由门的矩阵", () => {
     );
   });
 
+  it("导出（png / text）往工作区写文件，要 assets 写权限：viewer 与非成员不放，editor 照常", () => {
+    const { decide } = harness();
+    for (const kind of ["png", "text"]) {
+      const path = `/api/workspaces/w1/exports/e1/${kind}`;
+      const who = row(decide, "POST", path);
+      expect(who, kind).toContain("editor");
+      expect(who, kind).not.toContain("viewer");
+      expect(who, kind).not.toContain("outsider");
+      expect(decide("viewer", "POST", path).allowed).toBe(false);
+    }
+  });
+
   it("工作空间本身、全局设置与表外路由只有 owner", () => {
     const { decide } = harness();
     expect(row(decide, "PATCH", "/api/workspaces/w1")).toBe("owner");
