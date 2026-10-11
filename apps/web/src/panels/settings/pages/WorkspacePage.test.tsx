@@ -116,7 +116,7 @@ describe("设置 → 工作空间", () => {
     mount();
     expect(screen.getByTestId("execution")).toBeTruthy();
     expect(await screen.findByText("Runs on")).toBeTruthy();
-    expect(screen.getByText("This machine")).toBeTruthy();
+    expect(screen.getByText("This computer")).toBeTruthy();
     expect(screen.getByTestId("language")).toBeTruthy();
     expect(screen.getByTestId("realtime")).toBeTruthy();
   });
