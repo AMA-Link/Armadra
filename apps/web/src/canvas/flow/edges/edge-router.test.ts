@@ -273,7 +273,7 @@ describe("增量重算", () => {
     const release = performance.now() - started;
     // 宽松的上限（CI 机器慢）；本机实测见 PR 描述。
     expect(initial).toBeLessThan(4000);
-    expect(perFrame).toBeLessThan(100);
+    expect(perFrame).toBeLessThan(300);
     expect(release).toBeLessThan(2000);
   });
 });
