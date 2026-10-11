@@ -1,5 +1,5 @@
 import * as React from "react";
-import { ExternalLink, Pencil, Trash2 } from "lucide-react";
+import { ChartNoAxesColumn, ExternalLink, Pencil, Trash2 } from "lucide-react";
 
 import { usePreferencesStore, useT } from "../app/preferences-store";
 import { formatRelativeTime } from "../lib/format";
@@ -27,6 +27,8 @@ import {
 } from "@/ui/item";
 import { Spinner } from "@/ui/spinner";
 import { StatusPill, type StatusTone } from "@/ui/status-pill";
+import type { TrafficTotals } from "../sources/traffic-meter";
+import { MonthTrafficLine } from "../traffic/SourceTraffic";
 import type { ServiceStatus } from "./probe";
 import { RenameDialog } from "./RenameDialog";
 import {
@@ -72,6 +74,10 @@ export interface ServicePickerProps {
    * 失败时抛，消息显示在对话框里。
    */
   readonly onRename?: (sourceId: string, label: string) => Promise<void> | void;
+  /** 这台客户端经中继与每个源本月收发的字节（行尾一小行）。 */
+  readonly traffic?: Readonly<Record<string, TrafficTotals>>;
+  /** 给了才有「流量」（本月有流量的行）：打开这个源的流量段。 */
+  readonly onTraffic?: (sourceId: string) => void;
 }
 
 const STATUS_TONE: Record<ServiceStatus, StatusTone> = {
@@ -162,6 +168,8 @@ export function ServicePicker({
   onOpenWindow,
   onSignIn,
   onRename,
+  traffic = {},
+  onTraffic,
 }: ServicePickerProps) {
   const t = useT();
   const locale = usePreferencesStore((state) => state.locale);
@@ -208,6 +216,7 @@ export function ServicePicker({
               {line}
             </ItemDescription>
           )}
+          <MonthTrafficLine totals={traffic[row.sourceId]} />
         </ItemContent>
         {current && (
           <Badge variant="outline">{t("mobileConnect.current")}</Badge>
@@ -260,6 +269,33 @@ export function ServicePicker({
                 {t("remote.signIn")}
               </Button>
             )}
+            {onTraffic &&
+              !row.local &&
+              (traffic[row.sourceId]?.bytesIn ?? 0) +
+                (traffic[row.sourceId]?.bytesOut ?? 0) >
+                0 &&
+              (variant === "page" ? (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="size-11"
+                  disabled={locked}
+                  aria-label={t("traffic.open", { name: row.name })}
+                  onClick={() => onTraffic(row.sourceId)}
+                >
+                  <ChartNoAxesColumn />
+                </Button>
+              ) : (
+                <IconButton
+                  size="cluster"
+                  label={t("traffic.open", { name: row.name })}
+                  disabled={locked}
+                  onClick={() => onTraffic(row.sourceId)}
+                >
+                  <ChartNoAxesColumn />
+                </IconButton>
+              ))}
             {onRename &&
               (variant === "page" ? (
                 <Button

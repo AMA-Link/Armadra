@@ -1,12 +1,19 @@
 import type { MessageModule } from "./index";
 
 /**
- * 流量统计（契约 §76，设计 §6.6）：远程访问页里这台电脑经中继收发的字节——
- * 三格、按设备 / 按类别、保留期、在线速率。
+ * 流量统计（契约 §76，设计 §6.4 / §6.6）：远程访问页里这台电脑经中继收发的字节
+ * （三格、按设备 / 按类别、保留期、在线速率），与客户端自己的计量（连接页每行、
+ * 源的流量段）。
  */
 export const traffic: MessageModule = {
   "zh-CN": {
     "traffic.title": "流量",
+    "traffic.open": "{name} 的流量",
+    "traffic.back": "返回",
+    "traffic.range.today": "今日",
+    "traffic.range.month": "本月",
+    "traffic.monthLine": "本月上行 {up}，下行 {down}",
+    "traffic.clearTitle": "清零 {name} 的流量？",
     "traffic.range.all": "全部",
     "traffic.range.7d": "7 天",
     "traffic.range.30d": "30 天",
@@ -35,6 +42,12 @@ export const traffic: MessageModule = {
   },
   en: {
     "traffic.title": "Traffic",
+    "traffic.open": "Traffic for {name}",
+    "traffic.back": "Back",
+    "traffic.range.today": "Today",
+    "traffic.range.month": "This month",
+    "traffic.monthLine": "This month: {up} up, {down} down",
+    "traffic.clearTitle": "Reset traffic for {name}?",
     "traffic.range.all": "All",
     "traffic.range.7d": "7 days",
     "traffic.range.30d": "30 days",
