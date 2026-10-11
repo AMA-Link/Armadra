@@ -96,6 +96,9 @@
                     },
                     "systemHostName": {
                       "type": "string"
+                    },
+                    "ownerName": {
+                      "type": "string"
                     }
                   },
                   "required": [
@@ -5487,6 +5490,28 @@
                           },
                           "defaultLabel": {
                             "type": "string"
+                          },
+                          "origin": {
+                            "enum": ["mine", "shared"],
+                            "type": "string"
+                          },
+                          "ownerLabel": {
+                            "type": "string"
+                          },
+                          "shareRole": {
+                            "enum": [
+                              "",
+                              "viewer",
+                              "editor",
+                              "operator",
+                              "driver"
+                            ],
+                            "type": "string"
+                          },
+                          "shareExpiresAtMs": {
+                            "type": "integer",
+                            "minimum": -9007199254740991,
+                            "maximum": 9007199254740991
                           }
                         },
                         "required": [
@@ -5503,7 +5528,11 @@
                           "orderIndex",
                           "hasCredentials",
                           "routes",
-                          "defaultLabel"
+                          "defaultLabel",
+                          "origin",
+                          "ownerLabel",
+                          "shareRole",
+                          "shareExpiresAtMs"
                         ]
                       }
                     },
@@ -5549,6 +5578,9 @@
                           },
                           "defaultLabel": {
                             "type": "string"
+                          },
+                          "guest": {
+                            "type": "boolean"
                           }
                         },
                         "required": [
@@ -5562,7 +5594,8 @@
                           "lastOkAtMs",
                           "registered",
                           "hasCredentials",
-                          "defaultLabel"
+                          "defaultLabel",
+                          "guest"
                         ]
                       }
                     }
@@ -5725,6 +5758,22 @@
                     },
                     "defaultLabel": {
                       "type": "string"
+                    },
+                    "origin": {
+                      "enum": ["mine", "shared"],
+                      "type": "string"
+                    },
+                    "ownerLabel": {
+                      "type": "string"
+                    },
+                    "shareRole": {
+                      "enum": ["", "viewer", "editor", "operator", "driver"],
+                      "type": "string"
+                    },
+                    "shareExpiresAtMs": {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991
                     }
                   },
                   "required": [
@@ -5741,7 +5790,11 @@
                     "orderIndex",
                     "hasCredentials",
                     "routes",
-                    "defaultLabel"
+                    "defaultLabel",
+                    "origin",
+                    "ownerLabel",
+                    "shareRole",
+                    "shareExpiresAtMs"
                   ]
                 }
               }
@@ -5934,6 +5987,22 @@
                     },
                     "defaultLabel": {
                       "type": "string"
+                    },
+                    "origin": {
+                      "enum": ["mine", "shared"],
+                      "type": "string"
+                    },
+                    "ownerLabel": {
+                      "type": "string"
+                    },
+                    "shareRole": {
+                      "enum": ["", "viewer", "editor", "operator", "driver"],
+                      "type": "string"
+                    },
+                    "shareExpiresAtMs": {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991
                     }
                   },
                   "required": [
@@ -5950,7 +6019,11 @@
                     "orderIndex",
                     "hasCredentials",
                     "routes",
-                    "defaultLabel"
+                    "defaultLabel",
+                    "origin",
+                    "ownerLabel",
+                    "shareRole",
+                    "shareExpiresAtMs"
                   ]
                 }
               }
@@ -6441,6 +6514,22 @@
                     },
                     "defaultLabel": {
                       "type": "string"
+                    },
+                    "origin": {
+                      "enum": ["mine", "shared"],
+                      "type": "string"
+                    },
+                    "ownerLabel": {
+                      "type": "string"
+                    },
+                    "shareRole": {
+                      "enum": ["", "viewer", "editor", "operator", "driver"],
+                      "type": "string"
+                    },
+                    "shareExpiresAtMs": {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991
                     }
                   },
                   "required": [
@@ -6457,7 +6546,11 @@
                     "orderIndex",
                     "hasCredentials",
                     "routes",
-                    "defaultLabel"
+                    "defaultLabel",
+                    "origin",
+                    "ownerLabel",
+                    "shareRole",
+                    "shareExpiresAtMs"
                   ]
                 }
               }
@@ -6635,6 +6728,22 @@
                     },
                     "defaultLabel": {
                       "type": "string"
+                    },
+                    "origin": {
+                      "enum": ["mine", "shared"],
+                      "type": "string"
+                    },
+                    "ownerLabel": {
+                      "type": "string"
+                    },
+                    "shareRole": {
+                      "enum": ["", "viewer", "editor", "operator", "driver"],
+                      "type": "string"
+                    },
+                    "shareExpiresAtMs": {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991
                     }
                   },
                   "required": [
@@ -6651,7 +6760,11 @@
                     "orderIndex",
                     "hasCredentials",
                     "routes",
-                    "defaultLabel"
+                    "defaultLabel",
+                    "origin",
+                    "ownerLabel",
+                    "shareRole",
+                    "shareExpiresAtMs"
                   ]
                 }
               }
@@ -6814,6 +6927,9 @@
                         },
                         "defaultLabel": {
                           "type": "string"
+                        },
+                        "guest": {
+                          "type": "boolean"
                         }
                       },
                       "required": [
@@ -6827,7 +6943,8 @@
                         "lastOkAtMs",
                         "registered",
                         "hasCredentials",
-                        "defaultLabel"
+                        "defaultLabel",
+                        "guest"
                       ]
                     },
                     "next": {
@@ -7099,6 +7216,9 @@
                     },
                     "defaultLabel": {
                       "type": "string"
+                    },
+                    "guest": {
+                      "type": "boolean"
                     }
                   },
                   "required": [
@@ -7112,7 +7232,8 @@
                     "lastOkAtMs",
                     "registered",
                     "hasCredentials",
-                    "defaultLabel"
+                    "defaultLabel",
+                    "guest"
                   ]
                 }
               }
@@ -7516,6 +7637,22 @@
                     },
                     "defaultLabel": {
                       "type": "string"
+                    },
+                    "origin": {
+                      "enum": ["mine", "shared"],
+                      "type": "string"
+                    },
+                    "ownerLabel": {
+                      "type": "string"
+                    },
+                    "shareRole": {
+                      "enum": ["", "viewer", "editor", "operator", "driver"],
+                      "type": "string"
+                    },
+                    "shareExpiresAtMs": {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991
                     }
                   },
                   "required": [
@@ -7532,7 +7669,11 @@
                     "orderIndex",
                     "hasCredentials",
                     "routes",
-                    "defaultLabel"
+                    "defaultLabel",
+                    "origin",
+                    "ownerLabel",
+                    "shareRole",
+                    "shareExpiresAtMs"
                   ]
                 }
               }
@@ -8053,6 +8194,22 @@
                     },
                     "defaultLabel": {
                       "type": "string"
+                    },
+                    "origin": {
+                      "enum": ["mine", "shared"],
+                      "type": "string"
+                    },
+                    "ownerLabel": {
+                      "type": "string"
+                    },
+                    "shareRole": {
+                      "enum": ["", "viewer", "editor", "operator", "driver"],
+                      "type": "string"
+                    },
+                    "shareExpiresAtMs": {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991
                     }
                   },
                   "required": [
@@ -8069,7 +8226,11 @@
                     "orderIndex",
                     "hasCredentials",
                     "routes",
-                    "defaultLabel"
+                    "defaultLabel",
+                    "origin",
+                    "ownerLabel",
+                    "shareRole",
+                    "shareExpiresAtMs"
                   ]
                 }
               }
@@ -9113,6 +9274,24 @@
                     },
                     "created": {
                       "type": "boolean"
+                    },
+                    "share": {
+                      "type": "object",
+                      "properties": {
+                        "ownerName": {
+                          "type": "string"
+                        },
+                        "role": {
+                          "enum": ["viewer", "editor", "operator", "driver"],
+                          "type": "string"
+                        },
+                        "expiresAtMs": {
+                          "type": "integer",
+                          "minimum": -9007199254740991,
+                          "maximum": 9007199254740991
+                        }
+                      },
+                      "required": ["ownerName", "role", "expiresAtMs"]
                     }
                   },
                   "required": ["session", "principal", "created"]
