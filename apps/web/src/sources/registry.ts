@@ -13,6 +13,7 @@ import {
   createRemoteConnection,
 } from "./connection";
 import { createDesktopCredentialProvider } from "./credentials";
+import { shareFieldsOf } from "./origin";
 import type { CredentialProvider, SourceDescriptor } from "./types";
 
 /**
@@ -212,7 +213,8 @@ export function createSourceRegistry(
 
 /* ------------------------------ 本机 core 的源表 ----------------------------- */
 
-const clientSourceSchema = z.object({
+// 归属四项（契约 §68）由 `shareFieldsOf` 宽松地读：旧 core 不报，认不出的不出现。
+const clientSourceSchema = z.looseObject({
   sourceId: z.string().min(1),
   kind: z.enum(["local", "direct", "relayed", "hosted"]),
   label: z.string().default(""),
@@ -265,6 +267,7 @@ export const loadSourcesFromLocalCore: SourceLoader = async () => {
     orderIndex: source.orderIndex,
     // 镜像字段之外没有别的路时不带（与 §55 之前的描述一致）。
     ...(source.routes.length === 0 ? {} : { routes: source.routes }),
+    ...shareFieldsOf(source),
   }));
 };
 
