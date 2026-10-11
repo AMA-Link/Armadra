@@ -3862,14 +3862,15 @@ mod 在 `session.start` 用 `$.command.register` 注册七条命令（都是 `im
 
 ## 60. 断言范围、授予租约与会话分享（`scp` / `role`、`target`、`links.scope`）
 
-自协议 1.32 起，钉协议包 0.3.0（平台协议 1.1）。分享有三档：整台主机、一个工作空间、那个工作空间里的一个终端 / ACP 会话（只读）。三档在 core 都落为一张邀请、兑换成一条授予，core 是判定点；远程服务签的断言 `scp` 与只读中继令牌 `ro` 是同一范围在云端的写法与边缘的纵深防御。实现在 `core/identity/{scopes,roles,authorize,route-access,accounts}.ts`、`core/identity/cloud/login.ts`、`core/sources/share-links.ts`，迁移 `0045_grant_scope.sql`。
+自协议 1.32 起，钉协议包 0.3.0（平台协议 1.1）。分享有三档：整台主机、一个工作空间、那个工作空间里的一个终端 / ACP 会话（只读）。三档在 core 都落为一张邀请、兑换成一条授予，core 是判定点；远程服务签的断言 `scp` 是同一范围在云端的写法。只读不交给远程服务（#308）：只读中继令牌 `ro` 让边缘只放行 GET 与身份域，而 core 的 RPC 只收 POST，只读的访客会连 `system.hello` 都过不去。实现在 `core/identity/{scopes,roles,authorize,route-access,accounts}.ts`、`core/identity/cloud/login.ts`、`core/sources/share-links.ts`，迁移 `0045_grant_scope.sql`。
 
 ### 60.1 授予与邀请（迁移 0045）
 
 - **`identity_grants`** 加四列：`origin`（`''` = 本机 owner / 邀请给的；`cloud:<issuer 摘要>`，与 §31 映射凭据的 `provider` 同一拼法 = 按断言同步的）、`expires_at_ms`（租约到期时刻，`0` = 不过期）、`target_kind`（`host` / `workspace` / `session`，缺省 `workspace`）、`target_id`（会话 id，其余为空串）。整台授予的 `workspace_id` 记 `*`（不是任何合法的工作空间 id）。唯一索引换成 `(subject_kind, subject_id, target_kind, workspace_id, target_id)`：同一工作空间上的工作空间授予与会话授予可以并存。旧行全部落在缺省值上，编译结果逐字不变。
 - **`identity_invitations`** 加 `target_session_id`（须同时有 `target_workspace_id`，角色只能是 `viewer`）与 `target_host`（`0` / `1`，不能再带工作空间；只有有全局 `identity:manage` 的人——owner——签得出）。
 - **编译**：整台 = 角色表的同一串权限、工作空间维度留空（含以后新建的工作空间；角色表里没有 `settings:*`、`identity:*`、`workspace:share`，路由门对全局要求的路由照旧只放 owner）；工作空间 = 角色编译（`roles.ts` 的 `roleScopes`）；会话 = `events:read@ws` 加 `terminal:read@ws#session`（ACP 的读也走 `terminal:read`），不论记的角色是什么都只读。租约到期的授予不编译。
-- **资源维度**：scope 多一个可选的 `ResourceID`（不写进 `identity_sessions.scopes`，旧字节不变）。规则与工作空间维度相同：受限的授权不满足不带资源的请求。路由门只在终端（`GET /api/terminals/{id}/…`，`/ws` 除外）与 ACP 会话（`GET /api/acp/sessions/{id}/…`）的读路径带会话 id 去问，所以会话查看者读得到那一条会话，画布、文件、别的会话与一切写入（终端输入、`/ws` 附着、画布修改、文件写入、ACP prompt）都是 `403 forbidden`。无害的全局读（路由门一节的 Agent 目录、终端后端等）对只有终端读的人也放行。
+- **资源维度**：scope 多一个可选的 `ResourceID`（不写进 `identity_sessions.scopes`，旧字节不变）。规则与工作空间维度相同：受限的授权不满足不带资源的请求。路由门只在终端（`GET /api/terminals/{id}/…`，`/ws` 除外）与 ACP 会话（`GET /api/acp/sessions/{id}/…`）的读路径带会话 id 去问，所以会话查看者读得到那一条会话，画布、文件、别的会话与一切写入（终端输入、画布修改、文件写入、ACP prompt）都是 `403 forbidden`。
+- **只读附着**（#308）：`GET /api/terminals/{id}/ws` 对能写的人（自己开的 operator、别人的 driver）照旧可写；只读得到这条会话（`terminal:read@ws`，或会话查看者的 `terminal:read@ws#session`）的人放行为只读附着——画面、`hello`、`status` 照常送，`input` 与 `terminate` 帧丢弃（不回 `warning`），`resize` 只改这一端自己的视图。授权变化复核时，按可写开的流降成只读就以 `4403` 关掉，重连即只读。无害的全局读（路由门一节的 Agent 目录、终端后端等）对只有终端读的人也放行。
 
 ### 60.2 云登录的同步与租约（§31 `cloud/login` 追加）
 
@@ -3883,7 +3884,7 @@ mod 在 `session.start` 用 `$.command.register` 注册七条命令（都是 `im
 ### 60.3 分享链接的范围（§33.9 追加）
 
 - **`sources.shareLinkCreate`** 入参加 `target?: "host" | "workspace" | "session"`（缺省 `workspace`）、`sessionId?`、`readOnly?`；`workspaceId` 可为空串（只在 `target = host` 时）。整台不带会话；工作空间要有 `workspaceId`、不带会话；会话要有 `workspaceId` 与 `sessionId`，角色压成 `viewer`、总是只读；`readOnly` 把角色压成 `viewer`。不合规 `400 bad_request`，不签邀请。
-- 本机邀请按范围签（`targetHost` / `targetWorkspaceId` / `targetSessionId`）。远程服务报能力 `links.scope`（记着的能力没有就重问一次 `platform.info`）时，`links.create` 带 `scope { workspaceId?, sessionId?, readOnly? }`（与协议包 `scopeClaims` 同一语义；整台可写不带）；不报时不发 `scope`，范围照样由 core 判定，只是访客的断言与中继令牌不带 `scp` / `ro`。
+- 本机邀请按范围签（`targetHost` / `targetWorkspaceId` / `targetSessionId`）。远程服务报能力 `links.scope`（记着的能力没有就重问一次 `platform.info`）时，`links.create` 带 `scope { workspaceId }`（与协议包 `scopeClaims` 同一语义；整台不带）。不带 `readOnly`，会话分享也只交它所在的工作空间、不交 `sessionId`——远程服务把带 `sessionId` 的范围一律当只读、签 `ro` 的中继令牌（#308）；只读与「只看这一条会话」都由本机邀请与路由门判定。不报能力时不发 `scope`，范围照样由 core 判定，只是访客的断言不带 `scp`。
 - **`ShareLink`**（`shareLinks`、`shareLinkCreate`、`shareLinkUpdate` 的出参）多三个可选字段：`target`、`sessionId`（会话分享）、`readOnly`（只读才有）。本机存着的那份优先，其次远程服务记着的 `scope`，都没有不写（当作工作空间）。整条链接在 SecretStore 里的条目同样记下这三项。
 - **`sources.shareLinkRevoke`**：撤链接、作废邀请之后，连同经它进来的访客一起停用——经这个签发方、映射凭据 `subject` 以 `guest:<linkId>:` 开头的主体停用并撤掉活会话（尽力，失败只记日志；审计 `identity.principal.disable.link`）。
 
