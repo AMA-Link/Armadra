@@ -7,6 +7,12 @@ import { toast } from "sonner";
 import { useT } from "@/app/preferences-store";
 import { agentLabel } from "@/agent/launch";
 import { CREDENTIALS_QUERY_KEY, credentialsApi } from "@/api/credentials";
+import { pinLocal } from "@/api/source";
+import { lk } from "../local-key";
+
+/** 设置页管的是本机的节点凭据。 */
+const localCredentials = pinLocal(credentialsApi);
+const LOCAL_CREDENTIALS_KEY = lk("credentials");
 import { Badge } from "@/ui/badge";
 import { Button } from "@/ui/button";
 import {
@@ -47,17 +53,21 @@ export function AgentCredentials() {
   const t = useT();
   const client = useQueryClient();
   const credentials = useQuery({
-    queryKey: CREDENTIALS_QUERY_KEY,
-    queryFn: ({ signal }) => credentialsApi.list(signal),
+    queryKey: LOCAL_CREDENTIALS_KEY,
+    queryFn: ({ signal }) => localCredentials.list(signal),
     staleTime: 60_000,
     retry: false,
   });
   const [adding, setAdding] = React.useState(false);
   const [removing, setRemoving] = React.useState<CredentialEntry | null>(null);
   const refresh = () =>
-    client.invalidateQueries({ queryKey: CREDENTIALS_QUERY_KEY });
+    Promise.all([
+      client.invalidateQueries({ queryKey: LOCAL_CREDENTIALS_KEY }),
+      // 当前源就是本机时，节点上的凭据徽标读的是这份。
+      client.invalidateQueries({ queryKey: CREDENTIALS_QUERY_KEY }),
+    ]);
   const remove = useMutation({
-    mutationFn: (ref: string) => credentialsApi.remove(ref),
+    mutationFn: (ref: string) => localCredentials.remove(ref),
     onSuccess: () => {
       toast.success(t("credentials.deleted"));
       void refresh();
@@ -188,7 +198,7 @@ function CredentialDialog({
   const selected = kinds.find((kind) => kindKey(kind) === choice);
   const create = useMutation({
     mutationFn: () =>
-      credentialsApi.create({
+      localCredentials.create({
         providerId: selected?.providerId ?? "",
         kind: selected?.kind ?? "",
         label: label.trim(),

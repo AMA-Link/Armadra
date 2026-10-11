@@ -56,7 +56,7 @@ export function DefaultsPage() {
 
 function DefaultDriverRow() {
   const t = useT();
-  const { settings, save } = useRuntimeSettings();
+  const { settings, save } = useRuntimeSettings({ scope: "local" });
   return (
     <SettingsRow label={t("acp.settings.defaultDriver")}>
       <ScopeBadge scope="host" />
@@ -89,7 +89,7 @@ function DefaultDriverRow() {
 /** 默认 Agent、默认权限模式、简洁模式：都存在本设备的偏好里。 */
 function AgentDefaultRows() {
   const t = useT();
-  const agents = useAgentsQuery();
+  const agents = useAgentsQuery("local");
   const defaultAgentId = usePreferencesStore((state) => state.defaultAgentId);
   const setDefaultAgentId = usePreferencesStore(
     (state) => state.setDefaultAgentId,

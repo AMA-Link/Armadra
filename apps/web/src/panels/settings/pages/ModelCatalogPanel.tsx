@@ -1,7 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { lk } from "../local-key";
 import { RefreshCw } from "lucide-react";
 
-import { runtimeApi } from "../../../api/client";
+import { localRuntimeApi } from "../../../api/client";
 import { useT } from "../../../app/preferences-store";
 import { formatRelativeTime } from "../../../lib/format";
 import { SettingsGroup } from "../SettingsGroup";
@@ -22,14 +23,14 @@ export function ModelCatalogPanel() {
   const t = useT();
   const queryClient = useQueryClient();
   const catalog = useQuery({
-    queryKey: ["model-catalog"],
-    queryFn: () => runtimeApi.modelCatalog(),
+    queryKey: lk("model-catalog"),
+    queryFn: () => localRuntimeApi.modelCatalog(),
     staleTime: 60_000,
   });
   const refresh = useMutation({
-    mutationFn: () => runtimeApi.refreshModelCatalog(),
+    mutationFn: () => localRuntimeApi.refreshModelCatalog(),
     onSuccess: (next) => {
-      queryClient.setQueryData(["model-catalog"], next);
+      queryClient.setQueryData(lk("model-catalog"), next);
       // 价格换了，已经算出来的成本汇总就过期了。
       void queryClient.invalidateQueries({ queryKey: ["usage-cost"] });
     },

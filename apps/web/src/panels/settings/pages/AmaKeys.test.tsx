@@ -11,7 +11,7 @@ const amaCredentials = vi.fn();
 const setAmaCredential = vi.fn();
 const clearAmaCredential = vi.fn();
 vi.mock("../../../api/client", () => ({
-  runtimeApi: {
+  localRuntimeApi: {
     amaCredentials: () => amaCredentials(),
     setAmaCredential: (provider: string, key: string) =>
       setAmaCredential(provider, key),

@@ -17,7 +17,7 @@ vi.mock("../../../app/use-access", () => ({
 }));
 
 vi.mock("../../../api/client", () => ({
-  runtimeApi: {
+  localRuntimeApi: {
     settings: () => fetchSettings(),
     updateSettings: (patch: unknown) => patchSettings(patch),
     /** 设置页经归属网关路由：探不到归属，整个域就是只读的。 */

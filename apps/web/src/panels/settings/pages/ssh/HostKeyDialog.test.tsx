@@ -16,7 +16,7 @@ const api = vi.hoisted(() => ({
   forget: vi.fn(),
 }));
 vi.mock("@/api/client", () => ({
-  runtimeApi: {
+  localRuntimeApi: {
     scanSshHostKeys: api.scan,
     trustSshHostKey: api.trust,
     forgetSshHostKeys: api.forget,

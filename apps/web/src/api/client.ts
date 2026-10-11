@@ -32,12 +32,7 @@ import {
   RuntimeRequestError,
   csrfRefusal,
 } from "./request";
-import {
-  type Source,
-  currentSource,
-  localSource,
-  pinLocal,
-} from "./source";
+import { type Source, currentSource, localSource, pinLocal } from "./source";
 import {
   type ControlChannel,
   type ControlSocketOpener,

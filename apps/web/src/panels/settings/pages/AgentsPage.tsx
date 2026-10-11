@@ -63,7 +63,7 @@ export function agentState(
  */
 export function AgentsPage() {
   const t = useT();
-  const agents = useAgentsQuery();
+  const agents = useAgentsQuery("local");
   const subpage = parseSubpage(useSubpage().current);
   const builtins = React.useMemo(
     () => (agents.data ?? []).filter((agent) => !agent.baseAgent),

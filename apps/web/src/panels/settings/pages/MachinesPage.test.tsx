@@ -33,7 +33,7 @@ const runtime = vi.hoisted(() => ({
   mutate: vi.fn(),
 }));
 const compact = vi.hoisted(() => ({ value: false }));
-vi.mock("@/api/client", () => ({ runtimeApi: api }));
+vi.mock("@/api/client", () => ({ localRuntimeApi: api }));
 vi.mock("sonner", () => ({ toast: toasts }));
 vi.mock("@/platform/layout", async (original) => ({
   ...(await original<typeof import("@/platform/layout")>()),

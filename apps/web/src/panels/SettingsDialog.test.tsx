@@ -21,8 +21,8 @@ const installAgentIntegration = vi.fn();
 const uninstallAgentIntegration = vi.fn();
 const testSshHost = vi.fn();
 
-vi.mock("../api/client", () => ({
-  runtimeApi: {
+vi.mock("../api/client", () => {
+  const api = {
     agents: () => fetchAgents(),
     settings: () => fetchSettings(),
     health: () => fetchHealth(),
@@ -39,8 +39,9 @@ vi.mock("../api/client", () => ({
     uninstallAgentIntegration: (id: string) => uninstallAgentIntegration(id),
     testSshHost: (id: string) => testSshHost(id),
     /** 设置页经归属网关路由：探不到归属，整个域就是只读的。 */
-  },
-}));
+  };
+  return { runtimeApi: api, localRuntimeApi: api };
+});
 
 /** 六个域都由 Runtime 写、都已落定；设置页只看 `settings` 那一行。 */
 

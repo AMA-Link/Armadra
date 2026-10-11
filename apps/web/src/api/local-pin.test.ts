@@ -52,9 +52,11 @@ describe("钉在本机源上", () => {
       credentials: { mode: "none" },
       fetch: remoteFetch,
     } as unknown as Source;
-    const localFetch = vi.spyOn(localSource, "fetch").mockImplementation(
-      async () => Response.json({ status: "ok", version: "1" }),
-    );
+    const localFetch = vi
+      .spyOn(localSource, "fetch")
+      .mockImplementation(async () =>
+        Response.json({ status: "ok", version: "1" }),
+      );
     setCurrentSourceResolver(() => remote);
     await localRuntimeApi.health().catch(() => undefined);
     expect(localFetch).toHaveBeenCalledTimes(1);

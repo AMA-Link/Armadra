@@ -17,8 +17,8 @@ const copilotPoll = vi.fn();
 const copilotLogout = vi.fn();
 const modelCatalog = vi.fn();
 const refreshModelCatalog = vi.fn();
-vi.mock("../../../api/client", () => ({
-  runtimeApi: {
+vi.mock("../../../api/client", () => {
+  const api = {
     settings: () => getSettings(),
     updateSettings: (patch: unknown) => updateSettings(patch),
     usage: () => getUsage(),
@@ -30,8 +30,9 @@ vi.mock("../../../api/client", () => ({
     modelCatalog: () => modelCatalog(),
     refreshModelCatalog: () => refreshModelCatalog(),
     /** 设置页经归属网关路由：探不到归属，整个域就是只读的。 */
-  },
-}));
+  };
+  return { runtimeApi: api, localRuntimeApi: api };
+});
 
 /** 六个域都由 Runtime 写、都已落定；设置页只看 `settings` 那一行。 */
 

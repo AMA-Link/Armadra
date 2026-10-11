@@ -1,3 +1,4 @@
+import { lk } from "../local-key";
 import { useQueryClient } from "@tanstack/react-query";
 import { useUsage } from "../../../app/use-usage";
 import { ProviderDetail } from "../../../shell/ProviderDetail";
@@ -52,7 +53,7 @@ export function UsagePage() {
   const queryClient = useQueryClient();
   const { usage, refresh, refreshing, refreshFailed, now, cooldown } =
     useUsage();
-  const { settings, save } = useRuntimeSettings();
+  const { settings, save } = useRuntimeSettings({ scope: "local" });
   // Runtime 侧默认开（settings.rs 归一化时补 `true`）。
   const usageEnabled = settings.data?.usage?.enabled !== false;
   const costEnabled = settings.data?.usage?.cost?.enabled !== false;
@@ -155,7 +156,7 @@ export function UsagePage() {
                       refresh.mutate();
                       if (id === "copilot")
                         void queryClient.invalidateQueries({
-                          queryKey: ["copilot-auth"],
+                          queryKey: lk("copilot-auth"),
                         });
                     },
                   },
