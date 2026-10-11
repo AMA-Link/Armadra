@@ -88,7 +88,22 @@ function same(a: EdgeInsets, b: EdgeInsets): boolean {
   );
 }
 
+/**
+ * 量一次的代价不小：插探针、`getComputedStyle` 逼浏览器重算样式（jsdom 里每次
+ * 都把整张样式表重新匹配一遍，几百毫秒）。而 `useSyncExternalStore` 每次渲染、
+ * 开发态还要多问一遍快照，没订阅时每个刚挂上的浮层都会量好几回。量的结果只取决
+ * 于根上的内联样式（原生层写变量的地方）、根的 class 与视口尺寸（`env()` 跟着
+ * 它变），三者没变就沿用上一次的。
+ */
+let measuredFor: string | null = null;
+
+function inputs(): string {
+  const root = document.documentElement;
+  return `${root.getAttribute("style") ?? ""}|${root.className}|${window.innerWidth}x${window.innerHeight}`;
+}
+
 function refresh(): void {
+  measuredFor = inputs();
   const next = measureSafeInsets();
   if (snapshot !== null && same(snapshot, next)) return;
   snapshot = next;
@@ -99,8 +114,8 @@ function subscribe(listener: () => void): () => void {
   listeners.add(listener);
   if (teardown === null) {
     // 横竖屏、分屏、台前调度改窗口形状时 `env()` 跟着变；原生层写窗口控件时
-    // 改的是根元素的内联样式。
-    snapshot = null;
+    // 改的是根元素的内联样式。没订阅的这段时间里输入变过，就作废旧快照。
+    if (inputs() !== measuredFor) snapshot = null;
     const onChange = () => refresh();
     window.addEventListener("resize", onChange);
     window.addEventListener("orientationchange", onChange);
@@ -130,9 +145,12 @@ function subscribe(listener: () => void): () => void {
 }
 
 function current(): EdgeInsets {
-  // 还没人订阅时没有事件来更新，只能每次量；量出来没变就还给同一个对象——
-  // useSyncExternalStore 要求快照稳定。
+  // 还没人订阅时没有事件来更新，只能按输入判断要不要重量；量出来没变就还给
+  // 同一个对象——useSyncExternalStore 要求快照稳定。
   if (snapshot === null || teardown === null) {
+    const key = inputs();
+    if (snapshot !== null && key === measuredFor) return snapshot;
+    measuredFor = key;
     const next = measureSafeInsets();
     if (snapshot === null || !same(snapshot, next)) snapshot = next;
   }
