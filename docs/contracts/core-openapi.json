@@ -28542,7 +28542,12 @@
           "content": {
             "application/json": {
               "schema": {
-                "type": "object"
+                "type": "object",
+                "properties": {
+                  "workspaceId": {
+                    "type": "string"
+                  }
+                }
               }
             }
           }
@@ -28560,6 +28565,17 @@
                       "items": {
                         "type": "object",
                         "properties": {
+                          "workspaceId": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ],
+                            "default": null
+                          },
                           "repoKey": {
                             "type": "string"
                           },
@@ -28640,6 +28656,9 @@
               "schema": {
                 "type": "object",
                 "properties": {
+                  "workspaceId": {
+                    "type": "string"
+                  },
                   "forge": {
                     "type": "string"
                   },
@@ -28671,6 +28690,17 @@
                 "schema": {
                   "type": "object",
                   "properties": {
+                    "workspaceId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null
+                    },
                     "repoKey": {
                       "type": "string"
                     },
@@ -28789,6 +28819,9 @@
                         "type": "string"
                       }
                     ]
+                  },
+                  "workspaceId": {
+                    "type": "string"
                   }
                 },
                 "required": ["host"]
@@ -28865,6 +28898,9 @@
               "schema": {
                 "type": "object",
                 "properties": {
+                  "workspaceId": {
+                    "type": "string"
+                  },
                   "forge": {
                     "type": "string"
                   },
@@ -28902,6 +28938,17 @@
                 "schema": {
                   "type": "object",
                   "properties": {
+                    "workspaceId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null
+                    },
                     "repoKey": {
                       "type": "string"
                     },
@@ -29017,6 +29064,9 @@
                   "name": {
                     "type": "string"
                   },
+                  "workspaceId": {
+                    "type": "string"
+                  },
                   "expectedRevision": {
                     "anyOf": [
                       {
@@ -29103,6 +29153,9 @@
                 "type": "object",
                 "properties": {
                   "remoteUrl": {
+                    "type": "string"
+                  },
+                  "workspaceId": {
                     "type": "string"
                   }
                 }
@@ -29253,6 +29306,9 @@
                   },
                   "name": {
                     "type": "string"
+                  },
+                  "workspaceId": {
+                    "type": "string"
                   }
                 },
                 "required": ["host", "owner", "name"]
@@ -29393,7 +29449,12 @@
           "content": {
             "application/json": {
               "schema": {
-                "type": "object"
+                "type": "object",
+                "properties": {
+                  "workspaceId": {
+                    "type": "string"
+                  }
+                }
               }
             }
           }
@@ -29475,6 +29536,9 @@
                         "type": "string"
                       }
                     ]
+                  },
+                  "workspaceId": {
+                    "type": "string"
                   }
                 },
                 "required": ["host"]
@@ -29660,6 +29724,9 @@
                     "type": "string"
                   },
                   "name": {
+                    "type": "string"
+                  },
+                  "workspaceId": {
                     "type": "string"
                   },
                   "state": {
@@ -29882,6 +29949,9 @@
                   "name": {
                     "type": "string"
                   },
+                  "workspaceId": {
+                    "type": "string"
+                  },
                   "number": {
                     "anyOf": [
                       {
@@ -30075,6 +30145,9 @@
                     "type": "string"
                   },
                   "name": {
+                    "type": "string"
+                  },
+                  "workspaceId": {
                     "type": "string"
                   },
                   "number": {
@@ -30283,6 +30356,9 @@
                     "type": "string"
                   },
                   "name": {
+                    "type": "string"
+                  },
+                  "workspaceId": {
                     "type": "string"
                   },
                   "state": {
@@ -30521,6 +30597,9 @@
                   "name": {
                     "type": "string"
                   },
+                  "workspaceId": {
+                    "type": "string"
+                  },
                   "title": {
                     "type": "string"
                   },
@@ -30748,6 +30827,9 @@
                   "name": {
                     "type": "string"
                   },
+                  "workspaceId": {
+                    "type": "string"
+                  },
                   "number": {
                     "anyOf": [
                       {
@@ -30959,6 +31041,9 @@
                   "name": {
                     "type": "string"
                   },
+                  "workspaceId": {
+                    "type": "string"
+                  },
                   "number": {
                     "anyOf": [
                       {
@@ -31139,6 +31224,9 @@
                   "name": {
                     "type": "string"
                   },
+                  "workspaceId": {
+                    "type": "string"
+                  },
                   "number": {
                     "anyOf": [
                       {
@@ -31303,6 +31391,9 @@
                   },
                   "name": {
                     "type": "string"
+                  },
+                  "workspaceId": {
+                    "type": "string"
                   }
                 },
                 "required": ["host", "owner", "name"]
@@ -31428,6 +31519,9 @@
                     "type": "string"
                   },
                   "name": {
+                    "type": "string"
+                  },
+                  "workspaceId": {
                     "type": "string"
                   },
                   "number": {
@@ -31578,6 +31672,9 @@
                     "type": "string"
                   },
                   "name": {
+                    "type": "string"
+                  },
+                  "workspaceId": {
                     "type": "string"
                   },
                   "number": {
@@ -31733,6 +31830,9 @@
                   "name": {
                     "type": "string"
                   },
+                  "workspaceId": {
+                    "type": "string"
+                  },
                   "number": {
                     "anyOf": [
                       {
@@ -31865,6 +31965,9 @@
                     "type": "string"
                   },
                   "name": {
+                    "type": "string"
+                  },
+                  "workspaceId": {
                     "type": "string"
                   },
                   "number": {
