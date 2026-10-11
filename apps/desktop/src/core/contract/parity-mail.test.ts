@@ -68,11 +68,18 @@ interface Setup {
   readonly tick: () => void;
 }
 
-const closing: (() => void | Promise<void>)[] = [];
+/**
+ * 十一份夹具各有一个监听与一个库。逐个 `await` 关时，每个监听最多等
+ * `CLOSE_GRACE_MS`（2 s），慢的 Windows runner 上加起来越过 10 s 的钩子超时。
+ * 先并行关掉所有监听，再关库（库在监听之前关，还在途的请求会撞上已关的库）。
+ */
+const closingServers: (() => Promise<void>)[] = [];
+const closingDatabases: (() => void)[] = [];
 afterAll(async () => {
   resetRouteGuard();
   resetAuditSink();
-  for (const close of closing.splice(0)) await close();
+  await Promise.all(closingServers.splice(0).map((close) => close()));
+  for (const close of closingDatabases.splice(0)) close();
 });
 
 async function open(
@@ -83,7 +90,7 @@ async function open(
     file: join(directory, "canvas.db"),
     migrationsDir,
   });
-  closing.push(opened.close);
+  closingDatabases.push(opened.close);
   let clock = 1_800_000_000_000;
   const store = new IdentityStore(opened.database);
   const service = new IdentityService(store, INSTANCE, () => clock);
@@ -147,7 +154,7 @@ async function open(
   });
   installRoutes(server, mail);
   installContract(server, { validateOutput: true, platform });
-  closing.push(() => server.close());
+  closingServers.push(() => server.close());
   const identities: Record<string, RequestIdentity | undefined> = {
     owner: { subject: owner },
     lead: { subject: lead },
