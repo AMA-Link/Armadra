@@ -4281,3 +4281,26 @@ nightly 在 `b8353492`（运行 37338174906）之后连续失败。逐个作业�
 - shared：`trafficCategory`、`TRAFFIC_CATEGORIES`、`traffic.*`、`TRAFFIC_RETENTION_CHOICES` / `DEFAULT_TRAFFIC_RETENTION_DAYS`、`Traffic*` 类型。
 - core：`trafficDomain()`、`TrafficService`（`meter`、`flush`、`summary`、`series`、`live`、`clear`）、`TrafficMeter` / `StreamCounter`；`relay/streams.ts` 的 `StreamTrafficCounter` / `TunnelTrafficMeter`；`TunnelClientOptions.meter`、`RelayDeps.traffic`。
 - 线上：§76，协议 1.44。
+
+- 线上：§76，协议 1.46。
+
+## 远程访问页「流量」段（流量统计 S2，Refs #360，2026-10-12）
+
+做了什么：
+
+- 远程访问页「这台电脑」在有远程服务时多一张「流量」卡片（`traffic/HostTraffic.tsx`，只用现有 shadcn）：`Tabs` 7 天 / 30 天 / 全部，`ToggleGroup` 按设备 / 按类别；上行 · 下行 · 连接三格（`TrafficBreakdown`，只算内层明文，线路一行不列）；分项按总量降序、`Progress` 作比例；有对端开着流时标题旁 `Badge`「n 台在线 · ↑ x/s ↓ y/s」（每 5 秒问一次 `traffic.live`）；底部「清零」（确认框）与保留期 `Select`（写 `traffic.retentionDays`）。
+- `api/traffic.ts` 只问本机 core（远程访问页固定操作本机）；页面设置形状加 `traffic.retentionDays`；文案 `traffic.*` 中英同步，无说明性文字。
+
+实测（macOS arm64，本地个人中转 + 隔离的服务器壳实例 A，无头 Chrome 1280×900）：
+
+- A 的远程访问页：按设备列出各访客设备（设备名 · 访客名）与「未登录」（登录、hello 这类匿名面），按类别列出接口 / 画布 / Agent / 终端 / 事件；另一个浏览器以访客在 A 的画布上时，徽标显示「1 台在线」与速率。截图在工作区 `scratch/armadra/traffic-stats/s2-*.png`。
+- 单测：`TrafficBreakdown` 2、`HostTraffic` 3；远程访问页原有用例全过。
+
+没做 / 限制：
+
+- 同一访客每次经断言登录都是新的会话设备，按设备会出现同名的几行（端到端通道的设备钥落地后合并）。
+- 没有时间条（`traffic.series` 已在 core，页面暂未画）。
+
+接口：
+
+- web：`trafficSummary` / `trafficLive` / `clearTraffic`、`TRAFFIC_QUERY_KEY`；`HostTraffic`；`TrafficBreakdown`（`up` / `down` / `streams` / `rows` / `onClear` / `clearTitle` / `footer`）。
