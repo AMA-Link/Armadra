@@ -4,7 +4,8 @@
  *   node tools/release/assemble.mjs --dir <dir> --version X.Y.Z \
  *     --repo owner/name --tag vX.Y.Z [--unnotarized macOS,Windows] \
  *     [--changelog CHANGELOG.md [--require-released] | --notes-from <file>] \
- *     [--note release-note.md] [--mirror-base <url> --mirror-out <dir>]
+ *     [--note release-note.md] [--mirror-base <url> --mirror-out <dir>] \
+ *     [--pub-date <ISO 8601>]
  *
  * The release note's body is this version's section of `CHANGELOG.md`
  * (`--changelog`, see changelog.mjs); a missing section fails before anything
@@ -31,6 +32,7 @@
  * note says so: a release that looks signed and is not is worse than one that
  * admits it.
  */
+import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import {
   existsSync,
@@ -202,6 +204,7 @@ export function writeMirrorManifest({
   notes,
   key,
   rollout,
+  pub = "",
 }) {
   mkdirSync(out, { recursive: true });
   const output = join(out, "latest.json");
@@ -212,6 +215,7 @@ export function writeMirrorManifest({
     targets: TARGETS,
     downloadUrl: (name) => mirrorDownloadUrl(base, tag, name),
     rollout,
+    pub,
     output,
   });
   if (key)
@@ -226,6 +230,39 @@ export function writeMirrorManifest({
   return { manifest, skipped, path: output };
 }
 
+/**
+ * When the release was made, for `latest.json`'s `pub_date`: the commit time
+ * of what `tag` points at, else of `HEAD` (a dry run on a branch has no tag
+ * yet), as UTC ISO 8601. The commit time rather than the clock, so assembling
+ * one tag twice writes the same bytes. `""` when neither resolves (not a
+ * checkout): the manifest then keeps its fixed epoch.
+ */
+export function commitTime(tag, cwd = process.cwd()) {
+  for (const ref of [`${tag}^{commit}`, "HEAD"]) {
+    if (!tag && ref !== "HEAD") continue;
+    try {
+      const seconds = execFileSync(
+        "git",
+        ["log", "-1", "--format=%ct", ref, "--"],
+        { cwd, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] },
+      ).trim();
+      if (/^[1-9][0-9]*$/.test(seconds))
+        return new Date(Number(seconds) * 1000).toISOString();
+    } catch {
+      // Not this ref; try the next.
+    }
+  }
+  return "";
+}
+
+/** An explicit `--pub-date`: any instant `Date` reads, written back as UTC. */
+export function normalizePubDate(value) {
+  const parsed = Date.parse(value);
+  if (!/^\d{4}-\d{2}-\d{2}T/.test(value) || !Number.isFinite(parsed))
+    throw new Error(`--pub-date wants ISO 8601, got ${value}`);
+  return new Date(parsed).toISOString();
+}
+
 export async function assemble({
   directory,
   version,
@@ -236,6 +273,7 @@ export async function assemble({
   secret = process.env[SECRET_ENV],
   rollout,
   mirror,
+  pub = "",
 }) {
   const problems = checkNames(directory);
   const download = (name) =>
@@ -253,6 +291,7 @@ export async function assemble({
     targets: TARGETS,
     downloadUrl: download,
     rollout,
+    pub,
   });
   // A build without ARMADRA_RELEASE_SIGNING_KEY signs nothing, and that is a
   // release that admits it cannot update itself, not a broken one: every
@@ -299,6 +338,7 @@ export async function assemble({
       notes,
       key,
       rollout,
+      pub,
     });
     if (
       Object.keys(mirrored.manifest.platforms).length !==
@@ -339,7 +379,7 @@ async function main(argv) {
   const tag = flag(argv, "tag") || `v${version}`;
   if (!directory || !version || !repo) {
     console.error(
-      "usage: node tools/release/assemble.mjs --dir <dir> --version X.Y.Z --repo owner/name [--tag vX.Y.Z] [--unnotarized a,b] [--changelog CHANGELOG.md [--require-released] | --notes-from file] [--note file] [--rollout <percent>] [--mirror-base <url> [--mirror-out <dir>]]",
+      "usage: node tools/release/assemble.mjs --dir <dir> --version X.Y.Z --repo owner/name [--tag vX.Y.Z] [--unnotarized a,b] [--changelog CHANGELOG.md [--require-released] | --notes-from file] [--note file] [--rollout <percent>] [--mirror-base <url> [--mirror-out <dir>]] [--pub-date <ISO 8601>]",
     );
     return 2;
   }
@@ -363,8 +403,18 @@ async function main(argv) {
     }
     notes = read.notes;
   }
+  let pub;
+  try {
+    pub = flag(argv, "pub-date")
+      ? normalizePubDate(flag(argv, "pub-date"))
+      : commitTime(tag);
+  } catch (error) {
+    console.error(`✗ ${error.message}`);
+    return 2;
+  }
   const result = await assemble({
     directory: resolve(directory),
+    pub,
     version,
     repo,
     tag,
@@ -386,6 +436,7 @@ async function main(argv) {
   const notePath = flag(argv, "note");
   if (notePath) writeFileSync(notePath, result.note);
   console.log(`Assembled ${version}:`);
+  console.log(`  pub_date ${result.manifest.pub_date}`);
   console.log(`  ${result.signed.length} signature(s)`);
   console.log(
     `  ${Object.keys(result.manifest.platforms).length} updater platform(s)`,
