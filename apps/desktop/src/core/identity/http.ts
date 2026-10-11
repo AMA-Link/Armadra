@@ -234,6 +234,8 @@ function grants(principal: Principal) {
     permission: value.Permission,
     workspaceId: value.WorkspaceID,
     executionHostId: value.ExecutionHostID,
+    // 契约 §71：只限一条会话的授权带上会话 id，页面据此给会话查看者开只读查看页。
+    ...(value.ResourceID ? { resourceId: value.ResourceID } : {}),
   }));
 }
 
