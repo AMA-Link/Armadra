@@ -6,7 +6,12 @@ import type {
 import { type AuthorizationSubject, compileGrants } from "./authorize";
 import { IdentityError } from "./errors";
 import { accessChanged } from "./gate";
-import { type GrantTargetKind, HOST_WORKSPACE, type ShareRole } from "./roles";
+import {
+  type GrantTargetKind,
+  HOST_WORKSPACE,
+  SHARE_ROLES,
+  type ShareRole,
+} from "./roles";
 import { permits, scope } from "./scopes";
 import type { IdentityStore, IdentityTx } from "./store";
 import { ID_PATTERN, newId, validIdentifier, validName } from "./tokens";
@@ -33,9 +38,32 @@ export interface AssertedGrant {
 /** 经云登录兑换邀请、同步授予时，授予记成哪个来源、租到什么时候、要不要压成只读。 */
 export interface GrantProvenance {
   readonly origin: string;
+  /** 断言给的租约（断言到期 + {@link GRANT_LEASE_MS}）；落库前再按邀请到期封顶。 */
   readonly leaseUntilMs: number;
   /** 断言带 `ro`：兑换出的授予压到 viewer。 */
   readonly readOnly?: boolean;
+  /**
+   * 这次登录背后的那张邀请（契约 §68）：断言的 `link.invitationId`，或这次兑换的
+   * 邀请令牌。给了就把租约封顶在它的 `expiresAtMs`——1 天的链接换不来 31 天的授予。
+   */
+  readonly invitationId?: string;
+}
+
+/**
+ * 授予的租约（契约 §68）：`min(断言租约, 邀请到期)`。邀请不在（已删）时按断言租约；
+ * 没有邀请（SaaS 组织准入、owner 绑定）也按断言租约。
+ */
+export function leaseUntil(
+  accounts: Pick<AccountsTx, "invitation">,
+  provenance: GrantProvenance,
+): number {
+  const invitationId = provenance.invitationId ?? "";
+  if (invitationId === "" || !ID_PATTERN.test(invitationId)) {
+    return provenance.leaseUntilMs;
+  }
+  const row = accounts.invitation(invitationId);
+  if (row === undefined) return provenance.leaseUntilMs;
+  return Math.min(provenance.leaseUntilMs, row.expiresAtMs);
 }
 
 /**
@@ -154,7 +182,7 @@ export function applyCloudGrants(
     asserted?: readonly AssertedGrant[];
   },
 ): boolean {
-  const { origin, leaseUntilMs } = input.provenance;
+  const { origin } = input.provenance;
   const readOnly = input.provenance.readOnly === true;
   if (!ID_PATTERN.test(input.principalId) || origin === "") {
     throw new IdentityError("invalid");
@@ -164,6 +192,7 @@ export function applyCloudGrants(
     if (principal === undefined || principal.kind === "owner") return false;
     const grantedBy = tx.accounts.owner()?.principalId ?? input.principalId;
     const now = nowMs;
+    const leaseUntilMs = leaseUntil(tx.accounts, input.provenance);
     const current = tx.accounts.originGrants(input.principalId, origin);
     const key = (grant: {
       targetKind: GrantTargetKind;
@@ -199,6 +228,8 @@ export function applyCloudGrants(
         role,
       });
     }
+    // 邀请已经到期（契约 §68）：不再续，也不立一条生来就过期的新授予。
+    if (leaseUntilMs <= now) wanted.clear();
     let touched = false;
     for (const grant of current) {
       const next = wanted.get(key(grant));
@@ -254,6 +285,44 @@ export function applyCloudGrants(
   });
   if (changed) accessChanged();
   return changed;
+}
+
+/** 这台主机主人的显示名（契约 §68）：owner 主体的 `displayName`，空时用 `fallback`。 */
+export function ownerDisplayName(
+  store: IdentityStore,
+  fallback: string,
+): string {
+  const name = store.transaction(
+    (tx) => tx.accounts.owner()?.displayName ?? "",
+  );
+  return name.trim() || fallback;
+}
+
+/**
+ * 一个人经 `origin` 拿到的、现在还有效的授予（契约 §68，`cloud/login` 的 `share`）：
+ * 角色取最高的那条，到期取最晚的那条（0 = 不过期）。没有答 `undefined`。
+ */
+export function originShare(
+  store: IdentityStore,
+  nowMs: number,
+  principalId: string,
+  origin: string,
+): { role: ShareRole; expiresAtMs: number } | undefined {
+  const grants = store
+    .transaction((tx) => tx.accounts.originGrants(principalId, origin))
+    .filter((grant) => grant.expiresAtMs === 0 || grant.expiresAtMs > nowMs);
+  if (grants.length === 0) return undefined;
+  let role: ShareRole = grants[0]!.role;
+  let expiresAtMs = 0;
+  let forever = false;
+  for (const grant of grants) {
+    if (SHARE_ROLES.indexOf(grant.role) > SHARE_ROLES.indexOf(role)) {
+      role = grant.role;
+    }
+    if (grant.expiresAtMs === 0) forever = true;
+    else expiresAtMs = Math.max(expiresAtMs, grant.expiresAtMs);
+  }
+  return { role, expiresAtMs: forever ? 0 : expiresAtMs };
 }
 
 /**

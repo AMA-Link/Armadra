@@ -673,6 +673,33 @@ describe("挂载（经中继）", () => {
     expect(world.cores.get(`${ISSUER}/s/${RELAYED_ID}`)?.cloudLogins).toBe(1);
   });
 
+  it("契约 §68：用自己的账号挂上的、配对上的都是 mine，分享信息为空", async () => {
+    const { remote } = await addRemote();
+    world.cores.get(`${ISSUER}/s/${RELAYED_ID}`)!.share = {
+      ownerName: "Alice",
+      role: "viewer",
+      expiresAtMs: 1,
+    };
+    expect(
+      await service.mount({
+        serviceId: remote.serviceId,
+        sourceId: RELAYED_ID,
+      }),
+    ).toMatchObject({
+      origin: "mine",
+      ownerLabel: "",
+      shareRole: "",
+      shareExpiresAtMs: 0,
+    });
+    expect(
+      await service.addDirect({
+        pairLink: `${GATEWAY}/#pair=ticket-1&fp=${GATEWAY_FP}`,
+      }),
+    ).toMatchObject({
+      origin: "mine",
+    });
+  });
+
   it("刷新失败（401）回退到断言重新 cloud/login，写回新令牌", async () => {
     const { remote } = await addRemote();
     await service.mount({ serviceId: remote.serviceId, sourceId: RELAYED_ID });
@@ -923,6 +950,58 @@ describe("契约 §33.7：按分享链接挂载", () => {
     }
   });
 
+  it("契约 §68：按链接加入的是 shared，带分享方报的主人、角色与到期；访客行标 guest", async () => {
+    share();
+    const core = world.cores.get(`${ISSUER}/s/${RELAYED_ID}`)!;
+    core.share = { ownerName: "Alice", role: "viewer", expiresAtMs: 5_000_000 };
+    const mounted = await service.mountByLink({ url, fingerprint: RELAY_FP });
+    expect(mounted).toMatchObject({
+      origin: "shared",
+      ownerLabel: "Alice",
+      shareRole: "viewer",
+      shareExpiresAtMs: 5_000_000,
+    });
+    const { sources, remotes } = await service.list();
+    expect(sources.find((one) => one.kind === "local")).toMatchObject({
+      origin: "mine",
+      ownerLabel: "",
+      shareRole: "",
+      shareExpiresAtMs: 0,
+    });
+    expect(remotes[0]).toMatchObject({ accountHint: "", guest: true });
+
+    // 重新 cloud/login（刷新令牌失效）时分享方报的新值写回。
+    core.share = { ownerName: "Alice", role: "editor", expiresAtMs: 9_000_000 };
+    core.sessions.revokeAll();
+    await service.session(RELAYED_ID, "relayed");
+    expect(
+      (await service.list()).sources.find((one) => one.sourceId === RELAYED_ID),
+    ).toMatchObject({ shareRole: "editor", shareExpiresAtMs: 9_000_000 });
+  });
+
+  it("契约 §68：分享方不报 share（旧 core）仍是 shared，分享信息留空；角色不认识当未知", async () => {
+    share();
+    const core = world.cores.get(`${ISSUER}/s/${RELAYED_ID}`)!;
+    expect(
+      await service.mountByLink({ url, fingerprint: RELAY_FP }),
+    ).toMatchObject({
+      origin: "shared",
+      ownerLabel: "",
+      shareRole: "",
+      shareExpiresAtMs: 0,
+    });
+    core.share = { ownerName: "x".repeat(300), role: "admin", expiresAtMs: -1 };
+    share();
+    expect(
+      await service.mountByLink({ url, fingerprint: RELAY_FP }),
+    ).toMatchObject({
+      origin: "shared",
+      ownerLabel: "x".repeat(128),
+      shareRole: "",
+      shareExpiresAtMs: 0,
+    });
+  });
+
   it("深链 armadra://join 同样认", async () => {
     share();
     const deep = `armadra://join?link=${LINK_ID}&issuer=${encodeURIComponent(ISSUER)}&s=${encodeURIComponent(`${SECRET}.${INVITE}`)}`;
@@ -942,6 +1021,7 @@ describe("契约 §33.7：按分享链接挂载", () => {
       serviceId: remote.serviceId,
       accountHint: ACCOUNT,
     });
+    expect(remotes[0]!.guest).toBe(false);
     expect(
       world.requests.filter((one) => one.url.endsWith("/v1/auth/logout")),
     ).toHaveLength(1);
