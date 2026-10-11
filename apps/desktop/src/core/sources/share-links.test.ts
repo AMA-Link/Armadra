@@ -15,6 +15,7 @@ import {
   type FakeWorld,
   fakeWorld,
   memoryBackend,
+  plainSealed,
 } from "./fake.fixture";
 import { RemoteClient } from "./remote-client";
 import { SourceSecrets, shareLinksSecretName } from "./secrets";
@@ -81,7 +82,7 @@ beforeEach(async () => {
     store: new SourcesStore(opened.database),
     secrets,
     remote,
-    peer: new SourceClient(world.transport),
+    peer: new SourceClient(world.transport, plainSealed(world.transport)),
     hostId: () => HOST_ID,
     hostLabel: () => "this-mac",
     log: { info: log, warn: log },

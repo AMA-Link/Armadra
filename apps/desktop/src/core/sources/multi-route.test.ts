@@ -18,6 +18,7 @@ import {
   type FakeWorld,
   fakeWorld,
   memoryBackend,
+  plainSealed,
 } from "./fake.fixture";
 import type { Transport } from "./http-client";
 import { RemoteClient } from "./remote-client";
@@ -81,7 +82,7 @@ beforeEach(() => {
     store: new SourcesStore(opened.database),
     secrets: new SourceSecrets(() => backend),
     remote: new RemoteClient(transport, { platform: "desktop", name: "test" }),
-    peer: new SourceClient(transport),
+    peer: new SourceClient(transport, plainSealed(transport)),
     hostId: () => HOST_ID,
     hostLabel: () => "this-mac",
     log: { info: () => undefined, warn: () => undefined },

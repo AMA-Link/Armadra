@@ -9,6 +9,7 @@
 
 import { fail } from "../http/errors";
 import type { OutboundAnswer, OutboundRequest, Transport } from "./http-client";
+import type { ChannelRequest } from "./source-client";
 import type { SecretBackend } from "../secrets/backend";
 
 export const ISSUER = "https://relay.test";
@@ -620,4 +621,22 @@ export function memoryBackend(): SecretBackend & {
       values.delete(name);
     },
   };
+}
+
+/**
+ * 测试的「端到端通道」：经中继的请求原样交给假对端（不握手），好让只关心源表与会话
+ * 流程的用例照旧用 {@link Transport}。
+ */
+export function plainSealed(transport: Transport): ChannelRequest {
+  // 真通道在打开时向中继出示令牌；假中继按头认，这里补上。
+  return async (address, request) => ({
+    answer: await transport({
+      ...request,
+      headers: {
+        ...request.headers,
+        "armadra-relay-token": address.relayToken,
+      },
+    }),
+    sas: "000000",
+  });
 }

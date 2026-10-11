@@ -23,8 +23,8 @@ export interface SourceAddress {
   /** 经中继时的令牌。 */
   readonly relayToken?: string;
   /**
-   * 经中继时对端的 `sourceId`：给了且装了端到端通道（契约 §78）就经通道发，
-   * 会话绑本机设备钥。
+   * 经中继时对端的 `sourceId`（缺省从 `base` 的 `/s/<sourceId>` 取）：经中继的请求
+   * 只走端到端通道（契约 §78），会话绑本机设备钥。
    */
   readonly sourceId?: string;
   /** 第一次经访客链接加入：邀请令牌作 m3 的 `proof`（契约 §80）。 */
@@ -33,14 +33,23 @@ export interface SourceAddress {
   readonly identityFp?: string;
 }
 
-/** 经端到端通道发一个请求；通道不可用（过渡期的旧 core）答 `null`。 */
+/** 经端到端通道发一个请求。 */
 export type ChannelRequest = (
   address: Required<
     Pick<SourceAddress, "base" | "fingerprint" | "relayToken" | "sourceId">
   > &
     Pick<SourceAddress, "proofSecret" | "identityFp">,
   request: OutboundRequest,
-) => Promise<{ answer: OutboundAnswer; sas: string } | null>;
+) => Promise<{ answer: OutboundAnswer; sas: string }>;
+
+/** 中继源基址里的 `sourceId`（`…/s/<sourceId>`）；不是这个形状答 `undefined`。 */
+function relayedSourceId(base: string): string | undefined {
+  try {
+    return /\/s\/([0-9a-f]{32})\/?$/.exec(new URL(base).pathname)?.[1];
+  } catch {
+    return undefined;
+  }
+}
 
 export interface NativeCredentials {
   readonly hostId: string;
@@ -155,7 +164,7 @@ function rejected(status: number, body: unknown): never {
 export class SourceClient {
   constructor(
     private readonly transport: Transport,
-    /** 端到端通道（契约 §78）；不给一律明文。 */
+    /** 端到端通道（契约 §78）；不给时经中继的请求一律失败。 */
     private readonly channel?: ChannelRequest,
   ) {}
 
@@ -169,9 +178,6 @@ export class SourceClient {
   ): Promise<unknown> {
     const headers: Record<string, string> = { origin: CLIENT_ORIGIN };
     if (bearer !== undefined) headers.authorization = `Bearer ${bearer}`;
-    if (address.relayToken !== undefined && address.relayToken !== "") {
-      headers[RELAY_TOKEN_HEADER] = address.relayToken;
-    }
     const request: OutboundRequest = {
       method,
       url: `${address.base}${path}`,
@@ -180,28 +186,29 @@ export class SourceClient {
       headers,
       ...(body === undefined ? {} : { body }),
     };
-    const { relayToken, sourceId } = address;
-    const sealed =
-      this.channel !== undefined &&
-      relayToken !== undefined &&
-      relayToken !== "" &&
-      sourceId !== undefined
-        ? await this.channel(
-            {
-              base: address.base,
-              fingerprint: address.fingerprint,
-              relayToken,
-              sourceId,
-              ...(address.proofSecret === undefined
-                ? {}
-                : { proofSecret: address.proofSecret }),
-              ...(address.identityFp === undefined
-                ? {}
-                : { identityFp: address.identityFp }),
-            },
-            request,
-          )
-        : null;
+    const { relayToken } = address;
+    const sourceId = address.sourceId ?? relayedSourceId(address.base);
+    // 经中继只走端到端通道（契约 §78），没有明文退路。
+    let sealed: { answer: OutboundAnswer; sas: string } | null = null;
+    if (relayToken !== undefined && relayToken !== "") {
+      if (this.channel === undefined || sourceId === undefined)
+        throw fail("source_unreachable", "经中转只走端到端通道");
+      sealed = await this.channel(
+        {
+          base: address.base,
+          fingerprint: address.fingerprint,
+          relayToken,
+          sourceId,
+          ...(address.proofSecret === undefined
+            ? {}
+            : { proofSecret: address.proofSecret }),
+          ...(address.identityFp === undefined
+            ? {}
+            : { identityFp: address.identityFp }),
+        },
+        request,
+      );
+    }
     const answer = sealed?.answer ?? (await this.transport(request));
     if (answer.status >= 200 && answer.status < 300) return answer.body;
     // 这台设备在对端待确认（契约 §77）：把校验码交给页面，人在那台电脑上核对。

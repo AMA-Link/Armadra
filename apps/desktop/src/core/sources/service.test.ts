@@ -19,6 +19,7 @@ import {
   type FakeWorld,
   fakeWorld,
   memoryBackend,
+  plainSealed,
 } from "./fake.fixture";
 import { RemoteClient } from "./remote-client";
 import { SourceSecrets } from "./secrets";
@@ -62,7 +63,7 @@ beforeEach(() => {
       platform: "desktop",
       name: "test",
     }),
-    peer: new SourceClient(world.transport),
+    peer: new SourceClient(world.transport, plainSealed(world.transport)),
     hostId: () => HOST_ID,
     hostLabel: () => "this-mac",
     log: { info: log, warn: log },
@@ -579,7 +580,7 @@ describe("本机登记到远程服务（契约 §31）", () => {
         platform: "desktop",
         name: "test",
       }),
-      peer: new SourceClient(world.transport),
+      peer: new SourceClient(world.transport, plainSealed(world.transport)),
       hostId: () => HOST_ID,
       hostLabel: () => "this-mac",
       log: { info: () => undefined, warn: () => undefined },
@@ -724,7 +725,7 @@ describe("挂载（经中继）", () => {
         platform: "desktop",
         name: "t",
       }),
-      peer: new SourceClient(world.transport),
+      peer: new SourceClient(world.transport, plainSealed(world.transport)),
       hostId: () => HOST_ID,
       hostLabel: () => "this-mac",
       log: { info: () => undefined, warn: () => undefined },
@@ -800,7 +801,7 @@ describe("契约 §33.6：登出与首次指纹", () => {
         platform: "desktop",
         name: "test",
       }),
-      peer: new SourceClient(world.transport),
+      peer: new SourceClient(world.transport, plainSealed(world.transport)),
       hostId: () => HOST_ID,
       hostLabel: () => "this-mac",
       log: { info: () => undefined, warn: () => undefined },

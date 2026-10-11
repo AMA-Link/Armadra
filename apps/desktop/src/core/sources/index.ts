@@ -40,7 +40,7 @@ import { RemoteClient } from "./remote-client";
 import { SourceSecrets } from "./secrets";
 import { SourcesService } from "./service";
 import { ShareLinks } from "./share-links";
-import { SourceClient } from "./source-client";
+import { type ChannelRequest, SourceClient } from "./source-client";
 import { SourcesStore } from "./store";
 
 export { SourcesService, parsePairLink } from "./service";
@@ -59,6 +59,8 @@ export interface SourcesInstallOptions {
   readonly now?: () => number;
   /** 端到端通道（测试注入）；缺省只在真网络上开。 */
   readonly channels?: OutboundChannels;
+  /** 测试的假对端：经中继的请求交给它（代替真的端到端通道）。 */
+  readonly sealed?: ChannelRequest;
 }
 
 let assembled: SourcesService | undefined;
@@ -152,12 +154,12 @@ export function install(
   const secrets = new SourceSecrets(() => secretsFor(context).backend);
   const remote = new RemoteClient(transport, device);
   const store = new SourcesStore(context.db.database);
-  // 经中继连别的电脑时走端到端通道（契约 §78）：会话绑本机设备钥，桌面窗口经
-  // `e2e.sign` 用同一把钥开自己的通道。服务器壳的页面是另一台浏览器、签不了这把钥，
-  // 那里先不开（遗留：服务器壳代连别的电脑仍走明文）；测试的假对端也不开。
+  // 经中继连别的电脑只走端到端通道（契约 §78）：会话绑本机设备钥，页面（桌面窗口，
+  // 或经 Gateway 打开的服务器壳页面）经 `e2e.sign` 用同一把钥开自己的通道。测试的
+  // 假对端由调用方给通道。
   const channels =
     options.channels ??
-    (transport === networkTransport && context.platform.shell !== "server"
+    (transport === networkTransport
       ? new OutboundChannels({
           deviceKey: new DeviceKey(() => secretsFor(context).backend),
           pins: {
@@ -176,9 +178,10 @@ export function install(
     remote,
     peer: new SourceClient(
       transport,
-      channels === undefined
-        ? undefined
-        : (address, request) => channels.request(address, request),
+      options.sealed ??
+        (channels === undefined
+          ? undefined
+          : (address, request) => channels.request(address, request)),
     ),
     hostId: () => identity.hostId(),
     // 本机行的缺省名跟着「主机名称」（契约 §61）。

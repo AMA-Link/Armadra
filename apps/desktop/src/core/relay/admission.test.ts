@@ -113,6 +113,8 @@ describe("HTTP 准入", () => {
       "/context-link/a",
       "/browser/x",
       "/verify",
+      // 本机设备钥签名（契约 §78.3）：经中转来的人拿不到这把钥。
+      "/api/e2e/sign",
     ]) {
       const answer = await get(path, {
         origin: ISSUER,
