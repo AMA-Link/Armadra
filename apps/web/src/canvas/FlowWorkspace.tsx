@@ -11,7 +11,7 @@ import type { BoardDocument, CanvasNode } from "@armadra/shared";
 import "@xyflow/react/dist/style.css";
 import "../styles/canvas.css";
 import { useCanvasReadOnly } from "../store/canvas/presence";
-import { PresenceBar } from "./PresenceBar";
+import { CanvasTopBar } from "./share/CanvasTopBar";
 import { CursorLayer } from "../realtime/CursorLayer";
 import { CommentLayer } from "../realtime/comments/CommentLayer";
 
@@ -534,7 +534,7 @@ function FlowWorkspaceInner() {
             <ToolLayer />
           </ReactFlow>
           <CanvasStylePanel />
-          <PresenceBar />
+          <CanvasTopBar />
         </div>
       </ContextMenuTrigger>
 

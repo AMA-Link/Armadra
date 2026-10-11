@@ -45,6 +45,18 @@ function useMembers(): readonly Member[] {
     }));
 }
 
+/** 打开着的是别人分享来的工作空间（顶栏那一排要不要给它留位置）。 */
+export function useSharedWorkspaceOpen(): boolean {
+  const workspace = useCanvasStore((state) => state.workspace);
+  const sourceId = useCanvasStore((state) => state.sourceId);
+  const connection = useSource(sourceId);
+  return (
+    workspace !== null &&
+    connection !== undefined &&
+    originOf(connection.descriptor) === "shared"
+  );
+}
+
 /**
  * 画布顶栏的分享标识（#301）：打开的是别人分享来的工作空间时，写「<主人> 的
  * <工作空间> · <权限>」，后面是在线的其他人。打开的是我自己的电脑时什么也
