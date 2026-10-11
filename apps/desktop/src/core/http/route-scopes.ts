@@ -213,6 +213,9 @@ export const ROUTE_SCOPE_RULES: readonly RouteScopeRule[] = [
   },
   // Runtime 的健康数字（契约 §54）：登录即可（{@link SELF_GUARDED}），同一档。
   { pattern: /^\/api\/diagnostics\/runtime$/, read: "canvas:read" },
+  // 发布历史（契约 §64）：公开信息，没有机密。成员按「无害的全局读」放行
+  // （`identity/route-access.ts` 的 `SHARED_READS`）。
+  { pattern: /^\/api\/updates\/releases$/, read: "updates:read" },
   // 契约 procedure（契约 §34.1）：门面按每条的 `meta.scope` 判（{@link
   // SELF_GUARDED}）；这一行是清单——最少也要能读身份，与 `system.hello` 同一档。
   { pattern: /^\/api\/rpc\//, read: "identity:read", write: "identity:read" },

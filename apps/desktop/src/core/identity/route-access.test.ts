@@ -479,6 +479,7 @@ describe("全局路由的权限表", () => {
     ["GET", "/api/models/catalog", SHARED],
     ["GET", "/api/terminals/backend", SHARED],
     ["GET", "/api/usage/status", SHARED],
+    ["GET", "/api/updates/releases", SHARED],
     // 按对象落到工作空间
     ["POST", "/api/agent-status/n1/read", W1_ALL],
     ["GET", "/api/agent-status/n1/transcript", W1_ALL],

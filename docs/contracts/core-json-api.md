@@ -3960,3 +3960,54 @@ mod 在 `session.start` 用 `$.command.register` 注册七条命令（都是 `im
 - 设置 → 远程访问的中转账号行（已登录、个人中转）菜单里有「修改口令」：远程服务报 `auth.password-change` 才显示（页面经 `sources.remoteSession` 的 `capabilities` 得知）。对话框只有当前口令、新口令、确认新口令三项；两次输入不一致不提交。要求人机验证时升起 §62.2 的挑战面板，action 是 `armadra-password`。成功提示一句并关闭。
 - **挑战页**（§62.2 的 `/app/challenge`）多两个查询参数：`action`（`armadra-login` 缺省、`armadra-password`；别的值按缺省），内嵌时由面板带上；`mode=copy` 时不需要 `parent`，验证通过后把令牌显示在只读输入框里并给「复制」——给运维脚本（cloud 仓 `apps/relay-workers/scripts/rotate-password.sh`）在终端里粘贴用。
 - 界面文案在 `apps/web/src/i18n/`（`remote.password.*`、`challenge.copy*`），中英同步。
+
+## 64. 发布历史与新版本
+
+> 协议 1.37。core 代页面问 GitHub 的发布列表，桌面窗口、服务器壳网页、手机都读这一条；下载与安装是壳的事（桌面壳 `shell-core/updates`、手机原生插件），不在这里。实现在 `core/updates/`（`releases.ts` 解析与排序，`service.ts` 取数与缓存，`index.ts` 路由）。
+
+### 64.1 `updates.releases`
+
+- **`GET /api/updates/releases`**（`?refresh=1` 强制刷新）→ `UpdateReleases`，`updates:read`。owner 与配对的设备有全量授权；服务器壳上的成员只要被共享过一块画布就放行（与模型目录同属「无害的全局读」）。答案只有 GitHub 上公开的发布信息，没有机密。
+
+```json
+{
+  "current": "0.6.0",
+  "channel": "stable",
+  "checkedAt": 1791700000000,
+  "latest": "0.6.1",
+  "releases": [
+    {
+      "version": "0.6.1",
+      "tag": "v0.6.1",
+      "publishedAt": "2026-10-20T00:00:00Z",
+      "prerelease": false,
+      "notes": "<markdown>",
+      "url": "<html_url>",
+      "assets": [
+        {
+          "name": "armadra-mobile_0.6.1_android.apk",
+          "url": "<browser_download_url>",
+          "size": 1,
+          "sha256": "<hex>"
+        }
+      ]
+    }
+  ],
+  "error": null
+}
+```
+
+- **来源**：`GET https://api.github.com/repos/AMA-Link/Armadra/releases?per_page=30`（出站登记 `githubReleases`，不带令牌）。仓库是 `updates/service.ts` 的 `RELEASES_REPO`。
+- **条目**：草稿与标签不是 semver 的跳过；`version` 去掉前导 `v` 与构建元数据；标签带 `-` 或 GitHub 标了 prerelease 的 `prerelease = true`。`notes` 是发布说明的 Markdown 原文（没有是空串），`url` 是发布页，`publishedAt` 缺时用创建时刻。资产的 `sha256` 来自 GitHub 的 `digest`（`sha256:<hex>`，转小写），没有是 `null`。
+- **排序与过滤**：semver 降序，同一版本只留第一条，最多 30 条。`channel` 是设置 `updates.channel`（每次读时现取，换通道不重新联网）：`stable` 跳过预发布，`beta` 全要。`latest` 是过滤后最高且高于 `current` 的版本，没有是 `null`；`current`（core 自己的版本）不是 semver 时也是 `null`。
+- **缓存**：只在内存里，core 重启后第一次读再问。6 小时内复用；过期后带 `If-None-Match` 条件请求，`304` 只刷新 `checkedAt`。`checkedAt` 是上一次成功问到（含 `304`）的毫秒时刻，从没问到过是 `null`。同一时刻只有一趟请求，并发的读等它。
+- **刷新与节流**：`refresh` 绕过 6 小时缓存，但任何两次真的联网之间至少隔一分钟（失败后同样）；节流中的刷新直接答缓存。
+- **失败**：不是失败的响应——照样 `200`，答上次缓存的那份（从没取到过就是空列表），`error` 为 `{ code, message, retryAfterMs }`：`rateLimited`（`429`，或 `403` 带 `x-ratelimit-remaining: 0` / `Retry-After`；在 `Retry-After` 或 `x-ratelimit-reset` 给的时刻之前不再问，说不出来按一分钟）、`unreachable`（网络错误、超时 10 秒、其它非 2xx、答的不是数组）。`retryAfterMs` 是再过多久 core 才会真的再问（`0` = 下一次读就会问）。下一次成功后 `error` 回到 `null`。
+
+<!-- rpc:begin contract=§64.1 -->
+
+| procedure          | kind  | input                                  | output                                                                                                                                                                                                                                                                                                                                     | errors                         | scope          | 自   | 原路径                      |
+| ------------------ | ----- | -------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------ | -------------- | ---- | --------------------------- |
+| `updates.releases` | query | 可省 `{ refresh?: boolean \| string }` | `{ current: string, channel: "stable" \| "beta", checkedAt: integer \| null, latest: string \| null, releases: { version: string, tag: string, publishedAt: string, prerelease: boolean, notes: string, url: string, assets: {…}[] }[], error: { code: "unreachable" \| "rateLimited", message: string, retryAfterMs: integer } \| null }` | `unauthenticated`、`forbidden` | `updates:read` | 1.37 | `GET /api/updates/releases` |
+
+<!-- rpc:end -->

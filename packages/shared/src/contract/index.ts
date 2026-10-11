@@ -27,6 +27,7 @@ import { sources } from "./sources.js";
 import { security } from "./security.js";
 import { system } from "./system.js";
 import { terminals } from "./terminals.js";
+import { updates } from "./updates.js";
 import { workflows } from "./workflows.js";
 import { workspaces } from "./workspaces.js";
 
@@ -61,6 +62,7 @@ export const contract = {
   credentials,
   gateway,
   diagnostics,
+  updates,
 };
 
 export type Contract = typeof contract;
@@ -152,6 +154,21 @@ export {
   terminalSessionWireSchema,
 } from "./terminals.js";
 export { systemHelloOutputSchema } from "./system.js";
+export {
+  releaseAssetSchema,
+  releaseSchema,
+  UPDATES_RELEASES_PATH,
+  updateChannelSchema,
+  updateCheckErrorSchema,
+  updateReleasesSchema,
+} from "./updates.js";
+export type {
+  Release,
+  ReleaseAsset,
+  UpdateChannel,
+  UpdateCheckError,
+  UpdateReleases,
+} from "./updates.js";
 export type { SystemHello } from "./system.js";
 export {
   clientSourceRouteSchema,
