@@ -107,19 +107,13 @@ export function useCommandDispatch(): CommandDispatch {
           state.setFocusNode(next);
           return;
         }
-        // 画布偏好的三条快捷键（§偏好菜单）。写的是 `preferences-store`，
+        // 画布偏好的两条快捷键（§偏好菜单）。写的是 `preferences-store`，
         // 那里是唯一真相：`use-canvas-preferences` 与 `flow-options` 单向
         // 读它，所以菜单、设置页、画布三处永远是同一个值。
-        case "canvas.toggleToolLock":
         case "canvas.toggleGrid":
         case "canvas.toggleFocus": {
           const prefs = usePreferencesStore.getState();
-          const key =
-            id === "canvas.toggleToolLock"
-              ? "toolLock"
-              : id === "canvas.toggleGrid"
-                ? "grid"
-                : "focus";
+          const key = id === "canvas.toggleGrid" ? "grid" : "focus";
           prefs.setWhiteboardPreference(key, !prefs.whiteboard[key]);
           return;
         }

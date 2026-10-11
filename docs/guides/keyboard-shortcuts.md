@@ -40,8 +40,8 @@
 | 节点间移动焦点                                                   | ⌘←↑→↓                | Ctrl+←↑→↓                         |      |      |                                                                  |
 | 删除 `canvas.delete`                                             | ⌫ / ⌦                | Delete / Backspace                |      |      |                                                                  |
 | 复制 / 剪切 / 粘贴                                               | ⌘C ⌘X ⌘V             | Ctrl+C Ctrl+X Ctrl+V              |      |      | 粘贴放行给原生 `paste`                                           |
-| 工具锁定 / 网格 / 专注                                           | Q / ⌘' / ⌘.          | Q / Ctrl+' / Ctrl+.               |      |      | 专注：`!editorFocus`                                             |
-| 白板工具 选择 / 抓手 / 画笔 / 荧光笔 / 形状 / 直线 / 箭头 / 文字 | V H D ⇧D R L A T     | 同左                              |      |      |                                                                  |
+| 网格 / 专注                                                      | ⌘' / ⌘.              | Ctrl+' / Ctrl+.                   |      |      | 专注：`!editorFocus`                                             |
+| 白板工具 选择 / 抓手 / 画笔 / 荧光笔 / 形状 / 直线 / 箭头 / 文字 | V H D ⇧D R L A T     | 同左                              |      |      | 工具用完保持选中；原「工具锁定」开关与 Q 键已撤掉                |
 | 终端搜索 `terminal.search`                                       | ⌘F                   | Ctrl+F                            | 是   |      | Windows / Linux 终端里 Ctrl+F 归 shell，从节点头部或命令面板打开 |
 | 保存 / 重命名 / 格式化                                           | ⌘S / F2 / ⇧⌥F        | Ctrl+S / F2 / Shift+Alt+F         |      | 是   | `editorFocus`                                                    |
 | 跳到定义 / 查找引用 / 代码操作 / 跳到行                          | F12 / ⇧F12 / ⌘. / ⌃G | F12 / Shift+F12 / Ctrl+. / Ctrl+G |      | 是   | `editorFocus`                                                    |

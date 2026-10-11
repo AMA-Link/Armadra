@@ -392,17 +392,12 @@ export const COMMANDS = [
 
   // ── canvas：画布偏好（2026-09-05 用户反馈：偏好要能在系统里配） ──
   //
-  // 键位沿用 v3 / 旧引擎的那一组（Q / ⌘\' / ⌘.），换引擎不改肌肉记忆，
-  // 按下去是同一件事。三条都写 `preferences-store` 的 `whiteboard` 段，
+  // 键位沿用 v3 / 旧引擎的那一组（⌘\' / ⌘.），换引擎不改肌肉记忆，
+  // 按下去是同一件事。两条都写 `preferences-store` 的 `whiteboard` 段，
   // 偏好菜单与设置页读的是同一个值。
-  {
-    id: "canvas.toggleToolLock",
-    labelKey: "cmd.canvas.toggleToolLock",
-    scope: "canvas",
-    defaultKeys: both("Q"),
-    allowInTerminal: false,
-    allowWhileTyping: false,
-  },
+  //
+  // 「工具锁定」（Q）已经撤掉：工具用完一直保持选中（#299），这个开关不再
+  // 有作用。存过的 `canvas.toggleToolLock` 覆盖读键位时按未知命令丢掉。
   {
     id: "canvas.toggleGrid",
     labelKey: "cmd.canvas.toggleGrid",
