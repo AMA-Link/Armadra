@@ -516,6 +516,7 @@ SQLite 的迁移只有一个目录——`apps/desktop/src/core/db/migrations/`�
 | `0044_client_source_routes.sql` | `client_source_routes`（一台主机的多条到达方式：直连与各个中继各一行，`client_sources` 的地址列是首选路由的镜像；凭据键就是路的来源，不存凭据）                                                                                                            | `core/sources/`，契约 §55                         |
 | `0045_grant_scope.sql`          | `identity_grants` 加 `origin` / `expires_at_ms` / `target_kind` / `target_id`（授予的来源、租约与目标：整台 / 工作空间 / 会话），唯一索引改按目标；`identity_invitations` 加 `target_session_id` / `target_host`                                           | `core/identity/`，契约 §60                        |
 | `0050_trusted_devices.sql`      | `trusted_devices`（经中继端到端通道来的设备钥：每把钥对每个主体一行，待确认 / 已信任 / 拒绝 / 撤销与来路）；`identity_sessions` 加 `channel_device_id`（经通道签的会话绑那把钥）；`client_sources` 加 `identity_pub`（本机连别的电脑时钉住的对端身份公钥） | `core/relay/e2e/`、`core/sources/`，契约 §77、§78 |
+| `0051_share_links.sql`          | `share_links`（分享链接在 core 这一侧的记录：背后的邀请、访客设备名额、片段里给出的身份指纹前缀）                                                                                                                                                          | `core/relay/e2e/`、`core/sources/`，契约 §80      |
 
 `core/db/open.ts` 在同一 `BEGIN IMMEDIATE` 事务内先检查迁移账本，再执行已知迁移与启动恢复。未知版本、校验和不符、脏记录、损坏账本、无账本的非空 schema 或迁移历史缺口均拒绝启动；失败回滚并关闭连接，不改名、删除或重建原库。账本表与校验和算法沿用最初那套（SHA-384），所以装过旧版本的库照常打得开。既有 SQL 迁移文件保持原字节。
 
