@@ -134,7 +134,13 @@ jobs:
       # signing-electron.mjs、after-pack.mjs 与产物矩阵一致性；不再重复一遍。
       # 覆盖率（工程规范化 §5）只在 Linux 上开、只出报告不设门槛：web、desktop、
       # server 三个 vitest 配置读 ARMADRA_COVERAGE，三平台不重复算。
-      - run: pnpm -r --if-present test
+      #
+      # 各包逐个跑（--workspace-concurrency=1）。每个 vitest 自己就按核数开
+      # worker；pnpm 缺省同时跑四个包，desktop 与 web 两套大测试叠在 3–4 核的
+      # runner 上，每条用例的墙钟时间被拉长一倍以上：web 的 5 s 用例超时、
+      # desktop 的 10 s 钩子超时、live 无头浏览器在后台标签页上等不到渲染进程，
+      # 都出在两套同时跑的那段。总 CPU 工作量不变，逐个跑的总时长相近。
+      - run: pnpm -r --workspace-concurrency=1 --if-present test
         env:
           ARMADRA_COVERAGE: ${{ runner.os == 'Linux' && '1' || '' }}
       - name: 上传覆盖率报告
