@@ -1,6 +1,6 @@
 # yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
 #
-# 本仓库的 PR 审查由 .github/workflows/codex-review.yml 负责，CodeRabbit 不再
+# 本仓库不做自动审查（需要时维护者在 PR 里 @codex review），CodeRabbit 不再
 # 自动审查、发摘要或回复。这份配置只在 App 仍装在仓库上时起作用；彻底停用要
 # 在 GitHub 设置里卸载 App 或取消它对本仓库的授权。
 language: zh-CN

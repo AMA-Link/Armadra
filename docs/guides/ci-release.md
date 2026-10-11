@@ -8,6 +8,10 @@
 触发：`pull_request`，以及推到 `main`。同一分支的新提交会取消上一次运行
 （`concurrency` + `cancel-in-progress`）。权限只有 `contents: read`。
 
+先跑 `changes` 作业比较改动的文件：只改 Markdown、`docs/`、`.github/ISSUE_TEMPLATE/`（`docs/contracts/`
+与 `THIRD_PARTY_NOTICES.md` 除外）时只跑 `docs` 作业（`pnpm format:check`、`pnpm repo:check`），
+下面的 `check` 矩阵与 `e2e` 都跳过；其余改动照常全跑。标签推送一律全跑。
+
 一个作业 `check`，矩阵三行：
 
 | runner           | 标签           |
@@ -62,11 +66,11 @@ node tools/ci/e2e.mjs --tier a --only server-e2e
 node tools/ci/e2e.mjs --tier b --list     # 只列出清单
 ```
 
-| 档  | 在哪跑                                            | 失败时   |
-| --- | ------------------------------------------------- | -------- |
-| A   | `ci.yml` 的 `e2e` 作业（ubuntu，每个 PR 与 main） | 阻断合并 |
-| B   | `nightly.yml`（每天一次，可手动触发）             | 开 issue |
-| C   | 手动，需要真实账号或真机                          | —        |
+| 档  | 在哪跑                                                       | 失败时   |
+| --- | ------------------------------------------------------------ | -------- |
+| A   | `ci.yml` 的 `e2e` 作业（ubuntu，每个 PR 与 main）            | 阻断合并 |
+| B   | `nightly.yml`（每天一次，main 没有新提交就跳过；可手动触发） | 开 issue |
+| C   | 手动，需要真实账号或真机                                     | —        |
 
 - **清单一条一个文件。** 每条是 `tools/ci/e2e.d/<id>.json`，写 `id`（与文件名一致）、
   `tier`、`script`、`args`（`{out}` 换成这一条的输出目录）、`requires`（`tmux` /
