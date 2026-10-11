@@ -67,6 +67,7 @@ import { services } from "./services";
 import { links } from "./links";
 import { modCommands } from "./mod-commands";
 import { showcase } from "./showcase";
+import { share } from "./share";
 import { workspaceGroups } from "./workspace-groups";
 
 export type Locale = "zh-CN" | "en";
@@ -153,6 +154,7 @@ export const MESSAGE_MODULES = {
   links,
   "mod-commands": modCommands,
   "workspace-groups": workspaceGroups,
+  share,
   // 设计展示页只在开发构建里存在：生产构建里 `import.meta.env.DEV` 是字面量
   // false，这一项连同 `./showcase` 的文案一起被摇掉，不进产物。
   ...(import.meta.env.DEV ? { showcase } : {}),
