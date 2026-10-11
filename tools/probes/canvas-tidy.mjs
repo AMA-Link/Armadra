@@ -6,7 +6,8 @@
 // 散在顶层的 Mermaid 图（白板孤岛）+ 几笔手画的框线。截「整理前 / 整理后」两张，
 // 断言整理后：
 //   - 主从边条数不变；
-//   - 顶层对象两两不重叠（包围盒相交 = 0）；
+//   - 顶层对象两两不挤：任意两个单元相距至少兄弟间距 80（#319，连线有通道）；
+//   - 主到子那一层隔层距 128，扇出的弯折与标签放得下；
 //   - 导入组、散落的旧导入、手画框线各自内部相对位置不变（没被拆开）；
 //   - 纵向布局（缺省，契约 §50）：三个子 Agent 在主下面同一行、等距，主水平
 //     居中于它们；连着子 Agent 的浏览器挂在那个子右侧同一行；
@@ -24,6 +25,8 @@
 //   node tools/probes/canvas-tidy.mjs [输出目录]
 //
 // 产物：<输出目录>/result.json、before.png、after.png。
+//
+// 节点尺寸照用户截图（#319）：主与三个子都是 960×600 的终端，原位置挤在一起。
 import { execFileSync, spawn } from "node:child_process";
 import { once } from "node:events";
 import { createServer } from "node:http";
@@ -40,6 +43,12 @@ import { join, resolve } from "node:path";
 import { randomUUID } from "node:crypto";
 import { fileURLToPath } from "node:url";
 import { isolatedEnv, probeHome } from "./probe-home.mjs";
+
+// 间距与页面、core 同一份（`packages/shared/src/domain/placement.ts`）；先跑
+// `pnpm libs:build`。
+const { LAYER_GAP, SIBLING_GAP, boxesTooClose } = await import(
+  new URL("../../packages/shared/dist/index.js", import.meta.url).href
+);
 
 const root = fileURLToPath(new URL("../../", import.meta.url));
 const output = resolve(process.argv[2] ?? join(root, "target/canvas-tidy"));
@@ -93,7 +102,7 @@ function seed(boardId) {
     "terminal",
     "main",
     { x: 2400, y: 1500 },
-    { width: 420, height: 280 },
+    { width: 960, height: 600 },
     terminal,
   );
   const subs = [
@@ -101,21 +110,21 @@ function seed(boardId) {
       "terminal",
       "sub-1",
       { x: 100, y: 1900 },
-      { width: 380, height: 240 },
+      { width: 960, height: 600 },
       terminal,
     ),
     node(
       "terminal",
       "sub-2",
       { x: 3300, y: 120 },
-      { width: 380, height: 240 },
+      { width: 960, height: 600 },
       terminal,
     ),
     node(
       "terminal",
       "sub-3",
       { x: 1500, y: 2600 },
-      { width: 380, height: 240 },
+      { width: 960, height: 600 },
       terminal,
     ),
   ];
@@ -204,9 +213,6 @@ const PAGE_HELPERS = `
 `;
 
 /* ------------------------------- 断言工具 ------------------------------- */
-
-const intersects = (a, b) =>
-  a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
 
 /** 一组对象之间的相对偏移（以第一个为基准），用来验「没被拆开」。 */
 function offsets(entries) {
@@ -626,11 +632,18 @@ async function main() {
   const hits = [];
   for (let i = 0; i < units.length; i += 1) {
     for (let j = i + 1; j < units.length; j += 1) {
-      if (intersects(units[i], units[j])) hits.push(`${i}×${j}`);
+      const [a, b] = [units[i], units[j]];
+      const box = (unit) => ({
+        x: unit.x,
+        y: unit.y,
+        width: unit.w,
+        height: unit.h,
+      });
+      if (boxesTooClose(box(a), box(b), SIBLING_GAP)) hits.push(`${i}×${j}`);
     }
   }
   check(
-    "顶层对象两两不重叠",
+    `顶层对象两两相距至少 ${SIBLING_GAP}`,
     hits.length === 0,
     hits.join(", ") || `${units.length} 个单元`,
   );
@@ -650,8 +663,8 @@ async function main() {
   );
   const ys = new Set(subs.map((sub) => sub.y));
   check(
-    "子 Agent 在主下面同一行",
-    ys.size === 1 && subs[0].y > main.y + main.h,
+    "子 Agent 在主下面同一行，隔一个层距",
+    ys.size === 1 && subs[0].y - (main.y + main.h) === LAYER_GAP.vertical,
     `主 y=${main.y}，子 y=${[...ys].join("/")}`,
   );
   const web = now.get(seeded.browser.id);
