@@ -14,7 +14,7 @@ import {
 } from "../../../api/github";
 
 const store = vi.hoisted(() => ({
-  workspace: { id: "workspace-1", rootPath: "/tmp" },
+  workspace: { id: "workspace-1", name: "alpha", rootPath: "/tmp" },
 }));
 
 const session = vi.hoisted(() => ({
@@ -51,6 +51,7 @@ vi.mock("../../../api/forge", async (original) => ({
 }));
 
 import { ForgePage } from "./ForgePage";
+import { chooseOption } from "../../../app/test-harness";
 
 const gitlabRow = {
   repoKey: "gitlab.example.test",
@@ -243,6 +244,7 @@ describe("Gitea / GitLab per host or repository (§29.3)", () => {
           token: "glpat-secret",
           expectedRevision: 0,
         },
+        null,
       ),
     );
     await waitFor(() => expect(forgeToken()).toBeNull());
@@ -266,6 +268,7 @@ describe("Gitea / GitLab per host or repository (§29.3)", () => {
           apiBase: "https://gitlab.example.test",
           expectedRevision: 2,
         },
+        null,
       ),
     );
     fireEvent.click(await screen.findByText("编辑"));
@@ -274,6 +277,7 @@ describe("Gitea / GitLab per host or repository (§29.3)", () => {
       expect(forgeApi.putForgeConfig).toHaveBeenLastCalledWith(
         "gitlab.example.test",
         expect.objectContaining({ token: "", expectedRevision: 2 }),
+        null,
       ),
     );
   });
@@ -286,6 +290,42 @@ describe("Gitea / GitLab per host or repository (§29.3)", () => {
       expect(forgeApi.deleteForgeConfig).toHaveBeenCalledWith(
         "gitlab.example.test",
         2,
+        null,
+      ),
+    );
+  });
+
+  it("switches to the open workspace's own configs and saves into them (§75)", async () => {
+    renderPage(client());
+    await screen.findByText("gitlab.example.test");
+    expect(forgeApi.forgeConfigs).toHaveBeenLastCalledWith(null);
+    const scope = document.querySelector(
+      "[data-slot=forge-config-scope] [role=combobox]",
+    ) as HTMLElement;
+    expect(scope.textContent).toBe("整台机器");
+    forgeApi.forgeConfigs.mockResolvedValueOnce([]);
+    await chooseOption(scope, "工作空间：alpha");
+    await waitFor(() =>
+      expect(forgeApi.forgeConfigs).toHaveBeenLastCalledWith("workspace-1"),
+    );
+    expect(await screen.findByText("还没有配置")).toBeTruthy();
+    fireEvent.click(screen.getByText("添加"));
+    fireEvent.change(inForm("input"), {
+      target: { value: "git.example.test" },
+    });
+    fireEvent.change(inForm("input[type='url']"), {
+      target: { value: "https://git.example.test" },
+    });
+    fireEvent.click(inForm("button[type='submit']"));
+    await waitFor(() =>
+      expect(forgeApi.putForgeConfig).toHaveBeenCalledWith(
+        "git.example.test",
+        {
+          forge: "gitea",
+          apiBase: "https://git.example.test",
+          expectedRevision: 0,
+        },
+        "workspace-1",
       ),
     );
   });

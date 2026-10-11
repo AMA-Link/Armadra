@@ -39,6 +39,8 @@ export type ForgeDetection = z.infer<typeof forgeDetectionSchema>;
 
 /** One row of `GET /api/forge/configs` (§29.3). */
 export const forgeConfigSchema = z.object({
+  /** 这一行属于哪个工作空间；整台机器的为 `null`（§75）。旧 core 不给。 */
+  workspaceId: z.string().nullable().default(null),
   repoKey: z.string(),
   forge: forgeKindSchema,
   apiBase: z.string(),

@@ -72,6 +72,8 @@ export interface GithubServiceOptions {
 export type ExternalRepositoryCheck = (
   forge: "gitea" | "gitlab",
   ref: GithubRepositoryRef | undefined,
+  /** 连接所在的工作空间：它自己的托管配置优先（契约 §75）。 */
+  workspaceId?: string,
 ) => GithubRepositoryRef;
 
 export class GithubService {

@@ -40,15 +40,23 @@ import { meta, oc } from "./meta.js";
  *
  * 权限与路由表（`core/http/route-scopes.ts`）给旧路径的一致：读是 `github:read`，
  * 写是 `github:write`；`resolve` 虽是 `POST`，只是读。
+ *
+ * 每个入参都可带 `workspaceId`（§75）：读与识别先用那个工作空间
+ * 自己的配置，配置的增删改落在它自己的那份上；不给是整台机器。它不改权限：
+ * 托管平台仍是本机管理，判定不落到工作空间上。
  */
 
 const base = { since: "1.11", contract: "§41.2" } as const;
 const REPO = "/api/forge/repos/{host}/{owner}/{name}";
 
+/** 可选的工作空间（§75）；缺省或 `""` 是整台机器。 */
+const scoped = { workspaceId: z.string().optional() };
+
 const repoRef = z.object({
   host: z.string(),
   owner: z.string(),
   name: z.string(),
+  ...scoped,
 });
 
 /** 一条 issue / PR 的编号：旧路径是路径段（字符串），procedure 是数字。 */
@@ -61,6 +69,7 @@ const listing = repoRef.extend({
 });
 
 const config = z.object({
+  ...scoped,
   forge: z.string().optional(),
   apiBase: z.string().optional(),
   /** 缺省保留已存的令牌；`""` 删掉它。 */
@@ -105,7 +114,7 @@ export const forge = {
   /* -------------------------------- 配置 -------------------------------- */
   /** 配置行，令牌只说有没有存。 */
   configs: oc
-    .input(z.object({}))
+    .input(z.object(scoped))
     .output(forgeConfigListSchema)
     .meta(
       meta({
@@ -131,6 +140,7 @@ export const forge = {
       z.object({
         host: z.string(),
         expectedRevision: z.union([z.number(), z.string()]).optional(),
+        ...scoped,
       }),
     )
     .output(removal)
@@ -177,7 +187,7 @@ export const forge = {
   /* ------------------------------- 识别 --------------------------------- */
   /** 一个 git 远端地址 → 识别结果。地址在体里：它可能带凭据。 */
   resolve: oc
-    .input(z.object({ remoteUrl: z.string().optional() }))
+    .input(z.object({ remoteUrl: z.string().optional(), ...scoped }))
     .output(forgeDetectionSchema)
     .errors(errors.pick("bad_request"))
     .meta(
@@ -202,7 +212,7 @@ export const forge = {
   /* ------------------------------ 列仓库 -------------------------------- */
   /** 能列仓库的账号：配了凭据的 GitHub 与带令牌的主机级配置（§29.7）。 */
   accounts: oc
-    .input(z.object({}))
+    .input(z.object(scoped))
     .output(forgeAccountListSchema)
     .meta(
       meta({
@@ -219,6 +229,7 @@ export const forge = {
         host: z.string(),
         cursor: z.string().optional(),
         limit: z.union([z.number(), z.string()]).optional(),
+        ...scoped,
       }),
     )
     .output(forgeRepositoryPageSchema)

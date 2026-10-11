@@ -45,6 +45,9 @@ export const forge: MessageModule = {
       "已开始变基，没有合并；等新的 head 出来再核对",
 
     "forge.settings.others": "其他平台",
+    "forge.settings.scope": "范围",
+    "forge.settings.scopeMachine": "整台机器",
+    "forge.settings.scopeWorkspace": "工作空间：{name}",
     "forge.settings.empty": "还没有配置",
     "forge.settings.key": "主机或仓库",
     "forge.settings.keyPlaceholder":
@@ -109,6 +112,9 @@ export const forge: MessageModule = {
       "Rebase started, nothing merged; review the new head when it appears",
 
     "forge.settings.others": "Other platforms",
+    "forge.settings.scope": "Scope",
+    "forge.settings.scopeMachine": "This machine",
+    "forge.settings.scopeWorkspace": "Workspace: {name}",
     "forge.settings.empty": "Nothing configured yet",
     "forge.settings.key": "Host or repository",
     "forge.settings.keyPlaceholder":

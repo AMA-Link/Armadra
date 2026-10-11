@@ -10,6 +10,9 @@
  *   3. 配置表里只写主机的一行（`<host>`）。
  *   4. 都没有：不认识。页面据此不显示「托管」区。
  *
+ * 带工作空间时（契约 §75），2、3 先查那个工作空间自己的两种行，都没有才查整台
+ * 机器的。
+ *
  * 令牌只经 SecretStore（`armadra-forge-<id>`）；响应里只有「有没有令牌」。
  */
 
@@ -72,6 +75,8 @@ export interface ForgeDetection {
 
 /** `GET /api/forge/configs` 的一行（§29.3）。 */
 export interface PublicForgeConfig {
+  /** 这一行属于哪个工作空间；整台机器的为 `null`（§75）。 */
+  readonly workspaceId: string | null;
   readonly repoKey: string;
   readonly forge: ForgeKind;
   readonly apiBase: string;
@@ -235,15 +240,34 @@ export class ForgeService {
     return base !== PUBLIC_API_BASE && belongsTo(base, host);
   }
 
-  private configFor(repo: ForgeRepo): ForgeConfigRecord | undefined {
+  /** 一个键的行：工作空间自己的优先，没有再看整台机器的。 */
+  private row(key: string, workspaceId: string): ForgeConfigRecord | undefined {
     const store = this.options.store;
     return (
-      store.get(`${repo.host}/${repo.owner}/${repo.name}`) ??
-      store.get(repo.host)
+      (workspaceId === "" ? undefined : store.get(key, workspaceId)) ??
+      store.get(key)
     );
   }
 
-  detect(repo: ForgeRepo): ForgeDetection {
+  /**
+   * 管这个仓库的那一行：工作空间的仓库行 → 工作空间的主机行 → 整机的仓库行 →
+   * 整机的主机行（§75）。
+   */
+  private configFor(
+    repo: ForgeRepo,
+    workspaceId: string,
+  ): ForgeConfigRecord | undefined {
+    const store = this.options.store;
+    const repoKey = `${repo.host}/${repo.owner}/${repo.name}`;
+    if (workspaceId !== "") {
+      const own =
+        store.get(repoKey, workspaceId) ?? store.get(repo.host, workspaceId);
+      if (own !== undefined) return own;
+    }
+    return store.get(repoKey) ?? store.get(repo.host);
+  }
+
+  detect(repo: ForgeRepo, workspaceId = ""): ForgeDetection {
     const nested = nestedOwner(repo.owner);
     if (
       !nested &&
@@ -266,7 +290,7 @@ export class ForgeService {
         accountLogin: credential && side.login !== "" ? side.login : null,
       };
     }
-    const config = this.configFor(repo);
+    const config = this.configFor(repo, workspaceId);
     // 多级子组只有 GitLab 有：GitHub 主机与 Gitea 配置都不认这种仓库。
     const usable =
       config !== undefined &&
@@ -310,7 +334,7 @@ export class ForgeService {
    *      子路径下时），其余除最后一段都是 owner。
    *   3. 其余仍按最后两段。
    */
-  resolve(remoteUrl: string): ForgeDetection {
+  resolve(remoteUrl: string, workspaceId = ""): ForgeDetection {
     let parsed: { owner: string; name: string; webHost: string };
     try {
       parsed = parseRemote(remoteUrl);
@@ -324,23 +348,25 @@ export class ForgeService {
       parts.segments.length <= 2 ||
       this.githubHost(flat.host)
     ) {
-      return this.detect(flat);
+      return this.detect(flat, workspaceId);
     }
     const name = parts.segments[parts.segments.length - 1] as string;
-    const store = this.options.store;
     for (let start = 0; start < parts.segments.length - 2; start += 1) {
       const owner = parts.segments.slice(start, -1).join("/");
       if (!validOwner(owner)) continue;
-      const row = store.get(`${flat.host}/${owner}/${name}`);
+      const row = this.row(`${flat.host}/${owner}/${name}`, workspaceId);
       if (row?.forge === "gitlab") {
-        return this.detect(forgeRepo(flat.host, owner, name));
+        return this.detect(forgeRepo(flat.host, owner, name), workspaceId);
       }
     }
-    if (store.get(`${flat.host}/${flat.owner}/${flat.name}`) !== undefined) {
-      return this.detect(flat);
+    if (
+      this.row(`${flat.host}/${flat.owner}/${flat.name}`, workspaceId) !==
+      undefined
+    ) {
+      return this.detect(flat, workspaceId);
     }
-    const hostRow = store.get(flat.host);
-    if (hostRow?.forge !== "gitlab") return this.detect(flat);
+    const hostRow = this.row(flat.host, workspaceId);
+    if (hostRow?.forge !== "gitlab") return this.detect(flat, workspaceId);
     let segments = parts.segments;
     if (parts.web) {
       const prefix = sitePrefix(hostRow.apiBase);
@@ -352,16 +378,18 @@ export class ForgeService {
       }
     }
     const owner = segments.slice(0, -1).join("/");
-    if (segments.length < 2 || !validOwner(owner)) return this.detect(flat);
-    return this.detect(forgeRepo(flat.host, owner, name));
+    if (segments.length < 2 || !validOwner(owner)) {
+      return this.detect(flat, workspaceId);
+    }
+    return this.detect(forgeRepo(flat.host, owner, name), workspaceId);
   }
 
   /**
    * 这个仓库的平台实现。没识别出来、或识别出来却没有令牌，抛 `notConfigured`：
    * 不发匿名请求，免得悄悄只读到公开数据。
    */
-  forgeFor(repo: ForgeRepo): Forge {
-    const detection = this.detect(repo);
+  forgeFor(repo: ForgeRepo, workspaceId = ""): Forge {
+    const detection = this.detect(repo, workspaceId);
     if (detection.forge === null || !detection.credential) {
       throw forgeError("notConfigured", "NOT_CONFIGURED");
     }
@@ -370,7 +398,7 @@ export class ForgeService {
       if (service === undefined) throw forgeError("notConfigured", "NO_GITHUB");
       return new GithubForge(service);
     }
-    const config = this.configFor(repo) as ForgeConfigRecord;
+    const config = this.configFor(repo, workspaceId) as ForgeConfigRecord;
     if (config.forge === "github") {
       // 表里的 CHECK 允许它，但 `configure` 从不写它：GitHub 只认 §5 的凭据。
       throw forgeError("notConfigured", "FORGE_UNSUPPORTED");
@@ -414,6 +442,7 @@ export class ForgeService {
   referenceRepository(
     forge: "gitea" | "gitlab",
     ref: GithubRepositoryRef | undefined,
+    workspaceId = "",
   ): GithubRepositoryRef {
     if (ref === undefined) throw githubError("invalid");
     let repo: ForgeRepo;
@@ -427,7 +456,7 @@ export class ForgeService {
     if (nestedOwner(repo.owner) && forge !== "gitlab") {
       throw githubError("invalid");
     }
-    const detection = this.detect(repo);
+    const detection = this.detect(repo, workspaceId);
     if (detection.forge !== forge || detection.apiBase === null) {
       throw githubError("invalid");
     }
@@ -447,9 +476,9 @@ export class ForgeService {
   /**
    * 能列仓库的账号（§29.7）：配了凭据的 GitHub（主机是公有的 `github.com` 或
    * 企业版的主机），加上带令牌的主机级 Gitea / GitLab 配置。仓库级配置只管一个
-   * 仓库，不算账号。
+   * 仓库，不算账号。带工作空间时，它自己的主机行盖过整机的同一主机（§75）。
    */
-  accounts(): ForgeAccount[] {
+  accounts(workspaceId = ""): ForgeAccount[] {
     const accounts: ForgeAccount[] = [];
     const side = this.githubSide();
     if (side.configured) {
@@ -459,7 +488,16 @@ export class ForgeService {
         accountLogin: side.login === "" ? null : side.login,
       });
     }
-    for (const row of this.options.store.list()) {
+    const hosts = new Map<string, ForgeConfigRecord>();
+    for (const row of this.options.store.list()) hosts.set(row.repoKey, row);
+    if (workspaceId !== "") {
+      for (const row of this.options.store.list(workspaceId)) {
+        hosts.set(row.repoKey, row);
+      }
+    }
+    for (const row of [...hosts.values()].sort((a, b) =>
+      a.repoKey.localeCompare(b.repoKey),
+    )) {
       if (row.repoKey.includes("/") || row.credentialRef === "") continue;
       if (row.forge === "github") continue;
       accounts.push({
@@ -478,6 +516,7 @@ export class ForgeService {
   async repositories(
     host: string,
     options: RepositoryListOptions,
+    workspaceId = "",
   ): Promise<ForgePage<ForgeRepository>> {
     const normalized = host.toLowerCase().replace(/\.$/, "");
     if (!validHost(normalized)) throw forgeError("invalid", "HOST_INVALID");
@@ -494,7 +533,7 @@ export class ForgeService {
         options,
       );
     }
-    const row = this.options.store.get(normalized);
+    const row = this.row(normalized, workspaceId);
     if (
       row === undefined ||
       row.credentialRef === "" ||
@@ -509,13 +548,15 @@ export class ForgeService {
 
   /* --------------------------------- 配置 --------------------------------- */
 
-  configs(): PublicForgeConfig[] {
-    return this.options.store.list().map(publicConfig);
+  /** 一个范围的配置行：整台机器（`""`），或某个工作空间自己的（§75）。 */
+  configs(workspaceId = ""): PublicForgeConfig[] {
+    return this.options.store.list(workspaceId).map(publicConfig);
   }
 
   async configure(
     repoKey: string,
     input: ConfigureInput,
+    workspaceId = "",
   ): Promise<PublicForgeConfig> {
     if (!(CONFIGURABLE_FORGES as readonly string[]).includes(input.forge)) {
       throw forgeError("invalid", "FORGE_INVALID");
@@ -541,7 +582,7 @@ export class ForgeService {
       throw forgeError("invalid", "TOKEN_INVALID");
     }
     const store = this.options.store;
-    const current = store.get(repoKey);
+    const current = store.get(repoKey, workspaceId);
     if ((current?.revision ?? 0) !== input.expectedRevision) {
       throw forgeError("conflict", "REVISION_MISMATCH");
     }
@@ -581,6 +622,7 @@ export class ForgeService {
     let saved: ForgeConfigRecord;
     try {
       saved = store.put({
+        workspaceId,
         repoKey,
         forge,
         apiBase,
@@ -597,8 +639,16 @@ export class ForgeService {
     return publicConfig(saved);
   }
 
-  async remove(repoKey: string, expectedRevision: number): Promise<void> {
-    const removed = this.options.store.delete(repoKey, expectedRevision);
+  async remove(
+    repoKey: string,
+    expectedRevision: number,
+    workspaceId = "",
+  ): Promise<void> {
+    const removed = this.options.store.delete(
+      repoKey,
+      expectedRevision,
+      workspaceId,
+    );
     if (removed.credentialRef !== "")
       await this.dropSecret(removed.credentialRef);
   }
@@ -630,6 +680,7 @@ export function webRoot(forge: ForgeKind, apiBase: string): string {
 
 function publicConfig(record: ForgeConfigRecord): PublicForgeConfig {
   return {
+    workspaceId: record.workspaceId === "" ? null : record.workspaceId,
     repoKey: record.repoKey,
     forge: record.forge,
     apiBase: record.apiBase,

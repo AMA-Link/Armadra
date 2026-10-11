@@ -133,14 +133,36 @@ export function configTarget(
 /** 当前源的 `forge.*`（契约 §41.2）；换了源，后面的调用就发往新的源。 */
 const rpc = () => currentClient().forge;
 
+/**
+ * 托管配置的范围（契约 §75）：某个工作空间自己的那份，`null` 是整台机器。读与
+ * 识别带上它时先用工作空间的配置，没有再用整机的。
+ */
+export type ForgeScope = string | null;
+
+function scoped(workspaceId: ForgeScope | undefined): {
+  workspaceId?: string;
+} {
+  return workspaceId ? { workspaceId } : {};
+}
+
 /** 一个 git 远端地址 → 识别结果。地址在请求体里：它可能带凭据。 */
-export async function resolveForge(remoteUrl: string): Promise<ForgeDetection> {
-  return forgeDetectionSchema.parse(await rpc().resolve({ remoteUrl }));
+export async function resolveForge(
+  remoteUrl: string,
+  workspaceId: ForgeScope = null,
+): Promise<ForgeDetection> {
+  return forgeDetectionSchema.parse(
+    await rpc().resolve({ remoteUrl, ...scoped(workspaceId) }),
+  );
 }
 
 /** 一个已知仓库（外部连接里记着的那个）→ 识别结果。 */
-export async function detectForge(repo: ForgeRepo): Promise<ForgeDetection> {
-  return forgeDetectionSchema.parse(await rpc().detect(repo));
+export async function detectForge(
+  repo: ForgeRepo,
+  workspaceId: ForgeScope = null,
+): Promise<ForgeDetection> {
+  return forgeDetectionSchema.parse(
+    await rpc().detect({ ...repo, ...scoped(workspaceId) }),
+  );
 }
 
 /**
@@ -169,8 +191,12 @@ export async function forgeRepositories(
   );
 }
 
-export async function forgeConfigs(): Promise<ForgeConfig[]> {
-  return forgeConfigListSchema.parse(await rpc().configs({})).configs;
+/** 一个范围的配置行：整台机器，或某个工作空间自己的（§75）。 */
+export async function forgeConfigs(
+  workspaceId: ForgeScope = null,
+): Promise<ForgeConfig[]> {
+  return forgeConfigListSchema.parse(await rpc().configs(scoped(workspaceId)))
+    .configs;
 }
 
 export async function putForgeConfig(
@@ -181,8 +207,9 @@ export async function putForgeConfig(
     token?: string;
     expectedRevision: number;
   },
+  workspaceId: ForgeScope = null,
 ): Promise<ForgeConfig> {
-  const target = configTarget(repoKey);
+  const target = { ...configTarget(repoKey), ...scoped(workspaceId) };
   return forgeConfigSchema.parse(
     "owner" in target
       ? await rpc().putRepoConfig({ ...target, ...input })
@@ -193,8 +220,9 @@ export async function putForgeConfig(
 export async function deleteForgeConfig(
   repoKey: string,
   expectedRevision: number,
+  workspaceId: ForgeScope = null,
 ): Promise<void> {
-  const target = configTarget(repoKey);
+  const target = { ...configTarget(repoKey), ...scoped(workspaceId) };
   if ("owner" in target) {
     await rpc().removeRepoConfig({ ...target, expectedRevision });
   } else {
@@ -206,14 +234,26 @@ export async function forgeIssues(
   repo: ForgeRepo,
   state: ForgeListState,
   cursor: string | null = null,
+  workspaceId: ForgeScope = null,
 ) {
   return forgeIssuePageSchema.parse(
-    await rpc().issues({ ...repo, state, ...(cursor ? { cursor } : {}) }),
+    await rpc().issues({
+      ...repo,
+      state,
+      ...(cursor ? { cursor } : {}),
+      ...scoped(workspaceId),
+    }),
   );
 }
 
-export async function forgeIssue(repo: ForgeRepo, number: number) {
-  return forgeIssueSchema.parse(await rpc().issue({ ...repo, number }));
+export async function forgeIssue(
+  repo: ForgeRepo,
+  number: number,
+  workspaceId: ForgeScope = null,
+) {
+  return forgeIssueSchema.parse(
+    await rpc().issue({ ...repo, number, ...scoped(workspaceId) }),
+  );
 }
 
 export async function setForgeIssueState(
@@ -230,14 +270,26 @@ export async function forgePulls(
   repo: ForgeRepo,
   state: ForgeListState,
   cursor: string | null = null,
+  workspaceId: ForgeScope = null,
 ) {
   return forgePullPageSchema.parse(
-    await rpc().pulls({ ...repo, state, ...(cursor ? { cursor } : {}) }),
+    await rpc().pulls({
+      ...repo,
+      state,
+      ...(cursor ? { cursor } : {}),
+      ...scoped(workspaceId),
+    }),
   );
 }
 
-export async function forgePull(repo: ForgeRepo, number: number) {
-  return forgePullSchema.parse(await rpc().pull({ ...repo, number }));
+export async function forgePull(
+  repo: ForgeRepo,
+  number: number,
+  workspaceId: ForgeScope = null,
+) {
+  return forgePullSchema.parse(
+    await rpc().pull({ ...repo, number, ...scoped(workspaceId) }),
+  );
 }
 
 export async function createForgePull(
