@@ -14,6 +14,7 @@ import {
 } from "./connection";
 import { createDesktopCredentialProvider } from "./credentials";
 import { shareFieldsOf } from "./origin";
+import { forgetWorkspaces } from "./workspace-cache";
 import type { CredentialProvider, SourceDescriptor } from "./types";
 
 /**
@@ -160,7 +161,9 @@ export function createSourceRegistry(
       return connection;
     },
     remove(sourceId) {
-      if (drop(sourceId)) changed();
+      if (!drop(sourceId)) return;
+      forgetWorkspaces(sourceId);
+      changed();
     },
     async hydrate(load) {
       let descriptors: readonly SourceDescriptor[];
@@ -180,7 +183,9 @@ export function createSourceRegistry(
         wanted.set(descriptor.sourceId, descriptor);
       }
       for (const sourceId of [...remotes.keys()]) {
-        if (!wanted.has(sourceId)) drop(sourceId);
+        if (wanted.has(sourceId)) continue;
+        drop(sourceId);
+        forgetWorkspaces(sourceId);
       }
       for (const descriptor of wanted.values()) {
         const existing = remotes.get(descriptor.sourceId)?.connection;
