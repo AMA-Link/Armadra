@@ -61,7 +61,7 @@ describe("摆放", () => {
     expect(label).toMatchObject({ x: 200, y: 20, fontSize: 11 });
   });
 
-  it("最长一段的中点压着节点时换下一段", () => {
+  it("中点压着节点时沿这一段往两头挪", () => {
     const blocker = box(150, 0, 100, 40);
     const label = placeLabel(
       [
@@ -73,7 +73,7 @@ describe("摆放", () => {
       11,
       [blocker],
     );
-    expect(label).toMatchObject({ x: 400, y: 160 });
+    expect(label).toMatchObject({ x: 80, y: 20 });
   });
 
   it("哪儿都放不下就不画", () => {
@@ -107,5 +107,22 @@ describe("摆放", () => {
       expect(label!.fontSize).toBeLessThan(fontSize);
       for (const rect of all) expect(overlaps(label!, rect)).toBe(false);
     }
+  });
+});
+
+describe("不压别的线", () => {
+  it("别的线段占着中点时挪开", () => {
+    const crossing: Box = { x: 197, y: -50, width: 6, height: 140 };
+    const label = placeLabel(
+      [
+        { x: 0, y: 20 },
+        { x: 400, y: 20 },
+      ],
+      "派发",
+      11,
+      [crossing],
+    );
+    expect(label).not.toBeNull();
+    expect(overlaps(label!, crossing)).toBe(false);
   });
 });

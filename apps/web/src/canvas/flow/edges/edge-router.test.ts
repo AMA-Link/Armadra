@@ -3,7 +3,7 @@ import type { Edge, InternalNode, Node, ReactFlowState } from "@xyflow/react";
 
 import type { Box } from "../../geometry";
 import { EdgeRouter, type LayoutParams } from "./edge-router";
-import { LANE_GAP } from "./nudge";
+import type { Position } from "@armadra/shared";
 
 /**
  * 全画布的连线布局（#318）：路线缓存、分道、标签互不重叠、只重算受影响的边。
@@ -59,6 +59,30 @@ const link = (id: string, source: string, target: string, role?: string) =>
     data: role === undefined ? {} : { role },
   }) as Edge;
 
+/** 两条折线有没有共线且重叠（长于 1）的段。 */
+function sharesSegment(
+  a: readonly Position[],
+  b: readonly Position[],
+): boolean {
+  for (let i = 1; i < a.length; i += 1) {
+    for (let j = 1; j < b.length; j += 1) {
+      const [p, q] = [a[i - 1]!, a[i]!];
+      const [r, t] = [b[j - 1]!, b[j]!];
+      if (p.y === q.y && r.y === t.y && p.y === r.y) {
+        const lo = Math.max(Math.min(p.x, q.x), Math.min(r.x, t.x));
+        const hi = Math.min(Math.max(p.x, q.x), Math.max(r.x, t.x));
+        if (hi - lo > 1) return true;
+      }
+      if (p.x === q.x && r.x === t.x && p.x === r.x) {
+        const lo = Math.max(Math.min(p.y, q.y), Math.min(r.y, t.y));
+        const hi = Math.min(Math.max(p.y, q.y), Math.max(r.y, t.y));
+        if (hi - lo > 1) return true;
+      }
+    }
+  }
+  return false;
+}
+
 function overlaps(a: Box, b: Box): boolean {
   return (
     a.x < b.x + b.width &&
@@ -85,20 +109,41 @@ describe("截图里的扇出", () => {
     link("p1", "a1", "a3"),
   ];
 
-  it("派发线共用主干；穿过同一道缝的上下文线让开一条车道", () => {
+  it("派发线共用主干；上下文线不挤进两排之间那道窄缝，与派发线没有重叠的段", () => {
     const router = new EdgeRouter(fakeStore(nodes, edges));
-    const d1 = router.read("d1", PARAMS)!;
-    const p1 = router.read("p1", PARAMS)!;
-    const trunk = d1.view.route.points[1]!.y;
-    const ys = p1.view.route.points.slice(1, -1).map((point) => point.y);
-    // 上下文线在缝里的那一段不和派发线重合。
-    expect(ys.some((y) => Math.abs(y - trunk) === LANE_GAP)).toBe(true);
     for (const id of ["d1", "d2", "d3"]) {
       expect(router.read(id, PARAMS)!.view.route.points[0]).toEqual({
         x: 970,
         y: 390,
       });
     }
+    const p1 = router.read("p1", PARAMS)!.view.route.points;
+    // 缝是 390–420：上下文线的拐点都不在缝里。
+    for (const point of p1.slice(1, -1)) {
+      expect(point.y > 390 && point.y < 420).toBe(false);
+    }
+    for (const id of ["d1", "d2", "d3"]) {
+      const d = router.read(id, PARAMS)!.view.route.points;
+      expect(sharesSegment(p1, d)).toBe(false);
+    }
+  });
+
+  it("挤在同一条线上的不同束错开一个车道", () => {
+    // 两条上下文线被迫走同一道缝（只有这一条路）。
+    const tight = new Map([
+      internal("l1", { x: 0, y: 0, width: 100, height: 100 }),
+      internal("l2", { x: 0, y: 140, width: 100, height: 100 }),
+      internal("r1", { x: 600, y: 0, width: 100, height: 100 }),
+      internal("r2", { x: 600, y: 140, width: 100, height: 100 }),
+      internal("wall", { x: 200, y: -2000, width: 300, height: 2110 }),
+      internal("floor", { x: 200, y: 150, width: 300, height: 2000 }),
+    ]);
+    const router = new EdgeRouter(
+      fakeStore(tight, [link("x1", "l1", "r2"), link("x2", "l2", "r1")]),
+    );
+    const x1 = router.read("x1", PARAMS)!.view.route.points;
+    const x2 = router.read("x2", PARAMS)!.view.route.points;
+    expect(sharesSegment(x1, x2)).toBe(false);
   });
 
   it("标签不压节点、彼此不叠", () => {

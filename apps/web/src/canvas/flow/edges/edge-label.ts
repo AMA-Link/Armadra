@@ -11,7 +11,8 @@ import type { Box } from "../../geometry";
  *  1. 放得下标签的线段（横段比标签宽、竖段比标签高），长的优先；
  *  2. 其余线段，长的优先；
  *
- * 每个候选都要求标签矩形（外扩一点）不压任何节点；正常字号哪儿都放不下时
+ * 每段先试中点，再往两头挪。每个候选都要求标签矩形（外扩一点）不压任何
+ * 节点（调用方还会把箭头、别的标签、别的线段一并传进来）；正常字号哪儿都放不下时
  * 退到 {@link LABEL_MIN_SCREEN_FONT} 再试一轮（两排节点之间只剩一道窄缝时
  * 常见），还不行就不画——关系仍在悬停提示里，压住终端标题栏的标签比没有更糟。
  */
@@ -22,6 +23,8 @@ export const LABEL_SCREEN_FONT = 11;
 export const LABEL_MIN_SCREEN_FONT = 8;
 /** 小于这个缩放就不画标签：那时一屏几十条线，字只会糊成一片。 */
 export const LABEL_MIN_ZOOM = 0.3;
+/** 一段上依次试的位置（0 与 1 是两端）。 */
+const SLIDE = [0.5, 0.35, 0.65, 0.2, 0.8];
 /** 标签矩形与节点之间至少留的空（画布单位，按屏幕像素换算前）。 */
 const LABEL_GAP = 1;
 
@@ -113,21 +116,21 @@ function placeAt(
     const horizontal = a.y === b.y;
     const length = Math.abs(b.x - a.x) + Math.abs(b.y - a.y);
     const room = horizontal ? width : height;
-    segments.push({
-      mid: { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 },
-      length,
-      fits: length >= room + gap * 2,
-    });
+    segments.push({ a, b, length, fits: length >= room + gap * 2 });
   }
   segments.sort((p, q) =>
     p.fits === q.fits ? q.length - p.length : p.fits ? -1 : 1,
   );
+  // 每段先试中点，再往两头挪：中点被别的线或标签占了时还有地方。
   for (const segment of segments) {
-    const { x, y } = segment.mid;
-    if (obstacles.some((box) => overlaps(x, y, width, height, box, gap))) {
-      continue;
+    for (const t of SLIDE) {
+      const x = segment.a.x + (segment.b.x - segment.a.x) * t;
+      const y = segment.a.y + (segment.b.y - segment.a.y) * t;
+      if (obstacles.some((box) => overlaps(x, y, width, height, box, gap))) {
+        continue;
+      }
+      return { x, y, width, height, fontSize };
     }
-    return { x, y, width, height, fontSize };
   }
   return null;
 }

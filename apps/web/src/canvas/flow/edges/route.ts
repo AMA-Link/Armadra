@@ -23,6 +23,16 @@ import { anchorPoint, type Box, type Side } from "../../geometry";
 export const ROUTE_PADDING = 20;
 /** 硬间距：线段不许进入障碍外扩这么多的范围。 */
 export const ROUTE_CLEARANCE = 6;
+/**
+ * 期望的最小净距：线段离节点不到这么远就算「贴着走」，这一段的长度按
+ * 1 + {@link NARROW_BASE} + 差额比例 × {@link NARROW_COST} 倍计。缝宽不够两倍
+ * 净距时，穿缝因此比从外侧绕一圈更贵；绕不开（派发线从两排之间出发）时仍然
+ * 穿缝，并且走正中间。
+ */
+export const ROUTE_MIN_CLEARANCE = 16;
+/** 只要贴着走就先罚这么多倍；再按差多少净距加罚，最多再加 {@link NARROW_COST}。 */
+export const NARROW_BASE = 3;
+export const NARROW_COST = 4;
 /** 拐一次弯折合多少长度。 */
 export const BEND_COST = 40;
 /**
@@ -422,9 +432,36 @@ export function routeEdge(request: RouteRequest): Route {
     }
   });
 
-  // 网格边是否可走：0 未测，1 可走，2 被挡。
+  /**
+   * 贴着节点走的代价倍数（0 = 不贴）：差多少净距罚多少，所以窄缝里走正中间
+   * 比贴着一边便宜。两端自己只算「顺着它的边走」的那种贴法——垂直进出它的
+   * 线段本来就挨着它。
+   */
+  const narrow = (ax: number, ay: number, bx: number, by: number): number => {
+    const minX = Math.min(ax, bx);
+    const maxX = Math.max(ax, bx);
+    const minY = Math.min(ay, by);
+    const maxY = Math.max(ay, by);
+    const horizontal = minY === maxY;
+    let worst = 0;
+    for (let k = 0; k < all.length; k += 1) {
+      const box = all[k]!;
+      const dx = Math.max(0, box.x - maxX, minX - (box.x + box.width));
+      const dy = Math.max(0, box.y - maxY, minY - (box.y + box.height));
+      if (k < 2 && (horizontal ? dx > 0 : dy > 0)) continue;
+      const deficit = ROUTE_MIN_CLEARANCE - Math.hypot(dx, dy);
+      if (deficit > worst) worst = deficit;
+    }
+    return worst > 0
+      ? NARROW_BASE + (worst / ROUTE_MIN_CLEARANCE) * NARROW_COST
+      : 0;
+  };
+
+  // 网格边是否可走：0 未测，1 可走，2 被挡；可走时另记贴边罚的倍数。
   const rightOpen = new Uint8Array(count);
   const downOpen = new Uint8Array(count);
+  const rightPenalty = new Float32Array(count);
+  const downPenalty = new Float32Array(count);
 
   const relax = (from: number, to: number, cost: number): void => {
     if (cost < dist[to]!) {
@@ -484,12 +521,20 @@ export function routeEdge(request: RouteRequest): Route {
       const ty = gy[nj]!;
       // 每条网格边只检测一次（向右 / 向下记在左上那一端）。
       const link = dir === 0 || dir === 1 ? node : next;
-      const cache = dir === 0 || dir === 2 ? rightOpen : downOpen;
+      const across = dir === 0 || dir === 2;
+      const cache = across ? rightOpen : downOpen;
+      const penalty = across ? rightPenalty : downPenalty;
       if (cache[link] === 0) {
-        cache[link] = blocked(x, y, tx, ty, -1) ? 2 : 1;
+        if (blocked(x, y, tx, ty, -1)) {
+          cache[link] = 2;
+        } else {
+          cache[link] = 1;
+          penalty[link] = narrow(x, y, tx, ty);
+        }
       }
       if (cache[link] === 2) continue;
-      const step = Math.abs(tx - x) + Math.abs(ty - y);
+      const length = Math.abs(tx - x) + Math.abs(ty - y);
+      const step = length * (1 + penalty[link]!);
       relax(
         state,
         next * 4 + dir,
@@ -516,10 +561,86 @@ export function routeEdge(request: RouteRequest): Route {
   trail.push(startAnchor.point);
   trail.reverse();
   return {
-    points: simplify(trail),
+    points: smoothJogs(
+      simplify(trail),
+      (a, b, skip) => blocked(a.x, a.y, b.x, b.y, skip),
+      (a, b) => narrow(a.x, a.y, b.x, b.y),
+    ),
     sourceSide: startAnchor.side,
     targetSide: endAnchor.side,
   };
+}
+
+/** 小于这个的错台（Z 字里那一小段）拉平。 */
+export const JOG_LIMIT = 12;
+
+/**
+ * 拉平小错台：两段同向的平行线之间只差几个单位时，把较短的那段挪到较长那段
+ * 的线上（首段 / 末段连着节点不挪），挪完仍不碰障碍才算数。净距代价会让
+ * 路线在节点边缘处换一次线，这一下换线在屏幕上只是一个难看的小台阶。
+ */
+export function smoothJogs(
+  input: readonly Position[],
+  hits: (a: Position, b: Position, skip: number) => boolean,
+  score: (a: Position, b: Position) => number = () => 0,
+): Position[] {
+  let points = input.map((point) => ({ ...point }));
+  for (let pass = 0; pass < 4; pass += 1) {
+    let changed = false;
+    for (let k = 1; k + 2 < points.length; k += 1) {
+      const a = points[k - 1]!;
+      const b = points[k]!;
+      const c = points[k + 1]!;
+      const d = points[k + 2]!;
+      const jog = Math.abs(c.x - b.x) + Math.abs(c.y - b.y);
+      if (jog === 0 || jog >= JOG_LIMIT) continue;
+      const horizontal = a.y === b.y && c.y === d.y;
+      const vertical = a.x === b.x && c.x === d.x;
+      if (!horizontal && !vertical) continue;
+      // 同向（Z），不是回头（U）。
+      const forward = horizontal
+        ? Math.sign(b.x - a.x) === Math.sign(d.x - c.x)
+        : Math.sign(b.y - a.y) === Math.sign(d.y - c.y);
+      if (!forward) continue;
+      const firstFixed = k - 1 === 0;
+      const lastFixed = k + 2 === points.length - 1;
+      // 两种拉法：把 a-b 挪到 c-d 的线上，或反过来；挑合并后贴边罚更小的。
+      let best: { next: Position[]; score: number } | null = null;
+      for (const moveFirst of [true, false]) {
+        if (moveFirst ? firstFixed : lastFixed) continue;
+        const next = points.map((point) => ({ ...point }));
+        if (moveFirst) {
+          if (horizontal) next[k - 1]!.y = next[k]!.y = c.y;
+          else next[k - 1]!.x = next[k]!.x = c.x;
+        } else if (horizontal) {
+          next[k + 1]!.y = next[k + 2]!.y = b.y;
+        } else {
+          next[k + 1]!.x = next[k + 2]!.x = b.x;
+        }
+        const span = moveFirst ? [k - 2, k - 1, k] : [k, k + 1, k + 2];
+        const ok = span.every(
+          (j) =>
+            j < 0 ||
+            j + 1 >= next.length ||
+            !hits(
+              next[j]!,
+              next[j + 1]!,
+              j === 0 ? 0 : j + 1 === next.length - 1 ? 1 : -1,
+            ),
+        );
+        if (!ok) continue;
+        const value = score(next[k - 1]!, next[k + 2]!);
+        if (!best || value < best.score) best = { next, score: value };
+      }
+      if (!best) continue;
+      const next = best.next;
+      points = simplify(next);
+      changed = true;
+      break;
+    }
+    if (!changed) break;
+  }
+  return points;
 }
 
 /** 折线的 SVG 路径，拐角做半径不超过 `radius` 的圆角（二次曲线）。 */

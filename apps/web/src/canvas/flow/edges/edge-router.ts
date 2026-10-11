@@ -269,6 +269,11 @@ export class EdgeRouter {
       tips.push(tipBox(points[0]!), tipBox(points[points.length - 1]!));
     }
     const placed: Box[] = [...tips];
+    // 别的线的线段（同一束共用主干的不算）：标签也不能压在别的线上。
+    const strokes = inputs.map((input) => ({
+      bundle: input.bundle,
+      boxes: segmentBoxes(nudged.get(input.id) ?? input.points),
+    }));
     const next = new Map<string, EdgeLayout | null>();
     for (const input of order) {
       const view = views.get(input.id)!;
@@ -282,6 +287,9 @@ export class EdgeRouter {
               scene.target,
               ...scene.obstacles,
               ...placed,
+              ...strokes.flatMap((stroke) =>
+                stroke.bundle === input.bundle ? [] : stroke.boxes,
+              ),
             ])
           : null;
       if (label) {
@@ -318,6 +326,25 @@ export class EdgeRouter {
     }
     this.layouts = next;
   }
+}
+
+/** 线条的粗细（含描边与一点余量），标签按这个宽度避开别的线。 */
+const STROKE_BAND = 3;
+
+/** 折线每一段占的细长矩形。 */
+function segmentBoxes(points: readonly Position[]): Box[] {
+  const boxes: Box[] = [];
+  for (let k = 1; k < points.length; k += 1) {
+    const a = points[k - 1]!;
+    const b = points[k]!;
+    boxes.push({
+      x: Math.min(a.x, b.x) - STROKE_BAND,
+      y: Math.min(a.y, b.y) - STROKE_BAND,
+      width: Math.abs(b.x - a.x) + STROKE_BAND * 2,
+      height: Math.abs(b.y - a.y) + STROKE_BAND * 2,
+    });
+  }
+  return boxes;
 }
 
 /** 端点处箭头占的那一小块。 */
