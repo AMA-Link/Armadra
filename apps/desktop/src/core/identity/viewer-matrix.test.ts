@@ -170,9 +170,9 @@ function passes(
 }
 
 function writes(method: string, path: string): boolean {
-  if (method !== "GET" && method !== "HEAD") return true;
-  // 附着到终端的 socket 能写（路由门按写判）。
-  return /^\/api\/terminals\/[^/]+\/ws$/.test(path);
+  // 附着到终端的 socket 对查看者是只读附着（裁决带 readOnly，输入在流里丢掉，
+  // 契约 §60），不算写；能驱动的人附着照旧可写。
+  return method !== "GET" && method !== "HEAD";
 }
 
 describe("只读分享的全量矩阵：路由表的每一条", () => {
@@ -231,7 +231,6 @@ describe("只读分享的全量矩阵：路由表的每一条", () => {
       ["POST", "/api/workspaces/{workspaceId}/file"],
       ["POST", "/api/terminals"],
       ["POST", "/api/terminals/{sessionId}/paste"],
-      ["GET", "/api/terminals/{sessionId}/ws"],
       ["POST", "/api/acp/sessions"],
       ["POST", "/api/acp/sessions/{sessionId}/prompt"],
       ["POST", "/api/approvals/{pendingId}/answer"],
