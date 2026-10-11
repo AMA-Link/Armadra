@@ -19,6 +19,7 @@ import {
   RELAY_PROTOCOL,
   RELAY_TOKEN_HEADER,
   bearerFetch,
+  deferredWebSocket,
   ticketedWebSocket,
 } from "./transport";
 import {
@@ -318,13 +319,19 @@ export function createRemoteConnection(
       : options.environment;
   let listening = false;
 
+  // 经端到端通道时（契约 §78）发往这个源的字节走通道；每次现取（通道会重建）。
   const baseFetch: typeof fetch = (input, init) =>
-    (options.fetch ?? globalThis.fetch)(input, init);
+    (access?.e2e?.fetch ?? options.fetch ?? globalThis.fetch)(input, init);
+  const baseSocket = deferredWebSocket(
+    () => access?.e2e?.WebSocket ?? options.WebSocket ?? globalThis.WebSocket,
+  );
   const httpBase = () =>
     access?.httpBase ?? (descriptor.baseUrl || descriptor.relayOrigin);
   const wsBase = () => access?.wsBase ?? httpBase().replace(/^http/, "ws");
   const relayToken = () =>
-    via === "relayed" ? (access?.relayToken ?? null) : null;
+    via === "relayed" && access?.e2e === undefined
+      ? (access?.relayToken ?? null)
+      : null;
 
   const setStatus = (
     state: SourceStatus["state"],
@@ -457,11 +464,10 @@ export function createRemoteConnection(
     fetch: sourceFetch,
     relayed: () => via === "relayed",
     get WebSocket() {
-      const native = options.WebSocket ?? globalThis.WebSocket;
-      let wrapped = ticketed.get(native);
+      let wrapped = ticketed.get(baseSocket);
       if (wrapped === undefined) {
-        wrapped = ticketedWebSocket(native, transport);
-        ticketed.set(native, wrapped);
+        wrapped = ticketedWebSocket(baseSocket, transport);
+        ticketed.set(baseSocket, wrapped);
       }
       return wrapped;
     },
@@ -485,7 +491,7 @@ export function createRemoteConnection(
     socket(path, socketOptions = {}) {
       const socket = new ManagedSocket({
         ...socketOptions,
-        WebSocket: socketOptions.WebSocket ?? options.WebSocket,
+        WebSocket: socketOptions.WebSocket ?? baseSocket,
         url: () => runtimeSocketUrl(wsBase(), path),
         ticket: () => fetchTicket(),
         relayToken,

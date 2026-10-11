@@ -109,6 +109,14 @@ export interface SourceAccess {
   readonly wsBase: string;
   /** 经中继时的中继令牌：HTTP 头与 WS 子协议都带它。 */
   readonly relayToken?: string;
+  /**
+   * 经中继、且这台电脑支持端到端通道时（契约 §78）：发往 `httpBase` 的请求与流走
+   * 这两个，中继只看到密文；中继令牌只在开通道时用过一次。
+   */
+  readonly e2e?: {
+    readonly fetch: typeof fetch;
+    readonly WebSocket: typeof WebSocket;
+  };
 }
 
 export interface CredentialProvider {
@@ -152,6 +160,10 @@ export const SOURCE_ERROR = {
   revoked: "source_revoked",
   /** 这个账号对这个源的访问被收回（`accessRevoked`、断言答 `source_access_denied`）。 */
   accessRevoked: "source_access_denied",
+  /** 端到端通道里这台电脑的身份公钥与钉住的不同（契约 §78）：要人在设置里「忘记」。 */
+  identityChanged: "identity_changed",
+  /** 这台电脑的主人拒绝或撤销了这台设备（契约 §77）。 */
+  deviceRejected: "device_rejected",
 } as const;
 
 export class SourceError extends Error {

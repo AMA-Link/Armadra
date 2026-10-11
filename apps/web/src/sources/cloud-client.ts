@@ -17,12 +17,22 @@ export class CloudError extends Error {
   /** 账号被锁时对端给的剩余毫秒数。 */
   readonly retryAfterMs: number;
 
-  constructor(status: number, code: string, message = code, retryAfterMs = 0) {
+  /** 对端拒绝时给的 `details`（如 `device_pending` 的 `pendingId`，契约 §77）。 */
+  readonly details: Readonly<Record<string, unknown>>;
+
+  constructor(
+    status: number,
+    code: string,
+    message = code,
+    retryAfterMs = 0,
+    details: Readonly<Record<string, unknown>> = {},
+  ) {
     super(message);
     this.name = "CloudError";
     this.status = status;
     this.code = code;
     this.retryAfterMs = retryAfterMs;
+    this.details = details;
   }
 }
 
@@ -224,7 +234,7 @@ async function send<T>(
     const body = (payload ?? {}) as {
       code?: unknown;
       message?: unknown;
-      details?: { retryAfterMs?: unknown };
+      details?: { retryAfterMs?: unknown } & Record<string, unknown>;
     };
     const retry = body.details?.retryAfterMs;
     throw new CloudError(
@@ -232,6 +242,9 @@ async function send<T>(
       typeof body.code === "string" ? body.code : "unknown",
       typeof body.message === "string" ? body.message : "",
       typeof retry === "number" ? retry : 0,
+      typeof body.details === "object" && body.details !== null
+        ? body.details
+        : {},
     );
   }
   const parsed = schema.safeParse(payload);

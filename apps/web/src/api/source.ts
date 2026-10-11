@@ -72,6 +72,11 @@ let ticketed = new WeakMap<typeof WebSocket, typeof WebSocket>();
 
 const base: typeof fetch = (input, init) => globalThis.fetch(input, init);
 
+/** 传输的底层 `fetch`：经端到端通道时是通道的（每次现取），否则全局的。 */
+function transportBase(current: BearerTransport): typeof fetch {
+  return (input, init) => (current.baseFetch?.() ?? base)(input, init);
+}
+
 const bearerCredentials = (current: BearerTransport): SourceCredentials => ({
   mode: "bearer",
   async access() {
@@ -122,16 +127,19 @@ export const localSource: Source = {
     return localRuntime().viaServerShell ? cookieCredentials : noCredentials;
   },
   fetch: (input, init) => {
-    if (transport !== null) return bearerFetch(base, transport)(input, init);
+    if (transport !== null)
+      return bearerFetch(transportBase(transport), transport)(input, init);
     if (localRuntime().viaServerShell) return cookieSessionFetch(input, init);
     return base(input, init);
   },
   // 中继托管的页面（`sources/route-entry.ts`）把经中继的那台源装成本机源，
   // 传输上带着中继令牌头：媒体票还要再换一张中继的（§37.4）。
-  relayed: () => transport?.extraHeaders?.()[RELAY_TOKEN_HEADER] !== undefined,
+  relayed: () =>
+    transport?.baseFetch?.() === undefined &&
+    transport?.extraHeaders?.()[RELAY_TOKEN_HEADER] !== undefined,
   get WebSocket() {
-    const native = globalThis.WebSocket;
-    if (transport === null) return native;
+    if (transport === null) return globalThis.WebSocket;
+    const native = transport.baseWebSocket?.() ?? globalThis.WebSocket;
     let wrapped = ticketed.get(native);
     if (wrapped === undefined) {
       const current = transport;

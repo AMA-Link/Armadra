@@ -46,6 +46,32 @@ export interface BearerTransport {
   extraHeaders?(): Record<string, string>;
   /** 升级时在票之外另带的子协议（经中继时是 `armadra-relay.<令牌>`）。 */
   extraProtocols?(): string[];
+  /**
+   * 底层的 `fetch` / `WebSocket`（经端到端通道时是通道的，契约 §78）；不给用全局的。
+   * 每次发请求时现取：通道断了重建后换成新的那条。
+   */
+  baseFetch?(): typeof fetch | undefined;
+  baseWebSocket?(): typeof WebSocket | undefined;
+}
+
+/**
+ * 一个「构造时才决定是谁」的 `WebSocket` 类：每次 `new` 时问 `resolve()`，经端到端
+ * 通道时是通道的类，否则全局的。给托管的流（`ManagedSocket`）与票包装用。
+ */
+export function deferredWebSocket(
+  resolve: () => typeof WebSocket,
+): typeof WebSocket {
+  const placeholder = function () {} as unknown as typeof WebSocket;
+  return new Proxy(placeholder, {
+    construct(_target, args: [string | URL, (string | string[])?]) {
+      const Ctor = resolve();
+      return new Ctor(...args) as object;
+    },
+    get(_target, property) {
+      // 常量（`OPEN` 等）与静态成员按当前的那个类答。
+      return (resolve() as unknown as Record<PropertyKey, unknown>)[property];
+    },
+  });
 }
 
 /**

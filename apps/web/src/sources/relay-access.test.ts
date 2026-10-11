@@ -210,3 +210,89 @@ describe("经中继取访问", () => {
     expect(await vault.cloudRefreshToken(ISSUER)).toBeNull();
   });
 });
+
+describe("经中继取访问：端到端通道（契约 §77、§78）", () => {
+  it("源支持时登录走通道；待确认先等主人核对再登录，访问带上通道的 fetch 与 WebSocket", async () => {
+    const vault = await vaultWithCloud();
+    const cloudNet = routedFetch({
+      "POST /v1/auth/refresh": () => ({
+        body: cloudSession("cloud-a", "cloud-r2"),
+      }),
+      [`POST /v1/sources/${SOURCE}/assertion`]: () => ({ body: assertion() }),
+    });
+    let logins = 0;
+    const sealed = routedFetch({
+      [`POST /s/${SOURCE}/api/identity/cloud/login`]: () => {
+        logins += 1;
+        return logins === 1
+          ? {
+              status: 403,
+              body: {
+                code: "device_pending",
+                message: "",
+                details: { pendingId: "p".repeat(32) },
+              },
+            }
+          : { body: coreLogin("core-a", "core-r", "c".repeat(43)) };
+      },
+    });
+    const channel = { sas: "654321" };
+    const approvals: string[] = [];
+    const SealedSocket = class {} as unknown as typeof WebSocket;
+    const e2e = {
+      channel: async () => channel,
+      fetchFor: () => sealed.fetch,
+      socketFor: () => SealedSocket,
+      awaitApproval: async (
+        _target: unknown,
+        _channel: unknown,
+        id: string,
+      ) => {
+        approvals.push(id);
+        return true as const;
+      },
+    };
+    const relay = createRelayedAccess({
+      vault,
+      device,
+      cloud: { fetch: cloudNet.fetch },
+      e2e: e2e as never,
+      now: () => NOW,
+    });
+    const access = await relay.access(ISSUER, SOURCE, false);
+    expect(approvals).toEqual(["p".repeat(32)]);
+    expect(logins).toBe(2);
+    expect(access.accessToken).toBe("core-a");
+    expect(access.e2e?.fetch).toBe(sealed.fetch);
+    expect(access.e2e?.WebSocket).toBe(SealedSocket);
+    // 明文那一路没有发过源 core 的登录。
+    expect(
+      cloudNet.calls.some((call) => call.key.endsWith("cloud/login")),
+    ).toBe(false);
+  });
+
+  it("这台电脑的身份变了：identity_changed，不登录", async () => {
+    const vault = await vaultWithCloud();
+    const cloudNet = routedFetch({
+      "POST /v1/auth/refresh": () => ({
+        body: cloudSession("cloud-a", "cloud-r2"),
+      }),
+      [`POST /v1/sources/${SOURCE}/assertion`]: () => ({ body: assertion() }),
+    });
+    const { E2eAccessError } = await import("./e2e/manager");
+    const relay = createRelayedAccess({
+      vault,
+      device,
+      cloud: { fetch: cloudNet.fetch },
+      e2e: {
+        channel: async () => {
+          throw new E2eAccessError("identity_changed");
+        },
+      } as never,
+      now: () => NOW,
+    });
+    await expect(relay.access(ISSUER, SOURCE, false)).rejects.toMatchObject({
+      code: "identity_changed",
+    });
+  });
+});

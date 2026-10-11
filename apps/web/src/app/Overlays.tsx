@@ -1,4 +1,5 @@
 import { Suspense } from "react";
+import { DeviceApprovalPrompt } from "../panels/settings/pages/security/E2eDevices";
 
 import { useCanvasStore } from "../store/canvas-store";
 import {
@@ -126,6 +127,7 @@ export function Overlays() {
       </Gate>
       {/* 事件流驱动的四个：必须先订阅，不能等状态。 */}
       <ControlConfirmDialog />
+      <DeviceApprovalPrompt />
       <NodeNameDialog />
       <AgentSettingsDialog />
       <SshPromptDialog />

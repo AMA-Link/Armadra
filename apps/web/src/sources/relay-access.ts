@@ -8,6 +8,11 @@ import {
   coreRefresh,
 } from "./cloud-client";
 import { ACCESS_RENEW_LEAD_MS } from "./credentials";
+import {
+  type ChannelTarget,
+  E2eAccessError,
+  type E2eChannels,
+} from "./e2e/manager";
 import { SOURCE_ERROR, type SourceAccess, SourceError } from "./types";
 
 /**
@@ -62,6 +67,13 @@ export interface RelayAccessDeps {
   readonly device: () => CloudDevice;
   readonly cloud?: CloudOptions;
   readonly now?: () => number;
+  /**
+   * 端到端通道（契约 §78）：给了就先经中继开通道，源 core 的登录、刷新与之后的
+   * 请求都走它；源不支持（过渡期）时退回明文。
+   */
+  readonly e2e?: E2eChannels;
+  /** 待确认对话框里这台电脑的名字。 */
+  readonly label?: (sourceId: string) => string;
 }
 
 function unauthorized(code: string = SOURCE_ERROR.unauthorized): SourceError {
@@ -138,6 +150,18 @@ export function createCloudSessions(
   };
 }
 
+/** 端到端通道的拒绝 → 源层的码。 */
+function e2eFailure(error: unknown): never {
+  if (error instanceof E2eAccessError) {
+    if (error.code === "identity_changed")
+      throw unauthorized(SOURCE_ERROR.identityChanged);
+    if (error.code === "device_rejected")
+      throw unauthorized(SOURCE_ERROR.deviceRejected);
+    throw unauthorized();
+  }
+  throw error;
+}
+
 /** 远程服务与源 core 的拒绝 → 源层的码（界面按码取文案）。 */
 function relayFailure(error: unknown): never {
   if (error instanceof CloudError) {
@@ -188,6 +212,22 @@ export function createRelayedAccess(
     ).catch(relayFailure);
     if (!assertion.online) throw unauthorized(SOURCE_ERROR.offline);
     const base = assertion.relayBaseUrl.replace(/\/+$/, "");
+    const target: ChannelTarget = {
+      issuer,
+      sourceId,
+      base,
+      relayToken: assertion.relayToken,
+      label: deps.label?.(sourceId) ?? "",
+    };
+    const channel =
+      deps.e2e === undefined
+        ? null
+        : await deps.e2e.channel(target).catch(e2eFailure);
+    // 经通道时源 core 的登录与刷新也走它（会话绑这台设备的设备钥）。
+    const coreOptions: CloudOptions =
+      channel === null || deps.e2e === undefined
+        ? (deps.cloud ?? {})
+        : { ...deps.cloud, fetch: deps.e2e.fetchFor(channel, base) };
 
     let session = await deps.vault.session(sourceId);
     if (session === undefined || force || !fresh(session)) {
@@ -198,7 +238,7 @@ export function createRelayedAccess(
             base,
             session.refreshToken,
             assertion.relayToken,
-            deps.cloud,
+            coreOptions,
             session.csrfToken,
           );
           next = {
@@ -218,13 +258,29 @@ export function createRelayedAccess(
       }
       if (next === null) {
         try {
-          const login = await coreCloudLogin(
-            base,
-            assertion.relayToken,
-            assertion.assertion,
-            undefined,
-            deps.cloud,
-          );
+          const send = () =>
+            coreCloudLogin(
+              base,
+              assertion.relayToken,
+              assertion.assertion,
+              undefined,
+              coreOptions,
+            );
+          const login = await send().catch(async (error: unknown) => {
+            // 新设备：等主人在那台电脑上核对校验码，放行后再登录一次（契约 §77）。
+            if (
+              channel === null ||
+              deps.e2e === undefined ||
+              !(error instanceof CloudError) ||
+              error.code !== "device_pending" ||
+              typeof error.details.pendingId !== "string"
+            )
+              throw error;
+            await deps.e2e
+              .awaitApproval(target, channel, error.details.pendingId)
+              .catch(e2eFailure);
+            return send();
+          });
           next = {
             accessToken: login.native.accessToken,
             refreshToken: login.native.refreshToken,
@@ -241,7 +297,9 @@ export function createRelayedAccess(
               error.code === "cloud_account_unlinked" ||
               error.code === "cloud_not_registered"
                 ? error.code
-                : SOURCE_ERROR.unauthorized,
+                : error.code === "device_rejected"
+                  ? SOURCE_ERROR.deviceRejected
+                  : SOURCE_ERROR.unauthorized,
             );
           }
           throw error;
@@ -260,6 +318,14 @@ export function createRelayedAccess(
       httpBase: base,
       wsBase: wsOf(base),
       relayToken: assertion.relayToken,
+      ...(channel === null || deps.e2e === undefined
+        ? {}
+        : {
+            e2e: {
+              fetch: deps.e2e.fetchFor(channel, base),
+              WebSocket: deps.e2e.socketFor(channel, base),
+            },
+          }),
     };
   };
 

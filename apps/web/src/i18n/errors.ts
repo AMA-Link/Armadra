@@ -53,6 +53,11 @@ export const errors: MessageModule = {
     "error.remoteSessionExpired": "中转账号的登录已失效，请重新登录",
     "error.sourceAccessDenied": "这个账号没有这台机器的权限",
     "error.sourceRevoked": "这台电脑已从中转移除",
+    "error.identityChanged":
+      "这台电脑的身份变了，确认无误后在设置里移除再重新连接",
+    "error.deviceRejected": "这台电脑的主人没有允许此设备",
+    "error.devicePending": "等待那台电脑的主人确认此设备",
+    "error.e2eRequired": "这台电脑只接受端到端加密的连接",
     "error.limitReached": "已达到中转的上限",
     "error.linkInvalid": "链接已停用或不存在",
     "error.linkExpired": "链接已过期",
@@ -135,6 +140,13 @@ export const errors: MessageModule = {
       "Your sign-in to remote access expired. Sign in again.",
     "error.sourceAccessDenied": "This account has no access to that computer",
     "error.sourceRevoked": "That computer was removed from remote access",
+    "error.identityChanged":
+      "That computer’s identity changed. If expected, remove it in Settings and reconnect",
+    "error.deviceRejected": "That computer’s owner didn’t allow this device",
+    "error.devicePending":
+      "Waiting for that computer’s owner to confirm this device",
+    "error.e2eRequired":
+      "That computer only accepts end-to-end encrypted connections",
     "error.limitReached": "The remote access limit is reached",
     "error.linkInvalid": "This link is disabled or doesn't exist",
     "error.linkExpired": "This link has expired",
