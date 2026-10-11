@@ -385,6 +385,8 @@ Play 上架的上传密钥。
 `gh release create` 带 `--verify-tag`：标签不存在时拒绝，而不是替我们建一个指向当前
 提交的标签。预发布按标签里有没有 `-` 判定（`v0.2.0-rc.1`），与 semver 的读法一致。
 `latest.json` 仍由 `tools/release/updater-manifest.mjs` 生成并随产物一起上传。
+它的 `pub_date` 取标签所指提交的提交时间（UTC；取不到标签时用检出的 `HEAD`），
+同一个标签重跑得到同一份文件；`assemble.mjs --pub-date <ISO 8601>` 可显式指定。
 
 **更新清单是两份。** `latest.json`（minisign 签名）之外，每个目标还发一份
 electron-updater 自己读的清单——桌面壳下载时走 `provider: generic`，只认 yml。
