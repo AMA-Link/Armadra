@@ -199,10 +199,10 @@ describe("面板", () => {
       github: "closed",
       explorer: "drawer",
     });
-    state().setPanel("usage", "drawer");
+    state().setPanel("resources", "drawer");
     expect(state().panels).toMatchObject({
       explorer: "closed",
-      usage: "drawer",
+      resources: "drawer",
     });
   });
 

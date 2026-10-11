@@ -17,6 +17,7 @@ import {
 } from "@/ui/card";
 import { Input } from "@/ui/input";
 import { useCanvasStore } from "@/store/canvas-store";
+import { featureEnabled } from "@/lib/features";
 import { workflowErrorKey, workflowsApi } from "./api";
 import { useWorkflowStepSync } from "./node-steps";
 import { openWorkflowPanel, useWorkflowEvents, workflowKeys } from "./store";
@@ -35,15 +36,17 @@ export function DraftLayer() {
   const boardId = useCanvasStore((state) => state.boardId);
   // 工作流路由对成员一律 403（契约 §15）：成员不取、不显示草案卡。
   const member = useAccess().member;
+  // 工作流暂时下线（#295）：草案仍由 core 落库，只是不取、不浮卡片。
+  const visible = featureEnabled("workflows");
   const drafts = useQuery({
     queryKey: workflowKeys.drafts(boardId ?? ""),
     queryFn: () =>
       workflowsApi.drafts({ boardId: boardId!, status: "pending" }),
-    enabled: Boolean(boardId) && !member,
+    enabled: visible && Boolean(boardId) && !member,
     retry: false,
   });
   const pending = drafts.data ?? [];
-  if (pending.length === 0) return null;
+  if (!visible || pending.length === 0) return null;
   return (
     <div
       data-slot="workflow-drafts"

@@ -472,6 +472,22 @@ describe("ui.locale (contract §57.6)", () => {
   });
 });
 
+describe("keymap.enabled (contract §66)", () => {
+  it("keeps a boolean, drops anything else, never creates the section", () => {
+    expect(normalize({}).keymap).toBeUndefined();
+    expect(object(normalize({ keymap: { enabled: false } }).keymap)).toEqual({
+      enabled: false,
+    });
+    // 键位表本身是页面的数据，core 原样存取。
+    expect(
+      object(
+        normalize({ keymap: { enabled: "no", mac: { "app.settings": "" } } })
+          .keymap,
+      ),
+    ).toEqual({ mac: { "app.settings": "" } });
+  });
+});
+
 describe("host.name (contract §61)", () => {
   it("is trimmed, dropped when not a string or too long, never created", () => {
     expect(normalize({}).host).toBeUndefined();

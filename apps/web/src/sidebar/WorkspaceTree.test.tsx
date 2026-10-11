@@ -35,8 +35,10 @@ vi.mock("../api/client", () => ({
     openWorkspace: vi.fn().mockResolvedValue(undefined),
     createWorkspace: vi.fn(),
     deliveries: vi.fn().mockResolvedValue([]),
-    cloneRepo: vi.fn(),
-    cloneStatus: vi.fn(),
+    cloneDefaults: vi.fn().mockResolvedValue({ parent: "/home/me/Projects" }),
+    cloneRepositories: vi
+      .fn()
+      .mockResolvedValue({ connected: false, account: null, repositories: [] }),
   },
 }));
 
@@ -248,21 +250,19 @@ describe("WorkspaceTree", () => {
     ]);
   });
 
-  it("项目菜单明确区分浏览器导入副本和新建目录", async () => {
+  it("添加项目直接打开三种来源的对话框", async () => {
     renderTree();
     await screen.findByText("repo");
 
-    fireEvent.pointerDown(
-      screen.getByLabelText("添加项目"),
-      new PointerEvent("pointerdown", { bubbles: true, button: 0 }),
-    );
+    fireEvent.click(screen.getByLabelText("添加项目"));
     expect(
-      await screen.findByRole("menuitem", { name: "导入文件夹副本…" }),
+      await screen.findByRole("dialog", { name: "添加项目" }),
     ).toBeTruthy();
-    fireEvent.click(screen.getByRole("menuitem", { name: "新建文件夹" }));
-    expect(
-      await screen.findByRole("dialog", { name: "新建文件夹" }),
-    ).toBeTruthy();
+    expect(screen.getAllByRole("tab").map((tab) => tab.textContent)).toEqual([
+      "仓库",
+      "本地",
+      "地址",
+    ]);
   });
 
   it("点工作空间行收起它的画布，状态写进偏好", async () => {

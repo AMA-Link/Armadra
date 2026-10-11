@@ -276,6 +276,7 @@ export const useAgentStatusStore = create<AgentStatusState>((set, get) => ({
           unread: session.unread,
           sessionId: session.sessionId,
           pendingId: session.pendingId,
+          sessionPhase: session.sessionPhase,
           verified: previous?.verified ?? false,
           restored: true,
           updatedAt: session.updatedAt,

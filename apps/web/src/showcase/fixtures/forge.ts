@@ -1,14 +1,13 @@
 import type {
-  ForgeChecks,
   ForgeConfig,
   ForgeDetection,
-  ForgeFile,
+  ForgeIssue,
   ForgePull,
 } from "../../api/forge";
 
 /**
- * `integration` 分区里托管平台那几张样本的假数据（G5-15，契约 §29）：一个
- * Gitea 仓库的 PR 列表、一个 GitLab merge request 的详情、设置页的配置行。
+ * `integration` 分区里托管平台那几张样本的假数据（契约 §29）：一个 Gitea 仓库的
+ * issue 与 PR 列表、一个 GitLab merge request 的详情、设置页的配置行。
  * 纯对象；主机名、标题与补丁是数据不是界面文案。
  */
 
@@ -22,17 +21,6 @@ export const GITEA_DETECTION: ForgeDetection = {
   configKey: "git.example.test",
   apiBase: "https://git.example.test/api/v1",
   webUrl: "https://git.example.test/acme/app",
-  credential: true,
-  accountLogin: "bot",
-};
-
-export const GITLAB_DETECTION: ForgeDetection = {
-  repository: { host: "gitlab.example.test", owner: "acme", name: "app" },
-  forge: "gitlab",
-  source: "config",
-  configKey: "gitlab.example.test/acme/app",
-  apiBase: "https://gitlab.example.test/api/v4",
-  webUrl: "https://gitlab.example.test/acme/app",
   credential: true,
   accountLogin: "bot",
 };
@@ -61,6 +49,30 @@ const pull = (
   ...overrides,
 });
 
+const issue = (
+  number: number,
+  title: string,
+  overrides: Partial<ForgeIssue> = {},
+): ForgeIssue => ({
+  number,
+  title,
+  body: "",
+  state: "open",
+  author: "alice",
+  labels: [],
+  commentCount: 0,
+  url: "",
+  createdAtMs: AT,
+  updatedAtMs: AT,
+  closedAtMs: null,
+  ...overrides,
+});
+
+export const GITEA_ISSUES: ForgeIssue[] = [
+  issue(21, "登录后跳回原页面", { labels: ["bug"] }),
+  issue(18, "Dark mode for settings", { author: "bob" }),
+];
+
 export const GITEA_PULLS: ForgePull[] = [
   pull(14, "登录页拆成两步", { draft: true }),
   pull(13, "Fix header spacing", {
@@ -77,36 +89,6 @@ export const GITEA_PULLS: ForgePull[] = [
 export const GITLAB_MR: ForgePull = pull(12, "Login rework", {
   body: "Split the login page into two steps.",
 });
-
-export const GITLAB_FILES: ForgeFile[] = [
-  {
-    path: "src/login.ts",
-    previousPath: null,
-    status: "modified",
-    additions: 2,
-    deletions: 1,
-    patch:
-      '@@ -1,3 +1,4 @@\n import { form } from "./form";\n-export const step = 1;\n+export const step = 2;\n+export const total = 2;',
-  },
-  {
-    path: "docs/login.md",
-    previousPath: "docs/old.md",
-    status: "renamed",
-    additions: 0,
-    deletions: 0,
-    patch: null,
-  },
-];
-
-export const GITLAB_CHECKS: ForgeChecks = {
-  headSha: SHA,
-  rollup: "pending",
-  checks: [
-    { name: "build", state: "success", url: null },
-    { name: "lint", state: "neutral", url: null },
-    { name: "test", state: "pending", url: null },
-  ],
-};
 
 export const FORGE_CONFIGS: ForgeConfig[] = [
   {

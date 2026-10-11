@@ -21,6 +21,7 @@ import {
   runPage,
 } from "@/panels/automation/queries";
 import { openAutomationPanel } from "@/panels/automation/open";
+import { featureEnabled } from "@/lib/features";
 import { usePreferencesStore, useT } from "@/app/preferences-store";
 import { NodeShell } from "./NodeShell";
 import type { NodeBodyProps } from "./registry";
@@ -121,7 +122,9 @@ export function AutomationNode({ id, node, selected }: NodeBodyProps) {
           )}
         </Badge>
       }
-      headerActions={headerActions}
+      // 定时任务暂时下线（#295）：旧画布里的卡片照常显示，但不给打开自动化
+      // 抽屉的按钮——那块抽屉现在打不开。
+      {...(featureEnabled("scheduledTasks") ? { headerActions } : {})}
       {...(plan?.needsAttention ? { glow: "attention" as const } : {})}
     >
       <div

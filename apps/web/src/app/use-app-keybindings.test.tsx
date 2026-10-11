@@ -143,13 +143,50 @@ describe("useAppKeybindings", () => {
     expect(runCanvasCommand).toHaveBeenCalledWith("canvas.undo");
   });
 
-  it("⌘⏎ 打开 Git 工具窗口并广播提交事件", () => {
+  it("⌘⏎ 只在提交页里打开 Git 工具窗口并广播提交事件", () => {
     const listener = vi.fn();
     window.addEventListener(SCM_COMMIT_EVENT, listener);
+    // 画布上按下去什么也不做：以前这一下会直接提交。
     press("Enter");
+    expect(listener).not.toHaveBeenCalled();
+
+    const page = document.createElement("div");
+    page.setAttribute("data-keybinding-scope", "scm");
+    const message = document.createElement("textarea");
+    page.append(message);
+    document.body.append(page);
+    const mod = isMacPlatform() ? { metaKey: true } : { ctrlKey: true };
+    fireEvent.keyDown(message, { key: "Enter", ...mod });
     expect(useCanvasStore.getState().panels.scm).toBe("bottom");
     expect(listener).toHaveBeenCalled();
     window.removeEventListener(SCM_COMMIT_EVENT, listener);
+    page.remove();
+  });
+
+  it("总开关关着时一条命令都不接，按键原样放行", async () => {
+    await remount({ keymap: { enabled: false } });
+    await waitFor(() =>
+      expect(commandKeysLabel("app.commandPalette")).toBe(""),
+    );
+    const mod = isMacPlatform() ? { metaKey: true } : { ctrlKey: true };
+    const event = new KeyboardEvent("keydown", {
+      key: "k",
+      ...mod,
+      bubbles: true,
+      cancelable: true,
+    });
+    window.dispatchEvent(event);
+    press("z");
+    expect(event.defaultPrevented).toBe(false);
+    expect(useCanvasStore.getState().panels.palette).toBe(false);
+    expect(runCanvasCommand).not.toHaveBeenCalled();
+
+    // 打开回来，下一下就生效。
+    await remount({ keymap: {} });
+    await waitFor(() => {
+      press("k");
+      expect(useCanvasStore.getState().panels.palette).toBe(true);
+    });
   });
 
   /** 每个用例自己决定设置文档，所以先拆掉 beforeEach 装好的那棵树。 */

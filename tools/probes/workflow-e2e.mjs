@@ -162,6 +162,8 @@ const environment = {
   SHELL: "/bin/sh",
   // 自动化面在下面无凭据地打（契约 §3.2）：裸 core 显式按本机主人。
   ...LOOPBACK_OWNER_ENV,
+  // 定时任务暂时下线（#295）时 core 不起调度循环；这条探针验的正是到点执行。
+  ARMADRA_SCHEDULE_LOOP: "1",
 };
 delete environment.TMUX;
 delete environment.TMUX_PANE;

@@ -43,7 +43,6 @@ describe("CanvasPreferencesMenu", () => {
     const keys = CANVAS_PREFERENCE_TOGGLES.map((toggle) => toggle.key);
     expect(keys).toEqual([
       "snap",
-      "toolLock",
       "grid",
       "wrap",
       "focus",
@@ -52,7 +51,13 @@ describe("CanvasPreferencesMenu", () => {
       "pasteAtCursor",
       "animation",
     ]);
-    for (const gone of ["debug", "enhancedA11y", "zoomInverted", "style"]) {
+    for (const gone of [
+      "debug",
+      "enhancedA11y",
+      "zoomInverted",
+      "style",
+      "toolLock",
+    ]) {
       expect(keys).not.toContain(gone);
     }
   });

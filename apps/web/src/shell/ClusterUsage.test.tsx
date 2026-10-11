@@ -2,6 +2,19 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import type { Usage } from "@armadra/shared";
 
+/** 功能开关（#295）：这里测的是功能本身，按开着测。 */
+const featureFlags = vi.hoisted(() => ({
+  credentials: true,
+  usage: true,
+  activityCards: true,
+  scheduledTasks: true,
+  workflows: true,
+}));
+vi.mock("@armadra/shared", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@armadra/shared")>()),
+  FEATURE_FLAGS: featureFlags,
+}));
+
 const fetchUsage = vi.fn();
 const refreshUsage = vi.fn();
 vi.mock("../api/client", () => ({

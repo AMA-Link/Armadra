@@ -15,6 +15,7 @@ import {
   suspendKeybindings,
   matchKeyboardEvent,
   setActiveKeymap,
+  setShortcutsEnabled,
   SCOPE_ATTRIBUTE,
   useKeybindings,
   type CommandId,
@@ -306,14 +307,33 @@ describe("useKeybindings", () => {
     const onUndo = vi.fn();
     mount({ "scm.commit": onCommit, "canvas.undo": onUndo });
 
+    // ⌘⏎ 只在提交页里算数（`when: scmFocus`），所以输入框放在那一页里。
+    const page = document.createElement("div");
+    page.setAttribute(SCOPE_ATTRIBUTE, "scm");
     const textarea = document.createElement("textarea");
-    document.body.append(textarea);
+    page.append(textarea);
+    document.body.append(page);
 
     fire({ key: "Enter", metaKey: true }, textarea);
     fire({ key: "z", metaKey: true }, textarea);
 
     expect(onCommit).toHaveBeenCalledTimes(1);
     expect(onUndo).not.toHaveBeenCalled();
+  });
+
+  it("⌘⏎ 只在提交页里提交：别的输入框与画布上都放行", () => {
+    const onCommit = vi.fn();
+    mount({ "scm.commit": onCommit });
+
+    // 评论框之类的 textarea 自己用 ⌘⏎ 发送，不能被截成 Git 提交。
+    const comment = document.createElement("textarea");
+    document.body.append(comment);
+    const typed = fire({ key: "Enter", metaKey: true }, comment);
+    const canvas = fire({ key: "Enter", metaKey: true });
+
+    expect(onCommit).not.toHaveBeenCalled();
+    expect(typed.defaultPrevented).toBe(false);
+    expect(canvas.defaultPrevented).toBe(false);
   });
 
   it("画布上（非输入、非终端）的 ⌘Z 正常触发", () => {
@@ -475,3 +495,124 @@ describe("useKeybindings", () => {
 });
 
 const PALETTE = COMMAND_BY_ID["app.commandPalette"].defaultKeys;
+
+describe("总开关与终端控制键", () => {
+  afterEach(() => {
+    setShortcutsEnabled(true);
+    cleanup();
+    document.body.innerHTML = "";
+  });
+
+  function Harness({
+    handlers,
+    mac,
+  }: {
+    handlers: Partial<Record<CommandId, () => void>>;
+    mac: boolean;
+  }) {
+    useKeybindings(handlers, { mac });
+    return null;
+  }
+
+  function terminalTextarea(): HTMLTextAreaElement {
+    const terminal = document.createElement("div");
+    terminal.className = "xterm";
+    const textarea = document.createElement("textarea");
+    terminal.append(textarea);
+    document.body.append(terminal);
+    return textarea;
+  }
+
+  function fire(
+    init: KeyboardEventInit & { key: string },
+    target: EventTarget = window,
+  ): KeyboardEvent {
+    const event = keydown(init);
+    act(() => {
+      target.dispatchEvent(event);
+    });
+    return event;
+  }
+
+  it("关掉之后所有监听器都不接，按键原样放行；打开立刻恢复", () => {
+    const onPalette = vi.fn();
+    const onSave = vi.fn();
+    render(
+      createElement(Harness, {
+        handlers: { "app.commandPalette": onPalette, "editor.save": onSave },
+        mac: true,
+      }),
+    );
+    const editor = document.createElement("div");
+    editor.setAttribute(SCOPE_ATTRIBUTE, "editor");
+    const code = document.createElement("div");
+    code.setAttribute("contenteditable", "true");
+    editor.append(code);
+    document.body.append(editor);
+
+    setShortcutsEnabled(false);
+    const palette = fire({ key: "k", metaKey: true });
+    const save = fire({ key: "s", metaKey: true }, code);
+    expect(onPalette).not.toHaveBeenCalled();
+    expect(onSave).not.toHaveBeenCalled();
+    expect(palette.defaultPrevented).toBe(false);
+    expect(save.defaultPrevented).toBe(false);
+    expect(commandKeysLabel("app.commandPalette", MAC)).toBe("");
+
+    setShortcutsEnabled(true);
+    fire({ key: "k", metaKey: true });
+    expect(onPalette).toHaveBeenCalledTimes(1);
+    expect(commandKeysLabel("app.commandPalette", MAC)).toBe("⌘K");
+  });
+
+  it("关掉之后终端里的 ⌘K 也不截", () => {
+    const onPalette = vi.fn();
+    render(
+      createElement(Harness, {
+        handlers: { "app.commandPalette": onPalette },
+        mac: true,
+      }),
+    );
+    setShortcutsEnabled(false);
+    const event = fire({ key: "k", metaKey: true }, terminalTextarea());
+    expect(onPalette).not.toHaveBeenCalled();
+    expect(event.defaultPrevented).toBe(false);
+  });
+
+  it("Windows / Linux 终端里 Ctrl+K / P / F / , 归 shell，Ctrl+Shift+P 开命令面板", () => {
+    const onPalette = vi.fn();
+    const onQuickOpen = vi.fn();
+    const onSearch = vi.fn();
+    const onSettings = vi.fn();
+    render(
+      createElement(Harness, {
+        handlers: {
+          "app.commandPalette": onPalette,
+          "app.quickOpen": onQuickOpen,
+          "terminal.search": onSearch,
+          "app.settings": onSettings,
+        },
+        mac: false,
+      }),
+    );
+    const textarea = terminalTextarea();
+    for (const key of ["k", "p", "f", ","]) {
+      const event = fire({ key, ctrlKey: true }, textarea);
+      expect(event.defaultPrevented, key).toBe(false);
+    }
+    // Alt+B 是 shell 的按词后退，也不截。
+    expect(fire({ key: "b", altKey: true }, textarea).defaultPrevented).toBe(
+      false,
+    );
+    expect(onPalette).not.toHaveBeenCalled();
+    expect(onQuickOpen).not.toHaveBeenCalled();
+    expect(onSearch).not.toHaveBeenCalled();
+    expect(onSettings).not.toHaveBeenCalled();
+
+    fire({ key: "P", ctrlKey: true, shiftKey: true }, textarea);
+    expect(onPalette).toHaveBeenCalledTimes(1);
+    // 终端外 Ctrl+K 照旧。
+    fire({ key: "k", ctrlKey: true });
+    expect(onPalette).toHaveBeenCalledTimes(2);
+  });
+});

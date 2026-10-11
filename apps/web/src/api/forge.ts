@@ -1,5 +1,10 @@
 import {
   type ConfigurableForge,
+  type ForgeAccount,
+  type ForgeRepository,
+  type ForgeRepositoryPage,
+  forgeAccountListSchema,
+  forgeRepositoryPageSchema,
   type ForgeConfig,
   type ForgeDetection,
   type ForgeIssue,
@@ -37,6 +42,9 @@ import { RuntimeConnectionError, RuntimeRequestError } from "./request";
 
 export type {
   ConfigurableForge,
+  ForgeAccount,
+  ForgeRepository,
+  ForgeRepositoryPage,
   ForgeConfig,
   ForgeDetection,
   ForgeIssue,
@@ -133,6 +141,32 @@ export async function resolveForge(remoteUrl: string): Promise<ForgeDetection> {
 /** 一个已知仓库（外部连接里记着的那个）→ 识别结果。 */
 export async function detectForge(repo: ForgeRepo): Promise<ForgeDetection> {
   return forgeDetectionSchema.parse(await rpc().detect(repo));
+}
+
+/**
+ * 能列仓库的账号（契约 §29.7）：配了凭据的 GitHub 与带令牌的主机级 Gitea /
+ * GitLab 配置。新建工作空间先用它列出可选的来源。
+ */
+export async function forgeAccounts(): Promise<ForgeAccount[]> {
+  return forgeAccountListSchema.parse(await rpc().accounts({})).accounts;
+}
+
+/**
+ * 一个账号能看到的仓库，一页（契约 §29.7）：每行带 `cloneUrl`（http(s)）与
+ * `sshUrl`（可能为 `""`），最近更新的在前。`cursor` 是上一页的 `nextCursor`。
+ */
+export async function forgeRepositories(
+  host: string,
+  cursor: string | null = null,
+  limit?: number,
+): Promise<ForgeRepositoryPage> {
+  return forgeRepositoryPageSchema.parse(
+    await rpc().repositories({
+      host,
+      ...(cursor ? { cursor } : {}),
+      ...(limit === undefined ? {} : { limit }),
+    }),
+  );
 }
 
 export async function forgeConfigs(): Promise<ForgeConfig[]> {

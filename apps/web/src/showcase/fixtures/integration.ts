@@ -58,7 +58,7 @@ export const BUILD_BOX: ExecutionHost = {
   health: STEADY,
 };
 
-export const GPU_NODE: ExecutionHost = {
+const GPU_NODE: ExecutionHost = {
   executionHostId: "gpu-01",
   name: "gpu-01",
   kind: "ssh",
