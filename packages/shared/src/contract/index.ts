@@ -27,6 +27,7 @@ import { sources } from "./sources.js";
 import { security } from "./security.js";
 import { system } from "./system.js";
 import { terminals } from "./terminals.js";
+import { traffic } from "./traffic.js";
 import { updates } from "./updates.js";
 import { workflows } from "./workflows.js";
 import { workspaces } from "./workspaces.js";
@@ -63,6 +64,7 @@ export const contract = {
   gateway,
   diagnostics,
   updates,
+  traffic,
 };
 
 export type Contract = typeof contract;
@@ -169,6 +171,35 @@ export type {
   UpdateCheckError,
   UpdateReleases,
 } from "./updates.js";
+export {
+  DEFAULT_TRAFFIC_RETENTION_DAYS,
+  TRAFFIC_CLEAR_PATH,
+  TRAFFIC_LIVE_PATH,
+  TRAFFIC_RETENTION_CHOICES,
+  TRAFFIC_SERIES_PATH,
+  TRAFFIC_SUMMARY_PATH,
+  trafficCategorySchema,
+  trafficLiveChannelSchema,
+  trafficLiveSchema,
+  trafficPeerKindSchema,
+  trafficPointSchema,
+  trafficRowSchema,
+  trafficSeriesInputSchema,
+  trafficSeriesSchema,
+  trafficSummaryInputSchema,
+  trafficSummarySchema,
+} from "./traffic.js";
+export type {
+  TrafficLive,
+  TrafficLiveChannel,
+  TrafficPeerKind,
+  TrafficPoint,
+  TrafficRow,
+  TrafficSeries,
+  TrafficSeriesInput,
+  TrafficSummary,
+  TrafficSummaryInput,
+} from "./traffic.js";
 export type { SystemHello } from "./system.js";
 export {
   clientSourceRouteSchema,

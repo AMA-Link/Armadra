@@ -1,7 +1,7 @@
 {
   "info": {
     "title": "Armadra core",
-    "version": "1.43",
+    "version": "1.44",
     "description": "契约 procedure 的入参与出参（docs/contracts/core-json-api.md §34）。线上是 `POST /api/rpc/<域>/<动词>`，体按 `{ json }` 编码，下列 schema 是 `json` 那一格；失败一律是 `CoreError`。由 tools/contract/generate.mjs 生成，不要手改。"
   },
   "openapi": "3.1.1",
@@ -74165,6 +74165,523 @@
           "legacy": {
             "method": "GET",
             "path": "/api/updates/releases"
+          }
+        }
+      }
+    },
+    "/api/rpc/traffic/summary": {
+      "post": {
+        "operationId": "traffic.summary",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "fromMs": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "toMs": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "utcOffsetMinutes": {
+                    "type": "integer",
+                    "minimum": -840,
+                    "maximum": 840
+                  },
+                  "groupBy": {
+                    "enum": ["peer", "category", "day"],
+                    "type": "string"
+                  },
+                  "peerId": {
+                    "type": "string",
+                    "maxLength": 256
+                  },
+                  "linkId": {
+                    "type": "string",
+                    "maxLength": 256
+                  }
+                },
+                "required": ["fromMs", "toMs", "groupBy"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "rows": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "key": {
+                            "type": "string"
+                          },
+                          "label": {
+                            "type": "string"
+                          },
+                          "peerKind": {
+                            "anyOf": [
+                              {
+                                "enum": [
+                                  "device",
+                                  "legacy",
+                                  "guest",
+                                  "anonymous",
+                                  "tunnel"
+                                ],
+                                "type": "string"
+                              },
+                              {
+                                "const": ""
+                              }
+                            ]
+                          },
+                          "principalId": {
+                            "type": "string"
+                          },
+                          "linkId": {
+                            "type": "string"
+                          },
+                          "streams": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "maximum": 9007199254740991
+                          },
+                          "bytesIn": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "maximum": 9007199254740991
+                          },
+                          "bytesOut": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "maximum": 9007199254740991
+                          },
+                          "wireBytesIn": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "maximum": 9007199254740991
+                          },
+                          "wireBytesOut": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "maximum": 9007199254740991
+                          }
+                        },
+                        "required": [
+                          "key",
+                          "label",
+                          "peerKind",
+                          "principalId",
+                          "linkId",
+                          "streams",
+                          "bytesIn",
+                          "bytesOut",
+                          "wireBytesIn",
+                          "wireBytesOut"
+                        ]
+                      }
+                    },
+                    "retentionDays": {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991,
+                      "exclusiveMinimum": 0
+                    }
+                  },
+                  "required": ["rows", "retentionDays"]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "400",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CoreError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "401",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CoreError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "403",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CoreError"
+                }
+              }
+            }
+          }
+        },
+        "x-armadra": {
+          "contract": "§76.1",
+          "scope": "settings:read",
+          "since": "1.44",
+          "legacy": {
+            "method": "GET",
+            "path": "/api/traffic/summary"
+          }
+        }
+      }
+    },
+    "/api/rpc/traffic/series": {
+      "post": {
+        "operationId": "traffic.series",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "fromMs": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "toMs": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "utcOffsetMinutes": {
+                    "type": "integer",
+                    "minimum": -840,
+                    "maximum": 840
+                  },
+                  "bucket": {
+                    "enum": ["hour", "day"],
+                    "type": "string"
+                  },
+                  "peerId": {
+                    "type": "string",
+                    "maxLength": 256
+                  },
+                  "category": {
+                    "enum": [
+                      "transport",
+                      "api",
+                      "terminal",
+                      "events",
+                      "canvas",
+                      "files",
+                      "agent",
+                      "other"
+                    ],
+                    "type": "string"
+                  }
+                },
+                "required": ["fromMs", "toMs", "bucket"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "points": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "bucketStartMs": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "maximum": 9007199254740991
+                          },
+                          "streams": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "maximum": 9007199254740991
+                          },
+                          "bytesIn": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "maximum": 9007199254740991
+                          },
+                          "bytesOut": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "maximum": 9007199254740991
+                          },
+                          "wireBytesIn": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "maximum": 9007199254740991
+                          },
+                          "wireBytesOut": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "maximum": 9007199254740991
+                          }
+                        },
+                        "required": [
+                          "bucketStartMs",
+                          "streams",
+                          "bytesIn",
+                          "bytesOut",
+                          "wireBytesIn",
+                          "wireBytesOut"
+                        ]
+                      }
+                    }
+                  },
+                  "required": ["points"]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "400",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CoreError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "401",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CoreError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "403",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CoreError"
+                }
+              }
+            }
+          }
+        },
+        "x-armadra": {
+          "contract": "§76.2",
+          "scope": "settings:read",
+          "since": "1.44",
+          "legacy": {
+            "method": "GET",
+            "path": "/api/traffic/series"
+          }
+        }
+      }
+    },
+    "/api/rpc/traffic/live": {
+      "post": {
+        "operationId": "traffic.live",
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "channels": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "peerId": {
+                            "type": "string"
+                          },
+                          "peerKind": {
+                            "enum": [
+                              "device",
+                              "legacy",
+                              "guest",
+                              "anonymous",
+                              "tunnel"
+                            ],
+                            "type": "string"
+                          },
+                          "label": {
+                            "type": "string"
+                          },
+                          "since": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "maximum": 9007199254740991
+                          },
+                          "streams": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "maximum": 9007199254740991
+                          },
+                          "bytesIn": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "maximum": 9007199254740991
+                          },
+                          "bytesOut": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "maximum": 9007199254740991
+                          },
+                          "rateIn": {
+                            "type": "number",
+                            "minimum": 0
+                          },
+                          "rateOut": {
+                            "type": "number",
+                            "minimum": 0
+                          }
+                        },
+                        "required": [
+                          "peerId",
+                          "peerKind",
+                          "label",
+                          "since",
+                          "streams",
+                          "bytesIn",
+                          "bytesOut",
+                          "rateIn",
+                          "rateOut"
+                        ]
+                      }
+                    }
+                  },
+                  "required": ["channels"]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "401",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CoreError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "403",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CoreError"
+                }
+              }
+            }
+          }
+        },
+        "x-armadra": {
+          "contract": "§76.3",
+          "scope": "settings:read",
+          "since": "1.44",
+          "legacy": {
+            "method": "GET",
+            "path": "/api/traffic/live"
+          }
+        }
+      }
+    },
+    "/api/rpc/traffic/clear": {
+      "post": {
+        "operationId": "traffic.clear",
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "cleared": {
+                      "const": true
+                    }
+                  },
+                  "required": ["cleared"]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "401",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CoreError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "403",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CoreError"
+                }
+              }
+            }
+          }
+        },
+        "x-armadra": {
+          "contract": "§76.4",
+          "scope": "settings:write",
+          "since": "1.44",
+          "legacy": {
+            "method": "POST",
+            "path": "/api/traffic/clear"
           }
         }
       }

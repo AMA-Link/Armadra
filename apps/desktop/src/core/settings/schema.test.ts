@@ -165,6 +165,24 @@ describe("normalize", () => {
     ).toBe(0);
   });
 
+  it("traffic.retentionDays（契约 §76）：缺省 180，取值表外的回到 180", () => {
+    expect(at(normalize({}), "traffic.retentionDays")).toBe(180);
+    expect(
+      at(
+        normalize({ traffic: { retentionDays: 30 } }),
+        "traffic.retentionDays",
+      ),
+    ).toBe(30);
+    for (const value of [0, 45, "90", 1000]) {
+      expect(
+        at(
+          normalize({ traffic: { retentionDays: value } }),
+          "traffic.retentionDays",
+        ),
+      ).toBe(180);
+    }
+  });
+
   it("clamps the resource sampling interval and snaps the power policy", () => {
     expect(at(normalize({}), "resources.intervalMs")).toBe(2_000);
     expect(

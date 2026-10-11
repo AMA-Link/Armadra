@@ -4213,3 +4213,92 @@ App 对每个候选算 `ISK_i` 并核对 `confirm_i(server)`；一个都对不�
 带 `workspaceId` 时，`resolve`、`detect` 与一切按仓库的读写（issue、PR、合并…）按这个顺序找配置：工作空间的仓库行 → 工作空间的主机行 → 整机的仓库行 → 整机的主机行。GitLab 子组的认法（§29.6）同样先看工作空间的行。GitHub 主机不受影响，仍只认 §5 的凭据。
 
 `forge.accounts { workspaceId }` 把工作空间带令牌的主机行算作账号，盖过整机的同一主机；`forge.repositories` 同理。外部连接（§5.2）里 Gitea / GitLab 仓库的核对用连接所在工作空间的配置。
+
+## 76. 流量统计 `/api/traffic/*`
+
+> 协议 1.44（minor 44）。core 统计经远程服务（中继）收发了多少字节：按对端（设备 / 访客链接）× 类别 × UTC 小时桶。只有 owner（全局 `settings:*`）。实现在 `core/traffic/`（`meter.ts` 内存累加，`store.ts` 表 `traffic_buckets`（迁移 0049），`service.ts` 落库、保留与查询，`index.ts` procedure）；类别表在 `packages/shared/src/traffic-categories.ts`，客户端自己的计量共用它。
+
+**口径**
+
+- 测量点在隧道流的边界：`relay/streams.ts` 的 `TunnelDuplex` 每收到一块 `DATA` 记 `bytesIn`（对端 → 本机），每发出一块记 `bytesOut`（本机 → 对端）。字节是流里的全部明文：HTTP 请求行、头与体，WebSocket 帧头与载荷。端到端通道接入后，内层流沿用同一个计数器。
+- `transport` 类别是线上字节：隧道 WebSocket 每条消息的载荷长度（二进制帧含 5 字节帧头、`OPEN`、`WINDOW`、`PING/PONG`，握手的文本消息也算），不含 WebSocket / TLS / TCP 的帧头。今天一条隧道承载所有客户端，所以这一行的对端是隧道本身（`peerKind: "tunnel"`、`peerId: ""`）。
+- 对端由隧道准入（`relay/admission.ts`）认出：放行时把请求主体交给这条流的计数器。`legacy` = 经断言登录的会话设备（`peerId` 是本机会话的设备 id）；`guest` = 主体的外部身份是 `guest:<linkId>:…`（经分享链接进来的访客，`linkId` 随之记下）；匿名面（hello、登录、健康探针）与被拒的请求记 `anonymous`。`device`（已信任的设备钥）留给端到端通道。认出之前读写的字节先挂在流上，认出或流结束时并进对应行，不会落进别人的行。
+- 类别按 `OPEN` 的路径前缀判，顺序匹配：`/api/terminals/**`（含 `…/ws`）→ `terminal`；`/api/ws`（控制面）与 `/api/workspaces/{id}/events` → `events`；`/api/workspaces/{id}/boards/{id}/**`（文档、同步 WS、实时、在场、评论）→ `canvas`；`/api/workspaces/{id}/{files,file-download,imports,assets,exports,agent-uploads}/**`、`/api/media/*`、`/api/data/backup` → `files`；`/api/acp/**`、`/api/agents/**`、`/api/agent-status/**` → `agent`；`/api/rpc/<域>/*` 按域（`terminals` / `boards` / `files` / `acp` / `agents`）归类，其余 `api`；其余 `/api/**` → `api`；都不中 → `other`。路径只用于匹配。
+- `streams` 是这一桶里开始的内层流条数（transport 行恒为 0）。同一条 HTTP/1.1 连接上的后续请求换了主体时，之后的字节记到新对端，条数不重计。
+- **隐私**：不记路径、查询串、头、IP、Origin 与内容；`peerId`、`principalId`、`linkId` 都是已有标识。读统计不写审计。
+
+**落库与保留**
+
+- 热路径只做加法；每 30 秒、隧道断开时、core 退出前各 flush 一次：一个事务里 `INSERT … ON CONFLICT DO UPDATE SET 计数 = 计数 + excluded.计数`，没有新行不碰库。写失败时行留在内存，下一轮再写。
+- 设置 `traffic.retentionDays`：`30 | 90 | 180 | 365 | 730`，缺省 180，不在表里的回到 180。启动时与每 24 小时删一次 `bucket_start_ms < now − retentionDays × 1 天` 的行。
+- 查询把库里的桶与内存里还没落库的行合在一起答。
+
+### 76.1 `traffic.summary`
+
+- **`GET /api/traffic/summary?fromMs&toMs&groupBy=peer|category|day[&peerId][&linkId][&utcOffsetMinutes]`** → `TrafficSummary`，`settings:read`。区间 `[fromMs, toMs)`，`fromMs` 向下取整到整点。`groupBy=day` 按本地日（`utcOffsetMinutes`，东八区 480，缺省 0）分组，`key` 是那天开始的 UTC 毫秒。
+
+```json
+{
+  "rows": [
+    {
+      "key": "<peerId；anonymous / tunnel 时是种类名>",
+      "label": "Pixel · Alice",
+      "peerKind": "legacy",
+      "principalId": "<32 hex>",
+      "linkId": "",
+      "streams": 12,
+      "bytesIn": 20480,
+      "bytesOut": 1048576,
+      "wireBytesIn": 0,
+      "wireBytesOut": 0
+    }
+  ],
+  "retentionDays": 180
+}
+```
+
+- `bytesIn` / `bytesOut` / `streams` 来自内层流的行，`wireBytesIn` / `wireBytesOut` 来自 `transport` 行；按 `peer` 分组时线上字节在 `tunnel` 那一行。`label` 是设备名（与主体名不同时 `设备 · 主体`），没有时空串。`peerKind` / `principalId` / `linkId` 只在 `groupBy=peer` 时有值，其余为空串。按 `peer` / `category` 时按总字节降序，按 `day` 时按日期升序。
+
+<!-- rpc:begin contract=§76.1 -->
+
+| procedure         | kind  | input                                                                                                                                      | output                                                                                                                                                                                                                                                                                      | errors                                        | scope           | 自   | 原路径                     |
+| ----------------- | ----- | ------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------- | --------------- | ---- | -------------------------- |
+| `traffic.summary` | query | `{ fromMs: integer, toMs: integer, utcOffsetMinutes?: integer, groupBy: "peer" \| "category" \| "day", peerId?: string, linkId?: string }` | `{ rows: ({ key: string, label: string, peerKind: "device" \| "legacy" \| "guest" \| "anonymous" \| "tunnel" \| "", principalId: string, linkId: string, streams: integer, bytesIn: integer, bytesOut: integer, wireBytesIn: integer, wireBytesOut: integer })[], retentionDays: integer }` | `bad_request`、`unauthenticated`、`forbidden` | `settings:read` | 1.44 | `GET /api/traffic/summary` |
+
+<!-- rpc:end -->
+
+### 76.2 `traffic.series`
+
+- **`GET /api/traffic/series?fromMs&toMs&bucket=hour|day[&peerId][&category][&utcOffsetMinutes]`** → `{ points: [{ bucketStartMs, streams, bytesIn, bytesOut, wireBytesIn, wireBytesOut }] }`，时间升序，没有流量的桶不出现。
+
+<!-- rpc:begin contract=§76.2 -->
+
+| procedure        | kind  | input                                                                                                                                                                                                              | output                                                                                                                                         | errors                                        | scope           | 自   | 原路径                    |
+| ---------------- | ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------- | --------------- | ---- | ------------------------- |
+| `traffic.series` | query | `{ fromMs: integer, toMs: integer, utcOffsetMinutes?: integer, bucket: "hour" \| "day", peerId?: string, category?: "transport" \| "api" \| "terminal" \| "events" \| "canvas" \| "files" \| "agent" \| "other" }` | `{ points: { bucketStartMs: integer, streams: integer, bytesIn: integer, bytesOut: integer, wireBytesIn: integer, wireBytesOut: integer }[] }` | `bad_request`、`unauthenticated`、`forbidden` | `settings:read` | 1.44 | `GET /api/traffic/series` |
+
+<!-- rpc:end -->
+
+### 76.3 `traffic.live`
+
+- **`GET /api/traffic/live`** → `{ channels: [{ peerId, peerKind, label, since, streams, bytesIn, bytesOut, rateIn, rateOut }] }`：此刻还开着流的对端（只在内存，不读库；匿名流不列）。`since` 是这个对端最早一条开着的流开始的时刻；`bytesIn` / `bytesOut` 是这段时间内的累计；`rateIn` / `rateOut` 是最近 10 秒内的平均字节 / 秒。
+
+<!-- rpc:begin contract=§76.3 -->
+
+| procedure      | kind  | input     | output                                                                                                                                                                                                                              | errors                         | scope           | 自   | 原路径                  |
+| -------------- | ----- | --------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------ | --------------- | ---- | ----------------------- |
+| `traffic.live` | query | 可省 `{}` | `{ channels: ({ peerId: string, peerKind: "device" \| "legacy" \| "guest" \| "anonymous" \| "tunnel", label: string, since: integer, streams: integer, bytesIn: integer, bytesOut: integer, rateIn: number, rateOut: number })[] }` | `unauthenticated`、`forbidden` | `settings:read` | 1.44 | `GET /api/traffic/live` |
+
+<!-- rpc:end -->
+
+### 76.4 `traffic.clear`
+
+- **`POST /api/traffic/clear`** → `{ "cleared": true }`，`settings:write`。库与内存一起清空；开着的流之后的字节照常计。审计 `traffic.clear`。
+
+<!-- rpc:begin contract=§76.4 -->
+
+| procedure       | kind     | input     | output              | errors                         | scope            | 自   | 原路径                    |
+| --------------- | -------- | --------- | ------------------- | ------------------------------ | ---------------- | ---- | ------------------------- |
+| `traffic.clear` | mutation | 可省 `{}` | `{ cleared: true }` | `unauthenticated`、`forbidden` | `settings:write` | 1.44 | `POST /api/traffic/clear` |
+
+<!-- rpc:end -->

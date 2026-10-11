@@ -28,6 +28,7 @@ import {
   networkTransport,
   pinnedAnchor,
 } from "../sources/http-client";
+import { type TrafficService, trafficDomain } from "../traffic";
 import { createTunnelGate } from "./admission";
 import { TunnelClient, type TunnelState } from "./client";
 import { NodeDirectory } from "./nodes";
@@ -36,6 +37,7 @@ import {
   currentRelaySettings,
   onRelaySettings,
 } from "./settings";
+import type { TunnelTrafficMeter } from "./streams";
 
 export { TunnelDuplex } from "./streams";
 export { sessionOriginOf } from "./admission";
@@ -60,6 +62,18 @@ export interface RelayDeps {
   readonly settings?: () => RelaySettings;
   readonly backoff?: (attempt: number) => number;
   readonly allowInsecure?: () => boolean;
+  /** 流量统计（契约 §76）；缺省取装好的统计域，没有就不计。 */
+  readonly traffic?: TrafficService | null;
+}
+
+/** 统计域交给隧道的计量：流计数器、线上字节、隧道断开时落库。 */
+function tunnelMeter(traffic: TrafficService): TunnelTrafficMeter {
+  return {
+    stream: (scope) => traffic.meter.stream(scope),
+    wire: (scope, bytesIn, bytesOut) =>
+      traffic.meter.wire(scope, bytesIn, bytesOut),
+    flush: () => traffic.flush(),
+  };
 }
 
 let assembled: RelayService | undefined;
@@ -95,6 +109,9 @@ export function installRelay(
   const allowInsecure =
     deps.allowInsecure ??
     (() => process.env.ARMADRA_RELAY_ALLOW_INSECURE === "1");
+  const traffic =
+    deps.traffic === undefined ? trafficDomain() : (deps.traffic ?? undefined);
+  const meter = traffic === undefined ? undefined : tunnelMeter(traffic);
   const tickets = new WsTickets();
   const listener = context.server.createListener({
     admitted: true,
@@ -153,6 +170,7 @@ export function installRelay(
         });
       },
       log: context.log,
+      ...(meter === undefined ? {} : { meter }),
       ...(deps.backoff === undefined ? {} : { backoff: deps.backoff }),
     });
     clients.set(issuer, client);

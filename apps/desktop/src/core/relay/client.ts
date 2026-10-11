@@ -43,7 +43,12 @@ import {
 import { type RawData, WebSocket } from "ws";
 
 import { RelayError } from "./nodes";
-import { CreditPool, type StreamHost, TunnelDuplex } from "./streams";
+import {
+  CreditPool,
+  type StreamHost,
+  TunnelDuplex,
+  type TunnelTrafficMeter,
+} from "./streams";
 
 export type TunnelState = TunnelStatus["state"];
 
@@ -91,6 +96,8 @@ export interface TunnelClientOptions {
   readonly onStatus?: (status: TunnelStatus, previous: TunnelState) => void;
   /** 中继说这台机器的登记已被撤销。 */
   readonly onRevoked?: () => void;
+  /** 流量计量（契约 §76）；不给就不计。 */
+  readonly meter?: TunnelTrafficMeter;
   readonly log?: {
     info(message: string, fields?: Record<string, unknown>): void;
     warn(message: string, fields?: Record<string, unknown>): void;
@@ -238,6 +245,9 @@ export class TunnelClient {
         listener: this.options.listener,
         handshakeTimeoutMs:
           this.options.handshakeTimeoutMs ?? LIMITS.handshakeTimeoutMs,
+        ...(this.options.meter === undefined
+          ? {}
+          : { meter: this.options.meter }),
       },
       {
         authenticating: () => {
@@ -387,6 +397,7 @@ interface ConnectionDeps {
   readonly signBytes: (data: Uint8Array) => Promise<Uint8Array>;
   readonly listener: { emit(event: "connection", socket: Duplex): boolean };
   readonly handshakeTimeoutMs: number;
+  readonly meter?: TunnelTrafficMeter;
 }
 
 interface ConnectionEvents {
@@ -489,8 +500,10 @@ class TunnelConnection {
     });
     ws.on("message", (data: RawData, isBinary: boolean) => {
       this.lastHeardAt = performance.now();
-      if (isBinary) this.receive(bytesOf(data));
-      else void this.onText(bytesOf(data).toString("utf8"));
+      const bytes = bytesOf(data);
+      this.wire(bytes.length, 0);
+      if (isBinary) this.receive(bytes);
+      else void this.onText(bytes.toString("utf8"));
     });
     ws.on("close", (code: number) => this.finish(code));
     ws.on("error", (error: Error & { code?: string }) => {
@@ -594,7 +607,18 @@ class TunnelConnection {
 
   private sendText(message: unknown): void {
     if (this.ws?.readyState !== WebSocket.OPEN) return;
-    this.ws.send(JSON.stringify(message));
+    const text = JSON.stringify(message);
+    this.wire(0, Buffer.byteLength(text, "utf8"));
+    this.ws.send(text);
+  }
+
+  /** 隧道消息载荷的字节（契约 §76 的 `transport`）。 */
+  private wire(bytesIn: number, bytesOut: number): void {
+    this.deps.meter?.wire(
+      { route: "relay", issuer: this.deps.issuer },
+      bytesIn,
+      bytesOut,
+    );
   }
 
   /* ------------------------------- 帧 ------------------------------- */
@@ -685,6 +709,12 @@ class TunnelConnection {
       this.host,
       { streamWindow: this.streamWindow, maxDataChunk: LIMITS.maxDataChunk },
       { issuer: this.deps.issuer, open },
+      this.deps.meter?.stream({
+        route: "relay",
+        issuer: this.deps.issuer,
+        kind: open.kind,
+        path: open.path,
+      }),
     );
     // 错误由 HTTP 层处理；这里只防止未处理的 error 事件。
     stream.on("error", () => undefined);
@@ -696,7 +726,9 @@ class TunnelConnection {
   private send(frame: Frame): void {
     if (this.ws?.readyState !== WebSocket.OPEN) return;
     if (this.phase === "closed" || this.phase === "handshake") return;
-    this.ws.send(encodeFrame(frame), { binary: true });
+    const encoded = encodeFrame(frame);
+    this.wire(0, encoded.length);
+    this.ws.send(encoded, { binary: true });
   }
 
   private consumed(bytes: number): void {
@@ -779,6 +811,7 @@ class TunnelConnection {
       stream.receiveRst(RST.sourceGone);
     }
     this.streams.clear();
+    this.deps.meter?.flush?.();
     this.events.closed({ code, error: this.error, ready: this.everReady });
   }
 }
