@@ -14,6 +14,9 @@ vi.mock("../../../app/use-access", () => ({
 vi.mock("../remote-access", () => ({
   useRemoteAccess: () => ({ remote: access.remote }),
 }));
+vi.mock("./remote-access/keys", () => ({
+  useLocalName: () => "家里的 Mac mini",
+}));
 vi.mock("../../../sources/context", () => ({
   useCurrentSource: () => ({ descriptor: { label: "家里的 Mac mini" } }),
 }));
@@ -67,10 +70,12 @@ describe("设置 → 默认（§2.2 映射）", () => {
     ).toBeTruthy();
     const badges = document.querySelectorAll("[data-settings-scope]");
     expect(badges).toHaveLength(1);
-    expect(badges[0]!.textContent).toBe(zh("settings.scope.host"));
+    expect(badges[0]!.textContent).toBe(
+      zh("settings.scope.localNamed", { name: "家里的 Mac mini" }),
+    );
   });
 
-  it("远程源上，那一行的徽标带着主机名", () => {
+  it("页面的本机在别处（手机、经 Gateway 的网页）：徽标写主机与它的名字", () => {
     access.remote = true;
     render(<DefaultsPage />);
     expect(document.querySelector("[data-settings-scope]")?.textContent).toBe(
