@@ -1,8 +1,9 @@
 import { useQuery } from "@tanstack/react-query";
 import { isLocalSettingPath } from "@armadra/shared";
 
-import { runtimeApi } from "../../api/client";
+import { localRuntimeApi } from "../../api/client";
 import { useT } from "../../app/preferences-store";
+import { lk } from "./local-key";
 import { Badge } from "@/ui/badge";
 
 /**
@@ -17,8 +18,8 @@ import { Badge } from "@/ui/badge";
  */
 export function useLocalSettings() {
   const local = useQuery({
-    queryKey: ["settings", "local"],
-    queryFn: runtimeApi.localSettings,
+    queryKey: lk("settings", "local"),
+    queryFn: localRuntimeApi.localSettings,
     // 一次启动内不会变：拆分表是编译进 Runtime 的。
     staleTime: Infinity,
     retry: false,

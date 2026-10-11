@@ -1,4 +1,5 @@
 import {
+  localRuntimeApi,
   runtimeApi,
   type RuntimeSettings,
   type RuntimeSettingsPatch,
@@ -23,5 +24,15 @@ export const settingsGateway = {
   /** `PATCH /api/settings`：回的是合并之后的整份文档。 */
   patch(patch: RuntimeSettingsPatch): Promise<RuntimeSettings> {
     return runtimeApi.updateSettings(patch);
+  },
+
+  /** 本机 core 的那份：设置页读写的永远是这台电脑。 */
+  local: {
+    load(): Promise<RuntimeSettings> {
+      return localRuntimeApi.settings();
+    },
+    patch(patch: RuntimeSettingsPatch): Promise<RuntimeSettings> {
+      return localRuntimeApi.updateSettings(patch);
+    },
   },
 };
