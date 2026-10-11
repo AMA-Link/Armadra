@@ -2794,7 +2794,7 @@ core 校验远程服务地址与指纹的写法时用具名码（状态均 400�
 - **取**：`GET` / `HEAD /api/media/<票>`。几道准入门对这条路径都不看来源与会话（浏览器取媒体不带 `Origin`，原生 App 里是跨站），只认票；票不认识或过期 `404 not_found`，签票会话失效 `401 unauthenticated`，权限被收回 `403 forbidden`，其它方法 `405`。错误体照旧 `{ code, message }`，路径（含票）不进日志。
 - **响应**：`Accept-Ranges: bytes`；单个 `Range` 区间回 `206` 与 `Content-Range`，起点越过文件尾回 `416`（`Content-Range: bytes */<大小>`），多个区间按整份 `200`。`inline` 只给图片（SVG 除外）与引擎能放的音视频：真实 `Content-Type` 加 `Content-Disposition: inline`；其余（包括 PDF）一律 `application/octet-stream` 附件。都带 `X-Content-Type-Options: nosniff`、`Content-Security-Policy: default-src 'none'; sandbox`、`Referrer-Policy: no-referrer`、`Cache-Control: no-store`。本机工作空间流式读盘，没有整份下载的 16 MiB 上限；远端工作空间整份取回（16 MiB 上限）再切。
 - **`file-download` 的 `Range`**：§37.2 那条路由也认单个 `Range` 区间，答 `206` / `416` 与 `Accept-Ranges: bytes`；本机工作空间只读那一段。没有 `Range` 时与以前一样整份 `200`。
-- **经中继**：中继边缘对 `/s/<源>/` 只认 `Armadra-Relay-Token` 头，`<video src>` 带不了；页面另向中继换一张中继侧的媒体票（armadra-cloud 的 `POST /v1/media-tickets`，绑源与这一条 `/api/media/<票>` 路径），浏览器取 `<中继>/m/<中继票>`，中继按票转发到源上的这条路径。
+- **经中继**：0.6.0 起经中转的字节只走端到端通道（§78），浏览器直接取的地址进不了通道，所以经中转的源不换媒体票，页面经源的 `fetch`（通道）取回；中继侧的媒体票（armadra-cloud `POST /v1/media-tickets`）随明文转发一起删除。之前：页面向中继换一张中继侧的票，浏览器取 `<中继>/m/<中继票>`。
 
 <!-- rpc:begin contract=§37.4 -->
 
@@ -4221,8 +4221,8 @@ App 对每个候选算 `ISK_i` 并核对 `confirm_i(server)`；一个都对不�
 **口径**
 
 - 测量点在隧道流的边界：`relay/streams.ts` 的 `TunnelDuplex` 每收到一块 `DATA` 记 `bytesIn`（对端 → 本机），每发出一块记 `bytesOut`（本机 → 对端）。字节是流里的全部明文：HTTP 请求行、头与体，WebSocket 帧头与载荷。端到端通道接入后，内层流沿用同一个计数器。
-- `transport` 类别是线上字节：隧道 WebSocket 每条消息的载荷长度（二进制帧含 5 字节帧头、`OPEN`、`WINDOW`、`PING/PONG`，握手的文本消息也算），不含 WebSocket / TLS / TCP 的帧头。今天一条隧道承载所有客户端，所以这一行的对端是隧道本身（`peerKind: "tunnel"`、`peerId: ""`）。
-- 对端由隧道准入（`relay/admission.ts`）认出：放行时把请求主体交给这条流的计数器。`legacy` = 经断言登录的会话设备（`peerId` 是本机会话的设备 id）；`guest` = 主体的外部身份是 `guest:<linkId>:…`（经分享链接进来的访客，`linkId` 随之记下）；匿名面（hello、登录、健康探针）与被拒的请求记 `anonymous`。`device`（已信任的设备钥）留给端到端通道。认出之前读写的字节先挂在流上，认出或流结束时并进对应行，不会落进别人的行。
+- `transport` 类别是线上字节：隧道 WebSocket 每条消息的载荷长度（二进制帧含 5 字节帧头、`OPEN`、`WINDOW`、`PING/PONG`，握手的文本消息也算），不含 WebSocket / TLS / TCP 的帧头。一条隧道承载所有客户端，所以这一行的对端是隧道本身（`peerKind: "tunnel"`、`peerId: ""`）。自协议 1.45 起端到端通道（§78）外层流 `DATA` 里的密文不记在隧道这一行，改记到通道对端设备那一行（`peerKind: "device"`、`peerId` = 设备钥，`principalId` 空）：每个记录单元 4 + 体长，握手也算，与中继统计的 `e2e` 字节逐字节相等；隧道这一行只剩帧头与控制帧，两行相加仍是整条隧道。握手没完成就断的通道记回隧道这一行。
+- 对端由隧道准入（`relay/admission.ts`）认出：放行时把请求主体交给这条流的计数器。`legacy` = 经断言登录的会话设备（`peerId` 是本机会话的设备 id）；`guest` = 主体的外部身份是 `guest:<linkId>:…`（经分享链接进来的访客，`linkId` 随之记下）；匿名面（hello、登录、健康探针）与被拒的请求记 `anonymous`。经端到端通道来的内层流记 `device`（`peerId` 是通道的设备钥，`principalId` 是登录的主体；访客仍记 `guest`），按内层 `OPEN` 的路径分类。认出之前读写的字节先挂在流上，认出或流结束时并进对应行，不会落进别人的行。
 - 类别按 `OPEN` 的路径前缀判，顺序匹配：`/api/terminals/**`（含 `…/ws`）→ `terminal`；`/api/ws`（控制面）与 `/api/workspaces/{id}/events` → `events`；`/api/workspaces/{id}/boards/{id}/**`（文档、同步 WS、实时、在场、评论）→ `canvas`；`/api/workspaces/{id}/{files,file-download,imports,assets,exports,agent-uploads}/**`、`/api/media/*`、`/api/data/backup` → `files`；`/api/acp/**`、`/api/agents/**`、`/api/agent-status/**` → `agent`；`/api/rpc/<域>/*` 按域（`terminals` / `boards` / `files` / `acp` / `agents`）归类，其余 `api`；其余 `/api/**` → `api`；都不中 → `other`。路径只用于匹配。
 - `streams` 是这一桶里开始的内层流条数（transport 行恒为 0）。同一条 HTTP/1.1 连接上的后续请求换了主体时，之后的字节记到新对端，条数不重计。
 - **隐私**：不记路径、查询串、头、IP、Origin 与内容；`peerId`、`principalId`、`linkId` 都是已有标识。读统计不写审计。
@@ -4368,7 +4368,7 @@ App 对每个候选算 `ISK_i` 并核对 `confirm_i(server)`；一个都对不�
 
 core 的身份公钥就是源钥（§31.2，Ed25519）。指纹 `base32(SHA-256(pub))`（RFC 4648 小写无填充，52 字符），界面分组显示前 16 位。
 
-设置 `security.requireE2e`（缺省 `false`）：开着时明文中继路径上的请求一律 `403 e2e_required`，通道不受影响。存在本机那一半。
+设置 `security.requireE2e`（缺省 `true`，0.6.0 起；之前缺省 `false`）：开着时明文中继路径上的请求一律 `403 e2e_required`，通道不受影响。存在本机那一半。中继从 cloud 0.5.0 起不再转发明文的应用请求与媒体票，客户端也不再退回明文：源不报 `e2e` 能力（旧 core，中继以关闭码 4404 / 4409 拒绝开通道）时答 `e2e_unsupported`（「这台电脑需要升级」）；页面拿不到设备钥（没有 WebCrypto Ed25519 的旧浏览器）答 `e2e_device_unavailable`，只在页面一侧。
 
 ### 78.1 `GET /api/e2e/identity`
 
@@ -4396,7 +4396,7 @@ core 的身份公钥就是源钥（§31.2，Ed25519）。指纹 `base32(SHA-256(
 
 ### 78.3 `POST /api/e2e/sign`
 
-只在回环（`loopbackOnlyPath`，经 Gateway 与隧道 `403`）、owner：本机作为客户端连别的电脑时，设备钥由本机 core 保管（SecretStore `armadra-device-key`，Ed25519，私钥不出 core）。`{ transcript }`（base64url，32 字节转录哈希）→ `{ publicKey, signature }`，签名输入固定为 `"armadra-e2e/1 device" ‖ transcript ‖ publicKey`（协议包 m3 的签名输入），页面给不了别的字节。
+回环与 Gateway、owner（`settings:write`）；经隧道（明文与通道）一律 `403`，经中转来的人拿不到这台电脑的设备钥。0.6.0 之前只在回环。本机作为客户端连别的电脑时，设备钥由本机 core 保管（SecretStore `armadra-device-key`，Ed25519，私钥不出 core）。`{ transcript }`（base64url，32 字节转录哈希）→ `{ publicKey, signature }`，签名输入固定为 `"armadra-e2e/1 device" ‖ transcript ‖ publicKey`（协议包 m3 的签名输入），页面给不了别的字节。桌面窗口与经 Gateway 打开的服务器壳页面都用它开自己的通道（会话是 core 经同一把钥签的，`sources.session` 答的会话因此能在页面的通道里用）。
 
 <!-- rpc:begin contract=§78.3 -->
 
