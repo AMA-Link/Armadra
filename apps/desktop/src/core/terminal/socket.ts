@@ -169,6 +169,11 @@ export interface SocketOptions {
   readonly writer: string;
   readonly cols?: number;
   readonly rows?: number;
+  /**
+   * 只读附着（契约 §60）：路由门只给了读权限（查看者、会话查看者）。画面照常
+   * 送，`input` 与 `terminate` 帧悄悄丢掉；`resize` 只改这一端自己的视图，照收。
+   */
+  readonly readOnly?: boolean;
   readonly onError?: (error: unknown) => void;
 }
 
@@ -356,6 +361,7 @@ export async function serveTerminalSocket(
           Buffer.isBuffer(data) ? data.toString("utf8") : String(data),
         );
         if (frame === undefined) return;
+        if (options.readOnly === true && frame.type !== "resize") return;
         try {
           if (frame.type === "input") {
             // 键盘上来的字节就是「人在驱动」（设计 `agent-delivery.md`
