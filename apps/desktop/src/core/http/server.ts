@@ -4,6 +4,7 @@ import {
   type ServerResponse,
   createServer,
 } from "node:http";
+import { createReadStream } from "node:fs";
 import type { Duplex } from "node:stream";
 import { WebSocketServer, type WebSocket } from "ws";
 import type { EventBus } from "../bus";
@@ -26,7 +27,12 @@ import {
 import type { AuthorizationSubject } from "../identity/authorize";
 import { MAX_FRAME_BYTES } from "../identity/protocol";
 import { type HookHealth, NO_HOOK_SERVICE, healthDocument } from "./health";
-import { type CoreRequest, type HandlerResult, Router } from "./router";
+import {
+  type CoreRequest,
+  type HandlerResult,
+  type LocalFileBody,
+  Router,
+} from "./router";
 import { CONTROL_PROTOCOL, goingAway } from "./ws-control";
 import { applyHttpTimeouts } from "./timeouts";
 
@@ -357,7 +363,8 @@ export class CoreServer {
             verdict.filter !== undefined &&
             answer.status >= 200 &&
             answer.status < 300 &&
-            !("raw" in answer && answer.raw !== undefined)
+            !("raw" in answer && answer.raw !== undefined) &&
+            !("file" in answer && answer.file !== undefined)
           ) {
             answer = { ...answer, body: verdict.filter(answer.body) };
           }
@@ -387,6 +394,7 @@ export class CoreServer {
         ...("headers" in answer ? answer.headers : undefined),
       },
       "raw" in answer ? answer.raw : undefined,
+      "file" in answer ? answer.file : undefined,
     );
   }
 
@@ -396,7 +404,12 @@ export class CoreServer {
     body: unknown,
     headers: Record<string, string> = {},
     raw?: Buffer,
+    file?: LocalFileBody,
   ): void {
+    if (file !== undefined && status !== 204 && status !== 304) {
+      sendFile(response, status, headers, file);
+      return;
+    }
     // 204 carries no body, and no `Content-Type` for a body that is not
     // there. `null\n` under `application/json` is what a client sees as a
     // document, and it is not the answer the Rust Runtime gives to a DELETE.
@@ -940,4 +953,43 @@ export function readBody(
         });
     });
   });
+}
+
+/**
+ * 把一份本机文件写进响应（`HandlerResult.file`）：头里的长度取打开时的大小，
+ * 正文边读边写。读盘失败（文件在途中被删、权限变了）时头已经发出去，只能
+ * 断开连接，客户端看到的是一次中断的下载而不是一份截断却「成功」的文件；
+ * 文件在途中变短同样断开。客户端先走了就停读。
+ */
+export function sendFile(
+  response: ServerResponse,
+  status: number,
+  headers: Record<string, string>,
+  file: LocalFileBody,
+): void {
+  response.writeHead(status, {
+    "content-type": "application/octet-stream",
+    ...headers,
+    "content-length": String(file.size),
+  });
+  if (file.size === 0 || response.req?.method?.toUpperCase() === "HEAD") {
+    response.end();
+    return;
+  }
+  const stream = createReadStream(file.absolute, {
+    start: 0,
+    end: file.size - 1,
+  });
+  // 文件在途中变短：读到的比头里说的少，断开而不是正常结束。
+  let sent = 0;
+  stream.on("data", (chunk: Buffer | string) => {
+    sent += chunk.length;
+  });
+  stream.on("end", () => {
+    if (sent < file.size) response.destroy();
+    else response.end();
+  });
+  stream.on("error", () => response.destroy());
+  response.on("close", () => stream.destroy());
+  stream.pipe(response, { end: false });
 }
