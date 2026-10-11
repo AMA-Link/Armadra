@@ -1,11 +1,13 @@
 /**
  * 个人中转的分享链接（cloud 契约 §10）：
  *
- *  - 网页链接 `<issuer>/j/<linkId>#<秘密>.<core 邀请令牌>`（二维码里是它）；
+ *  - 网页链接 `<issuer>/j/<linkId>#<秘密>.<core 邀请令牌>[.<身份指纹前 16 位>]`（二维码里是它）；
  *  - 深链 `armadra://join?link=<linkId>&issuer=<issuer>&s=<片段>`。
  *
- * 秘密是 base64url（没有 `.`），邀请令牌自己带点，所以按第一个点切。链接只在
- * 这里解析，不进日志、不进存储。
+ * 秘密是 base64url（没有 `.`），邀请令牌自己带一个点（`<32 位十六进制>.<43 位
+ * base64url>`），所以按第一个点切；剩下的还有第二个点且最后一段是 16 位 base32 的，
+ * 那一段是 core 身份公钥指纹前缀（契约 §80），访客据此钉扎。链接只在这里解析，
+ * 不进日志、不进存储。
  */
 export interface JoinLink {
   /** `https://host[:port]`（回环上的 `http` 只给开发）。 */
@@ -13,6 +15,8 @@ export interface JoinLink {
   readonly linkId: string;
   readonly secret: string;
   readonly invitationToken: string;
+  /** core 身份公钥指纹前 16 位（契约 §80）；旧链接没有。 */
+  readonly identityFp?: string;
 }
 
 const LINK_ID = /^[A-Za-z0-9_-]{8,128}$/;
@@ -42,16 +46,34 @@ export function issuerOrigin(value: string): string | null {
   return url.origin;
 }
 
+const FINGERPRINT = /^[a-z2-7]{16}$/;
+
 function fragmentOf(secretAndToken: string): {
   secret: string;
   invitationToken: string;
+  identityFp?: string;
 } | null {
   const dot = secretAndToken.indexOf(".");
   if (dot <= 0) return null;
   const secret = secretAndToken.slice(0, dot);
-  const invitationToken = secretAndToken.slice(dot + 1);
+  let invitationToken = secretAndToken.slice(dot + 1);
+  let identityFp: string | undefined;
+  const last = invitationToken.lastIndexOf(".");
+  const tail = last < 0 ? "" : invitationToken.slice(last + 1);
+  if (
+    last > 0 &&
+    invitationToken.indexOf(".") !== last &&
+    FINGERPRINT.test(tail)
+  ) {
+    identityFp = tail;
+    invitationToken = invitationToken.slice(0, last);
+  }
   return SECRET.test(secret) && TOKEN.test(invitationToken)
-    ? { secret, invitationToken }
+    ? {
+        secret,
+        invitationToken,
+        ...(identityFp === undefined ? {} : { identityFp }),
+      }
     : null;
 }
 
@@ -93,7 +115,9 @@ export function joinDeepLink(link: JoinLink): string {
   const query = new URLSearchParams({
     link: link.linkId,
     issuer: link.issuer,
-    s: `${link.secret}.${link.invitationToken}`,
+    s:
+      `${link.secret}.${link.invitationToken}` +
+      (link.identityFp === undefined ? "" : `.${link.identityFp}`),
   });
   return `armadra://join?${query.toString()}`;
 }

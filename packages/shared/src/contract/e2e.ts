@@ -42,6 +42,28 @@ export const E2E_IDENTITY_PATH = "/api/e2e/identity";
 export const E2E_WAIT_PATH = "/api/e2e/wait";
 export const E2E_SIGN_PATH = "/api/e2e/sign";
 export const E2E_SOURCE_WAIT_PATH = "/api/e2e/sources/wait";
+export const E2E_PAIRING_SECRET_PATH = "/api/e2e/pairing-secret";
+
+/**
+ * 配对二维码的载荷（契约 §80.1）：新设备扫到它就知道这台电脑的身份公钥（不走
+ * TOFU），握手 m3 用秘密证明自己扫过码。二维码里放的是
+ * `armadra://pair-e2e?d=<base64url(JSON)>`。
+ */
+export const e2ePairingPayloadSchema = z.object({
+  sourceId: z.string(),
+  /** 身份公钥，base64url（32 字节）。 */
+  identityPub: z.string(),
+  fingerprint: z.string(),
+  /** 一次性配对秘密，base64url（16 字节）。 */
+  secret: z.string(),
+  /** 这台电脑登记到的远程服务（新设备经它们连）。 */
+  issuers: z.array(z.string()),
+  expiresAtMs: z.number().int(),
+  /** 二维码里的那一串。 */
+  uri: z.string(),
+});
+
+export type E2ePairingPayload = z.infer<typeof e2ePairingPayloadSchema>;
 
 const base = { since: "1.45" } as const;
 
@@ -83,6 +105,19 @@ export const e2e = {
         contract: "§78.4",
         scope: "settings:write",
         legacy: { method: "POST", path: E2E_SOURCE_WAIT_PATH },
+      }),
+    ),
+  /** owner（本机或已信任设备经通道）：签一枚 5 分钟、一次性的配对秘密，做二维码（§80.1）。 */
+  pairingSecret: oc
+    .input(z.object({}).optional())
+    .output(e2ePairingPayloadSchema)
+    .errors(errors.pick("unauthenticated", "forbidden", "unsupported"))
+    .meta(
+      meta({
+        since: "1.47",
+        contract: "§80.1",
+        scope: "settings:write",
+        legacy: { method: "POST", path: E2E_PAIRING_SECRET_PATH },
       }),
     ),
   /** 只在回环、owner：用本机设备钥签一次握手转录（32 字节）。 */
