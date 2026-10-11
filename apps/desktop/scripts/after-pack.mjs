@@ -149,6 +149,10 @@ export function bundleResources(platformName) {
     // `process.resourcesPath` in a packaged app; without this entry the
     // packaged tray logged "could not be loaded" and stayed off.
     { from: "build/icons/icon.png", to: "tray.png" },
+    // 发布签名的 minisign 公钥（key id A5B7DA4722E242F7）。壳更新时用它验
+    // `<资产>.sig`（`main/updates/environment.ts::packagedPubkey` 从
+    // `process.resourcesPath` 读）；包里带着它，未做平台代码签名的包也能检查与安装。
+    { from: "build/armadra-release.pub", to: "armadra-release.pub" },
     // The bundled `ama` (the pinned `@armadra/agent`'s single-file runtime and
     // the sandbox helper it loads from beside itself) and Armadra's host
     // adapter for it (docs/design/coordinator-agent.md §2.5). Real files: the
