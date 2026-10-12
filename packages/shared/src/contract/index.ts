@@ -11,7 +11,9 @@ import { agents } from "./agents.js";
 import { boards } from "./boards.js";
 import { coordinator } from "./coordinator.js";
 import { credentials } from "./credentials.js";
+import { devices } from "./devices.js";
 import { diagnostics } from "./diagnostics.js";
+import { e2e } from "./e2e.js";
 import { identity } from "./identity.js";
 import { files } from "./files.js";
 import { forge } from "./forge.js";
@@ -65,6 +67,8 @@ export const contract = {
   diagnostics,
   updates,
   traffic,
+  devices,
+  e2e,
 };
 
 export type Contract = typeof contract;
@@ -251,3 +255,19 @@ export type {
   WorkspaceEventsCursor,
   WorkspaceEventsItem,
 } from "./workspaces.js";
+export {
+  DEVICES_PATH,
+  DEVICE_STATUSES,
+  trustedDeviceListSchema,
+  trustedDeviceSchema,
+} from "./devices.js";
+export type { DeviceStatus, TrustedDevice } from "./devices.js";
+export {
+  E2E_IDENTITY_PATH,
+  E2E_SIGN_PATH,
+  E2E_SOURCE_WAIT_PATH,
+  E2E_WAIT_PATH,
+  e2eIdentitySchema,
+  e2eSignatureSchema,
+} from "./e2e.js";
+export type { E2eIdentity, E2eSignature } from "./e2e.js";

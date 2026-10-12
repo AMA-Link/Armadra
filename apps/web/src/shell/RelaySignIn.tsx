@@ -226,6 +226,10 @@ export function RelaySignIn({
             />
           </div>
         )}
+        {/* 浏览器端的边界（端到端加密设计 §5）：页面由中继下发，下发那一刻的投毒防不住。 */}
+        <p className="text-center text-[12px] text-muted-foreground text-balance">
+          {t("e2e.browserNotice")}
+        </p>
       </div>
       {challenge !== null && (
         <ChallengeSheet

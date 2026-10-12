@@ -17,6 +17,7 @@ import {
   coreRefresh,
   thisDevice,
 } from "../sources/cloud-client";
+import { type E2eChannels, e2eChannels } from "../sources/e2e/manager";
 import { type RelayVault, createRelayedAccess } from "../sources/relay-access";
 import { routesOf } from "../sources/routing";
 import { loadConnections, remoteSlotOf, touchRoute } from "./connections";
@@ -55,6 +56,8 @@ export interface MobileCredentialDeps {
   readonly connections?: () => readonly SourceDescriptor[];
   readonly cloud?: CloudOptions;
   readonly now?: () => number;
+  /** 端到端通道（契约 §78）；不给不开通道（测试），页面那一个给。 */
+  readonly e2e?: E2eChannels;
 }
 
 /** 访客主体：按它经分享链接加入的那台源区分（一条链接一个访客会话）。 */
@@ -176,6 +179,8 @@ export function createMobileCredentialProvider(
         vault: vaultFor(slot, issuer),
         device: () => thisDevice(),
         ...(deps.cloud === undefined ? {} : { cloud: deps.cloud }),
+        ...(deps.e2e === undefined ? {} : { e2e: deps.e2e }),
+        label: (sourceId) => deps.describe(sourceId)?.label ?? "",
         now,
       });
       relays.set(key, relay);
@@ -317,6 +322,7 @@ let shared: MobileCredentialProvider | null = null;
 export function mobileCredentialProvider(): MobileCredentialProvider {
   shared ??= createMobileCredentialProvider({
     bridge: nativeBridge(),
+    e2e: e2eChannels(() => thisDevice().name),
     describe: (sourceId) =>
       loadConnections().find((row) => row.sourceId === sourceId),
   });

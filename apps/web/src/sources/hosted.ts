@@ -18,6 +18,7 @@ import {
   cloudSources,
 } from "./cloud-client";
 import { createCachedCredentialProvider } from "./credentials";
+import { type E2eChannels, e2eChannels } from "./e2e/manager";
 import type { ManagedSocketState } from "./managed-socket";
 import { type SiblingMount, mountSiblingSources } from "./mounts";
 import { sourceRegistry } from "./registry";
@@ -497,6 +498,8 @@ export interface HostedRelayOptions {
   readonly guestStorage?: Storage | null;
   /** 测试注入：现在的时刻（毫秒）。 */
   readonly now?: () => number;
+  /** 端到端通道（契约 §78）；不给不开通道（测试），页面入口给。 */
+  readonly e2e?: E2eChannels;
 }
 
 /** 目录里的一台主机 → 经这个中继到达的源描述。 */
@@ -608,6 +611,7 @@ export function createHostedRelay(options: HostedRelayOptions): HostedRelay {
     cloudSessions,
     device: () => browserDevice(),
     ...(options.cloud === undefined ? {} : { cloud: options.cloud }),
+    ...(options.e2e === undefined ? {} : { e2e: options.e2e }),
   });
   const forced = new Set<string>();
   const cached = createCachedCredentialProvider(async (sourceId, via) => {
@@ -1047,7 +1051,10 @@ export function hostedRelay(): HostedRelay | null {
 
 export function startHostedRelay(host: RelayHost): HostedRelay {
   active?.dispose();
-  active = createHostedRelay({ issuer: host.issuer });
+  active = createHostedRelay({
+    issuer: host.issuer,
+    e2e: e2eChannels(() => browserDevice().name),
+  });
   return active;
 }
 

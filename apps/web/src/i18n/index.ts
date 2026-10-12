@@ -63,6 +63,7 @@ import { mail } from "./mail";
 import { diagnostics } from "./diagnostics";
 import { passwordReset } from "./password-reset";
 import { remote } from "./remote";
+import { e2e } from "./e2e";
 import { services } from "./services";
 import { links } from "./links";
 import { modCommands } from "./mod-commands";
@@ -149,6 +150,7 @@ export const MESSAGE_MODULES = {
   diagnostics,
   "password-reset": passwordReset,
   remote,
+  e2e,
   challenge,
   services,
   links,

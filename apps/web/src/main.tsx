@@ -6,6 +6,7 @@ import "./styles/app.css";
 import "./styles/nodes.css";
 import { mountSplash } from "./splash/mount";
 import { MobileRoot } from "./mobile/MobileRoot";
+import { PendingApprovalDialog } from "./sources/e2e/PendingApprovalDialog";
 import { prepareEntry, type Entry } from "./mobile/entry";
 import { installPageErrorReporting } from "./diagnostics/report";
 import { installShellTransport } from "./api/shell-transport";
@@ -59,6 +60,7 @@ function boot() {
           transition={{ duration: 0.16, ease: [0.32, 0.72, 0, 1] }}
         >
           <MobileRoot entry={entry} />
+          <PendingApprovalDialog />
         </MotionConfig>
       </StrictMode>,
     );

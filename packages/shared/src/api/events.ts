@@ -322,6 +322,22 @@ export const workspaceEventSchema = z.discriminatedUnion("type", [
       "backoff",
     ]),
   }),
+  /**
+   * 经中继端到端通道来的新设备等主人在本机核对校验码（契约 §77）；不进 outbox。
+   * 只带标识与设备自报的名字，校验码不在事件里——主人看新设备屏幕上的那个。
+   */
+  z.object({
+    type: z.literal("devices.pending"),
+    pendingId: z.string(),
+    deviceId: z.string(),
+    label: z.string(),
+    platform: z.string(),
+  }),
+  /** 设备钥登记变了（批准、拒绝、撤销、改名，契约 §77）；不进 outbox。 */
+  z.object({
+    type: z.literal("devices.changed"),
+    deviceId: z.string(),
+  }),
   /** 一个会话的资源用量越过阈值（契约 §27）；`metric` 今天只有 `memory`（字节）。 */
   z.object({
     type: z.literal("resources.threshold"),

@@ -13,6 +13,7 @@
  * 路径参数按 core 自己的 camelCase 拼。
  */
 import { IDENTITY_ROUTES } from "./routes-identity";
+import { E2E_ROUTES } from "./routes-e2e";
 import {
   FORGE_REPO_ROUTES,
   REMOTE_SERVICE_ROUTES,
@@ -1389,6 +1390,7 @@ export const ROUTES: readonly RouteEntry[] = [
     implemented: true,
   },
   // 发布历史与最新版本（契约 §64）：core 代问 GitHub，带缓存。
+  ...E2E_ROUTES,
   {
     path: "/api/updates/releases",
     methods: ["GET"],

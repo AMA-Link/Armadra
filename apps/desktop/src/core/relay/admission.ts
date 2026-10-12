@@ -17,6 +17,11 @@
  *
  * 放行时把认出的主体交给这条流的流量计数器（契约 §76）：匿名面记成匿名，拒绝的
  * 不认，流结束时按匿名记。
+ * 端到端通道（契约 §77、§78）：内层流带着通道对端的设备钥，不看来源（第 2 条只对
+ * 明文路径）。经通道签的会话绑那把
+ * 钥（`identity_sessions.channel_device_id`），通道设备与会话设备不符、或那把钥对
+ * 这个人已不再信任 → 401；不经通道签的会话进不了通道，经通道签的也进不了明文路径。
+ * 主人开了 `security.requireE2e` 时明文路径一律 `403 e2e_required`。
  *
  * 会话绑在这个远程服务的中继来源上（`relayOrigins[0]`，缺省就是 issuer）：经隧道
  * 换来的会话只在隧道上有效，回环与 Gateway 的会话也进不了隧道。放行前把请求头的
@@ -36,6 +41,7 @@ import { markBearerTransport } from "../identity/http";
 import { canonicalOrigin } from "../identity/origin";
 import type { IdentityService } from "../identity/service";
 import {
+  E2E_IDENTITY_PATH,
   WS_TICKET_PATH,
   type WsTickets,
   anonymousPath,
@@ -44,8 +50,10 @@ import {
   protocolTicket,
   sessionIdentity,
 } from "../identity/transport";
+import { coreError } from "../http/errors";
 import type { CoreRequest } from "../http/router";
 import type { ListenerGate, ListenerVerdict } from "../http/server";
+import { e2eDevices } from "./e2e/peer";
 import { TunnelDuplex } from "./streams";
 
 export interface TunnelRegistration {
@@ -59,6 +67,10 @@ export interface TunnelGateOptions {
   /** 有效登记；撤销了就是 `undefined`（这条隧道上的请求一律 403）。 */
   readonly registration: (issuer: string) => TunnelRegistration | undefined;
   readonly tickets: WsTickets;
+  /** 设置 `security.requireE2e`：开着时明文路径一律 403。缺省关。 */
+  readonly requireE2e?: () => boolean;
+  /** 设备钥这个人还信不信（撤销后立刻失效）；缺省按设备登记。 */
+  readonly deviceTrusted?: (deviceId: string, principalId: string) => boolean;
 }
 
 /**
@@ -74,6 +86,11 @@ const UNAUTHENTICATED_BODY = {
   code: "unauthenticated",
   message: "需要一个经远程服务登录的会话",
 };
+const E2E_REQUIRED_BODY = coreError(
+  403,
+  "e2e_required",
+  "这台电脑只接受端到端加密的连接",
+).body;
 
 /** 会话绑定的来源：这条登记的第一个中继来源，缺省 issuer。 */
 export function sessionOriginOf(registration: TunnelRegistration): string {
@@ -135,6 +152,7 @@ function anonymousWithoutOrigin(path: string): boolean {
     path === "/api/health" ||
     // 媒体票（契约 §37.4）：`<video src>` 不带 `Origin`，票就是凭据。
     mediaPath(path) ||
+    path === E2E_IDENTITY_PATH ||
     (path.startsWith("/api/identity/") &&
       anonymousPath(path) &&
       path !== WS_TICKET_PATH)
@@ -194,19 +212,27 @@ function tunnelVerdict(
         message: "经中继不能用配对码，请在局域网直连或扫码",
       });
     }
-    if (!sameDeclaredOrigin(request.headers, clientOrigin)) {
-      return refuse(403, FORBIDDEN_BODY);
+    const channel = tunnel.channel;
+    if (channel === undefined && (options.requireE2e?.() ?? false)) {
+      return refuse(403, E2E_REQUIRED_BODY);
     }
-    if (clientOrigin !== null && !originAllowed(clientOrigin, registration)) {
-      return { refusal: { status: 403, body: FORBIDDEN_BODY } };
-    }
-    if (
-      clientOrigin === null &&
-      (upgrade ||
-        (!anonymousWithoutOrigin(path) &&
-          !sameOriginBrowserRequest(request.headers)))
-    ) {
-      return refuse(403, FORBIDDEN_BODY);
+    // 来源检查只对明文路径：端到端通道里的请求是持有设备钥的那段代码自己编的，
+    // 跨站页面碰不到这条通道，来源说明不了任何事（原生客户端也不一定带它）。
+    if (channel === undefined) {
+      if (!sameDeclaredOrigin(request.headers, clientOrigin)) {
+        return refuse(403, FORBIDDEN_BODY);
+      }
+      if (clientOrigin !== null && !originAllowed(clientOrigin, registration)) {
+        return { refusal: { status: 403, body: FORBIDDEN_BODY } };
+      }
+      if (
+        clientOrigin === null &&
+        (upgrade ||
+          (!anonymousWithoutOrigin(path) &&
+            !sameOriginBrowserRequest(request.headers)))
+      ) {
+        return refuse(403, FORBIDDEN_BODY);
+      }
     }
 
     // 下游（身份域、CORS、流）看到的来源是会话来源；凭据按 Bearer 模式。
@@ -214,9 +240,22 @@ function tunnelVerdict(
     request.headers.origin = origin;
     markBearerTransport(request.raw);
     const hostId = service.hostId();
+    const deviceTrusted =
+      options.deviceTrusted ??
+      ((deviceId: string, principalId: string) =>
+        e2eDevices()?.trusted(deviceId, principalId) ?? false);
     const authenticated = (accessToken: string) => {
       try {
         const principal = service.authenticate({ accessToken, hostId, origin });
+        // 会话与通道得是同一把设备钥：明文签的进不了通道，通道签的进不了明文
+        // 路径，也进不了别的设备的通道（契约 §77）。
+        const bound = principal.channelDeviceId ?? "";
+        if (bound !== (channel?.deviceId ?? "")) return undefined;
+        if (
+          channel !== undefined &&
+          !deviceTrusted(bound, principal.principalId)
+        )
+          return undefined;
         return { principal, accessToken };
       } catch {
         return undefined;

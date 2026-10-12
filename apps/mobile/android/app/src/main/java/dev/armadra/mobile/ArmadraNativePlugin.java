@@ -62,6 +62,7 @@ import org.unifiedpush.android.connector.UnifiedPush;
  *   <li>{@code pushRotated / ackPushRotation}：令牌或端点换过的标记（R-54，{@link PushRotation}）；换的那一刻
  *       插件开着就发 {@code pushTokenRotated} 事件；
  *   <li>{@code openExternal}：系统浏览器打开原生 OAuth 的授权页（R-56），只开 https 与回环 http；
+ *   <li>{@code e2eDeviceSeed}：端到端通道的设备钥种子（契约 §78），没有就生成，只在 Keystore；
  *   <li>{@code installApk({ url, sha256 })}：应用内更新（#288 §4），下载、核对摘要、拉起系统安装器，结果
  *       {@code { status: "started" | "permissionRequired" | "checksumMismatch" | "failed", message? }}，从不 reject。
  * </ul>
@@ -569,6 +570,31 @@ public class ArmadraNativePlugin extends Plugin {
         out.put("status", result.status.wire);
         if (result.message != null) out.put("message", result.message);
         return out;
+    }
+
+    /** 端到端通道设备钥种子在 Keystore 里的名字（契约 §78）。 */
+    static final String E2E_DEVICE_SEED = "e2e.device-seed";
+
+    /**
+     * 端到端通道的设备钥种子（Ed25519，32 字节，base64url）：有就读，没有就生成并存进
+     * Keystore 加密的存储。页面拿它在 WebCrypto 里导入为不可导出的私钥，只在内存。
+     */
+    @PluginMethod
+    public void e2eDeviceSeed(PluginCall call) {
+        String stored = store.read(E2E_DEVICE_SEED);
+        if (stored == null || stored.length() != 43) {
+            byte[] seed = new byte[32];
+            new SecureRandom().nextBytes(seed);
+            stored = android.util.Base64.encodeToString(
+                    seed, android.util.Base64.URL_SAFE | android.util.Base64.NO_PADDING | android.util.Base64.NO_WRAP);
+            if (!store.write(E2E_DEVICE_SEED, stored)) {
+                call.reject("keystore unavailable");
+                return;
+            }
+        }
+        JSObject result = new JSObject();
+        result.put("seed", stored);
+        call.resolve(result);
     }
 
     /**

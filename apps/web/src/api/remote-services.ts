@@ -1,4 +1,5 @@
 import type { RelayPending, ShareLink, ShareTarget } from "@armadra/shared";
+import { withRemoteApproval } from "../sources/credentials";
 import { z } from "zod";
 
 import type { ShareRole } from "./accounts";
@@ -174,7 +175,10 @@ export function remoteSources(serviceId: string) {
 }
 
 export function mountRemoteSource(serviceId: string, sourceId: string) {
-  return localClient().sources.mount({ serviceId, sourceId });
+  // 经端到端通道挂载时那台电脑的主人要先核对这台设备（契约 §78.4）。
+  return withRemoteApproval(sourceId, () =>
+    localClient().sources.mount({ serviceId, sourceId }),
+  );
 }
 
 /**

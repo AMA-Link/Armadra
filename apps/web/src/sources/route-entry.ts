@@ -140,12 +140,15 @@ export async function enterRoute(
     refresh: renewActive,
     ...(relayed
       ? {
+          // 经端到端通道（契约 §78）：字节走通道，中继令牌只在开通道时用过。
+          baseFetch: () => access.e2e?.fetch,
+          baseWebSocket: () => access.e2e?.WebSocket,
           extraHeaders: (): Record<string, string> =>
-            access.relayToken === undefined
+            access.relayToken === undefined || access.e2e !== undefined
               ? {}
               : { [RELAY_TOKEN_HEADER]: access.relayToken },
           extraProtocols: () =>
-            access.relayToken === undefined
+            access.relayToken === undefined || access.e2e !== undefined
               ? []
               : [`${RELAY_PROTOCOL}${access.relayToken}`],
         }

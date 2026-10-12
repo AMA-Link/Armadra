@@ -51,6 +51,9 @@ export const SELF_GUARDED: readonly RegExp[] = [
   /^\/api\/gateway\/pairing-code\/exchange$/,
   // 原生 App 首次连接的配对码 PAKE（契约 §73），同一档。
   /^\/api\/gateway\/pairing-code\/pake\/(start|finish)$/,
+  // 端到端通道的身份公钥与待确认长轮询（契约 §78）：先于会话，域自己判（等候只认
+  // 这条通道自己的设备钥）。
+  /^\/api\/e2e\/(identity|wait)$/,
   // 邮件：能签发那条链接的人才能发（owner，或组 admin 对本组成员），那是身份
   // 域的判定，路由门的全局 scope 说不出「本组」（契约 §28）。
   /^\/api\/mail\//,
@@ -191,6 +194,18 @@ export const ROUTE_SCOPE_RULES: readonly RouteScopeRule[] = [
     pattern: /^\/api\/gateway\/pairing-code\/pake\/(start|finish)$/,
     read: null,
     write: null,
+  },
+  {
+    pattern: /^\/api\/e2e\/(identity|wait)$/,
+    read: null,
+    write: null,
+  },
+  // 设备钥登记与本机设备钥签名（契约 §77、§78）：只有 owner，与设置同一档；
+  // 签名另外只在回环（`gateway/admission.ts::loopbackOnlyPath`）。
+  {
+    pattern: /^\/api\/(devices|e2e)(\/|$)/,
+    read: "settings:read",
+    write: "settings:write",
   },
   // Gateway 与节点凭据只有 owner：要的是全局授权，共享只发工作空间上的授权，
   // 所以成员在这里一律 403（与设置同一档）。契约 §17、§20。

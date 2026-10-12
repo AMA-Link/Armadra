@@ -29,12 +29,28 @@ import {
   pinnedAnchor,
 } from "../sources/http-client";
 import { type TrafficService, trafficDomain } from "../traffic";
+import type { E2eSigner } from "@armadra/platform-protocol/e2e";
+
+import { accessChanged } from "../identity/gate";
+import { type SecretBackend, secretsFor } from "../secrets";
+import { outboundChannels } from "../sources";
 import { createTunnelGate } from "./admission";
+import { E2eChannel } from "./e2e/channel";
+import { DeviceKey } from "./e2e/device-key";
+import {
+  type DeviceEvent,
+  DeviceRegistry,
+  TrustedDeviceStore,
+} from "./e2e/devices";
+import { setE2eDevices } from "./e2e/peer";
+import { installE2eRoutes } from "./e2e/routes";
+import type { TunnelDuplex } from "./streams";
 import { TunnelClient, type TunnelState } from "./client";
 import { NodeDirectory } from "./nodes";
 import {
   type RelaySettings,
   currentRelaySettings,
+  currentRequireE2e,
   onRelaySettings,
 } from "./settings";
 import type { TunnelTrafficMeter } from "./streams";
@@ -62,6 +78,10 @@ export interface RelayDeps {
   readonly settings?: () => RelaySettings;
   readonly backoff?: (attempt: number) => number;
   readonly allowInsecure?: () => boolean;
+  /** 设置 `security.requireE2e`（测试注入）。 */
+  readonly requireE2e?: () => boolean;
+  /** 本机设备钥所在的 SecretStore（测试注入）。 */
+  readonly secrets?: () => SecretBackend;
   /** 流量统计（契约 §76）；缺省取装好的统计域，没有就不计。 */
   readonly traffic?: TrafficService | null;
 }
@@ -113,14 +133,90 @@ export function installRelay(
     deps.traffic === undefined ? trafficDomain() : (deps.traffic ?? undefined);
   const meter = traffic === undefined ? undefined : tunnelMeter(traffic);
   const tickets = new WsTickets();
+  const requireE2e = deps.requireE2e ?? currentRequireE2e;
   const listener = context.server.createListener({
     admitted: true,
     gate: createTunnelGate({
       service: identity,
       tickets,
       registration: (issuer) => cloud.registration(issuer),
+      requireE2e,
     }),
   });
+
+  // 端到端通道（契约 §77、§78）：设备登记、通道表与几条路由。
+  const publishDevice = (event: DeviceEvent) => {
+    const watched = eventStream()?.watchedWorkspaces() ?? [];
+    for (const workspaceId of watched) {
+      context.bus.emit("workspace.event", {
+        workspaceId,
+        event:
+          event.type === "devices.pending"
+            ? {
+                type: "devices.pending",
+                pendingId: event.pendingId,
+                deviceId: event.deviceId,
+                label: event.label,
+                platform: event.platform,
+              }
+            : { type: "devices.changed", deviceId: event.deviceId },
+      });
+    }
+  };
+  const channels = new Map<number, E2eChannel>();
+  let nextChannelId = 1;
+  const devices = new DeviceRegistry({
+    store: new TrustedDeviceStore(context.db.database),
+    emit: publishDevice,
+    disconnect: (deviceId) => {
+      for (const channel of [...channels.values()]) {
+        if (channel.peer?.deviceId === deviceId) channel.close();
+      }
+    },
+    accessChanged,
+  });
+  setE2eDevices(devices);
+  let signer: Promise<E2eSigner> | undefined;
+  const identitySigner = (): Promise<E2eSigner> => {
+    signer ??= cloud.identityPublicKey().then(
+      (publicKey) => ({
+        publicKey,
+        sign: (data: Uint8Array) => cloud.signBytes(data),
+      }),
+      (error: unknown) => {
+        signer = undefined;
+        throw error;
+      },
+    );
+    return signer;
+  };
+  installE2eRoutes(context.server, {
+    devices,
+    identity: async () => ({
+      sourceId: identity.hostId(),
+      publicKey: (await identitySigner()).publicKey,
+    }),
+    deviceKey: new DeviceKey(
+      deps.secrets ?? (() => secretsFor(context).backend),
+    ),
+    waitSource: async (sourceId, pendingId) =>
+      (await outboundChannels()?.wait(sourceId, pendingId)) ?? "pending",
+  });
+  const openChannel = (issuer: string) => (stream: TunnelDuplex) => {
+    const channelId = nextChannelId++;
+    const channel = new E2eChannel(stream, {
+      sourceId: identity.hostId(),
+      issuer,
+      identity: identitySigner,
+      devices,
+      listener,
+      channelId,
+      log: context.log,
+      onClose: (closed) => channels.delete(closed.channelId),
+    });
+    channels.set(channelId, channel);
+    channel.start();
+  };
   const clients = new Map<string, TunnelClient>();
 
   const publish = (issuer: string, state: TunnelState) => {
@@ -149,6 +245,7 @@ export function installRelay(
       }),
       signBytes: (data) => cloud.signBytes(data),
       listener,
+      e2e: openChannel(issuer),
       ca: (url) =>
         pinnedAnchor(url.href, cloud.fingerprint(issuer), ANCHOR_TIMEOUT_MS),
       allowInsecure,
@@ -204,6 +301,8 @@ export function installRelay(
     close: () => {
       unsubscribe();
       relay.stopAll();
+      for (const channel of [...channels.values()]) channel.close();
+      setE2eDevices(undefined);
     },
   };
 

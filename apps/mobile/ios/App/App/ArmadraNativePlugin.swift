@@ -5,6 +5,7 @@ import UIKit
 import UserNotifications
 import WebKit
 import os
+import Security
 
 /// 原生插件 `ArmadraNative`：页面一半在 `apps/web/src/mobile/native-bridge.ts`，约定
 /// 写在那个文件头里（参数与返回都是一个对象）。
@@ -19,6 +20,7 @@ import os
 /// | `pushRegistration()`          | APNs 令牌 + 设备 X25519 公钥；配了中继时先换中继令牌         |
 /// | `pushRotated()` / `ackPushRotation()` | 启动时 APNs 给了与上次登记不同的令牌（R-54，`PushTokenLedger`） |
 /// | `openExternal({ url })`       | 系统浏览器打开原生 OAuth 的授权页（R-56），只开 https 与回环 http |
+/// | `e2eDeviceSeed()`             | 端到端通道的设备钥种子（Ed25519，32 字节，base64url），没有就生成，只在钥匙串 |
 /// | `installApk({ url, sha256 })` | Android 的应用内更新（#288 §4）；iOS 只经商店更新，固定返回 `failed`（`unsupported`） |
 ///
 /// 令牌换过的那一刻还发 `pushTokenRotated` 事件。
@@ -44,7 +46,11 @@ public class ArmadraNativePlugin: CAPPlugin, CAPBridgedPlugin, NotificationHandl
         CAPPluginMethod(name: "openExternal", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "appInfo", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "installApk", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "e2eDeviceSeed", returnType: CAPPluginReturnPromise),
     ]
+
+    /// 端到端通道设备钥种子在钥匙串里的条目名（契约 §78）。
+    private static let e2eSeedAccount = "e2e.device-seed"
 
     private static let installedFlag = "dev.armadra.mobile.installed"
     /// 只记结果（钉扎成没成、为什么），不记来源以外的任何参数，更不记密钥。
@@ -68,6 +74,7 @@ public class ArmadraNativePlugin: CAPPlugin, CAPBridgedPlugin, NotificationHandl
         if !defaults.bool(forKey: Self.installedFlag) {
             vault.clearAll()
             store.delete(DeviceKey.account)
+            store.delete(Self.e2eSeedAccount)
             defaults.set(true, forKey: Self.installedFlag)
         }
         pins = vault.pins()
@@ -384,6 +391,26 @@ public class ArmadraNativePlugin: CAPPlugin, CAPBridgedPlugin, NotificationHandl
 
     /// App 自己的版本名与构建号（`MARKETING_VERSION` / `CURRENT_PROJECT_VERSION`，来自
     /// `ios/version.generated.xcconfig`）。移动端有独立的版本线，与所连主机的版本无关。
+    /// 端到端通道的设备钥种子：有就读，没有就生成并写进钥匙串。页面在 WebCrypto 里把它导入为
+    /// 不可导出的私钥，只在内存（契约 §78）。
+    @objc func e2eDeviceSeed(_ call: CAPPluginCall) {
+        if let seed = store.read(Self.e2eSeedAccount), seed.count == 32 {
+            call.resolve(["seed": Base64URL.encode(seed)])
+            return
+        }
+        var bytes = [UInt8](repeating: 0, count: 32)
+        guard SecRandomCopyBytes(kSecRandomDefault, bytes.count, &bytes) == errSecSuccess else {
+            call.reject("random unavailable")
+            return
+        }
+        let seed = Data(bytes)
+        guard store.write(Self.e2eSeedAccount, seed) else {
+            call.reject("keychain unavailable")
+            return
+        }
+        call.resolve(["seed": Base64URL.encode(seed)])
+    }
+
     @objc func appInfo(_ call: CAPPluginCall) {
         let info = Bundle.main.infoDictionary ?? [:]
         call.resolve([

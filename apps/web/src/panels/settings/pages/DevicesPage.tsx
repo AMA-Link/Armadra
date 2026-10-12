@@ -15,6 +15,7 @@ import {
   GatewayDevicesSection,
   type GatewayIdentity,
 } from "./gateway/GatewaySection";
+import { E2eDevices } from "./security/E2eDevices";
 import { LoginSessions } from "./security/LoginSessions";
 
 /** 带着配对票时检查失败的自动重试：次数与间隔。 */
@@ -96,6 +97,7 @@ export function DevicesPage() {
         identity={identity}
         onCurrentRevoked={() => setIdentityEpoch((epoch) => epoch + 1)}
       />
+      <E2eDevices />
       <LoginSessions />
     </>
   );

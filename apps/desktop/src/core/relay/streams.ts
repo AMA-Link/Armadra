@@ -30,6 +30,8 @@ import {
   RST,
 } from "@armadra/platform-protocol/tunnel";
 
+import type { ChannelPeer } from "./e2e/peer";
+
 export class StreamResetError extends Error {
   constructor(readonly rstCode: number) {
     super(`tunnel stream reset ${rstCode}`);
@@ -90,8 +92,13 @@ export interface TunnelStreamOptions {
 export interface TunnelOrigin {
   /** 这条隧道登记到的远程服务。 */
   readonly issuer: string;
-  /** 中继给的 `OPEN`：`clientOrigin` / `remoteIp` 以它为准。 */
+  /**
+   * 中继给的 `OPEN`：`clientOrigin` / `remoteIp` 以它为准。端到端通道里的内层流
+   * 用外层（通道那条边缘连接）的来源与地址，方法与路径是客户端自己填的。
+   */
   readonly open: OpenPayload;
+  /** 经端到端通道来的内层流：通道对端的设备钥（契约 §77）。明文路径没有。 */
+  readonly channel?: ChannelPeer;
 }
 
 /**
@@ -117,7 +124,7 @@ export interface TunnelTrafficMeter {
   stream(scope: {
     readonly route: "relay";
     readonly issuer: string;
-    readonly kind: OpenPayload["kind"];
+    readonly kind: Exclude<OpenPayload["kind"], "e2e">;
     readonly path: string;
   }): StreamTrafficCounter;
   wire(

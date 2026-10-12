@@ -22,6 +22,7 @@ import {
 } from "@armadra/platform-protocol/core-api";
 
 import { CoreFailure, fail } from "../../http/errors";
+import { channelPeerOf } from "../../relay/e2e/peer";
 import type { CoreRequest } from "../../http/router";
 import type { Authorizer } from "../authorize";
 import { IdentityError, IdentityRefusal } from "../errors";
@@ -207,9 +208,12 @@ export class CloudHttp {
         origin,
         remoteIp,
         userAgent: (header(request, "user-agent") ?? "").slice(0, 256),
+        channel: channelPeerOf(request.raw.socket),
       });
     } catch (error) {
-      throttle?.chargeIp(remoteIp);
+      // 等主人核对设备不是一次失败的登录。
+      if (!(error instanceof CoreFailure && error.code === "device_pending"))
+        throttle?.chargeIp(remoteIp);
       throw error;
     }
     const hostId = this.options.service.hostId();

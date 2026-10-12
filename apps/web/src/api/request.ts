@@ -116,6 +116,13 @@ const MESSAGE_BY_CODE: Readonly<Record<string, string>> = {
   link_expired: "error.linkExpired",
   link_exhausted: "error.linkExhausted",
   link_secret_invalid: "error.linkSecretInvalid",
+  // 端到端通道（契约 §77、§78）。
+  identity_changed: "error.identityChanged",
+  device_rejected: "error.deviceRejected",
+  device_pending: "error.devicePending",
+  e2e_required: "error.e2eRequired",
+  sas_mismatch: "e2e.approve.mismatch",
+  sas_expired: "e2e.approve.expired",
   // ACP prompt 的附件（契约 §56）。
   acp_image_unsupported: "acp.attach.imageUnsupported",
   acp_attachment_unsupported: "acp.attach.fileUnsupported",

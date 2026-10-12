@@ -18,7 +18,11 @@
  *    范围一律压成只读。SaaS 登记的签发方带 `org` + `role` 时不需要邀请就建成员。
  *    经云来的授予都有租约（断言到期后 30 天），每次登录续；经邀请（分享链接）来的
  *    封顶在邀请到期（契约 §68）。答案带 `share`：角色、到期与主人的名字。
- * 6. 建设备与会话（`method = "cloud"`），审计 `cloud.login`（带 `jti` / `org` / `team`）。
+ * 6. 经端到端通道来的（契约 §77）：这把设备钥对这个人必须已信任；没见过 → 建待确认
+ *    记录、答 `403 device_pending { pendingId }`，主人在本机核对校验码后放行；被拒或
+ *    撤销 → `403 device_rejected`。会话绑这把钥。断言负责「这是谁」，设备钥负责
+ *    「确实是他的设备」——中继单方面签的断言换不到会话。
+ * 7. 建设备与会话（`method = "cloud"`），审计 `cloud.login`（带 `jti` / `org` / `team`）。
  */
 
 import { createHash } from "node:crypto";
@@ -45,6 +49,11 @@ import type { IdentityService, SessionCredentials } from "../service";
 import type { IdentityStore } from "../store";
 import { IpBuckets } from "../throttle";
 import { newId, parseToken, validName } from "../tokens";
+import {
+  type DeviceRegistry,
+  requireTrustedDevice,
+} from "../../relay/e2e/devices";
+import { type ChannelPeer, e2eDevices } from "../../relay/e2e/peer";
 import type { AssertionVerifier } from "./assertion";
 import type { CloudStore } from "./store";
 
@@ -80,6 +89,8 @@ export interface CloudLoginOptions {
   readonly verifier: AssertionVerifier;
   /** 组织默认角色（设置 `cloud.orgDefaultRole`，A3-2）；缺省 `null` = 不授予。 */
   readonly orgDefaultRole?: () => ShareRole | null;
+  /** 设备登记（契约 §77）；缺省这一轮装好的那份。 */
+  readonly devices?: () => DeviceRegistry | undefined;
   readonly now?: () => number;
 }
 
@@ -145,6 +156,8 @@ export class CloudLogin {
     readonly origin: string;
     readonly remoteIp: string;
     readonly userAgent: string;
+    /** 经端到端通道来的：通道对端的设备钥（契约 §77）。明文路径没有。 */
+    readonly channel?: ChannelPeer | undefined;
   }): Promise<CloudLoginResult> {
     const { claims, registration } = await this.options.verifier.verify(
       input.assertion,
@@ -253,6 +266,16 @@ export class CloudLogin {
       invitationId = parsed;
     }
 
+    const channelDeviceId =
+      input.channel === undefined
+        ? ""
+        : this.admitDevice(
+            input.channel,
+            principalId,
+            registration.issuer,
+            claims,
+          );
+
     applyCloudGrants(store, this.now(), {
       principalId,
       provenance,
@@ -271,6 +294,7 @@ export class CloudLogin {
           method: "cloud",
           remoteIp: input.remoteIp,
           userAgent: input.userAgent,
+          ...(channelDeviceId === "" ? {} : { channelDeviceId }),
         });
       } catch (error) {
         if (error instanceof IdentityError) {
@@ -296,6 +320,7 @@ export class CloudLogin {
           principalId,
           created,
           jti: claims.jti,
+          ...(channelDeviceId === "" ? {} : { e2eDevice: channelDeviceId }),
           ...(claims.link === undefined ? {} : { link: claims.link.linkId }),
           ...(claims.org === undefined ? {} : { org: claims.org.orgId }),
           ...(claims.team === undefined ? {} : { team: claims.team.teamId }),
@@ -342,6 +367,25 @@ export class CloudLogin {
             },
           }),
     };
+  }
+
+  /**
+   * 设备这一关（契约 §77）：已信任 → 答设备 id；待确认 / 被拒由设备登记抛
+   * `device_pending` / `device_rejected`（§77 自己的码，不是云登录协议的）。中继没装
+   * （没有设备登记）时通道本身不存在，走不到这里。
+   */
+  private admitDevice(
+    channel: ChannelPeer,
+    principalId: string,
+    issuer: string,
+    claims: AssertionClaims,
+  ): string {
+    return requireTrustedDevice((this.options.devices ?? e2eDevices)(), {
+      device: channel,
+      principalId,
+      issuer,
+      issuerDeviceId: claims.device.deviceId,
+    });
   }
 
   /**

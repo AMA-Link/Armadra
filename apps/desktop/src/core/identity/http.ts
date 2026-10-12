@@ -1,4 +1,5 @@
 import type { ServerResponse } from "node:http";
+import { channelPeerOf } from "../relay/e2e/peer";
 import { MAX_FRAME_BYTES, PROTOCOL_MAJOR, PROTOCOL_MINOR } from "./protocol";
 import type { CoreRequest } from "../http/router";
 import type { AccountsService } from "./accounts";
@@ -353,6 +354,9 @@ export class IdentityHttp {
               requireCsrf: csrf,
               hostId,
               origin,
+              // 经端到端通道来的刷新只认绑在这把设备钥上的会话（契约 §77）。
+              channelDeviceId:
+                channelPeerOf(request.raw.socket)?.deviceId ?? "",
             }),
           );
           sessionCookies(request, response, hostId, credentials);

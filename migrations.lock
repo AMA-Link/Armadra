@@ -48,6 +48,7 @@
     "0046_source_default_labels.sql": "c221bb13586a50ff7342a02a5500acd5fb87d7e2c18c3fe0bccee43ac7666cb0",
     "0047_source_origin.sql": "ccd91cf1266220c6b4fca198d17b264a2d002b020f6a603367e4b92da76c94e9",
     "0048_forge_workspace_config.sql": "462a81696945b50d74ef13bcaa8c5d724c23e9653581115c83f6241e2de1d5f0",
-    "0049_traffic_buckets.sql": "3bbc8feb8a46d1427d7f591d5be5527ba20c288f191d8355256f4eaf81e06eee"
+    "0049_traffic_buckets.sql": "3bbc8feb8a46d1427d7f591d5be5527ba20c288f191d8355256f4eaf81e06eee",
+    "0050_trusted_devices.sql": "c791692cf92898ea7dc6f8d5f615ddcffab4119dabffa93263d1658d6b8d97e2"
   }
 }

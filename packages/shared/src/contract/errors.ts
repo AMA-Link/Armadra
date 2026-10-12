@@ -68,6 +68,18 @@ export const ERROR_CODES = {
   credential_unavailable: { status: 503 },
   pairing_code_invalid: { status: 404 },
   device_required: { status: 409 },
+  /** 经端到端通道的新设备等主人在本机核对校验码（契约 §77）；`details.pendingId`。 */
+  device_pending: { status: 403 },
+  /** 主人拒绝或撤销了这把设备钥（契约 §77）。 */
+  device_rejected: { status: 403 },
+  /** 主人要求经中继的访问一律走端到端通道（`security.requireE2e`，契约 §78）。 */
+  e2e_required: { status: 403 },
+  /** 本机输入的校验码与新设备屏幕上的不一致（契约 §77）。 */
+  sas_mismatch: { status: 400 },
+  /** 新设备的那条通道已经不在，校验码作废，等它重连（契约 §77）。 */
+  sas_expired: { status: 409 },
+  /** 端到端通道里对端 core 的身份公钥与钉住的不同（契约 §78）：要人「忘记」后重新确认。 */
+  identity_changed: { status: 409 },
   forge_not_configured: { status: 409 },
   gateway_managed_by_shell: { status: 409 },
   gateway_not_running: { status: 409 },

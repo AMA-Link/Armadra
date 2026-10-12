@@ -12,6 +12,7 @@ import type { AddressInfo } from "node:net";
 import { LIMITS } from "@armadra/platform-protocol/tunnel";
 
 import { installContract } from "../http/rpc";
+import type { CoreContext } from "../main";
 import { AccountsService } from "../identity/accounts";
 import { Authorizer } from "../identity/authorize";
 import {
@@ -55,6 +56,8 @@ export interface RelayCore {
   hint: { status: number; body: Record<string, unknown> } | undefined;
   hintFetches: number;
   settings: RelaySettings;
+  /** 设置 `security.requireE2e`。 */
+  requireE2e: boolean;
   /** 登记（隧道随之起）。 */
   register(): Promise<void>;
   /** 一个绑在 `origin` 上的 owner 会话的访问令牌。 */
@@ -70,6 +73,8 @@ export async function relayCore(
     backoff?: (attempt: number) => number;
     /** 装上流量统计（不起定时器）。 */
     traffic?: boolean;
+    /** 另外装的域（在工作空间与事件之后、身份之前）。 */
+    domains?: readonly ((context: CoreContext) => void)[];
   } = {},
 ): Promise<RelayCore> {
   const world = fakeRelayWorld();
@@ -87,6 +92,7 @@ export async function relayCore(
     hint: undefined as RelayCore["hint"],
     hintFetches: 0,
     settings: { enabled: true, preferredNode: "" } as RelaySettings,
+    requireE2e: false,
   };
   const transport: Transport = async (request): Promise<OutboundAnswer> => {
     const url = new URL(request.url);
@@ -124,6 +130,7 @@ export async function relayCore(
   const core = fixture([
     (context) => void installWorkspaces(context),
     (context) => void installEvents(context),
+    ...(options.domains ?? []),
     (context) => {
       store = new IdentityStore(context.db.database);
       service = new IdentityService(store, INSTANCE);
@@ -153,6 +160,8 @@ export async function relayCore(
         settings: () => state.settings,
         backoff: options.backoff ?? (() => 20),
         allowInsecure: () => true,
+        requireE2e: () => state.requireE2e,
+        secrets: () => backend,
       });
     },
   ]);
@@ -212,6 +221,12 @@ export async function relayCore(
     },
     set settings(value) {
       state.settings = value;
+    },
+    get requireE2e() {
+      return state.requireE2e;
+    },
+    set requireE2e(value) {
+      state.requireE2e = value;
     },
     register: async () => {
       await cloud.register({

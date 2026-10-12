@@ -251,10 +251,11 @@ export const OUTBOUND = {
   },
   sourceGateway: {
     // 地址是用户配对的另一台 core 的 Gateway 来源（或经中继的 relayBaseUrl），
-    // 契约 §33；这里只是占位主机。按配对链接里的指纹钉扎。
+    // 契约 §33；这里只是占位主机。按配对链接里的指纹钉扎。经中继时登录与刷新走
+    // 同一主机上的端到端通道（`<relayBaseUrl>/_relay/e2e`，契约 §78）。
     url: "https://<已配对源的 Gateway 来源>",
-    purpose: "客户端源：配对、换票、选路时的 hello",
-    cadence: "用户动作：添加源、打开源时",
+    purpose: "客户端源：配对、换票、选路时的 hello；经中继时的端到端通道",
+    cadence: "用户动作：添加源、打开源时；通道最长 1 小时后重建",
     switch: null,
     defaultOn: false,
     documented: true,

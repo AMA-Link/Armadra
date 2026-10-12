@@ -25,8 +25,11 @@ import type { CoreRequest, HandlerResult, RouteMatch } from "../http/router";
 import type { CoreContext } from "../main";
 import { secretsFor } from "../secrets";
 import { currentHostName } from "../settings";
+import { DeviceKey } from "../relay/e2e/device-key";
+import { OutboundChannels } from "../relay/e2e/outbound";
 import {
   networkTransport,
+  pinnedAnchor,
   presentedAnchor,
   type Transport,
 } from "./http-client";
@@ -51,9 +54,17 @@ export interface SourcesInstallOptions {
   /** 换掉出站发送点（测试用假的远程服务与假 Gateway）。 */
   readonly transport?: Transport;
   readonly now?: () => number;
+  /** 端到端通道（测试注入）；缺省只在真网络上开。 */
+  readonly channels?: OutboundChannels;
 }
 
 let assembled: SourcesService | undefined;
+let outbound: OutboundChannels | undefined;
+
+/** 本机作为客户端的端到端通道（`e2e.waitSource` 用）；没装是 `undefined`。 */
+export function outboundChannels(): OutboundChannels | undefined {
+  return outbound;
+}
 
 /** 这一轮 core 装好的源服务；A1-4 / A2-3 / A3-2 经它读源表。 */
 export function sourcesDomain(): SourcesService | undefined {
@@ -137,11 +148,35 @@ export function install(
   } as const;
   const secrets = new SourceSecrets(() => secretsFor(context).backend);
   const remote = new RemoteClient(transport, device);
+  const store = new SourcesStore(context.db.database);
+  // 经中继连别的电脑时走端到端通道（契约 §78）：会话绑本机设备钥，桌面窗口经
+  // `e2e.sign` 用同一把钥开自己的通道。服务器壳的页面是另一台浏览器、签不了这把钥，
+  // 那里先不开（遗留：服务器壳代连别的电脑仍走明文）；测试的假对端也不开。
+  const channels =
+    options.channels ??
+    (transport === networkTransport && context.platform.shell !== "server"
+      ? new OutboundChannels({
+          deviceKey: new DeviceKey(() => secretsFor(context).backend),
+          pins: {
+            get: (sourceId) => store.identityPub(sourceId),
+            set: (sourceId, pub) => store.setIdentityPub(sourceId, pub),
+          },
+          name: () => device.name,
+          platform: "desktop",
+          anchor: (url, fingerprint) => pinnedAnchor(url, fingerprint, 10_000),
+        })
+      : undefined);
+  outbound = channels;
   const service = new SourcesService({
-    store: new SourcesStore(context.db.database),
+    store,
     secrets,
     remote,
-    peer: new SourceClient(transport),
+    peer: new SourceClient(
+      transport,
+      channels === undefined
+        ? undefined
+        : (address, request) => channels.request(address, request),
+    ),
     hostId: () => identity.hostId(),
     // 本机行的缺省名跟着「主机名称」（契约 §61）。
     hostLabel: currentHostName,

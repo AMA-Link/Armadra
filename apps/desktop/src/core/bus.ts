@@ -322,6 +322,18 @@ export interface WorkspaceEventPayloads {
       | "draining"
       | "backoff";
   };
+  /**
+   * 经中继端到端通道来的新设备等主人核对校验码（契约 §77）。不进 outbox；校验码
+   * 不在事件里。
+   */
+  "devices.pending": {
+    readonly pendingId: string;
+    readonly deviceId: string;
+    readonly label: string;
+    readonly platform: string;
+  };
+  /** 设备钥登记变了（契约 §77）；不进 outbox。 */
+  "devices.changed": { readonly deviceId: string };
   "board.comment": {
     readonly boardId: string;
     readonly action:
@@ -390,6 +402,8 @@ export const WORKSPACE_EVENT_TYPES = [
   "schedule.attention",
   "resources.threshold",
   "cloud.tunnel",
+  "devices.pending",
+  "devices.changed",
 ] as const satisfies readonly WorkspaceEventType[];
 
 export interface CoreEvents {

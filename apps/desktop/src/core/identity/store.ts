@@ -46,6 +46,11 @@ export interface IdentitySession {
   /** 建会话那一刻的来源地址与 UA，给「我的会话」列表看。 */
   readonly remoteIp?: string;
   readonly userAgent?: string;
+  /**
+   * 经中继端到端通道签的会话绑那条通道的设备钥（契约 §77，迁移 0050）；空串 =
+   * 不经通道签的会话。
+   */
+  readonly channelDeviceId?: string;
 }
 export interface IdentityTicket {
   readonly ticketId: string;
@@ -295,7 +300,7 @@ export class IdentityTx {
       .prepare(
         "SELECT session_id, device_id, device_epoch, origin, scopes, access_hash, refresh_hash, csrf_hash, " +
           "rotation, created_at_ms, access_expires_at_ms, expires_at_ms, revoked_at_ms, " +
-          "last_seen_at_ms, remote_ip, user_agent FROM identity_sessions WHERE session_id = ?",
+          "last_seen_at_ms, remote_ip, user_agent, channel_device_id FROM identity_sessions WHERE session_id = ?",
       )
       .get(sessionId) as Record<string, unknown> | undefined;
     return row === undefined ? undefined : toSession(row);
@@ -306,8 +311,8 @@ export class IdentityTx {
       .prepare(
         "INSERT INTO identity_sessions(session_id, device_id, device_epoch, origin, scopes, access_hash, " +
           "refresh_hash, csrf_hash, rotation, created_at_ms, access_expires_at_ms, expires_at_ms, revoked_at_ms, " +
-          "last_seen_at_ms, remote_ip, user_agent) " +
-          "VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?)",
+          "last_seen_at_ms, remote_ip, user_agent, channel_device_id) " +
+          "VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?)",
       )
       .run(
         session.sessionId,
@@ -325,6 +330,7 @@ export class IdentityTx {
         session.lastSeenAtMs ?? session.createdAtMs,
         (session.remoteIp ?? "").slice(0, 64),
         (session.userAgent ?? "").slice(0, 256),
+        session.channelDeviceId ?? "",
       );
   }
 
@@ -824,6 +830,7 @@ function toSession(row: Record<string, unknown>): IdentitySession {
     lastSeenAtMs: Number(row.last_seen_at_ms ?? 0),
     remoteIp: String(row.remote_ip ?? ""),
     userAgent: String(row.user_agent ?? ""),
+    channelDeviceId: String(row.channel_device_id ?? ""),
   };
 }
 

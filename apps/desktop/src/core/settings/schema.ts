@@ -257,6 +257,11 @@ function normalizeCompletion(document: JsonObject): void {
   collab.realtime =
     asBool(collab.realtime) ?? COMPLETION_SETTINGS_DEFAULTS.collab.realtime;
   document.collab = collab;
+  const security = section(document, "security");
+  security.requireE2e =
+    asBool(security.requireE2e) ??
+    COMPLETION_SETTINGS_DEFAULTS.security.requireE2e;
+  document.security = security;
   const models = section(document, "models");
   const catalog = section(models, "catalog");
   catalog.autoRefresh =
@@ -494,6 +499,7 @@ export function completionSettings(document: JsonValue): CompletionSettings {
     },
     canvas: normalized.canvas as unknown as CompletionSettings["canvas"],
     collab: normalized.collab as unknown as CompletionSettings["collab"],
+    security: normalized.security as unknown as CompletionSettings["security"],
     usage: {
       claudeUsage: usage.claudeUsage as boolean,
       copilotUsage: usage.copilotUsage as boolean,
@@ -554,6 +560,7 @@ export interface CompletionSettings {
     readonly layoutDirection: Choice<typeof LAYOUT_DIRECTION_CHOICES>;
   };
   readonly collab: { readonly realtime: boolean };
+  readonly security: { readonly requireE2e: boolean };
   readonly usage: {
     readonly claudeUsage: boolean;
     readonly copilotUsage: boolean;

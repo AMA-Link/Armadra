@@ -31,3 +31,9 @@ export function onRelaySettings(
   if (store === undefined) return () => undefined;
   return store.onChange((document) => listener(relaySettingsOf(document)));
 }
+
+/** `security.requireE2e`（契约 §78）：开着时明文中继路径一律 `403 e2e_required`。 */
+export function currentRequireE2e(): boolean {
+  return completionSettings(settingsDomain()?.settings.snapshot() ?? {})
+    .security.requireE2e;
+}

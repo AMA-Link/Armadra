@@ -23,6 +23,7 @@ import {
   runCloud,
   runInvite,
 } from "./cloud";
+import { runDevices } from "./devices";
 import { masterKeyFile, serverSecrets } from "./secrets";
 import {
   checkSecretName,
@@ -137,6 +138,15 @@ export async function main(
         return await runSecrets(positionals, dataDir, io, json);
       case "cloud":
         await runCloud(
+          positionals,
+          values,
+          dataDir,
+          defaultDeps(io, io.cloud),
+          (document, text) => emit(io, json, document, text),
+        );
+        return 0;
+      case "devices":
+        await runDevices(
           positionals,
           values,
           dataDir,

@@ -29,6 +29,7 @@ import { isNativeAppPage } from "../api/runtime-url";
  * | `openExternal({ url })`               | —（系统浏览器打开；只收 https / 回环 http）          |
  * | `appInfo()`                           | `{ version, build }`（App 自己的版本名与构建号，取自安装包） |
  * | `installApk({ url, sha256 })`         | `{ status, message? }`（Android 下载、核对、拉起安装器；从不 reject；iOS 固定 `failed`） |
+ * | `e2eDeviceSeed()`                     | `{ seed }`（端到端通道的设备钥种子，32 字节 base64url，没有就生成，只在钥匙串 / Keystore；契约 §78） |
  *
  * 事件（`addListener`）：`pushTokenRotated`——App 开着时令牌换了（Android
  * `onNewToken`、UnifiedPush 新端点、iOS 启动时 APNs 给了新令牌）。
@@ -135,6 +136,8 @@ export interface NativeBridge {
   appInfo(): Promise<NativeAppInfo | null>;
   /** 下载并安装新 APK；没有这个方法（旧安装包、iOS 以外的旧插件）答 `failed`。 */
   installApk(url: string, sha256: string): Promise<InstallApkResult>;
+  /** 端到端通道的设备钥种子（32 字节）；不在原生 App 里或旧安装包没有这个方法是 `null`。 */
+  e2eDeviceSeed(): Promise<Uint8Array | null>;
 }
 
 interface PluginListenerHandle {
@@ -160,6 +163,7 @@ interface ArmadraNativePlugin {
   openExternal?(options: { url: string }): Promise<unknown>;
   appInfo?(): Promise<unknown>;
   installApk?(options: { url: string; sha256: string }): Promise<unknown>;
+  e2eDeviceSeed?(): Promise<unknown>;
   addListener?(
     event: string,
     listener: () => void,
@@ -388,7 +392,20 @@ const WEB_BRIDGE: NativeBridge = {
   openExternal: () => Promise.resolve(false),
   appInfo: () => Promise.resolve(null),
   installApk: () => Promise.resolve({ status: "failed" }),
+  e2eDeviceSeed: () => Promise.resolve(null),
 };
+
+/** `{ seed }`（32 字节 base64url）→ 字节；不对是 `null`。 */
+function deviceSeed(value: unknown): Uint8Array | null {
+  const seed = (value as { seed?: unknown } | null)?.seed;
+  if (typeof seed !== "string" || !/^[A-Za-z0-9_-]{43}$/.test(seed))
+    return null;
+  const binary = atob(seed.replace(/-/g, "+").replace(/_/g, "/") + "=");
+  const bytes = new Uint8Array(binary.length);
+  for (let index = 0; index < binary.length; index += 1)
+    bytes[index] = binary.charCodeAt(index);
+  return bytes.length === 32 ? bytes : null;
+}
 
 /**
  * 当前环境的桥。原生插件的失败一律压成「没有」（`null` / 无操作），只有钉扎
@@ -513,6 +530,12 @@ export function nativeBridge(): NativeBridge {
         : Promise.resolve(false),
     appInfo: () =>
       quiet(native.appInfo && (() => native.appInfo!()), appInfo, null),
+    e2eDeviceSeed: () =>
+      quiet(
+        native.e2eDeviceSeed && (() => native.e2eDeviceSeed!()),
+        deviceSeed,
+        null,
+      ),
     installApk: (url, sha256) =>
       externalUrl(url) && /^[0-9a-f]{64}$/i.test(sha256)
         ? quiet(

@@ -338,14 +338,88 @@ export class FakeTunnelRelay {
       `ws://127.0.0.1:${port}/t/v1`,
       options,
     );
+    // 端到端通道的边缘（cloud 契约 §20 的最小替身）：`/s/<sourceId>/_relay/e2e`，
+    // 子协议 `armadra-e2e.1`；WS 二进制消息 ↔ 一条 `OPEN { kind: "e2e" }` 隧道流。
+    const edge = new WebSocketServer({
+      noServer: true,
+      perMessageDeflate: false,
+      handleProtocols: (protocols) =>
+        protocols.has("armadra-e2e.1") ? "armadra-e2e.1" : false,
+    });
     server.on("upgrade", (request, socket, head) => {
-      if (new URL(request.url ?? "/", "http://x").pathname !== "/t/v1") {
+      const path = new URL(request.url ?? "/", "http://x").pathname;
+      const e2e = /^\/s\/([0-9a-f]{32})\/_relay\/e2e$/.exec(path);
+      if (e2e !== null) {
+        const tunnel = relay.tunnels.find(
+          (one) => one.hello.sourceId === e2e[1] && one.closeCode === undefined,
+        );
+        if (
+          tunnel === undefined ||
+          !tunnel.hello.capabilities.includes("e2e")
+        ) {
+          socket.write(
+            "HTTP/1.1 503 Service Unavailable\r\nConnection: close\r\n\r\n",
+          );
+          socket.destroy();
+          return;
+        }
+        edge.handleUpgrade(request, socket, head, (ws) =>
+          relay.bridge(ws, tunnel, request.headers.origin ?? null),
+        );
+        return;
+      }
+      if (path !== "/t/v1") {
         socket.destroy();
         return;
       }
       wss.handleUpgrade(request, socket, head, (ws) => relay.accept(ws));
     });
     return relay;
+  }
+
+  /** 边缘看到的端到端通道字节（密文，两个方向）与边缘连接数。 */
+  readonly edgeBytes = { toSource: 0, toClient: 0, connections: 0 };
+  /** 边缘看到的每条消息（测试核对「中继看不到明文」）。 */
+  readonly edgeCapture: Buffer[] = [];
+
+  /** `http(s)://…` → 这台源的端到端边缘地址。 */
+  e2eUrl(sourceId: string): string {
+    return this.url.replace(/\/t\/v1$/, `/s/${sourceId}/_relay/e2e`);
+  }
+
+  private bridge(
+    ws: WebSocket,
+    tunnel: FakeTunnel,
+    origin: string | null,
+  ): void {
+    this.edgeBytes.connections += 1;
+    const stream = tunnel.openStream({
+      kind: "e2e",
+      method: "GET",
+      path: "/_relay/e2e",
+      headers: [],
+      clientOrigin: origin,
+    });
+    ws.on("message", (data: RawData) => {
+      const bytes = bytesOf(data);
+      this.edgeBytes.toSource += bytes.length;
+      this.edgeCapture.push(bytes);
+      stream.write(bytes);
+    });
+    stream.on("data", (chunk: Buffer) => {
+      this.edgeBytes.toClient += chunk.length;
+      this.edgeCapture.push(chunk);
+      if (ws.readyState === WebSocket.OPEN) ws.send(chunk, { binary: true });
+    });
+    const finish = () => {
+      if (ws.readyState === WebSocket.OPEN) ws.close(1000);
+    };
+    stream.on("end", finish);
+    stream.on("close", finish);
+    ws.on("close", () => {
+      if (!stream.destroyed) stream.end();
+    });
+    ws.on("error", () => undefined);
   }
 
   /** 等下一条就绪的隧道（已经有比 `after` 多的就立即答）。 */

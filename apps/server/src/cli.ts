@@ -1,8 +1,8 @@
 /**
  * 服务器壳的命令行。
  *
- * 十条子命令，一张表：`serve | install | uninstall | status | logs | upgrade |
- * secrets | cloud | invite | version`。解析是纯函数——没有 I/O、不读环境以外的东西、不打印——所以每条规则
+ * 十一条子命令，一张表：`serve | install | uninstall | status | logs | upgrade |
+ * secrets | cloud | invite | devices | version`。解析是纯函数——没有 I/O、不读环境以外的东西、不打印——所以每条规则
  * 都能单测，而「拒绝」是解析结果的一种，不是一个 `process.exit`。
  *
  * 两条规则写在这里而不是在执行处，因为它们必须在任何副作用之前成立：
@@ -25,6 +25,7 @@ export const USAGE = `用法: armadra-server <命令> [选项]
   secrets      密钥后端：rotate 换 master key；set NAME 从标准输入写一个条目
   cloud        个人中转：register / revoke / status / login（对运行中的服务器壳）
   invite       签发邀请；--cloud-link 经个人中转生成分享链接
+  devices      经中继端到端通道来的设备：list / approve / reject / revoke
   version      打印版本报告
 
 serve:
@@ -95,6 +96,14 @@ invite:
   --expires 7d           有效期（m / h / d），缺省 7 天，最长 30 天
   --label L              链接名
 
+devices:
+  list                   全部设备钥（含待确认）
+  approve PENDING_ID     核对新设备屏幕上的校验码后放行
+    --sas 482913           新设备屏幕上的 6 位数字
+  reject PENDING_ID      拒绝一台待确认的设备
+  revoke DEVICE_ID       撤销：吊销经它签的会话并断开通道
+    --principal ID         设备绑定的主体
+
 通用:
   --data-dir DIR         数据目录
   --output json          机器可读输出（status / version / upgrade）
@@ -113,6 +122,7 @@ export type CommandName =
   | "secrets"
   | "cloud"
   | "invite"
+  | "devices"
   | "version";
 
 const COMMANDS: readonly CommandName[] = [
@@ -125,6 +135,7 @@ const COMMANDS: readonly CommandName[] = [
   "secrets",
   "cloud",
   "invite",
+  "devices",
   "version",
 ];
 
@@ -197,6 +208,7 @@ const FLAGS: Record<CommandName, readonly string[]> = {
     "--data-dir",
     "--output",
   ],
+  devices: ["--sas", "--principal", "--data-dir", "--output"],
   version: ["--output"],
 };
 
@@ -207,6 +219,7 @@ const FLAGS: Record<CommandName, readonly string[]> = {
 const POSITIONALS: Partial<Record<CommandName, number>> = {
   secrets: 2,
   cloud: 1,
+  devices: 2,
 };
 
 /** 不带值的 flag。其余一律 `--flag value` 或 `--flag=value`。 */

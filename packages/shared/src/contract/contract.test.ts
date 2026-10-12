@@ -88,6 +88,8 @@ describe("契约树", () => {
       "diagnostics",
       "updates",
       "traffic",
+      "devices",
+      "e2e",
     ]);
   });
 
@@ -128,12 +130,12 @@ describe("契约树", () => {
     }
   });
 
-  it("匿名的只能经旧路径，且只在身份面、健康检查或配对短码（换票与 PAKE）下", () => {
+  it("匿名的只能经旧路径，且只在身份面、健康检查、配对短码（换票与 PAKE）或端到端通道的身份与等候下", () => {
     for (const entry of entries) {
       if (entry.meta.scope !== null) continue;
       expect(entry.meta.legacy, entry.name).toBeDefined();
       expect(entry.meta.legacy?.path, entry.name).toMatch(
-        /^\/api\/identity\/|^\/(api\/)?health$|^\/api\/gateway\/pairing-code\/(exchange|pake\/start|pake\/finish)$/,
+        /^\/api\/identity\/|^\/(api\/)?health$|^\/api\/gateway\/pairing-code\/(exchange|pake\/start|pake\/finish)$|^\/api\/e2e\/(identity|wait)$/,
       );
     }
   });
@@ -275,7 +277,7 @@ describe("§62 个人中转登录入参在协议包的形状上追加 challengeT
 });
 
 describe("§55 在协议包的形状上追加", () => {
-  // 协议包（cloud 仓，0.3.10）还没有 `routes` 与 `defaultLabel`（§61）：这几个
+  // 协议包（cloud 仓，0.4.0）还没有 `routes` 与 `defaultLabel`（§61）：这几个
   // schema 是它的 `extend`，协议包的每个字段逐个沿用同一个对象，只多这两节的字段。
   it("源表行、列表与 session 入参是协议包形状的超集", async () => {
     const protocol = await import("@armadra/platform-protocol/core-api");
@@ -390,19 +392,23 @@ describe("§31 与协议包同一份", () => {
     }
   });
 
-  it("匿名 procedure 只有 login、配对短码换票与它的 PAKE，且都只经旧路径", () => {
+  it("匿名 procedure 只有 login、配对短码换票与它的 PAKE、端到端通道的身份与等候，且都只经旧路径", () => {
     const anonymous = entries.filter((entry) => entry.meta.scope === null);
     expect(anonymous.map((entry) => entry.name)).toEqual([
       "identity.cloud.login",
       "gateway.exchangePairingCode",
       "gateway.pakeStart",
       "gateway.pakeFinish",
+      "e2e.identity",
+      "e2e.wait",
     ]);
     expect(anonymous.map((entry) => entry.meta.legacy?.path)).toEqual([
       "/api/identity/cloud/login",
       "/api/gateway/pairing-code/exchange",
       "/api/gateway/pairing-code/pake/start",
       "/api/gateway/pairing-code/pake/finish",
+      "/api/e2e/identity",
+      "/api/e2e/wait",
     ]);
   });
 

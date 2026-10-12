@@ -317,6 +317,8 @@ export const sources = {
         "source_unauthorized",
         "source_unreachable",
       ),
+      // 经端到端通道（契约 §78）：待对端主人核对（`details: { pendingId, sas }`）、被拒、身份变了。
+      ...errors.pick("device_pending", "device_rejected", "identity_changed"),
     })
     .meta(write("§33.1", "POST", "/api/sources/{sourceId}/session")),
   /** 设为首选的路（§55）：镜像随之改写。 */
