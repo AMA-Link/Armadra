@@ -76,6 +76,8 @@ export const ERROR_CODES = {
   device_limit: { status: 403 },
   /** 主人要求经中继的访问一律走端到端通道（`security.requireE2e`，契约 §78）。 */
   e2e_required: { status: 403 },
+  /** 经中转连的那台电脑没有端到端通道（旧 core，中继答 4404 / 4409）：要升级（契约 §78）。 */
+  e2e_unsupported: { status: 502, i18n: "error.e2eUnsupported" },
   /** 本机输入的校验码与新设备屏幕上的不一致（契约 §77）。 */
   sas_mismatch: { status: 400 },
   /** 新设备的那条通道已经不在，校验码作废，等它重连（契约 §77）。 */

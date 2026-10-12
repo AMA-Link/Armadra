@@ -14,6 +14,7 @@ import {
   fakeBridge,
   routedFetch,
 } from "./testing";
+import { plainE2e } from "../sources/e2e/testing";
 
 const ISSUER = "https://relay.example.com";
 const SOURCE = "a".repeat(32);
@@ -93,6 +94,7 @@ describe("手机的凭据来源 · 经中继", () => {
       bridge,
       describe: () => descriptor({}),
       cloud: { fetch: net.fetch },
+      e2e: plainE2e(net.fetch),
       now: () => NOW,
     });
     const access = await provider.getAccess(SOURCE, "relayed");
@@ -135,6 +137,7 @@ describe("手机的凭据来源 · 经中继", () => {
       bridge,
       describe: () => descriptor({}),
       cloud: { fetch: net.fetch },
+      e2e: plainE2e(net.fetch),
       now: () => NOW,
     });
     await provider.getAccess(SOURCE, "relayed");
@@ -182,6 +185,7 @@ describe("手机的凭据来源 · 经中继", () => {
       bridge,
       describe: () => descriptor({}),
       cloud: { fetch: net.fetch },
+      e2e: plainE2e(net.fetch),
       now: () => NOW,
     });
     const access = await provider.refresh(SOURCE, "relayed");
@@ -204,6 +208,7 @@ describe("手机的凭据来源 · 经中继", () => {
         bridge,
         describe: () => descriptor({}),
         cloud: { fetch: fetchImpl },
+        e2e: plainE2e(fetchImpl),
         now: () => NOW,
       });
     await expect(
@@ -230,6 +235,7 @@ describe("手机的凭据来源 · 经中继", () => {
       bridge,
       describe: () => descriptor({}),
       cloud: { fetch: net.fetch },
+      e2e: plainE2e(net.fetch),
     });
     await expect(provider.getAccess(SOURCE, "relayed")).rejects.toMatchObject({
       code: "source_unauthorized",
@@ -314,6 +320,7 @@ describe("手机的凭据来源 · 同一个中继下按主体分槽", () => {
       slotOf: (sourceId) => slots[sourceId] ?? null,
       connections: () => [],
       cloud: { fetch: fetcher.fetch },
+      e2e: plainE2e(fetcher.fetch),
       now: () => NOW,
     });
     await provider.getAccess(GUEST_SOURCE, "relayed");
@@ -344,6 +351,7 @@ describe("手机的凭据来源 · 同一个中继下按主体分槽", () => {
       slotOf: () => null,
       connections: () => [],
       cloud: { fetch: fetcher.fetch },
+      e2e: plainE2e(fetcher.fetch),
       now: () => NOW,
     });
     await expect(provider.getAccess(SOURCE, "relayed")).resolves.toMatchObject({
@@ -363,6 +371,7 @@ describe("手机的凭据来源 · 同一个中继下按主体分槽", () => {
       slotOf: () => serviceIdOf(ISSUER, "someone-else"),
       connections: () => [],
       cloud: { fetch: fetcher.fetch },
+      e2e: plainE2e(fetcher.fetch),
       now: () => NOW,
     });
     await expect(provider.getAccess(SOURCE, "relayed")).rejects.toMatchObject({
@@ -388,6 +397,7 @@ describe("手机的凭据来源 · 同一个中继下按主体分槽", () => {
       slotOf: (sourceId) => slots[sourceId] ?? null,
       connections: () => rows,
       cloud: { fetch: fetcher.fetch },
+      e2e: plainE2e(fetcher.fetch),
       now: () => NOW,
     });
     await expect(provider.cloudAuth.access(ISSUER)).resolves.toBe(
@@ -485,6 +495,7 @@ describe("手机的凭据来源 · 同一台主机经两个中继（§55）", ()
       touched: (_id, via, origin) => touched.push(`${via} ${origin}`),
       connections: () => [two],
       cloud: { fetch: fetcher.fetch },
+      e2e: plainE2e(fetcher.fetch),
       now: () => NOW,
     });
 
@@ -544,6 +555,7 @@ describe("手机的凭据来源 · 直连", () => {
           ? descriptor({ kind: "direct", baseUrl: GATEWAY, relayOrigin: "" })
           : undefined,
       cloud: { fetch: net.fetch },
+      e2e: plainE2e(net.fetch),
       now: () => NOW,
     });
     const access = await provider.getAccess(SOURCE, "direct");

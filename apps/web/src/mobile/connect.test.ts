@@ -32,6 +32,7 @@ import {
   memoryStorage,
   routedFetch,
 } from "./testing";
+import { plainE2e } from "../sources/e2e/testing";
 
 const FP = "ab".repeat(32);
 const LINK = `https://192.168.1.8:8443/#pair=tk.secret&fp=${FP}`;
@@ -347,6 +348,7 @@ describe("添加连接 · 个人中转", () => {
     const enroll = createRelayEnrollment({
       bridge,
       cloud: { fetch: net.fetch },
+      e2e: plainE2e(net.fetch),
       reload,
     });
     const first = await enroll.begin({
@@ -409,6 +411,7 @@ describe("添加连接 · 个人中转", () => {
     const enroll = createRelayEnrollment({
       bridge: trusted.bridge,
       cloud: { fetch: net.fetch },
+      e2e: plainE2e(net.fetch),
       reload: vi.fn(),
     });
     const outcome = await enroll.begin({
@@ -428,6 +431,7 @@ describe("添加连接 · 个人中转", () => {
       createRelayEnrollment({
         bridge: pinned.bridge,
         cloud: { fetch: routedFetch(routes).fetch },
+        e2e: plainE2e(routedFetch(routes).fetch),
         reload: vi.fn(),
       });
     const input = { issuer: ISSUER, account: "owner", password: "x" };
@@ -508,6 +512,7 @@ describe("添加连接 · 个人中转", () => {
     const enroll = createRelayEnrollment({
       bridge: pinned.bridge,
       cloud: { fetch: net.fetch },
+      e2e: plainE2e(net.fetch),
       reload: vi.fn(),
     });
     const input = { issuer: ISSUER, account: "owner", password: "pw" };
@@ -539,6 +544,7 @@ describe("添加连接 · 个人中转", () => {
       createRelayEnrollment({
         bridge: pinned.bridge,
         cloud: { fetch: net.fetch },
+        e2e: plainE2e(net.fetch),
         reload: vi.fn(),
       }).begin({ issuer: ISSUER, account: "o", password: "p" }),
     ).resolves.toEqual({ kind: "failure", failure: "challengeInvalid" });
@@ -553,6 +559,7 @@ describe("添加连接 · 个人中转", () => {
     const enroll = createRelayEnrollment({
       bridge: store.bridge,
       cloud: { fetch: net.fetch },
+      e2e: plainE2e(net.fetch),
       reload: vi.fn(),
     });
     await enroll.begin({ issuer: ISSUER, account: "a", password: "b" });
@@ -618,6 +625,7 @@ describe("添加连接 · 分享链接 / 二维码", () => {
     const enroll = createRelayEnrollment({
       bridge,
       cloud: { fetch: net.fetch },
+      e2e: plainE2e(net.fetch),
       reload,
     });
     await expect(enroll.join(SHARE)).resolves.toEqual({ kind: "done" });
@@ -682,6 +690,7 @@ describe("添加连接 · 分享链接 / 二维码", () => {
     const enroll = createRelayEnrollment({
       bridge,
       cloud: { fetch: net.fetch },
+      e2e: plainE2e(net.fetch),
       reload,
     });
     await expect(enroll.join(SHARE)).resolves.toEqual({ kind: "done" });
@@ -712,6 +721,7 @@ describe("添加连接 · 分享链接 / 二维码", () => {
     const enroll = createRelayEnrollment({
       bridge: fresh.bridge,
       cloud: { fetch: net.fetch },
+      e2e: plainE2e(net.fetch),
       reload: vi.fn(),
     });
     await expect(enroll.join(deep)).resolves.toEqual({
@@ -758,6 +768,7 @@ describe("添加连接 · 分享链接 / 二维码", () => {
     const enroll = createRelayEnrollment({
       bridge,
       cloud: { fetch: net.fetch },
+      e2e: plainE2e(net.fetch),
       reload: vi.fn(),
     });
     await enroll.begin({ issuer: ISSUER, account: "o", password: "p" });
@@ -849,6 +860,7 @@ describe("管理连接", () => {
     const owner = createRelayEnrollment({
       bridge,
       cloud: { fetch: net.fetch },
+      e2e: plainE2e(net.fetch),
       reload: vi.fn(),
     });
     await owner.begin({ issuer: ISSUER, account: "o", password: "p" });
@@ -856,6 +868,7 @@ describe("管理连接", () => {
     const guest = createRelayEnrollment({
       bridge,
       cloud: { fetch: net.fetch },
+      e2e: plainE2e(net.fetch),
       reload: vi.fn(),
     });
     await expect(

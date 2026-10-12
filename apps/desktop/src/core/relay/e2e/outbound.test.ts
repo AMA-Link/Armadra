@@ -1,4 +1,5 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { E2eChannelError, E2eClientChannel } from "@armadra/shared/e2e";
 
 import {
   memoryBackend,
@@ -99,6 +100,52 @@ describe("本机经端到端通道登录别的电脑", () => {
       platform: "desktop",
     });
     channels.close();
+  });
+
+  it("中继说对端没有通道（旧 core，4404）：e2e_unsupported，不退回明文", async () => {
+    const open = vi
+      .spyOn(E2eClientChannel, "open")
+      .mockRejectedValueOnce(
+        new E2eChannelError("unreachable", "e2e_unsupported", 4404),
+      );
+    const { peer, address } = client();
+    await expect(
+      peer.cloudLogin(
+        address,
+        signAssertion({ aud: sourceId, nowMs: Date.now() }),
+      ),
+    ).rejects.toMatchObject({ code: "e2e_unsupported" });
+    open.mockRestore();
+  });
+
+  it("连不上通道：source_unreachable，不退回明文", async () => {
+    const open = vi
+      .spyOn(E2eClientChannel, "open")
+      .mockRejectedValueOnce(new E2eChannelError("unreachable"));
+    const { peer, address } = client();
+    await expect(
+      peer.cloudLogin(
+        address,
+        signAssertion({ aud: sourceId, nowMs: Date.now() }),
+      ),
+    ).rejects.toMatchObject({ code: "source_unreachable" });
+    open.mockRestore();
+  });
+
+  it("没有通道的客户端经中转一律失败，明文那条路不碰", async () => {
+    const transport = vi.fn();
+    const peer = new SourceClient(transport);
+    await expect(
+      peer.hello(
+        {
+          base: `https://relay.example/s/${sourceId}`,
+          fingerprint: "",
+          relayToken: "relay-token",
+        },
+        1_000,
+      ),
+    ).rejects.toMatchObject({ code: "source_unreachable" });
+    expect(transport).not.toHaveBeenCalled();
   });
 
   it("对端身份变了：identity_changed，不发请求", async () => {

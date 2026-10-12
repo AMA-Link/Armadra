@@ -8,8 +8,8 @@
  * 自签证书时按远程服务的 CA 指纹钉扎。对端身份公钥钉在源表（`client_sources.
  * identity_pub`）：第一次记下，之后变了拒绝。
  *
- * 过渡期：从没在这台电脑上建成过通道（没有钉扎）且连不上时答 `null`，调用方走明文；
- * 钉过就再不降级。
+ * 没有明文退路：连不上答 `source_unreachable`；中继说对端没有通道（旧 core，关闭码
+ * 4404 / 4409）答 `e2e_unsupported`。
  */
 
 import {
@@ -86,10 +86,7 @@ function same(a: Uint8Array, b: Uint8Array): boolean {
 
 export class OutboundChannels {
   private readonly open = new Map<string, E2eClientChannel>();
-  private readonly opening = new Map<
-    string,
-    Promise<E2eClientChannel | null>
-  >();
+  private readonly opening = new Map<string, Promise<E2eClientChannel>>();
 
   constructor(private readonly options: OutboundChannelsOptions) {}
 
@@ -99,7 +96,7 @@ export class OutboundChannels {
     return found === undefined || found.closed ? undefined : found;
   }
 
-  channel(target: OutboundTarget): Promise<E2eClientChannel | null> {
+  channel(target: OutboundTarget): Promise<E2eClientChannel> {
     const existing = this.current(target.sourceId);
     if (existing !== undefined && !existing.expired)
       return Promise.resolve(existing);
@@ -108,13 +105,11 @@ export class OutboundChannels {
     if (inflight === undefined) {
       inflight = this.connect(target)
         .then((channel) => {
-          if (channel !== null) {
-            this.open.set(target.sourceId, channel);
-            channel.onClose(() => {
-              if (this.open.get(target.sourceId) === channel)
-                this.open.delete(target.sourceId);
-            });
-          }
+          this.open.set(target.sourceId, channel);
+          channel.onClose(() => {
+            if (this.open.get(target.sourceId) === channel)
+              this.open.delete(target.sourceId);
+          });
           return channel;
         })
         .finally(() => this.opening.delete(target.sourceId));
@@ -123,9 +118,7 @@ export class OutboundChannels {
     return inflight;
   }
 
-  private async connect(
-    target: OutboundTarget,
-  ): Promise<E2eClientChannel | null> {
+  private async connect(target: OutboundTarget): Promise<E2eClientChannel> {
     const pinned = this.options.pins.get(target.sourceId);
     const url = wsUrl(target.base);
     let channel: E2eClientChannel;
@@ -153,7 +146,11 @@ export class OutboundChannels {
         error.code === "identity_mismatch"
       )
         throw fail("identity_changed", "这台电脑的身份变了");
-      if (pinned === null) return null;
+      if (
+        error instanceof E2eChannelError &&
+        (error.closeCode === 4404 || error.closeCode === 4409)
+      )
+        throw fail("e2e_unsupported", "这台电脑没有端到端通道，需要升级");
       throw fail("source_unreachable", "连不上这台电脑的端到端通道");
     }
     if (
@@ -175,15 +172,13 @@ export class OutboundChannels {
   }
 
   /**
-   * 经通道发一个 JSON 请求（`sources/http-client.ts` 的 `Transport` 形状）。通道不可用
-   * （过渡期的旧 core）答 `null`，调用方走明文。
+   * 经通道发一个 JSON 请求（`sources/http-client.ts` 的 `Transport` 形状）。
    */
   async request(
     target: OutboundTarget,
     request: OutboundRequest,
-  ): Promise<{ answer: OutboundAnswer; sas: string } | null> {
+  ): Promise<{ answer: OutboundAnswer; sas: string }> {
     const channel = await this.channel(target);
-    if (channel === null) return null;
     const fetcher = channelFetch(channel, { origin: null, base: target.base });
     const headers: Record<string, string> = { ...request.headers };
     delete headers["armadra-relay-token"];

@@ -15,6 +15,7 @@ import {
 } from "./hosted";
 import type { EnterRouteOptions } from "./route-entry";
 import type { RemoteStreamOptions } from "./remote-stream";
+import { plainE2e } from "./e2e/testing";
 
 /**
  * 访客保管处：按分享链接加入的访客刷新令牌按 签发方 + 链接 存 localStorage，
@@ -160,6 +161,7 @@ function page(
   const relay = createHostedRelay({
     issuer: ISSUER,
     cloud: { fetch: net.fetch },
+    e2e: plainE2e(net.fetch),
     enter: fakeEnter,
     wake: vi.fn(),
     storage: stores.session,
@@ -265,6 +267,7 @@ describe("访客保管处（localStorage，按 签发方 + 链接）", () => {
     const failing = createHostedRelay({
       issuer: ISSUER,
       cloud: { fetch: net.fetch },
+      e2e: plainE2e(net.fetch),
       enter: fakeEnter,
       wake: vi.fn(),
       storage: stores.session,

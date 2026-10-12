@@ -6,7 +6,6 @@ import {
 import { resetLocalRuntime } from "../api/local-runtime";
 import { installLocalTransport } from "../api/source";
 import { type Route, pickRoute } from "./routing";
-import { RELAY_PROTOCOL, RELAY_TOKEN_HEADER } from "./transport";
 import type {
   CredentialProvider,
   SourceAccess,
@@ -149,14 +148,6 @@ export async function enterRoute(
             active: () => true,
             base: () => access.httpBase,
           },
-          extraHeaders: (): Record<string, string> =>
-            access.relayToken === undefined || access.e2e !== undefined
-              ? {}
-              : { [RELAY_TOKEN_HEADER]: access.relayToken },
-          extraProtocols: () =>
-            access.relayToken === undefined || access.e2e !== undefined
-              ? []
-              : [`${RELAY_PROTOCOL}${access.relayToken}`],
         }
       : {}),
   });

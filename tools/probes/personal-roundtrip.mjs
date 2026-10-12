@@ -6,8 +6,7 @@
 //
 //   1. 中继 init：状态目录、CA 指纹、口令不进输出；serve 起来，`/.well-known` 答 personal；
 //   2. core 登记：注册令牌 → `identity.cloud.register` → 隧道 ready，中继目录里有这台源，
-//      中继账号绑定为主人；错口令被拒；同一条 keep-alive 连接空闲 6 秒以上再经中继 POST
-//      到源，连接还在、不失败（iOS WebKit 不重试被服务端空闲关掉的连接）；
+//      中继账号绑定为主人；错口令被拒；带令牌的明文请求由中继答 404（只转端到端通道）；
 //   3. 浏览器开中继托管的 `/app/`：账号口令登录 → 进画布 → 终端收发 → ACP 会话（假 Agent）经中继
 //      发一轮、回复流回、core 只投递一次（契约 §39.9 的 clientTurnId）→ 实时板与本机页面双向同步；
 //   4. 分享链接：`/j/<id>#…` 落地、片段被抹掉、访客加入、打开链接指向的工作空间、开终端；
@@ -276,10 +275,12 @@ try {
       "init 输出账号、对外地址与 64 位 CA 指纹",
     );
     run.check(!initOutput.text.includes(password), "init 的输出里没有口令");
+    // 个人中转新装缺省 SQLite（relay.db），旧版是 state.json：两种都认。
     run.check(
-      existsSync(join(relayData, "state.json")) &&
+      (existsSync(join(relayData, "relay.db")) ||
+        existsSync(join(relayData, "state.json"))) &&
         existsSync(join(relayData, "tls", "ca.crt")),
-      "状态目录里有 state.json 与自签 CA",
+      "状态目录里有状态库（relay.db 或 state.json）与自签 CA",
     );
     const reinit = spawnRelay([
       "init",
@@ -374,6 +375,37 @@ try {
   secret("core 本机主人会话", session.headers.authorization.slice(7));
   const { owner, rpc } = ownerClient(session);
 
+  // 经中转来的新设备（契约 §77）：页面弹出校验码，主人在这台 core 上核对放行。
+  const SAS_ON_PAGE = `const el = [...document.querySelectorAll('[role="dialog"] p')].find((one) => /^\\d{3} \\d{3}$/.test(one.innerText.trim())); return el ? el.innerText.replace(/\\s/g, "") : null;`;
+  const untilApproved = async (p, readyBody, what, timeout = 60_000) => {
+    const deadline = Date.now() + timeout;
+    let approvals = 0;
+    while (Date.now() < deadline) {
+      if (await p.evaluate(readyBody)) return approvals;
+      const sas = await p.evaluate(SAS_ON_PAGE);
+      if (sas) {
+        const listed = await owner("/api/devices");
+        for (const device of (listed.devices ?? []).filter(
+          (row) => row.status === "pending" && row.pendingId,
+        )) {
+          const answer = await session.fetch("/api/devices/approve", {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ pendingId: device.pendingId, sas }),
+          });
+          await answer.text();
+          if (answer.ok) {
+            approvals += 1;
+            run.ok(`${what}：主人核对页面上的校验码，放行这台新设备`);
+            break;
+          }
+        }
+      }
+      await sleep(400);
+    }
+    throw new Error(`等待超时：${what}`);
+  };
+
   const registered = await timed("2-tunnel", () =>
     registerSource({
       relay: {
@@ -410,63 +442,32 @@ try {
   run.ok("中继账号绑定为这台 core 的主人");
 
   if (!external) {
-    // 空闲 keep-alive：Node 缺省 5 秒就关空闲连接，iOS WebKit 复用它发 POST 时不重试，
-    // 直接「加载失败」——Agent 的这一轮就没完成。照 iOS App 的路子（来源
-    // `capacitor://localhost`）：经中继用断言换 core 会话，空闲 6.5 秒后在同一条连接上
-    // 再 POST `system.hello`，连接不许被服务端先关掉，两次都要 200。
-    const idle = await timed("2-keepalive", async () => {
+    // 中继只转端到端通道（契约 §78，cloud 0.5.0）：带令牌的明文请求由中继答 404、不进隧道。
+    const plain = await timed("2-plaintext-removed", async () => {
       const assertion = await must(
         "POST",
         `/v1/sources/${sourceId}/assertion`,
-        {
-          body: { device },
-          token: cloudToken,
-        },
+        { body: { device }, token: cloudToken },
       );
       secret("中继令牌", assertion.relayToken);
       secret("源访问断言", assertion.assertion);
-      const headers = {
-        origin: "capacitor://localhost",
-        "armadra-relay-token": assertion.relayToken,
-      };
-      const answer = await idleKeepAlivePost(
-        issuer,
-        caPem,
+      const answer = await call(
+        "POST",
+        `/s/${sourceId}/api/identity/cloud/login`,
         {
-          path: `/s/${sourceId}/api/identity/cloud/login`,
           body: { assertion: assertion.assertion },
-          headers,
-        },
-        (login) => {
-          const session = login.body?.session;
-          if (session?.native?.accessToken)
-            secret("core 访问令牌", session.native.accessToken);
-          if (session?.native?.refreshToken)
-            secret("core 刷新令牌", session.native.refreshToken);
-          return {
-            path: `/s/${sourceId}/api/rpc/system/hello`,
-            body: { json: {} },
-            headers: {
-              ...headers,
-              authorization: `Bearer ${session?.native?.accessToken ?? ""}`,
-            },
-          };
+          headers: {
+            origin: "capacitor://localhost",
+            "armadra-relay-token": assertion.relayToken,
+          },
         },
       );
-      return {
-        statuses: answer.answers.map((one) => one.status),
-        codes: answer.answers.map((one) => one.body?.code ?? null),
-        reused: answer.reused,
-        closedByServer: answer.closedByServer,
-        idleMs: answer.idleMs,
-      };
+      return { status: answer.status, code: answer.body?.code ?? null };
     });
     run.check(
-      idle.statuses.every((status) => status === 200) &&
-        idle.reused &&
-        !idle.closedByServer,
-      "iOS 来源经中继换会话后空闲 6.5 秒，同一条 keep-alive 连接再 POST：连接还在、两次都 200",
-      idle,
+      plain.status === 404 && plain.code === "not_found",
+      "明文路径已删：带令牌的 cloud/login 由中继答 404，不进隧道",
+      plain,
     );
   }
 
@@ -568,6 +569,11 @@ try {
     );
     await page.type(password);
     await page.key("Enter");
+    await untilApproved(
+      page,
+      `return !!document.querySelector('${nodeAt(sticky.id)}')`,
+      "账号口令登录后进画布",
+    );
     await page.until(
       `return !!document.querySelector('${nodeAt(sticky.id)}')`,
       "账号口令登录后进画布、便签出现",
@@ -740,7 +746,10 @@ try {
   await timed("4-guest", async () => {
     await guest.goto(browserShare.url);
     await guest.settle();
-    await guest.until(buttonExists("加入"), "落地页的「加入」按钮");
+    await guest.until(
+      buttonExists("在浏览器中加入"),
+      "落地页的「在浏览器中加入」按钮",
+    );
     const landing = await guest.evaluate(`return document.body.innerText;`);
     run.check(
       landing.includes(browserShare.name) || landing.includes("roundtrip-host"),
@@ -753,7 +762,12 @@ try {
       hash,
     );
     await shotAt(guest, "04-join-landing-1440");
-    await guest.clickOn(buttonByText("加入"), "加入");
+    await guest.clickOn(buttonByText("在浏览器中加入"), "在浏览器中加入");
+    await untilApproved(
+      guest,
+      `return location.pathname === "/app/" ? true : null;`,
+      "访客加入",
+    );
     await guest.until(
       `return location.pathname === "/app/" ? true : null;`,
       "加入后地址换成 /app/",
@@ -868,6 +882,7 @@ try {
             peek: async ({ origin }) => ({ fingerprint: ${JSON.stringify(fingerprint)}, trusted: false, pinned: read("fake.pins", []).includes(origin) }),
             pin: async ({ origin, fingerprint }) => { if (fingerprint !== ${JSON.stringify(fingerprint)}) throw new Error("mismatch"); write("fake.pins", [...read("fake.pins", []), origin]); },
             scan: async () => ({ text: localStorage.getItem("fake.scan") ?? "" }),
+            e2eDeviceSeed: async () => { let seed = localStorage.getItem("fake.e2eSeed"); if (!seed) { const bytes = crypto.getRandomValues(new Uint8Array(32)); seed = btoa(String.fromCharCode(...bytes)).replaceAll("+", "-").replaceAll("/", "_").replaceAll("=", ""); localStorage.setItem("fake.e2eSeed", seed); } return { seed }; },
           } },
         };
       })();`;
@@ -1214,13 +1229,10 @@ try {
       token: await ownerToken(),
     });
     secret("中继令牌", assertion.relayToken);
-    const healthy = await call("GET", `/s/${sourceId}/health`, {
-      headers: { "armadra-relay-token": assertion.relayToken },
-    });
     run.check(
-      healthy.status === 200,
-      "撤销前经中继访问源的 /health 通",
-      healthy.status,
+      assertion.online === true,
+      "撤销前中继报这台源在线",
+      assertion.online,
     );
     await owner("/api/identity/cloud/register", {
       method: "DELETE",
@@ -1239,17 +1251,20 @@ try {
     // §31.4），中继随之作废发给它的中继令牌，经中继答 401 而不是离线 503。
     const offline = await until(
       async () => {
-        const answer = await call("GET", `/s/${sourceId}/health`, {
-          headers: { "armadra-relay-token": assertion.relayToken },
+        const answer = await call("POST", `/v1/sources/${sourceId}/assertion`, {
+          body: { device },
+          token: await ownerToken(),
         });
-        return answer.status >= 400 ? answer : null;
+        return answer.status >= 400 || answer.body?.online === false
+          ? answer
+          : null;
       },
-      "中继拒绝经它访问已撤销的源",
+      "中继不再给已撤销的源签断言",
       { timeout: 30_000 },
     );
     run.check(
-      offline.status === 401 || offline.status === 503,
-      "撤销登记后经中继访问被拒（401 令牌随源作废，或 503 离线）",
+      offline.status >= 400 || offline.body?.online === false,
+      "撤销登记后中继不再给这台源签断言（源记录删了或离线）",
       { status: offline.status, code: offline.body?.code },
     );
     const ownerBanner = await page.until(

@@ -164,6 +164,10 @@ export const SOURCE_ERROR = {
   identityChanged: "identity_changed",
   /** 这台电脑的主人拒绝或撤销了这台设备（契约 §77）。 */
   deviceRejected: "device_rejected",
+  /** 这台电脑没有端到端通道（旧 core）：要升级（契约 §78）。 */
+  e2eUnsupported: "e2e_unsupported",
+  /** 这个浏览器没有端到端通道要的密码学原语（旧 WebView）：请用 App。 */
+  e2eDeviceUnavailable: "e2e_device_unavailable",
 } as const;
 
 export class SourceError extends Error {

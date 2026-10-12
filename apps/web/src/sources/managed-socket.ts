@@ -1,11 +1,11 @@
 import { type BackoffOptions, createBackoff } from "../lib/backoff";
-import { RELAY_PROTOCOL, WS_TICKET_PROTOCOL } from "./transport";
+import { WS_TICKET_PROTOCOL } from "./transport";
 
 /**
  * 一条托管的流：换票、退避、关闭码语义、`online` 与可见性（客户端包 §1.3）。
  *
- * - 每次（重）连之前先取票（`armadra-ticket.<票>`），经中继时再带
- *   `armadra-relay.<令牌>`；
+ * - 每次（重）连之前先取票（`armadra-ticket.<票>`）；经中继时 WebSocket 本身就是端到端
+ *   通道上的流（契约 §78），不再带中继令牌；
  * - 关闭码：4401 → 续一次凭据、立刻换票重连（连续两次就是 `unauthorized`）；
  *   4403 → `unauthorized`，不再连；4404 → `waiting`（源不在线），等
  *   {@link ManagedSocket.wake}；调用方 `close()` → `closed`；其它 → 全抖动退避
@@ -56,8 +56,6 @@ export interface ManagedSocketOptions {
   protocols?: readonly string[];
   /** 取一张一次性票；`null` = 这个源不用票（Cookie 会话、开发时的裸 core）。 */
   ticket(): Promise<string | null>;
-  /** 经中继时的中继令牌；没有是 `null`。 */
-  relayToken?(): string | null;
   /** 4401 时续一次凭据；续不上答 `false`。 */
   renew(): Promise<boolean>;
   /** 回到前台时探一次活；`true` = 还活着。缺省不探。 */
@@ -230,9 +228,6 @@ export class ManagedSocket {
     if (generation !== this.generation || this.isClosed()) return;
     const protocols = [...(this.options.protocols ?? [])];
     if (ticket !== null) protocols.push(`${WS_TICKET_PROTOCOL}${ticket}`);
-    const relay = this.options.relayToken?.() ?? null;
-    if (relay !== null && relay !== "")
-      protocols.push(`${RELAY_PROTOCOL}${relay}`);
     const Socket = this.options.WebSocket ?? globalThis.WebSocket;
     let socket: WebSocket;
     try {

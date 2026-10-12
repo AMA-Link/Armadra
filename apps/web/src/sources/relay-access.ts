@@ -157,6 +157,12 @@ function e2eFailure(error: unknown): never {
       throw unauthorized(SOURCE_ERROR.identityChanged);
     if (error.code === "device_rejected")
       throw unauthorized(SOURCE_ERROR.deviceRejected);
+    if (error.code === "unsupported")
+      throw unauthorized(SOURCE_ERROR.e2eUnsupported);
+    if (error.code === "device_unavailable")
+      throw unauthorized(SOURCE_ERROR.e2eDeviceUnavailable);
+    if (error.code === "unreachable")
+      throw unauthorized(SOURCE_ERROR.unreachable);
     throw unauthorized();
   }
   throw error;
@@ -219,15 +225,16 @@ export function createRelayedAccess(
       relayToken: assertion.relayToken,
       label: deps.label?.(sourceId) ?? "",
     };
-    const channel =
-      deps.e2e === undefined
-        ? null
-        : await deps.e2e.channel(target).catch(e2eFailure);
-    // 经通道时源 core 的登录与刷新也走它（会话绑这台设备的设备钥）。
-    const coreOptions: CloudOptions =
-      channel === null || deps.e2e === undefined
-        ? (deps.cloud ?? {})
-        : { ...deps.cloud, fetch: deps.e2e.fetchFor(channel, base) };
+    // 经中继只走端到端通道（契约 §78）；没有通道就不连。
+    const e2e = deps.e2e;
+    if (e2e === undefined)
+      throw unauthorized(SOURCE_ERROR.e2eDeviceUnavailable);
+    const channel = await e2e.channel(target).catch(e2eFailure);
+    // 源 core 的登录与刷新也走通道（会话绑这台设备的设备钥）。
+    const coreOptions: CloudOptions = {
+      ...deps.cloud,
+      fetch: e2e.fetchFor(channel, base),
+    };
 
     let session = await deps.vault.session(sourceId);
     if (session === undefined || force || !fresh(session)) {
@@ -269,14 +276,12 @@ export function createRelayedAccess(
           const login = await send().catch(async (error: unknown) => {
             // 新设备：等主人在那台电脑上核对校验码，放行后再登录一次（契约 §77）。
             if (
-              channel === null ||
-              deps.e2e === undefined ||
               !(error instanceof CloudError) ||
               error.code !== "device_pending" ||
               typeof error.details.pendingId !== "string"
             )
               throw error;
-            await deps.e2e
+            await e2e
               .awaitApproval(target, channel, error.details.pendingId)
               .catch(e2eFailure);
             return send();
@@ -318,14 +323,10 @@ export function createRelayedAccess(
       httpBase: base,
       wsBase: wsOf(base),
       relayToken: assertion.relayToken,
-      ...(channel === null || deps.e2e === undefined
-        ? {}
-        : {
-            e2e: {
-              fetch: deps.e2e.fetchFor(channel, base),
-              WebSocket: deps.e2e.socketFor(channel, base),
-            },
-          }),
+      e2e: {
+        fetch: e2e.fetchFor(channel, base),
+        WebSocket: e2e.socketFor(channel, base),
+      },
     };
   };
 

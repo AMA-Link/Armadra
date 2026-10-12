@@ -10,6 +10,7 @@ import {
   RELAY_FP,
   fakeWorld,
   memoryBackend,
+  plainSealed,
 } from "../sources/fake.fixture";
 import { RemoteClient } from "../sources/remote-client";
 import { SourceSecrets } from "../sources/secrets";
@@ -226,7 +227,7 @@ describe("0044_client_source_routes", () => {
         platform: "desktop",
         name: "test",
       }),
-      peer: new SourceClient(world.transport),
+      peer: new SourceClient(world.transport, plainSealed(world.transport)),
       hostId: () => "f".repeat(32),
       hostLabel: () => "mac",
       log: { info: () => undefined, warn: () => undefined },

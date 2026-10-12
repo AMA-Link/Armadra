@@ -287,7 +287,7 @@ describe("远程源的连接", () => {
     calls = [];
     await b.request("/api/x");
     expect(calls[0]?.url).toBe(`${RELAY_B}/api/x`);
-    expect(calls[0]?.headers.get(RELAY_TOKEN_HEADER)).toBe("RT");
+    expect(calls[0]?.headers.get(RELAY_TOKEN_HEADER)).toBeNull();
     await b.renew();
     expect(provider.invalidate).toHaveBeenCalledWith(B);
     expect(provider.getAccess).toHaveBeenCalledTimes(2);
@@ -316,7 +316,7 @@ describe("远程源的连接", () => {
     expect(a.status.state).toBe("offline");
   });
 
-  it("流：换票升级，经中继另带中继子协议", async () => {
+  it("流：换票升级，经中继也不带中继令牌（字节走端到端通道）", async () => {
     const provider = credentials({ [B]: { relayed: RELAY_B } });
     const b = createRemoteConnection(
       descriptor(B, {
@@ -337,7 +337,6 @@ describe("远程源的连接", () => {
     expect(inner.protocols).toEqual([
       "armadra-rpc.v1",
       `${WS_TICKET_PROTOCOL}ticket-Bearer b-1`,
-      `${RELAY_PROTOCOL}RT`,
     ]);
     inner.open();
     expect(socket.state).toBe("open");

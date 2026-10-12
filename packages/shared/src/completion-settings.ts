@@ -97,9 +97,9 @@ export const COMPLETION_SETTINGS_DEFAULTS = {
   security: {
     /**
      * 经中继的访问一律走端到端通道（契约 §78）：开着时明文中继路径上的请求答
-     * `403 e2e_required`。
+     * `403 e2e_required`。缺省开（E5 起）；只为排查旧客户端才关。
      */
-    requireE2e: false,
+    requireE2e: true,
   },
   usage: {
     /** `api.anthropic.com/api/oauth/usage`，默认关（外部服务 §12.3）。 */

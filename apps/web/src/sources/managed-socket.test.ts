@@ -10,7 +10,7 @@ import {
   PING_TIMEOUT_MS,
   type SocketEnvironment,
 } from "./managed-socket";
-import { RELAY_PROTOCOL, WS_TICKET_PROTOCOL } from "./transport";
+import { WS_TICKET_PROTOCOL } from "./transport";
 
 class FakeSocket extends EventTarget {
   static made: FakeSocket[] = [];
@@ -93,17 +93,15 @@ afterEach(() => {
 });
 
 describe("ManagedSocket", () => {
-  it("连之前先换票，经中继时另带中继子协议", async () => {
+  it("连之前先换票，只带票与协商的子协议", async () => {
     const { socket } = make({
       protocols: ["armadra-rpc.v1"],
-      relayToken: () => "RT",
     });
     expect(socket.state).toBe("connecting");
     await flush();
     expect(last().protocols).toEqual([
       "armadra-rpc.v1",
       `${WS_TICKET_PROTOCOL}T1`,
-      `${RELAY_PROTOCOL}RT`,
     ]);
     last().open();
     expect(socket.state).toBe("open");

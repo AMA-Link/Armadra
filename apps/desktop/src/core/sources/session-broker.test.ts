@@ -16,6 +16,7 @@ import {
   type FakeWorld,
   fakeWorld,
   memoryBackend,
+  plainSealed,
 } from "./fake.fixture";
 import { RemoteClient } from "./remote-client";
 import { SourceSecrets } from "./secrets";
@@ -45,7 +46,7 @@ beforeEach(async () => {
       platform: "desktop",
       name: "t",
     }),
-    peer: new SourceClient(world.transport),
+    peer: new SourceClient(world.transport, plainSealed(world.transport)),
     hostId: () => "f".repeat(32),
     hostLabel: () => "this-mac",
     log: { info: () => undefined, warn: () => undefined },

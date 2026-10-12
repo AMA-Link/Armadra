@@ -30,6 +30,7 @@
  */
 
 import type { IncomingHttpHeaders } from "node:http";
+import { E2E_SIGN_PATH } from "@armadra/shared";
 
 import {
   bearerToken,
@@ -176,6 +177,9 @@ export function createTunnelGate(options: TunnelGateOptions): ListenerGate {
           : {
               principalId: identity.subject.principalId,
               deviceId: identity.device?.deviceId ?? "",
+              ...(socket.tunnel?.channel === undefined
+                ? {}
+                : { channelDeviceId: socket.tunnel.channel.deviceId }),
             },
       );
     }
@@ -201,7 +205,9 @@ function tunnelVerdict(
       refusal: { status, body, cors },
     });
     const path = request.path;
-    if (loopbackOnlyPath(path)) {
+    // 本机设备钥签名（契约 §78.3）只给本机的页面（回环与 Gateway）：经中转来的
+    // 人不能拿这台电脑的设备钥去开别的通道。
+    if (loopbackOnlyPath(path) || path === E2E_SIGN_PATH) {
       return refuse(403, { code: "forbidden", message: "这条路径只在本机" });
     }
     // 8 位配对码只给局域网直连（契约 §24、§73）：中继在公网上，经它进来的

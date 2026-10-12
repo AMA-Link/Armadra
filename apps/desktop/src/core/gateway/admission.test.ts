@@ -79,6 +79,10 @@ describe("认证门", () => {
     }
   });
 
+  it("本机设备钥签名不是回环专用：经 Gateway 的 owner 会话能用（服务器壳的页面，契约 §78.3）", () => {
+    expect(loopbackOnlyPath("/api/e2e/sign")).toBe(false);
+  });
+
   it("只接受白名单里的来源，逐字节比规范化之后的拼法", () => {
     const ctx = context().value;
     expect(

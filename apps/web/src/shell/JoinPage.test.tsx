@@ -76,7 +76,7 @@ describe("JoinPage", () => {
     );
     expect(await screen.findByText("studio")).toBeTruthy();
     expect(screen.getByText(/执行/)).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "加入" }));
+    fireEvent.click(screen.getByRole("button", { name: "在浏览器中加入" }));
     await waitFor(() => expect(onJoined).toHaveBeenCalledOnce());
     expect(join).toHaveBeenCalledWith({
       issuer: ISSUER,
@@ -115,7 +115,7 @@ describe("JoinPage", () => {
         />,
       );
       await screen.findByText("studio");
-      fireEvent.click(screen.getByRole("button", { name: "加入" }));
+      fireEvent.click(screen.getByRole("button", { name: "在浏览器中加入" }));
       expect(await screen.findByText(text)).toBeTruthy();
       expect(screen.queryByText("server words")).toBeNull();
       expect(onJoined).not.toHaveBeenCalled();

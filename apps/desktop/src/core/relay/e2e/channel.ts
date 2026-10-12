@@ -39,7 +39,12 @@ import {
   RST,
 } from "@armadra/platform-protocol/tunnel";
 
-import { CreditPool, type StreamHost, TunnelDuplex } from "../streams";
+import {
+  CreditPool,
+  type StreamHost,
+  type StreamTrafficCounter,
+  TunnelDuplex,
+} from "../streams";
 import type { DeviceRegistry } from "./devices";
 import { type ChannelPeer, markChannelSocket } from "./peer";
 
@@ -70,6 +75,10 @@ export interface ChannelOptions {
   readonly channelId: number;
   readonly handshakeTimeoutMs?: number;
   readonly meter?: ChannelMeter;
+  /** 内层流的流量计数器（契约 §76，按内层 `OPEN` 分类）；不给不计。 */
+  readonly streamCounter?: (
+    open: OpenPayload & { readonly kind: "http" | "ws" },
+  ) => StreamTrafficCounter | undefined;
   readonly log?: {
     info(message: string, fields?: Record<string, unknown>): void;
     warn(message: string, fields?: Record<string, unknown>): void;
@@ -318,6 +327,7 @@ export class E2eChannel {
         },
         channel: this.peerValue as ChannelPeer,
       },
+      this.options.streamCounter?.({ ...open, kind: open.kind }),
     );
     markChannelSocket(stream);
     stream.on("error", () => undefined);

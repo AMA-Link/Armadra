@@ -47,9 +47,14 @@ function invalid(message: string): never {
   throw fail("cloud_assertion_invalid", message);
 }
 
+/** 撤回的重放记录最多留这么多条（每条只放行下一次）。 */
+const RELEASED_MAX = 1_000;
+
 export class AssertionVerifier {
   private readonly now: () => number;
   private readonly replay: ReplayCache;
+  /** 撤回了重放记录的断言：下一次照常验，再下一次又算重放。 */
+  private readonly released = new Set<string>();
 
   constructor(private readonly options: AssertionVerifierOptions) {
     this.now = options.now ?? Date.now;
@@ -106,15 +111,23 @@ export class AssertionVerifier {
     if ((claims.exp - claims.iat) * 1000 > ASSERTION.replayWindowMs) {
       return invalid("断言的有效期过长");
     }
+    const replayKey = `${registration.issuer}\u0000${claims.jti}`;
     if (
-      this.replay.seen(
-        `${registration.issuer}\u0000${claims.jti}`,
-        claims.exp * 1000,
-        nowMs,
-      )
+      this.replay.seen(replayKey, claims.exp * 1000, nowMs) &&
+      !this.released.delete(replayKey)
     ) {
       throw fail("cloud_assertion_replayed", "这张断言已经用过");
     }
     return { claims, registration };
+  }
+
+  /**
+   * 撤回一张断言的重放记录，放行它再用一次（契约 §77）：经端到端通道来的新设备第一次
+   * 登录只建了待确认记录、没发会话，主人核对放行后客户端拿同一张断言再登录。断言仍在
+   * 寿命里，下一次之后照常算重放。
+   */
+  release(issuer: string, jti: string): void {
+    if (this.released.size >= RELEASED_MAX) this.released.clear();
+    this.released.add(`${issuer}\u0000${jti}`);
   }
 }

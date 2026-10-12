@@ -326,3 +326,13 @@ armadra-relay personal status  # 读 state.json：账号、源、链接、证书
 ```
 
 Docker：`docker run -v relay:/data -p 8443:8443 ghcr.io/ama-link/armadra-relay personal serve --host <公网 IP>`；首次用 `… personal init --account me` 交互设口令（或 `-e RELAY_PERSONAL_PASSWORD_FILE=/run/secrets/pw`）。`deploy/personal/compose.yml` 是同一条命令的 compose 写法。
+
+## §11 端到端通道（cloud 0.5.0、Armadra 0.6.0 起）
+
+中继只转密文。客户端（页面、手机、本机代连的 core）与源 core 之间跑协议包的 `armadra-e2e/1`：X25519 + HKDF-SHA256 转录链 + Ed25519 签名，记录层 AES-256-GCM；core 侧契约见 core-json-api §77（设备钥）、§78（通道）、§80（配对与访客）。
+
+1. 边缘：personal 是 `/s/<sourceId>/_relay/e2e`，saas 是 `<sourceId>.src.<RELAY_DOMAIN>/_relay/e2e`；WS 子协议 `armadra-e2e.1` 加 `armadra-relay.<jwt>`。令牌校验与 §4 相同，只在开通道时出示一次；之后中继给源开一条 `OPEN kind = e2e` 的隧道流，两端字节原样对拷。
+2. 源不报 `e2e` 能力（旧 core）：关闭码 4404（`e2e_unsupported`）；版本不认：4409。客户端据此答「这台电脑需要升级」，不退回明文。
+3. 明文应用路径（`/s/<id>/api/**` 的 HTTP 与 WS 转发、`http1` 本地副本、媒体票 `/v1/media-tickets` 与 `/m/<票>`）在 cloud 0.5.0 删除。中继仍托管页面、`/v1/*` 控制面与 `/j/<linkId>` 落地页。
+4. 中继能看到的：源、令牌的 `sub` / `dev`、开关时间、两个方向的密文字节数（统计 §19）。看不到路径、头、正文、会话令牌与 WS 帧。
+5. 浏览器的边界：中继托管的页面在下发那一刻被替换，端到端加密防不住。界面在中转登录页与 `/j/` 落地页各有一行提示，`/j/` 首选「在 Armadra 中打开」（App 的页面不由中转下发）。固定域名的独立页面不做。

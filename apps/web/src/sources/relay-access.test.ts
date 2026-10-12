@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import { routedFetch } from "../mobile/testing";
 import { createMemoryRelayVault } from "./hosted";
 import { createRelayedAccess } from "./relay-access";
+import { plainE2e } from "./e2e/testing";
 
 /**
  * 经中继取访问（手机与中继托管的页面共用）：远程服务会话旋转写回、源会话先
@@ -65,10 +66,11 @@ describe("经中继取访问", () => {
       vault,
       device,
       cloud: { fetch: net.fetch },
+      e2e: plainE2e(net.fetch),
       now: () => NOW,
     });
     const access = await relay.access(ISSUER, SOURCE, false);
-    expect(access).toEqual({
+    expect(access).toMatchObject({
       accessToken: "core-a",
       expiresAtMs: NOW + 900_000,
       httpBase: BASE,
@@ -118,6 +120,7 @@ describe("经中继取访问", () => {
       vault,
       device,
       cloud: { fetch: net.fetch },
+      e2e: plainE2e(net.fetch),
       now: () => NOW,
     });
     expect((await relay.access(ISSUER, SOURCE, true)).accessToken).toBe("new");
@@ -139,10 +142,12 @@ describe("经中继取访问", () => {
 
   it("拒绝码：源不在线 → source_offline；撤销 → source_revoked；未关联照原码", async () => {
     const run = async (routes: Parameters<typeof routedFetch>[0]) => {
+      const net = routedFetch(routes);
       const relay = createRelayedAccess({
         vault: await vaultWithCloud(),
         device,
-        cloud: { fetch: routedFetch(routes).fetch },
+        cloud: { fetch: net.fetch },
+        e2e: plainE2e(net.fetch),
         now: () => NOW,
       });
       return relay.access(ISSUER, SOURCE, false).catch((error) => error);
