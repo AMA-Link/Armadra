@@ -164,10 +164,13 @@ export function MineRow({
   onForget,
   onRename,
   onRemove,
+  onTraffic,
 }: {
   source: ClientSource;
   /** 打开着的工作空间就在它上面：断开、移除都会把它断掉。 */
   inUse?: boolean;
+  /** 看这台客户端经中继访问它用了多少流量（直连不计，不给）。 */
+  onTraffic?: () => void;
   onForget(): void;
   onRename(): void;
   onRemove(): void;
@@ -196,6 +199,11 @@ export function MineRow({
     >
       <StatusPill tone={pill.tone} label={t(pill.key)} />
       <RowMenu name={source.label}>
+        {onTraffic && (
+          <DropdownMenuItem onSelect={onTraffic}>
+            {t("traffic.title")}
+          </DropdownMenuItem>
+        )}
         <DropdownMenuItem onSelect={onRename}>
           {t("services.rename")}
         </DropdownMenuItem>
@@ -222,9 +230,11 @@ export function SharedRow({
   source,
   inUse = false,
   onLeave,
+  onTraffic,
 }: {
   source: ClientSource;
   inUse?: boolean;
+  onTraffic?: () => void;
   onLeave(): void;
 }) {
   const t = useT();
@@ -273,6 +283,11 @@ export function SharedRow({
       )}
       <StatusPill tone={pill.tone} label={t(pill.key)} />
       <RowMenu name={owner}>
+        {onTraffic && (
+          <DropdownMenuItem onSelect={onTraffic}>
+            {t("traffic.title")}
+          </DropdownMenuItem>
+        )}
         <DropdownMenuItem
           variant="destructive"
           disabled={inUse}

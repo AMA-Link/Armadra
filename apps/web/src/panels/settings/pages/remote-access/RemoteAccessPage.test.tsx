@@ -273,6 +273,49 @@ describe("远程访问页", () => {
     );
   });
 
+  it("经中继访问的电脑，行菜单有「流量」，打开是这台客户端对它的计量；直连的没有", async () => {
+    const via = {
+      ...local,
+      sourceId: "r".repeat(32),
+      kind: "relayed",
+      label: "far-mac",
+      relayOrigin: ISSUER,
+      origin: "mine",
+    };
+    const direct = {
+      ...local,
+      sourceId: "d".repeat(32),
+      kind: "direct",
+      label: "lan-mac",
+      baseUrl: "https://lan.test:8443",
+      origin: "mine",
+    };
+    api.listSources.mockResolvedValue({
+      sources: [local, via, direct],
+      remotes: [],
+    });
+    mount();
+    await screen.findByText("far-mac");
+    fireEvent.pointerDown(
+      screen.getByRole("button", { name: "Actions for lan-mac" }),
+      { button: 0, ctrlKey: false },
+    );
+    expect(screen.queryByRole("menuitem", { name: "Traffic" })).toBeNull();
+    fireEvent.keyDown(document.activeElement ?? document.body, {
+      key: "Escape",
+    });
+    fireEvent.pointerDown(
+      screen.getByRole("button", { name: "Actions for far-mac" }),
+      { button: 0, ctrlKey: false },
+    );
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Traffic" }));
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).getByText("Traffic for far-mac")).toBeTruthy();
+    expect(
+      within(dialog).getByRole("tab", { name: "This month" }),
+    ).toBeTruthy();
+  });
+
   it("添加个人中转：首次答出指纹 → 核对 → 带指纹重调；壳要重载就回到这一页", async () => {
     api.listSources.mockResolvedValue({ sources: [local], remotes: [] });
     api.addPersonalRelay
