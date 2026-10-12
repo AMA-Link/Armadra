@@ -32,7 +32,8 @@ import {
   useCurrentSource,
   useSources,
 } from "../sources";
-import { shareRoleOf } from "../sources/origin";
+import { originOf, shareRoleOf } from "../sources/origin";
+import { SharedSessionRows } from "../shared-session/SharedSessionRows";
 import { cachedWorkspaces } from "../sources/workspace-cache";
 import {
   type SourceSection,
@@ -403,7 +404,10 @@ function SourceBlock({
   );
 }
 
-/** 不是当前那台的电脑：列出它的工作空间；在连、离线时灰着、点不开。 */
+/**
+ * 不是当前那台的电脑：列出它的工作空间；在连、离线时灰着、点不开。分享给我的
+ * 主机没有工作空间时，列出分享给我的会话（契约 §79）。
+ */
 function WorkspaceRows({
   section,
   onOpen,
@@ -412,8 +416,11 @@ function WorkspaceRows({
   onOpen: (sourceId: string, workspaceId: string) => void;
 }) {
   const sourceId = section.connection.descriptor.sourceId;
-  if (section.workspaces.length === 0) return null;
   const usable = section.state === "ready" && !section.stale;
+  if (section.workspaces.length === 0)
+    return originOf(section.connection.descriptor) === "shared" ? (
+      <SharedSessionRows sourceId={sourceId} usable={usable} />
+    ) : null;
   return (
     <ul data-stale={section.stale || undefined}>
       {section.workspaces.map((workspace) => (

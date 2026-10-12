@@ -5,6 +5,10 @@ import {
   onJoinIntent,
   pendingJoinOpen,
 } from "../sources/join-intent";
+import {
+  useSessionShare,
+  useSharedSessionView,
+} from "../shared-session/sessions";
 import { useCanvasStore } from "../store/canvas-store";
 import { useOpenWorkspace } from "./workspace-actions";
 import { useWorkspaces } from "./workspaces-query";
@@ -14,7 +18,8 @@ const GIVE_UP_MS = 60_000;
 
 /**
  * 按分享链接加入之后、或「在新窗口打开」一个源时，打开那个源的工作空间
- * （客户端包 §6：从链接到画布可见）。
+ * （客户端包 §6：从链接到画布可见）。会话分享的访客没有工作空间，身份会话报出
+ * 会话范围时改开那条会话的只读查看页（契约 §79）。
  * 只在有一项待办时挂上 {@link OpenJoined}，平时不多发查询。
  */
 export function JoinedSourceOpener() {
@@ -38,6 +43,9 @@ function OpenJoined({
   const workspaces = useWorkspaces();
   const openWorkspace = useOpenWorkspace();
   const found = workspaces.data.find((one) => one.sourceId === sourceId);
+  const share = useSessionShare(sourceId);
+  const openShared = useSharedSessionView((state) => state.open);
+  const shared = share?.sessionOnly === true ? share.sessions[0] : undefined;
 
   React.useEffect(() => {
     const timer = setTimeout(onDone, GIVE_UP_MS);
@@ -51,6 +59,13 @@ function OpenJoined({
     openWorkspace(found.workspace as never, sourceId);
     useCanvasStore.getState().setPanel("settings", false);
   }, [found, onDone, openWorkspace, sourceId]);
+
+  React.useEffect(() => {
+    if (found !== undefined || shared === undefined) return;
+    onDone();
+    openShared({ sourceId, ...shared });
+    useCanvasStore.getState().setPanel("settings", false);
+  }, [found, onDone, openShared, shared, sourceId]);
 
   return null;
 }

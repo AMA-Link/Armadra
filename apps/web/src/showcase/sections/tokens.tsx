@@ -66,6 +66,7 @@ const LAYERS = [
   "--z-dock",
   "--z-cluster",
   "--z-banners",
+  "--z-shared-session",
   "--z-tabbar",
   "--z-focus",
   "--z-menu",

@@ -389,5 +389,64 @@ describe.skipIf(process.platform === "win32")(
         ).status,
       ).toBe(403);
     });
+
+    it("会话查看者：身份会话报出那一条会话（契约 §79），经 RPC 读得到会话行", async () => {
+      const { core, owner, workspaceId, sessionId, otherSessionId } =
+        await setup();
+      const guest = await member(core, owner, {
+        targetKind: "session",
+        workspaceId,
+        targetId: sessionId,
+        role: "viewer",
+      });
+      const identity = await call(guest, "GET", "/api/identity/session");
+      expect(identity.status).toBe(200);
+      const scopes = (
+        identity.body as {
+          scopes: {
+            permission: string;
+            workspaceId: string;
+            resourceId?: string;
+          }[];
+        }
+      ).scopes;
+      expect(scopes).toContainEqual({
+        permission: "terminal:read",
+        workspaceId,
+        executionHostId: "",
+        resourceId: sessionId,
+      });
+      expect(scopes.some((one) => one.permission === "canvas:read")).toBe(
+        false,
+      );
+      // 页面经 RPC 取：身份会话与会话行都过得去，别的会话照旧 403。
+      const rpc = (path: string, input: unknown) =>
+        call(guest, "POST", `/api/rpc/${path}`, { json: input });
+      const viaRpc = await rpc("identity/session", {});
+      expect(viaRpc.status).toBe(200);
+      expect(
+        (viaRpc.body as { json: { scopes: { resourceId?: string }[] } }).json
+          .scopes,
+      ).toContainEqual(expect.objectContaining({ resourceId: sessionId }));
+      const row = await rpc("terminals/get", { sessionId });
+      expect(row.status).toBe(200);
+      expect((row.body as { json: { id: string } }).json.id).toBe(sessionId);
+      expect(
+        (await rpc("terminals/get", { sessionId: otherSessionId })).status,
+      ).toBe(403);
+
+      // 整台与工作空间的授权不带会话 id。
+      const viewer = await member(core, owner, {
+        targetKind: "workspace",
+        workspaceId,
+        role: "viewer",
+      });
+      const plain = await call(viewer, "GET", "/api/identity/session");
+      expect(
+        (plain.body as { scopes: { resourceId?: string }[] }).scopes.some(
+          (one) => one.resourceId !== undefined,
+        ),
+      ).toBe(false);
+    });
   },
 );

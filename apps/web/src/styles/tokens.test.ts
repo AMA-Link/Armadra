@@ -56,6 +56,7 @@ const Z_SCALE: Array<[string, number]> = [
   ["--z-dock", 20],
   ["--z-cluster", 26],
   ["--z-banners", 27],
+  ["--z-shared-session", 28],
   ["--z-tabbar", 30],
   ["--z-focus", 40],
   ["--z-menu", 46],

@@ -39,6 +39,7 @@ import { useControlNotices } from "./use-control-notices";
 import { useUsagePolicyNotice } from "./use-usage-policy-notice";
 import { useSourceSwitchCacheReset } from "./use-sources-bootstrap";
 import { useCanvasPreferences } from "./use-canvas-preferences";
+import { SharedSessionHost } from "../shared-session/SharedSessionHost";
 
 function createQueryClient() {
   return new QueryClient({
@@ -143,6 +144,8 @@ function AppShell() {
         )}
         {/* 通知条坐在画布面的顶部标题带里，与工具簇同一层（`shell/Banners`）。 */}
         <Banners />
+        {/* 被分享会话的只读查看页（契约 §79）：盖住画布那一块。 */}
+        <SharedSessionHost />
       </main>
       {/* 手机布局的两块：底部导航与单节点焦点页。两者都在 <768px 才渲染，
           桌面上是 null，不占位也不订阅任何东西（客户端平台设计）。 */}

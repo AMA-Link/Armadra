@@ -10394,6 +10394,9 @@
                           },
                           "executionHostId": {
                             "type": "string"
+                          },
+                          "resourceId": {
+                            "type": "string"
                           }
                         },
                         "required": [

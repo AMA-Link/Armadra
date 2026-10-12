@@ -3198,7 +3198,7 @@ core 校验远程服务地址与指纹的写法时用具名码（状态均 400�
 
 | procedure                 | kind     | input                                            | output                                                                                                                                                                                                                                                                                             | errors                                                                 | scope             | 自   | 原路径                              |
 | ------------------------- | -------- | ------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------- | ----------------- | ---- | ----------------------------------- |
-| `identity.session`        | query    | 可省 `{}`                                        | `{ hostId: string, device: { deviceId: string, principalId: string, displayName: string, role: string, createdAtUnixMs: number, revision: number }, scopes: { permission: string, workspaceId: string, executionHostId: string }[], expiresAtUnixMs: number }`                                     | `unauthenticated`、`forbidden`                                         | `identity:read`   | 1.13 | `GET /api/identity/session`         |
+| `identity.session`        | query    | 可省 `{}`                                        | `{ hostId: string, device: { deviceId: string, principalId: string, displayName: string, role: string, createdAtUnixMs: number, revision: number }, scopes: { permission: string, workspaceId: string, executionHostId: string, resourceId?: string }[], expiresAtUnixMs: number }`                | `unauthenticated`、`forbidden`                                         | `identity:read`   | 1.13 | `GET /api/identity/session`         |
 | `identity.devices.list`   | query    | 可省 `{ afterId?: string, limit?: number }`      | `{ devices: ({ deviceId: string, principalId: string, name: string, role: string, epoch: number, createdAtMs: number, revokedAtMs: number, platform?: "macos" \| "windows" \| "linux" \| "ios" \| "android" \| "web" \| "unknown", lastSeenAtMs?: number })[], nextId: string, hasMore: boolean }` | `unauthenticated`、`forbidden`、`bad_request`                          | `identity:read`   | 1.13 | `GET /api/identity/devices`         |
 | `identity.devices.revoke` | mutation | `{ deviceId: string, expectedRevision: number }` | `{ deviceId: string, revoked: true }`                                                                                                                                                                                                                                                              | `unauthenticated`、`forbidden`、`bad_request`、`not_found`、`conflict` | `identity:manage` | 1.13 | `POST /api/identity/devices/revoke` |
 
@@ -4417,3 +4417,18 @@ owner：本机作为客户端连别的电脑（`sources.session`，§33）时，
 | `e2e.waitSource` | mutation | `{ sourceId: string, pendingId: string }` | `{ status: "pending" \| "trusted" \| "rejected" \| "revoked" }` | `unauthenticated`、`forbidden`、`bad_request` | `settings:write` | 1.45 | `POST /api/e2e/sources/wait` |
 
 <!-- rpc:end -->
+
+## 79. 会话分享的访客入口：身份会话里的会话范围与只读查看页
+
+自协议 1.46 起（#309、#253）。会话分享（§60）的访客没有 `canvas:read`，`workspaces.list` 为空，页面原来没有任何可开的东西；现在 core 在身份会话里报出「只限哪条会话」，页面据此直接打开那一条会话的只读查看页。读写照旧只由 core 判定（§60.1 的路由门与只读附着）。实现在 `core/identity/http.ts`。
+
+### 79.1 `identity.session` 的 `scopes[].resourceId`
+
+`GET /api/identity/session` 与 `identity.session`（§42.1）答的 `scopes` 每项多一个可选的 `resourceId: string`：这条授权只限工作空间里的这一个对象，今天只有终端 / ACP 会话（§60.1 的资源维度）。会话分享编译出的 `terminal:read@ws#session` 带上会话 id；整台、工作空间授权与登录快照不带，旧字节不变。旧页面忽略它。
+
+### 79.2 页面
+
+- **判定**：`scopes` 里有带 `resourceId` 的 `terminal:read`、且没有任何 `canvas:read` 的人是会话查看者；页面把这些会话当作他能开的全部内容。
+- **落地**：按链接加入（浏览器 `/j/<id>` 或桌面「通过链接加入」）之后，工作空间列表为空而身份会话报出会话范围时，直接打开第一条会话的只读查看页；浏览器访客重新载入页面同样落到这里。桌面侧栏「他人分享」里没有工作空间的那台主机下列出这些会话，点开即同一页。
+- **只读查看页**：经那台源读会话行（`terminals.get`）。终端会话以只读附着 `WS /api/terminals/{id}/ws`（§60.1），终端不接受键盘输入；ACP 会话按 `acp.log` 读转录（定时重读），没有输入框与审批按钮。顶栏是会话标题与「只读」标记。
+- **中转**：armadra-cloud 0.3.11 起中继边缘不再按 `ro` 中继令牌过滤（cloud-api §14），`ro` 令牌下的 `POST /api/rpc/*` 照常进隧道；§60 所说「`ro` 让边缘只放行 GET 与身份域」只对 0.3.10 及更早的中继成立。core 仍不向远程服务交只读（§60.3 不变）。
