@@ -224,6 +224,50 @@ describe("原生插件", () => {
   });
 });
 
+describe("客户端流量的原生存储", () => {
+  it("日桶要形状对才用，坏的一行只丢那一行；读失败是 null，不在 App 里也是 null", async () => {
+    const row = {
+      day: "2026-10-12",
+      sourceId: "src1",
+      category: "api",
+      bytesIn: 1,
+      bytesOut: 2,
+      streams: 3,
+    };
+    const saved: unknown[] = [];
+    inApp({
+      trafficLoad: async () => ({
+        rows: [
+          row,
+          { ...row, day: "yesterday" },
+          { ...row, bytesIn: -1 },
+          { ...row, sourceId: "../x" },
+        ],
+      }),
+      trafficSave: async (options: unknown) => void saved.push(options),
+    });
+    await expect(nativeBridge().traffic.load()).resolves.toEqual([row]);
+    await expect(nativeBridge().traffic.save([row])).resolves.toBe(true);
+    expect(saved).toEqual([{ rows: [row] }]);
+
+    inApp({
+      trafficLoad: async () => {
+        throw new Error("down");
+      },
+      trafficSave: async () => {
+        throw new Error("down");
+      },
+    });
+    await expect(nativeBridge().traffic.load()).resolves.toBeNull();
+    await expect(nativeBridge().traffic.save([row])).resolves.toBe(false);
+
+    inApp({});
+    await expect(nativeBridge().traffic.load()).resolves.toBeNull();
+    vi.unstubAllGlobals();
+    await expect(nativeBridge().traffic.load()).resolves.toBeNull();
+  });
+});
+
 describe("推送轮换、UnifiedPush 与系统浏览器（G5-22）", () => {
   const KEY = "a".repeat(43);
 
