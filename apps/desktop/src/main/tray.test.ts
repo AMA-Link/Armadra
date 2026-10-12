@@ -345,7 +345,7 @@ describe("the external-access item", () => {
   const status = (enabled: boolean, managedBy = "settings") =>
     JSON.stringify({ enabled, running: enabled, managedBy });
   const item = () =>
-    lastMenu().find((entry) => entry.label === "External access");
+    lastMenu().find((entry) => entry.label === "Remote access");
 
   it("is a check box that mirrors gateway.enabled", async () => {
     answers["/api/gateway"] = status(false);

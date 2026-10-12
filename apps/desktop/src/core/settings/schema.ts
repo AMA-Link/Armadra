@@ -25,6 +25,11 @@ import {
   PASSWORD_MIN_LENGTH_RANGE,
   PUSH_TRANSPORT_CHOICES,
 } from "./completion-settings";
+import {
+  DEFAULT_TRAFFIC_RETENTION_DAYS,
+  TRAFFIC_RETENTION_CHOICES,
+} from "@armadra/shared";
+
 import { normalizeCustomAgents } from "./custom-agents";
 import { clone, isJsonObject, type JsonObject, type JsonValue } from "./local";
 import { normalizeHosts } from "./ssh-hosts";
@@ -197,6 +202,7 @@ export function normalize(raw: JsonValue): JsonObject {
   normalizeTerminal(document);
   normalizeUsage(document);
   normalizeLogs(document);
+  normalizeTraffic(document);
   normalizeUpdates(document);
   normalizePower(document);
   normalizeConversations(document);
@@ -652,6 +658,20 @@ function normalizeUsage(document: JsonObject): void {
   cost.enabled = asBool(cost.enabled) ?? DEFAULT_COST_ENABLED;
   usage.cost = cost;
   document.usage = usage;
+}
+
+/**
+ * `traffic.retentionDays`（契约 §76）：流量统计留多少天。不在取值表里的回到缺省
+ * 180，与 `logs.retentionDays` 同一个规矩。
+ */
+function normalizeTraffic(document: JsonObject): void {
+  const traffic = section(document, "traffic");
+  traffic.retentionDays = numberChoice(
+    traffic.retentionDays,
+    TRAFFIC_RETENTION_CHOICES,
+    DEFAULT_TRAFFIC_RETENTION_DAYS,
+  );
+  document.traffic = traffic;
 }
 
 function normalizeLogs(document: JsonObject): void {

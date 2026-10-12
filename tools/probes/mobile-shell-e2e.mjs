@@ -38,7 +38,16 @@
 // 产物：<输出目录>/result.json，默认 target/mobile-shell-e2e/。一切都是临时的、回环的；
 // core 用临时 HOME（`probe-home.mjs`），不读操作员的 CLI 登录状态。
 import { spawn, spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, writeFileSync } from "node:fs";
+import {
+  copyFileSync,
+  createWriteStream,
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
+import { homedir } from "node:os";
 import { request as httpRequest } from "node:http";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -214,12 +223,91 @@ function simulator(name) {
 
 const UI_TEST = "AppUITests/ConnectFlowUITests";
 
+/**
+ * 模拟器日志（#281）：App 自己的几行（插件只记结果，不记密钥）、WebKit 的进程事件（WebContent /
+ * GPU 进程起得多慢、被判无响应、被结束——页面空白时看这里）、以及 SpringBoard / runningboardd
+ * 记的 App 进程退出（谁结束了它、为什么）。插件用 info 级，不在磁盘上留：事后 `log show` 不加
+ * `--info` 只剩表头，所以测试期间另开一路 `log stream`。
+ */
+const SIMULATOR_LOG_PREDICATE = [
+  'subsystem == "dev.armadra.mobile"',
+  '(process == "App" AND subsystem == "com.apple.WebKit" AND category == "Process" AND messageType >= 16)',
+  '(process IN {"SpringBoard", "runningboardd"} AND eventMessage CONTAINS "dev.armadra.mobile>" AND (eventMessage CONTAINS "Process exited" OR eventMessage CONTAINS "requested termination"))',
+].join(" OR ");
+
+/** 测试期间一直开着的 `log stream`，写进 <输出目录>/simulator-stream.log；返回收尾函数。 */
+function streamSimulatorLog(target) {
+  const file = createWriteStream(join(output, "simulator-stream.log"));
+  const child = spawn(
+    "xcrun",
+    [
+      "simctl",
+      "spawn",
+      target,
+      "log",
+      "stream",
+      "--level",
+      "info",
+      "--style",
+      "compact",
+      "--predicate",
+      SIMULATOR_LOG_PREDICATE,
+    ],
+    { stdio: ["ignore", "pipe", "pipe"] },
+  );
+  child.stdout.pipe(file);
+  child.stderr.pipe(file);
+  let stopped = false;
+  const stop = () =>
+    new Promise((done) => {
+      if (stopped || child.exitCode !== null) {
+        stopped = true;
+        file.end(done);
+        return;
+      }
+      stopped = true;
+      child.once("exit", () => file.end(done));
+      child.kill("SIGINT");
+      setTimeout(() => child.kill("SIGKILL"), 5_000).unref();
+    });
+  h.cleanups.push(stop);
+  return stop;
+}
+
+/** 测试期间宿主上新出现的 App 崩溃报告（模拟器里的崩溃也落在宿主的这个目录）。 */
+function collectCrashReports(since) {
+  const source = join(homedir(), "Library/Logs/DiagnosticReports");
+  let names = [];
+  try {
+    names = readdirSync(source);
+  } catch {
+    return 0;
+  }
+  const crashes = join(output, "crash");
+  let copied = 0;
+  for (const name of names) {
+    if (!/^(App|com\.apple\.WebKit)[-_.].*\.(ips|crash)$/.test(name)) continue;
+    const path = join(source, name);
+    try {
+      if (statSync(path).mtimeMs < since) continue;
+      mkdirSync(crashes, { recursive: true });
+      copyFileSync(path, join(crashes, name));
+      copied += 1;
+    } catch {
+      /* 读不到就算了，不挡测试结果。 */
+    }
+  }
+  return copied;
+}
+
 /** 配对票只有两分钟：先把要编译的都编完、跑完「没有 Gateway」那条，再现铸一张。 */
 async function ios(mint) {
   const target = simulator(device);
   step("iOS 模拟器", target);
   // 先自己起好：xcodebuild 跑完不关它，之后才读得到 App 的设备日志。
   await run("simulator-boot", "xcrun", ["simctl", "boot", target]);
+  const since = Date.now();
+  const stopLog = streamSimulatorLog(target);
   const common = [
     "-project",
     join(root, "apps/mobile/ios/App/App.xcodeproj"),
@@ -259,7 +347,8 @@ async function ios(mint) {
     ],
     { env: { ...process.env, TEST_RUNNER_ARMADRA_PAIR_LINK: link } },
   );
-  // App 的设备日志（插件只记钉扎结果、不记密钥），失败时看卡在哪。
+  await stopLog();
+  // 事后再从设备上取一遍（`--info`：插件的那几行是 info 级）；流断了时还有这一份。
   await run("simulator-log", "xcrun", [
     "simctl",
     "spawn",
@@ -267,12 +356,18 @@ async function ios(mint) {
     "log",
     "show",
     "--last",
-    "15m",
+    "30m",
+    "--info",
     "--style",
     "compact",
     "--predicate",
-    'subsystem == "dev.armadra.mobile"',
+    SIMULATOR_LOG_PREDICATE,
   ]);
+  const crashes = collectCrashReports(since);
+  step(
+    "模拟器日志与崩溃报告",
+    `simulator-stream.log、simulator-log.log、崩溃报告 ${crashes} 份`,
+  );
   check(
     second === 0,
     "XCUITest：深链 → 钉扎 → 配对 → 画布 → 重开落在选择服务 → 选它进画布 → 原生 OAuth 深链",

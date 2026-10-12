@@ -12,6 +12,7 @@ import {
   type FakeTunnel,
   FakeTunnelRelay,
 } from "./fake-relay.fixture";
+import { TrafficMeter } from "../traffic/meter";
 import { StreamResetError, TunnelDuplex } from "./streams";
 
 /**
@@ -29,8 +30,11 @@ let seen: { remote: string | undefined; encrypted: unknown; origin: unknown }[];
 const sockets = new Set<Socket>();
 let serverSockets: import("ws").WebSocket[] = [];
 
-async function setup(options: { maxStreams?: number } = {}): Promise<void> {
-  relay = await FakeTunnelRelay.start({ heartbeatMs: 60_000, ...options });
+async function setup(
+  options: { maxStreams?: number; meter?: TrafficMeter } = {},
+): Promise<void> {
+  const { meter, ...relayOptions } = options;
+  relay = await FakeTunnelRelay.start({ heartbeatMs: 60_000, ...relayOptions });
   seen = [];
   serverSockets = [];
   server = createServer((request, response) => {
@@ -109,6 +113,7 @@ async function setup(options: { maxStreams?: number } = {}): Promise<void> {
     ca: async () => undefined,
     allowInsecure: () => true,
     backoff: () => 20,
+    ...(meter === undefined ? {} : { meter }),
   });
   client.start();
   tunnel = await relay.nextTunnel(0);
@@ -232,5 +237,44 @@ describe("隧道流：流数上限", () => {
     expect((error as StreamResetError).rstCode).toBe(RST.refused);
     expect(first.destroyed).toBe(false);
     expect(first).toBeInstanceOf(TunnelDuplex);
+  });
+});
+
+describe("隧道流：流量计数（契约 §76）", () => {
+  it("每条流的读写字节进计数器，流结束时 close；隧道消息另记线上字节", async () => {
+    const meter = new TrafficMeter();
+    await setup({ meter });
+    const body = Buffer.alloc(300_000, 3);
+    const answer = await tunnel.request({
+      method: "POST",
+      path: "/echo",
+      headers: { "content-length": String(body.length) },
+      body,
+    });
+    expect(answer.body.length).toBe(body.length);
+    const socket = tunnel.websocket("/api/terminals/t/ws");
+    await once(socket, "open");
+    socket.send(Buffer.alloc(1000, 1));
+    await once(socket, "message");
+    socket.close();
+    await once(socket, "close");
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    const rows = meter.drain();
+    const other = rows.find((row) => row.category === "other");
+    const terminal = rows.find((row) => row.category === "terminal");
+    const wire = rows.find((row) => row.category === "transport");
+    // 没有准入的裸 http.Server：流结束时按匿名记。
+    expect(other).toMatchObject({ peerKind: "anonymous", streams: 1 });
+    expect(other!.bytesIn).toBeGreaterThan(300_000);
+    expect(other!.bytesIn).toBeLessThan(300_400);
+    expect(other!.bytesOut).toBeGreaterThan(300_000);
+    expect(terminal).toMatchObject({ streams: 1 });
+    expect(terminal!.bytesIn).toBeGreaterThan(1000);
+    expect(terminal!.bytesOut).toBeGreaterThan(1000);
+    expect(wire!.bytesIn).toBeGreaterThan(other!.bytesIn + terminal!.bytesIn);
+    expect(wire!.bytesOut).toBeGreaterThan(
+      other!.bytesOut + terminal!.bytesOut,
+    );
+    expect(meter.livePeers()).toEqual([]);
   });
 });

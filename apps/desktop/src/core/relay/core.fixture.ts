@@ -30,6 +30,7 @@ import { install as installEvents } from "../events";
 import { install as installWorkspaces } from "../workspaces/routes";
 import { type Fixture, fixture } from "../workspaces/fixture";
 import { type FakeRelayOptions, FakeTunnelRelay } from "./fake-relay.fixture";
+import { TrafficService } from "../traffic";
 import { type RelayService, installRelay } from "./index";
 import type { RelaySettings } from "./settings";
 
@@ -46,6 +47,8 @@ export interface RelayCore {
   readonly service: IdentityService;
   readonly store: IdentityStore;
   readonly accounts: AccountsService;
+  /** 流量统计（契约 §76）：`relayCore({ traffic: true })` 才有。 */
+  readonly traffic: TrafficService | undefined;
   /** 回环监听的地址。 */
   readonly base: string;
   /** `GET /v1/sources/me/relay` 的答案覆写（状态码 + 体），一直生效。 */
@@ -65,6 +68,8 @@ export async function relayCore(
     /** 节点地址（缺省假中继）。 */
     nodeUrl?: string;
     backoff?: (attempt: number) => number;
+    /** 装上流量统计（不起定时器）。 */
+    traffic?: boolean;
   } = {},
 ): Promise<RelayCore> {
   const world = fakeRelayWorld();
@@ -115,6 +120,7 @@ export async function relayCore(
   let accounts!: AccountsService;
   let cloud!: CloudService;
   let tunnels: RelayService | undefined;
+  let traffic: TrafficService | undefined;
   const core = fixture([
     (context) => void installWorkspaces(context),
     (context) => void installEvents(context),
@@ -132,7 +138,15 @@ export async function relayCore(
         transport,
         secrets: () => backend,
       });
+      traffic =
+        options.traffic === true
+          ? new TrafficService({
+              database: context.db.database,
+              timers: false,
+            })
+          : undefined;
       tunnels = installRelay(context, {
+        traffic: traffic ?? null,
         cloud,
         identity: service,
         transport,
@@ -179,6 +193,7 @@ export async function relayCore(
     service,
     store,
     accounts,
+    traffic,
     base,
     get hint() {
       return state.hint;
@@ -207,6 +222,7 @@ export async function relayCore(
     session: ownerToken,
     close: async () => {
       tunnels?.close();
+      traffic?.close();
       await relay.close();
       await core.server.close();
       core.close();

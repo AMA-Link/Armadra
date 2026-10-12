@@ -344,3 +344,73 @@ describe("状态事件", () => {
     socket.close();
   });
 });
+
+describe("流量计数（契约 §76）", () => {
+  let counted: RelayCore;
+  let counting: FakeTunnel;
+
+  beforeEach(async () => {
+    counted = await relayCore({ traffic: true });
+    await counted.register();
+    counting = await counted.relay.nextTunnel(0);
+    const issuer = counted.cloud.registrations()[0]!.issuer;
+    await until(() => counted.tunnels.status(issuer).state === "ready");
+  });
+
+  afterEach(async () => {
+    await counted.close();
+  });
+
+  it("放行的请求记到会话的设备与主体，匿名面与被拒的记匿名，隧道消息记 transport", async () => {
+    const traffic = counted.traffic!;
+    const token = counted.session(ISSUER);
+    const ok = await counting.request({
+      path: "/api/workspaces",
+      headers: { origin: ISSUER, authorization: `Bearer ${token}` },
+    });
+    expect(ok.status).toBe(200);
+    const refused = await counting.request({
+      path: "/api/workspaces",
+      headers: { origin: ISSUER },
+    });
+    expect(refused.status).toBe(401);
+    const health = await counting.request({
+      path: "/health",
+      clientOrigin: null,
+    });
+    expect(health.status).toBe(200);
+    await until(() => traffic.live().channels.length === 0);
+    const owner = counted.store.transaction((tx) => tx.owner())!;
+    const rows = traffic.summary({
+      fromMs: 0,
+      toMs: Date.now() + 3_600_000,
+      groupBy: "peer",
+    }).rows;
+    const byKind = Object.fromEntries(rows.map((row) => [row.peerKind, row]));
+    expect(byKind.legacy).toMatchObject({
+      principalId: owner.principalId,
+      streams: 1,
+    });
+    expect(byKind.legacy!.key).toMatch(/^[0-9a-f]{32}$/);
+    expect(byKind.legacy!.bytesIn).toBeGreaterThan(0);
+    expect(byKind.legacy!.bytesOut).toBeGreaterThan(ok.body.length);
+    expect(byKind.anonymous).toMatchObject({ streams: 2 });
+    const plain = rows.reduce(
+      (sum, row) => sum + row.bytesIn + row.bytesOut,
+      0,
+    );
+    // 线上字节含帧头、OPEN、WINDOW 与握手，必然多于明文。
+    expect(
+      byKind.tunnel!.wireBytesIn + byKind.tunnel!.wireBytesOut,
+    ).toBeGreaterThan(plain);
+    // 不记路径：库里没有任何一列装得下它。
+    traffic.flush();
+    const columns = counted.core.database
+      .prepare("SELECT * FROM traffic_buckets")
+      .all()
+      .flatMap((row) => Object.values(row as Record<string, unknown>));
+    expect(columns.some((value) => String(value).includes("/api/"))).toBe(
+      false,
+    );
+  });
+});

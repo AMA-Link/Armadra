@@ -4254,3 +4254,30 @@ nightly 在 `b8353492`（运行 37338174906）之后连续失败。逐个作业�
 - 远端工作空间的整份下载仍先分块取回再发，16 MiB 上限不变；画面流用例用替身后端。
 - 首次连接核对失败时暂钉的指纹撤不掉（原生插件没有撤销钉扎），这个来源上没有会话与连接记录；证书轮换仍需扫码。真机未验证。
 - 经中继的首次连接不开放 8 位码，仍需扫码；设备背书 / SAS 留给 E4。
+
+## 流量统计 core（契约 §76，协议 1.44，迁移 0049，Refs #360，2026-10-12）
+
+做了什么：
+
+- shared：类别表 `traffic-categories.ts`（`trafficCategory(kind, path)`，与路由表逐条对过：终端 `/api/terminals/**`、控制面 `/api/ws` 与事件流 `/api/workspaces/{id}/events`、画布 `/boards/{id}/**`（含同步 WS）、文件（files / file-download / imports / assets / exports / agent-uploads、`/api/media/*`、`/api/data/backup`）、Agent（acp / agents / agent-status）、`/api/rpc/<域>` 按域）；契约 `traffic.summary / series / live / clear`，`settings:*`。
+- core：迁移 0049 `traffic_buckets`（设计稿预留 0054；迁移号要连续，按合并时 main 最大号 +1 取 0049）；`core/traffic/`：`meter.ts` 内存累加（热路径只做加法，认出对端前的字节挂在流上）、`store.ts` 批量 upsert、`service.ts` 30 秒 / 隧道断开 / 退出前 flush、按 `traffic.retentionDays`（30 / 90 / 180 / 365 / 730，缺省 180）每天清旧桶、查询合并内存行；访客按外部身份 `guest:<linkId>:` 认出链接；清零写审计 `traffic.clear`。
+- 中继挂载点：`relay/streams.ts` 的 `TunnelDuplex` 收发每块 `DATA` 记字节（`StreamTrafficCounter`），`relay/admission.ts` 放行时把主体交给计数器，`relay/client.ts` 隧道每条消息记 `transport` 线上字节。端到端通道接入时内层流沿用同一个计数器，记录层另记 `wire`。
+- 协议 minor 44（设计预留 46，按合并时 main 的下一个号）。
+
+实测（macOS arm64，armadra-cloud `personal serve` 自签 TLS，隔离数据目录与临时 HOME）：
+
+- 真 core（`run()`）登记到个人中转 → 断言换会话 → 经中继 HTTP × 100、终端 WS 输入 1000 帧、10 MiB 文件下载：core 明文合计 `bytesIn = 80 311`、`bytesOut = 11 128 219`，中继 `/metrics` 的 `relay_bytes_total{to_source / to_client}` 增量**逐字节相等**。按类别：files 1 条 / ↓ 10 486 265（10 485 760 + 头）、terminal 3 条、api 102 条、匿名 2 条（登录、hello）；`transport` 线上 ↑ 126 159 / ↓ 11 142 011。库里没有任何一列装得下路径。
+- 计量开销：1 GiB 回显（16 KiB 一块、读写各一次 add，131 072 次）累加器 12 ms，约 92 ns / 次；按隧道 ≥ 100 MB/s 算占 CPU < 0.2 %。
+- 单测：shared 类别 34、契约树；core 累加器 10、服务 9、域装配（旧路径、路由表、procedure）6、迁移 2、隧道流计数 1、准入计数 1、设置 1。
+
+没做 / 限制：
+
+- `device` 对端（已信任设备钥）与按通道的 `wire` 要等端到端通道（E2）；今天的 `peerId` 是本机会话设备 id，同一台设备每次经断言登录会得到新的会话设备。
+- 线上字节今天是整条隧道一行（`peerKind: "tunnel"`），不能按对端拆。
+- 页面（远程访问页「流量」段）与客户端计量在后续批次（S2、S4）。
+
+接口：
+
+- shared：`trafficCategory`、`TRAFFIC_CATEGORIES`、`traffic.*`、`TRAFFIC_RETENTION_CHOICES` / `DEFAULT_TRAFFIC_RETENTION_DAYS`、`Traffic*` 类型。
+- core：`trafficDomain()`、`TrafficService`（`meter`、`flush`、`summary`、`series`、`live`、`clear`）、`TrafficMeter` / `StreamCounter`；`relay/streams.ts` 的 `StreamTrafficCounter` / `TunnelTrafficMeter`；`TunnelClientOptions.meter`、`RelayDeps.traffic`。
+- 线上：§76，协议 1.44。

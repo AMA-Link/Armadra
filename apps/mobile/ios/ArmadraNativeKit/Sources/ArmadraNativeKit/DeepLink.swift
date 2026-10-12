@@ -45,6 +45,23 @@ public enum DeepLink: Equatable {
         }
     }
 
+    /// 写进 `#link=` 再重载才生效的三种（配对、分享链接、OAuth 回调）；通知点开只改 `#push=`，不重载。
+    public var reloadsPage: Bool {
+        if case .node = self { return false }
+        return true
+    }
+
+    /// 冷启动时在第一个文档开头执行的那一段（`WKUserScript`，`atDocumentStart`）：入口还没跑，
+    /// 直接把链接写进 `#link=`，不必等页面载完再重载一遍。`token` 记进 `sessionStorage`，同一
+    /// 个 WebView 之后的重载不会再写一次；只对需要重载的三种给脚本。
+    public func launchScript(token: String) -> String? {
+        guard reloadsPage else { return nil }
+        let key = Self.literal("armadra.launchLink")
+        let value = Self.literal(token)
+        return "try{if(sessionStorage.getItem(\(key))!==\(value)){sessionStorage.setItem(\(key),\(value));"
+            + "history.replaceState(null,'',location.pathname+'#link='+encodeURIComponent(\(Self.literal(link))));}}catch(e){}"
+    }
+
     /// 在页面里执行的那一行。
     public var script: String {
         let literal = Self.literal(link)

@@ -53,7 +53,7 @@ export const executionHosts: MessageModule = {
       "这项要在 Armadra 所在的机器上跑，当前工作区在另一台",
   },
   en: {
-    "executionHosts.local": "This machine",
+    "executionHosts.local": "This computer",
     "executionHosts.column.name": "Name",
     "executionHosts.column.address": "Address",
     "executionHosts.runsOn": "Runs on",
@@ -91,7 +91,7 @@ export const executionHosts: MessageModule = {
     "executionHosts.blocker.gitOperation": "Git operation",
     "executionHosts.blocker.upload": "Upload",
 
-    "settings.source.local": "This machine",
+    "settings.source.local": "This computer",
     "settings.source.localFootnote": "In {file}, not synced with the account",
     "settings.remoteOnly":
       "This runs on the machine Armadra is on, and this workspace is on another",

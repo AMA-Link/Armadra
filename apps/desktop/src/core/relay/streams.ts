@@ -15,6 +15,10 @@
  * 关闭：收 `END` → `push(null)`；本地 `end()` → 发 `END`；收 `RST` → `destroy`；
  * 本地 `destroy()` → 发 `RST`（无错误时 `clientGone`）。两端都 `END` 后从流表摘掉。
  *
+ * 计数（契约 §76）：给了 {@link StreamTrafficCounter} 时，收到的每块 `DATA`（对端 →
+ * 本机）与发出的每块（本机 → 对端）各报一次字节数，流从流表摘掉时 `close()`。
+ * 准入认出请求是谁后调 `identify`。计数器只做加法，不碰库。
+ *
  * 本类对角色无感：测试里的假中继用同一份。
  */
 
@@ -90,6 +94,40 @@ export interface TunnelOrigin {
   readonly open: OpenPayload;
 }
 
+/**
+ * 一条流的流量计数器（`core/traffic/meter.ts` 的 `StreamCounter` 实现它）。这里只
+ * 声明形状，中继域不依赖统计域。
+ */
+export interface StreamTrafficCounter {
+  add(bytesIn: number, bytesOut: number): void;
+  /** 准入认出了请求主体；没认出（匿名面）给 `undefined`。 */
+  identify(
+    who:
+      | { readonly principalId: string; readonly deviceId: string }
+      | undefined,
+  ): void;
+  close(): void;
+}
+
+/**
+ * 隧道一侧的流量计量（契约 §76）：每条 `OPEN` 拿一个流计数器；隧道 WebSocket 的
+ * 每条消息记一次线上字节（`transport`）；隧道断开时 `flush`。
+ */
+export interface TunnelTrafficMeter {
+  stream(scope: {
+    readonly route: "relay";
+    readonly issuer: string;
+    readonly kind: OpenPayload["kind"];
+    readonly path: string;
+  }): StreamTrafficCounter;
+  wire(
+    scope: { readonly route: "relay"; readonly issuer: string },
+    bytesIn: number,
+    bytesOut: number,
+  ): void;
+  flush?(): void;
+}
+
 interface PendingWrite {
   readonly chunk: Buffer;
   offset: number;
@@ -128,6 +166,8 @@ export class TunnelDuplex extends Duplex {
     private readonly host: StreamHost,
     private readonly options: TunnelStreamOptions,
     tunnel?: TunnelOrigin,
+    /** 流量计数（契约 §76）；不给就不计。 */
+    readonly counter?: StreamTrafficCounter,
   ) {
     super({
       allowHalfOpen: true,
@@ -147,6 +187,7 @@ export class TunnelDuplex extends Duplex {
   receiveData(bytes: Uint8Array): boolean {
     if (bytes.length > this.recvRemaining) return false;
     this.recvRemaining -= bytes.length;
+    this.counter?.add(bytes.length, 0);
     if (this.remoteEnded || this.destroyed) {
       // 已经结束或本地已销毁：丢弃，但隧道级信用照样还回去。
       this.host.consumed(bytes.length);
@@ -232,6 +273,7 @@ export class TunnelDuplex extends Duplex {
         return;
       }
       this.sendCredit -= granted;
+      this.counter?.add(0, granted);
       this.host.sendFrame({
         type: "data",
         streamId: this.streamId,
@@ -282,6 +324,7 @@ export class TunnelDuplex extends Duplex {
   private release(): void {
     if (this.released) return;
     this.released = true;
+    this.counter?.close();
     this.host.closed(this);
   }
 

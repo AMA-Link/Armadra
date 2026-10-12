@@ -411,18 +411,34 @@ public class ArmadraNativePlugin: CAPPlugin, CAPBridgedPlugin, NotificationHandl
     // MARK: - 深链
 
     private func open(_ link: String) {
-        guard let deepLink = DeepLink(link) else { return }
+        guard let deepLink = DeepLink(link) else {
+            Self.log.info("deep link not recognized")
+            return
+        }
+        // 冷启动的那一条已经写进第一个文档（`LaunchLink`），Capacitor 补发时不再改写重载。
+        if LaunchLink.shared.consume(deepLink.link) {
+            Self.log.info("deep link already in the first document")
+            return
+        }
         DispatchQueue.main.async { self.deliver(deepLink.script) }
     }
 
     /// 页面还在加载（冷启动）时先记着，加载完再执行；否则立刻执行。
     private func deliver(_ script: String) {
         guard let webView = bridge?.webView, webView.url != nil, !webView.isLoading else {
+            Self.log.info("deep link waits for the page to load")
             pendingScript = script
             watchLoading()
             return
         }
-        webView.evaluateJavaScript(script)
+        Self.log.info("deep link delivered")
+        webView.evaluateJavaScript(script, completionHandler: Self.reportScript)
+    }
+
+    /// 脚本没跑成（页面正在换、WebContent 进程没了）时记一行，失败的夜间运行才看得出卡在哪。
+    private static func reportScript(_: Any?, _ error: Error?) {
+        guard let error else { return }
+        log.error("deep link script failed: \(error.localizedDescription, privacy: .public)")
     }
 
     private func watchLoading() {
@@ -440,7 +456,8 @@ public class ArmadraNativePlugin: CAPPlugin, CAPBridgedPlugin, NotificationHandl
                 guard let self, !view.isLoading, view.url != nil, let script = self.pendingScript else { return }
                 self.pendingScript = nil
                 self.loadingObservation = nil
-                view.evaluateJavaScript(script)
+                Self.log.info("deep link delivered after load")
+                view.evaluateJavaScript(script, completionHandler: Self.reportScript)
             }
         }
     }

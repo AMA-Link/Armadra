@@ -278,7 +278,7 @@ describe("连接页 · 多连接（添加连接）", () => {
     render(<ConnectScreen {...base} relay={outcomes()} />);
     expect(screen.getByRole("button", { name: "扫码" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "配对链接" })).toBeTruthy();
-    expect(screen.getByRole("button", { name: "个人中转" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "中转账号" })).toBeTruthy();
     expect(document.body.textContent).not.toMatch(/SaaS|即将|预留|敬请/);
   });
 
@@ -309,7 +309,7 @@ describe("连接页 · 多连接（添加连接）", () => {
     });
     relay.mount.mockResolvedValue({ kind: "done" });
     render(<ConnectScreen {...base} relay={relay} />);
-    fireEvent.click(screen.getByRole("button", { name: "个人中转" }));
+    fireEvent.click(screen.getByRole("button", { name: "中转账号" }));
     const signIn = screen.getByRole("button", { name: "登录" });
     expect((signIn as HTMLButtonElement).disabled).toBe(true);
     fireEvent.change(screen.getByLabelText("地址"), {
@@ -434,7 +434,7 @@ describe("连接页 · 多连接（添加连接）", () => {
     );
     fireEvent.click(screen.getByRole("button", { name: "取消" }));
     expect(relay.reset).toHaveBeenCalled();
-    expect(screen.getByRole("button", { name: "个人中转" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "中转账号" })).toBeTruthy();
   });
 
   it("贴进链接框的分享链接与扫到的二维码都走挂载；别的仍是配对", async () => {
@@ -497,7 +497,7 @@ describe("连接页 · 多连接（添加连接）", () => {
     ).toBe(true);
     // 添加连接在列表下面。
     fireEvent.click(screen.getByRole("button", { name: "添加连接" }));
-    expect(screen.getByRole("button", { name: "个人中转" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "中转账号" })).toBeTruthy();
   });
 
   it("标题是「选择服务」，在线状态与到达方式在行上", () => {
