@@ -171,6 +171,31 @@ describe("设备准入", () => {
     client.close();
   });
 
+  it("待确认不占掉断言：放行后同一张断言能再登录一次，之后照常算重放", async () => {
+    await bindOwner();
+    const client = await connect();
+    const assertion = signAssertion({ aud: sourceId, nowMs: Date.now() });
+    const send = () =>
+      client.request({
+        method: "POST",
+        path: "/api/identity/cloud/login",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ assertion }),
+      });
+    const first = await send();
+    expect(first.json()).toMatchObject({ code: "device_pending" });
+    e2eDevices()!.approve(
+      first.json<{ details: { pendingId: string } }>().details.pendingId,
+      client.session.sas,
+    );
+    const second = await send();
+    expect(second.status, second.body.toString()).toBe(200);
+    const third = await send();
+    expect(third.status).toBe(401);
+    expect(third.json()).toMatchObject({ code: "cloud_assertion_replayed" });
+    client.close();
+  });
+
   it("别的通道等不到这条记录（只认自己的设备钥）", async () => {
     await bindOwner();
     const client = await connect();

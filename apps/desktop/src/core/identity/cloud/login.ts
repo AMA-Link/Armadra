@@ -32,7 +32,7 @@ import {
   parseScopeClaims,
 } from "@armadra/platform-protocol/assertion";
 
-import { fail } from "../../http/errors";
+import { CoreFailure, fail } from "../../http/errors";
 import type { AccountsService } from "../accounts";
 import {
   type AssertedGrant,
@@ -271,16 +271,23 @@ export class CloudLogin {
       invitationId = parsed;
     }
 
-    const channelDeviceId =
-      input.channel === undefined
-        ? ""
-        : await this.admitDevice(
-            input.channel,
-            principalId,
-            registration.issuer,
-            claims,
-            token === "" ? undefined : token,
-          );
+    let channelDeviceId = "";
+    if (input.channel !== undefined) {
+      try {
+        channelDeviceId = await this.admitDevice(
+          input.channel,
+          principalId,
+          registration.issuer,
+          claims,
+          token === "" ? undefined : token,
+        );
+      } catch (error) {
+        // 待确认只建了记录、没发会话：放行后同一张断言还要再用一次。
+        if (error instanceof CoreFailure && error.code === "device_pending")
+          this.options.verifier.release(registration.issuer, claims.jti);
+        throw error;
+      }
+    }
 
     applyCloudGrants(store, this.now(), {
       principalId,
