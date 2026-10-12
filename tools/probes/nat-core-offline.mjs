@@ -37,11 +37,13 @@ import { join, resolve } from "node:path";
 import { CLOUD_ENTRY, findCloudSource } from "./cloud-source.mjs";
 import {
   dockerReady,
+  approveWith,
   ownerClient,
   registerSource,
   secretLedger,
   startDockerRelay,
 } from "./platform-lib.mjs";
+import { openE2eRoute } from "./e2e-client.mjs";
 import { probeSession } from "./probe-session.mjs";
 import {
   makeNode,
@@ -302,26 +304,65 @@ try {
   run.ok("断线前：本地输入并回显（42before）");
 
   const device = registered.device;
+  // 经中继只剩端到端通道（契约 §78）：每次探测开一条新通道（同一个设备钥种子，
+  // 第一次由主人核对放行），经通道取源的 /health；连不上或没答就记 0。
+  const probeSeed = randomBytes(32);
   const relayedHealth = async () => {
-    const assertion = await relay.must(
-      "POST",
-      `/v1/sources/${sourceId}/assertion`,
-      {
-        body: { device },
-        token: await registered.loginOwner(),
-      },
-    );
-    secret("中继令牌", assertion.relayToken);
-    return relay.call("GET", `/s/${sourceId}/health`, {
-      headers: { "armadra-relay-token": assertion.relayToken },
-    });
+    let route;
+    try {
+      const assertion = await relay.must(
+        "POST",
+        `/v1/sources/${sourceId}/assertion`,
+        {
+          body: { device },
+          token: await registered.loginOwner(),
+        },
+      );
+      secret("中继令牌", assertion.relayToken);
+      route = await openE2eRoute({
+        url: `${relay.issuer}/s/${sourceId}`,
+        caPem: relay.caPem,
+        sourceId,
+        relayToken: assertion.relayToken,
+        assertion: assertion.assertion,
+        approve: approveWith(session),
+        seed: probeSeed,
+        name: "nat-core-offline-probe",
+      });
+      if (!approved) {
+        await route.login();
+        approved = true;
+      }
+      const answer = await route.raw("GET", "/health");
+      return { status: answer.status };
+    } catch (error) {
+      report.lastHealthError = String(error?.message ?? error);
+      return { status: 0 };
+    } finally {
+      route?.close();
+    }
   };
-  const before = await relayedHealth();
+  let approved = false;
+  const plainHealth = await relay.call("GET", `/s/${sourceId}/health`, {
+    headers: {
+      "armadra-relay-token": (
+        await relay.must("POST", `/v1/sources/${sourceId}/assertion`, {
+          body: { device },
+          token: await registered.loginOwner(),
+        })
+      ).relayToken,
+    },
+  });
   run.check(
-    before.status === 200,
-    "断线前：经中继访问源的 /health 通",
-    before.status,
+    plainHealth.status === 404,
+    "带中继令牌的明文请求由中继答 404",
+    plainHealth.status,
   );
+  const before = await relayedHealth();
+  run.check(before.status === 200, "断线前：经端到端通道访问源的 /health 通", {
+    status: before.status,
+    error: report.lastHealthError,
+  });
 
   /* ------------------------------ 断线 ------------------------------ */
   const pausedAt = Date.now();
@@ -408,13 +449,13 @@ try {
   report.timings["recover-source-online"] = sourceOnline;
   const healthBack = await until(
     async () => ((await relayedHealth()).status === 200 ? sinceResume() : null),
-    "经中继访问源的 /health 又通",
+    "经端到端通道访问源的 /health 又通",
     { timeout: 60_000, every: 250 },
   );
   report.timings["recover-relayed-health"] = healthBack;
   run.check(
     Math.max(tunnelBack, sourceOnline, healthBack) <= RECOVER_LIMIT_MS,
-    `恢复后 ≤ ${RECOVER_LIMIT_MS / 1000} 秒：隧道 ${tunnelBack} ms、中继目录在线 ${sourceOnline} ms、经中继访问 ${healthBack} ms`,
+    `恢复后 ≤ ${RECOVER_LIMIT_MS / 1000} 秒：隧道 ${tunnelBack} ms、中继目录在线 ${sourceOnline} ms、经通道访问 ${healthBack} ms`,
     { tunnelBack, sourceOnline, healthBack },
   );
 
