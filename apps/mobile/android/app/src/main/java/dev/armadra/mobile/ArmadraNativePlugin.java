@@ -28,6 +28,7 @@ import dev.armadra.mobile.core.ExternalUrl;
 import dev.armadra.mobile.core.Pin;
 import dev.armadra.mobile.core.PinPolicy;
 import dev.armadra.mobile.core.PushEnvelope;
+import dev.armadra.mobile.core.TrafficRows;
 import java.io.InputStream;
 import java.lang.ref.WeakReference;
 import java.io.OutputStream;
@@ -62,6 +63,8 @@ import org.unifiedpush.android.connector.UnifiedPush;
  *   <li>{@code pushRotated / ackPushRotation}：令牌或端点换过的标记（R-54，{@link PushRotation}）；换的那一刻
  *       插件开着就发 {@code pushTokenRotated} 事件；
  *   <li>{@code openExternal}：系统浏览器打开原生 OAuth 的授权页（R-56），只开 https 与回环 http；
+ *   <li>{@code trafficLoad} / {@code trafficSave}：客户端流量的日桶（设计 §6.4），存
+ *       {@code SharedPreferences}（Capacitor Preferences 同一个后端），整份读写；形状或上限不对整份拒绝；
  *   <li>{@code e2eDeviceSeed}：端到端通道的设备钥种子（契约 §78），没有就生成，只在 Keystore；
  *   <li>{@code installApk({ url, sha256 })}：应用内更新（#288 §4），下载、核对摘要、拉起系统安装器，结果
  *       {@code { status: "started" | "permissionRequired" | "checksumMismatch" | "failed", message? }}，从不 reject。
@@ -595,6 +598,62 @@ public class ArmadraNativePlugin extends Plugin {
         JSObject result = new JSObject();
         result.put("seed", stored);
         call.resolve(result);
+    }
+
+    /** 客户端流量日桶的存储：一个 JSON 数组字符串。 */
+    static final String TRAFFIC_PREFS = "armadra_traffic";
+
+    static final String TRAFFIC_ROWS = "rows";
+
+    @PluginMethod
+    public void trafficLoad(PluginCall call) {
+        String text = getContext().getSharedPreferences(TRAFFIC_PREFS, android.content.Context.MODE_PRIVATE)
+                .getString(TRAFFIC_ROWS, null);
+        JSArray rows = new JSArray();
+        if (text != null) {
+            try {
+                JSArray stored = new JSArray(text);
+                if (checkedTraffic(stored)) rows = stored;
+            } catch (org.json.JSONException broken) {
+                // 坏了按空：页面把「还没有」和「读失败」分开，空数组就是还没有。
+            }
+        }
+        JSObject result = new JSObject();
+        result.put("rows", rows);
+        call.resolve(result);
+    }
+
+    @PluginMethod
+    public void trafficSave(PluginCall call) {
+        JSArray rows = call.getArray("rows");
+        if (rows == null || !checkedTraffic(rows)) {
+            call.reject("invalid traffic rows");
+            return;
+        }
+        boolean saved = getContext()
+                .getSharedPreferences(TRAFFIC_PREFS, android.content.Context.MODE_PRIVATE)
+                .edit()
+                .putString(TRAFFIC_ROWS, rows.toString())
+                .commit();
+        if (saved) call.resolve();
+        else call.reject("storage unavailable");
+    }
+
+    /** 每一行都过 {@link TrafficRows#valid}、总数不超上限。 */
+    private static boolean checkedTraffic(JSArray rows) {
+        if (rows.length() > TrafficRows.MAX_ROWS) return false;
+        for (int index = 0; index < rows.length(); index += 1) {
+            JSONObject row = rows.optJSONObject(index);
+            if (row == null) return false;
+            if (!TrafficRows.valid(
+                    row.optString("day", null),
+                    row.optString("sourceId", null),
+                    row.optString("category", null),
+                    row.optDouble("bytesIn", Double.NaN),
+                    row.optDouble("bytesOut", Double.NaN),
+                    row.optDouble("streams", Double.NaN))) return false;
+        }
+        return true;
     }
 
     /**
