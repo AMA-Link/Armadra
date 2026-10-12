@@ -1,3 +1,4 @@
+import { identityFingerprint } from "@armadra/platform-protocol/e2e";
 import {
   E2eChannelError,
   E2eClientChannel,
@@ -6,6 +7,7 @@ import {
 } from "@armadra/shared/e2e";
 
 import { type DeviceIdentity, deviceIdentity } from "./device-key";
+import { type PairingStore, storagePairings } from "./pairing";
 import { type PinStore, storagePins } from "./pins";
 
 /**
@@ -33,6 +35,8 @@ export interface ChannelTarget {
   readonly proofSecret?: Uint8Array;
   /** 配对二维码 / 访客链接给的身份公钥（不走 TOFU）。 */
   readonly identityPub?: Uint8Array;
+  /** 访客链接片段给的身份指纹前缀（契约 §80）：对不上就拒绝。 */
+  readonly fingerprintPrefix?: string;
 }
 
 export class E2eAccessError extends Error {
@@ -109,6 +113,8 @@ export const pendingApprovals = {
 
 export interface E2eChannelsOptions {
   readonly pins?: PinStore;
+  /** 扫到的配对二维码（契约 §80.1）。 */
+  readonly pairings?: PairingStore;
   readonly device?: () => Promise<DeviceIdentity>;
   /** 设备在远程服务里的名字（m3 的 `name`）。 */
   readonly deviceName: () => string;
@@ -139,9 +145,11 @@ export class E2eChannels {
   private readonly fetches = new WeakMap<E2eClientChannel, typeof fetch>();
   private readonly sockets = new WeakMap<E2eClientChannel, typeof WebSocket>();
   private readonly pins: PinStore;
+  private readonly pairings: PairingStore;
 
   constructor(private readonly options: E2eChannelsOptions) {
     this.pins = options.pins ?? storagePins();
+    this.pairings = options.pairings ?? storagePairings();
   }
 
   /** 这个源钉过身份（建成过通道）。 */
@@ -204,8 +212,16 @@ export class E2eChannels {
         throw new E2eAccessError("device_unavailable");
       return null;
     }
+    // 扫过这台电脑的配对二维码：身份不走 TOFU，握手带 proof（用过即删）。
+    const offer =
+      target.proofSecret === undefined
+        ? this.pairings.get(target.sourceId)
+        : null;
+    const proofSecret = target.proofSecret ?? offer?.secret;
     const pinned =
-      target.identityPub ?? this.pins.get(target.issuer, target.sourceId);
+      target.identityPub ??
+      offer?.identityPub ??
+      this.pins.get(target.issuer, target.sourceId);
     let channel: E2eClientChannel;
     try {
       channel = await E2eClientChannel.open({
@@ -216,9 +232,7 @@ export class E2eChannels {
         platform: identity.platform,
         name: this.options.deviceName(),
         pinned,
-        ...(target.proofSecret === undefined
-          ? {}
-          : { proofSecret: target.proofSecret }),
+        ...(proofSecret === undefined ? {} : { proofSecret }),
         ...(this.options.WebSocket === undefined
           ? {}
           : { WebSocket: this.options.WebSocket }),
@@ -233,14 +247,24 @@ export class E2eChannels {
       if (pinned === null) return null;
       throw error;
     }
+    if (
+      target.fingerprintPrefix !== undefined &&
+      !(await identityFingerprint(channel.coreIdentity)).startsWith(
+        target.fingerprintPrefix,
+      )
+    ) {
+      channel.close();
+      throw new E2eAccessError("identity_changed");
+    }
     if (pinned === null) {
       this.pins.set(target.issuer, target.sourceId, channel.coreIdentity);
     } else if (!same(pinned, channel.coreIdentity)) {
       channel.close();
       throw new E2eAccessError("identity_changed");
     }
-    if (target.identityPub !== undefined)
-      this.pins.set(target.issuer, target.sourceId, target.identityPub);
+    if (target.identityPub !== undefined || offer !== null)
+      this.pins.set(target.issuer, target.sourceId, channel.coreIdentity);
+    if (offer !== null) this.pairings.consume(target.sourceId);
     return channel;
   }
 
@@ -353,4 +377,43 @@ export function e2eChannels(deviceName: () => string): E2eChannels {
 export function resetE2eChannels(): void {
   shared = null;
   publish([]);
+}
+
+/**
+ * 第一次经访客链接加入（契约 §80）：先开通道（邀请令牌作 proof、链接里的指纹钉身份），
+ * 源 core 的 `cloud/login` 走它；源不支持时（过渡期）照旧明文。答给 `coreCloudLogin`
+ * 的选项。
+ */
+export async function sealedJoinOptions<T extends { fetch?: typeof fetch }>(
+  channels: E2eChannels | undefined,
+  base: T | undefined,
+  target: Omit<ChannelTarget, "proofSecret"> & {
+    readonly invitationToken: string;
+  },
+): Promise<T | (T & { fetch: typeof fetch }) | undefined> {
+  if (channels === undefined) return base;
+  const { invitationToken, ...rest } = target;
+  const channel = await channels.channel({
+    ...rest,
+    proofSecret: new TextEncoder().encode(invitationToken),
+  });
+  if (channel === null) return base;
+  return {
+    ...(base ?? ({} as T)),
+    fetch: channels.fetchFor(channel, target.base),
+  };
+}
+
+/**
+ * 访客要钉的身份指纹前缀：链接片段第三段（core 自己给的）优先；旧链接没有时退到中继
+ * `links.accept` 报的指纹前 16 位（只是提示，好过完全 TOFU）。都没有是 `undefined`。
+ */
+export function fingerprintPrefix(
+  fromLink: string | undefined,
+  fromRelay: string | undefined,
+): string | undefined {
+  if (fromLink !== undefined && fromLink !== "") return fromLink;
+  if (fromRelay !== undefined && /^[a-z2-7]{16,}$/.test(fromRelay))
+    return fromRelay.slice(0, 16);
+  return undefined;
 }

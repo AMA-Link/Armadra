@@ -45,6 +45,8 @@ export interface SourceRow {
   readonly ownerLabel: string;
   readonly shareRole: SourceShareRole;
   readonly shareExpiresAtMs: number;
+  /** 钉住的对端身份公钥（base64url，迁移 0050）；没钉过不出现。 */
+  readonly identityPub?: string;
 }
 
 export interface RemoteRow {
@@ -125,6 +127,7 @@ interface SourceRecord {
   owner_label: string;
   share_role: SourceShareRole;
   share_expires_at_ms: number;
+  identity_pub?: Uint8Array;
 }
 
 interface RemoteRecord {
@@ -157,6 +160,9 @@ function sourceOf(record: SourceRecord): SourceRow {
     ownerLabel: record.owner_label,
     shareRole: record.share_role,
     shareExpiresAtMs: Number(record.share_expires_at_ms),
+    ...(record.identity_pub !== undefined && record.identity_pub.length === 32
+      ? { identityPub: Buffer.from(record.identity_pub).toString("base64url") }
+      : {}),
   };
 }
 
@@ -178,6 +184,8 @@ const SOURCE_COLUMNS =
   "source_id, kind, label, default_label, base_url, relay_origin, fingerprint, cloud_issuer, " +
   "principal_hint, added_at_ms, last_ok_at_ms, order_index, origin, owner_label, share_role, " +
   "share_expires_at_ms";
+/** 读的时候多带钉住的身份公钥（迁移 0050）；写不经这一列（`setIdentityPub`）。 */
+const SOURCE_READ_COLUMNS = `${SOURCE_COLUMNS}, identity_pub`;
 const REMOTE_COLUMNS =
   "service_id, kind, issuer, label, default_label, account_hint, fingerprint, added_at_ms, last_ok_at_ms";
 
@@ -188,7 +196,7 @@ export class SourcesStore {
   list(): SourceRow[] {
     const rows = this.database
       .prepare(
-        `SELECT ${SOURCE_COLUMNS} FROM client_sources ` +
+        `SELECT ${SOURCE_READ_COLUMNS} FROM client_sources ` +
           "ORDER BY kind = 'local' DESC, order_index, added_at_ms, source_id",
       )
       .all() as unknown as SourceRecord[];
@@ -198,7 +206,7 @@ export class SourcesStore {
   get(sourceId: string): SourceRow | undefined {
     const row = this.database
       .prepare(
-        `SELECT ${SOURCE_COLUMNS} FROM client_sources WHERE source_id = ?`,
+        `SELECT ${SOURCE_READ_COLUMNS} FROM client_sources WHERE source_id = ?`,
       )
       .get(sourceId) as SourceRecord | undefined;
     return row === undefined ? undefined : sourceOf(row);

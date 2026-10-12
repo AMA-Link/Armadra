@@ -18,7 +18,12 @@ import {
   cloudSources,
 } from "./cloud-client";
 import { createCachedCredentialProvider } from "./credentials";
-import { type E2eChannels, e2eChannels } from "./e2e/manager";
+import {
+  type E2eChannels,
+  e2eChannels,
+  fingerprintPrefix,
+  sealedJoinOptions,
+} from "./e2e/manager";
 import type { ManagedSocketState } from "./managed-socket";
 import { type SiblingMount, mountSiblingSources } from "./mounts";
 import { sourceRegistry } from "./registry";
@@ -545,6 +550,8 @@ export interface HostedRelay {
     readonly linkId: string;
     readonly secret: string;
     readonly invitationToken: string;
+    /** 链接片段第三段：core 身份指纹前缀（契约 §80）。 */
+    readonly identityFp?: string;
   }): Promise<string>;
   /**
    * 刷新页面之后：用记下的刷新令牌静默续上远程服务，再进上次那台主机。没有
@@ -861,7 +868,22 @@ export function createHostedRelay(options: HostedRelayOptions): HostedRelay {
           accepted.relayToken,
           accepted.assertion,
           link.invitationToken,
-          options.cloud,
+          await sealedJoinOptions(options.e2e, options.cloud, {
+            issuer,
+            sourceId: accepted.sourceId,
+            base: accepted.relayBaseUrl,
+            relayToken: accepted.relayToken,
+            invitationToken: link.invitationToken,
+            ...(fingerprintPrefix(link.identityFp, accepted.identityFp) ===
+            undefined
+              ? {}
+              : {
+                  fingerprintPrefix: fingerprintPrefix(
+                    link.identityFp,
+                    accepted.identityFp,
+                  )!,
+                }),
+          }),
         );
         await vault.saveSession(accepted.sourceId, issuer, {
           accessToken: login.native.accessToken,

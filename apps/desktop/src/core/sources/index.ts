@@ -27,6 +27,9 @@ import { secretsFor } from "../secrets";
 import { currentHostName } from "../settings";
 import { DeviceKey } from "../relay/e2e/device-key";
 import { OutboundChannels } from "../relay/e2e/outbound";
+import { linkApprover } from "../relay/e2e/pairing";
+import { e2eDevices, e2eShareLinks } from "../relay/e2e/peer";
+import { identityFingerprint } from "@armadra/platform-protocol/e2e";
 import {
   networkTransport,
   pinnedAnchor,
@@ -227,6 +230,26 @@ export function install(
     }),
     log: context.log,
     ...(options.now === undefined ? {} : { now: options.now }),
+    e2e: () => {
+      const links = e2eShareLinks();
+      const devices = e2eDevices();
+      const cloud = cloudDomain();
+      if (links === undefined || devices === undefined || cloud === undefined)
+        return undefined;
+      return {
+        fingerprint: async () =>
+          identityFingerprint(await cloud.identityPublicKey()),
+        save: (row) =>
+          links.save({ ...row, createdAtMs: Date.now(), revokedAtMs: 0 }),
+        maxDevices: (linkId) => links.get(linkId)?.maxDevices ?? null,
+        devices: (linkId) =>
+          devices.store.countApprovedBy(linkApprover(linkId)),
+        revoke: (linkId) => {
+          links.revoke(linkId, Date.now());
+          devices.revokeApprovedBy(linkApprover(linkId));
+        },
+      };
+    },
   });
 
   const handlers = {

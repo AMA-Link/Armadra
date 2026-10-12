@@ -264,10 +264,12 @@ export {
 export type { DeviceStatus, TrustedDevice } from "./devices.js";
 export {
   E2E_IDENTITY_PATH,
+  E2E_PAIRING_SECRET_PATH,
   E2E_SIGN_PATH,
   E2E_SOURCE_WAIT_PATH,
   E2E_WAIT_PATH,
   e2eIdentitySchema,
+  e2ePairingPayloadSchema,
   e2eSignatureSchema,
 } from "./e2e.js";
-export type { E2eIdentity, E2eSignature } from "./e2e.js";
+export type { E2eIdentity, E2ePairingPayload, E2eSignature } from "./e2e.js";

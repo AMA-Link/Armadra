@@ -255,6 +255,8 @@ export class SourcesService {
   ): Promise<ClientSource> {
     return {
       ...row,
+      // 契约 §80：钉住的对端身份；没钉过是空串。
+      identityPub: row.identityPub ?? "",
       routes: routes.map(routeJson),
       // 本机不要凭据，永远连得上。
       hasCredentials:
@@ -1325,6 +1327,9 @@ export class SourcesService {
       fingerprint: relayFingerprint(accepted.relayBaseUrl, endpoint),
       relayToken: accepted.relayToken,
       sourceId: accepted.sourceId,
+      // 契约 §80：邀请令牌作 proof，链接里的指纹前缀钉住对端身份。
+      proofSecret: new TextEncoder().encode(link.invitationToken),
+      ...(link.identityFp === undefined ? {} : { identityFp: link.identityFp }),
     };
     const credentials = await this.peer.cloudLogin(
       address,

@@ -27,13 +27,18 @@ export interface SourceAddress {
    * 会话绑本机设备钥。
    */
   readonly sourceId?: string;
+  /** 第一次经访客链接加入：邀请令牌作 m3 的 `proof`（契约 §80）。 */
+  readonly proofSecret?: Uint8Array;
+  /** 链接片段给出的对端身份指纹前缀（不走 TOFU）。 */
+  readonly identityFp?: string;
 }
 
 /** 经端到端通道发一个请求；通道不可用（过渡期的旧 core）答 `null`。 */
 export type ChannelRequest = (
   address: Required<
     Pick<SourceAddress, "base" | "fingerprint" | "relayToken" | "sourceId">
-  >,
+  > &
+    Pick<SourceAddress, "proofSecret" | "identityFp">,
   request: OutboundRequest,
 ) => Promise<{ answer: OutboundAnswer; sas: string } | null>;
 
@@ -187,6 +192,12 @@ export class SourceClient {
               fingerprint: address.fingerprint,
               relayToken,
               sourceId,
+              ...(address.proofSecret === undefined
+                ? {}
+                : { proofSecret: address.proofSecret }),
+              ...(address.identityFp === undefined
+                ? {}
+                : { identityFp: address.identityFp }),
             },
             request,
           )

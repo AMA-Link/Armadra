@@ -305,6 +305,7 @@ describe("§55 在协议包的形状上追加", () => {
         "ownerLabel",
         "shareRole",
         "shareExpiresAtMs",
+        "identityPub",
       ],
     );
     superset(
@@ -317,6 +318,7 @@ describe("§55 在协议包的形状上追加", () => {
         "ownerLabel",
         "shareRole",
         "shareExpiresAtMs",
+        "identityPub",
       ],
     );
     superset(

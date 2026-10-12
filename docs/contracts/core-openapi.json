@@ -1,7 +1,7 @@
 {
   "info": {
     "title": "Armadra core",
-    "version": "1.45",
+    "version": "1.47",
     "description": "契约 procedure 的入参与出参（docs/contracts/core-json-api.md §34）。线上是 `POST /api/rpc/<域>/<动词>`，体按 `{ json }` 编码，下列 schema 是 `json` 那一格；失败一律是 `CoreError`。由 tools/contract/generate.mjs 生成，不要手改。"
   },
   "openapi": "3.1.1",
@@ -5551,6 +5551,9 @@
                             "type": "integer",
                             "minimum": -9007199254740991,
                             "maximum": 9007199254740991
+                          },
+                          "identityPub": {
+                            "type": "string"
                           }
                         },
                         "required": [
@@ -5571,7 +5574,8 @@
                           "origin",
                           "ownerLabel",
                           "shareRole",
-                          "shareExpiresAtMs"
+                          "shareExpiresAtMs",
+                          "identityPub"
                         ]
                       }
                     },
@@ -5813,6 +5817,9 @@
                       "type": "integer",
                       "minimum": -9007199254740991,
                       "maximum": 9007199254740991
+                    },
+                    "identityPub": {
+                      "type": "string"
                     }
                   },
                   "required": [
@@ -5833,7 +5840,8 @@
                     "origin",
                     "ownerLabel",
                     "shareRole",
-                    "shareExpiresAtMs"
+                    "shareExpiresAtMs",
+                    "identityPub"
                   ]
                 }
               }
@@ -6042,6 +6050,9 @@
                       "type": "integer",
                       "minimum": -9007199254740991,
                       "maximum": 9007199254740991
+                    },
+                    "identityPub": {
+                      "type": "string"
                     }
                   },
                   "required": [
@@ -6062,7 +6073,8 @@
                     "origin",
                     "ownerLabel",
                     "shareRole",
-                    "shareExpiresAtMs"
+                    "shareExpiresAtMs",
+                    "identityPub"
                   ]
                 }
               }
@@ -6569,6 +6581,9 @@
                       "type": "integer",
                       "minimum": -9007199254740991,
                       "maximum": 9007199254740991
+                    },
+                    "identityPub": {
+                      "type": "string"
                     }
                   },
                   "required": [
@@ -6589,7 +6604,8 @@
                     "origin",
                     "ownerLabel",
                     "shareRole",
-                    "shareExpiresAtMs"
+                    "shareExpiresAtMs",
+                    "identityPub"
                   ]
                 }
               }
@@ -6783,6 +6799,9 @@
                       "type": "integer",
                       "minimum": -9007199254740991,
                       "maximum": 9007199254740991
+                    },
+                    "identityPub": {
+                      "type": "string"
                     }
                   },
                   "required": [
@@ -6803,7 +6822,8 @@
                     "origin",
                     "ownerLabel",
                     "shareRole",
-                    "shareExpiresAtMs"
+                    "shareExpiresAtMs",
+                    "identityPub"
                   ]
                 }
               }
@@ -7692,6 +7712,9 @@
                       "type": "integer",
                       "minimum": -9007199254740991,
                       "maximum": 9007199254740991
+                    },
+                    "identityPub": {
+                      "type": "string"
                     }
                   },
                   "required": [
@@ -7712,7 +7735,8 @@
                     "origin",
                     "ownerLabel",
                     "shareRole",
-                    "shareExpiresAtMs"
+                    "shareExpiresAtMs",
+                    "identityPub"
                   ]
                 }
               }
@@ -8249,6 +8273,9 @@
                       "type": "integer",
                       "minimum": -9007199254740991,
                       "maximum": 9007199254740991
+                    },
+                    "identityPub": {
+                      "type": "string"
                     }
                   },
                   "required": [
@@ -8269,7 +8296,8 @@
                     "origin",
                     "ownerLabel",
                     "shareRole",
-                    "shareExpiresAtMs"
+                    "shareExpiresAtMs",
+                    "identityPub"
                   ]
                 }
               }
@@ -8481,6 +8509,23 @@
                           },
                           "copyable": {
                             "type": "boolean"
+                          },
+                          "devices": {
+                            "type": "integer",
+                            "minimum": -9007199254740991,
+                            "maximum": 9007199254740991
+                          },
+                          "maxDevices": {
+                            "anyOf": [
+                              {
+                                "type": "integer",
+                                "minimum": -9007199254740991,
+                                "maximum": 9007199254740991
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
                           }
                         },
                         "required": [
@@ -8494,7 +8539,9 @@
                           "maxUses",
                           "revokedAtMs",
                           "state",
-                          "copyable"
+                          "copyable",
+                          "devices",
+                          "maxDevices"
                         ]
                       }
                     }
@@ -8703,6 +8750,23 @@
                         },
                         "copyable": {
                           "type": "boolean"
+                        },
+                        "devices": {
+                          "type": "integer",
+                          "minimum": -9007199254740991,
+                          "maximum": 9007199254740991
+                        },
+                        "maxDevices": {
+                          "anyOf": [
+                            {
+                              "type": "integer",
+                              "minimum": -9007199254740991,
+                              "maximum": 9007199254740991
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
                         }
                       },
                       "required": [
@@ -8716,7 +8780,9 @@
                         "maxUses",
                         "revokedAtMs",
                         "state",
-                        "copyable"
+                        "copyable",
+                        "devices",
+                        "maxDevices"
                       ]
                     },
                     "url": {
@@ -8997,6 +9063,23 @@
                         },
                         "copyable": {
                           "type": "boolean"
+                        },
+                        "devices": {
+                          "type": "integer",
+                          "minimum": -9007199254740991,
+                          "maximum": 9007199254740991
+                        },
+                        "maxDevices": {
+                          "anyOf": [
+                            {
+                              "type": "integer",
+                              "minimum": -9007199254740991,
+                              "maximum": 9007199254740991
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
                         }
                       },
                       "required": [
@@ -9010,7 +9093,9 @@
                         "maxUses",
                         "revokedAtMs",
                         "state",
-                        "copyable"
+                        "copyable",
+                        "devices",
+                        "maxDevices"
                       ]
                     }
                   },
@@ -75628,6 +75713,109 @@
           "legacy": {
             "method": "POST",
             "path": "/api/e2e/sources/wait"
+          }
+        }
+      }
+    },
+    "/api/rpc/e2e/pairingSecret": {
+      "post": {
+        "operationId": "e2e.pairingSecret",
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "sourceId": {
+                      "type": "string"
+                    },
+                    "identityPub": {
+                      "type": "string"
+                    },
+                    "fingerprint": {
+                      "type": "string"
+                    },
+                    "secret": {
+                      "type": "string"
+                    },
+                    "issuers": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "expiresAtMs": {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991
+                    },
+                    "uri": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "sourceId",
+                    "identityPub",
+                    "fingerprint",
+                    "secret",
+                    "issuers",
+                    "expiresAtMs",
+                    "uri"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "401",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CoreError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "403",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CoreError"
+                }
+              }
+            }
+          },
+          "501": {
+            "description": "501",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CoreError"
+                }
+              }
+            }
+          }
+        },
+        "x-armadra": {
+          "contract": "§80.1",
+          "scope": "settings:write",
+          "since": "1.47",
+          "legacy": {
+            "method": "POST",
+            "path": "/api/e2e/pairing-secret"
           }
         }
       }

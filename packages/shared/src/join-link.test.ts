@@ -86,3 +86,21 @@ describe("深链写法", () => {
     expect(parseJoinLink(deep)).toEqual(parsed);
   });
 });
+
+describe("片段第三段：core 身份指纹前缀（契约 §80）", () => {
+  const FP = "abcdefgh234567ab";
+  it("带指纹的链接解析出 identityFp，邀请令牌不受影响；深链原样带回", () => {
+    const parsed = parseJoinLink(
+      `https://relay.example.com/j/${LINK_ID}#${SECRET}.${INVITE}.${FP}`,
+    )!;
+    expect(parsed).toMatchObject({ invitationToken: INVITE, identityFp: FP });
+    expect(parseJoinLink(joinDeepLink(parsed))).toEqual(parsed);
+  });
+
+  it("旧链接没有第三段：没有 identityFp", () => {
+    const parsed = parseJoinLink(
+      `https://relay.example.com/j/${LINK_ID}#${SECRET}.${INVITE}`,
+    )!;
+    expect(parsed.identityFp).toBeUndefined();
+  });
+});

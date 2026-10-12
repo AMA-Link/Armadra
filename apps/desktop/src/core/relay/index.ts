@@ -42,7 +42,8 @@ import {
   DeviceRegistry,
   TrustedDeviceStore,
 } from "./e2e/devices";
-import { setE2eDevices } from "./e2e/peer";
+import { PairingSecrets, ShareLinkStore } from "./e2e/pairing";
+import { setE2eDevices, setE2ePairing } from "./e2e/peer";
 import { installE2eRoutes } from "./e2e/routes";
 import type { TunnelDuplex } from "./streams";
 import { TunnelClient, type TunnelState } from "./client";
@@ -176,6 +177,8 @@ export function installRelay(
     accessChanged,
   });
   setE2eDevices(devices);
+  const pairing = new PairingSecrets();
+  setE2ePairing({ pairing, links: new ShareLinkStore(context.db.database) });
   let signer: Promise<E2eSigner> | undefined;
   const identitySigner = (): Promise<E2eSigner> => {
     signer ??= cloud.identityPublicKey().then(
@@ -199,6 +202,8 @@ export function installRelay(
     deviceKey: new DeviceKey(
       deps.secrets ?? (() => secretsFor(context).backend),
     ),
+    pairing,
+    issuers: () => cloud.registrations().map((row) => row.issuer),
     waitSource: async (sourceId, pendingId) =>
       (await outboundChannels()?.wait(sourceId, pendingId)) ?? "pending",
   });
@@ -303,6 +308,7 @@ export function installRelay(
       relay.stopAll();
       for (const channel of [...channels.values()]) channel.close();
       setE2eDevices(undefined);
+      setE2ePairing(undefined);
     },
   };
 

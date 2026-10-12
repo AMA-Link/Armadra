@@ -80,6 +80,11 @@ export const clientSourceSchema = protocolClientSourceSchema.extend({
   shareRole: sourceShareRoleSchema,
   /** §68：分享到期的时刻；0 = 未知、不过期或 `mine`。 */
   shareExpiresAtMs: z.number().int(),
+  /**
+   * §80：本机经端到端通道连过这台时钉住的对端身份公钥（base64url）；没钉过是空串。
+   * 别的设备经本机的通道读它，就不必对这台电脑做 TOFU（背书）。
+   */
+  identityPub: z.string(),
 });
 
 /** 远程服务一行：协议包的形状加 `defaultLabel`（§61，platform.info 的 `name`）。 */
@@ -221,6 +226,10 @@ export const shareLinkSchema = z.object({
   revokedAtMs: z.number().int().nullable(),
   state: shareLinkStateSchema,
   copyable: z.boolean(),
+  /** §80：经这条链接绑定的访客设备数（已信任与待确认）。 */
+  devices: z.number().int(),
+  /** §80：访客设备数上限；`null` = 不限。缺省等于 `maxUses`。 */
+  maxDevices: z.number().int().nullable(),
 });
 
 /** 一条链接最多可用的次数（与 core 邀请的 `maxUses` 上限相同）。 */

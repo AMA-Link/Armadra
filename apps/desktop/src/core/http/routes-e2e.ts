@@ -16,6 +16,7 @@ export const E2E_ROUTES: readonly RouteEntry[] = (
     ["/api/e2e/wait", ["POST"]],
     ["/api/e2e/sign", ["POST"]],
     ["/api/e2e/sources/wait", ["POST"]],
+    ["/api/e2e/pairing-secret", ["POST"]],
   ] as const
 ).map(([path, methods]) => ({
   path,

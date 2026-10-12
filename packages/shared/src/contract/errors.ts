@@ -72,6 +72,8 @@ export const ERROR_CODES = {
   device_pending: { status: 403 },
   /** 主人拒绝或撤销了这把设备钥（契约 §77）。 */
   device_rejected: { status: 403 },
+  /** 访客链接绑定的设备数用完（契约 §80）。 */
+  device_limit: { status: 403 },
   /** 主人要求经中继的访问一律走端到端通道（`security.requireE2e`，契约 §78）。 */
   e2e_required: { status: 403 },
   /** 本机输入的校验码与新设备屏幕上的不一致（契约 §77）。 */

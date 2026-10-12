@@ -53,7 +53,12 @@ import {
   type DeviceRegistry,
   requireTrustedDevice,
 } from "../../relay/e2e/devices";
-import { type ChannelPeer, e2eDevices } from "../../relay/e2e/peer";
+import {
+  type ChannelPeer,
+  e2eDevices,
+  e2ePairing,
+  e2eShareLinks,
+} from "../../relay/e2e/peer";
 import type { AssertionVerifier } from "./assertion";
 import type { CloudStore } from "./store";
 
@@ -269,11 +274,12 @@ export class CloudLogin {
     const channelDeviceId =
       input.channel === undefined
         ? ""
-        : this.admitDevice(
+        : await this.admitDevice(
             input.channel,
             principalId,
             registration.issuer,
             claims,
+            token === "" ? undefined : token,
           );
 
     applyCloudGrants(store, this.now(), {
@@ -370,21 +376,34 @@ export class CloudLogin {
   }
 
   /**
-   * 设备这一关（契约 §77）：已信任 → 答设备 id；待确认 / 被拒由设备登记抛
-   * `device_pending` / `device_rejected`（§77 自己的码，不是云登录协议的）。中继没装
-   * （没有设备登记）时通道本身不存在，走不到这里。
+   * 设备这一关（契约 §77、§80）：已信任 → 答设备 id；第一次经访客链接加入且 m3 的
+   * `proof` 对得上邀请令牌、或对得上一枚配对秘密 → 直接信任；待确认 / 被拒 / 名额用完
+   * 由设备登记抛（§77 自己的码，不是云登录协议的）。
    */
   private admitDevice(
     channel: ChannelPeer,
     principalId: string,
     issuer: string,
     claims: AssertionClaims,
-  ): string {
+    invitationToken: string | undefined,
+  ): Promise<string> {
+    const linkId = claims.link?.linkId;
+    const pairing = e2ePairing();
     return requireTrustedDevice((this.options.devices ?? e2eDevices)(), {
       device: channel,
       principalId,
       issuer,
       issuerDeviceId: claims.device.deviceId,
+      ...(invitationToken !== undefined && linkId !== undefined
+        ? {
+            invitation: {
+              linkId,
+              token: invitationToken,
+              maxDevices: e2eShareLinks()?.get(linkId)?.maxDevices ?? null,
+            },
+          }
+        : {}),
+      ...(pairing === undefined ? {} : { pairing }),
     });
   }
 

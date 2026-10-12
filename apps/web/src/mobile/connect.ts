@@ -6,6 +6,12 @@ import {
   takePairingTicket,
 } from "../api/identity";
 import {
+  type E2eChannels,
+  e2eChannels,
+  fingerprintPrefix,
+  sealedJoinOptions,
+} from "../sources/e2e/manager";
+import {
   exchangePairingCode,
   pairingPakeFinish,
   pairingPakeStart,
@@ -434,6 +440,8 @@ const failed = (failure: ConnectFailure): RelayOutcome => ({
 export interface RelayDeps {
   readonly bridge: NativeBridge;
   readonly cloud?: CloudOptions;
+  /** 端到端通道（契约 §78、§80）；不给不开（测试）。 */
+  readonly e2e?: E2eChannels;
   /** 挂好之后重新加载：本机源的地址在一次加载里只算一次。 */
   readonly reload: () => void;
 }
@@ -466,6 +474,7 @@ export function createRelayEnrollment(
   deps: RelayDeps = {
     bridge: nativeBridge(),
     reload: () => globalThis.location.reload(),
+    e2e: e2eChannels(() => thisDevice().name),
   },
 ): RelayEnrollment {
   let issuer = "";
@@ -610,7 +619,22 @@ export function createRelayEnrollment(
             accepted.relayToken,
             accepted.assertion,
             parsed.invitationToken,
-            deps.cloud,
+            await sealedJoinOptions(deps.e2e, deps.cloud, {
+              issuer,
+              sourceId: accepted.sourceId,
+              base: accepted.relayBaseUrl,
+              relayToken: accepted.relayToken,
+              invitationToken: parsed.invitationToken,
+              ...(fingerprintPrefix(parsed.identityFp, accepted.identityFp) ===
+              undefined
+                ? {}
+                : {
+                    fingerprintPrefix: fingerprintPrefix(
+                      parsed.identityFp,
+                      accepted.identityFp,
+                    )!,
+                  }),
+            }),
           );
           const slot = serviceIdOf(issuer, guestPrincipal(accepted.sourceId));
           await remember(accepted.guestSession.refreshToken, slot);
