@@ -803,19 +803,27 @@ class TunnelConnection {
     this.watchdog.unref();
   }
 
-  private checkSilence(): void {
+  private checkSilence(confirming = false): void {
     this.watchdog = undefined;
     if (this.phase === "closed") return;
     const silentMs = performance.now() - this.lastHeardAt;
-    if (silentMs >= this.silenceLimitMs) {
-      this.error = {
-        code: "heartbeat_timeout",
-        message: "中继超过两个心跳周期没有任何帧",
-      };
-      this.ws?.terminate();
+    if (silentMs < this.silenceLimitMs) {
+      this.watch(this.silenceLimitMs - silentMs);
       return;
     }
-    this.watch(this.silenceLimitMs - silentMs);
+    // 到期的计时器在事件循环里先于 socket 读跑：本进程自己卡过一阵（GC、同步
+    // 读盘、CI 上抢不到 CPU）之后，积压在 socket 里的帧还没读，量出来的「静默」
+    // 有一截是自己没去读。让过一轮 I/O（setImmediate 排在 poll 之后）再判一次，
+    // 还是静默才断。
+    if (!confirming) {
+      setImmediate(() => this.checkSilence(true));
+      return;
+    }
+    this.error = {
+      code: "heartbeat_timeout",
+      message: "中继超过两个心跳周期没有任何帧",
+    };
+    this.ws?.terminate();
   }
 
   private finish(code: number): void {

@@ -43,10 +43,10 @@ const child = spawn(
   },
 );
 let diagnostics = "";
-child.stderr.on("data", (bytes) => {
-  diagnostics = (diagnostics + bytes).slice(-8192);
-});
-child.stdout.resume();
+for (const output of [child.stdout, child.stderr])
+  output.on("data", (bytes) => {
+    diagnostics = (diagnostics + bytes).slice(-8192);
+  });
 let calls = 0,
   inputBytes = 0,
   outputBytes = 0;
@@ -191,6 +191,35 @@ try {
       globalConfigUnchanged: true,
     }),
   );
+} catch (error) {
+  // 失败时把 core 那一侧的样子带出来：只有客户端的 core_unavailable 看不出是
+  // core 退了、socket 没了，还是连上又被断开（#285）。
+  let hint = "unreadable";
+  try {
+    hint = readFileSync(join(directory, "endpoints.json"), "utf8");
+  } catch {
+    /* reported as unreadable */
+  }
+  console.error(
+    JSON.stringify({
+      core: {
+        pid: child.pid,
+        alive: (() => {
+          try {
+            process.kill(child.pid, 0);
+            return true;
+          } catch {
+            return false;
+          }
+        })(),
+        exitCode: child.exitCode,
+        signal: child.signalCode,
+      },
+      endpoints: hint,
+    }),
+  );
+  console.error("core output (tail):\n" + diagnostics.slice(-6000));
+  throw error;
 } finally {
   if (child.exitCode === null) {
     child.kill("SIGTERM");

@@ -26,9 +26,11 @@
 2. `pnpm check`（libs:build、prettier、`lint`、typecheck、`repo:check`、
    `ci:workflows`、`release:check`、`notices:check`）；ESLint 只有 error 让它失败
 3. `pnpm repo:test`（含 `tools/lint-config.test.mjs`）、`pnpm release:test`
-4. `pnpm -r --if-present test` / `typecheck`、`pnpm --filter @armadra/web build`；
+4. `pnpm -r --workspace-concurrency=1 --if-present test` / `typecheck`、`pnpm --filter @armadra/web build`；
    Linux 那一行的 `test` 带 `ARMADRA_COVERAGE=1`，web、desktop、server 出 lcov 并作为
-   `coverage-lcov` 产物上传（只出报告，不设门槛）
+   `coverage-lcov` 产物上传（只出报告，不设门槛）。各包的测试逐个跑：每个 vitest
+   自己按核数开 worker，desktop 与 web 两套叠在一起时用例的墙钟时间被拉长一倍以上，
+   超时类偶发都出在这一段
 5. `pnpm plugin:test` 与 `pnpm controller:real:test`（纯客户端和真实验收只读预检的单测，不调用模型或 CI 账号）
 6. `pnpm --filter @armadra/desktop build`（不打包）
 7. Linux/macOS：`plugin:build` 与 controller 的真 Unix socket/PTY、取消、大日志、重启和四个精确崩溃边界；内层为确定性假 CLI，不替代真实双 Agent 验收。

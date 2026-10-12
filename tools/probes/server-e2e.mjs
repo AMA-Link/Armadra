@@ -388,6 +388,19 @@ await h.run(async () => {
       );
     if (paired) break;
     console.error(`  RETRY 配对第 ${attempt} 次没等到，换一张新票再试`);
+    // 现场同时写进日志（R-89）：报告文件只在产物里，偶发时先看日志就能分出
+    // 是没连上、配对被拒，还是页面没走到设备与会话页。
+    const failure = report.pairingFailures.at(-1);
+    console.error(
+      "  现场 " +
+        JSON.stringify({
+          url: failure.url,
+          text: failure.text.slice(0, 300),
+          errors: failure.errors.slice(-5),
+          traffic: failure.traffic.slice(-12),
+          server: failure.server.slice(-1500),
+        }),
+    );
     link = await freshPairingLink(link);
     // 同源只换片段不会重载页面：先离开，新票由一次完整的加载接住。
     await admin.navigate("about:blank");
@@ -601,10 +614,21 @@ await h.run(async () => {
   const forbiddenOnOpen = Object.keys(tally).filter((key) =>
     key.startsWith("403 "),
   );
+  // 被拒的码直接写进这一行（CSRF 换票被拒与权限被拒的处理不同），偶发时不用
+  // 再去翻报告文件。
+  const forbiddenCodes = report.memberForbiddenBodies.map((answer) => {
+    try {
+      return JSON.parse(answer.body ?? "").code ?? "?";
+    } catch {
+      return "?";
+    }
+  });
   check(
     forbiddenOnOpen.length === 0,
     "成员打开共享画布没有任何 403",
-    forbiddenOnOpen.join("，") || "无",
+    forbiddenOnOpen.length === 0
+      ? "无"
+      : `${forbiddenOnOpen.join("，")}（${forbiddenCodes.join("，")}）`,
   );
 
   // 设置对成员只列不碰本机管理的那几页；逐页点一遍，记下每一页的 403 与报错。

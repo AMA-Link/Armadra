@@ -162,19 +162,22 @@ export class ControllerClient {
       call.setTimeout(timeoutMs, () =>
         call.destroy(new Error("request timeout")),
       );
-      call.once("error", (error) =>
+      call.once("error", (error) => {
+        if (error instanceof CliError) return reject(error);
+        // 带上系统给的原因（ECONNREFUSED、ENOENT、ECONNRESET…）：同一个
+        // core_unavailable 背后是 core 退了、socket 不见了还是连上又被断开，
+        // 处理办法不一样。
+        const cause = (error as NodeJS.ErrnoException).code ?? error.message;
         reject(
-          error instanceof CliError
-            ? error
-            : new CliError(
-                sent && mutation ? "result_unknown" : "core_unavailable",
-                sent && mutation
-                  ? "Response lost; use the same idempotency key to reconcile"
-                  : "Cannot reach the discovered core controller",
-                sent && mutation ? 7 : 3,
-              ),
-        ),
-      );
+          new CliError(
+            sent && mutation ? "result_unknown" : "core_unavailable",
+            sent && mutation
+              ? `Response lost (${cause}); use the same idempotency key to reconcile`
+              : `Cannot reach the discovered core controller (${cause})`,
+            sent && mutation ? 7 : 3,
+          ),
+        );
+      });
       call.end(payload);
     });
   }

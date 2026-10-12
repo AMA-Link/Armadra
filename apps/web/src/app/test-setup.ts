@@ -6,6 +6,8 @@
  * 留在 `app/test-harness.tsx`。
  */
 
+import { afterAll, beforeEach } from "vitest";
+
 /**
  * React Flow 的容器用 `ResizeObserver` 量自己的尺寸（`useResizeHandler`），
  * jsdom 没有这个类。桩只需要存在并且能被 new / observe / disconnect —— 尺寸
@@ -91,4 +93,33 @@ if (
     configurable: true,
     value: DOMMatrixReadOnlyStub,
   });
+}
+
+/**
+ * sonner 在模块求值时往 `<head>` 塞一张约 15 KB 的样式表。jsdom 的
+ * `getComputedStyle` 每次都拿整张表去匹配元素，而 Testing Library 的
+ * `*ByRole` 判断可见性、算可访问名时对每个候选元素及其祖先都问一遍——一次查询
+ * 几百毫秒，慢的 Windows runner 上整条用例越过 5 s 的超时。jsdom 不排版，这张
+ * 表在测试里没有任何作用；每条用例前摘掉它（导入发生在本文件之后，只能放进
+ * beforeEach）。
+ */
+if (typeof document !== "undefined") {
+  beforeEach(() => {
+    for (const style of document.head.querySelectorAll("style")) {
+      if (style.textContent?.includes("[data-sonner-toaster]")) style.remove();
+    }
+  });
+}
+
+/**
+ * Radix 的 FocusScope 卸载时用 `setTimeout(0)` 派发 `focusScope.autoFocusOnUnmount`
+ * 再把焦点还回去。文件里最后一条用例在 afterEach 里 cleanup 卸掉对话框 / 下拉，
+ * 这个计时器还没跑，vitest 就拆了 jsdom 环境；计时器随后在 Node 里触发，
+ * `CustomEvent` 已经不是 jsdom 的，`dispatchEvent` 抛「parameter 1 is not of type
+ * 'Event'」，算作未处理错误让整个包失败（CI 上偶发，取决于拆环境与计时器谁先）。
+ * 本文件的钩子最先注册、最后执行：所有 cleanup 之后让过一个宏任务，挂着的 0 ms
+ * 计时器在环境还在时跑完。
+ */
+if (typeof document !== "undefined") {
+  afterAll(() => new Promise<void>((resolve) => setTimeout(resolve, 0)));
 }
