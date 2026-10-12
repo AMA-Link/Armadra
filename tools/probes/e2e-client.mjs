@@ -37,6 +37,17 @@ async function modules() {
   return loaded;
 }
 
+/**
+ * 分享链接的片段拆成 `{ linkId, secret, invitationToken, identityFp? }`（契约 §80，三段，
+ * 邀请令牌自己带一个点）；认不出答 `null`。用页面那一份解析（`@armadra/shared`）。
+ */
+export async function parseShareLink(url) {
+  const { parseJoinLink } = await import(
+    pathToFileURL(join(sharedDir, "dist/index.js")).href
+  );
+  return parseJoinLink(url);
+}
+
 /** 原 `ws` 的子类，构造器是浏览器的形状，另带钉扎的 CA。 */
 function pinnedSocket(Ws, ca) {
   return class PinnedSocket extends Ws {
