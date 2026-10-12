@@ -1,5 +1,7 @@
 import type {
   TrafficLive,
+  TrafficSeries,
+  TrafficSeriesInput,
   TrafficSummary,
   TrafficSummaryInput,
 } from "@armadra/shared";
@@ -17,6 +19,12 @@ export function trafficSummary(
   input: TrafficSummaryInput,
 ): Promise<TrafficSummary> {
   return localClient().traffic.summary(input);
+}
+
+export function trafficSeries(
+  input: TrafficSeriesInput,
+): Promise<TrafficSeries> {
+  return localClient().traffic.series(input);
 }
 
 export function trafficLive(): Promise<TrafficLive> {

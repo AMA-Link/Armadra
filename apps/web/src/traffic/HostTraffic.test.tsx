@@ -8,7 +8,11 @@ import {
 } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { TrafficRow, TrafficSummaryInput } from "@armadra/shared";
+import type {
+  TrafficRow,
+  TrafficSeriesInput,
+  TrafficSummaryInput,
+} from "@armadra/shared";
 
 import { usePreferencesStore } from "../app/preferences-store";
 import { HostTraffic } from "./HostTraffic";
@@ -17,6 +21,7 @@ import { HostTraffic } from "./HostTraffic";
 
 const api = vi.hoisted(() => ({
   summary: vi.fn(),
+  series: vi.fn(),
   live: vi.fn(),
   clear: vi.fn(),
   save: vi.fn(),
@@ -25,6 +30,7 @@ const api = vi.hoisted(() => ({
 vi.mock("../api/traffic", () => ({
   TRAFFIC_QUERY_KEY: ["traffic"],
   trafficSummary: api.summary,
+  trafficSeries: api.series,
   trafficLive: api.live,
   clearTraffic: api.clear,
 }));
@@ -96,6 +102,18 @@ beforeEach(() => {
       },
     ],
   });
+  api.series.mockResolvedValue({
+    points: [
+      {
+        bucketStartMs: 1_700_000_000_000,
+        streams: 2,
+        bytesIn: 2048,
+        bytesOut: 4096,
+        wireBytesIn: 0,
+        wireBytesOut: 0,
+      },
+    ],
+  });
   api.clear.mockResolvedValue(undefined);
 });
 
@@ -154,6 +172,33 @@ describe("HostTraffic", () => {
         ),
       ).toBe(true),
     );
+  });
+
+  it("趋势：按本地日向 traffic.series 要，随范围走；没有点就不出现", async () => {
+    mount();
+    await vi.waitFor(() =>
+      expect(
+        document.querySelector('[data-slot="traffic-trend"]'),
+      ).not.toBeNull(),
+    );
+    const input = api.series.mock.calls[0]![0] as TrafficSeriesInput;
+    expect(input.bucket).toBe("day");
+    expect(input.toMs - input.fromMs).toBe(8 * 86_400_000);
+    expect(input.utcOffsetMinutes).toBe(-new Date().getTimezoneOffset());
+    fireEvent.mouseDown(screen.getByRole("tab", { name: "全部" }));
+    fireEvent.click(screen.getByRole("tab", { name: "全部" }));
+    await vi.waitFor(() =>
+      expect(
+        api.series.mock.calls.some(
+          ([next]) => (next as TrafficSeriesInput).fromMs === 0,
+        ),
+      ).toBe(true),
+    );
+    cleanup();
+    api.series.mockResolvedValue({ points: [] });
+    mount();
+    await vi.waitFor(() => expect(cell("up")).toContain("3 MB"));
+    expect(document.querySelector('[data-slot="traffic-trend"]')).toBeNull();
   });
 
   it("清零要确认", async () => {
