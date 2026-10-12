@@ -63,6 +63,7 @@ import {
   MountDialog,
   type RelayDraft,
 } from "./dialogs";
+import { HostTraffic } from "../../../../traffic/HostTraffic";
 import { HostAccess } from "./HostAccess";
 import { canShare, useGateway, useInternetRoute } from "./hooks";
 import { hostOf, useSourceTable, useSourceTableChanged } from "./keys";
@@ -75,7 +76,7 @@ const HEADING = "px-0.5 text-[15px] font-semibold text-foreground";
  *
  * - **A 这台电脑**：允许其他设备访问这台电脑（仅局域网 / 局域网 + 互联网）、
  *   配对二维码与配对码、互联网路线上的分享链接（分享唯一的管理处）、中转账号、
- *   我的其他电脑（配对另一台、从中转添加）；高级里是监听、端口、证书、另一个中转
+ *   流量统计、我的其他电脑（配对另一台、从中转添加）；高级里是监听、端口、证书、另一个中转
  *   账号与中继侧待清理。
  * - **B 他人分享**：别人分享给我的电脑（主人、权限、到期、退出）与「用链接加入」。
  *
@@ -252,6 +253,9 @@ export function RemoteAccessPage() {
             ))}
           </SettingsGroup>
         )}
+
+        {/* 经中继收发的流量（契约 §76）：有远程服务时才可能有。 */}
+        {remotes.length > 0 && <HostTraffic />}
 
         <SettingsGroup title={t("remote.mine")}>
           {mine.map((source) => (

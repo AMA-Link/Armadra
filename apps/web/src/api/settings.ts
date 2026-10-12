@@ -171,6 +171,10 @@ export const runtimeSettingsSchema = z.looseObject({
   logs: z
     .looseObject({ retentionDays: z.number().int().nonnegative().optional() })
     .optional(),
+  /** 流量统计的保留天数（契约 §76）：30 / 90 / 180 / 365 / 730，缺省 180。 */
+  traffic: z
+    .looseObject({ retentionDays: z.number().int().positive().optional() })
+    .optional(),
   /**
    * 更新偏好（S03 §4.1）。通道以前只是 React 局部状态，刷新就忘、桌面壳与
    * 浏览器各说各话；现在落在这份文档里。`development` 不是可选项——它描述的
@@ -271,6 +275,7 @@ export interface RuntimeSettingsPatch {
   /** 崩溃上报的 DSN；空串关掉。 */
   diagnostics?: { crashReportDsn?: string; reportPageErrors?: boolean };
   logs?: { retentionDays?: number };
+  traffic?: { retentionDays?: number };
   /** 更新通道与两个开关（S03 §4.1）。 */
   updates?: {
     channel?: "stable" | "beta";

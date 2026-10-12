@@ -47,6 +47,7 @@ import { languageService } from "./language-service";
 import { editorMerge } from "./editor-merge";
 import { editorFiles } from "./editor-files";
 import { terminal } from "./terminal";
+import { traffic } from "./traffic";
 import { updates } from "./updates";
 import { usage } from "./usage";
 import { acp } from "./acp";
@@ -159,6 +160,7 @@ export const MESSAGE_MODULES = {
   "workspace-groups": workspaceGroups,
   share,
   "shared-session": sharedSession,
+  traffic,
   // 设计展示页只在开发构建里存在：生产构建里 `import.meta.env.DEV` 是字面量
   // false，这一项连同 `./showcase` 的文案一起被摇掉，不进产物。
   ...(import.meta.env.DEV ? { showcase } : {}),
