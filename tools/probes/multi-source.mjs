@@ -15,9 +15,9 @@
 //      一致，再切回本机；
 //   3. 每个源各开一个终端并回显——先点服务器组，再点 NAT 组，最后点（此时成了一组的）
 //      本机；三个源都在侧栏里当过「组」；
-//   4. 媒体经中继（契约 §37.4、cloud-api §12）：服务器组里编辑器节点打开一段 H.264，
-//      `<video src>` 是中继的媒体票地址、按 Range 取到元数据；探针自己再按票取一次
-//      `Range: bytes=0-1023`，经中继回 206；
+//   4. 媒体经中继（契约 §37.4、§78）：服务器组里编辑器节点打开一段 H.264，经中转的源
+//      不换媒体票，页面经通道取回成 `blob:` 并取到元数据；探针自己经端到端通道按
+//      `Range: bytes=0-1023` 取媒体票与 `file-download`，都回 206；带中继令牌的明文请求答 404；
 //   5. 语言会话经中继（§35.6 的独立连接）：开会话、连流、`initialize` + `didOpen`，
 //      mock 语言服务器的诊断经中继回来；断开后新开一条会话照样能用（页面断线后重开）；
 //   6. 浏览器画面经中继：第二台 core 上的浏览器节点开画面流，点一下页面，重画后的新帧经中继回来；
@@ -53,6 +53,7 @@ import {
   reloadAfterMount,
   nodeAt,
   registerSource,
+  approveWith,
   relayedRoute,
   secretLedger,
   seedWorkspace,
@@ -298,6 +299,34 @@ try {
     ],
   );
 
+  // 经中继到另一台电脑的新设备要那台的主人核对校验码（契约 §77）：`sources.mount` 答
+  // `device_pending` 并带校验码，探针替两台 core 的主人在各自的 core 上放行，再挂一次。
+  const approvers = {
+    [natId]: approveWith(natSession),
+    [serverId]: approveWith(direct.session),
+  };
+  const mountApproved = async (input) => {
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      const answer = await electron.session.fetch("/api/rpc/sources/mount", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ json: input }),
+      });
+      const text = await answer.text();
+      const body = text ? JSON.parse(text) : null;
+      if (answer.ok) return body.json ?? body;
+      if (answer.status === 403 && body?.code === "device_pending") {
+        await approvers[input.sourceId](
+          body.details.pendingId,
+          body.details.sas,
+        );
+        run.ok(`主人核对校验码，放行桌面 core 的设备（${input.label}）`);
+        continue;
+      }
+      throw new Error(`sources.mount → ${answer.status} ${text.slice(0, 300)}`);
+    }
+    throw new Error("sources.mount：放行之后仍然待确认");
+  };
   const remote = await local.rpc("sources.remoteAdd", {
     kind: "personal",
     issuer: relay.issuer,
@@ -309,7 +338,7 @@ try {
     [natId, "nat-host"],
     [serverId, "server-host"],
   ]) {
-    const mounted = await local.rpc("sources.mount", {
+    const mounted = await mountApproved({
       serviceId: remote.remote.serviceId,
       sourceId,
       label,
@@ -339,7 +368,7 @@ try {
   const groupState = (id) =>
     win.evaluate(
       `const g = document.querySelector('${group(id)}');
-       return g ? { state: g.getAttribute("data-state"), dimmed: Number(getComputedStyle(g).opacity) < 1 } : null;`,
+       return g ? { state: g.getAttribute("data-state"), dimmed: Number(getComputedStyle(g.firstElementChild ?? g).opacity) < 1 } : null;`,
     );
   const groupsNow = () =>
     win.evaluate(
@@ -375,8 +404,11 @@ try {
   );
   const present = (await groupsNow()).sort();
   run.check(
-    JSON.stringify(present) === JSON.stringify([natId, serverId].sort()),
-    "当前源是本机：侧栏里两个经中继的源各一组，各列出自己的工作空间",
+    present.length === 3 &&
+      present.includes("local") &&
+      present.includes(natId) &&
+      present.includes(serverId),
+    "侧栏三组：本机与两个经中继的源各一组，各列出自己的工作空间",
     present,
   );
   await win.capture(join(output, "02-sidebar-groups.png"));
@@ -388,7 +420,7 @@ try {
   run.ok("经中继的第二台 core：开终端并回显（42server）");
   await win.capture(join(output, "03-server-terminal.png"));
 
-  /* --------------- 4. 媒体经中继：<video src> 是中继票、Range 回 206 --------------- */
+  /* --------------- 4. 媒体经中继：页面取成 blob:、通道里 Range 回 206 --------------- */
   const video = await timed("4-media", () =>
     win.until(
       `const video = document.querySelector('${nodeAt(serverEditor.id)} video');
@@ -418,54 +450,67 @@ try {
     report.videoFailure.error = error.message;
     return null;
   });
-  const relayMedia = new RegExp(`/s/${serverId}/_relay/m/[A-Za-z0-9_-]{43}$`);
   await win.capture(join(output, "04-relayed-video.png"));
+  // 探针自己也经端到端通道取：中继只转这一条通道，浏览器直接取的地址到不了通道里，
+  // 页面经源的 fetch 取回成 blob:（契约 §37.4）；字节按 Range 经通道回 206。
   const route = await relayedRoute({
     relay,
     cloudToken: serverRegistered.cloudToken,
     sourceId: serverId,
     device: { platform: "desktop", name: "multi-source-probe" },
+    approve: approveWith(direct.session),
     onSecret: secret,
   });
+  const plain = await relay.call("GET", `/s/${serverId}/health`, {
+    headers: { "armadra-relay-token": route.relayToken },
+  });
+  run.check(
+    plain.status === 404,
+    "带中继令牌的明文请求由中继答 404，不进隧道",
+    plain.status,
+  );
   const coreTicket = await route.api("POST", "/api/rpc/files/mediaTicket", {
     json: { workspaceId: serverSeed.workspace.id, path: "clip.mp4" },
   });
-  const relayTicket = await relay.must(
-    "POST",
-    `${route.base}/_relay/media-tickets`,
-    {
-      body: { path: coreTicket.json.url },
-      headers: { "armadra-relay-token": route.relayToken },
-    },
-  );
-  const ranged = await route.raw("GET", `${route.base}${relayTicket.path}`, {
+  const ranged = await route.raw("GET", coreTicket.json.url, {
     range: "bytes=0-1023",
   });
   run.check(
     ranged.status === 206 &&
+      ranged.body.length === 1024 &&
       ranged.headers["content-range"] ===
         `bytes 0-1023/${coreTicket.json.size}` &&
       ranged.headers["content-type"] === "video/mp4" &&
       ranged.headers["accept-ranges"] === "bytes",
-    "不带任何头按中继票取 Range：经中继回 206、Content-Range 与真实类型",
+    "经端到端通道按媒体票取 Range：回 206、Content-Range 与真实类型",
     {
       status: ranged.status,
       range: ranged.headers["content-range"],
       type: ranged.headers["content-type"],
     },
   );
-  const bogus = await route.raw(
+  const downloaded = await route.raw(
     "GET",
-    `${route.base}/_relay/m/${"A".repeat(43)}`,
+    `/api/workspaces/${serverSeed.workspace.id}/file-download?path=clip.mp4`,
+    { range: "bytes=0-1023" },
   );
-  run.check(bogus.status === 404, "不认识的中继票 404", bogus.status);
-  // 页面那一侧放在协议这一侧之后断言：失败时先知道票经中继兑不兑得出来。
+  run.check(
+    downloaded.status === 206 &&
+      downloaded.body.length === 1024 &&
+      downloaded.headers["content-range"] ===
+        `bytes 0-1023/${coreTicket.json.size}`,
+    "经通道按 file-download 取 Range：回 206、1024 字节",
+    { status: downloaded.status, range: downloaded.headers["content-range"] },
+  );
+  const bogus = await route.raw("GET", `/api/media/${"A".repeat(43)}`);
+  run.check(bogus.status === 404, "不认识的媒体票 404", bogus.status);
+  // 页面那一侧：经中继的源不换票，<video src> 是页面自己取回的 blob:。
   run.check(
     video !== null &&
-      relayMedia.test(video.src ?? "") &&
+      (video.src ?? "").startsWith("blob:") &&
       !(video.src ?? "").includes("clip") &&
       video.duration > 0,
-    "编辑器的 <video src> 是中继的媒体票地址（不含文件路径），按 Range 取到元数据",
+    "编辑器的 <video src> 是经通道取回的 blob:（不含文件路径），取到元数据",
     video === null
       ? report.videoFailure
       : { duration: video.duration, readyState: video.readyState },
@@ -639,15 +684,21 @@ try {
   /* ------------- 7. NAT 的源下线：灰显、本机终端仍可输入 ------------- */
   const offlineAt = Date.now();
   await stack.killCore();
-  const gone = await win.until(
-    `const g = document.querySelector('${group(natId)}');
+  const gone = await win
+    .until(
+      `const g = document.querySelector('${group(natId)}');
      if (!g) return null;
      const state = g.getAttribute("data-state");
-     const dimmed = Number(getComputedStyle(g).opacity) < 1;
+     const dimmed = Number(getComputedStyle(g.firstElementChild ?? g).opacity) < 1;
      return state !== "ready" && state !== "connecting" && dimmed ? { state } : null;`,
-    "NAT 组灰显、状态不再就绪",
-    { timeout: 60_000 },
-  );
+      "NAT 组灰显、状态不再就绪",
+      { timeout: 60_000 },
+    )
+    .catch(async (error) => {
+      throw new Error(
+        `${error.message}：NAT 组现在是 ${JSON.stringify(await groupState(natId))}`,
+      );
+    });
   report.timings["7-offline-detect"] = Date.now() - offlineAt;
   run.ok("NAT 的源下线：那一组灰显", gone);
   await win.capture(join(output, "07-relayed-offline.png"));
@@ -665,7 +716,7 @@ try {
   await stack.startCore();
   await win.until(
     `const g = document.querySelector('${group(natId)}[data-state="ready"]');
-     return g && Number(getComputedStyle(g).opacity) === 1 ? true : null;`,
+     return g && Number(getComputedStyle(g.firstElementChild ?? g).opacity) === 1 ? true : null;`,
     "NAT 组恢复就绪、不再灰显",
     { timeout: 90_000 },
   );
@@ -699,12 +750,8 @@ try {
     stack.coreLog(),
     direct.log(),
     electron.log(),
-  ].some(
-    (text) =>
-      text.includes(relayTicket.ticket) ||
-      text.includes(coreTicket.json.url.slice(11)),
-  );
-  run.check(!ticketInLogs, "媒体票（中继的与 core 的）不进任何日志");
+  ].some((text) => text.includes(coreTicket.json.url.slice(11)));
+  run.check(!ticketInLogs, "媒体票不进任何日志");
   run.entry.status = "ok";
   report.status = "ok";
 } catch (error) {
