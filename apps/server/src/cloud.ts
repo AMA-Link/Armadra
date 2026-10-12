@@ -442,6 +442,44 @@ async function settle(
   }
 }
 
+/**
+ * 把登录用的中继账号映射到本机 owner（契约 §31 `bind`）：向中继要一张为本机签的断言，
+ * 交给 core。不映射的话这个账号经中继进来是 `cloud_account_unlinked`（#377）。
+ * 已经映射过（`conflict`）不算失败，`cloud login` 因此可以重复跑。
+ */
+async function bindOwner(
+  core: LocalCore,
+  deps: CloudDeps,
+  input: { issuer: string; fingerprint: string; accessToken: string },
+): Promise<void> {
+  const status = (await core.call("GET", "/api/identity/cloud")) as {
+    sourceId?: string;
+  };
+  if (status.sourceId === undefined || status.sourceId === "") {
+    throw new CloudCliError("internal", "本机没有给出来源编号");
+  }
+  const signed = await relayCall(deps, {
+    issuer: input.issuer,
+    fingerprint: input.fingerprint,
+    method: "POST",
+    path: `/v1/sources/${encodeURIComponent(status.sourceId)}/assertion`,
+    accessToken: input.accessToken,
+    body: {},
+  });
+  if (typeof signed.assertion !== "string" || signed.assertion === "") {
+    throw new CloudCliError("source_unreachable", "个人中转没有给出断言");
+  }
+  try {
+    await core.call("POST", "/api/identity/cloud/bind", {
+      assertion: signed.assertion,
+    });
+  } catch (error) {
+    if (!(error instanceof CloudCliError && error.code === "conflict")) {
+      throw error;
+    }
+  }
+}
+
 const sleep = (ms: number): Promise<void> =>
   new Promise((done) => setTimeout(done, ms));
 
@@ -580,10 +618,18 @@ export async function runCloud(
   const tunnel = done.registered
     ? await settle(core, issuer, deps, wait)
     : undefined;
-  emit({ command: "cloud login", issuer, account, ...done, tunnel }, () =>
-    done.registered
-      ? `已登录 ${issuer} 并登记，隧道 ${tunnelText(tunnel)}`
-      : `已登录 ${issuer}；本机早已登记，跳过`,
+  // 登记（或早已登记）之后，这个账号就是本机的主人：映射好，经中继才进得来。
+  await bindOwner(core, deps, {
+    issuer,
+    fingerprint: remote.fingerprint,
+    accessToken: access,
+  });
+  emit(
+    { command: "cloud login", issuer, account, ...done, bound: true, tunnel },
+    () =>
+      done.registered
+        ? `已登录 ${issuer} 并登记，账号已关联为本机主人，隧道 ${tunnelText(tunnel)}`
+        : `已登录 ${issuer}；本机早已登记，账号已关联为本机主人`,
   );
 }
 

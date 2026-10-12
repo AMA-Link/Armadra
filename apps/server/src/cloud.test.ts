@@ -15,6 +15,7 @@ const FINGERPRINT = "ab".repeat(32);
 const TOKEN = "registration-token-secret";
 const PASSWORD = "correct horse battery staple";
 const ACCESS = "relay-access-token-secret";
+const ASSERTION = "signed-assertion-secret";
 
 interface Call {
   method: string;
@@ -24,7 +25,11 @@ interface Call {
 
 /** 假的本机 core：按路径答，记下每次调用。 */
 function fakeCore(
-  options: { registered?: boolean; alreadyRegistered?: boolean } = {},
+  options: {
+    registered?: boolean;
+    alreadyRegistered?: boolean;
+    alreadyBound?: boolean;
+  } = {},
 ) {
   const calls: Call[] = [];
   let registered = options.registered ?? false;
@@ -61,6 +66,12 @@ function fakeCore(
         }
         registered = true;
         return { issuer: ISSUER, tunnel: { state: "connecting", node: null } };
+      }
+      if (method === "POST" && path === "/api/identity/cloud/bind") {
+        if (options.alreadyBound === true) {
+          throw new CloudCliError("conflict", "已经关联");
+        }
+        return { bound: true };
       }
       if (method === "GET" && path === "/api/identity/cloud") {
         return {
@@ -145,6 +156,9 @@ function harness(
             status: 200,
             body: { registrationToken: TOKEN, expiresAtMs: 1, issuer: ISSUER },
           };
+        }
+        if (request.url.endsWith("/assertion")) {
+          return { status: 200, body: { assertion: ASSERTION } };
         }
         return (
           extra.link ?? {
@@ -346,13 +360,22 @@ describe("cloud login", () => {
       password: PASSWORD,
       fingerprint: FINGERPRINT,
     });
-    expect(relay).toHaveLength(1);
+    expect(relay).toHaveLength(2);
     expect(relay[0]).toMatchObject({
       method: "POST",
       url: `${ISSUER}/v1/sources/registration-tokens`,
       fingerprint: FINGERPRINT,
       headers: { authorization: `Bearer ${ACCESS}` },
     });
+    // #377：登记后为本机取断言，交给 core 把这个账号映射到本机 owner。
+    expect(relay[1]).toMatchObject({
+      method: "POST",
+      url: `${ISSUER}/v1/sources/${"h".repeat(32)}/assertion`,
+      headers: { authorization: `Bearer ${ACCESS}` },
+    });
+    expect(
+      calls.find((call) => call.path === "/api/identity/cloud/bind")?.body,
+    ).toEqual({ assertion: ASSERTION });
     expect(
       calls.find((call) => call.path === "/api/identity/cloud/register")?.body,
     ).toMatchObject({
@@ -360,8 +383,58 @@ describe("cloud login", () => {
       registrationToken: TOKEN,
     });
     const all = out.join("") + err.join("");
-    for (const secret of [PASSWORD, TOKEN, ACCESS])
+    for (const secret of [PASSWORD, TOKEN, ACCESS, ASSERTION])
       expect(all).not.toContain(secret);
+  });
+
+  it("早已登记或账号已关联都不算失败，仍会补做关联；失败的绑定如实报错", async () => {
+    const again = fakeCore({ alreadyRegistered: true, alreadyBound: true });
+    const first = harness(again.core, { stdin: `${PASSWORD}\n` });
+    expect(
+      await main(
+        [
+          "cloud",
+          "login",
+          "--issuer",
+          ISSUER,
+          "--account",
+          "dev",
+          "--password-stdin",
+        ],
+        first.io,
+      ),
+    ).toBe(0);
+    expect(
+      again.calls.some((call) => call.path === "/api/identity/cloud/bind"),
+    ).toBe(true);
+    expect(first.out.join("")).toContain("主人");
+
+    const noAssertion = fakeCore();
+    const broken = harness(noAssertion.core, { stdin: `${PASSWORD}\n` });
+    const transport = broken.io.cloud.transport;
+    broken.io.cloud.transport = async (request: OutboundRequest) =>
+      request.url.endsWith("/assertion")
+        ? { status: 200, body: {} }
+        : transport(request);
+    expect(
+      await main(
+        [
+          "cloud",
+          "login",
+          "--issuer",
+          ISSUER,
+          "--account",
+          "dev",
+          "--password-stdin",
+        ],
+        broken.io,
+      ),
+    ).toBe(1);
+    expect(
+      noAssertion.calls.some(
+        (call) => call.path === "/api/identity/cloud/bind",
+      ),
+    ).toBe(false);
   });
 
   it("口令可来自环境变量或终端提示；都没有是用法错误", async () => {
