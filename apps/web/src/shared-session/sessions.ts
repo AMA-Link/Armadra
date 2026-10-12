@@ -6,7 +6,7 @@ import { knownSources, type Source } from "@/api/source";
 import { useCanvasStore } from "@/store/canvas-store";
 
 /**
- * 会话分享的访客（契约 §60、§71）：没有画布，只被分享了一两条终端 / ACP 会话。
+ * 会话分享的访客（契约 §60、§79）：没有画布，只被分享了一两条终端 / ACP 会话。
  * core 在身份会话的 `scopes` 里给只限一条会话的授权带上 `resourceId`，页面据此
  * 知道他能开哪几条；读写照旧只由 core 判定。
  */

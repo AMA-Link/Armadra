@@ -62,7 +62,7 @@ describe("JoinedSourceOpener", () => {
     expect(pendingJoinOpen()).toBeNull();
   });
 
-  it("会话分享的访客没有工作空间：改开那条会话的只读查看页（契约 §71）", () => {
+  it("会话分享的访客没有工作空间：改开那条会话的只读查看页（契约 §79）", () => {
     useCanvasStore.getState().setPanel("settings", true);
     openAfterJoin("src-2");
     const view = render(<JoinedSourceOpener />);

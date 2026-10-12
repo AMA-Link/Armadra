@@ -40,7 +40,7 @@ const grantSchema = z.object({
   permission: z.string(),
   workspaceId: z.string(),
   executionHostId: z.string(),
-  /** 契约 §71（1.41 起）：只限这一条终端 / ACP 会话的授权（会话分享）。 */
+  /** 契约 §79（1.46 起）：只限这一条终端 / ACP 会话的授权（会话分享）。 */
   resourceId: z.string().optional(),
 });
 

@@ -32,7 +32,7 @@ import { SharedSessionHost } from "./SharedSessionHost";
 import SharedSessionPage from "./SharedSessionPage";
 import { sessionShareOf, useSharedSessionView } from "./sessions";
 
-/** 会话分享的访客入口与只读查看页（#309、#253，契约 §71）。 */
+/** 会话分享的访客入口与只读查看页（#309、#253，契约 §79）。 */
 
 const WS = "11111111-1111-4111-8111-111111111111";
 const SESSION = "22222222-2222-4222-8222-222222222222";

@@ -4126,21 +4126,6 @@ mod 在 `session.start` 用 `$.command.register` 注册七条命令（都是 `im
 - 第一次兑换（带 `invitationToken`）：兑换出的授予直接封顶在那张邀请的 `expiresAtMs`（分享链接的到期就是它背后那张邀请的到期，§33.9）。
 - 之后的登录：断言带 `link.invitationId`（经链接来的访客每次都带）时按那张邀请封顶；邀请已过期则不再续租，也不立新授予，`share` 不出现。断言不带 `link`、也不带邀请令牌（SaaS 组织准入、owner 绑定）时照旧按断言租约。
 
-## 71. 会话分享的访客入口：身份会话里的会话范围与只读查看页
-
-预留协议 minor 41（#309、#253）；合入时 main 已是 1.43，`PROTOCOL_MINOR` 不回退，首个带它的版本报 1.43 或更高，页面不按版本判断、只看字段在不在。会话分享（§60）的访客没有 `canvas:read`，`workspaces.list` 为空，页面原来没有任何可开的东西；现在 core 在身份会话里报出「只限哪条会话」，页面据此直接打开那一条会话的只读查看页。读写照旧只由 core 判定（§60.1 的路由门与只读附着）。实现在 `core/identity/http.ts`。
-
-### 71.1 `identity.session` 的 `scopes[].resourceId`
-
-`GET /api/identity/session` 与 `identity.session`（§42.1）答的 `scopes` 每项多一个可选的 `resourceId: string`：这条授权只限工作空间里的这一个对象，今天只有终端 / ACP 会话（§60.1 的资源维度）。会话分享编译出的 `terminal:read@ws#session` 带上会话 id；整台、工作空间授权与登录快照不带，旧字节不变。旧页面忽略它。
-
-### 71.2 页面
-
-- **判定**：`scopes` 里有带 `resourceId` 的 `terminal:read`、且没有任何 `canvas:read` 的人是会话查看者；页面把这些会话当作他能开的全部内容。
-- **落地**：按链接加入（浏览器 `/j/<id>` 或桌面「通过链接加入」）之后，工作空间列表为空而身份会话报出会话范围时，直接打开第一条会话的只读查看页；浏览器访客重新载入页面同样落到这里。桌面侧栏「他人分享」里没有工作空间的那台主机下列出这些会话，点开即同一页。
-- **只读查看页**：经那台源读会话行（`terminals.get`）。终端会话以只读附着 `WS /api/terminals/{id}/ws`（§60.1），终端不接受键盘输入；ACP 会话按 `acp.log` 读转录（定时重读），没有输入框与审批按钮。顶栏是会话标题与「只读」标记。
-- **中转**：armadra-cloud 0.3.11 起中继边缘不再按 `ro` 中继令牌过滤（cloud-api §14），`ro` 令牌下的 `POST /api/rpc/*` 照常进隧道；§60 所说「`ro` 让边缘只放行 GET 与身份域」只对 0.3.10 及更早的中继成立。core 仍不向远程服务交只读（§60.3 不变）。
-
 ## 73. 配对码 PAKE：原生 App 首次连接 `/api/gateway/pairing-code/pake/*`
 
 §24 的 `exchange` 要求 App 已经钉过这个 Gateway 的信任锚：App 不装 CA，没钉过就连不上；而第一次连接时 App 只能从不带凭据的取锚（原生 `peek`，取 `/ca.crt` 或握手链最后一张）拿到一个指纹，局域网上的中间人可以换成自己的。把配对码明文发出去，中间人能转给真 Gateway 换走票；只发码与指纹的哈希，8 位码（约 2⁴⁰）可以离线穷举。所以首次连接改用配对码做 CPace（ristretto255）口令认证的密钥交换，确认标签绑上双方各自看到的来源与信任锚指纹。实现：两端共用 `packages/shared/src/pairing-pake.ts`，Gateway 一半在 `core/gateway/pairing-pake.ts`，App 一半在 `apps/web/src/mobile/pairing-pake.ts`。自协议 1.43（minor 43）起。
@@ -4432,3 +4417,18 @@ owner：本机作为客户端连别的电脑（`sources.session`，§33）时，
 | `e2e.waitSource` | mutation | `{ sourceId: string, pendingId: string }` | `{ status: "pending" \| "trusted" \| "rejected" \| "revoked" }` | `unauthenticated`、`forbidden`、`bad_request` | `settings:write` | 1.45 | `POST /api/e2e/sources/wait` |
 
 <!-- rpc:end -->
+
+## 79. 会话分享的访客入口：身份会话里的会话范围与只读查看页
+
+自协议 1.46 起（#309、#253）。会话分享（§60）的访客没有 `canvas:read`，`workspaces.list` 为空，页面原来没有任何可开的东西；现在 core 在身份会话里报出「只限哪条会话」，页面据此直接打开那一条会话的只读查看页。读写照旧只由 core 判定（§60.1 的路由门与只读附着）。实现在 `core/identity/http.ts`。
+
+### 79.1 `identity.session` 的 `scopes[].resourceId`
+
+`GET /api/identity/session` 与 `identity.session`（§42.1）答的 `scopes` 每项多一个可选的 `resourceId: string`：这条授权只限工作空间里的这一个对象，今天只有终端 / ACP 会话（§60.1 的资源维度）。会话分享编译出的 `terminal:read@ws#session` 带上会话 id；整台、工作空间授权与登录快照不带，旧字节不变。旧页面忽略它。
+
+### 79.2 页面
+
+- **判定**：`scopes` 里有带 `resourceId` 的 `terminal:read`、且没有任何 `canvas:read` 的人是会话查看者；页面把这些会话当作他能开的全部内容。
+- **落地**：按链接加入（浏览器 `/j/<id>` 或桌面「通过链接加入」）之后，工作空间列表为空而身份会话报出会话范围时，直接打开第一条会话的只读查看页；浏览器访客重新载入页面同样落到这里。桌面侧栏「他人分享」里没有工作空间的那台主机下列出这些会话，点开即同一页。
+- **只读查看页**：经那台源读会话行（`terminals.get`）。终端会话以只读附着 `WS /api/terminals/{id}/ws`（§60.1），终端不接受键盘输入；ACP 会话按 `acp.log` 读转录（定时重读），没有输入框与审批按钮。顶栏是会话标题与「只读」标记。
+- **中转**：armadra-cloud 0.3.11 起中继边缘不再按 `ro` 中继令牌过滤（cloud-api §14），`ro` 令牌下的 `POST /api/rpc/*` 照常进隧道；§60 所说「`ro` 让边缘只放行 GET 与身份域」只对 0.3.10 及更早的中继成立。core 仍不向远程服务交只读（§60.3 不变）。

@@ -1,7 +1,7 @@
 import type { MessageModule } from "./index";
 
 /**
- * 被分享会话的只读查看页（`shared-session/`，契约 §71）：会话分享的访客打开链接
+ * 被分享会话的只读查看页（`shared-session/`，契约 §79）：会话分享的访客打开链接
  * 后落在这里；桌面侧栏「他人分享」下也列出这些会话。
  */
 export const sharedSession: MessageModule = {

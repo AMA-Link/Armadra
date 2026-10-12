@@ -16,7 +16,7 @@ import { ReadOnlyTranscript } from "./ReadOnlyTranscript";
 import { type SharedSessionTarget, sourceNamed } from "./sessions";
 
 /**
- * 被分享的那一条会话的只读查看页（#253、契约 §71）：占满画布那一块，顶栏是
+ * 被分享的那一条会话的只读查看页（#253、契约 §79）：占满画布那一块，顶栏是
  * 会话名与「只读」，下面是终端画面或 ACP 转录。没有任何输入入口；读写由 core
  * 判定，这页只是不摆出必然被拒的东西。
  */

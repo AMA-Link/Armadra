@@ -9,7 +9,7 @@ import { useSessionShare, useSharedSessionView } from "./sessions";
 const SharedSessionPage = React.lazy(() => import("./SharedSessionPage"));
 
 /**
- * 画布那一块里的只读查看页（契约 §71）。浏览器里按会话链接进来的访客没有画布，
+ * 画布那一块里的只读查看页（契约 §79）。浏览器里按会话链接进来的访客没有画布，
  * 也就没有别处可去：没打开工作空间时问一次身份会话，是会话查看者就直接落到第一条
  * 会话，且不给关闭。桌面上由「加入后打开」（`app/joined-source.tsx`）与侧栏打开。
  */

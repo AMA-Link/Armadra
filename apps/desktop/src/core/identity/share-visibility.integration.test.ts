@@ -390,7 +390,7 @@ describe.skipIf(process.platform === "win32")(
       ).toBe(403);
     });
 
-    it("会话查看者：身份会话报出那一条会话（契约 §71），经 RPC 读得到会话行", async () => {
+    it("会话查看者：身份会话报出那一条会话（契约 §79），经 RPC 读得到会话行", async () => {
       const { core, owner, workspaceId, sessionId, otherSessionId } =
         await setup();
       const guest = await member(core, owner, {
