@@ -83,7 +83,7 @@ export function openWorkflowPanel(tab: WorkflowTab = "templates"): void {
 }
 
 /**
- * 订阅三种 `workflow.*` 帧，重读列表。挂在常驻的草案层上：草案卡要在事件到达
+ * 订阅四种 `workflow.*` 帧，重读列表。挂在常驻的草案层上：草案卡要在事件到达
  * 之前就订阅好，页面开不开都一样。
  */
 export function useWorkflowEvents(): void {
@@ -95,6 +95,14 @@ export function useWorkflowEvents(): void {
       onWorkspaceEvent("workflow.draft", refresh),
       onWorkspaceEvent("workflow.run", refresh),
       onWorkspaceEvent("workflow.gate", refresh),
+      // 协调者分派抽屉的任务行（`coordinatorKeys.tasks`）：只重读这一组。
+      onWorkspaceEvent(
+        "workflow.task",
+        () =>
+          void client.invalidateQueries({
+            queryKey: [...workflowKeys.all, "tasks"],
+          }),
+      ),
     ];
     return () => offs.forEach((off) => off());
   }, [client]);

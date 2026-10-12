@@ -1,4 +1,5 @@
 import type { DatabaseSync } from "node:sqlite";
+import type { WorkspaceEvent } from "../bus";
 
 /**
  * `workflow_task_runs`：协调者的 `task(agent=…)` 经画布节点执行的记录（补全
@@ -256,4 +257,78 @@ export function taskRunJson(run: TaskRun): Record<string, unknown> {
     endedAt: run.endedAt === null ? null : new Date(run.endedAt).toISOString(),
     result: run.result ?? null,
   };
+}
+
+/**
+ * 任务行换了状态时推的那一帧（契约 §15.4 的 `workflow.task`）：分派抽屉据此重读
+ * §15.7，帧里不带任务正文与结果。协调者节点已经不在（拿不到画板与工作空间）
+ * 时答 `undefined`，不推。
+ */
+export function taskEvent(
+  database: DatabaseSync,
+  taskId: string,
+):
+  | {
+      readonly workspaceId: string;
+      readonly event: {
+        readonly type: "workflow.task";
+        readonly taskId: string;
+        readonly boardId: string;
+        readonly coordinatorNodeId: string;
+        readonly nodeId: string;
+        readonly status: TaskRunStatus;
+      };
+    }
+  | undefined {
+  const run = taskRun(database, taskId);
+  if (run === undefined) return undefined;
+  const place = database
+    .prepare(
+      "SELECT n.board_id AS board_id, b.workspace_id AS workspace_id " +
+        "FROM nodes n JOIN boards b ON b.id = n.board_id WHERE n.id = ?",
+    )
+    .get(run.coordinatorNodeId) as
+    | { board_id?: unknown; workspace_id?: unknown }
+    | undefined;
+  if (
+    typeof place?.board_id !== "string" ||
+    typeof place.workspace_id !== "string"
+  ) {
+    return undefined;
+  }
+  return {
+    workspaceId: place.workspace_id,
+    event: {
+      type: "workflow.task",
+      taskId: run.taskId,
+      boardId: place.board_id,
+      coordinatorNodeId: run.coordinatorNodeId,
+      nodeId: run.nodeId,
+      status: run.status,
+    },
+  };
+}
+
+/** 有地方发就发一帧 {@link taskEvent}。 */
+export function publishTask(
+  database: DatabaseSync,
+  publish: ((workspaceId: string, event: WorkspaceEvent) => void) | undefined,
+  taskId: string,
+): void {
+  if (publish === undefined) return;
+  const frame = taskEvent(database, taskId);
+  if (frame !== undefined) publish(frame.workspaceId, frame.event);
+}
+
+/** 还在 `running` 的任务行（`task-watch.ts` 盯的那些），最早的在前。 */
+export function runningTaskRuns(
+  database: DatabaseSync,
+  limit = 200,
+): TaskRun[] {
+  const rows = database
+    .prepare(
+      `SELECT ${COLUMNS} FROM workflow_task_runs WHERE status = 'running' ORDER BY started_at LIMIT ?`,
+    )
+    .all(limit) as unknown as TaskRunRecord[];
+  return rows.map(taskRunOf);
 }

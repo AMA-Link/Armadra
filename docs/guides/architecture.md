@@ -384,7 +384,8 @@ ama 模型密钥由 core 在起适配器前按启动器同一个兑换取值、�
 的起会话领走它；装好适配器后与 core 空闲时对已装的适配器预热一次（契约 §51）。
 SSH 节点的适配器起在执行主机上（`ssh.ts`）：`host.ts` 的 transport 把它换成一条不带 TTY 的
 `ssh … -- <主机> <远端命令>`，stdio 就是 ACP 传输；装没装由 Worker 的 `agents.probe` 答；画布
-工具是执行主机上的 `armadra-hook mcp`，走 Worker 的 Hook 中继；凭据在远端不兑换（契约 §26.5）。
+工具是执行主机上的 `armadra-hook mcp`，走 Worker 的 Hook 中继；启动器注入按适配器表裁剪后用执行主机上的
+产物路径，ama 带那边的 `--profile`；凭据在远端不兑换（契约 §26.5）。
 
 浏览器节点的 Agent 工具是 `armadra-hook browser <动词>`，动词清单只有一份
 （`core/browser/verb-spec.ts`，`--help` 与技能都由它生成）；执行下沉在 core

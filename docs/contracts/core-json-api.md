@@ -921,17 +921,19 @@ G5-25 追加：`GET /api/usage` 与 `POST /api/usage/refresh` 里 Claude 那一�
 
 ### 15.4 事件
 
-三帧经 `WS /api/workspaces/{id}/events`，帧里不带正文，页面据此重读上面的路由：
+四帧经 `WS /api/workspaces/{id}/events`，帧里不带正文，页面据此重读上面的路由（`workflow.task` 是 G5-09 追加的，重读 §15.7）：
 
 ```text
 { "type": "workflow.draft", "draftId": "…", "boardId": "…", "status": "pending" }
 { "type": "workflow.run", "runId": "…", "boardId": "…", "status": "running", "stepId": "s1", "stepStatus": "done" }
 { "type": "workflow.gate", "runId": "…", "boardId": "…", "stepId": "s3", "label": "合并前人工确认", "state": "waiting", "nodeId": "node-frame" }
+{ "type": "workflow.task", "taskId": "sess:t1", "boardId": "…", "coordinatorNodeId": "node-lead", "nodeId": "node-m", "status": "done" }
 ```
 
 - `workflow.draft`：草案出现、被确认或丢弃。
 - `workflow.run`：运行或其中一步换了状态；只有运行换状态时没有 `stepId` / `stepStatus`。
 - `workflow.gate`：`state` 是 `waiting` / `approved` / `rejected` / `cancelled`；`nodeId` 是运行的 Frame（运行还没有 Frame 时缺席）。推送只在 `waiting` 时叫人，深链打开这个 Frame（§19）。
+- `workflow.task`：§15.5 的一个任务行换了状态——起任务（含换绑）、结束（`wait` 或 core 自己落的）、§15.7 的重试各一帧；`status` 同任务行。`boardId` 是协调者节点所在的画板；协调者节点已不在时不推。推送不认这一帧。
 
 ### 15.6 自动化目标 `WORKFLOW_RUN`
 
@@ -973,8 +975,10 @@ G5-25 追加：`GET /api/usage` 与 `POST /api/usage/refresh` 里 Claude 那一�
 - `task-id`：幂等键，1–100 个字母、数字或 `.` `_` `:` `-`（runner 用 `<ama 会话 id>:<ama 任务 id>`）。同一个协调者再用同一个 `task-id` 起：节点还在就答回那个节点（`result.reused: true`，不建、不投、不起）；节点已删就新建，任务行换绑过去。被别的协调者用过回 `409 task_conflict`。带它时 core 记一行 `workflow_task_runs`（`runner_id` = `agent`），并把节点交给依赖编排的启动路径起终端、敲启动行（与工作流角色节点同一条，页面开不开都一样）；`result` 多 `taskRunId` 与 `reused`。
 - `name`：节点标题，与 `title` 同义（两者都给时取 `title`）。
 - 权限模式这个 CLI 没有：`400 permission_mode_unsupported`，附 `supported: [...]`（与 §15.3 同码；`team` 同此）。
-- `cwd`：成员终端开在哪个目录。工作区根下的相对路径或落在工作区里的绝对路径，按 core 所在机器的路径规则解析并解开符号链接后判断；在工作区外（含经 `..` 或符号链接出去）回 `400 cwd_outside_workspace`，目录不存在或不是目录回 `400 bad_request`，与 `worktree` 同给回 `400 bad_request`，远端执行主机上的工作区回 `400 cwd_unsupported`。成立时写进节点数据的 `cwd`（解开链接后的绝对路径），`result` 与演练结果多 `cwd`。
+- `cwd`：成员终端开在哪个目录。工作区根下的相对路径或落在工作区里的绝对路径，按 core 所在机器的路径规则解析并解开符号链接后判断；在工作区外（含经 `..` 或符号链接出去）回 `400 cwd_outside_workspace`，目录不存在或不是目录回 `400 bad_request`，与 `worktree` 同给回 `400 bad_request`。成立时写进节点数据的 `cwd`（解开链接后的绝对路径），`result` 与演练结果多 `cwd`。工作区在远端执行主机上时（G5-07），判定交给那台主机的 Worker（`files.list`，同一条根约束与同样的拒绝码），`cwd` 是那台主机上的绝对路径；Worker 不可达回 `400 cwd_unsupported`。
 - `resume`：接回这个 CLI 自己的一段会话（1–200 个字母、数字或 `.` `_` `:` `-`），core 起节点时敲的是 `agent/launch.ts` 的 resume 行（Claude `--resume <id>`、Codex `resume <id>` …）。值是这块画布上一个成员节点的 id 时（runner 的 `sessionRef.sessionId` 就是节点 id），取那个节点上报过的会话 id。这个 CLI 不能续接（或自定义条目关掉了 `resume`）、节点跑的不是同一家、或节点从没报过会话 id，回 `400 resume_unsupported`。成立时写进节点数据的 `agent.resume`，节点交给依赖编排的启动路径由 core 起（不带 `task-id` 也一样），`result` 多 `resume`（实际接回的会话 id）。ama 的 runner 把 `request.cwd` / `request.resume` 映射成这两个参数，遇到 `cwd_outside_workspace` / `cwd_unsupported` / `resume_unsupported` 时去掉那一个再起一次（成员开在工作区根、或新开会话）。
+- 远端工作区的成员（G5-07）：`open-agent` 与 `team` 在执行主机上的工作区里建的成员带 `ssh: { hostId: <工作区的执行主机> }`，起在那台主机上。SSH 终端所属工作区的执行主机就是这台 SSH 主机时，会话的 `cwd` 是那台主机上的路径：远端命令先经 `ARMADRA_REMOTE_CWD` 进这个目录（进不去就退出），本机的 `ssh` 进程从家目录起。页面开的 SSH 终端同样如此。
+- `team` 的 `cwd` 与成员选项（G5-07）：`--cwd <目录>` 是整队缺省，带 `worktree=` 的成员仍开在检出里。`--member` 末尾可以追加 `cwd=<目录>` 与 `resume=<会话 id 或成员节点 id>`，与 `worktree=` 不分先后、每种一次，判定、拒绝码与上面的 `cwd` / `resume` 相同。`cwd=` 与 `worktree=` 同给回 `400 bad_request`。带 `resume=` 的成员由 core 起。成员行与演练行多 `cwd`、`resume`。任何一项不成立时整队不建。
 
 **`wait`**
 
@@ -1013,7 +1017,8 @@ G5-25 追加：`GET /api/usage` 与 `POST /api/usage/refresh` 里 Claude 那一�
 - `failed` 的 `reason`：`nodeDeleted`、`turnFailed` / `turnInterrupted`、投递排队项过期或被取消时它最后一次的码（如 `TARGET_STARTING`）。
 - `events`：游标之后成员发出的、键是 `task:<taskId>` 或以 `task:<taskId>:` 开头的 `post`（`seq` 是收件箱序号，递增，一次最多 32 条，不漏不重），以及状态变化（`agent_status.state` 与游标里记的不同才报一条）。没有新事件、也没结束时，请求挂到 `timeout` 再答当时的状态；`since` 不变。
 - `since` 是不透明字符串（现为 `<post 序号>-<状态>`），调用方原样带回。
-- 结束（`done` / `failed`）时 core 写 `workflow_task_runs` 的 `status`、`ended_at` 与 `result_json`（`{ text }` 或 `{ reason }`，只写第一次），并把那条结果 `post` 标成已收——runner 已替协调者取走它，收件箱唤醒不再提示一遍。带 `task` 起的任务在开始时就写 `result_json.task`（第一条任务的正文，G5-09 追加），结束写的 `text` / `reason` 与它并存，换绑与重试都保留它；它只给 §15.7 的重试用，不出现在任何答复里。
+- 结束（`done` / `failed`）时 core 写 `workflow_task_runs` 的 `status`、`ended_at` 与 `result_json`（`{ text }` 或 `{ reason }`，只写第一次），并把那条结果 `post` 标成已收——runner 已替协调者取走它，收件箱唤醒不再提示一遍。
+- 没人 `wait` 时 core 自己落结束（G5-09，`workflow/task-watch.ts`）：`running` 的行在 `agent.status` / `agent.delivery` / `terminal.exit` 到达时与每 5 秒按同一判定看一遍（基准是它自己的一份，不影响 `wait`）。有 `wait` 挂着、或 30 秒内等过的任务只看不落，结束留给 `wait`。落结束时同样写这三列，但**不**把结果 `post` 标成已收（没人替协调者取走它，收件箱唤醒照旧提示）。`wait` 遇到已经结束的行立即按库里的答：`done` 带记下的 `text`（`result.key` 是 `task:<taskId>:result`），`failed` 带记下的 `reason`。带 `task` 起的任务在开始时就写 `result_json.task`（第一条任务的正文，G5-09 追加），结束写的 `text` / `reason` 与它并存，换绑与重试都保留它；它只给 §15.7 的重试用，不出现在任何答复里。
 
 **`help`** 的 `result` 多一个 `agents`：这台机器上 `open-agent --agent` 认的 id（内置的与设置里的 `custom:*`）。ama 的适配器为其中每个内置 CLI（`ama` 除外：ama 把名为 `ama` 的 runner 当成它自己的子会话）与每个 `custom:*` 注册一个 runner。
 
@@ -1032,7 +1037,7 @@ G5-25 追加：`GET /api/usage` 与 `POST /api/usage/refresh` 里 Claude 那一�
 
 - 重试走投递队列（`origin: "first-task"`，发起方是协调者节点），门链、租约与回执与 `canvas send` 相同，不替人回答任何提示。拒绝：没有这个任务 `404 not_found`；不是 `failed` / `stopped` `409 task_not_failed`；没记正文（不带 `--task` 起的）`409 task_prompt_missing`；成员节点已不在协调者那块画板上 `409 task_node_missing`；目标队伍满了 `409 queue_full`。
 - 权限：列表是 `canvas:read`（按 `boardId` 查画布），重试是 `agent:launch`（按任务的协调者节点查画布）；服务器壳的路由门在 `identity/route-access.ts`。
-- 没有专门的事件：抽屉开着时每 5 秒重读，`workflow.*` 帧到达时也重读。
+- 事件：任务行每次换状态推 §15.4 的 `workflow.task`，抽屉据此重读（G5-09 起不再每 5 秒轮询；断线重连后重读一次）。重试之后协调者不再 `wait` 时，行由 core 自己落结束（§15.5）。
 - 汇总便签由页面在画布文档里认：来源是这个协调者（`data.source.nodeId`）或与它连着线的便签。`canvas sticky` 写的便签自 G5-09 起带 `data.source = { nodeId: <写它的节点>, sessionId: "" }`。
 
 ## 16. 实时协同：`…/boards/{boardId}/sync` 与评论
@@ -1934,9 +1939,10 @@ CSV 按 RFC 4180：`\r\n` 换行，首行表头 `id,time,principalId,deviceId,ac
 - **传输**：本机起一条不带 TTY 的 `ssh -o ConnectTimeout=10 -o ServerAliveInterval=30 <askpass 与主机密钥选项> [-p] [-i] [extraArgs] -- <user@host> <远端命令>`。主机、密钥、askpass、主机密钥文件与 `ARMADRA_REMOTE_WORKER_LAUNCHER` 都和 Worker 用的是同一套。这条 `ssh` 的 stdin / stdout 就是 ACP 的 JSON-RPC。远端命令是 `env <K='v'…> /bin/sh -c 'cd "$0" || exit 1; exec "$@"' '<cwd>' '<程序>' '<参数>'…`。每个词都放在单引号里；值里有 `'`、`\`、`!` 或控制字符时，拒绝起会话（`502 acp_spawn_failed`），不去猜远端是哪种 shell。`cwd` 取节点数据的 `cwd`，没有就用工作空间根；远端进不去这个目录就退出（`acp_exited`），不会在家目录里悄悄起。本机的 `ssh` 子进程从数据目录起。
 - **装没装**：起会话前问那台主机的 Worker：`agents.probe { programs: string[] }` → `{ platform, programs: { <程序>: <路径> | null } }`。只读，可以重放，能力位复用 `remote.integration.v1`。程序是裸名时按 Worker 自己的 `PATH` 找，是绝对路径（`custom:` 条目）时看它能不能执行；别的写法一律答 `null`；一次最多问 32 个。找不到答 `400 acp_not_installed`。
 - **`acp_unsupported` 只剩这几种**（400）：主机没登记、主机没配 Worker、Worker 对 `agents.probe` 答 501（版本过旧）、执行主机不是 POSIX。Worker 连不上答 `502 acp_spawn_failed`。
-- **画布工具**：适配器表 `injection.mcp` 为真时，`session/new|load|resume` 的 `mcpServers` 带执行主机上的 Hook 客户端：命令 `<注入根>/bin/armadra-hook`，参数 `["mcp"]`，环境是节点身份、会话代次、执行主机上的 `ARMADRA_ENDPOINT_FILE` 与 `ARMADRA_HOOK_TIMEOUT_MS`。它和远端画布注入走同一条 Worker 中继 socket（契约 §21、远端画布注入设计），准备步骤也相同：同步产物、写节点令牌、开中继。准备失败就不带这条服务器，会话照常可用。终端启动器的注入 argv / env、ama 的 profile 在远端都不带。
+- **画布工具**：适配器表 `injection.mcp` 为真时，`session/new|load|resume` 的 `mcpServers` 带执行主机上的 Hook 客户端：命令 `<注入根>/bin/armadra-hook`，参数 `["mcp"]`，环境是节点身份、会话代次、执行主机上的 `ARMADRA_ENDPOINT_FILE` 与 `ARMADRA_HOOK_TIMEOUT_MS`。它和远端画布注入走同一条 Worker 中继 socket（契约 §21、远端画布注入设计），准备步骤也相同：同步产物、写节点令牌、开中继。准备失败就不带这条服务器，会话照常可用。（G5-06 前，终端启动器的注入 argv / env、ama 的 profile 在远端都不带；现行规则见下一条。）
 - **凭据**：远端不兑换（§20）。节点凭据与 ama 模型密钥都不设，条目名不随画布工具过去，远端命令行里也不带任何值。远端适配器只多 `custom:` 条目的 `env`。
 - **转录**：CLI 的转录在执行主机上，`transcriptPath` 一律指向本机镜像。
+- **启动器注入与 ama 的 profile**（G5-06 追加）：同一次准备成了，适配器也带上启动器注入，路径是执行主机上同步过去的产物（`<注入根>/integration/<cli>/…`）。按适配器表裁剪，与本机 ACP 相同：ama 只接 `--profile <注入根>/integration/ama/profile.json`；`reuse` 含 `env` 的设那几个变量，含 `args` 的接那段 argv。Claude 的 mod 在远端不挂（适配器自带的 CLI 版本探不到，未知即关，§59）。远端产物同步也包括 ama 的配置、profile、说明与技能。本机有 ama 宿主适配器包时，同步到 `<注入根>/agent-host/ama-armadra.cjs`，profile 的 `host` 指向它；`sessionDir` 是 `<注入根>/ama/sessions`。执行主机上的 `run/ama` 启动器不兑换模型密钥，ama 用那台主机上自己的登录。节点身份（`ARMADRA_NODE_ID`、会话代次、远端的 `ARMADRA_ENDPOINT_FILE` 等，不含凭据条目名）与注入的变量一起经远端命令的 `env` 设给适配器，自定义条目的 `env` 排在最后。准备失败时三样都不带，会话照常起。
 - **驱动切换、休眠、接回**：和本机一样都在同一行上起下一代（§14.2）。切回终端时，下一代经 `ssh` 起在同一台主机上（`ReviveOptions.sshHostId`），敲的是只带程序名的启动行（POSIX 方言）；ACP 侧的接回、Eco 休眠的唤醒、依赖编排与定时冷启动，都按节点数据重新走一遍上面的传输。
 
 ## 27. 推送补充：设备偏好、UnifiedPush、调度与资源事件
@@ -2602,9 +2608,9 @@ core 校验远程服务地址与指纹的写法时用具名码（状态均 400�
 
 <!-- rpc:begin contract=§35.4 -->
 
-| procedure           | kind         | input                                                | output                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            | errors                                                                                     | scope         | 自  | 原路径 |
-| ------------------- | ------------ | ---------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ------------- | --- | ------ |
-| `workspaces.events` | subscription | `{ workspaceId: string, cursor?: "now" \| integer }` | 迭代：`agent.context`、`agent.status`、`agent.subagent`、`agent.approval`、`agent.delivery`、`acp.update`、`acp.turn`、`acp.driver`、`acp.starting`、`terminal.exit`、`terminal.lease`、`terminal.hibernation`、`terminal.program`、`board.changed`、`canvas.presence`、`board.comment`、`node.created`、`ssh.prompt`、`workspace.updated`、`control.confirm`、`resource.sample`、`browser.session`、`browser.download`、`browser.lease`、`browser.tabs`、`browser.dialog`、`browser.fileChooser`、`browser.activity`、`language.session`、`language.server`、`file.changed`、`workflow.draft`、`workflow.run`、`workflow.gate`、`schedule.fired`、`schedule.failed`、`schedule.attention`、`cloud.tunnel`、`devices.pending`、`devices.changed`、`resources.threshold`、`cursor` | `forbidden`、`not_found`、`snapshot_required`、`cursor_ahead`、`overflow`、`limit_reached` | `events:read` | 1.4 | —      |
+| procedure           | kind         | input                                                | output                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             | errors                                                                                     | scope         | 自  | 原路径 |
+| ------------------- | ------------ | ---------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ------------- | --- | ------ |
+| `workspaces.events` | subscription | `{ workspaceId: string, cursor?: "now" \| integer }` | 迭代：`agent.context`、`agent.status`、`agent.subagent`、`agent.approval`、`agent.delivery`、`acp.update`、`acp.turn`、`acp.driver`、`acp.starting`、`terminal.exit`、`terminal.lease`、`terminal.hibernation`、`terminal.program`、`board.changed`、`canvas.presence`、`board.comment`、`node.created`、`ssh.prompt`、`workspace.updated`、`control.confirm`、`resource.sample`、`browser.session`、`browser.download`、`browser.lease`、`browser.tabs`、`browser.dialog`、`browser.fileChooser`、`browser.activity`、`language.session`、`language.server`、`file.changed`、`workflow.draft`、`workflow.run`、`workflow.gate`、`workflow.task`、`schedule.fired`、`schedule.failed`、`schedule.attention`、`cloud.tunnel`、`devices.pending`、`devices.changed`、`resources.threshold`、`cursor` | `forbidden`、`not_found`、`snapshot_required`、`cursor_ahead`、`overflow`、`limit_reached` | `events:read` | 1.4 | —      |
 
 <!-- rpc:end -->
 

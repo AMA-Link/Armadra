@@ -208,7 +208,7 @@ ACP 是同一个 Agent 节点的另一种驱动方式，不是第二条 Agent �
 
 工作流把一次协作沉淀成模板：协调者经 `workflow-propose` 交草案，人在工作面板「工作流」页确认成模板、填参数起跑，或在自动化里定时运行；每次运行在画布上建一个 Frame 与各角色节点，关卡停下等人答复，运行记录可回看与对比（契约 §15）。
 
-模型密钥只在密钥后端（`armadra-ama-<供应商>`），启动器凭节点 token 经 hook 通道兑换、只设给 ama 进程；Windows 上由 `armadra-launch.exe` 兑换；SSH 执行主机不兑换。runner 把 `task` 的 `cwd` / `resume` 映射成 `open-agent --cwd` / `--resume`（`--cwd` 只认本机工作区内的目录），core 拒绝时去掉那一项重起一次；ama 节点头部的「N 成员」打开分派抽屉，列出各成员任务的状态与汇总便签，失败的任务可重试（契约 §15.5、§15.7）。
+模型密钥只在密钥后端（`armadra-ama-<供应商>`），启动器凭节点 token 经 hook 通道兑换、只设给 ama 进程；Windows 上由 `armadra-launch.exe` 兑换；SSH 执行主机不兑换。runner 把 `task` 的 `cwd` / `resume` 映射成 `open-agent --cwd` / `--resume`（`--cwd` 只认工作区内的目录；工作区在远端执行主机上时成员也起在那台主机上，目录由那边的 Worker 判定；`team` 有整队的 `--cwd`，成员末尾可加 `cwd=` / `resume=`），core 拒绝时去掉那一项重起一次；ama 节点头部的「N 成员」打开分派抽屉，列出各成员任务的状态与汇总便签，失败的任务可重试（契约 §15.5、§15.7）。
 
 ## 对话交接
 

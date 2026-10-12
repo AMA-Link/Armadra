@@ -25,6 +25,7 @@ import {
 } from "./store";
 import {
   type TaskRun,
+  publishTask,
   reopenTask,
   taskPrompt,
   taskRun,
@@ -351,7 +352,9 @@ export class WorkflowService {
       }
       throw error;
     }
-    reopenTask(this.database, taskId, this.clock());
+    if (reopenTask(this.database, taskId, this.clock())) {
+      publishTask(this.database, collab.publish, taskId);
+    }
     return taskRun(this.database, taskId) as TaskRun;
   }
 

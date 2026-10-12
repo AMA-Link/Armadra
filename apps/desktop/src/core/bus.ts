@@ -241,6 +241,17 @@ export interface WorkspaceEventPayloads {
     /** 运行的 Frame：推送的深链打开它（契约 §15.4）。 */
     readonly nodeId?: string;
   };
+  /**
+   * 协调者分派出去的一个任务换了状态（契约 §15.4、§15.7）：起任务、换绑、结束、
+   * 重试各一帧。分派抽屉据此重读 `/api/workflows/tasks`，帧里不带正文。
+   */
+  "workflow.task": {
+    readonly taskId: string;
+    readonly boardId: string;
+    readonly coordinatorNodeId: string;
+    readonly nodeId: string;
+    readonly status: "running" | "done" | "failed" | "stopped";
+  };
   /*
    * ACP 驱动的会话（契约 §14.3）。`sessionId` 是 `terminal_sessions.id`；
    * `update` 是 ACP `session/update` 的 `update` 原样。
@@ -397,6 +408,7 @@ export const WORKSPACE_EVENT_TYPES = [
   "workflow.draft",
   "workflow.run",
   "workflow.gate",
+  "workflow.task",
   "schedule.fired",
   "schedule.failed",
   "schedule.attention",

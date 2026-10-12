@@ -20,6 +20,7 @@ import { WorkflowEngine } from "./engine";
 import { installWorkflowRoutes } from "./routes";
 import { type WorkflowDomain, setWorkflowDomain } from "./registry";
 import { WorkflowService } from "./service";
+import { TaskWatch } from "./task-watch";
 
 export { WorkflowEngine } from "./engine";
 export { WorkflowService } from "./service";
@@ -55,10 +56,19 @@ export function install(context: CoreContext): WorkflowDomain | undefined {
   });
   installWorkflowRoutes(context.server, service);
   engine.start();
+  // 协调者分派出去的任务：没人 `wait` 时也落结束（契约 §15.7）。
+  const tasks = new TaskWatch({
+    database,
+    bus: context.bus,
+    publish: () => collab()?.publish,
+    log: (message, fields) => context.log.info(message, fields),
+  });
+  tasks.start();
   const domain: WorkflowDomain = {
     engine,
     service,
     stop: async () => {
+      tasks.stop();
       await engine.stop();
       setWorkflowDomain(undefined);
     },

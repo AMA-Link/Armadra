@@ -4326,3 +4326,35 @@ nightly 在 `b8353492`（运行 37338174906）之后连续失败。逐个作业�
 接口：
 
 - web：`TrafficLedger`、`trafficLedger()` / `setTrafficLedger`、`TransportMeter`、`meteredFetch`、`meterSocket`、`meteredWebSocket`、`BearerTransport.meter`；`SourceTraffic`、`MonthTrafficLine`、`useMonthTraffic`；`ServicePicker` 的 `traffic` / `onTraffic`。
+
+## 协调者与 runners 残项：分派事件、远端 `--cwd`、`team` 选项、远端 ACP 注入（Closes #333、#334、#335，2026-10-12）
+
+补 G5-09、G5-07、G5-06「没做」里的四条，没有迁移，协议版本不变。
+
+**做了什么**
+
+- 分派事件（#333）：
+  - 任务行起任务、换绑、结束、重试各推一帧 `workflow.task`（契约 §15.4 追加，bus、共享层 zod 与事件类型表同步）。
+  - `workflow/task-watch.ts` 在没人 `wait` 时用同一份 `observe` 落结束：事件触发，另每 5 秒扫一次，基准是自己的一份。有 `wait` 挂着或 30 秒内等过的任务只看不落。落结束时不把结果 post 标成已收。`wait` 读到已结束的行立即按库里的答。
+  - 抽屉去掉 5 秒轮询，收到帧或断线重连后重读；运行中行的耗时每 15 秒重算一次。
+- 远端 `--cwd`（#334）：
+  - 远端工作区里 `open-agent` / `team` 建的成员带 `ssh.hostId`，`--cwd` 交给执行主机的 Worker 判定（`files.list`）。Worker 不可达回 `cwd_unsupported`。
+  - SSH 装饰器在工作区就在这台主机上时，经 `ARMADRA_REMOTE_CWD` 先 `cd` 进远端目录，本机 `ssh` 从家目录起。
+  - 判定拆到 `collab/control/member-options.ts`。
+- `team` 选项（#334）：`--cwd` 作全队缺省，`--member` 末尾可加 `cwd=` / `resume=`。带 `resume=` 的成员由 core 起。工具说明、用法与技能同步，`SKILLS_REVISION` 升到 19。
+- 远端 ACP 注入（#335）：
+  - 远端产物同步也包括 ama 的配置、profile、说明、技能、宿主适配器包和不兑换密钥的 `run/ama`。
+  - `acp/ssh.ts` 按适配器表裁剪远端注入：ama 接 `--profile`，`reuse` 为 env / args 的接对应那半。节点身份经远端命令的 `env` 设给适配器。
+
+**实测**（macOS arm64，隔离数据目录）
+
+- 单测：`task-watch.test`（5）、`member-options.test`（6）、`ssh/backend.test`（4）、`acp/ssh.test` 新增 3、`launcher.test` 新增 1、`routes.test` / `DispatchDrawer.test` / shared `api-workflows.test` 各加断言。`vitest src/core/{acp,remote,hook,terminal,collab,workflow,events}` 全过；`direct.test` 一例在并发负载下超时，单跑通过。
+- 隔离实例（`ARMADRA_DATA_DIR` 为临时目录，假 CLI 成员，14 项全过）：
+  - `open-agent --task-id` → 第一轮 `StopFailure` → `wait` 答 `turnFailed` → `POST …/retry` → 协调者不再 `wait`，行由 core 落 `done`。帧序列是 running → failed → running → done，结果 post 仍未读，之后的 `wait` 立即答「成员 post 了结果」。
+  - `team --cwd api` 加上 `cwd=web` 落到各自目录，`--cwd ..` 被拒。
+- `remote-e2e`：全绿。第一次跑时 fetch 一步撞上「Repository HEAD changed」，重跑通过。这一步与本包无关。远端注入、远端 ACP 一轮与切换、交接各步都通过。
+
+**限制**
+
+- 执行主机上的 ama 不兑换模型密钥，用那台主机自己的登录；`sessionDir` 在注入根下，Worker 换版本后旧会话不在新根里。
+- Claude 的 mod 在远端 ACP 下不挂（CLI 版本探不到）。

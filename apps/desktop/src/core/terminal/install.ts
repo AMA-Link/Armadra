@@ -1142,6 +1142,19 @@ function wrapSsh(
     hosts: remote.host,
     askpass: remote.askpass,
     remote: (hostId, env) => remote.integration.terminal(hostId, env),
+    // 远端工作空间里的 SSH 终端开在执行主机上的工作目录（G5-07）。
+    executionHost: (workspaceId) => {
+      try {
+        const row = context.db.database
+          .prepare("SELECT execution_host_id FROM workspaces WHERE id = ?")
+          .get(workspaceId) as { execution_host_id?: unknown } | undefined;
+        const hostId = row?.execution_host_id;
+        return typeof hostId === "string" && hostId !== "" ? hostId : undefined;
+      } catch {
+        // 没有工作空间表（只装终端域的套件）：当本机工作空间。
+        return undefined;
+      }
+    },
   });
 }
 

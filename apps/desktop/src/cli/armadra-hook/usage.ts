@@ -59,14 +59,17 @@ export const CANVAS_USAGE = `CANVAS:
                                       missing); --cwd starts it in a directory
                                       inside the workspace; --resume continues
                                       that CLI's own session
-  team --member "AGENT[@MODEL]|TITLE|TASK[|worktree=DIR]"... [--chain]
-       [--gather "AGENT|TITLE|TASK"] [--after ID]
+  team --member "AGENT[@MODEL]|TITLE|TASK[|worktree=DIR][|cwd=DIR][|resume=ID]"...
+       [--chain] [--gather "AGENT|TITLE|TASK"] [--after ID] [--cwd DIR]
                                       open up to 6 agents at once; --chain
                                       makes each wait for the previous one,
                                       --gather adds one that waits for all;
                                       a member's worktree=NAME uses the
                                       checkout on that branch or creates
-                                      .worktrees/NAME (no task: A|T||worktree=N)
+                                      .worktrees/NAME (no task: A|T||worktree=N);
+                                      --cwd is every member's directory unless
+                                      it has its own cwd= or worktree=;
+                                      resume=ID continues that CLI's session
   open-browser [--url URL] [--title T] open a browser node linked to this one;
                                       drive it with \`browser <verb>\`
   rename --node ID --handle NAME       set this node's name on the board

@@ -431,6 +431,20 @@ describe("协调者任务（契约 §15.7）", () => {
     expect(queued).toEqual([
       { source_node_id: coordinator, body: "审查 src/x" },
     ]);
+    // 行回到 running 推一帧 `workflow.task`（契约 §15.4），不带正文。
+    const frames = fixture.events
+      .map((entry) => entry.event)
+      .filter((event) => event.type === "workflow.task");
+    expect(frames).toEqual([
+      {
+        type: "workflow.task",
+        taskId,
+        boardId: fixture.boardId,
+        coordinatorNodeId: coordinator,
+        nodeId: member,
+        status: "running",
+      },
+    ]);
     // 再失败一次，正文还在。
     finishTask(fixture.database, taskId, "failed", { reason: "y" }, 9_000);
     const again = await call(

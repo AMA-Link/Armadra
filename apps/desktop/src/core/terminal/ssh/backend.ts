@@ -33,6 +33,8 @@
  * that must not happen.
  */
 
+import { homedir } from "node:os";
+
 import type { SshHost } from "../../settings/ssh-hosts";
 import {
   type AdoptableBackend,
@@ -73,6 +75,14 @@ export interface SshBackendOptions {
     hostId: string,
     env: readonly (readonly [string, string])[],
   ) => Promise<readonly (readonly [string, string])[] | undefined>;
+  /**
+   * 会话所属工作空间的执行主机（`workspaces.execution_host_id`），本机工作空间答
+   * `undefined`。与这条 SSH 的主机相同时，spec 的 `cwd` 是那台主机上的路径：
+   * 远端先进这个目录，本机的 `ssh` 进程从 {@link localDirectory} 起（G5-07）。
+   */
+  readonly executionHost?: (workspaceId: string) => string | undefined;
+  /** 远端工作目录时本机 `ssh` 进程的起点；缺省家目录。 */
+  readonly localDirectory?: () => string;
 }
 
 /** 远端注入最多让终端等这么久；首次连接要探测 Node、握手并同步产物。 */
@@ -135,15 +145,26 @@ export class SshBackend implements TerminalBackend {
     // sitting in front of, and the dialog is where it can actually be answered.
     const askpass = this.options.askpass.childEnvironment(host.id) ?? [];
     const remoteEnv = await this.remoteEnvironment(spec);
-    if (remoteEnv !== undefined && remoteEnv.length > 0) {
-      argv.push(remoteShellCommand(remoteEnv));
+    const directory = this.remoteDirectory(spec);
+    if ((remoteEnv !== undefined && remoteEnv.length > 0) || directory) {
+      argv.push(remoteShellCommand(remoteEnv ?? [], { directory }));
     }
     return {
       ...spec,
+      ...(directory === undefined
+        ? {}
+        : { cwd: (this.options.localDirectory ?? homedir)() }),
       command: program,
       args: argv,
       env: [...spec.env, ...askpass],
     };
+  }
+
+  /** spec 的 `cwd` 是这台主机上的路径时答它（工作空间就在这台主机上）。 */
+  private remoteDirectory(spec: SshTerminalSpec): string | undefined {
+    const host = this.options.executionHost?.(spec.workspaceId);
+    if (host === undefined || host !== spec.sshHostId) return undefined;
+    return spec.cwd === "" ? undefined : spec.cwd;
   }
 
   private async remoteEnvironment(

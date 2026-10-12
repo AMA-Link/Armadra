@@ -28,7 +28,10 @@ import {
   remoteInjectionReady,
   shimDirectory,
 } from "../hook/install/remote";
-import { defaultBundleCandidates } from "../hook/install/shared";
+import {
+  agentHostBundle,
+  defaultBundleCandidates,
+} from "../hook/install/shared";
 import { hookEndpointFile } from "../paths";
 import type { RemoteChannel, RemoteListener, RemotePushEvent } from "./execute";
 import { INTEGRATION_V2_CAPABILITY } from "./operations";
@@ -55,6 +58,11 @@ export interface RemoteIntegrationOptions {
   readonly call: IntegrationCaller;
   /** `armadra-hook.js` 的内容；缺省按打包与构建树的位置找。 */
   readonly hookBundle?: () => string | undefined;
+  /**
+   * ama 宿主适配器包（`agent-host/ama-armadra.cjs`）的内容；缺省按打包与构建树
+   * 的位置找。没有就不同步，远端 ama 的 profile 不带 `host`（G5-06）。
+   */
+  readonly amaHostBundle?: () => string | undefined;
   /** 本机 Hook 服务；缺省读 `<数据目录>/hook-endpoint.env`。 */
   readonly hookEndpoint?: () => LocalHookEndpoint | undefined;
   /**
@@ -142,10 +150,22 @@ export class RemoteIntegration implements RemoteListener {
   async canvas(
     hostId: string,
     env: EnvPairs,
-  ): Promise<{ readonly client: string; readonly env: EnvPairs } | undefined> {
+  ): Promise<
+    | {
+        readonly client: string;
+        readonly env: EnvPairs;
+        /** 注入产物的根：ACP 适配器据此算远端的注入（G5-06）。 */
+        readonly root: string;
+      }
+    | undefined
+  > {
     const prepared = await this.node(hostId, env);
     if (prepared === undefined) return undefined;
-    return { client: remoteClientBin(prepared.site.root), env: prepared.env };
+    return {
+      client: remoteClientBin(prepared.site.root),
+      env: prepared.env,
+      root: prepared.site.root,
+    };
   }
 
   private async node(
@@ -189,7 +209,11 @@ export class RemoteIntegration implements RemoteListener {
     bundle: string,
   ): Promise<RemoteIntegrationSite> {
     const site = await this.site(hostId, state);
-    const files = remoteIntegrationFiles(site, bundle);
+    const files = remoteIntegrationFiles(
+      site,
+      bundle,
+      (this.options.amaHostBundle ?? readAmaHostBundle)(),
+    );
     const print = fingerprint(files);
     if (state.synced !== print) {
       await this.sync(hostId, files);
@@ -417,6 +441,17 @@ export function remoteEnvironment(
 }
 
 /** 构建产物里的 Hook 客户端包；源码树里没有就是 `undefined`。 */
+/** 本机的 ama 宿主适配器包；找不到答 `undefined`。 */
+export function readAmaHostBundle(): string | undefined {
+  const path = agentHostBundle();
+  if (path === undefined) return undefined;
+  try {
+    return readFileSync(path, "utf8");
+  } catch {
+    return undefined;
+  }
+}
+
 export function readHookBundle(
   candidates: readonly string[] = defaultBundleCandidates(),
 ): string | undefined {

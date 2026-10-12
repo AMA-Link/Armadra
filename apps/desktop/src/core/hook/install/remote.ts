@@ -101,14 +101,48 @@ export function runDirectory(root: string): string {
   return posix.join(root, "run");
 }
 
+/** 同步到执行主机上的 ama 宿主适配器包（ama 的 profile 里的 `host`）。 */
+export function remoteAmaHost(root: string): string {
+  return posix.join(root, "agent-host", "ama-armadra.cjs");
+}
+
+/**
+ * 一个 CLI 在执行主机上的产物与注入（G5-06）：`run/<cli>` 启动器接的那份
+ * argv / 环境，路径都是那台主机的。ama 的 profile 只在同步了适配器包时写
+ * `host`，没有包就不带画布工具起（与本机缺包时一样）。
+ */
+export function remoteArtifacts(
+  root: string,
+  agentId: string,
+  options: { readonly amaHost?: boolean } = {},
+): {
+  readonly files: Map<string, string>;
+  readonly injection: ReturnType<typeof injectionFromLayout>;
+} {
+  const clientBin = remoteClientBin(root);
+  const files = artifactFiles(root, agentId, clientBin, {
+    join: posix.join,
+    windows: false,
+    amaHost: options.amaHost === true ? remoteAmaHost(root) : null,
+  });
+  const layout = artifactLayout(root, agentId, posix.join);
+  const present = (path: string | undefined): path is string =>
+    path !== undefined && files.has(path);
+  const injection = injectionFromLayout(agentId, layout, clientBin, present, {
+    windows: false,
+  });
+  return { files, injection };
+}
+
 /**
  * 执行主机上画布注入的全部文件：每个 CLI 的产物、垫片、Hook 客户端与它的启动器、
- * 这个控制端的端点文件。确定性的：同一份输入生成同样的字节，Worker 按哈希只写
- * 变了的。
+ * 这个控制端的端点文件，以及有包时 ama 的宿主适配器。确定性的：同一份输入生成
+ * 同样的字节，Worker 按哈希只写变了的。
  */
 export function remoteIntegrationFiles(
   site: RemoteIntegrationSite,
   hookBundle: string,
+  amaHostBundle?: string,
 ): RemoteFile[] {
   const files: RemoteFile[] = [];
   const bundlePath = posix.join(site.root, "cli", `${CLIENT_NAME}.js`);
@@ -126,21 +160,18 @@ export function remoteIntegrationFiles(
       0o600,
     ),
   );
+  if (amaHostBundle !== undefined) {
+    files.push(file(remoteAmaHost(site.root), amaHostBundle));
+  }
   const shims = shimDirectory(site.root);
   const run = runDirectory(site.root);
-  const target = { join: posix.join, windows: false };
   for (const agentId of INJECTED_AGENTS) {
-    // ama on an execution host is not supported in this version: its key
-    // file is never synced (docs/design/coordinator-agent.md §7).
-    if (agentId === "ama") continue;
-    const written = artifactFiles(site.root, agentId, clientBin, target);
-    for (const [path, content] of written) files.push(file(path, content));
-    const layout = artifactLayout(site.root, agentId, posix.join);
-    const present = (path: string | undefined): path is string =>
-      path !== undefined && written.has(path);
-    const injection = injectionFromLayout(agentId, layout, clientBin, present, {
-      windows: false,
+    // ama 也同步（G5-06）：profile、配置、说明与技能，启动器不带密钥兑换——
+    // 凭据在执行主机上不兑换（契约 §20），ama 用那台主机上自己的登录。
+    const { files: written, injection } = remoteArtifacts(site.root, agentId, {
+      amaHost: amaHostBundle !== undefined,
     });
+    for (const [path, content] of written) files.push(file(path, content));
     if (injection === undefined) continue;
     const executables = launcherFiles(
       {
