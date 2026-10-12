@@ -300,6 +300,24 @@ describe("选择服务 · 整页", () => {
     expect(onSignIn).toHaveBeenCalledWith(ISSUER);
   });
 
+  it("流量（§76）：行尾写本月上下行，「流量」按钮交出源标识；本机行没有", () => {
+    const onTraffic = vi.fn();
+    render(
+      <ServicePicker
+        variant="page"
+        rows={rows.slice(3)}
+        onEnter={vi.fn()}
+        traffic={{ d: { bytesIn: 2048, bytesOut: 1024, streams: 2 } }}
+        onTraffic={onTraffic}
+      />,
+    );
+    expect(
+      document.querySelector('[data-slot="month-traffic"]')?.textContent,
+    ).toBe("↑ 1 KB ↓ 2 KB");
+    fireEvent.click(screen.getByRole("button", { name: "Studio 的流量" }));
+    expect(onTraffic).toHaveBeenCalledWith("d");
+  });
+
   it("空表：还没有连接", () => {
     render(<ServicePicker variant="page" rows={[]} onEnter={vi.fn()} />);
     expect(screen.getByText("还没有连接")).toBeTruthy();

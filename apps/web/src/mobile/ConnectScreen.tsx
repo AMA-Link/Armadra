@@ -32,6 +32,7 @@ import { FingerprintStep, RelayForm, SourcesStep } from "./ConnectRelay";
 import type { ServiceStatus } from "../services/probe";
 import type { ServiceRow } from "../services/rows";
 import { ServicePicker } from "../services/ServicePicker";
+import { SourceTraffic, useMonthTraffic } from "../traffic/SourceTraffic";
 import { isJoinLink, issuerOrigin, parseJoinLink } from "./join-link";
 
 /** 连接失败的原因；文案键是 `mobileConnect.error.<原因>`。 */
@@ -248,6 +249,9 @@ export function ConnectScreen({
   // 选择页上「登录」那个远程服务：中转表单预填它的地址。
   const [relayIssuer, setRelayIssuer] = React.useState<string | null>(null);
   const [opening, setOpening] = React.useState<string | null>(null);
+  /** 正在看哪个源的流量（设计 §6.4）；`null` 是列表。 */
+  const [trafficId, setTrafficId] = React.useState<string | null>(null);
+  const monthTraffic = useMonthTraffic();
   const [busy, setBusy] = React.useState(false);
   const [failure, setFailure] = React.useState<ConnectFailure | null>(
     initialFailure ?? null,
@@ -472,11 +476,36 @@ export function ConnectScreen({
 
   if (panel && relay) {
     const rows = connections;
+    const trafficRow =
+      trafficId === null
+        ? undefined
+        : rows.find((row) => row.sourceId === trafficId);
     return (
       <main data-slot="mobile-connect" className={rootClass}>
         <div className="flex w-full max-w-sm flex-col gap-6">
           {header}
-          {view === "list" && (
+          {view === "list" && trafficRow !== undefined && (
+            <div className="flex flex-col gap-4">
+              <h2 className="truncate text-center text-[length:var(--text-section)] font-semibold">
+                {trafficRow.name}
+              </h2>
+              <SourceTraffic
+                sourceId={trafficRow.sourceId}
+                name={trafficRow.name}
+              />
+              <Button
+                type="button"
+                size="lg"
+                variant="ghost"
+                className="h-11 w-full"
+                onClick={() => setTrafficId(null)}
+              >
+                <ChevronLeft data-icon="inline-start" />
+                {t("traffic.back")}
+              </Button>
+            </div>
+          )}
+          {view === "list" && trafficRow === undefined && (
             <>
               {message && rowFailure === null && (
                 <Alert variant="destructive">
@@ -501,6 +530,8 @@ export function ConnectScreen({
                 onRemove={(sourceId) => onRemove?.(sourceId)}
                 {...(onRename ? { onRename } : {})}
                 onSignIn={signInTo}
+                traffic={monthTraffic}
+                onTraffic={setTrafficId}
               />
               <div className="flex flex-col gap-2">
                 <Button

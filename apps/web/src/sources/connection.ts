@@ -14,6 +14,7 @@ import {
   browserEnvironment,
 } from "./managed-socket";
 import { type ProbeOptions, pickRoute, probeDirect } from "./routing";
+import { type TransportMeter, meteredWebSocket } from "./traffic-meter";
 import {
   type BearerTransport,
   RELAY_PROTOCOL,
@@ -382,7 +383,15 @@ export function createRemoteConnection(
     return renewing;
   };
 
+  /** 经中继时记流量（`traffic-meter.ts`）；直连不计。 */
+  const meter: TransportMeter = {
+    sourceId: id,
+    active: () => via === "relayed",
+    base: () => httpBase(),
+  };
+
   const transport: BearerTransport = {
+    meter,
     get origin() {
       return originOf(httpBase());
     },
@@ -491,7 +500,10 @@ export function createRemoteConnection(
     socket(path, socketOptions = {}) {
       const socket = new ManagedSocket({
         ...socketOptions,
-        WebSocket: socketOptions.WebSocket ?? baseSocket,
+        WebSocket: meteredWebSocket(
+          () => socketOptions.WebSocket ?? baseSocket,
+          meter,
+        ),
         url: () => runtimeSocketUrl(wsBase(), path),
         ticket: () => fetchTicket(),
         relayToken,

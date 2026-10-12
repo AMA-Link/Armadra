@@ -4304,3 +4304,25 @@ nightly 在 `b8353492`（运行 37338174906）之后连续失败。逐个作业�
 接口：
 
 - web：`trafficSummary` / `trafficLive` / `clearTraffic`、`TRAFFIC_QUERY_KEY`；`HostTraffic`；`TrafficBreakdown`（`up` / `down` / `streams` / `rows` / `onClear` / `clearTitle` / `footer`）。
+
+## 客户端流量计量与手机页（流量统计 S4，Refs #360，2026-10-12）
+
+做了什么：
+
+- web：`sources/traffic-meter.ts`——经中继时由传输层自己记（`bearerFetch`、`ticketedWebSocket` 的真连接、`connection.ts` 的托管流；手机与中继托管页经 `route-entry.ts` 装成本机源时同样带上），按源 × 类别（与 core 共用 `trafficCategory`，剥掉中继基址的 `/s/<源>`）累加请求体、响应体（经计数的流转交，下载不多占内存）与 WebSocket 每条消息的载荷；直连与本机不计。每 60 秒、页面隐藏与 `pagehide` 时按本地日并进 `localStorage`（保留 90 天）。
+- 界面（`traffic/`，只用现有 shadcn）：连接列表每行写本月 `↑ … ↓ …`，本月有流量的行多一个「流量」按钮，打开这个源的流量段——今日 / 本月 / 全部（`Tabs`）、上行 · 下行 · 连接三格、按类别的比例条（`Progress`）、「清零」（确认框）。手机连接页与中继托管页共用 `ServicePicker`；文案 `traffic.*` 中英同步。
+
+实测（macOS arm64，本地个人中转 + 两个隔离的服务器壳实例 A / B，无头 Chrome 390×844）：
+
+- 浏览器经分享链接以访客进入 A 的画布：客户端各类条数与 A 的 `traffic_buckets`（同一访客主体、`peerKind: guest`、记下了链接 id）逐类相等（agent 3、terminal 5、canvas 6、events 1；api 客户端 10 = core 访客 4 + 匿名面 6）。字节上 core ≥ 客户端（core 含 HTTP 头与 WS 帧头）。A 的明文合计与中继 `relay_bytes_total` 增量逐字节相等。
+- 单测：web 计量 14、源的流量段 2、`ServicePicker` 1、手机连接页 1、托管页回归 1。
+
+没做 / 限制：
+
+- 浏览器看不到 HTTP 头、WS 帧头与 TLS，客户端的字节小于 core 的；条数对得上。端到端通道（E3）之后改为通道层计数，那时可以记记录层字节。
+- 手机的数存在 WebView 的 `localStorage`（App 私有存储），没有走原生 `ArmadraNative.traffic`；系统清理 WebView 存储时会丢。
+- 桌面窗口没有源列表入口（「切换服务」对话框已在 #301 删去），桌面端的计量照常落地，暂无页面展示。
+
+接口：
+
+- web：`TrafficLedger`、`trafficLedger()` / `setTrafficLedger`、`TransportMeter`、`meteredFetch`、`meterSocket`、`meteredWebSocket`、`BearerTransport.meter`；`SourceTraffic`、`MonthTrafficLine`、`useMonthTraffic`；`ServicePicker` 的 `traffic` / `onTraffic`。

@@ -143,6 +143,12 @@ export async function enterRoute(
           // 经端到端通道（契约 §78）：字节走通道，中继令牌只在开通道时用过。
           baseFetch: () => access.e2e?.fetch,
           baseWebSocket: () => access.e2e?.WebSocket,
+          // 经中继时记流量，记到这个源上（`traffic-meter.ts`）。
+          meter: {
+            sourceId: descriptor.sourceId,
+            active: () => true,
+            base: () => access.httpBase,
+          },
           extraHeaders: (): Record<string, string> =>
             access.relayToken === undefined || access.e2e !== undefined
               ? {}

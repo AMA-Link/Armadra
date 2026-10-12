@@ -16,6 +16,9 @@ import {
 import type { ServiceStatus } from "../services/probe";
 import type { ServiceRow } from "../services/rows";
 import { ServicePicker } from "../services/ServicePicker";
+import { SourceTraffic, useMonthTraffic } from "../traffic/SourceTraffic";
+import { Button } from "@/ui/button";
+import { ChevronLeft } from "lucide-react";
 import { Alert, AlertTitle } from "@/ui/alert";
 import { BrandMark } from "@/ui/brand-mark";
 import { Spinner } from "@/ui/spinner";
@@ -42,6 +45,9 @@ export function RelaySignIn({
   initialFailure,
 }: RelaySignInProps) {
   const t = useT();
+  const monthTraffic = useMonthTraffic();
+  /** 正在看哪台主机的流量（设计 §6.4）；`null` 是列表。 */
+  const [trafficId, setTrafficId] = React.useState<string | null>(null);
   const errorId = React.useId();
   // 画布（App）还没挂：主题、语言跟随系统与偏好由这一页先接上。
   React.useEffect(() => syncDocumentPreferences(), []);
@@ -108,6 +114,10 @@ export function RelaySignIn({
       })),
     [hosts, relay.issuer, host],
   );
+  const trafficRow =
+    trafficId === null
+      ? undefined
+      : rows.find((row) => row.sourceId === trafficId);
   const statuses = React.useMemo(
     () =>
       Object.fromEntries(
@@ -207,23 +217,48 @@ export function RelaySignIn({
                 <AlertTitle>{message}</AlertTitle>
               </Alert>
             )}
-            <ServicePicker
-              variant="page"
-              rows={rows}
-              statuses={statuses}
-              failure={
-                failedId !== null && message !== null
-                  ? { sourceId: failedId, message }
-                  : null
-              }
-              busyId={entering}
-              disabled={busy}
-              disableOffline
-              onEnter={(sourceId) => {
-                const source = hosts.find((one) => one.sourceId === sourceId);
-                if (source) void enter(source);
-              }}
-            />
+            {trafficRow !== undefined && (
+              <>
+                <h2 className="truncate text-center text-[length:var(--text-section)] font-semibold">
+                  {trafficRow.name}
+                </h2>
+                <SourceTraffic
+                  sourceId={trafficRow.sourceId}
+                  name={trafficRow.name}
+                />
+                <Button
+                  type="button"
+                  size="lg"
+                  variant="ghost"
+                  className="h-11 w-full"
+                  onClick={() => setTrafficId(null)}
+                >
+                  <ChevronLeft data-icon="inline-start" />
+                  {t("traffic.back")}
+                </Button>
+              </>
+            )}
+            {trafficRow === undefined && (
+              <ServicePicker
+                variant="page"
+                rows={rows}
+                statuses={statuses}
+                traffic={monthTraffic}
+                onTraffic={setTrafficId}
+                failure={
+                  failedId !== null && message !== null
+                    ? { sourceId: failedId, message }
+                    : null
+                }
+                busyId={entering}
+                disabled={busy}
+                disableOffline
+                onEnter={(sourceId) => {
+                  const source = hosts.find((one) => one.sourceId === sourceId);
+                  if (source) void enter(source);
+                }}
+              />
+            )}
           </div>
         )}
         {/* 浏览器端的边界（端到端加密设计 §5）：页面由中继下发，下发那一刻的投毒防不住。 */}

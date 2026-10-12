@@ -10,6 +10,7 @@ import {
 import { usePreferencesStore } from "../app/preferences-store";
 import type { ServiceRow } from "../services/rows";
 import { ConnectScreen } from "./ConnectScreen";
+import { memoryStorage } from "./testing";
 
 beforeEach(() => {
   usePreferencesStore.setState({ locale: "zh-CN" });
@@ -498,6 +499,39 @@ describe("连接页 · 多连接（添加连接）", () => {
     // 添加连接在列表下面。
     fireEvent.click(screen.getByRole("button", { name: "添加连接" }));
     expect(screen.getByRole("button", { name: "中转账号" })).toBeTruthy();
+  });
+
+  it("流量（§76）：行尾本月上下行；点「流量」看这个源的分项，返回回到列表", async () => {
+    const { TrafficLedger, setTrafficLedger } = await import(
+      "../sources/traffic-meter"
+    );
+    vi.stubGlobal("localStorage", memoryStorage());
+    const ledger = new TrafficLedger({ timers: false });
+    setTrafficLedger(ledger);
+    ledger.record("s1", "terminal", 2048, 1024, 1);
+    try {
+      render(
+        <ConnectScreen
+          {...base}
+          relay={outcomes()}
+          connections={[RELAYED_ROW, DIRECT_ROW]}
+          activeId="s1"
+        />,
+      );
+      expect(
+        document.querySelector('[data-slot="month-traffic"]')?.textContent,
+      ).toBe("↑ 1 KB ↓ 2 KB");
+      fireEvent.click(screen.getByRole("button", { name: "MacBook 的流量" }));
+      expect(screen.getByRole("heading", { name: "MacBook" })).toBeTruthy();
+      expect(
+        document.querySelector('[data-traffic-row="terminal"]'),
+      ).toBeTruthy();
+      fireEvent.click(screen.getByRole("button", { name: "返回" }));
+      expect(screen.getByRole("heading", { name: "选择服务" })).toBeTruthy();
+    } finally {
+      setTrafficLedger(undefined);
+      vi.unstubAllGlobals();
+    }
   });
 
   it("标题是「选择服务」，在线状态与到达方式在行上", () => {

@@ -204,7 +204,9 @@ describe("刷新页面之后", () => {
     };
     const onEntered = vi.fn();
     render(<RelaySignIn relay={target} onEntered={onEntered} />);
-    fireEvent.click(await screen.findByRole("button", { name: /desktop/ }));
+    fireEvent.click(
+      await screen.findByRole("button", { name: /^desktop(?! 的流量)/ }),
+    );
     await waitFor(() => expect(onEntered).toHaveBeenCalled());
     expect(target.enter).toHaveBeenCalledWith(host(B, "desktop"));
   });
