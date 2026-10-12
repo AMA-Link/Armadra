@@ -180,6 +180,43 @@ describe("TrafficService", () => {
     expect(onePeer.rows.map((row) => row.key)).toEqual(["files"]);
   });
 
+  it("经端到端通道的对端按设备钥一行：通道线上字节与内层流合在一起，带主体", () => {
+    const KEY = "f".repeat(32);
+    service.meter.channelWire(
+      { route: "relay", issuer: ISSUER },
+      KEY,
+      300,
+      9_000,
+    );
+    const counter = service.meter.stream({
+      route: "relay",
+      issuer: ISSUER,
+      kind: "http",
+      path: "/api/workspaces",
+    });
+    counter.identify({
+      principalId: ALICE,
+      deviceId: ALICE_DEVICE,
+      channelDeviceId: KEY,
+    });
+    counter.add(100, 8_000);
+    counter.close();
+    const range = { fromMs: T0, toMs: T0 + HOUR_MS };
+    const rows = service
+      .summary({ ...range, groupBy: "peer" })
+      .rows.filter((row) => row.key === KEY);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({
+      peerKind: "device",
+      principalId: ALICE,
+      streams: 1,
+      bytesIn: 100,
+      bytesOut: 8_000,
+      wireBytesIn: 300,
+      wireBytesOut: 9_000,
+    });
+  });
+
   it("series：按小时的点，跨小时分开；按类别过滤", () => {
     const counter = open("/api/terminals/t/ws", {
       principalId: ALICE,
