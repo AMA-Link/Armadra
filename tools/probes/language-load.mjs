@@ -46,6 +46,7 @@ import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { findCloudSource } from "./cloud-source.mjs";
+import { approveWith, openE2eRoute } from "./e2e-client.mjs";
 import {
   SharedLink,
   TYPING_TEXT,
@@ -915,54 +916,43 @@ async function startRelay(core, cloudHome) {
   });
   await owner("/api/identity/cloud/bind", { assertion: bound.assertion });
 
-  // 客户端侧：断言 + 中继令牌 → 经中继 cloud/login 换 core 会话（原生客户端的来源）。
-  const nativeOrigin = "https://localhost";
-  const access = await call("POST", `/v1/sources/${sourceId}/assertion`, {
-    body: { device },
-    token: cloudToken,
-  });
-  const relayToken = access.relayToken;
-  const base = `/s/${sourceId}`;
-  const coreLogin = await call("POST", `${base}/api/identity/cloud/login`, {
-    body: { assertion: access.assertion },
-    headers: { origin: nativeOrigin, "armadra-relay-token": relayToken },
-  });
-  const accessToken = coreLogin.session.native.accessToken;
-  const headers = { origin: nativeOrigin, "armadra-relay-token": relayToken };
-  const api = (path, init = {}) =>
-    call(init.method ?? "GET", `${base}${path}`, {
-      body: init.body,
-      token: accessToken,
-      headers,
+  // 客户端侧：断言 + 中继令牌 → 端到端通道（契约 §78，中继只转这一条）→ 经通道
+  // cloud/login 换 core 会话。同一个设备钥种子，第一次由主人核对放行，之后的通道直接用。
+  const approve = approveWith(session);
+  const seed = randomBytes(32);
+  const openRoute = async (socketOrigin) => {
+    const access = await call("POST", `/v1/sources/${sourceId}/assertion`, {
+      body: { device },
+      token: cloudToken,
     });
-  const protocols = async () => {
-    const { ticket } = await api("/api/identity/ws-ticket", {
-      method: "POST",
-      body: {},
+    const opened = await openE2eRoute({
+      url: `${socketOrigin.replace(/^https?/, "https")}/s/${sourceId}`,
+      caPem: ca,
+      sourceId,
+      relayToken: access.relayToken,
+      assertion: access.assertion,
+      approve,
+      seed,
+      name: "language-load",
     });
-    return [`armadra-ticket.${ticket}`, `armadra-relay.${relayToken}`];
+    await opened.login();
+    cleanups.push(() => opened.close());
+    return {
+      name: "relay",
+      api: (path, init = {}) =>
+        opened.json(init.method ?? "GET", path, init.body),
+      socket: opened.socket,
+      protocols: opened.protocols,
+    };
   };
-  /** 经中继的来路；`socketOrigin` 给了就让 WebSocket 先过塑形代理（TLS 原样透传）。 */
-  const routeVia = (socketOrigin = issuer) => ({
-    name: "relay",
-    api,
-    socket: (path, list = []) =>
-      new WebSocket(
-        `${socketOrigin.replace(/^https?/, "wss")}${base}${path}`,
-        list,
-        {
-          ca,
-          servername: "",
-          origin: nativeOrigin,
-          maxPayload: 64 * 1024 * 1024,
-        },
-      ),
-  });
+  /** 经中继的来路；`socketOrigin` 给了就让通道先过塑形代理（TLS 原样透传）。 */
+  const routeVia = (socketOrigin = issuer) => openRoute(socketOrigin);
+  const route = await routeVia();
   return {
     issuer,
-    route: routeVia(),
+    route,
     routeVia,
-    protocols,
+    protocols: route.protocols,
     log: () => relayLog,
   };
 }
@@ -1148,7 +1138,7 @@ async function main() {
       for (const mode of ["fair", "fifo"]) {
         const shaper = await startShaper(relay.issuer, mode);
         const route = {
-          ...relay.routeVia(shaper.origin),
+          ...(await relay.routeVia(shaper.origin)),
           drained: shaper.drained,
         };
         for (const [key, load] of [
@@ -1161,7 +1151,7 @@ async function main() {
             api,
             workspace.id,
             boardId,
-            relay.protocols,
+            route.protocols,
             load,
           );
           report.relay[`${mode} ${key}`] = result;
