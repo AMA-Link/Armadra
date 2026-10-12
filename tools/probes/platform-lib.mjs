@@ -25,10 +25,13 @@ import { Agent as HttpsAgent, request as httpsRequest } from "node:https";
 import { createRequire } from "node:module";
 import { join } from "node:path";
 
+import { approveWith, openE2eRoute } from "./e2e-client.mjs";
 import { isolatedEnv, probeHome } from "./probe-home.mjs";
 import { probeSession } from "./probe-session.mjs";
 import { attachRenderer } from "./relay-desktop.mjs";
 import { freePort, root, sleep, until } from "./ui-features/harness.mjs";
+
+export { approveWith };
 
 /* ------------------------------ 对中继的调用 ------------------------------ */
 
@@ -923,56 +926,38 @@ export async function registerSource({
 /* --------------------------- 经中继直接对一台源说话 --------------------------- */
 
 /**
- * 像原生客户端那样经中继连一台源（不经页面）：断言 + 中继令牌 → 经中继
- * `cloud/login` 换 core 会话（来源 `https://localhost`）。答
- * `{ base, relayToken, api(method, path, body?), raw(method, path, headers?),
- * protocols(), socket(path, protocols) }`；`raw` 不解析正文，给 `Range` 一类用。
+ * 像原生客户端那样经中继连一台源（不经页面）：断言 + 中继令牌 → 开端到端通道（契约
+ * §78，中继只转这一条）→ 经通道 `cloud/login` 换 core 会话（来源 `https://localhost`）。
+ * 新设备由 `approve(pendingId, sas)` 放行（`approveWith(session)`，主人那台 core 的会话）。
+ * 答 `e2e-client.mjs::openE2eRoute` 的路由对象，另带 `api(method, path, body?)`（JSON）。
+ * 路径都是源内路径（`/api/...`），不带 `/s/<id>`。
  */
 export async function relayedRoute({
   relay,
   cloudToken,
   sourceId,
   device,
+  approve,
+  seed,
   onSecret = () => {},
 }) {
-  const origin = "https://localhost";
   const access = await relay.must("POST", `/v1/sources/${sourceId}/assertion`, {
     body: { device },
     token: cloudToken,
   });
   const relayToken = onSecret("中继令牌", access.relayToken);
-  const base = `/s/${sourceId}`;
-  const headers = { origin, "armadra-relay-token": relayToken };
-  const login = await relay.must("POST", `${base}/api/identity/cloud/login`, {
-    body: { assertion: access.assertion },
-    headers,
+  const route = await openE2eRoute({
+    url: `${relay.issuer}/s/${sourceId}`,
+    caPem: relay.caPem,
+    sourceId,
+    relayToken,
+    assertion: access.assertion,
+    approve,
+    seed,
+    name: device.name,
   });
-  const accessToken = onSecret(
-    "经中继的 core 会话",
-    login.session.native.accessToken,
-  );
-  const api = (method, path, body) =>
-    relay.must(method, `${base}${path}`, {
-      body,
-      token: accessToken,
-      headers,
-    });
-  const raw = (method, path, extra = {}) =>
-    relay.call(method, path, { headers: extra });
-  const protocols = async () => {
-    const { ticket } = await api("POST", "/api/identity/ws-ticket", {});
-    return [`armadra-ticket.${ticket}`, `armadra-relay.${relayToken}`];
-  };
-  const WebSocketImpl = createRequire(join(root, "apps/desktop/package.json"))(
-    "ws",
-  );
-  const socket = (path, list) =>
-    new WebSocketImpl(
-      `${relay.issuer.replace(/^http/, "ws")}${base}${path}`,
-      list,
-      { ca: relay.caPem, servername: "", origin, maxPayload: 64 * 1024 * 1024 },
-    );
-  return { base, relayToken, api, raw, protocols, socket };
+  onSecret("经中继的 core 会话", await route.login());
+  return { ...route, relayToken, api: route.json };
 }
 
 /** 等一条 `ws` 连接打开；升级被拒时带上状态码。 */
