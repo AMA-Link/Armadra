@@ -29,6 +29,8 @@ import { isNativeAppPage } from "../api/runtime-url";
  * | `openExternal({ url })`               | —（系统浏览器打开；只收 https / 回环 http）          |
  * | `appInfo()`                           | `{ version, build }`（App 自己的版本名与构建号，取自安装包） |
  * | `installApk({ url, sha256 })`         | `{ status, message? }`（Android 下载、核对、拉起安装器；从不 reject；iOS 固定 `failed`） |
+ * | `trafficLoad()`                       | `{ rows: NativeTrafficRow[] }`（客户端流量的日桶，原生存储：iOS UserDefaults / Android SharedPreferences，保留 90 天；设计 §6.4） |
+ * | `trafficSave({ rows })`               | —（整份替换；原生校验形状与上限，越界整份拒绝）     |
  * | `e2eDeviceSeed()`                     | `{ seed }`（端到端通道的设备钥种子，32 字节 base64url，没有就生成，只在钥匙串 / Keystore；契约 §78） |
  *
  * 事件（`addListener`）：`pushTokenRotated`——App 开着时令牌换了（Android
@@ -104,6 +106,20 @@ export interface InstallApkResult {
   readonly message?: string;
 }
 
+/**
+ * 客户端流量的一个日桶（本地日 × 源 × 类别）：这台手机经中继与那个源收发的明文
+ * 字节。原生按行存，页面与 `sources/traffic-meter.ts` 的账本同形。
+ */
+export interface NativeTrafficRow {
+  /** 本地日 `YYYY-MM-DD`。 */
+  readonly day: string;
+  readonly sourceId: string;
+  readonly category: string;
+  readonly bytesIn: number;
+  readonly bytesOut: number;
+  readonly streams: number;
+}
+
 /** 原生 App 跑在哪个系统上；不在原生 App 里是 `null`。 */
 export type NativePlatform = "android" | "ios";
 
@@ -138,6 +154,13 @@ export interface NativeBridge {
   installApk(url: string, sha256: string): Promise<InstallApkResult>;
   /** 端到端通道的设备钥种子（32 字节）；不在原生 App 里或旧安装包没有这个方法是 `null`。 */
   e2eDeviceSeed(): Promise<Uint8Array | null>;
+  /** 客户端流量的原生存储（`ArmadraNative.traffic`）。 */
+  readonly traffic: {
+    /** 读出全部日桶；原生不可用或读失败是 `null`（与「还没有」的 `[]` 区分）。 */
+    load(): Promise<NativeTrafficRow[] | null>;
+    /** 整份替换；写成功是 `true`。 */
+    save(rows: readonly NativeTrafficRow[]): Promise<boolean>;
+  };
 }
 
 interface PluginListenerHandle {
@@ -164,6 +187,10 @@ interface ArmadraNativePlugin {
   appInfo?(): Promise<unknown>;
   installApk?(options: { url: string; sha256: string }): Promise<unknown>;
   e2eDeviceSeed?(): Promise<unknown>;
+  trafficLoad?(): Promise<unknown>;
+  trafficSave?(options: {
+    rows: readonly NativeTrafficRow[];
+  }): Promise<unknown>;
   addListener?(
     event: string,
     listener: () => void,
@@ -245,6 +272,30 @@ function listOf<T>(
     const parsed = parse(item);
     return parsed === null ? [] : [parsed];
   });
+}
+
+const TRAFFIC_DAY = /^\d{4}-\d{2}-\d{2}$/;
+
+function trafficRow(value: unknown): NativeTrafficRow | null {
+  if (!value || typeof value !== "object") return null;
+  const { day, sourceId, category, bytesIn, bytesOut, streams } =
+    value as Record<string, unknown>;
+  const count = (one: unknown): one is number =>
+    typeof one === "number" && Number.isFinite(one) && one >= 0;
+  if (
+    typeof day !== "string" ||
+    !TRAFFIC_DAY.test(day) ||
+    typeof sourceId !== "string" ||
+    !SOURCE_ID.test(sourceId) ||
+    typeof category !== "string" ||
+    category === "" ||
+    category.length > 32 ||
+    !count(bytesIn) ||
+    !count(bytesOut) ||
+    !count(streams)
+  )
+    return null;
+  return { day, sourceId, category, bytesIn, bytesOut, streams };
 }
 
 function peekResult(value: unknown): PeekResult | null {
@@ -393,6 +444,10 @@ const WEB_BRIDGE: NativeBridge = {
   appInfo: () => Promise.resolve(null),
   installApk: () => Promise.resolve({ status: "failed" }),
   e2eDeviceSeed: () => Promise.resolve(null),
+  traffic: {
+    load: () => Promise.resolve(null),
+    save: () => Promise.resolve(false),
+  },
 };
 
 /** `{ seed }`（32 字节 base64url）→ 字节；不对是 `null`。 */
@@ -536,6 +591,20 @@ export function nativeBridge(): NativeBridge {
         deviceSeed,
         null,
       ),
+    traffic: {
+      load: () =>
+        quiet(
+          native.trafficLoad && (() => native.trafficLoad!()),
+          (value) => listOf(value, "rows", trafficRow),
+          null,
+        ),
+      save: (rows) =>
+        quiet(
+          native.trafficSave && (() => native.trafficSave!({ rows })),
+          () => true,
+          false,
+        ),
+    },
     installApk: (url, sha256) =>
       externalUrl(url) && /^[0-9a-f]{64}$/i.test(sha256)
         ? quiet(

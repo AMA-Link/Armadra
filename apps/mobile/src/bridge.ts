@@ -47,6 +47,9 @@ export interface ArmadraNativePlugin {
   appInfo(): Promise<{ version?: string; build?: string }>;
   /** 端到端通道的设备钥种子（base64url，32 字节），没有就生成（契约 §78）。 */
   e2eDeviceSeed(): Promise<{ seed?: string }>;
+  /** 客户端流量的日桶（设计 §6.4）：整份读、整份写。 */
+  trafficLoad(): Promise<{ rows?: unknown[] }>;
+  trafficSave(options: { rows: readonly unknown[] }): Promise<void>;
   pushRegistration(): Promise<{
     registration?: {
       platform: "ios" | "android";
