@@ -8,6 +8,7 @@ import {
 } from "../../geometry";
 import { edgeArrowheads, edgeLabelKey } from "../../sync/project";
 import { roundedPath, routeEdge, type Route, type SidePair } from "./route";
+import { SOFT_RADIUS } from "./smooth";
 
 /**
  * 一条上下文连线画成什么样（纯函数，`LinkEdge.tsx` 与单测共用）。
@@ -28,8 +29,8 @@ export const INTERACTION_WIDTH = 24;
 export const ARROW_SIZE = 11;
 const ARROW_SPREAD = 0.45;
 
-/** 拐角圆角半径（画布单位）。 */
-export const CORNER_RADIUS = 14;
+/** 拐角基准半径（画布单位）；窄处按间距自适应（`smooth.ts`）。 */
+export const CORNER_RADIUS = SOFT_RADIUS;
 
 const ALL_SIDES: readonly Side[] = ["top", "right", "bottom", "left"];
 
@@ -125,7 +126,9 @@ export function linkView(
     anchor,
     options.previous,
   );
-  const d = roundedPath(route.points, CORNER_RADIUS);
+  const d = roundedPath(route.points, CORNER_RADIUS, [
+    ...(options.obstacles ?? []),
+  ]);
   const labelKey = edgeLabelKey(sourceType, targetType, role);
   if (role === "supervises") {
     return { route, d, labelKey, arrowStart: false, arrowEnd: true };

@@ -1,6 +1,7 @@
 import type { Position } from "@armadra/shared";
 
 import { anchorPoint, type Box, type Side } from "../../geometry";
+import { SOFT_RADIUS, softPath } from "./smooth";
 
 /**
  * 连线的避障正交路由（纯函数，#318）。
@@ -449,12 +450,11 @@ export function routeEdge(request: RouteRequest): Route {
       const dx = Math.max(0, box.x - maxX, minX - (box.x + box.width));
       const dy = Math.max(0, box.y - maxY, minY - (box.y + box.height));
       if (k < 2 && (horizontal ? dx > 0 : dy > 0)) continue;
-      const deficit = ROUTE_MIN_CLEARANCE - Math.hypot(dx, dy);
+      const deficit =
+        (ROUTE_MIN_CLEARANCE - Math.hypot(dx, dy)) / ROUTE_MIN_CLEARANCE;
       if (deficit > worst) worst = deficit;
     }
-    return worst > 0
-      ? NARROW_BASE + (worst / ROUTE_MIN_CLEARANCE) * NARROW_COST
-      : 0;
+    return worst > 0 ? NARROW_BASE + worst * NARROW_COST : 0;
   };
 
   // 网格边是否可走：0 未测，1 可走，2 被挡；可走时另记贴边罚的倍数。
@@ -643,42 +643,16 @@ export function smoothJogs(
   return points;
 }
 
-/** 折线的 SVG 路径，拐角做半径不超过 `radius` 的圆角（二次曲线）。 */
+/**
+ * 折线的 SVG 路径：拐角是二次曲线，没有尖角（`smooth.ts`）。
+ * `obstacles` 给了就让弧避开拐角内侧的节点。
+ */
 export function roundedPath(
   points: readonly Position[],
-  radius: number = 14,
+  radius: number = SOFT_RADIUS,
+  obstacles: readonly Box[] = [],
 ): string {
-  if (points.length === 0) return "";
-  const head = points[0]!;
-  let d = `M ${head.x},${head.y}`;
-  for (let k = 1; k < points.length - 1; k += 1) {
-    const prev = points[k - 1]!;
-    const corner = points[k]!;
-    const next = points[k + 1]!;
-    const inLength = Math.hypot(corner.x - prev.x, corner.y - prev.y);
-    const outLength = Math.hypot(next.x - corner.x, next.y - corner.y);
-    const r = Math.min(radius, inLength / 2, outLength / 2);
-    if (r < 0.5 || inLength === 0 || outLength === 0) {
-      d += ` L ${corner.x},${corner.y}`;
-      continue;
-    }
-    const a = {
-      x: corner.x - ((corner.x - prev.x) / inLength) * r,
-      y: corner.y - ((corner.y - prev.y) / inLength) * r,
-    };
-    const b = {
-      x: corner.x + ((next.x - corner.x) / outLength) * r,
-      y: corner.y + ((next.y - corner.y) / outLength) * r,
-    };
-    d += ` L ${round(a.x)},${round(a.y)} Q ${corner.x},${corner.y} ${round(b.x)},${round(b.y)}`;
-  }
-  const tail = points[points.length - 1]!;
-  if (points.length > 1) d += ` L ${tail.x},${tail.y}`;
-  return d;
-}
-
-function round(value: number): number {
-  return Math.round(value * 100) / 100;
+  return softPath(points, obstacles, radius);
 }
 
 /** 折线上按弧长取一半处的点。 */
