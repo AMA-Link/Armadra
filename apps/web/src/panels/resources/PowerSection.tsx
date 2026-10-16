@@ -64,27 +64,15 @@ export function PowerSection({
 
   return (
     <section className="rounded-[var(--r-card)] border border-border p-3">
-      <header className="mb-2 flex flex-wrap items-center gap-2">
-        <h3 className="text-[13px] font-semibold">{t("resources.power")}</h3>
-        <Badge
-          variant={power.holding ? "default" : "ghost"}
-          className="text-[11px]"
-        >
-          {power.holding
-            ? t("resources.power.holding")
-            : t("resources.power.idle")}
-        </Badge>
-        {power.mechanism && (
-          <Badge
-            variant="outline"
-            className="font-mono text-[length:var(--text-caption)]"
-          >
-            {power.mechanism}
-          </Badge>
-        )}
-      </header>
-
-      <div className="flex items-center gap-2 py-1">
+      <div
+        className="flex items-center gap-2 py-1"
+        // 只挡系统空闲睡眠：说明留在悬停提示里。
+        title={
+          power.inhibitor.available
+            ? t("resources.power.scope")
+            : (power.inhibitor.detail ?? t("resources.power.unavailable"))
+        }
+      >
         <Switch
           id="power-manual"
           checked={manual !== null}
@@ -94,21 +82,7 @@ export function PowerSection({
         <label htmlFor="power-manual" className="flex-1 text-[12px]">
           {t("resources.power.manual")}
         </label>
-        <span className="text-[11px] text-muted-foreground">
-          {t(`resources.power.policy.${power.policy}`)}
-        </span>
       </div>
-
-      {!power.inhibitor.available && (
-        <p className="pt-1 text-[11px] text-muted-foreground">
-          {power.inhibitor.detail ?? t("resources.power.unavailable")}
-        </p>
-      )}
-
-      {/* 只挡空闲睡眠——这句必须一直在，不然界面等于在承诺它做不到的事。 */}
-      <p className="pt-1 text-[11px] text-muted-foreground">
-        {t("resources.power.scope")}
-      </p>
 
       {power.leases.length > 0 && (
         <ul className="mt-2 flex flex-col gap-0.5 border-t border-border pt-2">

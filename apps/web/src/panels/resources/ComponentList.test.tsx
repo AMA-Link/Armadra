@@ -45,9 +45,14 @@ describe("平台组件列表", () => {
     expect(screen.getByText("桌面主进程")).toBeTruthy();
     expect(screen.getByText("GPU 进程")).toBeTruthy();
     expect(screen.getByText("浏览器节点页面")).toBeTruthy();
-    expect(
-      screen.getAllByText(/只算这个进程；它启动的会话在上面各有一行/),
-    ).toHaveLength(1);
-    expect(screen.getAllByText(/单个进程/)).toHaveLength(3);
+    // 说明进了悬停提示，行内不再写一行小字。
+    expect(screen.queryByText(/只算这个进程/)).toBeNull();
+    const titles = screen
+      .getAllByRole("listitem")
+      .map((item) => item.getAttribute("title") ?? "");
+    expect(titles.filter((title) => /只算这个进程/.test(title))).toHaveLength(
+      1,
+    );
+    expect(titles.filter((title) => /单个进程/.test(title))).toHaveLength(3);
   });
 });

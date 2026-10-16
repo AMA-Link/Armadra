@@ -37,6 +37,7 @@ import {
   formatCount,
   formatMetricBytes,
   formatPercent,
+  isIdleSession,
   liveSessions,
   sessionsOnHost,
   sortSessions,
@@ -76,6 +77,7 @@ export function SessionTable({
   const host = controlledHost ?? ownHost;
   const setHost = onHost ?? setOwnHost;
   // 展开的会话；默认全收起，因为大多数会话下面只有一个 shell。
+  const [showIdle, setShowIdle] = useState(false);
   const [expanded, setExpanded] = useState<ReadonlySet<string>>(
     () => new Set(),
   );
@@ -100,6 +102,14 @@ export function SessionTable({
     sort,
     titleOf,
   );
+  const isHigh = (session: SessionResources) =>
+    crossedThreshold(session.memoryBytes, threshold);
+  const idleCount = rows.filter((row) =>
+    isIdleSession(row, isHigh(row)),
+  ).length;
+  const visibleRows = showIdle
+    ? rows
+    : rows.filter((row) => !isIdleSession(row, isHigh(row)));
   const hostLabel = (value: string | null) => {
     if (value === null) return t("resources.host.filter.unknown");
     if (value === LOCAL_HOST) return t("resources.host.filter.local");
@@ -122,9 +132,6 @@ export function SessionTable({
   // 远端工作空间还没开终端时正是要看远端那张卡的时候。
   const filter = hosts.length > 1 && (
     <div className="flex items-center gap-1 pb-1">
-      <span className="text-[11px] text-muted-foreground">
-        {t("resources.host.filter")}
-      </span>
       {(["all", ...hosts] as const).map((value) => (
         <Button
           variant="ghost"
@@ -143,26 +150,11 @@ export function SessionTable({
     </div>
   );
 
-  if (live.length === 0) {
-    return (
-      <>
-        {filter}
-        <p className="px-1 py-2 text-[12px] text-muted-foreground">
-          {t("resources.noSessions")}
-        </p>
-      </>
-    );
-  }
+  if (live.length === 0) return <>{filter}</>;
 
   return (
     <>
       {filter}
-
-      {rows.length === 0 && (
-        <p className="px-1 py-2 text-[12px] text-muted-foreground">
-          {t("resources.host.filterEmpty")}
-        </p>
-      )}
 
       <div className="flex items-center gap-1 pb-1">
         {/* 排序只换看的顺序，测不出来的一律排在最后，不当 0 混进来。 */}
@@ -174,7 +166,6 @@ export function SessionTable({
             type="button"
             onClick={() => onSorted(key)}
             data-active={sort === key ? "true" : undefined}
-            title={t("resources.sort.hint")}
             className="h-auto rounded-[var(--r-control)] px-1.5 py-0.5 text-[11px] font-normal text-muted-foreground hover:bg-accent data-[active=true]:bg-accent data-[active=true]:text-foreground"
           >
             {t(`resources.sort.${key}`)}
@@ -183,7 +174,7 @@ export function SessionTable({
       </div>
 
       <ul className="flex flex-col gap-0.5">
-        {rows.map((session) => {
+        {visibleRows.map((session) => {
           const reasonKey = unknownReasonKey(session.unknownReason);
           // 高占用只是高亮：面板不会自动结束任何会话（设计 §8）。
           const high = crossedThreshold(session.memoryBytes, threshold);
@@ -207,6 +198,7 @@ export function SessionTable({
             <li
               key={session.sessionId}
               data-high={high ? "true" : undefined}
+              title={detail}
               className="group flex flex-col rounded-[var(--r-control)] px-1.5 py-1 hover:bg-accent data-[high=true]:bg-[var(--danger)]/8"
             >
               {/*
@@ -284,13 +276,8 @@ export function SessionTable({
                   )}
                 </div>
               </div>
-              <div className="flex w-full items-start gap-2 pl-8">
-                <div
-                  className="min-w-0 flex-1 text-[11px] text-muted-foreground [overflow-wrap:anywhere]"
-                  title={detail}
-                >
-                  {detail}
-                </div>
+              <div className="flex w-full items-center gap-2 pl-8">
+                <span className="flex-1" />
                 <span className="w-14 shrink-0 text-right text-[12px] tabular-nums">
                   {formatPercent(session.cpuPercent)}
                 </span>
@@ -321,6 +308,21 @@ export function SessionTable({
           );
         })}
       </ul>
+
+      {idleCount > 0 && (
+        <Button
+          variant="ghost"
+          size="xs"
+          type="button"
+          data-slot="resource-idle-toggle"
+          aria-expanded={showIdle}
+          onClick={() => setShowIdle((current) => !current)}
+          className="mt-1 text-[11px] font-normal text-muted-foreground"
+        >
+          {showIdle ? <ChevronDown /> : <ChevronRight />}
+          {t("resources.idle", { count: idleCount })}
+        </Button>
+      )}
 
       <ResponsiveAlertDialog
         open={ending !== null}

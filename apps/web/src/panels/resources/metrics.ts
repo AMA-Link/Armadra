@@ -252,3 +252,18 @@ export function sessionsOnHost(
       executionHostOf(session, nodes, workspaceExecutionHostId) === host,
   );
 }
+
+/**
+ * 空闲的会话：没有可用的进程号 / 已休眠，或者几乎不占 CPU 且没有子进程。
+ * 资源面板默认把它们折起来；内存越线的永远不算空闲。
+ */
+export function isIdleSession(
+  session: SessionResources,
+  high: boolean,
+): boolean {
+  if (high) return false;
+  // 远端会话本机测不到指标，不是空闲：留在列表里。
+  if (session.unknownReason === "remote") return false;
+  if (session.unknownReason !== null) return true;
+  return (session.cpuPercent ?? 0) < 1 && session.childCount === 0;
+}

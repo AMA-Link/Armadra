@@ -11,10 +11,8 @@ import { Badge } from "@/ui/badge";
 import {
   UNKNOWN,
   diskUsedPercent,
-  formatLoad,
   formatMetricBytes,
   formatPercent,
-  formatUptime,
   memoryUsedPercent,
 } from "./metrics";
 
@@ -27,12 +25,6 @@ export function HostCard({
   name?: string;
 }) {
   const t = useT();
-  const uptime = formatUptime(host.uptimeSeconds, {
-    day: t("resources.unit.day"),
-    hour: t("resources.unit.hour"),
-    minute: t("resources.unit.minute"),
-  });
-
   const cores =
     typeof host.cpuCores === "number"
       ? t("resources.host.cores", { count: host.cpuCores })
@@ -45,12 +37,6 @@ export function HostCard({
         )}`
       : UNKNOWN;
 
-  const load = host.loadAverage
-    ? `${formatLoad(host.loadAverage.one)} · ${formatLoad(
-        host.loadAverage.five,
-      )} · ${formatLoad(host.loadAverage.fifteen)}`
-    : UNKNOWN;
-
   const disk = host.disk
     ? `${formatMetricBytes(host.disk.availableBytes)} / ${formatMetricBytes(
         host.disk.totalBytes,
@@ -59,22 +45,13 @@ export function HostCard({
 
   return (
     <section className="rounded-[var(--r-card)] border border-border p-3">
-      <header className="mb-2 flex flex-wrap items-center gap-2">
+      <header className="mb-2 flex items-center gap-2">
         <h3 className="text-[13px] font-semibold">{t("resources.host")}</h3>
-        {/* 测量来源必须一直显示：控制机的内存不能代表 SSH 主机（设计 §8）。 */}
-        <Badge variant="outline" className="font-mono text-[11px]">
-          {host.platform}
-        </Badge>
-        <Badge variant="ghost" className="text-[11px]">
-          {t(`resources.location.${host.location}`)}
-        </Badge>
         {name !== undefined && (
           <Badge variant="secondary" className="max-w-40 truncate text-[11px]">
             {name}
           </Badge>
         )}
-        <div className="flex-1" />
-        <PowerBadge host={host} />
       </header>
 
       {/*
@@ -105,7 +82,6 @@ export function HostCard({
           title={t("resources.pressure.hint")}
         />
         <Metric label={t("resources.host.swap")} value={swap} />
-        <Metric label={t("resources.host.load")} value={load} />
         <Metric
           label={t("resources.host.disk")}
           value={formatPercent(diskUsedPercent(host))}
@@ -113,32 +89,8 @@ export function HostCard({
           // 挂载点可能是一长串临时目录，折行会把卡片撑高四五行；放进悬停提示。
           title={host.disk?.mountPoint}
         />
-        <Metric label={t("resources.host.uptime")} value={uptime} />
       </dl>
     </section>
-  );
-}
-
-/** 电源。桌面机没有电池，那时只有 `ac` 而没有百分比——和「读不出来」不同。 */
-function PowerBadge({ host }: { host: HostResources }) {
-  const t = useT();
-  const { source, batteryPercent, charging } = host.power;
-  if (source === null && batteryPercent === null) {
-    return (
-      <span className="text-[11px] text-muted-foreground">
-        {t("resources.host.powerUnknown")}
-      </span>
-    );
-  }
-  const parts = [
-    source ? t(`resources.power.${source}`) : null,
-    typeof batteryPercent === "number" ? formatPercent(batteryPercent) : null,
-    charging === true ? t("resources.power.charging") : null,
-  ].filter((part): part is string => part !== null);
-  return (
-    <Badge variant="ghost" className="text-[11px] tabular-nums">
-      {parts.join(" · ")}
-    </Badge>
   );
 }
 
