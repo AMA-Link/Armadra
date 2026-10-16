@@ -115,6 +115,15 @@ export function useTerminalSession(
 
   React.useEffect(() => {
     void ensureSession(false);
+    // 节点先于工作空间挂上时（恢复、切换源的瞬间）`ensureSession` 读不到工作空间
+    // 就返回，之后没人再叫它：节点永远建不出会话。工作空间一到补一次。
+    if (useCanvasStore.getState().workspace) return;
+    const stop = useCanvasStore.subscribe((state) => {
+      if (!state.workspace) return;
+      stop();
+      void ensureSession(false);
+    });
+    return stop;
     // `attempt` 递增 = 用户点了「重新运行」
   }, [attempt, ensureSession]);
 
