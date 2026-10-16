@@ -127,6 +127,19 @@ describe("侧栏三组", () => {
     ]);
   });
 
+  it("等对端上线（waitingForSource）：和离线一样灰着，列记下的名字", () => {
+    const groups = groupWorkspaces({
+      sources: [LOCAL, connection(descriptor("away"), "waitingForSource")],
+      states: {},
+      listings: new Map([["local", listing(["Home"])]]),
+      cached: () => [{ id: "w1", name: "Old" }],
+    });
+    expect(groups[1]!.sections[0]).toMatchObject({
+      state: "offline",
+      stale: true,
+    });
+  });
+
   it("就绪但查询还在路上或失败：在连 / 离线，用记下的；状态以订阅到的为准", () => {
     const groups = groupWorkspaces({
       sources: [

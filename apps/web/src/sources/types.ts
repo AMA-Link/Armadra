@@ -116,6 +116,11 @@ export interface SourceAccess {
   readonly e2e?: {
     readonly fetch: typeof fetch;
     readonly WebSocket: typeof WebSocket;
+    /**
+     * 这条通道关了时叫（只叫一次；已经关了立刻叫），答退订。访问里的 `fetch` /
+     * `WebSocket` 绑在这一条通道上，关了之后这份访问就不能再用，要重新取。
+     */
+    readonly onClose?: (listener: () => void) => () => void;
   };
 }
 

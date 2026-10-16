@@ -106,7 +106,12 @@ describe("本机经端到端通道登录别的电脑", () => {
     const open = vi
       .spyOn(E2eClientChannel, "open")
       .mockRejectedValueOnce(
-        new E2eChannelError("unreachable", "e2e_unsupported", 4404),
+        new E2eChannelError(
+          "unreachable",
+          "relay closed",
+          4404,
+          "e2e_unsupported",
+        ),
       );
     const { peer, address } = client();
     await expect(
@@ -115,6 +120,27 @@ describe("本机经端到端通道登录别的电脑", () => {
         signAssertion({ aud: sourceId, nowMs: Date.now() }),
       ),
     ).rejects.toMatchObject({ code: "e2e_unsupported" });
+    open.mockRestore();
+  });
+
+  it("中继说对端不在线（4404，原因 source_offline）：source_offline，不是 e2e_unsupported", async () => {
+    const open = vi
+      .spyOn(E2eClientChannel, "open")
+      .mockRejectedValueOnce(
+        new E2eChannelError(
+          "unreachable",
+          "relay closed",
+          4404,
+          "source_offline",
+        ),
+      );
+    const { peer, address } = client();
+    await expect(
+      peer.cloudLogin(
+        address,
+        signAssertion({ aud: sourceId, nowMs: Date.now() }),
+      ),
+    ).rejects.toMatchObject({ code: "source_offline" });
     open.mockRestore();
   });
 

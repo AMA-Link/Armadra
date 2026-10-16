@@ -163,6 +163,7 @@ function e2eFailure(error: unknown): never {
       throw unauthorized(SOURCE_ERROR.e2eDeviceUnavailable);
     if (error.code === "unreachable")
       throw unauthorized(SOURCE_ERROR.unreachable);
+    if (error.code === "offline") throw unauthorized(SOURCE_ERROR.offline);
     throw unauthorized();
   }
   throw error;
@@ -326,6 +327,7 @@ export function createRelayedAccess(
       e2e: {
         fetch: e2e.fetchFor(channel, base),
         WebSocket: e2e.socketFor(channel, base),
+        onClose: (listener) => channel.onClose(() => listener()),
       },
     };
   };

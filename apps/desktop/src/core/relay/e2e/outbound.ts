@@ -9,7 +9,8 @@
  * identity_pub`）：第一次记下，之后变了拒绝。
  *
  * 没有明文退路：连不上答 `source_unreachable`；中继说对端没有通道（旧 core，关闭码
- * 4404 / 4409）答 `e2e_unsupported`。
+ * 4409，或 4404 且原因 `e2e_unsupported`）答 `e2e_unsupported`，对端不在线（4404 其余）答
+ * `source_offline`。
  */
 
 import {
@@ -17,6 +18,7 @@ import {
   E2eChannelError,
   E2eClientChannel,
   channelFetch,
+  relayRefusal,
 } from "@armadra/shared/e2e";
 import { identityFingerprint } from "@armadra/platform-protocol/e2e";
 import { WebSocket as Ws } from "ws";
@@ -146,11 +148,11 @@ export class OutboundChannels {
         error.code === "identity_mismatch"
       )
         throw fail("identity_changed", "这台电脑的身份变了");
-      if (
-        error instanceof E2eChannelError &&
-        (error.closeCode === 4404 || error.closeCode === 4409)
-      )
+      const refusal = relayRefusal(error);
+      if (refusal === "unsupported")
         throw fail("e2e_unsupported", "这台电脑没有端到端通道，需要升级");
+      if (refusal === "offline")
+        throw fail("source_offline", "这台机器当前不在线");
       throw fail("source_unreachable", "连不上这台电脑的端到端通道");
     }
     if (

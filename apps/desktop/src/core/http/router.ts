@@ -66,6 +66,17 @@ export interface HandlerResult {
    * 失败只能断开连接。进程内的调用方（测试）用 {@link handlerBytes} 取字节。
    */
   readonly file?: LocalFileBody;
+  /**
+   * 一份长度已知、字节随取随写的正文（远端工作空间的整份下载，契约 §37.2）：
+   * 服务器边迭代边写，写得慢就不再取，不把整份攒在内存里；`content-length`
+   * 取 `size`。头发出去之后迭代抛错或字节数对不上只能断开连接。
+   */
+  readonly stream?: ByteStreamBody;
+}
+
+export interface ByteStreamBody {
+  readonly size: number;
+  readonly chunks: AsyncIterable<Buffer>;
 }
 
 export interface LocalFileBody {
@@ -77,7 +88,14 @@ export interface LocalFileBody {
  * 一个答复的正文字节（进程内调用路由表的人用）：`file` 读盘、`raw` 原样、
  * 其余没有。服务器自己不走这里——它流式写 `file`。
  */
-export function handlerBytes(answer: HandlerResult): Buffer | undefined {
+export async function handlerBytes(
+  answer: HandlerResult,
+): Promise<Buffer | undefined> {
+  if (answer.stream !== undefined) {
+    const parts: Buffer[] = [];
+    for await (const part of answer.stream.chunks) parts.push(part);
+    return Buffer.concat(parts);
+  }
   if (answer.file !== undefined) {
     return readFileSync(answer.file.absolute).subarray(0, answer.file.size);
   }

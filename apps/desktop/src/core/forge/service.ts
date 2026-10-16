@@ -653,6 +653,19 @@ export class ForgeService {
       await this.dropSecret(removed.credentialRef);
   }
 
+  /** 某个工作空间自己的托管配置引用的令牌条目（整机的不算）。 */
+  workspaceCredentialRefs(workspaceId: string): string[] {
+    return this.options.store
+      .list(workspaceId)
+      .map((row) => row.credentialRef)
+      .filter((reference) => reference !== "");
+  }
+
+  /** 工作空间移除后清掉它的配置引用过的令牌；删不掉的不影响移除。 */
+  async dropWorkspaceSecrets(references: readonly string[]): Promise<void> {
+    for (const reference of references) await this.dropSecret(reference);
+  }
+
   private async dropSecret(reference: string): Promise<void> {
     try {
       await this.options.secrets().delete(reference);

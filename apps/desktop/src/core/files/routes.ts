@@ -16,7 +16,9 @@ import type {
 } from "@armadra/shared";
 import { executeOn, isRemote } from "../remote/execute";
 import {
+  type OpenedDownload,
   download as downloadChunked,
+  openDownload,
   transferUnsupported,
 } from "../remote/transfer";
 import { remoteWatches } from "../remote/watch";
@@ -339,7 +341,7 @@ export function install(context: CoreContext): void {
       const rangeHeader = singleRange(request);
       // 本机工作空间（契约 §37.2）：带 `Range` 只读那一段，不带就交给服务器
       // 边读盘边写——都不把整份文件读进内存，也不受整份下载的 16 MiB 上限。
-      // 远端照旧整份取回再切。
+      // 远端同样分块流式（下面）；Worker 太旧不认分块时才退回整份取回再切。
       if (!isRemote(workspace)) {
         const file = localFile(workspace.rootPath, requested);
         const range = parseRange(rangeHeader, file.size);
@@ -357,6 +359,39 @@ export function install(context: CoreContext): void {
           status: 200,
           file: { absolute: file.absolute, size: file.size },
           headers: downloadHeaders(file.relative),
+        };
+      }
+      const streamed = await openRemoteDownload(workspace, requested);
+      if (streamed !== undefined) {
+        const range = parseRange(rangeHeader, streamed.size);
+        if (range === undefined) {
+          return {
+            status: 200,
+            stream: {
+              size: streamed.size,
+              chunks: streamed.read(0, streamed.size - 1),
+            },
+            headers: downloadHeaders(streamed.path),
+          };
+        }
+        if (range === "unsatisfiable") {
+          return rangedAnswer(
+            streamed.path,
+            streamed.size,
+            range,
+            Buffer.alloc(0),
+          );
+        }
+        return {
+          status: 206,
+          stream: {
+            size: range.end - range.start + 1,
+            chunks: streamed.read(range.start, range.end),
+          },
+          headers: {
+            ...downloadHeaders(streamed.path),
+            "content-range": `bytes ${range.start}-${range.end}/${streamed.size}`,
+          },
         };
       }
       const { path, bytes } = await downloadBytes(workspace, requested);
@@ -752,6 +787,19 @@ async function downloadBytes(
     path,
   })) as { path: string; base64: string };
   return { path: name, bytes: Buffer.from(base64, "base64") };
+}
+
+/** 远端文件的流式下载；Worker 不认分块（太旧）时答 `undefined`，调用方退回单帧。 */
+async function openRemoteDownload(
+  workspace: Workspace,
+  path: string,
+): Promise<OpenedDownload | undefined> {
+  try {
+    return await openDownload(workspace, path);
+  } catch (failure) {
+    if (transferUnsupported(failure)) return undefined;
+    throw failure;
+  }
 }
 
 function workspaceOf(database: DatabaseSync, id: string): Workspace {

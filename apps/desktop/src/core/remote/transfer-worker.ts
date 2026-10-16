@@ -33,7 +33,6 @@ import {
   writeSync,
 } from "node:fs";
 import { join } from "node:path";
-import { MAX_FILE_BYTES } from "../imports/limits";
 import { DomainError, badRequest } from "../workspaces/support";
 import { stateBase } from "./integration-worker";
 
@@ -270,9 +269,6 @@ export function readChunk(
   }
   const info = statSync(resolved.absolute);
   if (!info.isFile()) throw badRequest("Requested path is not a file");
-  if (info.size > MAX_FILE_BYTES) {
-    throw badRequest("File exceeds the 16 MiB download limit");
-  }
   const size = Math.max(
     0,
     Math.min(length, MAX_CHUNK_BYTES, info.size - offset),
