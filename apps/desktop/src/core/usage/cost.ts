@@ -720,7 +720,10 @@ export class ScanState {
       const paths = collectTranscripts(root);
       result.truncated ||= paths.length >= MAX_FILES;
       result.files[agent] = (result.files[agent] ?? 0) + paths.length;
-      for (const path of paths) discovered.push([agent, path]);
+      const owns = COST_SOURCES[agent]?.owns;
+      for (const path of paths) {
+        if (owns === undefined || owns(path)) discovered.push([agent, path]);
+      }
     }
 
     // 一个变短的文件意味着记录被重写过。单独重解析它加不了任何东西（它的 request

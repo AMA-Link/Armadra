@@ -100,6 +100,19 @@ function listFor(agentId: PiAgent, root: string): Candidate[] {
     : found;
 }
 
+/**
+ * 这个文件归 `agentId` 吗：两家的根重合时只认自己写的（`listFor` 同一条规则，
+ * 成本扫描也要守，否则 OMP 的用量被先扫的 Pi 全部认走）。
+ */
+function ownsFile(agentId: PiAgent, path: string): boolean {
+  const other: PiAgent = agentId === "pi" ? "omp" : "pi";
+  const mine = rootsOf(agentId);
+  const shared = rootsOf(other).some((root) =>
+    mine.some((own) => resolve(own) === resolve(root)),
+  );
+  return !shared || writerOf(path) === agentId;
+}
+
 /** `2026-10-02T01-02-03-456Z_<uuid>` → 那个 uuid；形状不对是 `undefined`。 */
 export function sessionIdFromStem(stem: string): string | undefined {
   const separator = stem.lastIndexOf("_");
@@ -352,6 +365,7 @@ function costSourceOf(agentId: PiAgent): AgentCostSource {
   return {
     agentId,
     roots: () => rootsOf(agentId),
+    owns: (path) => ownsFile(agentId, path),
     needles: [Buffer.from('"usage"')],
     absorb(state, value, context) {
       const line = asRecord(value);

@@ -260,6 +260,19 @@ describe("会话索引", () => {
     const root = join(directory, "sessions");
     expect(piAdapter.list(root).map((c) => c.path)).toEqual([pi]);
     expect(ompAdapter.list(root).map((c) => c.path)).toEqual([omp]);
+    // 成本扫描同一条规则：共用一个目录时，OMP 的用量不被先扫的 Pi 认走。
+    const piCost = piAdapter.cost;
+    const ompCost = ompAdapter.cost;
+    if (piCost?.kind !== "jsonl" || ompCost?.kind !== "jsonl")
+      throw new Error("pi / omp must declare a jsonl cost source");
+    expect([pi, omp].map((path) => piCost.source.owns?.(path))).toEqual([
+      true,
+      false,
+    ]);
+    expect([pi, omp].map((path) => ompCost.source.owns?.(path))).toEqual([
+      false,
+      true,
+    ]);
 
     // OMP 用了 profile：两家各有各的根，扫到什么认什么。
     process.env.OMP_PROFILE = "work";

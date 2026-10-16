@@ -97,6 +97,11 @@ export interface AgentCostSource {
   readonly unit?: CostUnit;
   /** 要扫的根目录。这台机器上认不出任何一个时是空数组。 */
   roots(): readonly string[];
+  /**
+   * 这个文件算不算这家的。两家共用一个目录时（Pi 与 OMP 都认
+   * `PI_CODING_AGENT_DIR`）一个文件只该记在写它的那一家名下；缺省全算。
+   */
+  owns?(path: string): boolean;
   /** 解码前的字节预筛，见 `eachAppendedLine`。 */
   readonly needles: readonly Buffer[];
   /** 一行 JSON → 写桶。 */
