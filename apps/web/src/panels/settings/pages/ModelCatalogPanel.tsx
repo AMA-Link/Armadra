@@ -49,7 +49,7 @@ export function ModelCatalogPanel() {
     <SettingsGroup>
       <SettingsRow
         label={t("settings.priceSource")}
-        footnote={t("settings.priceSourceHint", {
+        hint={t("settings.priceSourceHint", {
           path: "model-pricing.json",
         })}
       >

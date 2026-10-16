@@ -77,13 +77,17 @@ export function ControlsCluster() {
         // 是拖窗口。
         {...noDragProps()}
         style={{
+          // 窗口窄、抽屉宽时不能把簇推出容器：右缘最多让到「容器宽 − 簇宽 − 边距」，
+          // 此时簇压在抽屉上，但仍然整个看得见、够得着。
           right: drawer
-            ? `calc(14px + min(100vw, ${WORK_PANEL_WIDTH[drawer]}))`
+            ? `min(calc(14px + min(100vw, ${WORK_PANEL_WIDTH[drawer]})), calc(100% - 58px))`
             : undefined,
         }}
         className={cn(
           BAR,
           "absolute top-[14px] right-[14px] z-[var(--z-cluster)]",
+          // 窗口很矮时簇自己滚，不被裁掉。
+          "max-h-[calc(100%-28px)] overflow-y-auto",
           "transition-[right] duration-150 ease-out motion-reduce:transition-none",
         )}
       >

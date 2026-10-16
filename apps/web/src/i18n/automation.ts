@@ -199,21 +199,12 @@ const zh = {
   "automation.error.unknownOutcome": "结果未知，请刷新确认后再重试",
 
   /* 原生活动卡片 */
-  "activity.source.loop": "CLI 循环",
-  "activity.source.subagent": "子代理",
-  "activity.readOnly": "只读观察",
   "activity.missingSource": "被观察的节点已不在这块画布上",
   "activity.iterations": "已观察 {count} 次",
   "activity.latest": "最近一次",
   "activity.none": "还没有观察到活动",
-  "activity.hideOnly": "隐藏这张卡片不会取消 CLI 自己的循环",
   "activity.convert": "转为平台计划",
-  "activity.convertNote":
-    "会打开预填好的新建向导；确认后创建为草稿，需要再手动启用。原生循环不受影响，也不会被取消。",
   "activity.convertUnavailable": "被观察的节点上没有可作为目标的 Agent 会话",
-  "activity.session": "会话",
-  "activity.job": "任务标识",
-  "activity.generation": "代次",
 } as const;
 
 const en: Record<keyof typeof zh, string> = {
@@ -412,22 +403,13 @@ const en: Record<keyof typeof zh, string> = {
   "automation.error.unknownOutcome":
     "Outcome unknown; reload to check before retrying",
 
-  "activity.source.loop": "CLI loop",
-  "activity.source.subagent": "Subagent",
-  "activity.readOnly": "Read-only observation",
   "activity.missingSource": "The observed node is no longer on this canvas",
   "activity.iterations": "{count} observed",
   "activity.latest": "Latest",
   "activity.none": "No activity observed yet",
-  "activity.hideOnly": "Hiding this card does not cancel the CLI's own loop",
   "activity.convert": "Turn into a platform plan",
-  "activity.convertNote":
-    "Opens the create form pre-filled. Confirming saves a draft you still have to enable; the CLI's own loop is untouched and never cancelled.",
   "activity.convertUnavailable":
     "The observed node has no Agent session to target",
-  "activity.session": "Session",
-  "activity.job": "Job id",
-  "activity.generation": "Generation",
 };
 
 export const automation: MessageModule = { "zh-CN": zh, en };

@@ -79,16 +79,16 @@ export function DriveBadge({
 /**
  * 这一刻人能做的那件事。`undefined` 表示不画按钮。
  *
- * 人自己抢占着（`human`）也给「交还」：那是他十秒之内会自己失去的租约，但在
- * 那十秒里他可能已经做完了，而等十秒不是一个动作。
+ * 人自己敲键盘的抢占（`human`）不算：那是十秒内自己过期的常态，画「你在驱动」
+ * 加「交还」只是每个被敲过的终端多两个词。显式接管（`humanTakeover`）会一直
+ * 持有，才给「交还」。
  */
 export function driveAction(
   lease: DriveLease | undefined,
 ): "takeover" | "release" | undefined {
   if (lease === undefined) return undefined;
   if (lease.state === "agent") return "takeover";
-  if (lease.state === "human" || lease.state === "humanTakeover")
-    return "release";
+  if (lease.state === "humanTakeover") return "release";
   return undefined;
 }
 
@@ -101,7 +101,12 @@ export function driveAction(
 export function driveLabel(
   lease: DriveLease | undefined,
 ): { key: string; name: string } | undefined {
-  if (lease === undefined || lease.state === "free" || !lease.holder) {
+  if (
+    lease === undefined ||
+    lease.state === "free" ||
+    lease.state === "human" ||
+    !lease.holder
+  ) {
     return undefined;
   }
   if (lease.holder.kind === "agent") {

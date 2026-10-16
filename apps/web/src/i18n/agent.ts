@@ -39,21 +39,6 @@ const zh = {
   /* 启动闸门（契约 §52）：自动重试一次之后仍没起来。 */
   "agent.launch.failed": "启动失败",
   "agent.launch.retry": "重试",
-
-  /* 状态来源（协作通道 §3.2 / §3.4）。前两个是同一份认证报告的两种传输，
-     第三个是 PTY 侧的猜测，只作头部提示，不作任何判据。 */
-  "agent.stateSource.hook": "Hook 上报", // i18n-exempt
-  "agent.stateSource.hook.note": "状态来自 CLI 的 Hook 上报。", // i18n-exempt
-  "agent.stateSource.extension": "扩展上报",
-  "agent.stateSource.extension.note": "状态来自 CLI 进程内的扩展上报。",
-  "agent.stateSource.acp": "ACP 上报", // i18n-exempt
-  "agent.stateSource.acp.note": "状态来自 ACP 会话。", // i18n-exempt
-  "agent.stateSource.observed": "终端观测",
-  "agent.stateSource.observed.note":
-    "没有适配器，状态由终端输出推测；交接与消息投递仍会被拒绝。",
-  "agent.stateSource.program": "程序自报",
-  "agent.stateSource.program.note":
-    "状态由终端里的程序自己报告，只作提示；交接与消息投递不以它为准。",
 } as const;
 
 const en: Record<keyof typeof zh, string> = {
@@ -89,21 +74,6 @@ const en: Record<keyof typeof zh, string> = {
   "agent.program.error": "Failed",
   "agent.launch.failed": "Launch failed",
   "agent.launch.retry": "Retry",
-
-  "agent.stateSource.hook": "Reported by hook",
-  "agent.stateSource.hook.note": "The state comes from the CLI's hooks.",
-  "agent.stateSource.extension": "Reported by extension",
-  "agent.stateSource.extension.note":
-    "The state comes from an extension inside the CLI's own process.",
-  "agent.stateSource.acp": "Reported over ACP",
-  "agent.stateSource.acp.note":
-    "The state comes from the Agent Client Protocol session.",
-  "agent.stateSource.observed": "Observed in the terminal",
-  "agent.stateSource.observed.note":
-    "No adapter: the state is a guess from terminal output. Handoffs and message delivery are still refused.",
-  "agent.stateSource.program": "Reported by the program",
-  "agent.stateSource.program.note":
-    "The program in the terminal reports this itself. It is a hint only; handoffs and message delivery do not rely on it.",
 };
 
 export const agent: MessageModule = { "zh-CN": zh, en };

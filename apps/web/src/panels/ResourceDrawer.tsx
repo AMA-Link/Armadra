@@ -28,6 +28,7 @@ import {
   LOCAL_HOST,
   componentsOnHost,
   hostOverviews,
+  liveSessions,
   type SessionSort,
 } from "./resources/metrics";
 import { useResources } from "./resources/use-resources";
@@ -108,45 +109,52 @@ export function ResourceDrawer() {
                 ),
               )}
 
-              <section>
-                <h3 className="mb-1 text-[13px] font-semibold">
-                  {t("resources.sessions")}
-                </h3>
-                <SessionTable
-                  sessions={snapshot.sessions}
-                  sort={sort}
-                  onSorted={setSort}
-                  host={host}
-                  onHost={setHost}
-                  extraHosts={[
-                    ...(snapshot.executionHosts.length > 0 ? [LOCAL_HOST] : []),
-                    ...snapshot.executionHosts.map((entry) => entry.hostId),
-                  ]}
-                  hostName={hostName}
-                />
-              </section>
+              {(liveSessions(snapshot.sessions).length > 0 ||
+                snapshot.executionHosts.length > 0) && (
+                <section>
+                  <h3 className="mb-1 text-[13px] font-semibold">
+                    {t("resources.sessions")}
+                  </h3>
+                  <SessionTable
+                    sessions={snapshot.sessions}
+                    sort={sort}
+                    onSorted={setSort}
+                    host={host}
+                    onHost={setHost}
+                    extraHosts={[
+                      ...(snapshot.executionHosts.length > 0
+                        ? [LOCAL_HOST]
+                        : []),
+                      ...snapshot.executionHosts.map((entry) => entry.hostId),
+                    ]}
+                    hostName={hostName}
+                  />
+                </section>
+              )}
 
-              <section>
-                <h3 className="mb-1 text-[13px] font-semibold">
-                  {t("resources.components")}
-                </h3>
-                <ComponentList
-                  components={componentsOnHost(snapshot.components, host)}
-                />
-              </section>
+              {componentsOnHost(snapshot.components, host).length > 0 && (
+                <section>
+                  <h3 className="mb-1 text-[13px] font-semibold">
+                    {t("resources.components")}
+                  </h3>
+                  <ComponentList
+                    components={componentsOnHost(snapshot.components, host)}
+                  />
+                </section>
+              )}
 
-              <section>
-                <h3 className="mb-1 text-[13px] font-semibold">
-                  {t("resources.orphans")}
-                </h3>
-                {workspaceId && (
+              {workspaceId && snapshot.orphans.length > 0 && (
+                <section>
+                  <h3 className="mb-1 text-[13px] font-semibold">
+                    {t("resources.orphans")}
+                  </h3>
                   <OrphanList
                     workspaceId={workspaceId}
                     orphans={snapshot.orphans}
                     onChanged={refresh}
                   />
-                )}
-              </section>
+                </section>
+              )}
 
               <PowerSection power={snapshot.power} onChanged={refresh} />
             </>

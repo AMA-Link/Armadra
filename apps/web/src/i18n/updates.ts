@@ -43,8 +43,6 @@ export const updates: MessageModule = {
     "updates.state.failed": "更新失败",
     "updates.autoCheck": "自动检查更新",
     "updates.autoDownload": "自动下载更新",
-    "updates.autoDownload.note":
-      "打开后会在后台下载安装包，安装与重启仍需你确认。",
     "updates.notify": "更新下载完成",
     "updates.notify.note":
       "关掉后只有托盘菜单里会出现「重启以完成更新」，不再发系统通知。",
@@ -184,8 +182,6 @@ export const updates: MessageModule = {
     "updates.state.failed": "The update failed",
     "updates.autoCheck": "Check automatically",
     "updates.autoDownload": "Download automatically",
-    "updates.autoDownload.note":
-      "Downloads the package in the background. Installing and restarting still need your confirmation.",
     "updates.notify": "Update downloaded",
     "updates.notify.note":
       "With this off, only the tray menu offers \u201cRestart to finish updating\u201d; no system notification is sent.",

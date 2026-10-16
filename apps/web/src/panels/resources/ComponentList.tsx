@@ -25,19 +25,29 @@ export function ComponentList({
 }) {
   const t = useT();
 
-  if (components.length === 0) {
-    return (
-      <p className="px-1 py-2 text-[12px] text-muted-foreground">
-        {t("resources.noComponents")}
-      </p>
-    );
-  }
+  if (components.length === 0) return null;
 
   return (
     <ul className="flex flex-col gap-0.5">
       {components.map((component) => (
         <li
           key={`${component.process.pid}:${component.process.startTimeUnixMs ?? "?"}`}
+          title={[
+            component.tree
+              ? t("resources.component.tree")
+              : component.kind === "runtime"
+                ? t("resources.component.selfOnly")
+                : t("resources.component.single"),
+            `pid ${component.process.pid}`,
+            component.location === "remote"
+              ? t("resources.location.remote")
+              : null,
+            component.unknownReason === "remote"
+              ? t("resources.unknown.remote")
+              : null,
+          ]
+            .filter(Boolean)
+            .join(" · ")}
           className="flex flex-col rounded-[var(--r-control)] px-1.5 py-1 hover:bg-accent"
         >
           {/*
@@ -54,18 +64,6 @@ export function ComponentList({
             <span className="w-20 shrink-0 text-right text-[12px] tabular-nums">
               {formatMetricBytes(component.process.memoryBytes)}
             </span>
-          </div>
-          <div className="text-[11px] text-muted-foreground [overflow-wrap:anywhere]">
-            {component.tree
-              ? t("resources.component.tree")
-              : component.kind === "runtime"
-                ? t("resources.component.selfOnly")
-                : t("resources.component.single")}
-            {` · pid ${component.process.pid}`}
-            {component.location === "remote" &&
-              ` · ${t("resources.location.remote")}`}
-            {component.unknownReason === "remote" &&
-              ` · ${t("resources.unknown.remote")}`}
           </div>
           {component.tree && (
             <ProcessTree

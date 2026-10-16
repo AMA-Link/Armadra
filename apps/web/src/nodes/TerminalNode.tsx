@@ -1,14 +1,6 @@
 import { scoped } from "../sources/scope";
 import * as React from "react";
-import {
-  ArrowUpDown,
-  Boxes,
-  Moon,
-  RotateCw,
-  Share2,
-  Snowflake,
-  Unplug,
-} from "lucide-react";
+import { ArrowUpDown, Boxes, RotateCw, Share2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { Badge } from "@/ui/badge";
@@ -34,7 +26,6 @@ import { useAgentModels } from "../agent/models";
 import { useNodeCapabilities } from "@/agent/capabilities";
 import { PendingLaunchButton } from "@/agent/PendingLaunchButton";
 import { ManualRunButton } from "@/agent/ManualRunButton";
-import { StateSourceBadge } from "@/agent/StateSourceBadge";
 import { useSimpleMode } from "@/acp/simple-mode";
 import { useAgentStatus, useAgentStatusStore } from "@/agent/status-store";
 import {
@@ -55,11 +46,11 @@ import { ContextReadsBadge } from "./ContextReadsBadge";
 import { DeliveryQueueBadge } from "./DeliveryQueueBadge";
 import { DependencyWaitBadge } from "./DependencyWaitBadge";
 import { DriveBadge } from "./DriveBadge";
-import { MemoryBadge } from "@/panels/resources/MemoryBadge";
+import { MemoryBadge, MemoryMenuLabel } from "@/panels/resources/MemoryBadge";
 import { openHandoff } from "@/agent/handoff/handoff-targets";
 import { useSshHosts } from "@/panels/settings/ssh-hosts";
 import { GithubReferenceBadge } from "@/panels/github/GithubReferenceBadge";
-import { NodeShell } from "./NodeShell";
+import { NodeShell, type NodeShellProps } from "./NodeShell";
 import type { NodeBodyProps } from "./registry";
 import { answerApproval } from "./runtime-extras";
 import {
@@ -232,8 +223,6 @@ export function TerminalNode({ id, node, selected, collapsed }: NodeBodyProps) {
   const header = launchFailed
     ? {}
     : headerStateFor(Boolean(agent), agentStatus, programStatus, programSeen);
-  const headerSource =
-    header.source === "program" ? "program" : agentStatus?.stateSource;
 
   // 审批答复是替 Agent 代答（设计 S5）：服务器壳上这块画布的 driver、以及
   // 终端是自己起的 operator 答得了（契约 §23），别人看得见「在等审批」，但不
@@ -277,6 +266,48 @@ export function TerminalNode({ id, node, selected, collapsed }: NodeBodyProps) {
   // 节能休眠（终端宿主设计 §7.2）：进程不在，不占内存，也没有人在驱动它。
   const hibernated = surface.render === "hibernated";
 
+  // 头部只有一个状态圆点，文字进悬停提示：启动失败与掉线压过退出，退出压过
+  // 休眠，其余沿用 Agent 上报的状态；空闲不画。
+  const exitLabel = [
+    `${t(
+      surface.connection === "failed" && surface.error
+        ? "terminal.startFailed"
+        : "terminal.exited",
+    )}${surface.exitCode === null ? "" : ` ${surface.exitCode}`}`,
+    surface.error,
+  ]
+    .filter(Boolean)
+    .join(" — ");
+  const nodeStatus: NodeShellProps["status"] | undefined = launchFailed
+    ? { tone: "failed", label: t("agent.launch.failed") }
+    : !exited && surface.render === "disconnected"
+      ? { tone: "failed", label: t("terminal.render.disconnected") }
+      : exited
+        ? {
+            tone: surface.exitCode ? "failed" : "paused",
+            label: exitLabel,
+          }
+        : hibernated
+          ? {
+              tone: "paused",
+              label: t(
+                surface.hibernation === "resuming"
+                  ? "terminal.hibernation.resuming"
+                  : surface.hibernation === "failed"
+                    ? "terminal.hibernation.failed"
+                    : "terminal.hibernation.label",
+              ),
+            }
+          : header.pill
+            ? {
+                tone: header.pill.tone,
+                label:
+                  header.progress === undefined
+                    ? t(header.pill.labelKey)
+                    : `${t(header.pill.labelKey)} ${t("agent.program.progress", { percent: header.progress })}`,
+              }
+            : undefined;
+
   /**
    * 头部只留「一眼就要看到」的那几样（F5）。
    *
@@ -287,20 +318,6 @@ export function TerminalNode({ id, node, selected, collapsed }: NodeBodyProps) {
    */
   const headerChips = (
     <>
-      {/*
-        内存徽标（路线图 §4.3）。Agent 和普通 shell 都有：一个跑 `cargo build`
-        的普通终端和一个 Agent 一样会吃掉几个 GB。SSH 会话的进程树在别的机器
-        上，本机测不到，所以不显示——那里的数字只可能是假的（设计 §8）。
-      */}
-      {!data?.ssh && !exited && !hibernated && (
-        <MemoryBadge
-          nodeId={id}
-          workspaceId={workspaceId}
-          sessionId={sessionId}
-          generation={generation}
-          visible={!collapsed}
-        />
-      )}
       {agent && <AccountBindingBadge agent={agent} nodeId={id} />}
       {agent && <HandoffBadge nodeId={id} />}
       {/*
@@ -332,66 +349,6 @@ export function TerminalNode({ id, node, selected, collapsed }: NodeBodyProps) {
         <ContextReadsBadge nodeId={id} visible={!collapsed && !exited} />
       )}
       <GithubReferenceBadge nodeId={id} />
-      {exited && (
-        <Badge
-          variant="outline"
-          title={surface.error ?? undefined}
-          className="h-[18px] px-1.5 text-[length:var(--text-caption)]"
-        >
-          {t(
-            surface.connection === "failed" && surface.error
-              ? "terminal.startFailed"
-              : "terminal.exited",
-          )}
-          {surface.exitCode === null ? "" : ` ${surface.exitCode}`}
-        </Badge>
-      )}
-      {/*
-        视图状态（终端宿主设计 §7.1）。只有两个状态值得占头部的位置：
-        `disconnected` 是「socket 意外没了，正在退避重连」——必须说出来，
-        否则用户会把一个静止的画面当成还活着；`detached` 是我们自己为了省
-        资源关掉的，进程照跑，所以给一个安静得多的胶囊。
-        `visible` / `focused` / `offscreen` 一律不显示：那是正常状态，
-        把它画出来只是噪音。
-        已退出的会话不再报掉线：那时 socket 关掉本来就是收尾。
-      */}
-      {/*
-        节能休眠：与下面两个胶囊不同，这一个说的是「进程真的不在了」——点一下
-        节点就会用 CLI 的 resume 接回原来那段对话。
-      */}
-      {hibernated && (
-        <Badge
-          variant="outline"
-          className="h-[18px] px-1.5 text-[length:var(--text-caption)] text-muted-foreground"
-        >
-          <Snowflake className="size-2.5" />
-          {t(
-            surface.hibernation === "resuming"
-              ? "terminal.hibernation.resuming"
-              : surface.hibernation === "failed"
-                ? "terminal.hibernation.failed"
-                : "terminal.hibernation.label",
-          )}
-        </Badge>
-      )}
-      {!exited && surface.render === "disconnected" && (
-        <Badge
-          variant="outline"
-          className="h-[18px] px-1.5 text-[length:var(--text-caption)] text-[var(--danger-text)]"
-        >
-          <Unplug className="size-2.5" />
-          {t("terminal.render.disconnected")}
-        </Badge>
-      )}
-      {!exited && surface.render === "detached" && (
-        <Badge
-          variant="outline"
-          className="h-[18px] px-1.5 text-[length:var(--text-caption)] text-muted-foreground"
-        >
-          <Moon className="size-2.5" />
-          {t("terminal.render.detached")}
-        </Badge>
-      )}
     </>
   );
 
@@ -402,6 +359,15 @@ export function TerminalNode({ id, node, selected, collapsed }: NodeBodyProps) {
       style={{ display: "contents" }}
       {...(bell ? { "data-bell": "true" } : {})}
     >
+      {!data?.ssh && !exited && !hibernated && (
+        <MemoryBadge
+          nodeId={id}
+          workspaceId={workspaceId}
+          sessionId={sessionId}
+          generation={generation}
+          visible={!collapsed}
+        />
+      )}
       <PendingLaunchButton nodeId={id} />
       {data?.launchPolicy === "manual" &&
         agent &&
@@ -470,6 +436,13 @@ export function TerminalNode({ id, node, selected, collapsed }: NodeBodyProps) {
     <>
       {/* 「这是什么」先说：Agent 名与 SSH 主机名以前常驻头部，现在是菜单里
           一行静态说明——它们从来不需要每秒看一眼。 */}
+      {!data?.ssh && !exited && !hibernated && (
+        <MemoryMenuLabel
+          workspaceId={workspaceId}
+          sessionId={sessionId}
+          generation={generation}
+        />
+      )}
       {(agent || sshLabel !== null) && (
         <DropdownMenuLabel className="flex items-center gap-1.5 font-normal text-muted-foreground">
           {agent && <span className="truncate">{agentLabel(agent.id)}</span>}
@@ -580,26 +553,9 @@ export function TerminalNode({ id, node, selected, collapsed }: NodeBodyProps) {
       <NodeShell
         node={node}
         selected={selected}
-        {...(launchFailed
-          ? { status: { tone: "failed", label: t("agent.launch.failed") } }
-          : header.pill
-            ? {
-                status: {
-                  tone: header.pill.tone,
-                  label:
-                    header.progress === undefined
-                      ? t(header.pill.labelKey)
-                      : `${t(header.pill.labelKey)} ${t("agent.program.progress", { percent: header.progress })}`,
-                },
-              }
-            : {})}
+        {...(nodeStatus ? { status: nodeStatus } : {})}
         {...(header.glow ? { glow: header.glow } : {})}
         {...(approval ? { approval } : {})}
-        {...((agent || headerSource === "program") && !exited && !simple
-          ? {
-              headerMark: <StateSourceBadge source={headerSource} />,
-            }
-          : {})}
         // 简洁模式：头部只留状态胶囊与审批（ACP 设计 §8 第 3 条）。
         headerChips={
           simple ? (

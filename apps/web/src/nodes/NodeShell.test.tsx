@@ -513,17 +513,18 @@ describe("NodeShell", () => {
     expect(store.removeNodes).toHaveBeenCalledWith(["n1"]);
   });
 
-  it("renders a status pill only when a status is given", () => {
+  it("renders a status dot only when a status is given", () => {
     const { container, unmount } = renderShell();
-    expect(container.querySelector('[data-slot="status-pill"]')).toBeNull();
+    expect(container.querySelector('[data-slot="status-dot"]')).toBeNull();
     unmount();
 
     const second = renderShell({
       status: { tone: "working", label: "RUNNING" },
     });
     expect(
-      second.container.querySelector('[data-slot="status-pill"]'),
+      second.container.querySelector('[data-slot="status-dot"]'),
     ).not.toBeNull();
+    expect(second.container.textContent).not.toContain("RUNNING");
   });
 
   it("keeps the header to a single row and adds no strip below it", () => {

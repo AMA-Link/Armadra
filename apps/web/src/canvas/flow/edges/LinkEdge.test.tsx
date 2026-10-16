@@ -273,7 +273,7 @@ describe("LinkEdge", () => {
       // 主路径 + 命中路径 + 一个箭头。
       expect(group.querySelectorAll("path")).toHaveLength(3);
       expect(group.querySelector("title")?.textContent).toContain(
-        "主 @planner → 从 @codex-1",
+        "派发 @planner → @codex-1",
       );
     });
 

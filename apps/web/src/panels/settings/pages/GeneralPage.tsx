@@ -48,10 +48,7 @@ export function GeneralPage() {
         />
       </SettingsRow>
 
-      <SettingsRow
-        label={t("settings.splashAnimation")}
-        footnote={t("settings.splashAnimation.note")}
-      >
+      <SettingsRow label={t("settings.splashAnimation")}>
         <Switch
           checked={splash}
           aria-label={t("settings.splashAnimation")}
@@ -59,10 +56,7 @@ export function GeneralPage() {
         />
       </SettingsRow>
 
-      <SettingsRow
-        label={t("settings.restoreWorkspace")}
-        footnote={t("settings.restoreWorkspace.note")}
-      >
+      <SettingsRow label={t("settings.restoreWorkspace")}>
         <Switch
           checked={restore}
           aria-label={t("settings.restoreWorkspace")}
@@ -70,10 +64,7 @@ export function GeneralPage() {
         />
       </SettingsRow>
 
-      <SettingsRow
-        label={t("settings.showSystemFiles")}
-        footnote={t("settings.showSystemFiles.note")}
-      >
+      <SettingsRow label={t("settings.showSystemFiles")}>
         <Switch
           checked={systemFiles}
           aria-label={t("settings.showSystemFiles")}
@@ -139,7 +130,7 @@ export function CrashReportGroup() {
     <SettingsGroup>
       <SettingsRow
         label={t("settings.diagnostics.crashReports")}
-        footnote={t("settings.diagnostics.crashReports.note")}
+        hint={t("settings.diagnostics.crashReports.note")}
       >
         <Switch
           checked={enabled}

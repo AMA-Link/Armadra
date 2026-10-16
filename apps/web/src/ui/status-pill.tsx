@@ -133,3 +133,35 @@ export function StatusPill({
     </Badge>
   );
 }
+
+/**
+ * 只有一个圆点的状态（节点头部用）。文字进悬停提示与无障碍名；空闲是常态，
+ * 不画。
+ */
+export function StatusDot({
+  tone,
+  label,
+  pulse,
+  className,
+  style,
+  ...props
+}: Omit<StatusPillProps, "trailing" | "label"> & { label: string }) {
+  if (tone === "idle") return null;
+  const shouldPulse = pulse ?? STATUS_PILL_PULSES[tone];
+  return (
+    <span
+      role="img"
+      aria-label={label}
+      title={label}
+      data-slot="status-dot"
+      data-tone={tone}
+      style={{ backgroundColor: TONE_COLOR[tone], ...style }}
+      className={cn(
+        "size-2 shrink-0 rounded-full",
+        shouldPulse && "anim-dot-pulse",
+        className,
+      )}
+      {...props}
+    />
+  );
+}

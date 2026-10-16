@@ -106,10 +106,7 @@ export function UsagePage() {
           />
         </SettingsRow>
 
-        <SettingsRow
-          label={t("settings.usageCadence")}
-          footnote={t("settings.usageCadenceHint")}
-        >
+        <SettingsRow label={t("settings.usageCadence")}>
           <Select
             value={String(refreshMinutes)}
             disabled={busy || !usageEnabled}
@@ -167,7 +164,7 @@ export function UsagePage() {
         ))}
         <SettingsRow
           label={t("settings.codexCliFallback")}
-          footnote={t("settings.codexCliFallbackHint")}
+          hint={t("settings.codexCliFallbackHint")}
         >
           <Switch
             checked={cliFallback}
@@ -180,7 +177,7 @@ export function UsagePage() {
         </SettingsRow>
         <SettingsRow
           label={t("usage.statusPage")}
-          footnote={t("usage.statusPageHint")}
+          hint={t("usage.statusPageHint")}
         >
           <Switch
             checked={statusBadges}
@@ -204,7 +201,7 @@ export function UsagePage() {
       <SettingsGroup>
         <SettingsRow
           label={t("settings.costEnabled")}
-          footnote={t("settings.costEnabledHint")}
+          hint={t("settings.costEnabledHint")}
         >
           <Switch
             checked={costEnabled}
@@ -225,7 +222,7 @@ export function UsagePage() {
         </SettingsRow>
         <SettingsRow
           label={t("settings.claudeLocalWindow")}
-          footnote={t("settings.claudeLocalWindowHint")}
+          hint={t("settings.claudeLocalWindowHint")}
         >
           <Switch
             checked={claudeLocalWindow}

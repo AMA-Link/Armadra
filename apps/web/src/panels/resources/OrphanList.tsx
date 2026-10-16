@@ -83,13 +83,7 @@ export function OrphanList({
       .catch(() => toast.error(t("resources.endFailed")));
   };
 
-  if (orphans.length === 0) {
-    return (
-      <p className="px-1 py-2 text-[12px] text-muted-foreground">
-        {t("resources.noOrphans")}
-      </p>
-    );
-  }
+  if (orphans.length === 0) return null;
 
   const label = (orphan: OrphanSession) =>
     orphan.cwd?.split("/").pop() ??

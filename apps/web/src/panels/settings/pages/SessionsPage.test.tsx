@@ -52,7 +52,7 @@ describe("设置 → 会话", () => {
   it("自动命名（本设备）、索引范围、已索引条数与重建", async () => {
     draw();
     const name = screen.getByRole("switch", { name: "为占位标题自动生成名称" });
-    expect(document.querySelector("[data-settings-scope=device]")).toBeTruthy();
+    expect(document.querySelector("[data-settings-scope]")).toBeNull();
     fireEvent.click(name);
     expect(usePreferencesStore.getState().autoTitle).toBe(false);
     expect(screen.getByText("会话索引")).toBeTruthy();

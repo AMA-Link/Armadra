@@ -142,7 +142,7 @@ export function TerminalLookPage() {
         {terminal.renderer === "webgl" && (
           <SettingsRow
             label={t("terminal.settings.renderBudget")}
-            footnote={t("terminal.settings.renderBudgetHint")}
+            hint={t("terminal.settings.renderBudgetHint")}
           >
             <Select
               value={String(renderBudget)}
@@ -178,7 +178,7 @@ export function TerminalLookPage() {
 
         <SettingsRow
           label={t("terminal.settings.releaseAfter")}
-          footnote={t("terminal.settings.releaseAfterHint")}
+          hint={t("terminal.settings.releaseAfterHint")}
         >
           <Select
             value={terminal.releaseAfter}

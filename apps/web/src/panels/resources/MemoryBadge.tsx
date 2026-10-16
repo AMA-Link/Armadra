@@ -1,7 +1,9 @@
 /**
- * 终端节点头部的内存徽标（路线图 §4.3）。
+ * 终端节点头部的内存监视（路线图 §4.3）。
  *
- * 一个数字，比如 `512 MB`。它回答的是「这个会话现在占多少」，所以：
+ * 正常时头部不画任何东西（只留一个看不见的锚点，供采样节奏判断可见性）；
+ * 越线才出现一枚红色的 `2.9 GB`，点开看详情。平时想看数字去 `···` 菜单里的
+ * `MemoryMenuLabel` 或资源面板。它回答的是「这个会话现在占多少」，所以：
  *
  * - 数字是**进程树 RSS 之和**，是估计值。共享页会被每个进程各算一次，所以
  *   它不是「独占内存」，Popover 里说明这一点（设计 §8）。
@@ -26,6 +28,7 @@ import { useSessionResources } from "./use-resources";
 import { useOnScreen, usePageVisible } from "./use-visibility";
 import { Button } from "@/ui/button";
 import { Badge } from "@/ui/badge";
+import { DropdownMenuLabel } from "@/ui/dropdown-menu";
 import { cn } from "@/lib/cn";
 import { HEADER_CHIP_CLASS } from "@/nodes/header-chip";
 
@@ -51,7 +54,7 @@ export function MemoryBadge({
   const t = useT();
   const stored = usePreferencesStore((state) => state.sessionMemoryWarnBytes);
 
-  const anchor = React.useRef<HTMLButtonElement>(null);
+  const anchor = React.useRef<HTMLElement>(null);
   // 没有会话时下面提前 `return null`，按钮不在 DOM 上；会话 id 到了的那次提交
   // 才挂观察器（见 `useOnScreen` 的 `enabled`）。
   const onScreen = useOnScreen(anchor, Boolean(sessionId));
@@ -89,6 +92,19 @@ export function MemoryBadge({
   const known = value !== UNKNOWN;
   const label = known ? value : t("resources.memory.unknown");
 
+  if (!over) {
+    return (
+      <span
+        ref={anchor}
+        aria-hidden
+        data-testid={`memory-badge-${nodeId}`}
+        className="sr-only"
+      >
+        {label}
+      </span>
+    );
+  }
+
   return (
     <Popover>
       <PopoverTrigger asChild>
@@ -105,10 +121,10 @@ export function MemoryBadge({
           <Button
             variant="ghost"
             size="xs"
-            ref={anchor}
+            ref={anchor as React.Ref<HTMLButtonElement>}
             type="button"
             data-testid={`memory-badge-${nodeId}`}
-            data-over={over ? "true" : undefined}
+            data-over="true"
             aria-label={t("resources.memory.badge", { value: label })}
             onPointerDown={(event) => event.stopPropagation()}
           >
@@ -151,5 +167,37 @@ export function MemoryBadge({
         )}
       </PopoverContent>
     </Popover>
+  );
+}
+
+/**
+ * `···` 菜单里的一行内存：菜单打开才挂，只读同一份采样，不另起订阅节奏。
+ * 测不出来就不画，不显示 `unknown`。
+ */
+export function MemoryMenuLabel({
+  workspaceId,
+  sessionId,
+  generation,
+}: {
+  workspaceId: string | null;
+  sessionId: string | null;
+  generation: number | null;
+}) {
+  const t = useT();
+  const session = useSessionResources(
+    workspaceId,
+    sessionId,
+    generation,
+    "fast",
+  );
+  const value = formatMetricBytes(session?.memoryBytes ?? null);
+  if (!sessionId || value === UNKNOWN) return null;
+  return (
+    <DropdownMenuLabel
+      data-slot="memory-label"
+      className="font-normal text-muted-foreground"
+    >
+      {t("resources.memory.title")} {value}
+    </DropdownMenuLabel>
   );
 }

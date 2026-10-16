@@ -117,17 +117,16 @@ describe("agent activity card", () => {
     featureFlags.scheduledTasks = false;
     featureFlags.activityCards = false;
     renderCard();
-    expect(screen.getByText("只读观察")).toBeTruthy();
     expect(screen.getByText("已观察 0 次")).toBeTruthy();
     expect(screen.queryByRole("button", { name: "转为平台计划" })).toBeNull();
   });
 
-  it("observes a real node and says it is read-only", () => {
+  it("observes a real node without extra labels", () => {
     renderCard();
     // 卡片标题与被观察节点标题同名，两处都出现。
     expect(screen.getAllByText("Claude").length).toBeGreaterThan(1);
-    expect(screen.getByText("只读观察")).toBeTruthy();
-    expect(screen.getByText("CLI 循环")).toBeTruthy();
+    expect(screen.queryByText("只读观察")).toBeNull();
+    expect(screen.queryByText("CLI 循环")).toBeNull();
   });
 
   it("reports zero observations rather than inventing a loop", () => {
@@ -155,14 +154,13 @@ describe("agent activity card", () => {
     store.document.nodes = [];
     renderCard();
     expect(screen.getByText("被观察的节点已不在这块画布上")).toBeTruthy();
-    expect(screen.queryByText("只读观察")).toBeNull();
   });
 
   it("offers no pause or cancel — hiding it never stops the CLI's loop", () => {
     renderCard();
     expect(
-      screen.getByText("隐藏这张卡片不会取消 CLI 自己的循环"),
-    ).toBeTruthy();
+      screen.queryByText("隐藏这张卡片不会取消 CLI 自己的循环"),
+    ).toBeNull();
     for (const label of ["暂停", "立即运行", "启用"])
       expect(screen.queryByText(label)).toBeNull();
   });
@@ -198,22 +196,9 @@ describe("agent activity card", () => {
     renderCard();
     const button = screen.getByRole("button", { name: "转为平台计划" });
     expect((button as HTMLButtonElement).disabled).toBe(true);
-    expect(
-      screen.getByText("被观察的节点上没有可作为目标的 Agent 会话"),
-    ).toBeTruthy();
-  });
-
-  it("shows the job identity it was given and hides what it was not", () => {
-    renderCard();
-    expect(screen.getByText("session-1")).toBeTruthy();
-    expect(screen.getByText("job-1")).toBeTruthy();
-    expect(screen.getByText("4")).toBeTruthy();
-    cleanup();
-    renderCard({
-      ...node,
-      data: { kind: "agentActivity", sourceNodeId: terminal.id },
-    } as unknown as CanvasNode);
-    expect(screen.queryByText("会话")).toBeNull();
-    expect(screen.queryByText("代次")).toBeNull();
+    // 原因进悬停提示，不再占一行小字。
+    expect(button.getAttribute("title")).toBe(
+      "被观察的节点上没有可作为目标的 Agent 会话",
+    );
   });
 });

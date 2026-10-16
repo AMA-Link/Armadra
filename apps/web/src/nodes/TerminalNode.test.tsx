@@ -54,7 +54,10 @@ vi.mock("@/acp/SessionView", () => ({
     <div data-testid="session-view">{nodeId}</div>
   ),
 }));
-vi.mock("@/panels/resources/MemoryBadge", () => ({ MemoryBadge: () => null }));
+vi.mock("@/panels/resources/MemoryBadge", () => ({
+  MemoryBadge: () => null,
+  MemoryMenuLabel: () => null,
+}));
 
 const switchDriver = vi.hoisted(() => vi.fn());
 // 服务器壳上「答得了审批」由会话决定；缺省答得了（桌面壳的情形）。
@@ -154,7 +157,7 @@ describe("TerminalNode body", () => {
       launch: "failed",
     };
     renderNode(terminalNode({ kind: "terminal", agent: { id: "codex" } }));
-    expect(await screen.findByText("启动失败")).toBeTruthy();
+    expect(await screen.findByLabelText("启动失败")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "重试" }));
     expect(surfaceState.restart).toHaveBeenCalledTimes(1);
   });
@@ -168,7 +171,7 @@ describe("TerminalNode body", () => {
   it("does not carry the terminal's exit onto the session view", async () => {
     const terminal = terminalNode({ kind: "terminal", agent: { id: "codex" } });
     const view = renderNode(terminal);
-    expect(await screen.findByText(/已退出/)).toBeTruthy();
+    expect(await screen.findByLabelText(/已退出/)).toBeTruthy();
     view.rerenderNode(
       <QueryClientProvider client={new QueryClient()}>
         <TerminalNode
@@ -184,7 +187,7 @@ describe("TerminalNode body", () => {
       </QueryClientProvider>,
     );
     expect(await screen.findByTestId("session-view")).toBeTruthy();
-    expect(screen.queryByText(/已退出/)).toBeNull();
+    expect(screen.queryByLabelText(/已退出/)).toBeNull();
   });
 
   it("switches through the core from the header menu and records the new driver", async () => {

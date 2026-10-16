@@ -132,14 +132,14 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe("editor file information", () => {
-  it("shows the encoding and the line ending the runtime detected", async () => {
+  it("stays quiet about the usual encoding and line ending", async () => {
     render(<EditorNode {...props()} />);
     await view();
-    expect(screen.getByText("UTF-8")).toBeTruthy();
-    expect(screen.getByText("LF")).toBeTruthy();
-    // `.txt` 没有 languageId，所以状态栏说的是「不适用」而不是「不可用」：
-    // 前者是这个文件的性质，后者才是缺 server（语言服务设计 §2.3）。
-    expect(screen.getByText("LSP not applicable")).toBeTruthy();
+    // 常态（UTF-8、LF、没有语言会话）不占状态栏：只有异常才说。
+    expect(screen.queryByText("UTF-8")).toBeNull();
+    expect(screen.queryByText("LF")).toBeNull();
+    // `.txt` 没有 languageId：什么都不画，缺 server 才是要说的事（语言服务设计 §2.3）。
+    expect(screen.queryByText("LSP not applicable")).toBeNull();
   });
 
   it("keeps CRLF through a save instead of silently normalizing the file", async () => {

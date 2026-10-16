@@ -56,7 +56,7 @@ export function SessionsPage() {
       <SettingsGroup>
         <SettingsRow
           label={t("settings.autoTitle.label")}
-          footnote={t("settings.autoTitle.note")}
+          hint={t("settings.autoTitle.note")}
         >
           <ScopeBadge scope="device" />
           <Switch
@@ -70,7 +70,7 @@ export function SessionsPage() {
       <SettingsGroup title={t("settings.conversations")}>
         <SettingsRow
           label={t("settings.conversations.scope")}
-          footnote={t("settings.conversations.scopeNote")}
+          hint={t("settings.conversations.scopeNote")}
         >
           <Select
             value={settings.data?.conversations?.scope ?? "workspaces"}

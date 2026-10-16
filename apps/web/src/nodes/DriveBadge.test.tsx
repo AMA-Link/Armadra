@@ -64,9 +64,9 @@ describe("driveLabel", () => {
     expect(driveLabel(lease("human"))).toBeUndefined();
   });
 
-  it("人与接管是两句话", () => {
+  it("人敲键不画，显式接管才画", () => {
     const holder = { kind: "human", id: "local", displayName: "" } as const;
-    expect(driveLabel(lease("human", holder))?.key).toBe("terminal.drive.you");
+    expect(driveLabel(lease("human", holder))).toBeUndefined();
     expect(driveLabel(lease("humanTakeover", holder))?.key).toBe(
       "terminal.drive.takeover",
     );
@@ -87,7 +87,7 @@ describe("driveLabel", () => {
 });
 
 describe("DriveBadge", () => {
-  it("人敲键翻成「你在驱动」，租约过期就消失", () => {
+  it("Agent 驱动才出现，人敲键与租约过期都不画", () => {
     render(<DriveBadge nodeId="node-a" />);
     expect(screen.queryByTestId).toBeDefined();
     expect(document.querySelector('[data-slot="terminal-driver"]')).toBeNull();
@@ -114,7 +114,7 @@ describe("DriveBadge", () => {
         ),
       );
     });
-    expect(screen.getByText("你在驱动")).toBeTruthy();
+    expect(document.querySelector('[data-slot="terminal-driver"]')).toBeNull();
 
     act(() => {
       dispatchWorkspaceEvent(frame("node-a", lease("free")));
@@ -141,11 +141,17 @@ describe("DriveBadge", () => {
       dispatchWorkspaceEvent(
         frame(
           "node-a",
-          lease("human", { kind: "human", id: "local", displayName: "" }),
+          lease("humanTakeover", {
+            kind: "human",
+            id: "local",
+            displayName: "",
+          }),
         ),
       );
     });
-    expect(screen.getByText("你在驱动")).toBeTruthy();
+    expect(
+      document.querySelector('[data-slot="terminal-driver"]'),
+    ).not.toBeNull();
     act(() => {
       dispatchWorkspaceEvent({
         type: "terminal.exit",
@@ -225,7 +231,7 @@ describe("driveAction", () => {
         lease("agent", { kind: "agent", id: "n", displayName: "codex-1" }),
       ),
     ).toBe("takeover");
-    expect(driveAction(lease("human"))).toBe("release");
+    expect(driveAction(lease("human"))).toBeUndefined();
     expect(driveAction(lease("humanTakeover"))).toBe("release");
   });
 });

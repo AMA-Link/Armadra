@@ -24,7 +24,7 @@ import {
 } from "@/ui/dropdown-menu";
 import { IconButton } from "@/ui/icon-button";
 import { Input } from "@/ui/input";
-import { StatusPill, type StatusTone } from "@/ui/status-pill";
+import { StatusDot, type StatusTone } from "@/ui/status-pill";
 import { useT } from "@/app/preferences-store";
 import { useCanvasStore } from "@/store/canvas-store";
 import { useCompactLayout } from "@/platform/layout";
@@ -341,7 +341,7 @@ export function NodeHeader({
 
       {status && (
         <span className="node-header-status">
-          <StatusPill
+          <StatusDot
             tone={status.tone}
             label={status.label}
             {...(status.pulse === undefined ? {} : { pulse: status.pulse })}

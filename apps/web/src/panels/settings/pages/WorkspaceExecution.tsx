@@ -46,7 +46,7 @@ export function WorkspaceExecution() {
     <SettingsGroup>
       <SettingsRow
         label={t("gitRepo.allowExecution")}
-        footnote={t("gitRepo.executionDetail")}
+        hint={t("gitRepo.executionDetail")}
       >
         <Switch
           checked={workspace.permissions.execute}

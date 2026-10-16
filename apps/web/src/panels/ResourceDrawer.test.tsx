@@ -266,7 +266,7 @@ describe("ResourceDrawer", () => {
     expect(screen.getByText("7.5%")).toBeTruthy();
     expect(screen.getAllByText("构建机").length).toBeGreaterThan(1);
     // 远端会话有了真数，不再写「测不到」。
-    expect(screen.queryByText("在远程主机上运行，本机测不到指标")).toBeNull();
+    expect(screen.queryByTitle("在远程主机上运行，本机测不到指标")).toBeNull();
   });
 
   it("关着的时候既不请求也不订阅", () => {
@@ -311,7 +311,7 @@ describe("ResourceDrawer", () => {
     expect(screen.getAllByText("—").length).toBeGreaterThan(0);
 
     // 远程会话：CPU 与内存两格都是短横线，并写明原因。
-    expect(screen.getByText("在远程主机上运行，本机测不到指标")).toBeTruthy();
+    expect(screen.getByTitle("在远程主机上运行，本机测不到指标")).toBeTruthy();
     expect(screen.getByText("98.8%")).toBeTruthy();
     expect(screen.queryByText("0 B")).toBeNull();
     expect(screen.queryByText("0%")).toBeNull();
@@ -349,7 +349,7 @@ describe("ResourceDrawer", () => {
     expect(screen.getByText("Runtime")).toBeTruthy();
     // 它的子进程就是用户的会话，已经各有各的行；算进来等于数两遍。
     expect(
-      screen.getByText(/只算这个进程；它启动的会话在上面各有一行/),
+      screen.getByTitle(/只算这个进程；它启动的会话在上面各有一行/),
     ).toBeTruthy();
     expect(screen.getByText("40 MB")).toBeTruthy();
   });
@@ -420,7 +420,7 @@ describe("ResourceDrawer", () => {
     useCanvasStore.getState().setPanel("resources", "drawer");
     render(<ResourceDrawer />);
 
-    const scope = await screen.findByText(
+    const scope = await screen.findByTitle(
       "只阻止系统空闲睡眠；不常亮屏幕，也不影响合盖或手动睡眠。",
     );
     expect(scope).toBeTruthy();
