@@ -8,6 +8,7 @@ export {
   type E2eChannelErrorCode,
   type E2eChannelOptions,
   E2eClientChannel,
+  relayRefusal,
 } from "./channel.js";
 export { type ChannelFetchOptions, channelFetch, innerPath } from "./http.js";
 export {

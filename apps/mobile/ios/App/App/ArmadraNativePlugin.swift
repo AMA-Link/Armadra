@@ -21,6 +21,7 @@ import Security
 /// | `pushRotated()` / `ackPushRotation()` | 启动时 APNs 给了与上次登记不同的令牌（R-54，`PushTokenLedger`） |
 /// | `openExternal({ url })`       | 系统浏览器打开原生 OAuth 的授权页（R-56），只开 https 与回环 http |
 /// | `e2eDeviceSeed()`             | 端到端通道的设备钥种子（Ed25519，32 字节，base64url），没有就生成，只在钥匙串 |
+/// | `trafficLoad()` / `trafficSave({ rows })` | 客户端流量的日桶（设计 §6.4），存 `UserDefaults`，整份读写；形状或上限不对整份拒绝 |
 /// | `installApk({ url, sha256 })` | Android 的应用内更新（#288 §4）；iOS 只经商店更新，固定返回 `failed`（`unsupported`） |
 ///
 /// 令牌换过的那一刻还发 `pushTokenRotated` 事件。
@@ -47,6 +48,8 @@ public class ArmadraNativePlugin: CAPPlugin, CAPBridgedPlugin, NotificationHandl
         CAPPluginMethod(name: "appInfo", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "installApk", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "e2eDeviceSeed", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "trafficLoad", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "trafficSave", returnType: CAPPluginReturnPromise),
     ]
 
     /// 端到端通道设备钥种子在钥匙串里的条目名（契约 §78）。
@@ -57,6 +60,7 @@ public class ArmadraNativePlugin: CAPPlugin, CAPBridgedPlugin, NotificationHandl
     private static let log = Logger(subsystem: "dev.armadra.mobile", category: "native")
     private let store: SecretStore = KeychainStore()
     private lazy var vault = ConnectionVault(store: store)
+    private let traffic = TrafficStore()
     private let ledger = PushTokenLedger()
     /// 这一次 `pushRegistration` 拿到的 APNs 令牌（登记成功时记进 `ledger`）。
     private var pendingToken: String?
@@ -409,6 +413,19 @@ public class ArmadraNativePlugin: CAPPlugin, CAPBridgedPlugin, NotificationHandl
             return
         }
         call.resolve(["seed": Base64URL.encode(seed)])
+    }
+
+    /// 客户端流量日桶（本地日 × 源 × 类别），页面每分钟整份写、启动时整份读。
+    @objc func trafficLoad(_ call: CAPPluginCall) {
+        call.resolve(["rows": traffic.load()])
+    }
+
+    @objc func trafficSave(_ call: CAPPluginCall) {
+        guard let rows = call.getArray("rows") as? [[String: Any]], traffic.save(rows) else {
+            call.reject("invalid traffic rows")
+            return
+        }
+        call.resolve()
     }
 
     @objc func appInfo(_ call: CAPPluginCall) {

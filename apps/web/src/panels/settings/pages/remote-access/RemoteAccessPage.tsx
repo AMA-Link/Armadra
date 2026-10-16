@@ -64,6 +64,10 @@ import {
   type RelayDraft,
 } from "./dialogs";
 import { HostTraffic } from "../../../../traffic/HostTraffic";
+import {
+  SourceTrafficDialog,
+  type SourceTrafficTarget,
+} from "../../../../traffic/SourceTrafficDialog";
 import { HostAccess } from "./HostAccess";
 import { canShare, useGateway, useInternetRoute } from "./hooks";
 import { hostOf, useSourceTable, useSourceTableChanged } from "./keys";
@@ -95,6 +99,9 @@ export function RemoteAccessPage() {
   const [adding, setAdding] = React.useState<RelayDraft | null>(null);
   const [addingDirect, setAddingDirect] = React.useState(false);
   const [mounting, setMounting] = React.useState(false);
+  const [traffic, setTraffic] = React.useState<SourceTrafficTarget | null>(
+    null,
+  );
   // 待填的分享链接（深链、`#join=`）：打开「用链接加入」并预填，人点了才加入。
   const [joining, setJoining] = React.useState<string | null>(takeJoinLink);
   React.useEffect(
@@ -263,6 +270,15 @@ export function RemoteAccessPage() {
               key={source.sourceId}
               source={source}
               inUse={source.sourceId === currentSourceId}
+              {...(source.kind === "relayed"
+                ? {
+                    onTraffic: () =>
+                      setTraffic({
+                        sourceId: source.sourceId,
+                        name: source.label,
+                      }),
+                  }
+                : {})}
               onForget={() => forget.mutate(source.sourceId)}
               onRename={() => setRenaming(renamingOf(source))}
               onRemove={() =>
@@ -370,6 +386,12 @@ export function RemoteAccessPage() {
               key={source.sourceId}
               source={source}
               inUse={source.sourceId === currentSourceId}
+              onTraffic={() =>
+                setTraffic({
+                  sourceId: source.sourceId,
+                  name: source.ownerLabel.trim() || source.label,
+                })
+              }
               onLeave={() =>
                 setRemoving({
                   kind: "source",
@@ -392,6 +414,7 @@ export function RemoteAccessPage() {
         </SettingsGroup>
       </section>
 
+      <SourceTrafficDialog target={traffic} onClose={() => setTraffic(null)} />
       <AddRelayDialog
         draft={adding}
         onClose={() => setAdding(null)}

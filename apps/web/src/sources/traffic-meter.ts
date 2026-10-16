@@ -10,10 +10,13 @@
  * `ticketedWebSocket`、`connection.ts` 的托管流），由 {@link TransportMeter} 说
  * 这一刻是不是经中继、发往哪个源。
  *
- * 落地：内存累加，每 60 秒与页面隐藏时并进 `localStorage`（按本地日、源、类别；
- * 保留 90 天）。桌面窗口、浏览器与原生 App 的 WebView 都是这一份：数据都在
- * 各自应用的私有存储里。
+ * 落地：内存累加，每 60 秒与页面隐藏时并进持久存储（按本地日、源、类别；保留 90
+ * 天）。桌面窗口与浏览器是 `localStorage`；手机 App 是原生存储
+ * （`ArmadraNative.traffic`，设计 §6.4）——WebView 的 `localStorage` 会被系统清掉。
+ * 手机第一次启动时把旧 `localStorage` 里的数并进原生存储，然后删掉那份。
  */
+
+import { type NativeTrafficRow, nativeBridge } from "../mobile/native-bridge";
 
 import {
   type StreamTrafficCategory,
@@ -129,6 +132,14 @@ function readStorage(): Record<string, Cell> {
   }
 }
 
+function removeLegacyStorage(): void {
+  try {
+    globalThis.localStorage?.removeItem(TRAFFIC_STORAGE_KEY);
+  } catch {
+    // 拿不到就留着：下一次启动再试，数已经在原生存储里了。
+  }
+}
+
 function writeStorage(rows: Record<string, Cell>): void {
   try {
     globalThis.localStorage?.setItem(
@@ -154,8 +165,110 @@ function splitKey(key: string): {
   };
 }
 
+/** 账本落地的地方：同步读（内存里有一份）、整份写。 */
+export interface TrafficStorage {
+  read(): Record<string, Cell>;
+  write(rows: Record<string, Cell>): void;
+  /** 还没读到旧数据时不能写，免得盖掉；缺省随时可写。 */
+  ready?(): boolean;
+  /** 没读到时重试读取（`ready()` 为假时账本每次落地都会调）。 */
+  hydrate?(): Promise<boolean>;
+}
+
+const LOCAL_STORAGE: TrafficStorage = {
+  read: readStorage,
+  write: writeStorage,
+};
+
+function toRows(rows: Record<string, Cell>): NativeTrafficRow[] {
+  return Object.entries(rows).map(([key, cell]) => ({
+    ...splitKey(key),
+    bytesIn: cell[0],
+    bytesOut: cell[1],
+    streams: cell[2],
+  }));
+}
+
+function fromRows(rows: readonly NativeTrafficRow[]): Record<string, Cell> {
+  const cells: Record<string, Cell> = {};
+  for (const row of rows) {
+    const key = [row.day, row.sourceId, row.category].join(SEPARATOR);
+    const before = cells[key] ?? [0, 0, 0];
+    cells[key] = [
+      before[0] + row.bytesIn,
+      before[1] + row.bytesOut,
+      before[2] + row.streams,
+    ];
+  }
+  return cells;
+}
+
+/**
+ * 手机的原生存储：启动时一次性读进内存（读是同步的），写是整份交给原生。读到之前
+ * `ready()` 为假，账本不落地、数留在内存里。旧 `localStorage` 的数在读到之后并进来，
+ * 写成功才删旧的。
+ */
+export class NativeTrafficStorage implements TrafficStorage {
+  private rows: Record<string, Cell> = {};
+  private loaded = false;
+  private loading: Promise<boolean> | undefined;
+
+  constructor(private readonly onLoaded: () => void = () => undefined) {}
+
+  ready(): boolean {
+    return this.loaded;
+  }
+
+  read(): Record<string, Cell> {
+    return { ...this.rows };
+  }
+
+  write(rows: Record<string, Cell>): void {
+    // 读到之前写下去会盖掉原生里已有的历史。
+    if (!this.loaded) return;
+    this.rows = { ...rows };
+    void nativeBridge().traffic.save(toRows(rows));
+  }
+
+  /** 读原生存储并迁移旧数；失败（原生没答）下次再试。 */
+  hydrate(): Promise<boolean> {
+    this.loading ??= this.load().finally(() => {
+      this.loading = undefined;
+    });
+    return this.loading;
+  }
+
+  private async load(): Promise<boolean> {
+    const native = await nativeBridge().traffic.load();
+    if (native === null) return false;
+    const merged = fromRows(native);
+    const legacy = readStorage();
+    const migrate = Object.keys(legacy).length > 0;
+    for (const [key, cell] of Object.entries(legacy)) {
+      const before = merged[key] ?? [0, 0, 0];
+      merged[key] = [
+        before[0] + cell[0],
+        before[1] + cell[1],
+        before[2] + cell[2],
+      ];
+    }
+    this.rows = merged;
+    if (migrate) {
+      if (!(await nativeBridge().traffic.save(toRows(this.rows)))) {
+        return false;
+      }
+      removeLegacyStorage();
+    }
+    this.loaded = true;
+    this.onLoaded();
+    return true;
+  }
+}
+
 export interface TrafficLedgerOptions {
   readonly now?: () => number;
+  /** 落地的地方；缺省 `localStorage`。 */
+  readonly storage?: TrafficStorage;
   /** 测试用：不起定时器、不挂页面事件。 */
   readonly timers?: boolean;
 }
@@ -171,9 +284,11 @@ export class TrafficLedger {
   private flushTimer: ReturnType<typeof setInterval> | undefined;
   private version = 0;
   private readonly now: () => number;
+  private readonly storage: TrafficStorage;
 
   constructor(options: TrafficLedgerOptions = {}) {
     this.now = options.now ?? Date.now;
+    this.storage = options.storage ?? LOCAL_STORAGE;
     if (options.timers !== false) this.start();
   }
 
@@ -209,7 +324,11 @@ export class TrafficLedger {
 
   /** 并进持久存储，顺手清掉保留期之前的日子。 */
   flush(): void {
-    const stored = readStorage();
+    if (this.storage.ready?.() === false) {
+      void this.storage.hydrate?.();
+      return;
+    }
+    const stored = this.storage.read();
     const cutoff = localDay(this.now() - TRAFFIC_RETENTION_DAYS * 86_400_000);
     let changed = false;
     for (const key of Object.keys(stored)) {
@@ -228,7 +347,7 @@ export class TrafficLedger {
       ];
     }
     this.pending = new Map();
-    writeStorage(stored);
+    this.storage.write(stored);
   }
 
   /** 一个源在一段时间里的合计与按类别的分项。 */
@@ -274,14 +393,19 @@ export class TrafficLedger {
 
   /** 清零一个源（存储与内存一起）。 */
   clear(sourceId: string): void {
-    const stored = readStorage();
+    const stored = this.storage.read();
     for (const key of Object.keys(stored)) {
       if (splitKey(key).sourceId === sourceId) delete stored[key];
     }
     for (const key of [...this.pending.keys()]) {
       if (splitKey(key).sourceId === sourceId) this.pending.delete(key);
     }
-    writeStorage(stored);
+    this.storage.write(stored);
+    this.bump();
+  }
+
+  /** 外部数据到了（原生存储读完）：让页面重读一次。 */
+  refresh(): void {
     this.bump();
   }
 
@@ -302,7 +426,7 @@ export class TrafficLedger {
   }
 
   private *cells(): Iterable<[string, Cell]> {
-    const stored = readStorage();
+    const stored = this.storage.read();
     for (const [key, cell] of this.pending) {
       const before = stored[key] ?? [0, 0, 0];
       stored[key] = [
@@ -338,7 +462,17 @@ let shared: TrafficLedger | undefined;
 
 /** 这个页面的账本（第一次用时才建，模块求值时不起定时器）。 */
 export function trafficLedger(): TrafficLedger {
-  shared ??= new TrafficLedger();
+  if (shared === undefined) {
+    if (nativeBridge().available) {
+      const storage: NativeTrafficStorage = new NativeTrafficStorage(() =>
+        shared?.refresh(),
+      );
+      shared = new TrafficLedger({ storage });
+      void storage.hydrate();
+    } else {
+      shared = new TrafficLedger();
+    }
+  }
   return shared;
 }
 

@@ -1,10 +1,13 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { setFlow, setFlowContainer, type FlowHandle } from "./flow-context";
+import { useRealtimeStore } from "@/realtime/session";
 import {
   REVEAL_RETRY_DELAYS,
   REVEAL_ZOOM_THRESHOLD,
   revealNewNode,
+  zoomByStep,
+  zoomToLevel,
 } from "./use-flow-viewport";
 
 /**
@@ -118,5 +121,39 @@ describe("revealNewNode", () => {
   it("画布没挂载时什么都不做", () => {
     setFlow(null);
     expect(() => revealNewNode("n1")).not.toThrow();
+  });
+});
+
+describe("缩放取消跟随（#327）", () => {
+  afterEach(() => useRealtimeStore.setState({ following: null }));
+
+  function mountZoom(zoom: number) {
+    const zoomTo = vi.fn(() => Promise.resolve(true));
+    setFlow({
+      getViewport: () => ({ x: 0, y: 0, zoom }),
+      zoomTo,
+    } as unknown as FlowHandle);
+    return zoomTo;
+  }
+
+  it("zoomToLevel（缩放档位、100%）取消跟随", () => {
+    const zoomTo = mountZoom(1);
+    useRealtimeStore.setState({ following: 7 });
+    zoomToLevel(0.5);
+    expect(zoomTo).toHaveBeenCalled();
+    expect(useRealtimeStore.getState().following).toBeNull();
+  });
+
+  it("zoomByStep（Dock 加减按钮与快捷键）取消跟随", () => {
+    mountZoom(1);
+    useRealtimeStore.setState({ following: 7 });
+    zoomByStep(1);
+    expect(useRealtimeStore.getState().following).toBeNull();
+  });
+
+  it("画布未就绪时不动跟随", () => {
+    useRealtimeStore.setState({ following: 7 });
+    zoomByStep(-1);
+    expect(useRealtimeStore.getState().following).toBe(7);
   });
 });

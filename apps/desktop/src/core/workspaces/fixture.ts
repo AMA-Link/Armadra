@@ -110,8 +110,8 @@ export function fixture(
         url.pathname,
         request,
       );
-      // 本机文件的下载是流式的（`file`）：测试照旧从 `raw` 读字节。
-      const raw = handlerBytes(answer);
+      // 本机文件与远端的整份下载是流式的（`file`、`stream`）：测试照旧从 `raw` 读字节。
+      const raw = await handlerBytes(answer);
       return { ...answer, ...(raw === undefined ? {} : { raw }) } as {
         status: number;
         body: unknown;

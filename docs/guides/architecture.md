@@ -664,7 +664,7 @@ core 关停与启动中途失败走同一条收尾（`main.ts` 的 `teardown`）
     远程访问页上不给关闭、登出与移除。
     经中继的流量由传输层自己记（`sources/traffic-meter.ts`，契约 §76 的客户端一侧）：`bearerFetch` /
     `ticketedWebSocket` 与托管流按源与类别（与 core 共用 `trafficCategory`）累加请求体、响应体与每条消息的
-    载荷，每 60 秒与页面隐藏时按本地日并进 `localStorage`（保留 90 天）；连接页每行写本月上下行，「流量」
+    载荷，每 60 秒与页面隐藏时按本地日并进持久存储（保留 90 天）：桌面与浏览器是 `localStorage`，手机是原生存储 `ArmadraNative.traffic`（`trafficLoad` / `trafficSave`，iOS `UserDefaults`、Android `SharedPreferences`；旧 `localStorage` 的数首次启动并入后删除）；连接页每行写本月上下行，「流量」
     看今日 / 本月 / 全部与按类别的比例（`traffic/`）。
     CSRF 只在
     Cookie 会话上核对，Bearer 不是环境凭据（`identity/http.ts::csrfRequired`）。Gateway 的每个答案带

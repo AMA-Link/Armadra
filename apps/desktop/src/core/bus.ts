@@ -443,6 +443,14 @@ export interface CoreEvents {
     readonly persistedSequence?: number;
   };
   /**
+   * A workspace is about to be removed — its row and everything cascading off
+   * it still exist. Core-internal: a domain that keeps something outside the
+   * database for the workspace (the forge domain's tokens in the secret store)
+   * reads what it must clean up here, and does so once `workspace.grants` with
+   * `permissions: null` says the removal went through.
+   */
+  "workspace.removing": { readonly workspaceId: string };
+  /**
    * A workspace's grants changed, or the workspace is gone (`permissions:
    * null`). Core-internal, never sent to a client: it is how a domain that
    * started something under the old grants — a language server needs `execute`

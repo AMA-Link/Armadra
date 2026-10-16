@@ -213,6 +213,7 @@ const E2E_SOURCE_ERROR: Partial<Record<E2eAccessError["code"], string>> = {
   unsupported: SOURCE_ERROR.e2eUnsupported,
   device_unavailable: SOURCE_ERROR.e2eDeviceUnavailable,
   unreachable: SOURCE_ERROR.unreachable,
+  offline: SOURCE_ERROR.offline,
 };
 
 /**
@@ -276,6 +277,7 @@ export const exchangeViaLocalCore: AccessExchange = async (
     e2e = {
       fetch: desktopChannels.fetchFor(channel, httpBase),
       WebSocket: desktopChannels.socketFor(channel, httpBase),
+      onClose: (listener) => channel.onClose(() => listener()),
     };
   }
   return {

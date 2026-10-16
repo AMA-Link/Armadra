@@ -34,6 +34,7 @@ import {
 import { Tabs, TabsList, TabsTrigger } from "@/ui/tabs";
 import { ToggleGroup, ToggleGroupItem } from "@/ui/toggle-group";
 import { TrafficBreakdown, type TrafficBreakdownRow } from "./TrafficBreakdown";
+import { TrafficTrend } from "./TrafficTrend";
 
 const DAY_MS = 86_400_000;
 const LIVE_POLL_MS = 5_000;
@@ -160,6 +161,7 @@ export function HostTraffic() {
             </ToggleGroupItem>
           </ToggleGroup>
         </div>
+        <TrafficTrend fromMs={fromOf(range, now)} toMs={now + DAY_MS} />
         <TrafficBreakdown
           up={totals.up}
           down={totals.down}

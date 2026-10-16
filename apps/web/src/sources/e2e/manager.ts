@@ -4,6 +4,7 @@ import {
   E2eClientChannel,
   channelFetch,
   channelWebSocket,
+  relayRefusal,
 } from "@armadra/shared/e2e";
 
 import { type DeviceIdentity, deviceIdentity } from "./device-key";
@@ -47,6 +48,8 @@ export class E2eAccessError extends Error {
       | "device_unavailable"
       | "unsupported"
       | "unreachable"
+      /** 中继说这台电脑不在线（隧道断了、对端重启）：等它回来。 */
+      | "offline"
       | "cancelled",
     message: string = code,
   ) {
@@ -238,12 +241,11 @@ export class E2eChannels {
         error.code === "identity_mismatch"
       )
         throw new E2eAccessError("identity_changed");
-      // 中继答源不支持（4404 `e2e_unsupported`）或不认版本（4409）：旧 core。
-      if (
-        error instanceof E2eChannelError &&
-        (error.closeCode === 4404 || error.closeCode === 4409)
-      )
-        throw new E2eAccessError("unsupported");
+      // 中继答源不支持（4404 `e2e_unsupported`）或不认版本（4409）：旧 core；
+      // 其余 4404 是源不在线。
+      const refusal = relayRefusal(error);
+      if (refusal === "unsupported") throw new E2eAccessError("unsupported");
+      if (refusal === "offline") throw new E2eAccessError("offline");
       throw new E2eAccessError("unreachable");
     }
     if (

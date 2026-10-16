@@ -19,7 +19,7 @@ export const WORKSPACE_GROUP_ORDER: readonly WorkspaceGroupKey[] = [
 
 /**
  * 一台电脑那一段的列表状态：`ready` 列出的是实时的；`loading` 在连或在取，
- * `offline` 连不上、要登录——这两种列的是上次记下的（灰着、点不开）。
+ * `offline` 连不上、要登录、等对端上线——这两种列的是上次记下的（灰着、点不开）。
  */
 export type SectionState = "ready" | "loading" | "offline";
 
@@ -74,7 +74,12 @@ function sectionOf(
     workspaces: local ? (listing?.workspaces ?? []) : input.cached(sourceId),
     stale: !local,
   });
-  if (state === "offline" || state === "unauthorized")
+  // 对端不在线（中继说源没上线）和连不上一样：灰着、点不开，列上次记下的。
+  if (
+    state === "offline" ||
+    state === "unauthorized" ||
+    state === "waitingForSource"
+  )
     return fallback("offline");
   if (state !== "ready") return fallback("loading");
   if (listing === undefined || listing.isPending) return fallback("loading");

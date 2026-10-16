@@ -4320,8 +4320,7 @@ nightly 在 `b8353492`（运行 37338174906）之后连续失败。逐个作业�
 没做 / 限制：
 
 - 浏览器看不到 HTTP 头、WS 帧头与 TLS，客户端的字节小于 core 的；条数对得上。端到端通道（E3）之后改为通道层计数，那时可以记记录层字节。
-- 手机的数存在 WebView 的 `localStorage`（App 私有存储），没有走原生 `ArmadraNative.traffic`；系统清理 WebView 存储时会丢。
-- 桌面窗口没有源列表入口（「切换服务」对话框已在 #301 删去），桌面端的计量照常落地，暂无页面展示。
+- 手机的数改存原生存储、桌面端有了入口，见下一节「流量统计后续项」（#378、#379）。
 
 接口：
 
@@ -4358,3 +4357,19 @@ nightly 在 `b8353492`（运行 37338174906）之后连续失败。逐个作业�
 
 - 执行主机上的 ama 不兑换模型密钥，用那台主机自己的登录；`sessionDir` 在注入根下，Worker 换版本后旧会话不在新根里。
 - Claude 的 mod 在远端 ACP 下不挂（CLI 版本探不到）。
+
+## 流量统计后续项（Refs #360，Closes #377、#378、#379、#380，2026-10-12）
+
+做了什么：
+
+- **#377 `cloud login` 后账号不是主人**：原因是 CLI 只做了登录、取注册令牌、登记，漏了网页「分享本机」里的最后一步——为本机取一张断言交给 `identity.cloud.bind`，把中继账号映射到本机 owner。没有映射时这个账号经中继换会话是 `cloud_account_unlinked`。现在登记（或早已登记）之后补做这一步，已关联（`conflict`）算成功，所以重复运行也能修好已经登记过的主机；只给令牌的 `cloud register` 不知道是哪个账号，不做。测试在 `apps/server/src/cloud.test.ts`。
+- **#378 桌面入口**：远程访问页里经中继的「我的电脑」行与「他人分享」行的菜单多一项「流量」，打开对话框（`SourceTrafficDialog`），内容与手机连接页同一段 `SourceTraffic`；直连的行没有（不计量）。
+- **#379 手机存储**：账本落地抽成 `TrafficStorage`；手机用 `NativeTrafficStorage`，经插件 `ArmadraNative` 的 `trafficLoad` / `trafficSave`（iOS `UserDefaults`、Android `SharedPreferences`，整份读写，行形状与 2 万行上限不对整份拒绝）。读到原生数据之前不落地，旧 `localStorage` 的数首次启动并入后删除。桌面与浏览器仍是 `localStorage`。
+- **#380 时间趋势**：流量卡片在三格上方加 `TrafficTrend`——`traffic.series`（按本地日分桶）的上行 / 下行叠柱，shadcn chart，随 7 天 / 30 天 / 全部走，没有流量不出现。
+
+验证：server 12 个 cloud 用例、web 的 traffic / remote-access / mobile / i18n 相关测试、`swift test`（ArmadraNativeKit 37 个）、`TrafficRowsTest`（javac + JUnit 手动跑，本机 gradle 没配 Android SDK）。趋势图与入口对话框用无头 Chrome 对着真实组件截图（深浅两套），截图在工作区 `scratch/armadra/traffic-followups/`。
+
+没做 / 限制：
+
+- iOS 与 Android 的插件类（`ArmadraNativePlugin`）没有在本机编译（Android SDK 未配、Xcode 工程未跑），只有纯逻辑部分有单测；真机或模拟器上的读写待验证。
+- 趋势只画明文字节，线上字节（`transport`）仍只在 `traffic.summary` 的线路行里。

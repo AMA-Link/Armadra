@@ -213,7 +213,7 @@ armadra.example.com {
 ```sh
 # 注册令牌（中继签发）与自签证书的 CA 指纹（中继 personal status 打印）
 ARMADRA_CLOUD_REGISTRATION_TOKEN=… armadra-server cloud register --issuer https://relay.example.com --fingerprint <64 位十六进制>
-# 或用账号口令：登录、取注册令牌、登记一步做完
+# 或用账号口令：登录、取注册令牌、登记、把该账号关联为本机主人，一步做完（只给令牌的 register 不知道是哪个账号，不做关联）
 armadra-server cloud login --issuer https://relay.example.com --account me --fingerprint <指纹> --password-stdin < pw.txt
 armadra-server cloud status            # 登记与隧道状态（--output json）
 armadra-server cloud revoke --issuer https://relay.example.com

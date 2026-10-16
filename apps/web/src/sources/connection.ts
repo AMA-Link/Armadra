@@ -303,6 +303,8 @@ export function createRemoteConnection(
   });
   const sockets = new Set<ManagedSocket>();
   let access: SourceAccess | null = null;
+  let unwatch: (() => void) | null = null;
+  let lastDropAt = Number.NEGATIVE_INFINITY;
   let via: Via | null = null;
   /** 同一类路里走的是哪一条（§55）；凭据来源自己选的是 `undefined`。 */
   let origin: string | undefined;
@@ -328,6 +330,47 @@ export function createRemoteConnection(
     access?.httpBase ?? (descriptor.baseUrl || descriptor.relayOrigin);
   const wsBase = () => access?.wsBase ?? httpBase().replace(/^http/, "ws");
 
+  /**
+   * 换手里的访问，并盯着它的端到端通道：访问里的 `fetch` / `WebSocket` 绑在一条
+   * 通道上，通道关了（对端下线、隧道换节点、网络断）这份访问就废了。
+   */
+  function adopt(next: SourceAccess | null): void {
+    unwatch?.();
+    unwatch = null;
+    access = next;
+    const onClose = next?.e2e?.onClose;
+    if (next === null || onClose === undefined) return;
+    unwatch = onClose(() => channelClosed(next));
+  }
+
+  /**
+   * 通道关了：丢掉这份访问（连带凭据来源缓着的那份），重新走一遍取访问。对端还
+   * 在就换一条新通道接着用，不在就落到 `waitingForSource`（等 `sourceOnline` 或
+   * 流的重连叫醒）。
+   */
+  function channelClosed(closed: SourceAccess): void {
+    if (access !== closed) return;
+    if (connecting !== null) {
+      // 正在取访问：等这一轮结束，若手里还是这份已关的再来。
+      void connecting.finally(() => channelClosed(closed));
+      return;
+    }
+    adopt(null);
+    provider.invalidate(id);
+    const state = status.current.state;
+    if (state === "unauthorized" || state === "idle") return;
+    // 刚关的通道又立刻关（连不稳）：不在这里循环，留给流的退避去重试。
+    if (now() - lastDropAt < REPROBE_INTERVAL_MS) {
+      setStatus("offline", {
+        code: SOURCE_ERROR.unreachable,
+        message: "",
+      });
+      return;
+    }
+    lastDropAt = now();
+    void establish();
+  }
+
   const setStatus = (
     state: SourceStatus["state"],
     lastError: SourceFailure | null = null,
@@ -340,10 +383,10 @@ export function createRemoteConnection(
   const ensureAccess = async (): Promise<SourceAccess> => {
     if (access !== null) return access;
     const route = await pickRoute(descriptor, provider, options.probe);
-    access = route.access;
+    adopt(route.access);
     via = route.via;
     origin = route.origin;
-    return access;
+    return route.access;
   };
 
   /** 续一次：`refresh`，经中继的再重取一次；续不上 `unauthorized`。 */
@@ -352,13 +395,13 @@ export function createRemoteConnection(
       const route = via;
       if (route === null || route === "local") return false;
       try {
-        access = await provider.refresh(id, route, ...onRoute());
+        adopt(await provider.refresh(id, route, ...onRoute()));
         return true;
       } catch (first) {
         if (route === "relayed") {
           provider.invalidate(id);
           try {
-            access = await provider.getAccess(id, "relayed", ...onRoute());
+            adopt(await provider.getAccess(id, "relayed", ...onRoute()));
             return true;
           } catch (second) {
             setStatus(
@@ -523,7 +566,7 @@ export function createRemoteConnection(
       unlisten();
       for (const socket of [...sockets]) socket.close();
       sockets.clear();
-      access = null;
+      adopt(null);
       hello = null;
       ticketed = new WeakMap();
       provider.invalidate(id);
@@ -540,7 +583,7 @@ export function createRemoteConnection(
       unlisten();
       for (const socket of [...sockets]) socket.close();
       sockets.clear();
-      access = null;
+      adopt(null);
       hello = null;
       ticketed = new WeakMap();
       provider.invalidate(id);
@@ -558,7 +601,7 @@ export function createRemoteConnection(
       const before = via;
       setStatus("connecting", status.current.lastError);
       // 重新走一遍选路（D27：重连与回到前台时再探直连）。
-      access = null;
+      adopt(null);
       via = null;
       origin = undefined;
       try {
@@ -600,7 +643,7 @@ export function createRemoteConnection(
       if (mine !== epoch) return;
       if (answer.sourceId !== id) {
         // 连上的不是这台：不信它，丢掉这份访问。
-        access = null;
+        adopt(null);
         provider.invalidate(id);
         setStatus("offline", {
           code: SOURCE_ERROR.mismatch,
@@ -650,7 +693,7 @@ export function createRemoteConnection(
         return;
       }
       if (mine !== epoch || via !== "relayed") return;
-      access = next;
+      adopt(next);
       via = "direct";
       origin = undefined;
       setStatus("ready");

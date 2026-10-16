@@ -8,6 +8,7 @@ import type { MessageModule } from "./index";
 export const traffic: MessageModule = {
   "zh-CN": {
     "traffic.title": "流量",
+    "traffic.trend": "流量趋势",
     "traffic.open": "{name} 的流量",
     "traffic.back": "返回",
     "traffic.range.today": "今日",
@@ -42,6 +43,7 @@ export const traffic: MessageModule = {
   },
   en: {
     "traffic.title": "Traffic",
+    "traffic.trend": "Traffic trend",
     "traffic.open": "Traffic for {name}",
     "traffic.back": "Back",
     "traffic.range.today": "Today",
