@@ -82,11 +82,17 @@ export function normalize(
 /**
  * `message.updated` nests the message under `info` in current opencode, and
  * used to inline it; both shapes are read.
+ *
+ * Only the message as first created opens a turn. opencode 1.19 publishes the
+ * user message a second time once the diff summary is computed (`info.summary`
+ * set) — in the TUI that lands *after* `session.idle`, so counting it as a new
+ * turn flipped a finished node back to working until the next turn.
  */
 function isUserMessage(properties: Payload): boolean {
   const info = field(properties, "info", "info");
   const role = field(info, "role", "role") ?? field(properties, "role", "role");
-  return typeof role === "string" && role.toLowerCase() === "user";
+  if (typeof role !== "string" || role.toLowerCase() !== "user") return false;
+  return field(info, "summary", "summary") === undefined;
 }
 
 function sessionId(properties: Payload): string | undefined {
