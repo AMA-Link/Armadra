@@ -1182,6 +1182,8 @@ export interface SessionSummary {
    * Agent panel needs it to tell "idle" from "gone".
    */
   readonly sessionPhase?: string;
+  /** 最近一个回合出错结束（契约 §81：与 `unread` 一起决定「出错」是否还要人处理）。 */
+  readonly errored?: boolean;
   readonly updatedAt: string;
   readonly alive: boolean;
   /** 契约 §53：程序此刻自报的状态，只在会话活在这个进程里时有。 */
@@ -1226,6 +1228,7 @@ export function listSessions(
               st.agent_id AS status_agent_id, st.state AS state,
               st.state_source AS state_source, st.unread AS unread,
               st.pending_id AS pending_id, st.session_phase AS session_phase,
+              st.errored AS errored,
               st.updated_at AS status_updated_at
          FROM terminal_sessions s
          JOIN nodes n ON n.id = s.owner_node_id
@@ -1274,6 +1277,9 @@ export function listSessions(
       ...(sessionPhase === null || sessionPhase === undefined
         ? {}
         : { sessionPhase }),
+      ...(row.errored === null || row.errored === undefined
+        ? {}
+        : { errored: Number(row.errored) !== 0 }),
       updatedAt: String(
         (row.status_updated_at as string | null) ?? row.created_at,
       ),

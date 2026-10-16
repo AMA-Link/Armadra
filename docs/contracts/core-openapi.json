@@ -13638,6 +13638,9 @@
                         "enum": ["start", "end"],
                         "type": "string"
                       },
+                      "errored": {
+                        "type": "boolean"
+                      },
                       "updatedAt": {
                         "type": "string",
                         "format": "date-time"
@@ -71188,6 +71191,7 @@
                                 "approval",
                                 "agentDone",
                                 "agentError",
+                                "agentWaiting",
                                 "deliveryFailed",
                                 "schedule",
                                 "resources",
@@ -71397,6 +71401,7 @@
                               "approval",
                               "agentDone",
                               "agentError",
+                              "agentWaiting",
                               "deliveryFailed",
                               "schedule",
                               "resources",
@@ -71555,6 +71560,7 @@
                               "approval",
                               "agentDone",
                               "agentError",
+                              "agentWaiting",
                               "deliveryFailed",
                               "schedule",
                               "resources",

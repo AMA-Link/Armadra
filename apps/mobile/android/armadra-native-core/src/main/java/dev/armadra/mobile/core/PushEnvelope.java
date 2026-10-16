@@ -22,7 +22,7 @@ import org.bouncycastle.crypto.params.X25519PublicKeyParameters;
 public final class PushEnvelope {
     public static final String ALGORITHM = "x25519-hkdf-sha256-a256gcm";
     public static final Set<String> KINDS = Set.of(
-            "approval", "agentDone", "agentError", "deliveryFailed", "schedule",
+            "approval", "agentDone", "agentError", "agentWaiting", "deliveryFailed", "schedule",
             "resources", "comment", "workflowGate", "test");
     private static final byte[] INFO = "armadra-push-v1".getBytes(StandardCharsets.UTF_8);
 

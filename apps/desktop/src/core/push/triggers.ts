@@ -1,3 +1,5 @@
+import { agentHumanNeed, type HumanNeed } from "@armadra/shared";
+
 import type { PushKind, PushPayload } from "./types";
 
 /**
@@ -54,12 +56,20 @@ const DELIVERY_FAILURES = new Set([
   "cancelled",
 ]);
 
+/** 状态帧上的「需要人处理」→ 通知种类；审批不在其中（见 `agent.approval`）。 */
+const AGENT_NEED_KIND: Readonly<Record<string, PushKind | undefined>> = {
+  input: "agentWaiting",
+  error: "agentError",
+};
+
 /**
- * 有状态的那一半：`agent.status` 每次上报都广播整行，「完成」要的是**进入**
- * done 的那一下，不是之后每一帧。记住每个节点上一次的状态就够了。
+ * 有状态的那一半：`agent.status` 每次上报都广播整行，要的是**进入**某种
+ * 「需要人处理」的那一下，不是之后每一帧。记住每个节点上一次的分类就够了。
+ * `agentDone` 已退役（完成不叫人，契约 §81）；种类和正文留着，只为已存的
+ * 设备偏好与旧客户端仍认得它。
  */
 export class TriggerRules {
-  private readonly lastState = new Map<string, string>();
+  private readonly lastNeed = new Map<string, HumanNeed | null>();
 
   draft(workspaceId: string, event: EventFrame): Draft | undefined {
     switch (event.type) {
@@ -81,32 +91,28 @@ export class TriggerRules {
         const status = record(event.status);
         const nodeId = str(status.nodeId);
         if (nodeId === undefined) return undefined;
-        const state =
-          status.errored === true ? "error" : (str(status.state) ?? "");
-        const previous = this.lastState.get(nodeId);
-        this.lastState.set(nodeId, state);
-        // 重启后恢复出来的行不是一次新的完成。
-        if (status.restored === true || previous === state) return undefined;
-        const agentId = str(status.agentId);
-        if (state === "done") {
-          return {
-            kind: "agentDone",
-            workspaceId,
-            nodeId,
-            agentId,
-            tag: `status:${nodeId}`,
-          };
-        }
-        if (state === "error") {
-          return {
-            kind: "agentError",
-            workspaceId,
-            nodeId,
-            agentId,
-            tag: `status:${nodeId}`,
-          };
-        }
-        return undefined;
+        // 「要不要叫人」只有一份定义（共享层的 `agentHumanNeed`，契约 §81）：
+        // 完成、空闲、运行中都不推；审批由 `agent.approval` 事件推（带
+        // `pendingId` 做折叠键），这里只记下它，免得状态帧再推一遍。
+        const need = agentHumanNeed({
+          state: str(status.state),
+          pendingId: str(status.pendingId),
+          errored: status.errored === true,
+          unread: status.unread === true,
+        });
+        const previous = this.lastNeed.get(nodeId) ?? null;
+        this.lastNeed.set(nodeId, need);
+        // 重启后恢复出来的行不是一次新的请求。
+        if (status.restored === true || previous === need) return undefined;
+        const kind = AGENT_NEED_KIND[need ?? ""];
+        if (kind === undefined) return undefined;
+        return {
+          kind,
+          workspaceId,
+          nodeId,
+          agentId: str(status.agentId),
+          tag: `status:${nodeId}`,
+        };
       }
       case "agent.delivery": {
         const outcome = str(event.outcome) ?? "";
@@ -192,7 +198,7 @@ export class TriggerRules {
 
   /** 节点删了、工作空间没了：状态记录跟着丢，不让这张表只长不缩。 */
   forget(nodeId: string): void {
-    this.lastState.delete(nodeId);
+    this.lastNeed.delete(nodeId);
   }
 }
 
@@ -206,6 +212,7 @@ const BODIES: Record<Locale, Record<BodyKey, string>> = {
   "zh-CN": {
     approval: "{agent} 等待审批",
     agentDone: "{agent} 已完成",
+    agentWaiting: "{agent} 在等你回答",
     agentError: "{agent} 出错了",
     deliveryFailed: "有一条投递没有送达",
     schedule: "定时任务到点了",
@@ -219,6 +226,7 @@ const BODIES: Record<Locale, Record<BodyKey, string>> = {
   en: {
     approval: "{agent} is waiting for approval",
     agentDone: "{agent} finished",
+    agentWaiting: "{agent} is waiting for your answer",
     agentError: "{agent} hit an error",
     deliveryFailed: "A delivery was not accepted",
     schedule: "A scheduled task is due",

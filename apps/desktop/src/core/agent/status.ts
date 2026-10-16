@@ -1,4 +1,6 @@
 import type { DatabaseSync } from "node:sqlite";
+import { isAwaitingHuman as awaitingHuman } from "@armadra/shared";
+
 import { rfc3339 } from "../workspaces/support";
 
 /**
@@ -161,5 +163,5 @@ export function isAwaitingHuman(
 ): boolean {
   const status = getAgentStatus(database, nodeId);
   if (status === undefined) return false;
-  return status.state === "blocked" || status.state === "waiting";
+  return awaitingHuman(status);
 }
