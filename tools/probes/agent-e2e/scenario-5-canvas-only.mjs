@@ -148,10 +148,17 @@ export default async function run5(ctx) {
       delete inside[name];
     inside.ARMADRA_NODE_ID = source.id;
     inside.ARMADRA_ENDPOINT_FILE = join(data, "hook-endpoint.env");
+    // 节点终端里 `armadra-hook` 在 PATH 末尾，路径也在 ARMADRA_HOOK_BIN 里
+    // （terminal/environment.ts）：技能说明里的命令靠它找得到。
+    inside.ARMADRA_HOOK_BIN = join(data, "bin", "armadra-hook");
+    inside.PATH = `${inside.PATH}:${join(data, "bin")}`;
     const outside = { ...inside };
     delete outside.ARMADRA_NODE_ID;
     const lastEvent = () => status(source.id)?.last_event_at ?? null;
     const prompt = "Reply with just OK.";
+    // 技能能调用：画布内再跑一轮，让模型真去跑技能说明里的那条命令。
+    const invoke =
+      "Run the shell command `armadra-hook canvas list` exactly once and no other command, then answer in one line exactly: LIST=<ok if the command printed a list of canvas nodes, failed otherwise>; FIRST=<the first line it printed>";
 
     /* ------------------------------- Codex -------------------------------- */
 
@@ -195,6 +202,45 @@ export default async function run5(ctx) {
       before,
       after: lastEvent(),
     });
+
+    // 默认沙箱下 Codex 里的 shell 连不上 core 的 hook 端点（EPERM，#407）：已知
+    // 缺口，单独记；放开沙箱的那一次证明技能说明本身是通的。
+    const sandboxHome = join(scratch, "codex-home-5-open");
+    mkdirSync(sandboxHome, { recursive: true });
+    copyFileSync(join(codexHome, "auth.json"), join(sandboxHome, "auth.json"));
+    const codexInvokeLine = (...extra) => [
+      codexProgram,
+      "exec",
+      "--skip-git-repo-check",
+      ...extra,
+      invoke,
+    ];
+    const codexSandboxed = await run(codexLauncher, codexInvokeLine(), {
+      cwd: project,
+      env: codexEnv(inside),
+    });
+    const sandboxedOut = codexSandboxed.stdout || codexSandboxed.stderr;
+    s.check(
+      "画布内：Codex 默认沙箱下 armadra-hook canvas list（已知缺口 #407：EPERM）",
+      codexSandboxed.code === 0 &&
+        (/LIST=ok/i.test(sandboxedOut) || /EPERM/.test(sandboxedOut)),
+      {
+        knownGap: !/LIST=ok/i.test(sandboxedOut),
+        out: sandboxedOut.slice(-300),
+      },
+    );
+    const codexInvoke = await run(
+      codexLauncher,
+      codexInvokeLine("-s", "danger-full-access"),
+      // `-s` 会让 Codex 自己写一份 config.toml：另给一个 CODEX_HOME，免得算到
+      // 画布注入头上（上面的零写入核对针对 freshHome）。
+      { cwd: project, env: { ...codexEnv(inside), CODEX_HOME: sandboxHome } },
+    );
+    s.check(
+      "画布内：Codex 的技能能调用，armadra-hook canvas list 读到画布（放开沙箱）",
+      codexInvoke.code === 0 && /LIST=ok/i.test(codexInvoke.stdout),
+      (codexInvoke.stdout || codexInvoke.stderr).slice(-400),
+    );
 
     const codexOutside = async (label, program, args, env) => {
       before = lastEvent();
@@ -296,6 +342,27 @@ export default async function run5(ctx) {
       before,
       after: lastEvent(),
     });
+
+    const claudeInvoke = await run(
+      claudeLauncher,
+      [
+        claudeProgram,
+        "-p",
+        "--permission-mode",
+        "acceptEdits",
+        "--allowedTools",
+        "Bash(armadra-hook:*)",
+        "--max-turns",
+        "4",
+        invoke,
+      ],
+      { cwd: project, env: claudeEnv(inside) },
+    );
+    s.check(
+      "画布内：Claude 的技能能调用，armadra-hook canvas list 读到画布",
+      claudeInvoke.code === 0 && /LIST=ok/i.test(claudeInvoke.stdout),
+      (claudeInvoke.stdout || claudeInvoke.stderr).slice(-400),
+    );
 
     const claudeOutside = async (label, program, args, env) => {
       before = lastEvent();

@@ -396,6 +396,8 @@ node tools/probes/agent-e2e.mjs [输出目录] --only 11,12 --self-test # 不起
 
 产物默认在 `target/agent-e2e/`：`result.json`（逐条断言、时间线、投递记录、控制台错误、配置比对）、每个场景的截图与 `core.log`。一次全量约 4–5 分钟（实测 245 秒），花费是十几轮「回复 OK」量级的 token。
 
+技能可调用（#403）：场景 5（Claude / Codex，终端）、场景 6（OpenCode / Pi / OMP / Copilot，终端）与场景 12 的 `canvasTool`（ACP）各让模型真去跑一次 `armadra-hook canvas list`（ACP 下 Claude / OpenCode 走 MCP 工具、其余走 shell；Claude / Copilot 的审批卡弹出后由探针经 API 答「允许」）。Codex 在默认沙箱里连不上 hook 端点（EPERM，已知缺口 #407），场景 5 / 12 把它记为已知缺口，场景 5 另用放开沙箱的一次证明技能说明本身是通的。场景 10 的 OMP 用临时 `config.yml` 关掉 18.x 的首启向导；Copilot 与 OpenCode 的会话在第一条输入时才建，开场没有上报，探针认输入框画面而不是等上报。
+
 没验证的：会话宿主后端（Windows）；OpenCode / OMP / Copilot 的交互式 TUI（场景 10 写了它们的路径，但 2026-10-02 这台机器上三家都没装、记 skipped；Pi 的 TUI 真跑过）——场景 10 把每家 TUI 起来时（或起不来时）的画面存进 `<输出目录>/screens/<id>-tui-*.txt`，拿它核对 `agent/screen-gate.ts` 里 `verified: false` 的特征；场景 11 的真模型版与场景 12 的真跑还没有做过（只有 `--self-test`）；打包版见「打包版冒烟」一节。
 
 ### C 档运行手册（场景 10、11 `--real-model`、12）

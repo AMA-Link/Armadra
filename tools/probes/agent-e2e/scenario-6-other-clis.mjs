@@ -46,28 +46,37 @@ import {
 const PROMPT =
   "Do not use any tools. Answer in one line exactly: SKILLS=<names of the skills available to you, comma-separated, or none>; RULE=<the shell command your instructions say to collaborate through, or none>";
 
+/**
+ * 画布内再跑一轮：真去调技能说明的那条命令（`armadra-hook canvas list`），读到画布。
+ * 只许这一条 shell 命令。
+ */
+const INVOKE =
+  "Run the shell command `armadra-hook canvas list` exactly once and no other command, then answer in one line exactly: LIST=<ok if the command printed a list of canvas nodes, failed otherwise>; FIRST=<the first line it printed>";
+
 /** 每个 CLI 非交互跑一轮的参数；注入由启动器接在后面。 */
 const LINES = {
-  opencode(cli) {
-    return ["run", "--model", cli.model, PROMPT];
+  opencode(cli, prompt) {
+    return ["run", "--model", cli.model, prompt];
   },
-  pi: (cli) => [
+  pi: (cli, prompt) => [
     "-p",
     "--no-session",
     "--thinking",
     "off",
     "--model",
     cli.model,
-    PROMPT,
+    prompt,
   ],
-  omp: (cli) => ["-p", `--model=${cli.model}`, PROMPT],
-  copilot: (cli) => [
+  omp: (cli, prompt) => ["-p", `--model=${cli.model}`, prompt],
+  copilot: (cli, prompt) => [
     "-p",
-    PROMPT,
+    prompt,
     "-s",
     "--no-auto-update",
     "--model",
     cli.model,
+    // 非交互没人批准：只放行这一条命令，其余照旧拒绝。
+    "--allow-tool=shell(armadra-hook:*)",
   ],
 };
 
@@ -75,7 +84,7 @@ const LINES = {
 function prepareClis(scratch) {
   const clis = prepareCliHomes(scratch);
   for (const [id, cli] of Object.entries(clis)) {
-    if (!cli.skip) cli.line = () => LINES[id](cli);
+    if (!cli.skip) cli.line = (prompt = PROMPT) => LINES[id](cli, prompt);
   }
   return clis;
 }
@@ -318,6 +327,34 @@ export default async function run6(ctx) {
       s.check(
         `${id} 画布内：答得出画布规则里的 armadra-hook canvas`,
         /RULE=.*armadra-hook( canvas)?/i.test(inside.out),
+      );
+      // 技能能调用：再跑一轮，让模型真去跑 `armadra-hook canvas list`。
+      const invokePrefix = join(scratch, `${id}-invoke`);
+      await api("/api/terminals", {
+        method: "POST",
+        body: JSON.stringify({
+          workspaceId: workspace.id,
+          cwd: project,
+          nodeId: node.id,
+          agent: { id },
+          command: wrapper,
+          args: [invokePrefix, launcher ?? "", ...cli.line(INVOKE)],
+        }),
+      });
+      await waitSoft(() => existsSync(`${invokePrefix}.code`), {
+        timeout: 240_000,
+        interval: 1000,
+      });
+      const invoked = {
+        code: read(`${invokePrefix}.code`).trim(),
+        out: read(`${invokePrefix}.out`).trim().slice(-600),
+        err: read(`${invokePrefix}.err`).trim().slice(-300),
+      };
+      entry.invoke = invoked;
+      s.check(
+        `${id} 画布内：技能能调用，armadra-hook canvas list 读到画布`,
+        invoked.code === "0" && /LIST=ok/i.test(invoked.out),
+        invoked.out || invoked.err,
       );
       // 上报是异步的（扩展里 fire-and-forget，CLI 退出前可能还在路上）。
       const reported = await waitSoft(

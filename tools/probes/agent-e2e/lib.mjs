@@ -318,7 +318,7 @@ export async function setup(clis) {
   const environment = {
     ...process.env,
     ARMADRA_DATA_DIR: data,
-    ARMADRA_LOG: "info",
+    ARMADRA_LOG: process.env.ARMADRA_E2E_LOG ?? "info",
     CODEX_HOME: codexHome,
     CLAUDE_CONFIG_DIR: claudeInstallHome,
     // core 启动时的一次性迁移按这些目录找旧的全局安装：全指到临时目录，探针

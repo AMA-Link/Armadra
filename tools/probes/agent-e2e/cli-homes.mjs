@@ -125,6 +125,11 @@ export function prepareCliHomes(scratch, { dirs = {}, only } = {}) {
     const h = home("omp");
     const agentDir = dirs.omp ?? join(h, ".omp/agent");
     mkdirSync(agentDir, { recursive: true });
+    // 18.x 首次启动弹五步引导，TUI 停在那里；设置里关掉（只影响这个临时目录）。
+    writeFileSync(
+      join(agentDir, "config.yml"),
+      "startup:\n  setupWizard: false\n",
+    );
     writeFileSync(
       join(agentDir, "models.yml"),
       [
