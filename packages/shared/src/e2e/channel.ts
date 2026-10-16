@@ -46,10 +46,24 @@ export class E2eChannelError extends Error {
     message: string = code,
     /** 中继关 WebSocket 时给的关闭码（有的话）。 */
     readonly closeCode?: number,
+    /** 中继关 WebSocket 时给的原因（4404 靠它分「源离线」与「源没有 e2e」）。 */
+    readonly reason?: string,
   ) {
     super(message);
     this.name = "E2eChannelError";
   }
+}
+
+/**
+ * 中继在握手前后关通道的缘由：4409 与「4404 + `e2e_unsupported`」是源没有端到端
+ * 通道（旧 core），其余 4404 是源不在线（隧道断了、对端重启），别的码或没有码答
+ * `null`（令牌失效、限流、网络……由调用方按 `code` / `closeCode` 判）。
+ */
+export function relayRefusal(error: unknown): "offline" | "unsupported" | null {
+  if (!(error instanceof E2eChannelError)) return null;
+  if (error.closeCode === 4409) return "unsupported";
+  if (error.closeCode !== 4404) return null;
+  return error.reason === "e2e_unsupported" ? "unsupported" : "offline";
 }
 
 export type DevicePlatform = "ios" | "android" | "desktop" | "browser";
@@ -159,6 +173,7 @@ export class E2eClientChannel {
           opened ? "handshake" : "unreachable",
           `中继关闭了连接（${event.code}）`,
           event.code,
+          event.reason,
         ),
       );
     socket.addEventListener("message", onMessage);
@@ -192,6 +207,7 @@ export class E2eClientChannel {
                 "unreachable",
                 `中继拒绝了连接（${event.code}）`,
                 event.code,
+                event.reason,
               ),
             ),
           { once: true },
@@ -208,10 +224,13 @@ export class E2eClientChannel {
         m2 = unitBody(await next());
       } catch (error) {
         // 钉住了而 core 不答 m2：钉住的不是这台（core 直接重置，不泄露公钥）。
+        // 中继自己的关闭码（4xxx：令牌失效 4401、限流 4429、离线 4404……）不是
+        // 身份问题，原样抛出，调用方按码处理。
         if (
           options.pinned &&
           error instanceof E2eChannelError &&
-          error.code === "handshake"
+          error.code === "handshake" &&
+          (error.closeCode === undefined || error.closeCode < 4000)
         )
           throw new E2eChannelError("identity_mismatch", "这台电脑的身份变了");
         throw error;
@@ -329,7 +348,12 @@ export class E2eClientChannel {
     });
     this.socket.addEventListener("close", (event: CloseEvent) =>
       this.shutdown(
-        new E2eChannelError("closed", `通道关闭（${event.code}）`, event.code),
+        new E2eChannelError(
+          "closed",
+          `通道关闭（${event.code}）`,
+          event.code,
+          event.reason,
+        ),
       ),
     );
     for (const unit of pending) this.unit(unit);
