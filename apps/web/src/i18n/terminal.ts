@@ -15,6 +15,7 @@ const zh = {
   "terminal.rerun": "重新运行",
   "terminal.find": "搜索",
   "terminal.exited": "已退出",
+  "terminal.startFailed": "启动失败",
 
   /*
    * 视图状态胶囊（终端宿主设计 §7.1）。两个都不表示进程结束了：
@@ -112,6 +113,7 @@ const en: Record<keyof typeof zh, string> = {
   "terminal.rerun": "Run again",
   "terminal.find": "Find",
   "terminal.exited": "Exited",
+  "terminal.startFailed": "Failed to start",
 
   "terminal.drive.you": "You are driving",
   "terminal.drive.takeover": "You took over",

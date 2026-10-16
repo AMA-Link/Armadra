@@ -335,9 +335,14 @@ export function TerminalNode({ id, node, selected, collapsed }: NodeBodyProps) {
       {exited && (
         <Badge
           variant="outline"
+          title={surface.error ?? undefined}
           className="h-[18px] px-1.5 text-[length:var(--text-caption)]"
         >
-          {t("terminal.exited")}
+          {t(
+            surface.connection === "failed" && surface.error
+              ? "terminal.startFailed"
+              : "terminal.exited",
+          )}
           {surface.exitCode === null ? "" : ` ${surface.exitCode}`}
         </Badge>
       )}
