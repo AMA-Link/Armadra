@@ -14,11 +14,11 @@
  * 归约后才推给前端，前端不重复实现。
  */
 import { create } from "zustand";
-import { useShallow } from "zustand/react/shallow";
-import type {
-  AgentStatus,
-  SessionSummary,
-  WorkspaceEvent,
+import {
+  isAwaitingHuman,
+  type AgentStatus,
+  type SessionSummary,
+  type WorkspaceEvent,
 } from "@armadra/shared";
 
 import type { StatusTone } from "../ui/status-pill";
@@ -277,6 +277,9 @@ export const useAgentStatusStore = create<AgentStatusState>((set, get) => ({
           sessionId: session.sessionId,
           pendingId: session.pendingId,
           sessionPhase: session.sessionPhase,
+          ...(session.errored === undefined
+            ? {}
+            : { errored: session.errored }),
           verified: previous?.verified ?? false,
           restored: true,
           updatedAt: session.updatedAt,
@@ -350,46 +353,12 @@ export function useAgentStatus(
   );
 }
 
-/** 侧栏项目头的三个信号徽标（§3.5）。 */
-export interface StatusCounts {
-  attention: number;
-  unread: number;
-  working: number;
-}
-
-/** 需要你：等待权限或等待回答。 */
+/** 需要你：等待权限或等待回答（与通知共用共享层的分类，契约 §81）。 */
 export function isAttention(status: {
   state?: AgentStatus["state"];
   pendingId?: string;
 }): boolean {
-  return (
-    status.state === "blocked" ||
-    status.state === "waiting" ||
-    Boolean(status.pendingId)
-  );
-}
-
-export function countStatuses(
-  statuses: Record<string, AgentStatus>,
-  workspaceId?: string | null,
-): StatusCounts {
-  let attention = 0;
-  let unread = 0;
-  let working = 0;
-  for (const status of Object.values(statuses)) {
-    if (workspaceId && status.workspaceId && status.workspaceId !== workspaceId)
-      continue;
-    if (isAttention(status)) attention += 1;
-    else if (status.unread) unread += 1;
-    else if (status.state === "working") working += 1;
-  }
-  return { attention, unread, working };
-}
-
-export function useStatusCounts(workspaceId: string | null): StatusCounts {
-  return useAgentStatusStore(
-    useShallow((state) => countStatuses(state.statuses, workspaceId)),
-  );
+  return isAwaitingHuman(status);
 }
 
 /* ------------------------------ 权限请求形状 ------------------------------ */
@@ -427,8 +396,8 @@ export function isResolvedApproval(request: unknown): boolean {
  * （不冒充 TURN FAILED / PAUSED），并且标了 `silent`，所以它不置未读。
  * 于是显示侧不必再拦一道——胶囊读判决与未读即可，看到什么都是真的。
  *
- * 这个判据只用在**通知**上：状态确实从 working 变成了 done，但没有任何
- * 结果产生，不该弹「已完成」。
+ * 这个判据用来挡掉合成的收尾边：它不是一次真实的回合，不该当成新状态处理
+ * （`upsert` 里也靠它避免把已经删掉的镜像条目重新变出来）。
  */
 const SYNTHETIC_CLOSE_MARKERS = ["stale=true", "terminated=true"] as const;
 
@@ -436,16 +405,6 @@ export function isSyntheticClose(status: AgentStatus): boolean {
   const message = status.lastMessage;
   if (!message) return false;
   return SYNTHETIC_CLOSE_MARKERS.some((marker) => message.startsWith(marker));
-}
-
-/**
- * 这条 `done` 是否代表「刚刚跑完的一个回合」。
- * `restored`（Runtime 重启后从 SQLite 读回来的）与合成收尾都不算。
- */
-export function isFreshDone(status: AgentStatus): boolean {
-  return (
-    status.state === "done" && !status.restored && !isSyntheticClose(status)
-  );
 }
 
 export type AgentGlow = "working" | "attention" | "unread";

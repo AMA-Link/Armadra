@@ -42,10 +42,9 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe("设置 → 通知（§2.2 映射）", () => {
-  it("原 4 项加「更新下载完成」；后者是主机项，切换即存", () => {
+  it("原 3 项加「更新下载完成」；后者是主机项，切换即存", () => {
     render(<NotificationsPage />);
     for (const key of [
-      "settings.notifyDone",
       "settings.notifyNeedsYou",
       "settings.sound",
       "updates.notify",

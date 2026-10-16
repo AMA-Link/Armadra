@@ -10,8 +10,6 @@ import {
   APPROVAL_TTL_MS,
   DONE_HOLDOFF_MS,
   agentHeaderState,
-  countStatuses,
-  isFreshDone,
   isResolvedApproval,
   useAgentStatusStore,
 } from "./status-store";
@@ -275,30 +273,6 @@ describe("agent status mirror", () => {
     );
     expect(scoped(NODE) in store().statuses).toBe(false);
   });
-
-  it("counts the three sidebar signals per workspace", () => {
-    const counts = countStatuses(
-      {
-        a: status({ nodeId: "a", state: "blocked", updatedAt: at(0) }),
-        b: status({
-          nodeId: "b",
-          state: "done",
-          unread: true,
-          updatedAt: at(0),
-        }),
-        c: status({ nodeId: "c", state: "working", updatedAt: at(0) }),
-        d: status({ nodeId: "d", state: "done", updatedAt: at(0) }),
-        e: status({
-          nodeId: "e",
-          workspaceId: "other",
-          state: "working",
-          updatedAt: at(0),
-        }),
-      },
-      WORKSPACE,
-    );
-    expect(counts).toEqual({ attention: 1, unread: 1, working: 1 });
-  });
   it("posts a read receipt when the unread badge is cleared", async () => {
     store().upsert(status({ state: "done", unread: true, updatedAt: at(0) }), {
       now: BASE,
@@ -418,9 +392,9 @@ describe("agent status mirror", () => {
   /**
    * 合成收尾（20 分钟无回报 / 终端被杀）只是「让节点别再声称 RUNNING」。
    * Runtime 给它的判决是 `false` 且不置未读，所以它自己就落到「无胶囊」，
-   * 显示侧不必特判；`isFreshDone` 仍要拦住它，免得弹「已完成」。
+   * 显示侧不必特判。
    */
-  it("puts no pill on a synthetic close, and never calls it a fresh done", () => {
+  it("puts no pill on a synthetic close", () => {
     for (const lastMessage of [
       "stale=true no hook report for 20 minutes",
       "terminated=true the terminal exited before the turn ended",
@@ -432,7 +406,6 @@ describe("agent status mirror", () => {
         lastMessage,
       };
       expect(agentHeaderState(closed)).toEqual({});
-      expect(isFreshDone(closed)).toBe(false);
     }
   });
 

@@ -34,6 +34,7 @@ const ALL = [
   "approval",
   "agentDone",
   "agentError",
+  "agentWaiting",
   "deliveryFailed",
   "schedule",
   "resources",
@@ -99,19 +100,19 @@ describe("推送设备", () => {
     expect(await screen.findByText("推送设备")).toBeTruthy();
     await open("我的 iPhone");
     fireEvent.click(
-      screen.getByRole("switch", { name: "我的 iPhone · Agent 完成" }),
+      screen.getByRole("switch", { name: "我的 iPhone · Agent 出错" }),
     );
     await waitFor(() =>
       expect(setKinds).toHaveBeenCalledWith(
         "d1",
-        ALL.filter((kind) => kind !== "agentDone"),
+        ALL.filter((kind) => kind !== "agentError"),
       ),
     );
 
     // 成员的设备只列不改。
     await open("同事的手机");
     const locked = screen.getByRole("switch", {
-      name: "同事的手机 · Agent 完成",
+      name: "同事的手机 · Agent 出错",
     });
     expect((locked as HTMLButtonElement).disabled).toBe(true);
   });

@@ -8,22 +8,25 @@
  *    画布本身就是提示，再弹一条只是噪音。
  *  - 每个节点 5s 节流：claude 的 hook 并行执行，`blocked → working → blocked`
  *    这种抖动一秒能来三次。
- *  - `restored`（Runtime 重启后读回来的旧行）与 20 分钟合成结束边不发：
- *    它们不是「刚跑完」，见 `isFreshDone`。
+ *  - 只提醒「需要人处理」的事（共享层 `agentHumanNeed`，契约 §81）：审批、
+ *    等待回答、出错。完成、空闲、运行中都不提醒。铃铛徽标、面板和推送用的
+ *    是同一个函数。
+ *  - `restored`（Runtime 重启后读回来的旧行）不发：它不是一次新的请求。
  *
  * 这个模块还顺带挂了两件同源的副作用（都要一个 App 级的挂载点，且都是
  * 「未读」的生命周期）：选中节点即已读，以及过期权限请求的清扫。
  */
 import { scoped } from "../sources/scope";
 import { useEffect } from "react";
-import type { AgentStatus, ProgramStatus } from "@armadra/shared";
+import {
+  agentHumanNeed,
+  type AgentStatus,
+  type HumanNeed,
+  type ProgramStatus,
+} from "@armadra/shared";
 
 import { onWorkspaceEvent } from "../api/events";
-import {
-  APPROVAL_TTL_MS,
-  isFreshDone,
-  useAgentStatusStore,
-} from "../agent/status-store";
+import { APPROVAL_TTL_MS, useAgentStatusStore } from "../agent/status-store";
 import {
   reportedLive,
   useProgramStatusStore,
@@ -31,6 +34,7 @@ import {
 import { requestCenterOnNode } from "../canvas/flow/flow-context";
 import { notify } from "../platform";
 import { useCanvasStore } from "../store/canvas-store";
+import { useNeedsStore } from "../notifications/needs-store";
 import { t, usePreferencesStore } from "./preferences-store";
 
 /** 每个节点两条提醒之间的最小间隔。通知与提示音各算各的。 */
@@ -39,29 +43,24 @@ export const NOTIFY_THROTTLE_MS = 5_000;
 /** 过期权限的扫描周期。 */
 const SWEEP_INTERVAL_MS = 30_000;
 
-export type NotificationKind = "attention" | "done";
+/** 事件流上能看到的三类；交接没有事件，只在面板里。 */
+export type NotificationKind = Exclude<HumanNeed, "handoff">;
 
 /* ------------------------------- 纯判定 ---------------------------------- */
 
 /**
- * 这条状态帧值不值得提醒。只看「状态变了没有」，不看窗口焦点——
- * 焦点是 `createAgentNotifier` 的门，分开写是为了能单独测。
- *
- * - `blocked` / `waiting`：进入时提醒（`blocked → waiting` 也算一次，
- *   两者的诉求不同：一个等授权，一个等回答）。
- * - `done`：只有新鲜的回合才提醒。
+ * 这条状态帧值不值得提醒：**进入**某种「需要人处理」的状态才提醒，
+ * 状态没变不重复提醒（`blocked → waiting` 是两件事，算一次新的）。
+ * 只看状态，不看窗口焦点——焦点是 `createAgentNotifier` 的门，分开写是为了能单独测。
  */
 export function notificationFor(
   previous: AgentStatus | undefined,
   next: AgentStatus,
 ): NotificationKind | null {
-  if (next.state === "blocked" || next.state === "waiting") {
-    return previous?.state === next.state ? null : "attention";
-  }
-  if (next.state === "done" && previous?.state !== "done") {
-    return isFreshDone(next) ? "done" : null;
-  }
-  return null;
+  if (next.restored) return null;
+  const need = agentHumanNeed(next);
+  if (need === null || need === "handoff") return null;
+  return previous && agentHumanNeed(previous) === need ? null : need;
 }
 
 /** 通知正文。节点标题原样带出，其余走消息表。 */
@@ -123,11 +122,11 @@ function tone(
 }
 
 /**
- * 提示音：完成是上行两声（G5 → C6），需要你是一声（A4）。
+ * 提示音：一声（A4）。只有「需要人处理」才响，所以不再区分种类。
  * 刻意不做成动画的一部分——`prefers-reduced-motion` 管的是动效，
  * 声音由设置页的开关单独控制。
  */
-export function playStatusSound(kind: NotificationKind): void {
+export function playStatusSound(): void {
   const context = ensureAudioContext();
   if (!context) return;
   // 音量是 0–100 的偏好；0 就干脆不出声，省掉一次 WebAudio 调度。
@@ -136,12 +135,7 @@ export function playStatusSound(kind: NotificationKind): void {
   try {
     if (context.state === "suspended") void context.resume();
     const now = context.currentTime;
-    if (kind === "done") {
-      tone(context, 784, now, 0.09, volume);
-      tone(context, 1046, now + 0.11, 0.11, volume);
-    } else {
-      tone(context, 440, now, 0.18, volume);
-    }
+    tone(context, 440, now, 0.18, volume);
   } catch {
     // 用户还没和页面交互过时 WebAudio 会拒绝出声；没什么可补救的。
   }
@@ -152,17 +146,13 @@ export function playStatusSound(kind: NotificationKind): void {
 export interface NotifierDeps {
   /** 发一条系统通知。 */
   notify: (title: string, body: string, nodeId: string) => void;
-  playSound: (kind: NotificationKind) => void;
+  playSound: () => void;
   /** 窗口不在前台（隐藏或失焦）。 */
   isBackground: () => boolean;
   /** 节点标题；拿不到时退回 Agent 名。 */
   titleOf: (nodeId: string) => string;
-  /**
-   * 两个通知开关是分开的（§24.1 通知页）：「后台完成」与「需要你时」各管
-   * 各的 `NotificationKind`，提示音仍然只有一个总开关。
-   */
+  /** 系统通知与提示音各一个开关（§24.1 通知页）。 */
   settings: () => {
-    notifyDone: boolean;
     notifyNeedsYou: boolean;
     sound: boolean;
   };
@@ -204,14 +194,15 @@ export function createAgentNotifier(deps: NotifierDeps): AgentNotifier {
 
       const now = deps.now();
       const settings = deps.settings();
-      const wanted =
-        kind === "done" ? settings.notifyDone : settings.notifyNeedsYou;
-      if (wanted && !throttled(lastNotifyAt, status.nodeId, now)) {
+      if (
+        settings.notifyNeedsYou &&
+        !throttled(lastNotifyAt, status.nodeId, now)
+      ) {
         const text = notificationText(kind, deps.titleOf(status.nodeId));
         deps.notify(text.title, text.body, status.nodeId);
       }
       if (settings.sound && !throttled(lastSoundAt, status.nodeId, now)) {
-        deps.playSound(kind);
+        deps.playSound();
       }
     },
     reset() {
@@ -223,8 +214,8 @@ export function createAgentNotifier(deps: NotifierDeps): AgentNotifier {
 }
 
 /**
- * 程序自报（契约 §53）换成提醒器认得的形状：`blocked` 是「需要你」（问题
- * 算 `waiting`），`done` / `error` 是「完成」，其余不提醒。只是给提醒器用
+ * 程序自报（契约 §53）换成提醒器认得的形状：`blocked` 是审批（问题算
+ * `waiting`），`error` 是出错，`done` 与其余都不提醒。只是给提醒器用
  * 的一份投影，不进状态镜像。
  */
 export function programNotificationStatus(
@@ -241,12 +232,14 @@ export function programNotificationStatus(
         : program?.state === "working"
           ? "working"
           : undefined;
+  const errored = program?.state === "error";
   return {
     nodeId,
     workspaceId: "",
     agentId: "",
     ...(state === undefined ? {} : { state }),
-    unread: state === "done",
+    unread: errored,
+    ...(errored ? { errored } : {}),
     verified: false,
     restored: false,
     updatedAt: program?.updatedAt ?? new Date(0).toISOString(),
@@ -259,11 +252,24 @@ function nodeTitle(nodeId: string): string {
   const node = useCanvasStore
     .getState()
     .document?.nodes.find((item) => item.id === nodeId);
-  return node?.title || "Agent";
+  if (node?.title) return node.title;
+  const item = useNeedsStore
+    .getState()
+    .items.find((entry) => entry.nodeId === nodeId);
+  return item?.title || "Agent";
 }
 
-/** 点通知：把窗口拉到前面，选中并居中那个节点。 */
+/**
+ * 点通知：把窗口拉到前面，切到那个工作空间和画布并定位节点。清单里找得到
+ * 就走面板同一条路；找不到（程序自报的普通终端）退回当前画布上选中居中。
+ */
 function revealNode(nodeId: string): void {
+  const { items, open } = useNeedsStore.getState();
+  const item = items.find((entry) => entry.nodeId === nodeId);
+  if (item) {
+    open(item);
+    return;
+  }
   useCanvasStore.getState().selectNodes([nodeId]);
   requestCenterOnNode(nodeId);
 }
@@ -282,7 +288,6 @@ export function defaultNotifierDeps(): NotifierDeps {
     settings: () => {
       const state = usePreferencesStore.getState();
       return {
-        notifyDone: state.notifyDone,
         notifyNeedsYou: state.notifyNeedsYou,
         sound: state.sound,
       };
