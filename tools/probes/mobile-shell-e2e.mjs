@@ -44,6 +44,7 @@ import {
   existsSync,
   mkdirSync,
   readdirSync,
+  readFileSync,
   statSync,
   writeFileSync,
 } from "node:fs";
@@ -375,6 +376,25 @@ async function ios(mint) {
   );
 }
 
+/** 等 Google Play 服务的进程号连续 20 秒不变（最多 3 分钟）；没有这个进程（非 Google 镜像）就直接过。 */
+async function settleGms() {
+  let last = "";
+  let stableSince = Date.now();
+  const deadline = Date.now() + 180_000;
+  while (Date.now() < deadline) {
+    const pid = spawnSync("adb", ["shell", "pidof", "com.google.android.gms"], {
+      encoding: "utf8",
+      timeout: 30_000,
+    }).stdout.trim();
+    if (pid === "") return;
+    if (pid !== last) {
+      last = pid;
+      stableSince = Date.now();
+    } else if (Date.now() - stableSince >= 20_000) return;
+    await new Promise((r) => setTimeout(r, 2_000));
+  }
+}
+
 async function android(mint, port, assetUrl) {
   const reversed = await run("adb-reverse", "adb", [
     "reverse",
@@ -392,18 +412,33 @@ async function android(mint, port, assetUrl) {
   );
   check(built === 0, "debug APK 与插桩 APK", `gradle exit ${built}`);
   if (built !== 0) return;
-  const link = await mint();
-  const code = await run(
-    "gradle-connected",
-    gradlew,
-    [
-      ":app:connectedDebugAndroidTest",
-      `-Pandroid.testInstrumentationRunnerArguments.armadraPairLink=${link}`,
-      `-Pandroid.testInstrumentationRunnerArguments.armadraAssetUrl=${assetUrl}`,
-      "--stacktrace",
-    ],
-    { cwd },
-  );
+  // 模拟器刚启动时 Google Play 服务常在自更新、重启（logcat：“forcing restart due to module”），
+  // 连带杀掉同时起着的被测进程，插桩只报 “Process crashed”。先等它的进程号稳住，崩了再来一次（夜间 #372）。
+  await settleGms();
+  let code = 1;
+  for (let attempt = 1; attempt <= 2; attempt += 1) {
+    // 配对链接是现铸、两分钟内有效的，重试要重铸。
+    const link = await mint();
+    const name = attempt === 1 ? "gradle-connected" : "gradle-connected-retry";
+    code = await run(
+      name,
+      gradlew,
+      [
+        ":app:connectedDebugAndroidTest",
+        `-Pandroid.testInstrumentationRunnerArguments.armadraPairLink=${link}`,
+        `-Pandroid.testInstrumentationRunnerArguments.armadraAssetUrl=${assetUrl}`,
+        "--stacktrace",
+      ],
+      { cwd },
+    );
+    if (code === 0) break;
+    const crashed = readFileSync(join(output, `${name}.log`), "utf8").includes(
+      "Process crashed",
+    );
+    if (!crashed) break;
+    step(`插桩进程被系统杀掉（第 ${attempt} 次）`, "等 Play 服务稳住后重跑");
+    await settleGms();
+  }
   // 失败时最有用的是 WebView 控制台与插件自己的几行（不含任何密钥）。
   await run("logcat", "adb", [
     "logcat",

@@ -57,8 +57,14 @@ final class ConnectFlowUITests: XCTestCase {
         let app = launched()
         let link = pairingLink(app)
         XCTAssertTrue(link.waitForExistence(timeout: 60), "connect screen")
-        link.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
-        XCTAssertTrue(app.webViews.textFields.firstMatch.waitForExistence(timeout: 20), "pairing link input")
+        // 页面刚出现时的第一下点按偶尔被 WKWebView 吞掉（无障碍树已有按钮、点击处理还没接上；夜间同一提交
+        // 有过有过无）：输入框没出来、按钮还在，就再点，最多三次。
+        let field = app.webViews.textFields.firstMatch
+        for _ in 0..<3 {
+            link.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
+            if field.waitForExistence(timeout: 15) { break }
+        }
+        XCTAssertTrue(field.exists, "pairing link input")
         XCTAssertTrue(button(app, ["连接", "Connect"]).exists)
     }
 
