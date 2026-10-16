@@ -48,13 +48,14 @@ import {
 import { extname, join, resolve } from "node:path";
 
 import { CLOUD_ENTRY, findCloudSource } from "./cloud-source.mjs";
+import { openE2eRoute, parseShareLink } from "./e2e-client.mjs";
 import {
+  approveWith,
   buttonByText,
   buttonExists,
   caFingerprint,
   clickText,
   hasText,
-  idleKeepAlivePost,
   launchElectron,
   nodeAt,
   ownerClient,
@@ -1010,11 +1011,13 @@ try {
   /* ------------- 4b. 只读分享与媒体票（Workers 中继，V4） ------------- */
   if (external) {
     // 经 core 的 `sources.shareLinkCreate` 签只读链接：访客会话压成 viewer，能看、不能建终端。
+    const guestRoutes = [];
     const guestOn = async (shared) => {
-      const [secretPart, ...rest] = new URL(shared.url).hash
-        .slice(1)
-        .split(".");
-      const invitationToken = rest.join(".");
+      // 片段是 `<秘密>.<邀请令牌>.<身份指纹前 16 位>`（契约 §80），用页面那份解析。
+      const link = await parseShareLink(shared.url);
+      if (link === null)
+        throw new Error(`认不出分享链接：${shared.link.linkId}`);
+      const { secret: secretPart, invitationToken } = link;
       secret("链接秘密", secretPart);
       secret("邀请令牌", invitationToken);
       const accepted = await must(
@@ -1029,20 +1032,38 @@ try {
       );
       secret("中继令牌", accepted.relayToken);
       secret("源访问断言", accepted.assertion);
-      const headers = {
-        origin: "https://localhost",
-        "armadra-relay-token": accepted.relayToken,
-      };
-      const base = `/s/${sourceId}`;
-      const login = await must("POST", `${base}/api/identity/cloud/login`, {
-        body: { assertion: accepted.assertion, invitationToken },
-        headers,
+      // 访客的邀请令牌既是通道握手的 proof，也随 cloud/login 带上（契约 §80）：
+      // 不用主人放行，设备直接记为这条链接的访客。
+      const route = await openE2eRoute({
+        url: `${issuer}/s/${sourceId}`,
+        caPem: null,
+        sourceId,
+        relayToken: accepted.relayToken,
+        assertion: accepted.assertion,
+        invitationToken,
+        name: "probe-readonly",
       });
-      const token = secret("访客 core 会话", login.session.native.accessToken);
+      guestRoutes.push(route);
+      secret("访客 core 会话", await route.login());
+      const asAnswer = async (method, path, body) => {
+        const answer = await route.raw(
+          method,
+          path,
+          body === undefined ? {} : { "content-type": "application/json" },
+          body === undefined ? undefined : JSON.stringify(body),
+        );
+        const text = answer.body.toString("utf8");
+        let parsed = null;
+        try {
+          parsed = text ? JSON.parse(text) : null;
+        } catch {
+          parsed = text;
+        }
+        return { status: answer.status, body: parsed };
+      };
       return {
-        get: (path) => call("GET", `${base}${path}`, { token, headers }),
-        post: (path, body) =>
-          call("POST", `${base}${path}`, { token, headers, body }),
+        get: (path) => asAnswer("GET", path),
+        post: (path, body) => asAnswer("POST", path, body),
       };
     };
     const roDir = join(stack.scratch, "share-readonly");
@@ -1135,6 +1156,7 @@ try {
         workspace.id,
         acpSession.sessionId,
       );
+      for (const route of guestRoutes) route.close();
       run.ok("只读范围的分享链接经 Workers 中继兑换，访客只能看");
     });
 
@@ -1148,32 +1170,27 @@ try {
         cloudToken: await ownerToken(),
         sourceId,
         device,
+        approve: approveWith(session),
         onSecret: secret,
       });
+      // 中继只转端到端通道：媒体票（中继侧）已删，字节经通道按 Range 取。
       const coreTicket = await route.api("POST", "/api/rpc/files/mediaTicket", {
         json: { workspaceId: workspace.id, path: "clip.mp4" },
       });
-      const relayTicket = await must(
-        "POST",
-        `${route.base}/_relay/media-tickets`,
-        {
-          body: { path: coreTicket.json.url },
-          headers: { "armadra-relay-token": route.relayToken },
-        },
-      );
-      const head = await route.raw("GET", `${route.base}${relayTicket.path}`, {
+      const head = await route.raw("GET", coreTicket.json.url, {
         range: "bytes=0-1023",
       });
       run.check(
         head.status === 206 &&
+          head.body.length === 1024 &&
           head.headers["content-range"] ===
             `bytes 0-1023/${coreTicket.json.size}` &&
           head.headers["content-type"] === "video/mp4" &&
           head.headers["accept-ranges"] === "bytes",
-        "媒体票经 Workers 中继按 Range 取：206、Content-Range 与真实类型",
+        "媒体票经 Workers 中继的端到端通道按 Range 取：206、Content-Range 与真实类型",
         { status: head.status, range: head.headers["content-range"] },
       );
-      const mid = await route.raw("GET", `${route.base}${relayTicket.path}`, {
+      const mid = await route.raw("GET", coreTicket.json.url, {
         range: "bytes=1024-2047",
       });
       run.check(
@@ -1183,11 +1200,17 @@ try {
         "同一张票再取另一段 Range 仍是 206",
         { status: mid.status, range: mid.headers["content-range"] },
       );
-      const bogus = await route.raw(
-        "GET",
-        `${route.base}/_relay/m/${"A".repeat(43)}`,
-      );
+      const bogus = await route.raw("GET", `/api/media/${"A".repeat(43)}`);
       run.check(bogus.status === 404, "不认识的媒体票 404", bogus.status);
+      const plain = await call("GET", `/s/${sourceId}/health`, {
+        headers: { "armadra-relay-token": route.relayToken },
+      });
+      run.check(
+        plain.status === 404,
+        "带中继令牌的明文请求由 Workers 中继答 404",
+        plain.status,
+      );
+      route.close();
     });
   }
 

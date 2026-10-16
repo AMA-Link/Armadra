@@ -1,8 +1,9 @@
 /**
  * 对着一个真的个人中转（armadra-cloud 的 `personal serve`，自签 TLS）跑契约 §32 的
- * 整条路：真 core（`run()`）登记 → 隧道连上 → 客户端用中继地址 + 中继令牌 + 断言换来
- * 的会话经中继访问 core：HTTP API、事件流、终端收发、实时协作板；中继令牌失效 4401
- * 后换令牌与票重连；中继重启后隧道自己重连；本机撤销即断；中继侧撤销后本机登记
+ * 整条路：真 core（`run()`）登记 → 隧道连上 → 客户端用中继地址 + 中继令牌 + 断言开
+ * 端到端通道（`@armadra/shared/e2e`，契约 §78；中继只转这一条，明文请求答 404）、新设备
+ * 由本机主人核对校验码放行，再经通道换会话访问 core：HTTP API、事件流、终端收发、
+ * 实时协作板；中继令牌失效 4401 后换令牌与票重连；中继重启后隧道自己重连；本机撤销即断；中继侧撤销后本机登记
  * 跟着撤销。真 TLS、真指纹钉扎、真 Ed25519。
  *
  * `ARMADRA_PERSONAL_RELAY=1` 才跑；否则 skipped。其余从环境读：
@@ -16,7 +17,7 @@
  */
 
 import { type ChildProcess, spawn } from "node:child_process";
-import { createHash, X509Certificate } from "node:crypto";
+import { createHash, randomBytes, X509Certificate } from "node:crypto";
 import {
   existsSync,
   mkdtempSync,
@@ -29,6 +30,13 @@ import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { ed25519SignerFromSeed } from "@armadra/platform-protocol/e2e";
+import {
+  E2eChannelError,
+  E2eClientChannel,
+  channelFetch,
+  channelWebSocket,
+} from "@armadra/shared/e2e";
 import * as decoding from "lib0/decoding";
 import * as encoding from "lib0/encoding";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -232,25 +240,87 @@ async function assertion(): Promise<{
 let relayToken = "";
 let relayBaseUrl = "";
 
-/** 经中继打 core（客户端视角）：中继令牌 + 来源 = 中继自己（可信来源）。 */
-function viaRelay(
+/* ------------------------- 端到端通道（契约 §78） ------------------------- */
+
+/** 这台"设备"的钥：整个测试用同一个种子，放行一次之后的通道都是已信任设备。 */
+const deviceSeed = randomBytes(32);
+let channel: E2eClientChannel | undefined;
+/** 钉住的 core 身份：第一次开通道记下，之后变了就拒绝。 */
+let corePin: Uint8Array | undefined;
+
+/** 底层 WebSocket 用 `ws`，钉中继的自签 CA。 */
+function pinnedSocket(): typeof globalThis.WebSocket {
+  class PinnedSocket extends WebSocket {
+    constructor(url: string | URL, protocols?: string | string[]) {
+      super(url, protocols, { perMessageDeflate: false, ca: caPem });
+    }
+  }
+  return PinnedSocket as unknown as typeof globalThis.WebSocket;
+}
+
+async function openChannel(
+  token = relayToken,
+  /** false = 不带钉住的 core 身份（验证中继拒绝时用：钉住后握手被中继掐断会被报成身份变了）。 */
+  pin = true,
+): Promise<E2eClientChannel> {
+  const opened = await E2eClientChannel.open({
+    url: `${relayBaseUrl.replace(/^https:/, "wss:")}/_relay/e2e`,
+    relayToken: token,
+    sourceId,
+    device: await ed25519SignerFromSeed(new Uint8Array(deviceSeed)),
+    platform: "desktop",
+    name: "relay-e2e",
+    WebSocket: pinnedSocket(),
+    pingIntervalMs: 0,
+    ...(!pin || corePin === undefined ? {} : { pinned: corePin }),
+  });
+  corePin ??= opened.coreIdentity;
+  return opened;
+}
+
+/** 当前这条通道；断了或到期就用当前的中继令牌重开。 */
+async function current(): Promise<E2eClientChannel> {
+  if (channel === undefined || channel.closed || channel.expired) {
+    channel?.close();
+    channel = undefined;
+    channel = await openChannel();
+  }
+  return channel;
+}
+
+/** 经通道打 core（客户端视角）：来源 = 中继自己（可信来源）。 */
+async function viaRelay(
   method: string,
   path: string,
   body?: unknown,
   token: string | undefined = tunnelAccess,
   extra: Record<string, string> = {},
 ): Promise<Answer> {
-  return relayCall(method, `${relayBaseUrl}${path}`, {
-    ...(body === undefined ? {} : { body }),
+  const open = await current();
+  const fetcher = channelFetch(open, { origin: issuer, base: relayBaseUrl });
+  const response = await fetcher(`${relayBaseUrl}${path}`, {
+    method,
     headers: {
       ...extra,
-      origin: issuer,
-      "armadra-relay-token": relayToken,
+      ...(body === undefined ? {} : { "content-type": "application/json" }),
       ...(token === undefined || token === ""
         ? {}
         : { authorization: `Bearer ${token}` }),
     },
+    ...(body === undefined ? {} : { body: JSON.stringify(body) }),
   });
+  const text = await response.text();
+  let parsed: Record<string, unknown> = {};
+  try {
+    parsed = text === "" ? {} : (JSON.parse(text) as Record<string, unknown>);
+  } catch {
+    parsed = {};
+  }
+  const headers: Record<string, string | undefined> = {};
+  response.headers.forEach((value, key) => {
+    headers[key] = value;
+  });
+  return { status: response.status, headers, text, body: parsed };
 }
 
 async function ticket(): Promise<string> {
@@ -259,50 +329,60 @@ async function ticket(): Promise<string> {
   return answer.body.ticket as string;
 }
 
-/** 经中继升级 WebSocket：子协议是中继令牌 + 票。 */
-function wsViaRelay(
+type RelayedSocket = InstanceType<typeof globalThis.WebSocket>;
+
+/** 经通道升级 WebSocket：子协议是票（中继令牌在通道握手里验过了）。 */
+async function wsViaRelay(
   path: string,
-  options: { ticket: string; relayToken?: string },
+  options: { ticket: string },
 ): Promise<{
-  socket: WebSocket;
+  socket: RelayedSocket;
+  /** 升级成功 101；core 在通道里拒绝（如票用过）连不上是 0。 */
   status: number;
   closeCode?: number;
   /** 从升级起收到的每一帧（流一开就发的 hello 不会漏）。 */
   messages: Buffer[];
 }> {
-  const url = `${relayBaseUrl.replace(/^https:/, "wss:")}${path}`;
-  const socket = new WebSocket(
-    url,
-    [
-      `armadra-relay.${options.relayToken ?? relayToken}`,
-      `armadra-ticket.${options.ticket}`,
-    ],
-    { origin: issuer, ca: caPem, perMessageDeflate: false },
-  );
-  socket.binaryType = "nodebuffer";
+  const open = await current();
+  const Socket = channelWebSocket(open, { origin: issuer, base: relayBaseUrl });
+  const socket = new Socket(`${relayBaseUrl}${path}`, [
+    `armadra-ticket.${options.ticket}`,
+  ]);
+  socket.binaryType = "arraybuffer";
   const messages: Buffer[] = [];
-  socket.on("message", (data: Buffer) => messages.push(data));
+  socket.addEventListener("message", (event) =>
+    messages.push(
+      typeof event.data === "string"
+        ? Buffer.from(event.data)
+        : Buffer.from(new Uint8Array(event.data as ArrayBuffer)),
+    ),
+  );
   return new Promise((resolve_) => {
     let opened = false;
-    socket.once("open", () => {
+    socket.addEventListener("open", () => {
       opened = true;
-      // 中继拒绝时也先完成升级再以 44xx 关：等一小会儿看它是不是马上被关。
+      // core 拒绝时也先完成升级再关：等一小会儿看它是不是马上被关。
       const timer = setTimeout(
         () => resolve_({ socket, status: 101, messages }),
         300,
       );
-      socket.once("close", (code: number) => {
+      socket.addEventListener("close", (event) => {
         clearTimeout(timer);
-        resolve_({ socket, status: 101, closeCode: code, messages });
+        resolve_({ socket, status: 101, closeCode: event.code, messages });
       });
     });
-    socket.once("unexpected-response", (_request, response) =>
-      resolve_({ socket, status: response.statusCode ?? 0, messages }),
-    );
-    socket.once("error", () => {
-      if (!opened) resolve_({ socket, status: 0, messages });
+    socket.addEventListener("close", (event) => {
+      if (!opened)
+        resolve_({ socket, status: 0, closeCode: event.code, messages });
     });
   });
+}
+
+/** 这条 WebSocket 关掉时的关闭码。 */
+function closedOf(socket: RelayedSocket): Promise<number> {
+  return new Promise((done) =>
+    socket.addEventListener("close", (event) => done(event.code)),
+  );
 }
 
 async function tunnelState(): Promise<string> {
@@ -394,6 +474,7 @@ describe.skipIf(!enabled)("个人中转联调：隧道（契约 §32）", () => 
   }, 60_000);
 
   afterAll(async () => {
+    channel?.close();
     if (sourceId !== "" && relayAccess !== "") {
       await v1("DELETE", `/v1/sources/${sourceId}`).catch(() => undefined);
     }
@@ -432,12 +513,26 @@ describe.skipIf(!enabled)("个人中转联调：隧道（契约 §32）", () => 
     relayToken = second.relayToken;
     relayBaseUrl = second.relayBaseUrl;
     expect(relayBaseUrl).toBe(`${issuer}/s/${sourceId}`);
-    const login = await viaRelay(
-      "POST",
-      "/api/identity/cloud/login",
-      { assertion: second.assertion },
-      "",
-    );
+    // 新设备：core 答 403 device_pending 并带申请号；本机主人核对通道握手推出的
+    // 校验码后放行（契约 §77），再登录一次。
+    const attempt = () =>
+      viaRelay(
+        "POST",
+        "/api/identity/cloud/login",
+        { assertion: second.assertion },
+        "",
+      );
+    let login = await attempt();
+    expect(login.status, login.text).toBe(403);
+    expect(login.body.code).toBe("device_pending");
+    const pendingId = (login.body.details as { pendingId: string }).pendingId;
+    const approved = await own.fetch("/api/devices/approve", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ pendingId, sas: (await current()).sas }),
+    });
+    expect(approved.status, await approved.clone().text()).toBe(200);
+    login = await attempt();
     expect(login.status, login.text).toBe(200);
     expect(login.headers["set-cookie"]).toBeUndefined();
     const session = login.body.session as {
@@ -462,6 +557,15 @@ describe.skipIf(!enabled)("个人中转联调：隧道（契约 §32）", () => 
     const workspaces = await viaRelay("GET", "/api/workspaces");
     expect(workspaces.status, workspaces.text).toBe(200);
     expect(JSON.stringify(workspaces.body)).toContain(workspaceId);
+    // 带中继令牌的明文请求中继一律答 404，不进隧道（契约 §78）。
+    const plain = await relayCall("GET", `${relayBaseUrl}/api/workspaces`, {
+      headers: {
+        origin: issuer,
+        "armadra-relay-token": relayToken,
+        authorization: `Bearer ${tunnelAccess}`,
+      },
+    });
+    expect(plain.status, plain.text).toBe(404);
     // 回环专用路径经中继一律 403；没有 Bearer 401。
     expect((await viaRelay("GET", "/hook/health")).status).toBe(403);
     expect(
@@ -533,7 +637,17 @@ describe.skipIf(!enabled)("个人中转联调：隧道（契约 §32）", () => 
     const local = new Y.Doc();
     const relayed = await wsViaRelay(path, { ticket: await ticket() });
     expect(relayed.status).toBe(101);
-    attach(relayed.socket, remote, relayed.messages);
+    attach(
+      {
+        send: (data) => relayed.socket.send(data),
+        listen: (receive) =>
+          relayed.socket.addEventListener("message", (event) =>
+            receive(Buffer.from(new Uint8Array(event.data as ArrayBuffer))),
+          ),
+      },
+      remote,
+      relayed.messages,
+    );
     const loop = new WebSocket(
       `${base.replace("http", "ws")}${path}`,
       [await own.wsProtocol()],
@@ -543,7 +657,13 @@ describe.skipIf(!enabled)("个人中转联调：隧道（契约 §32）", () => 
     );
     loop.binaryType = "nodebuffer";
     await new Promise((done) => loop.once("open", done));
-    attach(loop, local);
+    attach(
+      {
+        send: (data) => loop.send(data),
+        listen: (receive) => loop.on("message", receive),
+      },
+      local,
+    );
     const note = stickyNode(boardId);
     remote.transact(() => {
       const map = new Y.Map<unknown>();
@@ -570,15 +690,17 @@ describe.skipIf(!enabled)("个人中转联调：隧道（契约 §32）", () => 
     loop.close();
   }, 30_000);
 
-  it("4401：中继令牌失效被关，换新令牌与新票重连；用过的票 core 答 401", async () => {
-    const used = await ticket();
-    const rejected = await wsViaRelay(`/api/workspaces/${workspaceId}/events`, {
-      ticket: used,
-      relayToken: "not-a-relay-token",
-    });
-    expect(rejected.closeCode).toBe(4401);
+  it("4401：中继令牌失效被关，换新令牌与新票重连；用过的票 core 在通道里拒绝", async () => {
+    const rejected = await openChannel("not-a-relay-token", false).catch(
+      (error: unknown) => error,
+    );
+    expect(rejected).toBeInstanceOf(E2eChannelError);
+    expect((rejected as E2eChannelError).closeCode).toBe(4401);
     const fresh = await assertion();
     relayToken = fresh.relayToken;
+    // 新令牌重开通道（旧通道只在握手时验过令牌，照旧能用，这里主动换掉）。
+    channel?.close();
+    channel = undefined;
     const ok = await wsViaRelay(`/api/workspaces/${workspaceId}/events`, {
       ticket: await ticket(),
     });
@@ -591,10 +713,11 @@ describe.skipIf(!enabled)("个人中转联调：隧道（契约 §32）", () => 
     });
     expect(once.status).toBe(101);
     once.socket.close();
+    // 用过的票：core 答 401，通道里的升级不成功，这条 WebSocket 没开过就关了。
     const twice = await wsViaRelay(`/api/workspaces/${workspaceId}/events`, {
       ticket: t,
     });
-    expect(twice.status).toBe(401);
+    expect(twice.status).toBe(0);
   }, 30_000);
 
   it.skipIf(home === "")(
@@ -604,9 +727,7 @@ describe.skipIf(!enabled)("个人中转联调：隧道（契约 §32）", () => 
         ticket: await ticket(),
       });
       expect(opened.status).toBe(101);
-      const closed = new Promise<number>((done) =>
-        opened.socket.once("close", done),
-      );
+      const closed = closedOf(opened.socket);
       await stopRelay();
       await closed;
       await until(async () => (await tunnelState()) !== "ready");
@@ -626,9 +747,7 @@ describe.skipIf(!enabled)("个人中转联调：隧道（契约 §32）", () => 
       ticket: await ticket(),
     });
     expect(opened.status).toBe(101);
-    const closed = new Promise<number>((done) =>
-      opened.socket.once("close", done),
-    );
+    const closed = closedOf(opened.socket);
     const started = Date.now();
     const revoked = await own.fetch(
       `/api/identity/cloud/register?issuer=${encodeURIComponent(issuer)}`,
@@ -641,8 +760,13 @@ describe.skipIf(!enabled)("个人中转联调：隧道（契约 §32）", () => 
     expect(await tunnelState()).toBe("none");
     // 本机有这个远程服务的 owner 会话：撤销连同中继侧的源记录一起删（契约
     // §31.4），中继随之作废发给它的中继令牌，经中继的请求答 401 而不是离线 503。
-    const offline = await viaRelay("GET", "/api/workspaces");
-    expect(offline.status).toBe(401);
+    // 通道随隧道一起断了；新开通道时中继不认这个令牌（4401）。
+    channel = undefined;
+    const offline = await openChannel(relayToken, false).catch(
+      (error: unknown) => error,
+    );
+    expect(offline).toBeInstanceOf(E2eChannelError);
+    expect([4401, 4404]).toContain((offline as E2eChannelError).closeCode);
     const pending = await own.fetch("/api/identity/cloud/relay-pending");
     expect(await pending.json()).toEqual({ pending: [] });
   }, 30_000);
@@ -655,28 +779,33 @@ describe.skipIf(!enabled)("个人中转联调：隧道（契约 §32）", () => 
   }, 60_000);
 });
 
+/** 同步流的一端：收发二进制帧（loopback 上的 `ws`，或经通道的 WebSocket）。 */
+interface SyncPeer {
+  send(data: Uint8Array): void;
+  listen(receive: (data: Buffer) => void): void;
+}
+
 /** 一条同步流接到一份客户端文档上（与 `realtime/socket.integration.test.ts` 同一个做法）。 */
-function attach(socket: WebSocket, doc: Y.Doc, earlier: Buffer[] = []): void {
+function attach(peer: SyncPeer, doc: Y.Doc, earlier: Buffer[] = []): void {
   const receive = (data: Buffer) => {
     const decoder = decoding.createDecoder(new Uint8Array(data));
     if (decoding.readVarUint(decoder) !== MESSAGE_SYNC) return;
     const encoder = encoding.createEncoder();
     encoding.writeVarUint(encoder, MESSAGE_SYNC);
     syncProtocol.readSyncMessage(decoder, encoder, doc, "remote");
-    if (encoding.length(encoder) > 1)
-      socket.send(encoding.toUint8Array(encoder));
+    if (encoding.length(encoder) > 1) peer.send(encoding.toUint8Array(encoder));
   };
   for (const data of earlier.splice(0)) receive(data);
-  socket.on("message", receive);
+  peer.listen(receive);
   doc.on("update", (update: Uint8Array, origin: unknown) => {
     if (origin === "remote") return;
     const encoder = encoding.createEncoder();
     encoding.writeVarUint(encoder, MESSAGE_SYNC);
     syncProtocol.writeUpdate(encoder, update);
-    socket.send(encoding.toUint8Array(encoder));
+    peer.send(encoding.toUint8Array(encoder));
   });
   const encoder = encoding.createEncoder();
   encoding.writeVarUint(encoder, MESSAGE_SYNC);
   syncProtocol.writeSyncStep1(encoder, doc);
-  socket.send(encoding.toUint8Array(encoder));
+  peer.send(encoding.toUint8Array(encoder));
 }
