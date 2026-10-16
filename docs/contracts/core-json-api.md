@@ -4212,7 +4212,7 @@ App 对每个候选算 `ISK_i` 并核对 `confirm_i(server)`；一个都对不�
 - `GET /api/forge/configs?workspaceId=<id>`（`forge.configs { workspaceId }`）只列这个工作空间自己的行；不带时只列整机的。
 - `PUT` / `DELETE` 带 `workspaceId` 时读写这个工作空间的那份，revision 各自计；同一个键可以在整机与多个工作空间各有一行。工作空间不存在答 `404 not_found`（令牌不核验也不存）。
 - 配置行（§29.3）多一个 `workspaceId: string | null`：整机的行是 `null`。旧 core 不给，页面按 `null` 读。
-- 工作空间被移除时它的行随外键删掉；行指着的 SecretStore 条目不再被任何行引用。
+- 工作空间被移除时它的行随外键删掉，行指着的 SecretStore 条目一并删除（移除前由 core 内部事件 `workspace.removing` 记下引用，移除成功后删；删不掉的不影响移除）。整机配置与别的工作空间的令牌不动。
 
 ### 75.3 识别与读写
 
