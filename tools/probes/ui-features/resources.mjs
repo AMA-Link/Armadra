@@ -93,7 +93,8 @@ const sessionRows = (page) =>
     if (!drawer) return null;
     return {
       filters: [...drawer.querySelectorAll('[data-slot="resource-host-filter"]')].map((b) => ({ host: b.dataset.host, label: b.textContent.trim(), active: b.dataset.active === "true" })),
-      text: drawer.innerText,
+      // 行内说明进了悬停提示：把 title 也并进文本，断言读的是「用户能得到的信息」。
+      text: drawer.innerText + "\n" + [...drawer.querySelectorAll("[title]")].map((e) => e.getAttribute("title")).join("\n"),
     };
   `);
 
@@ -234,7 +235,8 @@ export default async function resources({
   await page.settle();
   const hibernatedNode = await page.until(
     `const node = document.querySelector('.react-flow__node[data-id="${sleeping.id}"]');
-     const header = node?.querySelector('[data-slot="node-header"]')?.innerText ?? "";
+     // 状态只剩一个圆点，文字在它的无障碍名里。
+     const header = node?.querySelector('[data-slot="node-header"] [data-slot="status-dot"]')?.getAttribute("aria-label") ?? "";
      const wake = [...(node?.querySelectorAll("button") ?? [])].some((b) => b.textContent.trim() === "唤醒");
      return header.includes("休眠中") && wake ? header.replace(/\\s+/g, " ") : null;`,
     "休眠节点显示「休眠中」与「唤醒」",
@@ -251,9 +253,12 @@ export default async function resources({
     "资源按钮",
   );
   const first = await page.until(
-    `const text = document.body.innerText;
+    `// 空闲的会话默认折起来：休眠的那一行要点开「空闲 N」才在。
+     const idle = document.querySelector('[data-slot="resource-idle-toggle"]');
+     if (idle && idle.getAttribute("aria-expanded") !== "true") idle.click();
+     const text = document.body.innerText;
      const filters = document.querySelectorAll('[data-slot="resource-host-filter"]');
-     return text.includes("平台组件") && filters.length >= 3 && text.includes("已休眠") ? true : null;`,
+     return text.includes("平台组件") && filters.length >= 3 && !!document.querySelector('[title*="已休眠"]') ? true : null;`,
     "资源面板出现主机筛选与休眠会话",
     { timeout: 30_000 },
   );
