@@ -285,6 +285,7 @@ describe("种类偏好与 UnifiedPush（契约 §27）", () => {
         "approval",
         "agentDone",
         "agentError",
+        "agentWaiting",
         "deliveryFailed",
         "schedule",
         "resources",
@@ -316,7 +317,7 @@ describe("种类偏好与 UnifiedPush（契约 §27）", () => {
     const all = await call(identityOf(someone), "PATCH", path, {
       kinds: registered.body.device.kinds,
     });
-    expect(all.body.device.kinds).toHaveLength(8);
+    expect(all.body.device.kinds).toHaveLength(9);
   });
 });
 

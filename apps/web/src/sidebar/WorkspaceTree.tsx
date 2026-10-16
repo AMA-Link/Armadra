@@ -9,7 +9,7 @@
  * 工作空间取列表接口里的 `boards[]`。
  *
  * 双击项目名或画布名可原位编辑。Agent 不在
- * 树里——状态只在铃铛展开的 `AgentStatusPanel` 里看，树只负责「去哪块板」。
+ * 树里——状态只在铃铛展开的 `NotificationPanel` 里看，树只负责「去哪块板」。
  */
 import {
   useCallback,

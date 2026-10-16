@@ -193,6 +193,11 @@ export const sessionSummarySchema = z.object({
    * started CLI (idle) from one that has exited (no longer an agent).
    */
   sessionPhase: z.enum(["start", "end"]).optional(),
+  /**
+   * The last turn ended in an error (§81). Together with `unread` it decides
+   * whether the node still needs a person; absent means no verdict yet.
+   */
+  errored: z.boolean().optional(),
   updatedAt: z.string().datetime({ offset: true }),
   /** The PTY is still running in this runtime instance. */
   alive: z.boolean(),

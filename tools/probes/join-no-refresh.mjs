@@ -98,6 +98,9 @@ const PERIODIC = [
   /\/api\/usage$/,
   /\/api\/health$/,
   /\/api\/rpc\/boards\/heartbeat$/,
+  // 通知清单（契约 §81）的 20 秒轮询：各工作空间的会话与交接。
+  /\/api\/rpc\/terminals\/sessions$/,
+  /\/api\/rpc\/agents\/handoffs$/,
 ];
 
 const report = {

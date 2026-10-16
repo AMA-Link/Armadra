@@ -94,9 +94,8 @@ const AGENT_MODES_KEY = "armadra.agentModes";
 const LAUNCH_OVERRIDES_KEY = "armadra.launchOverrides";
 const DEFAULT_AGENT_KEY = "armadra.defaultAgent";
 const PERMISSION_KEY = "armadra.permissionMode";
-/** v3 之前只有一个总开关；两个新键缺省时从它迁移。 */
+/** v3 之前只有一个总开关；`notifyNeedsYou` 缺省时从它迁移。 */
 const NOTIFICATIONS_KEY = "armadra.notifications";
-const NOTIFY_DONE_KEY = "armadra.notifyDone";
 const NOTIFY_NEEDS_YOU_KEY = "armadra.notifyNeedsYou";
 const SIDEBAR_OPEN_KEY = "armadra.sidebarOpen";
 const SOUND_KEY = "armadra.sound";
@@ -243,9 +242,7 @@ export interface PreferencesState {
   /** 新建 Agent 节点时的默认 CLI；`null` = 用列表里第一个可用的。 */
   defaultAgentId: string | null;
   defaultPermissionMode: PermissionMode;
-  /** 后台完成时发系统通知（§5.4）。 */
-  notifyDone: boolean;
-  /** 需要你（等授权 / 等回答）时发系统通知。 */
+  /** 需要人处理（审批、等待回答、出错，契约 §81）时发系统通知。 */
   notifyNeedsYou: boolean;
   /** 同一时刻的提示音（每节点 5s 节流）。 */
   sound: boolean;
@@ -309,7 +306,6 @@ export interface PreferencesState {
   setLaunchOverride: (agentId: string, program: string) => void;
   setDefaultAgentId: (agentId: string | null) => void;
   setDefaultPermissionMode: (mode: PermissionMode) => void;
-  setNotifyDone: (enabled: boolean) => void;
   setNotifyNeedsYou: (enabled: boolean) => void;
   setSound: (enabled: boolean) => void;
   setSoundVolume: (volume: number) => void;
@@ -364,10 +360,6 @@ export const usePreferencesStore = create<PreferencesState>((set, get) => ({
     PERMISSION_KEY,
     PERMISSION_MODES,
     "default",
-  ),
-  notifyDone: storedBoolean(
-    NOTIFY_DONE_KEY,
-    storedBoolean(NOTIFICATIONS_KEY, true),
   ),
   notifyNeedsYou: storedBoolean(
     NOTIFY_NEEDS_YOU_KEY,
@@ -505,10 +497,6 @@ export const usePreferencesStore = create<PreferencesState>((set, get) => ({
   setDefaultPermissionMode(defaultPermissionMode) {
     writeStored(PERMISSION_KEY, defaultPermissionMode);
     set({ defaultPermissionMode });
-  },
-  setNotifyDone(notifyDone) {
-    writeStored(NOTIFY_DONE_KEY, String(notifyDone));
-    set({ notifyDone });
   },
   setNotifyNeedsYou(notifyNeedsYou) {
     writeStored(NOTIFY_NEEDS_YOU_KEY, String(notifyNeedsYou));

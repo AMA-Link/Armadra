@@ -63,23 +63,29 @@ const EVENTS: readonly [string, EventFrame, string][] = [
     "approval",
   ],
   [
-    "Agent 完成",
+    "Agent 等待回答",
     {
       type: "agent.status",
       status: {
         nodeId: "n2",
         agentId: "claude",
-        state: "done",
+        state: "waiting",
         lastMessage: "TERMINAL-OUTPUT-SECRET",
       },
     },
-    "agentDone",
+    "agentWaiting",
   ],
   [
     "Agent 出错",
     {
       type: "agent.status",
-      status: { nodeId: "n3", agentId: "codex", state: "idle", errored: true },
+      status: {
+        nodeId: "n3",
+        agentId: "codex",
+        state: "done",
+        errored: true,
+        unread: true,
+      },
     },
     "agentError",
   ],
@@ -228,13 +234,60 @@ describe("每种事件一条通知", () => {
     push.handleEvent("w1", EVENTS[1]?.[1] as EventFrame);
     expect(inbox(viewer.deviceId)[0]).toEqual({
       v: 1,
-      kind: "agentDone",
+      kind: "agentWaiting",
       title: "支付服务",
-      body: "Claude Code finished",
+      body: "Claude Code is waiting for your answer",
       url: `armadra://w/w1/n/n2?s=${encodeURIComponent(hostId)}`,
       tag: "status:n2",
     });
-    expect(inbox(ownerDeviceId)[0]?.body).toBe("Claude Code 已完成");
+    expect(inbox(ownerDeviceId)[0]?.body).toBe("Claude Code 在等你回答");
+  });
+});
+
+describe("同一套「需要人处理」规则（契约 §81）", () => {
+  const status = (fields: Record<string, unknown>) => ({
+    type: "agent.status",
+    status: { nodeId: "n1", ...fields },
+  });
+
+  it("完成、空闲、运行中、状态帧上的审批都不推", () => {
+    const rules = new TriggerRules();
+    for (const fields of [
+      { state: "done", unread: true },
+      { state: "idle" },
+      { state: "working" },
+      { state: "blocked", pendingId: "p1" },
+    ]) {
+      expect(rules.draft("w1", status(fields))).toBeUndefined();
+    }
+  });
+
+  it("出错只在没人看过时推，看过之后的帧不再推", () => {
+    const rules = new TriggerRules();
+    expect(
+      rules.draft(
+        "w1",
+        status({ state: "done", errored: true, unread: false }),
+      ),
+    ).toBeUndefined();
+    expect(
+      rules.draft("w1", status({ state: "done", errored: true, unread: true }))
+        ?.kind,
+    ).toBe("agentError");
+    expect(
+      rules.draft(
+        "w1",
+        status({ state: "done", errored: true, unread: false }),
+      ),
+    ).toBeUndefined();
+  });
+
+  it("从审批转到等待回答算一次新的请求", () => {
+    const rules = new TriggerRules();
+    expect(rules.draft("w1", status({ state: "blocked" }))).toBeUndefined();
+    expect(rules.draft("w1", status({ state: "waiting" }))?.kind).toBe(
+      "agentWaiting",
+    );
   });
 });
 
@@ -249,23 +302,23 @@ describe("不该叫人的那些", () => {
         request: { resolved: true },
       }),
     ).toBeUndefined();
-    const done = {
+    const waiting = {
       type: "agent.status",
-      status: { nodeId: "n1", state: "done" },
+      status: { nodeId: "n1", state: "waiting" },
     };
-    expect(rules.draft("w1", done)?.kind).toBe("agentDone");
-    expect(rules.draft("w1", done)).toBeUndefined();
+    expect(rules.draft("w1", waiting)?.kind).toBe("agentWaiting");
+    expect(rules.draft("w1", waiting)).toBeUndefined();
     expect(
       rules.draft("w1", {
         type: "agent.status",
         status: { nodeId: "n1", state: "working" },
       }),
     ).toBeUndefined();
-    expect(rules.draft("w1", done)?.kind).toBe("agentDone");
+    expect(rules.draft("w1", waiting)?.kind).toBe("agentWaiting");
     expect(
       rules.draft("w1", {
         type: "agent.status",
-        status: { nodeId: "n9", state: "done", restored: true },
+        status: { nodeId: "n9", state: "waiting", restored: true },
       }),
     ).toBeUndefined();
     expect(
@@ -297,7 +350,7 @@ describe("不该叫人的那些", () => {
     const names = { workspace: "W", agent: () => "Agent", source: "host/1" };
     expect(
       render(
-        { kind: "agentDone", workspaceId: "w 1", nodeId: "n1", tag: "t" },
+        { kind: "agentWaiting", workspaceId: "w 1", nodeId: "n1", tag: "t" },
         "zh-CN",
         names,
       ).url,

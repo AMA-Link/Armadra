@@ -177,6 +177,7 @@ describe("提示条", () => {
       "approval",
       "agentDone",
       "agentError",
+      "agentWaiting",
       "deliveryFailed",
       "schedule",
       "resources",
@@ -198,23 +199,25 @@ describe("提示条", () => {
     mocks.subscribe.mockResolvedValue({ ok: true, deviceId: "d1" });
     render(<PushPermission />);
     fireEvent.click(await screen.findByRole("button", { name: "开启" }));
-    const agentDone = await screen.findByRole("switch", { name: "Agent 完成" });
-    expect(agentDone.getAttribute("aria-checked")).toBe("true");
-    fireEvent.click(agentDone);
+    const agentError = await screen.findByRole("switch", {
+      name: "Agent 出错",
+    });
+    expect(agentError.getAttribute("aria-checked")).toBe("true");
+    fireEvent.click(agentError);
     await waitFor(() => expect(mocks.setKinds).toHaveBeenCalled());
     expect(mocks.setKinds.mock.calls[0]).toEqual([
       "d1",
-      ALL.filter((kind) => kind !== "agentDone"),
+      ALL.filter((kind) => kind !== "agentError"),
     ]);
     await waitFor(() =>
       expect(
         screen
-          .getByRole("switch", { name: "Agent 完成" })
+          .getByRole("switch", { name: "Agent 出错" })
           .getAttribute("aria-checked"),
       ).toBe("false"),
     );
     fireEvent.click(screen.getByRole("button", { name: "完成" }));
-    expect(screen.queryByRole("switch", { name: "Agent 完成" })).toBeNull();
+    expect(screen.queryByRole("switch", { name: "Agent 出错" })).toBeNull();
     // 问过了：下次不再出。
     expect(localStorage.getItem("armadra.push.asked")).toBe("1");
   });

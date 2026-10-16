@@ -108,13 +108,11 @@ export const modals: MessageModule = {
     "settings.diagnostics.dsn": "DSN",
     "settings.diagnostics.dsnInvalid": "DSN 无效",
 
-    "settings.notifyDone": "后台完成通知",
     "settings.notifyNeedsYou": "需要你时通知",
     "settings.sound": "提示音",
     "settings.soundVolume": "音量",
     "settings.soundPreview": "试听",
-    "settings.preview.done": "完成",
-    "settings.preview.attention": "需要你",
+    "settings.preview": "播放",
 
     "settings.defaultAgent": "默认 Agent", // i18n-exempt
     "settings.defaultPermission": "默认权限模式",
@@ -418,13 +416,11 @@ export const modals: MessageModule = {
     "settings.diagnostics.dsn": "DSN",
     "settings.diagnostics.dsnInvalid": "Invalid DSN",
 
-    "settings.notifyDone": "Notify when finished",
     "settings.notifyNeedsYou": "Notify when input is needed",
     "settings.sound": "Sound",
     "settings.soundVolume": "Volume",
     "settings.soundPreview": "Preview",
-    "settings.preview.done": "Finished",
-    "settings.preview.attention": "Needs you",
+    "settings.preview": "Play",
 
     "settings.defaultAgent": "Default agent",
     "settings.defaultPermission": "Default permission mode",

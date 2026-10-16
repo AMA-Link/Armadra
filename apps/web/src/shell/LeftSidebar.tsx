@@ -24,10 +24,10 @@ import { useState } from "react";
 import { createPortal } from "react-dom";
 import { Bell, PanelLeft, Search, Settings } from "lucide-react";
 
-import { useStatusCounts } from "../agent/status-store";
+import { NotificationPanel } from "../notifications/NotificationPanel";
+import { selectNeedCount, useNeedsStore } from "../notifications/needs-store";
 import { useT } from "../app/preferences-store";
 import { commandKeysLabel } from "../keybindings";
-import { AgentStatusPanel } from "../sidebar/AgentStatusPanel";
 import { SidebarHeader } from "../sidebar/SidebarHeader";
 import { SidebarSearch } from "../sidebar/SidebarSearch";
 import { SignalDot } from "../sidebar/SignalDot";
@@ -84,7 +84,7 @@ export function LeftSidebar() {
           搜索与通知那一行，给折叠钮让出左边的位置。 */}
       {shell || compact ? <SidebarHeader /> : null}
       {agentsOpen ? (
-        <AgentStatusPanel onClose={() => setAgentsOpen(false)} />
+        <NotificationPanel onClose={() => setAgentsOpen(false)} />
       ) : (
         <WorkspaceTree />
       )}
@@ -168,10 +168,7 @@ function TitlebarRow({
   onToggleAgents: () => void;
 }) {
   const t = useT();
-  const workspaceId = useCanvasStore((state) => state.workspace?.id ?? null);
-  const counts = useStatusCounts(workspaceId);
-  const hasSignal = counts.attention > 0 || counts.unread > 0;
-  const tone = counts.attention > 0 ? "attention" : "unread";
+  const hasSignal = useNeedsStore(selectNeedCount) > 0;
 
   return (
     <div
@@ -207,7 +204,7 @@ function TitlebarRow({
           {hasSignal && (
             <SignalDot
               corner
-              tone={tone}
+              tone="attention"
               label={t("sidebar.hasNotifications")}
             />
           )}
@@ -228,9 +225,7 @@ function TitlebarRow({
 function SidebarToggle({ open }: { open: boolean }) {
   const t = useT();
   const setPanel = useCanvasStore((state) => state.setPanel);
-  const workspaceId = useCanvasStore((state) => state.workspace?.id ?? null);
-  const counts = useStatusCounts(workspaceId);
-  const hasSignal = counts.attention > 0 || counts.unread > 0;
+  const hasSignal = useNeedsStore(selectNeedCount) > 0;
   const keys = commandKeysLabel("app.sidebar");
   const label = open ? t("sidebar.collapse") : t("sidebar.expand");
 
@@ -260,7 +255,7 @@ function SidebarToggle({ open }: { open: boolean }) {
             {hasSignal && (
               <SignalDot
                 corner
-                tone={counts.attention > 0 ? "attention" : "unread"}
+                tone="attention"
                 label={t("sidebar.hasNotifications")}
               />
             )}

@@ -14,8 +14,8 @@ import { Switch } from "@/ui/switch";
 /**
  * 设置 → 通知（§24.1）。
  *
- * 「完成」与「需要你」是两条独立的开关：前者是可以攒着看的，后者是挡住
- * 进度的，用户经常只想要后一条。提示音仍然共用一个开关 + 一个音量。
+ * 只有「需要人处理」的事会通知（审批、等待回答、出错，契约 §81），一个开关
+ * 管系统通知；提示音另有一个开关 + 一个音量。
  *
  * 「更新下载完成」是主机设置（`updates.notify`，从原更新页移来，§2.2）：
  * 行尾一枚作用范围徽标；成员读不到设置文档，远端主机的更新由那台自己的壳
@@ -27,8 +27,6 @@ export function NotificationsPage() {
   const t = useT();
   const { member } = useAccess();
   const { remote } = useRemoteAccess();
-  const notifyDone = usePreferencesStore((state) => state.notifyDone);
-  const setNotifyDone = usePreferencesStore((state) => state.setNotifyDone);
   const notifyNeedsYou = usePreferencesStore((state) => state.notifyNeedsYou);
   const setNotifyNeedsYou = usePreferencesStore(
     (state) => state.setNotifyNeedsYou,
@@ -41,14 +39,6 @@ export function NotificationsPage() {
   return (
     <>
       <SettingsGroup>
-        <SettingsRow label={t("settings.notifyDone")}>
-          <Switch
-            checked={notifyDone}
-            aria-label={t("settings.notifyDone")}
-            onCheckedChange={setNotifyDone}
-          />
-        </SettingsRow>
-
         <SettingsRow label={t("settings.notifyNeedsYou")}>
           <Switch
             checked={notifyNeedsYou}
@@ -90,17 +80,9 @@ export function NotificationsPage() {
             variant="secondary"
             size="sm"
             disabled={!sound}
-            onClick={() => playStatusSound("done")}
+            onClick={() => playStatusSound()}
           >
-            {t("settings.preview.done")}
-          </Button>
-          <Button
-            variant="secondary"
-            size="sm"
-            disabled={!sound}
-            onClick={() => playStatusSound("attention")}
-          >
-            {t("settings.preview.attention")}
+            {t("settings.preview")}
           </Button>
         </SettingsRow>
       </SettingsGroup>

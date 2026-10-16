@@ -198,7 +198,7 @@ describe("节点头的合并规则", () => {
 });
 
 describe("程序自报的离屏提醒", () => {
-  it("projects blocked as needs-you and done / error as finished", () => {
+  it("projects blocked as approval and error as a failed turn; done stays quiet", () => {
     expect(programNotificationStatus(NODE, program("blocked")).state).toBe(
       "blocked",
     );
@@ -208,8 +208,13 @@ describe("程序自报的离屏提醒", () => {
     ).toBe("waiting");
     expect(programNotificationStatus(NODE, program("error"))).toMatchObject({
       state: "done",
+      errored: true,
       unread: true,
       restored: false,
+    });
+    expect(programNotificationStatus(NODE, program("done"))).toMatchObject({
+      state: "done",
+      unread: false,
     });
     expect(programNotificationStatus(NODE, undefined).state).toBeUndefined();
   });

@@ -30,14 +30,14 @@ interface Harness {
   notify: ReturnType<typeof vi.fn>;
   playSound: ReturnType<typeof vi.fn>;
   background: { value: boolean };
-  settings: { notifyDone: boolean; notifyNeedsYou: boolean; sound: boolean };
+  settings: { notifyNeedsYou: boolean; sound: boolean };
 }
 
 function harness(): Harness {
   const notify = vi.fn();
   const playSound = vi.fn();
   const background = { value: true };
-  const settings = { notifyDone: true, notifyNeedsYou: true, sound: true };
+  const settings = { notifyNeedsYou: true, sound: true };
   return {
     notify,
     playSound,
@@ -62,9 +62,9 @@ beforeEach(() => {
 afterEach(() => vi.useRealTimers());
 
 describe("notificationFor", () => {
-  it("fires on entering blocked or waiting, once per state", () => {
+  it("fires on entering approval or waiting, once per state", () => {
     expect(notificationFor(undefined, status({ state: "blocked" }))).toBe(
-      "attention",
+      "approval",
     );
     expect(
       notificationFor(
@@ -78,54 +78,55 @@ describe("notificationFor", () => {
         status({ state: "blocked" }),
         status({ state: "waiting" }),
       ),
-    ).toBe("attention");
+    ).toBe("input");
   });
 
-  it("fires once when a turn ends", () => {
-    expect(
-      notificationFor(status({ state: "working" }), status({ state: "done" })),
-    ).toBe("done");
-    expect(
-      notificationFor(status({ state: "done" }), status({ state: "done" })),
-    ).toBeNull();
-  });
-
-  it("stays quiet for a restored `done`", () => {
+  it("treats a pending approval id as approval whatever the state says", () => {
     expect(
       notificationFor(
         status({ state: "working" }),
-        status({ state: "done", restored: true }),
+        status({ state: "working", pendingId: "p1" }),
+      ),
+    ).toBe("approval");
+  });
+
+  it("fires for a failed turn nobody has looked at, and only once", () => {
+    const failed = status({ state: "done", errored: true, unread: true });
+    expect(notificationFor(status({ state: "working" }), failed)).toBe("error");
+    expect(notificationFor(failed, failed)).toBeNull();
+    // 看过之后（未读清掉）不再提醒。
+    expect(
+      notificationFor(
+        status({ state: "working" }),
+        status({ state: "done", errored: true, unread: false }),
       ),
     ).toBeNull();
   });
 
-  /** 合成收尾不是结果：没跑完的回合不该弹「已完成」。 */
-  it("stays quiet for a synthetic close", () => {
-    for (const lastMessage of [
-      "stale=true no hook report for 20 minutes",
-      "terminated=true the terminal exited before the turn ended",
+  it("never fires for a finished turn, idle, working or unknown", () => {
+    for (const next of [
+      status({ state: "done", unread: true }),
+      status({ state: "working" }),
+      status(),
     ]) {
-      expect(
-        notificationFor(status({ state: "working" }), {
-          ...status({ state: "done" }),
-          interrupted: true,
-          lastMessage,
-        }),
-      ).toBeNull();
+      expect(notificationFor(status({ state: "working" }), next)).toBeNull();
     }
   });
 
-  it("stays quiet while the agent is working", () => {
+  it("stays quiet for a restored row", () => {
     expect(
-      notificationFor(status({ state: "done" }), status({ state: "working" })),
+      notificationFor(undefined, status({ state: "blocked", restored: true })),
     ).toBeNull();
   });
 });
 
 describe("notificationText", () => {
   it("is Chinese and names the node", () => {
-    expect(notificationText("attention", "claude").title).toBe("claude 需要你");
-    expect(notificationText("done", "claude").title).toBe("claude 已完成");
+    expect(notificationText("approval", "claude").title).toBe(
+      "claude 等待审批",
+    );
+    expect(notificationText("input", "claude").title).toBe("claude 等你回答");
+    expect(notificationText("error", "claude").title).toBe("claude 出错了");
   });
 });
 
@@ -134,7 +135,7 @@ describe("createAgentNotifier", () => {
     const h = harness();
     h.background.value = false;
     const notifier = createAgentNotifier(h.deps);
-    notifier.handle(status({ state: "done" }));
+    notifier.handle(status({ state: "blocked" }));
     expect(h.notify).not.toHaveBeenCalled();
     expect(h.playSound).not.toHaveBeenCalled();
   });
@@ -143,13 +144,22 @@ describe("createAgentNotifier", () => {
     const h = harness();
     const notifier = createAgentNotifier(h.deps);
     notifier.handle(status({ state: "working" }));
-    notifier.handle(status({ state: "done" }));
+    notifier.handle(status({ state: "blocked" }));
     expect(h.notify).toHaveBeenCalledWith(
-      "claude · 前端 已完成",
+      "claude · 前端 等待审批",
       expect.any(String),
       NODE,
     );
-    expect(h.playSound).toHaveBeenCalledWith("done");
+    expect(h.playSound).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not notify when a turn finishes", () => {
+    const h = harness();
+    const notifier = createAgentNotifier(h.deps);
+    notifier.handle(status({ state: "working" }));
+    notifier.handle(status({ state: "done", unread: true }));
+    expect(h.notify).not.toHaveBeenCalled();
+    expect(h.playSound).not.toHaveBeenCalled();
   });
 
   it("throttles to one alert per node per 5s", () => {
@@ -179,7 +189,6 @@ describe("createAgentNotifier", () => {
 
   it("honours the notification and sound switches independently", () => {
     const h = harness();
-    h.settings.notifyDone = false;
     h.settings.notifyNeedsYou = false;
     const notifier = createAgentNotifier(h.deps);
     notifier.handle(status({ state: "blocked" }));
@@ -192,31 +201,5 @@ describe("createAgentNotifier", () => {
     notifier.handle(status({ state: "waiting" }));
     expect(h.notify).toHaveBeenCalledTimes(1);
     expect(h.playSound).toHaveBeenCalledTimes(1);
-  });
-
-  /**
-   * §24.1 通知页把一个开关拆成两个：关掉「后台完成」不该顺带把「需要你」
-   * 也关掉，反过来也一样。
-   */
-  it("gates 完成 and 需要你 on their own switches", () => {
-    const h = harness();
-    h.settings.notifyDone = false;
-    const notifier = createAgentNotifier(h.deps);
-
-    notifier.handle(status({ state: "blocked" }));
-    expect(h.notify).toHaveBeenCalledTimes(1);
-
-    vi.advanceTimersByTime(NOTIFY_THROTTLE_MS);
-    notifier.handle(status({ state: "done" }));
-    expect(h.notify).toHaveBeenCalledTimes(1);
-
-    h.settings.notifyDone = true;
-    h.settings.notifyNeedsYou = false;
-    vi.advanceTimersByTime(NOTIFY_THROTTLE_MS);
-    notifier.handle(status({ nodeId: "second", state: "waiting" }));
-    expect(h.notify).toHaveBeenCalledTimes(1);
-    vi.advanceTimersByTime(NOTIFY_THROTTLE_MS);
-    notifier.handle(status({ nodeId: "second", state: "done" }));
-    expect(h.notify).toHaveBeenCalledTimes(2);
   });
 });
