@@ -179,6 +179,9 @@ export function workspaceOperations(context: CoreContext) {
       // terminal teardown the Rust handler did first belongs to R2; when it
       // lands it goes here, before the row and its cascades go.
       getWorkspace(database, id);
+      // 行与它级联的配置还在：库外有东西挂在这个工作空间上的域（托管令牌）
+      // 趁现在记下要清什么，等下面的 `permissions: null` 再清。
+      context.bus.emit("workspace.removing", { workspaceId: id });
       deleteWorkspace(database, id);
       context.bus.emit("workspace.grants", {
         workspaceId: id,

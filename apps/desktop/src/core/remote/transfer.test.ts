@@ -225,6 +225,46 @@ describe("chunked transfers to an execution host", () => {
     );
   }, 120_000);
 
+  it("streams a remote file past 16 MiB without buffering it, and serves a range", async () => {
+    // 比整份下载的旧上限 16 MiB 还大：流式之后没有上限。
+    const bytes = randomBytes(17 * 1024 * 1024);
+    writeFileSync(join(far.path, "huge.bin"), bytes);
+    const answer = await core.call(
+      "GET",
+      `/api/workspaces/${id}/file-download?path=huge.bin`,
+    );
+    expect(answer.status).toBe(200);
+    expect(answer.raw?.equals(bytes)).toBe(true);
+    const ranged = await core.call(
+      "GET",
+      `/api/workspaces/${id}/file-download?path=huge.bin`,
+      undefined,
+      { range: "bytes=5000000-13000000" },
+    );
+    expect(ranged.status).toBe(206);
+    expect(ranged.headers?.["content-range"]).toBe(
+      `bytes 5000000-13000000/${bytes.byteLength}`,
+    );
+    expect(ranged.raw?.equals(bytes.subarray(5000000, 13000001))).toBe(true);
+  }, 120_000);
+
+  it("fails the stream, not the headers, when the file changes mid-download", async () => {
+    const bytes = randomBytes(9 * 1024 * 1024);
+    const file = join(far.path, "moving.bin");
+    writeFileSync(file, bytes);
+    let chunks = 0;
+    intercept = async (operation, forward) => {
+      if (operation === "files.downloadChunk" && (chunks += 1) === 2) {
+        writeFileSync(file, randomBytes(9 * 1024 * 1024));
+      }
+      return await forward();
+    };
+    // 第一块（探测）成功，响应头照常拿到；第二块发现文件变了，迭代抛错。
+    await expect(
+      core.call("GET", `/api/workspaces/${id}/file-download?path=moving.bin`),
+    ).rejects.toMatchObject({ status: 409 });
+  }, 120_000);
+
   it("stores, imports, reads and exports whiteboard assets on the host", async () => {
     // 一张 2 MiB 的「图片」：超过帧里直接带的上限，分块传过去。
     const png = Buffer.concat([
