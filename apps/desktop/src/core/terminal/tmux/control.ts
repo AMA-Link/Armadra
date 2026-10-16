@@ -209,6 +209,13 @@ export class TmuxControl {
     await this.run(["send-keys", "-t", name, "-H", ...hex]);
   }
 
+  /** The pid of the server this socket reaches; nothing when none answers. */
+  async serverPid(): Promise<number | undefined> {
+    const output = await this.tryRun(["display-message", "-p", "#{pid}"]);
+    const pid = Number.parseInt(output?.trim() ?? "", 10);
+    return Number.isInteger(pid) && pid > 1 ? pid : undefined;
+  }
+
   /**
    * The `@armadra-runtime` server option, if a server is running and stamped.
    *

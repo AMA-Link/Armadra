@@ -13,6 +13,7 @@ import { tmpdir, homedir } from "node:os";
 import { dirname, resolve, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { probeSession } from "./probe-session.mjs";
+import { killTmuxServer } from "./probe-home.mjs";
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const installed = resolve(
   process.argv[2] ??
@@ -306,5 +307,6 @@ try {
     core.kill("SIGTERM");
     await new Promise((done) => core.once("exit", done));
   }
+  killTmuxServer(dataDir);
   rmSync(temporary, { recursive: true, force: true });
 }

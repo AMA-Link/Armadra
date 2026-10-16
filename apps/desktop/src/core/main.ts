@@ -1,5 +1,6 @@
 import type { Server } from "node:http";
 import { startControllerChannel } from "./controller/channel";
+import { REAP_ON_STOP_ENV, type StopReason, isQuitMessage } from "./quit";
 import { ControllerService } from "./controller/service";
 import { RunService } from "./runs/service";
 import { installRunUi } from "./runs/ui";
@@ -151,13 +152,16 @@ export interface CoreContext {
    * 关库之前按登记的逆序调用。只有 `run` 装配的 core 有它；用例直接拼的上下文
    * 没有，域照常工作。
    */
-  readonly onStop?: (stop: () => void | Promise<void>) => void;
+  readonly onStop?: (
+    stop: (reason: StopReason) => void | Promise<void>,
+  ) => void;
 }
 
 export interface RunningCore extends CoreContext {
   readonly instanceId: string;
   readonly bound: readonly ListenSpec[];
-  stop(): Promise<void>;
+  /** `reapSessions`：连会话一起结束（缺省留着，见 `quit.ts`）。 */
+  stop(options?: { reapSessions?: boolean }): Promise<void>;
 }
 
 /** The domains assembled by default; each phase adds its `install` here. */
@@ -338,7 +342,7 @@ export async function run(options: RunOptions = {}): Promise<RunningCore> {
     // and `/health` reports a core with none.
     hookHealth: () => hookService()?.health() ?? NO_HOOK_SERVICE,
   });
-  const domainStops: (() => void | Promise<void>)[] = [];
+  const domainStops: ((reason: StopReason) => void | Promise<void>)[] = [];
   const context: CoreContext = {
     dataDir,
     db: opened,
@@ -379,7 +383,7 @@ export async function run(options: RunOptions = {}): Promise<RunningCore> {
    * 数据库，关库在前它们就会撞上 `database is not open`。
    */
   let controller: Awaited<ReturnType<typeof startControllerChannel>>;
-  const teardown = async (): Promise<void> => {
+  const teardown = async (reason: StopReason): Promise<void> => {
     await controller?.close();
     await runs.stop();
     // 对外的 Gateway 先关：它的监听与经它进来的流不在 `server` 的名单上。
@@ -397,7 +401,7 @@ export async function run(options: RunOptions = {}): Promise<RunningCore> {
     await server.close();
     for (const stopDomain of domainStops.splice(0).reverse()) {
       try {
-        await stopDomain();
+        await stopDomain(reason);
       } catch (error) {
         log.warn("could not stop a domain", { error: describe(error) });
       }
@@ -446,7 +450,7 @@ export async function run(options: RunOptions = {}): Promise<RunningCore> {
     });
     runs.begin();
   } catch (error) {
-    await teardown();
+    await teardown({ reapSessions: false });
     throw error;
   }
 
@@ -467,15 +471,21 @@ export async function run(options: RunOptions = {}): Promise<RunningCore> {
   };
 
   // Step 4 — armed before step 5 publishes anything about this process.
-  const stop = async (): Promise<void> => {
-    await teardown();
+  // 缺省留着会话；壳在用户明确退出时先发 `armadra:quit`（`quit.ts`）。
+  let reapSessions = env[REAP_ON_STOP_ENV] === "1";
+  const stop = async (reason: StopReason): Promise<void> => {
+    await teardown(reason);
     releaseAll();
   };
   const onSignal = (): void => {
-    void stop().then(() => process.exit(0));
+    void stop({ reapSessions }).then(() => process.exit(0));
+  };
+  const onQuitMessage = (message: unknown): void => {
+    if (isQuitMessage(message)) reapSessions = message.reapSessions;
   };
   process.on("SIGTERM", onSignal);
   process.on("SIGINT", onSignal);
+  if (typeof process.send === "function") process.on("message", onQuitMessage);
   // 没人接住的异常（含按缺省规则转成异常的未处理拒绝）：报给壳（外部服务
   // §11.2）。用 monitor 而不是 `uncaughtException`——它不改变进程照旧崩溃这件事。
   const onUncaught = (error: unknown): void => {
@@ -515,11 +525,12 @@ export async function run(options: RunOptions = {}): Promise<RunningCore> {
     ...context,
     instanceId: instanceId(),
     bound,
-    stop: async () => {
+    stop: async (options = {}) => {
       process.off("SIGTERM", onSignal);
       process.off("SIGINT", onSignal);
+      process.off("message", onQuitMessage);
       process.off("uncaughtExceptionMonitor", onUncaught);
-      await stop();
+      await stop({ reapSessions: options.reapSessions ?? reapSessions });
     },
   };
 }

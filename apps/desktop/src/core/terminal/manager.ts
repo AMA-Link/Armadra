@@ -64,6 +64,7 @@ import {
   type DriveSessionRef,
 } from "./drive";
 import { HIBERNATE_INTENT, rowHibernated } from "./hibernate";
+import { destroyRowBackend, reapPersistent } from "./reap";
 import { insertSessionRow } from "./session-row";
 import { type ObservedActivity } from "../agent/target-state";
 import { allows } from "../identity/gate";
@@ -1322,21 +1323,7 @@ export class TerminalManager {
         }
         this.forget(sessionId);
       } else {
-        const row = this.database
-          .prepare(
-            "SELECT backend_ref, backend_kind FROM terminal_sessions WHERE id = ?",
-          )
-          .get(sessionId) as
-          | { backend_ref?: string | null; backend_kind?: string }
-          | undefined;
-        const backend = this.backends.get(row?.backend_kind as BackendKind);
-        if (backend !== undefined && row?.backend_ref) {
-          try {
-            await backend.destroyByReference(row.backend_ref);
-          } catch {
-            // Same.
-          }
-        }
+        await destroyRowBackend(this.database, this.backends, sessionId);
       }
       this.database
         .prepare(
@@ -1405,18 +1392,24 @@ export class TerminalManager {
   /**
    * Core shutdown.
    *
-   * Sessions of a persistent backend are left running on purpose: that is the
+   * Sessions of a persistent backend are left running by default: that is the
    * whole point of those backends, and their rows move to `detached` rather
-   * than to an end. Direct sessions cannot survive us and are killed by their
-   * own `detachAll`.
+   * than to an end. With `reap` (the user quit the app, `quit.ts`) they are
+   * ended too, and their rows with them. Direct sessions cannot survive us and
+   * are killed by their own `detachAll` either way.
    */
-  async shutdown(): Promise<void> {
+  async shutdown(options: { reap?: boolean } = {}): Promise<void> {
     this.stopping = true;
     this.programs.dispose();
     for (const timer of this.timers) clearInterval(timer);
     this.timers.length = 0;
     for (const [kind, backend] of this.backends) {
-      if (persistent(kind)) {
+      if (persistent(kind) && options.reap === true) {
+        const live = [...this.records.values()].filter(
+          (record) => record.kind === kind && !record.exited,
+        );
+        await reapPersistent(this.database, backend, kind, live, this.now());
+      } else if (persistent(kind)) {
         this.database
           .prepare(
             `UPDATE terminal_sessions SET attach_state = 'detached'

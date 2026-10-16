@@ -366,6 +366,14 @@ export interface TerminalBackend {
   detachAll(): Promise<void>;
 
   /**
+   * End everything this backend's host still holds, sessions this process
+   * never adopted included: the user quit the app (`quit.ts`). Only a backend
+   * whose sessions outlive the core has one; the others end theirs in
+   * `detachAll`.
+   */
+  reapAll?(): Promise<void>;
+
+  /**
    * What the program wrote, whether or not a viewer is attached — the input
    * of the program status channel (contract §53). Absent on a backend that
    * cannot see it.

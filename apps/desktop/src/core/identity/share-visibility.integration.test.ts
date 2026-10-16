@@ -28,7 +28,8 @@ const running: RunningCore[] = [];
 const directories: string[] = [];
 
 afterEach(async () => {
-  for (const core of running.splice(0)) await core.stop();
+  // 这里建过终端：连 tmux server 一起结束，否则每跑一次留下一个。
+  for (const core of running.splice(0)) await core.stop({ reapSessions: true });
   for (const directory of directories.splice(0)) {
     rmSync(directory, { recursive: true, force: true });
   }

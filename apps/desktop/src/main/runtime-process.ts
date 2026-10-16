@@ -7,6 +7,7 @@ import { createHash } from "node:crypto";
 import { userInfo } from "node:os";
 import { join, resolve } from "node:path";
 import { dataDir, endpointsFile } from "../shell-core/paths";
+import { sendQuitIntent } from "../core/quit";
 import { attachTicketChannel } from "./core-ticket";
 import {
   type HealthResponse,
@@ -258,8 +259,11 @@ export class RuntimeProcess {
    * SIGTERM 走的是 core 自己的处理：撤回端点记录、关掉监听、关库。超时之后的
    * SIGKILL 只结束这一个子进程，它**不是**「被管理的会话都收好了」的证据，所以
    * 那次失败要留下来给用户看见，而不能在第二次退出时读成成功。
+   *
+   * `reapSessions`：用户明确退出应用时为真，core 连 tmux server 与会话、子组件一
+   * 并结束（`core/quit.ts`）。应用内更新、重启 core 不传，会话留着在新 core 里接回。
    */
-  async stop(): Promise<void> {
+  async stop(options: { reapSessions?: boolean } = {}): Promise<void> {
     const child = this.child;
     this.child = null;
     if (child === null) {
@@ -275,6 +279,7 @@ export class RuntimeProcess {
       }
       return;
     }
+    sendQuitIntent(child, options.reapSessions === true);
     child.kill("SIGTERM");
     const status = await waitForExit(child, 12_000);
     if (status === undefined) {

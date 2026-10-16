@@ -15,6 +15,7 @@ import {
 import { tmpdir, homedir } from "node:os";
 import { dirname, resolve, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { killTmuxServer } from "./probe-home.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const temporary = mkdtempSync(join(tmpdir(), "ar-canvas-"));
@@ -426,5 +427,6 @@ try {
     child.stdout.destroy();
     child.stderr.destroy();
   }
+  killTmuxServer(dataDir);
   rmSync(temporary, { recursive: true, force: true, maxRetries: 20 });
 }

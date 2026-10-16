@@ -319,6 +319,30 @@ describe("the core process", () => {
     );
   });
 
+  it("停止时告诉各域要不要连会话一起结束：缺省留着，参数、环境变量与壳的退出消息都能改成结束", async () => {
+    const reasons: boolean[] = [];
+    const record = (context: CoreContext) => {
+      context.onStop?.((reason) => {
+        reasons.push(reason.reapSessions);
+      });
+    };
+    const launch = (extra: NodeJS.ProcessEnv = {}) =>
+      run({
+        argv: ["--listen", "tcp:127.0.0.1:0", "--data-dir", temporary()],
+        env: {
+          ARMADRA_CORE_MIGRATIONS_DIR: migrationsDir,
+          ARMADRA_LOG: "error",
+          ...extra,
+        },
+        stdout: () => {},
+        domains: [record],
+      });
+    await (await launch()).stop();
+    await (await launch()).stop({ reapSessions: true });
+    await (await launch({ ARMADRA_REAP_ON_STOP: "1" })).stop();
+    expect(reasons).toEqual([false, true, true]);
+  });
+
   // macOS 的 sun_path 只有 104 字节，CI 的临时目录就占了一半：
   // `<dataDir>/controller.sock` 放不下时挪到临时目录下的私有目录，core 照常起来，
   // 地址经 endpoints.json 公布。

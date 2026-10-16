@@ -41,7 +41,7 @@ import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
-import { LOOPBACK_OWNER_ENV } from "./probe-home.mjs";
+import { LOOPBACK_OWNER_ENV, killTmuxServer } from "./probe-home.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const repo = resolve(here, "../..");
@@ -597,6 +597,7 @@ try {
     join(output, "result.json"),
     `${JSON.stringify(result, null, 2)}\n`,
   );
+  killTmuxServer(data);
   rmSync(scratch, { recursive: true, force: true });
 }
 process.exit(result.ok ? 0 : 1);

@@ -12,6 +12,7 @@ import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { probeSession } from "./probe-session.mjs";
+import { killTmuxServer } from "./probe-home.mjs";
 const faultPoint = process.argv
   .find((arg) => arg.startsWith("--fault="))
   ?.slice(8);
@@ -563,5 +564,6 @@ try {
     child.kill("SIGTERM");
     await new Promise((done) => child.once("exit", done));
   }
+  killTmuxServer(dataDir);
   rmSync(temporary, { recursive: true, force: true });
 }

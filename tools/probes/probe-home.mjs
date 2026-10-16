@@ -8,6 +8,7 @@
 // 这里给出一份环境：HOME 与各 CLI、XDG、git 的全局配置都指进一个 mktemp 目录，
 // 再去掉会把真实账号带进去的那几个凭据变量。Vite / pnpm 这类工具链进程不用它
 // ——它们只是构建工具，读自己的 store 与配置，不读 Armadra 或 CLI 的状态。
+import { spawnSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -77,4 +78,17 @@ export function isolatedEnv(home, extra = {}) {
   const base = { ...process.env };
   for (const name of CREDENTIAL_VARIABLES) delete base[name];
   return { ...base, ...home.env, ...LOOPBACK_OWNER_ENV, ...extra };
+}
+
+/**
+ * 停掉探针的 core 在 `dataDir` 下起的 tmux server。core 被 SIGTERM 时按设计留着会
+ * 话（重启后接回），探针删掉临时数据目录只会删掉 socket——server 与它的 shell 会
+ * 一直跑下去（曾经留下约 250 个）。每个起了终端又删数据目录的探针，在删之前调它。
+ *
+ * 只认这个数据目录自己的 socket，没有 server 就是空操作；不碰操作员的 tmux。
+ */
+export function killTmuxServer(dataDir) {
+  spawnSync("tmux", ["-S", join(dataDir, "tmux.sock"), "kill-server"], {
+    stdio: "ignore",
+  });
 }

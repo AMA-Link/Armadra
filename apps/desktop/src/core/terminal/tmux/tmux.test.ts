@@ -2,6 +2,7 @@ import {
   existsSync,
   mkdtempSync,
   readFileSync,
+  renameSync,
   rmSync,
   statSync,
   writeFileSync,
@@ -24,6 +25,7 @@ import {
 } from "./config";
 import {
   LIST_ALIVE_FORMAT,
+  TmuxControl,
   enterOnly,
   parseAliveLine,
   pastePlan,
@@ -338,6 +340,69 @@ describe.skipIf(!tmuxAvailable)("against a real tmux", () => {
 
     await backend.terminate(key, "session");
     expect(await backend.list()).toEqual([]);
+  }, 30_000);
+
+  const spec = (directory: string, name: string) => ({
+    sessionKey: sessionKey(name),
+    workspaceId: `${name}-workspace`,
+    generation: 1,
+    cwd: directory,
+    shell: "/bin/sh",
+    args: [],
+    env: [],
+    size: { cols: 80, rows: 24 },
+  });
+  const processAlive = (pid: number): boolean => {
+    try {
+      process.kill(pid, 0);
+      return true;
+    } catch {
+      return false;
+    }
+  };
+
+  it("ends the server, its panes and their process trees when the app is quit", async () => {
+    const directory = tempDir();
+    const backend = new TmuxBackend({ dataDir: directory, version: "test" });
+    const first = await backend.create(spec(directory, "reap-one"));
+    const second = await backend.create(spec(directory, "reap-two"));
+    expect(first.pid).toBeDefined();
+    expect(second.pid).toBeDefined();
+
+    await backend.reapAll();
+
+    expect(await backend.list()).toEqual([]);
+    expect(processAlive(first.pid as number)).toBe(false);
+    expect(processAlive(second.pid as number)).toBe(false);
+    expect(await new TmuxControl(directory).serverPid()).toBeUndefined();
+  }, 30_000);
+
+  it("ends a server an older build left behind on the same socket path", async () => {
+    const directory = tempDir();
+    const old = new TmuxBackend({ dataDir: directory, version: "old" });
+    const stale = await old.create(spec(directory, "stale-one"));
+    const oldServer = await new TmuxControl(directory).serverPid();
+    expect(oldServer).toBeDefined();
+    // The socket file is replaced under the running server: it keeps its panes
+    // and becomes unreachable, which is how a second server gets onto the path.
+    renameSync(join(directory, "tmux.sock"), join(directory, "moved.sock"));
+
+    const current = new TmuxBackend({ dataDir: directory, version: "new" });
+    const fresh = await current.create(spec(directory, "fresh-one"));
+    const liveServer = await new TmuxControl(directory).serverPid();
+    expect(liveServer).toBeDefined();
+    expect(liveServer).not.toBe(oldServer);
+
+    const note = await current.adoptServer();
+
+    expect(note).toContain("orphaned tmux server");
+    expect(processAlive(oldServer as number)).toBe(false);
+    expect(processAlive(stale.pid as number)).toBe(false);
+    // The server the socket reaches, and its session, are untouched.
+    expect(await new TmuxControl(directory).serverPid()).toBe(liveServer);
+    expect(processAlive(fresh.pid as number)).toBe(true);
+    expect((await current.list()).map((entry) => entry.name)).toHaveLength(1);
+    await current.terminate(sessionKey("fresh-one"), "session");
   }, 30_000);
 
   it("refuses an attach that carries a stale generation", async () => {

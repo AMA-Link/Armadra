@@ -4,6 +4,7 @@ import { allows } from "../identity/gate";
 import { scope } from "../identity/scopes";
 import { VERSION } from "../instance";
 import type { CoreContext } from "../main";
+import type { StopReason } from "../quit";
 import { settingsDomain } from "../settings";
 import {
   type BackendKind,
@@ -103,7 +104,7 @@ export interface TerminalDomain {
   readonly manager: TerminalManager;
   readonly backends: ReadonlyMap<BackendKind, TerminalBackend>;
   readonly hibernator: Hibernator;
-  stop(): Promise<void>;
+  stop(reason?: StopReason): Promise<void>;
 }
 
 /** Lines a capture may return, and the ceiling a request may ask for. */
@@ -257,8 +258,22 @@ export function install(
    * rows exactly as they are — they may describe sessions alive under a
    * backend this process merely failed to reach — and the log says why.
    */
-  const ready: Promise<void> = manager
-    .start()
+  // 先处理 tmux server（结束旧版本留在这条 socket 路径上的孤儿、换掉空的外来
+  // server），再对账：对账问的是此刻连得上的那一个。
+  const adopted: Promise<void> =
+    tmux === undefined
+      ? Promise.resolve()
+      : tmux
+          .adoptServer()
+          .then((note) => {
+            if (note !== undefined) context.log.info(note);
+          })
+          .catch(() => {
+            // A server that cannot be interrogated is left alone; the next
+            // `new-session` stamps whatever is there.
+          });
+  const ready: Promise<void> = adopted
+    .then(() => manager.start())
     .then((report) => {
       context.log.info("终端启动对账完成", {
         detached: report.detached,
@@ -269,18 +284,6 @@ export function install(
     .catch((error: unknown) => {
       context.log.warn("终端启动对账失败", { error: describe(error) });
     });
-  if (tmux !== undefined) {
-    void tmux
-      .adoptServer()
-      .then((note) => {
-        if (note !== undefined) context.log.info(note);
-      })
-      .catch(() => {
-        // A server that cannot be interrogated is left alone; the next
-        // `new-session` stamps whatever is there.
-      });
-  }
-
   const route = (
     method: string,
     path: string,
@@ -1022,7 +1025,7 @@ export function install(
     manager,
     backends,
     hibernator,
-    stop: async () => {
+    stop: async (reason?: StopReason) => {
       // Withdrawn before the panes go: a verb that reached a bridge over a
       // manager that is shutting down would be told a session is missing
       // rather than that there is nothing to talk to.
@@ -1034,10 +1037,10 @@ export function install(
       clearInterval(hibernateTimer);
       // 启动对账还在途时不抢先关：它问完后端要回写行，关停排在它之后。
       await ready;
-      await manager.shutdown();
+      await manager.shutdown({ reap: reason?.reapSessions === true });
     },
   };
-  context.onStop?.(() => domain.stop());
+  context.onStop?.((reason) => domain.stop(reason));
   return domain;
 }
 
