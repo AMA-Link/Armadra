@@ -69,12 +69,25 @@ export function probeHome(prefix = "armadra-probe-home-") {
 export const LOOPBACK_OWNER_ENV = { ARMADRA_LOOPBACK_OWNER: "1" };
 
 /**
+ * 探针起的 core 的环境：{@link LOOPBACK_OWNER_ENV}，加上「停止时连会话一起结束」。
+ *
+ * core 被 SIGTERM 的缺省是留着 tmux 里的会话（重启之后接回）。探针起的 core 在临时
+ * 数据目录里，删掉目录之后那个 tmux server 与它的 shell 会一直跑下去——曾经留下约
+ * 250 个。`ARMADRA_REAP_ON_STOP=1` 让探针的 core 无论怎么被停都清干净；直接
+ * `kill -9` 的探针仍要自己 `tmux -S <数据目录>/tmux.sock kill-server`。
+ */
+export const PROBE_CORE_ENV = {
+  ...LOOPBACK_OWNER_ENV,
+  ARMADRA_REAP_ON_STOP: "1",
+};
+
+/**
  * 给 Armadra 进程的完整环境：当前环境去掉凭据变量，叠上临时 HOME 与
- * {@link LOOPBACK_OWNER_ENV}，再叠上调用方自己的键（`extra` 最后，所以它能覆盖
+ * {@link PROBE_CORE_ENV}，再叠上调用方自己的键（`extra` 最后，所以它能覆盖
  * 前面任何一个）。
  */
 export function isolatedEnv(home, extra = {}) {
   const base = { ...process.env };
   for (const name of CREDENTIAL_VARIABLES) delete base[name];
-  return { ...base, ...home.env, ...LOOPBACK_OWNER_ENV, ...extra };
+  return { ...base, ...home.env, ...PROBE_CORE_ENV, ...extra };
 }

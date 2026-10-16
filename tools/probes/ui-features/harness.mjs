@@ -21,7 +21,7 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { LOOPBACK_OWNER_ENV } from "../probe-home.mjs";
+import { PROBE_CORE_ENV } from "../probe-home.mjs";
 
 export const root = fileURLToPath(new URL("../../../", import.meta.url));
 export const sleep = (ms) => new Promise((done) => setTimeout(done, ms));
@@ -125,7 +125,7 @@ export async function startStack(options = {}) {
     ARMADRA_DATA_DIR: data,
     ARMADRA_LOG: options.log ?? "info",
     // 页面停在普通浏览器里，拿不到壳的票（契约 §3.2）。
-    ...LOOPBACK_OWNER_ENV,
+    ...PROBE_CORE_ENV,
     ...options.env,
   };
   // 起一个 core；`listen` 缺省让内核分配端口。重启（`killCore` + `startCore`）在同一个

@@ -212,6 +212,8 @@ node tools/probes/core-terminal-packaged.mjs              # 打包版，从页�
 
 这些脚本都用 `mktemp` 的数据目录与各自私有的 tmux socket，跑完 `kill-server` 并删掉目录；不碰操作者自己的数据目录或 tmux server。
 
+探针起的 core 的环境带 `ARMADRA_REAP_ON_STOP=1`（`probe-home.mjs` 的 `PROBE_CORE_ENV`，`isolatedEnv` 已含）：core 被 SIGTERM 的缺省是留着 tmux 会话，探针删掉临时数据目录之后那个 tmux server 与它的 shell 会一直跑下去（曾经留下约 250 个）。该变量让 core 无论怎么被停都把会话一并结束；直接 `kill -9` 的探针仍要自己 `tmux -S <数据目录>/tmux.sock kill-server`。新探针起 core 一律用这份环境。
+
 ## 节点凭据端到端
 
 ```sh

@@ -42,6 +42,7 @@ for (const name of ["codex", "claude"])
 const env = {
   ...process.env,
   ARMADRA_NO_GLOBAL_WRITES: "1",
+  ARMADRA_REAP_ON_STOP: "1",
   ARMADRA_CONTROLLER_PROFILES_DIR: join(temporary, "profiles"),
   PATH: bin + ":" + process.env.PATH,
   SHELL: "/bin/sh",

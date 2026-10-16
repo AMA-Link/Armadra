@@ -14,7 +14,7 @@ import {
 import { tmpdir } from "node:os";
 import { createRequire } from "node:module";
 import { join } from "node:path";
-import { LOOPBACK_OWNER_ENV } from "../probe-home.mjs";
+import { PROBE_CORE_ENV } from "../probe-home.mjs";
 
 import { opencodeBinary, which } from "./cli-homes.mjs";
 import { cleanups, note, output, root, waitFor } from "./lib.mjs";
@@ -36,7 +36,7 @@ export async function startIsolatedCore({ data, environment, logName }) {
       cwd: root,
       stdio: ["ignore", "pipe", "pipe"],
       // 裸 core 显式打开回环匿名按主人（契约 §3.2）：探针不在壳里、拿不到票。
-      env: { ...environment, ...LOOPBACK_OWNER_ENV },
+      env: { ...environment, ...PROBE_CORE_ENV },
     },
   );
   cleanups.push(() => core.kill("SIGKILL"));

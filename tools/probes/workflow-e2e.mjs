@@ -41,7 +41,7 @@ import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
-import { LOOPBACK_OWNER_ENV } from "./probe-home.mjs";
+import { PROBE_CORE_ENV } from "./probe-home.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const repo = resolve(here, "../..");
@@ -161,7 +161,7 @@ const environment = {
   PATH: `${bin}:${process.env.PATH ?? ""}`,
   SHELL: "/bin/sh",
   // 自动化面在下面无凭据地打（契约 §3.2）：裸 core 显式按本机主人。
-  ...LOOPBACK_OWNER_ENV,
+  ...PROBE_CORE_ENV,
   // 定时任务暂时下线（#295）时 core 不起调度循环；这条探针验的正是到点执行。
   ARMADRA_SCHEDULE_LOOP: "1",
 };
