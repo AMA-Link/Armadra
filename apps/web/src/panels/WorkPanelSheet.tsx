@@ -47,6 +47,7 @@ import { noDragProps } from "../shell/window-region";
  */
 export const WORK_PANEL_WIDTH = {
   explorer: "var(--drawer-w)",
+  observation: "var(--drawer-w)",
   resources: "var(--drawer-w)",
   problems: "var(--drawer-w)",
   usage: "400px",

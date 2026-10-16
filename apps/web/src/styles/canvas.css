@@ -97,6 +97,8 @@
 }
 .canvas-stage .canvas-group[data-selected="true"] {
   background: color-mix(in srgb, var(--panel) 34%, transparent);
+  outline: 2px solid var(--brand);
+  outline-offset: 2px;
 }
 .canvas-stage .canvas-group-label {
   position: absolute;

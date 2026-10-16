@@ -204,6 +204,7 @@ beforeEach(() => {
     panels: {
       sidebar: "collapsed",
       explorer: "closed",
+      observation: "closed",
       scm: "closed",
       resources: "closed",
       automation: "closed",
