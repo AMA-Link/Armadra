@@ -53,10 +53,8 @@ describe("设置 → 通知（§2.2 映射）", () => {
       expect(screen.getByRole("switch", { name: zh(key) }), key).toBeTruthy();
     expect(screen.getByText(zh("settings.soundVolume"))).toBeTruthy();
     expect(screen.getByText(zh("settings.soundPreview"))).toBeTruthy();
-    // 设置恒指本机（#301）：主机项的徽标写「本机」。
-    expect(document.querySelector("[data-settings-scope]")?.textContent).toBe(
-      zh("settings.scope.local"),
-    );
+    // 设置恒指本机（#301）：本机改本机不画作用范围徽标。
+    expect(document.querySelector("[data-settings-scope]")).toBeNull();
     fireEvent.click(screen.getByRole("switch", { name: zh("updates.notify") }));
     expect(save.mutate).toHaveBeenCalledWith({ updates: { notify: false } });
   });

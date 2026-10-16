@@ -227,21 +227,18 @@ describe("SettingsDialog", () => {
     expect(nav().className).toContain("w-[clamp(176px,16%,240px)]");
   });
 
-  it("页头右端是这一页的作用范围徽标", async () => {
+  it("设置就在本机改时页头不画作用范围徽标", async () => {
     open();
     await screen.findByText(zh("settings.theme"));
     const scope = () =>
       screen
         .getByTestId("settings-heading")
-        .parentElement?.querySelector("[data-settings-scope]")?.textContent;
-    expect(scope()).toBe(zh("settings.scope.device"));
-    // 设置恒指本机（#301）：主机页写「本机」（取到名字时带上名字）。
+        .parentElement?.querySelector("[data-settings-scope]");
+    expect(scope()).toBeNull();
     fireEvent.click(navItem(zh("settings.section.about")));
-    expect(scope()).toBe(zh("settings.scope.local"));
+    expect(scope()).toBeNull();
     fireEvent.click(navItem(zh("settings.section.security")));
-    expect(scope()).toBe(zh("settings.scope.account"));
-    fireEvent.click(navItem(zh("settings.section.remoteAccess")));
-    expect(scope()).toBe(zh("settings.scope.local"));
+    expect(scope()).toBeNull();
   });
 
   it("手机底部 Sheet 取整高，压过 Sheet 自己的 h-auto", () => {

@@ -69,7 +69,6 @@ export const gitLog: MessageModule = {
     "gitLog.toolbar.showHashColumn": "显示 hash 列",
     "gitLog.toolbar.clear": "清除筛选",
 
-    "gitLog.details.empty": "选择一行查看详情。",
     "gitLog.details.copyHash": "复制 hash",
     "gitLog.details.committer": "提交者",
     "gitLog.details.files": "变更文件",
@@ -187,7 +186,6 @@ export const gitLog: MessageModule = {
     "gitLog.toolbar.showHashColumn": "Show hash column",
     "gitLog.toolbar.clear": "Clear filters",
 
-    "gitLog.details.empty": "Select a row to see its details.",
     "gitLog.details.copyHash": "Copy hash",
     "gitLog.details.committer": "Committer",
     "gitLog.details.files": "Changed files",

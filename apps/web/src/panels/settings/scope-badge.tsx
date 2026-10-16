@@ -42,6 +42,9 @@ export function useScopeLabel(
 /**
  * 一枚不可点的作用范围徽标。页头一枚说整页；页内个别行与页不同时，行尾
  * 再放一枚同样式的小徽标（与 `LocalSourceBadge` 同一位置）。
+ *
+ * 设置就在这台电脑上改时，范围不言自明，徽标不画；只有页面在别处（手机、经
+ * Gateway 打开的网页）或打开的是别的电脑的工作空间时才有话要说。
  */
 export function ScopeBadge({
   scope,
@@ -55,6 +58,10 @@ export function ScopeBadge({
   className?: string;
 }) {
   const label = useScopeLabel(scope, pinnedLocal, followsWorkspace);
+  const { remote } = useRemoteAccess();
+  const current = useCurrentSource().descriptor;
+  const away = remote || (followsWorkspace && current.kind !== "local");
+  if (!away) return null;
   return (
     <Badge
       variant="outline"

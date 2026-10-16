@@ -484,11 +484,7 @@ export function LogPage({ workspaceId }: LogPageProps) {
       onBaseChange={setCompareBase}
       onOpenFile={compact ? () => setStage("diff") : undefined}
     />
-  ) : (
-    <p className="p-3 text-xs text-muted-foreground">
-      {t("gitLog.details.empty")}
-    </p>
-  );
+  ) : null;
 
   const dialogs = (
     <>

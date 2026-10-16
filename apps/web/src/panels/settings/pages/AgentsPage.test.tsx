@@ -161,15 +161,13 @@ describe("Agent CLI 子页", () => {
         ).replace("{part}", zh("integration.history.transcript"))}`,
       ),
     ).toBeTruthy();
-    // 启动两行是本设备项，行尾各一枚作用范围徽标；其余行没有徽标。
+    // 本机改本机：启动两行也不画作用范围徽标；其余行没有徽标。
     expect(
       container.querySelectorAll(
         "[data-slot=badge]:not([data-settings-scope])",
       ),
     ).toHaveLength(0);
-    expect(
-      container.querySelectorAll("[data-settings-scope=device]"),
-    ).toHaveLength(2);
+    expect(container.querySelectorAll("[data-settings-scope]")).toHaveLength(0);
     expect(screen.queryByText(zh("integration.state.stale"))).toBeNull();
   });
 

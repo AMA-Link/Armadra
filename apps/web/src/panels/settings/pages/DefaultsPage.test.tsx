@@ -68,11 +68,8 @@ describe("设置 → 默认（§2.2 映射）", () => {
     expect(
       screen.getByRole("switch", { name: zh("acp.settings.simpleMode") }),
     ).toBeTruthy();
-    const badges = document.querySelectorAll("[data-settings-scope]");
-    expect(badges).toHaveLength(1);
-    expect(badges[0]!.textContent).toBe(
-      zh("settings.scope.localNamed", { name: "家里的 Mac mini" }),
-    );
+    // 本机改本机：作用范围不言自明，不画徽标。
+    expect(document.querySelectorAll("[data-settings-scope]")).toHaveLength(0);
   });
 
   it("页面的本机在别处（手机、经 Gateway 的网页）：徽标写主机与它的名字", () => {
