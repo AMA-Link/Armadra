@@ -32,7 +32,6 @@ const zh = {
   "terminal.drive.giveBack": "交还",
 
   "terminal.render.disconnected": "已断开",
-  "terminal.render.detached": "已分离",
 
   /* 节能休眠（终端宿主设计 §7.2）：进程已经结束，点一下用 CLI 的续接接回来。 */
   "terminal.hibernation.label": "休眠中",
@@ -122,7 +121,6 @@ const en: Record<keyof typeof zh, string> = {
   "terminal.drive.giveBack": "Hand back",
 
   "terminal.render.disconnected": "Disconnected",
-  "terminal.render.detached": "Detached",
 
   "terminal.hibernation.label": "Hibernated",
   "terminal.hibernation.resuming": "Waking",
