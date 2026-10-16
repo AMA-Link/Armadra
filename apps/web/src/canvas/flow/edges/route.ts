@@ -31,6 +31,11 @@ export const ROUTE_CLEARANCE = 6;
  * 穿缝，并且走正中间。
  */
 export const ROUTE_MIN_CLEARANCE = 16;
+/**
+ * 横线从节点**上沿**（标题栏所在的那条边）上方经过时要求的净距：标题栏上有
+ * 文字和按钮，线贴着它走比贴着别的边更碍眼。窄缝里放不下时仍然走正中间。
+ */
+export const ROUTE_TITLE_CLEARANCE = 20;
 /** 只要贴着走就先罚这么多倍；再按差多少净距加罚，最多再加 {@link NARROW_COST}。 */
 export const NARROW_BASE = 3;
 export const NARROW_COST = 4;
@@ -450,8 +455,10 @@ export function routeEdge(request: RouteRequest): Route {
       const dx = Math.max(0, box.x - maxX, minX - (box.x + box.width));
       const dy = Math.max(0, box.y - maxY, minY - (box.y + box.height));
       if (k < 2 && (horizontal ? dx > 0 : dy > 0)) continue;
-      const deficit =
-        (ROUTE_MIN_CLEARANCE - Math.hypot(dx, dy)) / ROUTE_MIN_CLEARANCE;
+      // 横线在这个节点上沿的正上方：按标题栏的净距要求。
+      const overTitle = horizontal && dx === 0 && box.y >= maxY;
+      const want = overTitle ? ROUTE_TITLE_CLEARANCE : ROUTE_MIN_CLEARANCE;
+      const deficit = (want - Math.hypot(dx, dy)) / want;
       if (deficit > worst) worst = deficit;
     }
     return worst > 0 ? NARROW_BASE + worst * NARROW_COST : 0;

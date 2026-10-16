@@ -7,6 +7,7 @@ import {
   midpointOf,
   roundedPath,
   ROUTE_CLEARANCE,
+  ROUTE_TITLE_CLEARANCE,
   routeEdge,
   simplify,
   type Route,
@@ -140,6 +141,58 @@ describe("对等线绕开挡在中间的节点", () => {
   it("叠在一起的两个节点退回一条折线，不抛错", () => {
     const route = routeFor(box(0, 0), box(10, 10));
     expect(route.points.length).toBeGreaterThanOrEqual(2);
+  });
+});
+
+describe("横线与节点上沿（标题栏）的净距", () => {
+  // 协调者在上，三个 Agent 在下，两排之间的缝宽 `gap`。
+  const layout = (gap: number) => {
+    const coordinator = box(660, 0, 620, 390);
+    const agents = [
+      box(0, 390 + gap, 620, 390),
+      box(660, 390 + gap, 620, 390),
+      box(1320, 390 + gap, 620, 390),
+    ];
+    return { coordinator, agents };
+  };
+  /** 路线上所有横段到最近的 Agent 上沿的距离。 */
+  const titleClearance = (route: Route, agents: readonly Box[]): number => {
+    let min = Infinity;
+    for (let k = 1; k < route.points.length; k += 1) {
+      const a = route.points[k - 1]!;
+      const b = route.points[k]!;
+      if (a.y !== b.y) continue;
+      for (const agent of agents) {
+        if (
+          Math.max(a.x, b.x) > agent.x &&
+          Math.min(a.x, b.x) < agent.x + agent.width
+        ) {
+          min = Math.min(min, Math.abs(agent.y - a.y));
+        }
+      }
+    }
+    return min;
+  };
+
+  it("缝够宽（60）：主干离 Agent 上沿至少 20", () => {
+    const { coordinator, agents } = layout(60);
+    for (const agent of agents) {
+      const others = agents.filter((rect) => rect !== agent);
+      const route = routeFor(coordinator, agent, others, "vertical");
+      expect(titleClearance(route, agents)).toBeGreaterThanOrEqual(
+        ROUTE_TITLE_CLEARANCE,
+      );
+    }
+  });
+
+  it("缝只有 30：主干走正中间（离上下各 15），不贴任何一边", () => {
+    const { coordinator, agents } = layout(30);
+    for (const agent of agents) {
+      const others = agents.filter((rect) => rect !== agent);
+      const route = routeFor(coordinator, agent, others, "vertical");
+      // 正下方那个是一条竖线，没有横段。
+      expect([15, Infinity]).toContain(titleClearance(route, agents));
+    }
   });
 });
 
