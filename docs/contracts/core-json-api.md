@@ -2773,7 +2773,7 @@ core 校验远程服务地址与指纹的写法时用具名码（状态均 400�
 
 `Range`、`<img src>`、`<a href download>` 这类由浏览器直接取字节的用法只能走上面的 `GET` 路由：RPC 的 `POST` + JSON 编码既带不了 `Range`，也不是 `src` 能指的地址。下载的 URL 由页面按当前源拼出（`api/files.ts` 的 `fileDownloadUrl`），凭据照旧由 Cookie 或页面代取。自协议 1.21 起这条路由认单个 `Range` 区间，Bearer 的源可改用媒体票的地址让浏览器直接取（§37.4）。
 
-**整份下载流式**（#337）：本机工作空间的 `file-download` 不带 `Range` 时，core 边读盘边写响应（`HandlerResult.file`，`http/server.ts::sendFile`），`content-length` 取打开时的大小，不把整份读进内存，也不再有整份下载的 16 MiB 上限；读盘失败或文件在途中变短时断开连接，客户端得到的是中断的下载而不是截断却成功的文件。远端工作空间照旧分块取回，上限不变。
+**整份下载流式**（#337）：本机工作空间的 `file-download` 不带 `Range` 时，core 边读盘边写响应（`HandlerResult.file`，`http/server.ts::sendFile`），`content-length` 取打开时的大小，不把整份读进内存，也不再有整份下载的 16 MiB 上限；读盘失败或文件在途中变短时断开连接，客户端得到的是中断的下载而不是截断却成功的文件。远端工作空间同样流式：先取第一块得到长度与修改时间（文件不在、不是文件在这里就失败），其余块随响应的写出一块一块经 Worker 取（`HandlerResult.stream`、`remote/transfer.ts::openDownload`），`Range` 只取区间覆盖的块，也没有 16 MiB 上限；途中文件变了（长度或修改时间不同）或 Worker 失败时断开连接。缓冲的调用方（媒体票、白板资产）仍有 16 MiB 上限；Worker 不认分块（太旧）时退回单帧，上限也随之回到 16 MiB。
 
 ### 37.3 输出到画板的代码块
 

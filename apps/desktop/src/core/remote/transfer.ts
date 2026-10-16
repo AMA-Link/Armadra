@@ -8,7 +8,8 @@
  */
 
 import { createHash, randomUUID } from "node:crypto";
-import { DomainError } from "../workspaces/support";
+import { MAX_FILE_BYTES } from "../imports/limits";
+import { DomainError, badRequest } from "../workspaces/support";
 import { type ExecutionTarget, executeOn } from "./execute";
 
 /** 一块多少字节。 */
@@ -97,45 +98,99 @@ export async function discard(
   }
 }
 
+interface ChunkAnswer {
+  path: string;
+  size: number;
+  mtimeMs: number;
+  base64: string;
+}
+
+const changedWhileDownloading = (): DomainError =>
+  new DomainError(
+    409,
+    "conflict",
+    "The file changed on the execution host while it was being downloaded",
+  );
+
+async function fetchChunk(
+  target: ExecutionTarget,
+  path: string,
+  offset: number,
+  length: number,
+): Promise<ChunkAnswer> {
+  return (await executeOn(target, "files.downloadChunk", {
+    path,
+    offset,
+    length,
+  })) as ChunkAnswer;
+}
+
 /**
- * 分块下载一个文件。每块都带着文件当前的长度与修改时间；中途变了就是 409，
- * 而不是把两个版本的字节拼在一起交出去。
+ * 分块下载一个文件，攒在内存里（缓冲的调用方：媒体票、白板资产）。每块都带着
+ * 文件当前的长度与修改时间；中途变了就是 409，而不是把两个版本的字节拼在一起
+ * 交出去。缓冲的调用方仍有 16 MiB 上限，整份下载的路由走 {@link openDownload}。
  */
 export async function download(
   target: ExecutionTarget,
   path: string,
 ): Promise<{ path: string; bytes: Buffer }> {
-  const chunks: Buffer[] = [];
-  let offset = 0;
-  let expected: { size: number; mtimeMs: number } | undefined;
-  let name = path;
-  for (;;) {
-    const chunk = (await executeOn(target, "files.downloadChunk", {
-      path,
-      offset,
-      length: CHUNK_BYTES,
-    })) as {
-      path: string;
-      size: number;
-      mtimeMs: number;
-      base64: string;
-    };
-    if (
-      expected !== undefined &&
-      (chunk.size !== expected.size || chunk.mtimeMs !== expected.mtimeMs)
-    ) {
-      throw new DomainError(
-        409,
-        "conflict",
-        "The file changed on the execution host while it was being downloaded",
-      );
-    }
-    expected = { size: chunk.size, mtimeMs: chunk.mtimeMs };
-    name = chunk.path;
-    const bytes = Buffer.from(chunk.base64, "base64");
-    chunks.push(bytes);
-    offset += bytes.byteLength;
-    if (offset >= chunk.size || bytes.byteLength === 0) break;
+  const opened = await openDownload(target, path);
+  if (opened.size > MAX_FILE_BYTES) {
+    throw badRequest("File exceeds the 16 MiB download limit");
   }
-  return { path: name, bytes: Buffer.concat(chunks) };
+  const chunks: Buffer[] = [];
+  for await (const chunk of opened.read(0, opened.size - 1)) chunks.push(chunk);
+  return { path: opened.path, bytes: Buffer.concat(chunks) };
+}
+
+export interface OpenedDownload {
+  readonly path: string;
+  readonly size: number;
+  /**
+   * 文件 `[start, end]` 这一段，一块一块取。中途文件变了抛 409、远端失败抛
+   * 原来的错——调用方据此断开连接，不交出截断的文件。
+   */
+  read(start: number, end: number): AsyncGenerator<Buffer, void, undefined>;
+}
+
+/**
+ * 打开一个远端文件的流式下载：先取第一块，得到长度与修改时间（文件不在、不是
+ * 文件、Worker 太旧都在这里就失败，响应头还没发）；之后的块随 `read` 的迭代
+ * 取，每块核对长度与修改时间。没有 16 MiB 上限。
+ */
+export async function openDownload(
+  target: ExecutionTarget,
+  path: string,
+): Promise<OpenedDownload> {
+  const first = await fetchChunk(target, path, 0, CHUNK_BYTES);
+  const head = Buffer.from(first.base64, "base64");
+  const { size, mtimeMs } = first;
+  async function* read(
+    start: number,
+    end: number,
+  ): AsyncGenerator<Buffer, void, undefined> {
+    let offset = start;
+    while (offset <= end) {
+      let bytes: Buffer;
+      if (offset < head.byteLength) {
+        bytes = head.subarray(offset, Math.min(head.byteLength, end + 1));
+      } else {
+        const chunk = await fetchChunk(
+          target,
+          path,
+          offset,
+          Math.min(CHUNK_BYTES, end - offset + 1),
+        );
+        if (chunk.size !== size || chunk.mtimeMs !== mtimeMs) {
+          throw changedWhileDownloading();
+        }
+        bytes = Buffer.from(chunk.base64, "base64");
+      }
+      // 文件变短了：Worker 答不出更多字节。
+      if (bytes.byteLength === 0) throw changedWhileDownloading();
+      yield bytes;
+      offset += bytes.byteLength;
+    }
+  }
+  return { path: first.path, size, read };
 }
