@@ -24,7 +24,7 @@ observed 状态均不能放行依赖。恢复按执行意图对账，unknown 不
 
 业务由**一个 Electron-free 的 TypeScript core**（`apps/desktop/src/core/`）执行，两种壳装配它：Electron 桌面壳（`apps/desktop`）与无窗口服务器壳（`apps/server`）。2026-09 之前的 Rust Runtime（`apps/runtime` + `crates/`）、Go Host（`apps/host`）与它们之间的 Protobuf 已在 R7d 整体删除；那个时代的设计文档移入 `docs/history/`。进度见 [TypeScript Core 进度](../status/typescript-core-status.md)。
 
-关闭桌面窗口隐藏前台并保留服务；Command Q / 托盘退出经私有控制结束受管会话与后台。core 重启保留 tmux 恢复语义。
+关闭桌面窗口隐藏前台并保留服务；Command Q / 托盘退出由壳在 SIGTERM 之前经 fork 通道告诉 core 连 tmux server 与会话一并结束（`core/quit.ts`）。应用内更新、core 重启与崩溃恢复保留 tmux 会话并在新 core 里接回；启动时结束同一 socket 路径上旧版本留下的孤儿 tmux server。设计见 [terminal-host-design.md](../design/terminal-host-design.md) §13。
 
 Armadra 是一个 local-first 的桌面画布：把 Claude Code、Codex、
 opencode 等 CLI Agent 作为终端节点放在一块无限画布上，节点之间连一条线即

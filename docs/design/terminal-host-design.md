@@ -302,3 +302,28 @@ PowerService 在实际执行主机管理租约：reason、session/runId、expire
 - 快捷键手填/录制冲突、导入覆盖、设备差异、终端 IME 与浏览器保留键通过。
 
 本设计不预报节省百分比。性能验收先建立可复现基线，优化结果连同负载记录写入实施报告。
+
+## 13. 退出与会话（2026-10-17）
+
+会话能活过 core（`restart.survives`），但**用户退出应用**不是 core 重启：退出之后不该还有该数据目录的 tmux server、会话进程与子组件。两件事分开决定。
+
+| 场景                           | 会话 | 谁决定                                                                                                                                                                                                                                                                                                       |
+| ------------------------------ | ---- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Command Q、托盘或菜单退出      | 结束 | 壳在 SIGTERM 之前经 fork 的 IPC 通道发 `armadra:quit { reapSessions: true }`（`core/quit.ts`）；core 逐个 `terminate`，再让后端结束它的宿主（tmux：`kill-server` 之前先对每个 pane 的进程树 SIGTERM，所以连没有对应行的 pane 也结束），行记 `exited`；Windows 随后壳请会话宿主「没有会话就走」，此时已无会话 |
+| 应用内更新                     | 留着 | 更新器自己先 `runtime.stop()`（不带意图），新版本起来后接回同一会话                                                                                                                                                                                                                                          |
+| core 崩溃、被 `kill`、系统关机 | 留着 | 没有意图消息；SIGTERM 的缺省不结束会话，tmux 里的会话由重启后的对账接回                                                                                                                                                                                                                                      |
+| 服务器壳停止                   | 留着 | 同上；运维要清干净就设 `ARMADRA_REAP_ON_STOP=1`                                                                                                                                                                                                                                                              |
+
+意图是**壳到 core 的一条消息**，不是新的信号或接口：没有 HTTP 路由、没有契约变化。`ARMADRA_REAP_ON_STOP=1` 让任意方式的停止都带上这个意图，探针与自启动的临时 core 用它（`tools/probes/probe-home.mjs` 的 `PROBE_CORE_ENV`）。
+
+其余子组件本来就随 core 退出：ACP 适配器（`detachAll` 结束、预启动池 `killAllSync`）、语言服务（`language.stop()`）、浏览器（它们的 stdin 管道随 core 关闭）、防休眠子进程、远端 worker。`kill -9` core 例外：被它 `detached` 起的适配器进程组不会自己结束，这是已知限制。
+
+### 13.1 启动时清孤儿 tmux server
+
+同一个 socket 路径上可能有不止一个 server：socket 文件在 server 运行时被换掉（旧版本、数据目录被复制或恢复），新 server 绑上路径，旧的继续带着它的 pane 活着、连不上、没人结束。core 启动时（终端域对账之前，`adoptServer`）读进程表，找出命令行里带本数据目录 `tmux.sock` 完整路径、本身是 server（父进程为 init，或标题为 `tmux: server`）、且不是 socket 此刻连得上的那个（`display-message -p '#{pid}'`）的进程，对整棵进程树结束。匹配的是完整路径，不是「tmux」这个词，也不碰附着在活 server 上的 `attach-session` 客户端。Windows 没有 tmux，跳过。
+
+连得上的那个旧版本 server 若还带着会话，照旧保留（对账接回），下一次用户退出时一并结束。
+
+### 13.2 探针与测试
+
+探针起的 core 带 `ARMADRA_REAP_ON_STOP=1`；vitest 里真起 core 并建了终端的用例用 `core.stop({ reapSessions: true })`，或经 `core/testing/temp-dir.ts` 的登记表收尾（`killTmuxServer`）。曾经的 `share-visibility.integration.test.ts` 每跑一次留下六个 tmux server。
