@@ -352,6 +352,26 @@ jobs:
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
+      # 系统镜像偶尔下载到半截（sdkmanager 只警告 “Error on ZipFile unknown archive”，之后模拟器起不来）：
+      # 先自己装，没装好就删了重来；runner 动作随后发现已装就跳过。
+      - name: 预装系统镜像（重试）
+        shell: bash
+        run: |
+          set -uo pipefail
+          image='system-images;android-34;google_apis;x86_64'
+          yes | sdkmanager --licenses > /dev/null || true
+          for attempt in 1 2 3; do
+            out=$(sdkmanager --install "$image" 2>&1) || true
+            echo "$out" | tail -5
+            if ! grep -q "unknown archive" <<<"$out" && sdkmanager --list_installed 2>/dev/null | grep -q "$image"; then
+              exit 0
+            fi
+            echo "镜像第 $attempt 次没装好，重试"
+            sdkmanager --uninstall "$image" > /dev/null 2>&1 || true
+            sleep 10
+          done
+          echo "::error::系统镜像三次都没装好"
+          exit 1
       - name: 连接 → 配对 → 画布（插桩用例）
         uses: reactivecircus/android-emulator-runner@v2
         with:
