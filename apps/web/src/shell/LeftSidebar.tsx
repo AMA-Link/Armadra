@@ -42,12 +42,14 @@ import {
   noDragProps,
   trafficLightInset,
 } from "./window-region";
+import { isDesktop } from "../platform";
 
 export function LeftSidebar() {
   const t = useT();
   const open = useCanvasStore((state) => state.panels.sidebar) === "open";
   const settingsOpen = useCanvasStore((state) => state.panels.settings);
   const compact = useCompactLayout();
+  const shell = isDesktop();
   // A compact sidebar is modal. Keep the desktop preference, but never create
   // a second modal over settings when resizing or opening settings by shortcut.
   const visible = open && (!compact || !settingsOpen);
@@ -60,6 +62,7 @@ export function LeftSidebar() {
     <div className="flex h-full w-full flex-col overflow-hidden">
       <div className="relative shrink-0">
         <TitlebarRow
+          brand={!shell && !compact}
           agentsOpen={agentsOpen}
           onSearch={() => setSearchOpen(true)}
           onToggleAgents={() => setAgentsOpen((value) => !value)}
@@ -77,7 +80,9 @@ export function LeftSidebar() {
           </SheetClose>
         )}
       </div>
-      <SidebarHeader />
+      {/* 没有红绿灯的页面（浏览器、中转托管）不留一整行标题栏：产品名并进
+          搜索与通知那一行，给折叠钮让出左边的位置。 */}
+      {shell || compact ? <SidebarHeader /> : null}
       {agentsOpen ? (
         <AgentStatusPanel onClose={() => setAgentsOpen(false)} />
       ) : (
@@ -152,10 +157,12 @@ export function LeftSidebar() {
  * 自己挂拖拽属性，按钮再写回 no-drag：空白能拖窗口，按钮能按。
  */
 function TitlebarRow({
+  brand,
   agentsOpen,
   onSearch,
   onToggleAgents,
 }: {
+  brand: boolean;
   agentsOpen: boolean;
   onSearch: () => void;
   onToggleAgents: () => void;
@@ -172,6 +179,12 @@ function TitlebarRow({
       {...dragRegionProps()}
       className="flex h-[var(--tabbar-h)] shrink-0 items-center justify-end gap-0.5 px-2"
     >
+      {brand ? (
+        // 折叠钮固定在左上角（28px + 8px 边距），产品名从它右边起。
+        <span className="mr-auto truncate pl-[calc(var(--safe-left)+var(--window-controls-left)+36px)] text-[length:var(--text-section)] font-semibold">
+          {t("app.brand")}
+        </span>
+      ) : null}
       <div
         {...noDragProps()}
         className="relative z-[var(--z-tabbar)] flex items-center gap-0.5"

@@ -178,6 +178,19 @@ describe("LeftSidebar", () => {
     expect(screen.getByTestId("window-titlebar-inset")).toBeTruthy();
   });
 
+  it("不在桌面壳里时产品名并进标题栏那一行，不另占一行", () => {
+    renderSidebar();
+    const titlebar = screen.getByTestId("window-titlebar-inset");
+    expect(titlebar.contains(screen.getByText("Armadra"))).toBe(true);
+  });
+
+  it("桌面壳里标题栏留给红绿灯，产品名在它下面一行", () => {
+    asMacDesktopShell();
+    renderSidebar();
+    const titlebar = screen.getByTestId("window-titlebar-inset");
+    expect(titlebar.contains(screen.getByText("Armadra"))).toBe(false);
+  });
+
   it("搜索与通知都在标题栏那一行里，与折叠钮同排", () => {
     renderSidebar();
     const titlebar = screen.getByTestId("window-titlebar-inset");
