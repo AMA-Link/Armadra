@@ -83,6 +83,33 @@ function overlaps(
   );
 }
 
+/** 一条线上的一段（别的线的线段，标签要躲开）。 */
+export interface Stroke {
+  /** 属于哪条边、第几段：宿主那一段不算。 */
+  edge: string;
+  k: number;
+  /** 同一束（共用主干的派发线）里共线的段不算，它们就是宿主那条线。 */
+  bundle: string;
+  horizontal: boolean;
+  /** 段所在的线（横段是 y，竖段是 x）。 */
+  at: number;
+  box: Box;
+}
+
+/** 一条候选折线：标签可以放在它的某一段上。 */
+export interface LabelLine {
+  edge: string;
+  bundle: string;
+  points: readonly Position[];
+  /** 每个内部顶点的切入距离（曲线占掉的那一截不能放标签）。 */
+  cuts?: readonly { before: number; after: number }[] | undefined;
+}
+
+export interface LabelPlacement extends LabelBox {
+  /** 放在了哪条线上。 */
+  edge: string;
+}
+
 /**
  * 在折线上给标签找一个不压节点的位置；找不到返回 `null`。
  *
@@ -93,43 +120,164 @@ export function placeLabel(
   text: string,
   fontSize: number,
   obstacles: readonly Box[],
+  cuts?: LabelLine["cuts"],
 ): LabelBox | null {
-  const placed = placeAt(points, text, fontSize, obstacles);
-  if (placed) return placed;
-  const smaller = (fontSize * LABEL_MIN_SCREEN_FONT) / LABEL_SCREEN_FONT;
-  return placeAt(points, text, Math.round(smaller * 10) / 10, obstacles);
+  const placed = placeLabelOn(
+    [{ edge: "", bundle: "", points, cuts }],
+    text,
+    fontSize,
+    obstacles,
+    [],
+  );
+  if (!placed) return null;
+  const { edge: _edge, ...box } = placed;
+  return box;
 }
 
-function placeAt(
-  points: readonly Position[],
+/**
+ * 一组线（同一个主派出去的派发线）只摆**一枚**标签：在所有候选线的所有段
+ * 里找一个位置，要求标签不压节点 / 箭头 / 别的标签（`obstacles`），也不被任何
+ * 线穿过（`strokes`；宿主那一段与同束里与它共线的段除外）。
+ *
+ * 排序：放得下的段优先；其次是被多条线共用的段（主干）；再次是长的段。
+ */
+export function placeLabelOn(
+  lines: readonly LabelLine[],
   text: string,
   fontSize: number,
   obstacles: readonly Box[],
-): LabelBox | null {
-  if (points.length < 2 || text === "") return null;
+  strokes: readonly Stroke[],
+): LabelPlacement | null {
+  const placed = placeAt(lines, text, fontSize, obstacles, strokes);
+  if (placed) return placed;
+  const smaller = (fontSize * LABEL_MIN_SCREEN_FONT) / LABEL_SCREEN_FONT;
+  return placeAt(
+    lines,
+    text,
+    Math.round(smaller * 10) / 10,
+    obstacles,
+    strokes,
+  );
+}
+
+/** 横竖线段 `a→b` 与另一条共线的段（同束、同轴、同一条线）是否有重叠。 */
+function shares(
+  horizontal: boolean,
+  at: number,
+  lo: number,
+  hi: number,
+  other: Stroke,
+): boolean {
+  if (other.horizontal !== horizontal || Math.abs(other.at - at) > 1.5) {
+    return false;
+  }
+  const oLo = horizontal ? other.box.x : other.box.y;
+  const oHi = oLo + (horizontal ? other.box.width : other.box.height);
+  return oLo < hi && oHi > lo;
+}
+
+function placeAt(
+  lines: readonly LabelLine[],
+  text: string,
+  fontSize: number,
+  obstacles: readonly Box[],
+  strokes: readonly Stroke[],
+): LabelPlacement | null {
+  if (text === "") return null;
   const { width, height } = labelSize(text, fontSize);
   const gap = (LABEL_GAP * fontSize) / LABEL_SCREEN_FONT;
-  const segments = [];
-  for (let k = 1; k < points.length; k += 1) {
-    const a = points[k - 1]!;
-    const b = points[k]!;
-    const horizontal = a.y === b.y;
-    const length = Math.abs(b.x - a.x) + Math.abs(b.y - a.y);
-    const room = horizontal ? width : height;
-    segments.push({ a, b, length, fits: length >= room + gap * 2 });
+  interface Candidate {
+    line: LabelLine;
+    k: number;
+    a: Position;
+    b: Position;
+    horizontal: boolean;
+    at: number;
+    /** 可放标签中心的区间（沿段的坐标）。 */
+    from: number;
+    to: number;
+    length: number;
+    fits: boolean;
+    shared: number;
   }
-  segments.sort((p, q) =>
-    p.fits === q.fits ? q.length - p.length : p.fits ? -1 : 1,
+  const candidates: Candidate[] = [];
+  for (const line of lines) {
+    const { points, cuts } = line;
+    if (points.length < 2) continue;
+    for (let k = 1; k < points.length; k += 1) {
+      const a = points[k - 1]!;
+      const b = points[k]!;
+      const horizontal = a.y === b.y;
+      const lo = horizontal ? Math.min(a.x, b.x) : Math.min(a.y, b.y);
+      const hi = horizontal ? Math.max(a.x, b.x) : Math.max(a.y, b.y);
+      const length = hi - lo;
+      // 曲线占掉两头各一截；拐点按段的方向挨着 lo / hi 排。
+      const forward = (horizontal ? b.x - a.x : b.y - a.y) > 0;
+      const cutA = k >= 2 ? (cuts?.[k - 2]?.after ?? 0) : 0;
+      const cutB = k <= points.length - 2 ? (cuts?.[k - 1]?.before ?? 0) : 0;
+      const loCut = forward ? cutA : cutB;
+      const hiCut = forward ? cutB : cutA;
+      const half = (horizontal ? width : height) / 2;
+      const from = lo + loCut + half + gap;
+      const to = hi - hiCut - half - gap;
+      const at = horizontal ? a.y : a.x;
+      // 被共用的程度：别的线（同束）里与这一段共线重叠的段数。
+      let shared = 0;
+      for (const other of lines.length > 1 ? strokes : []) {
+        if (
+          other.bundle === line.bundle &&
+          other.edge !== line.edge &&
+          shares(horizontal, at, lo, hi, other)
+        ) {
+          shared += 1;
+        }
+      }
+      candidates.push({
+        line,
+        k,
+        a,
+        b,
+        horizontal,
+        at,
+        from,
+        to,
+        length,
+        fits: to >= from,
+        shared,
+      });
+    }
+  }
+  candidates.sort(
+    (p, q) =>
+      Number(q.fits) - Number(p.fits) ||
+      q.shared - p.shared ||
+      q.length - p.length,
   );
-  // 每段先试中点，再往两头挪：中点被别的线或标签占了时还有地方。
-  for (const segment of segments) {
-    for (const t of SLIDE) {
-      const x = segment.a.x + (segment.b.x - segment.a.x) * t;
-      const y = segment.a.y + (segment.b.y - segment.a.y) * t;
+  for (const c of candidates) {
+    // 放得下的段在可用区间里滑；放不下的只试中点（多半被拒，除非线很孤立）。
+    const spots = c.fits
+      ? SLIDE.map((t) => c.from + (c.to - c.from) * t)
+      : [(c.horizontal ? c.a.x + c.b.x : c.a.y + c.b.y) / 2];
+    for (const along of spots) {
+      const x = c.horizontal ? along : c.at;
+      const y = c.horizontal ? c.at : along;
       if (obstacles.some((box) => overlaps(x, y, width, height, box, gap))) {
         continue;
       }
-      return { x, y, width, height, fontSize };
+      const lo = (c.horizontal ? x : y) - (c.horizontal ? width : height) / 2;
+      const hi = lo + (c.horizontal ? width : height);
+      const crossed = strokes.some((stroke) => {
+        if (stroke.edge === c.line.edge && stroke.k === c.k) return false;
+        if (
+          stroke.bundle === c.line.bundle &&
+          shares(c.horizontal, c.at, lo, hi, stroke)
+        ) {
+          return false;
+        }
+        return overlaps(x, y, width, height, stroke.box, 0);
+      });
+      if (crossed) continue;
+      return { x, y, width, height, fontSize, edge: c.line.edge };
     }
   }
   return null;

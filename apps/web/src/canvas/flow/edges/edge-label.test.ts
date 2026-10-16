@@ -3,6 +3,8 @@ import { describe, expect, it } from "vitest";
 import type { Box } from "../../geometry";
 import {
   labelFontSize,
+  placeLabelOn,
+  type Stroke,
   labelSize,
   LABEL_SCREEN_FONT,
   placeLabel,
@@ -58,7 +60,8 @@ describe("摆放", () => {
       11,
       [],
     );
-    expect(label).toMatchObject({ x: 200, y: 20, fontSize: 11 });
+    expect(label!.x).toBeCloseTo(200);
+    expect(label).toMatchObject({ y: 20, fontSize: 11 });
   });
 
   it("中点压着节点时沿这一段往两头挪", () => {
@@ -73,7 +76,10 @@ describe("摆放", () => {
       11,
       [blocker],
     );
-    expect(label).toMatchObject({ x: 80, y: 20 });
+    expect(label).toMatchObject({ y: 20 });
+    expect(overlaps(label!, blocker)).toBe(false);
+    // 仍然落在这一段上（x 在 0 到 400 之间）。
+    expect(label!.x - label!.width / 2).toBeGreaterThanOrEqual(0);
   });
 
   it("哪儿都放不下就不画", () => {
@@ -124,5 +130,110 @@ describe("不压别的线", () => {
     );
     expect(label).not.toBeNull();
     expect(overlaps(label!, crossing)).toBe(false);
+  });
+});
+
+describe("一组线只摆一枚标签（#397）", () => {
+  const stroke = (
+    edge: string,
+    k: number,
+    bundle: string,
+    a: { x: number; y: number },
+    b: { x: number; y: number },
+  ): Stroke => {
+    const horizontal = a.y === b.y;
+    return {
+      edge,
+      k,
+      bundle,
+      horizontal,
+      at: horizontal ? a.y : a.x,
+      box: {
+        x: Math.min(a.x, b.x) - 3,
+        y: Math.min(a.y, b.y) - 3,
+        width: Math.abs(b.x - a.x) + 6,
+        height: Math.abs(b.y - a.y) + 6,
+      },
+    };
+  };
+  // 一个主向左右两个子派发：共用主干 y = 100，两条竖直的落脚线在 x = 0 与 x = 600。
+  const left = [
+    { x: 300, y: 80 },
+    { x: 300, y: 100 },
+    { x: 0, y: 100 },
+    { x: 0, y: 120 },
+  ];
+  const right = [
+    { x: 300, y: 80 },
+    { x: 300, y: 100 },
+    { x: 600, y: 100 },
+    { x: 600, y: 120 },
+  ];
+  const lines = [
+    { edge: "l", bundle: "g", points: left },
+    { edge: "r", bundle: "g", points: right },
+  ];
+  const strokes = [
+    ...left.slice(1).map((p, i) => stroke("l", i + 1, "g", left[i]!, p)),
+    ...right.slice(1).map((p, i) => stroke("r", i + 1, "g", right[i]!, p)),
+  ];
+
+  it("只返回一个位置，落在被两条线共用的主干上，且不被落脚线穿过", () => {
+    const label = placeLabelOn(lines, "派发", 11, [], strokes);
+    expect(label).not.toBeNull();
+    expect(label!.y).toBe(100);
+    // 两条竖线（x = 300 的出线、x = 0 / 600 的落脚线）都不在标签里。
+    for (const x of [0, 300, 600]) {
+      expect(
+        label!.x - label!.width / 2 < x + 3 &&
+          label!.x + label!.width / 2 > x - 3,
+      ).toBe(false);
+    }
+  });
+
+  it("共线的同束线段不算穿过：标签压在主干上是预期的", () => {
+    const label = placeLabelOn(lines.slice(0, 1), "派发", 11, [], strokes);
+    expect(label).not.toBeNull();
+  });
+
+  it("别的束的线横穿主干附近时，标签挪到不被穿过的位置", () => {
+    const other = stroke("o", 1, "h", { x: 150, y: 0 }, { x: 150, y: 300 });
+    const label = placeLabelOn(lines, "派发", 11, [], [...strokes, other]);
+    expect(label).not.toBeNull();
+    expect(
+      label!.x - label!.width / 2 < 153 && label!.x + label!.width / 2 > 147,
+    ).toBe(false);
+  });
+
+  it("曲线占掉的那一截不放标签", () => {
+    // 主干很短（60），两头各让出 30：中间放不下一枚标签，退到整段中点的兜底，
+    // 之后因压着两头的落脚线而被拒绝。
+    const short = [
+      { x: 0, y: 0 },
+      { x: 0, y: 100 },
+      { x: 60, y: 100 },
+      { x: 60, y: 200 },
+    ];
+    const segs = short
+      .slice(1)
+      .map((p, i) => stroke("s", i + 1, "s", short[i]!, p));
+    const label = placeLabelOn(
+      [
+        {
+          edge: "s",
+          bundle: "s",
+          points: short,
+          cuts: [
+            { before: 30, after: 30 },
+            { before: 30, after: 30 },
+          ],
+        },
+      ],
+      "派发",
+      11,
+      [],
+      segs,
+    );
+    expect(label?.y).not.toBe(100);
   });
 });
