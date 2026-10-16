@@ -40,6 +40,7 @@ import {
   pastePlan,
 } from "./control";
 import { detect, ensureConf } from "./config";
+import { orphanServerPids } from "./orphans";
 import { TmuxProgramTap } from "./program-tap";
 
 /** The variable an agent terminal carries (`terminal/environment.ts`). */
@@ -305,17 +306,43 @@ export class TmuxBackend implements TerminalBackend, AdoptableBackend {
    * is reported instead.
    */
   async adoptServer(): Promise<string | undefined> {
+    const orphans = await this.reapOrphanServers();
+    const reaped =
+      orphans === 0 ? "" : `ended ${orphans} orphaned tmux server(s); `;
     const owner = await this.control.serverOwner();
     // No server, or an unstamped one from before this check existed. The next
     // `new-session` stamps it.
-    if (owner === undefined) return undefined;
+    const note = (text: string | undefined): string | undefined =>
+      reaped === "" && text === undefined
+        ? undefined
+        : `${reaped}${text ?? ""}`;
+    if (owner === undefined) return note(undefined);
     const ours = coreFingerprint(this.options.version);
-    if (owner === ours) return undefined;
+    if (owner === ours) return note(undefined);
     if ((await this.list()).length === 0) {
       await this.control.tryRun(["kill-server"]);
-      return `replaced the empty tmux server of ${owner}`;
+      return note(`replaced the empty tmux server of ${owner}`);
     }
-    return `the tmux server was started by ${owner}; keeping its sessions`;
+    return note(
+      `the tmux server was started by ${owner}; keeping its sessions`,
+    );
+  }
+
+  /**
+   * End the servers an older build left on this socket path (`orphans.ts`),
+   * with every pane they hold. Only ever this data directory's socket: the
+   * match is on the full path, never on the word tmux.
+   */
+  private async reapOrphanServers(): Promise<number> {
+    if (process.platform === "win32") return 0;
+    const live = await this.control.serverPid();
+    const orphans = orphanServerPids(
+      await readProcessTable(),
+      this.control.socket,
+      live,
+    );
+    await Promise.all(orphans.map((pid) => terminateTree(pid).catch(() => {})));
+    return orphans.length;
   }
 
   notices(listener: (notice: BackendNotice) => void): void {
@@ -606,6 +633,29 @@ export class TmuxBackend implements TerminalBackend, AdoptableBackend {
       }
       session.clients.clear();
     }
+  }
+
+  /**
+   * The user quit the app (`quit.ts`): end the server and everything in it.
+   *
+   * The pane process trees go first, so an agent that ignores the hangup tmux
+   * sends on `kill-server` is still ended. Panes of sessions no row names
+   * (left by an older build) are in the list too, which is the point.
+   */
+  async reapAll(): Promise<void> {
+    const listed = await this.control.tryRun([
+      "list-panes",
+      "-a",
+      "-F",
+      "#{pane_pid}",
+    ]);
+    const pids = (listed ?? "")
+      .split("\n")
+      .map((line) => Number.parseInt(line.trim(), 10))
+      .filter((pid) => Number.isInteger(pid) && pid > 1);
+    await Promise.all(pids.map((pid) => terminateTree(pid).catch(() => {})));
+    await this.control.tryRun(["kill-server"]);
+    this.tap.stopAll();
   }
 
   /* ---------------------------------- reads -------------------------------- */

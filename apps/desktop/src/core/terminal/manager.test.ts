@@ -173,6 +173,10 @@ class FakeBackend implements AdoptableBackend {
     for (const sink of this.sinks) sink(notice);
   }
 
+  async reapAll(): Promise<void> {
+    this.calls.push("reapAll");
+  }
+
   async detachAll(): Promise<void> {
     this.calls.push("detachAll");
   }
@@ -765,6 +769,26 @@ describe("shutdown", () => {
       .get(session.id) as { status: string; attach_state: string };
     expect(row).toEqual({ status: "running", attach_state: "detached" });
     expect(backend.calls).toContain("detachAll");
+  });
+
+  it("ends a persistent session and settles its row when the app was quit", async () => {
+    const { manager, backend, database } = harness();
+    const session = await spawn(manager, "node-a");
+    await manager.shutdown({ reap: true });
+    const row = database
+      .prepare(
+        "SELECT status, attach_state, ended_at FROM terminal_sessions WHERE id = ?",
+      )
+      .get(session.id) as {
+      status: string;
+      attach_state: string;
+      ended_at: string | null;
+    };
+    expect(row).toMatchObject({ status: "exited", attach_state: "exited" });
+    expect(row.ended_at).not.toBeNull();
+    expect(backend.calls).toEqual(
+      expect.arrayContaining(["terminate:node-a:session", "reapAll"]),
+    );
   });
 
   // 分支 nightly 的 server 用例：关停杀掉的会话在关库之后才报退出，落库抛
