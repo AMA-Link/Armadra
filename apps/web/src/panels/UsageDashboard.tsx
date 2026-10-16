@@ -173,13 +173,6 @@ function DashboardBody() {
             {summary.truncated && (
               <p className="text-xs text-warn">{t("usage.cost.truncated")}</p>
             )}
-            {summary.scannedAt && (
-              <p className="text-xs text-muted-foreground">
-                {t("usage.cost.scannedAt", {
-                  value: formatRelativeTime(summary.scannedAt, now),
-                })}
-              </p>
-            )}
           </>
         )}
       </section>

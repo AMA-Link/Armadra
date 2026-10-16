@@ -15,7 +15,6 @@ export const languageService: MessageModule = {
   "zh-CN": {
     "lsp.title": "语言服务",
     "lsp.probing": "正在探测…",
-    "lsp.description": "只使用这台执行主机上已经装好的 language server。",
     "lsp.reprobe": "重新探测",
     "lsp.restart": "重启",
     "lsp.stop": "停止",
@@ -110,8 +109,6 @@ export const languageService: MessageModule = {
   en: {
     "lsp.title": "Language service",
     "lsp.probing": "Probing…",
-    "lsp.description":
-      "Uses only the language servers already installed on this execution host.",
     "lsp.reprobe": "Probe again",
     "lsp.restart": "Restart",
     "lsp.stop": "Stop",

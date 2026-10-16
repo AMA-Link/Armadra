@@ -95,7 +95,7 @@ export function AgentCredentials() {
         <SettingsRow
           key={entry.ref}
           label={entry.label}
-          footnote={
+          hint={
             index === data.entries.length - 1
               ? t("credentials.note")
               : undefined

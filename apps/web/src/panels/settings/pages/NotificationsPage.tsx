@@ -41,10 +41,7 @@ export function NotificationsPage() {
   return (
     <>
       <SettingsGroup>
-        <SettingsRow
-          label={t("settings.notifyDone")}
-          footnote={t("settings.notify.note")}
-        >
+        <SettingsRow label={t("settings.notifyDone")}>
           <Switch
             checked={notifyDone}
             aria-label={t("settings.notifyDone")}
@@ -117,10 +114,7 @@ function UpdateNotifyRow() {
   const t = useT();
   const { settings, save } = useRuntimeSettings({ scope: "local" });
   return (
-    <SettingsRow
-      label={t("updates.notify")}
-      footnote={t("updates.notify.note")}
-    >
+    <SettingsRow label={t("updates.notify")} hint={t("updates.notify.note")}>
       <ScopeBadge scope="host" />
       <Switch
         checked={settings.data?.updates?.notify ?? true}

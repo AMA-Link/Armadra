@@ -64,7 +64,6 @@ export const modals: MessageModule = {
     "settings.showUsage": "用量徽标",
     "settings.usageEnabled": "获取用量",
     "settings.usageCadence": "刷新节奏",
-    "settings.usageCadenceHint": "「手动」时后台不再自动获取。",
     "settings.cadence.manual": "手动",
     "settings.cadence.minutes": "每 {count} 分钟",
     "settings.codexCliFallback": "Codex CLI 回退",
@@ -101,12 +100,8 @@ export const modals: MessageModule = {
     "settings.copilot.error": "登录失败，请重试",
     "settings.nodeColorStyle": "节点颜色",
     "settings.restoreWorkspace": "打开时恢复上次工作空间",
-    "settings.restoreWorkspace.note": "关闭后每次都从启动页开始。",
     "settings.showSystemFiles": "显示系统文件",
-    "settings.showSystemFiles.note":
-      "文件列表默认隐藏 .DS_Store、Thumbs.db、desktop.ini。",
     "settings.splashAnimation": "启动动画",
-    "settings.splashAnimation.note": "关闭后打开应用直接进入界面。",
     "settings.diagnostics.crashReports": "崩溃上报",
     "settings.diagnostics.crashReports.note":
       "仅发送脱敏后的错误信息到你自托管的服务。",
@@ -115,7 +110,6 @@ export const modals: MessageModule = {
 
     "settings.notifyDone": "后台完成通知",
     "settings.notifyNeedsYou": "需要你时通知",
-    "settings.notify.note": "仅在窗口不在前台时发送。",
     "settings.sound": "提示音",
     "settings.soundVolume": "音量",
     "settings.soundPreview": "试听",
@@ -239,12 +233,6 @@ export const modals: MessageModule = {
 
     "settings.shortcut.recording": "按下组合键…",
     "settings.shortcut.conflict": "冲突",
-    "settings.shortcut.windowBrowser":
-      "窗口关闭与退出快捷键由浏览器管理，不能绑定为节点操作；关闭此页面不会停止后台服务。",
-    "settings.shortcut.windowMac":
-      "⌘W 关闭前台窗口，⌘Q 退出应用及其后台服务；这些按键由系统管理，不能录制为节点操作。",
-    "settings.shortcut.windowOther":
-      "Ctrl+W 和 Alt+F4 用于关闭窗口；退出应用及后台服务请使用托盘菜单。窗口快捷键不能绑定为节点操作。",
     "settings.shortcut.unbound": "未绑定",
     "settings.shortcut.enabled": "启用快捷键",
     "settings.shortcut.note": "Esc 取消，Backspace 重置本层。", // i18n-exempt
@@ -380,7 +368,6 @@ export const modals: MessageModule = {
     "settings.showUsage": "Usage badge",
     "settings.usageEnabled": "Fetch usage",
     "settings.usageCadence": "Refresh cadence",
-    "settings.usageCadenceHint": "Manual stops the background fetch entirely.",
     "settings.cadence.manual": "Manual",
     "settings.cadence.minutes": "Every {count} min",
     "settings.codexCliFallback": "Codex CLI fallback",
@@ -423,12 +410,8 @@ export const modals: MessageModule = {
     "settings.copilot.error": "Sign-in failed. Try again.",
     "settings.nodeColorStyle": "Node colour",
     "settings.restoreWorkspace": "Restore last workspace on open",
-    "settings.restoreWorkspace.note": "Off starts on the launcher every time.",
     "settings.showSystemFiles": "Show system files",
-    "settings.showSystemFiles.note":
-      "File lists hide .DS_Store, Thumbs.db and desktop.ini by default.",
     "settings.splashAnimation": "Startup animation",
-    "settings.splashAnimation.note": "Off opens straight into the app.",
     "settings.diagnostics.crashReports": "Crash reports",
     "settings.diagnostics.crashReports.note":
       "Sends only scrubbed error details to your self-hosted server.",
@@ -437,7 +420,6 @@ export const modals: MessageModule = {
 
     "settings.notifyDone": "Notify when finished",
     "settings.notifyNeedsYou": "Notify when input is needed",
-    "settings.notify.note": "Sent only while the window is in the background.",
     "settings.sound": "Sound",
     "settings.soundVolume": "Volume",
     "settings.soundPreview": "Preview",
@@ -563,12 +545,6 @@ export const modals: MessageModule = {
 
     "settings.shortcut.recording": "Press a combination…",
     "settings.shortcut.conflict": "Conflict",
-    "settings.shortcut.windowBrowser":
-      "Window close and quit shortcuts belong to your browser and cannot be assigned to node actions. Closing this page keeps the background service running.",
-    "settings.shortcut.windowMac":
-      "⌘W closes the window; ⌘Q quits the app and its background services. These system shortcuts cannot be recorded for node actions.",
-    "settings.shortcut.windowOther":
-      "Ctrl+W and Alt+F4 close the window. Use the tray menu to quit the app and its background services. Window shortcuts cannot be assigned to node actions.",
     "settings.shortcut.unbound": "Unbound",
     "settings.shortcut.enabled": "Enable shortcuts",
     "settings.shortcut.note": "Esc cancels, Backspace resets this layer.",

@@ -7,8 +7,9 @@ import { Button } from "@/ui/button";
 /**
  * 一行设置：左标签（13px）/ 右控件，行高 44（§24.1 + §24.2 的 8pt 网格）。
  *
- * `footnote` 是 ChatGPT 那种 11px 灰色脚注：**只有必须解释后果的行**才给，
- * 每张卡片最多一条（§14 第 1 条的例外）。
+ * `hint` 是悬停提示：必须解释后果、但不值得常驻占一行的说明放这里。
+ * `footnote` 是 11px 灰色脚注，只留给**当下的状态与错误**（校验失败、被拒的
+ * 原因、指纹这类动态内容），不再写静态说明。
  *
  * `onClick` 把**标签那一半**变成按钮并在末尾补一个 `›`（用于「点进子页」的
  * 行）。刻意不把整行做成按钮：这些行右边常常还有自己的按钮，套在
@@ -17,6 +18,7 @@ import { Button } from "@/ui/button";
 export function SettingsRow({
   label,
   footnote,
+  hint,
   children,
   onClick,
   className,
@@ -24,12 +26,13 @@ export function SettingsRow({
   /** `null` = 只有动作按钮的一行（左对齐，不重复写一遍按钮上的字）。 */
   label: ReactNode | null;
   footnote?: string;
+  hint?: string;
   children?: ReactNode;
   onClick?: () => void;
   className?: string;
 }) {
   const text = (
-    <span className="flex min-w-0 flex-col gap-0.5 text-left">
+    <span className="flex min-w-0 flex-col gap-0.5 text-left" title={hint}>
       <span className="break-words text-[13px] leading-5 text-foreground">
         {label}
       </span>

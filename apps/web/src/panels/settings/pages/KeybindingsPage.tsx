@@ -12,7 +12,6 @@ import {
   commandKeys,
   commandWhen,
   formatKeys,
-  isMacPlatform,
   isWindowShortcut,
   suspendKeybindings,
   useGlobalShortcuts,
@@ -330,15 +329,6 @@ export function KeybindingsPage() {
 
   return (
     <>
-      <p className="px-1 text-xs text-muted-foreground">
-        {t(
-          !isDesktop()
-            ? "settings.shortcut.windowBrowser"
-            : isMacPlatform()
-              ? "settings.shortcut.windowMac"
-              : "settings.shortcut.windowOther",
-        )}
-      </p>
       <SettingsGroup>
         {member ? null : (
           <>
@@ -352,10 +342,7 @@ export function KeybindingsPage() {
                 }
               />
             </SettingsRow>
-            <SettingsRow
-              label={t("settings.shortcut.profile")}
-              footnote={t("settings.shortcut.profile.note")}
-            >
+            <SettingsRow label={t("settings.shortcut.profile")}>
               <Select value={profile} onValueChange={chooseProfile}>
                 <SelectTrigger
                   aria-label={t("settings.shortcut.profile")}
@@ -402,7 +389,7 @@ export function KeybindingsPage() {
             </SettingsRow>
             <SettingsRow
               label={t("settings.shortcut.layer")}
-              footnote={t("settings.shortcut.layer.note")}
+              hint={t("settings.shortcut.layer.note")}
             >
               <Select
                 value={layer}
@@ -513,7 +500,7 @@ export function KeybindingsPage() {
                 <SettingsRow
                   key={command.id}
                   label={t(command.labelKey)}
-                  footnote={
+                  hint={
                     index !== 0
                       ? undefined
                       : scope === "app"

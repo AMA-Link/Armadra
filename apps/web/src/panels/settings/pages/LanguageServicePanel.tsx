@@ -69,10 +69,7 @@ export function LanguageServicePanel({ workspaceId }: { workspaceId: string }) {
 
   return (
     <SettingsGroup title={t("lsp.title")}>
-      <SettingsRow
-        label={t("lsp.formatOnSave")}
-        footnote={t("lsp.description")}
-      >
+      <SettingsRow label={t("lsp.formatOnSave")}>
         <Switch
           checked={formatOnSave}
           disabled={!settings.data}

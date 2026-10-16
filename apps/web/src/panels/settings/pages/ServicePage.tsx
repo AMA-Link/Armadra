@@ -300,7 +300,10 @@ function TerminalSessionGroup() {
   const runtimeTerminal = settings.data?.terminal;
   return (
     <SettingsGroup title={t("host.group.terminal")}>
-      <SettingsRow label={t("settings.terminalBackend")}>
+      <SettingsRow
+        label={t("settings.terminalBackend")}
+        hint={t("settings.terminalBackend.restart")}
+      >
         {/* tmux 在这台机器上有、在另一台上没有，所以这一条不跟着账号走。 */}
         <LocalSourceBadge path="terminal.backend" />
         <Select
@@ -325,14 +328,11 @@ function TerminalSessionGroup() {
             ))}
           </SelectContent>
         </Select>
-        <p className="text-xs text-muted-foreground">
-          {t("settings.terminalBackend.restart")}
-        </p>
       </SettingsRow>
 
       <SettingsRow
         label={t("terminal.settings.dormantAfter")}
-        footnote={t("terminal.settings.dormantAfterHint")}
+        hint={t("terminal.settings.dormantAfterHint")}
       >
         <Select
           value={String(runtimeTerminal?.dormantAfterSeconds ?? 120)}
@@ -360,7 +360,7 @@ function TerminalSessionGroup() {
 
       <SettingsRow
         label={t("terminal.settings.eco")}
-        footnote={t("terminal.settings.ecoHint")}
+        hint={t("terminal.settings.ecoHint")}
       >
         <Switch
           checked={runtimeTerminal?.ecoMode ?? true}
@@ -444,7 +444,7 @@ function PowerGroup() {
     <SettingsGroup title={t("host.group.power")}>
       <SettingsRow
         label={t("resources.power.policyLabel")}
-        footnote={t("resources.power.policyHint")}
+        hint={t("resources.power.policyHint")}
       >
         {/* 「这台机器可不可以被拖着不睡」——笔记本和构建机的答案不一样。 */}
         <LocalSourceBadge path="power.policy" />
@@ -481,7 +481,7 @@ function PowerGroup() {
 
       <SettingsRow
         label={t("resources.power.whileWorkingLabel")}
-        footnote={t("resources.power.whileWorkingHint")}
+        hint={t("resources.power.whileWorkingHint")}
       >
         <LocalSourceBadge path="power.keepAwakeWhileWorking" />
         <Switch
@@ -496,7 +496,7 @@ function PowerGroup() {
 
       <SettingsRow
         label={t("resources.intervalLabel")}
-        footnote={t("resources.intervalHint")}
+        hint={t("resources.intervalHint")}
       >
         <Select
           value={String(settings.data?.resources?.intervalMs ?? 2_000)}
@@ -524,7 +524,7 @@ function PowerGroup() {
 
       <SettingsRow
         label={t("resources.memory.thresholdLabel")}
-        footnote={t("resources.memory.thresholdHint")}
+        hint={t("resources.memory.thresholdHint")}
       >
         <Select
           value={String(memoryWarnBytes)}

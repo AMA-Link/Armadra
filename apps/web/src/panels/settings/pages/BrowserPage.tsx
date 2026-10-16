@@ -78,7 +78,7 @@ export function BrowserPage() {
       <SettingsGroup>
         <SettingsRow
           label={t("browser.settings.discard")}
-          footnote={t("browser.settings.discardHint")}
+          hint={t("browser.settings.discardHint")}
         >
           <Switch
             checked={browser.discard}
@@ -110,7 +110,7 @@ export function BrowserPage() {
 
         <SettingsRow
           label={t("browser.settings.backgroundMax")}
-          footnote={t("browser.settings.backgroundMaxHint")}
+          hint={t("browser.settings.backgroundMaxHint")}
         >
           <Input
             type="number"
@@ -150,7 +150,7 @@ export function BrowserPage() {
 
         <SettingsRow
           label={t("browser.settings.clearData")}
-          footnote={t("browser.settings.clearDataHint")}
+          hint={t("browser.settings.clearDataHint")}
         >
           <Button
             variant="outline"

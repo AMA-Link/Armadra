@@ -530,10 +530,7 @@ function LocalUpdates() {
           />
         </SettingsRow>
 
-        <SettingsRow
-          label={t("updates.autoDownload")}
-          footnote={t("updates.autoDownload.note")}
-        >
+        <SettingsRow label={t("updates.autoDownload")}>
           <Switch
             checked={autoDownload}
             aria-label={t("updates.autoDownload")}
