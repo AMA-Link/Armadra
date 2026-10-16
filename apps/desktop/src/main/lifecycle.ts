@@ -30,7 +30,9 @@ export async function runQuitSequence(
   afterStop?: () => Promise<unknown>,
 ): Promise<QuitOutcome> {
   try {
-    await runtime.stop();
+    // 用户明确退出：连会话与子组件一起结束。应用内更新走自己的
+    // `runtime.stop()`（不带这个参数），会话留着在新版本里接回。
+    await runtime.stop({ reapSessions: true });
     // 尽力而为：失败只记一笔，不挡退出。
     if (afterStop !== undefined) await afterStop().catch(() => undefined);
   } catch (error) {

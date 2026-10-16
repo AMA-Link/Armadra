@@ -1,9 +1,10 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { spawn } from "node:child_process";
+import { fork, spawn } from "node:child_process";
 import {
   chmodSync,
   mkdirSync,
   mkdtempSync,
+  readFileSync,
   rmSync,
   writeFileSync,
 } from "node:fs";
@@ -76,6 +77,38 @@ describe.runIf(unix)("停掉这个壳自己起的 core", () => {
     expect(child.signalCode).toBe("SIGTERM");
     // 手上没有子进程时再停一次是空操作，不是失败。
     await expect(runtime.stop()).resolves.toBeUndefined();
+  });
+
+  it("退出意图经 fork 通道在信号之前送到：用户退出带 reapSessions，缺省不带", async () => {
+    const directory = mkdtempSync(join(tmpdir(), "armadra-quit-intent-"));
+    try {
+      const received = join(directory, "received");
+      const script = join(directory, "core.js");
+      writeFileSync(
+        script,
+        `process.on("message", (m) => require("node:fs").appendFileSync(${JSON.stringify(received)}, JSON.stringify(m) + "\\n"));
+process.on("SIGTERM", () => setTimeout(() => process.exit(0), 150));
+process.send("up");
+setInterval(() => {}, 1000);`,
+      );
+      for (const reapSessions of [true, false]) {
+        const child = fork(script, [], { silent: true });
+        await new Promise((done) => child.once("message", done));
+        const runtime = holding(child);
+        await runtime.stop(reapSessions ? { reapSessions } : {});
+      }
+      expect(
+        readFileSync(received, "utf8")
+          .trim()
+          .split("\n")
+          .map((line) => JSON.parse(line)),
+      ).toEqual([
+        { type: "armadra:quit", reapSessions: true },
+        { type: "armadra:quit", reapSessions: false },
+      ]);
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
   });
 
   it("一次超时的停止只挡住那一次退出，用户看过之后再退就放行", async () => {

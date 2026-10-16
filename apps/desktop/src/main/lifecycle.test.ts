@@ -14,18 +14,21 @@ import type { RuntimeProcess } from "./runtime-process";
 /** 一个 core 的替身：记下别人要求了什么，并按吩咐回答。 */
 function fakeRuntime(
   behaviour: "ok" | "fail",
-): RuntimeProcess & { stopped: number } {
+): RuntimeProcess & { stopped: number; options: unknown[] } {
   let stopped = 0;
+  const options: unknown[] = [];
   return {
     get stopped() {
       return stopped;
     },
-    async stop() {
+    options,
+    async stop(given?: unknown) {
       stopped += 1;
+      options.push(given);
       if (behaviour === "fail")
         throw new Error("Core failed to stop all managed sessions");
     },
-  } as unknown as RuntimeProcess & { stopped: number };
+  } as unknown as RuntimeProcess & { stopped: number; options: unknown[] };
 }
 
 describe("退出这一段", () => {
@@ -36,6 +39,14 @@ describe("退出这一段", () => {
     expect(await runQuitSequence(lifecycle, runtime)).toEqual({ ok: true });
     expect(runtime.stopped).toBe(1);
     expect(lifecycle.state.canExit()).toBe(true);
+  });
+
+  it("用户退出时请 core 连会话一起结束", async () => {
+    const lifecycle = new DesktopLifecycle();
+    const runtime = fakeRuntime("ok");
+    lifecycle.state.beginQuit();
+    await runQuitSequence(lifecycle, runtime);
+    expect(runtime.options).toEqual([{ reapSessions: true }]);
   });
 
   it("core 没确认就不退出，窗口回来并说出原因", async () => {
