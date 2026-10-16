@@ -24,6 +24,8 @@ export interface SessionRow {
   state?: AgentState;
   unread: boolean;
   pendingId?: string;
+  /** 最近一个回合出错结束（与 `unread` 一起决定「出错」是否还要人处理）。 */
+  errored?: boolean;
   /**
    * 最近一条 hook 事件所属 Agent 会话的阶段。hook 归约在 `SessionStart` 与
    * `SessionEnd` 时都清掉 `state`，只有它能分开「刚启动、空闲」和「已退出」。
@@ -79,6 +81,12 @@ export function agentExited(row: SessionRow): boolean {
   );
 }
 
+function optionalErrored(errored: boolean | undefined): {
+  errored?: boolean;
+} {
+  return errored === undefined ? {} : { errored };
+}
+
 /** 会话摘要 + 状态镜像 → 列表行。状态镜像更新时它比摘要新，因此优先。 */
 export function mergeSessions(
   summaries: readonly SessionSummary[],
@@ -102,6 +110,7 @@ export function mergeSessions(
         state: fresher ? status.state : summary.state,
         unread: fresher ? status.unread : summary.unread,
         pendingId: fresher ? status.pendingId : summary.pendingId,
+        ...optionalErrored(fresher ? status.errored : summary.errored),
         sessionPhase: fresher ? status.sessionPhase : summary.sessionPhase,
         updatedAt,
         alive: summary.alive,
