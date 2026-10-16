@@ -9,6 +9,7 @@ import type { BoardDocument } from "@armadra/shared";
 
 import { useCanvasStore } from "@/store/canvas-store";
 import { usePreferencesStore } from "@/app/preferences-store";
+import { stopFollowing } from "@/realtime/session";
 import type { Box } from "../geometry";
 import { initialViewportFor, isDefaultViewport } from "../viewport";
 import {
@@ -82,10 +83,11 @@ export function fitView(): void {
   );
 }
 
-/** 缩放到某一档，锚点是容器中心。 */
+/** 缩放到某一档，锚点是容器中心。Dock 按钮与快捷键都走这里，是人动的视口，取消跟随（#327）。 */
 export function zoomToLevel(level: number): void {
   const flow = getFlow();
   if (!flow) return;
+  stopFollowing();
   void flow.zoomTo(clampZoom(level), { duration: duration(ZOOM_DURATION) });
 }
 

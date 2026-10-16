@@ -80,6 +80,8 @@ R7a 之前 GitHub 与自动化两块面板走的是 `/rpc/armadra.v1.*`：二进
 
 **Cookie 会话的页面**（服务器壳托管、手机浏览器经 Gateway）：访问 Cookie 过期后，发往本机源的请求遇会话失效的 401（`unauthenticated` 或没有码）先续一次会话再重放一次（`apps/web/src/sources/transport.ts::cookieFetch`），重放的写请求换上续期后的 CSRF；身份面、具名 401 与流式请求体不重放。续期（`api/identity.ts::renewCookieSession`）同一窗口内共用一次，跨窗口在 Web Lock `armadra.identity.session-refresh` 里排队，拿到锁先 `GET /api/identity/session`，别的窗口已经续上（Cookie 共用）就不再刷新；内存里没有 CSRF 先 `POST session/csrf`。流被 4401 关掉后经同一个续期续上再重连，不再停在「已断开」。
 
+**到期前主动续期**：页面拿到 Cookie 会话（配对、登录、刷新、刷新页面后 `GET session`）就按答复里的 `expiresAtUnixMs` 排期，到期前两分钟（与桌面壳的 Bearer 同一个提前量）调同一个 `renewCookieSession`，所以访问期一过 core 复核长连接时它们已经换上了新的会话，不必各自先断一次。主动续期拿到锁后 `GET session`，到期时刻比排期时记下的更晚就是别的窗口已经续过，采用它的并按新时刻重排，不再刷新；否则 `POST session/refresh`，新答复再排下一次。续不上不重排，留给请求层遇 401 的那条路。Bearer 传输不排这个期。
+
 ### 3.3 稳定的 `code`
 
 GitHub 那一面（§5、§41.1）的 `code` 自协议 1.11 起是 snake_case，与其余 `/api/` 一致，取自错误码注册表（`packages/shared/src/contract/errors.ts`）；从前的 UPPER_SNAKE 拼法（延续自历史上 `/rpc/` 兼容面，R7 已删除）已换掉，状态与固定的英文原话不变：
@@ -2773,7 +2775,7 @@ core 校验远程服务地址与指纹的写法时用具名码（状态均 400�
 
 `Range`、`<img src>`、`<a href download>` 这类由浏览器直接取字节的用法只能走上面的 `GET` 路由：RPC 的 `POST` + JSON 编码既带不了 `Range`，也不是 `src` 能指的地址。下载的 URL 由页面按当前源拼出（`api/files.ts` 的 `fileDownloadUrl`），凭据照旧由 Cookie 或页面代取。自协议 1.21 起这条路由认单个 `Range` 区间，Bearer 的源可改用媒体票的地址让浏览器直接取（§37.4）。
 
-**整份下载流式**（#337）：本机工作空间的 `file-download` 不带 `Range` 时，core 边读盘边写响应（`HandlerResult.file`，`http/server.ts::sendFile`），`content-length` 取打开时的大小，不把整份读进内存，也不再有整份下载的 16 MiB 上限；读盘失败或文件在途中变短时断开连接，客户端得到的是中断的下载而不是截断却成功的文件。远端工作空间照旧分块取回，上限不变。
+**整份下载流式**（#337）：本机工作空间的 `file-download` 不带 `Range` 时，core 边读盘边写响应（`HandlerResult.file`，`http/server.ts::sendFile`），`content-length` 取打开时的大小，不把整份读进内存，也不再有整份下载的 16 MiB 上限；读盘失败或文件在途中变短时断开连接，客户端得到的是中断的下载而不是截断却成功的文件。远端工作空间同样流式：先取第一块得到长度与修改时间（文件不在、不是文件在这里就失败），其余块随响应的写出一块一块经 Worker 取（`HandlerResult.stream`、`remote/transfer.ts::openDownload`），`Range` 只取区间覆盖的块，也没有 16 MiB 上限；途中文件变了（长度或修改时间不同）或 Worker 失败时断开连接。缓冲的调用方（媒体票、白板资产）仍有 16 MiB 上限；Worker 不认分块（太旧）时退回单帧，上限也随之回到 16 MiB。
 
 ### 37.3 输出到画板的代码块
 
@@ -4212,7 +4214,7 @@ App 对每个候选算 `ISK_i` 并核对 `confirm_i(server)`；一个都对不�
 - `GET /api/forge/configs?workspaceId=<id>`（`forge.configs { workspaceId }`）只列这个工作空间自己的行；不带时只列整机的。
 - `PUT` / `DELETE` 带 `workspaceId` 时读写这个工作空间的那份，revision 各自计；同一个键可以在整机与多个工作空间各有一行。工作空间不存在答 `404 not_found`（令牌不核验也不存）。
 - 配置行（§29.3）多一个 `workspaceId: string | null`：整机的行是 `null`。旧 core 不给，页面按 `null` 读。
-- 工作空间被移除时它的行随外键删掉；行指着的 SecretStore 条目不再被任何行引用。
+- 工作空间被移除时它的行随外键删掉，行指着的 SecretStore 条目一并删除（移除前由 core 内部事件 `workspace.removing` 记下引用，移除成功后删；删不掉的不影响移除）。整机配置与别的工作空间的令牌不动。
 
 ### 75.3 识别与读写
 

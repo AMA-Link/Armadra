@@ -6,6 +6,7 @@
 
 import { afterEach, describe, expect, it } from "vitest";
 
+import { EventBus } from "../bus";
 import { Router, emptyRequest } from "../http/router";
 import type { CoreServer } from "../http/server";
 import type { SecretBackend } from "../secrets/backend";
@@ -16,6 +17,7 @@ import {
   startFakeGitea,
 } from "./fake-gitea.fixture";
 import { FORGE_ROUTES, installRoutes } from "./routes";
+import { watchWorkspaceRemoval } from "./index";
 import { ForgeService, forgeRepo } from "./service";
 import { ForgeStore } from "./store";
 
@@ -322,5 +324,72 @@ describe("按工作空间的配置（§75）", () => {
     await workspaceWithToken(h);
     h.github.db.database.prepare("DELETE FROM workspaces WHERE id = ?").run(WS);
     expect(h.service.configs(WS)).toEqual([]);
+  });
+
+  describe("移除时清令牌（#389）", () => {
+    /** 与 `workspaces/routes.ts` 的 delete 同一个次序：说一声、删行、再说一声。 */
+    function remove(h: Harness, bus: EventBus, id: string): void {
+      bus.emit("workspace.removing", { workspaceId: id });
+      h.github.db.database
+        .prepare("DELETE FROM workspaces WHERE id = ?")
+        .run(id);
+      bus.emit("workspace.grants", { workspaceId: id, permissions: null });
+    }
+    const settle = () => new Promise((resolve) => setImmediate(resolve));
+
+    it("工作空间移除后，它的配置引用的令牌从密钥存储里一并删掉", async () => {
+      const h = await harness();
+      const bus = new EventBus();
+      watchWorkspaceRemoval(bus, h.service);
+      await workspaceWithToken(h);
+      expect(h.secrets.size).toBe(1);
+      remove(h, bus, WS);
+      await settle();
+      expect(h.secrets.size).toBe(0);
+    });
+
+    it("别的工作空间与整机配置的令牌不动", async () => {
+      const h = await harness();
+      const bus = new EventBus();
+      watchWorkspaceRemoval(bus, h.service);
+      await workspaceWithToken(h);
+      const other = await h.call("PUT", "/api/forge/configs/127.0.0.1", {
+        workspaceId: OTHER,
+        forge: "gitea",
+        apiBase: h.gitea.root,
+        token: FAKE_GITEA.token,
+      });
+      expect(other.status).toBe(200);
+      const machine = await h.call("PUT", "/api/forge/configs/127.0.0.1", {
+        forge: "gitea",
+        apiBase: h.gitea.root,
+        token: FAKE_GITEA.token,
+      });
+      expect(machine.status).toBe(200);
+      expect(h.secrets.size).toBe(3);
+      remove(h, bus, WS);
+      await settle();
+      expect(h.secrets.size).toBe(2);
+      expect(h.service.configs(OTHER)).toHaveLength(1);
+    });
+
+    it("移除没有成功（没说「已移除」）时令牌留着", async () => {
+      const h = await harness();
+      const bus = new EventBus();
+      watchWorkspaceRemoval(bus, h.service);
+      await workspaceWithToken(h);
+      bus.emit("workspace.removing", { workspaceId: WS });
+      await settle();
+      expect(h.secrets.size).toBe(1);
+    });
+
+    it("没有配置或没有令牌的工作空间移除不出错", async () => {
+      const h = await harness();
+      const bus = new EventBus();
+      watchWorkspaceRemoval(bus, h.service);
+      remove(h, bus, OTHER);
+      await settle();
+      expect(h.secrets.size).toBe(0);
+    });
   });
 });

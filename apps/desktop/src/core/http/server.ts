@@ -5,7 +5,7 @@ import {
   createServer,
 } from "node:http";
 import { createReadStream } from "node:fs";
-import type { Duplex } from "node:stream";
+import { Readable, type Duplex } from "node:stream";
 import { WebSocketServer, type WebSocket } from "ws";
 import type { EventBus } from "../bus";
 import { type CorePlatform, reportError } from "../platform";
@@ -28,6 +28,7 @@ import type { AuthorizationSubject } from "../identity/authorize";
 import { MAX_FRAME_BYTES } from "../identity/protocol";
 import { type HookHealth, NO_HOOK_SERVICE, healthDocument } from "./health";
 import {
+  type ByteStreamBody,
   type CoreRequest,
   type HandlerResult,
   type LocalFileBody,
@@ -364,7 +365,8 @@ export class CoreServer {
             answer.status >= 200 &&
             answer.status < 300 &&
             !("raw" in answer && answer.raw !== undefined) &&
-            !("file" in answer && answer.file !== undefined)
+            !("file" in answer && answer.file !== undefined) &&
+            !("stream" in answer && answer.stream !== undefined)
           ) {
             answer = { ...answer, body: verdict.filter(answer.body) };
           }
@@ -395,6 +397,7 @@ export class CoreServer {
       },
       "raw" in answer ? answer.raw : undefined,
       "file" in answer ? answer.file : undefined,
+      "stream" in answer ? answer.stream : undefined,
     );
   }
 
@@ -405,7 +408,12 @@ export class CoreServer {
     headers: Record<string, string> = {},
     raw?: Buffer,
     file?: LocalFileBody,
+    stream?: ByteStreamBody,
   ): void {
+    if (stream !== undefined && status !== 204 && status !== 304) {
+      sendStream(response, status, headers, stream);
+      return;
+    }
     if (file !== undefined && status !== 204 && status !== 304) {
       sendFile(response, status, headers, file);
       return;
@@ -992,4 +1000,43 @@ export function sendFile(
   stream.on("error", () => response.destroy());
   response.on("close", () => stream.destroy());
   stream.pipe(response, { end: false });
+}
+
+/**
+ * 把一份长度已知的字节流写进响应（`HandlerResult.stream`）：头里的长度取
+ * `size`，正文随取随写、背压由管道承担。迭代抛错（远端中途失败、文件在途中
+ * 变了）或最后写出的字节数对不上时，头已经发出去，只能断开连接，客户端看到
+ * 的是中断的下载而不是截断却「成功」的文件。客户端先走了就停止迭代。
+ */
+export function sendStream(
+  response: ServerResponse,
+  status: number,
+  headers: Record<string, string>,
+  body: ByteStreamBody,
+): void {
+  response.writeHead(status, {
+    "content-type": "application/octet-stream",
+    ...headers,
+    "content-length": String(body.size),
+  });
+  if (response.req?.method?.toUpperCase() === "HEAD") {
+    response.end();
+    return;
+  }
+  if (body.size === 0) {
+    response.end();
+    return;
+  }
+  let sent = 0;
+  const source = Readable.from(body.chunks, { objectMode: false });
+  source.on("data", (chunk: Buffer | string) => {
+    sent += chunk.length;
+  });
+  source.on("end", () => {
+    if (sent !== body.size) response.destroy();
+    else response.end();
+  });
+  source.on("error", () => response.destroy());
+  response.on("close", () => source.destroy());
+  source.pipe(response, { end: false });
 }

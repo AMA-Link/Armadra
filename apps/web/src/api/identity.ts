@@ -308,6 +308,7 @@ export function resetIdentityCredentials(): void {
   cookieRenewal = null;
   shellFailure = null;
   clearShellRefresh();
+  clearCookieRefresh();
 }
 
 /**
@@ -440,6 +441,7 @@ function remember(
         expiresAtMs: tokens.accessExpiresAt,
       });
   }
+  noteCookieSession(session);
   const csrfChange = storeCsrf(session.csrfToken ?? "");
   const who = `${session.hostId}\n${session.device.principalId}\n${session.device.deviceId}`;
   const change: IdentityChange =
@@ -617,7 +619,10 @@ export async function resumeIdentity(): Promise<IdentitySession | null> {
   if (hosted !== null && !tokens.access && !(await restoreHostedCredentials()))
     return null;
   try {
-    return await call("session", identitySessionSchema);
+    const current = await call("session", identitySessionSchema);
+    // 刷新页面后接上仍有效的 Cookie 会话：到期前的续期从这里排起。
+    noteCookieSession(current);
+    return current;
   } catch (error) {
     if (
       error instanceof IdentityRequestError &&
@@ -699,10 +704,12 @@ let cookieRenewal: Promise<boolean> | null = null;
  * 告诉其它窗口。续不上（刷新密钥也过期、被撤销）答 `false`，调用方把原来那次
  * 401 交出去。Bearer 传输各有自己的续法，这里恒答 `false`。
  */
-export function renewCookieSession(): Promise<boolean> {
+export function renewCookieSession(
+  options: { readonly ahead?: boolean } = {},
+): Promise<boolean> {
   if (bearerTransport()) return Promise.resolve(false);
   cookieRenewal ??= withRenewLock(
-    renewCookieSessionLocked,
+    () => renewCookieSessionLocked(options.ahead === true),
     SESSION_REFRESH_LOCK,
   )
     .catch(() => false)
@@ -712,6 +719,39 @@ export function renewCookieSession(): Promise<boolean> {
   return cookieRenewal;
 }
 
+/**
+ * Cookie 会话的访问 Cookie 在到期前两分钟主动续一次（契约 §3.2），与桌面壳的
+ * Bearer 同一个提前量：长连接按会话复核，访问期一过 core 就以 4401 关流，等
+ * 到 401 才续是让每条流先断一次。续不上不重排，留给请求层遇 401 的那条路。
+ */
+const COOKIE_REFRESH_LEAD_MS = 2 * 60 * 1000;
+let cookieRefreshTimer: ReturnType<typeof setTimeout> | null = null;
+/** 排期所依据的访问 Cookie 到期时刻（毫秒）。 */
+let cookieAccessExpiresAt = 0;
+
+function clearCookieRefresh(): void {
+  if (cookieRefreshTimer !== null) clearTimeout(cookieRefreshTimer);
+  cookieRefreshTimer = null;
+  cookieAccessExpiresAt = 0;
+}
+
+/** 拿到一份 Cookie 会话（配对、刷新、接上）：按它的到期时刻排下一次续期。 */
+function noteCookieSession(session: IdentitySession): void {
+  if (session.native || bearerTransport() || session.expiresAtUnixMs <= 0) {
+    return;
+  }
+  clearCookieRefresh();
+  cookieAccessExpiresAt = session.expiresAtUnixMs;
+  const delay = Math.max(
+    session.expiresAtUnixMs - Date.now() - COOKIE_REFRESH_LEAD_MS,
+    5_000,
+  );
+  cookieRefreshTimer = setTimeout(() => {
+    cookieRefreshTimer = null;
+    void renewCookieSession({ ahead: true });
+  }, delay);
+}
+
 function sessionRejected(error: unknown): boolean {
   return (
     error instanceof IdentityRequestError &&
@@ -719,10 +759,16 @@ function sessionRejected(error: unknown): boolean {
   );
 }
 
-async function renewCookieSessionLocked(): Promise<boolean> {
+async function renewCookieSessionLocked(ahead: boolean): Promise<boolean> {
   try {
-    await call("session", identitySessionSchema);
-    return true;
+    const current = await call("session", identitySessionSchema);
+    if (!ahead) return true;
+    // 到期前的续期：会话还有效，所以光看得见不算续过——到期时刻比排期时记下的
+    // 晚，才是别的窗口已经续上了（Cookie 共用），采用它的就行；否则这里续。
+    if (current.expiresAtUnixMs > cookieAccessExpiresAt + 1_000) {
+      noteCookieSession(current);
+      return true;
+    }
   } catch (error) {
     if (!sessionRejected(error)) throw error;
   }

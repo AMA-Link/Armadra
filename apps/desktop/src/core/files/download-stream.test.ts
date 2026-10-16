@@ -7,7 +7,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { install as installFiles } from "./routes";
 import { releaseWorkspace } from "./watch";
-import { sendFile } from "../http/server";
+import { sendFile, sendStream } from "../http/server";
 import { resetRouteGuard } from "../identity/gate";
 import { type Fixture, fixture } from "../workspaces/fixture";
 import { install as installWorkspaces } from "../workspaces/routes";
@@ -173,5 +173,69 @@ describe("sendFile", () => {
     const response = await serve({ absolute: path, size: 1000 }, "HEAD");
     expect(response.headers.get("content-length")).toBe("1000");
     expect(response.headers.get("x-test")).toBe("1");
+  });
+});
+
+describe("sendStream", () => {
+  async function serve(
+    body: { size: number; chunks: AsyncIterable<Buffer> },
+    method = "GET",
+  ): Promise<Response> {
+    const server = createServer((_request, response) => {
+      sendStream(response, 200, { "x-test": "1" }, body);
+    });
+    await new Promise<void>((done) => server.listen(0, "127.0.0.1", done));
+    const port = (server.address() as AddressInfo).port;
+    try {
+      return await fetch(`http://127.0.0.1:${port}/`, { method });
+    } finally {
+      server.close();
+      server.closeAllConnections();
+    }
+  }
+
+  async function* parts(
+    ...bytes: Buffer[]
+  ): AsyncGenerator<Buffer, void, undefined> {
+    for (const part of bytes) yield part;
+  }
+
+  it("按头里的长度把各块依次写完", async () => {
+    const response = await serve({
+      size: 6,
+      chunks: parts(Buffer.from("abc"), Buffer.from("def")),
+    });
+    expect(response.status).toBe(200);
+    expect(response.headers.get("content-length")).toBe("6");
+    expect(Buffer.from(await response.arrayBuffer()).toString()).toBe("abcdef");
+  });
+
+  it("途中某一块取不到：断开，不交出截断的文件", async () => {
+    async function* broken(): AsyncGenerator<Buffer, void, undefined> {
+      yield Buffer.from("abc");
+      throw new Error("remote went away");
+    }
+    const response = await serve({ size: 6, chunks: broken() });
+    expect(response.status).toBe(200);
+    await expect(response.arrayBuffer()).rejects.toThrow();
+  });
+
+  it("字节数不到头里说的：断开", async () => {
+    const response = await serve({
+      size: 10,
+      chunks: parts(Buffer.from("abc")),
+    });
+    await expect(response.arrayBuffer()).rejects.toThrow();
+  });
+
+  it("HEAD 只给头，不迭代", async () => {
+    let pulled = false;
+    async function* never(): AsyncGenerator<Buffer, void, undefined> {
+      pulled = true;
+      yield Buffer.from("x");
+    }
+    const response = await serve({ size: 1, chunks: never() }, "HEAD");
+    expect(response.headers.get("content-length")).toBe("1");
+    expect(pulled).toBe(false);
   });
 });

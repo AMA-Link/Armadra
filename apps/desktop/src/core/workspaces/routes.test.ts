@@ -254,6 +254,35 @@ describe("the workspace routes", () => {
     expect(twice.body).toMatchObject({ code: "not_found" });
   });
 
+  it("announces the removal before the row goes and again once it is gone (#389)", async () => {
+    const root = join(core.directory, "announce");
+    mkdirSync(root);
+    const opened = await core.call("POST", "/api/workspaces/open-directory", {
+      name: "announce",
+      rootPath: root,
+    });
+    const id = (opened.body as { id: string }).id;
+    const seen: string[] = [];
+    const rowExists = () =>
+      core.database.prepare("SELECT 1 FROM workspaces WHERE id = ?").get(id) !==
+      undefined;
+    core.bus.on("workspace.removing", ({ workspaceId }) => {
+      seen.push(`removing:${workspaceId}:${rowExists() ? "row" : "gone"}`);
+    });
+    core.bus.on("workspace.grants", ({ workspaceId, permissions }) => {
+      if (permissions === null) {
+        seen.push(`grants:${workspaceId}:${rowExists() ? "row" : "gone"}`);
+      }
+    });
+    expect((await core.call("DELETE", `/api/workspaces/${id}`)).status).toBe(
+      204,
+    );
+    expect(seen).toEqual([`removing:${id}:row`, `grants:${id}:gone`]);
+    // An unknown id announces nothing.
+    await core.call("DELETE", `/api/workspaces/${id}`);
+    expect(seen).toHaveLength(2);
+  });
+
   it("refuses a remote workspace when no remote execution is assembled, rather than falling back to this machine", async () => {
     const remote = await core.call("POST", "/api/workspaces/remote", {
       name: "remote",

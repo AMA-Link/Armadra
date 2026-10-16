@@ -27,24 +27,30 @@ vi.mock("./local-runtime", () => ({
 }));
 
 import {
+  adoptIdentitySession,
   currentCsrf,
   rememberCsrf,
   renewCookieSession,
   resetIdentityCredentials,
+  resumeIdentity,
+  identitySessionSchema,
 } from "./identity";
 import { request } from "./request";
 import { localSource } from "./source";
 import { createLocalConnection } from "../sources/connection";
 
+/** 假时钟之下，服务端的延迟仍走真的计时器。 */
+const realSetTimeout = globalThis.setTimeout;
+
 const OLD = "a".repeat(43);
 const NEW = "b".repeat(43);
 const CSRF_ONLY = "c".repeat(43);
 
-const session = (csrfToken?: string) => ({
+const session = (csrfToken?: string, expiresAtUnixMs?: number) => ({
   hostId: "h1",
   device: { deviceId: "d1", principalId: "p1" },
   scopes: [],
-  expiresAtUnixMs: Date.now() + 15 * 60_000,
+  expiresAtUnixMs: expiresAtUnixMs ?? Date.now() + 15 * 60_000,
   ...(csrfToken === undefined ? {} : { csrfToken }),
 });
 
@@ -55,6 +61,8 @@ let state: {
   accessValid: boolean;
   sessionCsrf: string;
   refreshValid: boolean;
+  /** 会话答复里的到期时刻；不设就是 15 分钟之后。 */
+  expiresAtMs?: number;
 };
 
 function reply(status: number, body: unknown): Response {
@@ -76,10 +84,12 @@ async function serve(
   const csrf = new Headers(init.headers).get("x-armadra-csrf");
   calls.push({ path: url.pathname, method, csrf });
   // 让并发的几次请求真的同时在途。
-  await new Promise((resolve) => setTimeout(resolve, 1));
+  await new Promise((resolve) => realSetTimeout(resolve, 1));
   switch (`${method} ${url.pathname}`) {
     case "GET /api/identity/session":
-      return state.accessValid ? reply(200, session()) : unauthenticated();
+      return state.accessValid
+        ? reply(200, session(undefined, state.expiresAtMs))
+        : unauthenticated();
     case "POST /api/identity/session/refresh":
       if (!state.refreshValid || csrf !== state.sessionCsrf)
         return unauthenticated();
@@ -263,5 +273,94 @@ describe("流被 4401 关掉之后", () => {
     state.refreshValid = false;
     const connection = createLocalConnection();
     await expect(connection.renew()).rejects.toThrow();
+  });
+});
+
+describe("到期前主动续期（契约 §3.2）", () => {
+  const MIN = 60_000;
+  const MARGIN = 2 * MIN;
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-10-16T08:00:00Z"));
+    state.accessValid = true;
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  /** 推进假时钟，再给真计时器上的服务端答复留一点时间。 */
+  async function advance(ms: number): Promise<void> {
+    await vi.advanceTimersByTimeAsync(ms);
+    await new Promise((resolve) => realSetTimeout(resolve, 25));
+  }
+
+  /** 拿到一份 15 分钟的 Cookie 会话（配对 / 登录之后的样子）。 */
+  function adopt() {
+    const expiresAtMs = Date.now() + 15 * MIN;
+    state.expiresAtMs = expiresAtMs;
+    adoptIdentitySession(
+      identitySessionSchema.parse(session(OLD, expiresAtMs)),
+    );
+  }
+
+  it("到期前两分钟刷新一次，续上之后接着排下一次", async () => {
+    adopt();
+    await advance(15 * MIN - MARGIN - 1_000);
+    expect(refreshes()).toHaveLength(0);
+    await advance(2_000);
+    expect(refreshes()).toHaveLength(1);
+    expect(refreshes()[0]?.csrf).toBe(OLD);
+    expect(currentCsrf()).toBe(NEW);
+    // 刷新答复里又是 15 分钟：下一次在 13 分钟之后，而不是等到 401。
+    await advance(13 * MIN - 5_000);
+    expect(refreshes()).toHaveLength(1);
+    await advance(10_000);
+    expect(refreshes()).toHaveLength(2);
+  });
+
+  it("别的窗口已经续过（到期时刻更晚）：采用它的，不再刷新", async () => {
+    adopt();
+    state.expiresAtMs = Date.now() + 28 * MIN;
+    await advance(15 * MIN - MARGIN + 1_000);
+    expect(refreshes()).toHaveLength(0);
+    expect(calls.map((call) => call.path)).toEqual(["/api/identity/session"]);
+    // 按新的到期时刻重排：再过 13 分钟左右才轮到下一次。
+    await advance(13 * MIN);
+    expect(refreshes()).toHaveLength(1);
+  });
+
+  it("续不上：不重排，也不循环重试（留给请求层遇 401 的那条路）", async () => {
+    adopt();
+    state.refreshValid = false;
+    await advance(15 * MIN - MARGIN + 1_000);
+    expect(refreshes()).toHaveLength(1);
+    await advance(60 * MIN);
+    expect(refreshes()).toHaveLength(1);
+  });
+
+  it("刷新页面后接上仍有效的会话（resumeIdentity）也排期", async () => {
+    rememberCsrf(OLD);
+    state.expiresAtMs = Date.now() + 10 * MIN;
+    await resumeIdentity();
+    await advance(10 * MIN - MARGIN + 1_000);
+    expect(refreshes()).toHaveLength(1);
+  });
+
+  it("登出或重置凭据后不再刷新", async () => {
+    adopt();
+    resetIdentityCredentials();
+    calls.length = 0;
+    await advance(30 * MIN);
+    expect(calls).toHaveLength(0);
+  });
+
+  it("Bearer 传输（桌面壳）不走这条：它有自己的轮转", async () => {
+    mocks.nativeShell = true;
+    adoptIdentitySession(
+      identitySessionSchema.parse(session(undefined, Date.now() + 15 * MIN)),
+    );
+    await advance(30 * MIN);
+    expect(calls).toHaveLength(0);
   });
 });
