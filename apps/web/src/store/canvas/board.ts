@@ -21,6 +21,7 @@ import {
  */
 const WORK_PANELS = [
   "explorer",
+  "observation",
   "scm",
   "github",
   "resources",

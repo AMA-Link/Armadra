@@ -7,6 +7,7 @@ import {
   CommandPalette,
   ControlConfirmDialog,
   ExplorerDrawer,
+  NodeObservationDrawer,
   GithubDrawer,
   HandoffDialog,
   HandoffHistoryDrawer,
@@ -73,6 +74,9 @@ export function Overlays() {
       <JoinedSourceOpener />
       <Gate open={panels.explorer !== "closed"}>
         <ExplorerDrawer />
+      </Gate>
+      <Gate open={panels.observation !== "closed"}>
+        <NodeObservationDrawer />
       </Gate>
       <Gate open={panels.scm !== "closed"}>
         <GitToolWindow />

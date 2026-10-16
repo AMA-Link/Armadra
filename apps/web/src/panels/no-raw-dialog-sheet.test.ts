@@ -23,6 +23,7 @@ const DIALOG_ALLOWED = ["panels/ResponsiveDialog.tsx"];
 
 const SHEET_ALLOWED = [
   "coordinator/DispatchDrawer.tsx",
+  "node-observation/NodeObservationDrawer.tsx",
   "panels/ExplorerDrawer.tsx",
   "panels/ResourceDrawer.tsx",
   "panels/ResponsiveDialog.tsx",

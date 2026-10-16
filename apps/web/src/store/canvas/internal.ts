@@ -34,6 +34,7 @@ export const initialPanels: PanelState = {
       ? "open"
       : "collapsed",
   explorer: "closed",
+  observation: "closed",
   scm: "closed",
   resources: "closed",
   automation: "closed",

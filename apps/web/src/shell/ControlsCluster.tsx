@@ -3,6 +3,7 @@ import {
   FolderTree,
   GitBranch,
   GitPullRequest,
+  ListTree,
   Share2,
   Shrink,
   SlidersHorizontal,
@@ -91,6 +92,19 @@ export function ControlsCluster() {
           "transition-[right] duration-150 ease-out motion-reduce:transition-none",
         )}
       >
+        <ClusterButton
+          label={t("nodeObservation.open")}
+          active={panels.observation === "drawer"}
+          onClick={() =>
+            setPanel(
+              "observation",
+              panels.observation === "drawer" ? "closed" : "drawer",
+            )
+          }
+        >
+          <ListTree />
+        </ClusterButton>
+
         <ClusterButton
           label={t("cluster.explorer")}
           command="app.explorer"

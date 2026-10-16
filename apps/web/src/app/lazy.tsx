@@ -63,6 +63,12 @@ export const ExplorerDrawer = lazy(() =>
   })),
 );
 
+export const NodeObservationDrawer = lazy(() =>
+  import("@/node-observation/NodeObservationDrawer").then((module) => ({
+    default: module.NodeObservationDrawer,
+  })),
+);
+
 /** Git 工具窗口（Git 工具窗口设计 §2.1）；底部停靠，日志与提交两个页签。 */
 export const GitToolWindow = lazy(() =>
   import("@/panels/git/window/GitToolWindow").then((module) => ({
