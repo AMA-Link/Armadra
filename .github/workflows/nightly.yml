@@ -359,6 +359,7 @@ jobs:
         run: |
           set -uo pipefail
           image='system-images;android-34;google_apis;x86_64'
+          sdkmanager() { "${ANDROID_HOME:-/usr/local/lib/android/sdk}/cmdline-tools/latest/bin/sdkmanager" "$@"; }
           yes | sdkmanager --licenses > /dev/null || true
           for attempt in 1 2 3; do
             out=$(sdkmanager --install "$image" 2>&1) || true
