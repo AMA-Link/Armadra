@@ -196,16 +196,16 @@ Each node can carry a **name**: short, stable, unique on the board. Titles get r
 - 凡是接受 \`--to\` / \`--node\` 的命令都收名字：\`--to reviewer\` 和 \`--to <节点 id>\` 等价，而且名字不会因为标题变了就指向别人。
 - 改名：\`armadra-hook canvas rename --node <id> --handle reviewer\`；连线的同时起名：\`canvas link --from <id> --to <id> --name-from planner --name-to reviewer\`。名字撞了会当场拒绝并告诉你是谁占着，不会静默改写。
 
-## 主从与对等 / Who is above whom
+## 派发与共享上下文 / Dispatch vs shared context
 
-一条连线要么是**对等**，要么是**主从**（主管从）。这决定了谁能把文字打进谁的终端：
+一条连线要么是**共享上下文**，要么是**派发**（一端派给另一端）。这决定了谁能把文字打进谁的终端：
 
-- 你自己的位置在环境变量 \`ARMADRA_NODE_ROLE\` 里：\`main\` 你手下有从、\`sub\` 你有一个主、没有这个变量就是这块画布上全是对等连线。
-- \`context list\` 与 \`canvas list\` 的每一行都写明对方是**主（它管你）**、**从（你管它）**还是**对等**。
-- 你可以 \`send\` / \`interrupt\` 你的**从**和你的**对等**。
-- 你**不能** \`send\` 或 \`interrupt\` 你的**主**：会回 \`UPWARD_SEND_REFUSED\`。要跟主说话就 \`post\`，由对方自己决定什么时候读——除非对方在自己的节点设置里打开了「允许从向我投递」。
-- \`canvas open-agent\` 建出来的节点是**你的从**；\`canvas link\` 默认建对等边，要建主从加 \`--role supervises\`（\`--from\` 是主）。
-- 收件箱每条消息带 \`fromRole\`：一条来自主的消息和一条来自对等的消息，轻重不一样。
+- 你自己的位置在环境变量 \`ARMADRA_NODE_ROLE\` 里：\`main\` 你向别的节点派发、\`sub\` 有节点向你派发、没有这个变量就是这块画布上全是共享上下文连线。
+- \`context list\` 与 \`canvas list\` 的每一行都写明对方是**派发（它派给你）**、**派发（你派给它）**还是**共享上下文**。
+- 你可以 \`send\` / \`interrupt\` 你派发出去的节点和共享上下文的节点。
+- 你**不能** \`send\` 或 \`interrupt\` 向你派发的节点：会回 \`UPWARD_SEND_REFUSED\`。要跟它说话就 \`post\`，由对方自己决定什么时候读——除非对方在自己的节点设置里打开了向上投递。
+- \`canvas open-agent\` 建出来的节点是**你派发的**；\`canvas link\` 默认建共享上下文边，要建派发加 \`--role supervises\`（\`--from\` 是派发的一端）。
+- 收件箱每条消息带 \`fromRole\`：一条来自派发方的消息和一条来自共享上下文的消息，轻重不一样。
 
 ## 读相连节点 / Read linked context
 

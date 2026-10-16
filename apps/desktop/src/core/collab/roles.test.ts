@@ -195,10 +195,10 @@ describe("what the model sees", () => {
 
   it("writes the role into both list verbs, from each side's own view", async () => {
     expect(String(ok(await run(main, "list")).message)).toContain(
-      "角色=从（你管它）",
+      "角色=派发（你派给它）",
     );
     expect(String(ok(await run(sub, "list")).message)).toContain(
-      "角色=主（它管你）",
+      "角色=派发（它派给你）",
     );
   });
 

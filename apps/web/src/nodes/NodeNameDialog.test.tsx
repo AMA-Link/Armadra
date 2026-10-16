@@ -126,13 +126,13 @@ describe("起名对话框", () => {
   });
 
   /**
-   * 连线的角色（对等 / 主→从）。只在刚拉完一条线时问；从节点菜单点开「名字…」
+   * 连线的角色（共享上下文 / 派发）。只在刚拉完一条线时问；从节点菜单点开「名字…」
    * 时没有边可问，`open-agent` 建的边也不弹框。
    */
-  it("拉线之后问角色，默认对等，不写任何角色", () => {
+  it("拉线之后问角色，默认共享上下文，不写任何角色", () => {
     store.document = { nodes: [agentNode("a", "主"), agentNode("b", "从")] };
     ask(["a", "b"], "edge-1");
-    expect(screen.getByText("对等")).toBeTruthy();
+    expect(screen.getByText("共享上下文")).toBeTruthy();
     fireEvent.change(field("从"), { target: { value: "codex-2" } });
     fireEvent.click(screen.getByRole("button", { name: "确定" }));
     expect(store.setEdgeRole).not.toHaveBeenCalled();
@@ -140,14 +140,12 @@ describe("起名对话框", () => {
     expect(store.updateNodeData).toHaveBeenCalled();
   });
 
-  it("选了主→从才把角色写到那条边上", () => {
+  it("选了派发才把角色写到那条边上", () => {
     store.document = { nodes: [agentNode("a", "主"), agentNode("b", "从")] };
     ask(["a", "b"], "edge-1");
-    fireEvent.click(screen.getByRole("radio", { name: "主 → 从" }));
+    fireEvent.click(screen.getByRole("radio", { name: "派发" }));
     expect(
-      screen
-        .getByRole("radio", { name: "主 → 从" })
-        .getAttribute("aria-checked"),
+      screen.getByRole("radio", { name: "派发" }).getAttribute("aria-checked"),
     ).toBe("true");
     // 两端的建议值都是 `codex-1`（建议互相看不见），所以先把一端改掉。
     fireEvent.change(field("从"), { target: { value: "codex-2" } });
@@ -158,6 +156,6 @@ describe("起名对话框", () => {
   it("从节点菜单点开时不问角色：那里没有边", () => {
     store.document = { nodes: [agentNode("a", "一个节点")] };
     ask(["a"]);
-    expect(screen.queryByText("对等")).toBeNull();
+    expect(screen.queryByText("共享上下文")).toBeNull();
   });
 });

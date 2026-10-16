@@ -150,8 +150,8 @@ function backward(role: string): LinkRole {
 
 function roleWord(role: string, fromTitle: string, toTitle: string): string {
   return role === "supervises"
-    ? `「${fromTitle}」是主、「${toTitle}」是从`
-    : "对等";
+    ? `「${fromTitle}」派发给「${toTitle}」`
+    : "共享上下文";
 }
 
 /** 一端要起的名字：形状校验过，也确认过这块画布上没有别人占着。 */

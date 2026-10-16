@@ -412,14 +412,14 @@ export function kindLabel(kind: string): string {
 /**
  * 对方相对于本节点是什么（迁移 0024）。
  *
- * 用中文的「主 / 从 / 对等」而不是机器码，因为这一行是给模型读的散文，而它在
- * 同一行里已经有 `名字=` 和 `id=` 两个机器可用的字段了。缺省是对等：0024 之前
+ * 用中文的「派发 / 共享上下文」而不是机器码，因为这一行是给模型读的散文，而它在
+ * 同一行里已经有 `名字=` 和 `id=` 两个机器可用的字段了。缺省是共享上下文：0024 之前
  * 写下的每一份链接文档都没有这个字段。
  */
 export function roleLabel(role: string | undefined): string {
-  if (role === "main") return "主（它管你）";
-  if (role === "sub") return "从（你管它）";
-  return "对等";
+  if (role === "main") return "派发（它派给你）";
+  if (role === "sub") return "派发（你派给它）";
+  return "共享上下文";
 }
 
 /**

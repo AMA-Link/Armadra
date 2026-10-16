@@ -211,32 +211,32 @@ describe("useCanvasMenus", () => {
    * 连线角色事后可改（设计 §2.6）：命名对话框可以跳过，跳过之后这里是
    * 唯一改得回来的地方。三项各自落到一个动作上，当前那一项不可点。
    */
-  it("对等边的菜单：「设为对等」不可点，另外两项各自落到一个动作", () => {
+  it("共享上下文边的菜单：「设为共享上下文」不可点，另外两项各自落到一个动作", () => {
     openWith(() => handlers.onEdgeContextMenu(mouse, { id: edge.id } as never));
-    expect(screen.getByText("设为对等").getAttribute("aria-disabled")).toBe(
-      "true",
-    );
+    expect(
+      screen.getByText("设为共享上下文").getAttribute("aria-disabled"),
+    ).toBe("true");
 
-    fireEvent.click(screen.getByText("设为 主 → 从"));
+    fireEvent.click(screen.getByText("设为派发"));
     expect(state.setEdgeRole).toHaveBeenCalledWith(edge.id, "supervises");
 
     cleanup();
     openWith(() => handlers.onEdgeContextMenu(mouse, { id: edge.id } as never));
-    fireEvent.click(screen.getByText("设为 从 ← 主"));
+    fireEvent.click(screen.getByText("反向派发"));
     // 反向是一个动作：两端互换与角色在同一次提交里落，撤销一步。
     expect(state.reverseEdge).toHaveBeenCalledWith(edge.id, "supervises");
   });
 
-  it("主从边的菜单：改回对等，「设为 主 → 从」变成不可点", () => {
+  it("派发边的菜单：改回共享上下文，「设为派发」变成不可点", () => {
     state.document = {
       nodes: [node],
       edges: [{ ...edge, role: "supervises" }],
     };
     openWith(() => handlers.onEdgeContextMenu(mouse, { id: edge.id } as never));
-    expect(screen.getByText("设为 主 → 从").getAttribute("aria-disabled")).toBe(
+    expect(screen.getByText("设为派发").getAttribute("aria-disabled")).toBe(
       "true",
     );
-    fireEvent.click(screen.getByText("设为对等"));
+    fireEvent.click(screen.getByText("设为共享上下文"));
     expect(state.setEdgeRole).toHaveBeenCalledWith(edge.id, "peer");
   });
 

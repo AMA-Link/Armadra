@@ -83,7 +83,7 @@ Codex 只执行它信任的 Hook，而且**静默**：没有信任，Hook 就不
 
 1. 这个终端是画布上的一个节点，协作只走 `armadra-hook canvas …`（含 `post` / `send`）。
 2. 用户要求创建其他 Agent、分工或并行时，一律用 `canvas open-agent` / `canvas team` 在画布上建并连线；不用 CLI 自带的子代理或后台任务冒充。
-3. 需要浏览器时用画布里的浏览器节点：`armadra-hook browser <动词>`；没有连着的就先 `canvas open-browser --url <网址>`（新增的画布动词，建好后自动从调用者连一条对等边并写两份链接文档）；不用 CLI 自带的浏览器、computer-use 或无头浏览器。
+3. 需要浏览器时用画布里的浏览器节点：`armadra-hook browser <动词>`；没有连着的就先 `canvas open-browser --url <网址>`（新增的画布动词，建好后自动从调用者连一条共享上下文边并写两份链接文档）；不用 CLI 自带的浏览器、computer-use 或无头浏览器。
 
 浏览器动词表由 `core/browser/args.ts` 的 `VERBS` 生成，不手抄；`skill.test.ts` 断言每个动词都在、示例里的动词都存在。技能正文开头「本终端跑在 Armadra 画布的一个节点里」在逐次注入之后才真正成立，保留。
 

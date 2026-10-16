@@ -9,9 +9,9 @@ import { HeaderChips } from "./HeaderChips";
 import { Badge } from "@/ui/badge";
 
 /**
- * 节点头上的主从徽标与那一排徽标的折叠。
+ * 节点头上的派发徽标与那一排徽标的折叠。
  *
- * 对等不画任何东西；主被删掉之后是「主已离开」。折叠数的是**渲染出来的**
+ * 对等不画任何东西；主被删掉之后是「派发方已离开」。折叠数的是**渲染出来的**
  * 徽标，不是传进来的子元素——一个 `return null` 的组件仍然是一个子元素。
  */
 
@@ -47,19 +47,19 @@ describe("SupervisionBadge", () => {
     ).toBeNull();
   });
 
-  it("主画「主 · N 从」，从画「从 @主」", () => {
+  it("派发的一端画「派发 · N」，被派发的画「受 @名字 派发」", () => {
     seed([lead, report], [edge("supervises")]);
     render(<SupervisionBadge node={lead} />);
-    expect(screen.getByText("主 · 1 从")).toBeTruthy();
+    expect(screen.getByText("派发 · 1")).toBeTruthy();
     cleanup();
     render(<SupervisionBadge node={report} />);
-    expect(screen.getByText("从 @planner")).toBeTruthy();
+    expect(screen.getByText("受 @planner 派发")).toBeTruthy();
   });
 
-  it("主被删掉之后是「主已离开」", () => {
+  it("派发方被删掉之后是「派发方已离开」", () => {
     seed([report], [edge("supervises")]);
     render(<SupervisionBadge node={report} />);
-    expect(screen.getByText("主已离开")).toBeTruthy();
+    expect(screen.getByText("派发方已离开")).toBeTruthy();
     expect(
       document
         .querySelector('[data-slot="supervision-badge"]')
