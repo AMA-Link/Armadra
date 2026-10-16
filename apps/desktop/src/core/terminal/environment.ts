@@ -192,7 +192,9 @@ export function agentPath(
 }
 
 /** The directory `armadra-hook` is in, when there is one on this box. */
-function hookDirectoryOf(hookBin: string | undefined): string | undefined {
+export function hookDirectoryOf(
+  hookBin: string | undefined,
+): string | undefined {
   return hookBin !== undefined && existsSync(hookBin)
     ? join(hookBin, "..")
     : undefined;

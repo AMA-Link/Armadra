@@ -24,7 +24,11 @@
 
 import type { PermissionMode } from "../agent/launch";
 import { launchTargetOf, resolveCommand } from "../agent/registry";
-import { agentPath } from "../terminal/environment";
+import {
+  agentPath,
+  hookClient,
+  hookDirectoryOf,
+} from "../terminal/environment";
 import { type AcpAdapter, type AcpResume, acpLaunchPlan } from "./adapters";
 import { type CanvasMcpInput, acpMcpServers, sessionOpener } from "./mcp";
 import {
@@ -762,9 +766,19 @@ export function adapterStartOptions(
     options.transport === undefined
       ? launchTargetOf(resolved, ambient)
       : undefined;
+  // `armadra-hook` 在 PATH 末尾、路径也在 `ARMADRA_HOOK_BIN`，与终端节点一样：
+  // 不走 MCP 的家（pi-acp）和模型自己选 shell 的时候，技能说明里的
+  // `armadra-hook canvas …` 靠它找得到。垫片目录不在里面（一个节点一个状态来源）。
+  const hookBin = hookClient();
   const env: NodeJS.ProcessEnv =
     options.transport === undefined
-      ? { ...ambient, PATH: agentPath(ambient) }
+      ? {
+          ...ambient,
+          PATH: agentPath(ambient, hookDirectoryOf(hookBin)),
+          ...(hookBin === undefined || ambient.ARMADRA_HOOK_BIN !== undefined
+            ? {}
+            : { ARMADRA_HOOK_BIN: hookBin }),
+        }
       : ambient;
   const mode = options.mode ?? "default";
   const { canvasMcp, mcpServers: given, ...rest } = options;

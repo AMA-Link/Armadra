@@ -6,6 +6,7 @@ import { fakeAcpAgentPath } from "@armadra/agent/acp";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { type AcpAdapter, acpAdapter } from "./adapters";
+import { setHookClient } from "../terminal/environment";
 import { AcpError } from "./client";
 import {
   type AcpHostSession,
@@ -13,6 +14,7 @@ import {
   type AcpStartPhase,
   type AcpStartTimings,
   type AcpUpdateMeta,
+  adapterStartOptions,
   forgetAcpVersions,
   probeAcp,
   rememberedAcpVersion,
@@ -276,6 +278,26 @@ describe.skipIf(process.platform === "win32")("startAdapter", () => {
     expect(session.modeApplied).toBe(true);
     expect(session.modes?.currentModeId).toBe("plan");
     expect(rememberedAcpVersion("opencode")).toBe("1.0.0");
+  });
+
+  it("puts armadra-hook on the adapter's PATH and in ARMADRA_HOOK_BIN", () => {
+    const bin = mkdtempSync(join(tmpdir(), "armadra-acp-hook-"));
+    cleanup.push(bin);
+    const hook = join(bin, "armadra-hook");
+    writeFileSync(hook, "#!/bin/sh\n", "utf8");
+    chmodSync(hook, 0o755);
+    setHookClient(hook);
+    try {
+      const options = adapterStartOptions(adapter, {
+        cwd: tmpdir(),
+        env: onPath("armadra-fake-acp"),
+      });
+      if (options instanceof AcpError) throw options;
+      expect(options.env?.PATH?.split(":")).toContain(bin);
+      expect(options.env?.ARMADRA_HOOK_BIN).toBe(hook);
+    } finally {
+      setHookClient(undefined);
+    }
   });
 
   it("refuses a permission mode the adapter has no mapping for", async () => {
