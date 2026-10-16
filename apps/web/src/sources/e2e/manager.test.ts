@@ -97,10 +97,17 @@ describe("E2eChannels", () => {
       code: "unreachable",
     });
     vi.spyOn(E2eClientChannel, "open").mockRejectedValueOnce(
-      new E2eChannelError("unreachable", "e2e_unsupported", 4404),
+      new E2eChannelError("unreachable", "closed", 4404, "e2e_unsupported"),
     );
     await expect(channels.channel(TARGET)).rejects.toMatchObject({
       code: "unsupported",
+    });
+    // 同一个 4404，原因是源不在线：不是旧 core，等它回来。
+    vi.spyOn(E2eClientChannel, "open").mockRejectedValueOnce(
+      new E2eChannelError("unreachable", "closed", 4404, "source_offline"),
+    );
+    await expect(channels.channel(TARGET)).rejects.toMatchObject({
+      code: "offline",
     });
     vi.spyOn(E2eClientChannel, "open").mockRejectedValueOnce(
       new E2eChannelError("unreachable", "bad version", 4409),

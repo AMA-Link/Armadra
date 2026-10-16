@@ -330,7 +330,11 @@ function pillOf(section: SourceSection) {
   if (section.state === "ready") return sourcePill("ready");
   if (section.state === "loading")
     return sourcePill(state === "ready" ? "connecting" : state);
-  return sourcePill(state === "unauthorized" ? state : "offline");
+  return sourcePill(
+    state === "unauthorized" || state === "waitingForSource"
+      ? state
+      : "offline",
+  );
 }
 
 /** 一台电脑那一段：段头（我的：状态点与名字；分享的：主人头像、名字与权限）与内容。 */
