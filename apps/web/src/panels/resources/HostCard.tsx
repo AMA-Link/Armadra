@@ -44,7 +44,11 @@ export function HostCard({
     : UNKNOWN;
 
   return (
-    <section className="rounded-[var(--r-card)] border border-border p-3">
+    <section
+      data-slot="host-card"
+      data-location={host.location}
+      className="rounded-[var(--r-card)] border border-border p-3"
+    >
       <header className="mb-2 flex items-center gap-2">
         <h3 className="text-[13px] font-semibold">{t("resources.host")}</h3>
         {name !== undefined && (
