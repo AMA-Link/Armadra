@@ -1,4 +1,10 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import {
+  mkdirSync,
+  mkdtempSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
@@ -384,6 +390,31 @@ describe("索引的范围", () => {
     expect(inScope({ mode: "workspaces", roots: ["/a/bc"] }, "/a/bcd")).toBe(
       false,
     );
+  });
+});
+
+describe("scope across symlinks", () => {
+  it("counts a session recorded under the link when the workspace root is the real path", () => {
+    const base = mkdtempSync(join(tmpdir(), "armadra-scope-"));
+    try {
+      const real = join(base, "real");
+      mkdirSync(join(real, "sub"), { recursive: true });
+      const link = join(base, "link");
+      symlinkSync(real, link);
+      expect(inScope({ mode: "workspaces", roots: [real] }, link)).toBe(true);
+      expect(
+        inScope({ mode: "workspaces", roots: [real] }, join(link, "sub")),
+      ).toBe(true);
+      // And the other way round: root through the link, cwd the real path.
+      expect(
+        inScope({ mode: "workspaces", roots: [link] }, join(real, "sub")),
+      ).toBe(true);
+      expect(
+        inScope({ mode: "workspaces", roots: [real] }, join(base, "elsewhere")),
+      ).toBe(false);
+    } finally {
+      rmSync(base, { recursive: true, force: true });
+    }
   });
 });
 

@@ -1,4 +1,4 @@
-import { statSync } from "node:fs";
+import { realpathSync, statSync } from "node:fs";
 import { isAbsolute, relative, resolve } from "node:path";
 import type { DatabaseSync } from "node:sqlite";
 import type { AgentId } from "../agent/registry";
@@ -141,7 +141,28 @@ export function inScope(scope: Scope, cwd: string): boolean {
   if (scope.mode === "all") return true;
   if (cwd === "") return false;
   const target = resolve(cwd);
+  if (within(scope.roots, target)) return true;
+  // 有的 CLI 记的是软链接那一侧的路径（macOS 的 `/var` → `/private/var`、
+  // 指到别的盘的项目目录），工作空间根是真实路径，或者反过来：按真实路径再比
+  // 一次，只在直接比不上时才花这几次系统调用。
+  const real = canonical(target);
+  if (real !== target && within(scope.roots, real)) return true;
   return scope.roots.some((root) => {
+    const realRoot = canonical(root);
+    return realRoot !== root && within([realRoot], real);
+  });
+}
+
+function canonical(path: string): string {
+  try {
+    return realpathSync(path);
+  } catch {
+    return path;
+  }
+}
+
+function within(roots: readonly string[], target: string): boolean {
+  return roots.some((root) => {
     if (target === root) return true;
     const rest = relative(root, target);
     // `isAbsolute` is the Windows half: two paths on different drives share no

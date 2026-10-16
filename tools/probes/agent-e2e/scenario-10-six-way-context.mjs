@@ -42,6 +42,7 @@ import {
   linkSync,
   copyFileSync,
   mkdirSync,
+  readFileSync,
   realpathSync,
   writeFileSync,
 } from "node:fs";
@@ -215,8 +216,10 @@ export default async function run10(ctx) {
   };
 
   /** 节点完成一轮：`since` 之后报过 idle / done，来源是 hook 或扩展。 */
+  const turnSeen = new Map();
   const waitTurn = async (nodeId, since, timeout = 180_000) => {
     const seen = new Set();
+    turnSeen.set(nodeId, seen);
     return waitFor(
       `${nodeId} 完成一轮`,
       () => {
@@ -294,7 +297,7 @@ export default async function run10(ctx) {
     };
     const belongs = (id, origin) =>
       id === "opencode"
-        ? /opencode:\S+/.test(origin ?? "")
+        ? /OpenCode 会话 \S+|opencode:\S+/.test(origin ?? "")
         : (roots[id] ?? []).some((root) => under(origin, root));
 
     // 页面的「自定义启动命令」：先写进 localStorage，再关页面改画布、重开页面。
@@ -346,17 +349,44 @@ export default async function run10(ctx) {
           if (id === "claude" || id === "codex") {
             await waitAgentUp(node.id, id, page, 150_000);
           } else {
-            // 另外四家没有固定的提示符可认：等扩展 / 插件的开场上报。
+            // 另外四家没有固定的提示符可认：等扩展 / 插件的开场上报，或认得出的
+            // 空闲画面。OpenCode 的会话在第一条输入时才建，开场没有事件；Copilot
+            // 先问信任（缺省项「Yes」，只此一次、不写「记住」）。
+            let trusted = false;
             await waitFor(
               `${id} 开场上报`,
-              () => {
+              async () => {
                 const session = liveSession(node.id);
+                if (session?.status !== "running") return undefined;
                 const row = status(node.id);
-                return session?.status === "running" &&
+                if (
                   row !== undefined &&
                   ["hook", "extension"].includes(row.state_source)
-                  ? row
-                  : undefined;
+                )
+                  return row;
+                const text = await screen(node.id, 60);
+                if (id === "copilot" && !trusted) {
+                  if (
+                    /Do you trust the files/.test(text) &&
+                    /❯\s*1\.\s*Yes\b/.test(text)
+                  ) {
+                    await page.focusNode(node.id);
+                    await page.enter();
+                    trusted = true;
+                    await sleep(1500);
+                  }
+                  return undefined;
+                }
+                if (id === "opencode" && /Ask anything/.test(text))
+                  return { idleScreen: true };
+                // Copilot 的会话在第一条输入时才建，信任之后没有开场事件：认输入框页脚。
+                if (
+                  id === "copilot" &&
+                  trusted &&
+                  /Manual Approval|Interactive/.test(text)
+                )
+                  return { idleScreen: true };
+                return undefined;
               },
               { timeout: 150_000, interval: 1000 },
             );
@@ -383,6 +413,8 @@ export default async function run10(ctx) {
         await page.enter();
         const turn = await waitTurn(node.id, since).catch((error) => ({
           error: error.message,
+          status: statusSummary(node.id),
+          seen: [...(turnSeen.get(node.id) ?? [])],
         }));
         s.check(
           `${id} 首轮跑完`,
@@ -398,7 +430,14 @@ export default async function run10(ctx) {
       sixWay.transcriptPaths[id] = path;
       s.check(
         `${id} 上报了 transcript_path`,
-        mark(id, "transcriptPath", typeof path === "string" && path !== ""),
+        mark(
+          id,
+          "transcriptPath",
+          (typeof path === "string" && path !== "") ||
+            // OpenCode 的历史在 SQLite 库里，没有转录文件可报；会话 id 在就算数。
+            (id === "opencode" &&
+              typeof status(nodes[id].id)?.session_id === "string"),
+        ),
         path,
       );
     }
@@ -685,7 +724,28 @@ export default async function run10(ctx) {
         s.check(
           `会话索引里有 ${id} 这次的会话`,
           mark(id, "conversations", mine.length > 0),
-          mine.map((row) => row.path),
+          mine.length > 0
+            ? mine.map((row) => row.path)
+            : {
+                // 没找到时把库里这一家的全部行（含 cwd）摆出来，看是没扫到还是 cwd 对不上。
+                provider: conversationsRows()
+                  .filter((row) => row.provider === id)
+                  .map((row) => ({ cwd: row.cwd, path: row.path })),
+                projectReal,
+                // 转录文件自己记的 cwd：对不上工作空间根时索引按范围丢掉它。
+                transcriptCwd: (() => {
+                  try {
+                    const file = sixWay.transcriptPaths[id];
+                    for (const line of readFileSync(file, "utf8")
+                      .split("\n")
+                      .slice(0, 6)) {
+                      const cwd = JSON.parse(line || "{}").cwd;
+                      if (cwd) return cwd;
+                    }
+                  } catch {}
+                  return null;
+                })(),
+              },
         );
       }
       // Pi 与 OMP 共用一个 agent 目录时，一个文件只该算在写它的那一家名下。
@@ -754,7 +814,11 @@ export default async function run10(ctx) {
             "cost",
             row !== undefined &&
               row.source !== "none" &&
-              (tokens > 0 || (row.requests ?? 0) > 0),
+              (tokens > 0 ||
+                (row.requests ?? 0) > 0 ||
+                // Copilot 按 premium request 计；探针用的 gpt-5-mini 不算高级请求，
+                // 累计值恒为 0——有这一行、单位对就算数。
+                (id === "copilot" && row.unit === "premiumRequests")),
           ),
           sixWay.cost[id],
         );

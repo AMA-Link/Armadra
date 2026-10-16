@@ -598,7 +598,7 @@ export default async function run12() {
     });
 
     /** 等一轮结束（`since` 之后状态回到 done、来源 acp）；超时就取消这一轮。 */
-    const waitTurn = async (id, sessionId, since) => {
+    const waitTurn = async (id, sessionId, since, timeout = TURN_TIMEOUT) => {
       try {
         return await waitFor(
           `${id} 回合结束`,
@@ -610,7 +610,7 @@ export default async function run12() {
               ? current
               : undefined;
           },
-          { timeout: TURN_TIMEOUT, interval: 300 },
+          { timeout, interval: 300 },
         );
       } catch (error) {
         await api(`/api/acp/sessions/${sessionId}/cancel`, {
@@ -661,6 +661,104 @@ export default async function run12() {
           firstTurn.add(id);
       } catch (error) {
         mark(id, "turn", false, error.message);
+      }
+    }
+    /* ------- 2b. ACP 下画布工具能调用（技能的 ACP 对应：`armadra-hook mcp`） ------- */
+
+    if (!selfTest) {
+      for (const id of active) {
+        if (!firstTurn.has(id)) continue;
+        const since = Date.now() - 1000;
+        const approvals = [];
+        try {
+          await api(`/api/acp/sessions/${sessions[id]}/prompt`, {
+            method: "POST",
+            body: {
+              text: "Call your Armadra canvas list tool (or run the shell command `armadra-hook canvas list`) exactly once and nothing else, then answer in one line exactly: LIST=<ok if it returned a list of canvas nodes, failed otherwise>; FIRST=<the first line it returned>",
+            },
+          });
+          // 画布工具在 Claude / Copilot 的缺省权限下要审批：卡弹出来（节点
+          // blocked 带 pendingId）就算「审批能弹出」，探针经 API 答「允许」，
+          // 让这一轮跑完。
+          const answeredPending = new Set();
+          let watching = true;
+          const turn = waitTurn(id, sessions[id], since, 240_000);
+          const watcher = (async () => {
+            while (watching) {
+              const row = status(nodes[id].id);
+              const tag = `${row?.state}/${row?.pending_id ?? "-"}`;
+              if (
+                approvals.at(-1) !== tag &&
+                !String(approvals.at(-1)).startsWith("answer")
+              )
+                approvals.push(tag);
+              // ACP 的审批行 id 不在状态行的 pending_id 里，取这个节点还没答的那条。
+              const pending = ["blocked", "waiting"].includes(row?.state)
+                ? one(
+                    "SELECT id FROM agent_approvals WHERE node_id = ? AND (answer IS NULL OR answer = '') ORDER BY created_at DESC LIMIT 1",
+                    nodes[id].id,
+                  )
+                : undefined;
+              if (pending?.id && !answeredPending.has(pending.id)) {
+                answeredPending.add(pending.id);
+                approvals.push(`asked:${pending.id.slice(-6)}`);
+                await api(`/api/approvals/${pending.id}/answer`, {
+                  method: "POST",
+                  body: { decision: "allow" },
+                }).catch((error) => approvals.push(`answer: ${error.message}`));
+              }
+              await sleep(500);
+            }
+          })();
+          try {
+            await turn;
+          } finally {
+            watching = false;
+            await watcher;
+          }
+          const log = await api(`/api/acp/sessions/${sessions[id]}/log`);
+          const last = [...(log.entries ?? [])]
+            .reverse()
+            .find((entry) => entry.role === "assistant");
+          const text = (last?.blocks ?? [])
+            .filter((block) => block.type === "text")
+            .map((block) => block.text)
+            .join("\n");
+          const toolNames = (log.entries ?? [])
+            .flatMap((entry) => entry.blocks ?? [])
+            .filter((block) => block.type === "tool_use")
+            .map((block) => block.name);
+          // Codex 的沙箱里 shell 连不上 hook 端点（EPERM，#407）：已知缺口。
+          const knownGap =
+            id === "codex" && !/LIST=ok/i.test(text) && /EPERM/.test(text);
+          mark(id, "canvasTool", /LIST=ok/i.test(text) || knownGap, {
+            ...(knownGap ? { knownGap: "#407" } : {}),
+            answer: text.slice(0, 200),
+            tools: toolNames.slice(-3),
+            approvals,
+          });
+        } catch (error) {
+          const row = status(nodes[id].id);
+          const log = await api(`/api/acp/sessions/${sessions[id]}/log`).catch(
+            () => ({}),
+          );
+          mark(id, "canvasTool", false, {
+            error: error.message,
+            state: row?.state,
+            pendingId: row?.pending_id ?? null,
+            approvals,
+            approval: one(
+              "SELECT id, answer, substr(request_json, 1, 200) AS request FROM agent_approvals WHERE node_id = ? ORDER BY created_at DESC LIMIT 1",
+              nodes[id].id,
+            ),
+            tail: (log.entries ?? []).slice(-3).map((entry) => ({
+              role: entry.role,
+              blocks: (entry.blocks ?? []).map((block) =>
+                JSON.stringify(block).slice(0, 160),
+              ),
+            })),
+          });
+        }
       }
     }
     const listed = await api("/api/agents");

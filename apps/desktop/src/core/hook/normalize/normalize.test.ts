@@ -604,6 +604,19 @@ describe("opencode payloads", () => {
     expect(idle?.idle).toBeUndefined();
   });
 
+  it("does not reopen the turn on the user message's summary update", () => {
+    // Published again after `session.idle` once the diff summary is known.
+    expect(
+      opencode({
+        type: "message.updated",
+        properties: {
+          sessionID: "oc-1",
+          info: { role: "user", sessionID: "oc-1", summary: { diffs: [] } },
+        },
+      }),
+    ).toBeUndefined();
+  });
+
   it("matches tool topics by prefix", () => {
     for (const topic of [
       "tool.execute.before",
