@@ -312,9 +312,9 @@ PowerService 在实际执行主机管理租约：reason、session/runId、expire
 | Command Q、托盘或菜单退出      | 结束 | 壳在 SIGTERM 之前经 fork 的 IPC 通道发 `armadra:quit { reapSessions: true }`（`core/quit.ts`）；core 逐个 `terminate`，再让后端结束它的宿主（tmux：`kill-server` 之前先对每个 pane 的进程树 SIGTERM，所以连没有对应行的 pane 也结束），行记 `exited`；Windows 随后壳请会话宿主「没有会话就走」，此时已无会话 |
 | 应用内更新                     | 留着 | 更新器自己先 `runtime.stop()`（不带意图），新版本起来后接回同一会话                                                                                                                                                                                                                                          |
 | core 崩溃、被 `kill`、系统关机 | 留着 | 没有意图消息；SIGTERM 的缺省不结束会话，tmux 里的会话由重启后的对账接回                                                                                                                                                                                                                                      |
-| 服务器壳停止                   | 留着 | 同上；运维要清干净就设 `ARMADRA_REAP_ON_STOP=1`                                                                                                                                                                                                                                                              |
+| 服务器壳停止                   | 留着 | 同上；运维要清干净就设 `ARMADRA_REAP_ON_STOP=1`（会重启 core 并要求会话存活的场景不要设）                                                                                                                                                                                                                    |
 
-意图是**壳到 core 的一条消息**，不是新的信号或接口：没有 HTTP 路由、没有契约变化。`ARMADRA_REAP_ON_STOP=1` 让任意方式的停止都带上这个意图，探针与自启动的临时 core 用它（`tools/probes/probe-home.mjs` 的 `PROBE_CORE_ENV`）。
+意图是**壳到 core 的一条消息**，不是新的信号或接口：没有 HTTP 路由、没有契约变化。`ARMADRA_REAP_ON_STOP=1` 让任意方式的停止都带上这个意图，给运维与一次性的临时 core 用。
 
 其余子组件本来就随 core 退出：ACP 适配器（`detachAll` 结束、预启动池 `killAllSync`）、语言服务（`language.stop()`）、浏览器（它们的 stdin 管道随 core 关闭）、防休眠子进程、远端 worker。`kill -9` core 例外：被它 `detached` 起的适配器进程组不会自己结束，这是已知限制。
 
@@ -326,4 +326,4 @@ PowerService 在实际执行主机管理租约：reason、session/runId、expire
 
 ### 13.2 探针与测试
 
-探针起的 core 带 `ARMADRA_REAP_ON_STOP=1`；vitest 里真起 core 并建了终端的用例用 `core.stop({ reapSessions: true })`，或经 `core/testing/temp-dir.ts` 的登记表收尾（`killTmuxServer`）。曾经的 `share-visibility.integration.test.ts` 每跑一次留下六个 tmux server。
+探针起的 core 被 SIGTERM 时会话照旧留着（有的探针正是要验证重启后接回），所以起了终端又要删临时数据目录的探针，删之前调 `tools/probes/probe-home.mjs` 的 `killTmuxServer(dataDir)`。vitest 里真起 core 并建了终端的用例用 `core.stop({ reapSessions: true })`，或经 `core/testing/temp-dir.ts` 的登记表收尾（`killTmuxServer`）。曾经的 `share-visibility.integration.test.ts` 每跑一次留下六个 tmux server。

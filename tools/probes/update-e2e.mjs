@@ -376,7 +376,6 @@ async function launch({ executable, sandbox, source, extraEnv = {} }) {
   const env = {
     ...process.env,
     ARMADRA_DATA_DIR: join(sandbox, "data"),
-    ARMADRA_REAP_ON_STOP: "1",
     HOME: join(sandbox, "home"),
     USERPROFILE: join(sandbox, "home"),
     LOCALAPPDATA: join(sandbox, "home", "AppData", "Local"),

@@ -245,7 +245,6 @@ async function main() {
     ARMADRA_DATA_DIR: data,
     ARMADRA_SECRET_BACKEND: "file",
     ARMADRA_LOOPBACK_OWNER: "1",
-    ARMADRA_REAP_ON_STOP: "1",
     ARMADRA_LOG: process.env.ARMADRA_LOG ?? "warn",
   });
   const runtime = spawn(

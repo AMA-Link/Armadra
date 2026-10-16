@@ -12,6 +12,7 @@ import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { probeSession } from "./probe-session.mjs";
+import { killTmuxServer } from "./probe-home.mjs";
 const faultPoint = process.argv
   .find((arg) => arg.startsWith("--fault="))
   ?.slice(8);
@@ -34,7 +35,6 @@ for (const name of ["codex", "claude"])
 const env = {
   ...process.env,
   ARMADRA_NO_GLOBAL_WRITES: "1",
-  ARMADRA_REAP_ON_STOP: "1",
   ARMADRA_CONTROLLER_PROFILES_DIR: join(temporary, "profiles"),
   PATH: bin + ":" + process.env.PATH,
   SHELL: "/bin/sh",
@@ -564,5 +564,6 @@ try {
     child.kill("SIGTERM");
     await new Promise((done) => child.once("exit", done));
   }
+  killTmuxServer(dataDir);
   rmSync(temporary, { recursive: true, force: true });
 }

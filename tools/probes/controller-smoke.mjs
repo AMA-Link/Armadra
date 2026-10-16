@@ -38,11 +38,7 @@ const child = spawn(
   ],
   {
     cwd: directory,
-    env: {
-      ...process.env,
-      ARMADRA_NO_GLOBAL_WRITES: "1",
-      ARMADRA_REAP_ON_STOP: "1",
-    },
+    env: { ...process.env, ARMADRA_NO_GLOBAL_WRITES: "1" },
     stdio: ["ignore", "pipe", "pipe"],
   },
 );

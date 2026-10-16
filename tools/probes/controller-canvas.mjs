@@ -15,6 +15,7 @@ import {
 import { tmpdir, homedir } from "node:os";
 import { dirname, resolve, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { killTmuxServer } from "./probe-home.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const temporary = mkdtempSync(join(tmpdir(), "ar-canvas-"));
@@ -31,7 +32,6 @@ for (const name of ["codex", "claude"])
 const env = {
   ...process.env,
   ARMADRA_NO_GLOBAL_WRITES: "1",
-  ARMADRA_REAP_ON_STOP: "1",
   ARMADRA_DATA_DIR: dataDir,
   ARMADRA_CONTROLLER_PROFILES_DIR: join(temporary, "profiles"),
   PATH: bin + ":" + process.env.PATH,
@@ -427,5 +427,6 @@ try {
     child.stdout.destroy();
     child.stderr.destroy();
   }
+  killTmuxServer(dataDir);
   rmSync(temporary, { recursive: true, force: true, maxRetries: 20 });
 }

@@ -28,7 +28,7 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { PROBE_CORE_ENV } from "../probe-home.mjs";
+import { LOOPBACK_OWNER_ENV } from "../probe-home.mjs";
 
 import {
   cleanups,
@@ -83,7 +83,7 @@ async function setupFake() {
   const environment = {
     ...process.env,
     ARMADRA_DATA_DIR: data,
-    ...PROBE_CORE_ENV,
+    ...LOOPBACK_OWNER_ENV,
   };
   delete environment.TMUX;
   delete environment.TMUX_PANE;
