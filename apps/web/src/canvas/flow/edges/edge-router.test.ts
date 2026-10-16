@@ -2,7 +2,8 @@ import { describe, expect, it } from "vitest";
 import type { Edge, InternalNode, Node, ReactFlowState } from "@xyflow/react";
 
 import type { Box } from "../../geometry";
-import { EdgeRouter, type LayoutParams } from "./edge-router";
+import { EdgeRouter, type EdgeLayout, type LayoutParams } from "./edge-router";
+import { cornerCuts, MIN_CUT } from "./smooth";
 import type { Position } from "@armadra/shared";
 
 /**
@@ -275,5 +276,203 @@ describe("增量重算", () => {
     expect(initial).toBeLessThan(4000);
     expect(perFrame).toBeLessThan(300);
     expect(release).toBeLessThan(2000);
+  });
+});
+
+describe("派发组一个标签、线不穿标签、拐角不小于下限（#397）", () => {
+  // 1 个协调者 + 3 个 Agent + 1 个独立节点：与 #397 的截图布局一致。
+  const boxes: Record<string, Box> = {
+    coord: { x: 660, y: 0, width: 620, height: 390 },
+    a1: { x: 0, y: 420, width: 620, height: 390 },
+    a2: { x: 660, y: 420, width: 620, height: 390 },
+    a3: { x: 1320, y: 420, width: 620, height: 390 },
+    solo: { x: 1320, y: 0, width: 620, height: 390 },
+  };
+  const nodes = new Map(
+    Object.entries(boxes).map(([id, box]) => internal(id, box)),
+  );
+  const edges = [
+    link("d1", "coord", "a1", "supervises"),
+    link("d2", "coord", "a2", "supervises"),
+    link("d3", "coord", "a3", "supervises"),
+    link("p1", "solo", "coord"),
+  ];
+
+  const layoutsAt = (fontSize: number): Map<string, EdgeLayout> => {
+    const router = new EdgeRouter(fakeStore(nodes, edges));
+    const out = new Map<string, EdgeLayout>();
+    for (const edge of edges) {
+      out.set(edge.id, router.read(edge.id, { ...PARAMS, fontSize })!);
+    }
+    return out;
+  };
+
+  /** 标签有没有被宿主以外的线穿过：与宿主同向共线的段（共用主干）不算。 */
+  function crossed(
+    layouts: Map<string, EdgeLayout>,
+    host: EdgeLayout,
+  ): boolean {
+    const label = host.label!;
+    const hostPoints = host.view.route.points;
+    let horizontal = true;
+    for (let k = 1; k < hostPoints.length; k += 1) {
+      const a = hostPoints[k - 1]!;
+      const b = hostPoints[k]!;
+      if (
+        Math.abs(a.y - label.y) < 1.5 &&
+        a.y === b.y &&
+        label.x >= Math.min(a.x, b.x) &&
+        label.x <= Math.max(a.x, b.x)
+      ) {
+        horizontal = true;
+        break;
+      }
+      if (
+        Math.abs(a.x - label.x) < 1.5 &&
+        a.x === b.x &&
+        label.y >= Math.min(a.y, b.y) &&
+        label.y <= Math.max(a.y, b.y)
+      ) {
+        horizontal = false;
+        break;
+      }
+    }
+    const rect = {
+      x: label.x - label.width / 2,
+      y: label.y - label.height / 2,
+      width: label.width,
+      height: label.height,
+    };
+    for (const layout of layouts.values()) {
+      const points = layout.view.route.points;
+      for (let k = 1; k < points.length; k += 1) {
+        const a = points[k - 1]!;
+        const b = points[k]!;
+        const segHorizontal = a.y === b.y;
+        const line = segHorizontal ? a.y : a.x;
+        const hostLine = horizontal ? label.y : label.x;
+        if (segHorizontal === horizontal && Math.abs(line - hostLine) < 1.5) {
+          continue;
+        }
+        const seg = {
+          x: Math.min(a.x, b.x),
+          y: Math.min(a.y, b.y),
+          width: Math.abs(b.x - a.x),
+          height: Math.abs(b.y - a.y),
+        };
+        if (
+          rect.x < seg.x + seg.width &&
+          rect.x + rect.width > seg.x &&
+          rect.y < seg.y + seg.height &&
+          rect.y + rect.height > seg.y
+        ) {
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+
+  for (const [zoom, fontSize] of [
+    [1, 11],
+    [0.45, 24],
+  ] as const) {
+    it(`缩放 ${zoom}：三条派发线合起来只有一枚「派发」标签`, () => {
+      const layouts = layoutsAt(fontSize);
+      const dispatch = ["d1", "d2", "d3"].map((id) => layouts.get(id)!);
+      expect(dispatch.filter((layout) => layout.label !== null)).toHaveLength(
+        1,
+      );
+      for (const layout of dispatch) expect(layout.text).toBe("派发");
+    });
+
+    it(`缩放 ${zoom}：标签不被任何线穿过，不压节点、箭头与别的标签`, () => {
+      const layouts = layoutsAt(fontSize);
+      const labelled = [...layouts.values()].filter((l) => l.label !== null);
+      expect(labelled.length).toBeGreaterThanOrEqual(1);
+      const rects = labelled.map((layout) => {
+        const label = layout.label!;
+        return {
+          x: label.x - label.width / 2,
+          y: label.y - label.height / 2,
+          width: label.width,
+          height: label.height,
+        };
+      });
+      const arrows: Box[] = [];
+      for (const layout of layouts.values()) {
+        const points = layout.view.route.points;
+        for (const tip of [points[0]!, points[points.length - 1]!]) {
+          arrows.push({ x: tip.x - 11, y: tip.y - 11, width: 22, height: 22 });
+        }
+      }
+      for (const [i, rect] of rects.entries()) {
+        expect(crossed(layouts, labelled[i]!)).toBe(false);
+        for (const box of Object.values(boxes)) {
+          expect(overlaps(rect, box)).toBe(false);
+        }
+        for (const arrow of arrows) expect(overlaps(rect, arrow)).toBe(false);
+        for (const other of rects.slice(i + 1)) {
+          expect(overlaps(rect, other)).toBe(false);
+        }
+      }
+    });
+  }
+
+  it("两个协调者各派一组：两组各一枚标签，互不重叠", () => {
+    const more = new Map(nodes);
+    more.set(...internal("c2", { x: 2400, y: 0, width: 620, height: 390 }));
+    more.set(...internal("b1", { x: 2400, y: 420, width: 300, height: 390 }));
+    more.set(...internal("b2", { x: 2740, y: 420, width: 300, height: 390 }));
+    const all = [
+      ...edges,
+      link("e1", "c2", "b1", "supervises"),
+      link("e2", "c2", "b2", "supervises"),
+    ];
+    const router = new EdgeRouter(fakeStore(more, all));
+    const labelled = all
+      .map((edge) => router.read(edge.id, PARAMS)!)
+      .filter((layout) => layout.label !== null);
+    const dispatchLabels = labelled.filter((layout) => layout.text === "派发");
+    expect(dispatchLabels).toHaveLength(2);
+    const [first, second] = dispatchLabels.map((layout) => layout.label!);
+    expect(
+      overlaps(
+        {
+          x: first!.x - first!.width / 2,
+          y: first!.y - first!.height / 2,
+          width: first!.width,
+          height: first!.height,
+        },
+        {
+          x: second!.x - second!.width / 2,
+          y: second!.y - second!.height / 2,
+          width: second!.width,
+          height: second!.height,
+        },
+      ),
+    ).toBe(false);
+  });
+
+  it("每条线的拐角都是曲线，切入距离不小于下限；路径里没有直接折角", () => {
+    const layouts = layoutsAt(11);
+    for (const layout of layouts.values()) {
+      const { points } = layout.view.route;
+      for (const cut of cornerCuts(points)) {
+        expect(Math.min(cut.before, cut.after)).toBeGreaterThanOrEqual(MIN_CUT);
+      }
+      const corners = points.length - 2;
+      expect((layout.view.d.match(/Q/g) ?? []).length).toBe(corners);
+    }
+  });
+
+  it("派发主干在两排之间的缝（30）里走正中间：离协调者与 Agent 标题栏各 15", () => {
+    const layouts = layoutsAt(11);
+    const trunk = layouts.get("d1")!.view.route.points;
+    const horizontal = trunk.filter(
+      (point, k) => k > 0 && point.y === trunk[k - 1]!.y,
+    );
+    expect(horizontal.length).toBeGreaterThan(0);
+    for (const point of horizontal) expect(point.y).toBe(405);
   });
 });
