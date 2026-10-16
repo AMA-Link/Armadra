@@ -6,10 +6,10 @@
 //      给 APNs `.p8` 与 FCM 服务账号的**文件路径**，`ARMADRA_PUSH_*_ENDPOINT`
 //      指向 push-sink；用启动日志里的配对票换一个会话（Cookie + CSRF）。
 //   2. 建工作空间与一个 Claude 终端节点；设备以 iOS / direct 登记（带 X25519
-//      公钥）；向 hook 面报一次权限请求与一次 Stop，两条都夹着一段「终端原文」。
+//      公钥）；向 hook 面报一次权限请求与一次提问（AskUserQuestion），两条都夹着一段「终端原文」。
 //      断言：push-sink 收到两条 APNs 请求，provider token 是 ES256、kid / iss
 //      对、用 `.p8` 的公钥验得过；正文是信封，设备私钥解开是 §19.4 的载荷
-//      （approval、agentDone），线上与明文里都没有那段终端原文。
+//      （approval、agentWaiting），线上与明文里都没有那段终端原文。
 //   3. 同一台设备改成 Android / direct：令牌端点收到 RS256 断言，FCM 数据消息的
 //      `data.enc` 解得开。
 //   4. 改成浏览器 Web Push：VAPID 由 push-sink 自己验签，aes128gcm 订阅者能解。
@@ -19,7 +19,7 @@
 //      `/up/<topic>`）登记，不看 `push.transport`；分发器收到的是信封。dev-stack
 //      的 ntfy（`--profile ntfy`，127.0.0.1:8093）在的话再对真 ntfy 走一遍：
 //      core POST 到 ntfy 的 UP 端点，从 ntfy 的订阅接口取回消息，设备私钥能解。
-//   7. 设备偏好（契约 §27.1）：PATCH 只留「审批」，再报一次权限请求与一次 Stop，
+//   7. 设备偏好（契约 §27.1）：PATCH 只留「审批」，再报一次权限请求与一次提问（AskUserQuestion），
 //      分发器只收到审批那一条。
 //
 // ntfy：`--ntfy <url>` 或 `ARMADRA_NTFY`；否则看 127.0.0.1:8093 在不在，不在就
@@ -530,6 +530,11 @@ await h.run(async () => {
   if (sink.source !== "in-process") await clearSink(sink.base);
   await hook({ hook_event_name: "SessionStart", session_id: `s-${run}` });
   await hook({ hook_event_name: "UserPromptSubmit", prompt: SECRET });
+  await hook({
+    hook_event_name: "PreToolUse",
+    tool_name: "AskUserQuestion",
+    tool_input: { question: SECRET },
+  });
   await hook(
     {
       hook_event_name: "PermissionRequest",
@@ -538,7 +543,6 @@ await h.run(async () => {
     },
     { pendingId: `pend-${randomUUID()}` },
   );
-  await hook({ hook_event_name: "Stop", last_assistant_message: SECRET });
   const apns = await waitRecords(
     sink.base,
     (record) => record.kind === "apns" && mine(record),
@@ -576,8 +580,8 @@ await h.run(async () => {
     );
   }
   check(
-    kinds.sort().join(",") === "agentDone,approval",
-    "两条事件各一条通知（等人审批、Agent 完成）",
+    kinds.sort().join(",") === "agentWaiting,approval",
+    "两条事件各一条通知（等人审批、等待回答）",
     kinds.join(","),
   );
   // 签名：进程内的 sink 拿到了 .p8 所在目录，真验 ES256；dev-stack 容器里没有
@@ -930,8 +934,13 @@ await h.run(async () => {
   const before = (await sinkRecords(sink.base)).filter(
     (record) => record.kind === "unifiedpush" && record.topic === upTopic,
   ).length;
-  // 先离开 done（新的一轮），再要一次审批、再完成一次。
+  // 先开新的一轮，再要一次审批、再提一次问。
   await hook({ hook_event_name: "UserPromptSubmit", prompt: SECRET });
+  await hook({
+    hook_event_name: "PreToolUse",
+    tool_name: "AskUserQuestion",
+    tool_input: { question: SECRET },
+  });
   await hook(
     {
       hook_event_name: "PermissionRequest",
@@ -940,14 +949,13 @@ await h.run(async () => {
     },
     { pendingId: `pend-${randomUUID()}` },
   );
-  await hook({ hook_event_name: "Stop", last_assistant_message: SECRET });
   await waitRecords(
     sink.base,
     (record) => record.kind === "unifiedpush" && record.topic === upTopic,
     before + 1,
     "审批那一条",
   );
-  // 完成那一条若要发，也早该到了。
+  // 提问那一条若要发，也早该到了。
   await sleep(1500);
   const delivered = (await sinkRecords(sink.base))
     .filter(
@@ -957,7 +965,7 @@ await h.run(async () => {
     .map((record) => openUp(record).kind);
   check(
     delivered.join(",") === "approval",
-    "关掉「Agent 完成」之后只收到审批",
+    "偏好只留审批之后只收到审批",
     delivered.join(","),
   );
   // 对照：恢复全部之后同样一轮两条都到——上面少的那条确实是偏好拦下的。
@@ -970,6 +978,11 @@ await h.run(async () => {
   );
   const restoredFrom = before + delivered.length;
   await hook({ hook_event_name: "UserPromptSubmit", prompt: SECRET });
+  await hook({
+    hook_event_name: "PreToolUse",
+    tool_name: "AskUserQuestion",
+    tool_input: { question: SECRET },
+  });
   await hook(
     {
       hook_event_name: "PermissionRequest",
@@ -978,7 +991,6 @@ await h.run(async () => {
     },
     { pendingId: `pend-${randomUUID()}` },
   );
-  await hook({ hook_event_name: "Stop", last_assistant_message: SECRET });
   const both = (
     await waitRecords(
       sink.base,
@@ -991,8 +1003,8 @@ await h.run(async () => {
     .map((record) => openUp(record).kind)
     .sort();
   check(
-    both.join(",") === "agentDone,approval",
-    "恢复全部种类后同一轮收到审批与完成",
+    both.join(",") === "agentWaiting,approval",
+    "恢复全部种类后同一轮收到审批与等待回答",
     both.join(","),
   );
 });
