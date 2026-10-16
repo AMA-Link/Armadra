@@ -386,6 +386,15 @@ describe("creating and recycling", () => {
   });
 });
 
+describe("a create whose row cannot be written", () => {
+  it("reaps the process it already started instead of leaking its pty", async () => {
+    const { manager, backend, database } = harness();
+    database.exec("DROP TABLE terminal_sessions");
+    await expect(spawn(manager, "node-a")).rejects.toThrow();
+    expect(backend.calls).toContain("terminate:node-a:session");
+  });
+});
+
 describe("the input ledger across connections", () => {
   /**
    * The ledger outlives the socket, which is the whole point: the socket that

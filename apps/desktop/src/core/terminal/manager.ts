@@ -65,6 +65,7 @@ import {
 } from "./drive";
 import { HIBERNATE_INTENT, rowHibernated } from "./hibernate";
 import { destroyRowBackend, reapPersistent } from "./reap";
+import { insertSessionRow } from "./session-row";
 import { type ObservedActivity } from "../agent/target-state";
 import { allows } from "../identity/gate";
 import { scope } from "../identity/scopes";
@@ -87,10 +88,6 @@ import {
  *   * the **sweeper** (every 10 min) — contract §15.6's reclamation;
  *   * the **dormancy** pass (every 5 s) — design §7.2's delivery budget;
  *   * **start-up reconciliation**, once, before the first request is served.
- *
- * The columns written here are the Rust Runtime's, and are written with the
- * same values, because both implementations open the same database during the
- * changeover.
  *
  * ## One writer per key
  *
@@ -387,28 +384,29 @@ export class TerminalManager {
 
       const createdAt = this.now();
       const rowKind = request.kind ?? "terminal";
-      this.database
-        .prepare(
-          `INSERT INTO terminal_sessions (id, workspace_id, cwd, shell, command, kind,
-             owner_node_id, agent_id, status, created_at, session_key, backend_kind,
-             backend_ref, generation, attach_state, termination_intent)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'running', ?, ?, ?, ?, ?, 'detached', 'none')`,
-        )
-        .run(
+      try {
+        insertSessionRow(this.database, {
           id,
-          request.workspaceId,
-          request.cwd,
+          workspaceId: request.workspaceId,
+          cwd: request.cwd,
           shell,
-          request.command ?? null,
-          rowKind,
-          request.ownerNodeId ?? null,
-          request.agentId ?? null,
+          command: request.command ?? null,
+          kind: rowKind,
+          ownerNodeId: request.ownerNodeId ?? null,
+          agentId: request.agentId ?? null,
           createdAt,
           key,
-          kind,
-          handle.backendRef ?? null,
-          handle.generation,
-        );
+          backendKind: kind,
+          backendRef: handle.backendRef ?? null,
+          generation: handle.generation,
+        });
+      } catch (failure) {
+        // The process is up behind a key no row names: reap it, or it keeps its pty.
+        await this.backend(kind)
+          .terminate(key, "session")
+          .catch(() => {});
+        throw failure;
+      }
 
       this.remember({
         id,
