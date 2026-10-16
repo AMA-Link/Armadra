@@ -3,7 +3,7 @@ import type { CanvasEdgeRole, CanvasNode, Position } from "@armadra/shared";
 
 import { dispatchAnchor, type Box, type LinkAnchor } from "../../geometry";
 import { getDrafts } from "../drafts";
-import { placeLabel, type LabelBox } from "./edge-label";
+import { placeLabelOn, type LabelBox, type Stroke } from "./edge-label";
 import { sameScene, sceneOf, type EdgeScene } from "./edge-scene";
 import {
   ARROW_SIZE,
@@ -14,6 +14,7 @@ import {
 } from "./link-visual";
 import { nudge, type NudgeInput } from "./nudge";
 import { roundedPath, type SidePair } from "./route";
+import { cornerCuts, smoothPath, type Cut } from "./smooth";
 
 /**
  * 一张画布上所有连线的布局（#318）：路线、分道、标签，一处算、按边取。
@@ -45,6 +46,12 @@ export interface LayoutParams {
   /** 标签字号（画布单位）；0 表示不画标签。 */
   fontSize: number;
   t: (key: string) => string;
+}
+
+interface Shape {
+  scene: EdgeScene;
+  points: readonly Position[];
+  cuts: Cut[];
 }
 
 interface Cached {
@@ -116,6 +123,7 @@ export class EdgeRouter {
   private readonly store: StoreLike;
   private readonly cache = new Map<string, Cached>();
   private layouts = new Map<string, EdgeLayout | null>();
+  private shapes = new Map<string, Shape>();
   private lastState: ReactFlowState | null = null;
   private lastFingerprint = NaN;
   private lastEdges: unknown = null;
@@ -252,7 +260,8 @@ export class EdgeRouter {
 
     const nudged = nudge(inputs);
 
-    // 标签：派发线先摆，其次上下文线、引用线；每枚都避开节点与已经摆好的标签。
+    // 标签：派发线先摆，其次上下文线、引用线；每枚都避开节点、箭头、已经摆好的
+    // 标签与别的线。同一束（同一个主派出去的派发线）共用主干，只摆一枚。
     const order = [...inputs].sort((a, b) =>
       a.priority === b.priority
         ? a.id < b.id
@@ -262,45 +271,83 @@ export class EdgeRouter {
             : 0
         : a.priority - b.priority,
     );
-    // 所有线两端的箭头都不能压（别的线的箭头也一样）。
-    const tips: Box[] = [];
+    const bundles = new Map<string, NudgeInput[]>();
+    for (const input of order) {
+      const list = bundles.get(input.bundle) ?? [];
+      list.push(input);
+      bundles.set(input.bundle, list);
+    }
+    // 折线与拐角的切入距离：曲线占掉的那一截不放标签，路径也用同一份。
+    const shapes = new Map<string, Shape>();
     for (const input of inputs) {
       const points = nudged.get(input.id) ?? input.points;
+      const scene = scenes.get(input.id)!;
+      // 折线和附近障碍都没变就沿用上一次的切入距离（拖动时远处的线）。
+      const old = this.shapes.get(input.id);
+      shapes.set(
+        input.id,
+        old && old.scene === scene && samePoints(old.points, points)
+          ? old
+          : { scene, points, cuts: cornerCuts(points, scene.obstacles) },
+      );
+    }
+    this.shapes = shapes;
+    // 所有线两端的箭头都不能压（别的线的箭头也一样）。
+    const tips: Box[] = [];
+    const strokes: Stroke[] = [];
+    for (const input of inputs) {
+      const points = shapes.get(input.id)!.points;
       tips.push(tipBox(points[0]!), tipBox(points[points.length - 1]!));
+      strokes.push(...strokeSegments(input.id, input.bundle, points));
     }
     const placed: Box[] = [...tips];
-    // 别的线的线段（同一束共用主干的不算）：标签也不能压在别的线上。
-    const strokes = inputs.map((input) => ({
-      bundle: input.bundle,
-      boxes: segmentBoxes(nudged.get(input.id) ?? input.points),
-    }));
+    const labels = new Map<string, LabelBox | null>();
+    const texts = new Map<string, string>();
+    for (const input of order) {
+      const view = views.get(input.id)!;
+      texts.set(input.id, view.labelKey ? params.t(view.labelKey) : "");
+    }
+    for (const group of bundles.values()) {
+      const text = texts.get(group[0]!.id)!;
+      for (const input of group) labels.set(input.id, null);
+      if (params.fontSize <= 0 || text === "") continue;
+      const first = scenes.get(group[0]!.id)!;
+      const placement = placeLabelOn(
+        group.map((input) => ({
+          edge: input.id,
+          bundle: input.bundle,
+          points: shapes.get(input.id)!.points,
+          cuts: shapes.get(input.id)!.cuts,
+        })),
+        text,
+        params.fontSize,
+        [
+          ...group.flatMap((input) => {
+            const scene = scenes.get(input.id)!;
+            return [scene.source, scene.target];
+          }),
+          ...first.obstacles,
+          ...placed,
+        ],
+        strokes,
+      );
+      if (!placement) continue;
+      const { edge, ...label } = placement;
+      labels.set(edge, label);
+      // `placed` 前面是箭头，后面是已经摆好的标签。
+      placed.push({
+        x: label.x - label.width / 2,
+        y: label.y - label.height / 2,
+        width: label.width,
+        height: label.height,
+      });
+    }
     const next = new Map<string, EdgeLayout | null>();
     for (const input of order) {
       const view = views.get(input.id)!;
-      const scene = scenes.get(input.id)!;
-      const points = nudged.get(input.id) ?? view.route.points;
-      const text = view.labelKey ? params.t(view.labelKey) : "";
-      const label =
-        params.fontSize > 0 && text !== ""
-          ? placeLabel(points, text, params.fontSize, [
-              scene.source,
-              scene.target,
-              ...scene.obstacles,
-              ...placed,
-              ...strokes.flatMap((stroke) =>
-                stroke.bundle === input.bundle ? [] : stroke.boxes,
-              ),
-            ])
-          : null;
-      if (label) {
-        // `placed` 前面是箭头，后面是已经摆好的标签。
-        placed.push({
-          x: label.x - label.width / 2,
-          y: label.y - label.height / 2,
-          width: label.width,
-          height: label.height,
-        });
-      }
+      const { points, cuts } = shapes.get(input.id)!;
+      const text = texts.get(input.id)!;
+      const label = labels.get(input.id) ?? null;
       const previous = this.layouts.get(input.id);
       if (
         previous &&
@@ -314,14 +361,11 @@ export class EdgeRouter {
         next.set(input.id, previous);
         continue;
       }
-      const final: LinkView =
-        points === view.route.points
-          ? view
-          : {
-              ...view,
-              route: { ...view.route, points },
-              d: roundedPath(points, CORNER_RADIUS),
-            };
+      const final: LinkView = {
+        ...view,
+        route: { ...view.route, points: [...points] },
+        d: smoothPath(points, cuts),
+      };
       next.set(input.id, { view: final, text, label });
     }
     this.layouts = next;
@@ -331,20 +375,32 @@ export class EdgeRouter {
 /** 线条的粗细（含描边与一点余量），标签按这个宽度避开别的线。 */
 const STROKE_BAND = 3;
 
-/** 折线每一段占的细长矩形。 */
-function segmentBoxes(points: readonly Position[]): Box[] {
-  const boxes: Box[] = [];
+/** 折线每一段（带身份与细长外框），标签据此判断有没有被线穿过。 */
+function strokeSegments(
+  edge: string,
+  bundle: string,
+  points: readonly Position[],
+): Stroke[] {
+  const out: Stroke[] = [];
   for (let k = 1; k < points.length; k += 1) {
     const a = points[k - 1]!;
     const b = points[k]!;
-    boxes.push({
-      x: Math.min(a.x, b.x) - STROKE_BAND,
-      y: Math.min(a.y, b.y) - STROKE_BAND,
-      width: Math.abs(b.x - a.x) + STROKE_BAND * 2,
-      height: Math.abs(b.y - a.y) + STROKE_BAND * 2,
+    const horizontal = a.y === b.y;
+    out.push({
+      edge,
+      k,
+      bundle,
+      horizontal,
+      at: horizontal ? a.y : a.x,
+      box: {
+        x: Math.min(a.x, b.x) - STROKE_BAND,
+        y: Math.min(a.y, b.y) - STROKE_BAND,
+        width: Math.abs(b.x - a.x) + STROKE_BAND * 2,
+        height: Math.abs(b.y - a.y) + STROKE_BAND * 2,
+      },
     });
   }
-  return boxes;
+  return out;
 }
 
 /** 端点处箭头占的那一小块。 */
@@ -368,7 +424,7 @@ function referenceView(scene: EdgeScene, previous?: SidePair): LinkView {
   );
   return {
     route,
-    d: roundedPath(route.points, CORNER_RADIUS),
+    d: roundedPath(route.points, CORNER_RADIUS, scene.obstacles),
     labelKey: "edge.reference",
     arrowStart: false,
     arrowEnd: true,
