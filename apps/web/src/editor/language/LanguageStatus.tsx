@@ -14,8 +14,8 @@ import { statusLabelKey, type SessionStatus } from "./status-store";
  *
  * 它替换掉从前写死的「LSP 未启用」。三种情况说三句不同的话：
  *
- *  * 文件根本不适用（非 UTF-8、超过 1 MiB、认不出语言）→「LSP 不适用」，
- *    点不开——没有会话可重启。
+ *  * 文件根本不适用（非 UTF-8、超过 1 MiB、认不出语言）→ 不画：没有会话
+ *    可重启，说一句「不适用」只是每个纯文本文件多一个词。
  *  * 有会话 → 状态 +（不可用时）原因；点开可以重启 / 停止那台 server。
  *  * 这个节点是跟随者（§2.5）→ 额外说一句「跟随另一节点」，因为它的编辑
  *    确实不进 LSP，用户该知道。
@@ -40,9 +40,8 @@ export function LanguageStatus({
   const counts = React.useMemo(() => countDiagnostics(byUri), [byUri]);
   const [busy, setBusy] = React.useState(false);
 
-  if (!applicable) {
-    return <span className="ml-auto">{t("lsp.notApplicable")}</span>;
-  }
+  // 文件不适用语言服务（非 UTF-8、过大、认不出语言）：没有会话可说，什么都不画。
+  if (!applicable) return null;
 
   const label = t(statusLabelKey(status as SessionStatus | undefined));
   const reason =

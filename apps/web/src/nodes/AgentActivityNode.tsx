@@ -1,8 +1,6 @@
 import * as React from "react";
 
-import { Badge } from "@/ui/badge";
 import { Button } from "@/ui/button";
-import { StatusPill } from "@/ui/status-pill";
 import { proposePlanFromNative } from "@/panels/automation/open";
 import { featureEnabled } from "@/lib/features";
 import { useAgentStatus } from "@/agent/status-store";
@@ -50,11 +48,6 @@ export function AgentActivityNode({ id, node, selected }: NodeBodyProps) {
     <NodeShell
       node={node}
       selected={selected}
-      headerChips={
-        <Badge variant="outline">
-          {t(`activity.source.${data?.source ?? "loop"}`)}
-        </Badge>
-      }
       {...(status?.state === "working" ? { glow: "working" as const } : {})}
     >
       <div
@@ -68,15 +61,9 @@ export function AgentActivityNode({ id, node, selected }: NodeBodyProps) {
           </p>
         ) : (
           <>
-            <div className="flex flex-wrap items-center gap-2">
-              <StatusPill
-                tone={status?.state === "working" ? "working" : "unread"}
-                label={t("activity.readOnly")}
-              />
-              <span className="min-w-0 truncate font-medium">
-                {source.title}
-              </span>
-            </div>
+            <span className="block min-w-0 truncate font-medium">
+              {source.title}
+            </span>
             <p className="text-muted-foreground">
               {t("activity.iterations", { count: cards.length })}
             </p>
@@ -91,33 +78,6 @@ export function AgentActivityNode({ id, node, selected }: NodeBodyProps) {
             ) : (
               <p className="text-muted-foreground">{t("activity.none")}</p>
             )}
-            <dl className="grid min-w-0 grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-[11px] text-muted-foreground">
-              {data?.sessionId ? (
-                <>
-                  <dt>{t("activity.session")}</dt>
-                  <dd className="min-w-0 truncate select-text">
-                    {data.sessionId}
-                  </dd>
-                </>
-              ) : null}
-              {data?.nativeJobId ? (
-                <>
-                  <dt>{t("activity.job")}</dt>
-                  <dd className="min-w-0 truncate select-text">
-                    {data.nativeJobId}
-                  </dd>
-                </>
-              ) : null}
-              {data && data.generation > 0 ? (
-                <>
-                  <dt>{t("activity.generation")}</dt>
-                  <dd className="min-w-0 truncate">{data.generation}</dd>
-                </>
-              ) : null}
-            </dl>
-            <p className="text-[11px] text-muted-foreground">
-              {t("activity.hideOnly")}
-            </p>
             {/* 定时任务暂时下线（#295）时没有「转为平台计划」的去处，整段不出。 */}
             {featureEnabled("scheduledTasks") ? (
               <>
@@ -132,6 +92,9 @@ export function AgentActivityNode({ id, node, selected }: NodeBodyProps) {
                   variant="secondary"
                   className="min-h-8 w-full"
                   disabled={!canConvert}
+                  title={
+                    canConvert ? undefined : t("activity.convertUnavailable")
+                  }
                   onClick={() =>
                     proposePlanFromNative({
                       targetKind: "agent",
@@ -149,11 +112,6 @@ export function AgentActivityNode({ id, node, selected }: NodeBodyProps) {
                 >
                   {t("activity.convert")}
                 </Button>
-                <p className="text-[11px] text-muted-foreground">
-                  {canConvert
-                    ? t("activity.convertNote")
-                    : t("activity.convertUnavailable")}
-                </p>
               </>
             ) : null}
           </>

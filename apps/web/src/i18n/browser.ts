@@ -17,7 +17,6 @@ const zh = {
   "browser.reload": "刷新",
   "browser.stop": "停止",
   "browser.openExternal": "外部打开",
-  "browser.preview": "预览",
   "browser.state.unsupported": "不可用",
 
   /* 远程画面流（R6c）：服务器壳上没有窗口，画的是 headless 浏览器的帧。 */
@@ -108,7 +107,6 @@ const en: Record<keyof typeof zh, string> = {
   "browser.reload": "Reload",
   "browser.stop": "Stop",
   "browser.openExternal": "Open externally",
-  "browser.preview": "Preview",
   "browser.state.unsupported": "Unavailable",
 
   "browser.stream.live": "Remote view",

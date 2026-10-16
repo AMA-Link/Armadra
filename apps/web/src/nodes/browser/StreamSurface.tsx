@@ -1,6 +1,5 @@
 import * as React from "react";
 
-import { Badge } from "@/ui/badge";
 import { useT } from "@/app/preferences-store";
 import { useCanvasStore } from "@/store/canvas-store";
 import { browserStreamUrl } from "@/api/sockets";
@@ -190,7 +189,6 @@ export function StreamSurface({ id, node, selected }: NodeBodyProps) {
                 : "queued",
         label,
       }}
-      headerChips={<Badge variant="outline">{t("browser.preview")}</Badge>}
     >
       <div
         ref={boxRef}

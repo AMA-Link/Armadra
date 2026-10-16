@@ -23,7 +23,6 @@ export const languageService: MessageModule = {
     "lsp.pathOverride": "可执行文件路径",
     "lsp.pathPlaceholder": "留空则在 PATH 中查找",
     "lsp.noServers": "没有可列出的语言",
-    "lsp.notApplicable": "LSP 不适用",
     "lsp.following": "LSP 跟随另一节点",
 
     "lsp.state.none": "LSP 未启用",
@@ -117,7 +116,6 @@ export const languageService: MessageModule = {
     "lsp.pathOverride": "Executable path",
     "lsp.pathPlaceholder": "Leave empty to look it up on PATH",
     "lsp.noServers": "No languages to list",
-    "lsp.notApplicable": "LSP not applicable",
     "lsp.following": "LSP follows another node",
 
     "lsp.state.none": "LSP not enabled",
