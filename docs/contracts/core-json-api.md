@@ -80,6 +80,8 @@ R7a 之前 GitHub 与自动化两块面板走的是 `/rpc/armadra.v1.*`：二进
 
 **Cookie 会话的页面**（服务器壳托管、手机浏览器经 Gateway）：访问 Cookie 过期后，发往本机源的请求遇会话失效的 401（`unauthenticated` 或没有码）先续一次会话再重放一次（`apps/web/src/sources/transport.ts::cookieFetch`），重放的写请求换上续期后的 CSRF；身份面、具名 401 与流式请求体不重放。续期（`api/identity.ts::renewCookieSession`）同一窗口内共用一次，跨窗口在 Web Lock `armadra.identity.session-refresh` 里排队，拿到锁先 `GET /api/identity/session`，别的窗口已经续上（Cookie 共用）就不再刷新；内存里没有 CSRF 先 `POST session/csrf`。流被 4401 关掉后经同一个续期续上再重连，不再停在「已断开」。
 
+**到期前主动续期**：页面拿到 Cookie 会话（配对、登录、刷新、刷新页面后 `GET session`）就按答复里的 `expiresAtUnixMs` 排期，到期前两分钟（与桌面壳的 Bearer 同一个提前量）调同一个 `renewCookieSession`，所以访问期一过 core 复核长连接时它们已经换上了新的会话，不必各自先断一次。主动续期拿到锁后 `GET session`，到期时刻比排期时记下的更晚就是别的窗口已经续过，采用它的并按新时刻重排，不再刷新；否则 `POST session/refresh`，新答复再排下一次。续不上不重排，留给请求层遇 401 的那条路。Bearer 传输不排这个期。
+
 ### 3.3 稳定的 `code`
 
 GitHub 那一面（§5、§41.1）的 `code` 自协议 1.11 起是 snake_case，与其余 `/api/` 一致，取自错误码注册表（`packages/shared/src/contract/errors.ts`）；从前的 UPPER_SNAKE 拼法（延续自历史上 `/rpc/` 兼容面，R7 已删除）已换掉，状态与固定的英文原话不变：
