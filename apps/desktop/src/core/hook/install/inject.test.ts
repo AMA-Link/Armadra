@@ -255,6 +255,40 @@ describe("canvas injection", () => {
     );
   });
 
+  it("hands Codex the canvas tools as an MCP server on the launch line only", () => {
+    // The sandbox denies the shell every connect(); an MCP server Codex starts
+    // outside it is the way that opens no network (codex-mcp.ts).
+    const args = codexArgs("c", undefined, true, false, "/opt/armadra hook");
+    const index = args.findIndex((arg) => arg.startsWith("mcp_servers."));
+    expect(args[index - 1]).toBe("-c");
+    const definition = args[index] as string;
+    expect(definition).toContain(
+      'mcp_servers.armadra={command="/opt/armadra hook"',
+    );
+    expect(definition).toContain('args=["mcp"]');
+    expect(definition).toContain('default_tools_approval_mode="approve"');
+    for (const name of [
+      "ARMADRA_NODE_ID",
+      "ARMADRA_ENDPOINT_FILE",
+      "ARMADRA_SESSION_ID",
+      "ARMADRA_SESSION_GENERATION",
+    ]) {
+      expect(definition).toContain(JSON.stringify(name));
+    }
+    // Names only: no value and no token travel on the command line.
+    expect(definition).not.toContain("ARMADRA_NODE_TOKEN=");
+    // No sandbox or network override rides along.
+    expect(args.join(" ")).not.toMatch(
+      /network|sandbox|danger|permissions|unix_sockets/,
+    );
+    // Without a client there is no server.
+    expect(
+      codexArgs("c", undefined, true, false).some((arg) =>
+        arg.startsWith("mcp_servers."),
+      ),
+    ).toBe(false);
+  });
+
   it("gates Codex's hooks on its probed version", () => {
     prepare("codex");
     const old = canvasInjection({
