@@ -441,7 +441,7 @@ G5-02 追加：`POST credentials` 的答案多 `revokedSessions`（数字）：�
 `GET /api/usage/cost` 与 `POST /api/usage/cost/refresh` 里每个 agent 的成本行（`ranges.*.byAgent[]` 与 `ranges.*.points[].agents[]`）多两个字段（代码在 `core/usage/cost.ts` 的 `AgentCost`，共享层 `costAgentSchema`）：
 
 - `unit`：`"tokens"` 或 `"premiumRequests"`。共享层缺省 `"tokens"`。
-- `requests`：`unit` 为 `"premiumRequests"` 时的请求数；`"tokens"` 的行恒为 0。共享层缺省 0。
+- `requests`：`unit` 为 `"premiumRequests"` 时的请求数；`"tokens"` 的行通常为 0（Copilot 1.0.9x 的高级模型同时有 token 与请求数，按 token 展示，`requests` 仍带着）。共享层缺省 0。
 
 ```json
 {

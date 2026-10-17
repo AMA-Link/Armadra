@@ -263,7 +263,7 @@ describe("Copilot 成本", () => {
   it("累计值取末值，按增量记到各自的时间点，不逐行求和", () => {
     const source = costSource("copilot");
     expect(source?.unit).toBe("premiumRequests");
-    expect(source?.needles.map(String)).toEqual(['"session.usage_checkpoint"']);
+    expect(source?.needles.map(String)).toContain('"session.usage_checkpoint"');
     const state = fileState();
     const context = { nowMs: NOW, seen: new Set<number>() };
     const stamps = [
@@ -296,6 +296,99 @@ describe("Copilot 成本", () => {
       0,
     );
     expect(total).toBe(10);
+  });
+
+  it("1.0.9x 的 usage_record 记 token：input 去掉缓存读，按 apiCallId 去重", () => {
+    const source = costSource("copilot");
+    expect(source?.needles.map(String)).toContain('"session.usage_record"');
+    const state = fileState();
+    const context = { nowMs: NOW, seen: new Set<number>() };
+    const record = (apiCallId: string, usage: Record<string, unknown>) => ({
+      type: "session.usage_record",
+      timestamp: "2026-09-20T11:00:00Z",
+      data: {
+        usage: {
+          model: "gpt-5-mini",
+          provider: { id: "copilot" },
+          apiCallId,
+          reasoningTokens: 64,
+          cost: 0,
+          ...usage,
+        },
+      },
+    });
+    const lines = [
+      record("call-1", { inputTokens: 25332, outputTokens: 81 }),
+      record("call-2", {
+        inputTokens: 25378,
+        outputTokens: 62,
+        cacheReadTokens: 25216,
+      }),
+      // 同一个 apiCallId 重放：不再记。
+      record("call-2", {
+        inputTokens: 25378,
+        outputTokens: 62,
+        cacheReadTokens: 25216,
+      }),
+      // 没有任何 token：不记。
+      record("call-3", {}),
+      {
+        type: "session.usage_checkpoint",
+        timestamp: "2026-09-20T11:00:01Z",
+        data: { totalNanoAiu: 728990000, totalPremiumRequests: 0 },
+      },
+    ];
+    for (const line of lines) source?.absorb(state, line, context);
+    const key = bucketKey(
+      localDate("2026-09-20T11:00:00Z", NOW),
+      "copilot",
+      "gpt-5-mini",
+    );
+    expect(state.buckets.get(key)).toEqual({
+      input: 25332 + (25378 - 25216),
+      output: 81 + 62,
+      cacheRead: 25216,
+      cacheCreation: 0,
+    });
+    expect(state.requestBuckets?.size ?? 0).toBe(0);
+  });
+
+  it("1.0.9x 会话：非高级模型的行按 token 展示，tokens 非 0", async () => {
+    const day = new Date(Date.now() - 3_600_000).toISOString();
+    const stamp = (offset: number) =>
+      new Date(Date.parse(day) + offset).toISOString();
+    writeSession(SID, [
+      event("session.start", { sessionId: SID }, stamp(0)),
+      event(
+        "session.usage_record",
+        {
+          usage: {
+            model: "gpt-5-mini",
+            apiCallId: "a-1",
+            inputTokens: 14000,
+            outputTokens: 120,
+            cacheReadTokens: 0,
+            cacheWriteTokens: 0,
+          },
+        },
+        stamp(1000),
+      ),
+      event(
+        "session.usage_checkpoint",
+        { totalNanoAiu: 649500000, totalPremiumRequests: 0 },
+        stamp(2000),
+      ),
+    ]);
+    const scan = await new ScanState().scan(
+      copilotAdapter.roots().map((root) => ["copilot", root] as const),
+    );
+    const summary = summarize(scan, BUILT_IN_PRICES, Date.now());
+    const row = summary.ranges["24h"].byAgent.find(
+      (one) => one.agent === "copilot",
+    );
+    expect(row).toMatchObject({ unit: "tokens", source: "local", requests: 0 });
+    expect(row?.tokens.input).toBe(14000);
+    expect(row?.tokens.output).toBe(120);
   });
 
   it("扫描出来的 Copilot 行是请求数，不进 token 合计", async () => {

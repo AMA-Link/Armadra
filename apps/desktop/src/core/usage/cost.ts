@@ -125,7 +125,8 @@ export type CostAgentSource = "local" | "none";
  *
  * `unit` 是 `"premiumRequests"` 时用量在 `requests`，`tokens` 是零、`costUsd` 是
  * 0、`complete` 为真——请求数不折算成金额（设计 `cli-collaboration.md` §10）。
- * `"tokens"` 的行 `requests` 是 0。
+ * `"tokens"` 的行 `requests` 通常是 0；Copilot 的高级模型同时有 token 与请求数，
+ * 这时按 token 展示，`requests` 仍带着。
  */
 export interface AgentCost {
   readonly agent: AgentId;
@@ -1122,7 +1123,9 @@ function agentCosts(
     const window = windowFrom(entries ?? [], prices);
     out.push({
       agent,
-      unit: unitOf(agent),
+      // 声明按请求计的来源（Copilot）一旦有 token（1.0.9x 的 usage_record），就按 token 展示。
+      unit:
+        entries !== undefined && entries.length > 0 ? "tokens" : unitOf(agent),
       tokens: window.tokens,
       requests: count ?? 0,
       costUsd: window.costUsd,
