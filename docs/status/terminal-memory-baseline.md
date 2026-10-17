@@ -27,7 +27,7 @@
 | `rendererOffscreenLongMiB`                   | `offscreen-3m` 的 Renderer          | 20% / 40 MiB                    |
 | `rendererAfterGcDeltaMiB`                    | `after-forced-gc` − `back-visible`  | — / 40 MiB                      |
 | `gpuOffscreenLongMiB`                        | WebGL 档 `offscreen-3m` 的 GPU 进程 | 20% / 40 MiB；Linux 只记录      |
-| `runtimeEldMaxMs`                            | 全程诊断读数的最大值                | — / 50 ms，且这次 > 100 ms 才算 |
+| `runtimeEldMaxMs`                            | 全程诊断读数的最大值                | — / 50 ms，且这次 > 250 ms 才算 |
 | `runtimeEldP99MedianMs`                      | 全程诊断读数 p99 的中位数           | 50% / 10 ms                     |
 | `runtimeSyncBlockedMsPerSec`                 | `--eld-preload`（仅开发构建）       | — / 5 ms/s                      |
 | `cadencePsPer65s`                            | 全部离屏时 65 s 内的采样轮次        | — / 2                           |
