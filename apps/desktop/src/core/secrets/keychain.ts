@@ -60,6 +60,9 @@ export const realSecurityTool: SecurityTool = (args, stdin) =>
         resolve({ code, stdout: typeof stdout === "string" ? stdout : "" });
       },
     );
+    // `security` 可能没读标准输入就退了（钥匙串锁着、没有登录会话）：写端随后
+    // 收到 EPIPE。没有监听器的 'error' 会让 core 整个崩掉；这里的答案是退出码。
+    child.stdin?.on("error", () => {});
     child.stdin?.end(stdin ?? "");
   });
 

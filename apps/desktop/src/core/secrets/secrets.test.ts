@@ -26,6 +26,7 @@ import {
   encryptedFileBackend,
   ipcSealer,
   keychainBackend,
+  realSecurityTool,
   legacyFile,
   loadOrCreateMasterKey,
   masterKeyId,
@@ -749,4 +750,26 @@ describe.runIf(process.platform === "win32")("DPAPI（Windows）", () => {
     );
     expect(await backend.get("armadra-x")).toBe("dpapi-value");
   }, 60_000);
+});
+
+describe("realSecurityTool", () => {
+  it.skipIf(process.platform === "win32")(
+    "工具没读标准输入就退出时给出退出码，不抛未处理的 EPIPE",
+    async () => {
+      const bin = tempDir("armadra-fake-security-");
+      const script = join(bin, "security");
+      writeFileSync(script, "#!/bin/sh\nexit 36\n");
+      chmodSync(script, 0o755);
+      const before = process.env.PATH;
+      process.env.PATH = `${bin}:${before ?? ""}`;
+      try {
+        // 远大于管道缓冲，工具退出后写端必然撞上 EPIPE。
+        const result = await realSecurityTool(["-i"], "x".repeat(4 << 20));
+        expect(result.code).toBe(36);
+        await new Promise((done) => setTimeout(done, 50));
+      } finally {
+        process.env.PATH = before;
+      }
+    },
+  );
 });
