@@ -154,19 +154,19 @@ test("compare: 只看绝对差的项、下限、精确断言与只记录的平�
     ).rendererAfterGcDeltaMiB.regressed,
     false,
   );
-  // 事件循环最大延迟：差 50 以上、并且这次超过 100 ms 才算。
+  // 事件循环最大延迟：差 50 以上、并且这次超过 250 ms 才算。
   assert.equal(
-    by(compare({ runtimeEldMaxMs: 95 }, { runtimeEldMaxMs: 20 }))
+    by(compare({ runtimeEldMaxMs: 190 }, { runtimeEldMaxMs: 20 }))
       .runtimeEldMaxMs.regressed,
     false,
   );
   assert.equal(
-    by(compare({ runtimeEldMaxMs: 140 }, { runtimeEldMaxMs: 20 }))
+    by(compare({ runtimeEldMaxMs: 300 }, { runtimeEldMaxMs: 20 }))
       .runtimeEldMaxMs.regressed,
     true,
   );
   assert.equal(
-    by(compare({ runtimeEldMaxMs: 140 }, { runtimeEldMaxMs: 100 }))
+    by(compare({ runtimeEldMaxMs: 300 }, { runtimeEldMaxMs: 260 }))
       .runtimeEldMaxMs.regressed,
     false,
   );

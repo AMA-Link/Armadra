@@ -230,7 +230,7 @@
 | `rendererOffscreenLongMiB`（释放后）                        | 207                         | ≤ 空画布 + 15         | 20% / 40                               |
 | `rendererAfterGcDeltaMiB`（after-forced-gc − back-visible） | −67                         | ≤ +40                 | — / 40                                 |
 | `gpuOffscreenLongMiB`（WebGL 档）                           | 317                         | ≤ 130                 | 20% / 40                               |
-| `runtimeEldMaxMs`（全程最大）                               | 1484                        | ≤ 50                  | — / 50（> 100 才算回归）               |
+| `runtimeEldMaxMs`（全程最大）                               | 1484                        | ≤ 50                  | — / 50（> 250 才算回归）               |
 | `runtimeEldP99MedianMs`                                     | 15–30                       | ≤ 15                  | 50% / 10                               |
 | `runtimeSyncBlockedMsPerSec`（仅未打包壳）                  | 40–55                       | 0                     | — / 5                                  |
 | `cadencePsPer65s`（全部离屏）                               | 31                          | ≤ 3                   | — / 2                                  |

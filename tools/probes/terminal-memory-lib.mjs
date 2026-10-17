@@ -566,7 +566,9 @@ export const METRICS = {
     better: "lower",
     relative: null,
     slack: 50,
-    floor: 100,
+    // 托管运行器上偶发一次 150–470 ms 的离群（同一提交的相邻夜间运行里有的过有的
+    // 不过）；改异步前的真实阻塞是 1484 ms，且 p99 中位数那一项盯着持续变慢。
+    floor: 250,
     unit: "ms",
     label: "Runtime 事件循环最大延迟",
   },
