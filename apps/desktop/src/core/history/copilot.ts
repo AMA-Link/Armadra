@@ -7,11 +7,18 @@ import {
   readLines,
   title,
 } from "../conversations/scan";
-import { recordRequests } from "../usage/cost-buckets";
-import { asRecord, number } from "./cost-lines";
+import {
+  type FileState,
+  type TokenTotals,
+  isEmptyTokens,
+  record as recordTokens,
+  recordRequests,
+} from "../usage/cost-buckets";
+import { asRecord, duplicate, number } from "./cost-lines";
 import { isFile, readRange } from "./files";
 import { configRoot } from "./home";
 import type {
+  AbsorbContext,
   AgentCostSource,
   Block,
   EntryRange,
@@ -32,8 +39,9 @@ import type {
  * `assistant.message` → assistant（`toolRequests` → 工具调用）；`hook.*`、
  * `thinking`、`tool.execution_*`、`session.*` 等事件跳过。
  *
- * 用量不按 token 计：`session.usage_checkpoint.data.totalPremiumRequests` 是
- * **会话累计**的 premium request 数，见下面的成本来源。
+ * 用量有两处：1.0.9x 起 `session.usage_record` 逐请求记 token；更早的版本只有
+ * `session.usage_checkpoint.data.totalPremiumRequests`（**会话累计**的 premium
+ * request 数）。两种都认，见下面的成本来源。
  */
 
 /** 首条用户消息前面可能有很长的系统消息与 Hook 事件。 */
@@ -279,24 +287,42 @@ export function readEntries(
 /* ---------------------------------- 成本 ---------------------------------- */
 
 /**
- * `totalPremiumRequests` 是会话到这一刻为止的累计值，所以不逐行求和：每条
- * checkpoint 只把它比上一条多出来的那部分记到自己的时间点上（`recordRequests`），
- * 文件的 `requests` 停在最后一条的值。一个会话跨了几天，每天分到的就是那天新增
- * 的请求数，近 24 小时 / 7 天 / 30 天各自求和也不会重复计。
+ * 两种形状都认：
  *
- * 不进 token 桶，模型这一段记 `unknown`：checkpoint 不说是哪个模型，按请求计的
- * 成本行也不按模型拆。
+ * - `session.usage_record.data.usage`（1.0.9x 起）：逐请求的 token。`inputTokens`
+ *   **含**缓存读（会话收尾的 `tokenDetails.input` 等于 `inputTokens - cacheReadTokens`），
+ *   所以记 `input` 时要减掉缓存读与缓存写；`reasoningTokens` 已在 `outputTokens` 里。
+ *   按 `apiCallId` 去重，没有它的行一律算新的。
+ * - `session.usage_checkpoint.data.totalPremiumRequests`：会话累计值，不逐行求和：
+ *   每条只把比上一条多出来的部分记到自己的时间点上（`recordRequests`），文件的
+ *   `requests` 停在最后一条的值。1.0.9x 对不计高级请求的模型恒为 0，对高级模型
+ *   与 token 并存。
+ *
+ * 单位声明仍是 `premiumRequests`：只有请求数、没有 token 的老会话照旧按请求展示；
+ * 有 token 的行汇总时改按 token 展示（`usage/cost.ts::agentCosts`）。`totalNanoAiu`
+ * （AI credits）不展示：它没有对应的美元换算，也没有第三种成本单位可放。
  */
 const costSource: AgentCostSource = {
   agentId: "copilot",
   unit: "premiumRequests",
   roots: () => roots(),
-  needles: [Buffer.from('"session.usage_checkpoint"')],
+  needles: [
+    Buffer.from('"session.usage_checkpoint"'),
+    Buffer.from('"session.usage_record"'),
+  ],
   absorb(state, value, context) {
     const line = asRecord(value);
-    if (line?.type !== "session.usage_checkpoint") return;
+    if (line === undefined) return;
     const data = asRecord(line.data);
-    if (data === undefined || typeof data.totalPremiumRequests !== "number") {
+    if (data === undefined) return;
+    if (line.type === "session.usage_record") {
+      absorbUsageRecord(state, line, data, context);
+      return;
+    }
+    if (
+      line.type !== "session.usage_checkpoint" ||
+      typeof data.totalPremiumRequests !== "number"
+    ) {
       return;
     }
     recordRequests(
@@ -308,6 +334,35 @@ const costSource: AgentCostSource = {
     );
   },
 };
+
+function absorbUsageRecord(
+  state: FileState,
+  line: Record<string, unknown>,
+  data: Record<string, unknown>,
+  context: AbsorbContext,
+): void {
+  const usage = asRecord(data.usage);
+  if (usage === undefined) return;
+  const apiCallId =
+    typeof usage.apiCallId === "string" && usage.apiCallId !== ""
+      ? usage.apiCallId
+      : undefined;
+  if (duplicate(context, apiCallId)) return;
+  const cacheRead = number(usage.cacheReadTokens);
+  const cacheCreation = number(usage.cacheWriteTokens);
+  const tokens: TokenTotals = {
+    input: Math.max(0, number(usage.inputTokens) - cacheRead - cacheCreation),
+    output: number(usage.outputTokens),
+    cacheRead,
+    cacheCreation,
+  };
+  if (isEmptyTokens(tokens)) return;
+  const model =
+    typeof usage.model === "string" && usage.model !== ""
+      ? usage.model
+      : "unknown";
+  recordTokens(state, model, line.timestamp, tokens, context.nowMs);
+}
 
 /* --------------------------------- 适配器 --------------------------------- */
 

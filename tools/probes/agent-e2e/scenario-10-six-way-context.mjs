@@ -814,11 +814,7 @@ export default async function run10(ctx) {
             "cost",
             row !== undefined &&
               row.source !== "none" &&
-              (tokens > 0 ||
-                (row.requests ?? 0) > 0 ||
-                // Copilot 按 premium request 计；探针用的 gpt-5-mini 不算高级请求，
-                // 累计值恒为 0——有这一行、单位对就算数。
-                (id === "copilot" && row.unit === "premiumRequests")),
+              (tokens > 0 || (row.requests ?? 0) > 0),
           ),
           sixWay.cost[id],
         );
