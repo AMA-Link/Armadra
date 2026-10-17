@@ -674,7 +674,8 @@ export default async function run12() {
           await api(`/api/acp/sessions/${sessions[id]}/prompt`, {
             method: "POST",
             body: {
-              text: "Call your Armadra canvas list tool (or run the shell command `armadra-hook canvas list`) exactly once and nothing else, then answer in one line exactly: LIST=<ok if it returned a list of canvas nodes, failed otherwise>; FIRST=<the first line it returned>",
+              // Codex 的沙箱里 shell 连不上 core（#407）：点名 MCP 工具。
+              text: `Call your Armadra canvas list tool ${id === "codex" ? "(the `armadra` MCP server's canvas_list)" : "(or run the shell command `armadra-hook canvas list`)"} exactly once and nothing else, then answer in one line exactly: LIST=<ok if it returned a list of canvas nodes, failed otherwise>; FIRST=<the first line it returned>`,
             },
           });
           // 画布工具在 Claude / Copilot 的缺省权限下要审批：卡弹出来（节点
@@ -728,11 +729,7 @@ export default async function run12() {
             .flatMap((entry) => entry.blocks ?? [])
             .filter((block) => block.type === "tool_use")
             .map((block) => block.name);
-          // Codex 的沙箱里 shell 连不上 hook 端点（EPERM，#407）：已知缺口。
-          const knownGap =
-            id === "codex" && !/LIST=ok/i.test(text) && /EPERM/.test(text);
-          mark(id, "canvasTool", /LIST=ok/i.test(text) || knownGap, {
-            ...(knownGap ? { knownGap: "#407" } : {}),
+          mark(id, "canvasTool", /LIST=ok/i.test(text), {
             answer: text.slice(0, 200),
             tools: toolNames.slice(-3),
             approvals,

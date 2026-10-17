@@ -105,6 +105,9 @@ The rules below apply only when ARMADRA_NODE_ID is set (this session was started
 
 ${canvasRules()}
 
+沙箱里的 shell 连不上画布（\`armadra-hook\` 报 connect EPERM）时，改用 MCP 服务器 \`armadra\` 的 \`canvas_*\` 工具，同样的动作、同样的权限；不要为此放宽沙箱。
+If a shell \`armadra-hook\` command fails with connect EPERM inside the sandbox, call the \`canvas_*\` tools of the \`armadra\` MCP server instead — same actions, same rights; do not loosen the sandbox for it.
+
 完整说明在 ${skillPath}，需要时用读文件工具读取。Full skill: ${skillPath}`;
 }
 

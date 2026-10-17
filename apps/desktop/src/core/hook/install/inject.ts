@@ -13,6 +13,7 @@ import { AMA_KEY_VARIABLES } from "../../agent/ama-credentials";
 import { variablesFor } from "../../agent/credentials/inject";
 import { storedProbe } from "../../agent/probe";
 import { eventKey } from "./codex";
+import { codexMcpArgs } from "./codex-mcp";
 import {
   CLAUDE_HOOK_EVENTS,
   CODEX_HOOK_EVENTS,
@@ -694,6 +695,7 @@ export function codexArgs(
   instructions?: string,
   hooks = true,
   windows = process.platform === "win32",
+  mcpClient?: string,
 ): string[] {
   const args = [
     // The start-up "Update now?" prompt takes the first task as its answer
@@ -719,6 +721,9 @@ export function codexArgs(
     }
     args.push("-c", codexHookState(command, windows));
   }
+  // The sandbox denies the shell a connection to the core: the canvas tools
+  // go through an MCP server Codex starts outside it (`codex-mcp.ts`).
+  if (mcpClient !== undefined) args.push(...codexMcpArgs(mcpClient));
   if (instructions !== undefined) {
     // Appended as a developer message; `model_instructions_file` would
     // replace the base prompt instead.
@@ -1367,6 +1372,7 @@ export function injectionFromLayout(
           codexInstructions(layout, exists),
           options.codexHooks ?? true,
           options.windows ?? process.platform === "win32",
+          clientBin,
         ),
         env: [],
       };

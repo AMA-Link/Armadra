@@ -3,6 +3,7 @@
 > 状态：**已实施（2026-10-02）**。原先记下的两处出入已补上：集成页的「Worker 待升级」提示与集成状态的 `outdatedHosts`（补全 G1-2，契约 §21.2）；`packaged-smoke.mjs` 改为断言 Codex 信任记录没有写回（`2d55207a`）。实测见[状态文档](../status/typescript-core-status.md) §63。取代[画布内注入](./canvas-only-integration.md)的 §2 后半（方言引用里 Codex 的环境变量展开、`.cmd` 包装的词过滤）、§3 的「Codex 的启动行要短」、§4 全部（信任记录）与 §5 的迁移记录形状；取代[远端画布注入](./remote-canvas-injection.md) §2 第 3 条（垫片的生成方式）与 Codex 信任那一段。Hook 事件契约、技能正文、产物目录 `integration/<cli>/`、Worker 中继与一次性迁移的备份规则不变。实施完成后按 §16 回改那两份文档。
 >
 > **2026-10-09 回改（§7）**：Codex 不再带 `--dangerously-bypass-hook-trust`，改为在同一层 `-c` 里带我们这八个 Hook 的信任记录（`hooks.state`），并以 `-c features.daemon_auto_start=false` 声明内嵌模式。TUI 启动时不再打那两行警告（旗标警告与「Running without the shared background server」），用户自己没审过的 Hook 在画布内也不再被绕过审查。
+> **2026-10-17 补充（#407）**：Codex 的沙箱拒绝 shell 的一切 `connect()`，`armadra-hook canvas …` 报 `EPERM`。0.162 里没有只放开一个套接字的开关（`permissions.<profile>.network.unix_sockets` 必须配 `network.enabled = true`，实测会放开全部出站网络；`network_access` 同理），所以改走 MCP：启动行再带一条 `-c mcp_servers.armadra={command=<armadra-hook>,args=["mcp"],env_vars=[…],default_tools_approval_mode="approve"}`，Codex 在沙箱外起这个服务器，画布工具经它调用，沙箱权限不变，仍然零写入（`hook/install/codex-mcp.ts`）。`developer_instructions` 补一句 EPERM 时改用 `canvas_*` 工具，`SKILLS_REVISION` 升 20。ACP 驱动本来就带这条 MCP。
 
 ## 1. 目标与硬约束
 

@@ -203,43 +203,24 @@ export default async function run5(ctx) {
       after: lastEvent(),
     });
 
-    // 默认沙箱下 Codex 里的 shell 连不上 core 的 hook 端点（EPERM，#407）：已知
-    // 缺口，单独记；放开沙箱的那一次证明技能说明本身是通的。
-    const sandboxHome = join(scratch, "codex-home-5-open");
-    mkdirSync(sandboxHome, { recursive: true });
-    copyFileSync(join(codexHome, "auth.json"), join(sandboxHome, "auth.json"));
-    const codexInvokeLine = (...extra) => [
-      codexProgram,
-      "exec",
-      "--skip-git-repo-check",
-      ...extra,
-      invoke,
-    ];
-    const codexSandboxed = await run(codexLauncher, codexInvokeLine(), {
-      cwd: project,
-      env: codexEnv(inside),
-    });
-    const sandboxedOut = codexSandboxed.stdout || codexSandboxed.stderr;
-    s.check(
-      "画布内：Codex 默认沙箱下 armadra-hook canvas list（已知缺口 #407：EPERM）",
-      codexSandboxed.code === 0 &&
-        (/LIST=ok/i.test(sandboxedOut) || /EPERM/.test(sandboxedOut)),
-      {
-        knownGap: !/LIST=ok/i.test(sandboxedOut),
-        out: sandboxedOut.slice(-300),
-      },
-    );
+    // 默认沙箱下 Codex 里的 shell 连不上 core 的 hook 端点（EPERM，#407）：启动行
+    // 上带 `armadra-hook mcp` 作 MCP 服务器（Codex 在沙箱外起它），画布工具走它。
+    // 提示词因此点名 MCP 工具；不放开沙箱。
     const codexInvoke = await run(
       codexLauncher,
-      codexInvokeLine("-s", "danger-full-access"),
-      // `-s` 会让 Codex 自己写一份 config.toml：另给一个 CODEX_HOME，免得算到
-      // 画布注入头上（上面的零写入核对针对 freshHome）。
-      { cwd: project, env: { ...codexEnv(inside), CODEX_HOME: sandboxHome } },
+      [
+        codexProgram,
+        "exec",
+        "--skip-git-repo-check",
+        "Call your Armadra canvas list tool (the `armadra` MCP server's canvas_list) exactly once and nothing else, then answer in one line exactly: LIST=<ok if it returned a list of canvas nodes, failed otherwise>; FIRST=<the first line it returned>",
+      ],
+      { cwd: project, env: codexEnv(inside) },
     );
+    const invokeOut = codexInvoke.stdout || codexInvoke.stderr;
     s.check(
-      "画布内：Codex 的技能能调用，armadra-hook canvas list 读到画布（放开沙箱）",
+      "画布内：Codex 的技能能调用，默认沙箱下读到画布（#407，不放开沙箱）",
       codexInvoke.code === 0 && /LIST=ok/i.test(codexInvoke.stdout),
-      (codexInvoke.stdout || codexInvoke.stderr).slice(-400),
+      invokeOut.slice(-400),
     );
 
     const codexOutside = async (label, program, args, env) => {
@@ -290,6 +271,12 @@ export default async function run5(ctx) {
         "<session-flags>",
       ),
     );
+
+    // ARMADRA_E2E_5_ONLY=codex：只验 Codex 这一半，少烧 Claude 的额度。
+    if (process.env.ARMADRA_E2E_5_ONLY === "codex") {
+      s.finish();
+      return;
+    }
 
     /* ------------------------------- Claude ------------------------------- */
 
