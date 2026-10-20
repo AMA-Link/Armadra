@@ -10,7 +10,8 @@ import { toast } from "sonner";
 
 import { agentLabel, agentTextColorVar } from "../agent/launch";
 import { basename, type SessionRow as SessionRowData } from "../agent/sessions";
-import { isAttention, useAgentStatusStore } from "../agent/status-store";
+import { displayOfRow } from "../agent/display";
+import { useAgentStatusStore } from "../agent/status-store";
 import { runtimeApi } from "../api/client";
 import { sessionGateway } from "../session";
 import {
@@ -35,6 +36,7 @@ import { Button } from "../ui/button";
 import { ColorDot } from "../ui/color-dot";
 import { IconButton } from "../ui/icon-button";
 import { Input } from "../ui/input";
+import { TONE_COLOR } from "../ui/status-pill";
 
 /**
  * 居中事件的定义搬到了 `canvas/flow/flow-context.ts`，这里只转出去，
@@ -43,14 +45,10 @@ import { Input } from "../ui/input";
 export { CENTER_NODE_EVENT };
 export const centerNode = requestCenterOnNode;
 
-function markerColor(row: SessionRowData): string {
-  if (row.state === "working") return "var(--status-working)";
-  if (row.state === "done") return "var(--success)";
-  return "var(--status-idle)";
-}
-
 export function SessionRow({ row }: { row: SessionRowData }) {
   const t = useT();
+  // 状态点、图标与色调都从同一个显示结果来（出错不再画成绿色，S1）。
+  const display = displayOfRow(row);
   const selectNodes = useCanvasStore((state) => state.selectNodes);
   const updateNode = useCanvasStore((state) => state.updateNode);
   const markRead = useAgentStatusStore((state) => state.markRead);
@@ -145,18 +143,24 @@ export function SessionRow({ row }: { row: SessionRowData }) {
           }}
         >
           <span className="flex w-full items-center gap-1.5">
-            {isAttention(row) ? (
+            {display.tone === "attention" ? (
               <Bell
                 className="anim-dot-pulse size-3.5 shrink-0"
-                style={{ color: "var(--danger)" }}
+                style={{ color: TONE_COLOR.attention }}
+                data-tone={display.tone}
               />
-            ) : row.unread ? (
+            ) : display.tone === "unread" ? (
               <Check
                 className="size-3.5 shrink-0"
-                style={{ color: "var(--brand)" }}
+                style={{ color: TONE_COLOR.unread }}
+                data-tone={display.tone}
               />
             ) : (
-              <ColorDot size={8} color={markerColor(row)} />
+              <ColorDot
+                size={8}
+                color={TONE_COLOR[display.tone]}
+                data-tone={display.tone}
+              />
             )}
             <span className="flex-1 truncate text-left text-[length:var(--text-body)]">
               {row.title}
