@@ -58,3 +58,54 @@ export function turnCtx(
 ): AcpOpsContext {
   return { turnId: `t${turn}`, turn, at, gen: 1, ...over };
 }
+
+/** 手动推进的计时器：写入器与活动状态机的注入点。 */
+export class FakeTimers {
+  private nowMs: number;
+  private seq = 0;
+  private readonly pending = new Map<
+    number,
+    { at: number; callback: () => void }
+  >();
+
+  constructor(start = 1_000_000) {
+    this.nowMs = start;
+  }
+
+  now = (): number => this.nowMs;
+
+  setTimeout = (callback: () => void, ms: number): unknown => {
+    const id = ++this.seq;
+    this.pending.set(id, { at: this.nowMs + ms, callback });
+    return id;
+  };
+
+  clearTimeout = (handle: unknown): void => {
+    this.pending.delete(handle as number);
+  };
+
+  /** 往前走 `ms`，按到期顺序触发沿途的计时器。 */
+  advance(ms: number): void {
+    const target = this.nowMs + ms;
+    for (;;) {
+      let next: [number, { at: number; callback: () => void }] | undefined;
+      for (const entry of this.pending) {
+        if (
+          entry[1].at <= target &&
+          (next === undefined || entry[1].at < next[1].at)
+        ) {
+          next = entry;
+        }
+      }
+      if (next === undefined) break;
+      this.pending.delete(next[0]);
+      this.nowMs = Math.max(this.nowMs, next[1].at);
+      next[1].callback();
+    }
+    this.nowMs = target;
+  }
+
+  get scheduled(): number {
+    return this.pending.size;
+  }
+}
