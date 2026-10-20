@@ -1,5 +1,7 @@
 import type { DatabaseSync } from "node:sqlite";
 
+import { AGENT_STATES } from "@armadra/shared";
+
 /**
  * The `agent_status` and `agent_approvals` tables, as the hook surface reads
  * and writes them.
@@ -10,8 +12,11 @@ import type { DatabaseSync } from "node:sqlite";
  * the other recognises.
  */
 
-export const AGENT_STATES = ["working", "waiting", "blocked", "done"] as const;
-
+/**
+ * The `state` vocabulary is the shared one (`@armadra/shared` `AGENT_STATES`):
+ * the writer, the reader (`agent/status.ts`) and the wire schema accept the
+ * same four values, so a row one of them stores is a row all of them read.
+ */
 /**
  * Which channel a state was learned through (协作通道 §3.2). The vocabulary is
  * closed for the same reason the states are: a value nobody recognises would
