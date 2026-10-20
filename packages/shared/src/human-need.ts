@@ -23,9 +23,17 @@ export interface AgentNeedSubject {
   alive?: boolean | undefined;
 }
 
+/**
+ * 进程已经没了（`alive` 明确为 `false`）。缺省按活着算；`sessionDisplay` 与
+ * 这里共用这一个判断，节点、侧栏、铃铛、推送对「已死」的口径才一致。
+ */
+export function isProcessGone(alive: boolean | undefined): boolean {
+  return alive === false;
+}
+
 /** 一个 Agent 节点此刻是否在等人；同时满足多条时审批优先。 */
 export function agentHumanNeed(subject: AgentNeedSubject): HumanNeed | null {
-  if (subject.alive === false) return null;
+  if (isProcessGone(subject.alive)) return null;
   if (subject.pendingId || subject.state === "blocked") return "approval";
   if (subject.state === "waiting") return "input";
   if (
