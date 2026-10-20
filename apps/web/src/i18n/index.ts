@@ -20,6 +20,7 @@ import { launcher } from "./launcher";
 import { mobile } from "./mobile";
 import { modals } from "./modals";
 import { nodes } from "./nodes";
+import { nodeObservation } from "./node-observation";
 import { sessions } from "./sessions";
 import { shell } from "./shell";
 import { ssh } from "./ssh";
@@ -95,6 +96,7 @@ export const MESSAGE_MODULES = {
   launcher,
   canvas,
   nodes,
+  "node-observation": nodeObservation,
   browser,
   agent,
   "agent-inspect": agentInspect,
