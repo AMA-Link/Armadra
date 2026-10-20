@@ -70,6 +70,8 @@ const AGENT_NEED_KIND: Readonly<Record<string, PushKind | undefined>> = {
  */
 export class TriggerRules {
   private readonly lastNeed = new Map<string, HumanNeed | null>();
+  /** 终端退出的时刻（毫秒）；此后没有活的上报，节点就当进程已死（S8）。 */
+  private readonly exitedAt = new Map<string, number>();
 
   draft(workspaceId: string, event: EventFrame): Draft | undefined {
     switch (event.type) {
@@ -87,10 +89,20 @@ export class TriggerRules {
           tag: `approval:${pendingId}`,
         };
       }
+      case "terminal.exit": {
+        // 进程没了就没有人能回答它：记下来，之后的状态帧带上 `alive`。
+        const nodeId = str(event.nodeId);
+        if (nodeId !== undefined) {
+          this.exitedAt.set(nodeId, Date.now());
+          this.lastNeed.set(nodeId, null);
+        }
+        return undefined;
+      }
       case "agent.status": {
         const status = record(event.status);
         const nodeId = str(status.nodeId);
         if (nodeId === undefined) return undefined;
+        const alive = this.alive(nodeId, status);
         // 「要不要叫人」只有一份定义（共享层的 `agentHumanNeed`，契约 §81）：
         // 完成、空闲、运行中都不推；审批由 `agent.approval` 事件推（带
         // `pendingId` 做折叠键），这里只记下它，免得状态帧再推一遍。
@@ -99,6 +111,7 @@ export class TriggerRules {
           pendingId: str(status.pendingId),
           errored: status.errored === true,
           unread: status.unread === true,
+          alive,
         });
         const previous = this.lastNeed.get(nodeId) ?? null;
         this.lastNeed.set(nodeId, need);
@@ -196,9 +209,29 @@ export class TriggerRules {
     }
   }
 
+  /**
+   * 这条状态帧是不是来自一个活的进程。退出之后没有再来过上报的节点按已死算；
+   * 新一轮会话开始（`sessionPhase = start`）或上报时间晚于退出，说明重新起来了。
+   * 页面、铃铛与推送共用 `agentHumanNeed` 的 `alive` 口径（共享层 `isProcessGone`）。
+   */
+  private alive(
+    nodeId: string,
+    status: Readonly<Record<string, unknown>>,
+  ): boolean {
+    const exited = this.exitedAt.get(nodeId);
+    if (exited === undefined) return true;
+    const reported = Date.parse(str(status.lastEventAt) ?? "");
+    const revived =
+      str(status.sessionPhase) === "start" ||
+      (!Number.isNaN(reported) && reported > exited);
+    if (revived) this.exitedAt.delete(nodeId);
+    return revived;
+  }
+
   /** 节点删了、工作空间没了：状态记录跟着丢，不让这张表只长不缩。 */
   forget(nodeId: string): void {
     this.lastNeed.delete(nodeId);
+    this.exitedAt.delete(nodeId);
   }
 }
 
