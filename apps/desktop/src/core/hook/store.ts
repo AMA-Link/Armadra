@@ -313,6 +313,27 @@ export function staleWorkingAgents(
 }
 
 /**
+ * Nodes whose permission request has been waiting longer than the answer can
+ * still reach the CLI. The oldest are first, so a burst is capped fairly.
+ */
+export function staleApprovalAgents(
+  database: DatabaseSync,
+  olderThan: string,
+  limit: number,
+): StaleAgent[] {
+  return staleRows(
+    database
+      .prepare(
+        "SELECT node_id, workspace_id, agent_id FROM agent_status a " +
+          "WHERE a.pending_id IS NOT NULL AND COALESCE(a.last_event_at, a.updated_at) < ? " +
+          "AND EXISTS (SELECT 1 FROM nodes n WHERE n.id = a.node_id) " +
+          "ORDER BY COALESCE(a.last_event_at, a.updated_at) ASC LIMIT ?",
+      )
+      .all(olderThan, Math.min(500, Math.max(1, limit))) as Row[],
+  );
+}
+
+/**
  * Nodes whose agent is still shown as live but whose terminal is gone.
  *
  * A hook only reports while its CLI runs, so a terminal that dies mid-turn —

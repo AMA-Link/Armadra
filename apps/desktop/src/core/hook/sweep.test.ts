@@ -5,7 +5,7 @@ import {
   insertSession,
   minutesAgo,
 } from "./fixture";
-import { sweepOnce } from "./sweep";
+import { APPROVAL_TTL_SECONDS, expireApprovalsOnce, sweepOnce } from "./sweep";
 
 /** The silence sweep and the dead-terminal close-out. */
 
@@ -214,5 +214,45 @@ describe("the stale sweeps", () => {
     ).toHaveLength(0);
     // The orphan row is left as it was rather than rewritten.
     expect(one.status()?.state).toBe("working");
+  });
+});
+
+/**
+ * S9：挂起的审批只有 core 这一份真相。页面不再带自己的 5 分钟计时；过了期的
+ * `pendingId` 由 core 清掉并发出状态帧，节点头与会话视图读到同一个结果。
+ */
+describe("the approval expiry (S9)", () => {
+  async function pend(one: HookFixture): Promise<void> {
+    await one.postHook(
+      "claude",
+      {
+        nodeId: one.nodeId,
+        pendingId: "pend-1",
+        payload: { hook_event_name: "PermissionRequest", tool_name: "Bash" },
+      },
+      {
+        "x-armadra-hook-token": one.bearer,
+        "x-armadra-node-token": one.service.issueNodeToken(one.nodeId),
+      },
+    );
+  }
+
+  it("keeps a fresh request and drops one nobody can answer any more", async () => {
+    const one = fixture();
+    await pend(one);
+    expect(one.status()?.pendingId).toBe("pend-1");
+    expect(expireApprovalsOnce(one.context)).toBe(0);
+    expect(one.status()?.pendingId).toBe("pend-1");
+
+    ageTheReport(one, APPROVAL_TTL_SECONDS / 60 + 1);
+    one.published.length = 0;
+    expect(expireApprovalsOnce(one.context)).toBe(1);
+    const status = one.status();
+    expect(status?.pendingId).toBeUndefined();
+    // Still waiting for a person; only the answer buttons are gone.
+    expect(status?.state).toBe("blocked");
+    expect(statuses(one).at(-1)?.pendingId).toBeUndefined();
+
+    expect(expireApprovalsOnce(one.context)).toBe(0);
   });
 });
