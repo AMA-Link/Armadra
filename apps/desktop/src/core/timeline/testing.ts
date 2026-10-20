@@ -109,3 +109,28 @@ export class FakeTimers {
     return this.pending.size;
   }
 }
+
+/** 在一块板上放一个终端节点并给它一行会话（路由门按会话行查画布），答会话 id。 */
+export function seedSession(
+  database: DatabaseSync,
+  boardId: string,
+  workspaceId: string,
+  id: string,
+  nodeId: string,
+  status: "running" | "exited" = "running",
+): void {
+  const now = new Date().toISOString();
+  database
+    .prepare(
+      "INSERT INTO nodes (id, board_id, type, title, color, x, y, width, height, " +
+        "labels_json, note, data_json, created_at, updated_at) " +
+        "VALUES (?, ?, 'terminal', 'T', '#0a84ff', 0, 0, 240, 200, '[]', '', '{}', ?, ?)",
+    )
+    .run(nodeId, boardId, now, now);
+  database
+    .prepare(
+      "INSERT INTO terminal_sessions (id, workspace_id, owner_node_id, cwd, shell, status, backend_kind, created_at) " +
+        "VALUES (?, ?, ?, '/tmp', 'sh', ?, 'acp', ?)",
+    )
+    .run(id, workspaceId, nodeId, status, now);
+}
