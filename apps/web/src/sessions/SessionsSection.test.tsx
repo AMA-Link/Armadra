@@ -162,6 +162,45 @@ beforeEach(() => {
 });
 
 describe("SessionsSection", () => {
+  /** S1：出错或被打断的回合不再画成完成的绿色。 */
+  it("draws a failed turn red and an interrupted one paused, never done-green", async () => {
+    sessions.mockResolvedValue([
+      session({
+        nodeId: "019ff7d1-0d12-7421-833d-2c5e8d64ed40",
+        title: "出错的",
+        agentId: "claude",
+        state: "done",
+        errored: true,
+        unread: false,
+      }),
+      session({
+        nodeId: "019ff7d1-0d12-7421-833d-2c5e8d64ed41",
+        title: "被打断的",
+        agentId: "claude",
+        state: "done",
+        interrupted: true,
+      }),
+      session({
+        nodeId: "019ff7d1-0d12-7421-833d-2c5e8d64ed42",
+        title: "正常完成的",
+        agentId: "claude",
+        state: "done",
+      }),
+    ]);
+    const { container } = renderSection();
+    await screen.findByText("出错的");
+    const toneOf = (title: string) =>
+      screen
+        .getByText(title)
+        .closest("button")
+        ?.querySelector("[data-tone]")
+        ?.getAttribute("data-tone");
+    expect(toneOf("出错的")).toBe("failed");
+    expect(toneOf("被打断的")).toBe("paused");
+    expect(toneOf("正常完成的")).toBe("done");
+    expect(container.querySelectorAll('[data-tone="done"]')).toHaveLength(1);
+  });
+
   it("marks an ACP-driven session row and leaves PTY rows alone", async () => {
     sessions.mockResolvedValue([
       session({

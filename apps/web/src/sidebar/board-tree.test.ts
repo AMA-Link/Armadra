@@ -30,22 +30,14 @@ function board(id: string, name = id): BoardEntry {
   return { id, name };
 }
 
-const attention = (item: SessionRow) =>
-  item.state === "blocked" ||
-  item.state === "waiting" ||
-  Boolean(item.pendingId);
-
 describe("boardSignals", () => {
   it("板内任一 Agent 命中即算命中，已结束的会话不算", () => {
-    const signals = boardSignals(
-      [
-        row({ nodeId: "a" }),
-        row({ nodeId: "b", unread: true }),
-        row({ nodeId: "c", boardId: "b2", state: "blocked" }),
-        row({ nodeId: "d", boardId: "b3", unread: true, alive: false }),
-      ],
-      attention,
-    );
+    const signals = boardSignals([
+      row({ nodeId: "a" }),
+      row({ nodeId: "b", unread: true }),
+      row({ nodeId: "c", boardId: "b2", state: "blocked" }),
+      row({ nodeId: "d", boardId: "b3", unread: true, alive: false }),
+    ]);
 
     expect(signals.b1).toEqual({ attention: false, unread: true });
     expect(signals.b2).toEqual({ attention: true, unread: false });

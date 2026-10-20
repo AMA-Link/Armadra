@@ -8,25 +8,28 @@
  *    画布本身就是提示，再弹一条只是噪音。
  *  - 每个节点 5s 节流：claude 的 hook 并行执行，`blocked → working → blocked`
  *    这种抖动一秒能来三次。
- *  - 只提醒「需要人处理」的事（共享层 `agentHumanNeed`，契约 §81）：审批、
+ *  - 只提醒「需要人处理」的事（共享层 `sessionDisplay().need`，契约 §81）：审批、
  *    等待回答、出错。完成、空闲、运行中都不提醒。铃铛徽标、面板和推送用的
- *    是同一个函数。
+ *    是同一个判定；进程已死的节点不提醒。
  *  - `restored`（Runtime 重启后读回来的旧行）不发：它不是一次新的请求。
  *
- * 这个模块还顺带挂了两件同源的副作用（都要一个 App 级的挂载点，且都是
- * 「未读」的生命周期）：选中节点即已读，以及过期权限请求的清扫。
+ * 这个模块还顺带挂了一件同源的副作用（要一个 App 级的挂载点，是「未读」的
+ * 生命周期）：选中节点即已读。过期权限请求由 core 清，页面不再自己计时。
  */
 import { scoped } from "../sources/scope";
 import { useEffect } from "react";
 import {
-  agentHumanNeed,
+  sessionDisplay,
   type AgentStatus,
   type HumanNeed,
   type ProgramStatus,
 } from "@armadra/shared";
 
 import { onWorkspaceEvent } from "../api/events";
-import { APPROVAL_TTL_MS, useAgentStatusStore } from "../agent/status-store";
+import {
+  useAgentStatusStore,
+  type MirroredStatus,
+} from "../agent/status-store";
 import {
   reportedLive,
   useProgramStatusStore,
@@ -40,13 +43,19 @@ import { t, usePreferencesStore } from "./preferences-store";
 /** 每个节点两条提醒之间的最小间隔。通知与提示音各算各的。 */
 export const NOTIFY_THROTTLE_MS = 5_000;
 
-/** 过期权限的扫描周期。 */
-const SWEEP_INTERVAL_MS = 30_000;
-
 /** 事件流上能看到的三类；交接没有事件，只在面板里。 */
 export type NotificationKind = Exclude<HumanNeed, "handoff">;
 
 /* ------------------------------- 纯判定 ---------------------------------- */
+
+/** 一条状态帧此刻要不要人处理：进程已死的（镜像里 `alive = false`）不算。 */
+function needOf(status: AgentStatus): HumanNeed | null {
+  const alive = (status as MirroredStatus).alive;
+  return sessionDisplay({
+    status,
+    ...(alive !== undefined ? { alive } : {}),
+  }).need;
+}
 
 /**
  * 这条状态帧值不值得提醒：**进入**某种「需要人处理」的状态才提醒，
@@ -58,9 +67,9 @@ export function notificationFor(
   next: AgentStatus,
 ): NotificationKind | null {
   if (next.restored) return null;
-  const need = agentHumanNeed(next);
+  const need = needOf(next);
   if (need === null || need === "handoff") return null;
-  return previous && agentHumanNeed(previous) === need ? null : need;
+  return previous && needOf(previous) === need ? null : need;
 }
 
 /** 通知正文。节点标题原样带出，其余走消息表。 */
@@ -297,8 +306,7 @@ export function defaultNotifierDeps(): NotifierDeps {
 }
 
 /**
- * App 挂一次。三件事：状态帧 → 通知/提示音；选中节点 → 已读回执；
- * 过期的权限请求 → 清掉头部按钮（`APPROVAL_TTL_MS`）。
+ * App 挂一次。两件事：状态帧 → 通知/提示音；选中节点 → 已读回执。
  */
 export function useAgentNotifications(): void {
   useEffect(() => {
@@ -333,16 +341,10 @@ export function useAgentNotifications(): void {
       }
     });
 
-    const sweep = setInterval(
-      () => useAgentStatusStore.getState().sweepApprovals(),
-      Math.min(SWEEP_INTERVAL_MS, APPROVAL_TTL_MS),
-    );
-
     return () => {
       off();
       offProgram();
       unsubscribe();
-      clearInterval(sweep);
       notifier.reset();
       programNotifier.reset();
     };

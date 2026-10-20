@@ -26,16 +26,8 @@ const zh = {
     "仅对下一次启动的会话生效；当前会话保持不变，也不会被重启。",
   "agent.modelQueued": "下一次启动使用 {model}；当前会话不受影响。",
 
-  /* 状态胶囊文案（§24.3-3：11px medium，不再全大写；中文界面就说中文） */
-  "agent.state.working": "运行中",
-  "agent.state.waiting": "需要你",
-  "agent.state.blocked": "需要你",
-  "agent.state.done": "已完成",
-  "agent.state.errored": "已失败",
-  "agent.state.interrupted": "已暂停",
-  /* 程序自报（契约 §53）：进度跟在胶囊后面，出错不叫「回合失败」。 */
+  /* 程序自报（契约 §53）：进度跟在胶囊后面。胶囊文案在 `status.*`。 */
   "agent.program.progress": "{percent}%",
-  "agent.program.error": "出错",
   /* 启动闸门（契约 §52）：自动重试一次之后仍没起来。 */
   "agent.launch.failed": "启动失败",
   "agent.launch.retry": "重试",
@@ -64,14 +56,7 @@ const en: Record<keyof typeof zh, string> = {
   "agent.modelQueued":
     "The next session will use {model}. The running one is unaffected.",
 
-  "agent.state.working": "Running",
-  "agent.state.waiting": "Needs you",
-  "agent.state.blocked": "Needs you",
-  "agent.state.done": "Done",
-  "agent.state.errored": "Turn failed",
-  "agent.state.interrupted": "Paused",
   "agent.program.progress": "{percent}%",
-  "agent.program.error": "Failed",
   "agent.launch.failed": "Launch failed",
   "agent.launch.retry": "Retry",
 };

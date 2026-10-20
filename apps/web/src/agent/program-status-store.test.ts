@@ -7,7 +7,6 @@ import type {
 
 import {
   headerStateFor,
-  programHeaderState,
   reportedLive,
   useProgramStatusStore,
 } from "./program-status-store";
@@ -127,30 +126,37 @@ describe("程序自报的镜像（契约 §53）", () => {
 
 describe("节点头的合并规则", () => {
   it("maps each program state to a pill and a glow", () => {
-    expect(programHeaderState(program("working", { progress: 7 }))).toEqual({
-      pill: { tone: "working", labelKey: "agent.state.working" },
+    const plain = (state: ProgramStatus, seen = false) => {
+      const { display: _display, ...rest } = headerStateFor(
+        false,
+        undefined,
+        state,
+        seen,
+      );
+      return rest;
+    };
+    expect(plain(program("working", { progress: 7 }))).toEqual({
+      pill: { tone: "working", labelKey: "status.working" },
       glow: "working",
       source: "program",
       progress: 7,
     });
-    expect(
-      programHeaderState(program("blocked", { kind: "question" })),
-    ).toMatchObject({
-      pill: { tone: "attention", labelKey: "agent.state.waiting" },
+    expect(plain(program("blocked", { kind: "question" }))).toMatchObject({
+      pill: { tone: "attention", labelKey: "status.awaitingInput" },
       glow: "attention",
     });
-    expect(
-      programHeaderState(program("blocked", { kind: "permission" })),
-    ).toMatchObject({ pill: { labelKey: "agent.state.blocked" } });
-    expect(programHeaderState(program("done"))).toMatchObject({
-      glow: "unread",
+    expect(plain(program("blocked", { kind: "permission" }))).toMatchObject({
+      pill: { labelKey: "status.awaitingApproval" },
     });
-    expect(programHeaderState(program("done"), true)).toEqual({});
-    expect(programHeaderState(program("error"))).toMatchObject({
-      pill: { tone: "failed", labelKey: "agent.program.error" },
-      glow: "unread",
+    expect(plain(program("done"))).toMatchObject({ glow: "unread" });
+    expect(plain(program("done"), true)).toEqual({});
+    expect(plain(program("error"))).toMatchObject({
+      pill: { tone: "failed", labelKey: "status.failed" },
+      glow: "failed",
     });
-    expect(programHeaderState(program("idle"))).toEqual({});
+    // 看过之后只留胶囊。
+    expect(plain(program("error"), true).glow).toBeUndefined();
+    expect(plain(program("idle"))).toEqual({});
   });
 
   it("lets a live report win and only borrows the program's progress", () => {
@@ -188,7 +194,9 @@ describe("节点头的合并规则", () => {
     expect(headerStateFor(false, undefined, program("working"))).toMatchObject({
       source: "program",
     });
-    expect(headerStateFor(false, undefined, undefined)).toEqual({});
+    const quiet = headerStateFor(false, undefined, undefined);
+    expect(quiet.pill).toBeUndefined();
+    expect(quiet.glow).toBeUndefined();
   });
 
   it("does not count an observed guess as a live report", () => {

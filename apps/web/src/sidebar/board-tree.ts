@@ -4,6 +4,7 @@
  * 组件只负责画，「哪些板可见」「哪块板要亮点」「置顶组里有什么」这三件事
  * 都在这里算，好让它们能被单测按数据覆盖，而不是靠渲染出来再找 DOM。
  */
+import { displayOfRow } from "../agent/display";
 import type { SessionRow } from "../agent/sessions";
 
 /** 树里的一块板：只有 id 与名称，两个数据源统一成这个形状。 */
@@ -26,19 +27,18 @@ export const BOARD_PAGE_SIZE = 8;
 /**
  * 会话行 → 按画布汇总的信号。
  *
- * `attention` 的判定与 `agent/status-store` 的 `isAttention` 同源，这里不
- * 重新定义状态语义，只做「板内任一 Agent 命中即算命中」的合并。
+ * 两个信号都从 `sessionDisplay()` 来（`agent/display.ts`），这里不重新定义
+ * 状态语义，只做「板内任一 Agent 命中即算命中」的合并。
  */
 export function boardSignals(
   rows: readonly SessionRow[],
-  attention: (row: SessionRow) => boolean,
 ): Record<string, BoardSignal> {
   const signals: Record<string, BoardSignal> = {};
   for (const row of rows) {
     if (!row.alive) continue;
     const current = signals[row.boardId] ?? { attention: false, unread: false };
     signals[row.boardId] = {
-      attention: current.attention || attention(row),
+      attention: current.attention || displayOfRow(row).tone === "attention",
       unread: current.unread || row.unread,
     };
   }

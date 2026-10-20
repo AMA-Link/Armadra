@@ -13641,6 +13641,9 @@
                       "errored": {
                         "type": "boolean"
                       },
+                      "interrupted": {
+                        "type": "boolean"
+                      },
                       "updatedAt": {
                         "type": "string",
                         "format": "date-time"

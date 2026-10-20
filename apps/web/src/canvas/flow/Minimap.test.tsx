@@ -7,7 +7,7 @@ import {
   type Node,
   type NodeTypes,
 } from "@xyflow/react";
-import type { AgentGlow } from "@/agent/status-store";
+import type { AgentGlow } from "@/agent/display";
 
 import { installDomPolyfills } from "@/app/test-harness";
 import { useMinimapPreferences } from "@/app/minimap-preferences";
@@ -53,6 +53,10 @@ describe("状态描边", () => {
   it("三种光晕各自映射到自己的 token", () => {
     expect(minimapStroke({ glow: "working" })).toBe(MINIMAP_COLORS.working);
     expect(minimapStroke({ glow: "attention" })).toBe(MINIMAP_COLORS.attention);
+    // S3：出错和胶囊、圆点同一个红，不再画成品牌色。
+    expect(minimapStroke({ glow: "failed" })).toBe(MINIMAP_COLORS.failed);
+    expect(MINIMAP_COLORS.failed).not.toBe(MINIMAP_COLORS.unread);
+    expect(minimapStrokeWidth(MINIMAP_COLORS.failed)).toBe(4);
     expect(minimapStroke({ glow: "unread" })).toBe(MINIMAP_COLORS.unread);
   });
 
