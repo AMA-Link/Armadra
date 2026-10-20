@@ -4,7 +4,11 @@ import { cleanup, render, screen } from "@testing-library/react";
 
 import { ActivityLine } from "./ActivityLine";
 import { activity } from "./fixtures";
-import { displayPhaseOf, ENTER_DELAY_MS, MIN_HOLD_MS } from "./smooth";
+import { displayPhaseOf } from "./display-phase";
+import {
+  HOLD_MS as MIN_HOLD_MS,
+  SHOW_AFTER_MS as ENTER_DELAY_MS,
+} from "../use-activity";
 
 beforeEach(() => {
   vi.useFakeTimers();

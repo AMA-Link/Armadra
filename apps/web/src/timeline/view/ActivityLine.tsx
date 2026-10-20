@@ -5,7 +5,8 @@ import { useT } from "@/app/preferences-store";
 import { cn } from "@/lib/cn";
 import { Spinner } from "@/ui/spinner";
 import { formatDuration } from "./format";
-import { useSmoothedActivity, type DisplayPhase } from "./smooth";
+import { useSmoothedActivity } from "../use-activity";
+import { displayPhaseOf, type DisplayPhase } from "./display-phase";
 
 /** 超过这么久没有输出，追加「已 N 无输出」。 */
 export const QUIET_AFTER_MS = 60_000;
@@ -60,17 +61,18 @@ export interface ActivityLineProps {
 
 /**
  * 活动行（设计 §7）：`Spinner` + 阶段 + 细节 + 计时，如「运行 · pnpm test · 12 s」。
- * 阶段经 `useSmoothedActivity` 防闪烁；审批与出错不转圈，换成对应色调；
+ * 阶段经页面数据层的 `useSmoothedActivity` 防闪烁（显示 300 ms、保持 500 ms）；审批与出错不转圈，换成对应色调；
  * `aria-live="polite"` 的只有阶段文字，计时不播报。
  */
 export function ActivityLine({ activity, now: fixedNow }: ActivityLineProps) {
   const t = useT();
-  const { shown, phase } = useSmoothedActivity(activity);
-  const visible = phase !== "idle" && shown !== null;
+  const shown = useSmoothedActivity(activity ?? undefined);
+  const phase = displayPhaseOf(shown);
+  const visible = phase !== "idle" && shown !== undefined;
   const ticking = visible && fixedNow === undefined;
   const clock = useNow(ticking);
   const now = fixedNow ?? clock;
-  if (!visible || shown === null) return null;
+  if (!visible) return null;
 
   const elapsed = formatDuration(
     Math.max(0, now - (shown.turnStartedAt ?? shown.since)),
