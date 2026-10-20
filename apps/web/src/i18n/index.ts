@@ -52,6 +52,7 @@ import { traffic } from "./traffic";
 import { updates } from "./updates";
 import { usage } from "./usage";
 import { acp } from "./acp";
+import { timeline } from "./timeline";
 import { workflow } from "./workflow";
 import { realtime } from "./realtime";
 import { gateway } from "./gateway";
@@ -141,6 +142,7 @@ export const MESSAGE_MODULES = {
   desktop,
   errors,
   acp,
+  timeline,
   workflow,
   realtime,
   gateway,
