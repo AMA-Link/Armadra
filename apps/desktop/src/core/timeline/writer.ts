@@ -69,7 +69,7 @@ export interface TimelineFrame {
   readonly nodeId: string;
   readonly from: number;
   readonly to: number;
-  readonly ops: readonly TimelineOp[];
+  readonly ops: TimelineOp[];
 }
 
 export interface TimelineWriterOptions {
