@@ -107,6 +107,27 @@ describe("工作空间的会话列表", () => {
     expect(listed.map((row) => row.nodeId)).toEqual(["node-b", "node-a"]);
   });
 
+  it("带上最近一个回合的判决 errored / interrupted，侧栏的状态点靠它分色（S1）", async () => {
+    const { core, workspaceId, boardId } = await board();
+    node(core, boardId, "node-a", "A");
+    node(core, boardId, "node-b", "B");
+    session(core, workspaceId, "node-a", "s-a", "2026-09-01T00:00:00Z");
+    session(core, workspaceId, "node-b", "s-b", "2026-09-02T00:00:00Z");
+    const at = new Date().toISOString();
+    const status = core.database.prepare(
+      "INSERT INTO agent_status (node_id, workspace_id, agent_id, state, unread, verified, restored, updated_at, errored, interrupted) " +
+        "VALUES (?, ?, 'claude', 'done', 1, 1, 0, ?, ?, ?)",
+    );
+    status.run("node-a", workspaceId, at, 1, 0);
+    status.run("node-b", workspaceId, at, 0, 1);
+
+    const listed = listSessions(core.database, workspaceId, () => true);
+    const a = listed.find((row) => row.nodeId === "node-a");
+    const b = listed.find((row) => row.nodeId === "node-b");
+    expect([a?.errored, a?.interrupted]).toEqual([true, false]);
+    expect([b?.errored, b?.interrupted]).toEqual([false, true]);
+  });
+
   it("带上程序自报的状态，重连的页面靠它补节点头（契约 §53）", async () => {
     const { core, workspaceId, boardId } = await board();
     node(core, boardId, "node-a", "A");
