@@ -372,6 +372,14 @@ await h.run(async () => {
               .catch(() => null),
             text: (await admin.text().catch(() => "")).slice(0, 800),
             traffic: admin.traffic.slice(-40),
+            // 页面空白又没有控制台错误时：看文档状态、根节点内容与资源加载失败。
+            document: await admin
+              .evaluate(
+                `return { state: document.readyState, html: document.documentElement.outerHTML.length, root: document.getElementById("root")?.childElementCount ?? null, scripts: [...document.scripts].map((s) => s.src.split("/").pop()).slice(0, 8) };`,
+              )
+              .catch((e) => String(e)),
+            diag: admin.diag.slice(-20),
+            pending: admin.pendingRequests().slice(-20),
             errors: admin.drain().errors.map((entry) => entry.text),
             // 配对票只在片段里：抹掉再记。
             server: server
@@ -398,6 +406,9 @@ await h.run(async () => {
           text: failure.text.slice(0, 300),
           errors: failure.errors.slice(-5),
           traffic: failure.traffic.slice(-12),
+          document: failure.document,
+          diag: failure.diag,
+          pending: failure.pending,
           server: failure.server.slice(-1500),
         }),
     );

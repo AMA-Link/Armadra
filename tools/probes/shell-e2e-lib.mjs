@@ -259,9 +259,45 @@ async function page(h, call, listeners, sessionId, { width, height, name }) {
   const events = [];
   /** 最近的接口应答（状态 + 路径），排查「按了没反应」时看它发没发。 */
   const traffic = [];
+  /** 资源加载失败、浏览器日志里的错误、导航错误：只在失败现场里看，不当控制台错误断言。 */
+  const diag = [];
+  const note = (entry) => {
+    diag.push(entry);
+    if (diag.length > 100) diag.shift();
+  };
+  /** 请求号 → 地址：`loadingFailed` 只带请求号。 */
+  const requestUrls = new Map();
+  /** 发出去还没收完（也没失败）的请求：页面空白时，卡住的多半是其中某个。 */
+  const pending = new Map();
   listeners.set(sessionId, (message) => {
     const { method, params } = message;
-    if (method === "Runtime.consoleAPICalled" && params.type === "error") {
+    if (method === "Network.requestWillBeSent") {
+      requestUrls.set(params.requestId, params.request.url);
+      if (requestUrls.size > 400)
+        requestUrls.delete(requestUrls.keys().next().value);
+      pending.set(params.requestId, params.request.url);
+    } else if (method === "Network.loadingFinished") {
+      pending.delete(params.requestId);
+    } else if (method === "Network.loadingFailed") {
+      pending.delete(params.requestId);
+      // 资源加载失败不会进控制台错误：页面空白而没有任何报错时，原因多半在这里。
+      note({
+        kind: "network",
+        text: `${params.errorText} ${requestUrls.get(params.requestId) ?? params.requestId}`
+          .replace(/#pair=\S+/g, "#pair=…")
+          .slice(0, 400),
+      });
+    } else if (method === "Log.entryAdded" && params.entry.level === "error") {
+      note({
+        kind: "log",
+        text: `${params.entry.source}: ${params.entry.text} ${params.entry.url ?? ""}`
+          .replace(/#pair=\S+/g, "#pair=…")
+          .slice(0, 400),
+      });
+    } else if (
+      method === "Runtime.consoleAPICalled" &&
+      params.type === "error"
+    ) {
       errors.push({
         kind: "console",
         text: params.args
@@ -279,6 +315,7 @@ async function page(h, call, listeners, sessionId, { width, height, name }) {
       });
     } else if (method === "Network.responseReceived") {
       const { url, status } = params.response;
+      // 应答头到了不等于正文收完：正文没收完的请求仍留在 pending 里，等 loadingFinished。
       if (/\/api\//.test(url)) {
         traffic.push(`${status} ${new URL(url).pathname}`);
         if (traffic.length > 400) traffic.shift();
@@ -300,6 +337,7 @@ async function page(h, call, listeners, sessionId, { width, height, name }) {
   await call("Page.enable");
   await call("Runtime.enable");
   await call("Network.enable");
+  await call("Log.enable");
   await call("Emulation.setDeviceMetricsOverride", {
     width,
     height,
@@ -347,7 +385,13 @@ async function page(h, call, listeners, sessionId, { width, height, name }) {
     return path;
   };
   const navigate = async (url) => {
-    await call("Page.navigate", { url });
+    const answer = await call("Page.navigate", { url });
+    // 导航本身失败（连不上、证书、被拒）时只回 errorText，不抛错。
+    if (answer?.errorText)
+      note({
+        kind: "navigate",
+        text: `${answer.errorText} ${url.replace(/#pair=\S+/g, "#pair=…")}`,
+      });
     await waitFor(`return document.readyState === "complete";`);
   };
   /** 开屏动画盖在页面上，而且吃掉指针事件（`splash/mount.tsx`）。 */
@@ -500,5 +544,10 @@ async function page(h, call, listeners, sessionId, { width, height, name }) {
     responses,
     events,
     traffic,
+    diag,
+    pendingRequests: () =>
+      [...pending.values()].map((url) =>
+        url.replace(/#pair=\S+/g, "#pair=…").slice(0, 200),
+      ),
   };
 }
