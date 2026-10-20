@@ -1,0 +1,45 @@
+{
+  "$comment": "acp-view-bench.mjs 的比对基线：按 <平台>-<架构> 一份，数字是同一台机器上连跑三次的中位数（带 --page）。差 20% 以上且超过该项绝对容差（acp-view-bench.mjs 的 METRICS）即失败；没有这台平台的基线时只报告。重录：跑三次取中位数后改这里，并同步 docs/status/acp-view-baseline.md。",
+  "platforms": {
+    "darwin-arm64": {
+      "recordedAt": "2026-10-20",
+      "machine": "Apple M1 Max, macOS 26.6，Node v26.10.0，main 32546294（v0.9.0）；Vite 开发服务器与无头 Chrome",
+      "options": {
+        "turns": 300,
+        "chunks": 200,
+        "rate": 50,
+        "chunkChars": 48,
+        "runs": 5,
+        "transcriptMib": 20,
+        "page": true
+      },
+      "metrics": {
+        "openLogMs": 8.5,
+        "openLogParseMs": 1,
+        "openLogBytes": 731410,
+        "openLogEntries": 802,
+        "streamLatencyP50Ms": 2,
+        "streamLatencyP95Ms": 6,
+        "streamLatencyMaxMs": 18,
+        "streamDeliveredRatio": 1,
+        "streamOutboxRowsPerChunk": 1.02,
+        "streamMirrorLinesPerChunk": 1,
+        "streamCoreCpuPercent": 8,
+        "reconnectOpenMs": 1.2,
+        "reconnectSyncMs": 12.4,
+        "transcriptRoute256KiBMs": 6.6,
+        "transcriptRoute5MiBMs": 84,
+        "transcriptFullParseMs": 40.5,
+        "transcriptTail256KiBMs": 4.4,
+        "pageOpenFromNodeMs": 2115.4,
+        "pageOpenLongTaskMs": 1675,
+        "pageOpenLongTaskMaxMs": 1675,
+        "pageChunkP50Ms": 35360.8,
+        "pageChunkP95Ms": 64620.2,
+        "pageChunkRenderedRatio": 0.265,
+        "pageStreamLongTaskCount": 55,
+        "pageStreamLongTaskMaxMs": 1308
+      }
+    }
+  }
+}
