@@ -3,6 +3,7 @@ import * as React from "react";
 import { Button } from "@/ui/button";
 import { proposePlanFromNative } from "@/panels/automation/open";
 import { featureEnabled } from "@/lib/features";
+import { displayOfStatus } from "@/agent/display";
 import { useAgentStatus } from "@/agent/status-store";
 import { useSubagentCards } from "@/agent/subagent-store";
 import { useCanvasStore } from "@/store/canvas-store";
@@ -48,7 +49,7 @@ export function AgentActivityNode({ id, node, selected }: NodeBodyProps) {
     <NodeShell
       node={node}
       selected={selected}
-      {...(status?.state === "working" ? { glow: "working" as const } : {})}
+      {...(displayOfStatus(status).busy ? { glow: "working" as const } : {})}
     >
       <div
         data-slot="agent-activity-card"

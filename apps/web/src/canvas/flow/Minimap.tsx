@@ -4,7 +4,8 @@ import { MiniMap, Panel, useReactFlow, useStore } from "@xyflow/react";
 import type { MiniMapNodeProps, ReactFlowState } from "@xyflow/react";
 import { Map, Minus } from "lucide-react";
 
-import { useAgentStatusStore, type AgentGlow } from "@/agent/status-store";
+import type { AgentGlow } from "@/agent/display";
+import { useAgentStatusStore } from "@/agent/status-store";
 import {
   headerStateFor,
   useProgramStatusStore,
@@ -57,6 +58,8 @@ export const MINIMAP_COLORS = {
   working: "var(--agent-working)",
   /** needs-you。 */
   attention: "var(--status-attention)",
+  /** 最近一个回合出错、还没人看过：和胶囊、圆点同一个红（S3）。 */
+  failed: "var(--status-failed)",
   /** 未读。 */
   unread: "var(--brand)",
   /** 无状态的节点、白板对象与分组：一块低对比的底。 */
@@ -77,8 +80,8 @@ export interface MinimapItem {
 /**
  * 状态 → 描边色（旧画布契约 §3.2）。
  *
- * 三种状态的优先级由 `agentHeaderState()` 定好了（一个节点同一时刻只会有
- * 一种光晕），这里只做映射；没有状态的节点用中性描边。
+ * 状态的优先级由 `sessionDisplay()` 定好了（一个节点同一时刻只会有
+ * 一种光晕，和节点头是同一个结果），这里只做映射；没有状态的节点用中性描边。
  */
 export function minimapStroke(item: MinimapItem): string {
   if (item.plain) return MINIMAP_COLORS.plain;
@@ -87,6 +90,8 @@ export function minimapStroke(item: MinimapItem): string {
       return MINIMAP_COLORS.working;
     case "attention":
       return MINIMAP_COLORS.attention;
+    case "failed":
+      return MINIMAP_COLORS.failed;
     case "unread":
       return MINIMAP_COLORS.unread;
     default:
@@ -95,10 +100,11 @@ export function minimapStroke(item: MinimapItem): string {
   }
 }
 
-/** 三种状态描边色的集合，`minimapStrokeWidth` 靠它认出「有状态」。 */
+/** 状态描边色的集合，`minimapStrokeWidth` 靠它认出「有状态」。 */
 const STATUS_STROKES: ReadonlySet<string> = new Set([
   MINIMAP_COLORS.working,
   MINIMAP_COLORS.attention,
+  MINIMAP_COLORS.failed,
   MINIMAP_COLORS.unread,
 ]);
 
