@@ -1,4 +1,4 @@
-/* eslint-disable no-restricted-syntax, no-control-regex -- ANSI 调色板是数据，不是界面配色 */
+/* eslint-disable no-control-regex -- 转义序列本来就含控制字符 */
 /**
  * 终端输出的 SGR 解析（设计 §3.1）：只认 16 色与 256 色的前景、背景，加粗、
  * 变暗、斜体、下划线；真彩色的参数读掉但不上色；其余控制序列一律丢弃。
@@ -16,23 +16,10 @@ export interface AnsiSpan {
 }
 
 /** 16 色：两套主题下都读得清的中等明度。 */
-const BASE_16 = [
-  "#5c5c5c",
-  "#d6453d",
-  "#2f9e5b",
-  "#b8860b",
-  "#3b7dd8",
-  "#b05fc2",
-  "#1f9fae",
-  "#c9c9c9",
-  "#8a8a8a",
-  "#ef6b63",
-  "#4cc27a",
-  "#d9a62b",
-  "#62a0f2",
-  "#cf86e0",
-  "#45bccb",
-  "#f2f2f2",
+const BASE_16_RGB = [
+  0x5c5c5c, 0xd6453d, 0x2f9e5b, 0xb8860b, 0x3b7dd8, 0xb05fc2, 0x1f9fae,
+  0xc9c9c9, 0x8a8a8a, 0xef6b63, 0x4cc27a, 0xd9a62b, 0x62a0f2, 0xcf86e0,
+  0x45bccb, 0xf2f2f2,
 ] as const;
 
 const CUBE_STEPS = [0, 95, 135, 175, 215, 255] as const;
@@ -40,6 +27,12 @@ const CUBE_STEPS = [0, 95, 135, 175, 215, 255] as const;
 function hex(value: number): string {
   return value.toString(16).padStart(2, "0");
 }
+
+function css(rgb: number): string {
+  return `#${rgb.toString(16).padStart(6, "0")}`;
+}
+
+const BASE_16 = BASE_16_RGB.map(css);
 
 /** xterm 256 色：0–15 同 16 色，16–231 是 6×6×6 色立方，232–255 是灰阶。 */
 export function ansi256(index: number): string | undefined {
