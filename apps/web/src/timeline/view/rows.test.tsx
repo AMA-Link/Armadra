@@ -334,6 +334,35 @@ describe("ToolRow", () => {
     expect((colored as HTMLElement | undefined)?.style.color).not.toBe("");
   });
 
+  it("does not repeat the command in the input when the terminal shows it", () => {
+    render(
+      <ToolRow
+        item={row({
+          toolKind: "execute",
+          input: {
+            command: "pnpm test",
+            fields: [{ key: "cwd", value: "/repo" }],
+          },
+          content: [
+            {
+              type: "terminal",
+              terminalId: "t",
+              command: "pnpm test",
+              output: "ok",
+            },
+          ],
+        })}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button"));
+    expect(
+      document.querySelector("[data-slot=timeline-tool-input]")?.textContent,
+    ).not.toContain("pnpm test");
+    expect(
+      document.querySelector("[data-slot=timeline-terminal]")?.textContent,
+    ).toContain("pnpm test");
+  });
+
   it("renders image and resource content from a tool", async () => {
     withServices(
       <ToolRow

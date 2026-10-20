@@ -87,10 +87,19 @@ function ToolRowImpl({ item, nested, approval, renderApproval }: ToolRowProps) {
     item.endedAt !== undefined
       ? formatDuration(item.endedAt - item.startedAt)
       : "";
+  // 终端部件已经显示了命令，入参摘要里不再重复一行。
+  const terminalCommand = item.content.some(
+    (part) =>
+      part.type === "terminal" &&
+      part.command !== undefined &&
+      part.command === item.input?.command,
+  );
+  const input =
+    item.input !== undefined && terminalCommand
+      ? { ...item.input, command: undefined }
+      : item.input;
   const hasBody =
-    item.input !== undefined ||
-    item.content.length > 0 ||
-    (nested?.length ?? 0) > 0;
+    input !== undefined || item.content.length > 0 || (nested?.length ?? 0) > 0;
   return (
     <div
       data-slot="timeline-tool"
@@ -145,7 +154,7 @@ function ToolRowImpl({ item, nested, approval, renderApproval }: ToolRowProps) {
         </CollapsibleTrigger>
         {hasBody && (
           <CollapsibleContent className="flex flex-col gap-1.5 py-1 pr-1 pl-7">
-            {item.input !== undefined && <ToolInput input={item.input} />}
+            {input !== undefined && <ToolInput input={input} />}
             {item.content.map((content, index) => (
               <ToolContentView
                 key={index}
