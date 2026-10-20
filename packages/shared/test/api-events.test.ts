@@ -228,6 +228,44 @@ describe("runtime workspace events API", () => {
     ).toBe(false);
   });
 
+  it("models the session timeline delta and activity events (contract §82)", () => {
+    const delta = {
+      type: "timeline.delta",
+      timelineId: uuid,
+      nodeId: otherUuid,
+      from: 3,
+      to: 5,
+      ops: [
+        { seq: 4, op: "append", itemId: "a:t1:1", delta: { text: "你好" } },
+        { seq: 5, op: "head", head: { title: "标题" } },
+      ],
+    };
+    expect(workspaceEventSchema.parse(delta)).toEqual(delta);
+    const activity = {
+      type: "timeline.activity",
+      timelineId: uuid,
+      nodeId: otherUuid,
+      activity: {
+        phase: "tool",
+        detail: { label: "pnpm test", toolKind: "execute", count: 2 },
+        since: 1_700_000_000_000,
+        rev: "boot1:7",
+      },
+    };
+    expect(workspaceEventSchema.parse(activity)).toEqual(activity);
+    // 序号不连续的帧在 schema 层面是合法的（缺口由 reducer 处理）；坏形状被拒。
+    expect(
+      workspaceEventSchema.safeParse({ ...delta, ops: [{ op: "put" }] })
+        .success,
+    ).toBe(false);
+    expect(
+      workspaceEventSchema.safeParse({
+        ...activity,
+        activity: { ...activity.activity, phase: "dreaming" },
+      }).success,
+    ).toBe(false);
+  });
+
   it("decodes the browser tab / dialog / chooser events the runtime emits", () => {
     // 这三个事件 Runtime 一直在发，联合里却没有，`safeParse` 只会把它们丢掉
     // 并告警——标签条和对话框界面因此收不到任何东西（§2.2/§2.3/§2.4）。
