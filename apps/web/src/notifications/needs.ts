@@ -1,18 +1,18 @@
 /**
  * 「需要人处理」的清单与分组（契约 §81）。
  *
- * 分类本身在共享层（`agentHumanNeed` / `handoffHumanNeed`），这里只做两件事：
+ * 分类本身在共享层（`sessionDisplay().need` / `handoffHumanNeed`），这里只做两件事：
  * 把会话行与交接记录收成清单，再按 工作空间 → 画布 → 节点 分三层并带上计数。
  * 铃铛徽标、面板、系统通知的点击跳转都读这份清单，没有第二套判断。
  */
 import {
-  agentHumanNeed,
   handoffHumanNeed,
   HUMAN_NEEDS,
   type HandoffView,
   type HumanNeed,
 } from "@armadra/shared";
 
+import { displayOfRow } from "../agent/display";
 import type { SessionRow } from "../agent/sessions";
 
 export interface NeedItem {
@@ -74,7 +74,7 @@ export function collectNeeds(sources: readonly NeedSource[]): NeedItem[] {
       // 同一个节点只算一行；会话列表本来就按节点去过重，这里防两路合流。
       if (seen.has(row.nodeId)) continue;
       seen.add(row.nodeId);
-      const need = agentHumanNeed(row);
+      const need = displayOfRow(row).need;
       if (need === null) continue;
       items.push({
         key: `${workspaceId}:${row.nodeId}:${need}`,

@@ -1,5 +1,7 @@
 import type { DatabaseSync } from "node:sqlite";
 
+import { AGENT_STATES } from "@armadra/shared";
+
 /**
  * The `agent_status` and `agent_approvals` tables, as the hook surface reads
  * and writes them.
@@ -10,8 +12,11 @@ import type { DatabaseSync } from "node:sqlite";
  * the other recognises.
  */
 
-export const AGENT_STATES = ["working", "waiting", "blocked", "done"] as const;
-
+/**
+ * The `state` vocabulary is the shared one (`@armadra/shared` `AGENT_STATES`):
+ * the writer, the reader (`agent/status.ts`) and the wire schema accept the
+ * same four values, so a row one of them stores is a row all of them read.
+ */
 /**
  * Which channel a state was learned through (协作通道 §3.2). The vocabulary is
  * closed for the same reason the states are: a value nobody recognises would
@@ -300,6 +305,27 @@ export function staleWorkingAgents(
           // Neither `agent_status` nor `terminal_sessions` keys on `nodes`, so
           // both outlive a node the user deleted. Closing one out would put a
           // frame on the socket for something that is no longer on the canvas.
+          "AND EXISTS (SELECT 1 FROM nodes n WHERE n.id = a.node_id) " +
+          "ORDER BY COALESCE(a.last_event_at, a.updated_at) ASC LIMIT ?",
+      )
+      .all(olderThan, Math.min(500, Math.max(1, limit))) as Row[],
+  );
+}
+
+/**
+ * Nodes whose permission request has been waiting longer than the answer can
+ * still reach the CLI. The oldest are first, so a burst is capped fairly.
+ */
+export function staleApprovalAgents(
+  database: DatabaseSync,
+  olderThan: string,
+  limit: number,
+): StaleAgent[] {
+  return staleRows(
+    database
+      .prepare(
+        "SELECT node_id, workspace_id, agent_id FROM agent_status a " +
+          "WHERE a.pending_id IS NOT NULL AND COALESCE(a.last_event_at, a.updated_at) < ? " +
           "AND EXISTS (SELECT 1 FROM nodes n WHERE n.id = a.node_id) " +
           "ORDER BY COALESCE(a.last_event_at, a.updated_at) ASC LIMIT ?",
       )

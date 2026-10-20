@@ -16,6 +16,7 @@ import type {
 import { onWorkspaceEvent } from "../api/events";
 import { runtimeApi } from "../api/client";
 import { mergeSessions, sessionsQuery } from "../agent/sessions";
+import { useProgramStatusStore } from "../agent/program-status-store";
 import { useAgentStatusStore } from "../agent/status-store";
 import { useOpenWorkspace } from "../app/workspace-actions";
 import { useWorkspacesQuery } from "../app/workspaces-query";
@@ -42,6 +43,7 @@ export function useHumanNeedsSync(): void {
   const boards = useCanvasStore((state) => state.boards);
   const boardId = useCanvasStore((state) => state.boardId);
   const statuses = useAgentStatusStore((state) => state.statuses);
+  const programs = useProgramStatusStore((state) => state.programs);
   const openWorkspace = useOpenWorkspace();
 
   const sourceId = activeSourceId();
@@ -99,7 +101,12 @@ export function useHumanNeedsSync(): void {
     const items = collectNeeds(
       ids.map((id, index) => ({
         workspaceId: id,
-        rows: mergeSessions(sessions[index] ?? [], statuses),
+        rows: mergeSessions(
+          sessions[index] ?? [],
+          statuses,
+          Date.now(),
+          programs,
+        ),
         handoffs: handoffs[index] ?? [],
       })),
     );
@@ -116,6 +123,7 @@ export function useHumanNeedsSync(): void {
     handoffs,
     ids,
     layoutWorkspaces,
+    programs,
     sessions,
     statuses,
     workspace?.id,

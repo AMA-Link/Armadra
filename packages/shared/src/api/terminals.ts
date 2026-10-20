@@ -199,6 +199,12 @@ export const sessionSummarySchema = z.object({
    * whether the node still needs a person; absent means no verdict yet.
    */
   errored: z.boolean().optional(),
+  /**
+   * The last turn was stopped by the user (§81 / acp-progressive-view S1):
+   * with `errored` it is the verdict a row's status dot is drawn from, so the
+   * sidebar can tell a paused turn from a clean one after a reload.
+   */
+  interrupted: z.boolean().optional(),
   updatedAt: z.string().datetime({ offset: true }),
   /** The PTY is still running in this runtime instance. */
   alive: z.boolean(),

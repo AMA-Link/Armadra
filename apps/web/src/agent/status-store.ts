@@ -1,44 +1,44 @@
 /**
  * Agent 状态的前端镜像（§5.4 / §13.4）。
  *
- * 真相在 Runtime 的 合并前的实现；这里只做**显示侧**的同一套归约，
- * 让节点胶囊、光晕和会话侧栏在两条事件之间不会闪：
+ * 真相在 core（`hook/reduce.ts`）；这里只是把它推来的帧收进一张表，不再自己
+ * 归约（acp-progressive-view S9/S10）：
  *
- *  - **done 保持 3s**：claude 的 hook 是并行执行的，`Stop` 之后可能还会
- *    飘来一条迟到的 `working`，它不该把刚结束的回合复活。
+ *  - **done 的保持窗口、审批的过期**都在 core 算完才下发。页面曾经各存一份
+ *    （`DONE_HOLDOFF` 与 5 分钟 TTL），与 core 不一致时节点头和会话视图会各说各话。
+ *  - **乱序丢弃**：`updatedAt` 比现有的旧的一律忽略；活动按 `activity.rev` 判断，
+ *    core 重启过（`bootId` 变了）就取后到的。
+ *  - **进程死活**：补齐（`hydrate`）时带上 `alive`，死了的节点不再冒充「需要你」。
  *  - **未读**：`done` 到达时，如果该节点没被选中、或窗口没有焦点，
  *    就置未读；`markRead` 清除（点开节点即视为已读）。
- *  - **乱序丢弃**：`updatedAt` 比现有的旧的一律忽略。
  *
- * 其余不变式（idle 救援、awaitingInput 保持、20 分钟合成结束边）由 Runtime
- * 归约后才推给前端，前端不重复实现。
+ * 显示一律经 `agent/display.ts` 的 `sessionDisplay()`，这里不出胶囊也不出色调。
  */
 import { create } from "zustand";
 import {
-  isAwaitingHuman,
+  compareActivityRev,
+  sessionDisplay,
   type AgentStatus,
+  type SessionActivity,
   type SessionSummary,
   type WorkspaceEvent,
 } from "@armadra/shared";
 
-import type { StatusTone } from "../ui/status-pill";
 import { runtimeApi } from "../api/client";
 import { useCanvasStore } from "../store/canvas-store";
 import { agentGateway } from "./gateway";
 import { currentSource } from "../api/source";
 import { activeSourceId, scoped } from "../sources/scope";
 
-/** 迟到的 `working` 在这个窗口内不能覆盖 `done`。 */
-export const DONE_HOLDOFF_MS = 3_000;
-
 /**
- * 权限请求的本地过期时间（§5.5）。
- *
- * Runtime 侧的 hook 客户端在 `ARMADRA_PERM_WAIT_SECS` 之后自己 fail-open，
- * 之后既不会再来 `agent.approval`，也未必会来新的 `agent.status`。
- * 没有这个兜底，节点头部的「允许 / 拒绝」会一直挂着，点下去只会 404。
+ * 镜像里的一条：core 推来的状态，加上页面补齐时才知道的进程死活与活动。
+ * `alive` 缺省按活着算（事件帧只来自活的进程）；补齐出 `false` 的节点不再
+ * 被算作「在等人」。
  */
-export const APPROVAL_TTL_MS = 5 * 60_000;
+export type MirroredStatus = AgentStatus & {
+  alive?: boolean;
+  activity?: SessionActivity;
+};
 
 /** 归约时需要知道的「用户此刻在不在看这个节点」。测试里显式传入。 */
 export interface StatusContext {
@@ -51,11 +51,7 @@ export interface StatusContext {
 
 export interface AgentStatusState {
   /** 键是 `${sourceId}:${nodeId}`（`sources/scope.ts`）：两个源里同名的节点不碰撞。 */
-  statuses: Record<string, AgentStatus>;
-  /** 每个节点最近一次进入 `done` 的时刻（毫秒），保持窗口用。 */
-  doneAt: Record<string, number>;
-  /** 每个节点当前 `pendingId` 是什么时候出现的（毫秒），过期用。 */
-  pendingSince: Record<string, number>;
+  statuses: Record<string, MirroredStatus>;
   upsert: (status: AgentStatus, context?: StatusContext) => void;
   /**
    * 清未读：本地立刻清，同时把回执 POST 给 Runtime（否则重连 / 重启后
@@ -65,10 +61,14 @@ export interface AgentStatusState {
     nodeId: string,
     options?: { remote?: boolean; sourceId?: string },
   ) => void;
-  /** 权限已答复（或已过期）：丢掉 `pendingId`，头部按钮随之消失。 */
+  /** 权限已答复：丢掉 `pendingId`，头部按钮随之消失。过期由 core 清（S9）。 */
   resolveApproval: (pendingId: string) => void;
-  /** 扫掉超过 `APPROVAL_TTL_MS` 的 `pendingId`。 */
-  sweepApprovals: (now?: number) => void;
+  /** 一个节点的活动（细粒度阶段）；比现有的旧就丢。 */
+  setActivity: (
+    nodeId: string,
+    activity: SessionActivity,
+    sourceId?: string,
+  ) => void;
   hydrate: (
     sessions: SessionSummary[],
     workspaceId?: string,
@@ -133,11 +133,8 @@ export async function postAgentRead(
 
 export const useAgentStatusStore = create<AgentStatusState>((set, get) => ({
   statuses: {},
-  doneAt: {},
-  pendingSince: {},
 
   upsert: (incoming, context) => {
-    const now = context?.now ?? Date.now();
     const key = scoped(incoming.nodeId);
     const previous = get().statuses[key];
 
@@ -150,14 +147,9 @@ export const useAgentStatusStore = create<AgentStatusState>((set, get) => ({
     // 收尾不该把它重新变出来，否则终端都凉了一分钟，节点上又冒出个胶囊。
     if (!previous && isSyntheticClose(incoming)) return;
 
-    let state = incoming.state;
-    const doneAt = get().doneAt[key];
-    const holding =
-      previous?.state === "done" &&
-      incoming.state === "working" &&
-      doneAt !== undefined &&
-      now - doneAt < DONE_HOLDOFF_MS;
-    if (holding) state = "done";
+    // 迟到的 `working` 不该复活刚结束的回合：这个保持窗口在 core 的归约里
+    // （`hook/reduce.ts` 的 `DONE_HOLDOFF_SECONDS`），推下来的帧已经是定论。
+    const state = incoming.state;
 
     // 未读只由 Runtime 置位、由已读回执清除（§5.4）。开新回合**不算**看过：
     // §5.7 的消息投递正是靠往目标 PTY 写一行来开新回合，那时用户可能根本
@@ -176,22 +168,17 @@ export const useAgentStatusStore = create<AgentStatusState>((set, get) => ({
       if (watched) unread = false;
     }
 
-    const next: AgentStatus = { ...incoming, state, unread };
-    set((current) => {
-      const pendingSince = { ...current.pendingSince };
-      if (!next.pendingId) delete pendingSince[key];
-      else if (previous?.pendingId !== next.pendingId) {
-        pendingSince[key] = now;
-      }
-      return {
-        statuses: { ...current.statuses, [key]: next },
-        doneAt:
-          state === "done" && previous?.state !== "done"
-            ? { ...current.doneAt, [key]: now }
-            : current.doneAt,
-        pendingSince,
-      };
-    });
+    // 活动与进程死活不在状态帧上：沿用补齐时记下的活动，进程死活按事件帧
+    // 来自活的进程处理。
+    const next: MirroredStatus = {
+      ...incoming,
+      state,
+      unread,
+      ...(previous?.activity ? { activity: previous.activity } : {}),
+    };
+    set((current) => ({
+      statuses: { ...current.statuses, [key]: next },
+    }));
     if (watched && context?.remote !== false) {
       // 已知竞态（不修）：回执在途时如果又结束了一个回合，Runtime 会先把
       // `unread` 重新置起来、再被这条回执清掉，于是第二个回合被当成看过了。
@@ -224,30 +211,22 @@ export const useAgentStatusStore = create<AgentStatusState>((set, get) => ({
       if (!entry) return current;
       const [key, status] = entry;
       const { pendingId: _dropped, ...rest } = status;
-      const pendingSince = { ...current.pendingSince };
-      delete pendingSince[key];
-      return {
-        statuses: { ...current.statuses, [key]: rest },
-        pendingSince,
-      };
+      return { statuses: { ...current.statuses, [key]: rest } };
     }),
 
-  sweepApprovals: (now = Date.now()) =>
+  setActivity: (nodeId, activity, sourceId) =>
     set((current) => {
-      const expired = Object.entries(current.pendingSince).filter(
-        ([, since]) => now - since >= APPROVAL_TTL_MS,
-      );
-      if (expired.length === 0) return current;
-      const statuses = { ...current.statuses };
-      const pendingSince = { ...current.pendingSince };
-      for (const [nodeId] of expired) {
-        delete pendingSince[nodeId];
-        const status = statuses[nodeId];
-        if (!status?.pendingId) continue;
-        const { pendingId: _dropped, ...rest } = status;
-        statuses[nodeId] = rest;
+      const key = scoped(nodeId, sourceId);
+      const previous = current.statuses[key];
+      if (!previous) return current;
+      if (previous.activity) {
+        // 同一个 core 进程内按序号；`bootId` 变了（core 重启过）取后到的。
+        const order = compareActivityRev(previous.activity.rev, activity.rev);
+        if (order !== null && order >= 0) return current;
       }
-      return { statuses, pendingSince };
+      return {
+        statuses: { ...current.statuses, [key]: { ...previous, activity } },
+      };
     }),
 
   /**
@@ -282,7 +261,12 @@ export const useAgentStatusStore = create<AgentStatusState>((set, get) => ({
             : { errored: session.errored }),
           verified: previous?.verified ?? false,
           restored: true,
+          alive: session.alive,
+          ...(session.activity ? { activity: session.activity } : {}),
           updatedAt: session.updatedAt,
+          ...(session.interrupted === undefined
+            ? {}
+            : { interrupted: session.interrupted }),
         };
         changed = true;
       }
@@ -306,7 +290,6 @@ export const useAgentStatusStore = create<AgentStatusState>((set, get) => ({
         const key = scoped(event.nodeId);
         const previous = get().statuses[key];
         if (!previous) return;
-        const now = context?.now ?? Date.now();
         set((current) => ({
           statuses: {
             ...current.statuses,
@@ -316,7 +299,6 @@ export const useAgentStatusStore = create<AgentStatusState>((set, get) => ({
               pendingId: event.pendingId,
             },
           },
-          pendingSince: { ...current.pendingSince, [key]: now },
         }));
         return;
       }
@@ -327,12 +309,8 @@ export const useAgentStatusStore = create<AgentStatusState>((set, get) => ({
         if (!get().statuses[key]) return;
         set((current) => {
           const statuses = { ...current.statuses };
-          const doneAt = { ...current.doneAt };
-          const pendingSince = { ...current.pendingSince };
           delete statuses[key];
-          delete doneAt[key];
-          delete pendingSince[key];
-          return { statuses, doneAt, pendingSince };
+          return { statuses };
         });
         return;
       }
@@ -341,24 +319,29 @@ export const useAgentStatusStore = create<AgentStatusState>((set, get) => ({
     }
   },
 
-  reset: () => set({ statuses: {}, doneAt: {}, pendingSince: {} }),
+  reset: () => set({ statuses: {} }),
 }));
 
 export function useAgentStatus(
   nodeId: string,
   sourceId?: string,
-): AgentStatus | undefined {
+): MirroredStatus | undefined {
   return useAgentStatusStore(
     (state) => state.statuses[scoped(nodeId, sourceId)],
   );
 }
 
-/** 需要你：等待权限或等待回答（与通知共用共享层的分类，契约 §81）。 */
+/**
+ * 需要你：等待权限或等待回答。与通知共用 `sessionDisplay().need`（契约 §81），
+ * 进程已死（`alive === false`）不算。
+ */
 export function isAttention(status: {
   state?: AgentStatus["state"];
   pendingId?: string;
+  alive?: boolean;
 }): boolean {
-  return isAwaitingHuman(status);
+  const need = sessionDisplay({ status, alive: status.alive }).need;
+  return need === "approval" || need === "input";
 }
 
 /* ------------------------------ 权限请求形状 ------------------------------ */
@@ -405,87 +388,4 @@ export function isSyntheticClose(status: AgentStatus): boolean {
   const message = status.lastMessage;
   if (!message) return false;
   return SYNTHETIC_CLOSE_MARKERS.some((marker) => message.startsWith(marker));
-}
-
-export type AgentGlow = "working" | "attention" | "unread";
-
-/** 胶囊文案的 i18n 键（`i18n/agent.ts`）。 */
-export type AgentStateLabelKey =
-  | "agent.state.working"
-  | "agent.state.waiting"
-  | "agent.state.blocked"
-  | "agent.state.done"
-  | "agent.state.errored"
-  | "agent.state.interrupted"
-  /** 程序自报的 `error`（契约 §53）：普通终端里没有「回合」可言。 */
-  | "agent.program.error";
-
-export interface AgentHeaderState {
-  pill?: { tone: StatusTone; labelKey: AgentStateLabelKey };
-  glow?: AgentGlow;
-}
-
-/**
- * Agent 状态 → 状态胶囊 + 光晕（§3.4 / §5.4）。节点头部、子代理卡片共用。
- *
- * | 状态 | 胶囊 | 光晕 |
- * | --- | --- | --- |
- * | `working` | RUNNING（working） | working |
- * | `blocked` / `waiting` | NEEDS YOU（attention） | attention |
- * | `done` + `errored` | TURN FAILED（failed） | 未读时 unread |
- * | `done` + `interrupted` | PAUSED（paused） | 未读时 unread |
- * | `done` + `restored` / stale | 无 | 无 |
- * | `done` + 未读 | DONE（unread） | unread |
- * | 其余（含无状态、已读的 done） | 无 | 无 |
- */
-export function agentHeaderState(
-  status: AgentStatus | undefined,
-): AgentHeaderState {
-  if (!status?.state) return {};
-  switch (status.state) {
-    case "working":
-      return {
-        pill: { tone: "working", labelKey: "agent.state.working" },
-        glow: "working",
-      };
-    case "blocked":
-      return {
-        pill: { tone: "attention", labelKey: "agent.state.blocked" },
-        glow: "attention",
-      };
-    case "waiting":
-      return {
-        pill: { tone: "attention", labelKey: "agent.state.waiting" },
-        glow: "attention",
-      };
-    case "done": {
-      const glow: AgentGlow | undefined = status.unread ? "unread" : undefined;
-      // 合成收尾不必在这里拦：Runtime 给它的判决是 `false`、且不置未读，
-      // 所以它自然落到最后一行的 `{}`。反过来，如果此刻仍有未读，那是**更早
-      // 一个回合**留下的、确实还没人看过的输出（Runtime 特意不清它），
-      // 该出的 DONE 胶囊照出——终端死了不代表之前那次的结果不用看。
-      //
-      // `restored` 的行是重启后读回来的旧判决：判决本身仍然成立（上一回合
-      // 确实失败/被打断），所以照出胶囊；只是不冒充「刚跑完」的未读结果。
-      if (status.errored) {
-        return {
-          pill: { tone: "failed", labelKey: "agent.state.errored" },
-          ...(glow ? { glow } : {}),
-        };
-      }
-      if (status.interrupted) {
-        return {
-          pill: { tone: "paused", labelKey: "agent.state.interrupted" },
-          ...(glow ? { glow } : {}),
-        };
-      }
-      if (!status.unread || status.restored) return {};
-      return {
-        pill: { tone: "unread", labelKey: "agent.state.done" },
-        glow: "unread",
-      };
-    }
-    default:
-      return {};
-  }
 }

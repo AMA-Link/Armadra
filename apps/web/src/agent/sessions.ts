@@ -8,11 +8,24 @@
 import { activeSourceId, scoped, srcKey } from "../sources/scope";
 import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import type { AgentState, AgentStatus, SessionSummary } from "@armadra/shared";
+import {
+  compareActivityRev,
+  type AgentState,
+  type AgentStatus,
+  type ProgramStatus,
+  type SessionActivity,
+  type SessionSummary,
+} from "@armadra/shared";
 
 import { sourceById } from "../api/source";
 import { sourceApi } from "../sources/source-api";
-import { isAttention, useAgentStatusStore } from "./status-store";
+import { displayOfRow } from "./display";
+import { useProgramStatusStore } from "./program-status-store";
+import {
+  isAttention,
+  useAgentStatusStore,
+  type MirroredStatus,
+} from "./status-store";
 
 export interface SessionRow {
   nodeId: string;
@@ -22,10 +35,19 @@ export interface SessionRow {
   cwd: string;
   agentId?: string;
   state?: AgentState;
+  stateSource?: AgentStatus["stateSource"];
   unread: boolean;
   pendingId?: string;
   /** 最近一个回合出错结束（与 `unread` 一起决定「出错」是否还要人处理）。 */
   errored?: boolean;
+  /** 最近一个回合被人打断；与 `errored` 一起决定状态点的色调（S1）。 */
+  interrupted?: boolean;
+  /** 重启后从库里读回来的旧行：判决成立，但不冒充「刚跑完」。 */
+  restored?: boolean;
+  /** core 算的细粒度活动（启动、恢复、思考、调用工具……）；没有时间线的会话没有。 */
+  activity?: SessionActivity;
+  /** 程序自报的状态（OSC），在 `sessionDisplay()` 里与上报合并（S5）。 */
+  program?: ProgramStatus;
   /**
    * 最近一条 hook 事件所属 Agent 会话的阶段。hook 归约在 `SessionStart` 与
    * `SessionEnd` 时都清掉 `state`，只有它能分开「刚启动、空闲」和「已退出」。
@@ -59,12 +81,18 @@ function millis(timestamp: string): number {
   return Number.isNaN(value) ? 0 : value;
 }
 
-/** 状态模式的分区归属，顺序即优先级（§3.5）。 */
+/**
+ * 状态模式的分区归属，顺序即优先级（§3.5）。归属从 `sessionDisplay()` 来：
+ * 要你处理的（审批 / 回答）> 在跑的 > 结束了没看的（含出错）> 空闲 > 未知。
+ */
 export function sessionBucket(row: SessionRow): SessionBucket {
-  if (isAttention(row)) return "attention";
+  const display = displayOfRow(row);
+  if (display.tone === "attention") return "attention";
   // 正在运行的节点按当前状态归类（与 MiniMap 一致）；未读只在行内显示标记。
-  if (row.state === "working") return "working";
+  if (display.busy || display.tone === "queued") return "working";
+  // 进程退出后没看过的结果（含出错）照样要看，所以不看 `alive`。
   if (row.unread) return "unread";
+  if (display.phase !== "unknown") return "idle";
   if (row.state) return "idle";
   // 新开的 CLI 是空闲的，不是未知：hook 归约规则 4 只是把上一轮的状态清掉了。
   if (row.sessionPhase === "start") return "idle";
@@ -77,7 +105,7 @@ export function sessionBucket(row: SessionRow): SessionBucket {
  */
 export function agentExited(row: SessionRow): boolean {
   return (
-    row.sessionPhase === "end" && row.state !== "working" && !isAttention(row)
+    row.sessionPhase === "end" && !displayOfRow(row).busy && !isAttention(row)
   );
 }
 
@@ -87,19 +115,41 @@ function optionalErrored(errored: boolean | undefined): {
   return errored === undefined ? {} : { errored };
 }
 
-/** 会话摘要 + 状态镜像 → 列表行。状态镜像更新时它比摘要新，因此优先。 */
+/** 两份活动里新的那份；`bootId` 不同（core 重启过）取镜像里后到的。 */
+function newerActivity(
+  summary: SessionActivity | undefined,
+  mirrored: SessionActivity | undefined,
+): SessionActivity | undefined {
+  if (summary === undefined) return mirrored;
+  if (mirrored === undefined) return summary;
+  const order = compareActivityRev(summary.rev, mirrored.rev);
+  return order !== null && order > 0 ? summary : mirrored;
+}
+
+/**
+ * 会话摘要 + 状态镜像（+ 程序自报）→ 列表行。状态镜像更新时它比摘要新，
+ * 因此优先；程序自报以页面里的活数据为准，没有时退回摘要里带的那份。
+ */
 export function mergeSessions(
   summaries: readonly SessionSummary[],
-  statuses: Record<string, AgentStatus>,
+  statuses: Record<string, MirroredStatus>,
   now: number = Date.now(),
+  programs: Readonly<Record<string, ProgramStatus>> = {},
 ): SessionRow[] {
   return summaries
     .map((summary) => {
-      const status = statuses[scoped(summary.nodeId)];
+      const key = scoped(summary.nodeId);
+      const status = statuses[key];
       const fresher =
         status !== undefined &&
         millis(status.updatedAt) >= millis(summary.updatedAt);
       const updatedAt = fresher ? status.updatedAt : summary.updatedAt;
+      const activity = newerActivity(summary.activity, status?.activity);
+      const program = summary.alive
+        ? (programs[key] ?? summary.programStatus)
+        : undefined;
+      const interrupted = fresher ? status.interrupted : summary.interrupted;
+      const stateSource = fresher ? status.stateSource : summary.stateSource;
       return {
         nodeId: summary.nodeId,
         boardId: summary.boardId,
@@ -108,9 +158,14 @@ export function mergeSessions(
         cwd: summary.cwd,
         agentId: status?.agentId ?? summary.agentId,
         state: fresher ? status.state : summary.state,
+        ...(stateSource ? { stateSource } : {}),
         unread: fresher ? status.unread : summary.unread,
         pendingId: fresher ? status.pendingId : summary.pendingId,
         ...optionalErrored(fresher ? status.errored : summary.errored),
+        ...(interrupted === undefined ? {} : { interrupted }),
+        ...(fresher && status.restored ? { restored: true } : {}),
+        ...(activity ? { activity } : {}),
+        ...(program ? { program } : {}),
         sessionPhase: fresher ? status.sessionPhase : summary.sessionPhase,
         updatedAt,
         alive: summary.alive,
@@ -200,15 +255,16 @@ export function sessionsQuery(workspaceId: string | null) {
 export function useSessions(workspaceId: string | null): UseSessionsResult {
   const query = useQuery(sessionsQuery(workspaceId));
   const statuses = useAgentStatusStore((state) => state.statuses);
+  const programs = useProgramStatusStore((state) => state.programs);
   const tick = useTick(5_000);
 
   // 镜像补齐不在这里。它跟着应用挂载走（`useAgentStatusHydration`），
   // 否则画布上的节点徽标会取决于侧栏挂没挂。
   const sessions = useMemo(
-    () => mergeSessions(query.data ?? [], statuses, Date.now()),
+    () => mergeSessions(query.data ?? [], statuses, Date.now(), programs),
     // `tick` 只是节拍源，故意进依赖数组。
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [query.data, statuses, tick],
+    [query.data, statuses, programs, tick],
   );
 
   return {

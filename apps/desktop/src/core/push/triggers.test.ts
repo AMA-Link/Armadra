@@ -291,6 +291,44 @@ describe("同一套「需要人处理」规则（契约 §81）", () => {
   });
 });
 
+describe("进程已死不推（S8）", () => {
+  const frame = (fields: Record<string, unknown>) => ({
+    type: "agent.status",
+    status: { nodeId: "n1", ...fields },
+  });
+  const exit = { type: "terminal.exit", sessionId: "s1", nodeId: "n1" };
+
+  it("终端退出之后，残留的审批 / 等待 / 出错帧都不推", () => {
+    for (const fields of [
+      { state: "waiting" },
+      { state: "blocked", pendingId: "p1" },
+      { state: "done", errored: true, unread: true },
+    ]) {
+      const rules = new TriggerRules();
+      rules.draft("w1", exit);
+      expect(rules.draft("w1", frame(fields))).toBeUndefined();
+    }
+  });
+
+  it("重新起来的会话（新上报或 SessionStart）照常推", () => {
+    const rules = new TriggerRules();
+    rules.draft("w1", exit);
+    expect(rules.draft("w1", frame({ state: "waiting" }))).toBeUndefined();
+    const later = new Date(Date.now() + 5_000).toISOString();
+    expect(
+      rules.draft("w1", frame({ state: "waiting", lastEventAt: later }))?.kind,
+    ).toBe("agentWaiting");
+  });
+
+  it("没出过退出的节点不受影响", () => {
+    const rules = new TriggerRules();
+    rules.draft("w1", { ...exit, nodeId: "other" });
+    expect(rules.draft("w1", frame({ state: "waiting" }))?.kind).toBe(
+      "agentWaiting",
+    );
+  });
+});
+
 describe("不该叫人的那些", () => {
   it("审批的答复、重复的完成、送达的投递都不推", () => {
     const rules = new TriggerRules();

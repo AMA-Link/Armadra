@@ -8,8 +8,8 @@
  */
 import { useEffect, useState } from "react";
 import { MoreHorizontal } from "lucide-react";
-import type { HumanNeed } from "@armadra/shared";
 
+import { NEED_TONE } from "../agent/display";
 import { useT } from "../app/preferences-store";
 import { formatRelativeTime } from "../lib/format";
 import { displayName } from "../sidebar/display-name";
@@ -26,16 +26,9 @@ import {
 } from "@/ui/dropdown-menu";
 import { IconButton } from "@/ui/icon-button";
 import { ScrollArea } from "@/ui/scroll-area";
-import { StatusPill, type StatusTone } from "@/ui/status-pill";
+import { StatusPill } from "@/ui/status-pill";
 import type { NeedItem } from "./needs";
 import { useNeedsStore } from "./needs-store";
-
-const NEED_TONE: Record<HumanNeed, StatusTone> = {
-  approval: "attention",
-  input: "attention",
-  error: "failed",
-  handoff: "queued",
-};
 
 export function NotificationPanel({ onClose }: { onClose: () => void }) {
   const t = useT();
