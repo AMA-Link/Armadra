@@ -90,6 +90,7 @@ describe("契约树", () => {
       "traffic",
       "devices",
       "e2e",
+      "timeline",
     ]);
   });
 

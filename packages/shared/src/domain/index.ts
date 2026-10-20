@@ -16,3 +16,5 @@ export * from "./boards.js";
 export * from "./workspaces.js";
 export * from "./agent-status.js";
 export * from "./placement.js";
+export * from "./timeline.js";
+export * from "./timeline-reduce.js";

@@ -5,6 +5,7 @@ import {
   agentStateSchema,
   agentStateSourceSchema,
   permissionModeSchema,
+  sessionActivitySchema,
   sshTargetSchema,
 } from "../domain/index.js";
 
@@ -205,6 +206,13 @@ export const sessionSummarySchema = z.object({
   backend: terminalBackendKindSchema.optional(),
   /** 契约 §53：会话活在这个 core 里、且程序自报过状态时才有。 */
   programStatus: programStatusSchema.optional(),
+  /**
+   * 细粒度活动（会话时间线，设计 acp-progressive-view §2.4）：core 在内存里算，
+   * 冷启动和重连从这里补；没有时间线的会话省略。
+   */
+  activity: sessionActivitySchema.optional(),
+  /** 这条会话时间线已写到的序号，页面据此决定要不要 `timeline.sync`。 */
+  timelineSeq: z.number().int().nonnegative().optional(),
 });
 
 export const sessionsResponseSchema = z.array(sessionSummarySchema);

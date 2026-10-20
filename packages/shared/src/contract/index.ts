@@ -29,6 +29,7 @@ import { sources } from "./sources.js";
 import { security } from "./security.js";
 import { system } from "./system.js";
 import { terminals } from "./terminals.js";
+import { timeline } from "./timeline.js";
 import { traffic } from "./traffic.js";
 import { updates } from "./updates.js";
 import { workflows } from "./workflows.js";
@@ -69,6 +70,7 @@ export const contract = {
   traffic,
   devices,
   e2e,
+  timeline,
 };
 
 export type Contract = typeof contract;
@@ -205,6 +207,11 @@ export type {
   TrafficSummaryInput,
 } from "./traffic.js";
 export type { SystemHello } from "./system.js";
+export {
+  TIMELINE_CONTRACT_SECTION,
+  TIMELINE_CONTRACT_SINCE,
+  timelineBlobWireSchema,
+} from "./timeline.js";
 export {
   clientSourceRouteSchema,
   clientSourceSchema,
