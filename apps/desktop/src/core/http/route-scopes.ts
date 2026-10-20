@@ -273,6 +273,13 @@ export const ROUTE_SCOPE_RULES: readonly RouteScopeRule[] = [
     read: "terminal:read",
     write: "terminal:create",
   },
+  // 会话时间线（契约 §82）：读时间线的 blob 与看终端同一档；路径里只有会话行
+  // id，服务器壳的路由门按会话行查出画布再判（`identity/route-access.ts`）。
+  {
+    pattern: /^\/api\/timelines\//,
+    read: "terminal:read",
+    write: "terminal:read",
+  },
   // 工作流（契约 §15）：看草案、模板与运行记录是看画布；确认草案、改模板、
   // 起一次运行会开节点与 Agent，要 operator 那一档（`agent:launch`）。路径里
   // 没有工作空间：服务器壳的路由门按草案 / 运行 / 画板查出画布再判，改模板

@@ -123,6 +123,10 @@ const CONTEXT_READS = /^\/api\/nodes\/([^/]+)\/context-reads$/;
 const APPROVAL = /^\/api\/approvals\/([^/]+)\/answer$/;
 /** ACP 会话（契约 §14.2）：会话行就是终端行，按会话行查画布。 */
 const ACP_SESSION = /^\/api\/acp\/sessions\/([^/]+)\/[^/]+$/;
+/** 会话时间线的 blob（契约 §82.1）：时间线以会话行 id 为键，按会话行查画布。 */
+const TIMELINE_BLOB = /^\/api\/timelines\/([^/]+)\/blobs\/[^/]+$/;
+/** `timeline.*` procedure（没有旧路径，门面用 `rpc:<名字>` 来问）。 */
+const TIMELINE_PROCEDURE = /^rpc:timeline\.(open|sync|page|blob)$/;
 /** 驱动切换：按节点查画布。 */
 const ACP_DRIVER = /^\/api\/acp\/nodes\/([^/]+)\/driver$/;
 const CONFIRM = /^\/api\/control\/confirm\/([^/]+)$/;
@@ -429,6 +433,21 @@ export function createRouteGuard(options: RouteAccessOptions): RouteGuard {
         "terminal:drive",
         workspaceId,
       );
+    }
+
+    // 会话时间线（契约 §82）：读，按会话行查出画布，同看终端一档；会话查看者
+    // 只限那一条会话。
+    const timelineBlob = TIMELINE_BLOB.exec(path);
+    const timelineId =
+      timelineBlob !== null
+        ? decodeURIComponent(timelineBlob[1] as string)
+        : TIMELINE_PROCEDURE.test(path)
+          ? bodyString(request, "timelineId")
+          : undefined;
+    if (timelineId !== undefined) {
+      const workspaceId = lookups.sessionWorkspace(timelineId);
+      if (workspaceId === "") return DENY;
+      return readsSession(subject, workspaceId, timelineId);
     }
 
     const workflow = workflowVerdict(request, path, method, subject);

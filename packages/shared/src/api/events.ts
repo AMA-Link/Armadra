@@ -1,7 +1,12 @@
 import { z } from "zod";
 
 import { jsonValueSchema } from "../contract/json.js";
-import { agentEventSchema, agentStatusSchema } from "../domain/index.js";
+import {
+  agentEventSchema,
+  agentStatusSchema,
+  timelineActivityEventSchema,
+  timelineDeltaSchema,
+} from "../domain/index.js";
 
 import {
   browserActivitySchema,
@@ -148,6 +153,13 @@ export const workspaceEventSchema = z.discriminatedUnion("type", [
     nodeId: z.string().optional(),
     status: programStatusSchema.optional(),
   }),
+  /**
+   * 会话时间线的一帧增量（契约 §82）：`from` 是上一次的 `headSeq`，`to` 是这一帧
+   * 之后的。短时事件，不进 outbox；缺口由页面按 `timeline.sync` 补。
+   */
+  timelineDeltaSchema.extend({ type: z.literal("timeline.delta") }),
+  /** 一条会话的活动（渐进式状态）变了（契约 §82）；短时事件，不进 outbox。 */
+  timelineActivityEventSchema.extend({ type: z.literal("timeline.activity") }),
   z.object({
     type: z.literal("board.changed"),
     boardId: z.string(),

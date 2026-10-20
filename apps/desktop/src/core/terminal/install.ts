@@ -1,4 +1,5 @@
 import { join, resolve } from "node:path";
+import type { SessionActivity } from "@armadra/shared";
 import { type DomainHandlers, registerProcedures } from "../http/rpc";
 import { allows } from "../identity/gate";
 import { scope } from "../identity/scopes";
@@ -31,6 +32,7 @@ import {
   sshHostOf,
 } from "../acp";
 import { acpSwitching } from "../acp/routes";
+import { rowLiveness, timelineDomainOf } from "../timeline";
 import { loadNode } from "../collab/nodes";
 import { canvasEnvironment } from "../agent/canvas-launch";
 import {
@@ -242,6 +244,15 @@ export function install(
       });
     },
   });
+  // 会话时间线（契约 §82）重启后没有活动记录时，按真实的存活情况补
+  // `idle` / `sleeping` / `exited`。
+  timelineDomainOf(context.server)?.setLiveness((sessionId) =>
+    manager.isAlive(sessionId)
+      ? "alive"
+      : rowLiveness(context.db.database, sessionId) === "sleeping"
+        ? "sleeping"
+        : "gone",
+  );
 
   /**
    * Start-up recovery, and the gate every terminal answer waits behind.
@@ -621,6 +632,8 @@ export function install(
         workspaceId,
         (id) => manager.isAlive(id),
         (id) => manager.programStatus(id),
+        (id) =>
+          timelineDomainOf(context.server)?.summaryOf(id, manager.isAlive(id)),
       ),
 
     paste: async (sessionId: string, text: unknown, enter: boolean) => {
@@ -1190,6 +1203,9 @@ export interface SessionSummary {
   readonly alive: boolean;
   /** 契约 §53：程序此刻自报的状态，只在会话活在这个进程里时有。 */
   readonly programStatus?: ProgramStatusWire;
+  /** 会话时间线的活动与已写到的序号（契约 §82）；没有时间线的会话省略。 */
+  readonly activity?: SessionActivity;
+  readonly timelineSeq?: number;
 }
 
 /**
@@ -1220,6 +1236,10 @@ export function listSessions(
   workspaceId: string,
   alive: (sessionId: string) => boolean,
   program: (sessionId: string) => ProgramStatusWire | undefined = () =>
+    undefined,
+  timeline: (
+    sessionId: string,
+  ) => { activity: SessionActivity; timelineSeq: number } | undefined = () =>
     undefined,
 ): SessionSummary[] {
   const rows = database
@@ -1264,6 +1284,7 @@ export function listSessions(
     const pendingId = row.pending_id as string | null;
     const sessionPhase = row.session_phase as string | null;
     const programStatus = program(sessionId);
+    const timelineSummary = timeline(sessionId);
     return {
       nodeId: String(row.node_id),
       boardId: String(row.board_id),
@@ -1290,6 +1311,7 @@ export function listSessions(
       ),
       alive: alive(sessionId),
       ...(programStatus === undefined ? {} : { programStatus }),
+      ...(timelineSummary === undefined ? {} : timelineSummary),
     };
   });
 }
