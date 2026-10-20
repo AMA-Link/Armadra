@@ -191,6 +191,7 @@ describe("SettingsDialog", () => {
       panels: {
         sidebar: "open",
         explorer: "closed",
+        observation: "closed",
         scm: "closed",
         resources: "closed",
         automation: "closed",

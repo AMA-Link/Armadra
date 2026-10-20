@@ -55,6 +55,8 @@ export interface PanelState {
   /** 左侧 docked 侧栏（§20「左侧栏」）。折叠时宽 0，画布自己铺满。 */
   sidebar: "open" | "collapsed";
   explorer: "closed" | "drawer" | "pinned";
+  /** 当前画布的节点与 Agent 状态抽屉。 */
+  observation: "closed" | "drawer";
   /**
    * Git 工具窗口（Git 工具窗口设计 §2.1）。
    *
