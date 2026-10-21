@@ -1,7 +1,8 @@
-import { FileText } from "lucide-react";
+import { FileText, Pencil } from "lucide-react";
 import type { TimelineUserItem } from "@armadra/shared";
 
-import { ActionBar, CopyAction } from "@/acp/MessageActions";
+import { Action, ActionBar, CopyAction } from "@/acp/MessageActions";
+import { useT } from "@/app/preferences-store";
 import { Badge } from "@/ui/badge";
 import { Card } from "@/ui/card";
 import { ImagePart } from "../parts/ImagePart";
@@ -9,10 +10,13 @@ import { memoRow } from "../row-memo";
 
 export interface UserRowProps {
   item: TimelineUserItem;
+  /** 编辑后重发：把这句填回输入框；不给就没有这个动作。须是稳定引用。 */
+  onEdit?: ((text: string) => void) | undefined;
 }
 
 /** 右侧气泡：纯文本加附件缩略图。 */
-function UserRowImpl({ item }: UserRowProps) {
+function UserRowImpl({ item, onEdit }: UserRowProps) {
+  const t = useT();
   const attachments = item.attachments ?? [];
   return (
     <div
@@ -47,6 +51,14 @@ function UserRowImpl({ item }: UserRowProps) {
       </Card>
       {item.text !== "" && (
         <ActionBar className="absolute top-0 right-full mr-1">
+          {onEdit !== undefined && (
+            <Action
+              label={t("acp.message.editResend")}
+              onClick={() => onEdit(item.text)}
+            >
+              <Pencil />
+            </Action>
+          )}
           <CopyAction text={item.text} />
         </ActionBar>
       )}

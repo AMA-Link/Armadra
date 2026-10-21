@@ -39,6 +39,10 @@ export interface TurnActions {
     | undefined;
   onRetry?: (() => void) | undefined;
   onContinue?: (() => void) | undefined;
+  /** 用户行「编辑后重发」：把这句填回输入框。 */
+  onEdit?: ((text: string) => void) | undefined;
+  /** 最后一回合助手行「重新生成」：重发这一回合的提问。 */
+  onRegenerate?: ((text: string) => void) | undefined;
 }
 
 /** 回合内第一次出现计划时插的一行（顶部计划条显示的是最新的一份）。 */
@@ -65,7 +69,10 @@ export const TurnSection = React.memo(function TurnSection({
   renderElicitation,
   onRetry,
   onContinue,
-}: { block: TurnBlock } & TurnActions) {
+  onEdit,
+  onRegenerate,
+  last,
+}: { block: TurnBlock; last?: boolean } & TurnActions) {
   const view = React.useMemo(() => {
     const toolIds = new Set<string>();
     for (const item of block.items) {
@@ -91,8 +98,27 @@ export const TurnSection = React.memo(function TurnSection({
         flow.push(item);
       }
     }
-    return { entries: activityGroups(flow), approvals, footer };
-  }, [block]);
+    const entries = activityGroups(flow);
+    let prompt: string | undefined;
+    for (const item of block.items) {
+      if (item.kind === "user") {
+        prompt = item.text;
+        break;
+      }
+    }
+    // 重新生成只挂在最后一回合最后一条助手消息上。
+    let regenerateId: string | undefined;
+    if (last === true && prompt !== undefined && prompt !== "") {
+      for (let i = flow.length - 1; i >= 0; i--) {
+        const item = flow[i] as TimelineItem;
+        if (item.kind === "assistant") {
+          regenerateId = item.id;
+          break;
+        }
+      }
+    }
+    return { entries, approvals, footer, prompt, regenerateId };
+  }, [block, last]);
 
   const toolRow = (
     item: TimelineToolItem,
@@ -127,9 +153,18 @@ export const TurnSection = React.memo(function TurnSection({
         const item = entry.item;
         switch (item.kind) {
           case "user":
-            return <UserRow key={item.id} item={item} />;
+            return <UserRow key={item.id} item={item} onEdit={onEdit} />;
           case "assistant":
-            return <AssistantRow key={item.id} item={item} />;
+            return (
+              <AssistantRow
+                key={item.id}
+                item={item}
+                prompt={view.prompt}
+                onRegenerate={
+                  item.id === view.regenerateId ? onRegenerate : undefined
+                }
+              />
+            );
           case "thought":
             return <ThoughtRow key={item.id} item={item} />;
           case "tool":
@@ -206,6 +241,8 @@ export function TimelineView({
   renderElicitation,
   onRetry,
   onContinue,
+  onEdit,
+  onRegenerate,
 }: TimelineViewProps) {
   const t = useT();
   const blocks = React.useRef<TurnBlock[]>([]);
@@ -214,6 +251,7 @@ export function TimelineView({
     return blocks.current;
   }, [items]);
   const plan = React.useMemo(() => latestPlan(items), [items]);
+  const lastTurn = turns.at(-1)?.turn;
   const renderTurn = React.useCallback(
     (block: TurnBlock) => (
       <TurnSection
@@ -222,9 +260,20 @@ export function TimelineView({
         renderElicitation={renderElicitation}
         onRetry={onRetry}
         onContinue={onContinue}
+        onEdit={onEdit}
+        onRegenerate={onRegenerate}
+        last={block.turn === lastTurn}
       />
     ),
-    [renderApproval, renderElicitation, onRetry, onContinue],
+    [
+      renderApproval,
+      renderElicitation,
+      onRetry,
+      onContinue,
+      onEdit,
+      onRegenerate,
+      lastTurn,
+    ],
   );
   const empty = turns.length === 0;
   return (

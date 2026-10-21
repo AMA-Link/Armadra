@@ -1,6 +1,8 @@
+import { RotateCcw } from "lucide-react";
 import type { TimelineAssistantItem, TimelinePart } from "@armadra/shared";
 
-import { ActionBar, CopyAction } from "@/acp/MessageActions";
+import { Action, ActionBar, CopyAction } from "@/acp/MessageActions";
+import { useT } from "@/app/preferences-store";
 import { Spinner } from "@/ui/spinner";
 import { AudioPart } from "../parts/AudioPart";
 import { ImagePart } from "../parts/ImagePart";
@@ -10,6 +12,10 @@ import { memoRow } from "../row-memo";
 
 export interface AssistantRowProps {
   item: TimelineAssistantItem;
+  /** 这一回合的提问；重新生成时重发它。 */
+  prompt?: string | undefined;
+  /** 重新生成：给了（且有提问）才有这个动作。须是稳定引用。 */
+  onRegenerate?: ((text: string) => void) | undefined;
 }
 
 function PartView({ part }: { part: TimelinePart }) {
@@ -60,7 +66,8 @@ function PartView({ part }: { part: TimelinePart }) {
 }
 
 /** 助手消息：按部件顺序渲染；文本是流式 Markdown，其余是结构化部件。 */
-function AssistantRowImpl({ item }: AssistantRowProps) {
+function AssistantRowImpl({ item, prompt, onRegenerate }: AssistantRowProps) {
+  const t = useT();
   const text = item.parts
     .map((part) => (part.type === "text" ? part.text : ""))
     .join("");
@@ -83,6 +90,16 @@ function AssistantRowImpl({ item }: AssistantRowProps) {
       {text.trim() !== "" && (
         <ActionBar className="absolute -top-2 right-0 rounded-[var(--r-control)] bg-[var(--card)]">
           <CopyAction text={text} />
+          {onRegenerate !== undefined &&
+            prompt !== undefined &&
+            !item.streaming && (
+              <Action
+                label={t("acp.message.regenerate")}
+                onClick={() => onRegenerate(prompt)}
+              >
+                <RotateCcw />
+              </Action>
+            )}
         </ActionBar>
       )}
     </div>
