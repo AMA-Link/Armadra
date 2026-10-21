@@ -744,7 +744,7 @@ G5-25 追加：`GET /api/usage` 与 `POST /api/usage/refresh` 里 Claude 那一�
 { "type": "acp.driver", "nodeId": "…", "driver": "terminal", "sessionId": "…", "resumed": true }
 ```
 
-- `acp.update.update` 是 ACP `session/update` 的 `update` 原样（v1 规范字段；`_meta` 不解释）；core 发出的一条之前已经写进镜像。我方发出的提示也以一条 `user_message_chunk` 发出，别的设备看得见是谁说了什么。`session/load` 的回放从不发出。
+- `acp.update.update` 是 ACP `session/update` 的 `update` 原样（v1 规范字段；`_meta` 不解释）；core 发出的一条之前已经写进镜像（文本分块在镜像里攒成一行，`GET …/log` 读之前先写出，见 §82.3）。**自 §82.3 起 `acp.update` 是短时事件**：只扇出给在线订阅者，不进 outbox，续订游标补不出过去的分块——重连的页面读 `…/log` 或 `timeline.sync` 补齐。我方发出的提示也以一条 `user_message_chunk` 发出，别的设备看得见是谁说了什么。`session/load` 的回放从不发出。
 - `acp.turn`：一次提示的结束。`stopReason` 是规范的五个值之一；提示以 JSON-RPC 错误结束时没有 `stopReason`，带 `error: { code, message }`（`acp_protocol`，或进程没了时 `acp_exited`）。提示带了 `clientTurnId`（§39.9）时这一帧原样带回。
 - `acp.driver`：一次切换完成（§14.2）。
 - `acp.starting`：起会话的阶段（自 1.24，§51）。
@@ -3630,10 +3630,10 @@ human initiator。页面不接收任何 controller 凭据；body owner/controlle
 
 自协议 1.24 起。ACP 适配器在 `session/new` 里同步跑完 CLI 的整套启动（设置、插件、SessionStart hook、账号探测），慢的时候页面以前只能对着骨架屏等。本节让节点先显示、可以先输入，并给出阶段与截止时间；菜单打开时预启动默认 Agent 的适配器。实现在 `core/acp/host.ts`（阶段、计时、截止）、`core/acp/index.ts`（事件、日志、闸门、领走）、`core/acp/prestart.ts`（预启动池与预热）与 `core/acp/routes.ts`。
 
-- **事件 `acp.starting`** `{ nodeId, phase: "spawn" | "initialize" | "session" | "configure", at }`：起一个 ACP 会话时每阶段开始发一次（起进程、`initialize`、开会话、落模式与模型），在这一代的 `acp.update` 之前。`at` 是 RFC 3339 时间。领走预启动进程时只有 `session` 与 `configure` 两帧。SSH 节点同样发。
+- **事件 `acp.starting`** `{ nodeId, phase: "spawn" | "initialize" | "session" | "configure", at }`：起一个 ACP 会话时每阶段开始发一次（起进程、`initialize`、开会话、落模式与模型），在这一代的 `acp.update` 之前。`at` 是 RFC 3339 时间。领走预启动进程时 `spawn` 与 `initialize` 两帧在领走的那一刻补报（进程与协商是预启动做完的，两帧紧挨着发），之后照常 `session`、`configure`。SSH 节点同样发。
 - **`POST /api/acp/sessions`**：`session/new` 60 s 没答复时答 504 `acp_session_timeout`，适配器进程被收掉（`initialize` 的 30 s 截止不变）。`prompt` 字段语义不变；页面在会话就绪前输入的第一条，若那时起会话的请求还没发出，就随这个字段发出，否则等会话开好后经 `acp.prompt` 发（带 `clientTurnId`，§39.9）。
 - **启动闸门**：本机 ACP 会话在起适配器之前过 §52 的闸门（键 `(agentId, 配置目录)`），`session/new` 答复（进入落设置那一段）或失败时放行下一个。
-- **`POST /api/acp/prestart`** `{ workspaceId, agentId }` → `204`。幂等；只是提速：不是 ACP 入口、没装、或这家不能预启动时同样 204。工作空间不存在 404 `not_found`，缺字段 400 `bad_request`。权限 `terminal:drive`；服务器壳按体里的 `workspaceId` 判。页面在右键 / Dock `+` 菜单打开时对默认 Agent（以 ACP 驱动的才调）调一次；远程源不调。core 按与起会话同一份程序、argv 与环境起适配器并完成 `initialize`，挂在 `(agentId, workspaceId)` 下，10 s 没被领走就收掉。之后同一工作空间同一家的 `POST /api/acp/sessions` 若启动签名（程序、argv、环境）相同就领走它，直接 `session/new`。预启动时还没有节点，进程环境里没有节点身份：所以只给注入不复用终端环境与 argv 的那几家（适配器表 `injection.reuse` 为空，今天是 Claude 与 ama），节点带凭据（§26.4）时不领。
+- **`POST /api/acp/prestart`** `{ workspaceId, agentId, nodeId? }` → `204`。`nodeId`（§82.3）：接回已有节点，按该节点的 `cwd`（没有就工作空间根）预启动；节点不在这个工作空间 404 `not_found`，SSH 节点当没这回事。幂等；只是提速：不是 ACP 入口、没装、或这家不能预启动时同样 204。工作空间不存在 404 `not_found`，缺字段 400 `bad_request`。权限 `terminal:drive`；服务器壳按体里的 `workspaceId` 判。页面在右键 / Dock `+` 菜单打开时对默认 Agent（以 ACP 驱动的才调）调一次；远程源不调。core 按与起会话同一份程序、argv 与环境起适配器并完成 `initialize`，挂在 `(agentId, workspaceId)` 下，10 s 没被领走就收掉。之后同一工作空间同一家的 `POST /api/acp/sessions` 若启动签名（程序、argv、环境）相同就领走它，直接 `session/new`。预启动时还没有节点，进程环境里没有节点身份：所以只给注入不复用终端环境与 argv 的那几家（适配器表 `injection.reuse` 为空，今天是 Claude 与 ama），节点带凭据（§26.4）时不领。
 - **预热**：适配器或 CLI 装好 / 升级成功后、core 起来空闲 10 s 后、以及预启动时发现适配器程序换过，core 对每家已装的适配器跑一次 `initialize`，并执行一次它自带 CLI 的 `--version`（Claude：SDK 平台包里的 `claude`；Codex：`@openai/codex-<平台>` 里的原生程序），串行，同一家同一份程序 10 分钟内一次。没有接口；`ARMADRA_ACP_WARMUP=0` 或 `ARMADRA_NO_GLOBAL_WRITES=1`（探针）时不做空闲预热。
 - **耗时日志**：每次起会话记一条 info 日志 `ACP session start timings`，字段只有 `nodeId`、`agentId` 与 `spawnMs` / `initializeMs` / `sessionMs` / `configureMs` / `totalMs` / `prestarted`；适配器 stderr 里的 `[session/create] phase=<名> durationMs=<n>` 只取名字与数字记成 `ACP adapter phase`。stderr 正文仍不进日志。
 - `acp.log` 不变；不写数据库迁移（池与预热只在内存里）。
@@ -4529,4 +4529,16 @@ owner（本机会话，或已信任设备经通道的 owner 会话）：`{ sourc
 - **blob**：图片、音频与内嵌资源的字节按内容寻址存 `<数据目录>/timeline/blobs/<sha256>`（0600），单个超过 8 MiB 的不存（部件记 `dropped`）。读以 `timeline_blobs` 为准——只有这条时间线自己登记过的 blob 读得到，别的时间线的 blobId、不存在的 blobId 一律 `404`。`GET /api/timelines/{timelineId}/blobs/{blobId}` 答原始字节：`content-type` 只对 `image/{png,jpeg,gif,webp,avif,bmp}` 与 `audio/*` 原样回，其余（含 SVG、HTML）一律 `application/octet-stream` + `content-disposition: attachment`；`x-content-type-options: nosniff`、`content-security-policy: sandbox`、`cache-control: private, max-age=31536000, immutable`。`timeline.blob` 把字节放进 JSON（base64），一个应答就是一帧，所以只放得下原始字节不超过 `⌊(maxFrameBytes − 1024) / 4⌋ × 3`（约 786 KB）的 blob，更大的答 `400 bad_request`，改走 HTTP 路径。
 - **授权**：时间线以会话行 id 为键，路由门（`identity/route-access.ts`）按会话行查出画布再判 `terminal:read`，procedure（`rpc:timeline.*`）与 blob 路径同一道门；只被授予某一条会话（§60）的人只读得到那一条；不存在的会话对成员也答 `403`，不泄露哪些 id 存在。本机壳没有请求主体，不受限。会话没有时间线时四个动词答 `404 not_found`，页面据此退回 `acp.log` 路径。
 - **恢复**：core 重启时，上一个进程留下的、没有收尾的 ACP 回合（适配器进程早随它没了）一律记 `cancelled`：挂起的审批与提问变 `cancelled`，流式的条目收尾，跑着的工具记 `cancelled`，回合条目写 `endedAt` 与 `stopReason = cancelled`，并发 `timeline.delta`。
-- **新旧并存**：`acp.log`（镜像读）、`acp.update` 与 `acp.turn` 事件在 B10 之前原样保留；生产者接上之前（B3 / B4）时间线是空的，`timeline.*` 答 `404`，会话列表没有 `activity`。
+- **新旧并存**：`acp.log`（镜像读）、`acp.update` 与 `acp.turn` 事件在 B10 之前原样保留；ACP 会话自 §82.3 起同时写时间线；还没有任何生产者写过的会话（终端驱动的 CLI 在 B4 之前、从未起过的节点）时间线是空的，`timeline.*` 答 `404`，会话列表没有 `activity`。
+
+### 82.3 ACP 生产者与 core 侧提速（B3）
+
+自 B3 起 `core/acp/**` 的 ACP 会话是时间线的生产者；实现在 `core/acp/feed.ts`（写入侧）、`session.ts`、`host.ts`、`mirror.ts`、`index.ts` 与 `routes.ts`。协议 minor 不变（没有新 procedure，字段只增不改）。
+
+- **写什么**：每条 `session/update` 经共享层 `acpUpdateToOps` 写进 `TimelineWriter`；我方提示（回合开始：先 `turnBegin` 再 `activity.prompt`）、回合结束（先 `turnEnd` 再 `activity.turnEnded`，带停止原因、错误、最近用量与等审批的毫秒数）、审批（`ap:<pendingId>`，同时在对应工具上记 `permission`）、elicitation（`el:<pendingId>`）都是条目；挂起的审批 / 提问随回合结束、取消或进程退出记 `cancelled`。驱动切换写 `notice(driver_switched)`（切换期间活动 `switching`），Eco 休眠 / 唤醒写 `notice(hibernated)` / `notice(woke)`（活动 `sleeping`），适配器自己退出写 `notice(exited)`（活动 `exited`），起会话失败写 `notice(error)`，接回写 `notice(resumed)` / `notice(not_resumed)`。
+- **活动**：起会话时 `starting`（`detail.step` = `spawn` / `initialize` / `session` / `configure`，领走预启动进程时前两帧补报），`session/load` 回放时 `restoring`（`detail.count` 是已回放条数，每 25 帧报一次），开好后 `ready`；内容阶段由写入器自动推导。
+- **打开节点不等适配器**：时间线在会话行登记的那一刻起就能读（`timeline.open`、`sync`、`page`）；core 重启或休眠之后历史直接来自库，适配器在后台接回。
+- **恢复**：时间线非空时，Agent 声明了 `session/resume` 就优先用它（不回放），否则 `session/load`，回放的帧**不写条目**，只让活动显示 `restoring`；`session/load` 回放静默超过 120 s（每来一帧重新计时）放弃接回、新开会话并记 `not_resumed`（`resumeError.code = acp_resume_failed`）。时间线为空（第一次接管旧会话）时回放照 `session/load` 走，经 reducer 写成 `source = replay` 的回合（每个 `user_message_chunk` 开一回合）。
+- **提速**：（1）`acp.update` 改短时事件（`EPHEMERAL_EVENTS`），每个回合的 outbox 写入不再随分块数增长；（2）镜像里相邻的助手文本分块攒成一行，遇到别的记录、回合结束、会话结束、攒满 32 KiB 或 300 ms 到点才写，`GET …/log` 读之前先写出；（3）ACP 的 `tool` 信号只在 reducer 眼里的状态会变（不是 `working`）或 `execute` 的标题变了才走 `apply`，工具粒度的变化只更新活动；（4）写入器合并刷写（§82.2）使每个回合的 SQLite 写入从「分块数」降到「刷写次数」。
+- **图片与音频**：落成 blob，条目与事件只带 `{ blobId, mimeType, bytes }`（§82 体量一节）；旧的 `acp.update` 仍带原样 base64，B10 之后不再发出。
+- **预启动接回已有节点**：`POST /api/acp/prestart` 多一个可省的 `nodeId`（§51）；页面在节点进入视口或获得焦点时调用，之后该节点接回会话时领走预启动的适配器。
