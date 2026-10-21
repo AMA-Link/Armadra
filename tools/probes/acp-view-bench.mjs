@@ -812,7 +812,7 @@ async function main() {
           const scan = () => {
             const node = document.querySelector('.react-flow__node[data-id="${pageNode}"]');
             if (node && bench.node === undefined) bench.node = performance.now();
-            const list = node?.querySelector('[data-slot="acp-messages"]');
+            const list = node?.querySelector('[data-slot="timeline-scroller"], [data-slot="acp-messages"]');
             if (!list) return;
             const replies = list.querySelectorAll('[data-role="assistant"]');
             const last = replies[replies.length - 1];
