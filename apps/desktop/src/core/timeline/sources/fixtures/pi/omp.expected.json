@@ -1,0 +1,165 @@
+{
+  "head": {
+    "title": "列出文件",
+    "usage": {
+      "used": 120,
+      "size": 200000
+    }
+  },
+  "items": [
+    {
+      "id": "turn:pi:a1b2c402",
+      "turn": 1,
+      "ord": 0,
+      "rev": 14,
+      "source": "transcript",
+      "at": 1790000001000,
+      "gen": 0,
+      "kind": "turn",
+      "turnId": "pi:a1b2c402",
+      "startedAt": 1790000001000,
+      "endedAt": 1790000002500,
+      "stopReason": "end_turn",
+      "permissionWaitMs": 0,
+      "usage": {
+        "used": 120,
+        "size": 200000
+      }
+    },
+    {
+      "id": "u:pi:a1b2c402",
+      "turn": 1,
+      "ord": 1,
+      "rev": 3,
+      "source": "transcript",
+      "at": 1790000001000,
+      "gen": 0,
+      "kind": "user",
+      "text": "列出文件"
+    },
+    {
+      "id": "tool:call_g",
+      "turn": 1,
+      "ord": 2,
+      "rev": 7,
+      "source": "transcript",
+      "at": 1790000002000,
+      "gen": 0,
+      "kind": "tool",
+      "toolCallId": "call_g",
+      "toolKind": "search",
+      "title": "glob /work/demo",
+      "status": "completed",
+      "locations": [
+        {
+          "path": "/work/demo"
+        }
+      ],
+      "input": {
+        "path": "/work/demo",
+        "query": "*.md",
+        "fields": [
+          {
+            "key": "i",
+            "value": "1"
+          }
+        ]
+      },
+      "content": [
+        {
+          "type": "text",
+          "text": "README.md"
+        }
+      ],
+      "startedAt": 1790000002000,
+      "endedAt": 1790000002100
+    },
+    {
+      "id": "tool:call_b",
+      "turn": 1,
+      "ord": 3,
+      "rev": 8,
+      "source": "transcript",
+      "at": 1790000002000,
+      "gen": 0,
+      "kind": "tool",
+      "toolCallId": "call_b",
+      "toolKind": "execute",
+      "title": "ls -la",
+      "status": "completed",
+      "locations": [],
+      "input": {
+        "command": "ls -la",
+        "fields": [
+          {
+            "key": "i",
+            "value": "2"
+          }
+        ]
+      },
+      "content": [
+        {
+          "type": "terminal",
+          "terminalId": "call_b",
+          "command": "ls -la",
+          "output": "total 8\n",
+          "exitCode": 0
+        }
+      ],
+      "startedAt": 1790000002000,
+      "endedAt": 1790000002200
+    },
+    {
+      "id": "tool:call_b2",
+      "turn": 1,
+      "ord": 4,
+      "rev": 11,
+      "source": "transcript",
+      "at": 1790000002300,
+      "gen": 0,
+      "kind": "tool",
+      "toolCallId": "call_b2",
+      "toolKind": "execute",
+      "title": "false",
+      "status": "failed",
+      "locations": [],
+      "input": {
+        "command": "false",
+        "fields": [
+          {
+            "key": "i",
+            "value": "3"
+          }
+        ]
+      },
+      "content": [
+        {
+          "type": "terminal",
+          "terminalId": "call_b2",
+          "command": "false",
+          "output": "",
+          "exitCode": 1
+        }
+      ],
+      "startedAt": 1790000002300,
+      "endedAt": 1790000002400
+    },
+    {
+      "id": "a:a1b2c408:0",
+      "turn": 1,
+      "ord": 5,
+      "rev": 12,
+      "source": "transcript",
+      "at": 1790000002500,
+      "gen": 0,
+      "kind": "assistant",
+      "parts": [
+        {
+          "type": "text",
+          "text": "完成"
+        }
+      ],
+      "streaming": false
+    }
+  ]
+}

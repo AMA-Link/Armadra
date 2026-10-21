@@ -27,6 +27,7 @@ import { claudeAdapter } from "./claude";
 import { codexAdapter } from "./codex";
 import { mapHookActivity } from "./hook-activity";
 import { opencodeTranscript } from "./opencode";
+import { ompTranscript, piTranscript } from "./pi";
 import { TimelineSink } from "./sink";
 import {
   type StatFn,
@@ -56,6 +57,8 @@ export const ADAPTERS: Readonly<Record<string, TranscriptAdapter>> = {
   claude: claudeAdapter,
   codex: codexAdapter,
   opencode: opencodeTranscript,
+  pi: piTranscript,
+  omp: ompTranscript,
 };
 
 /** 这个代理有没有转录适配器（页面据此决定「会话 / 终端」切换是否可用）。 */
