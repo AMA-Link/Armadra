@@ -105,11 +105,13 @@ describe("the client's optional features", () => {
       mcpServers: true,
       elicitation: true,
       configOptions: true,
+      terminal: true,
     });
     expect(acpClientFeatures({})).toEqual({
       mcpServers: false,
       elicitation: false,
       configOptions: false,
+      terminal: false,
     });
   });
 });
