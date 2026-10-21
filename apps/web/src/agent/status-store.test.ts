@@ -160,6 +160,31 @@ describe("agent status mirror", () => {
     expect(store().statuses[scoped(NODE)]!.state).toBe("working");
   });
 
+  it("takes the activity from `timeline.activity` and ignores a stale one", () => {
+    store().upsert(status({ state: "working", updatedAt: at(0) }), {
+      remote: false,
+    });
+    const activity = (n: number, phase: "tool" | "thinking") => ({
+      phase,
+      since: BASE,
+      rev: `boot:${n}`,
+    });
+    store().handleEvent({
+      type: "timeline.activity",
+      timelineId: "sess",
+      nodeId: NODE,
+      activity: activity(2, "tool"),
+    });
+    expect(store().statuses[scoped(NODE)]?.activity?.phase).toBe("tool");
+    store().handleEvent({
+      type: "timeline.activity",
+      timelineId: "sess",
+      nodeId: NODE,
+      activity: activity(1, "thinking"),
+    });
+    expect(store().statuses[scoped(NODE)]?.activity?.phase).toBe("tool");
+  });
+
   it("attaches a pendingId from an approval event", () => {
     store().upsert(status({ state: "blocked", updatedAt: at(0) }), {
       now: BASE,

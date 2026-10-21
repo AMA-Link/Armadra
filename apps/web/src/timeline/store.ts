@@ -41,6 +41,8 @@ export interface TimelineEntry {
   readonly hasMore: boolean;
   readonly loadingMore: boolean;
   readonly error?: string;
+  /** core 答这条会话没有时间线（或主机太旧不认识）：页面退回旧路径，不再重试。 */
+  readonly missing?: boolean;
 }
 
 export const EMPTY_ENTRY: TimelineEntry = {

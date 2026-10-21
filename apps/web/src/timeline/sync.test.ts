@@ -96,6 +96,24 @@ describe("open", () => {
     expect(entry().phase).toBe("ready");
     expect(core.calls).toEqual(["open", "open"]);
   });
+
+  it("marks a missing timeline and stops retrying so the page can fall back", async () => {
+    vi.useFakeTimers();
+    const core = new FakeCore();
+    core.failNext = Object.assign(new Error("none"), {
+      code: "not_found",
+      status: 404,
+    });
+    const { controller } = setup(core);
+    await controller.start();
+    expect(entry().phase).toBe("error");
+    expect(entry().missing).toBe(true);
+    await vi.advanceTimersByTimeAsync(RETRY_DELAY_MS * 3);
+    expect(core.calls).toEqual(["open"]);
+    // 手动重试后读到了：标记清掉。
+    await controller.refresh();
+    expect(entry().missing).toBeUndefined();
+  });
 });
 
 describe("frame batching", () => {

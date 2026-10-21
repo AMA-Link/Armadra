@@ -2,9 +2,11 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { dispatchWorkspaceEvent } from "@/api/events";
 
+import { RuntimeRequestError } from "@/api/request";
 import {
   createSourceTransport,
   isCursorAhead,
+  isTimelineMissing,
   setTimelineTransportFactory,
   timelineTransportFor,
 } from "./api";
@@ -59,5 +61,24 @@ describe("transport factory", () => {
   it("recognises cursor_ahead errors", () => {
     expect(isCursorAhead({ code: "cursor_ahead" })).toBe(true);
     expect(isCursorAhead(new Error("x"))).toBe(false);
+  });
+
+  it("reads the error shapes core and old hosts really return", () => {
+    // core 的 `fail("not_found")` 经 HTTP 与控制面都是 `{ code, status }`。
+    expect(isTimelineMissing({ code: "not_found", status: 404 })).toBe(true);
+    expect(isTimelineMissing(new RuntimeRequestError(404, "x", "not_found"))).toBe(
+      true,
+    );
+    // 旧主机没有这条路由：只有状态码，或 not_implemented。
+    expect(isTimelineMissing(new RuntimeRequestError(404, "x"))).toBe(true);
+    expect(isTimelineMissing({ code: "not_implemented" })).toBe(true);
+    // cursor_ahead（409）是另一回事：整份重开，不是没有时间线。
+    expect(
+      isCursorAhead(new RuntimeRequestError(409, "x", "cursor_ahead")),
+    ).toBe(true);
+    expect(
+      isTimelineMissing(new RuntimeRequestError(409, "x", "cursor_ahead")),
+    ).toBe(false);
+    expect(isTimelineMissing(new Error("offline"))).toBe(false);
   });
 });

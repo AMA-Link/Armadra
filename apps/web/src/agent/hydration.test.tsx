@@ -7,6 +7,7 @@ import type { SessionSummary } from "@armadra/shared";
 
 import { useAgentStatusHydration } from "./hydration";
 import { useAgentStatusStore } from "./status-store";
+import { timelineKey, useTimelineStore } from "../timeline/store";
 
 const mock = vi.hoisted(() => ({
   sessions: vi.fn(),
@@ -78,6 +79,23 @@ describe("useAgentStatusHydration", () => {
     const status = useAgentStatusStore.getState().statuses[scoped("node-1")];
     expect(status?.state).toBe("working");
     expect(status?.workspaceId).toBe("workspace-1");
+  });
+
+  it("seeds the timeline store with the activity the session list carries", async () => {
+    useTimelineStore.getState().reset();
+    mock.sessions.mockResolvedValue([
+      {
+        ...summary("2026-09-07T00:00:00Z"),
+        activity: { phase: "thinking", since: 1, rev: "boot:1" },
+      },
+    ]);
+    view("workspace-1");
+    await waitFor(() => {
+      expect(
+        useTimelineStore.getState().activities[timelineKey("local", "session-1")]
+          ?.phase,
+      ).toBe("thinking");
+    });
   });
 
   it("re-reads the list when the event stream reconnects", async () => {
