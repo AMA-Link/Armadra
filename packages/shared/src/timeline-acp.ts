@@ -109,6 +109,19 @@ export function clipTail(
   };
 }
 
+/** {@link clipTail} 的结果放进别的字段名下（文本之外的 `truncated` / `originalBytes` 照旧）。 */
+function clipTailAs(
+  field: "output",
+  text: string,
+): { output: string; truncated?: true; originalBytes?: number } {
+  const { text: clipped, ...rest } = clipTail(text);
+  return { [field]: clipped, ...rest } as {
+    output: string;
+    truncated?: true;
+    originalBytes?: number;
+  };
+}
+
 function lineCount(text: string | null | undefined): number {
   if (text === undefined || text === null || text === "") return 0;
   let n = 1;
@@ -232,7 +245,34 @@ export function toolContentOf(
   }
   if (e.type === "terminal") {
     const terminalId = str(e.terminalId);
-    return terminalId === undefined ? null : { type: "terminal", terminalId };
+    if (terminalId === undefined) return null;
+    // 宿主（core 的 `terminal/*` 实现）把输出尾部与退出码一并带在这条内容里；
+    // Agent 自己发的只有 `terminalId`。输出过长只留尾部。
+    const command = str(e.command);
+    const output = str(e.output);
+    const exitCode = e.exitCode;
+    return {
+      type: "terminal",
+      terminalId,
+      ...(command !== undefined ? { command: command.slice(0, 10_000) } : {}),
+      ...(output !== undefined
+        ? {
+            // 宿主自己已经丢过头部（`truncated` / `originalBytes`）：别丢这个标记。
+            ...(e.truncated === true ? { truncated: true as const } : {}),
+            ...(typeof e.originalBytes === "number" &&
+            Number.isInteger(e.originalBytes) &&
+            e.originalBytes >= 0
+              ? { originalBytes: e.originalBytes }
+              : {}),
+            ...clipTailAs("output", output),
+          }
+        : {}),
+      ...(typeof exitCode === "number" && Number.isInteger(exitCode)
+        ? { exitCode }
+        : exitCode === null
+          ? { exitCode: null }
+          : {}),
+    };
   }
   if (e.type === "content") {
     const part = partOfBlock(e.content, ctx);
