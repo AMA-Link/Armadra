@@ -104,7 +104,7 @@ import {
 const ALL_FAMILIES = ["claude", "codex", "opencode", "pi", "omp", "copilot"];
 /** `ARMADRA_E2E_ACP_ONLY=claude,opencode`：只跑其中几家（其余记 skipped）。 */
 const FAMILIES = ALL_FAMILIES;
-const CHOSEN = new Set(
+export const CHOSEN = new Set(
   (process.env.ARMADRA_E2E_ACP_ONLY || ALL_FAMILIES.join(","))
     .split(",")
     .map((id) => id.trim()),
@@ -116,7 +116,7 @@ const APPROVAL_PROMPT = `Create a file named ${APPROVAL_FILE} in the current dir
 const TURN_TIMEOUT = 90_000;
 const TOKEN_BUDGET = 50_000;
 const ECO_SECONDS = 5;
-const FAKE_AGENT = join(
+export const FAKE_AGENT = join(
   root,
   "apps/desktop/node_modules/@armadra/agent/dist/drivers/acp/testing/fake-agent-main.js",
 );
@@ -178,9 +178,9 @@ process.stdin.on("data", (chunk) => {
 });
 `;
 
-const quote = (word) => `'${String(word).replaceAll("'", "'\\''")}'`;
+export const quote = (word) => `'${String(word).replaceAll("'", "'\\''")}'`;
 
-function writeScript(dir, name, lines) {
+export function writeScript(dir, name, lines) {
   const path = join(dir, name);
   writeFileSync(path, ["#!/bin/bash", ...lines, ""].join("\n"));
   chmodSync(path, 0o755);
@@ -188,7 +188,7 @@ function writeScript(dir, name, lines) {
 }
 
 /** 自检：六家的 ACP 入口都是假 ACP Agent，`claude` / `copilot` 的终端视图是假 TUI。 */
-function selfTestPlan(scratch, shims) {
+export function selfTestPlan(scratch, shims) {
   const tui = join(scratch, "fake-tui.cjs");
   writeFileSync(tui, FAKE_TUI);
   const acp = (program) =>
@@ -214,7 +214,7 @@ function selfTestPlan(scratch, shims) {
 }
 
 /** 真跑：每家一个隔离包装；装不上、凭据复制不出来的整家 skipped。 */
-function realPlan(scratch, shims, project) {
+export function realPlan(scratch, shims, project) {
   const plan = {};
   const kept = [];
   const skip = (id, why) => {
