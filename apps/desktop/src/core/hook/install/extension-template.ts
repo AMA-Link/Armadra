@@ -452,6 +452,33 @@ async function armadraReport(payload) {
 `;
 
 const PI_WIRING = `
+// Only the fields a one-line activity label is made of, each cut short: the
+// whole input (file bodies, patches) never leaves the CLI's process.
+const ARMADRA_INPUT_KEYS = [
+  "command",
+  "cmd",
+  "file_path",
+  "filePath",
+  "path",
+  "notebook_path",
+  "pattern",
+  "query",
+  "url",
+  "description",
+  "prompt",
+];
+
+function armadraInput(value) {
+  if (typeof value === "string") return value.slice(0, 200);
+  if (value === null || typeof value !== "object") return undefined;
+  const out = {};
+  for (const key of ARMADRA_INPUT_KEYS) {
+    const field = value[key];
+    if (typeof field === "string" && field !== "") out[key] = field.slice(0, 200);
+  }
+  return Object.keys(out).length > 0 ? out : undefined;
+}
+
 function armadraPayload(name, event, ctx) {
   const payload = { hookEventName: name, provider: ARMADRA_AGENT };
   const sessionId =
@@ -466,6 +493,10 @@ function armadraPayload(name, event, ctx) {
   }
   const toolName = armadraText(event?.toolName);
   if (toolName) payload.toolName = toolName;
+  const toolCallId = armadraText(event?.toolCallId);
+  if (toolCallId) payload.toolCallId = toolCallId;
+  const input = armadraInput(event?.input ?? event?.args);
+  if (input !== undefined) payload.input = input;
   if (name === "before_agent_start" && typeof event?.prompt === "string") {
     payload.prompt = event.prompt.slice(0, ARMADRA_MAX_TEXT);
   }

@@ -3472,6 +3472,28 @@
                                                       }
                                                     ]
                                                   },
+                                                  "promptCapabilities": {
+                                                    "anyOf": [
+                                                      {
+                                                        "type": "object",
+                                                        "properties": {
+                                                          "image": {
+                                                            "type": "boolean"
+                                                          },
+                                                          "embeddedContext": {
+                                                            "type": "boolean"
+                                                          }
+                                                        },
+                                                        "required": [
+                                                          "image",
+                                                          "embeddedContext"
+                                                        ]
+                                                      },
+                                                      {
+                                                        "type": "null"
+                                                      }
+                                                    ]
+                                                  },
                                                   "title": {
                                                     "anyOf": [
                                                       {
@@ -77767,6 +77789,25 @@
                             }
                           ]
                         },
+                        "promptCapabilities": {
+                          "anyOf": [
+                            {
+                              "type": "object",
+                              "properties": {
+                                "image": {
+                                  "type": "boolean"
+                                },
+                                "embeddedContext": {
+                                  "type": "boolean"
+                                }
+                              },
+                              "required": ["image", "embeddedContext"]
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
                         "title": {
                           "anyOf": [
                             {
@@ -79439,6 +79480,25 @@
                                 }
                               },
                               "required": ["currentModelId", "availableModels"]
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "promptCapabilities": {
+                          "anyOf": [
+                            {
+                              "type": "object",
+                              "properties": {
+                                "image": {
+                                  "type": "boolean"
+                                },
+                                "embeddedContext": {
+                                  "type": "boolean"
+                                }
+                              },
+                              "required": ["image", "embeddedContext"]
                             },
                             {
                               "type": "null"

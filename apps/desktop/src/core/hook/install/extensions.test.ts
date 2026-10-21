@@ -142,6 +142,24 @@ describe("the Pi and Oh My Pi extension", () => {
     expect(piExtensionSource("pi", CLIENT, PI_HOOK_EVENTS)).toBe(source);
   });
 
+  it("forwards the tool call id and a trimmed input", () => {
+    const source = piExtensionSource("pi", CLIENT, PI_HOOK_EVENTS);
+    expect(source).toContain("payload.toolCallId = toolCallId");
+    expect(source).toContain("payload.input = input");
+    const start = source.indexOf("const ARMADRA_INPUT_KEYS");
+    const end = source.indexOf("function armadraPayload");
+    const armadraInput = new Function(
+      `${source.slice(start, end)}\nreturn armadraInput;`,
+    )() as (value: unknown) => unknown;
+    const long = "x".repeat(500);
+    expect(
+      armadraInput({ command: long, content: "file body", path: "a.ts" }),
+    ).toEqual({ command: "x".repeat(200), path: "a.ts" });
+    expect(armadraInput({ content: "file body" })).toBeUndefined();
+    expect(armadraInput(null)).toBeUndefined();
+    expect(armadraInput(long)).toBe("x".repeat(200));
+  });
+
   it("leaves other extensions alone through removal", () => {
     const directory = home("pi");
     const theirs = join(directory, "extensions", "their-widget.ts");

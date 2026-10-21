@@ -770,6 +770,25 @@ describe("Pi and Oh My Pi payloads", () => {
   });
 });
 
+describe("pi tool activity", () => {
+  it("maps toolCallId and a one-line summary of the input", () => {
+    const event = normalize("pi", "node-a", {
+      hookEventName: "tool_call",
+      toolName: "bash",
+      toolCallId: "call_1",
+      input: { command: "ls -la\nsecond line", content: "never sent" },
+    });
+    expect(event?.toolUseId).toBe("call_1");
+    expect(event?.toolSummary).toBe("ls -la");
+    const long = normalize("pi", "node-a", {
+      hookEventName: "tool_call",
+      toolName: "read",
+      input: { path: "p".repeat(500) },
+    });
+    expect(long?.toolSummary?.length).toBeLessThanOrEqual(200);
+  });
+});
+
 describe("ama (the host adapter's reports, Pi's vocabulary)", () => {
   const ama = (payload: unknown) => normalize("ama", "node-a", payload);
 
