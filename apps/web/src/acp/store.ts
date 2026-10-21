@@ -1,978 +1,144 @@
 /**
- * ACP 会话视图的读模型（ACP 设计 §6）。
+ * 会话视图的投递状态（契约 §39.9）。
  *
- * 每个 sessionId 一份：消息、工具调用、计划、当前模式、用量；挂起的审批按
- * nodeId 存，因为 `agent.approval` 只认节点。两个来源喂同一份：
+ * 内容（消息、工具、计划、用量……）全部来自时间线，不在这里：`timeline/` 的数据层
+ * 管同步，旧主机退路 `timeline/use-legacy-acp.ts` 管镜像。这里只记一件事——页面发出
+ * 的那一轮 prompt 走到哪了：
  *
- *  * `GET /api/acp/sessions/{id}/log` —— 镜像里的 `TranscriptEntry`，重载与
- *    第一次挂载时整份重建；
- *  * `acp.update` / `acp.turn` —— 活的那一段，逐条并进去。
- *
- * 归约都是纯函数，组件与测试走同一条路。
+ *  * `pending`：提问已发出、core 还没把它回显成时间线条目（页面先把它画出来）；
+ *  * `confirming`：请求断在路上，core 收没收到还不知道，正在对账；
+ *  * `undelivered`：对账确认 core 没收到（或无从确认），重试沿用同一个 `clientTurnId`；
+ *  * `failed`：core 当场拒绝了这一轮。
  */
-import { scoped } from "../sources/scope";
 import { create } from "zustand";
-import {
-  acpAvailableCommandSchema,
-  acpContentBlockSchema,
-  acpElicitationRequestSchema,
-  acpModeStateSchema,
-  acpModelStateSchema,
-  acpPermissionRequestSchema,
-  acpPlanEntrySchema,
-  acpToolCallSchema,
-  acpToolKindSchema,
-  acpUsageSchema,
-  type AcpAvailableCommand,
-  type AcpElicitation,
-  type AcpLogResponse,
-  type AcpModeState,
-  type AcpModel,
-  type AcpModelState,
-  type AcpPendingPermission,
-  type AcpPermissionOption,
-  type AcpPlanEntry,
-  type AcpSessionUpdate,
-  type AcpStopReason,
-  type AcpToolCall,
-  type AcpToolCallContent,
-  type AcpToolCallStatus,
-  type AcpToolKind,
-  type AcpTranscriptEntry,
-  type AcpTurnEvent,
-  type AcpTurnRecord,
-  type AcpPromptCapabilities,
-} from "@armadra/shared";
-import { z } from "zod";
+import type { TimelineAttachment } from "@armadra/shared";
 
-export type AcpMessageRole = "user" | "assistant" | "thought";
+import { scoped } from "../sources/scope";
 
-/** 消息里文字以外的内容块（契约 §49）。 */
-export type AcpAttachment =
-  | {
-      readonly type: "image";
-      readonly mimeType: string;
-      /** base64；镜像里超过上限的只剩 `dropped`。 */
-      readonly data?: string;
-      readonly uri?: string;
-      readonly dropped?: true;
-    }
-  | {
-      readonly type: "resource_link";
-      readonly uri: string;
-      readonly name: string;
-      readonly mimeType?: string;
-      readonly title?: string;
-    };
-
-export interface AcpToolLocation {
-  readonly path: string;
-  readonly line?: number | null | undefined;
+export interface PendingPrompt {
+  readonly clientTurnId: string;
+  readonly text: string;
+  readonly attachments: readonly TimelineAttachment[];
+  /** 发出的时刻（毫秒）。 */
+  readonly at: number;
 }
 
-export interface AcpToolCallView {
-  readonly toolCallId: string;
-  readonly title: string;
-  readonly kind?: AcpToolKind | undefined;
-  readonly status?: AcpToolCallStatus | undefined;
-  readonly content: readonly AcpToolCallContent[];
-  readonly locations?: readonly AcpToolLocation[];
-  readonly rawInput?: unknown;
-  readonly rawOutput?: unknown;
-}
-
-/** 回合尾要画一行的停止原因；`end_turn` 不画。 */
-export type AcpVisibleStop = Exclude<AcpStopReason, "end_turn">;
-
-export type AcpItem =
-  | {
-      readonly kind: "message";
-      readonly id: string;
-      readonly role: AcpMessageRole;
-      readonly text: string;
-      readonly turn: number;
-      readonly attachments?: readonly AcpAttachment[];
-      /** 这一条的时间（RFC 3339）：镜像里记的，或者页面收到它的那一刻。 */
-      readonly at?: string;
-      /** 页面自己先画上的那条用户消息：适配器回显的同一句不再画第二遍。 */
-      readonly local?: true;
-    }
-  | {
-      readonly kind: "tool";
-      readonly id: string;
-      readonly call: AcpToolCallView;
-      readonly turn: number;
-    }
-  /** `current_mode_update`：消息流里一行「模式已切换为 …」。 */
-  | {
-      readonly kind: "notice";
-      readonly id: string;
-      readonly turn: number;
-      readonly notice: "mode";
-      readonly name: string;
-    }
-  /** 回合没有正常说完（契约 §14.3 `stopReason`）：回合尾一行。 */
-  | {
-      readonly kind: "stop";
-      readonly id: string;
-      readonly turn: number;
-      readonly stopReason: AcpVisibleStop;
-    };
-
-export interface AcpUsageView {
-  readonly used: number;
-  readonly size: number;
-  readonly cost?: { readonly amount: number; readonly currency: string };
-}
-
-export interface AcpSessionView {
-  readonly items: readonly AcpItem[];
-  /** 当前回合号；每条用户消息开一回合。 */
-  readonly turn: number;
-  /** 发出 prompt 到 `acp.turn` 之间。 */
-  readonly streaming: boolean;
-  readonly modes: AcpModeState | null;
-  /** 契约 §26.2：Agent 给的模型目录；不给选时 `null`。 */
-  readonly models: AcpModelState | null;
-  readonly plan: readonly AcpPlanEntry[];
-  /** 计划画在哪一回合的顶部；没有计划时 `null`。 */
-  readonly planTurn: number | null;
-  /** 那一回合已经结束：计划卡默认折叠成一行。 */
-  readonly planSettled: boolean;
-  readonly usage: AcpUsageView | null;
-  /** `available_commands_update`：输入 `/` 时的命令列表。 */
-  readonly commands: readonly AcpAvailableCommand[];
-  /** `session_info_update` 的标题；只作命名建议，不改节点。 */
-  readonly title: string | null;
-  /** 上一回合没有正常结束（协议错误、没送达）；重试重发 `lastPrompt`。 */
-  readonly failed: boolean;
-  readonly lastPrompt: string | null;
-  readonly endOffset: number;
-  /** 本页最近发出的那一轮的 `clientTurnId`（契约 §39.9）。 */
+export interface AcpDeliveryView {
+  readonly pending: PendingPrompt | null;
+  /** 本页最近发出的那一轮的 `clientTurnId`。 */
   readonly clientTurnId: string | null;
-  /** 发 prompt 的那次请求断在路上：core 收没收到还不知道，正在对账。 */
+  readonly lastPrompt: string | null;
   readonly confirming: boolean;
-  /** 对账确认 core 没收到（或无从确认）：重试沿用同一个 `clientTurnId`。 */
   readonly undelivered: boolean;
-  /**
-   * 契约 §56：活进程声明的 `promptCapabilities`。`null`：还没读到，或 core 太旧
-   * （不收附件）。
-   */
-  readonly promptCapabilities: AcpPromptCapabilities | null;
+  readonly failed: boolean;
 }
 
-export interface AcpPermissionView {
-  readonly pendingId: string;
-  readonly toolCall: AcpToolCall;
-  readonly options: readonly AcpPermissionOption[];
-}
-
-/** 一条挂起的 `elicitation/create`（契约 §26.1）。 */
-export interface AcpElicitationView {
-  readonly pendingId: string;
-  readonly elicitation: AcpElicitation;
-}
-
-export const EMPTY_SESSION: AcpSessionView = {
-  items: [],
-  turn: 0,
-  streaming: false,
-  modes: null,
-  models: null,
-  plan: [],
-  planTurn: null,
-  planSettled: false,
-  usage: null,
-  commands: [],
-  title: null,
-  failed: false,
-  lastPrompt: null,
-  endOffset: 0,
+export const EMPTY_DELIVERY: AcpDeliveryView = {
+  pending: null,
   clientTurnId: null,
+  lastPrompt: null,
   confirming: false,
   undelivered: false,
-  promptCapabilities: null,
+  failed: false,
 };
 
-/* --------------------------------- 归约 ---------------------------------- */
-
-/** 一个内容块里能画的那一部分：文字，或一个附件。 */
-type Piece =
-  | { readonly text: string; readonly attachment?: undefined }
-  | { readonly text?: undefined; readonly attachment: AcpAttachment };
-
-/** URI 的最后一段，资源没有名字时当名字。 */
-function nameOf(uri: string): string {
-  const tail = uri.replace(/[?#].*$/, "").replace(/\/+$/, "");
-  const name = tail.slice(tail.lastIndexOf("/") + 1);
-  try {
-    return decodeURIComponent(name) || uri;
-  } catch {
-    return name || uri;
-  }
-}
-
-/**
- * ACP 内容块 / 镜像块 → 能画的那一部分（契约 §49）：`text`、`image`、
- * `resource_link`；内嵌 `resource` 有正文当文字、没有当链接。其余不画。
- */
-export function pieceOf(content: unknown): Piece | null {
-  const parsed = acpContentBlockSchema.safeParse(content);
-  if (!parsed.success) return null;
-  const block = parsed.data;
-  switch (block.type) {
-    case "text":
-      return block.text ? { text: block.text } : null;
-    case "image": {
-      const raw = content as { dropped?: unknown };
-      const mimeType = block.mimeType || "image/png";
-      if (block.data) {
-        return {
-          attachment: {
-            type: "image",
-            mimeType,
-            data: block.data,
-            ...(block.uri ? { uri: block.uri } : {}),
-          },
-        };
-      }
-      if (raw.dropped === true || block.uri) {
-        return {
-          attachment: {
-            type: "image",
-            mimeType,
-            ...(block.uri ? { uri: block.uri } : {}),
-            ...(raw.dropped === true ? { dropped: true as const } : {}),
-          },
-        };
-      }
-      return null;
-    }
-    case "resource_link":
-      return block.uri
-        ? {
-            attachment: {
-              type: "resource_link",
-              uri: block.uri,
-              name: block.name || nameOf(block.uri),
-              ...(block.mimeType ? { mimeType: block.mimeType } : {}),
-              ...(block.title ? { title: block.title } : {}),
-            },
-          }
-        : null;
-    case "resource": {
-      const resource = block.resource;
-      if (!resource) return null;
-      if (resource.text) return { text: resource.text };
-      return {
-        attachment: {
-          type: "resource_link",
-          uri: resource.uri,
-          name: nameOf(resource.uri),
-          ...(resource.mimeType ? { mimeType: resource.mimeType } : {}),
-        },
-      };
-    }
-    default:
-      return null;
-  }
-}
-
-function toolView(call: AcpToolCall, previous?: AcpToolCallView) {
-  return {
-    toolCallId: call.toolCallId,
-    title: call.title ?? previous?.title ?? "",
-    kind: call.kind ?? previous?.kind,
-    status: call.status ?? previous?.status,
-    content: call.content ?? previous?.content ?? [],
-    locations: call.locations ?? previous?.locations ?? [],
-    rawInput: call.rawInput !== undefined ? call.rawInput : previous?.rawInput,
-    rawOutput:
-      call.rawOutput !== undefined ? call.rawOutput : previous?.rawOutput,
-  } satisfies AcpToolCallView;
-}
-
-type MessageItem = Extract<AcpItem, { kind: "message" }>;
-
-function grow(item: MessageItem, piece: Piece): MessageItem {
-  if (piece.attachment) {
-    return {
-      ...item,
-      attachments: [...(item.attachments ?? []), piece.attachment],
-    };
-  }
-  return { ...item, text: item.text + piece.text };
-}
-
-function nowIso(): string {
-  return new Date().toISOString();
-}
-
-function appendPiece(
-  view: AcpSessionView,
-  role: AcpMessageRole,
-  piece: Piece | null,
-  at?: string,
-): AcpSessionView {
-  if (!piece) return view;
-  const last = view.items.at(-1);
-  const fresh = (turn: number): MessageItem => ({
-    kind: "message",
-    id: `m${view.items.length}`,
-    role,
-    text: piece.text ?? "",
-    turn,
-    ...(piece.attachment ? { attachments: [piece.attachment] } : {}),
-    at: at ?? nowIso(),
-  });
-  if (role === "user") {
-    // 回放里的用户消息开新回合；本回合页面已经画过的那一句不再重复。
-    if (last?.kind === "message" && last.role === "user") {
-      if (last.local) return view;
-      return replaceLast(view, grow(last, piece));
-    }
-    const turn = view.turn + 1;
-    return { ...view, turn, items: [...view.items, fresh(turn)] };
-  }
-  if (
-    last?.kind === "message" &&
-    last.role === role &&
-    last.turn === view.turn
-  ) {
-    return replaceLast(view, grow(last, piece));
-  }
-  return { ...view, items: [...view.items, fresh(view.turn)] };
-}
-
-function replaceLast(view: AcpSessionView, item: AcpItem): AcpSessionView {
-  return { ...view, items: [...view.items.slice(0, -1), item] };
-}
-
-function upsertTool(view: AcpSessionView, call: AcpToolCall): AcpSessionView {
-  const index = view.items.findIndex(
-    (item) => item.kind === "tool" && item.call.toolCallId === call.toolCallId,
-  );
-  if (index >= 0) {
-    const item = view.items[index] as Extract<AcpItem, { kind: "tool" }>;
-    const items = [...view.items];
-    items[index] = { ...item, call: toolView(call, item.call) };
-    return { ...view, items };
+/** 页面发出一条 prompt。重试没送达的那一轮（同一个 id）沿用已画出的提问。 */
+export function beginDelivery(
+  view: AcpDeliveryView,
+  prompt: Omit<PendingPrompt, "at">,
+  at: number,
+): AcpDeliveryView {
+  if (view.undelivered && prompt.clientTurnId === view.clientTurnId) {
+    return { ...view, confirming: false, undelivered: false, failed: false };
   }
   return {
-    ...view,
-    items: [
-      ...view.items,
-      {
-        kind: "tool",
-        id: `t${call.toolCallId}`,
-        call: toolView(call),
-        turn: view.turn,
-      },
-    ],
-  };
-}
-
-function usageOf(value: unknown): AcpUsageView | null {
-  const usage = acpUsageSchema.safeParse(value);
-  if (!usage.success) return null;
-  const { used, size, cost } = usage.data;
-  return { used, size, ...(cost ? { cost } : {}) };
-}
-
-function commandsOf(value: unknown): AcpAvailableCommand[] | null {
-  const list = z.array(z.unknown()).safeParse(value);
-  if (!list.success) return null;
-  return list.data.flatMap((item) => {
-    const command = acpAvailableCommandSchema.safeParse(item);
-    return command.success && command.data.name ? [command.data] : [];
-  });
-}
-
-/** 一条 `session/update`。不画的种类原样返回。 */
-export function applyUpdate(
-  view: AcpSessionView,
-  update: AcpSessionUpdate,
-): AcpSessionView {
-  const body = update as Record<string, unknown>;
-  switch (update.sessionUpdate) {
-    case "user_message_chunk":
-      return appendPiece(view, "user", pieceOf(body.content));
-    case "agent_message_chunk":
-      return appendPiece(view, "assistant", pieceOf(body.content));
-    case "agent_thought_chunk":
-      return appendPiece(view, "thought", pieceOf(body.content));
-    case "tool_call":
-    case "tool_call_update": {
-      const call = acpToolCallSchema.safeParse(body);
-      return call.success ? upsertTool(view, call.data) : view;
-    }
-    case "plan": {
-      const entries = z.array(acpPlanEntrySchema).safeParse(body.entries);
-      return entries.success
-        ? {
-            ...view,
-            plan: entries.data,
-            planTurn: view.turn,
-            planSettled: false,
-          }
-        : view;
-    }
-    case "current_mode_update": {
-      if (typeof body.currentModeId !== "string" || !view.modes) return view;
-      const modeId = body.currentModeId;
-      if (modeId === view.modes.currentModeId) return view;
-      const name =
-        view.modes.availableModes.find((mode) => mode.id === modeId)?.name ??
-        modeId;
-      return {
-        ...view,
-        modes: { ...view.modes, currentModeId: modeId },
-        items: [
-          ...view.items,
-          {
-            kind: "notice",
-            id: `n${view.items.length}`,
-            turn: view.turn,
-            notice: "mode",
-            name,
-          },
-        ],
-      };
-    }
-    case "config_option_update": {
-      // 与 core 同一条规矩：已经有目录时才跟（没有改模型的路就不画 Select）。
-      if (!view.models) return view;
-      const models = modelStateOf(body.configOptions);
-      return models ? { ...view, models } : view;
-    }
-    case "usage_update": {
-      const usage = usageOf(body);
-      return usage ? { ...view, usage } : view;
-    }
-    case "available_commands_update": {
-      const commands = commandsOf(body.availableCommands);
-      return commands ? { ...view, commands } : view;
-    }
-    case "session_info_update": {
-      if (typeof body.title === "string")
-        return { ...view, title: body.title || null };
-      return body.title === null ? { ...view, title: null } : view;
-    }
-    default:
-      return view;
-  }
-}
-
-const configOptionSchema = z.looseObject({
-  id: z.string(),
-  category: z.string().nullish(),
-  currentValue: z.unknown().optional(),
-  options: z.array(z.unknown()),
-});
-
-const configValueSchema = z.looseObject({
-  value: z.string(),
-  name: z.string().optional(),
-  description: z.string().nullish(),
-});
-
-function flattenValues(options: readonly unknown[], out: AcpModel[]): void {
-  for (const option of options) {
-    const group = (option as { options?: unknown } | null)?.options;
-    if (Array.isArray(group)) {
-      flattenValues(group, out);
-      continue;
-    }
-    const value = configValueSchema.safeParse(option);
-    if (!value.success || out.some((m) => m.modelId === value.data.value))
-      continue;
-    out.push({
-      modelId: value.data.value,
-      name: value.data.name ?? value.data.value,
-      ...(value.data.description
-        ? { description: value.data.description }
-        : {}),
-    });
-  }
-}
-
-/**
- * `config_option_update` 的配置项 → 模型目录（与 `core/acp/models.ts` 同一个
- * 认法：`category: "model"`，没有分类时 id 为 `model`；分组摊平）。
- */
-export function modelStateOf(configOptions: unknown): AcpModelState | null {
-  const list = z.array(z.unknown()).safeParse(configOptions);
-  if (!list.success) return null;
-  const options = list.data.flatMap((item) => {
-    const parsed = configOptionSchema.safeParse(item);
-    return parsed.success ? [parsed.data] : [];
-  });
-  const option =
-    options.find((item) => item.category === "model") ??
-    options.find((item) => item.category == null && item.id === "model");
-  if (!option) return null;
-  const models: AcpModel[] = [];
-  flattenValues(option.options, models);
-  const first = models[0];
-  if (!first) return null;
-  const current =
-    typeof option.currentValue === "string" &&
-    models.some((m) => m.modelId === option.currentValue)
-      ? option.currentValue
-      : first.modelId;
-  return { currentModelId: current, availableModels: models };
-}
-
-/** 页面发出一条 prompt：先画上，回合开始。 */
-export function beginTurn(
-  view: AcpSessionView,
-  text: string,
-  clientTurnId: string | null = null,
-  attachments: readonly AcpAttachment[] = [],
-): AcpSessionView {
-  if (
-    view.undelivered &&
-    clientTurnId !== null &&
-    clientTurnId === view.clientTurnId
-  ) {
-    // 重试没送达的那一轮：提问已经画着，不再画第二遍。
-    return { ...view, streaming: true, failed: false, undelivered: false };
-  }
-  const turn = view.turn + 1;
-  return {
-    ...view,
-    turn,
-    streaming: true,
+    pending: { ...prompt, at },
+    clientTurnId: prompt.clientTurnId,
+    lastPrompt: prompt.text,
+    confirming: false,
+    undelivered: false,
     failed: false,
-    lastPrompt: text,
-    clientTurnId,
-    confirming: false,
-    undelivered: false,
-    items: [
-      ...view.items,
-      {
-        kind: "message",
-        id: `m${view.items.length}`,
-        role: "user",
-        text,
-        turn,
-        ...(attachments.length > 0 ? { attachments } : {}),
-        at: nowIso(),
-        local: true,
-      },
-    ],
   };
 }
 
-const VISIBLE_STOPS: ReadonlySet<string> = new Set<AcpVisibleStop>([
-  "max_tokens",
-  "max_turn_requests",
-  "refusal",
-  "cancelled",
-]);
-
-/**
- * `acp.turn`：回合结束。协议错误算失败（顶部「这一轮没有完成」+ 重试）；
- * 到上限、拒答、取消在回合尾各画一行（`stop`），不算失败。本页那一轮还在对账
- * （或已判没送达）时，带着别的 `clientTurnId` 的结束帧不是它的结局，不动。
- */
-export function endTurn(
-  view: AcpSessionView,
-  event: Pick<AcpTurnEvent, "stopReason" | "error" | "clientTurnId">,
-): AcpSessionView {
-  if (
-    (view.confirming || view.undelivered) &&
-    event.clientTurnId !== undefined &&
-    event.clientTurnId !== view.clientTurnId
-  ) {
-    return view;
-  }
-  const failed = Boolean(event.error);
-  const stop =
-    !failed && event.stopReason && VISIBLE_STOPS.has(event.stopReason)
-      ? (event.stopReason as AcpVisibleStop)
-      : null;
-  return {
-    ...view,
-    streaming: false,
-    failed,
-    confirming: false,
-    undelivered: false,
-    planSettled: true,
-    items: stop
-      ? [
-          ...view.items,
-          {
-            kind: "stop",
-            id: `s${view.items.length}`,
-            turn: view.turn,
-            stopReason: stop,
-          },
-        ]
-      : view.items,
-    // 回合边界之后的第一段输出必须是新的一条，哪怕上一条也是助手说的。
-    turn: view.turn + 1,
-  };
-}
-
-/** 本页那一轮的提问不在时间线上（镜像里还没有）时补画上。 */
-function withLocalPrompt(view: AcpSessionView): AcpSessionView {
-  const text = view.lastPrompt;
-  if (!text) return view;
-  const last = [...view.items]
-    .reverse()
-    .find((item) => item.kind === "message" && item.role === "user");
-  if (last?.kind === "message" && last.text === text) return view;
-  const turn = view.turn + 1;
-  return {
-    ...view,
-    turn,
-    items: [
-      ...view.items,
-      {
-        kind: "message",
-        id: `m${view.items.length}`,
-        role: "user",
-        text,
-        turn,
-        at: nowIso(),
-        local: true,
-      },
-    ],
-  };
-}
-
-/**
- * 对账（契约 §39.9）：拿镜像读回来的 `turns` 认本页那一轮。core 有这一轮就照
- * 它的真实状态画（排队、在跑、已结束）；正在确认而 core 没有，判没送达，重试
- * 沿用同一个 id。`turns` 缺席（旧 core、会话不在跑）同样无从确认。
- */
-export function reconcileTurn(
-  view: AcpSessionView,
-  turns: readonly AcpTurnRecord[] | undefined,
-): AcpSessionView {
-  const id = view.clientTurnId;
-  if (!id || !(view.confirming || view.undelivered || view.streaming)) {
-    return view;
-  }
-  const record = turns?.find((turn) => turn.clientTurnId === id);
-  if (record?.state === "ended") {
-    return endTurn(
-      { ...view, confirming: false, undelivered: false },
-      {
-        ...(record.stopReason === undefined
-          ? {}
-          : { stopReason: record.stopReason as AcpTurnEvent["stopReason"] }),
-        ...(record.error === undefined ? {} : { error: record.error }),
-      },
-    );
-  }
-  if (record) {
-    return {
-      ...withLocalPrompt(view),
-      streaming: true,
-      failed: false,
-      confirming: false,
-      undelivered: false,
-    };
-  }
-  if (!view.confirming) return view;
-  return {
-    ...withLocalPrompt(view),
-    streaming: false,
-    failed: true,
-    confirming: false,
-    undelivered: true,
-  };
-}
-
-/** 镜像里的记录 → 时间线。工具结果并回它的调用。 */
-export function fromLog(
-  entries: readonly AcpTranscriptEntry[],
-  base: AcpSessionView = EMPTY_SESSION,
-): AcpSessionView {
-  let view: AcpSessionView = { ...base, items: [], turn: 0 };
-  for (const entry of entries) {
-    if (entry.role === "system") continue;
-    if (entry.role === "user") {
-      const pieces = entry.blocks
-        .filter((block) => block.type !== "tool_result")
-        .map((block) => pieceOf(block));
-      // 只有工具结果的 user 记录（Claude 的转录这样存）不开新回合。
-      if (pieces.some(Boolean)) {
-        for (const piece of pieces) {
-          view = appendPiece(view, "user", piece, entry.at);
-        }
-        continue;
-      }
-    }
-    for (const block of entry.blocks) {
-      if (block.type === "tool_use" && block.id) {
-        const kind = acpToolKindSchema.safeParse(block.kind);
-        view = upsertTool(view, {
-          toolCallId: block.id,
-          title: block.name,
-          rawInput: block.input,
-          ...(kind.success ? { kind: kind.data } : {}),
-          ...(block.locations ? { locations: block.locations } : {}),
-        });
-      } else if (block.type === "tool_result" && block.id) {
-        const diffs = (block.diffs ?? []).map((diff) => ({
-          type: "diff" as const,
-          path: diff.path,
-          oldText: diff.oldText ?? null,
-          newText: diff.newText,
-        }));
-        view = upsertTool(view, {
-          toolCallId: block.id,
-          status: block.status === "failed" ? "failed" : "completed",
-          rawOutput: block.content,
-          ...(diffs.length > 0 ? { content: diffs } : {}),
-        });
-      } else {
-        view = appendPiece(view, "assistant", pieceOf(block), entry.at);
-      }
-    }
-  }
-  const last = view.items.at(-1);
-  return {
-    ...view,
-    turn: view.turn + 1,
-    planTurn: base.plan.length > 0 ? (last?.turn ?? null) : null,
-  };
-}
-
-/**
- * `agent.approval` 的 `request` 是审批记录（`request` 字段才是 ACP 的载荷），
- * 也认直接给载荷的形状。不是 ACP 的审批回 `null`。
- */
-export function acpPermissionOf(
-  pendingId: string,
-  request: unknown,
-): AcpPermissionView | null {
-  const record = request as { request?: unknown } | null;
-  for (const candidate of [record?.request, request]) {
-    const parsed = acpPermissionRequestSchema.safeParse(candidate);
-    if (parsed.success)
-      return {
-        pendingId,
-        toolCall: parsed.data.toolCall,
-        options: parsed.data.options,
-      };
-  }
-  return null;
-}
-
-/** `agent.approval` 里的 elicitation（形状同上）；不是就回 `null`。 */
-export function acpElicitationOf(
-  pendingId: string,
-  request: unknown,
-): AcpElicitationView | null {
-  const record = request as { request?: unknown } | null;
-  for (const candidate of [record?.request, request]) {
-    const parsed = acpElicitationRequestSchema.safeParse(candidate);
-    if (parsed.success)
-      return { pendingId, elicitation: parsed.data.elicitation };
-  }
-  return null;
-}
-
-/* --------------------------------- store --------------------------------- */
-
-/** 三张表的键都是 `${sourceId}:${id}`（`sources/scope.ts`）。 */
-interface AcpStoreState {
-  readonly sessions: Readonly<Record<string, AcpSessionView>>;
-  readonly permissions: Readonly<Record<string, readonly AcpPermissionView[]>>;
-  /** 挂起的 elicitation，按 nodeId 存（与审批同理）。 */
-  readonly elicitations: Readonly<
-    Record<string, readonly AcpElicitationView[]>
-  >;
-  hydrate: (sessionId: string, nodeId: string, log: AcpLogResponse) => void;
-  update: (sessionId: string, update: AcpSessionUpdate) => void;
-  begin: (
-    sessionId: string,
-    text: string,
-    clientTurnId?: string,
-    attachments?: readonly AcpAttachment[],
-  ) => void;
-  end: (
-    sessionId: string,
-    nodeId: string,
-    event: Pick<AcpTurnEvent, "stopReason" | "error" | "clientTurnId">,
-  ) => void;
+interface AcpDeliveryState {
+  /** 键是 `${sourceId}:${sessionId}`（`sources/scope.ts`）。 */
+  readonly sessions: Readonly<Record<string, AcpDeliveryView>>;
+  begin: (sessionId: string, prompt: Omit<PendingPrompt, "at">) => void;
+  /** core 把这一轮回显成了条目：不再需要页面自己画。`delivered` = 回显出自 core。 */
+  ack: (sessionId: string, clientTurnId: string, delivered: boolean) => void;
   /** 发 prompt 的请求断在路上：进入「确认中」。 */
   confirm: (sessionId: string) => void;
-  /** 拿镜像读回来的 `turns` 对账（`reconcileTurn`）。 */
-  reconcile: (
-    sessionId: string,
-    turns: readonly AcpTurnRecord[] | undefined,
-  ) => void;
-  setMode: (sessionId: string, modeId: string) => void;
-  setModel: (sessionId: string, modelId: string) => void;
-  addPermission: (nodeId: string, permission: AcpPermissionView) => void;
-  addElicitation: (nodeId: string, elicitation: AcpElicitationView) => void;
-  /** 审批与 elicitation 共用一个 pendingId 空间：两边一起收。 */
-  resolvePermission: (pendingId: string) => void;
+  /** 对账确认 core 收到了。 */
+  delivered: (sessionId: string) => void;
+  /** 对账确认 core 没收到（或无从确认）。 */
+  undeliver: (sessionId: string) => void;
+  /** core 当场拒绝了这一轮。 */
+  fail: (sessionId: string) => void;
   reset: () => void;
 }
 
-function patchSession(
-  state: AcpStoreState,
+function patch(
+  state: AcpDeliveryState,
   sessionId: string,
-  next: (view: AcpSessionView) => AcpSessionView,
-): Pick<AcpStoreState, "sessions"> {
+  next: (view: AcpDeliveryView) => AcpDeliveryView,
+): Pick<AcpDeliveryState, "sessions"> {
   const key = scoped(sessionId);
-  const view = state.sessions[key] ?? EMPTY_SESSION;
-  return { sessions: { ...state.sessions, [key]: next(view) } };
+  const view = state.sessions[key] ?? EMPTY_DELIVERY;
+  const after = next(view);
+  return after === view
+    ? { sessions: state.sessions }
+    : { sessions: { ...state.sessions, [key]: after } };
 }
 
-function withoutPending<T extends { readonly pendingId: string }>(
-  map: Readonly<Record<string, readonly T[]>>,
-  pendingId: string,
-): Record<string, readonly T[]> {
-  const out: Record<string, readonly T[]> = {};
-  for (const [nodeId, list] of Object.entries(map)) {
-    const kept = list.filter((item) => item.pendingId !== pendingId);
-    if (kept.length > 0) out[nodeId] = kept;
-  }
-  return out;
-}
-
-export const useAcpStore = create<AcpStoreState>((set) => ({
+export const useAcpStore = create<AcpDeliveryState>((set) => ({
   sessions: {},
-  permissions: {},
-  elicitations: {},
-  hydrate: (sessionId, nodeId, log) =>
-    set((state) => {
-      const key = scoped(sessionId);
-      const nodeKey = scoped(nodeId);
-      const previous = state.sessions[key] ?? EMPTY_SESSION;
-      const modes = acpModeStateSchema.safeParse(log.modes);
-      const models = acpModelStateSchema.safeParse(log.models);
-      const snapshot = log.snapshot;
-      const plan = snapshot ? snapshot.plan : previous.plan;
-      const rebuilt = fromLog(log.entries, { ...previous, plan });
-      const view: AcpSessionView = {
-        ...rebuilt,
-        ...(snapshot
-          ? {
-              usage: usageOf(snapshot.usage),
-              commands: snapshot.availableCommands,
-              title: snapshot.title,
-              planSettled: !(log.turns ?? []).some(
-                (turn) => turn.state !== "ended",
-              ),
-            }
-          : {}),
-        modes: modes.success ? modes.data : previous.modes,
-        // `null` 是「不给选」，照样记下；字段不在（旧 core）时保留之前的。
-        models: models.success
-          ? models.data
-          : log.models === null
-            ? null
-            : previous.models,
-        endOffset: log.endOffset,
-        promptCapabilities:
-          log.promptCapabilities ?? previous.promptCapabilities,
-      };
-      const pending = (log.pending ?? []).map((item: AcpPendingPermission) => ({
-        pendingId: item.pendingId,
-        toolCall: item.toolCall,
-        options: item.options,
-      }));
-      const elicitations = (log.elicitations ?? []).map((item) => ({
-        pendingId: item.pendingId,
-        elicitation: item.elicitation,
-      }));
-      return {
-        sessions: { ...state.sessions, [key]: view },
-        permissions:
-          log.pending === undefined
-            ? state.permissions
-            : { ...state.permissions, [nodeKey]: pending },
-        elicitations:
-          log.elicitations === undefined
-            ? state.elicitations
-            : { ...state.elicitations, [nodeKey]: elicitations },
-      };
-    }),
-  update: (sessionId, update) =>
+  begin: (sessionId, prompt) =>
     set((state) =>
-      patchSession(state, sessionId, (view) => applyUpdate(view, update)),
-    ),
-  begin: (sessionId, text, clientTurnId, attachments) =>
-    set((state) =>
-      patchSession(state, sessionId, (view) =>
-        beginTurn(view, text, clientTurnId ?? null, attachments),
+      patch(state, sessionId, (view) =>
+        beginDelivery(view, prompt, Date.now()),
       ),
+    ),
+  ack: (sessionId, clientTurnId, delivered) =>
+    set((state) =>
+      patch(state, sessionId, (view) => {
+        if (view.pending?.clientTurnId !== clientTurnId) return view;
+        return {
+          ...view,
+          pending: null,
+          ...(delivered
+            ? { confirming: false, undelivered: false, failed: false }
+            : {}),
+        };
+      }),
     ),
   confirm: (sessionId) =>
     set((state) =>
-      patchSession(state, sessionId, (view) => ({ ...view, confirming: true })),
+      patch(state, sessionId, (view) => ({ ...view, confirming: true })),
     ),
-  reconcile: (sessionId, turns) =>
+  delivered: (sessionId) =>
     set((state) =>
-      patchSession(state, sessionId, (view) => reconcileTurn(view, turns)),
-    ),
-  end: (sessionId, nodeId, event) =>
-    set((state) => {
-      const current = state.sessions[scoped(sessionId)] ?? EMPTY_SESSION;
-      const next = endTurn(current, event);
-      if (next === current) return {};
-      // 回合结束时挂起的审批都已由 core 回了 `cancelled`（ACP 设计 §5.5）。
-      const permissions = { ...state.permissions };
-      delete permissions[scoped(nodeId)];
-      const elicitations = { ...state.elicitations };
-      delete elicitations[scoped(nodeId)];
-      return {
-        ...patchSession(state, sessionId, () => next),
-        permissions,
-        elicitations,
-      };
-    }),
-  setMode: (sessionId, modeId) =>
-    set((state) =>
-      patchSession(state, sessionId, (view) =>
-        view.modes
-          ? { ...view, modes: { ...view.modes, currentModeId: modeId } }
+      patch(state, sessionId, (view) =>
+        view.confirming || view.undelivered
+          ? { ...view, confirming: false, undelivered: false }
           : view,
       ),
     ),
-  setModel: (sessionId, modelId) =>
+  undeliver: (sessionId) =>
     set((state) =>
-      patchSession(state, sessionId, (view) =>
-        view.models
-          ? { ...view, models: { ...view.models, currentModelId: modelId } }
+      patch(state, sessionId, (view) =>
+        view.confirming
+          ? { ...view, confirming: false, undelivered: true }
           : view,
       ),
     ),
-  addPermission: (nodeId, permission) =>
-    set((state) => {
-      const key = scoped(nodeId);
-      const list = (state.permissions[key] ?? []).filter(
-        (item) => item.pendingId !== permission.pendingId,
-      );
-      return {
-        permissions: { ...state.permissions, [key]: [...list, permission] },
-      };
-    }),
-  addElicitation: (nodeId, elicitation) =>
-    set((state) => {
-      const key = scoped(nodeId);
-      const list = (state.elicitations[key] ?? []).filter(
-        (item) => item.pendingId !== elicitation.pendingId,
-      );
-      return {
-        elicitations: {
-          ...state.elicitations,
-          [key]: [...list, elicitation],
-        },
-      };
-    }),
-  resolvePermission: (pendingId) =>
-    set((state) => ({
-      permissions: withoutPending(state.permissions, pendingId),
-      elicitations: withoutPending(state.elicitations, pendingId),
-    })),
-  reset: () => set({ sessions: {}, permissions: {}, elicitations: {} }),
+  fail: (sessionId) =>
+    set((state) =>
+      patch(state, sessionId, (view) => ({
+        ...view,
+        confirming: false,
+        failed: true,
+      })),
+    ),
+  reset: () => set({ sessions: {} }),
 }));
