@@ -128,6 +128,25 @@ describe("claude transcript → timeline", () => {
     expect(byId("tool:toolu_ask1")).toMatchObject({ status: "cancelled" });
   });
 
+  it("assumes the 1M window once usage passes 200k", () => {
+    const big = JSON.stringify({
+      type: "assistant",
+      uuid: "big-1",
+      timestamp: "2026-10-21T00:00:00.000Z",
+      message: {
+        id: "m",
+        role: "assistant",
+        model: "claude-opus-5-5",
+        content: [{ type: "text", text: "x" }],
+        usage: { input_tokens: 10, cache_read_input_tokens: 450000 },
+      },
+    });
+    expect(convertAll(claudeAdapter, [big]).head.usage).toEqual({
+      used: 450010,
+      size: 1000000,
+    });
+  });
+
   it("replaying the last batch after a crash adds nothing (ids come from the CLI)", () => {
     const tail = lines.slice(-8);
     const once = convertAll(claudeAdapter, lines);

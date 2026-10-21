@@ -245,7 +245,14 @@ function handleAssistant(record: Json, sink: TimelineSink): void {
       (num(usage.input_tokens) ?? 0) +
       (num(usage.cache_read_input_tokens) ?? 0) +
       (num(usage.cache_creation_input_tokens) ?? 0);
-    if (used > 0) sink.usage({ used, size: windowOf(str(message.model)) });
+    if (used > 0) {
+      // 转录里不带窗口大小：模型名没写 [1m] 时按 200k，已经超过它就一定是 1M 窗口。
+      const size = Math.max(
+        windowOf(str(message.model)),
+        used > 200_000 ? 1_000_000 : 0,
+      );
+      sink.usage({ used, size });
+    }
   }
 
   const stop = stopReasonOf(message.stop_reason);
