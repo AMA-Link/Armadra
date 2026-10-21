@@ -45,6 +45,7 @@ import {
 import type { AcpFeed } from "./feed";
 import type { AcpHostSession, AcpUpdateMeta } from "./host";
 import type { AcpMirror } from "./mirror";
+import { mirrorFrames } from "./mirror-import";
 import type { AcpSignal } from "./normalize";
 import type {
   AcpContentBlock,
@@ -270,10 +271,29 @@ export class AcpSession implements AcpSessionIdentity {
     const early = this.early;
     this.early = [];
     for (const item of early) this.consume(item.update, item.replay);
+    this.importLegacyMirror();
     if (this.options.resumeSessionId !== undefined) {
       this.feed?.notice(host.resumed ? "resumed" : "not_resumed");
     }
     this.feed?.ready();
+  }
+
+  /**
+   * 时间线为空而旧镜像有内容（升级前的会话、适配器又没有 `session/load`）：把镜像
+   * 导入时间线。时间线已有内容或回放写过时 `importFrames` 什么都不做（B10）。
+   */
+  private importLegacyMirror(): void {
+    const mirror = this.replayMirror;
+    if (this.feed === undefined || mirror === undefined) return;
+    if (this.feed.hadHistory || mirror.empty) return;
+    try {
+      this.feed.importFrames(mirrorFrames(mirror.read(0).entries));
+    } catch (error) {
+      this.sink.log?.("could not import the ACP mirror", {
+        nodeId: this.nodeId,
+        error: messageOf(error),
+      });
+    }
   }
 
   get acpSessionId(): string | undefined {

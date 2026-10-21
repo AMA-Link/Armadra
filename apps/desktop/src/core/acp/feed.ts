@@ -30,6 +30,7 @@ import type {
   AcpPermissionSettlement,
 } from "./client";
 import { storedElicitation } from "./elicitation";
+import type { MirrorFrame } from "./mirror-import";
 
 export interface AcpFeedIdentity {
   readonly rowId: string;
@@ -57,6 +58,8 @@ export class AcpFeed {
   private replayLastKind: string | undefined;
   private readonly waits = new Map<string, number>();
   private waitedMs = 0;
+  /** 导入旧镜像时用记录的时间代替「现在」。 */
+  private clock: number | undefined;
 
   constructor(
     private readonly domain: TimelineDomain,
@@ -84,7 +87,7 @@ export class AcpFeed {
     return {
       turnId: ref?.turnId ?? `${this.id.generation}-0`,
       turn: ref?.turn ?? this.writer.currentTurn(this.id.rowId) ?? 0,
-      at: Date.now(),
+      at: this.clock ?? Date.now(),
       gen: this.id.generation,
       source: replay ? "replay" : "acp",
     };
@@ -202,6 +205,31 @@ export class AcpFeed {
       update,
       this.ctx(true, this.replayTurn),
     );
+  }
+
+  /**
+   * 把旧镜像的帧导入时间线（设计 §2.6）：没有 `session/load` 的适配器接回升级前的
+   * 会话时用。时间线已有内容（含这次回放已经写了的）时什么都不做，所以重复接回
+   * 幂等；写出的条目与回放一样带 `source = replay`。答写没写。
+   */
+  importFrames(frames: readonly MirrorFrame[]): boolean {
+    if (
+      this.hadHistory ||
+      frames.length === 0 ||
+      this.writer.currentTurn(this.id.rowId) !== undefined
+    ) {
+      return false;
+    }
+    try {
+      for (const frame of frames) {
+        this.clock = frame.at;
+        this.update(frame.update, true);
+      }
+      this.finishReplay();
+    } finally {
+      this.clock = undefined;
+    }
+    return true;
   }
 
   private closeReplayTurn(): void {
