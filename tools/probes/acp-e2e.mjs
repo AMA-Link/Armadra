@@ -396,39 +396,35 @@ await h.run(async () => {
 
   /* ------------- 3b. 会话里的东西点得动、选得中（会话视图 §5）------------- */
 
-  // 剪贴板换成记录器：无头 Chrome 的剪贴板要权限，这里只验「点了复制写了什么」。
+  // 连续的工具与思考回合结束后折成一行摘要（时间线 §3.1）：先把组展开，再点工具行。
   await page.evaluate(`
-    window.__copied = [];
-    Object.defineProperty(navigator, "clipboard", {
-      configurable: true,
-      value: { writeText: async (text) => { window.__copied.push(text); } },
-    });
+    const group = document.querySelector(${JSON.stringify(`${node(A)} [data-slot="timeline-group"]`)});
+    if (group?.getAttribute("data-state") === "closed") group.querySelector("button")?.click();
     return true;
   `);
-  const tool = `${node(A)} [data-tool-call]`;
-  await page.click(`${tool} button`, "详情", { exact: true });
+  const tool = `${node(A)} [data-slot="timeline-tool"]`;
+  await page.click(`${tool} [data-slot="collapsible-trigger"]`);
   await page.waitFor(
-    `return !!document.querySelector(${JSON.stringify(`${tool} pre`)});`,
-    { what: "工具行展开出入参" },
+    `return !!document.querySelector(${JSON.stringify(`${tool} [data-slot="timeline-tool-input"]`)});`,
+    { what: "工具行展开出结构化入参" },
   );
-  await page.click(`${tool} button`, "复制入参", { exact: true });
   const copied = await page.waitFor(
-    `return (window.__copied ?? []).find((text) => text.includes("note.txt")) ?? null;`,
-    { what: "复制入参写进剪贴板" },
+    `return document.querySelector(${JSON.stringify(`${tool} [data-slot="timeline-tool-input"]`)})?.innerText.includes("note.txt") ? "note.txt" : null;`,
+    { what: "入参里认得出文件名（不贴 JSON 原文）" },
   );
   const surface = await page.evaluate(`
     const root = document.querySelector(${JSON.stringify(`${node(A)} [data-slot="acp-session-view"]`)});
     return {
       userSelect: root ? getComputedStyle(root).userSelect : null,
       nopan: root?.classList.contains("nopan") ?? false,
-      plan: !!document.querySelector(${JSON.stringify(`${node(A)} [data-slot="acp-plan"]`)}),
+      plan: !!document.querySelector(${JSON.stringify(`${node(A)} [data-slot="timeline-plan-bar"]`)}),
       tone: document.querySelector(${JSON.stringify(`${tool} [data-slot="status-pill"]`)})?.dataset.tone ?? null,
     };
   `);
   report.sessionSurface = { ...surface, copied };
   check(
     surface.userSelect === "text" && surface.nopan && surface.plan,
-    "会话视图字可选、不平移画布，计划卡画出来了",
+    "会话视图字可选、不平移画布，计划条画出来了",
     JSON.stringify(surface),
   );
   check(
@@ -659,6 +655,12 @@ await h.run(async () => {
     body: { terminal: { ecoMode: false } },
   });
   await page.capture("08-hibernated");
+  // 列表是虚拟化的：前面点开工具行把视口留在了中间，新回复要贴底才在 DOM 里。
+  await page.evaluate(`
+    const list = document.querySelector(${JSON.stringify(`${node(A)} [data-slot="timeline-scroller"]`)});
+    if (list) list.scrollTop = list.scrollHeight;
+    return true;
+  `);
   await say(A, "wake up");
   await page.waitFor(
     `return document.querySelector(${JSON.stringify(node(A))})?.innerText.includes("echo: wake up");`,

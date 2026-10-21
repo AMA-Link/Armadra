@@ -441,25 +441,19 @@ function headFromLog(log: AcpLogResponse): TimelineHead {
 }
 
 /**
- * 这一句已经在镜像里：有回合记录时要记录里有它的 `clientTurnId`，并且镜像里最后
- * 一条用户消息就是这句话（记录说 core 收到了、镜像还没来得及写的，仍要补画）。
+ * 这一句已经在镜像里：镜像里有这句话的用户消息。不要求它是最后一条（后面还有别的
+ * 回合、驱动切换后回放进来的重复都不影响），也不看回合记录——那只覆盖活进程这一代
+ * 最近的几轮，更早的认不出来。镜像里还没有的（core 收到了但镜像没来得及写，或根本
+ * 没送达）继续画着，由会话视图的对账说它到底送达没有。
  */
 function confirmedByLog(local: LocalPrompt, log: AcpLogResponse): boolean {
-  if (
-    log.turns !== undefined &&
-    !log.turns.some((turn) => turn.clientTurnId === local.clientTurnId)
-  ) {
-    return false;
-  }
-  const lastUser = [...log.entries]
-    .reverse()
-    .find(
-      (entry) =>
-        entry.role === "user" &&
-        entry.blocks.some((block) => block.type === "text"),
-    );
-  const text = lastUser?.blocks.find((block) => block.type === "text");
-  return text?.type === "text" && text.text === local.text;
+  return log.entries.some(
+    (entry) =>
+      entry.role === "user" &&
+      entry.blocks.some(
+        (block) => block.type === "text" && block.text === local.text,
+      ),
+  );
 }
 
 /**

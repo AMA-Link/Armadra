@@ -440,7 +440,7 @@ describe("unconfirmed prompts", () => {
     expect(state.locals).toHaveLength(1);
   });
 
-  it("drops it once the mirror and the turn record both carry it", () => {
+  it("drops it once the mirror carries it", () => {
     let state = beginTurn(emptyLegacyState(), NOW, local);
     state = fromLog(
       log({
@@ -464,6 +464,39 @@ describe("unconfirmed prompts", () => {
     );
     expect(state.locals).toHaveLength(0);
     expect(find(state, "user")).toHaveLength(1);
+    expect(state.open).toBe(false);
+  });
+
+  it("counts it as confirmed even when later turns follow it and the live record does not list it", () => {
+    let state = beginTurn(emptyLegacyState(), NOW, local);
+    state = fromLog(
+      log({
+        entries: [
+          {
+            role: "user",
+            blocks: [{ type: "text", text: "go" }],
+            endOffset: 1,
+          },
+          {
+            role: "user",
+            blocks: [{ type: "text", text: "later" }],
+            endOffset: 2,
+          },
+        ],
+        endOffset: 2,
+        turns: [
+          { turnId: "1", clientTurnId: "c1", state: "ended" },
+          { turnId: "2", clientTurnId: "c2", state: "ended" },
+        ],
+      }),
+      state,
+      NOW + 1,
+    );
+    expect(state.locals).toHaveLength(0);
+    expect(find(state, "user").map((item) => item.text)).toEqual([
+      "go",
+      "later",
+    ]);
     expect(state.open).toBe(false);
   });
 
