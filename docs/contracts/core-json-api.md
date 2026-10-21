@@ -4539,7 +4539,7 @@ owner（本机会话，或已信任设备经通道的 owner 会话）：`{ sourc
 - **hook 作门铃**：`POST /hook/{agentId}` 受理一条报告、算完四态之后，管理器把它映射到活动（提示 → `submitting`，工具开始 → `tool`（`label` 为「工具: 输入摘要」，最长 60 字），工具结束 → `thinking`，审批 → `awaiting_approval`，提问 → `awaiting_input`，`Stop` 系 → `idle` 加结局），并在 20 ms 后读一次转录、300 ms 后补读一次。四态与通知分类不变。
 - **尾读**：游标存在 `timelines.source_cursor`（路径、偏移、inode、开头 256 字节的指纹）。第一次只读转录尾部 2 MiB，这一段回填不推进活动层；文件被换掉或被截短时回到尾部窗口重读；单行超过 16 MiB 的整行跳过。目录监听加 100 ms 去抖，监听失败退回 2 s 的 stat 轮询（只比大小与 mtime）。core 重启后从游标续读；会话行不再 `running` 的来源在 60 s 巡检里停掉。
 - **内容**：转录复制进库（权限同 `terminal:read`，不进推送正文，不进上下文读取）。用户与助手文本、思考（正文被隐去时条目文本为空）、工具（Bash 输出、Edit / Write / `apply_patch` 的 diff、其余的文本输出）、计划（`TodoWrite` / `update_plan`）、用量、提示（压缩）；条目 id 用 CLI 自己的 id（`tool:<tool_use_id>`、`a:<记录 id>:<块号>`…），重复读到同一条只是 upsert。
-- **标题**：Claude 的 `custom-title` / `agent-name`、OpenCode 的会话标题（占位标题不算）、Pi 的 `session_info`、OMP 的 `title` / `title_change` 写进头部 `title`；页面在节点没有人工命名时据此自动命名（B7）。
+- **标题**：Claude 的 `custom-title` / `agent-name`、OpenCode 的会话标题（占位标题不算）、Pi 的 `session_info`、OMP 的 `title` / `title_change` 写进头部 `title`；页面在节点没有人工命名（标题仍是占位、或上一次自动命名写的）且「自动命名」打开时据此自动命名，人工改名后不再覆盖，空白标题不处理（B10）。
 - **非文件来源**：OpenCode 的数据在 SQLite 里，适配器自带读取器：每次只读打开、读完即关，游标是 `{ s: 会话 id, t: time_updated 毫秒 }`，取 `message` 与 `part` 里 `time_updated >= t` 的行（同一毫秒重读无害，条目按 id 幂等）；第一次只读最近 60 条消息。库文件与它的 WAL 的大小和 mtime 一变就读，节奏同尾读（监听、2 s 轮询、hook 触发）。
 - **Pi 与 OMP 共用目录**：两家都认 `PI_CODING_AGENT_DIR` 时，兜底定位只在自己写的文件里挑（OMP 的文件开头有一行 `title` 记录）；扩展报来的路径直接信。
 - **不提供**：逐 token 的流；Claude、Copilot 子代理内部的调用；Codex 的加密推理与审批；Copilot 没有「回合完成」事件，回合靠 `agentStop` 的 hook 或下一条用户消息合上，被打断有 `abort`。

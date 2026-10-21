@@ -33,6 +33,7 @@ import {
   type PromptAttachment,
   usePromptAttachments,
 } from "./PromptAttachments";
+import { useTimelineTitle } from "@/meta/timeline-title";
 import { PromptBox, type PromptPrefill } from "./PromptBox";
 import { EMPTY_DELIVERY, useAcpStore, type PendingPrompt } from "./store";
 import {
@@ -346,6 +347,7 @@ export function SessionView({
     legacy: !readOnly,
     meta: !readOnly,
   });
+  useTimelineTitle(nodeId, feed.head.title);
   const connected = useConnected(workspaceId);
   const delivery = useAcpStore((state) =>
     sessionId
