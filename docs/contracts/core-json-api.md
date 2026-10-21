@@ -4530,3 +4530,14 @@ owner（本机会话，或已信任设备经通道的 owner 会话）：`{ sourc
 - **授权**：时间线以会话行 id 为键，路由门（`identity/route-access.ts`）按会话行查出画布再判 `terminal:read`，procedure（`rpc:timeline.*`）与 blob 路径同一道门；只被授予某一条会话（§60）的人只读得到那一条；不存在的会话对成员也答 `403`，不泄露哪些 id 存在。本机壳没有请求主体，不受限。会话没有时间线时四个动词答 `404 not_found`，页面据此退回 `acp.log` 路径。
 - **恢复**：core 重启时，上一个进程留下的、没有收尾的 ACP 回合（适配器进程早随它没了）一律记 `cancelled`：挂起的审批与提问变 `cancelled`，流式的条目收尾，跑着的工具记 `cancelled`，回合条目写 `endedAt` 与 `stopReason = cancelled`，并发 `timeline.delta`。
 - **新旧并存**：`acp.log`（镜像读）、`acp.update` 与 `acp.turn` 事件在 B10 之前原样保留；生产者接上之前（B3 / B4）时间线是空的，`timeline.*` 答 `404`，会话列表没有 `activity`。
+
+### 82.3 终端驱动的 CLI：转录来源
+
+> 状态：实施契约（实现 `core/timeline/sources/`，issue #437）。没有新的 procedure 或事件，只是时间线多了一类生产者；形状沿用 §82.1。
+
+- **适用**：节点当前有 `running` 的终端会话（`backend_kind` 不是 `acp`）、代理有适配器时（Claude Code、Codex；其余见设计 §5.2）。时间线 id 是该终端会话行 id，`timelines.source = 'transcript'`，条目的 `source` 也是 `transcript`。
+- **hook 作门铃**：`POST /hook/{agentId}` 受理一条报告、算完四态之后，管理器把它映射到活动（提示 → `submitting`，工具开始 → `tool`（`label` 为「工具: 输入摘要」，最长 60 字），工具结束 → `thinking`，审批 → `awaiting_approval`，提问 → `awaiting_input`，`Stop` 系 → `idle` 加结局），并在 20 ms 后读一次转录、300 ms 后补读一次。四态与通知分类不变。
+- **尾读**：游标存在 `timelines.source_cursor`（路径、偏移、inode、开头 256 字节的指纹）。第一次只读转录尾部 2 MiB，这一段回填不推进活动层；文件被换掉或被截短时回到尾部窗口重读；单行超过 16 MiB 的整行跳过。目录监听加 100 ms 去抖，监听失败退回 2 s 的 stat 轮询（只比大小与 mtime）。core 重启后从游标续读；会话行不再 `running` 的来源在 60 s 巡检里停掉。
+- **内容**：转录复制进库（权限同 `terminal:read`，不进推送正文，不进上下文读取）。用户与助手文本、思考（正文被隐去时条目文本为空）、工具（Bash 输出、Edit / Write / `apply_patch` 的 diff、其余的文本输出）、计划（`TodoWrite` / `update_plan`）、用量、提示（压缩）；条目 id 用 CLI 自己的 id（`tool:<tool_use_id>`、`a:<记录 id>:<块号>`…），重复读到同一条只是 upsert。
+- **标题**：Claude 的 `custom-title` / `agent-name` 写进头部 `title`；页面在节点没有人工命名时据此自动命名（B7）。
+- **不提供**：逐 token 的流；Claude 子代理内部的调用；Codex 的加密推理与审批。
