@@ -72,7 +72,7 @@ function row(kind: string) {
     pid: 1,
     createdAt: "2026-10-12T00:00:00Z",
     endedAt: null,
-    kind,
+    backend: kind === "acp" ? "acp" : "direct",
   };
 }
 
