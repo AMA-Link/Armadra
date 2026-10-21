@@ -21,6 +21,7 @@ import {
   resumeMethod,
   startAcp,
   startAdapter,
+  withSilence,
 } from "./host";
 import { spawnPrestarted } from "./prestart";
 import type { AcpSessionNotification } from "./types";
@@ -79,6 +80,40 @@ describe("resumeMethod", () => {
     expect(resumeMethod("load", { load: false, resume: false })).toBe("none");
     // Copilot：同一进程内的 load 不算跨进程接回。
     expect(resumeMethod("none", both)).toBe("none");
+  });
+});
+
+describe("resumeMethod without replay", () => {
+  it("prefers session/resume when the history is already in the timeline", () => {
+    const both = { load: true, resume: true };
+    expect(resumeMethod("load", both, false)).toBe("resume");
+    expect(resumeMethod("load", { load: true, resume: false }, false)).toBe(
+      "load",
+    );
+    expect(resumeMethod("load", both, true)).toBe("load");
+    expect(resumeMethod("none", both, false)).toBe("none");
+  });
+});
+
+describe("withSilence", () => {
+  it("rejects after the silence window and each touch restarts it", async () => {
+    let touch: () => void = () => undefined;
+    const never = new Promise<never>(() => undefined);
+    const started = Date.now();
+    const pending = withSilence(never, 80, (fn) => {
+      touch = fn;
+    });
+    const ticker = setInterval(touch, 40);
+    setTimeout(() => clearInterval(ticker), 240);
+    await expect(pending).rejects.toMatchObject({ code: "acp_resume_timeout" });
+    // 一直有动静的 240 ms 里不会超时，停了之后再等一个窗口才拒。
+    expect(Date.now() - started).toBeGreaterThanOrEqual(270);
+  });
+
+  it("passes the result through when the work finishes first", async () => {
+    await expect(
+      withSilence(Promise.resolve(7), 1000, () => undefined),
+    ).resolves.toBe(7);
   });
 });
 

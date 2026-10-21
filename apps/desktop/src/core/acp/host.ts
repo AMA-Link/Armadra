@@ -581,7 +581,7 @@ function startClock(
  * 静默截止：`work` 没答、也 {@link touch} 了之后 `ms` 毫秒没有新动静就拒
  * （`acp_resume_timeout`）。回放期间每来一帧调用方 touch 一次。
  */
-function withSilence<T>(
+export function withSilence<T>(
   work: Promise<T>,
   ms: number,
   expose: (touch: () => void) => void,
