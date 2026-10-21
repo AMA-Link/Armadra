@@ -167,6 +167,47 @@ export function mirrorRecords({
 
 export const turnLabel = (turn) => `turn-${turn}`;
 
+/**
+ * 镜像记录 → `session/load` 回放用的 `session/update` 负载（与 core 的镜像导入同一套映射）：
+ * 文本块按角色成 `user_message_chunk` / `agent_message_chunk`，工具调用与结果成
+ * `tool_call` / `tool_call_update`。假 Agent 据此回放 N 回合历史，不必把历史直接写进 SQLite。
+ */
+export function replayUpdates(records) {
+  const updates = [];
+  for (const record of records) {
+    for (const block of record.blocks) {
+      if (block.type === "tool_use") {
+        updates.push({
+          sessionUpdate: "tool_call",
+          toolCallId: block.id,
+          title: block.name,
+          kind: block.kind ?? "other",
+          status: "in_progress",
+          rawInput: block.input,
+        });
+      } else if (block.type === "tool_result") {
+        updates.push({
+          sessionUpdate: "tool_call_update",
+          toolCallId: block.id,
+          status: "completed",
+          content: [
+            { type: "content", content: { type: "text", text: block.content } },
+          ],
+        });
+      } else if (block.type === "text") {
+        updates.push({
+          sessionUpdate:
+            record.role === "user"
+              ? "user_message_chunk"
+              : "agent_message_chunk",
+          content: { type: "text", text: block.text },
+        });
+      }
+    }
+  }
+  return updates;
+}
+
 /** Claude Code 形状的转录行，直到总长至少 `bytes`。 */
 export function claudeTranscriptLines({ bytes = 1024 * 1024, seed = 1 } = {}) {
   const random = rng(seed);
