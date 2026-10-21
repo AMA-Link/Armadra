@@ -26,6 +26,7 @@ import type { TimelineDomain } from "../index";
 import { claudeAdapter } from "./claude";
 import { codexAdapter } from "./codex";
 import { mapHookActivity } from "./hook-activity";
+import { opencodeTranscript } from "./opencode";
 import { TimelineSink } from "./sink";
 import {
   type StatFn,
@@ -54,6 +55,7 @@ export { mapHookActivity } from "./hook-activity";
 export const ADAPTERS: Readonly<Record<string, TranscriptAdapter>> = {
   claude: claudeAdapter,
   codex: codexAdapter,
+  opencode: opencodeTranscript,
 };
 
 /** 这个代理有没有转录适配器（页面据此决定「会话 / 终端」切换是否可用）。 */
