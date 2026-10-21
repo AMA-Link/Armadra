@@ -831,3 +831,165 @@ describe("tool details for the timeline", () => {
     expect(wire).not.toHaveProperty("hookEvent");
   });
 });
+
+describe("tool details for the timeline: opencode", () => {
+  it("reports a starting tool part with its name, call id and input summary", () => {
+    const event = opencode({
+      event: "message.part.updated",
+      properties: {
+        part: {
+          type: "tool",
+          tool: "bash",
+          callID: "call_1",
+          sessionID: "oc-1",
+          state: { status: "running", input: { command: "pnpm test" } },
+        },
+      },
+    });
+    expect(event?.state).toBe(WORKING);
+    expect(event?.hookEvent).toBe("PreToolUse");
+    expect(event?.toolName).toBe("bash");
+    expect(event?.toolUseId).toBe("call_1");
+    expect(event?.toolSummary).toBe("pnpm test");
+    expect(event?.sessionId).toBe("oc-1");
+    expect(event?.newTurn).toBeUndefined();
+  });
+
+  it("says nothing for finished tool parts and other part types", () => {
+    const part = (body: Record<string, unknown>) =>
+      opencode({ event: "message.part.updated", properties: { part: body } });
+    expect(
+      part({ type: "tool", tool: "bash", state: { status: "completed" } }),
+    ).toBeUndefined();
+    expect(
+      part({ type: "tool", tool: "bash", state: { status: "error" } }),
+    ).toBeUndefined();
+    expect(part({ type: "text", text: "hi" })).toBeUndefined();
+    expect(part({ type: "reasoning" })).toBeUndefined();
+  });
+
+  it("names the hooks the activity layer reads", () => {
+    expect(
+      opencode({
+        event: "message.updated",
+        properties: { info: { role: "user", sessionID: "s" } },
+      })?.hookEvent,
+    ).toBe("UserPromptSubmit");
+    expect(opencode({ event: "session.idle", properties: {} })?.hookEvent).toBe(
+      "Stop",
+    );
+    const failed = opencode({
+      event: "session.error",
+      properties: { error: "boom" },
+    });
+    expect(failed?.hookEvent).toBe("Stop");
+    expect(failed?.errored).toBe(true);
+    const ask = opencode({
+      event: "permission.asked",
+      properties: { id: "p1", type: "bash", title: "run tests" },
+    });
+    expect(ask?.hookEvent).toBe("PermissionRequest");
+    expect(ask?.toolName).toBe("bash");
+    expect(ask?.toolSummary).toBe("run tests");
+    expect(
+      opencode({ event: "permission.replied", properties: { id: "p1" } })
+        ?.hookEvent,
+    ).toBe("PostToolUse");
+  });
+
+  it("reads the older tool topics", () => {
+    const before = opencode({
+      event: "tool.execute.before",
+      properties: { tool: "read", callID: "c2", args: { filePath: "a.ts" } },
+    });
+    expect(before?.hookEvent).toBe("PreToolUse");
+    expect(before?.toolName).toBe("read");
+    expect(before?.toolSummary).toBe("a.ts");
+    expect(
+      opencode({ event: "tool.execute.after", properties: { tool: "read" } })
+        ?.hookEvent,
+    ).toBe("PostToolUse");
+  });
+});
+
+describe("tool details for the timeline: Pi", () => {
+  it("maps the native events onto the hook names the activity layer reads", () => {
+    const table: [string, string][] = [
+      ["before_agent_start", "UserPromptSubmit"],
+      ["tool_call", "PreToolUse"],
+      ["tool_result", "PostToolUse"],
+      ["agent_end", "Stop"],
+      ["agent_settled", "Stop"],
+      ["session_stop", "Stop"],
+      ["tool_approval_requested", "PermissionRequest"],
+      ["tool_approval_resolved", "PostToolUse"],
+    ];
+    for (const [native, hook] of table) {
+      expect(pi({ hookEventName: native })?.hookEvent, native).toBe(hook);
+    }
+  });
+
+  it("carries the tool name, summary and call id when the extension sends them", () => {
+    const event = pi({
+      hookEventName: "tool_call",
+      toolName: "bash",
+      toolCallId: "call_1|fc_1",
+      input: { command: "pnpm test" },
+    });
+    expect(event?.toolName).toBe("bash");
+    expect(event?.toolSummary).toBe("pnpm test");
+    expect(event?.toolUseId).toBe("call_1|fc_1");
+    // The current extension sends only the name.
+    const bare = pi({ hookEventName: "tool_call", toolName: "read" });
+    expect(bare?.toolName).toBe("read");
+    expect(bare?.toolSummary).toBeUndefined();
+  });
+
+  it("leaves an OMP continuation without a hook name", () => {
+    expect(
+      pi({ hookEventName: "agent_end", willContinue: true })?.hookEvent,
+    ).toBeUndefined();
+  });
+});
+
+describe("tool details for the timeline: Copilot", () => {
+  it("names the hooks the activity layer reads", () => {
+    expect(
+      copilot({ hookEventName: "userPromptSubmitted", prompt: "go" })
+        ?.hookEvent,
+    ).toBe("UserPromptSubmit");
+    expect(copilot({ hookEventName: "agentStop" })?.hookEvent).toBe("Stop");
+    expect(
+      copilot({
+        hookEventName: "notification",
+        notificationType: "permission_prompt",
+      })?.hookEvent,
+    ).toBe("Notification");
+    const failed = copilot({
+      hookEventName: "errorOccurred",
+      recoverable: false,
+      error: { message: "boom" },
+    });
+    expect(failed?.hookEvent).toBe("Stop");
+    expect(failed?.errored).toBe(true);
+  });
+
+  it("carries the tool name and a summary of its arguments after a tool", () => {
+    const event = copilot({
+      hookEventName: "postToolUse",
+      toolName: "bash",
+      toolArgs: '{"command":"pnpm test","description":"run"}',
+    });
+    expect(event?.hookEvent).toBe("PostToolUse");
+    expect(event?.toolName).toBe("bash");
+    expect(event?.toolSummary).toBe("pnpm test");
+    expect(
+      copilot({
+        hookEventName: "postToolUseFailure",
+        toolName: "edit",
+        toolArgs: { path: "src/a.ts" },
+        error: "denied",
+      })?.toolSummary,
+    ).toBe("src/a.ts");
+  });
+});

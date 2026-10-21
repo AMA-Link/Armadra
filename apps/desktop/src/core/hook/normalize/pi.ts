@@ -5,9 +5,11 @@ import {
   type Payload,
   WORKING,
   applyCommon,
+  field,
   flag,
   sessionEvent,
   stateEvent,
+  summaryOfInput,
   text,
 } from "./event";
 
@@ -103,6 +105,34 @@ export function normalize(
   if (event.askKind === undefined) {
     event.askKind = text(payload, "tool_name", "toolName");
   }
+  event.hookEvent = TIMELINE_HOOK[hook];
+  event.toolName = text(payload, "tool_name", "toolName");
+  if (event.toolName !== undefined) {
+    const summary = summaryOfInput(
+      field(payload, "tool_input", "toolInput") ??
+        field(payload, "input", "args"),
+    );
+    if (summary !== undefined) event.toolSummary = summary;
+  }
+  event.toolUseId = text(payload, "tool_use_id", "toolCallId");
   applyCommon(event, payload);
   return event;
 }
+
+/**
+ * The hook name the timeline's activity layer reads (`PreToolUse`…), for each
+ * native event. Timeline-only: `hookEvent` never leaves the process. Events
+ * absent here carry no activity of their own.
+ */
+const TIMELINE_HOOK: Record<string, string | undefined> = {
+  before_agent_start: "UserPromptSubmit",
+  tool_call: "PreToolUse",
+  tool_execution_start: "PreToolUse",
+  tool_result: "PostToolUse",
+  tool_execution_end: "PostToolUse",
+  tool_approval_requested: "PermissionRequest",
+  tool_approval_resolved: "PostToolUse",
+  agent_end: "Stop",
+  agent_settled: "Stop",
+  session_stop: "Stop",
+};

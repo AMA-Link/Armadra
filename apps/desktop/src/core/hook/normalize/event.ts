@@ -244,7 +244,11 @@ const SUMMARY_KEYS = [
  * label and a frame.
  */
 export function toolSummaryOf(payload: Payload): string | undefined {
-  const input = field(payload, "tool_input", "toolInput");
+  return summaryOfInput(field(payload, "tool_input", "toolInput"));
+}
+
+/** {@link toolSummaryOf} for a tool input a provider names differently. */
+export function summaryOfInput(input: unknown): string | undefined {
   if (typeof input === "string") {
     const line = input.trim().split("\n")[0] ?? "";
     return line === "" ? undefined : truncate(line, 200);
