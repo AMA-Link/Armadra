@@ -1,5 +1,5 @@
 /**
- * Pi 与 OMP 转录 → 时间线（设计 §5.2）。
+ * Pi、OMP 与 ama 转录 → 时间线（设计 §5.2）。
  *
  * 文件：`<agentDir>/sessions/<编码 cwd>/<ISO 时间>_<uuid>.jsonl`，路径由扩展的
  * `transcriptPath` 报来。两家是同一份格式（OMP 是 Pi 的分支），所以同一个转换器
@@ -453,6 +453,17 @@ function adapterOf(agentId: "pi" | "omp"): TranscriptAdapter {
     toolKind: piToolKind,
   };
 }
+
+/**
+ * ama：会话文件与 Pi 同形，转换器共用。它没有自己的历史适配器、也没有可兜底扫描的
+ * 固定目录，所以只认扩展上报的路径（设计 §5.2）：没报就不挑，不去接别家的文件。
+ */
+export const amaTranscript: TranscriptAdapter = {
+  agentId: "ama",
+  locate: (hint: SessionHint) => reportedFile(hint.transcriptPath)?.path,
+  convert,
+  toolKind: piToolKind,
+};
 
 export const piTranscript: TranscriptAdapter = adapterOf("pi");
 export const ompTranscript: TranscriptAdapter = adapterOf("omp");

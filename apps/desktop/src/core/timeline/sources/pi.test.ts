@@ -10,7 +10,8 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { convertAll, fixtureLines } from "./harness";
-import { ompTranscript, piToolKind, piTranscript } from "./pi";
+import { amaTranscript, ompTranscript, piToolKind, piTranscript } from "./pi";
+import { ADAPTERS } from "./index";
 
 /** 脱敏的 Pi / OMP 会话夹具 → 时间线；完整序列固定在 `fixtures/pi/*.expected.json`。 */
 
@@ -227,5 +228,36 @@ describe("locating a transcript when Pi and OMP share a directory", () => {
     expect(
       piTranscript.locate({ ...hint("pi"), transcriptPath: reported }),
     ).toBe(reported);
+  });
+});
+
+describe("ama session → timeline", () => {
+  // 会话文件与 Pi 同形：复用 Pi 的夹具，转换结果应与 Pi 一致。
+  it("is registered and converts the Pi-shaped file the same way", () => {
+    expect(ADAPTERS.ama).toBe(amaTranscript);
+    const lines = fixtureLines("pi/session.jsonl");
+    expect(convertAll(amaTranscript, lines)).toEqual(
+      convertAll(piTranscript, lines),
+    );
+  });
+
+  it("locates only through the path the extension reported", () => {
+    const dir = mkdtempSync(join(tmpdir(), "armadra-ama-"));
+    try {
+      const file = join(dir, "2026-10-01T00-00-00-000Z_ama-1.jsonl");
+      copyFileSync(join(__dirname, "fixtures", "pi", "session.jsonl"), file);
+      expect(
+        amaTranscript.locate({ agentId: "ama", transcriptPath: file }),
+      ).toBe(file);
+      expect(
+        amaTranscript.locate({
+          agentId: "ama",
+          cwd: "/work/demo",
+          startedAtMs: 0,
+        }),
+      ).toBeUndefined();
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });

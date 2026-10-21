@@ -28,7 +28,7 @@ import { codexAdapter } from "./codex";
 import { copilotTranscript } from "./copilot";
 import { mapHookActivity } from "./hook-activity";
 import { opencodeTranscript } from "./opencode";
-import { ompTranscript, piTranscript } from "./pi";
+import { amaTranscript, ompTranscript, piTranscript } from "./pi";
 import { TimelineSink } from "./sink";
 import {
   type StatFn,
@@ -60,6 +60,7 @@ export const ADAPTERS: Readonly<Record<string, TranscriptAdapter>> = {
   opencode: opencodeTranscript,
   pi: piTranscript,
   omp: ompTranscript,
+  ama: amaTranscript,
   copilot: copilotTranscript,
 };
 
