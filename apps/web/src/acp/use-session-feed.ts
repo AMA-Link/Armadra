@@ -1,11 +1,9 @@
 /**
- * 会话视图读到的内容：优先走时间线（`useTimeline`），主机没有 `timeline.*`、或这条
- * 会话还没写过时间线时退回旧的 `acp.log` + `acp.update` 适配层（`useLegacyAcp`）。
- * 两条路给出同一种东西——条目、头部值、活动——渲染和投递对账都只认这个形状。
+ * 会话视图读到的内容：只走时间线（`useTimeline`，契约 §82）。条目、头部值（模式与
+ * 模型目录、提示能力、标题……由 core 写进头部）、活动，渲染和投递对账都认这个形状。
  *
- * 退路是按会话判的：`timeline.open` 答 `not_found`（或旧主机不认识）就进旧路径；旧路径
- * 里一旦收到这条会话的 `timeline.delta`，说明 core 开始写时间线了，退回新路径。旧路径
- * 在 B10 下线。
+ * 主机没有 `timeline.*`、或这条会话还没写过时间线时，内容就是空的：不再退回旧的
+ * `acp.log` + `acp.update`（B10 已下线）。
  */
 import * as React from "react";
 import type {
@@ -15,25 +13,15 @@ import type {
   TimelineItem,
 } from "@armadra/shared";
 
-import { onWorkspaceEvent } from "@/api/events";
 import { activeSourceId } from "@/sources/scope";
 import { createBlobLoader } from "@/timeline/blobs";
 import { timelineKey, useTimelineStore } from "@/timeline/store";
 import { useActivity } from "@/timeline/use-activity";
-import {
-  turnRecordOf,
-  useLegacyAcp,
-  useLegacyAcpStore,
-} from "@/timeline/use-legacy-acp";
 import { useTimeline } from "@/timeline/use-timeline";
-import { acpApi } from "./api";
-import type { PendingPrompt } from "./store";
 
-export type FeedMode = "timeline" | "legacy";
 export type FeedPhase = "loading" | "ready" | "failed";
 
 export interface SessionFeed {
-  mode: FeedMode;
   phase: FeedPhase;
   items: readonly TimelineItem[];
   byId: Readonly<Record<string, TimelineItem>>;
@@ -41,162 +29,40 @@ export interface SessionFeed {
   activity: SessionActivity | undefined;
   promptCapabilities: AcpPromptCapabilities | null;
   hasMore: boolean;
-  /** 滚到顶部附近：取更早的一页；旧路径没有分页。 */
+  /** 滚到顶部附近：取更早的一页。 */
   loadMore(): void;
   loadBlob: (blobId: string) => Promise<Blob>;
   retry(): void;
   /**
    * 对账（契约 §39.9）：这一轮 core 收到了吗？读不到抛错；`true` = 收到了。
-   * 时间线路径补一次同步看有没有回显；旧路径重读镜像看回合记录。
+   * 补一次同步，看有没有带这个 `clientTurnId` 的用户条目回显。
    */
   confirm(clientTurnId: string): Promise<boolean>;
-  /** 本页发出了一句：旧路径要把它写进自己的状态；时间线路径等 core 回显。 */
-  begin(sessionId: string, prompt: Omit<PendingPrompt, "at">): void;
-  /** 需要附件能力时再取（时间线里没有它，只能从 `acp.log` 读）。 */
-  ensureCapabilities(): void;
 }
-
-/** 首屏之后多久去取模式 / 模型目录。 */
-const META_IDLE_MS = 1_500;
 
 const NO_ITEMS: readonly TimelineItem[] = [];
 const NO_BY_ID: Readonly<Record<string, TimelineItem>> = {};
 
 export function useSessionFeed(options: {
   sessionId: string | null;
-  nodeId: string;
-  workspaceId: string | null;
   /** 为 `false` 时都不取（节点不在视口等）。 */
   enabled?: boolean;
-  /**
-   * 没有时间线时能不能退回 `acp.log`。终端驱动节点的只读会话内容不能：那条会话
-   * 没有 ACP 镜像，没有时间线就是没有结构化内容。
-   */
-  legacy?: boolean;
-  /** 为 `false` 时不为模式 / 模型去读 `acp.log`（只读的会话内容没有选择器）。 */
-  meta?: boolean;
 }): SessionFeed {
-  const { sessionId, nodeId, workspaceId } = options;
-  const allowLegacy = options.legacy !== false;
-  const wantMeta = options.meta !== false;
+  const { sessionId } = options;
   const enabled = options.enabled !== false && sessionId !== null;
   const sourceId = activeSourceId();
 
-  // 判为旧路径的那条会话；会话换了自然作废。
-  const [legacyFor, setLegacyFor] = React.useState<string | null>(null);
-  const legacyMode = sessionId !== null && legacyFor === sessionId;
-
-  const timeline = useTimeline(sessionId ?? undefined, {
-    sourceId,
-    enabled: enabled && !legacyMode,
-  });
-  React.useEffect(() => {
-    if (timeline.missing && allowLegacy && sessionId !== null) {
-      setLegacyFor(sessionId);
-    }
-  }, [timeline.missing, allowLegacy, sessionId]);
-
-  // 旧路径里等时间线出现：core 开始写了就切回去，并让控制器重新 `open`。
-  React.useEffect(() => {
-    if (!legacyMode || sessionId === null) return;
-    return onWorkspaceEvent(
-      "timeline.delta",
-      (event) => {
-        if (event.timelineId === sessionId) setLegacyFor(null);
-      },
-      { allSources: true },
-    );
-  }, [legacyMode, sessionId]);
-  const wasLegacy = React.useRef(false);
-  const { refresh } = timeline;
-  React.useEffect(() => {
-    if (wasLegacy.current && !legacyMode) void refresh();
-    wasLegacy.current = legacyMode;
-  }, [legacyMode, refresh]);
-
-  const legacy = useLegacyAcp({
-    sessionId,
-    nodeId,
-    workspaceId,
-    enabled: enabled && legacyMode,
-  });
+  const timeline = useTimeline(sessionId ?? undefined, { sourceId, enabled });
   const activity = useActivity(sessionId ?? undefined, { sourceId });
-  const legacyById = React.useMemo(() => byIdOf(legacy.items), [legacy.items]);
-
-  // 时间线里没有的活进程信息（附件能力；core 还没把模式与模型目录写进头部值时的
-  // 那两样）只能从 `acp.log` 读。它会读整份镜像，所以不放在打开的路上：附件那一项
-  // 等人碰输入框，模式 / 模型等首屏之后空闲时再取一次。
-  const [meta, setMeta] = React.useState<{
-    capabilities: AcpPromptCapabilities | null;
-    modes: TimelineHead["modes"];
-    models: TimelineHead["models"];
-  } | null>(null);
-  const metaFor = React.useRef<string | null>(null);
-  const ensureCapabilities = React.useCallback(() => {
-    if (sessionId === null || metaFor.current === sessionId) return;
-    metaFor.current = sessionId;
-    acpApi.log(sessionId).then(
-      (log) =>
-        setMeta({
-          capabilities: log.promptCapabilities ?? null,
-          modes: log.modes ?? null,
-          models: log.models ?? null,
-        }),
-      () => {
-        metaFor.current = null;
-      },
-    );
-  }, [sessionId]);
-  const capabilities = meta?.capabilities ?? null;
-  const headMissing =
-    timeline.head.modes === undefined && timeline.head.models === undefined;
-  const timelineReady = timeline.phase === "ready";
-  React.useEffect(() => {
-    if (
-      !wantMeta ||
-      legacyMode ||
-      !timelineReady ||
-      !headMissing ||
-      sessionId === null
-    ) {
-      return;
-    }
-    const timer = setTimeout(ensureCapabilities, META_IDLE_MS);
-    return () => clearTimeout(timer);
-  }, [
-    wantMeta,
-    legacyMode,
-    timelineReady,
-    headMissing,
-    sessionId,
-    ensureCapabilities,
-  ]);
-  const timelineHead = React.useMemo<TimelineHead>(() => {
-    if (meta === null) return timeline.head;
-    return {
-      ...timeline.head,
-      ...(timeline.head.modes === undefined && meta.modes !== undefined
-        ? { modes: meta.modes }
-        : {}),
-      ...(timeline.head.models === undefined && meta.models !== undefined
-        ? { models: meta.models }
-        : {}),
-    };
-  }, [timeline.head, meta]);
-
   const loadBlob = React.useMemo(
     () => createBlobLoader(sourceId, sessionId ?? ""),
     [sourceId, sessionId],
   );
 
-  const { reread } = legacy;
+  const { refresh } = timeline;
   const confirm = React.useCallback(
     async (clientTurnId: string): Promise<boolean> => {
       if (sessionId === null) return false;
-      if (legacyMode) {
-        const log = await reread();
-        return turnRecordOf(log.turns, clientTurnId) !== undefined;
-      }
       await refresh();
       const entry =
         useTimelineStore.getState().entries[timelineKey(sourceId, sessionId)];
@@ -204,86 +70,35 @@ export function useSessionFeed(options: {
         (item) => item.kind === "user" && item.clientTurnId === clientTurnId,
       );
     },
-    [legacyMode, reread, refresh, sessionId, sourceId],
+    [refresh, sessionId, sourceId],
   );
 
-  const begin = React.useCallback(
-    (id: string, prompt: Omit<PendingPrompt, "at">) => {
-      if (!legacyMode) return;
-      useLegacyAcpStore.getState().begin(id, {
-        clientTurnId: prompt.clientTurnId,
-        text: prompt.text,
-        attachments: prompt.attachments,
-      });
-    },
-    [legacyMode],
-  );
-
-  const legacyRetry = legacy.retry;
   const retry = React.useCallback(() => {
-    if (legacyMode) legacyRetry();
-    else void refresh();
-  }, [legacyMode, legacyRetry, refresh]);
+    void refresh();
+  }, [refresh]);
 
   const loadMoreTimeline = timeline.loadMore;
   const loadMore = React.useCallback(() => {
-    if (!legacyMode) void loadMoreTimeline();
-  }, [legacyMode, loadMoreTimeline]);
+    void loadMoreTimeline();
+  }, [loadMoreTimeline]);
 
-  if (legacyMode) {
-    return {
-      mode: "legacy",
-      phase:
-        legacy.phase === "ready"
-          ? "ready"
-          : legacy.phase === "failed"
-            ? "failed"
-            : "loading",
-      items: legacy.items,
-      byId: legacyById,
-      head: legacy.head,
-      activity: legacy.activity,
-      promptCapabilities: legacy.promptCapabilities ?? capabilities,
-      hasMore: false,
-      loadMore,
-      loadBlob,
-      retry,
-      confirm,
-      begin,
-      ensureCapabilities,
-    };
-  }
   const hasContent = timeline.items.length > 0;
   return {
-    mode: "timeline",
     phase:
-      timeline.phase === "ready" || hasContent
+      timeline.phase === "ready" || hasContent || timeline.missing
         ? "ready"
-        : timeline.missing && !allowLegacy
-          ? "ready"
-          : timeline.phase === "error" && !timeline.missing
-            ? "failed"
-            : "loading",
-    items: timeline.items.length === 0 ? NO_ITEMS : timeline.items,
-    byId: timeline.items.length === 0 ? NO_BY_ID : timeline.byId,
-    head: timelineHead,
+        : timeline.phase === "error"
+          ? "failed"
+          : "loading",
+    items: hasContent ? timeline.items : NO_ITEMS,
+    byId: hasContent ? timeline.byId : NO_BY_ID,
+    head: timeline.head,
     activity,
-    promptCapabilities: capabilities,
+    promptCapabilities: timeline.head.promptCapabilities ?? null,
     hasMore: timeline.hasMore,
     loadMore,
     loadBlob,
     retry,
     confirm,
-    begin,
-    ensureCapabilities,
   };
-}
-
-/** 旧路径的条目表：随条目数组变，供审批卡找工具。 */
-function byIdOf(
-  items: readonly TimelineItem[],
-): Readonly<Record<string, TimelineItem>> {
-  const out: Record<string, TimelineItem> = {};
-  for (const item of items) out[item.id] = item;
-  return out;
 }

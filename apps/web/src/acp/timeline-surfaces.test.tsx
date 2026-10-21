@@ -9,7 +9,6 @@ import type { TerminalNodeData, TimelineItem } from "@armadra/shared";
  */
 const api = vi.hoisted(() => ({
   createSession: vi.fn(),
-  log: vi.fn(),
   prompt: vi.fn(),
   cancel: vi.fn(),
   setMode: vi.fn(),
@@ -104,7 +103,6 @@ const turns = () =>
 
 beforeEach(() => {
   mockLayout();
-  api.log.mockResolvedValue({ entries: [], endOffset: 0 });
   api.drive.mockResolvedValue({});
 });
 afterEach(() => {
@@ -157,6 +155,5 @@ describe("one timeline, three surfaces", () => {
     await screen.findByText("lint is clean");
     expect(turns()).toEqual(onCanvas);
     expect(localSource.sourceId).toBe(LOCAL_SOURCE_ID);
-    expect(api.log).not.toHaveBeenCalled();
   });
 });

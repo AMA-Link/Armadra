@@ -9,9 +9,9 @@ import {
   within,
 } from "@testing-library/react";
 import type {
-  AcpLogResponse,
   TerminalNodeData,
-  WorkspaceEvent,
+  TimelineItem,
+  TimelineTurnItem,
 } from "@armadra/shared";
 
 import { mockLayout } from "@/timeline/view/test-layout";
@@ -19,7 +19,6 @@ import { mockLayout } from "@/timeline/view/test-layout";
 /** 假 core：会话视图只经 `acpApi` 说话，换掉这一个模块就够了。 */
 const api = vi.hoisted(() => ({
   createSession: vi.fn(),
-  log: vi.fn(),
   prompt: vi.fn(),
   cancel: vi.fn(),
   setMode: vi.fn(),
@@ -67,14 +66,24 @@ import { RuntimeRequestError } from "@/api/client";
 import { dispatchWorkspaceEvent } from "@/api/events";
 import { resetBlobs } from "@/timeline/blobs";
 import { setTimelineTransportFactory } from "@/timeline/api";
-import { missingTransport } from "@/timeline/test-support";
 import { resetTimelines } from "@/timeline/sync";
-import { useLegacyAcpStore } from "@/timeline/use-legacy-acp";
+import {
+  FakeCore,
+  TIMELINE_ID,
+  assistant,
+  frame,
+  put,
+  user,
+} from "@/timeline/test-support";
 import { useAnsweredStore } from "./answered";
 import { SessionView } from "./SessionView";
 import { useAcpStore } from "./store";
 
-const SESSION = "11111111-1111-4111-8111-111111111111";
+/**
+ * 会话视图的投递对账、起会话、选择器与各类条目：内容都来自时间线（`FakeCore`
+ * 的 `open` / `sync` / 推送帧）。基本的渲染与投递主线在 `SessionView.timeline.test.tsx`。
+ */
+const SESSION = TIMELINE_ID;
 
 const data: TerminalNodeData = {
   kind: "terminal",
@@ -83,21 +92,137 @@ const data: TerminalNodeData = {
   agent: { id: "codex", driver: "acp" },
 };
 
-const emptyLog: AcpLogResponse = { entries: [], endOffset: 0 };
+let core: FakeCore;
 
-function emit(event: Record<string, unknown>) {
-  act(() => dispatchWorkspaceEvent(event as WorkspaceEvent));
+/** 把 core 上发生的一件事当一帧推给页面。 */
+function push(...ops: Parameters<FakeCore["emit"]>) {
+  const delta = core.emit(...ops);
+  act(() => core.deliver(delta));
 }
 
-const update = (body: Record<string, unknown>) =>
-  emit({ type: "acp.update", sessionId: SESSION, nodeId: "n1", update: body });
+function emit(event: Record<string, unknown>) {
+  act(() => dispatchWorkspaceEvent(event as never));
+}
 
-const text = (sessionUpdate: string, value: string) =>
-  update({ sessionUpdate, content: { type: "text", text: value } });
+function echo(turn: number, text: string, clientTurnId: string): TimelineItem {
+  return { ...user(turn, text), clientTurnId };
+}
+
+function turnItem(
+  turn: number,
+  extra: Partial<TimelineTurnItem> = {},
+): TimelineItem {
+  return {
+    id: `turn:${turn}`,
+    kind: "turn",
+    turn,
+    ord: 9,
+    rev: 0,
+    source: "acp",
+    at: 1_000 + turn,
+    gen: 1,
+    turnId: `turn-${turn}`,
+    startedAt: 1_000 + turn,
+    permissionWaitMs: 0,
+    ...extra,
+  };
+}
+
+function toolItem(
+  turn: number,
+  toolCallId: string,
+  title: string,
+  status: "pending" | "in_progress" | "completed",
+): TimelineItem {
+  return {
+    id: `tool:${toolCallId}`,
+    kind: "tool",
+    turn,
+    ord: 5,
+    rev: 0,
+    source: "acp",
+    at: 1,
+    gen: 1,
+    toolCallId,
+    toolKind: "execute",
+    title,
+    status,
+    locations: [],
+    content: [],
+    startedAt: 1,
+  };
+}
+
+function approvalItem(
+  turn: number,
+  pendingId: string,
+  toolCallId: string,
+  state: "pending" | "answered" = "pending",
+  kind: "allow_once" | "allow_always" = "allow_once",
+): TimelineItem {
+  return {
+    id: `ap:${pendingId}`,
+    kind: "approval",
+    turn,
+    ord: 6,
+    rev: 0,
+    source: "acp",
+    at: 2,
+    gen: 1,
+    pendingId,
+    protocol: "acp",
+    toolCallId,
+    options: [
+      { optionId: "ok", name: "Allow", kind },
+      { optionId: "no", name: "Reject", kind: "reject_once" },
+    ],
+    state,
+  };
+}
+
+function elicitationItem(
+  turn: number,
+  pendingId: string,
+  message: string,
+  state: "pending" | "cancelled" = "pending",
+  requestedSchema?: unknown,
+): TimelineItem {
+  return {
+    id: `el:${pendingId}`,
+    kind: "elicitation",
+    turn,
+    ord: 6,
+    rev: 0,
+    source: "acp",
+    at: 2,
+    gen: 1,
+    pendingId,
+    message,
+    mode: "form",
+    ...(requestedSchema === undefined
+      ? {}
+      : { requestedSchema: JSON.stringify(requestedSchema) }),
+    state,
+  };
+}
+
+/** 让下一次 `open` / `sync` 停住，直到测试放行。 */
+function gate(method: "open" | "sync") {
+  const fn = vi.mocked(core.transport[method]) as unknown as ReturnType<
+    typeof vi.fn
+  >;
+  const real = fn.getMockImplementation() as (...args: unknown[]) => unknown;
+  let release: () => void = () => undefined;
+  const held = new Promise<void>((resolve) => (release = resolve));
+  fn.mockImplementationOnce(async (...args: unknown[]) => {
+    await held;
+    return real(...args);
+  });
+  return release;
+}
 
 beforeEach(() => {
   for (const fn of Object.values(api)) fn.mockReset();
-  api.log.mockResolvedValue(emptyLog);
   api.prompt.mockResolvedValue({ turnId: "turn-1" });
   api.drive.mockResolvedValue({});
   api.answer.mockResolvedValue({});
@@ -108,10 +233,10 @@ beforeEach(() => {
   store.document = null;
   store.workspace = { id: "w1", rootPath: "/repo" };
   useAcpStore.getState().reset();
-  useLegacyAcpStore.getState().reset();
   useAnsweredStore.getState().reset();
   resetBlobs();
-  setTimelineTransportFactory(() => missingTransport);
+  core = new FakeCore();
+  setTimelineTransportFactory(() => core.transport);
   mockLayout();
 });
 
@@ -120,6 +245,14 @@ const MODELS = {
   availableModels: [
     { modelId: "small", name: "Small" },
     { modelId: "large", name: "Large" },
+  ],
+};
+
+const MODES = {
+  currentModeId: "default",
+  availableModes: [
+    { id: "default", name: "Default" },
+    { id: "plan", name: "Plan" },
   ],
 };
 
@@ -189,44 +322,32 @@ async function sendPrompt(value: string) {
   return api.prompt.mock.calls.at(-1)?.[2] as string;
 }
 
-/** 镜像里有了这一轮：提问与答复，`turns` 里记着它。 */
-function loggedTurn(clientTurnId: string, state: string): AcpLogResponse {
-  return {
-    entries: [
-      { role: "user", blocks: [{ type: "text", text: "go" }], endOffset: 3 },
-      {
-        role: "assistant",
-        blocks: [{ type: "text", text: "done it" }],
-        endOffset: 7,
-      },
-    ],
-    endOffset: 7,
-    turns: [
-      {
-        turnId: "1-1",
-        clientTurnId,
-        state: state as "ended",
-        ...(state === "ended" ? { stopReason: "end_turn" } : {}),
-      },
-    ],
-  };
-}
+const emptyHint = "向它说第一句话";
 
 describe("SessionView turn reconciliation (§39.9)", () => {
   it("confirms a turn whose request was lost on the way and draws its real outcome", async () => {
     render(<SessionView nodeId="n1" data={data} />);
-    await screen.findByText("向它说第一句话");
-    let answer: (log: AcpLogResponse) => void = () => undefined;
-    api.log.mockImplementation(
-      () => new Promise<AcpLogResponse>((resolve) => (answer = resolve)),
+    await screen.findByText(emptyHint);
+    // 请求在路上断了，但 core 其实收到并跑完了：同步卡住时画「正在确认」。
+    const release = gate("sync");
+    api.prompt.mockImplementationOnce(
+      async (_session: string, _text: string, clientTurnId: string) => {
+        core.emit(
+          { op: "put", item: echo(1, "go", clientTurnId) } as never,
+          { op: "put", item: assistant(1, "done it") } as never,
+          {
+            op: "put",
+            item: turnItem(1, { endedAt: 2_000, stopReason: "end_turn" }),
+          } as never,
+        );
+        throw new TypeError("Failed to fetch");
+      },
     );
-    api.prompt.mockRejectedValueOnce(new TypeError("Failed to fetch"));
     const clientTurnId = await sendPrompt("go");
     expect(clientTurnId).toMatch(/.+/);
     expect(await screen.findByText("正在确认这一轮")).toBeTruthy();
     expect(screen.queryByText("这一轮没有完成")).toBeNull();
-    await waitFor(() => expect(api.log).toHaveBeenCalledTimes(2));
-    act(() => answer(loggedTurn(clientTurnId, "ended")));
+    release();
     expect(await messages().findByText("done it")).toBeTruthy();
     expect(screen.queryByText("正在确认这一轮")).toBeNull();
     expect(screen.queryByText("这一轮没有送达")).toBeNull();
@@ -236,44 +357,44 @@ describe("SessionView turn reconciliation (§39.9)", () => {
 
   it("keeps streaming when the lost turn is still running", async () => {
     render(<SessionView nodeId="n1" data={data} />);
-    await screen.findByText("向它说第一句话");
-    api.prompt.mockRejectedValueOnce(new TypeError("Failed to fetch"));
-    api.log.mockImplementation(async () =>
-      loggedTurn(api.prompt.mock.calls[0]?.[2] as string, "running"),
+    await screen.findByText(emptyHint);
+    api.prompt.mockImplementationOnce(
+      async (_session: string, _text: string, clientTurnId: string) => {
+        core.emit(
+          { op: "put", item: echo(1, "go", clientTurnId) } as never,
+          { op: "put", item: assistant(1, "done it", true) } as never,
+          { op: "put", item: turnItem(1) } as never,
+        );
+        throw new TypeError("Failed to fetch");
+      },
     );
-    const clientTurnId = await sendPrompt("go");
+    await sendPrompt("go");
     expect(await messages().findByText("done it")).toBeTruthy();
     expect(screen.getByLabelText("停止")).toBeTruthy();
-    // 结束帧带着它的 clientTurnId 来：照常收尾。
-    emit({
-      type: "acp.turn",
-      sessionId: SESSION,
-      nodeId: "n1",
-      turnId: "1-1",
-      clientTurnId,
-      stopReason: "end_turn",
-    });
-    expect(screen.queryByLabelText("停止")).toBeNull();
+    // 结束帧到了：照常收尾。
+    push({
+      op: "put",
+      item: turnItem(1, { endedAt: 2_000, stopReason: "end_turn" }),
+    } as never);
+    await waitFor(() => expect(screen.queryByLabelText("停止")).toBeNull());
   });
 
-  it("says not delivered when core has no such turn, and retries with the same id", async () => {
+  it("says not delivered when core has no such turn, ignores another turn's echo, and retries with the same id", async () => {
     render(<SessionView nodeId="n1" data={data} />);
-    await screen.findByText("向它说第一句话");
+    await screen.findByText(emptyHint);
     api.prompt.mockRejectedValueOnce(new TypeError("Failed to fetch"));
-    api.log.mockResolvedValue({ entries: [], endOffset: 0, turns: [] });
     const clientTurnId = await sendPrompt("go");
     expect(await screen.findByText("这一轮没有送达")).toBeTruthy();
     // 提问留在时间线上，等重试。
     expect(screen.getByText("go")).toBeTruthy();
-    // 另一轮的结束帧不是它的结局。
-    emit({
-      type: "acp.turn",
-      sessionId: SESSION,
-      nodeId: "n1",
-      turnId: "9-9",
-      clientTurnId: "someone-else",
-      stopReason: "end_turn",
-    });
+    // 另一个人的一轮不是它的结局。
+    push(
+      { op: "put", item: echo(1, "other question", "someone-else") } as never,
+      {
+        op: "put",
+        item: turnItem(1, { endedAt: 2_000, stopReason: "end_turn" }),
+      } as never,
+    );
     expect(screen.getByText("这一轮没有送达")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "重试" }));
     await waitFor(() => expect(api.prompt).toHaveBeenCalledTimes(2));
@@ -282,19 +403,23 @@ describe("SessionView turn reconciliation (§39.9)", () => {
     expect(screen.getAllByText("go")).toHaveLength(1);
   });
 
-  it("gives up confirming when the log stays unreachable, still retrying with the same id", async () => {
+  it("gives up confirming when the timeline stays unreachable, still retrying with the same id", async () => {
     render(<SessionView nodeId="n1" data={data} />);
-    await screen.findByText("向它说第一句话");
+    await screen.findByText(emptyHint);
     vi.useFakeTimers({ shouldAdvanceTime: true });
     try {
       api.prompt.mockRejectedValueOnce(new TypeError("Failed to fetch"));
-      api.log.mockRejectedValue(new TypeError("Failed to fetch"));
+      vi.mocked(core.transport.sync).mockRejectedValue(
+        new TypeError("Failed to fetch"),
+      );
       const clientTurnId = await sendPrompt("go");
       await act(async () => {
         await vi.advanceTimersByTimeAsync(5000);
       });
       expect(screen.getByText("这一轮没有送达")).toBeTruthy();
-      expect(api.log).toHaveBeenCalledTimes(4);
+      expect(vi.mocked(core.transport.sync).mock.calls.length).toBeGreaterThan(
+        2,
+      );
       api.prompt.mockResolvedValueOnce({ turnId: "1-1" });
       fireEvent.click(screen.getByRole("button", { name: "重试" }));
       await act(async () => {
@@ -308,34 +433,42 @@ describe("SessionView turn reconciliation (§39.9)", () => {
 
   it("fails at once when core refuses the prompt with a code", async () => {
     render(<SessionView nodeId="n1" data={data} />);
-    await screen.findByText("向它说第一句话");
+    await screen.findByText(emptyHint);
     api.prompt.mockRejectedValueOnce(
       new RuntimeRequestError(409, "gone", "acp_exited"),
     );
     await sendPrompt("go");
     expect(await screen.findByText("这一轮没有完成")).toBeTruthy();
     expect(screen.queryByText("正在确认这一轮")).toBeNull();
-    expect(api.log).toHaveBeenCalledTimes(1);
+    expect(core.calls.filter((call) => call.startsWith("sync:"))).toEqual([]);
   });
 
-  it("rereads the log after the control channel reconnects and ends a turn it missed", async () => {
+  it("resyncs after the stream reconnects and ends a turn it missed", async () => {
     render(<SessionView nodeId="n1" data={data} />);
-    await screen.findByText("向它说第一句话");
+    await screen.findByText(emptyHint);
     const clientTurnId = await sendPrompt("go");
     expect(screen.getByLabelText("停止")).toBeTruthy();
     setConnected(false);
-    api.log.mockResolvedValue(loggedTurn(clientTurnId, "ended"));
+    // 断线期间 core 跑完了这一轮，帧没送到。
+    core.emit(
+      { op: "put", item: echo(1, "go", clientTurnId) } as never,
+      { op: "put", item: assistant(1, "done it") } as never,
+      {
+        op: "put",
+        item: turnItem(1, { endedAt: 2_000, stopReason: "end_turn" }),
+      } as never,
+    );
     setConnected(true);
+    act(() => core.reconnect());
     expect(await messages().findByText("done it")).toBeTruthy();
-    expect(api.log).toHaveBeenCalledTimes(2);
-    expect(screen.queryByLabelText("停止")).toBeNull();
+    await waitFor(() => expect(screen.queryByLabelText("停止")).toBeNull());
   });
 
-  it("does not reread on the first connected report", async () => {
+  it("does not resync on the first connected report", async () => {
     render(<SessionView nodeId="n1" data={data} />);
-    await screen.findByText("向它说第一句话");
+    await screen.findByText(emptyHint);
     setConnected(true);
-    expect(api.log).toHaveBeenCalledTimes(1);
+    expect(core.calls).toEqual(["open"]);
   });
 });
 
@@ -347,154 +480,108 @@ describe("SessionView", () => {
         <SessionView nodeId="n1" data={data} />
       </>,
     );
+    await waitFor(() => expect(screen.getAllByText(emptyHint)).toHaveLength(2));
+    push({ op: "put", item: assistant(1, "echo: ", true) } as never);
+    push({ op: "append", itemId: "a:1:0", delta: { text: "hi" } } as never);
     await waitFor(() =>
-      expect(screen.getAllByText("向它说第一句话")).toHaveLength(2),
+      expect(screen.getAllByText("echo: hi")).toHaveLength(2),
     );
-    useLegacyAcpStore
-      .getState()
-      .begin(SESSION, { clientTurnId: "c1", text: "hi", attachments: [] });
-    text("agent_message_chunk", "echo: ");
-    text("agent_message_chunk", "hi");
-    expect(screen.getAllByText("echo: hi")).toHaveLength(2);
     expect(screen.queryByText("echo: hiecho: hi")).toBeNull();
   });
 
   it("shows skeletons while loading, then the empty state", async () => {
-    let resolve: (log: AcpLogResponse) => void = () => undefined;
-    api.log.mockReturnValue(new Promise((done) => (resolve = done)));
+    const release = gate("open");
     const { container } = render(<SessionView nodeId="n1" data={data} />);
     expect(container.querySelector('[data-slot="acp-loading"]')).not.toBeNull();
-    await act(async () => resolve(emptyLog));
-    expect(await screen.findByText("向它说第一句话")).toBeTruthy();
-    expect(api.log).toHaveBeenCalledWith(SESSION);
+    release();
+    expect(await screen.findByText(emptyHint)).toBeTruthy();
+    expect(container.querySelector('[data-slot="acp-loading"]')).toBeNull();
   });
 
-  it("turns the event stream into messages, tool rows and a permission card", async () => {
+  it("turns the timeline frames into messages, tool rows and a permission card", async () => {
     render(<SessionView nodeId="n1" data={data} />);
-    await screen.findByText("向它说第一句话");
+    await screen.findByText(emptyHint);
 
-    const input = screen.getByLabelText("消息");
-    fireEvent.change(input, { target: { value: "跑一下测试" } });
-    fireEvent.keyDown(input, { key: "Enter" });
-    await waitFor(() =>
-      expect(api.prompt).toHaveBeenCalledWith(
-        SESSION,
-        "跑一下测试",
-        expect.any(String),
-      ),
+    const clientTurnId = await sendPrompt("跑一下测试");
+    expect(api.prompt).toHaveBeenCalledWith(
+      SESSION,
+      "跑一下测试",
+      expect.any(String),
     );
     expect(screen.getByText("跑一下测试")).toBeTruthy();
-    // 回合进行中：尾部 Spinner，发送钮换成停止。
+    // 回合进行中：发送钮换成停止。
     expect(screen.getByLabelText("停止")).toBeTruthy();
-    expect(screen.getByLabelText("停止")).toBeTruthy();
 
-    text("agent_message_chunk", "Running ");
-    text("agent_message_chunk", "tests");
-    expect(screen.getByText("Running tests")).toBeTruthy();
+    push(
+      { op: "put", item: echo(1, "跑一下测试", clientTurnId) } as never,
+      { op: "put", item: turnItem(1) } as never,
+      { op: "put", item: assistant(1, "Running ", true) } as never,
+    );
+    push({ op: "append", itemId: "a:1:0", delta: { text: "tests" } } as never);
+    expect(await screen.findByText("Running tests")).toBeTruthy();
 
-    update({
-      sessionUpdate: "tool_call",
-      toolCallId: "t1",
-      title: "pnpm test",
-      kind: "execute",
-      status: "in_progress",
-    });
-    expect(screen.getByText("pnpm test")).toBeTruthy();
-    expect(screen.getByText("运行中")).toBeTruthy();
-    update({
-      sessionUpdate: "tool_call_update",
-      toolCallId: "t1",
-      status: "completed",
-    });
-    expect(screen.getByText("已完成")).toBeTruthy();
+    push({
+      op: "put",
+      item: toolItem(1, "t1", "pnpm test", "in_progress"),
+    } as never);
+    expect(await screen.findByText("pnpm test")).toBeTruthy();
+    expect(await screen.findByText("运行中")).toBeTruthy();
+    push({
+      op: "put",
+      item: toolItem(1, "t1", "pnpm test", "completed"),
+    } as never);
+    expect(await screen.findByText("已完成")).toBeTruthy();
 
-    emit({
-      type: "agent.approval",
-      nodeId: "n1",
-      pendingId: "n1-1-acp-t2",
-      request: {
-        id: "n1-1-acp-t2",
-        request: {
-          protocol: "acp",
-          toolCall: { toolCallId: "t2", title: "rm -rf dist" },
-          options: [
-            { optionId: "ok", name: "Allow", kind: "allow_once" },
-            { optionId: "no", name: "Reject", kind: "reject_once" },
-          ],
-        },
-      },
-    });
-    expect(screen.getAllByText("rm -rf dist").length).toBeGreaterThan(0);
-    fireEvent.click(screen.getByRole("button", { name: "本次允许" }));
+    push(
+      { op: "put", item: toolItem(1, "t2", "rm -rf dist", "pending") } as never,
+      { op: "put", item: approvalItem(1, "n1-1-acp-t2", "t2") } as never,
+    );
+    expect((await screen.findAllByText("rm -rf dist")).length).toBeGreaterThan(
+      0,
+    );
+    fireEvent.click(await screen.findByRole("button", { name: "本次允许" }));
     expect(api.answer).toHaveBeenCalledWith("n1-1-acp-t2", "allow", "ok");
     // 答过的卡先收起，不等回执。
     expect(screen.queryByRole("button", { name: "本次允许" })).toBeNull();
 
-    emit({
-      type: "acp.turn",
-      sessionId: SESSION,
-      nodeId: "n1",
-      turnId: "turn-1",
-      stopReason: "end_turn",
-    });
-    expect(screen.queryByLabelText("停止")).toBeNull();
+    push({
+      op: "put",
+      item: turnItem(1, { endedAt: 3_000, stopReason: "end_turn" }),
+    } as never);
+    await waitFor(() => expect(screen.queryByLabelText("停止")).toBeNull());
     expect(screen.getByLabelText("发送")).toBeTruthy();
 
     // 回合边界之后的输出是新的一条，不接在上一条后面。
-    text("agent_message_chunk", "Next");
-    expect(messages().getByText("Next")).toBeTruthy();
+    push({ op: "put", item: assistant(2, "Next") } as never);
+    expect(await messages().findByText("Next")).toBeTruthy();
     expect(messages().getByText("Running tests")).toBeTruthy();
     // 回合结束时读屏念一次最后那条回复（消息流本身不逐块念）。
     expect(screen.getByRole("log").getAttribute("aria-live")).toBe("off");
     expect(screen.getByRole("status").textContent).toBe("Running tests");
   });
 
-  it("ignores events of other sessions", async () => {
+  it("ignores frames of other timelines", async () => {
     render(<SessionView nodeId="n1" data={data} />);
-    await screen.findByText("向它说第一句话");
-    emit({
-      type: "acp.update",
-      sessionId: "other",
-      nodeId: "n2",
-      update: {
-        sessionUpdate: "agent_message_chunk",
-        content: { type: "text", text: "elsewhere" },
-      },
-    });
+    await screen.findByText(emptyHint);
+    act(() =>
+      core.deliver(
+        frame(0, 1, [put(1, assistant(1, "elsewhere"))], "other-session"),
+      ),
+    );
     expect(screen.queryByText("elsewhere")).toBeNull();
   });
 
-  it("rebuilds from the log and draws a pending permission after a reload", async () => {
-    api.log.mockResolvedValue({
-      entries: [
-        {
-          role: "user",
-          blocks: [{ type: "text", text: "hello" }],
-          endOffset: 5,
-        },
-        {
-          role: "assistant",
-          blocks: [{ type: "text", text: "hi there" }],
-          endOffset: 9,
-        },
-      ],
-      endOffset: 9,
-      modes: {
-        currentModeId: "default",
-        availableModes: [
-          { id: "default", name: "Default" },
-          { id: "plan", name: "Plan" },
-        ],
-      },
-      pending: [
-        {
-          pendingId: "p1",
-          protocol: "acp",
-          toolCall: { toolCallId: "t9", title: "write a.ts" },
-          options: [{ optionId: "y", name: "Allow", kind: "allow_always" }],
-        },
-      ],
-    } satisfies AcpLogResponse);
+  it("rebuilds from the opened timeline and draws a pending permission after a reload", async () => {
+    core.emit(
+      { op: "put", item: user(1, "hello") } as never,
+      { op: "put", item: assistant(1, "hi there") } as never,
+      { op: "put", item: toolItem(1, "t9", "write a.ts", "pending") } as never,
+      {
+        op: "put",
+        item: approvalItem(1, "p1", "t9", "pending", "allow_always"),
+      } as never,
+      { op: "head", head: { modes: MODES } } as never,
+    );
     render(<SessionView nodeId="n1" data={data} />);
     expect(await screen.findByText("hello")).toBeTruthy();
     expect(screen.getByText("hi there")).toBeTruthy();
@@ -503,51 +590,29 @@ describe("SessionView", () => {
     expect(screen.getByLabelText("模式")).toBeTruthy();
   });
 
-  it("drops chunks that arrive before the log answers", async () => {
-    let resolve: (log: AcpLogResponse) => void = () => undefined;
-    api.log.mockReturnValue(new Promise((done) => (resolve = done)));
-    render(<SessionView nodeId="n1" data={data} />);
-    // core 先写镜像再发事件：这一块已经在读回来的记录里了。
-    text("agent_message_chunk", "already");
-    await act(async () =>
-      resolve({
-        entries: [
-          {
-            role: "assistant",
-            blocks: [{ type: "text", text: "already" }],
-            endOffset: 7,
-          },
-        ],
-        endOffset: 7,
-      }),
-    );
-    expect(await screen.findAllByText("already")).toHaveLength(1);
-  });
-
-  it("offers a retry when the log cannot be read", async () => {
-    api.log.mockRejectedValueOnce(new Error("down"));
+  it("offers a retry when the timeline cannot be opened", async () => {
+    core.failNext = new Error("down");
     render(<SessionView nodeId="n1" data={data} />);
     fireEvent.click(await screen.findByRole("button", { name: "重试" }));
-    expect(await screen.findByText("向它说第一句话")).toBeTruthy();
-    expect(api.log).toHaveBeenCalledTimes(2);
+    expect(await screen.findByText(emptyHint)).toBeTruthy();
   });
 
   it("shows a failed turn with a retry that resends the prompt", async () => {
     render(<SessionView nodeId="n1" data={data} />);
-    const input = await screen.findByLabelText("消息");
-    await screen.findByText("向它说第一句话");
-    fireEvent.change(input, { target: { value: "go" } });
-    fireEvent.keyDown(input, { key: "Enter" });
-    await waitFor(() => expect(api.prompt).toHaveBeenCalledTimes(1));
-    emit({
-      type: "acp.turn",
-      sessionId: SESSION,
-      nodeId: "n1",
-      turnId: "turn-1",
-      error: { code: "acp_protocol", message: "boom" },
-    });
+    await screen.findByText(emptyHint);
+    const first = await sendPrompt("go");
+    push(
+      { op: "put", item: echo(1, "go", first) } as never,
+      {
+        op: "put",
+        item: turnItem(1, {
+          endedAt: 2_000,
+          error: { code: "acp_protocol", message: "boom" },
+        }),
+      } as never,
+    );
     // 回合尾：core 说的原话加重试。
-    expect(screen.getByText("boom")).toBeTruthy();
+    expect(await screen.findByText("boom")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "重试" }));
     await waitFor(() => expect(api.prompt).toHaveBeenCalledTimes(2));
     // 第三个参数是 §39.9 的 clientTurnId：出错的是 core 跑完的一轮，重发是新的
@@ -557,31 +622,26 @@ describe("SessionView", () => {
       "go",
       expect.any(String),
     );
-    expect(api.prompt.mock.calls[1]?.[2]).not.toBe(
-      api.prompt.mock.calls[0]?.[2],
-    );
+    expect(api.prompt.mock.calls[1]?.[2]).not.toBe(first);
   });
 
-  it("draws a row for each stop reason that is not end_turn (§5.2)", async () => {
-    const cases = [
-      ["max_tokens", "已达上限", "继续"],
-      ["max_turn_requests", "已达上限", "继续"],
-      ["refusal", "已拒绝", null],
-      ["cancelled", "已取消", null],
-    ] as const;
-    for (const [stopReason, line, action] of cases) {
-      useAcpStore.getState().reset();
-      useLegacyAcpStore.getState().reset();
-      api.prompt.mockClear();
+  it.each([
+    ["max_tokens", "已达上限", "继续"],
+    ["max_turn_requests", "已达上限", "继续"],
+    ["refusal", "已拒绝", null],
+    ["cancelled", "已取消", null],
+  ] as const)(
+    "draws a row for the %s stop reason (§5.2)",
+    async (stopReason, line, action) => {
       render(<SessionView nodeId="n1" data={data} />);
-      await sendPrompt(`ask ${stopReason}`);
-      emit({
-        type: "acp.turn",
-        sessionId: SESSION,
-        nodeId: "n1",
-        turnId: "turn-1",
-        stopReason,
-      });
+      const id = await sendPrompt(`ask ${stopReason}`);
+      push(
+        { op: "put", item: echo(1, `ask ${stopReason}`, id) } as never,
+        {
+          op: "put",
+          item: turnItem(1, { endedAt: 2_000, stopReason }),
+        } as never,
+      );
       const row = (await screen.findByText(line)).closest(
         "[data-stop]",
       ) as HTMLElement;
@@ -592,20 +652,20 @@ describe("SessionView", () => {
       } else {
         expect(within(row).getByRole("button", { name: action })).toBeTruthy();
       }
-      cleanup();
-    }
-    // 正常说完什么都不画。
-    useAcpStore.getState().reset();
-    useLegacyAcpStore.getState().reset();
+    },
+  );
+
+  it("draws nothing extra for a turn that ended normally", async () => {
     render(<SessionView nodeId="n1" data={data} />);
-    await sendPrompt("fine");
-    emit({
-      type: "acp.turn",
-      sessionId: SESSION,
-      nodeId: "n1",
-      turnId: "turn-1",
-      stopReason: "end_turn",
-    });
+    const id = await sendPrompt("fine");
+    push(
+      { op: "put", item: echo(1, "fine", id) } as never,
+      {
+        op: "put",
+        item: turnItem(1, { endedAt: 2_000, stopReason: "end_turn" }),
+      } as never,
+    );
+    await waitFor(() => expect(screen.queryByLabelText("停止")).toBeNull());
     for (const line of ["已达上限", "已拒绝", "已取消"])
       expect(screen.queryByText(line)).toBeNull();
   });
@@ -613,14 +673,13 @@ describe("SessionView", () => {
   it("continues from the limit row with a new turn id", async () => {
     render(<SessionView nodeId="n1" data={data} />);
     const first = await sendPrompt("long one");
-    emit({
-      type: "acp.turn",
-      sessionId: SESSION,
-      nodeId: "n1",
-      turnId: "turn-1",
-      clientTurnId: first,
-      stopReason: "max_tokens",
-    });
+    push(
+      { op: "put", item: echo(1, "long one", first) } as never,
+      {
+        op: "put",
+        item: turnItem(1, { endedAt: 2_000, stopReason: "max_tokens" }),
+      } as never,
+    );
     fireEvent.click(await screen.findByRole("button", { name: "继续" }));
     await waitFor(() =>
       expect(api.prompt).toHaveBeenLastCalledWith(
@@ -634,7 +693,7 @@ describe("SessionView", () => {
 
   it("lets text be selected and keeps the canvas from panning or dragging", async () => {
     const { container } = render(<SessionView nodeId="n1" data={data} />);
-    await screen.findByText("向它说第一句话");
+    await screen.findByText(emptyHint);
     const root = container.querySelector("[data-slot=acp-session-view]")!;
     for (const name of ["select-text", "nopan", "nodrag", "nowheel"])
       expect(root.classList.contains(name)).toBe(true);
@@ -645,17 +704,18 @@ describe("SessionView", () => {
     Element.prototype.scrollIntoView ??= () => undefined;
     render(<SessionView nodeId="n1" data={data} />);
     const input = (await screen.findByLabelText("消息")) as HTMLTextAreaElement;
-    // 退到旧路径、读完镜像之后才订阅事件；之前的命令列表由镜像快照补。
-    await screen.findByText("向它说第一句话");
-    update({
-      sessionUpdate: "available_commands_update",
-      availableCommands: [
-        { name: "review", description: "Review changes" },
-        { name: "init", description: "Write AGENTS.md" },
-      ],
-    });
+    await screen.findByText(emptyHint);
+    push({
+      op: "head",
+      head: {
+        commands: [
+          { name: "review", description: "Review changes" },
+          { name: "init", description: "Write AGENTS.md" },
+        ],
+      },
+    } as never);
     fireEvent.change(input, { target: { value: "/" } });
-    expect(screen.getByText("/review")).toBeTruthy();
+    expect(await screen.findByText("/review")).toBeTruthy();
     expect(screen.getByText("/init")).toBeTruthy();
     fireEvent.change(input, { target: { value: "/in" } });
     expect(screen.queryByText("/review")).toBeNull();
@@ -671,28 +731,35 @@ describe("SessionView", () => {
     expect(api.cancel).not.toHaveBeenCalled();
   });
 
-  it("restores the plan, usage and commands from the log snapshot (§49)", async () => {
-    api.log.mockResolvedValue({
-      entries: [
-        {
-          role: "user",
-          blocks: [{ type: "text", text: "plan it" }],
-          endOffset: 1,
-          at: "2026-10-07T06:02:00.000Z",
+  it("restores the plan, usage and commands from the opened timeline (§49)", async () => {
+    core.emit(
+      { op: "put", item: user(1, "plan it") } as never,
+      {
+        op: "put",
+        item: {
+          id: "plan:1",
+          kind: "plan",
+          turn: 1,
+          ord: 2,
+          rev: 0,
+          source: "acp",
+          at: 2,
+          gen: 1,
+          entries: [
+            { content: "step one", status: "completed" },
+            { content: "step two", status: "pending" },
+          ],
         },
-      ],
-      endOffset: 1,
-      turns: [],
-      snapshot: {
-        plan: [
-          { content: "step one", status: "completed" },
-          { content: "step two", status: "pending" },
-        ],
-        usage: { used: 950, size: 1000 },
-        availableCommands: [{ name: "review", description: "" }],
-        title: "Planning",
-      },
-    } satisfies AcpLogResponse);
+      } as never,
+      {
+        op: "head",
+        head: {
+          usage: { used: 950, size: 1000 },
+          commands: [{ name: "review", description: "" }],
+          title: "Planning",
+        },
+      } as never,
+    );
     render(<SessionView nodeId="n1" data={data} />);
     const bar = await screen.findByLabelText("计划");
     expect(bar.textContent).toContain("step two");
@@ -730,7 +797,6 @@ describe("SessionView", () => {
     // 写回会话 id 会让起会话的 effect 自己被清理（依赖变了）；清理之后「正在起」
     // 也得收起，否则骨架屏永远不走（真浏览器里撞出来的）。
     api.createSession.mockResolvedValue({ id: SESSION });
-    api.log.mockResolvedValue(emptyLog);
     const fresh: TerminalNodeData = {
       kind: "terminal",
       agent: { id: "codex", driver: "acp" },
@@ -872,34 +938,19 @@ describe("SessionView", () => {
     expect(screen.getByRole("button", { name: "重试" })).toBeTruthy();
   });
 
-  it("draws an elicitation from the event stream, answers it and folds it away", async () => {
+  it("draws an elicitation from the timeline, answers it and folds it away", async () => {
     render(<SessionView nodeId="n1" data={data} />);
-    await screen.findByText("向它说第一句话");
-    emit({
-      type: "agent.approval",
-      nodeId: "n1",
-      pendingId: "n1-1-acp-e1",
-      request: {
-        request: {
-          protocol: "acp",
-          elicitation: {
-            message: "Pick a color",
-            mode: "form",
-            requestedSchema: {
-              type: "object",
-              properties: {
-                color: {
-                  type: "string",
-                  enum: ["red", "blue"],
-                  default: "red",
-                },
-              },
-              required: ["color"],
-            },
-          },
+    await screen.findByText(emptyHint);
+    push({
+      op: "put",
+      item: elicitationItem(1, "n1-1-acp-e1", "Pick a color", "pending", {
+        type: "object",
+        properties: {
+          color: { type: "string", enum: ["red", "blue"], default: "red" },
         },
-      },
-    });
+        required: ["color"],
+      }),
+    } as never);
     expect(await screen.findByText("Pick a color")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "提交" }));
     await waitFor(() =>
@@ -911,31 +962,21 @@ describe("SessionView", () => {
     expect(screen.queryByText("Pick a color")).toBeNull();
   });
 
-  it("restores pending elicitations and the model catalog from the log", async () => {
-    api.log.mockResolvedValue({
-      ...emptyLog,
-      models: MODELS,
-      elicitations: [
-        {
-          pendingId: "e1",
-          protocol: "acp",
-          elicitation: { message: "Which branch?", mode: "form" },
-        },
-      ],
-    } satisfies AcpLogResponse);
+  it("restores pending elicitations and the model catalog from the timeline", async () => {
+    core.emit(
+      { op: "put", item: elicitationItem(1, "e1", "Which branch?") } as never,
+      { op: "head", head: { models: MODELS } } as never,
+    );
     render(<SessionView nodeId="n1" data={data} />);
     expect(await screen.findByText("Which branch?")).toBeTruthy();
     expect((await screen.findByLabelText("模型")).textContent).toContain(
       "Small",
     );
     // 一个 turn 结束时挂起的 elicitation 已由 core 回了 cancel。
-    emit({
-      type: "acp.turn",
-      sessionId: SESSION,
-      nodeId: "n1",
-      turnId: "t",
-      stopReason: "cancelled",
-    });
+    push({
+      op: "put",
+      item: elicitationItem(1, "e1", "Which branch?", "cancelled"),
+    } as never);
     await waitFor(() => expect(screen.queryByText("Which branch?")).toBeNull());
   });
 
@@ -943,7 +984,7 @@ describe("SessionView", () => {
     store.document = {
       nodes: [{ id: "n1", data: { ...data, agent: { ...data.agent } } }],
     };
-    api.log.mockResolvedValue({ ...emptyLog, models: MODELS });
+    core.emit({ op: "head", head: { models: MODELS } } as never);
     await pickModel("Large");
     await waitFor(() =>
       expect(api.setModel).toHaveBeenCalledWith(SESSION, "large"),
@@ -960,7 +1001,7 @@ describe("SessionView", () => {
 
   it("puts the previous model back when the change is refused", async () => {
     api.setModel.mockRejectedValue(new Error("acp_model_unavailable"));
-    api.log.mockResolvedValue({ ...emptyLog, models: MODELS });
+    core.emit({ op: "head", head: { models: MODELS } } as never);
     await pickModel("Large");
     await waitFor(() => expect(api.setModel).toHaveBeenCalled());
     await waitFor(async () => expect(await checkedModel()).toBe("Small"));

@@ -38,7 +38,7 @@ export interface TimelineView {
   hasMore: boolean;
   loadingMore: boolean;
   error?: string;
-  /** 这条会话没有时间线（或主机太旧）：调用方改走旧路径。 */
+  /** 这条会话没有时间线（或主机太旧）：内容当作空。 */
   missing: boolean;
   /** 滚到顶部附近时调：取更早的一页回合；答新加载的条目数。 */
   loadMore(): Promise<number>;

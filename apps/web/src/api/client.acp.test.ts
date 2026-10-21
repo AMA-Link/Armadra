@@ -90,29 +90,6 @@ describe("acp：会话经 procedure", () => {
     expect(session).toMatchObject({ id: sessionId, backend: "acp" });
   });
 
-  it("读镜像带 after（数字），答案过页面 schema，多出来的字段原样带回", async () => {
-    ok({
-      entries: [
-        {
-          role: "user",
-          blocks: [{ type: "text", text: "hi" }],
-          endOffset: 12,
-        },
-      ],
-      endOffset: 12,
-      modes: { currentModeId: "default", availableModes: [] },
-      models: null,
-      pending: [],
-      extra: 1,
-    });
-    const log = await acpApi.log(sessionId, 7);
-    expect(procedure()).toBe("acp/log");
-    expect(sent()).toEqual({ json: { sessionId, after: 7 } });
-    expect(log.entries[0]?.blocks[0]).toMatchObject({ text: "hi" });
-    expect(log.endOffset).toBe(12);
-    expect(log.models).toBeNull();
-  });
-
   it("发提示、打断、切模式与模型、切换驱动各是一条 procedure", async () => {
     ok({ turnId: "t1" });
     await expect(acpApi.prompt(sessionId, "ping")).resolves.toMatchObject({
