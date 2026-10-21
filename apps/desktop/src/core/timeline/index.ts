@@ -20,6 +20,7 @@ import type { CoreContext } from "../main";
 import { ActivityTracker } from "./activity";
 import { BlobStore } from "./blobs";
 import { installRoutes } from "./routes";
+import { SourceManager, type SourceManagerOptions } from "./sources";
 import { TimelineStore } from "./store";
 import { TimelineWriter } from "./writer";
 
@@ -27,6 +28,7 @@ export { ActivityTracker, contentPhase, outcomeOf } from "./activity";
 export { BlobStore, MAX_BLOB_BYTES } from "./blobs";
 export { CursorAheadError, TimelineStore } from "./store";
 export { TimelineWriter } from "./writer";
+export { SourceManager } from "./sources";
 export type { TimelineFrame, OpenTimeline } from "./writer";
 
 /** 会话行此刻的存活情况：决定重启后没有活动记录时怎么补。 */
@@ -40,11 +42,17 @@ export class TimelineDomain {
   readonly blobs: BlobStore;
   readonly writer: TimelineWriter;
   readonly activity: ActivityTracker;
+  /** 终端驱动的 CLI 的转录来源（B4a，设计 §5）；hook 经它触发尾读。 */
+  readonly sources: SourceManager;
   private liveness: ((sessionId: string) => Liveness) | undefined;
 
   constructor(
     private readonly context: CoreContext,
-    options: { readonly bootId?: string } = {},
+    options: {
+      readonly bootId?: string;
+      /** 测试注入：转录来源的计时器、监听与 stat。 */
+      readonly sources?: Partial<Omit<SourceManagerOptions, "database">>;
+    } = {},
   ) {
     const database = context.db.database;
     this.store = new TimelineStore(database);
@@ -80,6 +88,11 @@ export class TimelineDomain {
           },
         }),
       onWrite: (event) => this.activity.observe(event.timelineId, event.state),
+    });
+    this.sources = new SourceManager(this, {
+      database,
+      log: context.log,
+      ...options.sources,
     });
   }
 
@@ -217,6 +230,7 @@ export class TimelineDomain {
 
   /** 刷空写入器、停掉计时器；关库之前调。 */
   close(): void {
+    this.sources.close();
     this.writer.close();
     this.activity.close();
   }
@@ -250,7 +264,7 @@ export function timelineDomainOf(
 
 export function install(
   context: CoreContext,
-  options: { readonly bootId?: string } = {},
+  options: ConstructorParameters<typeof TimelineDomain>[1] = {},
 ): TimelineDomain | undefined {
   if (!context.db.unified) return undefined;
   const domain = new TimelineDomain(context, options);
@@ -259,6 +273,7 @@ export function install(
   try {
     domain.recoverInterrupted();
     domain.pruneOrphans();
+    domain.sources.resume();
   } catch (error) {
     context.log.warn("could not settle stale timelines", {
       error: error instanceof Error ? error.message : String(error),

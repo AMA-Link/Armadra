@@ -62,6 +62,15 @@ export interface AgentEvent {
   sessionPhase?: SessionPhase;
   lastMessage?: string;
   toolUseId?: string;
+  /**
+   * The tool a PreToolUse / PostToolUse / PermissionRequest names and a
+   * one-line summary of its input, for the activity line ("运行：pnpm test").
+   * Never serialized: timeline-only, not part of the shared schema.
+   */
+  toolName?: string;
+  toolSummary?: string;
+  /** The hook's own name (`PreToolUse`, `Stop`…), timeline-only like the two above. */
+  hookEvent?: string;
   subagentType?: string;
   taskLabel?: string;
   durationMs?: number;
@@ -96,7 +105,13 @@ export interface AgentEvent {
 }
 
 /** The two keys that never travel on the wire. */
-const UNSERIALIZED = new Set(["silent", "sessionOpenedByPrompt"]);
+const UNSERIALIZED = new Set([
+  "silent",
+  "sessionOpenedByPrompt",
+  "toolName",
+  "toolSummary",
+  "hookEvent",
+]);
 
 /**
  * The event as the canvas sees it: absent optionals omitted, reducer controls
@@ -209,11 +224,55 @@ export function flag(
   return typeof value === "boolean" ? value : undefined;
 }
 
+const SUMMARY_KEYS = [
+  "command",
+  "cmd",
+  "file_path",
+  "filePath",
+  "path",
+  "notebook_path",
+  "pattern",
+  "query",
+  "url",
+  "description",
+  "prompt",
+];
+
+/**
+ * One line out of a tool's input (`tool_input`): the command, path, pattern or
+ * URL, whichever the tool has. Bounded, because it ends up in an activity
+ * label and a frame.
+ */
+export function toolSummaryOf(payload: Payload): string | undefined {
+  const input = field(payload, "tool_input", "toolInput");
+  if (typeof input === "string") {
+    const line = input.trim().split("\n")[0] ?? "";
+    return line === "" ? undefined : truncate(line, 200);
+  }
+  const object = asObject(input);
+  if (object === undefined) return undefined;
+  for (const key of SUMMARY_KEYS) {
+    const value = object[key];
+    if (typeof value !== "string") continue;
+    const line = value.trim().split("\n")[0] ?? "";
+    if (line !== "") return truncate(line, 200);
+  }
+  return undefined;
+}
+
 /**
  * Common to Claude and Codex: the transcript and session identity ride along
  * on every event, whatever the event says.
  */
 export function applyCommon(event: AgentEvent, payload: Payload): void {
+  if (event.hookEvent === undefined) {
+    event.hookEvent = text(payload, "hook_event_name", "hookEventName");
+  }
+  if (event.toolName === undefined) {
+    event.toolName = text(payload, "tool_name", "toolName");
+    const summary = toolSummaryOf(payload);
+    if (summary !== undefined) event.toolSummary = summary;
+  }
   if (event.sessionId === undefined) {
     const id = text(payload, "session_id", "sessionId");
     if (id !== undefined) event.sessionId = truncate(id, 200);

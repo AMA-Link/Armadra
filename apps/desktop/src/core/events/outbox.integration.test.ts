@@ -198,7 +198,7 @@ describe("断线续订", () => {
     expect(Number(stored.count)).toBe(1);
   });
 
-  it("acp.update 分块只扇出、不进 outbox（契约 §82.3）", async () => {
+  it("acp.update 分块只扇出、不进 outbox（契约 §82.4）", async () => {
     const core = await start();
     const live = await connect(core);
     for (let index = 0; index < 50; index += 1) {

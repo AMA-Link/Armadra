@@ -103,6 +103,12 @@ export interface IngestContext {
     warn(message: string, detail?: unknown): void;
     debug(message: string, detail?: unknown): void;
   };
+  /**
+   * Called after an accepted report has been reduced and published: the
+   * timeline's transcript tailer rings on it (设计 §5.1). Never throws into the
+   * request.
+   */
+  readonly onHook?: (nodeId: string, event: AgentEvent) => void;
   /** Wall clock, injectable so the reducer's windows can be driven in tests. */
   readonly now?: () => Date;
 }
@@ -245,6 +251,11 @@ export function ingest(
   }
 
   apply(context, owner.workspaceId, agentId, event, payload);
+  try {
+    context.onHook?.(nodeId, event);
+  } catch (error) {
+    context.log.debug("timeline source hook failed", { nodeId, error });
+  }
   if (binding !== undefined) {
     try {
       recordTrustedReport(
