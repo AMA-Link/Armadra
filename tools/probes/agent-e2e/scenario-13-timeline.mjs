@@ -82,18 +82,17 @@ const canon = (value) =>
   );
 
 async function rpc(origin, name, input) {
-  const response = await fetch(
-    `${origin}/api/rpc/${name.replace(".", "/")}`,
-    {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ json: input }),
-    },
-  );
+  const response = await fetch(`${origin}/api/rpc/${name.replace(".", "/")}`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ json: input }),
+  });
   const text = await response.text();
   const body = text === "" ? {} : JSON.parse(text);
   if (!response.ok) {
-    const error = new Error(`${name} → ${response.status} ${text.slice(0, 200)}`);
+    const error = new Error(
+      `${name} → ${response.status} ${text.slice(0, 200)}`,
+    );
     error.status = response.status;
     throw error;
   }
@@ -235,7 +234,9 @@ export default async function run13() {
   const families = (s.families = {});
   const mark = (id, step, ok, detail) => {
     families[id] ??= {};
-    families[id][step] = ok ? "passed" : `failed${detail ? `: ${JSON.stringify(detail).slice(0, 300)}` : ""}`;
+    families[id][step] = ok
+      ? "passed"
+      : `failed${detail ? `: ${JSON.stringify(detail).slice(0, 300)}` : ""}`;
     return s.check(`${id}：${step}`, ok, detail);
   };
   const savedChosen = [...CHOSEN];
@@ -279,7 +280,8 @@ export default async function run13() {
         families[id] = { skipped: plan[id].skip };
         s.check(`${id}：跳过`, true, plan[id].skip);
       }
-    if (active.length === 0) throw new Error("claude 与 codex 都没装或认证不上");
+    if (active.length === 0)
+      throw new Error("claude 与 codex 都没装或认证不上");
 
     const data = join(scratch, "rt");
     mkdirSync(data);
@@ -302,7 +304,12 @@ export default async function run13() {
       ARMADRA_SECRET_BACKEND: "file",
       ARMADRA_NO_GLOBAL_WRITES: "1",
     };
-    for (const name of ["TMUX", "TMUX_PANE", "CLAUDECODE", ...CREDENTIAL_VARIABLES])
+    for (const name of [
+      "TMUX",
+      "TMUX_PANE",
+      "CLAUDECODE",
+      ...CREDENTIAL_VARIABLES,
+    ])
       delete environment[name];
     for (const name of Object.keys(environment))
       if (/^(AMA_API_KEY_|ANTHROPIC_)/.test(name)) delete environment[name];
@@ -406,9 +413,13 @@ export default async function run13() {
     let driverWatch;
     const watchDriver = async () => {
       driverWatch?.close();
-      driverWatch = await watchWorkspaceEvents(core.origin, workspace.id, (event) => {
-        if (event?.type === "acp.driver") driverEvents.push(event);
-      });
+      driverWatch = await watchWorkspaceEvents(
+        core.origin,
+        workspace.id,
+        (event) => {
+          if (event?.type === "acp.driver") driverEvents.push(event);
+        },
+      );
     };
     await watchDriver();
     cleanups.push(() => driverWatch?.close());
@@ -431,7 +442,9 @@ export default async function run13() {
             });
             if (view === undefined) return undefined;
             last = {
-              items: view.items.map((item) => `${item.kind}:${item.endedAt ?? ""}`),
+              items: view.items.map(
+                (item) => `${item.kind}:${item.endedAt ?? ""}`,
+              ),
               phase: view.activity?.phase,
             };
             const turns = view.items.filter((item) => item.kind === "turn");
@@ -459,11 +472,19 @@ export default async function run13() {
           if (device.failure !== undefined) throw device.failure;
           const own = device.items();
           if (device.state.seq !== view.headSeq) {
-            detail = { device: device.name, seq: device.state.seq, head: view.headSeq };
+            detail = {
+              device: device.name,
+              seq: device.state.seq,
+              head: view.headSeq,
+            };
             return false;
           }
           if (own.length !== truth.size) {
-            detail = { device: device.name, items: own.length, expected: truth.size };
+            detail = {
+              device: device.name,
+              items: own.length,
+              expected: truth.size,
+            };
             return false;
           }
           for (const item of own) {
@@ -530,7 +551,12 @@ export default async function run13() {
         /* 1. ACP 第一轮 */
         await promptViaApi(api, timelineId, TASK);
         await waitTurns(timelineId, 1, "acp 第一轮");
-        const first = await compare(id, "acp 第一轮两端一致", timelineId, devices);
+        const first = await compare(
+          id,
+          "acp 第一轮两端一致",
+          timelineId,
+          devices,
+        );
         mark(
           id,
           "第一轮有用户消息与助手回复",
@@ -544,7 +570,10 @@ export default async function run13() {
         await promptViaApi(api, timelineId, TASK);
         await waitTurns(timelineId, 2, "acp 第二轮");
         const head = (await serverView(timelineId)).headSeq;
-        mark(id, "B 掉线期间 core 的序号往前走了", head > before, { before, head });
+        mark(id, "B 掉线期间 core 的序号往前走了", head > before, {
+          before,
+          head,
+        });
         await b.reconnect(core.origin, workspace.id);
         await compare(id, "B 掉线重连后两端一致", timelineId, devices);
 
@@ -559,7 +588,10 @@ export default async function run13() {
           () =>
             driverEvents
               .slice(switched)
-              .find((event) => event.nodeId === nodeId && event.driver === "terminal"),
+              .find(
+                (event) =>
+                  event.nodeId === nodeId && event.driver === "terminal",
+              ),
           { timeout: 60_000, interval: 250 },
         );
         const terminal = await waitFor(
@@ -576,7 +608,12 @@ export default async function run13() {
           resumed: toTerminal.resumed,
         });
         await sleep(1000);
-        const afterSwitch = await compare(id, "切到终端后两端一致", timelineId, devices);
+        const afterSwitch = await compare(
+          id,
+          "切到终端后两端一致",
+          timelineId,
+          devices,
+        );
         mark(
           id,
           "时间线有 driver_switched 提示",
@@ -591,7 +628,15 @@ export default async function run13() {
           const known = new Set(
             (await serverView(timelineId)).items.map((item) => item.id),
           );
-          await canvasAsIn(hookContext, sender.id, "send", "--to", nodeId, "--body", TERMINAL_TASK);
+          await canvasAsIn(
+            hookContext,
+            sender.id,
+            "send",
+            "--to",
+            nodeId,
+            "--body",
+            TERMINAL_TASK,
+          );
           try {
             await waitFor(
               "终端驱动的一轮进了时间线",
@@ -610,7 +655,12 @@ export default async function run13() {
               { timeout: TURN_TIMEOUT, interval: 500 },
             );
             terminalTurn = true;
-            await compare(id, "终端驱动那一轮之后两端一致", timelineId, devices);
+            await compare(
+              id,
+              "终端驱动那一轮之后两端一致",
+              timelineId,
+              devices,
+            );
           } catch (error) {
             mark(id, "终端驱动那一轮", false, error.message);
           }
@@ -636,7 +686,9 @@ export default async function run13() {
           () =>
             driverEvents
               .slice(back)
-              .find((event) => event.nodeId === nodeId && event.driver === "acp"),
+              .find(
+                (event) => event.nodeId === nodeId && event.driver === "acp",
+              ),
           { timeout: 60_000, interval: 250 },
         );
         await waitFor(
@@ -654,7 +706,12 @@ export default async function run13() {
         ).length;
         await promptViaApi(api, timelineId, TASK);
         await waitTurns(timelineId, turnsBefore + 1, "切回 ACP 后一轮");
-        const afterBack = await compare(id, "切回 ACP 再跑一轮后两端一致", timelineId, devices);
+        const afterBack = await compare(
+          id,
+          "切回 ACP 再跑一轮后两端一致",
+          timelineId,
+          devices,
+        );
         const turnNumbers = afterBack?.items
           .filter((item) => item.kind === "turn")
           .map((item) => item.turn);
@@ -662,7 +719,9 @@ export default async function run13() {
           id,
           "回合序号严格递增",
           turnNumbers !== undefined &&
-            turnNumbers.every((n, index) => index === 0 || n > turnNumbers[index - 1]),
+            turnNumbers.every(
+              (n, index) => index === 0 || n > turnNumbers[index - 1],
+            ),
           turnNumbers,
         );
 
@@ -672,10 +731,14 @@ export default async function run13() {
         for (const device of devices) device.disconnect();
         const old = core.process;
         old.kill("SIGTERM");
-        await waitFor("旧 core 退出", () => old.exitCode !== null || old.signalCode !== null, {
-          timeout: 30_000,
-          interval: 100,
-        });
+        await waitFor(
+          "旧 core 退出",
+          () => old.exitCode !== null || old.signalCode !== null,
+          {
+            timeout: 30_000,
+            interval: 100,
+          },
+        );
         // 同一个数据目录再起；endpoints.json 先删，免得读到旧的。
         rmSync(join(data, "endpoints.json"), { force: true });
         core = await startIsolatedCore({
@@ -686,7 +749,12 @@ export default async function run13() {
         await watchDriver();
         for (const device of devices)
           await device.reconnect(core.origin, workspace.id);
-        const after = await compare(id, "core 重启后两端一致", timelineId, devices);
+        const after = await compare(
+          id,
+          "core 重启后两端一致",
+          timelineId,
+          devices,
+        );
         const afterById = new Map(after?.items.map((item) => [item.id, item]));
         mark(
           id,
