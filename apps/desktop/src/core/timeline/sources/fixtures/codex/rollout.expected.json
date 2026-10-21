@@ -1,0 +1,257 @@
+{
+  "head": {
+    "usage": {
+      "used": 4200,
+      "size": 258400
+    }
+  },
+  "items": [
+    {
+      "id": "turn:cx:turn-1",
+      "turn": 1,
+      "ord": 0,
+      "rev": 14,
+      "source": "transcript",
+      "at": 1792494001000,
+      "gen": 0,
+      "kind": "turn",
+      "turnId": "cx:turn-1",
+      "startedAt": 1792494001000,
+      "endedAt": 1792494012000,
+      "stopReason": "end_turn",
+      "permissionWaitMs": 0,
+      "usage": {
+        "used": 4200,
+        "size": 258400
+      }
+    },
+    {
+      "id": "u:cx:turn-1",
+      "turn": 1,
+      "ord": 1,
+      "rev": 2,
+      "source": "transcript",
+      "at": 1792494002000,
+      "gen": 0,
+      "kind": "user",
+      "text": "给 README 加一行并跑测试"
+    },
+    {
+      "id": "th:rs_1",
+      "turn": 1,
+      "ord": 2,
+      "rev": 3,
+      "source": "transcript",
+      "at": 1792494003000,
+      "gen": 0,
+      "kind": "thought",
+      "text": "先看 README，再补一行。",
+      "streaming": false
+    },
+    {
+      "id": "a:msg_a1",
+      "turn": 1,
+      "ord": 3,
+      "rev": 4,
+      "source": "transcript",
+      "at": 1792494004000,
+      "gen": 0,
+      "kind": "assistant",
+      "parts": [
+        {
+          "type": "text",
+          "text": "我先看一下 README。"
+        }
+      ],
+      "streaming": false
+    },
+    {
+      "id": "tool:call_1",
+      "turn": 1,
+      "ord": 4,
+      "rev": 6,
+      "source": "transcript",
+      "at": 1792494005000,
+      "gen": 0,
+      "kind": "tool",
+      "toolCallId": "call_1",
+      "toolKind": "execute",
+      "title": "cat README.md",
+      "status": "completed",
+      "locations": [],
+      "input": {
+        "command": "cat README.md"
+      },
+      "content": [
+        {
+          "type": "terminal",
+          "terminalId": "call_1",
+          "command": "cat README.md",
+          "output": "# Demo\n",
+          "exitCode": 0
+        }
+      ],
+      "startedAt": 1792494005000,
+      "endedAt": 1792494006000
+    },
+    {
+      "id": "tool:call_2",
+      "turn": 1,
+      "ord": 5,
+      "rev": 8,
+      "source": "transcript",
+      "at": 1792494007000,
+      "gen": 0,
+      "kind": "tool",
+      "toolCallId": "call_2",
+      "toolKind": "edit",
+      "title": "Edit README.md, notes.txt",
+      "status": "completed",
+      "locations": [
+        {
+          "path": "README.md"
+        },
+        {
+          "path": "notes.txt"
+        }
+      ],
+      "content": [
+        {
+          "type": "diff",
+          "path": "README.md",
+          "oldText": "# Demo",
+          "newText": "# Demo\n新增一行"
+        },
+        {
+          "type": "diff",
+          "path": "notes.txt",
+          "oldText": null,
+          "newText": "hello"
+        }
+      ],
+      "startedAt": 1792494007000,
+      "endedAt": 1792494008000
+    },
+    {
+      "id": "plan:1",
+      "turn": 1,
+      "ord": 6,
+      "rev": 9,
+      "source": "transcript",
+      "at": 1792494009000,
+      "gen": 0,
+      "kind": "plan",
+      "entries": [
+        {
+          "content": "补 README",
+          "status": "completed"
+        },
+        {
+          "content": "跑测试",
+          "status": "in_progress"
+        }
+      ]
+    },
+    {
+      "id": "tool:call_4",
+      "turn": 1,
+      "ord": 7,
+      "rev": 11,
+      "source": "transcript",
+      "at": 1792494010000,
+      "gen": 0,
+      "kind": "tool",
+      "toolCallId": "call_4",
+      "toolKind": "execute",
+      "title": "pnpm test",
+      "status": "failed",
+      "locations": [],
+      "input": {
+        "command": "pnpm test"
+      },
+      "content": [
+        {
+          "type": "terminal",
+          "terminalId": "call_4",
+          "command": "pnpm test",
+          "output": "1 failed\n",
+          "exitCode": 1
+        }
+      ],
+      "startedAt": 1792494010000,
+      "endedAt": 1792494011000
+    },
+    {
+      "id": "a:msg_a2",
+      "turn": 1,
+      "ord": 8,
+      "rev": 13,
+      "source": "transcript",
+      "at": 1792494012000,
+      "gen": 0,
+      "kind": "assistant",
+      "parts": [
+        {
+          "type": "text",
+          "text": "README 已更新，测试有 1 个失败。"
+        }
+      ],
+      "streaming": false
+    },
+    {
+      "id": "turn:cx:turn-2",
+      "turn": 2,
+      "ord": 0,
+      "rev": 19,
+      "source": "transcript",
+      "at": 1792494020000,
+      "gen": 0,
+      "kind": "turn",
+      "turnId": "cx:turn-2",
+      "startedAt": 1792494020000,
+      "endedAt": 1792494023000,
+      "stopReason": "cancelled",
+      "permissionWaitMs": 0
+    },
+    {
+      "id": "u:cx:turn-2",
+      "turn": 2,
+      "ord": 1,
+      "rev": 16,
+      "source": "transcript",
+      "at": 1792494020000,
+      "gen": 0,
+      "kind": "user",
+      "text": "继续修复"
+    },
+    {
+      "id": "tool:call_5",
+      "turn": 2,
+      "ord": 2,
+      "rev": 18,
+      "source": "transcript",
+      "at": 1792494021000,
+      "gen": 0,
+      "kind": "tool",
+      "toolCallId": "call_5",
+      "toolKind": "execute",
+      "title": "git status",
+      "status": "completed",
+      "locations": [],
+      "input": {
+        "command": "git status"
+      },
+      "content": [
+        {
+          "type": "terminal",
+          "terminalId": "call_5",
+          "command": "git status",
+          "output": "clean\n",
+          "exitCode": 0
+        }
+      ],
+      "startedAt": 1792494021000,
+      "endedAt": 1792494022000
+    }
+  ]
+}

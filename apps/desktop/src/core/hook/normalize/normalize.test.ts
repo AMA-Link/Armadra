@@ -797,3 +797,37 @@ describe("ama (the host adapter's reports, Pi's vocabulary)", () => {
     ).toBe(WORKING);
   });
 });
+
+describe("tool details for the timeline", () => {
+  it("carries the tool name, an input summary and the tool use id", () => {
+    const event = claude({
+      hook_event_name: "PreToolUse",
+      tool_name: "Bash",
+      tool_use_id: "toolu_1",
+      tool_input: { command: "pnpm test\nsecond line", description: "run" },
+    });
+    expect(event?.hookEvent).toBe("PreToolUse");
+    expect(event?.toolName).toBe("Bash");
+    expect(event?.toolSummary).toBe("pnpm test");
+    expect(event?.toolUseId).toBe("toolu_1");
+    expect(
+      codex({
+        hook_event_name: "PostToolUse",
+        tool_name: "apply_patch",
+        tool_input: { path: "src/a.ts" },
+      })?.toolSummary,
+    ).toBe("src/a.ts");
+  });
+
+  it("keeps the timeline-only fields off the wire", () => {
+    const event = claude({
+      hook_event_name: "PreToolUse",
+      tool_name: "Read",
+      tool_input: { file_path: "a.ts" },
+    });
+    const wire = serializeEvent(event as AgentEvent);
+    expect(wire).not.toHaveProperty("toolName");
+    expect(wire).not.toHaveProperty("toolSummary");
+    expect(wire).not.toHaveProperty("hookEvent");
+  });
+});

@@ -1,5 +1,6 @@
 import type { CoreContext } from "../main";
 import { pendingDir } from "../paths";
+import { timelineDomainOf } from "../timeline";
 import { startApprovalSweep } from "./approvals";
 import type { IngestContext } from "./ingest";
 import { HookServer } from "./server";
@@ -58,6 +59,8 @@ export function install(context: CoreContext): HookDomain {
     database: context.db.database,
     bus: context.bus,
     hooks: service,
+    onHook: (nodeId, event) =>
+      timelineDomainOf(context.server)?.sources.onHook(nodeId, event),
     log: {
       warn: (message, detail) =>
         context.log.warn(message, { detail: describe(detail) }),
