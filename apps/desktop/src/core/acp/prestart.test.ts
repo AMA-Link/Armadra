@@ -358,6 +358,8 @@ describe("POST /api/acp/prestart (contract §51)", () => {
       nodeId: "00000000-0000-4000-8000-000000000000",
     });
     expect(missing.status).toBe(404);
+    // 没人领的预启动进程占着数据目录（Windows 上删不掉）：收掉。
+    acpPrestartPool()?.killAllSync();
   });
 
   it("answers 204 and starts nothing for an adapter whose injection is per node", async () => {
