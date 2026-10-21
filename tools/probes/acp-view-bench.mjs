@@ -6,12 +6,12 @@
 //
 // 四项测量（后面各批改动前后各跑一遍对比）：
 //
-//   open        打开含 N 回合（缺省 300）的会话：`GET /api/acp/sessions/{id}/log?after=0`
+//   open        打开含 N 回合（缺省 300）的会话（旧镜像导入时间线后）：`timeline.open`
 //               的耗时、应答字节、条目数，以及页面侧 `JSON.parse` 的耗时；
 //   stream      脚本化 Agent 以每秒 R 块（缺省 50）吐 C 块（缺省 200）：每块从 Agent 吐出
-//               到工作空间事件流的订阅者收到的延迟（core 一侧）、丢块数，每块多写了几行
-//               outbox 与镜像，core 进程的 CPU；
-//   reconnect   断开事件流再连：连上的耗时，加上页面重连后做的那件事（整份重读 `…/log`）；
+//               到工作空间事件流的订阅者收到的延迟（core 一侧，看 `timeline.delta` 帧）、丢块数，
+//               每块多写了几行 outbox，core 进程的 CPU；
+//   reconnect   断开事件流再连：连上的耗时，加上页面重连后做的那件事（重新 `timeline.open`）；
 //   transcript  Claude 形状的转录文件：`GET /api/agent-status/{node}/transcript` 读 256 KiB
 //               与 5 MiB（上限）两档的耗时；另给一份不经 core 的参照（整读 + 逐行解析 20 MiB，
 //               尾读 256 KiB），对应设计文档里的 55 MB / 153 ms 那一行。
@@ -164,16 +164,15 @@ export function longTaskSummary(tasks, from, to) {
  * 没有 `better` 的是只记录、不判的数字（规模、字节、比例）。
  */
 export const METRICS = {
-  openLogMs: { better: "lower", slack: 30, unit: "ms" },
-  openLogParseMs: { better: "lower", slack: 15, unit: "ms" },
-  openLogBytes: { unit: "B" },
-  openLogEntries: { unit: "条" },
+  openTimelineMs: { better: "lower", slack: 30, unit: "ms" },
+  openTimelineParseMs: { better: "lower", slack: 15, unit: "ms" },
+  openTimelineBytes: { unit: "B" },
+  openTimelineEntries: { unit: "条" },
   streamLatencyP50Ms: { better: "lower", slack: 10, unit: "ms" },
   streamLatencyP95Ms: { better: "lower", slack: 25, unit: "ms" },
   streamLatencyMaxMs: { better: "lower", slack: 100, unit: "ms" },
   streamDeliveredRatio: { better: "higher", slack: 0.01, unit: "" },
   streamOutboxRowsPerChunk: { better: "lower", slack: 0.2, unit: "行/块" },
-  streamMirrorLinesPerChunk: { unit: "行/块" },
   streamCoreCpuPercent: { better: "lower", slack: 10, unit: "%" },
   reconnectOpenMs: { better: "lower", slack: 20, unit: "ms" },
   reconnectSyncMs: { better: "lower", slack: 40, unit: "ms" },
@@ -265,19 +264,30 @@ export function processStats(pid) {
 
 /* ------------------------------ 事件流帧 ------------------------------ */
 
-/** 事件流的一帧文本 → `acp.update` 里的分块标记（序号、吐出时间）；不是分块答 `null`。 */
-export function chunkFrame(text) {
+/**
+ * 事件流的一帧文本 → `timeline.delta` 里的全部分块标记（序号、吐出时间）；不是时间线
+ * 增量、或里面没有标记答空数组。写入器会把相邻分块合并，所以一帧可能带好几个。
+ */
+export function chunkMarkers(text) {
   let frame;
   try {
     frame = JSON.parse(text);
   } catch {
-    return null;
+    return [];
   }
   const event = frame?.event ?? frame;
-  if (event?.type !== "acp.update") return null;
-  if (event.update?.sessionUpdate !== "agent_message_chunk") return null;
-  const content = event.update.content;
-  return parseChunkMarker(content?.type === "text" ? (content.text ?? "") : "");
+  if (event?.type !== "timeline.delta") return [];
+  const markers = [];
+  for (const match of JSON.stringify(event.ops ?? []).matchAll(/⟦\d+:\d+⟧/gu)) {
+    const marker = parseChunkMarker(match[0]);
+    if (marker !== null) markers.push(marker);
+  }
+  return markers;
+}
+
+/** {@link chunkMarkers} 的第一个标记；没有答 `null`。 */
+export function chunkFrame(text) {
+  return chunkMarkers(text)[0] ?? null;
 }
 
 /** 一帧是不是回合结束（`acp.turn`）。 */
@@ -441,17 +451,6 @@ async function main() {
         mirrorFile(nodeId),
         mirrorRecords({ turns: options.turns, seed: 1 }),
       );
-    const lineCount = (file) => {
-      const text = readFileSync(file, "utf8");
-      let lines = 0;
-      for (
-        let at = text.indexOf("\n");
-        at !== -1;
-        at = text.indexOf("\n", at + 1)
-      )
-        lines += 1;
-      return lines;
-    };
 
     /* --------------------------- 1. 打开 N 回合 --------------------------- */
 
@@ -482,10 +481,19 @@ async function main() {
         nodeId: nodeA,
         cwd: projectRoot,
         agentId: BENCH_AGENT,
+        // 旧镜像是升级前的会话：接回它时 core 把镜像导入时间线（契约 §83）。
+        resume: BENCH_SESSION,
       },
     });
     const rowId = session.id;
     const sessionPath = `/api/acp/sessions/${rowId}`;
+    // 页面打开会话的那一读：`timeline.open`（契约 §82）。
+    const openTimeline = () =>
+      fetch(new URL("/api/rpc/timeline/open", origin), {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ json: { timelineId: rowId } }),
+      });
 
     // 事件流与页面同一条路：控制面 `/api/ws` 上订阅 `workspaces.events`（peer 帧，
     // 契约 §35）。每个事件在订阅里是一帧，`frames[].text` 是它的 JSON。
@@ -559,10 +567,10 @@ async function main() {
     const openRuns = [];
     for (let run = 0; run < options.runs + 1; run += 1) {
       const started = performance.now();
-      const answer = await fetch(new URL(`${sessionPath}/log?after=0`, origin));
+      const answer = await openTimeline();
       const text = await answer.text();
       const fetched = performance.now();
-      const body = JSON.parse(text);
+      const body = JSON.parse(text).json;
       const parsed = performance.now();
       // 第 0 次是预热（模块热身、文件缓存），不计。
       if (run > 0)
@@ -570,30 +578,30 @@ async function main() {
           ms: fetched - started,
           parseMs: parsed - fetched,
           bytes: Buffer.byteLength(text),
-          entries: body.entries.length,
+          entries: body.items.length,
         });
     }
-    metrics.openLogMs = round1(
+    metrics.openTimelineMs = round1(
       percentile(
         openRuns.map((r) => r.ms),
         50,
       ),
     );
-    metrics.openLogParseMs = round1(
+    metrics.openTimelineParseMs = round1(
       percentile(
         openRuns.map((r) => r.parseMs),
         50,
       ),
     );
-    metrics.openLogBytes = openRuns[0].bytes;
-    metrics.openLogEntries = openRuns[0].entries;
+    metrics.openTimelineBytes = openRuns[0].bytes;
+    metrics.openTimelineEntries = openRuns[0].entries;
     report.details.open = {
       ms: summarize(openRuns.map((r) => r.ms)),
       parseMs: summarize(openRuns.map((r) => r.parseMs)),
     };
     step(
-      "打开会话（读 log）",
-      `${metrics.openLogMs} ms，解析 ${metrics.openLogParseMs} ms，${metrics.openLogBytes} B，${metrics.openLogEntries} 条`,
+      "打开会话（timeline.open）",
+      `${metrics.openTimelineMs} ms，解析 ${metrics.openTimelineParseMs} ms，${metrics.openTimelineBytes} B，${metrics.openTimelineEntries} 条`,
     );
 
     /* ------------------------------ 2. 流式 ------------------------------ */
@@ -603,7 +611,6 @@ async function main() {
     const outboxBefore = count(
       "SELECT count(*) AS count FROM events WHERE workspace_id = ?",
     );
-    const mirrorBefore = lineCount(mirrorFile(nodeA));
     const cpuBefore = processStats(runtime.process.pid);
     const streamStarted = performance.now();
     await api(`${sessionPath}/prompt`, {
@@ -622,9 +629,10 @@ async function main() {
     await sleep(300);
     const seen = new Map();
     for (const frame of live.frames) {
-      const marker = chunkFrame(frame.text);
-      if (marker !== null && !seen.has(marker.index))
-        seen.set(marker.index, frame.at - marker.stamp);
+      for (const marker of chunkMarkers(frame.text)) {
+        if (!seen.has(marker.index))
+          seen.set(marker.index, frame.at - marker.stamp);
+      }
     }
     const latencies = [...seen.values()];
     const stream = summarize(latencies);
@@ -639,10 +647,6 @@ async function main() {
           outboxBefore) /
           options.chunks) *
           100,
-      ) / 100;
-    metrics.streamMirrorLinesPerChunk =
-      Math.round(
-        ((lineCount(mirrorFile(nodeA)) - mirrorBefore) / options.chunks) * 100,
       ) / 100;
     metrics.streamCoreCpuPercent =
       cpuBefore && cpuAfter
@@ -671,8 +675,8 @@ async function main() {
       const openedAt = await again.opened;
       void openedAt;
       const connected = performance.now();
-      // 页面重连后做的事：整份重读 log 再重建（`SessionView.tsx` 的对账）。
-      const answer = await fetch(new URL(`${sessionPath}/log?after=0`, origin));
+      // 页面重连后做的事：重新 `timeline.open` 再重建。
+      const answer = await openTimeline();
       JSON.parse(await answer.text());
       const synced = performance.now();
       again.socket.close();
@@ -697,7 +701,7 @@ async function main() {
     };
     step(
       "重连同步",
-      `连上 ${metrics.reconnectOpenMs} ms，连上并重读 log ${metrics.reconnectSyncMs} ms`,
+      `连上 ${metrics.reconnectOpenMs} ms，连上并重新 timeline.open ${metrics.reconnectSyncMs} ms`,
     );
 
     /* ----------------------------- 4. 转录解析 ----------------------------- */
