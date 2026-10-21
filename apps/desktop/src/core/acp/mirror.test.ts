@@ -6,7 +6,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { coalesce, readMirrorEntries } from "../history/acp-mirror";
 import { locateHistory, readHistoryEntries } from "../history/registry";
 import { tempDir } from "../testing/temp-dir";
-import { AcpMirror, IMAGE_LIMIT, mirrorPath } from "./mirror";
+import { AcpMirror, BATCH_MS, IMAGE_LIMIT, mirrorPath } from "./mirror";
 
 /**
  * 镜像（ACP 设计 §5.7）：逐块写、读时合并；连线读取经 `history/registry` 先认
@@ -28,6 +28,44 @@ function mirror(id = "s-1"): AcpMirror {
 }
 
 describe("the ACP mirror", () => {
+  it("batches adjacent text chunks into one line and flushes on other records, on read and on a timer", async () => {
+    const m = mirror("batch");
+    for (const text of ["a", "b", "c"]) {
+      m.update({
+        sessionUpdate: "agent_message_chunk",
+        content: { type: "text", text },
+      });
+    }
+    expect(m.writes).toBe(0);
+    m.update({
+      sessionUpdate: "tool_call",
+      toolCallId: "t1",
+      title: "Read",
+      kind: "read",
+    });
+    expect(m.writes).toBe(2);
+    const entries = m.read().entries;
+    expect(entries[0]?.blocks).toEqual([{ type: "text", text: "abc" }]);
+    // 定时器兜底：没有别的记录也会在 BATCH_MS 内写出。
+    m.update({
+      sessionUpdate: "agent_message_chunk",
+      content: { type: "text", text: "late" },
+    });
+    expect(m.writes).toBe(2);
+    await new Promise((resolve) => setTimeout(resolve, BATCH_MS + 150));
+    expect(m.writes).toBe(3);
+    // 1000 个分块只写个位数次。
+    const before = m.writes;
+    for (let i = 0; i < 1000; i += 1) {
+      m.update({
+        sessionUpdate: "agent_message_chunk",
+        content: { type: "text", text: "0123456789" },
+      });
+    }
+    m.flush();
+    expect(m.writes - before).toBeLessThanOrEqual(3);
+  });
+
   it("records prompts, replies, tool calls and their final results", () => {
     const m = mirror();
     expect(m.empty).toBe(true);
@@ -147,6 +185,7 @@ describe("the ACP mirror", () => {
       sessionUpdate: "agent_message_chunk",
       content: { type: "text", text: "done" },
     });
+    m.flush();
     // Claude 有自己的历史适配器；镜像的后缀先认，不交给它。
     const located = locateHistory({
       agentId: "claude",

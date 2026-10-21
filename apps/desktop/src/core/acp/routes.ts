@@ -563,6 +563,8 @@ export function installRoutes(context: CoreContext, deps: AcpRouteDeps): void {
     const after =
       Number.isFinite(afterRaw) && afterRaw > 0 ? Math.floor(afterRaw) : 0;
     const session = wiring.backend.sessionByRow(rowId);
+    // 攒着还没写的文本分块：先写出去，读到的才包含已经发出事件的那些。
+    session?.flushMirror();
     let path = session?.mirrorPath;
     if (path === undefined && row.ownerNodeId !== null) {
       const status = getAgentStatus(database, row.ownerNodeId);

@@ -255,7 +255,12 @@ export class AcpSession implements AcpSessionIdentity {
     this.host = host;
     this.modeState = host.modes;
     this.modelCatalog = host.models;
-    const mirror = this.options.mirrorFor(host.sessionId);
+    // 回放用的那个镜像对象和后面写的是同一个文件：共用一个，攒着的块次序才不乱。
+    const planned = this.options.mirrorFor(host.sessionId);
+    const mirror =
+      this.replayMirror !== undefined && this.replayMirror.path === planned.path
+        ? this.replayMirror
+        : planned;
     this.mirror = mirror;
     this.sink.signal({
       signal: "opened",
@@ -544,6 +549,7 @@ export class AcpSession implements AcpSessionIdentity {
     });
     const clientTurnId = this.clientTurnOf(turnId);
     this.workingSignalled = false;
+    this.flushMirror();
     this.feed?.endTurn(end, this.usage);
     if (end.error === undefined) {
       this.sink.signal({ signal: "turn", stopReason: end.stopReason });
@@ -561,6 +567,19 @@ export class AcpSession implements AcpSessionIdentity {
       ...(end.stopReason === undefined ? {} : { stopReason: end.stopReason }),
       ...(end.error === undefined ? {} : { error: end.error }),
     });
+  }
+
+  /** 攒着的镜像文本写出去（回合结束、结束会话前）。落盘失败只记日志。 */
+  flushMirror(): void {
+    try {
+      this.mirror?.flush();
+      if (this.replayMirror !== this.mirror) this.replayMirror?.flush();
+    } catch (error) {
+      this.sink.log?.("could not write the ACP mirror", {
+        nodeId: this.nodeId,
+        error: messageOf(error),
+      });
+    }
   }
 
   /** `session/cancel`：挂起的审批由客户端回 `cancelled`。 */
@@ -653,6 +672,7 @@ export class AcpSession implements AcpSessionIdentity {
    */
   async terminate(): Promise<void> {
     this.closed = true;
+    this.flushMirror();
     const host = this.host;
     if (host === undefined) return;
     if (this.running !== undefined) {
@@ -808,6 +828,7 @@ export class AcpSession implements AcpSessionIdentity {
 
   private onExit(exit: AcpExit): void {
     this.closed = true;
+    this.flushMirror();
     // 我们要它退的（休眠、切换驱动、结束）由发起方写提示；自己没的才是退出。
     if (!exit.requested) {
       this.feed?.exited(exit.code === null ? {} : { code: exit.code });
