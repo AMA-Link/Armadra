@@ -624,8 +624,27 @@ try {
     );
     const acpLog = await until(
       async () => {
-        const log = await owner(`/api/acp/sessions/${acpRow.sessionId}/log`);
-        return (log.turns ?? []).some((turn) => turn.state === "ended") && log;
+        const opened = await owner("/api/rpc/timeline/open", {
+          method: "POST",
+          body: { json: { timelineId: acpRow.sessionId, tailTurns: 50 } },
+        });
+        const items = opened.json?.items ?? [];
+        const turns = items.filter((item) => item.kind === "turn");
+        const users = items.filter((item) => item.kind === "user");
+        return (
+          turns.some((turn) => turn.endedAt !== undefined) && {
+            entries: users.map((user) => ({
+              role: "user",
+              blocks: [{ type: "text", text: user.text }],
+            })),
+            turns: turns.map((turn) => ({
+              turnId: turn.turnId,
+              clientTurnId: users.find((user) => user.turn === turn.turn)
+                ?.clientTurnId,
+              stopReason: turn.stopReason,
+            })),
+          }
+        );
       },
       "ACP 回合结束",
       { timeout: 30_000 },
@@ -1090,9 +1109,9 @@ try {
           { status: listed.status },
         );
       } else {
-        const log = await guestApi.get(
-          `/api/acp/sessions/${readOnlySession}/log`,
-        );
+        const log = await guestApi.post("/api/rpc/timeline/open", {
+          json: { timelineId: readOnlySession },
+        });
         run.check(log.status === 200, `${what}：访客读得到被分享的会话`, {
           status: log.status,
         });
