@@ -882,6 +882,37 @@ export function install(context: CoreContext): void {
     return session?.answerElicitation(approval.id, result) ?? false;
   });
 
+  // Eco 休眠与唤醒（契约 §82）：ACP 会话在休眠时整个结束，没有会话对象可以写提示，
+  // 所以从终端域的 `terminal.hibernation` 事件上写（只管已经有时间线的会话）。
+  const offHibernation = context.bus.on("workspace.event", ({ event }) => {
+    if (event.type !== "terminal.hibernation") return;
+    const note = event as unknown as {
+      sessionId: string;
+      nodeId: string;
+      state: string;
+      workspaceId?: string;
+    };
+    const timeline = timelineDomainOf(context.server);
+    const row = timeline?.store.get(note.sessionId);
+    if (timeline === undefined || row === undefined) return;
+    if (note.state !== "hibernated" && note.state !== "running") return;
+    try {
+      const feed = new AcpFeed(timeline, {
+        rowId: note.sessionId,
+        nodeId: row.nodeId,
+        workspaceId: row.workspaceId,
+        generation: 0,
+      });
+      if (note.state === "hibernated") feed.sleeping();
+      else feed.notice("woke");
+    } catch (error) {
+      context.log.warn("could not record the hibernation on the timeline", {
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  });
+  context.onStop?.(offHibernation);
+
   if (!exitHooked) {
     exitHooked = true;
     // 适配器是自成进程组起的（一棵子树一次收掉），core 退出时它们不会跟着

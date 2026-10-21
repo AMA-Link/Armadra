@@ -321,3 +321,69 @@ describe("脚本化的 session/update（AcpFeed）", () => {
     expect(assistant).toMatchObject({ streaming: false });
   });
 });
+
+describe("驱动切换与休眠", () => {
+  const unix = process.platform !== "win32";
+  (unix ? it : it.skip)(
+    "切到终端再切回：同一条时间线延续，写 driver_switched，接回不重复历史",
+    async () => {
+      await boot();
+      const { nodeId, rowId } = await start("remember me");
+      await until(turnsEnded, (turns) => turns.length > 0);
+      const before = items(rowId).filter((i) => i.kind === "user");
+      expect(before).toHaveLength(1);
+
+      for (const driver of ["terminal", "acp"] as const) {
+        const switched = await open!.core.call(
+          "POST",
+          `/api/acp/nodes/${nodeId}/driver`,
+          { driver },
+        );
+        expect(switched.status, JSON.stringify(switched.body)).toBe(200);
+      }
+      await until(
+        () => domain.activityOf(rowId)?.phase,
+        (phase) => phase === "idle",
+      );
+      const all = items(rowId);
+      expect(
+        all.filter((i) => i.kind === "notice" && i.code === "driver_switched"),
+      ).toHaveLength(2);
+      // 时间线非空：接回不回放，用户消息仍然只有一条。
+      expect(all.filter((i) => i.kind === "user")).toHaveLength(1);
+      expect(all.some((i) => i.kind === "notice" && i.code === "resumed")).toBe(
+        true,
+      );
+      expect(activities(rowId).map((a) => a.phase)).toContain("switching");
+    },
+  );
+
+  it("休眠与唤醒事件写进时间线，活动 sleeping", async () => {
+    await boot();
+    const { nodeId, rowId } = await start("hi");
+    await until(turnsEnded, (turns) => turns.length > 0);
+    open!.core.bus.emit("workspace.event", {
+      workspaceId: open!.workspaceId,
+      event: {
+        type: "terminal.hibernation",
+        sessionId: rowId,
+        nodeId,
+        state: "hibernated",
+      },
+    });
+    expect(domain.activityOf(rowId)?.phase).toBe("sleeping");
+    open!.core.bus.emit("workspace.event", {
+      workspaceId: open!.workspaceId,
+      event: {
+        type: "terminal.hibernation",
+        sessionId: rowId,
+        nodeId,
+        state: "running",
+      },
+    });
+    const codes = items(rowId).flatMap((i) =>
+      i.kind === "notice" ? [i.code] : [],
+    );
+    expect(codes).toEqual(expect.arrayContaining(["hibernated", "woke"]));
+  });
+});
