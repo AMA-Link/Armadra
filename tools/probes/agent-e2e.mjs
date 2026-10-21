@@ -30,6 +30,10 @@
 //      再唤醒、沿环 send 与下游读上游。每家的 ACP 入口经一个隔离包装脚本起（临
 //      时 HOME / 配置目录、只复制凭据），没装的记 skipped。`--self-test` 把六家
 //      换成假 ACP Agent 与假 TUI，证明探针本身。
+//   13. 时间线一致性（设计 acp-progressive-view B10）：同一条会话时间线，ACP 与终端
+//      两种驱动轮流写，两台设备同时看（一台中途掉线重连），core 重启后比对条目、
+//      `rev` 与 head_seq 一致、帧首尾相接。真跑家族取 claude、codex；`--self-test`
+//      用假 ACP Agent 与假 TUI。
 //   10. 六家互读（设计 cli-collaboration §8）：六种 CLI 各起一个交互式 TUI 节点
 //      连成环，下游 `context summary / transcript` 读上游、沿环 send、拒收一条
 //      排队看回执、交接 prepare → accept、会话索引与成本每家都有。没装或认证
@@ -57,7 +61,7 @@
 //
 // 用法（仓库根目录）：
 //   pnpm libs:build && pnpm --filter @armadra/desktop build
-//   node tools/probes/agent-e2e.mjs [输出目录] [--only 1,2,…,12] [--backend direct]
+//   node tools/probes/agent-e2e.mjs [输出目录] [--only 1,2,…,13] [--backend direct]
 //        [--self-test] [--real-model] [--record-compat]
 //
 // 产物：<输出目录>/result.json、每个场景的截图、core.log。
@@ -88,6 +92,7 @@ import scenario9 from "./agent-e2e/scenario-9-team-worktree.mjs";
 import scenario10 from "./agent-e2e/scenario-10-six-way-context.mjs";
 import scenario11 from "./agent-e2e/scenario-11-coordinator.mjs";
 import scenario12 from "./agent-e2e/scenario-12-acp.mjs";
+import scenario13 from "./agent-e2e/scenario-13-timeline.mjs";
 import { cliPrerequisites, planScenarios } from "./agent-e2e/preflight.mjs";
 import { homedir } from "node:os";
 
@@ -104,7 +109,7 @@ const SCENARIOS = [
 ];
 
 /** 自己起一套 core 的场景：不走 `setup()`（不要真 CLI 的登录，也不起共用页面）。 */
-const STANDALONE = new Set(["9", "11", "12"]);
+const STANDALONE = new Set(["9", "11", "12", "13"]);
 
 async function main() {
   // C 档门：要起真 CLI / 真模型的，没设开关就在起任何进程之前退出。
@@ -113,10 +118,11 @@ async function main() {
     ...shared,
     ...(only.has("11") && realModel && !selfTest ? ["11 --real-model"] : []),
     ...(only.has("12") && !selfTest ? ["12"] : []),
+    ...(only.has("13") && !selfTest ? ["13"] : []),
   ];
   if (selfTest && shared.length > 0)
     throw new Error(
-      `--self-test 只覆盖场景 11 / 12（9 本来就不要真 CLI）；去掉 ${shared.join("、")}`,
+      `--self-test 只覆盖场景 11 / 12 / 13（9 本来就不要真 CLI）；去掉 ${shared.join("、")}`,
     );
   if (real.length > 0 && !realAllowed)
     throw new Error(
@@ -169,6 +175,11 @@ async function main() {
   if (only.has("12")) {
     report.safety.before ??= fingerprint();
     await scenario12();
+  }
+  // 场景 13：时间线一致性，自己起 core 与两家的隔离包装。
+  if (only.has("13")) {
+    report.safety.before ??= fingerprint();
+    await scenario13();
   }
   for (const [id, reason] of Object.entries(plan.skip))
     scenario(id).skip(reason);

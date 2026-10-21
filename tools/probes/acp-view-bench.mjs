@@ -6,19 +6,21 @@
 //
 // 四项测量（后面各批改动前后各跑一遍对比）：
 //
-//   open        打开含 N 回合（缺省 300）的会话（旧镜像导入时间线后）：`timeline.open`
-//               的耗时、应答字节、条目数，以及页面侧 `JSON.parse` 的耗时；
+//   open        打开含 N 回合（缺省 300）的会话：历史由假 Agent 的 `session/load` 回放进会话
+//               时间线（B3 之后的真实路径，不直接写 SQLite）。量 `timeline.open`（页面首屏用的
+//               尾部快照）的耗时、应答字节、条目数与页面侧 `JSON.parse` 的耗时；
 //   stream      脚本化 Agent 以每秒 R 块（缺省 50）吐 C 块（缺省 200）：每块从 Agent 吐出
-//               到工作空间事件流的订阅者收到的延迟（core 一侧，看 `timeline.delta` 帧）、丢块数，
+//               到工作空间事件流的订阅者收到的延迟（core 一侧，认 `timeline.delta`）、丢块数，
 //               每块多写了几行 outbox，core 进程的 CPU；
-//   reconnect   断开事件流再连：连上的耗时，加上页面重连后做的那件事（重新 `timeline.open`）；
+//   reconnect   断开事件流再连：连上的耗时，加上页面重连后做的那件事（`timeline.sync`
+//               补一次）；
 //   transcript  Claude 形状的转录文件：`GET /api/agent-status/{node}/transcript` 读 256 KiB
 //               与 5 MiB（上限）两档的耗时；另给一份不经 core 的参照（整读 + 逐行解析 20 MiB，
 //               尾读 256 KiB），对应设计文档里的 55 MB / 153 ms 那一行。
 //
 // `--page` 另外起 Vite 与无头 Chrome，在真页面里量（需要 Chrome，`CHROME_PATH` 可指定）：
 //
-//   pageOpen    从节点出现到最后一个回合画出来；这段时间主线程的长任务（> 50 ms）；
+//   pageOpen    会话历史已在 core 的时间线里，页面开着：从节点出现到最后一个回合画出来；这段时间主线程的长任务（> 50 ms）；
 //   pageChunk   每个流式分块从 Agent 吐出到它的文字出现在 DOM 里的延迟，以及流式期间的长任务。
 //
 // 用法（仓库根目录）：
@@ -48,7 +50,6 @@ import { fileURLToPath } from "node:url";
 
 import {
   claudeTranscriptLines,
-  mirrorRecords,
   parseChunkMarker,
   turnLabel,
   writeJsonl,
@@ -264,9 +265,14 @@ export function processStats(pid) {
 
 /* ------------------------------ 事件流帧 ------------------------------ */
 
+/** 第一个分块标记；没有答 `null`。 */
+export function chunkFrame(text) {
+  return chunkMarkers(text)[0] ?? null;
+}
+
 /**
- * 事件流的一帧文本 → `timeline.delta` 里的全部分块标记（序号、吐出时间）；不是时间线
- * 增量、或里面没有标记答空数组。写入器会把相邻分块合并，所以一帧可能带好几个。
+ * 一帧里的全部分块标记（按序号去重由调用方做）。`timeline.delta` 把几个分块合并在一帧
+ * 里下发（`append` 的增量或整条 `put`），所以逐个标记取。
  */
 export function chunkMarkers(text) {
   let frame;
@@ -278,16 +284,9 @@ export function chunkMarkers(text) {
   const event = frame?.event ?? frame;
   if (event?.type !== "timeline.delta") return [];
   const markers = [];
-  for (const match of JSON.stringify(event.ops ?? []).matchAll(/⟦\d+:\d+⟧/gu)) {
-    const marker = parseChunkMarker(match[0]);
-    if (marker !== null) markers.push(marker);
-  }
+  for (const match of text.matchAll(/⟦(\d+):(\d+)⟧/gu))
+    markers.push({ index: Number(match[1]), stamp: Number(match[2]) });
   return markers;
-}
-
-/** {@link chunkMarkers} 的第一个标记；没有答 `null`。 */
-export function chunkFrame(text) {
-  return chunkMarkers(text)[0] ?? null;
 }
 
 /** 一帧是不是回合结束（`acp.turn`）。 */
@@ -399,7 +398,13 @@ async function main() {
               id: BENCH_AGENT,
               label: "ACP bench",
               launchCmd: process.execPath,
-              args: [agentScript, "--session-id", BENCH_SESSION],
+              args: [
+                agentScript,
+                "--session-id",
+                BENCH_SESSION,
+                "--history",
+                String(options.turns),
+              ],
               baseAgent: "opencode",
             },
           ],
@@ -444,13 +449,47 @@ async function main() {
       });
       return { workspaceId: workspace.id, boardId: first.id };
     };
-    const mirrorFile = (nodeId) =>
-      join(data, "acp", nodeId, `${BENCH_SESSION}.acp.jsonl`);
-    const seedMirror = (nodeId) =>
-      writeJsonl(
-        mirrorFile(nodeId),
-        mirrorRecords({ turns: options.turns, seed: 1 }),
+    const rpc = async (name, input) => {
+      const answer = await fetch(
+        new URL(`/api/rpc/${name.replace(".", "/")}`, origin),
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ json: input }),
+        },
       );
+      const text = await answer.text();
+      if (!answer.ok) throw new Error(`${name} → ${answer.status} ${text}`);
+      return { text, body: JSON.parse(text).json };
+    };
+    /** 起一个 ACP 会话并接回假 Agent 的历史，等回放写满时间线（N 回合都收了尾、活动回到 idle）。 */
+    const openWithHistory = async (workspace, nodeId) => {
+      const opened = await api("/api/acp/sessions", {
+        method: "POST",
+        body: {
+          workspaceId: workspace,
+          nodeId,
+          cwd: projectRoot,
+          agentId: BENCH_AGENT,
+          resume: BENCH_SESSION,
+        },
+      });
+      const deadline = Date.now() + 120_000;
+      for (;;) {
+        const view = (await rpc("timeline.open", { timelineId: opened.id }))
+          .body;
+        if (
+          view.turns.length >= options.turns &&
+          view.activity?.phase === "idle"
+        )
+          return { id: opened.id };
+        if (Date.now() > deadline)
+          throw new Error(
+            `回放没写满：${view.turns.length}/${options.turns} 回合，${view.activity?.phase}`,
+          );
+        await sleep(100);
+      }
+    };
 
     /* --------------------------- 1. 打开 N 回合 --------------------------- */
 
@@ -467,33 +506,15 @@ async function main() {
         640,
       ),
     ]);
-    seedMirror(nodeA);
-    report.details.mirrorBytes = statSync(mirrorFile(nodeA)).size;
-    step(
-      "合成镜像",
-      `${options.turns} 回合，${(report.details.mirrorBytes / 1024).toFixed(0)} KiB`,
-    );
-
-    const session = await api("/api/acp/sessions", {
-      method: "POST",
-      body: {
-        workspaceId,
-        nodeId: nodeA,
-        cwd: projectRoot,
-        agentId: BENCH_AGENT,
-        // 旧镜像是升级前的会话：接回它时 core 把镜像导入时间线（契约 §83）。
-        resume: BENCH_SESSION,
-      },
-    });
+    const replayStarted = Date.now();
+    const session = await openWithHistory(workspaceId, nodeA);
+    report.details.replayMs = Date.now() - replayStarted;
     const rowId = session.id;
     const sessionPath = `/api/acp/sessions/${rowId}`;
-    // 页面打开会话的那一读：`timeline.open`（契约 §82）。
-    const openTimeline = () =>
-      fetch(new URL("/api/rpc/timeline/open", origin), {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ json: { timelineId: rowId } }),
-      });
+    step(
+      "历史经 session/load 回放进时间线",
+      `${options.turns} 回合，${report.details.replayMs} ms`,
+    );
 
     // 事件流与页面同一条路：控制面 `/api/ws` 上订阅 `workspaces.events`（peer 帧，
     // 契约 §35）。每个事件在订阅里是一帧，`frames[].text` 是它的 JSON。
@@ -567,7 +588,11 @@ async function main() {
     const openRuns = [];
     for (let run = 0; run < options.runs + 1; run += 1) {
       const started = performance.now();
-      const answer = await openTimeline();
+      const answer = await fetch(new URL("/api/rpc/timeline/open", origin), {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ json: { timelineId: rowId } }),
+      });
       const text = await answer.text();
       const fetched = performance.now();
       const body = JSON.parse(text).json;
@@ -581,18 +606,15 @@ async function main() {
           entries: body.items.length,
         });
     }
-    metrics.openTimelineMs = round1(
-      percentile(
-        openRuns.map((r) => r.ms),
-        50,
-      ),
-    );
-    metrics.openTimelineParseMs = round1(
-      percentile(
-        openRuns.map((r) => r.parseMs),
-        50,
-      ),
-    );
+    const median = (key) =>
+      round1(
+        percentile(
+          openRuns.map((r) => r[key]),
+          50,
+        ),
+      );
+    metrics.openTimelineMs = median("ms");
+    metrics.openTimelineParseMs = median("parseMs");
     metrics.openTimelineBytes = openRuns[0].bytes;
     metrics.openTimelineEntries = openRuns[0].entries;
     report.details.open = {
@@ -603,7 +625,6 @@ async function main() {
       "打开会话（timeline.open）",
       `${metrics.openTimelineMs} ms，解析 ${metrics.openTimelineParseMs} ms，${metrics.openTimelineBytes} B，${metrics.openTimelineEntries} 条`,
     );
-
     /* ------------------------------ 2. 流式 ------------------------------ */
 
     live.frames.length = 0;
@@ -629,10 +650,9 @@ async function main() {
     await sleep(300);
     const seen = new Map();
     for (const frame of live.frames) {
-      for (const marker of chunkMarkers(frame.text)) {
+      for (const marker of chunkMarkers(frame.text))
         if (!seen.has(marker.index))
           seen.set(marker.index, frame.at - marker.stamp);
-      }
     }
     const latencies = [...seen.values()];
     const stream = summarize(latencies);
@@ -669,15 +689,16 @@ async function main() {
     live.socket.close();
     await sleep(200);
     const reconnectRuns = [];
+    const { headSeq } = (await rpc("timeline.open", { timelineId: rowId }))
+      .body;
     for (let run = 0; run < options.runs; run += 1) {
       const started = performance.now();
       const again = events();
       const openedAt = await again.opened;
       void openedAt;
       const connected = performance.now();
-      // 页面重连后做的事：重新 `timeline.open` 再重建。
-      const answer = await openTimeline();
-      JSON.parse(await answer.text());
+      // 页面重连后做的事：按本地序号 `timeline.sync` 补一次（本地已经是最新，取回的是空增量）。
+      await rpc("timeline.sync", { timelineId: rowId, after: headSeq });
       const synced = performance.now();
       again.socket.close();
       reconnectRuns.push({ open: connected - started, sync: synced - started });
@@ -701,7 +722,7 @@ async function main() {
     };
     step(
       "重连同步",
-      `连上 ${metrics.reconnectOpenMs} ms，连上并重新 timeline.open ${metrics.reconnectSyncMs} ms`,
+      `连上 ${metrics.reconnectOpenMs} ms，连上并 sync ${metrics.reconnectSyncMs} ms`,
     );
 
     /* ----------------------------- 4. 转录解析 ----------------------------- */
@@ -795,7 +816,8 @@ async function main() {
           driver: "acp",
         }),
       ]);
-      seedMirror(pageNode);
+      // 历史先经回放进 core 的时间线：页面打开的是 core 里已有 N 回合的会话。
+      const pageSession = await openWithHistory(target.workspaceId, pageNode);
       const web = await startVite(h, root, environment);
       const chrome = await startChrome(h);
       const page = await chrome.open({
@@ -866,11 +888,7 @@ async function main() {
         `节点出现到最后回合 ${metrics.pageOpenFromNodeMs} ms，长任务 ${openTasks.count} 条共 ${openTasks.totalMs} ms（最长 ${openTasks.maxMs} ms）`,
       );
 
-      const row = query(
-        "SELECT id FROM terminal_sessions WHERE owner_node_id = ? AND status = 'running' ORDER BY generation DESC LIMIT 1",
-        pageNode,
-      ).at(0);
-      if (row === undefined) throw new Error("页面没有起出会话行");
+      const row = { id: pageSession.id };
       const before = await page.evaluate(`return performance.now();`);
       await api(`/api/acp/sessions/${row.id}/prompt`, {
         method: "POST",

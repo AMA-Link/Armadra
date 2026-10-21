@@ -27,6 +27,7 @@ import {
   markdownBody,
   mirrorRecords,
   parseChunkMarker,
+  replayUpdates,
   rng,
   splitChunks,
   turnLabel,
@@ -337,5 +338,111 @@ test("基线文件: 每个平台的数字都是已知指标", () => {
     for (const name of Object.keys(entry.metrics)) {
       assert.ok(name in METRICS, `${platform} 里有未知指标 ${name}`);
     }
+  }
+});
+
+test("chunkMarkers: timeline.delta 一帧里的多个标记，其他事件没有", () => {
+  const delta = JSON.stringify({
+    type: "timeline.delta",
+    timelineId: "t",
+    nodeId: "n",
+    from: 3,
+    to: 5,
+    ops: [
+      { seq: 4, op: "append", itemId: "a", delta: { text: chunkText(1, 100) } },
+      { seq: 5, op: "append", itemId: "a", delta: { text: chunkText(2, 120) } },
+    ],
+  });
+  assert.deepEqual(
+    chunkMarkers(delta).map((m) => m.index),
+    [1, 2],
+  );
+  assert.deepEqual(
+    chunkMarkers(JSON.stringify({ event: JSON.parse(delta) })).map(
+      (m) => m.stamp,
+    ),
+    [100, 120],
+  );
+  assert.deepEqual(chunkMarkers(JSON.stringify({ type: "acp.turn" })), []);
+  assert.deepEqual(chunkMarkers("not json"), []);
+});
+
+test("replayUpdates: 镜像记录翻成 session/update 负载", () => {
+  const updates = replayUpdates(mirrorRecords({ turns: 3, seed: 1 }));
+  const kinds = updates.map((u) => u.sessionUpdate);
+  assert.equal(kinds.filter((k) => k === "user_message_chunk").length, 3);
+  assert.equal(kinds.filter((k) => k === "tool_call").length, 1);
+  assert.equal(kinds.filter((k) => k === "tool_call_update").length, 1);
+  assert.ok(kinds.filter((k) => k === "agent_message_chunk").length >= 6);
+  const call = updates.find((u) => u.sessionUpdate === "tool_call");
+  const result = updates.find((u) => u.sessionUpdate === "tool_call_update");
+  assert.equal(call.toolCallId, result.toolCallId);
+});
+
+test("脚本化假 Agent: --history 声明 loadSession，session/load 回放 N 回合后答空结果", async () => {
+  const agent = spawn(
+    process.execPath,
+    [agentPath, "--session-id", "hist-1", "--history", "4"],
+    { stdio: ["pipe", "pipe", "ignore"] },
+  );
+  try {
+    const lines = [];
+    let buffer = "";
+    let wake = () => {};
+    agent.stdout.on("data", (chunk) => {
+      buffer += chunk;
+      let at = buffer.indexOf("\n");
+      while (at !== -1) {
+        lines.push(JSON.parse(buffer.slice(0, at)));
+        buffer = buffer.slice(at + 1);
+        at = buffer.indexOf("\n");
+      }
+      wake();
+    });
+    const send = (message) =>
+      agent.stdin.write(`${JSON.stringify({ jsonrpc: "2.0", ...message })}\n`);
+    const until = async (test) => {
+      const deadline = Date.now() + 5000;
+      while (!test()) {
+        assert.ok(Date.now() < deadline, "等不到应答");
+        await new Promise((resume) => {
+          wake = resume;
+          setTimeout(resume, 50);
+        });
+      }
+    };
+    send({ id: 1, method: "initialize", params: { protocolVersion: 1 } });
+    await until(() => lines.some((l) => l.id === 1));
+    assert.equal(
+      lines.find((l) => l.id === 1).result.agentCapabilities.loadSession,
+      true,
+    );
+    send({
+      id: 2,
+      method: "session/load",
+      params: { sessionId: "other", cwd: "/tmp" },
+    });
+    await until(() => lines.some((l) => l.id === 2));
+    assert.ok(lines.find((l) => l.id === 2).error, "不认识的会话报错");
+    send({
+      id: 3,
+      method: "session/load",
+      params: { sessionId: "hist-1", cwd: "/tmp" },
+    });
+    await until(() => lines.some((l) => l.id === 3));
+    const replay = lines.filter((l) => l.method === "session/update");
+    assert.equal(
+      replay.filter(
+        (l) => l.params.update.sessionUpdate === "user_message_chunk",
+      ).length,
+      4,
+    );
+    assert.deepEqual(lines.find((l) => l.id === 3).result, {});
+    // 回放帧都在应答之前。
+    assert.ok(
+      lines.findIndex((l) => l.id === 3) > lines.indexOf(replay.at(-1)),
+    );
+  } finally {
+    agent.kill("SIGKILL");
   }
 });

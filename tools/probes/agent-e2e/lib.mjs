@@ -36,7 +36,21 @@ const onlyFlag = argv.indexOf("--only");
 export const only =
   onlyFlag >= 0
     ? new Set(argv[onlyFlag + 1].split(",").map((part) => part.trim()))
-    : new Set(["1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12"]);
+    : new Set([
+        "1",
+        "2",
+        "3",
+        "4",
+        "5",
+        "6",
+        "7",
+        "8",
+        "9",
+        "10",
+        "11",
+        "12",
+        "13",
+      ]);
 // `--backend direct`：终端后端改成 direct（非 tmux）再跑。缺省按平台（macOS
 // 装了 tmux 就是 tmux）。
 const backendFlag = argv.indexOf("--backend");
@@ -53,14 +67,14 @@ mkdirSync(output, { recursive: true });
 /* ------------------------------ C 档的开关 ------------------------------- */
 
 /**
- * 起真 CLI、花真额度的场景（1–8、10、11 的 `--real-model`、12）只在
+ * 起真 CLI、花真额度的场景（1–8、10、11 的 `--real-model`、12、13）只在
  * `ARMADRA_E2E_REAL=1` 时跑：曾有一次真跑把 Claude 的启动对话框当成了投递目标、
  * 改掉了操作员的 ~/.claude/settings.json。没设就在起任何进程之前报错退出。
  */
 export const REAL_FLAG = "ARMADRA_E2E_REAL";
 export const realAllowed = process.env[REAL_FLAG] === "1";
 /**
- * `--self-test`：场景 11 / 12 把真 CLI / 真模型换成假 ACP Agent、假 TUI 与脚本化
+ * `--self-test`：场景 11 / 12 / 13 把真 CLI / 真模型换成假 ACP Agent、假 TUI 与脚本化
  * 模型，其余装配（隔离目录、包装脚本、指纹、断言）照真跑那条路走——证明探针
  * 本身没烂。不要登录、不联网、不花额度，不需要 `ARMADRA_E2E_REAL`。
  */

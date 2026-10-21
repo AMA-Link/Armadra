@@ -6,10 +6,14 @@
 // 约定的路径上。`session/prompt` 的正文里带 `[bench <分块数> <每秒分块数> <每块字符数>]`
 // 时，按这个节奏吐 `agent_message_chunk`，每块带 `⟦序号:毫秒时间戳⟧` 标记；没有这个标记
 // 的 prompt 回一句 `ok`。stdin 结束即退出。
+//
+// `--history <回合数>`（可带 `--history-seed`）：声明 `loadSession`，`session/load` 回放这么多
+// 回合的合成历史（`acp-session-gen.mjs` 的 `mirrorRecords`），之后答空结果。这样探针不用把
+// 历史直接写进 SQLite，而是走 core 的回放路径，把历史写进会话时间线。
 import { createInterface } from "node:readline";
 import { fileURLToPath } from "node:url";
 
-import { chunkText } from "./acp-session-gen.mjs";
+import { chunkText, mirrorRecords, replayUpdates } from "./acp-session-gen.mjs";
 
 /** `[bench 200 50 48]` → `{ chunks, rate, size }`；没有就 `null`。 */
 export function parseScript(text) {
@@ -49,9 +53,18 @@ async function stream(sessionId, { chunks, rate, size }) {
   }
 }
 
+/** `--history N` 的值；没有就 0。 */
+function numberFlag(name, fallback) {
+  const at = process.argv.indexOf(name);
+  const value = at === -1 ? fallback : Number(process.argv[at + 1]);
+  return Number.isFinite(value) && value >= 0 ? value : fallback;
+}
+
 function main() {
   const at = process.argv.indexOf("--session-id");
   const fixed = at === -1 ? "bench-session" : process.argv[at + 1];
+  const history = numberFlag("--history", 0);
+  const historySeed = numberFlag("--history-seed", 1);
   const lines = createInterface({ input: process.stdin });
   let busy = Promise.resolve();
   lines.on("line", (line) => {
@@ -69,7 +82,10 @@ function main() {
           id,
           result: {
             protocolVersion: 1,
-            agentCapabilities: { promptCapabilities: {} },
+            agentCapabilities: {
+              promptCapabilities: {},
+              ...(history > 0 ? { loadSession: true } : {}),
+            },
             authMethods: [],
             agentInfo: { name: "acp-bench-agent", version: "1.0.0" },
           },
@@ -78,6 +94,24 @@ function main() {
       case "session/new":
         send({ id, result: { sessionId: fixed } });
         return;
+      case "session/load": {
+        if (history === 0 || params.sessionId !== fixed) {
+          send({
+            id,
+            error: { code: -32602, message: "unknown session" },
+          });
+          return;
+        }
+        for (const update of replayUpdates(
+          mirrorRecords({ turns: history, seed: historySeed }),
+        ))
+          send({
+            method: "session/update",
+            params: { sessionId: fixed, update },
+          });
+        send({ id, result: {} });
+        return;
+      }
       case "session/prompt": {
         const text = (Array.isArray(params.prompt) ? params.prompt : [])
           .map((block) => (block?.type === "text" ? block.text : ""))
