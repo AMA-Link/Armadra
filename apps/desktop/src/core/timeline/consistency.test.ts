@@ -89,8 +89,7 @@ describe("时间线一致性", () => {
     const live = () => domain;
     const frames: Frame[] = [];
     const seen: WorkspaceEvent[] = [];
-    let a: Subscriber | undefined;
-    let b: Subscriber | undefined;
+    const subs: { a?: Subscriber; b?: Subscriber } = {};
     // B 在线时：帧先攒着，回合结束后倒序投递（乱序：先到的是后面的帧，触发缺口 sync）。
     let batch: Frame[] | undefined;
     open.core.bus.on("workspace.event", ({ event }) => {
@@ -99,9 +98,9 @@ describe("时间线一致性", () => {
       const frame = event as unknown as Frame & { timelineId: string };
       frames.push(frame);
       // A：每帧投两遍（重复）。
-      a?.receive(frame);
-      a?.receive(frame);
-      if (batch === undefined) b?.receive(frame);
+      subs.a?.receive(frame);
+      subs.a?.receive(frame);
+      if (batch === undefined) subs.b?.receive(frame);
       else batch.push(frame);
     });
 
@@ -116,8 +115,8 @@ describe("时间线一致性", () => {
     expect(created.status, JSON.stringify(created.body)).toBe(200);
     const id = (created.body as { id: string }).id;
     const turns = () => seen.filter((event) => event.type === "acp.turn");
-    a = new Subscriber(live, id);
-    b = new Subscriber(live, id);
+    const a = (subs.a = new Subscriber(live, id));
+    const b = (subs.b = new Subscriber(live, id));
     a.openSnapshot();
     b.openSnapshot();
     await until(turns, (all) => all.length >= 1);
