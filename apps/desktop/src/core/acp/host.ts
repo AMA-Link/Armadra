@@ -22,6 +22,8 @@
  * 会话、桥、归一化与路由在 G2-1；这里不碰数据库。
  */
 
+import { RPC_ERRORS, RpcError } from "@armadra/agent/acp";
+
 import type { PermissionMode } from "../agent/launch";
 import { launchTargetOf, resolveCommand } from "../agent/registry";
 import {
@@ -39,6 +41,7 @@ import {
   type AcpPendingPermission,
   type AcpPermissionSettlement,
   AcpProcess,
+  type AcpTerminalHandler,
   acpClientFeatures,
   messageOf,
 } from "./client";
@@ -98,6 +101,7 @@ export interface AcpProcessCallbacks {
     pending: AcpPendingElicitation,
     settlement: AcpElicitationSettlement,
   ) => void;
+  readonly onTerminal?: AcpTerminalHandler;
   readonly onStderr?: (text: string) => void;
   readonly onExit?: (exit: AcpExit) => void;
 }
@@ -130,6 +134,19 @@ export function callbackRelay(fallback: AcpProcessCallbacks = {}): {
       onElicitation: (pending) => target.onElicitation?.(pending),
       onElicitationSettled: (pending, settlement) =>
         target.onElicitationSettled?.(pending, settlement),
+      // 预启动在领走之前就协商过了，能力是声明了的：领走的会话没有终端
+      // （只读模式、SSH）时在这里回 method not found。
+      onTerminal: (method, params, signal) => {
+        if (target.onTerminal === undefined) {
+          return Promise.reject(
+            new RpcError(
+              RPC_ERRORS.methodNotFound,
+              "terminals are not available in this session",
+            ),
+          );
+        }
+        return target.onTerminal(method, params, signal);
+      },
       onStderr: (text) => target.onStderr?.(text),
       onExit: (exit) => target.onExit?.(exit),
     },
@@ -232,6 +249,8 @@ export interface AcpStartOptions {
     pending: AcpPendingElicitation,
     settlement: AcpElicitationSettlement,
   ) => void;
+  /** 接 `terminal/*`（B9）；缺席 = 不声明终端能力。 */
+  readonly onTerminal?: AcpTerminalHandler;
   readonly onStderr?: (text: string) => void;
   readonly onExit?: (exit: AcpExit) => void;
 }
@@ -344,6 +363,9 @@ export async function startAcp(
     ...(options.onElicitationSettled === undefined
       ? {}
       : { onElicitationSettled: options.onElicitationSettled }),
+    ...(options.onTerminal === undefined
+      ? {}
+      : { onTerminal: options.onTerminal }),
     ...(options.onStderr === undefined ? {} : { onStderr: options.onStderr }),
     ...(options.onExit === undefined ? {} : { onExit: options.onExit }),
   };

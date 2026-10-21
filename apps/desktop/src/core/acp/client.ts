@@ -119,6 +119,8 @@ export interface AcpClientFeatures {
   readonly elicitation: boolean;
   /** `setConfigOption(sessionId, configId, value)` 与开会话答的 `configOptions`。 */
   readonly configOptions: boolean;
+  /** 接 `terminal/*`：构造参数里的 `onTerminal`，给了它才声明 `terminal: true`。 */
+  readonly terminal: boolean;
 }
 
 /** 这一版客户端的可选能力；`client` 只给测试换。 */
@@ -135,6 +137,7 @@ export function acpClientFeatures(
     mcpServers: features.mcpServers === true,
     elicitation: features.elicitation === true,
     configOptions: features.configOptions === true,
+    terminal: features.terminal === true,
   };
 }
 
@@ -144,6 +147,18 @@ interface ElicitationHandler {
     params: AcpElicitationParams,
     signal: AbortSignal,
   ): Promise<AcpElicitationResult>;
+}
+
+/** `terminal/*` 的处理器（上游 0.9.1 起的形状）：返回值即答复，抛 `RpcError` 回错误。 */
+export type AcpTerminalHandler = (
+  method: string,
+  params: unknown,
+  signal: AbortSignal,
+) => Promise<unknown>;
+
+/** 有 `terminal` 能力的客户端多收的那个回调。 */
+interface TerminalHandlerOption {
+  onTerminal?: AcpTerminalHandler;
 }
 
 /** 有 `configOptions` 能力的客户端多的那个方法。 */
@@ -189,6 +204,11 @@ export interface AcpSpawnOptions {
     pending: AcpPendingElicitation,
     settlement: AcpElicitationSettlement,
   ) => void;
+  /**
+   * `terminal/*` 请求（客户端有这个能力时才会有）。给了它才在 `initialize` 声明
+   * `terminal: true`；旧版客户端不认，线路与之前逐字节相同。
+   */
+  readonly onTerminal?: AcpTerminalHandler;
   /** stderr 原始块（已脱敏）；由调用方决定是否进 debug 日志。 */
   readonly onStderr?: (text: string) => void;
   readonly onProtocolError?: (reason: string) => void;
@@ -269,7 +289,9 @@ export class AcpProcess {
     if (child.stdin === null || child.stdout === null) {
       throw new AcpError("acp_spawn_failed", "ACP agent has no stdio pipes");
     }
-    const clientOptions: AcpClientOptions & ElicitationHandler = {
+    const clientOptions: AcpClientOptions &
+      ElicitationHandler &
+      TerminalHandlerOption = {
       input: child.stdout,
       output: child.stdin,
       ...(options.clientInfo === undefined
@@ -286,6 +308,9 @@ export class AcpProcess {
               signal: AbortSignal,
             ) => this.holdElicitation(params, signal),
           }
+        : {}),
+      ...(acpClientFeatures().terminal && options.onTerminal !== undefined
+        ? { onTerminal: options.onTerminal }
         : {}),
     };
     this.client = new AcpClient(clientOptions);

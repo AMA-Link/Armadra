@@ -67,6 +67,8 @@ export async function acpCore(
     minimal?: boolean;
     /** 假 Agent 开会话答模型配置项（契约 §26.2 的用例：`--config-options`）。 */
     configOptions?: boolean;
+    /** 换掉假 Agent 的脚本（缺省 `@armadra/agent/acp` 的那个）。 */
+    script?: string;
     /** 自定义条目的基础 CLI；缺省 `opencode`。 */
     baseAgent?: string;
     /** 节点凭据用的密钥后端（缺省按数据目录解析）。 */
@@ -100,7 +102,7 @@ export async function acpCore(
           label: "Fake ACP",
           launchCmd: process.execPath,
           args: [
-            fakeAcpAgentPath(),
+            options.script ?? fakeAcpAgentPath(),
             ...(options.minimal ? ["--minimal"] : []),
             ...(options.configOptions ? ["--config-options"] : []),
           ],

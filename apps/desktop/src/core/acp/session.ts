@@ -33,6 +33,7 @@ import type {
   AcpPendingElicitation,
   AcpPendingPermission,
   AcpPermissionSettlement,
+  AcpTerminalHandler,
 } from "./client";
 import { type StoredElicitation, storedElicitation } from "./elicitation";
 import {
@@ -46,6 +47,8 @@ import type { AcpFeed } from "./feed";
 import type { AcpHostSession, AcpUpdateMeta } from "./host";
 import type { AcpMirror } from "./mirror";
 import { mirrorFrames } from "./mirror-import";
+import { TerminalFeedLink } from "./terminal-feed";
+import { AcpTerminals } from "./terminals";
 import type { AcpSignal } from "./normalize";
 import type {
   AcpContentBlock,
@@ -98,6 +101,8 @@ export interface AcpSessionCallbacks {
     pending: AcpPendingElicitation,
     settlement: AcpElicitationSettlement,
   ) => void;
+  /** 接 `terminal/*`；会话不给终端（只读模式、SSH 节点）时缺席。 */
+  readonly onTerminal?: AcpTerminalHandler;
   readonly onExit: (exit: AcpExit) => void;
 }
 
@@ -113,6 +118,14 @@ export interface AcpSessionOptions extends AcpSessionIdentity {
   readonly remote?: boolean;
   /** 时间线与活动的写入侧（契约 §82）；没装时间线域时缺席。 */
   readonly feed?: AcpFeed | undefined;
+  /**
+   * 给 Agent 终端（`terminal/*`，B9）：`roots` 是允许的 cwd（第一个是缺省），
+   * `env` 是子进程的基础环境。缺席 = 不给（只读模式、SSH 节点）。
+   */
+  readonly terminal?: {
+    readonly roots: readonly string[];
+    readonly env?: NodeJS.ProcessEnv;
+  };
 }
 
 /** 页面重载时要画的那张卡。 */
@@ -214,6 +227,8 @@ export class AcpSession implements AcpSessionIdentity {
   private commands: AcpSessionSnapshot["availableCommands"] = [];
   private title: string | null = null;
   private readonly feed: AcpFeed | undefined;
+  private readonly terminals: AcpTerminals | undefined;
+  private readonly terminalLink: TerminalFeedLink | undefined;
   /** 状态 reducer 眼里此刻是不是 `working`：工具信号只在它变了才走 `apply`（L5）。 */
   private workingSignalled = false;
   private lastExecuteTitle: string | undefined;
@@ -227,6 +242,23 @@ export class AcpSession implements AcpSessionIdentity {
     this.agentId = options.agentId;
     this.sink = options.sink;
     this.feed = options.feed;
+    if (options.terminal !== undefined) {
+      const terminals = new AcpTerminals({
+        roots: options.terminal.roots,
+        ...(options.terminal.env === undefined
+          ? {}
+          : { env: options.terminal.env }),
+        sessionId: () => this.host?.sessionId,
+        // 回合在跑才开新终端：命令由 Agent 在人发起的回合里、过了审批才会下。
+        authorize: () => !this.closed && this.running !== undefined,
+        onChange: (snapshot) => {
+          const update = this.terminalLink?.updateFor(snapshot);
+          if (update !== undefined) this.feed?.update(update, false);
+        },
+      });
+      this.terminals = terminals;
+      this.terminalLink = new TerminalFeedLink((id) => terminals.snapshot(id));
+    }
     if (options.resumeSessionId !== undefined) {
       const mirror = options.mirrorFor(options.resumeSessionId);
       this.replayIntoMirror = mirror.empty;
@@ -244,6 +276,15 @@ export class AcpSession implements AcpSessionIdentity {
       onElicitation: (pending) => this.onElicitation(pending),
       onElicitationSettled: (pending, settlement) =>
         this.onElicitationSettled(pending, settlement),
+      ...(this.terminals === undefined
+        ? {}
+        : {
+            onTerminal: (
+              method: string,
+              params: unknown,
+              signal: AbortSignal,
+            ) => this.terminals!.handle(method, params, signal),
+          }),
       onExit: (exit) => this.onExit(exit),
     };
   }
@@ -710,11 +751,15 @@ export class AcpSession implements AcpSessionIdentity {
     this.closed = true;
     this.flushMirror();
     const host = this.host;
-    if (host === undefined) return;
+    if (host === undefined) {
+      await this.terminals?.dispose();
+      return;
+    }
     if (this.running !== undefined) {
       await host.process.cancel(host.sessionId).catch(() => undefined);
     }
     await host.process.terminate();
+    await this.terminals?.dispose();
   }
 
   /* -------------------------------- 回调 --------------------------------- */
@@ -765,7 +810,8 @@ export class AcpSession implements AcpSessionIdentity {
         error: messageOf(error),
       });
     }
-    this.feed?.update(update, false);
+    // 时间线拿到的是补了终端输出的那一份；镜像与旧的 `acp.update` 仍是原话。
+    this.feed?.update(this.terminalLink?.decorate(update) ?? update, false);
     this.sink.publish({
       type: "acp.update",
       sessionId: this.rowId,
@@ -864,6 +910,8 @@ export class AcpSession implements AcpSessionIdentity {
 
   private onExit(exit: AcpExit): void {
     this.closed = true;
+    // Agent 没了：它起的终端子进程按 pid 一并收掉（不留孤儿）。
+    void this.terminals?.dispose();
     this.flushMirror();
     // 我们要它退的（休眠、切换驱动、结束）由发起方写提示；自己没的才是退出。
     if (!exit.requested) {
