@@ -202,17 +202,17 @@ describe("locating a transcript when Pi and OMP share a directory", () => {
   });
 
   it("finds nothing rather than another writer's file", () => {
-    rmSync(join(dir, "sessions", "--work-demo--"), { recursive: true });
-    mkdirSync(join(dir, "sessions", "--work-demo--"));
-    copyFileSync(
-      join(__dirname, "fixtures", "pi", "omp.jsonl"),
-      join(
-        dir,
-        "sessions",
-        "--work-demo--",
-        "2026-10-01T00-00-01-000Z_00000000-0000-4000-8000-000000000002.jsonl",
-      ),
+    const sessions = join(dir, "sessions", "--work-demo--");
+    rmSync(sessions, { recursive: true });
+    mkdirSync(sessions);
+    const ompFile = join(
+      sessions,
+      "2026-10-01T00-00-01-000Z_00000000-0000-4000-8000-000000000002.jsonl",
     );
+    copyFileSync(join(__dirname, "fixtures", "pi", "omp.jsonl"), ompFile);
+    // Windows 的复制会带上源文件的修改时间。
+    const fresh = new Date(Date.now() + 60_000);
+    utimesSync(ompFile, fresh, fresh);
     expect(piTranscript.locate(hint("pi"))).toBeUndefined();
     expect(ompTranscript.locate(hint("omp"))).toBeDefined();
   });
