@@ -684,6 +684,11 @@ export const acpStartingEventSchema = z.object({
 export const acpPrestartRequestSchema = z.object({
   workspaceId: z.string().min(1),
   agentId: agentIdSchema,
+  /**
+   * 接回已有节点（契约 §82.3）：节点进入视口或获得焦点时带上，core 按节点的目录
+   * 预启动；省略就是菜单打开时的老用法（工作空间根目录）。
+   */
+  nodeId: z.string().min(1).optional(),
 });
 
 /* §14.4: the answer is `answerApprovalRequestSchema` (`agents.ts`) with its

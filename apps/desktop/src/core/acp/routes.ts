@@ -408,7 +408,20 @@ export function installRoutes(context: CoreContext, deps: AcpRouteDeps): void {
       throw domain(404, "not_found", "Workspace not found");
     }
     if (deps.adapterFor(deps.settings(), agentId) === undefined) return;
-    deps.prestart?.(workspaceId, agentId, deps.cwdOf(root));
+    // 接回已有节点：按节点自己的目录预启动。节点在别的工作空间、是 SSH 节点
+    // （适配器起在执行主机上，本机预启动没有意义）时只当没这回事。
+    const nodeId = optionalString(body, "nodeId");
+    let cwd = root;
+    if (nodeId !== undefined && nodeId !== "") {
+      const node = loadNode(database, nodeId);
+      if (node === undefined || node.workspaceId !== workspaceId) {
+        throw domain(404, "not_found", "Node not found");
+      }
+      if (sshHostOf(node.data) !== undefined) return;
+      const own = node.data.cwd;
+      if (typeof own === "string" && own !== "") cwd = own;
+    }
+    deps.prestart?.(workspaceId, agentId, deps.cwdOf(cwd));
   });
 
   /* --------------------------------- 回合 --------------------------------- */

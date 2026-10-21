@@ -329,7 +329,7 @@ describe("POST /api/acp/prestart (contract §51)", () => {
     expect(prestarts?.has(key)).toBe(false);
     expect(prestarts?.spawned).toBe(1);
 
-    // 领走的进程不报 spawn / initialize，开会话与落设置照报。
+    // 领走的进程的 spawn / initialize 补报一帧（进程与协商是预启动做的）。
     const phases = seen
       .filter((event) => event.type === "acp.starting")
       .map((event) => (event as { phase: string }).phase);
@@ -338,6 +338,26 @@ describe("POST /api/acp/prestart (contract §51)", () => {
       () => getAgentStatus(open!.core.database, nodeId)?.state,
       (state) => state === "done",
     );
+  });
+
+  it("accepts a nodeId to re-attach an existing node, and refuses a node that is not in the workspace", async () => {
+    open = await acpCore({ baseAgent: "ama" });
+    const nodeId = await open.node();
+    const answer = await open.core.call("POST", "/api/acp/prestart", {
+      workspaceId: open.workspaceId,
+      agentId: FAKE_AGENT,
+      nodeId,
+    });
+    expect(answer.status).toBe(204);
+    expect(
+      acpPrestartPool()?.has(AcpPrestartPool.key(FAKE_AGENT, open.workspaceId)),
+    ).toBe(true);
+    const missing = await open.core.call("POST", "/api/acp/prestart", {
+      workspaceId: open.workspaceId,
+      agentId: FAKE_AGENT,
+      nodeId: "00000000-0000-4000-8000-000000000000",
+    });
+    expect(missing.status).toBe(404);
   });
 
   it("answers 204 and starts nothing for an adapter whose injection is per node", async () => {
