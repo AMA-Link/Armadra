@@ -50,6 +50,7 @@ vi.mock("../nodes/registry", async (importOriginal) => {
 });
 
 import { MobileBottomNav } from "./MobileBottomNav";
+import { useNodeBodyStore } from "../nodes/node-body-mode";
 import { MobileFocusPage } from "./MobileFocusPage";
 import { canFocusOnPhone } from "./mobile-focus";
 import { controlCode, MOBILE_KEYS } from "./mobile-keys";
@@ -222,6 +223,28 @@ describe("the phone focus page", () => {
     expect(screen.getByTestId("node-body").textContent).toBe("n-acp");
     // 会话视图自己的 PromptBox 是输入；PTY 按键条不出现。
     expect(screen.queryByRole("toolbar")).toBeNull();
+  });
+
+  it("offers no terminal keys while a terminal-driven agent shows its session content", () => {
+    const agent = node("n-agent", "terminal", "claude");
+    agent.data = {
+      kind: "terminal",
+      cwd: "/tmp",
+      agent: { id: "claude" },
+    } as never;
+    useCanvasStore.setState((state) => ({
+      focusNodeId: "n-agent",
+      document: {
+        ...state.document!,
+        nodes: [...state.document!.nodes, agent],
+      },
+    }));
+    const { rerender } = render(<MobileFocusPage />);
+    expect(screen.getByRole("toolbar")).toBeTruthy();
+    act(() => useNodeBodyStore.getState().set("n-agent", "session"));
+    rerender(<MobileFocusPage />);
+    expect(screen.queryByRole("toolbar")).toBeNull();
+    act(() => useNodeBodyStore.getState().set("n-agent", "terminal"));
   });
 
   it("sits on the soft keyboard when the visual viewport shrinks", () => {

@@ -5,6 +5,7 @@ import { useT } from "../app/preferences-store";
 import { useCompactLayout } from "../platform/layout";
 import { useCanvasStore } from "../store/canvas-store";
 import { NODE_BODY, nodeMeta } from "../nodes/registry";
+import { useNodeBodyMode } from "../nodes/node-body-mode";
 import { terminalHandle } from "../nodes/terminal-registry";
 import { canFocusOnPhone } from "./mobile-focus";
 import { useHeadlessBrowser } from "../nodes/browser/availability";
@@ -39,6 +40,9 @@ export function MobileFocusPage() {
   const nodes = useCanvasStore((state) => state.document?.nodes);
   const selectNodes = useCanvasStore((state) => state.selectNodes);
 
+  // 终端驱动的 Agent 节点把节点体换成会话内容时，同样没有 PTY 可敲键。
+  const sessionBody = useNodeBodyMode(focusNodeId ?? "") === "session";
+
   const headlessBrowser = useHeadlessBrowser(compact);
   const visible = useVisibleArea();
 
@@ -55,11 +59,14 @@ export function MobileFocusPage() {
     return null;
   const Body = NODE_BODY[node.type];
   const meta = nodeMeta(node.type);
-  // ACP 驱动的终端节点体是会话视图：输入走 PromptBox，PTY 按键条没有对象。
+  // ACP 驱动的终端节点体是会话视图（终端驱动时换成了会话内容也一样）：输入走
+  // PromptBox 或终端，PTY 按键条没有对象。
   // （与 `acp/driver.ts::driverOf` 同一条判断；不 import 它，免得把设置页的
   // 钩子拖进首屏。）
   const acp =
-    node.data.kind === "terminal" && node.data.agent?.driver === "acp";
+    node.data.kind === "terminal" &&
+    (node.data.agent?.driver === "acp" ||
+      (sessionBody && node.data.agent !== undefined));
 
   return (
     <div
