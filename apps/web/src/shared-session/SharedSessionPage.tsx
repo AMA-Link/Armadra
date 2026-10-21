@@ -96,7 +96,11 @@ export default function SharedSessionPage({
             )}
           </div>
         ) : acp ? (
-          <ReadOnlyTranscript source={source} sessionId={target.sessionId} />
+          <ReadOnlyTranscript
+            source={source}
+            sessionId={target.sessionId}
+            workspaceId={target.workspaceId}
+          />
         ) : (
           <ReadOnlyTerminal
             source={source}
