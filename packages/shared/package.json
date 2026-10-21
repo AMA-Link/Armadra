@@ -21,7 +21,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "@armadra/platform-protocol": "file:../../tools/vendor/armadra-platform-protocol-0.9.0.tgz",
+    "@armadra/platform-protocol": "file:../../tools/vendor/armadra-platform-protocol-0.9.1.tgz",
     "@noble/curves": "2.4.0",
     "@noble/hashes": "2.4.0",
     "@orpc/contract": "1.15.4",
