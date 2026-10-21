@@ -63,6 +63,9 @@ export const INITIALIZE_TIMEOUT_MS = 30_000;
  */
 export const SESSION_NEW_TIMEOUT_MS = 60_000;
 
+/** `session/load` 回放静默超过这么久就放弃接回、新开会话（设计 §4「回放」）。 */
+export const REPLAY_SILENCE_MS = 120_000;
+
 /**
  * 起会话的阶段（契约 §51 的 `acp.starting`）：起进程、协商、开会话、落模式与
  * 模型。每阶段开始时报一次。
@@ -193,6 +196,15 @@ export interface AcpStartOptions {
   /** 开会话时交给 Agent 的 MCP 服务器（§5.8）；缺席或空 = 不带。 */
   readonly mcpServers?: readonly AcpMcpServer[];
   readonly initializeTimeoutMs?: number;
+  /**
+   * 调用方还需要回放吗：时间线已经有内容时为 `false`，此时 Agent 支持
+   * `session/resume` 就优先用它（不回放）。缺省 `true`。
+   */
+  readonly needReplay?: boolean;
+  /** `session/load` 回放的静默截止，每来一帧回放重新计时；缺省 {@link REPLAY_SILENCE_MS}。 */
+  readonly replaySilenceMs?: number;
+  /** 即将 `session/load`（回放开始）。 */
+  readonly onRestoring?: () => void;
   /** 缺省 {@link SESSION_NEW_TIMEOUT_MS}。 */
   readonly sessionTimeoutMs?: number;
   /** 缺省在本机直接起；见 {@link AcpTransport}。 */
@@ -293,8 +305,11 @@ export function capabilitiesOf(result: AcpInitializeResult): AcpCapabilities {
 export function resumeMethod(
   preferred: AcpResume,
   capabilities: Pick<AcpCapabilities, "load" | "resume">,
+  needReplay = true,
 ): AcpResume {
   if (preferred === "none") return "none";
+  // 历史已经在时间线里：接回不必再回放一遍。
+  if (!needReplay && capabilities.resume) return "resume";
   const order: AcpResume[] =
     preferred === "resume" ? ["resume", "load"] : ["load", "resume"];
   return (
@@ -308,12 +323,15 @@ export async function startAcp(
   options: AcpStartOptions,
 ): Promise<AcpHostSession> {
   let replaying: string | undefined;
+  let touchReplay: (() => void) | undefined;
   const clock = startClock(options);
   const callbacks: AcpProcessCallbacks = {
-    onUpdate: (notification) =>
-      options.onUpdate?.(notification, {
-        replay: replaying !== undefined && notification.sessionId === replaying,
-      }),
+    onUpdate: (notification) => {
+      const replay =
+        replaying !== undefined && notification.sessionId === replaying;
+      if (replay) touchReplay?.();
+      options.onUpdate?.(notification, { replay });
+    },
     ...(options.onPermission === undefined
       ? {}
       : { onPermission: options.onPermission }),
@@ -333,6 +351,9 @@ export async function startAcp(
   if (options.prestarted !== undefined) {
     process_ = options.prestarted.process;
     options.prestarted.attach(callbacks);
+    // 进程与协商是预启动做完的：两个阶段补报一帧，页面与活动看到的次序不变。
+    clock.phase("spawn");
+    clock.phase("initialize");
   } else {
     clock.phase("spawn");
     const launch = launchOf(options);
@@ -369,7 +390,11 @@ export async function startAcp(
     let resumeError: { code: string; message: string } | undefined;
 
     if (options.resume !== undefined) {
-      const method = resumeMethod(options.resume.method, capabilities);
+      const method = resumeMethod(
+        options.resume.method,
+        capabilities,
+        options.needReplay !== false,
+      );
       if (method === "none") {
         resumeError = {
           code: "acp_resume_unsupported",
@@ -380,7 +405,18 @@ export async function startAcp(
         try {
           if (method === "load") {
             replaying = id;
-            const result = await opener.loadSession(id, options.cwd);
+            try {
+              options.onRestoring?.();
+            } catch {
+              // 只是提示，不拦接回。
+            }
+            const result = await withSilence(
+              opener.loadSession(id, options.cwd),
+              options.replaySilenceMs ?? REPLAY_SILENCE_MS,
+              (touch) => {
+                touchReplay = touch;
+              },
+            );
             modes = result.modes ?? null;
             config = configOptionsOf(result);
             opened = "load";
@@ -539,6 +575,41 @@ function startClock(
       }
     },
   };
+}
+
+/**
+ * 静默截止：`work` 没答、也 {@link touch} 了之后 `ms` 毫秒没有新动静就拒
+ * （`acp_resume_timeout`）。回放期间每来一帧调用方 touch 一次。
+ */
+function withSilence<T>(
+  work: Promise<T>,
+  ms: number,
+  expose: (touch: () => void) => void,
+): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  let fail: ((error: Error) => void) | undefined;
+  const arm = () => {
+    if (timer !== undefined) clearTimeout(timer);
+    timer = setTimeout(
+      () =>
+        fail?.(
+          new AcpError(
+            "acp_resume_timeout",
+            "the agent went silent while replaying the session",
+          ),
+        ),
+      ms,
+    );
+    timer.unref?.();
+  };
+  const deadline = new Promise<never>((_resolve, reject) => {
+    fail = reject;
+  });
+  expose(arm);
+  arm();
+  return Promise.race([work, deadline]).finally(() => {
+    if (timer !== undefined) clearTimeout(timer);
+  });
 }
 
 /** 到点没答就拒（`acp_session_timeout`）；调用方收进程。 */

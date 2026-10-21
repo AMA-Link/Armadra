@@ -415,7 +415,7 @@ describe("startAcp: phases, timings and the session/new deadline (contract §51)
     });
     expect(session.process).toBe(prestarted.process);
     expect(session.sessionId).toMatch(/^fake-/);
-    expect(phases).toEqual(["session", "configure"]);
+    expect(phases).toEqual(["spawn", "initialize", "session", "configure"]);
     expect(timings).toMatchObject({
       prestarted: true,
       spawnMs: 0,

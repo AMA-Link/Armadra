@@ -333,7 +333,7 @@ describe("POST /api/acp/prestart (contract §51)", () => {
     const phases = seen
       .filter((event) => event.type === "acp.starting")
       .map((event) => (event as { phase: string }).phase);
-    expect(phases).toEqual(["session", "configure"]);
+    expect(phases).toEqual(["spawn", "initialize", "session", "configure"]);
     await until(
       () => getAgentStatus(open!.core.database, nodeId)?.state,
       (state) => state === "done",
