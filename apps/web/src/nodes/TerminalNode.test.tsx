@@ -50,8 +50,22 @@ vi.mock("@/terminal/TerminalSurface", async () => {
   };
 });
 vi.mock("@/acp/SessionView", () => ({
-  default: ({ nodeId }: { nodeId: string }) => (
-    <div data-testid="session-view">{nodeId}</div>
+  default: ({
+    nodeId,
+    readOnly,
+    sessionId,
+  }: {
+    nodeId: string;
+    readOnly?: boolean;
+    sessionId?: string | null;
+  }) => (
+    <div
+      data-testid="session-view"
+      data-read-only={readOnly ? "true" : undefined}
+      data-session={sessionId ?? undefined}
+    >
+      {nodeId}
+    </div>
   ),
 }));
 vi.mock("@/panels/resources/MemoryBadge", () => ({
@@ -240,13 +254,100 @@ describe("TerminalNode body", () => {
     }
   });
 
-  it("offers no switch for an agent without an ACP entry", async () => {
+  it("offers no driver switch for an agent without an ACP entry", async () => {
     setAgentRegistry([{ ...codexRow, acp: undefined }] as never);
     renderNode(terminalNode({ kind: "terminal", agent: { id: "codex" } }));
     const trigger = screen.getByRole("button", { name: "更多" });
     fireEvent.pointerDown(trigger, { button: 0, ctrlKey: false });
     await screen.findByRole("menu");
-    expect(screen.queryByRole("menuitemradio")).toBeNull();
+    expect(
+      screen.queryByRole("menuitemradio", { name: "会话视图" }),
+    ).toBeNull();
+    expect(
+      screen.queryByRole("menuitemradio", { name: "终端视图" }),
+    ).toBeNull();
+  });
+
+  it("swaps a terminal-driven node's body for the read-only session content and back, without a driver switch", async () => {
+    renderNode(
+      terminalNode({
+        kind: "terminal",
+        sessionId: "11111111-1111-4111-8111-111111111111",
+        agent: { id: "codex" },
+      }),
+    );
+    expect(screen.getByTestId("terminal-surface")).toBeTruthy();
+    const openMenu = async () => {
+      fireEvent.pointerDown(screen.getByRole("button", { name: "更多" }), {
+        button: 0,
+        ctrlKey: false,
+      });
+      await screen.findByRole("menu");
+    };
+    await openMenu();
+    expect(
+      screen
+        .getByRole("menuitemradio", { name: "终端" })
+        .getAttribute("aria-checked"),
+    ).toBe("true");
+    fireEvent.click(screen.getByRole("menuitemradio", { name: "会话" }));
+    const view = await screen.findByTestId("session-view");
+    expect(view.dataset.readOnly).toBe("true");
+    expect(screen.queryByTestId("terminal-surface")).toBeNull();
+    expect(switchDriver).not.toHaveBeenCalled();
+    await openMenu();
+    fireEvent.click(screen.getByRole("menuitemradio", { name: "终端" }));
+    expect(await screen.findByTestId("terminal-surface")).toBeTruthy();
+    expect(screen.queryByTestId("session-view")).toBeNull();
+  });
+
+  it("reads the approval buttons from the display: a dead process gets none", () => {
+    useAgentStatusStore.setState({
+      statuses: {
+        [scoped("n1")]: {
+          nodeId: "n1",
+          workspaceId: "w",
+          agentId: "codex",
+          state: "blocked",
+          pendingId: "p1",
+          unread: false,
+          verified: true,
+          restored: false,
+          alive: false,
+          updatedAt: "2026-10-03T00:00:00.000Z",
+        },
+      } as never,
+    });
+    renderNode(terminalNode({ kind: "terminal", agent: { id: "codex" } }));
+    expect(screen.queryByRole("button", { name: "允许" })).toBeNull();
+  });
+
+  it("gives an elicitation a button that takes you to the card", async () => {
+    const scrolled = vi.fn();
+    Element.prototype.scrollIntoView = scrolled;
+    useAgentStatusStore.setState({
+      statuses: {
+        [scoped("n1")]: {
+          nodeId: "n1",
+          workspaceId: "w",
+          agentId: "codex",
+          state: "waiting",
+          pendingId: "e1",
+          unread: false,
+          verified: true,
+          restored: false,
+          alive: true,
+          activity: { phase: "awaiting_input", since: 1, rev: "boot:1" },
+          updatedAt: "2026-10-03T00:00:00.000Z",
+        },
+      } as never,
+    });
+    renderNode(
+      terminalNode({ kind: "terminal", agent: { id: "codex", driver: "acp" } }),
+    );
+    fireEvent.click(await screen.findByRole("button", { name: "回答" }));
+    // 卡片在会话体里；按钮只带人过去，不替人答。
+    expect(screen.queryByRole("button", { name: "允许" })).toBeNull();
   });
 
   it("shows who it waits for instead of approval buttons to someone who cannot answer", () => {
