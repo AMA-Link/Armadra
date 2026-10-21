@@ -89,6 +89,49 @@ describe("UserRow", () => {
   });
 });
 
+describe("UserRow actions", () => {
+  it("edits and resends through the stable callback, only when given", () => {
+    const onEdit = vi.fn();
+    const item = as(userItem(1, "ask me"), "user");
+    const view = withServices(<UserRow item={item} onEdit={onEdit} />);
+    fireEvent.click(screen.getByLabelText("编辑后重发"));
+    expect(onEdit).toHaveBeenCalledWith("ask me");
+    view.unmount();
+    withServices(<UserRow item={item} />);
+    expect(screen.queryByLabelText("编辑后重发")).toBeNull();
+    expect(screen.getByLabelText("复制")).toBeTruthy();
+  });
+});
+
+describe("AssistantRow regenerate", () => {
+  it("resends the turn prompt; hidden without callback, prompt or while streaming", () => {
+    const onRegenerate = vi.fn();
+    const item = as(assistantItem(1, "an answer"), "assistant");
+    const view = withServices(
+      <AssistantRow item={item} prompt="the ask" onRegenerate={onRegenerate} />,
+    );
+    fireEvent.click(screen.getByLabelText("重新生成"));
+    expect(onRegenerate).toHaveBeenCalledWith("the ask");
+    view.unmount();
+    const without = withServices(<AssistantRow item={item} prompt="the ask" />);
+    expect(screen.queryByLabelText("重新生成")).toBeNull();
+    without.unmount();
+    const noPrompt = withServices(
+      <AssistantRow item={item} onRegenerate={onRegenerate} />,
+    );
+    expect(screen.queryByLabelText("重新生成")).toBeNull();
+    noPrompt.unmount();
+    withServices(
+      <AssistantRow
+        item={{ ...item, streaming: true }}
+        prompt="the ask"
+        onRegenerate={onRegenerate}
+      />,
+    );
+    expect(screen.queryByLabelText("重新生成")).toBeNull();
+  });
+});
+
 describe("AssistantRow", () => {
   it("renders every part kind", async () => {
     const item = {

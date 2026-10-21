@@ -33,7 +33,8 @@ import {
   type PromptAttachment,
   usePromptAttachments,
 } from "./PromptAttachments";
-import { PromptBox } from "./PromptBox";
+import { useTimelineTitle } from "@/meta/timeline-title";
+import { PromptBox, type PromptPrefill } from "./PromptBox";
 import { EMPTY_DELIVERY, useAcpStore, type PendingPrompt } from "./store";
 import {
   ApprovalCard,
@@ -346,6 +347,7 @@ export function SessionView({
     legacy: !readOnly,
     meta: !readOnly,
   });
+  useTimelineTitle(nodeId, feed.head.title);
   const connected = useConnected(workspaceId);
   const delivery = useAcpStore((state) =>
     sessionId
@@ -622,6 +624,21 @@ export function SessionView({
     void send(t("acp.turn.continuePrompt"));
   }, [send, t]);
 
+  // 「编辑后重发」：把这句填回输入框，不发；同一句可以再填一次（seq 变）。
+  const [prefill, setPrefill] = React.useState<PromptPrefill | null>(null);
+  const prefillSeq = React.useRef(0);
+  const onEdit = React.useCallback((text: string) => {
+    prefillSeq.current += 1;
+    setPrefill({ text, seq: prefillSeq.current });
+  }, []);
+  // 「重新生成」：重发最后一回合的提问，是新的一轮。回合在跑、有挂起的审批
+  // 或提问、没送达时不给。
+  const canRegenerate = !streaming && !stuck && pendingCards.length === 0;
+  const onRegenerate = React.useCallback(
+    (text: string) => void send(text),
+    [send],
+  );
+
   const cancel = React.useCallback(() => {
     if (sessionId) void acpApi.cancel(sessionId).catch(() => undefined);
   }, [sessionId]);
@@ -779,6 +796,8 @@ export function SessionView({
         renderElicitation={renderElicitation}
         onRetry={readOnly ? undefined : onRetry}
         onContinue={readOnly ? undefined : onContinue}
+        onEdit={readOnly ? undefined : onEdit}
+        onRegenerate={readOnly || !canRegenerate ? undefined : onRegenerate}
         {...(initialRect === undefined ? {} : { initialRect })}
       />
     );
@@ -885,6 +904,7 @@ export function SessionView({
             onModel={selectModel}
             commands={feed.head.commands ?? []}
             usage={feed.head.usage ?? null}
+            prefill={prefill}
           />
         )}
       </div>

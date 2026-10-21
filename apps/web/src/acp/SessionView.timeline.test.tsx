@@ -188,6 +188,21 @@ describe("SessionView on the timeline", () => {
     expect(api.log).not.toHaveBeenCalled();
   });
 
+  it("edits a question back into the input and regenerates the last turn", async () => {
+    await ready();
+    // 编辑后重发：回填输入框，不发。
+    fireEvent.click(screen.getByLabelText("编辑后重发"));
+    const input = (await screen.findByLabelText("消息")) as HTMLTextAreaElement;
+    await waitFor(() => expect(input.value).toBe("first question"));
+    expect(api.prompt).not.toHaveBeenCalled();
+    // 重新生成：新一轮重发同一句提问。
+    fireEvent.click(screen.getByLabelText("重新生成"));
+    await waitFor(() => expect(api.prompt).toHaveBeenCalledTimes(1));
+    expect(api.prompt.mock.calls[0]?.[1]).toBe("first question");
+    // 回合在跑时不再给重新生成。
+    expect(screen.queryByLabelText("重新生成")).toBeNull();
+  });
+
   it("stops being busy when the activity layer goes idle", async () => {
     core.currentActivity = {
       phase: "responding",

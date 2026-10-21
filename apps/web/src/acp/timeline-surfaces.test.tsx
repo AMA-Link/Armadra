@@ -92,8 +92,14 @@ function seed(core: FakeCore) {
 
 const turns = () =>
   [...document.querySelectorAll("[data-slot=timeline-turn-section]")].map(
-    // Radix 按挂载顺序生成的 id 不算内容。
-    (section) => section.innerHTML.replace(/ id="radix-[^"]*"/g, ""),
+    // Radix 按挂载顺序生成的 id 不算内容；悬浮动作条因可写与否而不同，也不算。
+    (section) => {
+      const copy = section.cloneNode(true) as HTMLElement;
+      copy
+        .querySelectorAll("[data-slot=acp-actions]")
+        .forEach((el) => el.remove());
+      return copy.innerHTML.replace(/ id="radix-[^"]*"/g, "");
+    },
   );
 
 beforeEach(() => {
