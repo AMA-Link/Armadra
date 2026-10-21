@@ -42,6 +42,7 @@ import {
   modelCatalogOf,
   modelStateOf,
 } from "./models";
+import type { AcpFeed } from "./feed";
 import type { AcpHostSession, AcpUpdateMeta } from "./host";
 import type { AcpMirror } from "./mirror";
 import type { AcpSignal } from "./normalize";
@@ -109,6 +110,8 @@ export interface AcpSessionOptions extends AcpSessionIdentity {
   readonly onExit?: (exit: AcpExit) => void;
   /** SSH 节点：适配器在执行主机上，本机路径对它没有意义（契约 §56）。 */
   readonly remote?: boolean;
+  /** 时间线与活动的写入侧（契约 §82）；没装时间线域时缺席。 */
+  readonly feed?: AcpFeed | undefined;
 }
 
 /** 页面重载时要画的那张卡。 */
@@ -209,6 +212,10 @@ export class AcpSession implements AcpSessionIdentity {
   private usage: AcpSessionSnapshot["usage"] = null;
   private commands: AcpSessionSnapshot["availableCommands"] = [];
   private title: string | null = null;
+  private readonly feed: AcpFeed | undefined;
+  /** 状态 reducer 眼里此刻是不是 `working`：工具信号只在它变了才走 `apply`（L5）。 */
+  private workingSignalled = false;
+  private lastExecuteTitle: string | undefined;
 
   constructor(options: AcpSessionOptions) {
     this.options = options;
@@ -218,6 +225,7 @@ export class AcpSession implements AcpSessionIdentity {
     this.workspaceId = options.workspaceId;
     this.agentId = options.agentId;
     this.sink = options.sink;
+    this.feed = options.feed;
     if (options.resumeSessionId !== undefined) {
       const mirror = options.mirrorFor(options.resumeSessionId);
       this.replayIntoMirror = mirror.empty;
@@ -257,6 +265,10 @@ export class AcpSession implements AcpSessionIdentity {
     const early = this.early;
     this.early = [];
     for (const item of early) this.consume(item.update, item.replay);
+    if (this.options.resumeSessionId !== undefined) {
+      this.feed?.notice(host.resumed ? "resumed" : "not_resumed");
+    }
+    this.feed?.ready();
   }
 
   get acpSessionId(): string | undefined {
@@ -479,6 +491,26 @@ export class AcpSession implements AcpSessionIdentity {
         update: { sessionUpdate: "user_message_chunk", content },
       });
     }
+    this.feed?.beginTurn(turnId, {
+      text,
+      ...(links.length === 0
+        ? {}
+        : {
+            attachments: links.map((link) => ({
+              kind: "file" as const,
+              name: link.name,
+              uri: link.uri,
+              ...(typeof (link as { mimeType?: unknown }).mimeType === "string"
+                ? { mimeType: (link as { mimeType: string }).mimeType }
+                : {}),
+            })),
+          }),
+      ...(this.clientTurnOf(turnId) === undefined
+        ? {}
+        : { clientTurnId: this.clientTurnOf(turnId) as string }),
+    });
+    this.workingSignalled = true;
+    this.lastExecuteTitle = undefined;
     this.sink.signal({ signal: "prompt", text });
     try {
       const result = await host.process.prompt(host.sessionId, [
@@ -511,6 +543,8 @@ export class AcpSession implements AcpSessionIdentity {
       ...(end.error === undefined ? {} : { error: end.error }),
     });
     const clientTurnId = this.clientTurnOf(turnId);
+    this.workingSignalled = false;
+    this.feed?.endTurn(end, this.usage);
     if (end.error === undefined) {
       this.sink.signal({ signal: "turn", stopReason: end.stopReason });
     } else if (end.error.code !== "acp_exited") {
@@ -643,6 +677,7 @@ export class AcpSession implements AcpSessionIdentity {
 
   private consume(update: AcpSessionUpdate, replay: boolean): void {
     if (replay) {
+      this.feed?.update(update, true);
       // 回放：镜像里已经有就什么都不做；从别的驱动切过来、镜像还空着时把它
       // 记下，会话视图才看得到之前的对话。不发给页面、不进状态。
       if (this.replayIntoMirror) {
@@ -674,6 +709,7 @@ export class AcpSession implements AcpSessionIdentity {
         error: messageOf(error),
       });
     }
+    this.feed?.update(update, false);
     this.sink.publish({
       type: "acp.update",
       sessionId: this.rowId,
@@ -685,14 +721,21 @@ export class AcpSession implements AcpSessionIdentity {
       update.sessionUpdate === "tool_call_update"
     ) {
       // 工具调用不改状态（仍是 working），只在回合里续上「还活着」；回合外到
-      // 的迟到更新（取消之后的最后几条）不把 done 掀回 working。
+      // 的迟到更新（取消之后的最后几条）不把 done 掀回 working。已经是 working
+      // 且 `lastMessage` 不会变时不走 `apply`（L5）：工具粒度的变化只更新活动。
       if (this.running !== undefined) {
         const body = update as { title?: unknown; kind?: unknown };
-        this.sink.signal({
-          signal: "tool",
-          title: typeof body.title === "string" ? body.title : undefined,
-          toolKind: typeof body.kind === "string" ? body.kind : undefined,
-        });
+        const title = typeof body.title === "string" ? body.title : undefined;
+        const toolKind = typeof body.kind === "string" ? body.kind : undefined;
+        const executeTitle =
+          toolKind === "execute" && title !== undefined ? title : undefined;
+        const changed =
+          executeTitle !== undefined && executeTitle !== this.lastExecuteTitle;
+        if (!this.workingSignalled || changed) {
+          if (executeTitle !== undefined) this.lastExecuteTitle = executeTitle;
+          this.workingSignalled = true;
+          this.sink.signal({ signal: "tool", title, toolKind });
+        }
       }
     }
   }
@@ -701,6 +744,8 @@ export class AcpSession implements AcpSessionIdentity {
     const pendingId = pendingIdFor(this.nodeId);
     this.permissions.set(pendingId, pending);
     this.byProcessId.set(pending.id, pendingId);
+    this.workingSignalled = false;
+    this.feed?.permission(pendingId, pending);
     this.sink.signal(
       { signal: "permission", pendingId },
       { protocol: "acp", toolCall: pending.toolCall, options: pending.options },
@@ -715,9 +760,11 @@ export class AcpSession implements AcpSessionIdentity {
     if (pendingId === undefined) return;
     this.byProcessId.delete(pending.id);
     this.permissions.delete(pendingId);
+    this.feed?.permissionSettled(pendingId, pending, settlement);
     if (settlement.by === "cancelled") this.sink.cancelled(pendingId);
     // 答了（或被取消了）：回合还在就回到 working，直到它的 stopReason。
     if (this.running !== undefined && this.host?.process.alive === true) {
+      this.workingSignalled = true;
       this.sink.signal({ signal: "permissionSettled" });
     }
   }
@@ -735,6 +782,8 @@ export class AcpSession implements AcpSessionIdentity {
     const stored = storedElicitation(pending.request);
     this.elicitations.set(pendingId, { pending, stored });
     this.byProcessId.set(pending.id, pendingId);
+    this.workingSignalled = false;
+    this.feed?.elicitation(pendingId, pending);
     this.sink.signal(
       { signal: "elicitation", pendingId },
       { protocol: "acp", elicitation: stored },
@@ -749,14 +798,20 @@ export class AcpSession implements AcpSessionIdentity {
     if (pendingId === undefined) return;
     this.byProcessId.delete(pending.id);
     this.elicitations.delete(pendingId);
+    this.feed?.elicitationSettled(pendingId, settlement);
     if (settlement.by === "cancelled") this.sink.cancelled(pendingId);
     if (this.running !== undefined && this.host?.process.alive === true) {
+      this.workingSignalled = true;
       this.sink.signal({ signal: "permissionSettled" });
     }
   }
 
   private onExit(exit: AcpExit): void {
     this.closed = true;
+    // 我们要它退的（休眠、切换驱动、结束）由发起方写提示；自己没的才是退出。
+    if (!exit.requested) {
+      this.feed?.exited(exit.code === null ? {} : { code: exit.code });
+    }
     this.options.onExit?.(exit);
   }
 }
