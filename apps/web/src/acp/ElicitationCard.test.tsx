@@ -1,4 +1,3 @@
-import { scoped } from "../sources/scope";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   cleanup,
@@ -19,7 +18,8 @@ import {
   initialValues,
   safeUrl,
 } from "./ElicitationCard";
-import { useAcpStore, type AcpElicitationView } from "./store";
+import { useAnsweredStore } from "./answered";
+import type { AcpElicitationView } from "./approval-views";
 
 const form: AcpElicitationForm = {
   type: "object",
@@ -45,8 +45,7 @@ const view: AcpElicitationView = {
 
 beforeEach(() => {
   api.answerElicitation.mockReset().mockResolvedValue({});
-  useAcpStore.getState().reset();
-  useAcpStore.getState().addElicitation("n1", view);
+  useAnsweredStore.getState().reset();
 });
 
 afterEach(cleanup);
@@ -89,7 +88,7 @@ describe("safeUrl", () => {
 
 describe("ElicitationCard", () => {
   it("draws text, enum, number and boolean fields from the schema", () => {
-    render(<ElicitationCard nodeId="n1" view={view} canAnswer />);
+    render(<ElicitationCard view={view} canAnswer />);
     expect(screen.getByText("Fill it in")).toBeTruthy();
     expect(screen.getByLabelText(/Name/).tagName).toBe("INPUT");
     expect(screen.getByRole("combobox").textContent).toContain("Red");
@@ -104,7 +103,7 @@ describe("ElicitationCard", () => {
       useAgentStatusStore.getState(),
       "resolveApproval",
     );
-    render(<ElicitationCard nodeId="n1" view={view} canAnswer />);
+    render(<ElicitationCard view={view} canAnswer />);
     const submit = screen.getByRole("button", {
       name: "提交",
     }) as HTMLButtonElement;
@@ -122,12 +121,12 @@ describe("ElicitationCard", () => {
       }),
     );
     expect(api.answerElicitation).toHaveBeenCalledTimes(1);
-    expect(useAcpStore.getState().elicitations[scoped("n1")]).toBeUndefined();
+    expect(useAnsweredStore.getState().ids.has("n1-1-acp-e1")).toBe(true);
     expect(resolveApproval).toHaveBeenCalledWith("n1-1-acp-e1");
   });
 
   it("declines and cancels without content", async () => {
-    render(<ElicitationCard nodeId="n1" view={view} canAnswer />);
+    render(<ElicitationCard view={view} canAnswer />);
     fireEvent.click(screen.getByRole("button", { name: "取消" }));
     await waitFor(() =>
       expect(api.answerElicitation).toHaveBeenCalledWith("n1-1-acp-e1", {
@@ -135,7 +134,7 @@ describe("ElicitationCard", () => {
       }),
     );
     cleanup();
-    render(<ElicitationCard nodeId="n1" view={view} canAnswer />);
+    render(<ElicitationCard view={view} canAnswer />);
     fireEvent.click(screen.getByRole("button", { name: "拒绝" }));
     await waitFor(() =>
       expect(api.answerElicitation).toHaveBeenLastCalledWith("n1-1-acp-e1", {
@@ -146,17 +145,17 @@ describe("ElicitationCard", () => {
 
   it("puts the card back when the answer is not taken", async () => {
     api.answerElicitation.mockRejectedValue(new Error("400"));
-    render(<ElicitationCard nodeId="n1" view={view} canAnswer />);
+    render(<ElicitationCard view={view} canAnswer />);
     fireEvent.click(screen.getByRole("button", { name: "拒绝" }));
+    await waitFor(() => expect(api.answerElicitation).toHaveBeenCalled());
     await waitFor(() =>
-      expect(useAcpStore.getState().elicitations[scoped("n1")]).toEqual([view]),
+      expect(useAnsweredStore.getState().ids.has("n1-1-acp-e1")).toBe(false),
     );
   });
 
   it("offers only decline and cancel when the form could not be kept", () => {
     render(
       <ElicitationCard
-        nodeId="n1"
         view={{
           pendingId: "e2",
           elicitation: { message: "Nested", mode: "form" },
@@ -172,7 +171,6 @@ describe("ElicitationCard", () => {
   it("url mode shows a safe link and continues without content", async () => {
     render(
       <ElicitationCard
-        nodeId="n1"
         view={{
           pendingId: "e3",
           elicitation: {
@@ -196,7 +194,7 @@ describe("ElicitationCard", () => {
   });
 
   it("shows only the message to someone who cannot answer", () => {
-    render(<ElicitationCard nodeId="n1" view={view} canAnswer={false} />);
+    render(<ElicitationCard view={view} canAnswer={false} />);
     expect(screen.getByText("Fill it in")).toBeTruthy();
     expect(screen.queryAllByRole("button")).toHaveLength(0);
     expect(screen.queryByRole("textbox")).toBeNull();

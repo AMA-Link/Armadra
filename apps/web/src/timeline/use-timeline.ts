@@ -38,6 +38,8 @@ export interface TimelineView {
   hasMore: boolean;
   loadingMore: boolean;
   error?: string;
+  /** 这条会话没有时间线（或主机太旧）：调用方改走旧路径。 */
+  missing: boolean;
   /** 滚到顶部附近时调：取更早的一页回合；答新加载的条目数。 */
   loadMore(): Promise<number>;
   /** 重试 / 重新补同步。 */
@@ -113,6 +115,7 @@ export function useTimeline(
     hasMore: entry?.hasMore ?? false,
     loadingMore: entry?.loadingMore ?? false,
     ...(entry?.error === undefined ? {} : { error: entry.error }),
+    missing: entry?.missing === true,
     loadMore,
     refresh,
   };

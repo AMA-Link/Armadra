@@ -1,4 +1,3 @@
-import { scoped } from "../sources/scope";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 
@@ -7,7 +6,8 @@ vi.mock("./api", () => ({ acpApi: api }));
 
 import { useAgentStatusStore } from "@/agent/status-store";
 import { PermissionCard } from "./PermissionCard";
-import { useAcpStore, type AcpPermissionView } from "./store";
+import { useAnsweredStore } from "./answered";
+import type { AcpPermissionView } from "./approval-views";
 
 const permission: AcpPermissionView = {
   pendingId: "n1-1-acp-t1",
@@ -21,8 +21,7 @@ const permission: AcpPermissionView = {
 
 beforeEach(() => {
   api.answer.mockReset().mockResolvedValue({});
-  useAcpStore.getState().reset();
-  useAcpStore.getState().addPermission("n1", permission);
+  useAnsweredStore.getState().reset();
 });
 
 afterEach(cleanup);
@@ -60,7 +59,7 @@ describe("PermissionCard", () => {
     fireEvent.click(screen.getByRole("button", { name: "拒绝" }));
     expect(api.answer).toHaveBeenCalledTimes(1);
     expect(api.answer).toHaveBeenCalledWith("n1-1-acp-t1", "deny", "no");
-    expect(useAcpStore.getState().permissions[scoped("n1")]).toBeUndefined();
+    expect(useAnsweredStore.getState().ids.has("n1-1-acp-t1")).toBe(true);
     expect(resolveApproval).toHaveBeenCalledWith("n1-1-acp-t1");
   });
 

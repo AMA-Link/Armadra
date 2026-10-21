@@ -28,6 +28,7 @@ import {
   PAGE_TURNS,
   TAIL_TURNS,
   isCursorAhead,
+  isTimelineMissing,
   timelineTransportFor,
   type TimelineTransport,
 } from "./api";
@@ -203,6 +204,7 @@ export class TimelineController {
         phase: "ready",
         fromCache: false,
         error: undefined,
+        missing: undefined,
         turns: snapshot.turns,
         oldestLoadedTurn: Number.isFinite(oldest)
           ? oldest
@@ -212,6 +214,11 @@ export class TimelineController {
       this.afterDrain();
     } catch (error) {
       if (this.disposed || generation !== this.generation) return;
+      if (isTimelineMissing(error)) {
+        // 没有时间线不是故障：页面改走旧路径，这里不再轮询。
+        this.publish({ phase: "error", error: message(error), missing: true });
+        return;
+      }
       this.publish({ phase: "error", error: message(error) });
       this.scheduleRetry();
     }
@@ -247,11 +254,21 @@ export class TimelineController {
       }
       this.state = applyTimelineSync(this.state, result);
       this.drain();
-      this.publish({ phase: "ready", fromCache: false, error: undefined });
+      this.publish({
+        phase: "ready",
+        fromCache: false,
+        error: undefined,
+        missing: undefined,
+      });
       this.scheduleSave();
       this.afterDrain();
     } catch (error) {
       if (this.disposed || generation !== this.generation) return;
+      if (isTimelineMissing(error)) {
+        await this.cache.remove(this.sourceId, this.timelineId);
+        this.publish({ error: message(error), missing: true });
+        return;
+      }
       if (isCursorAhead(error)) {
         await this.restart();
         return;

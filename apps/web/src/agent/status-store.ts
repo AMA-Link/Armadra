@@ -302,6 +302,10 @@ export const useAgentStatusStore = create<AgentStatusState>((set, get) => ({
         }));
         return;
       }
+      case "timeline.activity":
+        // 渐进式状态（契约 §82）：只补活动，粗状态仍由 `agent.status` 说了算。
+        get().setActivity(event.nodeId, event.activity);
+        return;
       case "terminal.exit": {
         // 进程没了就没有 Agent 状态可言，会话行改由 `alive=false` 表达。
         if (!event.nodeId) return;

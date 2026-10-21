@@ -3,45 +3,84 @@ import { useQuery } from "@tanstack/react-query";
 import { acpLogResponseSchema } from "@armadra/shared";
 
 import { clientFor } from "@/api/client";
+import { connectWorkspaceEvents } from "@/api/events";
 import type { Source } from "@/api/source";
 import { useT } from "@/app/preferences-store";
-import { MessageList } from "@/acp/MessageList";
-import { fromLog } from "@/acp/store";
-import { ScrollArea } from "@/ui/scroll-area";
+import { createBlobLoader } from "@/timeline/blobs";
+import { useActivity } from "@/timeline/use-activity";
+import { useTimeline } from "@/timeline/use-timeline";
+import { emptyLegacyState, fromLog, itemsOf } from "@/timeline/legacy-acp";
+import { TimelineView } from "@/timeline/view/TimelineView";
 import { Spinner } from "@/ui/spinner";
 
-/** 多久重读一次镜像：会话查看者不订阅工作空间事件，靠定时读跟上。 */
-const POLL_MS = 2_000;
+/** 旧主机（没有 `timeline.*`）才用：多久重读一次镜像。新主机靠推送，不轮询。 */
+const LEGACY_POLL_MS = 2_000;
 
 /**
- * ACP 会话的只读转录：按 `acp.log` 读镜像（契约 §43.1），只画消息列表——没有
- * 输入框、审批与 elicitation 按钮，消息上只有复制。
+ * ACP 会话的只读转录（契约 §43.1、§79）：订阅这条会话的时间线，画同一个
+ * `TimelineView`——没有输入框、审批与 elicitation 按钮，消息上只有复制。
+ *
+ * 访客没有画布，也就没有工作空间的事件流：这里自己订那一块工作空间的事件
+ * （`timeline.delta` / `timeline.activity`），断线重连由数据层补同步。旧主机没有
+ * 时间线，退回按 `acp.log` 读镜像（那一条仍是定时读，B10 随旧接口下线）。
  */
 export function ReadOnlyTranscript({
   source,
   sessionId,
+  workspaceId,
 }: {
   source: Source;
   sessionId: string;
+  workspaceId?: string | undefined;
 }) {
   const t = useT();
+  const sourceId = source.sourceId;
+  React.useEffect(
+    () =>
+      workspaceId === undefined || workspaceId === ""
+        ? undefined
+        : connectWorkspaceEvents(workspaceId, source),
+    [source, workspaceId],
+  );
+
+  const timeline = useTimeline(sessionId, { sourceId });
+  const activity = useActivity(sessionId, { sourceId });
+  const loadBlob = React.useMemo(
+    () => createBlobLoader(sourceId, sessionId),
+    [sourceId, sessionId],
+  );
+  const services = React.useMemo(() => ({ loadBlob }), [loadBlob]);
+
+  const { loadMore, hasMore } = timeline;
+  const loadOlder = React.useCallback(() => void loadMore(), [loadMore]);
+  const legacy = timeline.missing;
   const log = useQuery({
-    queryKey: ["shared-session", "acp-log", source.sourceId, sessionId],
+    queryKey: ["shared-session", "acp-log", sourceId, sessionId],
     queryFn: async () =>
       acpLogResponseSchema.parse(
         await clientFor(source).acp.log({ sessionId, after: 0 }),
       ),
-    refetchInterval: POLL_MS,
+    enabled: legacy,
+    refetchInterval: LEGACY_POLL_MS,
     retry: false,
   });
-  const items = React.useMemo(
-    () => (log.data ? fromLog(log.data.entries).items : []),
+  const legacyItems = React.useMemo(
+    () =>
+      log.data
+        ? itemsOf(fromLog(log.data, emptyLegacyState(), Date.now()))
+        : [],
     [log.data],
   );
-  if (log.data === undefined)
+
+  const items = legacy ? legacyItems : timeline.items;
+  const ready = legacy ? log.data !== undefined : timeline.phase === "ready";
+  const failed = legacy
+    ? log.isError && log.data === undefined
+    : timeline.phase === "error" && items.length === 0;
+  if (items.length === 0 && !ready) {
     return (
       <div className="flex h-full items-center justify-center">
-        {log.isError ? (
+        {failed ? (
           <p className="text-muted-foreground">{t("sharedSession.failed")}</p>
         ) : (
           <Spinner
@@ -51,17 +90,25 @@ export function ReadOnlyTranscript({
         )}
       </div>
     );
-  return (
-    <ScrollArea className="h-full">
-      <div className="mx-auto w-full max-w-3xl px-4 py-4">
-        {items.length === 0 ? (
-          <p className="text-center text-muted-foreground">
-            {t("sharedSession.empty")}
-          </p>
-        ) : (
-          <MessageList items={items} streaming={false} />
-        )}
+  }
+  if (items.length === 0) {
+    return (
+      <div className="flex h-full items-center justify-center">
+        <p className="text-center text-muted-foreground">
+          {t("sharedSession.empty")}
+        </p>
       </div>
-    </ScrollArea>
+    );
+  }
+  return (
+    <div className="mx-auto flex h-full w-full max-w-3xl flex-col">
+      <TimelineView
+        items={items}
+        activity={legacy ? undefined : activity}
+        services={services}
+        resetKey={sessionId}
+        onLoadOlder={hasMore ? loadOlder : undefined}
+      />
+    </div>
   );
 }

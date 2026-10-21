@@ -16,7 +16,8 @@ import {
 } from "@/ui/collapsible";
 import { acpApi } from "./api";
 import { DiffBlock } from "./DiffBlock";
-import { useAcpStore, type AcpPermissionView } from "./store";
+import { useAnsweredStore } from "./answered";
+import type { AcpPermissionView } from "./approval-views";
 
 /** 详情里的入参最多先显示这么多行。 */
 export const PERMISSION_INPUT_LINES = 20;
@@ -113,7 +114,7 @@ export function answerPermission(
   permission: AcpPermissionView,
   option: AcpPermissionOption,
 ): Promise<unknown> {
-  useAcpStore.getState().resolvePermission(permission.pendingId);
+  useAnsweredStore.getState().mark(permission.pendingId);
   useAgentStatusStore.getState().resolveApproval(permission.pendingId);
   return acpApi
     .answer(

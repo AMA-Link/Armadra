@@ -4,7 +4,7 @@
  *
  * 数据层（`sync.ts`）只认 {@link TimelineTransport}：测试换成假的，就是一个假 core。
  * 默认实现发往指定的源（`clientFor(source)`），事件从工作空间事件流里取。
- * 事件类型由 core 那一批登记进 `WorkspaceEvent`，这里先按形状读，不依赖联合类型。
+ * 事件 `timeline.delta` / `timeline.activity` 已登记进 `WorkspaceEvent`，按类型读。
  */
 import {
   timelineActivityEventSchema,
@@ -57,12 +57,16 @@ export function isCursorAhead(error: unknown): boolean {
   return errorCode(error) === "cursor_ahead";
 }
 
-/** 工作空间事件里 `timeline.*` 的宽松形状：登记之前不在 `WorkspaceEvent` 联合里。 */
-type LooseSubscribe = (
-  type: string,
-  handler: (event: unknown, sourceId: string) => void,
-  options: { allSources: true },
-) => () => void;
+/**
+ * 这个主机/会话没有时间线：会话没写过（core 答 `not_found`），或主机太旧不认识
+ * `timeline.*`（路由 404 / `not_found`）。页面据此退回旧的 `acp.log` 路径。
+ */
+export function isTimelineMissing(error: unknown): boolean {
+  const code = errorCode(error);
+  if (code === "not_found" || code === "not_implemented") return true;
+  const status = (error as { status?: unknown } | null)?.status;
+  return status === 404;
+}
 
 /** 发往某个源的传输：RPC 走该源连接的客户端，事件按 `sourceId` 过滤。 */
 export function createSourceTransport(sourceId: string): TimelineTransport {
@@ -89,8 +93,7 @@ export function createSourceTransport(sourceId: string): TimelineTransport {
     blob: async (timelineId, blobId) =>
       timelineBlobWireSchema.parse(await client().blob({ timelineId, blobId })),
     subscribe(listener) {
-      const on = onWorkspaceEvent as unknown as LooseSubscribe;
-      const offDelta = on(
+      const offDelta = onWorkspaceEvent(
         "timeline.delta",
         (event, from) => {
           if (from !== sourceId) return;
@@ -99,7 +102,7 @@ export function createSourceTransport(sourceId: string): TimelineTransport {
         },
         { allSources: true },
       );
-      const offActivity = on(
+      const offActivity = onWorkspaceEvent(
         "timeline.activity",
         (event, from) => {
           if (from !== sourceId) return;

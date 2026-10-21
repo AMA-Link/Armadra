@@ -4,25 +4,27 @@ import Markdown from "react-markdown";
 import { useT } from "@/app/preferences-store";
 import { ElicitationCard } from "@/acp/ElicitationCard";
 import { ExportMenu } from "@/acp/ExportMenu";
-import { MessageList, type MessageListActions } from "@/acp/MessageList";
 import { PermissionCard } from "@/acp/PermissionCard";
 import { PromptBox } from "@/acp/PromptBox";
+import { TimelineView } from "@/timeline/view/TimelineView";
 import { Alert, AlertAction, AlertTitle } from "@/ui/alert";
 import { Button } from "@/ui/button";
 import {
   ACP_COMMANDS,
   ACP_ELICITATION,
   ACP_ELICITATION_URL,
+  ACP_EXPORT_ID,
+  ACP_EXPORT_TEXT,
   ACP_ITEMS,
   ACP_MODELS,
   ACP_MODES,
   ACP_NODE_ID,
   ACP_PERMISSION,
-  ACP_PLAN,
   ACP_SESSION_ID,
   ACP_STOP_ITEMS,
   ACP_STREAMING_ITEMS,
   ACP_USAGE,
+  acpShowcaseBlob,
 } from "../fixtures/acp";
 
 /**
@@ -55,42 +57,30 @@ function Frame({
 const noop = () => undefined;
 const sent = async () => true;
 
-const ACTIONS: MessageListActions = {
-  onEdit: noop,
-  onResend: noop,
-  onPrompt: noop,
-  resendable: true,
-};
+const STREAMING_ACTIVITY = {
+  phase: "responding",
+  since: 0,
+  rev: "showcase:1",
+} as const;
+
+const SERVICES = { loadBlob: acpShowcaseBlob, source: SOURCE };
 
 /** 展示页：消息工具条常显。 */
 const SHOW_ACTIONS = "[&_[data-slot=acp-actions]]:opacity-100";
 
 export default function AcpSection() {
   const t = useT();
-  const exported = ACP_ITEMS.find(
-    (item) => item.kind === "message" && item.role === "assistant",
-  );
   return (
     <div className="grid gap-4 lg:grid-cols-2">
       <div className="flex min-w-0 flex-col gap-4">
         <Frame>
-          <div className={`flex flex-col gap-2 p-2.5 ${SHOW_ACTIONS}`}>
-            <MessageList
-              items={ACP_ITEMS}
-              streaming={false}
-              source={SOURCE}
-              plan={ACP_PLAN}
-              actions={ACTIONS}
-            />
+          <div className={`flex h-[520px] flex-col ${SHOW_ACTIONS}`}>
+            <TimelineView items={ACP_ITEMS} services={SERVICES} />
           </div>
         </Frame>
         <Frame>
-          <div className="flex flex-col gap-2 p-2.5">
-            <MessageList
-              items={ACP_STOP_ITEMS}
-              streaming={false}
-              actions={ACTIONS}
-            />
+          <div className="flex h-[260px] flex-col">
+            <TimelineView items={ACP_STOP_ITEMS} onContinue={noop} />
           </div>
           <PromptBox
             sessionId={null}
@@ -108,21 +98,22 @@ export default function AcpSection() {
       </div>
 
       <div className="flex min-w-0 flex-col gap-4">
-        {exported?.kind === "message" && (
-          <Frame className="flex-row items-start gap-2 p-2.5 pb-44">
-            <div className="sticky-markdown min-w-0 flex-1 text-[13px] leading-relaxed">
-              <Markdown>{exported.text.split("\n\n")[0] ?? ""}</Markdown>
-            </div>
-            <ExportMenu
-              text={exported.text}
-              source={{ ...SOURCE, messageId: exported.id }}
-              defaultOpen
-            />
-          </Frame>
-        )}
+        <Frame className="flex-row items-start gap-2 p-2.5 pb-44">
+          <div className="sticky-markdown min-w-0 flex-1 text-[13px] leading-relaxed">
+            <Markdown>{ACP_EXPORT_TEXT.split("\n\n")[0] ?? ""}</Markdown>
+          </div>
+          <ExportMenu
+            text={ACP_EXPORT_TEXT}
+            source={{ ...SOURCE, messageId: ACP_EXPORT_ID }}
+            defaultOpen
+          />
+        </Frame>
         <Frame>
-          <div className="flex flex-col gap-2 p-2.5">
-            <MessageList items={ACP_STREAMING_ITEMS} streaming />
+          <div className="flex h-[200px] flex-col">
+            <TimelineView
+              items={ACP_STREAMING_ITEMS}
+              activity={STREAMING_ACTIVITY}
+            />
           </div>
           <PermissionCard
             permission={ACP_PERMISSION}
@@ -167,14 +158,9 @@ export default function AcpSection() {
 
         <Frame>
           <div className="flex flex-col gap-2 p-2.5">
-            <ElicitationCard
-              nodeId={ACP_NODE_ID}
-              view={ACP_ELICITATION_URL}
-              canAnswer
-            />
+            <ElicitationCard view={ACP_ELICITATION_URL} canAnswer />
           </div>
           <ElicitationCard
-            nodeId={ACP_NODE_ID}
             view={ACP_ELICITATION}
             canAnswer
             className="mx-2 mb-1.5"
