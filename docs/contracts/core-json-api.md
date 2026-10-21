@@ -4487,7 +4487,7 @@ owner（本机会话，或已信任设备经通道的 owner 会话）：`{ sourc
 
 ## 82. 会话时间线 `timeline.*`
 
-> 状态：契约先行（issue #424，总 Issue #422；设计 `docs/armadra/plans/acp-progressive-view.md`，实现 `packages/shared/src/domain/timeline*.ts`、`timeline-acp.ts`、`session-display.ts`，core 一侧在 `core/timeline/`，自协议 1.48 起实现，细节见 §82.2）。
+> 状态：契约先行（issue #424，总 Issue #422；设计 `docs/design/session-timeline.md`，实现 `packages/shared/src/domain/timeline*.ts`、`timeline-acp.ts`、`session-display.ts`，core 一侧在 `core/timeline/`，自协议 1.48 起实现，细节见 §82.2）。
 
 一条会话（`terminal_sessions.id`）一份时间线，由 core 唯一写入；ACP 流、终端 CLI 的转录与 hook 归一成同一种条目。各端（画布节点、会话页、通知面板、手机、中转另一端）只读，按「快照 + 序号之后的增量」同步。
 
