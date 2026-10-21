@@ -1,6 +1,6 @@
 # 会话时间线：统一模型、渐进式状态与 CLI 汇流
 
-> 状态：已实施（B0–B8 已合并；ACP 终端内容 B9 与本批 B10 收尾进行中）。总 Issue：[AMA-Link/Armadra#422](https://github.com/AMA-Link/Armadra/issues/422)。契约见 [core-json-api §82](../contracts/core-json-api.md)（迁移 `0052_timelines`，协议 1.48 起）。
+> 状态：已实施（B0–B9 已合并，B10 收尾进行中）。总 Issue：[AMA-Link/Armadra#422](https://github.com/AMA-Link/Armadra/issues/422)。契约见 [core-json-api §82](../contracts/core-json-api.md)（迁移 `0052_timelines`，协议 1.48 起）。
 > 范围：`apps/desktop/src/core/{acp,hook,history,events,push}`、`apps/desktop/src/core/timeline/`、`apps/web/src/{acp,agent,notifications,sessions,node-observation,nodes,shared-session,timeline}`、`packages/shared/src`。
 > 前置阅读：[ACP 接入与会话视图](acp-session-view.md)、[CLI 接入、通信与共享上下文](cli-collaboration.md)、[终端宿主](terminal-host-design.md)，契约 §14、§39.9、§49、§51、§81、§82。
 
@@ -193,30 +193,30 @@ sessionDisplay(input: {
 
 ### §3.1 映射表
 
-| 来源                                          | 条目 / 部件                                  | 渲染                                                                                                             |
-| --------------------------------------------- | -------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
-| 我方提示、`user_message_chunk`                | `user`                                       | 右侧气泡，纯文本加附件缩略图                                                                                     |
-| `agent_message_chunk` 文本                    | `assistant.parts.text`                       | Markdown（GFM）。已完成的块逐块 memo，只重解析最后一块；代码块带复制按钮                                         |
-| `agent_message_chunk` 图片                    | `parts.image`                                | 缩略图，点开大图；数据存成 blob，事件里只带 `blobId`                                                             |
-| `resource_link`                               | `parts.resource_link`                        | 一行：按 MIME 选图标、名称、打开                                                                                 |
-| 内嵌 `resource`                               | `parts.resource`                             | 有文本：可折叠代码块，标题是文件名；只有 blob：同 `resource_link`，可下载                                        |
-| `audio`                                       | `parts.audio`                                | 一行附件，展开后是原生 `<audio controls>`                                                                        |
-| `agent_thought_chunk`                         | `thought`                                    | 默认折叠：「思考 · 12 s」，展开是 Markdown；流式时标题带 `Spinner`；正文被服务端隐去的显示「已隐藏」             |
-| `tool_call` / `tool_call_update`              | `tool`                                       | 一行：kind 图标、标题、文件胶囊（最多 2 个 + N）、状态胶囊、耗时；展开看输入与输出                               |
-| 工具 `content.diff`                           | `tool.content.diff`                          | 复用 `acp/DiffBlock`（超过 200 行折叠）                                                                          |
-| 工具 `content.terminal`                       | `tool.content.terminal`                      | 命令行、退出码、输出尾部；ANSI 颜色用自写小解析器（`view/ansi.ts`），只认 SGR 16 / 256 色，不加依赖              |
-| 工具 `content.content`                        | `tool.content.*`                             | 文本按语言识别做代码块；图片、资源同上；不再退回原始 JSON                                                        |
-| `rawInput`                                    | `tool.input`                                 | 按 kind 结构化：execute 显示命令，read / edit 显示路径和行号，search 显示查询，fetch 显示 URL，其余折成键:值列表 |
-| 连续的工具、思考                              | 活动组（渲染派生，不存储，`activityGroups`） | 折成一行摘要「读了 5 个文件 · 改了 2 个 · 运行 1 条命令」，展开看明细；回合进行中保持展开                        |
-| `plan`                                        | `plan`                                       | 会话顶部计划条显示当前项和进度，点开是清单                                                                       |
-| `request_permission`                          | `approval`                                   | 卡片内联在对应工具行下面，答复后收成一行「已允许（一次）· 谁」                                                   |
-| `elicitation/create`                          | `elicitation`                                | `ElicitationCard`                                                                                                |
-| `current_mode_update`、`config_option_update` | `notice`                                     | 居中一行小字                                                                                                     |
-| `usage_update`、`available_commands_update`   | 头部值                                       | 输入框旁用量环；`/` 命令选择                                                                                     |
-| `session_info_update`                         | 头部 `title`                                 | 见「已决定事项」Q5                                                                                               |
-| stopReason、错误                              | `turn`                                       | refusal 用 Alert，cancelled / max\_\* 居中一行；出错显示 Alert 加重试                                            |
-| 子代理                                        | `tool(kind=subagent)`                        | 嵌套的活动组，默认折叠                                                                                           |
-| 压缩、重试、驱动切换、休眠                    | `notice`                                     | 居中一行                                                                                                         |
+| 来源                                          | 条目 / 部件                                  | 渲染                                                                                                                                                                   |
+| --------------------------------------------- | -------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 我方提示、`user_message_chunk`                | `user`                                       | 右侧气泡，纯文本加附件缩略图                                                                                                                                           |
+| `agent_message_chunk` 文本                    | `assistant.parts.text`                       | Markdown（GFM）。已完成的块逐块 memo，只重解析最后一块；代码块带复制按钮                                                                                               |
+| `agent_message_chunk` 图片                    | `parts.image`                                | 缩略图，点开大图；数据存成 blob，事件里只带 `blobId`                                                                                                                   |
+| `resource_link`                               | `parts.resource_link`                        | 一行：按 MIME 选图标、名称、打开                                                                                                                                       |
+| 内嵌 `resource`                               | `parts.resource`                             | 有文本：可折叠代码块，标题是文件名；只有 blob：同 `resource_link`，可下载                                                                                              |
+| `audio`                                       | `parts.audio`                                | 一行附件，展开后是原生 `<audio controls>`                                                                                                                              |
+| `agent_thought_chunk`                         | `thought`                                    | 默认折叠：「思考 · 12 s」，展开是 Markdown；流式时标题带 `Spinner`；正文被服务端隐去的显示「已隐藏」                                                                   |
+| `tool_call` / `tool_call_update`              | `tool`                                       | 一行：kind 图标、标题、文件胶囊（最多 2 个 + N）、状态胶囊、耗时；展开看输入与输出                                                                                     |
+| 工具 `content.diff`                           | `tool.content.diff`                          | 复用 `acp/DiffBlock`（超过 200 行折叠）                                                                                                                                |
+| 工具 `content.terminal`                       | `tool.content.terminal`                      | 命令行、退出码、输出尾部，运行中随输出变化更新（core 合成 `tool_call_update`，节流 120 ms）；ANSI 颜色用自写小解析器（`view/ansi.ts`），只认 SGR 16 / 256 色，不加依赖 |
+| 工具 `content.content`                        | `tool.content.*`                             | 文本按语言识别做代码块；图片、资源同上；不再退回原始 JSON                                                                                                              |
+| `rawInput`                                    | `tool.input`                                 | 按 kind 结构化：execute 显示命令，read / edit 显示路径和行号，search 显示查询，fetch 显示 URL，其余折成键:值列表                                                       |
+| 连续的工具、思考                              | 活动组（渲染派生，不存储，`activityGroups`） | 折成一行摘要「读了 5 个文件 · 改了 2 个 · 运行 1 条命令」，展开看明细；回合进行中保持展开                                                                              |
+| `plan`                                        | `plan`                                       | 会话顶部计划条显示当前项和进度，点开是清单                                                                                                                             |
+| `request_permission`                          | `approval`                                   | 卡片内联在对应工具行下面，答复后收成一行「已允许（一次）· 谁」                                                                                                         |
+| `elicitation/create`                          | `elicitation`                                | `ElicitationCard`                                                                                                                                                      |
+| `current_mode_update`、`config_option_update` | `notice`                                     | 居中一行小字                                                                                                                                                           |
+| `usage_update`、`available_commands_update`   | 头部值                                       | 输入框旁用量环；`/` 命令选择                                                                                                                                           |
+| `session_info_update`                         | 头部 `title`                                 | 见「已决定事项」Q5                                                                                                                                                     |
+| stopReason、错误                              | `turn`                                       | refusal 用 Alert，cancelled / max\_\* 居中一行；出错显示 Alert 加重试                                                                                                  |
+| 子代理                                        | `tool(kind=subagent)`                        | 嵌套的活动组，默认折叠                                                                                                                                                 |
+| 压缩、重试、驱动切换、休眠                    | `notice`                                     | 居中一行                                                                                                                                                               |
 
 ### §3.2 体量上限（core 写入时执行）
 
@@ -286,8 +286,8 @@ sessionDisplay(input: {
 - **存储**（迁移 `0052_timelines`）：`timelines`（`id` = 会话行 id、`workspace_id`、`node_id`、`head_seq`、`head_rev`、`source`、`source_cursor`、`head_json`）、`timeline_items`（`(timeline_id, item_id)` 一行存最新完整值与 `rev`，`deleted = 1` 是墓碑；索引 `(timeline_id, rev)`、`(timeline_id, turn, ord)`）、`timeline_blobs`（这条时间线引用了哪些 blob）。
 - **会话列表**：`sessions` 每行多可省的 `activity` 与 `timelineSeq`，另有 `interrupted`（契约 §81）。
 - **授权**：时间线以会话行 id 为键，路由门按会话行查出画布再判 `terminal:read`；只被授予某一条会话的人只读得到那一条；不存在的会话对成员也答 `403`。blob 的 HTTP 响应对内容类型做白名单（图片、`audio/*` 原样，其余一律 `application/octet-stream` 且 `attachment`，带 `nosniff` 与 `sandbox` CSP）。
-- **ACP 客户端能力**：`terminal/*`（`terminal/create`、`output`、`wait_for_exit`、`kill`、`release`）由 core 实现，见 B9（[#444](https://github.com/AMA-Link/Armadra/issues/444)）；合并前 host 不声明 `terminal` 能力，工具行只显示「终端输出不可用」。能力声明、输出尾部上限等细节待 B9 合并后补进本节与契约。
-- **旧接口**：`acp.update`（事件）与 `acp.log`（镜像读）在 B10 下线、不做兼容；在此之前它们原样保留，图片仍带原样 base64。
+- **ACP 客户端能力**（B9，契约 §82.5）：core 向 Agent 声明 `clientCapabilities.terminal: true` 并实现 `terminal/create`、`output`、`wait_for_exit`、`kill`、`release`（`core/acp/terminals.ts`、`terminal-feed.ts`）。客户端栈要 `@armadra/agent` 0.9.1 起的 `AcpClient.features.terminal`（构造参数 `onTerminal`），回调在 armadra-agent 仓补齐，更早的版本线路不变。命令审批仍走 `session/request_permission`，core 只多一层闸（回合没在跑、会话已收尾、`sessionId` 不符则拒绝）；只读模式与 SSH 节点不给终端；cwd 必须落在会话 cwd 或工作空间根之内；内存里每个终端留尾部 256 KiB，同会话至多 8 个，时间线工具条目再留尾部 64 KiB；子进程按 pid 回收（`kill` 先 SIGTERM，1.5 s 后 SIGKILL；`release` 与会话结束直接 SIGKILL）。`fs` 仍不声明。
+- **旧接口**：`acp.update`（事件）与 `acp.log`（镜像读）在 B10 下线、不做兼容；在此之前它们原样保留，图片仍带原样 base64，终端输出不在其中（只进时间线）。
 - **协议 minor**：本设计引入 1.48（随 `timeline.*`）；procedure 的 `since` 与 minor 同步。
 
 ## §7 UI 要点
@@ -321,7 +321,7 @@ sessionDisplay(input: {
 | Q3   | 旧接口退役           | `acp.update`、`acp.log` 在 B10 下线，不做兼容                                                                                                                                                                                                   |
 | Q4   | CLI 内容复制         | 转录复制进库，多端一致，手机也能看；只为画布上的节点建时间线                                                                                                                                                                                    |
 | Q5   | 自动命名             | 节点没有人工命名时用头部 `title`（`session_info_update.title`、Claude 的 `custom-title` 等）作节点名，人工改名后不再覆盖。core 已把标题写进头部；页面侧现有的自动命名仍走 `autoNameNode`（`suggest-title`），改读头部 `title` 的接线在 B10 补齐 |
-| Q6   | 跨仓                 | `terminal/*` 由 core 实现，见 B9；是否需要先在 armadra-agent 仓给 `AcpClient` 加回调，待 B9 合并后补                                                                                                                                            |
+| Q6   | 跨仓                 | `terminal/*` 由 core 实现（B9，契约 §82.5）；`AcpClient` 的 `onTerminal` 回调已在 armadra-agent 补齐（0.9.1 起）                                                                                                                                |
 | Q7   | 思考内容             | 思考正文落库，默认折叠                                                                                                                                                                                                                          |
 
 ## 风险与缓解
