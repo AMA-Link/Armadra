@@ -255,7 +255,18 @@ export function toolContentOf(
       type: "terminal",
       terminalId,
       ...(command !== undefined ? { command: command.slice(0, 10_000) } : {}),
-      ...(output !== undefined ? clipTailAs("output", output) : {}),
+      ...(output !== undefined
+        ? {
+            // 宿主自己已经丢过头部（`truncated` / `originalBytes`）：别丢这个标记。
+            ...(e.truncated === true ? { truncated: true as const } : {}),
+            ...(typeof e.originalBytes === "number" &&
+            Number.isInteger(e.originalBytes) &&
+            e.originalBytes >= 0
+              ? { originalBytes: e.originalBytes }
+              : {}),
+            ...clipTailAs("output", output),
+          }
+        : {}),
       ...(typeof exitCode === "number" && Number.isInteger(exitCode)
         ? { exitCode }
         : exitCode === null

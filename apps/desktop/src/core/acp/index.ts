@@ -572,6 +572,25 @@ class AcpRuntime {
             workspaceId: spec.workspaceId,
             generation: spec.generation,
           });
+    const mode = plan.permissionMode as
+      | "default"
+      | "auto-edit"
+      | "full-auto"
+      | "plan"
+      | undefined;
+    // Agent 的终端（B9）在本机跑：SSH 节点的适配器在执行主机上，只读模式的会话
+    // 不许改任何东西，两种都不给。cwd 限会话 cwd 与工作空间根之内。
+    const terminalRoots = [
+      spec.cwd,
+      workspaceRoot(database, spec.workspaceId),
+    ].filter((root): root is string => typeof root === "string" && root !== "");
+    const terminal =
+      remote || mode === "plan"
+        ? undefined
+        : {
+            roots: terminalRoots,
+            env: { ...process.env, ...Object.fromEntries(spec.env) },
+          };
     try {
       const session = new AcpSession({
         rowId,
@@ -593,13 +612,8 @@ class AcpRuntime {
         onExit,
         remote,
         feed,
+        ...(terminal === undefined ? {} : { terminal }),
       });
-      const mode = plan.permissionMode as
-        | "default"
-        | "auto-edit"
-        | "full-auto"
-        | "plan"
-        | undefined;
       const common = {
         cwd: spec.cwd,
         ...(mode === undefined ? {} : { mode }),
