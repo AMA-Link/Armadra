@@ -61,6 +61,7 @@ import type { HookService } from "../hook/service";
 import { insertApproval } from "../hook/store";
 import type { CoreContext } from "../main";
 import { settingsDomain } from "../settings";
+import { timelineDomainOf } from "../timeline";
 import { parseCustomAgents } from "../settings/custom-agents";
 import { TerminalError, type TerminalSpec } from "../terminal/backend";
 import type { EnvPairs } from "../terminal/environment";
@@ -91,6 +92,7 @@ import {
   bundledClaudeCodeVersion,
   setAcpWarmer,
 } from "./prestart";
+import { AcpFeed } from "./feed";
 import { AcpMirror, mirrorPath } from "./mirror";
 import { installRoutes } from "./routes";
 import { AcpSession, type AcpSessionSink } from "./session";
@@ -342,7 +344,13 @@ class AcpRuntime {
     return out;
   }
 
-  private phase(workspaceId: string, nodeId: string, phase: AcpStartPhase) {
+  private phase(
+    workspaceId: string,
+    nodeId: string,
+    phase: AcpStartPhase,
+    feed?: AcpFeed,
+  ) {
+    feed?.starting(phase);
     this.context.bus.emit("workspace.event", {
       workspaceId,
       event: {
@@ -553,153 +561,172 @@ class AcpRuntime {
       typeof plan.resume === "string" && plan.resume !== ""
         ? acpResumeId(adapter, plan.resume)
         : undefined;
-    const session = new AcpSession({
-      rowId,
-      generation: spec.generation,
-      nodeId,
-      workspaceId: spec.workspaceId,
-      agentId,
-      sink: this.sink(
-        spec.workspaceId,
-        nodeId,
-        agentId,
-        adapter,
-        spec.cwd,
-        remote,
-      ),
-      mirrorFor: (acpSessionId) =>
-        new AcpMirror(mirrorPath(dataDir, nodeId, acpSessionId)),
-      resumeSessionId: resume,
-      onExit,
-      remote,
-    });
-    const mode = plan.permissionMode as
-      | "default"
-      | "auto-edit"
-      | "full-auto"
-      | "plan"
-      | undefined;
-    const common = {
-      cwd: spec.cwd,
-      ...(mode === undefined ? {} : { mode }),
-      ...(plan.model === undefined ? {} : { modelId: plan.model }),
-      ...(resume === undefined ? {} : { resumeSessionId: resume }),
-      ...session.callbacks(),
-      onStderr: (text: string) => {
-        this.context.log.debug("ACP agent stderr", {
-          nodeId,
-          bytes: text.length,
-        });
-        for (const phase of adapterPhases(text)) {
-          this.context.log.info("ACP adapter phase", {
+    // 时间线先登记：启动各阶段、恢复历史都从这一刻起能被看到（契约 §82）。
+    const timeline = timelineDomainOf(this.context.server);
+    const feed =
+      timeline === undefined || rowId === ""
+        ? undefined
+        : new AcpFeed(timeline, {
+            rowId,
             nodeId,
-            agentId,
-            ...phase,
+            workspaceId: spec.workspaceId,
+            generation: spec.generation,
           });
-        }
-      },
-      onTimings: (timings: AcpStartTimings) =>
-        this.timings(nodeId, agentId, timings),
-    };
-    const onPhase = (phase: AcpStartPhase) =>
-      this.phase(spec.workspaceId, nodeId, phase);
-
-    let host;
-    if (sshHostId !== undefined) {
-      // 凭据在远端不兑换（契约 §20）：条目名不带过去，值更不取。
-      // 会话的工作目录是执行主机上的：节点的 `cwd`，没有就是工作空间根。
-      // 行上的 `cwd` 可能是这一行当初以终端起时本机 `ssh` 的起点。
-      const remoteCwd =
-        (typeof nodeData?.cwd === "string" && nodeData.cwd !== ""
-          ? nodeData.cwd
-          : undefined) ??
-        workspaceRoot(database, spec.workspaceId) ??
-        spec.cwd;
-      host = await startRemoteAdapter(adapter, {
-        ...common,
-        onPhase,
-        cwd: remoteCwd,
-        hostId: sshHostId,
-        dataDir,
-        remoteEnv: Object.entries(custom?.env ?? {}),
-        nodeEnv: spec.env,
-      });
-    } else {
-      const launch = this.localLaunch(agentId) as LocalLaunch;
-      const processEnv: NodeJS.ProcessEnv = { ...process.env };
-      for (const [name, value] of spec.env) processEnv[name] = value;
-      for (const [name, value] of Object.entries(launch.customEnv)) {
-        processEnv[name] = value;
-      }
-      const injected = launch.injection;
-      for (const [name, value] of injected.env) processEnv[name] = value;
-      // §26.4：适配器不经画布启动器，兑换由 core 在这里做。值只进这个进程的
-      // 环境：不进节点数据、镜像、日志，也不进任何答复。
-      const secrets = await this.secrets(nodeId, agentId, spec.env);
-      for (const [name, value] of secrets) processEnv[name] = value;
-      // 菜单打开时预启动的那一个（契约 §51）：节点没带凭据、注入不靠节点身份、
-      // 启动签名相同才领。
-      const reference =
-        secrets.length === 0 && prestartable(launch)
-          ? this.prestartPlan(launch, spec.cwd)
-          : undefined;
-      const prestarted =
-        reference === undefined || reference instanceof AcpError
-          ? undefined
-          : await this.pool.claim(
-              AcpPrestartPool.key(agentId, spec.workspaceId),
-              reference,
-            );
-      // 启动闸门（契约 §52）：Codex 一次一个；`session/new` 答了（进入落设置
-      // 那一段）就放下一个。
-      const gate = launchGate();
-      await gate.acquire({
-        agentId: launch.baseAgentId,
-        configDir: configDirFor(launch.baseAgentId, processEnv),
+    try {
+      const session = new AcpSession({
+        rowId,
+        generation: spec.generation,
         nodeId,
+        workspaceId: spec.workspaceId,
+        agentId,
+        sink: this.sink(
+          spec.workspaceId,
+          nodeId,
+          agentId,
+          adapter,
+          spec.cwd,
+          remote,
+        ),
+        mirrorFor: (acpSessionId) =>
+          new AcpMirror(mirrorPath(dataDir, nodeId, acpSessionId)),
+        resumeSessionId: resume,
+        onExit,
+        remote,
+        feed,
       });
-      try {
-        host = await startAdapter(adapter, {
-          ...common,
-          onPhase: (phase) => {
-            onPhase(phase);
-            if (phase === "configure") gate.release(nodeId);
-          },
-          env: processEnv,
-          ...(prestarted === undefined ? {} : { prestarted }),
-          ...(injected.profilePath === undefined
-            ? {}
-            : { profilePath: injected.profilePath }),
-          ...(injected.args.length === 0
-            ? {}
-            : { injectionArgs: injected.args }),
-          canvasMcp: {
+      const mode = plan.permissionMode as
+        | "default"
+        | "auto-edit"
+        | "full-auto"
+        | "plan"
+        | undefined;
+      const common = {
+        cwd: spec.cwd,
+        ...(mode === undefined ? {} : { mode }),
+        ...(plan.model === undefined ? {} : { modelId: plan.model }),
+        ...(resume === undefined ? {} : { resumeSessionId: resume }),
+        needReplay: feed === undefined || !feed.hadHistory,
+        ...(feed === undefined ? {} : { onRestoring: () => feed.restoring() }),
+        ...session.callbacks(),
+        onStderr: (text: string) => {
+          this.context.log.debug("ACP agent stderr", {
             nodeId,
-            agentId,
-            dataDir,
-            ...(() => {
-              const name = handleForNode(database, nodeId);
-              return name === undefined ? {} : { nodeName: name };
-            })(),
-            ...(() => {
-              const role = nodeRole(database, nodeId);
-              return role === undefined ? {} : { nodeRole: role };
-            })(),
-            ...(rowId === ""
-              ? {}
-              : { session: { id: rowId, generation: spec.generation } }),
-          },
+            bytes: text.length,
+          });
+          for (const phase of adapterPhases(text)) {
+            this.context.log.info("ACP adapter phase", {
+              nodeId,
+              agentId,
+              ...phase,
+            });
+          }
+        },
+        onTimings: (timings: AcpStartTimings) =>
+          this.timings(nodeId, agentId, timings),
+      };
+      const onPhase = (phase: AcpStartPhase) =>
+        this.phase(spec.workspaceId, nodeId, phase, feed);
+
+      let host;
+      if (sshHostId !== undefined) {
+        // 凭据在远端不兑换（契约 §20）：条目名不带过去，值更不取。
+        // 会话的工作目录是执行主机上的：节点的 `cwd`，没有就是工作空间根。
+        // 行上的 `cwd` 可能是这一行当初以终端起时本机 `ssh` 的起点。
+        const remoteCwd =
+          (typeof nodeData?.cwd === "string" && nodeData.cwd !== ""
+            ? nodeData.cwd
+            : undefined) ??
+          workspaceRoot(database, spec.workspaceId) ??
+          spec.cwd;
+        host = await startRemoteAdapter(adapter, {
+          ...common,
+          onPhase,
+          cwd: remoteCwd,
+          hostId: sshHostId,
+          dataDir,
+          remoteEnv: Object.entries(custom?.env ?? {}),
+          nodeEnv: spec.env,
         });
-      } finally {
-        gate.release(nodeId);
+      } else {
+        const launch = this.localLaunch(agentId) as LocalLaunch;
+        const processEnv: NodeJS.ProcessEnv = { ...process.env };
+        for (const [name, value] of spec.env) processEnv[name] = value;
+        for (const [name, value] of Object.entries(launch.customEnv)) {
+          processEnv[name] = value;
+        }
+        const injected = launch.injection;
+        for (const [name, value] of injected.env) processEnv[name] = value;
+        // §26.4：适配器不经画布启动器，兑换由 core 在这里做。值只进这个进程的
+        // 环境：不进节点数据、镜像、日志，也不进任何答复。
+        const secrets = await this.secrets(nodeId, agentId, spec.env);
+        for (const [name, value] of secrets) processEnv[name] = value;
+        // 菜单打开时预启动的那一个（契约 §51）：节点没带凭据、注入不靠节点身份、
+        // 启动签名相同才领。
+        const reference =
+          secrets.length === 0 && prestartable(launch)
+            ? this.prestartPlan(launch, spec.cwd)
+            : undefined;
+        const prestarted =
+          reference === undefined || reference instanceof AcpError
+            ? undefined
+            : await this.pool.claim(
+                AcpPrestartPool.key(agentId, spec.workspaceId),
+                reference,
+              );
+        // 启动闸门（契约 §52）：Codex 一次一个；`session/new` 答了（进入落设置
+        // 那一段）就放下一个。
+        const gate = launchGate();
+        await gate.acquire({
+          agentId: launch.baseAgentId,
+          configDir: configDirFor(launch.baseAgentId, processEnv),
+          nodeId,
+        });
+        try {
+          host = await startAdapter(adapter, {
+            ...common,
+            onPhase: (phase) => {
+              onPhase(phase);
+              if (phase === "configure") gate.release(nodeId);
+            },
+            env: processEnv,
+            ...(prestarted === undefined ? {} : { prestarted }),
+            ...(injected.profilePath === undefined
+              ? {}
+              : { profilePath: injected.profilePath }),
+            ...(injected.args.length === 0
+              ? {}
+              : { injectionArgs: injected.args }),
+            canvasMcp: {
+              nodeId,
+              agentId,
+              dataDir,
+              ...(() => {
+                const name = handleForNode(database, nodeId);
+                return name === undefined ? {} : { nodeName: name };
+              })(),
+              ...(() => {
+                const role = nodeRole(database, nodeId);
+                return role === undefined ? {} : { nodeRole: role };
+              })(),
+              ...(rowId === ""
+                ? {}
+                : { session: { id: rowId, generation: spec.generation } }),
+            },
+          });
+        } finally {
+          gate.release(nodeId);
+        }
       }
+      session.opened(host);
+      return {
+        session,
+        program: adapter.program,
+        agentNames: expectedProcesses(baseAgent(settings, agentId)),
+      };
+    } catch (error) {
+      feed?.failed(error instanceof AcpError ? error.code : "acp_start_failed");
+      throw error;
     }
-    session.opened(host);
-    return {
-      session,
-      program: adapter.program,
-      agentNames: expectedProcesses(baseAgent(settings, agentId)),
-    };
   }
 }
 
@@ -854,6 +881,37 @@ export function install(context: CoreContext): void {
       .find((candidate) => candidate.owns(approval.id));
     return session?.answerElicitation(approval.id, result) ?? false;
   });
+
+  // Eco 休眠与唤醒（契约 §82）：ACP 会话在休眠时整个结束，没有会话对象可以写提示，
+  // 所以从终端域的 `terminal.hibernation` 事件上写（只管已经有时间线的会话）。
+  const offHibernation = context.bus.on("workspace.event", ({ event }) => {
+    if (event.type !== "terminal.hibernation") return;
+    const note = event as unknown as {
+      sessionId: string;
+      nodeId: string;
+      state: string;
+      workspaceId?: string;
+    };
+    const timeline = timelineDomainOf(context.server);
+    const row = timeline?.store.get(note.sessionId);
+    if (timeline === undefined || row === undefined) return;
+    if (note.state !== "hibernated" && note.state !== "running") return;
+    try {
+      const feed = new AcpFeed(timeline, {
+        rowId: note.sessionId,
+        nodeId: row.nodeId,
+        workspaceId: row.workspaceId,
+        generation: 0,
+      });
+      if (note.state === "hibernated") feed.sleeping();
+      else feed.notice("woke");
+    } catch (error) {
+      context.log.warn("could not record the hibernation on the timeline", {
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  });
+  context.onStop?.(offHibernation);
 
   if (!exitHooked) {
     exitHooked = true;

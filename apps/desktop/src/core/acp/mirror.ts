@@ -22,8 +22,8 @@ import type { AcpSessionUpdate } from "./types";
  * 的那一半在 `history/acp-mirror.ts`）：
  *
  *   * 我方发出的 prompt → user 文本；
- *   * `agent_message_chunk` → assistant 文本，一块一行（页面重载要读得到正在
- *     流的那一段；读的时候相邻的并成一条）；
+ *   * `agent_message_chunk` → assistant 文本，相邻的分块攒成一行（见下「批量
+ *     写」；页面重载要读得到正在流的那一段，读之前先刷空）；
  *   * `tool_call` → assistant 的 `tool_use`；`tool_call_update` 到了终态
  *     （completed / failed）→ user 的 `tool_result`，每个调用只记一次；
  *   * `user_message_chunk` 只在回放进一份空镜像时记：活的回合里那是适配器对我
@@ -37,12 +37,22 @@ import type { AcpSessionUpdate } from "./types";
  * 思考块、计划、用量、模式变化不进镜像：它们不是对话，只给页面（`acp.update`）；
  * 活进程的那一份在 `…/log` 的 `snapshot` 里（`session.ts`）。
  *
+ * **批量写**（设计 §3.2、L3）：助手文本一个分块一行太碎，每块还要一次同步写文件。
+ * 现在相邻的文本分块先攒在内存里，遇到别的记录（工具、我方提示）、回合结束
+ * （{@link AcpMirror.flush}）、攒够 {@link BATCH_BYTES} 或 {@link BATCH_MS} 到点
+ * 才写成一行；`read` / `size` / `empty` / `capture` 先刷空，所以经本对象读到的
+ * 永远包含已经发出事件的分块。
+ *
  * **先写镜像再发事件**：页面先订阅再读 `…/log`，读回来之前到的分块被它丢掉
  * ——前提是那些分块此时已经在镜像里了（会话层守这个次序）。
  */
 
 /** 一条工具结果在镜像里最多占这么多字符：整份文件的 diff 不该撑大转录。 */
 const RESULT_LIMIT = 8_000;
+
+/** 攒着的文本分块最多等多久、最多攒多大就写一行。 */
+export const BATCH_MS = 300;
+export const BATCH_BYTES = 32 * 1024;
 
 /** 文件名里的会话 id：只留安全字符，截长。 */
 function fileComponent(value: string): string {
@@ -212,23 +222,83 @@ export class AcpMirror {
   /** 还没落结果的工具调用最近一次给的差异（`content` 每次整份替换）。 */
   private readonly diffs = new Map<string, MirrorDiff[]>();
 
+  /** 攒着还没写的助手文本块（相邻的文本合并成一块）。 */
+  private pending: MirrorBlock[] = [];
+  private pendingBytes = 0;
+  private timer: ReturnType<typeof setTimeout> | undefined;
+  /** 已经写了几次文件（测试与诊断用）。 */
+  writes = 0;
+
   constructor(readonly path: string) {}
 
   /** 镜像还是空的（文件不在或零字节）。 */
   get empty(): boolean {
+    this.flush();
     return mirrorSize(this.path) === 0;
   }
 
   get size(): number {
+    this.flush();
     return mirrorSize(this.path);
   }
 
+  /** 把攒着的文本写成一行；没有攒着的什么都不做。 */
+  flush(): void {
+    if (this.timer !== undefined) {
+      clearTimeout(this.timer);
+      this.timer = undefined;
+    }
+    if (this.pending.length === 0) return;
+    const blocks = this.pending;
+    this.pending = [];
+    this.pendingBytes = 0;
+    this.write({ role: "assistant", blocks });
+  }
+
+  /** 攒一个助手块：文本并进上一个文本块，到量或到点写出。 */
+  private buffer(block: MirrorBlock): void {
+    const last = this.pending.at(-1);
+    if (block.type === "text" && last?.type === "text") {
+      this.pending[this.pending.length - 1] = {
+        type: "text",
+        text: last.text + block.text,
+      };
+    } else {
+      this.pending.push(block);
+    }
+    this.pendingBytes +=
+      block.type === "text"
+        ? block.text.length
+        : block.type === "image" && block.data
+          ? block.data.length
+          : 64;
+    if (this.pendingBytes >= BATCH_BYTES) {
+      this.flush();
+    } else if (this.timer === undefined) {
+      this.timer = setTimeout(() => {
+        this.timer = undefined;
+        try {
+          this.flush();
+        } catch {
+          // 落盘失败下一次写或 flush 再试；这里没有调用方可以接。
+        }
+      }, BATCH_MS);
+      this.timer.unref?.();
+    }
+  }
+
   append(record: MirrorRecord): void {
+    this.flush();
+    this.write(record);
+  }
+
+  private write(record: MirrorRecord): void {
     const directory = dirname(this.path);
     if (!existsSync(directory)) {
       mkdirSync(directory, { recursive: true, mode: 0o700 });
     }
     const fresh = !existsSync(this.path);
+    this.writes += 1;
     appendFileSync(
       this.path,
       `${JSON.stringify({ ...record, at: record.at ?? new Date().toISOString() })}\n`,
@@ -284,8 +354,9 @@ export class AcpMirror {
       case "agent_message_chunk": {
         const block = mirrorBlockOf(body.content);
         if (block === undefined) return false;
-        blocks = [block];
-        break;
+        // 回放进空镜像时是历史，没有「马上要读」的页面：照样攒，到点写。
+        this.buffer(block);
+        return true;
       }
       case "tool_call": {
         const id = typeof body.toolCallId === "string" ? body.toolCallId : "";
@@ -342,6 +413,7 @@ export class AcpMirror {
    * 与差异一起读（契约 §49）。
    */
   read(after = 0): { entries: MirrorEntry[]; endOffset: number } {
+    this.flush();
     const range = readMirrorEntries(this.path, after, 32 * 1024 * 1024, {
       rich: true,
     });
@@ -353,6 +425,7 @@ export class AcpMirror {
    * 取最后 `lines` 行。
    */
   capture(lines: number): string {
+    this.flush();
     const size = this.size;
     const window = 256 * 1024;
     const range = readMirrorEntries(

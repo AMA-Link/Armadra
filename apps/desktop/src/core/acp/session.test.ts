@@ -234,6 +234,7 @@ describe("an ACP session", () => {
     expect(
       first.sink.events.filter((event) => event.type === "acp.update"),
     ).toEqual([]);
+    first.session.flushMirror();
     const mirror = new AcpMirror(mirrorPath(dataDir, NODE, "fake-7"));
     expect(mirror.read().entries.map((entry) => entry.role)).toEqual([
       "user",

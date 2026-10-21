@@ -24,6 +24,7 @@ import { CoreFailure } from "../http/errors";
 import type { CoreRequest, HandlerResult, RouteMatch } from "../http/router";
 import { type DomainHandlers, registerProcedures } from "../http/rpc";
 import type { CoreContext } from "../main";
+import { timelineDomainOf } from "../timeline";
 import { hibernatedSession } from "../terminal/hibernate";
 import { resumeLine } from "../terminal/hibernator";
 import type { TerminalSession } from "../terminal/manager";
@@ -36,6 +37,7 @@ import {
 import { type AcpAdapter, cliResumeId } from "./adapters";
 import { type AttachmentBlocks, attachmentBlocks } from "./attachments";
 import { AcpError } from "./client";
+import { AcpFeed } from "./feed";
 import type { AcpStartPlan, AcpTerminalWiring } from "./index";
 import { AcpMirror, mirrorPath } from "./mirror";
 import { sshHostOf } from "./ssh";
@@ -408,7 +410,20 @@ export function installRoutes(context: CoreContext, deps: AcpRouteDeps): void {
       throw domain(404, "not_found", "Workspace not found");
     }
     if (deps.adapterFor(deps.settings(), agentId) === undefined) return;
-    deps.prestart?.(workspaceId, agentId, deps.cwdOf(root));
+    // 接回已有节点：按节点自己的目录预启动。节点在别的工作空间、是 SSH 节点
+    // （适配器起在执行主机上，本机预启动没有意义）时只当没这回事。
+    const nodeId = optionalString(body, "nodeId");
+    let cwd = root;
+    if (nodeId !== undefined && nodeId !== "") {
+      const node = loadNode(database, nodeId);
+      if (node === undefined || node.workspaceId !== workspaceId) {
+        throw domain(404, "not_found", "Node not found");
+      }
+      if (sshHostOf(node.data) !== undefined) return;
+      const own = node.data.cwd;
+      if (typeof own === "string" && own !== "") cwd = own;
+    }
+    deps.prestart?.(workspaceId, agentId, deps.cwdOf(cwd));
   });
 
   /* --------------------------------- 回合 --------------------------------- */
@@ -563,6 +578,8 @@ export function installRoutes(context: CoreContext, deps: AcpRouteDeps): void {
     const after =
       Number.isFinite(afterRaw) && afterRaw > 0 ? Math.floor(afterRaw) : 0;
     const session = wiring.backend.sessionByRow(rowId);
+    // 攒着还没写的文本分块：先写出去，读到的才包含已经发出事件的那些。
+    session?.flushMirror();
     let path = session?.mirrorPath;
     if (path === undefined && row.ownerNodeId !== null) {
       const status = getAgentStatus(database, row.ownerNodeId);
@@ -603,7 +620,53 @@ export function installRoutes(context: CoreContext, deps: AcpRouteDeps): void {
     if (driver !== "acp" && driver !== "terminal") {
       throw badRequest("driver must be acp or terminal");
     }
-    const result = await switchDriver(wiring, nodeId, driver);
+    // 时间线（契约 §82）：切换期间活动是 `switching`，切完写一条 `driver_switched`。
+    // 同一行同一条时间线，所以切换前后的内容连在一起。
+    const timeline = timelineDomainOf(context.server);
+    const before = loadSession(database, nodeId);
+    const owner = loadNode(database, nodeId);
+    const current =
+      before === undefined
+        ? undefined
+        : wiring.manager.session(before.sessionId);
+    const noop =
+      current !== undefined &&
+      wiring.manager.isAlive(current.id) &&
+      (current.backend === "acp") === (driver === "acp");
+    const marked =
+      timeline !== undefined &&
+      owner !== undefined &&
+      current !== undefined &&
+      !noop &&
+      timeline.store.get(current.id) !== undefined
+        ? { timeline, rowId: current.id, workspaceId: owner.workspaceId }
+        : undefined;
+    if (marked !== undefined) {
+      marked.timeline.open({
+        timelineId: marked.rowId,
+        workspaceId: marked.workspaceId,
+        nodeId,
+      });
+      marked.timeline.activity.switching(marked.rowId);
+    }
+    let result: Awaited<ReturnType<typeof switchDriver>>;
+    try {
+      result = await switchDriver(wiring, nodeId, driver);
+    } catch (error) {
+      marked?.timeline.activity.ready(marked.rowId);
+      throw error;
+    }
+    if (marked !== undefined) {
+      new AcpFeed(marked.timeline, {
+        rowId: result.sessionId,
+        nodeId,
+        workspaceId: result.workspaceId,
+        generation: wiring.manager.session(result.sessionId)?.generation ?? 0,
+      }).notice("driver_switched", { driver });
+      // ACP 的新会话自己 `ready`；切到终端的由终端来源接手，这里先回到空闲。
+      if (driver === "terminal")
+        marked.timeline.activity.ready(result.sessionId);
+    }
     context.bus.emit("workspace.event", {
       workspaceId: result.workspaceId,
       event: {
