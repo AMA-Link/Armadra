@@ -115,7 +115,8 @@ describe("create → output → wait_for_exit", () => {
   it("整条命令行放在 command 里、没有 args：交给 shell 解析", async () => {
     const { call } = make();
     const created = (await call("terminal/create", {
-      command: `${JSON.stringify(process.execPath)} -e "console.log('shell-ok')"`,
+      // 两种 shell（sh、cmd）都认的写法：不碰引号规则。
+      command: "echo shell-ok",
     })) as { terminalId: string };
     await call("terminal/wait_for_exit", { terminalId: created.terminalId });
     const result = (await call("terminal/output", {
@@ -294,7 +295,9 @@ describe("回收", () => {
     const exit = (await call("terminal/wait_for_exit", { terminalId: id })) as {
       signal: string | null;
     };
-    expect(exit.signal).toBe("SIGTERM");
+    // Windows 没有信号：`taskkill` 之后只有非零退出码。
+    if (process.platform === "win32") expect(exit.signal).toBeNull();
+    else expect(exit.signal).toBe("SIGTERM");
     // kill 之后终端仍在：能取输出。
     await expect(
       call("terminal/output", { terminalId: id }),
