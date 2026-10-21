@@ -260,12 +260,12 @@ describe("TailRunner", () => {
   it("keeps looking for a transcript that does not exist yet", () => {
     const timers = new FakeTimers();
     const reads: ReadResult[] = [];
-    let located: string | undefined;
-    const runner = runnerOn(timers, fakeWatch(), reads, () => located);
+    const found: { path?: string } = {};
+    const runner = runnerOn(timers, fakeWatch(), reads, () => found.path);
     runner.start();
     expect(runner.mode).toBe("idle");
     writeFileSync(file, row(1));
-    located = file;
+    found.path = file;
     timers.advance(6_000);
     expect(numbers(reads)).toEqual([1]);
     runner.stop();

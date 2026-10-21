@@ -20,7 +20,6 @@ import {
   type TimelineHead,
   type TimelineItem,
   type TimelineNoticeCode,
-  type TimelineOp,
   type TimelinePlanEntry,
   type TimelineThoughtItem,
   type TimelineToolItem,
