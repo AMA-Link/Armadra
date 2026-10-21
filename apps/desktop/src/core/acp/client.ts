@@ -69,6 +69,7 @@ export type AcpErrorCode =
   | "acp_session_failed"
   // `session/new` 到点没答（契约 §51）。
   | "acp_session_timeout"
+  | "acp_resume_timeout"
   | "acp_mode_unsupported"
   | "acp_mode_unavailable"
   // 按模型选择（契约 §26.2）。
