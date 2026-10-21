@@ -57,6 +57,10 @@ export const EPHEMERAL_EVENTS: ReadonlySet<string> = new Set([
   // 补发过去的增量只会让重连的页面多吃一遍它已经同步过的帧。
   "timeline.delta",
   "timeline.activity",
+  // 契约 §82.3：每个分块一帧的 `acp.update` 不再进 outbox，不再挤占工作空间 5000
+  // 条的保留额度。重连的页面读 `…/log`（镜像）或 `timeline.sync` 补齐，从来不靠
+  // 续订里补发的分块。
+  "acp.update",
 ]);
 
 /**
