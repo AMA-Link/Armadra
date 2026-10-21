@@ -1,0 +1,367 @@
+{
+  "head": {
+    "usage": {
+      "used": 25332,
+      "size": 128000
+    }
+  },
+  "items": [
+    {
+      "id": "turn:cp:00000000-0000-4000-8000-000000000005",
+      "turn": 1,
+      "ord": 0,
+      "rev": 20,
+      "source": "transcript",
+      "at": 1790000001001,
+      "gen": 0,
+      "kind": "turn",
+      "turnId": "cp:00000000-0000-4000-8000-000000000005",
+      "startedAt": 1790000001001,
+      "endedAt": 1790000020000,
+      "permissionWaitMs": 0
+    },
+    {
+      "id": "u:cp:00000000-0000-4000-8000-000000000005",
+      "turn": 1,
+      "ord": 1,
+      "rev": 2,
+      "source": "transcript",
+      "at": 1790000001001,
+      "gen": 0,
+      "kind": "user",
+      "text": "给 README 加一行并跑测试"
+    },
+    {
+      "id": "th:m1",
+      "turn": 1,
+      "ord": 2,
+      "rev": 3,
+      "source": "transcript",
+      "at": 1790000002000,
+      "gen": 0,
+      "kind": "thought",
+      "text": "先看 README。",
+      "streaming": false
+    },
+    {
+      "id": "tool:call_view",
+      "turn": 1,
+      "ord": 3,
+      "rev": 5,
+      "source": "transcript",
+      "at": 1790000002000,
+      "gen": 0,
+      "kind": "tool",
+      "toolCallId": "call_view",
+      "toolKind": "read",
+      "title": "view /work/demo/README.md",
+      "status": "completed",
+      "locations": [
+        {
+          "path": "/work/demo/README.md"
+        }
+      ],
+      "input": {
+        "path": "/work/demo/README.md"
+      },
+      "content": [
+        {
+          "type": "text",
+          "text": "1. # Demo"
+        }
+      ],
+      "startedAt": 1790000002000,
+      "endedAt": 1790000002100
+    },
+    {
+      "id": "a:m2",
+      "turn": 1,
+      "ord": 4,
+      "rev": 7,
+      "source": "transcript",
+      "at": 1790000003000,
+      "gen": 0,
+      "kind": "assistant",
+      "parts": [
+        {
+          "type": "text",
+          "text": "改 README 并新建文件。"
+        }
+      ],
+      "streaming": false
+    },
+    {
+      "id": "tool:call_edit",
+      "turn": 1,
+      "ord": 5,
+      "rev": 10,
+      "source": "transcript",
+      "at": 1790000003000,
+      "gen": 0,
+      "kind": "tool",
+      "toolCallId": "call_edit",
+      "toolKind": "edit",
+      "title": "edit /work/demo/README.md",
+      "status": "completed",
+      "locations": [
+        {
+          "path": "/work/demo/README.md"
+        }
+      ],
+      "input": {
+        "path": "/work/demo/README.md",
+        "fields": [
+          {
+            "key": "old_str",
+            "value": "# Demo"
+          },
+          {
+            "key": "new_str",
+            "value": "# Demo\n新增一行"
+          }
+        ]
+      },
+      "content": [
+        {
+          "type": "diff",
+          "path": "/work/demo/README.md",
+          "oldText": "# Demo",
+          "newText": "# Demo\n新增一行"
+        }
+      ],
+      "startedAt": 1790000003000,
+      "endedAt": 1790000003100
+    },
+    {
+      "id": "tool:call_create",
+      "turn": 1,
+      "ord": 6,
+      "rev": 11,
+      "source": "transcript",
+      "at": 1790000003000,
+      "gen": 0,
+      "kind": "tool",
+      "toolCallId": "call_create",
+      "toolKind": "edit",
+      "title": "create /work/demo/new.txt",
+      "status": "completed",
+      "locations": [
+        {
+          "path": "/work/demo/new.txt"
+        }
+      ],
+      "input": {
+        "path": "/work/demo/new.txt",
+        "fields": [
+          {
+            "key": "file_text",
+            "value": "hello"
+          }
+        ]
+      },
+      "content": [
+        {
+          "type": "diff",
+          "path": "/work/demo/new.txt",
+          "oldText": null,
+          "newText": "hello"
+        }
+      ],
+      "startedAt": 1790000003000,
+      "endedAt": 1790000003200
+    },
+    {
+      "id": "tool:call_bash",
+      "turn": 1,
+      "ord": 7,
+      "rev": 15,
+      "source": "transcript",
+      "at": 1790000004000,
+      "gen": 0,
+      "kind": "tool",
+      "toolCallId": "call_bash",
+      "toolKind": "execute",
+      "title": "Run tests",
+      "status": "completed",
+      "locations": [],
+      "input": {
+        "command": "pnpm test",
+        "fields": [
+          {
+            "key": "description",
+            "value": "Run tests"
+          },
+          {
+            "key": "mode",
+            "value": "sync"
+          }
+        ]
+      },
+      "content": [
+        {
+          "type": "terminal",
+          "terminalId": "call_bash",
+          "command": "pnpm test",
+          "output": "2 passed",
+          "exitCode": 0
+        }
+      ],
+      "startedAt": 1790000004000,
+      "endedAt": 1790000004500
+    },
+    {
+      "id": "tool:call_bash2",
+      "turn": 1,
+      "ord": 8,
+      "rev": 16,
+      "source": "transcript",
+      "at": 1790000004000,
+      "gen": 0,
+      "kind": "tool",
+      "toolCallId": "call_bash2",
+      "toolKind": "execute",
+      "title": "Lint",
+      "status": "failed",
+      "locations": [],
+      "input": {
+        "command": "pnpm lint",
+        "fields": [
+          {
+            "key": "description",
+            "value": "Lint"
+          }
+        ]
+      },
+      "content": [
+        {
+          "type": "terminal",
+          "terminalId": "call_bash2",
+          "command": "pnpm lint",
+          "output": "1 problem",
+          "exitCode": 1
+        }
+      ],
+      "startedAt": 1790000004000,
+      "endedAt": 1790000004900
+    },
+    {
+      "id": "tool:call_task",
+      "turn": 1,
+      "ord": 9,
+      "rev": 17,
+      "source": "transcript",
+      "at": 1790000004000,
+      "gen": 0,
+      "kind": "tool",
+      "toolCallId": "call_task",
+      "toolKind": "subagent",
+      "title": "看看测试",
+      "status": "failed",
+      "locations": [],
+      "input": {
+        "fields": [
+          {
+            "key": "name",
+            "value": "explore"
+          },
+          {
+            "key": "agent_type",
+            "value": "explore"
+          },
+          {
+            "key": "description",
+            "value": "看看测试"
+          },
+          {
+            "key": "prompt",
+            "value": "x"
+          }
+        ]
+      },
+      "content": [
+        {
+          "type": "text",
+          "text": "子代理超时"
+        }
+      ],
+      "startedAt": 1790000004000,
+      "endedAt": 1790000005000
+    },
+    {
+      "id": "a:m4",
+      "turn": 1,
+      "ord": 10,
+      "rev": 18,
+      "source": "transcript",
+      "at": 1790000005100,
+      "gen": 0,
+      "kind": "assistant",
+      "parts": [
+        {
+          "type": "text",
+          "text": "测试通过，lint 有一处问题。"
+        }
+      ],
+      "streaming": false
+    },
+    {
+      "id": "n:00000000-0000-4000-8000-000000000030",
+      "turn": 1,
+      "ord": 11,
+      "rev": 19,
+      "source": "transcript",
+      "at": 1790000006000,
+      "gen": 0,
+      "kind": "notice",
+      "code": "compacted",
+      "params": {}
+    },
+    {
+      "id": "turn:cp:00000000-0000-4000-8000-000000000031",
+      "turn": 2,
+      "ord": 0,
+      "rev": 25,
+      "source": "transcript",
+      "at": 1790000020000,
+      "gen": 0,
+      "kind": "turn",
+      "turnId": "cp:00000000-0000-4000-8000-000000000031",
+      "startedAt": 1790000020000,
+      "endedAt": 1790000022000,
+      "stopReason": "cancelled",
+      "permissionWaitMs": 0
+    },
+    {
+      "id": "u:cp:00000000-0000-4000-8000-000000000031",
+      "turn": 2,
+      "ord": 1,
+      "rev": 22,
+      "source": "transcript",
+      "at": 1790000020000,
+      "gen": 0,
+      "kind": "user",
+      "text": "继续修复"
+    },
+    {
+      "id": "tool:call_slow",
+      "turn": 2,
+      "ord": 2,
+      "rev": 24,
+      "source": "transcript",
+      "at": 1790000021000,
+      "gen": 0,
+      "kind": "tool",
+      "toolCallId": "call_slow",
+      "toolKind": "execute",
+      "title": "sleep 100",
+      "status": "cancelled",
+      "locations": [],
+      "input": {
+        "command": "sleep 100"
+      },
+      "content": [],
+      "startedAt": 1790000021000,
+      "endedAt": 1790000022000
+    }
+  ]
+}

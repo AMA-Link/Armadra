@@ -25,6 +25,7 @@ import { outcomeOf } from "../activity";
 import type { TimelineDomain } from "../index";
 import { claudeAdapter } from "./claude";
 import { codexAdapter } from "./codex";
+import { copilotTranscript } from "./copilot";
 import { mapHookActivity } from "./hook-activity";
 import { opencodeTranscript } from "./opencode";
 import { ompTranscript, piTranscript } from "./pi";
@@ -59,6 +60,7 @@ export const ADAPTERS: Readonly<Record<string, TranscriptAdapter>> = {
   opencode: opencodeTranscript,
   pi: piTranscript,
   omp: ompTranscript,
+  copilot: copilotTranscript,
 };
 
 /** 这个代理有没有转录适配器（页面据此决定「会话 / 终端」切换是否可用）。 */
