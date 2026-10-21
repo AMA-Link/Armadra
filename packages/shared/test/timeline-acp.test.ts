@@ -431,6 +431,48 @@ describe("工具调用", () => {
     ]);
   });
 
+  it("终端内容带输出尾部与退出码；输出过长只留尾部", () => {
+    const big = `head${"x".repeat(TOOL_TEXT_TAIL_BYTES)}tail`;
+    const state = feed([
+      toolCall("c1", {
+        kind: "execute",
+        content: [
+          {
+            type: "terminal",
+            terminalId: "t1",
+            command: "pnpm test",
+            output: "ok\n",
+            exitCode: 0,
+          },
+        ],
+      }),
+      toolCall("c2", {
+        kind: "execute",
+        content: [
+          { type: "terminal", terminalId: "t2", output: big, exitCode: null },
+        ],
+      }),
+    ]);
+    expect(toolOf(state, "c1").content).toEqual([
+      {
+        type: "terminal",
+        terminalId: "t1",
+        command: "pnpm test",
+        output: "ok\n",
+        exitCode: 0,
+      },
+    ]);
+    const clipped = toolOf(state, "c2").content[0] as {
+      output: string;
+      truncated?: boolean;
+      exitCode?: number | null;
+    };
+    expect(clipped.truncated).toBe(true);
+    expect(clipped.output.endsWith("tail")).toBe(true);
+    expect(clipped.output.startsWith("head")).toBe(false);
+    expect(clipped.exitCode).toBeNull();
+  });
+
   it("输出文本只留尾部 64 KiB，diff 超过 1 MiB 只记行数", () => {
     const big = "x".repeat(TOOL_TEXT_TAIL_BYTES + 1000);
     const hugeDiff = "line\n".repeat(Math.ceil(DIFF_MAX_BYTES / 5) + 10);
