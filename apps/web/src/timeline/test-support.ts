@@ -191,26 +191,6 @@ export class FakeCore {
   };
 }
 
-/**
- * 没有 `timeline.*` 的主机（旧版本，或会话还没写过时间线）：每个调用答 404
- * `not_found`。页面据此退回 `acp.log` 适配层。
- */
-export const missingTransport: TimelineTransport = (() => {
-  const gone = async (): Promise<never> => {
-    throw Object.assign(new Error("no timeline"), {
-      code: "not_found",
-      status: 404,
-    });
-  };
-  return {
-    open: gone,
-    sync: gone,
-    page: gone,
-    blob: gone,
-    subscribe: () => () => undefined,
-  };
-})();
-
 /** 手动推进的帧调度器：`runFrame()` 触发一次。 */
 export function manualScheduler() {
   let queued: (() => void) | undefined;

@@ -135,6 +135,45 @@ await h.run(async () => {
       );
     return text ? JSON.parse(text) : null;
   };
+  /**
+   * 会话的对话记录：`timeline.open` 的条目（契约 §82）折成旧 `…/log` 的 `entries` 形状
+   * （用户 / 助手文本、工具调用），连同头部与原始应答。
+   */
+  const sessionLog = async (rowId) => {
+    const opened = await api("/api/rpc/timeline/open", {
+      method: "POST",
+      body: { json: { timelineId: rowId, tailTurns: 50 } },
+    });
+    const { items = [], head = {} } = opened?.json ?? {};
+    const entries = [];
+    for (const item of items) {
+      if (item.kind === "user") {
+        entries.push({
+          role: "user",
+          blocks: [
+            ...(item.text === "" ? [] : [{ type: "text", text: item.text }]),
+            ...(item.attachments ?? []).map((attachment) => ({
+              type: "resource_link",
+              ...attachment,
+            })),
+          ],
+        });
+      } else if (item.kind === "assistant") {
+        entries.push({
+          role: "assistant",
+          blocks: item.parts
+            .filter((part) => part.type === "text")
+            .map((part) => ({ type: "text", text: part.text })),
+        });
+      } else if (item.kind === "tool") {
+        entries.push({
+          role: "assistant",
+          blocks: [{ type: "tool_use", name: item.title, id: item.toolCallId }],
+        });
+      }
+    }
+    return { entries, head, items };
+  };
   const web = await startVite(h, root, environment);
   const chrome = await startChrome(h);
   const page = await chrome.open({ name: "page", width: 1600, height: 1000 });
@@ -497,8 +536,8 @@ await h.run(async () => {
     `return !!document.querySelector(${JSON.stringify(`${node(C)} [data-slot="acp-session-view"] textarea`)});`,
     { what: "C 的会话视图与输入框" },
   );
-  const logC = await api(`/api/acp/sessions/${rowC.id}/log`);
-  report.featureModels = logC.models ?? null;
+  const logC = await sessionLog(rowC.id);
+  report.featureModels = logC.head.models ?? null;
   const card = `${node(C)} [data-slot="acp-elicitation"]`;
   await say(C, "pick one [elicit]");
   // 旧的假 Agent 不认 `[elicit]`（回声），新的假 Agent 遇上没声明能力的 core 答

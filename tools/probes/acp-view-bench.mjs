@@ -8,13 +8,12 @@
 //
 //   open        打开含 N 回合（缺省 300）的会话：历史由假 Agent 的 `session/load` 回放进会话
 //               时间线（B3 之后的真实路径，不直接写 SQLite）。量 `timeline.open`（页面首屏用的
-//               尾部快照）的耗时、应答字节、条目数与页面侧 `JSON.parse` 的耗时；服务端还留着
-//               旧 `…/log` 时另量它（`openLog*`，旧接口下线后缺席）；
+//               尾部快照）的耗时、应答字节、条目数与页面侧 `JSON.parse` 的耗时；
 //   stream      脚本化 Agent 以每秒 R 块（缺省 50）吐 C 块（缺省 200）：每块从 Agent 吐出
-//               到工作空间事件流的订阅者收到的延迟（core 一侧，认 `timeline.delta`，旧版也认
-//               `acp.update`）、丢块数，每块多写了几行 outbox 与镜像，core 进程的 CPU；
+//               到工作空间事件流的订阅者收到的延迟（core 一侧，认 `timeline.delta`）、丢块数，
+//               每块多写了几行 outbox，core 进程的 CPU；
 //   reconnect   断开事件流再连：连上的耗时，加上页面重连后做的那件事（`timeline.sync`
-//               补一次；旧版是整份重读 `…/log`）；
+//               补一次）；
 //   transcript  Claude 形状的转录文件：`GET /api/agent-status/{node}/transcript` 读 256 KiB
 //               与 5 MiB（上限）两档的耗时；另给一份不经 core 的参照（整读 + 逐行解析 20 MiB，
 //               尾读 256 KiB），对应设计文档里的 55 MB / 153 ms 那一行。
@@ -169,17 +168,12 @@ export const METRICS = {
   openTimelineMs: { better: "lower", slack: 30, unit: "ms" },
   openTimelineParseMs: { better: "lower", slack: 15, unit: "ms" },
   openTimelineBytes: { unit: "B" },
-  openTimelineItems: { unit: "条" },
-  openLogMs: { better: "lower", slack: 30, unit: "ms" },
-  openLogParseMs: { better: "lower", slack: 15, unit: "ms" },
-  openLogBytes: { unit: "B" },
-  openLogEntries: { unit: "条" },
+  openTimelineEntries: { unit: "条" },
   streamLatencyP50Ms: { better: "lower", slack: 10, unit: "ms" },
   streamLatencyP95Ms: { better: "lower", slack: 25, unit: "ms" },
   streamLatencyMaxMs: { better: "lower", slack: 100, unit: "ms" },
   streamDeliveredRatio: { better: "higher", slack: 0.01, unit: "" },
   streamOutboxRowsPerChunk: { better: "lower", slack: 0.2, unit: "行/块" },
-  streamMirrorLinesPerChunk: { unit: "行/块" },
   streamCoreCpuPercent: { better: "lower", slack: 10, unit: "%" },
   reconnectOpenMs: { better: "lower", slack: 20, unit: "ms" },
   reconnectSyncMs: { better: "lower", slack: 40, unit: "ms" },
@@ -271,24 +265,14 @@ export function processStats(pid) {
 
 /* ------------------------------ 事件流帧 ------------------------------ */
 
-/** 事件流的一帧文本 → `acp.update` 里的分块标记（序号、吐出时间）；不是分块答 `null`。 */
+/** 第一个分块标记；没有答 `null`。 */
 export function chunkFrame(text) {
-  let frame;
-  try {
-    frame = JSON.parse(text);
-  } catch {
-    return null;
-  }
-  const event = frame?.event ?? frame;
-  if (event?.type !== "acp.update") return null;
-  if (event.update?.sessionUpdate !== "agent_message_chunk") return null;
-  const content = event.update.content;
-  return parseChunkMarker(content?.type === "text" ? (content.text ?? "") : "");
+  return chunkMarkers(text)[0] ?? null;
 }
 
 /**
  * 一帧里的全部分块标记（按序号去重由调用方做）。`timeline.delta` 把几个分块合并在一帧
- * 里下发（`append` 的增量或整条 `put`），所以逐个标记取；旧的 `acp.update` 一帧一块。
+ * 里下发（`append` 的增量或整条 `put`），所以逐个标记取。
  */
 export function chunkMarkers(text) {
   let frame;
@@ -298,10 +282,6 @@ export function chunkMarkers(text) {
     return [];
   }
   const event = frame?.event ?? frame;
-  if (event?.type === "acp.update") {
-    const marker = chunkFrame(text);
-    return marker === null ? [] : [marker];
-  }
   if (event?.type !== "timeline.delta") return [];
   const markers = [];
   for (const match of text.matchAll(/⟦(\d+):(\d+)⟧/gu))
@@ -469,8 +449,6 @@ async function main() {
       });
       return { workspaceId: workspace.id, boardId: first.id };
     };
-    const mirrorFile = (nodeId) =>
-      join(data, "acp", nodeId, `${BENCH_SESSION}.acp.jsonl`);
     const rpc = async (name, input) => {
       const answer = await fetch(
         new URL(`/api/rpc/${name.replace(".", "/")}`, origin),
@@ -511,18 +489,6 @@ async function main() {
           );
         await sleep(100);
       }
-    };
-    const lineCount = (file) => {
-      if (!existsSync(file)) return 0;
-      const text = readFileSync(file, "utf8");
-      let lines = 0;
-      for (
-        let at = text.indexOf("\n");
-        at !== -1;
-        at = text.indexOf("\n", at + 1)
-      )
-        lines += 1;
-      return lines;
     };
 
     /* --------------------------- 1. 打开 N 回合 --------------------------- */
@@ -650,51 +616,15 @@ async function main() {
     metrics.openTimelineMs = median("ms");
     metrics.openTimelineParseMs = median("parseMs");
     metrics.openTimelineBytes = openRuns[0].bytes;
-    metrics.openTimelineItems = openRuns[0].entries;
+    metrics.openTimelineEntries = openRuns[0].entries;
     report.details.open = {
       ms: summarize(openRuns.map((r) => r.ms)),
       parseMs: summarize(openRuns.map((r) => r.parseMs)),
     };
     step(
       "打开会话（timeline.open）",
-      `${metrics.openTimelineMs} ms，解析 ${metrics.openTimelineParseMs} ms，${metrics.openTimelineBytes} B，${metrics.openTimelineItems} 条`,
+      `${metrics.openTimelineMs} ms，解析 ${metrics.openTimelineParseMs} ms，${metrics.openTimelineBytes} B，${metrics.openTimelineEntries} 条`,
     );
-    // 旧接口还在的版本（B10 下线前）另量一份，对基线用；下线后这里直接缺席。
-    const legacyLog = await fetch(
-      new URL(`${sessionPath}/log?after=0`, origin),
-    );
-    if (legacyLog.ok) {
-      const logRuns = [];
-      for (let run = 0; run < options.runs + 1; run += 1) {
-        const started = performance.now();
-        const answer = await fetch(
-          new URL(`${sessionPath}/log?after=0`, origin),
-        );
-        const text = await answer.text();
-        const fetched = performance.now();
-        const body = JSON.parse(text);
-        const parsed = performance.now();
-        if (run > 0)
-          logRuns.push({
-            ms: fetched - started,
-            parseMs: parsed - fetched,
-            bytes: Buffer.byteLength(text),
-            entries: body.entries.length,
-          });
-      }
-      const logMedian = (key) =>
-        round1(
-          percentile(
-            logRuns.map((r) => r[key]),
-            50,
-          ),
-        );
-      metrics.openLogMs = logMedian("ms");
-      metrics.openLogParseMs = logMedian("parseMs");
-      metrics.openLogBytes = logRuns[0].bytes;
-      metrics.openLogEntries = logRuns[0].entries;
-    }
-
     /* ------------------------------ 2. 流式 ------------------------------ */
 
     live.frames.length = 0;
@@ -702,7 +632,6 @@ async function main() {
     const outboxBefore = count(
       "SELECT count(*) AS count FROM events WHERE workspace_id = ?",
     );
-    const mirrorBefore = lineCount(mirrorFile(nodeA));
     const cpuBefore = processStats(runtime.process.pid);
     const streamStarted = performance.now();
     await api(`${sessionPath}/prompt`, {
@@ -738,10 +667,6 @@ async function main() {
           outboxBefore) /
           options.chunks) *
           100,
-      ) / 100;
-    metrics.streamMirrorLinesPerChunk =
-      Math.round(
-        ((lineCount(mirrorFile(nodeA)) - mirrorBefore) / options.chunks) * 100,
       ) / 100;
     metrics.streamCoreCpuPercent =
       cpuBefore && cpuAfter

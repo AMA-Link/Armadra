@@ -7,8 +7,8 @@
 //      出来；不行的整家记 skipped，不装、不回退到真实目录。起来之后再核
 //      `GET /api/agents` 的 `acp.installed`。
 //   2. 每家经 `POST /api/acp/sessions` 带首条 prompt「Reply with just OK.」起会
-//      话：`agent_status.state_source = 'acp'`、回合结束 `done`、镜像
-//      （`GET /api/acp/sessions/{id}/log`）里有一条 assistant 记录。
+//      话：`agent_status.state_source = 'acp'`、回合结束 `done`、时间
+//      线（`timeline.open`）里有一条 assistant 记录。
 //   3. Claude：会话切到 `default` 模式，发一条会写文件的 prompt，等审批卡，经**页
 //      面**点「拒绝」（`reject_once`）；断言审批行 `answer = deny`、
 //      `request_json.options` 的形状、审计 `route = acp`、节点回到 `done`、文件
@@ -100,6 +100,40 @@ import {
   watchWorkspaceEvents,
   which,
 } from "./lib.mjs";
+
+/**
+ * 会话的对话记录：`timeline.open`（契约 §82）的条目折成旧 `…/log` 的 `entries` 形状
+ * （用户 / 助手文本、工具调用），连同头部。
+ */
+async function sessionLogOf(api, rowId) {
+  const opened = await api("/api/rpc/timeline/open", {
+    method: "POST",
+    body: { json: { timelineId: rowId, tailTurns: 50 } },
+  });
+  const { items = [], head = {} } = opened?.json ?? {};
+  const entries = [];
+  for (const item of items) {
+    if (item.kind === "user") {
+      entries.push({
+        role: "user",
+        blocks: [{ type: "text", text: item.text }],
+      });
+    } else if (item.kind === "assistant") {
+      entries.push({
+        role: "assistant",
+        blocks: item.parts
+          .filter((part) => part.type === "text")
+          .map((part) => ({ type: "text", text: part.text })),
+      });
+    } else if (item.kind === "tool") {
+      entries.push({
+        role: "assistant",
+        blocks: [{ type: "tool_use", name: item.title, id: item.toolCallId }],
+      });
+    }
+  }
+  return { entries, head };
+}
 
 const ALL_FAMILIES = ["claude", "codex", "opencode", "pi", "omp", "copilot"];
 /** `ARMADRA_E2E_ACP_ONLY=claude,opencode`：只跑其中几家（其余记 skipped）。 */
@@ -584,17 +618,11 @@ export default async function run12() {
         nodeId,
       );
 
-    // 事件流：用量（`usage_update`）与驱动切换（`acp.driver`）。
+    // 事件流：驱动切换（`acp.driver`）。用量在收尾时读时间线头部。
     const driverEvents = [];
     const usage = report.acp.usage;
     await watchWorkspaceEvents(origin, workspace.id, (event) => {
       if (event?.type === "acp.driver") driverEvents.push(event);
-      const update = event?.type === "acp.update" ? event.update : undefined;
-      if (update?.sessionUpdate === "usage_update" && event.nodeId) {
-        const id = active.find((family) => nodes[family].id === event.nodeId);
-        if (id !== undefined)
-          usage[id] = Math.max(usage[id] ?? 0, Number(update.used) || 0);
-      }
     });
 
     /** 等一轮结束（`since` 之后状态回到 done、来源 acp）；超时就取消这一轮。 */
@@ -640,7 +668,7 @@ export default async function run12() {
         });
         sessions[id] = session.id;
         const done = await waitTurn(id, session.id, since);
-        const log = await api(`/api/acp/sessions/${session.id}/log`);
+        const log = await sessionLogOf(api, session.id);
         const answered = (log.entries ?? []).some(
           (entry) =>
             entry.role === "assistant" &&
@@ -717,7 +745,7 @@ export default async function run12() {
             watching = false;
             await watcher;
           }
-          const log = await api(`/api/acp/sessions/${sessions[id]}/log`);
+          const log = await sessionLogOf(api, sessions[id]);
           const last = [...(log.entries ?? [])]
             .reverse()
             .find((entry) => entry.role === "assistant");
@@ -736,9 +764,7 @@ export default async function run12() {
           });
         } catch (error) {
           const row = status(nodes[id].id);
-          const log = await api(`/api/acp/sessions/${sessions[id]}/log`).catch(
-            () => ({}),
-          );
+          const log = await sessionLogOf(api, sessions[id]).catch(() => ({}));
           mark(id, "canvasTool", false, {
             error: error.message,
             state: row?.state,
@@ -1235,6 +1261,10 @@ export default async function run12() {
     /* ------------------------------ 7. 收尾判定 ------------------------------ */
 
     for (const id of active) {
+      const head = sessions[id]
+        ? (await sessionLogOf(api, sessions[id]).catch(() => undefined))?.head
+        : undefined;
+      if (head?.usage?.used !== undefined) usage[id] = Number(head.usage.used);
       if (usage[id] === undefined) continue;
       mark(id, "tokenBudget", usage[id] < TOKEN_BUDGET, usage[id]);
     }

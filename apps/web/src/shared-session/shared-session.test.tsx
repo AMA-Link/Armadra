@@ -6,7 +6,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const calls = vi.hoisted(() => ({
   session: vi.fn(),
   get: vi.fn(),
-  log: vi.fn(),
   connect: vi.fn(
     (..._args: unknown[]) =>
       () =>
@@ -18,7 +17,6 @@ vi.mock("@/api/client", () => ({
   clientFor: () => ({
     identity: { session: calls.session },
     terminals: { get: calls.get },
-    acp: { log: calls.log },
   }),
   errorCode: (error: { code?: string } | null) => error?.code,
 }));
@@ -41,13 +39,7 @@ vi.mock("./ReadOnlyTerminal", () => ({
 import { LOCAL_SOURCE_ID } from "@/api/source";
 import { setTimelineTransportFactory } from "@/timeline/api";
 import { resetTimelines } from "@/timeline/sync";
-import {
-  FakeCore,
-  assistant,
-  missingTransport,
-  put,
-  user,
-} from "@/timeline/test-support";
+import { FakeCore, assistant, put, user } from "@/timeline/test-support";
 import { mockLayout } from "@/timeline/view/test-layout";
 import { useCanvasStore } from "@/store/canvas-store";
 import { SharedSessionHost } from "./SharedSessionHost";
@@ -86,7 +78,6 @@ function wrap(children: ReactNode) {
 beforeEach(() => {
   calls.session.mockReset();
   calls.get.mockReset();
-  calls.log.mockReset();
   calls.connect.mockClear();
   calls.guest = null;
   mockLayout();
@@ -179,33 +170,8 @@ describe("SharedSessionPage", () => {
       await new Promise((resolve) => setTimeout(resolve, 50));
     });
     expect(await screen.findByText("hello")).toBeTruthy();
-    expect(calls.log).not.toHaveBeenCalled();
     screen.getByRole("button", { name: "关闭" }).click();
     expect(close).toHaveBeenCalled();
-  });
-
-  it("ACP 会话在旧主机上：没有时间线，退回读镜像", async () => {
-    calls.get.mockResolvedValue(row("acp"));
-    calls.log.mockResolvedValue({
-      entries: [
-        {
-          role: "user",
-          blocks: [{ type: "text", text: "hello there" }],
-          endOffset: 1,
-        },
-        {
-          role: "assistant",
-          blocks: [{ type: "text", text: "general kenobi" }],
-          endOffset: 2,
-        },
-      ],
-      endOffset: 2,
-    });
-    setTimelineTransportFactory(() => missingTransport);
-    render(wrap(<SharedSessionPage target={target} />));
-    expect(await screen.findByText("general kenobi")).toBeTruthy();
-    expect(screen.getByText("hello there")).toBeTruthy();
-    expect(screen.queryByRole("textbox")).toBeNull();
   });
 });
 

@@ -51,8 +51,8 @@ import { acpInjection } from "../agent/canvas-launch";
 import { getAgentStatus } from "../agent/status";
 import { nodeRole } from "../canvas/context-links";
 import { handleForNode } from "../canvas/handles";
-import { loadNode, workspaceRoot } from "../collab/nodes";
-import { historyAdapter } from "../history/registry";
+import { loadNode, loadSession, workspaceRoot } from "../collab/nodes";
+import { historyAdapter, setAcpTimelineSource } from "../history/registry";
 import { hookService } from "../hook";
 import { type IngestContext, apply } from "../hook/ingest";
 import { normalizeAs } from "../hook/normalize";
@@ -882,6 +882,29 @@ export function install(context: CoreContext): void {
       error: error instanceof Error ? error.message : String(error),
     });
   }
+
+  // 节点的转录路径是旧镜像路径时，上下文读取、摘要、交接从会话时间线派生记录
+  // （B10）；时间线为空时读取方退回按文件读旧镜像。
+  setAcpTimelineSource((path) => {
+    try {
+      const timeline = timelineDomainOf(context.server);
+      if (timeline === undefined) return undefined;
+      const owner = database
+        .prepare(
+          "SELECT node_id FROM agent_status WHERE transcript_path = ? LIMIT 1",
+        )
+        .get(path) as { node_id: string } | undefined;
+      if (owner === undefined) return undefined;
+      const row = loadSession(database, owner.node_id);
+      if (row === undefined) return undefined;
+      timeline.writer.flush(row.sessionId);
+      return timeline.store.allItems(row.sessionId);
+    } catch {
+      // 库已关或时间线没装：读取方退回按文件读旧镜像。
+      return undefined;
+    }
+  });
+  context.onStop?.(() => setAcpTimelineSource(undefined));
 
   setAcpApprovalAnswerer((approval, optionId) => {
     const session = backend

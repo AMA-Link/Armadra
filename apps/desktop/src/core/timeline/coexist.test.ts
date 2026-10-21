@@ -7,10 +7,8 @@ import { installContract } from "../http/rpc";
 import { type TimelineDomain, install } from ".";
 
 /**
- * 旧接口（`acp.log` 镜像读、`acp.update` / `acp.turn` 事件）与新接口（`timeline.*`）
- * 同时存在期间的行为（B10 之前两边都在）：ACP 会话（B3 起）同时写镜像 / 发
- * `acp.update`（旧）和写时间线 / 发 `timeline.*`（新）；两边读到的内容一致，各读各的、
- * 互不影响。没有会话写过的行 `timeline.*` 仍答 404，页面据此退回旧路径。
+ * 旧接口下线之后的会话读口（B10）：ACP 会话只写时间线、发 `timeline.*`；
+ * `acp.update` 不再发，`acp.log` 路由不再存在。没有会话写过的行 `timeline.*` 答 404。
  */
 
 let open: AcpCore;
@@ -51,20 +49,18 @@ afterAll(async () => {
   await open.stop();
 });
 
-describe("旧接口与新接口同时存在", () => {
-  it("旧接口照旧：acp.update / acp.turn 事件发出，acp.log 读得到镜像", async () => {
-    expect(seen.some((e) => e.type === "acp.update")).toBe(true);
+describe("会话读口", () => {
+  it("acp.update 不再发，acp.turn 照发；acp.log 路由 404", async () => {
+    expect(seen.some((e) => e.type === ("acp.update" as string))).toBe(false);
+    expect(seen.some((e) => e.type === "acp.turn")).toBe(true);
     const log = await open.core.call(
       "GET",
       `/api/acp/sessions/${sessionId}/log`,
     );
-    expect(log.status).toBe(200);
-    expect(
-      (log.body as { entries: unknown[] }).entries.length,
-    ).toBeGreaterThanOrEqual(2);
+    expect(log.status).toBeGreaterThanOrEqual(400);
   });
 
-  it("新接口同时有内容：timeline.open 有回合、用户消息与助手回复，会话列表带 activity", async () => {
+  it("时间线有内容：timeline.open 有回合、用户消息与助手回复，会话列表带 activity", async () => {
     domain.writer.flush();
     const snapshot = await kit.procedure("timeline.open", {
       timelineId: sessionId,
@@ -98,18 +94,5 @@ describe("旧接口与新接口同时存在", () => {
       timelineId: "00000000-0000-4000-8000-000000000000",
     });
     expect(answer.status).toBe(404);
-  });
-
-  it("读时间线不改变 acp.log", async () => {
-    const before = JSON.stringify(
-      (await open.core.call("GET", `/api/acp/sessions/${sessionId}/log`)).body,
-    );
-    await kit.procedure("timeline.open", { timelineId: sessionId });
-    expect(
-      JSON.stringify(
-        (await open.core.call("GET", `/api/acp/sessions/${sessionId}/log`))
-          .body,
-      ),
-    ).toBe(before);
   });
 });

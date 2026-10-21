@@ -19,7 +19,6 @@ import { getAgentStatus } from "../agent/status";
 import { loadNode, loadSession, workspaceRoot } from "../collab/nodes";
 import { humanActor } from "../drive/lease";
 import { resolveUpload } from "../files/uploads";
-import { isAcpMirror } from "../history/acp-mirror";
 import { CoreFailure } from "../http/errors";
 import type { CoreRequest, HandlerResult, RouteMatch } from "../http/router";
 import { type DomainHandlers, registerProcedures } from "../http/rpc";
@@ -39,7 +38,6 @@ import { type AttachmentBlocks, attachmentBlocks } from "./attachments";
 import { AcpError } from "./client";
 import { AcpFeed } from "./feed";
 import type { AcpStartPlan, AcpTerminalWiring } from "./index";
-import { AcpMirror, mirrorPath } from "./mirror";
 import { sshHostOf } from "./ssh";
 
 export interface AcpRouteDeps {
@@ -569,49 +567,6 @@ export function installRoutes(context: CoreContext, deps: AcpRouteDeps): void {
     await session.setModel(modelId);
   });
 
-  /* --------------------------------- 镜像 --------------------------------- */
-
-  const readLog = guarded(async (rowId: string, afterValue: unknown) => {
-    const wiring = await need();
-    const row = wiring.manager.session(rowId);
-    const afterRaw = Number(afterValue ?? "0");
-    const after =
-      Number.isFinite(afterRaw) && afterRaw > 0 ? Math.floor(afterRaw) : 0;
-    const session = wiring.backend.sessionByRow(rowId);
-    // 攒着还没写的文本分块：先写出去，读到的才包含已经发出事件的那些。
-    session?.flushMirror();
-    let path = session?.mirrorPath;
-    if (path === undefined && row.ownerNodeId !== null) {
-      const status = getAgentStatus(database, row.ownerNodeId);
-      if (isAcpMirror(status?.transcriptPath)) {
-        path = status?.transcriptPath;
-      } else if (status?.sessionId !== undefined) {
-        path = mirrorPath(context.dataDir, row.ownerNodeId, status.sessionId);
-      }
-    }
-    const read =
-      path === undefined
-        ? { entries: [], endOffset: 0 }
-        : new AcpMirror(path).read(after);
-    return {
-      entries: read.entries,
-      endOffset: read.endOffset,
-      modes: session?.modes ?? null,
-      models: session?.models ?? null,
-      ...(session === undefined
-        ? {}
-        : {
-            pending: session.pending(),
-            elicitations: session.pendingElicitations(),
-            turns: session.recentTurns(),
-            snapshot: session.snapshot(),
-            ...(session.promptCapabilities === null
-              ? {}
-              : { promptCapabilities: session.promptCapabilities }),
-          }),
-    };
-  });
-
   /* ------------------------------- 驱动切换 ------------------------------- */
 
   const changeDriver = guarded(async (nodeId: string, value: unknown) => {
@@ -705,8 +660,6 @@ export function installRoutes(context: CoreContext, deps: AcpRouteDeps): void {
       sessionId: string;
       modelId?: unknown;
     }) => setModel(sessionId, modelId),
-    log: ({ sessionId, after }: { sessionId: string; after?: unknown }) =>
-      readLog(sessionId, after),
     switchDriver: ({ nodeId, driver }: { nodeId: string; driver?: unknown }) =>
       changeDriver(nodeId, driver),
   };
@@ -760,13 +713,6 @@ export function installRoutes(context: CoreContext, deps: AcpRouteDeps): void {
       return { status: 204 };
     },
   );
-  route("GET", "/api/acp/sessions/{sessionId}/log", async (match, request) => ({
-    status: 200,
-    body: await readLog(
-      param(match, "sessionId"),
-      request.query.get("after") ?? "0",
-    ),
-  }));
   route("POST", "/api/acp/nodes/{nodeId}/driver", async (match, request) => ({
     status: 200,
     body: await changeDriver(

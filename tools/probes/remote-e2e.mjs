@@ -1055,9 +1055,21 @@ async function scenario(ctx) {
         whiteboard: current.whiteboard ?? "",
       },
     });
+    // 会话里说过的话：`timeline.open`（契约 §82）的用户消息与助手文本。
     const texts = async (sessionId) =>
-      (await api(`/api/acp/sessions/${sessionId}/log`)).body.entries.flatMap(
-        (entry) => entry.blocks.map((block) => block.text ?? ""),
+      (
+        (
+          await api("/api/rpc/timeline/open", {
+            method: "POST",
+            body: { json: { timelineId: sessionId, tailTurns: 50 } },
+          })
+        ).body?.json?.items ?? []
+      ).flatMap((item) =>
+        item.kind === "user"
+          ? [item.text]
+          : item.kind === "assistant"
+            ? item.parts.map((part) => part.text ?? "")
+            : [],
       );
     const waitText = async (sessionId, wanted) => {
       for (let round = 0; round < 150; round += 1) {

@@ -198,27 +198,26 @@ describe("断线续订", () => {
     expect(Number(stored.count)).toBe(1);
   });
 
-  it("acp.update 分块只扇出、不进 outbox（契约 §82.4）", async () => {
+  it("timeline.delta 增量只扇出、不进 outbox（契约 §82.4）", async () => {
     const core = await start();
     const live = await connect(core);
     for (let index = 0; index < 50; index += 1) {
       core.bus.emit("workspace.event", {
         workspaceId: "ws",
         event: {
-          type: "acp.update",
-          sessionId: "row",
+          type: "timeline.delta",
+          timelineId: "row",
           nodeId: "node",
-          update: {
-            sessionUpdate: "agent_message_chunk",
-            content: { type: "text", text: String(index) },
-          },
+          from: index,
+          to: index + 1,
+          ops: [],
         },
       });
     }
     publish(core, "after");
     await settle();
     expect(
-      live.frames.filter((f) => JSON.parse(f).type === "acp.update"),
+      live.frames.filter((f) => JSON.parse(f).type === "timeline.delta"),
     ).toHaveLength(50);
     const stored = core.db.database
       .prepare("SELECT COUNT(*) AS count FROM events")

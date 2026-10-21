@@ -59,7 +59,7 @@ export function isCursorAhead(error: unknown): boolean {
 
 /**
  * 这个主机/会话没有时间线：会话没写过（core 答 `not_found`），或主机太旧不认识
- * `timeline.*`（路由 404 / `not_found`）。页面据此退回旧的 `acp.log` 路径。
+ * `timeline.*`（路由 404 / `not_found`）。页面据此把内容当作空。
  */
 export function isTimelineMissing(error: unknown): boolean {
   const code = errorCode(error);

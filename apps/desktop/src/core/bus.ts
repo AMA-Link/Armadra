@@ -270,14 +270,9 @@ export interface WorkspaceEventPayloads {
     readonly status: "running" | "done" | "failed" | "stopped";
   };
   /*
-   * ACP 驱动的会话（契约 §14.3）。`sessionId` 是 `terminal_sessions.id`；
-   * `update` 是 ACP `session/update` 的 `update` 原样。
+   * ACP 驱动的会话（契约 §14.3）。`sessionId` 是 `terminal_sessions.id`；会话内容
+   * 走 `timeline.*`（契约 §82），不在这里。
    */
-  "acp.update": {
-    readonly sessionId: string;
-    readonly nodeId: string;
-    readonly update: { readonly sessionUpdate: string } & OpaquePayload;
-  };
   "acp.turn": {
     readonly sessionId: string;
     readonly nodeId: string;
