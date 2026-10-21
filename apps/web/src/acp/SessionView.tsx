@@ -303,8 +303,7 @@ const SUBMITTING = (since: number): SessionActivity => ({
  * ACP 驱动的终端节点的节点体（ACP 设计 §6，设计系统 §5.1，ACP 会话视图 §5）。
  * 头部、徽标、菜单都在 `TerminalNode`，这里只有时间线、审批卡与输入框。
  *
- * 内容来自会话时间线（`useSessionFeed`：新主机走 `timeline.*`，旧主机退回 `acp.log`
- * 适配层）；这里只负责投递——发 prompt、请求断在路上时对账、先把提问画出来。
+ * 内容来自会话时间线（`useSessionFeed`，走 `timeline.*`）；这里只负责投递——发 prompt、请求断在路上时对账、先把提问画出来。
  *
  * 根上 `select-text nopan nodrag nowheel`：React Flow 给节点的 `user-select: none`
  * 在这里撤掉（字能选、能复制），手形工具开着时按在会话里也不平移画布、不拖节点，
@@ -340,13 +339,7 @@ export function SessionView({
   const sessionId = readOnly ? (fixedSessionId ?? null) : session.sessionId;
   const answerable = useCanAnswer(workspaceId ?? "", sessionId);
   const canAnswer = answerable && !readOnly;
-  const feed = useSessionFeed({
-    sessionId,
-    nodeId,
-    workspaceId,
-    legacy: !readOnly,
-    meta: !readOnly,
-  });
+  const feed = useSessionFeed({ sessionId });
   useTimelineTitle(nodeId, feed.head.title);
   const connected = useConnected(workspaceId);
   const delivery = useAcpStore((state) =>
@@ -370,10 +363,8 @@ export function SessionView({
     );
   React.useEffect(() => {
     if (sessionId === null || pending === null || !echoed) return;
-    useAcpStore
-      .getState()
-      .ack(sessionId, pending.clientTurnId, feed.mode === "timeline");
-  }, [sessionId, pending, echoed, feed.mode]);
+    useAcpStore.getState().ack(sessionId, pending.clientTurnId, true);
+  }, [sessionId, pending, echoed]);
   const overlay = React.useMemo(
     () =>
       pending !== null && !echoed
@@ -388,7 +379,7 @@ export function SessionView({
     [feed.items, overlay],
   );
 
-  // 回合在进行：活动层说了算（新路径 core 算，旧路径从条目推）；活动还没来时看
+  // 回合在进行：活动层说了算（core 算）；活动还没来时看
   // 最后一个回合条目有没有结束。页面先画上的提问也算（还没送达 / 被拒的不算）。
   const stuck = delivery.undelivered || delivery.failed;
   const busyFromFeed = React.useMemo(() => {
@@ -443,7 +434,7 @@ export function SessionView({
 
   /**
    * 请求断在路上（网络错误、没有答复）时不当场判失败：进入「确认中」，补一次同步
-   * （旧主机重读镜像）拿回合记录对账（契约 §39.9）。core 收到了就按真实回合画，
+   * 看回显的用户条目对账（契约 §39.9）。core 收到了就按真实回合画，
    * 确认没收到才判没送达；重试沿用同一个 `clientTurnId`，core 只投递一次。
    */
   const confirmTurn = React.useCallback(
@@ -490,7 +481,6 @@ export function SessionView({
       const clientTurnId = retryTurnId ?? newClientTurnId();
       const prompt = { clientTurnId, text, attachments: shown };
       store.begin(sessionId, prompt);
-      feedRef.current.begin(sessionId, prompt);
       try {
         await (uploadIds.length > 0
           ? acpApi.prompt(sessionId, text, clientTurnId, uploadIds)
@@ -581,7 +571,6 @@ export function SessionView({
         attachments: [],
       };
       useAcpStore.getState().begin(sessionId, prompt);
-      feedRef.current.begin(sessionId, prompt);
     } else {
       void send(first.text);
     }
@@ -809,14 +798,10 @@ export function SessionView({
         data-slot="acp-session-view"
         data-read-only={readOnly || undefined}
         className="nopan nodrag nowheel flex h-full w-full cursor-auto flex-col bg-[var(--card)] select-text"
-        // 要附件时才去取 core 的 `promptCapabilities`（时间线里没有它）：聚焦输入框、
-        // 拖文件进来的那一刻。
-        onFocusCapture={feed.ensureCapabilities}
         // 拖进会话视图任何地方的文件都成输入框的附件（契约 §56），不交给画布。
         onDragOver={(event) => {
           if (readOnly) return;
           if (!Array.from(event.dataTransfer.types).includes("Files")) return;
-          feed.ensureCapabilities();
           event.preventDefault();
           event.stopPropagation();
           event.dataTransfer.dropEffect = promptDisabled ? "none" : "copy";

@@ -4,7 +4,14 @@ import { collab } from "../agent";
 import { getAgentStatus } from "../agent/status";
 import type { WorkspaceEvent } from "../bus";
 import { hibernatedSession } from "../terminal/hibernate";
-import { type AcpCore, FAKE_AGENT, acpCore, until } from "./fixture";
+import {
+  type AcpCore,
+  FAKE_AGENT,
+  acpCore,
+  ensureTimeline,
+  transcriptOf,
+  until,
+} from "./fixture";
 
 /**
  * 同一个节点、两种驱动（ACP 设计 §4.2）与 Eco 休眠的 ACP 分支（§5.3）。
@@ -43,6 +50,7 @@ async function firstTurn(core: AcpCore, nodeId: string) {
 describeUnix("switching a node's driver", () => {
   it("ends one driver and resumes the same CLI session under the other, on the same row", async () => {
     open = await acpCore();
+    ensureTimeline(open);
     const seen: WorkspaceEvent[] = [];
     open.core.bus.on("workspace.event", ({ event }) => seen.push(event));
     const nodeId = await open.node();
@@ -89,10 +97,11 @@ describeUnix("switching a node's driver", () => {
       () => getAgentStatus(open!.core.database, nodeId)?.sessionId,
       (id) => id === cliSession,
     );
-    const log = (await open.core.call("GET", `/api/acp/sessions/${row.id}/log`))
-      .body as { entries: { blocks: { text?: string }[] }[] };
+    const entries = transcriptOf(open, row.id);
     expect(
-      log.entries.flatMap((entry) => entry.blocks.map((block) => block.text)),
+      entries.flatMap((entry) =>
+        entry.blocks.map((block) => ("text" in block ? block.text : undefined)),
+      ),
     ).toContain("echo: remember me");
 
     // 已经是这个驱动：什么都不动。
@@ -113,6 +122,7 @@ describeUnix("switching a node's driver", () => {
 
   it("refuses to switch while an approval is pending", async () => {
     open = await acpCore();
+    ensureTimeline(open);
     const nodeId = await open.node();
     await open.core.call("POST", "/api/acp/sessions", {
       workspaceId: open.workspaceId,
@@ -151,6 +161,7 @@ describeUnix("switching a node's driver", () => {
 describeUnix("Eco hibernation of an ACP session", () => {
   it("hibernates an idle session and wakes it on the same row and CLI session", async () => {
     open = await acpCore();
+    ensureTimeline(open);
     const nodeId = await open.node();
     const created = await open.core.call("POST", "/api/acp/sessions", {
       workspaceId: open.workspaceId,
@@ -194,9 +205,8 @@ describeUnix("Eco hibernation of an ACP session", () => {
       () => getAgentStatus(open!.core.database, nodeId)?.sessionId,
       (id) => id === cliSession,
     );
-    const log = (await open.core.call("GET", `/api/acp/sessions/${row.id}/log`))
-      .body as { entries: unknown[] };
+    const entries = transcriptOf(open, row.id);
     // 回放（session/load）没进镜像第二遍。
-    expect(log.entries).toHaveLength(2);
+    expect(entries).toHaveLength(2);
   });
 });

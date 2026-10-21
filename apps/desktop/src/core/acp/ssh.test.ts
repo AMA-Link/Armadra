@@ -24,7 +24,14 @@ import type { SshHost } from "../settings/ssh-hosts";
 import { streamArgv } from "../terminal/ssh/argv";
 import { ACP_ADAPTERS } from "./adapters";
 import { AcpError } from "./client";
-import { type AcpCore, FAKE_AGENT, acpCore, until } from "./fixture";
+import {
+  type AcpCore,
+  FAKE_AGENT,
+  acpCore,
+  ensureTimeline,
+  transcriptOf,
+  until,
+} from "./fixture";
 import {
   type AcpSshDeps,
   remoteAcpCommand,
@@ -378,6 +385,7 @@ describeUnix("an SSH node driven over ACP", () => {
 
   it("runs the adapter through ssh, answers a turn, and switches to a remote terminal and back", async () => {
     open = await acpCore();
+    ensureTimeline(open);
     const log = join(scratch, "ssh-argv.log");
     const fakeSsh = join(scratch, "fake-ssh");
     writeFileSync(fakeSsh, FAKE_SSH(log));
@@ -412,11 +420,11 @@ describeUnix("an SSH node driven over ACP", () => {
       () => getAgentStatus(open!.core.database, nodeId)?.state,
       (state) => state === "done",
     );
-    const reply = (
-      await open.core.call("GET", `/api/acp/sessions/${row.id}/log`)
-    ).body as { entries: { blocks: { text?: string }[] }[] };
+    const reply = transcriptOf(open, row.id);
     expect(
-      reply.entries.flatMap((entry) => entry.blocks.map((block) => block.text)),
+      reply.flatMap((entry) =>
+        entry.blocks.map((block) => ("text" in block ? block.text : undefined)),
+      ),
     ).toContain("echo: over ssh");
 
     // 经的是假 ssh：选项、`--`、目的主机，再是一行远端命令。
@@ -473,11 +481,12 @@ describeUnix("an SSH node driven over ACP", () => {
     );
     expect(again.status, JSON.stringify(again.body)).toBe(200);
     await until(
-      async () =>
-        (
-          (await open!.core.call("GET", `/api/acp/sessions/${row.id}/log`))
-            .body as { entries: { blocks: { text?: string }[] }[] }
-        ).entries.flatMap((entry) => entry.blocks.map((block) => block.text)),
+      () =>
+        transcriptOf(open!, row.id).flatMap((entry) =>
+          entry.blocks.map((block) =>
+            "text" in block ? block.text : undefined,
+          ),
+        ),
       (texts) => texts.includes("echo: still remote"),
     );
     expect(probed.length).toBe(2);
@@ -485,6 +494,7 @@ describeUnix("an SSH node driven over ACP", () => {
 
   it("refuses an SSH node whose host is not registered", async () => {
     open = await acpCore();
+    ensureTimeline(open);
     setAcpSshDeps({
       dataDir: open.core.directory,
       host: () => undefined,

@@ -1,20 +1,24 @@
 import { closeSync, openSync, readSync, statSync } from "node:fs";
 
+import type { TimelineItem } from "@armadra/shared";
+
 import type { Block, EntryRange, TranscriptEntry } from "./types";
 
 /**
- * ACP 会话的镜像转录：读的那一半（ACP 会话视图设计 §5.7，D7）。
+ * ACP 会话的转录：派生给上下文读取、摘要、交接用（会话时间线设计 §10，B10）。
  *
- * core 以 ACP 驱动一个节点时，自己把会话写成
- * `<数据目录>/acp/<nodeId>/<sessionId>.acp.jsonl`（写在 `core/acp/mirror.ts`）。
- * CLI 自己的转录对不上 ACP 会话 id 时（Copilot，或者还没落盘的新会话），节点的
- * `transcriptPath` 指向它，于是连线读取、摘要、交接这些吃 `TranscriptEntry` 的
- * 读取方不必知道会话是哪种驱动起的——`history/registry.ts::readHistoryEntries`
- * 在适配器之前先认这个后缀。
+ * core 以 ACP 驱动一个节点时，会话内容只写进会话时间线（契约 §82）。CLI 自己的
+ * 转录对不上 ACP 会话 id 时（Copilot，SSH 节点，或者还没落盘的新会话），节点的
+ * `transcriptPath` 仍指向 `<数据目录>/acp/<nodeId>/<sessionId>.acp.jsonl`，于是
+ * 连线读取、摘要、交接这些吃 `TranscriptEntry` 的读取方不必知道会话是哪种驱动起
+ * 的——`history/registry.ts` 在适配器之前先认这个后缀：
  *
- * 一行一条记录：`{ role, blocks, at }`，`blocks` 与 `TranscriptEntry` 同形。
- * 助手的回复是逐块写下的（页面重载要读得到正在流的那一段），读的时候把相邻的
- * 纯文本助手行并成一条——一次回复在读取方眼里仍是一条记录。
+ *   * 时间线有内容：由 {@link entriesFromTimeline} 从时间线条目派生，游标是记录序号；
+ *   * 时间线为空（升级前的会话）：按文件读旧镜像，游标是字节偏移。
+ *
+ * 旧镜像一行一条记录：`{ role, blocks, at }`，`blocks` 与 `TranscriptEntry` 同形。
+ * 助手的回复是逐块写下的，读的时候把相邻的纯文本助手行并成一条——一次回复在
+ * 读取方眼里仍是一条记录。core 不再写这份文件。
  */
 
 export const ACP_MIRROR_SUFFIX = ".acp.jsonl";
@@ -352,5 +356,127 @@ export function readMirrorEntries(
     entries: coalesce(entries),
     startOffset,
     endOffset: start + consumed,
+  };
+}
+
+/** 一条工具结果在派生记录里最多占这么多字符：整份文件的 diff 不该撑大转录。 */
+const RESULT_LIMIT = 8_000;
+
+function toolResultOf(item: Extract<TimelineItem, { kind: "tool" }>): string {
+  const texts: string[] = [];
+  for (const content of item.content) {
+    if (content.type === "text" && content.text !== "") {
+      texts.push(content.text);
+    } else if (
+      content.type === "terminal" &&
+      content.output !== undefined &&
+      content.output !== ""
+    ) {
+      texts.push(content.output);
+    }
+  }
+  const text =
+    texts.length > 0 ? texts.join("\n") : `{"status":"${item.status}"}`;
+  return text.length > RESULT_LIMIT ? `${text.slice(0, RESULT_LIMIT)}…` : text;
+}
+
+/**
+ * 时间线条目（已按显示顺序）→ 归一化记录。用户消息、助手文本、工具调用与终态结果
+ * 进来，与旧镜像同形；思考、计划、审批、通知、回合这些不是对话，不进。游标是记录序号
+ * （{@link sliceTimelineEntries} 填 `endOffset`）。
+ */
+export function entriesFromTimeline(
+  items: readonly TimelineItem[],
+): TranscriptEntry[] {
+  const entries: TranscriptEntry[] = [];
+  const push = (
+    role: "user" | "assistant",
+    blocks: Block[],
+    at: number,
+  ): void => {
+    if (blocks.length === 0) return;
+    entries.push({
+      role,
+      blocks,
+      endOffset: 0,
+      at: new Date(at).toISOString(),
+    });
+  };
+  for (const item of items) {
+    switch (item.kind) {
+      case "user":
+        push(
+          "user",
+          item.text === "" ? [] : [{ type: "text", text: item.text }],
+          item.at,
+        );
+        break;
+      case "assistant": {
+        const text = item.parts
+          .map((part) => (part.type === "text" ? part.text : ""))
+          .join("");
+        push("assistant", text === "" ? [] : [{ type: "text", text }], item.at);
+        break;
+      }
+      case "tool": {
+        push(
+          "assistant",
+          [
+            {
+              type: "tool_use",
+              name: item.title || item.toolKind,
+              id: item.toolCallId,
+              ...(item.input === undefined ? {} : { input: item.input }),
+            },
+          ],
+          item.startedAt,
+        );
+        if (item.status === "completed" || item.status === "failed") {
+          push(
+            "user",
+            [
+              {
+                type: "tool_result",
+                id: item.toolCallId,
+                content: toolResultOf(item),
+              },
+            ],
+            item.endedAt ?? item.at,
+          );
+        }
+        break;
+      }
+      default:
+        break;
+    }
+  }
+  return coalesce(entries as unknown as MirrorEntry[]) as TranscriptEntry[];
+}
+
+/** {@link entriesFromTimeline} 的结果按游标（记录序号）与字节上限切一段。 */
+export function sliceTimelineEntries(
+  all: readonly TranscriptEntry[],
+  fromOffset: number,
+  maxBytes: number,
+): EntryRange {
+  const start =
+    Number.isInteger(fromOffset) && fromOffset > 0 && fromOffset <= all.length
+      ? fromOffset
+      : fromOffset > all.length
+        ? all.length
+        : 0;
+  const entries: TranscriptEntry[] = [];
+  let bytes = 0;
+  for (const entry of all.slice(start)) {
+    bytes += JSON.stringify(entry.blocks).length;
+    // 至少给一条，否则一条超大的记录会让增量读取永远不前进。
+    if (entries.length > 0 && bytes > maxBytes) break;
+    // `endOffset` 相对 `startOffset`：记录序号。
+    entries.push({ ...entry, endOffset: entries.length + 1 });
+  }
+  return {
+    entries,
+    startOffset: start,
+    endOffset: start + entries.length,
   };
 }

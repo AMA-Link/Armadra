@@ -11,17 +11,14 @@ import type {
   SessionActivity,
   TerminalNodeData,
   TimelineItem,
-  WorkspaceEvent,
 } from "@armadra/shared";
 
 /**
  * 会话视图的时间线路径：`timeline.open` / `sync` / 推送的 `timeline.delta`，投递对账
- * 看时间线里有没有带同一个 `clientTurnId` 的用户条目。旧主机的退路在
- * `SessionView.test.tsx`。
+ * 看时间线里有没有带同一个 `clientTurnId` 的用户条目。
  */
 const api = vi.hoisted(() => ({
   createSession: vi.fn(),
-  log: vi.fn(),
   prompt: vi.fn(),
   cancel: vi.fn(),
   setMode: vi.fn(),
@@ -45,8 +42,6 @@ vi.mock("@/store/canvas-store", () => {
   return { useCanvasStore };
 });
 
-import { RuntimeRequestError } from "@/api/client";
-import { dispatchWorkspaceEvent } from "@/api/events";
 import { resetBlobs } from "@/timeline/blobs";
 import { setTimelineTransportFactory } from "@/timeline/api";
 import { resetTimelines } from "@/timeline/sync";
@@ -54,10 +49,8 @@ import {
   FakeCore,
   TIMELINE_ID,
   assistant,
-  missingTransport,
   user,
 } from "@/timeline/test-support";
-import { useLegacyAcpStore } from "@/timeline/use-legacy-acp";
 import { mockLayout } from "@/timeline/view/test-layout";
 import { useAnsweredStore } from "./answered";
 import { SessionView } from "./SessionView";
@@ -84,18 +77,13 @@ function echo(turn: number, text: string, clientTurnId: string): TimelineItem {
   return { ...user(turn, text), clientTurnId };
 }
 
-const emit = (event: Record<string, unknown>) =>
-  act(() => dispatchWorkspaceEvent(event as WorkspaceEvent));
-
 beforeEach(() => {
   for (const fn of Object.values(api)) fn.mockReset();
   api.prompt.mockResolvedValue({ turnId: "turn-1" });
   api.answer.mockResolvedValue({});
   api.drive.mockResolvedValue({});
-  api.log.mockResolvedValue({ entries: [], endOffset: 0 });
   store.updateNodeData.mockReset();
   useAcpStore.getState().reset();
-  useLegacyAcpStore.getState().reset();
   useAnsweredStore.getState().reset();
   resetBlobs();
   core = new FakeCore();
@@ -128,7 +116,7 @@ async function sendPrompt(value: string) {
 }
 
 describe("SessionView on the timeline", () => {
-  it("draws the opened timeline without ever reading the mirror", async () => {
+  it("draws the opened timeline", async () => {
     core.emit({
       op: "head",
       head: {
@@ -142,7 +130,6 @@ describe("SessionView on the timeline", () => {
     expect(screen.getByText("first question")).toBeTruthy();
     expect(screen.getByRole("log").getAttribute("aria-live")).toBe("off");
     expect(core.calls).toEqual(["open"]);
-    expect(api.log).not.toHaveBeenCalled();
   });
 
   it("takes modes, usage and commands from the head values", async () => {
@@ -185,7 +172,6 @@ describe("SessionView on the timeline", () => {
     } as never);
     await waitFor(() => expect(screen.getAllByText("go")).toHaveLength(1));
     expect(useAcpStore.getState().sessions).not.toEqual({});
-    expect(api.log).not.toHaveBeenCalled();
   });
 
   it("edits a question back into the input and regenerates the last turn", async () => {
@@ -220,57 +206,6 @@ describe("SessionView on the timeline", () => {
     );
     await waitFor(() => expect(screen.queryByLabelText("停止")).toBeNull());
     expect(screen.getByLabelText("发送")).toBeTruthy();
-  });
-
-  it("confirms a lost request from the timeline: core has the turn", async () => {
-    await ready();
-    // 请求在路上断了，但 core 其实收到了：补一次同步就看得到那一轮。
-    api.prompt.mockImplementationOnce(
-      async (_session: string, _text: string, clientTurnId: string) => {
-        core.emit({
-          op: "put",
-          item: echo(2, "go", clientTurnId),
-        } as never);
-        throw new TypeError("Failed to fetch");
-      },
-    );
-    await sendPrompt("go");
-    await waitFor(() =>
-      expect(core.calls.some((call) => call.startsWith("sync:"))).toBe(true),
-    );
-    await waitFor(() => expect(screen.getAllByText("go")).toHaveLength(1));
-    expect(screen.queryByText("这一轮没有送达")).toBeNull();
-    expect(screen.queryByText("正在确认这一轮")).toBeNull();
-    expect(api.prompt).toHaveBeenCalledTimes(1);
-    expect(useAcpStore.getState().sessions[`local:${SESSION}`]).toMatchObject({
-      confirming: false,
-      undelivered: false,
-    });
-  });
-
-  it("says not delivered when the timeline never gets the turn, and retries with the same id", async () => {
-    await ready();
-    api.prompt.mockRejectedValueOnce(new TypeError("Failed to fetch"));
-    const clientTurnId = await sendPrompt("go");
-    expect(await screen.findByText("这一轮没有送达")).toBeTruthy();
-    // 提问留在时间线上，等重试。
-    expect(screen.getAllByText("go")).toHaveLength(1);
-    fireEvent.click(screen.getByRole("button", { name: "重试" }));
-    await waitFor(() => expect(api.prompt).toHaveBeenCalledTimes(2));
-    expect(api.prompt).toHaveBeenLastCalledWith(SESSION, "go", clientTurnId);
-    expect(screen.queryByText("这一轮没有送达")).toBeNull();
-    expect(screen.getAllByText("go")).toHaveLength(1);
-  });
-
-  it("fails at once when core refuses the prompt with a code", async () => {
-    await ready();
-    api.prompt.mockRejectedValueOnce(
-      new RuntimeRequestError(409, "gone", "acp_exited"),
-    );
-    await sendPrompt("go");
-    expect(await screen.findByText("这一轮没有完成")).toBeTruthy();
-    expect(screen.queryByText("正在确认这一轮")).toBeNull();
-    expect(screen.queryByLabelText("停止")).toBeNull();
   });
 
   it("pins a single pending approval above the input, answers it and folds it away", async () => {
@@ -378,93 +313,49 @@ describe("SessionView on the timeline", () => {
     expect(api.createSession).not.toHaveBeenCalled();
   });
 
-  it("falls back to the mirror when the session has no timeline, and returns when core starts writing one", async () => {
-    let missing = true;
-    const real = core.transport;
-    setTimelineTransportFactory(() => ({
-      ...real,
-      open: (id, tail) =>
-        missing ? missingTransport.open(id, tail) : real.open(id, tail),
-    }));
-    api.log.mockResolvedValue({
-      entries: [
-        {
-          role: "user",
-          blocks: [{ type: "text", text: "old q" }],
-          endOffset: 1,
+  it("reads the mode and model catalogs from the head values", async () => {
+    core.emit({
+      op: "head",
+      head: {
+        modes: {
+          currentModeId: "plan",
+          availableModes: [
+            { id: "default", name: "Default" },
+            { id: "plan", name: "Plan" },
+          ],
         },
-        {
-          role: "assistant",
-          blocks: [{ type: "text", text: "old a" }],
-          endOffset: 2,
+        models: {
+          currentModelId: "small",
+          availableModels: [{ modelId: "small", name: "Small" }],
         },
-      ],
-      endOffset: 2,
-    });
-    render(<SessionView nodeId="n1" data={data} />);
-    expect(await screen.findByText("old a")).toBeTruthy();
-    expect(api.log).toHaveBeenCalledTimes(1);
-    // core 开始写这条会话的时间线：收到第一帧就切回新路径，重新 `open`。
-    missing = false;
-    emit({
-      type: "timeline.delta",
-      timelineId: SESSION,
-      nodeId: "n1",
-      from: 0,
-      to: 0,
-      ops: [],
-    });
-    expect(await screen.findByText("first answer")).toBeTruthy();
-    expect(screen.queryByText("old a")).toBeNull();
-  });
-
-  it("reads the mode and model catalogs from the live session once, after the first screen, when core's head values do not carry them", async () => {
-    api.log.mockResolvedValue({
-      entries: [],
-      endOffset: 0,
-      modes: {
-        currentModeId: "plan",
-        availableModes: [
-          { id: "default", name: "Default" },
-          { id: "plan", name: "Plan" },
-        ],
       },
-      models: {
-        currentModelId: "small",
-        availableModels: [{ modelId: "small", name: "Small" }],
-      },
-    });
+    } as never);
     await ready();
-    expect(api.log).not.toHaveBeenCalled();
-    expect(
-      (await screen.findByLabelText("模式", {}, { timeout: 4000 })).textContent,
-    ).toContain("Plan");
+    expect(screen.getByLabelText("模式").textContent).toContain("Plan");
     expect(screen.getByLabelText("模型").textContent).toContain("Small");
-    expect(api.log).toHaveBeenCalledTimes(1);
   });
 
-  it("asks for the prompt capabilities only when someone touches the input", async () => {
-    api.log.mockResolvedValue({
-      entries: [],
-      endOffset: 0,
-      promptCapabilities: { image: true, embeddedContext: false },
-    });
+  it("offers attachments once the head carries the prompt capabilities", async () => {
+    core.emit({
+      op: "head",
+      head: { promptCapabilities: { image: true, embeddedContext: false } },
+    } as never);
     await ready();
-    expect(api.log).not.toHaveBeenCalled();
-    expect(screen.queryByRole("button", { name: "添加附件" })).toBeNull();
-    fireEvent.focus(screen.getByLabelText("消息"));
     expect(
       await screen.findByRole("button", { name: "添加附件" }),
     ).toBeTruthy();
-    expect(api.log).toHaveBeenCalledTimes(1);
   });
 
-  it("does not poll, read the mirror or start anything for a read-only body", async () => {
+  it("offers no attachments while the head has no prompt capabilities", async () => {
+    await ready();
+    expect(screen.queryByRole("button", { name: "添加附件" })).toBeNull();
+  });
+
+  it("does not start anything for a read-only body", async () => {
     render(
       <SessionView nodeId="n1" data={data} readOnly sessionId={SESSION} />,
     );
     expect(await screen.findByText("first answer")).toBeTruthy();
-    expect(api.log).not.toHaveBeenCalled();
     expect(api.createSession).not.toHaveBeenCalled();
     expect(screen.queryByLabelText("消息")).toBeNull();
   });

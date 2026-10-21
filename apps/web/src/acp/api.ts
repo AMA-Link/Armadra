@@ -14,7 +14,6 @@ import {
   acpPrestartRequestSchema,
   acpDriverResponseSchema,
   acpElicitationAnswerRequestSchema,
-  acpLogResponseSchema,
   acpModeRequestSchema,
   acpModelRequestSchema,
   acpPromptRequestSchema,
@@ -46,10 +45,6 @@ export const acpApi = {
       await currentClient().acp.createSession(
         createAcpSessionRequestSchema.parse(input),
       ),
-    ),
-  log: async (sessionId: string, after = 0) =>
-    acpLogResponseSchema.parse(
-      await currentClient().acp.log({ sessionId, after }),
     ),
   /**
    * `clientTurnId`（契约 §39.9）：同一个 id 重发，core 只投递一次。`uploadIds`

@@ -3,7 +3,14 @@ import type { AddressInfo } from "node:net";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { contractEntries } from "@armadra/shared";
-import { type AcpCore, FAKE_AGENT, acpCore, until } from "../acp/fixture";
+import {
+  type AcpCore,
+  FAKE_AGENT,
+  acpCore,
+  ensureTimeline,
+  transcriptOf,
+  until,
+} from "../acp/fixture";
 import { createBoard } from "../canvas/boards";
 import { routeScope } from "../http/route-scopes";
 import { installContract } from "../http/rpc";
@@ -40,6 +47,7 @@ let otherNode: string;
 
 beforeAll(async () => {
   open = await acpCore();
+  ensureTimeline(open);
   const core = open.core;
   installContract(core.server, {
     validateOutput: true,
@@ -241,20 +249,11 @@ async function session(prompt?: string) {
 
 /**
  * 等这一轮真的结束：替身先回 `echo: …` 的消息块，再报用量、最后答 `end_turn`。
- * 只等到两条转录就读，镜像里的回合可能还是 `running`、用量还是 null，紧接着
- * 再读一次就变了——两次读的比较便偶发不等。
  */
 async function turnDone(sessionId: string): Promise<void> {
   await until(
-    async () =>
-      (await table("GET", `${SESSIONS}/${sessionId}/log`)).body as {
-        entries: unknown[];
-        turns?: { state: string }[];
-      },
-    (log) =>
-      log.entries.length >= 2 &&
-      (log.turns ?? []).length > 0 &&
-      (log.turns ?? []).every((turn) => turn.state !== "running"),
+    async () => transcriptOf(open, sessionId),
+    (entries) => entries.length >= 2,
   );
 }
 
@@ -324,7 +323,7 @@ describe("开会话", () => {
 /* --------------------------------- 回合 --------------------------------- */
 
 describe("回合、镜像、模式与模型", () => {
-  it("prompt、log：一轮对话的转录与回合标识", async () => {
+  it("prompt：一轮对话的转录与回合标识", async () => {
     const prompts = await perNode(async (kind, nodeId) => {
       const created = await create(kind, nodeId);
       const id = (created.body as { id: string }).id;
@@ -337,12 +336,7 @@ describe("回合、镜像、模式与模型", () => {
             ? await legacy("POST", path, body)
             : await procedure("acp.prompt", { sessionId: id, ...body });
       await turnDone(id);
-      const log =
-        kind === "table"
-          ? await table("GET", `${SESSIONS}/${id}/log`)
-          : kind === "legacy"
-            ? await legacy("GET", `${SESSIONS}/${id}/log`)
-            : await procedure("acp.log", { sessionId: id });
+      const log = transcriptOf(open, id);
       return { answer, log };
     });
     expectParity(
@@ -352,43 +346,17 @@ describe("回合、镜像、模式与模型", () => {
     expect(prompts[0].answer.body).toMatchObject({
       turnId: expect.any(String),
     });
-    expectParity([prompts[0].log, prompts[1].log, prompts[2].log], VOLATILE);
-    const entries = (
-      prompts[2].log.body as {
-        entries: { role: string; blocks: { text?: string }[] }[];
-      }
-    ).entries;
+    const logs = prompts.map((one) => canonicalJson(stable(one.log, VOLATILE)));
+    expect(logs[1]).toBe(logs[0]);
+    expect(logs[2]).toBe(logs[0]);
+    const entries = prompts[2].log;
     expect(entries.map((entry) => entry.role)).toEqual(["user", "assistant"]);
-    expect(entries[1]?.blocks[0]?.text).toBe("echo: ping");
-  });
-
-  it("log：增量读，after 在旧路径上是字符串、在 procedure 上是数字", async () => {
-    const { id } = await session("once");
-    await turnDone(id);
-    const full = (await table("GET", `${SESSIONS}/${id}/log`)).body as {
-      endOffset: number;
-    };
-    const answers = [
-      await table("GET", `${SESSIONS}/${id}/log?after=${full.endOffset}`),
-      await legacy("GET", `${SESSIONS}/${id}/log?after=${full.endOffset}`),
-      await procedure("acp.log", { sessionId: id, after: full.endOffset }),
-    ] as const;
-    expect((answers[0].body as { entries: unknown[] }).entries).toEqual([]);
-    expectParity(answers, VOLATILE);
-    const text = await procedure("acp.log", {
-      sessionId: id,
-      after: String(full.endOffset),
-    });
-    expect(canonicalJson(stable(text.body, VOLATILE))).toBe(
-      canonicalJson(stable(answers[0].body, VOLATILE)),
-    );
+    expect(entries[1]?.blocks[0]).toMatchObject({ text: "echo: ping" });
   });
 
   it("setMode、setModel、cancel：成功答 204（procedure 恒为 200、无体）", async () => {
     const { id } = await session();
-    const mode = await table("GET", `${SESSIONS}/${id}/log`);
-    const modeId = (mode.body as { modes: { currentModeId: string } }).modes
-      .currentModeId;
+    const modeId = "default";
     const verbs: readonly [string, string, string, Record<string, unknown>][] =
       [
         ["POST", "mode", "acp.setMode", { modeId }],
@@ -418,7 +386,7 @@ describe("回合、镜像、模式与模型", () => {
     expectParity(refused);
   });
 
-  it("不存在的会话、缺字段：prompt、cancel、setMode、setModel、log 的拒绝一致", async () => {
+  it("不存在的会话、缺字段：prompt、cancel、setMode、setModel 的拒绝一致", async () => {
     const { id } = await session();
     const cases: readonly [string, string, string, Record<string, unknown>][] =
       [
@@ -431,7 +399,6 @@ describe("回合、镜像、模式与模型", () => {
           "acp.setModel",
           { modelId: "x" },
         ],
-        ["GET", `${SESSIONS}/${UNKNOWN}/log`, "acp.log", {}],
         ["POST", `${SESSIONS}/${id}/prompt`, "acp.prompt", {}],
         ["POST", `${SESSIONS}/${id}/prompt`, "acp.prompt", { text: "  " }],
         ["POST", `${SESSIONS}/${id}/mode`, "acp.setMode", {}],
@@ -648,9 +615,7 @@ describe("投递门：成员经旧路径与 procedure 被同一道路由门拦�
     const { id } = await session("seed");
     await turnDone(id);
     const mirror = async () =>
-      canonicalJson(
-        stable((await table("GET", `${SESSIONS}/${id}/log`)).body, VOLATILE),
-      );
+      canonicalJson(stable(transcriptOf(open, id), VOLATILE));
     const before = await mirror();
     const writes: readonly [string, string, string, Record<string, unknown>][] =
       [
@@ -683,33 +648,9 @@ describe("投递门：成员经旧路径与 procedure 被同一道路由门拦�
     );
     expect(driver.status).toBe(200);
     await until(
-      async () =>
-        (await table("GET", `${SESSIONS}/${id}/log`)).body as {
-          entries: unknown[];
-        },
-      (log) => log.entries.length >= 4,
+      async () => transcriptOf(open, id),
+      (entries) => entries.length >= 4,
     );
-  });
-
-  it("读镜像是看终端：同画布的 viewer 读得到，别的画布上的人读不到", async () => {
-    const { id } = await session();
-    for (const [as, status] of [
-      ["viewer", 200],
-      ["driver", 200],
-      ["outsider", 403],
-      ["stranger", 403],
-    ] as const) {
-      const [rest, rpc] = await both(
-        as,
-        "GET",
-        `${SESSIONS}/${id}/log`,
-        undefined,
-        "acp.log",
-        { sessionId: id },
-      );
-      expect(rest.status, as).toBe(status);
-      expect(rpc.status, as).toBe(status === 200 ? 200 : 403);
-    }
   });
 
   it("切换别人节点的驱动要 driver；自己开的会话所在节点 operator 就够", async () => {
@@ -801,12 +742,11 @@ describe("契约与 core 的两张表（acp）", () => {
     entry.name.startsWith("acp."),
   );
 
-  it("7 条都在契约里，每条都有旧路径", () => {
+  it("6 条都在契约里，每条都有旧路径", () => {
     expect(entries.map((entry) => entry.name).sort()).toEqual(
       [
         "cancel",
         "createSession",
-        "log",
         "prompt",
         "setMode",
         "setModel",

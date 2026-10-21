@@ -11,7 +11,15 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { type AcpCore, FAKE_AGENT, acpCore, until } from "../../acp/fixture";
+import {
+  type AcpCore,
+  FAKE_AGENT,
+  acpCore,
+  ensureTimeline,
+  timelineItemsOf,
+  transcriptOf,
+  until,
+} from "../../acp/fixture";
 import { getAgentStatus } from "../status";
 import { AmaCredentials, setAmaCredentials } from "../ama-credentials";
 
@@ -799,20 +807,19 @@ describe("an ACP-driven node", () => {
     nodeId: string,
     text: string,
   ): Promise<string> {
-    const before = (
-      await core.core.call("GET", `/api/acp/sessions/${rowId}/log`)
-    ).body as { entries: unknown[] };
+    const before = transcriptOf(core, rowId).length;
     await core.core.call("POST", `/api/acp/sessions/${rowId}/prompt`, { text });
-    const log = await until(
-      async () =>
-        (await core.core.call("GET", `/api/acp/sessions/${rowId}/log`))
-          .body as {
-          entries: { role: string; blocks: { text?: string }[] }[];
-        },
-      (body) => body.entries.length >= before.entries.length + 2,
+    const entries = await until(
+      () => transcriptOf(core, rowId),
+      (list) => list.length >= before + 2,
     );
     expect(getAgentStatus(core.core.database, nodeId)?.stateSource).toBe("acp");
-    return log.entries.at(-1)?.blocks.at(-1)?.text ?? "";
+    return (
+      entries
+        .at(-1)
+        ?.blocks.map((b) => ("text" in b ? b.text : ""))
+        .at(-1) ?? ""
+    );
   }
 
   function logged(core: AcpCore): string[] {
@@ -834,6 +841,7 @@ describe("an ACP-driven node", () => {
       credentialSecrets: backend,
     });
     const lines = logged(acp);
+    ensureTimeline(acp);
     const created = await acp.core.call("POST", "/api/credentials", {
       providerId: "copilot",
       kind: "github-token",
@@ -855,22 +863,17 @@ describe("an ACP-driven node", () => {
       `env COPILOT_GITHUB_TOKEN ${digest(VALUE)}`,
     );
 
-    // 值哪里都不在：答复、会话行、节点数据、镜像、日志。
-    const log = await acp.core.call("GET", `/api/acp/sessions/${rowId}/log`);
+    // 值哪里都不在：答复、会话行、节点数据、时间线、日志。
+    const timeline = timelineItemsOf(acp, rowId);
     const row = await acp.core.call("GET", `/api/terminals/${rowId}`);
     const nodes = acp.core.database
       .prepare("SELECT data_json FROM nodes")
       .all();
-    const mirror = readFileSync(
-      getAgentStatus(acp.core.database, nodeId)?.transcriptPath as string,
-      "utf8",
-    );
     for (const text of [
       JSON.stringify(opened.body),
-      JSON.stringify(log.body),
+      JSON.stringify(timeline),
       JSON.stringify(row.body),
       JSON.stringify(nodes),
-      mirror,
       lines.join("\n"),
     ]) {
       expect(text).not.toContain(VALUE);
@@ -942,6 +945,7 @@ describe("an ACP-driven node", () => {
     await keys.set("anthropic", VALUE);
     setAmaCredentials(keys);
     const lines = logged(acp);
+    ensureTimeline(acp);
     const nodeId = await acp.node();
     const opened = await acp.core.call("POST", "/api/acp/sessions", {
       workspaceId: acp.workspaceId,

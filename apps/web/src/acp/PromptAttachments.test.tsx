@@ -7,16 +7,11 @@ import {
   screen,
   waitFor,
 } from "@testing-library/react";
-import type {
-  AcpLogResponse,
-  AcpPromptCapabilities,
-  TerminalNodeData,
-} from "@armadra/shared";
+import type { AcpPromptCapabilities, TerminalNodeData } from "@armadra/shared";
 
 /** 假 core：会话视图只经 `acpApi` 说话；上传经 `runtimeApi.uploadAgentFile`。 */
 const api = vi.hoisted(() => ({
   createSession: vi.fn(),
-  log: vi.fn(),
   prompt: vi.fn(),
   cancel: vi.fn(),
   setMode: vi.fn(),
@@ -48,21 +43,21 @@ vi.mock("@/store/canvas-store", () => {
 import { runtimeApi } from "@/api/client";
 import { setTimelineTransportFactory } from "@/timeline/api";
 import { resetTimelines } from "@/timeline/sync";
-import { missingTransport } from "@/timeline/test-support";
-import { useLegacyAcpStore } from "@/timeline/use-legacy-acp";
+import { FakeCore, TIMELINE_ID } from "@/timeline/test-support";
 import { mockLayout } from "@/timeline/view/test-layout";
 import { PromptBox } from "./PromptBox";
 import { usePromptAttachments } from "./PromptAttachments";
 import { SessionView } from "./SessionView";
 import { useAcpStore } from "./store";
 
-const SESSION = "11111111-1111-4111-8111-111111111111";
+const SESSION = TIMELINE_ID;
 
 const png = (name = "shot.png") =>
   new File([new Uint8Array(8)], name, { type: "image/png" });
 const text = (name = "notes.txt") =>
   new File(["hello"], name, { type: "text/plain" });
 
+let core: FakeCore;
 const onSubmit = vi.fn();
 
 function Box({
@@ -102,9 +97,8 @@ beforeEach(() => {
   URL.createObjectURL = vi.fn(() => `blob:preview-${(n += 1)}`);
   URL.revokeObjectURL = vi.fn();
   useAcpStore.getState().reset();
-  useLegacyAcpStore.getState().reset();
-  // 旧主机：没有时间线，会话视图退回 `acp.log` 适配层。
-  setTimelineTransportFactory(() => missingTransport);
+  core = new FakeCore();
+  setTimelineTransportFactory(() => core.transport);
   mockLayout();
 });
 
@@ -195,14 +189,15 @@ describe("SessionView sends attachments (§56)", () => {
     cwd: "/repo",
     agent: { id: "codex", driver: "acp" },
   };
-  const log: AcpLogResponse = {
-    entries: [],
-    endOffset: 0,
-    promptCapabilities: { image: true, embeddedContext: false },
-  };
+  /** core 把提示能力写进时间线头部。 */
+  const withCapabilities = () =>
+    core.emit({
+      op: "head",
+      head: { promptCapabilities: { image: true, embeddedContext: false } },
+    } as never);
 
   it("uploads to the session's core, then prompts with the upload ids", async () => {
-    api.log.mockResolvedValue(log);
+    withCapabilities();
     api.prompt.mockResolvedValue({ turnId: "t1" });
     const upload = vi
       .spyOn(runtimeApi, "uploadAgentFile")
@@ -238,7 +233,7 @@ describe("SessionView sends attachments (§56)", () => {
   });
 
   it("does not prompt when an upload fails, and keeps the draft", async () => {
-    api.log.mockResolvedValue(log);
+    withCapabilities();
     vi.spyOn(runtimeApi, "uploadAgentFile").mockRejectedValue(
       new Error("offline"),
     );

@@ -1,6 +1,5 @@
-import { rmSync } from "node:fs";
+import { existsSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
 
 import { fakeAcpAgentPath } from "@armadra/agent/acp";
 import { afterEach, describe, expect, it } from "vitest";
@@ -94,8 +93,8 @@ const turns = (sink: Recorder) =>
   sink.events.filter((event) => event.type === "acp.turn");
 
 describe("an ACP session", () => {
-  it("says opened, then prompt / turn around each turn, mirror before event", async () => {
-    const { session, sink } = await open();
+  it("says opened, then prompt / turn around each turn, and writes no mirror", async () => {
+    const { session, sink, dataDir } = await open();
     expect(sink.signals[0]?.signal).toMatchObject({
       signal: "opened",
       sessionId: session.acpSessionId,
@@ -113,19 +112,13 @@ describe("an ACP session", () => {
       turnId,
       stopReason: "end_turn",
     });
-    // 每一帧 acp.update 发出时它已经在镜像里了：读回来的就是这一轮。
-    const read = new AcpMirror(session.mirrorPath!).read();
-    expect(read.entries.map((entry) => entry.role)).toEqual([
-      "user",
-      "assistant",
-    ]);
-    const updates = sink.events.filter((event) => event.type === "acp.update");
-    expect(
-      updates.map(
-        (event) =>
-          (event as { update: { sessionUpdate: string } }).update.sessionUpdate,
-      ),
-    ).toEqual(["user_message_chunk", "agent_message_chunk", "usage_update"]);
+    // 会话内容只进时间线（`timeline-ingest.test.ts`）：不再写镜像，也不再发 acp.update。
+    expect(sink.events.map((event) => event.type as string)).not.toContain(
+      "acp.update",
+    );
+    expect(existsSync(mirrorPath(dataDir, NODE, session.acpSessionId!))).toBe(
+      false,
+    );
   });
 
   it("remembers the plan and usage of the live process for the log snapshot (§49)", async () => {
@@ -225,25 +218,16 @@ describe("an ACP session", () => {
     expect(() => session.prompt("again")).toThrow(/not running/);
   });
 
-  it("writes the replay of a load into an empty mirror only, and never publishes it", async () => {
+  it("never writes the replay of a load into the mirror and never publishes it", async () => {
     const dataDir = tempDir("armadra-acp-replay-");
     dirs.push(dataDir);
-    // 镜像空着（从终端驱动切过来）：回放写进去，页面看得到之前的对话。
     const first = await open({ resume: "fake-7", dataDir });
     expect(first.session.resumed).toBe(true);
     expect(
-      first.sink.events.filter((event) => event.type === "acp.update"),
-    ).toEqual([]);
-    first.session.flushMirror();
-    const mirror = new AcpMirror(mirrorPath(dataDir, NODE, "fake-7"));
-    expect(mirror.read().entries.map((entry) => entry.role)).toEqual([
-      "user",
-      "assistant",
-    ]);
+      first.sink.events.map((event) => event.type as string),
+    ).not.toContain("acp.update");
+    expect(existsSync(mirrorPath(dataDir, NODE, "fake-7"))).toBe(false);
     await first.session.terminate();
-    // 镜像里已经有了：再接回一次不重复写。
-    await open({ resume: "fake-7", dataDir });
-    expect(mirror.read().entries).toHaveLength(2);
-    expect(join(dataDir, "acp")).toBeTruthy();
+    expect(new AcpMirror(mirrorPath(dataDir, NODE, "fake-7")).empty).toBe(true);
   });
 });

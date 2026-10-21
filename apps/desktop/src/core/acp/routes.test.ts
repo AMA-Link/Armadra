@@ -2,7 +2,15 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import { getAgentStatus } from "../agent/status";
 import type { WorkspaceEvent } from "../bus";
-import { type AcpCore, FAKE_AGENT, acpCore, until } from "./fixture";
+import {
+  type AcpCore,
+  FAKE_AGENT,
+  acpCore,
+  ensureTimeline,
+  timelineItemsOf,
+  transcriptOf,
+  until,
+} from "./fixture";
 
 /**
  * `/api/acp/*`（契约 §14.2–§14.4），对着真管理器与假 ACP Agent（真子进程）。
@@ -26,6 +34,13 @@ function events(core: AcpCore): WorkspaceEvent[] {
   return seen;
 }
 
+/** 时间线头部（模式、模型、用量、命令、标题）。 */
+function headOf(core: AcpCore, rowId: string) {
+  const domain = ensureTimeline(core);
+  domain.writer.flush();
+  return domain.store.snapshot(rowId, 3)?.head;
+}
+
 async function session(core: AcpCore, nodeId: string, prompt?: string) {
   const created = await core.core.call("POST", "/api/acp/sessions", {
     workspaceId: core.workspaceId,
@@ -46,6 +61,7 @@ async function session(core: AcpCore, nodeId: string, prompt?: string) {
 describe("the ACP session routes", () => {
   it("opens a session as a terminal row, runs a turn and mirrors it", async () => {
     open = await acpCore();
+    ensureTimeline(open);
     const seen = events(open);
     const nodeId = await open.node();
     const row = await session(open, nodeId, "hello there");
@@ -66,42 +82,27 @@ describe("the ACP session routes", () => {
     expect(status).toMatchObject({ state: "done", stateSource: "acp" });
     expect(status?.sessionId).toMatch(/^fake-/);
 
-    // 镜像先于事件：页面读到的就是那一轮。
-    const log = await open.core.call("GET", `/api/acp/sessions/${row.id}/log`);
-    expect(log.status).toBe(200);
-    const body = log.body as {
-      entries: { role: string; blocks: { type: string; text?: string }[] }[];
-      endOffset: number;
-      modes: { currentModeId: string } | null;
-      pending: unknown[];
-    };
-    expect(body.entries.map((entry) => entry.role)).toEqual([
-      "user",
-      "assistant",
-    ]);
-    expect(body.entries[1]?.blocks[0]?.text).toBe("echo: hello there");
-    expect(body.endOffset).toBeGreaterThan(0);
-    expect(body.modes?.currentModeId).toBe("default");
-    expect(body.pending).toEqual([]);
-
-    // 增量读：从末尾读什么都没有。
-    const after = await open.core.call(
-      "GET",
-      `/api/acp/sessions/${row.id}/log?after=${body.endOffset}`,
+    // 时间线先于事件：页面读到的就是那一轮。
+    const entries = transcriptOf(open, row.id);
+    expect(entries.map((entry) => entry.role)).toEqual(["user", "assistant"]);
+    expect((entries[1]?.blocks[0] as { text?: string } | undefined)?.text).toBe(
+      "echo: hello there",
     );
-    expect((after.body as { entries: unknown[] }).entries).toEqual([]);
+    expect(headOf(open, row.id)?.modes?.currentModeId).toBe("default");
+    expect(
+      timelineItemsOf(open, row.id).filter(
+        (item) => item.kind === "approval" || item.kind === "elicitation",
+      ),
+    ).toEqual([]);
 
     // 一个节点只有一个活会话：再起一次答同一行。
     const again = await session(open, nodeId);
     expect(again.id).toBe(row.id);
-
-    // 没有 PTY 可附着。
-    const update = seen.find((event) => event.type === "acp.update");
-    expect(update).toMatchObject({ sessionId: row.id, nodeId });
   });
 
-  it("carries the live process's plan, usage, commands and title in the log snapshot (§49)", async () => {
+  it("carries the plan, usage, commands and title in the timeline (§49)", async () => {
     open = await acpCore();
+    ensureTimeline(open);
     const seen = events(open);
     const nodeId = await open.node();
     const row = await session(open, nodeId, "[plan] go");
@@ -109,33 +110,19 @@ describe("the ACP session routes", () => {
       () => seen.filter((event) => event.type === "acp.turn"),
       (turns) => turns.length > 0,
     );
-    const log = await open.core.call("GET", `/api/acp/sessions/${row.id}/log`);
-    const body = log.body as {
-      snapshot?: {
-        plan: { content: string }[];
-        usage: { used: number; size: number } | null;
-        availableCommands: unknown[];
-        title: string | null;
-      };
-    };
-    expect(body.snapshot?.plan.length).toBeGreaterThan(0);
-    expect(body.snapshot?.usage).toMatchObject({ size: 1000 });
-    expect(body.snapshot?.availableCommands).toEqual([]);
-    expect(body.snapshot?.title).toBeNull();
-
-    // 没有活进程就没有 snapshot（与 `pending` 同一条件）。
-    await open.terminal.manager.terminate(row.id, "session");
-    const gone = await until(
-      async () =>
-        (await open!.core.call("GET", `/api/acp/sessions/${row.id}/log`))
-          .body as { snapshot?: unknown; pending?: unknown },
-      (value) => !("pending" in value),
+    const plan = timelineItemsOf(open, row.id).find(
+      (item) => item.kind === "plan",
     );
-    expect(gone.snapshot).toBeUndefined();
+    expect(plan?.kind === "plan" && plan.entries.length).toBeGreaterThan(0);
+    const head = headOf(open, row.id);
+    expect(head?.usage).toMatchObject({ size: 1000 });
+    expect(head?.commands ?? []).toEqual([]);
+    expect(head?.title ?? null).toBeNull();
   });
 
-  it("delivers a prompt with the same clientTurnId once and lists it in the log (§39.9)", async () => {
+  it("delivers a prompt with the same clientTurnId once and lists it in the timeline (§39.9)", async () => {
     open = await acpCore();
+    ensureTimeline(open);
     const seen = events(open);
     const nodeId = await open.node();
     const row = await session(open, nodeId);
@@ -162,17 +149,12 @@ describe("the ACP session routes", () => {
     const third = await open.core.call("POST", path, body);
     expect(third.body).toEqual({ turnId });
 
-    const log = await open.core.call("GET", `/api/acp/sessions/${row.id}/log`);
-    const read = log.body as {
-      entries: { role: string }[];
-      turns: { turnId: string; clientTurnId?: string; state: string }[];
-    };
-    expect(read.entries.filter((entry) => entry.role === "user")).toHaveLength(
-      1,
-    );
-    expect(read.turns).toEqual([
-      { turnId, clientTurnId: "c-1", state: "ended", stopReason: "end_turn" },
-    ]);
+    const items = timelineItemsOf(open, row.id);
+    expect(items.filter((item) => item.kind === "user")).toHaveLength(1);
+    const turns = items.flatMap((item) => (item.kind === "turn" ? [item] : []));
+    expect(turns).toHaveLength(1);
+    expect(turns[0]).toMatchObject({ turnId, stopReason: "end_turn" });
+    expect(turns[0]?.endedAt).toBeDefined();
     expect(seen.filter((event) => event.type === "acp.turn")).toHaveLength(1);
 
     // 另一个 id 是另一轮；不合法的 id 当场拒绝。
@@ -190,6 +172,7 @@ describe("the ACP session routes", () => {
 
   it("asks for permission through agent_approvals and answers with the chosen option", async () => {
     open = await acpCore();
+    ensureTimeline(open);
     const seen = events(open);
     const nodeId = await open.node();
     const row = await session(open, nodeId);
@@ -226,10 +209,13 @@ describe("the ACP session routes", () => {
       "never",
     ]);
 
-    // 重载：`…/log` 带着这张卡。
-    const log = (await open.core.call("GET", `/api/acp/sessions/${row.id}/log`))
-      .body as { pending: { pendingId: string }[] };
-    expect(log.pending.map((item) => item.pendingId)).toEqual([pendingId]);
+    // 重载：时间线带着这张卡。
+    const cards = timelineItemsOf(open, row.id).flatMap((item) =>
+      item.kind === "approval" ? [item] : [],
+    );
+    expect(cards.map((item) => [item.pendingId, item.state])).toEqual([
+      [pendingId, "pending"],
+    ]);
 
     // 选项与决定不符：400，什么都没记。
     const mismatch = await open.core.call(
@@ -251,17 +237,17 @@ describe("the ACP session routes", () => {
       () => getAgentStatus(open!.core.database, nodeId)?.state,
       (state) => state === "done",
     );
-    const mirror = (
-      await open.core.call("GET", `/api/acp/sessions/${row.id}/log`)
-    ).body as { entries: { blocks: { type: string; text?: string }[] }[] };
-    const texts = mirror.entries.flatMap((entry) =>
-      entry.blocks.map((block) => block.text ?? block.type),
+    const texts = transcriptOf(open, row.id).flatMap((entry) =>
+      entry.blocks.map(
+        (block) => (block as { text?: string }).text ?? block.type,
+      ),
     );
     expect(texts).toContain("write rejected");
   });
 
   it("answers the header's plain allow with the first allow option", async () => {
     open = await acpCore();
+    ensureTimeline(open);
     const seen = events(open);
     const nodeId = await open.node();
     const row = await session(open, nodeId, "[permission]");
@@ -280,15 +266,16 @@ describe("the ACP session routes", () => {
       () => seen.filter((event) => event.type === "acp.turn").length,
       (count) => count > 0,
     );
-    const log = (await open.core.call("GET", `/api/acp/sessions/${row.id}/log`))
-      .body as { entries: { blocks: { text?: string }[] }[] };
     expect(
-      log.entries.flatMap((entry) => entry.blocks.map((block) => block.text)),
+      transcriptOf(open, row.id).flatMap((entry) =>
+        entry.blocks.map((block) => (block as { text?: string }).text),
+      ),
     ).toContain("wrote note.txt");
   });
 
   it("cancels a turn and settles its pending approval as cancelled by core", async () => {
     open = await acpCore();
+    ensureTimeline(open);
     const seen = events(open);
     const nodeId = await open.node();
     const row = await session(open, nodeId, "[permission]");
@@ -326,6 +313,7 @@ describe("the ACP session routes", () => {
 
   it("switches the mode, refuses raw keystrokes and refuses to attach", async () => {
     open = await acpCore();
+    ensureTimeline(open);
     const nodeId = await open.node();
     const row = await session(open, nodeId);
     const mode = await open.core.call(
@@ -341,9 +329,7 @@ describe("the ACP session routes", () => {
     );
     expect(missing.status).toBe(409);
     expect(missing.body).toMatchObject({ code: "acp_mode_unavailable" });
-    const log = (await open.core.call("GET", `/api/acp/sessions/${row.id}/log`))
-      .body as { modes: { currentModeId: string } };
-    expect(log.modes.currentModeId).toBe("plan");
+    expect(headOf(open, row.id)?.modes?.currentModeId).toBe("plan");
 
     const paste = await open.core.call(
       "POST",
@@ -356,6 +342,7 @@ describe("the ACP session routes", () => {
 
   it("opens a session for a node the canvas has not saved yet (the new-agent wizard)", async () => {
     open = await acpCore();
+    ensureTimeline(open);
     const seen = events(open);
     const nodeId = "99999999-2222-4333-8444-555555555555";
     const row = await session(open, nodeId, "first task");
@@ -373,6 +360,7 @@ describe("the ACP session routes", () => {
 
   it("refuses an agent without an ACP entry point", async () => {
     open = await acpCore();
+    ensureTimeline(open);
     const nodeId = await open.node();
     const refused = await open.core.call("POST", "/api/acp/sessions", {
       workspaceId: open.workspaceId,
@@ -386,6 +374,7 @@ describe("the ACP session routes", () => {
 
   it("brings an ended session back on the same row with the same ACP session", async () => {
     open = await acpCore();
+    ensureTimeline(open);
     const nodeId = await open.node();
     const row = await session(open, nodeId, "first");
     await until(
@@ -411,10 +400,8 @@ describe("the ACP session routes", () => {
     expect(getAgentStatus(open.core.database, nodeId)?.sessionId).toBe(
       sessionId,
     );
-    const log = (await open.core.call("GET", `/api/acp/sessions/${row.id}/log`))
-      .body as { entries: { role: string }[] };
-    // 同一份镜像：两轮都在，回放（session/load）没有重复写进去。
-    expect(log.entries.map((entry) => entry.role)).toEqual([
+    // 同一份时间线：两轮都在，回放（session/load）没有重复写进去。
+    expect(transcriptOf(open, row.id).map((entry) => entry.role)).toEqual([
       "user",
       "assistant",
       "user",
@@ -426,10 +413,15 @@ describe("the ACP session routes", () => {
     // 假 Agent 不带 `--config-options` 时开会话不答 `configOptions`：没有目录、
     // 改不了模型，日志里也没有挂起的 elicitation。
     open = await acpCore();
+    ensureTimeline(open);
     const nodeId = await open.node();
     const row = await session(open, nodeId);
-    const log = await open.core.call("GET", `/api/acp/sessions/${row.id}/log`);
-    expect(log.body).toMatchObject({ models: null, elicitations: [] });
+    expect(headOf(open, row.id)?.models ?? null).toBeNull();
+    expect(
+      timelineItemsOf(open, row.id).filter(
+        (item) => item.kind === "elicitation",
+      ),
+    ).toEqual([]);
     const set = await open.core.call(
       "PUT",
       `/api/acp/sessions/${row.id}/model`,

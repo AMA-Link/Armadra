@@ -10,6 +10,7 @@ import { AcpFeed } from "./feed";
 import { type AcpCore, acpCore } from "./fixture";
 import type { AcpHostSession } from "./host";
 import { AcpMirror, mirrorPath } from "./mirror";
+import { LegacyMirrorWriter } from "./mirror-legacy.testing";
 import { AcpSession, type AcpSessionSink } from "./session";
 
 /**
@@ -72,7 +73,9 @@ const MODELS = {
 function reopen(dataDir: string, rowId: string, seed: boolean) {
   const mirrors = (id: string) => new AcpMirror(mirrorPath(dataDir, NODE, id));
   if (seed) {
-    const old = mirrors("old-session");
+    const old = new LegacyMirrorWriter(
+      mirrorPath(dataDir, NODE, "old-session"),
+    );
     old.prompt("读一下 a.ts");
     old.update({
       sessionUpdate: "agent_message_chunk",

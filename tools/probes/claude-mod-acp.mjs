@@ -234,6 +234,14 @@ async function main() {
     assert(response.ok, `${path}: ${response.status} ${text}`);
     return body;
   };
+  // The session's timeline (contract §82): items and head.
+  const timeline = async (sessionId) =>
+    (
+      await call("/api/rpc/timeline/open", {
+        method: "POST",
+        body: { json: { timelineId: sessionId, tailTurns: 50 } },
+      })
+    ).json;
   try {
     seedWorkspace(dataDir);
     const nodeId = seedNode(dataDir, "acp");
@@ -257,10 +265,8 @@ async function main() {
 
     // 2. The commands, as the adapter lists them.
     const listed = await waitFor("the armadra commands", async () => {
-      const log = await call(`/api/acp/sessions/${session.id}/log`);
-      const names = (log.snapshot?.availableCommands ?? []).map(
-        (one) => one.name,
-      );
+      const opened = await timeline(session.id);
+      const names = (opened.head?.commands ?? []).map((one) => one.name);
       return names.includes("armadra-list") ? names : undefined;
     });
     const ours = listed.filter((name) => name.startsWith("armadra"));
@@ -280,16 +286,19 @@ async function main() {
         ? row
         : undefined;
     });
-    const log = await call(`/api/acp/sessions/${session.id}/log`);
+    const log = await timeline(session.id);
     // The canvas list names this node; the engine heads it with the mod's name.
-    const answered = (log.entries ?? []).some(
-      (entry) =>
-        entry.role === "assistant" &&
-        (entry.blocks ?? []).some(
-          (block) => block.type === "text" && block.text?.includes(nodeId),
+    const answered = (log.items ?? []).some(
+      (item) =>
+        item.kind === "assistant" &&
+        item.parts.some(
+          (part) => part.type === "text" && part.text?.includes(nodeId),
         ),
     );
-    assert(answered, `log: ${JSON.stringify(log.entries ?? []).slice(-2000)}`);
+    assert(
+      answered,
+      `timeline: ${JSON.stringify(log.items ?? []).slice(-2000)}`,
+    );
     assert(
       api.turns() === turnsBefore,
       `/armadra-list asked the model (${api.turns() - turnsBefore} turns)`,

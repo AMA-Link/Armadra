@@ -9,6 +9,7 @@ import { fileURLToPath } from "node:url";
 import {
   METRICS,
   chunkFrame,
+  chunkMarkers,
   compare,
   cpuTime,
   isTurnFrame,
@@ -109,32 +110,32 @@ test("longTaskSummary 只算起点落在窗口里的长任务", () => {
 
 test("compare: 差 20% 以上且超过绝对容差才算退化，只记录的指标不判", () => {
   const baseline = {
-    openLogMs: 100,
+    openTimelineMs: 100,
     streamLatencyP50Ms: 2,
     streamDeliveredRatio: 1,
-    openLogBytes: 1000,
+    openTimelineBytes: 1000,
   };
   const rows = compare(
     {
-      openLogMs: 160,
+      openTimelineMs: 160,
       streamLatencyP50Ms: 4,
       streamDeliveredRatio: 0.5,
-      openLogBytes: 99_999,
+      openTimelineBytes: 99_999,
     },
     baseline,
   );
   const by = Object.fromEntries(rows.map((row) => [row.metric, row]));
-  assert.equal(by.openLogMs.regressed, true);
-  assert.equal(by.openLogMs.change, 60);
+  assert.equal(by.openTimelineMs.regressed, true);
+  assert.equal(by.openTimelineMs.change, 60);
   // 2 ms → 4 ms 是 100%，但没超过 10 ms 的容差。
   assert.equal(by.streamLatencyP50Ms.regressed, false);
   // 越高越好的指标：1 → 0.5 是退化。
   assert.equal(by.streamDeliveredRatio.regressed, true);
-  assert.equal(by.openLogBytes, undefined);
-  assert.deepEqual(compare({ openLogMs: 1 }, undefined), []);
+  assert.equal(by.openTimelineBytes, undefined);
+  assert.deepEqual(compare({ openTimelineMs: 1 }, undefined), []);
   // 变好不算退化。
   assert.equal(
-    compare({ openLogMs: 10 }, { openLogMs: 100 })[0].regressed,
+    compare({ openTimelineMs: 10 }, { openTimelineMs: 100 })[0].regressed,
     false,
   );
 });
@@ -151,12 +152,12 @@ test("METRICS: 有方向的指标都有容差与单位字段", () => {
 
 test("renderTable 只列有数的指标", () => {
   const table = renderTable({
-    openLogMs: 12.5,
-    openLogBytes: 99,
+    openTimelineMs: 12.5,
+    openTimelineBytes: 99,
     pageOpenFromNodeMs: null,
   });
-  assert.match(table, /\| openLogMs \| 12.5 ms \|/);
-  assert.match(table, /\| openLogBytes \| 99 B \|/);
+  assert.match(table, /\| openTimelineMs \| 12.5 ms \|/);
+  assert.match(table, /\| openTimelineBytes \| 99 B \|/);
   assert.doesNotMatch(table, /pageOpenFromNodeMs/);
 });
 
@@ -169,28 +170,42 @@ test("cpuTime 与 platformKey", () => {
 
 test("事件流帧：分块标记与回合结束", () => {
   const marker = JSON.stringify({
-    type: "acp.update",
-    sessionId: "s",
+    type: "timeline.delta",
+    timelineId: "s",
     nodeId: "n",
-    update: {
-      sessionUpdate: "agent_message_chunk",
-      content: { type: "text", text: chunkText(7, 1234567, 48) },
-    },
+    from: 1,
+    to: 2,
+    ops: [
+      { op: "append", text: chunkText(7, 1234567, 48) },
+      { op: "append", text: chunkText(8, 1234999, 48) },
+    ],
   });
   assert.deepEqual(chunkFrame(marker), { index: 7, stamp: 1234567 });
+  assert.deepEqual(chunkMarkers(marker), [
+    { index: 7, stamp: 1234567 },
+    { index: 8, stamp: 1234999 },
+  ]);
   assert.equal(chunkFrame("{}"), null);
   assert.equal(chunkFrame("not json"), null);
+  assert.equal(
+    chunkFrame(JSON.stringify({ type: "timeline.delta", ops: [] })),
+    null,
+  );
+  // 旧的 `acp.update` 已下线，不再是分块帧。
   assert.equal(
     chunkFrame(
       JSON.stringify({
         type: "acp.update",
-        update: { sessionUpdate: "tool_call" },
+        update: {
+          sessionUpdate: "agent_message_chunk",
+          content: { type: "text", text: chunkText(1, 2, 48) },
+        },
       }),
     ),
     null,
   );
   assert.equal(isTurnFrame(JSON.stringify({ type: "acp.turn" })), true);
-  assert.equal(isTurnFrame(JSON.stringify({ type: "acp.update" })), false);
+  assert.equal(isTurnFrame(JSON.stringify({ type: "timeline.delta" })), false);
   assert.equal(isTurnFrame("x"), false);
 });
 

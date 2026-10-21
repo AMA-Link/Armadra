@@ -6,7 +6,15 @@ import type { WorkspaceEvent } from "../bus";
 import { type StoredUpload, storeUpload } from "../files/uploads";
 import { attachmentBlocks } from "./attachments";
 import { AcpError } from "./client";
-import { type AcpCore, FAKE_AGENT, acpCore, until } from "./fixture";
+import {
+  type AcpCore,
+  FAKE_AGENT,
+  acpCore,
+  ensureTimeline,
+  timelineItemsOf,
+  transcriptOf,
+  until,
+} from "./fixture";
 
 const PNG = Buffer.from(
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=",
@@ -144,8 +152,9 @@ function events(core: AcpCore): WorkspaceEvent[] {
 }
 
 describe("acp.prompt with attachments (§56)", () => {
-  it("sends uploads with the prompt and mirrors only their links", async () => {
+  it("sends uploads with the prompt and records only their links", async () => {
     open = await acpCore();
+    ensureTimeline(open);
     const seen = events(open);
     const nodeId = await open.node();
     const created = await open.core.call("POST", "/api/acp/sessions", {
@@ -156,17 +165,19 @@ describe("acp.prompt with attachments (§56)", () => {
     });
     expect(created.status).toBe(200);
     const rowId = (created.body as { id: string }).id;
-    await until(
-      () => open!.core.call("GET", `/api/acp/sessions/${rowId}/log`),
-      (log) =>
-        (log.body as { promptCapabilities?: unknown }).promptCapabilities !==
-        undefined,
-    );
-    const log = await open.core.call("GET", `/api/acp/sessions/${rowId}/log`);
     // 假 Agent 声明不收图片、不收内嵌正文。
-    expect(
-      (log.body as { promptCapabilities: unknown }).promptCapabilities,
-    ).toEqual({ image: false, embeddedContext: false });
+    const head = await until(
+      () => {
+        const domain = ensureTimeline(open!);
+        domain.writer.flush();
+        return domain.store.snapshot(rowId, 3)?.head;
+      },
+      (value) => value?.promptCapabilities !== undefined,
+    );
+    expect(head?.promptCapabilities).toEqual({
+      image: false,
+      embeddedContext: false,
+    });
 
     const file = storeUpload(
       open.core.directory,
@@ -185,25 +196,21 @@ describe("acp.prompt with attachments (§56)", () => {
       () => seen.filter((event) => event.type === "acp.turn"),
       (turns) => turns.length > 0,
     );
-    const after = await open.core.call("GET", `/api/acp/sessions/${rowId}/log`);
-    const entries = (
-      after.body as {
-        entries: { role: string; blocks: Record<string, unknown>[] }[];
-      }
-    ).entries;
-    expect(entries[0]).toMatchObject({
-      role: "user",
-      blocks: [
-        { type: "text", text: "look" },
-        { type: "resource_link", name: "notes.txt", mimeType: "text/plain" },
+    const items = timelineItemsOf(open, rowId);
+    const user = items.find((item) => item.kind === "user");
+    expect(user).toMatchObject({
+      kind: "user",
+      text: "look",
+      attachments: [
+        { kind: "file", name: "notes.txt", mimeType: "text/plain" },
       ],
     });
     // 假 Agent 把非文本块回显成 `[类型]`：链接到了。
-    expect(entries[1]?.blocks[0]).toMatchObject({
+    expect(transcriptOf(open, rowId)[1]?.blocks[0]).toMatchObject({
       text: "echo: look[resource_link]",
     });
-    // 正文不进镜像与事件。
-    expect(JSON.stringify(after.body)).not.toContain("secret body");
+    // 正文不进时间线与事件。
+    expect(JSON.stringify(items)).not.toContain("secret body");
     expect(JSON.stringify(seen)).not.toContain("secret body");
 
     // 图片：这家没声明，拒绝且不投递。

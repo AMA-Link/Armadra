@@ -215,7 +215,7 @@ export class TimelineController {
     } catch (error) {
       if (this.disposed || generation !== this.generation) return;
       if (isTimelineMissing(error)) {
-        // 没有时间线不是故障：页面改走旧路径，这里不再轮询。
+        // 没有时间线不是故障：页面显示为空，这里不再轮询。
         this.publish({ phase: "error", error: message(error), missing: true });
         return;
       }

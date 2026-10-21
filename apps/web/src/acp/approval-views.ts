@@ -1,6 +1,6 @@
 /**
  * 审批与 elicitation 卡片吃的两种视图，以及从 `agent.approval` 的载荷里认出它们。
- * （原先在会话读模型里；读模型改读时间线之后，这两样只剩卡片和旧主机适配层用。）
+ * （原先在会话读模型里；读模型改读时间线之后，这两样只剩卡片用。）
  */
 import {
   acpElicitationRequestSchema,

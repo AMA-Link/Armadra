@@ -14,16 +14,11 @@
         "page": true
       },
       "metrics": {
-        "openLogMs": 8.5,
-        "openLogParseMs": 1,
-        "openLogBytes": 731410,
-        "openLogEntries": 802,
         "streamLatencyP50Ms": 2,
         "streamLatencyP95Ms": 6,
         "streamLatencyMaxMs": 18,
         "streamDeliveredRatio": 1,
         "streamOutboxRowsPerChunk": 1.02,
-        "streamMirrorLinesPerChunk": 1,
         "streamCoreCpuPercent": 8,
         "reconnectOpenMs": 1.2,
         "reconnectSyncMs": 12.4,

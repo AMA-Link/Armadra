@@ -718,33 +718,31 @@ G5-25 追加：`GET /api/usage` 与 `POST /api/usage/refresh` 里 Claude 那一�
 
 实现：`apps/desktop/src/core/acp/routes.ts`；形状：共享层 `api/acp.ts`。ACP 会话**就是** `terminal_sessions` 的一行（`backend: "acp"`，§5.1 的会话行形状不变），所以行、代次、人类租约（`POST /api/terminals/{id}/drive`）、`terminate`、`wake`、会话侧栏都照旧作用于它。路径里的 `{sessionId}` 是这一行的 id，不是 ACP 会话 id。权限与终端同一档：读要 `terminal:read`，开会话要 `terminal:create`（记创建者），往别人开的会话里写要 `terminal:drive`，按会话行查画布。
 
-| 方法与路径                              | 请求                                                                               | 应答                                                                                                          |
-| --------------------------------------- | ---------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
-| `POST /api/acp/sessions`                | `{ workspaceId, nodeId, cwd, agentId, permissionMode?, model?, resume?, prompt? }` | `200` 会话行（§5.1，`backend: "acp"`）                                                                        |
-| `POST /api/acp/sessions/{id}/prompt`    | `{ text, clientTurnId? }`                                                          | `200 { turnId }`；回合的结局经 `acp.turn`（§14.3）；`clientTurnId` 见 §39.9                                   |
-| `POST /api/acp/sessions/{id}/cancel`    | 无                                                                                 | `204`；`session/cancel`，挂起的审批一律回 `cancelled`                                                         |
-| `POST /api/acp/sessions/{id}/mode`      | `{ modeId }`                                                                       | `204`                                                                                                         |
-| `GET /api/acp/sessions/{id}/log?after=` | 无                                                                                 | `200 { entries: TranscriptEntry[], endOffset, modes: { currentModeId, availableModes[] } \| null, pending? }` |
-| `POST /api/acp/nodes/{nodeId}/driver`   | `{ driver: "acp" \| "terminal" }`                                                  | `200 { sessionId, resumed }`                                                                                  |
+| 方法与路径                            | 请求                                                                               | 应答                                                                        |
+| ------------------------------------- | ---------------------------------------------------------------------------------- | --------------------------------------------------------------------------- |
+| `POST /api/acp/sessions`              | `{ workspaceId, nodeId, cwd, agentId, permissionMode?, model?, resume?, prompt? }` | `200` 会话行（§5.1，`backend: "acp"`）                                      |
+| `POST /api/acp/sessions/{id}/prompt`  | `{ text, clientTurnId? }`                                                          | `200 { turnId }`；回合的结局经 `acp.turn`（§14.3）；`clientTurnId` 见 §39.9 |
+| `POST /api/acp/sessions/{id}/cancel`  | 无                                                                                 | `204`；`session/cancel`，挂起的审批一律回 `cancelled`                       |
+| `POST /api/acp/sessions/{id}/mode`    | `{ modeId }`                                                                       | `204`                                                                       |
+| `POST /api/acp/nodes/{nodeId}/driver` | `{ driver: "acp" \| "terminal" }`                                                  | `200 { sessionId, resumed }`                                                |
 
 - **起会话**：`nodeId` 不必已经在画布文档里（新建向导先起会话、节点随后落盘）；同一个节点已经有活着的 ACP 会话时答那一行（两台设备同时挂载、重试都不起第二个）；有活着的**终端**会话时 `409 conflict`（先切换驱动）；节点最近那一行是结束了的 ACP 行时在同一行上起下一代并接回。`prompt` 在会话开好后作为第一条提示发出（人类驾驶者）。没有 ACP 入口的 Agent 答 `400 acp_unsupported`；起不来的原样答 §14.1 的错误码（`acp_not_installed` 400、`acp_mode_unsupported` 400、`acp_mode_unavailable` 409、`acp_auth_required` 409、其余 502）。`custom:` 条目借基础 CLI 的适配器；基础 CLI 自己就是 ACP 入口（`native`）时，条目的 `launchCmd` 与 `args` 顶替表里的程序。
 - **提示**：等同在终端里敲一行并回车——经 `writeSubmit`，人类驾驶者（抢占租约，永不被拒）。同一会话一次一个回合，后到的排队。会话行已经结束（休眠、core 重启、适配器自己退了）时先在**同一行**上起下一代并以 CLI 会话 id 接回，再发；这一行已被节点的另一行取代时 `409 conflict`。
-- **镜像**：`entries` 是镜像 `<数据目录>/acp/<nodeId>/<ACP 会话 id>.acp.jsonl` 从字节偏移 `after` 起的完整记录（`TranscriptEntry`：`{ role: "user" | "assistant", blocks[], endOffset, at? }`，相邻的助手文本已合并），`endOffset` 是下一次的 `after`。**core 先写镜像再发 `acp.update`**：页面先订阅再读，读回来之前到的分块已经在 `entries` 里。镜像只记对话：我方的提示、助手文本、工具调用（`tool_use`）与它的终态结果（`tool_result`，正文截到 8000 字符）；思考、计划、用量、模式变化只经事件。`modes` 与 `pending`（挂起的审批，形状 `{ pendingId, protocol: "acp", toolCall, options[] }`）描述活着的进程，没有进程时 `modes: null`、无 `pending`。
+- **镜像（已下线）**：`GET …/log` 与旧镜像 `<数据目录>/acp/<nodeId>/<ACP 会话 id>.acp.jsonl` 的写入在协议 1.49 下线（§83）；会话内容读 `timeline.*`（§82）。
 - **驱动切换**（ACP 设计 §4.2）：节点在 `blocked` / `waiting` 时 `409 awaiting_approval`；SSH 节点两种驱动都起在执行主机上（§26.5）。否则结束当前驱动（终端先敲 CLI 的退出命令等它自己退，再结束；ACP 回合里先 cancel 再收掉进程），行以 `termination_intent = 'switch'` 结束；再在**同一行**上以另一种驱动起下一代（代次 +1，行 id 不变）：ACP 侧以 `agent_status.session_id` 接回（适配器表 `resume: "none"` 的新开），终端侧起 shell 并敲 CLI 的恢复行（不能续接时敲普通启动行）。`resumed` 如实说接上了没有。已经是目标驱动且活着时什么都不动，答 `resumed: true`。切换期间节点算「睡着」，`send` 排队。节点数据里的 `agent.driver` 由页面写回（不进撤销栈）。
-- **§26 追加**：`PUT /api/acp/sessions/{id}/model { modelId }` → `204`（§26.2）；`GET …/log` 多 `models`（形状同 `modes`，`{ currentModelId, availableModels: [{ modelId, name, description? }] } | null`）与 `elicitations`（挂起的 elicitation，§26.1），后者与 `pending` 一样只在有进程时出现。
-- **其余路由在 ACP 行上**：`GET /api/terminals/{id}/ws` 升级前答 `409`（没有 PTY 可附着）；`POST …/paste` 只收带回车的整段（`enter: false` 答 `409 acp_no_raw_write`）；`GET …/capture` 是镜像尾部渲染成的散文；`terminate` 的 `interrupt` 是 `session/cancel`。协作动词与调度经终端桥写入：`writeSubmit`（括号粘贴 + 回车）落为 `session/prompt`，单个 `ESC` 落为 `session/cancel`，其他字节答 `acp_no_raw_write`。
+- **§26 追加**：`PUT /api/acp/sessions/{id}/model { modelId }` → `204`（§26.2）；模型目录与挂起的 elicitation 经时间线头部与条目下发（§82）。
+- **其余路由在 ACP 行上**：`GET /api/terminals/{id}/ws` 升级前答 `409`（没有 PTY 可附着）；`POST …/paste` 只收带回车的整段（`enter: false` 答 `409 acp_no_raw_write`）；`GET …/capture` 是时间线尾部渲染成的散文；`terminate` 的 `interrupt` 是 `session/cancel`。协作动词与调度经终端桥写入：`writeSubmit`（括号粘贴 + 回车）落为 `session/prompt`，单个 `ESC` 落为 `session/cancel`，其他字节答 `acp_no_raw_write`。
 
 ### 14.3 事件
 
-工作空间事件流（§5）多三种，`sessionId` 一律是会话行 id（一行一帧）：
+工作空间事件流（§5）多两种，`sessionId` 一律是会话行 id（一行一帧）：
 
 ```text
-{ "type": "acp.update", "sessionId": "…", "nodeId": "…", "update": { "sessionUpdate": "agent_message_chunk", "content": { "type": "text", "text": "…" } } }
 { "type": "acp.turn", "sessionId": "…", "nodeId": "…", "turnId": "3-2", "stopReason": "end_turn" }
 { "type": "acp.driver", "nodeId": "…", "driver": "terminal", "sessionId": "…", "resumed": true }
 ```
 
-- `acp.update.update` 是 ACP `session/update` 的 `update` 原样（v1 规范字段；`_meta` 不解释）；core 发出的一条之前已经写进镜像（文本分块在镜像里攒成一行，`GET …/log` 读之前先写出，见 §82.4）。**自 §82.4 起 `acp.update` 是短时事件**：只扇出给在线订阅者，不进 outbox，续订游标补不出过去的分块——重连的页面读 `…/log` 或 `timeline.sync` 补齐。我方发出的提示也以一条 `user_message_chunk` 发出，别的设备看得见是谁说了什么。`session/load` 的回放从不发出。
+- `acp.update` 在协议 1.49 下线（§83）：会话内容改走 `timeline.delta`（§82），不再有按分块的旧事件。
 - `acp.turn`：一次提示的结束。`stopReason` 是规范的五个值之一；提示以 JSON-RPC 错误结束时没有 `stopReason`，带 `error: { code, message }`（`acp_protocol`，或进程没了时 `acp_exited`）。提示带了 `clientTurnId`（§39.9）时这一帧原样带回。
 - `acp.driver`：一次切换完成（§14.2）。
 - `acp.starting`：起会话的阶段（自 1.24，§51）。
@@ -2610,9 +2608,9 @@ core 校验远程服务地址与指纹的写法时用具名码（状态均 400�
 
 <!-- rpc:begin contract=§35.4 -->
 
-| procedure           | kind         | input                                                | output                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    | errors                                                                                     | scope         | 自  | 原路径 |
-| ------------------- | ------------ | ---------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ------------- | --- | ------ |
-| `workspaces.events` | subscription | `{ workspaceId: string, cursor?: "now" \| integer }` | 迭代：`agent.context`、`agent.status`、`agent.subagent`、`agent.approval`、`agent.delivery`、`acp.update`、`acp.turn`、`acp.driver`、`acp.starting`、`terminal.exit`、`terminal.lease`、`terminal.hibernation`、`terminal.program`、`timeline.delta`、`timeline.activity`、`board.changed`、`canvas.presence`、`board.comment`、`node.created`、`ssh.prompt`、`workspace.updated`、`control.confirm`、`resource.sample`、`browser.session`、`browser.download`、`browser.lease`、`browser.tabs`、`browser.dialog`、`browser.fileChooser`、`browser.activity`、`language.session`、`language.server`、`file.changed`、`workflow.draft`、`workflow.run`、`workflow.gate`、`workflow.task`、`schedule.fired`、`schedule.failed`、`schedule.attention`、`cloud.tunnel`、`devices.pending`、`devices.changed`、`resources.threshold`、`cursor` | `forbidden`、`not_found`、`snapshot_required`、`cursor_ahead`、`overflow`、`limit_reached` | `events:read` | 1.4 | —      |
+| procedure           | kind         | input                                                | output                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      | errors                                                                                     | scope         | 自  | 原路径 |
+| ------------------- | ------------ | ---------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ------------- | --- | ------ |
+| `workspaces.events` | subscription | `{ workspaceId: string, cursor?: "now" \| integer }` | 迭代：`agent.context`、`agent.status`、`agent.subagent`、`agent.approval`、`agent.delivery`、`acp.turn`、`acp.driver`、`acp.starting`、`terminal.exit`、`terminal.lease`、`terminal.hibernation`、`terminal.program`、`timeline.delta`、`timeline.activity`、`board.changed`、`canvas.presence`、`board.comment`、`node.created`、`ssh.prompt`、`workspace.updated`、`control.confirm`、`resource.sample`、`browser.session`、`browser.download`、`browser.lease`、`browser.tabs`、`browser.dialog`、`browser.fileChooser`、`browser.activity`、`language.session`、`language.server`、`file.changed`、`workflow.draft`、`workflow.run`、`workflow.gate`、`workflow.task`、`schedule.fired`、`schedule.failed`、`schedule.attention`、`cloud.tunnel`、`devices.pending`、`devices.changed`、`resources.threshold`、`cursor` | `forbidden`、`not_found`、`snapshot_required`、`cursor_ahead`、`overflow`、`limit_reached` | `events:read` | 1.4 | —      |
 
 <!-- rpc:end -->
 
@@ -3005,9 +3003,9 @@ core 校验远程服务地址与指纹的写法时用具名码（状态均 400�
 
 - **入参**：`acp.prompt` 多一个可选的 `clientTurnId`（1–128 字符的字符串，页面用随机 uuid）。不合格时 `400 bad_request`。不带时与之前完全一样（旧页面兼容）。
 - **去重**：同一会话行、同一 `clientTurnId` 只投递一次——同时到的两次与之后再到的都答同一个 `{ turnId }`，Agent 只收到一条 `session/prompt`。投递失败（被拒、会话没了）的不记，好让重发真的再投。core 只记每个进程最近 512 个 id，重启后从空开始。
-- **回合记录**：`acp.log` 的出参多一个可选的 `turns`，列出活会话最近 32 个回合（旧的在前），每项 `{ turnId, clientTurnId?, state: "queued" | "running" | "ended", stopReason?, error?: { code, message } }`；`ended` 的结局与那一回合的 `acp.turn` 相同。没有活进程时没有 `turns`（与 `pending` 一样）。
+- **回合记录**：回合的状态与结局记在时间线的 `turn` 条目上（§82）；`acp.log` 的 `turns` 随 1.49 下线（§83）。
 - **事件**：`acp.turn` 带回这一回合的 `clientTurnId`（提示带了的话，§14.3）。
-- **页面的对账**：请求以连接类失败结束（网络错误、没有答复、非 4xx）时不当场判失败，而是进入「确认中」：重读 `acp.log`，在 `turns` 里找自己的 `clientTurnId`——找到了按它的状态画（排队、在跑、已结束的真实结局），活会话的 `turns` 里没有才判「没有送达」并允许重试，重试沿用同一个 `clientTurnId`；读不到镜像时隔一会儿再读，几次都读不到也判没有送达（重试照样去重）。core 答 4xx 带 `code` 的是明确的拒绝，照旧当场判失败。控制面（§35）断开又连上之后，会话视图重读一遍镜像并按 `turns` 对账，补上断线那段漏掉的回合结束。
+- **页面的对账**：请求以连接类失败结束（网络错误、没有答复、非 4xx）时不当场判失败，而是进入「确认中」：补一次 `timeline.sync`，在用户条目里找自己的 `clientTurnId`——找到了按真实回合画，没有才判「没有送达」并允许重试，重试沿用同一个 `clientTurnId`；几次都同步不了也判没有送达（重试照样去重）。core 答 4xx 带 `code` 的是明确的拒绝，照旧当场判失败。控制面（§35）断开又连上之后，会话视图补同步，补上断线那段漏掉的回合结束。
 - 回合记录与事件里只有 id、状态与 ACP 的停止原因，不含提示正文。
 
 ## 40. `git` 与 `gitRepository`：Git 面
@@ -3332,7 +3330,6 @@ core 校验远程服务地址与指纹的写法时用具名码（状态均 400�
 | `acp.cancel`        | mutation | `{ sessionId: string }`                                                                                                                                | 无                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            | `forbidden`、`not_found`、`conflict`                | `terminal:create` | 1.12 | `POST /api/acp/sessions/{sessionId}/cancel` |
 | `acp.setMode`       | mutation | `{ sessionId: string, modeId?: string }`                                                                                                               | 无                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            | `bad_request`、`forbidden`、`not_found`、`conflict` | `terminal:create` | 1.12 | `POST /api/acp/sessions/{sessionId}/mode`   |
 | `acp.setModel`      | mutation | `{ sessionId: string, modelId?: string }`                                                                                                              | 无                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            | `bad_request`、`forbidden`、`not_found`、`conflict` | `terminal:create` | 1.12 | `PUT /api/acp/sessions/{sessionId}/model`   |
-| `acp.log`           | query    | `{ sessionId: string, after?: number \| string }`                                                                                                      | `{ entries: { role: string, blocks: Record<string, JSON>[], endOffset: integer, at?: string }[], endOffset: integer, modes?: Record<string, JSON> \| null, models?: Record<string, JSON> \| null, pending?: Record<string, JSON>[], elicitations?: Record<string, JSON>[], turns?: Record<string, JSON>[], snapshot?: Record<string, JSON> }`                                                                                                                                                                                                                                 | `forbidden`、`not_found`                            | `terminal:read`   | 1.12 | `GET /api/acp/sessions/{sessionId}/log`     |
 | `acp.switchDriver`  | mutation | `{ nodeId: string, driver?: string }`                                                                                                                  | `{ sessionId: string, resumed: boolean }`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     | `bad_request`、`forbidden`、`not_found`、`conflict` | `terminal:create` | 1.12 | `POST /api/acp/nodes/{nodeId}/driver`       |
 
 <!-- rpc:end -->
@@ -3607,8 +3604,8 @@ human initiator。页面不接收任何 controller 凭据；body owner/controlle
   - 内嵌的 `resource`：有 `text` 记成 `{ type: "text" }`，没有记成 `resource_link`（`name` 取 URI 最后一段，不记 `blob`）。
 - **工具结果带差异**：工具调用 `content[]` 里的 `diff` 块（最近一次给的那一份）随它的终态结果记成 `tool_result.diffs: [{ path, oldText?, newText }]`，整份保留；结果正文仍按 8000 字符截断。以 `failed` 结束的结果多一个 `status: "failed"`。
 - **工具调用带种类与文件**：`tool_use` 多可选的 `kind`（ACP 的 `ToolKind`）与 `locations: [{ path, line? }]`（最多 20 个），重载后工具行的图标与文件胶囊照旧。
-- **谁读得到**：只有 `acp.log`（`GET /api/acp/sessions/{id}/log`）的 `entries` 带这两种块与 `diffs` / `status` / `kind` / `locations`。连线读取、摘要、交接、终端画面（`capture`）这些经 `history/registry.ts` 读镜像的读取方照旧只看到 `text` / `tool_use` / `tool_result`，图片的 base64 不进别人的上下文。
-- **`acp.log` 的 `snapshot`**：出参多一个可选的 `snapshot: { plan: AcpPlanEntry[], usage: { used, size, cost?: { amount, currency } } | null, availableCommands: { name, description }[], title: string | null }`，是活进程最近一次 `plan` / `usage_update` / `available_commands_update` / `session_info_update` 的值（命令最多 200 条）。与 `pending`、`turns` 同一条件：没有活进程时缺席。回放（`session/load`）的这几种不进快照。
+- **谁读得到**：只有会话视图（现为时间线，§82；`acp.log` 随 1.49 下线，§83）的条目 带这两种块与 `diffs` / `status` / `kind` / `locations`。连线读取、摘要、交接、终端画面（`capture`）这些经 `history/registry.ts` 读转录的读取方（自 1.49 起从时间线派生）照旧只看到 `text` / `tool_use` / `tool_result`，图片的 base64 不进别人的上下文。
+- **活进程快照**：计划、用量、斜杠命令与标题现为时间线的 `plan` 条目与头部值（§82）；`acp.log` 的 `snapshot` 随 1.49 下线（§83）。
 - 镜像与快照都不含凭据；`title` 只给页面作命名建议，core 不拿它改节点。
 
 ## 50. 布局方向：`canvas.layoutDirection` 与派发放置
@@ -3636,7 +3633,7 @@ human initiator。页面不接收任何 controller 凭据；body owner/controlle
 - **`POST /api/acp/prestart`** `{ workspaceId, agentId, nodeId? }` → `204`。`nodeId`（§82.4）：接回已有节点，按该节点的 `cwd`（没有就工作空间根）预启动；节点不在这个工作空间 404 `not_found`，SSH 节点当没这回事。幂等；只是提速：不是 ACP 入口、没装、或这家不能预启动时同样 204。工作空间不存在 404 `not_found`，缺字段 400 `bad_request`。权限 `terminal:drive`；服务器壳按体里的 `workspaceId` 判。页面在右键 / Dock `+` 菜单打开时对默认 Agent（以 ACP 驱动的才调）调一次；远程源不调。core 按与起会话同一份程序、argv 与环境起适配器并完成 `initialize`，挂在 `(agentId, workspaceId)` 下，10 s 没被领走就收掉。之后同一工作空间同一家的 `POST /api/acp/sessions` 若启动签名（程序、argv、环境）相同就领走它，直接 `session/new`。预启动时还没有节点，进程环境里没有节点身份：所以只给注入不复用终端环境与 argv 的那几家（适配器表 `injection.reuse` 为空，今天是 Claude 与 ama），节点带凭据（§26.4）时不领。
 - **预热**：适配器或 CLI 装好 / 升级成功后、core 起来空闲 10 s 后、以及预启动时发现适配器程序换过，core 对每家已装的适配器跑一次 `initialize`，并执行一次它自带 CLI 的 `--version`（Claude：SDK 平台包里的 `claude`；Codex：`@openai/codex-<平台>` 里的原生程序），串行，同一家同一份程序 10 分钟内一次。没有接口；`ARMADRA_ACP_WARMUP=0` 或 `ARMADRA_NO_GLOBAL_WRITES=1`（探针）时不做空闲预热。
 - **耗时日志**：每次起会话记一条 info 日志 `ACP session start timings`，字段只有 `nodeId`、`agentId` 与 `spawnMs` / `initializeMs` / `sessionMs` / `configureMs` / `totalMs` / `prestarted`；适配器 stderr 里的 `[session/create] phase=<名> durationMs=<n>` 只取名字与数字记成 `ACP adapter phase`。stderr 正文仍不进日志。
-- `acp.log` 不变；不写数据库迁移（池与预热只在内存里）。
+- `acp.log` 不变（1.49 下线，§83）；不写数据库迁移（池与预热只在内存里）。
 
 ## 52. 启动闸门：`launch-slot`、`launch-result`、垫片穿透与 `wait` 的 `launch_failed`
 
@@ -3732,8 +3729,8 @@ human initiator。页面不接收任何 controller 凭据；body owner/controlle
 - **`POST /api/workspaces/{id}/agent-uploads?name=<文件名>`**：体是原样的字节，`Content-Type` 是文件自己的（留在 REST，不进 procedure）。答 `200 { id, name, path, mimeType, bytes }`：`id` 是 32 位十六进制；`name` 只留 `[A-Za-z0-9._-]`、保留扩展名，没有扩展名的剪贴板图片按类型补（`image.png`）；`path` 是 core 所在机器上的绝对路径；`mimeType` 按扩展名定，不信客户端。落在 `<数据目录>/agent-uploads/<工作空间>/<id>/<name>`，不写工作区。单个文件上限 25 MiB（`MAX_AGENT_UPLOAD_BYTES`），超了 `413 payload_too_large`；空体 `400 bad_request`；工作空间不存在 `404`；工作空间没有 `execute` 授权 `403 forbidden`。权限 `terminal:create`（`route-scopes.ts`）。
 - **清理**：每次上传后与 core 启动时，删掉超过 7 天的上传，并把一个工作空间的合计压到 256 MiB 以内（从最旧的删起）。
 - **`acp.prompt`**（`POST /api/acp/sessions/{id}/prompt`）多一个可选的 `attachments: [{ uploadId }]`（最多 10 个，id 按会话所在的工作空间找，别处的 `404`、格式不对 `400`）；有附件时 `text` 可以是空串。转成的内容块：PNG / JPEG / GIF / WebP → `image`（base64，≤ 8 MiB，`MAX_ACP_IMAGE_BYTES`；本机会话带 `file://` 的 `uri`）——Agent 在 `initialize` 里没声明 `promptCapabilities.image` 时 `409 acp_image_unsupported`，不改成链接；其余文件：声明了 `embeddedContext` 且是 ≤ 256 KiB 的 UTF-8 文本 → 内嵌 `resource`（带 `text`），否则 → `resource_link`（`file://` 路径、`name`、`mimeType`、`size`）。SSH 节点的 Agent 不在这台机器上：只能内嵌，内嵌不了 `409 acp_attachment_unsupported`；图片太大 `413 acp_attachment_too_large`。
-- **镜像与事件只有链接**：这一轮记进镜像的用户记录是 `text`（非空时）加每个附件一条 `resource_link`（`uri`、`name`、`mimeType`），`acp.update` 的 `user_message_chunk` 同样；图片的 base64 与文件正文只进 Agent 的这一次 `session/prompt`，不进镜像、事件与日志。
-- **`acp.log`** 多一个可选的 `promptCapabilities: { image, embeddedContext }`，与 `pending`、`turns` 同一条件（没有活进程时缺席）。页面据此决定画不画回形针、收不收图片；缺席（旧 core）时不收附件。
+- **时间线与事件只有链接**：这一轮记下的用户条目是 `text`（非空时）加每个附件一条引用（`name`、`mimeType`、`uri`）；图片的 base64 与文件正文只进 Agent 的这一次 `session/prompt`，不进时间线、事件与日志。
+- **`promptCapabilities: { image, embeddedContext }`** 自 1.49 起只在时间线头部（§82.4）；页面据此决定画不画回形针、收不收图片，头部没有时不收附件。
 - **终端节点**不经新接口投递：页面把上传答回的 `path` 经 xterm 的 `paste()` 插入（应用开了 2004 就是括号粘贴），一个文件一段，不加回车；Agent 正挂着要人回答的提示（`agent_status` 有 `pendingId` 或 `blocked`）时不粘。桌面壳的本机源拖进来的磁盘文件直接用原路径，不上传。SSH 终端节点不支持。
 - 不写数据库迁移。
 
@@ -4438,7 +4435,7 @@ owner：本机作为客户端连别的电脑（`sources.session`，§33）时，
 
 - **判定**：`scopes` 里有带 `resourceId` 的 `terminal:read`、且没有任何 `canvas:read` 的人是会话查看者；页面把这些会话当作他能开的全部内容。
 - **落地**：按链接加入（浏览器 `/j/<id>` 或桌面「通过链接加入」）之后，工作空间列表为空而身份会话报出会话范围时，直接打开第一条会话的只读查看页；浏览器访客重新载入页面同样落到这里。桌面侧栏「他人分享」里没有工作空间的那台主机下列出这些会话，点开即同一页。
-- **只读查看页**：经那台源读会话行（`terminals.get`）。终端会话以只读附着 `WS /api/terminals/{id}/ws`（§60.1），终端不接受键盘输入；ACP 会话按 `acp.log` 读转录（定时重读），没有输入框与审批按钮。顶栏是会话标题与「只读」标记。
+- **只读查看页**：经那台源读会话行（`terminals.get`）。终端会话以只读附着 `WS /api/terminals/{id}/ws`（§60.1），终端不接受键盘输入；ACP 会话读时间线（`timeline.*`，§82，推送，不再定时重读），没有输入框与审批按钮。顶栏是会话标题与「只读」标记。
 - **中转**：armadra-cloud 0.3.11 起中继边缘不再按 `ro` 中继令牌过滤（cloud-api §14），`ro` 令牌下的 `POST /api/rpc/*` 照常进隧道；§60 所说「`ro` 让边缘只放行 GET 与身份域」只对 0.3.10 及更早的中继成立。core 仍不向远程服务交只读（§60.3 不变）。
 
 ## 80. 配对与访客：配对秘密、设备背书、链接片段的身份指纹
@@ -4529,7 +4526,7 @@ owner（本机会话，或已信任设备经通道的 owner 会话）：`{ sourc
 - **blob**：图片、音频与内嵌资源的字节按内容寻址存 `<数据目录>/timeline/blobs/<sha256>`（0600），单个超过 8 MiB 的不存（部件记 `dropped`）。读以 `timeline_blobs` 为准——只有这条时间线自己登记过的 blob 读得到，别的时间线的 blobId、不存在的 blobId 一律 `404`。`GET /api/timelines/{timelineId}/blobs/{blobId}` 答原始字节：`content-type` 只对 `image/{png,jpeg,gif,webp,avif,bmp}` 与 `audio/*` 原样回，其余（含 SVG、HTML）一律 `application/octet-stream` + `content-disposition: attachment`；`x-content-type-options: nosniff`、`content-security-policy: sandbox`、`cache-control: private, max-age=31536000, immutable`。`timeline.blob` 把字节放进 JSON（base64），一个应答就是一帧，所以只放得下原始字节不超过 `⌊(maxFrameBytes − 1024) / 4⌋ × 3`（约 786 KB）的 blob，更大的答 `400 bad_request`，改走 HTTP 路径。
 - **授权**：时间线以会话行 id 为键，路由门（`identity/route-access.ts`）按会话行查出画布再判 `terminal:read`，procedure（`rpc:timeline.*`）与 blob 路径同一道门；只被授予某一条会话（§60）的人只读得到那一条；不存在的会话对成员也答 `403`，不泄露哪些 id 存在。本机壳没有请求主体，不受限。会话没有时间线时四个动词答 `404 not_found`，页面据此退回 `acp.log` 路径。
 - **恢复**：core 重启时，上一个进程留下的、没有收尾的 ACP 回合（适配器进程早随它没了）一律记 `cancelled`：挂起的审批与提问变 `cancelled`，流式的条目收尾，跑着的工具记 `cancelled`，回合条目写 `endedAt` 与 `stopReason = cancelled`，并发 `timeline.delta`。
-- **新旧并存**：`acp.log`（镜像读）、`acp.update` 与 `acp.turn` 事件在 B10 之前原样保留；ACP 会话自 §82.4 起同时写时间线；还没有任何生产者写过的会话（终端驱动的 CLI 在 B4 之前、从未起过的节点）时间线是空的，`timeline.*` 答 `404`，会话列表没有 `activity`。
+- **旧接口已下线**：`acp.log`（镜像读）与 `acp.update` 事件在协议 1.49 下线（§83）；`acp.turn` 保留。还没有任何生产者写过的会话（终端驱动的 CLI 在 B4 之前、从未起过的节点）时间线是空的，`timeline.*` 答 `404`，会话列表没有 `activity`，页面显示为空。
 
 ### 82.3 终端驱动的 CLI：转录来源
 
@@ -4552,10 +4549,10 @@ owner（本机会话，或已信任设备经通道的 owner 会话）：`{ sourc
 - **活动**：起会话时 `starting`（`detail.step` = `spawn` / `initialize` / `session` / `configure`，领走预启动进程时前两帧补报），`session/load` 回放时 `restoring`（`detail.count` 是已回放条数，每 25 帧报一次），开好后 `ready`；内容阶段由写入器自动推导。
 - **打开节点不等适配器**：时间线在会话行登记的那一刻起就能读（`timeline.open`、`sync`、`page`）；core 重启或休眠之后历史直接来自库，适配器在后台接回。
 - **恢复**：时间线非空时，Agent 声明了 `session/resume` 就优先用它（不回放），否则 `session/load`，回放的帧**不写条目**，只让活动显示 `restoring`；`session/load` 回放静默超过 120 s（每来一帧重新计时）放弃接回、新开会话并记 `not_resumed`（`resumeError.code = acp_resume_failed`）。时间线为空（第一次接管旧会话）时回放照 `session/load` 走，经 reducer 写成 `source = replay` 的回合（每个 `user_message_chunk` 开一回合）。
-- **提速**：（1）`acp.update` 改短时事件（`EPHEMERAL_EVENTS`），每个回合的 outbox 写入不再随分块数增长；（2）镜像里相邻的助手文本分块攒成一行，遇到别的记录、回合结束、会话结束、攒满 32 KiB 或 300 ms 到点才写，`GET …/log` 读之前先写出；（3）ACP 的 `tool` 信号只在 reducer 眼里的状态会变（不是 `working`）或 `execute` 的标题变了才走 `apply`，工具粒度的变化只更新活动；（4）写入器合并刷写（§82.2）使每个回合的 SQLite 写入从「分块数」降到「刷写次数」。
-- **初始目录进头部（B10）**：会话开好（`session/new` / `resume` / `load` 返回）与 `session/set_mode`、模型改过之后，core 把 `modes`（含 `currentModeId`）、`models` 目录和 `promptCapabilities: { image, embeddedContext } | null` 写进头部（只写与现值不同的项，这一次没有而头部有的写 `null`），随快照与 `head` 增量下发，core 重启后仍在；所以 `current_mode_update`、`config_option_update` 在有目录时生效，页面首屏不必再读 `acp.log` 补这三样（旧接口 B10 之后另行下线）。三项都可省，旧数据没有这些字段照常读。
+- **提速**：（1）`timeline.delta` 与 `timeline.activity` 是短时事件（`EPHEMERAL_EVENTS`），每个回合的 outbox 写入不再随分块数增长；（2）ACP 的 `tool` 信号只在 reducer 眼里的状态会变（不是 `working`）或 `execute` 的标题变了才走 `apply`，工具粒度的变化只更新活动；（3）写入器合并刷写（§82.2）使每个回合的 SQLite 写入从「分块数」降到「刷写次数」。旧镜像的批量写随镜像停写（1.49）一并取消。
+- **初始目录进头部（B10）**：会话开好（`session/new` / `resume` / `load` 返回）与 `session/set_mode`、模型改过之后，core 把 `modes`（含 `currentModeId`）、`models` 目录和 `promptCapabilities: { image, embeddedContext } | null` 写进头部（只写与现值不同的项，这一次没有而头部有的写 `null`），随快照与 `head` 增量下发，core 重启后仍在；所以 `current_mode_update`、`config_option_update` 在有目录时生效，页面首屏直接取头部这三样（`acp.log` 已下线，§83）。三项都可省，旧数据没有这些字段照常读。
 - **镜像派生（B10）**：没有 `session/load` 的适配器（只能 resume）接回升级前的会话时，若时间线为空而该会话的镜像（`.acp.jsonl`）非空，core 把镜像翻回 `session/update` 帧、按回放的路径写成 `source = replay` 的回合（条目 id 由写入顺序决定，时间取镜像行的 `at`）。时间线已有内容（含这次回放已经写过）时不导入，重复接回幂等。
-- **图片与音频**：落成 blob，条目与事件只带 `{ blobId, mimeType, bytes }`（§82 体量一节）；旧的 `acp.update` 仍带原样 base64，B10 之后不再发出。
+- **图片与音频**：落成 blob，条目与事件只带 `{ blobId, mimeType, bytes }`（§82 体量一节）。
 - **预启动接回已有节点**：`POST /api/acp/prestart` 多一个可省的 `nodeId`（§51）；页面在节点进入视口或获得焦点时调用，之后该节点接回会话时领走预启动的适配器。
 
 ### 82.5 ACP 终端内容（B9）
@@ -4568,3 +4565,12 @@ owner（本机会话，或已信任设备经通道的 owner 会话）：`{ sourc
 - **输出上限**：内存里每个终端只留尾部 256 KiB（stdout 与 stderr 合并，按到达顺序），Agent 的 `outputByteLimit` 只能更小；超出从头部丢、在字符边界上切，`terminal/output` 的 `truncated` 为真。同时存活的终端至多 8 个。时间线工具条目里的输出再按共享层 `clipTail` 只留尾部 64 KiB。
 - **进时间线**：Agent 在 `tool_call` / `tool_call_update` 里把终端挂到工具上；core 给时间线的那一份补上此刻的输出尾部、`command` 与退出码，输出变化时合成一条 `tool_call_update`（节流 120 ms，退出与 `release` 立即）。终端被信号杀掉时 `exitCode` 为 `null`。`release` 之后 Agent 再发只有 `terminalId` 的更新，输出不会被冲掉。旧的 `acp.update` 与镜像拿到的仍是 Agent 的原话，**不含终端输出**。
 - **回收**：子进程自成进程组（Windows 用 `taskkill /T`），按 pid 回收。`kill` 先 SIGTERM，1.5 s 后仍在再 SIGKILL，终端留着可取输出；`release` 直接 SIGKILL 并使 id 失效；会话结束（`terminate`）与适配器退出时还活着的全部 SIGKILL。
+
+## 83. 旧 ACP 接口下线：`acp.log` 与 `acp.update`
+
+> 状态：实施契约。自协议 1.49（minor 49）起，总 Issue #422 的 B10。**不做兼容**：旧页面与旧主机的退路一并删除。
+
+- **下线的接口**：procedure `acp.log` 与它的原路径 `GET /api/acp/sessions/{sessionId}/log`；工作空间事件 `acp.update`（§14.3）。其余 `acp.*`（`createSession`、`prompt`、`cancel`、`setMode`、`setModel`、`switchDriver`）与 `acp.turn`、`acp.driver`、`acp.starting` 不变。调用已下线的路由答 `404`/`501`。
+- **替代**：会话内容、头部值（模式与模型目录、`promptCapabilities`、用量、命令、标题）、挂起的审批与 elicitation、回合记录都读 `timeline.open` / `timeline.sync` / `timeline.page` 并订 `timeline.delta`（§82）。
+- **镜像停写**：旧镜像 `<数据目录>/acp/<nodeId>/<ACP 会话 id>.acp.jsonl` 不再写。打开升级前的会话时，时间线为空而旧文件有内容，core 读一次旧文件导入时间线（条目 `source = replay`）；上下文读取、摘要、交接（`transcriptPath` 为镜像路径时）优先从时间线派生 `TranscriptEntry`（游标是记录序号），时间线为空才读旧文件（游标是字节偏移）。
+- **页面**：会话视图只走时间线；主机没有 `timeline.*` 或会话没写过时间线时内容为空，不再退回读镜像。只读分享页不再每 2 s 轮询。

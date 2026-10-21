@@ -6,11 +6,12 @@ import { afterEach, describe, expect, it } from "vitest";
 import { coalesce, readMirrorEntries } from "../history/acp-mirror";
 import { locateHistory, readHistoryEntries } from "../history/registry";
 import { tempDir } from "../testing/temp-dir";
-import { AcpMirror, BATCH_MS, IMAGE_LIMIT, mirrorPath } from "./mirror";
+import { mirrorPath } from "./mirror";
+import { IMAGE_LIMIT, LegacyMirrorWriter } from "./mirror-legacy.testing";
 
 /**
- * 镜像（ACP 设计 §5.7）：逐块写、读时合并；连线读取经 `history/registry` 先认
- * 后缀；目录 0700、文件 0600。
+ * 旧镜像（ACP 设计 §5.7，B10 起只读）：读时合并相邻的助手文本；连线读取经
+ * `history/registry` 先认后缀。文件由 `mirror-legacy.testing.ts` 按旧格式写。
  */
 
 const NODE = "11111111-2222-4333-8444-555555555555";
@@ -21,51 +22,13 @@ afterEach(() => {
     rmSync(dir, { recursive: true, force: true });
 });
 
-function mirror(id = "s-1"): AcpMirror {
+function mirror(id = "s-1"): LegacyMirrorWriter {
   const dir = tempDir("armadra-acp-mirror-");
   dirs.push(dir);
-  return new AcpMirror(mirrorPath(dir, NODE, id));
+  return new LegacyMirrorWriter(mirrorPath(dir, NODE, id));
 }
 
 describe("the ACP mirror", () => {
-  it("batches adjacent text chunks into one line and flushes on other records, on read and on a timer", async () => {
-    const m = mirror("batch");
-    for (const text of ["a", "b", "c"]) {
-      m.update({
-        sessionUpdate: "agent_message_chunk",
-        content: { type: "text", text },
-      });
-    }
-    expect(m.writes).toBe(0);
-    m.update({
-      sessionUpdate: "tool_call",
-      toolCallId: "t1",
-      title: "Read",
-      kind: "read",
-    });
-    expect(m.writes).toBe(2);
-    const entries = m.read().entries;
-    expect(entries[0]?.blocks).toEqual([{ type: "text", text: "abc" }]);
-    // 定时器兜底：没有别的记录也会在 BATCH_MS 内写出。
-    m.update({
-      sessionUpdate: "agent_message_chunk",
-      content: { type: "text", text: "late" },
-    });
-    expect(m.writes).toBe(2);
-    await new Promise((resolve) => setTimeout(resolve, BATCH_MS + 150));
-    expect(m.writes).toBe(3);
-    // 1000 个分块只写个位数次。
-    const before = m.writes;
-    for (let i = 0; i < 1000; i += 1) {
-      m.update({
-        sessionUpdate: "agent_message_chunk",
-        content: { type: "text", text: "0123456789" },
-      });
-    }
-    m.flush();
-    expect(m.writes - before).toBeLessThanOrEqual(3);
-  });
-
   it("records prompts, replies, tool calls and their final results", () => {
     const m = mirror();
     expect(m.empty).toBe(true);
@@ -132,7 +95,6 @@ describe("the ACP mirror", () => {
       content: "ok",
     });
     expect(endOffset).toBe(m.size);
-    expect(m.capture(2)).toContain("ok");
 
     if (process.platform !== "win32") {
       expect(statSync(m.path).mode & 0o777).toBe(0o600);

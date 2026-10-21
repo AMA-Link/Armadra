@@ -8,9 +8,9 @@
  *   * **回合**：`prompt` 排队、一次一个（ACP 不收并发的 `session/prompt`）；
  *     发出即 `working`（新回合），答复的 `stopReason` 落成 `done`
  *     （`normalize.ts`）。回合的结束另发一帧 `acp.turn`。
- *   * **镜像先于事件**：每条 `session/update` 先写镜像再发 `acp.update`
- *     （页面重载靠这个次序不丢分块）；`session/load` 的回放不发给页面，只在
- *     镜像还空着时写进去。
+ *   * **只写时间线**：每条 `session/update` 经 `feed.ts` 写进会话时间线
+ *     （契约 §82）；旧的 `.acp.jsonl` 镜像不再写，只在打开升级前的会话时读一次
+ *     导入（`mirror-import.ts`）。`session/load` 的回放只进时间线。
  *   * **审批**：`session/request_permission` 进现有的 `agent_approvals`（经
  *     `blocked` 事件与 reducer，`request_json = { protocol: "acp", toolCall,
  *     options }`）；答复从 `agent/approvals.ts` 的 `"acp"` 路由回到这里。
@@ -197,11 +197,9 @@ export class AcpSession implements AcpSessionIdentity {
   private readonly sink: AcpSessionSink;
   private readonly options: AcpSessionOptions;
   private host: AcpHostSession | undefined;
-  private mirror: AcpMirror | undefined;
   /** 开会话之前到的更新：开完再按次序处理。 */
   private early: { update: AcpSessionUpdate; replay: boolean }[] = [];
-  /** 回放能不能进镜像：只有镜像空着时。 */
-  private replayIntoMirror = false;
+  /** 恢复的会话在升级前留下的旧镜像：时间线为空时导入（B10）。 */
   private replayMirror: AcpMirror | undefined;
   /** pendingId → 挂起表里的 id。 */
   private readonly permissions = new Map<string, AcpPendingPermission>();
@@ -260,9 +258,7 @@ export class AcpSession implements AcpSessionIdentity {
       this.terminalLink = new TerminalFeedLink((id) => terminals.snapshot(id));
     }
     if (options.resumeSessionId !== undefined) {
-      const mirror = options.mirrorFor(options.resumeSessionId);
-      this.replayIntoMirror = mirror.empty;
-      this.replayMirror = mirror;
+      this.replayMirror = options.mirrorFor(options.resumeSessionId);
     }
   }
 
@@ -297,13 +293,7 @@ export class AcpSession implements AcpSessionIdentity {
     this.host = host;
     this.modeState = host.modes;
     this.modelCatalog = host.models;
-    // 回放用的那个镜像对象和后面写的是同一个文件：共用一个，攒着的块次序才不乱。
-    const planned = this.options.mirrorFor(host.sessionId);
-    const mirror =
-      this.replayMirror !== undefined && this.replayMirror.path === planned.path
-        ? this.replayMirror
-        : planned;
-    this.mirror = mirror;
+    const mirror = this.options.mirrorFor(host.sessionId);
     this.sink.signal({
       signal: "opened",
       sessionId: host.sessionId,
@@ -381,10 +371,6 @@ export class AcpSession implements AcpSessionIdentity {
     return modelStateOf(this.modelCatalog);
   }
 
-  get mirrorPath(): string | undefined {
-    return this.mirror?.path;
-  }
-
   /** `initialize` 里声明的 `promptCapabilities`（契约 §56）；会话没开好时为 `null`。 */
   get promptCapabilities(): PromptCapabilities | null {
     const capabilities = this.host?.capabilities;
@@ -400,9 +386,9 @@ export class AcpSession implements AcpSessionIdentity {
     return this.options.remote === true;
   }
 
-  /** 镜像渲染出的最后几行（桥的 `capture`）。 */
+  /** 时间线渲染出的最后几行（桥的 `capture`）。 */
   capture(lines: number): string {
-    return this.mirror?.capture(lines) ?? "";
+    return this.feed?.capture(lines) ?? "";
   }
 
   /** 最近的回合，旧的在前（`…/log` 的 `turns`，契约 §39.9）。 */
@@ -555,22 +541,8 @@ export class AcpSession implements AcpSessionIdentity {
     }
     this.running = turnId;
     this.record(turnId, { state: "running" });
-    // 我方这条也是对话的一部分：先进镜像，再让别的设备看见。附件只记链接
-    // （契约 §56）：图片与文件正文不进镜像与事件。
+    // 附件只记链接（契约 §56）：图片与文件正文不进时间线。
     const links = attachments?.links ?? [];
-    this.mirror?.prompt(text, links);
-    const shown: AcpContentBlock[] = [
-      ...(text === "" ? [] : [{ type: "text" as const, text }]),
-      ...links,
-    ];
-    for (const content of shown) {
-      this.sink.publish({
-        type: "acp.update",
-        sessionId: this.rowId,
-        nodeId: this.nodeId,
-        update: { sessionUpdate: "user_message_chunk", content },
-      });
-    }
     this.feed?.beginTurn(turnId, {
       text,
       ...(links.length === 0
@@ -624,7 +596,6 @@ export class AcpSession implements AcpSessionIdentity {
     });
     const clientTurnId = this.clientTurnOf(turnId);
     this.workingSignalled = false;
-    this.flushMirror();
     this.feed?.endTurn(end, this.usage);
     if (end.error === undefined) {
       this.sink.signal({ signal: "turn", stopReason: end.stopReason });
@@ -642,19 +613,6 @@ export class AcpSession implements AcpSessionIdentity {
       ...(end.stopReason === undefined ? {} : { stopReason: end.stopReason }),
       ...(end.error === undefined ? {} : { error: end.error }),
     });
-  }
-
-  /** 攒着的镜像文本写出去（回合结束、结束会话前）。落盘失败只记日志。 */
-  flushMirror(): void {
-    try {
-      this.mirror?.flush();
-      if (this.replayMirror !== this.mirror) this.replayMirror?.flush();
-    } catch (error) {
-      this.sink.log?.("could not write the ACP mirror", {
-        nodeId: this.nodeId,
-        error: messageOf(error),
-      });
-    }
   }
 
   /** `session/cancel`：挂起的审批由客户端回 `cancelled`。 */
@@ -749,7 +707,6 @@ export class AcpSession implements AcpSessionIdentity {
    */
   async terminate(): Promise<void> {
     this.closed = true;
-    this.flushMirror();
     const host = this.host;
     if (host === undefined) {
       await this.terminals?.dispose();
@@ -778,12 +735,8 @@ export class AcpSession implements AcpSessionIdentity {
 
   private consume(update: AcpSessionUpdate, replay: boolean): void {
     if (replay) {
+      // 回放只进时间线（时间线已有内容时由写入侧忽略）；不进状态。
       this.feed?.update(update, true);
-      // 回放：镜像里已经有就什么都不做；从别的驱动切过来、镜像还空着时把它
-      // 记下，会话视图才看得到之前的对话。不发给页面、不进状态。
-      if (this.replayIntoMirror) {
-        (this.replayMirror ?? this.mirror)?.update(update, true);
-      }
       return;
     }
     this.remember(update);
@@ -802,22 +755,8 @@ export class AcpSession implements AcpSessionIdentity {
       const next = modelCatalogOf(configOptionsOf(update));
       if (next !== null) this.modelCatalog = next;
     }
-    try {
-      this.mirror?.update(update, false);
-    } catch (error) {
-      this.sink.log?.("could not write the ACP mirror", {
-        nodeId: this.nodeId,
-        error: messageOf(error),
-      });
-    }
-    // 时间线拿到的是补了终端输出的那一份；镜像与旧的 `acp.update` 仍是原话。
+    // 时间线拿到的是补了终端输出的那一份。
     this.feed?.update(this.terminalLink?.decorate(update) ?? update, false);
-    this.sink.publish({
-      type: "acp.update",
-      sessionId: this.rowId,
-      nodeId: this.nodeId,
-      update: update as unknown as { sessionUpdate: string },
-    });
     if (
       update.sessionUpdate === "tool_call" ||
       update.sessionUpdate === "tool_call_update"
@@ -912,7 +851,6 @@ export class AcpSession implements AcpSessionIdentity {
     this.closed = true;
     // Agent 没了：它起的终端子进程按 pid 一并收掉（不留孤儿）。
     void this.terminals?.dispose();
-    this.flushMirror();
     // 我们要它退的（休眠、切换驱动、结束）由发起方写提示；自己没的才是退出。
     if (!exit.requested) {
       this.feed?.exited(exit.code === null ? {} : { code: exit.code });

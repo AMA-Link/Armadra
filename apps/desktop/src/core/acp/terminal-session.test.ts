@@ -100,16 +100,6 @@ describe("terminal/*", () => {
         },
       ],
     });
-    // 旧的 acp.update 路径不带终端内容。
-    const legacy = seen.filter(
-      (event) =>
-        event.type === "acp.update" &&
-        String(
-          (event.update as { sessionUpdate: string }).sessionUpdate,
-        ).startsWith("tool_call"),
-    );
-    expect(legacy).toHaveLength(2);
-    expect(JSON.stringify(legacy)).not.toContain('"output"');
   });
 
   it("输出是实时的：命令还在跑时工具行已经有第一行", async () => {

@@ -1,4 +1,11 @@
-import { isAcpMirror, readMirrorEntries } from "./acp-mirror";
+import type { TimelineItem } from "@armadra/shared";
+
+import {
+  entriesFromTimeline,
+  isAcpMirror,
+  readMirrorEntries,
+  sliceTimelineEntries,
+} from "./acp-mirror";
 import { claudeAdapter } from "./claude";
 import { codexAdapter } from "./codex";
 import { copilotAdapter } from "./copilot";
@@ -23,6 +30,29 @@ export const HISTORY_ADAPTERS: readonly HistoryAdapter[] = [
   copilotAdapter,
 ];
 
+/**
+ * ACP 会话时间线的读口（会话时间线设计 §10，B10）：节点的 `transcriptPath` 是旧
+ * 镜像路径时，据它找到会话的时间线条目。没有时间线、时间线为空答 `undefined`，
+ * 读取方退回按文件读旧镜像。由 `core/acp` 装配。
+ */
+export type AcpTimelineSource = (
+  mirrorPath: string,
+) => readonly TimelineItem[] | undefined;
+
+let acpTimeline: AcpTimelineSource | undefined;
+
+export function setAcpTimelineSource(source: AcpTimelineSource | undefined) {
+  acpTimeline = source;
+}
+
+function timelineEntriesOf(path: string | undefined) {
+  if (!isAcpMirror(path)) return undefined;
+  const items = acpTimeline?.(path as string);
+  if (items === undefined || items.length === 0) return undefined;
+  const entries = entriesFromTimeline(items);
+  return entries.length === 0 ? undefined : entries;
+}
+
 /** 这个 agent id 的适配器；自定义条目与还没接入的 CLI 是 `undefined`。 */
 export function historyAdapter(agentId: string): HistoryAdapter | undefined {
   return HISTORY_ADAPTERS.find((adapter) => adapter.agentId === agentId);
@@ -37,14 +67,23 @@ export function historyAdapter(agentId: string): HistoryAdapter | undefined {
 export function locateHistory(hint: SessionHint): Located | undefined {
   return (
     reportedFile(hint.transcriptPath) ??
+    timelineLocated(hint.transcriptPath) ??
     historyAdapter(hint.agentId)?.locate(hint)
   );
 }
 
+/** 旧镜像文件已经不在（core 不再写它），但会话的时间线有内容。 */
+function timelineLocated(path: string | undefined): Located | undefined {
+  if (path === undefined || timelineEntriesOf(path) === undefined) {
+    return undefined;
+  }
+  return { key: path, path, origin: `ACP 会话时间线（${path}）` };
+}
+
 /**
  * 读一段归一化记录：有适配器经适配器，没有的按 JSONL 文件读（CLI 报来的路径）。
- * ACP 会话的镜像（`.acp.jsonl`，`acp-mirror.ts`）先认：它是 core 自己写的形状，
- * 不是这家 CLI 的，交给适配器就读不出来。I/O 失败照常抛出。
+ * ACP 会话的转录（`.acp.jsonl` 路径，`acp-mirror.ts`）先认：时间线有内容就从时间线
+ * 派生，否则读升级前的旧镜像；都不是这家 CLI 的形状，交给适配器就读不出来。I/O 失败照常抛出。
  */
 export function readHistoryEntries(
   agentId: string,
@@ -53,6 +92,11 @@ export function readHistoryEntries(
   maxBytes: number,
 ): EntryRange {
   if (isAcpMirror(located.path)) {
+    // 时间线有内容就从时间线派生（游标是记录序号），否则读旧镜像文件。
+    const derived = timelineEntriesOf(located.path);
+    if (derived !== undefined) {
+      return sliceTimelineEntries(derived, fromOffset, maxBytes);
+    }
     return readMirrorEntries(located.path as string, fromOffset, maxBytes);
   }
   const adapter = historyAdapter(agentId);
@@ -70,6 +114,7 @@ export function describeHistoryCursor(
   located: Located,
   offset: number,
 ): string {
+  if (timelineEntriesOf(located.path) !== undefined) return `${offset} 条`;
   const describe = historyAdapter(agentId)?.describeCursor;
   return located.path === undefined && describe !== undefined
     ? describe(offset)

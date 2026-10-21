@@ -137,6 +137,45 @@ await h.run(async () => {
       );
     return text ? JSON.parse(text) : null;
   };
+  /**
+   * 会话的对话记录：`timeline.open` 的条目（契约 §82）折成旧 `…/log` 的 `entries` 形状
+   * （用户 / 助手文本、工具调用），连同头部与原始应答。
+   */
+  const sessionLog = async (rowId) => {
+    const opened = await api("/api/rpc/timeline/open", {
+      method: "POST",
+      body: { json: { timelineId: rowId, tailTurns: 50 } },
+    });
+    const { items = [], head = {} } = opened?.json ?? {};
+    const entries = [];
+    for (const item of items) {
+      if (item.kind === "user") {
+        entries.push({
+          role: "user",
+          blocks: [
+            ...(item.text === "" ? [] : [{ type: "text", text: item.text }]),
+            ...(item.attachments ?? []).map((attachment) => ({
+              type: "resource_link",
+              ...attachment,
+            })),
+          ],
+        });
+      } else if (item.kind === "assistant") {
+        entries.push({
+          role: "assistant",
+          blocks: item.parts
+            .filter((part) => part.type === "text")
+            .map((part) => ({ type: "text", text: part.text })),
+        });
+      } else if (item.kind === "tool") {
+        entries.push({
+          role: "assistant",
+          blocks: [{ type: "tool_use", name: item.title, id: item.toolCallId }],
+        });
+      }
+    }
+    return { entries, head, items };
+  };
   const web = await startVite(h, root, environment);
   const chrome = await startChrome(h);
   const page = await chrome.open({ name: "page", width: 1600, height: 1000 });
@@ -427,16 +466,16 @@ await h.run(async () => {
     "SELECT id FROM terminal_sessions WHERE owner_node_id = ? AND status = 'running' ORDER BY generation DESC LIMIT 1",
     A,
   )[0];
-  const log = await api(`/api/acp/sessions/${row.id}/log`);
+  const log = await sessionLog(row.id);
   const user = log.entries.find((entry) => entry.role === "user");
-  const raw = JSON.stringify(log);
+  const raw = JSON.stringify(log.items);
   check(
-    log.promptCapabilities?.image === true &&
+    log.head.promptCapabilities?.image === true &&
       user?.blocks.filter((block) => block.type === "resource_link").length ===
         2 &&
       !raw.includes(PNG.slice(0, 40)) &&
       !raw.includes(SECRET),
-    "镜像里只有两条链接：图片的 base64 与文件正文都不在",
+    "时间线里只有两条链接：图片的 base64 与文件正文都不在",
   );
   await page.capture("04-acp-reply");
 
