@@ -129,6 +129,15 @@ async function sendPrompt(value: string) {
 
 describe("SessionView on the timeline", () => {
   it("draws the opened timeline without ever reading the mirror", async () => {
+    core.emit({
+      op: "head",
+      head: {
+        modes: {
+          currentModeId: "default",
+          availableModes: [{ id: "default", name: "Default" }],
+        },
+      },
+    } as never);
     await ready();
     expect(screen.getByText("first question")).toBeTruthy();
     expect(screen.getByRole("log").getAttribute("aria-live")).toBe("off");
@@ -392,6 +401,31 @@ describe("SessionView on the timeline", () => {
     });
     expect(await screen.findByText("first answer")).toBeTruthy();
     expect(screen.queryByText("old a")).toBeNull();
+  });
+
+  it("reads the mode and model catalogs from the live session once, after the first screen, when core's head values do not carry them", async () => {
+    api.log.mockResolvedValue({
+      entries: [],
+      endOffset: 0,
+      modes: {
+        currentModeId: "plan",
+        availableModes: [
+          { id: "default", name: "Default" },
+          { id: "plan", name: "Plan" },
+        ],
+      },
+      models: {
+        currentModelId: "small",
+        availableModels: [{ modelId: "small", name: "Small" }],
+      },
+    });
+    await ready();
+    expect(api.log).not.toHaveBeenCalled();
+    expect(
+      (await screen.findByLabelText("模式", {}, { timeout: 4000 })).textContent,
+    ).toContain("Plan");
+    expect(screen.getByLabelText("模型").textContent).toContain("Small");
+    expect(api.log).toHaveBeenCalledTimes(1);
   });
 
   it("asks for the prompt capabilities only when someone touches the input", async () => {

@@ -344,6 +344,7 @@ export function SessionView({
     nodeId,
     workspaceId,
     legacy: !readOnly,
+    meta: !readOnly,
   });
   const connected = useConnected(workspaceId);
   const delivery = useAcpStore((state) =>

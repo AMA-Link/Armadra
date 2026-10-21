@@ -56,6 +56,9 @@ export interface SessionFeed {
   ensureCapabilities(): void;
 }
 
+/** 首屏之后多久去取模式 / 模型目录。 */
+const META_IDLE_MS = 1_500;
+
 const NO_ITEMS: readonly TimelineItem[] = [];
 const NO_BY_ID: Readonly<Record<string, TimelineItem>> = {};
 
@@ -70,9 +73,12 @@ export function useSessionFeed(options: {
    * 没有 ACP 镜像，没有时间线就是没有结构化内容。
    */
   legacy?: boolean;
+  /** 为 `false` 时不为模式 / 模型去读 `acp.log`（只读的会话内容没有选择器）。 */
+  meta?: boolean;
 }): SessionFeed {
   const { sessionId, nodeId, workspaceId } = options;
   const allowLegacy = options.legacy !== false;
+  const wantMeta = options.meta !== false;
   const enabled = options.enabled !== false && sessionId !== null;
   const sourceId = activeSourceId();
 
@@ -117,19 +123,66 @@ export function useSessionFeed(options: {
   const activity = useActivity(sessionId ?? undefined, { sourceId });
   const legacyById = React.useMemo(() => byIdOf(legacy.items), [legacy.items]);
 
-  const [capabilities, setCapabilities] =
-    React.useState<AcpPromptCapabilities | null>(null);
-  const capabilitiesFor = React.useRef<string | null>(null);
+  // 时间线里没有的活进程信息（附件能力；core 还没把模式与模型目录写进头部值时的
+  // 那两样）只能从 `acp.log` 读。它会读整份镜像，所以不放在打开的路上：附件那一项
+  // 等人碰输入框，模式 / 模型等首屏之后空闲时再取一次。
+  const [meta, setMeta] = React.useState<{
+    capabilities: AcpPromptCapabilities | null;
+    modes: TimelineHead["modes"];
+    models: TimelineHead["models"];
+  } | null>(null);
+  const metaFor = React.useRef<string | null>(null);
   const ensureCapabilities = React.useCallback(() => {
-    if (sessionId === null || capabilitiesFor.current === sessionId) return;
-    capabilitiesFor.current = sessionId;
+    if (sessionId === null || metaFor.current === sessionId) return;
+    metaFor.current = sessionId;
     acpApi.log(sessionId).then(
-      (log) => setCapabilities(log.promptCapabilities ?? null),
+      (log) =>
+        setMeta({
+          capabilities: log.promptCapabilities ?? null,
+          modes: log.modes ?? null,
+          models: log.models ?? null,
+        }),
       () => {
-        capabilitiesFor.current = null;
+        metaFor.current = null;
       },
     );
   }, [sessionId]);
+  const capabilities = meta?.capabilities ?? null;
+  const headMissing =
+    timeline.head.modes === undefined && timeline.head.models === undefined;
+  const timelineReady = timeline.phase === "ready";
+  React.useEffect(() => {
+    if (
+      !wantMeta ||
+      legacyMode ||
+      !timelineReady ||
+      !headMissing ||
+      sessionId === null
+    ) {
+      return;
+    }
+    const timer = setTimeout(ensureCapabilities, META_IDLE_MS);
+    return () => clearTimeout(timer);
+  }, [
+    wantMeta,
+    legacyMode,
+    timelineReady,
+    headMissing,
+    sessionId,
+    ensureCapabilities,
+  ]);
+  const timelineHead = React.useMemo<TimelineHead>(() => {
+    if (meta === null) return timeline.head;
+    return {
+      ...timeline.head,
+      ...(timeline.head.modes === undefined && meta.modes !== undefined
+        ? { modes: meta.modes }
+        : {}),
+      ...(timeline.head.models === undefined && meta.models !== undefined
+        ? { models: meta.models }
+        : {}),
+    };
+  }, [timeline.head, meta]);
 
   const loadBlob = React.useMemo(
     () => createBlobLoader(sourceId, sessionId ?? ""),
@@ -213,7 +266,7 @@ export function useSessionFeed(options: {
             : "loading",
     items: timeline.items.length === 0 ? NO_ITEMS : timeline.items,
     byId: timeline.items.length === 0 ? NO_BY_ID : timeline.byId,
-    head: timeline.head,
+    head: timelineHead,
     activity,
     promptCapabilities: capabilities,
     hasMore: timeline.hasMore,
