@@ -272,10 +272,24 @@ export class AcpSession implements AcpSessionIdentity {
     this.early = [];
     for (const item of early) this.consume(item.update, item.replay);
     this.importLegacyMirror();
+    this.publishCatalog();
     if (this.options.resumeSessionId !== undefined) {
       this.feed?.notice(host.resumed ? "resumed" : "not_resumed");
     }
     this.feed?.ready();
+  }
+
+  /** 模式、模型目录与提示能力进时间线头部（B10）；配置变了再调一次。 */
+  private publishCatalog(): void {
+    const models = this.models;
+    this.feed?.catalog({
+      modes: this.modeState,
+      models: models && {
+        currentModelId: models.currentModelId,
+        availableModels: [...models.availableModels],
+      },
+      promptCapabilities: this.promptCapabilities,
+    });
   }
 
   /**
@@ -627,6 +641,7 @@ export class AcpSession implements AcpSessionIdentity {
     }
     await host.process.setMode(host.sessionId, modeId);
     this.modeState = { ...modes, currentModeId: modeId };
+    this.publishCatalog();
   }
 
   /**
@@ -657,6 +672,7 @@ export class AcpSession implements AcpSessionIdentity {
       ...catalog,
       currentModelId: modelId,
     };
+    this.publishCatalog();
   }
 
   /**

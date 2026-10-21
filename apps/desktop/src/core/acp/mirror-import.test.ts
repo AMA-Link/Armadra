@@ -39,7 +39,10 @@ function items(rowId: string): TimelineItem[] {
   return domain.store.snapshot(rowId, 20)?.items ?? [];
 }
 
-function fakeHost(sessionId: string): AcpHostSession {
+function fakeHost(
+  sessionId: string,
+  extra: Partial<AcpHostSession> = {},
+): AcpHostSession {
   return {
     process: { pid: 1, alive: true },
     sessionId,
@@ -48,8 +51,22 @@ function fakeHost(sessionId: string): AcpHostSession {
     capabilities: { images: false, embeddedContext: false, load: false },
     modes: null,
     models: null,
+    ...extra,
   } as unknown as AcpHostSession;
 }
+
+const MODES = {
+  currentModeId: "ask",
+  availableModes: [
+    { id: "ask", name: "Ask" },
+    { id: "code", name: "Code", description: "write" },
+  ],
+};
+const MODELS = {
+  configId: "model",
+  currentModelId: "m1",
+  availableModels: [{ modelId: "m1", name: "M1" }],
+};
 
 /** 在旧镜像里放一段对话，再用「只能 resume」的假会话接回。 */
 function reopen(dataDir: string, rowId: string, seed: boolean) {
@@ -200,5 +217,75 @@ describe("镜像派生", () => {
     feed.ready();
     const users = items("row-e").filter((i) => i.kind === "user");
     expect(users).toHaveLength(1);
+  });
+});
+
+describe("初始目录写进时间线头部", () => {
+  function openWith(rowId: string, extra: Partial<AcpHostSession>) {
+    const feed = new AcpFeed(domain, {
+      rowId,
+      nodeId: NODE,
+      workspaceId: open!.workspaceId,
+      generation: 1,
+    });
+    const dataDir = tempDir("armadra-acp-head-");
+    dirs.push(dataDir);
+    const session = new AcpSession({
+      rowId,
+      generation: 1,
+      nodeId: NODE,
+      workspaceId: open!.workspaceId,
+      agentId: "ama",
+      sink: {
+        signal: () => undefined,
+        publish: () => undefined,
+        cancelled: () => undefined,
+      },
+      mirrorFor: (id) => new AcpMirror(mirrorPath(dataDir, NODE, id)),
+      feed,
+    });
+    session.opened(fakeHost("s1", extra));
+    domain.writer.flush();
+    return { feed, session };
+  }
+
+  it("头部带出模式、模型目录与 promptCapabilities，重开后仍在", async () => {
+    await boot();
+    const { feed } = openWith("row-h", {
+      modes: MODES,
+      models: MODELS,
+      capabilities: { images: true, embeddedContext: false, load: false },
+    } as never);
+    const head = domain.store.snapshot("row-h", 5)?.head;
+    expect(head?.modes).toEqual(MODES);
+    expect(head?.models).toEqual({
+      currentModelId: "m1",
+      availableModels: [{ modelId: "m1", name: "M1" }],
+    });
+    expect(head?.promptCapabilities).toEqual({
+      image: true,
+      embeddedContext: false,
+    });
+    // 同样的目录再写一次：不产生新的操作。
+    const seq = domain.writer.state("row-h")?.seq;
+    feed.catalog({
+      modes: head?.modes,
+      models: head?.models,
+      promptCapabilities: head?.promptCapabilities,
+    });
+    expect(domain.writer.state("row-h")?.seq).toBe(seq);
+  });
+
+  it("有目录之后 current_mode_update 生效", async () => {
+    await boot();
+    const { feed } = openWith("row-m", { modes: MODES } as never);
+    feed.update(
+      { sessionUpdate: "current_mode_update", currentModeId: "code" },
+      false,
+    );
+    domain.writer.flush();
+    expect(domain.store.snapshot("row-m", 5)?.head.modes?.currentModeId).toBe(
+      "code",
+    );
   });
 });

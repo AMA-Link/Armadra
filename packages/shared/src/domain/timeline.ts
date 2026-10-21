@@ -447,6 +447,11 @@ export const timelineHeadSchema = z.object({
     })
     .nullable()
     .optional(),
+  /** 适配器在 `initialize` 里声明的提示能力（会话开好时写，之后不变）。 */
+  promptCapabilities: z
+    .object({ image: z.boolean(), embeddedContext: z.boolean() })
+    .nullable()
+    .optional(),
   title: z.string().max(1_000).nullable().optional(),
 });
 export type TimelineHead = z.infer<typeof timelineHeadSchema>;

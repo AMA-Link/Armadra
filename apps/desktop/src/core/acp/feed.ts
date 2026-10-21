@@ -16,6 +16,7 @@
 import type {
   AcpOpsContext,
   AcpPrompt,
+  TimelineHead,
   TimelineItem,
   TimelineNoticeCode,
   TimelineToolItem,
@@ -103,6 +104,28 @@ export class AcpFeed {
   restoring(): void {
     this.replayed = 0;
     this.activity.restoring(this.id.rowId, 0);
+  }
+
+  /**
+   * 会话开好（或配置之后）把模式、模型目录与提示能力写进时间线头部（B10）。
+   * 只写与头部现值不同的项；这一次没有而头部有的清成 `null`。
+   */
+  catalog(next: {
+    readonly modes: TimelineHead["modes"];
+    readonly models: TimelineHead["models"];
+    readonly promptCapabilities: TimelineHead["promptCapabilities"];
+  }): void {
+    const head = this.writer.state(this.id.rowId)?.head ?? {};
+    const patch: Record<string, unknown> = {};
+    for (const key of ["modes", "models", "promptCapabilities"] as const) {
+      const value = next[key] ?? null;
+      const current = head[key] ?? null;
+      if (JSON.stringify(value) !== JSON.stringify(current)) {
+        patch[key] = value;
+      }
+    }
+    if (Object.keys(patch).length === 0) return;
+    this.writer.head(this.id.rowId, patch as TimelineHead, { flush: "soon" });
   }
 
   ready(): void {
