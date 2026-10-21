@@ -1906,7 +1906,7 @@ CSV 按 RFC 4180：`\r\n` 换行，首行表头 `id,time,principalId,deviceId,ac
 
 补 §14 的五件事。代码在 `core/acp/{client,host,session,elicitation,models,adapters,index,routes}.ts` 与 `agent/approvals.ts`，共享层 `api/acp.ts`。
 
-**客户端能力**：协议栈仍是 `@armadra/agent/acp` 的 `AcpClient`。elicitation 与模型要它自报 `AcpClient.features.elicitation` / `features.configOptions`（构造参数 `onElicitation(params, signal)`、方法 `setConfigOption(sessionId, configId, value)`，并在 `initialize` 声明 `clientCapabilities.elicitation`）。core 按 `features` 判断：没有时线路与 §14 逐字节相同——不声明能力、Agent 发来的 `elicitation/create` 由客户端答 method not found，`models` 恒为 `null`。0.6.7 两样都没有，0.6.8 起两样都有。
+**客户端能力**：协议栈仍是 `@armadra/agent/acp` 的 `AcpClient`。elicitation 与模型要它自报 `AcpClient.features.elicitation` / `features.configOptions`（构造参数 `onElicitation(params, signal)`、方法 `setConfigOption(sessionId, configId, value)`，并在 `initialize` 声明 `clientCapabilities.elicitation`）。core 按 `features` 判断：没有时线路与 §14 逐字节相同——不声明能力、Agent 发来的 `elicitation/create` 由客户端答 method not found，`models` 恒为 `null`。0.6.7 两样都没有，0.6.8 起两样都有。 终端（§82.5）要 `features.terminal`（0.9.1 起），构造参数 `onTerminal`。
 
 ### 26.1 elicitation
 
@@ -4553,3 +4553,14 @@ owner（本机会话，或已信任设备经通道的 owner 会话）：`{ sourc
 - **提速**：（1）`acp.update` 改短时事件（`EPHEMERAL_EVENTS`），每个回合的 outbox 写入不再随分块数增长；（2）镜像里相邻的助手文本分块攒成一行，遇到别的记录、回合结束、会话结束、攒满 32 KiB 或 300 ms 到点才写，`GET …/log` 读之前先写出；（3）ACP 的 `tool` 信号只在 reducer 眼里的状态会变（不是 `working`）或 `execute` 的标题变了才走 `apply`，工具粒度的变化只更新活动；（4）写入器合并刷写（§82.2）使每个回合的 SQLite 写入从「分块数」降到「刷写次数」。
 - **图片与音频**：落成 blob，条目与事件只带 `{ blobId, mimeType, bytes }`（§82 体量一节）；旧的 `acp.update` 仍带原样 base64，B10 之后不再发出。
 - **预启动接回已有节点**：`POST /api/acp/prestart` 多一个可省的 `nodeId`（§51）；页面在节点进入视口或获得焦点时调用，之后该节点接回会话时领走预启动的适配器。
+
+### 82.5 ACP 终端内容（B9）
+
+自 B9 起 core 向 Agent 声明 `clientCapabilities.terminal: true` 并实现 `terminal/create`、`output`、`wait_for_exit`、`kill`、`release`；实现在 `core/acp/terminals.ts`（子进程与输出）、`terminal-feed.ts`（接进时间线）、`session.ts` 与 `host.ts`（声明与挂回调）。协议 minor 不变（没有新 procedure；`tool.content` 的 `terminal` 内容本来就有 `command`、`output`、`exitCode`、`truncated`、`originalBytes` 字段）。`fs` 仍不声明。客户端栈要 `@armadra/agent` 0.9.1 起的 `AcpClient.features.terminal` 与构造参数 `onTerminal(method, params, signal)`；更早的版本没有这个特性，线路与 §14 逐字节相同（不声明、`terminal/*` 答 method not found）。
+
+- **命令与审批**：命令本身的审批仍由 Agent 经 `session/request_permission` 走 §14 的审批通道，core 不代答也不放行。core 只多一层闸：回合没在跑、会话已收尾、`sessionId` 不是本会话的，一律拒绝 `terminal/create`（`-32600` / `-32602`）。**只读模式（`plan`）与 SSH 节点不给终端**：前者不许改任何东西，后者的适配器在执行主机上，本机子进程对它没有意义；这两种会话里 `terminal/*` 答 `-32601`。
+- **cwd**：缺省为会话 cwd；Agent 给的 `cwd` 必须落在会话 cwd 或工作空间根之内（符号链接解开后比较），越界或不存在答 `-32602`。命令以 argv 起、不经 shell；Agent 只给了 `command`（含空白）而没有 `args` 时交给 `$SHELL -c`（Windows `cmd /d /s /c`），与它自己的 Bash 工具一致。
+- **环境**：节点环境叠上 Agent 给的 `env`，`LD_*`、`DYLD_*` 丢掉；名字必须是合法标识符，至多 64 项、每项值至多 32 KiB。
+- **输出上限**：内存里每个终端只留尾部 256 KiB（stdout 与 stderr 合并，按到达顺序），Agent 的 `outputByteLimit` 只能更小；超出从头部丢、在字符边界上切，`terminal/output` 的 `truncated` 为真。同时存活的终端至多 8 个。时间线工具条目里的输出再按共享层 `clipTail` 只留尾部 64 KiB。
+- **进时间线**：Agent 在 `tool_call` / `tool_call_update` 里把终端挂到工具上；core 给时间线的那一份补上此刻的输出尾部、`command` 与退出码，输出变化时合成一条 `tool_call_update`（节流 120 ms，退出与 `release` 立即）。终端被信号杀掉时 `exitCode` 为 `null`。`release` 之后 Agent 再发只有 `terminalId` 的更新，输出不会被冲掉。旧的 `acp.update` 与镜像拿到的仍是 Agent 的原话，**不含终端输出**。
+- **回收**：子进程自成进程组（Windows 用 `taskkill /T`），按 pid 回收。`kill` 先 SIGTERM，1.5 s 后仍在再 SIGKILL，终端留着可取输出；`release` 直接 SIGKILL 并使 id 失效；会话结束（`terminate`）与适配器退出时还活着的全部 SIGKILL。
