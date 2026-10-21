@@ -1,6 +1,6 @@
 # 会话时间线：统一模型、渐进式状态与 CLI 汇流
 
-> 状态：已实施（B0–B9 已合并，B10 收尾进行中）。总 Issue：[AMA-Link/Armadra#422](https://github.com/AMA-Link/Armadra/issues/422)。契约见 [core-json-api §82](../contracts/core-json-api.md)（迁移 `0052_timelines`，协议 1.48 起）。
+> 状态：已实施（B0–B10 的 core、页面、旧接口下线均已合并）。总 Issue：[AMA-Link/Armadra#422](https://github.com/AMA-Link/Armadra/issues/422)。契约见 [core-json-api §82](../contracts/core-json-api.md)（迁移 `0052_timelines`，协议 1.48 起；旧接口 1.49 下线，§83）。
 > 范围：`apps/desktop/src/core/{acp,hook,history,events,push}`、`apps/desktop/src/core/timeline/`、`apps/web/src/{acp,agent,notifications,sessions,node-observation,nodes,shared-session,timeline}`、`packages/shared/src`。
 > 前置阅读：[ACP 接入与会话视图](acp-session-view.md)、[CLI 接入、通信与共享上下文](cli-collaboration.md)、[终端宿主](terminal-host-design.md)，契约 §14、§39.9、§49、§51、§81、§82。
 
@@ -30,7 +30,7 @@
 
 - 打开大会话时，读镜像、`JSON.stringify` 整个应答、页面重建三步都是 O(全量)，在主线程上阻塞几百毫秒。
 - 流式输出时，单个分块的渲染开销随会话长度线性增长，超过 100 条后每个分块都超过 100 ms。
-- 只读分享页原先每 2 s 轮询一次 `acp.log` 并全量重建。
+- 只读分享页原先每 2 s 轮询一次 `acp.log` 并全量重建（现已改订时间线推送）。
 - 可复现的基准在 `tools/probes/acp-view-bench.mjs`（合成镜像 + 脚本化假 Agent），作为验收基线。
 
 ### §1.2 加载慢在哪
@@ -224,7 +224,7 @@ sessionDisplay(input: {
 - 工具输出：单个 `text` 或 `terminal` 部件只留尾部 64 KiB，带 `truncated` 与原长度。
 - diff 每份最多 1 MiB，超过只记路径与增删行数。
 - 图片、音频与内嵌资源按内容寻址存 `<数据目录>/timeline/blobs/<sha256>`（0600），条目与事件只带 `{ blobId, mimeType, bytes }`；单个超过 8 MiB 的不存，部件记 `dropped`。读以 `timeline_blobs` 为准，只有这条时间线登记过的 blob 读得到，别的 blobId 一律 `404`。
-- 镜像（`.acp.jsonl`）在 B10 之前照旧写，但按 §1.2 的 L3 批量写。
+- 镜像（`.acp.jsonl`）自 B10 起停写；旧文件只读：时间线为空的旧会话打开时导入一次（`core/acp/mirror-import.ts`），上下文读取在时间线为空时才读旧文件。
 
 ## §4 加载性能
 
@@ -235,7 +235,7 @@ sessionDisplay(input: {
 | 分页       | 回合索引每项 `{ turnId, turn, startedAt, endedAt, headText(80 字), counts }`；滚到距顶部 800 px（`NEAR_TOP_PX`）时取上一页 5 个回合（`PAGE_TURNS`），锚点补偿不跳屏                                                                                                                                     |
 | 虚拟化     | `@tanstack/react-virtual` 按回合虚拟化，ResizeObserver 量高；距底 ≤ 24 px（`FOLLOW_DISTANCE_PX`）时贴底跟随，否则保持阅读位置并显示「回到底部」                                                                                                                                                         |
 | 增量渲染   | 帧缓冲：一个动画帧内的 `timeline.delta` 合并成一次 store 提交（兜底 250 ms，待处理帧上限 1000）；条目以 `Map<id, item>` 加有序 id 数组存储，没有新增 / 删除 / 挪位的帧复用上一次的 `order`；行组件以 `item.rev` 做 memo；Markdown 只重解析流式的那一块。目标：每个分块主线程开销 ≤ 4 ms，与会话长度无关 |
-| core 写入  | 合并刷写（§2.3），每个回合的 SQLite 写入从「分块数 × 2」降到「刷写次数」；`timeline.*` 与 `acp.update` 不进 outbox                                                                                                                                                                                      |
+| core 写入  | 合并刷写（§2.3），每个回合的 SQLite 写入从「分块数 × 2」降到「刷写次数」；`timeline.*` 不进 outbox                                                                                                                                                                                                      |
 | 回放       | 优先 `session/resume`；只能 `load` 的显示 `restoring` 并计数，静默 120 s 截止                                                                                                                                                                                                                           |
 | 缓存       | 页面：IndexedDB 存快照与 `seq`，LRU；core：回合索引按 `head_seq` 缓存                                                                                                                                                                                                                                   |
 | 预热       | 保留契约 §51 的预热；对最近 24 h 内用过的 Agent 在空闲时预热（`AcpWarmer`）                                                                                                                                                                                                                             |
@@ -267,7 +267,7 @@ sessionDisplay(input: {
 | OpenCode                              | 插件总线事件                                                                                                                                                   | `opencode.db`（只读 SQLite，见上）                                     | `text`、`reasoning`、`tool`（pending → running → completed / error，中间状态可见）；`bash` 的输出与退出码；`edit` / `write` / `apply_patch` 的 diff（`edit` 用入参 `oldString` / `newString`，没有就解析 `metadata.filediff.patch`）；`todowrite` → plan；`step-finish` 的 `tokens` → usage；`session.title` → 标题；助手消息的 `finish` / `error` → 回合收尾 | 逐 token 流；加密推理；用户消息附件；子会话内部调用；上下文窗口大小（按 200k）                                                                                                                                |
 | Pi / OMP                              | 扩展事件                                                                                                                                                       | `<agentDir>/sessions/<编码 cwd>/<时间>_<uuid>.jsonl`（路径由扩展报来） | `message`（user / assistant / toolResult）；`thinking` 块；`bash` 输出与退出码；`edit` / `write` 的 diff（从调用参数 `edits[].oldText / newText` 或 `content` 推出，没有时退到 `details.diff`）；`usage`；`stopReason` → 回合收尾；`session_info.name`（Pi）、`title` / `title_change`（OMP）→ 标题；`compaction` → 压缩提示                                  | 逐 token 流；子代理内部调用；OMP 的 `todo` 不转计划；窗口大小（按 200k）。两家共用 `PI_CODING_AGENT_DIR` 时兜底定位只在自己写的文件里挑（OMP 文件开头有 `title` 记录）                                        |
 | Copilot CLI                           | `userPromptSubmitted`、`postToolUse(Failure)`、`notification`、`agentStop`、`errorOccurred`                                                                    | `${COPILOT_HOME:-~/.copilot}/session-state/<会话 id>/events.jsonl`     | `user.message`、`assistant.message`（`reasoningText` → 思考、`toolRequests` → tool）、`tool.execution_start` / `complete`；`bash` 输出与退出码；`edit` / `create` 转 diff；`session.usage_record` → usage 与窗口；`abort` → 已取消；`session.compaction_complete` → 压缩提示                                                                                  | 逐 token 流；标题（在 `workspace.yaml`）；子代理内部消息；没有「回合完成」事件，回合靠 `agentStop` hook 或下一条用户消息合上；没有 PreToolUse，但工具请求在 `assistant.message` 里出现，开始时刻反而早于 hook |
-| ama（终端模式）                       | 与 Pi 同族扩展事件                                                                                                                                             | 暂无转录适配器                                                         | 只有终端画面与粗状态                                                                                                                                                                                                                                                                                                                                          | 推荐 ama 走 ACP（原生 `--mode acp`）                                                                                                                                                                          |
+| ama（终端模式）                       | 与 Pi 同族扩展事件                                                                                                                                             | 已登记转录适配器（#450）                                               | 只有终端画面与粗状态                                                                                                                                                                                                                                                                                                                                          | 推荐 ama 走 ACP（原生 `--mode acp`）                                                                                                                                                                          |
 | Gemini CLI                            | 无（迁移 0014 已退役）                                                                                                                                         | 不接                                                                   | —                                                                                                                                                                                                                                                                                                                                                             | 若重新支持，只走 ACP                                                                                                                                                                                          |
 | Antigravity / Grok / 自定义无 hook 的 | 只有 `observed` 与 OSC 自报                                                                                                                                    | 无                                                                     | 只有终端画面和粗状态                                                                                                                                                                                                                                                                                                                                          | 时间线显示「这个 Agent 不提供结构化内容」，节点体保持终端                                                                                                                                                     |
 
@@ -282,12 +282,12 @@ sessionDisplay(input: {
 ## §6 契约与协议
 
 - **契约**：[core-json-api §82](../contracts/core-json-api.md)。§82.1 四个 procedure：`timeline.open { timelineId, tailTurns? }`、`timeline.sync { timelineId, after }`、`timeline.page { timelineId, beforeTurn, turns? }`、`timeline.blob { timelineId, blobId }`（JSON 里是 base64，只放得下原始字节不超过约 786 KB 的 blob，更大的走 HTTP 路径 `GET /api/timelines/{timelineId}/blobs/{blobId}`）。§82.2 core 存储、事件、活动、blob、会话列表与恢复；§82.3 终端驱动的转录来源；§82.4 ACP 生产者与提速。
-- **事件**：`timeline.delta { timelineId, nodeId, from, to, ops[] }` 与 `timeline.activity { timelineId, nodeId, activity }`，登记在 `EPHEMERAL_EVENTS`（连同 `acp.update`），不进 outbox、不占 5000 条保留额度、不做续订补发：缺口靠 `timeline.sync` 补，活动靠会话列表补。
+- **事件**：`timeline.delta { timelineId, nodeId, from, to, ops[] }` 与 `timeline.activity { timelineId, nodeId, activity }`，登记在 `EPHEMERAL_EVENTS`，不进 outbox、不占 5000 条保留额度、不做续订补发：缺口靠 `timeline.sync` 补，活动靠会话列表补。
 - **存储**（迁移 `0052_timelines`）：`timelines`（`id` = 会话行 id、`workspace_id`、`node_id`、`head_seq`、`head_rev`、`source`、`source_cursor`、`head_json`）、`timeline_items`（`(timeline_id, item_id)` 一行存最新完整值与 `rev`，`deleted = 1` 是墓碑；索引 `(timeline_id, rev)`、`(timeline_id, turn, ord)`）、`timeline_blobs`（这条时间线引用了哪些 blob）。
 - **会话列表**：`sessions` 每行多可省的 `activity` 与 `timelineSeq`，另有 `interrupted`（契约 §81）。
 - **授权**：时间线以会话行 id 为键，路由门按会话行查出画布再判 `terminal:read`；只被授予某一条会话的人只读得到那一条；不存在的会话对成员也答 `403`。blob 的 HTTP 响应对内容类型做白名单（图片、`audio/*` 原样，其余一律 `application/octet-stream` 且 `attachment`，带 `nosniff` 与 `sandbox` CSP）。
 - **ACP 客户端能力**（B9，契约 §82.5）：core 向 Agent 声明 `clientCapabilities.terminal: true` 并实现 `terminal/create`、`output`、`wait_for_exit`、`kill`、`release`（`core/acp/terminals.ts`、`terminal-feed.ts`）。客户端栈要 `@armadra/agent` 0.9.1 起的 `AcpClient.features.terminal`（构造参数 `onTerminal`），回调在 armadra-agent 仓补齐，更早的版本线路不变。命令审批仍走 `session/request_permission`，core 只多一层闸（回合没在跑、会话已收尾、`sessionId` 不符则拒绝）；只读模式与 SSH 节点不给终端；cwd 必须落在会话 cwd 或工作空间根之内；内存里每个终端留尾部 256 KiB，同会话至多 8 个，时间线工具条目再留尾部 64 KiB；子进程按 pid 回收（`kill` 先 SIGTERM，1.5 s 后 SIGKILL；`release` 与会话结束直接 SIGKILL）。`fs` 仍不声明。
-- **旧接口**：`acp.update`（事件）与 `acp.log`（镜像读）在 B10 下线、不做兼容；在此之前它们原样保留，图片仍带原样 base64，终端输出不在其中（只进时间线）。
+- **旧接口已下线**：`acp.update`（事件）与 `acp.log`（镜像读）随协议 1.49 下线、不做兼容（契约 §83）；`acp.turn` 保留。上下文读取、摘要、交接改从时间线派生 `TranscriptEntry`（`core/history/acp-mirror.ts`），时间线为空的旧会话才读旧镜像文件。
 - **协议 minor**：本设计引入 1.48（随 `timeline.*`）；procedure 的 `since` 与 minor 同步。
 
 ## §7 UI 要点
@@ -300,7 +300,7 @@ sessionDisplay(input: {
 - 减少动效：`prefers-reduced-motion` 时活动行不做闪烁动画。可访问性：活动行 `aria-live="polite"`，只在阶段变化时播报，计时不播报。
 - **页面数据层**（`apps/web/src/timeline/`）：`store.ts`（zustand，按 `(sourceId, timelineId)` 分键）、`sync.ts`（先订阅后 open，缺口即 sync，重连即 sync，帧缓冲按 rAF 提交；缺口连续同步有次数上限）、`cache.ts`、`use-timeline.ts`、`use-activity.ts`、`api.ts`、`blobs.ts`。
 - **会话视图的接线**：`acp/SessionView.tsx` 用 `acp/use-session-feed.ts` 取内容，渲染交给 `TimelineView`；`acp/store.ts` 只管投递状态（`clientTurnId`、未送达、对账）。
-- **旧路径（B10 前的退路）**：`use-session-feed.ts` 在 `timeline.open` 答 `not_found`（主机没有 `timeline.*` 或这条会话还没写过时间线）时，按会话退回 `timeline/legacy-acp.ts` + `use-legacy-acp.ts`：读 `acp.log`、接 `acp.update` / `acp.turn` / `agent.approval`，喂进共享层同一套 reducer，得到与 `timeline.*` 同形的条目，所以渲染只有一条路。旧路径里一旦收到这条会话的 `timeline.delta`，就切回新路径。分享只读页在没有时间线时仍按 `acp.log` 每 2 s 读一次。终端驱动节点的只读会话内容不走旧路径（没有 ACP 镜像）。B10 下线旧接口时这些文件一并删除。
+- **没有时间线的会话**：`use-session-feed.ts` 只走 `timeline.*`；`timeline.open` 答 `not_found`（主机没有 `timeline.*` 或这条会话还没写过时间线）时内容为空、不再退回读镜像（旧的 `timeline/legacy-acp.ts`、`use-legacy-acp.ts` 与分享页的 2 s 轮询已随 B10 删除）。模式 / 模型目录与提示能力来自头部，页面首屏不再读 `acp.log`。
 
 ## §8 测试策略
 
@@ -314,26 +314,26 @@ sessionDisplay(input: {
 
 ## 已决定事项
 
-| 编号 | 事项                 | 决定                                                                                                                                                                                                                                            |
-| ---- | -------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Q1   | 存储                 | SQLite 新表（迁移 `0052`）：存最新值加 `rev`，任何游标一次补齐                                                                                                                                                                                  |
-| Q2   | 终端驱动节点的会话体 | 节点菜单切换节点体，不切驱动；选择只记在本机页面                                                                                                                                                                                                |
-| Q3   | 旧接口退役           | `acp.update`、`acp.log` 在 B10 下线，不做兼容                                                                                                                                                                                                   |
-| Q4   | CLI 内容复制         | 转录复制进库，多端一致，手机也能看；只为画布上的节点建时间线                                                                                                                                                                                    |
-| Q5   | 自动命名             | 节点没有人工命名时用头部 `title`（`session_info_update.title`、Claude 的 `custom-title` 等）作节点名，人工改名后不再覆盖。core 已把标题写进头部；页面侧现有的自动命名仍走 `autoNameNode`（`suggest-title`），改读头部 `title` 的接线在 B10 补齐 |
-| Q6   | 跨仓                 | `terminal/*` 由 core 实现（B9，契约 §82.5）；`AcpClient` 的 `onTerminal` 回调已在 armadra-agent 补齐（0.9.1 起）                                                                                                                                |
-| Q7   | 思考内容             | 思考正文落库，默认折叠                                                                                                                                                                                                                          |
+| 编号 | 事项                 | 决定                                                                                                                                                                                                                                                         |
+| ---- | -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Q1   | 存储                 | SQLite 新表（迁移 `0052`）：存最新值加 `rev`，任何游标一次补齐                                                                                                                                                                                               |
+| Q2   | 终端驱动节点的会话体 | 节点菜单切换节点体，不切驱动；选择只记在本机页面                                                                                                                                                                                                             |
+| Q3   | 旧接口退役           | 已落实：`acp.update`、`acp.log` 在 B10 下线（协议 1.49），不做兼容                                                                                                                                                                                           |
+| Q4   | CLI 内容复制         | 转录复制进库，多端一致，手机也能看；只为画布上的节点建时间线                                                                                                                                                                                                 |
+| Q5   | 自动命名             | 节点没有人工命名时用头部 `title`（`session_info_update.title`、Claude 的 `custom-title` 等）作节点名，人工改名后不再覆盖。core 已把标题写进头部；页面侧现有的自动命名仍走 `autoNameNode`（`suggest-title`），页面据头部 `title` 自动命名的接线已完成（#448） |
+| Q6   | 跨仓                 | `terminal/*` 由 core 实现（B9，契约 §82.5）；`AcpClient` 的 `onTerminal` 回调已在 armadra-agent 补齐（0.9.1 起）                                                                                                                                             |
+| Q7   | 思考内容             | 思考正文落库，默认折叠                                                                                                                                                                                                                                       |
 
 ## 风险与缓解
 
-| 风险                                                               | 缓解                                                                                           |
-| ------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------- |
-| 双写期（镜像 + 时间线、`acp.update` + `timeline.delta`）出现不一致 | 页面只读一条路（时间线，或按会话退回的旧路径）；镜像只给上下文读取用；B10 收尾                 |
-| 数据库体积：CLI 转录内容复制进库                                   | 只为画布上的节点建时间线；第一次接管只读尾部 2 MiB；工具输出截尾；孤儿时间线与 blob 启动时清理 |
-| 隐私：思考和转录的副本存进数据库                                   | 权限同 `terminal:read`；不进推送正文；分享只读页沿用会话分享范围（契约 §79）；不进上下文读取   |
-| CLI 转录格式经常变（尤其 Claude）                                  | 转换器宽进，未知记录类型跳过；夹具随 `compatibility.json` 的验证版本更新；夜间 e2e 报警        |
-| hook 在沙箱里连不上 core（#407 Codex）                             | 尾读器靠 `fs.watch` 与轮询兜底，不依赖 hook；活动退回 OSC 与 `observed`                        |
-| `fs.watch` 在 macOS 和网络盘上不可靠                               | 监听失败退回 stat 轮询，正常时仍有 15 s 兜底                                                   |
-| 远端主机版本不一致                                                 | 按会话判断：`timeline.open` 答 `not_found` 就走旧路径，直到旧接口随 B10 下线                   |
-| 合并刷写增加最多 80 ms 的显示延迟                                  | 首次刷写 30 ms；条目切换与审批立即刷写；页面按 rAF 渲染                                        |
-| `session/resume` 在某些适配器上行为不同                            | 按 `initialize` 声明的能力协商；e2e 每家都覆盖                                                 |
+| 风险                                                               | 缓解                                                                                                     |
+| ------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------- |
+| 双写期（镜像 + 时间线、`acp.update` + `timeline.delta`）出现不一致 | 页面只读时间线一条路；镜像已停写，只给时间线为空的旧会话读；已在 B10 收尾                                |
+| 数据库体积：CLI 转录内容复制进库                                   | 只为画布上的节点建时间线；第一次接管只读尾部 2 MiB；工具输出截尾；孤儿时间线与 blob 启动时清理           |
+| 隐私：思考和转录的副本存进数据库                                   | 权限同 `terminal:read`；不进推送正文；分享只读页沿用会话分享范围（契约 §79）；不进上下文读取             |
+| CLI 转录格式经常变（尤其 Claude）                                  | 转换器宽进，未知记录类型跳过；夹具随 `compatibility.json` 的验证版本更新；夜间 e2e 报警                  |
+| hook 在沙箱里连不上 core（#407 Codex）                             | 尾读器靠 `fs.watch` 与轮询兜底，不依赖 hook；活动退回 OSC 与 `observed`                                  |
+| `fs.watch` 在 macOS 和网络盘上不可靠                               | 监听失败退回 stat 轮询，正常时仍有 15 s 兜底                                                             |
+| 远端主机版本不一致                                                 | `timeline.open` 答 `not_found` 的会话页面显示为空（旧路径已随 B10 下线）；中转另一端是旧版主机时需先升级 |
+| 合并刷写增加最多 80 ms 的显示延迟                                  | 首次刷写 30 ms；条目切换与审批立即刷写；页面按 rAF 渲染                                                  |
+| `session/resume` 在某些适配器上行为不同                            | 按 `initialize` 声明的能力协商；e2e 每家都覆盖                                                           |
