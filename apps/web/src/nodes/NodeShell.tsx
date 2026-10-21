@@ -56,7 +56,7 @@ export interface NodeShellProps {
   /** 状态胶囊。不传就不渲染——空闲状态不占头部空间（§14 规则 1）。 */
   status?: { tone: StatusTone; label: string; pulse?: boolean };
   /** 光晕。包裹层伪元素只动画 opacity，不动画 box-shadow（§3.4）。 */
-  glow?: "working" | "attention" | "unread";
+  glow?: "working" | "attention" | "failed" | "unread";
   /**
    * 标题**左边**的一个小标记（状态来源的色点）。只放「一个点 + 悬停提示」
    * 这一量级的东西：它常驻在每个节点上，多一个词就是每个节点多一个词。

@@ -259,6 +259,13 @@
     0 0 18px 2px var(--status-attention);
 }
 
+.node-glow[data-glow="failed"]::after {
+  animation: armadra-glow 2s ease-in-out infinite;
+  box-shadow:
+    0 0 0 2px var(--status-failed),
+    0 0 18px 2px var(--status-failed);
+}
+
 @keyframes armadra-glow {
   0%,
   100% {

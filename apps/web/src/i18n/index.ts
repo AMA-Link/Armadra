@@ -22,6 +22,7 @@ import { modals } from "./modals";
 import { nodes } from "./nodes";
 import { nodeObservation } from "./node-observation";
 import { sessions } from "./sessions";
+import { status } from "./status";
 import { shell } from "./shell";
 import { ssh } from "./ssh";
 import { host } from "./host";
@@ -106,6 +107,7 @@ export const MESSAGE_MODULES = {
   terminal,
   resources,
   sessions,
+  status,
   ssh,
   "execution-hosts": executionHosts,
   host,

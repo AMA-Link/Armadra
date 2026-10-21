@@ -209,6 +209,7 @@ export type {
 export type { SystemHello } from "./system.js";
 export {
   TIMELINE_CONTRACT_SECTION,
+  TIMELINE_BLOB_PATH,
   TIMELINE_CONTRACT_SINCE,
   timelineBlobWireSchema,
 } from "./timeline.js";

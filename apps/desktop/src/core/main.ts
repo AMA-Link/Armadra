@@ -58,6 +58,7 @@ import { install as installSchedule } from "./schedule";
 import { install as installDependencies } from "./dependencies";
 import { install as installGit } from "./git";
 import { install as installAcp } from "./acp";
+import { install as installTimeline } from "./timeline";
 import { install as installWorkflow } from "./workflow";
 import { install as installRealtime, realtimeDomain } from "./realtime";
 import { install as installPush } from "./push";
@@ -174,6 +175,11 @@ export const DOMAINS: readonly ((context: CoreContext) => void)[] = [
   installWorkspaces,
   installCanvas,
   installAssets,
+  // 会话时间线（契约 §82）只要库、总线与路由，所以排在前面：终端、ACP 与 CLI
+  // 来源这些生产者装配时就能取到这个域（`timelineDomainOf`）。
+  (context) => {
+    installTimeline(context);
+  },
   // Files and imports sit beside the canvas domains: both start from a
   // workspace row, and `imports` mints one of its own.
   installFiles,

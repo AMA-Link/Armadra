@@ -6,13 +6,21 @@ import type {
   SessionSummary,
 } from "@armadra/shared";
 
+import { displayOfStatus, headerOf } from "./display";
 import {
-  APPROVAL_TTL_MS,
-  DONE_HOLDOFF_MS,
-  agentHeaderState,
   isResolvedApproval,
   useAgentStatusStore,
+  type MirroredStatus,
 } from "./status-store";
+
+/** 节点头要画的东西（不含推导它的 `display`）。 */
+function agentHeaderState(status: MirroredStatus | undefined) {
+  const { display: _display, ...rest } = headerOf(
+    displayOfStatus(status),
+    status?.unread ?? false,
+  );
+  return rest;
+}
 
 const NODE = "019ff7d1-0d12-7421-833d-2c5e8d64ed21";
 const WORKSPACE = "019ff7d1-0d12-7421-833d-2c5e8d64ed22";
@@ -65,7 +73,11 @@ beforeEach(() => {
 afterEach(() => vi.unstubAllGlobals());
 
 describe("agent status mirror", () => {
-  it("holds `done` for 3s against a late `working`", () => {
+  /**
+   * S10：`DONE_HOLDOFF` 只在 core 算（`hook/reduce.ts`）。页面收到什么就是什么：
+   * core 已经丢掉的迟到 `working` 不会到这里，到了的就是定论，不再有第二份计时。
+   */
+  it("takes a `working` after `done` as the runtime's verdict", () => {
     store().upsert(status({ state: "done", updatedAt: at(0) }), {
       now: BASE,
       selected: true,
@@ -74,12 +86,6 @@ describe("agent status mirror", () => {
     store().upsert(status({ state: "working", updatedAt: at(500) }), {
       now: BASE + 500,
     });
-    expect(store().statuses[scoped(NODE)]!.state).toBe("done");
-
-    store().upsert(
-      status({ state: "working", updatedAt: at(DONE_HOLDOFF_MS + 10) }),
-      { now: BASE + DONE_HOLDOFF_MS + 10 },
-    );
     expect(store().statuses[scoped(NODE)]!.state).toBe("working");
   });
 
@@ -136,9 +142,9 @@ describe("agent status mirror", () => {
       status({
         state: "working",
         unread: true,
-        updatedAt: at(DONE_HOLDOFF_MS + 1),
+        updatedAt: at(4_000),
       }),
-      { now: BASE + DONE_HOLDOFF_MS + 1, remote: false },
+      { now: BASE + 4_000, remote: false },
     );
     expect(store().statuses[scoped(NODE)]!.unread).toBe(true);
     expect(store().statuses[scoped(NODE)]!.state).toBe("working");
@@ -328,7 +334,8 @@ describe("agent status mirror", () => {
     expect(isResolvedApproval(undefined)).toBe(false);
   });
 
-  it("expires a pending approval after five minutes", () => {
+  /** S9：审批挂起只有 core 一份；过期由 core 清掉 `pendingId` 并发状态帧，页面没有计时器。 */
+  it("follows the runtime when it drops an expired pending approval", () => {
     store().upsert(status({ state: "blocked", updatedAt: at(0) }), {
       now: BASE,
     });
@@ -341,11 +348,14 @@ describe("agent status mirror", () => {
       },
       { now: BASE },
     );
-    store().sweepApprovals(BASE + APPROVAL_TTL_MS - 1);
     expect(store().statuses[scoped(NODE)]!.pendingId).toBe("p1");
+    expect("sweepApprovals" in store()).toBe(false);
 
-    store().sweepApprovals(BASE + APPROVAL_TTL_MS);
+    store().upsert(status({ state: "blocked", updatedAt: at(300_000) }), {
+      now: BASE + 300_000,
+    });
     expect(store().statuses[scoped(NODE)]!.pendingId).toBeUndefined();
+    expect(store().statuses[scoped(NODE)]!.state).toBe("blocked");
   });
 
   it("maps states to the pill and the glow", () => {
@@ -353,13 +363,13 @@ describe("agent status mirror", () => {
     expect(
       agentHeaderState(status({ state: "working", updatedAt: at(0) })),
     ).toEqual({
-      pill: { tone: "working", labelKey: "agent.state.working" },
+      pill: { tone: "working", labelKey: "status.working" },
       glow: "working",
     });
     expect(
       agentHeaderState(status({ state: "waiting", updatedAt: at(0) })),
     ).toEqual({
-      pill: { tone: "attention", labelKey: "agent.state.waiting" },
+      pill: { tone: "attention", labelKey: "status.awaitingInput" },
       glow: "attention",
     });
     expect(
@@ -367,7 +377,7 @@ describe("agent status mirror", () => {
         status({ state: "done", unread: true, updatedAt: at(0) }),
       ),
     ).toEqual({
-      pill: { tone: "unread", labelKey: "agent.state.done" },
+      pill: { tone: "unread", labelKey: "status.done" },
       glow: "unread",
     });
     // 读过的 done 不出胶囊，空闲节点头部保持干净（§14）。
@@ -423,7 +433,7 @@ describe("agent status mirror", () => {
           "terminated=true the terminal exited before the turn ended",
       }),
     ).toEqual({
-      pill: { tone: "unread", labelKey: "agent.state.done" },
+      pill: { tone: "unread", labelKey: "status.done" },
       glow: "unread",
     });
   });
@@ -462,8 +472,8 @@ describe("agent status mirror", () => {
         errored: true,
       }),
     ).toEqual({
-      pill: { tone: "failed", labelKey: "agent.state.errored" },
-      glow: "unread",
+      pill: { tone: "failed", labelKey: "status.failed" },
+      glow: "failed",
     });
     expect(
       agentHeaderState({
@@ -471,7 +481,7 @@ describe("agent status mirror", () => {
         interrupted: true,
       }),
     ).toEqual({
-      pill: { tone: "paused", labelKey: "agent.state.interrupted" },
+      pill: { tone: "paused", labelKey: "status.interrupted" },
     });
   });
 });

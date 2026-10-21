@@ -810,6 +810,13 @@ export const ROUTES: readonly RouteEntry[] = [
     surface: "runtime",
     implemented: true,
   },
+  // 会话时间线的 blob 字节（契约 §82.1）：`timeline.*` 的其余动词走 procedure。
+  {
+    path: "/api/timelines/{timelineId}/blobs/{blobId}",
+    methods: ["GET"],
+    surface: "runtime",
+    implemented: true,
+  },
   // 菜单打开时预启动（契约 §51）。
   {
     path: "/api/acp/prestart",

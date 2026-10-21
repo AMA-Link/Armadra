@@ -1,8 +1,13 @@
 import { useEffect, useMemo, useState } from "react";
 import { ArrowLeft, Crosshair, X } from "lucide-react";
-import type { AgentStatus, CanvasNode } from "@armadra/shared";
+import type { CanvasNode } from "@armadra/shared";
 
-import { isAttention, useAgentStatusStore } from "../agent/status-store";
+import { displayOfStatus } from "../agent/display";
+import { useProgramStatusStore } from "../agent/program-status-store";
+import {
+  useAgentStatusStore,
+  type MirroredStatus,
+} from "../agent/status-store";
 import { useT } from "../app/preferences-store";
 import { formatRelativeTime } from "../lib/format";
 import { NODE_META } from "../nodes/registry";
@@ -14,35 +19,18 @@ import { Button } from "@/ui/button";
 import { IconButton } from "@/ui/icon-button";
 import { ScrollArea } from "@/ui/scroll-area";
 import { SheetTitle } from "@/ui/sheet";
-import { StatusPill, type StatusTone } from "@/ui/status-pill";
+import { StatusPill } from "@/ui/status-pill";
 import { cn } from "@/lib/cn";
 import { nodeTreeRows } from "./tree";
 
-function isAgent(node: CanvasNode, status: AgentStatus | undefined): boolean {
+function isAgent(
+  node: CanvasNode,
+  status: MirroredStatus | undefined,
+): boolean {
   return (
     node.data.kind === "terminal" &&
     (node.data.agent !== undefined || status !== undefined)
   );
-}
-
-function statusOf(status: AgentStatus | undefined): {
-  tone: StatusTone;
-  key: string;
-} {
-  if (status === undefined)
-    return { tone: "idle", key: "nodeObservation.unknown" };
-  if (isAttention(status))
-    return { tone: "attention", key: "sessions.bucket.attention" };
-  if (status.errored) return { tone: "failed", key: "nodeObservation.failed" };
-  if (status.state === "working")
-    return { tone: "working", key: "sessions.bucket.working" };
-  if (status.state === "blocked")
-    return { tone: "attention", key: "nodeObservation.blocked" };
-  if (status.state === "waiting")
-    return { tone: "paused", key: "nodeObservation.waiting" };
-  if (status.state === "done" || status.sessionPhase === "end")
-    return { tone: "done", key: "nodeObservation.turnEnded" };
-  return { tone: "idle", key: "nodeObservation.unknown" };
 }
 
 /** The open canvas is the sole inventory; selecting a row never moves the camera. */
@@ -57,6 +45,7 @@ export function NodeObservationDrawer() {
   const selectedNodeIds = useCanvasStore((state) => state.selectedNodeIds);
   const selectNodes = useCanvasStore((state) => state.selectNodes);
   const statuses = useAgentStatusStore((state) => state.statuses);
+  const programs = useProgramStatusStore((state) => state.programs);
   const [detailNodeId, setDetailNodeId] = useState<string | null>(null);
   const nodes = useMemo(
     () =>
@@ -73,7 +62,17 @@ export function NodeObservationDrawer() {
     return status?.workspaceId === workspaceId ? status : undefined;
   };
   const selectedStatus = selected ? nodeStatus(selected) : undefined;
-  const selectedState = statusOf(selectedStatus);
+  // 状态的色调与文案和节点头、侧栏、铃铛是同一个 `sessionDisplay()` 的结果（S2/S6）。
+  const stateOf = (node: CanvasNode, status: MirroredStatus | undefined) => {
+    const display = displayOfStatus(
+      status,
+      programs[scoped(node.id, sourceId)],
+    );
+    return { tone: display.tone, key: display.labelKey };
+  };
+  const selectedState = selected
+    ? stateOf(selected, selectedStatus)
+    : { tone: "idle" as const, key: "status.unknown" };
 
   useEffect(() => setDetailNodeId(null), [workspaceId, boardId, sourceId]);
   useEffect(() => {
@@ -167,7 +166,7 @@ export function NodeObservationDrawer() {
               const status = nodeStatus(node);
               const active = selectedNodeIds.includes(node.id);
               const agent = isAgent(node, status);
-              const state = statusOf(status);
+              const state = stateOf(node, status);
               return (
                 <Button
                   key={node.id}

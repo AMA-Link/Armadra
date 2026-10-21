@@ -22,16 +22,6 @@ import { rfc3339 } from "../workspaces/support";
  *     which is a different statement from `false` = "finished cleanly".
  */
 
-/** The `state` values the column accepts. Closed, like the source vocabulary. */
-export const AGENT_STATES = [
-  "idle",
-  "working",
-  "waiting",
-  "blocked",
-  "done",
-  "error",
-] as const;
-
 export interface AgentStatus {
   readonly nodeId: string;
   readonly workspaceId: string;

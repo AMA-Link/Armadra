@@ -114,6 +114,7 @@ describe("NodeObservationDrawer", () => {
             nodeId,
             workspaceId,
             agentId: "codex",
+            state: "done",
             unread: false,
             verified: true,
             restored: false,
@@ -123,6 +124,54 @@ describe("NodeObservationDrawer", () => {
         },
       });
     });
-    expect(screen.getByText("本轮失败")).toBeTruthy();
+    expect(screen.getByText("已失败")).toBeTruthy();
+  });
+
+  /** S2 / S4：进程已死的审批不再冒充「需要你」；S6：等待回答和审批同一个色调。 */
+  function showAgent(partial: Record<string, unknown>) {
+    showCanvas();
+    act(() => {
+      const document = useCanvasStore.getState().document!;
+      useCanvasStore.setState({
+        document: {
+          ...document,
+          nodes: [
+            {
+              ...document.nodes[0]!,
+              type: "terminal",
+              data: { kind: "terminal", agent: { id: "codex" } },
+            } as CanvasNode,
+          ],
+        },
+      });
+      useAgentStatusStore.setState({
+        statuses: {
+          [`local:${nodeId}`]: {
+            nodeId,
+            workspaceId,
+            agentId: "codex",
+            unread: false,
+            verified: true,
+            restored: false,
+            updatedAt: "2026-10-16T00:00:00.000Z",
+            ...partial,
+          },
+        },
+      });
+    });
+  }
+
+  it("does not call a dead process's approval 'needs you'", () => {
+    showAgent({ state: "blocked", pendingId: "p1", alive: false });
+    expect(screen.queryByText("等待审批")).toBeNull();
+    expect(screen.getByText("已退出")).toBeTruthy();
+  });
+
+  it("draws a question and an approval in the same attention tone", () => {
+    showAgent({ state: "waiting" });
+    const pill = screen
+      .getByText("等待回答")
+      .closest("[data-slot=status-pill]");
+    expect(pill?.getAttribute("data-tone")).toBe("attention");
   });
 });

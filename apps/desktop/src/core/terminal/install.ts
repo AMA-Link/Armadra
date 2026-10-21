@@ -1,4 +1,5 @@
 import { join, resolve } from "node:path";
+import type { SessionActivity } from "@armadra/shared";
 import { type DomainHandlers, registerProcedures } from "../http/rpc";
 import { allows } from "../identity/gate";
 import { scope } from "../identity/scopes";
@@ -31,6 +32,7 @@ import {
   sshHostOf,
 } from "../acp";
 import { acpSwitching } from "../acp/routes";
+import { rowLiveness, timelineDomainOf } from "../timeline";
 import { loadNode } from "../collab/nodes";
 import { canvasEnvironment } from "../agent/canvas-launch";
 import {
@@ -242,6 +244,15 @@ export function install(
       });
     },
   });
+  // 会话时间线（契约 §82）重启后没有活动记录时，按真实的存活情况补
+  // `idle` / `sleeping` / `exited`。
+  timelineDomainOf(context.server)?.setLiveness((sessionId) =>
+    manager.isAlive(sessionId)
+      ? "alive"
+      : rowLiveness(context.db.database, sessionId) === "sleeping"
+        ? "sleeping"
+        : "gone",
+  );
 
   /**
    * Start-up recovery, and the gate every terminal answer waits behind.
@@ -621,6 +632,8 @@ export function install(
         workspaceId,
         (id) => manager.isAlive(id),
         (id) => manager.programStatus(id),
+        (id) =>
+          timelineDomainOf(context.server)?.summaryOf(id, manager.isAlive(id)),
       ),
 
     paste: async (sessionId: string, text: unknown, enter: boolean) => {
@@ -1184,10 +1197,15 @@ export interface SessionSummary {
   readonly sessionPhase?: string;
   /** 最近一个回合出错结束（契约 §81：与 `unread` 一起决定「出错」是否还要人处理）。 */
   readonly errored?: boolean;
+  /** 最近一个回合被人打断（与 `errored` 一起决定状态点的色调）。 */
+  readonly interrupted?: boolean;
   readonly updatedAt: string;
   readonly alive: boolean;
   /** 契约 §53：程序此刻自报的状态，只在会话活在这个进程里时有。 */
   readonly programStatus?: ProgramStatusWire;
+  /** 会话时间线的活动与已写到的序号（契约 §82）；没有时间线的会话省略。 */
+  readonly activity?: SessionActivity;
+  readonly timelineSeq?: number;
 }
 
 /**
@@ -1219,6 +1237,10 @@ export function listSessions(
   alive: (sessionId: string) => boolean,
   program: (sessionId: string) => ProgramStatusWire | undefined = () =>
     undefined,
+  timeline: (
+    sessionId: string,
+  ) => { activity: SessionActivity; timelineSeq: number } | undefined = () =>
+    undefined,
 ): SessionSummary[] {
   const rows = database
     .prepare(
@@ -1228,7 +1250,7 @@ export function listSessions(
               st.agent_id AS status_agent_id, st.state AS state,
               st.state_source AS state_source, st.unread AS unread,
               st.pending_id AS pending_id, st.session_phase AS session_phase,
-              st.errored AS errored,
+              st.errored AS errored, st.interrupted AS interrupted,
               st.updated_at AS status_updated_at
          FROM terminal_sessions s
          JOIN nodes n ON n.id = s.owner_node_id
@@ -1262,6 +1284,7 @@ export function listSessions(
     const pendingId = row.pending_id as string | null;
     const sessionPhase = row.session_phase as string | null;
     const programStatus = program(sessionId);
+    const timelineSummary = timeline(sessionId);
     return {
       nodeId: String(row.node_id),
       boardId: String(row.board_id),
@@ -1280,11 +1303,15 @@ export function listSessions(
       ...(row.errored === null || row.errored === undefined
         ? {}
         : { errored: Number(row.errored) !== 0 }),
+      ...(row.interrupted === null || row.interrupted === undefined
+        ? {}
+        : { interrupted: Number(row.interrupted) !== 0 }),
       updatedAt: String(
         (row.status_updated_at as string | null) ?? row.created_at,
       ),
       alive: alive(sessionId),
       ...(programStatus === undefined ? {} : { programStatus }),
+      ...(timelineSummary === undefined ? {} : timelineSummary),
     };
   });
 }

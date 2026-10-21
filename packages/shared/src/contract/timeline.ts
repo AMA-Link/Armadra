@@ -30,6 +30,10 @@ export const TIMELINE_CONTRACT_SECTION = "§82.1" as const;
 /** 首次出现的协议版本（`major.minor`）；随 core 那一批的协议 minor 一起改。 */
 export const TIMELINE_CONTRACT_SINCE = "1.48" as const;
 
+/** blob 的二进制路径（GET，答原始字节）；经控制面 / 中转时用 `timeline.blob`。 */
+export const TIMELINE_BLOB_PATH =
+  "/api/timelines/{timelineId}/blobs/{blobId}" as const;
+
 const base = {
   since: TIMELINE_CONTRACT_SINCE,
   contract: TIMELINE_CONTRACT_SECTION,

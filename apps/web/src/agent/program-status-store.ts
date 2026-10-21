@@ -6,9 +6,10 @@
  * 谁都能伪造——`cat` 一个文件就够——所以它只进这张表，只用来画节点头、
  * 小地图描边与离屏提醒，不进任何判据。
  *
- * 合并规则（{@link headerStateFor}）：节点有一条**本进程内**的上报状态时，
- * 上报说了算，程序自报只补进度；没有上报（普通终端、没装适配器的 CLI、
- * core 重启后读回来的旧行）时，程序自报画节点头。
+ * 合并规则在共享层的 `sessionDisplay()` 里（{@link headerStateFor} 只是把
+ * 节点头的输入喂给它）：节点有一条**本进程内**的上报状态时，上报说了算，程序自报
+ * 只补进度；没有上报（普通终端、没装适配器的 CLI、core 重启后读回来的旧行）时，
+ * 程序自报画节点头。侧栏、抽屉、铃铛走同一个函数，所以合并结果处处一致（S5）。
  */
 import { create } from "zustand";
 import type {
@@ -18,11 +19,10 @@ import type {
   WorkspaceEvent,
 } from "@armadra/shared";
 
-import {
-  agentHeaderState,
-  type AgentHeaderState,
-  type AgentStateLabelKey,
-} from "./status-store";
+import { sessionDisplay } from "@armadra/shared";
+
+import { headerOf, type HeaderState } from "./display";
+import type { MirroredStatus } from "./status-store";
 import { scoped } from "../sources/scope";
 
 export interface ProgramStatusState {
@@ -126,9 +126,8 @@ export function useProgramSeen(nodeId: string, sourceId?: string): boolean {
 
 /* -------------------------------- 显示映射 -------------------------------- */
 
-/** 节点头里多出来的一项：进度百分比，随「运行中」胶囊一起出现。 */
-export interface MergedHeaderState extends AgentHeaderState {
-  progress?: number;
+/** 节点头里多出来的一项：这一刻说话的是上报，还是程序自报。 */
+export interface MergedHeaderState extends HeaderState {
   /** 节点头这一刻说的话是谁说的：上报，还是程序自报。 */
   source?: "reported" | "program";
 }
@@ -145,84 +144,38 @@ export function reportedLive(status: AgentStatus | undefined): boolean {
 }
 
 /**
- * 程序自报 → 胶囊 + 光晕。`idle` 什么都不画，与上报的「已读的 done」同理：
- * 静止是常态。`done` / `error` 被看过之后只留胶囊。
- */
-export function programHeaderState(
-  program: ProgramStatus | undefined,
-  seen = false,
-): MergedHeaderState {
-  if (!program) return {};
-  const withProgress =
-    program.progress === undefined ? {} : { progress: program.progress };
-  const pill = (
-    tone: NonNullable<AgentHeaderState["pill"]>["tone"],
-    labelKey: AgentStateLabelKey,
-  ) => ({ tone, labelKey });
-  switch (program.state) {
-    case "working":
-      return {
-        pill: pill("working", "agent.state.working"),
-        glow: "working",
-        source: "program",
-        ...withProgress,
-      };
-    case "blocked":
-      return {
-        pill: pill(
-          "attention",
-          program.kind === "question"
-            ? "agent.state.waiting"
-            : "agent.state.blocked",
-        ),
-        glow: "attention",
-        source: "program",
-        ...withProgress,
-      };
-    case "done":
-      return seen
-        ? {}
-        : {
-            pill: pill("unread", "agent.state.done"),
-            glow: "unread",
-            source: "program",
-          };
-    case "error":
-      return {
-        pill: pill("failed", "agent.program.error"),
-        ...(seen ? {} : { glow: "unread" as const }),
-        source: "program",
-      };
-    default:
-      return {};
-  }
-}
-
-/**
  * 节点头最终画什么。`agent` 为假时（普通终端）上报不参与；Agent 节点有活的
  * 上报时用上报，程序自报只在两边都说「在跑」时补一个进度。
  */
 export function headerStateFor(
   agent: boolean,
-  status: AgentStatus | undefined,
+  status: MirroredStatus | undefined,
   program: ProgramStatus | undefined,
   seen = false,
 ): MergedHeaderState {
-  if (agent && reportedLive(status)) {
-    const reported: MergedHeaderState = {
-      ...agentHeaderState(status),
-      source: "reported",
-    };
-    if (
-      status?.state === "working" &&
-      program?.state === "working" &&
-      program.progress !== undefined
-    ) {
-      reported.progress = program.progress;
-    }
-    return reported;
-  }
-  const fromProgram = programHeaderState(program, seen);
-  if (fromProgram.pill) return fromProgram;
-  return agent ? { ...agentHeaderState(status), source: "reported" } : {};
+  const own = agent ? status : undefined;
+  const live = reportedLive(own);
+  // 程序自报在说话：没有活的上报，且它给出了一个有内容的状态。
+  const programDrives =
+    !live &&
+    (program?.state === "working" ||
+      program?.state === "blocked" ||
+      program?.state === "done" ||
+      program?.state === "error");
+  // 程序自报的 `done` / `error` 被看过之后收起光晕，规范把这件事留给终端。
+  const unread =
+    programDrives && (program?.state === "done" || program?.state === "error")
+      ? !seen
+      : (own?.unread ?? false);
+  const display = sessionDisplay({
+    ...(own ? { status: own } : {}),
+    ...(own?.alive !== undefined ? { alive: own.alive } : {}),
+    ...(own?.activity ? { activity: own.activity } : {}),
+    ...(program ? { program } : {}),
+    unread,
+  });
+  const header = headerOf(display, unread);
+  if (live) return { ...header, source: "reported" };
+  if (programDrives && header.pill) return { ...header, source: "program" };
+  return agent ? { ...header, source: "reported" } : header;
 }

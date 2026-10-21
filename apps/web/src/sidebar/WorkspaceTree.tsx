@@ -27,7 +27,6 @@ import {
 } from "lucide-react";
 import type { WorkspaceSummary } from "@armadra/shared";
 
-import { isAttention } from "../agent/status-store";
 import { useSessions } from "../agent/sessions";
 import { useT, usePreferencesStore } from "../app/preferences-store";
 import { WorkspaceGroups } from "./SourceGroups";
@@ -173,10 +172,7 @@ export function WorkspaceTree() {
 
   /* 行尾信号点：只有当前工作空间有会话列表，别的工作空间不发这一次请求。 */
   const { sessions } = useSessions(workspace?.id ?? null);
-  const signals = useMemo(
-    () => boardSignals(sessions, isAttention),
-    [sessions],
-  );
+  const signals = useMemo(() => boardSignals(sessions), [sessions]);
 
   const pinned = useMemo(
     () =>

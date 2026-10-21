@@ -111,6 +111,23 @@ export interface WorkspaceEventPayloads {
     readonly nodeId?: string;
     readonly status?: OpaquePayload;
   };
+  /**
+   * 会话时间线的一帧增量与活动变化（契约 §82）。短时事件，不进 outbox
+   * （`events/stream.ts`）：缺口由页面按 `timeline.sync` 补，活动从会话列表补。
+   * 形状是共享层的 `timelineDeltaSchema` / `timelineActivityEventSchema`。
+   */
+  "timeline.delta": {
+    readonly timelineId: string;
+    readonly nodeId: string;
+    readonly from: number;
+    readonly to: number;
+    readonly ops: readonly OpaquePayload[];
+  };
+  "timeline.activity": {
+    readonly timelineId: string;
+    readonly nodeId: string;
+    readonly activity: OpaquePayload;
+  };
   "board.changed": { readonly boardId: string; readonly updatedAt: string };
   /**
    * 谁在看这块画布、谁持有写租约（契约 §9.4）。有人来、有人走、租约换手时
