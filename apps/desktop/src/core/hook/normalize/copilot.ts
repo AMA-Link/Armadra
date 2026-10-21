@@ -10,6 +10,7 @@ import {
   newEvent,
   sessionEvent,
   stateEvent,
+  summaryOfInput,
   text,
   truncate,
 } from "./event";
@@ -136,8 +137,42 @@ export function normalize(
       return undefined;
   }
   if (event === undefined) return undefined;
+  event.hookEvent = TIMELINE_HOOK[name];
+  if (name === "postToolUse" || name === "postToolUseFailure") {
+    event.toolName = text(payload, "tool_name", "toolName");
+    event.toolUseId = text(payload, "tool_call_id", "toolCallId");
+    const summary = summaryOfInput(toolArgs(payload));
+    if (summary !== undefined) event.toolSummary = summary;
+  }
   applyCommon(event, payload);
   return event;
+}
+
+/**
+ * The hook name the timeline's activity layer reads, for each native event.
+ * Timeline-only. There is no `PreToolUse` here on purpose: `preToolUse` is
+ * never subscribed (§6), so a tool's start only shows up in the transcript.
+ */
+const TIMELINE_HOOK: Record<string, string | undefined> = {
+  userPromptSubmitted: "UserPromptSubmit",
+  postToolUse: "PostToolUse",
+  postToolUseFailure: "PostToolUse",
+  notification: "Notification",
+  agentStop: "Stop",
+  errorOccurred: "Stop",
+};
+
+/** `toolArgs` arrives as an object or as a JSON string of one. */
+function toolArgs(payload: Payload): unknown {
+  const raw =
+    field(payload, "tool_args", "toolArgs") ??
+    field(payload, "tool_input", "toolInput");
+  if (typeof raw !== "string") return raw;
+  try {
+    return JSON.parse(raw) as unknown;
+  } catch {
+    return raw;
+  }
 }
 
 /**

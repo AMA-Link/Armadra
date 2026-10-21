@@ -1,0 +1,430 @@
+{
+  "head": {
+    "title": "补 README 并跑测试",
+    "usage": {
+      "used": 9150,
+      "size": 200000
+    }
+  },
+  "items": [
+    {
+      "id": "turn:oc:msg_01",
+      "turn": 1,
+      "ord": 0,
+      "rev": 15,
+      "source": "transcript",
+      "at": 1790000001000,
+      "gen": 0,
+      "kind": "turn",
+      "turnId": "oc:msg_01",
+      "startedAt": 1790000001000,
+      "endedAt": 1790000009000,
+      "stopReason": "end_turn",
+      "permissionWaitMs": 0,
+      "usage": {
+        "used": 8690,
+        "size": 200000
+      }
+    },
+    {
+      "id": "u:oc:msg_01",
+      "turn": 1,
+      "ord": 1,
+      "rev": 3,
+      "source": "transcript",
+      "at": 1790000001000,
+      "gen": 0,
+      "kind": "user",
+      "text": "给 README 加一行并跑测试"
+    },
+    {
+      "id": "th:prt_02b",
+      "turn": 1,
+      "ord": 2,
+      "rev": 4,
+      "source": "transcript",
+      "at": 1790000001200,
+      "gen": 0,
+      "kind": "thought",
+      "text": "",
+      "streaming": false
+    },
+    {
+      "id": "a:prt_02c",
+      "turn": 1,
+      "ord": 3,
+      "rev": 5,
+      "source": "transcript",
+      "at": 1790000001350,
+      "gen": 0,
+      "kind": "assistant",
+      "parts": [
+        {
+          "type": "text",
+          "text": "先看 README，再补一行。"
+        }
+      ],
+      "streaming": false
+    },
+    {
+      "id": "tool:call_read",
+      "turn": 1,
+      "ord": 4,
+      "rev": 6,
+      "source": "transcript",
+      "at": 1790000001450,
+      "gen": 0,
+      "kind": "tool",
+      "toolCallId": "call_read",
+      "toolKind": "read",
+      "title": "read README.md",
+      "status": "completed",
+      "locations": [
+        {
+          "path": "/work/demo/README.md"
+        }
+      ],
+      "input": {
+        "path": "/work/demo/README.md"
+      },
+      "content": [
+        {
+          "type": "text",
+          "text": "# Demo\n"
+        }
+      ],
+      "startedAt": 1790000001450,
+      "endedAt": 1790000001450
+    },
+    {
+      "id": "tool:call_edit",
+      "turn": 1,
+      "ord": 5,
+      "rev": 7,
+      "source": "transcript",
+      "at": 1790000001600,
+      "gen": 0,
+      "kind": "tool",
+      "toolCallId": "call_edit",
+      "toolKind": "edit",
+      "title": "edit README.md",
+      "status": "completed",
+      "locations": [
+        {
+          "path": "/work/demo/README.md"
+        }
+      ],
+      "input": {
+        "path": "/work/demo/README.md",
+        "fields": [
+          {
+            "key": "oldString",
+            "value": "# Demo"
+          },
+          {
+            "key": "newString",
+            "value": "# Demo\n新增一行"
+          }
+        ]
+      },
+      "content": [
+        {
+          "type": "diff",
+          "path": "/work/demo/README.md",
+          "oldText": "# Demo",
+          "newText": "# Demo\n新增一行"
+        }
+      ],
+      "startedAt": 1790000001600,
+      "endedAt": 1790000001600
+    },
+    {
+      "id": "tool:call_edit2",
+      "turn": 1,
+      "ord": 6,
+      "rev": 8,
+      "source": "transcript",
+      "at": 1790000001800,
+      "gen": 0,
+      "kind": "tool",
+      "toolCallId": "call_edit2",
+      "toolKind": "edit",
+      "title": "edit notes.txt",
+      "status": "completed",
+      "locations": [
+        {
+          "path": "/work/demo/notes.txt"
+        }
+      ],
+      "input": {
+        "path": "/work/demo/notes.txt"
+      },
+      "content": [
+        {
+          "type": "diff",
+          "path": "/work/demo/notes.txt",
+          "oldText": "keep\nold line",
+          "newText": "keep\nnew line"
+        }
+      ],
+      "startedAt": 1790000001800,
+      "endedAt": 1790000001800
+    },
+    {
+      "id": "tool:call_write",
+      "turn": 1,
+      "ord": 7,
+      "rev": 9,
+      "source": "transcript",
+      "at": 1790000002000,
+      "gen": 0,
+      "kind": "tool",
+      "toolCallId": "call_write",
+      "toolKind": "edit",
+      "title": "write new.txt",
+      "status": "completed",
+      "locations": [
+        {
+          "path": "/work/demo/new.txt"
+        }
+      ],
+      "input": {
+        "path": "/work/demo/new.txt",
+        "fields": [
+          {
+            "key": "content",
+            "value": "hello"
+          }
+        ]
+      },
+      "content": [
+        {
+          "type": "diff",
+          "path": "/work/demo/new.txt",
+          "oldText": null,
+          "newText": "hello"
+        }
+      ],
+      "startedAt": 1790000002000,
+      "endedAt": 1790000002000
+    },
+    {
+      "id": "plan:1",
+      "turn": 1,
+      "ord": 8,
+      "rev": 10,
+      "source": "transcript",
+      "at": 1790000002200,
+      "gen": 0,
+      "kind": "plan",
+      "entries": [
+        {
+          "content": "补 README",
+          "status": "completed"
+        },
+        {
+          "content": "跑测试",
+          "status": "in_progress"
+        }
+      ]
+    },
+    {
+      "id": "tool:call_bash",
+      "turn": 1,
+      "ord": 9,
+      "rev": 11,
+      "source": "transcript",
+      "at": 1790000002500,
+      "gen": 0,
+      "kind": "tool",
+      "toolCallId": "call_bash",
+      "toolKind": "execute",
+      "title": "Run tests",
+      "status": "completed",
+      "locations": [],
+      "input": {
+        "command": "pnpm test",
+        "fields": [
+          {
+            "key": "description",
+            "value": "Run tests"
+          }
+        ]
+      },
+      "content": [
+        {
+          "type": "terminal",
+          "terminalId": "call_bash",
+          "command": "pnpm test",
+          "output": "2 passed\n",
+          "exitCode": 0
+        }
+      ],
+      "startedAt": 1790000002500,
+      "endedAt": 1790000002500
+    },
+    {
+      "id": "tool:call_bash2",
+      "turn": 1,
+      "ord": 10,
+      "rev": 12,
+      "source": "transcript",
+      "at": 1790000003200,
+      "gen": 0,
+      "kind": "tool",
+      "toolCallId": "call_bash2",
+      "toolKind": "execute",
+      "title": "Lint",
+      "status": "failed",
+      "locations": [],
+      "input": {
+        "command": "pnpm lint",
+        "fields": [
+          {
+            "key": "description",
+            "value": "Lint"
+          }
+        ]
+      },
+      "content": [
+        {
+          "type": "terminal",
+          "terminalId": "call_bash2",
+          "command": "pnpm lint",
+          "output": "1 problem\n",
+          "exitCode": 1
+        }
+      ],
+      "startedAt": 1790000003200,
+      "endedAt": 1790000003200
+    },
+    {
+      "id": "tool:call_grep",
+      "turn": 1,
+      "ord": 11,
+      "rev": 13,
+      "source": "transcript",
+      "at": 1790000003800,
+      "gen": 0,
+      "kind": "tool",
+      "toolCallId": "call_grep",
+      "toolKind": "search",
+      "title": "grep TODO",
+      "status": "completed",
+      "locations": [
+        {
+          "path": "/work/demo"
+        }
+      ],
+      "input": {
+        "path": "/work/demo",
+        "query": "TODO"
+      },
+      "content": [
+        {
+          "type": "text",
+          "text": "Found 0 matches"
+        }
+      ],
+      "startedAt": 1790000003800,
+      "endedAt": 1790000003800
+    },
+    {
+      "id": "a:prt_03a",
+      "turn": 1,
+      "ord": 12,
+      "rev": 16,
+      "source": "transcript",
+      "at": 1790000005150,
+      "gen": 0,
+      "kind": "assistant",
+      "parts": [
+        {
+          "type": "text",
+          "text": "测试通过，lint 有一处问题。"
+        }
+      ],
+      "streaming": false
+    },
+    {
+      "id": "turn:oc:msg_04",
+      "turn": 2,
+      "ord": 0,
+      "rev": 20,
+      "source": "transcript",
+      "at": 1790000020000,
+      "gen": 0,
+      "kind": "turn",
+      "turnId": "oc:msg_04",
+      "startedAt": 1790000020000,
+      "endedAt": 1790000026000,
+      "stopReason": "cancelled",
+      "permissionWaitMs": 0,
+      "usage": {
+        "used": 9150,
+        "size": 200000
+      }
+    },
+    {
+      "id": "u:oc:msg_04",
+      "turn": 2,
+      "ord": 1,
+      "rev": 19,
+      "source": "transcript",
+      "at": 1790000020000,
+      "gen": 0,
+      "kind": "user",
+      "text": "继续修复"
+    },
+    {
+      "id": "tool:call_slow",
+      "turn": 2,
+      "ord": 2,
+      "rev": 21,
+      "source": "transcript",
+      "at": 1790000021000,
+      "gen": 0,
+      "kind": "tool",
+      "toolCallId": "call_slow",
+      "toolKind": "execute",
+      "title": "sleep 100",
+      "status": "in_progress",
+      "locations": [],
+      "input": {
+        "command": "sleep 100"
+      },
+      "content": [],
+      "startedAt": 1790000021000
+    },
+    {
+      "id": "tool:call_bad",
+      "turn": 2,
+      "ord": 3,
+      "rev": 22,
+      "source": "transcript",
+      "at": 1790000025000,
+      "gen": 0,
+      "kind": "tool",
+      "toolCallId": "call_bad",
+      "toolKind": "read",
+      "title": "read /work/demo/missing.md",
+      "status": "failed",
+      "locations": [
+        {
+          "path": "/work/demo/missing.md"
+        }
+      ],
+      "input": {
+        "path": "/work/demo/missing.md"
+      },
+      "content": [
+        {
+          "type": "text",
+          "text": "File not found"
+        }
+      ],
+      "startedAt": 1790000025000,
+      "endedAt": 1790000025000
+    }
+  ]
+}
