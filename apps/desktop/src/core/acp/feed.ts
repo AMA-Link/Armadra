@@ -22,6 +22,8 @@ import type {
   TimelineToolItem,
 } from "@armadra/shared";
 
+import { renderEntries } from "../collab/transcript";
+import { entriesFromTimeline } from "../history/acp-mirror";
 import type { TimelineDomain } from "../timeline";
 import { outcomeOf } from "../timeline";
 import type {
@@ -126,6 +128,20 @@ export class AcpFeed {
     }
     if (Object.keys(patch).length === 0) return;
     this.writer.head(this.id.rowId, patch as TimelineHead, { flush: "soon" });
+  }
+
+  /** 时间线渲染出的最后几行（桥的 `capture`：`context terminal`、自动命名）。 */
+  capture(lines: number): string {
+    this.writer.flush(this.id.rowId);
+    const rendered = renderEntries(
+      entriesFromTimeline(this.domain.store.tailItems(this.id.rowId, 3)),
+    )
+      .map((record) => record.line)
+      .join("\n")
+      .split("\n");
+    return lines <= 0
+      ? rendered.join("\n")
+      : rendered.slice(Math.max(0, rendered.length - lines)).join("\n");
   }
 
   ready(): void {

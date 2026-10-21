@@ -5,7 +5,13 @@ import { getAgentStatus } from "../agent/status";
 import type { WorkspaceEvent } from "../bus";
 import { agentActor } from "../drive/lease";
 import { submittedText } from "./bridge";
-import { type AcpCore, FAKE_AGENT, acpCore, until } from "./fixture";
+import {
+  type AcpCore,
+  FAKE_AGENT,
+  acpCore,
+  ensureTimeline,
+  until,
+} from "./fixture";
 
 /**
  * 终端桥的 ACP 实现（ACP 设计 §5.6）：协作域、调度、依赖编排写的都是
@@ -45,6 +51,7 @@ describe("submittedText", () => {
 describe("the ACP terminal bridge", () => {
   it("turns writeSubmit into a prompt, ESC into a cancel and capture into the mirror", async () => {
     open = await acpCore();
+    ensureTimeline(open);
     const seen: WorkspaceEvent[] = [];
     open.core.bus.on("workspace.event", ({ event }) => seen.push(event));
     const { nodeId, row } = await started(open);
@@ -105,6 +112,7 @@ describe("the ACP terminal bridge", () => {
 
   it("keeps an agent out while a person holds the session", async () => {
     open = await acpCore();
+    ensureTimeline(open);
     const { nodeId, row } = await started(open);
     const bridge = collab()?.terminals;
     // 会话视图的输入框聚焦 = 接管（PromptBox 调的就是这条路由）。

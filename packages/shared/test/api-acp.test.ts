@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  acpLogResponseSchema,
   acpPermissionRequestSchema,
   acpToolCallSchema,
   answerApprovalRequestSchema,
@@ -12,17 +11,7 @@ import {
 } from "../src/index.js";
 
 describe("ACP session shapes (contract §14.2–§14.4)", () => {
-  it("parses the three ACP events on the workspace stream", () => {
-    const update = workspaceEventSchema.parse({
-      type: "acp.update",
-      sessionId: "s1",
-      nodeId: "n1",
-      update: {
-        sessionUpdate: "agent_message_chunk",
-        content: { type: "text", text: "hi" },
-      },
-    });
-    expect(update.type).toBe("acp.update");
+  it("parses the ACP events on the workspace stream", () => {
     const turn = workspaceEventSchema.parse({
       type: "acp.turn",
       sessionId: "s1",
@@ -57,21 +46,13 @@ describe("ACP session shapes (contract §14.2–§14.4)", () => {
     expect(call.content).toHaveLength(2);
   });
 
-  it("reads a permission request and a log with pending cards", () => {
+  it("reads a permission request", () => {
     const request = acpPermissionRequestSchema.parse({
       protocol: "acp",
       toolCall: { toolCallId: "t1", title: "pnpm test" },
       options: [{ optionId: "a", name: "Allow", kind: "allow_once" }],
     });
     expect(request.options[0]?.kind).toBe("allow_once");
-    const log = acpLogResponseSchema.parse({
-      entries: [
-        { role: "user", blocks: [{ type: "text", text: "hi" }], endOffset: 2 },
-      ],
-      endOffset: 2,
-      pending: [{ ...request, pendingId: "p1" }],
-    });
-    expect(log.pending?.[0]?.pendingId).toBe("p1");
   });
 
   it("carries the option and the acp route on approval answers", () => {

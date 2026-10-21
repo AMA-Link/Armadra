@@ -520,103 +520,10 @@ export const acpModelStateSchema = z.looseObject({
 /** `PUT /api/acp/sessions/{id}/model`. */
 export const acpModelRequestSchema = z.object({ modelId: z.string().min(1) });
 
-/** One normalised transcript block (`core/history/types.ts::Block`). */
-export const acpTranscriptBlockSchema = z.union([
-  z.looseObject({ type: z.literal("text"), text: z.string() }),
-  z.looseObject({
-    type: z.literal("tool_use"),
-    name: z.string(),
-    id: z.string().optional(),
-    input: z.unknown().optional(),
-    /** §49: the call's kind and files, for the session view. */
-    kind: z.string().optional(),
-    locations: z.array(acpToolCallLocationSchema).optional(),
-  }),
-  z.looseObject({
-    type: z.literal("tool_result"),
-    id: z.string().optional(),
-    content: z.unknown().optional(),
-    /** §49: set when the call ended `failed`. */
-    status: z.literal("failed").optional(),
-    /** §49: the call's file diffs, kept whole (the text is clipped, diffs are not). */
-    diffs: z
-      .array(
-        z.looseObject({
-          path: z.string(),
-          oldText: z.string().nullish(),
-          newText: z.string(),
-        }),
-      )
-      .optional(),
-  }),
-  /** §49: `data` is base64; over 512 KiB it is left out and `dropped` is set. */
-  z.looseObject({
-    type: z.literal("image"),
-    mimeType: z.string(),
-    data: z.string().optional(),
-    dropped: z.literal(true).optional(),
-  }),
-  /** §49: a `resource_link`, or an embedded `resource` that has no text. */
-  z.looseObject({
-    type: z.literal("resource_link"),
-    uri: z.string(),
-    name: z.string(),
-    mimeType: z.string().optional(),
-    title: z.string().optional(),
-  }),
-]);
-
-/**
- * §49: the live process's plan, usage, slash commands and title, so a
- * reloaded page draws them again. Absent when no process is running.
- */
-export const acpLogSnapshotSchema = z.looseObject({
-  plan: z.array(acpPlanEntrySchema),
-  usage: acpUsageSchema.nullable(),
-  availableCommands: z.array(acpAvailableCommandSchema),
-  title: z.string().nullable(),
-});
-
-export type AcpLogSnapshot = z.infer<typeof acpLogSnapshotSchema>;
-
 /** §56: what the agent said it accepts in a prompt (`initialize`). */
 export const acpPromptCapabilitiesSchema = z.looseObject({
   image: z.boolean(),
   embeddedContext: z.boolean(),
-});
-
-/** One normalised record (`core/history/types.ts::TranscriptEntry`). */
-export const acpTranscriptEntrySchema = z.looseObject({
-  role: z.enum(["user", "assistant", "system"]),
-  blocks: z.array(acpTranscriptBlockSchema),
-  endOffset: z.number().int().nonnegative(),
-  at: z.string().optional(),
-});
-
-/**
- * `GET /api/acp/sessions/{id}/log?after=<offset>` — the mirror read from
- * `after`. `modes` and `pending` describe the live process (absent when it is
- * not running), so a reloaded page can draw the mode picker and the open
- * permission card without asking the adapter to replay.
- */
-export const acpLogResponseSchema = z.looseObject({
-  entries: z.array(acpTranscriptEntrySchema),
-  endOffset: z.number().int().nonnegative(),
-  modes: acpModeStateSchema.nullish(),
-  /** §26.2: `null` when the client or the agent offers no model choice. */
-  models: acpModelStateSchema.nullish(),
-  pending: z.array(acpPendingPermissionSchema).optional(),
-  /** §26.1: pending `elicitation/create` requests. */
-  elicitations: z.array(acpPendingElicitationSchema).optional(),
-  /** §39.9: the live session's recent turns; absent when none is running. */
-  turns: z.array(acpTurnRecordSchema).optional(),
-  /** §49: what the live process last said that the mirror does not keep. */
-  snapshot: acpLogSnapshotSchema.optional(),
-  /**
-   * §56: the live agent's `promptCapabilities`. Absent when no process is
-   * running — and from a core older than 1.28, which takes no attachments.
-   */
-  promptCapabilities: acpPromptCapabilitiesSchema.optional(),
 });
 
 /** `POST /api/acp/nodes/{nodeId}/driver` (design §4.2). */
@@ -627,13 +534,6 @@ export const acpDriverResponseSchema = z.looseObject({
 });
 
 /* ------------------------------ §14.3 events ------------------------------ */
-
-export const acpUpdateEventSchema = z.object({
-  type: z.literal("acp.update"),
-  sessionId: z.string(),
-  nodeId: z.string(),
-  update: acpSessionUpdateSchema,
-});
 
 /**
  * A turn ended. `error` is present when the prompt failed with a JSON-RPC
@@ -715,11 +615,7 @@ export type CreateAcpSessionRequest = z.infer<
 >;
 export type AcpPermissionRequest = z.infer<typeof acpPermissionRequestSchema>;
 export type AcpPendingPermission = z.infer<typeof acpPendingPermissionSchema>;
-export type AcpTranscriptBlock = z.infer<typeof acpTranscriptBlockSchema>;
-export type AcpTranscriptEntry = z.infer<typeof acpTranscriptEntrySchema>;
-export type AcpLogResponse = z.infer<typeof acpLogResponseSchema>;
 export type AcpDriverResponse = z.infer<typeof acpDriverResponseSchema>;
-export type AcpUpdateEvent = z.infer<typeof acpUpdateEventSchema>;
 export type AcpTurnEvent = z.infer<typeof acpTurnEventSchema>;
 export type AcpTurnRecord = z.infer<typeof acpTurnRecordSchema>;
 export type AcpPromptRequest = z.infer<typeof acpPromptRequestSchema>;

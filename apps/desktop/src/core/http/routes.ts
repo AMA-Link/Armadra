@@ -799,12 +799,6 @@ export const ROUTES: readonly RouteEntry[] = [
     implemented: true,
   },
   {
-    path: "/api/acp/sessions/{sessionId}/log",
-    methods: ["GET"],
-    surface: "runtime",
-    implemented: true,
-  },
-  {
     path: "/api/acp/nodes/{nodeId}/driver",
     methods: ["POST"],
     surface: "runtime",

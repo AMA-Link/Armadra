@@ -1,7 +1,7 @@
 import { z } from "zod";
 
 import { errors } from "./errors.js";
-import { jsonObjectSchema, jsonValueSchema } from "./json.js";
+import { jsonValueSchema } from "./json.js";
 import { meta, oc } from "./meta.js";
 import { terminalSessionWireSchema } from "./terminals.js";
 
@@ -20,8 +20,8 @@ import { terminalSessionWireSchema } from "./terminals.js";
  * 要 `terminal:drive`，按会话行 / 节点查出画布再判（`identity/route-access.ts`），
  * 旧路径与 procedure 过同一道门。
  *
- * 镜像读（`log`）只给规范化后的转录条目与「此刻挂着的」审批与 elicitation 卡片，
- * 不含凭据；原始输出不进日志与事件。
+ * 镜像读（`log`）与 `acp.update` 事件已在 B10 下线：会话内容读 `timeline.*`
+ * （契约 §82）。
  */
 
 /** 已知字段 + 原样透传其余字段（页面 schema 是 `looseObject` 的那些）。 */
@@ -32,27 +32,6 @@ function loose<S extends z.ZodRawShape>(shape: S) {
 const SESSION = "/api/acp/sessions/{sessionId}";
 const base = { since: "1.12", contract: "§43.1" } as const;
 const sessionRef = z.object({ sessionId: z.string().min(1) });
-
-/** 会话视图的镜像读：转录条目与此刻挂着的卡片。页面再按自己的 schema 解析一遍。 */
-const logWireSchema = loose({
-  entries: z.array(
-    loose({
-      role: z.string(),
-      blocks: z.array(jsonObjectSchema),
-      endOffset: z.number().int(),
-      at: z.string().optional(),
-    }),
-  ),
-  endOffset: z.number().int(),
-  modes: jsonObjectSchema.nullable().optional(),
-  models: jsonObjectSchema.nullable().optional(),
-  pending: z.array(jsonObjectSchema).optional(),
-  elicitations: z.array(jsonObjectSchema).optional(),
-  /** §39.9：活会话最近的回合（排队、在跑、已结束），对账用。 */
-  turns: z.array(jsonObjectSchema).optional(),
-  /** §49：活进程的计划、用量、斜杠命令与标题；没有活进程时缺席。 */
-  snapshot: jsonObjectSchema.optional(),
-});
 
 export const acp = {
   /**
@@ -149,25 +128,6 @@ export const acp = {
           path: `${SESSION}/model`,
           successStatus: 204,
         },
-      }),
-    ),
-  /**
-   * 镜像读：从偏移 `after` 起的转录条目，加此刻挂着的模式、模型、审批与
-   * elicitation 卡片。旧路径是查询串，`after` 以字符串到达，两种拼法都收。
-   */
-  log: oc
-    .input(
-      sessionRef.extend({
-        after: z.union([z.number(), z.string()]).optional(),
-      }),
-    )
-    .output(logWireSchema)
-    .errors(errors.pick("forbidden", "not_found"))
-    .meta(
-      meta({
-        ...base,
-        scope: "terminal:read",
-        legacy: { method: "GET", path: `${SESSION}/log` },
       }),
     ),
   /**

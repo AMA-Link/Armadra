@@ -1,4 +1,4 @@
-import { readFileSync, rmSync } from "node:fs";
+import { rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 
 import { fakeAcpAgentPath } from "@armadra/agent/acp";
@@ -6,10 +6,12 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import { getAgentStatus } from "../agent/status";
 import type { WorkspaceEvent } from "../bus";
+import { type TimelineDomain, install as installTimeline } from "../timeline";
 import { tempDir } from "../testing/temp-dir";
 import { acpClientFeatures } from "./client";
 import { type AcpCore, FAKE_AGENT, acpCore, until } from "./fixture";
 import { type AcpHostSession, startAcp } from "./host";
+import { AcpFeed } from "./feed";
 import { AcpMirror, mirrorPath } from "./mirror";
 import type { AcpSignal } from "./normalize";
 import { AcpSession, type AcpSessionSink } from "./session";
@@ -25,6 +27,7 @@ const NODE = "11111111-2222-4333-8444-555555555555";
 const sessions: AcpSession[] = [];
 const dirs: string[] = [];
 let core: AcpCore | undefined;
+let timeline: TimelineDomain | undefined;
 
 afterEach(async () => {
   await Promise.all(sessions.splice(0).map((s) => s.terminate()));
@@ -33,7 +36,22 @@ afterEach(async () => {
   }
   await core?.stop();
   core = undefined;
+  timeline = undefined;
 });
+
+/** 起一个带时间线域的 core：会话内容只进时间线（B10）。 */
+async function withTimeline(
+  options: Parameters<typeof acpCore>[0] = {},
+): Promise<AcpCore> {
+  core = await acpCore(options);
+  timeline = installTimeline(core.core) as TimelineDomain;
+  return core;
+}
+
+function timelineItems(rowId: string) {
+  timeline!.writer.flush();
+  return timeline!.store.snapshot(rowId, 20)?.items ?? [];
+}
 
 interface Recorder extends AcpSessionSink {
   readonly signals: { signal: AcpSignal; raw?: unknown }[];
@@ -60,14 +78,21 @@ async function open(options: { modelId?: string } = {}) {
   const dataDir = tempDir("armadra-acp-features-");
   dirs.push(dataDir);
   const sink = recorder();
+  const hosted = core ?? (await withTimeline());
   const session = new AcpSession({
     rowId: "row-1",
     generation: 1,
     nodeId: NODE,
-    workspaceId: "ws",
+    workspaceId: hosted.workspaceId,
     agentId: "claude",
     sink,
     mirrorFor: (id) => new AcpMirror(mirrorPath(dataDir, NODE, id)),
+    feed: new AcpFeed(timeline!, {
+      rowId: "row-1",
+      nodeId: NODE,
+      workspaceId: hosted.workspaceId,
+      generation: 1,
+    }),
   });
   const host: AcpHostSession = await startAcp({
     program: process.execPath,
@@ -84,11 +109,14 @@ async function open(options: { modelId?: string } = {}) {
 const turns = (sink: Recorder) =>
   sink.events.filter((event) => event.type === "acp.turn");
 
-function lastReply(session: AcpSession): string | undefined {
-  const entries = new AcpMirror(session.mirrorPath as string).read().entries;
-  const last = entries.filter((entry) => entry.role === "assistant").at(-1);
-  const block = last?.blocks.at(-1) as { text?: string } | undefined;
-  return block?.text;
+function lastReply(_session: AcpSession): string | undefined {
+  const last = timelineItems("row-1")
+    .filter((item) => item.kind === "assistant")
+    .at(-1);
+  if (last?.kind !== "assistant") return undefined;
+  return last.parts
+    .map((part) => (part.type === "text" ? part.text : ""))
+    .join("");
 }
 
 async function elicited(sink: Recorder) {
@@ -265,11 +293,11 @@ describe("the routes with the features (§26)", () => {
     return { nodeId, rowId: (created.body as { id: string }).id };
   }
 
-  it("lists the models with the log and sets one with PUT …/model", async () => {
-    core = await acpCore({ configOptions: true });
-    const { rowId } = await started(core);
-    const log = await core.core.call("GET", `/api/acp/sessions/${rowId}/log`);
-    expect((log.body as { models: unknown }).models).toEqual({
+  it("lists the models in the timeline head and sets one with PUT …/model", async () => {
+    core = await withTimeline({ configOptions: true });
+    const { rowId } = await started(core!);
+    timeline!.writer.flush();
+    expect(timeline!.store.snapshot(rowId, 3)?.head.models).toEqual({
       currentModelId: "small",
       availableModels: [
         { modelId: "small", name: "Small" },
@@ -282,11 +310,6 @@ describe("the routes with the features (§26)", () => {
       { modelId: "large" },
     );
     expect(set.status, JSON.stringify(set.body)).toBe(204);
-    const after = await core.core.call("GET", `/api/acp/sessions/${rowId}/log`);
-    expect(
-      (after.body as { models: { currentModelId: string } }).models
-        .currentModelId,
-    ).toBe("large");
     const unknown = await core.core.call(
       "PUT",
       `/api/acp/sessions/${rowId}/model`,
@@ -303,7 +326,7 @@ describe("the routes with the features (§26)", () => {
   });
 
   it("records an elicitation as an approval, checks the answer and never stores the content", async () => {
-    core = await acpCore({ configOptions: true });
+    core = await withTimeline({ configOptions: true });
     const seen = events(core);
     const { nodeId, rowId } = await started(core);
     const prompt = await core.core.call(
@@ -335,10 +358,9 @@ describe("the routes with the features (§26)", () => {
       state: "waiting",
       pendingId,
     });
-    const log = await core.core.call("GET", `/api/acp/sessions/${rowId}/log`);
     expect(
-      (log.body as { elicitations: { pendingId: string }[] }).elicitations,
-    ).toMatchObject([{ pendingId, protocol: "acp" }]);
+      timelineItems(rowId).filter((item) => item.kind === "elicitation"),
+    ).toMatchObject([{ pendingId, state: "pending" }]);
 
     const answer = (body: unknown) =>
       core!.core.call("POST", `/api/approvals/${pendingId}/answer`, body);
@@ -397,15 +419,7 @@ describe("the routes with the features (§26)", () => {
     expect(audit.at(-1)).toEqual({ decision: "allow", refusal: "" });
     expect(audit.map((row) => row.refusal)).toContain("elicitation_invalid");
     expect(JSON.stringify(audit)).not.toContain('"count":3');
-    const mirror = readFileSync(
-      (
-        getAgentStatus(core.core.database, nodeId) as {
-          transcriptPath: string;
-        }
-      ).transcriptPath,
-      "utf8",
-    );
-    expect(mirror).toContain("elicit: accept");
+    expect(JSON.stringify(timelineItems(rowId))).toContain("elicit: accept");
     // 答过的不能再答。
     const again = await answer({ elicitation: { action: "decline" } });
     expect(again.status).toBe(409);
@@ -443,7 +457,7 @@ describe("the routes with the features (§26)", () => {
   });
 
   it("refuses to switch drivers while an elicitation waits, and cancels it on cancel", async () => {
-    core = await acpCore({ configOptions: true });
+    core = await withTimeline({ configOptions: true });
     const seen = events(core);
     const { nodeId, rowId } = await started(core);
     await core.core.call("POST", `/api/acp/sessions/${rowId}/prompt`, {

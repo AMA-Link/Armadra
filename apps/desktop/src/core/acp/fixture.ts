@@ -19,6 +19,13 @@ import { install as installTerminals } from "../terminal/install";
 import type { TerminalDomain } from "../terminal/install";
 import { fixture, type Fixture } from "../workspaces/fixture";
 import { install as installWorkspaces } from "../workspaces/routes";
+import {
+  type TimelineDomain,
+  install as installTimeline,
+  timelineDomainOf,
+} from "../timeline";
+import { entriesFromTimeline } from "../history/acp-mirror";
+import type { TranscriptEntry } from "../history/types";
 import { install as installAcp, provideAcpTerminal } from ".";
 
 export const FAKE_AGENT = "custom:fake-acp";
@@ -222,4 +229,25 @@ export async function acpCore(
       core.close();
     },
   };
+}
+
+/**
+ * 这台 core 的时间线域；还没装就装上。要在起会话**之前**调用：会话内容只写时间线
+ * （B10），没有时间线域的 core 里会话读不到任何内容。
+ */
+export function ensureTimeline(open: AcpCore): TimelineDomain {
+  return (timelineDomainOf(open.core.server) ??
+    installTimeline(open.core)) as TimelineDomain;
+}
+
+/** 一条会话的时间线条目（先把写入器攒着的刷出去）。 */
+export function timelineItemsOf(open: AcpCore, rowId: string) {
+  const domain = ensureTimeline(open);
+  domain.writer.flush();
+  return domain.store.allItems(rowId);
+}
+
+/** 一条会话的对话记录（用户 / 助手文本、工具调用与结果），旧 `…/log` 的 `entries` 的替身。 */
+export function transcriptOf(open: AcpCore, rowId: string): TranscriptEntry[] {
+  return entriesFromTimeline(timelineItemsOf(open, rowId));
 }

@@ -163,6 +163,7 @@ describe("runtime workspace events API", () => {
       const parsed = workspaceEventSchema.safeParse(event);
       expect(parsed.success, JSON.stringify(event.type)).toBe(true);
     }
+    // `acp.update` 已下线（B10）：认不出的类型不收。
     expect(workspaceEventSchema.safeParse({ type: "acp.update" }).success).toBe(
       false,
     );

@@ -21,7 +21,6 @@ import {
   acpDriverEventSchema,
   acpStartingEventSchema,
   acpTurnEventSchema,
-  acpUpdateEventSchema,
 } from "./acp.js";
 import { boardPresenceSchema } from "./boards.js";
 import { driveLeaseSchema } from "./drive.js";
@@ -107,8 +106,7 @@ export const workspaceEventSchema = z.discriminatedUnion("type", [
      */
     code: z.string().optional(),
   }),
-  /** ACP sessions (contract §14.3): one update, a turn's end, a driver switch. */
-  acpUpdateEventSchema,
+  /** ACP sessions (contract §14.3): a turn's end, a driver switch. */
   acpTurnEventSchema,
   acpDriverEventSchema,
   /** §51: starting an ACP session, one frame per phase. */

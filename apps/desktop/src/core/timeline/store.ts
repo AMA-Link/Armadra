@@ -294,6 +294,11 @@ export class TimelineStore {
     ]);
   }
 
+  /** 全部条目（按显示顺序）：上下文读取派生转录用，不走页面的分页。 */
+  allItems(id: string): TimelineItem[] {
+    return this.itemsWhere("timeline_id = ? AND deleted = 0", [id]);
+  }
+
   private itemsWhere(
     where: string,
     params: (string | number)[],
