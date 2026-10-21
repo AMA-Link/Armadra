@@ -7,7 +7,11 @@ const calls = vi.hoisted(() => ({
   session: vi.fn(),
   get: vi.fn(),
   log: vi.fn(),
-  connect: vi.fn((..._args: unknown[]) => () => undefined),
+  connect: vi.fn(
+    (..._args: unknown[]) =>
+      () =>
+        undefined,
+  ),
   guest: null as object | null,
 }));
 vi.mock("@/api/client", () => ({
