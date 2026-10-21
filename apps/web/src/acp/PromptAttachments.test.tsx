@@ -46,6 +46,11 @@ vi.mock("@/store/canvas-store", () => {
 });
 
 import { runtimeApi } from "@/api/client";
+import { setTimelineTransportFactory } from "@/timeline/api";
+import { resetTimelines } from "@/timeline/sync";
+import { missingTransport } from "@/timeline/test-support";
+import { useLegacyAcpStore } from "@/timeline/use-legacy-acp";
+import { mockLayout } from "@/timeline/view/test-layout";
 import { PromptBox } from "./PromptBox";
 import { usePromptAttachments } from "./PromptAttachments";
 import { SessionView } from "./SessionView";
@@ -97,10 +102,16 @@ beforeEach(() => {
   URL.createObjectURL = vi.fn(() => `blob:preview-${(n += 1)}`);
   URL.revokeObjectURL = vi.fn();
   useAcpStore.getState().reset();
+  useLegacyAcpStore.getState().reset();
+  // 旧主机：没有时间线，会话视图退回 `acp.log` 适配层。
+  setTimelineTransportFactory(() => missingTransport);
+  mockLayout();
 });
 
 afterEach(() => {
   cleanup();
+  resetTimelines();
+  setTimelineTransportFactory();
   vi.restoreAllMocks();
 });
 

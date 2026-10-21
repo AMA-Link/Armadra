@@ -108,7 +108,9 @@ describe("源维度的键", () => {
         targetNodeId: "b",
         outcome: "queued",
       } as WorkspaceEvent);
-      useAcpStore.getState().begin("sess", "hi");
+      useAcpStore
+        .getState()
+        .begin("sess", { clientTurnId: "c1", text: "hi", attachments: [] });
     });
     expect(Object.keys(useDriveStore.getState().drives)).toEqual(["s1:n1"]);
     expect(Object.keys(useDeliveryStore.getState().marks)).toEqual([

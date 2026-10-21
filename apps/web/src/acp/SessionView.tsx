@@ -1,51 +1,46 @@
 import { scoped } from "../sources/scope";
 import * as React from "react";
 import { toast } from "sonner";
-import type {
-  AcpLogResponse,
-  AcpSessionUpdate,
-  AcpStartPhase,
-  TerminalNodeData,
+import {
+  sessionDisplay,
+  type AcpStartPhase,
+  type SessionActivity,
+  type TerminalNodeData,
+  type TimelineApprovalItem,
+  type TimelineAttachment,
+  type TimelineElicitationItem,
+  type TimelineItem,
+  type TimelineUserItem,
 } from "@armadra/shared";
 
 import { RuntimeRequestError, runtimeApi } from "@/api/client";
 import { onWorkspaceConnection, onWorkspaceEvent } from "@/api/events";
 import { useT } from "@/app/preferences-store";
 import { useCanAnswer } from "@/app/use-access";
-import { isResolvedApproval } from "@/agent/status-store";
 import { useCanvasStore } from "@/store/canvas-store";
+import { putLocalBlob } from "@/timeline/blobs";
+import type { TimelineViewServices } from "@/timeline/view/services";
+import { TimelineView } from "@/timeline/view/TimelineView";
 import { Alert, AlertAction, AlertTitle } from "@/ui/alert";
 import { Button } from "@/ui/button";
 import { Empty, EmptyHeader, EmptyTitle } from "@/ui/empty";
-import { ScrollArea } from "@/ui/scroll-area";
 import { Skeleton } from "@/ui/skeleton";
 import { Spinner } from "@/ui/spinner";
+import { filesOf } from "@/terminal/file-paste";
 import { acpApi } from "./api";
-import { ElicitationCard } from "./ElicitationCard";
-import { MessageList, type MessageListActions } from "./MessageList";
-import { PermissionCard } from "./PermissionCard";
-import type { PlanView } from "./PlanCard";
-import { PromptBox, type PromptPrefill } from "./PromptBox";
+import { linkTarget, openLink } from "./open-link";
 import {
   type PromptAttachment,
   usePromptAttachments,
 } from "./PromptAttachments";
-import { filesOf } from "@/terminal/file-paste";
+import { PromptBox } from "./PromptBox";
+import { EMPTY_DELIVERY, useAcpStore, type PendingPrompt } from "./store";
 import {
-  EMPTY_SESSION,
-  type AcpAttachment,
-  type AcpItem,
-  acpElicitationOf,
-  acpPermissionOf,
-  useAcpStore,
-  type AcpElicitationView,
-  type AcpPermissionView,
-} from "./store";
-
-const NO_PERMISSIONS: readonly AcpPermissionView[] = [];
-const NO_ELICITATIONS: readonly AcpElicitationView[] = [];
-
-type LoadState = "loading" | "ready" | "failed";
+  ApprovalCard,
+  ElicitationItemCard,
+  ToolLookupProvider,
+} from "./TimelineCards";
+import { useSessionFeed } from "./use-session-feed";
 
 /**
  * 会话就绪前输入的第一条（契约 §51）。`via`：`create` = 随 `createSession` 的
@@ -72,6 +67,7 @@ function useAcpSession(
   data: TerminalNodeData,
   workspaceId: string | null,
   queued: React.RefObject<QueuedPrompt | null>,
+  enabled: boolean,
 ) {
   const [starting, setStarting] = React.useState(false);
   const [failed, setFailed] = React.useState(false);
@@ -84,11 +80,11 @@ function useAcpSession(
 
   // 没有会话时就听着：请求发出之前订阅好，第一帧不会漏。
   React.useEffect(() => {
-    if (sessionId) return;
+    if (sessionId || !enabled) return;
     return onWorkspaceEvent("acp.starting", (event) => {
       if (event.nodeId === nodeId) setPhase(event.phase);
     });
-  }, [sessionId, nodeId]);
+  }, [sessionId, nodeId, enabled]);
 
   React.useEffect(() => {
     setCold(false);
@@ -98,7 +94,7 @@ function useAcpSession(
   }, [phase]);
 
   React.useEffect(() => {
-    if (sessionId || !agent) return;
+    if (sessionId || !agent || !enabled) return;
     const store = useCanvasStore.getState();
     const workspace = store.workspace;
     if (!workspace) return;
@@ -167,141 +163,6 @@ function useAcpSession(
   };
 }
 
-/**
- * 已经并进 store 的那几条事件（按对象认：同一条事件派给每个订阅者的是同一个
- * 对象）。同一个节点可以同时挂两份会话视图——手机焦点页铺满屏幕时画布上那一份
- * 还在——两份各自订阅，不去重的话每个分块都会被拼两遍。
- */
-const applied = new WeakSet<object>();
-
-function firstTime(event: object): boolean {
-  if (applied.has(event)) return false;
-  applied.add(event);
-  return true;
-}
-
-/**
- * 读镜像、接活事件。先订阅再读：工具调用按 id 合并，读回来之后再补一遍无妨。
- * 控制面断开又连上后重读一遍（契约 §39.9），补上断线那段
- * 漏掉的回合事件，再拿 `turns` 对账本页那一轮。`reread` 给「确认中」用。
- */
-function useAcpLog(
-  sessionId: string | null,
-  nodeId: string,
-  workspaceId: string | null,
-) {
-  const [state, setState] = React.useState<LoadState>("loading");
-  const [attempt, setAttempt] = React.useState(0);
-  const rereadRef = React.useRef<(() => Promise<AcpLogResponse>) | null>(null);
-
-  React.useEffect(() => {
-    if (!sessionId) return;
-    const store = useAcpStore.getState;
-    let loaded = false;
-    let cancelled = false;
-    let inflight: Promise<AcpLogResponse> | null = null;
-    setState("loading");
-
-    const early: { event: object; update: AcpSessionUpdate }[] = [];
-    const offUpdate = onWorkspaceEvent("acp.update", (event) => {
-      if (event.sessionId !== sessionId) return;
-      if (!loaded) early.push({ event, update: event.update });
-      else if (firstTime(event)) store().update(sessionId, event.update);
-    });
-    const offTurn = onWorkspaceEvent("acp.turn", (event) => {
-      if (event.sessionId !== sessionId || !firstTime(event)) return;
-      store().end(sessionId, nodeId, event);
-    });
-    const offApproval = onWorkspaceEvent("agent.approval", (event) => {
-      if (event.nodeId !== nodeId) return;
-      if (isResolvedApproval(event.request)) {
-        store().resolvePermission(event.pendingId);
-        return;
-      }
-      const permission = acpPermissionOf(event.pendingId, event.request);
-      if (permission) {
-        store().addPermission(nodeId, permission);
-        return;
-      }
-      const elicitation = acpElicitationOf(event.pendingId, event.request);
-      if (elicitation) store().addElicitation(nodeId, elicitation);
-    });
-
-    // 读回来之前到的分块已经在镜像里（core 先写镜像再发事件），丢掉不画；读
-    // 失败时它们没被任何一次读覆盖，照常并进去。
-    const read = (): Promise<AcpLogResponse> => {
-      if (inflight) return inflight;
-      loaded = false;
-      const flush = (skipChunks: boolean) => {
-        loaded = true;
-        for (const { event, update } of early) {
-          if (skipChunks && update.sessionUpdate.endsWith("_chunk")) continue;
-          if (firstTime(event)) store().update(sessionId, update);
-        }
-        early.length = 0;
-      };
-      const pending = acpApi.log(sessionId).then(
-        (log) => {
-          inflight = null;
-          if (cancelled) return log;
-          store().hydrate(sessionId, nodeId, log);
-          store().reconcile(sessionId, log.turns);
-          flush(true);
-          return log;
-        },
-        (error: unknown) => {
-          inflight = null;
-          if (!cancelled) flush(false);
-          throw error;
-        },
-      );
-      inflight = pending;
-      return pending;
-    };
-    rereadRef.current = read;
-
-    read()
-      .then(() => {
-        if (!cancelled) setState("ready");
-      })
-      .catch(() => {
-        if (!cancelled) setState("failed");
-      });
-
-    let down = false;
-    const offConnection = workspaceId
-      ? onWorkspaceConnection((id, connected) => {
-          if (id !== workspaceId) return;
-          if (!connected) {
-            down = true;
-            return;
-          }
-          if (!down) return;
-          down = false;
-          // 断线那段的分块与 `acp.turn` 收不到了：重读一遍补上。失败不打扰，
-          // 已经画着的照旧。
-          read().catch(() => undefined);
-        })
-      : () => undefined;
-
-    return () => {
-      cancelled = true;
-      if (rereadRef.current === read) rereadRef.current = null;
-      offUpdate();
-      offTurn();
-      offApproval();
-      offConnection();
-    };
-  }, [sessionId, nodeId, workspaceId, attempt]);
-
-  const reread = React.useCallback((): Promise<AcpLogResponse> => {
-    const read = rereadRef.current;
-    return read ? read() : Promise.reject(new Error("no session"));
-  }, []);
-
-  return { state, retry: () => setAttempt((value) => value + 1), reread };
-}
-
 /** 一轮的客户端 id；非安全上下文（局域网 http）没有 `randomUUID`。 */
 function newClientTurnId(): string {
   if (typeof crypto.randomUUID === "function") return crypto.randomUUID();
@@ -351,48 +212,28 @@ function useConnected(workspaceId: string | null): boolean {
   return connected;
 }
 
-/** 视口贴着底部时，新内容进来就跟着滚到底；人往上翻了就不打扰。 */
-function useStickToBottom(
-  root: React.RefObject<HTMLDivElement | null>,
-  signal: unknown,
-) {
-  const pinned = React.useRef(true);
-  React.useEffect(() => {
-    const viewport = root.current?.querySelector<HTMLElement>(
-      "[data-slot=scroll-area-viewport]",
-    );
-    if (!viewport) return;
-    const onScroll = () => {
-      pinned.current =
-        viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight < 24;
-    };
-    viewport.addEventListener("scroll", onScroll);
-    return () => viewport.removeEventListener("scroll", onScroll);
-  }, [root]);
-  React.useEffect(() => {
-    const viewport = root.current?.querySelector<HTMLElement>(
-      "[data-slot=scroll-area-viewport]",
-    );
-    if (viewport && pinned.current) viewport.scrollTop = viewport.scrollHeight;
-  }, [root, signal]);
-}
-
-/** 会话就绪前排着的那一条：先画成本页的用户消息。 */
-function queuedItems(text: string): readonly AcpItem[] {
-  return [
-    { kind: "message", id: "queued", role: "user", text, turn: 1, local: true },
-  ];
-}
-
 /** 读屏在回合结束时念的那一段最多这么长。 */
 const ANNOUNCE_CHARS = 280;
 
+/** 资源链接怎么打开：工作区里的文件进编辑器，网页进浏览器节点，其余不画「打开」。 */
+function openUri(uri: string): void {
+  const target = linkTarget(uri, useCanvasStore.getState().workspace?.rootPath);
+  if (target !== null) openLink(target);
+}
+
+function assistantText(item: TimelineItem): string {
+  if (item.kind !== "assistant") return "";
+  return item.parts
+    .map((part) => (part.type === "text" ? part.text : ""))
+    .join("");
+}
+
 /**
- * 流式分块不逐块念（消息区 `aria-live="off"`）：回合结束时把最后一条助手
- * 文字放进一个稳定的 `role="status"` 区域，念一次（ACP 会话视图 §5.7）。
+ * 流式分块不逐块念（消息区 `aria-live="off"`）：回合结束时把最后一条助手文字放进一个
+ * 稳定的 `role="status"` 区域，念一次（ACP 会话视图 §5.7）。
  */
 function useTurnAnnouncement(
-  items: readonly { kind: string; role?: string; text?: string }[],
+  items: readonly TimelineItem[],
   streaming: boolean,
 ): string {
   const [said, setSaid] = React.useState("");
@@ -401,86 +242,230 @@ function useTurnAnnouncement(
     if (was.current && !streaming) {
       const last = [...items]
         .reverse()
-        .find((item) => item.kind === "message" && item.role === "assistant");
-      setSaid((last?.text ?? "").slice(0, ANNOUNCE_CHARS));
+        .find((item) => item.kind === "assistant");
+      setSaid(
+        last === undefined ? "" : assistantText(last).slice(0, ANNOUNCE_CHARS),
+      );
     }
     was.current = streaming;
   }, [items, streaming]);
   return said;
 }
 
+function lastTurn(items: readonly TimelineItem[]): number {
+  let turn = 0;
+  for (const item of items) if (item.turn > turn) turn = item.turn;
+  return turn;
+}
+
+/** 页面先画上的提问：core 回显（带同一个 `clientTurnId` 的用户条目）之前用它。 */
+function pendingItem(prompt: PendingPrompt, turn: number): TimelineUserItem {
+  return {
+    id: `u:pending:${prompt.clientTurnId}`,
+    kind: "user",
+    turn,
+    ord: 1,
+    rev: 0,
+    source: "core",
+    at: prompt.at,
+    gen: 0,
+    text: prompt.text,
+    clientTurnId: prompt.clientTurnId,
+    ...(prompt.attachments.length > 0
+      ? { attachments: [...prompt.attachments] }
+      : {}),
+  };
+}
+
+/** 会话就绪前排着的那一条：先画成本页的用户消息。 */
+function queuedItem(text: string): TimelineUserItem {
+  return {
+    id: "u:queued",
+    kind: "user",
+    turn: 1,
+    ord: 1,
+    rev: 0,
+    source: "core",
+    at: 0,
+    gen: 0,
+    text,
+  };
+}
+
+const SUBMITTING = (since: number): SessionActivity => ({
+  phase: "submitting",
+  since,
+  rev: `local:${since}`,
+});
+
 /**
- * ACP 驱动的终端节点的节点体（ACP 设计 §6，设计系统 §5.1，ACP 会话视图
- * §5）。头部、徽标、菜单都在 `TerminalNode`，这里只有消息流、审批卡与输入框。
+ * ACP 驱动的终端节点的节点体（ACP 设计 §6，设计系统 §5.1，ACP 会话视图 §5）。
+ * 头部、徽标、菜单都在 `TerminalNode`，这里只有时间线、审批卡与输入框。
  *
- * 根上 `select-text nopan nodrag nowheel`：React Flow 给节点的
- * `user-select: none` 在这里撤掉（字能选、能复制），手形工具开着时按在会话
- * 里也不平移画布、不拖节点，滚轮归消息流。
+ * 内容来自会话时间线（`useSessionFeed`：新主机走 `timeline.*`，旧主机退回 `acp.log`
+ * 适配层）；这里只负责投递——发 prompt、请求断在路上时对账、先把提问画出来。
+ *
+ * 根上 `select-text nopan nodrag nowheel`：React Flow 给节点的 `user-select: none`
+ * 在这里撤掉（字能选、能复制），手形工具开着时按在会话里也不平移画布、不拖节点，
+ * 滚轮归消息流。`readOnly`：终端驱动的节点看会话内容（输入仍走终端），没有输入框。
  */
 export function SessionView({
   nodeId,
   data,
+  readOnly = false,
+  sessionId: fixedSessionId,
+  initialRect,
 }: {
   nodeId: string;
   data: TerminalNodeData;
+  /** 只读：不起会话、没有输入框与答复入口（终端驱动节点的「会话」节点体）。 */
+  readOnly?: boolean;
+  /** 只读时的会话行 id（`terminal_sessions.id`）。 */
+  sessionId?: string | null;
+  /** 首次布局前的视口尺寸（测试用）。 */
+  initialRect?: { width: number; height: number };
 }) {
   const t = useT();
   const workspaceId = useCanvasStore((state) => state.workspace?.id ?? null);
   const queuedRef = React.useRef<QueuedPrompt | null>(null);
   const [queued, setQueued] = React.useState<string | null>(null);
-  const session = useAcpSession(nodeId, data, workspaceId, queuedRef);
-  const sessionId = session.sessionId;
-  const canAnswer = useCanAnswer(workspaceId ?? "", sessionId);
-  const log = useAcpLog(sessionId, nodeId, workspaceId);
-  const { reread } = log;
+  const session = useAcpSession(
+    nodeId,
+    data,
+    workspaceId,
+    queuedRef,
+    !readOnly,
+  );
+  const sessionId = readOnly ? (fixedSessionId ?? null) : session.sessionId;
+  const answerable = useCanAnswer(workspaceId ?? "", sessionId);
+  const canAnswer = answerable && !readOnly;
+  const feed = useSessionFeed({
+    sessionId,
+    nodeId,
+    workspaceId,
+    legacy: !readOnly,
+  });
   const connected = useConnected(workspaceId);
-  const view = useAcpStore((state) =>
+  const delivery = useAcpStore((state) =>
     sessionId
-      ? (state.sessions[scoped(sessionId)] ?? EMPTY_SESSION)
-      : EMPTY_SESSION,
+      ? (state.sessions[scoped(sessionId)] ?? EMPTY_DELIVERY)
+      : EMPTY_DELIVERY,
   );
-  const permissions = useAcpStore(
-    (state) => state.permissions[scoped(nodeId)] ?? NO_PERMISSIONS,
-  );
-  const elicitations = useAcpStore(
-    (state) => state.elicitations[scoped(nodeId)] ?? NO_ELICITATIONS,
-  );
-  const rootRef = React.useRef<HTMLDivElement>(null);
   const inputRef = React.useRef<HTMLTextAreaElement>(null);
-  const [prefill, setPrefill] = React.useState<PromptPrefill | null>(null);
-  const announcement = useTurnAnnouncement(view.items, view.streaming);
-  useStickToBottom(rootRef, [
-    view.items,
-    view.streaming,
-    permissions,
-    elicitations,
-  ]);
+
+  // 对账与重发里读的都是「此刻」的值：放进 ref，回调引用保持稳定。
+  const feedRef = React.useRef(feed);
+  feedRef.current = feed;
+
+  // 页面先画上的提问：core 回显之前（带同一个 `clientTurnId` 的用户条目还没到）。
+  const pending = delivery.pending;
+  const echoed =
+    pending !== null &&
+    feed.items.some(
+      (item) =>
+        item.kind === "user" && item.clientTurnId === pending.clientTurnId,
+    );
+  React.useEffect(() => {
+    if (sessionId === null || pending === null || !echoed) return;
+    useAcpStore
+      .getState()
+      .ack(sessionId, pending.clientTurnId, feed.mode === "timeline");
+  }, [sessionId, pending, echoed, feed.mode]);
+  const overlay = React.useMemo(
+    () =>
+      pending !== null && !echoed
+        ? pendingItem(pending, lastTurn(feed.items) + 1)
+        : null,
+    // 回合号只在挂出来那一刻定；之后内容增长不挪它。
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [pending, echoed],
+  );
+  const items = React.useMemo<readonly TimelineItem[]>(
+    () => (overlay === null ? feed.items : [...feed.items, overlay]),
+    [feed.items, overlay],
+  );
+
+  // 回合在进行：活动层说了算（新路径 core 算，旧路径从条目推）；活动还没来时看
+  // 最后一个回合条目有没有结束。页面先画上的提问也算（还没送达 / 被拒的不算）。
+  const stuck = delivery.undelivered || delivery.failed;
+  const busyFromFeed = React.useMemo(() => {
+    if (feed.activity !== undefined) {
+      return sessionDisplay({ activity: feed.activity, alive: true }).busy;
+    }
+    for (let i = feed.items.length - 1; i >= 0; i--) {
+      const item = feed.items[i] as TimelineItem;
+      if (item.kind === "turn") return item.endedAt === undefined;
+    }
+    return false;
+  }, [feed.activity, feed.items]);
+  const streaming = !stuck && (overlay !== null || busyFromFeed);
+  const announcement = useTurnAnnouncement(feed.items, streaming);
+  const activity =
+    overlay !== null && !stuck && !busyFromFeed
+      ? SUBMITTING(overlay.at)
+      : feed.activity;
+
+  // 一条挂起的审批 / 提问钉在输入框上方（出现时焦点落到第一枚允许钮）；多条随
+  // 时间线内联。
+  const pendingCards = React.useMemo(() => {
+    const out: (TimelineApprovalItem | TimelineElicitationItem)[] = [];
+    for (const item of feed.items) {
+      if (
+        (item.kind === "approval" || item.kind === "elicitation") &&
+        item.state === "pending"
+      ) {
+        out.push(item);
+      }
+    }
+    return out;
+  }, [feed.items]);
+  const pinned =
+    !readOnly && pendingCards.length === 1 ? pendingCards[0] : undefined;
+  const pinnedId = pinned?.pendingId;
+
+  const renderApproval = React.useCallback(
+    (approval: TimelineApprovalItem) =>
+      approval.pendingId === pinnedId ? null : (
+        <ApprovalCard approval={approval} canAnswer={canAnswer} />
+      ),
+    [canAnswer, pinnedId],
+  );
+  const renderElicitation = React.useCallback(
+    (item: TimelineElicitationItem) =>
+      item.pendingId === pinnedId ? null : (
+        <ElicitationItemCard item={item} canAnswer={canAnswer} />
+      ),
+    [canAnswer, pinnedId],
+  );
 
   /**
-   * 请求断在路上（网络错误、没有答复）时不当场判失败：进入「确认中」，重读
-   * 镜像拿 `turns` 对账（契约 §39.9）。core 收到了就按真实回合画，确认没收到才
-   * 判没送达；重试沿用同一个 `clientTurnId`，core 只投递一次。
+   * 请求断在路上（网络错误、没有答复）时不当场判失败：进入「确认中」，补一次同步
+   * （旧主机重读镜像）拿回合记录对账（契约 §39.9）。core 收到了就按真实回合画，
+   * 确认没收到才判没送达；重试沿用同一个 `clientTurnId`，core 只投递一次。
    */
   const confirmTurn = React.useCallback(
     async (id: string, clientTurnId: string) => {
-      const pending = () => {
+      const waiting = () => {
         const view = useAcpStore.getState().sessions[scoped(id)];
         return view?.confirming === true && view.clientTurnId === clientTurnId;
       };
       for (const delay of RECONCILE_DELAYS_MS) {
         if (delay > 0) await new Promise((r) => setTimeout(r, delay));
-        if (!pending()) return;
+        if (!waiting()) return;
         try {
-          await reread();
+          const delivered = await feedRef.current.confirm(clientTurnId);
+          const store = useAcpStore.getState();
+          if (delivered) store.delivered(id);
+          else store.undeliver(id);
           return;
         } catch {
-          // 读不到就再等一会儿；读到了，结论由 `reconcile` 下。
+          // 读不到就再等一会儿；读到了，结论由上面下。
         }
       }
       // 一直读不到：无从确认，判没送达；重试同一个 id，重复不了。
-      if (pending()) useAcpStore.getState().reconcile(id, []);
+      if (waiting()) useAcpStore.getState().undeliver(id);
     },
-    [reread],
+    [],
   );
 
   const send = React.useCallback(
@@ -488,7 +473,7 @@ export function SessionView({
       text: string,
       retryTurnId?: string,
       uploadIds: readonly string[] = [],
-      shown: readonly AcpAttachment[] = [],
+      shown: readonly TimelineAttachment[] = [],
     ) => {
       if (!sessionId) {
         // 会话就绪前的第一条（契约 §51）：先画出来，等会话开好再发；请求
@@ -500,17 +485,16 @@ export function SessionView({
       }
       const store = useAcpStore.getState();
       const clientTurnId = retryTurnId ?? newClientTurnId();
-      if (shown.length > 0) store.begin(sessionId, text, clientTurnId, shown);
-      else store.begin(sessionId, text, clientTurnId);
+      const prompt = { clientTurnId, text, attachments: shown };
+      store.begin(sessionId, prompt);
+      feedRef.current.begin(sessionId, prompt);
       try {
         await (uploadIds.length > 0
           ? acpApi.prompt(sessionId, text, clientTurnId, uploadIds)
           : acpApi.prompt(sessionId, text, clientTurnId));
       } catch (error) {
         if (refusedByCore(error)) {
-          store.end(sessionId, nodeId, {
-            error: { code: "prompt_failed", message: "" },
-          });
+          store.fail(sessionId);
           toast.error(
             attachmentRefusal(error) ? error.message : t("acp.prompt.failed"),
           );
@@ -521,22 +505,13 @@ export function SessionView({
       }
       return true;
     },
-    [sessionId, nodeId, t, confirmTurn, session.failed],
+    [sessionId, t, confirmTurn, session.failed],
   );
 
   const promptDisabled = !connected || session.failed;
   const attachments = usePromptAttachments(
-    sessionId ? view.promptCapabilities : null,
+    sessionId ? feed.promptCapabilities : null,
     Boolean(data.ssh),
-  );
-
-  // 附件的预览地址交给了消息里那一条：节点卸载时一起收回。
-  const previews = React.useRef<string[]>([]);
-  React.useEffect(
-    () => () => {
-      for (const url of previews.current) URL.revokeObjectURL(url);
-    },
-    [],
   );
 
   /**
@@ -561,17 +536,23 @@ export function SessionView({
         toast.error(t("acp.attach.failed"));
         return false;
       }
-      const shown = attachments.map((item, index): AcpAttachment => {
+      const shown = attachments.map((item, index): TimelineAttachment => {
         const upload = uploads[index]!;
         if (item.preview) {
-          previews.current.push(item.preview);
-          return { type: "image", mimeType: item.file.type, uri: item.preview };
+          // 缩略图读登记在内存里的那份文件；预览地址用不上了。
+          URL.revokeObjectURL(item.preview);
+          return {
+            kind: "image",
+            mimeType: item.file.type,
+            name: item.file.name,
+            blobId: putLocalBlob(item.file),
+          };
         }
         return {
-          type: "resource_link",
+          kind: "file",
           uri: fileUrl(upload.path),
           name: upload.name,
-          mimeType: upload.mimeType,
+          ...(upload.mimeType ? { mimeType: upload.mimeType } : {}),
         };
       });
       return send(
@@ -584,21 +565,27 @@ export function SessionView({
     [send, sessionId, workspaceId, t],
   );
 
-  // 会话开好、镜像读到了：把排着的那一条交出去。随 `createSession` 发出的那条
+  // 会话开好、内容读到了：把排着的那一条交出去。随 `createSession` 发出的那条
   // core 已经投递，这里只画上并进入「正在输出」。
   React.useEffect(() => {
     const first = queuedRef.current;
-    if (!sessionId || log.state !== "ready" || first === null) return;
+    if (!sessionId || feed.phase !== "ready" || first === null) return;
     if (first.via === "prompt") return;
     if (first.via === "create") {
-      useAcpStore.getState().begin(sessionId, first.text);
+      const prompt = {
+        clientTurnId: newClientTurnId(),
+        text: first.text,
+        attachments: [],
+      };
+      useAcpStore.getState().begin(sessionId, prompt);
+      feedRef.current.begin(sessionId, prompt);
     } else {
       void send(first.text);
     }
     first.via = "prompt";
     queuedRef.current = null;
     setQueued(null);
-  }, [sessionId, log.state, send]);
+  }, [sessionId, feed.phase, send]);
 
   /**
    * 重发一条提问（重新发送、重新生成）。只有「没送达」的那一轮沿用它的
@@ -618,55 +605,57 @@ export function SessionView({
     [sessionId, send],
   );
 
-  const prefillSeq = React.useRef(0);
-  const actions = React.useMemo<MessageListActions>(() => {
-    const last = view.items.at(-1);
-    return {
-      onEdit: (text) => {
-        prefillSeq.current += 1;
-        setPrefill({ text, seq: prefillSeq.current });
-      },
-      onResend: resend,
-      onPrompt: (text) => void send(text),
-      resendable:
-        view.failed ||
-        (last?.kind === "stop" &&
-          (last.stopReason === "cancelled" || last.stopReason === "refusal")),
-    };
-  }, [view.items, view.failed, resend, send]);
-
-  const plan = React.useMemo<PlanView | null>(
-    () =>
-      view.plan.length > 0 && view.planTurn !== null
-        ? {
-            entries: view.plan,
-            turn: view.planTurn,
-            settled: view.planSettled,
-          }
-        : null,
-    [view.plan, view.planTurn, view.planSettled],
-  );
+  // 回合尾的「重试 / 继续」读此刻的最后一句提问，回调引用不随内容变。
+  const lastPromptRef = React.useRef<string | null>(null);
+  lastPromptRef.current =
+    delivery.lastPrompt ??
+    [...feed.items]
+      .reverse()
+      .find((item): item is TimelineUserItem => item.kind === "user")?.text ??
+    null;
+  const onRetry = React.useCallback(() => {
+    const text = lastPromptRef.current;
+    if (text) resend(text);
+  }, [resend]);
+  const onContinue = React.useCallback(() => {
+    void send(t("acp.turn.continuePrompt"));
+  }, [send, t]);
 
   const cancel = React.useCallback(() => {
     if (sessionId) void acpApi.cancel(sessionId).catch(() => undefined);
   }, [sessionId]);
 
+  // 模式与模型：头部值来自时间线（core 重启后也在）；选了之后先本地改一下，
+  // 回执（头部值更新）到了再以它为准。
+  const [modeChoice, setModeChoice] = React.useState<string | null>(null);
+  const [modelChoice, setModelChoice] = React.useState<string | null>(null);
+  const headModes = feed.head.modes ?? null;
+  const headModels = feed.head.models ?? null;
+  React.useEffect(() => setModeChoice(null), [headModes?.currentModeId]);
+  React.useEffect(() => setModelChoice(null), [headModels?.currentModelId]);
+  const modes =
+    headModes && modeChoice
+      ? { ...headModes, currentModeId: modeChoice }
+      : headModes;
+  const models =
+    headModels && modelChoice
+      ? { ...headModels, currentModelId: modelChoice }
+      : headModels;
+
   const selectMode = React.useCallback(
     (modeId: string) => {
       if (!sessionId) return;
-      useAcpStore.getState().setMode(sessionId, modeId);
+      setModeChoice(modeId);
       void acpApi.setMode(sessionId, modeId).catch(() => undefined);
     },
     [sessionId],
   );
 
+  const currentModel = headModels?.currentModelId ?? null;
   const selectModel = React.useCallback(
     (modelId: string) => {
       if (!sessionId) return;
-      const store = useAcpStore.getState();
-      const previous =
-        store.sessions[scoped(sessionId)]?.models?.currentModelId;
-      store.setModel(sessionId, modelId);
+      setModelChoice(modelId);
       acpApi
         .setModel(sessionId, modelId)
         .then(() => {
@@ -682,28 +671,31 @@ export function SessionView({
           );
         })
         .catch(() => {
-          if (previous) useAcpStore.getState().setModel(sessionId, previous);
+          setModelChoice(currentModel);
           toast.error(t("acp.prompt.modelFailed"));
         });
     },
-    [sessionId, nodeId, t],
+    [sessionId, nodeId, t, currentModel],
   );
 
-  // 审批与 elicitation 同一个位置：只有一张时钉在输入框上方，多张时随消息流。
-  const pendingCount = permissions.length + elicitations.length;
-  const pinned =
-    pendingCount === 1 && permissions.length === 1 ? permissions[0] : undefined;
-  const pinnedElicitation =
-    pendingCount === 1 && elicitations.length === 1
-      ? elicitations[0]
-      : undefined;
+  const services = React.useMemo<TimelineViewServices>(
+    () => ({
+      loadBlob: feed.loadBlob,
+      openUri,
+      ...(sessionId ? { source: { nodeId, sessionId } } : {}),
+    }),
+    [feed.loadBlob, nodeId, sessionId],
+  );
+
   const loading =
-    session.starting || (sessionId !== null && log.state === "loading");
+    (!readOnly && session.starting) ||
+    (sessionId !== null && feed.phase === "loading" && items.length === 0);
   const empty =
     !loading &&
-    log.state !== "failed" &&
-    view.items.length === 0 &&
-    pendingCount === 0;
+    feed.phase !== "failed" &&
+    items.length === 0 &&
+    pendingCards.length === 0;
+  const timelineLoading = feed.phase === "loading";
 
   let body: React.ReactNode;
   if (session.failed) {
@@ -725,7 +717,7 @@ export function SessionView({
     );
   } else if (loading) {
     body = (
-      <div className="flex flex-col gap-2" data-slot="acp-loading">
+      <div className="flex flex-col gap-2 p-2.5" data-slot="acp-loading">
         {session.phase && (
           <div
             data-slot="acp-starting"
@@ -737,7 +729,10 @@ export function SessionView({
           </div>
         )}
         {queued !== null ? (
-          <MessageList items={queuedItems(queued)} streaming={false} />
+          <TimelineView
+            items={[queuedItem(queued)]}
+            {...(initialRect === undefined ? {} : { initialRect })}
+          />
         ) : (
           <>
             <Skeleton className="h-4 w-2/3 self-end" />
@@ -747,71 +742,106 @@ export function SessionView({
         )}
       </div>
     );
-  } else if (log.state === "failed") {
+  } else if (feed.phase === "failed") {
     body = (
-      <Alert variant="destructive">
-        <AlertTitle>{t("acp.error.log")}</AlertTitle>
-        <AlertAction>
-          <Button size="xs" variant="outline" onClick={log.retry}>
-            {t("acp.error.retry")}
-          </Button>
-        </AlertAction>
-      </Alert>
+      <div className="p-2.5">
+        <Alert variant="destructive">
+          <AlertTitle>{t("acp.error.log")}</AlertTitle>
+          <AlertAction>
+            <Button size="xs" variant="outline" onClick={feed.retry}>
+              {t("acp.error.retry")}
+            </Button>
+          </AlertAction>
+        </Alert>
+      </div>
     );
   } else if (empty) {
     body = (
       <Empty className="h-full border-0 p-4">
         <EmptyHeader>
           <EmptyTitle className="text-[13px] font-normal text-muted-foreground">
-            {t("acp.empty")}
+            {t(readOnly ? "acp.empty.readOnly" : "acp.empty")}
           </EmptyTitle>
         </EmptyHeader>
       </Empty>
     );
   } else {
     body = (
-      <>
-        <MessageList
-          items={view.items}
-          streaming={view.streaming}
-          source={sessionId ? { nodeId, sessionId } : undefined}
-          plan={plan}
-          actions={actions}
-        />
-        {pendingCount > 1 &&
-          permissions.map((permission) => (
-            <PermissionCard
-              key={permission.pendingId}
-              permission={permission}
-              canAnswer={canAnswer}
-            />
-          ))}
-        {pendingCount > 1 &&
-          elicitations.map((elicitation) => (
-            <ElicitationCard
-              key={elicitation.pendingId}
-              nodeId={nodeId}
-              view={elicitation}
-              canAnswer={canAnswer}
-            />
-          ))}
-        {view.confirming && (
-          <Alert data-slot="acp-confirming">
+      <TimelineView
+        items={items}
+        activity={activity}
+        loading={timelineLoading}
+        onLoadOlder={feed.hasMore ? feed.loadMore : undefined}
+        resetKey={sessionId ?? undefined}
+        services={services}
+        renderApproval={renderApproval}
+        renderElicitation={renderElicitation}
+        onRetry={readOnly ? undefined : onRetry}
+        onContinue={readOnly ? undefined : onContinue}
+        {...(initialRect === undefined ? {} : { initialRect })}
+      />
+    );
+  }
+
+  return (
+    <ToolLookupProvider value={feed.byId}>
+      <div
+        data-slot="acp-session-view"
+        data-read-only={readOnly || undefined}
+        className="nopan nodrag nowheel flex h-full w-full cursor-auto flex-col bg-[var(--card)] select-text"
+        // 要附件时才去取 core 的 `promptCapabilities`（时间线里没有它）：聚焦输入框、
+        // 拖文件进来的那一刻。
+        onFocusCapture={feed.ensureCapabilities}
+        // 拖进会话视图任何地方的文件都成输入框的附件（契约 §56），不交给画布。
+        onDragOver={(event) => {
+          if (readOnly) return;
+          if (!Array.from(event.dataTransfer.types).includes("Files")) return;
+          feed.ensureCapabilities();
+          event.preventDefault();
+          event.stopPropagation();
+          event.dataTransfer.dropEffect = promptDisabled ? "none" : "copy";
+        }}
+        onDrop={(event) => {
+          if (readOnly) return;
+          const files = filesOf(event.dataTransfer);
+          if (files.length === 0) return;
+          event.preventDefault();
+          event.stopPropagation();
+          if (!promptDisabled) attachments.add(files);
+        }}
+        onClick={(event) => {
+          // 空态那一句话是「点一下就能说」：点空白处把焦点交给输入框。
+          if (empty && !readOnly && event.target === event.currentTarget)
+            inputRef.current?.focus();
+        }}
+      >
+        {!connected && (
+          <Alert className="rounded-none border-x-0 border-t-0 py-1.5">
+            <AlertTitle className="text-xs">{t("acp.offline")}</AlertTitle>
+          </Alert>
+        )}
+        <div className="flex min-h-0 flex-1 flex-col">{body}</div>
+        {delivery.confirming && (
+          <Alert data-slot="acp-confirming" className="mx-2 mb-1.5 w-auto">
             <Spinner aria-hidden />
             <AlertTitle>{t("acp.turn.confirming")}</AlertTitle>
           </Alert>
         )}
-        {view.failed && !view.streaming && (
-          <Alert variant="destructive">
+        {(delivery.failed || delivery.undelivered) && !streaming && (
+          <Alert variant="destructive" className="mx-2 mb-1.5 w-auto">
             <AlertTitle>
-              {t(view.undelivered ? "acp.error.undelivered" : "acp.error.turn")}
+              {t(
+                delivery.undelivered
+                  ? "acp.error.undelivered"
+                  : "acp.error.turn",
+              )}
             </AlertTitle>
-            {view.lastPrompt && (
+            {delivery.lastPrompt && (
               <AlertAction>
                 <Button
                   size="xs"
                   variant="outline"
-                  onClick={() => resend(view.lastPrompt as string)}
+                  onClick={() => resend(delivery.lastPrompt as string)}
                 >
                   {t("acp.error.retry")}
                 </Button>
@@ -819,81 +849,45 @@ export function SessionView({
             )}
           </Alert>
         )}
-      </>
-    );
-  }
-
-  return (
-    <div
-      ref={rootRef}
-      data-slot="acp-session-view"
-      className="nopan nodrag nowheel flex h-full w-full cursor-auto flex-col bg-[var(--card)] select-text"
-      // 拖进会话视图任何地方的文件都成输入框的附件（契约 §56），不交给画布。
-      onDragOver={(event) => {
-        if (!Array.from(event.dataTransfer.types).includes("Files")) return;
-        event.preventDefault();
-        event.stopPropagation();
-        event.dataTransfer.dropEffect = promptDisabled ? "none" : "copy";
-      }}
-      onDrop={(event) => {
-        const files = filesOf(event.dataTransfer);
-        if (files.length === 0) return;
-        event.preventDefault();
-        event.stopPropagation();
-        if (!promptDisabled) attachments.add(files);
-      }}
-      onClick={(event) => {
-        // 空态那一句话是「点一下就能说」：点空白处把焦点交给输入框。
-        if (empty && event.target === event.currentTarget)
-          inputRef.current?.focus();
-      }}
-    >
-      {!connected && (
-        <Alert className="rounded-none border-x-0 border-t-0 py-1.5">
-          <AlertTitle className="text-xs">{t("acp.offline")}</AlertTitle>
-        </Alert>
-      )}
-      <ScrollArea className="min-h-0 flex-1">
-        <div className="flex min-h-full flex-col gap-3 p-2.5">{body}</div>
-      </ScrollArea>
-      <div role="status" className="sr-only">
-        {announcement}
+        <div role="status" className="sr-only">
+          {announcement}
+        </div>
+        {pinned?.kind === "approval" && (
+          <ApprovalCard
+            key={pinned.pendingId}
+            approval={pinned}
+            canAnswer={canAnswer}
+            pinned
+            className="mx-2 mb-1.5"
+          />
+        )}
+        {pinned?.kind === "elicitation" && (
+          <ElicitationItemCard
+            key={pinned.pendingId}
+            item={pinned}
+            canAnswer={canAnswer}
+            className="mx-2 mb-1.5"
+          />
+        )}
+        {!readOnly && (
+          <PromptBox
+            sessionId={sessionId}
+            inputRef={inputRef}
+            disabled={promptDisabled}
+            streaming={streaming}
+            modes={modes}
+            models={models}
+            onSubmit={submit}
+            attachments={attachments}
+            onCancel={cancel}
+            onMode={selectMode}
+            onModel={selectModel}
+            commands={feed.head.commands ?? []}
+            usage={feed.head.usage ?? null}
+          />
+        )}
       </div>
-      {pinned && (
-        <PermissionCard
-          key={pinned.pendingId}
-          permission={pinned}
-          canAnswer={canAnswer}
-          pinned
-          className="mx-2 mb-1.5"
-        />
-      )}
-      {pinnedElicitation && (
-        <ElicitationCard
-          key={pinnedElicitation.pendingId}
-          nodeId={nodeId}
-          view={pinnedElicitation}
-          canAnswer={canAnswer}
-          className="mx-2 mb-1.5"
-        />
-      )}
-      <PromptBox
-        sessionId={sessionId}
-        inputRef={inputRef}
-        disabled={promptDisabled}
-        streaming={view.streaming}
-        modes={view.modes}
-        models={view.models}
-        onSubmit={submit}
-        attachments={attachments}
-        onCancel={cancel}
-        onMode={selectMode}
-        onModel={selectModel}
-        commands={view.commands}
-        usage={view.usage}
-        prefill={prefill}
-      />
-    </div>
+    </ToolLookupProvider>
   );
 }
 

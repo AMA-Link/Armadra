@@ -2,9 +2,9 @@ import * as React from "react";
 import { ChevronLeft } from "lucide-react";
 
 import { useT } from "@/app/preferences-store";
-import { MessageList } from "@/acp/MessageList";
 import { PermissionCard } from "@/acp/PermissionCard";
 import { PromptBox } from "@/acp/PromptBox";
+import { TimelineView } from "@/timeline/view/TimelineView";
 import type { RelayEnrollment, RelayOutcome } from "@/mobile/connect";
 import { ConnectScreen } from "@/mobile/ConnectScreen";
 import {
@@ -219,8 +219,15 @@ function Screen({
               data-slot="acp-session-view"
               className="flex min-h-0 flex-1 flex-col bg-[var(--card)] [&_textarea]:text-[length:var(--text-input-touch)]"
             >
-              <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto p-2.5">
-                <MessageList items={ACP_STREAMING_ITEMS} streaming />
+              <div className="flex min-h-0 flex-1 flex-col">
+                <TimelineView
+                  items={ACP_STREAMING_ITEMS}
+                  activity={{
+                    phase: "responding",
+                    since: 0,
+                    rev: "showcase:1",
+                  }}
+                />
               </div>
               <PermissionCard
                 permission={ACP_PERMISSION}

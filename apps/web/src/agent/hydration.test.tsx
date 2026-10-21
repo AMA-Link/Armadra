@@ -92,8 +92,9 @@ describe("useAgentStatusHydration", () => {
     view("workspace-1");
     await waitFor(() => {
       expect(
-        useTimelineStore.getState().activities[timelineKey("local", "session-1")]
-          ?.phase,
+        useTimelineStore.getState().activities[
+          timelineKey("local", "session-1")
+        ]?.phase,
       ).toBe("thinking");
     });
   });
