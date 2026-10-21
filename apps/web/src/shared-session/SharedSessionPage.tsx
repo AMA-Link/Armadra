@@ -40,7 +40,8 @@ export default function SharedSessionPage({
   });
   const [state, setState] = React.useState<ReadOnlyTerminalState>("connecting");
   const session = row.data;
-  const acp = session?.kind === "acp";
+  // 行上是驱动方式 `backend`（`terminalSessionSchema` 没有 `kind`：认它永远是终端）。
+  const acp = session?.backend === "acp";
   const title =
     agentLabel(session?.agentId ?? undefined) ||
     session?.command ||
@@ -96,7 +97,11 @@ export default function SharedSessionPage({
             )}
           </div>
         ) : acp ? (
-          <ReadOnlyTranscript source={source} sessionId={target.sessionId} />
+          <ReadOnlyTranscript
+            source={source}
+            sessionId={target.sessionId}
+            workspaceId={target.workspaceId}
+          />
         ) : (
           <ReadOnlyTerminal
             source={source}

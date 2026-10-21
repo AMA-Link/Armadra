@@ -37,7 +37,6 @@ import {
   type PromptAttachments,
   usePromptAttachments,
 } from "./PromptAttachments";
-import type { AcpUsageView } from "./store";
 
 /** 用量到这个比例换警示色（文字 + 颜色）。 */
 export const USAGE_WARN_RATIO = 0.9;
@@ -66,6 +65,12 @@ export function matchCommands(
 }
 
 /** 上下文用量：`12.3k / 200k` + 2px 进度条；花费有就放在悬停提示里。 */
+export interface AcpUsageView {
+  readonly used: number;
+  readonly size: number;
+  readonly cost?: { readonly amount: number; readonly currency: string };
+}
+
 function Usage({ usage }: { usage: AcpUsageView }) {
   const t = useT();
   const locale = usePreferencesStore((state) => state.locale);

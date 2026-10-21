@@ -25,10 +25,12 @@ import { outcomeOf } from "../activity";
 import type { TimelineDomain } from "../index";
 import { claudeAdapter } from "./claude";
 import { codexAdapter } from "./codex";
+import { copilotTranscript } from "./copilot";
 import { mapHookActivity } from "./hook-activity";
+import { opencodeTranscript } from "./opencode";
+import { ompTranscript, piTranscript } from "./pi";
 import { TimelineSink } from "./sink";
 import {
-  type ReadResult,
   type StatFn,
   type TailCursor,
   type TailTimers,
@@ -38,7 +40,7 @@ import {
   encodeCursor,
   realTailTimers,
 } from "./tailer";
-import type { TranscriptAdapter } from "./types";
+import type { SourceRunner, TranscriptAdapter } from "./types";
 
 export { TimelineSink } from "./sink";
 export {
@@ -51,13 +53,14 @@ export type { TailCursor } from "./tailer";
 export type { TranscriptAdapter } from "./types";
 export { mapHookActivity } from "./hook-activity";
 
-/**
- * 登记的适配器。B4b 在这里加 OpenCode、Pi / OMP、Copilot。键是 `baseAgent` 之后的
- * 代理 id。
- */
+/** 登记的适配器。键是 `baseAgent` 之后的代理 id。 */
 export const ADAPTERS: Readonly<Record<string, TranscriptAdapter>> = {
   claude: claudeAdapter,
   codex: codexAdapter,
+  opencode: opencodeTranscript,
+  pi: piTranscript,
+  omp: ompTranscript,
+  copilot: copilotTranscript,
 };
 
 /** 这个代理有没有转录适配器（页面据此决定「会话 / 终端」切换是否可用）。 */
@@ -74,7 +77,7 @@ interface Source {
   readonly timelineId: string;
   readonly nodeId: string;
   readonly adapter: TranscriptAdapter;
-  readonly runner: TailRunner;
+  readonly runner: SourceRunner;
   readonly sink: TimelineSink;
   hint: SessionHint;
 }
@@ -113,7 +116,8 @@ export class SourceManager {
 
   /** 测试与诊断：这条时间线的尾读器。 */
   runnerOf(timelineId: string): TailRunner | undefined {
-    return this.sources.get(timelineId)?.runner;
+    const runner = this.sources.get(timelineId)?.runner;
+    return runner instanceof TailRunner ? runner : undefined;
   }
 
   /* ------------------------------ hook 门铃 ------------------------------ */
@@ -270,10 +274,9 @@ export class SourceManager {
       source: "transcript",
     });
     const stored = domain.store.get(row.id);
-    const initial: TailCursor | undefined =
-      stored?.source === "transcript"
-        ? decodeCursor(stored.sourceCursor)
-        : undefined;
+    const storedCursor =
+      stored?.source === "transcript" ? stored.sourceCursor : "";
+    const initial: TailCursor | undefined = decodeCursor(storedCursor);
     const sink = new TimelineSink(domain.writer, row.id, {
       onTurnBegin: (turnId) => {
         if (domain.activity.get(row.id)?.turnStartedAt === undefined) {
@@ -292,8 +295,12 @@ export class SourceManager {
         }
       },
     });
-    // 接回时没有 hook 报路径，就沿用游标里的那个。
-    if (hint.transcriptPath === undefined && initial !== undefined) {
+    // 接回时没有 hook 报路径，就沿用游标里的那个（文件来源）。
+    if (
+      adapter.source === undefined &&
+      hint.transcriptPath === undefined &&
+      initial !== undefined
+    ) {
       hint = { ...hint, transcriptPath: initial.path };
     }
     const source: Source = {
@@ -302,26 +309,49 @@ export class SourceManager {
       adapter,
       sink,
       hint,
-      runner: undefined as unknown as TailRunner,
+      runner: undefined as unknown as SourceRunner,
     };
-    const runner = new TailRunner({
-      locate: () => adapter.locate(source.hint),
-      initialCursor: initial,
-      onRead: (result) => this.consume(source, result),
-      onError: (error) =>
-        this.options.log?.warn("读取转录失败", {
-          timelineId: row.id,
-          error: error instanceof Error ? error.message : String(error),
-        }),
-      ...(this.options.timers !== undefined
-        ? { timers: this.options.timers }
-        : {}),
-      ...(this.options.watch !== undefined
-        ? { watch: this.options.watch }
-        : {}),
-      ...(this.options.stat !== undefined ? { stat: this.options.stat } : {}),
-    });
-    (source as { runner: TailRunner }).runner = runner;
+    const onError = (error: unknown) =>
+      this.options.log?.warn("读取转录失败", {
+        timelineId: row.id,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    const runner: SourceRunner =
+      adapter.source !== undefined
+        ? adapter.source({
+            hint: () => source.hint,
+            initialCursor: storedCursor === "" ? undefined : storedCursor,
+            onRead: (batch) =>
+              this.consume(source, batch.lines, batch.reset, batch.cursor),
+            onError,
+            timers: this.options.timers,
+            watch: this.options.watch,
+            stat: this.options.stat,
+          })
+        : new TailRunner({
+            locate: () => adapter.locate(source.hint),
+            initialCursor: initial,
+            onRead: (result) =>
+              this.consume(
+                source,
+                result.lines,
+                result.reset !== undefined,
+                result.cursor === undefined
+                  ? undefined
+                  : encodeCursor(result.cursor),
+              ),
+            onError,
+            ...(this.options.timers !== undefined
+              ? { timers: this.options.timers }
+              : {}),
+            ...(this.options.watch !== undefined
+              ? { watch: this.options.watch }
+              : {}),
+            ...(this.options.stat !== undefined
+              ? { stat: this.options.stat }
+              : {}),
+          });
+    (source as { runner: SourceRunner }).runner = runner;
     this.sources.set(row.id, source);
     this.armReaper();
     runner.start();
@@ -329,9 +359,14 @@ export class SourceManager {
   }
 
   /** 读到一批行：交给适配器，然后存游标。 */
-  private consume(source: Source, result: ReadResult): void {
-    source.sink.backfill = result.reset !== undefined;
-    for (const line of result.lines) {
+  private consume(
+    source: Source,
+    lines: readonly string[],
+    backfill: boolean,
+    cursor: string | undefined,
+  ): void {
+    source.sink.backfill = backfill;
+    for (const line of lines) {
       let record: unknown;
       try {
         record = JSON.parse(line);
@@ -348,11 +383,11 @@ export class SourceManager {
       }
     }
     source.sink.backfill = false;
-    if (result.cursor !== undefined) {
+    if (cursor !== undefined) {
       this.domain.store.setSourceCursor(
         source.timelineId,
         "transcript",
-        encodeCursor(result.cursor),
+        cursor,
       );
     }
   }

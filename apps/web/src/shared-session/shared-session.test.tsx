@@ -7,6 +7,11 @@ const calls = vi.hoisted(() => ({
   session: vi.fn(),
   get: vi.fn(),
   log: vi.fn(),
+  connect: vi.fn(
+    (..._args: unknown[]) =>
+      () =>
+        undefined,
+  ),
   guest: null as object | null,
 }));
 vi.mock("@/api/client", () => ({
@@ -15,6 +20,13 @@ vi.mock("@/api/client", () => ({
     terminals: { get: calls.get },
     acp: { log: calls.log },
   }),
+  errorCode: (error: { code?: string } | null) => error?.code,
+}));
+// 访客没有画布，页面自己订那一块工作空间的事件：这里只看订没订。
+vi.mock("@/api/events", () => ({
+  connectWorkspaceEvents: (...args: unknown[]) => calls.connect(...args),
+  onWorkspaceEvent: () => () => undefined,
+  onWorkspaceConnection: () => () => undefined,
 }));
 vi.mock("@/sources/hosted", () => ({
   hostedRelay: () => ({ guest: () => calls.guest }),
@@ -27,6 +39,16 @@ vi.mock("./ReadOnlyTerminal", () => ({
 }));
 
 import { LOCAL_SOURCE_ID } from "@/api/source";
+import { setTimelineTransportFactory } from "@/timeline/api";
+import { resetTimelines } from "@/timeline/sync";
+import {
+  FakeCore,
+  assistant,
+  missingTransport,
+  put,
+  user,
+} from "@/timeline/test-support";
+import { mockLayout } from "@/timeline/view/test-layout";
 import { useCanvasStore } from "@/store/canvas-store";
 import { SharedSessionHost } from "./SharedSessionHost";
 import SharedSessionPage from "./SharedSessionPage";
@@ -50,7 +72,7 @@ function row(kind: string) {
     pid: 1,
     createdAt: "2026-10-12T00:00:00Z",
     endedAt: null,
-    kind,
+    backend: kind === "acp" ? "acp" : "direct",
   };
 }
 
@@ -65,11 +87,18 @@ beforeEach(() => {
   calls.session.mockReset();
   calls.get.mockReset();
   calls.log.mockReset();
+  calls.connect.mockClear();
   calls.guest = null;
+  mockLayout();
   useSharedSessionView.getState().close();
   useCanvasStore.setState({ workspace: null });
 });
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  resetTimelines();
+  setTimelineTransportFactory();
+  vi.restoreAllMocks();
+});
 
 describe("sessionShareOf", () => {
   it("只限会话的终端读授权、没有画布：会话查看者", () => {
@@ -98,6 +127,12 @@ describe("sessionShareOf", () => {
   });
 });
 
+/** 把操作直接应用到假 core 的状态上（建起始内容）。 */
+function applyOps(core: FakeCore, ops: ReturnType<typeof put>[]) {
+  core.emit(...ops.map(({ seq: _seq, ...op }) => op));
+  return core.state;
+}
+
 describe("SharedSessionPage", () => {
   const target = {
     sourceId: LOCAL_SOURCE_ID,
@@ -117,7 +152,39 @@ describe("SharedSessionPage", () => {
     expect(screen.queryByRole("button", { name: "关闭" })).toBeNull();
   });
 
-  it("ACP 会话：画转录，不画输入框与审批按钮", async () => {
+  it("ACP 会话：订阅时间线画转录，推送进来的内容不再轮询，不画输入框与审批按钮", async () => {
+    calls.get.mockResolvedValue(row("acp"));
+    const core = new FakeCore();
+    core.state = applyOps(core, [
+      put(1, { ...user(1, "hello there"), id: "u:1" }),
+      put(2, { ...assistant(1, "general kenobi"), id: "a:1:1" }),
+    ]);
+    setTimelineTransportFactory(() => core.transport);
+    const close = vi.fn();
+    render(wrap(<SharedSessionPage target={target} onClose={close} />));
+    expect(await screen.findByText("general kenobi")).toBeTruthy();
+    expect(screen.getByText("hello there")).toBeTruthy();
+    expect(screen.queryByRole("textbox")).toBeNull();
+    expect(screen.queryByTestId("terminal")).toBeNull();
+    // 访客没有画布，页面自己订那块工作空间的事件。
+    expect(calls.connect).toHaveBeenCalledWith(WS, expect.anything());
+    // 推送进来的新内容直接画出来，没有重读镜像。
+    const next = core.emit({
+      op: "put",
+      item: { ...assistant(1, "hello"), id: "a:1:2", ord: 2 },
+    } as never);
+    await act(async () => {
+      for (const listener of core.listeners)
+        listener.delta({ ...next, timelineId: SESSION });
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    });
+    expect(await screen.findByText("hello")).toBeTruthy();
+    expect(calls.log).not.toHaveBeenCalled();
+    screen.getByRole("button", { name: "关闭" }).click();
+    expect(close).toHaveBeenCalled();
+  });
+
+  it("ACP 会话在旧主机上：没有时间线，退回读镜像", async () => {
     calls.get.mockResolvedValue(row("acp"));
     calls.log.mockResolvedValue({
       entries: [
@@ -134,14 +201,11 @@ describe("SharedSessionPage", () => {
       ],
       endOffset: 2,
     });
-    const close = vi.fn();
-    render(wrap(<SharedSessionPage target={target} onClose={close} />));
+    setTimelineTransportFactory(() => missingTransport);
+    render(wrap(<SharedSessionPage target={target} />));
     expect(await screen.findByText("general kenobi")).toBeTruthy();
     expect(screen.getByText("hello there")).toBeTruthy();
     expect(screen.queryByRole("textbox")).toBeNull();
-    expect(screen.queryByTestId("terminal")).toBeNull();
-    screen.getByRole("button", { name: "关闭" }).click();
-    expect(close).toHaveBeenCalled();
   });
 });
 

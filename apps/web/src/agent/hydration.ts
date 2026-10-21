@@ -19,6 +19,7 @@ import { sessionsQuery } from "./sessions";
 import { useAgentStatusStore } from "./status-store";
 import { useProgramStatusStore } from "./program-status-store";
 import { activeSourceId, sk } from "../sources/scope";
+import { seedActivity } from "../timeline/sync";
 
 /**
  * 在应用挂载处补齐镜像，并在事件流重连后重放。
@@ -36,6 +37,13 @@ export function useAgentStatusHydration(workspaceId: string | null): void {
     if (query.data && workspaceId) {
       hydrate(query.data, workspaceId, activeSourceId());
       hydratePrograms(query.data, activeSourceId());
+      // 冷启动与重连：活动只在内存里，会话列表每行带着最近的一份；灌进时间线
+      // 的 store，会话体一挂载就有阶段可显示（旧的不覆盖新的）。
+      for (const session of query.data) {
+        if (session.activity) {
+          seedActivity(activeSourceId(), session.sessionId, session.activity);
+        }
+      }
     }
   }, [query.data, workspaceId, hydrate, hydratePrograms]);
 

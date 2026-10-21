@@ -1,4 +1,3 @@
-import { scoped } from "../sources/scope";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   act,
@@ -14,6 +13,8 @@ import type {
   TerminalNodeData,
   WorkspaceEvent,
 } from "@armadra/shared";
+
+import { mockLayout } from "@/timeline/view/test-layout";
 
 /** 假 core：会话视图只经 `acpApi` 说话，换掉这一个模块就够了。 */
 const api = vi.hoisted(() => ({
@@ -64,6 +65,12 @@ vi.mock("@/api/events", async (importOriginal) => {
 
 import { RuntimeRequestError } from "@/api/client";
 import { dispatchWorkspaceEvent } from "@/api/events";
+import { resetBlobs } from "@/timeline/blobs";
+import { setTimelineTransportFactory } from "@/timeline/api";
+import { missingTransport } from "@/timeline/test-support";
+import { resetTimelines } from "@/timeline/sync";
+import { useLegacyAcpStore } from "@/timeline/use-legacy-acp";
+import { useAnsweredStore } from "./answered";
 import { SessionView } from "./SessionView";
 import { useAcpStore } from "./store";
 
@@ -101,6 +108,11 @@ beforeEach(() => {
   store.document = null;
   store.workspace = { id: "w1", rootPath: "/repo" };
   useAcpStore.getState().reset();
+  useLegacyAcpStore.getState().reset();
+  useAnsweredStore.getState().reset();
+  resetBlobs();
+  setTimelineTransportFactory(() => missingTransport);
+  mockLayout();
 });
 
 const MODELS = {
@@ -131,7 +143,30 @@ async function pickModel(name: string) {
   }
 }
 
-afterEach(cleanup);
+/** 当前选中的模型名：宽屏读选择器，窄屏打开「⋯」菜单读选中的那一项。 */
+async function checkedModel(): Promise<string | null> {
+  const select = screen.queryByLabelText("模型");
+  if (select) return select.textContent;
+  const more = await screen.findByRole("button", { name: "更多" });
+  fireEvent.pointerDown(more, { button: 0, pointerType: "mouse" });
+  const items = await screen.findAllByRole("menuitemradio");
+  const checked = items.find(
+    (item) =>
+      item.getAttribute("aria-checked") === "true" &&
+      /Small|Large/.test(item.textContent ?? ""),
+  );
+  fireEvent.keyDown(document.activeElement ?? document.body, {
+    key: "Escape",
+  });
+  return checked?.textContent ?? null;
+}
+
+afterEach(() => {
+  cleanup();
+  resetTimelines();
+  setTimelineTransportFactory();
+  vi.restoreAllMocks();
+});
 
 /**
  * 消息流本身（`role="log"`）。回合结束时最后一条助手文字还会出现在读屏的
@@ -195,7 +230,7 @@ describe("SessionView turn reconciliation (§39.9)", () => {
     expect(await messages().findByText("done it")).toBeTruthy();
     expect(screen.queryByText("正在确认这一轮")).toBeNull();
     expect(screen.queryByText("这一轮没有送达")).toBeNull();
-    expect(screen.queryByLabelText("正在输出")).toBeNull();
+    expect(screen.queryByLabelText("停止")).toBeNull();
     expect(api.prompt).toHaveBeenCalledTimes(1);
   });
 
@@ -208,7 +243,7 @@ describe("SessionView turn reconciliation (§39.9)", () => {
     );
     const clientTurnId = await sendPrompt("go");
     expect(await messages().findByText("done it")).toBeTruthy();
-    expect(screen.getByLabelText("正在输出")).toBeTruthy();
+    expect(screen.getByLabelText("停止")).toBeTruthy();
     // 结束帧带着它的 clientTurnId 来：照常收尾。
     emit({
       type: "acp.turn",
@@ -218,7 +253,7 @@ describe("SessionView turn reconciliation (§39.9)", () => {
       clientTurnId,
       stopReason: "end_turn",
     });
-    expect(screen.queryByLabelText("正在输出")).toBeNull();
+    expect(screen.queryByLabelText("停止")).toBeNull();
   });
 
   it("says not delivered when core has no such turn, and retries with the same id", async () => {
@@ -287,13 +322,13 @@ describe("SessionView turn reconciliation (§39.9)", () => {
     render(<SessionView nodeId="n1" data={data} />);
     await screen.findByText("向它说第一句话");
     const clientTurnId = await sendPrompt("go");
-    expect(screen.getByLabelText("正在输出")).toBeTruthy();
+    expect(screen.getByLabelText("停止")).toBeTruthy();
     setConnected(false);
     api.log.mockResolvedValue(loggedTurn(clientTurnId, "ended"));
     setConnected(true);
     expect(await messages().findByText("done it")).toBeTruthy();
     expect(api.log).toHaveBeenCalledTimes(2);
-    expect(screen.queryByLabelText("正在输出")).toBeNull();
+    expect(screen.queryByLabelText("停止")).toBeNull();
   });
 
   it("does not reread on the first connected report", async () => {
@@ -315,7 +350,9 @@ describe("SessionView", () => {
     await waitFor(() =>
       expect(screen.getAllByText("向它说第一句话")).toHaveLength(2),
     );
-    useAcpStore.getState().begin(SESSION, "hi");
+    useLegacyAcpStore
+      .getState()
+      .begin(SESSION, { clientTurnId: "c1", text: "hi", attachments: [] });
     text("agent_message_chunk", "echo: ");
     text("agent_message_chunk", "hi");
     expect(screen.getAllByText("echo: hi")).toHaveLength(2);
@@ -348,7 +385,7 @@ describe("SessionView", () => {
     );
     expect(screen.getByText("跑一下测试")).toBeTruthy();
     // 回合进行中：尾部 Spinner，发送钮换成停止。
-    expect(screen.getByLabelText("正在输出")).toBeTruthy();
+    expect(screen.getByLabelText("停止")).toBeTruthy();
     expect(screen.getByLabelText("停止")).toBeTruthy();
 
     text("agent_message_chunk", "Running ");
@@ -387,10 +424,11 @@ describe("SessionView", () => {
         },
       },
     });
-    expect(screen.getByText("rm -rf dist")).toBeTruthy();
+    expect(screen.getAllByText("rm -rf dist").length).toBeGreaterThan(0);
     fireEvent.click(screen.getByRole("button", { name: "本次允许" }));
     expect(api.answer).toHaveBeenCalledWith("n1-1-acp-t2", "allow", "ok");
-    expect(screen.queryByText("rm -rf dist")).toBeNull();
+    // 答过的卡先收起，不等回执。
+    expect(screen.queryByRole("button", { name: "本次允许" })).toBeNull();
 
     emit({
       type: "acp.turn",
@@ -399,7 +437,7 @@ describe("SessionView", () => {
       turnId: "turn-1",
       stopReason: "end_turn",
     });
-    expect(screen.queryByLabelText("正在输出")).toBeNull();
+    expect(screen.queryByLabelText("停止")).toBeNull();
     expect(screen.getByLabelText("发送")).toBeTruthy();
 
     // 回合边界之后的输出是新的一条，不接在上一条后面。
@@ -460,7 +498,7 @@ describe("SessionView", () => {
     render(<SessionView nodeId="n1" data={data} />);
     expect(await screen.findByText("hello")).toBeTruthy();
     expect(screen.getByText("hi there")).toBeTruthy();
-    expect(screen.getByText("write a.ts")).toBeTruthy();
+    expect(screen.getAllByText("write a.ts").length).toBeGreaterThan(0);
     expect(screen.getByRole("button", { name: "始终允许" })).toBeTruthy();
     expect(screen.getByLabelText("模式")).toBeTruthy();
   });
@@ -508,7 +546,8 @@ describe("SessionView", () => {
       turnId: "turn-1",
       error: { code: "acp_protocol", message: "boom" },
     });
-    expect(screen.getByText("这一轮没有完成")).toBeTruthy();
+    // 回合尾：core 说的原话加重试。
+    expect(screen.getByText("boom")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "重试" }));
     await waitFor(() => expect(api.prompt).toHaveBeenCalledTimes(2));
     // 第三个参数是 §39.9 的 clientTurnId：出错的是 core 跑完的一轮，重发是新的
@@ -525,13 +564,14 @@ describe("SessionView", () => {
 
   it("draws a row for each stop reason that is not end_turn (§5.2)", async () => {
     const cases = [
-      ["max_tokens", "已到上限", "继续"],
-      ["max_turn_requests", "已到上限", "继续"],
-      ["refusal", "这一轮被拒绝", "编辑后重发"],
-      ["cancelled", "已停止", "重新发送"],
+      ["max_tokens", "已达上限", "继续"],
+      ["max_turn_requests", "已达上限", "继续"],
+      ["refusal", "已拒绝", null],
+      ["cancelled", "已取消", null],
     ] as const;
     for (const [stopReason, line, action] of cases) {
       useAcpStore.getState().reset();
+      useLegacyAcpStore.getState().reset();
       api.prompt.mockClear();
       render(<SessionView nodeId="n1" data={data} />);
       await sendPrompt(`ask ${stopReason}`);
@@ -542,14 +582,21 @@ describe("SessionView", () => {
         turnId: "turn-1",
         stopReason,
       });
-      const row = screen.getByText(line).closest("[data-stop]") as HTMLElement;
+      const row = (await screen.findByText(line)).closest(
+        "[data-stop]",
+      ) as HTMLElement;
       expect(row.dataset.stop).toBe(stopReason);
       expect(screen.queryByText("这一轮没有完成")).toBeNull();
-      expect(within(row).getByRole("button", { name: action })).toBeTruthy();
+      if (action === null) {
+        expect(within(row).queryByRole("button")).toBeNull();
+      } else {
+        expect(within(row).getByRole("button", { name: action })).toBeTruthy();
+      }
       cleanup();
     }
     // 正常说完什么都不画。
     useAcpStore.getState().reset();
+    useLegacyAcpStore.getState().reset();
     render(<SessionView nodeId="n1" data={data} />);
     await sendPrompt("fine");
     emit({
@@ -559,11 +606,11 @@ describe("SessionView", () => {
       turnId: "turn-1",
       stopReason: "end_turn",
     });
-    for (const line of ["已到上限", "这一轮被拒绝", "已停止"])
+    for (const line of ["已达上限", "已拒绝", "已取消"])
       expect(screen.queryByText(line)).toBeNull();
   });
 
-  it("continues, resends and edits from the stop rows", async () => {
+  it("continues from the limit row with a new turn id", async () => {
     render(<SessionView nodeId="n1" data={data} />);
     const first = await sendPrompt("long one");
     emit({
@@ -574,7 +621,7 @@ describe("SessionView", () => {
       clientTurnId: first,
       stopReason: "max_tokens",
     });
-    fireEvent.click(screen.getByRole("button", { name: "继续" }));
+    fireEvent.click(await screen.findByRole("button", { name: "继续" }));
     await waitFor(() =>
       expect(api.prompt).toHaveBeenLastCalledWith(
         SESSION,
@@ -582,36 +629,7 @@ describe("SessionView", () => {
         expect.any(String),
       ),
     );
-    emit({
-      type: "acp.turn",
-      sessionId: SESSION,
-      nodeId: "n1",
-      turnId: "turn-2",
-      stopReason: "cancelled",
-    });
-    fireEvent.click(
-      within(
-        document.querySelector("[data-stop=cancelled]") as HTMLElement,
-      ).getByRole("button", { name: "重新发送" }),
-    );
-    await waitFor(() => expect(api.prompt).toHaveBeenCalledTimes(3));
-    expect(api.prompt.mock.calls[2]?.[1]).toBe("继续");
-    emit({
-      type: "acp.turn",
-      sessionId: SESSION,
-      nodeId: "n1",
-      turnId: "turn-3",
-      stopReason: "refusal",
-    });
-    // 拒答：编辑后重发把提问填回输入框，不自动发。
-    fireEvent.click(
-      within(
-        document.querySelector("[data-stop=refusal]") as HTMLElement,
-      ).getByRole("button", { name: "编辑后重发" }),
-    );
-    const input = screen.getByLabelText("消息") as HTMLTextAreaElement;
-    await waitFor(() => expect(input.value).toBe("继续"));
-    expect(api.prompt).toHaveBeenCalledTimes(3);
+    expect(api.prompt.mock.calls[1]?.[2]).not.toBe(first);
   });
 
   it("lets text be selected and keeps the canvas from panning or dragging", async () => {
@@ -627,6 +645,8 @@ describe("SessionView", () => {
     Element.prototype.scrollIntoView ??= () => undefined;
     render(<SessionView nodeId="n1" data={data} />);
     const input = (await screen.findByLabelText("消息")) as HTMLTextAreaElement;
+    // 退到旧路径、读完镜像之后才订阅事件；之前的命令列表由镜像快照补。
+    await screen.findByText("向它说第一句话");
     update({
       sessionUpdate: "available_commands_update",
       availableCommands: [
@@ -674,13 +694,12 @@ describe("SessionView", () => {
       },
     } satisfies AcpLogResponse);
     render(<SessionView nodeId="n1" data={data} />);
-    expect(await screen.findByText("1/2 已完成")).toBeTruthy();
+    const bar = await screen.findByLabelText("计划");
+    expect(bar.textContent).toContain("step two");
+    expect(bar.textContent).toContain("1 / 2");
     const usage = document.querySelector("[data-slot=acp-usage]");
     expect(usage?.textContent).toContain("950");
     expect(usage?.getAttribute("data-warn")).toBe("true");
-    expect(useAcpStore.getState().sessions[scoped(SESSION)]?.title).toBe(
-      "Planning",
-    );
   });
 
   it("starts a session when the node has none and records its id", async () => {
@@ -717,7 +736,7 @@ describe("SessionView", () => {
       agent: { id: "codex", driver: "acp" },
     };
     // 真画布里写回节点数据会同步重渲染这个节点：在写回的那一刻就换上新 id。
-    let view: ReturnType<typeof render> | undefined;
+    let view: ReturnType<typeof render>;
     store.updateNodeData.mockImplementationOnce(() => {
       view?.rerender(
         <SessionView nodeId="n1" data={{ ...fresh, sessionId: SESSION }} />,
@@ -752,7 +771,7 @@ describe("SessionView", () => {
       kind: "terminal",
       agent: { id: "claude", driver: "acp" },
     };
-    let view: ReturnType<typeof render> | undefined;
+    let view: ReturnType<typeof render>;
     store.updateNodeData.mockImplementationOnce(() => {
       view?.rerender(
         <SessionView nodeId="n1" data={{ ...fresh, sessionId: SESSION }} />,
@@ -796,7 +815,7 @@ describe("SessionView", () => {
       kind: "terminal",
       agent: { id: "claude", driver: "acp" },
     };
-    let view: ReturnType<typeof render> | undefined;
+    let view: ReturnType<typeof render>;
     store.updateNodeData.mockImplementationOnce(() => {
       view?.rerender(
         <SessionView nodeId="n1" data={{ ...fresh, sessionId: SESSION }} />,
@@ -936,21 +955,15 @@ describe("SessionView", () => {
         { history: "ignore" },
       ),
     );
-    expect(
-      useAcpStore.getState().sessions[scoped(SESSION)]?.models?.currentModelId,
-    ).toBe("large");
+    expect(await checkedModel()).toBe("Large");
   });
 
   it("puts the previous model back when the change is refused", async () => {
     api.setModel.mockRejectedValue(new Error("acp_model_unavailable"));
     api.log.mockResolvedValue({ ...emptyLog, models: MODELS });
     await pickModel("Large");
-    await waitFor(() =>
-      expect(
-        useAcpStore.getState().sessions[scoped(SESSION)]?.models
-          ?.currentModelId,
-      ).toBe("small"),
-    );
+    await waitFor(() => expect(api.setModel).toHaveBeenCalled());
+    await waitFor(async () => expect(await checkedModel()).toBe("Small"));
     expect(store.updateNodeData).not.toHaveBeenCalled();
   });
 });

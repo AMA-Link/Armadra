@@ -1,6 +1,7 @@
 import { scoped } from "../sources/scope";
 import * as React from "react";
 import { ArrowUpDown, Boxes, RotateCw, Share2 } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
 
 import { Badge } from "@/ui/badge";
@@ -63,6 +64,10 @@ import { canUseAcp, driverOf, switchDriver } from "@/acp/driver";
 import "./terminal-menu";
 import { WorkflowStepBadge } from "@/workflow/node-steps";
 import { MembersChip } from "@/coordinator/MembersChip";
+import { SessionSkeleton } from "@/acp/SessionSkeleton";
+import { sessionsQuery } from "@/agent/sessions";
+import { Button } from "@/ui/button";
+import { useNodeBodyMode, useNodeBodyStore } from "./node-body-mode";
 
 /**
  * ACP 驱动的节点体（ACP 设计 §6）。按需加载：消息流带着 Markdown 渲染，
@@ -100,6 +105,10 @@ export function TerminalNode({ id, node, selected, collapsed }: NodeBodyProps) {
   const programSeen = useProgramSeen(id);
   // 节点体二选一（ACP 设计 §4.1）：头部、徽标、菜单两种驱动共用。
   const driver = driverOf(agent);
+  // 终端驱动的 Agent 节点可以把节点体换成只读的会话内容（设计 §5.3）：不切驱动。
+  const bodyMode = useNodeBodyMode(id);
+  const sessionBody =
+    Boolean(agent) && driver === "terminal" && bodyMode === "session";
   const surfaceRef = React.useRef<TerminalSurfaceHandle>(null);
 
   const [surface, setSurface] = React.useState<TerminalSurfaceStatus>({
@@ -112,13 +121,13 @@ export function TerminalNode({ id, node, selected, collapsed }: NodeBodyProps) {
   // 换到会话视图：终端表面已经卸下，它最后报的「已退出」属于上一种驱动的那
   // 一代进程，不能挂在新会话的节点头上。
   React.useEffect(() => {
-    if (driver !== "acp") return;
+    if (driver !== "acp" && !sessionBody) return;
     setSurface((current) =>
       current.connection === "idle" && current.exitCode === null
         ? current
         : { ...current, connection: "idle", exitCode: null, error: null },
     );
-  }, [driver]);
+  }, [driver, sessionBody]);
   const [findOpen, setFindOpen] = React.useState(false);
   const workspaceId = useCanvasStore((state) => state.workspace?.id ?? null);
   const [query, setQuery] = React.useState("");
@@ -141,8 +150,10 @@ export function TerminalNode({ id, node, selected, collapsed }: NodeBodyProps) {
   // 会话视图（ACP）没有终端可搜。
   React.useEffect(
     () =>
-      driver === "terminal" ? registerTerminalFind(id, onFind) : undefined,
-    [id, onFind, driver],
+      driver === "terminal" && !sessionBody
+        ? registerTerminalFind(id, onFind)
+        : undefined,
+    [id, onFind, driver, sessionBody],
   );
 
   /*
@@ -193,6 +204,13 @@ export function TerminalNode({ id, node, selected, collapsed }: NodeBodyProps) {
       ? (data?.sessionId ?? null)
       : (surface.binding?.sessionId ?? null);
   const generation = surface.binding?.generation ?? null;
+  // 只读的会话内容按会话行 id 取时间线；表面卸下了没有绑定时，从会话列表里找。
+  const rows = useQuery({
+    ...sessionsQuery(workspaceId),
+    enabled: sessionBody && sessionId === null,
+  }).data;
+  const bodySessionId =
+    sessionId ?? rows?.find((row) => row.nodeId === id)?.sessionId ?? null;
   React.useEffect(() => {
     if (!agent || !reported) return;
     void autoNameNode(id, { sessionId, generation });
@@ -211,7 +229,7 @@ export function TerminalNode({ id, node, selected, collapsed }: NodeBodyProps) {
     if (!handle) return;
     return registerTerminalHandle(id, handle);
     // 换回终端视图时表面才挂上，句柄要在那时补登记。
-  }, [id, driver]);
+  }, [id, driver, sessionBody]);
 
   // 胶囊 / 光晕的映射表在 status-store：会话侧栏与子代理卡片读同一张表。
   // 启动失败（契约 §52：自动重试一次之后仍没起来）压过上报的状态：此时节点上
@@ -226,17 +244,27 @@ export function TerminalNode({ id, node, selected, collapsed }: NodeBodyProps) {
 
   // 审批答复是替 Agent 代答（设计 S5）：服务器壳上这块画布的 driver、以及
   // 终端是自己起的 operator 答得了（契约 §23），别人看得见「在等审批」，但不
-  // 给按钮。
+  // 给按钮。要不要出按钮读 `sessionDisplay().need`（进程已死、休眠的不出）：
+  // `approval` = 允许 / 拒绝，`input` = elicitation，卡片在会话体里，按钮带人过去。
+  const displayNeed = header.display?.need ?? null;
+  // elicitation 的状态是 `waiting` 且带 `pendingId`（契约 §26.1）：只看 `pendingId`
+  // 会把它当成审批，头部出允许 / 拒绝却答不了一个表单。按状态和活动层分开。
+  const asksQuestion =
+    agentStatus?.state === "waiting" ||
+    agentStatus?.activity?.phase === "awaiting_input";
+  const need: "approval" | "input" | null =
+    displayNeed === "input" || (displayNeed === "approval" && asksQuestion)
+      ? "input"
+      : displayNeed === "approval"
+        ? "approval"
+        : null;
+  const pendingId = agentStatus?.pendingId;
   const canAnswer = useCanAnswer(workspaceId ?? "", sessionId);
   const approval =
-    agent &&
-    canAnswer &&
-    agentStatus?.state === "blocked" &&
-    agentStatus.pendingId
+    agent && canAnswer && need === "approval" && pendingId
       ? {
-          pendingId: agentStatus.pendingId,
+          pendingId,
           onAnswer: (decision: "allow" | "deny") => {
-            const pendingId = agentStatus.pendingId as string;
             // 先收起按钮：Runtime 的下一条 `agent.status` 未必立刻到，
             // 让用户对着一个已经答过的请求再点一次是最糟的。
             useAgentStatusStore.getState().resolveApproval(pendingId);
@@ -244,13 +272,30 @@ export function TerminalNode({ id, node, selected, collapsed }: NodeBodyProps) {
           },
         }
       : undefined;
+  const answerQuestion = React.useCallback(() => {
+    const root = document.querySelector(`[${TERMINAL_NODE_ATTRIBUTE}="${id}"]`);
+    const card = root?.querySelector<HTMLElement>(
+      "[data-slot=acp-elicitation]",
+    );
+    card?.scrollIntoView({ block: "nearest" });
+    card?.querySelector<HTMLElement>("input, button, [role=combobox]")?.focus();
+  }, [id]);
+  const questionButton =
+    agent && canAnswer && need === "input" && driver === "acp" ? (
+      <Button
+        size="xs"
+        variant="ghost"
+        data-slot="answer-question"
+        className="h-[18px] px-1.5 text-[length:var(--text-caption)]"
+        onClick={answerQuestion}
+      >
+        {t("node.answer")}
+      </Button>
+    ) : null;
   // 答不了的人看见的是同一个「在等审批」，按钮换成一枚「等待接管」（设计系统
   // §5.8、§5.16 权限态）——否则头部只剩一个胶囊，不知道该等谁。
   const awaitingDriver =
-    agent &&
-    !canAnswer &&
-    agentStatus?.state === "blocked" &&
-    agentStatus.pendingId ? (
+    agent && !canAnswer && (need === "approval" || need === "input") ? (
       <Badge
         variant="outline"
         data-slot="awaiting-driver"
@@ -501,6 +546,27 @@ export function TerminalNode({ id, node, selected, collapsed }: NodeBodyProps) {
           <DropdownMenuSeparator />
         </>
       )}
+      {/* 节点体：终端驱动时可以改看只读的会话内容（设计 §5.3），不切驱动。 */}
+      {agent && driver === "terminal" && (
+        <>
+          <DropdownMenuRadioGroup
+            value={sessionBody ? "session" : "terminal"}
+            onValueChange={(value) =>
+              useNodeBodyStore
+                .getState()
+                .set(id, value === "session" ? "session" : "terminal")
+            }
+          >
+            <DropdownMenuRadioItem value="session">
+              {t("acp.body.session")}
+            </DropdownMenuRadioItem>
+            <DropdownMenuRadioItem value="terminal">
+              {t("acp.body.terminal")}
+            </DropdownMenuRadioItem>
+          </DropdownMenuRadioGroup>
+          <DropdownMenuSeparator />
+        </>
+      )}
       {agent && modelSelectable && (
         <DropdownMenuSub>
           <DropdownMenuSubTrigger>
@@ -559,7 +625,10 @@ export function TerminalNode({ id, node, selected, collapsed }: NodeBodyProps) {
         // 简洁模式：头部只留状态胶囊与审批（ACP 设计 §8 第 3 条）。
         headerChips={
           simple ? (
-            awaitingDriver
+            <>
+              {awaitingDriver}
+              {questionButton}
+            </>
           ) : (
             <>
               {headerChips}
@@ -568,6 +637,7 @@ export function TerminalNode({ id, node, selected, collapsed }: NodeBodyProps) {
               {/* 工作流运行中的步号，紧挨状态胶囊（设计系统 §4）。 */}
               <WorkflowStepBadge nodeId={id} />
               {awaitingDriver}
+              {questionButton}
             </>
           )
         }
@@ -576,16 +646,26 @@ export function TerminalNode({ id, node, selected, collapsed }: NodeBodyProps) {
       >
         {/* 换驱动时节点体淡入（设计系统 §5.1），尺寸不变。 */}
         <div
-          key={driver}
+          key={sessionBody ? "session" : driver}
           className="h-full w-full"
           data-driver={driver}
+          {...(sessionBody ? { "data-body": "session" } : {})}
           style={{
             animation: "armadra-fade-in var(--dur-fast) var(--ease-out)",
           }}
         >
           {driver === "acp" ? (
-            <React.Suspense fallback={null}>
+            <React.Suspense fallback={<SessionSkeleton />}>
               <SessionView nodeId={id} data={data} />
+            </React.Suspense>
+          ) : sessionBody ? (
+            <React.Suspense fallback={<SessionSkeleton />}>
+              <SessionView
+                nodeId={id}
+                data={data}
+                readOnly
+                sessionId={bodySessionId}
+              />
             </React.Suspense>
           ) : (
             <TerminalSurface

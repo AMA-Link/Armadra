@@ -24,7 +24,8 @@ import {
 } from "@/ui/select";
 import { Switch } from "@/ui/switch";
 import { acpApi } from "./api";
-import { useAcpStore, type AcpElicitationView } from "./store";
+import { useAnsweredStore } from "./answered";
+import type { AcpElicitationView } from "./approval-views";
 
 type Value = string | boolean;
 type Values = Readonly<Record<string, Value>>;
@@ -105,17 +106,16 @@ export function safeUrl(url: string | undefined): string | null {
  * 没答上（core 不认这份内容、或请求失败）就把卡放回去。
  */
 export async function answerElicitation(
-  nodeId: string,
   view: AcpElicitationView,
   answer: AcpElicitationAnswer,
 ): Promise<boolean> {
-  useAcpStore.getState().resolvePermission(view.pendingId);
+  useAnsweredStore.getState().mark(view.pendingId);
   useAgentStatusStore.getState().resolveApproval(view.pendingId);
   try {
     await acpApi.answerElicitation(view.pendingId, answer);
     return true;
   } catch {
-    useAcpStore.getState().addElicitation(nodeId, view);
+    useAnsweredStore.getState().unmark(view.pendingId);
     return false;
   }
 }
@@ -232,12 +232,10 @@ function FormField({
  * 按钮换成「等待接管」。
  */
 export function ElicitationCard({
-  nodeId,
   view,
   canAnswer,
   className,
 }: {
-  nodeId: string;
   view: AcpElicitationView;
   canAnswer: boolean;
   className?: string;
@@ -259,7 +257,7 @@ export function ElicitationCard({
     setBusy(true);
     const answer: AcpElicitationAnswer =
       action === "accept" && form && content ? { action, content } : { action };
-    const ok = await answerElicitation(nodeId, view, answer);
+    const ok = await answerElicitation(view, answer);
     setBusy(false);
     if (!ok) toast.error(t("acp.elicitation.failed"));
   };

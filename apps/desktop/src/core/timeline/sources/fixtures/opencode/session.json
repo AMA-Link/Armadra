@@ -1,0 +1,602 @@
+{
+  "session": {
+    "id": "ses_demo01",
+    "title": "补 README 并跑测试",
+    "directory": "/work/demo",
+    "time_updated": 1790000026000
+  },
+  "messages": [
+    {
+      "id": "msg_01",
+      "time_created": 1790000001000,
+      "time_updated": 1790000001000,
+      "data": {
+        "role": "user",
+        "time": {
+          "created": 1790000001000
+        },
+        "agent": "build",
+        "model": {
+          "providerID": "demo",
+          "modelID": "demo-model"
+        },
+        "summary": {
+          "diffs": []
+        }
+      }
+    },
+    {
+      "id": "msg_02",
+      "time_created": 1790000001100,
+      "time_updated": 1790000005000,
+      "data": {
+        "parentID": "msg_01",
+        "role": "assistant",
+        "mode": "build",
+        "agent": "build",
+        "path": {
+          "cwd": "/work/demo",
+          "root": "/work/demo"
+        },
+        "cost": 0,
+        "tokens": {
+          "total": 9000,
+          "input": 120,
+          "output": 300,
+          "reasoning": 10,
+          "cache": {
+            "read": 8500,
+            "write": 70
+          }
+        },
+        "modelID": "demo-model",
+        "providerID": "demo",
+        "time": {
+          "created": 1790000001100,
+          "completed": 1790000005000
+        },
+        "finish": "tool-calls"
+      }
+    },
+    {
+      "id": "msg_03",
+      "time_created": 1790000005100,
+      "time_updated": 1790000009000,
+      "data": {
+        "parentID": "msg_01",
+        "role": "assistant",
+        "mode": "build",
+        "agent": "build",
+        "path": {
+          "cwd": "/work/demo",
+          "root": "/work/demo"
+        },
+        "cost": 0,
+        "tokens": {
+          "total": 9500,
+          "input": 150,
+          "output": 40,
+          "reasoning": 0,
+          "cache": {
+            "read": 9000,
+            "write": 0
+          }
+        },
+        "modelID": "demo-model",
+        "providerID": "demo",
+        "time": {
+          "created": 1790000005100,
+          "completed": 1790000009000
+        },
+        "finish": "stop"
+      }
+    },
+    {
+      "id": "msg_04",
+      "time_created": 1790000020000,
+      "time_updated": 1790000020000,
+      "data": {
+        "role": "user",
+        "time": {
+          "created": 1790000020000
+        },
+        "agent": "build",
+        "model": {
+          "providerID": "demo",
+          "modelID": "demo-model"
+        }
+      }
+    },
+    {
+      "id": "msg_05",
+      "time_created": 1790000020100,
+      "time_updated": 1790000026000,
+      "data": {
+        "parentID": "msg_04",
+        "role": "assistant",
+        "mode": "build",
+        "agent": "build",
+        "path": {
+          "cwd": "/work/demo",
+          "root": "/work/demo"
+        },
+        "cost": 0,
+        "tokens": {
+          "input": 0,
+          "output": 0,
+          "reasoning": 0,
+          "cache": {
+            "read": 0,
+            "write": 0
+          }
+        },
+        "modelID": "demo-model",
+        "providerID": "demo",
+        "time": {
+          "created": 1790000020100,
+          "completed": 1790000026000
+        },
+        "error": {
+          "name": "MessageAbortedError",
+          "data": {
+            "message": "The operation was aborted."
+          }
+        }
+      }
+    }
+  ],
+  "parts": [
+    {
+      "id": "prt_01a",
+      "message_id": "msg_01",
+      "time_created": 1790000001001,
+      "time_updated": 1790000001001,
+      "data": {
+        "type": "text",
+        "text": "给 README 加一行并跑测试",
+        "time": {
+          "start": 1790000001001,
+          "end": 1790000001001
+        }
+      }
+    },
+    {
+      "id": "prt_01b",
+      "message_id": "msg_01",
+      "time_created": 1790000001002,
+      "time_updated": 1790000001002,
+      "data": {
+        "type": "text",
+        "text": "<background-task>已完成</background-task>",
+        "synthetic": true
+      }
+    },
+    {
+      "id": "prt_02a",
+      "message_id": "msg_02",
+      "time_created": 1790000001101,
+      "time_updated": 1790000001101,
+      "data": {
+        "type": "step-start",
+        "snapshot": "0000000000000000000000000000000000000000"
+      }
+    },
+    {
+      "id": "prt_02b",
+      "message_id": "msg_02",
+      "time_created": 1790000001300,
+      "time_updated": 1790000001300,
+      "data": {
+        "type": "reasoning",
+        "text": "",
+        "metadata": {
+          "openai": {
+            "itemId": "rs_x",
+            "reasoningEncryptedContent": "ENC"
+          }
+        },
+        "time": {
+          "start": 1790000001200,
+          "end": 1790000001300
+        }
+      }
+    },
+    {
+      "id": "prt_02c",
+      "message_id": "msg_02",
+      "time_created": 1790000001400,
+      "time_updated": 1790000001400,
+      "data": {
+        "type": "text",
+        "text": "先看 README，再补一行。",
+        "time": {
+          "start": 1790000001350,
+          "end": 1790000001400
+        }
+      }
+    },
+    {
+      "id": "prt_02d",
+      "message_id": "msg_02",
+      "time_created": 1790000001500,
+      "time_updated": 1790000001500,
+      "data": {
+        "type": "tool",
+        "callID": "call_read",
+        "tool": "read",
+        "state": {
+          "status": "completed",
+          "input": {
+            "filePath": "/work/demo/README.md"
+          },
+          "output": "# Demo\n",
+          "title": "README.md",
+          "metadata": {
+            "preview": "# Demo",
+            "truncated": false
+          },
+          "time": {
+            "start": 1790000001450,
+            "end": 1790000001500
+          }
+        }
+      }
+    },
+    {
+      "id": "prt_02e",
+      "message_id": "msg_02",
+      "time_created": 1790000001700,
+      "time_updated": 1790000001700,
+      "data": {
+        "type": "tool",
+        "callID": "call_edit",
+        "tool": "edit",
+        "state": {
+          "status": "completed",
+          "input": {
+            "filePath": "/work/demo/README.md",
+            "oldString": "# Demo",
+            "newString": "# Demo\n新增一行"
+          },
+          "output": "Edit applied successfully.",
+          "title": "README.md",
+          "metadata": {
+            "diagnostics": {},
+            "diff": "--- a/README.md\n+++ b/README.md\n@@ -1 +1,2 @@\n # Demo\n+新增一行\n",
+            "filediff": {
+              "file": "/work/demo/README.md",
+              "patch": "--- a/README.md\n+++ b/README.md\n@@ -1 +1,2 @@\n # Demo\n+新增一行\n",
+              "additions": 1,
+              "deletions": 0
+            }
+          },
+          "time": {
+            "start": 1790000001600,
+            "end": 1790000001700
+          }
+        }
+      }
+    },
+    {
+      "id": "prt_02f",
+      "message_id": "msg_02",
+      "time_created": 1790000001900,
+      "time_updated": 1790000001900,
+      "data": {
+        "type": "tool",
+        "callID": "call_edit2",
+        "tool": "edit",
+        "state": {
+          "status": "completed",
+          "input": {
+            "filePath": "/work/demo/notes.txt"
+          },
+          "output": "Edit applied successfully.",
+          "title": "notes.txt",
+          "metadata": {
+            "filediff": {
+              "file": "/work/demo/notes.txt",
+              "patch": "--- a/notes.txt\n+++ b/notes.txt\n@@ -1,2 +1,2 @@\n keep\n-old line\n+new line\n",
+              "additions": 1,
+              "deletions": 1
+            }
+          },
+          "time": {
+            "start": 1790000001800,
+            "end": 1790000001900
+          }
+        }
+      }
+    },
+    {
+      "id": "prt_02g",
+      "message_id": "msg_02",
+      "time_created": 1790000002100,
+      "time_updated": 1790000002100,
+      "data": {
+        "type": "tool",
+        "callID": "call_write",
+        "tool": "write",
+        "state": {
+          "status": "completed",
+          "input": {
+            "filePath": "/work/demo/new.txt",
+            "content": "hello"
+          },
+          "output": "Wrote file successfully.",
+          "title": "new.txt",
+          "metadata": {
+            "filepath": "/work/demo/new.txt",
+            "exists": false,
+            "diagnostics": {}
+          },
+          "time": {
+            "start": 1790000002000,
+            "end": 1790000002100
+          }
+        }
+      }
+    },
+    {
+      "id": "prt_02h",
+      "message_id": "msg_02",
+      "time_created": 1790000002300,
+      "time_updated": 1790000002300,
+      "data": {
+        "type": "tool",
+        "callID": "call_todo",
+        "tool": "todowrite",
+        "state": {
+          "status": "completed",
+          "input": {
+            "todos": [
+              {
+                "content": "补 README",
+                "status": "completed",
+                "priority": "high"
+              },
+              {
+                "content": "跑测试",
+                "status": "in_progress",
+                "priority": "high"
+              }
+            ]
+          },
+          "output": "[]",
+          "title": "2 todos",
+          "metadata": {
+            "todos": [],
+            "truncated": false
+          },
+          "time": {
+            "start": 1790000002200,
+            "end": 1790000002300
+          }
+        }
+      }
+    },
+    {
+      "id": "prt_02i",
+      "message_id": "msg_02",
+      "time_created": 1790000003000,
+      "time_updated": 1790000003000,
+      "data": {
+        "type": "tool",
+        "callID": "call_bash",
+        "tool": "bash",
+        "state": {
+          "status": "completed",
+          "input": {
+            "command": "pnpm test",
+            "description": "Run tests"
+          },
+          "output": "2 passed\n",
+          "title": "Run tests",
+          "metadata": {
+            "output": "2 passed\n",
+            "exit": 0,
+            "description": "Run tests",
+            "truncated": false
+          },
+          "time": {
+            "start": 1790000002500,
+            "end": 1790000003000
+          }
+        }
+      }
+    },
+    {
+      "id": "prt_02j",
+      "message_id": "msg_02",
+      "time_created": 1790000003500,
+      "time_updated": 1790000003500,
+      "data": {
+        "type": "tool",
+        "callID": "call_bash2",
+        "tool": "bash",
+        "state": {
+          "status": "completed",
+          "input": {
+            "command": "pnpm lint",
+            "description": "Lint"
+          },
+          "output": "1 problem\n",
+          "title": "Lint",
+          "metadata": {
+            "output": "1 problem\n",
+            "exit": 1,
+            "description": "Lint",
+            "truncated": false
+          },
+          "time": {
+            "start": 1790000003200,
+            "end": 1790000003500
+          }
+        }
+      }
+    },
+    {
+      "id": "prt_02k",
+      "message_id": "msg_02",
+      "time_created": 1790000004000,
+      "time_updated": 1790000004000,
+      "data": {
+        "type": "tool",
+        "callID": "call_grep",
+        "tool": "grep",
+        "state": {
+          "status": "completed",
+          "input": {
+            "pattern": "TODO",
+            "path": "/work/demo"
+          },
+          "output": "Found 0 matches",
+          "title": "TODO",
+          "metadata": {
+            "matches": 0,
+            "truncated": false
+          },
+          "time": {
+            "start": 1790000003800,
+            "end": 1790000004000
+          }
+        }
+      }
+    },
+    {
+      "id": "prt_02l",
+      "message_id": "msg_02",
+      "time_created": 1790000005000,
+      "time_updated": 1790000005000,
+      "data": {
+        "type": "step-finish",
+        "reason": "tool-calls",
+        "snapshot": "0000000000000000000000000000000000000000",
+        "cost": 0,
+        "tokens": {
+          "input": 120,
+          "output": 300,
+          "reasoning": 10,
+          "cache": {
+            "read": 8500,
+            "write": 70
+          }
+        }
+      }
+    },
+    {
+      "id": "prt_03a",
+      "message_id": "msg_03",
+      "time_created": 1790000005200,
+      "time_updated": 1790000005200,
+      "data": {
+        "type": "text",
+        "text": "测试通过，lint 有一处问题。",
+        "time": {
+          "start": 1790000005150,
+          "end": 1790000005200
+        }
+      }
+    },
+    {
+      "id": "prt_03b",
+      "message_id": "msg_03",
+      "time_created": 1790000009000,
+      "time_updated": 1790000009000,
+      "data": {
+        "type": "step-finish",
+        "reason": "stop",
+        "cost": 0,
+        "tokens": {
+          "input": 150,
+          "output": 40,
+          "reasoning": 0,
+          "cache": {
+            "read": 9000,
+            "write": 0
+          }
+        }
+      }
+    },
+    {
+      "id": "prt_04a",
+      "message_id": "msg_04",
+      "time_created": 1790000020001,
+      "time_updated": 1790000020001,
+      "data": {
+        "type": "text",
+        "text": "继续修复",
+        "time": {
+          "start": 1790000020001,
+          "end": 1790000020001
+        }
+      }
+    },
+    {
+      "id": "prt_05a",
+      "message_id": "msg_05",
+      "time_created": 1790000020200,
+      "time_updated": 1790000020200,
+      "data": {
+        "type": "text",
+        "text": "还在写…",
+        "time": {
+          "start": 1790000020150
+        }
+      }
+    },
+    {
+      "id": "prt_05b",
+      "message_id": "msg_05",
+      "time_created": 1790000021000,
+      "time_updated": 1790000021000,
+      "data": {
+        "type": "tool",
+        "callID": "call_slow",
+        "tool": "bash",
+        "state": {
+          "status": "running",
+          "input": {
+            "command": "sleep 100"
+          },
+          "time": {
+            "start": 1790000021000
+          }
+        }
+      }
+    },
+    {
+      "id": "prt_05c",
+      "message_id": "msg_05",
+      "time_created": 1790000026000,
+      "time_updated": 1790000026000,
+      "data": {
+        "type": "tool",
+        "callID": "call_bad",
+        "tool": "read",
+        "state": {
+          "status": "error",
+          "input": {
+            "filePath": "/work/demo/missing.md"
+          },
+          "error": "File not found",
+          "time": {
+            "start": 1790000025000,
+            "end": 1790000026000
+          }
+        }
+      }
+    },
+    {
+      "id": "prt_05d",
+      "message_id": "msg_05",
+      "time_created": 1790000026000,
+      "time_updated": 1790000026000,
+      "data": {
+        "type": "patch",
+        "hash": "0000000000000000000000000000000000000000",
+        "files": ["/work/demo/README.md"]
+      }
+    }
+  ]
+}
