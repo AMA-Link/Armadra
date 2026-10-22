@@ -12,6 +12,14 @@ import {
   showPendingApproval,
 } from "./e2e/manager";
 import {
+  type CloudAssertion,
+  CloudError,
+  type CloudDevice,
+  type CloudOptions,
+  browserDevice,
+} from "./cloud-client";
+import { type RelaySession, createRelayedAccess } from "./relay-access";
+import {
   type CloudAuth,
   type CredentialProvider,
   SOURCE_ERROR,
@@ -362,6 +370,92 @@ export function createDesktopCloudAuth(
     },
     invalidate(issuer) {
       cache.delete(issuer);
+    },
+  };
+}
+
+/* --------------------------- 浏览器里的云会话 --------------------------- */
+
+export interface BrowserCloudDeps {
+  /** 控制台的客户端（Cookie 会话）：只用到 `sources.assertion`。 */
+  readonly client: {
+    readonly sources: {
+      assertion(input: {
+        sourceId: string;
+        device: CloudDevice;
+      }): Promise<CloudAssertion>;
+    };
+  };
+  /** 断言的签发方：控制台所在来源。 */
+  readonly issuer: string;
+  /** 端到端通道（契约 §78）；经中继只走它。 */
+  readonly e2e: E2eChannels;
+  /** 源 core 的登录与刷新用（经通道的 `fetch` 由 `e2e` 补上）。 */
+  readonly cloud?: CloudOptions;
+  readonly now?: () => number;
+}
+
+/** 控制台客户端的失败（`status` + `code`）→ 中继登录流程认得的 {@link CloudError}。 */
+function asCloudError(error: unknown): unknown {
+  if (error instanceof CloudError) return error;
+  const { status, code, message } = (error ?? {}) as {
+    status?: unknown;
+    code?: unknown;
+    message?: unknown;
+  };
+  return typeof status === "number" && typeof code === "string"
+    ? new CloudError(status, code, typeof message === "string" ? message : code)
+    : error;
+}
+
+/**
+ * `browser-cloud`（云端控制台 §1.3）：`app.<云>` 上的页面用 Cookie 会话向控制面要断言
+ * （`sources.assertion`，不碰访问令牌），再按 §78 开端到端通道、登录源 core。断言、
+ * 中继令牌与源 core 的会话只在内存里，关标签即丢；`clear()` 在登出时调。
+ */
+export function createBrowserCloudCredentialProvider(
+  deps: BrowserCloudDeps,
+): CredentialProvider & { clear(): void } {
+  const sessions = new Map<string, RelaySession>();
+  const relay = createRelayedAccess({
+    vault: {
+      cloudRefreshToken: async () => null,
+      saveCloudRefreshToken: async () => undefined,
+      session: async (sourceId) => sessions.get(sourceId),
+      async saveSession(sourceId, _issuer, session) {
+        sessions.set(sourceId, session);
+      },
+    },
+    device: () => browserDevice(),
+    assertion: (sourceId, device) =>
+      deps.client.sources
+        .assertion({ sourceId, device })
+        .catch((error: unknown) => {
+          throw asCloudError(error);
+        }),
+    e2e: deps.e2e,
+    ...(deps.cloud === undefined ? {} : { cloud: deps.cloud }),
+    ...(deps.now === undefined ? {} : { now: deps.now }),
+  });
+  const forced = new Set<string>();
+  const used = new Set<string>();
+  const cached = createCachedCredentialProvider(async (sourceId, via) => {
+    used.add(sourceId);
+    if (via !== "relayed") throw new SourceError(SOURCE_ERROR.unreachable);
+    return relay.access(deps.issuer, sourceId, forced.delete(sourceId));
+  }, deps.now);
+  return {
+    getAccess: (sourceId, via) => cached.getAccess(sourceId, via),
+    refresh(sourceId, via) {
+      forced.add(sourceId);
+      return cached.refresh(sourceId, via);
+    },
+    invalidate: (sourceId) => cached.invalidate(sourceId),
+    clear() {
+      sessions.clear();
+      forced.clear();
+      for (const sourceId of used) cached.invalidate(sourceId);
+      used.clear();
     },
   };
 }
