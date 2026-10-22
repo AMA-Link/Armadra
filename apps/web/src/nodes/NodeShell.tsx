@@ -2,7 +2,6 @@ import * as React from "react";
 import type { CanvasNode } from "@armadra/shared";
 import {
   AtSign,
-  Check,
   ChevronDown,
   ChevronRight,
   Expand,
@@ -13,6 +12,7 @@ import {
   X,
 } from "lucide-react";
 
+import { HeaderApproval } from "@/approval/ApprovalShell";
 import { cn } from "@/lib/cn";
 import { Button } from "@/ui/button";
 import {
@@ -349,30 +349,7 @@ export function NodeHeader({
         </span>
       )}
 
-      {approval && (
-        <span className="node-header-approval flex shrink-0 items-center gap-0.5">
-          <Button
-            size="xs"
-            variant="ghost"
-            className="text-[var(--success)]"
-            aria-label={t("node.allow")}
-            onClick={() => approval.onAnswer("allow")}
-          >
-            <Check />
-            <span>{t("node.allow")}</span>
-          </Button>
-          <Button
-            size="xs"
-            variant="ghost"
-            className="text-[var(--danger-text)]"
-            aria-label={t("node.deny")}
-            onClick={() => approval.onAnswer("deny")}
-          >
-            <X />
-            <span>{t("node.deny")}</span>
-          </Button>
-        </span>
-      )}
+      {approval && <HeaderApproval onAnswer={approval.onAnswer} />}
 
       <span
         data-slot="node-header-actions"

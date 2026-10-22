@@ -173,6 +173,35 @@ describe("SharedSessionPage", () => {
     screen.getByRole("button", { name: "关闭" }).click();
     expect(close).toHaveBeenCalled();
   });
+  it("画同一张卡，按钮换成「等待接管」，访客点不到任何选项", async () => {
+    calls.get.mockResolvedValue(row("acp"));
+    const core = new FakeCore();
+    core.state = applyOps(core, [
+      put(1, { ...user(1, "run it"), id: "u:1" }),
+      put(2, {
+        id: "ap:p1",
+        kind: "approval",
+        turn: 1,
+        ord: 3,
+        rev: 0,
+        source: "acp",
+        at: 2,
+        gen: 1,
+        pendingId: "p1",
+        protocol: "acp",
+        options: [
+          { optionId: "ok", name: "Allow", kind: "allow_once" },
+          { optionId: "no", name: "Reject", kind: "reject_once" },
+        ],
+        state: "pending",
+      } as never),
+    ]);
+    setTimelineTransportFactory(() => core.transport);
+    render(wrap(<SharedSessionPage target={target} onClose={vi.fn()} />));
+    expect(await screen.findByText("等待接管")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "本次允许" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "拒绝" })).toBeNull();
+  });
 });
 
 describe("SharedSessionHost", () => {
