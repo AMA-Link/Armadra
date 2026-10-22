@@ -62,7 +62,10 @@ export function TrafficBreakdown({
   const empty = up === 0 && down === 0 && streams === 0;
 
   return (
-    <div data-slot="traffic-breakdown" className="flex flex-col gap-4">
+    <div
+      data-slot="traffic-breakdown"
+      className="flex flex-col gap-(--space-section)"
+    >
       <dl className="grid grid-cols-3 gap-2">
         <Cell
           icon={<ArrowUp />}

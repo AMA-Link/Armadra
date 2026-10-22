@@ -78,13 +78,13 @@ export function RenameDialog({
           <ResponsiveDialogTitle>{t("services.rename")}</ResponsiveDialogTitle>
         </ResponsiveDialogHeader>
         <form
-          className="flex flex-col gap-4"
+          className="flex flex-col gap-(--space-block)"
           onSubmit={(event) => {
             event.preventDefault();
             void submit();
           }}
         >
-          <Field className="gap-1.5" data-invalid={error !== ""}>
+          <Field className="gap-2" data-invalid={error !== ""}>
             <FieldLabel htmlFor={`${id}-name`}>{t("services.name")}</FieldLabel>
             <Input
               id={`${id}-name`}

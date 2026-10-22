@@ -418,7 +418,7 @@ function Gallery() {
   const [open, setOpen] = React.useState(true);
   const [code, setCode] = React.useState("204");
   return (
-    <div className="flex flex-wrap gap-x-8 gap-y-6">
+    <div className="flex flex-wrap gap-x-8 gap-y-(--space-block)">
       <Sample name="badge">
         {BADGE_VARIANTS.map((variant) => (
           <Badge key={variant} variant={variant}>

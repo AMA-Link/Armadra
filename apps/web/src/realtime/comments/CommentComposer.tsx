@@ -163,7 +163,10 @@ export function CommentComposer({
   const activeId = matches[active]?.principalId ?? "";
 
   return (
-    <div data-slot="comment-composer" className="flex flex-col gap-2">
+    <div
+      data-slot="comment-composer"
+      className="flex flex-col gap-(--space-group)"
+    >
       <Tabs
         value={tab}
         onValueChange={(value) => {

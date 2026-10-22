@@ -379,72 +379,83 @@ export function ServicePicker({
   const showOriginHeads = originGroups.length > 1;
 
   return (
-    <div data-slot="service-picker" className="flex flex-col gap-4">
+    <div
+      data-slot="service-picker"
+      className="flex flex-col gap-(--space-section)"
+    >
       {layout.recent.length > 0 && (
-        <section className="flex flex-col gap-2">
+        <section className="flex flex-col gap-(--space-group)">
           <h2 className={HEADING}>{t("services.recent")}</h2>
           <ItemGroup className="gap-2">
             {layout.recent.map((row) => renderRow(row, "recent"))}
           </ItemGroup>
         </section>
       )}
-      {layout.recent.length > 0 && (
-        <h2 className={`${HEADING} -mb-2`}>{t("services.all")}</h2>
-      )}
-      {variant === "page" &&
-        originGroups.map((group) => (
-          <section
-            key={group.key}
-            data-service-group={group.key}
-            className="flex flex-col gap-2"
-          >
-            {showOriginHeads && (
-              <h3 className={HEADING}>{t(`services.group.${group.key}`)}</h3>
-            )}
-            <ItemGroup className="gap-2">
-              {group.rows.map((row) => renderRow(row, group.key))}
-            </ItemGroup>
-          </section>
-        ))}
-      {variant === "dialog" &&
-        layout.groups.map((group) => {
-          const out =
-            group.kind === "relay" && signedOut.includes(group.issuer);
-          return (
-            <section
-              key={group.key}
-              data-service-group={group.key}
-              className="flex flex-col gap-2"
-            >
-              {(showGroupHeads || out) && (
-                <div className="flex min-h-6 items-center gap-2">
-                  <h3 className={`${HEADING} min-w-0 flex-1 truncate`}>
-                    {groupTitle(group, t)}
+      <div className="flex flex-col gap-(--space-group)">
+        {layout.recent.length > 0 && (
+          <h2 className={HEADING}>{t("services.all")}</h2>
+        )}
+        <div className="flex flex-col gap-(--space-section)">
+          {variant === "page" &&
+            originGroups.map((group) => (
+              <section
+                key={group.key}
+                data-service-group={group.key}
+                className="flex flex-col gap-(--space-group)"
+              >
+                {showOriginHeads && (
+                  <h3 className={HEADING}>
+                    {t(`services.group.${group.key}`)}
                   </h3>
-                  {out && (
-                    <>
-                      <Badge variant="outline">{t("remote.signedOut")}</Badge>
-                      {onSignIn && (
-                        <Button
-                          type="button"
-                          size="xs"
-                          variant="ghost"
-                          disabled={locked}
-                          onClick={() => onSignIn(group.issuer)}
-                        >
-                          {t("remote.signIn")}
-                        </Button>
+                )}
+                <ItemGroup className="gap-2">
+                  {group.rows.map((row) => renderRow(row, group.key))}
+                </ItemGroup>
+              </section>
+            ))}
+          {variant === "dialog" &&
+            layout.groups.map((group) => {
+              const out =
+                group.kind === "relay" && signedOut.includes(group.issuer);
+              return (
+                <section
+                  key={group.key}
+                  data-service-group={group.key}
+                  className="flex flex-col gap-(--space-group)"
+                >
+                  {(showGroupHeads || out) && (
+                    <div className="flex min-h-6 items-center gap-2">
+                      <h3 className={`${HEADING} min-w-0 flex-1 truncate`}>
+                        {groupTitle(group, t)}
+                      </h3>
+                      {out && (
+                        <>
+                          <Badge variant="outline">
+                            {t("remote.signedOut")}
+                          </Badge>
+                          {onSignIn && (
+                            <Button
+                              type="button"
+                              size="xs"
+                              variant="ghost"
+                              disabled={locked}
+                              onClick={() => onSignIn(group.issuer)}
+                            >
+                              {t("remote.signIn")}
+                            </Button>
+                          )}
+                        </>
                       )}
-                    </>
+                    </div>
                   )}
-                </div>
-              )}
-              <ItemGroup className="gap-2">
-                {group.rows.map((row) => renderRow(row, group.key))}
-              </ItemGroup>
-            </section>
-          );
-        })}
+                  <ItemGroup className="gap-2">
+                    {group.rows.map((row) => renderRow(row, group.key))}
+                  </ItemGroup>
+                </section>
+              );
+            })}
+        </div>
+      </div>
       {onRename && (
         <RenameDialog
           target={renaming}

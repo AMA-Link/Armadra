@@ -85,7 +85,10 @@ export function DispatchView({
     !loading && model.members.length === 0 && model.summaries.length === 0;
 
   return (
-    <div data-slot="dispatch-view" className="flex min-w-0 flex-col gap-3 p-3">
+    <div
+      data-slot="dispatch-view"
+      className="flex min-w-0 flex-col gap-(--space-block) p-(--space-page)"
+    >
       {offline ? (
         <Alert data-slot="dispatch-offline">
           <AlertTitle className="text-xs">
