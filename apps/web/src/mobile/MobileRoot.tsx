@@ -31,6 +31,8 @@ import { loadRecent } from "../services/recent";
 import { serviceRowOf } from "../services/rows";
 import { usePushRotation } from "./push-rotation";
 
+const ConsoleRoot = React.lazy(() => import("../cloud/ConsoleRoot"));
+
 /**
  * 入口分支（`main.tsx`）：连接页，或者画布本体加两样手机细节——推送权限提示
  * 、「点通知进焦点页」与推送令牌轮换后的重新登记。桌面窗口里 `entry` 恒为 `app`，这两样也不出现
@@ -47,6 +49,12 @@ export function MobileRoot({ entry: initial }: { entry: Entry }) {
     [connected],
   );
   if (connected) return <ConnectedApp />;
+  if (entry.kind === "console")
+    return (
+      <React.Suspense fallback={<EntrySkeleton />}>
+        <ConsoleRoot />
+      </React.Suspense>
+    );
   if (entry.kind === "join")
     return <JoinPage onJoined={() => setConnected(true)} />;
   if (entry.kind === "mfa") {

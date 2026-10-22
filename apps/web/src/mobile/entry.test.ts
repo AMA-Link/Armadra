@@ -149,6 +149,39 @@ describe("入口分支", () => {
     resetHostedRelay();
   });
 
+  it("SaaS 控制台（同源平台信息 mode = saas、webApp 是页面来源）→ console；开发构建与画布路径不问", async () => {
+    const fetch = vi.fn<typeof globalThis.fetch>(
+      async () =>
+        new Response(
+          JSON.stringify({
+            mode: "saas",
+            issuer: location.origin,
+            capabilities: [],
+            webApp: location.origin,
+          }),
+        ),
+    );
+    vi.stubGlobal("fetch", fetch);
+    history.replaceState(null, "", "/t/rd/hosts");
+    // 开发构建（Vite 开发服务器）背后不是控制台：不问。
+    await expect(prepareEntry()).resolves.toEqual({ kind: "app" });
+    expect(fetch).not.toHaveBeenCalled();
+    vi.stubEnv("DEV", false);
+    try {
+      await expect(prepareEntry()).resolves.toEqual({
+        kind: "console",
+        path: "/t/rd/hosts",
+      });
+      history.replaceState(null, "", "/h/abc");
+      await expect(prepareEntry()).resolves.toEqual({ kind: "app" });
+      history.replaceState(null, "", "/me");
+      mocks.served = true;
+      await expect(prepareEntry()).resolves.toMatchObject({ kind: "connect" });
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
   it("桌面与普通网页直接是画布，不装任何传输", async () => {
     await expect(prepareEntry()).resolves.toEqual({ kind: "app" });
     history.replaceState(null, "", "/#pair=abc");
