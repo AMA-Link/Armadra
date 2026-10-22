@@ -485,8 +485,8 @@ export function CreatePlanForm({
   }
 
   return (
-    <form className="min-w-0 space-y-4 p-3" onSubmit={submit}>
-      <fieldset className="min-w-0 space-y-3" disabled={busy}>
+    <form className="min-w-0 p-(--space-page)" onSubmit={submit}>
+      <fieldset className="min-w-0 space-y-(--space-block)" disabled={busy}>
         {field(
           t("automation.wizard.location"),
           <p className="truncate rounded-md border border-border px-3 py-2 text-[12px] text-muted-foreground select-text">

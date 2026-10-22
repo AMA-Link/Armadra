@@ -295,7 +295,7 @@ export function AutomationDrawer() {
             className="mt-0 flex min-h-0 flex-col data-[state=inactive]:hidden"
           >
             <ScrollArea className="min-h-0 flex-1">
-              <div className="min-w-0 space-y-2 p-3">
+              <div className="flex min-w-0 flex-col gap-(--space-group) p-(--space-page)">
                 {plans.isLoading && (
                   <Loadable
                     loading
@@ -414,7 +414,11 @@ export function AutomationDrawer() {
 /** 计划行的占位：与 `PlanRow` 同样的卡片圆角与 `p-3` 外距。 */
 function AutomationSkeleton({ label }: { label: string }) {
   return (
-    <div role="status" aria-label={label} className="space-y-2 p-3">
+    <div
+      role="status"
+      aria-label={label}
+      className="flex flex-col gap-(--space-group) p-(--space-page)"
+    >
       <Skeleton className="h-16 w-full rounded-[var(--r-card)]" />
       <Skeleton className="h-16 w-full rounded-[var(--r-card)]" />
     </div>

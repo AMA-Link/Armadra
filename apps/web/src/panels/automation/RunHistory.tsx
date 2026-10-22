@@ -57,7 +57,7 @@ export function RunHistory({
   const rows = runs.data?.pages.flatMap((page) => page.runs) ?? [];
 
   return (
-    <div className="min-w-0 space-y-3 p-3">
+    <div className="flex min-w-0 flex-col gap-(--space-block) p-(--space-page)">
       <Select value={planId ?? ""} onValueChange={onSelect}>
         <SelectTrigger
           aria-label={t("automation.runs.plan")}
@@ -81,7 +81,7 @@ export function RunHistory({
           <div
             role="status"
             aria-label={t("state.loading")}
-            className="min-w-0 space-y-3"
+            className="flex min-w-0 flex-col gap-(--space-group)"
           >
             {[0, 1, 2].map((index) => (
               <Skeleton key={index} className="h-24 w-full rounded-lg" />
@@ -102,56 +102,58 @@ export function RunHistory({
         </Empty>
       )}
 
-      {rows.map(({ run }) =>
-        !run ? null : (
-          <section
-            key={run.id}
-            data-slot="automation-run"
-            data-run-id={run.id}
-            className="min-w-0 space-y-1 rounded-lg border border-border px-3 py-2 text-[12px]"
-          >
-            <div className="flex min-w-0 flex-wrap items-center gap-2">
-              <Badge variant="secondary">{t(runStateKey(run))}</Badge>
-              <Badge variant="outline">
-                {t(`automation.receipt.${receiptPhase(run)}`)}
-              </Badge>
-              {run.misfire && (
-                <Badge variant="ghost">{t("automation.run.misfire")}</Badge>
-              )}
-            </div>
-            <dl className="grid min-w-0 grid-cols-[auto_1fr] gap-x-3 gap-y-1">
-              <dt className="text-muted-foreground">
-                {t("automation.run.scheduled")}
-              </dt>
-              <dd className="min-w-0 truncate">
-                {instant(run.scheduledAtUnixMs, locale) ??
-                  t("automation.unknownTime")}
-              </dd>
-              <dt className="text-muted-foreground">
-                {t("automation.run.completed")}
-              </dt>
-              <dd className="min-w-0 truncate">
-                {instant(run.completedAtUnixMs, locale) ??
-                  t("automation.unknownTime")}
-              </dd>
-              <dt className="text-muted-foreground">
-                {t("automation.run.attempts")}
-              </dt>
-              <dd className="tabular-nums">{run.dispatchAttempts}</dd>
-              {reasonLabel(run.reasonCode) ? (
-                <>
-                  <dt className="text-muted-foreground">
-                    {t("automation.run.reason")}
-                  </dt>
-                  <dd className="min-w-0 truncate font-mono text-[11px] select-text">
-                    {reasonLabel(run.reasonCode)}
-                  </dd>
-                </>
-              ) : null}
-            </dl>
-          </section>
-        ),
-      )}
+      <div className="flex min-w-0 flex-col gap-(--space-group)">
+        {rows.map(({ run }) =>
+          !run ? null : (
+            <section
+              key={run.id}
+              data-slot="automation-run"
+              data-run-id={run.id}
+              className="min-w-0 space-y-1 rounded-lg border border-border p-3 text-[12px]"
+            >
+              <div className="flex min-w-0 flex-wrap items-center gap-2">
+                <Badge variant="secondary">{t(runStateKey(run))}</Badge>
+                <Badge variant="outline">
+                  {t(`automation.receipt.${receiptPhase(run)}`)}
+                </Badge>
+                {run.misfire && (
+                  <Badge variant="ghost">{t("automation.run.misfire")}</Badge>
+                )}
+              </div>
+              <dl className="grid min-w-0 grid-cols-[auto_1fr] gap-x-3 gap-y-1">
+                <dt className="text-muted-foreground">
+                  {t("automation.run.scheduled")}
+                </dt>
+                <dd className="min-w-0 truncate">
+                  {instant(run.scheduledAtUnixMs, locale) ??
+                    t("automation.unknownTime")}
+                </dd>
+                <dt className="text-muted-foreground">
+                  {t("automation.run.completed")}
+                </dt>
+                <dd className="min-w-0 truncate">
+                  {instant(run.completedAtUnixMs, locale) ??
+                    t("automation.unknownTime")}
+                </dd>
+                <dt className="text-muted-foreground">
+                  {t("automation.run.attempts")}
+                </dt>
+                <dd className="tabular-nums">{run.dispatchAttempts}</dd>
+                {reasonLabel(run.reasonCode) ? (
+                  <>
+                    <dt className="text-muted-foreground">
+                      {t("automation.run.reason")}
+                    </dt>
+                    <dd className="min-w-0 truncate font-mono text-[11px] select-text">
+                      {reasonLabel(run.reasonCode)}
+                    </dd>
+                  </>
+                ) : null}
+              </dl>
+            </section>
+          ),
+        )}
+      </div>
 
       {/*
         显式的「加载更早」，不是滚到底自动拉：翻页会打 Host，而一个正在读的人

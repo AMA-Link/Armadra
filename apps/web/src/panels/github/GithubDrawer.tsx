@@ -145,7 +145,7 @@ export function GithubDrawer() {
       {blocked ? (
         <div
           role="status"
-          className="min-w-0 space-y-3 p-4 text-[13px] leading-5"
+          className="flex min-w-0 flex-col items-start gap-(--space-group) p-(--space-page) text-[13px] leading-5"
         >
           <p className="text-muted-foreground">
             {t(`github.blocked.${blocked}`)}
@@ -202,7 +202,7 @@ export function GithubDrawer() {
             <div
               role="status"
               data-slot="forge-unconfigured"
-              className="min-w-0 space-y-3 p-3 text-[13px] leading-5"
+              className="flex min-w-0 flex-col items-start gap-(--space-group) p-(--space-page) text-[13px] leading-5"
             >
               <p className="text-muted-foreground">
                 {t(

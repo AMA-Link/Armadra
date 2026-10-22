@@ -102,7 +102,7 @@ export function PlanRow({
     <section
       data-slot="automation-plan"
       data-plan-id={plan.id}
-      className="min-w-0 space-y-2 rounded-lg border border-border px-3 py-2"
+      className="min-w-0 space-y-2 rounded-lg border border-border p-3"
     >
       <div className="flex min-w-0 flex-wrap items-center gap-2">
         <h3 className="min-w-0 flex-1 truncate text-[13px] font-medium">

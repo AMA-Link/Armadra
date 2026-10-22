@@ -287,7 +287,7 @@ function IssueList({
       loading={issues.isLoading}
       skeleton={<ForgeListSkeleton label={t("state.loading")} />}
     >
-      <div className="min-w-0 space-y-2 p-3">
+      <div className="min-w-0 space-y-1.5 p-(--space-page)">
         {issues.data && items.length === 0 && (
           <p className="text-[12px] text-muted-foreground">
             {t("forge.empty")}
@@ -345,7 +345,7 @@ function PullList({
       loading={pulls.isLoading}
       skeleton={<ForgeListSkeleton label={t("state.loading")} />}
     >
-      <div className="min-w-0 space-y-2 p-3">
+      <div className="min-w-0 space-y-1.5 p-(--space-page)">
         {pulls.data && items.length === 0 && (
           <p className="text-[12px] text-muted-foreground">
             {t("forge.empty")}
@@ -386,7 +386,7 @@ export function ForgeListSkeleton({ label }: { label: string }) {
       aria-busy="true"
       aria-label={label}
       data-slot="forge-list-skeleton"
-      className="min-w-0 space-y-2 p-3"
+      className="min-w-0 space-y-1.5 p-(--space-page)"
     >
       {[0, 1, 2, 3, 4].map((index) => (
         <div
@@ -412,7 +412,7 @@ function ForgeDetailSkeleton({ label }: { label: string }) {
       role="status"
       aria-busy="true"
       aria-label={label}
-      className="flex min-w-0 flex-col gap-3"
+      className="flex min-w-0 flex-col gap-(--space-block)"
     >
       <Skeleton className="h-5 w-3/4" />
       <Skeleton className="h-5 w-24 rounded-full" />
@@ -538,7 +538,10 @@ function IssueDetail({
     retry: false,
   });
   return (
-    <div className="min-w-0 space-y-3 p-3" data-slot="forge-issue-detail">
+    <div
+      className="flex min-w-0 flex-col gap-(--space-block) p-(--space-page)"
+      data-slot="forge-issue-detail"
+    >
       <Back onBack={onBack} url={issue.data?.url ?? ""} />
       {issue.isError && <Failure error={issue.error} />}
       {issue.isLoading && <ForgeDetailLoading />}
@@ -551,21 +554,25 @@ function IssueBody({ issue, locale }: { issue: ForgeIssue; locale: string }) {
   const t = useT();
   return (
     <>
-      <Heading number={issue.number} title={issue.title} />
-      <div className="flex min-w-0 flex-wrap items-center gap-2">
-        <Badge variant="secondary">{t(`forge.state.${issue.state}`)}</Badge>
-        {issue.labels.map((label) => (
-          <Badge key={label} variant="outline">
-            {label}
-          </Badge>
-        ))}
+      <div className="flex min-w-0 flex-col gap-(--space-group)">
+        <Heading number={issue.number} title={issue.title} />
+        <div className="flex min-w-0 flex-wrap items-center gap-2">
+          <Badge variant="secondary">{t(`forge.state.${issue.state}`)}</Badge>
+          {issue.labels.map((label) => (
+            <Badge key={label} variant="outline">
+              {label}
+            </Badge>
+          ))}
+        </div>
+        <dl className="grid min-w-0 grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-[12px]">
+          <dt className="text-muted-foreground">{t("forge.author")}</dt>
+          <dd className="min-w-0 truncate">{issue.author}</dd>
+          <dt className="text-muted-foreground">{t("forge.updatedAt")}</dt>
+          <dd className="min-w-0 truncate">
+            {when(issue.updatedAtMs, locale)}
+          </dd>
+        </dl>
       </div>
-      <dl className="grid min-w-0 grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-[12px]">
-        <dt className="text-muted-foreground">{t("forge.author")}</dt>
-        <dd className="min-w-0 truncate">{issue.author}</dd>
-        <dt className="text-muted-foreground">{t("forge.updatedAt")}</dt>
-        <dd className="min-w-0 truncate">{when(issue.updatedAtMs, locale)}</dd>
-      </dl>
       <Body text={issue.body} />
     </>
   );
@@ -590,7 +597,10 @@ function PullDetail({
     retry: false,
   });
   return (
-    <div className="min-w-0 space-y-3 p-3" data-slot="forge-pull-detail">
+    <div
+      className="flex min-w-0 flex-col gap-(--space-block) p-(--space-page)"
+      data-slot="forge-pull-detail"
+    >
       <Back onBack={onBack} url={pull.data?.url ?? ""} />
       {pull.isError && <Failure error={pull.error} />}
       {pull.isLoading && <ForgeDetailLoading />}
@@ -609,21 +619,23 @@ export function PullBody({
   const t = useT();
   return (
     <>
-      <Heading number={pull.number} title={pull.title} />
-      <div className="flex min-w-0 flex-wrap items-center gap-2">
-        <Badge variant="secondary">{t(`forge.state.${pull.state}`)}</Badge>
-        {pull.draft && <Badge variant="outline">{t("forge.draft")}</Badge>}
+      <div className="flex min-w-0 flex-col gap-(--space-group)">
+        <Heading number={pull.number} title={pull.title} />
+        <div className="flex min-w-0 flex-wrap items-center gap-2">
+          <Badge variant="secondary">{t(`forge.state.${pull.state}`)}</Badge>
+          {pull.draft && <Badge variant="outline">{t("forge.draft")}</Badge>}
+        </div>
+        <dl className="grid min-w-0 grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-[12px]">
+          <dt className="text-muted-foreground">{t("forge.pull.branches")}</dt>
+          <dd className="min-w-0 truncate font-mono">
+            {pull.headRef} → {pull.baseRef}
+          </dd>
+          <dt className="text-muted-foreground">{t("forge.author")}</dt>
+          <dd className="min-w-0 truncate">{pull.author}</dd>
+          <dt className="text-muted-foreground">{t("forge.updatedAt")}</dt>
+          <dd className="min-w-0 truncate">{when(pull.updatedAtMs, locale)}</dd>
+        </dl>
       </div>
-      <dl className="grid min-w-0 grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-[12px]">
-        <dt className="text-muted-foreground">{t("forge.pull.branches")}</dt>
-        <dd className="min-w-0 truncate font-mono">
-          {pull.headRef} → {pull.baseRef}
-        </dd>
-        <dt className="text-muted-foreground">{t("forge.author")}</dt>
-        <dd className="min-w-0 truncate">{pull.author}</dd>
-        <dt className="text-muted-foreground">{t("forge.updatedAt")}</dt>
-        <dd className="min-w-0 truncate">{when(pull.updatedAtMs, locale)}</dd>
-      </dl>
       <Body text={pull.body} />
     </>
   );

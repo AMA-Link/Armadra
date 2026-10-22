@@ -172,7 +172,7 @@ function HunkSession({
     confirmation.digest === query.data.diffDigest &&
     query.data.hunks.some((hunk) => hunk.id === confirmation.hunk.id);
   return (
-    <section aria-label={t("gitHunk.title")} className="min-w-0 space-y-3 p-3">
+    <section aria-label={t("gitHunk.title")} className="min-w-0 space-y-2 p-3">
       <div className="flex min-w-0 flex-wrap items-center gap-2">
         <h3 className="min-w-0 flex-1 break-all text-xs font-medium">{file}</h3>
         <Badge variant="outline">
@@ -226,7 +226,7 @@ function HunkSession({
         query.data.hunks.map((hunk) => (
           <section
             key={hunk.id}
-            className="min-w-0 space-y-2 rounded-md border border-border p-2"
+            className="min-w-0 space-y-2 rounded-md border border-border p-3"
           >
             <HunkBody hunk={hunk} />
             <div className="flex flex-wrap gap-2">
