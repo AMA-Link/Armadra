@@ -1,6 +1,6 @@
 // 中继托管页面端到端探针（客户端包 §5，A3-4）。
 //
-// 真个人中转（armadra-cloud 的 `personal serve`，自签 TLS，`/app/` 托管本仓库的
+// 真个人中转（Go 中继的 `personal serve`，找法见 `cloud-source.mjs`；自签 TLS，`/app/` 托管本仓库的
 // `apps/web/dist`）、真 core（登记到中继、隧道连上、中继账号绑定为主人）、新
 // profile 的无头 Chrome：
 //
@@ -21,13 +21,19 @@
 // 用法（仓库根目录）：
 //   pnpm libs:build && pnpm --filter @armadra/desktop build && pnpm --filter @armadra/web build
 //   ARMADRA_PERSONAL_RELAY_HOME=<armadra-cloud 检出> node tools/probes/relay-web-e2e.mjs [输出目录]
+//   （或 ARMADRA_RELAY_BIN=<Go 中继二进制>）
 //
 // 产物默认在 target/relay-web-e2e/：result.json 与每一步的截图。
-import { spawn } from "node:child_process";
 import { X509Certificate, createHash, randomBytes } from "node:crypto";
 import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 
+import {
+  NO_RELAY_HINT,
+  findCloudSource,
+  relayAvailable,
+  spawnRelayCli,
+} from "./cloud-source.mjs";
 import {
   freePort,
   makeNode,
@@ -41,7 +47,7 @@ import {
 import { probeSession } from "./probe-session.mjs";
 import { runDesktop } from "./relay-desktop.mjs";
 
-const cloudHome = process.env.ARMADRA_PERSONAL_RELAY_HOME?.trim() ?? "";
+const cloudHome = findCloudSource();
 const output = resolve(
   process.argv.slice(2).find((arg) => !arg.startsWith("--")) ??
     join(root, "target/relay-web-e2e"),
@@ -49,8 +55,8 @@ const output = resolve(
 rmSync(output, { recursive: true, force: true });
 mkdirSync(output, { recursive: true });
 
-if (!cloudHome || !existsSync(join(cloudHome, "apps/relay/src/cli.ts"))) {
-  console.error("要 ARMADRA_PERSONAL_RELAY_HOME 指到 armadra-cloud 的检出");
+if (!relayAvailable(cloudHome)) {
+  console.error(NO_RELAY_HINT);
   process.exit(2);
 }
 const webRoot = join(root, "apps/web/dist");
@@ -70,11 +76,9 @@ const opened = [];
 /* --------------------------------- 中继 --------------------------------- */
 
 function startRelay(dataDir, port, passwordFile) {
-  const child = spawn(
-    process.execPath,
+  const child = spawnRelayCli(
+    cloudHome,
     [
-      "apps/relay/src/cli.ts",
-      "personal",
       "serve",
       "--data-dir",
       dataDir,
@@ -90,8 +94,6 @@ function startRelay(dataDir, port, passwordFile) {
       "warn",
     ],
     {
-      cwd: cloudHome,
-      stdio: ["ignore", "pipe", "pipe"],
       env: {
         ...process.env,
         RELAY_PERSONAL_ACCOUNT: "dev",

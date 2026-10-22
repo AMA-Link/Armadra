@@ -37,7 +37,11 @@ import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
-import { CLOUD_ENTRY, findCloudSource } from "./cloud-source.mjs";
+import {
+  NO_RELAY_HINT,
+  findCloudSource,
+  relayAvailable,
+} from "./cloud-source.mjs";
 import {
   caFingerprint,
   nodeAt,
@@ -67,10 +71,8 @@ rmSync(output, { recursive: true, force: true });
 mkdirSync(output, { recursive: true });
 
 const cloudHome = findCloudSource();
-if (!cloudHome) {
-  console.error(
-    `没有 armadra-cloud 的本地检出（${CLOUD_ENTRY}）：设 ARMADRA_DEV_STACK_CLOUD_SRC 或放在仓库旁的 ../armadra-cloud`,
-  );
+if (!relayAvailable(cloudHome)) {
+  console.error(NO_RELAY_HINT);
   process.exit(2);
 }
 let webkit;
