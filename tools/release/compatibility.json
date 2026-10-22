@@ -59,7 +59,7 @@
     },
     "tarball": {
       "file": "armadra-platform-protocol-0.9.3.tgz",
-      "sha256": "4460f65b35b586f7e20b2f958a5affca24e534f879fdbb345a8849a976b74dd1"
+      "sha256": "57d7398965472270a44edbc56fa945693199b7fd3eaea566896eb7326b7fb1db"
     },
     "images": {
       "cloud": "ghcr.io/ama-link/armadra-cloud:0.9.3",
