@@ -7,6 +7,7 @@
 import * as React from "react";
 import {
   completionSettingsSchema,
+  defaultAgentDriver,
   type AgentDriver,
   type AgentInfo,
   type TerminalAgent,
@@ -110,8 +111,12 @@ export function useDefaultDriverSync(): AgentDriver {
  * 改设置不该把已有节点翻成另一种视图。
  */
 export function preferredDriver(
-  agent: Pick<AgentInfo, "acp">,
+  agent: Pick<AgentInfo, "acp" | "baseAgent">,
   setting: AgentDriver = defaultDriverSetting,
 ): AgentDriver {
-  return setting === "acp" && agent.acp?.installed ? "acp" : "terminal";
+  return defaultAgentDriver({
+    setting,
+    acpInstalled: agent.acp?.installed === true,
+    ownLaunch: agent.baseAgent !== undefined && agent.acp?.support !== "native",
+  });
 }

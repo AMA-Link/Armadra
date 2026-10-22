@@ -416,6 +416,24 @@ export function SessionView({
   const pinned =
     !readOnly && pendingCards.length === 1 ? pendingCards[0] : undefined;
   const pinnedId = pinned?.pendingId;
+  const focusInput = React.useCallback(
+    () => inputRef.current?.focus({ preventScroll: true }),
+    [],
+  );
+  // 钉住的那张卡出现时读一次（焦点不一定能落过去：人可能正在输入框里打字）。
+  const needAnnouncement = React.useMemo(() => {
+    if (pinned === undefined) return "";
+    if (pinned.kind === "elicitation")
+      return t("acp.elicitation.announce", {
+        title: pinned.message.slice(0, ANNOUNCE_CHARS),
+      });
+    const tool = feed.items.find(
+      (item) => item.kind === "tool" && item.toolCallId === pinned.toolCallId,
+    );
+    return t("acp.permission.announce", {
+      title: (tool?.kind === "tool" ? tool.title : "").slice(0, ANNOUNCE_CHARS),
+    });
+  }, [pinned, feed.items, t]);
 
   const renderApproval = React.useCallback(
     (approval: TimelineApprovalItem) =>
@@ -857,6 +875,9 @@ export function SessionView({
         <div role="status" className="sr-only">
           {announcement}
         </div>
+        <div aria-live="polite" className="sr-only">
+          {needAnnouncement}
+        </div>
         {pinned?.kind === "approval" && (
           <ApprovalCard
             key={pinned.pendingId}
@@ -864,6 +885,7 @@ export function SessionView({
             canAnswer={canAnswer}
             pinned
             className="mx-2 mb-1.5"
+            onAnswered={focusInput}
           />
         )}
         {pinned?.kind === "elicitation" && (
@@ -872,6 +894,7 @@ export function SessionView({
             item={pinned}
             canAnswer={canAnswer}
             className="mx-2 mb-1.5"
+            onAnswered={focusInput}
           />
         )}
         {!readOnly && (

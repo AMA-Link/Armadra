@@ -6,22 +6,24 @@
  * 给进来。已答复 / 已取消的条目收成一行结局。
  */
 import * as React from "react";
+import { Check, X } from "lucide-react";
 import type {
   AcpElicitationForm,
   AcpPermissionOption,
+  AcpToolKind,
   TimelineApprovalItem,
   TimelineElicitationItem,
   TimelineItem,
   TimelineToolItem,
 } from "@armadra/shared";
-import { acpElicitationFormSchema } from "@armadra/shared";
+import { acpElicitationFormSchema, acpToolKindSchema } from "@armadra/shared";
 
 import { useT } from "@/app/preferences-store";
 import { Badge } from "@/ui/badge";
 import { useAnsweredStore } from "./answered";
 import type { AcpElicitationView, AcpPermissionView } from "./approval-views";
 import { ElicitationCard } from "./ElicitationCard";
-import { PermissionCard } from "./PermissionCard";
+import { isAllowOption, PermissionCard } from "./PermissionCard";
 
 const ToolLookup = React.createContext<Readonly<Record<string, TimelineItem>>>(
   {},
@@ -51,6 +53,9 @@ export function permissionViewOf(
       ...(tool === undefined
         ? {}
         : {
+            ...(acpToolKindSchema.safeParse(tool.toolKind).success
+              ? { kind: tool.toolKind as AcpToolKind }
+              : {}),
             locations: tool.locations.map((location) => ({
               path: location.path,
               ...(location.line === undefined ? {} : { line: location.line }),
@@ -104,17 +109,26 @@ function OutcomeLine({
   slot,
   label,
   by,
+  tone,
 }: {
   slot: string;
   label: string;
   by: string | undefined;
+  tone?: "allow" | "reject";
 }) {
   return (
     <div
       data-slot={slot}
       className="flex items-center gap-1.5 text-xs text-muted-foreground"
     >
-      <Badge variant="outline">{label}</Badge>
+      <Badge variant="outline">
+        {tone === "allow" ? (
+          <Check aria-hidden className="text-[var(--success-text)]" />
+        ) : tone === "reject" ? (
+          <X aria-hidden className="text-[var(--danger-text)]" />
+        ) : null}
+        {label}
+      </Badge>
       {by !== undefined && by !== "" && <span className="truncate">{by}</span>}
     </div>
   );
@@ -132,11 +146,13 @@ export function ApprovalCard({
   canAnswer,
   pinned,
   className,
+  onAnswered,
 }: {
   approval: TimelineApprovalItem;
   canAnswer: boolean;
   pinned?: boolean;
   className?: string;
+  onAnswered?: () => void;
 }) {
   const t = useT();
   const byId = React.useContext(ToolLookup);
@@ -165,6 +181,9 @@ export function ApprovalCard({
             : OUTCOME_KEYS[option.kind],
         )}
         by={approval.answeredBy}
+        tone={
+          option === undefined || isAllowOption(option) ? "allow" : "reject"
+        }
       />
     );
   }
@@ -175,6 +194,7 @@ export function ApprovalCard({
       canAnswer={canAnswer}
       {...(pinned === undefined ? {} : { pinned })}
       {...(className === undefined ? {} : { className })}
+      {...(onAnswered === undefined ? {} : { onAnswered })}
     />
   );
 }
@@ -183,10 +203,12 @@ export function ElicitationItemCard({
   item,
   canAnswer,
   className,
+  onAnswered,
 }: {
   item: TimelineElicitationItem;
   canAnswer: boolean;
   className?: string;
+  onAnswered?: () => void;
 }) {
   const t = useT();
   const answeredHere = useAnsweredStore((state) =>
@@ -201,6 +223,7 @@ export function ElicitationItemCard({
         slot="timeline-elicitation-outcome"
         label={t(`acp.elicitation.outcome.${action}`)}
         by={item.answeredBy}
+        {...(action === "accept" ? { tone: "allow" as const } : {})}
       />
     );
   }
@@ -210,6 +233,7 @@ export function ElicitationItemCard({
       view={view}
       canAnswer={canAnswer}
       {...(className === undefined ? {} : { className })}
+      {...(onAnswered === undefined ? {} : { onAnswered })}
     />
   );
 }

@@ -311,7 +311,7 @@
 
 - 发言人不写名字：用户靠右，Agent 靠左，头像只在焦点页 / 多 Agent 聚合视图里出现（`AgentAvatar 20`）。
 - 工具调用行：图标按 kind（read / edit / execute / search / fetch），标题 13px，状态胶囊 `working / done / failed`；展开看入参与输出（`--surface-raised`，等宽 12px，最多 20 行后「展开全部」）。
-- 权限卡：选项按 ACP 给的 kind 分组，`allow_*` 用 default，`reject_*` 用 outline；只有一个 Card 处于待答时它固定在 PromptBox 上方（`position: sticky; bottom`），其余滚走。头部的允许 / 拒绝继续答第一组。
+- 权限卡：选项按 kind 排成 本次允许 · 始终允许 ｜ 拒绝 · 始终拒绝（不按 Agent 给的先后），只有「本次允许」用 default 并拿焦点，「始终允许」「拒绝」用 outline，「始终拒绝」用 destructive，同意与拒绝分居两端；命令用等宽、最多 3 行、点开展开；数字键 1–9 按顺序直答，答完焦点还给输入框。外壳（`role=group`、`--warn` 细环、`--r-xl` 圆角配 10px 内边距）、标题、按钮行、「等待接管」徽标与头部允许 / 拒绝都出自 `apps/web/src/approval/`，elicitation 卡与只读转录用同一份。只有一个 Card 处于待答时它固定在 PromptBox 上方（`position: sticky; bottom`），其余滚走。头部的允许 / 拒绝继续答第一组。
 - 切换视图：头部 `⋯` 里「会话视图 / 终端视图」打钩项；切换时节点体 120ms 淡入，尺寸不变。
 - 状态：空 → `Empty`「向它说第一句话」+ 聚焦输入框；加载历史 → 三条 `Skeleton`；流式中 → 最后一条消息尾部一个 `Spinner 12`；错误 → 消息流尾部 `Alert destructive` 一行 + 「重试」；权限 → 上面那张卡；离线 → PromptBox 禁用，上方 `Alert`「已断开，正在重连」。
 - 手机：同一组件铺满焦点页；PromptBox 坐在软键盘上（`100dvh`），模式 Select 收进「⋯」。

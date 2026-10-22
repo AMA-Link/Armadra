@@ -193,6 +193,58 @@ describe("ElicitationCard", () => {
     );
   });
 
+  it("names the card and the form by the message, with a hidden warning icon", () => {
+    render(<ElicitationCard view={view} canAnswer />);
+    const card = screen.getByRole("group", { name: "Fill it in" });
+    expect(card.getAttribute("data-slot")).toBe("acp-elicitation");
+    expect(card.querySelector("svg")?.getAttribute("aria-hidden")).toBe("true");
+    expect(card.querySelector("form")?.getAttribute("aria-labelledby")).toBe(
+      card.getAttribute("aria-labelledby"),
+    );
+  });
+
+  it("submit leads, decline and cancel sit apart at the end", () => {
+    render(<ElicitationCard view={view} canAnswer />);
+    const [lead, tail] = document.querySelectorAll(
+      "[data-slot=approval-actions] > div",
+    ) as unknown as [HTMLElement, HTMLElement];
+    expect(lead.textContent).toBe("提交");
+    expect(
+      [...tail.querySelectorAll("button")].map((button) => [
+        button.textContent,
+        button.dataset.variant,
+      ]),
+    ).toEqual([
+      ["拒绝", "outline"],
+      ["取消", "ghost"],
+    ]);
+  });
+
+  it("marks a typed value that breaks the schema invalid, but not an untouched empty one", () => {
+    render(<ElicitationCard view={view} canAnswer />);
+    const count = screen.getByLabelText(/Count/) as HTMLInputElement;
+    expect(count.getAttribute("aria-invalid")).toBeNull();
+    fireEvent.change(count, { target: { value: "0" } });
+    expect(count.getAttribute("aria-invalid")).toBe("true");
+    fireEvent.change(count, { target: { value: "2" } });
+    expect(count.getAttribute("aria-invalid")).toBeNull();
+  });
+
+  it("keeps inputs at the default text size so touch screens do not zoom", () => {
+    render(<ElicitationCard view={view} canAnswer />);
+    const input = screen.getByLabelText(/Name/);
+    expect(input.className).not.toMatch(/(^|\s)text-\[13px\]/);
+  });
+
+  it("hands focus back once an answer from inside the card is taken", async () => {
+    const onAnswered = vi.fn();
+    render(<ElicitationCard view={view} canAnswer onAnswered={onAnswered} />);
+    const cancel = screen.getByRole("button", { name: "取消" });
+    cancel.focus();
+    fireEvent.click(cancel);
+    await waitFor(() => expect(onAnswered).toHaveBeenCalledTimes(1));
+  });
+
   it("shows only the message to someone who cannot answer", () => {
     render(<ElicitationCard view={view} canAnswer={false} />);
     expect(screen.getByText("Fill it in")).toBeTruthy();
