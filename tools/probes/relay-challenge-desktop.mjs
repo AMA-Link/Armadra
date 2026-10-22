@@ -1,10 +1,12 @@
 // 桌面壳添加中转账号时的人机验证（契约 §62.2，Armadra#266）。
 //
-//   node tools/probes/relay-challenge-desktop.mjs [输出目录]
+//   node tools/probes/relay-challenge-desktop.mjs [--workerd] [输出目录]
 //
-// 起两台本地 workerd 中继（armadra-cloud 的 apps/relay-workers，`wrangler dev --local`，
-// 不连 Cloudflare 账号）与一个隔离的开发构建 Electron（临时数据目录、HOME 与 profile，
-// mock 钥匙串），在「设置 → 远程访问」里走真实的添加流程：
+// 起两台本地个人中转与一个隔离的开发构建 Electron（临时数据目录、HOME 与 profile，
+// mock 钥匙串），在「设置 → 远程访问」里走真实的添加流程。中继缺省是 Go 版（找法见
+// `cloud-source.mjs`，回环明文 `--tls plain`，数据目录在临时目录里）；`--workerd` 换成本地
+// workerd 上的 Workers 中继（armadra-cloud 的 apps/relay-workers，`wrangler dev --local`，
+// 不连 Cloudflare 账号）。
 //
 //   1. 中继不声明挑战：直接登录成功，全程不出现验证面板；
 //   2. 中继配了 Cloudflare 官方测试站点密钥（总是通过）：验证面板里内嵌中继的
@@ -14,8 +16,9 @@
 //      `challenge_invalid`，页面给一次错误提示、验证面板关掉，不循环。
 //
 // 前提：`pnpm --filter @armadra/web build`、`pnpm --filter @armadra/desktop build`，以及
-// armadra-cloud 的本地检出（`cloud-source.mjs`）。产物：result.json 与每一步的截图。
+// 中继（Go 二进制或 armadra-cloud 的本地检出，见 `cloud-source.mjs`）。产物：result.json 与每一步的截图。
 import { spawn } from "node:child_process";
+import { randomBytes } from "node:crypto";
 import {
   existsSync,
   mkdirSync,
@@ -27,27 +30,33 @@ import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
-import { CLOUD_ENTRY, findCloudSource } from "./cloud-source.mjs";
+import {
+  NO_CLOUD_HINT,
+  NO_RELAY_HINT,
+  findCloudSource,
+  relayAvailable,
+} from "./cloud-source.mjs";
+import { spawnRelay } from "./platform-lib.mjs";
 import { isolatedEnv, probeHome } from "./probe-home.mjs";
 import { attachRenderer } from "./relay-desktop.mjs";
-import { freePort, root, sleep } from "./ui-features/harness.mjs";
+import { freePort, root, sleep, until } from "./ui-features/harness.mjs";
 import { startWorkerd } from "./workerd-relay.mjs";
 
 /** Cloudflare 公开的测试密钥：总是通过、不连任何账号。 */
 const TEST_SITE_KEY = "1x00000000000000000000AA";
 const TEST_SECRET = "1x0000000000000000000000000000000AA";
 
+const useWorkerd = process.argv.includes("--workerd");
 const output = resolve(
-  process.argv[2] ?? join(root, "target/relay-challenge-desktop"),
+  process.argv.slice(2).find((arg) => !arg.startsWith("--")) ??
+    join(root, "target/relay-challenge-desktop"),
 );
 rmSync(output, { recursive: true, force: true });
 mkdirSync(output, { recursive: true });
 
 const cloudHome = findCloudSource();
-if (!cloudHome) {
-  console.error(
-    `没有 armadra-cloud 的本地检出（${CLOUD_ENTRY}）：设 ARMADRA_DEV_STACK_CLOUD_SRC 或放在仓库旁的 ../armadra-cloud`,
-  );
+if (useWorkerd ? !cloudHome : !relayAvailable(cloudHome)) {
+  console.error(useWorkerd ? NO_CLOUD_HINT : NO_RELAY_HINT);
   process.exit(2);
 }
 const webRoot = join(root, "apps/web/dist");
@@ -77,6 +86,91 @@ let page;
 let log = "";
 const scratch = mkdtempSync(join(tmpdir(), "armadra-challenge-probe-"));
 const home = probeHome("armadra-challenge-probe-home-");
+
+/**
+ * Go 版个人中转：init 后 serve，回环明文（`--tls plain`，issuer `http://127.0.0.1:<端口>`，
+ * 与 workerd 同形）；`challenge` 时配 Turnstile 的官方测试站点密钥。答与 `startWorkerd` 同形的
+ * `{ issuer, account, password, stop() }`；`stop` 只结束自己起的进程。
+ */
+async function startGoRelay({ challenge = false } = {}) {
+  const dir = mkdtempSync(join(scratch, "relay-"));
+  const port = await freePort();
+  const issuer = `http://127.0.0.1:${port}`;
+  const account = "dev";
+  const password = `${randomBytes(12).toString("base64url")}-Aq7`;
+  const passwordFile = join(dir, "password");
+  writeFileSync(passwordFile, password, { mode: 0o600 });
+  const common = [
+    "--data-dir",
+    join(dir, "data"),
+    "--host",
+    "127.0.0.1",
+    "--port",
+    String(port),
+    "--tls",
+    "plain",
+    "--public-origin",
+    issuer,
+  ];
+  const init = spawnRelay(cloudHome, [
+    "init",
+    ...common,
+    "--account",
+    account,
+    "--password-file",
+    passwordFile,
+  ]);
+  const code = await new Promise((done) => init.child.once("exit", done));
+  if (code !== 0) throw new Error(`personal init 失败：${init.log()}`);
+  const extra = [];
+  if (challenge) {
+    const secretFile = join(dir, "turnstile-secret");
+    writeFileSync(secretFile, TEST_SECRET, { mode: 0o600 });
+    // 测试密钥的 siteverify 答案里 hostname 是 example.com。
+    extra.push(
+      "--challenge",
+      "turnstile",
+      "--turnstile-site-key",
+      TEST_SITE_KEY,
+      "--turnstile-secret-file",
+      secretFile,
+      "--turnstile-hostnames",
+      "example.com",
+    );
+  }
+  const serve = spawnRelay(cloudHome, [
+    "serve",
+    ...common,
+    "--listen",
+    `127.0.0.1:${port}`,
+    "--web-root",
+    webRoot,
+    ...extra,
+  ]);
+  const stop = async () => {
+    if (serve.child.exitCode !== null) return;
+    serve.child.kill("SIGTERM");
+    for (let i = 0; i < 50 && serve.child.exitCode === null; i += 1)
+      await sleep(100);
+    if (serve.child.exitCode === null) serve.child.kill("SIGKILL");
+  };
+  try {
+    await until(
+      async () => {
+        if (serve.child.exitCode !== null)
+          throw new Error(`中继退出：${serve.log()}`);
+        const answer = await fetch(`${issuer}/.well-known/armadra-platform`);
+        return answer.status === 200 || null;
+      },
+      "Go 中继起来",
+      { timeout: 30_000, every: 200 },
+    );
+  } catch (error) {
+    await stop();
+    throw error;
+  }
+  return { issuer, account, password, log: serve.log, stop };
+}
 
 const visibleDialogs = `return [...document.querySelectorAll('[role=dialog]')].map((d) => d.querySelector('h2')?.textContent ?? '')`;
 
@@ -115,19 +209,24 @@ async function fillAndSubmit(relay) {
 
 try {
   // 1 与 2 的两台中继；第二台配官方测试站点密钥。
-  relays.push(await startWorkerd({ cloudHome, webRoot }));
-  relays.push(
-    await startWorkerd({
-      cloudHome,
-      webRoot,
-      vars: {
-        RELAY_TURNSTILE_SECRET: TEST_SECRET,
-        RELAY_TURNSTILE_SITE_KEY: TEST_SITE_KEY,
-        // 测试密钥的 siteverify 答案里 hostname 是 example.com。
-        RELAY_TURNSTILE_HOSTNAMES: "example.com",
-      },
-    }),
-  );
+  if (useWorkerd) {
+    relays.push(await startWorkerd({ cloudHome, webRoot }));
+    relays.push(
+      await startWorkerd({
+        cloudHome,
+        webRoot,
+        vars: {
+          RELAY_TURNSTILE_SECRET: TEST_SECRET,
+          RELAY_TURNSTILE_SITE_KEY: TEST_SITE_KEY,
+          // 测试密钥的 siteverify 答案里 hostname 是 example.com。
+          RELAY_TURNSTILE_HOSTNAMES: "example.com",
+        },
+      }),
+    );
+  } else {
+    relays.push(await startGoRelay());
+    relays.push(await startGoRelay({ challenge: true }));
+  }
   const [plain, guarded] = relays;
   const declared = async (relay) =>
     (await (await fetch(`${relay.issuer}/.well-known/armadra-platform`)).json())
@@ -136,7 +235,9 @@ try {
     throw new Error("没配 Turnstile 的中继却声明了挑战");
   if ((await declared(guarded))?.siteKey !== TEST_SITE_KEY)
     throw new Error("配了测试站点密钥的中继没声明挑战");
-  ok("两台本地 workerd 中继：一台不声明挑战，一台声明测试站点密钥");
+  ok(
+    `两台本地${useWorkerd ? " workerd" : " Go"} 中继：一台不声明挑战，一台声明测试站点密钥`,
+  );
 
   const require = createRequire(join(root, "apps/desktop/package.json"));
   const port = await freePort();
