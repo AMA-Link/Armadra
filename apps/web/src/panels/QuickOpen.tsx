@@ -19,6 +19,8 @@
  * 个列表，不该顺手启动一个进程。
  */
 import { useEffect, useMemo, useState } from "react";
+import { SkeletonList } from "@/ui/skeletons";
+import { Loadable } from "@/loading/Loadable";
 import { useQuery } from "@tanstack/react-query";
 import {
   Box,
@@ -203,6 +205,22 @@ export function QuickOpen() {
         onValueChange={setQuery}
       />
       <CommandList>
+        <Loadable
+          loading={
+            !lineMode &&
+            (mode === "files"
+              ? index.isFetching && entries.length === 0
+              : symbols.isFetching && found.length === 0)
+          }
+          skeleton={
+            <SkeletonList
+              rows={4}
+              leading="none"
+              label={t("state.loading")}
+              className="p-1"
+            />
+          }
+        >
         <CommandEmpty>
           {failed
             ? t("quickOpen.failed")
@@ -214,6 +232,7 @@ export function QuickOpen() {
                   ? t("quickOpen.empty")
                   : t("quickOpen.noSymbols")}
         </CommandEmpty>
+        </Loadable>
         {lineMode && location && currentPath && (
           <CommandGroup heading={t("quickOpen.goToLine")}>
             <CommandItem

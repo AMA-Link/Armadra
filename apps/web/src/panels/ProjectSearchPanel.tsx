@@ -13,6 +13,8 @@
  * 连接一断 core 就停止扫描，不会在后台替一个没人要的答案把整棵树读完。
  */
 import { useCallback, useEffect, useRef, useState } from "react";
+import { SkeletonList } from "@/ui/skeletons";
+import { Loadable } from "@/loading/Loadable";
 import type { FileSearchFile, FileSearchResult } from "@armadra/shared";
 
 import { runtimeApi } from "@/api/client";
@@ -248,7 +250,7 @@ export function ProjectSearchPanel({
         </div>
       </form>
 
-      <div className="flex flex-wrap items-center gap-1">
+      <div className="flex min-h-5 flex-wrap items-center gap-1">
         {busy && (
           <span
             role="status"
@@ -283,6 +285,20 @@ export function ProjectSearchPanel({
         <Alert variant="destructive">
           <AlertTitle>{t("projectSearch.failed")}</AlertTitle>
         </Alert>
+      )}
+      {busy && files.length === 0 && (
+        <Loadable
+          loading
+          skeleton={
+            <SkeletonList
+              rows={4}
+              size="compact"
+              label={t("state.loading")}
+            />
+          }
+        >
+          {null}
+        </Loadable>
       )}
       {result && !busy && files.length === 0 && !failed && (
         <Empty className="p-4">

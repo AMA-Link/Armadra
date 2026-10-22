@@ -1,4 +1,6 @@
 import * as React from "react";
+import { Skeleton } from "@/ui/skeleton";
+import { Loadable } from "@/loading/Loadable";
 
 import { useT } from "@/app/preferences-store";
 import { PatchBody } from "@/nodes/DiffNode";
@@ -65,15 +67,30 @@ export function EditPreviewDialog() {
             {preview?.title ?? t("lsp.preview.title")}
           </ResponsiveDialogTitle>
           <ResponsiveDialogDescription>
-            {loading
-              ? t("lsp.preview.computing")
-              : preview
-                ? t("lsp.preview.files", {
-                    count: String(preview.files.length),
-                  })
-                : ""}
+            {!loading && preview
+              ? t("lsp.preview.files", {
+                  count: String(preview.files.length),
+                })
+              : ""}
           </ResponsiveDialogDescription>
         </ResponsiveDialogHeader>
+
+        <Loadable
+          loading={loading}
+          skeleton={
+            <div
+              role="status"
+              aria-busy="true"
+              aria-label={t("state.loading")}
+              className="flex flex-col gap-2"
+            >
+              <Skeleton className="h-24 w-full rounded-md" />
+              <Skeleton className="h-24 w-full rounded-md" />
+            </div>
+          }
+        >
+          {null}
+        </Loadable>
 
         {error && (
           <p className="text-[12px] text-[var(--danger-text)]">{error}</p>

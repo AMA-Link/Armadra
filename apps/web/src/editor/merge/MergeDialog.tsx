@@ -1,4 +1,6 @@
 import * as React from "react";
+import { Skeleton } from "@/ui/skeleton";
+import { Loadable } from "@/loading/Loadable";
 
 import { runtimeApi } from "@/api/client";
 import { useT } from "@/app/preferences-store";
@@ -95,7 +97,7 @@ export function MergeDialog() {
             {t(draft ? "merge.draft.title" : "merge.title")}
           </ResponsiveDialogTitle>
           <ResponsiveDialogDescription>
-            {state.loading ? t("merge.loading") : (state.path ?? "")}
+            {state.loading ? "" : (state.path ?? "")}
           </ResponsiveDialogDescription>
         </ResponsiveDialogHeader>
 
@@ -115,6 +117,24 @@ export function MergeDialog() {
         {state.resolved && (
           <Badge variant="outline">{t("merge.resolved")}</Badge>
         )}
+
+        <Loadable
+          loading={state.loading}
+          skeleton={
+            <div
+              role="status"
+              aria-busy="true"
+              aria-label={t("state.loading")}
+              className="grid h-40 grid-cols-3 gap-3"
+            >
+              {[0, 1, 2].map((index) => (
+                <Skeleton key={index} className="h-full w-full rounded-md" />
+              ))}
+            </div>
+          }
+        >
+          {null}
+        </Loadable>
 
         {!state.loading && !state.unavailable && (
           <ScrollArea className="min-h-0 flex-1 rounded-[var(--radius-sm)] border border-border">
