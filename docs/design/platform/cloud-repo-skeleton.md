@@ -1,5 +1,6 @@
 # `AMA-Link/armadra-cloud` 仓库骨架：详细设计
 
+> **2026-10-22 起：** 已实现，只留作追溯；Go 模块的骨架见 armadra-cloud `docs/design/go-relay-design.md` §3.1、§6。
 > 状态：目标设计（2026-10-06）。本文是[落地总计划](../platform-implementation-plan.md)工作包 **C0-1** 的实现规格：目录、workspace、TypeScript / ESLint / Prettier / Vitest 配置、AGENTS.md、repo-check、migrations.lock、CI、Dockerfile、compose、一键脚本与版本选择。上位设计：[平台设计](../platform-saas-architecture.md) §16.2、§16.4、§17.8。
 > 仓库现状：只有 `LICENSE`（MIT），私有。建仓、分支保护、npm trusted publishing、GHCR 权限是用户的对外操作；本文只写进仓库的东西。
 

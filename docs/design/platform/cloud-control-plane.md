@@ -1,5 +1,6 @@
 # 控制面 `apps/cloud`：详细设计
 
+> **2026-10-22 起由 armadra-cloud `docs/design/saas-design.md` 取代：** 技术选择与目录（§1–§2）改为 Go；按组织建表与计费（§3.3–§3.4）改为团队；§3.1、§4、§5、§7–§9 的细节已合并进那份 §11。本文只留作追溯。
 > 状态：目标设计（2026-10-06）。本文是[落地总计划](../platform-implementation-plan.md)工作包 **C2-1（账号与会话）**、**C2-2（源目录与断言）**、**C2-3（passkey / TOTP / OAuth）**、**C3-3（中继令牌、`me/stream`）**、**C4-2（组织与链接）**、**C6-1 / C6-2（托管与计费预留）** 的实现规格。上位设计：[平台设计](../platform-saas-architecture.md) §4–§6、§9、§11、§16；契约：[协议包](protocol-package.md) §5。
 > 代码在 `AMA-Link/armadra-cloud` 仓 `apps/cloud/`；只依赖 `packages/platform-protocol`、`packages/cloud-shared`。
 

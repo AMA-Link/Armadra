@@ -1,5 +1,6 @@
 # dev-stack、一键脚本与跨仓验收体系
 
+> **2026-10-22 起：** 已实现；`platform` profile 与探针要随 Go 中继与 SaaS 扩展（armadra-cloud `docs/design/go-relay-design.md` §4.3、§5）。
 > 状态：目标设计（2026-10-06）。本文是[落地总计划](../platform-implementation-plan.md)工作包 **A0-5（Armadra dev-stack 平台 profile 与 `pnpm platform:*`）**、**C0-3（cloud 仓 `scripts/e2e.mjs`）**、**V1–V3（跨仓契约测试、探针、每波验收）** 的实现规格。上位设计：[平台设计](../platform-saas-architecture.md) §13.4、§16.3、§16.5、§17.8；[仓库骨架](cloud-repo-skeleton.md) §7。
 > 约束：本地 PostgreSQL / Redis 只用 Docker；不建云资源、不发布；探针用 `tools/probes/probe-home.mjs` 的临时 HOME。
 

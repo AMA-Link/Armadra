@@ -14480,6 +14480,9 @@
                       }
                     },
                     "required": ["hostId"]
+                  },
+                  "launch": {
+                    "type": "boolean"
                   }
                 },
                 "required": ["workspaceId", "cwd"]

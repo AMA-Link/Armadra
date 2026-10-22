@@ -28,6 +28,14 @@ export const AGENT_DRIVERS = ["terminal", "acp"] as const;
 export const agentDriverSchema = z.enum(AGENT_DRIVERS);
 
 /**
+ * The body a terminal-driven agent node opens with (docs/design/session-timeline.md
+ * §5.4): the read-only session timeline, or the terminal. Only the initial
+ * choice — a node whose body the user switched on this device keeps that.
+ */
+export const AGENT_VIEWS = ["session", "terminal"] as const;
+export const agentViewSchema = z.enum(AGENT_VIEWS);
+
+/**
  * Where a sticky or editor node's content came from when an agent's reply was
  * put on the board (docs/design/acp-session-view.md §7). Display only — the
  * header's "from <node>" and "go to source"; the core never reads it, and the
@@ -145,6 +153,11 @@ export const terminalAgentSchema = z.object({
   contextShare: z.enum(["full", "summary"]).optional(),
   /** PTY or ACP (`AGENT_DRIVERS`); absent means the core's default. */
   driver: agentDriverSchema.optional(),
+  /**
+   * The body a terminal-driven node opens with; absent means the terminal. Set
+   * once when the node is created, from the user's default view.
+   */
+  view: agentViewSchema.optional(),
 });
 
 /**
@@ -385,6 +398,7 @@ export const canvasNodeDataSchema = z.discriminatedUnion("kind", [
 export type DiffScope = (typeof DIFF_SCOPES)[number];
 export type TerminalAgent = z.infer<typeof terminalAgentSchema>;
 export type AgentDriver = (typeof AGENT_DRIVERS)[number];
+export type AgentView = (typeof AGENT_VIEWS)[number];
 export type ContentSource = z.infer<typeof contentSourceSchema>;
 export type SshTarget = z.infer<typeof sshTargetSchema>;
 export type PendingLaunch = z.infer<typeof pendingLaunchSchema>;

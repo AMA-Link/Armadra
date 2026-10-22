@@ -178,6 +178,64 @@ describe("the browser (server shell) transport", () => {
     expect(calls[0]?.url).toContain("/api/identity/session/csrf");
   });
 
+  /**
+   * 注册前页面一直在轮询 `session/csrf`（401）。会话一建好，在途的那条带着新
+   * Cookie 落地，就把注册刚答出来的令牌作废。此时发出的第一批请求不能拿着
+   * 注册的那一枚去赌：等换票落地，用换回来的（AMA-Link/Armadra#355）。
+   */
+  it("waits for a renewal in flight before handing out the token it supersedes", async () => {
+    const NEWER = "n".repeat(43);
+    let land!: (response: Response) => void;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string, init: RequestInit) => {
+        calls.push({ url, init });
+        return new Promise<Response>((resolve) => (land = resolve));
+      }),
+    );
+    const inFlight = ensureCsrf();
+    await vi.waitFor(() => expect(calls).toHaveLength(1));
+    // 注册的答复在换票落地之前到了。
+    rememberCsrf(SECRET);
+    let handed: string | undefined;
+    const first = ensureCsrf().then((token) => (handed = token));
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(handed).toBeUndefined();
+    land({
+      ok: true,
+      status: 200,
+      json: async () => ({ csrfToken: NEWER }),
+    } as unknown as Response);
+    await inFlight;
+    await first;
+    expect(handed).toBe(NEWER);
+    expect(currentCsrf()).toBe(NEWER);
+    expect(calls).toHaveLength(1);
+  });
+
+  it("keeps the token it has when the renewal in flight is refused", async () => {
+    let land!: (response: Response) => void;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string, init: RequestInit) => {
+        calls.push({ url, init });
+        return new Promise<Response>((resolve) => (land = resolve));
+      }),
+    );
+    const inFlight = ensureCsrf();
+    await vi.waitFor(() => expect(calls).toHaveLength(1));
+    rememberCsrf(SECRET);
+    const first = ensureCsrf();
+    land({
+      ok: false,
+      status: 401,
+      json: async () => ({ code: "UNAUTHENTICATED" }),
+    } as unknown as Response);
+    await inFlight;
+    expect(await first).toBe(SECRET);
+    expect(calls).toHaveLength(1);
+  });
+
   it("forgets a rotated token so the next write fetches a new one", async () => {
     await pairIdentity("ticket");
     forgetCsrf();

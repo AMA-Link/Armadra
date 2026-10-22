@@ -526,6 +526,39 @@ await h.run(async () => {
   await admin.key("Escape");
 
   const member = await chrome.open({ isolated: true, name: "member" });
+  // 兑换前页面一直在轮询 `session/csrf`（401）。把这些在途的请求按在手里，等
+  // 注册的答复一到就放行：它们这时带着刚建好的会话 Cookie 落地，是一次真换票，
+  // 会把注册答出来的 CSRF 令牌作废（AMA-Link/Armadra#355）。CI 上这一刻靠运气
+  // 撞上，这里让它每次都撞上。
+  const heldRenewals = [];
+  let holding = true;
+  let heldCount = 0;
+  const release = () => {
+    holding = false;
+    for (const requestId of heldRenewals.splice(0)) {
+      member.call("Fetch.continueRequest", { requestId }).catch(() => {});
+    }
+  };
+  member.tap((message) => {
+    if (message.method === "Fetch.requestPaused") {
+      const { requestId } = message.params;
+      if (holding) {
+        heldRenewals.push(requestId);
+        heldCount += 1;
+      } else
+        member.call("Fetch.continueRequest", { requestId }).catch(() => {});
+    } else if (
+      message.method === "Network.responseReceived" &&
+      /\/identity\/register/.test(message.params.response.url)
+    ) {
+      release();
+    }
+  });
+  await member.call("Fetch.enable", {
+    patterns: [
+      { urlPattern: "*/identity/session/csrf*", requestStage: "Request" },
+    ],
+  });
   await member.navigate(invitation);
   await member.settle();
   await member.waitFor(`return document.body.innerText.includes("接受邀请");`, {
@@ -539,7 +572,20 @@ await h.run(async () => {
     what: "兑换成功提示",
   });
   step("成员经邀请注册");
-  member.drain();
+  release();
+  await sleep(2500);
+  // 兑换之后第一批请求（页面把兑换前失败的读全部重取一遍）：在途的换票落地
+  // 之前或之后发出的都不该吃 403——令牌要么等换票落地再交出去，要么换票根本
+  // 没有落在它们之间。
+  const afterRedeem = member.drain();
+  check(
+    afterRedeem.responses.every((answer) => answer.status !== 403),
+    "兑换那一刻在途的换票不让第一批请求吃 403",
+    afterRedeem.responses
+      .filter((answer) => answer.status === 403)
+      .map((answer) => `${answer.url}（${answer.body ?? "?"}）`)
+      .join("，") || `无（按住 ${heldCount} 条后放行）`,
+  );
 
   /* ---------------- 4. 成员打开页面：全局路由的 403 逐条记下 ---------------- */
 
@@ -594,7 +640,8 @@ await h.run(async () => {
       .filter((answer) => answer.status === 403)
       .map(async (answer) => ({
         url: answer.url,
-        body: await member.bodyOf(answer.requestId),
+        csrf: answer.csrf,
+        body: answer.body ?? (await member.bodyOf(answer.requestId)),
       })),
   );
   report.memberTrafficOnOpen = member.traffic.slice(-120);

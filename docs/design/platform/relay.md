@@ -1,5 +1,6 @@
 # 中继 `apps/relay`：详细设计（saas 与 personal 两种模式）
 
+> **2026-10-22 起：** R1 / R2 已实现，将由 Go 版取代（armadra-cloud `docs/design/go-relay-design.md`）；§5 的 saas Redis 适配已合并进那份 §3.6。
 > 状态：目标设计（2026-10-06）。本文是[落地总计划](../platform-implementation-plan.md)工作包 **R1（中继内核）**、**R2（personal 控制面）**、**R3（saas 控制面适配）** 的实现规格。上位设计：[平台设计](../platform-saas-architecture.md) §8、§11、§17；协议：[协议包](protocol-package.md)。
 > 代码在 `AMA-Link/armadra-cloud` 仓；不 import `apps/cloud`，只依赖 `packages/platform-protocol` 与 `packages/cloud-shared`。
 
