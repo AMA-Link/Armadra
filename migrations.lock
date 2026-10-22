@@ -52,6 +52,6 @@
     "0050_trusted_devices.sql": "c791692cf92898ea7dc6f8d5f615ddcffab4119dabffa93263d1658d6b8d97e2",
     "0051_share_links.sql": "1a727afab3ac468df17de108a5931342d2d41f8386e4521d41d3fdbafb0423ec",
     "0052_timelines.sql": "247c35e0e100053b74a346754b0e7527bcc5fb1e64d29458e6b36a647656810b",
-    "0053_cloud_team_roles.sql": "a4a34b4ae61eee93b4ddc4f031cbdcf7300be6df1b250b0a4e60121fe2265957"
+    "0053_cloud_team_roles.sql": "a04ddbc87ca18470e2b024b4043edc56957b1305bd1e5bf788ef0d09c0763dd5"
   }
 }

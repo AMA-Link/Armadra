@@ -9,6 +9,8 @@
 import { createHash } from "node:crypto";
 import type { DatabaseSync } from "node:sqlite";
 
+import type { Scope } from "../scopes";
+
 export type CloudMode = "personal" | "saas";
 
 /** 映射凭据的 `provider`：`cloud:` + issuer 的 SHA-256 前 16 位十六进制。 */
@@ -83,6 +85,13 @@ function rowOf(record: RegistrationRecord): RegistrationRow {
 const COLUMNS =
   "issuer, source_key_ref, jwks_json, jwks_url, jwks_fetched_at_ms, trusted_origins_json, relay_origins_json, owner_account_id, label, mode, registered_by, registered_at_ms, revoked_at_ms";
 
+export interface TeamRoleRow {
+  readonly teamId: string;
+  readonly role: TeamRole;
+  readonly provider: string;
+  readonly assertedScopes: readonly Scope[];
+}
+
 /**
  * 这个人经某个签发方的团队角色（迁移 0053）；过期的行不认。不给 `provider` 时取
  * 任一未过期的行里最近的（路由门只问「有没有」；背书必须带 `provider`）。
@@ -91,11 +100,11 @@ export function teamRoleOf(
   database: DatabaseSync,
   principalId: string,
   options: { provider?: string; nowMs?: number } = {},
-): { teamId: string; role: TeamRole; provider: string } | undefined {
+): TeamRoleRow | undefined {
   try {
     const record = database
       .prepare(
-        "SELECT team_id, role, provider FROM cloud_team_roles WHERE principal_id = ? " +
+        "SELECT team_id, role, provider, asserted_scopes_json FROM cloud_team_roles WHERE principal_id = ? " +
           "AND expires_at_ms > ? AND (? = '' OR provider = ?) ORDER BY updated_at_ms DESC LIMIT 1",
       )
       .get(
@@ -103,13 +112,21 @@ export function teamRoleOf(
         options.nowMs ?? Date.now(),
         options.provider ?? "",
         options.provider ?? "",
-      ) as { team_id: string; role: TeamRole; provider: string } | undefined;
+      ) as
+      | {
+          team_id: string;
+          role: TeamRole;
+          provider: string;
+          asserted_scopes_json: string;
+        }
+      | undefined;
     return record === undefined
       ? undefined
       : {
           teamId: record.team_id,
           role: record.role,
           provider: record.provider,
+          assertedScopes: JSON.parse(record.asserted_scopes_json) as Scope[],
         };
   } catch {
     return undefined;
@@ -127,13 +144,16 @@ export class CloudStore {
     role: TeamRole;
     atMs: number;
     expiresAtMs: number;
+    /** 这次断言将要同步的授予编译出的 scope。 */
+    assertedScopes: readonly Scope[];
   }): void {
     this.database
       .prepare(
-        `INSERT INTO cloud_team_roles (principal_id, provider, team_id, role, updated_at_ms, expires_at_ms) VALUES (?, ?, ?, ?, ?, ?)
+        `INSERT INTO cloud_team_roles (principal_id, provider, team_id, role, updated_at_ms, expires_at_ms, asserted_scopes_json) VALUES (?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT(principal_id, provider) DO UPDATE SET
            team_id = excluded.team_id, role = excluded.role, updated_at_ms = excluded.updated_at_ms,
-           expires_at_ms = excluded.expires_at_ms`,
+           expires_at_ms = excluded.expires_at_ms,
+           asserted_scopes_json = excluded.asserted_scopes_json`,
       )
       .run(
         input.principalId,
@@ -142,6 +162,7 @@ export class CloudStore {
         input.role,
         input.atMs,
         input.expiresAtMs,
+        JSON.stringify(input.assertedScopes),
       );
   }
 

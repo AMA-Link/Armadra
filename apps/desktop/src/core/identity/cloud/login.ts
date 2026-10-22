@@ -44,7 +44,7 @@ import {
 } from "../grant-sync";
 import { currentHostName } from "../../settings";
 import { IdentityError } from "../errors";
-import type { ShareRole } from "../roles";
+import { type ShareRole, grantScopes } from "../roles";
 import type { IdentityService, SessionCredentials } from "../service";
 import type { IdentityStore } from "../store";
 import { IpBuckets } from "../throttle";
@@ -269,6 +269,15 @@ export class CloudLogin {
       invitationId = parsed;
     }
 
+    // billing 只管计划与账单，不碰主机：即使断言带了 `role` 也不授予，并清掉此前同步的。
+    // guest 没有 `scp`（没有限定到工作空间 / 会话）也不授予：不会因为控制面漏写范围就拿到整台。
+    const asserted: AssertedGrant[] | undefined =
+      claims.team?.role === "billing" ||
+      (claims.team?.role === "guest" && !declaresScope)
+        ? []
+        : claims.role === undefined
+          ? undefined
+          : assertedGrants(claims.role, scope);
     // 团队角色只认 SaaS 登记（个人中转带的 `team` 不落）；到期 = 授予租约（每次登录续）。
     // 放在设备关之前：待确认的新设备要靠它认出是哪个团队的人（背书按它判）。
     if (registration.mode !== "saas" || claims.team === undefined) {
@@ -281,6 +290,15 @@ export class CloudLogin {
         role: claims.team.role,
         atMs: this.now(),
         expiresAtMs: provenance.leaseUntilMs,
+        assertedScopes: (asserted ?? []).flatMap((grant) =>
+          grantScopes({
+            ...grant,
+            role:
+              provenance.readOnly || grant.targetKind === "session"
+                ? "viewer"
+                : grant.role,
+          }),
+        ),
       });
     }
 
@@ -302,18 +320,10 @@ export class CloudLogin {
       }
     }
 
-    // billing 只管计划与账单，不碰主机：即使断言带了 `role` 也不授予，并清掉此前同步的。
-    // guest 没有 `scp`（没有限定到工作空间 / 会话）也不授予：不会因为控制面漏写范围就拿到整台。
-    const billing = claims.team?.role === "billing";
-    const unscopedGuest = claims.team?.role === "guest" && !declaresScope;
     applyCloudGrants(store, this.now(), {
       principalId,
       provenance,
-      ...(billing || unscopedGuest
-        ? { asserted: [] }
-        : claims.role === undefined
-          ? {}
-          : { asserted: assertedGrants(claims.role, scope) }),
+      ...(asserted === undefined ? {} : { asserted }),
     });
     const credentials = (() => {
       try {

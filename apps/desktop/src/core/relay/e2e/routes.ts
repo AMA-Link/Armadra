@@ -19,7 +19,7 @@ import { type DomainHandlers, registerProcedures } from "../../http/rpc";
 import type { CoreServer } from "../../http/server";
 import { isOwner } from "../../identity/authorize";
 import { requestIdentity } from "../../identity/gate";
-import { type TeamRole, cloudProvider } from "../../identity/cloud/store";
+import { type TeamRoleRow, cloudProvider } from "../../identity/cloud/store";
 import { type Scope, permits } from "../../identity/scopes";
 import { E2E_IDENTITY_PATH, E2E_WAIT_PATH } from "../../identity/transport";
 import type { DeviceKey } from "./device-key";
@@ -85,7 +85,7 @@ export interface E2eRouteDeps {
   readonly teamRole?: (
     principalId: string,
     provider: string,
-  ) => { teamId: string; role: TeamRole } | undefined;
+  ) => TeamRoleRow | undefined;
   /** 这个签发方的登记是否仍有效（撤销之后背书不再成立）。 */
   readonly issuerActive?: (issuer: string) => boolean;
   /** 一个 principal 今天从授予里拿到的全部 scope（背书不横向抬权）。 */
@@ -171,7 +171,12 @@ function authorizeEndorsement(
   }
   if (target.principalId !== principalId) {
     const have = deps.grantScopes?.(principalId);
-    const want = deps.grantScopes?.(target.principalId);
+    const current = deps.grantScopes?.(target.principalId);
+    // 新成员的授予要等设备关过了才落库：把这次断言将要同步的也算上。
+    const want =
+      current === undefined
+        ? undefined
+        : [...current, ...theirs.assertedScopes];
     if (have === undefined || want === undefined || !permits(have, want))
       throw refuse();
   }

@@ -9,5 +9,7 @@ CREATE TABLE cloud_team_roles (
   role TEXT NOT NULL CHECK(role IN ('owner', 'admin', 'member', 'billing', 'guest')),
   updated_at_ms INTEGER NOT NULL CHECK(updated_at_ms >= 0),
   expires_at_ms INTEGER NOT NULL CHECK(expires_at_ms >= 0),
+  -- 这次断言将要同步的授予编译出的 scope（JSON）。新成员的设备停在待确认时授予还没落库，背书按「现有授予 ∪ 这里」判，不让人替一个尚无授予的新成员背书出更高的权限。
+  asserted_scopes_json TEXT NOT NULL DEFAULT '[]',
   PRIMARY KEY (principal_id, provider)
 );

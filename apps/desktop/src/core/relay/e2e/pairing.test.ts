@@ -240,7 +240,11 @@ describe("团队成员背书（契约 §60.4）", () => {
     role: "editor",
     ...extra,
   });
-  const asTeam = (sub: string, role: string, extra = {}) =>
+  const asTeam = (
+    sub: string,
+    role: string,
+    extra: Record<string, unknown> = {},
+  ) =>
     signAssertion({
       aud: sourceId,
       nowMs: Date.now(),
@@ -255,9 +259,14 @@ describe("团队成员背书（契约 §60.4）", () => {
   });
 
   /** 一台配对过的设备登录后拿到的访问令牌。 */
-  async function trustedSession(seed: number, sub: string, role: string) {
+  async function trustedSession(
+    seed: number,
+    sub: string,
+    role: string,
+    extra: Record<string, unknown> = {},
+  ) {
     const client = await connect(seed, e2ePairing()!.issue().secret);
-    const logged = await login(client, asTeam(sub, role));
+    const logged = await login(client, asTeam(sub, role, extra));
     expect(logged.status, logged.body.toString()).toBe(200);
     const token = logged.json<{
       session: { native: { accessToken: string } };
@@ -423,5 +432,30 @@ describe("团队成员背书（契约 §60.4）", () => {
     expect((await approve(admin, target)).status).toBe(200);
     admin.client.close();
     target.client.close();
+  });
+
+  it("新成员还没有授予时按这次断言将要同步的算：只有 ws-1 viewer 的 admin 批不了整台 editor 的新成员", async () => {
+    const admin = await trustedSession(71, "acct:admin6", "admin", {
+      role: "viewer",
+      scp: ["ws:ws-1"],
+    });
+    // 新成员的断言不带 scp = 整台 editor；此时库里它还没有任何授予。
+    const target = await pendingDevice(72, "acct:fresh", "member");
+    expect((await approve(admin, target)).status).toBe(403);
+    // 一个同样只有 ws-1 viewer 的新成员，admin 批得了。
+    const client = await connect(73);
+    const pending = await login(
+      client,
+      asTeam("acct:fresh2", "member", { role: "viewer", scp: ["ws:ws-1"] }),
+    );
+    const small = {
+      pendingId: pending.json<{ details: { pendingId: string } }>().details
+        .pendingId,
+      sas: client.session.sas,
+    };
+    expect((await approve(admin, small)).status).toBe(200);
+    admin.client.close();
+    target.client.close();
+    client.close();
   });
 });
