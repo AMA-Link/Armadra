@@ -15,7 +15,6 @@ const zh = {
   "automation.reload": "刷新",
   "automation.empty": "这个工作空间还没有计划",
   "automation.emptyRuns": "这个计划还没有运行记录",
-  "automation.loading": "正在读取",
 
   /* 不可用状态（§5：不出现伪按钮） */
   "automation.blocked.noWorkspace": "先打开一个工作空间",
@@ -214,7 +213,6 @@ const en: Record<keyof typeof zh, string> = {
   "automation.reload": "Reload",
   "automation.empty": "No plans in this workspace yet",
   "automation.emptyRuns": "This plan has not run yet",
-  "automation.loading": "Loading",
 
   "automation.blocked.noWorkspace": "Open a workspace first",
   "automation.blocked.nativeSession":
