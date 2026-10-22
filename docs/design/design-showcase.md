@@ -39,7 +39,7 @@
 | `mobile`      | 只在 ≤767 有意义：底部导航五态、焦点页（终端 + 按键条）、底部 Sheet、列表页；桌面宽度下用 390 宽的 iframe 嵌同一页的 `#mobile&only=1`                                                                                                      | 复用其余 fixtures |
 | `updates`     | 更新页十一种状态（[更新设计](updates-and-service-install.md) §4.1）                                                                                                                                                                        | `updates.ts`      |
 | `integration` | 一张正常的 CLI 分组、一张版本过旧、一张启动器异常、一张 ACP 未装；执行主机 worker 过期                                                                                                                                                     | `integration.ts`  |
-| `states`      | 通用五态并排：Empty / Skeleton / Alert / 权限 Badge / 离线 Alert                                                                                                                                                                           | —                 |
+| `states`      | 通用五态并排：Empty / Skeleton / Alert / 权限 Badge / 离线 Alert；其下一组骨架样本（列表行、头像行、卡片、表格、表单、设置行、节点体、时间线回合）与统一的错误 / 空状态（整块与行内）                                                      | —                 |
 
 ### §2.2 文件
 
