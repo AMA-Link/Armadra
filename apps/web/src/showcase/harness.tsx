@@ -81,6 +81,9 @@ export function contrastPairs(theme: "dark" | "light"): ContrastPair[] {
     over: "--brand-soft",
     kind: "text",
   });
+  // 配额进度条：指示条在 `--muted` 轨道上（Progress `tone`）。
+  for (const fg of ["--warn", "--danger"])
+    pairs.push({ fg, bg: "--muted", kind: "graphic" });
   pairs.push({ fg: "--on-accent", bg: "--brand-solid", kind: "text" });
   for (const bg of SURFACES) {
     pairs.push({ fg: "--focus-ring", bg, kind: "graphic", alpha: 0.5 });

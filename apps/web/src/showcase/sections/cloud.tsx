@@ -51,6 +51,18 @@ function useHostColumns(): DataColumn<CloudHostRow>[] {
         cell: (row) => <span translate="no">{row.name}</span>,
       },
       {
+        id: "owner",
+        header: t("showcase.cloud.owner"),
+        role: "sub",
+        cell: (row) => <span translate="no">{row.owner}</span>,
+      },
+      {
+        id: "permission",
+        header: t("showcase.cloud.permission"),
+        role: "sub",
+        cell: (row) => t(`workspaceGroups.role.${row.permission}`),
+      },
+      {
         id: "status",
         header: t("showcase.cloud.status"),
         role: "trailing",
@@ -66,6 +78,7 @@ function useHostColumns(): DataColumn<CloudHostRow>[] {
       {
         id: "tags",
         header: t("showcase.cloud.tags"),
+        listCell: (row) => row.tags.join(" ") || null,
         cell: (row) =>
           row.tags.length === 0 ? null : (
             <span className="flex gap-1">
@@ -95,11 +108,13 @@ export default function CloudSection() {
   const t = useT();
   const columns = useHostColumns();
   const [confirm, setConfirm] = React.useState(false);
-  const actions = (row: CloudHostRow) => (
+  const actions = (row: CloudHostRow, layout: "table" | "list") => (
     <>
-      <Button size="sm" variant="ghost">
-        {t("showcase.cloud.open")}
-      </Button>
+      {layout === "table" ? (
+        <Button size="sm" variant="ghost">
+          {t("showcase.cloud.open")}
+        </Button>
+      ) : null}
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <IconButton
@@ -110,6 +125,9 @@ export default function CloudSection() {
           </IconButton>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end">
+          {layout === "list" ? (
+            <DropdownMenuItem>{t("showcase.cloud.open")}</DropdownMenuItem>
+          ) : null}
           <DropdownMenuItem variant="destructive">
             {t("showcase.cloud.revoke")}
           </DropdownMenuItem>
@@ -144,6 +162,7 @@ export default function CloudSection() {
             columns={columns}
             rowKey={(row) => row.id}
             actions={actions}
+            onRowOpen={noop}
           />
         </ConsoleShell>
       </div>
@@ -195,6 +214,7 @@ export default function CloudSection() {
             columns={columns}
             rowKey={(row) => row.id}
             actions={actions}
+            onRowOpen={noop}
           />
         </div>
         <div className="max-w-[390px]">
@@ -205,6 +225,7 @@ export default function CloudSection() {
             columns={columns}
             rowKey={(row) => row.id}
             actions={actions}
+            onRowOpen={noop}
           />
         </div>
       </div>

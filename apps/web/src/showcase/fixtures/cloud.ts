@@ -21,6 +21,7 @@ export interface CloudHostRow {
   readonly id: string;
   readonly name: string;
   readonly owner: string;
+  readonly permission: "viewer" | "editor" | "operator" | "driver";
   readonly online: boolean;
   readonly tags: readonly string[];
   /** 距今分钟数，渲染时转相对时间。 */
@@ -31,6 +32,7 @@ export const CLOUD_HOSTS: readonly CloudHostRow[] = [
   {
     id: "h1",
     name: "build-01",
+    permission: "operator",
     owner: "张三",
     online: true,
     tags: ["gpu", "ci"],
@@ -39,6 +41,7 @@ export const CLOUD_HOSTS: readonly CloudHostRow[] = [
   {
     id: "h2",
     name: "mac-studio",
+    permission: "driver",
     owner: "李四",
     online: false,
     tags: [],
@@ -47,6 +50,7 @@ export const CLOUD_HOSTS: readonly CloudHostRow[] = [
   {
     id: "h3",
     name: "dev-box",
+    permission: "editor",
     owner: "王五",
     online: true,
     tags: ["dev"],
@@ -55,6 +59,7 @@ export const CLOUD_HOSTS: readonly CloudHostRow[] = [
   {
     id: "h4",
     name: "edge-02",
+    permission: "viewer",
     owner: "张三",
     online: false,
     tags: ["edge"],

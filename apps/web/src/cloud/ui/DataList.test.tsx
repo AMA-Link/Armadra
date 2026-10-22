@@ -1,4 +1,10 @@
-import { cleanup, render, screen, within } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  within,
+} from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { DataList, type DataColumn } from "./DataList";
@@ -73,6 +79,69 @@ describe("DataList", () => {
     ];
     render(<DataList {...props} columns={sparse} layout="list" />);
     expect(screen.queryByText("·")).toBeNull();
+  });
+
+  it("sub 列：表格里在名字下面一行（·隔开），有第二行的行 52px；窄屏并进第二行最前", () => {
+    const withSub: DataColumn<Row>[] = [
+      columns[0]!,
+      {
+        id: "owner",
+        header: "所有者",
+        role: "sub",
+        cell: (row) => (row.id === "2" ? null : `主人${row.id}`),
+      },
+      {
+        id: "perm",
+        header: "权限",
+        role: "sub",
+        cell: (row) => (row.id === "2" ? null : "可执行"),
+      },
+      ...columns.slice(1),
+    ];
+    const table = render(
+      <DataList {...props} columns={withSub} layout="table" />,
+    );
+    const body = table.getAllByRole("row").slice(1);
+    expect(body[0]!.className).toContain("h-[52px]");
+    expect(body[0]!.textContent).toContain("主人1·可执行");
+    expect(body[1]!.className).toContain("h-11");
+    expect(
+      table.getAllByRole("columnheader").map((c) => c.textContent),
+    ).not.toContain("所有者");
+    table.unmount();
+    render(<DataList {...props} columns={withSub} layout="list" />);
+    const first = screen.getAllByRole("listitem")[0]!;
+    expect(first.textContent).toContain("主人1·可执行·刚刚");
+  });
+
+  it("窄屏：listCell 换画法，动作拿到 list，点行打开但不吞行内按钮", () => {
+    const opened: string[] = [];
+    const seen: string[] = [];
+    render(
+      <DataList
+        {...props}
+        layout="list"
+        columns={[
+          ...columns.slice(0, 2),
+          {
+            ...columns[2]!,
+            cell: () => "徽标",
+            listCell: (row) => `弱色${row.id}`,
+          },
+        ]}
+        actions={(row, layout) => {
+          seen.push(layout);
+          return <button type="button">菜单 {row.id}</button>;
+        }}
+        onRowOpen={(row) => opened.push(row.id)}
+      />,
+    );
+    expect(screen.getByText("弱色1")).toBeTruthy();
+    expect(screen.queryByText("徽标")).toBeNull();
+    expect(seen).toContain("list");
+    fireEvent.click(screen.getByText("弱色2"));
+    fireEvent.click(screen.getByText("菜单 1"));
+    expect(opened).toEqual(["2"]);
   });
 
   it("缺省按视口：窄屏列表、宽屏表格", () => {
