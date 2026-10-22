@@ -447,7 +447,7 @@ function PowerGroup() {
     settings.data?.resources?.memoryWarnBytes ?? localMemoryWarnBytes;
   return (
     <SettingsGroup title={t("host.group.power")}>
-      <SettingsLoadable loading={settings.isLoading} rows={3} control="select">
+      <SettingsLoadable loading={settings.isLoading} rows={4} control="select">
         <SettingsRow
           label={t("resources.power.policyLabel")}
           hint={t("resources.power.policyHint")}

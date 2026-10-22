@@ -31,6 +31,7 @@ export function SettingsLoadable({
   const t = useT();
   const skeleton = (
     <SkeletonSettings
+      className="divide-y divide-border/60"
       rows={rows}
       control={control}
       label={t("state.loading")}

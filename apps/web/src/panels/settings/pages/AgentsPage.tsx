@@ -77,7 +77,7 @@ export function AgentsPage() {
     <SettingsLoadable
       grouped
       loading={agents.isPending}
-      rows={3}
+      rows={6}
       control="switch"
     >
       {builtins.length === 0 ? (

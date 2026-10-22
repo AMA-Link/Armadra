@@ -80,6 +80,20 @@ describe("SettingsLoadable", () => {
     }
   });
 
+  it("控件条高度取自真实控件：select 同 Select sm（h-7），input 同 Input（h-8）", () => {
+    const bar = (control: "select" | "input" | "switch") => {
+      const { container } = render(<SkeletonSettingsRow control={control} />);
+      const node = container.querySelector(
+        "[data-slot=skeleton-settings-row] > :last-child",
+      ) as HTMLElement;
+      cleanup();
+      return node.className;
+    };
+    expect(bar("select")).toContain("h-7");
+    expect(bar("input")).toContain("h-8");
+    expect(bar("switch")).toContain("h-5");
+  });
+
   it("grouped 的骨架带 SettingsGroup 卡片；行数与控件形状可选", () => {
     const { container } = render(
       <SettingsLoadable grouped loading rows={2} control="switch" title="组">

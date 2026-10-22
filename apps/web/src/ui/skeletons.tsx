@@ -221,7 +221,7 @@ export function SkeletonSettingsRow({
     <div
       data-slot="skeleton-settings-row"
       className={cn(
-        // 与 SettingsRow 同一盒模型（min-h-12 px-4 py-3）：开关行 48，输入与选择行 56。
+        // 与 SettingsRow 同一盒模型（min-h-12 px-4 py-3）：开关行 48，输入行 56，选择行 52。
         "flex min-h-12 items-center justify-between gap-4 px-4 py-3",
         className,
       )}
@@ -230,8 +230,12 @@ export function SkeletonSettingsRow({
       {control === "switch" ? (
         <Skeleton className="h-5 w-9 shrink-0 rounded-full" />
       ) : (
+        // 控件高度同真实控件：Input h-8，Select（size sm）h-7。
         <Skeleton
-          className={cn("h-8 shrink-0", control === "select" ? "w-32" : "w-48")}
+          className={cn(
+            "shrink-0",
+            control === "select" ? "h-7 w-32" : "h-8 w-48",
+          )}
         />
       )}
     </div>
