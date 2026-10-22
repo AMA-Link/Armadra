@@ -275,9 +275,21 @@ sessionDisplay(input: {
 
 ### §5.3 在哪看
 
-- 终端驱动的 Agent 节点，节点菜单多一项「会话 / 终端」，切换节点体（`apps/web/src/nodes/node-body-mode.ts`），**不切换驱动**。会话体是只读的时间线加活动行，输入框隐藏（输入仍走终端或 `send`）；缺省是终端体。该选择只记在本机页面里，不进画布数据，每个设备自己的看法互不影响。没有转录适配器的代理，切换项不可用。
+- 终端驱动的 Agent 节点，节点菜单多一项「会话 / 终端」，切换节点体（`apps/web/src/nodes/node-body-mode.ts`），**不切换驱动**。会话体是只读的时间线加活动行，输入框隐藏（输入仍走终端或 `send`）；缺省是终端体，建节点时按用户偏好可以写成会话体（§5.4）。手动切换只记在本机页面里，不进画布数据，每个设备自己的看法互不影响，并且压过建节点时写的初始值。没有转录适配器的代理，切换项不可用。
 - 会话页、手机焦点页（`shell/MobileFocusPage.tsx`）、分享只读页（`shared-session/ReadOnlyTranscript.tsx`）、状态抽屉对终端驱动和 ACP 驱动一视同仁，都显示时间线。
 - 投递门、`send`、上下文读取（`history/registry.ts`）都不改；时间线只是多了一个读者。转录复制进库后：权限同 `terminal:read`，不进推送正文，不进上下文读取（那条路仍读 CLI 原文件）。
+
+### §5.4 新建 Agent 节点的视图跟随用户偏好（#462）
+
+**偏好**：设置里已有的「Agent 默认视图」（`agents.defaultDriver`，会话 / 终端），不另加设置项。手动新建菜单用的也是它。
+
+**一个函数**：`defaultAgentView({ setting, acpInstalled, ownLaunch, baseAgentId })`（`packages/shared`）返回 `{ driver, view? }`。偏好「终端」：终端驱动、终端体。偏好「会话」：ACP 可用走 ACP（会话视图）；否则有转录适配器的终端驱动，写 `view: "session"`；都没有就终端体。页面新建菜单、派生与 core 的 `open-agent` / `team` / 工作流角色都调它（页面 `preferredView`，core `newNodeView`），契约 §84。依赖满足后的 `spawnForNode`、定时任务冷启动启动的是已建好的节点，沿用节点上的值，不再另判。
+
+**初始值，不是覆盖**：`agent.view` 只在建节点时写一次，进画布数据；本机手动切换（`node-body-mode`）优先，改偏好不翻已有节点。
+
+**起 PTY 与终端表面解耦**：以前只有终端表面挂载时才起 PTY、敲启动行，所以终端驱动的节点一默认显示会话体就起不来。现在 `POST /api/terminals` 带 `launch: true` 时由 core 起 PTY 并敲启动行（`core/terminal/node-launch.ts`，与依赖启动同一份启动行与启动闸门）；会话体挂载时（`use-session-body-process.ts`）做表面 `ensureSession` 同一个决定：有运行中或休眠的会话就什么都不做，没有才请 core 起。终端表面只负责附着显示——找到运行中的会话就不再敲启动行，所以会话体与终端体来回切换、重启后重开、休眠唤醒（`--resume` 仍由 core 的休眠执行者敲）都不会起第二个进程。会话体的内容来自转录适配器写的时间线。
+
+**取舍**：会话体的启动行没有终端体那套「敲完没起来自动重敲一次」的页面重试；失败只记日志，切到终端体会走表面自己的失败展示与重试。
 
 ## §6 契约与协议
 

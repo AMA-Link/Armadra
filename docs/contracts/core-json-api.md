@@ -4574,3 +4574,20 @@ owner（本机会话，或已信任设备经通道的 owner 会话）：`{ sourc
 - **替代**：会话内容、头部值（模式与模型目录、`promptCapabilities`、用量、命令、标题）、挂起的审批与 elicitation、回合记录都读 `timeline.open` / `timeline.sync` / `timeline.page` 并订 `timeline.delta`（§82）。
 - **镜像停写**：旧镜像 `<数据目录>/acp/<nodeId>/<ACP 会话 id>.acp.jsonl` 不再写。打开升级前的会话时，时间线为空而旧文件有内容，core 读一次旧文件导入时间线（条目 `source = replay`）；上下文读取、摘要、交接（`transcriptPath` 为镜像路径时）优先从时间线派生 `TranscriptEntry`（游标是记录序号），时间线为空才读旧文件（游标是字节偏移）。
 - **页面**：会话视图只走时间线；主机没有 `timeline.*` 或会话没写过时间线时内容为空，不再退回读镜像。只读分享页不再每 2 s 轮询。
+
+## 84. 新建 Agent 节点的视图跟随默认视图偏好
+
+> 状态：实施契约（issue #462；设计 `docs/design/session-timeline.md` §5.4，实现 `packages/shared/src/agent-driver.ts`、`core/collab/control/agent-driver.ts`、`core/terminal/node-launch.ts`）。无迁移、无新路由、无新 procedure，所以协议 minor 不变；只加两个可省字段，旧客户端忽略。
+
+- **节点数据** `data.agent.view?: "session" | "terminal"`：终端驱动的 Agent 节点**初始**的节点体，缺省是终端体。只在建节点时写一次；本机手动切换过的节点体（`node-body-mode`）优先，所以之后改偏好、别的设备切换都不会盖掉它。`driver: "acp"` 的节点永远是会话视图，不写 `view`。
+- **谁写**：所有建节点的入口——页面新建菜单与派生、`canvas open-agent` / `team`、工作流角色——调同一个共享函数 `defaultAgentView`（页面 `preferredView`、core `newNodeView`）。输入是用户偏好（设置 `agents.defaultDriver`，界面「Agent 默认视图」：`acp` = 会话，`terminal` = 终端）、该 Agent 的 ACP 适配器是否装了、是否自带启动程序、是否有转录适配器（`TRANSCRIPT_AGENT_IDS`，与 `core/timeline/sources` 的 `ADAPTERS` 键一致，测试守着）。
+
+| 偏好 | ACP 适配器可用               | 无 ACP、有转录适配器                | 都没有                       |
+| ---- | ---------------------------- | ----------------------------------- | ---------------------------- |
+| 会话 | `driver: acp`                | `driver: terminal`、`view: session` | `driver: terminal`（终端体） |
+| 终端 | `driver: terminal`（终端体） | 同左                                | 同左                         |
+
+`--resume` 只有终端驱动做得到，所以不写 `driver`，`view` 仍按偏好。依赖满足后的启动（`spawnForNode`）与定时任务冷启动启动的是已建好的节点，沿用节点上已写的值。
+
+- **`POST /api/terminals` 与 procedure `terminals.create` 多一个可省入参 `launch: boolean`**：同时给了 `nodeId` 与 `agent` 时，core 起 PTY 之后**自己**敲启动行（与依赖启动同一份 `launchLine`，含 `--resume`；过启动闸门，等提示符安静，输入被人动过半行则不敲）。节点体是会话时间线时没有终端表面，页面（`nodes/use-session-body-process.ts`）挂载时先读节点有没有运行中或休眠的会话，没有才带 `launch: true` 来建；有依赖等待、`pendingLaunch`、`launchPolicy: "manual"` 的节点不起。终端表面之后挂上只是附着：找到运行中的会话就不再敲启动行。
+- **不变**：休眠的会话不被会话体唤醒（投递会叫醒，切到终端体点一下接回）；不带 `launch` 的创建行为不变，终端体仍由表面起进程。
