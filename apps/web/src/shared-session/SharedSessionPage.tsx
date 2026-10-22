@@ -85,17 +85,21 @@ export default function SharedSessionPage({
       </header>
       <div className="min-h-0 flex-1">
         {source === undefined || session === undefined ? (
-          <div className="flex h-full items-center justify-center">
-            {row.isError ? (
+          row.isError ? (
+            <div className="flex h-full items-center justify-center">
               <p className="text-muted-foreground">
                 {t("sharedSession.failed")}
               </p>
-            ) : (
-              <Loadable loading skeleton={<SharedSessionBodySkeleton />}>
-                {null}
-              </Loadable>
-            )}
-          </div>
+            </div>
+          ) : (
+            <Loadable
+              loading
+              className="h-full"
+              skeleton={<SharedSessionBodySkeleton />}
+            >
+              {null}
+            </Loadable>
+          )
         ) : acp ? (
           <ReadOnlyTranscript
             source={source}

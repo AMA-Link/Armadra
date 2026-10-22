@@ -51,16 +51,18 @@ export function ReadOnlyTranscript({
   const ready = timeline.phase === "ready" || timeline.missing;
   const failed = timeline.phase === "error" && items.length === 0;
   if (items.length === 0 && !ready) {
-    return (
+    return failed ? (
       <div className="flex h-full items-center justify-center">
-        {failed ? (
-          <p className="text-muted-foreground">{t("sharedSession.failed")}</p>
-        ) : (
-          <Loadable loading skeleton={<SharedSessionBodySkeleton />}>
-            {null}
-          </Loadable>
-        )}
+        <p className="text-muted-foreground">{t("sharedSession.failed")}</p>
       </div>
+    ) : (
+      <Loadable
+        loading
+        className="h-full"
+        skeleton={<SharedSessionBodySkeleton />}
+      >
+        {null}
+      </Loadable>
     );
   }
   if (items.length === 0) {
