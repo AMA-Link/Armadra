@@ -9,14 +9,15 @@
  * `ARMADRA_PERSONAL_RELAY=1` 才跑；否则 skipped。其余从环境读：
  *
  *   * `ARMADRA_PERSONAL_RELAY_HOME`：armadra-cloud 的检出目录。给了它，测试自己起
- *     中继（`node apps/relay/src/cli.ts personal serve`，数据在它的
- *     `.data/personal/`），读那里的 `dev.env` 与 CA 算指纹，并跑「中继重启」那一条；
+ *     中继（Go 二进制 `armadra-relay personal serve`：`ARMADRA_RELAY_BIN`，否则检出里的
+ *     `go/bin/armadra-relay`，没有就 `go build`；数据在检出的 `.data/personal/`），读那里的
+ *     `dev.env` 与 CA 算指纹，并跑「中继重启」那一条；
  *   * 不给就连已经在跑的中继：`ARMADRA_PERSONAL_RELAY_URL`（缺省
  *     `https://127.0.0.1:8102`）、`ARMADRA_PERSONAL_RELAY_FP`、
  *     `ARMADRA_PERSONAL_RELAY_ACCOUNT` / `_PASSWORD`，跳过重启那一条。
  */
 
-import { type ChildProcess, spawn } from "node:child_process";
+import { type ChildProcess, spawn, spawnSync } from "node:child_process";
 import { createHash, randomBytes, X509Certificate } from "node:crypto";
 import {
   existsSync,
@@ -118,12 +119,26 @@ async function relayUp(timeoutMs = 20_000): Promise<void> {
   }
 }
 
+/** Go 中继二进制：ARMADRA_RELAY_BIN，否则检出里的 go/bin/armadra-relay（没有就 go build）。 */
+function relayBin(): string {
+  const given = process.env.ARMADRA_RELAY_BIN?.trim();
+  if (given) return resolve(given);
+  const bin = join(home, "go", "bin", "armadra-relay");
+  if (!existsSync(bin)) {
+    const built = spawnSync("go", ["build", "-o", bin, "./cmd/armadra-relay"], {
+      cwd: join(home, "go"),
+      stdio: "ignore",
+    });
+    if (built.status !== 0) throw new Error("go build armadra-relay 失败");
+  }
+  return bin;
+}
+
 function startRelay(): void {
   const port = new URL(issuer).port || "443";
   relayProcess = spawn(
-    process.execPath,
+    relayBin(),
     [
-      "apps/relay/src/cli.ts",
       "personal",
       "serve",
       "--data-dir",
