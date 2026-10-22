@@ -290,11 +290,7 @@ export function ProjectSearchPanel({
         <Loadable
           loading
           skeleton={
-            <SkeletonList
-              rows={4}
-              size="compact"
-              label={t("state.loading")}
-            />
+            <SkeletonList rows={4} size="compact" label={t("state.loading")} />
           }
         >
           {null}
