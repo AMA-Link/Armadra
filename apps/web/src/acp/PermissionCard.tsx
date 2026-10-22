@@ -5,10 +5,16 @@ import type { AcpPermissionOption } from "@armadra/shared";
 import { useT } from "@/app/preferences-store";
 import { useAgentStatusStore } from "@/agent/status-store";
 import { cn } from "@/lib/cn";
-import { Badge } from "@/ui/badge";
+import {
+  APPROVAL_BUTTON,
+  ApprovalActions,
+  ApprovalShell,
+  ApprovalCommand,
+  ApprovalText,
+  ApprovalTitle,
+  AwaitingDriver,
+} from "@/approval/ApprovalShell";
 import { Button } from "@/ui/button";
-import { ButtonGroup } from "@/ui/button-group";
-import { Card } from "@/ui/card";
 import {
   Collapsible,
   CollapsibleContent,
@@ -57,7 +63,7 @@ function Details({ permission }: { permission: AcpPermissionView }) {
         <Button
           variant="ghost"
           size="xs"
-          className="-ml-1.5 font-normal text-muted-foreground"
+          className="-ml-1.5 self-start font-normal text-muted-foreground pointer-coarse:h-9"
         >
           {open ? <ChevronDown /> : <ChevronRight />}
           {t("acp.permission.details")}
@@ -102,8 +108,43 @@ const OPTION_LABELS: Record<AcpPermissionOption["kind"], string> = {
   reject_always: "acp.permission.rejectAlways",
 };
 
+/**
+ * 同意类里「本次」排在「始终」前：Agent 给的顺序不可信（有的把「始终允许」
+ * 放第一个），而焦点与 Enter 落在第一枚，不能让一下回车变成永久授权。
+ */
+const OPTION_RANK: Record<AcpPermissionOption["kind"], number> = {
+  allow_once: 0,
+  allow_always: 1,
+  reject_once: 2,
+  reject_always: 3,
+};
+
+const OPTION_VARIANT: Record<
+  AcpPermissionOption["kind"],
+  "default" | "outline" | "destructive"
+> = {
+  allow_once: "default",
+  allow_always: "outline",
+  reject_once: "outline",
+  reject_always: "destructive",
+};
+
 export function isAllowOption(option: AcpPermissionOption): boolean {
   return option.kind.startsWith("allow");
+}
+
+/** 选项按 允许一次 / 始终允许 / 拒绝 / 始终拒绝 排好；同类保持 Agent 给的先后。 */
+export function sortedOptions(
+  options: readonly AcpPermissionOption[],
+): AcpPermissionOption[] {
+  return options
+    .map((option, index) => ({ option, index }))
+    .sort(
+      (a, b) =>
+        OPTION_RANK[a.option.kind] - OPTION_RANK[b.option.kind] ||
+        a.index - b.index,
+    )
+    .map(({ option }) => option);
 }
 
 /**
@@ -125,9 +166,23 @@ export function answerPermission(
     .catch(() => undefined);
 }
 
+/** 标题里要读的那段命令：`execute` 类（或入参里有 `command`）按命令画。 */
+function commandOf(permission: AcpPermissionView): string | null {
+  const call = permission.toolCall;
+  const raw = call.rawInput;
+  const command =
+    raw !== null && typeof raw === "object"
+      ? (raw as { command?: unknown }).command
+      : undefined;
+  if (call.kind === "execute")
+    return call.title || (typeof command === "string" ? command : null);
+  return null;
+}
+
 /**
- * `session/request_permission` 的卡片（设计系统 §5.1）：标题是工具调用，
- * 选项按 ACP 的 kind 分允许 / 拒绝两组，允许用 default、拒绝用 outline。
+ * `session/request_permission` 的卡片（设计系统 §5.1）：标题是工具调用（命令用
+ * 等宽、最多 3 行、点开展开），选项按 ACP 的 kind 排成「本次允许 · 始终允许 ｜
+ * 拒绝」，只有「本次允许」是主按钮。数字键 1–9 按顺序直答（焦点在卡片里时）。
  * 没有答复权限的人（不是 driver、终端也不是自己起的，契约 §23）看到同一张卡，
  * 按钮换成「等待接管」（设计系统 §5.8）。
  */
@@ -136,22 +191,28 @@ export function PermissionCard({
   canAnswer,
   className,
   pinned = false,
+  onAnswered,
 }: {
   permission: AcpPermissionView;
   canAnswer: boolean;
   className?: string;
   /**
-   * 钉在输入框上方的那一张：出现时焦点落到第一枚允许钮（ACP 会话视图
+   * 钉在输入框上方的那一张：出现时焦点落到「本次允许」（ACP 会话视图
    * §5.7）。Esc 不答、不关。
    */
   pinned?: boolean;
+  /** 答完之后（焦点还在卡片里时）调用：把焦点交还输入框，别让它掉到 body。 */
+  onAnswered?: () => void;
 }) {
   const t = useT();
-  const allow = permission.options.filter(isAllowOption);
-  const reject = permission.options.filter((option) => !isAllowOption(option));
+  const titleId = React.useId();
+  const options = sortedOptions(permission.options);
+  const allow = options.filter(isAllowOption);
+  const reject = options.filter((option) => !isAllowOption(option));
   const first = allow[0]?.optionId;
+  const cardRef = React.useRef<HTMLDivElement>(null);
   const firstRef = React.useRef<HTMLButtonElement>(null);
-  // 钉住时焦点落到第一枚允许钮——但人正在输入框里打字时不抢：那一下 Enter
+  // 钉住时焦点落到「本次允许」——但人正在输入框里打字时不抢：那一下 Enter
   // 会变成「允许」。
   React.useEffect(() => {
     if (!pinned || !canAnswer) return;
@@ -164,49 +225,68 @@ export function PermissionCard({
     }
     firstRef.current?.focus({ preventScroll: true });
   }, [pinned, canAnswer, permission.pendingId]);
-  const group = (options: AcpPermissionOption[], allowGroup: boolean) =>
-    options.length > 0 && (
-      <ButtonGroup>
-        {options.map((option) => (
-          <Button
-            key={option.optionId}
-            size="sm"
-            variant={allowGroup ? "default" : "outline"}
-            ref={option.optionId === first ? firstRef : undefined}
-            onKeyDown={(event) => {
-              if (event.key === "Escape") event.stopPropagation();
-            }}
-            onClick={() => void answerPermission(permission, option)}
-          >
-            {t(OPTION_LABELS[option.kind])}
-          </Button>
-        ))}
-      </ButtonGroup>
-    );
 
-  return (
-    <Card
-      data-slot="acp-permission"
-      data-pending-id={permission.pendingId}
-      className={cn(
-        "gap-2 border-l-2 border-l-[var(--warn)] px-3 py-2",
-        className,
-      )}
+  const answer = (option: AcpPermissionOption) => {
+    const hadFocus = cardRef.current?.contains(document.activeElement) ?? false;
+    void answerPermission(permission, option);
+    if (hadFocus) onAnswered?.();
+  };
+  const onKeyDown = (event: React.KeyboardEvent) => {
+    if (event.key === "Escape") {
+      event.stopPropagation();
+      return;
+    }
+    if (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey)
+      return;
+    if (!/^[1-9]$/.test(event.key)) return;
+    const option = options[Number(event.key) - 1];
+    if (option === undefined) return;
+    event.preventDefault();
+    answer(option);
+  };
+  const button = (option: AcpPermissionOption) => (
+    <Button
+      key={option.optionId}
+      size="sm"
+      variant={
+        option.optionId === first ? "default" : OPTION_VARIANT[option.kind]
+      }
+      className={APPROVAL_BUTTON}
+      ref={option.optionId === first ? firstRef : undefined}
+      aria-keyshortcuts={String(options.indexOf(option) + 1)}
+      {...(option.name ? { title: option.name } : {})}
+      onKeyDown={onKeyDown}
+      onClick={() => answer(option)}
     >
-      <span className="text-[13px] [overflow-wrap:anywhere]">
-        {permission.toolCall.title}
-      </span>
+      {t(OPTION_LABELS[option.kind])}
+    </Button>
+  );
+
+  const command = commandOf(permission);
+  return (
+    <ApprovalShell
+      ref={cardRef}
+      slot="acp-permission"
+      pendingId={permission.pendingId}
+      titleId={titleId}
+      {...(className === undefined ? {} : { className })}
+    >
+      <ApprovalTitle id={titleId}>
+        {command !== null ? (
+          <ApprovalCommand>{command}</ApprovalCommand>
+        ) : (
+          <ApprovalText>{permission.toolCall.title}</ApprovalText>
+        )}
+      </ApprovalTitle>
       <Details permission={permission} />
       {canAnswer ? (
-        <div className="flex flex-wrap gap-2">
-          {group(allow, true)}
-          {group(reject, false)}
-        </div>
+        <ApprovalActions
+          leading={allow.map(button)}
+          trailing={reject.length > 0 ? reject.map(button) : null}
+        />
       ) : (
-        <Badge variant="outline" className="self-start">
-          {t("acp.permission.awaitingDriver")}
-        </Badge>
+        <AwaitingDriver />
       )}
-    </Card>
+    </ApprovalShell>
   );
 }

@@ -190,6 +190,20 @@
   }
 }
 
+/* 触屏上头部的允许 / 拒绝只剩 24px 的图标：纵向把点击区扩到 40px，两枚之间
+   不重叠（横向不扩）。 */
+@media (pointer: coarse) {
+  .node-header-approval button {
+    position: relative;
+  }
+
+  .node-header-approval button::after {
+    content: "";
+    position: absolute;
+    inset: -8px 0;
+  }
+}
+
 @container canvas-node (max-width: 360px) {
   .terminal-secondary-action {
     display: none;
