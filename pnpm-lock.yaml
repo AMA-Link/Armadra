@@ -255,8 +255,8 @@ importers:
   apps/desktop:
     dependencies:
       '@armadra/platform-protocol':
-        specifier: file:../../tools/vendor/armadra-platform-protocol-0.9.2.tgz
-        version: file:tools/vendor/armadra-platform-protocol-0.9.2.tgz(@opentelemetry/api@1.9.1)(zod@4.4.3)
+        specifier: file:../../tools/vendor/armadra-platform-protocol-0.9.3.tgz
+        version: file:tools/vendor/armadra-platform-protocol-0.9.3.tgz(@opentelemetry/api@1.9.1)(zod@4.4.3)
       '@armadra/shared':
         specifier: workspace:*
         version: link:../../packages/shared
@@ -301,8 +301,8 @@ importers:
         version: 13.6.33
     devDependencies:
       '@armadra/agent':
-        specifier: 0.9.2
-        version: 0.9.2
+        specifier: 0.9.3
+        version: 0.9.3
       '@electron/rebuild':
         specifier: ^4.2.0
         version: 4.2.0(supports-color@7.2.0)
@@ -414,8 +414,8 @@ importers:
   apps/web:
     dependencies:
       '@armadra/platform-protocol':
-        specifier: file:../../tools/vendor/armadra-platform-protocol-0.9.2.tgz
-        version: file:tools/vendor/armadra-platform-protocol-0.9.2.tgz(@opentelemetry/api@1.9.1)(zod@4.4.3)
+        specifier: file:../../tools/vendor/armadra-platform-protocol-0.9.3.tgz
+        version: file:tools/vendor/armadra-platform-protocol-0.9.3.tgz(@opentelemetry/api@1.9.1)(zod@4.4.3)
       '@armadra/shared':
         specifier: workspace:*
         version: link:../../packages/shared
@@ -625,8 +625,8 @@ importers:
   packages/shared:
     dependencies:
       '@armadra/platform-protocol':
-        specifier: file:../../tools/vendor/armadra-platform-protocol-0.9.2.tgz
-        version: file:tools/vendor/armadra-platform-protocol-0.9.2.tgz(@opentelemetry/api@1.9.1)(zod@4.4.3)
+        specifier: file:../../tools/vendor/armadra-platform-protocol-0.9.3.tgz
+        version: file:tools/vendor/armadra-platform-protocol-0.9.3.tgz(@opentelemetry/api@1.9.1)(zod@4.4.3)
       '@noble/curves':
         specifier: 2.4.0
         version: 2.4.0
@@ -652,14 +652,14 @@ packages:
   '@antfu/install-pkg@2.1.0':
     resolution: {integrity: sha512-sdg9NxU3zR4Mnawfbc/x6GB5Wf17WYud5qOuEuxXjaKpYpMkISSJEjItGebXJ2bQ4DIcly4NYH23mtkGJjvKUw==}
 
-  '@armadra/agent@0.9.2':
-    resolution: {integrity: sha512-fXAc8NwH3st9o7PCpeO7aSRNIMskwAhdUofyt1L00t4cc+cqOktaPyKRr9VY5iWW4dxUBCxmSyekdUtvyNk0bQ==}
+  '@armadra/agent@0.9.3':
+    resolution: {integrity: sha512-KQR77cclFjYDR/w3wsDxPRU3tFpwdfvlrbjBwdk+P8dHNtr7G+zYHI8BIi429g3m/Y6dw+qvSjfQ1gi5qeHnVQ==}
     engines: {node: '>=22'}
     hasBin: true
 
-  '@armadra/platform-protocol@file:tools/vendor/armadra-platform-protocol-0.9.2.tgz':
-    resolution: {integrity: sha512-lAwcrIlXwoAZrtnWcny4irEJnbPmXwqopiLxrzxueVJs5nuQjvvs3Ie2yq9nuF57FLSrhW7AsxM55Ze6W8xTYQ==, tarball: file:tools/vendor/armadra-platform-protocol-0.9.2.tgz}
-    version: 0.9.2
+  '@armadra/platform-protocol@file:tools/vendor/armadra-platform-protocol-0.9.3.tgz':
+    resolution: {integrity: sha512-Mc7zGAOtV9qF4e1JOH28eGx32XaLo6y/W15LuaiVBBEcFu/XTJA7JwYhKU5kqzNumxLchHx2S16ckDkOICMKaA==, tarball: file:tools/vendor/armadra-platform-protocol-0.9.3.tgz}
+    version: 0.9.3
     peerDependencies:
       zod: '>=4.0.0 <5'
 
@@ -7279,9 +7279,9 @@ snapshots:
       package-manager-detector: 1.8.0
       tinyexec: 1.3.1
 
-  '@armadra/agent@0.9.2': {}
+  '@armadra/agent@0.9.3': {}
 
-  '@armadra/platform-protocol@file:tools/vendor/armadra-platform-protocol-0.9.2.tgz(@opentelemetry/api@1.9.1)(zod@4.4.3)':
+  '@armadra/platform-protocol@file:tools/vendor/armadra-platform-protocol-0.9.3.tgz(@opentelemetry/api@1.9.1)(zod@4.4.3)':
     dependencies:
       '@orpc/contract': 1.15.4(@opentelemetry/api@1.9.1)
       zod: 4.4.3
