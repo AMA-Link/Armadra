@@ -18,9 +18,11 @@ import { useCanvasStore } from "../store/canvas-store";
 import { formatRelativeTime } from "../lib/format";
 import { ProviderCard } from "./usage/ProviderCard";
 import { UsagePanel } from "./usage/UsagePanel";
+import { Loadable } from "../loading/Loadable";
 import { IconButton } from "../ui/icon-button";
 import { ScrollArea } from "../ui/scroll-area";
 import { Separator } from "../ui/separator";
+import { Skeleton } from "../ui/skeleton";
 import { SheetTitle } from "../ui/sheet";
 import { PINNED_PANEL_WIDTH, WorkPanelSheet } from "./WorkPanelSheet";
 
@@ -127,17 +129,31 @@ function DashboardBody() {
           {t("usage.paused")}
         </p>
       ) : (
-        <div className="flex flex-col gap-2">
-          {providers.map((provider) => (
-            <ProviderCard
-              key={provider.id}
-              provider={
-                usage.isError ? { ...provider, status: "error" } : provider
-              }
-              now={now}
-            />
-          ))}
-        </div>
+        <Loadable
+          loading={usage.isLoading}
+          skeleton={
+            <div
+              role="status"
+              aria-label={t("state.loading")}
+              className="flex flex-col gap-2"
+            >
+              <Skeleton className="h-24 w-full rounded-[var(--r-card)]" />
+              <Skeleton className="h-24 w-full rounded-[var(--r-card)]" />
+            </div>
+          }
+        >
+          <div className="flex flex-col gap-2">
+            {providers.map((provider) => (
+              <ProviderCard
+                key={provider.id}
+                provider={
+                  usage.isError ? { ...provider, status: "error" } : provider
+                }
+                now={now}
+              />
+            ))}
+          </div>
+        </Loadable>
       )}
 
       <Separator />
@@ -155,6 +171,22 @@ function DashboardBody() {
           <p role="status" className="text-xs text-danger-text">
             {t("usage.cost.error")}
           </p>
+        ) : settings.isLoading || cost.isLoading ? (
+          <Loadable
+            loading
+            skeleton={
+              <div
+                role="status"
+                aria-label={t("state.loading")}
+                className="flex flex-col gap-3"
+              >
+                <Skeleton className="h-16 w-full rounded-[var(--r-card)]" />
+                <Skeleton className="h-40 w-full rounded-[var(--r-card)]" />
+              </div>
+            }
+          >
+            {null}
+          </Loadable>
         ) : !summary || summary.status === "unavailable" ? (
           <p role="status" className="text-xs text-muted-foreground">
             {t("usage.cost.empty")}

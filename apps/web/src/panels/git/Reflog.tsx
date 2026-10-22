@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { GitLoadable } from "./git-loading";
 import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import type {
   GitIntegrationSnapshot,
@@ -109,7 +110,7 @@ export function Reflog({
           {t("gitRepo.reflogLoad")}
         </Button>
       </form>
-      {log.isPending && <p role="status">{t("gitRepo.loading")}</p>}
+      <GitLoadable loading={log.isLoading} size={4} />
       {log.error && (
         <ReadError error={log.error} retry={() => void log.refetch()} />
       )}

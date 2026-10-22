@@ -178,7 +178,10 @@ describe("刷新页面之后", () => {
     const onEntered = vi.fn();
     render(<RelaySignIn relay={target} onEntered={onEntered} />);
     expect(screen.queryByLabelText("口令")).toBeNull();
-    expect(screen.getByLabelText("连接中")).toBeTruthy();
+    // 续登录期间画的是表单形状的骨架（200 ms 内不可见占位），不是转圈。
+    expect(
+      document.querySelector("[data-slot=relay-form-skeleton]"),
+    ).not.toBeNull();
     await waitFor(() => expect(onEntered).toHaveBeenCalledTimes(1));
     expect(target.resume).toHaveBeenCalledTimes(1);
     expect(target.signIn).not.toHaveBeenCalled();

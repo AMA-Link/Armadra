@@ -1,3 +1,6 @@
+import { Loadable } from "@/loading/Loadable";
+import { Skeleton } from "@/ui/skeleton";
+import { SkeletonList } from "@/ui/skeletons";
 import { useEffect, useRef, useState } from "react";
 import {
   useInfiniteQuery,
@@ -270,94 +273,112 @@ export function NewWorkspaceDialog({
           </TabsList>
 
           <TabsContent value="repository">
-            {accounts.isPending || (host !== null && repositories.isPending) ? (
-              <div className="flex h-40 items-center justify-center">
-                <Spinner aria-label={t("newWorkspace.loading")} />
-              </div>
-            ) : host === null ? (
-              <div className="flex h-40 items-center justify-center text-muted-foreground">
-                {accounts.isError
-                  ? (accounts.error as Error).message
-                  : t("newWorkspace.notConnected")}
-              </div>
-            ) : (
-              <div className="flex flex-col gap-2">
-                {accountList.length > 1 && (
-                  <Select
-                    value={host}
-                    disabled={busy}
-                    onValueChange={(next) => {
-                      setAccountHost(next);
-                      setRepository(null);
-                    }}
-                  >
-                    <SelectTrigger
-                      className="w-full"
-                      aria-label={t("newWorkspace.account")}
+            <Loadable
+              loading={
+                accounts.isPending || (host !== null && repositories.isPending)
+              }
+              skeleton={
+                <div
+                  role="status"
+                  aria-busy="true"
+                  aria-label={t("state.loading")}
+                  data-slot="new-workspace-skeleton"
+                  className="overflow-hidden rounded-[var(--r-card)] border border-border bg-[var(--card)]"
+                >
+                  <div className="flex h-9 items-center border-b border-border px-3">
+                    <Skeleton className="h-3 w-1/3" />
+                  </div>
+                  <div className="flex h-56 flex-col p-1">
+                    <SkeletonList rows={6} leading="none" trailing />
+                  </div>
+                </div>
+              }
+            >
+              {host === null ? (
+                <div className="flex h-40 items-center justify-center text-muted-foreground">
+                  {accounts.isError
+                    ? (accounts.error as Error).message
+                    : t("newWorkspace.notConnected")}
+                </div>
+              ) : (
+                <div className="flex flex-col gap-2">
+                  {accountList.length > 1 && (
+                    <Select
+                      value={host}
+                      disabled={busy}
+                      onValueChange={(next) => {
+                        setAccountHost(next);
+                        setRepository(null);
+                      }}
                     >
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent className="z-[var(--z-dialog)]">
-                      {accountList.map((account) => (
-                        <SelectItem key={account.host} value={account.host}>
-                          {account.accountLogin
-                            ? `${account.host} · ${account.accountLogin}`
-                            : account.host}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                )}
-                <Command className="rounded-[var(--r-card)]! border border-border bg-[var(--card)]">
-                  <CommandInput
-                    className={COMMAND_INPUT_FOCUS}
-                    placeholder={t("newWorkspace.search")}
-                    aria-label={t("newWorkspace.search")}
-                    disabled={busy}
-                  />
-                  <CommandList className="h-56 max-h-56">
-                    <CommandEmpty>
-                      {repositories.isError
-                        ? (repositories.error as Error).message
-                        : t("newWorkspace.noRepositories")}
-                    </CommandEmpty>
-                    {listed.map((entry) => (
-                      <CommandItem
-                        key={`${entry.owner}/${entry.name}`}
-                        value={`${entry.owner}/${entry.name}`}
-                        disabled={busy || entry.cloneUrl === ""}
-                        data-checked={entry.cloneUrl === repository}
-                        onSelect={() => setRepository(entry.cloneUrl)}
+                      <SelectTrigger
+                        className="w-full"
+                        aria-label={t("newWorkspace.account")}
                       >
-                        <span className="min-w-0 flex-1 truncate">
-                          {entry.owner}/{entry.name}
-                        </span>
-                        {entry.private && (
-                          <Lock
-                            aria-label={t("newWorkspace.private")}
-                            className="size-3.5 text-muted-foreground"
-                          />
-                        )}
-                      </CommandItem>
-                    ))}
-                  </CommandList>
-                </Command>
-                {repositories.hasNextPage && (
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    disabled={busy || repositories.isFetchingNextPage}
-                    onClick={() => void repositories.fetchNextPage()}
-                  >
-                    {repositories.isFetchingNextPage ? (
-                      <Spinner aria-label={t("newWorkspace.loading")} />
-                    ) : (
-                      t("forge.more")
-                    )}
-                  </Button>
-                )}
-              </div>
-            )}
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent className="z-[var(--z-dialog)]">
+                        {accountList.map((account) => (
+                          <SelectItem key={account.host} value={account.host}>
+                            {account.accountLogin
+                              ? `${account.host} · ${account.accountLogin}`
+                              : account.host}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )}
+                  <Command className="rounded-[var(--r-card)]! border border-border bg-[var(--card)]">
+                    <CommandInput
+                      className={COMMAND_INPUT_FOCUS}
+                      placeholder={t("newWorkspace.search")}
+                      aria-label={t("newWorkspace.search")}
+                      disabled={busy}
+                    />
+                    <CommandList className="h-56 max-h-56">
+                      <CommandEmpty>
+                        {repositories.isError
+                          ? (repositories.error as Error).message
+                          : t("newWorkspace.noRepositories")}
+                      </CommandEmpty>
+                      {listed.map((entry) => (
+                        <CommandItem
+                          key={`${entry.owner}/${entry.name}`}
+                          value={`${entry.owner}/${entry.name}`}
+                          disabled={busy || entry.cloneUrl === ""}
+                          data-checked={entry.cloneUrl === repository}
+                          onSelect={() => setRepository(entry.cloneUrl)}
+                        >
+                          <span className="min-w-0 flex-1 truncate">
+                            {entry.owner}/{entry.name}
+                          </span>
+                          {entry.private && (
+                            <Lock
+                              aria-label={t("newWorkspace.private")}
+                              className="size-3.5 text-muted-foreground"
+                            />
+                          )}
+                        </CommandItem>
+                      ))}
+                    </CommandList>
+                  </Command>
+                  {repositories.hasNextPage && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      disabled={busy || repositories.isFetchingNextPage}
+                      onClick={() => void repositories.fetchNextPage()}
+                    >
+                      {repositories.isFetchingNextPage ? (
+                        <Spinner />
+                      ) : (
+                        t("forge.more")
+                      )}
+                    </Button>
+                  )}
+                </div>
+              )}
+            </Loadable>
           </TabsContent>
 
           <TabsContent value="local">

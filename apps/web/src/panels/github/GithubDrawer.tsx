@@ -5,14 +5,16 @@ import { RotateCw, X } from "lucide-react";
 import { Badge } from "@/ui/badge";
 import { Button } from "@/ui/button";
 import { IconButton } from "@/ui/icon-button";
+import { Loadable } from "@/loading/Loadable";
 import { ScrollArea } from "@/ui/scroll-area";
+import { Skeleton } from "@/ui/skeleton";
 import { SheetTitle } from "@/ui/sheet";
 import { WorkPanelSheet } from "../WorkPanelSheet";
 import { usePreferencesStore, useT } from "@/app/preferences-store";
 import { useGithubSession } from "@/host/github-session";
 import { useCanvasStore } from "@/store/canvas-store";
 import { sk } from "../../sources/scope";
-import { ForgeHosted, OpenRemote } from "./ForgeHosted";
+import { ForgeHosted, ForgeListSkeleton, OpenRemote } from "./ForgeHosted";
 import { RepositoryPicker } from "./RepositoryPicker";
 import { useGithubFocus } from "./open";
 import {
@@ -166,9 +168,12 @@ export function GithubDrawer() {
           </Button>
         </div>
       ) : !sessionClient ? (
-        <p role="status" className="p-4 text-[13px] text-muted-foreground">
-          {t("github.loading")}
-        </p>
+        <Loadable
+          loading
+          skeleton={<GithubSkeleton label={t("state.loading")} />}
+        >
+          {null}
+        </Loadable>
       ) : (
         <ScrollArea className="min-h-0 flex-1">
           <RepositoryPicker
@@ -184,6 +189,14 @@ export function GithubDrawer() {
             <p role="status" className="px-3 py-2 text-[12px] text-destructive">
               {t(forgeFailureKey(detection.error))}
             </p>
+          )}
+          {detection.isLoading && (
+            <Loadable
+              loading
+              skeleton={<GithubSkeleton label={t("state.loading")} />}
+            >
+              {null}
+            </Loadable>
           )}
           {found && !ready && (
             <div
@@ -242,5 +255,18 @@ export function GithubDrawer() {
         </ScrollArea>
       )}
     </WorkPanelSheet>
+  );
+}
+
+/** 仓库头条（同真实头条的边框与内边距）加一串 issue / PR 行。 */
+function GithubSkeleton({ label }: { label: string }) {
+  return (
+    <div role="status" aria-busy="true" aria-label={label}>
+      <div className="flex min-w-0 items-center gap-2 border-b border-border px-3 py-2">
+        <Skeleton className="h-4 w-1/2" />
+        <Skeleton className="h-5 w-14 rounded-full" />
+      </div>
+      <ForgeListSkeleton label={label} />
+    </div>
   );
 }

@@ -7,7 +7,8 @@ import { agentLabel } from "@/agent/launch";
 import { useT } from "@/app/preferences-store";
 import { Badge } from "@/ui/badge";
 import { Button } from "@/ui/button";
-import { Spinner } from "@/ui/spinner";
+import { Loadable } from "@/loading/Loadable";
+import { SharedSessionBodySkeleton } from "./SharedSessionSkeleton";
 import {
   ReadOnlyTerminal,
   type ReadOnlyTerminalState,
@@ -84,18 +85,21 @@ export default function SharedSessionPage({
       </header>
       <div className="min-h-0 flex-1">
         {source === undefined || session === undefined ? (
-          <div className="flex h-full items-center justify-center">
-            {row.isError ? (
+          row.isError ? (
+            <div className="flex h-full items-center justify-center">
               <p className="text-muted-foreground">
                 {t("sharedSession.failed")}
               </p>
-            ) : (
-              <Spinner
-                aria-label={t("sharedSession.loading")}
-                className="size-4 text-muted-foreground"
-              />
-            )}
-          </div>
+            </div>
+          ) : (
+            <Loadable
+              loading
+              className="h-full"
+              skeleton={<SharedSessionBodySkeleton />}
+            >
+              {null}
+            </Loadable>
+          )
         ) : acp ? (
           <ReadOnlyTranscript
             source={source}

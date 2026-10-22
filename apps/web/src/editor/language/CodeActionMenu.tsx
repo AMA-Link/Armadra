@@ -1,4 +1,6 @@
 import { useT } from "@/app/preferences-store";
+import { SkeletonList } from "@/ui/skeletons";
+import { Loadable } from "@/loading/Loadable";
 import {
   CommandDialog,
   CommandEmpty,
@@ -38,13 +40,21 @@ export function CodeActionMenu() {
       className="z-[var(--z-dialog)]"
     >
       <CommandList>
-        <CommandEmpty>
-          {loading
-            ? t("lsp.action.loading")
-            : error
-              ? t("lsp.action.failed")
-              : t("lsp.action.empty")}
-        </CommandEmpty>
+        <Loadable
+          loading={loading}
+          skeleton={
+            <SkeletonList
+              rows={4}
+              leading="none"
+              label={t("state.loading")}
+              className="p-1"
+            />
+          }
+        >
+          <CommandEmpty>
+            {error ? t("lsp.action.failed") : t("lsp.action.empty")}
+          </CommandEmpty>
+        </Loadable>
         {actions.length > 0 && (
           <CommandGroup heading={t("lsp.action.title")}>
             {actions.map((action, index) => (

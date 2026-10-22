@@ -15,10 +15,12 @@ import { WorkPanelSheet } from "../panels/WorkPanelSheet";
 import { gotoNode } from "../sidebar/goto-node";
 import { scoped } from "../sources/scope";
 import { useCanvasStore } from "../store/canvas-store";
+import { Loadable } from "@/loading/Loadable";
 import { Button } from "@/ui/button";
 import { IconButton } from "@/ui/icon-button";
 import { ScrollArea } from "@/ui/scroll-area";
 import { SheetTitle } from "@/ui/sheet";
+import { SkeletonList } from "@/ui/skeletons";
 import { StatusPill } from "@/ui/status-pill";
 import { cn } from "@/lib/cn";
 import { nodeTreeRows } from "./tree";
@@ -47,13 +49,12 @@ export function NodeObservationDrawer() {
   const statuses = useAgentStatusStore((state) => state.statuses);
   const programs = useProgramStatusStore((state) => state.programs);
   const [detailNodeId, setDetailNodeId] = useState<string | null>(null);
+  const documentReady =
+    document?.board.id === boardId &&
+    document?.board.workspaceId === workspaceId;
   const nodes = useMemo(
-    () =>
-      document?.board.id === boardId &&
-      document.board.workspaceId === workspaceId
-        ? document.nodes
-        : [],
-    [document, boardId, workspaceId],
+    () => (documentReady && document ? document.nodes : []),
+    [document, documentReady],
   );
   const rows = useMemo(() => nodeTreeRows(nodes), [nodes]);
   const selected = nodes.find((node) => node.id === detailNodeId) ?? null;
@@ -151,47 +152,61 @@ export function NodeObservationDrawer() {
               {t("nodeObservation.locate")}
             </Button>
           </div>
-        ) : rows.length === 0 ? (
-          <p className="px-4 py-6 text-[length:var(--text-body)] text-muted-foreground">
-            {t("nodeObservation.empty")}
-          </p>
         ) : (
-          <div className="pb-3">
-            <div className="px-4 py-2 text-[length:var(--text-caption)] text-muted-foreground">
-              {t("nodeObservation.count", { count: rows.length })}
+          <Loadable
+            loading={boardId !== null && !documentReady}
+            skeleton={
+              <SkeletonList
+                rows={3}
+                size="tall"
+                leading="icon"
+                trailing
+                label={t("state.loading")}
+              />
+            }
+            empty={rows.length === 0}
+            emptyTitle={t("nodeObservation.empty")}
+            inline
+          >
+            <div className="pb-3">
+              <div className="px-4 py-2 text-[length:var(--text-caption)] text-muted-foreground">
+                {t("nodeObservation.count", { count: rows.length })}
+              </div>
+              {rows.map(({ node, depth }) => {
+                const meta = NODE_META[node.type];
+                const Icon = meta.icon;
+                const status = nodeStatus(node);
+                const active = selectedNodeIds.includes(node.id);
+                const agent = isAgent(node, status);
+                const state = stateOf(node, status);
+                return (
+                  <Button
+                    key={node.id}
+                    variant="ghost"
+                    size="sm"
+                    aria-pressed={active}
+                    className={cn(
+                      "h-auto min-h-12 w-full min-w-0 justify-start rounded-none border-b border-border px-3 py-2 text-left font-normal",
+                      active && "bg-[var(--brand-soft)]",
+                    )}
+                    style={{ paddingLeft: 12 + Math.min(depth, 6) * 16 }}
+                    onClick={() => {
+                      selectNodes([node.id]);
+                      setDetailNodeId(node.id);
+                    }}
+                  >
+                    <Icon className="size-4 shrink-0 text-muted-foreground" />
+                    <span className="min-w-0 flex-1 truncate">
+                      {node.title}
+                    </span>
+                    {agent && (
+                      <StatusPill tone={state.tone} label={t(state.key)} />
+                    )}
+                  </Button>
+                );
+              })}
             </div>
-            {rows.map(({ node, depth }) => {
-              const meta = NODE_META[node.type];
-              const Icon = meta.icon;
-              const status = nodeStatus(node);
-              const active = selectedNodeIds.includes(node.id);
-              const agent = isAgent(node, status);
-              const state = stateOf(node, status);
-              return (
-                <Button
-                  key={node.id}
-                  variant="ghost"
-                  size="sm"
-                  aria-pressed={active}
-                  className={cn(
-                    "h-auto min-h-12 w-full min-w-0 justify-start rounded-none border-b border-border px-3 py-2 text-left font-normal",
-                    active && "bg-[var(--brand-soft)]",
-                  )}
-                  style={{ paddingLeft: 12 + Math.min(depth, 6) * 16 }}
-                  onClick={() => {
-                    selectNodes([node.id]);
-                    setDetailNodeId(node.id);
-                  }}
-                >
-                  <Icon className="size-4 shrink-0 text-muted-foreground" />
-                  <span className="min-w-0 flex-1 truncate">{node.title}</span>
-                  {agent && (
-                    <StatusPill tone={state.tone} label={t(state.key)} />
-                  )}
-                </Button>
-              );
-            })}
-          </div>
+          </Loadable>
         )}
       </ScrollArea>
     </WorkPanelSheet>

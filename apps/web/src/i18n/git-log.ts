@@ -40,7 +40,6 @@ export const gitLog: MessageModule = {
     "gitLog.table.graph": "提交图",
     "gitLog.table.uncommitted": "未提交的变更",
     "gitLog.table.empty": "没有匹配的提交。",
-    "gitLog.table.loading": "读取中…",
     "gitLog.table.more": "继续读取…",
     "gitLog.table.truncated": "仓库过多，只合并了前 32 个。",
 
@@ -156,7 +155,6 @@ export const gitLog: MessageModule = {
     "gitLog.table.graph": "Commit graph",
     "gitLog.table.uncommitted": "Uncommitted changes",
     "gitLog.table.empty": "No commits match.",
-    "gitLog.table.loading": "Loading…",
     "gitLog.table.more": "Load more…",
     "gitLog.table.truncated":
       "Too many repositories; only the first 32 merged.",

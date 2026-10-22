@@ -1,3 +1,5 @@
+import { Loadable } from "@/loading/Loadable";
+import { RelayFormSkeleton } from "./RelayFormSkeleton";
 import * as React from "react";
 
 import { syncDocumentPreferences, useT } from "../app/preferences-store";
@@ -21,7 +23,6 @@ import { Button } from "@/ui/button";
 import { ChevronLeft } from "lucide-react";
 import { Alert, AlertTitle } from "@/ui/alert";
 import { BrandMark } from "@/ui/brand-mark";
-import { Spinner } from "@/ui/spinner";
 
 export interface RelaySignInProps {
   readonly relay: Pick<HostedRelay, "issuer" | "signIn" | "enter"> &
@@ -198,9 +199,12 @@ export function RelaySignIn({
           </p>
         </div>
         {resuming ? (
-          <div className="flex justify-center py-6">
-            <Spinner aria-label={t("remote.status.connecting")} />
-          </div>
+          <Loadable
+            loading
+            skeleton={<RelayFormSkeleton label={t("state.loading")} />}
+          >
+            {null}
+          </Loadable>
         ) : hosts === null ? (
           <RelayForm
             issuer={relay.issuer}

@@ -1,3 +1,5 @@
+import { Loadable } from "@/loading/Loadable";
+import { Skeleton } from "@/ui/skeleton";
 import { ChevronDown, ChevronRight, X } from "lucide-react";
 
 import { useT } from "@/app/preferences-store";
@@ -70,11 +72,12 @@ export function ReferencesPanel() {
 
         <ScrollArea className="min-h-0 flex-1">
           <div className="flex flex-col gap-2 p-3">
-            {loading && (
-              <p role="status" className="text-[12px] text-muted-foreground">
-                {t("references.searching")}
-              </p>
-            )}
+            <Loadable
+              loading={loading}
+              skeleton={<ReferencesSkeleton label={t("state.loading")} />}
+            >
+              {null}
+            </Loadable>
             {error && (
               <Badge variant="destructive">{t("references.failed")}</Badge>
             )}
@@ -95,6 +98,21 @@ export function ReferencesPanel() {
         </ScrollArea>
       </SheetContent>
     </Sheet>
+  );
+}
+
+/** 两个分组：文件名条（同 `Group` 的标题行），各带两条引用行。 */
+function ReferencesSkeleton({ label }: { label: string }) {
+  return (
+    <div role="status" aria-label={label} className="flex flex-col gap-2">
+      {[0, 1].map((index) => (
+        <div key={index} className="flex min-w-0 flex-col gap-1.5">
+          <Skeleton className="h-4 w-2/3" />
+          <Skeleton className="h-3 w-full" />
+          <Skeleton className="h-3 w-5/6" />
+        </div>
+      ))}
+    </div>
   );
 }
 

@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { GitLoadable } from "./git-loading";
 import { useQuery } from "@tanstack/react-query";
 import type {
   GitExpectedState,
@@ -125,7 +126,7 @@ export function RebaseTodo({
       <h3 className="font-medium">{t("gitRepo.rebaseTodo")}</h3>
       <p className="text-muted-foreground">{t("gitRepo.rebaseTodoSafety")}</p>
       {!onto && <p>{t("gitRepo.rebaseTodoChoose")}</p>}
-      {preview.isPending && onto && <p role="status">{t("gitRepo.loading")}</p>}
+      {onto && <GitLoadable loading={preview.isLoading} size={4} />}
       {preview.error && (
         <ReadError error={preview.error} retry={() => void preview.refetch()} />
       )}

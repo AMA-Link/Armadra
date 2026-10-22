@@ -5,10 +5,9 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
 /**
- * 生成的 `Spinner` 自带 `role="status"` 与英文的 `aria-label="Loading"`：读屏
- * 在中文界面里会念出一个英文词。每个调用处要么传本地化的 `aria-label`（它在
- * 告诉人「正在做什么」），要么 `aria-hidden`（旁边已经有字说明了）。`ui/` 是
- * 生成文件，不扫。
+ * `Spinner` 不再写死英文读屏名：没传 `aria-label` 就是装饰图标（`aria-hidden`，
+ * 旁边已经有字说明了）；要给读屏名字的调用处必须传本地化的表达式，不能是写死
+ * 的字面量。`ui/` 是生成文件，不扫。
  */
 const SRC = fileURLToPath(new URL("..", import.meta.url));
 
@@ -22,7 +21,7 @@ function walk(directory: string): string[] {
 }
 
 describe("Spinner 的无障碍名", () => {
-  it("每个调用处都传本地化的 aria-label，或 aria-hidden", () => {
+  it("没有写死字面量的 aria-label（不传就是装饰图标）", () => {
     const missing: string[] = [];
     let sites = 0;
     for (const file of walk(SRC)) {
@@ -31,9 +30,7 @@ describe("Spinner 的无障碍名", () => {
         sites += 1;
         const tag = match[0];
         // 表达式（`t(…)`、由 `t` 算出的变量）算本地化；写死的字面量不算。
-        const labelled = /aria-label=\{/.test(tag);
-        const hidden = /\baria-hidden\b/.test(tag);
-        if (!labelled && !hidden) {
+        if (/aria-label="/.test(tag)) {
           const line = text.slice(0, match.index).split("\n").length;
           missing.push(`${relative(SRC, file)}:${line}`);
         }

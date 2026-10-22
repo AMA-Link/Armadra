@@ -2,9 +2,12 @@ import * as React from "react";
 import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { ArrowLeft, ExternalLink } from "lucide-react";
 
+import { Loadable } from "@/loading/Loadable";
 import { Badge } from "@/ui/badge";
 import { Button } from "@/ui/button";
 import { IconButton } from "@/ui/icon-button";
+import { Skeleton } from "@/ui/skeleton";
+import { Spinner } from "@/ui/spinner";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/ui/tabs";
 import { useT } from "@/app/preferences-store";
 import { openExternal } from "@/platform";
@@ -247,6 +250,7 @@ function More({
       disabled={busy}
       onClick={onMore}
     >
+      {busy ? <Spinner data-icon="inline-start" /> : null}
       {t("forge.more")}
     </Button>
   );
@@ -279,27 +283,34 @@ function IssueList({
   if (issues.isError) return <Failure error={issues.error} />;
   const items = issues.data?.pages.flatMap((page) => page.items) ?? [];
   return (
-    <div className="min-w-0 space-y-2 p-3">
-      {issues.data && items.length === 0 && (
-        <p className="text-[12px] text-muted-foreground">{t("forge.empty")}</p>
-      )}
-      {items.map((issue) => (
-        <Row
-          key={issue.number}
-          slot="forge-issue"
-          number={issue.number}
-          title={issue.title}
-          badges={[t(`forge.state.${issue.state}`)]}
-          meta={[issue.author, when(issue.updatedAtMs, locale)]}
-          onOpen={() => onOpen(issue.number)}
+    <Loadable
+      loading={issues.isLoading}
+      skeleton={<ForgeListSkeleton label={t("state.loading")} />}
+    >
+      <div className="min-w-0 space-y-2 p-3">
+        {issues.data && items.length === 0 && (
+          <p className="text-[12px] text-muted-foreground">
+            {t("forge.empty")}
+          </p>
+        )}
+        {items.map((issue) => (
+          <Row
+            key={issue.number}
+            slot="forge-issue"
+            number={issue.number}
+            title={issue.title}
+            badges={[t(`forge.state.${issue.state}`)]}
+            meta={[issue.author, when(issue.updatedAtMs, locale)]}
+            onOpen={() => onOpen(issue.number)}
+          />
+        ))}
+        <More
+          visible={issues.hasNextPage}
+          busy={issues.isFetchingNextPage}
+          onMore={() => void issues.fetchNextPage()}
         />
-      ))}
-      <More
-        visible={issues.hasNextPage}
-        busy={issues.isFetchingNextPage}
-        onMore={() => void issues.fetchNextPage()}
-      />
-    </div>
+      </div>
+    </Loadable>
   );
 }
 
@@ -330,32 +341,88 @@ function PullList({
   if (pulls.isError) return <Failure error={pulls.error} />;
   const items = pulls.data?.pages.flatMap((page) => page.items) ?? [];
   return (
-    <div className="min-w-0 space-y-2 p-3">
-      {pulls.data && items.length === 0 && (
-        <p className="text-[12px] text-muted-foreground">{t("forge.empty")}</p>
-      )}
-      {items.map((pull) => (
-        <Row
-          key={pull.number}
-          slot="forge-pull"
-          number={pull.number}
-          title={pull.title}
-          badges={[
-            t(`forge.state.${pull.state}`),
-            ...(pull.draft ? [t("forge.draft")] : []),
-          ]}
-          meta={[
-            `${pull.headRef} → ${pull.baseRef}`,
-            when(pull.updatedAtMs, locale),
-          ]}
-          onOpen={() => onOpen(pull.number)}
+    <Loadable
+      loading={pulls.isLoading}
+      skeleton={<ForgeListSkeleton label={t("state.loading")} />}
+    >
+      <div className="min-w-0 space-y-2 p-3">
+        {pulls.data && items.length === 0 && (
+          <p className="text-[12px] text-muted-foreground">
+            {t("forge.empty")}
+          </p>
+        )}
+        {items.map((pull) => (
+          <Row
+            key={pull.number}
+            slot="forge-pull"
+            number={pull.number}
+            title={pull.title}
+            badges={[
+              t(`forge.state.${pull.state}`),
+              ...(pull.draft ? [t("forge.draft")] : []),
+            ]}
+            meta={[
+              `${pull.headRef} → ${pull.baseRef}`,
+              when(pull.updatedAtMs, locale),
+            ]}
+            onOpen={() => onOpen(pull.number)}
+          />
+        ))}
+        <More
+          visible={pulls.hasNextPage}
+          busy={pulls.isFetchingNextPage}
+          onMore={() => void pulls.fetchNextPage()}
         />
+      </div>
+    </Loadable>
+  );
+}
+
+/** 与 `Row` 同样的边框、圆角与内边距：编号条、标题条、徽标，下面一行元信息。 */
+export function ForgeListSkeleton({ label }: { label: string }) {
+  return (
+    <div
+      role="status"
+      aria-busy="true"
+      aria-label={label}
+      data-slot="forge-list-skeleton"
+      className="min-w-0 space-y-2 p-3"
+    >
+      {[0, 1, 2, 3, 4].map((index) => (
+        <div
+          key={index}
+          className="flex min-h-10 min-w-0 flex-col gap-1 rounded-lg border border-border px-3 py-2"
+        >
+          <div className="flex items-center gap-2">
+            <Skeleton className="h-4 w-8 shrink-0" />
+            <Skeleton className="h-4 w-3/4" />
+            <Skeleton className="ml-auto h-5 w-12 shrink-0 rounded-full" />
+          </div>
+          <Skeleton className="h-3 w-1/2" />
+        </div>
       ))}
-      <More
-        visible={pulls.hasNextPage}
-        busy={pulls.isFetchingNextPage}
-        onMore={() => void pulls.fetchNextPage()}
-      />
+    </div>
+  );
+}
+
+/** 详情页：标题条、徽标行、元信息、四行正文。 */
+function ForgeDetailSkeleton({ label }: { label: string }) {
+  return (
+    <div
+      role="status"
+      aria-busy="true"
+      aria-label={label}
+      className="flex min-w-0 flex-col gap-3"
+    >
+      <Skeleton className="h-5 w-3/4" />
+      <Skeleton className="h-5 w-24 rounded-full" />
+      <Skeleton className="h-3 w-1/2" />
+      <div className="flex flex-col gap-2">
+        <Skeleton className="h-3 w-full" />
+        <Skeleton className="h-3 w-5/6" />
+        <Skeleton className="h-3 w-2/3" />
+        <Skeleton className="h-3 w-1/2" />
+      </div>
     </div>
   );
 }
@@ -440,6 +507,18 @@ function Body({ text }: { text: string }) {
   );
 }
 
+function ForgeDetailLoading() {
+  const t = useT();
+  return (
+    <Loadable
+      loading
+      skeleton={<ForgeDetailSkeleton label={t("state.loading")} />}
+    >
+      {null}
+    </Loadable>
+  );
+}
+
 function IssueDetail({
   repo,
   scope,
@@ -462,6 +541,7 @@ function IssueDetail({
     <div className="min-w-0 space-y-3 p-3" data-slot="forge-issue-detail">
       <Back onBack={onBack} url={issue.data?.url ?? ""} />
       {issue.isError && <Failure error={issue.error} />}
+      {issue.isLoading && <ForgeDetailLoading />}
       {issue.data && <IssueBody issue={issue.data} locale={locale} />}
     </div>
   );
@@ -513,6 +593,7 @@ function PullDetail({
     <div className="min-w-0 space-y-3 p-3" data-slot="forge-pull-detail">
       <Back onBack={onBack} url={pull.data?.url ?? ""} />
       {pull.isError && <Failure error={pull.error} />}
+      {pull.isLoading && <ForgeDetailLoading />}
       {pull.data && <PullBody pull={pull.data} locale={locale} />}
     </div>
   );

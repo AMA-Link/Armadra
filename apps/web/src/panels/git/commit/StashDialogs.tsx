@@ -6,6 +6,7 @@
  * 表现就是「同一条 stash 在两个界面里一个能应用一个不能」。
  */
 import { useState } from "react";
+import { GitLoadable } from "../git-loading";
 import { useQuery } from "@tanstack/react-query";
 import { gitGateway } from "../../../git/gateway";
 import { useGitTarget } from "../../../git/target";
@@ -289,7 +290,7 @@ export function UnstashDialog({
           </ul>
           {selected && (
             <section aria-label={selected.oid} className="space-y-2">
-              {detail.isPending && <p role="status">{t("gitRepo.loading")}</p>}
+              <GitLoadable loading={detail.isLoading} size={4} />
               {detail.error && (
                 <ReadError
                   error={detail.error}

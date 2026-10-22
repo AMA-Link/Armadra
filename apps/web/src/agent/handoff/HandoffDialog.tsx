@@ -8,6 +8,8 @@ import { onWorkspaceEvent } from "@/api/events";
 import { t, useT } from "@/app/preferences-store";
 import { agentLabel } from "@/agent/launch";
 import { useCanvasStore } from "@/store/canvas-store";
+import { Loadable } from "@/loading/Loadable";
+import { SkeletonCard } from "@/ui/skeletons";
 import { Badge } from "@/ui/badge";
 import { Button } from "@/ui/button";
 import {
@@ -203,7 +205,17 @@ export function HandoffDialog() {
         <ScrollArea className="max-h-[52vh] pr-3">
           {view ? (
             <HandoffPreview view={view} />
-          ) : source?.handoffId ? null : (
+          ) : source?.handoffId ? (
+            <Loadable
+              loading={status.isLoading}
+              skeleton={<SkeletonCard lines={3} label={t("state.loading")} />}
+              error={status.isError}
+              onRetry={() => void status.refetch()}
+              inline
+            >
+              {null}
+            </Loadable>
+          ) : (
             <div className="flex flex-col gap-3">
               <div className="flex flex-col gap-1.5">
                 <label

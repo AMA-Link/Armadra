@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { GitLoadable } from "../../git-loading";
 import type { GitBranchSnapshot, GitRepositoryAction } from "@armadra/shared";
 
 import { useT } from "../../../../app/preferences-store";
@@ -201,10 +202,8 @@ export function WorktreeCreateDialog({
               </Field>
             )}
           </fieldset>
-          {snapshot.isPending && repositoryPath && (
-            <p role="status" className="text-xs">
-              {t("gitRepo.loading")}
-            </p>
+          {repositoryPath && (
+            <GitLoadable loading={snapshot.isLoading} size={3} />
           )}
           {snapshot.error && (
             <ReadError

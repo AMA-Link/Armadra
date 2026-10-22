@@ -1,7 +1,10 @@
 import { useInfiniteQuery } from "@tanstack/react-query";
 
 import { Badge } from "@/ui/badge";
+import { Loadable } from "@/loading/Loadable";
 import { Button } from "@/ui/button";
+import { Skeleton } from "@/ui/skeleton";
+import { Spinner } from "@/ui/spinner";
 import { Empty, EmptyHeader, EmptyTitle } from "@/ui/empty";
 import {
   Select,
@@ -71,6 +74,23 @@ export function RunHistory({
           ))}
         </SelectContent>
       </Select>
+
+      <Loadable
+        loading={runs.isLoading}
+        skeleton={
+          <div
+            role="status"
+            aria-label={t("state.loading")}
+            className="min-w-0 space-y-3"
+          >
+            {[0, 1, 2].map((index) => (
+              <Skeleton key={index} className="h-24 w-full rounded-lg" />
+            ))}
+          </div>
+        }
+      >
+        {null}
+      </Loadable>
 
       {runs.isSuccess && rows.length === 0 && (
         <Empty data-slot="automation-runs-empty">
@@ -147,11 +167,10 @@ export function RunHistory({
           disabled={runs.isFetchingNextPage}
           onClick={() => void runs.fetchNextPage()}
         >
-          {t(
-            runs.isFetchingNextPage
-              ? "automation.runs.loading"
-              : "automation.runs.more",
-          )}
+          {runs.isFetchingNextPage ? (
+            <Spinner data-icon="inline-start" />
+          ) : null}
+          {t("automation.runs.more")}
         </Button>
       )}
     </div>

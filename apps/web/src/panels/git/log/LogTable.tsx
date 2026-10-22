@@ -4,7 +4,10 @@ import type { GitLogCommit } from "@armadra/shared";
 
 import { useT, usePreferencesStore } from "../../../app/preferences-store";
 import { cn } from "../../../lib/cn";
+import { Loadable } from "../../../loading/Loadable";
 import { Button } from "../../../ui/button";
+import { Skeleton } from "../../../ui/skeleton";
+import { Spinner } from "../../../ui/spinner";
 import {
   LANE_WIDTH,
   MAX_LANES,
@@ -183,151 +186,166 @@ export function LogTable({
           </span>
         )}
       </div>
-      <div
-        ref={scroller}
-        data-slot="git-log-rows"
-        className="relative min-h-0 flex-1 overflow-auto"
+      <Loadable
+        loading={loading && commits.length === 0}
+        className="flex min-h-0 flex-1 flex-col overflow-hidden"
+        skeleton={
+          <LogTableSkeleton
+            rowHeight={rowHeight}
+            gutter={gutter}
+            narrow={narrow}
+            showHash={showHash}
+            label={t("state.loading")}
+          />
+        }
       >
         <div
-          className="relative w-full"
-          style={{ height: `${virtualizer.getTotalSize()}px` }}
+          ref={scroller}
+          data-slot="git-log-rows"
+          className="relative min-h-0 flex-1 overflow-auto"
         >
-          <svg
-            aria-label={t("gitLog.table.graph")}
-            role="img"
-            // 压在行的上面：选中与悬停的底色不能把这一行的点和线盖掉。
-            className="pointer-events-none absolute top-0 left-0 z-10"
-            width={gutter}
-            height={virtualizer.getTotalSize()}
+          <div
+            className="relative w-full"
+            style={{ height: `${virtualizer.getTotalSize()}px` }}
           >
-            {graph.edges.map((edge) => {
-              if (!visible(edge.from.row) && !visible(edge.to?.row ?? -99))
-                return null;
-              const lane = edge.to ? edge.to.lane : edge.from.lane;
-              const color = laneColor(edge.index > 0 ? lane : edge.from.lane);
+            <svg
+              aria-label={t("gitLog.table.graph")}
+              role="img"
+              // 压在行的上面：选中与悬停的底色不能把这一行的点和线盖掉。
+              className="pointer-events-none absolute top-0 left-0 z-10"
+              width={gutter}
+              height={virtualizer.getTotalSize()}
+            >
+              {graph.edges.map((edge) => {
+                if (!visible(edge.from.row) && !visible(edge.to?.row ?? -99))
+                  return null;
+                const lane = edge.to ? edge.to.lane : edge.from.lane;
+                const color = laneColor(edge.index > 0 ? lane : edge.from.lane);
+                return (
+                  <path
+                    key={`${edge.child}:${edge.parent}`}
+                    data-child={edge.child}
+                    data-parent={edge.parent}
+                    fill="none"
+                    stroke={color}
+                    strokeWidth="1.5"
+                    strokeLinecap="round"
+                    strokeDasharray={edge.to ? undefined : "3 3"}
+                    d={
+                      edge.to
+                        ? `M${x(edge.from.lane)},${y(edge.from.row)} C${x(edge.from.lane)},${y(edge.from.row) + rowHeight * 0.5} ${x(edge.to.lane)},${y(edge.to.row) - rowHeight * 0.5} ${x(edge.to.lane)},${y(edge.to.row)}`
+                        : `M${x(edge.from.lane)},${y(edge.from.row)} v${rowHeight * 0.5}`
+                    }
+                  />
+                );
+              })}
+              {offset > 0 && (
+                // 未提交的变更：一个虚线空心点，接到 HEAD 那一行。
+                <g data-slot="git-log-uncommitted">
+                  <circle
+                    cx={x(0)}
+                    cy={rowHeight / 2}
+                    r={3.5}
+                    fill="var(--background)"
+                    stroke="var(--muted-foreground)"
+                    strokeWidth="1.5"
+                    strokeDasharray="2 2"
+                  />
+                  <path
+                    d={`M${x(0)},${rowHeight / 2} v${rowHeight}`}
+                    fill="none"
+                    stroke="var(--muted-foreground)"
+                    strokeWidth="1.5"
+                    strokeDasharray="3 3"
+                  />
+                </g>
+              )}
+              {commits.map((commit, row) => {
+                if (!visible(row)) return null;
+                const point = graph.points.get(commitKey(commit));
+                if (!point) return null;
+                const merge = commit.parents.length > 1;
+                return (
+                  <circle
+                    key={commitKey(commit)}
+                    data-commit={commit.oid}
+                    data-repository={commit.repositoryPath}
+                    data-merge={merge ? "true" : "false"}
+                    cx={x(point.lane)}
+                    cy={y(point.row)}
+                    r={selected === commitKey(commit) ? 4.5 : 3.5}
+                    fill={merge ? "var(--background)" : laneColor(point.lane)}
+                    stroke={laneColor(point.lane)}
+                    strokeWidth="2"
+                  />
+                );
+              })}
+            </svg>
+            {items.map((item) => {
+              const row = rows[item.index]!;
+              const body =
+                row.kind === "uncommitted" ? (
+                  <UncommittedRow
+                    gutter={gutter}
+                    height={rowHeight}
+                    selected={selected === UNCOMMITTED_KEY}
+                    onSelect={() => onSelect(UNCOMMITTED_KEY, null)}
+                  />
+                ) : (
+                  <CommitRow
+                    commit={row.commit}
+                    gutter={gutter}
+                    height={rowHeight}
+                    color={
+                      multiRepository
+                        ? repositoryColor(
+                            colors.get(row.commit.repositoryPath) ?? 0,
+                          )
+                        : null
+                    }
+                    mine={
+                      myEmail !== null &&
+                      row.commit.authorEmail.toLowerCase() ===
+                        myEmail.toLowerCase()
+                    }
+                    showHash={showHash && !narrow}
+                    narrow={narrow}
+                    when={formatWhen(
+                      row.commit.committerTime,
+                      Date.now(),
+                      locale,
+                      narrow,
+                    )}
+                    selected={selected === row.key}
+                    onSelect={() => onSelect(row.key, row.commit)}
+                  />
+                );
               return (
-                <path
-                  key={`${edge.child}:${edge.parent}`}
-                  data-child={edge.child}
-                  data-parent={edge.parent}
-                  fill="none"
-                  stroke={color}
-                  strokeWidth="1.5"
-                  strokeLinecap="round"
-                  strokeDasharray={edge.to ? undefined : "3 3"}
-                  d={
-                    edge.to
-                      ? `M${x(edge.from.lane)},${y(edge.from.row)} C${x(edge.from.lane)},${y(edge.from.row) + rowHeight * 0.5} ${x(edge.to.lane)},${y(edge.to.row) - rowHeight * 0.5} ${x(edge.to.lane)},${y(edge.to.row)}`
-                      : `M${x(edge.from.lane)},${y(edge.from.row)} v${rowHeight * 0.5}`
-                  }
-                />
+                <div
+                  key={row.key}
+                  data-index={item.index}
+                  className="absolute inset-x-0"
+                  style={{
+                    height: `${rowHeight}px`,
+                    transform: `translateY(${item.start}px)`,
+                  }}
+                >
+                  {row.kind === "commit" && renderRowMenu
+                    ? renderRowMenu(row.commit, body)
+                    : body}
+                </div>
               );
             })}
-            {offset > 0 && (
-              // 未提交的变更：一个虚线空心点，接到 HEAD 那一行。
-              <g data-slot="git-log-uncommitted">
-                <circle
-                  cx={x(0)}
-                  cy={rowHeight / 2}
-                  r={3.5}
-                  fill="var(--background)"
-                  stroke="var(--muted-foreground)"
-                  strokeWidth="1.5"
-                  strokeDasharray="2 2"
-                />
-                <path
-                  d={`M${x(0)},${rowHeight / 2} v${rowHeight}`}
-                  fill="none"
-                  stroke="var(--muted-foreground)"
-                  strokeWidth="1.5"
-                  strokeDasharray="3 3"
-                />
-              </g>
-            )}
-            {commits.map((commit, row) => {
-              if (!visible(row)) return null;
-              const point = graph.points.get(commitKey(commit));
-              if (!point) return null;
-              const merge = commit.parents.length > 1;
-              return (
-                <circle
-                  key={commitKey(commit)}
-                  data-commit={commit.oid}
-                  data-repository={commit.repositoryPath}
-                  data-merge={merge ? "true" : "false"}
-                  cx={x(point.lane)}
-                  cy={y(point.row)}
-                  r={selected === commitKey(commit) ? 4.5 : 3.5}
-                  fill={merge ? "var(--background)" : laneColor(point.lane)}
-                  stroke={laneColor(point.lane)}
-                  strokeWidth="2"
-                />
-              );
-            })}
-          </svg>
-          {items.map((item) => {
-            const row = rows[item.index]!;
-            const body =
-              row.kind === "uncommitted" ? (
-                <UncommittedRow
-                  gutter={gutter}
-                  height={rowHeight}
-                  selected={selected === UNCOMMITTED_KEY}
-                  onSelect={() => onSelect(UNCOMMITTED_KEY, null)}
-                />
-              ) : (
-                <CommitRow
-                  commit={row.commit}
-                  gutter={gutter}
-                  height={rowHeight}
-                  color={
-                    multiRepository
-                      ? repositoryColor(
-                          colors.get(row.commit.repositoryPath) ?? 0,
-                        )
-                      : null
-                  }
-                  mine={
-                    myEmail !== null &&
-                    row.commit.authorEmail.toLowerCase() ===
-                      myEmail.toLowerCase()
-                  }
-                  showHash={showHash && !narrow}
-                  narrow={narrow}
-                  when={formatWhen(
-                    row.commit.committerTime,
-                    Date.now(),
-                    locale,
-                    narrow,
-                  )}
-                  selected={selected === row.key}
-                  onSelect={() => onSelect(row.key, row.commit)}
-                />
-              );
-            return (
-              <div
-                key={row.key}
-                data-index={item.index}
-                className="absolute inset-x-0"
-                style={{
-                  height: `${rowHeight}px`,
-                  transform: `translateY(${item.start}px)`,
-                }}
-              >
-                {row.kind === "commit" && renderRowMenu
-                  ? renderRowMenu(row.commit, body)
-                  : body}
-              </div>
-            );
-          })}
+          </div>
         </div>
-      </div>
-      {(loading || hasMore) && (
+      </Loadable>
+      {hasMore && (
         <p
           role="status"
-          className="shrink-0 border-t border-border px-3 py-1 text-[11px] text-muted-foreground"
+          className="flex h-6 shrink-0 items-center gap-1.5 border-t border-border px-3 text-[11px] text-muted-foreground"
         >
-          {t(loading ? "gitLog.table.loading" : "gitLog.table.more")}
+          {loading ? <Spinner className="size-3" /> : null}
+          {t("gitLog.table.more")}
         </p>
       )}
       {!loading && rows.length === 0 && (
@@ -335,6 +353,51 @@ export function LogTable({
           {t("gitLog.table.empty")}
         </p>
       )}
+    </div>
+  );
+}
+
+/**
+ * 首批提交还没到：与 `CommitRow` 同行高，行首一个图谱圆点，再是消息、作者、日期
+ * 三条（宽度同表头列：作者 w-28、日期 w-20、hash w-16）。
+ */
+function LogTableSkeleton({
+  rowHeight,
+  gutter,
+  narrow,
+  showHash,
+  label,
+}: {
+  rowHeight: number;
+  gutter: number;
+  narrow: boolean;
+  showHash: boolean;
+  label: string;
+}) {
+  const MESSAGE = ["w-3/4", "w-2/3", "w-5/6", "w-1/2"] as const;
+  return (
+    <div
+      role="status"
+      aria-busy="true"
+      aria-label={label}
+      data-slot="git-log-skeleton"
+      className="flex min-h-0 flex-1 flex-col"
+    >
+      {Array.from({ length: 8 }, (_, index) => (
+        <div
+          key={index}
+          data-slot="git-log-skeleton-row"
+          className="relative flex shrink-0 items-center gap-2 pr-3"
+          style={{ height: rowHeight, paddingLeft: gutter }}
+        >
+          <Skeleton className="absolute left-2 size-2 rounded-full" />
+          <Skeleton className={cn("h-3 min-w-0", MESSAGE[index % 4])} />
+          <div className="flex-1" />
+          {!narrow && <Skeleton className="h-3 w-28 shrink-0" />}
+          <Skeleton className="h-3 w-20 shrink-0" />
+          {showHash && !narrow && <Skeleton className="h-3 w-16 shrink-0" />}
+        </div>
+      ))}
     </div>
   );
 }

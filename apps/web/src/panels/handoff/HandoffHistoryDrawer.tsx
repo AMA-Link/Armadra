@@ -3,7 +3,9 @@ import { useQuery } from "@tanstack/react-query";
 import { RotateCw, X } from "lucide-react";
 import type { HandoffView } from "@armadra/shared";
 
+import { Loadable } from "@/loading/Loadable";
 import { Badge } from "@/ui/badge";
+import { Skeleton } from "@/ui/skeleton";
 import { IconButton } from "@/ui/icon-button";
 import { ScrollArea } from "@/ui/scroll-area";
 import { SheetTitle } from "@/ui/sheet";
@@ -78,28 +80,60 @@ export function HandoffHistoryDrawer() {
       </div>
 
       <ScrollArea className="min-h-0 flex-1">
-        <div className="min-w-0 space-y-2 p-3">
-          {!workspaceId && (
-            <p role="status" className="text-[12px] text-muted-foreground">
-              {t("handoff.noWorkspace")}
-            </p>
-          )}
-          {history.isError && (
-            <p role="status" className="text-[12px] text-destructive">
-              {t("handoff.historyFailed")}
-            </p>
-          )}
-          {history.isSuccess && history.data.length === 0 && (
-            <p className="text-[12px] text-muted-foreground">
-              {t("handoff.noHistory")}
-            </p>
-          )}
-          {history.data?.map((view) => (
-            <HandoffRow key={view.bundle.handoffId} view={view} at={at} />
-          ))}
-        </div>
+        <Loadable
+          loading={history.isLoading}
+          skeleton={<HandoffHistorySkeleton label={t("state.loading")} />}
+          className="p-3"
+        >
+          <div className="min-w-0 space-y-2 p-3">
+            {!workspaceId && (
+              <p role="status" className="text-[12px] text-muted-foreground">
+                {t("handoff.noWorkspace")}
+              </p>
+            )}
+            {history.isError && (
+              <p role="status" className="text-[12px] text-destructive">
+                {t("handoff.historyFailed")}
+              </p>
+            )}
+            {history.isSuccess && history.data.length === 0 && (
+              <p className="text-[12px] text-muted-foreground">
+                {t("handoff.noHistory")}
+              </p>
+            )}
+            {history.data?.map((view) => (
+              <HandoffRow key={view.bundle.handoffId} view={view} at={at} />
+            ))}
+          </div>
+        </Loadable>
       </ScrollArea>
     </WorkPanelSheet>
+  );
+}
+
+/** 与 `HandoffRow` 同样的边框、内边距与间距，三条占位。 */
+function HandoffHistorySkeleton({ label }: { label: string }) {
+  return (
+    <div
+      role="status"
+      aria-busy="true"
+      aria-label={label}
+      className="space-y-2"
+    >
+      {[0, 1, 2].map((index) => (
+        <div
+          key={index}
+          data-slot="handoff-history-skeleton"
+          className="min-w-0 space-y-1 rounded-md border border-border p-2"
+        >
+          <div className="flex items-center gap-2">
+            <Skeleton className="h-5 w-14 rounded-full" />
+            <Skeleton className="h-3 w-1/3" />
+          </div>
+          <Skeleton className="h-3 w-1/2" />
+        </div>
+      ))}
+    </div>
   );
 }
 

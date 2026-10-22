@@ -11,12 +11,13 @@ import { createBlobLoader } from "@/timeline/blobs";
 import { useActivity } from "@/timeline/use-activity";
 import { useTimeline } from "@/timeline/use-timeline";
 import { TimelineView } from "@/timeline/view/TimelineView";
-import { Spinner } from "@/ui/spinner";
+import { Loadable } from "@/loading/Loadable";
 import {
   ApprovalCard,
   ElicitationItemCard,
   ToolLookupProvider,
 } from "@/acp/TimelineCards";
+import { SharedSessionBodySkeleton } from "./SharedSessionSkeleton";
 
 /**
  * ACP 会话的只读转录（契约 §43.1、§79）：订阅这条会话的时间线，画同一个
@@ -71,17 +72,18 @@ export function ReadOnlyTranscript({
   const ready = timeline.phase === "ready" || timeline.missing;
   const failed = timeline.phase === "error" && items.length === 0;
   if (items.length === 0 && !ready) {
-    return (
+    return failed ? (
       <div className="flex h-full items-center justify-center">
-        {failed ? (
-          <p className="text-muted-foreground">{t("sharedSession.failed")}</p>
-        ) : (
-          <Spinner
-            aria-label={t("sharedSession.loading")}
-            className="size-4 text-muted-foreground"
-          />
-        )}
+        <p className="text-muted-foreground">{t("sharedSession.failed")}</p>
       </div>
+    ) : (
+      <Loadable
+        loading
+        className="h-full"
+        skeleton={<SharedSessionBodySkeleton />}
+      >
+        {null}
+      </Loadable>
     );
   }
   if (items.length === 0) {

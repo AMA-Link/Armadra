@@ -4,7 +4,9 @@ import type { GitRefsRepository } from "@armadra/shared";
 
 import { useT } from "../../../app/preferences-store";
 import { cn } from "../../../lib/cn";
+import { Loadable } from "../../../loading/Loadable";
 import { Button } from "../../../ui/button";
+import { Skeleton } from "../../../ui/skeleton";
 import { Toggle } from "../../../ui/toggle";
 import { Input } from "../../../ui/input";
 import {
@@ -38,6 +40,8 @@ export interface BranchTreeProps {
   onToggleFavorite: (key: string) => void;
   /** 右键菜单由页面提供：它才知道当前仓库的动作与确认门。 */
   renderNodeMenu?: (node: BranchTreeNode, row: ReactNode) => ReactNode;
+  /** 引用快照还没到（没有可展示的数据）：树区画骨架，不先画空树。 */
+  loading?: boolean;
 }
 
 export function BranchTree({
@@ -52,6 +56,7 @@ export function BranchTree({
   favorites,
   onToggleFavorite,
   renderNodeMenu,
+  loading = false,
 }: BranchTreeProps) {
   const t = useT();
   const tree = useMemo(
@@ -84,128 +89,164 @@ export function BranchTree({
         aria-multiselectable
         className="min-h-0 flex-1 overflow-auto py-1"
       >
-        {rows.length === 0 && (
-          <p className="px-3 py-2 text-xs text-muted-foreground">
-            {t("gitLog.tree.empty")}
-          </p>
-        )}
-        {rows.map(({ node, depth, expandable, expanded: isOpen }) => {
-          const key =
-            node.repositoryPath && node.reference
-              ? refKey(node.repositoryPath, node.reference)
-              : null;
-          const isSelected =
-            node.kind === "head"
-              ? chosen.size === 0
-              : key !== null && chosen.has(key);
-          const row = (
-            <div
-              role="treeitem"
-              aria-selected={isSelected}
-              aria-expanded={expandable ? isOpen : undefined}
-              data-node={node.id}
-              className={cn(
-                "flex min-h-6 w-full min-w-0 items-center gap-1 pr-1 text-xs",
-                isSelected && "bg-muted",
-              )}
-              style={{ paddingLeft: `${depth * 12 + 4}px` }}
-            >
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon-xs"
-                aria-hidden={!expandable}
-                tabIndex={expandable ? 0 : -1}
-                aria-label={node.label}
+        <Loadable
+          loading={loading}
+          skeleton={<BranchTreeSkeleton label={t("state.loading")} />}
+        >
+          {rows.length === 0 && (
+            <p className="px-3 py-2 text-xs text-muted-foreground">
+              {t("gitLog.tree.empty")}
+            </p>
+          )}
+          {rows.map(({ node, depth, expandable, expanded: isOpen }) => {
+            const key =
+              node.repositoryPath && node.reference
+                ? refKey(node.repositoryPath, node.reference)
+                : null;
+            const isSelected =
+              node.kind === "head"
+                ? chosen.size === 0
+                : key !== null && chosen.has(key);
+            const row = (
+              <div
+                role="treeitem"
+                aria-selected={isSelected}
+                aria-expanded={expandable ? isOpen : undefined}
+                data-node={node.id}
                 className={cn(
-                  "size-4 rounded text-muted-foreground hover:bg-muted",
-                  !expandable && "invisible",
+                  "flex min-h-6 w-full min-w-0 items-center gap-1 pr-1 text-xs",
+                  isSelected && "bg-muted",
                 )}
-                onClick={(event) => {
-                  event.stopPropagation();
-                  onToggleExpanded(node.id);
-                }}
+                style={{ paddingLeft: `${depth * 12 + 4}px` }}
               >
-                {isOpen ? (
-                  <ChevronDown className="size-3" />
-                ) : (
-                  <ChevronRight className="size-3" />
-                )}
-              </Button>
-              {node.kind === "repository" && (
-                <span
-                  aria-hidden
-                  data-slot="git-log-repository-dot"
-                  className="size-2 shrink-0 rounded-full"
-                  style={{
-                    background: repositoryColor(
-                      colors.get(node.repositoryPath ?? "") ?? 0,
-                    ),
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon-xs"
+                  aria-hidden={!expandable}
+                  tabIndex={expandable ? 0 : -1}
+                  aria-label={node.label}
+                  className={cn(
+                    "size-4 rounded text-muted-foreground hover:bg-muted",
+                    !expandable && "invisible",
+                  )}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    onToggleExpanded(node.id);
                   }}
-                />
-              )}
-              <Button
-                type="button"
-                variant="ghost"
-                className={cn(
-                  "block h-auto min-w-0 flex-1 truncate rounded px-1 py-0.5 text-left text-[length:inherit] font-normal hover:bg-muted",
-                  node.current && node.kind === "branch" && "font-semibold",
+                >
+                  {isOpen ? (
+                    <ChevronDown className="size-3" />
+                  ) : (
+                    <ChevronRight className="size-3" />
+                  )}
+                </Button>
+                {node.kind === "repository" && (
+                  <span
+                    aria-hidden
+                    data-slot="git-log-repository-dot"
+                    className="size-2 shrink-0 rounded-full"
+                    style={{
+                      background: repositoryColor(
+                        colors.get(node.repositoryPath ?? "") ?? 0,
+                      ),
+                    }}
+                  />
                 )}
-                title={node.reference ?? node.label}
-                onClick={(event) =>
-                  onSelect(node, event.metaKey || event.ctrlKey)
-                }
-              >
-                {node.current && node.kind === "branch" ? "✓ " : ""}
-                {node.kind === "group"
-                  ? node.group === "stashes"
-                    ? t("gitLog.tree.stashCount", {
-                        count: String(node.count ?? 0),
-                      })
-                    : t(`gitLog.tree.${node.group}`)
-                  : node.label}
-              </Button>
-              {node.kind === "branch" &&
-                (node.ahead ? (
-                  <span className="shrink-0 tabular-nums text-[length:var(--text-caption)] text-muted-foreground">
-                    ↑{node.ahead}
-                  </span>
-                ) : null)}
-              {node.kind === "branch" &&
-                (node.behind ? (
-                  <span className="shrink-0 tabular-nums text-[length:var(--text-caption)] text-muted-foreground">
-                    ↓{node.behind}
-                  </span>
-                ) : null)}
-              {key !== null &&
-                (node.kind === "branch" || node.kind === "tag") && (
-                  <Toggle
-                    size="sm"
-                    pressed={node.favorite ?? false}
-                    aria-label={t(
-                      node.favorite
-                        ? "gitLog.tree.unfavorite"
-                        : "gitLog.tree.favorite",
-                    )}
-                    onClick={(event) => event.stopPropagation()}
-                    onPressedChange={() => onToggleFavorite(key)}
-                    className="h-auto min-w-0 shrink-0 rounded p-0.5 text-muted-foreground hover:bg-muted aria-pressed:bg-transparent aria-pressed:text-[var(--brand-text)] data-[state=on]:bg-transparent"
-                  >
-                    <Star
-                      className="size-3"
-                      fill={node.favorite ? "currentColor" : "none"}
-                    />
-                  </Toggle>
-                )}
-            </div>
-          );
-          return (
-            <div key={node.id}>
-              {renderNodeMenu ? renderNodeMenu(node, row) : row}
-            </div>
-          );
-        })}
+                <Button
+                  type="button"
+                  variant="ghost"
+                  className={cn(
+                    "block h-auto min-w-0 flex-1 truncate rounded px-1 py-0.5 text-left text-[length:inherit] font-normal hover:bg-muted",
+                    node.current && node.kind === "branch" && "font-semibold",
+                  )}
+                  title={node.reference ?? node.label}
+                  onClick={(event) =>
+                    onSelect(node, event.metaKey || event.ctrlKey)
+                  }
+                >
+                  {node.current && node.kind === "branch" ? "✓ " : ""}
+                  {node.kind === "group"
+                    ? node.group === "stashes"
+                      ? t("gitLog.tree.stashCount", {
+                          count: String(node.count ?? 0),
+                        })
+                      : t(`gitLog.tree.${node.group}`)
+                    : node.label}
+                </Button>
+                {node.kind === "branch" &&
+                  (node.ahead ? (
+                    <span className="shrink-0 tabular-nums text-[length:var(--text-caption)] text-muted-foreground">
+                      ↑{node.ahead}
+                    </span>
+                  ) : null)}
+                {node.kind === "branch" &&
+                  (node.behind ? (
+                    <span className="shrink-0 tabular-nums text-[length:var(--text-caption)] text-muted-foreground">
+                      ↓{node.behind}
+                    </span>
+                  ) : null)}
+                {key !== null &&
+                  (node.kind === "branch" || node.kind === "tag") && (
+                    <Toggle
+                      size="sm"
+                      pressed={node.favorite ?? false}
+                      aria-label={t(
+                        node.favorite
+                          ? "gitLog.tree.unfavorite"
+                          : "gitLog.tree.favorite",
+                      )}
+                      onClick={(event) => event.stopPropagation()}
+                      onPressedChange={() => onToggleFavorite(key)}
+                      className="h-auto min-w-0 shrink-0 rounded p-0.5 text-muted-foreground hover:bg-muted aria-pressed:bg-transparent aria-pressed:text-[var(--brand-text)] data-[state=on]:bg-transparent"
+                    >
+                      <Star
+                        className="size-3"
+                        fill={node.favorite ? "currentColor" : "none"}
+                      />
+                    </Toggle>
+                  )}
+              </div>
+            );
+            return (
+              <div key={node.id}>
+                {renderNodeMenu ? renderNodeMenu(node, row) : row}
+              </div>
+            );
+          })}
+        </Loadable>
       </div>
+    </div>
+  );
+}
+
+/** 与树行同样的 `min-h-6` 与逐级 12px 缩进：分支条错落六行。 */
+function BranchTreeSkeleton({ label }: { label: string }) {
+  const rows: Array<[number, string]> = [
+    [0, "w-1/2"],
+    [1, "w-2/3"],
+    [1, "w-1/2"],
+    [1, "w-3/5"],
+    [0, "w-2/5"],
+    [1, "w-3/5"],
+  ];
+  return (
+    <div
+      role="status"
+      aria-busy="true"
+      aria-label={label}
+      data-slot="branch-tree-skeleton"
+    >
+      {rows.map(([depth, width], index) => (
+        <div
+          key={index}
+          className="flex min-h-6 w-full min-w-0 items-center gap-1 pr-1"
+          style={{ paddingLeft: `${depth * 12 + 4}px` }}
+        >
+          <Skeleton className="size-4 shrink-0 rounded" />
+          <Skeleton className={cn("h-3", width)} />
+        </div>
+      ))}
     </div>
   );
 }

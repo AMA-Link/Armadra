@@ -5,10 +5,11 @@ import { clientFor } from "@/api/client";
 import { agentLabel } from "@/agent/launch";
 import { useT } from "@/app/preferences-store";
 import { Button } from "@/ui/button";
+import { Skeleton } from "@/ui/skeleton";
 import {
   type SharedSession,
   sourceNamed,
-  useSessionShare,
+  useSessionShareQuery,
   useSharedSessionView,
 } from "./sessions";
 
@@ -23,7 +24,8 @@ export function SharedSessionRows({
   sourceId: string;
   usable: boolean;
 }) {
-  const share = useSessionShare(sourceId, usable);
+  const query = useSessionShareQuery(sourceId, usable);
+  const share = query.data;
   if (!share || share.sessions.length === 0) return null;
   return (
     <ul data-shared-sessions={sourceId}>
@@ -63,6 +65,8 @@ function SessionRow({
     agentLabel(row.data?.agentId ?? undefined) ||
     row.data?.command ||
     t("sharedSession.session");
+  // 行标签先是通用名后换成 agent 名会跳：行没到之前用一条骨架占着。
+  const pending = row.isLoading;
   return (
     <Button
       type="button"
@@ -74,7 +78,11 @@ function SessionRow({
       onClick={() => open({ sourceId, ...session })}
     >
       <SquareTerminal className="size-4 shrink-0 text-muted-foreground" />
-      <span className="min-w-0 truncate">{label}</span>
+      {pending ? (
+        <Skeleton className="h-3 w-24" />
+      ) : (
+        <span className="min-w-0 truncate">{label}</span>
+      )}
     </Button>
   );
 }

@@ -48,6 +48,11 @@ export function useSessionShare(
   sourceId: string,
   enabled = true,
 ): SessionShare | undefined {
+  return useSessionShareQuery(sourceId, enabled).data;
+}
+
+/** 同上，但带着查询状态：需要区分「还在问」与「问过了不是查看者」的调用方用它。 */
+export function useSessionShareQuery(sourceId: string, enabled = true) {
   return useQuery({
     queryKey: ["shared-session", "scopes", sourceId],
     queryFn: async () => {
@@ -61,7 +66,7 @@ export function useSessionShare(
     staleTime: 30_000,
     retry: (failures) => failures < 20,
     retryDelay: 2_000,
-  }).data;
+  });
 }
 
 /** 已登记的源；`sourceById` 不认得时会退回当前源，这里不要那个退路。 */

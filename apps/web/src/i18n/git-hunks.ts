@@ -2,7 +2,6 @@ import type { MessageModule } from "./index";
 export const gitHunks: MessageModule = {
   "zh-CN": {
     "gitHunk.title": "逐片段操作",
-    "gitHunk.loading": "正在读取片段…",
     "gitHunk.reload": "重新读取片段",
     "gitHunk.stage": "暂存此片段",
     "gitHunk.unstage": "取消暂存此片段",
@@ -36,7 +35,6 @@ export const gitHunks: MessageModule = {
   },
   en: {
     "gitHunk.title": "Individual hunks",
-    "gitHunk.loading": "Reading hunks…",
     "gitHunk.reload": "Reload hunks",
     "gitHunk.stage": "Stage this hunk",
     "gitHunk.unstage": "Unstage this hunk",
