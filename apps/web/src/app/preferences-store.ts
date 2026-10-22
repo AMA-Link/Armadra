@@ -616,6 +616,18 @@ export function useResolvedTheme(): ResolvedTheme {
 }
 
 /**
+ * 首帧之前先把解析好的主题写到 `<html>`：`index.html` 与 tokens.css 的默认是深色，
+ * 等 `syncDocumentPreferences` 在 App 挂载的 effect 里才改，浅色用户会先看到一帧深色。
+ * 入口在渲染之前调一次；只写 `data-theme` 与 `color-scheme`，不订阅任何东西。
+ */
+export function applyInitialTheme(): void {
+  if (typeof document === "undefined") return;
+  const resolved = resolveTheme(usePreferencesStore.getState());
+  document.documentElement.dataset.theme = resolved;
+  document.documentElement.style.colorScheme = resolved;
+}
+
+/**
  * 把主题与语言写到 `<html>` 上，并跟随系统主题变化。
  * App 挂一次；`sonner` 与 tokens.css 都盯着 `data-theme`。
  *

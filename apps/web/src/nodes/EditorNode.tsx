@@ -26,6 +26,7 @@ import { Button } from "@/ui/button";
 import { DropdownMenuItem } from "@/ui/dropdown-menu";
 import { IconButton } from "@/ui/icon-button";
 import { NodeShell } from "./NodeShell";
+import { CodeLinesSkeleton } from "./NodeSkeletons";
 import { SourceBadge } from "@/acp/SourceBadge";
 import { onEditorReveal, takePendingReveal } from "./editor-reveal";
 import type { NodeBodyProps } from "./registry";
@@ -63,7 +64,6 @@ import { useLanguageService } from "@/editor/language/use-language";
 import { languageIdFor } from "@/editor/language/language-ids";
 import { hasConflictMarkers, openMergeView } from "@/editor/merge/conflict";
 import { Alert, AlertAction, AlertTitle } from "@/ui/alert";
-import { Skeleton } from "@/ui/skeleton";
 import { routedFetch } from "../api/source";
 
 /**
@@ -655,22 +655,7 @@ export function EditorNode({ id, node, selected }: NodeBodyProps) {
             <Badge variant="outline">{t("editor.tooLarge")}</Badge>
           </Centered>
         )}
-        {state.kind === "loading" && (
-          // 只在读得慢时出现（>300ms，设计系统 §3.2）：先透明，延时淡入。
-          <div
-            data-slot="editor-loading"
-            aria-busy="true"
-            className="flex flex-col gap-2 p-3"
-            style={{
-              animation:
-                "armadra-fade-in var(--dur-fast) var(--ease-out) 300ms both",
-            }}
-          >
-            <Skeleton className="h-3 w-2/3" />
-            <Skeleton className="h-3 w-1/2" />
-            <Skeleton className="h-3 w-3/5" />
-          </div>
-        )}
+        {state.kind === "loading" && <CodeLinesSkeleton />}
         {state.kind === "error" && (
           <Centered>
             <Alert variant="destructive" className="w-auto max-w-full">

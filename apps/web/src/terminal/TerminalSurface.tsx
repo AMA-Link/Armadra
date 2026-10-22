@@ -36,6 +36,7 @@ import {
 } from "@/ui/context-menu";
 import { terminalAppearance } from "./surface/appearance";
 import { pasteIntoTerminal, writeClipboard } from "./surface/clipboard";
+import { TerminalStartSkeleton } from "./TerminalStartSkeleton";
 import { useSurfaceRefs } from "./surface/refs";
 import {
   useExternalFilePaste,
@@ -374,6 +375,8 @@ function TerminalSurfaceImpl({
             className="absolute inset-0"
             style={{ padding: TERMINAL_PADDING }}
           />
+          {(status.connection === "starting" ||
+            status.connection === "connecting") && <TerminalStartSkeleton />}
           {hibernated && (
             <div className="absolute inset-0 flex items-center justify-center">
               <Button

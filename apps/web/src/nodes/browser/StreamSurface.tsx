@@ -1,4 +1,6 @@
 import * as React from "react";
+import { DeferredSkeleton } from "@/loading/DeferredSkeleton";
+import { Skeleton } from "@/ui/skeleton";
 
 import { useT } from "@/app/preferences-store";
 import { useCanvasStore } from "@/store/canvas-store";
@@ -228,15 +230,15 @@ export function StreamSurface({ id, node, selected }: NodeBodyProps) {
         <canvas ref={canvasRef} className="h-full w-full" />
         {phase !== "live" && (
           <div className="absolute inset-0 flex items-center justify-center p-4">
-            <p className="max-w-[36ch] text-center text-[12px] text-muted-foreground">
-              {phase === "occupied"
-                ? t("browser.stream.occupiedHint")
-                : phase === "unavailable"
-                  ? t("browser.stream.unavailableHint")
-                  : url.length > 0
-                    ? url
-                    : t("browser.stream.connecting")}
-            </p>
+            {phase === "occupied" || phase === "unavailable" ? (
+              <p className="max-w-[36ch] text-center text-[12px] text-muted-foreground">
+                {phase === "occupied"
+                  ? t("browser.stream.occupiedHint")
+                  : t("browser.stream.unavailableHint")}
+              </p>
+            ) : (
+              <StreamPending label={t("state.loading")} />
+            )}
           </div>
         )}
       </div>
@@ -288,4 +290,24 @@ function draw(
       bitmap.close();
     })
     .catch(() => undefined);
+}
+
+/** 画面流还没到：页面形占位（标题块加几行正文），200 ms 内不可见。 */
+function StreamPending({ label }: { label: string }) {
+  return (
+    <DeferredSkeleton className="h-full w-full">
+      <div
+        role="status"
+        aria-busy="true"
+        aria-label={label}
+        className="flex h-full w-full flex-col gap-3"
+      >
+        <Skeleton className="h-8 w-1/2" />
+        <Skeleton className="h-3 w-full" />
+        <Skeleton className="h-3 w-5/6" />
+        <Skeleton className="h-3 w-2/3" />
+        <Skeleton className="min-h-0 w-full flex-1" />
+      </div>
+    </DeferredSkeleton>
+  );
 }

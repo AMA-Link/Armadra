@@ -31,10 +31,18 @@ export const NEEDS_POLL_MS = 20_000;
 /** 等工作空间和画布到位的上限。 */
 const OPEN_TIMEOUT_MS = 10_000;
 
-const pickSessions = (results: readonly { data?: SessionSummary[] }[]) =>
-  results.map((result) => result.data);
-const pickHandoffs = (results: readonly { data?: HandoffView[] }[]) =>
-  results.map((result) => result.data);
+const pickSessions = (
+  results: readonly { data?: SessionSummary[]; isPending: boolean }[],
+) => ({
+  data: results.map((result) => result.data),
+  pending: results.some((result) => result.isPending),
+});
+const pickHandoffs = (
+  results: readonly { data?: HandoffView[]; isPending: boolean }[],
+) => ({
+  data: results.map((result) => result.data),
+  pending: results.some((result) => result.isPending),
+});
 
 export function useHumanNeedsSync(): void {
   const queryClient = useQueryClient();
@@ -102,12 +110,12 @@ export function useHumanNeedsSync(): void {
       ids.map((id, index) => ({
         workspaceId: id,
         rows: mergeSessions(
-          sessions[index] ?? [],
+          sessions.data[index] ?? [],
           statuses,
           Date.now(),
           programs,
         ),
-        handoffs: handoffs[index] ?? [],
+        handoffs: handoffs.data[index] ?? [],
       })),
     );
     return {
@@ -129,9 +137,12 @@ export function useHumanNeedsSync(): void {
     workspace?.id,
   ]);
 
+  // 出错也算同步过（`isPending` 只在没有任何结果时为真）：不能一直挂着骨架。
+  const synced =
+    !workspaces.isPending && !sessions.pending && !handoffs.pending;
   useEffect(() => {
-    useNeedsStore.getState().set(result.items, result.groups);
-  }, [result]);
+    useNeedsStore.getState().set(result.items, result.groups, synced);
+  }, [result, synced]);
 
   const open = useCallback(
     (target: { workspaceId: string; boardId: string; nodeId: string }) => {

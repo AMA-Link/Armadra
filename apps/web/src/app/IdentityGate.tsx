@@ -18,6 +18,8 @@ import { ResetPassword } from "../session/ResetPassword";
 import { SignIn } from "../session/SignIn";
 import { useCanvasStore } from "../store/canvas-store";
 import { ACCESS_QUERY_KEY } from "./use-access";
+import { useSkeletonPhase } from "../loading/use-skeleton-phase";
+import { AppSkeleton } from "./AppSkeleton";
 import { usePreferencesStore } from "./preferences-store";
 
 let pendingReset: string | null = null;
@@ -96,6 +98,8 @@ export function IdentityGate({
     retry: false,
   });
 
+  const phase = useSkeletonPhase(gated && session.isPending);
+
   if (server && reset !== "") {
     return (
       <FullPage>
@@ -111,7 +115,7 @@ export function IdentityGate({
     );
   }
   if (!gated) return <>{children}</>;
-  if (session.isPending) return null;
+  if (session.isPending) return <AppSkeleton hidden={phase !== "show"} />;
   if (session.isError || session.data !== null) return <>{children}</>;
   return (
     <FullPage>
