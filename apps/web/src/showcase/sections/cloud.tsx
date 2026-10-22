@@ -1,8 +1,13 @@
 import * as React from "react";
+import { QueryClientProvider } from "@tanstack/react-query";
 import { Ellipsis } from "lucide-react";
 
 import { useT } from "@/app/preferences-store";
 import { usePreferencesStore } from "@/app/preferences-store";
+import { CloudApiProvider } from "@/cloud/api/context";
+import { createCloudQueryClient, useConsoleSession } from "@/cloud/api/queries";
+import type { ConsoleSession } from "@/cloud/ConsoleRoot";
+import { createMockApi } from "@/cloud/mock/create-mock-client";
 import { ConsoleSidebar, ConsoleShell } from "@/cloud/shell/ConsoleShell";
 import { PageHeader } from "@/cloud/shell/PageHeader";
 import { matchRoute } from "@/cloud/router";
@@ -25,7 +30,6 @@ import {
   CLOUD_HOSTS,
   CLOUD_QUOTAS,
   CLOUD_TEAMS,
-  CLOUD_USER,
   type CloudHostRow,
 } from "../fixtures/cloud";
 
@@ -100,11 +104,46 @@ function useHostColumns(): DataColumn<CloudHostRow>[] {
 }
 
 /**
- * `cloud` 分区（云端控制台 §7 U1a）：外壳（带未验证提示与计数）、两种侧栏、整页
+ * 账号与空间经 mock 客户端的 `me.get` / `me.spaces` 取（U1b），与真实控制台走同一条路；
+ * 取到之前什么也不画。
+ */
+function MockConsole({
+  children,
+}: {
+  children: (session: ConsoleSession) => React.ReactNode;
+}) {
+  const [api] = React.useState(() => createMockApi({ operatorAccount: true }));
+  const [client] = React.useState(createCloudQueryClient);
+  return (
+    <QueryClientProvider client={client}>
+      <CloudApiProvider api={api}>
+        <FromSession render={children} />
+      </CloudApiProvider>
+    </QueryClientProvider>
+  );
+}
+
+function FromSession({
+  render,
+}: {
+  render: (session: ConsoleSession) => React.ReactNode;
+}) {
+  const { session } = useConsoleSession();
+  return session ? render(session) : null;
+}
+
+/**
+ * `cloud` 分区（云端控制台 §7 U1a、U1b）：外壳（带未验证提示与计数）、两种侧栏、整页
  * 四态、`DataList` 的表格与列表两种渲染、`Progress` 三档、输入确认。外壳随视口宽度
  * 在固定侧栏与顶栏加抽屉之间切换，探针 390 / 768 / 1440 各截一张。
  */
 export default function CloudSection() {
+  return (
+    <MockConsole>{(session) => <CloudSamples session={session} />}</MockConsole>
+  );
+}
+
+function CloudSamples({ session }: { session: ConsoleSession }) {
   const t = useT();
   const columns = useHostColumns();
   const [confirm, setConfirm] = React.useState(false);
@@ -139,8 +178,8 @@ export default function CloudSection() {
   const personal = matchRoute("/me")!;
   const ops = matchRoute("/ops")!;
   const shellProps = {
-    user: CLOUD_USER,
-    teams: CLOUD_TEAMS,
+    user: session.user,
+    teams: session.teams,
     counts: CLOUD_COUNTS,
   };
 

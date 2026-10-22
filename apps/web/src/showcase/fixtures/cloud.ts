@@ -1,14 +1,10 @@
-import type { ConsoleTeam, ConsoleUser } from "@/cloud/shell/model";
+import type { ConsoleTeam } from "@/cloud/shell/model";
 
 /**
  * `cloud` 分区的假数据（云端控制台 §7 U1a）。纯对象；名字、邮箱、主机名是数据
- * 不是界面文案。没有网络、没有数据层——数据层是 U1b。
+ * 不是界面文案。账号与空间由 mock 客户端答（`cloud/mock/fixtures.ts`，U1b），
+ * 这里只留主机表样本与配额。
  */
-export const CLOUD_USER: ConsoleUser = {
-  name: "张三",
-  email: "zhangsan@example.com",
-  emailVerified: false,
-};
 
 export const CLOUD_TEAMS: readonly ConsoleTeam[] = [
   { slug: "rd", name: "研发组", role: "admin" },
