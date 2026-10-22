@@ -62,7 +62,8 @@ export function useSessionBodyProcess(nodeId: string, enabled: boolean): void {
             { sessionId: started.sessionId, lastExitCode: null },
             { history: "ignore" },
           );
-      } catch {
+      } catch (cause) {
+        console.warn("session body: could not start the node", cause);
         // 没起来：节点体保持空，切到终端体会走表面自己的失败展示与重试。
       } finally {
         starting.delete(nodeId);
