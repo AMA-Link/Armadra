@@ -10,7 +10,7 @@
  *
  *   * `ARMADRA_PERSONAL_RELAY_HOME`：armadra-cloud 的检出目录。给了它，测试自己起
  *     中继（Go 二进制 `armadra-relay personal serve`：`ARMADRA_RELAY_BIN`，否则检出里的
- *     `go/bin/armadra-relay`，没有就 `go build`；数据在检出的 `.data/personal/`），读那里的
+ *     `go/bin/armadra-relay`，每次增量 `go build`、找不到 go 时沿用已有的；数据在检出的 `.data/personal/`），读那里的
  *     `dev.env` 与 CA 算指纹，并跑「中继重启」那一条；
  *   * 不给就连已经在跑的中继：`ARMADRA_PERSONAL_RELAY_URL`（缺省
  *     `https://127.0.0.1:8102`）、`ARMADRA_PERSONAL_RELAY_FP`、
@@ -119,17 +119,27 @@ async function relayUp(timeoutMs = 20_000): Promise<void> {
   }
 }
 
-/** Go 中继二进制：ARMADRA_RELAY_BIN，否则检出里的 go/bin/armadra-relay（没有就 go build）。 */
+/**
+ * Go 中继二进制：ARMADRA_RELAY_BIN，否则检出里的 go/bin/armadra-relay——每次增量 go build，
+ * 找不到 go 时沿用已有的并警告。
+ */
 function relayBin(): string {
   const given = process.env.ARMADRA_RELAY_BIN?.trim();
   if (given) return resolve(given);
   const bin = join(home, "go", "bin", "armadra-relay");
-  if (!existsSync(bin)) {
-    const built = spawnSync("go", ["build", "-o", bin, "./cmd/armadra-relay"], {
-      cwd: join(home, "go"),
-      stdio: "ignore",
-    });
-    if (built.status !== 0) throw new Error("go build armadra-relay 失败");
+  const built = spawnSync("go", ["build", "-o", bin, "./cmd/armadra-relay"], {
+    cwd: join(home, "go"),
+    stdio: ["ignore", "ignore", "pipe"],
+    encoding: "utf8",
+  });
+  if ((built.error as NodeJS.ErrnoException | undefined)?.code === "ENOENT") {
+    if (!existsSync(bin))
+      throw new Error("找不到 go，检出里也没有构建好的中继");
+    console.warn(`找不到 go：沿用已有的 ${bin}`);
+  } else if (built.status !== 0) {
+    throw new Error(
+      `go build armadra-relay 失败：${built.stderr.slice(-1500)}`,
+    );
   }
   return bin;
 }
