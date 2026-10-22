@@ -57,7 +57,7 @@ export function SettingsLoadable({
 
 /**
  * 行内数值 / 文本位：未到时画一条 `Skeleton`（默认 h-4 w-12），到了换成真值；
- * 200 ms 内到的不出骨架。`className` 只管骨架条的宽。
+ * 200 ms 内到的不出骨架。`className` 只管骨架条的宽；行内的条不朗读（行标签仍在），免得一页里冒出一串 status。
  */
 export function ValueLoadable({
   loading,
@@ -68,18 +68,10 @@ export function ValueLoadable({
   className?: string;
   children: ReactNode;
 }) {
-  const t = useT();
   return (
     <Loadable
       loading={loading}
-      skeleton={
-        <Skeleton
-          role="status"
-          aria-busy="true"
-          aria-label={t("state.loading")}
-          className={className}
-        />
-      }
+      skeleton={<Skeleton aria-hidden className={className} />}
     >
       {children}
     </Loadable>
