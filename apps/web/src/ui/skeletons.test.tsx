@@ -69,11 +69,13 @@ describe("通用骨架", () => {
     expect(html()).toBe(first);
     cleanup();
     const { container } = render(<SkeletonTable rows={4} columns={3} />);
-    expect(container.querySelectorAll("[data-slot=skeleton-table-row]")).toHaveLength(4);
     expect(
-      container.querySelectorAll("[data-slot=skeleton-table-row]")[0]!.querySelectorAll(
-        "[data-slot=skeleton]",
-      ),
+      container.querySelectorAll("[data-slot=skeleton-table-row]"),
+    ).toHaveLength(4);
+    expect(
+      container
+        .querySelectorAll("[data-slot=skeleton-table-row]")[0]!
+        .querySelectorAll("[data-slot=skeleton]"),
     ).toHaveLength(3);
     cleanup();
     const turns = render(<SkeletonTurns turns={2} />).container;

@@ -1,5 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { act, cleanup, render, renderHook, screen } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  render,
+  renderHook,
+  screen,
+} from "@testing-library/react";
 
 import { SkeletonList } from "@/ui/skeletons";
 import { Loadable } from "./Loadable";
@@ -33,10 +39,9 @@ describe("useSkeletonPhase", () => {
   });
 
   it("短于 200 ms 的加载从不显示骨架", () => {
-    const { result, rerender } = renderHook(
-      ({ on }) => useSkeletonPhase(on),
-      { initialProps: { on: true } },
-    );
+    const { result, rerender } = renderHook(({ on }) => useSkeletonPhase(on), {
+      initialProps: { on: true },
+    });
     tick(120);
     rerender({ on: false });
     expect(result.current).toBe("idle");
@@ -45,10 +50,9 @@ describe("useSkeletonPhase", () => {
   });
 
   it("显示后至少停满 300 ms 再让位", () => {
-    const { result, rerender } = renderHook(
-      ({ on }) => useSkeletonPhase(on),
-      { initialProps: { on: true } },
-    );
+    const { result, rerender } = renderHook(({ on }) => useSkeletonPhase(on), {
+      initialProps: { on: true },
+    });
     tick(SKELETON_DELAY_MS);
     expect(result.current).toBe("show");
     tick(100);
@@ -73,16 +77,20 @@ describe("Loadable", () => {
     const holder = container.querySelector("[data-slot=loadable]");
     expect(holder?.getAttribute("data-phase")).toBe("hold");
     expect(holder?.className).toContain("invisible");
-    expect(container.querySelectorAll("[data-slot=skeleton-row]")).toHaveLength(2);
+    expect(container.querySelectorAll("[data-slot=skeleton-row]")).toHaveLength(
+      2,
+    );
     expect(screen.queryByText("内容")).toBeNull();
 
     tick(SKELETON_DELAY_MS);
     expect(
-      container.querySelector("[data-slot=loadable]")?.getAttribute("data-phase"),
+      container
+        .querySelector("[data-slot=loadable]")
+        ?.getAttribute("data-phase"),
     ).toBe("show");
-    expect(container.querySelector("[data-slot=loadable]")?.className).not.toContain(
-      "invisible",
-    );
+    expect(
+      container.querySelector("[data-slot=loadable]")?.className,
+    ).not.toContain("invisible");
 
     tick(SKELETON_MIN_VISIBLE_MS);
     rerender(
@@ -107,7 +115,12 @@ describe("Loadable", () => {
   it("出错给带重试的行内错误，空给一句空态", () => {
     const retry = vi.fn();
     const { rerender, container } = render(
-      <Loadable loading={false} skeleton={skeleton} error={new Error("x")} onRetry={retry}>
+      <Loadable
+        loading={false}
+        skeleton={skeleton}
+        error={new Error("x")}
+        onRetry={retry}
+      >
         <p>内容</p>
       </Loadable>,
     );

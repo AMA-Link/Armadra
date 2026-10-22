@@ -44,7 +44,9 @@ function Region({
       data-slot={slot}
       role="status"
       aria-busy="true"
-      {...(label === undefined ? { "aria-hidden": true } : { "aria-label": label })}
+      {...(label === undefined
+        ? { "aria-hidden": true }
+        : { "aria-label": label })}
       className={className}
       {...rest}
     >
@@ -105,12 +107,19 @@ export function SkeletonList({
   label,
   className,
   ...row
-}: RegionProps & { rows?: number } & Omit<SkeletonRowProps, "index" | "className"> & {
+}: RegionProps & { rows?: number } & Omit<
+    SkeletonRowProps,
+    "index" | "className"
+  > & {
     rowClassName?: string;
   }) {
   const { rowClassName, ...rowProps } = row;
   return (
-    <Region label={label} slot="skeleton-list" className={cn("flex flex-col", className)}>
+    <Region
+      label={label}
+      slot="skeleton-list"
+      className={cn("flex flex-col", className)}
+    >
       {Array.from({ length: rows }, (_, index) => (
         <SkeletonRow
           key={index}
@@ -143,7 +152,10 @@ export function SkeletonCard({
       {header ? <Skeleton className="h-4 w-1/3" /> : null}
       <div className="flex flex-col gap-2">
         {Array.from({ length: lines }, (_, index) => (
-          <Skeleton key={index} className={cn("h-3", index === 0 ? "w-full" : width(index))} />
+          <Skeleton
+            key={index}
+            className={cn("h-3", index === 0 ? "w-full" : width(index))}
+          />
         ))}
       </div>
     </Region>
@@ -161,7 +173,11 @@ export function SkeletonTable({
 }: RegionProps & { rows?: number; columns?: number; header?: boolean }) {
   const grid = { gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))` };
   return (
-    <Region label={label} slot="skeleton-table" className={cn("flex flex-col", className)}>
+    <Region
+      label={label}
+      slot="skeleton-table"
+      className={cn("flex flex-col", className)}
+    >
       {header ? (
         <div
           data-slot="skeleton-table-head"
@@ -204,7 +220,10 @@ export function SkeletonSettingsRow({
   return (
     <div
       data-slot="skeleton-settings-row"
-      className={cn("flex h-12 items-center justify-between gap-4 px-3", className)}
+      className={cn(
+        "flex h-12 items-center justify-between gap-4 px-3",
+        className,
+      )}
     >
       <Skeleton className={cn("h-3.5", width(index))} />
       {control === "switch" ? (
@@ -225,7 +244,11 @@ export function SkeletonForm({
   className,
 }: RegionProps & { rows?: number }) {
   return (
-    <Region label={label} slot="skeleton-form" className={cn("flex flex-col gap-4", className)}>
+    <Region
+      label={label}
+      slot="skeleton-form"
+      className={cn("flex flex-col gap-4", className)}
+    >
       {Array.from({ length: rows }, (_, index) => (
         <div key={index} className="flex flex-col gap-1.5">
           <Skeleton className="h-3 w-20" />
@@ -244,7 +267,11 @@ export function SkeletonSettings({
   className,
 }: RegionProps & { rows?: number; control?: "switch" | "input" | "select" }) {
   return (
-    <Region label={label} slot="skeleton-settings" className={cn("flex flex-col", className)}>
+    <Region
+      label={label}
+      slot="skeleton-settings"
+      className={cn("flex flex-col", className)}
+    >
       {Array.from({ length: rows }, (_, index) => (
         <SkeletonSettingsRow key={index} index={index} control={control} />
       ))}
@@ -264,10 +291,16 @@ export function SkeletonNodeBody({
     <Region
       label={label}
       slot="skeleton-node-body"
-      className={cn("flex h-full w-full flex-col gap-2 bg-[var(--card)] p-3", className)}
+      className={cn(
+        "flex h-full w-full flex-col gap-2 bg-[var(--card)] p-3",
+        className,
+      )}
     >
       {Array.from({ length: lines }, (_, index) => (
-        <Skeleton key={index} className={cn("h-3", index === 0 ? "w-1/3" : width(index))} />
+        <Skeleton
+          key={index}
+          className={cn("h-3", index === 0 ? "w-1/3" : width(index))}
+        />
       ))}
     </Region>
   );

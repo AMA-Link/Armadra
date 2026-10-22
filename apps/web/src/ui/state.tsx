@@ -35,8 +35,14 @@ export function EmptyState({
       )}
     >
       <EmptyHeader className={inline ? "items-start" : undefined}>
-        {icon && !inline ? <EmptyMedia variant="icon">{icon}</EmptyMedia> : null}
-        <EmptyTitle className={inline ? "text-xs font-normal text-muted-foreground" : undefined}>
+        {icon && !inline ? (
+          <EmptyMedia variant="icon">{icon}</EmptyMedia>
+        ) : null}
+        <EmptyTitle
+          className={
+            inline ? "text-xs font-normal text-muted-foreground" : undefined
+          }
+        >
           {title}
         </EmptyTitle>
       </EmptyHeader>
@@ -69,7 +75,9 @@ export function ErrorState({
         className,
       )}
     >
-      <AlertTitle className={inline ? "min-w-0 flex-1 truncate font-normal" : undefined}>
+      <AlertTitle
+        className={inline ? "min-w-0 flex-1 truncate font-normal" : undefined}
+      >
         {title}
       </AlertTitle>
       {onRetry ? (
