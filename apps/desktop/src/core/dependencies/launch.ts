@@ -314,7 +314,7 @@ function finish(
  * 模式与模型的旗标、自定义条目的 argv、画布注入的 argv。
  */
 export function launchLine(
-  collab: CollabContext,
+  collab: Pick<CollabContext, "settings" | "dataDir">,
   agentId: string,
   data: Record<string, unknown>,
   sessionShell?: string,

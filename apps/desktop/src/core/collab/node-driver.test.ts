@@ -1,3 +1,5 @@
+import { TRANSCRIPT_AGENT_IDS } from "@armadra/shared";
+import { ADAPTERS } from "../timeline/sources";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { type AgentFixture, agentFixture, callerFor } from "../agent/fixture";
 import { loadBoard } from "../canvas/documents";
@@ -221,4 +223,10 @@ describe("the body of a new agent node follows the view preference", () => {
       expect(agent.view).toBeUndefined();
     }
   });
+});
+
+it("the shared transcript list matches the registered adapters", () => {
+  expect([...TRANSCRIPT_AGENT_IDS].sort()).toEqual(
+    Object.keys(ADAPTERS).sort(),
+  );
 });
