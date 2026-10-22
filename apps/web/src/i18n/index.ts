@@ -8,6 +8,7 @@ import { automation } from "./automation";
 import { browser } from "./browser";
 import { canvas } from "./canvas";
 import { challenge } from "./challenge";
+import { cloudErrors } from "./cloud-errors";
 import { cloudShell } from "./cloud-shell";
 import { collab } from "./collab";
 import { connection } from "./connection";
@@ -161,6 +162,7 @@ export const MESSAGE_MODULES = {
   remote,
   e2e,
   challenge,
+  "cloud-errors": cloudErrors,
   "cloud-shell": cloudShell,
   services,
   links,

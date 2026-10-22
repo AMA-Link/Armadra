@@ -40,6 +40,8 @@ export interface ConsoleShellProps {
   readonly match: RouteMatch;
   /** 有运营范围：账号菜单里出现「运营后台」。 */
   readonly operator?: boolean;
+  /** 「运营后台」菜单项的去处，缺省 `/ops`。 */
+  readonly operatorHref?: string;
   /** 导航项上的待处理数（只画 >0 的）。 */
   readonly counts?: Readonly<Record<string, number>>;
   readonly onSignOut?: () => void;
@@ -60,6 +62,7 @@ export function ConsoleSidebar({
   teams,
   match,
   operator,
+  operatorHref,
   counts,
   onSignOut,
   onNavigate,
@@ -109,6 +112,7 @@ export function ConsoleSidebar({
         <UserMenu
           user={user}
           {...(operator ? { operator } : {})}
+          {...(operatorHref ? { operatorHref } : {})}
           {...(onSignOut ? { onSignOut } : {})}
         />
       </div>
@@ -176,6 +180,9 @@ export function ConsoleShell(props: ConsoleShellProps) {
               compact
               user={user}
               {...(props.operator ? { operator: true } : {})}
+              {...(props.operatorHref
+                ? { operatorHref: props.operatorHref }
+                : {})}
               {...(props.onSignOut ? { onSignOut: props.onSignOut } : {})}
             />
           </header>

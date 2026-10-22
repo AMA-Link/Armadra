@@ -176,8 +176,8 @@ Rust↔Go 的归档互通，以及需要受管二进制路径的 `agent:smoke` /
   `packages/shared` 与 `tools/`（手机壳与推送中继不在内）。typescript-eslint、react-hooks、jsx-a11y 与
   `@eslint/js` 的推荐规则一律 warn；格式归 Prettier（`eslint-config-prettier` 放最后）。只有这几条是 error：
   `react-hooks/rules-of-hooks`；core 与 session-host 不得 import `electron`、`../main/`、`../shell-core/`
-  （shell-core 只禁前两个）；`@orpc/*` 只能出现在三处门面 `packages/shared/src/contract/`、
-  `apps/desktop/src/core/http/rpc.ts`、`apps/web/src/api/client.ts` 与 `tools/contract/`。页面业务代码的
+  （shell-core 只禁前两个）；`@orpc/*` 只能出现在四处门面 `packages/shared/src/contract/`、
+  `apps/desktop/src/core/http/rpc.ts`、`apps/web/src/api/client.ts`、`apps/web/src/cloud/api/client.ts` 与 `tools/contract/`。页面业务代码的
   禁止事项（手写 `<button>` / `<input>` / `<select>` / `<textarea>` / `<dialog>`、`role="dialog"`、直接 import
   `ui/dialog` / `ui/alert-dialog` / `ui/sheet`、`Loader2`、无 `aria-label` 的图标钮、`dark:`、`z-[N]`、
   调色板外的字面色值）是 `no-restricted-syntax` 的 warn。类型感知规则（`no-floating-promises`、

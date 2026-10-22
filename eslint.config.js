@@ -30,17 +30,18 @@ const JS = ["**/*.{js,mjs,cjs}"];
 
 // ------------------------------------------------------------ import 边界
 
-/** `@orpc/*` 只能出现在三处门面与 tools/contract/（§2.2.2），其余位置是 error。 */
+/** `@orpc/*` 只能出现在四处门面与 tools/contract/（§2.2.2；云端控制台 D8），其余位置是 error。 */
 const ORPC_FACADES = [
   "packages/shared/src/contract/**",
   "apps/desktop/src/core/http/rpc.ts",
   "apps/web/src/api/client.ts",
+  "apps/web/src/cloud/api/client.ts",
   "tools/contract/**",
 ];
 const orpcPattern = {
   group: ["@orpc/*"],
   message:
-    "@orpc/* 只能经三处门面使用：packages/shared/src/contract/、apps/desktop/src/core/http/rpc.ts、apps/web/src/api/client.ts（工程规范化 §2.2.2）。",
+    "@orpc/* 只能经四处门面使用：packages/shared/src/contract/、apps/desktop/src/core/http/rpc.ts、apps/web/src/api/client.ts、apps/web/src/cloud/api/client.ts（工程规范化 §2.2.2、云端控制台 D8）。",
 };
 
 /** core 与 session-host 以纯 Node 运行：不碰 electron、不回伸进壳（AGENTS.md）。 */

@@ -95,11 +95,12 @@ test("session-host 与 core 同规则；shell-core 只禁 electron 与 ../main/"
   );
 });
 
-test("@orpc/*：门面之外一律 error，三处门面与 tools/contract/ 放行", async () => {
+test("@orpc/*：门面之外一律 error，四处门面与 tools/contract/ 放行", async () => {
   const code = `import { oc } from "@orpc/contract";\nexport { oc };\n`;
   for (const outside of [
     "apps/web/src/panels/Probe.tsx",
     "apps/web/src/api/probe.ts",
+    "apps/web/src/cloud/api/probe.ts",
     "apps/server/src/probe.ts",
     "packages/shared/src/api/probe.ts",
     "tools/probe.mjs",
@@ -112,6 +113,7 @@ test("@orpc/*：门面之外一律 error，三处门面与 tools/contract/ 放�
     "packages/shared/src/contract/index.ts",
     "apps/desktop/src/core/http/rpc.ts",
     "apps/web/src/api/client.ts",
+    "apps/web/src/cloud/api/client.ts",
     "tools/contract/generate.mjs",
   ]) {
     assert.deepEqual(

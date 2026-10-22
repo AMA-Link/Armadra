@@ -1,4 +1,5 @@
 import {
+  type CloudAssertion,
   type CloudDevice,
   type CloudOptions,
   CloudError,
@@ -74,6 +75,15 @@ export interface RelayAccessDeps {
   readonly e2e?: E2eChannels;
   /** 待确认对话框里这台电脑的名字。 */
   readonly label?: (sourceId: string) => string;
+  /**
+   * 自己去要断言与中继令牌（Cookie 会话的控制台：页面没有访问令牌，经 `sources.assertion`
+   * 带 Cookie 请求）。不给就用远程服务的访问令牌（`cloudSessions`）走 Bearer。失败要抛
+   * {@link CloudError}，下面的 `relayFailure` 才认得。
+   */
+  readonly assertion?: (
+    sourceId: string,
+    device: CloudDevice,
+  ) => Promise<CloudAssertion>;
 }
 
 function unauthorized(code: string = SOURCE_ERROR.unauthorized): SourceError {
@@ -209,14 +219,21 @@ export function createRelayedAccess(
     force: boolean,
   ): Promise<SourceAccess> => {
     if (issuer === "") throw unauthorized();
-    const cloudToken = await cloudSessions.access(issuer);
-    const assertion = await cloudAssertion(
-      issuer,
-      cloudToken,
-      sourceId,
-      deps.device(),
-      deps.cloud,
-    ).catch(relayFailure);
+    let assertion: CloudAssertion;
+    if (deps.assertion) {
+      assertion = await deps
+        .assertion(sourceId, deps.device())
+        .catch(relayFailure);
+    } else {
+      const cloudToken = await cloudSessions.access(issuer);
+      assertion = await cloudAssertion(
+        issuer,
+        cloudToken,
+        sourceId,
+        deps.device(),
+        deps.cloud,
+      ).catch(relayFailure);
+    }
     if (!assertion.online) throw unauthorized(SOURCE_ERROR.offline);
     const base = assertion.relayBaseUrl.replace(/\/+$/, "");
     const target: ChannelTarget = {

@@ -29,11 +29,14 @@ import type { ConsoleUser } from "./model";
 export function UserMenu({
   user,
   operator,
+  operatorHref = "/ops",
   compact,
   onSignOut,
 }: {
   user: ConsoleUser;
   operator?: boolean;
+  /** 「运营后台」去哪：有运营会话是 `/ops`，只有运营范围时是运营登录。 */
+  operatorHref?: string;
   /** 窄屏顶栏：只有头像。 */
   compact?: boolean;
   onSignOut?: () => void;
@@ -78,7 +81,7 @@ export function UserMenu({
         </DropdownMenuLabel>
         <DropdownMenuSeparator />
         {operator ? (
-          <DropdownMenuItem onSelect={() => navigate("/ops")}>
+          <DropdownMenuItem onSelect={() => navigate(operatorHref)}>
             <ShieldUser aria-hidden />
             {t("cloud.nav.ops")}
           </DropdownMenuItem>

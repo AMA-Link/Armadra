@@ -1,7 +1,7 @@
 import { Ban, LogIn, SearchX, TriangleAlert, Wrench } from "lucide-react";
 
 import { useT } from "@/app/preferences-store";
-import { localizedFailure } from "../../api/request";
+import { cloudMessage } from "../api/errors";
 import { cn } from "@/lib/cn";
 import { Button } from "@/ui/button";
 import {
@@ -60,15 +60,17 @@ export function PageState({
   className?: string;
 }) {
   const t = useT();
+  const message = (fallback: string) =>
+    (code === undefined ? null : cloudMessage(code)) ?? fallback;
   const view = {
     error: {
       Icon: TriangleAlert,
-      title: localizedFailure(code, t("error.internal")),
+      title: message(t("error.internal")),
       action: ["cloud.common.retry", onRetry],
     },
     forbidden: {
       Icon: Ban,
-      title: localizedFailure(code, t("error.forbidden")),
+      title: message(t("error.forbidden")),
       action: ["cloud.page.home", onHome],
     },
     notFound: {

@@ -1,6 +1,15 @@
 import * as React from "react";
+import { QueryClientProvider, useQueryClient } from "@tanstack/react-query";
 
 import { useT } from "@/app/preferences-store";
+import { Toaster } from "@/ui/sonner";
+import { toast } from "sonner";
+import { CloudApiProvider, useCloudApi } from "./api/context";
+import { createCloudApi } from "./api/client";
+import { describeFailure, isSessionError, toCloudError } from "./api/errors";
+import { cloudKeys } from "./api/keys";
+import { createCloudQueryClient, useConsoleSession } from "./api/queries";
+import type { CloudApi } from "./api/session";
 import { navigate, useRoute } from "./router";
 import { ConsoleShell } from "./shell/ConsoleShell";
 import { PageHeader } from "./shell/PageHeader";
@@ -19,16 +28,31 @@ export interface ConsoleSession {
   readonly teams: readonly ConsoleTeam[];
   /** 有运营会话（独立登录，U8）；没有时 `/ops/*` 整页「找不到」。 */
   readonly operator?: boolean;
+  /** 账号持有运营范围（`me.get.scopes`）：账号菜单里给「运营后台」，没有会话时它去运营登录。 */
+  readonly operatorScope?: boolean;
   readonly counts?: Readonly<Record<string, number>>;
 }
 
 const NO_TEAMS: readonly ConsoleTeam[] = [];
 
+/** 没有运营会话的运营账号从账号菜单进来：必须全新登录（云端控制台 §1.3）。 */
+const OPERATOR_SIGN_IN = "/login?scope=operator&next=%2Fops";
+
 /**
- * 控制台入口（云端控制台 §6.1）：地址 → 放行 → 外壳。数据层还没接（U1b），
- * 会话由调用方给；没有会话就是「登录已过期」。
+ * 地址 → 放行 → 外壳（云端控制台 §6.1）。会话由上层给；没有会话就是「登录已过期」。
  */
-export function ConsoleRoot({ session }: { session?: ConsoleSession | null }) {
+function ConsoleView({
+  session,
+  onSignOut,
+  onResendVerification,
+  children,
+}: {
+  session: ConsoleSession | null;
+  onSignOut?: () => void;
+  onResendVerification?: () => Promise<void>;
+  /** 会话还没到时画在外壳之外的东西（加载、取会话失败）。 */
+  children?: React.ReactNode;
+}) {
   const t = useT();
   const match = useRoute();
   const teams = session?.teams ?? NO_TEAMS;
@@ -55,8 +79,13 @@ export function ConsoleRoot({ session }: { session?: ConsoleSession | null }) {
         user={session.user}
         teams={teams}
         match={match}
-        {...(session.operator ? { operator: true } : {})}
+        {...(session.operator || session.operatorScope
+          ? { operator: true }
+          : {})}
+        {...(session.operator ? {} : { operatorHref: OPERATOR_SIGN_IN })}
         {...(session.counts ? { counts: session.counts } : {})}
+        {...(onSignOut ? { onSignOut } : {})}
+        {...(onResendVerification ? { onResendVerification } : {})}
       >
         <PageHeader title={entry ? t(entry.labelKey) : ""} />
       </ConsoleShell>
@@ -64,8 +93,10 @@ export function ConsoleRoot({ session }: { session?: ConsoleSession | null }) {
   }
 
   // 其余都是整页状态，不带侧栏。`/` 在跳转前什么也不画。
-  let body: React.ReactNode = null;
-  if (!session) {
+  let body: React.ReactNode = children ?? null;
+  if (children !== undefined) {
+    /* 会话还在取，或取失败：由上层给内容。 */
+  } else if (!session) {
     const next = encodeURIComponent(
       window.location.pathname + window.location.search,
     );
@@ -90,6 +121,105 @@ export function ConsoleRoot({ session }: { session?: ConsoleSession | null }) {
     <main id="main" className="h-full overflow-y-auto bg-background">
       {body}
     </main>
+  );
+}
+
+/* ------------------------------- 数据层 ------------------------------- */
+
+/** 用哪套客户端：调用方给的；DEV 且地址带 `?mock` 是内存 mock（生产构建里这支被摇掉）；否则连来源自己。 */
+function useCloudApiSource(given?: CloudApi): CloudApi | null {
+  const [api, setApi] = React.useState<CloudApi | null>(
+    () =>
+      given ??
+      (import.meta.env.DEV && new URLSearchParams(location.search).has("mock")
+        ? null
+        : createCloudApi({ origin: location.origin })),
+  );
+  React.useEffect(() => {
+    if (api !== null) return;
+    if (import.meta.env.DEV)
+      void import("./mock/create-mock-client").then((mock) =>
+        setApi(mock.createMockApi(mock.mockOptionsFromSearch(location.search))),
+      );
+  }, [api]);
+  return api;
+}
+
+function ConsoleData() {
+  const api = useCloudApi();
+  const client = useQueryClient();
+  const [expired, setExpired] = React.useState(false);
+  const { session, error, loading, retry } = useConsoleSession({
+    enabled: !expired,
+  });
+
+  // 会话没了且续不上：清掉所有云端缓存，整页「登录已过期」。
+  React.useEffect(
+    () =>
+      api.onSessionLost(() => {
+        client.removeQueries({ queryKey: cloudKeys.all });
+        setExpired(true);
+      }),
+    [api, client],
+  );
+
+  const signOut = () => {
+    void api.signOut().finally(() => {
+      client.removeQueries({ queryKey: cloudKeys.all });
+      navigate("/login");
+    });
+  };
+  const resend = async () => {
+    try {
+      await api.client.auth.emailVerifyResend({});
+    } catch (failure) {
+      toast.error(describeFailure(failure));
+      throw failure;
+    }
+  };
+
+  if (expired || isSessionError(error)) return <ConsoleView session={null} />;
+  if (session)
+    return (
+      <ConsoleView
+        session={session}
+        onSignOut={signOut}
+        onResendVerification={resend}
+      />
+    );
+  return (
+    <ConsoleView session={null}>
+      {loading ? (
+        <div aria-busy="true" />
+      ) : (
+        <PageState code={toCloudError(error).code} onRetry={retry} />
+      )}
+    </ConsoleView>
+  );
+}
+
+/**
+ * 控制台入口（云端控制台 §6.1）。给 `session` 就按它渲染（展示页与测试，不连数据）；
+ * 否则装好 QueryClient 与客户端，用 `me.get` / `me.spaces` 取会话。
+ */
+export function ConsoleRoot({
+  session,
+  api: given,
+}: {
+  session?: ConsoleSession | null;
+  api?: CloudApi;
+}) {
+  const api = useCloudApiSource(given);
+  const [queryClient] = React.useState(createCloudQueryClient);
+  if (session !== undefined) return <ConsoleView session={session} />;
+  if (api === null) return null;
+  return (
+    <QueryClientProvider client={queryClient}>
+      <CloudApiProvider api={api}>
+        <ConsoleData />
+        <Toaster />
+      </CloudApiProvider>
+    </QueryClientProvider>
   );
 }
 
