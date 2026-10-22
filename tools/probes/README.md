@@ -262,18 +262,20 @@ A（1440×900）打开一块有两个终端的板，手机端（390×844）、�
 
 ## 中继托管页面端到端
 
-客户端包 §5（A3-4）：真个人中转（armadra-cloud 的 `personal serve`，自签 TLS，`/app/` 托管本仓库的 `apps/web/dist`）、真 core（file 后端的 SecretStore，登记到中继、隧道连上、中继账号绑定为主人）、新 profile 的无头 Chrome（复用 `ui-features/harness.mjs`）。
+客户端包 §5（A3-4）：真个人中转（Go 中继的 `personal serve`，自签 TLS，`/app/` 托管本仓库的 `apps/web/dist`）、真 core（file 后端的 SecretStore，登记到中继、隧道连上、中继账号绑定为主人）、新 profile 的无头 Chrome（复用 `ui-features/harness.mjs`）。
 
 ```sh
 pnpm libs:build && pnpm --filter @armadra/desktop build && pnpm --filter @armadra/web build
 ARMADRA_PERSONAL_RELAY_HOME=<armadra-cloud 检出> node tools/probes/relay-web-e2e.mjs [输出目录]
 ```
 
+中继是 armadra-cloud 的 Go 二进制（`armadra-relay`），各探针经 `cloud-source.mjs` 按优先级找：`ARMADRA_RELAY_BIN` → 检出里的 `go/bin/armadra-relay`（没有就 `go build`，改了中继源码要重新构建时删掉它）→ 镜像（`ARMADRA_PROBE_RELAY_IMAGE`，或从检出的 `apps/relay/Dockerfile` 构建，`docker run` 同一条命令行）。要 `docker pause` 的探针（`multi-source`、`link-join`、`nat-core-offline`）始终用镜像。
+
 验证：打开中继的 `/app/` 是中继登录页，中继账号口令登录后只有一台在线主机就直接进画布，请求都同源（`/v1`、`/s/<源>`）；经中继终端收发、实时板与本机页面双向同步；主机停掉隧道时通知条「等待上线」、再开由 `me.stream` 叫醒；杀掉中继再起，页面不刷新自己恢复。截 390 / 1440 宽、明暗两主题。产物默认在 `target/relay-web-e2e/`。
 
 ## 个人中转全流程（V1 / M1）
 
-平台计划 V1：真个人中转（armadra-cloud 的 `personal init` + `personal serve`，托管 `apps/web/dist`）、真 core、真 Electron、无头 Chrome，没有模拟的服务端。要 armadra-cloud 的本地检出（`ARMADRA_DEV_STACK_CLOUD_SRC`，或仓库旁的 `../armadra-cloud`；私有仓，CI 拉不到）。清单 `tools/ci/e2e.d/personal-roundtrip.json` 依赖 `cloud`：没有检出时 e2e 运行器记 `skipped` 并写明原因，不算失败。
+平台计划 V1：真个人中转（Go 中继的 `personal init` + `personal serve`，托管 `apps/web/dist`）、真 core、真 Electron、无头 Chrome，没有模拟的服务端。要 armadra-cloud 的本地检出（`ARMADRA_DEV_STACK_CLOUD_SRC`，或仓库旁的 `../armadra-cloud`；私有仓，CI 拉不到），或 `ARMADRA_RELAY_BIN`。清单 `tools/ci/e2e.d/personal-roundtrip.json` 依赖 `cloud`：没有检出时 e2e 运行器记 `skipped` 并写明原因，不算失败。
 
 ```sh
 pnpm libs:build && pnpm --filter @armadra/desktop build && pnpm --filter @armadra/web build
@@ -282,9 +284,9 @@ node tools/ci/e2e.mjs --tier a --only personal-roundtrip
 
 验证：中继 init（CA 指纹、口令不进输出、已初始化再 init 被拒）；core 登记、隧道 ready、绑定主人；`/app/` 账号口令登录、终端收发、实时板双向同步；分享链接 `/j/` 落地（片段被抹掉）、访客加入、开终端；桌面 Electron 粘贴链接并核对指纹、开终端；手机 390 宽模拟（来源 `https://localhost`、扫码结果注入）扫码挂载、开终端；撤销链接（accept 与落地页报错、已加入的访客被断开）、撤销登记（隧道停、中继答 `source_offline`、主人页面收到下线通知、中继侧撤销后不再签断言）；中继、core、Electron 与探针输出里没有口令、令牌与链接秘密。中继边缘对每个 IP 每分钟只放 200 次，所有客户端都来自回环，手机一步之前先等一个窗口。产物默认在 `target/personal-roundtrip/`（经运行器时在 `target/e2e/a/personal-roundtrip/`）。
 
-指向别的中继（平台计划 V4，Workers 中继探针）：`personal-roundtrip.mjs --workerd` 用 armadra-cloud 检出里的 `apps/relay-workers` 起本地 workerd（`wrangler dev --local`，不连 Cloudflare 账号，页面产物取 `apps/web/dist`，`tools/probes/workerd-relay.mjs`），`--issuer <地址>` 对已经在跑的中继跑（账号与口令取环境变量 `ARMADRA_PROBE_RELAY_ACCOUNT` / `ARMADRA_PROBE_RELAY_PASSWORD`）。这两种模式没有 init/serve、自签 CA、Electron 与手机，core 以 `ARMADRA_RELAY_ALLOW_INSECURE=1` 放行明文 `ws://`；多出「只读分享」（只读工作空间链接与会话链接，访客会话是 viewer：看得到、建终端 403）与「媒体字节 Range」（经端到端通道按 core 的媒体票取，206、Content-Range、不认识的票 404；带中继令牌的明文请求答 404）。访客的邀请令牌既是通道握手的 proof 也随 `cloud/login` 带上。清单 `personal-roundtrip-workers`（B 档，依赖 `cloud`，没有检出时 skipped）。
+指向别的中继（平台计划 V4，Workers 中继探针）：`personal-roundtrip.mjs --workerd` 用 armadra-cloud 检出里的 `apps/relay-workers` 起本地 workerd（`wrangler dev --local`，不连 Cloudflare 账号，页面产物取 `apps/web/dist`，`tools/probes/workerd-relay.mjs`），`--issuer <地址>` 对已经在跑的中继跑（账号与口令取环境变量 `ARMADRA_PROBE_RELAY_ACCOUNT` / `ARMADRA_PROBE_RELAY_PASSWORD`）。这两种模式没有 init/serve、自签 CA、Electron 与手机，core 以 `ARMADRA_RELAY_ALLOW_INSECURE=1` 放行明文 `ws://`；多出「只读分享」（只读工作空间链接与会话链接，访客会话是 viewer：看得到、建终端 403）与「媒体字节 Range」（经端到端通道按 core 的媒体票取，206、Content-Range、不认识的票 404）。访客的邀请令牌既是通道握手的 proof 也随 `cloud/login` 带上。清单 `personal-roundtrip-workers`（B 档，依赖 `cloud`，没有检出时 skipped）。
 
-人机验证（契约 §62.2）：`relay-challenge-desktop.mjs` 起两台本地 workerd 中继（一台不配 Turnstile、一台配 Cloudflare 官方测试站点密钥）与隔离的开发构建 Electron，在设置 → 远程访问里真实添加中转账号：不声明挑战的中继不弹验证面板；声明了的，挑战页在桌面窗口（`http://127.0.0.1:<端口>`）里载入并报 `ready`、iframe 只挂一次、令牌从中继来源交回后面板关掉（测试密钥的答案没有 `action`，中继判 `challenge_invalid`，页面提示一次）。清单 `relay-challenge-desktop`（B 档，依赖 `cloud`）。
+人机验证（契约 §62.2）：`relay-challenge-desktop.mjs` 起两台本地 Go 中继（回环明文 `--tls plain`；`--workerd` 换成本地 workerd 上的 Workers 中继；一台不配 Turnstile、一台配 Cloudflare 官方测试站点密钥）与隔离的开发构建 Electron，在设置 → 远程访问里真实添加中转账号：不声明挑战的中继不弹验证面板；声明了的，挑战页在桌面窗口（`http://127.0.0.1:<端口>`）里载入并报 `ready`、iframe 只挂一次、令牌从中继来源交回后面板关掉（测试密钥的答案没有 `action`，中继判 `challenge_invalid`，页面提示一次）。清单 `relay-challenge-desktop`（B 档，依赖 `cloud`）。
 
 线上只读探针 `relay-live-readonly.mjs`：部署后对 `https://relay.armadra.com` 只发 GET `/health` 与 `/.well-known/*`（平台信息、公钥集无私钥分量、不种 Cookie），不登录、不登记；默认不在 CI 跑，没有清单条目：`node tools/probes/relay-live-readonly.mjs [--issuer 地址] [--json]`。
 
