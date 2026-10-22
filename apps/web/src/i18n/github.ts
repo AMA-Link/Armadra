@@ -10,7 +10,6 @@ const zh = {
   "cmd.app.github": "代码托管面板",
   "github.reload": "刷新",
   "github.close": "关闭",
-  "github.loading": "正在读取",
 
   /* 不可用状态（§9：不出现伪按钮） */
   "github.blocked.noWorkspace": "先打开一个工作空间",
@@ -67,7 +66,6 @@ const en: Record<keyof typeof zh, string> = {
   "cmd.app.github": "Code hosting panel",
   "github.reload": "Reload",
   "github.close": "Close",
-  "github.loading": "Loading",
 
   "github.blocked.noWorkspace": "Open a workspace first",
   "github.blocked.nativeSession":
