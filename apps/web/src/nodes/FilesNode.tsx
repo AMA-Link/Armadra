@@ -7,6 +7,8 @@ import { Input } from "@/ui/input";
 import { ScrollArea } from "@/ui/scroll-area";
 import { runtimeApi } from "@/api/client";
 import { usePreferencesStore, useT } from "@/app/preferences-store";
+import { cn } from "cn";
+import { FILES_ROW, FilesSkeleton } from "./NodeSkeletons";
 import { useCanvasStore } from "@/store/canvas-store";
 import { NodeShell } from "./NodeShell";
 import { NODE_META, type NodeBodyProps } from "./registry";
@@ -156,6 +158,7 @@ export function FilesNode({ id, node, selected }: NodeBodyProps) {
               <Badge variant="destructive">{t("files.failed")}</Badge>
             </div>
           )}
+          {!failed && entries === null && workspaceId && <FilesSkeleton />}
           {visible.map((entry) => {
             const badge = badges.get(entry.path);
             return (
@@ -164,7 +167,10 @@ export function FilesNode({ id, node, selected }: NodeBodyProps) {
                 {...dragProps(entry)}
                 variant="ghost"
                 size="sm"
-                className="h-6 w-full cursor-grab justify-start gap-1.5 rounded-none px-2 font-normal active:cursor-grabbing"
+                className={cn(
+                  FILES_ROW,
+                  "w-full cursor-grab justify-start gap-1.5 rounded-none px-2 font-normal active:cursor-grabbing",
+                )}
                 onClick={() => {
                   if (entry.kind === "directory") navigate(entry.path);
                 }}

@@ -145,6 +145,21 @@ describe("TimelineView", () => {
     expect(document.querySelector("[data-slot=timeline-skeleton]")).toBeNull();
   });
 
+  it("取更早回合时列表顶部出一条占位，平时没有", () => {
+    const { rerender } = render(
+      <TimelineView items={longSession(2)} initialRect={RECT} />,
+    );
+    expect(
+      document.querySelector("[data-slot=timeline-loading-more]"),
+    ).toBeNull();
+    rerender(
+      <TimelineView items={longSession(2)} initialRect={RECT} loadingMore />,
+    );
+    expect(
+      document.querySelector("[data-slot=timeline-loading-more]"),
+    ).toBeTruthy();
+  });
+
   it("puts the latest plan in the bar and only the first plan of a turn in the flow", () => {
     const plan = (turn: number, n: number, rev: number): TimelineItem => ({
       id: `plan:${turn}`,

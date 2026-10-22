@@ -36,6 +36,8 @@ import { sk } from "../sources/scope";
 
 import { runtimeApi } from "@/api/client";
 import { useT } from "@/app/preferences-store";
+import { useSkeletonPhase } from "@/loading/use-skeleton-phase";
+import { SkeletonList } from "@/ui/skeletons";
 import {
   documentSymbols,
   iconOf,
@@ -186,6 +188,13 @@ export function QuickOpen() {
   }, [symbols.data, mode, term]);
 
   const failed = mode === "files" ? index.isError : symbols.isError;
+  // 查询词刚改（去抖里）或请求还在路上，且还没有可显示的结果时，不是「无结果」。
+  const searching =
+    !lineMode &&
+    !failed &&
+    (query !== debounced ||
+      (mode === "files" ? index.isLoading : symbols.isLoading));
+  const phase = useSkeletonPhase(searching);
 
   return (
     <CommandDialog
@@ -203,17 +212,35 @@ export function QuickOpen() {
         onValueChange={setQuery}
       />
       <CommandList>
-        <CommandEmpty>
-          {failed
-            ? t("quickOpen.failed")
-            : (mode === "document" || lineMode) && !currentPath
-              ? t("quickOpen.noDocument")
-              : lineMode
-                ? t("quickOpen.lineHint")
-                : mode === "files"
-                  ? t("quickOpen.empty")
-                  : t("quickOpen.noSymbols")}
-        </CommandEmpty>
+        {searching && (
+          <div
+            data-slot="quick-open-pending"
+            data-phase={phase}
+            className={phase === "hold" ? "invisible" : undefined}
+          >
+            {/* 行高同 `CommandItem`（h-9）。 */}
+            <SkeletonList
+              rows={3}
+              leading="icon"
+              rowClassName="h-9"
+              label={t("state.loading")}
+              className="p-1"
+            />
+          </div>
+        )}
+        {!searching && (
+          <CommandEmpty>
+            {failed
+              ? t("quickOpen.failed")
+              : (mode === "document" || lineMode) && !currentPath
+                ? t("quickOpen.noDocument")
+                : lineMode
+                  ? t("quickOpen.lineHint")
+                  : mode === "files"
+                    ? t("quickOpen.empty")
+                    : t("quickOpen.noSymbols")}
+          </CommandEmpty>
+        )}
         {lineMode && location && currentPath && (
           <CommandGroup heading={t("quickOpen.goToLine")}>
             <CommandItem

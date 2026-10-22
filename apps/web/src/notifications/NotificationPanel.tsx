@@ -26,6 +26,9 @@ import {
 } from "@/ui/dropdown-menu";
 import { IconButton } from "@/ui/icon-button";
 import { ScrollArea } from "@/ui/scroll-area";
+import { Skeleton } from "@/ui/skeleton";
+import { SkeletonList } from "@/ui/skeletons";
+import { Loadable } from "../loading/Loadable";
 import { StatusPill } from "@/ui/status-pill";
 import type { NeedItem } from "./needs";
 import { useNeedsStore } from "./needs-store";
@@ -33,6 +36,7 @@ import { useNeedsStore } from "./needs-store";
 export function NotificationPanel({ onClose }: { onClose: () => void }) {
   const t = useT();
   const groups = useNeedsStore((state) => state.groups);
+  const synced = useNeedsStore((state) => state.synced);
   const open = useNeedsStore((state) => state.open);
   const [inspecting, setInspecting] = useState<AgentInspectTarget | null>(null);
 
@@ -48,62 +52,67 @@ export function NotificationPanel({ onClose }: { onClose: () => void }) {
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
       <ScrollArea className="min-h-0 flex-1">
         <div className="px-2 pb-2">
-          {groups.length === 0 && (
-            <p className="px-1.5 py-2 text-[length:var(--text-caption)] text-muted-foreground">
-              {t("notifications.empty")}
-            </p>
-          )}
-          {groups.map((workspace) => (
-            <section
-              key={workspace.workspaceId}
-              aria-label={displayName(workspace.name, t)}
-            >
-              <h2 className="flex h-7 min-w-0 items-center gap-1 px-1.5 text-[length:var(--text-caption)] font-medium">
-                <span className="min-w-0 truncate">
-                  {displayName(workspace.name, t)}
-                </span>
-                <span className="shrink-0 tabular-nums text-muted-foreground">
-                  {workspace.count}
-                </span>
-              </h2>
-              {workspace.boards.map((board) => (
-                <section
-                  key={board.boardId}
-                  aria-label={displayName(board.name, t)}
-                  className="pl-2"
-                >
-                  <h3 className="flex h-6 min-w-0 items-center gap-1 px-1.5 text-[length:var(--text-caption)] font-medium text-muted-foreground">
-                    <span className="min-w-0 truncate">
-                      {displayName(board.name, t)}
-                    </span>
-                    <span className="shrink-0 tabular-nums">{board.count}</span>
-                  </h3>
-                  <ul>
-                    {board.items.map((item) => (
-                      <NeedRow
-                        key={item.key}
-                        item={item}
-                        label={t(`notifications.need.${item.need}`)}
-                        onSelect={() => {
-                          onClose();
-                          open(item);
-                        }}
-                        onInspect={(tab) =>
-                          setInspecting({
-                            workspaceId: item.workspaceId,
-                            nodeId: item.nodeId,
-                            sessionId: item.sessionId ?? "",
-                            title: item.title,
-                            tab,
-                          })
-                        }
-                      />
-                    ))}
-                  </ul>
-                </section>
-              ))}
-            </section>
-          ))}
+          <Loadable
+            loading={!synced && groups.length === 0}
+            skeleton={<NotificationSkeleton />}
+            empty={groups.length === 0}
+            emptyTitle={t("notifications.empty")}
+            inline
+          >
+            {groups.map((workspace) => (
+              <section
+                key={workspace.workspaceId}
+                aria-label={displayName(workspace.name, t)}
+              >
+                <h2 className="flex h-7 min-w-0 items-center gap-1 px-1.5 text-[length:var(--text-caption)] font-medium">
+                  <span className="min-w-0 truncate">
+                    {displayName(workspace.name, t)}
+                  </span>
+                  <span className="shrink-0 tabular-nums text-muted-foreground">
+                    {workspace.count}
+                  </span>
+                </h2>
+                {workspace.boards.map((board) => (
+                  <section
+                    key={board.boardId}
+                    aria-label={displayName(board.name, t)}
+                    className="pl-2"
+                  >
+                    <h3 className="flex h-6 min-w-0 items-center gap-1 px-1.5 text-[length:var(--text-caption)] font-medium text-muted-foreground">
+                      <span className="min-w-0 truncate">
+                        {displayName(board.name, t)}
+                      </span>
+                      <span className="shrink-0 tabular-nums">
+                        {board.count}
+                      </span>
+                    </h3>
+                    <ul>
+                      {board.items.map((item) => (
+                        <NeedRow
+                          key={item.key}
+                          item={item}
+                          label={t(`notifications.need.${item.need}`)}
+                          onSelect={() => {
+                            onClose();
+                            open(item);
+                          }}
+                          onInspect={(tab) =>
+                            setInspecting({
+                              workspaceId: item.workspaceId,
+                              nodeId: item.nodeId,
+                              sessionId: item.sessionId ?? "",
+                              title: item.title,
+                              tab,
+                            })
+                          }
+                        />
+                      ))}
+                    </ul>
+                  </section>
+                ))}
+              </section>
+            ))}
+          </Loadable>
         </div>
       </ScrollArea>
       <AgentInspectDialog
@@ -169,5 +178,32 @@ function NeedRow({
         </DropdownMenu>
       )}
     </li>
+  );
+}
+
+/** 两个工作空间分组的占位：组标题（h-7）、画布标题（h-6）、两条节点行（min-h 40px，即 tall）。 */
+function NotificationSkeleton() {
+  const t = useT();
+  return (
+    <div
+      data-slot="notifications-skeleton"
+      role="status"
+      aria-busy="true"
+      aria-label={t("state.loading")}
+    >
+      {[0, 1].map((group) => (
+        <div key={group}>
+          <div className="flex h-7 items-center px-1.5">
+            <Skeleton className="h-3 w-1/3" />
+          </div>
+          <div className="pl-2">
+            <div className="flex h-6 items-center px-1.5">
+              <Skeleton className="h-3 w-1/4" />
+            </div>
+            <SkeletonList rows={2} size="tall" secondary />
+          </div>
+        </div>
+      ))}
+    </div>
   );
 }

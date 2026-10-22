@@ -4,6 +4,7 @@ import { MotionConfig } from "motion/react";
 // Tailwind v4 入口；它自己 @import 了 tokens.css，这里不再单独引入
 import "./styles/app.css";
 import "./styles/nodes.css";
+import { applyInitialTheme } from "./app/preferences-store";
 import { mountSplash } from "./splash/mount";
 import { MobileRoot } from "./mobile/MobileRoot";
 import { PendingApprovalDialog } from "./sources/e2e/PendingApprovalDialog";
@@ -27,6 +28,9 @@ if (isChallengePath(globalThis.location.pathname)) {
 }
 
 function boot() {
+  /** 浅色主题的首帧不能先闪深色：开屏与 App 挂载之前就把主题写好。 */
+  applyInitialTheme();
+
   /**
    * 开屏动画先挂：它有自己的 root，不等下面那个 Promise，所以 Runtime 该连连、
    * App 该挂挂，动画只是浮在上面的一层（`splash/mount.tsx`）。

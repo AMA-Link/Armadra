@@ -9,17 +9,24 @@ import type { NeedItem, NeedWorkspaceGroup } from "./needs";
 interface NeedsState {
   items: NeedItem[];
   groups: NeedWorkspaceGroup[];
+  /** 首批数据（工作空间与各自的会话、交接）是否已经同步过；之前的空清单不代表「没事」。 */
+  synced: boolean;
   /** 切到那个工作空间和画布并定位节点；由同步 hook 接上。 */
   open: (item: Pick<NeedItem, "workspaceId" | "boardId" | "nodeId">) => void;
-  set: (items: NeedItem[], groups: NeedWorkspaceGroup[]) => void;
+  set: (
+    items: NeedItem[],
+    groups: NeedWorkspaceGroup[],
+    synced?: boolean,
+  ) => void;
   setOpen: (open: NeedsState["open"]) => void;
 }
 
 export const useNeedsStore = create<NeedsState>((set) => ({
   items: [],
   groups: [],
+  synced: false,
   open: () => undefined,
-  set: (items, groups) => set({ items, groups }),
+  set: (items, groups, synced = true) => set({ items, groups, synced }),
   setOpen: (open) => set({ open }),
 }));
 

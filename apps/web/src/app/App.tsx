@@ -7,7 +7,9 @@ import {
 import { ReactFlowProvider } from "@xyflow/react";
 import { useAgentStatusHydration } from "../agent/hydration";
 import { useWorkspaceEvents } from "../api/events";
+import { CanvasSkeleton } from "../canvas/CanvasSkeleton";
 import { FlowWorkspace } from "../canvas/FlowWorkspace";
+import { useSkeletonPhase } from "../loading/use-skeleton-phase";
 // 浮层都在 `./lazy` 里 `React.lazy` 包过，走各自的 chunk（§17 代码分割）；
 // `./Overlays` 是它们的挂载点，也是决定 chunk 什么时候才被取回来的闸门。
 import { Overlays } from "./Overlays";
@@ -114,7 +116,8 @@ function AppShell() {
   useHumanNeedsSync();
   useAgentNotifications();
   useThresholdAlerts();
-  useBoardSync();
+  const { canvasLoading } = useBoardSync();
+  const canvasPhase = useSkeletonPhase(canvasLoading);
   const dispatch = useCommandDispatch();
   useAppKeybindings(dispatch);
   useLocaleMirror();
@@ -144,6 +147,8 @@ function AppShell() {
             <Dock />
           </>
         )}
+        {/* 首批数据没到时的画布骨架：200 ms 内不出现，出现后至少停 300 ms。 */}
+        {canvasPhase === "show" && <CanvasSkeleton chrome={!workspace} />}
         {/* 通知条坐在画布面的顶部标题带里，与工具簇同一层（`shell/Banners`）。 */}
         <Banners />
         {/* 被分享会话的只读查看页（契约 §79）：盖住画布那一块。 */}

@@ -56,6 +56,7 @@ import { useAccess } from "../app/use-access";
 import { openShare } from "../canvas/share/share-store";
 import { useCurrentSource } from "../sources/context";
 import { BoardRow } from "./BoardRow";
+import { PendingRows } from "./PendingRows";
 import {
   BOARD_PAGE_SIZE,
   boardSignals,
@@ -66,7 +67,8 @@ import {
   type BoardSignal,
 } from "./board-tree";
 import { idsInSource } from "../app/preferences/sources";
-import { activeSourceId } from "../sources/scope";
+import { useIsFetching } from "@tanstack/react-query";
+import { activeSourceId, sk } from "../sources/scope";
 import { useBoardMutations } from "./use-board-mutations";
 import { displayName } from "./display-name";
 
@@ -242,6 +244,7 @@ export function WorkspaceTree() {
                     }
                   />
                 ))}
+                <PendingRows loading={workspaces.isPending} rows={2} />
               </ul>
             }
             renderLocal={(content, current) => (
@@ -479,6 +482,9 @@ function WorkspaceRow({
   const [confirmRemove, setConfirmRemove] = useState(false);
   const [expandedAll, setExpandedAll] = useState(false);
 
+  // 当前工作空间的画布列表还没到：展开区先放两行占位，别等到了再一次插入。
+  const boardsFetching =
+    useIsFetching({ queryKey: sk("boards", summary.id) }) > 0;
   const visible = visibleBoards(boards, expandedAll, activeBoardId);
   const canDelete = boards.length > 1;
 
@@ -566,6 +572,11 @@ function WorkspaceRow({
               }
             />
           ))}
+          <PendingRows
+            loading={active && boards.length === 0 && boardsFetching}
+            rows={2}
+            indent
+          />
           {boards.length > BOARD_PAGE_SIZE && (
             <li className="pl-4">
               <Button

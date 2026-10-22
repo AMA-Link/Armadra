@@ -5,6 +5,7 @@ import { useT } from "../app/preferences-store";
 import { useCompactLayout } from "../platform/layout";
 import { useCanvasStore } from "../store/canvas-store";
 import { NODE_BODY, nodeMeta } from "../nodes/registry";
+import { NodeBodyFallback } from "../nodes/NodeBodyFallback";
 import { useNodeBodyMode } from "../nodes/node-body-mode";
 import { terminalHandle } from "../nodes/terminal-registry";
 import { canFocusOnPhone } from "./mobile-focus";
@@ -140,7 +141,7 @@ export function MobileFocusPage() {
       >
         {/* 节点体是懒加载的（`nodes/registry.ts`）；焦点页只是它的另一个
             挂载点，所以这里也要有自己的边界。 */}
-        <React.Suspense fallback={null}>
+        <React.Suspense fallback={<NodeBodyFallback type={node.type} />}>
           <Body id={node.id} node={node} selected collapsed={false} focused />
         </React.Suspense>
       </div>
