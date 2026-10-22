@@ -16,6 +16,7 @@ import {
 import AcpSection from "./sections/acp";
 import AuthSection from "./sections/auth";
 import CanvasSection from "./sections/canvas";
+import CloudSection from "./sections/cloud";
 import CollabSection from "./sections/collab";
 import ComponentsSection from "./sections/components";
 import CoordinatorSection from "./sections/coordinator";
@@ -46,6 +47,7 @@ export const SHOWCASE_SECTIONS = [
   ["updates", UpdatesSection],
   ["integration", IntegrationSection],
   ["states", StatesSection],
+  ["cloud", CloudSection],
 ] as const satisfies readonly (readonly [string, React.ComponentType])[];
 
 export type ShowcaseSectionId = (typeof SHOWCASE_SECTIONS)[number][0];
