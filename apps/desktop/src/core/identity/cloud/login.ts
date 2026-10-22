@@ -15,14 +15,16 @@
  *    `role` 时的旧行为）。
  * 5. 契约 §60：断言带 `role` → 这个人经本签发方来的授予整份换成声明的范围（`scp`
  *    的会话 / 工作空间，都没有 = 整台），本地授予不动；不带 → 只续租。`ro` 或会话
- *    范围一律压成只读。SaaS 登记的签发方带 `org` + `role` 时不需要邀请就建成员。
+ *    范围一律压成只读。SaaS 登记的签发方带 `team` + `role` 时不需要邀请就建成员
+ *    （协议 1.4；`team.role = billing` 不管主机，不凭它准入、也不带授予）。团队角色另落
+ *    `cloud_team_roles`，设备背书按它判（契约 §60.4）。
  *    经云来的授予都有租约（断言到期后 30 天），每次登录续；经邀请（分享链接）来的
  *    封顶在邀请到期（契约 §68）。答案带 `share`：角色、到期与主人的名字。
  * 6. 经端到端通道来的（契约 §77）：这把设备钥对这个人必须已信任；没见过 → 建待确认
  *    记录、答 `403 device_pending { pendingId }`，主人在本机核对校验码后放行；被拒或
  *    撤销 → `403 device_rejected`。会话绑这把钥。断言负责「这是谁」，设备钥负责
  *    「确实是他的设备」——中继单方面签的断言换不到会话。
- * 7. 建设备与会话（`method = "cloud"`），审计 `cloud.login`（带 `jti` / `org` / `team`）。
+ * 7. 建设备与会话（`method = "cloud"`），审计 `cloud.login`（带 `jti` / `team`）。
  */
 
 import { createHash } from "node:crypto";
@@ -207,10 +209,11 @@ export class CloudLogin {
     } else if (
       token === "" &&
       registration.mode === "saas" &&
-      claims.org !== undefined &&
+      claims.team !== undefined &&
+      claims.team.role !== "billing" &&
       claims.role !== undefined
     ) {
-      // SaaS：组织就是准入，授予随后按声明同步。
+      // SaaS：团队就是准入（协议 1.4），授予随后按声明同步。
       try {
         principalId = registerExternal(store, this.now(), {
           displayName: clipName(claims.name, claims.sub.slice(0, 64)),
@@ -271,6 +274,18 @@ export class CloudLogin {
       invitationId = parsed;
     }
 
+    if (claims.team === undefined) {
+      this.options.cloud.clearTeamRole(principalId, provider);
+    } else {
+      this.options.cloud.setTeamRole({
+        principalId,
+        provider,
+        teamId: claims.team.teamId,
+        role: claims.team.role,
+        atMs: this.now(),
+      });
+    }
+
     let channelDeviceId = "";
     if (input.channel !== undefined) {
       try {
@@ -289,14 +304,17 @@ export class CloudLogin {
       }
     }
 
+    // billing 只管计划与账单，不碰主机：即使断言带了 `role` 也不授予，并清掉此前同步的。
+    const billing = claims.team?.role === "billing";
     applyCloudGrants(store, this.now(), {
       principalId,
       provenance,
-      ...(claims.role === undefined
-        ? {}
-        : { asserted: assertedGrants(claims.role, scope) }),
+      ...(billing
+        ? { asserted: [] }
+        : claims.role === undefined
+          ? {}
+          : { asserted: assertedGrants(claims.role, scope) }),
     });
-
     const credentials = (() => {
       try {
         return service.openSession({
@@ -335,7 +353,6 @@ export class CloudLogin {
           jti: claims.jti,
           ...(channelDeviceId === "" ? {} : { e2eDevice: channelDeviceId }),
           ...(claims.link === undefined ? {} : { link: claims.link.linkId }),
-          ...(claims.org === undefined ? {} : { org: claims.org.orgId }),
           ...(claims.team === undefined ? {} : { team: claims.team.teamId }),
           ...(claims.role === undefined ? {} : { role: claims.role }),
           ...(claims.scp === undefined || claims.scp.length === 0

@@ -10,6 +10,9 @@ import type { DatabaseSync } from "node:sqlite";
 
 export type CloudMode = "personal" | "saas";
 
+/** 断言 `team.role` 的五个值（协议 1.4）。 */
+export type TeamRole = "owner" | "admin" | "member" | "billing" | "guest";
+
 export interface RegistrationRow {
   readonly issuer: string;
   readonly sourceKeyRef: string;
@@ -74,8 +77,64 @@ function rowOf(record: RegistrationRecord): RegistrationRow {
 const COLUMNS =
   "issuer, source_key_ref, jwks_json, jwks_url, jwks_fetched_at_ms, trusted_origins_json, relay_origins_json, owner_account_id, label, mode, registered_by, registered_at_ms, revoked_at_ms";
 
+/** 这个人现在的团队角色（迁移 0053）；多个签发方时取最近的一行。路由门与设备背书直接问库。 */
+export function teamRoleOf(
+  database: DatabaseSync,
+  principalId: string,
+): { teamId: string; role: TeamRole } | undefined {
+  try {
+    const record = database
+      .prepare(
+        "SELECT team_id, role FROM cloud_team_roles WHERE principal_id = ? ORDER BY updated_at_ms DESC LIMIT 1",
+      )
+      .get(principalId) as { team_id: string; role: TeamRole } | undefined;
+    return record === undefined
+      ? undefined
+      : { teamId: record.team_id, role: record.role };
+  } catch {
+    return undefined;
+  }
+}
+
 export class CloudStore {
   constructor(private readonly database: DatabaseSync) {}
+
+  /** 记下这个人经这个签发方的团队与角色（迁移 0053）；同一人同一签发方整行覆盖。 */
+  setTeamRole(input: {
+    principalId: string;
+    provider: string;
+    teamId: string;
+    role: TeamRole;
+    atMs: number;
+  }): void {
+    this.database
+      .prepare(
+        `INSERT INTO cloud_team_roles (principal_id, provider, team_id, role, updated_at_ms) VALUES (?, ?, ?, ?, ?)
+         ON CONFLICT(principal_id, provider) DO UPDATE SET
+           team_id = excluded.team_id, role = excluded.role, updated_at_ms = excluded.updated_at_ms`,
+      )
+      .run(
+        input.principalId,
+        input.provider,
+        input.teamId,
+        input.role,
+        input.atMs,
+      );
+  }
+
+  /** 断言不再带 `team` 时清掉。 */
+  clearTeamRole(principalId: string, provider: string): void {
+    this.database
+      .prepare(
+        "DELETE FROM cloud_team_roles WHERE principal_id = ? AND provider = ?",
+      )
+      .run(principalId, provider);
+  }
+
+  /** 这个人现在的团队角色；没有（或不是经团队来的）是 `undefined`。 */
+  teamRole(principalId: string) {
+    return teamRoleOf(this.database, principalId);
+  }
 
   /** 这个 issuer 的行（含已撤销的）。 */
   get(issuer: string): RegistrationRow | undefined {
