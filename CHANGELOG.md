@@ -2,6 +2,16 @@
 
 每个版本一节，按发布倒序。括号里是合入的 PR 编号（github.com/AMA-Link/Armadra，2026-10-11 前为 Owlbay/Armadra，旧编号照常跳转）。兼容范围以 `tools/release/compatibility.json` 为准，发布说明里的 `armadra-compatibility` 围栏由它渲染。桌面、服务器与手机 / 平板 App 共用一条版本线和一个标签 `vX.Y.Z`（规则见 `docs/guides/ci-release.md`「版本规则」）；有手机端改动的版本，在「手机与平板」小节里写，其余写在「桌面 / 服务器」下。2026-10-10 之前手机端曾单独编号（1.0.0、1.1.0），内容并入对应的 0.2.5、0.2.6。
 
+## 0.9.3（2026-10-23）
+
+版本统一：Armadra、armadra-cloud、armadra-agent 同为 0.9.3。
+
+### 桌面 / 服务器
+
+- 新建 Agent 节点的视图跟随「Agent 默认视图」偏好：派发、team、open-agent、工作流与手动新建一致；偏好为会话时，走不了 ACP 但有转录的 Agent 也默认会话体，进程由 core 起，终端表面只附着；手动切换优先（#471）。
+- 修复成员兑换后偶发 403：换票在途时先等它落地再交出 CSRF 令牌（#469）。
+- 依赖：vite 8.2.4（#435），探针 electron 42.11.3（#455）；随包 `@armadra/agent` 与平台协议包 0.9.3。
+
 ## 0.9.2（2026-10-23）
 
 版本统一：Armadra、armadra-cloud、armadra-agent 同为 0.9.2。
