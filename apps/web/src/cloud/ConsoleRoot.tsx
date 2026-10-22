@@ -81,7 +81,7 @@ export function ConsoleRoot({ session }: { session?: ConsoleSession | null }) {
   } else if (match?.area !== "home") {
     body =
       decision === "forbidden" ? (
-        <PageState code="forbidden" />
+        <PageState code="forbidden" onHome={home} />
       ) : (
         <PageState kind="notFound" onHome={home} />
       );

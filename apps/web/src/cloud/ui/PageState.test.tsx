@@ -16,7 +16,9 @@ describe("pageStateKind", () => {
       "session_revoked",
     ])
       expect(pageStateKind(code)).toBe("sessionExpired");
-    expect(pageStateKind("forbidden")).toBe("error");
+    expect(pageStateKind("forbidden")).toBe("forbidden");
+    expect(pageStateKind("team_policy_denied")).toBe("forbidden");
+    expect(pageStateKind("internal")).toBe("error");
     expect(pageStateKind()).toBe("error");
   });
 });
@@ -24,12 +26,23 @@ describe("pageStateKind", () => {
 describe("PageState", () => {
   it("按 code 的错误：标题是该码的文案，一个「重试」", () => {
     const onRetry = vi.fn();
-    render(<PageState code="forbidden" onRetry={onRetry} />);
+    render(<PageState code="internal" onRetry={onRetry} />);
     expect(screen.getByRole("heading", { level: 1 }).textContent).toBe(
-      "没有权限执行这个操作",
+      "核心处理这个请求时失败",
     );
     fireEvent.click(screen.getByRole("button", { name: "重试" }));
     expect(onRetry).toHaveBeenCalledOnce();
+  });
+
+  it("没有权限：回到概览，没有重试", () => {
+    const onHome = vi.fn();
+    render(<PageState code="forbidden" onRetry={vi.fn()} onHome={onHome} />);
+    expect(screen.getByRole("heading").textContent).toBe(
+      "没有权限执行这个操作",
+    );
+    expect(screen.queryByRole("button", { name: "重试" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "回到概览" }));
+    expect(onHome).toHaveBeenCalledOnce();
   });
 
   it("认不出的码退到通用错误句，没给回调就没有按钮", () => {

@@ -1,4 +1,4 @@
-import { LogIn, SearchX, TriangleAlert, Wrench } from "lucide-react";
+import { Ban, LogIn, SearchX, TriangleAlert, Wrench } from "lucide-react";
 
 import { useT } from "@/app/preferences-store";
 import { localizedFailure } from "../../api/request";
@@ -12,9 +12,10 @@ import {
   EmptyTitle,
 } from "@/ui/empty";
 
-/** 整页的四种状态（云端控制台 §3.0）。 */
+/** 整页的五种状态（云端控制台 §3.0）。 */
 export type PageStateKind =
   | "error"
+  | "forbidden"
   | "notFound"
   | "maintenance"
   | "sessionExpired";
@@ -22,6 +23,9 @@ export type PageStateKind =
 /** 错误码落到哪一种：认不出的都是「按 code 的错误」。 */
 export function pageStateKind(code?: string): PageStateKind {
   switch (code) {
+    case "forbidden":
+    case "team_policy_denied":
+      return "forbidden";
     case "not_found":
       return "notFound";
     case "unavailable":
@@ -38,7 +42,7 @@ export function pageStateKind(code?: string): PageStateKind {
 
 /**
  * 整页状态：`Empty` + 一句标题 + 一个按钮。现有 `ErrorState` 只用在行内与区块内。
- * 找不到回「概览」、登录过期去「重新登录」，另两种是「重试」；对应回调没给就不画按钮。
+ * 找不到与没有权限回「概览」、登录过期去「重新登录」，另两种是「重试」；对应回调没给就不画按钮。
  */
 export function PageState({
   code,
@@ -61,6 +65,11 @@ export function PageState({
       Icon: TriangleAlert,
       title: localizedFailure(code, t("error.internal")),
       action: ["cloud.common.retry", onRetry],
+    },
+    forbidden: {
+      Icon: Ban,
+      title: localizedFailure(code, t("error.forbidden")),
+      action: ["cloud.page.home", onHome],
     },
     notFound: {
       Icon: SearchX,

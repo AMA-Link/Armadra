@@ -70,6 +70,8 @@ describe("ConsoleRoot", () => {
     expect(screen.getByRole("heading").textContent).toBe(
       "没有权限执行这个操作",
     );
+    expect(screen.queryByRole("button", { name: "重试" })).toBeNull();
+    expect(screen.getByRole("button", { name: "回到概览" })).toBeTruthy();
     unmount();
     visit("/t/ghost");
     render(<ConsoleRoot session={session} />);
