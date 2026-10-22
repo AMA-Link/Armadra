@@ -24,6 +24,9 @@ const zh = {
   "status.refused": "被拒绝",
   "status.interrupted": "已暂停",
   "status.limit": "达到上限",
+  "state.loading": "加载中",
+  "state.error": "没能加载",
+  "state.retry": "重试",
 } as const;
 
 const en: Record<keyof typeof zh, string> = {
@@ -46,6 +49,9 @@ const en: Record<keyof typeof zh, string> = {
   "status.refused": "Refused",
   "status.interrupted": "Paused",
   "status.limit": "Limit reached",
+  "state.loading": "Loading",
+  "state.error": "Couldn't load",
+  "state.retry": "Retry",
 };
 
 export const status: MessageModule = { "zh-CN": zh, en };
