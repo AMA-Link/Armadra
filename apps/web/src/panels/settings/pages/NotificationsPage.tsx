@@ -5,6 +5,7 @@ import { useRemoteAccess } from "../remote-access";
 import { ScopeBadge } from "../scope-badge";
 import { PushDevices } from "./PushDevices";
 import { SettingsGroup } from "../SettingsGroup";
+import { SettingsLoadable } from "../SettingsLoadable";
 import { SettingsRow } from "../SettingsRow";
 import { useRuntimeSettings } from "../use-runtime-settings";
 import { Button } from "@/ui/button";
@@ -96,14 +97,16 @@ function UpdateNotifyRow() {
   const t = useT();
   const { settings, save } = useRuntimeSettings({ scope: "local" });
   return (
-    <SettingsRow label={t("updates.notify")} hint={t("updates.notify.note")}>
-      <ScopeBadge scope="host" />
-      <Switch
-        checked={settings.data?.updates?.notify ?? true}
-        disabled={!settings.data}
-        aria-label={t("updates.notify")}
-        onCheckedChange={(next) => save.mutate({ updates: { notify: next } })}
-      />
-    </SettingsRow>
+    <SettingsLoadable loading={settings.isLoading} control="switch">
+      <SettingsRow label={t("updates.notify")} hint={t("updates.notify.note")}>
+        <ScopeBadge scope="host" />
+        <Switch
+          checked={settings.data?.updates?.notify ?? true}
+          disabled={!settings.data}
+          aria-label={t("updates.notify")}
+          onCheckedChange={(next) => save.mutate({ updates: { notify: next } })}
+        />
+      </SettingsRow>
+    </SettingsLoadable>
   );
 }

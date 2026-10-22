@@ -45,6 +45,7 @@ import {
   type ResetTarget,
 } from "./ResetLinkDialog";
 import { SettingsGroup } from "../SettingsGroup";
+import { SettingsLoadable } from "../SettingsLoadable";
 import { SettingsRow } from "../SettingsRow";
 import { CONTROL_WIDTH } from "./GeneralPage";
 import { useOrigins } from "./origins";
@@ -954,26 +955,31 @@ function Invitations({ groupsOnly }: { groupsOnly?: Group[] }) {
 
   return (
     <SettingsGroup title={t("sharing.invites")}>
-      {pending.map((invitation) => (
-        <SettingsRow key={invitation.invitationId} label={labelOf(invitation)}>
-          <OriginText label={origins.label(invitation.issuedBy)} />
-          <span className="text-[12px] text-muted-foreground">
-            {t("sharing.invites.expires", {
-              time: format.format(invitation.expiresAtMs),
-            })}
-          </span>
-          <Button
-            type="button"
-            size="sm"
-            variant="ghost"
-            onClick={() =>
-              void act(() => revokeInvitation(invitation.invitationId))
-            }
+      <SettingsLoadable loading={invitations.isLoading} control="switch">
+        {pending.map((invitation) => (
+          <SettingsRow
+            key={invitation.invitationId}
+            label={labelOf(invitation)}
           >
-            {t("sharing.invites.revoke")}
-          </Button>
-        </SettingsRow>
-      ))}
+            <OriginText label={origins.label(invitation.issuedBy)} />
+            <span className="text-[12px] text-muted-foreground">
+              {t("sharing.invites.expires", {
+                time: format.format(invitation.expiresAtMs),
+              })}
+            </span>
+            <Button
+              type="button"
+              size="sm"
+              variant="ghost"
+              onClick={() =>
+                void act(() => revokeInvitation(invitation.invitationId))
+              }
+            >
+              {t("sharing.invites.revoke")}
+            </Button>
+          </SettingsRow>
+        ))}
+      </SettingsLoadable>
       <SettingsRow label={null}>
         <Button
           type="button"
@@ -1140,44 +1146,46 @@ function Sharing() {
       <SettingsRow label={t("sharing.workspace")}>
         <WorkspaceSelect value={selected} onChange={setWorkspaceId} />
       </SettingsRow>
-      {grants.data?.length === 0 && (
-        <SettingsRow label={t("sharing.share.none")} />
-      )}
-      {(grants.data ?? []).map((grant) => (
-        <SettingsRow
-          key={grant.grantId}
-          label={subjectName(grant.subjectKind, grant.subjectId)}
-        >
-          <RoleSelect
-            value={grant.role}
-            label={t("sharing.role")}
-            onChange={(next) =>
-              void act(() =>
-                putGrant({
-                  workspaceId: selected,
-                  subjectKind: grant.subjectKind,
-                  subjectId: grant.subjectId,
-                  role: next,
-                }),
-              )
-            }
-          />
-          <IconButton
-            label={t("sharing.share.remove")}
-            onClick={() =>
-              void act(() =>
-                revokeGrant({
-                  workspaceId: selected,
-                  subjectKind: grant.subjectKind,
-                  subjectId: grant.subjectId,
-                }),
-              )
-            }
+      <SettingsLoadable loading={grants.isLoading} control="select">
+        {grants.data?.length === 0 && (
+          <SettingsRow label={t("sharing.share.none")} />
+        )}
+        {(grants.data ?? []).map((grant) => (
+          <SettingsRow
+            key={grant.grantId}
+            label={subjectName(grant.subjectKind, grant.subjectId)}
           >
-            <Trash2 />
-          </IconButton>
-        </SettingsRow>
-      ))}
+            <RoleSelect
+              value={grant.role}
+              label={t("sharing.role")}
+              onChange={(next) =>
+                void act(() =>
+                  putGrant({
+                    workspaceId: selected,
+                    subjectKind: grant.subjectKind,
+                    subjectId: grant.subjectId,
+                    role: next,
+                  }),
+                )
+              }
+            />
+            <IconButton
+              label={t("sharing.share.remove")}
+              onClick={() =>
+                void act(() =>
+                  revokeGrant({
+                    workspaceId: selected,
+                    subjectKind: grant.subjectKind,
+                    subjectId: grant.subjectId,
+                  }),
+                )
+              }
+            >
+              <Trash2 />
+            </IconButton>
+          </SettingsRow>
+        ))}
+      </SettingsLoadable>
       {selected && (
         <SettingsRow label={null}>
           <Select value={subject} onValueChange={setSubject}>

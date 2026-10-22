@@ -13,6 +13,7 @@ import { lk } from "../local-key";
 import { LocalSourceBadge } from "../local-source";
 import { useRemoteAccess } from "../remote-access";
 import { SettingsGroup } from "../SettingsGroup";
+import { SettingsLoadable, ValueLoadable } from "../SettingsLoadable";
 import { SettingsRow } from "../SettingsRow";
 import { useRuntimeSettings } from "../use-runtime-settings";
 import { CONTROL_WIDTH, CrashReportGroup } from "./GeneralPage";
@@ -271,24 +272,26 @@ function HostNameGroup() {
   };
   return (
     <SettingsGroup>
-      <SettingsRow label={t("host.name")}>
-        <LocalSourceBadge path="host.name" />
-        <Input
-          className={`h-8 ${CONTROL_WIDTH}`}
-          aria-label={t("host.name")}
-          autoComplete="off"
-          spellCheck={false}
-          maxLength={128}
-          disabled={!settings.data}
-          placeholder={hello.data?.systemHostName ?? ""}
-          value={value}
-          onChange={(event) => setValue(event.target.value)}
-          onBlur={commit}
-          onKeyDown={(event) => {
-            if (event.key === "Enter") commit();
-          }}
-        />
-      </SettingsRow>
+      <SettingsLoadable loading={settings.isLoading} rows={1} control="input">
+        <SettingsRow label={t("host.name")}>
+          <LocalSourceBadge path="host.name" />
+          <Input
+            className={`h-8 ${CONTROL_WIDTH}`}
+            aria-label={t("host.name")}
+            autoComplete="off"
+            spellCheck={false}
+            maxLength={128}
+            disabled={!settings.data}
+            placeholder={hello.data?.systemHostName ?? ""}
+            value={value}
+            onChange={(event) => setValue(event.target.value)}
+            onBlur={commit}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") commit();
+            }}
+          />
+        </SettingsRow>
+      </SettingsLoadable>
     </SettingsGroup>
   );
 }
@@ -300,127 +303,129 @@ function TerminalSessionGroup() {
   const runtimeTerminal = settings.data?.terminal;
   return (
     <SettingsGroup title={t("host.group.terminal")}>
-      <SettingsRow
-        label={t("settings.terminalBackend")}
-        hint={t("settings.terminalBackend.restart")}
-      >
-        {/* tmux 在这台机器上有、在另一台上没有，所以这一条不跟着账号走。 */}
-        <LocalSourceBadge path="terminal.backend" />
-        <Select
-          value={runtimeTerminal?.backend ?? "auto"}
-          disabled={!settings.data}
-          onValueChange={(value) =>
-            save.mutate({ terminal: { backend: value as TerminalBackend } })
-          }
+      <SettingsLoadable loading={settings.isLoading} rows={5} control="select">
+        <SettingsRow
+          label={t("settings.terminalBackend")}
+          hint={t("settings.terminalBackend.restart")}
         >
-          <SelectTrigger
-            aria-label={t("settings.terminalBackend")}
-            size="sm"
-            className={CONTROL_WIDTH}
+          {/* tmux 在这台机器上有、在另一台上没有，所以这一条不跟着账号走。 */}
+          <LocalSourceBadge path="terminal.backend" />
+          <Select
+            value={runtimeTerminal?.backend ?? "auto"}
+            disabled={!settings.data}
+            onValueChange={(value) =>
+              save.mutate({ terminal: { backend: value as TerminalBackend } })
+            }
           >
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent className="z-[var(--z-dialog)]">
-            {TERMINAL_BACKENDS.map((choice) => (
-              <SelectItem key={choice} value={choice}>
-                {t(`settings.backend.${choice}`)}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </SettingsRow>
+            <SelectTrigger
+              aria-label={t("settings.terminalBackend")}
+              size="sm"
+              className={CONTROL_WIDTH}
+            >
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent className="z-[var(--z-dialog)]">
+              {TERMINAL_BACKENDS.map((choice) => (
+                <SelectItem key={choice} value={choice}>
+                  {t(`settings.backend.${choice}`)}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </SettingsRow>
 
-      <SettingsRow
-        label={t("terminal.settings.dormantAfter")}
-        hint={t("terminal.settings.dormantAfterHint")}
-      >
-        <Select
-          value={String(runtimeTerminal?.dormantAfterSeconds ?? 120)}
-          disabled={!settings.data}
-          onValueChange={(value) =>
-            save.mutate({ terminal: { dormantAfterSeconds: Number(value) } })
-          }
+        <SettingsRow
+          label={t("terminal.settings.dormantAfter")}
+          hint={t("terminal.settings.dormantAfterHint")}
         >
-          <SelectTrigger
-            aria-label={t("terminal.settings.dormantAfter")}
-            size="sm"
-            className={CONTROL_WIDTH}
+          <Select
+            value={String(runtimeTerminal?.dormantAfterSeconds ?? 120)}
+            disabled={!settings.data}
+            onValueChange={(value) =>
+              save.mutate({ terminal: { dormantAfterSeconds: Number(value) } })
+            }
           >
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent className="z-[var(--z-dialog)]">
-            {DORMANT_CHOICES.map((choice) => (
-              <SelectItem key={choice.seconds} value={String(choice.seconds)}>
-                {t(choice.key)}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </SettingsRow>
+            <SelectTrigger
+              aria-label={t("terminal.settings.dormantAfter")}
+              size="sm"
+              className={CONTROL_WIDTH}
+            >
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent className="z-[var(--z-dialog)]">
+              {DORMANT_CHOICES.map((choice) => (
+                <SelectItem key={choice.seconds} value={String(choice.seconds)}>
+                  {t(choice.key)}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </SettingsRow>
 
-      <SettingsRow
-        label={t("terminal.settings.eco")}
-        hint={t("terminal.settings.ecoHint")}
-      >
-        <Switch
-          checked={runtimeTerminal?.ecoMode ?? true}
-          disabled={!settings.data}
-          aria-label={t("terminal.settings.eco")}
-          onCheckedChange={(checked) =>
-            save.mutate({ terminal: { ecoMode: checked } })
-          }
-        />
-      </SettingsRow>
-
-      <SettingsRow label={t("terminal.settings.ecoIdle")}>
-        <Select
-          value={String(runtimeTerminal?.ecoIdleMinutes ?? 30)}
-          disabled={!settings.data || runtimeTerminal?.ecoMode === false}
-          onValueChange={(value) =>
-            save.mutate({ terminal: { ecoIdleMinutes: Number(value) } })
-          }
+        <SettingsRow
+          label={t("terminal.settings.eco")}
+          hint={t("terminal.settings.ecoHint")}
         >
-          <SelectTrigger
-            aria-label={t("terminal.settings.ecoIdle")}
-            size="sm"
-            className={CONTROL_WIDTH}
-          >
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent className="z-[var(--z-dialog)]">
-            {ECO_IDLE_CHOICES.map((choice) => (
-              <SelectItem key={choice.minutes} value={String(choice.minutes)}>
-                {t(choice.key)}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </SettingsRow>
+          <Switch
+            checked={runtimeTerminal?.ecoMode ?? true}
+            disabled={!settings.data}
+            aria-label={t("terminal.settings.eco")}
+            onCheckedChange={(checked) =>
+              save.mutate({ terminal: { ecoMode: checked } })
+            }
+          />
+        </SettingsRow>
 
-      <SettingsRow label={t("settings.detachedGrace")}>
-        <Select
-          value={String(runtimeTerminal?.detachedGraceMinutes ?? 1_440)}
-          disabled={!settings.data}
-          onValueChange={(value) =>
-            save.mutate({ terminal: { detachedGraceMinutes: Number(value) } })
-          }
-        >
-          <SelectTrigger
-            aria-label={t("settings.detachedGrace")}
-            size="sm"
-            className={CONTROL_WIDTH}
+        <SettingsRow label={t("terminal.settings.ecoIdle")}>
+          <Select
+            value={String(runtimeTerminal?.ecoIdleMinutes ?? 30)}
+            disabled={!settings.data || runtimeTerminal?.ecoMode === false}
+            onValueChange={(value) =>
+              save.mutate({ terminal: { ecoIdleMinutes: Number(value) } })
+            }
           >
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent className="z-[var(--z-dialog)]">
-            {GRACE_CHOICES.map((choice) => (
-              <SelectItem key={choice.minutes} value={String(choice.minutes)}>
-                {t(choice.key)}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </SettingsRow>
+            <SelectTrigger
+              aria-label={t("terminal.settings.ecoIdle")}
+              size="sm"
+              className={CONTROL_WIDTH}
+            >
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent className="z-[var(--z-dialog)]">
+              {ECO_IDLE_CHOICES.map((choice) => (
+                <SelectItem key={choice.minutes} value={String(choice.minutes)}>
+                  {t(choice.key)}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </SettingsRow>
+
+        <SettingsRow label={t("settings.detachedGrace")}>
+          <Select
+            value={String(runtimeTerminal?.detachedGraceMinutes ?? 1_440)}
+            disabled={!settings.data}
+            onValueChange={(value) =>
+              save.mutate({ terminal: { detachedGraceMinutes: Number(value) } })
+            }
+          >
+            <SelectTrigger
+              aria-label={t("settings.detachedGrace")}
+              size="sm"
+              className={CONTROL_WIDTH}
+            >
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent className="z-[var(--z-dialog)]">
+              {GRACE_CHOICES.map((choice) => (
+                <SelectItem key={choice.minutes} value={String(choice.minutes)}>
+                  {t(choice.key)}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </SettingsRow>
+      </SettingsLoadable>
     </SettingsGroup>
   );
 }
@@ -442,113 +447,115 @@ function PowerGroup() {
     settings.data?.resources?.memoryWarnBytes ?? localMemoryWarnBytes;
   return (
     <SettingsGroup title={t("host.group.power")}>
-      <SettingsRow
-        label={t("resources.power.policyLabel")}
-        hint={t("resources.power.policyHint")}
-      >
-        {/* 「这台机器可不可以被拖着不睡」——笔记本和构建机的答案不一样。 */}
-        <LocalSourceBadge path="power.policy" />
-        <Select
-          value={settings.data?.power?.policy ?? "manual"}
-          disabled={!settings.data}
-          onValueChange={(value) =>
-            save.mutate({ power: { policy: value as PowerPolicyChoice } })
-          }
+      <SettingsLoadable loading={settings.isLoading} rows={4} control="select">
+        <SettingsRow
+          label={t("resources.power.policyLabel")}
+          hint={t("resources.power.policyHint")}
         >
-          <SelectTrigger
-            aria-label={t("resources.power.policyLabel")}
-            size="sm"
-            className={CONTROL_WIDTH}
+          {/* 「这台机器可不可以被拖着不睡」——笔记本和构建机的答案不一样。 */}
+          <LocalSourceBadge path="power.policy" />
+          <Select
+            value={settings.data?.power?.policy ?? "manual"}
+            disabled={!settings.data}
+            onValueChange={(value) =>
+              save.mutate({ power: { policy: value as PowerPolicyChoice } })
+            }
           >
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent className="z-[var(--z-dialog)]">
-            {POWER_POLICIES.filter(
-              // 定时任务暂时下线（#295）：「有自动化运行时」不再给新选；已经
-              // 选着它的照常显示，免得下拉框对不上当前值。
-              (policy) =>
-                policy !== "automation" ||
-                featureEnabled("scheduledTasks") ||
-                settings.data?.power?.policy === "automation",
-            ).map((policy) => (
-              <SelectItem key={policy} value={policy}>
-                {t(`resources.power.policy.${policy}`)}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </SettingsRow>
+            <SelectTrigger
+              aria-label={t("resources.power.policyLabel")}
+              size="sm"
+              className={CONTROL_WIDTH}
+            >
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent className="z-[var(--z-dialog)]">
+              {POWER_POLICIES.filter(
+                // 定时任务暂时下线（#295）：「有自动化运行时」不再给新选；已经
+                // 选着它的照常显示，免得下拉框对不上当前值。
+                (policy) =>
+                  policy !== "automation" ||
+                  featureEnabled("scheduledTasks") ||
+                  settings.data?.power?.policy === "automation",
+              ).map((policy) => (
+                <SelectItem key={policy} value={policy}>
+                  {t(`resources.power.policy.${policy}`)}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </SettingsRow>
 
-      <SettingsRow
-        label={t("resources.power.whileWorkingLabel")}
-        hint={t("resources.power.whileWorkingHint")}
-      >
-        <LocalSourceBadge path="power.keepAwakeWhileWorking" />
-        <Switch
-          checked={settings.data?.power?.keepAwakeWhileWorking ?? true}
-          disabled={!settings.data}
-          aria-label={t("resources.power.whileWorkingLabel")}
-          onCheckedChange={(checked) =>
-            save.mutate({ power: { keepAwakeWhileWorking: checked } })
-          }
-        />
-      </SettingsRow>
-
-      <SettingsRow
-        label={t("resources.intervalLabel")}
-        hint={t("resources.intervalHint")}
-      >
-        <Select
-          value={String(settings.data?.resources?.intervalMs ?? 2_000)}
-          disabled={!settings.data}
-          onValueChange={(value) =>
-            save.mutate({ resources: { intervalMs: Number(value) } })
-          }
+        <SettingsRow
+          label={t("resources.power.whileWorkingLabel")}
+          hint={t("resources.power.whileWorkingHint")}
         >
-          <SelectTrigger
-            aria-label={t("resources.intervalLabel")}
-            size="sm"
-            className={CONTROL_WIDTH}
-          >
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent className="z-[var(--z-dialog)]">
-            {SAMPLE_INTERVALS.map((interval) => (
-              <SelectItem key={interval} value={String(interval)}>
-                {t("resources.interval.value", { value: interval / 1_000 })}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </SettingsRow>
+          <LocalSourceBadge path="power.keepAwakeWhileWorking" />
+          <Switch
+            checked={settings.data?.power?.keepAwakeWhileWorking ?? true}
+            disabled={!settings.data}
+            aria-label={t("resources.power.whileWorkingLabel")}
+            onCheckedChange={(checked) =>
+              save.mutate({ power: { keepAwakeWhileWorking: checked } })
+            }
+          />
+        </SettingsRow>
 
-      <SettingsRow
-        label={t("resources.memory.thresholdLabel")}
-        hint={t("resources.memory.thresholdHint")}
-      >
-        <Select
-          value={String(memoryWarnBytes)}
-          onValueChange={(value) => {
-            setMemoryWarnBytes(Number(value));
-            save.mutate({ resources: { memoryWarnBytes: Number(value) } });
-          }}
+        <SettingsRow
+          label={t("resources.intervalLabel")}
+          hint={t("resources.intervalHint")}
         >
-          <SelectTrigger
-            aria-label={t("resources.memory.thresholdLabel")}
-            size="sm"
-            className={CONTROL_WIDTH}
+          <Select
+            value={String(settings.data?.resources?.intervalMs ?? 2_000)}
+            disabled={!settings.data}
+            onValueChange={(value) =>
+              save.mutate({ resources: { intervalMs: Number(value) } })
+            }
           >
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent className="z-[var(--z-dialog)]">
-            {MEMORY_THRESHOLDS.map((gigabytes) => (
-              <SelectItem key={gigabytes} value={String(gigabytes * GIB)}>
-                {t("resources.memory.threshold.value", { value: gigabytes })}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </SettingsRow>
+            <SelectTrigger
+              aria-label={t("resources.intervalLabel")}
+              size="sm"
+              className={CONTROL_WIDTH}
+            >
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent className="z-[var(--z-dialog)]">
+              {SAMPLE_INTERVALS.map((interval) => (
+                <SelectItem key={interval} value={String(interval)}>
+                  {t("resources.interval.value", { value: interval / 1_000 })}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </SettingsRow>
+
+        <SettingsRow
+          label={t("resources.memory.thresholdLabel")}
+          hint={t("resources.memory.thresholdHint")}
+        >
+          <Select
+            value={String(memoryWarnBytes)}
+            onValueChange={(value) => {
+              setMemoryWarnBytes(Number(value));
+              save.mutate({ resources: { memoryWarnBytes: Number(value) } });
+            }}
+          >
+            <SelectTrigger
+              aria-label={t("resources.memory.thresholdLabel")}
+              size="sm"
+              className={CONTROL_WIDTH}
+            >
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent className="z-[var(--z-dialog)]">
+              {MEMORY_THRESHOLDS.map((gigabytes) => (
+                <SelectItem key={gigabytes} value={String(gigabytes * GIB)}>
+                  {t("resources.memory.threshold.value", { value: gigabytes })}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </SettingsRow>
+      </SettingsLoadable>
     </SettingsGroup>
   );
 }
@@ -612,9 +619,11 @@ function DataGroup() {
       </SettingsRow>
 
       <SettingsRow label={t("settings.dbSize")}>
-        <span className="text-[13px] tabular-nums text-muted-foreground">
-          {info.data ? formatBytes(info.data.dbBytes) : "—"}
-        </span>
+        <ValueLoadable loading={info.isLoading}>
+          <span className="text-[13px] tabular-nums text-muted-foreground">
+            {info.data ? formatBytes(info.data.dbBytes) : "—"}
+          </span>
+        </ValueLoadable>
       </SettingsRow>
 
       <SettingsRow label={t("settings.backup")}>
@@ -627,38 +636,40 @@ function DataGroup() {
           {t("settings.backup.run")}
         </Button>
       </SettingsRow>
-      <SettingsRow label={t("settings.logRetention")}>
-        <Select
-          value={String(retention)}
-          disabled={!settings.data}
-          onValueChange={(value) => {
-            save.mutate(
-              { logs: { retentionDays: Number(value) } },
-              {
-                onSuccess: () =>
-                  void queryClient.invalidateQueries({
-                    queryKey: lk("data-info"),
-                  }),
-              },
-            );
-          }}
-        >
-          <SelectTrigger
-            aria-label={t("settings.logRetention")}
-            size="sm"
-            className={CONTROL_WIDTH}
+      <SettingsLoadable loading={settings.isLoading} rows={1} control="select">
+        <SettingsRow label={t("settings.logRetention")}>
+          <Select
+            value={String(retention)}
+            disabled={!settings.data}
+            onValueChange={(value) => {
+              save.mutate(
+                { logs: { retentionDays: Number(value) } },
+                {
+                  onSuccess: () =>
+                    void queryClient.invalidateQueries({
+                      queryKey: lk("data-info"),
+                    }),
+                },
+              );
+            }}
           >
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent className="z-[var(--z-dialog)]">
-            {RETENTION_CHOICES.map((days) => (
-              <SelectItem key={days} value={String(days)}>
-                {t(`settings.retention.${days}`)}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </SettingsRow>
+            <SelectTrigger
+              aria-label={t("settings.logRetention")}
+              size="sm"
+              className={CONTROL_WIDTH}
+            >
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent className="z-[var(--z-dialog)]">
+              {RETENTION_CHOICES.map((days) => (
+                <SelectItem key={days} value={String(days)}>
+                  {t(`settings.retention.${days}`)}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </SettingsRow>
+      </SettingsLoadable>
     </SettingsGroup>
   );
 }

@@ -22,20 +22,6 @@ import { useIntegrationRefresh } from "./use-integration";
  * 弹层、重新生成与清理两个动作、一次性的迁移提示。
  */
 
-/** `on` 持续 `ms` 之后才答真：短的读取不闪一下骨架（设计系统 §3.2）。 */
-export function useDelayed(on: boolean, ms: number): boolean {
-  const [late, setLate] = React.useState(false);
-  React.useEffect(() => {
-    if (!on) {
-      setLate(false);
-      return;
-    }
-    const timer = setTimeout(() => setLate(true), ms);
-    return () => clearTimeout(timer);
-  }, [on, ms]);
-  return late;
-}
-
 /** 一行右侧的值：13px 灰字，不是徽标。 */
 export function RowValue({
   children,

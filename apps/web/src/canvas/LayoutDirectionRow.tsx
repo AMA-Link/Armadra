@@ -5,6 +5,7 @@ import {
 
 import { useT } from "@/app/preferences-store";
 import { useAccess } from "@/app/use-access";
+import { SettingsLoadable } from "@/panels/settings/SettingsLoadable";
 import { SettingsRow } from "@/panels/settings/SettingsRow";
 import { CONTROL_WIDTH } from "@/panels/settings/pages/GeneralPage";
 import { useRuntimeSettings } from "@/panels/settings/use-runtime-settings";
@@ -32,31 +33,33 @@ function LayoutDirectionSelect() {
   const { settings, save } = useRuntimeSettings();
   const value = layoutDirectionOf(settings.data);
   return (
-    <SettingsRow label={t("canvas.layoutDirection")}>
-      <Select
-        value={value}
-        disabled={!settings.data || save.isPending}
-        onValueChange={(next) =>
-          save.mutate({
-            canvas: { layoutDirection: next as LayoutDirection },
-          })
-        }
-      >
-        <SelectTrigger
-          aria-label={t("canvas.layoutDirection")}
-          size="sm"
-          className={CONTROL_WIDTH}
+    <SettingsLoadable loading={settings.isLoading} control="select">
+      <SettingsRow label={t("canvas.layoutDirection")}>
+        <Select
+          value={value}
+          disabled={!settings.data || save.isPending}
+          onValueChange={(next) =>
+            save.mutate({
+              canvas: { layoutDirection: next as LayoutDirection },
+            })
+          }
         >
-          <SelectValue />
-        </SelectTrigger>
-        <SelectContent className="z-[var(--z-dialog)]">
-          {LAYOUT_DIRECTION_CHOICES.map((option) => (
-            <SelectItem key={option} value={option}>
-              {t(`canvas.layoutDirection.${option}`)}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
-    </SettingsRow>
+          <SelectTrigger
+            aria-label={t("canvas.layoutDirection")}
+            size="sm"
+            className={CONTROL_WIDTH}
+          >
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent className="z-[var(--z-dialog)]">
+            {LAYOUT_DIRECTION_CHOICES.map((option) => (
+              <SelectItem key={option} value={option}>
+                {t(`canvas.layoutDirection.${option}`)}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </SettingsRow>
+    </SettingsLoadable>
   );
 }

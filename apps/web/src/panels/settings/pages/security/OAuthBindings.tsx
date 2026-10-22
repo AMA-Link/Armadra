@@ -1,8 +1,14 @@
+import { Loadable } from "@/loading/Loadable";
 import * as React from "react";
 import type { OAuthBinding } from "@armadra/shared";
 
 import { useT } from "../../../../app/preferences-store";
-import { ConfirmRemove, SecuritySection, useDateTime } from "./parts";
+import {
+  ConfirmRemove,
+  SecuritySection,
+  SecuritySectionSkeleton,
+  useDateTime,
+} from "./parts";
 import {
   ResponsiveDialog,
   ResponsiveDialogContent,
@@ -35,19 +41,38 @@ export interface BindableProvider {
  * 没有绑定时整块不出现。
  */
 export function OAuthBindings({
+  loading = false,
+  ...props
+}: OAuthBindingsProps) {
+  const t = useT();
+  return (
+    <Loadable
+      loading={loading}
+      skeleton={<SecuritySectionSkeleton title={t("security.oauth")} />}
+    >
+      <OAuthBindingsSection {...props} />
+    </Loadable>
+  );
+}
+
+type OAuthBindingsProps = {
+  bindings: readonly OAuthBinding[] | undefined;
+  providers: readonly BindableProvider[];
+  /** 正在跳转的提供方 id，或正在解绑的 `credentialId`。 */
+  busy: string | null;
+  /** 绑定列表还在首取：画分区骨架，不让整块先缺席再出现。 */
+  loading?: boolean;
+  onBind(provider: BindableProvider): void;
+  onUnbind(binding: OAuthBinding): void;
+};
+
+function OAuthBindingsSection({
   bindings,
   providers,
   busy,
   onBind,
   onUnbind,
-}: {
-  bindings: readonly OAuthBinding[] | undefined;
-  providers: readonly BindableProvider[];
-  /** 正在跳转的提供方 id，或正在解绑的 `credentialId`。 */
-  busy: string | null;
-  onBind(provider: BindableProvider): void;
-  onUnbind(binding: OAuthBinding): void;
-}) {
+}: Omit<OAuthBindingsProps, "loading">) {
   const t = useT();
   const date = useDateTime("date");
   const [confirm, setConfirm] = React.useState<OAuthBinding | null>(null);

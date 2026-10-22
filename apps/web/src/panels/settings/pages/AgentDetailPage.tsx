@@ -14,6 +14,7 @@ import {
 } from "@/acp/adapter-install";
 import { ScopeBadge } from "../scope-badge";
 import { SettingsGroup } from "../SettingsGroup";
+import { ValueLoadable } from "../SettingsLoadable";
 import { SettingsRow } from "../SettingsRow";
 import { useAgentIntegration } from "./integration/use-integration";
 import {
@@ -36,7 +37,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/ui/select";
-import { Skeleton } from "@/ui/skeleton";
 import { Spinner } from "@/ui/spinner";
 
 /** 默认 / 启用 / 禁用（本设备，`agentModes`）。主表与子页同一个控件。 */
@@ -165,8 +165,8 @@ export function AgentDetailPage({ agent }: { agent: AgentInfo }) {
         <SettingsGroup title={t("agents.group.injection")}>
           {hooked && (
             <SettingsRow label={t("agents.row.artifacts")}>
-              {integration ? (
-                problem ? (
+              <ValueLoadable loading={!integration} className="h-4 w-16">
+                {integration && problem ? (
                   <RowValue title={integration.hook.path ?? undefined}>
                     {problem}
                   </RowValue>
@@ -174,10 +174,8 @@ export function AgentDetailPage({ agent }: { agent: AgentInfo }) {
                   <RowValue title={limited}>
                     {t("integration.state.limited")}
                   </RowValue>
-                ) : null
-              ) : (
-                <Skeleton className="h-4 w-16" />
-              )}
+                ) : null}
+              </ValueLoadable>
               {legacy.length > 0 && (
                 <CleanupButton
                   findings={legacy}

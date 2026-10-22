@@ -55,6 +55,7 @@ import {
   storedProfiles,
 } from "../keymap-profiles";
 import { SettingsGroup } from "../SettingsGroup";
+import { SettingsLoadable } from "../SettingsLoadable";
 import { SettingsRow } from "../SettingsRow";
 import { useRuntimeSettings } from "../use-runtime-settings";
 import { Badge } from "@/ui/badge";
@@ -328,7 +329,12 @@ export function KeybindingsPage() {
   }
 
   return (
-    <>
+    <SettingsLoadable
+      grouped
+      loading={settings.isLoading}
+      rows={4}
+      control="select"
+    >
       <SettingsGroup>
         {member ? null : (
           <>
@@ -793,6 +799,6 @@ export function KeybindingsPage() {
           </div>
         </ResponsiveDialogContent>
       </ResponsiveDialog>
-    </>
+    </SettingsLoadable>
   );
 }

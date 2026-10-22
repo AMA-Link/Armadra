@@ -10,6 +10,7 @@ import {
 import { usePreferencesStore, useT } from "../../../app/preferences-store";
 import { ScopeBadge } from "../scope-badge";
 import { SettingsGroup } from "../SettingsGroup";
+import { SettingsLoadable, ValueLoadable } from "../SettingsLoadable";
 import { SettingsRow } from "../SettingsRow";
 import { useRuntimeSettings } from "../use-runtime-settings";
 import { CONTROL_WIDTH } from "./GeneralPage";
@@ -68,43 +69,47 @@ export function SessionsPage() {
       </SettingsGroup>
 
       <SettingsGroup title={t("settings.conversations")}>
-        <SettingsRow
-          label={t("settings.conversations.scope")}
-          hint={t("settings.conversations.scopeNote")}
-        >
-          <Select
-            value={settings.data?.conversations?.scope ?? "workspaces"}
-            disabled={!settings.data}
-            onValueChange={(value) =>
-              save.mutate({
-                conversations: { scope: value as ConversationScope },
-              })
-            }
+        <SettingsLoadable loading={settings.isLoading} control="select">
+          <SettingsRow
+            label={t("settings.conversations.scope")}
+            hint={t("settings.conversations.scopeNote")}
           >
-            <SelectTrigger
-              aria-label={t("settings.conversations.scope")}
-              size="sm"
-              className={CONTROL_WIDTH}
-            >
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent className="z-[var(--z-dialog)]">
-              {CONVERSATION_SCOPES.map((scope) => (
-                <SelectItem key={scope} value={scope}>
-                  {t(`settings.conversations.scope.${scope}`)}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </SettingsRow>
-        <SettingsRow label={t("agents.sessions.indexed")}>
-          <span className="text-[13px] tabular-nums text-muted-foreground">
-            {info.data
-              ? t("settings.conversationCount", {
-                  value: info.data.conversations,
+            <Select
+              value={settings.data?.conversations?.scope ?? "workspaces"}
+              disabled={!settings.data}
+              onValueChange={(value) =>
+                save.mutate({
+                  conversations: { scope: value as ConversationScope },
                 })
-              : "—"}
-          </span>
+              }
+            >
+              <SelectTrigger
+                aria-label={t("settings.conversations.scope")}
+                size="sm"
+                className={CONTROL_WIDTH}
+              >
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent className="z-[var(--z-dialog)]">
+                {CONVERSATION_SCOPES.map((scope) => (
+                  <SelectItem key={scope} value={scope}>
+                    {t(`settings.conversations.scope.${scope}`)}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </SettingsRow>
+        </SettingsLoadable>
+        <SettingsRow label={t("agents.sessions.indexed")}>
+          <ValueLoadable loading={info.isLoading}>
+            <span className="text-[13px] tabular-nums text-muted-foreground">
+              {info.data
+                ? t("settings.conversationCount", {
+                    value: info.data.conversations,
+                  })
+                : "—"}
+            </span>
+          </ValueLoadable>
           <Button
             variant="secondary"
             size="sm"

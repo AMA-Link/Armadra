@@ -43,6 +43,8 @@ export function Loadable({
       <div
         data-slot="loadable"
         data-phase={phase}
+        // 占位阶段不可见，也不该进读屏树。
+        {...(phase === "hold" ? { "aria-hidden": true } : {})}
         className={cn(phase === "hold" && "invisible", className)}
       >
         {skeleton}

@@ -318,6 +318,7 @@ function SecuritySettings({ session }: { session: IdentitySession }) {
       {!mfaFirst && mfaBlock}
       <OAuthBindings
         bindings={bindings.data}
+        loading={bindings.isLoading}
         providers={
           providers.data?.configured
             ? providers.data.providers.filter(

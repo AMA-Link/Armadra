@@ -12,6 +12,7 @@ import { useAgentsQuery } from "../../../app/use-agents";
 import { useT } from "../../../app/preferences-store";
 import { useCanvasStore } from "../../../store/canvas-store";
 import { SettingsGroup } from "../SettingsGroup";
+import { SettingsLoadable } from "../SettingsLoadable";
 import { SettingsRow } from "../SettingsRow";
 import { useRuntimeSettings } from "../use-runtime-settings";
 import { CONTROL_WIDTH } from "./GeneralPage";
@@ -86,54 +87,63 @@ export function WorkspacePage() {
     <>
       <WorkspaceExecution />
       <SettingsGroup>
-        {remote && (
-          <SettingsRow label={t("executionHosts.runsOn")}>
-            <span className="max-w-[240px] truncate text-[13px] text-muted-foreground">
-              {executionHostLabel(current, workspace.executionHostId ?? "", t)}
-            </span>
-            <Button
-              size="sm"
-              variant="secondary"
-              onClick={() => subpage.open("executionHosts", "switch")}
-            >
-              {t("executionHosts.switch")}
-            </Button>
-          </SettingsRow>
-        )}
-        <SettingsRow label={t("settings.workspaceDefaultAgent")}>
-          <Select
-            value={defaultAgent}
-            disabled={!settings.data}
-            onValueChange={(value) =>
-              save.mutate({
-                workspaces: {
-                  // `null` 让 Runtime 的 merge 删掉这个键，回到全局默认。
-                  [workspaceId]: {
-                    defaultAgent: value === INHERIT ? null : value,
+        <SettingsLoadable
+          loading={settings.isLoading || hosts.isLoading || agents.isLoading}
+          control="select"
+        >
+          {remote && (
+            <SettingsRow label={t("executionHosts.runsOn")}>
+              <span className="max-w-[240px] truncate text-[13px] text-muted-foreground">
+                {executionHostLabel(
+                  current,
+                  workspace.executionHostId ?? "",
+                  t,
+                )}
+              </span>
+              <Button
+                size="sm"
+                variant="secondary"
+                onClick={() => subpage.open("executionHosts", "switch")}
+              >
+                {t("executionHosts.switch")}
+              </Button>
+            </SettingsRow>
+          )}
+          <SettingsRow label={t("settings.workspaceDefaultAgent")}>
+            <Select
+              value={defaultAgent}
+              disabled={!settings.data}
+              onValueChange={(value) =>
+                save.mutate({
+                  workspaces: {
+                    // `null` 让 Runtime 的 merge 删掉这个键，回到全局默认。
+                    [workspaceId]: {
+                      defaultAgent: value === INHERIT ? null : value,
+                    },
                   },
-                },
-              })
-            }
-          >
-            <SelectTrigger
-              aria-label={t("settings.workspaceDefaultAgent")}
-              size="sm"
-              className={CONTROL_WIDTH}
+                })
+              }
             >
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent className="z-[var(--z-dialog)]">
-              <SelectItem value={INHERIT}>
-                {t("settings.defaultAgent.inherit")}
-              </SelectItem>
-              {(agents.data ?? []).map((agent) => (
-                <SelectItem key={agent.id} value={agent.id}>
-                  {agent.label}
+              <SelectTrigger
+                aria-label={t("settings.workspaceDefaultAgent")}
+                size="sm"
+                className={CONTROL_WIDTH}
+              >
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent className="z-[var(--z-dialog)]">
+                <SelectItem value={INHERIT}>
+                  {t("settings.defaultAgent.inherit")}
                 </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </SettingsRow>
+                {(agents.data ?? []).map((agent) => (
+                  <SelectItem key={agent.id} value={agent.id}>
+                    {agent.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </SettingsRow>
+        </SettingsLoadable>
       </SettingsGroup>
       {/* 每种语言一行：有什么、缺什么、能不能启动（语言服务设计 §4.2）。 */}
       <LanguageServicePanel workspaceId={workspaceId} />

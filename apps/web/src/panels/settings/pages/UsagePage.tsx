@@ -7,6 +7,7 @@ import type { UsageProvider, UsageProviderId } from "@armadra/shared";
 
 import { useT } from "../../../app/preferences-store";
 import { SettingsGroup } from "../SettingsGroup";
+import { SettingsLoadable } from "../SettingsLoadable";
 import { SettingsRow } from "../SettingsRow";
 import { useRuntimeSettings } from "../use-runtime-settings";
 import { CONTROL_WIDTH } from "./GeneralPage";
@@ -83,178 +84,185 @@ export function UsagePage() {
 
   return (
     <>
-      <SettingsGroup>
-        <SettingsRow label={t("settings.usageEnabled")}>
-          <Switch
-            checked={usageEnabled}
-            disabled={busy}
-            aria-label={t("settings.usageEnabled")}
-            onCheckedChange={(next) => {
-              save.mutate(
-                { usage: { enabled: next } },
-                {
-                  onSuccess: () => {
-                    if (next) refresh.mutate();
-                    else
-                      void queryClient.invalidateQueries({
-                        queryKey: ["usage"],
-                      });
-                  },
-                },
-              );
-            }}
-          />
-        </SettingsRow>
-
-        <SettingsRow label={t("settings.usageCadence")}>
-          <Select
-            value={String(refreshMinutes)}
-            disabled={busy || !usageEnabled}
-            onValueChange={(value) =>
-              save.mutate({ usage: { refreshMinutes: Number(value) } })
-            }
-          >
-            <SelectTrigger
-              aria-label={t("settings.usageCadence")}
-              size="sm"
-              className={CONTROL_WIDTH}
-            >
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent className="z-[var(--z-dialog)]">
-              {REFRESH_CHOICES.map((minutes) => (
-                <SelectItem key={minutes} value={String(minutes)}>
-                  {minutes === 0
-                    ? t("settings.cadence.manual")
-                    : t("settings.cadence.minutes", { count: minutes })}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </SettingsRow>
-      </SettingsGroup>
-
-      <SettingsGroup>
-        {PROVIDERS.map((id) => (
-          <SettingsRow
-            key={id}
-            label={t(`usage.provider.${id}`)}
-            footnote={t(`usage.policy.${id}`)}
-          >
+      <SettingsLoadable
+        grouped
+        loading={settings.isLoading}
+        rows={6}
+        control="switch"
+      >
+        <SettingsGroup>
+          <SettingsRow label={t("settings.usageEnabled")}>
             <Switch
-              checked={providerOn(id)}
-              disabled={busy || !usageEnabled}
-              aria-label={t(`usage.provider.${id}`)}
-              onCheckedChange={(next) =>
+              checked={usageEnabled}
+              disabled={busy}
+              aria-label={t("settings.usageEnabled")}
+              onCheckedChange={(next) => {
                 save.mutate(
-                  { usage: providerPatch(id, next) },
+                  { usage: { enabled: next } },
                   {
                     onSuccess: () => {
-                      refresh.mutate();
-                      if (id === "copilot")
+                      if (next) refresh.mutate();
+                      else
                         void queryClient.invalidateQueries({
-                          queryKey: lk("copilot-auth"),
+                          queryKey: ["usage"],
                         });
                     },
+                  },
+                );
+              }}
+            />
+          </SettingsRow>
+
+          <SettingsRow label={t("settings.usageCadence")}>
+            <Select
+              value={String(refreshMinutes)}
+              disabled={busy || !usageEnabled}
+              onValueChange={(value) =>
+                save.mutate({ usage: { refreshMinutes: Number(value) } })
+              }
+            >
+              <SelectTrigger
+                aria-label={t("settings.usageCadence")}
+                size="sm"
+                className={CONTROL_WIDTH}
+              >
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent className="z-[var(--z-dialog)]">
+                {REFRESH_CHOICES.map((minutes) => (
+                  <SelectItem key={minutes} value={String(minutes)}>
+                    {minutes === 0
+                      ? t("settings.cadence.manual")
+                      : t("settings.cadence.minutes", { count: minutes })}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </SettingsRow>
+        </SettingsGroup>
+
+        <SettingsGroup>
+          {PROVIDERS.map((id) => (
+            <SettingsRow
+              key={id}
+              label={t(`usage.provider.${id}`)}
+              footnote={t(`usage.policy.${id}`)}
+            >
+              <Switch
+                checked={providerOn(id)}
+                disabled={busy || !usageEnabled}
+                aria-label={t(`usage.provider.${id}`)}
+                onCheckedChange={(next) =>
+                  save.mutate(
+                    { usage: providerPatch(id, next) },
+                    {
+                      onSuccess: () => {
+                        refresh.mutate();
+                        if (id === "copilot")
+                          void queryClient.invalidateQueries({
+                            queryKey: lk("copilot-auth"),
+                          });
+                      },
+                    },
+                  )
+                }
+              />
+            </SettingsRow>
+          ))}
+          <SettingsRow
+            label={t("settings.codexCliFallback")}
+            hint={t("settings.codexCliFallbackHint")}
+          >
+            <Switch
+              checked={cliFallback}
+              disabled={busy || !usageEnabled}
+              aria-label={t("settings.codexCliFallback")}
+              onCheckedChange={(next) =>
+                save.mutate({ usage: { codexCliFallback: next } })
+              }
+            />
+          </SettingsRow>
+          <SettingsRow
+            label={t("usage.statusPage")}
+            hint={t("usage.statusPageHint")}
+          >
+            <Switch
+              checked={statusBadges}
+              disabled={busy}
+              aria-label={t("usage.statusPage")}
+              onCheckedChange={(next) =>
+                save.mutate(
+                  { usage: { statusBadges: next } },
+                  {
+                    onSuccess: () =>
+                      void queryClient.invalidateQueries({
+                        queryKey: ["usage-status"],
+                      }),
                   },
                 )
               }
             />
           </SettingsRow>
-        ))}
-        <SettingsRow
-          label={t("settings.codexCliFallback")}
-          hint={t("settings.codexCliFallbackHint")}
-        >
-          <Switch
-            checked={cliFallback}
-            disabled={busy || !usageEnabled}
-            aria-label={t("settings.codexCliFallback")}
-            onCheckedChange={(next) =>
-              save.mutate({ usage: { codexCliFallback: next } })
-            }
-          />
-        </SettingsRow>
-        <SettingsRow
-          label={t("usage.statusPage")}
-          hint={t("usage.statusPageHint")}
-        >
-          <Switch
-            checked={statusBadges}
-            disabled={busy}
-            aria-label={t("usage.statusPage")}
-            onCheckedChange={(next) =>
-              save.mutate(
-                { usage: { statusBadges: next } },
-                {
-                  onSuccess: () =>
-                    void queryClient.invalidateQueries({
-                      queryKey: ["usage-status"],
-                    }),
-                },
-              )
-            }
-          />
-        </SettingsRow>
-      </SettingsGroup>
+        </SettingsGroup>
 
-      <SettingsGroup>
-        <SettingsRow
-          label={t("settings.costEnabled")}
-          hint={t("settings.costEnabledHint")}
-        >
-          <Switch
-            checked={costEnabled}
-            disabled={busy}
-            aria-label={t("settings.costEnabled")}
-            onCheckedChange={(next) =>
-              save.mutate(
-                { usage: { cost: { enabled: next } } },
-                {
-                  onSuccess: () =>
-                    void queryClient.invalidateQueries({
-                      queryKey: ["usage-cost"],
-                    }),
-                },
-              )
-            }
-          />
-        </SettingsRow>
-        <SettingsRow
-          label={t("settings.claudeLocalWindow")}
-          hint={t("settings.claudeLocalWindowHint")}
-        >
-          <Switch
-            checked={claudeLocalWindow}
-            disabled={busy || !costEnabled}
-            aria-label={t("settings.claudeLocalWindow")}
-            onCheckedChange={(next) =>
-              save.mutate(
-                { usage: { claudeLocalWindow: next } },
-                {
-                  onSuccess: () =>
-                    void queryClient.invalidateQueries({
-                      queryKey: ["usage"],
-                    }),
-                },
-              )
-            }
-          />
-        </SettingsRow>
-      </SettingsGroup>
+        <SettingsGroup>
+          <SettingsRow
+            label={t("settings.costEnabled")}
+            hint={t("settings.costEnabledHint")}
+          >
+            <Switch
+              checked={costEnabled}
+              disabled={busy}
+              aria-label={t("settings.costEnabled")}
+              onCheckedChange={(next) =>
+                save.mutate(
+                  { usage: { cost: { enabled: next } } },
+                  {
+                    onSuccess: () =>
+                      void queryClient.invalidateQueries({
+                        queryKey: ["usage-cost"],
+                      }),
+                  },
+                )
+              }
+            />
+          </SettingsRow>
+          <SettingsRow
+            label={t("settings.claudeLocalWindow")}
+            hint={t("settings.claudeLocalWindowHint")}
+          >
+            <Switch
+              checked={claudeLocalWindow}
+              disabled={busy || !costEnabled}
+              aria-label={t("settings.claudeLocalWindow")}
+              onCheckedChange={(next) =>
+                save.mutate(
+                  { usage: { claudeLocalWindow: next } },
+                  {
+                    onSuccess: () =>
+                      void queryClient.invalidateQueries({
+                        queryKey: ["usage"],
+                      }),
+                  },
+                )
+              }
+            />
+          </SettingsRow>
+        </SettingsGroup>
 
-      <SettingsGroup>
-        <SettingsRow label={t("usage.catalogAutoRefresh")}>
-          <Switch
-            checked={catalogAutoRefresh}
-            disabled={busy}
-            aria-label={t("usage.catalogAutoRefresh")}
-            onCheckedChange={(next) =>
-              save.mutate({ models: { catalog: { autoRefresh: next } } })
-            }
-          />
-        </SettingsRow>
-      </SettingsGroup>
+        <SettingsGroup>
+          <SettingsRow label={t("usage.catalogAutoRefresh")}>
+            <Switch
+              checked={catalogAutoRefresh}
+              disabled={busy}
+              aria-label={t("usage.catalogAutoRefresh")}
+              onCheckedChange={(next) =>
+                save.mutate({ models: { catalog: { autoRefresh: next } } })
+              }
+            />
+          </SettingsRow>
+        </SettingsGroup>
+      </SettingsLoadable>
 
       <ModelCatalogPanel />
 

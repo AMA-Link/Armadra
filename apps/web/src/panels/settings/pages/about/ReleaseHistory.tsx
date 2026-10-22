@@ -1,3 +1,6 @@
+import { Loadable } from "@/loading/Loadable";
+import { SkeletonList } from "@/ui/skeletons";
+import { ValueLoadable } from "../../SettingsLoadable";
 import * as React from "react";
 import Markdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -89,6 +92,7 @@ export function ReleaseHistory({
   current,
   latest,
   failed = false,
+  loading = false,
   refreshing = false,
   coolingDown = false,
   onRefresh,
@@ -101,6 +105,8 @@ export function ReleaseHistory({
   /** 标「最新」的版本；没有更新的是 `null`。 */
   latest: string | null;
   failed?: boolean;
+  /** 首取还没回来：时间位与列表画骨架，不先显示「从未」与「暂无」。 */
+  loading?: boolean;
   refreshing?: boolean;
   coolingDown?: boolean;
   onRefresh?: () => void;
@@ -115,11 +121,13 @@ export function ReleaseHistory({
       <SettingsGroup title={t("updates.history")}>
         <SettingsRow label={t("updates.history.checkedAt")}>
           <div className="flex items-center gap-3">
-            <span className="text-[13px] tabular-nums text-muted-foreground">
-              {data?.checkedAt
-                ? formatRelativeTime(data.checkedAt)
-                : t("updates.history.never")}
-            </span>
+            <ValueLoadable loading={loading} className="h-4 w-24">
+              <span className="text-[13px] tabular-nums text-muted-foreground">
+                {data?.checkedAt
+                  ? formatRelativeTime(data.checkedAt)
+                  : t("updates.history.never")}
+              </span>
+            </ValueLoadable>
             {onRefresh && (
               <Button
                 size="sm"
@@ -133,32 +141,43 @@ export function ReleaseHistory({
             )}
           </div>
         </SettingsRow>
-        {data && data.releases.length > 0 ? (
-          <Accordion type="single" collapsible className="px-4">
-            {data.releases.map((release) => (
-              <ReleaseItem
-                key={release.tag}
-                release={release}
-                current={release.version === current}
-                latest={release.version === latest}
-                assets={assets(release)}
-                onOpen={onOpen}
-              />
-            ))}
-          </Accordion>
-        ) : (
-          <SettingsRow
-            label={
-              <span className="text-muted-foreground">
-                {t(
-                  failed
-                    ? "updates.history.loadFailed"
-                    : "updates.history.empty",
-                )}
-              </span>
-            }
-          />
-        )}
+        <Loadable
+          loading={loading}
+          skeleton={
+            <SkeletonList
+              rows={3}
+              label={t("state.loading")}
+              rowClassName="h-[45px] px-4"
+            />
+          }
+        >
+          {data && data.releases.length > 0 ? (
+            <Accordion type="single" collapsible className="px-4">
+              {data.releases.map((release) => (
+                <ReleaseItem
+                  key={release.tag}
+                  release={release}
+                  current={release.version === current}
+                  latest={release.version === latest}
+                  assets={assets(release)}
+                  onOpen={onOpen}
+                />
+              ))}
+            </Accordion>
+          ) : (
+            <SettingsRow
+              label={
+                <span className="text-muted-foreground">
+                  {t(
+                    failed
+                      ? "updates.history.loadFailed"
+                      : "updates.history.empty",
+                  )}
+                </span>
+              }
+            />
+          )}
+        </Loadable>
       </SettingsGroup>
       {error && (
         <p

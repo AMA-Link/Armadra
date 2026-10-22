@@ -1,3 +1,5 @@
+import { Loadable } from "@/loading/Loadable";
+import { SkeletonList } from "@/ui/skeletons";
 import * as React from "react";
 import { useQuery } from "@tanstack/react-query";
 import { RotateCw } from "lucide-react";
@@ -104,97 +106,107 @@ export function LanguageServicePanel({ workspaceId }: { workspaceId: string }) {
         </Button>
       </SettingsRow>
 
-      {probe.isPending && <SettingsRow label={t("lsp.probing")} />}
-      {!probe.isPending && (probe.data?.servers.length ?? 0) === 0 && (
-        <SettingsRow label={t("lsp.noServers")} />
-      )}
+      <Loadable
+        loading={probe.isPending}
+        skeleton={
+          <SkeletonList
+            rows={2}
+            label={t("state.loading")}
+            rowClassName="h-24 px-4"
+          />
+        }
+      >
+        {(probe.data?.servers.length ?? 0) === 0 && (
+          <SettingsRow label={t("lsp.noServers")} />
+        )}
 
-      {(probe.data?.servers ?? []).map((server) => {
-        const override = overrides[server.serverId] ?? {};
-        const enabled = override.enabled !== false;
-        const tail = stderr[`${workspaceId} ${server.serverId}`];
-        return (
-          <div
-            key={`${server.languageId} ${server.serverId}`}
-            className="flex flex-col gap-2 px-4 py-3"
-            data-testid={`lsp-row-${server.serverId}`}
-          >
-            <div className="flex min-w-0 items-center gap-2">
-              <span className="min-w-0 flex-1 truncate text-[13px]">
-                {server.languageId} · {server.serverId}
-              </span>
-              <Badge
-                variant={server.state === "running" ? "default" : "outline"}
-              >
-                {t(`lsp.state.${server.state}`)}
-              </Badge>
-              {server.version && (
-                <span className="text-[11px] text-muted-foreground">
-                  {server.version}
+        {(probe.data?.servers ?? []).map((server) => {
+          const override = overrides[server.serverId] ?? {};
+          const enabled = override.enabled !== false;
+          const tail = stderr[`${workspaceId} ${server.serverId}`];
+          return (
+            <div
+              key={`${server.languageId} ${server.serverId}`}
+              className="flex flex-col gap-2 px-4 py-3"
+              data-testid={`lsp-row-${server.serverId}`}
+            >
+              <div className="flex min-w-0 items-center gap-2">
+                <span className="min-w-0 flex-1 truncate text-[13px]">
+                  {server.languageId} · {server.serverId}
                 </span>
+                <Badge
+                  variant={server.state === "running" ? "default" : "outline"}
+                >
+                  {t(`lsp.state.${server.state}`)}
+                </Badge>
+                {server.version && (
+                  <span className="text-[11px] text-muted-foreground">
+                    {server.version}
+                  </span>
+                )}
+                <Switch
+                  checked={enabled}
+                  disabled={!settings.data}
+                  aria-label={`${server.serverId} · ${t("lsp.enabled")}`}
+                  onCheckedChange={(next) =>
+                    save.mutate({
+                      language: {
+                        servers: { [server.serverId]: { enabled: next } },
+                      },
+                    })
+                  }
+                />
+                <IconButton
+                  label={`${server.serverId} · ${t("lsp.restart")}`}
+                  disabled={busy === server.serverId}
+                  onClick={() => void control(server.serverId, "restart")}
+                >
+                  <RotateCw />
+                </IconButton>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  disabled={busy === server.serverId}
+                  onClick={() => void control(server.serverId, "stop")}
+                >
+                  {t("lsp.stop")}
+                </Button>
+              </div>
+
+              {server.reason && (
+                <p className="text-[11px] text-muted-foreground">
+                  {t(`lsp.reason.${server.reason}`)}
+                </p>
               )}
-              <Switch
-                checked={enabled}
-                disabled={!settings.data}
-                aria-label={`${server.serverId} · ${t("lsp.enabled")}`}
-                onCheckedChange={(next) =>
+
+              <Input
+                defaultValue={override.path ?? ""}
+                placeholder={server.executable || t("lsp.pathPlaceholder")}
+                aria-label={`${server.serverId} · ${t("lsp.pathOverride")}`}
+                className="h-8 text-[12px]"
+                onBlur={(event) => {
+                  const next = event.target.value.trim();
+                  if (next === (override.path ?? "")) return;
                   save.mutate({
                     language: {
-                      servers: { [server.serverId]: { enabled: next } },
+                      servers: {
+                        // 空串表示「不覆盖」；Runtime 的 merge 用 `null` 删键。
+                        [server.serverId]: { path: next === "" ? null : next },
+                      },
                     },
-                  })
-                }
+                  });
+                }}
               />
-              <IconButton
-                label={`${server.serverId} · ${t("lsp.restart")}`}
-                disabled={busy === server.serverId}
-                onClick={() => void control(server.serverId, "restart")}
-              >
-                <RotateCw />
-              </IconButton>
-              <Button
-                size="sm"
-                variant="ghost"
-                disabled={busy === server.serverId}
-                onClick={() => void control(server.serverId, "stop")}
-              >
-                {t("lsp.stop")}
-              </Button>
+
+              {tail && (
+                <pre className="max-h-24 overflow-auto whitespace-pre-wrap break-all rounded-[var(--radius-sm)] bg-[var(--surface-sunken)] p-2 text-[11px] text-muted-foreground">
+                  {tail}
+                </pre>
+              )}
             </div>
-
-            {server.reason && (
-              <p className="text-[11px] text-muted-foreground">
-                {t(`lsp.reason.${server.reason}`)}
-              </p>
-            )}
-
-            <Input
-              defaultValue={override.path ?? ""}
-              placeholder={server.executable || t("lsp.pathPlaceholder")}
-              aria-label={`${server.serverId} · ${t("lsp.pathOverride")}`}
-              className="h-8 text-[12px]"
-              onBlur={(event) => {
-                const next = event.target.value.trim();
-                if (next === (override.path ?? "")) return;
-                save.mutate({
-                  language: {
-                    servers: {
-                      // 空串表示「不覆盖」；Runtime 的 merge 用 `null` 删键。
-                      [server.serverId]: { path: next === "" ? null : next },
-                    },
-                  },
-                });
-              }}
-            />
-
-            {tail && (
-              <pre className="max-h-24 overflow-auto whitespace-pre-wrap break-all rounded-[var(--radius-sm)] bg-[var(--surface-sunken)] p-2 text-[11px] text-muted-foreground">
-                {tail}
-              </pre>
-            )}
-          </div>
-        );
-      })}
+          );
+        })}
+      </Loadable>
     </SettingsGroup>
   );
 }

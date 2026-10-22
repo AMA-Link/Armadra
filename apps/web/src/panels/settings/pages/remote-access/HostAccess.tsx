@@ -16,6 +16,7 @@ import {
   ResponsiveAlertDialogTitle,
 } from "@/panels/ResponsiveDialog";
 import { RemoteShareSection } from "../../RemoteShare";
+import { SettingsLoadable } from "../../SettingsLoadable";
 import { SettingsGroup } from "../../SettingsGroup";
 import { sameOrigin, useRemoteAccess } from "../../remote-access";
 import { GatewayPanel, type Reach } from "../gateway/GatewayPanel";
@@ -120,30 +121,36 @@ function HostAccessBody() {
     setConfirming(null);
   }
 
-  // 局域网那一半还没答：先不画开关，免得在不知道状态时点下去。
-  if (gateway.loading) return null;
+  // 局域网那一半还没答：先画开关行的骨架，免得在不知道状态时点下去。
   return (
     <>
-      <GatewayPanel
-        status={status}
-        internet={internet.on}
-        busy={gateway.configure.isPending || internet.busy}
-        inUse={internetInUse}
-        internetInUse={internetInUse}
-        onToggle={toggle}
-        onReach={reach}
-        pairing={pairing}
-        pairingBusy={pair.isPending}
-        onNewPairing={(next) => pair.mutate(next)}
-      />
-      {internet.registered.map((remote) => (
-        <SettingsGroup
-          key={remote.serviceId}
-          {...(internet.registered.length > 1 ? { title: remote.label } : {})}
-        >
-          <RemoteShareSection remote={remote} />
-        </SettingsGroup>
-      ))}
+      <SettingsLoadable
+        grouped
+        loading={gateway.loading}
+        rows={2}
+        control="switch"
+      >
+        <GatewayPanel
+          status={status}
+          internet={internet.on}
+          busy={gateway.configure.isPending || internet.busy}
+          inUse={internetInUse}
+          internetInUse={internetInUse}
+          onToggle={toggle}
+          onReach={reach}
+          pairing={pairing}
+          pairingBusy={pair.isPending}
+          onNewPairing={(next) => pair.mutate(next)}
+        />
+        {internet.registered.map((remote) => (
+          <SettingsGroup
+            key={remote.serviceId}
+            {...(internet.registered.length > 1 ? { title: remote.label } : {})}
+          >
+            <RemoteShareSection remote={remote} />
+          </SettingsGroup>
+        ))}
+      </SettingsLoadable>
       <AddRelayDialog
         draft={signingIn}
         onClose={() => {

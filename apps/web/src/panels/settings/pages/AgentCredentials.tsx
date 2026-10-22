@@ -40,6 +40,7 @@ import {
   SelectValue,
 } from "@/ui/select";
 import { SettingsGroup } from "../SettingsGroup";
+import { SettingsLoadable } from "../SettingsLoadable";
 import { SettingsRow } from "../SettingsRow";
 
 /**
@@ -51,13 +52,35 @@ import { SettingsRow } from "../SettingsRow";
  */
 export function AgentCredentials() {
   const t = useT();
-  const client = useQueryClient();
   const credentials = useQuery({
     queryKey: LOCAL_CREDENTIALS_KEY,
     queryFn: ({ signal }) => localCredentials.list(signal),
     staleTime: 60_000,
     retry: false,
   });
+  if (!credentials.data && !credentials.isLoading) return null;
+  return (
+    <SettingsLoadable
+      grouped
+      title={t("credentials.title")}
+      loading={!credentials.data}
+      rows={2}
+      control="switch"
+    >
+      {credentials.data ? (
+        <AgentCredentialsGroup data={credentials.data} />
+      ) : null}
+    </SettingsLoadable>
+  );
+}
+
+function AgentCredentialsGroup({
+  data,
+}: {
+  data: Awaited<ReturnType<typeof localCredentials.list>>;
+}) {
+  const t = useT();
+  const client = useQueryClient();
   const [adding, setAdding] = React.useState(false);
   const [removing, setRemoving] = React.useState<CredentialEntry | null>(null);
   const refresh = () =>
@@ -75,8 +98,6 @@ export function AgentCredentials() {
     onError: (error) => toast.error(error.message),
   });
 
-  const data = credentials.data;
-  if (!data) return null;
   if (!data.available) {
     return (
       <SettingsGroup title={t("credentials.title")}>
