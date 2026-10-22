@@ -7,6 +7,7 @@
 import * as React from "react";
 import {
   completionSettingsSchema,
+  defaultAgentDriver,
   type AgentDriver,
   type AgentInfo,
   type TerminalAgent,
@@ -113,5 +114,8 @@ export function preferredDriver(
   agent: Pick<AgentInfo, "acp">,
   setting: AgentDriver = defaultDriverSetting,
 ): AgentDriver {
-  return setting === "acp" && agent.acp?.installed ? "acp" : "terminal";
+  return defaultAgentDriver({
+    setting,
+    acpInstalled: agent.acp?.installed === true,
+  });
 }
