@@ -43,7 +43,7 @@ import { openMermaidImport } from "../whiteboard/mermaid/open";
 import { openAutomationPanel } from "../../panels/automation/open";
 import { openWorkflowPanel } from "../../workflow/store";
 import { isDesktop } from "../../platform";
-import { preferredDriver } from "../../acp/driver";
+import { preferredView } from "../../acp/driver";
 import { defaultNodeSize } from "../../store/defaults";
 import { beginCoalesce, endCoalesce } from "../../store/canvas/history";
 import { layoutDirection } from "../layout-direction";
@@ -211,8 +211,8 @@ export function buildAddMenu(
           agent: {
             id: agent.id,
             ...(permissionMode !== "default" ? { permissionMode } : {}),
-            // 缺省驱动（ACP 设计 §8 第 2 条）：没装适配器的这一家退回终端。
-            driver: preferredDriver(agent),
+            // 缺省驱动与节点体（ACP 设计 §8 第 2 条、#462）：跟随默认视图偏好。
+            ...preferredView(agent),
           },
         },
       });
@@ -506,7 +506,7 @@ export function spawnSubordinate(
         agent: {
           id: agent.id,
           ...(permissionMode ? { permissionMode } : {}),
-          driver: preferredDriver(agent),
+          ...preferredView(agent),
         },
       },
     });

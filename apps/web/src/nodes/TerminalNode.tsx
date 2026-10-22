@@ -68,6 +68,7 @@ import { SessionSkeleton } from "@/acp/SessionSkeleton";
 import { sessionsQuery } from "@/agent/sessions";
 import { Button } from "@/ui/button";
 import { useNodeBodyMode, useNodeBodyStore } from "./node-body-mode";
+import { useSessionBodyProcess } from "./use-session-body-process";
 
 /**
  * ACP 驱动的节点体（ACP 设计 §6）。按需加载：消息流带着 Markdown 渲染，
@@ -106,9 +107,11 @@ export function TerminalNode({ id, node, selected, collapsed }: NodeBodyProps) {
   // 节点体二选一（ACP 设计 §4.1）：头部、徽标、菜单两种驱动共用。
   const driver = driverOf(agent);
   // 终端驱动的 Agent 节点可以把节点体换成只读的会话内容（设计 §5.3）：不切驱动。
-  const bodyMode = useNodeBodyMode(id);
+  const bodyMode = useNodeBodyMode(id, agent);
   const sessionBody =
     Boolean(agent) && driver === "terminal" && bodyMode === "session";
+  // 会话体没有终端表面：进程由 core 起（设计 §5.4）。
+  useSessionBodyProcess(id, sessionBody);
   const surfaceRef = React.useRef<TerminalSurfaceHandle>(null);
 
   const [surface, setSurface] = React.useState<TerminalSurfaceStatus>({

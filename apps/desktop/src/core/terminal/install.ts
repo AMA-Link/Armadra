@@ -55,6 +55,7 @@ import {
 } from "./hibernate";
 import { Hibernator } from "./hibernator";
 import { setAgentLauncher } from "../schedule/cold-start";
+import { launchInSession } from "./node-launch";
 import { terminalBridge } from "./bridge";
 import { SshBackend } from "./ssh/backend";
 import { permissionWaitEnvironment } from "../hook/approvals";
@@ -583,7 +584,7 @@ export function install(
             { requested: body.agent?.credentialRef },
           )
         : [];
-      return manager.spawn({
+      const spawned = await manager.spawn({
         workspaceId: body.workspaceId as string,
         // Resolved, so a relative `cwd` cannot mean two directories. The
         // root-confinement check needs the workspace row, which is R1's; until
@@ -598,6 +599,17 @@ export function install(
         ...(body.ssh === undefined ? {} : { sshHostId: body.ssh.hostId }),
         env,
       });
+      // 会话体的节点没有终端表面替它敲启动行：core 自己敲（契约 §84）。
+      if (body.launch === true && body.nodeId && body.agent) {
+        launchInSession(context, manager, {
+          sessionId: spawned.id,
+          generation: spawned.generation,
+          nodeId: body.nodeId,
+          agentId: body.agent.id,
+          shell: spawned.shell,
+        });
+      }
+      return spawned;
     },
 
     backend: (): BackendInfo & { platform: "unix" | "windows" } => ({
@@ -1340,6 +1352,8 @@ interface CreateTerminalRequest {
    * back to a local shell.
    */
   readonly ssh?: { readonly hostId?: string };
+  /** The core types the launch line itself (contract §84). */
+  readonly launch?: boolean;
 }
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;

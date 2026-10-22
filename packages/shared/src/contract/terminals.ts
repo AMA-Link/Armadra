@@ -84,6 +84,8 @@ export const terminals = {
           })
           .optional(),
         ssh: z.object({ hostId: z.string() }).optional(),
+        /** core 自己敲启动行（节点体是会话时间线，§84）。 */
+        launch: z.boolean().optional(),
       }),
     )
     .output(terminalSessionWireSchema)

@@ -42,7 +42,12 @@ export function MobileFocusPage() {
   const selectNodes = useCanvasStore((state) => state.selectNodes);
 
   // 终端驱动的 Agent 节点把节点体换成会话内容时，同样没有 PTY 可敲键。
-  const sessionBody = useNodeBodyMode(focusNodeId ?? "") === "session";
+  const focused = nodes?.find((item) => item.id === focusNodeId);
+  const sessionBody =
+    useNodeBodyMode(
+      focusNodeId ?? "",
+      focused?.data.kind === "terminal" ? focused.data.agent : undefined,
+    ) === "session";
 
   const headlessBrowser = useHeadlessBrowser(compact);
   const visible = useVisibleArea();

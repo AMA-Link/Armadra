@@ -38,6 +38,12 @@ export const createTerminalRequestSchema = z.object({
    * the argv from its own settings and refuses an id it does not know.
    */
   ssh: sshTargetSchema.optional(),
+  /**
+   * The core types the agent's launch line into the new shell itself, so a
+   * node whose body is the session timeline starts without a terminal surface
+   * mounted (contract §84). Needs `nodeId` and `agent`.
+   */
+  launch: z.boolean().optional(),
 });
 
 // The runtime also emits `kind` and `ownerNodeId` on this payload.
