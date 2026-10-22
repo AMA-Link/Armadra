@@ -13,7 +13,8 @@ import {
 
 import { useT } from "@/app/preferences-store";
 import { cn } from "@/lib/cn";
-import { Skeleton } from "@/ui/skeleton";
+import { DeferredSkeleton } from "@/loading/DeferredSkeleton";
+import { SkeletonTurns } from "@/ui/skeletons";
 import { ActivityGroup } from "./ActivityGroup";
 import { ActivityLine } from "./ActivityLine";
 import { planProgress, PlanBar } from "./PlanBar";
@@ -284,13 +285,10 @@ export function TimelineView({
       >
         <PlanBar plan={plan} />
         {empty && loading ? (
-          <div
-            data-slot="timeline-skeleton"
-            className="flex flex-1 flex-col gap-3 p-3"
-          >
-            <Skeleton className="h-4 w-2/3 self-end" />
-            <Skeleton className="h-4 w-5/6" />
-            <Skeleton className="h-4 w-1/2" />
+          <div data-slot="timeline-skeleton" className="flex-1">
+            <DeferredSkeleton>
+              <SkeletonTurns label={t("state.loading")} />
+            </DeferredSkeleton>
           </div>
         ) : (
           <VirtualTurnList
