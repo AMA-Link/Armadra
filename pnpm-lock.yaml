@@ -658,7 +658,7 @@ packages:
     hasBin: true
 
   '@armadra/platform-protocol@file:tools/vendor/armadra-platform-protocol-0.9.3.tgz':
-    resolution: {integrity: sha512-f2otpFyUs15Ld6tjoYA9BiGEWpyk+J4sal2Ii6pkw4zd6in9TgVjdLKKWlr7F9rT60YJxQ5dOw73kr83DmDZ7Q==, tarball: file:tools/vendor/armadra-platform-protocol-0.9.3.tgz}
+    resolution: {integrity: sha512-DjXjic9TCGuRD7ju0fwCPCJ+kehdDM+2AzLOjn9/GXjhj5uytURCEpaFMSBHhDLbgAZy8RPE14ROzKRVO/G5yw==, tarball: file:tools/vendor/armadra-platform-protocol-0.9.3.tgz}
     version: 0.9.3
     peerDependencies:
       zod: '>=4.0.0 <5'
