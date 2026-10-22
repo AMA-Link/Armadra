@@ -21,6 +21,7 @@ import { isNativeApp } from "../../../mobile/native-bridge";
 import { ConnectionsGroup } from "../../../services/ConnectionsGroup";
 import { ScopeBadge } from "../scope-badge";
 import { SettingsGroup } from "../SettingsGroup";
+import { SettingsLoadable } from "../SettingsLoadable";
 import { SettingsRow } from "../SettingsRow";
 import { useRuntimeSettings } from "../use-runtime-settings";
 import { CONTROL_WIDTH } from "./GeneralPage";
@@ -58,31 +59,33 @@ function DefaultDriverRow() {
   const t = useT();
   const { settings, save } = useRuntimeSettings({ scope: "local" });
   return (
-    <SettingsRow label={t("acp.settings.defaultDriver")}>
-      <ScopeBadge scope="host" />
-      <Select
-        value={driverSettingOf(settings.data)}
-        disabled={!settings.data}
-        onValueChange={(value) =>
-          save.mutate({ agents: { defaultDriver: value as AgentDriver } })
-        }
-      >
-        <SelectTrigger
-          aria-label={t("acp.settings.defaultDriver")}
-          size="sm"
-          className={CONTROL_WIDTH}
+    <SettingsLoadable loading={settings.isLoading} control="select">
+      <SettingsRow label={t("acp.settings.defaultDriver")}>
+        <ScopeBadge scope="host" />
+        <Select
+          value={driverSettingOf(settings.data)}
+          disabled={!settings.data}
+          onValueChange={(value) =>
+            save.mutate({ agents: { defaultDriver: value as AgentDriver } })
+          }
         >
-          <SelectValue />
-        </SelectTrigger>
-        <SelectContent className="z-[var(--z-dialog)]">
-          {[...AGENT_DRIVERS].reverse().map((driver) => (
-            <SelectItem key={driver} value={driver}>
-              {t(driver === "acp" ? "acp.view.session" : "acp.view.terminal")}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
-    </SettingsRow>
+          <SelectTrigger
+            aria-label={t("acp.settings.defaultDriver")}
+            size="sm"
+            className={CONTROL_WIDTH}
+          >
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent className="z-[var(--z-dialog)]">
+            {[...AGENT_DRIVERS].reverse().map((driver) => (
+              <SelectItem key={driver} value={driver}>
+                {t(driver === "acp" ? "acp.view.session" : "acp.view.terminal")}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </SettingsRow>
+    </SettingsLoadable>
   );
 }
 
@@ -121,54 +124,59 @@ function AgentDefaultRows() {
 
   return (
     <>
-      <SettingsRow label={t("settings.defaultAgent")}>
-        <Select
-          value={selectedAgentId}
-          onValueChange={(id) => {
-            const base = list.find((agent) => agent.id === id)?.baseAgent ?? id;
-            if (!supportedPermissionModes(base).includes(permissionMode))
-              setPermissionMode("default");
-            setDefaultAgentId(id);
-          }}
-        >
-          <SelectTrigger
-            aria-label={t("settings.defaultAgent")}
-            size="sm"
-            className={CONTROL_WIDTH}
+      <SettingsLoadable loading={agents.isLoading} rows={2} control="select">
+        <SettingsRow label={t("settings.defaultAgent")}>
+          <Select
+            value={selectedAgentId}
+            onValueChange={(id) => {
+              const base =
+                list.find((agent) => agent.id === id)?.baseAgent ?? id;
+              if (!supportedPermissionModes(base).includes(permissionMode))
+                setPermissionMode("default");
+              setDefaultAgentId(id);
+            }}
           >
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent className="z-[var(--z-dialog)]">
-            {list.map((agent) => (
-              <SelectItem key={agent.id} value={agent.id}>
-                {agent.label}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </SettingsRow>
+            <SelectTrigger
+              aria-label={t("settings.defaultAgent")}
+              size="sm"
+              className={CONTROL_WIDTH}
+            >
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent className="z-[var(--z-dialog)]">
+              {list.map((agent) => (
+                <SelectItem key={agent.id} value={agent.id}>
+                  {agent.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </SettingsRow>
 
-      <SettingsRow label={t("settings.defaultPermission")}>
-        <Select
-          value={effectivePermission}
-          onValueChange={(value) => setPermissionMode(value as PermissionMode)}
-        >
-          <SelectTrigger
-            aria-label={t("settings.defaultPermission")}
-            size="sm"
-            className={CONTROL_WIDTH}
+        <SettingsRow label={t("settings.defaultPermission")}>
+          <Select
+            value={effectivePermission}
+            onValueChange={(value) =>
+              setPermissionMode(value as PermissionMode)
+            }
           >
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent className="z-[var(--z-dialog)]">
-            {permissionModes.map((mode) => (
-              <SelectItem key={mode} value={mode}>
-                {t(`permission.${mode}`)}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </SettingsRow>
+            <SelectTrigger
+              aria-label={t("settings.defaultPermission")}
+              size="sm"
+              className={CONTROL_WIDTH}
+            >
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent className="z-[var(--z-dialog)]">
+              {permissionModes.map((mode) => (
+                <SelectItem key={mode} value={mode}>
+                  {t(`permission.${mode}`)}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </SettingsRow>
+      </SettingsLoadable>
 
       <SettingsRow label={t("acp.settings.simpleMode")}>
         <Switch

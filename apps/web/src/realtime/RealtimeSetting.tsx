@@ -3,6 +3,7 @@ import { completionSettingsSchema } from "@armadra/shared";
 import { useT } from "@/app/preferences-store";
 import { useAccess } from "@/app/use-access";
 import { SettingsGroup } from "@/panels/settings/SettingsGroup";
+import { SettingsLoadable } from "@/panels/settings/SettingsLoadable";
 import { SettingsRow } from "@/panels/settings/SettingsRow";
 import { useRuntimeSettings } from "@/panels/settings/use-runtime-settings";
 import { Switch } from "@/ui/switch";
@@ -25,17 +26,19 @@ function RealtimeSettingRow() {
     ? completionSettingsSchema.parse(settings.data).collab.realtime
     : true;
   return (
-    <SettingsGroup>
-      <SettingsRow label={t("realtime.setting")}>
-        <Switch
-          checked={enabled}
-          disabled={!settings.data || save.isPending}
-          aria-label={t("realtime.setting")}
-          onCheckedChange={(next) =>
-            save.mutate({ collab: { realtime: next } })
-          }
-        />
-      </SettingsRow>
-    </SettingsGroup>
+    <SettingsLoadable grouped loading={settings.isLoading} control="switch">
+      <SettingsGroup>
+        <SettingsRow label={t("realtime.setting")}>
+          <Switch
+            checked={enabled}
+            disabled={!settings.data || save.isPending}
+            aria-label={t("realtime.setting")}
+            onCheckedChange={(next) =>
+              save.mutate({ collab: { realtime: next } })
+            }
+          />
+        </SettingsRow>
+      </SettingsGroup>
+    </SettingsLoadable>
   );
 }
