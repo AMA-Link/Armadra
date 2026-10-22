@@ -43,7 +43,7 @@ describe("握手", () => {
     await world.register();
     const tunnel = await world.relay.nextTunnel(0);
     expect(tunnel.hello.sourceId).toBe(world.store.hostId());
-    expect(tunnel.hello.protocol).toEqual({ major: 1, minor: 3 });
+    expect(tunnel.hello.protocol).toEqual({ major: 1, minor: 4 });
     // 端到端通道（契约 §78）：报 e2e 能力，中继才开 `_relay/e2e`。
     expect(tunnel.hello.capabilities).toEqual(["e2e"]);
     expect(tunnel.hello.tunnelToken).toBe("tunnel-token");
