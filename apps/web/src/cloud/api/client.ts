@@ -74,8 +74,8 @@ export interface CreateCloudApiOptions {
 
 /**
  * 真实的客户端束：控制台与运营各一个客户端、各一份 CSRF 值。控制台会话 401 时先
- * `auth.refresh`（Cookie 会话，刷新令牌在 Cookie 里，入参留空）再重发；运营会话到期
- * 就算失效，回 `/login?scope=operator` 重新登录。
+ * `auth.refresh`（Cookie 会话，刷新令牌在 Cookie 里，入参为空）再重发；运营会话
+ * 同样先 `auth.refresh { scope: "operator" }`，续不上就算失效，回 `/login?scope=operator` 重新登录。
  */
 export function createCloudApi(options: CreateCloudApiOptions): CloudApi {
   const base = options.fetch ?? ((...args) => globalThis.fetch(...args));
@@ -101,8 +101,7 @@ export function createCloudApi(options: CreateCloudApiOptions): CloudApi {
     createCloudFetch({
       ...common(consoleCsrf),
       refresh: async () => {
-        // TODO(protocol cookie-session): refreshToken 改可选后发 `{}`，并带上自己的 scope。
-        await plain.auth.refresh({ refreshToken: "" });
+        await plain.auth.refresh({});
         return true;
       },
       onSessionLost() {
@@ -111,10 +110,21 @@ export function createCloudApi(options: CreateCloudApiOptions): CloudApi {
       },
     }),
   );
+  const opsPlain = createCloudClient(
+    options.origin,
+    createCloudFetch({
+      ...common(opsCsrf),
+      onSessionLost: () => undefined,
+    }),
+  );
   const ops = createCloudClient(
     options.origin,
     createCloudFetch({
       ...common(opsCsrf),
+      refresh: async () => {
+        await opsPlain.auth.refresh({ scope: "operator" });
+        return true;
+      },
       onSessionLost: () => opsCsrf.set(undefined),
     }),
   );
@@ -132,8 +142,7 @@ export function createCloudApi(options: CreateCloudApiOptions): CloudApi {
     },
     async signOut() {
       if (opsCsrf.get() !== undefined)
-        // TODO(protocol cookie-session): logout 加 scope 后，运营与控制台各传自己的 scope。
-        await ops.auth.logout({}).catch(() => undefined);
+        await ops.auth.logout({ scope: "operator" }).catch(() => undefined);
       await client.auth.logout({}).catch(() => undefined);
       consoleCsrf.set(undefined);
       opsCsrf.set(undefined);

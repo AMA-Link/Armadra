@@ -22,6 +22,7 @@ interface Seen {
   csrf: string | null;
   authorization: string | null;
   credentials: RequestCredentials | undefined;
+  body: string;
 }
 
 /** 假的来源：按「方法 路径」答，记下每次请求的头。 */
@@ -31,7 +32,9 @@ function origin(routes: Record<string, () => Response | Promise<Response>>) {
     async (input: RequestInfo | URL, init?: RequestInit) => {
       const request = input as Request;
       const path = new URL(request.url).pathname;
+      const body = await request.clone().text();
       seen.push({
+        body,
         method: request.method,
         path,
         csrf: request.headers.get(CSRF_HEADER),
@@ -107,7 +110,11 @@ describe("控制台客户端", () => {
     await api.client.me.emailChange({ newEmail: "x@y.test", password: "p" });
     expect(seen[1]!.csrf).toBe("c2");
     await api.signOut();
-    expect(seen.at(-1)).toMatchObject({ path: "/v1/auth/logout", csrf: "c2" });
+    expect(seen.at(-1)).toMatchObject({
+      path: "/v1/auth/logout",
+      csrf: "c2",
+      body: "{}",
+    });
     await api.client.me.emailChange({ newEmail: "x@y.test", password: "p" });
     expect(seen.at(-1)!.csrf).toBeNull();
   });
@@ -186,6 +193,11 @@ describe("控制台客户端", () => {
         seen.filter((row) => row.path === "/v1/auth/refresh"),
       ).toHaveLength(1);
       expect(lost).not.toHaveBeenCalled();
+      expect(
+        seen
+          .filter((row) => row.path === "/v1/auth/refresh")
+          .map((row) => row.body),
+      ).toEqual(["{}"]);
     });
 
     it("刷新失败：通知会话失效，调用方拿到 session_expired", async () => {
@@ -280,10 +292,33 @@ describe("控制台客户端", () => {
           reason: "x",
         } as never),
       ).rejects.toMatchObject({ code: "unauthenticated" });
-      expect(seen.some((row) => row.path === "/v1/auth/refresh")).toBe(false);
+      // 先用运营 scope 续一次（没路由，续不上），再算失效。
+      const refreshes = seen.filter((row) => row.path === "/v1/auth/refresh");
+      expect(refreshes.map((row) => JSON.parse(row.body))).toEqual([
+        { scope: "operator" },
+      ]);
       expect(api.operator.active()).toBe(false);
       // 控制台会话不受影响。
       expect(lost).not.toHaveBeenCalled();
+    });
+
+    it("登出：运营会话带 scope operator，控制台会话不带", async () => {
+      const { seen, fetcher } = origin({
+        "POST /v1/auth/mfa/verify": () =>
+          json({ ...SESSION, csrfToken: "ops-csrf" }),
+        "POST /v1/auth/logout": () => json({}),
+      });
+      const api = createCloudApi({
+        origin: "https://app.example",
+        fetch: fetcher,
+      });
+      await api.ops.auth.mfaVerify({ challengeId: "c", code: "123456" });
+      await api.signOut();
+      expect(
+        seen
+          .filter((row) => row.path === "/v1/auth/logout")
+          .map((row) => row.body),
+      ).toEqual(['{"scope":"operator"}', "{}"]);
     });
   });
 });
