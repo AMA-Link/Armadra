@@ -154,7 +154,7 @@ export function HostIdentityPanel({
       : "—";
 
   return (
-    <section aria-labelledby={`${id}-title`} className="min-w-0 space-y-3">
+    <section aria-labelledby={`${id}-title`} className="min-w-0 space-y-2">
       <h3 id={`${id}-title`} className="text-[13px] font-medium">
         {t("hostIdentity.title")}
       </h3>

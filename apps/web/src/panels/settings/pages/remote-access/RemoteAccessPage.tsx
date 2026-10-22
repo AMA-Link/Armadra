@@ -204,180 +204,185 @@ export function RemoteAccessPage() {
 
   return (
     <>
-      <section data-remote-block="host" className="flex min-w-0 flex-col gap-3">
+      <section
+        data-remote-block="host"
+        className="flex min-w-0 flex-col gap-(--space-group)"
+      >
         <h2 className={HEADING}>{t("remote.host")}</h2>
-        <HostAccess />
+        <div className="flex min-w-0 flex-col gap-(--space-block)">
+          <HostAccess />
 
-        {remotes.length > 0 && (
-          <SettingsGroup title={t("remote.services")}>
-            {remotes.map((remote) => (
-              <RemoteRow
-                key={remote.serviceId}
-                remote={remote}
-                pending={pendingOf(remote.issuer)}
-                tunnel={internet.tunnelOf(remote.issuer)}
-                inUse={sameOrigin(remote.issuer, access.relayIssuer)}
-                {...(canShare(remote)
+          {remotes.length > 0 && (
+            <SettingsGroup title={t("remote.services")}>
+              {remotes.map((remote) => (
+                <RemoteRow
+                  key={remote.serviceId}
+                  remote={remote}
+                  pending={pendingOf(remote.issuer)}
+                  tunnel={internet.tunnelOf(remote.issuer)}
+                  inUse={sameOrigin(remote.issuer, access.relayIssuer)}
+                  {...(canShare(remote)
+                    ? {
+                        onInternet: (on: boolean) => {
+                          if (on) internet.start.mutate(remote);
+                          else internet.stop.mutate([remote.issuer]);
+                        },
+                      }
+                    : {})}
+                  onSignIn={() =>
+                    setAdding({
+                      issuer: remote.issuer,
+                      account: remote.accountHint,
+                      fingerprint: remote.fingerprint,
+                    })
+                  }
+                  onSignOut={() => logout.mutate(remote.serviceId)}
+                  onRetryCleanup={() => cleanup.mutate(remote.issuer)}
+                  onChangePassword={() =>
+                    setChangingPassword({
+                      serviceId: remote.serviceId,
+                      issuer: remote.issuer,
+                    })
+                  }
+                  onRename={() =>
+                    setRenaming({
+                      kind: "remote",
+                      id: remote.serviceId,
+                      name: remote.label,
+                      defaultName: remote.defaultLabel || remote.label,
+                    })
+                  }
+                  onRemove={() =>
+                    setRemoving({
+                      kind: "remote",
+                      id: remote.serviceId,
+                      name: remote.label,
+                      issuer: remote.issuer,
+                    })
+                  }
+                />
+              ))}
+            </SettingsGroup>
+          )}
+
+          {/* 经中继收发的流量（契约 §76）：有远程服务时才可能有。 */}
+          {remotes.length > 0 && <HostTraffic />}
+
+          <SettingsGroup title={t("remote.mine")}>
+            {mine.map((source) => (
+              <MineRow
+                key={source.sourceId}
+                source={source}
+                inUse={source.sourceId === currentSourceId}
+                {...(source.kind === "relayed"
                   ? {
-                      onInternet: (on: boolean) => {
-                        if (on) internet.start.mutate(remote);
-                        else internet.stop.mutate([remote.issuer]);
-                      },
+                      onTraffic: () =>
+                        setTraffic({
+                          sourceId: source.sourceId,
+                          name: source.label,
+                        }),
                     }
                   : {})}
-                onSignIn={() =>
-                  setAdding({
-                    issuer: remote.issuer,
-                    account: remote.accountHint,
-                    fingerprint: remote.fingerprint,
-                  })
-                }
-                onSignOut={() => logout.mutate(remote.serviceId)}
-                onRetryCleanup={() => cleanup.mutate(remote.issuer)}
-                onChangePassword={() =>
-                  setChangingPassword({
-                    serviceId: remote.serviceId,
-                    issuer: remote.issuer,
-                  })
-                }
-                onRename={() =>
-                  setRenaming({
-                    kind: "remote",
-                    id: remote.serviceId,
-                    name: remote.label,
-                    defaultName: remote.defaultLabel || remote.label,
-                  })
-                }
+                onForget={() => forget.mutate(source.sourceId)}
+                onRename={() => setRenaming(renamingOf(source))}
                 onRemove={() =>
                   setRemoving({
-                    kind: "remote",
-                    id: remote.serviceId,
-                    name: remote.label,
-                    issuer: remote.issuer,
+                    kind: "source",
+                    id: source.sourceId,
+                    name: source.label,
                   })
                 }
               />
             ))}
-          </SettingsGroup>
-        )}
-
-        {/* 经中继收发的流量（契约 §76）：有远程服务时才可能有。 */}
-        {remotes.length > 0 && <HostTraffic />}
-
-        <SettingsGroup title={t("remote.mine")}>
-          {mine.map((source) => (
-            <MineRow
-              key={source.sourceId}
-              source={source}
-              inUse={source.sourceId === currentSourceId}
-              {...(source.kind === "relayed"
-                ? {
-                    onTraffic: () =>
-                      setTraffic({
-                        sourceId: source.sourceId,
-                        name: source.label,
-                      }),
-                  }
-                : {})}
-              onForget={() => forget.mutate(source.sourceId)}
-              onRename={() => setRenaming(renamingOf(source))}
-              onRemove={() =>
-                setRemoving({
-                  kind: "source",
-                  id: source.sourceId,
-                  name: source.label,
-                })
-              }
-            />
-          ))}
-          <SettingsRow label={null}>
-            <Button
-              size="sm"
-              variant="secondary"
-              onClick={() => setAddingDirect(true)}
-            >
-              {t("remote.pairMine")}
-            </Button>
-            {signedIn.length > 0 && (
+            <SettingsRow label={null}>
               <Button
                 size="sm"
                 variant="secondary"
-                onClick={() => setMounting(true)}
+                onClick={() => setAddingDirect(true)}
               >
-                {t("remote.mount")}
+                {t("remote.pairMine")}
               </Button>
-            )}
-          </SettingsRow>
-        </SettingsGroup>
-
-        <Collapsible className="group/advanced flex flex-col gap-2">
-          <CollapsibleTrigger asChild>
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              className="-mx-2 w-fit text-[13px] font-normal text-muted-foreground"
-            >
-              <ChevronRight className="transition-transform group-data-[state=open]/advanced:rotate-90" />
-              {t("remote.advanced")}
-            </Button>
-          </CollapsibleTrigger>
-          <CollapsibleContent>
-            <SettingsGroup>
-              {gateway.status && (
-                <GatewayAdvanced
-                  status={gateway.status}
-                  saving={gateway.configure.isPending}
-                  onConfigure={(patch) => gateway.configure.mutate(patch)}
-                />
-              )}
-              {orphans.map((one) => (
-                <SettingsRow
-                  key={one.issuer}
-                  label={hostOf(one.issuer)}
-                  footnote={relayPendingReason(t, one.code)}
-                >
-                  <Badge variant="outline" className="font-normal">
-                    {t("remote.relayPending")}
-                  </Badge>
-                  <Button
-                    size="sm"
-                    variant="secondary"
-                    disabled={cleanup.isPending}
-                    onClick={() => cleanup.mutate(one.issuer)}
-                  >
-                    {t("remote.relayPending.retry")}
-                  </Button>
-                  <RowMenu name={hostOf(one.issuer)}>
-                    <DropdownMenuItem
-                      variant="destructive"
-                      disabled={dismiss.isPending}
-                      onSelect={() => setDismissing(one.issuer)}
-                    >
-                      {t("remote.relayPending.dismiss")}
-                    </DropdownMenuItem>
-                  </RowMenu>
-                </SettingsRow>
-              ))}
-              <SettingsRow label={advancedRows ? null : t("remote.services")}>
+              {signedIn.length > 0 && (
                 <Button
                   size="sm"
                   variant="secondary"
-                  onClick={() =>
-                    setAdding({ issuer: "", account: "", fingerprint: "" })
-                  }
+                  onClick={() => setMounting(true)}
                 >
-                  {t("remote.add")}
+                  {t("remote.mount")}
                 </Button>
-              </SettingsRow>
-            </SettingsGroup>
-          </CollapsibleContent>
-        </Collapsible>
+              )}
+            </SettingsRow>
+          </SettingsGroup>
+
+          <Collapsible className="group/advanced flex flex-col gap-2">
+            <CollapsibleTrigger asChild>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="-mx-2 w-fit text-[13px] font-normal text-muted-foreground"
+              >
+                <ChevronRight className="transition-transform group-data-[state=open]/advanced:rotate-90" />
+                {t("remote.advanced")}
+              </Button>
+            </CollapsibleTrigger>
+            <CollapsibleContent>
+              <SettingsGroup>
+                {gateway.status && (
+                  <GatewayAdvanced
+                    status={gateway.status}
+                    saving={gateway.configure.isPending}
+                    onConfigure={(patch) => gateway.configure.mutate(patch)}
+                  />
+                )}
+                {orphans.map((one) => (
+                  <SettingsRow
+                    key={one.issuer}
+                    label={hostOf(one.issuer)}
+                    footnote={relayPendingReason(t, one.code)}
+                  >
+                    <Badge variant="outline" className="font-normal">
+                      {t("remote.relayPending")}
+                    </Badge>
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      disabled={cleanup.isPending}
+                      onClick={() => cleanup.mutate(one.issuer)}
+                    >
+                      {t("remote.relayPending.retry")}
+                    </Button>
+                    <RowMenu name={hostOf(one.issuer)}>
+                      <DropdownMenuItem
+                        variant="destructive"
+                        disabled={dismiss.isPending}
+                        onSelect={() => setDismissing(one.issuer)}
+                      >
+                        {t("remote.relayPending.dismiss")}
+                      </DropdownMenuItem>
+                    </RowMenu>
+                  </SettingsRow>
+                ))}
+                <SettingsRow label={advancedRows ? null : t("remote.services")}>
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    onClick={() =>
+                      setAdding({ issuer: "", account: "", fingerprint: "" })
+                    }
+                  >
+                    {t("remote.add")}
+                  </Button>
+                </SettingsRow>
+              </SettingsGroup>
+            </CollapsibleContent>
+          </Collapsible>
+        </div>
       </section>
 
       <section
         data-remote-block="joined"
-        className="flex min-w-0 flex-col gap-3"
+        className="flex min-w-0 flex-col gap-(--space-group)"
       >
         <h2 className={HEADING}>{t("remote.joined")}</h2>
         <SettingsGroup>
