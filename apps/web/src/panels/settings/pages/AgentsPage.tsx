@@ -9,6 +9,7 @@ import {
 } from "../../../app/preferences-store";
 import { InstallButton, useInstallJob } from "@/acp/adapter-install";
 import { SettingsGroup } from "../SettingsGroup";
+import { SettingsLoadable } from "../SettingsLoadable";
 import { SettingsRow } from "../SettingsRow";
 import { parseSubpage, useSubpage } from "../subpage";
 import { AgentDetailPage, AgentModeSelect } from "./AgentDetailPage";
@@ -16,14 +17,12 @@ import type { AgentIntegration } from "./integration/types";
 import { useAgentIntegration } from "./integration/use-integration";
 import {
   canvasAgentsValue,
-  useDelayed,
   useIntegrationActions,
   useMigrationNotice,
 } from "./integration/parts";
 import { Badge } from "@/ui/badge";
 import { Button } from "@/ui/button";
 import { Empty, EmptyHeader, EmptyTitle } from "@/ui/empty";
-import { Skeleton } from "@/ui/skeleton";
 import { Spinner } from "@/ui/spinner";
 
 /** 一家 CLI 在这台主机上的状态；`ready` 时主表上不画徽标。 */
@@ -69,44 +68,34 @@ export function AgentsPage() {
     () => (agents.data ?? []).filter((agent) => !agent.baseAgent),
     [agents.data],
   );
-  const slow = useDelayed(agents.isPending, 300);
 
   if (subpage?.kind === "cli") {
     const agent = builtins.find((entry) => entry.id === subpage.ref);
     if (agent) return <AgentDetailPage agent={agent} />;
   }
-  if (agents.isPending) {
-    return slow ? <AgentsSkeleton /> : <div aria-busy="true" />;
-  }
-  if (builtins.length === 0) {
-    return (
-      <Empty className="border-0 p-6">
-        <EmptyHeader>
-          <EmptyTitle className="text-[13px] font-normal">
-            {t("integration.empty")}
-          </EmptyTitle>
-        </EmptyHeader>
-      </Empty>
-    );
-  }
   return (
-    <SettingsGroup>
-      {builtins.map((agent) => (
-        <AgentRow key={agent.id} agent={agent} />
-      ))}
-    </SettingsGroup>
-  );
-}
-
-function AgentsSkeleton() {
-  return (
-    <SettingsGroup>
-      {[0, 1, 2].map((row) => (
-        <SettingsRow key={row} label={<Skeleton className="h-4 w-28" />}>
-          <Skeleton className="h-4 w-32" />
-        </SettingsRow>
-      ))}
-    </SettingsGroup>
+    <SettingsLoadable
+      grouped
+      loading={agents.isPending}
+      rows={3}
+      control="switch"
+    >
+      {builtins.length === 0 ? (
+        <Empty className="border-0 p-6">
+          <EmptyHeader>
+            <EmptyTitle className="text-[13px] font-normal">
+              {t("integration.empty")}
+            </EmptyTitle>
+          </EmptyHeader>
+        </Empty>
+      ) : (
+        <SettingsGroup>
+          {builtins.map((agent) => (
+            <AgentRow key={agent.id} agent={agent} />
+          ))}
+        </SettingsGroup>
+      )}
+    </SettingsLoadable>
   );
 }
 

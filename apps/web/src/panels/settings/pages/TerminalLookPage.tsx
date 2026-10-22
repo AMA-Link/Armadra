@@ -18,6 +18,7 @@ import {
 } from "../../../terminal/lifecycle";
 import { RENDER_BUDGET_CHOICES } from "../../../terminal/render-budget";
 import { useMonospaceFonts } from "../../../terminal/surface/fonts";
+import { useSkeletonPhase } from "@/loading/use-skeleton-phase";
 import { SettingsGroup } from "../SettingsGroup";
 import { SettingsRow } from "../SettingsRow";
 import { CONTROL_WIDTH } from "./GeneralPage";
@@ -38,7 +39,6 @@ import { clamp } from "@/lib/math";
 const SYSTEM = "__system";
 const CUSTOM = "__custom";
 /** 探测超过这么久才画骨架（设计系统 §3.2），快的时候不闪一下。 */
-const SKELETON_DELAY_MS = 300;
 
 /**
  * 设置 → 终端（§2.4）：本设备的终端外观。字体与排版、光标、键盘、渲染四组；
@@ -235,19 +235,6 @@ function effectiveFontStack(): string {
     .trim();
 }
 
-function useDelayed(active: boolean, ms: number): boolean {
-  const [late, setLate] = React.useState(false);
-  React.useEffect(() => {
-    if (!active) {
-      setLate(false);
-      return;
-    }
-    const timer = setTimeout(() => setLate(true), ms);
-    return () => clearTimeout(timer);
-  }, [active, ms]);
-  return late;
-}
-
 function FontRows({
   terminal,
   set,
@@ -257,7 +244,7 @@ function FontRows({
 }) {
   const t = useT();
   const detected = useMonospaceFonts();
-  const slow = useDelayed(detected === null, SKELETON_DELAY_MS);
+  const slow = useSkeletonPhase(detected === null) === "show";
   // 选了「自定义…」但还没写字：存的仍是旧值，界面先停在自定义上。
   const [editing, setEditing] = React.useState(false);
   const stored = terminal.fontFamily;
