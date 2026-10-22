@@ -269,7 +269,7 @@ pnpm libs:build && pnpm --filter @armadra/desktop build && pnpm --filter @armadr
 ARMADRA_PERSONAL_RELAY_HOME=<armadra-cloud 检出> node tools/probes/relay-web-e2e.mjs [输出目录]
 ```
 
-中继是 armadra-cloud 的 Go 二进制（`armadra-relay`），各探针经 `cloud-source.mjs` 按优先级找：`ARMADRA_RELAY_BIN` → 检出里的 `go/bin/armadra-relay`（没有就 `go build`，改了中继源码要重新构建时删掉它）→ 镜像（`ARMADRA_PROBE_RELAY_IMAGE`，或从检出的 `apps/relay/Dockerfile` 构建，`docker run` 同一条命令行）。要 `docker pause` 的探针（`multi-source`、`link-join`、`nat-core-offline`）始终用镜像。
+中继是 armadra-cloud 的 Go 二进制（`armadra-relay`），各探针经 `cloud-source.mjs` 按优先级找：`ARMADRA_RELAY_BIN` → 检出里的 `go/bin/armadra-relay`（每次增量 `go build`，找不到 go 时沿用已有的并警告）→ 镜像（`ARMADRA_PROBE_RELAY_IMAGE`，或从检出的 `apps/relay/Dockerfile` 构建，`docker run` 同一条命令行；macOS 等非 Linux 平台上不支持 `--tls plain`）。要 `docker pause` 的探针（`multi-source`、`link-join`、`nat-core-offline`）始终用镜像。
 
 验证：打开中继的 `/app/` 是中继登录页，中继账号口令登录后只有一台在线主机就直接进画布，请求都同源（`/v1`、`/s/<源>`）；经中继终端收发、实时板与本机页面双向同步；主机停掉隧道时通知条「等待上线」、再开由 `me.stream` 叫醒；杀掉中继再起，页面不刷新自己恢复。截 390 / 1440 宽、明暗两主题。产物默认在 `target/relay-web-e2e/`。
 

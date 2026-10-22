@@ -397,7 +397,7 @@ pnpm dev-stack down relay-personal armadra-server-nat-personal   # 停个人中�
 
 personal 中继的 issuer、证书 SAN 与监听端口都是 `https://127.0.0.1:8103`（`services.mjs` 的 `RELAY_PERSONAL`），宿主机客户端可直接按断言签发方使用；中继只认一个 issuer，所以不用 `host.docker.internal`，而是让 NAT 后的 core 与中继共用网络命名空间，容器内的 `127.0.0.1:8103` 就是中继。`up` 先起中继，再用 `PERSONAL_RELAY_PASSWORD` 登录取注册令牌与 CA 指纹，只经进程环境交给 `armadra-server-nat-personal` 的入口脚本登记。
 
-平台探针（`tools/probes/{personal-roundtrip,multi-source,link-join,nat-core-offline}.mjs`）仍用 `platform-lib.mjs` 自己 `docker run` 一份同镜像的个人中转：随机端口与名字（多个 worktree 并行互不抢 8103）、收尾只删自己的、`docker pause` 冻住中继、挂载页面产物，这些 dev-stack 的固定端口共享项目都给不了；NAT 后的 core 是宿主进程。需要 armadra-cloud 的本地检出与 Docker；中继镜像取 `ARMADRA_PROBE_RELAY_IMAGE`，缺省从检出的 `apps/relay/Dockerfile`（Go 中继）`docker build`。不要 `docker pause` 的探针直接跑 Go 二进制：`ARMADRA_RELAY_BIN` → 检出里的 `go/bin/armadra-relay`（没有就 `go build`）→ 镜像（`tools/probes/cloud-source.mjs`）。
+平台探针（`tools/probes/{personal-roundtrip,multi-source,link-join,nat-core-offline}.mjs`）仍用 `platform-lib.mjs` 自己 `docker run` 一份同镜像的个人中转：随机端口与名字（多个 worktree 并行互不抢 8103）、收尾只删自己的、`docker pause` 冻住中继、挂载页面产物，这些 dev-stack 的固定端口共享项目都给不了；NAT 后的 core 是宿主进程。需要 armadra-cloud 的本地检出与 Docker；中继镜像取 `ARMADRA_PROBE_RELAY_IMAGE`，缺省从检出的 `apps/relay/Dockerfile`（Go 中继）`docker build`。不要 `docker pause` 的探针直接跑 Go 二进制：`ARMADRA_RELAY_BIN` → 检出里的 `go/bin/armadra-relay`（每次增量 `go build`，找不到 go 时沿用已有的）→ 镜像（`tools/probes/cloud-source.mjs`）。
 
 随机生成的 `PLATFORM_DB_PASSWORD`、`PERSONAL_RELAY_PASSWORD`、`PLATFORM_SEED_PASSWORD`、
 `ARMADRA_CLOUD_MASTER_KEY` 在首次 `up` 时补进 `tools/dev-stack/.data/dev.env`（旧文件会被补全，不会重写）。
