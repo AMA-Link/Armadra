@@ -69,8 +69,8 @@ export function AgentSettingsDialog() {
             {t("agentSettings.title")}
           </ResponsiveDialogTitle>
         </ResponsiveDialogHeader>
-        <div className="flex flex-col gap-4">
-          <div className="flex flex-col gap-1.5">
+        <div className="flex flex-col gap-(--space-block)">
+          <div className="flex flex-col gap-(--space-group)">
             <span className="text-xs text-[var(--muted-foreground)]">
               {t("agentSettings.inboxWake")}
             </span>

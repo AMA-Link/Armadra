@@ -91,7 +91,7 @@ export function MergeDialog() {
         if (!next) store.getState().close();
       }}
     >
-      <ResponsiveDialogContent className="flex max-h-[86vh] w-[min(96vw,72rem)] max-w-none flex-col gap-3">
+      <ResponsiveDialogContent className="flex max-h-[86vh] w-[min(96vw,72rem)] max-w-none flex-col gap-(--space-block)">
         <ResponsiveDialogHeader>
           <ResponsiveDialogTitle>
             {t(draft ? "merge.draft.title" : "merge.title")}
@@ -138,7 +138,7 @@ export function MergeDialog() {
 
         {!state.loading && !state.unavailable && (
           <ScrollArea className="min-h-0 flex-1 rounded-[var(--radius-sm)] border border-border">
-            <div className="flex flex-col gap-3 p-3">
+            <div className="flex flex-col gap-(--space-group) p-(--space-inset)">
               {conflicts.length === 0 ? (
                 <p className="text-[12px] text-muted-foreground">
                   {t(draft ? "merge.draft.noConflicts" : "merge.noConflicts")}
@@ -235,8 +235,8 @@ function Hunk({
   const t = (key: string, values?: Record<string, string>) =>
     translate(draft ? (DRAFT_LABELS[key] ?? key) : key, values);
   return (
-    <section className="min-w-0 rounded-[var(--radius-sm)] border border-border p-2">
-      <div className="flex flex-wrap items-center gap-1.5 pb-2">
+    <section className="min-w-0 rounded-[var(--radius-sm)] border border-border p-(--space-inset)">
+      <div className="flex flex-wrap items-center gap-1.5 pb-(--space-group)">
         <span className="mr-auto text-[12px] font-medium">
           {t("merge.hunk", { index: String(index + 1) })}
         </span>
@@ -252,7 +252,7 @@ function Hunk({
           </Button>
         ))}
       </div>
-      <div className="grid gap-2 md:grid-cols-3">
+      <div className="grid gap-(--space-group) md:grid-cols-3">
         <Side label={t("merge.base")} lines={region.base} />
         <Side label={t("merge.ours")} lines={region.ours} />
         <Side label={t("merge.theirs")} lines={region.theirs} />
