@@ -16,7 +16,10 @@ import {
   useT,
   type ThemePreference,
 } from "../../../app/preferences-store";
+import { BACKDROPS, type Backdrop } from "../../../app/backdrops";
 import { LOCALES, type Locale } from "../../../i18n";
+import { isMacPlatform } from "../../../keybindings/chords";
+import { isDesktop } from "../../../platform";
 import { isNativeApp } from "../../../mobile/native-bridge";
 import { ConnectionsGroup } from "../../../services/ConnectionsGroup";
 import { ScopeBadge } from "../scope-badge";
@@ -33,6 +36,7 @@ import {
   SelectValue,
 } from "@/ui/select";
 import { Switch } from "@/ui/switch";
+import { ToggleGroup, ToggleGroupItem } from "@/ui/toggle-group";
 
 /**
  * 设置 → 默认（§2.1）：新建节点最常动的几项与主题、语言。
@@ -195,6 +199,12 @@ function AppearanceGroup() {
   const setTheme = usePreferencesStore((state) => state.setTheme);
   const locale = usePreferencesStore((state) => state.locale);
   const setLocale = usePreferencesStore((state) => state.setLocale);
+  const translucentWindow = usePreferencesStore(
+    (state) => state.translucentWindow,
+  );
+  const setTranslucentWindow = usePreferencesStore(
+    (state) => state.setTranslucentWindow,
+  );
   return (
     <SettingsGroup>
       <SettingsRow label={t("settings.theme")}>
@@ -219,6 +229,21 @@ function AppearanceGroup() {
         </Select>
       </SettingsRow>
 
+      <SettingsRow label={t("settings.backdrop")}>
+        <BackdropPicker />
+      </SettingsRow>
+
+      {/* 只有 macOS 桌面壳有 vibrancy 可挂摘；别处这个开关什么都不改 */}
+      {isDesktop() && isMacPlatform() ? (
+        <SettingsRow label={t("settings.translucentWindow")}>
+          <Switch
+            checked={translucentWindow}
+            aria-label={t("settings.translucentWindow")}
+            onCheckedChange={setTranslucentWindow}
+          />
+        </SettingsRow>
+      ) : null}
+
       <SettingsRow label={t("settings.locale")}>
         <Select
           value={locale}
@@ -241,5 +266,41 @@ function AppearanceGroup() {
         </Select>
       </SettingsRow>
     </SettingsGroup>
+  );
+}
+
+/**
+ * 窗口背景色板（#474）：一排小窗缩略，格子自己的渐变由 `data-backdrop-swatch`
+ * 从 `styles/backdrops.css` 取，跟着当前明暗主题走。
+ */
+function BackdropPicker() {
+  const t = useT();
+  const backdrop = usePreferencesStore((state) => state.backdrop);
+  const setBackdrop = usePreferencesStore((state) => state.setBackdrop);
+  return (
+    <ToggleGroup
+      type="single"
+      value={backdrop}
+      onValueChange={(value) => {
+        if (value) setBackdrop(value as Backdrop);
+      }}
+      aria-label={t("settings.backdrop")}
+      spacing={1}
+    >
+      {BACKDROPS.map((option) => (
+        <ToggleGroupItem
+          key={option}
+          value={option}
+          aria-label={t(`settings.backdrop.${option}`)}
+          title={t(`settings.backdrop.${option}`)}
+          className="size-8 p-0.5 data-[state=on]:ring-2 data-[state=on]:ring-ring"
+        >
+          <span
+            data-backdrop-swatch={option}
+            className="backdrop-swatch size-full rounded-[var(--r-sm)] border border-border"
+          />
+        </ToggleGroupItem>
+      ))}
+    </ToggleGroup>
   );
 }

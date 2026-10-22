@@ -116,7 +116,7 @@ function SettingsBody({ onClose }: { onClose: () => void }) {
     <div className="settings-layout flex h-full min-h-0 flex-row">
       <nav
         aria-label={t("settings.title")}
-        className="settings-navigation flex h-full w-[clamp(176px,16%,240px)] shrink-0 flex-col gap-3 overflow-y-auto border-r border-border bg-panel p-3"
+        className="settings-navigation flex h-full w-[clamp(176px,16%,240px)] shrink-0 flex-col gap-3 overflow-y-auto border-r border-border material-backdrop p-3"
       >
         {groups.map((group) => (
           <div key={group.groupKey} className="flex flex-col gap-0.5">
