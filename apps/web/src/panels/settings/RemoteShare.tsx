@@ -1,3 +1,6 @@
+import { Loadable } from "@/loading/Loadable";
+import { Skeleton } from "@/ui/skeleton";
+import { SkeletonList } from "@/ui/skeletons";
 import * as React from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -359,7 +362,22 @@ function ShareLinks({ remote }: { remote: RemoteService }) {
         <p role="alert" className="text-[12px] text-destructive">
           {links.error.message}
         </p>
-      ) : links.isPending ? null : active.length === 0 ? (
+      ) : links.isPending ? (
+        <Loadable
+          loading
+          skeleton={
+            <SkeletonList
+              rows={3}
+              size="tall"
+              secondary
+              trailing
+              label={t("state.loading")}
+            />
+          }
+        >
+          {null}
+        </Loadable>
+      ) : active.length === 0 ? (
         <p className="text-[12px] text-muted-foreground">
           {t("remote.links.empty")}
         </p>
@@ -891,9 +909,21 @@ function LinkQrDialog({
             {fetched.error.message}
           </p>
         ) : url === undefined ? (
-          <div className="flex justify-center py-6">
-            <Spinner aria-label={t("remote.link.qr")} />
-          </div>
+          <Loadable
+            loading
+            skeleton={
+              <div
+                role="status"
+                aria-label={t("state.loading")}
+                className="flex flex-col items-center gap-3"
+              >
+                <Skeleton className="size-[200px]" />
+                <Skeleton className="h-9 w-full" />
+              </div>
+            }
+          >
+            {null}
+          </Loadable>
         ) : (
           <div data-slot="share-link" className="flex min-w-0 flex-col gap-3">
             <div className="flex justify-center">

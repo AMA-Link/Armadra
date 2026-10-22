@@ -1,7 +1,9 @@
+import { Skeleton } from "@/ui/skeleton";
+import { RelayFormSkeleton } from "../shell/RelayFormSkeleton";
 import * as React from "react";
 
 import { App } from "../app/App";
-import { syncDocumentPreferences } from "../app/preferences-store";
+import { syncDocumentPreferences, useT } from "../app/preferences-store";
 import { JoinPage } from "../shell/JoinPage";
 import { PageCaGuide } from "../panels/settings/pages/gateway/CaInstallGuide";
 import { ConnectScreen, type ConnectFailure } from "./ConnectScreen";
@@ -60,11 +62,13 @@ export function MobileRoot({ entry: initial }: { entry: Entry }) {
   }
   if (entry.kind === "relay") {
     const relay = hostedRelay();
-    return relay === null ? null : (
+    return relay === null ? (
+      <EntrySkeleton />
+    ) : (
       <RelaySignIn relay={relay} onEntered={() => setConnected(true)} />
     );
   }
-  if (entry.kind !== "connect") return null;
+  if (entry.kind !== "connect") return <EntrySkeleton />;
   if (entry.mode === "web") {
     const done = (failure: ConnectFailure | null) => {
       if (failure === null) setConnected(true);
@@ -88,6 +92,25 @@ export function MobileRoot({ entry: initial }: { entry: Entry }) {
     );
   }
   return <NativeConnect entry={entry} relay={relay} />;
+}
+
+/** 入口还认不出是哪一页：品牌位加连接表单的形状，不留整页空白。 */
+function EntrySkeleton() {
+  const t = useT();
+  return (
+    <main
+      data-slot="entry-skeleton"
+      className="flex min-h-[100dvh] w-full flex-col items-center bg-background pt-[max(var(--safe-top),15vh)] pr-[calc(1.5rem+var(--safe-right))] pl-[calc(1.5rem+var(--safe-left))]"
+    >
+      <div className="flex w-full max-w-sm flex-col gap-6">
+        <div className="flex flex-col items-center gap-3">
+          <Skeleton className="size-12 rounded-[var(--r-panel)]" />
+          <Skeleton className="h-6 w-48" />
+        </div>
+        <RelayFormSkeleton label={t("state.loading")} />
+      </div>
+    </main>
+  );
 }
 
 /** 原生 App 的连接页：表非空是「选择服务」（A7-1），带在线状态。 */

@@ -1,3 +1,5 @@
+import { Loadable } from "@/loading/Loadable";
+import { Skeleton } from "@/ui/skeleton";
 import * as React from "react";
 
 import { type JoinLink, joinDeepLink, parseJoinLink } from "@armadra/shared";
@@ -147,14 +149,30 @@ export function JoinPage({
           <h1 className="text-[length:var(--text-display)] leading-tight font-semibold text-balance">
             {t("links.page.title")}
           </h1>
-          {name && (
-            <p className="text-[15px] font-medium break-words">{name}</p>
-          )}
-          {meta && (
-            <p className="text-[13px] text-muted-foreground tabular-nums">
-              {meta}
-            </p>
-          )}
+          <Loadable
+            loading={link !== null && info === null && failure === ""}
+            className="flex flex-col items-center gap-3"
+            skeleton={
+              <div
+                role="status"
+                aria-busy="true"
+                aria-label={t("state.loading")}
+                className="flex flex-col items-center gap-3"
+              >
+                <Skeleton className="h-[22px] w-40" />
+                <Skeleton className="h-5 w-56" />
+              </div>
+            }
+          >
+            {name && (
+              <p className="text-[15px] font-medium break-words">{name}</p>
+            )}
+            {meta && (
+              <p className="text-[13px] text-muted-foreground tabular-nums">
+                {meta}
+              </p>
+            )}
+          </Loadable>
         </div>
         {link === null ? (
           <Alert variant="destructive">
