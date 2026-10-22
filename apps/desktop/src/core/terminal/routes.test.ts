@@ -391,7 +391,7 @@ describeUnix("the terminal routes", () => {
     ).toMatchObject({ total: 0 });
   });
 
-  it("answers 429 limit_reached with details once a workspace holds limits.agentsPerWorkspace agents", async () => {
+  it("never limits the owner: limits.agentsPerWorkspace does not stop a single-user desktop", async () => {
     const { fixture: core_, workspaceId } = await core(true);
     expect(
       (
@@ -400,22 +400,18 @@ describeUnix("the terminal routes", () => {
         })
       ).status,
     ).toBe(200);
-    const agent = (nodeId: string) =>
-      core_.call("POST", "/api/terminals", {
+    for (const nodeId of [
+      "11111111-1111-4111-8111-111111111111",
+      "22222222-2222-4222-8222-222222222222",
+    ]) {
+      const created = await core_.call("POST", "/api/terminals", {
         workspaceId,
         cwd: core_.directory,
         nodeId,
         agent: { id: "claude" },
       });
-    expect((await agent("11111111-1111-4111-8111-111111111111")).status).toBe(
-      200,
-    );
-    const refused = await agent("22222222-2222-4222-8222-222222222222");
-    expect(refused.status).toBe(429);
-    expect(refused.body).toMatchObject({
-      code: "limit_reached",
-      details: { scope: "workspace", limit: 1, current: 1 },
-    });
+      expect(created.status).toBe(200);
+    }
   });
 
   it("answers 404 for a session nobody created", async () => {

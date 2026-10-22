@@ -352,18 +352,20 @@ describe("per-core limits (A6-2)", () => {
     }
   });
 
-  it("agents are counted per workspace, a node respawn is not double counted", async () => {
+  it("agents are counted per workspace for members; a node respawn is not double counted", async () => {
     const { manager } = harness(undefined, {
       limits: { terminalsPerPrincipal: 16, agentsPerWorkspace: 2 },
     });
     const agent = (nodeId: string) =>
-      manager.spawn({
-        workspaceId: "ws",
-        cwd: "/tmp",
-        command: "/bin/sh",
-        ownerNodeId: nodeId,
-        agentId: "claude",
-      });
+      runAs(member("m1"), () =>
+        manager.spawn({
+          workspaceId: "ws",
+          cwd: "/tmp",
+          command: "/bin/sh",
+          ownerNodeId: nodeId,
+          agentId: "claude",
+        }),
+      );
     await agent("n1");
     await agent("n2");
     await expect(agent("n3")).rejects.toMatchObject({
@@ -374,7 +376,61 @@ describe("per-core limits (A6-2)", () => {
     // 同一个节点重新起会话不算新的一个。
     await agent("n2");
     // 普通终端不占 Agent 名额。
-    await spawn(manager);
+    await runAs(member("m1"), () => spawn(manager));
+  });
+
+  it("the owner and core-originated spawns are never limited, so a restore or wake cannot be blocked", async () => {
+    const { manager, database } = harness(undefined, {
+      limits: { terminalsPerPrincipal: 1, agentsPerWorkspace: 1 },
+    });
+    // 没有请求身份 = 桌面壳 / 依赖编排 / 唤醒还原：远超上限也不拦。
+    for (let index = 0; index < 12; index += 1) {
+      await manager.spawn({
+        workspaceId: "ws",
+        cwd: "/tmp",
+        command: "/bin/sh",
+        ownerNodeId: `node-${index}`,
+        agentId: "claude",
+      });
+    }
+    // 上限已满时，成员占着名额，休眠还原（revive）也不经过判定。
+    const exited = await spawn(manager, "node-0");
+    database
+      .prepare("UPDATE terminal_sessions SET status = 'exited' WHERE id = ?")
+      .run(exited.id);
+    const ownerSubject = {
+      subject: { principalId: "", kind: "owner" as const, scopes: [] },
+    };
+    await runAs(ownerSubject, () =>
+      manager.spawn({
+        workspaceId: "ws",
+        cwd: "/tmp",
+        command: "/bin/sh",
+        ownerNodeId: "node-x",
+        agentId: "claude",
+      }),
+    );
+    await runAs(member("m1"), () =>
+      manager.revive(exited.id, [], { ended: true }),
+    );
+  });
+
+  it("concurrent spawns by one member cannot slip past the limit", async () => {
+    const { manager } = harness(undefined, {
+      limits: { terminalsPerPrincipal: 2, agentsPerWorkspace: 8 },
+    });
+    const results = await Promise.allSettled(
+      Array.from({ length: 5 }, async () => {
+        const session = await runAs(member("m1"), () => spawn(manager));
+        // 路由门在建好后记创建者（这里立刻记，等价于响应过滤器）。
+        manager["database"]
+          .prepare(
+            "UPDATE terminal_sessions SET creator_principal_id = 'm1' WHERE id = ?",
+          )
+          .run(session.id);
+      }),
+    );
+    expect(results.filter((one) => one.status === "fulfilled")).toHaveLength(2);
   });
 });
 

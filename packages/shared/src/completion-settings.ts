@@ -127,12 +127,12 @@ export const COMPLETION_SETTINGS_DEFAULTS = {
   },
   limits: {
     /**
-     * 一个成员（非 owner 的 principal）同时最多开几个终端（运行中、不带 Agent）；超出答
+     * 一个成员（非 owner 的 principal）同时最多开几个终端（运行中、不带 Agent）；owner 与 core 自己开的不受限，超出答
      * `429 limit_reached`。`0` = 不限。缺省 16（平台设计 A6-2）。
      */
     terminalsPerPrincipal: 16,
     /**
-     * 一个工作空间里同时最多几个运行中的 Agent 会话；超出答 `429 limit_reached`。
+     * 成员名下的会话所在工作空间里同时最多几个运行中的 Agent 会话（owner 与 core 自己开的不受限）；超出答 `429 limit_reached`。
      * `0` = 不限。缺省 8。
      */
     agentsPerWorkspace: 8,
