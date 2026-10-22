@@ -1,5 +1,6 @@
 # 正规化平台落地总计划
 
+> **2026-10-22 起：** 已执行的部分是历史；SaaS 工作包（C2-x、C3-3、R3、C4-2、C6-x、A6-3）由 armadra-cloud `docs/design/go-relay-design.md` 的 G5、G6 与 `saas-design.md` §9 的分期取代。
 > 状态：目标计划（2026-10-06）。把[工程规范化](engineering-standardization.md)的 E0–E6 与[平台设计](platform-saas-architecture.md)的阶段 0–6（含 §17 个人中转与桌面零配置）合成一张有依赖关系的波次图，每个工作包写明仓库、目录、预分配编号、交付物、验收命令、推荐模型与规模；逐包的实现规格在 `docs/design/platform/` 下（§11）。E0 已派出、正在实现，列为第 0 波。现状以源码为准；本文不改代码。
 > 用户已定：按推荐全部执行；接口层 oRPC 1.15.4 精确锁；中继首版终止 TLS 零日志；SaaS 后端在独立私有仓库 `AMA-Link/armadra-cloud`（MIT）；本地 PostgreSQL / Redis 只用 Docker；两种模式（SaaS 多租户 / 单人中转）；桌面端零配置可用；个人中转先于 SaaS 控制面交付。
 > 不出现任何第三方参考项目的名字；不建云资源、不发布包、不改用户系统配置。
