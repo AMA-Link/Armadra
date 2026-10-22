@@ -19,6 +19,7 @@ import {
 import { Alert, AlertTitle } from "@/ui/alert";
 import { Button } from "@/ui/button";
 import { Textarea } from "@/ui/textarea";
+import { ValueLoadable } from "../SettingsLoadable";
 import { SettingsGroup } from "../SettingsGroup";
 
 export interface HostIdentityPanelProps {
@@ -171,22 +172,22 @@ export function HostIdentityPanel({
                 </AlertTitle>
               </Alert>
             ) : (
-              <p
-                role="status"
-                aria-live="polite"
-                className="break-words text-[12px] leading-5 text-muted-foreground"
-              >
-                {t(
-                  busy
-                    ? session
+              <ValueLoadable loading={busy && !session} className="h-5 w-56">
+                <p
+                  role="status"
+                  aria-live="polite"
+                  className="break-words text-[12px] leading-5 text-muted-foreground"
+                >
+                  {t(
+                    busy
                       ? "hostIdentity.busy"
-                      : "hostIdentity.loading"
-                    : (notice ??
-                        (!session
-                          ? "hostIdentity.signedOut"
-                          : "hostIdentity.current")),
-                )}
-              </p>
+                      : (notice ??
+                          (!session
+                            ? "hostIdentity.signedOut"
+                            : "hostIdentity.current")),
+                  )}
+                </p>
+              </ValueLoadable>
             )}
             {!session ? (
               <form

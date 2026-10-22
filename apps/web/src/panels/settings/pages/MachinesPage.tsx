@@ -10,6 +10,8 @@ import { useT } from "../../../app/preferences-store";
 import { useOpenWorkspace } from "../../../app/workspace-actions";
 import { useCompactLayout } from "@/platform/layout";
 import { SettingsGroup } from "../SettingsGroup";
+import { Loadable } from "@/loading/Loadable";
+import { TableCardSkeleton } from "../SettingsLoadable";
 import { SettingsRow } from "../SettingsRow";
 import { useSubpage } from "../subpage";
 import { useRuntimeSettings } from "../use-runtime-settings";
@@ -136,7 +138,10 @@ export function MachinesPage() {
   );
 
   return (
-    <>
+    <Loadable
+      loading={settings.isLoading}
+      skeleton={<TableCardSkeleton rows={3} columns={3} />}
+    >
       {ssh.length === 0 ? (
         <SettingsGroup>
           <Empty className="py-6">
@@ -158,7 +163,7 @@ export function MachinesPage() {
         />
       )}
       {ssh.length > 0 && <div>{add}</div>}
-    </>
+    </Loadable>
   );
 }
 

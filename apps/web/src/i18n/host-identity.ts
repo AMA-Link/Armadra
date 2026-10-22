@@ -5,7 +5,6 @@ export const hostIdentity: MessageModule = {
     "hostIdentity.title": "设备登录",
     "hostIdentity.checkRequired": "请先检查连接，确认服务身份。",
     "hostIdentity.unsupported": "此服务尚未提供浏览器设备登录。",
-    "hostIdentity.loading": "正在恢复设备登录…",
     "hostIdentity.busy": "正在处理…",
     "hostIdentity.signedOut": "此页面尚未登录。",
     "hostIdentity.ticket": "一次性配对票据",
@@ -67,7 +66,6 @@ export const hostIdentity: MessageModule = {
       "Check the connection first to confirm the service identity.",
     "hostIdentity.unsupported":
       "This service does not provide browser device sign-in yet.",
-    "hostIdentity.loading": "Restoring device sign-in…",
     "hostIdentity.busy": "Working…",
     "hostIdentity.signedOut": "This page is not signed in.",
     "hostIdentity.ticket": "One-time pairing ticket",

@@ -13,6 +13,7 @@ import { CapabilityInheritance } from "@/agent/CapabilityInheritance";
 import { useAgentsQuery } from "../../../app/use-agents";
 import { useT } from "../../../app/preferences-store";
 import { SettingsGroup } from "../SettingsGroup";
+import { SettingsLoadable } from "../SettingsLoadable";
 import { SettingsRow } from "../SettingsRow";
 import { useSubpage } from "../subpage";
 import { useRuntimeSettings } from "../use-runtime-settings";
@@ -79,9 +80,21 @@ export function CustomAgentsPage() {
     </Button>
   );
 
+  // 设置未到之前画行骨架，不先闪一下空态。
+  const wrap = (body: React.ReactNode) => (
+    <SettingsLoadable
+      grouped
+      loading={settings.isLoading}
+      rows={2}
+      control="switch"
+    >
+      {body}
+    </SettingsLoadable>
+  );
+
   if (custom.length === 0) {
     // 空态：一句话 + 一个动作（设计系统 §5.16）。
-    return (
+    return wrap(
       <SettingsGroup>
         <Empty className="py-6">
           <EmptyHeader>
@@ -91,11 +104,11 @@ export function CustomAgentsPage() {
           </EmptyHeader>
           <EmptyContent>{addCustom}</EmptyContent>
         </Empty>
-      </SettingsGroup>
+      </SettingsGroup>,
     );
   }
 
-  return (
+  return wrap(
     <SettingsGroup>
       {custom.map((agent) => (
         <SettingsRow
@@ -109,7 +122,7 @@ export function CustomAgentsPage() {
         </SettingsRow>
       ))}
       <SettingsRow label={null}>{addCustom}</SettingsRow>
-    </SettingsGroup>
+    </SettingsGroup>,
   );
 }
 

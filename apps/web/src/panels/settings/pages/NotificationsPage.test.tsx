@@ -1,5 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+} from "@testing-library/react";
 
 const access = vi.hoisted(() => ({ member: false, remote: false }));
 const settings = vi.hoisted(() => ({
@@ -72,5 +78,32 @@ describe("设置 → 通知（§2.2 映射）", () => {
       expect(runtimeSettings.calls).toBe(0);
       cleanup();
     }
+  });
+});
+
+describe("设置未到时的占位", () => {
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
+
+  it("主机开关先占位，不先显示默认「开」；到了换成真开关", () => {
+    const original = { ...settings };
+    Object.assign(settings, { data: undefined, isLoading: true });
+    const { rerender, container } = render(<NotificationsPage />);
+    expect(
+      screen.queryByRole("switch", { name: zh("updates.notify") }),
+    ).toBeNull();
+    act(() => void vi.advanceTimersByTime(200));
+    expect(
+      container.querySelectorAll("[data-slot=skeleton-settings-row]").length,
+    ).toBe(1);
+    act(() => void vi.advanceTimersByTime(300));
+    Object.assign(settings, original, { isLoading: false });
+    rerender(<NotificationsPage />);
+    expect(
+      screen.getByRole("switch", { name: zh("updates.notify") }),
+    ).toBeTruthy();
+    expect(
+      container.querySelector("[data-slot=skeleton-settings-row]"),
+    ).toBeNull();
   });
 });

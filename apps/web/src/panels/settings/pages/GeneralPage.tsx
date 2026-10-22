@@ -4,6 +4,7 @@ import { refreshPageErrorReporting } from "../../../diagnostics/report";
 import { usePreferencesStore, useT } from "../../../app/preferences-store";
 import { useCanvasStore } from "../../../store/canvas-store";
 import { SettingsGroup } from "../SettingsGroup";
+import { SettingsLoadable } from "../SettingsLoadable";
 import { SettingsRow } from "../SettingsRow";
 import { useRuntimeSettings } from "../use-runtime-settings";
 import { Input } from "@/ui/input";
@@ -116,7 +117,7 @@ export function CrashReportGroup() {
   const [opened, setOpened] = useState(false);
   const [draft, setDraft] = useState(saved);
   useEffect(() => setDraft(saved), [saved]);
-  if (!settings.data) return null;
+  if (!settings.data && !settings.isLoading) return null;
 
   const enabled = saved !== "" || opened;
   const trimmed = draft.trim();
@@ -127,60 +128,64 @@ export function CrashReportGroup() {
   };
 
   return (
-    <SettingsGroup>
-      <SettingsRow
-        label={t("settings.diagnostics.crashReports")}
-        hint={t("settings.diagnostics.crashReports.note")}
-      >
-        <Switch
-          checked={enabled}
-          aria-label={t("settings.diagnostics.crashReports")}
-          onCheckedChange={(next) => {
-            setOpened(next);
-            if (next) return;
-            setDraft("");
-            if (saved !== "")
-              save.mutate({ diagnostics: { crashReportDsn: "" } });
-          }}
-        />
-      </SettingsRow>
-      {enabled && (
+    <SettingsLoadable grouped loading={!settings.data} control="switch">
+      <SettingsGroup>
         <SettingsRow
-          label={t("settings.diagnostics.dsn")}
-          footnote={invalid ? t("settings.diagnostics.dsnInvalid") : undefined}
+          label={t("settings.diagnostics.crashReports")}
+          hint={t("settings.diagnostics.crashReports.note")}
         >
-          <Input
-            aria-label={t("settings.diagnostics.dsn")}
-            aria-invalid={invalid || undefined}
-            type="url"
-            autoComplete="off"
-            spellCheck={false}
-            maxLength={512}
-            placeholder="https://key@host/1"
-            className={`h-8 text-xs ${CONTROL_WIDTH}`}
-            value={draft}
-            onChange={(event) => setDraft(event.target.value)}
-            onBlur={commit}
-            onKeyDown={(event) => {
-              if (event.key === "Enter") commit();
+          <Switch
+            checked={enabled}
+            aria-label={t("settings.diagnostics.crashReports")}
+            onCheckedChange={(next) => {
+              setOpened(next);
+              if (next) return;
+              setDraft("");
+              if (saved !== "")
+                save.mutate({ diagnostics: { crashReportDsn: "" } });
             }}
           />
         </SettingsRow>
-      )}
-      {saved !== "" && (
-        <SettingsRow label={t("diagnostics.pageErrors")}>
-          <Switch
-            checked={pageErrors}
-            aria-label={t("diagnostics.pageErrors")}
-            onCheckedChange={(next) =>
-              save.mutate(
-                { diagnostics: { reportPageErrors: next } },
-                { onSuccess: refreshPageErrorReporting },
-              )
+        {enabled && (
+          <SettingsRow
+            label={t("settings.diagnostics.dsn")}
+            footnote={
+              invalid ? t("settings.diagnostics.dsnInvalid") : undefined
             }
-          />
-        </SettingsRow>
-      )}
-    </SettingsGroup>
+          >
+            <Input
+              aria-label={t("settings.diagnostics.dsn")}
+              aria-invalid={invalid || undefined}
+              type="url"
+              autoComplete="off"
+              spellCheck={false}
+              maxLength={512}
+              placeholder="https://key@host/1"
+              className={`h-8 text-xs ${CONTROL_WIDTH}`}
+              value={draft}
+              onChange={(event) => setDraft(event.target.value)}
+              onBlur={commit}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") commit();
+              }}
+            />
+          </SettingsRow>
+        )}
+        {saved !== "" && (
+          <SettingsRow label={t("diagnostics.pageErrors")}>
+            <Switch
+              checked={pageErrors}
+              aria-label={t("diagnostics.pageErrors")}
+              onCheckedChange={(next) =>
+                save.mutate(
+                  { diagnostics: { reportPageErrors: next } },
+                  { onSuccess: refreshPageErrorReporting },
+                )
+              }
+            />
+          </SettingsRow>
+        )}
+      </SettingsGroup>
+    </SettingsLoadable>
   );
 }

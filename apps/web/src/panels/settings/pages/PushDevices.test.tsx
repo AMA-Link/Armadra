@@ -78,7 +78,8 @@ describe("推送设备", () => {
     devices.mockResolvedValue({ devices: [] });
     const view = mount();
     await waitFor(() => expect(devices).toHaveBeenCalled());
-    expect(view.container.textContent).toBe("");
+    // 取数期间有一份不可见的占位；答复到了、列表为空，整组就不再画。
+    await waitFor(() => expect(view.container.textContent).toBe(""));
   });
 
   it("逐台列出，展开后改一个种类就存这一台的完整列表", async () => {

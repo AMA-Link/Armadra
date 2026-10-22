@@ -5,6 +5,8 @@ import { Bar, BarChart, XAxis } from "recharts";
 import { TRAFFIC_QUERY_KEY, trafficSeries } from "../api/traffic";
 import { usePreferencesStore, useT } from "../app/preferences-store";
 import { formatBytes } from "../lib/format";
+import { Loadable } from "@/loading/Loadable";
+import { Skeleton } from "@/ui/skeleton";
 import {
   type ChartConfig,
   ChartContainer,
@@ -47,62 +49,74 @@ export function TrafficTrend({ fromMs, toMs }: TrafficTrendProps) {
     [locale],
   );
   const points = series.data?.points ?? [];
-  if (points.length === 0) return null;
+  if (points.length === 0 && !series.isLoading) return null;
   const rows = points.map((point) => ({
     at: point.bucketStartMs,
     up: point.bytesOut,
     down: point.bytesIn,
   }));
   return (
-    <ChartContainer
-      config={config}
-      data-slot="traffic-trend"
-      role="img"
-      aria-label={t("traffic.trend")}
-      className="aspect-auto h-24 w-full"
+    <Loadable
+      loading={series.isLoading}
+      skeleton={
+        <Skeleton
+          role="status"
+          aria-busy="true"
+          aria-label={t("state.loading")}
+          className="h-24 w-full"
+        />
+      }
     >
-      <BarChart data={rows} margin={{ left: 0, right: 0, top: 4, bottom: 0 }}>
-        <XAxis
-          dataKey="at"
-          tickLine={false}
-          axisLine={false}
-          minTickGap={24}
-          tickFormatter={(value: number) => day.format(value)}
-        />
-        <ChartTooltip
-          cursor={false}
-          content={
-            <ChartTooltipContent
-              labelFormatter={(_, payload) =>
-                day.format(Number(payload?.[0]?.payload?.at ?? 0))
-              }
-              formatter={(value, name) => (
-                <span className="flex w-full items-center justify-between gap-3">
-                  <span className="text-muted-foreground">
-                    {config[String(name)]?.label}
+      <ChartContainer
+        config={config}
+        data-slot="traffic-trend"
+        role="img"
+        aria-label={t("traffic.trend")}
+        className="aspect-auto h-24 w-full"
+      >
+        <BarChart data={rows} margin={{ left: 0, right: 0, top: 4, bottom: 0 }}>
+          <XAxis
+            dataKey="at"
+            tickLine={false}
+            axisLine={false}
+            minTickGap={24}
+            tickFormatter={(value: number) => day.format(value)}
+          />
+          <ChartTooltip
+            cursor={false}
+            content={
+              <ChartTooltipContent
+                labelFormatter={(_, payload) =>
+                  day.format(Number(payload?.[0]?.payload?.at ?? 0))
+                }
+                formatter={(value, name) => (
+                  <span className="flex w-full items-center justify-between gap-3">
+                    <span className="text-muted-foreground">
+                      {config[String(name)]?.label}
+                    </span>
+                    <span className="font-mono tabular-nums">
+                      {formatBytes(Number(value))}
+                    </span>
                   </span>
-                  <span className="font-mono tabular-nums">
-                    {formatBytes(Number(value))}
-                  </span>
-                </span>
-              )}
-            />
-          }
-        />
-        <Bar
-          dataKey="up"
-          stackId="traffic"
-          fill="var(--color-up)"
-          isAnimationActive={false}
-        />
-        <Bar
-          dataKey="down"
-          stackId="traffic"
-          fill="var(--color-down)"
-          isAnimationActive={false}
-          radius={[2, 2, 0, 0]}
-        />
-      </BarChart>
-    </ChartContainer>
+                )}
+              />
+            }
+          />
+          <Bar
+            dataKey="up"
+            stackId="traffic"
+            fill="var(--color-up)"
+            isAnimationActive={false}
+          />
+          <Bar
+            dataKey="down"
+            stackId="traffic"
+            fill="var(--color-down)"
+            isAnimationActive={false}
+            radius={[2, 2, 0, 0]}
+          />
+        </BarChart>
+      </ChartContainer>
+    </Loadable>
   );
 }

@@ -1,3 +1,5 @@
+import { Loadable } from "@/loading/Loadable";
+import { SkeletonList } from "@/ui/skeletons";
 import { LOCAL_SOURCE_ID, currentSource, onLocal } from "../../../api/source";
 import { useCanvasStore } from "../../../store/canvas-store";
 import { lk } from "../local-key";
@@ -165,66 +167,77 @@ export function ForgeConfigs() {
           </Field>
         </div>
       )}
-      {configs.isError && (
-        <p
-          role="status"
-          className="px-4 py-3 text-[12px] text-destructive"
-          data-slot="forge-configs-error"
-        >
-          {t(forgeFailureKey(configs.error))}
-        </p>
-      )}
-      {configs.data && rows.length === 0 && draft === null && (
-        <p className="px-4 py-3 text-[12px] text-muted-foreground">
-          {t("forge.settings.empty")}
-        </p>
-      )}
-      {rows.map((config) => (
-        <div
-          key={config.repoKey}
-          data-slot="forge-config"
-          data-key={config.repoKey}
-          className="flex min-w-0 flex-wrap items-center gap-2 px-4 py-3 text-[12px]"
-        >
-          <span className="min-w-0 flex-1 truncate font-mono select-text">
-            {config.repoKey}
-          </span>
-          <Badge variant="outline">
-            {FORGE_NAMES[config.forge] ?? config.forge}
-          </Badge>
-          <Badge variant={config.credential ? "secondary" : "outline"}>
-            {config.credential
-              ? (config.accountLogin ?? t("forge.settings.credential"))
-              : t("forge.settings.noCredential")}
-          </Badge>
-          <Button
-            size="sm"
-            variant="ghost"
-            className="min-h-10"
-            disabled={busy}
-            onClick={() =>
-              setDraft({
-                repoKey: config.repoKey,
-                forge: config.forge === "gitlab" ? "gitlab" : "gitea",
-                apiBase: siteRoot(config.apiBase),
-                token: "",
-                revision: config.revision,
-              })
-            }
+      <Loadable
+        loading={configs.isLoading}
+        skeleton={
+          <SkeletonList
+            rows={2}
+            label={t("state.loading")}
+            rowClassName="h-16 px-4"
+          />
+        }
+      >
+        {configs.isError && (
+          <p
+            role="status"
+            className="px-4 py-3 text-[12px] text-destructive"
+            data-slot="forge-configs-error"
           >
-            {t("forge.settings.edit")}
-          </Button>
-          <Button
-            size="sm"
-            variant="ghost"
-            className="min-h-10 text-destructive"
-            disabled={busy}
-            onClick={() => remove.mutate(config)}
+            {t(forgeFailureKey(configs.error))}
+          </p>
+        )}
+        {configs.data && rows.length === 0 && draft === null && (
+          <p className="px-4 py-3 text-[12px] text-muted-foreground">
+            {t("forge.settings.empty")}
+          </p>
+        )}
+        {rows.map((config) => (
+          <div
+            key={config.repoKey}
+            data-slot="forge-config"
+            data-key={config.repoKey}
+            className="flex min-w-0 flex-wrap items-center gap-2 px-4 py-3 text-[12px]"
           >
-            {t("forge.settings.remove")}
-          </Button>
-        </div>
-      ))}
+            <span className="min-w-0 flex-1 truncate font-mono select-text">
+              {config.repoKey}
+            </span>
+            <Badge variant="outline">
+              {FORGE_NAMES[config.forge] ?? config.forge}
+            </Badge>
+            <Badge variant={config.credential ? "secondary" : "outline"}>
+              {config.credential
+                ? (config.accountLogin ?? t("forge.settings.credential"))
+                : t("forge.settings.noCredential")}
+            </Badge>
+            <Button
+              size="sm"
+              variant="ghost"
+              className="min-h-10"
+              disabled={busy}
+              onClick={() =>
+                setDraft({
+                  repoKey: config.repoKey,
+                  forge: config.forge === "gitlab" ? "gitlab" : "gitea",
+                  apiBase: siteRoot(config.apiBase),
+                  token: "",
+                  revision: config.revision,
+                })
+              }
+            >
+              {t("forge.settings.edit")}
+            </Button>
+            <Button
+              size="sm"
+              variant="ghost"
+              className="min-h-10 text-destructive"
+              disabled={busy}
+              onClick={() => remove.mutate(config)}
+            >
+              {t("forge.settings.remove")}
+            </Button>
+          </div>
+        ))}
+      </Loadable>
       {draft ? (
         <form
           data-slot="forge-config-form"

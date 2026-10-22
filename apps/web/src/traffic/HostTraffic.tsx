@@ -16,6 +16,8 @@ import {
 import { useT } from "../app/preferences-store";
 import { formatBytes } from "../lib/format";
 import { useRuntimeSettings } from "../panels/settings/use-runtime-settings";
+import { Loadable } from "@/loading/Loadable";
+import { Skeleton } from "@/ui/skeleton";
 import { Badge } from "@/ui/badge";
 import {
   Card,
@@ -162,43 +164,75 @@ export function HostTraffic() {
           </ToggleGroup>
         </div>
         <TrafficTrend fromMs={fromOf(range, now)} toMs={now + DAY_MS} />
-        <TrafficBreakdown
-          up={totals.up}
-          down={totals.down}
-          streams={totals.streams}
-          rows={breakdown}
-          clearTitle={t("traffic.clearHost")}
-          onClear={() => clear.mutate()}
-          footer={
-            <Select
-              value={String(retention)}
-              disabled={!settings.data}
-              onValueChange={(value) =>
-                save.mutate(
-                  { traffic: { retentionDays: Number(value) } },
-                  {
-                    onSuccess: () =>
-                      void queryClient.invalidateQueries({
-                        queryKey: TRAFFIC_QUERY_KEY,
-                      }),
-                  },
-                )
-              }
-            >
-              <SelectTrigger size="sm" aria-label={t("traffic.retention")}>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {TRAFFIC_RETENTION_CHOICES.map((days) => (
-                  <SelectItem key={days} value={String(days)}>
-                    {t("traffic.retention.days", { days })}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          }
-        />
+        <Loadable
+          loading={summary.isLoading}
+          skeleton={<TrafficSkeleton label={t("state.loading")} />}
+        >
+          <TrafficBreakdown
+            up={totals.up}
+            down={totals.down}
+            streams={totals.streams}
+            rows={breakdown}
+            clearTitle={t("traffic.clearHost")}
+            onClear={() => clear.mutate()}
+            footer={
+              <Select
+                value={String(retention)}
+                disabled={!settings.data}
+                onValueChange={(value) =>
+                  save.mutate(
+                    { traffic: { retentionDays: Number(value) } },
+                    {
+                      onSuccess: () =>
+                        void queryClient.invalidateQueries({
+                          queryKey: TRAFFIC_QUERY_KEY,
+                        }),
+                    },
+                  )
+                }
+              >
+                <SelectTrigger size="sm" aria-label={t("traffic.retention")}>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {TRAFFIC_RETENTION_CHOICES.map((days) => (
+                    <SelectItem key={days} value={String(days)}>
+                      {t("traffic.retention.days", { days })}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            }
+          />
+        </Loadable>
       </CardContent>
     </Card>
+  );
+}
+
+/** 流量段首取时的占位：三格 + 三条分项（趋势柱区自带占位），与 `TrafficBreakdown` 同一套间距。 */
+function TrafficSkeleton({ label }: { label: string }) {
+  return (
+    <div
+      data-slot="traffic-skeleton"
+      role="status"
+      aria-busy="true"
+      aria-label={label}
+      className="flex flex-col gap-4"
+    >
+      <div className="grid grid-cols-3 gap-2">
+        {[0, 1, 2].map((cell) => (
+          <Skeleton key={cell} className="h-[62px]" />
+        ))}
+      </div>
+      <div className="flex flex-col gap-3">
+        {[0, 1, 2].map((row) => (
+          <div key={row} className="flex flex-col gap-1.5">
+            <Skeleton className="h-4 w-1/3" />
+            <Skeleton className="h-2 w-full" />
+          </div>
+        ))}
+      </div>
+    </div>
   );
 }

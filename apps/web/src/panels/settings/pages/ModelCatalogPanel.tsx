@@ -6,6 +6,7 @@ import { localRuntimeApi } from "../../../api/client";
 import { useT } from "../../../app/preferences-store";
 import { formatRelativeTime } from "../../../lib/format";
 import { SettingsGroup } from "../SettingsGroup";
+import { ValueLoadable } from "../SettingsLoadable";
 import { SettingsRow } from "../SettingsRow";
 import { Button } from "@/ui/button";
 
@@ -58,14 +59,16 @@ export function ModelCatalogPanel() {
         </span>
       </SettingsRow>
       <SettingsRow label={t("settings.priceUpdated")}>
-        <span className="text-right text-xs text-muted-foreground">
-          {updated}
-          {document
-            ? ` · ${t("settings.priceModelCount", {
-                count: document.pricedModels,
-              })}`
-            : ""}
-        </span>
+        <ValueLoadable loading={catalog.isLoading} className="h-4 w-32">
+          <span className="text-right text-xs text-muted-foreground">
+            {updated}
+            {document
+              ? ` · ${t("settings.priceModelCount", {
+                  count: document.pricedModels,
+                })}`
+              : ""}
+          </span>
+        </ValueLoadable>
       </SettingsRow>
       {failed && (
         <SettingsRow label={null}>
