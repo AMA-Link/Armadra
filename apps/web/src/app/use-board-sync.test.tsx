@@ -217,6 +217,13 @@ afterEach(() => {
 });
 
 describe("useBoardSync", () => {
+  it("canvasLoading：文档到位前为真（画布骨架的依据），到位后为假", async () => {
+    const { result } = renderHook(() => useBoardSync(), { wrapper });
+    expect(result.current.canvasLoading).toBe(true);
+    await waitFor(() => expect(positionOf()).toBe(0));
+    await waitFor(() => expect(result.current.canvasLoading).toBe(false));
+  });
+
   it("`board.changed` 带着别人的版本号时重取并把改动合进来", async () => {
     renderHook(() => useBoardSync(), { wrapper });
     await waitFor(() => expect(positionOf()).toBe(0));
