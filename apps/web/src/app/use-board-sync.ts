@@ -306,7 +306,16 @@ export function useBoardSync() {
     return () => window.removeEventListener("beforeunload", guard);
   }, [saveState]);
 
-  return { boards, board };
+  /**
+   * 画布区是否还在等首批数据：没有工作空间时看工作空间列表，有工作空间时看
+   * 画布列表与文档。出错、或工作空间里确实没有画布，都不算在等。
+   */
+  const canvasLoading = workspace
+    ? !documentLoaded &&
+      (boards.isPending || (boardId !== null && board.isPending))
+    : workspaces.isPending;
+
+  return { boards, board, canvasLoading };
 }
 
 /** 心跳间隔；core 按三次没到算断开（core JSON §9.1）。 */

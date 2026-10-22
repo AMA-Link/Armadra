@@ -24,6 +24,7 @@ import { ScrollArea } from "@/ui/scroll-area";
 import { runtimeApi } from "@/api/client";
 import { useCanvasStore } from "@/store/canvas-store";
 import { useT } from "@/app/preferences-store";
+import { DiffSkeleton } from "./NodeSkeletons";
 import { NodeShell } from "./NodeShell";
 import type { NodeBodyProps } from "./registry";
 
@@ -124,6 +125,7 @@ export function DiffNode({ node, selected }: NodeBodyProps) {
             <Badge variant="destructive">{t("diff.failed")}</Badge>
           </div>
         )}
+        {!failed && files === null && workspaceId && <DiffSkeleton />}
         {!failed && files && files.length === 0 && (
           <div className="p-2">
             <Badge variant="outline">{t("diff.clean")}</Badge>

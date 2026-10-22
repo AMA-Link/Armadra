@@ -24,7 +24,8 @@ import { TimelineView } from "@/timeline/view/TimelineView";
 import { Alert, AlertAction, AlertTitle } from "@/ui/alert";
 import { Button } from "@/ui/button";
 import { Empty, EmptyHeader, EmptyTitle } from "@/ui/empty";
-import { Skeleton } from "@/ui/skeleton";
+import { DeferredSkeleton } from "@/loading/DeferredSkeleton";
+import { SkeletonTurns } from "@/ui/skeletons";
 import { Spinner } from "@/ui/spinner";
 import { filesOf } from "@/terminal/file-paste";
 import { acpApi } from "./api";
@@ -759,11 +760,9 @@ export function SessionView({
             {...(initialRect === undefined ? {} : { initialRect })}
           />
         ) : (
-          <>
-            <Skeleton className="h-4 w-2/3 self-end" />
-            <Skeleton className="h-4 w-full" />
-            <Skeleton className="h-4 w-4/5" />
-          </>
+          <DeferredSkeleton>
+            <SkeletonTurns label={t("state.loading")} className="p-0" />
+          </DeferredSkeleton>
         )}
       </div>
     );
@@ -797,6 +796,7 @@ export function SessionView({
         activity={activity}
         loading={timelineLoading}
         onLoadOlder={feed.hasMore ? feed.loadMore : undefined}
+        loadingMore={feed.loadingMore}
         resetKey={sessionId ?? undefined}
         services={services}
         renderApproval={renderApproval}

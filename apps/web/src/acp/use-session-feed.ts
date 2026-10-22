@@ -29,6 +29,8 @@ export interface SessionFeed {
   activity: SessionActivity | undefined;
   promptCapabilities: AcpPromptCapabilities | null;
   hasMore: boolean;
+  /** 正在取更早的一页（列表顶部显示占位条）。 */
+  loadingMore: boolean;
   /** 滚到顶部附近：取更早的一页。 */
   loadMore(): void;
   loadBlob: (blobId: string) => Promise<Blob>;
@@ -96,6 +98,7 @@ export function useSessionFeed(options: {
     activity,
     promptCapabilities: timeline.head.promptCapabilities ?? null,
     hasMore: timeline.hasMore,
+    loadingMore: timeline.loadingMore,
     loadMore,
     loadBlob,
     retry,

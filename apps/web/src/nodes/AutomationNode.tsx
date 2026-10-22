@@ -23,6 +23,7 @@ import {
 import { openAutomationPanel } from "@/panels/automation/open";
 import { featureEnabled } from "@/lib/features";
 import { usePreferencesStore, useT } from "@/app/preferences-store";
+import { AutomationSkeleton } from "./NodeSkeletons";
 import { NodeShell } from "./NodeShell";
 import type { NodeBodyProps } from "./registry";
 
@@ -137,9 +138,7 @@ export function AutomationNode({ id, node, selected }: NodeBodyProps) {
             {t(unavailable)}
           </p>
         ) : !plan ? (
-          <p role="status" className="text-muted-foreground">
-            {t("automation.loading")}
-          </p>
+          <AutomationSkeleton />
         ) : (
           <>
             <div className="flex flex-wrap items-center gap-2">
