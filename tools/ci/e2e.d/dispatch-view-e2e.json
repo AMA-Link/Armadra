@@ -1,0 +1,8 @@
+{
+  "id": "dispatch-view-e2e",
+  "tier": "a",
+  "script": "tools/probes/dispatch-view-e2e.mjs",
+  "args": ["{out}"],
+  "requires": ["tmux", "chrome"],
+  "timeoutMinutes": 10
+}
