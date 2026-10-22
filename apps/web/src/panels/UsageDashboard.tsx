@@ -105,62 +105,64 @@ function DashboardBody() {
   const summary = cost.data;
 
   return (
-    <div className="flex flex-col gap-4 p-3">
-      <div className="flex items-center justify-between gap-2">
-        <span className="text-xs text-muted-foreground">
-          {cooldown > 0
-            ? t("usage.cooldown", { seconds: cooldown })
-            : t("usage.cadence")}
-        </span>
-        <IconButton
-          label={t("usage.refresh")}
-          disabled={!usageEnabled || refreshing || cooldown > 0}
-          onClick={() => {
-            refresh.mutate();
-            if (costEnabled) rescan.mutate();
-          }}
-        >
-          <RefreshCw className={refreshing ? "animate-spin" : undefined} />
-        </IconButton>
-      </div>
+    <div className="flex flex-col gap-(--space-section) p-(--space-page)">
+      <div className="flex flex-col gap-(--space-group)">
+        <div className="flex items-center justify-between gap-2">
+          <span className="text-xs text-muted-foreground">
+            {cooldown > 0
+              ? t("usage.cooldown", { seconds: cooldown })
+              : t("usage.cadence")}
+          </span>
+          <IconButton
+            label={t("usage.refresh")}
+            disabled={!usageEnabled || refreshing || cooldown > 0}
+            onClick={() => {
+              refresh.mutate();
+              if (costEnabled) rescan.mutate();
+            }}
+          >
+            <RefreshCw className={refreshing ? "animate-spin" : undefined} />
+          </IconButton>
+        </div>
 
-      {!usageEnabled ? (
-        <p role="status" className="text-xs text-muted-foreground">
-          {t("usage.paused")}
-        </p>
-      ) : (
-        <Loadable
-          loading={usage.isLoading}
-          skeleton={
-            <div
-              role="status"
-              aria-label={t("state.loading")}
-              className="flex flex-col gap-2"
-            >
-              <Skeleton className="h-24 w-full rounded-[var(--r-card)]" />
-              <Skeleton className="h-24 w-full rounded-[var(--r-card)]" />
+        {!usageEnabled ? (
+          <p role="status" className="text-xs text-muted-foreground">
+            {t("usage.paused")}
+          </p>
+        ) : (
+          <Loadable
+            loading={usage.isLoading}
+            skeleton={
+              <div
+                role="status"
+                aria-label={t("state.loading")}
+                className="flex flex-col gap-2"
+              >
+                <Skeleton className="h-24 w-full rounded-[var(--r-card)]" />
+                <Skeleton className="h-24 w-full rounded-[var(--r-card)]" />
+              </div>
+            }
+          >
+            <div className="flex flex-col gap-(--space-group)">
+              {providers.map((provider) => (
+                <ProviderCard
+                  key={provider.id}
+                  provider={
+                    usage.isError ? { ...provider, status: "error" } : provider
+                  }
+                  now={now}
+                />
+              ))}
             </div>
-          }
-        >
-          <div className="flex flex-col gap-2">
-            {providers.map((provider) => (
-              <ProviderCard
-                key={provider.id}
-                provider={
-                  usage.isError ? { ...provider, status: "error" } : provider
-                }
-                now={now}
-              />
-            ))}
-          </div>
-        </Loadable>
-      )}
+          </Loadable>
+        )}
+      </div>
 
       <Separator />
 
       <section
         aria-label={t("usage.cost.title")}
-        className="flex flex-col gap-3"
+        className="flex flex-col gap-(--space-group)"
       >
         <h2 className="text-sm font-medium">{t("usage.cost.title")}</h2>
         {!costEnabled || summary?.status === "disabled" ? (

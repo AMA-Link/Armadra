@@ -9,5 +9,13 @@ interface ArmadraBridge {
     openSource(request: {
       sourceId: string;
     }): Promise<{ readonly opened: boolean }>;
+    /**
+     * 主题偏好与半透明开关（`window:appearance`，#474）：壳写 `nativeTheme`、
+     * 按开关挂摘 vibrancy。旧版本的壳没有这一项。
+     */
+    setAppearance?(appearance: {
+      theme: "system" | "light" | "dark";
+      translucent: boolean;
+    }): Promise<{ readonly ok: boolean }>;
   };
 }

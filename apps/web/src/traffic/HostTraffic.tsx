@@ -133,7 +133,7 @@ export function HostTraffic() {
           </CardAction>
         )}
       </CardHeader>
-      <CardContent className="flex flex-col gap-4">
+      <CardContent className="flex flex-col gap-(--space-section)">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <Tabs
             value={range}
@@ -218,7 +218,7 @@ function TrafficSkeleton({ label }: { label: string }) {
       role="status"
       aria-busy="true"
       aria-label={label}
-      className="flex flex-col gap-4"
+      className="flex flex-col gap-(--space-section)"
     >
       <div className="grid grid-cols-3 gap-2">
         {[0, 1, 2].map((cell) => (

@@ -47,9 +47,9 @@ export function HostCard({
     <section
       data-slot="host-card"
       data-location={host.location}
-      className="rounded-[var(--r-card)] border border-border p-3"
+      className="flex flex-col gap-(--space-group) rounded-[var(--r-card)] border border-border p-3"
     >
-      <header className="mb-2 flex items-center gap-2">
+      <header className="flex items-center gap-2">
         <h3 className="text-[13px] font-semibold">{t("resources.host")}</h3>
         {name !== undefined && (
           <Badge variant="secondary" className="max-w-40 truncate text-[11px]">

@@ -75,6 +75,8 @@ describe("the IPC table", () => {
         "app:share",
         // A7-1: the switch-service dialog opens a source in a new window.
         "window:open",
+        // #474: theme preference and the translucent-window switch.
+        "window:appearance",
         // G5-19: the page's own JS errors, opt-in (contract §30).
         "diagnostics:report",
       ].sort(),

@@ -116,7 +116,7 @@ function SettingsBody({ onClose }: { onClose: () => void }) {
     <div className="settings-layout flex h-full min-h-0 flex-row">
       <nav
         aria-label={t("settings.title")}
-        className="settings-navigation flex h-full w-[clamp(176px,16%,240px)] shrink-0 flex-col gap-3 overflow-y-auto border-r border-border bg-panel p-3"
+        className="settings-navigation flex h-full w-[clamp(176px,16%,240px)] shrink-0 flex-col gap-3 overflow-y-auto border-r border-border material-backdrop p-3"
       >
         {groups.map((group) => (
           <div key={group.groupKey} className="flex flex-col gap-0.5">
@@ -166,12 +166,12 @@ function SettingsBody({ onClose }: { onClose: () => void }) {
           key={subpage ?? active}
           data-testid="settings-page"
           data-section={active}
-          className="settings-page flex min-h-0 flex-1 flex-col overflow-y-auto px-6 pt-5 pb-8 duration-150 animate-in fade-in motion-reduce:animate-none"
+          className="settings-page flex min-h-0 flex-1 flex-col overflow-y-auto px-6 pt-6 pb-8 duration-150 animate-in fade-in motion-reduce:animate-none"
         >
           {/* 正文列随弹窗变宽：表格页（SSH、快捷键、设备）天然受益。 */}
           <div
             data-slot="settings-column"
-            className="flex w-full flex-col gap-6"
+            className="flex w-full flex-col gap-(--space-section)"
           >
             <Page />
           </div>

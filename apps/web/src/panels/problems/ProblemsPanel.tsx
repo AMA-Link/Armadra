@@ -59,7 +59,7 @@ export function ProblemsPanel() {
       </div>
 
       <ScrollArea className="min-h-0 flex-1">
-        <div className="flex flex-col gap-3 p-3">
+        <div className="flex flex-col gap-(--space-block) p-(--space-page)">
           {groups.length === 0 && (
             <p className="text-[12px] text-muted-foreground">
               {t("problems.empty")}
@@ -68,8 +68,11 @@ export function ProblemsPanel() {
           {groups.map((group) => {
             const path = pathOfUri(group.uri);
             return (
-              <div key={group.uri} className="min-w-0">
-                <p className="truncate pb-1 text-[12px] font-medium">
+              <div
+                key={group.uri}
+                className="flex min-w-0 flex-col gap-(--space-group)"
+              >
+                <p className="truncate text-[12px] font-medium">
                   {path ?? group.uri}
                 </p>
                 <ul className="flex flex-col">

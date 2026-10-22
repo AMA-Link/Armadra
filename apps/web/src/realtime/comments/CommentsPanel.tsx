@@ -46,7 +46,7 @@ export function CommentsPanelView({
   );
   return (
     <div data-slot="comments-panel" className="flex min-h-0 flex-1 flex-col">
-      <div className="flex items-center gap-2 px-4 pb-3">
+      <div className="flex items-center gap-2 px-(--space-page) pb-(--space-inset)">
         <Label htmlFor={switchId} className="ml-auto text-muted-foreground">
           {t("comments.onlyOpen")}
         </Label>
@@ -68,7 +68,7 @@ export function CommentsPanelView({
         </Empty>
       ) : (
         <ScrollArea className="min-h-0 flex-1">
-          <div className="flex flex-col gap-4 p-4">
+          <div className="flex flex-col gap-(--space-block) p-(--space-page)">
             {open.map((thread, index) => (
               <React.Fragment key={thread.root.id}>
                 {index > 0 && <Separator />}
@@ -81,7 +81,7 @@ export function CommentsPanelView({
                   <AccordionTrigger>
                     {t("comments.resolvedCount", { count: resolved.length })}
                   </AccordionTrigger>
-                  <AccordionContent className="flex flex-col gap-4">
+                  <AccordionContent className="flex flex-col gap-(--space-block)">
                     {resolved.map((thread) => (
                       <React.Fragment key={thread.root.id}>
                         {renderThread(thread, { compact: true })}

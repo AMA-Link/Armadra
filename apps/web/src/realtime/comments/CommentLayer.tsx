@@ -431,7 +431,7 @@ function Comments({
                 </PopoverTrigger>
                 <PopoverContent align="start" className="w-80 p-0">
                   <ScrollArea className="max-h-[420px]">
-                    <div className="flex flex-col gap-4 p-3">
+                    <div className="flex flex-col gap-(--space-block) p-(--space-inset)">
                       {clusterThreads.map((thread, index) => (
                         <React.Fragment key={thread.root.id}>
                           {index > 0 && <Separator />}

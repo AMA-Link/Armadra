@@ -334,6 +334,33 @@ describe("tokens.css", () => {
     }
   });
 
+  it("间距层级由内向外递增，区块间距拉得开（§2.7）", () => {
+    const px = (name: string) =>
+      Number((dark.get(name) ?? "").replace("px", ""));
+    const item = px("--space-item");
+    const group = px("--space-group");
+    const inset = px("--space-inset");
+    const block = px("--space-block");
+    const section = px("--space-section");
+    for (const value of [
+      item,
+      group,
+      inset,
+      block,
+      section,
+      px("--space-page"),
+    ]) {
+      expect(value % 4).toBe(0);
+      expect(value).toBeGreaterThan(0);
+    }
+    expect(item).toBeLessThanOrEqual(group);
+    expect(group).toBeLessThan(inset);
+    expect(inset).toBeLessThanOrEqual(block);
+    expect(block).toBeLessThan(section);
+    expect(section).toBeGreaterThanOrEqual(2 * inset);
+    expect(section).toBeGreaterThanOrEqual(1.5 * block);
+  });
+
   it("字号阶梯是 17/15/13/11，没有 11px 以下的档位", () => {
     expect(dark.get("--text-title")).toBe("17px");
     expect(dark.get("--text-section")).toBe("15px");

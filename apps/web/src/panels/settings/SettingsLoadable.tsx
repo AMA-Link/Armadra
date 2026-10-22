@@ -104,7 +104,7 @@ export function TableCardSkeleton({
   );
   if (title === undefined) return card;
   return (
-    <section className="flex min-w-0 flex-col gap-2">
+    <section className="flex min-w-0 flex-col gap-(--space-group)">
       <h3 className="px-0.5 text-[13px] font-medium">{title}</h3>
       {card}
     </section>

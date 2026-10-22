@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 
 const access = vi.hoisted(() => ({ member: false, remote: false }));
 const settings = vi.hoisted(() => ({
@@ -100,5 +100,33 @@ describe("设置 → 默认（§2.2 映射）", () => {
       screen.getByRole("combobox", { name: zh("acp.settings.defaultDriver") }),
     );
     expect(labels).toEqual([zh("acp.view.session"), zh("acp.view.terminal")]);
+  });
+});
+
+describe("设置 → 默认：背景色板（#474）", () => {
+  it("五格按顺序排开，当前那格按下；点一格就换", () => {
+    usePreferencesStore.setState({ backdrop: "plain" });
+    render(<DefaultsPage />);
+    const group = screen.getByRole("radiogroup", {
+      name: zh("settings.backdrop"),
+    });
+    const items = Array.from(group.querySelectorAll("button"));
+    expect(items.map((item) => item.getAttribute("aria-label"))).toEqual(
+      ["plain", "petal", "mist", "meadow", "dusk"].map((id) =>
+        zh(`settings.backdrop.${id}`),
+      ),
+    );
+    expect(items[0]!.getAttribute("data-state")).toBe("on");
+    fireEvent.click(
+      screen.getByRole("radio", { name: zh("settings.backdrop.meadow") }),
+    );
+    expect(usePreferencesStore.getState().backdrop).toBe("meadow");
+  });
+
+  it("网页里没有半透明窗口开关", () => {
+    render(<DefaultsPage />);
+    expect(
+      screen.queryByRole("switch", { name: zh("settings.translucentWindow") }),
+    ).toBeNull();
   });
 });

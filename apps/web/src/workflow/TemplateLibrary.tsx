@@ -130,7 +130,7 @@ export function TemplateLibrary({
     <>
       <div
         data-slot="workflow-library"
-        className="grid min-w-0 grid-cols-[repeat(auto-fill,minmax(200px,1fr))] gap-3"
+        className="grid min-w-0 grid-cols-[repeat(auto-fill,minmax(200px,1fr))] gap-(--space-group)"
       >
         {templates.map((template) => {
           const stats = templateStats(template, runs);

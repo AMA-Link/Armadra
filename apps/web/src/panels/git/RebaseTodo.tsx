@@ -142,7 +142,7 @@ export function RebaseTodo({
         {entries.map((entry, index) => (
           <li
             key={entry.oid}
-            className="min-w-0 space-y-1 rounded-md border border-border p-2"
+            className="min-w-0 space-y-2 rounded-md border border-border p-3"
           >
             <p className="break-words">{subject(entry.oid)}</p>
             <p className="break-all font-mono text-muted-foreground">

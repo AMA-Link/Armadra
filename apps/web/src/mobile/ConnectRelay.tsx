@@ -62,7 +62,7 @@ export function RelayForm({
   };
   return (
     <form
-      className="flex flex-col gap-4"
+      className="flex flex-col gap-(--space-block)"
       onSubmit={(event) => {
         event.preventDefault();
         if (ready && !busy) onSubmit({ issuer, account, password });
@@ -165,7 +165,7 @@ export function FingerprintStep({
 }: FingerprintStepProps) {
   const t = useT();
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex flex-col gap-(--space-block)">
       <div className="flex flex-col gap-2">
         <p className="font-mono text-[13px] text-muted-foreground tabular-nums">
           {host}
@@ -241,7 +241,7 @@ export function SourcesStep({
       return next;
     });
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex flex-col gap-(--space-block)">
       <ItemGroup className="gap-2" role="group">
         {sources.map((source) => (
           <Item

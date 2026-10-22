@@ -16,6 +16,7 @@ import {
 } from "../terminal/render-budget";
 import { effectiveRenderBudget } from "../terminal/renderer-policy";
 import { syncNativeStatusBar } from "../mobile/status-bar";
+import { BACKDROPS, type Backdrop } from "./backdrops";
 import { activeSourceId, scoped } from "../sources/scope";
 import {
   COLLAPSED_WORKSPACES_KEY,
@@ -84,6 +85,9 @@ export const THEME_PREFERENCES: readonly ThemePreference[] = [
 ];
 
 const THEME_KEY = "armadra.theme";
+/** 窗口背景色板与半透明窗口（#474）。只存本地。 */
+const BACKDROP_KEY = "armadra.backdrop";
+const TRANSLUCENT_KEY = "armadra.translucentWindow";
 const LOCALE_KEY = "armadra.locale";
 /** 侧栏「项目」组里收起来的工作空间（§26；默认展开，所以存的是收起的那些）。 */
 /** 侧栏「置顶」组里的画布 id（§26）。 */
@@ -218,6 +222,10 @@ export const SESSION_MEMORY_WARN_RANGE = [
 
 export interface PreferencesState {
   theme: ThemePreference;
+  /** 窗口背景色板（`styles/backdrops.css`）；`plain` 即改动之前的样子。 */
+  backdrop: Backdrop;
+  /** 桌面壳：窗口底色透出系统材质（macOS vibrancy）。网页与手机上不起作用。 */
+  translucentWindow: boolean;
   locale: Locale;
   systemTheme: ResolvedTheme;
   /**
@@ -286,6 +294,8 @@ export interface PreferencesState {
    */
   git: GitPreferences;
   setTheme: (theme: ThemePreference) => void;
+  setBackdrop: (backdrop: Backdrop) => void;
+  setTranslucentWindow: (translucent: boolean) => void;
   setLocale: (locale: Locale) => void;
   setSystemTheme: (theme: ResolvedTheme) => void;
   /** `sourceId` 省略 = 当前源。 */
@@ -344,6 +354,8 @@ migrateSourceScopedPreferences();
 
 export const usePreferencesStore = create<PreferencesState>((set, get) => ({
   theme: storedEnum(THEME_KEY, THEME_PREFERENCES, "system"),
+  backdrop: storedEnum(BACKDROP_KEY, BACKDROPS, "plain"),
+  translucentWindow: storedBoolean(TRANSLUCENT_KEY, true),
   locale: storedEnum(LOCALE_KEY, LOCALES, DEFAULT_LOCALE),
   systemTheme: systemColorScheme(),
   openWorkspaceKeys: storedScopedIds(OPEN_WORKSPACES_KEY, "workspaceId"),
@@ -399,6 +411,14 @@ export const usePreferencesStore = create<PreferencesState>((set, get) => ({
   setTheme(theme) {
     writeStored(THEME_KEY, theme);
     set({ theme });
+  },
+  setBackdrop(backdrop) {
+    writeStored(BACKDROP_KEY, backdrop);
+    set({ backdrop });
+  },
+  setTranslucentWindow(translucentWindow) {
+    writeStored(TRANSLUCENT_KEY, String(translucentWindow));
+    set({ translucentWindow });
   },
   setLocale(locale) {
     writeStored(LOCALE_KEY, locale);
@@ -622,9 +642,44 @@ export function useResolvedTheme(): ResolvedTheme {
  */
 export function applyInitialTheme(): void {
   if (typeof document === "undefined") return;
-  const resolved = resolveTheme(usePreferencesStore.getState());
+  const state = usePreferencesStore.getState();
+  const resolved = resolveTheme(state);
   document.documentElement.dataset.theme = resolved;
   document.documentElement.style.colorScheme = resolved;
+  applyBackdrop(document.documentElement, state);
+}
+
+/**
+ * 背景色板与半透明开关写到 `<html>` 上（`styles/backdrops.css` 盯着这两个属性）。
+ * 首帧之前与每次偏好变化都走这里。
+ */
+function applyBackdrop(root: HTMLElement, state: PreferencesState): void {
+  root.dataset.backdrop = state.backdrop;
+  root.dataset.translucent = String(state.translucentWindow);
+}
+
+/**
+ * 主题偏好与半透明开关交给桌面壳（`window:appearance`，#474）：系统材质跟着
+ * 应用主题走，关掉半透明时壳摘 vibrancy。送的是偏好不是解析值——壳写进
+ * `nativeTheme.themeSource`，`system` 才能一直跟着系统。只在两者变了时送。
+ */
+let sentAppearance = "";
+
+function syncShellAppearance(state: PreferencesState): void {
+  if (typeof window === "undefined") return;
+  const setAppearance = window.armadra?.windows?.setAppearance;
+  if (setAppearance === undefined) return;
+  const appearance = {
+    theme: state.theme,
+    translucent: state.translucentWindow,
+  };
+  const key = `${appearance.theme}:${appearance.translucent}`;
+  if (key === sentAppearance) return;
+  sentAppearance = key;
+  void setAppearance(appearance).catch(() => {
+    // 壳拒了（旧版本、正在退出）：下次变化再送，页面自己的样式照样生效
+    sentAppearance = "";
+  });
 }
 
 /**
@@ -642,6 +697,8 @@ export function syncDocumentPreferences(): () => void {
     const root = document.documentElement;
     root.dataset.theme = resolved;
     root.style.colorScheme = resolved;
+    applyBackdrop(root, state);
+    syncShellAppearance(state);
     syncNativeStatusBar(resolved);
     root.lang = state.locale;
     applyRenderBudget(

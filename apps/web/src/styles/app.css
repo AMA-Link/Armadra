@@ -9,6 +9,7 @@
 @import "tailwindcss";
 /* tokens 必须排在 tailwindcss 之后：同名变量（--radius-* 等）以我们的为准 */
 @import "./tokens.css";
+@import "./backdrops.css";
 /* 下面两行由 shadcn CLI 写入：tw-animate-css 提供 animate-in/out 工具类，
    shadcn/tailwind.css 提供 data-open / data-closed 等自定义 variant。 */
 @import "tw-animate-css";
@@ -207,7 +208,33 @@
    */
   .material-sidebar {
     background: var(--sidebar-material);
+    /* 色板渐变按整扇窗口定位：侧栏与标题栏拼成同一张（`backdrops.css`） */
+    background-image: var(--backdrop-image);
+    background-attachment: fixed;
     backdrop-filter: saturate(180%) blur(20px);
+  }
+
+  /*
+   * 自成一扇「窗」的外框（设置弹窗左栏）：叠在画布之上，所以永远不透明；
+   * 渐变按自己的盒子铺。`plain` 下就是 `--panel`。
+   */
+  .material-backdrop {
+    background-color: var(--panel);
+    background-image: var(--backdrop-solid);
+  }
+
+  /* 设置页里的色板预览：`data-backdrop-swatch` 给出这一格自己的三个停点 */
+  .backdrop-swatch {
+    background-color: var(--panel);
+  }
+
+  .backdrop-swatch:not([data-backdrop-swatch="plain"]) {
+    background-image: linear-gradient(
+      135deg,
+      var(--backdrop-a),
+      var(--backdrop-b) 45%,
+      var(--backdrop-c)
+    );
   }
 
   /* §24.2 动效：hover/选中 150ms，只动颜色与不透明度，不动尺寸 */

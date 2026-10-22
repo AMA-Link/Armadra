@@ -199,7 +199,7 @@ export function SignIn({
   return (
     <div
       data-slot="sign-in"
-      className="mx-auto flex w-full max-w-[360px] flex-col gap-5 py-6"
+      className="mx-auto flex w-full max-w-[360px] flex-col gap-(--space-section) py-6"
     >
       <div className="flex flex-col items-center gap-3">
         <BrandMark className="size-12" />

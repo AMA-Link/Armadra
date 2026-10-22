@@ -249,6 +249,16 @@
     monospace;
   --font-mono: var(--font-code);
 
+  /* ── 间距层级（设计系统 §2.7）：由内向外只增不减 ──────────────────
+     控件内 4 ≤ 同组 8 < 容器内边距 12 ≤ 子块 16 < 区块 24；面板外边距 16。
+     容器内边距大于同级容器之间的空隙；区块间距至少是区块内最大间距的 2 倍。 */
+  --space-item: 4px;
+  --space-group: 8px;
+  --space-inset: 12px;
+  --space-block: 16px;
+  --space-section: 24px;
+  --space-page: 16px;
+
   /* ── 布局常量（§3.1） ───────────────────────────────────────────── */
   --tabbar-h: 44px;
   --sidebar-w: 240px;

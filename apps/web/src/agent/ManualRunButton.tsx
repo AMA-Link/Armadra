@@ -79,20 +79,25 @@ export function ManualRunButton({ nodeId }: { nodeId: string }) {
               {t("run.manual.description")}
             </ResponsiveDialogDescription>
           </ResponsiveDialogHeader>
-          <form onSubmit={(event) => void submit(event)} className="space-y-4">
-            <label htmlFor={`run-prompt-${nodeId}`} className="text-sm">
-              {t("run.manual.prompt")}
-            </label>
-            <Textarea
-              id={`run-prompt-${nodeId}`}
-              value={prompt}
-              disabled={saving}
-              maxLength={2000}
-              onChange={(event) => {
-                setPrompt(event.target.value);
-                frozen.current = null;
-              }}
-            />
+          <form
+            onSubmit={(event) => void submit(event)}
+            className="flex flex-col gap-(--space-block)"
+          >
+            <div className="flex flex-col gap-(--space-group)">
+              <label htmlFor={`run-prompt-${nodeId}`} className="text-sm">
+                {t("run.manual.prompt")}
+              </label>
+              <Textarea
+                id={`run-prompt-${nodeId}`}
+                value={prompt}
+                disabled={saving}
+                maxLength={2000}
+                onChange={(event) => {
+                  setPrompt(event.target.value);
+                  frozen.current = null;
+                }}
+              />
+            </div>
             <ResponsiveDialogFooter>
               <Button type="submit" disabled={saving || !prompt.trim()}>
                 {saving ? t("run.manual.starting") : t("run.manual.start")}

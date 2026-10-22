@@ -61,7 +61,7 @@ export function EditPreviewDialog() {
         if (!next) store.getState().close();
       }}
     >
-      <ResponsiveDialogContent className="flex max-h-[80vh] w-[min(92vw,52rem)] max-w-none flex-col gap-3">
+      <ResponsiveDialogContent className="flex max-h-[80vh] w-[min(92vw,52rem)] max-w-none flex-col gap-(--space-block)">
         <ResponsiveDialogHeader>
           <ResponsiveDialogTitle>
             {preview?.title ?? t("lsp.preview.title")}
