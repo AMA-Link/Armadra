@@ -5,15 +5,15 @@
 
 ## §0 结论
 
-| #   | 决定                                                                                                                                                        | 依据                           |
-| --- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------ |
-| 1   | 控制台是 `apps/web` 的第五种入口 `console`，由 `app.armadra.com` 托管；不进桌面壳、服务器壳与手机 App 的产物路径                                            | 能力设计 §8、Q6                |
-| 2   | 不引入路由库：`apps/web/src/cloud/router.ts` 用 History API + 一张类型化路由表（约 80 行），地址是唯一真相                                                  | 现有代码没有路由库；包体       |
-| 3   | 不新增 shadcn 组件：导航沿用设置页的 `settings-navigation` 样式，空间切换用 `DropdownMenu`，选人用 `Popover` + `Command`，配额用 `Progress`，图表用 `chart` | 设计系统 §3.2「不加」清单      |
-| 4   | 一份列定义两种渲染：≥768 渲染 `Table`，≤767 渲染 `Item` 列表，次要列折进第二行 11px                                                                         | 设计系统 §5.13；TUI §1 第 7 条 |
-| 5   | 主机的工作空间范围授予只在客户端分享弹层里做；控制台的授予范围只有「整台」；按标签授予等契约补上（§6.5）                                                    | 云端看不到工作空间列表         |
-| 6   | 运营后台同源同构建，路径 `/ops`，导航项与路由只在 `me.get` 带 `operator` 范围时存在；`admin.*` 对其他人一律 404                                             | 能力设计 §3.12、§7             |
-| 7   | 数据层：协议包 `cloudContract` + `OpenAPILink` 生成类型化客户端；同类型的内存 mock 先行，界面不等 Go 控制面                                                 | 能力设计 §7；Go 重写 G6        |
+| #   | 决定                                                                                                                                                                                                                                                                       | 依据                           |
+| --- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------ |
+| 1   | 控制台是 `apps/web` 的第五种入口 `console`，由 `app.armadra.com` 托管；不进桌面壳、服务器壳与手机 App 的产物路径                                                                                                                                                           | 能力设计 §8、Q6                |
+| 2   | 不引入路由库：`apps/web/src/cloud/router.ts` 用 History API + 一张类型化路由表（约 80 行），地址是唯一真相                                                                                                                                                                 | 现有代码没有路由库；包体       |
+| 3   | 不新增 shadcn 组件：导航沿用设置页的 `settings-navigation` 样式，空间切换用 `DropdownMenu`，选人用 `Popover` + `Command`，配额用 `Progress`（U1a 给 `ui/progress.tsx` 按 shadcn 的 cva 写法加 `tone` 变体：`default` / `warn` / `danger`，只改指示条颜色），图表用 `chart` | 设计系统 §3.2「不加」清单      |
+| 4   | 一份列定义两种渲染：≥768 渲染 `Table`，≤767 渲染 `Item` 列表，次要列折进第二行 11px                                                                                                                                                                                        | 设计系统 §5.13；TUI §1 第 7 条 |
+| 5   | 主机的工作空间范围授予只在客户端分享弹层里做；控制台的授予范围只有「整台」；按标签授予等契约补上（§6.5）                                                                                                                                                                   | 云端看不到工作空间列表         |
+| 6   | 运营后台同源同构建，路径 `/ops`，导航项与路由只在 `me.get` 带 `operator` 范围时存在；`admin.*` 对其他人一律 404                                                                                                                                                            | 能力设计 §3.12、§7             |
+| 7   | 数据层：协议包 `cloudContract` + `OpenAPILink` 生成类型化客户端；同类型的内存 mock 先行，界面不等 Go 控制面                                                                                                                                                                | 能力设计 §7；Go 重写 G6        |
 
 ## §1 范围与落点
 
@@ -40,14 +40,15 @@
 
 ### 1.3 鉴权
 
-| 项           | 规则                                                                                                                                             |
-| ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------ |
-| 控制台会话   | `__Host-armadra-cloud` Cookie（能力设计 §11.6）；页面不读不存令牌                                                                                |
-| 写操作       | 每个非 GET 带 `X-Armadra-CSRF`（值取自 `me.get` 响应头或 `auth.login` 结果，内存保存）；同一请求不同时带 Cookie 与 Bearer                        |
-| 401          | `unauthenticated` / `session_expired` / `session_revoked` → 清查询缓存，跳 `/login?next=<当前路径>`                                              |
-| 到主机的访问 | `sources/credentials.ts` 新增 `createBrowserCloudCredentialProvider()`：用 Cookie 会话调 `sources.assertion`，断言与中继令牌只在内存，关标签即丢 |
-| 运营范围     | `me.get` 的 `scopes` 含 `operator` 才渲染 `/ops`；进入 `/ops` 先过一次两步验证（`auth.mfaVerify`，10 分钟内有效）                                |
-| CSP          | 控制面下发，`connect-src` 覆盖 `*.src.armadra.com`；页面不内联脚本                                                                               |
+| 项           | 规则                                                                                                                                                                                                                            |
+| ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 控制台会话   | `__Host-armadra-cloud` Cookie（能力设计 §11.6）；页面不读不存令牌                                                                                                                                                               |
+| 写操作       | 每个非 GET 带 `X-Armadra-CSRF`：值取自 `auth.login` / `auth.mfaVerify` / `auth.refresh` 响应的 `csrfToken`，页面刷新后由 `me.get` 的 `csrfToken` 取回，只在内存（契约缺口，§6.5）；同一请求不同时带 Cookie 与 Bearer            |
+| 401          | `unauthenticated` / `session_expired` / `session_revoked` → 清查询缓存，跳 `/login?next=<当前路径>`                                                                                                                             |
+| 到主机的访问 | `sources/credentials.ts` 新增 `createBrowserCloudCredentialProvider()`：用 Cookie 会话调 `sources.assertion`，断言与中继令牌只在内存，关标签即丢                                                                                |
+| 运营范围     | 进 `/ops` 必须全新登录：跳 `/login?scope=operator&next=/ops`，口令 + 两步验证，登录结果是带 `operator` 范围的短时 Cookie 会话（1 小时）；过期回这一步。M1 不做「在已有会话上再验证」（`auth.stepUp`），两项都是契约缺口（§6.5） |
+| CSP          | 控制面下发，`connect-src` 覆盖 `*.src.armadra.com`；页面不内联脚本                                                                                                                                                              |
+| 支持         | 「联系支持」是 `mailto:`，地址来自构建配置 `VITE_ARMADRA_SUPPORT_EMAIL`（`cloud/config.ts`），缺省不渲染这个按钮                                                                                                                |
 
 ### 1.4 路由表
 
@@ -55,7 +56,7 @@
 
 | 路径                                     | 页面                                           |             期             |  登录  | 角色门槛（团队）                       |
 | ---------------------------------------- | ---------------------------------------------- | :------------------------: | :----: | -------------------------------------- |
-| `/login`                                 | 登录                                           |             M1             |   否   | —                                      |
+| `/login`、`/login?scope=operator`        | 登录（后者给运营后台）                         |             M1             |   否   | —                                      |
 | `/register`                              | 注册                                           |             M1             |   否   | —                                      |
 | `/verify?token=`                         | 验证邮箱                                       |             M1             |   否   | —                                      |
 | `/reset`、`/reset?token=`                | 找回口令 / 设新口令                            |             M1             |   否   | —                                      |
@@ -86,7 +87,7 @@
 | `/ops/abuse`                             | 滥用                                           |             M2             |   是   | 运营范围                               |
 | `/ops/flags`                             | 功能开关                                       |             M2             |   是   | 运营范围                               |
 
-角色门槛之外的路径答 `ErrorState`（`error.forbidden`），导航里不出现。筛选、标签页、分页游标进查询参数（`?status=online&tab=access`），可分享、可后退。
+角色门槛之外的路径整页显示 `PageState`（§3.0，`error.forbidden`），导航里不出现；不认识的路径整页「找不到这个页面」+「回到概览」。筛选、标签页、分页游标进查询参数（`?status=online&tab=access`），可分享、可后退。
 
 ## §2 信息架构
 
@@ -98,10 +99,12 @@
 │ ┌──┐ 研发组         ⌄ │      主机                                       [登记主机]    │ 页头 17/600，主动作 default
 │ └──┘                  │      ┌搜索主机──────────┐ [全部状态 ⌄] [标签 ⌄]              │ 筛选行，间距 8
 │                       │                                                                │ 组间 24
-│  概览                 │      名称          状态     所有者    标签       最近在线      │ Table，行高 44
-│  主机            ●    │      build-01      ● 在线   张三      gpu ci     刚刚     [打开]│
-│  成员                 │      mac-studio    ○ 离线   李四      —          3 小时前 [打开]│
-│  授予                 │      …                                                         │
+│  概览                 │      名称                 状态     标签       最近在线          │ Table 5 列，行高 52
+│  主机            ●    │      build-01             ● 在线   gpu ci     刚刚     [打开] ⋯ │
+│  成员                 │      张三 · 可执行                                              │ 第二行 11 muted：所有者 · 我的权限
+│  授予                 │      mac-studio           ○ 离线   —          3 小时前 [打开] ⋯ │
+│                       │      李四                                                       │
+│                       │      …                                                         │
 │  链接                 │                                                                │
 │  设备信任        2    │      [加载更多]                                                │ outline，不做页码
 │  审计                 │                                                                │
@@ -129,13 +132,14 @@
   左右 16，底部让出安全区
 ```
 
-| 区   | 规则                                                                                                                                                  |
-| ---- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 侧栏 | 240，`--panel`，`settings-navigation` 同款项（行高 32、图标 16、选中 `--brand-soft` 底 + `--brand-text` 字）；计数用 `Badge secondary` 只在 >0 时出现 |
-| 页头 | `<h1>` 17/600 + 右端最多一个 default 主动作；次要动作 outline 或收进 `DropdownMenu`（超过两个时）                                                     |
-| 正文 | `--bg` 上直接放 `SettingsGroup` / `Table`；组间 24、组内 8（2× 规则）                                                                                 |
-| 断点 | ≥1024 固定侧栏；768–1023 侧栏收进 `Sheet side="left"` 280；≤767 顶栏 48 + 同一 Sheet                                                                  |
-| 地标 | 第一个可聚焦元素是「跳到正文」；`<nav aria-label>`、`<main id="main">`                                                                                |
+| 区       | 规则                                                                                                                                                           |
+| -------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 侧栏     | 240，`--panel`，`settings-navigation` 同款项（行高 32、图标 16、选中 `--brand-soft` 底 + `--brand-text` 字）；计数用 `Badge secondary` 只在 >0 时出现          |
+| 页头     | `<h1>` 17/600 + 右端最多一个 default 主动作；次要动作 outline 或收进 `DropdownMenu`（超过两个时）                                                              |
+| 正文     | `--bg` 上直接放 `SettingsGroup` / `Table`；组间 24、组内 8（2× 规则）                                                                                          |
+| 断点     | ≥1024 固定侧栏；768–1023 侧栏收进 `Sheet side="left"` 280；≤767 顶栏 48 + 同一 Sheet                                                                           |
+| 地标     | 第一个可聚焦元素是「跳到正文」；`<nav aria-label>`、`<main id="main">`                                                                                         |
+| 顶部提示 | 邮箱未验证时，页头之上一条常驻 `Alert`：`cloud.unverified.alert` +「重新发送验证邮件」（`auth.emailVerifyResend`，成功后按钮换「已发送」）；每页都有，不可关闭 |
 
 ### 2.2 空间切换（只在控制台）
 
@@ -161,7 +165,7 @@
 |                | 设置                |                 |
 |                | API 令牌（M2）      |                 |
 
-- 运营后台不在空间菜单里，入口是账号菜单的「运营后台」一项（只对运营范围渲染）；进入后侧栏顶端换成「运营后台」标题 + 「返回控制台」ghost。
+- 运营后台不在空间菜单里，入口是账号菜单的「运营后台」一项（只对运营范围渲染）；进入后侧栏顶端换成「运营后台」标题 + 固定的 `Badge outline`「运营」+ 「返回控制台」ghost，一眼区别于普通空间。运营的每个写动作都要填理由并输入对象名确认（§4.3）。
 - 计划不含的 M2 功能（分组、访问申请对 Free）：导航项照常出现，页面是 `Empty`「{功能}属于团队版」+「升级」，不写别的。
 
 ### 2.4 导航可见性（团队角色）
@@ -187,15 +191,15 @@
 
 ### 3.0 通用约定
 
-| 项     | 规则                                                                                                                                                   |
-| ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| 加载   | 无数据时用 `ui/skeletons`（`SkeletonTable` / `SkeletonList` / `SkeletonSettings` / `SkeletonForm`），<200ms 不显示，显示后至少 300ms；有缓存先显示缓存 |
-| 空     | `EmptyState`：一句名词短语 + 至多一个 default 动作                                                                                                     |
-| 错     | 整页 `ErrorState`（按 `code` 取文案 + 「重试」）；行内动作失败 → sonner（带动作的错误常驻到关闭）；表单 → `Field` 下方一行                             |
-| 权限   | 没权限的动作不渲染；角色只读的值用文字代替 `Select`；不写「你没有权限」                                                                                |
-| 实时   | me-stream 事件只失效对应查询键（§6.2），不整页重载                                                                                                     |
-| 行动作 | 行尾最多一个 ghost 动作，其余收进 `DropdownMenu`（`MoreHorizontal`，`aria-label`「{名称} 的操作」）                                                    |
-| 时间   | 相对时间（`Intl.RelativeTimeFormat`），悬停 `Tooltip` 给绝对时间；数字列 `tabular-nums` 右对齐                                                         |
+| 项     | 规则                                                                                                                                                                                                                                                                                                                                  |
+| ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 加载   | 无数据时用 `ui/skeletons`（`SkeletonTable` / `SkeletonList` / `SkeletonSettings` / `SkeletonForm`），<200ms 不显示，显示后至少 300ms；有缓存先显示缓存                                                                                                                                                                                |
+| 空     | `EmptyState`：一句名词短语 + 至多一个 default 动作                                                                                                                                                                                                                                                                                    |
+| 错     | 整页：`cloud/ui/PageState.tsx`（U1a，`Empty` + 一句标题 + 一个 `Button`），四种：按 `code` 的错误 +「重试」、找不到 +「回到概览」、维护中（`unavailable` / `storage_unavailable`）+「重试」、登录已过期 +「重新登录」；现有 `ErrorState` 只用在行内与区块内；行内动作失败 → sonner（带动作的错误常驻到关闭）；表单 → `Field` 下方一行 |
+| 权限   | 没权限的动作不渲染；角色只读的值用文字代替 `Select`；不写「你没有权限」                                                                                                                                                                                                                                                               |
+| 实时   | me-stream 事件只失效对应查询键（§6.2），不整页重载                                                                                                                                                                                                                                                                                    |
+| 行动作 | 行尾最多一个 ghost 动作，其余收进 `DropdownMenu`（`MoreHorizontal`，`aria-label`「{名称} 的操作」）                                                                                                                                                                                                                                   |
+| 时间   | 相对时间（`Intl.RelativeTimeFormat`），悬停 `Tooltip` 给绝对时间；数字列 `tabular-nums` 右对齐                                                                                                                                                                                                                                        |
 
 下表的「过程」用协议 1.4 契约里的名字（armadra-cloud#63）；`space` 是统一的空间维度 `{ kind: "personal" } | { kind: "team", teamId }`。
 
@@ -225,26 +229,26 @@
 
 #### 3.1.1 登录 `/login`（M1）
 
-| 项   | 内容                                                                                                                                                                                                                                                                               |
-| ---- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 目的 | 用邮箱口令（M2 通行密钥、GitHub、Google）登录控制台                                                                                                                                                                                                                                |
-| 组件 | `BrandMark`、`Field`、`Input`、`Button`（default / outline / link）、`Separator`、`InputOTP`（两步验证，6 位）、`Alert`、`Spinner`                                                                                                                                                 |
-| 字段 | 邮箱、口令；两步验证：6 位码，「使用恢复码」切成 `Input`                                                                                                                                                                                                                           |
-| 动作 | 主：登录；次：忘记口令、创建账号；M2：使用通行密钥 / GitHub / Google                                                                                                                                                                                                               |
-| 状态 | `credentials_invalid` → 口令 `Field` 下；`account_locked` → `Alert destructive` + 倒计时，按钮禁用；`account_disabled` → `Alert destructive`；`mfa_required` → 切到验证码步；`mfa_invalid` → 验证码下；`challenge_required` → 渲染 Turnstile 后重试；离线 → 顶部 `Alert`，按钮禁用 |
-| 权限 | 已登录访问 → 直接去 `next` 或 `/`                                                                                                                                                                                                                                                  |
-| 过程 | `platform.info`、`auth.login`、`auth.mfaVerify`、`auth.passkeyLoginOptions` / `passkeyLogin`（M2）、`auth.oauthStart` / `oauthFinish`（M2）                                                                                                                                        |
+| 项   | 内容                                                                                                                                                                                                                                                                                                                                                                           |
+| ---- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| 目的 | 用邮箱口令（M2 通行密钥、GitHub、Google）登录控制台                                                                                                                                                                                                                                                                                                                            |
+| 组件 | `BrandMark`、`Field`、`Input`、`Button`（default / outline / link）、`Separator`、`InputOTP`（两步验证，6 位）、`Alert`、`Spinner`                                                                                                                                                                                                                                             |
+| 字段 | 邮箱、口令；两步验证：6 位码，「使用恢复码」切成 `Input`                                                                                                                                                                                                                                                                                                                       |
+| 动作 | 主：登录；次：忘记口令、创建账号；M2：使用通行密钥 / GitHub / Google                                                                                                                                                                                                                                                                                                           |
+| 状态 | `credentials_invalid` → 口令 `Field` 下；`account_locked` → `Alert destructive` + 倒计时，按钮禁用；`account_disabled` → `Alert destructive`；`mfa_required` → 切到验证码步；`mfa_invalid` → 验证码下；`challenge_required` → 复用 `mobile/ChallengeSheet.tsx` 与 `i18n/challenge.ts` 的挑战面板，过了再重试；`account_disabled` 带「联系支持」；离线 → 顶部 `Alert`，按钮禁用 |
+| 权限 | 已登录访问 → 直接去 `next` 或 `/`                                                                                                                                                                                                                                                                                                                                              |
+| 过程 | `platform.info`、`auth.login`、`auth.mfaVerify`、`auth.passkeyLoginOptions` / `passkeyLogin`（M2）、`auth.oauthStart` / `oauthFinish`（M2）                                                                                                                                                                                                                                    |
 
 #### 3.1.2 注册 `/register`（M1）
 
-| 项   | 内容                                                                                                                      |
-| ---- | ------------------------------------------------------------------------------------------------------------------------- |
-| 目的 | 建账号并发验证邮件                                                                                                        |
-| 组件 | 同登录                                                                                                                    |
-| 字段 | 名字（`autocomplete=name`）、邮箱、口令（`autocomplete=new-password`）                                                    |
-| 动作 | 主：创建账号；次：登录                                                                                                    |
-| 状态 | `email_taken` → 邮箱下，附「登录」link；`password_*` → 口令下（复用 `security.error.*`）；成功 → `/verify` 的「已发送」态 |
-| 过程 | `auth.register`                                                                                                           |
+| 项   | 内容                                                                                                                                                                                                                                                             |
+| ---- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 目的 | 建账号并发验证邮件                                                                                                                                                                                                                                               |
+| 组件 | 同登录                                                                                                                                                                                                                                                           |
+| 字段 | 名字（`autocomplete=name`）、邮箱、口令（`autocomplete=new-password`）                                                                                                                                                                                           |
+| 动作 | 主：创建账号；次：登录                                                                                                                                                                                                                                           |
+| 状态 | `email_taken` → 邮箱下，附「登录」link；`password_*` → 口令下（复用 `security.error.*`）；`challenge_required` 同登录；注册已暂停（运营事故开关，`registrations_paused`，契约缺口 §6.5）→ 整页 `PageState`「暂停注册」+「登录」；成功 → `/verify` 的「已发送」态 |
+| 过程 | `auth.register`                                                                                                                                                                                                                                                  |
 
 #### 3.1.3 验证邮箱 `/verify`（M1）
 
@@ -253,7 +257,7 @@
 | 目的 | 已发送态（无 token）与确认态（带 token）                                                                              |
 | 组件 | `BrandMark`、`Empty`（图标 `MailCheck`）、`Button`、`Spinner`                                                         |
 | 内容 | 已发送：「验证邮件已发到 {email}」+「重新发送」outline；确认中：`Spinner`；成功：「邮箱已验证」+「进入控制台」default |
-| 状态 | `email_token_invalid` / `email_token_expired` → `ErrorState` +「重新发送」；`rate_limited` → sonner                   |
+| 状态 | `email_token_invalid` / `email_token_expired` → `PageState` +「重新发送」；`rate_limited` → sonner                    |
 | 过程 | `auth.emailVerify`、`auth.emailVerifyResend`                                                                          |
 
 #### 3.1.4 找回口令 `/reset`（M1）
@@ -263,7 +267,7 @@
 | 目的 | 发重置链接；带 token 时设新口令                                                                                                  |
 | 字段 | 第一步：邮箱；第二步：新口令                                                                                                     |
 | 动作 | 「发送重置链接」→ 同一页换成「重置链接已发到 {email}」（不论邮箱是否存在）；「保存口令」→「口令已更新，所有设备已退出」+「登录」 |
-| 状态 | `email_token_*` → `ErrorState` +「重新获取」；`password_*` → 字段下                                                              |
+| 状态 | `email_token_*` → `PageState` +「重新获取」；`password_*` → 字段下                                                               |
 | 过程 | `auth.passwordResetStart`、`auth.passwordResetFinish`                                                                            |
 
 #### 3.1.5 设备授权 `/device`（M1）
@@ -295,25 +299,25 @@
 
 #### 3.1.6 链接落地 `/j/:linkId`（M1，扩展现有 `JoinPage`）
 
-| 项   | 内容                                                                                                                                                                           |
-| ---- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| 目的 | 一次「加入」点击后直达画布 `/h/:host`                                                                                                                                          |
-| 组件 | 现有 `JoinPage` 的 `Card` + `Avatar`（主人首字）+ `Badge outline`（权限）+ `Button`                                                                                            |
-| 内容 | 「加入 {owner} 的 {target}」、权限、「有效期至 {date}」                                                                                                                        |
-| 动作 | 链接要求登录且未登录：主「登录后加入」→ `/login?next=`；否则主「加入」；已加入过：「打开」                                                                                     |
-| 状态 | `link_invalid` / `link_expired` / `link_exhausted` / `link_secret_invalid` → 现有 `error.link*`；`anonymous_links_disabled` → 改成「登录后加入」；`link_frozen` → `ErrorState` |
-| 过程 | `links.get`、`links.accept`                                                                                                                                                    |
+| 项   | 内容                                                                                                                                                                          |
+| ---- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 目的 | 一次「加入」点击后直达画布 `/h/:host`                                                                                                                                         |
+| 组件 | 现有 `JoinPage` 的 `Card` + `Avatar`（主人首字）+ `Badge outline`（权限）+ `Button`                                                                                           |
+| 内容 | 「加入 {owner} 的 {target}」、权限、「有效期至 {date}」                                                                                                                       |
+| 动作 | 链接要求登录且未登录：主「登录后加入」→ `/login?next=`；否则主「加入」；已加入过：「打开」                                                                                    |
+| 状态 | `link_invalid` / `link_expired` / `link_exhausted` / `link_secret_invalid` → 现有 `error.link*`；`anonymous_links_disabled` → 改成「登录后加入」；`link_frozen` → `PageState` |
+| 过程 | `links.get`、`links.accept`                                                                                                                                                   |
 
 #### 3.1.7 邀请落地 `/invite/:id`（M1）
 
-| 项   | 内容                                                                                                                                                                          |
-| ---- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 目的 | 团队邀请与主机邀请的接受 / 拒绝                                                                                                                                               |
-| 组件 | `Card`、`Avatar`、`Badge secondary`（角色）、`Button`                                                                                                                         |
-| 内容 | 团队：「加入团队 {team}」·「来自 {name}」· 角色；主机：「访问 {host}」· 权限                                                                                                  |
-| 动作 | 拒绝（outline 左）/ 接受邀请（default 右）；未登录先登录或注册（邮箱预填）                                                                                                    |
-| 状态 | `not_found` / `invitation_expired` / `invitation_revoked` → `ErrorState`；`invitation_email_mismatch` →「用 {email} 登录后接受」+「换个账号」；`member_exists` → 「打开团队」 |
-| 过程 | `invitations.get`（匿名摘要）、`invitations.accept`、`invitations.decline`                                                                                                    |
+| 项   | 内容                                                                                                                                                                         |
+| ---- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 目的 | 团队邀请与主机邀请的接受 / 拒绝                                                                                                                                              |
+| 组件 | `Card`、`Avatar`、`Badge secondary`（角色）、`Button`                                                                                                                        |
+| 内容 | 团队：「加入团队 {team}」·「来自 {name}」· 角色；主机：「访问 {host}」· 权限                                                                                                 |
+| 动作 | 拒绝（outline 左）/ 接受邀请（default 右）；未登录先登录或注册（邮箱预填）                                                                                                   |
+| 状态 | `not_found` / `invitation_expired` / `invitation_revoked` → `PageState`；`invitation_email_mismatch` →「用 {email} 登录后接受」+「换个账号」；`member_exists` → 「打开团队」 |
+| 过程 | `invitations.get`（匿名摘要）、`invitations.accept`、`invitations.decline`                                                                                                   |
 
 ### 3.2 个人空间
 
@@ -359,25 +363,25 @@
 
 `Tabs`（手机横向可滚）：资料 · 安全 · 设备 · 安全日志 · 通知（M2）· 数据（M2）。`?tab=` 进地址。
 
-| 标签     |   期    | 内容（`SettingsGroup` + `SettingsRow`）                                                                                                                                                                           | 状态 / 错误                                                                                                              | 过程                                                                                                                                |
-| -------- | :-----: | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------- |
-| 资料     |   M1    | 头像（`Avatar` 32 +「更换头像」outline）、名字（`Input` 失焦保存）、邮箱（值 +「更改邮箱」→ 对话框：新邮箱 + 当前口令；待验证时值后 `Badge outline`「待验证：{email}」）、邮件语言（`Select` 简体中文 / English） | 保存成功 sonner「已保存」；`email_taken` 字段下                                                                          | `me.get`、`me.update`、`me.emailChange`                                                                                             |
-| 安全     | M1 / M2 | 口令（「更改口令」→ 对话框：当前口令、新口令）；两步验证（M2，复用 `security/MfaSetup` 的形态与 `security.mfa.*` 文案）；通行密钥（M2，复用 `PasskeyList` 形态）；第三方账号（M2，复用 `OAuthBindings` 形态）     | `credentials_invalid` / `password_*` 字段下；团队强制两步验证而未开 → 本页顶 `Alert`「{team} 要求两步验证」+「现在设置」 | `auth.changePassword`、`auth.totp*`、`auth.passkey*`、`auth.recoveryCodesRotate`、`auth.oauthStart` / `oauthFinish` / `oauthUnlink` |
-| 设备     |   M1    | `Table`：设备（平台图标 + 名称）· 最近使用 · IP 前缀 · [退出]；当前设备行 `Badge secondary`「当前」且无退出；表下「退出其他全部」destructive outline                                                              | 空：只有当前一行；撤销中行内 `Spinner`；失败 sonner                                                                      | `me.devices`、`me.deviceRevoke`                                                                                                     |
-| 安全日志 |   M1    | `Table`：时间 · 事件 · 设备 · IP 前缀；「加载更多」                                                                                                                                                               | 空：「没有记录」                                                                                                         | `me.securityLog`                                                                                                                    |
-| 通知     |   M2    | 每类一行 `Switch`：邀请、访问申请、主机上下线；「安全」一行 `Switch` 恒开且 `disabled`                                                                                                                            | 失败回滚 + sonner                                                                                                        | `me.notificationPrefs`、`me.notificationPrefsUpdate`                                                                                |
-| 数据     |   M2    | 「导出数据」→ 生成后行内出现文件名 + 「下载」，生成中 `StatusPill queued`「排队中」；「注销账号」destructive → 输入邮箱确认的 `AlertDialog`；冷静期内本页顶 `Alert`「账号将于 {date} 注销」+「撤销注销」          | `team_owner_required` → `AlertDialog` 内一行 + 名下团队的链接列表                                                        | `me.export`、`me.delete`、`me.deleteCancel`                                                                                         |
+| 标签     |   期    | 内容（`SettingsGroup` + `SettingsRow`）                                                                                                                                                                            | 状态 / 错误                                                                                                              | 过程                                                                                                                                |
+| -------- | :-----: | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------- |
+| 资料     |   M1    | 头像（`Avatar` 32 +「更换头像」outline）、名字（`Input` 失焦保存）、邮箱（值 +「更改邮箱」→ 对话框：新邮箱 + 当前口令；待验证时值后 `Badge outline`「待验证：{email}」）、邮件语言（`Select` 简体中文 / English）  | 保存成功 sonner「已保存」；`email_taken` 字段下                                                                          | `me.get`、`me.update`、`me.emailChange`                                                                                             |
+| 安全     | M1 / M2 | 口令（「更改口令」→ 对话框：当前口令、新口令）；两步验证（M2，复用 `security/MfaSetup` 的形态与 `security.mfa.*` 文案）；通行密钥（M2，复用 `PasskeyList` 形态）；第三方账号（M2，复用 `OAuthBindings` 形态）      | `credentials_invalid` / `password_*` 字段下；团队强制两步验证而未开 → 本页顶 `Alert`「{team} 要求两步验证」+「现在设置」 | `auth.changePassword`、`auth.totp*`、`auth.passkey*`、`auth.recoveryCodesRotate`、`auth.oauthStart` / `oauthFinish` / `oauthUnlink` |
+| 设备     |   M1    | `Table`：设备（平台图标 + 名称）· 最近使用 · IP 前缀 · [退出]；当前设备行 `Badge secondary`「当前」且无退出；表下「退出其他全部」destructive outline                                                               | 空：只有当前一行；撤销中行内 `Spinner`；失败 sonner                                                                      | `me.devices`、`me.deviceRevoke`                                                                                                     |
+| 安全日志 |   M1    | `Table`：时间 · 事件 · 设备 · IP 前缀；「加载更多」                                                                                                                                                                | 空：「没有记录」                                                                                                         | `me.securityLog`                                                                                                                    |
+| 通知     |   M2    | 每类一行 `Switch`：邀请、访问申请、主机上下线；「安全」一行 `Switch` 恒开且 `disabled`                                                                                                                             | 失败回滚 + sonner                                                                                                        | `me.notificationPrefs`、`me.notificationPrefsUpdate`                                                                                |
+| 数据     |   M2    | 「导出数据」→ 生成后行内出现文件名 + 「下载」，生成中 `StatusPill queued`「排队中」；「注销账号」destructive → 输入邮箱确认的 `ResponsiveAlertDialog`；冷静期内本页顶 `Alert`「账号将于 {date} 注销」+「撤销注销」 | `team_owner_required` → `ResponsiveAlertDialog` 内一行 + 名下团队的链接列表                                              | `me.export`、`me.delete`、`me.deleteCancel`                                                                                         |
 
 #### 3.2.6 API 令牌 `/me/tokens`、`/t/:team/tokens`（M2）
 
-| 项   | 内容                                                                                                                                                                                              |
-| ---- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 组件 | `Table` / `Item`、`Badge outline`（范围）、`ResponsiveDialog`、`Field`、`Input`、`Checkbox`、`Select`、`InputGroup`（只读令牌 + 复制）、`AlertDialog`                                             |
-| 列   | 名称 · 范围 · 到期 · 最近使用 · ⋯（撤销）                                                                                                                                                         |
-| 动作 | 主：新建令牌 → 名称、范围（只读目录 / 管理授予 / 管理主机）、到期（30 / 90 天 / 永不）→ 结果对话框标题「令牌只显示这一次」+ `InputGroup` 复制 +「完成」；撤销 → `AlertDialog`「撤销「{name}」？」 |
-| 空   | 「没有令牌」+「新建令牌」                                                                                                                                                                         |
-| 权限 | 团队令牌只有 owner / admin                                                                                                                                                                        |
-| 过程 | `apiTokens.create`、`apiTokens.list`、`apiTokens.revoke`                                                                                                                                          |
+| 项   | 内容                                                                                                                                                                                                        |
+| ---- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 组件 | `Table` / `Item`、`Badge outline`（范围）、`ResponsiveDialog`、`Field`、`Input`、`Checkbox`、`Select`、`InputGroup`（只读令牌 + 复制）、`ResponsiveAlertDialog`                                             |
+| 列   | 名称 · 范围 · 到期 · 最近使用 · ⋯（撤销）                                                                                                                                                                   |
+| 动作 | 主：新建令牌 → 名称、范围（只读目录 / 管理授予 / 管理主机）、到期（30 / 90 天 / 永不）→ 结果对话框标题「令牌只显示这一次」+ `InputGroup` 复制 +「完成」；撤销 → `ResponsiveAlertDialog`「撤销「{name}」？」 |
+| 空   | 「没有令牌」+「新建令牌」                                                                                                                                                                                   |
+| 权限 | 团队令牌只有 owner / admin                                                                                                                                                                                  |
+| 过程 | `apiTokens.create`、`apiTokens.list`、`apiTokens.revoke`                                                                                                                                                    |
 
 ### 3.3 团队空间
 
@@ -408,7 +412,7 @@
 | ---- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
 | 组件 | `Card`、`Progress`、`SettingsGroup`、`Item`、`Avatar`、`Button`、`Alert`                                                                          |
 | 角色 | guest：只有「主机」卡与可达主机列表；billing：只有「成员」「本月流量」「计划」；member：无「最近动态」                                            |
-| 状态 | 团队已删除（冷静期）：页顶 `Alert destructive`「团队将于 {date} 清除」+ owner 见「恢复团队」；`team_suspended` → 整页 `ErrorState`                |
+| 状态 | 团队已删除（冷静期）：页顶 `Alert destructive`「团队将于 {date} 清除」+ owner 见「恢复团队」；`team_suspended` → 整页 `PageState`                 |
 | 过程 | `teams.get`、`teams.usage`、`billing.plan`（`space` = team）、`accessRequests.list`（M2）、`trust.list`、`audit.list`（limit 5）、`teams.restore` |
 
 #### 3.3.2 成员与邀请 `/t/:team/members`（M1）
@@ -430,27 +434,27 @@
   │ li@… · 5 月 9 日            ⋯ │
 ```
 
-| 项   | 内容                                                                                                                                                                                                                                                              |
-| ---- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 组件 | `Tabs`、`Table` / `Item`、`Avatar`、`Select`、`Badge`、`DropdownMenu`、`ResponsiveDialog`、`Field`、`Textarea`、`AlertDialog`                                                                                                                                     |
-| 列   | 成员：名称（头像 + 名 + 邮箱 11 muted）· 角色 · 分组（M2）· 加入时间 · ⋯；访客：名称 · 可达主机数 · 加入时间 · ⋯；邀请：邮箱 · 角色 · 邀请人 · 到期 · ⋯                                                                                                           |
-| 动作 | 主：邀请成员 → `Textarea` 邮箱（逗号或换行分隔，逐个校验，错误标出第几个）+ 角色 `Select`（成员 / 管理员 / 账单 / 访客）→ sonner「已邀请 {count} 人」；行：改角色、移除（`AlertDialog`「移除「{name}」？」+「移除成员」）、重新发送、撤销邀请；自己的行：离开团队 |
-| 空   | 访客：「没有访客」；邀请：「没有待接受的邀请」+「邀请成员」                                                                                                                                                                                                       |
-| 权限 | owner / admin 可改与移除（不能动 owner）；member / billing 只读、无主动作；guest 不可达                                                                                                                                                                           |
-| 错误 | `team_last_owner`、`team_role_insufficient`、`member_exists`、`guests_disabled`、`team_policy_denied`、`invitation_revoked`、`limit_reached`（席位 / 访客上限，`details.quota`）→ 对话框内 `Alert` 或 sonner                                                      |
-| 过程 | `teams.members`、`teams.memberRole`、`teams.memberRemove`、`teams.leave`、`invitations.create` / `list` / `revoke`、`invitations.resend`                                                                                                                          |
+| 项   | 内容                                                                                                                                                                                                                                                                        |
+| ---- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 组件 | `Tabs`、`Table` / `Item`、`Avatar`、`Select`、`Badge`、`DropdownMenu`、`ResponsiveDialog`、`Field`、`Textarea`、`ResponsiveAlertDialog`                                                                                                                                     |
+| 列   | 成员：名称（头像 + 名 + 邮箱 11 muted）· 角色 · 分组（M2）· 加入时间 · ⋯；访客：名称 · 可达主机数 · 加入时间 · ⋯（分组列与可达主机数要 `teamMember.groups` / `reachableHosts`，契约缺口 §6.5）；邀请：邮箱 · 角色 · 邀请人 · 到期 · ⋯                                       |
+| 动作 | 主：邀请成员 → `Textarea` 邮箱（逗号或换行分隔，逐个校验，错误标出第几个）+ 角色 `Select`（成员 / 管理员 / 账单 / 访客）→ sonner「已邀请 {count} 人」；行：改角色、移除（`ResponsiveAlertDialog`「移除「{name}」？」+「移除成员」）、重新发送、撤销邀请；自己的行：离开团队 |
+| 空   | 访客：「没有访客」；邀请：「没有待接受的邀请」+「邀请成员」                                                                                                                                                                                                                 |
+| 权限 | owner / admin 可改与移除（不能动 owner）；member / billing 只读、无主动作；guest 不可达                                                                                                                                                                                     |
+| 错误 | `team_last_owner`、`team_role_insufficient`、`member_exists`、`guests_disabled`、`team_policy_denied`、`invitation_revoked`、`limit_reached`（席位 / 访客上限，`details.quota`）→ 对话框内 `Alert` 或 sonner                                                                |
+| 过程 | `teams.members`、`teams.memberRole`、`teams.memberRemove`、`teams.leave`、`invitations.create` / `list` / `revoke`、`invitations.resend`                                                                                                                                    |
 
 #### 3.3.3 分组 `/t/:team/groups`（M2）
 
-| 项   | 内容                                                                                                                                            |
-| ---- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
-| 布局 | 列表 → 点名称推入详情（页头「← 名称」，同设置子页）                                                                                             |
-| 组件 | `Table` / `Item`、`Avatar`（组员堆叠）、`ResponsiveDialog`、`Popover` + `Command`（选成员，不含访客）、`Badge secondary`「组长」、`AlertDialog` |
-| 列   | 名称 · 组长 · 人数 · 授予数 · ⋯；详情：组员表（名称 · 组长标记 · ⋯ 设为组长 / 移出）+ 该组的授予（同 3.3.6 过滤）                               |
-| 动作 | 新建分组（名称）；添加组员；设为组长；删除分组（`AlertDialog`「删除「{name}」？」，行内一行「以它为对象的授予一并撤销」——这是后果，不是说明）   |
-| 空   | 「没有分组」+「新建分组」；Free 计划：「分组属于团队版」+「升级」                                                                               |
-| 权限 | owner / admin 全部；组长只管本组组员                                                                                                            |
-| 过程 | `groups.list` / `create` / `update` / `delete` / `members` / `memberAdd` / `memberRemove` / `setLead`                                           |
+| 项   | 内容                                                                                                                                                      |
+| ---- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 布局 | 列表 → 点名称推入详情（页头「← 名称」，同设置子页）                                                                                                       |
+| 组件 | `Table` / `Item`、`Avatar`（组员堆叠）、`ResponsiveDialog`、`Popover` + `Command`（选成员，不含访客）、`Badge secondary`「组长」、`ResponsiveAlertDialog` |
+| 列   | 名称 · 组长 · 人数 · 授予数 · ⋯；详情：组员表（名称 · 组长标记 · ⋯ 设为组长 / 移出）+ 该组的授予（同 3.3.6 过滤）                                         |
+| 动作 | 新建分组（名称）；添加组员；设为组长；删除分组（`ResponsiveAlertDialog`「删除「{name}」？」，行内一行「以它为对象的授予一并撤销」——这是后果，不是说明）   |
+| 空   | 「没有分组」+「新建分组」；Free 计划：「分组属于团队版」+「升级」                                                                                         |
+| 权限 | owner / admin 全部；组长只管本组组员                                                                                                                      |
+| 过程 | `groups.list` / `create` / `update` / `delete` / `members` / `memberAdd` / `memberRemove` / `setLead`                                                     |
 
 #### 3.3.4 主机目录 `/t/:team/hosts`（M1）
 
@@ -459,13 +463,13 @@
 | 项   | 内容                                                                                                                                                                                                                                                                                                                                    |
 | ---- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | 组件 | `InputGroup`（搜索）、`Select`（状态）、`Popover` + `Command`（标签多选）、`Table` / `Item`、`StatusPill`、`Badge outline`（标签）、`DropdownMenu`、`Button`、`ResponsiveDialog`                                                                                                                                                        |
-| 列   | 名称 · 状态 · 所有者 · 标签 · 我的权限（member / guest 才有）· 最近在线 · [打开] ⋯                                                                                                                                                                                                                                                      |
+| 列   | 5 列：名称（第二行 11 muted：所有者 · 我的权限，后者只对 member / guest）· 状态 · 标签 · 最近在线 · [打开] ⋯                                                                                                                                                                                                                            |
 | 动作 | 主：登记主机 → 对话框：主「在 Armadra 里登记」（`armadra://cloud?space=<team>` 深链）+ 次「服务器」页签（注册令牌 `InputGroup` + 复制命令）+ 一行 `Alert`「能进终端的成员可以用这台电脑的系统账号执行命令」（能力设计 §11.9）；行：打开（新标签 `/h/:host`）、重命名、标签、撤销主机；member 对看得到但不可达的主机：「申请访问」（M2） |
 | 空   | 「还没有主机」+「登记主机」；筛选为空：「没有匹配「{query}」的主机」+「清除筛选」                                                                                                                                                                                                                                                       |
 | 权限 | 登记：owner / admin，设置允许时 member；guest 只见被授予的；billing 不可达                                                                                                                                                                                                                                                              |
 | 错误 | `host_registration_disabled`、`email_unverified`、`limit_reached`（主机上限）→ 对话框 `Alert` + 对应动作（升级 / 重新发送验证邮件）                                                                                                                                                                                                     |
 | 实时 | `sourceOnline` / `sourceOffline` / `sourceRevoked` 原地更新状态列                                                                                                                                                                                                                                                                       |
-| 过程 | `sources.list`（`space`、筛选）、`sources.registrationToken`（`space`）、`sources.update`、`sources.revoke`、`accessRequests.create`（M2）                                                                                                                                                                                              |
+| 过程 | `sources.list`（`space`；筛选与分页 `status` / `tag` / `q` / `cursor` / `limit` 与所有者名 `ownerName` 是契约缺口，§6.5；补上前筛选在客户端做）、`sources.registrationToken`（`space`）、`sources.update`、`sources.revoke`、`accessRequests.create`（M2）                                                                              |
 
 #### 3.3.5 主机详情 `/t/:team/hosts/:host`（M1）
 
@@ -500,28 +504,28 @@
   │ 整台 · 分组 后端 · 30 天  ⋯ │
 ```
 
-| 项   | 内容                                                                                                                                                                                                                                                                             |
-| ---- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 组件 | `Tabs`、`StatusPill`、`Badge`、`Table` / `Item`、`Collapsible`（行展开看有效权限的各条来源）、`ResponsiveDialog`、`Popover` + `Command`、`Select`、`RadioGroup`、`Switch`、`AlertDialog`、`Field`、`Input`                                                                       |
-| 访问 | 每个人一行，展示合成后的最高权限；展开看每条来源（授予、分组、链接、邀请）及各自的「撤销访问」。「添加访问」= 3.3.6 的对话框，主机预填。「导出」→ CSV                                                                                                                            |
-| 链接 | 3.3.8 的表，按此主机过滤；「新建链接」                                                                                                                                                                                                                                           |
-| 设置 | 谁可以创建链接（所有者 / 所有者与管理员 / 有可接管权限的人）、允许访客 `Switch`、缺省角色 `Select`（四档，复用 `workspaceGroups.role.*`）；危险操作：移到其他空间（M2，→ 选目标空间 → 待接受态 `Badge outline`「等待 {team} 接受」）、撤销主机（`AlertDialog` + 输入主机名确认） |
-| 权限 | owner / admin 全部；主机 owner（member）可管自己主机的访问与设置；其他 member 与 guest 只见自己的权限行，无「设置」页签                                                                                                                                                          |
-| 错误 | `source_revoked` → 整页 `ErrorState`；`transfer_pending` / `transfer_expired` → sonner；`not_found` → `ErrorState`                                                                                                                                                               |
-| 过程 | `sources.get`、`sources.accessList`、`sources.accessRevoke`、`grants.effective`、`sources.update`、`sources.revoke`、`sources.transferStart` / `transferList` / `transferAccept` / `transferCancel`（M2，接收方拒绝与发起方取消都是 `transferCancel`）、`links.list`（host）     |
+| 项   | 内容                                                                                                                                                                                                                                                                                       |
+| ---- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| 组件 | `Tabs`、`StatusPill`、`Badge`、`Table` / `Item`、`Collapsible`（行展开看有效权限的各条来源）、`ResponsiveDialog`、`Popover` + `Command`、`Select`、`RadioGroup`、`Switch`、`ResponsiveAlertDialog`、`Field`、`Input`                                                                       |
+| 访问 | 每个人一行，展示合成后的最高权限；展开看每条来源（授予、分组、链接、邀请）及各自的「撤销访问」。「添加访问」= 3.3.6 的对话框，主机预填。「导出」在浏览器里把当前访问清单生成 CSV 下载，不调接口                                                                                            |
+| 链接 | 3.3.8 的表，按此主机过滤；「新建链接」                                                                                                                                                                                                                                                     |
+| 设置 | 谁可以创建链接（所有者 / 所有者与管理员 / 有可接管权限的人）、允许访客 `Switch`、缺省角色 `Select`（四档，复用 `workspaceGroups.role.*`）；危险操作：移到其他空间（M2，→ 选目标空间 → 待接受态 `Badge outline`「等待 {team} 接受」）、撤销主机（`ResponsiveAlertDialog` + 输入主机名确认） |
+| 权限 | owner / admin 全部；主机 owner（member）可管自己主机的访问与设置；其他 member 与 guest 只见自己的权限行，无「设置」页签                                                                                                                                                                    |
+| 错误 | `source_revoked` → 整页 `PageState`；`transfer_pending` / `transfer_expired` → sonner；`not_found` → `PageState`                                                                                                                                                                           |
+| 过程 | `sources.get`、`sources.accessList`、`sources.accessRevoke`、`grants.effective`、`sources.update`、`sources.revoke`、`sources.transferStart` / `transferList` / `transferAccept` / `transferCancel`（M2，接收方拒绝与发起方取消都是 `transferCancel`）、`links.list`（host）               |
 
 #### 3.3.6 授予 `/t/:team/grants`（M1）
 
-| 项   | 内容                                                                                                                                                                                                                                                                |
-| ---- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 目的 | 团队全部授予的一张表，按主机或按对象筛选                                                                                                                                                                                                                            |
-| 组件 | `Select`（主机）、`Popover` + `Command`（对象）、`Table` / `Item`、`Avatar`、`Badge`、`ResponsiveDialog`、`RadioGroup`、`Select`、`AlertDialog`                                                                                                                     |
-| 列   | 对象（团队全员 / 成员 / 分组 / 访客）· 主机· 权限 · 范围 · 到期 · 授予人 · ⋯                                                                                                                                                                                        |
-| 动作 | 主：添加访问 → 对象（`Command`：团队全员、成员、M2 分组）、主机（`Command`；按标签授予待契约补上后再加）、权限（四档 `RadioGroup`，缺省取团队设置）、到期（永不 / 7 / 30 / 90 天）；行：改权限、改到期、撤销访问（`AlertDialog`「撤销 {name} 对 {host} 的访问？」） |
-| 空   | 「没有授予」+「添加访问」；筛选为空同 3.3.4                                                                                                                                                                                                                         |
-| 权限 | owner / admin 全部；member 只见自己是主机 owner 的主机；billing / guest 不可达                                                                                                                                                                                      |
-| 错误 | `guests_disabled`、`plan_feature_unavailable`、`email_unverified`                                                                                                                                                                                                   |
-| 过程 | `grants.list`、`grants.create`、`grants.update`、`grants.revoke`                                                                                                                                                                                                    |
+| 项   | 内容                                                                                                                                                                                                                                                                          |
+| ---- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 目的 | 按人看授予：每个对象（团队全员 / 成员 / 分组 / 访客）一行；按主机看在主机详情的「访问」页签                                                                                                                                                                                   |
+| 组件 | `InputGroup`（搜索对象）、`Table` / `Item`、`Collapsible`（展开看逐台主机）、`Avatar`、`Badge`、`ResponsiveDialog`、`Popover` + `Command`、`RadioGroup`、`Select`、`ResponsiveAlertDialog`                                                                                    |
+| 列   | 对象 · 主机数 · 最高权限 · 最早到期 · ⋯；展开行：主机 · 权限 · 范围 · 到期 · 授予人 · [撤销访问]                                                                                                                                                                              |
+| 动作 | 主：添加访问 → 对象（`Command`：团队全员、成员、M2 分组）、主机（`Command`；按标签授予待契约补上后再加）、权限（四档 `RadioGroup`，缺省取团队设置）、到期（永不 / 7 / 30 / 90 天）；行：改权限、改到期、撤销访问（`ResponsiveAlertDialog`「撤销 {name} 对 {host} 的访问？」） |
+| 空   | 「没有授予」+「添加访问」；筛选为空同 3.3.4                                                                                                                                                                                                                                   |
+| 权限 | owner / admin 全部；member 只见自己是主机 owner 的主机；billing / guest 不可达                                                                                                                                                                                                |
+| 错误 | `guests_disabled`、`plan_feature_unavailable`、`email_unverified`                                                                                                                                                                                                             |
+| 过程 | `grants.list`、`grants.create`、`grants.update`、`grants.revoke`                                                                                                                                                                                                              |
 
 #### 3.3.7 访问申请 `/t/:team/requests`（M2）
 
@@ -529,7 +533,7 @@
 | ---- | ------------------------------------------------------------------------------------------------------------------------ |
 | 组件 | `Tabs`（待处理 / 已处理）、`Table` / `Item`、`Avatar`、`Badge outline`、`ButtonGroup`（拒绝 / 批准）、`ResponsiveDialog` |
 | 列   | 申请人 · 主机 · 申请权限 · 理由（单行截断，`Tooltip` 全文）· 时间 · [拒绝][批准]                                         |
-| 动作 | 批准 → 可改权限与到期（同 3.3.6 字段）后确认；拒绝 → 直接拒绝，sonner 带「撤销」5 秒                                     |
+| 动作 | 批准 → 可改权限与到期（同 3.3.6 字段）后确认；拒绝 → 直接拒绝，sonner 带「撤回」5 秒                                     |
 | 空   | 「没有待处理的申请」                                                                                                     |
 | 权限 | owner / admin；member 只见自己主机的                                                                                     |
 | 实时 | `accessRequested` 事件刷新计数与列表                                                                                     |
@@ -537,43 +541,42 @@
 
 #### 3.3.8 链接 `/t/:team/links`（M1）
 
-| 项   | 内容                                                                                                                                                                                                                                                                        |
-| ---- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 组件 | `Table` / `Item`、`Badge`、`InputGroup`、`ResponsiveDialog`、`Select`、`Input`、`AlertDialog`                                                                                                                                                                               |
-| 列   | 备注 · 目标（主机 / 工作空间名 / 会话）· 权限 · 用量（`{used} / {max}` tabular）· 到期 · 创建人 · ⋯                                                                                                                                                                         |
-| 动作 | 主：新建链接 → 主机、权限（只读缺省）、有效期（1 / 7 缺省 / 30 天）、次数上限、备注 → 结果对话框 `InputGroup` 复制；行：复制链接（只在创建者本机内存仍有秘密时可用，否则不出现）、编辑备注、撤销链接（`AlertDialog`，确认按钮「撤销链接」，行内一行「已加入的人一并停用」） |
-| 状态 | 冻结的链接 `Badge destructive`「已冻结」；过期的 `Badge outline`「已过期」                                                                                                                                                                                                  |
-| 空   | 「没有链接」+「新建链接」                                                                                                                                                                                                                                                   |
-| 权限 | owner / admin 全部；member 自己建的；主机设置决定谁能新建                                                                                                                                                                                                                   |
-| 实时 | `linkUsed` 原地更新用量                                                                                                                                                                                                                                                     |
-| 过程 | `links.list`（`space`）、`links.create`、`links.update`、`links.revoke`                                                                                                                                                                                                     |
+| 项   | 内容                                                                                                                                                                                                                                                                             |
+| ---- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 组件 | `Table` / `Item`、`Badge`、`InputGroup`、`ResponsiveDialog`、`Select`、`Input`、`ResponsiveAlertDialog`                                                                                                                                                                          |
+| 列   | 备注 · 目标（主机 / 工作空间名 / 会话）· 权限 · 用量（`{used} / {max}` tabular）· 到期 · 创建人 · ⋯                                                                                                                                                                              |
+| 动作 | 主：新建链接 → 主机、权限（只读缺省）、有效期（1 / 7 缺省 / 30 天）、次数上限、备注 → 结果对话框 `InputGroup` +「复制链接」（链接只在这里出现一次，列表不提供复制，D7）；行：编辑备注、撤销链接（`ResponsiveAlertDialog`，确认按钮「撤销链接」，行内一行「已加入的人一并停用」） |
+| 状态 | 冻结的链接 `Badge destructive`「已冻结」；过期的 `Badge outline`「已过期」                                                                                                                                                                                                       |
+| 空   | 「没有链接」+「新建链接」                                                                                                                                                                                                                                                        |
+| 权限 | owner / admin 全部；member 自己建的；主机设置决定谁能新建                                                                                                                                                                                                                        |
+| 实时 | `linkUsed` 原地更新用量                                                                                                                                                                                                                                                          |
+| 过程 | `links.list`（`space`）、`links.create`、`links.update`、`links.revoke`                                                                                                                                                                                                          |
 
 #### 3.3.9 设备信任 `/t/:team/trust`（M1，能力设计 §11.4）
 
 ```text
 1440
   设备信任
-  成员            设备            主机         验证码       请求时间
-  (赵) 赵六       Pixel 9         build-01     418 207      2 分钟前      [拒绝] [信任]
-  (张) 张三       iPad            mac-studio   —            1 小时前      Badge outline「在已信任的设备上处理」
+  成员            设备            主机         请求时间
+  (赵) 赵六       Pixel 9         build-01     2 分钟前      [拒绝] [信任]
+  (张) 张三       iPad            mac-studio   1 小时前      Badge outline「在已信任的设备上处理」
 
-点「信任」→ AlertDialog
+点「信任」→ ResponsiveDialog（沿用现有端到端背书的交互）
   信任 赵六 的 Pixel 9？
-  ┌───────────────┐
-  │   418 207     │      24px tabular，--surface-raised，等宽
-  └───────────────┘
+  输入新设备上显示的校验码                  e2e.approve.hint
+  [_][_][_] [_][_][_]                       InputOTP 6 位，inputmode=numeric，autocomplete=one-time-code
   [取消]                         [信任]
 ```
 
-| 项   | 内容                                                                                                                                                                                                                                      |
-| ---- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 目的 | 主机 owner、团队 admin（按团队设置）或成员本人从已受信设备背书新设备                                                                                                                                                                      |
-| 组件 | `Table` / `Item`、`Avatar`、`Badge outline`、`ButtonGroup`、`AlertDialog`                                                                                                                                                                 |
-| 行为 | 浏览器本身是否是该主机的受信设备，由 `browser-cloud` 提供方尝试打开端到端通道判定；是 → 「信任」可用，批准经端到端通道发给主机（core 契约 §77 的背书路径），云端只转发通知；否 → 行尾 `Badge outline`「在已信任的设备上处理」，不渲染按钮 |
-| 空   | 「没有待信任的设备」                                                                                                                                                                                                                      |
-| 错误 | `sas_mismatch` / `sas_expired`（现有 `e2e.approve.*`）、`device_untrusted`、`e2e_device_unavailable`                                                                                                                                      |
-| 实时 | `deviceTrustRequested` / `deviceTrustResolved`                                                                                                                                                                                            |
-| 过程 | `trust.list`、`trust.reject`（只记拒绝；批准走端到端通道，不经云端）                                                                                                                                                                      |
+| 项   | 内容                                                                                                                                                                                                                                                                                                                                             |
+| ---- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| 目的 | 主机 owner、团队 admin（按团队设置）或成员本人从已受信设备背书新设备                                                                                                                                                                                                                                                                             |
+| 组件 | `Table` / `Item`、`Avatar`、`Badge outline`、`ButtonGroup`、`ResponsiveDialog`、`InputOTP`                                                                                                                                                                                                                                                       |
+| 行为 | 列表只显示成员、设备、平台、主机、时间，**不显示校验码**：背书人输入新设备上显示的 6 位码，由端到端通道在主机侧核对（core 契约 §77 的背书路径），云端看不到、也不经手这个码。浏览器本身是否是该主机的受信设备，由 `browser-cloud` 提供方尝试打开端到端通道判定；是 → 「信任」可用；否 → 行尾 `Badge outline`「在已信任的设备上处理」，不渲染按钮 |
+| 空   | 「没有待信任的设备」                                                                                                                                                                                                                                                                                                                             |
+| 错误 | `sas_mismatch` / `sas_expired`（现有 `e2e.approve.*`）、`device_untrusted`、`e2e_device_unavailable`                                                                                                                                                                                                                                             |
+| 实时 | `deviceTrustRequested` / `deviceTrustResolved`                                                                                                                                                                                                                                                                                                   |
+| 过程 | `trust.list`（协议 1.4 的 `trustRequest` 现带 `sas` 字段，应删除，§6.5）、`trust.reject`（只记拒绝；批准走端到端通道，不经云端）                                                                                                                                                                                                                 |
 
 #### 3.3.10 审计 `/t/:team/audit`（M1；查询导出 M2）
 
@@ -600,20 +603,20 @@
   │ 访客            2 / 6        ▓▓▓░░░░░░  │
   │ 同时连接        12 / 60      ▓▓░░░░░░░  │
   │ 本月流量        38 / 150 GB  ▓▓▓░░░░░░  │
-  每日流量                                      chart 柱状，单系列 --brand
+  每日流量                                      chart 柱状，单系列 --brand；数据：团队按天的流量序列（契约缺口，§6.5）
   [▁▂▃▅▂▁▃▆▅▂ …]
   发票（M2）  Table：日期 · 金额 · 状态 · [下载]
 
 390：Progress 换到值下方一整行。
 ```
 
-| 项   | 内容                                                                                                                                                                                |
-| ---- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 组件 | `Card`、`SettingsGroup` / `SettingsRow`、`Progress`、`chart`、`Table` / `Item`、`Badge`、`Alert`、`Button`                                                                          |
-| 状态 | ≥80% 的配额 `Progress` 换 `--warn`，值后 `Badge outline`「接近上限」；100% 换 `--danger` +「已达上限」；超额宽限期 → 页顶 `Alert`「本月流量已超出，{date} 起限制同时连接」+「升级」 |
-| 动作 | 升级 / 试用团队版（M2）→ `billing.checkout` 返回的支付页（同标签跳转）；管理付款 → `billing.portal`                                                                                 |
-| 权限 | owner / billing 全部；admin 只读（无动作）                                                                                                                                          |
-| 过程 | `billing.plan` / `billing.usage`（`space` = team，路径 `/v1/billing/…`）、`teams.usage`、`billing.checkout` / `portal` / `invoices`（M2）                                           |
+| 项   | 内容                                                                                                                                                                                  |
+| ---- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 组件 | `Card`、`SettingsGroup` / `SettingsRow`、`Progress`、`chart`、`Table` / `Item`、`Badge`、`Alert`、`Button`                                                                            |
+| 状态 | ≥80% 的配额 `Progress tone="warn"`，值后 `Badge outline`「接近上限」；100% `tone="danger"` +「已达上限」；超额宽限期 → 页顶 `Alert`「本月流量已超出，{date} 起限制同时连接」+「升级」 |
+| 动作 | 升级 / 试用团队版（M2）→ `billing.checkout` 返回的支付页（同标签跳转）；管理付款 → `billing.portal`                                                                                   |
+| 权限 | owner / billing 全部；admin 只读（无动作）                                                                                                                                            |
+| 过程 | `billing.plan` / `billing.usage`（`space` = team，路径 `/v1/billing/…`）、`teams.usage`、`billing.checkout` / `portal` / `invoices`（M2）                                             |
 
 #### 3.3.12 设置 `/t/:team/settings`（M1；安全策略 M2；域名 M3）
 
@@ -623,7 +626,7 @@
 | 访问     | M1  | 成员可以登记主机 `Switch`、缺省主机角色 `Select`、允许访客 `Switch`、允许免登录链接 `Switch`（缺省关）、新设备背书人 `Select`（主机所有者 / 主机所有者与管理员）、成员可从自己已信任的设备背书 `Switch`（缺省开） |
 | 安全     | M2  | 要求两步验证 `Switch`、会话时长上限 `Select`（不限 / 1 / 7 / 30 天）、允许的邮箱域名（`Badge` 列表 +「添加域名」）                                                                                                |
 | 域名     | M3  | 验证过的域名、单点登录、按域名自动加入                                                                                                                                                                            |
-| 危险操作 | M1  | 转移所有权（`Select` 选 admin → `AlertDialog`「把「{team}」转给 {name}？」）、离开团队（`AlertDialog`）、删除团队（`AlertDialog` + 输入地址确认）                                                                 |
+| 危险操作 | M1  | 转移所有权（`Select` 选 admin → `ResponsiveAlertDialog`「把「{team}」转给 {name}？」）、离开团队（`ResponsiveAlertDialog`）、删除团队（`ResponsiveAlertDialog` + 输入地址确认）                                   |
 
 - 改动即存（`Switch` / `Select` 立即调 `teams.settingsUpdate`，失败回滚 + sonner）；文本框失焦存，sonner「已保存」。
 - 权限：owner 全部；admin 无「转移所有权」「删除团队」；其余角色只有「危险操作」里的「离开团队」。
@@ -652,32 +655,32 @@
 
 | 项   | 内容                                                                                                                                                                                     |
 | ---- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 组件 | `InputGroup`、`Table` / `Item`、`Badge`、`Sheet`、`SettingsRow`、`AlertDialog`、`Field`、`Textarea`、`Input`                                                                             |
-| 动作 | 停用 → `AlertDialog`「停用「{name}」？」+ 理由（必填）+ 输入名称确认 → 拒绝登录与签发、踢掉连接；恢复 → `AlertDialog`「恢复「{name}」？」+ 理由                                          |
+| 组件 | `InputGroup`、`Table` / `Item`、`Badge`、`Sheet`、`SettingsRow`、`ResponsiveAlertDialog`、`Field`、`Textarea`、`Input`                                                                   |
+| 动作 | 停用 → `ResponsiveAlertDialog`「停用「{name}」？」+ 理由（必填）+ 输入名称确认 → 拒绝登录与签发、踢掉连接；恢复 → `ResponsiveAlertDialog`「恢复「{name}」？」+ 理由                      |
 | 空   | 未查询：不渲染表；无结果：「没有匹配「{query}」的租户」                                                                                                                                  |
 | 过程 | `admin.tenants`（混排搜索）、`admin.account` / `admin.team`（按类型取详情，含 `seats`、`relayBytesMonth`、`recentActions`）、`admin.accountStatus` / `admin.teamStatus`（必带 `reason`） |
 
 #### 3.4.2 节点 `/ops/nodes`（M1）
 
-| 项   | 内容                                                                                                   |
-| ---- | ------------------------------------------------------------------------------------------------------ |
-| 组件 | `Table` / `Item`、`StatusPill`（服务中 = done，排空中 = attention，离线 = idle + 文字）、`AlertDialog` |
-| 列   | 节点 · 区域 · 隧道 · 连接 · 状态 · 最近心跳 · [排空]                                                   |
-| 动作 | 排空 → `AlertDialog`「排空「{node}」？」+「排空」                                                      |
-| 实时 | 15 秒轮询（`refetchInterval`），后台标签页停                                                           |
-| 过程 | `admin.relayNodes`、`admin.relayNodeDrain`                                                             |
+| 项   | 内容                                                                                                             |
+| ---- | ---------------------------------------------------------------------------------------------------------------- |
+| 组件 | `Table` / `Item`、`StatusPill`（服务中 = done，排空中 = attention，离线 = idle + 文字）、`ResponsiveAlertDialog` |
+| 列   | 节点 · 区域 · 隧道 · 连接 · 状态 · 最近心跳 · [排空]                                                             |
+| 动作 | 排空 → `ResponsiveAlertDialog`「排空「{node}」？」+ 理由 + 输入节点名确认 +「排空」                              |
+| 实时 | 15 秒轮询（`refetchInterval`），后台标签页停                                                                     |
+| 过程 | `admin.relayNodes`、`admin.relayNodeDrain`                                                                       |
 
 #### 3.4.3 服务状态 `/ops/status`（M1 事故开关；M2 对外状态）
 
 | 分组     | 期  | 内容                                                                                                                                                                                          |
 | -------- | :-: | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 事故开关 | M1  | 「签发访问」`Switch`（开 = 正常）、「开放注册」`Switch`；关掉都要 `AlertDialog`「暂停签发访问？」/「关闭注册？」+ 理由                                                                        |
+| 事故开关 | M1  | 「签发访问」`Switch`（开 = 正常）、「开放注册」`Switch`；关掉都要 `ResponsiveAlertDialog`「暂停签发访问？」/「关闭注册？」+ 理由 + 输入开关名确认                                             |
 | 对外状态 | M2  | 组件表：组件 · 状态 `Select`（正常 / 降级 / 中断）；「发布」default → 更新状态页                                                                                                              |
 | 过程     |     | `admin.incident` / `admin.incidentSet`（`pauseAssertions`、`pauseRegistrations`；开关「开」= 对应字段 false）、`status.get`（匿名 `GET /v1/status`，与对外状态页共用）、`admin.statusPublish` |
 
 #### 3.4.4 滥用 `/ops/abuse`（M2）
 
-列：对象（链接 / 主机）· 团队 · 信号（流量异常 / 举报）· 本月流量 · 时间 · ⋯（冻结链接 / 解冻 / 打开租户）。冻结 → `AlertDialog` + 理由。过程：`admin.abuseList`、`admin.linkFreeze`（`frozen: true / false`）。
+列：对象（链接 / 主机）· 团队 · 信号（流量异常 / 举报）· 本月流量 · 时间 · ⋯（冻结链接 / 解冻 / 打开租户）。冻结 → `ResponsiveAlertDialog` + 理由 + 输入链接备注（无备注时输入链接 id）确认。过程：`admin.abuseList`、`admin.linkFreeze`（`frozen: true / false`）。
 
 #### 3.4.5 功能开关 `/ops/flags`（M2）
 
@@ -732,7 +735,7 @@
 #### 3.5.3 待信任设备（M1）
 
 - 背书人（主机 owner / 团队 admin / 本人另一台设备）收到 `deviceTrustRequested`：桌面在 `shell/Banners.tsx` 加一条「{member} 的新设备待信任」+「查看」；手机同一条 + 推送。
-- 「查看」→ `ResponsiveDialog`：设备名、平台、6 位验证码（24px tabular）、「拒绝」outline /「信任」default；批准走现有端到端背书路径（契约 §77）。
+- 「查看」→ `ResponsiveDialog`：设备名、平台、`InputOTP` 输入新设备上显示的 6 位校验码（现有 `e2e.approve.hint`）、「拒绝」outline /「信任」default；码只在端到端通道里核对，横幅与对话框都不显示它（契约 §77）。
 - 被背书的一方沿用现有 `PendingApprovalDialog`。
 
 #### 3.5.4 侧栏「他人分享」按团队分小组（M1）
@@ -751,7 +754,7 @@
   (王) 王五 的 demo · 只读       不经团队的分享（链接、个人邀请）排在团队小组之后，形态不变
 ```
 
-- 分组键：断言里的 `team.teamId` 经 `sources.list` 带出的团队名（`client_sources` 需要 `team_id` / `team_name` 两列，见 §7 U7）。
+- 分组键：断言里的 `team.teamId` 经 `sources.list` 带出的团队名（`client_sources` 需要 `team_id` / `team_name` 两列，见 §7 U7c）。
 - 只有一个团队且没有个人分享时不画小组标题。展开状态存 `armadra.sidebar.teams.<teamId>`。
 - 手机两组（我的电脑 / 他人分享）同规则。
 
@@ -775,62 +778,62 @@
 
 ### 4.2 状态与徽标
 
-| 对象     | 状态        | 形态                                                           |
-| -------- | ----------- | -------------------------------------------------------------- |
-| 主机     | 在线        | `StatusPill tone=done`「在线」                                 |
-| 主机     | 离线        | `StatusPill tone=idle`（圆点）+ `--muted-foreground`「离线」   |
-| 主机     | 已撤销      | `Badge destructive`「已撤销」                                  |
-| 主机     | 转移中      | `Badge outline`「等待 {team} 接受」                            |
-| 团队角色 | 全部        | `Badge secondary`（所有者 / 管理员 / 成员 / 账单 / 访客）      |
-| 主机权限 | 四档        | `Badge outline`（只读 / 可编辑 / 可执行 / 可接管）             |
-| 邀请     | 待接受      | `Badge outline`「待接受」；过期 `Badge ghost`「已过期」        |
-| 授予     | ≤7 天到期   | 到期列文字换 `--warn-text`「{count} 天后到期」                 |
-| 链接     | 冻结        | `Badge destructive`「已冻结」                                  |
-| 租户     | 停用        | `Badge destructive`「已停用」                                  |
-| 节点     | 排空中      | `StatusPill tone=attention`「排空中」                          |
-| 配额     | ≥80% / 100% | `Progress` 指示色 `--warn` / `--danger` + `Badge outline` 文字 |
+| 对象     | 状态        | 形态                                                                           |
+| -------- | ----------- | ------------------------------------------------------------------------------ |
+| 主机     | 在线        | `StatusPill tone=done`「在线」                                                 |
+| 主机     | 离线        | `StatusPill tone=idle`（圆点）+ `--muted-foreground`「离线」                   |
+| 主机     | 已撤销      | `Badge destructive`「已撤销」                                                  |
+| 主机     | 转移中      | `Badge outline`「等待 {team} 接受」                                            |
+| 团队角色 | 全部        | `Badge secondary`（所有者 / 管理员 / 成员 / 账单 / 访客）                      |
+| 主机权限 | 四档        | `Badge outline`（只读 / 可编辑 / 可执行 / 可接管）                             |
+| 邀请     | 待接受      | `Badge outline`「待接受」；过期 `Badge ghost`「已过期」                        |
+| 授予     | ≤7 天到期   | 到期列文字换 `--warn-text`「{count} 天后到期」                                 |
+| 链接     | 冻结        | `Badge destructive`「已冻结」                                                  |
+| 租户     | 停用        | `Badge destructive`「已停用」                                                  |
+| 节点     | 排空中      | `StatusPill tone=attention`「排空中」                                          |
+| 配额     | ≥80% / 100% | `Progress tone="warn"` / `tone="danger"`（U1a 新增变体）+ `Badge outline` 文字 |
 
 每个状态都同时有文字；颜色只是第二通道。
 
 ### 4.3 危险确认
 
-| 动作                           | 形态                                    | 确认按钮                              |
-| ------------------------------ | --------------------------------------- | ------------------------------------- |
-| 删除团队                       | `AlertDialog` + 输入团队地址            | 删除团队                              |
-| 注销账号                       | `AlertDialog` + 输入邮箱                | 注销账号                              |
-| 撤销主机                       | `AlertDialog` + 输入主机名              | 撤销主机                              |
-| 运营停用租户                   | `AlertDialog` + 理由 + 输入名称         | 停用                                  |
-| 转移所有权                     | `AlertDialog`（对象名重复）             | 转移所有权                            |
-| 移除成员 / 离开团队            | `AlertDialog`                           | 移除成员 / 离开团队                   |
-| 撤销访问 / 链接 / 令牌 / 邀请  | `AlertDialog`                           | 撤销访问 / 撤销链接 / 撤销 / 撤销邀请 |
-| 删除分组                       | `AlertDialog`                           | 删除分组                              |
-| 排空节点 / 冻结链接 / 事故开关 | `AlertDialog` + 理由（运营）            | 排空 / 冻结链接 / 暂停                |
-| 拒绝访问申请                   | 无对话框，sonner「已拒绝」+「撤销」5 秒 | —                                     |
+| 动作                           | 形态                                                | 确认按钮                              |
+| ------------------------------ | --------------------------------------------------- | ------------------------------------- |
+| 删除团队                       | `ResponsiveAlertDialog` + 输入团队地址              | 删除团队                              |
+| 注销账号                       | `ResponsiveAlertDialog` + 输入邮箱                  | 注销账号                              |
+| 撤销主机                       | `ResponsiveAlertDialog` + 输入主机名                | 撤销主机                              |
+| 运营停用租户                   | `ResponsiveAlertDialog` + 理由 + 输入名称           | 停用                                  |
+| 转移所有权                     | `ResponsiveAlertDialog`（对象名重复）               | 转移所有权                            |
+| 移除成员 / 离开团队            | `ResponsiveAlertDialog`                             | 移除成员 / 离开团队                   |
+| 撤销访问 / 链接 / 令牌 / 邀请  | `ResponsiveAlertDialog`                             | 撤销访问 / 撤销链接 / 撤销 / 撤销邀请 |
+| 删除分组                       | `ResponsiveAlertDialog`                             | 删除分组                              |
+| 排空节点 / 冻结链接 / 事故开关 | `ResponsiveAlertDialog` + 理由 + 输入对象名（运营） | 排空 / 冻结链接 / 暂停                |
+| 拒绝访问申请                   | 无对话框，sonner「已拒绝」+「撤回」5 秒             | —                                     |
 
 - 输入确认的确认按钮不预先禁用：不一致时点击 → 输入框 `aria-invalid` + 下方「与 {value} 不一致」并聚焦（better-accessibility「不要在有效前禁用提交」）。
 - 标题重复对象名，用全角引号：「删除「研发组」？」；确认按钮复述后果（better-writing）。
-- 手机上 `AlertDialog` 是底部形态（设计系统 G5 已补）。
+- 一律用 `panels/ResponsiveDialog.tsx` 的 `ResponsiveAlertDialog*`（手机上自动是底部形态）；功能代码不直接用 `ui/alert-dialog`（`no-raw-alert-dialog` 守卫）。
 
 ### 4.4 Toast（sonner）
 
 | 情形         | 形态                                            |
 | ------------ | ----------------------------------------------- |
 | 行内动作成功 | 一句过去式「已撤销」「已邀请 {count} 人」，4 秒 |
-| 可撤销       | 带「撤销」动作，5 秒                            |
+| 可撤回       | 带「撤回」动作，5 秒                            |
 | 行内动作失败 | 按 `code` 取文案 + 「重试」，常驻到关闭         |
 | 表单错误     | 不用 toast，`Field` 下方                        |
 | 读屏         | sonner 的 `role="status"`；错误不抢焦点         |
 
 ### 4.5 响应式
 
-| 宽度     | 外壳                       | 列表                                          | 对话框                               |
-| -------- | -------------------------- | --------------------------------------------- | ------------------------------------ |
-| ≥1024    | 侧栏 240 固定              | `Table`                                       | `Dialog` 520 / `AlertDialog` 420     |
-| 768–1023 | 顶栏 48 + `Sheet left` 280 | `Table`（次要列按容器宽度隐藏，内容进行展开） | 同上                                 |
-| ≤767     | 顶栏 48 + `Sheet left` 280 | `Item`                                        | `Sheet bottom`（`ResponsiveDialog`） |
+| 宽度     | 外壳                       | 列表                                          | 对话框                                     |
+| -------- | -------------------------- | --------------------------------------------- | ------------------------------------------ |
+| ≥1024    | 侧栏 240 固定              | `Table`                                       | `Dialog` 520 / `ResponsiveAlertDialog` 420 |
+| 768–1023 | 顶栏 48 + `Sheet left` 280 | `Table`（次要列按容器宽度隐藏，内容进行展开） | 同上                                       |
+| ≤767     | 顶栏 48 + `Sheet left` 280 | `Item`                                        | `Sheet bottom`（`ResponsiveDialog`）       |
 
-- 断点之外用容器查询收列：主机表 <720 隐藏「标签」，<600 隐藏「所有者」（值进名称下第二行）。
-- 320 宽与 200% 缩放下无横向滚动；`Table` 外层不包横向滚动容器。
+- 断点之外用容器查询收列：主机表 <720 时「标签」并进名称下第二行，<600 时「最近在线」也并进去。
+- `ui/table` 自带 `overflow-x-auto` 外层，保留；靠列数控制（主机表 5 列）与容器查询收列，使 320 宽与 200% 缩放下正常数据不出现横向滚动。确有页面要禁止滚动时，U1a 再给 `Table` 加一个不滚动的变体。
 
 ### 4.6 深浅主题
 
@@ -853,42 +856,43 @@
 
 ### 4.8 better-\* 规则落点
 
-| 技能                  | 规则                                                       | 本文落点                                                                                    |
-| --------------------- | ---------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
-| better-layout         | 用留白分组，组间 ≥ 2× 组内                                 | 组间 24 / 组内 8（§2.1、§4.1）                                                              |
-| better-layout         | 控件与内容可区分                                           | 行动作统一在行尾 ghost / ⋯；可点的标签用 `SettingsRow onClick` 的 `›`                       |
-| better-layout         | 按重要性排序；一屏一个主动作                               | 页头右端唯一 default；行内标识在前、元数据与动作在后（§3 各表）                             |
-| better-layout         | 提示隐藏内容                                               | 展开行用 `Collapsible` 的 chevron；截断的理由 `Tooltip` 全文；`Tabs` 手机横滑露出半个下一项 |
-| better-layout         | 结构撑到放不下再收；为译文增长留空                         | 容器查询收列（§4.5）；按钮宽度随文字，无固定宽；英文串比中文长，验收用 `locale=en` 截图     |
-| better-layout         | 逻辑属性                                                   | 新样式只用 `ps-` / `pe-` / `ms-` / `me-` / `text-start`                                     |
-| better-writing        | 动词开头的按钮，确认复述后果                               | 「撤销主机」「删除团队」「移除成员」，不用「确定」（§4.3）                                  |
-| better-writing        | 错误说怎么修，贴在出错处                                   | §6.4 每个 `code` 的文案都带动作；表单错在 `Field` 下                                        |
-| better-writing        | 空态指向下一步                                             | 「还没有主机」+「登记主机」；筛选空态写出查询并给「清除筛选」                               |
-| better-writing        | 开关描述「开」的状态                                       | 「允许访客」「成员可以登记主机」「签发访问」，不用否定式                                    |
-| better-writing        | 不拼接句子                                                 | 全部用带占位符的整句模板（`{owner} 的 {workspace}`）                                        |
-| better-writing        | 一个流程一套词                                             | 公共页只用「继续」推进、「完成」收尾；全站「撤销」统一指作废                                |
-| better-typography     | 用语义字号阶                                               | 只用 `--text-display / title / section / body / caption`，不出现 11px 以下                  |
-| better-typography     | 变化的数字用 tabular                                       | 用量、计数、时间、验证码、倒计时（§3.3.9、§3.3.11）                                         |
-| better-typography     | 截断不丢内容                                               | 邮箱、理由、对象 id 单行截断 + `Tooltip`；标题 `text-wrap: balance`                         |
-| better-typography     | 手机输入 16px                                              | `--text-input-touch`                                                                        |
-| better-colors         | 只用语义 token，按角色用色                                 | 状态三件套 `--<s>` / `-text` / `-soft`；品牌只给选中与主按钮                                |
-| better-colors         | 一屏只填一个主动作                                         | default 按钮唯一；危险 destructive 只给危险动作                                             |
-| better-colors         | 测渲染出来的那一对                                         | 展示页对比度探针两主题实测（§7 验收）                                                       |
-| better-ui             | 同心圆角                                                   | 菜单 10 = 项 6 + 4；卡片 10、对话框 14，沿用 `--r-*`                                        |
-| better-ui             | 阴影只给浮起来的东西                                       | 页面平铺无阴影；`Sheet` / `Dialog` / 菜单用 `--shadow-overlay` / `--shadow-dialog`          |
-| better-ui             | 只过渡变化的属性，高频交互 ≤150ms                          | 行 hover 用 `--dur-fast`；页面切换无动画；Sheet `--dur-page`                                |
-| better-ui             | 图标线宽随文字                                             | lucide 1.5，14 / 16 两档                                                                    |
-| better-accessibility  | 原生元素优先；导航用链接                                   | 侧栏、行名称、「查看全部」是 `<a href>`（支持新标签）；动作是 `Button`                      |
-| better-accessibility  | 可见焦点环、键盘全可达                                     | `--focus-ring` 3px 50%；§4.7 探针                                                           |
-| better-accessibility  | 不靠颜色                                                   | §4.2 每个状态都有文字                                                                       |
-| better-accessibility  | 提交不预先禁用、错误可读出                                 | §4.3 输入确认；`aria-describedby` 指向字段错误                                              |
-| better-accessibility  | 动态内容播报                                               | 常驻 `role="status"`；错误 toast 常驻                                                       |
-| better-accessibility  | 320 宽 / 200% 缩放                                         | §4.5                                                                                        |
-| web-design-guidelines | 状态进地址                                                 | 筛选、页签、游标进查询参数（§1.4）                                                          |
-| web-design-guidelines | 日期与数字用 `Intl`                                        | `Intl.DateTimeFormat` / `RelativeTimeFormat` / `NumberFormat`（流量单位）                   |
-| web-design-guidelines | 品牌与代码不翻译                                           | Armadra、GitHub、开关名、令牌加 `translate="no"`                                            |
-| web-design-guidelines | 长列表虚拟化                                               | 审计与租户超过 50 行用 `@tanstack/react-virtual`（已是依赖）                                |
-| TUI §1（ama）         | 层级靠缩进与留白；彩色克制；状态冗余编码；窄屏裁剪不换结构 | §4.1「一屏彩色 ≤ 3」「一份列定义两种渲染」；§4.2                                            |
+| 技能                  | 规则                                                                            | 本文落点                                                                                              |
+| --------------------- | ------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
+| better-layout         | 用留白分组，组间 ≥ 2× 组内                                                      | 组间 24 / 组内 8（§2.1、§4.1）                                                                        |
+| better-layout         | 控件与内容可区分                                                                | 行动作统一在行尾 ghost / ⋯；可点的标签用 `SettingsRow onClick` 的 `›`                                 |
+| better-layout         | 按重要性排序；一屏一个主动作                                                    | 页头右端唯一 default；行内标识在前、元数据与动作在后（§3 各表）                                       |
+| better-layout         | 提示隐藏内容                                                                    | 展开行用 `Collapsible` 的 chevron；截断的理由 `Tooltip` 全文；`Tabs` 手机横滑露出半个下一项           |
+| better-layout         | 结构撑到放不下再收；为译文增长留空                                              | 容器查询收列（§4.5）；按钮宽度随文字，无固定宽；英文串比中文长，验收用 `locale=en` 截图               |
+| better-layout         | 逻辑属性                                                                        | 新样式只用 `ps-` / `pe-` / `ms-` / `me-` / `text-start`                                               |
+| better-writing        | 动词开头的按钮，确认复述后果                                                    | 「撤销主机」「删除团队」「移除成员」，不用「确定」（§4.3）                                            |
+| better-writing        | 错误说怎么修，贴在出错处                                                        | §6.4 每个 `code` 的文案都带动作；表单错在 `Field` 下                                                  |
+| better-writing        | 空态指向下一步                                                                  | 「还没有主机」+「登记主机」；筛选空态写出查询并给「清除筛选」                                         |
+| better-writing        | 开关描述「开」的状态                                                            | 「允许访客」「成员可以登记主机」「签发访问」，不用否定式                                              |
+| better-writing        | 复数用 `Intl.PluralRules`（U1a 的 `tp(key, count)` 取 `key.one` / `key.other`） | 英文 `{count} member` / `{count} members` 各一条；中文两条同文                                        |
+| better-writing        | 不拼接句子                                                                      | 全部用带占位符的整句模板（`{owner} 的 {workspace}`）                                                  |
+| better-writing        | 一个流程一套词                                                                  | 公共页只用「继续」推进、「完成」收尾；全站「撤销」/ Revoke 统一指作废，toast 里的反悔叫「撤回」/ Undo |
+| better-typography     | 用语义字号阶                                                                    | 只用 `--text-display / title / section / body / caption`，不出现 11px 以下                            |
+| better-typography     | 变化的数字用 tabular                                                            | 用量、计数、时间、设备码倒计时（§3.3.11、§3.5.1）                                                     |
+| better-typography     | 截断不丢内容                                                                    | 邮箱、理由、对象 id 单行截断 + `Tooltip`；标题 `text-wrap: balance`                                   |
+| better-typography     | 手机输入 16px                                                                   | `--text-input-touch`                                                                                  |
+| better-colors         | 只用语义 token，按角色用色                                                      | 状态三件套 `--<s>` / `-text` / `-soft`；品牌只给选中与主按钮                                          |
+| better-colors         | 一屏只填一个主动作                                                              | default 按钮唯一；危险 destructive 只给危险动作                                                       |
+| better-colors         | 测渲染出来的那一对                                                              | 展示页对比度探针两主题实测（§7 验收）                                                                 |
+| better-ui             | 同心圆角                                                                        | 菜单 10 = 项 6 + 4；卡片 10、对话框 14，沿用 `--r-*`                                                  |
+| better-ui             | 阴影只给浮起来的东西                                                            | 页面平铺无阴影；`Sheet` / `Dialog` / 菜单用 `--shadow-overlay` / `--shadow-dialog`                    |
+| better-ui             | 只过渡变化的属性，高频交互 ≤150ms                                               | 行 hover 用 `--dur-fast`；页面切换无动画；Sheet `--dur-page`                                          |
+| better-ui             | 图标线宽随文字                                                                  | lucide 1.5，14 / 16 两档                                                                              |
+| better-accessibility  | 原生元素优先；导航用链接                                                        | 侧栏、行名称、「查看全部」是 `<a href>`（支持新标签）；动作是 `Button`                                |
+| better-accessibility  | 可见焦点环、键盘全可达                                                          | `--focus-ring` 3px 50%；§4.7 探针                                                                     |
+| better-accessibility  | 不靠颜色                                                                        | §4.2 每个状态都有文字                                                                                 |
+| better-accessibility  | 提交不预先禁用、错误可读出                                                      | §4.3 输入确认；`aria-describedby` 指向字段错误                                                        |
+| better-accessibility  | 动态内容播报                                                                    | 常驻 `role="status"`；错误 toast 常驻                                                                 |
+| better-accessibility  | 320 宽 / 200% 缩放                                                              | §4.5                                                                                                  |
+| web-design-guidelines | 状态进地址                                                                      | 筛选、页签、游标进查询参数（§1.4）                                                                    |
+| web-design-guidelines | 日期与数字用 `Intl`                                                             | `Intl.DateTimeFormat` / `RelativeTimeFormat` / `NumberFormat`（流量单位）                             |
+| web-design-guidelines | 品牌与代码不翻译                                                                | Armadra、GitHub、开关名、令牌加 `translate="no"`                                                      |
+| web-design-guidelines | 长列表虚拟化                                                                    | 审计与租户超过 50 行用 `@tanstack/react-virtual`（已是依赖）                                          |
+| TUI §1（ama）         | 层级靠缩进与留白；彩色克制；状态冗余编码；窄屏裁剪不换结构                      | §4.1「一屏彩色 ≤ 3」「一份列定义两种渲染」；§4.2                                                      |
 
 ## §5 i18n
 
@@ -965,7 +969,7 @@
 | `cloud.common.save`            | 保存                         | Save                                          |
 | `cloud.common.saved`           | 已保存                       | Saved                                         |
 | `cloud.common.retry`           | 重试                         | Retry                                         |
-| `cloud.common.undo`            | 撤销                         | Undo                                          |
+| `cloud.common.undo`            | 撤回                         | Undo                                          |
 | `cloud.common.copy`            | 复制                         | Copy                                          |
 | `cloud.common.copied`          | 已复制                       | Copied                                        |
 | `cloud.common.back`            | 返回                         | Back                                          |
@@ -980,8 +984,10 @@
 | `cloud.common.noMatch`         | 没有匹配「{query}」的结果    | No results for "{query}"                      |
 | `cloud.common.all`             | 全部                         | All                                           |
 | `cloud.common.never`           | 永不                         | Never                                         |
-| `cloud.common.days`            | {count} 天                   | {count} days                                  |
-| `cloud.common.expiresIn`       | {count} 天后到期             | Expires in {count} days                       |
+| `cloud.common.days.one`        | {count} 天                   | {count} day                                   |
+| `cloud.common.days.other`      | {count} 天                   | {count} days                                  |
+| `cloud.common.expiresIn.one`   | {count} 天后到期             | Expires in {count} day                        |
+| `cloud.common.expiresIn.other` | {count} 天后到期             | Expires in {count} days                       |
 | `cloud.common.expired`         | 已过期                       | Expired                                       |
 | `cloud.common.validUntil`      | 有效期至 {date}              | Valid until {date}                            |
 | `cloud.common.reason`          | 理由                         | Reason                                        |
@@ -991,59 +997,67 @@
 | `cloud.common.teamPlanOnly`    | {feature}属于团队版          | {feature} is part of the Team plan            |
 | `cloud.common.dangerZone`      | 危险操作                     | Danger zone                                   |
 | `cloud.common.export`          | 导出                         | Export                                        |
+| `cloud.common.contactSupport`  | 联系支持                     | Contact support                               |
+| `cloud.page.notFound`          | 找不到这个页面               | Page not found                                |
+| `cloud.page.home`              | 回到概览                     | Go to overview                                |
+| `cloud.page.maintenance`       | 服务维护中                   | Under maintenance                             |
+| `cloud.page.sessionExpired`    | 登录已过期                   | Your session expired                          |
+| `cloud.page.signIn`            | 重新登录                     | Sign in again                                 |
 
 #### cloud-auth
 
-| 键                           | zh-CN                              | en                                            |
-| ---------------------------- | ---------------------------------- | --------------------------------------------- |
-| `cloud.auth.signIn`          | 登录                               | Sign in                                       |
-| `cloud.auth.email`           | 邮箱                               | Email                                         |
-| `cloud.auth.password`        | 口令                               | Password                                      |
-| `cloud.auth.forgot`          | 忘记口令                           | Forgot password                               |
-| `cloud.auth.or`              | 或                                 | or                                            |
-| `cloud.auth.passkey`         | 使用通行密钥                       | Use passkey                                   |
-| `cloud.auth.github`          | 使用 GitHub 登录                   | Continue with GitHub                          |
-| `cloud.auth.google`          | 使用 Google 登录                   | Continue with Google                          |
-| `cloud.auth.createAccount`   | 创建账号                           | Create account                                |
-| `cloud.auth.name`            | 名字                               | Name                                          |
-| `cloud.auth.locked`          | 尝试次数过多，{minutes} 分钟后再试 | Too many attempts. Try again in {minutes} min |
-| `cloud.auth.mfa`             | 两步验证                           | Two-step verification                         |
-| `cloud.auth.mfaCode`         | 验证码                             | Code                                          |
-| `cloud.auth.useRecovery`     | 使用恢复码                         | Use a recovery code                           |
-| `cloud.auth.recoveryCode`    | 恢复码                             | Recovery code                                 |
-| `cloud.auth.verifyTitle`     | 验证邮箱                           | Verify your email                             |
-| `cloud.auth.verifySent`      | 验证邮件已发到 {email}             | Verification email sent to {email}            |
-| `cloud.auth.verifyResend`    | 重新发送                           | Resend                                        |
-| `cloud.auth.verified`        | 邮箱已验证                         | Email verified                                |
-| `cloud.auth.goConsole`       | 进入控制台                         | Go to console                                 |
-| `cloud.auth.resetTitle`      | 找回口令                           | Reset password                                |
-| `cloud.auth.resetSend`       | 发送重置链接                       | Send reset link                               |
-| `cloud.auth.resetSent`       | 重置链接已发到 {email}             | Reset link sent to {email}                    |
-| `cloud.auth.resetNewTitle`   | 设置新口令                         | Set a new password                            |
-| `cloud.auth.newPassword`     | 新口令                             | New password                                  |
-| `cloud.auth.resetSave`       | 保存口令                           | Save password                                 |
-| `cloud.auth.resetDone`       | 口令已更新，所有设备已退出         | Password updated. All devices signed out      |
-| `cloud.auth.resetAgain`      | 重新获取                           | Request a new link                            |
-| `cloud.auth.deviceTitle`     | 授权设备                           | Authorize a device                            |
-| `cloud.auth.deviceCode`      | 设备码                             | Device code                                   |
-| `cloud.auth.deviceRequest`   | {name} 请求登录                    | {name} wants to sign in                       |
-| `cloud.auth.deviceApprove`   | 授权                               | Authorize                                     |
-| `cloud.auth.deviceDeny`      | 拒绝                               | Deny                                          |
-| `cloud.auth.deviceApproved`  | 已授权，可以回到 {name}            | Authorized. Return to {name}                  |
-| `cloud.auth.deviceDenied`    | 已拒绝                             | Denied                                        |
-| `cloud.auth.deviceCodeWrong` | 设备码不正确                       | Incorrect device code                         |
-| `cloud.auth.joinTitle`       | 加入 {owner} 的 {target}           | Join {owner}'s {target}                       |
-| `cloud.auth.join`            | 加入                               | Join                                          |
-| `cloud.auth.joinSignIn`      | 登录后加入                         | Sign in to join                               |
-| `cloud.auth.inviteTeam`      | 加入团队 {team}                    | Join {team}                                   |
-| `cloud.auth.inviteHost`      | 访问 {host}                        | Access {host}                                 |
-| `cloud.auth.inviteFrom`      | 来自 {name}                        | From {name}                                   |
-| `cloud.auth.inviteAccept`    | 接受邀请                           | Accept invitation                             |
-| `cloud.auth.inviteDecline`   | 拒绝                               | Decline                                       |
-| `cloud.auth.inviteAccepted`  | 已加入                             | Joined                                        |
-| `cloud.auth.inviteDeclined`  | 已拒绝                             | Declined                                      |
-| `cloud.auth.switchAccount`   | 换个账号                           | Use another account                           |
-| `cloud.auth.openTeam`        | 打开团队                           | Open team                                     |
+| 键                               | zh-CN                              | en                                            |
+| -------------------------------- | ---------------------------------- | --------------------------------------------- |
+| `cloud.auth.signIn`              | 登录                               | Sign in                                       |
+| `cloud.auth.email`               | 邮箱                               | Email                                         |
+| `cloud.auth.password`            | 口令                               | Password                                      |
+| `cloud.auth.forgot`              | 忘记口令                           | Forgot password                               |
+| `cloud.auth.or`                  | 或                                 | or                                            |
+| `cloud.auth.passkey`             | 使用通行密钥                       | Use passkey                                   |
+| `cloud.auth.github`              | 使用 GitHub 登录                   | Continue with GitHub                          |
+| `cloud.auth.google`              | 使用 Google 登录                   | Continue with Google                          |
+| `cloud.auth.createAccount`       | 创建账号                           | Create account                                |
+| `cloud.auth.name`                | 名字                               | Name                                          |
+| `cloud.auth.locked`              | 尝试次数过多，{minutes} 分钟后再试 | Too many attempts. Try again in {minutes} min |
+| `cloud.auth.mfa`                 | 两步验证                           | Two-step verification                         |
+| `cloud.auth.mfaCode`             | 验证码                             | Code                                          |
+| `cloud.auth.useRecovery`         | 使用恢复码                         | Use a recovery code                           |
+| `cloud.auth.recoveryCode`        | 恢复码                             | Recovery code                                 |
+| `cloud.auth.verifyTitle`         | 验证邮箱                           | Verify your email                             |
+| `cloud.auth.verifySent`          | 验证邮件已发到 {email}             | Verification email sent to {email}            |
+| `cloud.auth.verifyResend`        | 重新发送                           | Resend                                        |
+| `cloud.auth.verified`            | 邮箱已验证                         | Email verified                                |
+| `cloud.auth.goConsole`           | 进入控制台                         | Go to console                                 |
+| `cloud.auth.resetTitle`          | 找回口令                           | Reset password                                |
+| `cloud.auth.resetSend`           | 发送重置链接                       | Send reset link                               |
+| `cloud.auth.resetSent`           | 重置链接已发到 {email}             | Reset link sent to {email}                    |
+| `cloud.auth.resetNewTitle`       | 设置新口令                         | Set a new password                            |
+| `cloud.auth.newPassword`         | 新口令                             | New password                                  |
+| `cloud.auth.resetSave`           | 保存口令                           | Save password                                 |
+| `cloud.auth.resetDone`           | 口令已更新，所有设备已退出         | Password updated. All devices signed out      |
+| `cloud.auth.resetAgain`          | 重新获取                           | Request a new link                            |
+| `cloud.auth.deviceTitle`         | 授权设备                           | Authorize a device                            |
+| `cloud.auth.deviceCode`          | 设备码                             | Device code                                   |
+| `cloud.auth.deviceRequest`       | {name} 请求登录                    | {name} wants to sign in                       |
+| `cloud.auth.deviceApprove`       | 授权                               | Authorize                                     |
+| `cloud.auth.deviceDeny`          | 拒绝                               | Deny                                          |
+| `cloud.auth.deviceApproved`      | 已授权，可以回到 {name}            | Authorized. Return to {name}                  |
+| `cloud.auth.deviceDenied`        | 已拒绝                             | Denied                                        |
+| `cloud.auth.deviceCodeWrong`     | 设备码不正确                       | Incorrect device code                         |
+| `cloud.auth.joinTitle`           | 加入 {owner} 的 {target}           | Join {owner}'s {target}                       |
+| `cloud.auth.join`                | 加入                               | Join                                          |
+| `cloud.auth.joinSignIn`          | 登录后加入                         | Sign in to join                               |
+| `cloud.auth.inviteTeam`          | 加入团队 {team}                    | Join {team}                                   |
+| `cloud.auth.inviteHost`          | 访问 {host}                        | Access {host}                                 |
+| `cloud.auth.inviteFrom`          | 来自 {name}                        | From {name}                                   |
+| `cloud.auth.inviteAccept`        | 接受邀请                           | Accept invitation                             |
+| `cloud.auth.inviteDecline`       | 拒绝                               | Decline                                       |
+| `cloud.auth.inviteAccepted`      | 已加入                             | Joined                                        |
+| `cloud.auth.inviteDeclined`      | 已拒绝                             | Declined                                      |
+| `cloud.auth.switchAccount`       | 换个账号                           | Use another account                           |
+| `cloud.auth.openTeam`            | 打开团队                           | Open team                                     |
+| `cloud.auth.registrationsClosed` | 暂停注册                           | Sign-ups are paused                           |
+| `cloud.auth.operatorSignIn`      | 登录运营后台                       | Sign in to operations                         |
 
 #### cloud-account
 
@@ -1111,8 +1125,10 @@
 | 键                               | zh-CN                        | en                                             |
 | -------------------------------- | ---------------------------- | ---------------------------------------------- |
 | `cloud.team.hostsOnline`         | {online} / {total} 在线      | {online} of {total} online                     |
-| `cloud.team.membersCount`        | {count} 位成员               | {count} members                                |
-| `cloud.team.guestsCount`         | 访客 {count}                 | {count} guests                                 |
+| `cloud.team.membersCount.one`    | {count} 位成员               | {count} member                                 |
+| `cloud.team.membersCount.other`  | {count} 位成员               | {count} members                                |
+| `cloud.team.guestsCount.one`     | 访客 {count}                 | {count} guest                                  |
+| `cloud.team.guestsCount.other`   | 访客 {count}                 | {count} guests                                 |
 | `cloud.team.traffic`             | 本月流量                     | Traffic this month                             |
 | `cloud.team.plan`                | 计划                         | Plan                                           |
 | `cloud.team.pending`             | 待处理                       | Needs attention                                |
@@ -1131,7 +1147,8 @@
 | `cloud.team.inviteEmails`        | 邮箱                         | Emails                                         |
 | `cloud.team.inviteEmailInvalid`  | 第 {index} 个邮箱格式不对    | Email {index} isn't valid                      |
 | `cloud.team.inviteAction`        | 发送邀请                     | Send invitations                               |
-| `cloud.team.invited`             | 已邀请 {count} 人            | Invited {count} people                         |
+| `cloud.team.invited.one`         | 已邀请 {count} 人            | Invited {count} person                         |
+| `cloud.team.invited.other`       | 已邀请 {count} 人            | Invited {count} people                         |
 | `cloud.team.role`                | 角色                         | Role                                           |
 | `cloud.team.joined`              | 加入时间                     | Joined                                         |
 | `cloud.team.invitedBy`           | 邀请人                       | Invited by                                     |
@@ -1180,7 +1197,8 @@
 | `cloud.groups.new`               | 新建分组                     | New group                                      |
 | `cloud.groups.name`              | 名称                         | Name                                           |
 | `cloud.groups.lead`              | 组长                         | Lead                                           |
-| `cloud.groups.count`             | {count} 人                   | {count} people                                 |
+| `cloud.groups.count.one`         | {count} 人                   | {count} person                                 |
+| `cloud.groups.count.other`       | {count} 人                   | {count} people                                 |
 | `cloud.groups.grants`            | 授予                         | Grants                                         |
 | `cloud.groups.addMembers`        | 添加组员                     | Add members                                    |
 | `cloud.groups.setLead`           | 设为组长                     | Make lead                                      |
@@ -1193,115 +1211,120 @@
 
 #### cloud-hosts
 
-| 键                              | zh-CN                                          | en                                                                    |
-| ------------------------------- | ---------------------------------------------- | --------------------------------------------------------------------- |
-| `cloud.hosts.register`          | 登记主机                                       | Register host                                                         |
-| `cloud.hosts.search`            | 搜索主机                                       | Search hosts                                                          |
-| `cloud.hosts.status`            | 状态                                           | Status                                                                |
-| `cloud.hosts.online`            | 在线                                           | Online                                                                |
-| `cloud.hosts.offline`           | 离线                                           | Offline                                                               |
-| `cloud.hosts.revoked`           | 已撤销                                         | Revoked                                                               |
-| `cloud.hosts.tags`              | 标签                                           | Tags                                                                  |
-| `cloud.hosts.name`              | 名称                                           | Name                                                                  |
-| `cloud.hosts.owner`             | 所有者                                         | Owner                                                                 |
-| `cloud.hosts.myAccess`          | 我的权限                                       | My access                                                             |
-| `cloud.hosts.lastOnline`        | 最近在线                                       | Last online                                                           |
-| `cloud.hosts.version`           | 版本                                           | Version                                                               |
-| `cloud.hosts.empty`             | 还没有主机                                     | No hosts yet                                                          |
-| `cloud.hosts.registerFromApp`   | 在 Armadra 里登记                              | Register in Armadra                                                   |
-| `cloud.hosts.registerServer`    | 服务器                                         | Server                                                                |
-| `cloud.hosts.registerToken`     | 注册令牌                                       | Registration token                                                    |
-| `cloud.hosts.copyCommand`       | 复制命令                                       | Copy command                                                          |
-| `cloud.hosts.sharedMachine`     | 能进终端的成员可以用这台电脑的系统账号执行命令 | Members with terminal access can run commands as this computer's user |
-| `cloud.hosts.rename`            | 重命名                                         | Rename                                                                |
-| `cloud.hosts.addTag`            | 添加标签                                       | Add tag                                                               |
-| `cloud.hosts.tabAccess`         | 访问                                           | Access                                                                |
-| `cloud.hosts.tabLinks`          | 链接                                           | Links                                                                 |
-| `cloud.hosts.tabSettings`       | 设置                                           | Settings                                                              |
-| `cloud.hosts.who`               | 成员                                           | Who                                                                   |
-| `cloud.hosts.access`            | 权限                                           | Access                                                                |
-| `cloud.hosts.scope`             | 范围                                           | Scope                                                                 |
-| `cloud.hosts.scopeHost`         | 整台                                           | Entire host                                                           |
-| `cloud.hosts.scopeWorkspaces`   | {count} 个工作空间                             | {count} workspaces                                                    |
-| `cloud.hosts.scopeSession`      | 单个会话                                       | One session                                                           |
-| `cloud.hosts.via`               | 来源                                           | Granted via                                                           |
-| `cloud.hosts.viaTeam`           | 团队全员                                       | Everyone in team                                                      |
-| `cloud.hosts.viaDirect`         | 直接授予                                       | Direct                                                                |
-| `cloud.hosts.viaGroup`          | 分组 {name}                                    | Group {name}                                                          |
-| `cloud.hosts.viaLink`           | 链接 {name}                                    | Link {name}                                                           |
-| `cloud.hosts.viaInvite`         | 邀请                                           | Invitation                                                            |
-| `cloud.hosts.viaTag`            | 标签 {name}                                    | Tag {name}                                                            |
-| `cloud.hosts.expires`           | 到期                                           | Expires                                                               |
-| `cloud.hosts.addAccess`         | 添加访问                                       | Add access                                                            |
-| `cloud.hosts.removeAccess`      | 撤销访问                                       | Remove access                                                         |
-| `cloud.hosts.linkSigners`       | 谁可以创建链接                                 | Who can create links                                                  |
-| `cloud.hosts.signersOwner`      | 所有者                                         | Owner                                                                 |
-| `cloud.hosts.signersAdmins`     | 所有者与管理员                                 | Owner and admins                                                      |
-| `cloud.hosts.signersDrivers`    | 有可接管权限的人                               | People with full control                                              |
-| `cloud.hosts.allowGuests`       | 允许访客                                       | Allow guests                                                          |
-| `cloud.hosts.defaultRole`       | 缺省角色                                       | Default access                                                        |
-| `cloud.hosts.move`              | 移到其他空间                                   | Move to another space                                                 |
-| `cloud.hosts.moveTarget`        | 目标空间                                       | Destination                                                           |
-| `cloud.hosts.moveAction`        | 移动                                           | Move                                                                  |
-| `cloud.hosts.movePending`       | 等待 {team} 接受                               | Waiting for {team} to accept                                          |
-| `cloud.hosts.moveAccept`        | 接受主机                                       | Accept host                                                           |
-| `cloud.hosts.moveDecline`       | 拒绝                                           | Decline                                                               |
-| `cloud.hosts.revoke`            | 撤销主机                                       | Revoke host                                                           |
-| `cloud.hosts.revokeTitle`       | 撤销「{name}」？                               | Revoke "{name}"?                                                      |
-| `cloud.hosts.requestAccess`     | 申请访问                                       | Request access                                                        |
-| `cloud.hosts.requested`         | 已申请                                         | Requested                                                             |
-| `cloud.grants.subject`          | 对象                                           | Who                                                                   |
-| `cloud.grants.everyone`         | 团队全员                                       | Everyone in team                                                      |
-| `cloud.grants.host`             | 主机                                           | Host                                                                  |
-| `cloud.grants.tag`              | 标签                                           | Tag                                                                   |
-| `cloud.grants.grantedBy`        | 授予人                                         | Granted by                                                            |
-| `cloud.grants.revokeTitle`      | 撤销 {name} 对 {host} 的访问？                 | Remove {name}'s access to {host}?                                     |
-| `cloud.grants.empty`            | 没有授予                                       | No grants                                                             |
-| `cloud.grants.anyHost`          | 所有主机                                       | All hosts                                                             |
-| `cloud.grants.anySubject`       | 所有对象                                       | Everyone                                                              |
-| `cloud.requests.pending`        | 待处理                                         | Pending                                                               |
-| `cloud.requests.resolved`       | 已处理                                         | Resolved                                                              |
-| `cloud.requests.requester`      | 申请人                                         | Requester                                                             |
-| `cloud.requests.role`           | 申请权限                                       | Requested access                                                      |
-| `cloud.requests.reason`         | 理由                                           | Reason                                                                |
-| `cloud.requests.approve`        | 批准                                           | Approve                                                               |
-| `cloud.requests.deny`           | 拒绝                                           | Deny                                                                  |
-| `cloud.requests.approved`       | 已批准                                         | Approved                                                              |
-| `cloud.requests.denied`         | 已拒绝                                         | Denied                                                                |
-| `cloud.requests.createTitle`    | 申请访问 {host}                                | Request access to {host}                                              |
-| `cloud.requests.send`           | 发送申请                                       | Send request                                                          |
-| `cloud.requests.empty`          | 没有待处理的申请                               | No pending requests                                                   |
-| `cloud.requests.feature`        | 访问申请                                       | Access requests                                                       |
-| `cloud.requests.summary`        | {name} 申请访问 {host}                         | {name} requested access to {host}                                     |
-| `cloud.trust.member`            | 成员                                           | Member                                                                |
-| `cloud.trust.device`            | 设备                                           | Device                                                                |
-| `cloud.trust.host`              | 主机                                           | Host                                                                  |
-| `cloud.trust.code`              | 验证码                                         | Verification code                                                     |
-| `cloud.trust.requested`         | 请求时间                                       | Requested                                                             |
-| `cloud.trust.trust`             | 信任                                           | Trust                                                                 |
-| `cloud.trust.reject`            | 拒绝                                           | Reject                                                                |
-| `cloud.trust.title`             | 信任 {member} 的 {device}？                    | Trust {member}'s {device}?                                            |
-| `cloud.trust.trusted`           | 已信任                                         | Trusted                                                               |
-| `cloud.trust.rejected`          | 已拒绝                                         | Rejected                                                              |
-| `cloud.trust.useTrusted`        | 在已信任的设备上处理                           | Use a trusted device                                                  |
-| `cloud.trust.empty`             | 没有待信任的设备                               | No devices waiting                                                    |
-| `cloud.trust.summary`           | {member} 的 {device} 待信任                    | {member}'s {device} is waiting                                        |
-| `cloud.links.new`               | 新建链接                                       | New link                                                              |
-| `cloud.links.note`              | 备注                                           | Note                                                                  |
-| `cloud.links.target`            | 目标                                           | Target                                                                |
-| `cloud.links.uses`              | 用量                                           | Uses                                                                  |
-| `cloud.links.maxUses`           | 次数上限                                       | Maximum uses                                                          |
-| `cloud.links.usesValue`         | {used} / {max}                                 | {used} / {max}                                                        |
-| `cloud.links.createdBy`         | 创建人                                         | Created by                                                            |
-| `cloud.links.validity`          | 有效期                                         | Valid for                                                             |
-| `cloud.links.create`            | 创建链接                                       | Create link                                                           |
-| `cloud.links.copy`              | 复制链接                                       | Copy link                                                             |
-| `cloud.links.editNote`          | 编辑备注                                       | Edit note                                                             |
-| `cloud.links.revoke`            | 撤销链接                                       | Revoke link                                                           |
-| `cloud.links.revokeTitle`       | 撤销「{name}」？                               | Revoke "{name}"?                                                      |
-| `cloud.links.revokeConsequence` | 已加入的人一并停用                             | People who joined lose access too                                     |
-| `cloud.links.frozen`            | 已冻结                                         | Frozen                                                                |
-| `cloud.links.empty`             | 没有链接                                       | No links                                                              |
+| 键                                  | zh-CN                                          | en                                                                    |
+| ----------------------------------- | ---------------------------------------------- | --------------------------------------------------------------------- |
+| `cloud.hosts.register`              | 登记主机                                       | Register host                                                         |
+| `cloud.hosts.search`                | 搜索主机                                       | Search hosts                                                          |
+| `cloud.hosts.status`                | 状态                                           | Status                                                                |
+| `cloud.hosts.online`                | 在线                                           | Online                                                                |
+| `cloud.hosts.offline`               | 离线                                           | Offline                                                               |
+| `cloud.hosts.revoked`               | 已撤销                                         | Revoked                                                               |
+| `cloud.hosts.tags`                  | 标签                                           | Tags                                                                  |
+| `cloud.hosts.name`                  | 名称                                           | Name                                                                  |
+| `cloud.hosts.owner`                 | 所有者                                         | Owner                                                                 |
+| `cloud.hosts.myAccess`              | 我的权限                                       | My access                                                             |
+| `cloud.hosts.lastOnline`            | 最近在线                                       | Last online                                                           |
+| `cloud.hosts.version`               | 版本                                           | Version                                                               |
+| `cloud.hosts.empty`                 | 还没有主机                                     | No hosts yet                                                          |
+| `cloud.hosts.registerFromApp`       | 在 Armadra 里登记                              | Register in Armadra                                                   |
+| `cloud.hosts.registerServer`        | 服务器                                         | Server                                                                |
+| `cloud.hosts.registerToken`         | 注册令牌                                       | Registration token                                                    |
+| `cloud.hosts.copyCommand`           | 复制命令                                       | Copy command                                                          |
+| `cloud.hosts.sharedMachine`         | 能进终端的成员可以用这台电脑的系统账号执行命令 | Members with terminal access can run commands as this computer's user |
+| `cloud.hosts.rename`                | 重命名                                         | Rename                                                                |
+| `cloud.hosts.addTag`                | 添加标签                                       | Add tag                                                               |
+| `cloud.hosts.tabAccess`             | 访问                                           | Access                                                                |
+| `cloud.hosts.tabLinks`              | 链接                                           | Links                                                                 |
+| `cloud.hosts.tabSettings`           | 设置                                           | Settings                                                              |
+| `cloud.hosts.who`                   | 成员                                           | Who                                                                   |
+| `cloud.hosts.access`                | 权限                                           | Access                                                                |
+| `cloud.hosts.scope`                 | 范围                                           | Scope                                                                 |
+| `cloud.hosts.scopeHost`             | 整台                                           | Entire host                                                           |
+| `cloud.hosts.scopeWorkspaces.one`   | {count} 个工作空间                             | {count} workspace                                                     |
+| `cloud.hosts.scopeWorkspaces.other` | {count} 个工作空间                             | {count} workspaces                                                    |
+| `cloud.hosts.scopeSession`          | 单个会话                                       | One session                                                           |
+| `cloud.hosts.via`                   | 来源                                           | Granted via                                                           |
+| `cloud.hosts.viaTeam`               | 团队全员                                       | Everyone in team                                                      |
+| `cloud.hosts.viaDirect`             | 直接授予                                       | Direct                                                                |
+| `cloud.hosts.viaGroup`              | 分组 {name}                                    | Group {name}                                                          |
+| `cloud.hosts.viaLink`               | 链接 {name}                                    | Link {name}                                                           |
+| `cloud.hosts.viaInvite`             | 邀请                                           | Invitation                                                            |
+| `cloud.hosts.viaTag`                | 标签 {name}                                    | Tag {name}                                                            |
+| `cloud.hosts.expires`               | 到期                                           | Expires                                                               |
+| `cloud.hosts.addAccess`             | 添加访问                                       | Add access                                                            |
+| `cloud.hosts.removeAccess`          | 撤销访问                                       | Revoke access                                                         |
+| `cloud.hosts.linkSigners`           | 谁可以创建链接                                 | Who can create links                                                  |
+| `cloud.hosts.signersOwner`          | 所有者                                         | Owner                                                                 |
+| `cloud.hosts.signersAdmins`         | 所有者与管理员                                 | Owner and admins                                                      |
+| `cloud.hosts.signersDrivers`        | 有可接管权限的人                               | People with full control                                              |
+| `cloud.hosts.allowGuests`           | 允许访客                                       | Allow guests                                                          |
+| `cloud.hosts.defaultRole`           | 缺省角色                                       | Default access                                                        |
+| `cloud.hosts.move`                  | 移到其他空间                                   | Move to another space                                                 |
+| `cloud.hosts.moveTarget`            | 目标空间                                       | Destination                                                           |
+| `cloud.hosts.moveAction`            | 移动                                           | Move                                                                  |
+| `cloud.hosts.movePending`           | 等待 {team} 接受                               | Waiting for {team} to accept                                          |
+| `cloud.hosts.moveAccept`            | 接受主机                                       | Accept host                                                           |
+| `cloud.hosts.moveDecline`           | 拒绝                                           | Decline                                                               |
+| `cloud.hosts.revoke`                | 撤销主机                                       | Revoke host                                                           |
+| `cloud.hosts.revokeTitle`           | 撤销「{name}」？                               | Revoke "{name}"?                                                      |
+| `cloud.hosts.requestAccess`         | 申请访问                                       | Request access                                                        |
+| `cloud.hosts.requested`             | 已申请                                         | Requested                                                             |
+| `cloud.grants.subject`              | 对象                                           | Who                                                                   |
+| `cloud.grants.everyone`             | 团队全员                                       | Everyone in team                                                      |
+| `cloud.grants.host`                 | 主机                                           | Host                                                                  |
+| `cloud.grants.tag`                  | 标签                                           | Tag                                                                   |
+| `cloud.grants.grantedBy`            | 授予人                                         | Granted by                                                            |
+| `cloud.grants.revokeTitle`          | 撤销 {name} 对 {host} 的访问？                 | Revoke {name}'s access to {host}?                                     |
+| `cloud.grants.empty`                | 没有授予                                       | No grants                                                             |
+| `cloud.grants.anyHost`              | 所有主机                                       | All hosts                                                             |
+| `cloud.grants.anySubject`           | 所有对象                                       | Everyone                                                              |
+| `cloud.grants.hostsCount.one`       | {count} 台主机                                 | {count} host                                                          |
+| `cloud.grants.hostsCount.other`     | {count} 台主机                                 | {count} hosts                                                         |
+| `cloud.grants.highest`              | 最高权限                                       | Highest access                                                        |
+| `cloud.grants.nextExpiry`           | 最早到期                                       | Next expiry                                                           |
+| `cloud.grants.search`               | 搜索对象                                       | Search people and groups                                              |
+| `cloud.requests.pending`            | 待处理                                         | Pending                                                               |
+| `cloud.requests.resolved`           | 已处理                                         | Resolved                                                              |
+| `cloud.requests.requester`          | 申请人                                         | Requester                                                             |
+| `cloud.requests.role`               | 申请权限                                       | Requested access                                                      |
+| `cloud.requests.reason`             | 理由                                           | Reason                                                                |
+| `cloud.requests.approve`            | 批准                                           | Approve                                                               |
+| `cloud.requests.deny`               | 拒绝                                           | Deny                                                                  |
+| `cloud.requests.approved`           | 已批准                                         | Approved                                                              |
+| `cloud.requests.denied`             | 已拒绝                                         | Denied                                                                |
+| `cloud.requests.createTitle`        | 申请访问 {host}                                | Request access to {host}                                              |
+| `cloud.requests.send`               | 发送申请                                       | Send request                                                          |
+| `cloud.requests.empty`              | 没有待处理的申请                               | No pending requests                                                   |
+| `cloud.requests.feature`            | 访问申请                                       | Access requests                                                       |
+| `cloud.requests.summary`            | {name} 申请访问 {host}                         | {name} requested access to {host}                                     |
+| `cloud.trust.member`                | 成员                                           | Member                                                                |
+| `cloud.trust.device`                | 设备                                           | Device                                                                |
+| `cloud.trust.host`                  | 主机                                           | Host                                                                  |
+| `cloud.trust.requested`             | 请求时间                                       | Requested                                                             |
+| `cloud.trust.trust`                 | 信任                                           | Trust                                                                 |
+| `cloud.trust.reject`                | 拒绝                                           | Reject                                                                |
+| `cloud.trust.title`                 | 信任 {member} 的 {device}？                    | Trust {member}'s {device}?                                            |
+| `cloud.trust.trusted`               | 已信任                                         | Trusted                                                               |
+| `cloud.trust.rejected`              | 已拒绝                                         | Rejected                                                              |
+| `cloud.trust.useTrusted`            | 在已信任的设备上处理                           | Use a trusted device                                                  |
+| `cloud.trust.empty`                 | 没有待信任的设备                               | No devices waiting                                                    |
+| `cloud.trust.summary`               | {member} 的 {device} 待信任                    | {member}'s {device} is waiting                                        |
+| `cloud.links.new`                   | 新建链接                                       | New link                                                              |
+| `cloud.links.note`                  | 备注                                           | Note                                                                  |
+| `cloud.links.target`                | 目标                                           | Target                                                                |
+| `cloud.links.uses`                  | 用量                                           | Uses                                                                  |
+| `cloud.links.maxUses`               | 次数上限                                       | Maximum uses                                                          |
+| `cloud.links.usesValue`             | {used} / {max}                                 | {used} / {max}                                                        |
+| `cloud.links.createdBy`             | 创建人                                         | Created by                                                            |
+| `cloud.links.validity`              | 有效期                                         | Valid for                                                             |
+| `cloud.links.create`                | 创建链接                                       | Create link                                                           |
+| `cloud.links.copy`                  | 复制链接                                       | Copy link                                                             |
+| `cloud.links.editNote`              | 编辑备注                                       | Edit note                                                             |
+| `cloud.links.revoke`                | 撤销链接                                       | Revoke link                                                           |
+| `cloud.links.revokeTitle`           | 撤销「{name}」？                               | Revoke "{name}"?                                                      |
+| `cloud.links.revokeConsequence`     | 已加入的人一并停用                             | People who joined lose access too                                     |
+| `cloud.links.frozen`                | 已冻结                                         | Frozen                                                                |
+| `cloud.links.empty`                 | 没有链接                                       | No links                                                              |
 
 #### cloud-audit
 
@@ -1333,7 +1356,7 @@
 | `cloud.audit.a.hostRevoked`      | 撤销主机         | Revoked host                     |
 | `cloud.audit.a.hostMoved`        | 移动主机         | Moved host                       |
 | `cloud.audit.a.grantCreated`     | 授予访问         | Granted access                   |
-| `cloud.audit.a.grantRevoked`     | 撤销访问         | Removed access                   |
+| `cloud.audit.a.grantRevoked`     | 撤销访问         | Revoked access                   |
 | `cloud.audit.a.linkCreated`      | 创建链接         | Created link                     |
 | `cloud.audit.a.linkRevoked`      | 撤销链接         | Revoked link                     |
 | `cloud.audit.a.linkUsed`         | 使用链接         | Used link                        |
@@ -1365,7 +1388,8 @@
 | `cloud.billing.pro`               | 专业版                                | Pro                                                         |
 | `cloud.billing.team`              | 团队版                                | Team                                                        |
 | `cloud.billing.enterprise`        | 企业版                                | Enterprise                                                  |
-| `cloud.billing.seats`             | {count} 个席位                        | {count} seats                                               |
+| `cloud.billing.seats.one`         | {count} 个席位                        | {count} seat                                                |
+| `cloud.billing.seats.other`       | {count} 个席位                        | {count} seats                                               |
 | `cloud.billing.renews`            | 续费日 {date}                         | Renews {date}                                               |
 | `cloud.billing.trialEnds`         | 试用到 {date}                         | Trial ends {date}                                           |
 | `cloud.billing.startTrial`        | 试用团队版                            | Try Team                                                    |
@@ -1448,9 +1472,10 @@
 | `cloud.ops.openTenant`       | 打开租户                  | Open tenant                |
 | `cloud.ops.flag`             | 开关                      | Flag                       |
 | `cloud.ops.allTeams`         | 全部团队                  | All teams                  |
-| `cloud.ops.teamsCount`       | {count} 个团队            | {count} teams              |
+| `cloud.ops.teamsCount.one`   | {count} 个团队            | {count} team               |
+| `cloud.ops.teamsCount.other` | {count} 个团队            | {count} teams              |
 | `cloud.ops.addTeam`          | 添加团队                  | Add team                   |
-| `cloud.ops.stepUp`           | 验证身份                  | Confirm it's you           |
+| `cloud.ops.badge`            | 运营                      | Ops                        |
 
 #### 客户端触点（追加到现有模块）
 
@@ -1488,7 +1513,10 @@ apps/web/src/cloud/
   router.ts                路由表（§1.4）+ matchRoute / navigate / useRoute / <RouteLink>
   shell/                   ConsoleShell、SpaceSwitcher、ConsoleNav、UserMenu、PageHeader
   ui/DataList.tsx          一份列定义 → Table / Item（§4.1）
-  ui/TypedConfirm.tsx      AlertDialog + 输入确认（§4.3）
+  ui/TypedConfirm.tsx      ResponsiveAlertDialog + 输入确认（§4.3）
+  ui/PageState.tsx         整页的错 / 找不到 / 维护中 / 登录已过期（§3.0）
+  i18n-plural.ts           tp(key, count)：Intl.PluralRules → key.one / key.other
+  config.ts                VITE_ARMADRA_SUPPORT_EMAIL 等构建配置
   api/client.ts            唯一 import @orpc/* 的地方：cloudContract + OpenAPILink
   api/errors.ts            code → i18n 键（§6.4）、CloudConsoleError
   api/keys.ts              查询键工厂（§6.2）
@@ -1539,7 +1567,7 @@ apps/web/src/cloud/
 
 ### 6.4 错误码到文案
 
-`cloud/api/errors.ts` 的 `CLOUD_MESSAGE_BY_CODE` 先查自己，再退回 `api/request.ts` 的 `MESSAGE_BY_CODE`，认不出 → `error.internal`。不展示后端 `message`。`limit_reached` 读 `details.quota` 取 `cloud.billing.limit.<quota>`。「协议」列：「已有」是 1.4 之前就在注册表里的码，「1.4」是 armadra-cloud#63 新增的。`team_policy_denied` 是通用的团队设置拒绝，`host_registration_disabled` / `guests_disabled` / `anonymous_links_disabled` 是它的具体形式，有具体码时用具体文案；`team_last_owner`（最后一个所有者不能离开或降级）与 `team_owner_required`（注销账号前要转移名下团队）各用各的文案。`webhook_signature_invalid` 只给支付回调，控制台不显示。
+`cloud/api/errors.ts` 的 `CLOUD_MESSAGE_BY_CODE` 先查自己，再退回 `api/request.ts` 的 `MESSAGE_BY_CODE`，认不出 → `error.internal`。不展示后端 `message`。`limit_reached` 读 `details.quota` 取 `cloud.billing.limit.<quota>`。「协议」列：「已有」是 1.4 之前就在注册表里的码，「1.4」是 armadra-cloud#63 新增的，「缺口」见 §6.5。文案里写「联系支持」的码（`account_disabled`、`team_suspended`）在旁边给「联系支持」按钮（§1.3）。`team_policy_denied` 是通用的团队设置拒绝，`host_registration_disabled` / `guests_disabled` / `anonymous_links_disabled` 是它的具体形式，有具体码时用具体文案；`team_last_owner`（最后一个所有者不能离开或降级）与 `team_owner_required`（注销账号前要转移名下团队）各用各的文案。`webhook_signature_invalid` 只给支付回调，控制台不显示。
 
 | code                                  | 协议 | 键                               | zh-CN                                | en                                                    |
 | ------------------------------------- | :--: | -------------------------------- | ------------------------------------ | ----------------------------------------------------- |
@@ -1583,50 +1611,65 @@ apps/web/src/cloud/
 | `team_policy_denied`                  | 1.4  | `error.teamPolicyDenied`         | 团队设置不允许这样做，联系管理员     | Team settings don't allow this. Ask an admin          |
 | `invitation_revoked`                  | 1.4  | `error.invitationRevoked`        | 邀请已撤销，请对方重新邀请           | Invitation revoked. Ask for a new one                 |
 | `transfer_expired`                    | 1.4  | `error.transferExpired`          | 移动请求已过期，重新发起             | This move expired. Start it again                     |
+| `registrations_paused`                | 缺口 | `cloud.auth.registrationsClosed` | 暂停注册                             | Sign-ups are paused                                   |
 
-### 6.5 已并入协议 1.4（armadra-cloud#63）
+### 6.5 协议：已并入 1.4，剩余缺口
 
-本文早先列出的过程、`space` 维度、`me.get.scopes`、七种 me-stream 事件与错误码都已进协议 1.4 的契约（`cloud-api.md` §4、§5、§21–§32），上面各页已改用最终名字。仍然缺的：
+本文早先列出的过程、`space` 维度、`me.get.scopes`、七种 me-stream 事件与错误码都已进协议 1.4 的契约（armadra-cloud#63，`cloud-api.md` §4、§5、§21–§32），上面各页已改用最终名字。剩下的缺口进下一个协议 PR（只做加法；G2–G9 是 M1 要的，G1 是 M2，G10、G11 另议）：
 
-| 项                             | 现状                  | 影响的页面                                                         |
-| ------------------------------ | --------------------- | ------------------------------------------------------------------ |
-| `sso*`（单点登录）             | 契约没有预留，M3 另议 | 团队设置的「域名」组（M3，U13）                                    |
-| 按标签授予（主体或目标是标签） | 契约没有预留，另议    | 授予页与主机详情的「添加访问」只能选主机；U10 的标签授予等契约补上 |
+| #   | 缺口                              | 打算的形状                                                                                                                                                                                                                                             | 用在                                                               |
+| --- | --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------ |
+| G1  | 在已有会话上再验证（短时提权）    | `auth.stepUp`：`POST /v1/auth/step-up`，入参 `{ password? , totpCode?, passkeyAssertion? }`，出参 `{ elevatedUntilMs }`（10 分钟）；会话带 `elevated` 标记                                                                                             | M2 起替代 `/ops` 的全新登录、也给注销账号与转移所有权用            |
+| G2  | Cookie 会话可以带 `operator` 范围 | `auth.login` 入参加 `scope?: "operator"`：只对开了两步验证的运营账号签出带 `operator` 的 Cookie 会话，寿命 1 小时；§28 的 `admin.*` 在 Bearer 运营令牌之外也接受这种会话（照样校验 CSRF）                                                              | §1.3 运营范围                                                      |
+| G3  | CSRF 值从哪来                     | `auth.login` / `auth.mfaVerify` / `auth.refresh` 的出参加 `csrfToken: string`；`me.get` 出参加 `csrfToken`（页面刷新后取回）                                                                                                                           | §1.3 写操作                                                        |
+| G4  | 主机所有者的名字                  | `sourceSummary.ownerName: string`（`owner: boolean` 保留）                                                                                                                                                                                             | §3.3.4 名称第二行                                                  |
+| G5  | 主机目录的筛选与分页              | `sources.list` 入参加 `status?: "online" \| "offline" \| "revoked"`、`tag?: string[]`、`q?: string`、`cursor?: string`、`limit?: 1–200`（缺省 50）；出参加 `nextCursor: string \| null`                                                                | §3.3.4、§3.2.2                                                     |
+| G6  | 团队按天的流量序列                | `billing.usage` 入参加 `granularity?: "month" \| "day"`；`day` 时出参加 `series: { startMs, relayBytes }[]`（本计费周期内每天一条）。数据源：中继的 `relay_traffic_buckets` 小时桶按团队汇总到天，口径是入口节点的 `edge.e2e.bytes`（能力设计 §11.14） | §3.3.11 柱状图；个人空间同一条（`space = personal`）               |
+| G7  | 成员行的分组与访客的可达主机数    | `teamMember` 加 `groups: { groupId, name }[]`（M2，guest 恒空）与 `reachableHosts: number`（只对 guest 有值）                                                                                                                                          | §3.3.2                                                             |
+| G8  | 设备信任请求不带校验码            | 从 `trustRequest` 删掉 `sas`：云端不经手校验码，背书人输入新设备上显示的码，由端到端通道在主机侧核对（契约 §31 的说明同步改）                                                                                                                          | §3.3.9、§3.5.3                                                     |
+| G9  | 暂停注册的表达                    | `auth.register` 在事故开关关闭注册时答 `503 registrations_paused`（新码）；`platform.info` 加 `registrationsOpen: boolean`，注册页据此直接显示关闭态                                                                                                   | §3.1.2                                                             |
+| G10 | `sso*`（单点登录）                | 契约没有预留，M3 另议                                                                                                                                                                                                                                  | 团队设置的「域名」组（M3）                                         |
+| G11 | 按标签授予（主体或目标是标签）    | 契约没有预留，另议                                                                                                                                                                                                                                     | 授予页与主机详情的「添加访问」只能选主机；U10 的标签授予等契约补上 |
 
 ## §7 实施批次
 
-每批一个 Armadra PR（Sonnet 规模：≤ 1500 行含测试），PR 引用 AMA-Link/armadra-cloud#60。依赖：**P** = 协议包 1.4 发布到 `tools/vendor/`（或预发布 tgz）；**G** = Go 控制面 G6 对应模块上线（只影响联调，不挡合并：mock 先行）。
+每批一个 Armadra PR（Sonnet 规模），PR 引用 AMA-Link/armadra-cloud#60。依赖：**P** = 协议包 1.4 发布到 `tools/vendor/`（或预发布 tgz）；**G** = Go 控制面 G6 对应模块上线（只影响联调，不挡合并：mock 先行）。
 
-| 批  | 内容                                                                                                                                                                                                                                                                                                     | 依赖                                                    | 验收                                                                                                                                       |
-| --- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
-| U1  | 外壳与数据层：`Entry.console`、`router.ts`、`ConsoleShell` / `SpaceSwitcher` / `ConsoleNav` / `UserMenu`、`DataList`、`TypedConfirm`、`cloud/api/*`、mock 骨架与 fixtures、`cloud-shell.ts`、`browser-cloud` 凭据提供方、展示页 `cloud` 分区与 `fixtures/cloud.ts`、守卫更新（`@orpc` 门面、`no-raw-*`） | P（协议 1.4，armadra-cloud#63 发布后更新 vendor 包）    | 路由与入口单测；`mock.contract.test.ts`；`credentials.browser-cloud.test.ts`；探针 `--only=cloud` 390 / 768 / 1440 × 深浅 6 张；对比度过线 |
-| U2  | 公共页：登录、注册、验证、找回、`/device`、`/j/` SaaS 分支、`/invite/`、`cloud-auth.ts`、§6.4 的账号类错误键                                                                                                                                                                                             | U1；G 账号                                              | 每页五态测试（空 / 载 / 错 / 成功 / 离线）；表单 `autocomplete` 与聚焦首错测试；展示页加公共页样本                                         |
-| U3  | 个人空间：概览、主机目录与详情（共享组件）、链接、账号（资料 / 口令 / 设备 / 安全日志）、`cloud-account.ts`（M1 部分）                                                                                                                                                                                   | U1、U2；G 账号与主机                                    | 主机表的 Table / Item 双渲染测试；me-stream 就地更新测试；截图 6 张                                                                        |
-| U4  | 团队基础：创建团队、概览、成员与邀请、设置（M1）、危险操作（转移 / 离开 / 删除 / 恢复）、`cloud-team.ts`                                                                                                                                                                                                 | U3；G 团队                                              | 角色矩阵测试（5 角色 × 每个动作是否渲染）；输入确认测试；截图                                                                              |
-| U5  | 主机与授予：团队主机目录、详情（访问 / 链接 / 设置）、登记对话框、授予页、`cloud-hosts.ts`（主机与授予部分）                                                                                                                                                                                             | U4；G 主机与授予                                        | 有效权限展开测试；撤销即时反映；截图                                                                                                       |
-| U6  | 链接、设备信任、审计、用量：团队链接页、设备信任页（端到端背书判定）、审计（M1）、用量与计划（只读）、`cloud-audit.ts`、`cloud-billing.ts`（M1 部分）                                                                                                                                                    | U5；G 分享、审计、配额                                  | `limit_reached` → 文案测试；信任判定两分支测试；审计虚拟列表测试；截图                                                                     |
-| U7  | 客户端触点：远程访问页 Armadra 云入口与设备码、登记到空间、分享弹层的授予与邀请、待信任横幅与对话框、侧栏按团队分小组（迁移 `client_sources` 加 `team_id` / `team_name`，编号取 main 最大号 +1）、手机同步、文案追加                                                                                     | P、U1；core `cloud/login` 改 `team` 准入（能力设计 §6） | core 与 web 单测；`tools/probes/` 的远程访问与侧栏探针扩展；契约 §68 追加节                                                                |
-| U8  | 运营后台 M1：`/ops` 门控与两步验证、租户、停用 / 恢复、节点与排空、事故开关、`cloud-ops.ts`（M1 部分）                                                                                                                                                                                                   | U1；G 后台                                              | 非运营身份 404 测试；每个写动作带理由测试；截图                                                                                            |
-| U9  | M2 账号安全：两步验证、通行密钥、第三方账号、团队强制两步验证、通知偏好、注销与导出、API 令牌（个人与团队）                                                                                                                                                                                              | U3、U4；G M2 账号                                       | 复用 `security/*` 组件的回归测试；令牌一次性展示测试                                                                                       |
-| U10 | M2 团队能力：分组、访问申请、主机移动、审计查询与导出（标签授予等契约补上，§6.5）                                                                                                                                                                                                                        | U5、U6；G M2 团队                                       | 组长权限测试；申请 → 批准 → 访问清单联动测试                                                                                               |
-| U11 | M2 计费：升级 / 试用 / 管理付款、席位、发票、超额提示                                                                                                                                                                                                                                                    | U6；G 计费                                              | 配额阈值色与文字测试；结账跳转测试                                                                                                         |
-| U12 | M2 运营：滥用与冻结链接、功能开关、对外状态                                                                                                                                                                                                                                                              | U8；G M2 后台                                           | 同 U8                                                                                                                                      |
-| U13 | M3（另起设计回填）：域名验证、单点登录、按域名自动加入、定期复核、Webhook、区域                                                                                                                                                                                                                          | M3 设计                                                 | —                                                                                                                                          |
+| 批  | 内容                                                                                                                                                                                                                                                               | 依赖                                        | 验收                                                                                                             |
+| --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| U1a | 外壳：`Entry.console`、`router.ts`、`ConsoleShell` / `SpaceSwitcher` / `ConsoleNav` / `UserMenu`、顶部未验证提示、`PageState`、`DataList`、`TypedConfirm`、`tp()` 复数助手、`Progress` 的 `tone` 变体、`cloud-shell.ts`、展示页 `cloud` 分区与 `fixtures/cloud.ts` | —                                           | 路由与入口单测；`DataList` 双渲染测试；`tp()` 测试；探针 `--only=cloud` 390 / 768 / 1440 × 深浅 6 张；对比度过线 |
+| U1b | 数据层：`cloud/api/*`（`OpenAPILink` 客户端、错误映射、查询键、me-stream 失效）、mock 与 fixtures、`browser-cloud` 凭据提供方、守卫更新（`@orpc` 门面、`no-raw-*`）                                                                                                | P（协议 1.4 发布后更新 vendor 包）；U1a     | `mock.contract.test.ts`；`credentials.browser-cloud.test.ts`；错误码映射全覆盖测试                               |
+| U2a | 公共页一：登录（含挑战复用）、注册（含暂停注册态）、验证邮箱、找回口令、`cloud-auth.ts` 的这部分、§6.4 的账号类错误键                                                                                                                                              | U1b；G 账号                                 | 每页五态测试；`autocomplete` 与聚焦首错测试；展示页样本                                                          |
+| U2b | 公共页二：`/device`、`/j/` 的 SaaS 分支、`/invite/`                                                                                                                                                                                                                | U2a；G 账号、分享                           | 同 U2a；`/j/` 的现有测试不回归                                                                                   |
+| U3  | 个人空间：概览、主机目录与详情（共享组件）、链接、账号（资料 / 口令 / 设备 / 安全日志）、`cloud-account.ts`（M1 部分）                                                                                                                                             | U2a；G 账号与主机                           | 主机表 5 列与 Item 双渲染测试；me-stream 就地更新测试；截图 6 张                                                 |
+| U4  | 团队基础：创建团队、概览、成员与邀请、设置（M1）、危险操作（转移 / 离开 / 删除 / 恢复）、`cloud-team.ts`                                                                                                                                                           | U3；G 团队                                  | 角色矩阵测试（5 角色 × 每个动作是否渲染）；输入确认测试；截图                                                    |
+| U5  | 主机与授予：团队主机目录、详情（访问 / 链接 / 设置，含本地 CSV 导出）、登记对话框、按人的授予页、`cloud-hosts.ts`（主机与授予部分）                                                                                                                                | U4；G 主机与授予                            | 有效权限展开测试；撤销即时反映；截图                                                                             |
+| U6  | 链接、设备信任、审计、用量：团队链接页、设备信任页（输入校验码的背书）、审计（M1）、用量与计划（只读）、`cloud-audit.ts`、`cloud-billing.ts`（M1 部分）                                                                                                            | U5；G 分享、审计、配额                      | `limit_reached` → 文案测试；信任判定两分支测试；列表不含校验码的测试；审计虚拟列表测试；截图                     |
+| U7a | 客户端触点一（core 侧）：远程访问页 Armadra 云入口与设备码、登记到空间、`remoteAdd { kind: "saas" }` / `remoteDevicePoll`                                                                                                                                          | P；Armadra「A1 core 以 team + role 准入」PR | core 与 web 单测；远程访问探针扩展                                                                               |
+| U7b | 客户端触点二：分享弹层的授予与邀请、待信任横幅与对话框                                                                                                                                                                                                             | U7a                                         | web 单测；分享弹层截图                                                                                           |
+| U7c | 客户端触点三：侧栏「他人分享」按团队分小组（迁移 `client_sources` 加 `team_id` / `team_name`，编号合并时取 main 最大号 +1，契约 §68 之后追加节）、手机连接页与两组同步                                                                                             | U7a                                         | 迁移测试与 `migrations.lock`；侧栏探针扩展；手机截图                                                             |
+| U8  | 运营后台 M1：`/ops` 门控（运营登录）、「运营」标识、租户、停用 / 恢复、节点与排空、事故开关、`cloud-ops.ts`（M1 部分）                                                                                                                                             | U1b；G 后台                                 | 非运营身份 404 测试；每个写动作带理由与输入确认的测试；截图                                                      |
+| U9  | M2 账号安全：两步验证、通行密钥、第三方账号、团队强制两步验证、通知偏好、注销与导出、API 令牌（个人与团队）                                                                                                                                                        | U3、U4；G M2 账号                           | 复用 `security/*` 组件的回归测试；令牌一次性展示测试                                                             |
+| U10 | M2 团队能力：分组、访问申请、主机移动、审计查询与导出（标签授予等契约补上，§6.5）                                                                                                                                                                                  | U5、U6；G M2 团队                           | 组长权限测试；申请 → 批准 → 访问清单联动测试                                                                     |
+| U11 | M2 计费：升级 / 试用 / 管理付款、席位、发票、超额提示                                                                                                                                                                                                              | U6；G 计费                                  | 配额阈值色与文字测试；结账跳转测试                                                                               |
+| U12 | M2 运营：滥用与冻结链接、功能开关、对外状态                                                                                                                                                                                                                        | U8；G M2 后台                               | 同 U8                                                                                                            |
+
+每批都按 ≤ 1500 行（含测试）切；估算超出时在开 PR 前再拆。M3（域名验证、单点登录、按域名自动加入、定期复核、Webhook、区域）要先有自己的设计，不在本表。
 
 每批共同验收：`pnpm --filter @armadra/web test`、`typecheck`、`pnpm repo:check`；新文案中英同步（`i18n.test.ts`）；展示页 `cloud` 分区补样本；`tools/probes/design-showcase.mjs --only=cloud` 在 390 / 768 / 1440 × 深 / 浅 生成截图（探针矩阵为 `cloud` 分区加 768 宽），`result.json.status = ok`、对比度无低于阈值、控制台无错；`locale=en` 再跑一遍 1440 深色看文字增长；`forced-colors` 与 `prefers-reduced-motion` 各一张。
 
 ## §8 待维护者确认
 
-| #   | 问题                                                                      | 建议                                                                     |
-| --- | ------------------------------------------------------------------------- | ------------------------------------------------------------------------ |
-| D1  | 侧栏第三组的中文：现有「他人分享」，能力设计 §8 写「共享给我的」          | 保留现有「他人分享」（en 已是 Shared with me），改能力设计的措辞         |
-| D2  | SaaS 对用户的名字                                                         | 「Armadra 云」/ Armadra Cloud；账号叫「Armadra 账号」不另起名            |
-| D3  | 自写路由 vs 引入路由库                                                    | 自写（§0 #2）；页面数超过 40 或要嵌套布局加载器时再评估                  |
-| D4  | 运营后台同源 `/ops` vs 独立来源（如 `ops.armadra.com`，独立 Cookie）      | 同源 + `operator` 范围 + 进入时两步验证；若要网络层隔离再拆来源          |
-| D5  | 运营账号的两步验证在 M1 就强制，早于 M2 的用户两步验证                    | 强制（`auth.totp*` 已在协议里）                                          |
-| D6  | 控制台的授予范围不含工作空间                                              | 是（§0 #5）；工作空间级只经客户端分享弹层                                |
-| D7  | 控制台复制已有链接                                                        | 链接秘密只在创建时出现；控制台只在新建后当场复制，列表里不提供（§3.3.8） |
-| D8  | 新增依赖 `@orpc/openapi-client`，`@orpc/*` 门面扩到 `cloud/api/client.ts` | 同意；版本与 `@orpc/client` 锁同号                                       |
-| D9  | §6.5 的过程、事件与错误码                                                 | 已完成：并入协议 1.4（armadra-cloud#63）                                 |
-| D10 | 主机目录是否显示 core 版本                                                | 只在主机详情的副标题里显示（内容，不是 chrome）；列表不显示              |
-| D11 | 计划名中文化                                                              | 免费版 / 专业版 / 团队版 / 企业版                                        |
+| #   | 问题                                                                      | 建议                                                                                         |
+| --- | ------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------- |
+| D1  | 侧栏第三组的中文：现有「他人分享」，能力设计 §8 写「共享给我的」          | 保留现有「他人分享」（en 已是 Shared with me），改能力设计的措辞                             |
+| D2  | SaaS 对用户的名字                                                         | 「Armadra 云」/ Armadra Cloud；账号叫「Armadra 账号」不另起名                                |
+| D3  | 自写路由 vs 引入路由库                                                    | 自写（§0 #2）；页面数超过 40 或要嵌套布局加载器时再评估                                      |
+| D4  | 运营后台同源 `/ops` vs 独立来源（如 `ops.armadra.com`，独立 Cookie）      | 同源 + 运营登录得到带 `operator` 的短时 Cookie 会话（§1.3，缺口 G2）；若要网络层隔离再拆来源 |
+| D5  | 运营账号的两步验证在 M1 就强制，早于 M2 的用户两步验证                    | 强制（`auth.totp*` 已在协议里）；M1 用全新登录，M2 有了 `auth.stepUp`（G1）后改为再验证      |
+| D6  | 控制台的授予范围不含工作空间                                              | 是（§0 #5）；工作空间级只经客户端分享弹层                                                    |
+| D7  | 控制台复制已有链接                                                        | 链接秘密只在创建时出现；控制台只在新建后当场复制，列表里不提供（§3.3.8）                     |
+| D8  | 新增依赖 `@orpc/openapi-client`，`@orpc/*` 门面扩到 `cloud/api/client.ts` | 同意；版本与 `@orpc/client` 锁同号                                                           |
+| D9  | §6.5 的过程、事件与错误码                                                 | 已完成：并入协议 1.4（armadra-cloud#63）                                                     |
+| D10 | 主机目录是否显示 core 版本                                                | 只在主机详情的副标题里显示（内容，不是 chrome）；列表不显示                                  |
+| D11 | 计划名中文化                                                              | 免费版 / 专业版 / 团队版 / 企业版                                                            |
