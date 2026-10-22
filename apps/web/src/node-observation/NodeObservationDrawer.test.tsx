@@ -89,6 +89,18 @@ describe("NodeObservationDrawer", () => {
       });
     });
     expect(screen.queryByRole("button", { name: "验收要点" })).toBeNull();
+    // 新画布的文档还没到：不是「没有节点」，空态不能先闪一下。
+    expect(screen.queryByText("这张画布还没有节点")).toBeNull();
+    expect(document.querySelector("[data-slot=loadable]")).not.toBeNull();
+  });
+
+  it("文档到了却没有节点才是空态", () => {
+    showCanvas();
+    act(() => {
+      useCanvasStore.setState({
+        document: { ...useCanvasStore.getState().document!, nodes: [] },
+      });
+    });
     expect(screen.getByText("这张画布还没有节点")).toBeTruthy();
   });
 

@@ -70,7 +70,6 @@ const zh = {
   "automation.savedDraft": "已保存为新版本；计划回到草稿，需要重新启用",
   "automation.runs.more": "加载更早的记录",
   "automation.runs.plan": "计划",
-  "automation.runs.loading": "正在加载",
   "automation.cancel": "取消",
   "automation.confirmActivate": "启用这个计划？",
   "automation.confirmActivateNote":
@@ -270,7 +269,6 @@ const en: Record<keyof typeof zh, string> = {
     "Saved as a new version. The plan is a draft again and needs re-activating.",
   "automation.runs.more": "Load older runs",
   "automation.runs.plan": "Plan",
-  "automation.runs.loading": "Loading",
   "automation.cancel": "Cancel",
   "automation.confirmActivate": "Activate this plan?",
   "automation.confirmActivateNote":

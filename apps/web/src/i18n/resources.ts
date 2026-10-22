@@ -15,7 +15,6 @@ export const resources: MessageModule = {
     "resources.title": "资源",
     "resources.close": "关闭资源面板",
     "resources.refresh": "刷新",
-    "resources.loading": "正在采样",
     "resources.cancel": "取消",
 
     "resources.host": "执行主机",
@@ -138,7 +137,6 @@ export const resources: MessageModule = {
     "resources.title": "Resources",
     "resources.close": "Close resources",
     "resources.refresh": "Refresh",
-    "resources.loading": "Sampling",
     "resources.cancel": "Cancel",
 
     "resources.host": "Execution host",

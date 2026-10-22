@@ -59,7 +59,6 @@ export const languageService: MessageModule = {
     "lsp.rename.empty": "服务器没有返回任何改动",
 
     "lsp.preview.title": "应用修改",
-    "lsp.preview.computing": "正在计算…",
     "lsp.preview.apply": "应用",
     "lsp.preview.cancel": "取消",
     "lsp.preview.close": "关闭",
@@ -77,7 +76,6 @@ export const languageService: MessageModule = {
 
     "lsp.action.title": "代码操作",
     "lsp.action.description": "选择一项要应用到当前选区的代码操作",
-    "lsp.action.loading": "正在获取…",
     "lsp.action.empty": "这里没有可用的代码操作",
     "lsp.action.failed": "获取代码操作失败",
     "lsp.action.noEdit": "这条操作没有可应用的修改",
@@ -92,7 +90,6 @@ export const languageService: MessageModule = {
     "references.title": "引用",
     "references.titleFor": "{symbol} 的引用",
     "references.close": "关闭",
-    "references.searching": "正在查找…",
     "references.failed": "查找引用失败",
     "references.empty": "在编辑器里按 ⇧F12 查找引用",
     "references.summary": "{count} 处 · {files} 个文件",
@@ -156,7 +153,6 @@ export const languageService: MessageModule = {
     "lsp.rename.empty": "The server returned no changes",
 
     "lsp.preview.title": "Apply changes",
-    "lsp.preview.computing": "Working…",
     "lsp.preview.apply": "Apply",
     "lsp.preview.cancel": "Cancel",
     "lsp.preview.close": "Close",
@@ -176,7 +172,6 @@ export const languageService: MessageModule = {
 
     "lsp.action.title": "Code actions",
     "lsp.action.description": "Pick a code action to apply to the selection",
-    "lsp.action.loading": "Asking the server…",
     "lsp.action.empty": "No code actions here",
     "lsp.action.failed": "Could not get code actions",
     "lsp.action.noEdit": "This action carries no change to apply",
@@ -191,7 +186,6 @@ export const languageService: MessageModule = {
     "references.title": "References",
     "references.titleFor": "References to {symbol}",
     "references.close": "Close",
-    "references.searching": "Searching…",
     "references.failed": "Could not find references",
     "references.empty": "Press ⇧F12 in the editor to find references",
     "references.summary": "{count} in {files} files",

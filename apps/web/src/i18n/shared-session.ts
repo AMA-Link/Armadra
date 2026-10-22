@@ -14,7 +14,6 @@ export const sharedSession: MessageModule = {
     "sharedSession.close": "关闭",
     "sharedSession.failed": "没能打开这条会话",
     "sharedSession.empty": "还没有内容",
-    "sharedSession.loading": "正在打开",
   },
   en: {
     "sharedSession.readOnly": "Read-only",
@@ -25,6 +24,5 @@ export const sharedSession: MessageModule = {
     "sharedSession.close": "Close",
     "sharedSession.failed": "Couldn't open this session",
     "sharedSession.empty": "Nothing here yet",
-    "sharedSession.loading": "Opening",
   },
 };
