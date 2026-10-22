@@ -20,7 +20,7 @@ export function SettingsGroup({
   className?: string;
 }) {
   return (
-    <section className={cn("flex flex-col gap-2", className)}>
+    <section className={cn("flex flex-col gap-(--space-group)", className)}>
       {title && (
         <h3 className="px-0.5 text-[13px] font-medium text-foreground">
           {title}

@@ -216,8 +216,8 @@ export function HandoffDialog() {
               {null}
             </Loadable>
           ) : (
-            <div className="flex flex-col gap-3">
-              <div className="flex flex-col gap-1.5">
+            <div className="flex flex-col gap-(--space-block)">
+              <div className="flex flex-col gap-2">
                 <label
                   className="text-muted-foreground"
                   htmlFor="handoff-target"
@@ -243,7 +243,7 @@ export function HandoffDialog() {
                   </Select>
                 )}
               </div>
-              <div className="flex flex-col gap-1.5">
+              <div className="flex flex-col gap-2">
                 <label
                   className="text-muted-foreground"
                   htmlFor="handoff-budget"
@@ -280,7 +280,7 @@ export function HandoffDialog() {
                 />
               </div>
               {SECTION_KEYS.map((key) => (
-                <div className="flex flex-col gap-1.5" key={key}>
+                <div className="flex flex-col gap-2" key={key}>
                   <label
                     className="text-muted-foreground"
                     htmlFor={`handoff-${key}`}
@@ -300,7 +300,7 @@ export function HandoffDialog() {
                   />
                 </div>
               ))}
-              <div className="flex flex-col gap-1.5">
+              <div className="flex flex-col gap-2">
                 <label
                   className="text-muted-foreground"
                   htmlFor="handoff-files"
@@ -368,8 +368,8 @@ function HandoffPreview({ view }: { view: HandoffView }) {
   const t = useT();
   const { bundle } = view;
   return (
-    <div className="flex flex-col gap-3 text-[length:var(--text-caption)]">
-      <section className="flex flex-col gap-1">
+    <div className="flex flex-col gap-(--space-block) text-[length:var(--text-caption)]">
+      <section className="flex flex-col gap-2">
         <span className="font-medium">{t("handoff.target")}</span>
         <span className="text-muted-foreground">
           {t("handoff.targetSummary", {
@@ -379,7 +379,7 @@ function HandoffPreview({ view }: { view: HandoffView }) {
           })}
         </span>
       </section>
-      <section className="flex flex-col gap-1">
+      <section className="flex flex-col gap-2">
         <span className="font-medium">{t("handoff.status")}</span>
         <span className="flex items-center gap-2">
           <Badge variant="outline">{t(`handoff.${view.state}`)}</Badge>
@@ -400,7 +400,7 @@ function HandoffPreview({ view }: { view: HandoffView }) {
           </span>
         )}
       </section>
-      <section className="flex flex-col gap-1">
+      <section className="flex flex-col gap-2">
         <span className="font-medium">{t("handoff.budget")}</span>
         <span className="text-muted-foreground">
           {t("handoff.budgetUsed", {
@@ -410,7 +410,7 @@ function HandoffPreview({ view }: { view: HandoffView }) {
           {bundle.budget.truncated ? ` ${t("handoff.truncated")}` : ""}
         </span>
       </section>
-      <section className="flex flex-col gap-1">
+      <section className="flex flex-col gap-2">
         <span className="font-medium">{t("handoff.files")}</span>
         {bundle.files.length === 0 ? (
           <span className="text-muted-foreground">{t("handoff.noFiles")}</span>
@@ -424,7 +424,7 @@ function HandoffPreview({ view }: { view: HandoffView }) {
           </ul>
         )}
       </section>
-      <section className="flex flex-col gap-1">
+      <section className="flex flex-col gap-2">
         <span className="font-medium">{t("handoff.git")}</span>
         <span className="text-muted-foreground">
           {bundle.git.status === "observed" && bundle.git.headOid
@@ -432,7 +432,7 @@ function HandoffPreview({ view }: { view: HandoffView }) {
             : t("handoff.gitUnavailable")}
         </span>
       </section>
-      <section className="flex flex-col gap-1">
+      <section className="flex flex-col gap-2">
         <span className="font-medium">{t("handoff.omitted")}</span>
         <ul className="flex flex-col gap-0.5 text-muted-foreground">
           {bundle.budget.omitted.map((code) => (
@@ -440,7 +440,7 @@ function HandoffPreview({ view }: { view: HandoffView }) {
           ))}
         </ul>
       </section>
-      <section className="flex flex-col gap-1">
+      <section className="flex flex-col gap-2">
         <span className="font-medium">{t("handoff.excerpt")}</span>
         {bundle.transcriptExcerpt.trim().length === 0 ? (
           <span className="text-muted-foreground">

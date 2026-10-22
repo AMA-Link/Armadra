@@ -83,9 +83,9 @@ export function HandoffHistoryDrawer() {
         <Loadable
           loading={history.isLoading}
           skeleton={<HandoffHistorySkeleton label={t("state.loading")} />}
-          className="p-3"
+          className="p-(--space-page)"
         >
-          <div className="min-w-0 space-y-2 p-3">
+          <div className="flex min-w-0 flex-col gap-(--space-group) p-(--space-page)">
             {!workspaceId && (
               <p role="status" className="text-[12px] text-muted-foreground">
                 {t("handoff.noWorkspace")}
@@ -124,7 +124,7 @@ function HandoffHistorySkeleton({ label }: { label: string }) {
         <div
           key={index}
           data-slot="handoff-history-skeleton"
-          className="min-w-0 space-y-1 rounded-md border border-border p-2"
+          className="min-w-0 space-y-1 rounded-md border border-border p-3"
         >
           <div className="flex items-center gap-2">
             <Skeleton className="h-5 w-14 rounded-full" />
@@ -153,7 +153,7 @@ function HandoffRow({
     <div
       data-slot="handoff-history-row"
       data-state={view.state}
-      className="min-w-0 space-y-1 rounded-md border border-border p-2 text-[12px]"
+      className="min-w-0 space-y-1 rounded-md border border-border p-3 text-[12px]"
     >
       <div className="flex min-w-0 flex-wrap items-center gap-2">
         <Badge variant="outline">{t(`handoff.${view.state}`)}</Badge>

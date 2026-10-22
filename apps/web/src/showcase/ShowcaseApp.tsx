@@ -76,7 +76,7 @@ function Section({ id }: { id: ShowcaseSectionId }) {
       id={id}
       data-showcase-section={id}
       aria-labelledby={`${id}-title`}
-      className="flex scroll-mt-6 flex-col gap-4"
+      className="flex scroll-mt-6 flex-col gap-(--space-group)"
     >
       <h2
         id={`${id}-title`}
@@ -136,14 +136,14 @@ export function ShowcaseApp({ only }: { only: boolean }) {
   // `only` 模式：只渲染这一个分区，文档自然流，整页截图不受其他分区影响。
   if (only) {
     return (
-      <main className="min-h-screen bg-background p-6 text-foreground">
+      <main className="min-h-screen bg-background p-(--space-section) text-foreground">
         <Section id={active} />
       </main>
     );
   }
 
   const sections = (
-    <div className="flex flex-col gap-12 p-6">
+    <div className="flex flex-col gap-12 p-(--space-section)">
       {SHOWCASE_SECTION_IDS.map((id) => (
         <Section key={id} id={id} />
       ))}

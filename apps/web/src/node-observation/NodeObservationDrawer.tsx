@@ -115,7 +115,7 @@ export function NodeObservationDrawer() {
 
       <ScrollArea className="min-h-0 flex-1">
         {selected ? (
-          <div className="space-y-4 p-4">
+          <div className="flex flex-col gap-(--space-block) p-(--space-block)">
             <div className="flex min-w-0 items-center gap-2">
               <span className="min-w-0 flex-1 truncate font-medium">
                 {selected.title}
@@ -127,7 +127,7 @@ export function NodeObservationDrawer() {
                 />
               )}
             </div>
-            <div className="space-y-2 text-[length:var(--text-caption)] text-muted-foreground">
+            <div className="flex flex-col gap-(--space-group) text-[length:var(--text-caption)] text-muted-foreground">
               <div>{t(NODE_META[selected.type].labelKey)}</div>
               {selected.parentId && (
                 <div>
@@ -146,6 +146,7 @@ export function NodeObservationDrawer() {
             <Button
               variant="secondary"
               size="sm"
+              className="self-start"
               onClick={() => locate(selected)}
             >
               <Crosshair />

@@ -43,7 +43,7 @@ export function ProviderCard({
       data-slot="usage-provider-card"
       data-provider={provider.id}
       aria-label={name}
-      className="flex min-w-0 flex-col gap-3 rounded-lg border border-border bg-panel p-3"
+      className="flex min-w-0 flex-col gap-(--space-group) rounded-lg border border-border bg-panel p-(--space-inset)"
     >
       <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
         <span className="flex min-w-0 items-center gap-2">

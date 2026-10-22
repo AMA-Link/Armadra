@@ -102,7 +102,7 @@ function EntrySkeleton() {
       data-slot="entry-skeleton"
       className="flex min-h-[100dvh] w-full flex-col items-center bg-background pt-[max(var(--safe-top),15vh)] pr-[calc(1.5rem+var(--safe-right))] pl-[calc(1.5rem+var(--safe-left))]"
     >
-      <div className="flex w-full max-w-sm flex-col gap-6">
+      <div className="flex w-full max-w-sm flex-col gap-(--space-section)">
         <div className="flex flex-col items-center gap-3">
           <Skeleton className="size-12 rounded-[var(--r-panel)]" />
           <Skeleton className="h-6 w-48" />

@@ -101,7 +101,7 @@ export function WorkflowPanel() {
               className={`mt-0 flex min-h-0 flex-col data-[state=inactive]:hidden ${TABS_CONTENT_FOCUS}`}
             >
               <ScrollArea className="min-h-0 flex-1">
-                <div className="min-w-0 p-3">
+                <div className="min-w-0 p-(--space-page)">
                   {member ? (
                     <Alert>
                       <AlertTitle className="font-normal">

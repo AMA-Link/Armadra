@@ -87,7 +87,7 @@ export function SourceTraffic({ sourceId, name, ledger }: SourceTrafficProps) {
   return (
     <section
       data-slot="source-traffic"
-      className="flex flex-col gap-4"
+      className="flex flex-col gap-(--space-section)"
       aria-label={t("traffic.open", { name })}
     >
       <Tabs

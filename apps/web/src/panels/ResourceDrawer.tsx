@@ -72,7 +72,7 @@ export function ResourceDrawer() {
       </div>
 
       <ScrollArea className="min-h-0 flex-1">
-        <div className="flex flex-col gap-3 p-3">
+        <div className="flex flex-col gap-(--space-section) p-(--space-page)">
           {error && !snapshot && (
             <Alert variant="destructive">
               <AlertTitle className="font-normal break-words">
@@ -89,7 +89,7 @@ export function ResourceDrawer() {
                 role="status"
                 data-slot="resources-loading"
                 aria-label={t("state.loading")}
-                className="flex flex-col gap-3"
+                className="flex flex-col gap-(--space-group)"
               >
                 <Skeleton className="h-20 w-full rounded-[var(--r-card)]" />
                 <Skeleton className="h-32 w-full rounded-[var(--r-card)]" />
@@ -101,8 +101,12 @@ export function ResourceDrawer() {
 
           {snapshot && (
             <>
-              {hostOverviews(snapshot.host, snapshot.executionHosts, host).map(
-                (overview) => (
+              <div className="flex flex-col gap-(--space-group)">
+                {hostOverviews(
+                  snapshot.host,
+                  snapshot.executionHosts,
+                  host,
+                ).map((overview) => (
                   <HostCard
                     key={overview.hostId}
                     host={overview}
@@ -112,13 +116,13 @@ export function ResourceDrawer() {
                         : undefined
                     }
                   />
-                ),
-              )}
+                ))}
+              </div>
 
               {(liveSessions(snapshot.sessions).length > 0 ||
                 snapshot.executionHosts.length > 0) && (
-                <section>
-                  <h3 className="mb-1 text-[13px] font-semibold">
+                <section className="flex flex-col gap-(--space-group)">
+                  <h3 className="text-[13px] font-semibold">
                     {t("resources.sessions")}
                   </h3>
                   <SessionTable
@@ -139,8 +143,8 @@ export function ResourceDrawer() {
               )}
 
               {componentsOnHost(snapshot.components, host).length > 0 && (
-                <section>
-                  <h3 className="mb-1 text-[13px] font-semibold">
+                <section className="flex flex-col gap-(--space-group)">
+                  <h3 className="text-[13px] font-semibold">
                     {t("resources.components")}
                   </h3>
                   <ComponentList
@@ -150,8 +154,8 @@ export function ResourceDrawer() {
               )}
 
               {workspaceId && snapshot.orphans.length > 0 && (
-                <section>
-                  <h3 className="mb-1 text-[13px] font-semibold">
+                <section className="flex flex-col gap-(--space-group)">
+                  <h3 className="text-[13px] font-semibold">
                     {t("resources.orphans")}
                   </h3>
                   <OrphanList

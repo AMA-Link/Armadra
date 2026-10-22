@@ -54,7 +54,7 @@ export function ChallengePage({
     return (
       <main
         aria-label={t("challenge.title")}
-        className="mx-auto flex max-w-md flex-col gap-3 p-4"
+        className="mx-auto flex max-w-md flex-col gap-(--space-inset) p-(--space-page)"
       >
         {token === "" ? (
           <TurnstileWidget

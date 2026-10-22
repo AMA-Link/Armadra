@@ -198,7 +198,7 @@ function ReflogActions({
     state.kind !== "none" ||
     (resetMode === "hard" && state.dirty && !discardChanges);
   return (
-    <div className="space-y-2 border-l border-border py-2 pl-3">
+    <div className="space-y-(--space-block) border-l border-border py-3 pl-3">
       <div className="flex flex-wrap gap-2">
         <Button
           size="sm"
