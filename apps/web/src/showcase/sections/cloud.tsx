@@ -181,11 +181,15 @@ export default function CloudSection() {
         ))}
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
         <PageState
-          kind="error"
-          code="forbidden"
+          code="internal"
           onRetry={noop}
+          className="min-h-56 border border-dashed border-border"
+        />
+        <PageState
+          code="forbidden"
+          onHome={noop}
           className="min-h-56 border border-dashed border-border"
         />
         <PageState
