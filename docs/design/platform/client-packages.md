@@ -1,5 +1,6 @@
 # 页面与手机侧工作包：详细设计
 
+> **2026-10-22 起：** 已实现；§6.3 的组织页由团队管理页取代，§7 的浏览器凭据模型合并进 armadra-cloud `docs/design/saas-design.md` §8。
 > 状态：目标设计（2026-10-06）。本文是[落地总计划](../platform-implementation-plan.md)里 Armadra 仓 `apps/web` 与 `apps/mobile` 工作包的实现规格：**A1-1 多源连接层**、**A1-2 查询键与 store 加源**、**A1-4 「远程服务」设置页与侧栏分组**、**A1-5 手机多连接**、**A3-4 `relayed` 源与选路**、**A4-3 分享链接与落地页、组织页**。上位设计：[平台设计](../platform-saas-architecture.md) §5.4–§5.5、§6、§7、§17.6–§17.7；工程规范化 E1-3 的 `Source` 与 E2-3 的控制面客户端是本文的地基（[工程规范化包](engineering-packages.md) §2、§3）。
 > 规矩：只用 `apps/web/src/ui/` 的 shadcn 组件；文案进 `apps/web/src/i18n/`（中英同步）；无说明性文字；凭据只在内存。
 

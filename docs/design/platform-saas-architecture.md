@@ -1,5 +1,6 @@
 # 正规化平台：中转、SaaS 控制面与多源挂载
 
+> **2026-10-22 起：** 个人中转部分已实现；SaaS 部分（组织为租户、P4 / D5、§4.1、§6.1 `org_join`、§9.1、部署形态）由 armadra-cloud `docs/design/saas-design.md` 与 `go-relay-design.md` 取代，仍有效的细节已合并进 SaaS 设计 §11，对照见它的 §12。本文只留作追溯。
 > 状态：目标设计（2026-10-06；同日补 §16 独立仓库评估：控制面与中继拆到 `AMA-Link/armadra-cloud`，协议走 npm 包 `@armadra/platform-protocol`；同日再补 §17 个人中转模式与桌面端零配置，决策 D20–D27）。尚未实施；本文只定边界、数据、协议形状与分阶段计划，落地顺序、工作包拆分与逐包细节以[落地总计划](platform-implementation-plan.md)为准（§13 的阶段表保留为依据，波次以总计划为准）。现状以源码为准，核对结果写在 §1.3。建仓与发包是对外操作，等用户确认后才做。
 > 前置：[架构](../guides/architecture.md)、[服务器账号、中转与共享](server-accounts-and-sharing.md)、[补全架构](completion-architecture.md) §7–§8、[TypeScript Core](typescript-core.md)、[外部服务与依赖](external-services.md)、[远端画布注入](remote-canvas-injection.md)、[core 的 JSON 面](../contracts/core-json-api.md) §3.2 / §10 / §16–§19 / §23–§24、[用户待办清单](../status/user-action-checklist.md)。
 > 并行文档：「工程规范化」（API 是否改 RPC、通用组件审计、测试与检查工具）。本文在接口处只写「传输层见工程规范化文档」，并在 §12 列出本设计对传输层的硬性要求。
