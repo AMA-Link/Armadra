@@ -13,6 +13,7 @@ import { SheetTitle } from "@/ui/sheet";
 import { Skeleton } from "@/ui/skeleton";
 import { WorkPanelSheet } from "../WorkPanelSheet";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/ui/tabs";
+import { Loadable } from "@/loading/Loadable";
 import { usePreferencesStore, useT } from "@/app/preferences-store";
 import { useAutomationSession } from "@/host/automation-session";
 import { useCanvasStore } from "@/store/canvas-store";
@@ -259,14 +260,12 @@ export function AutomationDrawer() {
           </Button>
         </Empty>
       ) : !client ? (
-        <div
-          role="status"
-          aria-label={t("automation.loading")}
-          className="space-y-2 p-3"
+        <Loadable
+          loading
+          skeleton={<AutomationSkeleton label={t("state.loading")} />}
         >
-          <Skeleton className="h-16 w-full rounded-[var(--r-card)]" />
-          <Skeleton className="h-16 w-full rounded-[var(--r-card)]" />
-        </div>
+          {null}
+        </Loadable>
       ) : (
         <Tabs
           value={tab}
@@ -297,6 +296,14 @@ export function AutomationDrawer() {
           >
             <ScrollArea className="min-h-0 flex-1">
               <div className="min-w-0 space-y-2 p-3">
+                {plans.isLoading && (
+                  <Loadable
+                    loading
+                    skeleton={<AutomationSkeleton label={t("state.loading")} />}
+                  >
+                    {null}
+                  </Loadable>
+                )}
                 {plans.isError && (
                   <Alert variant="destructive">
                     <AlertTitle className="font-normal break-words">
@@ -404,6 +411,16 @@ export function AutomationDrawer() {
  * 被挡住时「前往设置」去哪一页：这台设备没配对、没权限是「设备与会话」，
  * 连不上或服务不支持是「本机服务」。
  */
+/** 计划行的占位：与 `PlanRow` 同样的卡片圆角与 `p-3` 外距。 */
+function AutomationSkeleton({ label }: { label: string }) {
+  return (
+    <div role="status" aria-label={label} className="space-y-2 p-3">
+      <Skeleton className="h-16 w-full rounded-[var(--r-card)]" />
+      <Skeleton className="h-16 w-full rounded-[var(--r-card)]" />
+    </div>
+  );
+}
+
 function blockedSection(blocked: string): string {
   return blocked === "signedOut" ||
     blocked === "noPermission" ||

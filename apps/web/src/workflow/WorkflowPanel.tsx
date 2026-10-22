@@ -7,6 +7,7 @@ import { WorkPanelSheet } from "@/panels/WorkPanelSheet";
 import { TABS_CONTENT_FOCUS } from "@/panels/tabs-focus";
 import { useCanvasStore } from "@/store/canvas-store";
 import { Alert, AlertTitle } from "@/ui/alert";
+import { Loadable } from "@/loading/Loadable";
 import { IconButton } from "@/ui/icon-button";
 import { ScrollArea } from "@/ui/scroll-area";
 import { SheetTitle } from "@/ui/sheet";
@@ -113,24 +114,35 @@ export function WorkflowPanel() {
                         {t(workflowErrorKey(failure))}
                       </AlertTitle>
                     </Alert>
-                  ) : templates.isPending ? (
-                    <div
-                      className="space-y-2"
-                      aria-label={t("workflow.loading")}
-                    >
-                      <Skeleton className="h-24 w-full" />
-                      <Skeleton className="h-24 w-full" />
-                    </div>
-                  ) : value === "templates" ? (
-                    <TemplateLibrary
-                      templates={templates.data ?? []}
-                      runs={runs.data ?? []}
-                    />
                   ) : (
-                    <RunPanel
-                      runs={runs.data ?? []}
-                      templates={templates.data ?? []}
-                    />
+                    <Loadable
+                      loading={
+                        templates.isLoading ||
+                        (value === "runs" && runs.isLoading)
+                      }
+                      skeleton={
+                        <div
+                          role="status"
+                          aria-label={t("state.loading")}
+                          className="space-y-2"
+                        >
+                          <Skeleton className="h-24 w-full" />
+                          <Skeleton className="h-24 w-full" />
+                        </div>
+                      }
+                    >
+                      {value === "templates" ? (
+                        <TemplateLibrary
+                          templates={templates.data ?? []}
+                          runs={runs.data ?? []}
+                        />
+                      ) : (
+                        <RunPanel
+                          runs={runs.data ?? []}
+                          templates={templates.data ?? []}
+                        />
+                      )}
+                    </Loadable>
                   )}
                 </div>
               </ScrollArea>
