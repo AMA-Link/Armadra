@@ -1,3 +1,4 @@
+import { Loadable } from "@/loading/Loadable";
 import * as React from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { E2ePairingPayload, TrustedDevice } from "@armadra/shared";
@@ -10,6 +11,7 @@ import { RuntimeRequestError } from "../../../../api/request";
 import { localSource } from "../../../../api/source";
 import { usePreferencesStore, useT } from "../../../../app/preferences-store";
 import { useAccess } from "../../../../app/use-access";
+import { SecuritySectionSkeleton } from "./parts";
 import { QrImage } from "../gateway/PairingCard";
 import { Badge } from "@/ui/badge";
 import { Button } from "@/ui/button";
@@ -185,139 +187,145 @@ export function E2eDevices() {
     }
   };
   // 没有权限（成员）或这台没装中继时整块不出现。
-  if (!owner || devices.data === undefined) return null;
-  const rows = devices.data;
+  if (!owner || (devices.data === undefined && !devices.isLoading)) return null;
+  const rows = devices.data ?? [];
   return (
-    <section className="flex min-w-0 flex-col gap-2">
-      <div className="flex items-center justify-between gap-2 px-0.5">
-        <h3 className="text-[13px] font-medium">{t("e2e.devices.title")}</h3>
-        <PairDeviceButton />
-      </div>
-      {rows.length > 0 && (
-        <Card className="gap-0 overflow-visible rounded-lg border border-border/70 px-2 py-0 text-[length:inherit] ring-0">
-          <Table className="text-[13px]">
-            <TableHeader>
-              <TableRow>
-                <TableHead>{t("e2e.devices.name")}</TableHead>
-                <TableHead>{t("e2e.devices.account")}</TableHead>
-                <TableHead>{t("e2e.devices.status")}</TableHead>
-                <TableHead>{t("e2e.devices.lastSeen")}</TableHead>
-                <TableHead className="w-0">
-                  <span className="sr-only">{t("e2e.devices.actions")}</span>
-                </TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {rows.map((device) => (
-                <React.Fragment
-                  key={`${device.deviceId}:${device.principalId}`}
-                >
-                  <TableRow>
-                    <TableCell className="max-w-[16rem] truncate font-medium">
-                      {device.label || device.deviceId.slice(0, 8)}
-                      <span className="ml-2 text-muted-foreground">
-                        {t(`e2e.platform.${device.platform}`)}
-                      </span>
-                    </TableCell>
-                    <TableCell className="max-w-[10rem] truncate text-muted-foreground">
-                      {device.principalName || "—"}
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant={STATUS_VARIANT[device.status]}>
-                        {t(`e2e.devices.status.${device.status}`)}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="text-muted-foreground tabular-nums">
-                      {device.lastSeenAtMs > 0
-                        ? dateTime.format(device.lastSeenAtMs)
-                        : "—"}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <IconButton label={t("e2e.devices.actions")}>
-                            <MoreHorizontal />
-                          </IconButton>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          <DropdownMenuItem
-                            onSelect={() => {
-                              setLabel(device.label);
-                              setRenaming(device);
-                            }}
-                          >
-                            {t("e2e.devices.rename")}
-                          </DropdownMenuItem>
-                          {device.status === "trusted" && (
-                            <DropdownMenuItem
-                              variant="destructive"
-                              onSelect={() =>
-                                void act(() => devicesApi.revoke(device))
-                              }
-                            >
-                              {t("e2e.devices.revoke")}
-                            </DropdownMenuItem>
-                          )}
-                          {device.status !== "pending" && (
-                            <DropdownMenuItem
-                              variant="destructive"
-                              onSelect={() =>
-                                void act(() => devicesApi.forget(device))
-                              }
-                            >
-                              {t("e2e.devices.forget")}
-                            </DropdownMenuItem>
-                          )}
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    </TableCell>
-                  </TableRow>
-                  {device.status === "pending" && device.pendingId !== null && (
+    <Loadable
+      loading={devices.data === undefined}
+      skeleton={<SecuritySectionSkeleton title={t("e2e.devices.title")} />}
+    >
+      <section className="flex min-w-0 flex-col gap-2">
+        <div className="flex items-center justify-between gap-2 px-0.5">
+          <h3 className="text-[13px] font-medium">{t("e2e.devices.title")}</h3>
+          <PairDeviceButton />
+        </div>
+        {rows.length > 0 && (
+          <Card className="gap-0 overflow-visible rounded-lg border border-border/70 px-2 py-0 text-[length:inherit] ring-0">
+            <Table className="text-[13px]">
+              <TableHeader>
+                <TableRow>
+                  <TableHead>{t("e2e.devices.name")}</TableHead>
+                  <TableHead>{t("e2e.devices.account")}</TableHead>
+                  <TableHead>{t("e2e.devices.status")}</TableHead>
+                  <TableHead>{t("e2e.devices.lastSeen")}</TableHead>
+                  <TableHead className="w-0">
+                    <span className="sr-only">{t("e2e.devices.actions")}</span>
+                  </TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {rows.map((device) => (
+                  <React.Fragment
+                    key={`${device.deviceId}:${device.principalId}`}
+                  >
                     <TableRow>
-                      <TableCell colSpan={5} className="pb-3">
-                        <ApproveForm device={device} />
+                      <TableCell className="max-w-[16rem] truncate font-medium">
+                        {device.label || device.deviceId.slice(0, 8)}
+                        <span className="ml-2 text-muted-foreground">
+                          {t(`e2e.platform.${device.platform}`)}
+                        </span>
+                      </TableCell>
+                      <TableCell className="max-w-[10rem] truncate text-muted-foreground">
+                        {device.principalName || "—"}
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant={STATUS_VARIANT[device.status]}>
+                          {t(`e2e.devices.status.${device.status}`)}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="text-muted-foreground tabular-nums">
+                        {device.lastSeenAtMs > 0
+                          ? dateTime.format(device.lastSeenAtMs)
+                          : "—"}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <IconButton label={t("e2e.devices.actions")}>
+                              <MoreHorizontal />
+                            </IconButton>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuItem
+                              onSelect={() => {
+                                setLabel(device.label);
+                                setRenaming(device);
+                              }}
+                            >
+                              {t("e2e.devices.rename")}
+                            </DropdownMenuItem>
+                            {device.status === "trusted" && (
+                              <DropdownMenuItem
+                                variant="destructive"
+                                onSelect={() =>
+                                  void act(() => devicesApi.revoke(device))
+                                }
+                              >
+                                {t("e2e.devices.revoke")}
+                              </DropdownMenuItem>
+                            )}
+                            {device.status !== "pending" && (
+                              <DropdownMenuItem
+                                variant="destructive"
+                                onSelect={() =>
+                                  void act(() => devicesApi.forget(device))
+                                }
+                              >
+                                {t("e2e.devices.forget")}
+                              </DropdownMenuItem>
+                            )}
+                          </DropdownMenuContent>
+                        </DropdownMenu>
                       </TableCell>
                     </TableRow>
-                  )}
-                </React.Fragment>
-              ))}
-            </TableBody>
-          </Table>
-        </Card>
-      )}
-      <ResponsiveDialog
-        open={renaming !== null}
-        onOpenChange={(open) => !open && setRenaming(null)}
-      >
-        <ResponsiveDialogContent className="sm:max-w-sm">
-          <ResponsiveDialogHeader>
-            <ResponsiveDialogTitle>
-              {t("e2e.devices.rename")}
-            </ResponsiveDialogTitle>
-          </ResponsiveDialogHeader>
-          <Input
-            value={label}
-            maxLength={128}
-            aria-label={t("e2e.devices.renamePrompt")}
-            onChange={(event) => setLabel(event.target.value)}
-          />
-          <ResponsiveDialogFooter>
-            <Button
-              type="button"
-              disabled={label.trim() === ""}
-              onClick={() => {
-                const target = renaming;
-                setRenaming(null);
-                if (target !== null)
-                  void act(() => devicesApi.rename(target, label.trim()));
-              }}
-            >
-              {t("e2e.devices.save")}
-            </Button>
-          </ResponsiveDialogFooter>
-        </ResponsiveDialogContent>
-      </ResponsiveDialog>
-    </section>
+                    {device.status === "pending" &&
+                      device.pendingId !== null && (
+                        <TableRow>
+                          <TableCell colSpan={5} className="pb-3">
+                            <ApproveForm device={device} />
+                          </TableCell>
+                        </TableRow>
+                      )}
+                  </React.Fragment>
+                ))}
+              </TableBody>
+            </Table>
+          </Card>
+        )}
+        <ResponsiveDialog
+          open={renaming !== null}
+          onOpenChange={(open) => !open && setRenaming(null)}
+        >
+          <ResponsiveDialogContent className="sm:max-w-sm">
+            <ResponsiveDialogHeader>
+              <ResponsiveDialogTitle>
+                {t("e2e.devices.rename")}
+              </ResponsiveDialogTitle>
+            </ResponsiveDialogHeader>
+            <Input
+              value={label}
+              maxLength={128}
+              aria-label={t("e2e.devices.renamePrompt")}
+              onChange={(event) => setLabel(event.target.value)}
+            />
+            <ResponsiveDialogFooter>
+              <Button
+                type="button"
+                disabled={label.trim() === ""}
+                onClick={() => {
+                  const target = renaming;
+                  setRenaming(null);
+                  if (target !== null)
+                    void act(() => devicesApi.rename(target, label.trim()));
+                }}
+              >
+                {t("e2e.devices.save")}
+              </Button>
+            </ResponsiveDialogFooter>
+          </ResponsiveDialogContent>
+        </ResponsiveDialog>
+      </section>
+    </Loadable>
   );
 }
 

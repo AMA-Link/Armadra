@@ -1,3 +1,5 @@
+import { Loadable } from "@/loading/Loadable";
+import { SkeletonList } from "@/ui/skeletons";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import {
@@ -73,62 +75,75 @@ export function PushDevices() {
   });
 
   const devices = list.data?.devices ?? [];
-  if (devices.length === 0) return null;
+  if (devices.length === 0 && !list.isLoading) return null;
   const shown = visiblePushKinds();
 
   return (
-    <SettingsGroup title={t("push.devices.title")}>
-      <Accordion type="multiple" className="px-4">
-        {devices.map((device) => {
-          const kinds = device.kinds ?? PUSH_PREFERENCE_KINDS;
-          const editable = device.editable === true;
-          const name =
-            device.deviceName ?? t(`push.platform.${device.platform}`);
-          return (
-            <AccordionItem
-              key={device.deviceId}
-              value={device.deviceId}
-              data-push-device={device.deviceId}
-            >
-              <AccordionTrigger className="items-center gap-3 py-3 font-normal hover:no-underline">
-                <span className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
-                  <span className="truncate text-[13px] text-foreground">
-                    {name}
+    <Loadable
+      loading={list.isLoading}
+      skeleton={
+        <SettingsGroup title={t("push.devices.title")}>
+          <SkeletonList
+            rows={1}
+            label={t("state.loading")}
+            rowClassName="h-11 px-4"
+          />
+        </SettingsGroup>
+      }
+    >
+      <SettingsGroup title={t("push.devices.title")}>
+        <Accordion type="multiple" className="px-4">
+          {devices.map((device) => {
+            const kinds = device.kinds ?? PUSH_PREFERENCE_KINDS;
+            const editable = device.editable === true;
+            const name =
+              device.deviceName ?? t(`push.platform.${device.platform}`);
+            return (
+              <AccordionItem
+                key={device.deviceId}
+                value={device.deviceId}
+                data-push-device={device.deviceId}
+              >
+                <AccordionTrigger className="items-center gap-3 py-3 font-normal hover:no-underline">
+                  <span className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
+                    <span className="truncate text-[13px] text-foreground">
+                      {name}
+                    </span>
+                    <span className="text-[11px] text-muted-foreground">
+                      {t(`push.platform.${device.platform}`)}
+                    </span>
+                    {device.current && (
+                      <Badge
+                        variant="secondary"
+                        className="h-5 px-1.5 text-[11px]"
+                      >
+                        {t("push.device.current")}
+                      </Badge>
+                    )}
                   </span>
-                  <span className="text-[11px] text-muted-foreground">
-                    {t(`push.platform.${device.platform}`)}
-                  </span>
-                  {device.current && (
-                    <Badge
-                      variant="secondary"
-                      className="h-5 px-1.5 text-[11px]"
-                    >
-                      {t("push.device.current")}
-                    </Badge>
-                  )}
-                </span>
-              </AccordionTrigger>
-              <AccordionContent className="-mx-4">
-                {shown.map((kind) => (
-                  <SettingsRow key={kind} label={t(`push.kind.${kind}`)}>
-                    <Switch
-                      checked={kinds.includes(kind)}
-                      disabled={!editable}
-                      aria-label={`${name} · ${t(`push.kind.${kind}`)}`}
-                      onCheckedChange={(on) =>
-                        save.mutate({
-                          deviceId: device.deviceId,
-                          kinds: toggledKinds(kinds, kind, on),
-                        })
-                      }
-                    />
-                  </SettingsRow>
-                ))}
-              </AccordionContent>
-            </AccordionItem>
-          );
-        })}
-      </Accordion>
-    </SettingsGroup>
+                </AccordionTrigger>
+                <AccordionContent className="-mx-4">
+                  {shown.map((kind) => (
+                    <SettingsRow key={kind} label={t(`push.kind.${kind}`)}>
+                      <Switch
+                        checked={kinds.includes(kind)}
+                        disabled={!editable}
+                        aria-label={`${name} · ${t(`push.kind.${kind}`)}`}
+                        onCheckedChange={(on) =>
+                          save.mutate({
+                            deviceId: device.deviceId,
+                            kinds: toggledKinds(kinds, kind, on),
+                          })
+                        }
+                      />
+                    </SettingsRow>
+                  ))}
+                </AccordionContent>
+              </AccordionItem>
+            );
+          })}
+        </Accordion>
+      </SettingsGroup>
+    </Loadable>
   );
 }
