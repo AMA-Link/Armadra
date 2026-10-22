@@ -13,6 +13,7 @@ import { installLocalTransport, localSource } from "../api/source";
 import { isDesktop } from "../platform";
 import { isCompactLayout } from "../platform/layout";
 import { isNativeShell } from "../host/native-session";
+import { detectConsole } from "../cloud/entry";
 import {
   detectRelayHost,
   startHostedRelay,
@@ -49,6 +50,11 @@ export type Entry =
        */
       readonly kind: "join";
       readonly linkId: string;
+    }
+  | {
+      /** SaaS 控制台（`app.armadra.com` 的其余路径，云端控制台 §1.2）。 */
+      readonly kind: "console";
+      readonly path: string;
     }
   | {
       /**
@@ -375,6 +381,11 @@ export async function prepareEntry(): Promise<Entry> {
       startHostedRelay(host);
       return { kind: "relay", issuer: host.issuer };
     }
+  }
+  // 服务器壳托管的页面、桌面窗口与 Vite 开发服务器背后是本机 core，不是控制台。
+  if (!isNativeShell() && !RUNTIME_VIA_SERVER_SHELL && !import.meta.env.DEV) {
+    const path = await detectConsole();
+    if (path !== null) return { kind: "console", path };
   }
   if (!RUNTIME_VIA_SERVER_SHELL || !isCompactLayout()) return { kind: "app" };
   if (hasPairingFragment()) {
