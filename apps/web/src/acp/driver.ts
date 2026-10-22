@@ -8,8 +8,10 @@ import * as React from "react";
 import {
   completionSettingsSchema,
   defaultAgentDriver,
+  defaultAgentView,
   type AgentDriver,
   type AgentInfo,
+  type AgentView,
   type TerminalAgent,
 } from "@armadra/shared";
 import { toast } from "sonner";
@@ -118,5 +120,21 @@ export function preferredDriver(
     setting,
     acpInstalled: agent.acp?.installed === true,
     ownLaunch: agent.baseAgent !== undefined && agent.acp?.support !== "native",
+  });
+}
+
+/**
+ * 新建节点时写进 `agent` 的驱动与初始节点体（#462）：页面新建菜单、派生、交接新建
+ * 都经这一条，规则与 core 的 `newNodeView` 同一个共享函数 `defaultAgentView`。
+ */
+export function preferredView(
+  agent: Pick<AgentInfo, "id" | "acp" | "baseAgent">,
+  setting: AgentDriver = defaultDriverSetting,
+): { driver: AgentDriver; view?: AgentView } {
+  return defaultAgentView({
+    setting,
+    acpInstalled: agent.acp?.installed === true,
+    ownLaunch: agent.baseAgent !== undefined && agent.acp?.support !== "native",
+    baseAgentId: agent.baseAgent ?? agent.id,
   });
 }

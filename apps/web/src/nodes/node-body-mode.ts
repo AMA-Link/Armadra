@@ -24,10 +24,30 @@ export const useNodeBodyStore = create<NodeBodyState>((set) => ({
     ),
 }));
 
-export function useNodeBodyMode(nodeId: string): NodeBodyMode {
-  return useNodeBodyStore((state) => state.modes[scoped(nodeId)] ?? "terminal");
+/**
+ * 节点建出来时记的初始节点体（`agent.view`，设计 §5.4）；没写就是终端。
+ * 本机手动切换过的优先，所以后来改偏好或别的设备切换都不会盖掉它。
+ */
+export function initialBodyMode(
+  agent: { readonly view?: NodeBodyMode } | undefined,
+): NodeBodyMode {
+  return agent?.view === "session" ? "session" : "terminal";
 }
 
-export function nodeBodyMode(nodeId: string): NodeBodyMode {
-  return useNodeBodyStore.getState().modes[scoped(nodeId)] ?? "terminal";
+export function useNodeBodyMode(
+  nodeId: string,
+  agent?: { readonly view?: NodeBodyMode },
+): NodeBodyMode {
+  return useNodeBodyStore(
+    (state) => state.modes[scoped(nodeId)] ?? initialBodyMode(agent),
+  );
+}
+
+export function nodeBodyMode(
+  nodeId: string,
+  agent?: { readonly view?: NodeBodyMode },
+): NodeBodyMode {
+  return (
+    useNodeBodyStore.getState().modes[scoped(nodeId)] ?? initialBodyMode(agent)
+  );
 }

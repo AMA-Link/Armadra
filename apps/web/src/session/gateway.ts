@@ -42,6 +42,8 @@ export interface SessionLaunchInput {
   shell?: string;
   agent?: CreateTerminalAgent;
   ssh?: { hostId: string };
+  /** core 自己敲启动行（节点体是会话时间线，没有终端表面）。 */
+  launch?: boolean;
 }
 
 /** core 的会话行 → 网关的形状。 */
@@ -109,6 +111,7 @@ export const sessionGateway = {
         ...(input.shell ? { shell: input.shell } : {}),
         ...(input.ssh ? { ssh: { hostId: input.ssh.hostId } } : {}),
         ...(input.agent ? { agent: input.agent } : {}),
+        ...(input.launch ? { launch: true } : {}),
       }),
     );
   },
