@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { GitLoadable } from "../../git-loading";
 import type { GitRemoteRecord, GitStashDetail } from "@armadra/shared";
 
 import { useT } from "../../../../app/preferences-store";
@@ -203,11 +204,7 @@ export function StashDiffDialog({
             {target?.oid.slice(0, 12)}
           </ResponsiveDialogDescription>
         </ResponsiveDialogHeader>
-        {detail.isPending && target && (
-          <p role="status" className="text-xs">
-            {t("gitRepo.loading")}
-          </p>
-        )}
+        {target && <GitLoadable loading={detail.isLoading} size={3} />}
         {detail.error && (
           <ReadError error={detail.error} retry={() => void detail.refetch()} />
         )}

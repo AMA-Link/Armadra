@@ -9,6 +9,7 @@ import { writeClipboard } from "../../../terminal/TerminalSurface";
 import { cn } from "../../../lib/cn";
 import { Button } from "../../../ui/button";
 import { ReadError } from "../forms";
+import { GitLoadable } from "../git-loading";
 import { refBadges } from "../CommitGraph";
 import { buildFileRows } from "./file-tree";
 import { sk } from "../../../sources/scope";
@@ -183,7 +184,7 @@ export function CommitDetails({
           <Folder className="size-3" />
         </Button>
       </div>
-      {detail.isPending && <p role="status">{t("gitLog.table.loading")}</p>}
+      <GitLoadable loading={detail.isPending} size={4} />
       {detail.error && (
         <ReadError error={detail.error} retry={() => void detail.refetch()} />
       )}
@@ -254,7 +255,7 @@ export function CommitDetails({
               {t("gitLog.details.closeDiff")}
             </Button>
           </div>
-          {patch.isPending && <p role="status">{t("gitLog.table.loading")}</p>}
+          <GitLoadable loading={patch.isPending} kind="code" size={6} />
           {patch.error && (
             <ReadError error={patch.error} retry={() => void patch.refetch()} />
           )}

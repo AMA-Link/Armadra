@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { GitLoadable } from "./git-loading";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type {
   GitHunk,
@@ -186,11 +187,7 @@ function HunkSession({
       >
         {t("gitHunk.reload")}
       </Button>
-      {query.isPending && (
-        <p role="status" className="text-xs">
-          {t("gitHunk.loading")}
-        </p>
-      )}
+      <GitLoadable loading={query.isLoading} kind="blocks" size={2} />
       {query.error && (
         <p role="alert" className="break-words text-xs text-destructive">
           {query.error.message}

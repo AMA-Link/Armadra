@@ -29,6 +29,7 @@ import { openMergeView } from "../../../editor/merge/conflict";
 import { Button } from "../../../ui/button";
 import { IconButton } from "../../../ui/icon-button";
 import { ScrollArea } from "../../../ui/scroll-area";
+import { GitLoadable } from "../git-loading";
 import { ReadError } from "../forms";
 import { invalidateGitQueries } from "../queries";
 import { useRepositories } from "../Repositories";
@@ -309,11 +310,12 @@ export function CommitPage({
       {status.error && (
         <ReadError error={status.error} retry={() => void status.refetch()} />
       )}
-      {status.isPending && paths.length > 0 && (
-        <p role="status" className="px-4 py-3 text-xs">
-          {t("gitRepo.loading")}
-        </p>
-      )}
+      <GitLoadable
+        loading={
+          repositories.isPending || (status.isPending && paths.length > 0)
+        }
+        size={6}
+      />
       {/* 发现跑完了却一个检出都没有：这个工作空间还不是仓库。此处是整个界面
           里唯一说得出这件事的地方，所以初始化的入口也只能在这里。 */}
       {repositories.isSuccess && records.length === 0 && (

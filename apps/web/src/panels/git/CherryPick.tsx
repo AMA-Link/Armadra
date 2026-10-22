@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { GitLoadable } from "./git-loading";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type {
   GitCherryPickPreview,
@@ -130,7 +131,7 @@ export function CherryPick({
         />
       </Field>
       <p className="text-muted-foreground">{t("gitIntegration.pickSafety")}</p>
-      {metadata.isFetching && <p role="status">{t("gitRepo.loading")}</p>}
+      <GitLoadable loading={metadata.isFetching} size={3} />
       {metadata.error && (
         <ReadError
           error={metadata.error}
@@ -176,8 +177,8 @@ export function CherryPick({
               <span>{t("gitIntegration.mainlineSafety")}</span>
             </Field>
           )}
-          {isMerge && patch.isFetching && (
-            <p role="status">{t("gitRepo.loading")}</p>
+          {isMerge && (
+            <GitLoadable loading={patch.isFetching} kind="code" size={4} />
           )}
           {isMerge && patch.error && (
             <ReadError error={patch.error} retry={() => void patch.refetch()} />

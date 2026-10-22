@@ -375,6 +375,7 @@ export function LogPage({ workspaceId }: LogPageProps) {
 
   const tree = (
     <BranchTree
+      loading={refs.isPending}
       repositories={repositories}
       colors={colors}
       filter={filter}

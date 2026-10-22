@@ -1,3 +1,5 @@
+import { Loadable } from "../../loading/Loadable";
+import { Skeleton } from "../../ui/skeleton";
 import { useEffect, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -188,22 +190,27 @@ function AssistantSession({
       <h3 className="font-medium">{t("gitMessage.title")}</h3>
       <p className="text-muted-foreground">{t("gitMessage.note")}</p>
       <Field label={t("gitMessage.provider")}>
-        <Select
-          value={selected?.id ?? ""}
-          disabled={busy !== null}
-          onValueChange={setChosen}
+        <Loadable
+          loading={choices.isPending}
+          skeleton={<Skeleton className="h-9 w-full" />}
         >
-          <SelectTrigger className="h-9 w-full min-w-0">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent className="z-[var(--z-dialog)]">
-            {choices.data?.map((provider) => (
-              <SelectItem key={provider.id} value={provider.id}>
-                {provider.label}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+          <Select
+            value={selected?.id ?? ""}
+            disabled={busy !== null}
+            onValueChange={setChosen}
+          >
+            <SelectTrigger className="h-9 w-full min-w-0">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent className="z-[var(--z-dialog)]">
+              {choices.data?.map((provider) => (
+                <SelectItem key={provider.id} value={provider.id}>
+                  {provider.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </Loadable>
       </Field>
       <Field label={t("gitMessage.language")}>
         <Select
