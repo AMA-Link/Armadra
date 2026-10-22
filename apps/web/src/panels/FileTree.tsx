@@ -13,6 +13,8 @@
  * 在本机时出现——服务器壳上 core 不在用户眼前，远端工作区的文件在另一台
  * 机器上，两种情况下打开这台机器的文件管理器都没有意义。
  */
+import { Loadable } from "@/loading/Loadable";
+import { SkeletonList } from "@/ui/skeletons";
 import { useMemo, useState, type DragEvent } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
@@ -62,7 +64,6 @@ import {
 import { IconButton } from "../ui/icon-button";
 import { Alert, AlertTitle } from "../ui/alert";
 import { Empty, EmptyDescription } from "../ui/empty";
-import { Skeleton } from "../ui/skeleton";
 import { nodeDropPosition } from "@/canvas/placement";
 import { FileEntryDialog } from "./FileEntryDialog";
 import { useWorkspaceFileDrag } from "../files/use-workspace-file-drag";
@@ -292,18 +293,16 @@ function Directory({
 
   return (
     <>
-      {files.isPending && (
-        <div
-          role="status"
-          data-slot="file-tree-loading"
-          className="flex flex-col gap-1.5 px-2 py-1.5"
-          style={indent(depth)}
-        >
-          <span className="sr-only">{t("explorer.loading")}</span>
-          <Skeleton className="h-3 w-2/3" />
-          <Skeleton className="h-3 w-1/2" />
-        </div>
-      )}
+      <Loadable
+        loading={files.isPending}
+        skeleton={
+          <div data-slot="file-tree-loading" style={indent(depth)}>
+            <SkeletonList rows={4} size="compact" label={t("state.loading")} />
+          </div>
+        }
+      >
+        {null}
+      </Loadable>
       {files.isError && (
         <Alert
           variant="destructive"
