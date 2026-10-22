@@ -22,13 +22,17 @@ export interface ResourcesState extends SamplingState {
 }
 
 const IDLE: SamplingState = { snapshot: null, error: null, loading: false };
+/** 一打开就在等首份样本：第一帧就是 loading，不先闪一帧空白。 */
+const OPENING: SamplingState = { snapshot: null, error: null, loading: true };
 
 export function useResources(
   workspaceId: string | null,
   enabled: boolean,
   cadence: Cadence = "fast",
 ): ResourcesState {
-  const [state, setState] = useState<SamplingState>(IDLE);
+  const [state, setState] = useState<SamplingState>(
+    enabled && workspaceId ? OPENING : IDLE,
+  );
   const handle = useRef<SamplingHandle | null>(null);
 
   useEffect(() => {

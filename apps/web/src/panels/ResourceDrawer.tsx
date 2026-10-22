@@ -8,6 +8,7 @@
  * 采样只在这个抽屉开着的时候进行——`useResources` 拿订阅，关掉就退订
  * （设计 §8「面板打开时每 2 秒，关闭时…」）。
  */
+import { Loadable } from "@/loading/Loadable";
 import { useState } from "react";
 import { RotateCw, X } from "lucide-react";
 
@@ -81,17 +82,22 @@ export function ResourceDrawer() {
           )}
           {/* 还没有过样本时不画表格：等第一份真实数字，别先显示一屏 0——
               只放两块卡片形状的骨架占位。 */}
-          {loading && !snapshot && (
-            <div
-              role="status"
-              data-slot="resources-loading"
-              className="flex flex-col gap-3"
-            >
-              <span className="sr-only">{t("resources.loading")}</span>
-              <Skeleton className="h-20 w-full rounded-[var(--r-card)]" />
-              <Skeleton className="h-20 w-full rounded-[var(--r-card)]" />
-            </div>
-          )}
+          <Loadable
+            loading={loading && !snapshot}
+            skeleton={
+              <div
+                role="status"
+                data-slot="resources-loading"
+                aria-label={t("state.loading")}
+                className="flex flex-col gap-3"
+              >
+                <Skeleton className="h-20 w-full rounded-[var(--r-card)]" />
+                <Skeleton className="h-32 w-full rounded-[var(--r-card)]" />
+              </div>
+            }
+          >
+            {null}
+          </Loadable>
 
           {snapshot && (
             <>
