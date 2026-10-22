@@ -33,11 +33,14 @@ describe("SettingsLoadable", () => {
     const holder = () => container.querySelector("[data-slot=loadable]");
     expect(holder()?.getAttribute("data-phase")).toBe("hold");
     expect(holder()?.className).toContain("invisible");
+    // 占位阶段不可见，也不进读屏树。
+    expect(holder()?.getAttribute("aria-hidden")).toBe("true");
     expect(screen.queryByText("真控件")).toBeNull();
 
     tick(SKELETON_DELAY_MS);
     expect(holder()?.getAttribute("data-phase")).toBe("show");
     expect(holder()?.className).not.toContain("invisible");
+    expect(holder()?.hasAttribute("aria-hidden")).toBe(false);
 
     tick(SKELETON_MIN_VISIBLE_MS);
     rerender(

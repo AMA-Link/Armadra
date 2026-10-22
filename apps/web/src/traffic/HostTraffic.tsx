@@ -163,11 +163,11 @@ export function HostTraffic() {
             </ToggleGroupItem>
           </ToggleGroup>
         </div>
+        <TrafficTrend fromMs={fromOf(range, now)} toMs={now + DAY_MS} />
         <Loadable
           loading={summary.isLoading}
           skeleton={<TrafficSkeleton label={t("state.loading")} />}
         >
-          <TrafficTrend fromMs={fromOf(range, now)} toMs={now + DAY_MS} />
           <TrafficBreakdown
             up={totals.up}
             down={totals.down}
@@ -210,7 +210,7 @@ export function HostTraffic() {
   );
 }
 
-/** 流量段首取时的占位：趋势柱区 + 三格 + 三条分项，与 `TrafficBreakdown` 同一套间距。 */
+/** 流量段首取时的占位：三格 + 三条分项（趋势柱区自带占位），与 `TrafficBreakdown` 同一套间距。 */
 function TrafficSkeleton({ label }: { label: string }) {
   return (
     <div
@@ -220,7 +220,6 @@ function TrafficSkeleton({ label }: { label: string }) {
       aria-label={label}
       className="flex flex-col gap-4"
     >
-      <Skeleton className="h-24 w-full" />
       <div className="grid grid-cols-3 gap-2">
         {[0, 1, 2].map((cell) => (
           <Skeleton key={cell} className="h-[62px]" />
