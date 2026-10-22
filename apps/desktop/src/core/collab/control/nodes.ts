@@ -57,6 +57,7 @@ import {
   frameFor,
   insideFrame,
 } from "./worktree";
+import { newNodeDriver } from "./agent-driver";
 import { addLink } from "./edits";
 import { type Outcome, result } from "./outcome";
 import { checkBody, refuse as sendRefusal } from "./send";
@@ -314,6 +315,10 @@ export async function openAgent(
   if (inboxWake !== undefined) agent.inboxWake = inboxWake;
   // `--resume`：core 起这个节点时敲的是 CLI 自己的 resume 行（契约 §15.5）。
   if (resume !== undefined) agent.resume = resume;
+  // 与页面新建同一条默认驱动规则。`--resume` 例外：接回靠敲进终端的 CLI 自己的
+  // resume 行，只有终端驱动做得到。
+  if (resume === undefined)
+    agent.driver = newNodeDriver(context.settings, agentId);
   const data = {
     kind: "terminal",
     agent,
@@ -870,6 +875,7 @@ export async function team(
     if (inboxWake !== undefined) agent.inboxWake = inboxWake;
     const resume = resumes[index];
     if (resume !== undefined) agent.resume = resume;
+    else agent.driver = newNodeDriver(context.settings, role.agentId);
     const cwd = cwds[index];
     // 成员按布局方向排成一行（纵向）或一列（横向）：`placement` 撞上前一个
     // 成员就沿这一行 / 列让一格（契约 §50）。汇总节点在成员那一行的下一行居中。
