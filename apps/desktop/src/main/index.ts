@@ -94,6 +94,7 @@ import {
 import { secretChannel } from "./secrets";
 import { pickDirectory } from "./dialogs";
 import { openExternal, showItemInFolder } from "./external";
+import { applyToNewWindow, setWindowAppearance } from "./appearance";
 import { shareUrl } from "./share";
 import {
   installApplicationMenu,
@@ -236,6 +237,8 @@ function registerIpc(): void {
           (request as { sourceId?: unknown } | null)?.sourceId,
         ) !== null,
     }),
+    // 主题偏好与半透明开关：系统材质跟着应用主题走（#474）。
+    [IPC.windowAppearance.channel]: (request) => setWindowAppearance(request),
     // The page answering a claimed chord. `menu.ts` owns the arbitration,
     // because it is the module that claimed the chord in the first place.
     [IPC.windowKeyIntentResult.channel]: (result) => {
@@ -476,6 +479,8 @@ async function start(): Promise<void> {
   // `main`: a claimed chord is answered through `sendToWindow`, which only
   // reaches the main window; a per-source window keeps the page's own keys.
   onWindowCreated(installKeydownIntercept, "main");
+  // 新窗口（从 Dock 重建、按源另开）沿用页面最后一次送来的半透明开关。
+  onWindowCreated((window) => applyToNewWindow(window));
   installApplicationMenu();
   // 系统内存压力（性能设计 A3）：只在等级变化时推给页面；页面重载会丢掉状态，
   // 所以每次载入完再补一次非 normal 的当前档。

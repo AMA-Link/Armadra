@@ -230,6 +230,13 @@ export const IPC = {
   windowOpen: spec("window:open", "invoke", "window"),
 
   /**
+   * 窗口外观（AMA-Link/Armadra#474）：`{ theme, translucent }`，`theme` 是偏好
+   * （`system` / `light` / `dark`）。主进程写 `nativeTheme.themeSource`，macOS
+   * 按开关挂摘 vibrancy（`main/appearance.ts`）。答 `{ ok }`，不像样答 `false`。
+   */
+  windowAppearance: spec("window:appearance", "invoke", "window"),
+
+  /**
    * 页面的一条 JS 错误（G5-19，契约 §30）：`{ kind, name, message, stack }`，
    * 页面已剥离过。主进程按 `diagnostics.reportPageErrors` 与 DSN 再判、限流、
    * 再剥离，才交给 `@sentry/electron`（`ipcMode` 仍是 0，SDK 不开渲染进程通道）。
@@ -288,6 +295,7 @@ export const IMPLEMENTED_CHANNELS: readonly string[] = [
   IPC.sourcesTakeJoinLink.channel,
   IPC.appShare.channel,
   IPC.windowOpen.channel,
+  IPC.windowAppearance.channel,
   IPC.diagnosticsReport.channel,
 ];
 

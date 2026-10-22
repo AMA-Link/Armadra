@@ -180,6 +180,11 @@ export interface ArmadraDesktopApi {
   /** 另开一扇窗口，以一个源为初始当前源（`window:open`，A7-1）。 */
   readonly windows: {
     openSource(request: { sourceId: string }): Promise<{ opened: boolean }>;
+    /** 主题偏好与半透明开关（`window:appearance`）：系统材质跟着应用走。 */
+    setAppearance(appearance: {
+      theme: "system" | "light" | "dark";
+      translucent: boolean;
+    }): Promise<{ ok: boolean }>;
   };
   /**
    * 页面的一条 JS 错误（契约 §30），页面已剥离过；主进程再判开关、限流、剥离。
@@ -288,6 +293,8 @@ const api: ArmadraDesktopApi = {
   windows: {
     openSource: (request) =>
       ipcRenderer.invoke(IPC.windowOpen.channel, request),
+    setAppearance: (appearance) =>
+      ipcRenderer.invoke(IPC.windowAppearance.channel, appearance),
   },
   diagnostics: {
     report: (report) =>
