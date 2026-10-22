@@ -106,7 +106,11 @@ vi.mock("@xterm/xterm", () => ({
     rows = 24;
     options = {};
     unicode = { activeVersion: "" };
-    parser = { registerOscHandler: () => ({ dispose() {} }) };
+    parser = {
+      registerOscHandler: () => ({ dispose() {} }),
+      registerCsiHandler: () => ({ dispose() {} }),
+      registerEscHandler: () => ({ dispose() {} }),
+    };
     textarea = undefined;
     loadAddon() {}
     open() {}

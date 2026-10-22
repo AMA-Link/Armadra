@@ -24,6 +24,7 @@ import { guardPointerRelease } from "./pointer-release";
 import { compensateScaledPointer } from "./scaled-pointer";
 import { applyOscTitle } from "./title";
 import { registerProgramOsc } from "./program-osc";
+import { ctrlEnterInput, trackKeyProtocol } from "./key-protocol";
 import { deliverInput } from "./use-handle";
 import { loseWebglContexts } from "../render-budget";
 import { RESIZE_DEBOUNCE_MS, TERMINAL_SCROLLBACK } from "./constants";
@@ -120,6 +121,8 @@ export function useXtermInstance(
      * F1–F12、Home/End、Shift+方向 都归 CLI。
      */
     const mac = isMacPlatform();
+    // 程序开了 kitty / modifyOtherKeys 才把 Ctrl+Enter 与 Enter 区分开（xterm 6.0 不实现）。
+    const keyProtocol = trackKeyProtocol(terminal.parser);
     terminal.attachCustomKeyEventHandler((event) => {
       if (event.isComposing || event.keyCode === 229) return false;
       if (event.type !== "keydown") return true;
@@ -145,6 +148,12 @@ export function useXtermInstance(
       if (disposition === "copy") {
         writeClipboard(terminal.getSelection());
         event.preventDefault();
+        return false;
+      }
+      const ctrlEnter = ctrlEnterInput(event, keyProtocol);
+      if (ctrlEnter !== null) {
+        event.preventDefault();
+        deliverInput(refs, ctrlEnter);
         return false;
       }
       // `paste` 交给浏览器的 paste 事件，xterm 自己会按 2004 决定括号粘贴。
@@ -263,6 +272,7 @@ export function useXtermInstance(
       bell.dispose();
       title.dispose();
       programOsc.dispose();
+      keyProtocol.dispose();
       releaseIme();
       restorePointer();
       releaseGuard();
