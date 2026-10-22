@@ -290,7 +290,6 @@ export const modals: MessageModule = {
 
     "settings.licenses": "开源许可",
     "settings.licenses.view": "查看",
-    "settings.licenses.loading": "正在载入",
 
     "permission.default": "默认",
     "permission.auto-edit": "自动编辑",
@@ -604,7 +603,6 @@ export const modals: MessageModule = {
 
     "settings.licenses": "Open source licences",
     "settings.licenses.view": "View",
-    "settings.licenses.loading": "Loading",
 
     "permission.default": "Default",
     "permission.auto-edit": "Auto edit",

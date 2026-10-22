@@ -1,3 +1,6 @@
+import { Loadable } from "@/loading/Loadable";
+import { Skeleton } from "@/ui/skeleton";
+import { Spinner } from "@/ui/spinner";
 import * as React from "react";
 import { useQuery } from "@tanstack/react-query";
 
@@ -39,6 +42,7 @@ import { ReleaseHistory, useReleases } from "./about/ReleaseHistory";
 import { ServerUpgradeNotice } from "./about/ServerUpgradeNotice";
 import { AndroidUpdateGroup, MobileReleaseNotice } from "./about/MobileUpdate";
 import { SettingsGroup } from "../SettingsGroup";
+import { SettingsLoadable, ValueLoadable } from "../SettingsLoadable";
 import { SettingsRow } from "../SettingsRow";
 import { useRemoteAccess } from "../remote-access";
 import { useRuntimeSettings } from "../use-runtime-settings";
@@ -59,7 +63,6 @@ import {
   ResponsiveDialogTitle,
 } from "@/panels/ResponsiveDialog";
 import { ScrollArea } from "@/ui/scroll-area";
-import { Spinner } from "@/ui/spinner";
 import { Switch } from "@/ui/switch";
 
 /** The channels a person may ask for; a local build is not one of them. */
@@ -108,6 +111,17 @@ export function AboutPage() {
   );
 }
 
+const LICENSE_LINE_WIDTHS = [
+  "w-1/3",
+  "w-full",
+  "w-5/6",
+  "w-full",
+  "w-2/3",
+  "w-full",
+  "w-3/4",
+  "w-1/2",
+] as const;
+
 function LicensesGroup() {
   const t = useT();
   const [open, setOpen] = React.useState(false);
@@ -134,17 +148,30 @@ function LicensesGroup() {
               {t("settings.licenses")}
             </ResponsiveDialogTitle>
           </ResponsiveDialogHeader>
-          {notices.data === undefined ? (
-            <div className="flex h-24 items-center justify-center">
-              <Spinner aria-label={t("settings.licenses.loading")} />
-            </div>
-          ) : (
+          <Loadable
+            loading={notices.isPending}
+            error={notices.error}
+            onRetry={() => void notices.refetch()}
+            skeleton={
+              <div
+                data-slot="licenses-skeleton"
+                role="status"
+                aria-busy="true"
+                aria-label={t("state.loading")}
+                className="flex h-[60vh] flex-col gap-3 pr-3"
+              >
+                {LICENSE_LINE_WIDTHS.map((width, index) => (
+                  <Skeleton key={index} className={`h-3 ${width}`} />
+                ))}
+              </div>
+            }
+          >
             <ScrollArea className="h-[60vh]">
               <pre className="whitespace-pre-wrap break-words pr-3 font-mono text-[12px] leading-relaxed text-muted-foreground">
                 {notices.data}
               </pre>
             </ScrollArea>
-          )}
+          </Loadable>
         </ResponsiveDialogContent>
       </ResponsiveDialog>
     </>
@@ -208,26 +235,32 @@ export function MobileAbout({
     <>
       <SettingsGroup>
         <SettingsRow label={t("updates.appVersion")}>
-          <span className="text-[13px] tabular-nums text-muted-foreground">
-            {app.data
-              ? t("updates.appVersion.value", {
-                  version: app.data.version,
-                  build: app.data.build,
-                })
-              : unknown}
-          </span>
+          <ValueLoadable loading={app.isLoading} className="h-4 w-16">
+            <span className="text-[13px] tabular-nums text-muted-foreground">
+              {app.data
+                ? t("updates.appVersion.value", {
+                    version: app.data.version,
+                    build: app.data.build,
+                  })
+                : unknown}
+            </span>
+          </ValueLoadable>
         </SettingsRow>
         <SettingsRow label={t("updates.hostVersion")}>
-          <span className="text-[13px] tabular-nums text-muted-foreground">
-            {health.data?.version || unknown}
-          </span>
+          <ValueLoadable loading={health.isLoading} className="h-4 w-16">
+            <span className="text-[13px] tabular-nums text-muted-foreground">
+              {health.data?.version || unknown}
+            </span>
+          </ValueLoadable>
         </SettingsRow>
         <SettingsRow label={t("updates.hostProtocol")}>
-          <span className="text-[13px] tabular-nums text-muted-foreground">
-            {protocol && verdict !== "unknown"
-              ? formatProtocol(protocol)
-              : unknown}
-          </span>
+          <ValueLoadable loading={hello.isLoading} className="h-4 w-16">
+            <span className="text-[13px] tabular-nums text-muted-foreground">
+              {protocol && verdict !== "unknown"
+                ? formatProtocol(protocol)
+                : unknown}
+            </span>
+          </ValueLoadable>
         </SettingsRow>
       </SettingsGroup>
       {protocol && (verdict === "updateHost" || verdict === "updateApp") && (
@@ -259,6 +292,7 @@ export function MobileAbout({
         current={appVersion}
         latest={newer}
         failed={releases.failed}
+        loading={releases.loading}
         refreshing={releases.refreshing}
         coolingDown={releases.coolingDown}
         onRefresh={() => void releases.refresh()}
@@ -297,6 +331,7 @@ function HostReleases({
         current={data?.current ?? ""}
         latest={data?.latest ?? null}
         failed={releases.failed}
+        loading={releases.loading}
         refreshing={releases.refreshing}
         coolingDown={releases.coolingDown}
         onRefresh={() => void releases.refresh()}
@@ -319,9 +354,11 @@ function RemoteUpdates() {
     <>
       <SettingsGroup>
         <SettingsRow label={t("updates.hostVersion")}>
-          <span className="text-[13px] tabular-nums text-muted-foreground">
-            {health.data?.version || t("updates.version.unknown")}
-          </span>
+          <ValueLoadable loading={health.isLoading} className="h-4 w-16">
+            <span className="text-[13px] tabular-nums text-muted-foreground">
+              {health.data?.version || t("updates.version.unknown")}
+            </span>
+          </ValueLoadable>
         </SettingsRow>
       </SettingsGroup>
       <HostReleases browser={!hasShellUpdater()} />
@@ -489,56 +526,66 @@ function LocalUpdates() {
 
       <SettingsGroup>
         <SettingsRow label={t("updates.version")}>
-          <span className="text-[13px] tabular-nums text-muted-foreground">
-            {installed || t("updates.version.unknown")}
-          </span>
+          <ValueLoadable loading={health.isLoading} className="h-4 w-16">
+            <span className="text-[13px] tabular-nums text-muted-foreground">
+              {installed || t("updates.version.unknown")}
+            </span>
+          </ValueLoadable>
         </SettingsRow>
 
-        <SettingsRow label={t("updates.channel")}>
-          <Select
-            value={channel}
-            onValueChange={(value) =>
-              save.mutate({
-                updates: { channel: value as (typeof CHANNELS)[number] },
-              })
-            }
-          >
-            <SelectTrigger
-              aria-label={t("updates.channel")}
-              size="sm"
-              className="w-[160px]"
+        <SettingsLoadable loading={settings.isLoading} control="select">
+          <SettingsRow label={t("updates.channel")}>
+            <Select
+              value={channel}
+              onValueChange={(value) =>
+                save.mutate({
+                  updates: { channel: value as (typeof CHANNELS)[number] },
+                })
+              }
             >
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent className="z-[var(--z-dialog)]">
-              {CHANNELS.map((entry) => (
-                <SelectItem key={entry} value={entry}>
-                  {t(`updates.channel.${entry}`)}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </SettingsRow>
+              <SelectTrigger
+                aria-label={t("updates.channel")}
+                size="sm"
+                className="w-[160px]"
+              >
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent className="z-[var(--z-dialog)]">
+                {CHANNELS.map((entry) => (
+                  <SelectItem key={entry} value={entry}>
+                    {t(`updates.channel.${entry}`)}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </SettingsRow>
+        </SettingsLoadable>
 
-        <SettingsRow label={t("updates.autoCheck")}>
-          <Switch
-            checked={autoCheck}
-            aria-label={t("updates.autoCheck")}
-            onCheckedChange={(next) =>
-              save.mutate({ updates: { autoCheck: next } })
-            }
-          />
-        </SettingsRow>
+        <SettingsLoadable
+          loading={settings.isLoading}
+          rows={2}
+          control="switch"
+        >
+          <SettingsRow label={t("updates.autoCheck")}>
+            <Switch
+              checked={autoCheck}
+              aria-label={t("updates.autoCheck")}
+              onCheckedChange={(next) =>
+                save.mutate({ updates: { autoCheck: next } })
+              }
+            />
+          </SettingsRow>
 
-        <SettingsRow label={t("updates.autoDownload")}>
-          <Switch
-            checked={autoDownload}
-            aria-label={t("updates.autoDownload")}
-            onCheckedChange={(next) =>
-              save.mutate({ updates: { autoDownload: next } })
-            }
-          />
-        </SettingsRow>
+          <SettingsRow label={t("updates.autoDownload")}>
+            <Switch
+              checked={autoDownload}
+              aria-label={t("updates.autoDownload")}
+              onCheckedChange={(next) =>
+                save.mutate({ updates: { autoDownload: next } })
+              }
+            />
+          </SettingsRow>
+        </SettingsLoadable>
 
         <UpdateStatusRows
           view={view}
@@ -560,6 +607,7 @@ function LocalUpdates() {
         current={releases.data?.current ?? installed}
         latest={releases.data?.latest ?? null}
         failed={releases.failed}
+        loading={releases.loading}
         refreshing={releases.refreshing}
         coolingDown={releases.coolingDown}
         onRefresh={() => void releases.refresh()}
@@ -652,6 +700,7 @@ export function UpdateStatusRows({
                 }
                 onClick={() => onAction(action)}
               >
+                {action === "check" && busy && <Spinner aria-hidden />}
                 {t(
                   action === "check"
                     ? busy
