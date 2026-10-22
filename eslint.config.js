@@ -177,6 +177,8 @@ const LITERAL_COLOR_ALLOWED = [
 const DIALOG_ALLOWED = ["panels/ResponsiveDialog.tsx"];
 /** 可以 import ui/sheet 的抽屉（同 no-raw-dialog-sheet 的 SHEET_ALLOWED，只减不增）。 */
 const SHEET_ALLOWED = [
+  // 控制台窄屏导航抽屉（云端控制台 D12，与 shell/LeftSidebar.tsx 同类用途）。
+  "cloud/shell/ConsoleShell.tsx",
   "coordinator/DispatchDrawer.tsx",
   "node-observation/NodeObservationDrawer.tsx",
   "panels/ExplorerDrawer.tsx",
