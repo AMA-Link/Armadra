@@ -20,6 +20,7 @@ import {
   ACP_MODES,
   ACP_NODE_ID,
   ACP_PERMISSION,
+  ACP_PERMISSION_LONG,
   ACP_SESSION_ID,
   ACP_STOP_ITEMS,
   ACP_STREAMING_ITEMS,
@@ -117,6 +118,11 @@ export default function AcpSection() {
           </div>
           <PermissionCard
             permission={ACP_PERMISSION}
+            canAnswer
+            className="mx-2 mb-1.5"
+          />
+          <PermissionCard
+            permission={ACP_PERMISSION_LONG}
             canAnswer
             className="mx-2 mb-1.5"
           />

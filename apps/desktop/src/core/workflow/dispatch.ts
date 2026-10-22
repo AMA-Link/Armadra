@@ -9,7 +9,9 @@ import type {
   CanvasEdge,
   CanvasNode,
 } from "../canvas/document-types";
+import type { AgentSettings } from "../agent/registry";
 import { loadBoard, saveBoard } from "../canvas/documents";
+import { newNodeDriver } from "../collab/control/agent-driver";
 import { newNode } from "../collab/control/board";
 import { recordNodeCreator, requestTrigger } from "../identity/creators";
 import { ensureWorktree } from "../collab/control/worktree";
@@ -107,7 +109,7 @@ export async function layoutRun(
   const trigger = requestTrigger();
   for (let attempt = 1; ; attempt += 1) {
     const document = loadBoard(collab.database, workspaceId, boardId);
-    const built = build(document, request, cwds);
+    const built = build(document, request, cwds, collab.settings);
     for (const nodeId of Object.values(built.layout.roles)) {
       recordNodeCreator(collab.database, { nodeId, workspaceId }, trigger);
     }
@@ -163,6 +165,7 @@ function build(
     readonly links: readonly LayoutLink[];
   },
   cwds: ReadonlyMap<string, string>,
+  settings: AgentSettings,
 ): Built {
   const boardId = document.board.id;
   // 放在画布上已有东西的右边，不压住任何节点。
@@ -204,6 +207,8 @@ function build(
     const agent: Record<string, unknown> = { id: role.agentId };
     if (role.permissionMode != null) agent.permissionMode = role.permissionMode;
     if (role.model != null) agent.model = role.model;
+    // 与页面新建、`canvas spawn` 同一条默认驱动规则。
+    agent.driver = newNodeDriver(settings, role.agentId);
     const cwd = role.worktree == null ? undefined : cwds.get(role.worktree);
     const node: CanvasNode = {
       ...newNode(

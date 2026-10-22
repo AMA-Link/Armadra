@@ -1,5 +1,9 @@
 import * as React from "react";
 
+import type {
+  TimelineApprovalItem,
+  TimelineElicitationItem,
+} from "@armadra/shared";
 import { connectWorkspaceEvents } from "@/api/events";
 import type { Source } from "@/api/source";
 import { useT } from "@/app/preferences-store";
@@ -8,6 +12,11 @@ import { useActivity } from "@/timeline/use-activity";
 import { useTimeline } from "@/timeline/use-timeline";
 import { TimelineView } from "@/timeline/view/TimelineView";
 import { Loadable } from "@/loading/Loadable";
+import {
+  ApprovalCard,
+  ElicitationItemCard,
+  ToolLookupProvider,
+} from "@/acp/TimelineCards";
 import { SharedSessionBodySkeleton } from "./SharedSessionSkeleton";
 
 /**
@@ -18,6 +27,14 @@ import { SharedSessionBodySkeleton } from "./SharedSessionSkeleton";
  * （`timeline.delta` / `timeline.activity`），断线重连由数据层补同步。旧主机没有
  * 时间线，退回按 `acp.log` 读镜像（那一条仍是定时读，B10 随旧接口下线）。
  */
+/** 只读：同一张卡，按钮换成「等待接管」（没有答复权限的人看到的就是这样）。 */
+const renderApproval = (approval: TimelineApprovalItem) => (
+  <ApprovalCard approval={approval} canAnswer={false} />
+);
+const renderElicitation = (item: TimelineElicitationItem) => (
+  <ElicitationItemCard item={item} canAnswer={false} />
+);
+
 export function ReadOnlyTranscript({
   source,
   sessionId,
@@ -48,6 +65,10 @@ export function ReadOnlyTranscript({
   const { loadMore, hasMore } = timeline;
   const loadOlder = React.useCallback(() => void loadMore(), [loadMore]);
   const items = timeline.items;
+  const byId = React.useMemo(
+    () => Object.fromEntries(items.map((item) => [item.id, item])),
+    [items],
+  );
   const ready = timeline.phase === "ready" || timeline.missing;
   const failed = timeline.phase === "error" && items.length === 0;
   if (items.length === 0 && !ready) {
@@ -76,13 +97,17 @@ export function ReadOnlyTranscript({
   }
   return (
     <div className="mx-auto flex h-full w-full max-w-3xl flex-col">
-      <TimelineView
-        items={items}
-        activity={activity}
-        services={services}
-        resetKey={sessionId}
-        onLoadOlder={hasMore ? loadOlder : undefined}
-      />
+      <ToolLookupProvider value={byId}>
+        <TimelineView
+          items={items}
+          activity={activity}
+          services={services}
+          resetKey={sessionId}
+          onLoadOlder={hasMore ? loadOlder : undefined}
+          renderApproval={renderApproval}
+          renderElicitation={renderElicitation}
+        />
+      </ToolLookupProvider>
     </div>
   );
 }

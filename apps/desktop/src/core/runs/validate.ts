@@ -159,6 +159,8 @@ export function validateRun(
         launchPolicy: "manual",
         agent: {
           id: node.agentId,
+          // 驱动是建节点时定的，冻结副本不能把 ACP 节点翻回终端。
+          ...(agent.driver === undefined ? {} : { driver: agent.driver }),
           ...(agent.model === undefined ? {} : { model: agent.model }),
           ...(agent.permissionMode === undefined
             ? {}
