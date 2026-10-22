@@ -1,9 +1,13 @@
-// 派发出的 Agent 节点默认显示会话视图（#456）。
+// 派发出的 Agent 节点的视图跟随用户的默认视图偏好（#456、#462）。
 //
 // 隔离的 core + 页面，ACP 入口是假 ACP Agent（`@armadra/agent` 自带的测试替身），
-// 不起真 CLI、不花额度。协调者用 `armadra-hook canvas team` 派发 2 个 Claude
-// 节点，断言：节点数据里写明 `driver: "acp"`、页面上这两个节点是会话视图
-// （`data-driver="acp"`，没有 xterm），并截图。
+// 其余真 CLI 都被拦下的替身顶替，不起真 Agent、不花额度。协调者用
+// `armadra-hook canvas team` 各派发 2 个 Claude 节点，三种情形：
+//   1. 偏好「会话」且 ACP 适配器在：driver = acp，页面是会话视图，没有 xterm；
+//   2. 偏好「终端」：driver = terminal，页面是终端体（有 xterm）；
+//   3. 偏好「会话」但走不了 ACP：driver = terminal 且 view = session，页面
+//      是会话体、没有 xterm，进程与启动行由 core 起（假程序被调用）。
+// 并截图。
 //
 // 用法（仓库根目录）：
 //   pnpm libs:build && pnpm --filter @armadra/desktop build
@@ -167,63 +171,187 @@ async function main() {
     agents.find((agent) => agent.id === "claude")?.acp?.installed === true,
   );
 
-  // 协调者派发 2 个 Agent。
-  const team = await canvasAsIn(
-    context,
-    lead.id,
-    "team",
-    "--member",
-    "claude|reviewer-a|审查 src/a",
-    "--member",
-    "claude|reviewer-b|审查 src/b",
-  );
-  check("canvas team 成功", team.code === 0, team.stderr.trim().slice(0, 200));
-
-  const document = await api(documentPath);
-  const members = document.nodes.filter((node) => node.id !== lead.id);
-  check("画布上多了 2 个成员节点", members.length === 2, members.length);
-  check(
-    "两个成员的节点数据都写明 driver = acp",
-    members.every((node) => node.data?.agent?.driver === "acp"),
-    members.map((node) => node.data?.agent),
-  );
-
   const stack = await startPageStack(environment);
   // Vite 第一次要预构建依赖：先请求一次，页面导航才不会撞上超时。
   await fetch(stack.web).catch(() => undefined);
   const page = await stack.open("dispatch");
   page.drain();
-  await page.navigate(
-    `${stack.web}/?workspace=${workspace.id}&board=${board.id}`,
+
+  /** 协调者派发 2 个 Agent；答新成员节点。 */
+  async function dispatch(tag, agent = "claude") {
+    const before = (await api(documentPath)).nodes.map((node) => node.id);
+    const team = await canvasAsIn(
+      context,
+      lead.id,
+      "team",
+      "--member",
+      `${agent}|${tag}-a|审查 src/a`,
+      "--member",
+      `${agent}|${tag}-b|审查 src/b`,
+    );
+    check(
+      `${tag}: canvas team 成功`,
+      team.code === 0,
+      team.stderr.trim().slice(0, 200),
+    );
+    const document = await api(documentPath);
+    const members = document.nodes.filter(
+      (node) => node.id !== lead.id && !before.includes(node.id),
+    );
+    check(
+      `${tag}: 画布上多了 2 个成员节点`,
+      members.length === 2,
+      members.length,
+    );
+    return members;
+  }
+
+  /** 页面上这几个节点的节点体。 */
+  async function bodiesOf(members) {
+    await page.navigate(
+      `${stack.web}/?workspace=${workspace.id}&board=${board.id}`,
+    );
+    await page.settle();
+    for (const node of members) {
+      const selector = `.react-flow__node[data-id="${node.id}"] [data-driver]`;
+      await page.waitFor(
+        `return !!document.querySelector(${JSON.stringify(selector)});`,
+        { what: `节点 ${node.data.agent.id} 的节点体`, timeout: 60_000 },
+      );
+    }
+    await sleep(1500);
+    return page.evaluate(`
+      return ${JSON.stringify(members.map((node) => node.id))}.map((id) => {
+        const body = document.querySelector('.react-flow__node[data-id="' + id + '"] [data-driver]');
+        return {
+          id,
+          driver: body?.dataset.driver,
+          body: body?.dataset.body ?? null,
+          xterm: !!body?.querySelector('.xterm'),
+        };
+      });
+    `);
+  }
+
+  // 偏好「会话」，ACP 适配器装了：ACP 会话视图（#456）。
+  await api("/api/settings", {
+    method: "PATCH",
+    body: { agents: { defaultDriver: "acp" } },
+  });
+  const acpMembers = await dispatch("session");
+  check(
+    "会话偏好：两个成员的节点数据都写明 driver = acp",
+    acpMembers.every((node) => node.data?.agent?.driver === "acp"),
+    acpMembers.map((node) => node.data?.agent),
   );
-  await page.settle();
-  for (const node of members) {
-    const selector = `.react-flow__node[data-id="${node.id}"] [data-driver]`;
-    await page.waitFor(
-      `return !!document.querySelector(${JSON.stringify(selector)});`,
-      {
-        what: `节点 ${node.data.agent.id} 的节点体`,
-        timeout: 60_000,
+  const sessionViews = await bodiesOf(acpMembers);
+  check(
+    "会话偏好：页面上两个成员都是会话视图（data-driver=acp，没有 xterm）",
+    sessionViews.length === 2 &&
+      sessionViews.every((view) => view.driver === "acp" && !view.xterm),
+    sessionViews,
+  );
+  await page.capture("dispatch-default-view");
+
+  // 偏好「终端」：所有入口终端驱动、终端体。
+  await api("/api/settings", {
+    method: "PATCH",
+    body: { agents: { defaultDriver: "terminal" } },
+  });
+  const terminal = await dispatch("terminal");
+  check(
+    "终端偏好：节点数据 driver = terminal，没有 view",
+    terminal.every(
+      (node) =>
+        node.data?.agent?.driver === "terminal" &&
+        node.data?.agent?.view === undefined,
+    ),
+    terminal.map((node) => node.data?.agent),
+  );
+  const terminalViews = await bodiesOf(terminal);
+  check(
+    "终端偏好：页面上两个成员都是终端体（有 xterm，没有会话体）",
+    terminalViews.length === 2 &&
+      terminalViews.every(
+        (view) =>
+          view.driver === "terminal" && view.body === null && view.xterm,
+      ),
+    terminalViews,
+  );
+  await page.capture("dispatch-terminal-preference");
+
+  // 偏好「会话」，但这个 Agent 走不了 ACP：终端驱动、会话体；没有终端表面，
+  // 进程与启动行由 core 起（假 CLI 只记下被调用，不跑真实 Agent）。
+  await api("/api/settings", {
+    method: "PATCH",
+    body: { agents: { defaultDriver: "acp" } },
+  });
+  // 自定义 Agent 用自己的启动程序（这里是只记下被调用的假程序）：留在终端驱动。
+  const custom = join(shims, "echo-cli");
+  writeFileSync(custom, "#!/bin/sh\nexec sleep 600\n");
+  chmodSync(custom, 0o755);
+  await api("/api/settings", {
+    method: "PATCH",
+    body: {
+      agents: {
+        custom: [
+          {
+            id: "custom:echo",
+            label: "echo",
+            launchCmd: custom,
+            baseAgent: "claude",
+          },
+        ],
+      },
+    },
+  });
+  const bodyOnly = await dispatch("bodyonly", "custom:echo");
+  check(
+    "会话偏好、走不了 ACP：driver = terminal 且 view = session",
+    bodyOnly.every(
+      (node) =>
+        node.data?.agent?.driver === "terminal" &&
+        node.data?.agent?.view === "session",
+    ),
+    bodyOnly.map((node) => node.data?.agent),
+  );
+  const bodyViews = await bodiesOf(bodyOnly);
+  check(
+    "走不了 ACP：页面上是会话体，没有 xterm",
+    bodyViews.length === 2 &&
+      bodyViews.every(
+        (view) =>
+          view.driver === "terminal" && view.body === "session" && !view.xterm,
+      ),
+    bodyViews,
+  );
+  await page.capture("dispatch-session-body");
+  const rows = await waitFor("两个会话体节点都有 core 起的会话", async () => {
+    const list = await api(`/api/workspaces/${workspace.id}/sessions`);
+    const mine = bodyOnly.map((node) =>
+      (Array.isArray(list) ? list : []).find((row) => row.nodeId === node.id),
+    );
+    return mine.every(Boolean) ? mine : null;
+  });
+  // 没有终端表面，启动行是 core 敲进 shell 的：抓屏里能看到它。
+  for (const row of rows) {
+    await waitFor(
+      `节点 ${row.title} 的 shell 里有 core 敲的启动行`,
+      async () => {
+        const shot = await api(
+          `/api/terminals/${row.sessionId}/capture?lines=40`,
+        );
+        return String(shot.data).includes("echo-cli");
       },
     );
   }
-  await sleep(1500);
-  const views = await page.evaluate(`
-    return ${JSON.stringify(members.map((node) => node.id))}.map((id) => {
-      const body = document.querySelector('.react-flow__node[data-id="' + id + '"] [data-driver]');
-      return { id, driver: body?.dataset.driver, xterm: !!body?.querySelector('.xterm') };
-    });
-  `);
-  check(
-    "页面上两个成员都是会话视图（data-driver=acp，没有 xterm）",
-    views.length === 2 &&
-      views.every((view) => view.driver === "acp" && !view.xterm),
-    views,
+  check("两个会话体节点的会话与启动行都由 core 起", rows.length === 2);
+  // 其余真 CLI 都被拦下，没有哪一次起了真 Agent。
+  // 终端体与会话体的启动行会调到被拦下的 claude 替身（exit 97），那不算真 CLI。
+  const real = blocked().filter(
+    (line) => !/ --(help|version)$/.test(line) && !line.startsWith("claude "),
   );
-  await page.capture("dispatch-default-view");
-  // core 开场探 `--help` / `--version` 只读能力，不算起会话。
-  const calls = blocked().filter((line) => !/ --(help|version)$/.test(line));
-  check("没有起任何真 CLI", calls.length === 0, calls.slice(0, 3));
+  check("没有起任何真 CLI（只有被拦下的替身被调用）", real.length === 0, real);
 }
 
 try {
