@@ -13,5 +13,12 @@ describe("defaultAgentDriver", () => {
     expect(
       defaultAgentDriver({ setting: "terminal", acpInstalled: true }),
     ).toBe("terminal");
+    expect(
+      defaultAgentDriver({
+        setting: "acp",
+        acpInstalled: true,
+        ownLaunch: true,
+      }),
+    ).toBe("terminal");
   });
 });

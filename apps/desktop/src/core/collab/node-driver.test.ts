@@ -122,6 +122,18 @@ describe("the default driver of a new agent node", () => {
     expect(drivers).toEqual(["terminal", "terminal", "terminal"]);
   });
 
+  it("keeps a custom agent with its own launch program on the terminal", async () => {
+    installAdapter("claude-agent-acp");
+    fixture.customAgents.push({
+      id: "custom:echo",
+      label: "echo",
+      launchCmd: "/bin/echo",
+      baseAgent: "claude",
+    } as never);
+    const made = ok(await run("open-agent", { agent: "custom:echo" }));
+    expect(agentOf(made.id as string).driver).toBe("terminal");
+  });
+
   it("keeps a resume request on the terminal driver", async () => {
     installAdapter("claude-agent-acp");
     const resumed = ok(

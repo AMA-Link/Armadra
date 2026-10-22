@@ -11,6 +11,15 @@ import type { AgentDriver } from "./domain/node-data.js";
 export function defaultAgentDriver(input: {
   readonly setting: AgentDriver;
   readonly acpInstalled: boolean;
+  /**
+   * 自定义 Agent 用自己的启动程序（不是基础 CLI 的 ACP 入口）：ACP 会话起的是
+   * 基础适配器，会绕过它，所以留在终端驱动。
+   */
+  readonly ownLaunch?: boolean;
 }): AgentDriver {
-  return input.setting === "acp" && input.acpInstalled ? "acp" : "terminal";
+  return input.setting === "acp" &&
+    input.acpInstalled &&
+    input.ownLaunch !== true
+    ? "acp"
+    : "terminal";
 }
