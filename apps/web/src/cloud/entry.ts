@@ -21,7 +21,7 @@ export async function detectConsole(
   )
     return null;
   const info = await cloudPlatformInfo(location.origin, {
-    timeoutMs: 5_000,
+    timeoutMs: 2_500,
   }).catch(() => null);
   if (info === null || info.mode !== "saas") return null;
   try {
