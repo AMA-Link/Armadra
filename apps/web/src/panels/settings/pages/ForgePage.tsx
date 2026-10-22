@@ -3,6 +3,9 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { GithubCredentialSource, GithubSecretStore } from "../../../api/github";
 
+import { Loadable } from "@/loading/Loadable";
+import { Skeleton } from "@/ui/skeleton";
+import { SkeletonForm } from "@/ui/skeletons";
 import { Badge } from "@/ui/badge";
 import { Button } from "@/ui/button";
 import { Input } from "@/ui/input";
@@ -96,43 +99,61 @@ export function ForgePage() {
 
   return (
     <>
-      {blocked || !client ? (
+      {blocked ? (
         <p
           role="status"
           className="text-[13px] leading-5 text-muted-foreground"
         >
-          {blocked ? t(`github.blocked.${blocked}`) : t("github.loading")}
+          {t(`github.blocked.${blocked}`)}
         </p>
       ) : (
-        <>
-          <SettingsGroup title={FORGE_NAMES.github}>
-            {status && (
-              <div
-                data-slot="github-status"
-                className="flex min-w-0 flex-wrap items-center gap-2 px-4 pt-3 text-[12px]"
-              >
-                <Badge variant={status.available ? "secondary" : "outline"}>
-                  {t(
-                    status.available
-                      ? "github.settings.available"
-                      : "github.settings.unavailable",
-                  )}
-                </Badge>
-                {status.accountLogin && (
-                  <Badge variant="outline" className="truncate">
-                    {status.accountLogin}
-                  </Badge>
-                )}
-                {status.enterprise && (
-                  <Badge variant="outline">{t("github.enterprise")}</Badge>
-                )}
-                {status.store === GithubSecretStore.FILE_FALLBACK && (
-                  <Badge variant="outline">
-                    {t("github.store.fileFallback")}
-                  </Badge>
-                )}
+        <Loadable
+          loading={!client}
+          skeleton={
+            <SettingsGroup title={FORGE_NAMES.github}>
+              <div className="px-4 py-3">
+                <SkeletonForm rows={2} label={t("state.loading")} />
               </div>
-            )}
+            </SettingsGroup>
+          }
+        >
+          <SettingsGroup title={FORGE_NAMES.github}>
+            <Loadable
+              loading={credential.isLoading}
+              skeleton={
+                <div className="px-4 pt-3">
+                  <Skeleton className="h-5 w-40" />
+                </div>
+              }
+            >
+              {status && (
+                <div
+                  data-slot="github-status"
+                  className="flex min-w-0 flex-wrap items-center gap-2 px-4 pt-3 text-[12px]"
+                >
+                  <Badge variant={status.available ? "secondary" : "outline"}>
+                    {t(
+                      status.available
+                        ? "github.settings.available"
+                        : "github.settings.unavailable",
+                    )}
+                  </Badge>
+                  {status.accountLogin && (
+                    <Badge variant="outline" className="truncate">
+                      {status.accountLogin}
+                    </Badge>
+                  )}
+                  {status.enterprise && (
+                    <Badge variant="outline">{t("github.enterprise")}</Badge>
+                  )}
+                  {status.store === GithubSecretStore.FILE_FALLBACK && (
+                    <Badge variant="outline">
+                      {t("github.store.fileFallback")}
+                    </Badge>
+                  )}
+                </div>
+              )}
+            </Loadable>
             <form
               className="flex min-w-0 flex-col gap-3 px-4 py-3"
               noValidate
@@ -227,7 +248,7 @@ export function ForgePage() {
           </SettingsGroup>
 
           <ForgeConfigs />
-        </>
+        </Loadable>
       )}
     </>
   );
