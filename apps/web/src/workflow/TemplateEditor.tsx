@@ -375,7 +375,7 @@ export function TemplateEditor({
             </ScrollArea>
           </div>
           <ScrollArea className="min-h-0">
-            <div className="min-w-0 space-y-4 pr-2">
+            <div className="min-w-0 space-y-(--space-section) pr-2">
               {step ? (
                 <FieldGroup className="gap-3" data-slot="workflow-editor-form">
                   {step.kind === "gate" ? (

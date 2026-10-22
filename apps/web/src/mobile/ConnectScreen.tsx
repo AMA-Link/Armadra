@@ -491,10 +491,10 @@ export function ConnectScreen({
         : rows.find((row) => row.sourceId === trafficId);
     return (
       <main data-slot="mobile-connect" className={rootClass}>
-        <div className="flex w-full max-w-sm flex-col gap-6">
+        <div className="flex w-full max-w-sm flex-col gap-(--space-section)">
           {header}
           {view === "list" && trafficRow !== undefined && (
-            <div className="flex flex-col gap-4">
+            <div className="flex flex-col gap-(--space-block)">
               <h2 className="truncate text-center text-[length:var(--text-section)] font-semibold">
                 {trafficRow.name}
               </h2>
@@ -731,7 +731,7 @@ export function ConnectScreen({
   return (
     <main data-slot="mobile-connect" className={rootClass}>
       <form
-        className="flex w-full max-w-sm flex-col gap-6"
+        className="flex w-full max-w-sm flex-col gap-(--space-section)"
         onSubmit={(event) => {
           event.preventDefault();
           if (view === "code") void submitCode(code);

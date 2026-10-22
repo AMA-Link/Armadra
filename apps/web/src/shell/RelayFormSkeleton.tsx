@@ -11,7 +11,7 @@ export function RelayFormSkeleton({ label }: { label: string }) {
       aria-busy="true"
       aria-label={label}
       data-slot="relay-form-skeleton"
-      className="flex flex-col gap-4"
+      className="flex flex-col gap-(--space-block)"
     >
       {[0, 1].map((index) => (
         <div key={index} className="flex flex-col gap-1.5">
