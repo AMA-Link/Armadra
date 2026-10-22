@@ -1,12 +1,13 @@
 import { join, resolve } from "node:path";
 import type { SessionActivity } from "@armadra/shared";
+import { CoreFailure } from "../http/errors";
 import { type DomainHandlers, registerProcedures } from "../http/rpc";
 import { allows } from "../identity/gate";
 import { scope } from "../identity/scopes";
 import { VERSION } from "../instance";
 import type { CoreContext } from "../main";
 import type { StopReason } from "../quit";
-import { settingsDomain } from "../settings";
+import { completionSettings, settingsDomain } from "../settings";
 import {
   type BackendKind,
   TerminalError,
@@ -203,6 +204,11 @@ export function install(
               dormantAfterSeconds: terminal.dormantAfterSeconds,
             };
           },
+        }),
+    ...(settings === undefined
+      ? {}
+      : {
+          limits: () => completionSettings(settings.snapshot()).limits,
         }),
     log: (message, fields) => context.log.info(message, fields),
     onLease: (event) => {
@@ -1417,12 +1423,21 @@ function describe(failure: unknown): string {
 /** A backend failure, in the one error shape the core has (contract §5.1). */
 function error(failure: unknown): {
   status: number;
-  body: { code: string; message: string };
+  body: {
+    code: string;
+    message: string;
+    details?: Readonly<Record<string, unknown>>;
+  };
 } {
-  if (failure instanceof TerminalError) {
+  if (failure instanceof CoreFailure) {
     return {
       status: failure.status,
-      body: { code: failure.code, message: failure.message },
+      body: {
+        code: failure.code,
+        message: failure.message,
+        // `limit_reached` 带 { scope, limit, current }（A6-2）。
+        ...(failure.details === undefined ? {} : { details: failure.details }),
+      },
     };
   }
   return {

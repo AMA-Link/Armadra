@@ -170,6 +170,23 @@ describe("补全计划的设置键", () => {
     });
   });
 
+  it("limits：终端 16、Agent 8，0 = 不限；坏值退回缺省", () => {
+    expect(normalize({}).limits).toEqual({
+      terminalsPerPrincipal: 16,
+      agentsPerWorkspace: 8,
+    });
+    expect(
+      completionSettings({
+        limits: { terminalsPerPrincipal: 0, agentsPerWorkspace: 3 },
+      }).limits,
+    ).toEqual({ terminalsPerPrincipal: 0, agentsPerWorkspace: 3 });
+    expect(
+      normalize({
+        limits: { terminalsPerPrincipal: -1, agentsPerWorkspace: "9" },
+      }).limits,
+    ).toEqual({ terminalsPerPrincipal: 16, agentsPerWorkspace: 8 });
+  });
+
   it("状态徽标没写新键时沿用旧的 statusPage", () => {
     expect(
       completionSettings({ usage: { statusPage: false } }).usage.statusBadges,

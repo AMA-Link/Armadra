@@ -26,6 +26,7 @@ import {
   TERMINAL_HUMAN_IDLE_SECONDS,
 } from "./drive";
 import { fixture, type Fixture } from "../workspaces/fixture";
+import { runAs } from "../identity/gate";
 
 /**
  * The manager's own decisions, on a fake backend and a clock the test owns.
@@ -234,7 +235,10 @@ function harness(
     detachedGraceMinutes: number;
     dormantAfterSeconds: number;
   },
-  options: { singlePty?: boolean } = {},
+  options: {
+    singlePty?: boolean;
+    limits?: { terminalsPerPrincipal: number; agentsPerWorkspace: number };
+  } = {},
 ): Harness {
   open = fixture([]);
   const database = open.database;
@@ -256,6 +260,7 @@ function harness(
     database,
     backends: new Map([["tmux", backend]]),
     effective: "tmux",
+    ...(options.limits === undefined ? {} : { limits: () => options.limits! }),
     onProgramStatus: (event) => {
       programs.push({
         sessionId: event.sessionId,
@@ -294,6 +299,84 @@ const spawn = (manager: TerminalManager, nodeId?: string) =>
     command: "/bin/sh",
     ...(nodeId === undefined ? {} : { ownerNodeId: nodeId }),
   });
+
+describe("per-core limits (A6-2)", () => {
+  const member = (principalId: string) => ({
+    subject: { principalId, kind: "member" as const, scopes: [] },
+  });
+  /** 路由门在建好之后记创建者（identity/route-access.ts）。 */
+  const own = (database: DatabaseSync, id: string, principalId: string) =>
+    database
+      .prepare(
+        "UPDATE terminal_sessions SET creator_principal_id = ? WHERE id = ?",
+      )
+      .run(principalId, id);
+
+  it("a member's terminal count stops at the limit with limit_reached details", async () => {
+    const { manager, database } = harness(undefined, {
+      limits: { terminalsPerPrincipal: 2, agentsPerWorkspace: 8 },
+    });
+    for (let index = 0; index < 2; index += 1) {
+      const session = await runAs(member("m1"), () => spawn(manager));
+      own(database, session.id, "m1");
+    }
+    await expect(
+      runAs(member("m1"), () => spawn(manager)),
+    ).rejects.toMatchObject({
+      status: 429,
+      code: "limit_reached",
+      details: { scope: "principal", limit: 2, current: 2 },
+    });
+    // 别的成员与 owner（没有请求身份）不受影响。
+    await runAs(member("m2"), () => spawn(manager));
+    await spawn(manager);
+  });
+
+  it("an ended terminal frees its slot; 0 means unlimited", async () => {
+    const { manager, database } = harness(undefined, {
+      limits: { terminalsPerPrincipal: 1, agentsPerWorkspace: 8 },
+    });
+    const first = await runAs(member("m1"), () => spawn(manager));
+    own(database, first.id, "m1");
+    database
+      .prepare("UPDATE terminal_sessions SET status = 'exited' WHERE id = ?")
+      .run(first.id);
+    const second = await runAs(member("m1"), () => spawn(manager));
+    own(database, second.id, "m1");
+    const unlimited = harness(undefined, {
+      limits: { terminalsPerPrincipal: 0, agentsPerWorkspace: 0 },
+    });
+    for (let index = 0; index < 20; index += 1) {
+      const session = await runAs(member("m1"), () => spawn(unlimited.manager));
+      own(unlimited.database, session.id, "m1");
+    }
+  });
+
+  it("agents are counted per workspace, a node respawn is not double counted", async () => {
+    const { manager } = harness(undefined, {
+      limits: { terminalsPerPrincipal: 16, agentsPerWorkspace: 2 },
+    });
+    const agent = (nodeId: string) =>
+      manager.spawn({
+        workspaceId: "ws",
+        cwd: "/tmp",
+        command: "/bin/sh",
+        ownerNodeId: nodeId,
+        agentId: "claude",
+      });
+    await agent("n1");
+    await agent("n2");
+    await expect(agent("n3")).rejects.toMatchObject({
+      status: 429,
+      code: "limit_reached",
+      details: { scope: "workspace", limit: 2, current: 2 },
+    });
+    // 同一个节点重新起会话不算新的一个。
+    await agent("n2");
+    // 普通终端不占 Agent 名额。
+    await spawn(manager);
+  });
+});
 
 describe("creating and recycling", () => {
   it("writes the row the Rust Runtime writes", async () => {

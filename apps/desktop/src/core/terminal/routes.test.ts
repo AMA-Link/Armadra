@@ -391,6 +391,33 @@ describeUnix("the terminal routes", () => {
     ).toMatchObject({ total: 0 });
   });
 
+  it("answers 429 limit_reached with details once a workspace holds limits.agentsPerWorkspace agents", async () => {
+    const { fixture: core_, workspaceId } = await core(true);
+    expect(
+      (
+        await core_.call("PATCH", "/api/settings", {
+          limits: { agentsPerWorkspace: 1 },
+        })
+      ).status,
+    ).toBe(200);
+    const agent = (nodeId: string) =>
+      core_.call("POST", "/api/terminals", {
+        workspaceId,
+        cwd: core_.directory,
+        nodeId,
+        agent: { id: "claude" },
+      });
+    expect((await agent("11111111-1111-4111-8111-111111111111")).status).toBe(
+      200,
+    );
+    const refused = await agent("22222222-2222-4222-8222-222222222222");
+    expect(refused.status).toBe(429);
+    expect(refused.body).toMatchObject({
+      code: "limit_reached",
+      details: { scope: "workspace", limit: 1, current: 1 },
+    });
+  });
+
   it("answers 404 for a session nobody created", async () => {
     const { fixture: core_ } = await core();
     for (const path of ["/api/terminals/nope", "/api/terminals/nope/capture"]) {

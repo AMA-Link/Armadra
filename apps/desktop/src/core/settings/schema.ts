@@ -269,6 +269,14 @@ function normalizeCompletion(document: JsonObject): void {
     COMPLETION_SETTINGS_DEFAULTS.models.catalog.autoRefresh;
   models.catalog = catalog;
   document.models = models;
+  const limits = section(document, "limits");
+  limits.terminalsPerPrincipal =
+    asUnsigned(limits.terminalsPerPrincipal) ??
+    COMPLETION_SETTINGS_DEFAULTS.limits.terminalsPerPrincipal;
+  limits.agentsPerWorkspace =
+    asUnsigned(limits.agentsPerWorkspace) ??
+    COMPLETION_SETTINGS_DEFAULTS.limits.agentsPerWorkspace;
+  document.limits = limits;
   const diagnostics = section(document, "diagnostics");
   diagnostics.crashReportDsn = shortText(diagnostics.crashReportDsn);
   diagnostics.reportPageErrors =
@@ -508,6 +516,7 @@ export function completionSettings(document: JsonValue): CompletionSettings {
     },
     models: normalized.models as unknown as CompletionSettings["models"],
     cloud: normalized.cloud as unknown as CompletionSettings["cloud"],
+    limits: normalized.limits as unknown as CompletionSettings["limits"],
     diagnostics:
       normalized.diagnostics as unknown as CompletionSettings["diagnostics"],
   };
@@ -574,6 +583,10 @@ export interface CompletionSettings {
       readonly preferredNode: string;
     };
     readonly orgDefaultRole: Choice<typeof CLOUD_ORG_ROLE_CHOICES> | null;
+  };
+  readonly limits: {
+    readonly terminalsPerPrincipal: number;
+    readonly agentsPerWorkspace: number;
   };
   readonly diagnostics: {
     readonly crashReportDsn: string;

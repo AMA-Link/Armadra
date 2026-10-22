@@ -52,7 +52,15 @@ export const acp = {
       }),
     )
     .output(terminalSessionWireSchema)
-    .errors(errors.pick("bad_request", "forbidden", "not_found", "conflict"))
+    .errors(
+      errors.pick(
+        "bad_request",
+        "forbidden",
+        "not_found",
+        "conflict",
+        "limit_reached",
+      ),
+    )
     .meta(
       meta({
         ...base,
