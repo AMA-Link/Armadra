@@ -8,7 +8,7 @@ import { AnimatedNumber } from "./AnimatedNumber";
 import { pointLabel, type UsageMetric } from "./metrics";
 
 const CARD =
-  "flex flex-col gap-0.5 rounded-lg border border-border bg-panel p-3 transition-colors data-[active=true]:border-ring/50";
+  "flex flex-col gap-0.5 rounded-lg border border-border bg-panel p-(--space-inset) transition-colors data-[active=true]:border-ring/50";
 
 const HEAD = "flex items-center gap-1 text-xs text-muted-foreground";
 
@@ -26,7 +26,7 @@ export function MetricCards({
   const t = useT();
   const source = point ?? totals;
   return (
-    <dl className="grid grid-cols-2 gap-2">
+    <dl className="grid grid-cols-2 gap-(--space-group)">
       <div
         data-slot="usage-card"
         data-metric="tokens"

@@ -118,22 +118,24 @@ export function UsagePanel({ summary }: { summary: CostSummary }) {
     );
 
   return (
-    <div className="flex flex-col gap-3">
-      <RangeMetricBar
-        range={range}
-        metric={metric}
-        onRangeChange={(next) => {
-          setRange(next);
-          setSelected(null);
-        }}
-        onMetricChange={setMetric}
-      />
-      <MetricCards
-        totals={current.totals}
-        point={point}
-        metric={metric}
-        onClear={() => setSelected(null)}
-      />
+    <div className="flex flex-col gap-(--space-block)">
+      <div className="flex flex-col gap-(--space-group)">
+        <RangeMetricBar
+          range={range}
+          metric={metric}
+          onRangeChange={(next) => {
+            setRange(next);
+            setSelected(null);
+          }}
+          onMetricChange={setMetric}
+        />
+        <MetricCards
+          totals={current.totals}
+          point={point}
+          metric={metric}
+          onClear={() => setSelected(null)}
+        />
+      </div>
       <UsageStats range={current} point={point} metric={metric} />
       <UsageSkyline
         range={current}

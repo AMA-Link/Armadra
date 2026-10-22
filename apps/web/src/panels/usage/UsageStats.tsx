@@ -73,7 +73,7 @@ export function UsageStats({
   return (
     <dl
       data-slot="usage-stats"
-      className="grid grid-cols-3 gap-x-2 gap-y-2 rounded-lg border border-border bg-panel p-3"
+      className="grid grid-cols-3 gap-(--space-group) rounded-lg border border-border bg-panel p-(--space-inset)"
     >
       {cells.map((cell) => (
         <div key={cell.key} data-slot="usage-stat" data-stat={cell.key}>
