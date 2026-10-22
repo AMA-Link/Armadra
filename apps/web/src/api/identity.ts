@@ -264,7 +264,6 @@ function storeCsrf(value: string): IdentityChange | null {
   const previous = csrf;
   const renewed = forgotten;
   csrf = next;
-  renewing = null;
   forgotten = false;
   if (next === previous) return null;
   if (next && !bearerTransport()) csrfChannel?.postMessage({ csrf: next });
@@ -280,7 +279,6 @@ export function forgetCsrf(rejected?: string): void {
   if (rejected !== undefined && rejected !== csrf) return;
   if (csrf !== "") forgotten = true;
   csrf = "";
-  renewing = null;
 }
 
 /**
@@ -319,6 +317,11 @@ export function resetIdentityCredentials(): void {
  * 空字符串，由调用方照常发请求——被拒绝是 core 的事，前端不在这里替它判断。
  */
 export async function ensureCsrf(): Promise<string> {
+  // 有一次换票在途：它落地时服务器会把上一枚作废，包括刚由登录、注册答出来的
+  // 那一枚。注册前页面一直在轮询 `session/csrf`（401），会话一建好，在途的那条
+  // 带着新 Cookie 落地就是一次真换票；这时把手里的令牌交出去，第一批 RPC 就在
+  // 换票落地前后各发一半，落在后面的被 403。所以先等它落地，再看手里是哪一枚。
+  if (renewing !== null) await renewing;
   if (csrf) return csrf;
   // 等锁的这段时间里别的窗口可能已经换好并告诉了这里：拿到锁先看一眼。
   renewing ??= withRenewLock(() => (csrf ? Promise.resolve(csrf) : renewCsrf()))

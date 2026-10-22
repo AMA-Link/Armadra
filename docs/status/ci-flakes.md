@@ -1,6 +1,6 @@
 # CI 偶发失败记录
 
-> 状态：持续记录。与改动无关、重跑即过的失败；同一用例反复出现时开 issue 修根因（已修：设计展示页 reduced-motion #251、中继心跳 #243、Windows 产物读取 junction #270）。
+> 状态：持续记录。与改动无关、重跑即过的失败；同一用例反复出现时开 issue 修根因（已修：设计展示页 reduced-motion #251、中继心跳 #243、Windows 产物读取 junction #270、server-e2e 成员 403 #355）。
 
 - mailbox.test.ts beforeEach hook 10s 超时（Windows，#103 CI run 37197020176，2026-10-04）
 - browser/headless/verbs.live.integration.test.ts Windows 两例超时（#109 run 37201663502；#101 也出现过 browser/headless/\*.live 超时）
@@ -15,3 +15,4 @@
 - 2026-10-10 macOS relay/client.test.ts 心跳计时（#235 首跑），第二次出现，需修
 - 2026-10-10 e2e server-e2e「成员打开共享画布没有任何 403」403 /api/rpc/workspaces/list（#260；#237 也见过一次）；Windows parity-acp（#260）
 - 2026-10-11 windows-x86_64 web AuditLog.test.tsx「缺省 7 天…」5s 超时（PR #272，与改动无关）
+- 2026-10-22 e2e server-e2e「成员打开共享画布没有任何 403」403 /api/rpc/workspaces/list（#463、#467、#468 的 CI）。根因（#355）：兑换邀请前页面轮询的 `session/csrf` 在途，会话建好后带新 Cookie 落地，把注册答出来的 CSRF 令牌作废，兑换后第一批请求被 403 再换票重发；`ensureCsrf` 现在先等在途换票落地。探针每次都撞上这一刻（按住在途的换票、注册答复一到放行）

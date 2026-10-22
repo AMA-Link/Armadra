@@ -267,17 +267,46 @@ async function page(h, call, listeners, sessionId, { width, height, name }) {
   };
   /** 请求号 → 地址：`loadingFailed` 只带请求号。 */
   const requestUrls = new Map();
+  /** 请求号 → 方法、发出时刻与带的 CSRF 前缀（只有 `/api/`）。 */
+  const requestMeta = new Map();
+  /** 被拒应答（>= 400）按请求号索引，正文在收完时立刻取，之后页面换文档就取不到了。 */
+  const refused = new Map();
+  const startedAt = Date.now();
   /** 发出去还没收完（也没失败）的请求：页面空白时，卡住的多半是其中某个。 */
   const pending = new Map();
+  const tap = [];
   listeners.set(sessionId, (message) => {
     const { method, params } = message;
+    for (const fn of tap) fn(message);
     if (method === "Network.requestWillBeSent") {
       requestUrls.set(params.requestId, params.request.url);
-      if (requestUrls.size > 400)
-        requestUrls.delete(requestUrls.keys().next().value);
+      if (/\/api\//.test(params.request.url)) {
+        // 被拒时要看这次请求带没带 CSRF、带的是哪一枚（只留前 6 位，不落整枚令牌）。
+        const csrf = Object.entries(params.request.headers ?? {}).find(
+          ([name]) => name.toLowerCase() === "x-armadra-csrf",
+        )?.[1];
+        requestMeta.set(params.requestId, {
+          method: params.request.method,
+          at: Date.now(),
+          csrf: csrf === undefined ? "none" : String(csrf).slice(0, 6),
+        });
+      }
+      if (requestUrls.size > 400) {
+        const oldest = requestUrls.keys().next().value;
+        requestUrls.delete(oldest);
+        requestMeta.delete(oldest);
+      }
       pending.set(params.requestId, params.request.url);
     } else if (method === "Network.loadingFinished") {
       pending.delete(params.requestId);
+      const entry = refused.get(params.requestId);
+      if (entry !== undefined) {
+        call("Network.getResponseBody", { requestId: params.requestId })
+          .then(({ body }) => {
+            entry.body = String(body).slice(0, 400);
+          })
+          .catch(() => {});
+      }
     } else if (method === "Network.loadingFailed") {
       pending.delete(params.requestId);
       // 资源加载失败不会进控制台错误：页面空白而没有任何报错时，原因多半在这里。
@@ -317,16 +346,26 @@ async function page(h, call, listeners, sessionId, { width, height, name }) {
       const { url, status } = params.response;
       // 应答头到了不等于正文收完：正文没收完的请求仍留在 pending 里，等 loadingFinished。
       if (/\/api\//.test(url)) {
-        traffic.push(`${status} ${new URL(url).pathname}`);
+        const meta = requestMeta.get(params.requestId);
+        traffic.push(
+          meta === undefined
+            ? `${status} ${new URL(url).pathname}`
+            : `${status} ${meta.method} ${new URL(url).pathname} csrf=${meta.csrf} +${meta.at - startedAt}ms`,
+        );
         if (traffic.length > 400) traffic.shift();
       }
-      if (status >= 400 && /\/api\/|\/health/.test(url))
-        responses.push({
+      if (status >= 400 && /\/api\/|\/health/.test(url)) {
+        const entry = {
           url: new URL(url).pathname,
           status,
           method: params.type,
           requestId: params.requestId,
-        });
+          csrf: requestMeta.get(params.requestId)?.csrf,
+          body: null,
+        };
+        responses.push(entry);
+        refused.set(params.requestId, entry);
+      }
     } else if (
       method === "Network.webSocketClosed" ||
       method === "Network.webSocketFrameReceived"
@@ -539,6 +578,7 @@ async function page(h, call, listeners, sessionId, { width, height, name }) {
     key,
     text,
     drain,
+    tap: (fn) => tap.push(fn),
     bodyOf,
     errors,
     responses,
