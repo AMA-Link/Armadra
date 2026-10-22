@@ -19,7 +19,8 @@ export function CloudApiProvider({
 
 export function useCloudApi(): CloudApi {
   const api = React.useContext(CloudApiContext);
-  if (api === null) throw new Error("useCloudApi 要在 CloudApiProvider 里用");
+  if (api === null)
+    throw new Error("useCloudApi must be used inside CloudApiProvider");
   return api;
 }
 

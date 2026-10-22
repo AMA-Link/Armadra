@@ -300,7 +300,7 @@ export function createMockApi(options: MockOptions = {}): CloudApi {
           throw new CloudConsoleError(
             "internal",
             500,
-            `mock 的 ${entry.key} 违反契约：${issues}`,
+            `mock ${entry.key} violates the contract: ${issues}`,
           );
         });
       };

@@ -166,6 +166,8 @@ describe("界面文案", () => {
       // 设计展示页的假数据：消息正文、文件名、成员名是数据不是界面文案
       // （设计展示页 §2.2）。
       if (path.startsWith("/src/showcase/fixtures/")) continue;
+      // 控制台 mock 的人名与主机名是数据，不是界面文案。
+      if (path === "/src/cloud/mock/fixtures.ts") continue;
       stripComments(source)
         .split("\n")
         .forEach((line, index) => {

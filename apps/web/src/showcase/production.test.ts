@@ -29,7 +29,7 @@ const MARKERS = [
   "showcase.section.tokens",
   // 控制台的内存 mock 同样只在 DEV：它只被 `?mock` 的动态 import 与展示页引用。
   "mockFail",
-  "违反契约",
+  "violates the contract",
 ];
 
 function files(directory: string): string[] {
