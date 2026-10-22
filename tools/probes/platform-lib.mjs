@@ -6,8 +6,8 @@
 //   * 起一个真 Electron（临时数据目录与 HOME、mock 钥匙串）并连上它的渲染页；
 //   * 经中继登记一台 core（`remoteAdd` → 注册令牌 → `identity.cloud.register` → 隧道
 //     ready → 断言 → 绑定为主人）；
-//   * 个人中转本身：`spawnRelay`（armadra-cloud 检出里直接 node 跑）与
-//     `startDockerRelay`（同一个中继在容器里，可以 `docker pause`）。
+//   * 个人中转本身：`spawnRelay`（Go 中继二进制，找法见 `cloud-source.mjs`）与
+//     `startDockerRelay`（同一个中继的镜像在容器里，可以 `docker pause`）。
 //
 // 探针只许碰自己造出来的东西：数据目录、HOME、容器、卷都带随机后缀，收尾只删自己的。
 import { spawn, spawnSync } from "node:child_process";
@@ -25,6 +25,10 @@ import { Agent as HttpsAgent, request as httpsRequest } from "node:https";
 import { createRequire } from "node:module";
 import { join } from "node:path";
 
+import {
+  ensureRelayImage as ensureRelayImageIn,
+  spawnRelayCli,
+} from "./cloud-source.mjs";
 import { approveWith, openE2eRoute } from "./e2e-client.mjs";
 import { isolatedEnv, probeHome } from "./probe-home.mjs";
 import { probeSession } from "./probe-session.mjs";
@@ -204,17 +208,11 @@ export const cliEnv = () => {
   return env;
 };
 
-/** 在 armadra-cloud 检出里直接 node 跑中继 CLI（`personal <子命令>`）。 */
+/** 跑中继 CLI（`armadra-relay personal <子命令>`）：ARMADRA_RELAY_BIN → 检出的 go/bin → 镜像。 */
 export function spawnRelay(cloudHome, args, env = {}) {
-  const child = spawn(
-    process.execPath,
-    ["apps/relay/src/cli.ts", "personal", ...args],
-    {
-      cwd: cloudHome,
-      stdio: ["ignore", "pipe", "pipe"],
-      env: { ...cliEnv(), ...env },
-    },
-  );
+  const child = spawnRelayCli(cloudHome, args, {
+    env: { ...cliEnv(), ...env },
+  });
   let log = "";
   const take = (chunk) => (log += chunk);
   child.stdout.on("data", take);
@@ -243,18 +241,7 @@ export function dockerReady() {
  * 中继镜像：`ARMADRA_PROBE_RELAY_IMAGE` 指定就用它，否则从 armadra-cloud 检出
  * `docker build`（层缓存命中时是秒级）。
  */
-export function ensureRelayImage(cloudHome) {
-  const given = process.env.ARMADRA_PROBE_RELAY_IMAGE;
-  if (given) return given;
-  const tag = "armadra-probe-relay:local";
-  const built = docker(
-    ["build", "-q", "-f", "apps/relay/Dockerfile", "-t", tag, "."],
-    { cwd: cloudHome },
-  );
-  if (built.status !== 0)
-    throw new Error(`中继镜像构建失败：${(built.stderr ?? "").slice(-1500)}`);
-  return tag;
-}
+export const ensureRelayImage = (cloudHome) => ensureRelayImageIn(cloudHome);
 
 /**
  * 容器里的个人中转：`personal init`（自签 TLS，对外地址 `https://127.0.0.1:<端口>`）

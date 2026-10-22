@@ -45,7 +45,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { findCloudSource } from "./cloud-source.mjs";
+import { findCloudSource, spawnRelayCli } from "./cloud-source.mjs";
 import { approveWith, openE2eRoute } from "./e2e-client.mjs";
 import {
   SharedLink,
@@ -812,11 +812,7 @@ async function startRelay(core, cloudHome) {
   const env = { ...process.env };
   delete env.NODE_TLS_REJECT_UNAUTHORIZED;
   const relayCli = (rest) => {
-    const child = spawn(
-      process.execPath,
-      ["apps/relay/src/cli.ts", "personal", ...rest],
-      { cwd: cloudHome, stdio: ["ignore", "pipe", "pipe"], env },
-    );
+    const child = spawnRelayCli(cloudHome, rest, { env });
     children.add(child);
     return child;
   };

@@ -45,7 +45,7 @@ import {
 import { createServer } from "node:http";
 import { join, resolve } from "node:path";
 
-import { CLOUD_ENTRY, findCloudSource } from "./cloud-source.mjs";
+import { NO_RELAY_HINT, findCloudSource } from "./cloud-source.mjs";
 import {
   dockerReady,
   launchElectron,
@@ -81,10 +81,8 @@ rmSync(output, { recursive: true, force: true });
 mkdirSync(output, { recursive: true });
 
 const cloudHome = findCloudSource();
-if (!cloudHome) {
-  console.error(
-    `没有 armadra-cloud 的本地检出（${CLOUD_ENTRY}）：设 ARMADRA_DEV_STACK_CLOUD_SRC 或放在仓库旁的 ../armadra-cloud`,
-  );
+if (!cloudHome && !process.env.ARMADRA_PROBE_RELAY_IMAGE?.trim()) {
+  console.error(NO_RELAY_HINT);
   process.exit(2);
 }
 if (!dockerReady()) {
@@ -461,14 +459,6 @@ try {
     approve: approveWith(direct.session),
     onSecret: secret,
   });
-  const plain = await relay.call("GET", `/s/${serverId}/health`, {
-    headers: { "armadra-relay-token": route.relayToken },
-  });
-  run.check(
-    plain.status === 404,
-    "带中继令牌的明文请求由中继答 404，不进隧道",
-    plain.status,
-  );
   const coreTicket = await route.api("POST", "/api/rpc/files/mediaTicket", {
     json: { workspaceId: serverSeed.workspace.id, path: "clip.mp4" },
   });

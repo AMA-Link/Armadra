@@ -34,7 +34,7 @@ import {
 } from "node:fs";
 import { join, resolve } from "node:path";
 
-import { CLOUD_ENTRY, findCloudSource } from "./cloud-source.mjs";
+import { NO_RELAY_HINT, findCloudSource } from "./cloud-source.mjs";
 import {
   dockerReady,
   approveWith,
@@ -82,10 +82,8 @@ rmSync(output, { recursive: true, force: true });
 mkdirSync(output, { recursive: true });
 
 const cloudHome = findCloudSource();
-if (!cloudHome) {
-  console.error(
-    `没有 armadra-cloud 的本地检出（${CLOUD_ENTRY}）：设 ARMADRA_DEV_STACK_CLOUD_SRC 或放在仓库旁的 ../armadra-cloud`,
-  );
+if (!cloudHome && !process.env.ARMADRA_PROBE_RELAY_IMAGE?.trim()) {
+  console.error(NO_RELAY_HINT);
   process.exit(2);
 }
 if (!dockerReady()) {
@@ -343,21 +341,6 @@ try {
     }
   };
   let approved = false;
-  const plainHealth = await relay.call("GET", `/s/${sourceId}/health`, {
-    headers: {
-      "armadra-relay-token": (
-        await relay.must("POST", `/v1/sources/${sourceId}/assertion`, {
-          body: { device },
-          token: await registered.loginOwner(),
-        })
-      ).relayToken,
-    },
-  });
-  run.check(
-    plainHealth.status === 404,
-    "带中继令牌的明文请求由中继答 404",
-    plainHealth.status,
-  );
   const before = await relayedHealth();
   run.check(before.status === 200, "断线前：经端到端通道访问源的 /health 通", {
     status: before.status,

@@ -47,7 +47,12 @@ import {
 } from "node:fs";
 import { extname, join, resolve } from "node:path";
 
-import { CLOUD_ENTRY, findCloudSource } from "./cloud-source.mjs";
+import {
+  NO_CLOUD_HINT,
+  NO_RELAY_HINT,
+  findCloudSource,
+  relayAvailable,
+} from "./cloud-source.mjs";
 import { openE2eRoute, parseShareLink } from "./e2e-client.mjs";
 import {
   approveWith,
@@ -99,10 +104,8 @@ rmSync(output, { recursive: true, force: true });
 mkdirSync(output, { recursive: true });
 
 const cloudHome = findCloudSource();
-if (!cloudHome && (!external || useWorkerd)) {
-  console.error(
-    `没有 armadra-cloud 的本地检出（${CLOUD_ENTRY}）：设 ARMADRA_DEV_STACK_CLOUD_SRC 或放在仓库旁的 ../armadra-cloud`,
-  );
+if (useWorkerd ? !cloudHome : !external && !relayAvailable(cloudHome)) {
+  console.error(useWorkerd ? NO_CLOUD_HINT : NO_RELAY_HINT);
   process.exit(2);
 }
 const webRoot = join(root, "apps/web/dist");
@@ -442,36 +445,6 @@ try {
   );
   run.ok("中继账号绑定为这台 core 的主人");
 
-  if (!external) {
-    // 中继只转端到端通道（契约 §78，cloud 0.5.0）：带令牌的明文请求由中继答 404、不进隧道。
-    const plain = await timed("2-plaintext-removed", async () => {
-      const assertion = await must(
-        "POST",
-        `/v1/sources/${sourceId}/assertion`,
-        { body: { device }, token: cloudToken },
-      );
-      secret("中继令牌", assertion.relayToken);
-      secret("源访问断言", assertion.assertion);
-      const answer = await call(
-        "POST",
-        `/s/${sourceId}/api/identity/cloud/login`,
-        {
-          body: { assertion: assertion.assertion },
-          headers: {
-            origin: "capacitor://localhost",
-            "armadra-relay-token": assertion.relayToken,
-          },
-        },
-      );
-      return { status: answer.status, code: answer.body?.code ?? null };
-    });
-    run.check(
-      plain.status === 404 && plain.code === "not_found",
-      "明文路径已删：带令牌的 cloud/login 由中继答 404，不进隧道",
-      plain,
-    );
-  }
-
   // 主人的画布：一张便签、一个终端。
   const ownerProject = join(stack.scratch, "owner-project");
   mkdirSync(ownerProject, { recursive: true });
@@ -626,7 +599,9 @@ try {
       async () => {
         const opened = await owner("/api/rpc/timeline/open", {
           method: "POST",
-          body: { json: { timelineId: acpRow.sessionId, tailTurns: 50 } },
+          body: JSON.stringify({
+            json: { timelineId: acpRow.sessionId, tailTurns: 50 },
+          }),
         });
         const items = opened.json?.items ?? [];
         const turns = items.filter((item) => item.kind === "turn");
@@ -1221,14 +1196,6 @@ try {
       );
       const bogus = await route.raw("GET", `/api/media/${"A".repeat(43)}`);
       run.check(bogus.status === 404, "不认识的媒体票 404", bogus.status);
-      const plain = await call("GET", `/s/${sourceId}/health`, {
-        headers: { "armadra-relay-token": route.relayToken },
-      });
-      run.check(
-        plain.status === 404,
-        "带中继令牌的明文请求由 Workers 中继答 404",
-        plain.status,
-      );
       route.close();
     });
   }

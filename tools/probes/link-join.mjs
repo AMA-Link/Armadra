@@ -30,7 +30,8 @@ import { randomBytes } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, rmSync } from "node:fs";
 import { extname, join, resolve } from "node:path";
 
-import { CLOUD_ENTRY, findCloudSource } from "./cloud-source.mjs";
+import { NO_RELAY_HINT, findCloudSource } from "./cloud-source.mjs";
+import { openE2eRoute } from "./e2e-client.mjs";
 import {
   buttonByText,
   buttonExists,
@@ -50,6 +51,7 @@ import {
   scenario,
   sleep,
   startStack,
+  until,
   writeResult,
 } from "./ui-features/harness.mjs";
 
@@ -66,10 +68,8 @@ rmSync(output, { recursive: true, force: true });
 mkdirSync(output, { recursive: true });
 
 const cloudHome = findCloudSource();
-if (!cloudHome) {
-  console.error(
-    `没有 armadra-cloud 的本地检出（${CLOUD_ENTRY}）：设 ARMADRA_DEV_STACK_CLOUD_SRC 或放在仓库旁的 ../armadra-cloud`,
-  );
+if (!cloudHome && !process.env.ARMADRA_PROBE_RELAY_IMAGE?.trim()) {
+  console.error(NO_RELAY_HINT);
   process.exit(2);
 }
 if (!dockerReady()) {
@@ -292,7 +292,10 @@ try {
     const guestStart = Date.now();
     await guest.goto(link);
     await guest.settle();
-    await guest.until(buttonExists(["加入", "Join"]), "落地页的「加入」按钮");
+    await guest.until(
+      buttonExists(["在浏览器中加入", "Join in browser"]),
+      "落地页的「在浏览器中加入」按钮",
+    );
     report.timings[`guest${index}-landing`] = Date.now() - guestStart;
     await run.shot(guest, `02-guest${index}-landing`);
     const hash = await guest.evaluate(`return location.hash;`);
@@ -301,7 +304,7 @@ try {
       `访客 ${index}：落地页把片段（秘密与邀请令牌）从地址栏抹掉`,
       hash,
     );
-    await guestClick(["加入", "Join"], "加入");
+    await guestClick(["在浏览器中加入", "Join in browser"], "在浏览器中加入");
     await guest.until(
       `return location.pathname === "/app/" ? true : null;`,
       "加入后地址换成 /app/",
@@ -397,6 +400,7 @@ try {
             peek: async ({ origin }) => ({ fingerprint: ${JSON.stringify(relay.fingerprint)}, trusted: false, pinned: read("fake.pins", []).includes(origin) }),
             pin: async ({ origin, fingerprint }) => { if (fingerprint !== ${JSON.stringify(relay.fingerprint)}) throw new Error("mismatch"); write("fake.pins", [...read("fake.pins", []), origin]); },
             scan: async () => ({ text: ${JSON.stringify(link)} }),
+            e2eDeviceSeed: async () => { let seed = localStorage.getItem("fake.e2eSeed"); if (!seed) { const bytes = crypto.getRandomValues(new Uint8Array(32)); seed = btoa(String.fromCharCode(...bytes)).replaceAll("+", "-").replaceAll("/", "_").replaceAll("=", ""); localStorage.setItem("fake.e2eSeed", seed); } return { seed }; },
           } },
         };
       })();`,
@@ -680,8 +684,14 @@ async function sessionShare({
   guest.allowed.push(/WebSocket connection to .* failed/);
   await guest.goto(shared.url);
   await guest.settle();
-  await guest.until(buttonExists(["加入", "Join"]), "会话链接落地页的「加入」");
-  await guest.clickOn(buttonByText(["加入", "Join"]), "加入");
+  await guest.until(
+    buttonExists(["在浏览器中加入", "Join in browser"]),
+    "会话链接落地页的「在浏览器中加入」",
+  );
+  await guest.clickOn(
+    buttonByText(["在浏览器中加入", "Join in browser"]),
+    "在浏览器中加入",
+  );
   await guest.until(
     `return document.querySelector('[data-slot="shared-session"][data-session="${terminal.id}"]') ? true : null;`,
     "访客直接落在被分享会话的只读查看页",
@@ -758,40 +768,40 @@ async function sessionShare({
   );
   secret("会话访客的中继令牌", accepted.relayToken);
   secret("会话访客的断言", accepted.assertion);
-  const headers = {
-    origin: "https://localhost",
-    "armadra-relay-token": accepted.relayToken,
-  };
-  const base = `/s/${accepted.sourceId}`;
-  const login = await relay.must("POST", `${base}/api/identity/cloud/login`, {
-    body: { assertion: accepted.assertion, invitationToken: invitation },
-    headers,
+  // 中继只转端到端通道（cloud 0.5.0 起明文路径答 404）：访客的邀请令牌既是通道握手的 proof，
+  // 也随 cloud/login 带上（契约 §80），不用主人放行。
+  const sessionGuest = await openE2eRoute({
+    url: `${relay.issuer}/s/${accepted.sourceId}`,
+    caPem: relay.caPem,
+    sourceId: accepted.sourceId,
+    relayToken: accepted.relayToken,
+    assertion: accepted.assertion,
+    invitationToken: invitation,
+    name: "probe-session-api",
   });
-  const token = secret(
-    "会话访客的 core 会话",
-    login.session.native.accessToken,
-  );
+  secret("会话访客的 core 会话", await sessionGuest.login());
   const rpc = (procedure, input) =>
-    relay.call("POST", `${base}/api/rpc/${procedure}`, {
-      body: { json: input },
-      token,
-      headers,
-    });
+    sessionGuest.raw(
+      "POST",
+      `/api/rpc/${procedure}`,
+      { "content-type": "application/json" },
+      JSON.stringify({ json: input }),
+    );
   const read = await rpc("terminals/get", { sessionId: terminal.id });
-  run.check(read.status === 200, "访客经中继 POST /api/rpc 读得到会话行", {
-    status: read.status,
-  });
+  run.check(
+    read.status === 200,
+    "访客经端到端通道 POST /api/rpc 读得到会话行",
+    {
+      status: read.status,
+    },
+  );
   const paste = await rpc("terminals/paste", {
     sessionId: terminal.id,
     text: "guest-pasted-this",
   });
-  const boards = await relay.call(
+  const boards = await sessionGuest.raw(
     "GET",
-    `${base}/api/workspaces/${workspaceId}/boards`,
-    {
-      token,
-      headers,
-    },
+    `/api/workspaces/${workspaceId}/boards`,
   );
   run.check(
     paste.status === 403 && boards.status === 403,
@@ -803,19 +813,25 @@ async function sessionShare({
     "粘贴的字没有进终端",
   );
 
-  // 撤链接：之后访客的会话失效，再开链接也被拒。
+  // 撤链接：中继断开访客的通道（或 core 拒掉会话），再开链接也被拒。
   await core.rpc("sources.shareLinkRevoke", {
     serviceId,
     linkId: shared.link.linkId,
   });
-  const after = await relay.call("POST", `${base}/api/rpc/terminals/get`, {
-    body: { json: { sessionId: terminal.id } },
-    token,
-    headers,
-  });
-  run.check(
-    after.status === 401 || after.status === 403,
+  const after = await until(
+    async () => {
+      const answer = await rpc("terminals/get", {
+        sessionId: terminal.id,
+      }).catch(() => ({ status: 0 }));
+      return answer.status === 200 ? null : answer;
+    },
     "撤链接后访客读不到这条会话",
+    { timeout: 10_000, every: 500 },
+  );
+  sessionGuest.close();
+  run.check(
+    after.status === 0 || after.status === 401 || after.status === 403,
+    "撤链接后访客读不到这条会话（通道被断开或会话被拒）",
     { status: after.status },
   );
   const again = await relay.call(
