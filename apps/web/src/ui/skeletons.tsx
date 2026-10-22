@@ -221,11 +221,12 @@ export function SkeletonSettingsRow({
     <div
       data-slot="skeleton-settings-row"
       className={cn(
-        "flex h-12 items-center justify-between gap-4 px-3",
+        // 与 SettingsRow 同一盒模型（min-h-12 px-4 py-3）：开关行 48，输入与选择行 56。
+        "flex min-h-12 items-center justify-between gap-4 px-4 py-3",
         className,
       )}
     >
-      <Skeleton className={cn("h-3.5", width(index))} />
+      <Skeleton className={cn("h-3.5 max-w-[60%]", width(index))} />
       {control === "switch" ? (
         <Skeleton className="h-5 w-9 shrink-0 rounded-full" />
       ) : (
