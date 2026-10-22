@@ -6,9 +6,20 @@
  * SecretStore，断言原文不落盘。
  */
 
+import { createHash } from "node:crypto";
 import type { DatabaseSync } from "node:sqlite";
 
+import type { Scope } from "../scopes";
+
 export type CloudMode = "personal" | "saas";
+
+/** 映射凭据的 `provider`：`cloud:` + issuer 的 SHA-256 前 16 位十六进制。 */
+export function cloudProvider(issuer: string): string {
+  return `cloud:${createHash("sha256").update(issuer, "utf8").digest("hex").slice(0, 16)}`;
+}
+
+/** 断言 `team.role` 的五个值（协议 1.4）。 */
+export type TeamRole = "owner" | "admin" | "member" | "billing" | "guest";
 
 export interface RegistrationRow {
   readonly issuer: string;
@@ -74,8 +85,95 @@ function rowOf(record: RegistrationRecord): RegistrationRow {
 const COLUMNS =
   "issuer, source_key_ref, jwks_json, jwks_url, jwks_fetched_at_ms, trusted_origins_json, relay_origins_json, owner_account_id, label, mode, registered_by, registered_at_ms, revoked_at_ms";
 
+export interface TeamRoleRow {
+  readonly teamId: string;
+  readonly role: TeamRole;
+  readonly provider: string;
+  readonly assertedScopes: readonly Scope[];
+}
+
+/**
+ * 这个人经某个签发方的团队角色（迁移 0053）；过期的行不认。不给 `provider` 时取
+ * 任一未过期的行里最近的（路由门只问「有没有」；背书必须带 `provider`）。
+ */
+export function teamRoleOf(
+  database: DatabaseSync,
+  principalId: string,
+  options: { provider?: string; nowMs?: number } = {},
+): TeamRoleRow | undefined {
+  try {
+    const record = database
+      .prepare(
+        "SELECT team_id, role, provider, asserted_scopes_json FROM cloud_team_roles WHERE principal_id = ? " +
+          "AND expires_at_ms > ? AND (? = '' OR provider = ?) ORDER BY updated_at_ms DESC LIMIT 1",
+      )
+      .get(
+        principalId,
+        options.nowMs ?? Date.now(),
+        options.provider ?? "",
+        options.provider ?? "",
+      ) as
+      | {
+          team_id: string;
+          role: TeamRole;
+          provider: string;
+          asserted_scopes_json: string;
+        }
+      | undefined;
+    return record === undefined
+      ? undefined
+      : {
+          teamId: record.team_id,
+          role: record.role,
+          provider: record.provider,
+          assertedScopes: JSON.parse(record.asserted_scopes_json) as Scope[],
+        };
+  } catch {
+    return undefined;
+  }
+}
+
 export class CloudStore {
   constructor(private readonly database: DatabaseSync) {}
+
+  /** 记下这个人经这个签发方的团队与角色（迁移 0053）；同一人同一签发方整行覆盖。 */
+  setTeamRole(input: {
+    principalId: string;
+    provider: string;
+    teamId: string;
+    role: TeamRole;
+    atMs: number;
+    expiresAtMs: number;
+    /** 这次断言将要同步的授予编译出的 scope。 */
+    assertedScopes: readonly Scope[];
+  }): void {
+    this.database
+      .prepare(
+        `INSERT INTO cloud_team_roles (principal_id, provider, team_id, role, updated_at_ms, expires_at_ms, asserted_scopes_json) VALUES (?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT(principal_id, provider) DO UPDATE SET
+           team_id = excluded.team_id, role = excluded.role, updated_at_ms = excluded.updated_at_ms,
+           expires_at_ms = excluded.expires_at_ms,
+           asserted_scopes_json = excluded.asserted_scopes_json`,
+      )
+      .run(
+        input.principalId,
+        input.provider,
+        input.teamId,
+        input.role,
+        input.atMs,
+        input.expiresAtMs,
+        JSON.stringify(input.assertedScopes),
+      );
+  }
+
+  /** 断言不再带 `team` 时清掉。 */
+  clearTeamRole(principalId: string, provider: string): void {
+    this.database
+      .prepare(
+        "DELETE FROM cloud_team_roles WHERE principal_id = ? AND provider = ?",
+      )
+      .run(principalId, provider);
+  }
 
   /** 这个 issuer 的行（含已撤销的）。 */
   get(issuer: string): RegistrationRow | undefined {
@@ -158,6 +256,9 @@ export class CloudStore {
 
   /** 撤销：只记时刻；答这次是否真的改了一行（没有有效登记时 `false`）。 */
   revoke(issuer: string, atMs: number): boolean {
+    this.database
+      .prepare("DELETE FROM cloud_team_roles WHERE provider = ?")
+      .run(cloudProvider(issuer));
     const result = this.database
       .prepare(
         "UPDATE cloud_registrations SET revoked_at_ms = ? WHERE issuer = ? AND revoked_at_ms = 0",

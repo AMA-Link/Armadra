@@ -102,6 +102,8 @@ export async function acpCore(
     installAcp,
   ]);
   const settings = await core.call("PATCH", "/api/settings", {
+    // 夹具里的测试在同一个工作空间里攒下很多活着的会话；上限另有测试守着。
+    limits: { agentsPerWorkspace: 0 },
     agents: {
       custom: [
         {

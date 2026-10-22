@@ -22,6 +22,7 @@ import {
   signAssertion,
 } from "./fake.fixture";
 import { type CloudService, cloudProvider, installCloud } from "./index";
+import { teamRoleOf } from "./store";
 
 /**
  * 装配好的云登录域经 HTTP（契约 §31）：登记、撤销、状态、可信来源、绑定与
@@ -192,7 +193,7 @@ describe("登记", () => {
       kind: "desktop",
       coreVersion: "0.0.0-test",
       capabilities: ["identity.native-session.v1"],
-      protocol: { major: 1, minor: 3 },
+      protocol: { major: 1, minor: 4 },
       publicKey: { kty: "OKP", crv: "Ed25519", kid: store.hostId() },
     });
     expect(cloud.registered(ISSUER)).toBe(true);
@@ -1074,18 +1075,23 @@ describe("cloud/login 的范围、角色同步与租约（契约 §60）", () =>
     ]);
   });
 
-  it("SaaS：带 org + role 不要邀请就建成员，之后按声明整份同步，本地授予不动", async () => {
+  it("SaaS：带 team + role 不要邀请就建成员，之后按声明整份同步，本地授予不动", async () => {
     core.database
       .prepare("UPDATE cloud_registrations SET mode = 'saas' WHERE issuer = ?")
       .run(ISSUER);
-    const org = { orgId: "org_1", role: "member" };
-    const first = await login("acct:saas", { org, role: "editor" });
+    const team = { teamId: "team_1", role: "member" };
+    const first = await login("acct:saas", { team, role: "editor" });
     expect(first.status, first.text).toBe(200);
     expect(first.body.created).toBe(true);
     const principalId = principalOf(first);
     expect(grantsOf(principalId)).toEqual([
       ["host", "*", "", "editor", cloudProvider(ISSUER)],
     ]);
+    expect(teamRoleOf(core.database, principalId)).toMatchObject({
+      teamId: "team_1",
+      role: "member",
+      provider: cloudProvider(ISSUER),
+    });
     accounts.putGrant(ownerSubject(), {
       workspaceId: "ws-local",
       subjectKind: "principal",
@@ -1093,8 +1099,7 @@ describe("cloud/login 的范围、角色同步与租约（契约 §60）", () =>
       role: "driver",
     });
     const second = await login("acct:saas", {
-      org,
-      team: { teamId: "team_1", role: "member" },
+      team: { teamId: "team_1", role: "admin" },
       role: "editor",
       scp: ["ws:ws-1", "ro"],
     });
@@ -1104,6 +1109,7 @@ describe("cloud/login 的范围、角色同步与租约（契约 §60）", () =>
       ["workspace", "ws-1", "", "viewer", cloudProvider(ISSUER)],
       ["workspace", "ws-local", "", "driver", ""],
     ]);
+    expect(teamRoleOf(core.database, principalId)?.role).toBe("admin");
     const detail = JSON.parse(
       (
         core.database
@@ -1114,21 +1120,130 @@ describe("cloud/login 的范围、角色同步与租约（契约 §60）", () =>
       ).detail_json,
     ) as Record<string, unknown>;
     expect(detail).toMatchObject({
-      org: "org_1",
       team: "team_1",
       role: "editor",
       scp: ["ws:ws-1", "ro"],
     });
+    expect(detail).not.toHaveProperty("org");
     expect(typeof detail.jti).toBe("string");
+    // 之后的断言不再带 team：团队角色清掉（背书不再成立）。
+    expect((await login("acct:saas", { role: "editor" })).status).toBe(200);
+    expect(teamRoleOf(core.database, principalId)).toBeUndefined();
   });
 
-  it("个人中转不带 role：没有邀请仍然 cloud_account_unlinked", async () => {
+  it("SaaS：guest 按声明建成员；billing 不准入、既有成员的云授予被清掉", async () => {
+    core.database
+      .prepare("UPDATE cloud_registrations SET mode = 'saas' WHERE issuer = ?")
+      .run(ISSUER);
+    const guest = await login("acct:guest", {
+      team: { teamId: "team_1", role: "guest" },
+      role: "viewer",
+      scp: ["ws:ws-1"],
+    });
+    expect(guest.status, guest.text).toBe(200);
+    expect(grantsOf(principalOf(guest))).toEqual([
+      ["workspace", "ws-1", "", "viewer", cloudProvider(ISSUER)],
+    ]);
+    const billing = await login("acct:billing", {
+      team: { teamId: "team_1", role: "billing" },
+      role: "editor",
+    });
+    expect(billing.status).toBe(401);
+    expect(billing.body.code).toBe("cloud_account_unlinked");
+    // 先是 member 后改成 billing：此前同步的授予撤掉。
+    const member = await login("acct:flip", {
+      team: { teamId: "team_1", role: "member" },
+      role: "editor",
+    });
+    const principalId = principalOf(member);
+    expect(grantsOf(principalId)).toHaveLength(1);
+    const flipped = await login("acct:flip", {
+      team: { teamId: "team_1", role: "billing" },
+      role: "editor",
+    });
+    expect(flipped.status, flipped.text).toBe(200);
+    expect(grantsOf(principalId)).toEqual([]);
+  });
+
+  it("SaaS：缺 team 或缺 role 走邀请路径（没有邀请 cloud_account_unlinked）；旧 org 声明不再准入", async () => {
+    core.database
+      .prepare("UPDATE cloud_registrations SET mode = 'saas' WHERE issuer = ?")
+      .run(ISSUER);
+    for (const extra of [
+      { team: { teamId: "team_1", role: "member" } },
+      { role: "editor" },
+      { org: { orgId: "org_1", role: "member" }, role: "editor" },
+    ]) {
+      const answer = await login("acct:nobody", extra);
+      expect(answer.status).toBe(401);
+      expect(answer.body.code).toBe("cloud_account_unlinked");
+    }
+  });
+
+  it("个人中转带 team + role：没有邀请仍然 cloud_account_unlinked", async () => {
     const answer = await login("acct:nobody", {
-      org: { orgId: "org_1", role: "member" },
+      team: { teamId: "team_1", role: "member" },
       role: "editor",
     });
     expect(answer.status).toBe(401);
     expect(answer.body.code).toBe("cloud_account_unlinked");
+  });
+
+  it("团队角色只在 SaaS 登记下落；个人中转带 team 什么都不写；带 team 的 guest 没有 scp 不授予", async () => {
+    const personal = await login("acct:p", {
+      team: { teamId: "team_1", role: "member" },
+      role: "editor",
+    });
+    expect(personal.status).toBe(401);
+    const invitation = accounts.issueInvitation(ownerSubject(), {
+      role: "viewer",
+      targetWorkspaceId: "ws-1",
+    });
+    const viaInvite = await login(
+      "acct:p2",
+      { team: { teamId: "team_1", role: "member" } },
+      invitation.token,
+    );
+    expect(viaInvite.status, viaInvite.text).toBe(200);
+    expect(teamRoleOf(core.database, principalOf(viaInvite))).toBeUndefined();
+    core.database
+      .prepare("UPDATE cloud_registrations SET mode = 'saas' WHERE issuer = ?")
+      .run(ISSUER);
+    const guest = await login("acct:g", {
+      team: { teamId: "team_1", role: "guest" },
+      role: "editor",
+    });
+    expect(guest.status, guest.text).toBe(200);
+    expect(grantsOf(principalOf(guest))).toEqual([]);
+  });
+
+  it("团队角色：过期的行不认；同一个 teamId 换签发方不是同一个团队；撤销登记整批清掉", async () => {
+    core.database
+      .prepare("UPDATE cloud_registrations SET mode = 'saas' WHERE issuer = ?")
+      .run(ISSUER);
+    const first = await login("acct:t", {
+      team: { teamId: "team_1", role: "admin" },
+      role: "editor",
+    });
+    const principalId = principalOf(first);
+    const provider = cloudProvider(ISSUER);
+    expect(teamRoleOf(core.database, principalId, { provider })?.role).toBe(
+      "admin",
+    );
+    expect(
+      teamRoleOf(core.database, principalId, { provider: "cloud:other" }),
+    ).toBeUndefined();
+    expect(
+      teamRoleOf(core.database, principalId, {
+        provider,
+        nowMs: Date.now() + 31 * DAY,
+      }),
+    ).toBeUndefined();
+    // 撤销登记：这个签发方的团队角色整批删。
+    expect(cloud.registered(ISSUER)).toBe(true);
+    const revoked = await rpc("identity.cloud.revoke", { issuer: ISSUER });
+    expect(revoked.status, revoked.text).toBe(200);
+    expect(teamRoleOf(core.database, principalId)).toBeUndefined();
   });
 
   it("租约：到期后授予不再编译；再登录一次续上", async () => {

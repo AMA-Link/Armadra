@@ -107,6 +107,15 @@ export interface TerminalManagerOptions {
     detachedGraceMinutes: number;
     dormantAfterSeconds: number;
   };
+  /**
+   * `limits.terminalsPerPrincipal` / `limits.agentsPerWorkspace` (A6-2); `0` is
+   * unlimited. Read on every spawn so a settings change applies at once. Absent
+   * means no limits (unit tests, bare managers).
+   */
+  readonly limits?: () => {
+    terminalsPerPrincipal: number;
+    agentsPerWorkspace: number;
+  };
   /** Injected so a test can make the timestamps deterministic. */
   readonly now?: () => string;
   readonly clock?: () => number;

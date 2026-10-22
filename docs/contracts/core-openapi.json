@@ -14680,6 +14680,16 @@
                 }
               }
             }
+          },
+          "429": {
+            "description": "429",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CoreError"
+                }
+              }
+            }
           }
         },
         "x-armadra": {
@@ -66675,6 +66685,16 @@
           },
           "409": {
             "description": "409",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CoreError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "429",
             "content": {
               "application/json": {
                 "schema": {

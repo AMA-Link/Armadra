@@ -391,6 +391,29 @@ describeUnix("the terminal routes", () => {
     ).toMatchObject({ total: 0 });
   });
 
+  it("never limits the owner: limits.agentsPerWorkspace does not stop a single-user desktop", async () => {
+    const { fixture: core_, workspaceId } = await core(true);
+    expect(
+      (
+        await core_.call("PATCH", "/api/settings", {
+          limits: { agentsPerWorkspace: 1 },
+        })
+      ).status,
+    ).toBe(200);
+    for (const nodeId of [
+      "11111111-1111-4111-8111-111111111111",
+      "22222222-2222-4222-8222-222222222222",
+    ]) {
+      const created = await core_.call("POST", "/api/terminals", {
+        workspaceId,
+        cwd: core_.directory,
+        nodeId,
+        agent: { id: "claude" },
+      });
+      expect(created.status).toBe(200);
+    }
+  });
+
   it("answers 404 for a session nobody created", async () => {
     const { fixture: core_ } = await core();
     for (const path of ["/api/terminals/nope", "/api/terminals/nope/capture"]) {

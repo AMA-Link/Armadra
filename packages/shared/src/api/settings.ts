@@ -290,6 +290,23 @@ export const completionSettingsSchema = z.looseObject({
     .catch({ catalog: { ...D.models.catalog } })
     .default({ catalog: { ...D.models.catalog } }),
   cloud: cloudSettingsSchema.catch(() => cloudSettingsSchema.parse({})),
+  limits: z
+    .looseObject({
+      terminalsPerPrincipal: z
+        .number()
+        .int()
+        .min(0)
+        .catch(D.limits.terminalsPerPrincipal)
+        .default(D.limits.terminalsPerPrincipal),
+      agentsPerWorkspace: z
+        .number()
+        .int()
+        .min(0)
+        .catch(D.limits.agentsPerWorkspace)
+        .default(D.limits.agentsPerWorkspace),
+    })
+    .catch({ ...D.limits })
+    .default({ ...D.limits }),
   diagnostics: z
     .looseObject({
       crashReportDsn: shortSetting.default(""),

@@ -1,4 +1,6 @@
 import type { DatabaseSync } from "node:sqlite";
+import { channelPeerOf } from "../relay/e2e/peer";
+import { teamRoleOf } from "./cloud/store";
 import type { CoreRequest } from "../http/router";
 import { type RouteScopeRequirement, selfGuarded } from "../http/route-scopes";
 import { type AuthorizationSubject, isOwner } from "./authorize";
@@ -76,6 +78,8 @@ export interface RouteAccessLookups {
   workflowTaskWorkspace(taskId: string): string;
   /** 待确认的关闭请求 → 工作空间（只在内存里）。 */
   confirmWorkspace(requestId: string): string;
+  /** 这个人经 SaaS 团队准入时的团队角色（迁移 0053）；没有是 `undefined`。 */
+  teamRole(principalId: string): { teamId: string; role: string } | undefined;
 }
 
 export interface RouteAccessOptions {
@@ -321,6 +325,18 @@ export function createRouteGuard(options: RouteAccessOptions): RouteGuard {
     const method = request.method.toUpperCase();
     const reading = method === "GET" || method === "HEAD";
 
+    // 设备背书（契约 §60.4）：团队成员经自己已信任设备的通道背书新设备。这里只认
+    // 「有团队角色且在通道上」，谁能批谁由 handler 复核（`relay/e2e/routes.ts`）。
+    if (path === "/api/devices/approve" && method === "POST") {
+      const team = lookups.teamRole(subject.principalId);
+      return channelPeerOf(request.raw?.socket) !== undefined &&
+        (team?.role === "owner" ||
+          team?.role === "admin" ||
+          team?.role === "member")
+        ? ALLOW
+        : DENY;
+    }
+
     if (reading && SHARED_READS.some((pattern) => pattern.test(path))) {
       return sharedSomewhere(subject) ? ALLOW : DENY;
     }
@@ -549,6 +565,7 @@ function databaseLookups(database: DatabaseSync): RouteAccessLookups {
     }
   };
   return {
+    teamRole: (id) => teamRoleOf(database, id),
     sessionWorkspace: (id) =>
       text(
         "SELECT workspace_id FROM terminal_sessions WHERE id = ?",

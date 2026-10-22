@@ -65,6 +65,7 @@ import {
 } from "./drive";
 import { HIBERNATE_INTENT, rowHibernated } from "./hibernate";
 import { destroyRowBackend, reapPersistent } from "./reap";
+import { LimitGate } from "./limits";
 import { insertSessionRow } from "./session-row";
 import { type ObservedActivity } from "../agent/target-state";
 import { allows } from "../identity/gate";
@@ -165,6 +166,7 @@ export class TerminalManager {
   private readonly sequenceDirectory: string | undefined;
   /** 程序自报的状态（契约 §53），只在内存里。 */
   private readonly programs: ProgramStatusBook;
+  private readonly limitGate: LimitGate;
 
   constructor(options: TerminalManagerOptions) {
     this.sequenceDirectory = options.sequenceDirectory;
@@ -175,6 +177,7 @@ export class TerminalManager {
     this.clock = options.clock ?? (() => Date.now());
     this.log = options.log ?? (() => {});
     this.policy = options.policy ?? (() => DEFAULT_POLICY);
+    this.limitGate = new LimitGate(options.database, options.limits);
     this.onExit = options.onExit;
     this.attachments = new AttachmentBook(this.clock);
     this.drives = new TerminalDriveBook({
@@ -351,7 +354,11 @@ export class TerminalManager {
 
   /* -------------------------------- lifecycle ------------------------------ */
 
-  async spawn(request: SpawnRequest): Promise<TerminalSession> {
+  spawn(request: SpawnRequest): Promise<TerminalSession> {
+    return this.limitGate.guard(request, () => this.spawnRow(request));
+  }
+
+  private async spawnRow(request: SpawnRequest): Promise<TerminalSession> {
     const id = randomUUID();
     // A terminal that belongs to a node keys on the node, so the pane survives
     // the session row being replaced; one that does not keys on itself.

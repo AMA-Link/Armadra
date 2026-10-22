@@ -17,6 +17,10 @@ import { CoreFailure, fail, failureResult } from "../../http/errors";
 import type { CoreRequest, HandlerResult } from "../../http/router";
 import { type DomainHandlers, registerProcedures } from "../../http/rpc";
 import type { CoreServer } from "../../http/server";
+import { isOwner } from "../../identity/authorize";
+import { requestIdentity } from "../../identity/gate";
+import { type TeamRoleRow, cloudProvider } from "../../identity/cloud/store";
+import { type Scope, permits } from "../../identity/scopes";
 import { E2E_IDENTITY_PATH, E2E_WAIT_PATH } from "../../identity/transport";
 import type { DeviceKey } from "./device-key";
 import { DeviceError, type DeviceRegistry, type DeviceView } from "./devices";
@@ -77,6 +81,15 @@ export interface E2eRouteDeps {
     sourceId: string,
     pendingId: string,
   ) => Promise<"pending" | "trusted" | "rejected" | "revoked">;
+  /** 一个 principal 经 SaaS 准入时落下的团队角色（迁移 0053）；设备背书按它判。 */
+  readonly teamRole?: (
+    principalId: string,
+    provider: string,
+  ) => TeamRoleRow | undefined;
+  /** 这个签发方的登记是否仍有效（撤销之后背书不再成立）。 */
+  readonly issuerActive?: (issuer: string) => boolean;
+  /** 一个 principal 今天从授予里拿到的全部 scope（背书不横向抬权）。 */
+  readonly grantScopes?: (principalId: string) => readonly Scope[];
   /** 这台 core 的 `sourceId` 与身份公钥（源钥）。 */
   readonly identity: () => Promise<{ sourceId: string; publicKey: Uint8Array }>;
   readonly deviceKey: DeviceKey;
@@ -112,6 +125,64 @@ function text(value: unknown, name: string, max = 128): string {
   return value;
 }
 
+/**
+ * 非 owner 的 `devices.approve`（契约 §60.4、§80）：SaaS 团队里已信任设备的持有人背书新设备。
+ * 条件全部成立才放行，任何一条不成立答 `forbidden`：
+ *
+ * 1. 经端到端通道来，且这把设备钥对这个人已信任（不是只有会话）；
+ * 2. 待批设备的签发方登记仍有效，且背书人与待批人在**这个签发方**下各有一条未过期、
+ *    `mode = saas` 时写下的团队角色（owner / admin / member；同一个 teamId 换了签发方
+ *    不是同一个团队）；
+ * 3. 待批的人不是主机 owner，且是同一个团队的成员；团队 owner / admin 可批这样的任何
+ *    人，member 只能批自己；
+ * 4. 待批的人今天的授予不超过背书人的（不横向抬权）。
+ */
+function authorizeEndorsement(
+  deps: E2eRouteDeps,
+  principalId: string,
+  request: CoreRequest | undefined,
+  pendingId: string,
+): string {
+  const refuse = () => fail("forbidden", "没有权限背书这台设备");
+  const peer =
+    request === undefined ? undefined : channelPeerOf(request.raw.socket);
+  if (peer === undefined || !deps.devices.trusted(peer.deviceId, principalId))
+    throw refuse();
+  const target = deps.devices.store.byRequest(pendingId);
+  if (target === undefined || target.status !== "pending")
+    throw fail("not_found", "没有这条待确认记录");
+  if (
+    target.issuer === "" ||
+    deps.issuerActive?.(target.issuer) !== true ||
+    deps.devices.list().find((row) => row.requestId === pendingId)
+      ?.principalKind === "owner"
+  )
+    throw refuse();
+  const provider = cloudProvider(target.issuer);
+  const mine = deps.teamRole?.(principalId, provider);
+  const theirs = deps.teamRole?.(target.principalId, provider);
+  if (mine === undefined || theirs === undefined) throw refuse();
+  if (mine.role === "member") {
+    if (target.principalId !== principalId) throw refuse();
+  } else if (mine.role === "owner" || mine.role === "admin") {
+    if (theirs.teamId !== mine.teamId) throw refuse();
+  } else {
+    throw refuse();
+  }
+  if (target.principalId !== principalId) {
+    const have = deps.grantScopes?.(principalId);
+    const current = deps.grantScopes?.(target.principalId);
+    // 新成员的授予要等设备关过了才落库：把这次断言将要同步的也算上。
+    const want =
+      current === undefined
+        ? undefined
+        : [...current, ...theirs.assertedScopes];
+    if (have === undefined || want === undefined || !permits(have, want))
+      throw refuse();
+  }
+  return peer.deviceId;
+}
+
 /** 旧路径与 procedure 共用的那一份；拒绝抛 {@link CoreFailure}。 */
 export function e2eOperations(deps: E2eRouteDeps) {
   const { devices } = deps;
@@ -130,10 +201,13 @@ export function e2eOperations(deps: E2eRouteDeps) {
       const pendingId = text(input.pendingId, "pendingId", 64);
       const sas = text(input.sas, "sas", 16);
       // 已信任设备经自己的通道代批：记成背书（契约 §80）。
+      const subject = requestIdentity()?.subject;
       const endorser =
-        request === undefined
-          ? undefined
-          : channelPeerOf(request.raw.socket)?.deviceId;
+        subject !== undefined && !isOwner(subject)
+          ? authorizeEndorsement(deps, subject.principalId, request, pendingId)
+          : request === undefined
+            ? undefined
+            : channelPeerOf(request.raw.socket)?.deviceId;
       try {
         const row = devices.approve(
           pendingId,
