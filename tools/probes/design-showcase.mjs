@@ -586,6 +586,12 @@ await h.run(async () => {
     let second;
     let still = false;
     for (let attempt = 0; attempt < 3 && !still; attempt += 1) {
+      // 整页截图会临时改视口、让画布重排：CI 上见过（PR #478）每一对的第一张
+      // 都是重排之前的半成品（小地图错位、一个节点没画）、第二张已落定，三对
+      // 全败。先丢一张预热图让重排落定，再取比较的这一对；比较本身（隔 700ms
+      // 逐字节相同）不变，永远在动的画面照样失败。
+      await capture(null, 1440);
+      await sleep(300);
       first = await capture(`canvas-${theme}-1440-reduced-motion`, 1440);
       await sleep(700);
       second = await capture(null, 1440);
