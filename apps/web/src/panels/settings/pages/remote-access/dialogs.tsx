@@ -1,3 +1,5 @@
+import { Loadable } from "@/loading/Loadable";
+import { SkeletonList } from "@/ui/skeletons";
 import * as React from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
@@ -606,54 +608,63 @@ export function MountDialog({
               </SelectContent>
             </Select>
           )}
-          {listing.isPending ? (
-            <div className="flex justify-center py-4">
-              <Spinner aria-label={t("remote.mount")} />
-            </div>
-          ) : listing.isError ? (
-            <p role="alert" className="text-[13px] text-destructive">
-              {listing.error.message}
-            </p>
-          ) : rows.length === 0 ? (
-            <p className="text-[13px] text-muted-foreground">
-              {t("remote.mount.empty")}
-            </p>
-          ) : (
-            <ul className="flex flex-col divide-y divide-border/60">
-              {rows.map((source) => (
-                <li
-                  key={source.sourceId}
-                  className="flex min-w-0 items-center justify-between gap-3 py-2"
-                >
-                  <span className="flex min-w-0 items-center gap-2">
-                    <span className="truncate text-[13px]">{source.name}</span>
-                    <StatusPill
-                      tone={source.online ? "done" : "idle"}
-                      label={t(
-                        source.online
-                          ? "remote.status.ready"
-                          : "remote.status.offline",
-                      )}
-                    />
-                  </span>
-                  {source.mounted ? (
-                    <Badge variant="secondary" className="font-normal">
-                      {t("remote.mounted")}
-                    </Badge>
-                  ) : (
-                    <Button
-                      size="sm"
-                      variant="secondary"
-                      disabled={mount.isPending || !source.online}
-                      onClick={() => mount.mutate(source)}
-                    >
-                      {t("remote.mount.action")}
-                    </Button>
-                  )}
-                </li>
-              ))}
-            </ul>
-          )}
+          <Loadable
+            loading={listing.isPending}
+            skeleton={
+              <SkeletonList
+                rows={3}
+                label={t("state.loading")}
+                rowClassName="h-11 px-0"
+              />
+            }
+          >
+            {listing.isError ? (
+              <p role="alert" className="text-[13px] text-destructive">
+                {listing.error.message}
+              </p>
+            ) : rows.length === 0 ? (
+              <p className="text-[13px] text-muted-foreground">
+                {t("remote.mount.empty")}
+              </p>
+            ) : (
+              <ul className="flex flex-col divide-y divide-border/60">
+                {rows.map((source) => (
+                  <li
+                    key={source.sourceId}
+                    className="flex min-w-0 items-center justify-between gap-3 py-2"
+                  >
+                    <span className="flex min-w-0 items-center gap-2">
+                      <span className="truncate text-[13px]">
+                        {source.name}
+                      </span>
+                      <StatusPill
+                        tone={source.online ? "done" : "idle"}
+                        label={t(
+                          source.online
+                            ? "remote.status.ready"
+                            : "remote.status.offline",
+                        )}
+                      />
+                    </span>
+                    {source.mounted ? (
+                      <Badge variant="secondary" className="font-normal">
+                        {t("remote.mounted")}
+                      </Badge>
+                    ) : (
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        disabled={mount.isPending || !source.online}
+                        onClick={() => mount.mutate(source)}
+                      >
+                        {t("remote.mount.action")}
+                      </Button>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </Loadable>
         </div>
       </ResponsiveDialogContent>
     </ResponsiveDialog>

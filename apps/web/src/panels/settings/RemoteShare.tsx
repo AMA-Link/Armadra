@@ -1,3 +1,5 @@
+import { Loadable } from "@/loading/Loadable";
+import { SkeletonList } from "@/ui/skeletons";
 import * as React from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -355,82 +357,95 @@ function ShareLinks({ remote }: { remote: RemoteService }) {
           </Button>
         </div>
       </div>
-      {links.isError ? (
-        <p role="alert" className="text-[12px] text-destructive">
-          {links.error.message}
-        </p>
-      ) : links.isPending ? null : active.length === 0 ? (
-        <p className="text-[12px] text-muted-foreground">
-          {t("remote.links.empty")}
-        </p>
-      ) : (
-        <ItemGroup className="gap-0">
-          {active.map((link) => {
-            const name = linkName(t, link, names.get(link.workspaceId));
-            return (
-              <LinkItem
-                key={link.linkId}
-                link={link}
-                name={name}
-                workspaceName={names.get(link.workspaceId)}
-              >
-                {link.copyable && (
-                  <>
-                    <IconButton
-                      size="cluster"
-                      label={t("remote.invite.copy")}
-                      disabled={copy.isPending}
-                      onClick={() => copy.mutate(link.linkId)}
-                    >
-                      <Copy />
-                    </IconButton>
-                    <IconButton
-                      size="cluster"
-                      label={t("remote.link.qr")}
-                      onClick={() => setShowing({ linkId: link.linkId, name })}
-                    >
-                      <QrCode />
-                    </IconButton>
-                    {canShareNatively() && (
+      <Loadable
+        loading={links.isPending}
+        skeleton={
+          <SkeletonList
+            rows={1}
+            label={t("state.loading")}
+            rowClassName="h-12 px-0"
+          />
+        }
+      >
+        {links.isError ? (
+          <p role="alert" className="text-[12px] text-destructive">
+            {links.error.message}
+          </p>
+        ) : active.length === 0 ? (
+          <p className="text-[12px] text-muted-foreground">
+            {t("remote.links.empty")}
+          </p>
+        ) : (
+          <ItemGroup className="gap-0">
+            {active.map((link) => {
+              const name = linkName(t, link, names.get(link.workspaceId));
+              return (
+                <LinkItem
+                  key={link.linkId}
+                  link={link}
+                  name={name}
+                  workspaceName={names.get(link.workspaceId)}
+                >
+                  {link.copyable && (
+                    <>
                       <IconButton
                         size="cluster"
-                        label={t("remote.link.share")}
-                        disabled={send.isPending}
+                        label={t("remote.invite.copy")}
+                        disabled={copy.isPending}
+                        onClick={() => copy.mutate(link.linkId)}
+                      >
+                        <Copy />
+                      </IconButton>
+                      <IconButton
+                        size="cluster"
+                        label={t("remote.link.qr")}
                         onClick={() =>
-                          send.mutate({ linkId: link.linkId, name })
+                          setShowing({ linkId: link.linkId, name })
                         }
                       >
-                        <Share />
+                        <QrCode />
                       </IconButton>
-                    )}
-                  </>
-                )}
-                <IconButton
-                  size="cluster"
-                  label={t("remote.link.rename")}
-                  onClick={() =>
-                    setRenaming({
-                      linkId: link.linkId,
-                      label: link.label,
-                      placeholder: names.get(link.workspaceId) ?? "",
-                    })
-                  }
-                >
-                  <Pencil />
-                </IconButton>
-                <IconButton
-                  size="cluster"
-                  label={t("remote.link.revoke")}
-                  disabled={revoke.isPending}
-                  onClick={() => setRevoking({ linkId: link.linkId, name })}
-                >
-                  <Link2Off />
-                </IconButton>
-              </LinkItem>
-            );
-          })}
-        </ItemGroup>
-      )}
+                      {canShareNatively() && (
+                        <IconButton
+                          size="cluster"
+                          label={t("remote.link.share")}
+                          disabled={send.isPending}
+                          onClick={() =>
+                            send.mutate({ linkId: link.linkId, name })
+                          }
+                        >
+                          <Share />
+                        </IconButton>
+                      )}
+                    </>
+                  )}
+                  <IconButton
+                    size="cluster"
+                    label={t("remote.link.rename")}
+                    onClick={() =>
+                      setRenaming({
+                        linkId: link.linkId,
+                        label: link.label,
+                        placeholder: names.get(link.workspaceId) ?? "",
+                      })
+                    }
+                  >
+                    <Pencil />
+                  </IconButton>
+                  <IconButton
+                    size="cluster"
+                    label={t("remote.link.revoke")}
+                    disabled={revoke.isPending}
+                    onClick={() => setRevoking({ linkId: link.linkId, name })}
+                  >
+                    <Link2Off />
+                  </IconButton>
+                </LinkItem>
+              );
+            })}
+          </ItemGroup>
+        )}
+      </Loadable>
       {history.length > 0 && <History links={history} names={names} />}
 
       <CreateLinkDialog
