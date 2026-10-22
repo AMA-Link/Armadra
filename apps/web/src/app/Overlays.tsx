@@ -1,4 +1,5 @@
 import { Suspense } from "react";
+import { OverlaySuspense, type OverlayShape } from "./OverlayFallback";
 import { DeviceApprovalPrompt } from "../panels/settings/pages/security/E2eDevices";
 
 import { useCanvasStore } from "../store/canvas-store";
@@ -52,12 +53,21 @@ import { useShareStore } from "@/canvas/share/share-store";
 
 function Gate({
   open,
+  shape,
   children,
 }: {
   open: boolean;
+  /** 分块下载期间占位的外形；不给就不画（菜单类浮层本来无壳）。 */
+  shape?: OverlayShape;
   children: React.ReactNode;
 }) {
-  return useMountedOnce(open) ? <>{children}</> : null;
+  const mounted = useMountedOnce(open);
+  if (!mounted) return null;
+  return shape ? (
+    <OverlaySuspense shape={shape}>{children}</OverlaySuspense>
+  ) : (
+    <>{children}</>
+  );
 }
 
 export function Overlays() {
@@ -72,61 +82,70 @@ export function Overlays() {
   return (
     <Suspense fallback={null}>
       <JoinedSourceOpener />
-      <Gate open={panels.explorer !== "closed"}>
+      <Gate open={panels.explorer !== "closed"} shape="drawer">
         <ExplorerDrawer />
       </Gate>
-      <Gate open={panels.observation !== "closed"}>
+      <Gate open={panels.observation !== "closed"} shape="drawer">
         <NodeObservationDrawer />
       </Gate>
-      <Gate open={panels.scm !== "closed"}>
+      <Gate open={panels.scm !== "closed"} shape="window">
         <GitToolWindow />
       </Gate>
-      <Gate open={panels.problems !== "closed"}>
+      <Gate open={panels.problems !== "closed"} shape="drawer">
         <ProblemsPanel />
       </Gate>
-      <Gate open={panels.references !== "closed"}>
+      <Gate open={panels.references !== "closed"} shape="drawer">
         <ReferencesPanel />
       </Gate>
-      <Gate open={editPreview}>
+      <Gate open={editPreview} shape="dialog">
         <EditPreviewDialog />
       </Gate>
       <Gate open={codeAction}>
         <CodeActionMenu />
       </Gate>
-      <Gate open={merge}>
+      <Gate open={merge} shape="dialog">
         <MergeDialog />
       </Gate>
-      <Gate open={panels.resources !== "closed"}>
+      <Gate open={panels.resources !== "closed"} shape="drawer">
         <ResourceDrawer />
       </Gate>
-      <Gate open={panels.automation !== "closed" && !panelHidden("automation")}>
+      <Gate
+        open={panels.automation !== "closed" && !panelHidden("automation")}
+        shape="drawer"
+      >
         <AutomationDrawer />
       </Gate>
-      <Gate open={panels.usage !== "closed" && !panelHidden("usage")}>
+      <Gate
+        open={panels.usage !== "closed" && !panelHidden("usage")}
+        shape="drawer"
+      >
         <UsageDashboard />
       </Gate>
-      <Gate open={panels.github !== "closed"}>
+      <Gate open={panels.github !== "closed"} shape="drawer">
         <GithubDrawer />
       </Gate>
-      <Gate open={panels.settings}>
+      <Gate open={panels.settings} shape="dialog">
         <SettingsDialog />
       </Gate>
-      <Gate open={share}>
+      <Gate open={share} shape="dialog">
         <ShareDialog />
       </Gate>
-      <Gate open={panels.palette}>
+      <Gate open={panels.palette} shape="dialog">
         <CommandPalette />
       </Gate>
-      <Gate open={panels.quickOpen}>
+      <Gate open={panels.quickOpen} shape="dialog">
         <QuickOpen />
       </Gate>
-      <Gate open={panels.handoff !== "closed"}>
+      <Gate open={panels.handoff !== "closed"} shape="drawer">
         <HandoffHistoryDrawer />
       </Gate>
-      <Gate open={panels.workflow !== "closed" && !panelHidden("workflow")}>
+      <Gate
+        open={panels.workflow !== "closed" && !panelHidden("workflow")}
+        shape="drawer"
+      >
         <WorkflowPanel />
       </Gate>
-      <Gate open={panels.dispatch !== "closed"}>
+      <Gate open={panels.dispatch !== "closed"} shape="drawer">
         <DispatchDrawer />
       </Gate>
       {/* 事件流驱动的四个：必须先订阅，不能等状态。 */}
