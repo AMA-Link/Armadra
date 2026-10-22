@@ -1,0 +1,128 @@
+/*
+ * 窗口背景色板（AMA-Link/Armadra#474）。
+ *
+ * 与 `data-theme` 正交的第二个维度：`<html data-backdrop>` 选一张很淡的三色
+ * 对角渐变，只铺在窗口外框——侧栏（`.material-sidebar`）与设置弹窗左栏
+ * （`.material-backdrop`）。画布、卡片与节点仍是实底，终端仍是深底。
+ *
+ * 每个色板三个停点：`--backdrop-a` 左上、`-b` 右上、`-c` 左下（暖端）。
+ * `plain` 不铺渐变（`--backdrop-image: none`），与改动之前逐像素一致。
+ *
+ * 色板同时给画布一个带淡色的实底 `--canvas-bg`；白板偏好选了固定底色时，
+ * `use-canvas-preferences.ts` 写在根元素上的内联样式优先，照旧生效。
+ *
+ * 桌面壳半透明（`html[data-desktop]` 且没有 `data-translucent="false"`）时停点
+ * 混入透明，透出窗口的 vibrancy；关掉半透明时壳摘了 vibrancy，这里一律不透明。
+ */
+
+:root {
+  --backdrop-alpha: 100%;
+  --backdrop-image: none;
+  --backdrop-solid: none;
+}
+
+/* 有色板时：两张渐变都由三个停点拼出来 */
+:root[data-backdrop]:not([data-backdrop="plain"]) {
+  --backdrop-solid: linear-gradient(
+    135deg,
+    var(--backdrop-a),
+    var(--backdrop-b) 45%,
+    var(--backdrop-c)
+  );
+  --backdrop-image: linear-gradient(
+    135deg,
+    color-mix(in srgb, var(--backdrop-a) var(--backdrop-alpha), transparent),
+    color-mix(in srgb, var(--backdrop-b) var(--backdrop-alpha), transparent) 45%,
+    color-mix(in srgb, var(--backdrop-c) var(--backdrop-alpha), transparent)
+  );
+}
+
+/* ── 深色 ─────────────────────────────────────────────────────────── */
+:root[data-backdrop="petal"],
+[data-backdrop-swatch="petal"] {
+  --backdrop-a: #231e26;
+  --backdrop-b: #261d24;
+  --backdrop-c: #26231c;
+  --canvas-bg: #1b181b;
+}
+
+:root[data-backdrop="mist"],
+[data-backdrop-swatch="mist"] {
+  --backdrop-a: #1c2029;
+  --backdrop-b: #1a1f2a;
+  --backdrop-c: #232220;
+  --canvas-bg: #181a1d;
+}
+
+:root[data-backdrop="meadow"],
+[data-backdrop-swatch="meadow"] {
+  --backdrop-a: #1b231d;
+  --backdrop-b: #19241f;
+  --backdrop-c: #25231b;
+  --canvas-bg: #181b19;
+}
+
+:root[data-backdrop="dusk"],
+[data-backdrop-swatch="dusk"] {
+  --backdrop-a: #221c28;
+  --backdrop-b: #281c24;
+  --backdrop-c: #28211b;
+  --canvas-bg: #1c181a;
+}
+
+/* ── 浅色 ─────────────────────────────────────────────────────────── */
+:root[data-theme="light"][data-backdrop="petal"],
+:root[data-theme="light"] [data-backdrop-swatch="petal"] {
+  --backdrop-a: #eee3f1;
+  --backdrop-b: #f4dff0;
+  --backdrop-c: #f5efd5;
+  --canvas-bg: #fbf8fb;
+}
+
+:root[data-theme="light"][data-backdrop="mist"],
+:root[data-theme="light"] [data-backdrop-swatch="mist"] {
+  --backdrop-a: #e6edf7;
+  --backdrop-b: #dbe6f8;
+  --backdrop-c: #f2f1ed;
+  --canvas-bg: #f7f9fc;
+}
+
+:root[data-theme="light"][data-backdrop="meadow"],
+:root[data-theme="light"] [data-backdrop-swatch="meadow"] {
+  --backdrop-a: #e8f0e5;
+  --backdrop-b: #dfefe4;
+  --backdrop-c: #f5efdf;
+  --canvas-bg: #f8faf7;
+}
+
+:root[data-theme="light"][data-backdrop="dusk"],
+:root[data-theme="light"] [data-backdrop-swatch="dusk"] {
+  --backdrop-a: #e9dbf2;
+  --backdrop-b: #f5dae9;
+  --backdrop-c: #f7e4d3;
+  --canvas-bg: #fbf7f8;
+}
+
+/* ── 桌面壳 ───────────────────────────────────────────────────────── */
+/* 半透明：渐变替掉侧栏原来那层半透明 `--panel`，自己按比例透出 vibrancy */
+html[data-desktop][data-backdrop]:not([data-backdrop="plain"]) {
+  --backdrop-alpha: 78%;
+  --sidebar-material: transparent;
+}
+
+/* 关掉半透明：壳摘了 vibrancy，窗口底下没有材质了，侧栏与文档底都得是实色 */
+html[data-desktop][data-translucent="false"] {
+  --backdrop-alpha: 100%;
+  --sidebar-material: var(--panel);
+}
+
+html[data-desktop][data-translucent="false"] body {
+  background: var(--bg);
+}
+
+html[data-desktop][data-translucent="false"][data-backdrop]:not(
+    [data-backdrop="plain"]
+  ) {
+  --backdrop-alpha: 100%;
+  --sidebar-material: var(--backdrop-a);
+}
