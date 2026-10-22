@@ -19,7 +19,8 @@ import { type DomainHandlers, registerProcedures } from "../../http/rpc";
 import type { CoreServer } from "../../http/server";
 import { isOwner } from "../../identity/authorize";
 import { requestIdentity } from "../../identity/gate";
-import type { TeamRole } from "../../identity/cloud/store";
+import { type TeamRole, cloudProvider } from "../../identity/cloud/store";
+import { type Scope, permits } from "../../identity/scopes";
 import { E2E_IDENTITY_PATH, E2E_WAIT_PATH } from "../../identity/transport";
 import type { DeviceKey } from "./device-key";
 import { DeviceError, type DeviceRegistry, type DeviceView } from "./devices";
@@ -83,7 +84,12 @@ export interface E2eRouteDeps {
   /** 一个 principal 经 SaaS 准入时落下的团队角色（迁移 0053）；设备背书按它判。 */
   readonly teamRole?: (
     principalId: string,
+    provider: string,
   ) => { teamId: string; role: TeamRole } | undefined;
+  /** 这个签发方的登记是否仍有效（撤销之后背书不再成立）。 */
+  readonly issuerActive?: (issuer: string) => boolean;
+  /** 一个 principal 今天从授予里拿到的全部 scope（背书不横向抬权）。 */
+  readonly grantScopes?: (principalId: string) => readonly Scope[];
   /** 这台 core 的 `sourceId` 与身份公钥（源钥）。 */
   readonly identity: () => Promise<{ sourceId: string; publicKey: Uint8Array }>;
   readonly deviceKey: DeviceKey;
@@ -124,9 +130,12 @@ function text(value: unknown, name: string, max = 128): string {
  * 条件全部成立才放行，任何一条不成立答 `forbidden`：
  *
  * 1. 经端到端通道来，且这把设备钥对这个人已信任（不是只有会话）；
- * 2. 有团队角色，且不是 billing / guest；
- * 3. 待批的设备属于同一个团队的成员，并且——团队 owner / admin 可以批任何成员的，
- *    member 只能批自己的。
+ * 2. 待批设备的签发方登记仍有效，且背书人与待批人在**这个签发方**下各有一条未过期、
+ *    `mode = saas` 时写下的团队角色（owner / admin / member；同一个 teamId 换了签发方
+ *    不是同一个团队）；
+ * 3. 待批的人不是主机 owner，且是同一个团队的成员；团队 owner / admin 可批这样的任何
+ *    人，member 只能批自己；
+ * 4. 待批的人今天的授予不超过背书人的（不横向抬权）。
  */
 function authorizeEndorsement(
   deps: E2eRouteDeps,
@@ -139,18 +148,32 @@ function authorizeEndorsement(
     request === undefined ? undefined : channelPeerOf(request.raw.socket);
   if (peer === undefined || !deps.devices.trusted(peer.deviceId, principalId))
     throw refuse();
-  const team = deps.teamRole?.(principalId);
-  if (team === undefined) throw refuse();
   const target = deps.devices.store.byRequest(pendingId);
   if (target === undefined || target.status !== "pending")
     throw fail("not_found", "没有这条待确认记录");
-  if (team.role === "member") {
+  if (
+    target.issuer === "" ||
+    deps.issuerActive?.(target.issuer) !== true ||
+    deps.devices.list().find((row) => row.requestId === pendingId)
+      ?.principalKind === "owner"
+  )
+    throw refuse();
+  const provider = cloudProvider(target.issuer);
+  const mine = deps.teamRole?.(principalId, provider);
+  const theirs = deps.teamRole?.(target.principalId, provider);
+  if (mine === undefined || theirs === undefined) throw refuse();
+  if (mine.role === "member") {
     if (target.principalId !== principalId) throw refuse();
-  } else if (team.role === "owner" || team.role === "admin") {
-    if (deps.teamRole?.(target.principalId)?.teamId !== team.teamId)
-      throw refuse();
+  } else if (mine.role === "owner" || mine.role === "admin") {
+    if (theirs.teamId !== mine.teamId) throw refuse();
   } else {
     throw refuse();
+  }
+  if (target.principalId !== principalId) {
+    const have = deps.grantScopes?.(principalId);
+    const want = deps.grantScopes?.(target.principalId);
+    if (have === undefined || want === undefined || !permits(have, want))
+      throw refuse();
   }
   return peer.deviceId;
 }

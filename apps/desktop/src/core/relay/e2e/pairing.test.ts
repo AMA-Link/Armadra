@@ -2,6 +2,7 @@ import { randomBytes } from "node:crypto";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { signAssertion } from "../../identity/cloud/fake.fixture";
+import { cloudProvider } from "../../identity/cloud/store";
 import { allScopes } from "../../identity/scopes";
 import { ISSUER, type RelayCore, relayCore, until } from "../core.fixture";
 import type { FakeTunnel } from "../fake-relay.fixture";
@@ -349,5 +350,78 @@ describe("团队成员背书（契约 §60.4）", () => {
     expect((await approve(admin, target)).status).toBe(403);
     admin.client.close();
     client.close();
+  });
+
+  it("团队 admin 不能背书主机 owner 的设备（owner 也有团队角色时一样）", async () => {
+    const admin = await trustedSession(61, "acct:admin3", "admin");
+    // owner 把云账号绑到自己名下（beforeEach 的 bind），再以团队 owner 登录一台新设备。
+    const client = await connect(62);
+    const pending = await login(
+      client,
+      signAssertion({
+        aud: sourceId,
+        nowMs: Date.now(),
+        extra: team("owner"),
+      }),
+    );
+    const target = {
+      pendingId: pending.json<{ details: { pendingId: string } }>().details
+        .pendingId,
+      sas: client.session.sas,
+    };
+    expect((await approve(admin, target)).status).toBe(403);
+    admin.client.close();
+    client.close();
+  });
+
+  it("目标成员已有的授予超过背书人的：403", async () => {
+    const admin = await trustedSession(63, "acct:admin4", "admin");
+    // admin 只有 viewer（trustedSession 默认 editor，所以这里单独降一次）。
+    const adminId = e2eDevices()!.list()[0]!.principalId;
+    world.core.database
+      .prepare("DELETE FROM identity_grants WHERE subject_id = ?")
+      .run(adminId);
+    const target = await pendingDevice(64, "acct:rich", "member");
+    const rich = world.core.database
+      .prepare("SELECT principal_id FROM trusted_devices WHERE request_id = ?")
+      .get(target.pendingId) as { principal_id: string };
+    world.core.database
+      .prepare(
+        "INSERT INTO identity_grants (grant_id, subject_kind, subject_id, workspace_id, role, granted_by, created_at_ms) " +
+          "VALUES (?, 'principal', ?, 'ws-1', 'driver', ?, 1)",
+      )
+      .run(
+        "g".repeat(32),
+        rich.principal_id,
+        world.store.transaction((tx) => tx.owner())!.principalId,
+      );
+    expect((await approve(admin, target)).status).toBe(403);
+    admin.client.close();
+    target.client.close();
+  });
+
+  it("过期的团队角色、换了签发方的角色、撤销了的登记都不能背书", async () => {
+    const admin = await trustedSession(65, "acct:admin5", "admin");
+    const target = await pendingDevice(66, "acct:m5", "member");
+    const roles = world.core.database;
+    // 过期。
+    roles.prepare("UPDATE cloud_team_roles SET expires_at_ms = 1").run();
+    expect((await approve(admin, target)).status).toBe(403);
+    roles
+      .prepare("UPDATE cloud_team_roles SET expires_at_ms = ?")
+      .run(Date.now() + 86_400_000);
+    // 换了签发方：角色行的 provider 与待批设备的签发方不是同一个。
+    roles.prepare("UPDATE cloud_team_roles SET provider = 'cloud:other'").run();
+    expect((await approve(admin, target)).status).toBe(403);
+    roles
+      .prepare("UPDATE cloud_team_roles SET provider = ?")
+      .run(cloudProvider(ISSUER));
+    // 撤销了登记。
+    roles.prepare("UPDATE cloud_registrations SET revoked_at_ms = 1").run();
+    expect((await approve(admin, target)).status).toBe(403);
+    roles.prepare("UPDATE cloud_registrations SET revoked_at_ms = 0").run();
+    expect((await approve(admin, target)).status).toBe(200);
+    admin.client.close();
+    target.client.close();
   });
 });

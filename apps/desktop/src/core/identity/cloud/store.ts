@@ -6,9 +6,15 @@
  * SecretStore，断言原文不落盘。
  */
 
+import { createHash } from "node:crypto";
 import type { DatabaseSync } from "node:sqlite";
 
 export type CloudMode = "personal" | "saas";
+
+/** 映射凭据的 `provider`：`cloud:` + issuer 的 SHA-256 前 16 位十六进制。 */
+export function cloudProvider(issuer: string): string {
+  return `cloud:${createHash("sha256").update(issuer, "utf8").digest("hex").slice(0, 16)}`;
+}
 
 /** 断言 `team.role` 的五个值（协议 1.4）。 */
 export type TeamRole = "owner" | "admin" | "member" | "billing" | "guest";
@@ -77,20 +83,34 @@ function rowOf(record: RegistrationRecord): RegistrationRow {
 const COLUMNS =
   "issuer, source_key_ref, jwks_json, jwks_url, jwks_fetched_at_ms, trusted_origins_json, relay_origins_json, owner_account_id, label, mode, registered_by, registered_at_ms, revoked_at_ms";
 
-/** 这个人现在的团队角色（迁移 0053）；多个签发方时取最近的一行。路由门与设备背书直接问库。 */
+/**
+ * 这个人经某个签发方的团队角色（迁移 0053）；过期的行不认。不给 `provider` 时取
+ * 任一未过期的行里最近的（路由门只问「有没有」；背书必须带 `provider`）。
+ */
 export function teamRoleOf(
   database: DatabaseSync,
   principalId: string,
-): { teamId: string; role: TeamRole } | undefined {
+  options: { provider?: string; nowMs?: number } = {},
+): { teamId: string; role: TeamRole; provider: string } | undefined {
   try {
     const record = database
       .prepare(
-        "SELECT team_id, role FROM cloud_team_roles WHERE principal_id = ? ORDER BY updated_at_ms DESC LIMIT 1",
+        "SELECT team_id, role, provider FROM cloud_team_roles WHERE principal_id = ? " +
+          "AND expires_at_ms > ? AND (? = '' OR provider = ?) ORDER BY updated_at_ms DESC LIMIT 1",
       )
-      .get(principalId) as { team_id: string; role: TeamRole } | undefined;
+      .get(
+        principalId,
+        options.nowMs ?? Date.now(),
+        options.provider ?? "",
+        options.provider ?? "",
+      ) as { team_id: string; role: TeamRole; provider: string } | undefined;
     return record === undefined
       ? undefined
-      : { teamId: record.team_id, role: record.role };
+      : {
+          teamId: record.team_id,
+          role: record.role,
+          provider: record.provider,
+        };
   } catch {
     return undefined;
   }
@@ -106,12 +126,14 @@ export class CloudStore {
     teamId: string;
     role: TeamRole;
     atMs: number;
+    expiresAtMs: number;
   }): void {
     this.database
       .prepare(
-        `INSERT INTO cloud_team_roles (principal_id, provider, team_id, role, updated_at_ms) VALUES (?, ?, ?, ?, ?)
+        `INSERT INTO cloud_team_roles (principal_id, provider, team_id, role, updated_at_ms, expires_at_ms) VALUES (?, ?, ?, ?, ?, ?)
          ON CONFLICT(principal_id, provider) DO UPDATE SET
-           team_id = excluded.team_id, role = excluded.role, updated_at_ms = excluded.updated_at_ms`,
+           team_id = excluded.team_id, role = excluded.role, updated_at_ms = excluded.updated_at_ms,
+           expires_at_ms = excluded.expires_at_ms`,
       )
       .run(
         input.principalId,
@@ -119,6 +141,7 @@ export class CloudStore {
         input.teamId,
         input.role,
         input.atMs,
+        input.expiresAtMs,
       );
   }
 
@@ -129,11 +152,6 @@ export class CloudStore {
         "DELETE FROM cloud_team_roles WHERE principal_id = ? AND provider = ?",
       )
       .run(principalId, provider);
-  }
-
-  /** 这个人现在的团队角色；没有（或不是经团队来的）是 `undefined`。 */
-  teamRole(principalId: string) {
-    return teamRoleOf(this.database, principalId);
   }
 
   /** 这个 issuer 的行（含已撤销的）。 */
@@ -217,6 +235,9 @@ export class CloudStore {
 
   /** 撤销：只记时刻；答这次是否真的改了一行（没有有效登记时 `false`）。 */
   revoke(issuer: string, atMs: number): boolean {
+    this.database
+      .prepare("DELETE FROM cloud_team_roles WHERE provider = ?")
+      .run(cloudProvider(issuer));
     const result = this.database
       .prepare(
         "UPDATE cloud_registrations SET revoked_at_ms = ? WHERE issuer = ? AND revoked_at_ms = 0",

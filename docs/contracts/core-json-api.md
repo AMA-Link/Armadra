@@ -3920,11 +3920,12 @@ mod 在 `session.start` 用 `$.command.register` 注册七条命令（都是 `im
 
 ### 60.4 追加：团队成员的设备背书（迁移 0053 `cloud_team_roles`，`devices.approve` 的放宽）
 
-- **`cloud_team_roles`**：`(principal_id, provider)` 一行，记 `team_id`、`role`（`owner|admin|member|billing|guest`）与更新时刻；`cloud/login` 每次整行覆盖。无新 procedure，所以协议 minor 不变（minor 与 procedure 的 `since` 同步）。
-- **`devices.approve` 对非 owner 放行**（§80 的「已信任设备背书」，之前只有 owner 会话）：同时满足才放行，其余 `403 forbidden`——
+- **`cloud_team_roles`**：`(principal_id, provider)` 一行，记 `team_id`、`role`（`owner|admin|member|billing|guest`）、更新时刻与 `expires_at_ms`（= 授予租约：断言 exp + 30 天，每次登录续；过期的行不认）。**只在登记行 `mode = saas` 时写**，个人中转带的 `team` 不落；断言不带 `team` 或登记是个人中转时删掉这一行；撤销登记时按 `provider` 整批删。`provider` 与 §31 映射凭据同一拼法，所以同一个 `teamId` 换了签发方不是同一个团队。无新 procedure，协议 minor 不变（minor 与 procedure 的 `since` 同步）。行在设备关之前写，让待确认的新设备认得出是哪个团队的人。
+- **`devices.approve` 对非 owner 放行**（§80 的「已信任设备背书」，之前只有 owner 会话）：路由门只放有 owner / admin / member 团队角色且在端到端通道上的人（guest、billing 不放）；handler 再要求同时满足，其余 `403 forbidden`——
   1. 请求经端到端通道，且通道的设备钥对这个人已是 `trusted`（会话本身不够）；
-  2. 这个人有团队角色；
-  3. 待批设备属于同一个团队的成员；团队 `owner` / `admin` 可批任何这样的设备，`member` 只能批自己的；`guest`、`billing` 不能背书。
+  2. 待批设备的签发方登记仍有效，背书人与待批的人在**这个签发方**下各有未过期的团队角色；
+  3. 待批的人**不是主机 owner**（owner 的设备只能 owner 自己批），且是同一个团队的成员；团队 `owner` / `admin` 可批这样的任何人，`member` 只能批自己的；
+  4. 待批的人今天的授予不超过背书人的（`permits(背书人授予, 待批人授予)`），不横向抬权。
      校验码照样要对上；记成 `approved_by = endorse:<背书设备 id>`。
 - **缺口**：团队设置「新设备背书人」（只 owner / owner + admin / 允许成员自批）目前不在断言里，协议 1.4 没有对应声明，所以 core 固定按「主机 owner + 团队 admin，成员自批开」。要收窄或关闭需要协议加一个可省声明（后续协议改动）。
 
@@ -4615,6 +4616,6 @@ owner（本机会话，或已信任设备经通道的 owner 会话）：`{ sourc
 
 - 判定点是 `TerminalManager.spawn`：旧路径 `POST /api/terminals`、`POST /api/acp/sessions`、依赖编排与定时任务冷启动都经过它，所以一处生效。每次现读设置，改了即时生效。
 - 超出答 `429 limit_reached`，`details` 为 `{ scope: "principal" | "workspace", limit, current }`。已结束的会话（`status` 不是 `running`）不占名额；同一个节点重新起会话不重复计。
-- owner 与 core 自己开的会话（没有请求身份）不受终端数限制；Agent 数对谁都算。
+- **两个上限都只约束成员**：owner 与没有请求身份的动作（桌面壳、依赖编排、定时冷启动、休眠唤醒还原）不受限，单人桌面不会因为开了 9 个 Agent 被拦；`revive` 不经判定。同一成员 / 同一工作空间的并发 spawn 在管理器里排队，判定与插行之间不会被并发穿过。
 - 值写成负数、小数或非数字时退回缺省（与设置文档其它段同一规矩）。
 - 托管源的配额计数（`usage_counters`）由编排器上报，不在 core。

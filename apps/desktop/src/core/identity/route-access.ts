@@ -328,8 +328,11 @@ export function createRouteGuard(options: RouteAccessOptions): RouteGuard {
     // 设备背书（契约 §60.4）：团队成员经自己已信任设备的通道背书新设备。这里只认
     // 「有团队角色且在通道上」，谁能批谁由 handler 复核（`relay/e2e/routes.ts`）。
     if (path === "/api/devices/approve" && method === "POST") {
+      const team = lookups.teamRole(subject.principalId);
       return channelPeerOf(request.raw?.socket) !== undefined &&
-        lookups.teamRole(subject.principalId) !== undefined
+        (team?.role === "owner" ||
+          team?.role === "admin" ||
+          team?.role === "member")
         ? ALLOW
         : DENY;
     }

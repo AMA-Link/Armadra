@@ -27,8 +27,6 @@
  * 7. 建设备与会话（`method = "cloud"`），审计 `cloud.login`（带 `jti` / `team`）。
  */
 
-import { createHash } from "node:crypto";
-
 import {
   type AssertionClaims,
   parseScopeClaims,
@@ -62,15 +60,12 @@ import {
   e2eShareLinks,
 } from "../../relay/e2e/peer";
 import type { AssertionVerifier } from "./assertion";
-import type { CloudStore } from "./store";
+import { type CloudStore, cloudProvider } from "./store";
+
+export { cloudProvider };
 
 /** 同一个 `sub` 每分钟最多换这么多次会话。 */
 export const SUBJECT_LOGINS_PER_MINUTE = 5;
-
-/** 映射凭据的 `provider`：`cloud:` + issuer 的 SHA-256 前 16 位十六进制。 */
-export function cloudProvider(issuer: string): string {
-  return `cloud:${createHash("sha256").update(issuer, "utf8").digest("hex").slice(0, 16)}`;
-}
 
 export interface CloudLoginResult {
   readonly credentials: SessionCredentials;
@@ -274,7 +269,9 @@ export class CloudLogin {
       invitationId = parsed;
     }
 
-    if (claims.team === undefined) {
+    // 团队角色只认 SaaS 登记（个人中转带的 `team` 不落）；到期 = 授予租约（每次登录续）。
+    // 放在设备关之前：待确认的新设备要靠它认出是哪个团队的人（背书按它判）。
+    if (registration.mode !== "saas" || claims.team === undefined) {
       this.options.cloud.clearTeamRole(principalId, provider);
     } else {
       this.options.cloud.setTeamRole({
@@ -283,6 +280,7 @@ export class CloudLogin {
         teamId: claims.team.teamId,
         role: claims.team.role,
         atMs: this.now(),
+        expiresAtMs: provenance.leaseUntilMs,
       });
     }
 
@@ -305,11 +303,13 @@ export class CloudLogin {
     }
 
     // billing 只管计划与账单，不碰主机：即使断言带了 `role` 也不授予，并清掉此前同步的。
+    // guest 没有 `scp`（没有限定到工作空间 / 会话）也不授予：不会因为控制面漏写范围就拿到整台。
     const billing = claims.team?.role === "billing";
+    const unscopedGuest = claims.team?.role === "guest" && !declaresScope;
     applyCloudGrants(store, this.now(), {
       principalId,
       provenance,
-      ...(billing
+      ...(billing || unscopedGuest
         ? { asserted: [] }
         : claims.role === undefined
           ? {}
