@@ -13,6 +13,7 @@ import {
 
 import { useT } from "@/app/preferences-store";
 import { cn } from "@/lib/cn";
+import { Skeleton } from "@/ui/skeleton";
 import { DeferredSkeleton } from "@/loading/DeferredSkeleton";
 import { SkeletonTurns } from "@/ui/skeletons";
 import { ActivityGroup } from "./ActivityGroup";
@@ -209,6 +210,8 @@ export interface TimelineViewProps extends TurnActions {
   loading?: boolean | undefined;
   /** 滚到顶部附近：取更早的回合。 */
   onLoadOlder?: (() => void) | undefined;
+  /** 正在取更早的回合：列表顶部出一条占位。 */
+  loadingMore?: boolean | undefined;
   /** 换会话时变，列表回到底部。 */
   resetKey?: string | undefined;
   services?: TimelineViewServices | undefined;
@@ -234,6 +237,7 @@ export function TimelineView({
   activity,
   loading,
   onLoadOlder,
+  loadingMore = false,
   resetKey,
   services,
   initialRect,
@@ -291,15 +295,28 @@ export function TimelineView({
             </DeferredSkeleton>
           </div>
         ) : (
-          <VirtualTurnList
-            turns={turns}
-            getKey={getTurnKey}
-            renderTurn={renderTurn}
-            resetKey={resetKey}
-            onNearTop={onLoadOlder}
-            initialRect={initialRect}
-            aria-label={t("timeline.label")}
-          />
+          <>
+            {loadingMore && (
+              <div
+                data-slot="timeline-loading-more"
+                role="status"
+                aria-busy="true"
+                aria-label={t("state.loading")}
+                className="px-3 py-2"
+              >
+                <Skeleton className="h-4 w-1/3" />
+              </div>
+            )}
+            <VirtualTurnList
+              turns={turns}
+              getKey={getTurnKey}
+              renderTurn={renderTurn}
+              resetKey={resetKey}
+              onNearTop={onLoadOlder}
+              initialRect={initialRect}
+              aria-label={t("timeline.label")}
+            />
+          </>
         )}
         <ActivityLine activity={activity} />
       </div>

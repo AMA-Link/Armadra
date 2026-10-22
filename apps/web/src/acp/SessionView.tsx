@@ -778,6 +778,7 @@ export function SessionView({
         activity={activity}
         loading={timelineLoading}
         onLoadOlder={feed.hasMore ? feed.loadMore : undefined}
+        loadingMore={feed.loadingMore}
         resetKey={sessionId ?? undefined}
         services={services}
         renderApproval={renderApproval}

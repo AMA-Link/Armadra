@@ -10,7 +10,8 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from "@/ui/collapsible";
-import { Spinner } from "@/ui/spinner";
+import { DeferredSkeleton } from "@/loading/DeferredSkeleton";
+import { Skeleton } from "@/ui/skeleton";
 import { useBlobUrl } from "../services";
 
 export interface AudioPartProps {
@@ -65,7 +66,9 @@ export function AudioPart({
             {t("timeline.audio.failed")}
           </span>
         ) : (
-          <Spinner aria-hidden className="size-3 text-muted-foreground" />
+          <DeferredSkeleton>
+            <Skeleton className="h-8 w-full max-w-sm" />
+          </DeferredSkeleton>
         )}
       </CollapsibleContent>
     </Collapsible>
