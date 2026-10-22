@@ -146,6 +146,7 @@ export function NodeObservationDrawer() {
             <Button
               variant="secondary"
               size="sm"
+              className="self-start"
               onClick={() => locate(selected)}
             >
               <Crosshair />
