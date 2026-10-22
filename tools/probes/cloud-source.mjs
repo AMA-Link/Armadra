@@ -6,7 +6,8 @@
 //
 // 中继（Go 二进制）按优先级找：
 //   1. ARMADRA_RELAY_BIN 指定的二进制；
-//   2. 检出里的 `go/bin/armadra-relay`，没有就 `go build` 出来；
+//   2. 检出里的 `go/bin/armadra-relay`：每次先 `go build`（增量，没改动时很快），找不到 go 时
+//      退回已有的二进制并警告；
 //   3. 镜像：ARMADRA_PROBE_RELAY_IMAGE，或从检出的 `apps/relay/Dockerfile` 构建，
 //      `docker run` 起同样的命令行（数据目录等路径原样挂进容器）。
 import { spawn, spawnSync } from "node:child_process";
@@ -88,17 +89,27 @@ export function resolveRelay(cloudHome, env = process.env) {
   }
   if (cloudHome) {
     const path = join(cloudHome, RELAY_BIN);
-    if (existsSync(path)) return (resolved = { kind: "bin", path });
+    // 每次都增量构建，免得用上改源码之前的旧二进制。
     const built = spawnSync(
       "go",
       ["build", "-o", path, "./cmd/armadra-relay"],
       { cwd: join(cloudHome, "go"), encoding: "utf8", timeout: 900_000 },
     );
-    if (built.status === 0 && existsSync(path))
+    if (built.error?.code === "ENOENT") {
+      if (existsSync(path)) {
+        console.error(
+          `找不到 go：沿用已有的 ${path}（可能不是检出现状构建的）`,
+        );
+        return (resolved = { kind: "bin", path });
+      }
+      console.error("找不到 go，检出里也没有构建好的中继：改用镜像");
+    } else if (built.status === 0 && existsSync(path)) {
       return (resolved = { kind: "bin", path });
-    console.error(
-      `go build 中继没成（${(built.stderr ?? built.error?.message ?? "").trim().slice(-300)}），改用镜像`,
-    );
+    } else {
+      throw new Error(
+        `go build 中继失败：${(built.stderr ?? built.error?.message ?? "").trim().slice(-1500)}`,
+      );
+    }
   }
   return (resolved = {
     kind: "image",
@@ -115,7 +126,8 @@ const flagValue = (args, name) => {
 /**
  * 起一次中继命令行（`armadra-relay personal <args>`），答子进程。用镜像时 `docker run --rm`
  * 前台跑同一条命令：参数与 RELAY_*_FILE 里的绝对路径按原路径挂进容器（不存在的先建父目录），
- * Linux 上用宿主网络与当前用户，其余平台把 serve 的 `--port` 发布到 127.0.0.1 并让它监听 0.0.0.0。
+ * serve 一律显式给 `--listen`：Linux 上用宿主网络与当前用户、听 127.0.0.1:<端口>；其余平台听 0.0.0.0、
+ * 把 `--port` 发布到 127.0.0.1，`--tls plain` 在那里不支持（直接报错）。
  * 结束子进程时 docker 把信号转给容器。`env` 是子进程的完整环境（缺省 process.env）。
  */
 export function spawnRelayCli(
@@ -142,28 +154,37 @@ export function spawnRelayCli(
       .map((name) => fullEnv[name]),
   ])
     if (typeof value === "string" && isAbsolute(value)) {
-      const directory = existsSync(value) ? value : dirname(value);
-      mkdirSync(directory, { recursive: true });
-      paths.add(directory);
+      // 已有的文件或目录原样挂；还没有的（如 init 要建的数据目录）挂它的上一级。
+      if (existsSync(value)) paths.add(value);
+      else {
+        mkdirSync(dirname(value), { recursive: true });
+        paths.add(dirname(value));
+      }
     }
   const name = `armadra-probe-relay-cli-${randomBytes(4).toString("hex")}`;
   const docker = ["run", "--rm", "--name", name];
+  // serve 一律显式给 --listen：Linux 用宿主网络、只听回环；其余平台在容器里听 0.0.0.0，
+  // 再只发布到宿主的 127.0.0.1。
+  const linux = process.platform === "linux";
+  const port = flagValue(args, "--port");
   let command = [...args];
-  if (process.platform === "linux") {
+  if (args[0] === "serve" && port) {
+    if (!linux && flagValue(args, "--tls") === "plain")
+      throw new Error(
+        "镜像兜底在这个平台上不支持 --tls plain（明文只许回环，容器里要听 0.0.0.0）：设 ARMADRA_RELAY_BIN 或装好 Go 工具链",
+      );
+    const listen = `${linux ? "127.0.0.1" : "0.0.0.0"}:${port}`;
+    command = command.includes("--listen")
+      ? command.map((value, index) =>
+          command[index - 1] === "--listen" ? listen : value,
+        )
+      : [...command, "--listen", listen];
+    if (!linux) docker.push("-p", `127.0.0.1:${port}:${port}`);
+  }
+  if (linux) {
     docker.push("--network", "host");
     if (process.getuid)
       docker.push("--user", `${process.getuid()}:${process.getgid()}`);
-  } else {
-    const port = flagValue(args, "--port");
-    if (args[0] === "serve" && port) {
-      docker.push("-p", `127.0.0.1:${port}:${port}`);
-      const listen = flagValue(args, "--listen");
-      command = listen
-        ? command.map((value, index) =>
-            command[index - 1] === "--listen" ? `0.0.0.0:${port}` : value,
-          )
-        : [...command, "--listen", `0.0.0.0:${port}`];
-    }
   }
   for (const path of paths) docker.push("-v", `${path}:${path}`);
   for (const name of relayEnv) docker.push("-e", name);
