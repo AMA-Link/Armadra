@@ -7,7 +7,8 @@ import { createBlobLoader } from "@/timeline/blobs";
 import { useActivity } from "@/timeline/use-activity";
 import { useTimeline } from "@/timeline/use-timeline";
 import { TimelineView } from "@/timeline/view/TimelineView";
-import { Spinner } from "@/ui/spinner";
+import { Loadable } from "@/loading/Loadable";
+import { SharedSessionBodySkeleton } from "./SharedSessionSkeleton";
 
 /**
  * ACP 会话的只读转录（契约 §43.1、§79）：订阅这条会话的时间线，画同一个
@@ -55,10 +56,9 @@ export function ReadOnlyTranscript({
         {failed ? (
           <p className="text-muted-foreground">{t("sharedSession.failed")}</p>
         ) : (
-          <Spinner
-            aria-label={t("sharedSession.loading")}
-            className="size-4 text-muted-foreground"
-          />
+          <Loadable loading skeleton={<SharedSessionBodySkeleton />}>
+            {null}
+          </Loadable>
         )}
       </div>
     );

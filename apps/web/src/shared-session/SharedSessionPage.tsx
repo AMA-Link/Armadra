@@ -7,7 +7,8 @@ import { agentLabel } from "@/agent/launch";
 import { useT } from "@/app/preferences-store";
 import { Badge } from "@/ui/badge";
 import { Button } from "@/ui/button";
-import { Spinner } from "@/ui/spinner";
+import { Loadable } from "@/loading/Loadable";
+import { SharedSessionBodySkeleton } from "./SharedSessionSkeleton";
 import {
   ReadOnlyTerminal,
   type ReadOnlyTerminalState,
@@ -90,10 +91,9 @@ export default function SharedSessionPage({
                 {t("sharedSession.failed")}
               </p>
             ) : (
-              <Spinner
-                aria-label={t("sharedSession.loading")}
-                className="size-4 text-muted-foreground"
-              />
+              <Loadable loading skeleton={<SharedSessionBodySkeleton />}>
+                {null}
+              </Loadable>
             )}
           </div>
         ) : acp ? (

@@ -3,7 +3,8 @@ import * as React from "react";
 import { LOCAL_SOURCE_ID } from "@/api/source";
 import { hostedRelay } from "@/sources/hosted";
 import { useCanvasStore } from "@/store/canvas-store";
-import { useSessionShare, useSharedSessionView } from "./sessions";
+import { SharedSessionSkeleton } from "./SharedSessionSkeleton";
+import { useSessionShareQuery, useSharedSessionView } from "./sessions";
 
 // 终端那一半带着 xterm：和画布上的终端一样懒加载，不进入口。
 const SharedSessionPage = React.lazy(() => import("./SharedSessionPage"));
@@ -19,7 +20,11 @@ export function SharedSessionHost() {
   const close = useSharedSessionView((state) => state.close);
   const workspace = useCanvasStore((state) => state.workspace);
   const guest = hostedRelay()?.guest() != null;
-  const share = useSessionShare(LOCAL_SOURCE_ID, guest && workspace === null);
+  const shareQuery = useSessionShareQuery(
+    LOCAL_SOURCE_ID,
+    guest && workspace === null,
+  );
+  const share = shareQuery.data;
   const landing = guest && share?.sessionOnly === true;
   const first = landing ? share.sessions[0] : undefined;
 
@@ -28,9 +33,13 @@ export function SharedSessionHost() {
     open({ sourceId: LOCAL_SOURCE_ID, ...first });
   }, [first, open, target]);
 
-  if (target === null) return null;
+  // 访客落地：还没问出是不是会话查看者时，主区是整页骨架而不是空画布底色。
+  if (target === null)
+    return guest && workspace === null && shareQuery.isLoading ? (
+      <SharedSessionSkeleton />
+    ) : null;
   return (
-    <React.Suspense fallback={null}>
+    <React.Suspense fallback={<SharedSessionSkeleton />}>
       <SharedSessionPage
         key={`${target.sourceId}:${target.sessionId}`}
         target={target}
