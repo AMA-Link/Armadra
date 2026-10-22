@@ -11,7 +11,7 @@ import type {
 } from "../canvas/document-types";
 import type { AgentSettings } from "../agent/registry";
 import { loadBoard, saveBoard } from "../canvas/documents";
-import { newNodeDriver } from "../collab/control/agent-driver";
+import { newNodeView } from "../collab/control/agent-driver";
 import { newNode } from "../collab/control/board";
 import { recordNodeCreator, requestTrigger } from "../identity/creators";
 import { ensureWorktree } from "../collab/control/worktree";
@@ -208,7 +208,7 @@ function build(
     if (role.permissionMode != null) agent.permissionMode = role.permissionMode;
     if (role.model != null) agent.model = role.model;
     // 与页面新建、`canvas spawn` 同一条默认驱动规则。
-    agent.driver = newNodeDriver(settings, role.agentId);
+    Object.assign(agent, newNodeView(settings, role.agentId));
     const cwd = role.worktree == null ? undefined : cwds.get(role.worktree);
     const node: CanvasNode = {
       ...newNode(
