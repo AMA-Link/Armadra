@@ -232,3 +232,122 @@ describe("已信任设备背书", () => {
     phone.close();
   });
 });
+
+describe("团队成员背书（契约 §60.4）", () => {
+  const team = (role: string, extra: Record<string, unknown> = {}) => ({
+    team: { teamId: "team_1", role },
+    role: "editor",
+    ...extra,
+  });
+  const asTeam = (sub: string, role: string, extra = {}) =>
+    signAssertion({
+      aud: sourceId,
+      nowMs: Date.now(),
+      sub,
+      extra: team(role, extra),
+    });
+
+  beforeEach(() => {
+    world.core.database
+      .prepare("UPDATE cloud_registrations SET mode = 'saas'")
+      .run();
+  });
+
+  /** 一台配对过的设备登录后拿到的访问令牌。 */
+  async function trustedSession(seed: number, sub: string, role: string) {
+    const client = await connect(seed, e2ePairing()!.issue().secret);
+    const logged = await login(client, asTeam(sub, role));
+    expect(logged.status, logged.body.toString()).toBe(200);
+    const token = logged.json<{
+      session: { native: { accessToken: string } };
+    }>().session.native.accessToken;
+    return { client, token };
+  }
+
+  /** 新设备登录停在待确认；答 pendingId 与屏幕上的校验码。 */
+  async function pendingDevice(seed: number, sub: string, role: string) {
+    const client = await connect(seed);
+    const pending = await login(client, asTeam(sub, role));
+    expect(pending.json()).toMatchObject({ code: "device_pending" });
+    return {
+      client,
+      pendingId: pending.json<{ details: { pendingId: string } }>().details
+        .pendingId,
+      sas: client.session.sas,
+    };
+  }
+
+  function approve(
+    by: { client: E2eTestClient; token: string },
+    target: { pendingId: string; sas: string },
+  ) {
+    return by.client.request({
+      method: "POST",
+      path: "/api/devices/approve",
+      headers: {
+        authorization: `Bearer ${by.token}`,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({ pendingId: target.pendingId, sas: target.sas }),
+    });
+  }
+
+  it("团队 admin 在自己已信任的设备上背书别的成员的新设备", async () => {
+    const admin = await trustedSession(51, "acct:admin", "admin");
+    const adminDevice = e2eDevices()!.list()[0]!.deviceId;
+    const target = await pendingDevice(52, "acct:member", "member");
+    const answer = await approve(admin, target);
+    expect(answer.status, answer.body.toString()).toBe(200);
+    expect(
+      answer.json<{ device: { approvedBy: string } }>().device.approvedBy,
+    ).toBe(`endorse:${adminDevice}`);
+    admin.client.close();
+    target.client.close();
+  });
+
+  it("成员只能背书自己的新设备，别人的 403", async () => {
+    const member = await trustedSession(53, "acct:m1", "member");
+    const other = await pendingDevice(54, "acct:m2", "member");
+    const refused = await approve(member, other);
+    expect(refused.status).toBe(403);
+    const mine = await pendingDevice(55, "acct:m1", "member");
+    const ok = await approve(member, mine);
+    expect(ok.status, ok.body.toString()).toBe(200);
+    member.client.close();
+    other.client.close();
+    mine.client.close();
+  });
+
+  it("guest 不能背书", async () => {
+    const guest = await trustedSession(56, "acct:g", "guest");
+    const target = await pendingDevice(57, "acct:g2", "member");
+    expect((await approve(guest, target)).status).toBe(403);
+    guest.client.close();
+    target.client.close();
+  });
+
+  it("目标不在同一个团队：admin 也是 403", async () => {
+    const admin = await trustedSession(58, "acct:admin2", "admin");
+    const client = await connect(59);
+    const pending = await login(
+      client,
+      signAssertion({
+        aud: sourceId,
+        nowMs: Date.now(),
+        sub: "acct:other",
+        extra: {
+          team: { teamId: "team_2", role: "member" },
+          role: "viewer",
+        },
+      }),
+    );
+    const target = {
+      pendingId: pending.json<{ details: { pendingId: string } }>().details
+        .pendingId,
+      sas: client.session.sas,
+    };
+    expect((await approve(admin, target)).status).toBe(403);
+    admin.client.close();
+    client.close();
+  });
+});

@@ -3906,7 +3906,7 @@ mod 在 `session.start` 用 `$.command.register` 注册七条命令（都是 `im
 
 - 断言（协议包 0.3.0 的 `assertionClaimsSchema`）可带 `role`（四档之一）、`scp`（`ws:<id>`、`sess:<id>`、`ro`）、`org`、`team`。`scp` 缺省或为空且不带 `role` 时行为与 §31 相同（邀请照旧兑换）。
 - **带 `role`**：这个人经本签发方来的授予（`origin = cloud:…`）整份换成声明的范围——有 `sess:` 时是那些会话（工作空间取第一个 `ws:`，没有就不授予）、否则有 `ws:` 时是那些工作空间、都没有是整台；`ro` 压成 viewer。不在声明里的撤掉；同一目标上 owner 手工给的本地授予优先、不被覆盖；本地授予一律不动。有变动审计 `share.grant.sync`。`role` 存在时 `cloud.orgDefaultRole` 不再生效。
-- **SaaS 准入**（协议 1.4 起按 `team`，原 `org` + `role` 的准入已删除，SaaS 没有发过 `org`）：登记行 `mode = saas`、断言带 `team`（`{ teamId, role }`）与 `role` 时，没有映射也不需要邀请令牌，直接建成员与映射（`created: true`）；个人中转登记不变（仍 `cloud_account_unlinked`）。缺 `team` 或缺 `role`（含只带 `org`）走邀请路径。`team.role = billing` 只管计划与账单：不凭它准入（无邀请 `cloud_account_unlinked`），已有映射的人登录时他经本签发方的云授予整份清掉。`guest` 照常准入，授予只有断言 `role` / `scp` 声明的那些——主机角色由控制面合成，core 不再按团队角色另行映射。每次登录把 `team` 落到 `cloud_team_roles`（迁移 0053），断言不带 `team` 时清掉。
+- **SaaS 准入**（协议 1.4 起按 `team`，原 `org` + `role` 的准入已删除，SaaS 没有发过 `org`）：登记行 `mode = saas`、断言带 `team`（`{ teamId, role }`）与 `role` 时，没有映射也不需要邀请令牌，直接建成员与映射（`created: true`）；个人中转登记不变（仍 `cloud_account_unlinked`）。缺 `team` 或缺 `role`（含只带 `org`）走邀请路径。`team.role = billing` 只管计划与账单：不凭它准入（无邀请 `cloud_account_unlinked`），已有映射的人登录时他经本签发方的云授予整份清掉。`guest` 照常准入，授予只有断言 `role` / `scp` 声明的那些——主机角色由控制面合成，core 不再按团队角色另行映射。每次登录把 `team` 落到 `cloud_team_roles`（§60.4），断言不带 `team` 时清掉。
 - **带邀请兑换**：断言声明了 `ws:` / `sess:` 时，邀请的终点必须在声明里（整台邀请对上 `ws:` 也不行），否则 `401 invitation_invalid`、不建人；`ro` 或 `sess:` 把兑换出的授予压成 viewer。
 - **租约**：经云登录兑换或同步的授予 `expires_at_ms = 断言 exp + 30 天`（`GRANT_LEASE_MS`），每次登录续；即使此人之后改走局域网直连，租约到期授予也失效。
 - **审计** `cloud.login` 的 `detail` 追加 `jti`，以及有就写的 `team`（teamId）、`role`、`scp`（1.4 起不再写 `org`）。
@@ -3917,6 +3917,16 @@ mod 在 `session.start` 用 `$.command.register` 注册七条命令（都是 `im
 - 本机邀请按范围签（`targetHost` / `targetWorkspaceId` / `targetSessionId`）。远程服务报能力 `links.scope`（记着的能力没有就重问一次 `platform.info`）时，`links.create` 带 `scope { workspaceId }`（与协议包 `scopeClaims` 同一语义；整台不带）。不带 `readOnly`，会话分享也只交它所在的工作空间、不交 `sessionId`——远程服务把带 `sessionId` 的范围一律当只读、签 `ro` 的中继令牌（#308）；只读与「只看这一条会话」都由本机邀请与路由门判定。不报能力时不发 `scope`，范围照样由 core 判定，只是访客的断言不带 `scp`。
 - **`ShareLink`**（`shareLinks`、`shareLinkCreate`、`shareLinkUpdate` 的出参）多三个可选字段：`target`、`sessionId`（会话分享）、`readOnly`（只读才有）。本机存着的那份优先，其次远程服务记着的 `scope`，都没有不写（当作工作空间）。整条链接在 SecretStore 里的条目同样记下这三项。
 - **`sources.shareLinkRevoke`**：撤链接、作废邀请之后，连同经它进来的访客一起停用——经这个签发方、映射凭据 `subject` 以 `guest:<linkId>:` 开头的主体停用并撤掉活会话（尽力，失败只记日志；审计 `identity.principal.disable.link`）。
+
+### 60.4 追加：团队成员的设备背书（迁移 0053 `cloud_team_roles`，`devices.approve` 的放宽）
+
+- **`cloud_team_roles`**：`(principal_id, provider)` 一行，记 `team_id`、`role`（`owner|admin|member|billing|guest`）与更新时刻；`cloud/login` 每次整行覆盖。无新 procedure，所以协议 minor 不变（minor 与 procedure 的 `since` 同步）。
+- **`devices.approve` 对非 owner 放行**（§80 的「已信任设备背书」，之前只有 owner 会话）：同时满足才放行，其余 `403 forbidden`——
+  1. 请求经端到端通道，且通道的设备钥对这个人已是 `trusted`（会话本身不够）；
+  2. 这个人有团队角色；
+  3. 待批设备属于同一个团队的成员；团队 `owner` / `admin` 可批任何这样的设备，`member` 只能批自己的；`guest`、`billing` 不能背书。
+     校验码照样要对上；记成 `approved_by = endorse:<背书设备 id>`。
+- **缺口**：团队设置「新设备背书人」（只 owner / owner + admin / 允许成员自批）目前不在断言里，协议 1.4 没有对应声明，所以 core 固定按「主机 owner + 团队 admin，成员自批开」。要收窄或关闭需要协议加一个可省声明（后续协议改动）。
 
 ## 61. 服务名称：主机名称、源表与远程服务的缺省名与改名
 
@@ -4445,7 +4455,7 @@ owner：本机作为客户端连别的电脑（`sources.session`，§33）时，
 新设备不必都等主人核对校验码（§77.1）。三条路之外，8 位配对码只用于局域网 Gateway（§24、§73），不用于中继路径。
 
 - **扫码配对**：本机（或已信任设备经它的通道）签一枚 16 字节、5 分钟、一次性的配对秘密（`e2e.pairingSecret`，§80.1），连同身份公钥做成二维码。新设备扫了就钉住这把公钥（不走 TOFU），握手 m3 带 `proof = HMAC(HKDF(秘密), 转录)`；登录时 core 找一枚对得上的活秘密并取走 → 直接 `trusted`，`approved_by = pairing`。秘密只在 core 内存里，最多同时 16 枚。
-- **已信任设备背书**：主人在已信任的设备上（经它自己的通道、owner 会话）对另一台待确认设备 `devices.approve`，校验码照样要对上，记成 `approved_by = endorse:<那台设备的 id>`。`sources.list` 的每一行多 `identityPub`（本机经通道连过那台时钉住的身份公钥，base64url；没有是空串），别的设备经本机读它就不必对那台电脑做 TOFU。
+- **已信任设备背书**：主人在已信任的设备上（经它自己的通道、owner 会话）对另一台待确认设备 `devices.approve`，校验码照样要对上，记成 `approved_by = endorse:<那台设备的 id>`；SaaS 团队的 owner / admin 与成员本人（自己的设备）也可以背书，条件见 §60.4。`sources.list` 的每一行多 `identityPub`（本机经通道连过那台时钉住的身份公钥，base64url；没有是空串），别的设备经本机读它就不必对那台电脑做 TOFU。
 - **访客链接**：分享链接片段多第三段 `<secret>.<邀请令牌>.<身份指纹前 16 位>`（`shareLinks.create` 答的 `url`）。访客的页面与 App 按它核对握手里 core 的身份（对不上即 `identity_changed`，不 TOFU）；第一次加入时 m3 的 `proof` 用邀请令牌（UTF-8 字节）作秘密，`cloud/login` 兑换邀请之后对得上 → 绑到访客主体，`approved_by = link:<linkId>`。之后访客每次用同一把设备钥，中继伪造访客断言换不到会话；清掉站点数据 = 丢钥 = 要再点一次链接（占一个名额）。
 - **名额**：`share_links.max_devices`（迁移 0049，缺省等于 `maxUses`，`null` 不限），按 `approved_by = link:<linkId>` 的已信任与待确认行计；用完 `403 device_limit`。旧链接（没有记录）不限。
 - **撤链接**：`shareLinks.revoke`（以及列表时发现远程服务那边已撤销）把经它绑定的设备钥全部 `revoked`、吊销会话、断开通道。

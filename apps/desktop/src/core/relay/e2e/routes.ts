@@ -17,6 +17,9 @@ import { CoreFailure, fail, failureResult } from "../../http/errors";
 import type { CoreRequest, HandlerResult } from "../../http/router";
 import { type DomainHandlers, registerProcedures } from "../../http/rpc";
 import type { CoreServer } from "../../http/server";
+import { isOwner } from "../../identity/authorize";
+import { requestIdentity } from "../../identity/gate";
+import type { TeamRole } from "../../identity/cloud/store";
 import { E2E_IDENTITY_PATH, E2E_WAIT_PATH } from "../../identity/transport";
 import type { DeviceKey } from "./device-key";
 import { DeviceError, type DeviceRegistry, type DeviceView } from "./devices";
@@ -77,6 +80,10 @@ export interface E2eRouteDeps {
     sourceId: string,
     pendingId: string,
   ) => Promise<"pending" | "trusted" | "rejected" | "revoked">;
+  /** 一个 principal 经 SaaS 准入时落下的团队角色（迁移 0053）；设备背书按它判。 */
+  readonly teamRole?: (
+    principalId: string,
+  ) => { teamId: string; role: TeamRole } | undefined;
   /** 这台 core 的 `sourceId` 与身份公钥（源钥）。 */
   readonly identity: () => Promise<{ sourceId: string; publicKey: Uint8Array }>;
   readonly deviceKey: DeviceKey;
@@ -112,6 +119,42 @@ function text(value: unknown, name: string, max = 128): string {
   return value;
 }
 
+/**
+ * 非 owner 的 `devices.approve`（契约 §60.4、§80）：SaaS 团队里已信任设备的持有人背书新设备。
+ * 条件全部成立才放行，任何一条不成立答 `forbidden`：
+ *
+ * 1. 经端到端通道来，且这把设备钥对这个人已信任（不是只有会话）；
+ * 2. 有团队角色，且不是 billing / guest；
+ * 3. 待批的设备属于同一个团队的成员，并且——团队 owner / admin 可以批任何成员的，
+ *    member 只能批自己的。
+ */
+function authorizeEndorsement(
+  deps: E2eRouteDeps,
+  principalId: string,
+  request: CoreRequest | undefined,
+  pendingId: string,
+): string {
+  const refuse = () => fail("forbidden", "没有权限背书这台设备");
+  const peer =
+    request === undefined ? undefined : channelPeerOf(request.raw.socket);
+  if (peer === undefined || !deps.devices.trusted(peer.deviceId, principalId))
+    throw refuse();
+  const team = deps.teamRole?.(principalId);
+  if (team === undefined) throw refuse();
+  const target = deps.devices.store.byRequest(pendingId);
+  if (target === undefined || target.status !== "pending")
+    throw fail("not_found", "没有这条待确认记录");
+  if (team.role === "member") {
+    if (target.principalId !== principalId) throw refuse();
+  } else if (team.role === "owner" || team.role === "admin") {
+    if (deps.teamRole?.(target.principalId)?.teamId !== team.teamId)
+      throw refuse();
+  } else {
+    throw refuse();
+  }
+  return peer.deviceId;
+}
+
 /** 旧路径与 procedure 共用的那一份；拒绝抛 {@link CoreFailure}。 */
 export function e2eOperations(deps: E2eRouteDeps) {
   const { devices } = deps;
@@ -130,10 +173,13 @@ export function e2eOperations(deps: E2eRouteDeps) {
       const pendingId = text(input.pendingId, "pendingId", 64);
       const sas = text(input.sas, "sas", 16);
       // 已信任设备经自己的通道代批：记成背书（契约 §80）。
+      const subject = requestIdentity()?.subject;
       const endorser =
-        request === undefined
-          ? undefined
-          : channelPeerOf(request.raw.socket)?.deviceId;
+        subject !== undefined && !isOwner(subject)
+          ? authorizeEndorsement(deps, subject.principalId, request, pendingId)
+          : request === undefined
+            ? undefined
+            : channelPeerOf(request.raw.socket)?.deviceId;
       try {
         const row = devices.approve(
           pendingId,

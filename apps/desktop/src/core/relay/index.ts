@@ -18,6 +18,7 @@ import { eventStream } from "../events";
 import { identityInstanceId } from "../identity";
 import { type CloudService, IDLE_TUNNEL, cloudDomain } from "../identity/cloud";
 import type { CloudRelay } from "../identity/cloud";
+import { teamRoleOf } from "../identity/cloud/store";
 import { IdentityService } from "../identity/service";
 import { IdentityStore } from "../identity/store";
 import { WsTickets } from "../identity/transport";
@@ -204,6 +205,7 @@ export function installRelay(
     ),
     pairing,
     issuers: () => cloud.registrations().map((row) => row.issuer),
+    teamRole: (principalId) => teamRoleOf(context.db.database, principalId),
     waitSource: async (sourceId, pendingId) =>
       (await outboundChannels()?.wait(sourceId, pendingId)) ?? "pending",
   });
