@@ -206,6 +206,23 @@ export const ACP_PERMISSION: AcpPermissionView = {
   ],
 };
 
+/** 长命令：等宽、最多 3 行、点开展开；选项里 Agent 把「始终」放在最前。 */
+export const ACP_PERMISSION_LONG: AcpPermissionView = {
+  pendingId: "p-long",
+  toolCall: {
+    toolCallId: "5",
+    title:
+      "git -C /repo/app push --force-with-lease origin feat/approval-ui && rm -rf node_modules/.cache/vite/deps_temp_1a2b3c4d5e6f7a8b9c0d && pnpm --filter @armadra/web build",
+    kind: "execute",
+  },
+  options: [
+    { optionId: "always", name: "Always allow git", kind: "allow_always" },
+    { optionId: "allow", name: "Allow", kind: "allow_once" },
+    { optionId: "reject", name: "Reject", kind: "reject_once" },
+    { optionId: "never", name: "Never", kind: "reject_always" },
+  ],
+};
+
 export const ACP_MODES: AcpModeState = {
   currentModeId: "default",
   availableModes: [

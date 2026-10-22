@@ -9,10 +9,15 @@ import type {
 
 import { useT } from "@/app/preferences-store";
 import { useAgentStatusStore } from "@/agent/status-store";
-import { cn } from "@/lib/cn";
-import { Badge } from "@/ui/badge";
+import {
+  APPROVAL_BUTTON,
+  ApprovalActions,
+  ApprovalShell,
+  ApprovalText,
+  ApprovalTitle,
+  AwaitingDriver,
+} from "@/approval/ApprovalShell";
 import { Button } from "@/ui/button";
-import { Card } from "@/ui/card";
 import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/ui/field";
 import { Input } from "@/ui/input";
 import {
@@ -172,7 +177,11 @@ function FormField({
           value={typeof value === "string" && value !== "" ? value : undefined}
           onValueChange={onChange}
         >
-          <SelectTrigger id={id} size="sm" className="w-full text-[13px]">
+          <SelectTrigger
+            id={id}
+            size="sm"
+            className="w-full text-[13px] pointer-coarse:h-10"
+          >
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -208,7 +217,9 @@ function FormField({
         type={type}
         value={typeof value === "string" ? value : ""}
         required={required}
-        className="h-8 text-[13px] md:text-[13px]"
+        // 手机上沿用输入框默认的 16px：小于 16px，iOS 聚焦时会放大整页。
+        className="h-8 md:text-[13px] pointer-coarse:h-10"
+        aria-invalid={fieldValid(field, value) ? undefined : true}
         {...(numeric
           ? {
               inputMode: field.type === "integer" ? "numeric" : "decimal",
@@ -235,13 +246,18 @@ export function ElicitationCard({
   view,
   canAnswer,
   className,
+  onAnswered,
 }: {
   view: AcpElicitationView;
   canAnswer: boolean;
   className?: string;
+  /** 答完之后（焦点还在卡片里时）调用：把焦点交还输入框。 */
+  onAnswered?: () => void;
 }) {
   const t = useT();
   const idBase = React.useId();
+  const titleId = `${idBase}-title`;
+  const cardRef = React.useRef<HTMLDivElement>(null);
   const { elicitation } = view;
   const form =
     elicitation.mode === "form" ? elicitation.requestedSchema : undefined;
@@ -254,31 +270,33 @@ export function ElicitationCard({
 
   const send = async (action: AcpElicitationAction) => {
     if (busy) return;
+    const hadFocus = cardRef.current?.contains(document.activeElement) ?? false;
     setBusy(true);
     const answer: AcpElicitationAnswer =
       action === "accept" && form && content ? { action, content } : { action };
     const ok = await answerElicitation(view, answer);
     setBusy(false);
     if (!ok) toast.error(t("acp.elicitation.failed"));
+    else if (hadFocus) onAnswered?.();
   };
 
   const required = new Set(form?.required ?? []);
   const accept = elicitation.mode === "url" ? url !== null : form !== undefined;
 
   return (
-    <Card
-      data-slot="acp-elicitation"
-      data-pending-id={view.pendingId}
-      className={cn(
-        "gap-2 border-l-2 border-l-[var(--warn)] px-3 py-2",
-        className,
-      )}
+    <ApprovalShell
+      ref={cardRef}
+      slot="acp-elicitation"
+      pendingId={view.pendingId}
+      titleId={titleId}
+      {...(className === undefined ? {} : { className })}
     >
-      <span className="text-[13px] whitespace-pre-wrap">
-        {elicitation.message}
-      </span>
+      <ApprovalTitle id={titleId}>
+        <ApprovalText>{elicitation.message}</ApprovalText>
+      </ApprovalTitle>
       {canAnswer ? (
         <form
+          aria-labelledby={titleId}
           className="flex flex-col gap-2"
           onSubmit={(event) => {
             event.preventDefault();
@@ -307,46 +325,58 @@ export function ElicitationCard({
               href={url}
               target="_blank"
               rel="noopener noreferrer"
+              title={url}
               className="truncate text-xs text-[var(--brand-text)] underline underline-offset-4"
             >
               {url}
             </a>
           )}
-          <div className="flex flex-wrap gap-2">
-            {accept && (
-              <Button type="submit" size="sm" disabled={busy || !canAccept}>
-                {t(
-                  elicitation.mode === "url"
-                    ? "acp.elicitation.continue"
-                    : "acp.elicitation.submit",
-                )}
-              </Button>
-            )}
-            <Button
-              type="button"
-              size="sm"
-              variant="outline"
-              disabled={busy}
-              onClick={() => void send("decline")}
-            >
-              {t("acp.elicitation.decline")}
-            </Button>
-            <Button
-              type="button"
-              size="sm"
-              variant="ghost"
-              disabled={busy}
-              onClick={() => void send("cancel")}
-            >
-              {t("acp.elicitation.cancel")}
-            </Button>
-          </div>
+          <ApprovalActions
+            leading={
+              accept ? (
+                <Button
+                  type="submit"
+                  size="sm"
+                  className={APPROVAL_BUTTON}
+                  disabled={busy || !canAccept}
+                >
+                  {t(
+                    elicitation.mode === "url"
+                      ? "acp.elicitation.continue"
+                      : "acp.elicitation.submit",
+                  )}
+                </Button>
+              ) : null
+            }
+            trailing={
+              <>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  className={APPROVAL_BUTTON}
+                  disabled={busy}
+                  onClick={() => void send("decline")}
+                >
+                  {t("acp.elicitation.decline")}
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="ghost"
+                  className={APPROVAL_BUTTON}
+                  disabled={busy}
+                  onClick={() => void send("cancel")}
+                >
+                  {t("acp.elicitation.cancel")}
+                </Button>
+              </>
+            }
+          />
         </form>
       ) : (
-        <Badge variant="outline" className="self-start">
-          {t("acp.permission.awaitingDriver")}
-        </Badge>
+        <AwaitingDriver />
       )}
-    </Card>
+    </ApprovalShell>
   );
 }

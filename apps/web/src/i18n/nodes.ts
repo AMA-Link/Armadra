@@ -168,7 +168,7 @@ const en: Record<keyof typeof zh, string> = {
   "node.allow": "Allow",
   "node.answer": "Answer",
   "node.awaitingDriver": "Waiting for a driver",
-  "node.deny": "Deny",
+  "node.deny": "Reject",
   "node.linkHandle": "Link",
 
   "sticky.placeholder": "Write something…",
