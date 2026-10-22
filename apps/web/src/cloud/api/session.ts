@@ -82,7 +82,7 @@ async function codeOf(response: Response): Promise<string | undefined> {
 
 /**
  * 给 `OpenAPILink` 的 `fetch`：
- * - 一律 `credentials: "include"`，从不带 `Authorization`（同一请求不同时带 Cookie 与 Bearer）；
+ * - 一律 `credentials: "include"`、`redirect: "error"`，从不带 `Authorization`（同一请求不同时带 Cookie 与 Bearer）；
  * - 非 GET 带 `X-Armadra-CSRF`；
  * - 登录类与 `me.get` 的成功答案里的 `csrfToken` 记进 `csrf`；
  * - 非 `/v1/auth/*` 的 401：`session_revoked` 直接失效；其余先 `refresh` 一次（并发共用一次），
@@ -108,6 +108,7 @@ export function createCloudFetch(options: CloudFetchOptions): typeof fetch {
     return options.fetch(new Request(request, { headers }), {
       ...init,
       credentials: "include",
+      redirect: "error",
     });
   };
 

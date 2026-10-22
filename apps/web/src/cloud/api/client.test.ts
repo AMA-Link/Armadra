@@ -76,6 +76,23 @@ describe("控制台客户端", () => {
     });
   });
 
+  it("GET 的嵌套入参按括号编码：space[kind]=team&space[teamId]=t1", async () => {
+    const { seen, fetcher } = origin({
+      "GET /v1/sources": () => json({ sources: [], nextCursor: null }),
+    });
+    const requests: string[] = [];
+    const spy = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      requests.push((input as Request).url);
+      return fetcher(input, init);
+    }) as unknown as typeof fetch;
+    const api = createCloudApi({ origin: "https://app.example", fetch: spy });
+    await api.client.sources.list({ space: { kind: "team", teamId: "t1" } });
+    expect(seen[0]!.path).toBe("/v1/sources");
+    expect(decodeURIComponent(new URL(requests[0]!).search)).toBe(
+      "?space[kind]=team&space[teamId]=t1",
+    );
+  });
+
   it("登录类答案的 csrfToken 也记下；登出后清掉", async () => {
     const { seen, fetcher } = origin({
       "POST /v1/auth/refresh": () => json({ ...SESSION, csrfToken: "c2" }),

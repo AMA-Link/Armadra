@@ -30,10 +30,10 @@ export const spacesQuery = (api: CloudApi) => ({
 });
 
 /** 外壳要的会话：账号（`me.get`）加空间（`me.spaces`）。 */
-export function useConsoleSession() {
+export function useConsoleSession({ enabled = true } = {}) {
   const api = useCloudApi();
-  const me = useQuery(meQuery(api));
-  const spaces = useQuery(spacesQuery(api));
+  const me = useQuery({ ...meQuery(api), enabled });
+  const spaces = useQuery({ ...spacesQuery(api), enabled });
   const operator = useOperatorActive();
 
   const error = me.error ?? spaces.error;

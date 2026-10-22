@@ -101,6 +101,7 @@ export function createCloudApi(options: CreateCloudApiOptions): CloudApi {
     createCloudFetch({
       ...common(consoleCsrf),
       refresh: async () => {
+        // TODO(protocol cookie-session): refreshToken 改可选后发 `{}`，并带上自己的 scope。
         await plain.auth.refresh({ refreshToken: "" });
         return true;
       },
@@ -131,6 +132,7 @@ export function createCloudApi(options: CreateCloudApiOptions): CloudApi {
     },
     async signOut() {
       if (opsCsrf.get() !== undefined)
+        // TODO(protocol cookie-session): logout 加 scope 后，运营与控制台各传自己的 scope。
         await ops.auth.logout({}).catch(() => undefined);
       await client.auth.logout({}).catch(() => undefined);
       consoleCsrf.set(undefined);

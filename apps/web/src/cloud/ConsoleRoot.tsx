@@ -148,8 +148,10 @@ function useCloudApiSource(given?: CloudApi): CloudApi | null {
 function ConsoleData() {
   const api = useCloudApi();
   const client = useQueryClient();
-  const { session, error, loading, retry } = useConsoleSession();
   const [expired, setExpired] = React.useState(false);
+  const { session, error, loading, retry } = useConsoleSession({
+    enabled: !expired,
+  });
 
   // 会话没了且续不上：清掉所有云端缓存，整页「登录已过期」。
   React.useEffect(
