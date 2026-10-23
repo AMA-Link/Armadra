@@ -693,7 +693,7 @@ export class SourcesService {
         if (logged.share !== undefined) {
           this.store.setShare(
             row.sourceId,
-            shareColumns(await this.withTeamName(logged.share)),
+            shareColumns(await this.cloudSignIn.withTeamName(logged.share)),
           );
         }
         return logged;
@@ -724,36 +724,6 @@ export class SourcesService {
       token.accessToken,
       sourceId,
     );
-  }
-
-  /**
-   * 分享方只报团队标识（断言里没有名字，契约 §86）：本机登录着的 Armadra 云里有这个
-   * 团队就取它的名字；取不到不拦挂载，名字留空。
-   */
-  private async withTeamName(
-    share: CloudLoginShare | undefined,
-  ): Promise<CloudLoginShare | undefined> {
-    if (share === undefined || share.teamId === "" || share.teamName !== "") {
-      return share;
-    }
-    for (const row of this.store.remotes()) {
-      if (row.kind !== "saas") continue;
-      try {
-        const token = await this.remoteAccess(row);
-        const spaces = await this.remote.spaces(
-          this.endpoint(row),
-          token.accessToken,
-        );
-        for (const space of spaces) {
-          if (space.kind === "team" && space.teamId === share.teamId) {
-            return { ...share, teamName: space.name };
-          }
-        }
-      } catch {
-        /* 这个云取不到就试下一个。 */
-      }
-    }
-    return share;
   }
 
   /** 中继的路配上它的远程服务；远程服务删掉了的路不可走。 */
@@ -1450,7 +1420,7 @@ export class SourcesService {
       issuer,
       principalHint: credentials.principalHint,
       // 分享方没报（旧 core）时是 null：仍记成 shared，分享信息留空。
-      share: (await this.withTeamName(credentials.share)) ?? null,
+      share: (await this.cloudSignIn.withTeamName(credentials.share)) ?? null,
     });
     this.options.log.info("mounted a source by share link", {
       sourceId: accepted.sourceId,
