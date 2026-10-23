@@ -1,17 +1,24 @@
 import * as React from "react";
+
+import { formatDuration } from "@/lib/format";
 import { cn } from "@/lib/cn";
 import { Badge } from "@/ui/badge";
+import { Spinner } from "@/ui/spinner";
+import { TextSwap } from "@/ui/text-swap";
 
 /**
- * 状态胶囊（§3.4，形状按 §24.3-3 重做）。节点头部、会话行、子代理卡片共用。
+ * 状态组件族（设计系统 §11.1）：同一语义（运行中 / 需要你 / 失败 / 完成 / 排队 /
+ * 暂停 / 未读 / 空闲）只有三种形态，共享下面的 `TONE_COLOR / STATUS_PILL_TEXT /
+ * STATUS_PILL_PULSES`：
  *
- * 它是 shadcn `Badge` 的一层薄封装：11px / medium / 圆角 6 / 前置 6px 圆点，
- * 不再强制全大写也不加字距——文案由调用方经 i18n 给出，中文加字距会散架。
- * 圆点与衬底按 tone 从 `--status-*` 取，文字从对应的 `-text` token 取
- * （`STATUS_PILL_TEXT`），两套主题自动跟随。
+ * - `StatusDot`：只有一个圆点（6 / 8），用在前导点、角标、窄节点；文字进无障碍名。
+ * - `StatusPill`：`Badge` 的薄封装（sm 18 / md 20）+ 前置圆点 + 文字，用在表格状态列、
+ *   节点头（宽节点）、通知行。
+ * - `StatusLine`：一行 `阶段 · 细节 · 计时`，用在时间线活动行、抽屉成员行、活动卡。
  *
- * `pulse` 的呼吸动画在 `prefers-reduced-motion` 下会被 tokens.css 压掉，
- * 因此状态永远同时由“文字 + 颜色”表达，不靠动画传递信息。
+ * 颜色与脉冲只在这里映射一次，功能代码不再自己写 TONE 表。文案由调用方经 i18n
+ * 给出。呼吸动画在 `prefers-reduced-motion` 下静止，状态永远同时由“文字 + 颜色”
+ * 表达，不靠动画传递信息。
  */
 export type StatusTone =
   | "working"
@@ -33,7 +40,7 @@ export const TONE_COLOR: Record<StatusTone, string> = {
   paused: "var(--status-paused)",
   unread: "var(--status-unread)",
   idle: "var(--status-idle)",
-  done: "var(--success)",
+  done: "var(--status-done)",
 };
 
 /**
@@ -82,9 +89,12 @@ export const STATUS_PILL_PULSES: Record<StatusTone, boolean> = {
   done: false,
 };
 
-export interface StatusPillProps extends React.ComponentProps<"span"> {
+export interface StatusPillProps
+  extends Omit<React.ComponentProps<"span">, "children"> {
   tone: StatusTone;
   label: React.ReactNode;
+  /** 18（`sm`，默认）或 20（`md`）；与 `Badge` 同高。 */
+  size?: "sm" | "md";
   /** 圆点是否呼吸。不传时按 `STATUS_PILL_PULSES` 取默认。 */
   pulse?: boolean;
   /** 尾随内容，例如队列状态的 ▶。 */
@@ -94,6 +104,7 @@ export interface StatusPillProps extends React.ComponentProps<"span"> {
 export function StatusPill({
   tone,
   label,
+  size = "sm",
   pulse,
   trailing,
   className,
@@ -105,6 +116,7 @@ export function StatusPill({
   return (
     <Badge
       variant="secondary"
+      size={size}
       data-slot="status-pill"
       data-tone={tone}
       style={{
@@ -112,11 +124,7 @@ export function StatusPill({
         backgroundColor: `color-mix(in srgb, ${color} ${STATUS_PILL_TINT}%, transparent)`,
         ...style,
       }}
-      className={cn(
-        "h-[18px] gap-1 rounded-[var(--r-control)] px-1.5 py-0",
-        "text-[length:var(--text-caption)] leading-[16px] font-medium",
-        className,
-      )}
+      className={cn("gap-1 py-0", size === "sm" ? "px-1.5" : "px-2", className)}
       {...props}
     >
       <span
@@ -124,7 +132,7 @@ export function StatusPill({
         aria-hidden
         style={{ backgroundColor: color }}
         className={cn(
-          "size-[6px] shrink-0 rounded-full",
+          "size-[6px] shrink-0 rounded-pill",
           shouldPulse && "anim-dot-pulse",
         )}
       />
@@ -134,34 +142,145 @@ export function StatusPill({
   );
 }
 
+export interface StatusDotProps extends React.ComponentProps<"span"> {
+  tone: StatusTone;
+  /** 点径：6（行内 / 角标）或 8（节点头 / 会话行前导）。默认 8。 */
+  size?: 6 | 8;
+  /** 无障碍名（状态文案）。不传就当装饰（旁边已有文字）。 */
+  label?: string;
+  pulse?: boolean;
+  /** 自定义颜色（如成员色），盖过 tone。 */
+  color?: string;
+  /** 贴在图标右上角，带 2px `--panel` 外环；父元素要 `relative`。 */
+  corner?: boolean;
+}
+
 /**
- * 只有一个圆点的状态（节点头部用）。文字进悬停提示与无障碍名；空闲是常态，
- * 不画。
+ * 只有一个圆点的状态。`idle` 画成暗点（`--faint`）；节点头把空闲当常态不传。
+ * 文字进 `aria-label`，不用原生 `title` 解释。
  */
 export function StatusDot({
   tone,
+  size = 8,
   label,
   pulse,
+  color,
+  corner = false,
   className,
   style,
   ...props
-}: Omit<StatusPillProps, "trailing" | "label"> & { label: string }) {
-  if (tone === "idle") return null;
+}: StatusDotProps) {
   const shouldPulse = pulse ?? STATUS_PILL_PULSES[tone];
+  const named = label !== undefined;
   return (
     <span
-      role="img"
-      aria-label={label}
-      title={label}
+      {...(named
+        ? { role: "img", "aria-label": label }
+        : { "aria-hidden": true })}
       data-slot="status-dot"
       data-tone={tone}
-      style={{ backgroundColor: TONE_COLOR[tone], ...style }}
+      data-size={size}
+      style={{ backgroundColor: color ?? TONE_COLOR[tone], ...style }}
       className={cn(
-        "size-2 shrink-0 rounded-full",
+        "shrink-0 rounded-pill",
+        size === 6 ? "size-[6px]" : "size-2",
+        corner &&
+          "absolute top-0 right-0 translate-x-1/3 -translate-y-1/3 ring-2 ring-panel",
         shouldPulse && "anim-dot-pulse",
         className,
       )}
       {...props}
     />
+  );
+}
+
+/** `StatusLine` 的输入：`agent/display.ts` 的 `lineOf` 产出同一形状，但本组件不依赖 `agent/`。 */
+export interface StatusLineProps
+  extends Omit<React.ComponentProps<"div">, "children"> {
+  tone: StatusTone;
+  /** 阶段文案（已本地化）；`aria-live="polite"` 只播这一段。 */
+  label: string;
+  /** 阶段后的细节：工具标题、命令、文件名（等宽、可截断）。 */
+  detail?: string | undefined;
+  /** 阶段开始的时间戳（毫秒），显示为实时跳动的计时；不传不显示。 */
+  since?: number | undefined;
+  /** 跑着的阶段：前导换成 `Spinner 12`。审批 / 出错不转圈。 */
+  spinning?: boolean | undefined;
+  /** 紧凑：只阶段 + 计时。 */
+  compact?: boolean;
+  /** 测试用：固定当前时间。 */
+  now?: number;
+}
+
+function useNow(active: boolean, fixed: number | undefined): number {
+  const [now, setNow] = React.useState(() => fixed ?? Date.now());
+  React.useEffect(() => {
+    if (!active) return;
+    setNow(Date.now());
+    const timer = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, [active]);
+  return fixed ?? now;
+}
+
+/**
+ * 一行状态：前导（`Spinner 12` 或 `StatusDot 6`）+ 阶段（`text-body`，换阶段用
+ * `TextSwap`）+ 细节（`text-meta` 等宽）+ 计时（等宽）。计时不进读屏。
+ */
+export function StatusLine({
+  tone,
+  label,
+  detail,
+  since,
+  spinning = false,
+  compact = false,
+  now: fixedNow,
+  className,
+  ...props
+}: StatusLineProps) {
+  const ticking = since !== undefined && fixedNow === undefined;
+  const now = useNow(ticking, fixedNow);
+  const elapsed =
+    since === undefined ? undefined : formatDuration(Math.max(0, now - since));
+  return (
+    <div
+      data-slot="status-line"
+      data-tone={tone}
+      className={cn(
+        "flex min-w-0 items-center gap-1.5 text-body text-foreground",
+        className,
+      )}
+      {...props}
+    >
+      {spinning ? (
+        <Spinner size={12} className="text-muted-foreground" />
+      ) : (
+        <StatusDot tone={tone} size={6} />
+      )}
+      <span
+        data-slot="status-line-phase"
+        aria-live="polite"
+        className="shrink-0"
+      >
+        <TextSwap>{label}</TextSwap>
+      </span>
+      {!compact && detail !== undefined && detail !== "" && (
+        <span
+          data-slot="status-line-detail"
+          className="min-w-0 truncate font-mono text-meta text-muted-foreground"
+        >
+          {detail}
+        </span>
+      )}
+      {elapsed !== undefined && (
+        <span
+          data-slot="status-line-since"
+          data-numeric
+          className="shrink-0 font-mono text-meta text-muted-foreground"
+        >
+          {elapsed}
+        </span>
+      )}
+    </div>
   );
 }
