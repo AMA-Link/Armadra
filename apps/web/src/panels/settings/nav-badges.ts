@@ -4,6 +4,7 @@ import { useQueries, useQuery } from "@tanstack/react-query";
 import { listInvitations } from "@/api/accounts";
 import { localRuntimeApi } from "@/api/client";
 import { usePreferencesStore } from "@/app/preferences-store";
+import { useAccess } from "@/app/use-access";
 import { useAgentsQuery } from "@/app/use-agents";
 import { useHostConnection } from "@/host/use-host-connection";
 import { selectNeedCount, useNeedsStore } from "@/notifications/needs-store";
@@ -22,7 +23,7 @@ export type NavBadges = Readonly<Record<string, NavBadge | undefined>>;
  *
  * - `notifications`：需要你处理的事（通知 store 的条数）；
  * - `agents`：需安装或需更新的 Agent CLI 数（与 Agent CLI 页的状态同一个判定）；
- * - `accounts`：待接受的邀请数；
+ * - `accounts`：待接受的邀请数（只有能管理账号的人才查）；
  * - `service`：本机服务连不上时一个提示点。
  *
  * 查询只对导航里真的列出的分区发（`visible`），键与对应页面一致，所以打开那一页时
@@ -47,11 +48,14 @@ export function useSettingsNavBadges(visible: ReadonlySet<string>): NavBadges {
         localRuntimeApi.agentIntegration(agent.id, signal),
     })),
   });
+  // 账号分区成员也看得到，但邀请列表要 `identity:manage`：没有这条权限的人
+  // 发了必然 403，所以不发（账号页对没有它的人同样不列邀请）。
+  const access = useAccess();
   const accountsVisible = visible.has("accounts");
   const invitations = useQuery({
     queryKey: ["accounts", "invitations"],
     queryFn: listInvitations,
-    enabled: accountsVisible,
+    enabled: accountsVisible && access.can("identity:manage"),
   });
   const serviceVisible = visible.has("service");
   const { state, check } = useHostConnection();
