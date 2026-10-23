@@ -4,10 +4,10 @@ import { cn } from "@/lib/cn";
 import { Card } from "@/ui/card";
 
 /**
- * 设置页里的一张分组卡片（§24.2「分组表单」）。
+ * 设置页里的一张分组卡片（设计系统 §5.17）。
  *
- * 卡片 `rounded-xl` + 1px 边框 + `--card` 底；内部的行由 `divide-y` 分隔，
- * 所以行本身不再各画一条线。可选的 `title` 是 11px 大写小标题，只在一页里
+ * 卡片用 `Card` 自己的圆角与 1px 边，不再覆盖样式；内部的行由 `divide-y` 分隔，
+ * 行本身不画线。可选的 `title` 是 `text-body` 500 的小标题，贴在卡片上方，只在一页里
  * 有多张卡片、需要区分时才给。
  */
 export function SettingsGroup({
@@ -22,11 +22,11 @@ export function SettingsGroup({
   return (
     <section className={cn("flex flex-col gap-(--space-group)", className)}>
       {title && (
-        <h3 className="px-0.5 text-[13px] font-medium text-foreground">
+        <h3 className="px-0.5 text-body font-medium text-foreground">
           {title}
         </h3>
       )}
-      <Card className="gap-0 overflow-visible rounded-lg border border-border/70 py-0 text-[length:inherit] ring-0 settings-group divide-y divide-border/60">
+      <Card className="settings-group gap-0 py-0 divide-y divide-border/60 overflow-visible">
         {children}
       </Card>
     </section>

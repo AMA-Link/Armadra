@@ -572,7 +572,7 @@ describe("tokens.css", () => {
     expect(appCss).toContain('@import "./settings.css"');
     expect(appCss).not.toContain(".settings-");
     expect(settingsCss).toContain(".settings-layout");
-    expect(settingsCss).toContain("@container settings (max-width: 520px)");
+    expect(settingsCss).toContain('.settings-layout[data-narrow="true"]');
     expect(settingsCss).toContain(".settings-row-controls");
   });
 
