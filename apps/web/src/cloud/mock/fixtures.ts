@@ -197,3 +197,62 @@ export const MOCK_LINK = {
   exhausted: "used0000000000aa",
   sourceName: "studio",
 } as const;
+
+/** 个人空间页（U3）的内存数据：链接、设备、安全日志、主机上的访问。名字与设备名是数据不是界面文案。 */
+export const MOCK_PERSONAL = {
+  /** 第一条链接的备注与别人的名字（数据）。 */
+  linkLabel: "给小李看进度",
+  person: "李四",
+  /** 链接指向的主机（个人空间的 laptop）。 */
+  linkHost: hex(6),
+  devices: [
+    {
+      deviceId: "dev_current",
+      platform: "browser",
+      name: "Chrome",
+      minutesAgo: 0,
+      current: true,
+    },
+    {
+      deviceId: "dev_ipad",
+      platform: "ios",
+      name: "iPad",
+      minutesAgo: 90,
+      current: false,
+    },
+    {
+      deviceId: "dev_build",
+      platform: "desktop",
+      name: "build-01",
+      minutesAgo: 4_000,
+      current: false,
+    },
+  ],
+  /** 安全日志，最近的在前；动作名与云端 `security.*` 一致。 */
+  log: [
+    {
+      action: "security.login",
+      device: "Chrome",
+      ip: "203.0.113.0/24",
+      minutesAgo: 1,
+    },
+    {
+      action: "security.newDevice",
+      device: "iPad",
+      ip: "198.51.100.0/24",
+      minutesAgo: 90,
+    },
+    {
+      action: "security.passwordChanged",
+      device: null,
+      ip: null,
+      minutesAgo: 2_000,
+    },
+    {
+      action: "security.emailVerified",
+      device: null,
+      ip: null,
+      minutesAgo: 9_000,
+    },
+  ],
+} as const;

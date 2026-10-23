@@ -171,7 +171,7 @@ export function AddCloudDialog({
         userCode: code.userCode,
         verificationUrl: code.verificationUrl,
         expiresAtMs: code.expiresAtMs,
-        intervalMs: code.intervalMs,
+        intervalMs: code.intervalMs ?? 5_000,
         outcome: "waiting",
       });
       onChanged();

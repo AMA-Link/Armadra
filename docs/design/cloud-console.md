@@ -1664,6 +1664,13 @@ apps/web/src/cloud/
 | U11 | M2 计费：升级 / 试用 / 管理付款、席位、发票、超额提示                                                                                                                                                                                                                                                                                                                                                                                 | U6；G 计费                                             | 配额阈值色与文字测试；结账跳转测试                                                                                                                   |
 | U12 | M2 运营：滥用与冻结链接、功能开关、对外状态                                                                                                                                                                                                                                                                                                                                                                                           | U8；G M2 后台                                          | 同 U8                                                                                                                                                |
 
+**U3 落地说明**（Refs AMA-Link/Armadra#528，三包 #529 数据层与 me-stream、#530 主机与链接、概览与账号）：
+
+- `/me`、`/me/hosts`、`/me/hosts/:host`、`/me/links`、`/me/account` 已实现。主机目录、主机详情与链接列表是个人 / 团队共用的组件（`cloud/hosts/`、`cloud/links/`，`space` 参数），U5 直接复用。
+- 与上文的差异（契约没有对应字段，或属于后续批次）：账号页没有「更换头像」与「邮件语言」（`me.update` 只收 `displayName`）；设备表没有「IP 前缀」列（`me.devices` 不报）；「待验证：{email}」徽标只在发起更改的那次会话里显示（`me.get` 不报待验证邮箱）；「登记主机」对话框属 U5；链接的新建在客户端分享弹层（需要 core 的邀请 id），控制台只列表、改备注与撤销；概览「待处理」里收到的邀请没有「查看」按钮（接受要用邮件里的令牌）。
+- 撤销的主机不再出现在目录里，`status=revoked` 对个人空间恒为空，所以个人空间的状态筛选不给「已撤销」。
+- me-stream 的落点：`sourceOnline` / `sourceOffline` / `sourceRevoked` 与 `linkUsed` 就地改查询缓存，其余事件只让对应的键过期；断线退避重连后整体过期重拉（运营数据除外）。
+
 每批都按 ≤ 1500 行（含测试）切；估算超出时在开 PR 前再拆。M3（域名验证、单点登录、按域名自动加入、定期复核、Webhook、区域）要先有自己的设计，不在本表。
 
 每批共同验收：`pnpm --filter @armadra/web test`、`typecheck`、`pnpm repo:check`；新文案中英同步（`i18n.test.ts`）；展示页 `cloud` 分区补样本；`tools/probes/design-showcase.mjs --only=cloud` 在 390 / 768 / 1440 × 深 / 浅 生成截图（探针矩阵为 `cloud` 分区加 768 宽），`result.json.status = ok`、对比度无低于阈值、控制台无错；`locale=en` 再跑一遍 1440 深色看文字增长；`forced-colors` 与 `prefers-reduced-motion` 各一张。
