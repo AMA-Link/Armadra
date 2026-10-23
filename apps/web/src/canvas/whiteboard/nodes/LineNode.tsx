@@ -129,13 +129,12 @@ export function LineNode({
           ? points.map((point, index) => (
               <circle
                 key={index}
-                className="nodrag"
+                className="nodrag stroke-[1.5px]"
                 cx={point[0]}
                 cy={point[1]}
                 r={HANDLE_RADIUS}
                 fill="var(--panel)"
                 stroke="var(--brand)"
-                strokeWidth={1.5}
                 style={{ cursor: "grab", pointerEvents: "all" }}
                 onPointerDown={dragEndpoint(index)}
               />

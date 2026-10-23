@@ -1,5 +1,5 @@
 import * as React from "react";
-import { toast } from "sonner";
+import { toast } from "@/ui/toast";
 import type { Position } from "@armadra/shared";
 
 import { t, usePreferencesStore } from "@/app/preferences-store";
@@ -125,8 +125,11 @@ export async function copySelection(cut: boolean): Promise<void> {
   // 先留一份在内存里：系统剪贴板写不进去也不该让应用内的复制粘贴失效。
   localClipboard = text;
   await writeSystemClipboard(text);
-  toast.success(t(cut ? "clipboard.cut" : "clipboard.copied", { count }));
-  if (!cut) return;
+  // 复制看不出结果才提示；剪切时选中的对象随即消失，结果已经在画布上。
+  if (!cut) {
+    toast.success(t("clipboard.copied", { count }));
+    return;
+  }
   const state = useCanvasStore.getState();
   removeItems(state.selectedItemIds);
   // 剪切只删复制得动的那些：终端没进剪贴板，也就不该被剪掉。
