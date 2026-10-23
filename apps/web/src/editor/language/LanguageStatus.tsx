@@ -71,7 +71,7 @@ export function LanguageStatus({
           variant="ghost"
           size="xs"
           type="button"
-          className="h-auto px-1 py-0 text-[length:inherit] font-normal text-inherit hover:text-[var(--text)]"
+          className="px-1 text-caption font-normal text-inherit hover:text-foreground"
           onClick={() => setPanel("problems", "drawer")}
         >
           {t("problems.summary", {
@@ -86,7 +86,7 @@ export function LanguageStatus({
             variant="ghost"
             size="xs"
             type="button"
-            className="h-auto px-1 py-0 text-[length:inherit] font-normal text-inherit hover:text-[var(--text)]"
+            className="px-1 text-caption font-normal text-inherit hover:text-foreground"
           >
             {label}
           </Button>
@@ -94,7 +94,7 @@ export function LanguageStatus({
         <PopoverContent
           side="top"
           align="end"
-          className="z-[var(--z-menu)] flex w-auto min-w-40 flex-col gap-2 p-2 text-[length:var(--text-caption)]"
+          className="z-(--z-menu) flex w-auto min-w-40 flex-col gap-2 p-2 text-caption"
         >
           {status?.serverId && (
             <span className="font-medium">{status.serverId}</span>
