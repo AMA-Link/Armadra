@@ -11,9 +11,12 @@ import { createCsrfStore, type CloudApi } from "../api/session";
 import {
   GOLDEN_OPS_TEAM,
   MOCK_ACCOUNT,
+  MOCK_DEVICE_CODES,
+  MOCK_DEVICE_REQUEST,
   MOCK_HOSTS,
   MOCK_OPS_ACCOUNTS,
   MOCK_OPS_NODES,
+  MOCK_LINK,
   MOCK_TEAMS,
   ROLE_SCOPES,
   type MockRole,
@@ -42,6 +45,10 @@ export interface MockOptions {
   readonly operatorRefreshable?: boolean;
   /** 本人在各团队的角色覆盖（角色矩阵测试用）。 */
   readonly roles?: Readonly<Record<string, MockRole>>;
+  /** 批准设备码要先提权（`auth.stepUp`），否则答 `mfa_required`（缺省 false）。 */
+  readonly deviceNeedsStepUp?: boolean;
+  /** 分享链接要求登录（`links.get.requiresAccount`，缺省 false）。 */
+  readonly linkRequiresAccount?: boolean;
 }
 
 /** 协议包的黄金夹具：开发服务器与测试里都能 glob，生产构建不会 import 到这里。 */
@@ -105,6 +112,10 @@ interface State {
   displayName: string;
   emailVerified: boolean;
   admin: AdminState;
+  /** 已提权（`auth.stepUp` 成功过）。 */
+  elevated: boolean;
+  /** 已批准或拒绝的设备码（之后答 `not_found`，与云端一致）。 */
+  decided: Set<string>;
 }
 type Handler = (input: Input, state: State, options: MockOptions) => unknown;
 
@@ -301,6 +312,32 @@ const ADMIN_HANDLERS: Readonly<Record<string, Handler>> = {
     return { ...incident };
   },
 };
+/** 设备码规整成 `XXXX-XXXX`（去空白、转大写、缺连字符补上），与云端一致；字符不对是 `null`。 */
+function normalizeUserCode(input: unknown): string | null {
+  const code = String(input ?? "")
+    .split(/\s+/)
+    .join("")
+    .toUpperCase();
+  const joined =
+    code.length === 8 ? `${code.slice(0, 4)}-${code.slice(4)}` : code;
+  return /^[BCDFGHJKLMNPQRSTVWXZ]{4}-[BCDFGHJKLMNPQRSTVWXZ]{4}$/.test(joined)
+    ? joined
+    : null;
+}
+
+/** 在等批准的设备码 → 发起设备的平台与名字。 */
+function openDeviceRequest(input: Input, state: State) {
+  const code = normalizeUserCode(input.userCode);
+  if (code === null || state.decided.has(code))
+    throw new CloudConsoleError("not_found", 404);
+  if (code === MOCK_DEVICE_CODES.expired)
+    throw new CloudConsoleError("device_code_expired", 410);
+  if (code === MOCK_DEVICE_CODES.limited)
+    throw new CloudConsoleError("rate_limited", 429);
+  if (code !== MOCK_DEVICE_CODES.pending)
+    throw new CloudConsoleError("not_found", 404);
+  return code;
+}
 
 /** 带状态的处理器；没有的过程答黄金夹具。 */
 const HANDLERS: Readonly<Record<string, Handler>> = {
@@ -342,6 +379,57 @@ const HANDLERS: Readonly<Record<string, Handler>> = {
     return {};
   },
   "auth.emailVerifyResend": () => ({}),
+  "auth.stepUp": (input, state) => {
+    if (input.password === "wrong")
+      throw new CloudConsoleError("credentials_invalid", 401);
+    if (input.totpCode === "000000")
+      throw new CloudConsoleError("mfa_invalid", 401);
+    state.elevated = true;
+    return { elevatedUntilMs: Date.now() + 600_000 };
+  },
+  "auth.deviceGet": (input, state) => {
+    openDeviceRequest(input, state);
+    return {
+      platform: "desktop",
+      name: MOCK_DEVICE_REQUEST.name,
+      requestedAtMs: Date.now() - 20_000,
+      expiresAtMs: Date.now() + 600_000,
+    };
+  },
+  "auth.deviceApprove": (input, state, options) => {
+    const code = openDeviceRequest(input, state);
+    if (input.approve === true && options.deviceNeedsStepUp && !state.elevated)
+      throw new CloudConsoleError("mfa_required", 401);
+    state.decided.add(code);
+    return {};
+  },
+  "auth.deviceDeny": (input, state) => {
+    state.decided.add(openDeviceRequest(input, state));
+    return {};
+  },
+  "links.accept": (input, state, options) => {
+    if (input.linkId === MOCK_LINK.gone)
+      throw new CloudConsoleError("link_invalid", 404);
+    if (options.linkRequiresAccount && !state.signedIn)
+      throw new CloudConsoleError("anonymous_links_disabled", 403);
+    return {
+      ...(golden("links.accept") as object),
+      guestSession: SESSION.session,
+    };
+  },
+  "links.get": (input, _state, options) => {
+    if (input.linkId === MOCK_LINK.gone)
+      throw new CloudConsoleError("link_invalid", 404);
+    return {
+      kind: "source_invite",
+      label: "",
+      role: "operator",
+      sourceName: MOCK_LINK.sourceName,
+      expiresAtMs: Date.now() + 86_400_000,
+      exhausted: input.linkId === MOCK_LINK.exhausted,
+      requiresAccount: options.linkRequiresAccount === true,
+    };
+  },
   "me.get": (_input, state, options) => ({
     ...(golden("me.get") as object),
     ...MOCK_ACCOUNT,
@@ -461,6 +549,8 @@ export function createMockApi(options: MockOptions = {}): CloudApi {
     displayName: MOCK_ACCOUNT.displayName,
     emailVerified: options.emailVerified ?? MOCK_ACCOUNT.emailVerified,
     admin: createAdminState(),
+    elevated: false,
+    decided: new Set(),
   };
   const lost = new Set<() => void>();
   const operatorChanged = createCsrfStore();
@@ -576,5 +666,7 @@ export function mockOptionsFromSearch(search: string): MockOptions {
     ...(latency > 0 ? { latencyMs: latency } : {}),
     ...(params.has("mockVerified") ? { emailVerified: true } : {}),
     ...(params.has("mockOperator") ? { operatorAccount: true } : {}),
+    ...(params.has("mockStepUp") ? { deviceNeedsStepUp: true } : {}),
+    ...(params.has("mockLinkAccount") ? { linkRequiresAccount: true } : {}),
   };
 }

@@ -182,3 +182,18 @@ export const MOCK_OPS_NODES: readonly MockOpsNode[] = [
     lastSeenAtMs: Date.UTC(2025, 9, 8, 22, 0),
   },
 ];
+/** 设备授权页（`/device`）的样本码：`pending` 在等批准，`expired` 已过期，`limited` 猜码被限流；别的都是查无此码。 */
+export const MOCK_DEVICE_CODES = {
+  pending: "BCDF-GHJK",
+  expired: "LMNP-QRST",
+  limited: "VWXZ-BCDF",
+} as const;
+
+export const MOCK_DEVICE_REQUEST = { name: "build-01" } as const;
+
+/** 分享链接落地页（`/j/`）的样本：`gone` 已失效，`exhausted` 次数用完。 */
+export const MOCK_LINK = {
+  gone: "gone0000000000aa",
+  exhausted: "used0000000000aa",
+  sourceName: "studio",
+} as const;
