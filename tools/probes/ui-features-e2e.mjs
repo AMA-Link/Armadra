@@ -43,6 +43,7 @@ import resources, {
   writeRemoteShims,
 } from "./ui-features/resources.mjs";
 import search from "./ui-features/search.mjs";
+import terminalReplies from "./ui-features/terminal-replies.mjs";
 import terminalSelection from "./ui-features/terminal-selection.mjs";
 
 const SCENARIOS = {
@@ -56,6 +57,7 @@ const SCENARIOS = {
   layout,
   mobile,
   terminalSelection,
+  terminalReplies,
 };
 
 const args = process.argv.slice(2);
