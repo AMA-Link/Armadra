@@ -12844,18 +12844,6 @@
                           "type": "integer",
                           "minimum": -9007199254740991,
                           "maximum": 9007199254740991
-                        },
-                        "team": {
-                          "type": "object",
-                          "properties": {
-                            "teamId": {
-                              "type": "string"
-                            },
-                            "name": {
-                              "type": "string"
-                            }
-                          },
-                          "required": ["teamId"]
                         }
                       },
                       "required": ["ownerName", "role", "expiresAtMs"]

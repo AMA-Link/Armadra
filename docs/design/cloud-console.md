@@ -765,7 +765,7 @@
 ```
 
 - 分组键：断言里的 `team.teamId` 经 `sources.list` 带出的团队名（`client_sources` 需要 `team_id` / `team_name` 两列，见 §7 U7c）。
-- **U7c 实现**：迁移 0054 给 `client_sources` 加 `team_id` / `team_name`，主机在 `cloud/login` 的 `share.team` 报团队标识，团队名由接收方取本机登录着的 Armadra 云补；契约 §86。拿不到团队的分享按个人分享排在团队小组之后，那一组在有团队小组时才画标题「个人」。
+- **U7c 实现**：迁移 0054 给 `client_sources` 加 `team_id` / `team_name`，团队只由接收方自己的云得出（`sources.mount` 对 SaaS 远程取断言里的 `team.teamId`，名字取该云的 `me.spaces`），不采信对端 core 报的团队；契约 §86。拿不到团队的分享按个人分享排在团队小组之后，那一组在有团队小组时才画标题「个人」。
 - 只有一个团队且没有个人分享时不画小组标题。展开状态存 `armadra.sidebar.teams.<teamId>`。
 - 手机两组（我的电脑 / 他人分享）同规则。
 
