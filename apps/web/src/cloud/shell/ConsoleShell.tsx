@@ -77,7 +77,7 @@ export function ConsoleSidebar({
       <div className="flex flex-col gap-1 p-3">
         {area === "ops" ? (
           <>
-            <div className="flex h-[36px] items-center gap-2 px-2">
+            <div className="flex h-(--row-h-table) items-center gap-2 px-2">
               <span className="min-w-0 truncate font-medium">
                 {t("cloud.nav.ops")}
               </span>

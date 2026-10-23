@@ -124,7 +124,7 @@ function FileRow({
       title={node.path}
       style={{ paddingLeft: `${node.depth * 14 + 8}px` }}
       className={cn(
-        "group flex h-[28px] min-w-0 cursor-default items-center gap-2 rounded-control pr-2 text-body hover:bg-muted",
+        "group flex h-(--row-h) min-w-0 cursor-default items-center gap-2 rounded-control pr-2 text-body hover:bg-muted",
         selected && "bg-muted",
       )}
       onClick={() => onSelect(node)}
@@ -196,7 +196,7 @@ function DirectoryRow({
       tabIndex={0}
       title={node.path}
       style={{ paddingLeft: `${node.depth * 14 + 8}px` }}
-      className="flex h-[28px] min-w-0 cursor-default items-center gap-2 rounded-control pr-2 text-body hover:bg-muted"
+      className="flex h-(--row-h) min-w-0 cursor-default items-center gap-2 rounded-control pr-2 text-body hover:bg-muted"
       onClick={() => onCollapse(node.id)}
       onKeyDown={(event) => {
         if (event.key === "Enter" || event.key === " ") {

@@ -38,7 +38,7 @@ export function CanvasSkeleton({ chrome = false }: { chrome?: boolean }) {
           className="absolute flex flex-col overflow-hidden rounded-card border border-border bg-card"
           style={node.style}
         >
-          <div className="flex h-[36px] shrink-0 items-center gap-2 border-b border-border px-3">
+          <div className="flex h-(--row-h-table) shrink-0 items-center gap-2 border-b border-border px-3">
             <Skeleton className="size-4 rounded-tight" />
             <Skeleton className="h-3 w-1/3" />
           </div>
@@ -57,7 +57,7 @@ export function CanvasSkeleton({ chrome = false }: { chrome?: boolean }) {
       ))}
       {chrome ? (
         <>
-          <Skeleton className="absolute top-[14px] right-[14px] h-[36px] w-40 rounded-panel" />
+          <Skeleton className="absolute top-[14px] right-[14px] h-(--row-h-table) w-40 rounded-panel" />
           <Skeleton className="absolute bottom-[calc(14px+var(--safe-bottom))] left-1/2 h-[var(--dock-h)] w-64 -translate-x-1/2 rounded-panel" />
         </>
       ) : null}

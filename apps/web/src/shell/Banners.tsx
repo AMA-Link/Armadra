@@ -379,7 +379,7 @@ export function Banner({
       data-tone={tone}
       data-slot="banner"
       {...noDragProps()}
-      className="pointer-events-auto motion-fade-in flex h-[36px] max-w-full min-w-0 items-center gap-2 rounded-card border border-border-strong bg-panel/90 pr-1.5 pl-3 shadow-overlay backdrop-blur-[12px] data-[tone=danger]:text-danger-text data-[tone=info]:text-brand-text data-[tone=success]:text-success-text data-[tone=warn]:text-warn-text"
+      className="pointer-events-auto motion-fade-in flex h-(--row-h-table) max-w-full min-w-0 items-center gap-2 rounded-card border border-border-strong bg-panel/90 pr-1.5 pl-3 shadow-overlay backdrop-blur-[12px] data-[tone=danger]:text-danger-text data-[tone=info]:text-brand-text data-[tone=success]:text-success-text data-[tone=warn]:text-warn-text"
     >
       <StatusDot tone={BANNER_DOT[tone]} size={6} pulse={false} />
       <span className="shrink-0 [&_svg]:size-4">{icon}</span>

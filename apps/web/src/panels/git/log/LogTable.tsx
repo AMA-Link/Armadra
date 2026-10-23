@@ -344,7 +344,7 @@ export function LogTable({
       {hasMore && (
         <p
           role="status"
-          className="flex h-[28px] shrink-0 items-center gap-1.5 border-t border-border px-3 text-caption text-muted-foreground"
+          className="flex h-(--row-h) shrink-0 items-center gap-1.5 border-t border-border px-3 text-caption text-muted-foreground"
         >
           {loading ? <Spinner size={12} /> : null}
           {t("gitLog.table.more")}

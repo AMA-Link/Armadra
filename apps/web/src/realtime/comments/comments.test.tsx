@@ -256,7 +256,7 @@ describe("评论的语义类外观", () => {
   it("每条评论的头部行高 28", () => {
     renderThread();
     const header = document.querySelector("[data-slot='comment'] > div");
-    expect(header?.classList.contains("h-[28px]")).toBe(true);
+    expect(header?.classList.contains("h-(--row-h)")).toBe(true);
   });
 });
 

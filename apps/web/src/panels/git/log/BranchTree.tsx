@@ -114,7 +114,7 @@ export function BranchTree({
                 aria-expanded={expandable ? isOpen : undefined}
                 data-node={node.id}
                 className={cn(
-                  "flex h-[28px] w-full min-w-0 items-center gap-1 pr-1 text-meta",
+                  "flex h-(--row-h) w-full min-w-0 items-center gap-1 pr-1 text-meta",
                   isSelected && "bg-muted",
                 )}
                 style={{ paddingLeft: `${depth * 12 + 4}px` }}
@@ -244,7 +244,7 @@ function BranchTreeSkeleton({ label }: { label: string }) {
       {rows.map(([depth, width], index) => (
         <div
           key={index}
-          className="flex h-[28px] w-full min-w-0 items-center gap-1 pr-1"
+          className="flex h-(--row-h) w-full min-w-0 items-center gap-1 pr-1"
           style={{ paddingLeft: `${depth * 12 + 4}px` }}
         >
           <Skeleton className="size-4 shrink-0 rounded-tight" />

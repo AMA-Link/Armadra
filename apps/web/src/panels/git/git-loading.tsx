@@ -11,7 +11,7 @@ import { Skeleton } from "../../ui/skeleton";
  * - `blocks`：整块（片段卡片、提交摘要）。
  * 套在 `Loadable` 里：200 ms 内不可见占位，之后才显示，换成内容时高度不变。
  */
-export const GIT_ROW = "h-[28px]";
+export const GIT_ROW = "h-(--row-h)";
 export const GIT_CODE_LINE = "h-4";
 
 const WIDTHS = ["w-2/3", "w-1/2", "w-3/4", "w-2/5", "w-3/5"] as const;

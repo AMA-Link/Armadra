@@ -83,7 +83,7 @@ export function SharedWorkspaceBar({ className }: { className?: string }) {
     <div
       data-shared-workspace-bar
       className={cn(
-        "flex h-[28px] min-w-0 items-center gap-2 text-body",
+        "flex h-(--row-h) min-w-0 items-center gap-2 text-body",
         className,
       )}
     >

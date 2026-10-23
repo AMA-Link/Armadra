@@ -55,7 +55,7 @@ describe("横幅四档语气", () => {
     );
     const classes = screen.getByRole("status").classList;
     for (const name of [
-      "h-[36px]",
+      "h-(--row-h-table)",
       "rounded-card",
       "border-border-strong",
       "shadow-overlay",

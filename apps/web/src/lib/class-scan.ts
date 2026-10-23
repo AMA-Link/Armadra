@@ -109,6 +109,11 @@ export const CLASS_RULES: readonly ClassRule[] = [
     token: /^(?:h|min-h)-(?:6|7|9|10|11)$/,
   },
   {
+    id: "row-height",
+    fix: "hand-written h-[28px] / h-[36px] / min-h-[28px] / min-h-[36px]: use the row-height tokens h-(--row-h) / h-(--row-h-table)",
+    token: /^(?:min-)?h-\[(?:28|36)px\]$/,
+  },
+  {
     id: "var-class",
     fix: "text-[var(--x)] / bg-[var(--x)] / border-[var(--x)]: use the semantic class (text-danger-text, bg-card, border-border-strong ...)",
     token: /^(?:text|bg|border)-\[var\(--/,

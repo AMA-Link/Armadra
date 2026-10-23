@@ -142,7 +142,7 @@ describe("工具栏密度", () => {
     expect(address.className).toContain("text-meta");
 
     const toolbar = address.closest("div") as HTMLElement;
-    expect(toolbar.className).toContain("h-[28px]");
+    expect(toolbar.className).toContain("h-(--row-h)");
 
     const stage = view.container.querySelector(
       '[data-slot="browser-stage"]',

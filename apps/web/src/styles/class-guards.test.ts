@@ -19,12 +19,12 @@ import { LEGACY_BUDGET } from "./class-guards.budget";
 
 /**
  * 样式守卫（设计系统 §10）：功能代码（`ui/` 与示例数据之外的 `.ts` / `.tsx`）里不再写
- * 禁用的类名，只写语义类。每条规则的存量按文件登记在 `class-guards.budget.ts`：
+ * 禁用的类名，只写语义类。每条规则的存量按文件登记在 `class-guards.budget.ts`（现为空）：
  *
  *  - 个数**超过**登记 = 新增了违规，改成语义写法；
  *  - 个数**少于**登记 = 迁走了，把登记调小或删掉那一行（测试会提醒）。
  *
- * 各包迁完自己目录后把对应行删光，批次 3 全部归零。登记由
+ * 存量已在批次 3 全部归零，登记表保持空：新增的违规直接失败，不要再往里加。登记由
  * `UPDATE_CLASS_BUDGET=1 pnpm --filter @armadra/web exec vitest run src/styles/class-guards.test.ts`
  * 生成（再跑一遍 prettier）。字号规则（`TYPE_RULES`）一起登记，断言在 `type-scale.test.ts`。
  */
@@ -48,7 +48,7 @@ if (process.env.UPDATE_CLASS_BUDGET === "1") {
         fileURLToPath(new URL("./class-guards.budget.ts", import.meta.url)),
         `/**
  * 样式守卫的存量登记：规则 id → 文件 → 现有个数（\`class-guards.test.ts\` 说明用法）。
- * 只减不增；各包迁完自己目录就删掉那一块，批次 3 归零。
+ * 只减不增；批次 3 已归零。
  */
 export const LEGACY_BUDGET: Readonly<
   Record<string, Readonly<Record<string, number>>>
@@ -93,6 +93,7 @@ describe("扫描器", () => {
       3,
     ],
     ["control-height", '"h-6 h-7 h-8 h-9 min-h-10 h-[28px]"', 4],
+    ["row-height", '"h-[28px] h-[36px] min-h-[28px] h-(--row-h)"', 3],
     [
       "var-class",
       '"text-[var(--warn)] bg-[var(--card)]/90 border-[var(--x)] text-[length:var(--text-body)]"',

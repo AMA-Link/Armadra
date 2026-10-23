@@ -60,6 +60,8 @@ const SHADCN_ALIASES = [
 /** §3.1 的布局常量。 */
 const LAYOUT_CONSTANTS: Record<string, string> = {
   "--tabbar-h": "44px",
+  "--row-h": "28px",
+  "--row-h-table": "36px",
   "--sidebar-w": "240px",
   "--dock-h": "44px",
   "--drawer-w": "360px",
