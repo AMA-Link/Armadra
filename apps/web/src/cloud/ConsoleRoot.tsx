@@ -8,10 +8,12 @@ import { CloudApiProvider, useCloudApi } from "./api/context";
 import { createCloudApi } from "./api/client";
 import { describeFailure, isSessionError, toCloudError } from "./api/errors";
 import { cloudKeys } from "./api/keys";
+import { applyMeStreamEvent, resyncCloudQueries } from "./api/stream";
 import { createCloudQueryClient, useConsoleSession } from "./api/queries";
 import type { CloudApi } from "./api/session";
 import { PublicPage, hasPublicPage } from "./auth/PublicPage";
 import { OpsPage } from "./ops/OpsPages";
+import { PersonalPage } from "./personal/PersonalPages";
 import { navigate, useRoute, type RouteMatch } from "./router";
 import { ConsoleShell } from "./shell/ConsoleShell";
 import { PageHeader } from "./shell/PageHeader";
@@ -135,7 +137,9 @@ function ConsoleView({
 
 /** 带数据的页面（要 `CloudApiProvider`，所以只在 `ConsoleData` 里接上）。 */
 function renderPage(match: RouteMatch): React.ReactNode {
-  return match.area === "ops" ? <OpsPage match={match} /> : undefined;
+  if (match.area === "ops") return <OpsPage match={match} />;
+  if (match.area === "personal") return <PersonalPage match={match} />;
+  return undefined;
 }
 
 /** 用哪套客户端：调用方给的；DEV 且地址带 `?mock` 是内存 mock（生产构建里这支被摇掉）；否则连来源自己。 */
@@ -209,6 +213,16 @@ function ConsoleData({ onJoined }: { onJoined?: () => void }) {
       },
     );
   }, [lost]);
+
+  // 有会话就连 me-stream：上下线就地改缓存，其余事件让对应的键过期重拉（§6.2）。
+  const signedIn = session !== null && !lost;
+  React.useEffect(() => {
+    if (!signedIn) return;
+    return api.stream({
+      onEvent: (event) => applyMeStreamEvent(client, event),
+      onResync: () => resyncCloudQueries(client),
+    });
+  }, [api, client, signedIn]);
 
   const finish = (path: string) => {
     client.removeQueries({ queryKey: cloudKeys.all });

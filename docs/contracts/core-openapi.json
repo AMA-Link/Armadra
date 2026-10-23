@@ -8593,8 +8593,7 @@
                               "required": [
                                 "userCode",
                                 "verificationUrl",
-                                "expiresAtMs",
-                                "intervalMs"
+                                "expiresAtMs"
                               ]
                             }
                           },

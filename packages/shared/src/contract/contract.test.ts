@@ -283,13 +283,20 @@ describe("§55 在协议包的形状上追加", () => {
   it("源表行、列表与 session 入参是协议包形状的超集", async () => {
     const protocol = await import("@armadra/platform-protocol/core-api");
     type Shaped = { shape: Record<string, unknown> };
-    const superset = (ours: unknown, theirs: unknown, extra: string[]) => {
+    const superset = (
+      ours: unknown,
+      theirs: unknown,
+      extra: string[],
+      widened: string[] = [],
+    ) => {
       const mine = (ours as Shaped).shape;
       const base = (theirs as Shaped).shape;
       for (const key of Object.keys(base)) {
         // 嵌套的行另外比（它们本身是超集）。
         if (key === "sources" || key === "remotes" || key === "remote")
           continue;
+        // 放宽过的字段（协议包下一版才带的分支）另外比：协议包接受的值我们都接受。
+        if (widened.includes(key)) continue;
         expect(mine[key], key).toBe(base[key]);
       }
       expect(Object.keys(mine).filter((key) => !(key in base))).toEqual(extra);
@@ -327,11 +334,37 @@ describe("§55 在协议包的形状上追加", () => {
       protocol.remoteServiceSchema,
       ["defaultLabel", "guest"],
     );
+    // `next` 的设备码一支多了可选的 `intervalMs`（§33.11）：协议包接受的值我们都接受，协议包带上它后改回同一对象。
     superset(
       slot("sources.remoteAdd", "outputSchema"),
       protocol.remoteAddOutputSchema,
       [],
+      ["next"],
     );
+    type Parsing = { safeParse: (value: unknown) => { success: boolean } };
+    const ourNext = (
+      slot("sources.remoteAdd", "outputSchema") as unknown as Shaped
+    ).shape.next as Parsing;
+    const theirNext = (protocol.remoteAddOutputSchema as unknown as Shaped)
+      .shape.next as Parsing;
+    const samples = [
+      "ready",
+      {
+        deviceCode: {
+          userCode: "BCDF-GHJK",
+          verificationUrl: "https://cloud.example/device",
+          expiresAtMs: 1,
+        },
+      },
+    ];
+    for (const value of samples) {
+      expect(theirNext.safeParse(value).success, JSON.stringify(value)).toBe(
+        true,
+      );
+      expect(ourNext.safeParse(value).success, JSON.stringify(value)).toBe(
+        true,
+      );
+    }
     superset(
       slot("sources.list", "outputSchema"),
       protocol.sourcesListOutputSchema,
