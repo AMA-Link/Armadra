@@ -4,14 +4,11 @@ import { useT } from "@/app/preferences-store";
 import { Button } from "@/ui/button";
 import { Skeleton } from "@/ui/skeleton";
 import { useCloudApi } from "../api/context";
+import type { InvitationPreview } from "../api/session";
 import { describeFailure, isSessionError, toCloudError } from "../api/errors";
-import { navigate } from "../router";
 import { AuthLayout } from "./AuthLayout";
-import { fragmentToken } from "./redirect";
 
-type Preview = Awaited<
-  ReturnType<ReturnType<typeof useCloudApi>["client"]["invitations"]["get"]>
->;
+type Preview = InvitationPreview;
 type Stage =
   | { kind: "loading" }
   | { kind: "ready"; preview: Preview }
@@ -19,20 +16,25 @@ type Stage =
   | { kind: "done"; accepted: boolean };
 
 /**
- * `/invite/:id#<令牌>`（邮件链接，云端 §4.3）：匿名取摘要（`invitations.get`），接受 / 拒绝要登录，
- * 没登录就带着 `next` 与片段去 `/login`，登录后回到这里。令牌只在内存和 `#` 里，不进查询。
+ * `/invite/:id#<令牌>`（邮件链接，云端 §4.3）：匿名取摘要（`invitations.preview`，令牌在请求体里，
+ * 不进查询），接受 / 拒绝要登录，没登录就把令牌留在内存里、带着 `next` 去 `/login`，登录后回到这里。
+ * 令牌由 `PublicPage` 在挂载时读入内存并从地址栏移除，地址里不再出现它。
  */
 export function InvitePage({
   invitationId,
+  token,
+  onNeedLogin,
   onDone,
 }: {
   invitationId: string;
+  token: string;
+  /** 没有会话：上层保留令牌、`replace` 跳 `/login?next=`。 */
+  onNeedLogin: () => void;
   /** 接受后去空间概览。 */
   onDone: () => void;
 }) {
   const t = useT();
   const api = useCloudApi();
-  const [token] = React.useState(() => fragmentToken());
   const [busy, setBusy] = React.useState(false);
   const [stage, setStage] = React.useState<Stage>(
     token === ""
@@ -43,7 +45,7 @@ export function InvitePage({
   React.useEffect(() => {
     if (token === "") return;
     let live = true;
-    api.client.invitations.get({ invitationId, token }).then(
+    api.invitationPreview(invitationId, token).then(
       (preview) => live && setStage({ kind: "ready", preview }),
       (failure: unknown) =>
         live && setStage({ kind: "failed", message: describeFailure(failure) }),
@@ -57,13 +59,22 @@ export function InvitePage({
     if (busy) return;
     setBusy(true);
     try {
+      // 写操作要 CSRF 值；刷新页面后内存里没有，先用 auth.refresh 取回，取不到就是没登录。
+      if (!(await api.ensureCsrf())) {
+        onNeedLogin();
+        return;
+      }
       if (accept) await api.client.invitations.accept({ invitationId, token });
       else await api.client.invitations.decline({ invitationId, token });
       setStage({ kind: "done", accepted: accept });
     } catch (failure) {
-      if (isSessionError(failure) || toCloudError(failure).status === 401) {
-        const next = encodeURIComponent(`/invite/${invitationId}`);
-        navigate(`/login?next=${next}#${encodeURIComponent(token)}`);
+      const error = toCloudError(failure);
+      if (
+        isSessionError(failure) ||
+        error.status === 401 ||
+        error.code === "forbidden"
+      ) {
+        onNeedLogin();
         return;
       }
       setStage({ kind: "failed", message: describeFailure(failure) });

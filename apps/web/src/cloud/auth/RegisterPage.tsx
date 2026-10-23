@@ -13,11 +13,9 @@ import { AuthLayout } from "./AuthLayout";
 /** `/register`：邮箱、名称、口令；暂停注册（`platform.info.registrationsOpen = false`）时只给登录入口。 */
 export function RegisterPage({
   next,
-  hash,
   onSignedIn,
 }: {
   next: string | null;
-  hash: string;
   onSignedIn: () => void;
 }) {
   const t = useT();
@@ -46,9 +44,7 @@ export function RegisterPage({
   const query = next === null ? "" : `?next=${encodeURIComponent(next)}`;
   const signInLink = (
     <Button asChild variant="link" className="self-center">
-      <RouteLink href={`/login${query}${hash}`}>
-        {t("cloud.auth.toSignIn")}
-      </RouteLink>
+      <RouteLink href={`/login${query}`}>{t("cloud.auth.toSignIn")}</RouteLink>
     </Button>
   );
 
