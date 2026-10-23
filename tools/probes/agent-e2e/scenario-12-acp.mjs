@@ -821,7 +821,12 @@ export default async function run12() {
               const all = [...document.querySelectorAll(${JSON.stringify(`${nodeSelector(id)} ${inner}`)})]
                 .filter((el) => el.getClientRects().length > 0 && !el.disabled);
               const text = ${JSON.stringify(text ?? null)};
-              const el = (text === null ? all : all.filter((node) => (node.innerText ?? "").trim() === text)).at(-1);
+              const el = (text === null ? all : all.filter((node) => {
+                // 按钮尾部的快捷键提示（Kbd）不算按钮文案。
+                const copy = node.cloneNode(true);
+                copy.querySelectorAll('[data-slot="kbd"], [data-slot="kbd-group"]').forEach((kbd) => kbd.remove());
+                return (copy.textContent ?? "").trim() === text;
+              })).at(-1);
               if (!el) return null;
               const rect = el.getBoundingClientRect();
               const x = rect.left + rect.width / 2;

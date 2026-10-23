@@ -494,7 +494,12 @@ async function page(h, call, listeners, sessionId, { width, height, name }) {
       const all = [...document.querySelectorAll(${JSON.stringify(selector)})]
         .filter((node) => node.getClientRects().length > 0 && !node.disabled);
       const text = ${JSON.stringify(text ?? null)};
-      const label = (node) => (node.innerText ?? node.textContent ?? "").trim();
+      const label = (node) => {
+        // 按钮尾部的快捷键提示（Kbd）不算按钮文案：「拒绝 Esc」仍按「拒绝」找。
+        const copy = node.cloneNode(true);
+        copy.querySelectorAll?.('[data-slot="kbd"], [data-slot="kbd-group"]').forEach((kbd) => kbd.remove());
+        return (node.querySelector?.('[data-slot="kbd"]') ? copy.textContent : (node.innerText ?? node.textContent ?? "")).trim();
+      };
       const found = (text === null ? all : all.filter((node) =>
         (${exact} ? label(node) === text : label(node).includes(text)) ||
         node.getAttribute("aria-label") === text)).at(-1);
