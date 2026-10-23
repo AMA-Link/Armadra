@@ -126,7 +126,6 @@ describe("UsagePage", () => {
       expect((codex as HTMLButtonElement).disabled).toBe(false),
     );
     expect(codex.getAttribute("aria-checked")).toBe("true");
-    expect(screen.getByText("非官方端点")).toBeTruthy();
     // 归一化后 Runtime 会补齐四个键，但补丁只带用户动过的那一个。
     fireEvent.click(codex);
     await waitFor(() =>
@@ -137,7 +136,7 @@ describe("UsagePage", () => {
     await waitFor(() => expect(refreshUsage).toHaveBeenCalledTimes(1));
   });
 
-  it("Claude / Copilot 默认关并写明条款风险，打开时两个键一起开", async () => {
+  it("Claude / Copilot 默认关，打开时两个键一起开", async () => {
     getSettings.mockResolvedValue({
       usage: {
         enabled: true,
@@ -162,8 +161,6 @@ describe("UsagePage", () => {
         .getByRole("switch", { name: "Copilot" })
         .getAttribute("aria-checked"),
     ).toBe("false");
-    expect(screen.getByText(/可能违反 Anthropic 条款/)).toBeTruthy();
-    expect(screen.getByText(/可能违反 Copilot 条款/)).toBeTruthy();
     // Copilot 登录在「凭据与密钥」，这一页不再有。
     expect(screen.queryByRole("button", { name: "登录" })).toBeNull();
     fireEvent.click(claude);
@@ -274,7 +271,7 @@ describe("UsagePage", () => {
     expect((toggle as HTMLButtonElement).disabled).toBe(true);
   });
 
-  it("政策关着的那家在卡片上说怎么打开，而不是说凭据丢了", async () => {
+  it("政策关着又没有本地估算的那家不上托盘，也不说凭据丢了", async () => {
     getSettings.mockResolvedValue({ usage: { enabled: true } });
     getUsage.mockResolvedValue({
       providers: [
@@ -299,13 +296,124 @@ describe("UsagePage", () => {
         <UsagePage />
       </TestProviders>,
     );
-    await screen.findByText(
-      "额度读取已默认关闭，可在「设置 → 账号与用量」开启",
-    );
-    expect(
-      screen.getByText("用量接口返回了网页而不是数据，暂不支持"),
-    ).toBeTruthy();
+    await screen.findByRole("switch", { name: "Claude 本地额度估算" });
+    await waitFor(() => expect(getUsage).toHaveBeenCalled());
+    expect(document.querySelector('[data-slot="settings-kpi"]')).toBeNull();
     expect(screen.queryByText("未找到可用的登录凭据")).toBeNull();
+  });
+
+  it("页头有刷新与打开用量看板，没有副标题", async () => {
+    getSettings.mockResolvedValue({ usage: { enabled: true } });
+    render(
+      <TestProviders>
+        <UsagePage />
+      </TestProviders>,
+    );
+    await screen.findByRole("switch", { name: "获取用量" });
+    expect(
+      document.querySelector('[data-slot="settings-page-header"]'),
+    ).not.toBeNull();
+    expect(screen.getByRole("button", { name: "刷新" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "打开用量看板" })).toBeTruthy();
+  });
+
+  it("每家一张托盘：最高占用、阈值色、错误态与本地估算", async () => {
+    const fetchedAt = new Date().toISOString();
+    const resetsAt = new Date(Date.now() + 2 * 60 * 60_000).toISOString();
+    getSettings.mockResolvedValue({ usage: { enabled: true } });
+    getUsage.mockResolvedValue({
+      providers: [
+        {
+          id: "claude",
+          status: "ok",
+          fetchedAt,
+          windows: [
+            { key: "5h", label: "5h", usedPercent: 41, resetsAt },
+            { key: "7d", label: "7d", usedPercent: 82, resetsAt },
+          ],
+        },
+        {
+          id: "codex",
+          status: "ok",
+          fetchedAt,
+          windows: [{ key: "5h", label: "5h", usedPercent: 96, resetsAt }],
+          credits: { balance: 12.5 },
+        },
+        { id: "copilot", status: "error", reason: "network", windows: [] },
+      ],
+    });
+    render(
+      <TestProviders>
+        <UsagePage />
+      </TestProviders>,
+    );
+    await waitFor(() =>
+      expect(
+        document.querySelectorAll('[data-slot="settings-kpi"]'),
+      ).toHaveLength(3),
+    );
+    const trays = [...document.querySelectorAll('[data-slot="settings-kpi"]')];
+    const [claude, codex, copilot] = trays as HTMLElement[];
+    // 各窗口取最高占用；刻度按阈值 80 / 95 上色
+    await waitFor(() => expect(claude!.textContent).toContain("82%"));
+    expect(
+      claude!
+        .querySelector('[data-slot="progress"]')
+        ?.getAttribute("data-tone"),
+    ).toBe("warn");
+    expect(claude!.textContent).toContain("7 天");
+    await waitFor(() => expect(codex!.textContent).toContain("96%"));
+    expect(
+      codex!.querySelector('[data-slot="progress"]')?.getAttribute("data-tone"),
+    ).toBe("danger");
+    expect(codex!.textContent).toContain("余额");
+    // 取不到：大数字是 —，没有刻度，带「失败」胶囊
+    expect(copilot!.textContent).toContain("—");
+    expect(copilot!.querySelector('[data-slot="progress"]')).toBeNull();
+    expect(
+      copilot!
+        .querySelector('[data-slot="status-pill"]')
+        ?.getAttribute("data-tone"),
+    ).toBe("failed");
+  });
+
+  it("额度端点关着时按本地估算上托盘，并标明是估算", async () => {
+    getSettings.mockResolvedValue({ usage: { enabled: true } });
+    getUsage.mockResolvedValue({
+      providers: [
+        {
+          id: "claude",
+          status: "unavailable",
+          reason: "policy_off",
+          windows: [],
+          fetchedAt: null,
+          estimate: {
+            source: "local",
+            windows: [
+              {
+                key: "5h",
+                label: "5h",
+                windowStartMs: 0,
+                used: 450,
+                limit: 1000,
+              },
+            ],
+          },
+        },
+      ],
+    });
+    render(
+      <TestProviders>
+        <UsagePage />
+      </TestProviders>,
+    );
+    const tray = await waitFor(() => {
+      const node = document.querySelector('[data-slot="settings-kpi"]');
+      expect(node).not.toBeNull();
+      return node as HTMLElement;
+    });
+    await waitFor(() => expect(tray.textContent).toContain("45%"));
+    expect(tray.textContent).toContain("本地估算");
   });
 
   it("刷新节奏选「手动」时保存 0 分钟", async () => {

@@ -14,6 +14,7 @@ import {
 } from "@/acp/adapter-install";
 import { ScopeBadge } from "../scope-badge";
 import { SettingsGroup } from "../SettingsGroup";
+import { SettingsPageHeader } from "../SettingsPageHeader";
 import { ValueLoadable } from "../SettingsLoadable";
 import { SettingsRow } from "../SettingsRow";
 import { useAgentIntegration } from "./integration/use-integration";
@@ -37,10 +38,15 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/ui/select";
-import { Spinner } from "@/ui/spinner";
 
 /** 默认 / 启用 / 禁用（本设备，`agentModes`）。主表与子页同一个控件。 */
-export function AgentModeSelect({ agent }: { agent: AgentInfo }) {
+export function AgentModeSelect({
+  agent,
+  size = "sm",
+}: {
+  agent: AgentInfo;
+  size?: "xs" | "sm";
+}) {
   const t = useT();
   const mode = usePreferencesStore(
     (state) => state.agentModes[agent.id] ?? "default",
@@ -53,12 +59,12 @@ export function AgentModeSelect({ agent }: { agent: AgentInfo }) {
     >
       <SelectTrigger
         aria-label={`${agent.label} ${t("agents.row.mode")}`}
-        size="sm"
+        size={size}
         className="w-24"
       >
         <SelectValue />
       </SelectTrigger>
-      <SelectContent className="z-[var(--z-dialog)]">
+      <SelectContent>
         {AGENT_MODES.map((choice) => (
           <SelectItem key={choice} value={choice}>
             {t(`settings.agentMode.${choice}`)}
@@ -120,6 +126,7 @@ export function AgentDetailPage({ agent }: { agent: AgentInfo }) {
 
   return (
     <>
+      <SettingsPageHeader />
       <SettingsGroup title={t("agents.group.launch")}>
         <SettingsRow label={t("agents.row.mode")}>
           <ScopeBadge scope="device" />
@@ -128,7 +135,8 @@ export function AgentDetailPage({ agent }: { agent: AgentInfo }) {
         <SettingsRow label={t("settings.launchCommand")}>
           <ScopeBadge scope="device" />
           <Input
-            className="h-8 w-36 text-xs sm:w-[240px]"
+            size="sm"
+            className="w-36 sm:w-60"
             aria-label={`${agent.label} ${t("settings.launchCommand")}`}
             placeholder={agent.resolvedPath ?? agent.launchCmd}
             value={override}
@@ -140,10 +148,13 @@ export function AgentDetailPage({ agent }: { agent: AgentInfo }) {
       </SettingsGroup>
 
       <SettingsGroup title={t("agents.group.install")}>
-        <SettingsRow label={t("integration.row.cli")}>
-          <RowValue title={agent.resolvedPath ?? undefined}>
-            {cliValue}
-          </RowValue>
+        <SettingsRow
+          label={t("integration.row.cli")}
+          {...(agent.installed && agent.resolvedPath
+            ? { footnote: agent.resolvedPath }
+            : {})}
+        >
+          <RowValue>{cliValue}</RowValue>
           {cli.available ? (
             <InstallButton install={cli} installed={agent.installed} />
           ) : !agent.installed ? (
@@ -152,7 +163,7 @@ export function AgentDetailPage({ agent }: { agent: AgentInfo }) {
         </SettingsRow>
         {acpValue !== null && (
           <SettingsRow label={t("integration.row.acp")}>
-            <RowValue title={acp?.program}>{acpValue}</RowValue>
+            <RowValue>{acpValue}</RowValue>
             {acp && !native && (
               <InstallButton install={adapter} installed={acp.installed} />
             )}
@@ -164,16 +175,15 @@ export function AgentDetailPage({ agent }: { agent: AgentInfo }) {
       {(hooked || mods !== null || spawn !== null || history !== null) && (
         <SettingsGroup title={t("agents.group.injection")}>
           {hooked && (
-            <SettingsRow label={t("agents.row.artifacts")}>
+            <SettingsRow
+              label={t("agents.row.artifacts")}
+              {...(!problem && limited ? { footnote: limited } : {})}
+            >
               <ValueLoadable loading={!integration} className="h-4 w-16">
                 {integration && problem ? (
-                  <RowValue title={integration.hook.path ?? undefined}>
-                    {problem}
-                  </RowValue>
+                  <RowValue>{problem}</RowValue>
                 ) : limited ? (
-                  <RowValue title={limited}>
-                    {t("integration.state.limited")}
-                  </RowValue>
+                  <RowValue>{t("integration.state.limited")}</RowValue>
                 ) : null}
               </ValueLoadable>
               {legacy.length > 0 && (
@@ -186,42 +196,39 @@ export function AgentDetailPage({ agent }: { agent: AgentInfo }) {
               <Button
                 variant={problem ? "secondary" : "ghost"}
                 size="sm"
-                disabled={busy || !integration}
-                title={
-                  integration
-                    ? t("integration.revision", { n: integration.revision })
-                    : undefined
-                }
+                disabled={repair.isPending || !integration}
+                loading={regenerate.isPending}
                 onClick={() => regenerate.mutate()}
               >
-                {regenerate.isPending && <Spinner aria-hidden />}
                 {t("integration.regenerate")}
               </Button>
             </SettingsRow>
           )}
           {mods !== null && (
-            <SettingsRow label={t("integration.row.mods")}>
-              <RowValue title={mods.reason}>{mods.value}</RowValue>
+            <SettingsRow
+              label={t("integration.row.mods")}
+              {...(mods.reason ? { footnote: mods.reason } : {})}
+            >
+              <RowValue>{mods.value}</RowValue>
               {mods.fallback && (
-                <Badge variant="outline">
+                <Badge variant="outline" size="sm">
                   {t("integration.mods.fallback")}
                 </Badge>
               )}
             </SettingsRow>
           )}
           {spawn !== null && (
-            <SettingsRow label={t("integration.row.canvasAgents")}>
-              <RowValue
-                title={
-                  reasons.length > 0
-                    ? reasons
-                        .map((reason) => t(`integration.reason.${reason}`))
-                        .join(" · ")
-                    : undefined
-                }
-              >
-                {t(`integration.canvasAgents.${spawn}`)}
-              </RowValue>
+            <SettingsRow
+              label={t("integration.row.canvasAgents")}
+              {...(reasons.length > 0
+                ? {
+                    footnote: reasons
+                      .map((reason) => t(`integration.reason.${reason}`))
+                      .join(" · "),
+                  }
+                : {})}
+            >
+              <RowValue>{t(`integration.canvasAgents.${spawn}`)}</RowValue>
             </SettingsRow>
           )}
           {history !== null && (
