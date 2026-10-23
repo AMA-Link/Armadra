@@ -85,6 +85,19 @@ function rejected(status: number, body: unknown, during: string): never {
       );
     case "not_implemented":
       throw fail("not_implemented", "远程服务没有这项能力");
+    // Armadra 云：空间的主机配额与团队状态（cloud-api §6、§21）。
+    case "limit_reached":
+      throw fail(
+        "limit_reached",
+        "这个空间的主机数已到上限",
+        typeof details.quota === "string"
+          ? { quota: details.quota, used: details.used, limit: details.limit }
+          : undefined,
+      );
+    case "team_suspended":
+      throw fail("team_suspended", "团队已停用，不能登记主机");
+    case "team_deleted":
+      throw fail("team_deleted", "团队已删除，不能登记主机");
     default:
       break;
   }
