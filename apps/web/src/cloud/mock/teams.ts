@@ -3,6 +3,8 @@ import { errorStatus, isErrorCode } from "@armadra/platform-protocol/errors";
 import { CloudConsoleError } from "../api/errors";
 import type { DirectoryState } from "./directory";
 import {
+  GOLDEN_OPS_ACCOUNT,
+  GOLDEN_OPS_TEAM,
   MOCK_ACCOUNT,
   MOCK_PEOPLE,
   MOCK_TEAMS,
@@ -85,6 +87,10 @@ export interface TeamsOptions {
   readonly roles?: Readonly<Record<string, MockRole>>;
   /** 一开始就没有这些团队（空态测试用）。 */
   readonly noTeams?: boolean;
+  /** 另外种一个协议包黄金夹具里的团队（契约一致性测试用）：本人是所有者（`roles["dev-team"]` 可改），黄金账号是管理员，一条待处理邀请，没有主机。 */
+  readonly golden?: boolean;
+  /** 覆盖各团队的初始设置（如 `{ allowGuests: false }`）。 */
+  readonly settings?: Partial<TeamSettingsRow>;
   /** 这些地址的团队一开始就在恢复期里（展示页与恢复页测试用）。 */
   readonly deleted?: readonly string[];
 }
@@ -115,6 +121,8 @@ export const DEFAULT_SETTINGS: TeamSettingsRow = {
 /** 样本里的待处理邀请（团队 rd）。 */
 export const MOCK_INVITE_EMAIL = "qian@example.com";
 /** 另一条待处理邀请，由原所有者（李四）发出：他被降级或移除时一并撤销。 */
+/** 已被接受的邀请：云端的列表照样返回它（控制台只显示待处理与已过期），撤销它答 conflict。 */
+export const MOCK_INVITE_ACCEPTED = "done@example.test";
 export const MOCK_INVITE_BY_OWNER = "chen@example.com";
 
 const memberOf = (
@@ -183,6 +191,18 @@ function seedTeam(
             decidedAtMs: null,
           },
           {
+            invitationId: "tinv_mock_done",
+            kind: "team",
+            email: MOCK_INVITE_ACCEPTED,
+            state: "accepted",
+            teamId: seed.teamId,
+            teamRole: "member",
+            invitedBy: SELF,
+            createdAtMs: now - 8 * DAY,
+            expiresAtMs: now - DAY,
+            decidedAtMs: now - 7 * DAY,
+          },
+          {
             invitationId: "tinv_mock_old",
             kind: "team",
             email: "old@example.com",
@@ -206,17 +226,70 @@ function seedTeam(
     createdAtMs: Date.UTC(2025, 2, 2 + index),
     deletedAtMs: gone ? now - 2 * DAY : null,
     purgeAtMs: gone ? now + RECOVERY_MS - 2 * DAY : null,
-    settings: { ...DEFAULT_SETTINGS },
+    settings: { ...DEFAULT_SETTINGS, ...options.settings },
     members,
     invitations,
   };
 }
 
+function seedGolden(options: TeamsOptions): TeamRow {
+  const now = Date.now();
+  return {
+    teamId: GOLDEN_OPS_TEAM,
+    slug: "dev-team",
+    name: "Dev Team",
+    avatarUrl: null,
+    plan: "free",
+    createdAtMs: Date.UTC(2025, 9, 9),
+    deletedAtMs: null,
+    purgeAtMs: null,
+    settings: { ...DEFAULT_SETTINGS },
+    members: [
+      memberOf(
+        {
+          accountId: SELF,
+          email: MOCK_ACCOUNT.email,
+          displayName: MOCK_ACCOUNT.displayName,
+        },
+        options.roles?.["dev-team"] ?? "owner",
+        Date.UTC(2025, 9, 9),
+      ),
+      memberOf(
+        {
+          accountId: GOLDEN_OPS_ACCOUNT,
+          email: "dev@armadra.test",
+          displayName: "Dev",
+        },
+        "admin",
+        Date.UTC(2025, 9, 9),
+      ),
+    ],
+    invitations: [
+      {
+        invitationId: "tinv_01JAAAAAAAAAAAAAAAAAAAAAAA",
+        kind: "team",
+        // 黄金入参 `invitations.create` 邀请的是 alice：这条用别的邮箱，两者不撞。
+        email: "carol@armadra.test",
+        state: "pending",
+        teamId: GOLDEN_OPS_TEAM,
+        teamRole: "member",
+        invitedBy: GOLDEN_OPS_ACCOUNT,
+        createdAtMs: now,
+        expiresAtMs: now + 7 * DAY,
+        decidedAtMs: null,
+      },
+    ],
+  };
+}
+
 export function createTeamsState(options: TeamsOptions = {}): TeamsState {
   return {
-    teams: options.noTeams
-      ? []
-      : MOCK_TEAMS.map((seed, index) => seedTeam(seed, options, index)),
+    teams: [
+      ...(options.noTeams
+        ? []
+        : MOCK_TEAMS.map((seed, index) => seedTeam(seed, options, index))),
+      ...(options.golden ? [seedGolden(options)] : []),
+    ],
     counter: 0,
   };
 }
@@ -548,6 +621,7 @@ export function teamInvitationHandlers(
     "invitations.create": (input, ctx) => {
       if (input.kind !== "team")
         return fallback["invitations.create"]?.(input, ctx);
+      if (!ctx.emailVerified) fail("email_unverified");
       const { team, self } = require(ctx.teams, input.teamId, "admin");
       const email = String(input.email).toLowerCase();
       const role = input.role as TeamInvitationRow["teamRole"];
@@ -586,20 +660,22 @@ export function teamInvitationHandlers(
         return fallback["invitations.list"]?.(input, ctx);
       const { team } = require(ctx.teams, input.teamId, "admin");
       return {
-        invitations: team.invitations
-          .filter((row) => row.state === "pending" || row.state === "expired")
-          .map(invitationOut),
+        invitations: team.invitations.map(invitationOut),
       };
     },
     "invitations.resend": (input, ctx) => {
       const { row } = managed(ctx.teams, input.invitationId);
       if (row.state === "revoked") fail("invitation_revoked");
-      if (row.state !== "pending") fail("conflict");
+      // 过期的邀请重发后回到待处理（换新令牌、重新计 7 天）；已接受 / 已拒绝的不能重发。
+      if (row.state !== "pending" && row.state !== "expired") fail("conflict");
+      row.state = "pending";
       row.expiresAtMs = Date.now() + 7 * DAY;
       return invitationOut(row);
     },
     "invitations.revoke": (input, ctx) => {
       const { row } = managed(ctx.teams, input.invitationId);
+      if (row.state === "accepted" || row.state === "declined")
+        fail("conflict");
       row.state = "revoked";
       return {};
     },

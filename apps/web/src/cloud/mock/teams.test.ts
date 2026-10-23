@@ -2,7 +2,11 @@ import { describe, expect, it } from "vitest";
 
 import { createMockApi } from "./create-mock-client";
 import { MOCK_ACCOUNT, MOCK_PEOPLE, MOCK_TEAMS } from "./fixtures";
-import { MOCK_INVITE_BY_OWNER, MOCK_INVITE_EMAIL } from "./teams";
+import {
+  MOCK_INVITE_ACCEPTED,
+  MOCK_INVITE_BY_OWNER,
+  MOCK_INVITE_EMAIL,
+} from "./teams";
 
 const [rd, lab] = MOCK_TEAMS;
 const RD = rd!.teamId;
@@ -177,7 +181,7 @@ describe("mock 团队：成员", () => {
 
 describe("mock 团队：邀请", () => {
   it("创建、重发、撤销；重复邀请与已是成员的邮箱被拒绝", async () => {
-    const api = createMockApi();
+    const api = createMockApi({ emailVerified: true });
     const created = await api.client.invitations.create({
       kind: "team",
       teamId: RD,
@@ -211,9 +215,10 @@ describe("mock 团队：邀请", () => {
     expect(resent.expiresAtMs).toBeGreaterThanOrEqual(created.expiresAtMs);
     await api.client.invitations.revoke({ invitationId: created.invitationId });
     const { invitations } = await api.client.invitations.list({ teamId: RD });
-    expect(invitations.some((row) => row.email === "new@example.com")).toBe(
-      false,
-    );
+    // 云端的列表连撤销的一并返回（控制台自己过滤）。
+    expect(
+      invitations.find((row) => row.email === "new@example.com")?.state,
+    ).toBe("revoked");
     expect(
       await failure(
         api.client.invitations.resend({ invitationId: created.invitationId }),
@@ -221,8 +226,45 @@ describe("mock 团队：邀请", () => {
     ).toMatchObject({ code: "invitation_revoked" });
   });
 
+  it("过期的邀请重发后回到待处理；已接受的撤销或重发答 conflict；未验证邮箱不能邀请", async () => {
+    const api = createMockApi({ emailVerified: true });
+    const find = async (email: string) =>
+      (await api.client.invitations.list({ teamId: RD })).invitations.find(
+        (row) => row.email === email,
+      )!;
+    const old = await find("old@example.com");
+    expect(old.state).toBe("expired");
+    await api.client.invitations.resend({ invitationId: old.invitationId });
+    expect((await find("old@example.com")).state).toBe("pending");
+    const done = await find(MOCK_INVITE_ACCEPTED);
+    expect(done.state).toBe("accepted");
+    expect(
+      await failure(
+        api.client.invitations.revoke({ invitationId: done.invitationId }),
+      ),
+    ).toMatchObject({ code: "conflict" });
+    expect(
+      await failure(
+        api.client.invitations.resend({ invitationId: done.invitationId }),
+      ),
+    ).toMatchObject({ code: "conflict" });
+    expect(
+      await failure(
+        createMockApi().client.invitations.create({
+          kind: "team",
+          teamId: RD,
+          email: "x@example.com",
+          role: "member",
+        }),
+      ),
+    ).toMatchObject({ code: "email_unverified" });
+  });
+
   it("免费版团队的成员席位到上限答 limit_reached（quota=members）", async () => {
-    const api = createMockApi({ roles: { lab: "admin" } });
+    const api = createMockApi({
+      emailVerified: true,
+      roles: { lab: "admin" },
+    });
     for (const n of [1, 2, 3])
       await api.client.invitations.create({
         kind: "team",
