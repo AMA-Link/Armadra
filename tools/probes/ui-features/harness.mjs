@@ -781,3 +781,18 @@ export function writeResult(output, report) {
     `${JSON.stringify(report, null, 2)}\n`,
   );
 }
+
+/**
+ * 手机（窄屏）上的设置是抽屉：顶部一个页面下拉（`aria-label="设置"`）代替侧栏，
+ * 选里面的页名进那一页。
+ */
+export async function openPhoneSettingsPage(phone, label) {
+  await phone.clickOn(
+    `return document.querySelector('[role="dialog"] [role="combobox"][aria-label="设置"]');`,
+    "手机设置的页面下拉",
+  );
+  await phone.clickOn(
+    `return [...document.querySelectorAll('[role="option"]')].find((o) => o.textContent.trim() === ${JSON.stringify(label)});`,
+    `手机设置「${label}」`,
+  );
+}

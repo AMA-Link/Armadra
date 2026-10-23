@@ -315,7 +315,7 @@ try {
   /* ------------------------ 4. 同一便签同时输入 ------------------------- */
   const startEditing = async (page, caret) => {
     await page.clickOn(
-      `return document.querySelector('.react-flow__node[data-id="${shared.id}"] [data-slot="sticky-node"] [role="button"]')`,
+      `return document.querySelector('.react-flow__node[data-id="${shared.id}"] [data-slot="sticky-markdown"]')`,
       "便签正文",
     );
     await page.until(
