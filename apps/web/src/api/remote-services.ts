@@ -1,4 +1,11 @@
-import type { RelayPending, ShareLink, ShareTarget } from "@armadra/shared";
+import type {
+  CloudGrantCreateInput,
+  CloudGrantUpdateInput,
+  CloudInviteInput,
+  RelayPending,
+  ShareLink,
+  ShareTarget,
+} from "@armadra/shared";
 import { withRemoteApproval } from "../sources/credentials";
 import { z } from "zod";
 
@@ -146,6 +153,43 @@ export function registerToSpace(input: {
   space: { kind: "personal" } | { kind: "team"; teamId: string };
 }) {
   return localClient().sources.remoteRegister(input);
+}
+
+/* ------------------- Armadra 云：授予、邀请与待信任设备 ------------------- */
+
+export type {
+  CloudAccess,
+  CloudGrant,
+  CloudTrustRequest,
+} from "@armadra/shared";
+
+/** 本机主机在这个云上的授予与可授予的成员（契约 §33.12）。 */
+export function cloudAccess(serviceId: string) {
+  return localClient().sources.cloudAccess({ serviceId });
+}
+
+export function cloudGrantCreate(input: CloudGrantCreateInput) {
+  return localClient().sources.cloudGrantCreate(input);
+}
+
+export function cloudGrantUpdate(input: CloudGrantUpdateInput) {
+  return localClient().sources.cloudGrantUpdate(input);
+}
+
+export function cloudGrantRevoke(serviceId: string, grantId: string) {
+  return localClient().sources.cloudGrantRevoke({ serviceId, grantId });
+}
+
+export function cloudInvite(input: CloudInviteInput) {
+  return localClient().sources.cloudInvite(input);
+}
+
+export function cloudTrustList(serviceId: string) {
+  return localClient().sources.cloudTrustList({ serviceId });
+}
+
+export function cloudTrustReject(serviceId: string, requestId: string) {
+  return localClient().sources.cloudTrustReject({ serviceId, requestId });
 }
 
 /** `rate_limited` 带的退避毫秒数；没有或不是数字是 `null`。 */

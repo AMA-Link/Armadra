@@ -17,6 +17,12 @@ export const ShareDialog = lazy(() =>
   })),
 );
 
+export const CloudTrustDialog = lazy(() =>
+  import("@/sources/trust/CloudTrustDialog").then((module) => ({
+    default: module.CloudTrustDialog,
+  })),
+);
+
 export const SettingsDialog = lazy(() =>
   import("@/panels/SettingsDialog").then((module) => ({
     default: module.SettingsDialog,
