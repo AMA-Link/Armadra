@@ -21,12 +21,12 @@ import { selfOf, type TeamRow, type TeamsState } from "./teams";
  */
 type Input = Record<string, unknown>;
 
-export type GrantSubject =
+type GrantSubject =
   | { kind: "team"; teamId: string }
   | { kind: "member"; accountId: string }
   | { kind: "guest"; accountId: string };
 
-export interface MockGrant {
+interface MockGrant {
   grantId: string;
   sourceId: string;
   subject: GrantSubject;
@@ -38,7 +38,7 @@ export interface MockGrant {
   revokedAtMs: number | null;
 }
 
-export interface HostSettingsRow {
+interface HostSettingsRow {
   linkCreators: "owner" | "owner_admin" | "driver";
   allowGuests: boolean;
   defaultRole: CloudRole;
@@ -64,7 +64,7 @@ export interface GrantsOptions {
 }
 
 /** 处理器要的上下文（`create-mock-client.ts` 的 `State` 满足它）。 */
-export interface GrantsContext {
+interface GrantsContext {
   teams: TeamsState;
   directory: DirectoryState;
   grants: GrantsState;
@@ -79,13 +79,13 @@ export const WORKSPACES = {
   api: "ws_mock_api",
   web: "ws_mock_web",
 } as const;
-export const GOLDEN_GRANT = "gnt_01JAAAAAAAAAAAAAAAAAAAAAAA";
+const GOLDEN_GRANT = "gnt_01JAAAAAAAAAAAAAAAAAAAAAAA";
 /** 每个团队的主机额度（与 `teams.ts` 的 `LIMITS` 同值）。 */
 const HOST_LIMIT = { free: 3, paid: 50 } as const;
 /** 持久登记令牌的寿命。 */
 const TOKEN_TTL_MS = 10 * 60_000;
 
-export const DEFAULT_HOST_SETTINGS: HostSettingsRow = {
+const DEFAULT_HOST_SETTINGS: HostSettingsRow = {
   linkCreators: "owner_admin",
   allowGuests: true,
   defaultRole: "viewer",
