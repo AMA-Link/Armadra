@@ -1,7 +1,7 @@
 import * as React from "react";
 import { ChevronDown, MoreHorizontal, Plus, Save, Search } from "lucide-react";
 import { Bar, BarChart, XAxis } from "recharts";
-import { toast } from "sonner";
+import { toast } from "@/ui/toast";
 
 import { useT } from "@/app/preferences-store";
 import { agentLabel } from "@/agent/launch";
@@ -142,6 +142,8 @@ import {
   STATUS_TONES,
 } from "../fixtures/components";
 import { COMMAND_INPUT_FOCUS } from "@/panels/tabs-focus";
+import { Sample } from "./sample";
+import { VariantSamples } from "./components-variants";
 import { SettingsDialog } from "@/panels/SettingsDialog";
 import { useCanvasStore } from "@/store/canvas-store";
 import {
@@ -196,10 +198,10 @@ function useRows(): Row[] {
       <Button
         variant={variant}
         size="sm"
+        loading={state === "loading"}
         {...stateProps(state)}
-        {...(state === "loading" ? { disabled: true } : {})}
       >
-        {state === "loading" ? loading : <Save />}
+        <Save data-icon="inline-start" />
         {t("showcase.sample.save")}
       </Button>
     ),
@@ -378,33 +380,6 @@ function StateMatrix() {
           ))}
         </tbody>
       </table>
-    </div>
-  );
-}
-
-/** 一格样本：上面组件，下面组件名。 */
-function Sample({
-  name,
-  children,
-  wide = false,
-}: {
-  name: string;
-  children: React.ReactNode;
-  wide?: boolean;
-}) {
-  return (
-    <div
-      data-sample={name}
-      className={
-        wide
-          ? "flex w-full max-w-md flex-col gap-2"
-          : "flex flex-col items-start gap-2"
-      }
-    >
-      <div className="flex flex-wrap items-center gap-2">{children}</div>
-      <span className="font-mono text-[length:var(--text-caption)] text-muted-foreground">
-        {name}
-      </span>
     </div>
   );
 }
@@ -904,6 +879,7 @@ export default function ComponentsSection() {
   return (
     <div className="flex flex-col gap-8">
       <StateMatrix />
+      <VariantSamples />
       <Gallery />
     </div>
   );

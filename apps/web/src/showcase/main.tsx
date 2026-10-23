@@ -47,10 +47,7 @@ installShowcaseContrast();
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
-    <MotionConfig
-      reducedMotion="user"
-      transition={MOTION_TRANSITION}
-    >
+    <MotionConfig reducedMotion="user" transition={MOTION_TRANSITION}>
       <ShowcaseProviders>
         <ShowcaseApp only={query.get("only") === "1"} />
       </ShowcaseProviders>

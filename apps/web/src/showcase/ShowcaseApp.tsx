@@ -23,6 +23,9 @@ import CoordinatorSection from "./sections/coordinator";
 import GatewaySection from "./sections/gateway";
 import IntegrationSection from "./sections/integration";
 import MobileSection from "./sections/mobile";
+import MotionSection from "./sections/motion";
+import SettingsSection from "./sections/settings";
+import StatusSection from "./sections/status";
 import StatesSection from "./sections/states";
 import TokensSection from "./sections/tokens";
 import UpdatesSection from "./sections/updates";
@@ -39,6 +42,8 @@ export const SHOWCASE_SECTIONS = [
   ["canvas", CanvasSection],
   ["acp", AcpSection],
   ["coordinator", CoordinatorSection],
+  ["settings", SettingsSection],
+  ["status", StatusSection],
   ["workflow", WorkflowSection],
   ["collab", CollabSection],
   ["auth", AuthSection],
@@ -46,6 +51,7 @@ export const SHOWCASE_SECTIONS = [
   ["mobile", MobileSection],
   ["updates", UpdatesSection],
   ["integration", IntegrationSection],
+  ["motion", MotionSection],
   ["states", StatesSection],
   ["cloud", CloudSection],
 ] as const satisfies readonly (readonly [string, React.ComponentType])[];
