@@ -85,7 +85,7 @@ export function AddMenuContent({ ctx, kind, spawnFrom }: AddMenuContentProps) {
   return (
     <>
       {spawnFrom ? (
-        <Label className="px-2.5 pt-1.5 pb-1 text-xs font-medium text-muted-foreground">
+        <Label className="px-2.5 pt-1.5 pb-1 text-caption font-medium text-muted-foreground">
           {t("node.menu.spawnFrom", { name: spawnFrom.name })}
         </Label>
       ) : null}
@@ -100,12 +100,12 @@ export function AddMenuContent({ ctx, kind, spawnFrom }: AddMenuContentProps) {
           <React.Fragment key={item.id}>
             {newGroup && previous ? <Separator /> : null}
             {newGroup && !spawnFrom ? (
-              <Label className="px-2.5 pt-1.5 pb-1 text-xs font-medium text-muted-foreground">
+              <Label className="px-2.5 pt-1.5 pb-1 text-caption font-medium text-muted-foreground">
                 {t(`add.group.${item.group}`)}
               </Label>
             ) : null}
             <Item
-              className="min-h-8 gap-2.5 rounded-md px-2.5 text-[13px]"
+              className="min-h-8 gap-2.5 px-2.5"
               disabled={disabledReason !== null}
               title={disabledReason ?? item.label}
               onSelect={() => item.run(ctx)}
@@ -113,7 +113,7 @@ export function AddMenuContent({ ctx, kind, spawnFrom }: AddMenuContentProps) {
               <Icon />
               <span className="min-w-0 flex-1 truncate">{item.label}</span>
               {disabledReason ? (
-                <span className="max-w-28 shrink-0 truncate text-[11px] text-muted-foreground">
+                <span className="max-w-28 shrink-0 truncate text-caption text-muted-foreground">
                   {disabledReason}
                 </span>
               ) : keys ? (

@@ -204,6 +204,25 @@ describe("editor external changes", () => {
     expect(mocks.read).toHaveBeenCalledTimes(1);
   });
 
+  it("外部改动条的按钮全是 xs 档，未保存点是 6 径 attention 状态点", async () => {
+    render(<EditorNode {...props()} />);
+    const editor = await view();
+    await waitFor(() => expect(mocks.watch).toHaveBeenCalled());
+    replace(editor, "draft\n");
+    await act(async () => dispatchWorkspaceEvent(changed(CHANGED)));
+    const bar = await screen.findByRole("status");
+    const buttons = Array.from(bar.querySelectorAll("button"));
+    expect(buttons.length).toBeGreaterThanOrEqual(3);
+    for (const button of buttons) {
+      expect(button.getAttribute("data-size")).toBe("xs");
+    }
+    const dot = screen.getByRole("img", { name: "Unsaved" });
+    expect(dot.getAttribute("data-slot")).toBe("status-dot");
+    expect(dot.getAttribute("data-tone")).toBe("attention");
+    expect(dot.getAttribute("data-size")).toBe("6");
+    expect(dot.hasAttribute("title")).toBe(false);
+  });
+
   it("compares the disk version against the draft without touching either", async () => {
     render(<EditorNode {...props()} />);
     const editor = await view();

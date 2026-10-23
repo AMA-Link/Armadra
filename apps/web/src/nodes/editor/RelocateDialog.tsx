@@ -6,7 +6,6 @@ import { Button } from "@/ui/button";
 import {
   ResponsiveDialog,
   ResponsiveDialogContent,
-  ResponsiveDialogDescription,
   ResponsiveDialogFooter,
   ResponsiveDialogHeader,
   ResponsiveDialogTitle,
@@ -91,17 +90,14 @@ export function RelocateDialog({
         >
           <ResponsiveDialogHeader>
             <ResponsiveDialogTitle>
-              {t("editor.relocate")}
+              {confirming
+                ? t("editor.relocate.confirm", { path: target })
+                : t("editor.relocate")}
             </ResponsiveDialogTitle>
-            {confirming && (
-              <ResponsiveDialogDescription>
-                {t("editor.relocate.confirm", { path: target })}
-              </ResponsiveDialogDescription>
-            )}
           </ResponsiveDialogHeader>
           <div className="flex flex-col gap-1.5 py-3">
             <label
-              className="text-[length:var(--text-caption)] text-muted-foreground"
+              className="text-caption text-muted-foreground"
               htmlFor="editor-relocate-path"
             >
               {t("editor.saveAs.path")}
@@ -116,7 +112,7 @@ export function RelocateDialog({
             {error && (
               <p
                 role="alert"
-                className="break-words text-[12px] text-[var(--danger-text)]"
+                className="break-words text-meta text-danger-text"
               >
                 {error}
               </p>

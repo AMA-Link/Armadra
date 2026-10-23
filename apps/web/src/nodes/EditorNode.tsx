@@ -1,5 +1,5 @@
 import * as React from "react";
-import { toast } from "sonner";
+import { toast } from "@/ui/toast";
 import type { EditorView } from "codemirror";
 import {
   Columns2,
@@ -25,6 +25,7 @@ import { Badge } from "@/ui/badge";
 import { Button } from "@/ui/button";
 import { DropdownMenuItem } from "@/ui/dropdown-menu";
 import { IconButton } from "@/ui/icon-button";
+import { StatusDot } from "@/ui/status-pill";
 import { NodeShell } from "./NodeShell";
 import { CodeLinesSkeleton } from "./NodeSkeletons";
 import { SourceBadge } from "@/acp/SourceBadge";
@@ -535,10 +536,11 @@ export function EditorNode({ id, node, selected }: NodeBodyProps) {
         </Badge>
       )}
       {dirty && (
-        <span
-          aria-label={t("editor.dirty")}
-          title={t("editor.dirty")}
-          className="size-[7px] shrink-0 rounded-full bg-[var(--warn)]"
+        <StatusDot
+          tone="attention"
+          size={6}
+          pulse={false}
+          label={t("editor.dirty")}
         />
       )}
       {markdown && state.kind === "text" && (
@@ -681,8 +683,10 @@ export function EditorNode({ id, node, selected }: NodeBodyProps) {
               className="size-8 shrink-0 text-muted-foreground"
             />
             <div className="min-w-0 max-w-full">
-              <p className="break-all text-sm font-medium">{state.info.name}</p>
-              <p className="mt-1 break-all text-xs text-muted-foreground">
+              <p className="break-all text-body font-medium">
+                {state.info.name}
+              </p>
+              <p className="mt-1 break-all text-meta text-muted-foreground">
                 {formatBytes(state.info.size)} · {state.info.mimeType}
               </p>
             </div>

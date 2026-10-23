@@ -22,7 +22,6 @@ import {
   ResponsiveAlertDialogAction,
   ResponsiveAlertDialogCancel,
   ResponsiveAlertDialogContent,
-  ResponsiveAlertDialogDescription,
   ResponsiveAlertDialogFooter,
   ResponsiveAlertDialogHeader,
   ResponsiveAlertDialogTitle,
@@ -80,7 +79,7 @@ export function PresenceBar({ className }: { className?: string } = {}) {
 /** 头像堆叠里最多画几个（含自己），其余收成「+N」（设计系统 §5.6）。 */
 export const MAX_AVATARS = 4;
 
-const BAR_CLASS = `absolute top-[14px] ${RIGHT_OFFSET} z-[var(--z-cluster)] flex h-[38px] items-center gap-2 rounded-[var(--r-card)] border border-border bg-[var(--panel)]/90 px-2.5 shadow-[var(--shadow-pill)] backdrop-blur-[12px]`;
+const BAR_CLASS = `absolute top-[14px] ${RIGHT_OFFSET} z-[var(--z-cluster)] flex h-[38px] items-center gap-2 rounded-card border border-border-strong bg-panel/90 px-2.5 shadow-overlay backdrop-blur-[12px]`;
 
 function initialOf(name: string): string {
   const first = [...name.trim()][0];
@@ -168,7 +167,7 @@ export function RealtimePresenceView({
                       ? `${t("realtime.unfollow")} ${name}`
                       : `${t("realtime.follow")} ${name}`
                   }
-                  className="rounded-[var(--r-pill)] p-0 hover:bg-transparent"
+                  className="rounded-pill p-0 hover:bg-transparent"
                   onClick={() => follow(followed ? null : peer.clientId)}
                 >
                   <MemberAvatar
@@ -190,14 +189,14 @@ export function RealtimePresenceView({
         {hidden > 0 && (
           <span
             aria-label={t("realtime.presence.more", { count: hidden })}
-            className="ml-2 text-[length:var(--text-caption)] text-muted-foreground tabular-nums"
+            className="ml-2 text-caption text-muted-foreground tabular-nums"
           >
             +{hidden}
           </span>
         )}
       </div>
       {offline ? (
-        <span className="text-xs whitespace-nowrap text-muted-foreground">
+        <span className="text-meta whitespace-nowrap text-muted-foreground">
           {t("realtime.disconnected")}
         </span>
       ) : null}
@@ -217,7 +216,7 @@ function MemberAvatar({ color, label }: { color: string; label: string }) {
       className="size-5 after:hidden data-[size=sm]:size-5"
       style={{ boxShadow: `0 0 0 2px ${color}` }}
     >
-      <AvatarFallback className="bg-card text-[length:var(--text-caption)] font-medium text-foreground">
+      <AvatarFallback className="bg-card text-caption font-medium text-foreground">
         {initialOf(label)}
       </AvatarFallback>
     </Avatar>
@@ -304,12 +303,12 @@ function LeasePresence({ className }: { className?: string }) {
           })}
         </div>
         {denied ? (
-          <span className="text-xs text-muted-foreground whitespace-nowrap">
+          <span className="text-meta text-muted-foreground whitespace-nowrap">
             {t("presence.readOnly")}
           </span>
         ) : readOnly && lease ? (
           <>
-            <span className="text-xs text-muted-foreground whitespace-nowrap">
+            <span className="text-meta text-muted-foreground whitespace-nowrap">
               {sameDevice
                 ? t("presence.otherWindowEditing")
                 : t("presence.editing", { device: holder })}
@@ -329,17 +328,17 @@ function LeasePresence({ className }: { className?: string }) {
         <ResponsiveAlertDialogContent>
           <ResponsiveAlertDialogHeader>
             <ResponsiveAlertDialogTitle>
-              {t("presence.takeoverTitle")}
+              {t("presence.takeoverTitle", { device: holder })}
             </ResponsiveAlertDialogTitle>
-            <ResponsiveAlertDialogDescription>
-              {t("presence.takeoverDescription", { device: holder })}
-            </ResponsiveAlertDialogDescription>
           </ResponsiveAlertDialogHeader>
           <ResponsiveAlertDialogFooter>
             <ResponsiveAlertDialogCancel>
               {t("delete.cancel")}
             </ResponsiveAlertDialogCancel>
-            <ResponsiveAlertDialogAction onClick={takeOver}>
+            <ResponsiveAlertDialogAction
+              variant="destructive-solid"
+              onClick={takeOver}
+            >
               {t("presence.takeover")}
             </ResponsiveAlertDialogAction>
           </ResponsiveAlertDialogFooter>

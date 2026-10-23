@@ -71,7 +71,7 @@ export function GroupNode({
       <div
         data-slot="group-frame"
         data-selected={selected ? "true" : undefined}
-        className="canvas-group h-full w-full rounded-[var(--r-card)] border"
+        className="canvas-group h-full w-full rounded-card border"
         style={{ borderColor: node.color }}
       >
         <div className="canvas-group-label" style={{ color: node.color }}>

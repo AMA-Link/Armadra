@@ -118,7 +118,7 @@ export function WorktreeBindingBadge({ node }: { node: CanvasNode }) {
 
   return (
     <Card
-      className="max-w-full gap-1 overflow-visible rounded-md border border-border bg-card/90 p-1.5 py-1.5 text-xs shadow-sm ring-0 backdrop-blur-sm"
+      className="max-w-full gap-1 overflow-visible bg-card/90 p-1.5 py-1.5 text-meta ring-0 backdrop-blur-sm"
       data-testid="worktree-binding-badge"
     >
       <div className="flex min-w-0 flex-wrap items-center gap-1">
@@ -244,9 +244,6 @@ function RepairPrompt({
       <p className="font-medium text-destructive">
         {t(`frameBinding.reason.${reason}`)}
       </p>
-      <p className="text-muted-foreground">
-        {t(`frameBinding.reasonHint.${reason}`)}
-      </p>
       <div className="flex gap-1">
         {recreatable && (
           <Button
@@ -262,7 +259,6 @@ function RepairPrompt({
           {t("frameBinding.unbind")}
         </Button>
       </div>
-      <p className="text-muted-foreground">{t("frameBinding.unbindHint")}</p>
     </div>
   );
 }

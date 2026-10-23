@@ -345,7 +345,11 @@ describe("TerminalNode body", () => {
     renderNode(
       terminalNode({ kind: "terminal", agent: { id: "codex", driver: "acp" } }),
     );
-    fireEvent.click(await screen.findByRole("button", { name: "回答" }));
+    const answer = await screen.findByRole("button", { name: "回答" });
+    // 头部小钮：`Button xs`，不再手写 18px 高度
+    expect(answer.getAttribute("data-size")).toBe("xs");
+    expect(answer.className).not.toContain("h-[18px]");
+    fireEvent.click(answer);
     // 卡片在会话体里；按钮只带人过去，不替人答。
     expect(screen.queryByRole("button", { name: "允许" })).toBeNull();
   });
@@ -368,7 +372,10 @@ describe("TerminalNode body", () => {
       } as never,
     });
     renderNode(terminalNode({ kind: "terminal", agent: { id: "codex" } }));
-    expect(screen.getByText("等待接管")).toBeTruthy();
+    const waiting = screen.getByText("等待接管");
+    // 等待接管是一枚 `Badge outline sm`，与其它头部胶囊同高
+    expect(waiting.getAttribute("data-variant")).toBe("outline");
+    expect(waiting.getAttribute("data-size")).toBe("sm");
     expect(screen.queryByRole("button", { name: "允许" })).toBeNull();
   });
 

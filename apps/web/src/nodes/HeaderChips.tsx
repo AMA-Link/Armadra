@@ -2,7 +2,6 @@ import * as React from "react";
 
 import { useT } from "@/app/preferences-store";
 import { Badge } from "@/ui/badge";
-import { HEADER_CHIP_CLASS } from "./header-chip";
 
 /**
  * 节点头上那一排常驻徽标，多了就折起来。
@@ -53,12 +52,7 @@ export function HeaderChips({ children }: { children?: React.ReactNode }) {
         {children}
       </span>
       {hidden > 0 && (
-        <Badge
-          variant="outline"
-          className={HEADER_CHIP_CLASS}
-          data-slot="header-chips-overflow"
-          title={t("node.chips.more", { count: hidden })}
-        >
+        <Badge variant="outline" size="sm" data-slot="header-chips-overflow">
           {t("node.chips.more", { count: hidden })}
         </Badge>
       )}

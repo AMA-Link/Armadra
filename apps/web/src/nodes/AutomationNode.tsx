@@ -5,6 +5,7 @@ import { CalendarClock, ListOrdered, Pause, Play } from "lucide-react";
 
 import { Badge } from "@/ui/badge";
 import { IconButton } from "@/ui/icon-button";
+import { StatusPill, type StatusTone } from "@/ui/status-pill";
 import { useAutomationSession } from "@/host/automation-session";
 import {
   digestLabel,
@@ -26,6 +27,12 @@ import { usePreferencesStore, useT } from "@/app/preferences-store";
 import { AutomationSkeleton } from "./NodeSkeletons";
 import { NodeShell } from "./NodeShell";
 import type { NodeBodyProps } from "./registry";
+
+/** 计划状态 → 状态族色调：已启用走蓝（不脉冲），已暂停走暂停灰，其余是空闲。 */
+const PLAN_TONE: Partial<Record<AutomationPlanState, StatusTone>> = {
+  [AutomationPlanState.ACTIVE]: "working",
+  [AutomationPlanState.PAUSED]: "paused",
+};
 
 /**
  * 平台定时计划卡片（自动化设计 §3）。
@@ -131,7 +138,7 @@ export function AutomationNode({ id, node, selected }: NodeBodyProps) {
       <div
         data-slot="automation-card"
         data-node-id={id}
-        className="min-w-0 space-y-2 px-3 py-2 text-[12px]"
+        className="min-w-0 space-y-2 px-3 py-2 text-meta"
       >
         {unavailable ? (
           <p role="status" className="text-muted-foreground">
@@ -142,14 +149,18 @@ export function AutomationNode({ id, node, selected }: NodeBodyProps) {
         ) : (
           <>
             <div className="flex flex-wrap items-center gap-2">
-              <Badge variant="secondary">{t(planStateKey(plan))}</Badge>
+              <StatusPill
+                size="sm"
+                tone={PLAN_TONE[plan.state] ?? "idle"}
+                pulse={false}
+                label={t(planStateKey(plan))}
+              />
               {plan.needsAttention && (
-                <Badge
-                  variant="destructive"
-                  title={t("automation.needsAttentionNote")}
-                >
-                  {t("automation.needsAttention")}
-                </Badge>
+                <StatusPill
+                  size="sm"
+                  tone="attention"
+                  label={t("automation.needsAttention")}
+                />
               )}
             </div>
             <dl className="grid min-w-0 grid-cols-[auto_1fr] gap-x-3 gap-y-1">
@@ -185,7 +196,7 @@ export function AutomationNode({ id, node, selected }: NodeBodyProps) {
                 </>
               )}
             </dl>
-            <p className="truncate text-[11px] text-muted-foreground select-text">
+            <p className="truncate font-mono text-caption text-muted-foreground select-text">
               {digestLabel(snapshot?.configSha256).slice(0, 16)}
             </p>
           </>

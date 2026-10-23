@@ -57,7 +57,7 @@ export function EdgeLabel({ box, text }: { box: LabelBox; text: string }) {
         fill="var(--canvas-bg)"
         stroke="currentColor"
         strokeOpacity={0.4}
-        strokeWidth={box.fontSize / 11}
+        style={{ strokeWidth: box.fontSize / 11 }}
       />
       <text
         x={box.x}
@@ -66,7 +66,13 @@ export function EdgeLabel({ box, text }: { box: LabelBox; text: string }) {
         dominantBaseline="central"
         fontSize={box.fontSize}
         fill="currentColor"
-        style={{ userSelect: "none", fontWeight: 500 }}
+        // `text-caption` 的等宽写法：SVG 里没有类可套，字体取 `--font-code`，
+        // 宽度估算（`edge-label.textWidth`）正好是 0.6em 一个字符。
+        style={{
+          userSelect: "none",
+          fontWeight: 500,
+          fontFamily: "var(--font-code)",
+        }}
       >
         {text}
       </text>

@@ -71,7 +71,7 @@ export function AgentSettingsDialog() {
         </ResponsiveDialogHeader>
         <div className="flex flex-col gap-(--space-block)">
           <div className="flex flex-col gap-(--space-group)">
-            <span className="text-xs text-[var(--muted-foreground)]">
+            <span className="text-meta text-muted-foreground">
               {t("agentSettings.inboxWake")}
             </span>
             <ToggleGroup
@@ -95,7 +95,7 @@ export function AgentSettingsDialog() {
             </ToggleGroup>
           </div>
 
-          <label className="flex items-center justify-between gap-3 text-sm">
+          <label className="flex items-center justify-between gap-3 text-body">
             {t("agentSettings.acceptSubDelivery")}
             <Switch
               checked={agent?.acceptSubDelivery === true}
@@ -108,7 +108,7 @@ export function AgentSettingsDialog() {
             关掉之后对方拿到的是摘要而不是转录，所以「关」不是「读不到」——
             开关的两端都是一句完整的话（`contextShare`: full / summary）。
           */}
-          <label className="flex items-center justify-between gap-3 text-sm">
+          <label className="flex items-center justify-between gap-3 text-body">
             {t("agentSettings.contextShare")}
             <Switch
               checked={(agent?.contextShare ?? "full") === "full"}

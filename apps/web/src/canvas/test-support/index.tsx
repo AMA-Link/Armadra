@@ -1,5 +1,7 @@
 import * as React from "react";
 import { ReactFlow, ReactFlowProvider, type NodeTypes } from "@xyflow/react";
+
+import { TooltipProvider } from "@/ui/tooltip";
 import { act, render, type RenderResult } from "@testing-library/react";
 import type { CanvasEdge, CanvasNode, CanvasNodeType } from "@armadra/shared";
 
@@ -146,26 +148,29 @@ export function renderFlow(
     </>
   );
   const nodeTypes: NodeTypes = { test: Slot };
+  // 与 `App` 同样有一个 `TooltipProvider`：节点里的图标钮用 `Tooltip`
   const result = render(
     <ReactFlowProvider>
-      <ReactFlow
-        width={800}
-        height={600}
-        nodeTypes={nodeTypes}
-        nodes={[
-          {
-            id: nodeId,
-            type: "test",
-            position: { x: 0, y: 0 },
-            width: options.width ?? 240,
-            height: options.height ?? 200,
-            selected: options.selected ?? false,
-            data: {},
-          },
-        ]}
-        edges={[]}
-        onError={() => undefined}
-      />
+      <TooltipProvider delayDuration={0}>
+        <ReactFlow
+          width={800}
+          height={600}
+          nodeTypes={nodeTypes}
+          nodes={[
+            {
+              id: nodeId,
+              type: "test",
+              position: { x: 0, y: 0 },
+              width: options.width ?? 240,
+              height: options.height ?? 200,
+              selected: options.selected ?? false,
+              data: {},
+            },
+          ]}
+          edges={[]}
+          onError={() => undefined}
+        />
+      </TooltipProvider>
     </ReactFlowProvider>,
   );
   return {

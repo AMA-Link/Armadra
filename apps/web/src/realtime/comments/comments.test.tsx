@@ -239,6 +239,27 @@ describe("钉按屏幕距离聚合", () => {
   });
 });
 
+describe("评论的语义类外观", () => {
+  it("钉用节点阴影与 11 号字，未解决的小点走品牌色类", () => {
+    render(
+      <TestProviders>
+        <CommentPin count={2} open color={1} label="pin" />
+      </TestProviders>,
+    );
+    const pin = screen.getByRole("button", { name: "pin" });
+    expect(pin.classList.contains("shadow-node")).toBe(true);
+    expect(pin.classList.contains("text-caption")).toBe(true);
+    expect(pin.className).not.toContain("shadow-sm");
+    expect(pin.querySelector(".bg-brand")).toBeTruthy();
+  });
+
+  it("每条评论的头部行高 28", () => {
+    renderThread();
+    const header = document.querySelector("[data-slot='comment'] > div");
+    expect(header?.classList.contains("h-[28px]")).toBe(true);
+  });
+});
+
 describe("正文 Markdown", () => {
   it("渲染 Markdown，裸 HTML 不执行也不出现", () => {
     const { container } = render(

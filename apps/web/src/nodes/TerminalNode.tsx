@@ -2,7 +2,7 @@ import { scoped } from "../sources/scope";
 import * as React from "react";
 import { ArrowUpDown, Boxes, RotateCw, Share2 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
-import { toast } from "sonner";
+import { toast } from "@/ui/toast";
 
 import { Badge } from "@/ui/badge";
 import { IconButton } from "@/ui/icon-button";
@@ -287,9 +287,8 @@ export function TerminalNode({ id, node, selected, collapsed }: NodeBodyProps) {
     agent && canAnswer && need === "input" && driver === "acp" ? (
       <Button
         size="xs"
-        variant="ghost"
+        variant="outline"
         data-slot="answer-question"
-        className="h-[18px] px-1.5 text-[length:var(--text-caption)]"
         onClick={answerQuestion}
       >
         {t("node.answer")}
@@ -299,11 +298,7 @@ export function TerminalNode({ id, node, selected, collapsed }: NodeBodyProps) {
   // §5.8、§5.16 权限态）——否则头部只剩一个胶囊，不知道该等谁。
   const awaitingDriver =
     agent && !canAnswer && (need === "approval" || need === "input") ? (
-      <Badge
-        variant="outline"
-        data-slot="awaiting-driver"
-        className="h-[18px] px-1.5 text-[length:var(--text-caption)]"
-      >
+      <Badge variant="outline" size="sm" data-slot="awaiting-driver">
         {t("node.awaitingDriver")}
       </Badge>
     ) : null;
@@ -451,7 +446,7 @@ export function TerminalNode({ id, node, selected, collapsed }: NodeBodyProps) {
           <Input
             autoFocus
             aria-label={t("terminal.find")}
-            className="h-7 text-xs"
+            size="sm"
             value={query}
             onChange={(event) => setQuery(event.target.value)}
             onKeyDown={(event) => {
@@ -496,8 +491,10 @@ export function TerminalNode({ id, node, selected, collapsed }: NodeBodyProps) {
           {agent && <span className="truncate">{agentLabel(agent.id)}</span>}
           {sshLabel !== null && (
             <>
-              <ArrowUpDown className="size-3 shrink-0" />
-              <span className="truncate">{sshLabel}</span>
+              <Badge variant="outline" size="sm" data-slot="ssh-label">
+                <ArrowUpDown />
+                <span className="truncate">{sshLabel}</span>
+              </Badge>
             </>
           )}
         </DropdownMenuLabel>
@@ -577,9 +574,6 @@ export function TerminalNode({ id, node, selected, collapsed }: NodeBodyProps) {
             {t("agent.model")}
           </DropdownMenuSubTrigger>
           <DropdownMenuSubContent className="w-60 max-w-[calc(100vw-24px)]">
-            <p className="px-2 py-2 text-xs leading-relaxed text-muted-foreground">
-              {t("agent.modelHint")}
-            </p>
             <DropdownMenuItem
               disabled={!agent.model}
               onSelect={() => selectModel(undefined)}
@@ -594,7 +588,7 @@ export function TerminalNode({ id, node, selected, collapsed }: NodeBodyProps) {
               >
                 {model.label}
                 {model.source === "cli" && (
-                  <span className="ml-auto pl-3 text-[11px] text-muted-foreground">
+                  <span className="ml-auto pl-3 text-caption text-muted-foreground">
                     CLI
                   </span>
                 )}

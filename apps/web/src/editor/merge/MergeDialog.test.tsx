@@ -101,6 +101,19 @@ describe("MergeDialog", () => {
     expect(await screen.findByText("已写入并标记已解决")).toBeTruthy();
   });
 
+  it("路径作为等宽的值显示在标题下，对话框没有 Description", async () => {
+    render(<MergeDialog />);
+    await openMergeView("w1", "src/a.ts");
+    await screen.findByText("第 1 处");
+    const dialog = screen.getByRole("dialog");
+    const path = screen.getByText("src/a.ts");
+    expect(path.className).toContain("font-mono");
+    expect(path.className).toContain("text-meta");
+    expect(
+      dialog.querySelector('[data-slot$="dialog-description"]'),
+    ).toBeNull();
+  });
+
   it("addresses a nested checkout's conflict by checkout, not by the root index", async () => {
     render(<MergeDialog />);
     await openMergeView("w1", "src/a.ts", "vendor/lib");

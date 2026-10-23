@@ -15,7 +15,6 @@ import { Button } from "@/ui/button";
 import {
   ResponsiveDialog,
   ResponsiveDialogContent,
-  ResponsiveDialogDescription,
   ResponsiveDialogFooter,
   ResponsiveDialogHeader,
   ResponsiveDialogTitle,
@@ -96,21 +95,20 @@ export function MergeDialog() {
           <ResponsiveDialogTitle>
             {t(draft ? "merge.draft.title" : "merge.title")}
           </ResponsiveDialogTitle>
-          <ResponsiveDialogDescription>
-            {state.loading ? "" : (state.path ?? "")}
-          </ResponsiveDialogDescription>
+          {!state.loading && state.path && (
+            <span className="truncate font-mono text-meta text-muted-foreground">
+              {state.path}
+            </span>
+          )}
         </ResponsiveDialogHeader>
 
         {state.unavailable && (
-          <p className="text-[12px] text-[var(--warn)]">
+          <p className="text-meta text-warn-text">
             {reasonText(t, state.unavailable)}
           </p>
         )}
         {state.error && (
-          <p
-            role="alert"
-            className="break-words text-[12px] text-[var(--danger-text)]"
-          >
+          <p role="alert" className="break-words text-meta text-danger-text">
             {state.error}
           </p>
         )}
@@ -128,7 +126,10 @@ export function MergeDialog() {
               className="grid h-40 grid-cols-3 gap-3"
             >
               {[0, 1, 2].map((index) => (
-                <Skeleton key={index} className="h-full w-full rounded-md" />
+                <Skeleton
+                  key={index}
+                  className="h-full w-full rounded-control"
+                />
               ))}
             </div>
           }
@@ -137,10 +138,10 @@ export function MergeDialog() {
         </Loadable>
 
         {!state.loading && !state.unavailable && (
-          <ScrollArea className="min-h-0 flex-1 rounded-[var(--radius-sm)] border border-border">
+          <ScrollArea className="min-h-0 flex-1 rounded-control border border-border">
             <div className="flex flex-col gap-(--space-group) p-(--space-inset)">
               {conflicts.length === 0 ? (
-                <p className="text-[12px] text-muted-foreground">
+                <p className="text-meta text-muted-foreground">
                   {t(draft ? "merge.draft.noConflicts" : "merge.noConflicts")}
                 </p>
               ) : (
@@ -158,10 +159,10 @@ export function MergeDialog() {
                 ))
               )}
               <div className="min-w-0">
-                <p className="pb-1 text-[12px] font-medium">
+                <p className="pb-1 text-meta font-medium">
                   {t("merge.result")}
                 </p>
-                <pre className="max-h-64 overflow-auto rounded-[var(--radius-sm)] bg-[var(--surface-sunken)] p-2 font-mono text-[11px]">
+                <pre className="max-h-64 overflow-auto rounded-control bg-sunken p-2 font-mono text-caption">
                   {merged}
                 </pre>
               </div>
@@ -170,7 +171,7 @@ export function MergeDialog() {
         )}
 
         <ResponsiveDialogFooter className="gap-2">
-          <span className="mr-auto text-[length:var(--text-caption)] text-muted-foreground">
+          <span className="mr-auto text-caption text-muted-foreground">
             {t("merge.summary", {
               count: String(countConflicts(state.regions)),
             })}
@@ -235,9 +236,9 @@ function Hunk({
   const t = (key: string, values?: Record<string, string>) =>
     translate(draft ? (DRAFT_LABELS[key] ?? key) : key, values);
   return (
-    <section className="min-w-0 rounded-[var(--radius-sm)] border border-border p-(--space-inset)">
+    <section className="min-w-0 rounded-control border border-border p-(--space-inset)">
       <div className="flex flex-wrap items-center gap-1.5 pb-(--space-group)">
-        <span className="mr-auto text-[12px] font-medium">
+        <span className="mr-auto text-meta font-medium">
           {t("merge.hunk", { index: String(index + 1) })}
         </span>
         {CHOICES.map((option) => (
@@ -265,10 +266,8 @@ function Side({ label, lines }: { label: string; lines: string[] }) {
   const t = useT();
   return (
     <div className="min-w-0">
-      <p className="pb-1 text-[length:var(--text-caption)] text-muted-foreground">
-        {label}
-      </p>
-      <pre className="max-h-40 overflow-auto rounded-[var(--radius-sm)] bg-[var(--surface-sunken)] p-2 font-mono text-[11px]">
+      <p className="pb-1 text-caption text-muted-foreground">{label}</p>
+      <pre className="max-h-40 overflow-auto rounded-control bg-sunken p-2 font-mono text-caption">
         {lines.length > 0 ? lines.join("\n") : t("merge.emptySide")}
       </pre>
     </div>

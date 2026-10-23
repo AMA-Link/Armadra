@@ -8,7 +8,7 @@ import {
   Shrink,
   SlidersHorizontal,
 } from "lucide-react";
-import { commandKeysLabel, type CommandId } from "../keybindings";
+import type { CommandId } from "../keybindings";
 import { useCanvasStore } from "../store/canvas-store";
 import { useT } from "../app/preferences-store";
 import { CanvasPreferencesMenu } from "../canvas/menus/CanvasPreferencesMenu";
@@ -23,7 +23,8 @@ import { IconButton } from "@/ui/icon-button";
 import { ClusterUsage } from "./ClusterUsage";
 import { featureEnabled } from "@/lib/features";
 import { noDragProps } from "./window-region";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/ui/tooltip";
+import { Tooltip, TooltipTrigger } from "@/ui/tooltip";
+import { CommandTip } from "./command-tip";
 import { useMenuTooltip } from "./menu-tooltip";
 import type { ReactNode } from "react";
 
@@ -47,7 +48,7 @@ import type { ReactNode } from "react";
 
 /** 工具簇/侧栏钮共用的那条底。 */
 const BAR =
-  "flex flex-col gap-2 rounded-[var(--r-card)] border border-border bg-[var(--panel)]/90 p-1 shadow-[var(--shadow-pill)] backdrop-blur-[12px]";
+  "flex flex-col gap-2 rounded-card border border-border-strong bg-panel/90 p-1 shadow-overlay backdrop-blur-[12px]";
 
 /*
  * 开着的那块右侧工作面板（`panels/WorkPanelSheet`）。抽屉是窗口级的固定层，
@@ -89,7 +90,7 @@ export function ControlsCluster() {
           "absolute top-[14px] right-[14px] z-[var(--z-cluster)]",
           // 窗口很矮时簇自己滚，不被裁掉。
           "max-h-[calc(100%-28px)] overflow-y-auto",
-          "transition-[right] duration-150 ease-out motion-reduce:transition-none",
+          "transition-[right] duration-(--dur-base) ease-(--ease-out) motion-reduce:transition-none",
         )}
       >
         <ClusterButton
@@ -200,7 +201,7 @@ export function ControlsCluster() {
             {/* 菜单展开时不要再挂 Tooltip：它会压在第一条勾选项上。
                 菜单**关掉**之后也不该弹回来，那一下由 `useMenuTooltip` 拦。 */}
             {preferences.menuOpen ? null : (
-              <TooltipContent side="left">{t("wb.menu")}</TooltipContent>
+              <CommandTip side="left" label={t("wb.menu")} />
             )}
           </Tooltip>
           <CanvasPreferencesMenu />
@@ -223,7 +224,6 @@ function ClusterButton({
   onClick: () => void;
   children: ReactNode;
 }) {
-  const keys = command === undefined ? "" : commandKeysLabel(command);
   return (
     <Tooltip delayDuration={500}>
       <TooltipTrigger asChild>
@@ -236,9 +236,7 @@ function ClusterButton({
           {children}
         </IconButton>
       </TooltipTrigger>
-      <TooltipContent side="left">
-        {keys ? `${label} ${keys}` : label}
-      </TooltipContent>
+      <CommandTip side="left" label={label} command={command} />
     </Tooltip>
   );
 }

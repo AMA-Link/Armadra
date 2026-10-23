@@ -10,15 +10,18 @@ import {
   DropdownMenuTrigger,
 } from "@/ui/dropdown-menu";
 import { cn } from "@/lib/cn";
+import { commandKeysLabel } from "@/keybindings";
+import { EmptyState } from "@/ui/state";
 import { ADD_MENU_CONTENT_CLASS, AddMenuContent } from "./menus/AddMenuContent";
 import { buildAddMenu } from "./menus/add-menu";
 import { currentViewportCenter } from "./placement";
 
 /**
- * 空画布的起点：画布上既没有节点也没有白板对象时，在正中给两个动作——
- * 「新建终端」与完整的新建菜单（与 Dock 的 `+` 同一份 `AddMenuContent`）。
- * 「新建终端」直接跑菜单里那一项，落点与相机跟随和从菜单点完全一样。
- * 不写说明文字（界面约定：只放动作）；放下第一个东西它就消失。
+ * 空画布的起点：画布上既没有节点也没有白板对象时，在正中是一张 `EmptyState`
+ * （一句名词标题）加两个动作——「终端」（主按钮，带当前键位）与「添加」（完整的
+ * 新建菜单，与 Dock 的 `+` 同一份 `AddMenuContent`）。「终端」直接跑菜单里
+ * 「新建终端」那一项，落点与相机跟随和从菜单点完全一样。不写说明文字；放下
+ * 第一个东西它就消失。
  */
 export function EmptyCanvas() {
   const t = useT();
@@ -33,51 +36,59 @@ export function EmptyCanvas() {
   const agents = useEnabledAgents();
 
   if (!workspace || !empty) return null;
+  const terminalKeys = commandKeysLabel("canvas.newTerminal");
 
   return (
     <div
       data-slot="empty-canvas"
       className="pointer-events-none absolute inset-0 z-[var(--z-pills)] grid place-items-center"
     >
-      <div className="pointer-events-auto flex items-center gap-2">
-        <Button
-          onClick={() =>
-            buildAddMenu(agents, t)
-              .find((item) => item.id === "add.terminal")
-              ?.run({
-                addNode,
-                position: currentViewportCenter(),
-                workspace,
-                agents,
-              })
-          }
-        >
-          <Terminal data-icon="inline-start" />
-          {t("add.terminal")}
-        </Button>
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant="outline">
-              <Plus data-icon="inline-start" />
-              {t("dock.add")}
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent
-            align="center"
-            className={cn("z-[var(--z-menu)]", ADD_MENU_CONTENT_CLASS)}
+      <EmptyState
+        title={t("emptyCanvas.title")}
+        className="pointer-events-auto w-auto min-w-64 flex-none border-solid border-border-strong bg-panel/90 shadow-overlay backdrop-blur-[12px]"
+      >
+        <div className="flex items-center gap-2">
+          <Button
+            aria-label={t("add.terminal")}
+            {...(terminalKeys ? { shortcut: terminalKeys } : {})}
+            onClick={() =>
+              buildAddMenu(agents, t)
+                .find((item) => item.id === "add.terminal")
+                ?.run({
+                  addNode,
+                  position: currentViewportCenter(),
+                  workspace,
+                  agents,
+                })
+            }
           >
-            <AddMenuContent
-              kind="dropdown"
-              ctx={{
-                addNode,
-                position: currentViewportCenter(),
-                workspace,
-                agents,
-              }}
-            />
-          </DropdownMenuContent>
-        </DropdownMenu>
-      </div>
+            <Terminal data-icon="inline-start" />
+            {t("emptyCanvas.terminal")}
+          </Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline" aria-label={t("dock.add")}>
+                <Plus data-icon="inline-start" />
+                {t("emptyCanvas.add")}
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent
+              align="center"
+              className={cn("z-[var(--z-menu)]", ADD_MENU_CONTENT_CLASS)}
+            >
+              <AddMenuContent
+                kind="dropdown"
+                ctx={{
+                  addNode,
+                  position: currentViewportCenter(),
+                  workspace,
+                  agents,
+                }}
+              />
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
+      </EmptyState>
     </div>
   );
 }

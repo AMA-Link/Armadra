@@ -51,11 +51,11 @@ export function MarkdownPreview({
   return (
     <ScrollArea
       className={cn(
-        "min-w-0 flex-1 bg-[var(--surface-sunken)]",
-        bordered && "border-l border-[var(--border)]",
+        "min-w-0 flex-1 bg-sunken",
+        bordered && "border-l border-border",
       )}
     >
-      <div className="sticky-markdown p-3 text-[12.5px] leading-relaxed">
+      <div className="sticky-markdown p-3 text-meta leading-relaxed">
         <Markdown
           remarkPlugins={[remarkGfm]}
           components={{

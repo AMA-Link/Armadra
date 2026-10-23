@@ -14,6 +14,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/ui/dropdown-menu";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/ui/tooltip";
 import { useT } from "@/app/preferences-store";
 import { collapseCrumbs, type Crumb } from "./breadcrumb";
 
@@ -59,17 +60,21 @@ export function FilesBreadcrumb({
         <>
           <Separator />
           <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button
-                variant="ghost"
-                size="xs"
-                aria-label={t("files.breadcrumb.more")}
-                title={t("files.breadcrumb.more")}
-                className="shrink-0 px-1 font-normal text-muted-foreground"
-              >
-                …
-              </Button>
-            </DropdownMenuTrigger>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="xs"
+                    aria-label={t("files.breadcrumb.more")}
+                    className="shrink-0 px-1 font-normal text-muted-foreground"
+                  >
+                    …
+                  </Button>
+                </DropdownMenuTrigger>
+              </TooltipTrigger>
+              <TooltipContent>{t("files.breadcrumb.more")}</TooltipContent>
+            </Tooltip>
             <DropdownMenuContent align="start" className="max-w-[16rem]">
               {hidden.map((crumb) => (
                 <DropdownMenuItem
@@ -96,7 +101,7 @@ export function FilesBreadcrumb({
             {current ? (
               <span
                 aria-current="page"
-                className="truncate px-2 text-xs font-medium"
+                className="truncate px-2 text-meta font-medium"
               >
                 {crumb.label}
               </span>

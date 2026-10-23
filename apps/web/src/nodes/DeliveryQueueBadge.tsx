@@ -31,7 +31,6 @@ import { useCanvasStore } from "@/store/canvas-store";
 import { Badge } from "@/ui/badge";
 import { Button } from "@/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/ui/popover";
-import { HEADER_CHIP_CLASS } from "./header-chip";
 
 export function DeliveryQueueBadge({
   nodeId,
@@ -114,12 +113,7 @@ export function DeliveryQueueBadge({
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
-        <Badge
-          asChild
-          variant="outline"
-          className={HEADER_CHIP_CLASS}
-          data-no-drag="true"
-        >
+        <Badge asChild variant="outline" size="sm" data-no-drag="true">
           <Button
             type="button"
             variant="ghost"
@@ -135,7 +129,7 @@ export function DeliveryQueueBadge({
         </Badge>
       </PopoverTrigger>
       <PopoverContent
-        className="w-80 max-w-[calc(100vw-1rem)] text-xs"
+        className="w-80 max-w-[calc(100vw-1rem)] text-meta"
         onPointerDown={(event) => event.stopPropagation()}
       >
         <h3 className="font-medium">{t("delivery.queue.title")}</h3>
@@ -197,7 +191,7 @@ export function DeliveryQueueBadge({
                     {basis === undefined ? null : (
                       <Badge
                         variant={basis === "observed" ? "outline" : "secondary"}
-                        className={HEADER_CHIP_CLASS}
+                        size="sm"
                       >
                         {t(`delivery.basis.${basis}`)}
                       </Badge>
@@ -228,7 +222,7 @@ export function DeliveryQueueBadge({
                     variant={
                       record.outcome === "delivered" ? "secondary" : "outline"
                     }
-                    className={HEADER_CHIP_CLASS}
+                    size="sm"
                   >
                     {t(`delivery.outcome.${record.outcome}`)}
                   </Badge>

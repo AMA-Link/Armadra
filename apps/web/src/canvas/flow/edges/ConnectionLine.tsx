@@ -49,10 +49,12 @@ export function ConnectionLine({
     : { x: toX, y: toY, width: 0, height: 0 };
   const route = routeFor(from, to);
   const end = route.points[route.points.length - 1]!;
+  const snapped = toNode !== undefined && toNode !== null;
+  const invalid = connectionStatus === "invalid";
   const color =
     connectionStatus === "valid"
       ? VALID_COLOR
-      : connectionStatus === "invalid"
+      : invalid
         ? INVALID_COLOR
         : NEUTRAL_COLOR;
 
@@ -62,13 +64,21 @@ export function ConnectionLine({
         d={roundedPath(route.points, CORNER_RADIUS)}
         fill="none"
         stroke={color}
-        strokeWidth={STROKE_WIDTH}
+        style={{ strokeWidth: STROKE_WIDTH }}
         strokeLinecap="round"
         strokeLinejoin="round"
         // 还没落到目标上时用虚线：一眼能看出这条线还没连上东西。
         {...(toNode ? {} : { strokeDasharray: "6 4" })}
       />
-      <circle cx={end.x} cy={end.y} r={3} fill={color} />
+      {/* 终点圆点：吸到目标上时软位移（canvas.css，只在 snapped 时过渡，免得拖线时
+          圆点落后于指针）；目标不可连接时左右抖两次。 */}
+      <circle
+        data-snapped={snapped ? "true" : undefined}
+        className={invalid ? "anim-shake" : undefined}
+        style={{ cx: end.x, cy: end.y }}
+        r={3}
+        fill={color}
+      />
     </g>
   );
 }

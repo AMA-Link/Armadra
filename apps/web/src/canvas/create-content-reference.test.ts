@@ -33,7 +33,7 @@ vi.mock("@/nodes/registry", () => {
   };
 });
 
-const { toast } = await import("sonner");
+const { toast } = await import("@/ui/toast");
 const { useCanvasStore, resetHistory } = await import("@/store/canvas-store");
 const { emptyWhiteboard } = await import("./whiteboard/model");
 const { MAX_LINKS } = await import("./content-links");

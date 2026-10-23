@@ -146,7 +146,7 @@ function RopeLine({ edge, boxes }: RopeLineProps) {
         d={d}
         fill="none"
         stroke={edge.color}
-        strokeWidth={1.5}
+        style={{ strokeWidth: 1.5 }}
         strokeLinecap="round"
         {...(edge.waiting ? { strokeDasharray: ROPE_DASH } : {})}
         className={edge.waiting ? "anim-rope-flow" : undefined}
@@ -160,7 +160,7 @@ function RopeLine({ edge, boxes }: RopeLineProps) {
             r={LABEL_RADIUS}
             fill="var(--card)"
             stroke={edge.color}
-            strokeWidth={1}
+            style={{ strokeWidth: 1 }}
           />
           <text
             x={labelX}

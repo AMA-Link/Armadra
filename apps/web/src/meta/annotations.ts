@@ -1,5 +1,5 @@
 import type { CanvasNode } from "@armadra/shared";
-import { toast } from "sonner";
+import { toast } from "@/ui/toast";
 
 import { t, usePreferencesStore } from "../app/preferences-store";
 import { useCanvasStore } from "../store/canvas-store";

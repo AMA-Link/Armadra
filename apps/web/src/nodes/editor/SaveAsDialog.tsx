@@ -74,7 +74,7 @@ export function SaveAsDialog({
           </ResponsiveDialogHeader>
           <div className="flex flex-col gap-1.5 py-3">
             <label
-              className="text-[length:var(--text-caption)] text-muted-foreground"
+              className="text-caption text-muted-foreground"
               htmlFor="editor-save-as-path"
             >
               {t("editor.saveAs.path")}
@@ -88,7 +88,7 @@ export function SaveAsDialog({
             {error && (
               <p
                 role="alert"
-                className="break-words text-[12px] text-[var(--danger-text)]"
+                className="break-words text-meta text-danger-text"
               >
                 {error}
               </p>

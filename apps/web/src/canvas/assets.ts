@@ -1,4 +1,4 @@
-import { toast } from "sonner";
+import { toast } from "@/ui/toast";
 import { MAX_ASSET_BYTES } from "@armadra/shared";
 
 import { runtimeApi } from "../api/client";

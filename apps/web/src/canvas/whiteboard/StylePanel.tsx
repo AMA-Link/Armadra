@@ -142,7 +142,7 @@ export function CanvasStylePanel() {
   // 左侧竖直居中：左上角是侧栏开关，左下角是锁按钮，中间这一段整块空着。
   return (
     <div
-      className="canvas-style-panel absolute left-3 top-1/2 z-[var(--z-dock)] flex w-[184px] -translate-y-1/2 flex-col gap-2 rounded-lg border border-border bg-[var(--panel)]/90 p-2 backdrop-blur-[12px]"
+      className="canvas-style-panel absolute left-3 top-1/2 z-[var(--z-dock)] flex w-[184px] -translate-y-1/2 flex-col gap-2 rounded-panel border border-border bg-panel/90 p-2 backdrop-blur-[12px]"
       aria-label={t("style.panel")}
     >
       <div
@@ -227,28 +227,36 @@ export function CanvasStylePanel() {
 
       {sections.arrow ? (
         <div className="flex flex-col gap-1">
-          <span className="text-[length:var(--text-caption)] text-muted-foreground">
+          <span className="text-caption text-muted-foreground">
             {t("style.arrow")}
           </span>
           <div className="flex items-center gap-1">
-            <IconButton
-              size="cluster"
-              label={t("style.arrow.start")}
-              active={arrowStart}
-              title={t("style.arrow.start")}
-              onClick={() => applyArrow({ arrowStart: !arrowStart })}
-            >
-              <ArrowLeft />
-            </IconButton>
-            <IconButton
-              size="cluster"
-              label={t("style.arrow.end")}
-              active={arrowEnd}
-              title={t("style.arrow.end")}
-              onClick={() => applyArrow({ arrowEnd: !arrowEnd })}
-            >
-              <ArrowRight />
-            </IconButton>
+            <Tooltip delayDuration={500}>
+              <TooltipTrigger asChild>
+                <IconButton
+                  size="cluster"
+                  label={t("style.arrow.start")}
+                  active={arrowStart}
+                  onClick={() => applyArrow({ arrowStart: !arrowStart })}
+                >
+                  <ArrowLeft />
+                </IconButton>
+              </TooltipTrigger>
+              <TooltipContent>{t("style.arrow.start")}</TooltipContent>
+            </Tooltip>
+            <Tooltip delayDuration={500}>
+              <TooltipTrigger asChild>
+                <IconButton
+                  size="cluster"
+                  label={t("style.arrow.end")}
+                  active={arrowEnd}
+                  onClick={() => applyArrow({ arrowEnd: !arrowEnd })}
+                >
+                  <ArrowRight />
+                </IconButton>
+              </TooltipTrigger>
+              <TooltipContent>{t("style.arrow.end")}</TooltipContent>
+            </Tooltip>
           </div>
         </div>
       ) : null}
@@ -307,9 +315,7 @@ interface StyleGroupProps {
 function StyleGroup({ label, value, onChange, options }: StyleGroupProps) {
   return (
     <div className="flex flex-col gap-1">
-      <span className="text-[length:var(--text-caption)] text-muted-foreground">
-        {label}
-      </span>
+      <span className="text-caption text-muted-foreground">{label}</span>
       <ToggleGroup
         type="single"
         size="sm"
@@ -321,14 +327,14 @@ function StyleGroup({ label, value, onChange, options }: StyleGroupProps) {
         className="w-full"
       >
         {options.map((option) => (
-          <ToggleGroupItem
-            key={option.value}
-            value={option.value}
-            aria-label={option.title}
-            title={option.title}
-          >
-            {option.label}
-          </ToggleGroupItem>
+          <Tooltip key={option.value} delayDuration={500}>
+            <TooltipTrigger asChild>
+              <ToggleGroupItem value={option.value} aria-label={option.title}>
+                {option.label}
+              </ToggleGroupItem>
+            </TooltipTrigger>
+            <TooltipContent>{option.title}</TooltipContent>
+          </Tooltip>
         ))}
       </ToggleGroup>
     </div>
@@ -345,7 +351,7 @@ function DashPreview({ dash }: { dash: Dash }) {
         x2={14}
         y2={8}
         stroke="currentColor"
-        strokeWidth={2}
+        className="stroke-2"
         strokeLinecap="round"
         strokeDasharray={dash === "dashed" ? "4 3" : "0.5 3"}
       />
@@ -363,7 +369,7 @@ function FillPreview({ fill }: { fill: Fill }) {
         height={11}
         rx={2}
         stroke="currentColor"
-        strokeWidth={1.5}
+        className="stroke-[1.5px]"
         fill="currentColor"
         fillOpacity={fill === "solid" ? 1 : fill === "semi" ? 0.3 : 0}
       />

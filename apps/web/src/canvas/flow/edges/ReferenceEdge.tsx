@@ -5,6 +5,7 @@ import { X } from "lucide-react";
 
 import { useT } from "@/app/preferences-store";
 import { Button } from "@/ui/button";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/ui/tooltip";
 import { removeContentReference } from "../../create-content-reference";
 import type { ReferenceFlowEdge } from "../../sync/project";
 import { EdgeLabel, useEdgeLayout } from "./EdgeLabel";
@@ -69,7 +70,7 @@ export function ReferenceEdge({
         d={arrowHead(to, before)}
         fill="none"
         stroke="currentColor"
-        strokeWidth={width}
+        style={{ strokeWidth: width }}
         strokeLinecap="round"
         strokeLinejoin="round"
         opacity={selected ? 1 : 0.75}
@@ -77,25 +78,29 @@ export function ReferenceEdge({
       {labelBox && !selected ? <EdgeLabel box={labelBox} text={label} /> : null}
       {selected ? (
         <EdgeLabelRenderer>
-          <Button
-            variant="secondary"
-            size="icon-xs"
-            aria-label={t("shape.removeReference")}
-            title={t("shape.removeReference")}
-            data-slot="reference-remove"
-            className="nodrag nopan pointer-events-auto absolute shadow-sm"
-            style={{
-              transform: `translate(-50%, -50%) translate(${
-                labelBox?.x ?? middle.x
-              }px, ${labelBox?.y ?? middle.y}px)`,
-            }}
-            onClick={(event) => {
-              event.stopPropagation();
-              removeContentReference(id);
-            }}
-          >
-            <X />
-          </Button>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="secondary"
+                size="icon-xs"
+                aria-label={t("shape.removeReference")}
+                data-slot="reference-remove"
+                className="nodrag nopan pointer-events-auto absolute shadow-overlay"
+                style={{
+                  transform: `translate(-50%, -50%) translate(${
+                    labelBox?.x ?? middle.x
+                  }px, ${labelBox?.y ?? middle.y}px)`,
+                }}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  removeContentReference(id);
+                }}
+              >
+                <X />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>{t("shape.removeReference")}</TooltipContent>
+          </Tooltip>
         </EdgeLabelRenderer>
       ) : null}
     </g>

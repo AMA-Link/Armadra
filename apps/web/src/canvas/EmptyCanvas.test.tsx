@@ -8,6 +8,7 @@ vi.mock("../api/client", () => ({
 
 import { installDomPolyfills, TestProviders } from "../app/test-harness";
 import { useCanvasStore } from "../store/canvas-store";
+import { commandKeysLabel } from "../keybindings";
 import { EmptyCanvas } from "./EmptyCanvas";
 
 installDomPolyfills();
@@ -64,6 +65,27 @@ describe("EmptyCanvas", () => {
     renderEmpty();
     expect(screen.getByRole("button", { name: "新建终端" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "新建" })).toBeTruthy();
+  });
+
+  it("用 EmptyState 做外壳：一句标题，两枚按钮写「终端」「添加」", () => {
+    const { container } = renderEmpty();
+    expect(container.querySelector("[data-state-kind='empty']")).toBeTruthy();
+    expect(screen.getByText("画布是空的")).toBeTruthy();
+    const terminal = screen.getByRole("button", { name: "新建终端" });
+    expect(terminal.textContent).toContain("终端");
+    expect(terminal.getAttribute("data-variant")).toBe("default");
+    const add = screen.getByRole("button", { name: "新建" });
+    expect(add.textContent).toBe("添加");
+    expect(add.getAttribute("data-variant")).toBe("outline");
+  });
+
+  it("「终端」钮带当前键位的 Kbd（只显示）", () => {
+    renderEmpty();
+    const terminal = screen.getByRole("button", { name: "新建终端" });
+    const kbd = terminal.querySelector("[data-slot='kbd']");
+    expect(kbd).toBeTruthy();
+    expect(kbd?.textContent).toBe(commandKeysLabel("canvas.newTerminal"));
+    expect(terminal.getAttribute("aria-keyshortcuts")).toBeTruthy();
   });
 
   it("点「新建终端」建出一个终端节点", () => {

@@ -9,7 +9,6 @@ import { Button } from "@/ui/button";
 import {
   ResponsiveDialog,
   ResponsiveDialogContent,
-  ResponsiveDialogDescription,
   ResponsiveDialogFooter,
   ResponsiveDialogHeader,
   ResponsiveDialogTitle,
@@ -66,13 +65,6 @@ export function EditPreviewDialog() {
           <ResponsiveDialogTitle>
             {preview?.title ?? t("lsp.preview.title")}
           </ResponsiveDialogTitle>
-          <ResponsiveDialogDescription>
-            {!loading && preview
-              ? t("lsp.preview.files", {
-                  count: String(preview.files.length),
-                })
-              : ""}
-          </ResponsiveDialogDescription>
         </ResponsiveDialogHeader>
 
         <Loadable
@@ -84,39 +76,35 @@ export function EditPreviewDialog() {
               aria-label={t("state.loading")}
               className="flex flex-col gap-2"
             >
-              <Skeleton className="h-24 w-full rounded-md" />
-              <Skeleton className="h-24 w-full rounded-md" />
+              <Skeleton className="h-24 w-full rounded-control" />
+              <Skeleton className="h-24 w-full rounded-control" />
             </div>
           }
         >
           {null}
         </Loadable>
 
-        {error && (
-          <p className="text-[12px] text-[var(--danger-text)]">{error}</p>
-        )}
+        {error && <p className="text-meta text-danger-text">{error}</p>}
 
         {preview?.blocked && (
-          <p className="text-[12px] text-[var(--warn)]">
-            {t("lsp.preview.blocked")}
-          </p>
+          <p className="text-meta text-warn-text">{t("lsp.preview.blocked")}</p>
         )}
 
         {preview && preview.files.length === 0 && !loading && (
-          <p className="text-[12px] text-muted-foreground">
+          <p className="text-meta text-muted-foreground">
             {t("lsp.preview.noChanges")}
           </p>
         )}
 
         {result && (
-          <div className="flex flex-col gap-1 text-[12px]">
+          <div className="flex flex-col gap-1 text-meta">
             <span>
               {t("lsp.preview.applied", {
                 count: String(result.applied.length),
               })}
             </span>
             {result.failed.length > 0 && (
-              <div className="flex flex-col gap-0.5 text-[var(--danger-text)]">
+              <div className="flex flex-col gap-0.5 text-danger-text">
                 <span>{t("lsp.preview.failedTitle")}</span>
                 {result.failed.map((failure) => (
                   <span key={failure.path} className="break-all">
@@ -133,7 +121,7 @@ export function EditPreviewDialog() {
             {(preview?.files ?? []).map((file) => (
               <div key={file.uri} className="min-w-0">
                 <div className="flex items-center gap-2 pb-1">
-                  <span className="min-w-0 flex-1 truncate text-[12px] font-medium">
+                  <span className="min-w-0 flex-1 truncate text-meta font-medium">
                     {file.path ?? file.uri}
                   </span>
                   {file.blocked && (
@@ -148,7 +136,7 @@ export function EditPreviewDialog() {
                   )}
                 </div>
                 {file.patch !== "" && (
-                  <div className="overflow-x-auto rounded-[var(--radius-sm)] border border-border">
+                  <div className="overflow-x-auto rounded-control border border-border">
                     <PatchBody patch={file.patch} />
                   </div>
                 )}

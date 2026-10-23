@@ -147,3 +147,35 @@ it("counts search matches inside the open diff", async () => {
   await screen.findByText("命中 1 行");
   expect(api.gitDiff).toHaveBeenCalledTimes(1);
 });
+
+it("差异着色只用语义类，不再写 var 任意值", async () => {
+  const { container } = renderDiff();
+  fireEvent.click(await screen.findByRole("button", { name: /src\/a\.ts/ }));
+  const added = await screen.findByText("+added line");
+  const removed = screen.getByText("-removed line");
+  const hunk = screen.getByText("@@ -1,3 +1,3 @@");
+  expect(added.className).toContain("bg-success-soft");
+  expect(added.className).toContain("text-success-text");
+  expect(removed.className).toContain("bg-danger-soft");
+  expect(removed.className).toContain("text-danger-text");
+  expect(hunk.className).toContain("bg-brand-soft");
+  expect(hunk.className).toContain("text-brand-text");
+  // 文件行：状态字母、+n / −n 各用语义文字色，行高走 Button sm 档（28）
+  const row = screen.getByRole("button", { name: /src\/a\.ts/ });
+  expect(row.getAttribute("data-size")).toBe("sm");
+  expect(screen.getByText("+1").className).toContain("text-success-text");
+  expect(screen.getByText("−1").className).toContain("text-danger-text");
+  expect(screen.getByText("M").className).toContain("text-warn-text");
+  const body = container.querySelector('[data-slot="scroll-area"]')!.innerHTML;
+  expect(body).not.toMatch(/(?:text|bg|border)-\[var\(/);
+});
+
+it("并排视图的两侧也用语义底色", async () => {
+  renderDiff();
+  fireEvent.click(await screen.findByRole("button", { name: /src\/a\.ts/ }));
+  fireEvent.click(screen.getByRole("button", { name: "并排显示" }));
+  const left = (await screen.findByText("removed line")).parentElement!;
+  const right = screen.getByText("added line").parentElement!;
+  expect(left.className).toContain("bg-danger-soft");
+  expect(right.className).toContain("bg-success-soft");
+});

@@ -157,7 +157,7 @@ export function LinkEdge({
           d={d}
           fill="none"
           stroke="currentColor"
-          strokeWidth={width + 1}
+          style={{ strokeWidth: width + 1 }}
           strokeLinecap="round"
           strokeLinejoin="round"
           strokeDasharray="6 10"
@@ -169,7 +169,7 @@ export function LinkEdge({
           d={arrowHead(points[0]!, points[1]!)}
           fill="none"
           stroke="currentColor"
-          strokeWidth={width}
+          style={{ strokeWidth: width }}
           strokeLinecap="round"
           strokeLinejoin="round"
         />
@@ -179,7 +179,7 @@ export function LinkEdge({
           d={arrowHead(points[points.length - 1]!, points[points.length - 2]!)}
           fill="none"
           stroke="currentColor"
-          strokeWidth={width}
+          style={{ strokeWidth: width }}
           strokeLinecap="round"
           strokeLinejoin="round"
         />

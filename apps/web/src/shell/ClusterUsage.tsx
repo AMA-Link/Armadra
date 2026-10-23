@@ -190,7 +190,7 @@ export function ClusterUsage() {
             } as CSSProperties
           }
         >
-          <span className="grid size-[22px] place-items-center rounded-full bg-panel text-[length:var(--text-caption)] leading-none font-medium tabular-nums text-foreground">
+          <span className="grid size-[22px] place-items-center rounded-full bg-panel text-caption leading-none font-medium tabular-nums text-foreground">
             {percent === null ? "—" : Math.round(percent)}
           </span>
         </Button>

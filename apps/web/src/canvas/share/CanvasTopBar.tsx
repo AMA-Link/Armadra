@@ -19,7 +19,7 @@ export function CanvasTopBar() {
       className="pointer-events-none absolute top-[14px] right-[60px] z-[var(--z-cluster)] flex items-center gap-2 *:pointer-events-auto"
     >
       {shared && (
-        <SharedWorkspaceBar className="h-[38px] rounded-[var(--r-card)] border border-border bg-[var(--panel)]/90 px-2.5 shadow-[var(--shadow-pill)] backdrop-blur-[12px]" />
+        <SharedWorkspaceBar className="h-[38px] rounded-card border border-border-strong bg-panel/90 px-2.5 shadow-overlay backdrop-blur-[12px]" />
       )}
       <PresenceBar className="static" />
     </div>

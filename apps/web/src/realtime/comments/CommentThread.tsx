@@ -176,20 +176,20 @@ function CommentEntry({
 
   return (
     <div data-slot="comment" className="flex flex-col gap-1.5">
-      <div className="flex items-center gap-2">
+      <div className="flex h-[28px] items-center gap-2">
         <Avatar
           size="sm"
           className="size-5"
           style={{ boxShadow: `0 0 0 2px ${color}` }}
         >
-          <AvatarFallback className="text-[length:var(--text-caption)]">
+          <AvatarFallback className="text-caption">
             {[...name][0] ?? "?"}
           </AvatarFallback>
         </Avatar>
-        <span className="truncate text-sm font-medium text-foreground">
+        <span className="truncate text-body font-medium text-foreground">
           {name}
         </span>
-        <span className="shrink-0 text-[length:var(--text-caption)] text-muted-foreground">
+        <span className="shrink-0 text-caption text-muted-foreground">
           {formatRelativeTime(comment.createdAtMs, now)}
         </span>
         <div className="ml-auto flex items-center">

@@ -64,7 +64,7 @@ export function NodeMetaMenuItems({ node }: { node: CanvasNode }) {
         {hasNote && (
           <span
             aria-hidden
-            className="ml-auto size-1.5 rounded-full bg-[var(--brand)]"
+            className="ml-auto size-1.5 rounded-pill bg-brand"
           />
         )}
       </DropdownMenuItem>
@@ -149,7 +149,7 @@ function NoteEditor({
         autoFocus
         aria-label={t("meta.note")}
         placeholder={t("meta.notePlaceholder")}
-        className="min-h-[120px] resize-none text-xs"
+        className="min-h-[120px] resize-none text-meta"
         value={draft}
         onChange={(event) => setDraft(event.target.value)}
         onBlur={commit}
@@ -189,7 +189,7 @@ function LabelEditor({
         aria-label={t("meta.labelAdd")}
         placeholder={t("meta.labelPlaceholder")}
         disabled={labels.length >= MAX_LABELS}
-        className="h-8 text-xs"
+        className="text-meta"
         value={draft}
         onChange={(event) => setDraft(event.target.value)}
         onKeyDown={(event) => {
@@ -229,7 +229,8 @@ export function NodeLabelChips({
         <Badge
           key={label}
           variant="ghost"
-          className="group/label h-[16px] gap-0.5 px-1 text-[length:var(--text-caption)]"
+          size="sm"
+          className="group/label gap-0.5 px-1 text-caption"
         >
           {label}
           {removable && (

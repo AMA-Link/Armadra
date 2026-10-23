@@ -21,7 +21,7 @@ vi.mock("../api/source", async (original) => {
 vi.mock("../api/client", () => ({
   runtimeApi: {},
 }));
-vi.mock("sonner", () => ({ toast: { error: vi.fn() } }));
+vi.mock("@/ui/toast", () => ({ toast: { error: vi.fn() } }));
 
 const entry = {
   name: "notes.txt",

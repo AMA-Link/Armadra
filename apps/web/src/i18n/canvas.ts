@@ -18,6 +18,9 @@ const zh = {
 
   /* 新建菜单（§13.3，画布右键 / Dock + / 会话侧栏 + 三个入口共用） */
   "add.terminal": "新建终端",
+  "emptyCanvas.title": "画布是空的",
+  "emptyCanvas.terminal": "终端",
+  "emptyCanvas.add": "添加",
   "add.agent": "新建 {agent}",
   "add.sticky": "新建便签",
   "add.files": "新建文件管理器",
@@ -68,8 +71,6 @@ const zh = {
   "shape.referenceLimit":
     "每个 Agent 最多引用 {limit} 个对象，请先移除一条引用。",
   "shape.referenceSyncFailed": "引用尚未同步到 Agent",
-  "shape.referenceSyncFailureNote":
-    "已停止自动重试。检查 Runtime 连接后重新同步。",
   "shape.noAgents": "先创建一个 Agent 终端",
   "shape.refreshReference": "重新同步引用",
   "content.geo": "图形",
@@ -103,8 +104,7 @@ const zh = {
   "add.importMermaid": "导入 Mermaid…",
 
   /* 导入 Mermaid 对话框（design/mermaid-import.md §4.2 / §6） */
-  "mermaid.title": "导入 Mermaid",
-  "mermaid.description": "流程图落成可编辑的图形，其余图种落成图片。",
+  "mermaid.title": "导入 Mermaid 图表",
   "mermaid.source": "源码",
   "mermaid.preview": "预览",
   "mermaid.placeholder": "flowchart LR\n  A[开始] --> B[结束]",
@@ -113,7 +113,6 @@ const zh = {
   "mermaid.empty": "先粘贴或输入一段 Mermaid",
   "mermaid.errorAt": "第 {line} 行：{message}",
   "mermaid.renderFailed": "这张图渲染不出来",
-  "mermaid.imported": "已导入 {count} 个对象",
   "mermaid.importedImage": "已按图片导入（{type} 暂不支持转成图形）",
   "mermaid.fileFailed": "读不到这个文件",
 
@@ -179,7 +178,6 @@ const zh = {
      `cmd.canvas.copy/cut/paste` 三条命令标签在 `i18n/commands.ts`，
      和命令表其余标签放在一起。 */
   "clipboard.copied": "已复制 {count} 项",
-  "clipboard.cut": "已剪切 {count} 项",
   "clipboard.unavailable": "系统剪贴板不可用",
 
   /* 白板样式面板（React Flow 计划 F28） */
@@ -236,9 +234,7 @@ const zh = {
   "presence.otherWindowEditing": "本机另一个窗口正在编辑",
   "presence.takeover": "接管",
   "presence.readOnly": "只读",
-  "presence.takeoverTitle": "接管编辑？",
-  "presence.takeoverDescription":
-    "{device} 会变为只读，它还没保存的改动会丢失。",
+  "presence.takeoverTitle": "接管 {device}？未保存的改动会丢失",
 } as const;
 
 const en: Record<keyof typeof zh, string> = {
@@ -253,6 +249,9 @@ const en: Record<keyof typeof zh, string> = {
     "Drop files for now; folder import is not available yet",
 
   "add.terminal": "New terminal",
+  "emptyCanvas.title": "The canvas is empty",
+  "emptyCanvas.terminal": "Terminal",
+  "emptyCanvas.add": "Add",
   "add.agent": "New {agent}",
   "add.sticky": "New sticky",
   "add.files": "New file browser",
@@ -300,8 +299,6 @@ const en: Record<keyof typeof zh, string> = {
   "shape.referenceLimit":
     "An agent can reference at most {limit} objects. Remove a reference first.",
   "shape.referenceSyncFailed": "References have not synced to the agent",
-  "shape.referenceSyncFailureNote":
-    "Automatic retries stopped. Check the runtime connection and sync again.",
   "shape.noAgents": "Create an agent terminal first",
   "shape.refreshReference": "Sync references again",
   "content.geo": "Shape",
@@ -332,9 +329,7 @@ const en: Record<keyof typeof zh, string> = {
   "add.importMermaid": "Import Mermaid…",
 
   /* Import Mermaid dialog */
-  "mermaid.title": "Import Mermaid",
-  "mermaid.description":
-    "Flowcharts become editable shapes; other diagrams become an image.",
+  "mermaid.title": "Import Mermaid diagram",
   "mermaid.source": "Source",
   "mermaid.preview": "Preview",
   "mermaid.placeholder": "flowchart LR\n  A[Start] --> B[End]",
@@ -343,7 +338,6 @@ const en: Record<keyof typeof zh, string> = {
   "mermaid.empty": "Paste or type some Mermaid first",
   "mermaid.errorAt": "Line {line}: {message}",
   "mermaid.renderFailed": "This diagram could not be rendered",
-  "mermaid.imported": "Imported {count} objects",
   "mermaid.importedImage": "Imported as an image ({type} cannot become shapes)",
   "mermaid.fileFailed": "Could not read that file",
 
@@ -397,7 +391,6 @@ const en: Record<keyof typeof zh, string> = {
   "canvas.assetFailed": "Could not upload {name}",
 
   "clipboard.copied": "Copied {count} items",
-  "clipboard.cut": "Cut {count} items",
   "clipboard.unavailable": "The system clipboard is unavailable",
 
   "style.panel": "Style",
@@ -447,9 +440,7 @@ const en: Record<keyof typeof zh, string> = {
   "presence.otherWindowEditing": "Another window on this device is editing",
   "presence.takeover": "Take over",
   "presence.readOnly": "Read-only",
-  "presence.takeoverTitle": "Take over editing?",
-  "presence.takeoverDescription":
-    "{device} becomes read-only and loses any unsaved changes.",
+  "presence.takeoverTitle": "Take over {device}? Unsaved changes are lost",
 };
 
 export const canvas: MessageModule = { "zh-CN": zh, en };

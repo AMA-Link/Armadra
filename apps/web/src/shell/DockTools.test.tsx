@@ -131,4 +131,23 @@ describe("DockTools", () => {
     act(() => setTool("arrow"));
     expect(button("箭头")).toBeTruthy();
   });
+
+  it("当前工具那一格里有共享指示器，切工具后它出现在新的一格", () => {
+    render(
+      <TestProviders>
+        <DockTools />
+      </TestProviders>,
+    );
+    const indicators = () => dock().querySelectorAll("[data-slot='indicator']");
+    expect(indicators()).toHaveLength(1);
+    expect(
+      button("选择").querySelector("[data-slot='indicator']"),
+    ).toBeTruthy();
+    act(() => setTool("text"));
+    expect(indicators()).toHaveLength(1);
+    expect(
+      button("文字").querySelector("[data-slot='indicator']"),
+    ).toBeTruthy();
+    expect(button("选择").querySelector("[data-slot='indicator']")).toBeNull();
+  });
 });

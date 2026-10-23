@@ -20,7 +20,8 @@ export function NodeNameBadge({ node }: { node: CanvasNode }) {
     <Badge
       asChild
       variant="ghost"
-      className="text-[var(--muted-foreground)]"
+      size="sm"
+      className="text-muted-foreground"
       data-no-drag="true"
     >
       <Button
@@ -28,7 +29,6 @@ export function NodeNameBadge({ node }: { node: CanvasNode }) {
         size="xs"
         type="button"
         aria-label={t("node.name.edit")}
-        title={t("node.name.edit")}
         onClick={(event) => {
           event.stopPropagation();
           requestNodeNames([node.id]);

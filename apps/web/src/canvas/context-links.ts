@@ -1,5 +1,5 @@
 import * as React from "react";
-import { toast } from "sonner";
+import { toast } from "@/ui/toast";
 import { t } from "@/app/preferences-store";
 import type { BoardDocument, ContextLink } from "@armadra/shared";
 
@@ -188,7 +188,6 @@ export function usePublishContextLinks(): void {
             } else
               toast.error(t("shape.referenceSyncFailed"), {
                 id: toastId,
-                description: t("shape.referenceSyncFailureNote"),
                 action: {
                   label: t("shape.refreshReference"),
                   onClick: request,

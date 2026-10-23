@@ -7,7 +7,7 @@ import {
   RotateCw,
   X,
 } from "lucide-react";
-import { toast } from "sonner";
+import { toast } from "@/ui/toast";
 
 import { IconButton } from "@/ui/icon-button";
 import { Input } from "@/ui/input";
@@ -386,7 +386,7 @@ export function WebviewSurface({ id, node, selected }: NodeBodyProps) {
               <img
                 src={active.favicon}
                 alt=""
-                className="size-3.5 rounded-[2px] object-contain"
+                className="size-3.5 rounded-tight object-contain"
               />
             ) : (
               <Globe className="size-3 text-muted-foreground" />
@@ -395,7 +395,7 @@ export function WebviewSurface({ id, node, selected }: NodeBodyProps) {
           <Input
             ref={addressRef}
             aria-label={t("browser.address")}
-            className="h-5 min-w-0 flex-1 font-mono text-[12px]"
+            className="h-5 min-w-0 flex-1 font-mono text-meta"
             value={address}
             onChange={(event) => setAddress(event.target.value)}
             onKeyDown={(event) => {
@@ -426,7 +426,8 @@ export function WebviewSurface({ id, node, selected }: NodeBodyProps) {
           因为工具栏与标签条也在这棵子树里。
         */}
         <div
-          className="nodrag nowheel relative min-h-0 flex-1 bg-[var(--browser-bg)]"
+          className="nodrag nowheel relative min-h-0 flex-1"
+          style={{ backgroundColor: "var(--browser-bg)" }}
           data-slot="browser-stage"
           data-no-drag="true"
         >
@@ -439,7 +440,7 @@ export function WebviewSurface({ id, node, selected }: NodeBodyProps) {
               <GuestBoundary
                 fallback={
                   <div
-                    className="grid h-full w-full place-items-center px-6 text-center text-[11px] text-muted-foreground"
+                    className="grid h-full w-full place-items-center px-6 text-center text-caption text-muted-foreground"
                     data-slot="browser-guest-failed"
                   >
                     {t("browser.guestFailed")}

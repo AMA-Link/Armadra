@@ -299,10 +299,17 @@ describe("FilesNode", () => {
     });
     renderFiles();
 
-    const badge = await screen.findByTitle("已修改");
+    const badge = await screen.findByRole("img", { name: "已修改" });
     expect(badge.textContent).toBe("M");
+    expect(badge.className).toContain("text-warn-text");
+    expect(badge.hasAttribute("title")).toBe(false);
     // 只有 a.ts 有变更，b.ts 不该拿到徽标。
-    expect(screen.queryByTitle("未跟踪")).toBeNull();
+    expect(screen.queryByRole("img", { name: "未跟踪" })).toBeNull();
+    // 文件行走 Button sm 档（28），不手写高度；过滤框走 Input xs 档
+    const row = screen.getByRole("button", { name: /a\.ts/ });
+    expect(row.getAttribute("data-size")).toBe("sm");
+    expect(row.className).not.toMatch(/(^|\s)h-6(\s|$)/);
+    expect(screen.getByLabelText("过滤").getAttribute("data-size")).toBe("xs");
     expect(api).not.toHaveProperty("gitDiff");
   });
 
@@ -324,6 +331,6 @@ describe("FilesNode", () => {
     renderFiles();
 
     await screen.findByText("a.ts");
-    expect(screen.queryByTitle("已修改")).toBeNull();
+    expect(screen.queryByRole("img", { name: "已修改" })).toBeNull();
   });
 });

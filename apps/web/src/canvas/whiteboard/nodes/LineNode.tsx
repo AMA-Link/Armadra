@@ -96,7 +96,7 @@ export function LineNode({
           d={`M ${path}`}
           fill="none"
           stroke={color}
-          strokeWidth={width}
+          style={{ strokeWidth: width }}
           strokeDasharray={dashArray(data.style.dash, width)}
           strokeLinecap="round"
           strokeLinejoin="round"
@@ -110,7 +110,7 @@ export function LineNode({
             )}
             fill="none"
             stroke={color}
-            strokeWidth={width}
+            style={{ strokeWidth: width }}
             strokeLinecap="round"
             strokeLinejoin="round"
           />
@@ -120,7 +120,7 @@ export function LineNode({
             d={arrowHead(points[0]!, points[1]!, head)}
             fill="none"
             stroke={color}
-            strokeWidth={width}
+            style={{ strokeWidth: width }}
             strokeLinecap="round"
             strokeLinejoin="round"
           />
@@ -129,13 +129,12 @@ export function LineNode({
           ? points.map((point, index) => (
               <circle
                 key={index}
-                className="nodrag"
+                className="nodrag stroke-[1.5px]"
                 cx={point[0]}
                 cy={point[1]}
                 r={HANDLE_RADIUS}
                 fill="var(--panel)"
                 stroke="var(--brand)"
-                strokeWidth={1.5}
                 style={{ cursor: "grab", pointerEvents: "all" }}
                 onPointerDown={dragEndpoint(index)}
               />

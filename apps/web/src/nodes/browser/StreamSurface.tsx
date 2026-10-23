@@ -231,7 +231,7 @@ export function StreamSurface({ id, node, selected }: NodeBodyProps) {
         {phase !== "live" && (
           <div className="absolute inset-0 flex items-center justify-center p-4">
             {phase === "occupied" || phase === "unavailable" ? (
-              <p className="max-w-[36ch] text-center text-[12px] text-muted-foreground">
+              <p className="max-w-[36ch] text-center text-meta text-muted-foreground">
                 {phase === "occupied"
                   ? t("browser.stream.occupiedHint")
                   : t("browser.stream.unavailableHint")}
