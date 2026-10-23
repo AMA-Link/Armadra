@@ -14,6 +14,7 @@ import { installDomPolyfills } from "@/app/test-harness";
 const api = vi.hoisted(() => ({
   listSources: vi.fn(),
   addCloud: vi.fn(),
+  pollCloudDevice: vi.fn(),
   relayPending: vi.fn(),
   shareStatus: vi.fn(),
   notifyShellSourcesChanged: vi.fn(),
@@ -187,5 +188,71 @@ describe("armadra://cloud 深链", () => {
     const field = (await screen.findByLabelText("Address")) as HTMLInputElement;
     expect(field.value).toBe("");
     expect(api.addCloud).not.toHaveBeenCalled();
+  });
+
+  it("深链带来的不是已有账号的地址：对话框醒目显示目标域名；已有账号的不提示", async () => {
+    api.listSources.mockResolvedValue({ sources: [local], remotes: [cloud] });
+    mount();
+    await screen.findByText("cloud.test");
+    offerCloudLink(
+      `armadra://cloud?issuer=${encodeURIComponent("https://other.example")}`,
+    );
+    expect(await screen.findByText("This link connects to")).toBeTruthy();
+    expect(screen.getByText("other.example")).toBeTruthy();
+    cleanup();
+    mount();
+    await screen.findByText("cloud.test");
+    offerCloudLink(
+      `armadra://cloud?issuer=${encodeURIComponent("https://cloud.test")}`,
+    );
+    await screen.findByLabelText("Address");
+    expect(screen.queryByText("This link connects to")).toBeNull();
+  });
+
+  it("对话框已不在填地址步骤：新的深链丢掉，不换成别的云", async () => {
+    api.listSources.mockResolvedValue({ sources: [local], remotes: [] });
+    api.addCloud.mockResolvedValue({
+      remote: { ...cloud, hasCredentials: false },
+      next: {
+        deviceCode: {
+          userCode: "ABCD-EFGH",
+          verificationUrl: "https://cloud.test/device",
+          expiresAtMs: Date.now() + 600_000,
+          intervalMs: 600_000,
+        },
+      },
+    });
+    api.pollCloudDevice.mockResolvedValue({ status: "pending" });
+    mount();
+    await screen.findByText("This computer");
+    offerCloudLink(
+      `armadra://cloud?issuer=${encodeURIComponent("https://cloud.test")}`,
+    );
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Get device code" }),
+    );
+    expect(await screen.findByText("ABCD-EFGH")).toBeTruthy();
+    offerCloudLink(
+      `armadra://cloud?issuer=${encodeURIComponent("https://evil.example")}`,
+    );
+    await new Promise((done) => setTimeout(done, 40));
+    expect(screen.getByText("ABCD-EFGH")).toBeTruthy();
+    expect(screen.queryByText("evil.example")).toBeNull();
+    expect(api.addCloud).toHaveBeenCalledTimes(1);
+  });
+
+  it("还在填地址：新的深链换掉预填的地址", async () => {
+    api.listSources.mockResolvedValue({ sources: [local], remotes: [] });
+    mount();
+    await screen.findByText("This computer");
+    offerCloudLink(
+      `armadra://cloud?issuer=${encodeURIComponent("https://a.example")}`,
+    );
+    const field = (await screen.findByLabelText("Address")) as HTMLInputElement;
+    expect(field.value).toBe("https://a.example");
+    offerCloudLink(
+      `armadra://cloud?issuer=${encodeURIComponent("https://b.example")}`,
+    );
+    await waitFor(() => expect(field.value).toBe("https://b.example"));
   });
 });

@@ -445,6 +445,27 @@ function linkSummaryOf(value: unknown): LinkSummary | null {
   };
 }
 
+const LOOPBACK_HOSTS = new Set(["localhost", "127.0.0.1", "[::1]"]);
+
+/** `url` 是 `issuer` 同源的 https 地址（回环上的 http 例外，与 issuer 的规则一致）。 */
+function sameOriginUrl(url: string, issuer: string): boolean {
+  try {
+    const target = new URL(url);
+    const origin = new URL(issuer);
+    const scheme =
+      target.protocol === "https:" ||
+      (target.protocol === "http:" && LOOPBACK_HOSTS.has(target.hostname));
+    return (
+      scheme &&
+      target.origin === origin.origin &&
+      target.username === "" &&
+      target.password === ""
+    );
+  } catch {
+    return false;
+  }
+}
+
 export class RemoteClient {
   constructor(
     private readonly transport: Transport,
@@ -579,6 +600,11 @@ export class RemoteClient {
       start.expiresAtMs === 0
     ) {
       throw fail("source_unreachable", "远程服务的设备码答案不完整");
+    }
+    // 页面会让人在浏览器里打开这个地址：必须是 issuer 同源的 https（回环才允许 http），
+    // 否则被攻陷或配错的远程服务能把人带去别的站点。
+    if (!sameOriginUrl(start.verificationUrl, endpoint.issuer)) {
+      throw fail("source_unreachable", "远程服务的设备码地址与它自己不同源");
     }
     return start;
   }

@@ -84,11 +84,19 @@ function clock(ms: number): string {
 
 export function AddCloudDialog({
   initialIssuer,
+  fromLink = false,
+  knownIssuers = [],
+  onStep,
   onClose,
   onChanged,
 }: {
   /** `null` 关着；空串是新加；有地址是重新登录。 */
   initialIssuer: string | null;
+  /** 地址是深链带来的：不是已有的账号时，在地址步骤醒目显示目标域名。 */
+  fromLink?: boolean;
+  knownIssuers?: readonly string[];
+  /** 回报当前在哪一步（页面据此决定要不要接受新的深链）。 */
+  onStep?: (kind: Step["kind"]) => void;
   onClose(): void;
   /** 源表变了（登录成功或登记成功）。 */
   onChanged(): void;
@@ -100,6 +108,20 @@ export function AddCloudDialog({
   const [error, setError] = React.useState("");
   const [busy, setBusy] = React.useState(false);
   const open = initialIssuer !== null;
+  React.useEffect(() => {
+    onStep?.(step.kind);
+  }, [step.kind, onStep]);
+  const linkedHost = (() => {
+    if (!fromLink || issuer === "") return null;
+    try {
+      const url = new URL(issuer);
+      return knownIssuers.some((one) => new URL(one).origin === url.origin)
+        ? null
+        : url.host;
+    } catch {
+      return null;
+    }
+  })();
 
   // 主机配额与别的上限分开说（details.quota === "hosts"）。
   function failureText(failure: unknown): string {
@@ -282,6 +304,14 @@ export function AddCloudDialog({
             else if (step.kind === "space") void register();
           }}
         >
+          {step.kind === "address" && linkedHost !== null && (
+            <Alert variant="destructive" data-slot="cloud-link-target">
+              <span>{t("remote.cloud.linkTarget")}</span>
+              <span className="font-mono font-medium break-all">
+                {linkedHost}
+              </span>
+            </Alert>
+          )}
           {step.kind === "address" && (
             <FieldGroup className="gap-3">
               <Field className="gap-1.5" data-invalid={error !== ""}>

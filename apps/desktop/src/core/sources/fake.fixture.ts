@@ -149,6 +149,8 @@ export interface FakeWorld {
       limited: boolean;
     };
     spaces: Record<string, unknown>[];
+    /** 设备码答案里的 `verificationUrl`；不给就是 issuer 同源的 `/device`。 */
+    verificationUrl?: string;
     /** 下一次取注册令牌答的错误（一次性）。 */
     tokenRefusal?: { status: number; code: string };
     registrationTokens: { space: unknown }[];
@@ -385,7 +387,7 @@ async function cloud(
     return json(200, {
       deviceCode: "device-secret-code",
       userCode: "ABCD-EFGH",
-      verificationUrl: `${ISSUER}/device`,
+      verificationUrl: world.cloud.verificationUrl ?? `${ISSUER}/device`,
       expiresAtMs: Date.now() + 600_000,
       intervalMs: 5_000,
     });

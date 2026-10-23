@@ -113,11 +113,23 @@ export function RemoteAccessPage() {
   const [addingCloud, setAddingCloud] = React.useState<string | null>(
     takeCloudIntent,
   );
+  // 这个地址是深链带来的（不是人填的）：对话框醒目显示目标域名。
+  const [cloudFromLink, setCloudFromLink] = React.useState(
+    () => addingCloud !== null && addingCloud !== "",
+  );
+  // 对话框此刻在哪一步（由它回报）：只有在填地址那一步才接受新的深链，别的步骤
+  // （设备码、选空间）正在进行，新深链丢掉，免得被悄悄换成别的云。
+  const cloudStep = React.useRef<string>("address");
+  const cloudOpen = React.useRef(false);
+  cloudOpen.current = addingCloud !== null;
   React.useEffect(
     () =>
       onCloudIntent(() => {
         const issuer = takeCloudIntent();
-        if (issuer !== null) setAddingCloud(issuer);
+        if (issuer === null) return;
+        if (cloudOpen.current && cloudStep.current !== "address") return;
+        setAddingCloud(issuer);
+        setCloudFromLink(issuer !== "");
       }),
     [],
   );
@@ -507,7 +519,15 @@ export function RemoteAccessPage() {
       />
       <AddCloudDialog
         initialIssuer={addingCloud}
-        onClose={() => setAddingCloud(null)}
+        fromLink={cloudFromLink}
+        knownIssuers={remotes.map((remote) => remote.issuer)}
+        onStep={(kind) => {
+          cloudStep.current = kind;
+        }}
+        onClose={() => {
+          setAddingCloud(null);
+          setCloudFromLink(false);
+        }}
         onChanged={() => void changed()}
       />
       <AddDirectDialog
