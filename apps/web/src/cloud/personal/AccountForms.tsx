@@ -12,6 +12,9 @@ import { Button } from "@/ui/button";
 import { Field, FieldError, FieldLabel } from "@/ui/field";
 import { Input } from "@/ui/input";
 import { toast } from "@/ui/toast";
+import { TurnstileWidget } from "../../challenge/TurnstileWidget";
+import { TURNSTILE_PASSWORD_ACTION } from "../../challenge/turnstile";
+import { useCloudApi } from "../api/context";
 import { describeFailure, toCloudError } from "../api/errors";
 import { useChangeEmail, useChangePassword } from "./account-data";
 
@@ -53,6 +56,25 @@ export function ChangePasswordDialog({ onClose }: { onClose: () => void }) {
   const [errors, setErrors] = React.useState({ current: "", next: "" });
   const currentRef = React.useRef<HTMLInputElement>(null);
   const nextRef = React.useRef<HTMLInputElement>(null);
+  // 人机挑战（platform.info.challenge.scope 含 auth.changePassword 时必带）；令牌一次性，每次失败换新的。
+  const api = useCloudApi();
+  const [siteKey, setSiteKey] = React.useState<string | null>(null);
+  const [token, setToken] = React.useState("");
+  const [widget, setWidget] = React.useState(0);
+  const [challengeError, setChallengeError] = React.useState("");
+  React.useEffect(() => {
+    let live = true;
+    api.client.platform.info({}).then(
+      (info) => {
+        if (live && info.challenge?.scope.includes("auth.changePassword"))
+          setSiteKey(info.challenge.siteKey);
+      },
+      () => undefined,
+    );
+    return () => {
+      live = false;
+    };
+  }, [api]);
 
   const submit = async () => {
     if (current === "" || next === "") {
@@ -60,13 +82,26 @@ export function ChangePasswordDialog({ onClose }: { onClose: () => void }) {
       return;
     }
     try {
-      await change.mutateAsync({ password: current, newPassword: next });
+      await change.mutateAsync({
+        password: current,
+        newPassword: next,
+        ...(siteKey !== null && token !== ""
+          ? { challenge: { provider: "turnstile" as const, token } }
+          : {}),
+      });
       toast.success(t("cloud.account.passwordChanged"));
       onClose();
     } catch (failure) {
       const { code } = toCloudError(failure);
       const message = describeFailure(failure);
-      if (code === "credentials_invalid") {
+      if (siteKey !== null) {
+        setToken("");
+        setWidget((n) => n + 1);
+      }
+      if (code === "challenge_required" || code === "challenge_invalid") {
+        setErrors({ current: "", next: "" });
+        setChallengeError(message);
+      } else if (code === "credentials_invalid") {
         setErrors({ current: message, next: "" });
         currentRef.current?.focus();
       } else if (isPasswordCode(code)) {
@@ -117,11 +152,34 @@ export function ChangePasswordDialog({ onClose }: { onClose: () => void }) {
               setErrors((previous) => ({ ...previous, next: "" }));
             }}
           />
+          {siteKey !== null ? (
+            <Field data-invalid={challengeError !== "" || undefined}>
+              <TurnstileWidget
+                key={widget}
+                siteKey={siteKey}
+                action={TURNSTILE_PASSWORD_ACTION}
+                onToken={(value) => {
+                  setToken(value);
+                  setChallengeError("");
+                }}
+                onError={() =>
+                  setChallengeError(t("cloud.auth.challengeFailed"))
+                }
+              />
+              {challengeError ? (
+                <FieldError>{challengeError}</FieldError>
+              ) : null}
+            </Field>
+          ) : null}
           <ResponsiveDialogFooter>
             <Button type="button" variant="outline" onClick={onClose}>
               {t("cloud.common.cancel")}
             </Button>
-            <Button type="submit" loading={change.isPending}>
+            <Button
+              type="submit"
+              loading={change.isPending}
+              disabled={siteKey !== null && token === ""}
+            >
               {t("cloud.common.save")}
             </Button>
           </ResponsiveDialogFooter>

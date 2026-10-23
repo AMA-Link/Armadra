@@ -1,7 +1,15 @@
-import { fireEvent, screen, waitFor, within } from "@testing-library/react";
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 import { CloudConsoleError, describeFailure } from "../api/errors";
+import { createMockApi } from "../mock/create-mock-client";
+import { ConsoleRoot } from "../ConsoleRoot";
 import { h1, mount, installConsoleHarness } from "../testkit";
 
 installConsoleHarness();
@@ -191,5 +199,60 @@ describe("账号 · 安全日志", () => {
     fireEvent.mouseDown(screen.getByRole("tab", { name: "安全日志" }));
     fireEvent.click(screen.getByRole("tab", { name: "安全日志" }));
     await waitFor(() => expect(window.location.search).toBe("?tab=log"));
+  });
+});
+
+describe("账号 · 改口令的人机挑战", () => {
+  it("platform.info 的挑战范围含 auth.changePassword：带上令牌；挑战被拒就换新令牌并提示，再提交成功", async () => {
+    const turnstile = await import("../../challenge/turnstile");
+    let issued = 0;
+    const actions: string[] = [];
+    vi.spyOn(turnstile, "loadTurnstile").mockResolvedValue({
+      render: (
+        _el: unknown,
+        options: { callback: (t: string) => void; action: string },
+      ) => {
+        actions.push(options.action);
+        options.callback(`tok${++issued}`);
+        return `w${issued}`;
+      },
+      remove: () => undefined,
+    } as never);
+    window.history.replaceState(null, "", "/me/account?tab=security");
+    const api = createMockApi();
+    const info = await api.client.platform.info({});
+    vi.spyOn(api.client.platform, "info").mockResolvedValue({
+      ...info,
+      challenge: {
+        provider: "turnstile",
+        siteKey: "k",
+        scope: ["auth.changePassword"],
+      },
+    } as never);
+    const change = vi
+      .spyOn(api.client.auth, "changePassword")
+      .mockRejectedValueOnce(new CloudConsoleError("challenge_invalid", 403))
+      .mockImplementation(() => Promise.resolve({}) as never);
+    render(<ConsoleRoot api={api} />);
+    fireEvent.click(await screen.findByRole("button", { name: "更改口令" }));
+    const dialog = await screen.findByRole("dialog");
+    await waitFor(() => expect(issued).toBe(1));
+    expect(actions).toEqual(["armadra-password"]);
+    typeInto("当前口令", "right", dialog);
+    typeInto("新口令", "long enough password", dialog);
+    fireEvent.click(within(dialog).getByRole("button", { name: "保存" }));
+    expect(
+      await within(dialog).findByText(
+        describeFailure(new CloudConsoleError("challenge_invalid", 403)),
+      ),
+    ).toBeTruthy();
+    // 旧令牌作废：组件重建拿到新的，提交按钮等它。
+    await waitFor(() => expect(issued).toBe(2));
+    fireEvent.click(within(dialog).getByRole("button", { name: "保存" }));
+    await waitFor(() => expect(change).toHaveBeenCalledTimes(2));
+    expect(change.mock.calls.map((call) => call[0].challenge?.token)).toEqual([
+      "tok1",
+      "tok2",
+    ]);
   });
 });

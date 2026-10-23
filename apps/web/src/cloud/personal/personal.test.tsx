@@ -59,6 +59,24 @@ describe("个人 · 概览", () => {
     await waitFor(() => expect(trust).toHaveBeenCalledTimes(1));
   });
 
+  it("主机多于一页（200）：总数写「200+」", async () => {
+    mount("/me", {
+      extraHosts: Array.from({ length: 210 }, (_, index) => ({
+        sourceId: (5000 + index).toString(16).padStart(32, "0"),
+        name: `bulk-${index}`,
+        kind: "server" as const,
+        online: index % 2 === 0,
+        lastSeenAtMs: Date.UTC(2025, 9, 9),
+        owner: true,
+        ownerName: "张三",
+        via: "owner" as const,
+        relayOrigin: "https://relay.armadra.test",
+        coreVersion: "0.9.3",
+      })),
+    });
+    expect(await screen.findByText("100 / 200+ 在线")).toBeTruthy();
+  });
+
   it("空：没有主机与待处理时，待处理整组不渲染，主机给空态", async () => {
     mount("/me", { hosts: [], without: ["pending"] });
     expect(await screen.findByText("还没有主机")).toBeTruthy();

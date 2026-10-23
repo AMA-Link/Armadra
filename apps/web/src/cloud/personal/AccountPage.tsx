@@ -148,6 +148,9 @@ function DevicesTab() {
   const devices = useDevices();
   const revoke = useRevokeDevices();
   const [target, setTarget] = React.useState<Device | "others" | null>(null);
+  // 关闭确认框的动画里 target 已是 null：标题用最后一个，免得闪空。
+  const lastTarget = React.useRef(target);
+  if (target !== null) lastTarget.current = target;
 
   const columns = React.useMemo<DataColumn<Device>[]>(
     () => [
@@ -203,11 +206,12 @@ function DevicesTab() {
     (a, b) => Number(b.current) - Number(a.current),
   );
   const others = rows.filter((row) => !row.current);
+  const shown = lastTarget.current;
   const confirmTitle =
-    target === "others"
+    shown === "others"
       ? t("cloud.account.signOutOthersTitle")
-      : target
-        ? t("cloud.account.signOutTitle", { name: target.name })
+      : shown
+        ? t("cloud.account.signOutTitle", { name: shown.name })
         : "";
 
   return (

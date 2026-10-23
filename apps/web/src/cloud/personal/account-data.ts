@@ -43,8 +43,11 @@ export function useChangePassword() {
   const api = useCloudApi();
   const client = useQueryClient();
   return useMutation({
-    mutationFn: (input: { password: string; newPassword: string }) =>
-      api.client.auth.changePassword(input),
+    mutationFn: (input: {
+      password: string;
+      newPassword: string;
+      challenge?: { provider: "turnstile"; token: string };
+    }) => api.client.auth.changePassword(input),
     // 其他设备被退出：设备列表重拉。
     onSuccess: () => client.invalidateQueries({ queryKey: cloudKeys.devices }),
   });

@@ -73,6 +73,7 @@ export function OverviewPage() {
   const spaces = useSpaces();
 
   const rows = hosts.data?.pages.flatMap((page) => page.sources) ?? [];
+  const more = (hosts.data?.pages.at(-1)?.nextCursor ?? null) !== null;
   const traffic = usage.data?.usage.find((entry) => entry.metric === "traffic");
   const percent =
     traffic && traffic.limit ? (traffic.value / traffic.limit) * 100 : null;
@@ -124,7 +125,8 @@ export function OverviewPage() {
           <span className={value}>
             {t("cloud.overview.hostsOnline", {
               online: rows.filter((row) => row.online).length,
-              total: rows.length,
+              // 只取了前 200 台：还有下一页就写「200+」。
+              total: more ? `${HOSTS_FETCHED}+` : rows.length,
             })}
           </span>
         </Stat>
