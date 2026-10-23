@@ -1,4 +1,4 @@
-import { Check, ChevronsUpDown, UserRound } from "lucide-react";
+import { Check, ChevronsUpDown, Plus, UserRound } from "lucide-react";
 
 import { useT } from "@/app/preferences-store";
 import { Avatar, AvatarFallback } from "@/ui/avatar";
@@ -53,10 +53,13 @@ function SpaceAvatar({ team }: { team?: ConsoleTeam }) {
 export function SpaceSwitcher({
   teams,
   current,
+  onCreateTeam,
 }: {
   teams: readonly ConsoleTeam[];
   /** 当前团队地址；个人空间是 `null`。 */
   current: string | null;
+  /** 菜单里的「创建团队」；没给（没有数据层的展示页）就不画。 */
+  onCreateTeam?: () => void;
 }) {
   const t = useT();
   const team = teams.find((row) => row.slug === current);
@@ -105,6 +108,15 @@ export function SpaceSwitcher({
                 ) : null}
               </DropdownMenuItem>
             ))}
+          </>
+        ) : null}
+        {onCreateTeam ? (
+          <>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onSelect={onCreateTeam}>
+              <Plus aria-hidden />
+              {t("cloud.team.create")}
+            </DropdownMenuItem>
           </>
         ) : null}
       </DropdownMenuContent>

@@ -15,6 +15,7 @@ import { cloudOps } from "./cloud-ops";
 import { cloudHosts } from "./cloud-hosts";
 import { cloudAccount } from "./cloud-account";
 import { cloudBilling } from "./cloud-billing";
+import { cloudTeam } from "./cloud-team";
 import { collab } from "./collab";
 import { connection } from "./connection";
 import { commands } from "./commands";
@@ -174,6 +175,7 @@ export const MESSAGE_MODULES = {
   "cloud-hosts": cloudHosts,
   "cloud-account": cloudAccount,
   "cloud-billing": cloudBilling,
+  "cloud-team": cloudTeam,
   services,
   links,
   "mod-commands": modCommands,
