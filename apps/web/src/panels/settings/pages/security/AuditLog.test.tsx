@@ -74,6 +74,15 @@ describe("AuditLog", () => {
       limit: 50,
     });
     expect(screen.getAllByText("失败")).toHaveLength(1);
+    // 结果列是状态胶囊：失败 failed，其余 done。
+    expect(
+      document.querySelectorAll(
+        '[data-slot="status-pill"][data-tone="failed"]',
+      ),
+    ).toHaveLength(1);
+    expect(
+      document.querySelectorAll('[data-slot="status-pill"][data-tone="done"]'),
+    ).toHaveLength(1);
     expect(screen.getAllByText("爱丽丝").length).toBeGreaterThan(0);
 
     fireEvent.click(screen.getByRole("button", { name: "加载更多" }));

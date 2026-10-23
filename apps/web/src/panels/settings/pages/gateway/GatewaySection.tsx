@@ -1,6 +1,6 @@
 import * as React from "react";
 import { useInfiniteQuery, useQueryClient } from "@tanstack/react-query";
-import { toast } from "sonner";
+import { toast } from "@/ui/toast";
 
 import { useT } from "../../../../app/preferences-store";
 import { useAccess } from "../../../../app/use-access";
@@ -27,6 +27,27 @@ export interface GatewayIdentity {
   canManage: boolean;
 }
 
+/** 已配对设备的分页查询；设备与会话页的托盘与设备表读同一份。 */
+function useGatewayDeviceQuery() {
+  return useInfiniteQuery({
+    queryKey: DEVICES_QUERY_KEY,
+    // 带着 `signal`：配对成功时作废重取要能打断还没答的那一次（它可能在会话
+    // Cookie 落下之前发出，答 401）。
+    queryFn: ({ pageParam, signal }) =>
+      listIdentityDevices(pageParam, 50, signal),
+    initialPageParam: "",
+    getNextPageParam: (page) => (page.hasMore ? page.nextId : undefined),
+    retry: false,
+  });
+}
+
+/** 已配对（未撤销）的设备数；还没取到、读不到时是 `null`。 */
+export function useGatewayDeviceCount(): number | null {
+  const devices = useGatewayDeviceQuery();
+  const list = devices.data?.pages.flatMap((page) => page.devices);
+  return list ? list.filter((device) => device.revokedAtMs === 0).length : null;
+}
+
 /**
  * 已配对设备（设备与会话页）。设备列表要一条身份会话；没有会话时（还没配对的
  * 浏览器）整块不出现。配对成功那一刻会话换了，还在路上的那一次带的是旧凭据，
@@ -43,16 +64,7 @@ export function GatewayDevicesSection({
   const t = useT();
   const client = useQueryClient();
   const owner = !useAccess().member;
-  const devices = useInfiniteQuery({
-    queryKey: DEVICES_QUERY_KEY,
-    // 带着 `signal`：配对成功时作废重取要能打断还没答的那一次（它可能在会话
-    // Cookie 落下之前发出，答 401）。
-    queryFn: ({ pageParam, signal }) =>
-      listIdentityDevices(pageParam, 50, signal),
-    initialPageParam: "",
-    getNextPageParam: (page) => (page.hasMore ? page.nextId : undefined),
-    retry: false,
-  });
+  const devices = useGatewayDeviceQuery();
   React.useEffect(
     () =>
       onIdentitySessionChange(() => {

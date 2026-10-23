@@ -36,7 +36,10 @@ vi.mock("./HostIdentityPanel", async () => {
   };
 });
 
-vi.mock("./security/LoginSessions", () => ({ LoginSessions: () => null }));
+vi.mock("./security/LoginSessions", () => ({
+  LoginSessions: () => null,
+  useLoginSessionCount: () => null,
+}));
 
 import { DevicesPage } from "./DevicesPage";
 import { HostAccess } from "./remote-access/HostAccess";
@@ -266,6 +269,16 @@ describe("DevicesPage", () => {
       await Promise.resolve();
     });
     expect(probe).toHaveBeenCalledTimes(1);
+  });
+
+  it("页头没有副标题，托盘两张：已配对设备与登录会话", async () => {
+    probe.mockResolvedValue(hello);
+    render(<DevicesPage />);
+    expect(screen.getByTestId("settings-heading")).toBeTruthy();
+    expect(
+      document.querySelectorAll('[data-slot="settings-kpi"]'),
+    ).toHaveLength(2);
+    expect(screen.getAllByText("已配对设备").length).toBeGreaterThan(0);
   });
 
   it("checks when a pairing link lands in a page that is already open", async () => {

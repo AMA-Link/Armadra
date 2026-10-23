@@ -1,6 +1,6 @@
 import * as React from "react";
 import { useMutation } from "@tanstack/react-query";
-import { toast } from "sonner";
+import { toast } from "@/ui/toast";
 import type { GatewayPairingPayload } from "@armadra/shared";
 
 import { gatewayApi } from "../../../../api/gateway";
@@ -159,7 +159,6 @@ function HostAccessBody() {
         }}
         onDone={() => {
           setSigningIn(null);
-          toast.success(t("remote.added"));
           void changed();
         }}
       />

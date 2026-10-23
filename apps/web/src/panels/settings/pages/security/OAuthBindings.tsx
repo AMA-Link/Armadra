@@ -88,8 +88,8 @@ function OAuthBindingsSection({
   return (
     <SecuritySection title={t("security.oauth")}>
       {bindings.length > 0 && (
-        <Card className="gap-0 overflow-visible rounded-lg border border-border/70 py-0 text-[length:inherit] ring-0 px-2">
-          <Table className="text-[13px]">
+        <Card variant="table">
+          <Table>
             <TableHeader>
               <TableRow>
                 <TableHead>{t("security.name")}</TableHead>
@@ -220,8 +220,8 @@ export function OAuthProviders({
 
   return (
     <SecuritySection title={t("security.providers")}>
-      <Card className="gap-0 overflow-visible rounded-lg border border-border/70 py-0 text-[length:inherit] ring-0 px-2">
-        <Table className="text-[13px]">
+      <Card variant="table">
+        <Table>
           <TableHeader>
             <TableRow>
               <TableHead>{t("security.name")}</TableHead>
@@ -241,11 +241,14 @@ export function OAuthProviders({
                   {providerName(provider.id, provider.kind)}
                 </TableCell>
                 <TableCell>
-                  <Badge variant={provider.usable ? "secondary" : "outline"}>
+                  <Badge
+                    size="sm"
+                    variant={provider.usable ? "secondary" : "outline"}
+                  >
                     {status(provider)}
                   </Badge>
                 </TableCell>
-                <TableCell className="max-w-[18rem] truncate font-mono text-[12px] text-muted-foreground">
+                <TableCell className="max-w-[18rem] truncate font-mono text-meta text-muted-foreground">
                   {provider.callbackUrls?.[0] ?? "—"}
                 </TableCell>
                 <TableCell className="text-right whitespace-nowrap">

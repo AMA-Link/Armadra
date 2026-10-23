@@ -11,7 +11,7 @@ import {
   RefreshCw,
   Share,
 } from "lucide-react";
-import { toast } from "sonner";
+import { toast } from "@/ui/toast";
 import { create } from "zustand";
 
 import { SHARE_ROLES, type ShareRole } from "../../api/accounts";
@@ -55,6 +55,7 @@ import {
   ResponsiveDialogTitle,
 } from "@/panels/ResponsiveDialog";
 import { Badge } from "@/ui/badge";
+import { EmptyState } from "@/ui/state";
 import { Button } from "@/ui/button";
 import {
   Collapsible,
@@ -68,7 +69,6 @@ import {
   Item,
   ItemActions,
   ItemContent,
-  ItemDescription,
   ItemGroup,
   ItemTitle,
 } from "@/ui/item";
@@ -126,10 +126,8 @@ export function relayPendingReason(t: Translate, code: string): string {
 
 /** 停用分享之后的提示：中继侧没删掉时说「中继侧待清理」与原因。 */
 export function announceStopped(t: Translate, pending: string | null): void {
-  if (pending === null) {
-    toast.success(t("remote.share.stopped"));
-    return;
-  }
+  // 停掉了就是停掉了：成功不弹，只有中继侧欠着清理才说一声。
+  if (pending === null) return;
   toast.warning(t("remote.share.stopped"), {
     description: [t("remote.relayPending"), relayPendingReason(t, pending)]
       .filter(Boolean)
@@ -302,7 +300,6 @@ function ShareLinks({ remote }: { remote: RemoteService }) {
     mutationFn: (linkId: string) => revokeShareLink(remote.serviceId, linkId),
     onSuccess: () => {
       void client.invalidateQueries({ queryKey: key });
-      toast.success(t("remote.link.revoked"));
     },
     onError: (error: Error) => toast.error(error.message),
   });
@@ -326,7 +323,6 @@ function ShareLinks({ remote }: { remote: RemoteService }) {
     onSuccess: () => {
       void client.invalidateQueries({ queryKey: key });
       setRenaming(null);
-      toast.success(t("remote.link.renamed"));
     },
     onError: (error: Error) => toast.error(error.message),
   });
@@ -337,7 +333,7 @@ function ShareLinks({ remote }: { remote: RemoteService }) {
       className="flex min-w-0 flex-col gap-2"
     >
       <div className="flex min-h-8 min-w-0 items-center justify-between gap-2">
-        <h4 className="text-[13px] font-medium">{t("remote.invite.title")}</h4>
+        <h4 className="text-body font-medium">{t("remote.invite.title")}</h4>
         <div className="flex shrink-0 items-center gap-1">
           <IconButton
             size="cluster"
@@ -368,13 +364,11 @@ function ShareLinks({ remote }: { remote: RemoteService }) {
         }
       >
         {links.isError ? (
-          <p role="alert" className="text-[12px] text-destructive">
+          <p role="alert" className="text-meta text-destructive">
             {links.error.message}
           </p>
         ) : active.length === 0 ? (
-          <p className="text-[12px] text-muted-foreground">
-            {t("remote.links.empty")}
-          </p>
+          <EmptyState inline title={t("remote.links.empty")} />
         ) : (
           <ItemGroup className="gap-0">
             {active.map((link) => {
@@ -551,27 +545,27 @@ function LinkItem({
       data-link-id={link.linkId}
     >
       <ItemContent className="min-w-0 gap-0.5">
-        <ItemTitle className="flex min-w-0 items-center gap-2 text-[13px] font-normal">
+        <ItemTitle className="flex min-w-0 items-center gap-2 text-body font-normal">
           <span className="truncate">{name}</span>
           {link.role !== "" && (
-            <Badge variant="secondary" className="shrink-0 font-normal">
+            <Badge variant="secondary" size="sm" className="shrink-0">
               {t(`sharing.role.${link.role}`)}
             </Badge>
           )}
           {(link.target === "host" || link.target === "session") && (
-            <Badge variant="outline" className="shrink-0 font-normal">
+            <Badge variant="outline" size="sm" className="shrink-0">
               {t(`sharing.scope.${link.target}`)}
             </Badge>
           )}
           {link.state !== "active" && (
-            <Badge variant="outline" className="shrink-0 font-normal">
+            <Badge variant="outline" size="sm" className="shrink-0">
               {t(`remote.link.state.${link.state}`)}
             </Badge>
           )}
         </ItemTitle>
-        <ItemDescription className="text-[11px] leading-4 tabular-nums">
+        <span className="text-caption tabular-nums text-muted-foreground">
           {facts.join(" · ")}
-        </ItemDescription>
+        </span>
       </ItemContent>
       {children && (
         <ItemActions className="shrink-0 gap-0.5">{children}</ItemActions>
@@ -703,9 +697,7 @@ function CreateLinkDialog({
           <ResponsiveDialogTitle>{t("remote.links.new")}</ResponsiveDialogTitle>
         </ResponsiveDialogHeader>
         {list.length === 0 && target !== "host" ? (
-          <p className="text-[13px] text-muted-foreground">
-            {t("remote.invite.noWorkspace")}
-          </p>
+          <EmptyState inline title={t("remote.invite.noWorkspace")} />
         ) : (
           <form
             id="share-link-form"
@@ -902,7 +894,7 @@ function LinkQrDialog({
           </ResponsiveDialogTitle>
         </ResponsiveDialogHeader>
         {fetched.isError ? (
-          <p role="alert" className="text-[13px] text-destructive">
+          <p role="alert" className="text-body text-destructive">
             {fetched.error.message}
           </p>
         ) : url === undefined ? (
@@ -919,7 +911,7 @@ function LinkQrDialog({
                 readOnly
                 aria-label={t("remote.invite.link")}
                 value={url}
-                className="min-w-0 font-mono text-[12px]"
+                className="min-w-0 font-mono text-meta"
                 onFocus={(event) => event.target.select()}
               />
               <Button

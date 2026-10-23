@@ -1,6 +1,6 @@
 import * as React from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { toast } from "sonner";
+import { toast } from "@/ui/toast";
 
 import {
   permits,
@@ -47,6 +47,7 @@ import { OAuthBindings, OAuthProviders } from "./OAuthBindings";
 import { PasskeyList } from "./PasskeyList";
 import { LockoutList } from "./SessionList";
 import { Skeleton } from "@/ui/skeleton";
+import { SettingsPageHeader } from "../../SettingsPageHeader";
 
 const KEY = ["identity", "security"] as const;
 
@@ -107,6 +108,7 @@ export function SecurityPage() {
   if (session === undefined) {
     return (
       <div className="flex flex-col gap-3" data-slot="security-page">
+        <SettingsPageHeader />
         <Skeleton className="h-8 w-full" />
         <Skeleton className="h-24 w-full" />
       </div>
@@ -114,7 +116,8 @@ export function SecurityPage() {
   }
   if (session === null) {
     return (
-      <div data-slot="security-page">
+      <div data-slot="security-page" className="flex flex-col gap-6">
+        <SettingsPageHeader />
         <SignIn
           initial={
             outcome?.result === "mfa" && outcome.challengeId
@@ -286,6 +289,7 @@ function SecuritySettings({ session }: { session: IdentitySession }) {
 
   return (
     <div data-slot="security-page" className="flex flex-col gap-6">
+      <SettingsPageHeader />
       {mfaFirst && mfaBlock}
       <PasskeyList
         list={passkeys.data}

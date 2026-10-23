@@ -71,7 +71,7 @@ export function SessionList({
       title={t("security.sessions")}
       action={
         canSeeEveryone ? (
-          <label className="flex items-center gap-2 text-[12px] text-muted-foreground">
+          <label className="flex items-center gap-2 text-meta text-muted-foreground">
             {t("security.sessions.everyone")}
             <Switch
               checked={everyone}
@@ -82,8 +82,8 @@ export function SessionList({
         ) : undefined
       }
     >
-      <Card className="gap-0 overflow-visible rounded-lg border border-border/70 py-0 text-[length:inherit] ring-0 px-2">
-        <Table className="text-[13px]">
+      <Card variant="table">
+        <Table>
           <TableHeader>
             <TableRow>
               <TableHead>{t("security.sessions.device")}</TableHead>
@@ -118,7 +118,7 @@ export function SessionList({
                         {name}
                       </span>
                       {session.current && (
-                        <Badge variant="secondary">
+                        <Badge variant="secondary" size="sm">
                           {t("security.sessions.current")}
                         </Badge>
                       )}
@@ -133,7 +133,7 @@ export function SessionList({
                   <TableCell className="text-muted-foreground tabular-nums">
                     {when(lastActive(session))}
                   </TableCell>
-                  <TableCell className="font-mono text-[12px] text-muted-foreground">
+                  <TableCell className="font-mono text-meta text-muted-foreground">
                     {session.remoteIp || "—"}
                   </TableCell>
                   <TableCell className="text-right">
@@ -235,8 +235,8 @@ export function LockoutList({
   if (!lockouts || lockouts.length === 0) return null;
   return (
     <SecuritySection title={t("security.lockouts")}>
-      <Card className="gap-0 overflow-visible rounded-lg border border-border/70 py-0 text-[length:inherit] ring-0 px-2">
-        <Table className="text-[13px]">
+      <Card variant="table">
+        <Table>
           <TableHeader>
             <TableRow>
               <TableHead>{t("security.sessions.member")}</TableHead>

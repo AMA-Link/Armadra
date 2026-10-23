@@ -3,7 +3,7 @@ import { lk } from "../local-key";
 import { onLocal } from "../../../api/source";
 import { useQuery } from "@tanstack/react-query";
 import type { PasswordResetIssued } from "@armadra/shared";
-import { toast } from "sonner";
+import { toast } from "@/ui/toast";
 
 import {
   mailConfigured,
@@ -100,16 +100,16 @@ export function ResetLinkDialog({
         </ResponsiveDialogHeader>
         <div data-slot="reset-link" className="flex flex-col gap-3">
           {target?.name && (
-            <p className="text-[13px] font-medium break-words">{target.name}</p>
+            <p className="text-body font-medium break-words">{target.name}</p>
           )}
           {error ? (
-            <p role="alert" className="text-[13px] text-destructive">
+            <p role="alert" className="text-body text-destructive">
               {error}
             </p>
           ) : !issued ? (
             <div className="flex flex-col items-center gap-3">
               <Skeleton className="size-[200px]" />
-              <Skeleton className="h-9 w-full" />
+              <Skeleton className="h-8 w-full" />
             </div>
           ) : (
             <>
@@ -121,7 +121,7 @@ export function ResetLinkDialog({
                   readOnly
                   aria-label={t("reset.link")}
                   value={link}
-                  className="font-mono text-[12px]"
+                  className="font-mono text-meta"
                   onFocus={(event) => event.target.select()}
                 />
                 <Button
@@ -137,9 +137,9 @@ export function ResetLinkDialog({
                   {t("reset.copy")}
                 </Button>
               </div>
-              <p className="text-[12px] text-muted-foreground tabular-nums">
+              <div className="text-meta text-muted-foreground tabular-nums">
                 {t("reset.expires", { time: expires })}
-              </p>
+              </div>
               <MailLinkForm
                 kind="passwordReset"
                 id={principalId}
