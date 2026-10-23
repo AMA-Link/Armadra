@@ -14,6 +14,7 @@ const ROUTE_TABLE = [
   { id: "reset", pattern: "/reset", area: "public" },
   { id: "device", pattern: "/device", area: "public" },
   { id: "invite", pattern: "/invite/:id", area: "public" },
+  { id: "join", pattern: "/j/:linkId", area: "public" },
   { id: "home", pattern: "/", area: "home" },
   { id: "me", pattern: "/me", area: "personal", nav: "overview" },
   { id: "meHosts", pattern: "/me/hosts", area: "personal", nav: "hosts" },

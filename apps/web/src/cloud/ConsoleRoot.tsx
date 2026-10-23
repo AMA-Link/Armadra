@@ -146,7 +146,7 @@ function useCloudApiSource(given?: CloudApi): CloudApi | null {
   return api;
 }
 
-function ConsoleData() {
+function ConsoleData({ onJoined }: { onJoined?: () => void }) {
   const api = useCloudApi();
   const client = useQueryClient();
   const [expired, setExpired] = React.useState(false);
@@ -201,7 +201,14 @@ function ConsoleData() {
     }
   };
 
-  if (publicPage) return <PublicPage match={match} finish={finish} />;
+  if (publicPage)
+    return (
+      <PublicPage
+        match={match}
+        finish={finish}
+        {...(onJoined ? { onJoined } : {})}
+      />
+    );
   if (lost) return null;
   if (session)
     return (
@@ -229,9 +236,12 @@ function ConsoleData() {
 export function ConsoleRoot({
   session,
   api: given,
+  onJoined,
 }: {
   session?: ConsoleSession | null;
   api?: CloudApi;
+  /** `/j/` 的分享链接加入成功、画布接管（由入口给）。 */
+  onJoined?: () => void;
 }) {
   const api = useCloudApiSource(given);
   const [queryClient] = React.useState(createCloudQueryClient);
@@ -240,7 +250,7 @@ export function ConsoleRoot({
   return (
     <QueryClientProvider client={queryClient}>
       <CloudApiProvider api={api}>
-        <ConsoleData />
+        <ConsoleData {...(onJoined ? { onJoined } : {})} />
         <Toaster />
       </CloudApiProvider>
     </QueryClientProvider>

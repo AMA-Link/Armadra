@@ -118,6 +118,11 @@ const acceptSchema = z.object({
 });
 export type CloudAccept = z.infer<typeof acceptSchema>;
 
+/** 控制台页面经类型化客户端接受链接后，把答复交给 {@link HostedRelay.join}：按同一份 schema 收紧。 */
+export function parseCloudAccept(value: unknown): CloudAccept {
+  return acceptSchema.parse(value);
+}
+
 /** `links.get`（匿名）：落地页显示的那几项（cloud-api §5）。 */
 const linkInfoSchema = z.object({
   label: z.string().default(""),

@@ -52,7 +52,7 @@ export function MobileRoot({ entry: initial }: { entry: Entry }) {
   if (entry.kind === "console")
     return (
       <React.Suspense fallback={<EntrySkeleton />}>
-        <ConsoleRoot />
+        <ConsoleRoot onJoined={() => setConnected(true)} />
       </React.Suspense>
     );
   if (entry.kind === "join")
