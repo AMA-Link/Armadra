@@ -24,23 +24,13 @@ export function StatusBar({
 }) {
   const t = useT();
   return (
-    <div className="flex shrink-0 flex-wrap items-center gap-2 empty:hidden border-t border-[var(--border)] px-2 py-0.5 text-[length:var(--text-caption)] text-muted-foreground">
+    <div className="flex shrink-0 flex-wrap items-center gap-2 empty:hidden border-t border-border px-2 py-0.5 text-caption text-muted-foreground">
       {state.encoding === "unknown" && (
-        <span
-          title={
-            state.encoding === "unknown"
-              ? t("editor.encodingReadonly")
-              : undefined
-          }
-        >
-          {t(`editor.encoding.${state.encoding}`)}
-        </span>
+        <span>{t(`editor.encoding.${state.encoding}`)}</span>
       )}
       {state.bom && <span>{t("editor.bom")}</span>}
       {state.eol && state.eol !== "lf" && state.eol !== "none" && (
-        <span title={state.eol === "mixed" ? t("editor.eolMixed") : undefined}>
-          {t(`editor.eol.${state.eol}`)}
-        </span>
+        <span>{t(`editor.eol.${state.eol}`)}</span>
       )}
       {state.readonly && <span>{t("editor.fileReadonly")}</span>}
       <LanguageStatus

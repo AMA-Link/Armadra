@@ -16,9 +16,9 @@ export function ComparePanel({
 }) {
   const t = useT();
   return (
-    <div className="absolute inset-0 z-10 flex flex-col bg-[var(--surface-sunken)]">
-      <div className="flex shrink-0 items-center gap-1.5 border-b border-[var(--border)] px-2 py-1">
-        <span className="min-w-0 flex-1 truncate text-[length:var(--text-caption)] text-muted-foreground">
+    <div className="absolute inset-0 z-10 flex flex-col bg-sunken">
+      <div className="flex shrink-0 items-center gap-1.5 border-b border-border px-2 py-1">
+        <span className="min-w-0 flex-1 truncate text-caption text-muted-foreground">
           {t("editor.compareTitle")}
         </span>
         <IconButton label={t("editor.compareClose")} onClick={onClose}>

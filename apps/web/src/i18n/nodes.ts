@@ -98,7 +98,6 @@ const zh = {
   "editor.eol.crlf": "CRLF",
   "editor.eol.mixed": "混合换行",
   "editor.eol.none": "无换行",
-  "editor.eolMixed": "混合换行，保存会统一成 LF",
   "editor.fileReadonly": "文件只读",
 
   /* 变更 */
@@ -221,7 +220,6 @@ const en: Record<keyof typeof zh, string> = {
   "editor.eol.crlf": "CRLF",
   "editor.eol.mixed": "Mixed line endings",
   "editor.eol.none": "No line break",
-  "editor.eolMixed": "Mixed line endings; saving normalizes them to LF",
   "editor.fileReadonly": "File is read-only",
 
   "diff.refresh": "Refresh",

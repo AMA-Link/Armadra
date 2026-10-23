@@ -1,5 +1,5 @@
 import * as React from "react";
-import { toast } from "sonner";
+import { toast } from "@/ui/toast";
 
 import { isConflict, runtimeApi } from "@/api/client";
 import { useT } from "@/app/preferences-store";
