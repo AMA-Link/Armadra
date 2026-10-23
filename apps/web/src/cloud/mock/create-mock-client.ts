@@ -9,8 +9,11 @@ import type { CloudClient } from "../api/client";
 import { CloudConsoleError } from "../api/errors";
 import { createCsrfStore, type CloudApi } from "../api/session";
 import {
+  GOLDEN_OPS_TEAM,
   MOCK_ACCOUNT,
   MOCK_HOSTS,
+  MOCK_OPS_ACCOUNTS,
+  MOCK_OPS_NODES,
   MOCK_TEAMS,
   ROLE_SCOPES,
   type MockRole,
@@ -65,6 +68,32 @@ function golden(key: string): unknown {
 }
 
 type Input = Record<string, unknown>;
+
+/** 运营后台的带状态数据：停用状态、节点、事故开关与运营动作（审计最近的在前）。 */
+interface AdminState {
+  suspended: Set<string>;
+  drained: Set<string>;
+  incident: {
+    pauseAssertions: boolean;
+    pauseRegistrations: boolean;
+    rejectNewConnections: boolean;
+    updatedAtMs: number | null;
+  };
+  actions: { targetId: string; action: string; atMs: number }[];
+}
+
+const createAdminState = (): AdminState => ({
+  suspended: new Set(),
+  drained: new Set(),
+  incident: {
+    pauseAssertions: false,
+    pauseRegistrations: false,
+    rejectNewConnections: false,
+    updatedAtMs: null,
+  },
+  actions: [],
+});
+
 interface State {
   signedIn: boolean;
   operatorSession: boolean;
@@ -72,6 +101,7 @@ interface State {
   pendingOperator: boolean;
   displayName: string;
   emailVerified: boolean;
+  admin: AdminState;
 }
 type Handler = (input: Input, state: State, options: MockOptions) => unknown;
 
@@ -96,8 +126,182 @@ const rolesOf = (options: MockOptions) =>
     role: options.roles?.[team.slug] ?? team.role,
   }));
 
+const NOW = Date.UTC(2025, 9, 9, 9, 6);
+const opsTeams = () =>
+  [
+    {
+      teamId: GOLDEN_OPS_TEAM,
+      slug: "dev-team",
+      name: "Dev Team",
+      role: "member" as const,
+      plan: "free",
+    },
+    ...MOCK_TEAMS,
+  ].map((team, index) => ({
+    team,
+    memberCount: index === 0 ? 7 : 3,
+    hostCount: index === 0 ? 3 : 2,
+    createdAtMs: Date.UTC(2025, 2, 2 + index),
+  }));
+
+const recent = (state: State, targetId: string) =>
+  state.admin.actions
+    .filter((entry) => entry.targetId === targetId)
+    .slice(-5)
+    .reverse()
+    .map((entry, index) => ({
+      eventId: `evt_${entry.atMs}_${index}`,
+      teamId: null,
+      actor: { kind: "operator" as const, id: "acct_mock_operator" },
+      action: entry.action,
+      target: { kind: "tenant", id: entry.targetId },
+      jti: null,
+      ipPrefix: null,
+      atMs: entry.atMs,
+    }));
+
+const accountOut = (state: State, id: string) => {
+  const row = MOCK_OPS_ACCOUNTS.find((account) => account.accountId === id);
+  if (!row) throw new CloudConsoleError("not_found", 404);
+  return {
+    accountId: row.accountId,
+    email: row.email,
+    displayName: row.displayName,
+    emailVerified: true,
+    status: state.admin.suspended.has(id)
+      ? ("disabled" as const)
+      : ("active" as const),
+    plan: row.plan,
+    hostCount: row.hostCount,
+    teamCount: row.teamCount,
+    createdAtMs: row.createdAtMs,
+    lastSeenAtMs: NOW,
+    seats: 1,
+    relayBytesMonth: 12_582_912,
+    recentActions: recent(state, id),
+  };
+};
+
+const teamOut = (state: State, id: string) => {
+  const row = opsTeams().find((entry) => entry.team.teamId === id);
+  if (!row) throw new CloudConsoleError("not_found", 404);
+  return {
+    teamId: row.team.teamId,
+    slug: row.team.slug,
+    name: row.team.name,
+    status: state.admin.suspended.has(id)
+      ? ("suspended" as const)
+      : ("active" as const),
+    plan: row.team.plan,
+    memberCount: row.memberCount,
+    hostCount: row.hostCount,
+    createdAtMs: row.createdAtMs,
+    deletedAtMs: null,
+    seats: row.memberCount,
+    relayBytesMonth: 1_073_741_824,
+    recentActions: recent(state, id),
+  };
+};
+
+const statusOf = (state: State, id: string, kind: "account" | "team") =>
+  state.admin.suspended.has(id)
+    ? kind === "account"
+      ? ("disabled" as const)
+      : ("suspended" as const)
+    : ("active" as const);
+
+const ADMIN_HANDLERS: Readonly<Record<string, Handler>> = {
+  "admin.tenants": (input, state) => {
+    const q = typeof input.q === "string" ? input.q.toLowerCase() : "";
+    const accounts = MOCK_OPS_ACCOUNTS.map((row) => ({
+      kind: "account" as const,
+      id: row.accountId,
+      name: row.displayName,
+      plan: row.plan,
+      hostCount: row.hostCount,
+      status: statusOf(state, row.accountId, "account"),
+      createdAtMs: row.createdAtMs,
+      search: `${row.displayName} ${row.email}`,
+    }));
+    const teams = opsTeams().map(({ team, hostCount, createdAtMs }) => ({
+      kind: "team" as const,
+      id: team.teamId,
+      name: team.name,
+      plan: team.plan,
+      hostCount,
+      status: statusOf(state, team.teamId, "team"),
+      createdAtMs,
+      search: `${team.name} ${team.slug}`,
+    }));
+    const tenants = [...teams, ...accounts]
+      .filter((row) => row.search.toLowerCase().includes(q))
+      .map(({ search: _search, ...row }) => row);
+    return { tenants, nextCursor: null };
+  },
+  "admin.account": (input, state) => accountOut(state, String(input.accountId)),
+  "admin.team": (input, state) => teamOut(state, String(input.teamId)),
+  "admin.accountStatus": (input, state) => {
+    const id = String(input.accountId);
+    // 运营不能停用自己（否则最后一个运营账号把自己锁在门外）。
+    if (input.status === "disabled" && id === MOCK_ACCOUNT.accountId)
+      throw new CloudConsoleError("forbidden", 403);
+    accountOut(state, id);
+    if (input.status === "disabled") state.admin.suspended.add(id);
+    else state.admin.suspended.delete(id);
+    state.admin.actions.push({
+      targetId: id,
+      action:
+        input.status === "disabled" ? "account.disable" : "account.enable",
+      atMs: Date.now(),
+    });
+    return accountOut(state, id);
+  },
+  "admin.teamStatus": (input, state) => {
+    const id = String(input.teamId);
+    teamOut(state, id);
+    if (input.status === "suspended") state.admin.suspended.add(id);
+    else state.admin.suspended.delete(id);
+    state.admin.actions.push({
+      targetId: id,
+      action: input.status === "suspended" ? "team.suspend" : "team.restore",
+      atMs: Date.now(),
+    });
+    return teamOut(state, id);
+  },
+  "admin.relayNodes": (_input, state) => ({
+    nodes: MOCK_OPS_NODES.map((row) => ({
+      ...row,
+      draining: row.draining || state.admin.drained.has(row.node),
+      version: "0.10.0",
+    })),
+  }),
+  "admin.relayNodeDrain": (input, state) => {
+    const row = MOCK_OPS_NODES.find((node) => node.node === input.node);
+    if (!row) throw new CloudConsoleError("not_found", 404);
+    if (input.drain === true) state.admin.drained.add(row.node);
+    return {
+      ...row,
+      draining: row.draining || state.admin.drained.has(row.node),
+      version: "0.10.0",
+    };
+  },
+  "admin.incident": (_input, state) => ({ ...state.admin.incident }),
+  "admin.incidentSet": (input, state) => {
+    const incident = state.admin.incident;
+    for (const field of [
+      "pauseAssertions",
+      "pauseRegistrations",
+      "rejectNewConnections",
+    ] as const)
+      if (typeof input[field] === "boolean") incident[field] = input[field];
+    incident.updatedAtMs = Date.now();
+    return { ...incident };
+  },
+};
+
 /** 带状态的处理器；没有的过程答黄金夹具。 */
 const HANDLERS: Readonly<Record<string, Handler>> = {
+  ...ADMIN_HANDLERS,
   "platform.info": () => ({
     ...(golden("platform.info") as object),
     mode: "saas",
@@ -245,6 +449,7 @@ export function createMockApi(options: MockOptions = {}): CloudApi {
     pendingOperator: false,
     displayName: MOCK_ACCOUNT.displayName,
     emailVerified: options.emailVerified ?? MOCK_ACCOUNT.emailVerified,
+    admin: createAdminState(),
   };
   const lost = new Set<() => void>();
   const operatorChanged = createCsrfStore();
@@ -292,17 +497,31 @@ export function createMockApi(options: MockOptions = {}): CloudApi {
           );
         }
         const handler = HANDLERS[entry.key];
+        // 0.10.0 的包还没有 `rejectNewConnections` 与排空的 `reason`：校验会把它们当未知键剥掉，
+        // 所以处理器看原始入参，事故开关的答复校验后再补回这一项（升 0.11.0 后删）。
         const output = handler
-          ? handler(input, state, options)
+          ? handler({ ...(raw as Input), ...input }, state, options)
           : golden(entry.key);
         syncOperator();
-        return check(procedure.outputSchema, output, (issues) => {
-          throw new CloudConsoleError(
-            "internal",
-            500,
-            `mock ${entry.key} violates the contract: ${issues}`,
-          );
-        });
+        const checked = await check(
+          procedure.outputSchema,
+          output,
+          (issues) => {
+            throw new CloudConsoleError(
+              "internal",
+              500,
+              `mock ${entry.key} violates the contract: ${issues}`,
+            );
+          },
+        );
+        return entry.key.startsWith("admin.incident")
+          ? {
+              ...(checked as object),
+              rejectNewConnections: (
+                output as { rejectNewConnections?: boolean }
+              ).rejectNewConnections,
+            }
+          : checked;
       };
     }
     return root as unknown as CloudClient;

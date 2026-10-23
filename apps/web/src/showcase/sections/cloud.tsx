@@ -10,6 +10,7 @@ import type { ConsoleSession } from "@/cloud/ConsoleRoot";
 import { createMockApi } from "@/cloud/mock/create-mock-client";
 import { ConsoleSidebar, ConsoleShell } from "@/cloud/shell/ConsoleShell";
 import { PageHeader } from "@/cloud/shell/PageHeader";
+import { OpsPage } from "@/cloud/ops/OpsPages";
 import { matchRoute } from "@/cloud/router";
 import { DataList, type DataColumn } from "@/cloud/ui/DataList";
 import { PageState } from "@/cloud/ui/PageState";
@@ -112,7 +113,9 @@ function MockConsole({
 }: {
   children: (session: ConsoleSession) => React.ReactNode;
 }) {
-  const [api] = React.useState(() => createMockApi({ operatorAccount: true }));
+  const [api] = React.useState(() =>
+    createMockApi({ operatorAccount: true, operatorSession: true }),
+  );
   const [client] = React.useState(createCloudQueryClient);
   return (
     <QueryClientProvider client={client}>
@@ -147,6 +150,7 @@ function CloudSamples({ session }: { session: ConsoleSession }) {
   const t = useT();
   const columns = useHostColumns();
   const [confirm, setConfirm] = React.useState(false);
+  const [suspend, setSuspend] = React.useState(false);
   const actions = (row: CloudHostRow, layout: "table" | "list") => (
     <>
       {layout === "table" ? (
@@ -204,6 +208,22 @@ function CloudSamples({ session }: { session: ConsoleSession }) {
             onRowOpen={noop}
           />
         </ConsoleShell>
+      </div>
+
+      <div className="grid gap-4 lg:grid-cols-2">
+        {["/ops?q=li", "/ops/nodes", "/ops/status"].map((path) => {
+          const match = matchRoute(...(path.split("?") as [string, string?]));
+          return (
+            <div
+              key={path}
+              className="h-[420px] overflow-hidden rounded-card border border-border"
+            >
+              <ConsoleShell {...shellProps} match={match!} operator>
+                <OpsPage match={match!} />
+              </ConsoleShell>
+            </div>
+          );
+        })}
       </div>
 
       <div className="grid gap-4 md:grid-cols-2">
@@ -289,7 +309,23 @@ function CloudSamples({ session }: { session: ConsoleSession }) {
         >
           {t("showcase.cloud.deleteTeam")}
         </Button>
+        <Button
+          variant="destructive"
+          className="self-start"
+          onClick={() => setSuspend(true)}
+        >
+          {t("cloud.ops.suspend")}
+        </Button>
       </div>
+      <TypedConfirm
+        open={suspend}
+        reason
+        onOpenChange={setSuspend}
+        title={t("cloud.ops.suspendTitle", { name: CLOUD_TEAMS[0]!.name })}
+        expected={CLOUD_TEAMS[0]!.name}
+        actionLabel={t("cloud.ops.suspend")}
+        onConfirm={noop}
+      />
       <TypedConfirm
         open={confirm}
         onOpenChange={setConfirm}
