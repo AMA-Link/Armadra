@@ -94,7 +94,7 @@ export function SessionsSection({ boardId }: { boardId: string }) {
 
       {sections.map((section) => (
         <section key={section.bucket}>
-          <h3 className="flex h-6 items-center gap-1 px-1.5 text-caption font-medium tracking-[.04em] text-muted-foreground uppercase">
+          <h3 className="flex items-center gap-1 px-1.5 py-1 text-caption font-medium tracking-[.04em] text-muted-foreground uppercase">
             {t(`sessions.bucket.${section.bucket}`)}
             <span className="tabular-nums">{section.rows.length}</span>
           </h3>

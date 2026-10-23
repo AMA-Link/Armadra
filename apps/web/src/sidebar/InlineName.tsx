@@ -81,7 +81,7 @@ export function InlineName({
         variant="ghost"
         size="sm"
         title={caption ?? name}
-        className="min-w-0 flex-1 justify-start px-1 text-[length:var(--text-body)] font-normal hover:bg-transparent"
+        className="min-w-0 flex-1 justify-start px-1 text-body font-normal hover:bg-transparent"
         onClick={onSelect}
         onDoubleClick={(event) => {
           event.stopPropagation();
@@ -109,7 +109,7 @@ export function InlineName({
         title={error || label}
         maxLength={120}
         readOnly={pending}
-        className="h-6 min-w-0 flex-1 rounded-sm px-1 py-0 text-[length:var(--text-body)] shadow-none"
+        className="h-6 min-w-0 flex-1 rounded-tight px-1 py-0 text-body shadow-none"
         onChange={(event) => {
           setDraft(event.target.value);
           setError("");

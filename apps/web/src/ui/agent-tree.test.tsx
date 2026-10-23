@@ -343,6 +343,22 @@ describe("AgentTree md", () => {
     ).toBe("+4");
   });
 
+  it("连线 1px：第一个下级的肘线往上接到父方块底边，其余不重叠", () => {
+    render(<AgentTreeView tree={TREE} size="md" />);
+    const rowOf = (name: string) => screen.getByRole("treeitem", { name });
+    const elbow = (name: string) =>
+      rowOf(name).querySelector<HTMLElement>("[data-slot=agent-tree-elbow]")!;
+    // b 是 a 的第一个下级：肘线从行顶往上多出 4px；c 是第二个（最后一个）：从行顶开始
+    expect(elbow("b · 运行中").style.top).toBe("-4px");
+    expect(elbow("c · 失败").style.top).toBe("0px");
+    for (const node of document.querySelectorAll<HTMLElement>(
+      "[data-slot=agent-tree-elbow], [data-slot=agent-tree-rail]",
+    ))
+      expect(
+        Math.min(parseFloat(node.style.width), parseFloat(node.style.height)),
+      ).toBe(1);
+  });
+
   it("working 方块带呼吸外圈，idle 空心", () => {
     const { container } = render(<AgentTreeView tree={TREE} size="md" />);
     expect(pulses(container).length).toBe(2); // a、b

@@ -160,8 +160,8 @@ function Groups({
 
 function GroupHeading({ children }: { children: string }) {
   return (
-    <div className="flex h-7 items-center px-1.5">
-      <h2 className="min-w-0 flex-1 truncate text-[length:var(--text-caption)] font-medium tracking-[.04em] text-muted-foreground uppercase">
+    <div className="flex items-center px-1.5 py-1.5">
+      <h2 className="min-w-0 flex-1 truncate text-caption font-medium tracking-[.04em] text-muted-foreground uppercase">
         {children}
       </h2>
     </div>
@@ -371,7 +371,7 @@ function SourceBlock({
         {...sortable?.handle}
         aria-label={sortable ? sortable.label(name) : undefined}
         className={cn(
-          "flex h-7 items-center gap-2 rounded-md px-1.5",
+          "flex h-7 items-center gap-2 rounded-control px-1.5",
           section.state === "offline" && "opacity-60",
           sortable &&
             "cursor-grab touch-none outline-none focus-visible:ring-3 focus-visible:ring-ring/50 active:cursor-grabbing",
@@ -379,7 +379,7 @@ function SourceBlock({
       >
         {shared ? (
           <Avatar size="sm" className="size-5" aria-hidden>
-            <AvatarFallback className="text-[length:var(--text-caption)]">
+            <AvatarFallback className="text-caption">
               {initialOf(name)}
             </AvatarFallback>
           </Avatar>
@@ -388,7 +388,7 @@ function SourceBlock({
         ) : (
           <StatusDot tone={pill.tone} size={6} />
         )}
-        <h3 className="min-w-0 flex-1 truncate text-[length:var(--text-body)] text-muted-foreground">
+        <h3 className="min-w-0 flex-1 truncate text-body text-muted-foreground">
           {name}
         </h3>
         {shared && section.state === "loading" && (

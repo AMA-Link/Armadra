@@ -141,7 +141,7 @@ export function LeftSidebar() {
           // 里面的按钮无论写多大的 z 都出不来，会被全局拖拽层（--z-pills）整个
           // 盖住——按搜索、通知按到的是「拖窗口」。于是 aside 自己抬到拖拽层之上，
           // 标题栏那一行改由 `TitlebarRow` 自带拖拽属性，空白处照样能拖。
-          className="material-sidebar relative z-[calc(var(--z-pills)+1)] h-full shrink-0 overflow-hidden border-r border-border transition-[width] duration-[var(--dur-base)] ease-out data-[state=collapsed]:border-r-0"
+          className="material-sidebar relative z-[calc(var(--z-pills)+1)] h-full shrink-0 overflow-hidden border-r border-border transition-[width] duration-(--dur-base) ease-out data-[state=collapsed]:border-r-0"
         >
           <div className="h-full w-[var(--sidebar-w)]">{content}</div>
         </aside>

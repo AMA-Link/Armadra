@@ -404,6 +404,8 @@ interface MdRow {
   /** 祖先里（深度 1 起）哪些后面还有兄弟：决定这一行要不要续画它们的竖线。 */
   rails: boolean[];
   last: boolean;
+  /** 是父节点的第一个画出来的下级：肘线往上多画 4px，接到父节点方块的底边。 */
+  first: boolean;
   /** 画出来的直接下级个数；折叠时显示成 `+k` 的 k 取全部可见后代。 */
   kids: AgentTreeNode[];
   collapsed: boolean;
@@ -434,6 +436,7 @@ function flattenMd(
     depth: number,
     rails: boolean[],
     last: boolean,
+    first: boolean,
   ) => {
     const kids = node.children.filter((child) =>
       visible[depth + 1]?.has(child.id),
@@ -444,6 +447,7 @@ function flattenMd(
       depth,
       rails,
       last,
+      first,
       kids,
       collapsed: isCollapsed,
       descendants: visibleCount(node, depth, visible),
@@ -455,10 +459,11 @@ function flattenMd(
         depth + 1,
         depth === 0 ? [] : [...rails, !last],
         index === kids.length - 1,
+        index === 0,
       ),
     );
   };
-  walk(root, 0, [], true);
+  walk(root, 0, [], true, true);
   return rows;
 }
 
@@ -541,7 +546,7 @@ function AgentTreeMd({
     >
       <div
         data-slot="agent-tree-summary"
-        className="truncate font-mono text-caption text-muted-foreground"
+        className="font-mono text-caption text-muted-foreground"
       >
         {summary}
       </div>
@@ -591,6 +596,7 @@ function AgentTreeMd({
                         rails={row.rails}
                         depth={row.depth}
                         last={row.last}
+                        first={row.first}
                       />
                     )}
                     <MdSquare tone={row.node.tone} />
@@ -651,12 +657,16 @@ function MdRails({
   rails,
   depth,
   last,
+  first,
 }: {
   rails: boolean[];
   depth: number;
   last: boolean;
+  first: boolean;
 }) {
   const center = MD_ROW / 2;
+  // 父节点方块底边到下一行顶边的距离（方块在行内垂直居中）。
+  const GAP = (MD_ROW - MD_SQUARE) / 2;
   const x = (column: number) => column * MD_INDENT + MD_SQUARE / 2;
   const line = "absolute bg-border-strong";
   return (
@@ -678,9 +688,9 @@ function MdRails({
         className={line}
         style={{
           left: x(depth - 1),
-          top: 0,
+          top: first ? -GAP : 0,
           width: 1,
-          height: last ? center + 1 : MD_ROW,
+          height: (last ? center + 1 : MD_ROW) + (first ? GAP : 0),
         }}
       />
       <span

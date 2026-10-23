@@ -79,7 +79,7 @@ function MemberNode({ data: node }: NodeProps<CoordinatorFlowNode>) {
       status={status}
       {...(display.tone === "working" ? { glow: "working" as const } : {})}
     >
-      <div className="h-full truncate bg-[var(--term-bg)] px-3 py-2 font-mono text-[length:var(--text-code)] text-[var(--term-fg)]">
+      <div className="h-full truncate bg-term px-3 py-2 font-mono text-code text-[var(--term-fg)]">
         {BODY_LINES[node.id]}
       </div>
     </NodeShell>
@@ -233,7 +233,7 @@ function DrawerFrame({ children }: { children: React.ReactNode }) {
   return (
     <section
       data-showcase-dispatch
-      className="w-[min(100%,var(--drawer-w))] min-w-0 overflow-hidden rounded-panel border border-border bg-[var(--panel)]"
+      className="w-[min(100%,var(--drawer-w))] min-w-0 overflow-hidden rounded-panel border border-border bg-panel"
     >
       <div className="flex h-10 items-center border-b border-border px-3 text-body font-semibold">
         {t("coordinator.title")}
