@@ -472,7 +472,7 @@ export function WebviewGuest({
         style={hidden ? { display: "none" } : undefined}
       >
         <Snapshot src={snapshot} />
-        <div className="absolute inset-0 grid place-items-center px-6 text-center text-[11px] text-muted-foreground">
+        <div className="absolute inset-0 grid place-items-center px-6 text-center text-caption text-muted-foreground">
           <div className="space-y-1">
             {tab.title && (
               <div className="truncate text-foreground">{tab.title}</div>
@@ -564,18 +564,19 @@ function FailurePage({
   const kind = failureKind(failure);
   return (
     <div
-      className="absolute inset-0 grid place-items-center bg-[var(--browser-bg)] px-6 text-center"
+      className="absolute inset-0 grid place-items-center px-6 text-center"
+      style={{ backgroundColor: "var(--browser-bg)" }}
       data-slot="browser-failed"
       data-failure-kind={kind}
     >
       <div className="max-w-sm space-y-2">
-        <div className="text-[13px] text-foreground">
+        <div className="text-body text-foreground">
           {t(`browser.failed.${kind}`)}
         </div>
-        <div className="truncate font-mono text-[11px] text-muted-foreground">
+        <div className="truncate font-mono text-caption text-muted-foreground">
           {failure.url}
         </div>
-        <div className="font-mono text-[length:var(--text-caption)] text-muted-foreground/70">
+        <div className="font-mono text-caption text-muted-foreground/70">
           {failure.description || failure.code}
         </div>
         <Button size="sm" variant="outline" onClick={onRetry}>

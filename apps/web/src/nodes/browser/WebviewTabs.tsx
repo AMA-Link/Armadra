@@ -32,7 +32,7 @@ export function WebviewTabs({ control }: { control: TabsControl }) {
         <div
           key={tab.id}
           className={cn(
-            "group flex h-6 min-w-0 max-w-40 shrink-0 items-center rounded-sm pr-0.5 text-[11px]",
+            "group flex min-w-0 max-w-40 shrink-0 items-center rounded-control pr-0.5 text-caption",
             tab.id === control.activeId
               ? "bg-accent text-accent-foreground"
               : "text-muted-foreground hover:bg-accent/50",
@@ -47,7 +47,7 @@ export function WebviewTabs({ control }: { control: TabsControl }) {
             role="tab"
             aria-selected={tab.id === control.activeId}
             title={tab.address}
-            className="flex h-full min-w-0 flex-1 items-center justify-start gap-1.5 rounded-sm pr-0 pl-1.5 text-left text-[length:inherit] font-normal hover:bg-transparent"
+            className="min-w-0 flex-1 justify-start gap-1.5 rounded-control pr-0 pl-1.5 text-left text-caption font-normal hover:bg-transparent"
             onClick={() => control.select(tab.id)}
           >
             {tab.favicon ? (
@@ -55,12 +55,12 @@ export function WebviewTabs({ control }: { control: TabsControl }) {
                 src={tab.favicon}
                 alt=""
                 aria-hidden="true"
-                className="size-3.5 shrink-0 rounded-[2px] object-contain"
+                className="size-3.5 shrink-0 rounded-tight object-contain"
               />
             ) : (
               <span
                 aria-hidden="true"
-                className="grid size-3.5 shrink-0 place-items-center rounded-[2px] bg-muted text-[length:var(--text-caption)] font-medium text-muted-foreground"
+                className="grid size-3.5 shrink-0 place-items-center rounded-tight bg-muted text-caption font-medium text-muted-foreground"
               >
                 {tabLetter(tab)}
               </span>
@@ -70,7 +70,7 @@ export function WebviewTabs({ control }: { control: TabsControl }) {
             </span>
             {tab.loading && (
               <span
-                className="size-1.5 shrink-0 animate-pulse rounded-full bg-current opacity-60"
+                className="size-1.5 shrink-0 animate-pulse rounded-pill bg-current opacity-60"
                 data-slot="browser-tab-loading"
               />
             )}
@@ -81,7 +81,7 @@ export function WebviewTabs({ control }: { control: TabsControl }) {
             type="button"
             aria-label={t("browser.tabs.close")}
             data-slot="browser-tab-close"
-            className="grid size-4 shrink-0 place-items-center rounded-[2px] p-0 opacity-0 hover:bg-background/80 focus-visible:opacity-100 group-hover:opacity-100"
+            className="grid size-4 shrink-0 place-items-center rounded-tight p-0 opacity-0 hover:bg-background/80 focus-visible:opacity-100 group-hover:opacity-100"
             onClick={() => control.close(tab.id)}
           >
             <X className="size-2.5" />

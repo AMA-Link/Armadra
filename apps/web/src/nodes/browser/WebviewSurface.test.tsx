@@ -49,11 +49,11 @@ vi.mock("@/platform", () => ({
     typeof (window as { armadra?: unknown }).armadra !== "undefined",
 }));
 
-vi.mock("sonner", () => ({
+vi.mock("@/ui/toast", () => ({
   toast: Object.assign(vi.fn(), { error: vi.fn(), success: vi.fn() }),
 }));
 
-import { toast } from "sonner";
+import { toast } from "@/ui/toast";
 
 import { usePreferencesStore } from "@/app/preferences-store";
 import { dispatchWorkspaceEvent } from "@/api/events";
@@ -139,7 +139,7 @@ describe("工具栏密度", () => {
   it("工具栏收到 28px，地址栏 12px，页面吃掉剩下的高度", () => {
     const view = paint();
     const address = screen.getByLabelText("网址");
-    expect(address.className).toContain("text-[12px]");
+    expect(address.className).toContain("text-meta");
 
     const toolbar = address.closest("div") as HTMLElement;
     expect(toolbar.className).toContain("h-[28px]");

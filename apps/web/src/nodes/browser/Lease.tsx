@@ -68,9 +68,8 @@ export function LeaseBadge({
       </Badge>
       <Button
         type="button"
-        size="sm"
+        size="xs"
         variant="outline"
-        className="h-[22px] px-2 text-[11px]"
         disabled={busy}
         onClick={mine ? onHandback : onTakeover}
       >
@@ -113,7 +112,7 @@ export function ActivityStatus({
       data-no-drag="true"
     >
       {prompt && (
-        <span className="truncate text-[11px]" data-slot="browser-prompt">
+        <span className="truncate text-caption" data-slot="browser-prompt">
           {prompt}
         </span>
       )}
@@ -144,7 +143,7 @@ export function ActivityLine({
       : ` · ${t(`browser.activity.${activity.outcome}`)}`;
   return (
     <span
-      className="truncate font-mono text-[11px] text-muted-foreground"
+      className="truncate font-mono text-caption text-muted-foreground"
       data-slot="browser-activity"
       title={activity.reasonCode}
     >
