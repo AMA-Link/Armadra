@@ -188,3 +188,68 @@ describe("个人 · 主机目录的五态", () => {
     ).toBeTruthy();
   });
 });
+
+describe("个人 · 主机详情", () => {
+  it("页头：名称、状态、所有者与版本；页签访问、链接、设置", async () => {
+    mount(`/me/hosts/${LAPTOP}`);
+    expect((await h1()).textContent).toBe("laptop");
+    expect(screen.getByText("在线")).toBeTruthy();
+    expect(screen.getByText(/版本 0\.9\.3/)).toBeTruthy();
+    expect(screen.getAllByRole("tab").map((tab) => tab.textContent)).toEqual([
+      "访问",
+      "链接",
+      "设置",
+    ]);
+    // 访问页：所有者自己一行（不能撤销）与本人发出的分享。
+    expect(await screen.findByText("lisi@example.com")).toBeTruthy();
+    expect(
+      within(screen.getByRole("table")).getByText("zhangsan@example.com"),
+    ).toBeTruthy();
+    expect(within(screen.getByRole("table")).getByText("所有者")).toBeTruthy();
+    expect(
+      screen.queryByRole("button", {
+        name: "撤销 zhangsan@example.com 的访问",
+      }),
+    ).toBeNull();
+  });
+
+  it("?tab=links 只列这台主机的链接，不再画目标列", async () => {
+    mount(`/me/hosts/${LAPTOP}?tab=links`);
+    expect(await screen.findByText("给小李看进度")).toBeTruthy();
+    expect(screen.queryByRole("columnheader", { name: "目标" })).toBeNull();
+  });
+
+  it("撤销访问：确认后那一行消失", async () => {
+    mount(`/me/hosts/${LAPTOP}`);
+    fireEvent.click(
+      await screen.findByRole("button", {
+        name: "撤销 lisi@example.com 的访问",
+      }),
+    );
+    const dialog = await screen.findByRole("alertdialog");
+    expect(
+      within(dialog).getByText("撤销 lisi@example.com 对 laptop 的访问？"),
+    ).toBeTruthy();
+    fireEvent.click(within(dialog).getByRole("button", { name: "撤销访问" }));
+    await waitFor(() =>
+      expect(screen.queryByText("lisi@example.com")).toBeNull(),
+    );
+    expect(screen.getByText("wangwu@example.com")).toBeTruthy();
+  });
+
+  it("设置页签的撤销主机回到目录", async () => {
+    mount(`/me/hosts/${LAPTOP}?tab=settings`);
+    fireEvent.click(await screen.findByRole("button", { name: "撤销主机" }));
+    const dialog = await screen.findByRole("alertdialog");
+    fireEvent.change(within(dialog).getByLabelText("输入 laptop 确认"), {
+      target: { value: "laptop" },
+    });
+    fireEvent.click(within(dialog).getByRole("button", { name: "撤销主机" }));
+    await waitFor(() => expect(window.location.pathname).toBe("/me/hosts"));
+  });
+
+  it("不存在的主机：整页找不到", async () => {
+    mount("/me/hosts/ffffffffffffffffffffffffffffffff");
+    expect(await screen.findByText("找不到这个页面")).toBeTruthy();
+  });
+});

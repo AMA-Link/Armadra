@@ -1,5 +1,7 @@
 import { useT } from "@/app/preferences-store";
+import { HostDetail } from "../hosts/HostDetail";
 import { HostDirectory } from "../hosts/HostDirectory";
+import { LinksView } from "../links/LinksView";
 import type { RouteMatch } from "../router";
 import { PageHeader } from "../shell/PageHeader";
 import { PERSONAL_SPACE } from "../space";
@@ -13,6 +15,15 @@ export function PersonalPage({ match }: { match: RouteMatch }) {
         <>
           <PageHeader title={t("cloud.nav.hosts")} />
           <HostDirectory space={PERSONAL_SPACE} match={match} />
+        </>
+      );
+    case "meHost":
+      return <HostDetail space={PERSONAL_SPACE} match={match} />;
+    case "meLinks":
+      return (
+        <>
+          <PageHeader title={t("cloud.nav.links")} />
+          <LinksView space={PERSONAL_SPACE} />
         </>
       );
     default:
