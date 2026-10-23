@@ -25,10 +25,14 @@ import {
   describeFailure,
   toCloudError,
 } from "../api/errors";
+import { PageState } from "../ui/PageState";
 import { AuthLayout } from "./AuthLayout";
 
 /** 接受链接用的 Turnstile action（与中继的 `armadra-accept` 对应）。 */
 const TURNSTILE_ACCEPT_ACTION = "armadra-accept";
+
+/** 加入之后页面落在哪（托管页的根，与个人中转的 `JoinPage` 相同）。 */
+const APP_PATH = "/app/";
 
 const ROLES = new Set(["viewer", "editor", "operator", "driver"]);
 
@@ -38,7 +42,7 @@ type Info = Awaited<
 type Stage =
   | { kind: "loading" }
   | { kind: "ready"; info: Info }
-  | { kind: "failed"; message: string };
+  | { kind: "failed"; message: string; code?: string };
 
 /** 以访客加入（缺省经页面的托管中继；测试换掉）。 */
 export type JoinWithAccept = (
@@ -106,6 +110,8 @@ export function LinkPage({
   const [widget, setWidget] = React.useState(0);
   const [error, setError] = React.useState("");
   const [busy, setBusy] = React.useState(false);
+  // 接受过一次：重试只重跑加入。`links.accept` 会消耗次数，不能因为中继那一步失败就再接受一遍。
+  const accepted = React.useRef<CloudAccept | null>(null);
 
   React.useEffect(() => {
     if (link === null) return;
@@ -119,7 +125,12 @@ export function LinkPage({
         setStage({ kind: "ready", info });
       },
       (failure: unknown) =>
-        live && setStage({ kind: "failed", message: describeFailure(failure) }),
+        live &&
+        setStage({
+          kind: "failed",
+          message: describeFailure(failure),
+          code: toCloudError(failure).code,
+        }),
     );
     api.client.platform.info({}).then(
       (info) => {
@@ -151,26 +162,28 @@ export function LinkPage({
         onNeedLogin();
         return;
       }
-      const answer = await api.client.links.accept({
-        linkId,
-        secret: link.secret,
-        device: browserDevice(),
-        ...(siteKey !== null && challenge !== ""
-          ? { challenge: { provider: "turnstile" as const, token: challenge } }
-          : {}),
-      });
-      if (stage.info.kind === "team_join") {
-        onDone();
-        return;
+      if (accepted.current === null) {
+        const answer = await api.client.links.accept({
+          linkId,
+          secret: link.secret,
+          device: browserDevice(),
+          ...(siteKey !== null && challenge !== ""
+            ? {
+                challenge: { provider: "turnstile" as const, token: challenge },
+              }
+            : {}),
+        });
+        if (stage.info.kind === "team_join") {
+          onDone();
+          return;
+        }
+        accepted.current = parseCloudAccept(answer);
       }
-      const sourceId = await joinWithAccept(link, parseCloudAccept(answer));
+      await joinWithAccept(link, accepted.current);
       openAfterJoin(LOCAL_SOURCE_ID);
       try {
-        globalThis.history.replaceState(
-          null,
-          "",
-          `/h/${encodeURIComponent(sourceId)}`,
-        );
+        // 与个人中转的落地页一致：换成托管页的根，刷新能续上（`/h/<源>` 的 SaaS 入口还没有）。
+        globalThis.history.replaceState(null, "", APP_PATH);
       } catch {
         /* 地址栏停在 /j/ 也能用，只是刷新会回到落地页。 */
       }
@@ -181,7 +194,16 @@ export function LinkPage({
         setChallenge("");
         setWidget((n) => n + 1);
       }
-      if (toCloudError(failure).code === "anonymous_links_disabled") {
+      const failed = toCloudError(failure).code;
+      if (failed === "link_frozen") {
+        setStage({
+          kind: "failed",
+          message: describeFailure(failure),
+          code: failed,
+        });
+        return;
+      }
+      if (failed === "anonymous_links_disabled") {
         setNeedAccount(true);
         setSignedIn(false);
         return;
@@ -205,6 +227,13 @@ export function LinkPage({
           <Skeleton className="h-5 w-56" />
         </div>
       </AuthLayout>
+    );
+
+  if (stage.kind === "failed" && stage.code === "link_frozen")
+    return (
+      <main id="main" className="h-full overflow-y-auto bg-background">
+        <PageState kind="forbidden" code="link_frozen" onHome={onDone} />
+      </main>
     );
 
   if (stage.kind === "failed")
@@ -263,7 +292,10 @@ export function LinkPage({
         size="lg"
         className="w-full"
         autoFocus
-        disabled={info.exhausted || (!needsLogin && !verified)}
+        disabled={
+          info.exhausted ||
+          (!needsLogin && !verified && accepted.current === null)
+        }
         loading={busy}
         onClick={() => void run()}
       >

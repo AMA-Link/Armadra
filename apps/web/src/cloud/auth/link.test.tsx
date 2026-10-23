@@ -86,7 +86,7 @@ describe("分享链接落地页（SaaS）", () => {
     await screen.findByText("studio");
   });
 
-  it("匿名允许：「加入」不登录就接受，以访客经托管中继进画布，地址换成 /h/<源>", async () => {
+  it("匿名允许：「加入」不登录就接受，以访客经托管中继进画布，地址换成 /app/", async () => {
     visit(`/j/${LINK_ID}${HASH}`);
     const { api, onJoined } = mount({ signedIn: false });
     const accept = vi.spyOn(api.client.links, "accept");
@@ -105,7 +105,7 @@ describe("分享链接落地页（SaaS）", () => {
       invitationToken: INVITE,
     });
     expect(accepted).toHaveProperty("guestSession");
-    expect(here()).toBe(`/h/${"a".repeat(32)}`);
+    expect(here()).toBe("/app/");
   });
 
   it("要求登录且没有会话：主按钮是「登录后加入」，replace 去登录，登录后回来仍带着秘密", async () => {
@@ -130,7 +130,7 @@ describe("分享链接落地页（SaaS）", () => {
     fireEvent.submit(screen.getByLabelText("邮箱").closest("form")!);
     fireEvent.click(await join());
     await waitFor(() => expect(onJoined).toHaveBeenCalledOnce());
-    expect(here()).toMatch(/^\/h\//);
+    expect(here()).toBe("/app/");
     expect(hosted.join.mock.calls[0]![0]).toMatchObject({ secret: SECRET });
     push.mockRestore();
   });
@@ -159,7 +159,6 @@ describe("分享链接落地页（SaaS）", () => {
   it.each([
     ["link_expired", "链接已过期"],
     ["link_secret_invalid", "链接不完整，请复制完整的链接"],
-    ["link_frozen", "链接已冻结，联系分享的人"],
     ["rate_limited", "请求过于频繁，请稍后重试"],
   ])("接受失败 %s：按码给文案，按钮变「重试」", async (code, message) => {
     visit(`/j/${LINK_ID}${HASH}`);
@@ -229,5 +228,33 @@ describe("分享链接落地页（SaaS）", () => {
     expect(accept.mock.calls[0]![0]).toMatchObject({
       challenge: { provider: "turnstile", token: "turnstile-token" },
     });
+  });
+
+  it("中继加入失败后重试：只重跑加入，不再 links.accept（接受会消耗次数）", async () => {
+    visit(`/j/${LINK_ID}${HASH}`);
+    hosted.join.mockRejectedValueOnce(
+      Object.assign(new Error("x"), { code: "source_unreachable" }),
+    );
+    const { api, onJoined } = mount({ signedIn: false });
+    const accept = vi.spyOn(api.client.links, "accept");
+    fireEvent.click(await join());
+    fireEvent.click(await screen.findByRole("button", { name: "重试" }));
+    await waitFor(() => expect(onJoined).toHaveBeenCalledOnce());
+    expect(accept).toHaveBeenCalledOnce();
+    expect(hosted.join).toHaveBeenCalledTimes(2);
+    expect(hosted.join.mock.calls[1]![1]).toBe(hosted.join.mock.calls[0]![1]);
+  });
+
+  it("link_frozen：整页 PageState，没有「加入」（摘要时与接受时都一样）", async () => {
+    visit(`/j/${LINK_ID}${HASH}`);
+    mount({ signedIn: false, fail: { "links.get": "link_frozen" } });
+    await screen.findByText("链接已冻结，联系分享的人");
+    expect(screen.queryByRole("button", { name: "加入" })).toBeNull();
+    cleanup();
+    visit(`/j/${LINK_ID}${HASH}`);
+    mount({ signedIn: false, fail: { "links.accept": "link_frozen" } });
+    fireEvent.click(await join());
+    await screen.findByText("链接已冻结，联系分享的人");
+    expect(screen.queryByRole("button", { name: "加入" })).toBeNull();
   });
 });
