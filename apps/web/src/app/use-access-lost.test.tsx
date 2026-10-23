@@ -2,7 +2,7 @@ import { renderHook } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const info = vi.fn();
-vi.mock("sonner", () => ({
+vi.mock("@/ui/toast", () => ({
   toast: { info: (...args: unknown[]) => info(...args) },
 }));
 

@@ -1,6 +1,6 @@
 import { useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { toast } from "sonner";
+import { toast } from "@/ui/toast";
 import type { Usage } from "@armadra/shared";
 
 import { runtimeApi } from "../api/client";

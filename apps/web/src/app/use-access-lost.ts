@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { toast } from "sonner";
+import { toast } from "@/ui/toast";
 
 import { onWorkspaceAccessLost } from "../api/events";
 import { useCanvasStore } from "../store/canvas-store";

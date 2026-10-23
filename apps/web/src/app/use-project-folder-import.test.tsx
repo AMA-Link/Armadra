@@ -13,7 +13,7 @@ const openDirectory = vi.fn();
 const importWorkspace = vi.fn();
 const openWorkspace = vi.fn();
 const errorToast = vi.fn();
-const successToast = vi.fn();
+const infoToast = vi.fn();
 let nativeDrop: FileDropHandler = () => {};
 vi.mock("../api/client", () => ({
   runtimeApi: {
@@ -32,10 +32,10 @@ vi.mock("../platform", () => ({
     return () => {};
   },
 }));
-vi.mock("sonner", () => ({
+vi.mock("@/ui/toast", () => ({
   toast: {
     error: (...args: unknown[]) => errorToast(...args),
-    success: (...args: unknown[]) => successToast(...args),
+    info: (...args: unknown[]) => infoToast(...args),
   },
 }));
 
@@ -132,7 +132,7 @@ describe("project folder imports", () => {
       }),
     );
     await waitFor(() =>
-      expect(successToast).toHaveBeenCalledWith(
+      expect(infoToast).toHaveBeenCalledWith(
         "已导入「empty」的副本，原文件夹保持不变",
       ),
     );
