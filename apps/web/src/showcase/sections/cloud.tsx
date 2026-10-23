@@ -11,6 +11,10 @@ import {
   createMockApi,
   type MockOptions,
 } from "@/cloud/mock/create-mock-client";
+import { GrantDialog } from "@/cloud/hosts/GrantDialog";
+import { RegisterHostDialog } from "@/cloud/hosts/RegisterHostDialog";
+import { MOCK_HOSTS } from "@/cloud/mock/fixtures";
+import type { TeamSpace } from "@/cloud/team/data";
 import { CreateTeamDialog } from "@/cloud/team/CreateTeamDialog";
 import { DeletedTeamPage } from "@/cloud/team/DeletedTeamPage";
 import { TeamPage } from "@/cloud/team/TeamPage";
@@ -244,6 +248,90 @@ function TeamSamples() {
   );
 }
 
+const RD_SPACE: TeamSpace = {
+  kind: "team",
+  teamId: "team_mock_rd",
+  slug: "rd",
+};
+const BUILD_HOST = MOCK_HOSTS[0]!.sourceId;
+
+const HOST_PATHS = [
+  "/t/rd/hosts",
+  `/t/rd/hosts/${BUILD_HOST}`,
+  `/t/rd/hosts/${BUILD_HOST}?tab=settings`,
+  "/t/rd/grants",
+] as const;
+
+/** 登记主机与添加访问两个对话框，各用一个按钮打开（不占版面）。 */
+function HostDialogSamples() {
+  const t = useT();
+  const [open, setOpen] = React.useState<"register" | "grant" | null>(null);
+  return (
+    <MockConsole options={{ emailVerified: true }}>
+      {() => (
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={() => setOpen("register")}>
+            {t("cloud.hosts.register")}
+          </Button>
+          <Button variant="outline" onClick={() => setOpen("grant")}>
+            {t("cloud.hosts.addAccess")}
+          </Button>
+          {open === "register" ? (
+            <RegisterHostDialog
+              space={RD_SPACE}
+              onClose={() => setOpen(null)}
+            />
+          ) : null}
+          {open === "grant" ? (
+            <GrantDialog
+              space={RD_SPACE}
+              sourceId={BUILD_HOST}
+              onClose={() => setOpen(null)}
+            />
+          ) : null}
+        </div>
+      )}
+    </MockConsole>
+  );
+}
+
+/**
+ * 团队主机与授予（U5）：主机目录、主机详情（访问带合成降级与来源展开、设置）、按人的授予页，
+ * member 视角的目录（只见自己登记的与被授予的），以及登记、添加访问两个对话框。
+ */
+function HostSamples() {
+  const page = (path: string) =>
+    matchRoute(...(path.split("?") as [string, string?]))!;
+  const frame = "h-[520px] overflow-hidden rounded-card border border-border";
+  const shell = (session: ConsoleSession, path: string) => (
+    <div key={path} className={frame}>
+      <ConsoleShell
+        user={session.user}
+        teams={session.teams}
+        counts={CLOUD_COUNTS}
+        match={page(path)}
+      >
+        <TeamPage match={page(path)} />
+      </ConsoleShell>
+    </div>
+  );
+  return (
+    <div className="flex flex-col gap-4">
+      <MockConsole options={{ emailVerified: true }}>
+        {(session) => (
+          <div className="flex flex-col gap-4">
+            {HOST_PATHS.map((path) => shell(session, path))}
+          </div>
+        )}
+      </MockConsole>
+      <MockConsole options={{ emailVerified: true, roles: { rd: "member" } }}>
+        {(session) => shell(session, "/t/rd/hosts")}
+      </MockConsole>
+      <HostDialogSamples />
+    </div>
+  );
+}
+
 const FRAGMENT = `${"S".repeat(43)}.${"c".repeat(32)}.${"D".repeat(43)}`;
 const SAMPLE_LINK = "0123456789abcdef";
 
@@ -457,6 +545,8 @@ function CloudSamples({ session }: { session: ConsoleSession }) {
       </div>
 
       <TeamSamples />
+
+      <HostSamples />
 
       <PublicSamples />
 

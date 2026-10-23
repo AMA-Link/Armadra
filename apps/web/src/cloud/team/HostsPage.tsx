@@ -11,7 +11,7 @@ import type { TeamRole } from "../shell/model";
 import { useTeamSettings, type TeamSpace } from "./data";
 
 /** 登记主机：owner / admin 总是可以，member 要团队设置允许；guest 与 billing 不画（云端也答 `team_role_insufficient`）。 */
-export function useCanRegister(space: TeamSpace, role: TeamRole): boolean {
+function useCanRegister(space: TeamSpace, role: TeamRole): boolean {
   const settings = useTeamSettings(space, role === "member");
   if (role === "owner" || role === "admin") return true;
   return role === "member" && settings.data?.membersCanRegisterHosts === true;

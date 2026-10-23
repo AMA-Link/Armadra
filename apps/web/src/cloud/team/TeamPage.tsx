@@ -2,6 +2,7 @@ import { useT } from "@/app/preferences-store";
 import type { RouteMatch } from "../router";
 import { PageHeader } from "../shell/PageHeader";
 import { useTeamSpace } from "./data";
+import { GrantsPage } from "./GrantsPage";
 import { TeamHostPage, TeamHostsPage } from "./HostsPage";
 import { MembersPage } from "./MembersPage";
 import { OverviewPage } from "./OverviewPage";
@@ -26,6 +27,8 @@ export function TeamPage({ match }: { match: RouteMatch }) {
       return (
         <TeamHostPage match={match} space={space} name={name} role={role} />
       );
+    case "teamGrants":
+      return <GrantsPage space={space} role={role} />;
     case "teamMembers":
       return (
         <MembersPage match={match} space={space} teamName={name} role={role} />
