@@ -3,6 +3,7 @@ import { Dialog as SheetPrimitive } from "radix-ui";
 
 import { cn } from "@/lib/cn";
 import { Button } from "@/ui/button";
+import { rubberBand } from "@/ui/motion";
 import { XIcon } from "lucide-react";
 
 function Sheet({ ...props }: React.ComponentProps<typeof SheetPrimitive.Root>) {
@@ -35,7 +36,7 @@ function SheetOverlay({
     <SheetPrimitive.Overlay
       data-slot="sheet-overlay"
       className={cn(
-        "fixed inset-0 z-50 bg-black/10 duration-100 supports-backdrop-filter:backdrop-blur-xs data-open:animate-in data-open:fade-in-0 data-closed:animate-out data-closed:fade-out-0",
+        "motion-overlay fixed inset-0 z-(--z-dialog) bg-scrim supports-backdrop-filter:backdrop-blur-xs",
         className,
       )}
       {...props}
@@ -64,6 +65,94 @@ const SAFE_CLOSE = {
   left: "top-[calc(0.75rem+var(--overlay-inset-top))] right-3",
 } as const;
 
+/** 甩出的速度阈值（px/ms）：超过它即关闭，不要求拖过距离阈值。 */
+const FLICK_VELOCITY = 0.11;
+/** 拖过内容高度的这个比例也关闭。 */
+const DISMISS_RATIO = 0.4;
+
+/**
+ * 底部 Sheet 的拖柄（设计系统 §8.3）：向下拖 1:1 跟手，`setPointerCapture`，忽略第二根手指，
+ * 速度 > 0.11 px/ms 或拖过 40% 即关闭，向上拖有递增阻力，松手没到阈值就回弹到原位（无过冲）。
+ */
+function SheetHandle({
+  target,
+  onDismiss,
+}: {
+  target: React.RefObject<HTMLElement | null>;
+  onDismiss: () => void;
+}) {
+  const drag = React.useRef<{
+    id: number;
+    startY: number;
+    lastY: number;
+    lastT: number;
+    velocity: number;
+  } | null>(null);
+
+  const move = (dy: number) => {
+    const el = target.current;
+    if (!el) return;
+    el.style.transition = "none";
+    el.style.transform = `translateY(${dy >= 0 ? dy : -rubberBand(-dy)}px)`;
+  };
+
+  return (
+    <div
+      data-slot="sheet-handle"
+      className="absolute inset-x-0 top-0 flex h-5 touch-none items-start justify-center pt-1.5"
+      onPointerDown={(event) => {
+        if (drag.current) return;
+        event.currentTarget.setPointerCapture(event.pointerId);
+        drag.current = {
+          id: event.pointerId,
+          startY: event.clientY,
+          lastY: event.clientY,
+          lastT: event.timeStamp,
+          velocity: 0,
+        };
+      }}
+      onPointerMove={(event) => {
+        const state = drag.current;
+        if (!state || event.pointerId !== state.id) return;
+        const dt = Math.max(1, event.timeStamp - state.lastT);
+        state.velocity = (event.clientY - state.lastY) / dt;
+        state.lastY = event.clientY;
+        state.lastT = event.timeStamp;
+        move(event.clientY - state.startY);
+      }}
+      onPointerUp={(event) => {
+        const state = drag.current;
+        if (!state || event.pointerId !== state.id) return;
+        drag.current = null;
+        const el = target.current;
+        const dy = event.clientY - state.startY;
+        const height = el?.getBoundingClientRect().height ?? 0;
+        if (
+          state.velocity > FLICK_VELOCITY ||
+          (height > 0 && dy > height * DISMISS_RATIO)
+        ) {
+          onDismiss();
+          return;
+        }
+        if (el) {
+          el.style.transition = "transform var(--dur-base) var(--ease-out)";
+          el.style.transform = "";
+        }
+      }}
+      onPointerCancel={() => {
+        drag.current = null;
+        const el = target.current;
+        if (el) {
+          el.style.transition = "transform var(--dur-base) var(--ease-out)";
+          el.style.transform = "";
+        }
+      }}
+    >
+      <span className="block h-1 w-9 rounded-pill bg-border-strong" />
+    </div>
+  );
+}
+
 function SheetContent({
   className,
   children,
@@ -74,19 +163,36 @@ function SheetContent({
   side?: "top" | "right" | "bottom" | "left";
   showCloseButton?: boolean;
 }) {
+  const content = React.useRef<HTMLDivElement>(null);
+  const closer = React.useRef<HTMLButtonElement>(null);
   return (
     <SheetPortal>
       <SheetOverlay />
       <SheetPrimitive.Content
+        ref={content}
         data-slot="sheet-content"
         data-side={side}
         className={cn(
           SAFE_PADDING[side],
-          "fixed z-50 flex flex-col gap-4 bg-popover bg-clip-padding text-sm text-popover-foreground shadow-lg transition duration-200 ease-in-out data-[side=bottom]:inset-x-0 data-[side=bottom]:bottom-0 data-[side=bottom]:h-auto data-[side=bottom]:border-t data-[side=left]:inset-y-0 data-[side=left]:left-0 data-[side=left]:h-full data-[side=left]:w-3/4 data-[side=left]:border-r data-[side=right]:inset-y-0 data-[side=right]:right-0 data-[side=right]:h-full data-[side=right]:w-3/4 data-[side=right]:border-l data-[side=top]:inset-x-0 data-[side=top]:top-0 data-[side=top]:h-auto data-[side=top]:border-b data-[side=left]:sm:max-w-sm data-[side=right]:sm:max-w-sm data-open:animate-in data-open:fade-in-0 data-[side=bottom]:data-open:slide-in-from-bottom-10 data-[side=left]:data-open:slide-in-from-left-10 data-[side=right]:data-open:slide-in-from-right-10 data-[side=top]:data-open:slide-in-from-top-10 data-closed:animate-out data-closed:fade-out-0 data-[side=bottom]:data-closed:slide-out-to-bottom-10 data-[side=left]:data-closed:slide-out-to-left-10 data-[side=right]:data-closed:slide-out-to-right-10 data-[side=top]:data-closed:slide-out-to-top-10",
+          "motion-sheet fixed z-(--z-dialog) flex flex-col gap-4 bg-popover bg-clip-padding text-body text-popover-foreground shadow-dialog data-[side=bottom]:inset-x-0 data-[side=bottom]:bottom-0 data-[side=bottom]:h-auto data-[side=bottom]:rounded-t-dialog data-[side=bottom]:border-t data-[side=bottom]:border-border-strong data-[side=left]:inset-y-0 data-[side=left]:left-0 data-[side=left]:h-full data-[side=left]:w-3/4 data-[side=left]:border-r data-[side=left]:border-border-strong data-[side=right]:inset-y-0 data-[side=right]:right-0 data-[side=right]:h-full data-[side=right]:w-3/4 data-[side=right]:border-l data-[side=right]:border-border-strong data-[side=top]:inset-x-0 data-[side=top]:top-0 data-[side=top]:h-auto data-[side=top]:border-b data-[side=top]:border-border-strong data-[side=left]:sm:max-w-sm data-[side=right]:sm:max-w-sm",
           className,
         )}
         {...props}
       >
+        {side === "bottom" && (
+          <>
+            <SheetHandle
+              target={content}
+              onDismiss={() => closer.current?.click()}
+            />
+            <SheetPrimitive.Close
+              ref={closer}
+              tabIndex={-1}
+              aria-hidden
+              className="sr-only"
+            />
+          </>
+        )}
         {children}
         {showCloseButton && (
           <SheetPrimitive.Close data-slot="sheet-close" asChild>
@@ -133,7 +239,7 @@ function SheetTitle({
     <SheetPrimitive.Title
       data-slot="sheet-title"
       className={cn(
-        "font-heading text-base font-medium text-foreground",
+        "font-heading text-title font-semibold text-foreground",
         className,
       )}
       {...props}
@@ -148,7 +254,7 @@ function SheetDescription({
   return (
     <SheetPrimitive.Description
       data-slot="sheet-description"
-      className={cn("text-sm text-muted-foreground", className)}
+      className={cn("text-body text-muted-foreground", className)}
       {...props}
     />
   );

@@ -39,3 +39,12 @@ export const INDICATOR_TRANSITION = {
   duration: DURATION.base,
   ease: EASE_IN_OUT,
 } as const;
+
+/**
+ * 过界拖动的阻力（设计系统 §8.3）：拖得越远越难拖，渐近 `limit`，不做硬停。
+ * `distance` 是越过边界的像素数，返回应当显示的位移。
+ */
+export function rubberBand(distance: number, limit = 120): number {
+  if (distance <= 0) return 0;
+  return (1 - 1 / ((distance * 0.55) / limit + 1)) * limit;
+}

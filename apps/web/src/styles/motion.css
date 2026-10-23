@@ -139,6 +139,27 @@
   }
 }
 
+/* 文字替换：旧字淡出 + 模糊 2px，新字反向并延迟 40ms（TextSwap） */
+@keyframes armadra-swap-out {
+  to {
+    opacity: 0;
+    filter: blur(2px);
+  }
+}
+@keyframes armadra-swap-in {
+  from {
+    opacity: 0;
+    filter: blur(2px);
+  }
+}
+
+/* 选中的复选框 / 开关指示器：1 → 1.05 → 1 */
+@keyframes armadra-bump {
+  50% {
+    transform: scale(1.05);
+  }
+}
+
 /* 不确定进度：条在轨道里匀速扫过 */
 @keyframes armadra-indeterminate {
   from {
@@ -293,6 +314,12 @@
   .anim-spin {
     animation: armadra-spin 0.8s linear infinite;
   }
+  .anim-swap-out {
+    animation: armadra-swap-out var(--dur-fast) var(--ease-out) both;
+  }
+  .anim-swap-in {
+    animation: armadra-swap-in var(--dur-fast) var(--ease-out) 40ms both;
+  }
   .anim-check-draw {
     stroke-dasharray: 1;
     animation: armadra-check-draw 240ms var(--ease-out) both;
@@ -301,8 +328,29 @@
     animation: armadra-tick-in var(--dur-fast) var(--ease-out) both;
     animation-delay: calc(var(--i, 0) * 15ms);
   }
+  .anim-bump {
+    animation: armadra-bump var(--dur-base) var(--ease-out);
+  }
   .anim-indeterminate {
     animation: armadra-indeterminate 1.2s linear infinite;
+  }
+}
+
+/* 校验失败：输入类控件 `aria-invalid` 的那一刻抖两次（红边由组件自己的 aria-invalid 样式给） */
+:where(
+    [data-slot="input"],
+    [data-slot="textarea"],
+    [data-slot="select-trigger"],
+    [data-slot="input-group"]
+  )[aria-invalid="true"],
+[data-slot="input-group"]:has([aria-invalid="true"]) {
+  animation: armadra-shake 240ms linear;
+}
+
+/* 触屏不出 Tooltip：没有悬停，长按会误触发（设计系统 §8.8） */
+@media (hover: none) {
+  [data-slot="tooltip-content"] {
+    display: none;
   }
 }
 
@@ -376,5 +424,12 @@
   }
   .anim-tick-in {
     animation-delay: 0ms !important;
+  }
+  /* 文字替换在减少动效下直接换 */
+  .anim-swap-out {
+    display: none;
+  }
+  .anim-swap-in {
+    animation: none;
   }
 }

@@ -10,6 +10,7 @@ import {
   DialogTitle,
 } from "@/ui/dialog";
 import { InputGroup, InputGroupAddon } from "@/ui/input-group";
+import { Kbd } from "@/ui/kbd";
 import { SearchIcon, CheckIcon } from "lucide-react";
 
 function Command({
@@ -20,7 +21,7 @@ function Command({
     <CommandPrimitive
       data-slot="command"
       className={cn(
-        "flex size-full flex-col overflow-hidden rounded-[var(--r-dialog)]! bg-popover p-1 text-popover-foreground",
+        "flex size-full flex-col overflow-hidden rounded-panel! bg-popover p-1 text-popover-foreground",
         className,
       )}
       {...props}
@@ -57,10 +58,12 @@ function CommandDialog({
       </DialogHeader>
       <DialogContent
         className={cn(
-          "top-1/4 max-w-[600px]! translate-y-0 overflow-hidden rounded-[var(--r-dialog)]! p-0 sm:max-w-[600px]",
+          "top-1/4 max-w-[600px]! translate-y-0 overflow-hidden rounded-panel! p-0 sm:max-w-[600px]",
           className,
         )}
         showCloseButton={showCloseButton}
+        // 命令面板是键盘中枢：开关都没有动画（设计系统 §8.3）
+        data-instant="true"
       >
         {/* cmdk 的 Input/List/Item 都读 Command 根提供的 context，
             少了这一层它们会在渲染期就崩（读 undefined 的 store）。 */}
@@ -81,11 +84,11 @@ function CommandInput({
       data-slot="command-input-wrapper"
       className="border-b border-border px-2 py-1"
     >
-      <InputGroup className="h-10! rounded-[var(--r-card)]! border-transparent bg-transparent shadow-none! *:data-[slot=input-group-addon]:pl-2!">
+      <InputGroup className="h-8! rounded-control! border-transparent bg-transparent shadow-none! *:data-[slot=input-group-addon]:pl-2!">
         <CommandPrimitive.Input
           data-slot="command-input"
           className={cn(
-            "w-full text-[length:var(--text-section)] outline-hidden disabled:cursor-not-allowed disabled:opacity-50",
+            "w-full text-body outline-hidden disabled:cursor-not-allowed disabled:opacity-50",
             className,
           )}
           {...props}
@@ -122,7 +125,7 @@ function CommandEmpty({
     <CommandPrimitive.Empty
       data-slot="command-empty"
       className={cn(
-        "py-6 text-center text-[length:var(--text-body)] text-muted-foreground",
+        "py-6 text-center text-body text-muted-foreground",
         className,
       )}
       {...props}
@@ -138,7 +141,7 @@ function CommandGroup({
     <CommandPrimitive.Group
       data-slot="command-group"
       className={cn(
-        "overflow-hidden p-1 text-foreground **:[[cmdk-group-heading]]:px-2 **:[[cmdk-group-heading]]:py-1.5 **:[[cmdk-group-heading]]:text-[length:var(--text-caption)] **:[[cmdk-group-heading]]:font-medium **:[[cmdk-group-heading]]:tracking-[.04em] **:[[cmdk-group-heading]]:uppercase **:[[cmdk-group-heading]]:text-muted-foreground",
+        "overflow-hidden p-1 text-foreground **:[[cmdk-group-heading]]:px-2 **:[[cmdk-group-heading]]:py-1.5 **:[[cmdk-group-heading]]:text-caption **:[[cmdk-group-heading]]:font-medium **:[[cmdk-group-heading]]:text-muted-foreground",
         className,
       )}
       {...props}
@@ -168,7 +171,7 @@ function CommandItem({
     <CommandPrimitive.Item
       data-slot="command-item"
       className={cn(
-        "group/command-item relative flex h-9 cursor-default items-center gap-2 rounded-[var(--r-control)] px-2 text-[length:var(--text-body)] outline-hidden select-none in-data-[slot=dialog-content]:rounded-[var(--r-control)]! data-[disabled=true]:pointer-events-none data-[disabled=true]:opacity-50 data-selected:bg-muted data-selected:text-foreground [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4 data-selected:*:[svg]:text-foreground",
+        "group/command-item relative flex h-7 cursor-default items-center gap-2 rounded-control px-2 text-body outline-hidden select-none in-data-[slot=dialog-content]:rounded-control! data-[disabled=true]:pointer-events-none data-[disabled=true]:opacity-50 data-selected:bg-muted data-selected:text-foreground [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4 data-selected:*:[svg]:text-foreground",
         className,
       )}
       {...props}
@@ -179,15 +182,12 @@ function CommandItem({
   );
 }
 
-function CommandShortcut({
-  className,
-  ...props
-}: React.ComponentProps<"span">) {
+function CommandShortcut({ className, ...props }: React.ComponentProps<"kbd">) {
   return (
-    <span
+    <Kbd
       data-slot="command-shortcut"
       className={cn(
-        "ml-auto text-[length:var(--text-caption)] tracking-wide text-muted-foreground group-data-selected/command-item:text-foreground",
+        "ml-auto h-4 min-w-4 bg-transparent px-0 text-muted-foreground group-data-selected/command-item:text-foreground",
         className,
       )}
       {...props}
