@@ -229,6 +229,32 @@ describe("automation card", () => {
     expect(await screen.findByText("需处理")).toBeTruthy();
   });
 
+  it("计划状态走 StatusPill sm：已启用是 working 且不脉冲，需处理是 attention", async () => {
+    ready({
+      listPlans: vi.fn(async () => ({
+        plans: [planSnapshot({ needsAttention: true })],
+        nextId: "",
+        hasMore: false,
+      })),
+    });
+    const { container } = renderCard();
+    const active = (await screen.findByText("已启用")).closest(
+      '[data-slot="status-pill"]',
+    );
+    expect(active?.getAttribute("data-tone")).toBe("working");
+    expect(active?.getAttribute("data-size")).toBe("sm");
+    expect(
+      active?.querySelector('[data-slot="status-pill-dot"]')?.className,
+    ).not.toContain("anim-dot-pulse");
+    const attention = screen
+      .getByText("需处理")
+      .closest('[data-slot="status-pill"]');
+    expect(attention?.getAttribute("data-tone")).toBe("attention");
+    expect(
+      container.querySelector('[data-slot="automation-card"] [title]'),
+    ).toBeNull();
+  });
+
   it("opens a session for the plan's own workspace, not the local board", async () => {
     renderCard();
     expect(session.connect).toHaveBeenCalledWith("workspace-1");
