@@ -2,6 +2,7 @@ import * as React from "react";
 
 import type { RouteId, RouteMatch } from "../router";
 import { navigate } from "../router";
+import { DevicePage } from "./DevicePage";
 import { InvitePage } from "./InvitePage";
 import { LoginPage } from "./LoginPage";
 import { RegisterPage } from "./RegisterPage";
@@ -9,13 +10,14 @@ import { ResetPage } from "./ResetPage";
 import { VerifyPage } from "./VerifyPage";
 import { fragmentToken, safeNext, stripFragment } from "./redirect";
 
-/** 有页面的公开路由（`/device` 另批）：这些路由不取会话，未登录也能打开。 */
+/** 有页面的公开路由：这些路由不取会话，未登录也能打开。 */
 const PUBLIC_PAGES: ReadonlySet<RouteId> = new Set([
   "login",
   "register",
   "verify",
   "reset",
   "invite",
+  "device",
 ]);
 
 export const hasPublicPage = (match: RouteMatch | null): match is RouteMatch =>
@@ -76,6 +78,20 @@ export function PublicPage({
         />
       );
     }
+    case "device":
+      return (
+        <DevicePage
+          code={match.query.get("code")}
+          // 登录后回到 `/device?code=<user_code>`；device_code 页面里从来没有。
+          onNeedLogin={(userCode) =>
+            navigate(
+              `/login?next=${encodeURIComponent(`/device?code=${userCode}`)}`,
+              { replace: true },
+            )
+          }
+          onDone={() => finish("/")}
+        />
+      );
     default:
       return null;
   }
