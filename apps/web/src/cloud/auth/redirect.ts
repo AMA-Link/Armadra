@@ -5,7 +5,8 @@
 export function safeNext(value: string | null | undefined): string | null {
   if (value === null || value === undefined || value === "") return null;
   if (!value.startsWith("/") || value.startsWith("//")) return null;
-  if (value.includes("\\") || /[\u0000-\u001f]/.test(value)) return null;
+  if (value.includes("\\") || [...value].some((c) => c.charCodeAt(0) < 32))
+    return null;
   // 登录页自己与公开页不当落点，免得原地打转。
   if (/^\/(login|register|verify|reset)(\/|\?|$)/.test(value)) return null;
   return value;
