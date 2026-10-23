@@ -1165,19 +1165,82 @@ describe("cloud/login 的范围、角色同步与租约（契约 §60）", () =>
     expect(grantsOf(principalId)).toEqual([]);
   });
 
-  it("SaaS：缺 team 或缺 role 走邀请路径（没有邀请 cloud_account_unlinked）；旧 org 声明不再准入", async () => {
+  it("SaaS：缺 role 走邀请路径（没有邀请 cloud_account_unlinked），只带 team 或旧 org 声明都不准入", async () => {
     core.database
       .prepare("UPDATE cloud_registrations SET mode = 'saas' WHERE issuer = ?")
       .run(ISSUER);
     for (const extra of [
       { team: { teamId: "team_1", role: "member" } },
-      { role: "editor" },
+      { org: { orgId: "org_1", role: "member" } },
       { org: { orgId: "org_1", role: "member" }, role: "editor" },
+      {},
     ]) {
       const answer = await login("acct:nobody", extra);
       expect(answer.status).toBe(401);
       expect(answer.body.code).toBe("cloud_account_unlinked");
     }
+  });
+
+  it("SaaS 个人空间访客：只带 role / scp、不带 team 也免邀请准入，按声明同步，不落团队角色（#483）", async () => {
+    core.database
+      .prepare("UPDATE cloud_registrations SET mode = 'saas' WHERE issuer = ?")
+      .run(ISSUER);
+    const scoped = await login("acct:visitor", {
+      role: "editor",
+      scp: ["ws:ws-1"],
+    });
+    expect(scoped.status, scoped.text).toBe(200);
+    expect(scoped.body.created).toBe(true);
+    const principalId = principalOf(scoped);
+    expect(grantsOf(principalId)).toEqual([
+      ["workspace", "ws-1", "", "editor", cloudProvider(ISSUER)],
+    ]);
+    expect(teamRoleOf(core.database, principalId)).toBeUndefined();
+    // 控制面收窄授予后，下一张断言整份替换。
+    const narrowed = await login("acct:visitor", {
+      role: "viewer",
+      scp: ["ws:ws-1", "sess:t1", "ro"],
+    });
+    expect(narrowed.status, narrowed.text).toBe(200);
+    expect(narrowed.body.created).toBe(false);
+    expect(grantsOf(principalId)).toEqual([
+      ["session", "ws-1", "t1", "viewer", cloudProvider(ISSUER)],
+    ]);
+    // 主机邀请成的整台访客授予：`scp` 为空 = 整台。
+    const host = await login("acct:host-guest", { role: "viewer", scp: [] });
+    expect(host.status, host.text).toBe(200);
+    expect(grantsOf(principalOf(host))).toEqual([
+      ["host", "*", "", "viewer", cloudProvider(ISSUER)],
+    ]);
+  });
+
+  it("SaaS：团队成员之后改成只带 role 的访客断言，团队角色清掉、授予按新声明替换", async () => {
+    core.database
+      .prepare("UPDATE cloud_registrations SET mode = 'saas' WHERE issuer = ?")
+      .run(ISSUER);
+    const member = await login("acct:moved", {
+      team: { teamId: "team_1", role: "admin" },
+      role: "editor",
+    });
+    expect(member.status, member.text).toBe(200);
+    const principalId = principalOf(member);
+    expect(teamRoleOf(core.database, principalId)?.role).toBe("admin");
+    const visitor = await login("acct:moved", {
+      role: "viewer",
+      scp: ["ws:ws-1"],
+    });
+    expect(visitor.status, visitor.text).toBe(200);
+    expect(visitor.body.created).toBe(false);
+    expect(teamRoleOf(core.database, principalId)).toBeUndefined();
+    expect(grantsOf(principalId)).toEqual([
+      ["workspace", "ws-1", "", "viewer", cloudProvider(ISSUER)],
+    ]);
+  });
+
+  it("个人中转只带 role：没有邀请仍然 cloud_account_unlinked", async () => {
+    const answer = await login("acct:nobody", { role: "editor" });
+    expect(answer.status).toBe(401);
+    expect(answer.body.code).toBe("cloud_account_unlinked");
   });
 
   it("个人中转带 team + role：没有邀请仍然 cloud_account_unlinked", async () => {

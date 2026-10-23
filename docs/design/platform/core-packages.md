@@ -1,6 +1,6 @@
 # Armadra core 侧工作包：详细设计
 
-> **2026-10-23 起：** 已实现；§8 A6-2 的 core 侧上限已落地（`limits.terminalsPerPrincipal` / `limits.agentsPerWorkspace`，契约 §85）。SaaS 准入按协议 1.4 的 `team` + `role`（`org` 准入已删除，契约 §60.2），团队成员的设备背书见契约 §60.4（armadra-cloud `docs/design/saas-design.md` §6、§11.4、§11.9）。
+> **2026-10-23 起：** 已实现；§8 A6-2 的 core 侧上限已落地（`limits.terminalsPerPrincipal` / `limits.agentsPerWorkspace`，契约 §85）。SaaS 准入按协议 1.4 的 `team` + `role`，个人空间访客按只带 `role` 的断言（`org` 准入已删除，契约 §60.2），团队成员的设备背书见契约 §60.4（armadra-cloud `docs/design/saas-design.md` §6、§11.4、§11.9）。
 > 状态：目标设计（2026-10-06）。本文是[落地总计划](../platform-implementation-plan.md)里 Armadra 仓 core 侧工作包的实现规格：**A1-3 客户端源表与远程服务（`core/sources/`，迁移 0039，契约 §33）**、**A2-3 云登录与登记（`core/identity/cloud/`，迁移 0040，契约 §31）**、**A3-0 五条流统一发送队列**、**A3-2 隧道客户端（`core/relay/`，契约 §32）**、**A4-1 邀请多次使用**、**A4-4 服务器壳 CLI**、**A5-1 桌面包内服务器壳**、**A6-2 配额**。上位设计：[平台设计](../platform-saas-architecture.md) §4.3、§5、§8、§10、§13.2、§17；协议：[协议包](protocol-package.md)。
 > 规矩：core 不 import `electron` / `../main/` / `../shell-core/`；新外呼登记 `net/outbound.ts`；新接口按 E1 的契约写（`packages/shared/src/contract/<域>.ts` + `meta.legacy` 指向 §31–§33 的路径），匿名面只经 legacy 路径暴露；文案进 `apps/web/src/i18n/`。
 
@@ -154,7 +154,7 @@ core/identity/cloud/
 2. `jwks.key(iss, header.kid)` → 验签 → 失败 `cloud_assertion_invalid`。
 3. `checkAudience(aud = hostId)`、`checkTimes(skew 5 min)`、`typ === "armadra-assertion"`；`ReplayCache.seen(jti)` → `cloud_assertion_replayed`。
 4. `provider = "cloud:" + sha256(iss).hex.slice(0, 16)`；`identity_credentials(kind='oauth', provider, subject = sub)` 未撤销 → principal；若 principal 已禁用 → `forbidden`。
-5. 无映射：`invitationToken` 有 → `accounts.registerWithInvitation({ token, displayName: name ?? sub, createdVia: "cloud" })`（A4-1 的多次消费）→ 写映射凭据 → `created: true`；无 → `cloud_account_unlinked`；登记行 `mode = saas` 且断言带 `team`（非 `billing`）与 `role` 时不要邀请令牌，直接建成员（协议 1.4；契约 §60.2）。
+5. 无映射：`invitationToken` 有 → `accounts.registerWithInvitation({ token, displayName: name ?? sub, createdVia: "cloud" })`（A4-1 的多次消费）→ 写映射凭据 → `created: true`；无 → `cloud_account_unlinked`；登记行 `mode = saas` 且断言带 `team`（非 `billing`）与 `role` 时不要邀请令牌，直接建成员（协议 1.4；契约 §60.2）；只带 `role` / `scp`、不带 `team` 的个人空间访客同样免邀请（#483）。
 6. `org` 声明且设置 `cloud.orgDefaultRole` 非 `null` 且 principal 是新建的 → 对所有工作空间写该角色的 grants（逐条可撤）。
 7. 建设备（`identity_devices_v2`，名字 = `device.name`，平台 = `device.platform`）与会话（`origin` = 请求来源；Bearer / Cookie 按来源）；审计 `cloud.login { iss, sub, principalId, link? }`；答 `cloudLoginOutputSchema`。
 
