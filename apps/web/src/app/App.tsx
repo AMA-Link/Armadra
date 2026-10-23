@@ -34,6 +34,7 @@ import { useAgentNotifications } from "./notifications";
 import { useHumanNeedsSync } from "../notifications/use-human-needs";
 import { useThresholdAlerts } from "../panels/resources/threshold-alerts";
 import { syncDocumentPreferences } from "./preferences-store";
+import { installInstantOverlays } from "../keybindings";
 import { useAppKeybindings } from "./use-app-keybindings";
 import { useFirstScreenEnter } from "./use-first-screen-enter";
 import "./first-screen.css";
@@ -108,6 +109,8 @@ function AppShell() {
   );
 
   useEffect(syncDocumentPreferences, []);
+  // 键盘触发的浮层直接渲染终态，Esc 关闭即时（设计系统 §8.1）
+  useEffect(() => installInstantOverlays(), []);
   useCanvasPreferences();
   const workspaceSource = useWorkspaceSource();
   useWorkspaceEvents(workspace?.id ?? null, workspaceSource);
