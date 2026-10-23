@@ -93,6 +93,12 @@ await h.run(async () => {
       style.setProperty("--safe-bottom", "${insets.bottom}px");
       style.setProperty("--safe-left", "${insets.left}px");
       style.setProperty("--window-controls-top", "${insets.controlsTop}px");
+      // 触屏（hover: none）上 Tooltip 按设计不出（motion.css）；CI 的无头 Chrome 在
+      // xvfb 里没有指针，也命中这条。这里量的是避让安全区，不是触屏规则：强制显示。
+      const reveal = document.createElement("style");
+      reveal.textContent =
+        '@media (hover: none) { [data-slot="tooltip-content"] { display: inline-flex !important; } }';
+      document.head.append(reveal);
       await import("/src/showcase/overlay-probe.tsx");
       return true;
     `);
