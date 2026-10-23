@@ -29,7 +29,7 @@ const PREVIEW_ROWS = 5;
 const HOSTS_FETCHED = 200;
 
 /** 统计卡：标题 + 一个 15/500 的数字。 */
-function Stat({
+export function Stat({
   title,
   loading,
   error,
@@ -60,7 +60,7 @@ function Stat({
   );
 }
 
-const value = "text-section font-medium tabular-nums";
+export const statValue = "text-section font-medium tabular-nums";
 
 /** 个人 · 概览（云端控制台 §3.2.1）：主机 / 本月流量 / 计划三张卡，待处理，主机前 5 行。 */
 export function OverviewPage() {
@@ -122,7 +122,7 @@ export function OverviewPage() {
           error={hosts.error}
           onRetry={() => void hosts.refetch()}
         >
-          <span className={value}>
+          <span className={statValue}>
             {t("cloud.overview.hostsOnline", {
               online: rows.filter((row) => row.online).length,
               // 只取了前 200 台：还有下一页就写「200+」。
@@ -136,7 +136,7 @@ export function OverviewPage() {
           error={usage.error}
           onRetry={() => void usage.refetch()}
         >
-          <span className={value}>
+          <span className={statValue}>
             {traffic
               ? t("cloud.billing.of", {
                   used: formatBytes(traffic.value),
@@ -172,7 +172,7 @@ export function OverviewPage() {
           error={plan.error}
           onRetry={() => void plan.refetch()}
         >
-          <span className={value}>{planName}</span>
+          <span className={statValue}>{planName}</span>
         </Stat>
       </div>
 
