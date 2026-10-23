@@ -72,6 +72,11 @@ export interface NodeShellProps {
   headerActions?: React.ReactNode;
   /** `···` 菜单里由节点类型自己提供的条目，排在通用的视图项之前。 */
   menuItems?: React.ReactNode;
+  /**
+   * 终端配色为「始终深色」时传 `dark`：外框与头部在这棵子树上重新声明深色令牌，
+   * 与里面深色的 xterm 连成一体（#501）。其余节点体不传。
+   */
+  termScheme?: "dark";
   /** `blocked` 且有 pendingId 时头部直接出现允许/拒绝两个内联按钮。 */
   approval?: {
     pendingId: string;
@@ -216,6 +221,7 @@ export function NodeShell({
   menuItems,
   approval,
   statusPopover,
+  termScheme,
   children,
 }: NodeShellProps) {
   const meta = nodeMeta(node.type);
@@ -240,10 +246,14 @@ export function NodeShell({
     >
       {/* resize 把手由 `<NodeResizer>` 提供（`flow/nodes/ArmadraNode.tsx`），
           最小尺寸按 `NODE_META.minSize`。 */}
+      {/* 终端配色只落在框内（#501）：骑在边上的连接点、外圈光晕与选中环跟应用主题走，
+          不然浅色画布上的深色令牌会看不见。框内重设文字色，依赖继承的文字不会深字压深底。 */}
       <div
+        data-term-scheme={termScheme}
         className={cn(
           "node-frame flex h-full w-full flex-col overflow-hidden rounded-card",
           "border border-border bg-card",
+          termScheme !== undefined && "text-foreground",
           selected && "border-brand",
         )}
       >

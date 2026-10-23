@@ -34,7 +34,10 @@ import {
   ContextMenuItem,
   ContextMenuTrigger,
 } from "@/ui/context-menu";
-import { terminalAppearance } from "./surface/appearance";
+import {
+  terminalAppearance,
+  terminalSchemeAttribute,
+} from "./surface/appearance";
 import { pasteIntoTerminal, writeClipboard } from "./surface/clipboard";
 import { TerminalStartSkeleton } from "./TerminalStartSkeleton";
 import { useSurfaceRefs } from "./surface/refs";
@@ -295,6 +298,8 @@ function TerminalSurfaceImpl({
         <div
           ref={refs.bodyRef}
           data-slot="terminal-body"
+          // 「始终深色」时这棵子树重新声明深色令牌（#501），xterm 主题从容器读。
+          data-term-scheme={terminalSchemeAttribute(preferences.colorScheme)}
           // 视图状态放在 DOM 上（设计 §7.1）：性能问题的第一个问题永远是
           // 「它当时以为自己是哪个状态」，而这个答案不该只有 React DevTools
           // 知道。压力脚本与线上排查读的都是这一个属性。

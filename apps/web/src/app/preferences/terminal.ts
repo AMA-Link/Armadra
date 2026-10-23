@@ -5,6 +5,7 @@ import {
 } from "@/terminal/lifecycle";
 import { readStored, storedBoolean, storedEnum, storedNumber } from "./storage";
 
+const TERM_COLOR_SCHEME_KEY = "armadra.terminal.colorScheme";
 const TERM_FONT_FAMILY_KEY = "armadra.terminal.fontFamily";
 const TERM_FONT_SIZE_KEY = "armadra.terminal.fontSize";
 const TERM_LINE_HEIGHT_KEY = "armadra.terminal.lineHeight";
@@ -21,6 +22,13 @@ const TERM_RELEASE_AFTER_KEY = "armadra.terminal.releaseAfter";
 
 export const TERMINAL_CURSOR_STYLES = ["block", "bar", "underline"] as const;
 export type TerminalCursorStyle = (typeof TERMINAL_CURSOR_STYLES)[number];
+
+/**
+ * 终端配色（#501）：`follow` 跟着应用的深浅色主题；`dark` 始终深色，给按深底
+ * 配色的 CLI（例如在 CLI 里选了深色主题的 Agent）用。
+ */
+export const TERMINAL_COLOR_SCHEMES = ["follow", "dark"] as const;
+export type TerminalColorScheme = (typeof TERMINAL_COLOR_SCHEMES)[number];
 
 /**
  * 渲染器（性能设计 §2.5 B1）。取代旧的布尔 `armadra.terminal.webgl`：旧键不读，
@@ -42,6 +50,8 @@ export type TerminalRepaintThrottle =
  * `fontFamily` 为空表示「跟随 `--font-code`」。
  */
 export interface TerminalPreferences {
+  /** 终端配色；缺省跟随应用主题。 */
+  colorScheme: TerminalColorScheme;
   fontFamily: string;
   fontSize: number;
   lineHeight: number;
@@ -80,6 +90,7 @@ export const TERMINAL_DEFAULT_FONT_SIZE = 12;
 export const TERMINAL_DEFAULT_LINE_HEIGHT = 1.15;
 
 export const TERMINAL_KEYS: Record<keyof TerminalPreferences, string> = {
+  colorScheme: TERM_COLOR_SCHEME_KEY,
   fontFamily: TERM_FONT_FAMILY_KEY,
   fontSize: TERM_FONT_SIZE_KEY,
   lineHeight: TERM_LINE_HEIGHT_KEY,
@@ -95,6 +106,11 @@ export const TERMINAL_KEYS: Record<keyof TerminalPreferences, string> = {
 
 export function storedTerminalPreferences(): TerminalPreferences {
   return {
+    colorScheme: storedEnum(
+      TERM_COLOR_SCHEME_KEY,
+      TERMINAL_COLOR_SCHEMES,
+      "follow",
+    ),
     fontFamily: readStored(TERM_FONT_FAMILY_KEY) ?? "",
     fontSize: storedNumber(
       TERM_FONT_SIZE_KEY,

@@ -39,10 +39,38 @@ function terminalFontFamily(element: HTMLElement): string {
 }
 
 /**
+ * 终端偏好 → `data-term-scheme` 属性值。「始终深色」时终端容器与终端节点外框
+ * 带 `dark`，CSS 在这棵子树上把深色那一套令牌重新声明回来（`styles/tokens.css`），
+ * `terminalTheme` 读容器的计算样式自然拿到深色值；跟随主题时不写属性。
+ */
+export function terminalSchemeAttribute(
+  scheme: TerminalPreferences["colorScheme"],
+): "dark" | undefined {
+  return scheme === "dark" ? "dark" : undefined;
+}
+
+/**
+ * 应用的深浅色主题（`<html data-theme>`）变化时，调用 `apply` 重设 xterm 的
+ * `options.theme`。只换调色板，不重建实例（否则整屏内容会没）。返回解除函数。
+ *
+ * 终端偏好里的「配色」不走这里：它是偏好依赖，经 `terminalAppearance` 重设。
+ */
+export function watchAppTheme(apply: () => void): () => void {
+  const watcher = new MutationObserver(apply);
+  watcher.observe(document.documentElement, {
+    attributes: true,
+    attributeFilter: ["data-theme"],
+  });
+  return () => watcher.disconnect();
+}
+
+/**
  * 整张调色板都从 token 取（§4.3 规则一：功能代码里不出现字面色值）。
  *
- * `--term-*` 只在 `:root` 声明一次：`--term-bg` 在两套主题下都是深色，
- * ANSI 配色本来就是按深底设计的，跟着浅色主题翻转反而会让 TUI 读不了。
+ * `--term-*` 在 `tokens.css` 里按主题各一套（#501）：深色主题用深色那套，浅色
+ * 主题整组覆盖成浅底调色板；终端偏好选了「始终深色」时，容器的祖先带
+ * `data-term-scheme="dark"`，读到的仍是深色那套。所以这里必须读**容器**的
+ * 计算样式，而不是 `<html>` 的。
  * 兜底值只在 `getComputedStyle` 拿不到时用（jsdom、样式表还没加载）。
  */
 export function terminalTheme(element: HTMLElement) {

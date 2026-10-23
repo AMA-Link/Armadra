@@ -8,7 +8,13 @@ import {
   it,
   vi,
 } from "vitest";
-import { cleanup, fireEvent, screen, waitFor } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { CanvasNode, TerminalNodeData } from "@armadra/shared";
 
@@ -88,6 +94,7 @@ import { setAgentRegistry } from "@/agent/launch";
 import { useAgentStatusStore } from "@/agent/status-store";
 import { useWorkflowNodeSteps } from "@/workflow/node-steps";
 import { installDomPolyfills } from "@/app/test-harness";
+import { usePreferencesStore } from "@/app/preferences-store";
 import { renderFlow } from "@/canvas/test-support";
 import { useCanvasStore } from "@/store/canvas-store";
 import { TerminalNode } from "./TerminalNode";
@@ -151,6 +158,39 @@ beforeEach(() => {
 afterEach(() => {
   cleanup();
   setAgentRegistry([]);
+  usePreferencesStore.getState().setTerminalPreference("colorScheme", "follow");
+});
+
+describe("TerminalNode 配色（#501）", () => {
+  // 属性落在框上（连接点与光晕在外层，跟应用主题走）。
+  const shell = () =>
+    document.querySelector<HTMLElement>("[data-slot=node-shell] .node-frame")!;
+
+  it("跟随主题：外框不带 data-term-scheme", () => {
+    renderNode(terminalNode({ kind: "terminal", agent: { id: "codex" } }));
+    expect(shell().hasAttribute("data-term-scheme")).toBe(false);
+  });
+
+  it("始终深色：终端驱动的节点外框带 dark，改回跟随即撤掉", () => {
+    usePreferencesStore.getState().setTerminalPreference("colorScheme", "dark");
+    renderNode(terminalNode({ kind: "terminal", agent: { id: "codex" } }));
+    expect(shell().getAttribute("data-term-scheme")).toBe("dark");
+    act(() =>
+      usePreferencesStore
+        .getState()
+        .setTerminalPreference("colorScheme", "follow"),
+    );
+    expect(shell().hasAttribute("data-term-scheme")).toBe(false);
+  });
+
+  it("始终深色：ACP 会话视图不是 xterm，外框不跟着变深", async () => {
+    usePreferencesStore.getState().setTerminalPreference("colorScheme", "dark");
+    renderNode(
+      terminalNode({ kind: "terminal", agent: { id: "codex", driver: "acp" } }),
+    );
+    await screen.findByTestId("session-view");
+    expect(shell().hasAttribute("data-term-scheme")).toBe(false);
+  });
 });
 
 describe("TerminalNode body", () => {

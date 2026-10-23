@@ -18,7 +18,8 @@ import {
   DropdownMenuSubContent,
   DropdownMenuSubTrigger,
 } from "@/ui/dropdown-menu";
-import { useT } from "@/app/preferences-store";
+import { usePreferencesStore, useT } from "@/app/preferences-store";
+import { terminalSchemeAttribute } from "@/terminal/surface/appearance";
 import { useCanAnswer } from "@/app/use-access";
 import { useCanvasStore } from "@/store/canvas-store";
 import { AccountBindingBadge } from "@/agent/account/AccountBindingBadge";
@@ -114,6 +115,13 @@ export function TerminalNode({ id, node, selected, collapsed }: NodeBodyProps) {
     Boolean(agent) && driver === "terminal" && bodyMode === "session";
   // 会话体没有终端表面：进程由 core 起（设计 §5.4）。
   useSessionBodyProcess(id, sessionBody);
+  // 终端配色「始终深色」：外框与头部跟着里面的 xterm 一起深（#501）。
+  // 只有节点体真是 xterm 时才算；ACP 会话视图与会话内容体不是终端。
+  const termScheme = usePreferencesStore((state) =>
+    driver === "terminal" && !sessionBody
+      ? terminalSchemeAttribute(state.terminal.colorScheme)
+      : undefined,
+  );
   const surfaceRef = React.useRef<TerminalSurfaceHandle>(null);
 
   const [surface, setSurface] = React.useState<TerminalSurfaceStatus>({
@@ -643,6 +651,7 @@ export function TerminalNode({ id, node, selected, collapsed }: NodeBodyProps) {
         {...(statusPopover ? { statusPopover } : {})}
         {...(header.glow ? { glow: header.glow } : {})}
         {...(approval ? { approval } : {})}
+        {...(termScheme ? { termScheme } : {})}
         // 简洁模式：头部只留状态胶囊与审批（ACP 设计 §8 第 3 条）。
         headerChips={
           simple ? (

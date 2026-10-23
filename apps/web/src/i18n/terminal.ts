@@ -39,6 +39,9 @@ const zh = {
   "terminal.hibernation.wakeFailed": "没能唤醒这个会话",
 
   /* 设置页「终端」一组（§18.3 设置项行）。 */
+  "terminal.settings.colorScheme": "配色",
+  "terminal.colorScheme.follow": "跟随主题",
+  "terminal.colorScheme.dark": "始终深色",
   "terminal.settings.font": "字体",
   "terminal.settings.fontSize": "字号",
   "terminal.settings.lineHeight": "行高",
@@ -115,6 +118,9 @@ const en: Record<keyof typeof zh, string> = {
   "terminal.hibernation.wake": "Wake",
   "terminal.hibernation.wakeFailed": "Could not wake this session",
 
+  "terminal.settings.colorScheme": "Colors",
+  "terminal.colorScheme.follow": "Follow theme",
+  "terminal.colorScheme.dark": "Always dark",
   "terminal.settings.font": "Font",
   "terminal.settings.fontSize": "Font size",
   "terminal.settings.lineHeight": "Line height",

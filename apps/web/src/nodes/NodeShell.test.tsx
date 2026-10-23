@@ -125,6 +125,30 @@ afterEach(() => {
 });
 
 describe("NodeShell", () => {
+  it("termScheme 写在框（.node-frame）上、不写在外层；不传就没有（#501）", () => {
+    const node = makeNode();
+    const view = renderFlow(
+      <NodeShell node={node} selected={false} termScheme="dark">
+        <div />
+      </NodeShell>,
+      { nodeId: node.id },
+    );
+    const shell = () =>
+      view.container.querySelector<HTMLElement>('[data-slot="node-shell"]')!;
+    const frame = () => shell().querySelector<HTMLElement>(".node-frame")!;
+    expect(frame().getAttribute("data-term-scheme")).toBe("dark");
+    expect(frame().className).toContain("text-foreground");
+    // 连接点与光晕在外层，留在应用主题里。
+    expect(shell().hasAttribute("data-term-scheme")).toBe(false);
+    view.rerenderNode(
+      <NodeShell node={node} selected={false}>
+        <div />
+      </NodeShell>,
+    );
+    expect(frame().hasAttribute("data-term-scheme")).toBe(false);
+    expect(frame().className).not.toContain("text-foreground");
+  });
+
   it("uses the shared header geometry and keeps the body mounted across collapse", () => {
     const mounted = vi.fn();
     const unmounted = vi.fn();
