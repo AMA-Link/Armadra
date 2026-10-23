@@ -56,7 +56,7 @@ export default function SharedSessionPage({
       aria-label={title}
       className="absolute inset-0 z-[var(--z-shared-session)] flex flex-col bg-background"
     >
-      <header className="flex h-11 shrink-0 items-center gap-2 border-b px-3">
+      <header className="flex h-12 shrink-0 items-center gap-2 border-b px-3">
         <h1 className="min-w-0 truncate font-medium">{title}</h1>
         <Badge variant="secondary" data-read-only>
           <Eye aria-hidden />

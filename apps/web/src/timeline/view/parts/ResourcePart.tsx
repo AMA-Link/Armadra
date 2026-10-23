@@ -76,7 +76,7 @@ export function ResourceLinkPart({
         </ItemTitle>
       </ItemContent>
       {mimeType !== undefined && (
-        <Badge variant="outline" className="shrink-0 font-mono">
+        <Badge variant="outline" size="sm" className="shrink-0 font-mono">
           {mimeType}
         </Badge>
       )}
@@ -143,7 +143,7 @@ export function ResourcePart(props: ResourceBodyProps) {
           </ItemTitle>
         </ItemContent>
         {bytes !== undefined && (
-          <Badge variant="outline" className="shrink-0 tabular-nums">
+          <Badge variant="outline" size="sm" className="shrink-0">
             {formatBytes(bytes)}
           </Badge>
         )}

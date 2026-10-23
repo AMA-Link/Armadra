@@ -74,7 +74,7 @@ function SessionRow({
       size="sm"
       data-shared-session={session.sessionId}
       aria-current={current || undefined}
-      className="h-7 w-full justify-start gap-2 px-1.5 font-normal aria-[current]:bg-sidebar-accent"
+      className="w-full justify-start gap-2 px-1.5 font-normal aria-[current]:bg-sidebar-accent"
       onClick={() => open({ sourceId, ...session })}
     >
       <SquareTerminal className="size-4 shrink-0 text-muted-foreground" />

@@ -9,7 +9,7 @@ import { SkeletonTurns } from "@/ui/skeletons";
 export function SessionSkeleton() {
   const t = useT();
   return (
-    <DeferredSkeleton className="h-full w-full bg-[var(--card)]">
+    <DeferredSkeleton className="h-full w-full bg-card">
       <SkeletonTurns label={t("state.loading")} />
     </DeferredSkeleton>
   );

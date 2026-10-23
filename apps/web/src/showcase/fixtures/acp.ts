@@ -179,16 +179,46 @@ export const ACP_COMMANDS: AcpAvailableCommand[] = [
   { name: "compact", description: "压缩上下文" },
 ];
 
-export const ACP_USAGE: AcpUsageView = { used: 183_400, size: 200_000 };
+export const ACP_USAGE: AcpUsageView = {
+  used: 183_400,
+  size: 200_000,
+  cost: { amount: 1.82, currency: "USD" },
+};
 
+/** 流式那一帧：在想（微光 + 实时秒数）、一条运行中的工具、助手正在写。 */
 export const ACP_STREAMING_ITEMS: TimelineItem[] = (() => {
   resetFixtureCounter();
+  const started = Date.now() - 12_000;
   return [
     userItem(1, "解释一下这个仓库"),
-    thoughtItem(1, "先看 README 与 apps/ 的目录结构，再按壳与 core 分层说。"),
+    {
+      ...thoughtItem(
+        1,
+        "先看 README 与 apps/ 的目录结构，再按壳与 core 分层说。",
+        0,
+        true,
+      ),
+      at: started,
+    } as TimelineItem,
+    {
+      ...toolItem(1, "s1", {
+        title: "pnpm test",
+        toolKind: "execute",
+        status: "in_progress",
+        startedAt: started,
+      }),
+    } as TimelineItem,
     assistantItem(1, "这是一个画布式的多 Agent 工作台，主要分三层：", 0, true),
   ];
 })();
+
+/** 流式帧的活动行：运行 · pnpm test · 12 s。 */
+export const ACP_STREAMING_ACTIVITY = {
+  phase: "tool",
+  since: Date.now() - 12_000,
+  rev: "showcase:1",
+  detail: { label: "pnpm test", toolKind: "execute" },
+} as const;
 
 export const ACP_PERMISSION: AcpPermissionView = {
   pendingId: "p1",
@@ -198,6 +228,37 @@ export const ACP_PERMISSION: AcpPermissionView = {
     kind: "execute",
     locations: [{ path: "/repo/app/package.json" }],
     rawInput: { command: "pnpm test", cwd: "/repo/app" },
+  },
+  options: [
+    { optionId: "allow", name: "Allow", kind: "allow_once" },
+    { optionId: "always", name: "Always", kind: "allow_always" },
+    { optionId: "reject", name: "Reject", kind: "reject_once" },
+    { optionId: "never", name: "Never", kind: "reject_always" },
+  ],
+};
+
+/** 改文件的审批：没有风险徽标，「将发生」列两处文件的 `+N −M`。 */
+export const ACP_PERMISSION_EDIT: AcpPermissionView = {
+  pendingId: "p-edit",
+  toolCall: {
+    toolCallId: "6",
+    title: "编辑 src/checkout/cart.ts",
+    kind: "edit",
+    locations: [{ path: "/repo/app/src/checkout/cart.ts" }],
+    content: [
+      {
+        type: "diff",
+        path: "/repo/app/src/checkout/cart.ts",
+        oldText: "a\nb\nc\n",
+        newText: "a\nB\nC\nD\nE\n",
+      },
+      {
+        type: "diff",
+        path: "/repo/app/tests/checkout.spec.ts",
+        oldText: "",
+        newText: "it(1)\nit(2)\n",
+      },
+    ],
   },
   options: [
     { optionId: "allow", name: "Allow", kind: "allow_once" },
@@ -220,6 +281,16 @@ export const ACP_PERMISSION_LONG: AcpPermissionView = {
     { optionId: "allow", name: "Allow", kind: "allow_once" },
     { optionId: "reject", name: "Reject", kind: "reject_once" },
     { optionId: "never", name: "Never", kind: "reject_always" },
+  ],
+};
+
+/** 三个以内、名字短：PromptBox 画成分段控件。 */
+export const ACP_MODES_SHORT: AcpModeState = {
+  currentModeId: "default",
+  availableModes: [
+    { id: "default", name: "Default" },
+    { id: "plan", name: "Plan" },
+    { id: "edits", name: "Edits" },
   ],
 };
 

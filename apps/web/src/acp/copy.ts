@@ -1,4 +1,4 @@
-import { toast } from "sonner";
+import { toast } from "@/ui/toast";
 
 import { t } from "@/app/preferences-store";
 

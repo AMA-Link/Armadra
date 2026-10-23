@@ -84,7 +84,6 @@ export function ExportMenu({
         {ITEMS.map(({ kind, icon: Icon }) => (
           <DropdownMenuItem
             key={kind}
-            className="text-[13px]"
             disabled={!available.has(kind)}
             onSelect={() => void exportToBoard(kind, picked, source)}
           >

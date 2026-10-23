@@ -4,7 +4,6 @@ import { useT } from "@/app/preferences-store";
 import { formatRelativeTime } from "@/lib/format";
 import { gotoNode } from "@/sidebar/goto-node";
 import { useCanvasStore } from "@/store/canvas-store";
-import { Badge } from "@/ui/badge";
 import { Button } from "@/ui/button";
 
 /**
@@ -33,32 +32,24 @@ export function SourceBadge({
   if (!boardId || title === null) return null;
   const when = at ? formatRelativeTime(at) : "";
   return (
-    <Badge
-      asChild
+    <Button
       variant="outline"
-      className={
-        className ??
-        "h-[18px] max-w-40 px-1.5 text-[length:var(--text-caption)] font-normal text-muted-foreground"
-      }
+      size="xs"
+      type="button"
+      data-slot="content-source"
       data-no-drag="true"
+      aria-label={t("acp.source.goto", { name: title })}
+      title={when ? `${title} · ${when}` : title}
+      className={
+        className ?? "max-w-40 rounded-pill font-normal text-muted-foreground"
+      }
+      onPointerDown={(event) => event.stopPropagation()}
+      onClick={(event) => {
+        event.stopPropagation();
+        gotoNode(boardId, source.nodeId);
+      }}
     >
-      <Button
-        variant="ghost"
-        size="xs"
-        type="button"
-        data-slot="content-source"
-        aria-label={t("acp.source.goto", { name: title })}
-        title={when ? `${title} · ${when}` : title}
-        onPointerDown={(event) => event.stopPropagation()}
-        onClick={(event) => {
-          event.stopPropagation();
-          gotoNode(boardId, source.nodeId);
-        }}
-      >
-        <span className="truncate">
-          {t("acp.source.from", { name: title })}
-        </span>
-      </Button>
-    </Badge>
+      <span className="truncate">{t("acp.source.from", { name: title })}</span>
+    </Button>
   );
 }

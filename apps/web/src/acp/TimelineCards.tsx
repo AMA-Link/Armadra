@@ -6,7 +6,6 @@
  * 给进来。已答复 / 已取消的条目收成一行结局。
  */
 import * as React from "react";
-import { Check, X } from "lucide-react";
 import type {
   AcpElicitationForm,
   AcpPermissionOption,
@@ -20,6 +19,7 @@ import { acpElicitationFormSchema, acpToolKindSchema } from "@armadra/shared";
 
 import { useT } from "@/app/preferences-store";
 import { Badge } from "@/ui/badge";
+import { StatusPill } from "@/ui/status-pill";
 import { useAnsweredStore } from "./answered";
 import type { AcpElicitationView, AcpPermissionView } from "./approval-views";
 import { ElicitationCard } from "./ElicitationCard";
@@ -119,16 +119,19 @@ function OutcomeLine({
   return (
     <div
       data-slot={slot}
-      className="flex items-center gap-1.5 text-xs text-muted-foreground"
+      className="flex items-center gap-1.5 text-meta text-muted-foreground"
     >
-      <Badge variant="outline">
-        {tone === "allow" ? (
-          <Check aria-hidden className="text-[var(--success-text)]" />
-        ) : tone === "reject" ? (
-          <X aria-hidden className="text-[var(--danger-text)]" />
-        ) : null}
-        {label}
-      </Badge>
+      {tone === undefined ? (
+        <Badge variant="outline" size="sm">
+          {label}
+        </Badge>
+      ) : (
+        <StatusPill
+          tone={tone === "allow" ? "done" : "failed"}
+          label={label}
+          pulse={false}
+        />
+      )}
       {by !== undefined && by !== "" && <span className="truncate">{by}</span>}
     </div>
   );
