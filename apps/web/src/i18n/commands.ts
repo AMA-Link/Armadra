@@ -8,6 +8,8 @@ import type { MessageModule } from "./index";
  */
 export const commands: MessageModule = {
   "zh-CN": {
+    "palette.recent": "最近",
+    "palette.ran": "已运行",
     "cmd.app.commandPalette": "命令面板",
     "cmd.app.settings": "设置",
     "cmd.app.sidebar": "侧栏",
@@ -76,6 +78,8 @@ export const commands: MessageModule = {
     "keys.space": "空格",
   },
   en: {
+    "palette.recent": "Recent",
+    "palette.ran": "Done",
     "cmd.app.commandPalette": "Command palette",
     "cmd.app.settings": "Settings",
     "cmd.app.sidebar": "Sidebar",

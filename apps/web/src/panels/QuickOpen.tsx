@@ -56,9 +56,9 @@ import {
   CommandInput,
   CommandItem,
   CommandList,
-  CommandShortcut,
 } from "@/ui/command";
 import { COMMAND_INPUT_FOCUS } from "./tabs-focus";
+import { quickPickKeyDown } from "./quick-pick";
 
 /** 输入去抖：一次键入不该变成一次全工作区扫描。 */
 const DEBOUNCE_MS = 150;
@@ -210,6 +210,7 @@ export function QuickOpen() {
         placeholder={t("quickOpen.placeholder")}
         value={query}
         onValueChange={setQuery}
+        onKeyDown={quickPickKeyDown}
       />
       <CommandList>
         {searching && (
@@ -218,11 +219,11 @@ export function QuickOpen() {
             data-phase={phase}
             className={phase === "hold" ? "invisible" : undefined}
           >
-            {/* 行高同 `CommandItem`（h-9）。 */}
+            {/* compact 档行高同 `CommandItem`（28）。 */}
             <SkeletonList
               rows={3}
+              size="compact"
               leading="icon"
-              rowClassName="h-9"
               label={t("state.loading")}
               className="p-1"
             />
@@ -256,9 +257,7 @@ export function QuickOpen() {
                       column: location.column,
                     })}
               </span>
-              <CommandShortcut className="truncate">
-                {currentPath}
-              </CommandShortcut>
+              <PathText>{currentPath}</PathText>
             </CommandItem>
           </CommandGroup>
         )}
@@ -274,7 +273,7 @@ export function QuickOpen() {
                 <span className="min-w-0 flex-1 truncate">
                   {baseName(path)}
                 </span>
-                <CommandShortcut className="truncate">{path}</CommandShortcut>
+                <PathText>{path}</PathText>
               </CommandItem>
             ))}
           </CommandGroup>
@@ -289,9 +288,7 @@ export function QuickOpen() {
               >
                 <FileIcon />
                 <span className="min-w-0 flex-1 truncate">{entry.name}</span>
-                <CommandShortcut className="truncate">
-                  {entry.path}
-                </CommandShortcut>
+                <PathText>{entry.path}</PathText>
               </CommandItem>
             ))}
           </CommandGroup>
@@ -320,13 +317,25 @@ export function QuickOpen() {
         {mode === "files" && index.data?.truncated && (
           <p
             role="status"
-            className="px-3 py-1.5 text-[length:var(--text-caption)] text-muted-foreground"
+            className="px-3 py-1.5 text-caption text-muted-foreground"
           >
             {t("quickOpen.truncated")}
           </p>
         )}
       </CommandList>
     </CommandDialog>
+  );
+}
+
+/** 行尾的路径 / 容器名：是文字不是快捷键，不放进 `Kbd`，长了从头截断。 */
+function PathText({ children }: { children: string }) {
+  return (
+    <span
+      data-slot="quick-open-path"
+      className="max-w-[45%] truncate text-caption text-muted-foreground"
+    >
+      {children}
+    </span>
   );
 }
 
@@ -350,9 +359,7 @@ function SymbolRow({
     >
       <Icon />
       <span className="min-w-0 flex-1 truncate">{entry.name}</span>
-      {trailing && (
-        <CommandShortcut className="truncate">{trailing}</CommandShortcut>
-      )}
+      {trailing && <PathText>{trailing}</PathText>}
     </CommandItem>
   );
 }

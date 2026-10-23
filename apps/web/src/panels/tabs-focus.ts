@@ -5,7 +5,7 @@
  * 或抽屉这种会裁边的容器时也不会被切掉。颜色与透明度同 `Button` 的焦点环。
  */
 export const TABS_CONTENT_FOCUS =
-  "rounded-[var(--r-control)] focus-visible:ring-3 focus-visible:ring-inset focus-visible:ring-ring/50";
+  "rounded-control focus-visible:ring-3 focus-visible:ring-inset focus-visible:ring-ring/50";
 
 /**
  * 同一类问题：生成的 `CommandInput` 把输入框放进透明的 `InputGroup`，自己只写
@@ -15,4 +15,4 @@ export const TABS_CONTENT_FOCUS =
  * 里面那个 input）。
  */
 export const COMMAND_INPUT_FOCUS =
-  "rounded-[var(--r-control)] px-1 focus-visible:ring-3 focus-visible:ring-ring/50";
+  "rounded-control px-1 focus-visible:ring-3 focus-visible:ring-ring/50";

@@ -4,7 +4,6 @@ import { cleanup, render } from "@testing-library/react";
 import { installDomPolyfills } from "@/app/test-harness";
 import { ShowcaseProviders } from "../harness";
 import { SHOWCASE_SECTION_IDS } from "../ShowcaseApp";
-import MotionSection from "./motion";
 import SettingsSection from "./settings";
 import StatusSection from "./status";
 import TokensSection from "./tokens";
@@ -84,10 +83,11 @@ describe("tokens 分区（设计系统 §2）", () => {
 });
 
 describe("占位分区", () => {
-  it("settings / status / motion 已登记，且只渲染标题（本体为空）", () => {
+  it("settings / status / motion 已登记；settings / status 仍只渲染标题（本体为空）", () => {
     for (const id of ["settings", "status", "motion"])
       expect(SHOWCASE_SECTION_IDS).toContain(id);
-    for (const Section of [SettingsSection, StatusSection, MotionSection]) {
+    // motion 已由动效包填充（见 motion.test.tsx）
+    for (const Section of [SettingsSection, StatusSection]) {
       const { container, unmount } = render(<Section />);
       expect(container.childElementCount).toBe(0);
       unmount();

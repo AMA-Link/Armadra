@@ -59,6 +59,11 @@ import { runtimeApi } from "../api/client";
 import { usePreferencesStore } from "./preferences-store";
 import { useCanvasStore } from "../store/canvas-store";
 import { App } from "./App";
+import { resetSplashPhase, setSplashPhase } from "../splash/session";
+import {
+  FIRST_SCREEN_LEAD_MS,
+  FIRST_SCREEN_TOTAL_MS,
+} from "./use-first-screen-enter";
 
 installDomPolyfills();
 
@@ -75,7 +80,11 @@ const workspace: Workspace = {
   updatedAt: timestamp,
 };
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  vi.useRealTimers();
+  resetSplashPhase();
+});
 
 beforeEach(() => {
   vi.mocked(runtimeApi.listWorkspaces).mockResolvedValue([]);
@@ -162,5 +171,65 @@ describe("identity changes", () => {
     expect(invalidate).toHaveBeenCalledTimes(2);
     expect(invalidate).toHaveBeenLastCalledWith();
     invalidate.mockRestore();
+  });
+});
+
+/**
+ * 首屏错落入场（设计系统 §8.7）：只在开屏刚退场的那一次播。平时的首帧什么都不
+ * 带；开屏放着时三块先藏好（`wait`），退场 80ms 后依次入场（`play`），播完摘掉。
+ */
+describe("App 首屏错落入场", () => {
+  const shell = () =>
+    document.querySelector<HTMLElement>(".app-shell") as HTMLElement;
+
+  it("平时的首帧不带 data-enter，也不播", () => {
+    render(<App />);
+    expect(shell().dataset.enter).toBeUndefined();
+  });
+
+  it("开屏放着时先藏好，退场后 80ms 起播，播完摘掉", () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    setSplashPhase("playing");
+    render(<App />);
+    expect(shell().dataset.enter).toBe("wait");
+
+    act(() => setSplashPhase("leaving"));
+    expect(shell().dataset.enter).toBe("wait");
+    act(() => void vi.advanceTimersByTime(FIRST_SCREEN_LEAD_MS - 1));
+    expect(shell().dataset.enter).toBe("wait");
+    act(() => void vi.advanceTimersByTime(1));
+    expect(shell().dataset.enter).toBe("play");
+
+    act(() => setSplashPhase("done"));
+    expect(shell().dataset.enter).toBe("play");
+    act(() => void vi.advanceTimersByTime(FIRST_SCREEN_TOTAL_MS));
+    expect(shell().dataset.enter).toBeUndefined();
+  });
+
+  it("开屏已经退场之后才挂载的 App 不补播", () => {
+    setSplashPhase("done");
+    render(<App />);
+    expect(shell().dataset.enter).toBeUndefined();
+  });
+
+  it("减少动效下不错落：开屏放着也不藏", () => {
+    const original = window.matchMedia;
+    window.matchMedia = ((query: string) => ({
+      matches: query.includes("prefers-reduced-motion"),
+      media: query,
+      addEventListener: () => undefined,
+      removeEventListener: () => undefined,
+      addListener: () => undefined,
+      removeListener: () => undefined,
+      dispatchEvent: () => false,
+      onchange: null,
+    })) as typeof window.matchMedia;
+    try {
+      setSplashPhase("playing");
+      render(<App />);
+      expect(shell().dataset.enter).toBeUndefined();
+    } finally {
+      window.matchMedia = original;
+    }
   });
 });

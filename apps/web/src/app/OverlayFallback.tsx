@@ -15,7 +15,7 @@ export type OverlayShape = "dialog" | "drawer" | "window";
 
 const SHELL: Record<OverlayShape, string> = {
   dialog:
-    "top-1/2 left-1/2 h-[min(60dvh,28rem)] w-[min(calc(100vw-32px),32rem)] -translate-x-1/2 -translate-y-1/2 rounded-[14px]",
+    "top-1/2 left-1/2 h-[min(60dvh,28rem)] w-[min(calc(100vw-32px),32rem)] -translate-x-1/2 -translate-y-1/2 rounded-dialog",
   drawer:
     "top-0 right-0 bottom-0 w-[min(100vw,var(--drawer-w))] border-l border-border",
   window: "right-0 bottom-0 left-0 h-[var(--git-window-h)]",
@@ -29,7 +29,7 @@ function OverlaySkeleton({ shape }: { shape: OverlayShape }) {
         data-slot="overlay-skeleton"
         data-shape={shape}
         className={cn(
-          "pointer-events-none fixed z-[var(--z-dialog)] flex flex-col gap-2 border border-border bg-popover p-3 shadow-[var(--shadow-pill)]",
+          "pointer-events-none fixed z-[var(--z-dialog)] flex flex-col gap-2 border border-border bg-popover p-3 shadow-overlay",
           SHELL[shape],
         )}
       >
