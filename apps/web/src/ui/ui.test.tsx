@@ -31,6 +31,9 @@ import {
 import { Empty, EmptyHeader, EmptyTitle } from "@/ui/empty";
 import { Field, FieldError, FieldLabel } from "@/ui/field";
 import { Input } from "@/ui/input";
+import { InputGroup, InputGroupInput } from "@/ui/input-group";
+import { Select, SelectTrigger, SelectValue } from "@/ui/select";
+import { Textarea } from "@/ui/textarea";
 import { InputOTP, InputOTPGroup, InputOTPSlot } from "@/ui/input-otp";
 import { Item, ItemContent, ItemTitle } from "@/ui/item";
 import { Label } from "@/ui/label";
@@ -642,5 +645,109 @@ describe("Kbd / Spinner / Shimmer", () => {
     expect(screen.getByText("保存").className).toContain("anim-shimmer");
     rerender(<Shimmer active={false}>保存</Shimmer>);
     expect(screen.getByText("保存").className).not.toContain("anim-shimmer");
+  });
+});
+
+describe("Input / Textarea / Select / InputGroup 四档高度（设计系统 §2.13）", () => {
+  it.each([
+    ["xs", "h-6"],
+    ["sm", "h-7"],
+    ["default", "h-8"],
+    ["touch", "h-11"],
+  ] as const)("Input size=%s → %s，圆角 rounded-control", (size, height) => {
+    render(<Input aria-label="名称" size={size} />);
+    const input = screen.getByRole("textbox");
+    expect(input.dataset.size).toBe(size);
+    expect(input.className).toMatch(new RegExp(`\\b${height}\\b`));
+    expect(input.className).toContain("rounded-control");
+  });
+
+  it("Input 手机上 16px（text-base），桌面落回正文档；touch 档任何视口都是 16", () => {
+    const { rerender } = render(<Input aria-label="名称" />);
+    const cls = () => screen.getByRole("textbox").className;
+    expect(cls()).toContain("text-base");
+    expect(cls()).toContain("md:text-body");
+    rerender(<Input aria-label="名称" size="touch" />);
+    expect(cls()).toContain("text-base");
+    expect(cls()).not.toContain("md:text-body");
+  });
+
+  it("Input 不再把 size 当成原生数字属性，过渡点名属性", () => {
+    render(<Input aria-label="名称" />);
+    const input = screen.getByRole("textbox");
+    expect(input.getAttribute("size")).toBeNull();
+    expect(input.className).not.toContain("transition-all");
+    expect(input.className).toContain(
+      "transition-[color,background-color,border-color]",
+    );
+  });
+
+  it.each([
+    ["xs", "px-1.5"],
+    ["sm", "px-2"],
+    ["default", "px-2.5"],
+    ["touch", "px-3"],
+  ] as const)("Textarea size=%s → %s", (size, padding) => {
+    render(<Textarea aria-label="备注" size={size} />);
+    const area = screen.getByRole("textbox");
+    expect(area.dataset.size).toBe(size);
+    expect(area.className).toContain(padding);
+  });
+
+  it.each([
+    ["xs", "data-[size=xs]:h-6"],
+    ["sm", "data-[size=sm]:h-7"],
+    ["default", "data-[size=default]:h-8"],
+    ["touch", "data-[size=touch]:h-11"],
+  ] as const)(
+    "SelectTrigger size=%s 带 data-size 并有对应高度类",
+    (size, cls) => {
+      render(
+        <Select>
+          <SelectTrigger size={size} aria-label="选择">
+            <SelectValue placeholder="选择" />
+          </SelectTrigger>
+        </Select>,
+      );
+      const trigger = screen.getByRole("combobox");
+      expect(trigger.dataset.size).toBe(size);
+      expect(trigger.className).toContain(cls);
+      expect(trigger.className).toContain("rounded-control");
+    },
+  );
+
+  it.each([
+    ["xs", "h-6"],
+    ["sm", "h-7"],
+    ["default", "h-8"],
+    ["touch", "h-11"],
+  ] as const)("InputGroup size=%s → %s", (size, height) => {
+    render(
+      <InputGroup size={size}>
+        <InputGroupInput aria-label="搜索" />
+      </InputGroup>,
+    );
+    const group = screen.getByRole("group");
+    expect(group.dataset.size).toBe(size);
+    expect(group.className).toMatch(new RegExp(`\\b${height}\\b`));
+  });
+});
+
+describe("动效 CSS 约定落在组件上（设计系统 §8）", () => {
+  it("Switch 与 Checkbox 过渡点名属性、不用 transition-all，Checkbox 圆角 tight", () => {
+    render(
+      <>
+        <Switch aria-label="开关" />
+        <Checkbox aria-label="勾选" />
+      </>,
+    );
+    const toggle = screen.getByRole("switch");
+    const box = screen.getByRole("checkbox");
+    expect(toggle.className).not.toContain("transition-all");
+    expect(toggle.className).toContain(
+      "transition-[background-color,border-color]",
+    );
+    expect(box.className).not.toContain("transition-all");
+    expect(box.className).toContain("rounded-tight");
   });
 });
