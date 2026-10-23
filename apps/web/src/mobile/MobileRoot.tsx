@@ -112,8 +112,8 @@ function EntrySkeleton() {
     >
       <div className="flex w-full max-w-sm flex-col gap-(--space-section)">
         <div className="flex flex-col items-center gap-3">
-          <Skeleton className="size-12 rounded-[var(--r-panel)]" />
-          <Skeleton className="h-6 w-48" />
+          <Skeleton className="size-12 rounded-panel" />
+          <Skeleton className="h-[28px] w-48" />
         </div>
         <RelayFormSkeleton label={t("state.loading")} />
       </div>

@@ -22,7 +22,6 @@ import {
   InputOTPSeparator,
   InputOTPSlot,
 } from "@/ui/input-otp";
-import { Spinner } from "@/ui/spinner";
 import type {
   RelayEnrollment,
   RelayOutcome,
@@ -438,12 +437,12 @@ export function ConnectScreen({
 
   const header = (
     <div className="flex flex-col items-center gap-3 text-center">
-      <BrandMark className="size-12 rounded-[var(--r-panel)]" />
-      <h1 className="text-[length:var(--text-display)] leading-tight font-semibold">
+      <BrandMark className="size-12 rounded-panel" />
+      <h1 className="text-display leading-tight font-semibold">
         {t(titleKey)}
       </h1>
       {mode === "web" && host && (
-        <p className="font-mono text-[13px] text-muted-foreground tabular-nums">
+        <p className="font-mono text-body text-muted-foreground tabular-nums">
           {host}
         </p>
       )}
@@ -495,7 +494,7 @@ export function ConnectScreen({
           {header}
           {view === "list" && trafficRow !== undefined && (
             <div className="flex flex-col gap-(--space-block)">
-              <h2 className="truncate text-center text-[length:var(--text-section)] font-semibold">
+              <h2 className="truncate text-center text-section font-semibold">
                 {trafficRow.name}
               </h2>
               <SourceTraffic
@@ -504,9 +503,9 @@ export function ConnectScreen({
               />
               <Button
                 type="button"
-                size="lg"
+                size="touch"
                 variant="ghost"
-                className="h-11 w-full"
+                className="w-full"
                 onClick={() => setTrafficId(null)}
               >
                 <ChevronLeft data-icon="inline-start" />
@@ -545,9 +544,9 @@ export function ConnectScreen({
               <div className="flex flex-col gap-2">
                 <Button
                   type="button"
-                  size="lg"
+                  size="touch"
                   variant="outline"
-                  className="h-11 w-full"
+                  className="w-full"
                   disabled={shownBusy}
                   onClick={() => {
                     setFailure(null);
@@ -560,9 +559,9 @@ export function ConnectScreen({
                 {manage && activeId !== undefined && (
                   <Button
                     type="button"
-                    size="lg"
+                    size="touch"
                     variant="ghost"
-                    className="h-11 w-full"
+                    className="w-full"
                     disabled={shownBusy || opening !== null}
                     onClick={() => {
                       setOpening(activeId);
@@ -586,9 +585,9 @@ export function ConnectScreen({
               {canScan && (
                 <Button
                   type="button"
-                  size="lg"
+                  size="touch"
                   variant="outline"
-                  className="h-11 w-full"
+                  className="w-full"
                   disabled={shownBusy}
                   onClick={() => void scan()}
                 >
@@ -598,9 +597,9 @@ export function ConnectScreen({
               )}
               <Button
                 type="button"
-                size="lg"
+                size="touch"
                 variant="outline"
-                className="h-11 w-full"
+                className="w-full"
                 disabled={shownBusy}
                 data-connect-method="link"
                 onClick={() => {
@@ -614,9 +613,9 @@ export function ConnectScreen({
               {onCode && (
                 <Button
                   type="button"
-                  size="lg"
+                  size="touch"
                   variant="outline"
-                  className="h-11 w-full"
+                  className="w-full"
                   disabled={shownBusy}
                   onClick={() => switchTo("code")}
                 >
@@ -626,9 +625,9 @@ export function ConnectScreen({
               )}
               <Button
                 type="button"
-                size="lg"
+                size="touch"
                 variant="outline"
-                className="h-11 w-full"
+                className="w-full"
                 disabled={shownBusy}
                 onClick={() => {
                   setFailure(null);
@@ -641,9 +640,9 @@ export function ConnectScreen({
               {connections.length > 0 && (
                 <Button
                   type="button"
-                  size="lg"
+                  size="touch"
                   variant="ghost"
-                  className="h-11 w-full"
+                  className="w-full"
                   disabled={shownBusy}
                   onClick={back}
                 >
@@ -689,9 +688,9 @@ export function ConnectScreen({
               )}
               <Button
                 type="button"
-                size="lg"
+                size="touch"
                 variant="ghost"
-                className="h-11 w-full"
+                className="w-full"
                 disabled={shownBusy}
                 onClick={() => {
                   setFailure(null);
@@ -755,7 +754,8 @@ export function ConnectScreen({
               spellCheck={false}
               placeholder="192.168.1.5:8443"
               disabled={shownBusy}
-              className="h-11 font-mono text-[length:var(--text-input-touch)] md:text-[length:var(--text-input-touch)]"
+              size="touch"
+              className="font-mono"
               onChange={(event) => {
                 setAddress(event.target.value);
                 setFailure(null);
@@ -799,7 +799,7 @@ export function ConnectScreen({
                         key={index}
                         index={offset + index}
                         // 触屏命中区与 16px 输入（设计系统 §2.3、§5.13）。
-                        className="size-10 font-mono text-[length:var(--text-input-touch)]"
+                        className="size-10 font-mono [font-size:var(--text-input-touch)]"
                         aria-invalid={shownFailure !== null || undefined}
                       />
                     ))}
@@ -832,8 +832,7 @@ export function ConnectScreen({
                   aria-invalid={shownFailure !== null || undefined}
                   aria-describedby={message ? errorId : undefined}
                   disabled={shownBusy}
-                  // iOS 聚焦时小于 16px 的输入会放大整页（设计系统 §2.3）。
-                  className="h-11 text-[length:var(--text-input-touch)] md:text-[length:var(--text-input-touch)]"
+                  size="touch"
                   onChange={(event) => {
                     setLink(event.target.value);
                     setFailure(null);
@@ -851,24 +850,22 @@ export function ConnectScreen({
 
             <div className="flex flex-col gap-2">
               <Button
+                loading={shownBusy}
                 type="submit"
-                size="lg"
-                className="h-11 w-full"
+                size="touch"
+                className="w-full"
                 disabled={
                   shownBusy || (mode === "native" && link.trim() === "")
                 }
               >
-                {shownBusy && (
-                  <Spinner aria-label={t("mobileConnect.connecting")} />
-                )}
                 {t("mobileConnect.connect")}
               </Button>
               {mode === "native" && canScan && (
                 <Button
                   type="button"
-                  size="lg"
+                  size="touch"
                   variant="outline"
-                  className="h-11 w-full"
+                  className="w-full"
                   disabled={shownBusy}
                   onClick={() => void scan()}
                 >
@@ -879,9 +876,9 @@ export function ConnectScreen({
               {onCode && (
                 <Button
                   type="button"
-                  size="lg"
+                  size="touch"
                   variant="outline"
-                  className="h-11 w-full"
+                  className="w-full"
                   disabled={shownBusy}
                   onClick={() => switchTo("code")}
                 >
@@ -892,9 +889,9 @@ export function ConnectScreen({
               {multi && (
                 <Button
                   type="button"
-                  size="lg"
+                  size="touch"
                   variant="ghost"
-                  className="h-11 w-full"
+                  className="w-full"
                   disabled={shownBusy}
                   onClick={() => {
                     setFailure(null);
@@ -912,22 +909,20 @@ export function ConnectScreen({
         {view === "code" && (
           <div className="flex flex-col gap-2">
             <Button
+              loading={shownBusy}
               type="submit"
-              size="lg"
-              className="h-11 w-full"
+              size="touch"
+              className="w-full"
               disabled={shownBusy || code.length !== CODE_LENGTH}
             >
-              {shownBusy && (
-                <Spinner aria-label={t("mobileConnect.connecting")} />
-              )}
               {t("mobileConnect.connect")}
             </Button>
             {!codeFirst && (
               <Button
                 type="button"
-                size="lg"
+                size="touch"
                 variant="ghost"
-                className="h-11 w-full"
+                className="w-full"
                 disabled={shownBusy}
                 onClick={() => switchTo("link")}
               >
@@ -938,9 +933,9 @@ export function ConnectScreen({
             {onSignIn && (
               <Button
                 type="button"
-                size="lg"
+                size="touch"
                 variant="ghost"
-                className="h-11 w-full"
+                className="w-full"
                 disabled={shownBusy}
                 onClick={onSignIn}
               >

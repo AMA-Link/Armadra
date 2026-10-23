@@ -50,9 +50,9 @@ export function NativeMfa({
           />
           <Button
             type="button"
-            size="lg"
+            size="touch"
             variant="ghost"
-            className="h-11 w-full"
+            className="w-full"
             onClick={onBack}
           >
             {t("mobileConnect.backToConnect")}
