@@ -104,7 +104,7 @@ vi.mock("./transport", () => ({
     };
   },
 }));
-vi.mock("sonner", () => ({ toast: { error: vi.fn(), info: vi.fn() } }));
+vi.mock("@/ui/toast", () => ({ toast: { error: vi.fn(), info: vi.fn() } }));
 vi.mock("@xterm/xterm", () => ({
   Terminal: class {
     cols = 80;

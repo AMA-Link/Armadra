@@ -1,6 +1,6 @@
 import { scoped } from "../../sources/scope";
 import * as React from "react";
-import { toast } from "sonner";
+import { toast } from "@/ui/toast";
 
 import { MAX_AGENT_UPLOAD_BYTES } from "@armadra/shared";
 

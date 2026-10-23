@@ -1,6 +1,6 @@
 import { scoped } from "../sources/scope";
 import * as React from "react";
-import { toast } from "sonner";
+import { toast } from "@/ui/toast";
 // xterm 的样式跟着它的 JS 走，不放应用入口。
 //
 // 入口里那一行 `import "@xterm/xterm/css/xterm.css"` 看着只是一个 CSS，但它
@@ -303,7 +303,7 @@ function TerminalSurfaceImpl({
           // 渲染器与限帧（性能设计 §2.5）：`auto` 下哪几个真的上了 WebGL，对照实验靠它数。
           data-renderer={webglActive ? "webgl" : "dom"}
           data-throttled={throttled ? "" : undefined}
-          className="nodrag nowheel relative h-full w-full overflow-hidden bg-[var(--term-bg)]"
+          className="nodrag nowheel relative h-full w-full overflow-hidden bg-term"
           onDragOver={(event) => {
             if (
               hasWorkspaceFileDrag(event.dataTransfer) ||

@@ -21,7 +21,7 @@ vi.mock("@/store/canvas-store", () => ({
   useCanvasStore: { getState: () => ({ workspace: { id: "ws" } }) },
 }));
 vi.mock("@/app/preferences-store", () => ({ t: (key: string) => key }));
-vi.mock("sonner", () => ({ toast: { error: vi.fn() } }));
+vi.mock("@/ui/toast", () => ({ toast: { error: vi.fn() } }));
 
 import type { SurfaceRefs } from "./refs";
 import { takeWakeWithoutReset, useHibernation } from "./use-hibernation";

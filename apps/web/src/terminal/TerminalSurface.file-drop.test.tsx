@@ -93,7 +93,7 @@ vi.mock("./transport", () => ({
     };
   },
 }));
-vi.mock("sonner", () => ({
+vi.mock("@/ui/toast", () => ({
   toast: {
     error: (...args: unknown[]) => fixture.error(...args),
     loading: () => "loading",
