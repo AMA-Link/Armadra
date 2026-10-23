@@ -7,6 +7,9 @@ import {
 } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
+import { CloudConsoleError } from "../api/errors";
+import type { MockHost } from "../mock/fixtures";
+
 import { chooseOption, installDomPolyfills } from "../../app/test-harness";
 import { MOCK_HOSTS, MOCK_PEOPLE } from "../mock/fixtures";
 import { h1, installConsoleHarness, mount, viewport } from "../testkit";
@@ -238,5 +241,84 @@ describe("授予页 · 增改撤", () => {
       expect(within(grid).queryByText("赵六")).toBeNull();
       expect((await rowOf("王五")).textContent).toContain("2 台主机");
     });
+  });
+});
+
+const bulk = (count: number): MockHost[] =>
+  Array.from({ length: count }, (_, index) => ({
+    ...MOCK_HOSTS[2]!,
+    sourceId: (3000 + index).toString(16).padStart(32, "0"),
+    name: `bulk-${String(index).padStart(3, "0")}`,
+    owner: false,
+    ownerName: "李四",
+  }));
+
+describe("授予页 · 主机很多、取数失败与撤销提示", () => {
+  it("grants.list 同时在途不超过 6 个", async () => {
+    const api = mount("/t/rd/grants", {
+      ...OPTIONS,
+      latencyMs: 15,
+      extraHosts: bulk(40),
+    });
+    const real = api.client.grants.list;
+    let active = 0;
+    let peak = 0;
+    let calls = 0;
+    api.client.grants.list = (async (input: Parameters<typeof real>[0]) => {
+      calls += 1;
+      active += 1;
+      peak = Math.max(peak, active);
+      try {
+        return await real(input);
+      } finally {
+        active -= 1;
+      }
+    }) as typeof real;
+    await rowOf("赵六");
+    expect(calls).toBeGreaterThan(40);
+    expect(peak).toBeLessThanOrEqual(6);
+  });
+
+  it("单台主机的授予取不到：只标在那台上并可单台重试，其余照常列出", async () => {
+    const api = mount("/t/rd/grants", { ...OPTIONS, latencyMs: 5 });
+    const real = api.client.grants.list;
+    let broken = true;
+    api.client.grants.list = (async (input: Parameters<typeof real>[0]) => {
+      if (broken && input.sourceId === STUDIO)
+        throw new CloudConsoleError("team_role_insufficient", 403);
+      return real(input);
+    }) as typeof real;
+    expect(await screen.findByText(/^mac-studio：/)).toBeTruthy();
+    // 其余主机的授予照常。
+    expect(await rowOf("赵六")).toBeTruthy();
+    broken = false;
+    fireEvent.click(screen.getByRole("button", { name: "重试" }));
+    await waitFor(() => expect(screen.queryByText(/^mac-studio：/)).toBeNull());
+  });
+
+  it("主机超过一页：提示列表不完整并给「加载更多」", async () => {
+    mount("/t/rd/grants", { ...OPTIONS, extraHosts: bulk(210) });
+    expect(await screen.findByText("只列出了前 200 台主机的授予")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "加载更多" }));
+    await waitFor(() =>
+      expect(screen.queryByText("只列出了前 200 台主机的授予")).toBeNull(),
+    );
+  });
+
+  it("撤销团队全员的授予：列出会被收窄的人", async () => {
+    mount("/t/rd/grants", OPTIONS);
+    await expand("团队全员");
+    const list = await screen.findByRole("list", { name: "团队全员" });
+    fireEvent.click(
+      within(list).getAllByRole("button", {
+        name: /^撤销 团队全员 · build-01/,
+      })[0]!,
+    );
+    const confirm = await screen.findByRole("alertdialog");
+    expect(
+      await within(confirm).findByText(
+        "会降低 王五 的权限，他们已有的连接会断开",
+      ),
+    ).toBeTruthy();
   });
 });

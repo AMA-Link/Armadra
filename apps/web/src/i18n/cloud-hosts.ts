@@ -80,6 +80,8 @@ export const cloudHosts: MessageModule = {
     "cloud.grants.nextExpiry": "最早到期",
     "cloud.grants.effective": "有效权限",
     "cloud.grants.search": "搜索对象",
+    "cloud.grants.incomplete": "只列出了前 {count} 台主机的授予",
+    "cloud.grants.hostFailed": "{host}：{reason}",
     "cloud.grants.editTitle": "改 {name} 的权限",
     "cloud.grants.pickSubject": "选择对象",
     "cloud.grants.pickHost": "选择主机",
@@ -188,6 +190,9 @@ export const cloudHosts: MessageModule = {
     "cloud.grants.nextExpiry": "Next expiry",
     "cloud.grants.effective": "Effective access",
     "cloud.grants.search": "Search people",
+    "cloud.grants.incomplete":
+      "Showing grants for the first {count} hosts only",
+    "cloud.grants.hostFailed": "{host}: {reason}",
     "cloud.grants.editTitle": "Change {name}'s access",
     "cloud.grants.pickSubject": "Choose who",
     "cloud.grants.pickHost": "Choose a host",

@@ -2,21 +2,28 @@ import * as React from "react";
 import { useQueries } from "@tanstack/react-query";
 import { ChevronRight, Search, Users } from "lucide-react";
 
-import { useT } from "@/app/preferences-store";
+import { usePreferencesStore, useT } from "@/app/preferences-store";
 import { rankOf } from "@/lib/cloud-grant";
+import { Alert, AlertTitle } from "@/ui/alert";
 import { Avatar, AvatarFallback } from "@/ui/avatar";
 import { Badge } from "@/ui/badge";
 import { Button } from "@/ui/button";
 import { InputGroup, InputGroupAddon, InputGroupInput } from "@/ui/input-group";
 import { SkeletonTable } from "@/ui/skeletons";
-import { EmptyState } from "@/ui/state";
+import { EmptyState, ErrorState } from "@/ui/state";
 import { toast } from "@/ui/toast";
 import { describeFailure } from "../api/errors";
 import { useCloudApi } from "../api/context";
 import { cloudKeys } from "../api/keys";
-import { useHosts, type HostRow } from "../hosts/data";
+import { coveredByTeam, narrowedBy } from "../hosts/access-model";
+import { useHostAccess, useHosts, type HostRow } from "../hosts/data";
 import { GrantDialog, scopeText } from "../hosts/GrantDialog";
-import { useEffective, useRevokeGrant, type Grant } from "../hosts/grants-data";
+import {
+  useEffective,
+  useHostGrants,
+  useRevokeGrant,
+  type Grant,
+} from "../hosts/grants-data";
 import { tp } from "../i18n-plural";
 import { RouteLink } from "../RouteLink";
 import { PageHeader } from "../shell/PageHeader";
@@ -26,11 +33,32 @@ import { ConfirmAction } from "../ui/ConfirmAction";
 import { DataList, type DataColumn } from "../ui/DataList";
 import { Expiry } from "../ui/Expiry";
 import { InlineError } from "../ui/InlineError";
-import { useMembers, type TeamSpace } from "./data";
+import { useMembers, type TeamMember, type TeamSpace } from "./data";
 
 const NEVER = "—";
 const HOSTS_FETCHED = 200;
 const TEAM = "team";
+/** 同时在途的 `grants.list` 上限：主机多时不一口气发几百个请求。 */
+const MAX_PARALLEL = 6;
+
+/** 把异步任务限制在 `max` 个同时进行。 */
+function createLimiter(max: number) {
+  let active = 0;
+  const waiting: (() => void)[] = [];
+  const release = () => {
+    active -= 1;
+    waiting.shift()?.();
+  };
+  return async <T,>(task: () => Promise<T>): Promise<T> => {
+    if (active >= max) await new Promise<void>((go) => waiting.push(go));
+    active += 1;
+    try {
+      return await task();
+    } finally {
+      release();
+    }
+  };
+}
 
 interface Entry {
   readonly host: HostRow;
@@ -163,6 +191,84 @@ type Dialog =
   | { kind: "revoke"; entry: Entry; name: string }
   | null;
 
+/** 撤销一条授予：先算会收窄谁并列名，个人的授予撤了而团队全员还兜着时写一句。 */
+function RevokeEntryConfirm({
+  space,
+  open,
+  entry,
+  name,
+  members,
+  onClose,
+}: {
+  space: TeamSpace;
+  open: boolean;
+  entry: Entry;
+  name: string;
+  members: readonly TeamMember[];
+  onClose: () => void;
+}) {
+  const t = useT();
+  const locale = usePreferencesStore((state) => state.locale);
+  const revoke = useRevokeGrant(space);
+  const sourceId = entry.host.sourceId;
+  const grants = useHostGrants(space, sourceId);
+  const access = useHostAccess(space, sourceId);
+  const list = new Intl.ListFormat(locale, {
+    style: "narrow",
+    type: "conjunction",
+  });
+  const now = Date.now();
+  const all = grants.data?.grants ?? [];
+  const lowered = narrowedBy({
+    grants: all,
+    members,
+    ownerId:
+      access.data?.access.find((row) => row.via === "owner")?.accountId ?? null,
+    change: { kind: "revoke", grantIds: [entry.grant.grantId] },
+    now,
+  });
+  const subject = entry.grant.subject;
+  const consequences = [
+    ...(lowered.length > 0
+      ? [
+          t("cloud.grants.lowers", {
+            names: list.format(lowered.map((member) => member.displayName)),
+          }),
+        ]
+      : []),
+    ...(subject.kind !== "team" &&
+    subject.kind !== "group" &&
+    coveredByTeam(
+      subject.accountId,
+      all.filter((grant) => grant.grantId !== entry.grant.grantId),
+      members,
+      now,
+    )
+      ? [t("cloud.grants.stillViaTeam")]
+      : []),
+  ];
+  return (
+    <ConfirmAction
+      open={open}
+      onOpenChange={(next) => !next && onClose()}
+      title={t("cloud.grants.revokeTitle", { name, host: entry.host.name })}
+      actionLabel={t("cloud.hosts.removeAccess")}
+      {...(consequences.length > 0
+        ? { consequence: consequences.join("\n") }
+        : {})}
+      onConfirm={async () => {
+        try {
+          await revoke.mutateAsync({ grantId: entry.grant.grantId, sourceId });
+        } catch (failure) {
+          toast.error(describeFailure(failure));
+          throw failure;
+        }
+        toast.success(t("cloud.hosts.removeAccessDone"));
+      }}
+    />
+  );
+}
+
 /**
  * 授予（云端控制台 §3.3.6）：按人看——团队全员与每个成员各一行（主机数 · 最高权限 · 最早到期），
  * 展开看逐台主机的授予与有效权限，行内改权限、撤销。云端没有按团队列全部授予的过程，所以这里对
@@ -181,7 +287,6 @@ export function GrantsPage({
   const manager = role === "owner" || role === "admin";
   const hosts = useHosts(space, {}, HOSTS_FETCHED);
   const members = useMembers(space);
-  const revoke = useRevokeGrant(space);
   const [query, setQuery] = React.useState("");
   const [expanded, setExpanded] = React.useState<ReadonlySet<string>>(
     new Set(),
@@ -197,12 +302,16 @@ export function GrantsPage({
       ),
     [hosts.data, manager],
   );
+  const limit = React.useRef(createLimiter(MAX_PARALLEL));
   const lists = useQueries({
     queries: manageable.map((host) => ({
       queryKey: cloudKeys.grants(keyOfSpace(space), {
         sourceId: host.sourceId,
       }),
-      queryFn: () => api.client.grants.list({ sourceId: host.sourceId }),
+      queryFn: () =>
+        limit.current(() =>
+          api.client.grants.list({ sourceId: host.sourceId }),
+        ),
     })),
   });
 
@@ -328,7 +437,12 @@ export function GrantsPage({
     [t, expanded],
   );
 
-  const failed = hosts.error ?? lists.find((one) => one.error)?.error;
+  // 主机目录取不到整页失败；单台主机的授予取不到只标在那台上，可单台重试。
+  const failed = hosts.error ?? members.error;
+  const failedHosts = manageable.flatMap((host, index) => {
+    const one = lists[index];
+    return one?.isError ? [{ host, one }] : [];
+  });
   const loading =
     hosts.isPending || members.isPending || lists.some((one) => one.isPending);
   const add = (
@@ -344,14 +458,15 @@ export function GrantsPage({
         error={failed}
         onRetry={() => {
           void hosts.refetch();
-          lists.forEach((one) => void one.refetch());
+          void members.refetch();
         }}
       />
     );
   else if (loading)
     body = <SkeletonTable rows={4} columns={4} label={t("cloud.nav.grants")} />;
-  else if (rows.length === 0)
+  else if (rows.length === 0 && failedHosts.length === 0)
     body = <EmptyState title={t("cloud.grants.empty")}>{add}</EmptyState>;
+  else if (rows.length === 0) body = null;
   else
     body = (
       <DataList
@@ -402,6 +517,33 @@ export function GrantsPage({
           </InputGroup>
         </div>
       ) : null}
+      {hosts.hasNextPage ? (
+        <Alert className="mb-4 flex flex-wrap items-center gap-2">
+          <AlertTitle className="min-w-0 flex-1">
+            {t("cloud.grants.incomplete", { count: manageable.length })}
+          </AlertTitle>
+          <Button
+            size="sm"
+            variant="outline"
+            loading={hosts.isFetchingNextPage}
+            onClick={() => void hosts.fetchNextPage()}
+          >
+            {t("cloud.common.loadMore")}
+          </Button>
+        </Alert>
+      ) : null}
+      {failedHosts.map(({ host, one }) => (
+        <ErrorState
+          key={host.sourceId}
+          title={t("cloud.grants.hostFailed", {
+            host: host.name,
+            reason: describeFailure(one.error),
+          })}
+          retryLabel={t("cloud.common.retry")}
+          onRetry={() => void one.refetch()}
+          className="mb-4"
+        />
+      ))}
       {body}
       {rows.length > 0 && shown.length === 0 ? (
         <EmptyState title={t("cloud.common.noMatch", { query: query.trim() })}>
@@ -425,28 +567,16 @@ export function GrantsPage({
           onClose={() => setDialog(null)}
         />
       ) : null}
-      <ConfirmAction
-        open={dialog?.kind === "revoke"}
-        onOpenChange={(open) => !open && setDialog(null)}
-        title={t("cloud.grants.revokeTitle", {
-          name: target?.kind === "revoke" ? target.name : "",
-          host: target?.kind === "revoke" ? target.entry.host.name : "",
-        })}
-        actionLabel={t("cloud.hosts.removeAccess")}
-        onConfirm={async () => {
-          if (dialog?.kind !== "revoke") return;
-          try {
-            await revoke.mutateAsync({
-              grantId: dialog.entry.grant.grantId,
-              sourceId: dialog.entry.host.sourceId,
-            });
-          } catch (failure) {
-            toast.error(describeFailure(failure));
-            throw failure;
-          }
-          toast.success(t("cloud.hosts.removeAccessDone"));
-        }}
-      />
+      {target?.kind === "revoke" ? (
+        <RevokeEntryConfirm
+          space={space}
+          open={dialog?.kind === "revoke"}
+          entry={target.entry}
+          name={target.name}
+          members={members.data?.members ?? []}
+          onClose={() => setDialog(null)}
+        />
+      ) : null}
     </>
   );
 }
