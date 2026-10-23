@@ -296,6 +296,8 @@ function OpenRemoteProject({ host }: { host: SshHost }) {
       // 根已在那台机器上证明过，直接切过去，而不是让人再去列表里找一遍。
       openWorkspace(workspace);
       void client.invalidateQueries({ queryKey: lk("workspaces") });
+      // 切换发生在设置对话框背后，结果在当前视图里看不见：这里要有成功提示。
+      toast.success(t("ssh.remote.opened", { name: workspace.name }));
     },
     onError: (cause: Error) =>
       toast.error(t("ssh.remote.failed"), { description: cause.message }),
