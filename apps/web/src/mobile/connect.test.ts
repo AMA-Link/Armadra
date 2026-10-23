@@ -264,7 +264,7 @@ const assertion = (id: string) => () => ({
   },
 });
 
-const coreLogin = (share?: Record<string, unknown>) => ({
+const coreLoginWith = (share?: Record<string, unknown>) => ({
   body: {
     session: {
       hostId: HOST,
@@ -276,6 +276,8 @@ const coreLogin = (share?: Record<string, unknown>) => ({
     ...(share === undefined ? {} : { share }),
   },
 });
+
+const coreLogin = () => coreLoginWith();
 
 describe("添加连接 · 局域网（现有方式）记进连接表", () => {
   it("配对成功：以 core 的 hostId 记一行直连并设为当前", async () => {
@@ -739,7 +741,7 @@ describe("添加连接 · 分享链接 / 二维码", () => {
             },
           },
         }),
-        [`POST /s/${HOST}/api/identity/cloud/login`]: () => coreLogin(share),
+        [`POST /s/${HOST}/api/identity/cloud/login`]: () => coreLoginWith(share),
       });
       const enroll = createRelayEnrollment({
         bridge,
