@@ -17,6 +17,8 @@ import {
  *    通篇中文（这是有意的房规），要管的是字符串字面量与 JSX 文本。
  * 3. 每个键都得有人用。一组实现被删掉时，它的文案很容易留在表里没人发现
  *    ——受管 Chromium 那一批就这样留了 39 个（复查 §3.1）。
+ * 4. 说明类键（键名以 `Description / hint / Note / detail / body / safety / help`
+ *    结尾）的中文值不超过 36 字：界面不写长段说明（设计系统 §6），错误文案另算。
  */
 
 const MODULES: Record<string, MessageModule> = MESSAGE_MODULES;
@@ -180,6 +182,45 @@ describe("界面文案", () => {
       offenders,
       "这些串要搬进 src/i18n/*.ts 并经 useT()/t() 取用",
     ).toEqual([]);
+  });
+});
+
+/* -------------------------------------------------------------------------- */
+/* 说明类键不许长                                                               */
+/* -------------------------------------------------------------------------- */
+
+const DESCRIPTIVE_KEY = /(?:Description|hint|Note|detail|body|safety|help)$/i;
+const DESCRIPTIVE_MAX = 36;
+
+/**
+ * 允许超长的说明类键：错误文案（说明怎么恢复，不解释原因）。法律文本（许可证）
+ * 不走消息表，不在此列。新增前先想能不能写短。
+ */
+const DESCRIPTIVE_EXEMPT: ReadonlySet<string> = new Set([
+  // 服务端没找到 Chromium：错误态，要带环境变量名
+  "browser.stream.unavailableHint",
+]);
+
+describe("说明类键", () => {
+  it(`中文值不超过 ${DESCRIPTIVE_MAX} 字（错误文案除外）`, () => {
+    const long = Object.values(MODULES).flatMap((module) =>
+      Object.entries(module["zh-CN"])
+        .filter(
+          ([key, value]) =>
+            DESCRIPTIVE_KEY.test(key) &&
+            !DESCRIPTIVE_EXEMPT.has(key) &&
+            [...value].length > DESCRIPTIVE_MAX,
+        )
+        .map(([key, value]) => `${key}（${[...value].length} 字）`),
+    );
+    expect(long, "界面不写长说明：删掉或缩到一行").toEqual([]);
+  });
+
+  it("豁免表里没有悬空的键", () => {
+    const all = new Set(
+      Object.values(MODULES).flatMap((module) => Object.keys(module["zh-CN"])),
+    );
+    expect([...DESCRIPTIVE_EXEMPT].filter((key) => !all.has(key))).toEqual([]);
   });
 });
 
