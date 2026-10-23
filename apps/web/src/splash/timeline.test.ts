@@ -1,9 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
+  advanceSplashClock,
   clamp01,
   smooth,
   splashFrameAt,
   SPLASH_DURATION_MS,
+  SPLASH_MAX_STEP_MS,
   SPLASH_TIMING,
   WRITING_DURATION_MS,
 } from "./timeline";
@@ -73,6 +75,17 @@ describe("splash timeline", () => {
     expect(splashFrameAt(-1000)).toEqual(splashFrameAt(0));
     expect(splashFrameAt(SPLASH_DURATION_MS + 5000)).toEqual(
       splashFrameAt(SPLASH_DURATION_MS),
+    );
+  });
+
+  it("advances by the frame gap, pausing through a stall instead of skipping", () => {
+    expect(advanceSplashClock(1000, 16.7)).toBeCloseTo(1016.7, 5);
+    // 主线程卡了 600ms：只走一个单步上限，画面接着停下的地方往下播。
+    expect(advanceSplashClock(1000, 600)).toBe(1000 + SPLASH_MAX_STEP_MS);
+    // rAF 时间戳略早于上一次定时器的 performance.now()：不倒退。
+    expect(advanceSplashClock(1000, -3)).toBe(1000);
+    expect(advanceSplashClock(SPLASH_DURATION_MS - 5, 16)).toBe(
+      SPLASH_DURATION_MS,
     );
   });
 });
