@@ -10,6 +10,7 @@ import { describeFailure, isSessionError, toCloudError } from "./api/errors";
 import { cloudKeys } from "./api/keys";
 import { createCloudQueryClient, useConsoleSession } from "./api/queries";
 import type { CloudApi } from "./api/session";
+import { PublicPage, hasPublicPage } from "./auth/PublicPage";
 import { navigate, useRoute } from "./router";
 import { ConsoleShell } from "./shell/ConsoleShell";
 import { PageHeader } from "./shell/PageHeader";
@@ -149,9 +150,31 @@ function ConsoleData() {
   const api = useCloudApi();
   const client = useQueryClient();
   const [expired, setExpired] = React.useState(false);
+  const match = useRoute();
+  // 登录、注册、验证、找回、邀请不需要会话：不取，也不因为取不到而跳登录。
+  const publicPage = hasPublicPage(match);
   const { session, error, loading, retry } = useConsoleSession({
-    enabled: !expired,
+    enabled: !expired && !publicPage,
   });
+  const lost = !publicPage && (expired || isSessionError(error));
+
+  // 会话没了且续不上：回 `/login?next=<当前路径>`（云端控制台 §1.3）。
+  React.useEffect(() => {
+    if (!lost) return;
+    const path = window.location.pathname + window.location.search;
+    navigate(
+      path === "/" ? "/login" : `/login?next=${encodeURIComponent(path)}`,
+      {
+        replace: true,
+      },
+    );
+  }, [lost]);
+
+  const finish = (path: string) => {
+    client.removeQueries({ queryKey: cloudKeys.all });
+    setExpired(false);
+    navigate(path, { replace: true });
+  };
 
   // 会话没了且续不上：清掉所有云端缓存，整页「登录已过期」。
   React.useEffect(
@@ -178,7 +201,8 @@ function ConsoleData() {
     }
   };
 
-  if (expired || isSessionError(error)) return <ConsoleView session={null} />;
+  if (publicPage) return <PublicPage match={match} finish={finish} />;
+  if (lost) return null;
   if (session)
     return (
       <ConsoleView
