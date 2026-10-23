@@ -107,6 +107,7 @@
   --color-brand-text: var(--brand-text);
   --color-brand-soft: var(--brand-soft);
   --color-brand-solid: var(--brand-solid);
+  --color-on-accent: var(--on-accent);
 
   /* ── 状态色 ──────────────────────────────────────────────────────── */
   --color-success: var(--success);
