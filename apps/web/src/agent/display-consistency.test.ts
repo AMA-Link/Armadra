@@ -1,3 +1,5 @@
+import { createElement } from "react";
+import { cleanup, render } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   AGENT_STATES,
@@ -15,11 +17,14 @@ import {
 import { collectNeeds } from "../notifications/needs";
 import { boardSignals } from "../sidebar/board-tree";
 import { scoped } from "../sources/scope";
+import { t } from "../app/preferences-store";
+import { StatusDot, StatusLine, StatusPill } from "../ui/status-pill";
 import {
   NEED_TONE,
   STATUS_LABEL_KEYS,
   displayOfRow,
   displayOfStatus,
+  lineOf,
 } from "./display";
 import { headerStateFor } from "./program-status-store";
 import { mergeSessions, sessionBucket, type SessionRow } from "./sessions";
@@ -103,6 +108,7 @@ function surfaces(
 }
 
 afterEach(() => {
+  cleanup();
   vi.useRealTimers();
   useAgentStatusStore.getState().reset();
 });
@@ -423,5 +429,76 @@ describe("文案键", () => {
       });
       expect(keys.has(display.labelKey)).toBe(true);
     }
+  });
+});
+
+describe("S12 点、胶囊、行三种形态，同一个 tone 同一句文案", () => {
+  const states = [undefined, ...AGENT_STATES] as const;
+
+  for (const state of states) {
+    for (const alive of [true, false] as const) {
+      it(`${state ?? "无上报"} / alive=${alive}`, () => {
+        const display = displayOfStatus({
+          ...mirrored({ ...(state ? { state } : {}), unread: true }),
+          alive,
+        });
+        const line = lineOf(display, undefined, t);
+        const { container } = render(
+          createElement(
+            "div",
+            null,
+            createElement(StatusDot, {
+              tone: line.tone,
+              label: line.phaseLabel,
+            }),
+            createElement(StatusPill, {
+              tone: line.tone,
+              label: line.phaseLabel,
+            }),
+            createElement(StatusLine, {
+              tone: line.tone,
+              label: line.phaseLabel,
+              detail: line.detail,
+              spinning: line.spinning,
+            }),
+          ),
+        );
+        const dot = container.querySelector("[data-slot=status-dot]")!;
+        const pill = container.querySelector("[data-slot=status-pill]")!;
+        const row = container.querySelector("[data-slot=status-line]")!;
+        // 同一个 tone
+        expect(line.tone).toBe(display.tone);
+        expect(dot.getAttribute("data-tone")).toBe(display.tone);
+        expect(pill.getAttribute("data-tone")).toBe(display.tone);
+        expect(row.getAttribute("data-tone")).toBe(display.tone);
+        // 同一句文案：点的无障碍名、胶囊文字、行里的阶段
+        const phase = row.querySelector("[data-slot=status-line-phase]")!;
+        expect(line.phaseLabel).toBe(t(display.labelKey));
+        expect(dot.getAttribute("aria-label")).toBe(line.phaseLabel);
+        expect(pill.textContent).toBe(line.phaseLabel);
+        expect(phase.textContent).toBe(line.phaseLabel);
+      });
+    }
+  }
+
+  it("只有「在跑」转圈；等审批、出错、已完成都不转", () => {
+    const spin = (state: (typeof AGENT_STATES)[number], extra = {}) =>
+      lineOf(
+        displayOfStatus({ ...mirrored({ state, ...extra }), alive: true }),
+        undefined,
+        t,
+      ).spinning;
+    expect(spin("working")).toBe(true);
+    expect(spin("blocked", { pendingId: "p" })).toBe(false);
+    expect(spin("done", { errored: true })).toBe(false);
+    expect(spin("done")).toBe(false);
+  });
+
+  it("计时取活动阶段的开始时间", () => {
+    const display = displayOfStatus({
+      ...mirrored({ state: "working" }),
+      activity: { phase: "tool", since: 1234, rev: "b:1" },
+    });
+    expect(lineOf(display, undefined, t).since).toBe(1234);
   });
 });
