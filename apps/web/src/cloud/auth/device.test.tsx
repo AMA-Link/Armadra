@@ -31,6 +31,11 @@ const mount = (options: MockOptions = {}) => {
   return api;
 };
 const codeInput = () => screen.getByLabelText("设备码") as HTMLInputElement;
+/** 码来自链接：授权前要勾「已在设备上核对」。 */
+const confirmCode = () =>
+  fireEvent.click(
+    screen.getByRole("checkbox", { name: "我已在设备上核对过这个码" }),
+  );
 const enter = (value: string) =>
   fireEvent.change(codeInput(), { target: { value } });
 
@@ -98,6 +103,7 @@ describe("设备授权页", () => {
     const api = mount();
     const approve = vi.spyOn(api.client.auth, "deviceApprove");
     await screen.findByText("build-01 请求登录");
+    confirmCode();
     fireEvent.click(screen.getByRole("button", { name: "授权" }));
     await screen.findByText("已授权，可以回到 build-01");
     expect(approve).toHaveBeenCalledWith({ userCode: CODE, approve: true });
@@ -187,6 +193,7 @@ describe("设备授权页", () => {
     await screen.findByText("build-01 请求登录");
     // 先在别处处理掉，再点授权：云端答查无此码。
     await api.client.auth.deviceDeny({ userCode: CODE });
+    confirmCode();
     fireEvent.click(screen.getByRole("button", { name: "授权" }));
     await screen.findByText("设备码不正确");
     expect(document.activeElement).toBe(codeInput());
@@ -197,6 +204,7 @@ describe("设备授权页", () => {
     const api = mount({ deviceNeedsStepUp: true });
     const stepUp = vi.spyOn(api.client.auth, "stepUp");
     await screen.findByText("build-01 请求登录");
+    confirmCode();
     fireEvent.click(screen.getByRole("button", { name: "授权" }));
     await screen.findByRole("heading", { name: "再验证一次" });
     const secret = screen.getByLabelText("口令") as HTMLInputElement;
@@ -216,6 +224,7 @@ describe("设备授权页", () => {
     const api = mount({ deviceNeedsStepUp: true });
     const stepUp = vi.spyOn(api.client.auth, "stepUp");
     await screen.findByText("build-01 请求登录");
+    confirmCode();
     fireEvent.click(screen.getByRole("button", { name: "授权" }));
     await screen.findByRole("heading", { name: "再验证一次" });
     fireEvent.click(screen.getByRole("button", { name: "改用验证码" }));
@@ -231,9 +240,55 @@ describe("设备授权页", () => {
     visit(`/device?code=${CODE}`);
     mount({ deviceNeedsStepUp: true });
     await screen.findByText("build-01 请求登录");
+    confirmCode();
     fireEvent.click(screen.getByRole("button", { name: "授权" }));
     await screen.findByRole("heading", { name: "再验证一次" });
     fireEvent.click(screen.getByRole("button", { name: "返回" }));
     await screen.findByText("build-01 请求登录");
+  });
+
+  it("请求卡：大号显示 user_code 与固定提示；平台认不出时回落为「设备」", async () => {
+    visit(`/device?code=${CODE}`);
+    const api = mount();
+    vi.spyOn(api.client.auth, "deviceGet").mockResolvedValueOnce({
+      platform: "plan9",
+      name: "<b>evil</b>",
+      requestedAtMs: Date.now(),
+      expiresAtMs: Date.now() + 60_000,
+    } as never);
+    await screen.findByText(CODE);
+    expect(screen.getByText(/不是你本人刚发起的登录，请点拒绝/)).toBeTruthy();
+    expect(screen.getByText(/设备 · 刚刚/)).toBeTruthy();
+    expect(screen.queryByText(/plan9/)).toBeNull();
+    expect(screen.getByText("<b>evil</b> 请求登录")).toBeTruthy();
+  });
+
+  it("码来自链接：不勾「已核对」授权按钮禁用，勾了才能授权；拒绝不受限", async () => {
+    visit(`/device?code=${CODE}`);
+    const api = mount();
+    const approve = vi.spyOn(api.client.auth, "deviceApprove");
+    await screen.findByText("build-01 请求登录");
+    const button = screen.getByRole("button", { name: "授权" });
+    expect(button.hasAttribute("disabled")).toBe(true);
+    expect(
+      screen.getByRole("button", { name: "拒绝" }).hasAttribute("disabled"),
+    ).toBe(false);
+    fireEvent.click(button);
+    expect(approve).not.toHaveBeenCalled();
+    confirmCode();
+    expect(button.hasAttribute("disabled")).toBe(false);
+  });
+
+  it("手输的码本身就是核对：没有勾选项，授权直接可用", async () => {
+    visit("/device");
+    mount();
+    await h1();
+    enter("bcdfghjk");
+    fireEvent.submit(codeInput().closest("form")!);
+    await screen.findByText("build-01 请求登录");
+    expect(screen.queryByRole("checkbox")).toBeNull();
+    expect(
+      screen.getByRole("button", { name: "授权" }).hasAttribute("disabled"),
+    ).toBe(false);
   });
 });

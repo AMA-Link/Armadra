@@ -43,6 +43,10 @@ export const cloudAuth: MessageModule = {
     "cloud.auth.platform.desktop": "桌面",
     "cloud.auth.platform.browser": "浏览器",
     "cloud.auth.platform.server": "服务器",
+    "cloud.auth.platform.unknown": "设备",
+    "cloud.auth.deviceWarning":
+      "请确认设备上显示的就是这个码。不是你本人刚发起的登录，请点拒绝",
+    "cloud.auth.deviceVerified": "我已在设备上核对过这个码",
     "cloud.auth.stepUpTitle": "再验证一次",
     "cloud.auth.stepUpConfirm": "验证并授权",
     "cloud.auth.stepUpCode": "改用验证码",
@@ -93,6 +97,10 @@ export const cloudAuth: MessageModule = {
     "cloud.auth.platform.desktop": "Desktop",
     "cloud.auth.platform.browser": "Browser",
     "cloud.auth.platform.server": "Server",
+    "cloud.auth.platform.unknown": "Device",
+    "cloud.auth.deviceWarning":
+      "Make sure this is the code shown on your device. If you didn't just start this sign-in yourself, decline",
+    "cloud.auth.deviceVerified": "I checked this code on the device",
     "cloud.auth.stepUpTitle": "Verify it's you",
     "cloud.auth.stepUpConfirm": "Verify and authorize",
     "cloud.auth.stepUpCode": "Use a code instead",

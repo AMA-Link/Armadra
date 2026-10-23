@@ -15,6 +15,7 @@ import {
 } from "@/app/preferences-store";
 import { Button } from "@/ui/button";
 import { Card, CardContent } from "@/ui/card";
+import { Checkbox } from "@/ui/checkbox";
 import { Field, FieldError, FieldLabel } from "@/ui/field";
 import { Input } from "@/ui/input";
 import {
@@ -123,6 +124,9 @@ export function DevicePage({
   );
   const [error, setError] = React.useState("");
   const [busy, setBusy] = React.useState(false);
+  // 码来自链接（可能是别人发来的）：授权前要人确认核对过设备上显示的码。手输的码本身就是核对。
+  const [fromUrl] = React.useState(() => normalizeUserCode(code) !== null);
+  const [verified, setVerified] = React.useState(false);
 
   const lookup = React.useCallback(
     async (userCode: string, live: () => boolean = () => true) => {
@@ -267,9 +271,10 @@ export function DevicePage({
     const Icon = isPlatform(request.platform)
       ? PLATFORM_ICON[request.platform]
       : Monitor;
+    // 平台字符串由发起设备自报：认不出的一律是通用「设备」，不把原文当文案。
     const platform = isPlatform(request.platform)
       ? t(`cloud.auth.platform.${request.platform}`)
-      : request.platform;
+      : t("cloud.auth.platform.unknown");
     return (
       <AuthLayout title={t("cloud.auth.deviceTitle")}>
         <Card>
@@ -296,6 +301,33 @@ export function DevicePage({
             </div>
           </CardContent>
         </Card>
+        <div className="flex flex-col items-center gap-1">
+          <p className="text-meta text-muted-foreground">
+            {t("cloud.auth.deviceCode")}
+          </p>
+          <p
+            data-slot="device-user-code"
+            className="font-mono text-display font-semibold tracking-widest tabular-nums"
+          >
+            {userCode}
+          </p>
+        </div>
+        <p className="text-center text-meta text-muted-foreground text-balance">
+          {t("cloud.auth.deviceWarning")}
+        </p>
+        {fromUrl && (
+          <Field orientation="horizontal">
+            <Checkbox
+              id={`${id}-verified`}
+              checked={verified}
+              disabled={busy}
+              onCheckedChange={(value) => setVerified(value === true)}
+            />
+            <FieldLabel htmlFor={`${id}-verified`}>
+              {t("cloud.auth.deviceVerified")}
+            </FieldLabel>
+          </Field>
+        )}
         {error !== "" && (
           <p role="alert" className="text-center text-body text-destructive">
             {error}
@@ -314,6 +346,7 @@ export function DevicePage({
           <Button
             size="lg"
             className="flex-1"
+            disabled={fromUrl && !verified}
             loading={busy}
             onClick={() => void decide(userCode, request, true)}
           >
