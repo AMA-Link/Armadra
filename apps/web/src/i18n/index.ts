@@ -13,6 +13,8 @@ import { cloudAuth } from "./cloud-auth";
 import { cloudShell } from "./cloud-shell";
 import { cloudOps } from "./cloud-ops";
 import { cloudHosts } from "./cloud-hosts";
+import { cloudAccount } from "./cloud-account";
+import { cloudBilling } from "./cloud-billing";
 import { collab } from "./collab";
 import { connection } from "./connection";
 import { commands } from "./commands";
@@ -170,6 +172,8 @@ export const MESSAGE_MODULES = {
   "cloud-shell": cloudShell,
   "cloud-ops": cloudOps,
   "cloud-hosts": cloudHosts,
+  "cloud-account": cloudAccount,
+  "cloud-billing": cloudBilling,
   services,
   links,
   "mod-commands": modCommands,

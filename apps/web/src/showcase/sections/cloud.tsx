@@ -265,21 +265,26 @@ function CloudSamples({ session }: { session: ConsoleSession }) {
       </div>
 
       <div className="flex flex-col gap-4">
-        {["/me/hosts", `/me/hosts/${MOCK_PERSONAL.linkHost}`, "/me/links"].map(
-          (path) => {
-            const match = matchRoute(path)!;
-            return (
-              <div
-                key={path}
-                className="h-[520px] overflow-hidden rounded-card border border-border"
-              >
-                <ConsoleShell {...shellProps} match={match}>
-                  <PersonalPage match={match} />
-                </ConsoleShell>
-              </div>
-            );
-          },
-        )}
+        {[
+          "/me",
+          "/me/hosts",
+          `/me/hosts/${MOCK_PERSONAL.linkHost}`,
+          "/me/links",
+          "/me/account",
+          "/me/account?tab=devices",
+        ].map((path) => {
+          const match = matchRoute(...(path.split("?") as [string, string?]))!;
+          return (
+            <div
+              key={path}
+              className="h-[520px] overflow-hidden rounded-card border border-border"
+            >
+              <ConsoleShell {...shellProps} match={match}>
+                <PersonalPage match={match} />
+              </ConsoleShell>
+            </div>
+          );
+        })}
       </div>
 
       <div className="flex flex-col gap-4">

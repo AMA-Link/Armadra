@@ -49,6 +49,9 @@ function AccessTab({
   const access = useHostAccess(space, host.sourceId);
   const revoke = useRevokeAccess(space, host.sourceId);
   const [target, setTarget] = React.useState<HostAccess | null>(null);
+  // 关闭确认框的动画里 target 已是 null：标题用最后一个，免得闪空。
+  const lastTarget = React.useRef(target);
+  if (target !== null) lastTarget.current = target;
 
   const columns = React.useMemo<DataColumn<HostAccess>[]>(
     () => [
@@ -83,7 +86,8 @@ function AccessTab({
   const rows = access.data.access;
   if (rows.length === 0)
     return <EmptyState title={t("cloud.hosts.noAccess")} />;
-  const label = target?.email ?? target?.accountId ?? "";
+  const label =
+    lastTarget.current?.email ?? lastTarget.current?.accountId ?? "";
   return (
     <>
       <DataList

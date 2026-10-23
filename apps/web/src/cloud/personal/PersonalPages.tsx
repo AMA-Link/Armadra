@@ -5,11 +5,15 @@ import { LinksView } from "../links/LinksView";
 import type { RouteMatch } from "../router";
 import { PageHeader } from "../shell/PageHeader";
 import { PERSONAL_SPACE } from "../space";
+import { AccountPage } from "./AccountPage";
+import { OverviewPage } from "./OverviewPage";
 
-/** `/me/*` 的页面（云端控制台 §3.2）；还没做的页面只有页头。 */
+/** `/me/*` 的页面（云端控制台 §3.2）；M2 的 API 令牌还只有页头。 */
 export function PersonalPage({ match }: { match: RouteMatch }) {
   const t = useT();
   switch (match.id) {
+    case "me":
+      return <OverviewPage />;
     case "meHosts":
       return (
         <>
@@ -26,6 +30,8 @@ export function PersonalPage({ match }: { match: RouteMatch }) {
           <LinksView space={PERSONAL_SPACE} />
         </>
       );
+    case "meAccount":
+      return <AccountPage match={match} />;
     default:
       return <PageHeader title={t(`cloud.nav.${match.nav ?? ""}`)} />;
   }
