@@ -35,6 +35,8 @@ import { useHumanNeedsSync } from "../notifications/use-human-needs";
 import { useThresholdAlerts } from "../panels/resources/threshold-alerts";
 import { syncDocumentPreferences } from "./preferences-store";
 import { useAppKeybindings } from "./use-app-keybindings";
+import { useFirstScreenEnter } from "./use-first-screen-enter";
+import "./first-screen.css";
 import { useLocaleMirror } from "./use-locale-mirror";
 import { useBoardSync } from "./use-board-sync";
 import { useWorkspaceAccessLost } from "./use-access-lost";
@@ -87,6 +89,8 @@ function AppShell() {
   const workspace = useCanvasStore((state) => state.workspace);
   const minimapCollapsed = useMinimapPreferences((state) => state.collapsed);
   const compact = useCompactLayout();
+  // 开屏刚退场的那一次，侧栏 → 画布 → 工具三块错落入场（`first-screen.css`）
+  const enter = useFirstScreenEnter();
 
   const queryClient = useQueryClient();
   // Every /api call made before this device paired was refused, and some
@@ -127,7 +131,10 @@ function AppShell() {
     // 和画布里贴边的浮层（工具簇、通知条、Dock、缩略图）跟着整体内缩，状态栏下
     // 只剩这块底色。底边不在这里让：手机布局的底部导航自己垫主页横条，画布底部
     // 的浮层各自加 `--safe-bottom`，否则那一截会算两遍。
-    <div className="flex h-full overflow-hidden bg-background pt-[var(--safe-top)] pr-[var(--safe-right)] pl-[var(--safe-left)]">
+    <div
+      className="app-shell flex h-full overflow-hidden bg-background pt-[var(--safe-top)] pr-[var(--safe-right)] pl-[var(--safe-left)]"
+      data-enter={enter === "off" ? undefined : enter}
+    >
       {/* 必须是整棵树的第一个子节点。原生层算可拖拽区域时按 DOM 顺序把
           `drag` 矩形并进去、`no-drag` 矩形减出来，后出现的覆盖先出现的——
           它排在侧栏后面时，侧栏标题栏里那几颗 `no-drag` 的按钮先减掉、再被
