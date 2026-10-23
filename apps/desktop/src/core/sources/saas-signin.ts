@@ -150,23 +150,40 @@ export class CloudSignIn {
       pending.deviceCode,
     );
     if (answer.status === "pending") return { status: "pending" };
-    this.devices.delete(serviceId);
-    if (answer.status !== "approved") return { status: answer.status };
-    await host.serial(`remote ${serviceId}`, async () => {
+    if (answer.status !== "approved") {
+      if (this.devices.get(serviceId) === pending) {
+        this.devices.delete(serviceId);
+      }
+      return { status: answer.status };
+    }
+    const landed = await host.serial(`remote ${serviceId}`, async () => {
+      // 等锁期间这一行可能已被删（或被重新发起的登录取代）：不在了就丢弃这份会话。
+      const current = host.store.remote(serviceId);
+      if (current === undefined || this.devices.get(serviceId) !== pending) {
+        return false;
+      }
+      this.devices.delete(serviceId);
       await host.secrets.putRemote(serviceId, {
         refreshToken: answer.session.refreshToken,
         deviceId: answer.session.deviceId,
       });
       host.remember(serviceId, answer.session);
       host.store.upsertRemote({
-        ...row,
+        ...current,
         accountHint: clip(
           answer.session.email || answer.session.displayName,
           256,
         ),
         lastOkAtMs: host.now(),
       });
+      return true;
     });
+    if (!landed) {
+      await host.remote
+        .logout(host.endpoint(row), answer.session.accessToken)
+        .catch(() => undefined);
+      return { status: "expired" };
+    }
     host.log.info("signed in to a remote service", { serviceId });
     return { status: "ready" };
   }

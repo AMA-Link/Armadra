@@ -1106,13 +1106,16 @@ export class SourcesService {
         .logout(this.endpoint(row), cached.accessToken)
         .catch(() => undefined);
     }
-    this.access.delete(serviceId);
-    this.capabilities.delete(serviceId);
-    this.cloudSignIn.forget(serviceId);
-    await this.secrets.clearRemote(serviceId);
-    // 经它发出的分享链接随登记一起失效（中继侧的源已删），存着的整条链接也删。
-    await this.secrets.clearShareLinks(serviceId).catch(() => undefined);
-    this.store.deleteRemote(serviceId);
+    // 清理与设备码轮询的落地用同一把锁：批准恰好在删除途中到达时，轮询看到行没了就丢弃会话。
+    await this.serial(`remote ${serviceId}`, async () => {
+      this.access.delete(serviceId);
+      this.capabilities.delete(serviceId);
+      this.cloudSignIn.forget(serviceId);
+      await this.secrets.clearRemote(serviceId);
+      // 经它发出的分享链接随登记一起失效（中继侧的源已删），存着的整条链接也删。
+      await this.secrets.clearShareLinks(serviceId).catch(() => undefined);
+      this.store.deleteRemote(serviceId);
+    });
     this.options.log.info("removed a remote service", { serviceId });
     return {};
   }

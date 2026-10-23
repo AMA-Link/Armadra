@@ -238,7 +238,9 @@ function rejected(status: number, body: unknown, during: string): never {
     case "limit_reached":
       throw fail(
         "limit_reached",
-        "这个空间的主机数已到上限",
+        details.quota === "hosts"
+          ? "这个空间的主机数已到上限"
+          : "远程服务的上限已到",
         typeof details.quota === "string"
           ? { quota: details.quota, used: details.used, limit: details.limit }
           : undefined,

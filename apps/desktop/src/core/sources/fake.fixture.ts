@@ -152,6 +152,8 @@ export interface FakeWorld {
     /** 下一次取注册令牌答的错误（一次性）。 */
     tokenRefusal?: { status: number; code: string };
     registrationTokens: { space: unknown }[];
+    /** 设备码批准的答案发出之前执行（制造竞态）。 */
+    beforeApproved?: () => Promise<void>;
   };
   readonly cores: Map<string, FakeCore>;
   /** 直连 hello 不回答（等超时）。 */
@@ -377,6 +379,7 @@ async function cloud(
     }
     if (device.status !== "approved")
       return json(200, { status: device.status });
+    await world.cloud.beforeApproved?.();
     const id = `dev-${Math.random().toString(36).slice(2, 8)}`;
     return json(200, {
       status: "approved",

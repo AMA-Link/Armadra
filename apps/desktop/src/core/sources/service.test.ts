@@ -1217,6 +1217,29 @@ describe("Armadra 云：设备码登录与登记到空间（契约 §33.11）", 
     ).toBe("not_implemented");
   });
 
+  it("批准到达时这一行已被删：丢弃会话，不留凭据，尽力登出", async () => {
+    const { remote } = await start();
+    world.cloud.device.status = "approved";
+    clock += 6_000;
+    world.cloud.beforeApproved = async () => {
+      world.cloud.beforeApproved = undefined;
+      await saas.remoteRemove(remote.serviceId);
+    };
+    const before = world.requests.length;
+    expect(await saas.remoteDevicePoll(remote.serviceId)).toEqual({
+      status: "expired",
+    });
+    expect((await saas.list()).remotes).toEqual([]);
+    expect(backend.values.has(`armadra-remote-${remote.serviceId}`)).toBe(
+      false,
+    );
+    expect(
+      world.requests
+        .slice(before)
+        .some((one) => one.url.endsWith("/v1/auth/logout")),
+    ).toBe(true);
+  });
+
   async function signedIn() {
     const { remote } = await start();
     world.cloud.device.status = "approved";
