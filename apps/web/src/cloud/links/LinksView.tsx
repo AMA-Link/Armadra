@@ -2,7 +2,6 @@ import * as React from "react";
 import { Ellipsis } from "lucide-react";
 
 import { useT } from "@/app/preferences-store";
-import { tp } from "../i18n-plural";
 import {
   ResponsiveDialog,
   ResponsiveDialogContent,
@@ -33,16 +32,13 @@ import { ConfirmAction } from "../ui/ConfirmAction";
 import { DataList, type DataColumn } from "../ui/DataList";
 import { InlineError } from "../ui/InlineError";
 import { PageState } from "../ui/PageState";
-import { RelativeTime } from "../ui/RelativeTime";
+import { Expiry } from "../ui/Expiry";
 import {
   useLinks,
   useRevokeLink,
   useUpdateLinkNote,
   type LinkRow,
 } from "./data";
-
-const DAY = 86_400_000;
-const SOON_DAYS = 7;
 
 /** 用量 `{used} / {max}`；没有上限只写已用。 */
 function useUsage() {
@@ -51,20 +47,6 @@ function useUsage() {
     row.maxUses === null
       ? String(row.uses)
       : t("cloud.links.usesValue", { used: row.uses, max: row.maxUses });
-}
-
-function Expiry({ row }: { row: LinkRow }) {
-  const t = useT();
-  const left = row.expiresAtMs - Date.now();
-  if (left <= 0)
-    return <Badge variant="outline">{t("cloud.common.expired")}</Badge>;
-  if (left <= SOON_DAYS * DAY)
-    return (
-      <span className="text-warn-text">
-        {tp("cloud.common.expiresIn", Math.max(1, Math.ceil(left / DAY)))}
-      </span>
-    );
-  return <RelativeTime ms={row.expiresAtMs} />;
 }
 
 function EditNoteDialog({
@@ -271,7 +253,7 @@ export function LinksView({
       {
         id: "expires",
         header: t("cloud.hosts.expires"),
-        cell: (row) => <Expiry row={row} />,
+        cell: (row) => <Expiry ms={row.expiresAtMs} />,
       },
       ...(rows.some((row) => row.revokedAtMs !== null)
         ? [
