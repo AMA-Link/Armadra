@@ -355,7 +355,7 @@ export function NodeHeader({
       {status && (
         <NodeStatus
           status={status}
-          wide={node.size.width >= STATUS_PILL_MIN_WIDTH}
+          wide={(node.size?.width ?? 0) >= STATUS_PILL_MIN_WIDTH}
           popover={statusPopover}
         />
       )}
