@@ -223,9 +223,6 @@ describe("AI commit-message preview", () => {
         }) as HTMLButtonElement
       ).disabled,
     ).toBe(true);
-    expect(
-      screen.getByText(/does not use the Claude subscription login/),
-    ).toBeTruthy();
     expect(props.generate).not.toHaveBeenCalled();
   });
 });

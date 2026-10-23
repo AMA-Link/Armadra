@@ -13,16 +13,12 @@ export const gitRepository: MessageModule = {
     "gitRepo.branches": "分支",
     "gitRepo.history": "历史",
     "gitRepo.reflog": "引用日志",
-    "gitRepo.reflogSafety":
-      "引用日志记的是每个引用曾经指向哪里。一次 reset 或 rebase 之后，被丢下的提交不再被任何分支指到，这里是唯一还能找到它的地方。选择器（如 HEAD@{3}）会随新条目往前挤而指向别的东西，所以下面的动作一律用该行自己的对象 ID。",
     "gitRepo.reflogReference": "引用",
     "gitRepo.reflogLoad": "读取",
     "gitRepo.reflogEmpty": "这个引用还没有日志。",
     "gitRepo.reflogMore": "加载更早的条目",
     "gitRepo.worktrees": "Worktree",
     "gitRepo.rebaseTodo": "交互式 rebase todo",
-    "gitRepo.rebaseTodoSafety":
-      "先列出将被重放的提交（最旧在前），调整顺序与处理方式后再执行；执行时按这份列表非交互运行，不会打开编辑器。列表必须覆盖区间内的全部提交，丢弃只能显式选 drop。reword 的信息在这里就定下来，因为运行时没有编辑器可开；squash 保留 Git 自己拼好的信息，fixup 丢掉被并入那条的信息。",
     "gitRepo.rebaseTodoChoose": "先在上面选择要重放到的提交。",
     "gitRepo.rebaseTodoEmpty": "该目标之后没有需要重放的提交。",
     "gitRepo.rebaseTodoMerges":
@@ -36,8 +32,6 @@ export const gitRepository: MessageModule = {
     "gitRepo.rebaseTodo.drop": "drop：丢弃该提交",
     "gitRepo.rebaseTodoMessage": "新的提交信息",
     "gitRepo.rebaseTodoRewordNeedsMessage": "reword 必须给出新的提交信息。",
-    "gitRepo.rebaseTodoEditStops":
-      "重放到这一条后会停下来等你修改，改完在「合并与冲突」里继续。",
     "gitRepo.rebaseTodoUp": "上移",
     "gitRepo.rebaseTodoDown": "下移",
     "gitRepo.rebaseTodoSquashNeedsKept":
@@ -79,20 +73,15 @@ export const gitRepository: MessageModule = {
     "gitRepo.setUpstream": "设置上游跟踪",
     "gitRepo.remoteBranch": "拉取的远端分支",
     "gitRepo.sync": "同步",
-    "gitRepo.syncSafety":
-      "同步按获取 → 仅快进拉取 → 推送依次执行。任一步失败即停止，并说明停在哪一步、当前 HEAD 与远端 OID；分叉时不会自动合并或变基。",
     "gitRepo.remoteOid": "已观察到的远端 OID",
     "gitRepo.remoteBranchMissing": "远端尚无此分支",
     "gitRepo.leaseReplaces": "将被覆盖的远端提交",
-    "gitRepo.leaseSafety":
-      "只在远端分支仍停在上面这个 OID 时才覆盖它；远端已被他人推进则拒绝。没有不带租约的强制推送。",
     "gitRepo.leaseAcknowledge": "我确认要改写上面这个远端提交",
     "gitRepo.confirmForce": "确认强制推送",
     "gitRepo.confirm": "确认执行",
     "gitRepo.cancel": "取消",
     "gitRepo.confirmTitle": "确认仓库操作",
-    "gitRepo.confirmDescription":
-      "请核对仓库与目标。服务会再次检查当前分支和提交，拒绝过期操作。",
+    "gitRepo.confirmAction": "{action}？",
     "gitRepo.repository": "仓库",
     "gitRepo.target": "目标",
     "gitRepo.head": "已观察到的 HEAD",
@@ -115,25 +104,13 @@ export const gitRepository: MessageModule = {
     "gitRepo.copiedOid": "已复制 OID",
     "gitRepo.checkoutCommit": "检出此提交（游离 HEAD）",
     "gitRepo.revert": "回退此提交",
-    "gitRepo.revertSafety":
-      "回退会新建一个提交，把所选提交的改动反向应用；原提交仍留在历史中，不会被改写。冲突时进入冲突中心，由你继续或中止；回退没有跳过。",
-    "gitRepo.detachedSafety":
-      "检出提交后 HEAD 处于游离状态：分支不会移动，之后新建的提交不属于任何分支，需要先从该提交创建分支才能保留。",
     "gitRepo.branchFromCommit": "从该提交创建分支",
     "gitRepo.reset": "重置到该提交",
     "gitRepo.resetMode": "重置方式",
     "gitRepo.reset.soft": "soft：只移动分支",
     "gitRepo.reset.mixed": "mixed：移动分支并重置索引",
     "gitRepo.reset.hard": "hard：移动分支并覆盖工作区",
-    "gitRepo.resetSafety.soft":
-      "只移动当前分支；索引和工作区原样保留，两者与新 HEAD 的差异会留在暂存区。",
-    "gitRepo.resetSafety.mixed":
-      "移动当前分支并重置索引；工作区文件内容不变，只是不再处于暂存状态。",
-    "gitRepo.resetSafety.hard":
-      "移动当前分支，并用该提交的内容覆盖索引和工作区。未提交的改动会被丢弃；执行前会自动创建一个 stash 快照作为可恢复点。",
     "gitRepo.resetDiscard": "我确认丢弃当前未提交的改动",
-    "gitRepo.resetRecovery":
-      "被丢弃的内容会先保存为一条 stash（含未跟踪文件），可在 Stash 页找回。",
     "gitRepo.worktreePath": "Worktree 路径（工作区内）",
     "gitRepo.createWorktree": "创建 Worktree",
     "gitRepo.removeWorktree": "移除 Worktree",
@@ -141,8 +118,6 @@ export const gitRepository: MessageModule = {
     "gitRepo.locked": "已锁定",
     "gitRepo.dirty": "存在未提交或未跟踪文件",
     "gitRepo.clean": "工作树干净",
-    "gitRepo.worktreeSafety":
-      "只允许移除干净且已发布的非主工作树。不会强制删除文件。",
     "gitRepo.stale": "仓库已变化，请重新读取后再操作。",
     /* ---------------------- 多仓库与提交图（roadmap §4.1） ---------------- */
     "gitRepo.dirtyCount": "未提交的改动数",
@@ -167,16 +142,12 @@ export const gitRepository: MessageModule = {
     "gitRepo.branches": "Branches",
     "gitRepo.history": "History",
     "gitRepo.reflog": "Reflog",
-    "gitRepo.reflogSafety":
-      "The reference log records where a ref used to point. After a reset or a rebase the commit that was left behind is reachable from no branch, and this is the only place it can still be found. A selector such as HEAD@{3} shifts as new entries are prepended, so the actions below use each row's own object ID.",
     "gitRepo.reflogReference": "Reference",
     "gitRepo.reflogLoad": "Load",
     "gitRepo.reflogEmpty": "This reference has no log yet.",
     "gitRepo.reflogMore": "Load earlier entries",
     "gitRepo.worktrees": "Worktrees",
     "gitRepo.rebaseTodo": "Interactive rebase todo",
-    "gitRepo.rebaseTodoSafety":
-      "Review the commits that would be replayed, oldest first, reorder them and choose what happens to each, then run the list non-interactively — no editor ever opens. The list must cover every commit in the range, so dropping one means choosing drop rather than leaving it out. A reword's message is decided here, because there is no editor to open while it runs; a squash keeps Git's own combined message and a fixup discards the message of the commit it folds in.",
     "gitRepo.rebaseTodoChoose": "Choose the commit to replay onto above.",
     "gitRepo.rebaseTodoEmpty": "There is nothing to replay onto that commit.",
     "gitRepo.rebaseTodoMerges":
@@ -193,8 +164,6 @@ export const gitRepository: MessageModule = {
     "gitRepo.rebaseTodoMessage": "New commit message",
     "gitRepo.rebaseTodoRewordNeedsMessage":
       "A reword needs the message it replaces the old one with.",
-    "gitRepo.rebaseTodoEditStops":
-      "The replay stops here so you can amend the commit; continue it from Merge and conflicts.",
     "gitRepo.rebaseTodoUp": "Move up",
     "gitRepo.rebaseTodoDown": "Move down",
     "gitRepo.rebaseTodoSquashNeedsKept":
@@ -236,20 +205,15 @@ export const gitRepository: MessageModule = {
     "gitRepo.setUpstream": "Set upstream tracking",
     "gitRepo.remoteBranch": "Remote branch to pull",
     "gitRepo.sync": "Sync",
-    "gitRepo.syncSafety":
-      "Sync runs fetch, then a fast-forward-only pull, then push. A failing step stops there and reports which step, the current HEAD, and the remote OID. A diverged branch is never merged or rebased for you.",
     "gitRepo.remoteOid": "Observed remote OID",
     "gitRepo.remoteBranchMissing": "The remote has no such branch yet",
     "gitRepo.leaseReplaces": "Remote commit this replaces",
-    "gitRepo.leaseSafety":
-      "Overwrite the remote branch only while it still points at the object ID above; a remote someone else advanced is refused. There is no force push without a lease.",
     "gitRepo.leaseAcknowledge": "I want to rewrite the remote commit above",
     "gitRepo.confirmForce": "Confirm force push",
     "gitRepo.confirm": "Confirm operation",
     "gitRepo.cancel": "Cancel",
     "gitRepo.confirmTitle": "Confirm repository operation",
-    "gitRepo.confirmDescription":
-      "Check the repository and target. The service checks the current branch and commit again and rejects stale operations.",
+    "gitRepo.confirmAction": "{action}?",
     "gitRepo.repository": "Repository",
     "gitRepo.target": "Target",
     "gitRepo.head": "Observed HEAD",
@@ -272,25 +236,13 @@ export const gitRepository: MessageModule = {
     "gitRepo.copiedOid": "OID copied",
     "gitRepo.checkoutCommit": "Check out this commit (detached HEAD)",
     "gitRepo.revert": "Revert this commit",
-    "gitRepo.revertSafety":
-      "Revert creates a new commit that applies the selected commit's changes backwards. The original commit stays in history and is never rewritten. A conflict goes to the conflict centre for you to continue or abort; a revert has no skip.",
-    "gitRepo.detachedSafety":
-      "Checking out a commit detaches HEAD: the branch does not move, and commits made afterwards belong to no branch until you create one from that commit.",
     "gitRepo.branchFromCommit": "Branch from this commit",
     "gitRepo.reset": "Reset to this commit",
     "gitRepo.resetMode": "Reset mode",
     "gitRepo.reset.soft": "soft: move the branch only",
     "gitRepo.reset.mixed": "mixed: move the branch and reset the index",
     "gitRepo.reset.hard": "hard: move the branch and replace the worktree",
-    "gitRepo.resetSafety.soft":
-      "Moves the current branch only. The index and worktree keep everything, so the difference from the new HEAD stays staged.",
-    "gitRepo.resetSafety.mixed":
-      "Moves the current branch and resets the index. File contents in the worktree are unchanged; they are simply no longer staged.",
-    "gitRepo.resetSafety.hard":
-      "Moves the current branch and replaces the index and worktree with that commit's content. Uncommitted changes are discarded; a stash snapshot is recorded first as the way back.",
     "gitRepo.resetDiscard": "I want to discard the uncommitted changes",
-    "gitRepo.resetRecovery":
-      "The discarded state is stashed first, including untracked files, and can be recovered from the Stashes tab.",
     "gitRepo.worktreePath": "Worktree path (inside workspace)",
     "gitRepo.createWorktree": "Create worktree",
     "gitRepo.removeWorktree": "Remove worktree",
@@ -298,8 +250,6 @@ export const gitRepository: MessageModule = {
     "gitRepo.locked": "Locked",
     "gitRepo.dirty": "Uncommitted or untracked files",
     "gitRepo.clean": "Clean worktree",
-    "gitRepo.worktreeSafety":
-      "Only clean, published, non-main worktrees can be removed. Files are never force-deleted.",
     "gitRepo.stale": "The repository changed. Read it again before operating.",
     /* ------------- Multi-repository and commit graph (roadmap §4.1) ------- */
     "gitRepo.dirtyCount": "Uncommitted changes",

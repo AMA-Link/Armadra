@@ -209,12 +209,11 @@ it("refuses a fixup with nothing kept before it, exactly as a squash", async () 
   expect(props.request).not.toHaveBeenCalled();
 });
 
-it("says that an edit stops the replay rather than finishing it", async () => {
+it("keeps the rebase enabled when a step is set to edit", async () => {
   setup();
   await screen.findByText("First change");
   const commands = screen.getAllByLabelText("gitRepo.rebaseTodoCommand");
   await chooseOption(commands[0]!, "gitRepo.rebaseTodo.edit");
-  expect(screen.getByText("gitRepo.rebaseTodoEditStops")).toBeTruthy();
   expect(
     (
       screen.getByRole("button", {
