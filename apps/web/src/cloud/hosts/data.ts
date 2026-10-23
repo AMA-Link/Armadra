@@ -31,12 +31,14 @@ export function useHosts(
   space: CloudSpace,
   filters: HostFilters = {},
   limit = HOST_PAGE,
+  enabled = true,
 ) {
   const api = useCloudApi();
   const { status, q } = filters;
   return useInfiniteQuery({
     queryKey: cloudKeys.hosts(keyOfSpace(space), { status, q, limit }),
     initialPageParam: undefined as string | undefined,
+    enabled,
     placeholderData: keepPreviousData,
     queryFn: ({ pageParam }) =>
       api.client.sources.list({
