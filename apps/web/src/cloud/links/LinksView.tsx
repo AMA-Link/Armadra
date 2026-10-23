@@ -205,7 +205,7 @@ export function LinksView({
   const t = useT();
   const links = useLinks(space, sourceId);
   const usage = useUsage();
-  const hostNames = useHosts(space, {}, 200);
+  const hostNames = useHosts(space, {}, 200, sourceId === undefined);
   const names = React.useMemo(
     () =>
       new Map(

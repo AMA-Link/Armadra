@@ -30,11 +30,16 @@ const STATUSES = ["online", "offline", "revoked"] as const;
 const ALL = "all";
 
 /** 地址里的筛选（§1.4）：`?status=online&q=build`，可分享、可后退。 */
-export function filtersOf(query: URLSearchParams): HostFilters {
+export function filtersOf(
+  query: URLSearchParams,
+  space: CloudSpace,
+): HostFilters {
   const status = query.get("status");
   const q = query.get("q")?.trim();
   return {
-    ...(STATUSES.some((value) => value === status)
+    // 个人空间没有已撤销的主机（目录不列），地址里写了也丢掉。
+    ...(STATUSES.some((value) => value === status) &&
+    (status !== "revoked" || space.kind === "team")
       ? { status: status as (typeof STATUSES)[number] }
       : {}),
     ...(q ? { q } : {}),
@@ -163,7 +168,7 @@ export function HostDirectory({
   match: RouteMatch;
 }) {
   const t = useT();
-  const filters = filtersOf(match.query);
+  const filters = filtersOf(match.query, space);
   const hosts = useHosts(space, filters);
   const rows = React.useMemo(
     () => hosts.data?.pages.flatMap((page) => page.sources) ?? [],
@@ -172,12 +177,21 @@ export function HostDirectory({
   const [draft, setDraft] = React.useState(filters.q ?? "");
   const base = spaceBase(space);
 
+  // 地址里的搜索词被外部改了（后退、清除筛选）：输入框跟着变。
+  // 自己写进地址的不算（免得打字时被回弹）。
+  const pushed = React.useRef(filters.q ?? "");
+  React.useEffect(() => {
+    if ((filters.q ?? "") === pushed.current) return;
+    pushed.current = filters.q ?? "";
+    setDraft(pushed.current);
+  }, [filters.q]);
+
   React.useEffect(() => {
     if (draft.trim() === (filters.q ?? "")) return;
-    const timer = setTimeout(
-      () => setParam("q", draft.trim()),
-      SEARCH_DEBOUNCE_MS,
-    );
+    const timer = setTimeout(() => {
+      pushed.current = draft.trim();
+      setParam("q", draft.trim());
+    }, SEARCH_DEBOUNCE_MS);
     return () => clearTimeout(timer);
   }, [draft, filters.q]);
 

@@ -1,4 +1,10 @@
-import { fireEvent, screen, waitFor, within } from "@testing-library/react";
+import {
+  act,
+  fireEvent,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 import type { MockHost } from "../mock/fixtures";
@@ -91,6 +97,26 @@ describe("个人 · 主机目录", () => {
     fireEvent.click(screen.getByRole("button", { name: "清除筛选" }));
     expect(await screen.findByText("nas")).toBeTruthy();
     expect(window.location.search).toBe("");
+  });
+
+  it("个人空间没有已撤销的主机：?status=revoked 被丢掉，照常列出", async () => {
+    mount("/me/hosts?status=revoked");
+    expect(await screen.findByText("laptop")).toBeTruthy();
+    expect(screen.getByText("nas")).toBeTruthy();
+  });
+
+  it("地址里的搜索词被外部改了（后退），搜索框跟着变", async () => {
+    mount("/me/hosts?q=lap");
+    const box = (await screen.findByRole("searchbox", {
+      name: "搜索主机",
+    })) as HTMLInputElement;
+    expect(box.value).toBe("lap");
+    act(() => {
+      window.history.pushState(null, "", "/me/hosts");
+      window.dispatchEvent(new PopStateEvent("popstate"));
+    });
+    await waitFor(() => expect(box.value).toBe(""));
+    expect(await screen.findByText("nas")).toBeTruthy();
   });
 
   it("搜索框输入后写进地址并按它筛选", async () => {
@@ -213,9 +239,12 @@ describe("个人 · 主机详情", () => {
     ).toBeNull();
   });
 
-  it("?tab=links 只列这台主机的链接，不再画目标列", async () => {
-    mount(`/me/hosts/${LAPTOP}?tab=links`);
+  it("?tab=links 只列这台主机的链接，不再画目标列，也不为取名字再列一遍主机", async () => {
+    const api = mount(`/me/hosts/${LAPTOP}?tab=links`);
+    // 详情页本身不调目录；整个空间的链接页才要靠目录取目标名。
+    const list = vi.spyOn(api.client.sources, "list");
     expect(await screen.findByText("给小李看进度")).toBeTruthy();
+    expect(list).not.toHaveBeenCalled();
     expect(screen.queryByRole("columnheader", { name: "目标" })).toBeNull();
   });
 

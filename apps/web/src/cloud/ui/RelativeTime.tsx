@@ -18,7 +18,11 @@ export function RelativeTime({ ms }: { ms: number }) {
   return (
     <Tooltip>
       <TooltipTrigger asChild>
-        <time dateTime={new Date(ms).toISOString()} className="tabular-nums">
+        <time
+          dateTime={new Date(ms).toISOString()}
+          tabIndex={0}
+          className="tabular-nums"
+        >
           {formatRelativeTime(ms)}
         </time>
       </TooltipTrigger>

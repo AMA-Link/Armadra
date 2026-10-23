@@ -72,6 +72,8 @@ describe("RelativeTime", () => {
     const time = screen.getByText("3 小时前");
     expect(time.tagName).toBe("TIME");
     expect(time.getAttribute("datetime")).toBe(new Date(ms).toISOString());
+    // 键盘也能聚焦看到绝对时间。
+    expect(time.getAttribute("tabindex")).toBe("0");
   });
 });
 
