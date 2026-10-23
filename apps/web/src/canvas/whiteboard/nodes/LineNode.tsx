@@ -96,7 +96,7 @@ export function LineNode({
           d={`M ${path}`}
           fill="none"
           stroke={color}
-          strokeWidth={width}
+          style={{ strokeWidth: width }}
           strokeDasharray={dashArray(data.style.dash, width)}
           strokeLinecap="round"
           strokeLinejoin="round"
@@ -110,7 +110,7 @@ export function LineNode({
             )}
             fill="none"
             stroke={color}
-            strokeWidth={width}
+            style={{ strokeWidth: width }}
             strokeLinecap="round"
             strokeLinejoin="round"
           />
@@ -120,7 +120,7 @@ export function LineNode({
             d={arrowHead(points[0]!, points[1]!, head)}
             fill="none"
             stroke={color}
-            strokeWidth={width}
+            style={{ strokeWidth: width }}
             strokeLinecap="round"
             strokeLinejoin="round"
           />

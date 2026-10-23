@@ -55,7 +55,7 @@ export function ShapeNode({
           fill={opacity > 0 ? color : "none"}
           fillOpacity={opacity > 0 ? opacity : undefined}
           stroke={color}
-          strokeWidth={width}
+          style={{ strokeWidth: width }}
           strokeDasharray={dashArray(data.style.dash, width)}
           strokeLinejoin="round"
         />
