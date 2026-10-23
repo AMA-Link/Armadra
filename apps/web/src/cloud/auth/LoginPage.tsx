@@ -8,7 +8,7 @@ import { browserDevice } from "../../sources/cloud-client";
 import { TurnstileWidget } from "../../challenge/TurnstileWidget";
 import { TURNSTILE_LOGIN_ACTION } from "../../challenge/turnstile";
 import { useCloudApi } from "../api/context";
-import { describeFailure, toCloudError } from "../api/errors";
+import { describeFailure } from "../api/errors";
 import { RouteLink } from "../RouteLink";
 import { AuthLayout } from "./AuthLayout";
 
@@ -23,14 +23,11 @@ type Stage =
 export function LoginPage({
   operator,
   next,
-  hash,
   onSignedIn,
 }: {
   operator: boolean;
   /** 已过滤的站内落点。 */
   next: string | null;
-  /** 邀请等带 `#` 令牌的落点要把片段带着走。 */
-  hash: string;
   onSignedIn: () => void;
 }) {
   const t = useT();
@@ -68,8 +65,8 @@ export function LoginPage({
     try {
       await run();
     } catch (failure) {
-      const code = toCloudError(failure).code;
-      if (code === "challenge_required" || code === "challenge_invalid") {
+      // 挑战令牌一次性：任何一次失败都换新的（重建组件）。
+      if (siteKey !== null) {
         setChallenge("");
         setWidget((n) => n + 1);
       }
@@ -81,7 +78,7 @@ export function LoginPage({
 
   const signIn = () =>
     guarded(async () => {
-      const answer = await api.client.auth.login({
+      const answer = await (operator ? api.ops : api.client).auth.login({
         account: account.trim(),
         password,
         device: browserDevice(),
@@ -104,7 +101,10 @@ export function LoginPage({
 
   const verify = (challengeId: string) =>
     guarded(async () => {
-      await api.client.auth.mfaVerify({ challengeId, code: code.trim() });
+      await (operator ? api.ops : api.client).auth.mfaVerify({
+        challengeId,
+        code: code.trim(),
+      });
       onSignedIn();
     });
 
@@ -247,7 +247,7 @@ export function LoginPage({
             <RouteLink href="/reset">{t("cloud.auth.forgot")}</RouteLink>
           </Button>
           <Button asChild variant="link">
-            <RouteLink href={`/register${suffix}${hash}`}>
+            <RouteLink href={`/register${suffix}`}>
               {t("cloud.auth.toRegister")}
             </RouteLink>
           </Button>
