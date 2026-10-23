@@ -1672,6 +1672,18 @@ apps/web/src/cloud/
 - 撤销的主机不再出现在目录里，`status=revoked` 对个人空间恒为空，所以个人空间的状态筛选不给「已撤销」。
 - me-stream 的落点：`sourceOnline` / `sourceOffline` / `sourceRevoked` 与 `linkUsed` 就地改查询缓存，其余事件只让对应的键过期；断线退避重连后整体过期重拉（运营数据除外）。
 
+**U5 落地说明**（Refs AMA-Link/Armadra#541）：
+
+- `/t/:team/hosts`、`/t/:team/hosts/:host`、`/t/:team/grants` 已实现；目录、详情是与个人空间共用的 `cloud/hosts/` 组件（`team` 参数带角色与团队名），授予合成与收窄判断在 `lib/cloud-grant.ts`，分享弹层 `CloudShare` 与控制台共用同一套。
+- 与上文的差异：
+  - 控制台的授予范围是整台主机（§0 #5、D6）：添加访问不选工作空间；已有工作空间范围的授予（经分享弹层建的）在控制台只改角色与到期，范围原样保留；团队访客在团队主机上必须限定工作空间，所以访客不能经控制台授予。
+  - 「在 Armadra 里登记」的深链只带 `issuer`（桌面壳 `cloud-link.ts` 只认这一个参数），不带 `space`。
+  - 主机详情对非管理者（既不是主机所有者也不是团队 owner / admin）没有页签：`grants.effective` 与 `grants.list` 都要管理权，契约里没有「看自己的权限」的过程。
+  - 授予页对本人管得了的每台主机各取一次 `grants.list`（云端没有按团队列全部授予的过程），与主机详情共用缓存；主机超过 200 台时只覆盖前 200 台。
+  - 行菜单的「标签」、`申请访问`（M2）、`移到其他空间`（M2）与分组来源（M2）不在本批。
+- 撤销即时反映：`grantChanged` 让该空间的授予列表、该主机的访问清单与有效权限过期；`accessRevoked`（不报空间）另让所有空间的授予列表、主机目录与该主机详情过期。
+- 会收窄某人有效权限的改动（降角色、缩范围、提前到期，以及新增更宽而更低的授予造成的合成降级）：对话框列出受影响的人，按钮改为「仍然授予 / 仍然更新」，云端随后撤他们已签的令牌。
+
 每批都按 ≤ 1500 行（含测试）切；估算超出时在开 PR 前再拆。M3（域名验证、单点登录、按域名自动加入、定期复核、Webhook、区域）要先有自己的设计，不在本表。
 
 每批共同验收：`pnpm --filter @armadra/web test`、`typecheck`、`pnpm repo:check`；新文案中英同步（`i18n.test.ts`）；展示页 `cloud` 分区补样本；`tools/probes/design-showcase.mjs --only=cloud` 在 390 / 768 / 1440 × 深 / 浅 生成截图（探针矩阵为 `cloud` 分区加 768 宽），`result.json.status = ok`、对比度无低于阈值、控制台无错；`locale=en` 再跑一遍 1440 深色看文字增长；`forced-colors` 与 `prefers-reduced-motion` 各一张。
