@@ -785,10 +785,10 @@ async function main() {
 
   /* ----------------------- 便签里连续输入 100 字符 ------------------------ */
 
-  // 点的是便签正文那块（`role="button"`，点了才切成 textarea），不是节点
+  // 点的是便签正文那块（`sticky-markdown`，点了才切成 textarea），不是节点
   // 正中——正中可能落在底栏或者被平移、拖拽之后叠上来的终端上。
   const sticky = await evaluate(`
-    const body = document.querySelector('[data-slot="sticky-node"] [role="button"]');
+    const body = document.querySelector('[data-slot="sticky-node"] [data-slot="sticky-markdown"]');
     if (!body) return null;
     body.scrollIntoView({ block: "center", inline: "center" });
     const rect = body.getBoundingClientRect();
@@ -801,7 +801,7 @@ async function main() {
   if (sticky.covered) {
     report.stickyCovered = true;
     await evaluate(
-      `document.querySelector('[data-slot="sticky-node"] [role="button"]').click(); return 1;`,
+      `document.querySelector('[data-slot="sticky-node"] [data-slot="sticky-markdown"]').click(); return 1;`,
     );
   } else {
     await click(sticky.x, sticky.y);

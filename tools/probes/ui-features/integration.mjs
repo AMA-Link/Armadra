@@ -198,8 +198,13 @@ export default async function integration({ stack, output, report, scenario }) {
     "手机底栏「设置」",
   );
   await phone.dialogSettled("手机设置抽屉停稳");
+  // 窄屏的设置抽屉用顶部的分区下拉切页，不再是分区列表。
   await phone.clickOn(
-    `return [...document.querySelectorAll('[role="dialog"] button, [role="dialog"] a')].find((b) => b.getAttribute("aria-label") === "Agent CLI");`,
+    `return document.querySelector('[role="dialog"] [role="combobox"][aria-label="设置"]');`,
+    "手机设置分区下拉",
+  );
+  await phone.clickOn(
+    `return [...document.querySelectorAll('[role="option"]')].find((o) => o.textContent.trim() === "Agent CLI");`,
     "手机 Agent CLI 页",
   );
   await openClaude(phone);

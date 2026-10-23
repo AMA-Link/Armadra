@@ -67,6 +67,10 @@ export default async function terminalSelection({
 
   let screen = await screenRect();
   await page.click(screen.left + 40, screen.top + 20);
+  // 刚起的 shell 会把 xterm 对终端查询的应答（设备属性）当输入收进行首，
+  // 与随后敲的命令粘在一起成了语法错误：等应答落定，Ctrl-U 清掉这一行再敲。
+  await sleep(1500);
+  await page.key("u", 2);
   await page.type("for i in $(seq 1 12); do echo line-$i-abcdefghij; done");
   await page.key("Enter");
   await page.until(
