@@ -1,6 +1,6 @@
 import { useT } from "@/app/preferences-store";
 import { Skeleton } from "@/ui/skeleton";
-import { cn } from "cn";
+import { cn } from "@/lib/cn";
 
 /**
  * 画布首屏骨架（设计系统 §5.16）：点阵底加几块节点形占位，盖在画布区上。
@@ -24,7 +24,7 @@ export function CanvasSkeleton({ chrome = false }: { chrome?: boolean }) {
       role="status"
       aria-busy="true"
       aria-label={t("state.loading")}
-      className="pointer-events-none absolute inset-0 z-[var(--z-pills)] overflow-hidden bg-[var(--canvas-bg)]"
+      className="pointer-events-none absolute inset-0 z-[var(--z-pills)] overflow-hidden bg-canvas"
       style={{
         backgroundImage:
           "radial-gradient(circle, var(--canvas-dot) 1px, transparent 1px)",
@@ -35,11 +35,11 @@ export function CanvasSkeleton({ chrome = false }: { chrome?: boolean }) {
         <div
           key={index}
           data-slot="canvas-skeleton-node"
-          className="absolute flex flex-col overflow-hidden rounded-[var(--r-card)] border border-border bg-card"
+          className="absolute flex flex-col overflow-hidden rounded-card border border-border bg-card"
           style={node.style}
         >
-          <div className="flex h-9 shrink-0 items-center gap-2 border-b border-border px-3">
-            <Skeleton className="size-4 rounded-sm" />
+          <div className="flex h-[36px] shrink-0 items-center gap-2 border-b border-border px-3">
+            <Skeleton className="size-4 rounded-tight" />
             <Skeleton className="h-3 w-1/3" />
           </div>
           <div className="flex flex-col gap-2 p-3">
@@ -57,8 +57,8 @@ export function CanvasSkeleton({ chrome = false }: { chrome?: boolean }) {
       ))}
       {chrome ? (
         <>
-          <Skeleton className="absolute top-[14px] right-[14px] h-9 w-40 rounded-[var(--r-panel)]" />
-          <Skeleton className="absolute bottom-[calc(14px+var(--safe-bottom))] left-1/2 h-[var(--dock-h)] w-64 -translate-x-1/2 rounded-[var(--r-panel)]" />
+          <Skeleton className="absolute top-[14px] right-[14px] h-[36px] w-40 rounded-panel" />
+          <Skeleton className="absolute bottom-[calc(14px+var(--safe-bottom))] left-1/2 h-[var(--dock-h)] w-64 -translate-x-1/2 rounded-panel" />
         </>
       ) : null}
     </div>

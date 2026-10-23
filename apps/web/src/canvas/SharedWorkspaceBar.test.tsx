@@ -9,6 +9,7 @@ import { createSourceRegistry, type SourceRegistry } from "@/sources/registry";
 import type { SourceDescriptor } from "@/sources/types";
 import { useCanvasStore } from "@/store/canvas-store";
 import { presenceClientId } from "@/store/canvas/presence";
+import { TooltipProvider } from "@/ui/tooltip";
 import { SharedWorkspaceBar } from "./SharedWorkspaceBar";
 
 /** 打开别人分享的工作空间：顶栏写主人、工作空间与权限，后面是在线的其他人。 */
@@ -67,9 +68,11 @@ const open = (sourceId: string) =>
 
 const mount = () =>
   render(
-    <SourcesProvider registry={registry}>
-      <SharedWorkspaceBar />
-    </SourcesProvider>,
+    <TooltipProvider>
+      <SourcesProvider registry={registry}>
+        <SharedWorkspaceBar />
+      </SourcesProvider>
+    </TooltipProvider>,
   );
 
 describe("SharedWorkspaceBar", () => {
@@ -118,6 +121,7 @@ describe("SharedWorkspaceBar", () => {
     mount();
     const members = screen.getByRole("group", { name: "Online members" });
     expect(members.textContent).toBe("B");
-    expect(screen.getByLabelText("Bob")).toBeTruthy();
+    // 名字走 Tooltip，头像不带原生 title
+    expect(screen.getByLabelText("Bob").hasAttribute("title")).toBe(false);
   });
 });
