@@ -1,7 +1,7 @@
 import * as React from "react";
 import { ChevronRight, Download, Ellipsis, Users } from "lucide-react";
 
-import { useT } from "@/app/preferences-store";
+import { usePreferencesStore, useT } from "@/app/preferences-store";
 import { rankOf } from "@/lib/cloud-grant";
 import { Avatar, AvatarFallback } from "@/ui/avatar";
 import { Badge } from "@/ui/badge";
@@ -22,7 +22,12 @@ import { ConfirmAction } from "../ui/ConfirmAction";
 import { DataList, type DataColumn } from "../ui/DataList";
 import { Expiry } from "../ui/Expiry";
 import { InlineError } from "../ui/InlineError";
-import { buildAccessRows, type AccessRow } from "./access-model";
+import {
+  buildAccessRows,
+  coveredByTeam,
+  narrowedBy,
+  type AccessRow,
+} from "./access-model";
 import { csvFileName, downloadCsv, toCsv } from "./csv";
 import { useHostAccess, type HostDetail as HostDetailData } from "./data";
 import { GrantDialog, scopeText } from "./GrantDialog";
@@ -222,6 +227,11 @@ export function TeamAccessTab({
 }) {
   const t = useT();
   const via = useViaText();
+  const locale = usePreferencesStore((state) => state.locale);
+  const list = React.useMemo(
+    () => new Intl.ListFormat(locale, { style: "narrow", type: "conjunction" }),
+    [locale],
+  );
   const access = useHostAccess(space, host.sourceId);
   const grants = useHostGrants(space, host.sourceId);
   const members = useMembers(space);
@@ -349,6 +359,41 @@ export function TeamAccessTab({
   const editable = (row: AccessRow) =>
     row.via !== "owner" && row.via !== "link";
   const target = last.current;
+  // 撤销前先算会收窄谁：列名字（云端随后撤他们已签的令牌）；撤的是个人的授予而团队全员还兜着，说明一句。
+  const revokeIds =
+    target?.kind === "revokePerson"
+      ? target.row.grants.map((grant) => grant.grantId)
+      : target?.kind === "revokeGrant"
+        ? [target.grantId]
+        : [];
+  const now = Date.now();
+  const lowered = narrowedBy({
+    grants: grants.data.grants,
+    members: members.data?.members ?? [],
+    ownerId:
+      access.data.access.find((row) => row.via === "owner")?.accountId ?? null,
+    change: { kind: "revoke", grantIds: revokeIds },
+    now,
+  });
+  const consequences = [
+    ...(lowered.length > 0
+      ? [
+          t("cloud.grants.lowers", {
+            names: list.format(lowered.map((member) => member.displayName)),
+          }),
+        ]
+      : []),
+    ...(target?.kind === "revokePerson" &&
+    target.row.accountId !== null &&
+    coveredByTeam(
+      target.row.accountId,
+      grants.data.grants,
+      members.data?.members ?? [],
+      now,
+    )
+      ? [t("cloud.grants.stillViaTeam")]
+      : []),
+  ];
   const revokeName =
     target?.kind === "revokePerson"
       ? target.row.name
@@ -462,9 +507,8 @@ export function TeamAccessTab({
           host: host.name,
         })}
         actionLabel={t("cloud.hosts.removeAccess")}
-        {...(target?.kind === "revokePerson" &&
-        teamGrantCovers(target.row, grants.data.grants)
-          ? { consequence: t("cloud.grants.stillViaTeam") }
+        {...(consequences.length > 0
+          ? { consequence: consequences.join("\n") }
           : {})}
         onConfirm={async () => {
           if (!dialog) return;
@@ -487,15 +531,5 @@ export function TeamAccessTab({
         }}
       />
     </div>
-  );
-}
-
-/** 撤销他本人的授予后，团队全员的授予还会让他保有访问。 */
-function teamGrantCovers(row: AccessRow, grants: readonly Grant[]): boolean {
-  return (
-    row.kind === "person" &&
-    grants.some(
-      (grant) => grant.subject.kind === "team" && grant.revokedAtMs === null,
-    )
   );
 }

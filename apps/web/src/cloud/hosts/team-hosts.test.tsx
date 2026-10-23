@@ -182,7 +182,7 @@ describe("登记对话框", () => {
     fireEvent.click(within(dialog).getByRole("button", { name: "复制命令" }));
     await waitFor(() =>
       expect(write).toHaveBeenCalledWith(
-        "ARMADRA_CLOUD_REGISTRATION_TOKEN=armadra-reg-mock-1 armadra-server cloud register --issuer https://app.armadra.test",
+        `read -rs T && printf %s "$T" | armadra-server cloud register --issuer 'https://app.armadra.test' --token-stdin`,
       ),
     );
   });
@@ -548,6 +548,76 @@ describe("团队 · 主机详情 · 授予的增改", () => {
     fireEvent.click(within(dialog).getByRole("button", { name: "授予" }));
     expect(await screen.findByText("先验证邮箱再继续")).toBeTruthy();
     expect(screen.getByRole("dialog", { name: "添加访问" })).toBeTruthy();
+  });
+});
+
+describe("团队 · 主机详情 · 已过期的授予与撤销提示", () => {
+  const pick = async (label: string, option: RegExp | string) => {
+    fireEvent.click(await screen.findByRole("combobox", { name: label }));
+    fireEvent.click(await screen.findByRole("option", { name: option }));
+  };
+
+  it("已过期的授予再更新：不给「保持不变」，默认「永不」，提交后真的清掉到期", async () => {
+    const api = mount(`/t/rd/hosts/${STUDIO}`, OPTIONS);
+    await screen.findByRole("button", { name: "添加访问" });
+    const real = Date.now();
+    await api.client.grants.create({
+      sourceId: STUDIO,
+      subject: { kind: "member", accountId: MOCK_PEOPLE.member.accountId },
+      role: "editor",
+      expiresAtMs: real + 3_600_000,
+    });
+    // 过去两小时：这条授予已经过期（访问清单里没有他，授予列表里还在）。
+    vi.spyOn(Date, "now").mockReturnValue(real + 2 * 3_600_000);
+    await act(async () =>
+      api.emit({
+        type: "grantChanged",
+        sourceId: STUDIO,
+        teamId: RD,
+        atMs: real,
+      }),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "添加访问" }));
+    const dialog = await screen.findByRole("dialog", { name: "添加访问" });
+    await pick("对象", /王五/);
+    await within(dialog).findByRole("button", { name: "更新" });
+    const expiry = within(dialog).getByRole("combobox", { name: "到期" });
+    expect(expiry.textContent).toBe("永不");
+    fireEvent.pointerDown(expiry, {
+      button: 0,
+      ctrlKey: false,
+      pointerType: "mouse",
+    });
+    expect(screen.queryByRole("option", { name: "保持不变" })).toBeNull();
+    fireEvent.click(screen.getByRole("option", { name: "永不" }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "更新" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    const { grants } = await api.client.grants.list({
+      sourceId: STUDIO,
+      accountId: MOCK_PEOPLE.member.accountId,
+    });
+    expect(grants[0]!.expiresAtMs).toBeNull();
+  });
+
+  it("撤销团队全员：列出会被收窄的人", async () => {
+    mount(`/t/rd/hosts/${BUILD}`, OPTIONS);
+    await rowOf("王五");
+    await openMenu("团队全员 的操作");
+    fireEvent.click(screen.getByRole("menuitem", { name: "撤销访问" }));
+    const confirm = await screen.findByRole("alertdialog");
+    expect(
+      within(confirm).getByText("会降低 王五 的权限，他们已有的连接会断开"),
+    ).toBeTruthy();
+  });
+
+  it("撤销个人的授予而团队全员还兜着：写明仍然有效，并列出降低的人", async () => {
+    mount(`/t/rd/hosts/${BUILD}`, OPTIONS);
+    await rowOf("李四");
+    await openMenu("李四 的操作");
+    fireEvent.click(screen.getByRole("menuitem", { name: "撤销访问" }));
+    const confirm = await screen.findByRole("alertdialog");
+    expect(within(confirm).getByText(/会降低 李四 的权限/)).toBeTruthy();
+    expect(within(confirm).getByText(/团队全员的授予仍然有效/)).toBeTruthy();
   });
 });
 

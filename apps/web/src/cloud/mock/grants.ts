@@ -356,10 +356,16 @@ function track(
   }
 }
 
-const settingsOf = (ctx: GrantsContext, sourceId: string) => ({
-  ...DEFAULT_HOST_SETTINGS,
-  ...ctx.grants.settings.get(sourceId),
-});
+// 缺省角色取团队的缺省主机角色（云端 `hosts/directory.go` 同样先取团队设置）。
+const settingsOf = (ctx: GrantsContext, sourceId: string) => {
+  const host = ctx.directory.hosts.find((row) => row.sourceId === sourceId);
+  const team = host ? teamOfHost(ctx, host) : undefined;
+  return {
+    ...DEFAULT_HOST_SETTINGS,
+    ...(team ? { defaultRole: team.settings.defaultHostRole } : {}),
+    ...ctx.grants.settings.get(sourceId),
+  };
+};
 
 /* ------------------------------- 处理器 ------------------------------- */
 

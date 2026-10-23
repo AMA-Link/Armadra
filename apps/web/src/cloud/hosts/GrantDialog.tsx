@@ -213,8 +213,13 @@ export function GrantDialog({
   const [role, setRole] = React.useState<GrantRole | null>(null);
   const [expiry, setExpiry] = React.useState<string>(KEEP);
   const effectiveRole: GrantRole = role ?? existing?.role ?? defaultRole;
+  // 已过期的授予不能「保持不变」（保持了仍然没有权限）：默认「永不」，也可以选一个新的到期。
+  const lapsed =
+    existing !== undefined &&
+    existing.expiresAtMs !== null &&
+    existing.expiresAtMs <= Date.now();
   const expiryChoice =
-    expiry === KEEP && existing === undefined ? "never" : expiry;
+    expiry === KEEP && (existing === undefined || lapsed) ? "never" : expiry;
 
   const pickedExpiry: number | null | undefined =
     expiryChoice === KEEP
@@ -281,7 +286,13 @@ export function GrantDialog({
   ];
 
   const busy = create.isPending || update.isPending;
-  const ready = sourceId !== "" && subject !== null && grants.isSuccess;
+  // 成员与访问清单没到之前算不出谁会被收窄，不让提交（免得收窄提示消失）。
+  const ready =
+    sourceId !== "" &&
+    subject !== null &&
+    grants.isSuccess &&
+    members.isSuccess &&
+    access.isSuccess;
 
   const submit = async () => {
     if (!ready || subject === null) return;
@@ -405,7 +416,7 @@ export function GrantDialog({
                 <SelectValue />
               </SelectTrigger>
               <SelectContent className="z-[var(--z-dialog)]">
-                {existing ? (
+                {existing && !lapsed ? (
                   <SelectItem value={KEEP}>
                     {t("cloud.grants.expiry.keep")}
                   </SelectItem>
