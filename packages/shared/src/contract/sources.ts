@@ -116,7 +116,8 @@ export const remoteDeviceCodeSchema = z.object({
   userCode: z.string(),
   verificationUrl: z.string(),
   expiresAtMs: z.number().int(),
-  intervalMs: z.number().int(),
+  // 协议包 0.10.0 的设备码没有这一项；core 总会带上，页面缺省按 5 秒轮询。
+  intervalMs: z.number().int().optional(),
 });
 
 export const remoteAddOutputSchema = protocolRemoteAddOutputSchema.extend({
