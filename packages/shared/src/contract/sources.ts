@@ -416,6 +416,7 @@ export const sources = {
       ...denied,
       ...errors.pick(
         "bad_request",
+        "conflict",
         "address_invalid",
         "address_https_only",
         "address_plaintext_loopback_only",
