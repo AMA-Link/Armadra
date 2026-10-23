@@ -5,15 +5,28 @@
  */
 
 /* 导航宽度跟令牌；窄栏（容器 ≤ 720，由外壳量出来写 `data-narrow`）只留 52 的图标列 */
-.settings-navigation {
+.settings-navigation-scroll {
   width: var(--settings-nav-w);
 }
-.settings-layout[data-narrow="true"] .settings-navigation {
+.settings-layout[data-narrow="true"] .settings-navigation-scroll {
   width: 52px;
+}
+.settings-layout[data-narrow="true"] .settings-navigation {
   padding-inline: 6px;
 }
 .settings-layout[data-narrow="true"] .settings-page {
   padding: 16px;
+}
+
+/*
+ * 顶栏面包屑与下方面板里的页标题同一条左边线：面板 1px 边 + 页内边距
+ * （常规 `--space-section`，窄栏 16）。
+ */
+.settings-topbar {
+  padding-left: calc(var(--space-section) + 1px);
+}
+.settings-layout[data-narrow="true"] .settings-topbar {
+  padding-left: 17px;
 }
 
 /* 设置行 40（上下 8）；行骨架与它同高，内容换进来时不跳 */

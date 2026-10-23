@@ -6,6 +6,7 @@ import { Badge } from "@/ui/badge";
 import { Button } from "@/ui/button";
 import { Indicator, IndicatorGroup, useIndicatorHover } from "@/ui/indicator";
 import { useRoving } from "@/ui/roving";
+import { ScrollArea } from "@/ui/scroll-area";
 import { StatusDot } from "@/ui/status-pill";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/ui/tooltip";
 import type { SettingsNavGroup, SettingsSection } from "./nav";
@@ -17,7 +18,7 @@ import type { NavBadge, NavBadges } from "./nav-badges";
  * 分组标题 `text-caption` 500，组间 `.hairline-x`；项是 28 高的 `ghost sm` 全宽按钮，当前项
  * 的 `--surface-raised` 底与悬停底都由 `ui/indicator` 在项之间平移；↑↓ Home End 在项之间
  * 移动（roving），回车打开；行尾可带计数徽标或提示点。窄栏（`narrow`）只留图标，标签进
- * Tooltip。
+ * Tooltip。列表溢出时用 `ScrollArea`（细滚动条，悬停或滚动时才出现），与内容区一致。
  */
 export function SettingsNav({
   groups,
@@ -35,40 +36,42 @@ export function SettingsNav({
   const t = useT();
   const roving = useRoving<HTMLElement>();
   return (
-    <nav
-      aria-label={t("settings.title")}
-      data-narrow={narrow ? "true" : undefined}
-      className="settings-navigation flex h-full shrink-0 flex-col gap-2 overflow-y-auto p-4 pr-3"
-      {...roving}
-    >
-      <IndicatorGroup id="settings-nav">
-        {groups.map((group, index) => (
-          <React.Fragment key={group.groupKey}>
-            {index > 0 && <div aria-hidden className="hairline-x shrink-0" />}
-            <div role="group" className="flex flex-col gap-0.5">
-              <div
-                className={cn(
-                  "settings-nav-group px-2 pt-1 pb-1 text-caption font-medium text-muted-foreground",
-                  narrow && "sr-only",
-                )}
-              >
-                {t(group.groupKey)}
+    <ScrollArea className="settings-navigation-scroll h-full shrink-0">
+      <nav
+        aria-label={t("settings.title")}
+        data-narrow={narrow ? "true" : undefined}
+        className="settings-navigation flex min-h-full flex-col gap-2 p-4 pr-3"
+        {...roving}
+      >
+        <IndicatorGroup id="settings-nav">
+          {groups.map((group, index) => (
+            <React.Fragment key={group.groupKey}>
+              {index > 0 && <div aria-hidden className="hairline-x shrink-0" />}
+              <div role="group" className="flex flex-col gap-0.5">
+                <div
+                  className={cn(
+                    "settings-nav-group px-2 pt-1 pb-1 text-caption font-medium text-muted-foreground",
+                    narrow && "sr-only",
+                  )}
+                >
+                  {t(group.groupKey)}
+                </div>
+                {group.sections.map((section) => (
+                  <NavItem
+                    key={section.id}
+                    section={section}
+                    active={section.id === active}
+                    badge={badges[section.id]}
+                    narrow={narrow}
+                    onSelect={onSelect}
+                  />
+                ))}
               </div>
-              {group.sections.map((section) => (
-                <NavItem
-                  key={section.id}
-                  section={section}
-                  active={section.id === active}
-                  badge={badges[section.id]}
-                  narrow={narrow}
-                  onSelect={onSelect}
-                />
-              ))}
-            </div>
-          </React.Fragment>
-        ))}
-      </IndicatorGroup>
-    </nav>
+            </React.Fragment>
+          ))}
+        </IndicatorGroup>
+      </nav>
+    </ScrollArea>
   );
 }
 

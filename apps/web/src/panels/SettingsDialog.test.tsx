@@ -242,6 +242,9 @@ describe("SettingsDialog", () => {
     // 导航贴在窗口底上（没有边线与卡片），内容是一块独立的 1px 边面板
     expect(nav().className).toContain("settings-navigation");
     expect(nav().className).not.toContain("border-r");
+    // 导航溢出走 ScrollArea（细、悬停才显示），不再露出原生粗滚动条
+    expect(nav().className).not.toContain("overflow-y-auto");
+    expect(nav().closest('[data-slot="scroll-area"]')).not.toBeNull();
     const panel = screen
       .getByTestId("settings-page")
       .closest('[data-slot="settings-panel"]') as HTMLElement;
@@ -258,6 +261,17 @@ describe("SettingsDialog", () => {
     expect(scope()).toBeNull();
     fireEvent.click(navItem(zh("settings.section.security")));
     expect(scope()).toBeNull();
+  });
+
+  it("顶栏带 settings-topbar 样式钩子，左缘与面板里页标题对齐", async () => {
+    open();
+    await screen.findByText(zh("settings.theme"));
+    const topbar = document.querySelector(
+      '[data-slot="settings-topbar"]',
+    ) as HTMLElement;
+    expect(topbar.className).toContain("settings-topbar");
+    // 左内边距由 settings.css 按令牌给，不再贴着面板外缘
+    expect(topbar.className).not.toMatch(/\bpl-|\bpx-/);
   });
 
   it("顶栏面包屑：设置 › 分组 › 页名，子页多一级", async () => {
