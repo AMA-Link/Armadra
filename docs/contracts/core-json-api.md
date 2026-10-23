@@ -4619,3 +4619,20 @@ owner（本机会话，或已信任设备经通道的 owner 会话）：`{ sourc
 - **两个上限都只约束成员**：owner 与没有请求身份的动作（桌面壳、依赖编排、定时冷启动、休眠唤醒还原）不受限，单人桌面不会因为开了 9 个 Agent 被拦；`revive` 不经判定。同一成员 / 同一工作空间的并发 spawn 在管理器里排队，判定与插行之间不会被并发穿过。
 - 值写成负数、小数或非数字时退回缺省（与设置文档其它段同一规矩）。
 - 托管源的配额计数（`usage_counters`）由编排器上报，不在 core。
+
+## 86. 终端 socket 的查询应答：`input.reply`
+
+> 状态：实施契约（#518，实现 `core/terminal/replies.ts`、`core/terminal/socket.ts`、`TerminalManager.reply`；页面 `apps/web/src/terminal/surface/query-reply.ts`）。无迁移、无新 procedure；`WS /api/terminals/{sessionId}/ws` 的 `input` 帧多一个可选字段。
+
+程序发出的终端查询（DA1/DA2、DSR/CPR、DECRQM、DECRQSS、`CSI t` 窗口报告、OSC 4/10/11/12 颜色）由页面的 xterm 回答。同一个会话开着几个视图时每个都会答，所以应答单独标出来：
+
+```json
+{ "type": "input", "data": "\u001b[?1;2c", "reply": true }
+```
+
+- 应答**不带 `inputId`**，不进输入账，不在 `hello` 之前排队，重连后不重发：过期的应答只会是垃圾输入。
+- core 只在整段 `data` 都是应答格式（CSI 终止符 `c`/`n`/`R`/`t`/`y`，参数只有数字与 `;?>`，可带 `$`；OSC 到 BEL 或 `ESC \`、DCS 到 `ESC \`，中间只有可打印 ASCII）时按应答处理；不是的话按普通键入处理，标记不能绕过租约。
+- 单 pty 的后端（`direct`、`sessionHost`）只收**应答者**的那一份，其余丢弃，不回 `warning`。应答者：最近敲过键的视图；没有则尺寸等于当前窗口的最早附着视图；再没有则最早附着的视图。只读附着（§60、#308）不参加。
+- 每个视图一个客户端的后端（`tmux`，及其上的 `ssh`）把应答写回发出它的那个视图自己的客户端：tmux 问的是那个客户端。
+- 应答不算驾驶：不抢人类租约、不改窗口尺寸、不算终端活动、不推进输入修订号。
+- 不带 `reply` 的旧客户端照旧，全部按键入处理。
