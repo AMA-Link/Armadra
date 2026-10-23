@@ -79,7 +79,7 @@ export interface CloudFetchOptions {
    * 会话类 401 后续一次（Cookie 会话：`auth.refresh`）。答 `true` = 续上了，原请求重发一次。
    * 没给 = 不续，直接算失效（运营会话 1 小时到期回登录这一步）。
    */
-  readonly refresh?: () => Promise<boolean>;
+  readonly refresh?: (since: number) => Promise<boolean>;
   /** 续不上或被撤销。 */
   readonly onSessionLost: () => void;
 }
@@ -104,8 +104,8 @@ async function codeOf(response: Response): Promise<string | undefined> {
  */
 export function createCloudFetch(options: CloudFetchOptions): typeof fetch {
   let refreshing: Promise<boolean> | null = null;
-  const refreshOnce = () => {
-    refreshing ??= (options.refresh?.() ?? Promise.resolve(false))
+  const refreshOnce = (since: number) => {
+    refreshing ??= (options.refresh?.(since) ?? Promise.resolve(false))
       .catch(() => false)
       .finally(() => {
         refreshing = null;
@@ -130,11 +130,12 @@ export function createCloudFetch(options: CloudFetchOptions): typeof fetch {
     const request = input instanceof Request ? input : new Request(input);
     const spare = request.clone();
     const path = new URL(request.url).pathname;
+    const sentAt = Date.now();
     let response = await send(request, init);
 
     if (response.status === 401 && !AUTH_PATH.test(path)) {
       const revoked = (await codeOf(response)) === "session_revoked";
-      if (!revoked && (await refreshOnce())) {
+      if (!revoked && (await refreshOnce(sentAt))) {
         response = await send(spare, init);
         if (response.status === 401) options.onSessionLost();
       } else options.onSessionLost();
