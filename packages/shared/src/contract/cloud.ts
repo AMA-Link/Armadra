@@ -38,7 +38,9 @@ export const cloudLoginShareSchema = z.object({
   role: z.enum(["viewer", "editor", "operator", "driver"]),
   expiresAtMs: z.number().int(),
   /** §86：SaaS 团队主机的团队；名字对端没有时省略（由接收方补）。个人分享没有。 */
-  team: z.object({ teamId: z.string(), name: z.string().optional() }).optional(),
+  team: z
+    .object({ teamId: z.string(), name: z.string().optional() })
+    .optional(),
 });
 
 /** 协议包的形状加可选的 `share`（§68）；协议包的字段逐个沿用同一个对象。 */

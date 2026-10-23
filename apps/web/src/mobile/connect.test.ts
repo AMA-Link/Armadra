@@ -741,7 +741,8 @@ describe("添加连接 · 分享链接 / 二维码", () => {
             },
           },
         }),
-        [`POST /s/${HOST}/api/identity/cloud/login`]: () => coreLoginWith(share),
+        [`POST /s/${HOST}/api/identity/cloud/login`]: () =>
+          coreLoginWith(share),
       });
       const enroll = createRelayEnrollment({
         bridge,
