@@ -1,0 +1,9 @@
+{
+  "id": "saas-device-register",
+  "tier": "b",
+  "script": "tools/probes/saas-device-register.mjs",
+  "args": ["{out}"],
+  "requires": ["docker", "cloud"],
+  "platforms": ["darwin", "linux"],
+  "timeoutMinutes": 10
+}
