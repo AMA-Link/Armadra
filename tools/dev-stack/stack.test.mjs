@@ -228,9 +228,7 @@ test("ARMADRA_DEV_STACK_CLOUD_SRC：本地构建叠加文件与目录解析", ()
     /\?sslmode=require$/,
   );
   assert.ok(overlay.services["pg-tls"]);
-  assert.ok(
-    overlay.services["platform-postgres"].command.includes("ssl=on"),
-  );
+  assert.ok(overlay.services["platform-postgres"].command.includes("ssl=on"));
   assert.match(overlay.services.relay.environment.RELAY_JWKS_URL, /cloud:8100/);
   const fake = mkdtempSync(join(tmpdir(), "cloud-src-"));
   try {
