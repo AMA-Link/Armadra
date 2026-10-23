@@ -41,6 +41,14 @@ export function instanceProfileDir(
 /** 第二个实例交给已开着那个的附加数据（`second-instance` 的第四个参数）。 */
 export interface SecondInstanceData {
   readonly joinLink: string | null;
+  readonly cloudLink: string | null;
+}
+
+/** 收到的附加数据里的 `armadra://cloud` 深链；形状不对答 `null`（照旧从 argv 取）。 */
+export function cloudLinkOfData(data: unknown): string | null {
+  if (typeof data !== "object" || data === null) return null;
+  const value = (data as { cloudLink?: unknown }).cloudLink;
+  return typeof value === "string" ? value : null;
 }
 
 /** 收到的附加数据里的深链；形状不对答 `null`（照旧从 argv 取）。 */

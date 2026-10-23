@@ -56,6 +56,7 @@ const onNotificationClick = subscribe<[{ nodeId: string }]>(
   IPC.windowNotificationClick.channel,
 );
 const onJoinLinkPending = subscribe<[]>(IPC.sourcesJoinLink.channel);
+const onCloudLinkPending = subscribe<[]>(IPC.sourcesCloudLink.channel);
 const onMemoryPressure = subscribe<[{ level: MemoryPressureLevel }]>(
   IPC.memoryPressure.channel,
 );
@@ -168,6 +169,9 @@ export interface ArmadraDesktopApi {
     takeJoinLink(): Promise<string | null>;
     /** 壳又收到一条深链：自己取走后交给监听者。 */
     onJoinLink(listener: (url: string) => void): () => void;
+    /** 壳收到的 `armadra://cloud` 深链（已校验、规范化；取一次即清）；没有是 `null`。 */
+    takeCloudLink(): Promise<string | null>;
+    onCloudLink(listener: (url: string) => void): () => void;
   };
   /**
    * 系统分享菜单（`app:share`）：`available` 是这个平台有没有；`url` 答
@@ -280,6 +284,15 @@ const api: ArmadraDesktopApi = {
       onJoinLinkPending(() => {
         void ipcRenderer
           .invoke(IPC.sourcesTakeJoinLink.channel)
+          .then((url: unknown) => {
+            if (typeof url === "string") listener(url);
+          });
+      }),
+    takeCloudLink: () => ipcRenderer.invoke(IPC.sourcesTakeCloudLink.channel),
+    onCloudLink: (listener) =>
+      onCloudLinkPending(() => {
+        void ipcRenderer
+          .invoke(IPC.sourcesTakeCloudLink.channel)
           .then((url: unknown) => {
             if (typeof url === "string") listener(url);
           });

@@ -20,6 +20,10 @@ import {
 import { useT } from "../../../../app/preferences-store";
 import { openExternal } from "../../../../platform";
 import { applySourceTable } from "../../../../sources/bootstrap";
+import {
+  onCloudIntent,
+  takeCloudIntent,
+} from "../../../../sources/cloud-intent";
 import { useCurrentSource } from "../../../../sources/context";
 import { hostedRelay } from "../../../../sources/hosted";
 import {
@@ -104,7 +108,19 @@ export function RemoteAccessPage() {
   useTunnelEvents();
 
   const [adding, setAdding] = React.useState<RelayDraft | null>(null);
-  const [addingCloud, setAddingCloud] = React.useState<string | null>(null);
+  // `armadra://cloud` 深链（云端控制台 §3.5.1）：打开「添加 Armadra 云」，地址预填；
+  // 人点了「获取设备码」才开始登录。
+  const [addingCloud, setAddingCloud] = React.useState<string | null>(
+    takeCloudIntent,
+  );
+  React.useEffect(
+    () =>
+      onCloudIntent(() => {
+        const issuer = takeCloudIntent();
+        if (issuer !== null) setAddingCloud(issuer);
+      }),
+    [],
+  );
   // 云端控制台与 API 同一来源：系统浏览器打开 `<issuer>/me`（云端控制台 §3.5.1）。
   const openConsole = async (issuer: string) => {
     if (!(await openExternal(cloudConsoleUrl(issuer))))

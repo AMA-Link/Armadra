@@ -13,6 +13,7 @@ import { installDomPolyfills } from "@/app/test-harness";
 
 const api = vi.hoisted(() => ({
   listSources: vi.fn(),
+  addCloud: vi.fn(),
   relayPending: vi.fn(),
   shareStatus: vi.fn(),
   notifyShellSourcesChanged: vi.fn(),
@@ -49,10 +50,12 @@ vi.mock("../../../../api/gateway", async (original) => ({
   gatewayApi: { status: vi.fn().mockRejectedValue(new Error("forbidden")) },
 }));
 
+import { offerCloudLink } from "../../../../sources/cloud-intent";
 import { RemoteAccessPage } from "./RemoteAccessPage";
 
 /**
- * 远程访问页与 Armadra 云的接线（云端控制台 §3.5.1）：行菜单「打开控制台」。
+ * 远程访问页与 Armadra 云的两处接线（云端控制台 §3.5.1）：行菜单「打开控制台」与
+ * `armadra://cloud` 深链打开「添加 Armadra 云」。
  */
 
 const local = {
@@ -156,5 +159,33 @@ describe("行菜单「打开控制台」", () => {
     openMenu("relay.test");
     await screen.findByRole("menuitem", { name: "Rename" });
     expect(screen.queryByRole("menuitem", { name: "Open console" })).toBeNull();
+  });
+});
+
+describe("armadra://cloud 深链", () => {
+  it("深链交来：打开「添加 Armadra 云」，地址预填，不自动取设备码", async () => {
+    api.listSources.mockResolvedValue({ sources: [local], remotes: [] });
+    mount();
+    await screen.findByText("This computer");
+    offerCloudLink(
+      `armadra://cloud?issuer=${encodeURIComponent("https://cloud.test")}`,
+    );
+    const field = (await screen.findByLabelText("Address")) as HTMLInputElement;
+    expect(field.value).toBe("https://cloud.test");
+    expect(
+      screen.getByRole("button", { name: "Get device code" }),
+    ).toBeTruthy();
+    await new Promise((done) => setTimeout(done, 30));
+    expect(api.addCloud).not.toHaveBeenCalled();
+  });
+
+  it("没有 issuer 的深链：对话框打开，地址为空", async () => {
+    api.listSources.mockResolvedValue({ sources: [local], remotes: [] });
+    mount();
+    await screen.findByText("This computer");
+    offerCloudLink("armadra://cloud");
+    const field = (await screen.findByLabelText("Address")) as HTMLInputElement;
+    expect(field.value).toBe("");
+    expect(api.addCloud).not.toHaveBeenCalled();
   });
 });

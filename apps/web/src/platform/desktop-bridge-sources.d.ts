@@ -13,5 +13,11 @@ interface ArmadraBridge {
      */
     takeJoinLink?(): Promise<string | null>;
     onJoinLink?(listener: (url: string) => void): () => void;
+    /**
+     * 壳收到的 `armadra://cloud` 深链（云端控制台 §3.5.1）：壳已校验形状并规范化，页面
+     * 只据此打开「添加 Armadra 云」对话框，不自动登录。同样取一次即清。
+     */
+    takeCloudLink?(): Promise<string | null>;
+    onCloudLink?(listener: (url: string) => void): () => void;
   };
 }

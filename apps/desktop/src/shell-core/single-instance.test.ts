@@ -1,7 +1,11 @@
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 
-import { instanceProfileDir, joinLinkOfData } from "./single-instance";
+import {
+  cloudLinkOfData,
+  instanceProfileDir,
+  joinLinkOfData,
+} from "./single-instance";
 
 const posix = path.posix;
 const win = path.win32;
@@ -99,5 +103,17 @@ describe("单实例锁按数据目录分", () => {
     expect(joinLinkOfData({ joinLink: 1 })).toBe(null);
     expect(joinLinkOfData(undefined)).toBe(null);
     expect(joinLinkOfData("x")).toBe(null);
+  });
+});
+
+describe("second-instance 附加数据里的 armadra://cloud", () => {
+  it("字符串原样取，形状不对答 null", () => {
+    expect(cloudLinkOfData({ cloudLink: "armadra://cloud" })).toBe(
+      "armadra://cloud",
+    );
+    expect(cloudLinkOfData({ cloudLink: null })).toBe(null);
+    expect(cloudLinkOfData({ cloudLink: 1 })).toBe(null);
+    expect(cloudLinkOfData(undefined)).toBe(null);
+    expect(cloudLinkOfData("x")).toBe(null);
   });
 });
