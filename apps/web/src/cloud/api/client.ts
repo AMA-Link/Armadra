@@ -4,6 +4,7 @@ import { OpenAPILink } from "@orpc/openapi-client/fetch";
 import { cloudContract } from "@armadra/platform-protocol/cloud-api";
 
 import { CloudConsoleError, toCloudError } from "./errors";
+import { createRefreshCoordinator } from "./refresh-lock";
 import {
   createCloudFetch,
   createCsrfStore,
@@ -83,12 +84,21 @@ export function createCloudApi(options: CreateCloudApiOptions): CloudApi {
   const consoleCsrf = createCsrfStore();
   const opsCsrf = createCsrfStore();
   const lost = new Set<() => void>();
+  // 跨标签串行化刷新，控制台与运营各自一把锁（#516）。
+  const consoleRefresh = createRefreshCoordinator({
+    name: "console",
+    csrf: consoleCsrf,
+  });
+  const opsRefresh = createRefreshCoordinator({ name: "ops", csrf: opsCsrf });
 
+  // 刷新请求限时 15 秒，挂住时不占着跨标签的锁。
+  const timed: typeof base = (input, init) =>
+    base(input, { ...init, signal: AbortSignal.timeout(15_000) });
   // 刷新自己不走 401 处理，免得递归。
   const plain = createCloudClient(
     options.origin,
     createCloudFetch({
-      fetch: base,
+      fetch: timed,
       csrf: consoleCsrf,
       onSessionLost: () => {},
     }),
@@ -99,10 +109,10 @@ export function createCloudApi(options: CreateCloudApiOptions): CloudApi {
   });
   const consoleFetch = createCloudFetch({
     ...common(consoleCsrf),
-    refresh: async () => {
-      await plain.auth.refresh({});
-      return true;
-    },
+    refresh: (since) =>
+      consoleRefresh.run(since, async () => {
+        await plain.auth.refresh({});
+      }),
     onSessionLost() {
       consoleCsrf.set(undefined);
       for (const listener of [...lost]) listener();
@@ -112,7 +122,8 @@ export function createCloudApi(options: CreateCloudApiOptions): CloudApi {
   const opsPlain = createCloudClient(
     options.origin,
     createCloudFetch({
-      ...common(opsCsrf),
+      fetch: timed,
+      csrf: opsCsrf,
       onSessionLost: () => undefined,
     }),
   );
@@ -120,10 +131,10 @@ export function createCloudApi(options: CreateCloudApiOptions): CloudApi {
     options.origin,
     createCloudFetch({
       ...common(opsCsrf),
-      refresh: async () => {
-        await opsPlain.auth.refresh({ scope: "operator" });
-        return true;
-      },
+      refresh: (since) =>
+        opsRefresh.run(since, async () => {
+          await opsPlain.auth.refresh({ scope: "operator" });
+        }),
       onSessionLost: () => opsCsrf.set(undefined),
     }),
   );
@@ -134,7 +145,13 @@ export function createCloudApi(options: CreateCloudApiOptions): CloudApi {
     async ensureCsrf() {
       if (consoleCsrf.get() !== undefined) return true;
       try {
-        await plain.auth.refresh({});
+        await consoleRefresh.run(
+          Date.now(),
+          async () => {
+            await plain.auth.refresh({});
+          },
+          () => consoleCsrf.get() !== undefined,
+        );
         return consoleCsrf.get() !== undefined;
       } catch {
         return false;
