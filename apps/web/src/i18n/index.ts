@@ -11,6 +11,7 @@ import { challenge } from "./challenge";
 import { cloudErrors } from "./cloud-errors";
 import { cloudAuth } from "./cloud-auth";
 import { cloudShell } from "./cloud-shell";
+import { cloudOps } from "./cloud-ops";
 import { collab } from "./collab";
 import { connection } from "./connection";
 import { commands } from "./commands";
@@ -166,6 +167,7 @@ export const MESSAGE_MODULES = {
   "cloud-errors": cloudErrors,
   "cloud-auth": cloudAuth,
   "cloud-shell": cloudShell,
+  "cloud-ops": cloudOps,
   services,
   links,
   "mod-commands": modCommands,
