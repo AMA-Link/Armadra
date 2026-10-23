@@ -1,5 +1,9 @@
 import type { CloudClient } from "./client";
 
+export type InvitationPreview = Awaited<
+  ReturnType<CloudClient["invitations"]["get"]>
+>;
+
 /**
  * 控制台的会话（云端控制台 §1.3）：令牌在 `__Host-armadra-cloud` Cookie 里，页面不读不存；
  * 页面只在内存里持一份 CSRF 值，每个非 GET 请求放进 `X-Armadra-CSRF`。运营会话是另一个
@@ -40,6 +44,16 @@ export interface CloudApi {
   readonly ops: CloudClient;
   /** 运营会话是否在（运营登录成功拿到了它自己的 CSRF 值）。 */
   readonly operator: Pick<CsrfStore, "subscribe"> & { active(): boolean };
+  /** 写操作前保证内存里有 CSRF 值：没有就 `auth.refresh`（免 CSRF，答复带 `csrfToken`）。答 `false` = 没有会话。 */
+  ensureCsrf(): Promise<boolean>;
+  /**
+   * 邀请摘要：`POST /v1/invitations/{id}/preview`，令牌在请求体里，不进查询（cloud-api §22）。
+   * 协议包 0.10.0 还没有这个过程，这里手写；升到 0.11.0 后改用包里的 `invitations.preview`。
+   */
+  invitationPreview(
+    invitationId: string,
+    token: string,
+  ): Promise<InvitationPreview>;
   /** 控制台会话失效且续不上：清缓存、回登录。 */
   onSessionLost(listener: () => void): () => void;
   /** 登出：服务端撤销（失败也继续）、清掉内存里的 CSRF 值。 */
