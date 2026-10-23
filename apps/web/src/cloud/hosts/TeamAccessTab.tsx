@@ -36,7 +36,6 @@ import {
   useHostGrants,
   useRevokeGrant,
   useRevokePersonAccess,
-  type Grant,
 } from "./grants-data";
 
 const NEVER = "—";
