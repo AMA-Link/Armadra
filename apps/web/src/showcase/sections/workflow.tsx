@@ -18,7 +18,7 @@ function Sample({
 }) {
   return (
     <figure className="flex min-w-0 flex-col gap-2">
-      <figcaption className="text-[12px] text-muted-foreground">
+      <figcaption className="text-meta text-muted-foreground">
         {caption}
       </figcaption>
       {children}
@@ -45,7 +45,7 @@ export default function WorkflowSection() {
           <TemplateLibrary templates={TEMPLATES} runs={RUNS} now={NOW} />
         </Sample>
         <Sample caption={t("workflow.library.empty")}>
-          <div className="rounded-xl border border-dashed border-border">
+          <div className="rounded-panel border border-dashed border-border">
             <TemplateLibrary templates={[]} runs={[]} now={NOW} />
           </div>
         </Sample>
@@ -59,7 +59,7 @@ export default function WorkflowSection() {
         />
       </Sample>
       <Sample caption={t("workflow.tab.runs")}>
-        <div className="max-w-[460px] rounded-xl border border-border p-3">
+        <div className="max-w-[460px] rounded-panel border border-border p-3">
           <RunPanel runs={RUNS} templates={TEMPLATES} />
         </div>
       </Sample>

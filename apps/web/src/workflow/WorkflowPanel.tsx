@@ -58,8 +58,8 @@ export function WorkflowPanel() {
   return (
     <>
       <WorkPanelSheet panel="workflow" open={mode === "drawer"} onClose={close}>
-        <div className="flex h-10 shrink-0 items-center gap-1 border-b border-border px-3">
-          <SheetTitle className="shrink-0 truncate text-[13px] font-semibold">
+        <div className="flex shrink-0 items-center gap-1 border-b border-border px-3 py-1.5">
+          <SheetTitle className="shrink-0 truncate text-body font-semibold">
             {t("workflow.title")}
           </SheetTitle>
           <div className="flex-1" />
@@ -82,13 +82,13 @@ export function WorkflowPanel() {
         >
           <TabsList
             variant="line"
-            className="h-10 w-full shrink-0 rounded-none border-b border-border"
+            className="w-full shrink-0 rounded-none border-b border-border"
           >
             {(["templates", "runs"] as const).map((value) => (
               <TabsTrigger
                 key={value}
                 value={value}
-                className="min-w-0 text-xs"
+                className="min-w-0 text-meta"
               >
                 {t(`workflow.tab.${value}`)}
               </TabsTrigger>

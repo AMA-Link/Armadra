@@ -94,11 +94,7 @@ export function WorkflowStepBadge({ nodeId }: { nodeId: string }) {
     ) : null;
   }
   return (
-    <Badge
-      variant="secondary"
-      data-slot="workflow-step-badge"
-      className="h-[18px] px-1.5 text-[length:var(--text-caption)]"
-    >
+    <Badge variant="secondary" data-slot="workflow-step-badge" size="sm">
       {t("workflow.node.step", { n: String(step) })}
     </Badge>
   );
