@@ -24,6 +24,9 @@ export const cloudKeys = {
     ["cloud", space, "host", hostId] as const,
   access: (space: SpaceKey, hostId: string) =>
     ["cloud", space, "access", hostId] as const,
+  /** 某人对某台主机的有效权限；挂在 `access` 之下，随它一起失效。 */
+  effective: (space: SpaceKey, hostId: string, accountId: string) =>
+    ["cloud", space, "access", hostId, "effective", accountId] as const,
   grants: (space: SpaceKey, filters?: Filters) =>
     ["cloud", space, "grants", filters ?? {}] as const,
   members: (space: SpaceKey) => ["cloud", space, "members"] as const,
@@ -83,9 +86,18 @@ export function invalidationsFor(
       return [
         under("grants", space(event.teamId)),
         under("access", space(event.teamId), event.sourceId),
+        // 成员能不能看到这台主机随授予变：目录与详情一并重拉。
+        under("hosts", space(event.teamId)),
+        under("host", space(event.teamId), event.sourceId),
       ];
     case "accessRevoked":
-      return [under("access", undefined, event.sourceId)];
+      // 撤销类事件不报空间：访问清单、有效权限、授予列表，以及本人看得到的主机目录与详情都重拉。
+      return [
+        under("access", undefined, event.sourceId),
+        under("grants"),
+        under("hosts"),
+        under("host", undefined, event.sourceId),
+      ];
     case "accessRequested":
       return [under("requests", space(event.teamId))];
     case "linkUsed":

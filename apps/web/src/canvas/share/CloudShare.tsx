@@ -55,10 +55,10 @@ import { toast } from "@/ui/toast";
 import {
   CLOUD_ROLES,
   type CloudRole,
-  composeRole,
   lowersEffectiveRole,
   rankOf,
-} from "./cloud-grant";
+  updateNarrows,
+} from "@/lib/cloud-grant";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -114,27 +114,12 @@ interface Warning {
   readonly role?: CloudRole;
 }
 
-/** 新范围是否比现有的小（整台 → 部分，或丢了某个工作空间）。 */
-function narrows(held: readonly string[], next: readonly string[]): boolean {
-  if (next.length === 0) return false;
-  if (held.length === 0) return true;
-  return held.some((id) => !next.includes(id));
-}
-
 /** 这个账号在这台主机上的授予（成员 / 访客）。 */
 function grantsOf(
   data: CloudAccess | undefined,
   accountId: string,
 ): CloudGrant[] {
   return (data?.grants ?? []).filter((one) => subjectId(one) === accountId);
-}
-
-/** 还没过期的那些。 */
-function live(grants: readonly CloudGrant[]): CloudGrant[] {
-  const now = Date.now();
-  return grants.filter(
-    (one) => one.expiresAtMs === null || one.expiresAtMs > now,
-  );
 }
 
 function nameOf(member: Target): string {
@@ -282,19 +267,17 @@ export function CloudShare({
     const first = held[0];
     let lowers = false;
     if (first !== undefined) {
-      // 已有授予时是更新：角色更低、范围更小或到期更早，都会收窄他的有效权限。
-      const before = composeRole(live(held));
-      const scope = updatedScope(first);
-      const sooner =
-        daysTouched &&
-        first.expiresAtMs !== null &&
-        expiresAtMs() < first.expiresAtMs;
-      const newlyFinite = daysTouched && first.expiresAtMs === null;
-      lowers =
-        (before !== null && rankOf(role) < rankOf(before)) ||
-        narrows(first.workspaceIds, scope) ||
-        sooner ||
-        newlyFinite;
+      // 已有授予时是更新：角色更低、范围更小或到期更早，都会收窄他的有效权限（共享规则）。
+      lowers = updateNarrows(
+        held,
+        first,
+        {
+          role,
+          workspaceIds: updatedScope(first),
+          ...(daysTouched ? { expiresAtMs: expiresAtMs() } : {}),
+        },
+        Date.now(),
+      );
     }
     if (lowers && confirming?.kind !== "update") {
       setConfirming({ kind: "update", member: target });

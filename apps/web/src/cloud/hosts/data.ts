@@ -52,10 +52,11 @@ export function useHosts(
   });
 }
 
-export function useHost(space: CloudSpace, sourceId: string) {
+export function useHost(space: CloudSpace, sourceId: string, enabled = true) {
   const api = useCloudApi();
   return useQuery({
     queryKey: cloudKeys.host(keyOfSpace(space), sourceId),
+    enabled,
     queryFn: () => api.client.sources.get({ sourceId }),
   });
 }
@@ -95,10 +96,15 @@ export function useRevokeHost(space: CloudSpace) {
   });
 }
 
-export function useHostAccess(space: CloudSpace, sourceId: string) {
+export function useHostAccess(
+  space: CloudSpace,
+  sourceId: string,
+  enabled = true,
+) {
   const api = useCloudApi();
   return useQuery({
     queryKey: cloudKeys.access(keyOfSpace(space), sourceId),
+    enabled,
     queryFn: () => api.client.sources.accessList({ sourceId }),
   });
 }

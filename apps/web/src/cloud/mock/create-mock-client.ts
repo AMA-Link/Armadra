@@ -21,6 +21,12 @@ import {
   type DirectoryState,
 } from "./directory";
 import {
+  createGrantsState,
+  grantHandlers,
+  type GrantsOptions,
+  type GrantsState,
+} from "./grants";
+import {
   activeMemberships,
   createTeamsState,
   TEAM_HANDLERS,
@@ -46,7 +52,10 @@ import {
  * 账号、空间、主机与登录由下面的处理器带状态地答；其余过程答协议包夹具里的那份黄金样本
  * （各页批次里再换成带状态的实现）。只在 DEV 与测试里被 import。
  */
-export interface MockOptions extends DirectoryOptions, TeamsOptions {
+export interface MockOptions
+  extends DirectoryOptions,
+    TeamsOptions,
+    GrantsOptions {
   /** 每次调用的延迟（毫秒）。 */
   readonly latencyMs?: number;
   /** 指定过程失败：`{ "sources.list": "limit_reached" }`（`?mockFail=sources.list:limit_reached`）。 */
@@ -134,6 +143,8 @@ interface State {
   directory: DirectoryState;
   /** 团队空间（U4）的带状态数据：团队、成员、邀请、设置。 */
   teams: TeamsState;
+  /** 团队主机的授予（U5）：授予、主机设置、标签与注册令牌。 */
+  grants: GrantsState;
   /** 已批准或拒绝的设备码（之后答 `not_found`，与云端一致）。 */
   decided: Set<string>;
 }
@@ -502,6 +513,12 @@ const HANDLERS: Readonly<Record<string, Handler>> = {
   ),
   ...TEAM_HANDLERS_AS_STATE,
   ...Object.fromEntries(
+    Object.entries(grantHandlers(DIRECTORY_HANDLERS)).map(([key, handler]) => [
+      key,
+      ((input, state) => handler(input, state)) as Handler,
+    ]),
+  ),
+  ...Object.fromEntries(
     Object.entries(
       teamInvitationHandlers(
         Object.fromEntries(
@@ -519,13 +536,6 @@ const HANDLERS: Readonly<Record<string, Handler>> = {
   "auth.changePassword": (input, state) => {
     DIRECTORY_HANDLERS["auth.changePassword"]!(input, state.directory);
     return sessionOf(state);
-  },
-  "sources.get": (input, state) => {
-    const found = state.directory.hosts.find(
-      (row) => row.sourceId === input.sourceId,
-    );
-    if (!found) throw new CloudConsoleError("not_found", 404);
-    return { ...(golden("sources.get") as object), ...found };
   },
 };
 
@@ -587,6 +597,8 @@ async function check(
 export type MockApi = CloudApi & {
   /** 推一条 me-stream 事件（测试与展示页），mock 的状态跟着变。 */
   emit(event: MeStreamEvent): void;
+  /** 授予变动时被收窄的账号（云端会撤他们已签的令牌，测试读）。 */
+  narrowedAccess(): readonly { sourceId: string; accountId: string }[];
 };
 
 export function createMockApi(options: MockOptions = {}): MockApi {
@@ -599,6 +611,7 @@ export function createMockApi(options: MockOptions = {}): MockApi {
     admin: createAdminState(),
     directory: createDirectoryState(options),
     teams: createTeamsState(options),
+    grants: createGrantsState(options),
     elevated: false,
     decided: new Set(),
   };
@@ -681,6 +694,7 @@ export function createMockApi(options: MockOptions = {}): MockApi {
       streams.add(handlers);
       return () => streams.delete(handlers);
     },
+    narrowedAccess: () => [...state.grants.narrowed],
     emit(event) {
       applyEventToDirectory(state.directory, event);
       for (const handlers of [...streams]) handlers.onEvent(event);
