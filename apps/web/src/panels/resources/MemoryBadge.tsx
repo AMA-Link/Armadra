@@ -114,7 +114,7 @@ export function MemoryBadge({
           className={cn(
             HEADER_CHIP_CLASS,
             "font-normal",
-            over && "text-[var(--danger-text)]",
+            over && "text-danger-text",
           )}
           data-no-drag="true"
         >
@@ -133,7 +133,7 @@ export function MemoryBadge({
         </Badge>
       </PopoverTrigger>
       <PopoverContent
-        className="w-72 max-w-[calc(100vw-1rem)] text-xs"
+        className="w-72 max-w-[calc(100vw-1rem)] text-meta"
         onPointerDown={(event) => event.stopPropagation()}
       >
         <h3 className="font-medium">{t("resources.memory.title")}</h3>
@@ -155,16 +155,6 @@ export function MemoryBadge({
           </dt>
           <dd className="m-0 text-right">{formatMetricBytes(threshold)}</dd>
         </dl>
-        <p className="text-muted-foreground">
-          {t("resources.session.memoryEstimated")}
-        </p>
-        {!known && <p role="status">{t("resources.memory.unknownNote")}</p>}
-        {over && <p>{t("resources.memory.overNote")}</p>}
-        {!watched && (
-          <p className="text-muted-foreground">
-            {t("resources.memory.slowNote")}
-          </p>
-        )}
       </PopoverContent>
     </Popover>
   );

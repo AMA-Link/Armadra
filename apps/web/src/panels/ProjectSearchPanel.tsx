@@ -21,12 +21,11 @@ import { runtimeApi } from "@/api/client";
 import { useT } from "@/app/preferences-store";
 import { openFileInEditor } from "@/files/open-editor";
 import { useCanvasStore } from "@/store/canvas-store";
-import { Alert, AlertTitle } from "@/ui/alert";
 import { Badge } from "@/ui/badge";
 import { Button } from "@/ui/button";
-import { Empty, EmptyDescription } from "@/ui/empty";
 import { Input } from "@/ui/input";
 import { Spinner } from "@/ui/spinner";
+import { EmptyState, ErrorState } from "@/ui/state";
 import { Toggle } from "@/ui/toggle";
 
 interface Options {
@@ -163,7 +162,8 @@ export function ProjectSearchPanel({
           ref={inputRef}
           aria-label={t("projectSearch.placeholder")}
           placeholder={t("projectSearch.placeholder")}
-          className="h-7 text-xs"
+          size="sm"
+          className="text-meta"
           value={query}
           onChange={(event) => setQuery(event.target.value)}
         />
@@ -172,7 +172,6 @@ export function ProjectSearchPanel({
             size="sm"
             pressed={options.caseSensitive}
             aria-label={t("projectSearch.caseSensitive")}
-            title={t("projectSearch.caseSensitive")}
             onPressedChange={(pressed) =>
               setOptions((current) => ({ ...current, caseSensitive: pressed }))
             }
@@ -183,7 +182,6 @@ export function ProjectSearchPanel({
             size="sm"
             pressed={options.wholeWord}
             aria-label={t("projectSearch.wholeWord")}
-            title={t("projectSearch.wholeWord")}
             onPressedChange={(pressed) =>
               setOptions((current) => ({ ...current, wholeWord: pressed }))
             }
@@ -194,7 +192,6 @@ export function ProjectSearchPanel({
             size="sm"
             pressed={options.regex}
             aria-label={t("projectSearch.regex")}
-            title={t("projectSearch.regex")}
             onPressedChange={(pressed) =>
               setOptions((current) => ({ ...current, regex: pressed }))
             }
@@ -226,7 +223,8 @@ export function ProjectSearchPanel({
           <Input
             aria-label={t("projectSearch.include")}
             placeholder={t("projectSearch.include")}
-            className="h-6 text-xs"
+            size="xs"
+            className="text-meta"
             value={options.include}
             onChange={(event) =>
               setOptions((current) => ({
@@ -238,7 +236,8 @@ export function ProjectSearchPanel({
           <Input
             aria-label={t("projectSearch.exclude")}
             placeholder={t("projectSearch.exclude")}
-            className="h-6 text-xs"
+            size="xs"
+            className="text-meta"
             value={options.exclude}
             onChange={(event) =>
               setOptions((current) => ({
@@ -254,14 +253,14 @@ export function ProjectSearchPanel({
         {busy && (
           <span
             role="status"
-            className="flex items-center gap-1 text-[length:var(--text-caption)] text-muted-foreground"
+            className="flex items-center gap-1 text-caption text-muted-foreground"
           >
-            <Spinner aria-hidden role="presentation" className="size-3" />
+            <Spinner size={12} aria-hidden role="presentation" />
             {t("projectSearch.searching")}
           </span>
         )}
         {result && !busy && files.length > 0 && (
-          <span className="text-[length:var(--text-caption)] text-muted-foreground">
+          <span className="text-caption text-muted-foreground">
             {t("projectSearch.summary", {
               files: files.length,
               matches: totalMatches,
@@ -275,16 +274,18 @@ export function ProjectSearchPanel({
           <Badge variant="outline">{t("projectSearch.truncated")}</Badge>
         )}
         {(result?.skipped ?? 0) > 0 && (
-          <span className="text-[length:var(--text-caption)] text-muted-foreground">
+          <span className="text-caption text-muted-foreground">
             {t("projectSearch.skipped", { count: result!.skipped })}
           </span>
         )}
       </div>
 
       {failed && (
-        <Alert variant="destructive">
-          <AlertTitle>{t("projectSearch.failed")}</AlertTitle>
-        </Alert>
+        <ErrorState
+          title={t("projectSearch.failed")}
+          retryLabel={t("explorer.retry")}
+          onRetry={() => void run(0)}
+        />
       )}
       {busy && files.length === 0 && (
         <Loadable
@@ -297,15 +298,13 @@ export function ProjectSearchPanel({
         </Loadable>
       )}
       {result && !busy && files.length === 0 && !failed && (
-        <Empty className="p-4">
-          <EmptyDescription>{t("projectSearch.empty")}</EmptyDescription>
-        </Empty>
+        <EmptyState title={t("projectSearch.empty")} />
       )}
 
       {files.map((file) => (
         <div key={file.path} className="min-w-0">
           <p
-            className="truncate px-1 py-0.5 text-[length:var(--text-caption)] text-muted-foreground"
+            className="truncate px-1 py-0.5 text-caption text-muted-foreground"
             title={file.path}
           >
             {file.path}
@@ -314,24 +313,24 @@ export function ProjectSearchPanel({
             <Button
               key={`${match.line}:${match.column}:${index}`}
               variant="ghost"
-              size="sm"
+              size="xs"
               aria-label={t("projectSearch.openMatch", {
                 path: file.path,
                 line: match.line,
               })}
-              className="h-6 w-full justify-start gap-2 rounded-none px-2 font-normal"
+              className="w-full justify-start gap-2 rounded-none px-2 font-normal"
               onClick={() => openFileInEditor(file.path, { line: match.line })}
             >
-              <span className="w-8 shrink-0 text-right font-mono text-[length:var(--text-caption)] tabular-nums text-muted-foreground">
+              <span className="w-8 shrink-0 text-right font-mono text-caption tabular-nums text-muted-foreground">
                 {match.line}
               </span>
-              <span className="min-w-0 flex-1 truncate text-left font-mono text-[11px]">
+              <span className="min-w-0 flex-1 truncate text-left font-mono text-caption">
                 {match.preview}
               </span>
             </Button>
           ))}
           {file.truncated && (
-            <p className="px-2 text-[length:var(--text-caption)] text-muted-foreground">
+            <p className="px-2 text-caption text-muted-foreground">
               {t("projectSearch.fileTruncated")}
             </p>
           )}

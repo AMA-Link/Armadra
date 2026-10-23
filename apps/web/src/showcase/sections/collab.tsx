@@ -82,8 +82,7 @@ function SampleThread({
   );
 }
 
-const FRAME =
-  "w-[320px] rounded-[var(--r-card)] border border-border bg-popover p-3";
+const FRAME = "w-[320px] rounded-card border border-border bg-popover p-3";
 
 const ROLES = ["viewer", "editor", "operator", "driver"] as const;
 
@@ -184,16 +183,16 @@ export default function CollabSection() {
 
       <div className="flex flex-wrap items-start gap-4">
         <div
-          className="relative h-[180px] w-[360px] overflow-hidden rounded-[var(--r-card)] border border-border"
+          className="relative h-[180px] w-[360px] overflow-hidden rounded-card border border-border"
           style={{ background: "var(--canvas-bg)" }}
         >
           <div
-            className="absolute rounded-[var(--r-card)] border border-border bg-card"
+            className="absolute rounded-card border border-border bg-card"
             style={{ left: 150, top: 60, width: 140, height: 80 }}
           />
           <div
             data-peer-selection
-            className="absolute rounded-[var(--r-card)]"
+            className="absolute rounded-card"
             style={{
               left: 148,
               top: 58,
@@ -215,11 +214,11 @@ export default function CollabSection() {
 
         <div
           data-sample="follow-viewport"
-          className="relative h-[180px] w-[360px] overflow-hidden rounded-[var(--r-card)] border border-border"
+          className="relative h-[180px] w-[360px] overflow-hidden rounded-card border border-border"
           style={{ background: "var(--canvas-bg)" }}
         >
           <div
-            className="absolute rounded-[var(--r-card)] border border-border bg-card"
+            className="absolute rounded-card border border-border bg-card"
             style={{ left: 110, top: 50, width: 140, height: 80 }}
           />
           <RealtimePresenceView
@@ -301,9 +300,9 @@ export default function CollabSection() {
             data-sample={
               threads.length === 0 ? "comments-panel-empty" : "comments-panel"
             }
-            className="flex h-[440px] w-[360px] flex-col rounded-[var(--r-card)] border border-border bg-popover pt-4"
+            className="flex h-[440px] w-[360px] flex-col rounded-card border border-border bg-popover pt-4"
           >
-            <p className="px-4 pb-2 text-base font-medium text-foreground">
+            <p className="px-4 pb-2 text-section text-foreground">
               {t("comments.title")}
             </p>
             <CommentsPanelView

@@ -30,7 +30,7 @@ function Sample({
 }) {
   return (
     <figure className="flex min-w-0 flex-col gap-2">
-      <figcaption className="text-[12px] text-muted-foreground">
+      <figcaption className="text-meta text-muted-foreground">
         {caption}
       </figcaption>
       {children}

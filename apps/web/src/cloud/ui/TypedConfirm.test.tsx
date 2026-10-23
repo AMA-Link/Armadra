@@ -75,7 +75,7 @@ describe("TypedConfirm", () => {
         screen
           .getByRole("button", { name: "删除团队" })
           .getAttribute("aria-busy"),
-      ).toBe("false"),
+      ).not.toBe("true"),
     );
     expect(onOpenChange).not.toHaveBeenCalled();
   });

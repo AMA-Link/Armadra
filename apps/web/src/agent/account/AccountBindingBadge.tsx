@@ -1,13 +1,13 @@
 import { Check, UserRound } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import type { CredentialEntry, TerminalAgent } from "@armadra/shared";
-import { toast } from "sonner";
 
 import { useT } from "@/app/preferences-store";
 import { CREDENTIALS_QUERY_KEY, credentialsApi } from "@/api/credentials";
 import { customAgentFor } from "@/agent/launch";
 import { useCanvasStore } from "@/store/canvas-store";
 import { Badge } from "@/ui/badge";
+import { toast } from "@/ui/toast";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -56,10 +56,10 @@ export function AccountBindingBadge({
   const badge = (
     <Badge
       variant="outline"
-      className="h-[18px] px-1.5 text-[length:var(--text-caption)]"
-      title={t("credentials.badge.title", { account: label })}
+      size="sm"
+      aria-label={t("credentials.badge.title", { account: label })}
     >
-      <UserRound className="size-2.5" />
+      <UserRound className="size-3" />
       {account && <span className="max-w-24 truncate">{label}</span>}
     </Badge>
   );
@@ -86,7 +86,7 @@ export function AccountBindingBadge({
   return (
     <DropdownMenu>
       <DropdownMenuTrigger
-        className="nodrag rounded-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        className="nodrag rounded-tight outline-none focus-visible:ring-2 focus-visible:ring-ring"
         aria-label={t("credentials.badge.title", { account: label })}
       >
         {badge}

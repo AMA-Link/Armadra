@@ -34,7 +34,7 @@ vi.mock("@/agent/sessions", async (original) => ({
       workspaceId === "w1" ? [{ sessionId: "s-build", title: "build" }] : [],
   }),
 }));
-vi.mock("sonner", () => ({
+vi.mock("@/ui/toast", () => ({
   toast: { success: vi.fn(), error: vi.fn(), warning: vi.fn() },
 }));
 

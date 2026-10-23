@@ -23,6 +23,7 @@ import { IconButton } from "../ui/icon-button";
 import { ScrollArea } from "../ui/scroll-area";
 import { Separator } from "../ui/separator";
 import { Skeleton } from "../ui/skeleton";
+import { EmptyState, ErrorState } from "../ui/state";
 import { SheetTitle } from "../ui/sheet";
 import { PINNED_PANEL_WIDTH, WorkPanelSheet } from "./WorkPanelSheet";
 
@@ -34,8 +35,8 @@ export function UsageDashboard() {
   if (mode === "closed") return null;
 
   const header = (Title: typeof SheetTitle | "h2") => (
-    <div className="flex h-10 shrink-0 items-center gap-1 border-b border-border px-3">
-      <Title className="flex-1 truncate text-[13px] font-semibold">
+    <div className="flex h-8 shrink-0 items-center gap-1 border-b border-border px-3">
+      <Title className="flex-1 truncate text-body font-semibold">
         {t("usage.dashboard.title")}
       </Title>
       <IconButton
@@ -71,7 +72,7 @@ export function UsageDashboard() {
       <aside
         aria-label={t("usage.dashboard.title")}
         style={{ width: PINNED_PANEL_WIDTH.usage }}
-        className="fixed top-[calc(96px+var(--safe-top))] right-[calc(14px+var(--safe-right))] bottom-[calc(14px+var(--safe-bottom))] z-[var(--z-cluster)] flex max-w-[calc(100vw-28px)] flex-col overflow-hidden rounded-xl border border-border bg-[color-mix(in_srgb,var(--card)_96%,transparent)] shadow-[var(--shadow-overlay)] backdrop-blur-md"
+        className="fixed top-[calc(96px+var(--safe-top))] right-[calc(14px+var(--safe-right))] bottom-[calc(14px+var(--safe-bottom))] z-[var(--z-cluster)] flex max-w-[calc(100vw-28px)] flex-col overflow-hidden rounded-panel border border-border bg-card/95 shadow-overlay backdrop-blur-md"
       >
         {header("h2")}
         {body}
@@ -107,28 +108,27 @@ function DashboardBody() {
   return (
     <div className="flex flex-col gap-(--space-section) p-(--space-page)">
       <div className="flex flex-col gap-(--space-group)">
-        <div className="flex items-center justify-between gap-2">
-          <span className="text-xs text-muted-foreground">
-            {cooldown > 0
-              ? t("usage.cooldown", { seconds: cooldown })
-              : t("usage.cadence")}
-          </span>
+        <div className="flex items-center justify-end gap-2">
+          {cooldown > 0 && (
+            <span className="text-meta text-muted-foreground">
+              {t("usage.cooldown", { seconds: cooldown })}
+            </span>
+          )}
           <IconButton
             label={t("usage.refresh")}
-            disabled={!usageEnabled || refreshing || cooldown > 0}
+            loading={refreshing}
+            disabled={!usageEnabled || cooldown > 0}
             onClick={() => {
               refresh.mutate();
               if (costEnabled) rescan.mutate();
             }}
           >
-            <RefreshCw className={refreshing ? "animate-spin" : undefined} />
+            <RefreshCw data-icon="inline-start" />
           </IconButton>
         </div>
 
         {!usageEnabled ? (
-          <p role="status" className="text-xs text-muted-foreground">
-            {t("usage.paused")}
-          </p>
+          <EmptyState title={t("usage.paused")} />
         ) : (
           <Loadable
             loading={usage.isLoading}
@@ -138,8 +138,8 @@ function DashboardBody() {
                 aria-label={t("state.loading")}
                 className="flex flex-col gap-2"
               >
-                <Skeleton className="h-24 w-full rounded-[var(--r-card)]" />
-                <Skeleton className="h-24 w-full rounded-[var(--r-card)]" />
+                <Skeleton className="h-24 w-full rounded-card" />
+                <Skeleton className="h-24 w-full rounded-card" />
               </div>
             }
           >
@@ -164,15 +164,15 @@ function DashboardBody() {
         aria-label={t("usage.cost.title")}
         className="flex flex-col gap-(--space-group)"
       >
-        <h2 className="text-sm font-medium">{t("usage.cost.title")}</h2>
+        <h2 className="text-body font-medium">{t("usage.cost.title")}</h2>
         {!costEnabled || summary?.status === "disabled" ? (
-          <p role="status" className="text-xs text-muted-foreground">
-            {t("usage.cost.disabled")}
-          </p>
+          <EmptyState title={t("usage.cost.disabled")} />
         ) : cost.isError ? (
-          <p role="status" className="text-xs text-danger-text">
-            {t("usage.cost.error")}
-          </p>
+          <ErrorState
+            title={t("usage.cost.error")}
+            retryLabel={t("usage.refresh")}
+            onRetry={() => rescan.mutate()}
+          />
         ) : settings.isLoading || cost.isLoading ? (
           <Loadable
             loading
@@ -182,30 +182,30 @@ function DashboardBody() {
                 aria-label={t("state.loading")}
                 className="flex flex-col gap-3"
               >
-                <Skeleton className="h-16 w-full rounded-[var(--r-card)]" />
-                <Skeleton className="h-40 w-full rounded-[var(--r-card)]" />
+                <Skeleton className="h-16 w-full rounded-card" />
+                <Skeleton className="h-40 w-full rounded-card" />
               </div>
             }
           >
             {null}
           </Loadable>
         ) : !summary || summary.status === "unavailable" ? (
-          <p role="status" className="text-xs text-muted-foreground">
-            {t("usage.cost.empty")}
-          </p>
+          <EmptyState title={t("usage.cost.empty")} />
         ) : (
           <>
             <UsagePanel summary={summary} />
 
             {summary.unpricedModels.length > 0 && (
-              <p className="text-xs text-muted-foreground">
+              <p className="text-meta text-muted-foreground">
                 {t("usage.cost.unpriced", {
                   value: summary.unpricedModels.join(t("usage.cost.separator")),
                 })}
               </p>
             )}
             {summary.truncated && (
-              <p className="text-xs text-warn">{t("usage.cost.truncated")}</p>
+              <p className="text-meta text-warn-text">
+                {t("usage.cost.truncated")}
+              </p>
             )}
           </>
         )}

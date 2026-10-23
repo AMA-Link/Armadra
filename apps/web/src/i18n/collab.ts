@@ -75,7 +75,6 @@ const zh = {
   "agentSettings.contextShare": "允许相连 Agent 读取转录",
 
   /* 关闭确认（§5.8） */
-  "confirm.title": "Agent 请求关闭节点",
   "confirm.allow": "允许",
   "confirm.deny": "拒绝",
   "confirm.expired": "这个请求已经失效。",
@@ -142,8 +141,6 @@ const en: Record<keyof typeof zh, string> = {
   "agentSettings.inboxWake.deliver": "Deliver",
   "agentSettings.acceptSubDelivery": "Let subs type into my terminal",
   "agentSettings.contextShare": "Let linked agents read my transcript",
-
-  "confirm.title": "An agent wants to close a node",
   "confirm.allow": "Allow",
   "confirm.deny": "Deny",
   "confirm.expired": "This request has expired.",

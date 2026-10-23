@@ -12,6 +12,8 @@ import {
   usageWindowLabel,
 } from "../../lib/usage";
 import { Badge } from "@/ui/badge";
+import { Progress, progressToneFor } from "@/ui/progress";
+import { Tray, TrayCard, TrayHeader, TrayValue } from "@/ui/tray";
 import { LocalEstimate } from "./LocalEstimate";
 import { useProviderIncident } from "./provider-status";
 
@@ -39,152 +41,121 @@ export function ProviderCard({
   const estimate = usageLocalEstimate(provider);
 
   return (
-    <section
+    <Tray
       data-slot="usage-provider-card"
       data-provider={provider.id}
       aria-label={name}
-      className="flex min-w-0 flex-col gap-(--space-group) rounded-lg border border-border bg-panel p-(--space-inset)"
     >
-      <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
-        <span className="flex min-w-0 items-center gap-2">
-          <span className="text-sm font-medium">{name}</span>
-          {/* 状态页报了故障或维护才出现；原文（英文）只放在悬停提示里。 */}
-          {incident && (
-            <Badge
-              data-slot="usage-incident"
-              data-indicator={incident.indicator}
-              variant={
-                incident.indicator === "maintenance"
-                  ? "secondary"
-                  : "destructive"
-              }
-              title={incident.description}
-            >
-              {t(`usage.incident.${incident.indicator}`)}
-            </Badge>
-          )}
-        </span>
-        {provider.status === "ok" && Number.isFinite(fetchedAt) && (
-          <time
-            dateTime={provider.fetchedAt!}
-            title={new Date(fetchedAt).toLocaleString()}
-            className="text-xs text-muted-foreground"
-          >
-            {t("usage.updated", { value: formatRelativeTime(fetchedAt, now) })}
-          </time>
-        )}
-      </div>
+      <TrayHeader
+        label={name}
+        actions={
+          <>
+            {/* 状态页报了故障或维护才出现；原文（英文）只放在悬停提示里。 */}
+            {incident && (
+              <Badge
+                data-slot="usage-incident"
+                data-indicator={incident.indicator}
+                variant={
+                  incident.indicator === "maintenance"
+                    ? "secondary"
+                    : "destructive"
+                }
+                title={incident.description}
+              >
+                {t(`usage.incident.${incident.indicator}`)}
+              </Badge>
+            )}
+            {provider.status === "ok" && Number.isFinite(fetchedAt) && (
+              <time
+                dateTime={provider.fetchedAt!}
+                title={new Date(fetchedAt).toLocaleString()}
+                className="shrink-0 text-meta text-muted-foreground"
+              >
+                {t("usage.updated", {
+                  value: formatRelativeTime(fetchedAt, now),
+                })}
+              </time>
+            )}
+          </>
+        }
+      />
 
       {estimate ? (
-        <>
-          <p className="text-xs leading-relaxed text-muted-foreground">
+        <TrayCard>
+          <p className="text-meta text-muted-foreground">
             {t(usageReasonKey(provider.reason))}
           </p>
           <LocalEstimate provider={provider} windows={estimate} now={now} />
-        </>
+        </TrayCard>
       ) : provider.status !== "ok" ? (
-        <p className="text-xs leading-relaxed text-muted-foreground">
-          {t(
-            provider.status === "error"
-              ? "usage.status.error"
-              : "usage.status.unavailable",
-          )}
-          {/* 原因代码来自 Runtime（`reason`）；没有的按通用原因说。 */}
-          {provider.status === "error" && (
-            <span className="block">
-              {t(usageReasonKey(provider.reason), { provider: name })}
-            </span>
-          )}
-          {/*
-            「没有凭据」也要说怎么办。`error` 那一行有原因句，
-            `unavailable` 过去只有一句陈述，而登录入口恰好不在这块面板里：
-            Copilot 在设置页，其余在各自的 CLI。
-          */}
-          {provider.status !== "error" && (
-            <span className="block">
-              {t(
-                provider.id === "copilot"
-                  ? "usage.status.unavailableHint.copilot"
-                  : "usage.status.unavailableHint",
-                { provider: name },
-              )}
-            </span>
-          )}
-        </p>
+        <TrayCard>
+          <p className="text-meta text-muted-foreground">
+            {t(
+              provider.status === "error"
+                ? "usage.status.error"
+                : "usage.status.unavailable",
+            )}
+            {/* 原因代码来自 Runtime（`reason`）；没有的按通用原因说。 */}
+            {provider.status === "error" && (
+              <span className="block">
+                {t(usageReasonKey(provider.reason), { provider: name })}
+              </span>
+            )}
+            {/*
+              「没有凭据」也要说怎么办：登录入口恰好不在这块面板里，
+              Copilot 在设置页，其余在各自的 CLI。
+            */}
+            {provider.status !== "error" && (
+              <span className="block">
+                {t(
+                  provider.id === "copilot"
+                    ? "usage.status.unavailableHint.copilot"
+                    : "usage.status.unavailableHint",
+                  { provider: name },
+                )}
+              </span>
+            )}
+          </p>
+        </TrayCard>
       ) : (
         <>
-          {stale && <p className="text-xs text-warn">{t("usage.stale")}</p>}
-          {provider.viaCli && (
-            <p className="text-xs text-muted-foreground">{t("usage.viaCli")}</p>
-          )}
-          {provider.credits && (
-            <div className="flex items-baseline justify-between gap-3 text-xs">
-              <span className="text-muted-foreground">
-                {t("usage.credits")}
-              </span>
-              <span className="font-medium tabular-nums">
-                {provider.credits.balance.toFixed(2)}
-              </span>
-            </div>
+          {(stale || provider.viaCli || provider.credits) && (
+            <TrayCard>
+              {stale && (
+                <p className="text-meta text-warn-text">{t("usage.stale")}</p>
+              )}
+              {provider.viaCli && (
+                <p className="text-meta text-muted-foreground">
+                  {t("usage.viaCli")}
+                </p>
+              )}
+              {provider.credits && (
+                <div className="flex items-baseline justify-between gap-3 text-meta">
+                  <span className="text-muted-foreground">
+                    {t("usage.credits")}
+                  </span>
+                  <span className="font-medium tabular-nums">
+                    {provider.credits.balance.toFixed(2)}
+                  </span>
+                </div>
+              )}
+            </TrayCard>
           )}
           {provider.windows.map((window) => {
             const percent = usagePercent(provider, window, now);
             const label = usageWindowLabel(t, window);
             const pace = window.unlimited ? null : paceDelta(window, now);
             return (
-              <div key={window.key} className="flex min-w-0 flex-col gap-1.5">
-                <div className="flex items-baseline justify-between gap-3 text-xs">
+              <TrayCard key={window.key}>
+                <div className="flex items-baseline justify-between gap-3 text-meta">
                   <span className="min-w-0 break-words text-muted-foreground">
                     {label}
-                  </span>
-                  <span className="shrink-0 font-medium tabular-nums">
-                    {window.unlimited
-                      ? t("usage.unlimited")
-                      : percent === null
-                        ? "—"
-                        : t("usage.used", { value: Math.round(percent) })}
-                  </span>
-                </div>
-                {!window.unlimited && (
-                  <div
-                    role="progressbar"
-                    aria-label={`${name} · ${label}`}
-                    aria-valuemin={0}
-                    aria-valuemax={100}
-                    aria-valuenow={percent ?? undefined}
-                    aria-valuetext={
-                      percent === null
-                        ? t("usage.stale")
-                        : t("usage.used", { value: Math.round(percent) })
-                    }
-                    className="h-1 w-full overflow-hidden rounded-full bg-border"
-                  >
-                    {percent !== null && (
-                      <div
-                        data-level={
-                          percent >= 95
-                            ? "danger"
-                            : percent >= 80
-                              ? "warn"
-                              : "normal"
-                        }
-                        className="h-full rounded-full bg-brand data-[level=danger]:bg-danger data-[level=warn]:bg-warn"
-                        style={{ width: `${percent}%` }}
-                      />
-                    )}
-                  </div>
-                )}
-                <div className="flex flex-wrap items-baseline justify-between gap-x-3 text-xs text-muted-foreground">
-                  <span>
-                    {window.unlimited
-                      ? t("usage.resetUnknown")
-                      : usageResetLabel(t, window, now)}
                   </span>
                   {pace !== null && percent !== null && (
                     <span
                       data-slot="usage-pace"
                       data-ahead={pace > 0 || undefined}
-                      className="tabular-nums data-[ahead]:text-warn"
+                      className="shrink-0 tabular-nums data-[ahead]:text-warn-text"
                     >
                       {t(pace > 0 ? "usage.paceAhead" : "usage.paceBehind", {
                         value: Math.abs(pace),
@@ -192,11 +163,43 @@ export function ProviderCard({
                     </span>
                   )}
                 </div>
-              </div>
+                <TrayValue
+                  label={label}
+                  value={window.unlimited ? t("usage.unlimited") : percent}
+                  format={(value) => `${Math.round(value)}%`}
+                />
+                {!window.unlimited && (
+                  <Progress
+                    variant="ticks"
+                    value={percent}
+                    tone={progressToneFor(percent ?? 0)}
+                    data-level={
+                      percent === null
+                        ? undefined
+                        : percent >= 95
+                          ? "danger"
+                          : percent >= 80
+                            ? "warn"
+                            : "normal"
+                    }
+                    aria-label={`${name} · ${label}`}
+                    aria-valuetext={
+                      percent === null
+                        ? t("usage.stale")
+                        : t("usage.used", { value: Math.round(percent) })
+                    }
+                  />
+                )}
+                <span className="text-meta text-muted-foreground">
+                  {window.unlimited
+                    ? t("usage.resetUnknown")
+                    : usageResetLabel(t, window, now)}
+                </span>
+              </TrayCard>
             );
           })}
         </>
       )}
-    </section>
+    </Tray>
   );
 }

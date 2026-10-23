@@ -22,7 +22,6 @@ export const usage: MessageModule = {
     "usage.stale": "数据已过期，请刷新",
     "usage.refreshError": "刷新失败，请稍后重试",
     "usage.cooldown": "{seconds} 秒后可刷新",
-    "usage.cadence": "每 5 分钟自动更新",
     "usage.status.unavailable": "未找到可用的登录凭据",
     "usage.status.unavailableHint":
       "在 {provider} 的 CLI 里登录一次，然后回来刷新",
@@ -132,7 +131,6 @@ export const usage: MessageModule = {
     "usage.stale": "Data is out of date. Refresh to update.",
     "usage.refreshError": "Refresh failed. Try again later.",
     "usage.cooldown": "Refresh in {seconds}s",
-    "usage.cadence": "Updates automatically every 5 minutes",
     "usage.status.unavailable": "No usable sign-in credentials found",
     "usage.status.unavailableHint":
       "Sign in once in the {provider} CLI, then refresh here",

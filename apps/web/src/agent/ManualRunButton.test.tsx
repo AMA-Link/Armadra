@@ -25,7 +25,9 @@ vi.mock("@/store/canvas-store", () => ({
     }),
   },
 }));
-vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
+vi.mock("@/ui/toast", () => ({
+  toast: { success: vi.fn(), error: vi.fn() },
+}));
 beforeEach(() => {
   mocked.member = false;
   mocked.start.mockReset().mockResolvedValue({ runId: "run", state: "queued" });

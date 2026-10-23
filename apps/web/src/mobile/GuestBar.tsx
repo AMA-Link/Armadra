@@ -34,7 +34,7 @@ export function GuestBar() {
   return (
     <div
       data-slot="guest-bar"
-      className="flex min-h-10 items-center gap-3 border-b bg-background px-3 pt-[var(--safe-top)] text-[length:var(--text-caption)]"
+      className="flex min-h-8 items-center gap-3 border-b bg-background px-3 pt-[var(--safe-top)] text-caption"
     >
       <span className="min-w-0 flex-1 truncate">
         <span className="font-medium">{title}</span>

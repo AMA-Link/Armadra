@@ -48,7 +48,7 @@ export default function UpdatesSection() {
             >
               <SettingsGroup>
                 <SettingsRow label={t("updates.version")}>
-                  <span className="text-[13px] tabular-nums text-muted-foreground">
+                  <span className="text-body tabular-nums text-muted-foreground">
                     {INSTALLED}
                   </span>
                 </SettingsRow>

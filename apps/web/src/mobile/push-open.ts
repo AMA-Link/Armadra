@@ -1,5 +1,5 @@
 import * as React from "react";
-import { toast } from "sonner";
+import { toast } from "@/ui/toast";
 
 import { clientFor, runtimeApi } from "../api/client";
 import { LOCAL_SOURCE_ID } from "../api/source";

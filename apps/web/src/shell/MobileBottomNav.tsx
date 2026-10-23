@@ -99,7 +99,7 @@ export function MobileBottomNav() {
       data-slot="mobile-bottom-nav"
       className={cn(
         "fixed inset-x-0 bottom-0 z-[var(--z-cluster)] flex items-stretch",
-        "border-t border-border bg-[var(--panel)]/95 backdrop-blur-[12px]",
+        "border-t border-border bg-panel/95 backdrop-blur-[12px]",
         // 手机的主页横条压在底部，内容再往上抬一层；横屏时左右让开刘海。
         "pr-[var(--safe-right)] pb-[var(--safe-bottom)] pl-[var(--safe-left)]",
       )}
@@ -123,10 +123,10 @@ export function MobileBottomNav() {
             disabled={needsWorkspace && destination.panel !== "settings"}
             className={cn(
               "h-auto min-h-[var(--mobile-nav-h)] min-w-0 flex-1 flex-col gap-1 rounded-none px-1",
-              "text-[11px] leading-4 font-normal transition-colors disabled:opacity-40",
+              "text-caption leading-4 font-normal transition-colors disabled:opacity-40",
               "hover:bg-transparent",
               current
-                ? "text-[var(--brand-text)] hover:text-[var(--brand-text)]"
+                ? "text-brand-text hover:text-brand-text"
                 : "text-muted-foreground hover:text-foreground",
             )}
             onClick={() => {

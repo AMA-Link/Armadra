@@ -1,6 +1,5 @@
 import * as React from "react";
 import { Play } from "lucide-react";
-import { toast } from "sonner";
 import { runtimeApi } from "@/api/client";
 import { useAccess } from "@/app/use-access";
 import { useT } from "@/app/preferences-store";
@@ -8,12 +7,12 @@ import { useCanvasStore } from "@/store/canvas-store";
 import { IconButton } from "@/ui/icon-button";
 import { Button } from "@/ui/button";
 import { Textarea } from "@/ui/textarea";
+import { toast } from "@/ui/toast";
 import {
   ResponsiveDialog,
   ResponsiveDialogContent,
   ResponsiveDialogHeader,
   ResponsiveDialogTitle,
-  ResponsiveDialogDescription,
   ResponsiveDialogFooter,
 } from "@/panels/ResponsiveDialog";
 
@@ -52,7 +51,6 @@ export function ManualRunButton({ nodeId }: { nodeId: string }) {
       setOpen(false);
       setPrompt("");
       frozen.current = null;
-      toast.success(t("run.manual.queued"));
     } catch (error) {
       toast.error(error instanceof Error ? error.message : String(error));
     } finally {
@@ -61,30 +59,28 @@ export function ManualRunButton({ nodeId }: { nodeId: string }) {
   };
   return (
     <>
-      <span className="text-xs text-muted-foreground">
+      <span className="text-meta text-muted-foreground">
         {t("run.manual.waiting")}
       </span>
       <IconButton label={t("run.manual.open")} onClick={() => setOpen(true)}>
-        <Play className="size-3" />
+        <Play />
       </IconButton>
       <ResponsiveDialog open={open} onOpenChange={setOpen}>
         <ResponsiveDialogContent
+          aria-describedby={undefined}
           onPointerDown={(event) => event.stopPropagation()}
         >
           <ResponsiveDialogHeader>
             <ResponsiveDialogTitle>
               {t("run.manual.open")}
             </ResponsiveDialogTitle>
-            <ResponsiveDialogDescription>
-              {t("run.manual.description")}
-            </ResponsiveDialogDescription>
           </ResponsiveDialogHeader>
           <form
             onSubmit={(event) => void submit(event)}
             className="flex flex-col gap-(--space-block)"
           >
             <div className="flex flex-col gap-(--space-group)">
-              <label htmlFor={`run-prompt-${nodeId}`} className="text-sm">
+              <label htmlFor={`run-prompt-${nodeId}`} className="text-body">
                 {t("run.manual.prompt")}
               </label>
               <Textarea

@@ -16,7 +16,7 @@ import {
 const WEEKS = 53;
 const DAY = 86_400_000;
 const WEEK = 7 * DAY;
-const CELL = "size-[10px] shrink-0 rounded-[2px]";
+const CELL = "size-[10px] shrink-0 rounded-tight";
 
 /** 行号 → 星期标签，只标三行，七行全标会挤成一团。 */
 const ROW_LABELS: Record<number, string> = { 1: "mon", 3: "wed", 5: "fri" };
@@ -60,7 +60,7 @@ export function Heatmap({
   return (
     <div data-slot="usage-heatmap" className="flex flex-col gap-1">
       <div className="flex gap-1">
-        <div className="flex shrink-0 flex-col gap-[3px] pt-[14px] text-[length:var(--text-caption)] leading-[10px] text-muted-foreground">
+        <div className="flex shrink-0 flex-col gap-[3px] pt-[14px] text-caption leading-[10px] text-muted-foreground">
           {Array.from({ length: 7 }, (_, row) => (
             <span key={row} className="h-[10px]">
               {ROW_LABELS[row]
@@ -78,7 +78,7 @@ export function Heatmap({
                   className="relative h-[14px] w-[10px] shrink-0"
                 >
                   {column.monthStart !== null && (
-                    <span className="absolute top-0 left-0 text-[length:var(--text-caption)] leading-[10px] whitespace-nowrap text-muted-foreground">
+                    <span className="absolute top-0 left-0 text-caption leading-[10px] whitespace-nowrap text-muted-foreground">
                       {month.format(column.monthStart)}
                     </span>
                   )}
@@ -122,7 +122,7 @@ export function Heatmap({
           </div>
         </div>
       </div>
-      <div className="flex items-center justify-end gap-1 text-[length:var(--text-caption)] text-muted-foreground">
+      <div className="flex items-center justify-end gap-1 text-caption text-muted-foreground">
         <span>{t("usage.heatmap.less")}</span>
         {HEAT_LEVELS.map((color) => (
           <span

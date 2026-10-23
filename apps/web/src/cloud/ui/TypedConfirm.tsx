@@ -12,7 +12,6 @@ import {
 import { Button } from "@/ui/button";
 import { Field, FieldError, FieldLabel } from "@/ui/field";
 import { Input } from "@/ui/input";
-import { Spinner } from "@/ui/spinner";
 
 export interface TypedConfirmProps {
   readonly open: boolean;
@@ -126,8 +125,7 @@ function Body({
           <ResponsiveAlertDialogCancel>
             {t("cloud.common.cancel")}
           </ResponsiveAlertDialogCancel>
-          <Button type="submit" variant="destructive" aria-busy={busy}>
-            {busy ? <Spinner data-icon="inline-start" /> : null}
+          <Button type="submit" variant="destructive-solid" loading={busy}>
             {actionLabel}
           </Button>
         </ResponsiveAlertDialogFooter>

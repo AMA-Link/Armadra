@@ -53,16 +53,11 @@ export function HandoffBadge({ nodeId }: { nodeId: string }) {
   const active = (query.data ?? []).find((view) => !isSettled(view.state));
   if (!active) return null;
   return (
-    <Badge
-      asChild
-      variant="outline"
-      className="h-[18px] cursor-pointer px-1.5 text-[length:var(--text-caption)]"
-    >
+    <Badge asChild variant="outline" size="sm" className="cursor-pointer">
       <Button
         variant="ghost"
         size="xs"
         type="button"
-        title={t(`handoff.${active.state}`)}
         onClick={() =>
           openHandoff({
             nodeId,
@@ -72,7 +67,7 @@ export function HandoffBadge({ nodeId }: { nodeId: string }) {
           })
         }
       >
-        <Share2 className="size-2.5" />
+        <Share2 className="size-3" />
         <span className="truncate">{t(`handoff.${active.state}`)}</span>
       </Button>
     </Badge>

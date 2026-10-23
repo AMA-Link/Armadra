@@ -324,7 +324,10 @@ describe("用量面板", () => {
         formatTokens(totalTokens(last.tokens)),
       ),
     );
-    expect(card("tokens").textContent).toContain("9/20");
+    // 选中的日期在托盘头，不再写进每张卡。
+    expect(
+      document.querySelector('[data-slot="usage-metrics"]')?.textContent,
+    ).toContain("9/20");
 
     fireEvent.click(cell);
     await waitFor(() => expect(cell.dataset.selected).toBe("false"));

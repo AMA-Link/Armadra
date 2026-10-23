@@ -34,7 +34,7 @@ function Sample({
 }) {
   return (
     <figure className="flex min-w-0 flex-col gap-2">
-      <figcaption className="text-[12px] text-muted-foreground">
+      <figcaption className="text-meta text-muted-foreground">
         {caption}
       </figcaption>
       {children}
@@ -122,14 +122,14 @@ function ForgeSamples() {
     <>
       <div className="flex min-w-0 flex-col gap-6">
         <Sample caption={t("forge.showcase.gitea")}>
-          <div className="rounded-lg border border-border">
+          <div className="rounded-card border border-border">
             <ForgeHosted detection={GITEA_DETECTION} locale={locale} open />
           </div>
         </Sample>
       </div>
       <div className="flex min-w-0 flex-col gap-6">
         <Sample caption={t("forge.showcase.gitlab")}>
-          <div className="min-w-0 space-y-3 rounded-lg border border-border p-3">
+          <div className="min-w-0 space-y-3 rounded-card border border-border p-3">
             <PullBody pull={GITLAB_MR} locale={locale} />
           </div>
         </Sample>

@@ -104,7 +104,7 @@ describe("DataList", () => {
     const body = table.getAllByRole("row").slice(1);
     expect(body[0]!.className).toContain("h-[52px]");
     expect(body[0]!.textContent).toContain("主人1·可执行");
-    expect(body[1]!.className).toContain("h-11");
+    expect(body[1]!.className).not.toContain("h-[52px]");
     expect(
       table.getAllByRole("columnheader").map((c) => c.textContent),
     ).not.toContain("所有者");
