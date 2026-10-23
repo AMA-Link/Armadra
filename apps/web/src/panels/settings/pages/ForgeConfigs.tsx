@@ -5,9 +5,11 @@ import { useCanvasStore } from "../../../store/canvas-store";
 import { lk } from "../local-key";
 import * as React from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { toast } from "sonner";
 
 import { Badge } from "@/ui/badge";
+import { EmptyState } from "@/ui/state";
+import { StatusPill } from "@/ui/status-pill";
+import { toast } from "@/ui/toast";
 import { Button } from "@/ui/button";
 import { Input } from "@/ui/input";
 import { useT } from "../../../app/preferences-store";
@@ -118,7 +120,6 @@ export function ForgeConfigs() {
     onSuccess: () => {
       // 令牌在 core 收下的那一刻离开这个组件。
       setDraft(null);
-      toast.success(t("forge.settings.saved"));
       refresh();
     },
     onError: fail,
@@ -128,7 +129,6 @@ export function ForgeConfigs() {
     mutationFn: (config: ForgeConfig) =>
       onLocal(() => deleteForgeConfig(config.repoKey, config.revision, scope)),
     onSuccess: () => {
-      toast.success(t("forge.settings.removed"));
       refresh();
     },
     onError: fail,
@@ -150,10 +150,10 @@ export function ForgeConfigs() {
                 setScopeChoice(next as "machine" | "workspace");
               }}
             >
-              <SelectTrigger className="h-9 w-full min-w-0">
+              <SelectTrigger className="w-full min-w-0">
                 <SelectValue />
               </SelectTrigger>
-              <SelectContent className="z-[var(--z-dialog)]">
+              <SelectContent>
                 <SelectItem value="machine">
                   {t("forge.settings.scopeMachine")}
                 </SelectItem>
@@ -178,41 +178,42 @@ export function ForgeConfigs() {
         }
       >
         {configs.isError && (
-          <p
+          <div
             role="status"
-            className="px-4 py-3 text-[12px] text-destructive"
+            className="px-4 py-3 text-meta text-destructive"
             data-slot="forge-configs-error"
           >
             {t(forgeFailureKey(configs.error))}
-          </p>
+          </div>
         )}
         {configs.data && rows.length === 0 && draft === null && (
-          <p className="px-4 py-3 text-[12px] text-muted-foreground">
-            {t("forge.settings.empty")}
-          </p>
+          <EmptyState inline title={t("forge.settings.empty")} />
         )}
         {rows.map((config) => (
           <div
             key={config.repoKey}
             data-slot="forge-config"
             data-key={config.repoKey}
-            className="flex min-w-0 flex-wrap items-center gap-2 px-4 py-3 text-[12px]"
+            className="flex min-w-0 flex-wrap items-center gap-2 px-4 py-3 text-meta"
           >
             <span className="min-w-0 flex-1 truncate font-mono select-text">
               {config.repoKey}
             </span>
-            <Badge variant="outline">
+            <Badge variant="outline" size="sm">
               {FORGE_NAMES[config.forge] ?? config.forge}
             </Badge>
-            <Badge variant={config.credential ? "secondary" : "outline"}>
-              {config.credential
-                ? (config.accountLogin ?? t("forge.settings.credential"))
-                : t("forge.settings.noCredential")}
-            </Badge>
+            <StatusPill
+              size="sm"
+              tone={config.credential ? "done" : "paused"}
+              label={
+                config.credential
+                  ? (config.accountLogin ?? t("forge.settings.credential"))
+                  : t("forge.settings.noCredential")
+              }
+            />
             <Button
               size="sm"
               variant="ghost"
-              className="min-h-10"
               disabled={busy}
               onClick={() =>
                 setDraft({
@@ -229,7 +230,7 @@ export function ForgeConfigs() {
             <Button
               size="sm"
               variant="ghost"
-              className="min-h-10 text-destructive"
+              className="text-destructive"
               disabled={busy}
               onClick={() => remove.mutate(config)}
             >
@@ -259,7 +260,7 @@ export function ForgeConfigs() {
               onChange={(event) =>
                 setDraft({ ...draft, repoKey: event.target.value })
               }
-              className="h-10 min-w-0 font-mono"
+              className="min-w-0 font-mono"
             />
           </Field>
           <Field label={t("forge.settings.platform")}>
@@ -272,10 +273,10 @@ export function ForgeConfigs() {
                 })
               }
             >
-              <SelectTrigger className="h-9 w-full min-w-0">
+              <SelectTrigger className="w-full min-w-0">
                 <SelectValue />
               </SelectTrigger>
-              <SelectContent className="z-[var(--z-dialog)]">
+              <SelectContent>
                 {PLATFORMS.map((value) => (
                   <SelectItem key={value} value={value}>
                     {FORGE_NAMES[value]}
@@ -294,7 +295,7 @@ export function ForgeConfigs() {
               onChange={(event) =>
                 setDraft({ ...draft, apiBase: event.target.value })
               }
-              className="h-10 min-w-0"
+              className="min-w-0"
             />
           </Field>
           <Field label={t("forge.settings.token")}>
@@ -310,14 +311,13 @@ export function ForgeConfigs() {
               onChange={(event) =>
                 setDraft({ ...draft, token: event.target.value })
               }
-              className="h-10 min-w-0"
+              className="min-w-0"
             />
           </Field>
           <div className="flex flex-wrap gap-2">
             <Button
               type="submit"
               size="sm"
-              className="min-h-10"
               disabled={busy || !draft.repoKey.trim() || !draft.apiBase.trim()}
             >
               {t("forge.settings.save")}
@@ -327,7 +327,6 @@ export function ForgeConfigs() {
                 type="button"
                 size="sm"
                 variant="secondary"
-                className="min-h-10"
                 disabled={busy}
                 onClick={() => save.mutate({ ...draft, clearToken: true })}
               >
@@ -338,7 +337,6 @@ export function ForgeConfigs() {
               type="button"
               size="sm"
               variant="ghost"
-              className="min-h-10"
               disabled={busy}
               onClick={() => setDraft(null)}
             >
@@ -351,7 +349,6 @@ export function ForgeConfigs() {
           <Button
             size="sm"
             variant="secondary"
-            className="min-h-10"
             disabled={busy || !configs.data}
             onClick={() => setDraft(EMPTY)}
           >

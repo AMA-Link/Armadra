@@ -1,6 +1,5 @@
 import * as React from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { toast } from "sonner";
 import type {
   ExecutionHost,
   ExecutionHostBlocker,
@@ -15,6 +14,7 @@ import { SettingsGroup } from "../../SettingsGroup";
 import { SettingsRow } from "../../SettingsRow";
 import { Button } from "@/ui/button";
 import { Input } from "@/ui/input";
+import { toast } from "@/ui/toast";
 import {
   Select,
   SelectContent,
@@ -72,11 +72,6 @@ export function SwitchExecutionHost({
       });
       // 这个工作区的每一个读都换了一台机器，所以整片缓存重取，而不是补丁。
       void client.invalidateQueries();
-      toast.success(
-        t("executionHosts.switch.done", {
-          name: hostName(hosts, updated.executionHostId ?? "", t),
-        }),
-      );
       onDone();
     },
     onError: (cause: Error) => {
@@ -114,11 +109,11 @@ export function SwitchExecutionHost({
             <SelectTrigger
               aria-label={t("executionHosts.switch.target")}
               size="sm"
-              className="w-[220px]"
+              className="w-56"
             >
               <SelectValue />
             </SelectTrigger>
-            <SelectContent className="z-[var(--z-dialog)]">
+            <SelectContent>
               {hosts.map((host) => (
                 <SelectItem
                   key={host.executionHostId || "local"}
@@ -136,22 +131,10 @@ export function SwitchExecutionHost({
           <Input
             value={rootPath}
             spellCheck={false}
-            className="h-8 w-[280px] text-[12px]"
+            className="w-72 text-meta"
             aria-label={t("executionHosts.switch.rootPath")}
             onChange={(event) => setRootPath(event.target.value)}
           />
-        </SettingsRow>
-        <SettingsRow label={null}>
-          <Button size="sm" variant="ghost" onClick={onDone}>
-            {t("executionHosts.switch.cancel")}
-          </Button>
-          <Button
-            size="sm"
-            disabled={switchHost.isPending || rootPath.trim() === ""}
-            onClick={() => switchHost.mutate({})}
-          >
-            {t("executionHosts.switch.confirm")}
-          </Button>
         </SettingsRow>
       </SettingsGroup>
 
@@ -161,8 +144,11 @@ export function SwitchExecutionHost({
             <SettingsRow
               key={`${blocker.kind}-${blocker.detail}-${index}`}
               label={blockerLabel(blocker, t)}
-              footnote={blocker.detail}
-            />
+            >
+              <span className="max-w-72 truncate font-mono text-meta text-muted-foreground">
+                {blocker.detail}
+              </span>
+            </SettingsRow>
           ))}
           {stoppable && (
             <SettingsRow label={null}>
@@ -181,11 +167,16 @@ export function SwitchExecutionHost({
 
       {refusal?.code === "root_mismatch" && (
         <SettingsGroup title={t("executionHosts.switch.mismatch")}>
-          <SettingsRow
-            label={workspace.rootPath}
-            footnote={fingerprint(refusal.from, t)}
-          />
-          <SettingsRow label={rootPath} footnote={fingerprint(refusal.to, t)} />
+          <SettingsRow label={workspace.rootPath}>
+            <span className="font-mono text-meta text-muted-foreground">
+              {fingerprint(refusal.from, t)}
+            </span>
+          </SettingsRow>
+          <SettingsRow label={rootPath}>
+            <span className="font-mono text-meta text-muted-foreground">
+              {fingerprint(refusal.to, t)}
+            </span>
+          </SettingsRow>
           <SettingsRow label={null}>
             <Button
               size="sm"
@@ -198,6 +189,19 @@ export function SwitchExecutionHost({
           </SettingsRow>
         </SettingsGroup>
       )}
+
+      <div className="sticky bottom-0 z-10 -mx-(--space-section) -mb-(--space-section) flex items-center justify-end gap-2 border-t border-border bg-card px-(--space-section) py-3">
+        <Button size="sm" variant="ghost" onClick={onDone}>
+          {t("executionHosts.switch.cancel")}
+        </Button>
+        <Button
+          size="sm"
+          disabled={switchHost.isPending || rootPath.trim() === ""}
+          onClick={() => switchHost.mutate({})}
+        >
+          {t("executionHosts.switch.confirm")}
+        </Button>
+      </div>
     </>
   );
 }
@@ -222,14 +226,4 @@ function fingerprint(
     head: print.head ? print.head.slice(0, 12) : "—",
     count: print.entryCount,
   });
-}
-
-function hostName(
-  hosts: ExecutionHost[],
-  id: string,
-  t: (key: string) => string,
-): string {
-  const host = hosts.find((entry) => entry.executionHostId === id);
-  if (!host || host.kind === "local") return t("executionHosts.local");
-  return host.name || id;
 }

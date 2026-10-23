@@ -1,18 +1,21 @@
 import * as React from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { toast } from "sonner";
 import { GithubCredentialSource, GithubSecretStore } from "../../../api/github";
 
 import { Loadable } from "@/loading/Loadable";
 import { Skeleton } from "@/ui/skeleton";
 import { SkeletonForm } from "@/ui/skeletons";
+import { Alert, AlertTitle } from "@/ui/alert";
 import { Badge } from "@/ui/badge";
 import { Button } from "@/ui/button";
 import { Input } from "@/ui/input";
+import { StatusPill } from "@/ui/status-pill";
+import { toast } from "@/ui/toast";
 import { useT } from "../../../app/preferences-store";
 import { useGithubSession } from "../../../host/github-session";
 import { useCanvasStore } from "../../../store/canvas-store";
 import { SettingsGroup } from "../SettingsGroup";
+import { SettingsPageHeader } from "../SettingsPageHeader";
 import {
   Select,
   SelectContent,
@@ -72,7 +75,6 @@ export function ForgePage() {
     onSuccess: () => {
       // The token leaves this component the moment the Host accepted it.
       setToken("");
-      toast.success(t("github.settings.saved"));
       void queryClient.invalidateQueries({ queryKey: githubKeys.all });
       void connect(workspaceId);
     },
@@ -84,7 +86,6 @@ export function ForgePage() {
       client!.revokeCredential({ expectedRevision: status!.revision }),
     onSuccess: () => {
       setToken("");
-      toast.success(t("github.settings.revoked"));
       void queryClient.invalidateQueries({ queryKey: githubKeys.all });
       void connect(workspaceId);
     },
@@ -99,13 +100,11 @@ export function ForgePage() {
 
   return (
     <>
+      <SettingsPageHeader />
       {blocked ? (
-        <p
-          role="status"
-          className="text-[13px] leading-5 text-muted-foreground"
-        >
-          {t(`github.blocked.${blocked}`)}
-        </p>
+        <Alert role="status">
+          <AlertTitle>{t(`github.blocked.${blocked}`)}</AlertTitle>
+        </Alert>
       ) : (
         <Loadable
           loading={!client}
@@ -129,25 +128,29 @@ export function ForgePage() {
               {status && (
                 <div
                   data-slot="github-status"
-                  className="flex min-w-0 flex-wrap items-center gap-2 px-4 pt-3 text-[12px]"
+                  className="flex min-w-0 flex-wrap items-center gap-2 px-4 pt-3 text-meta"
                 >
-                  <Badge variant={status.available ? "secondary" : "outline"}>
-                    {t(
+                  <StatusPill
+                    size="sm"
+                    tone={status.available ? "done" : "paused"}
+                    label={t(
                       status.available
                         ? "github.settings.available"
                         : "github.settings.unavailable",
                     )}
-                  </Badge>
+                  />
                   {status.accountLogin && (
-                    <Badge variant="outline" className="truncate">
+                    <Badge variant="outline" size="sm" className="truncate">
                       {status.accountLogin}
                     </Badge>
                   )}
                   {status.enterprise && (
-                    <Badge variant="outline">{t("github.enterprise")}</Badge>
+                    <Badge variant="outline" size="sm">
+                      {t("github.enterprise")}
+                    </Badge>
                   )}
                   {status.store === GithubSecretStore.FILE_FALLBACK && (
-                    <Badge variant="outline">
+                    <Badge variant="outline" size="sm">
                       {t("github.store.fileFallback")}
                     </Badge>
                   )}
@@ -176,10 +179,10 @@ export function ForgePage() {
                     setSource(next as GithubCredentialSource)
                   }
                 >
-                  <SelectTrigger className="h-9 w-full min-w-0">
+                  <SelectTrigger className="w-full min-w-0">
                     <SelectValue />
                   </SelectTrigger>
-                  <SelectContent className="z-[var(--z-dialog)]">
+                  <SelectContent>
                     <SelectItem value={String(GithubCredentialSource.NONE)}>
                       {t("github.source.none")}
                     </SelectItem>
@@ -202,7 +205,7 @@ export function ForgePage() {
                   spellCheck={false}
                   value={apiBase}
                   onChange={(event) => setApiBase(event.target.value)}
-                  className="h-10 min-w-0"
+                  className="min-w-0"
                 />
               </Field>
               {source === GithubCredentialSource.TOKEN_REF && (
@@ -214,15 +217,13 @@ export function ForgePage() {
                     data-slot="github-token"
                     value={token}
                     onChange={(event) => setToken(event.target.value)}
-                    className="h-10 min-w-0"
+                    className="min-w-0"
                   />
                 </Field>
               )}
               <div className="flex flex-wrap gap-2">
                 <Button
                   type="submit"
-                  size="sm"
-                  className="min-h-10"
                   disabled={
                     busy ||
                     (source === GithubCredentialSource.TOKEN_REF &&
@@ -234,9 +235,7 @@ export function ForgePage() {
                 {status && status.revision > 0n && (
                   <Button
                     type="button"
-                    size="sm"
                     variant="destructive"
-                    className="min-h-10"
                     disabled={busy}
                     onClick={() => revoke.mutate()}
                   >

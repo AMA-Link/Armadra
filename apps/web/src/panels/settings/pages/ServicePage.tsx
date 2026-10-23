@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useId, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ChevronRight } from "lucide-react";
-import { toast } from "sonner";
 
 import { localClient, localRuntimeApi } from "../../../api/client";
 import { hasPairingFragment } from "../../../api/identity";
@@ -9,14 +8,19 @@ import { usePreferencesStore, useT } from "../../../app/preferences-store";
 import { useAccess } from "../../../app/use-access";
 import { useHostConnection } from "../../../host/use-host-connection";
 import { revealPath } from "../../../platform";
+import { useCanvasStore } from "../../../store/canvas-store";
+import { liveSessions } from "../../resources/metrics";
+import { useResources } from "../../resources/use-resources";
 import { lk } from "../local-key";
 import { LocalSourceBadge } from "../local-source";
 import { useRemoteAccess } from "../remote-access";
 import { SettingsGroup } from "../SettingsGroup";
 import { SettingsLoadable, ValueLoadable } from "../SettingsLoadable";
+import { SettingsPageHeader } from "../SettingsPageHeader";
 import { SettingsRow } from "../SettingsRow";
 import { useRuntimeSettings } from "../use-runtime-settings";
 import { CONTROL_WIDTH, CrashReportGroup } from "./GeneralPage";
+import { ServiceKpis } from "./ServiceKpis";
 import { Button } from "@/ui/button";
 import {
   Collapsible,
@@ -35,6 +39,7 @@ import { Spinner } from "@/ui/spinner";
 import { Switch } from "@/ui/switch";
 import { formatBytes } from "@/lib/format";
 import { featureEnabled } from "@/lib/features";
+import { toast } from "@/ui/toast";
 
 /**
  * `settings.terminal.backend`（§15.1 + T01）。
@@ -116,9 +121,27 @@ const RETENTION_CHOICES = [7, 30, 90, 0] as const;
  * 资源、数据与崩溃上报读写整台机器的设置，只给 owner。
  */
 export function ServicePage() {
+  const t = useT();
   const { member } = useAccess();
+  const backup = useBackup();
   return (
     <>
+      <SettingsPageHeader
+        actions={
+          member ? undefined : (
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={backup.isPending}
+              onClick={() => backup.mutate()}
+            >
+              {backup.isPending && <Spinner aria-hidden />}
+              {t("settings.backup.run")}
+            </Button>
+          )
+        }
+      />
+      {member ? null : <ServiceKpiTray />}
       <ConnectionGroup />
       {member ? null : (
         <>
@@ -130,6 +153,30 @@ export function ServicePage() {
         </>
       )}
     </>
+  );
+}
+
+/** 立即备份数据库：结果带路径，是页上别处看不到的信息，所以成功也提示。 */
+function useBackup() {
+  const t = useT();
+  return useMutation({
+    mutationFn: localRuntimeApi.backupData,
+    onSuccess: (result) =>
+      toast.success(t("settings.backup.done", { path: result.path })),
+    onError: (cause: Error) =>
+      toast.error(t("settings.backup.failed"), { description: cause.message }),
+  });
+}
+
+/** 托盘：打开这一页才采样（`useResources`），关掉页面就退订。 */
+function ServiceKpiTray() {
+  const workspaceId = useCanvasStore((state) => state.workspace?.id ?? null);
+  const { snapshot } = useResources(workspaceId, true);
+  return (
+    <ServiceKpis
+      resources={snapshot?.host ?? null}
+      liveSessions={snapshot ? liveSessions(snapshot.sessions).length : null}
+    />
   );
 }
 
@@ -163,8 +210,8 @@ export function ConnectionGroup() {
           aria-atomic="true"
           className={
             state.status === "error"
-              ? "max-w-[320px] text-[13px] break-words text-[var(--danger-text)]"
-              : "max-w-[320px] text-[13px] break-words text-muted-foreground"
+              ? "max-w-80 text-body break-words text-danger-text"
+              : "max-w-80 text-body break-words text-muted-foreground"
           }
         >
           {t(message)}
@@ -190,7 +237,7 @@ export function ConnectionGroup() {
                 type="button"
                 variant="ghost"
                 size="sm"
-                className="-ml-2 text-[13px] font-normal text-muted-foreground"
+                className="-ml-2 font-normal text-muted-foreground"
               >
                 <ChevronRight className="transition-transform group-data-[state=open]/diagnostics:rotate-90" />
                 {t("host.diagnostics")}
@@ -198,7 +245,7 @@ export function ConnectionGroup() {
             </CollapsibleTrigger>
           </div>
           <CollapsibleContent>
-            <dl className="grid min-w-0 gap-3 px-4 pb-3 text-[12px]">
+            <dl className="grid min-w-0 gap-3 px-4 pb-3 text-meta">
               <div className="min-w-0">
                 <dt className="text-muted-foreground">{t("host.identity")}</dt>
                 <dd className="mt-1 break-all select-text">
@@ -276,7 +323,7 @@ function HostNameGroup() {
         <SettingsRow label={t("host.name")}>
           <LocalSourceBadge path="host.name" />
           <Input
-            className={`h-8 ${CONTROL_WIDTH}`}
+            className={CONTROL_WIDTH}
             aria-label={t("host.name")}
             autoComplete="off"
             spellCheck={false}
@@ -304,10 +351,7 @@ function TerminalSessionGroup() {
   return (
     <SettingsGroup title={t("host.group.terminal")}>
       <SettingsLoadable loading={settings.isLoading} rows={5} control="select">
-        <SettingsRow
-          label={t("settings.terminalBackend")}
-          hint={t("settings.terminalBackend.restart")}
-        >
+        <SettingsRow label={t("settings.terminalBackend")}>
           {/* tmux 在这台机器上有、在另一台上没有，所以这一条不跟着账号走。 */}
           <LocalSourceBadge path="terminal.backend" />
           <Select
@@ -324,7 +368,7 @@ function TerminalSessionGroup() {
             >
               <SelectValue />
             </SelectTrigger>
-            <SelectContent className="z-[var(--z-dialog)]">
+            <SelectContent>
               {TERMINAL_BACKENDS.map((choice) => (
                 <SelectItem key={choice} value={choice}>
                   {t(`settings.backend.${choice}`)}
@@ -334,10 +378,7 @@ function TerminalSessionGroup() {
           </Select>
         </SettingsRow>
 
-        <SettingsRow
-          label={t("terminal.settings.dormantAfter")}
-          hint={t("terminal.settings.dormantAfterHint")}
-        >
+        <SettingsRow label={t("terminal.settings.dormantAfter")}>
           <Select
             value={String(runtimeTerminal?.dormantAfterSeconds ?? 120)}
             disabled={!settings.data}
@@ -352,7 +393,7 @@ function TerminalSessionGroup() {
             >
               <SelectValue />
             </SelectTrigger>
-            <SelectContent className="z-[var(--z-dialog)]">
+            <SelectContent>
               {DORMANT_CHOICES.map((choice) => (
                 <SelectItem key={choice.seconds} value={String(choice.seconds)}>
                   {t(choice.key)}
@@ -362,10 +403,7 @@ function TerminalSessionGroup() {
           </Select>
         </SettingsRow>
 
-        <SettingsRow
-          label={t("terminal.settings.eco")}
-          hint={t("terminal.settings.ecoHint")}
-        >
+        <SettingsRow label={t("terminal.settings.eco")}>
           <Switch
             checked={runtimeTerminal?.ecoMode ?? true}
             disabled={!settings.data}
@@ -391,7 +429,7 @@ function TerminalSessionGroup() {
             >
               <SelectValue />
             </SelectTrigger>
-            <SelectContent className="z-[var(--z-dialog)]">
+            <SelectContent>
               {ECO_IDLE_CHOICES.map((choice) => (
                 <SelectItem key={choice.minutes} value={String(choice.minutes)}>
                   {t(choice.key)}
@@ -416,7 +454,7 @@ function TerminalSessionGroup() {
             >
               <SelectValue />
             </SelectTrigger>
-            <SelectContent className="z-[var(--z-dialog)]">
+            <SelectContent>
               {GRACE_CHOICES.map((choice) => (
                 <SelectItem key={choice.minutes} value={String(choice.minutes)}>
                   {t(choice.key)}
@@ -448,10 +486,7 @@ function PowerGroup() {
   return (
     <SettingsGroup title={t("host.group.power")}>
       <SettingsLoadable loading={settings.isLoading} rows={4} control="select">
-        <SettingsRow
-          label={t("resources.power.policyLabel")}
-          hint={t("resources.power.policyHint")}
-        >
+        <SettingsRow label={t("resources.power.policyLabel")}>
           {/* 「这台机器可不可以被拖着不睡」——笔记本和构建机的答案不一样。 */}
           <LocalSourceBadge path="power.policy" />
           <Select
@@ -468,7 +503,7 @@ function PowerGroup() {
             >
               <SelectValue />
             </SelectTrigger>
-            <SelectContent className="z-[var(--z-dialog)]">
+            <SelectContent>
               {POWER_POLICIES.filter(
                 // 定时任务暂时下线（#295）：「有自动化运行时」不再给新选；已经
                 // 选着它的照常显示，免得下拉框对不上当前值。
@@ -485,10 +520,7 @@ function PowerGroup() {
           </Select>
         </SettingsRow>
 
-        <SettingsRow
-          label={t("resources.power.whileWorkingLabel")}
-          hint={t("resources.power.whileWorkingHint")}
-        >
+        <SettingsRow label={t("resources.power.whileWorkingLabel")}>
           <LocalSourceBadge path="power.keepAwakeWhileWorking" />
           <Switch
             checked={settings.data?.power?.keepAwakeWhileWorking ?? true}
@@ -500,10 +532,7 @@ function PowerGroup() {
           />
         </SettingsRow>
 
-        <SettingsRow
-          label={t("resources.intervalLabel")}
-          hint={t("resources.intervalHint")}
-        >
+        <SettingsRow label={t("resources.intervalLabel")}>
           <Select
             value={String(settings.data?.resources?.intervalMs ?? 2_000)}
             disabled={!settings.data}
@@ -518,7 +547,7 @@ function PowerGroup() {
             >
               <SelectValue />
             </SelectTrigger>
-            <SelectContent className="z-[var(--z-dialog)]">
+            <SelectContent>
               {SAMPLE_INTERVALS.map((interval) => (
                 <SelectItem key={interval} value={String(interval)}>
                   {t("resources.interval.value", { value: interval / 1_000 })}
@@ -528,10 +557,7 @@ function PowerGroup() {
           </Select>
         </SettingsRow>
 
-        <SettingsRow
-          label={t("resources.memory.thresholdLabel")}
-          hint={t("resources.memory.thresholdHint")}
-        >
+        <SettingsRow label={t("resources.memory.thresholdLabel")}>
           <Select
             value={String(memoryWarnBytes)}
             onValueChange={(value) => {
@@ -546,7 +572,7 @@ function PowerGroup() {
             >
               <SelectValue />
             </SelectTrigger>
-            <SelectContent className="z-[var(--z-dialog)]">
+            <SelectContent>
               {MEMORY_THRESHOLDS.map((gigabytes) => (
                 <SelectItem key={gigabytes} value={String(gigabytes * GIB)}>
                   {t("resources.memory.threshold.value", { value: gigabytes })}
@@ -576,13 +602,6 @@ function DataGroup() {
     queryFn: localRuntimeApi.dataInfo,
     retry: false,
   });
-  const backup = useMutation({
-    mutationFn: localRuntimeApi.backupData,
-    onSuccess: (result) =>
-      toast.success(t("settings.backup.done", { path: result.path })),
-    onError: (cause: Error) =>
-      toast.error(t("settings.backup.failed"), { description: cause.message }),
-  });
   const retention =
     settings.data?.logs?.retentionDays ??
     info.data?.boardLogRetentionDays ??
@@ -590,7 +609,7 @@ function DataGroup() {
   return (
     <SettingsGroup title={t("host.group.data")}>
       <SettingsRow label={t("settings.dataDir")}>
-        <span className="max-w-[280px] truncate text-[11px] text-muted-foreground">
+        <span className="max-w-72 truncate text-caption text-muted-foreground">
           {info.data?.dataDir ?? "—"}
         </span>
         {!remote && (
@@ -620,22 +639,12 @@ function DataGroup() {
 
       <SettingsRow label={t("settings.dbSize")}>
         <ValueLoadable loading={info.isLoading}>
-          <span className="text-[13px] tabular-nums text-muted-foreground">
+          <span className="text-body tabular-nums text-muted-foreground">
             {info.data ? formatBytes(info.data.dbBytes) : "—"}
           </span>
         </ValueLoadable>
       </SettingsRow>
 
-      <SettingsRow label={t("settings.backup")}>
-        <Button
-          variant="secondary"
-          size="sm"
-          disabled={backup.isPending}
-          onClick={() => backup.mutate()}
-        >
-          {t("settings.backup.run")}
-        </Button>
-      </SettingsRow>
       <SettingsLoadable loading={settings.isLoading} rows={1} control="select">
         <SettingsRow label={t("settings.logRetention")}>
           <Select
@@ -660,7 +669,7 @@ function DataGroup() {
             >
               <SelectValue />
             </SelectTrigger>
-            <SelectContent className="z-[var(--z-dialog)]">
+            <SelectContent>
               {RETENTION_CHOICES.map((days) => (
                 <SelectItem key={days} value={String(days)}>
                   {t(`settings.retention.${days}`)}

@@ -134,7 +134,13 @@ describe("GitHub credential settings", () => {
   it("shows one row of badges: availability, account and the degraded store", async () => {
     renderPage(client());
     expect(await screen.findByText("octocat")).toBeTruthy();
-    expect(screen.getByText("可用")).toBeTruthy();
+    // 状态是 StatusPill sm：可用 done；页头没有副标题。
+    const pill = screen.getByText("可用");
+    expect(pill.dataset.slot).toBe("status-pill");
+    expect(pill.dataset.tone).toBe("done");
+    expect(pill.dataset.size).toBe("sm");
+    const heading = screen.getByTestId("settings-heading");
+    expect(heading.parentElement?.querySelector("p")).toBeNull();
     // The 0600 file fallback is named as a fallback, not as "stored securely".
     expect(screen.getByText("0600 文件（降级）")).toBeTruthy();
     // No detail table, no notes.
@@ -157,7 +163,7 @@ describe("GitHub credential settings", () => {
         ),
       }),
     );
-    expect(await screen.findByText("不可用")).toBeTruthy();
+    expect((await screen.findByText("不可用")).dataset.tone).toBe("paused");
     expect(screen.queryByText("GH_CLI_NOT_LOGGED_IN")).toBeNull();
   });
 
@@ -217,7 +223,8 @@ describe("Gitea / GitLab per host or repository (§29.3)", () => {
     renderPage(client());
     expect(await screen.findByText("gitlab.example.test")).toBeTruthy();
     expect(screen.getByText("GitLab")).toBeTruthy();
-    expect(screen.getByText("bot")).toBeTruthy();
+    // 账号名是令牌状态胶囊：有令牌 done、无令牌 paused。
+    expect(screen.getByText("bot").dataset.tone).toBe("done");
     expect(screen.getByText("其他平台")).toBeTruthy();
   });
 

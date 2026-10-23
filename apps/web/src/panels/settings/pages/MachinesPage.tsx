@@ -2,8 +2,11 @@ import * as React from "react";
 import { lk } from "../local-key";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { ChevronRight, FolderInput, Plus, RefreshCw } from "lucide-react";
-import { toast } from "sonner";
-import { sshHostSchema, type SshHost } from "@armadra/shared";
+import {
+  sshHostSchema,
+  type SshHost,
+  type ExecutionHostValidation,
+} from "@armadra/shared";
 
 import { localRuntimeApi } from "../../../api/client";
 import { useT } from "../../../app/preferences-store";
@@ -11,11 +14,15 @@ import { useOpenWorkspace } from "../../../app/workspace-actions";
 import { useCompactLayout } from "@/platform/layout";
 import { SettingsGroup } from "../SettingsGroup";
 import { Loadable } from "@/loading/Loadable";
-import { TableCardSkeleton } from "../SettingsLoadable";
+import { SettingsPageHeader } from "../SettingsPageHeader";
+import { SettingsTableCard } from "../SettingsTableCard";
 import { SettingsRow } from "../SettingsRow";
 import { useSubpage } from "../subpage";
 import { useRuntimeSettings } from "../use-runtime-settings";
-import { MachinesTable } from "./execution-hosts/MachinesTable";
+import {
+  MachinesTable,
+  type WorkerStatus,
+} from "./execution-hosts/MachinesTable";
 import { HostKeyDialog } from "./ssh/HostKeyDialog";
 import {
   ResponsiveAlertDialog,
@@ -32,9 +39,9 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from "@/ui/collapsible";
-import { Empty, EmptyContent, EmptyHeader, EmptyTitle } from "@/ui/empty";
 import { Input } from "@/ui/input";
 import { Spinner } from "@/ui/spinner";
+import { toast } from "@/ui/toast";
 
 /** 执行主机的显示名；一台配置被删掉的主机不显示成「本机」。 */
 export function executionHostLabel(
@@ -47,16 +54,47 @@ export function executionHostLabel(
 }
 
 /**
- * 设置 → SSH：主机表（名称 · 地址 · 验证），点名称进子页编辑。
+ * 一次验证的结论 → 表格里的 Worker 胶囊：握手成功 done（带版本），只跑终端的机器
+ * 连得上 paused，其余 failed（文案取 Runtime 给的稳定 `reason`）。
+ */
+export function workerStatusOf(
+  result: ExecutionHostValidation,
+  t: (key: string, values?: Record<string, string | number>) => string,
+): WorkerStatus {
+  if (result.workerOk)
+    return {
+      tone: "done",
+      label: t("executionHosts.valid", {
+        version: result.runtimeVersion ?? "",
+        platform: result.platform ?? "",
+        architecture: result.architecture ?? "",
+      }),
+    };
+  if (result.reachable && result.reason === "noWorkerConfigured")
+    return { tone: "paused", label: t("executionHosts.noWorkerConfigured") };
+  return {
+    tone: "failed",
+    label: t(
+      result.reason
+        ? `executionHosts.${result.reason}`
+        : "executionHosts.handshakeRefused",
+    ),
+  };
+}
+
+/**
+ * 设置 → SSH：主机表卡（名称 · 地址 · Worker · 操作），点名称进子页编辑。
  *
  * 「验证」一步问完两件事——`ssh` 通不通、配了 Worker 时那台机器上的 Worker
- * 是不是这个构建——结果一句话。当前工作区跑在哪台、怎么切换在「工作空间」页。
+ * 是不是这个构建——结论落在那一行的 Worker 胶囊上，失败再弹一条带原因的提示。当前
+ * 工作区跑在哪台、怎么切换在「工作空间」页。
  *
  * 主机表存在 Runtime 的 `settings.json` 里：PATCH 对数组是整段替换，所以增删
  * 改都是「读整段、改一条、写整段」。
  */
 export function MachinesPage() {
   const t = useT();
+  const client = useQueryClient();
   const compact = useCompactLayout();
   const subpage = useSubpage();
   const { settings, save } = useRuntimeSettings({ scope: "local" });
@@ -64,27 +102,18 @@ export function MachinesPage() {
     () => settings.data?.ssh?.hosts ?? [],
     [settings.data],
   );
+  const [results, setResults] = React.useState<
+    Readonly<Record<string, ExecutionHostValidation>>
+  >({});
 
   const validate = useMutation({
     mutationFn: (hostId: string) =>
       localRuntimeApi.validateExecutionHost(hostId),
-    onSuccess: (result) => {
-      if (result.workerOk) {
-        toast.success(
-          t("executionHosts.valid", {
-            version: result.runtimeVersion ?? "",
-            platform: result.platform ?? "",
-            architecture: result.architecture ?? "",
-          }),
-        );
-        return;
-      }
-      // 只跑终端的机器没有 Worker 是正常的：连得上就是答案。
-      if (result.reachable && result.reason === "noWorkerConfigured") {
-        toast.success(t("executionHosts.noWorkerConfigured"));
-        return;
-      }
-      // `reason` 是 Runtime 给的稳定键；没有的话显示脱敏后的诊断尾巴。
+    onSuccess: (result, hostId) => {
+      setResults((current) => ({ ...current, [hostId]: result }));
+      // 握手成功与「只跑终端」在胶囊上看得见；失败才弹，带 Runtime 的诊断尾巴。
+      if (result.workerOk) return;
+      if (result.reachable && result.reason === "noWorkerConfigured") return;
       const key = result.reason
         ? `executionHosts.${result.reason}`
         : "executionHosts.handshakeRefused";
@@ -92,6 +121,22 @@ export function MachinesPage() {
     },
     onError: (cause: Error) =>
       toast.error(t("executionHosts.handshakeRefused"), {
+        description: cause.message,
+      }),
+  });
+  const resync = useMutation({
+    mutationFn: (hostId: string) => localRuntimeApi.resyncExecutionHost(hostId),
+    onSuccess: (result) => {
+      void client.invalidateQueries({ queryKey: lk("execution-hosts") });
+      void client.invalidateQueries({ queryKey: lk("agent-integration") });
+      toast.success(
+        t("executionHosts.resynced", {
+          name: result.name || result.executionHostId,
+        }),
+      );
+    },
+    onError: (cause: Error) =>
+      toast.error(t("executionHosts.resyncFailed"), {
         description: cause.message,
       }),
   });
@@ -106,6 +151,7 @@ export function MachinesPage() {
     const existing = ssh.find((host) => host.id === reference);
     return (
       <>
+        <SettingsPageHeader />
         <HostForm
           existing={existing}
           disabled={!settings.data}
@@ -120,50 +166,64 @@ export function MachinesPage() {
             write(ssh.filter((entry) => entry.id !== existing?.id))
           }
           onCancel={subpage.close}
+          extra={existing && <MachineActions host={existing} />}
         />
-        {existing && <MachineActions host={existing} />}
       </>
     );
   }
 
-  const add = (
-    <Button
-      size="sm"
-      disabled={!settings.data}
-      onClick={() => subpage.open("ssh", "new")}
-    >
-      <Plus />
-      {t("ssh.add")}
-    </Button>
+  const workerStatus = Object.fromEntries(
+    Object.entries(results).map(([hostId, result]) => [
+      hostId,
+      workerStatusOf(result, t),
+    ]),
   );
 
   return (
-    <Loadable
-      loading={settings.isLoading}
-      skeleton={<TableCardSkeleton rows={3} columns={3} />}
-    >
-      {ssh.length === 0 ? (
-        <SettingsGroup>
-          <Empty className="py-6">
-            <EmptyHeader>
-              <EmptyTitle className="text-[13px] font-normal text-muted-foreground">
-                {t("ssh.empty")}
-              </EmptyTitle>
-            </EmptyHeader>
-            <EmptyContent>{add}</EmptyContent>
-          </Empty>
-        </SettingsGroup>
-      ) : (
-        <MachinesTable
-          hosts={ssh}
-          compact={compact}
-          validating={validate.isPending ? (validate.variables ?? null) : null}
-          onValidate={(hostId) => validate.mutate(hostId)}
-          onOpen={(hostId) => subpage.open("ssh", hostId)}
-        />
-      )}
-      {ssh.length > 0 && <div>{add}</div>}
-    </Loadable>
+    <>
+      <SettingsPageHeader
+        actions={
+          <Button
+            size="sm"
+            disabled={!settings.data}
+            onClick={() => subpage.open("ssh", "new")}
+          >
+            <Plus data-icon="inline-start" />
+            {t("ssh.dialog.add")}
+          </Button>
+        }
+      />
+      <Loadable
+        loading={settings.isLoading}
+        skeleton={
+          <SettingsTableCard
+            title={t("executionHosts.table")}
+            loading
+            skeleton={{ rows: 3, columns: 4 }}
+          />
+        }
+      >
+        {ssh.length === 0 ? (
+          <SettingsTableCard
+            title={t("executionHosts.table")}
+            empty={{ title: t("ssh.empty") }}
+          />
+        ) : (
+          <MachinesTable
+            hosts={ssh}
+            compact={compact}
+            workerStatus={workerStatus}
+            validating={
+              validate.isPending ? (validate.variables ?? null) : null
+            }
+            resyncing={resync.isPending ? (resync.variables ?? null) : null}
+            onValidate={(hostId) => validate.mutate(hostId)}
+            onResync={(hostId) => resync.mutate(hostId)}
+            onOpen={(hostId) => subpage.open("ssh", hostId)}
+          />
+        )}
+      </Loadable>
+    </>
   );
 }
 
@@ -236,7 +296,6 @@ function OpenRemoteProject({ host }: { host: SshHost }) {
       // 根已在那台机器上证明过，直接切过去，而不是让人再去列表里找一遍。
       openWorkspace(workspace);
       void client.invalidateQueries({ queryKey: lk("workspaces") });
-      toast.success(t("ssh.remote.opened", { name: workspace.name }));
     },
     onError: (cause: Error) =>
       toast.error(t("ssh.remote.failed"), { description: cause.message }),
@@ -244,7 +303,7 @@ function OpenRemoteProject({ host }: { host: SshHost }) {
   return (
     <SettingsRow label={t("ssh.remote.path")}>
       <Input
-        className="h-8 w-[280px] text-xs"
+        className="w-72"
         aria-label={t("ssh.remote.path")}
         placeholder="/srv/project"
         value={path}
@@ -341,12 +400,15 @@ function HostForm({
   onSubmit,
   onDelete,
   onCancel,
+  extra,
 }: {
   existing: SshHost | undefined;
   disabled: boolean;
   onSubmit: (host: SshHost) => void;
   onDelete: () => void;
   onCancel: () => void;
+  /** 表单下面、固定栏上面的内容（已有主机的打开项目、主机密钥）。 */
+  extra?: React.ReactNode;
 }) {
   const t = useT();
   const [form, setForm] = React.useState<HostForm>(() => toForm(existing));
@@ -368,7 +430,7 @@ function HostForm({
   const row = (field: { key: keyof HostForm; label: string }) => (
     <SettingsRow key={field.key} label={field.label}>
       <Input
-        className="h-8 w-[280px] text-xs"
+        className="w-72"
         aria-label={field.label}
         value={form[field.key]}
         onChange={(event) =>
@@ -395,7 +457,7 @@ function HostForm({
                 type="button"
                 variant="ghost"
                 size="sm"
-                className="-ml-2 text-[13px] font-normal text-muted-foreground"
+                className="-ml-2 font-normal text-muted-foreground"
               >
                 <ChevronRight className="transition-transform group-data-[state=open]/advanced:rotate-90" />
                 {t("ssh.advanced")}
@@ -408,7 +470,9 @@ function HostForm({
         </Collapsible>
       </SettingsGroup>
 
-      <div className="flex items-center justify-between gap-2">
+      {extra}
+
+      <div className="sticky bottom-0 z-10 -mx-(--space-section) -mb-(--space-section) flex items-center justify-between gap-2 border-t border-border bg-card px-(--space-section) py-3">
         <div>
           {existing && (
             <Button
@@ -448,7 +512,7 @@ function HostForm({
         open={pendingDelete}
         onOpenChange={setPendingDelete}
       >
-        <ResponsiveAlertDialogContent className="z-[var(--z-dialog)]">
+        <ResponsiveAlertDialogContent>
           <ResponsiveAlertDialogHeader>
             <ResponsiveAlertDialogTitle>
               {t("ssh.delete.title", { name: existing?.name ?? "" })}
@@ -458,7 +522,10 @@ function HostForm({
             <ResponsiveAlertDialogCancel>
               {t("ssh.dialog.cancel")}
             </ResponsiveAlertDialogCancel>
-            <ResponsiveAlertDialogAction onClick={onDelete}>
+            <ResponsiveAlertDialogAction
+              variant="destructive-solid"
+              onClick={onDelete}
+            >
               {t("ssh.delete")}
             </ResponsiveAlertDialogAction>
           </ResponsiveAlertDialogFooter>

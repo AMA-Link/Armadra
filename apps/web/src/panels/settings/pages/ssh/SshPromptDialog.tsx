@@ -1,5 +1,4 @@
 import * as React from "react";
-import { toast } from "sonner";
 import type { SshPrompt } from "@armadra/shared";
 
 import { runtimeApi } from "@/api/client";
@@ -15,6 +14,7 @@ import {
   ResponsiveDialogTitle,
 } from "@/panels/ResponsiveDialog";
 import { Input } from "@/ui/input";
+import { toast } from "@/ui/toast";
 
 /**
  * `ssh` 要密码或密钥口令时的输入框（远端补完设计 §3.6）。
@@ -111,25 +111,19 @@ export function SshPromptDialog() {
         if (!next) cancel();
       }}
     >
-      <ResponsiveDialogContent
-        className="z-[var(--z-dialog)]"
-        showCloseButton={false}
-      >
+      <ResponsiveDialogContent showCloseButton={false}>
         <ResponsiveDialogHeader>
           <ResponsiveDialogTitle>{t("ssh.prompt.title")}</ResponsiveDialogTitle>
         </ResponsiveDialogHeader>
         <form className="flex flex-col gap-3" onSubmit={submit}>
-          <p className="text-xs text-muted-foreground">
+          <div className="font-mono text-meta text-muted-foreground">
             {`${t("ssh.prompt.host")} · ${current?.hostId ?? ""}`}
-          </p>
-          <p className="text-xs break-words text-muted-foreground">
-            {current?.prompt}
-          </p>
+          </div>
+          <div className="text-meta break-words">{current?.prompt}</div>
           <Input
             type="password"
             autoComplete="off"
             aria-label={label}
-            className="h-8 text-xs"
             value={answer}
             disabled={sending}
             onChange={(event) => setAnswer(event.target.value)}
