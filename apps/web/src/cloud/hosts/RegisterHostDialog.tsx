@@ -21,9 +21,13 @@ import { RouteLink } from "../RouteLink";
 import { spaceBase, type CloudSpace } from "../space";
 import { useRegistrationToken } from "./grants-data";
 
-/** 在服务器上登记的命令：令牌走环境变量，不上命令行（`armadra-server cloud register`）。 */
-function registerCommand(token: string, issuer: string): string {
-  return `ARMADRA_CLOUD_REGISTRATION_TOKEN=${token} armadra-server cloud register --issuer ${issuer}`;
+/**
+ * 在服务器上登记的命令（`armadra-server cloud register`）：令牌不进命令行也不进 shell 历史——
+ * `read -rs` 静默读入（把上面的令牌粘贴进去），再经标准输入交给 `--token-stdin`；issuer 加单引号。
+ */
+function registerCommand(issuer: string): string {
+  const quoted = `'${issuer.replaceAll("'", "'\\''")}'`;
+  return `read -rs T && printf %s "$T" | armadra-server cloud register --issuer ${quoted} --token-stdin`;
 }
 
 /** 桌面壳认的深链只带 `issuer`（干净的来源）；认不出就不带参数。 */
@@ -108,9 +112,7 @@ export function RegisterHostDialog({
   const minutes = data
     ? Math.max(1, Math.ceil((data.expiresAtMs - current) / MINUTE))
     : 0;
-  const command = data
-    ? registerCommand(data.registrationToken, data.issuer)
-    : "";
+  const command = data ? registerCommand(data.issuer) : "";
 
   const copy = async () => {
     try {
