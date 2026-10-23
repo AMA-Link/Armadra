@@ -56,6 +56,8 @@ interface Entry {
   /** 串起这一条的请求与收尾，保证先报后收。 */
   chain: Promise<void>;
   resolved: boolean;
+  /** 云端已登记过这条（请求得到 2xx 且不是 rejected）；没登记过就不必收尾。 */
+  reported: boolean;
   cancelExpiry: () => void;
 }
 
@@ -129,11 +131,12 @@ export class TrustReporter {
       expiresAtMs,
       chain: Promise.resolve(),
       resolved: false,
+      reported: false,
       cancelExpiry: () => undefined,
     };
     this.entries.set(entry.pendingId, entry);
     entry.cancelExpiry = this.schedule(
-      () => this.settleEntry(entry),
+      () => this.settleEntry(entry, true),
       Math.max(0, expiresAtMs - at),
     );
     this.enqueue(entry, () =>
@@ -152,11 +155,12 @@ export class TrustReporter {
     }
   }
 
-  private settleEntry(entry: Entry): void {
+  /** `expired`：到期定时器触发，仍待确认的直接按 expired 收尾（不再比时钟）。 */
+  private settleEntry(entry: Entry, expired = false): void {
     if (entry.resolved || this.closed) return;
     const row = this.options.lookup(entry.pendingId);
     const status: DeviceStatus | "gone" = row?.status ?? "gone";
-    if (status === "pending" && this.now() < entry.expiresAtMs) return;
+    if (status === "pending" && !expired) return;
     this.finish(entry, status === "trusted" ? "trusted" : "expired");
   }
 
@@ -193,6 +197,9 @@ export class TrustReporter {
   ): Promise<void> {
     for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt += 1) {
       if (this.closed) return;
+      // 旧条目晚到的重试不得在云端顶掉新条目；没登记过的条目也不必收尾（必然 404）。
+      if (kind === "request" && entry.resolved) return;
+      if (kind === "resolve" && !entry.reported) return;
       const outcome = await this.once(entry, kind, path, body);
       if (outcome !== "retry") return;
       if (attempt === MAX_ATTEMPTS) {
@@ -236,7 +243,8 @@ export class TrustReporter {
           typeof answer.body === "object" && answer.body !== null
             ? (answer.body as { status?: unknown }).status
             : undefined;
-        // 冷却期内答 rejected 是正常情况：云端不再通知，不重试。
+        // 冷却期内答 rejected 是正常情况：云端不再通知，不重试，也不必收尾。
+        entry.reported = state !== "rejected";
         this.options.log?.info("新设备待信任已上报", {
           issuer: entry.issuer,
           status: typeof state === "string" ? state : "unknown",
