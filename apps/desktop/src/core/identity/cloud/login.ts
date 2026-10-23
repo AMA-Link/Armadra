@@ -16,7 +16,8 @@
  * 5. 契约 §60：断言带 `role` → 这个人经本签发方来的授予整份换成声明的范围（`scp`
  *    的会话 / 工作空间，都没有 = 整台），本地授予不动；不带 → 只续租。`ro` 或会话
  *    范围一律压成只读。SaaS 登记的签发方带 `team` + `role` 时不需要邀请就建成员
- *    （协议 1.4；`team.role = billing` 不管主机，不凭它准入、也不带授予）。团队角色另落
+ *    （协议 1.4；`team.role = billing` 不管主机，不凭它准入、也不带授予）；个人空间
+ *    主机的访客只带 `role` / `scp`、不带 `team`，同样免邀请（#483）。团队角色另落
  *    `cloud_team_roles`，设备背书按它判（契约 §60.4）。
  *    经云来的授予都有租约（断言到期后 30 天），每次登录续；经邀请（分享链接）来的
  *    封顶在邀请到期（契约 §68）。答案带 `share`：角色、到期与主人的名字。
@@ -204,11 +205,11 @@ export class CloudLogin {
     } else if (
       token === "" &&
       registration.mode === "saas" &&
-      claims.team !== undefined &&
-      claims.team.role !== "billing" &&
-      claims.role !== undefined
+      claims.role !== undefined &&
+      (claims.team === undefined || claims.team.role !== "billing")
     ) {
-      // SaaS：团队就是准入（协议 1.4），授予随后按声明同步。
+      // SaaS：团队就是准入（协议 1.4）；个人空间主机的访客只带 `role` / `scp`、不带
+      // `team`，同样准入（#483，`MIN_CORE_VERSION_ROLE_ONLY_ASSERTION`）。授予随后按声明同步。
       try {
         principalId = registerExternal(store, this.now(), {
           displayName: clipName(claims.name, claims.sub.slice(0, 64)),
