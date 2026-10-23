@@ -162,8 +162,9 @@ afterEach(() => {
 });
 
 describe("TerminalNode 配色（#501）", () => {
+  // 属性落在框上（连接点与光晕在外层，跟应用主题走）。
   const shell = () =>
-    document.querySelector<HTMLElement>("[data-slot=node-shell]")!;
+    document.querySelector<HTMLElement>("[data-slot=node-shell] .node-frame")!;
 
   it("跟随主题：外框不带 data-term-scheme", () => {
     renderNode(terminalNode({ kind: "terminal", agent: { id: "codex" } }));

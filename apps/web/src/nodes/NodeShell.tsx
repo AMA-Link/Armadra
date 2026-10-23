@@ -241,16 +241,19 @@ export function NodeShell({
       data-collapsed={collapsed ? "true" : undefined}
       data-selected={selected ? "true" : undefined}
       data-node-type={node.type}
-      data-term-scheme={termScheme}
       className="node-glow relative h-full w-full"
       style={collapsed ? { height: COLLAPSED_HEIGHT } : undefined}
     >
       {/* resize 把手由 `<NodeResizer>` 提供（`flow/nodes/ArmadraNode.tsx`），
           最小尺寸按 `NODE_META.minSize`。 */}
+      {/* 终端配色只落在框内（#501）：骑在边上的连接点、外圈光晕与选中环跟应用主题走，
+          不然浅色画布上的深色令牌会看不见。框内重设文字色，依赖继承的文字不会深字压深底。 */}
       <div
+        data-term-scheme={termScheme}
         className={cn(
           "node-frame flex h-full w-full flex-col overflow-hidden rounded-card",
           "border border-border bg-card",
+          termScheme !== undefined && "text-foreground",
           selected && "border-brand",
         )}
       >

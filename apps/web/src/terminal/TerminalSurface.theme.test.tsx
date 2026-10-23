@@ -276,9 +276,12 @@ describe("终端配色即时换色", () => {
     expect(terminal.options.theme?.red).toBe("#ff453a");
 
     // 始终深色时再切应用主题：仍是深色
-    act(() => document.documentElement.setAttribute("data-theme", "dark"));
+    // 先放一个哨兵：观察者回调确实跑过、重新读了令牌，断言才有意义。
+    terminal.options.theme = { background: "sentinel" };
     act(() => document.documentElement.setAttribute("data-theme", "light"));
-    await Promise.resolve();
+    await waitFor(() =>
+      expect(terminal.options.theme?.background).not.toBe("sentinel"),
+    );
     expect(terminal.options.theme?.background).toBe(DARK_BG);
 
     act(() =>
