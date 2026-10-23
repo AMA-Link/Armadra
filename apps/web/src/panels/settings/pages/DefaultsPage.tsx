@@ -24,6 +24,7 @@ import { isNativeApp } from "../../../mobile/native-bridge";
 import { ConnectionsGroup } from "../../../services/ConnectionsGroup";
 import { ScopeBadge } from "../scope-badge";
 import { SettingsGroup } from "../SettingsGroup";
+import { SettingsPageHeader } from "../SettingsPageHeader";
 import { SettingsLoadable } from "../SettingsLoadable";
 import { SettingsRow } from "../SettingsRow";
 import { useRuntimeSettings } from "../use-runtime-settings";
@@ -37,6 +38,7 @@ import {
 } from "@/ui/select";
 import { Switch } from "@/ui/switch";
 import { ToggleGroup, ToggleGroupItem } from "@/ui/toggle-group";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/ui/tooltip";
 
 /**
  * 设置 → 默认（§2.1）：新建节点最常动的几项与主题、语言。
@@ -48,6 +50,7 @@ export function DefaultsPage() {
   const { member } = useAccess();
   return (
     <>
+      <SettingsPageHeader />
       {/* 手机与 iPad：设置首页顶部是「连接」。 */}
       {isNativeApp() && <ConnectionsGroup />}
       <SettingsGroup>
@@ -288,18 +291,24 @@ function BackdropPicker() {
       spacing={1}
     >
       {BACKDROPS.map((option) => (
-        <ToggleGroupItem
-          key={option}
-          value={option}
-          aria-label={t(`settings.backdrop.${option}`)}
-          title={t(`settings.backdrop.${option}`)}
-          className="size-8 p-0.5 data-[state=on]:ring-2 data-[state=on]:ring-ring"
-        >
-          <span
-            data-backdrop-swatch={option}
-            className="backdrop-swatch size-full rounded-[var(--r-sm)] border border-border"
-          />
-        </ToggleGroupItem>
+        <Tooltip key={option}>
+          {/* 提示挂在外层 span：TooltipTrigger 会把自己的 data-state 盖到按钮上，吞掉「按下」态 */}
+          <TooltipTrigger asChild>
+            <span className="inline-flex">
+              <ToggleGroupItem
+                value={option}
+                aria-label={t(`settings.backdrop.${option}`)}
+                className="size-8 p-0.5 data-[state=on]:ring-2 data-[state=on]:ring-ring"
+              >
+                <span
+                  data-backdrop-swatch={option}
+                  className="backdrop-swatch size-full rounded-control border border-border"
+                />
+              </ToggleGroupItem>
+            </span>
+          </TooltipTrigger>
+          <TooltipContent>{t(`settings.backdrop.${option}`)}</TooltipContent>
+        </Tooltip>
       ))}
     </ToggleGroup>
   );

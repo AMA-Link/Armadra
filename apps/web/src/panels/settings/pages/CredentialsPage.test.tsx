@@ -58,6 +58,10 @@ describe("CredentialsPage", () => {
     expect(screen.getByTestId("node-credentials")).toBeTruthy();
     expect(screen.getByTestId("ama-keys")).toBeTruthy();
     expect(await screen.findByRole("button", { name: "登录" })).toBeTruthy();
+    // 页头在，且只有标题（没有副标题）
+    const header = document.querySelector("[data-slot=settings-page-header]");
+    expect(header?.querySelector("h2")).toBeTruthy();
+    expect(header?.querySelector("p")).toBeNull();
   });
 
   it("用量页的 Copilot 开关关着时不能开始登录", async () => {

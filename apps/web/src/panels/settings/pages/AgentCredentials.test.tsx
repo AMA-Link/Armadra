@@ -11,6 +11,7 @@ import type { CredentialList } from "@armadra/shared";
 
 import { usePreferencesStore } from "@/app/preferences-store";
 import { AgentCredentials } from "./AgentCredentials";
+import { TooltipProvider } from "@/ui/tooltip";
 
 const list = vi.fn<() => Promise<CredentialList>>();
 const create = vi.fn();
@@ -34,7 +35,9 @@ function mount() {
   });
   return render(
     <QueryClientProvider client={client}>
-      <AgentCredentials />
+      <TooltipProvider>
+        <AgentCredentials />
+      </TooltipProvider>
     </QueryClientProvider>,
   );
 }

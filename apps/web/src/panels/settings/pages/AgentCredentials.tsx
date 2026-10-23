@@ -2,7 +2,7 @@ import * as React from "react";
 import { Plus, Trash2 } from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { CredentialEntry, CredentialKind } from "@armadra/shared";
-import { toast } from "sonner";
+import { toast } from "@/ui/toast";
 
 import { useT } from "@/app/preferences-store";
 import { agentLabel } from "@/agent/launch";
@@ -13,7 +13,6 @@ import { lk } from "../local-key";
 /** 设置页管的是本机的节点凭据。 */
 const localCredentials = pinLocal(credentialsApi);
 const LOCAL_CREDENTIALS_KEY = lk("credentials");
-import { Badge } from "@/ui/badge";
 import { Button } from "@/ui/button";
 import {
   ResponsiveAlertDialog,
@@ -30,6 +29,8 @@ import {
   ResponsiveDialogTitle,
 } from "@/panels/ResponsiveDialog";
 import { IconButton } from "@/ui/icon-button";
+import { StatusPill } from "@/ui/status-pill";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/ui/tooltip";
 import { Input } from "@/ui/input";
 import { Label } from "@/ui/label";
 import {
@@ -92,7 +93,6 @@ function AgentCredentialsGroup({
   const remove = useMutation({
     mutationFn: (ref: string) => localCredentials.remove(ref),
     onSuccess: () => {
-      toast.success(t("credentials.deleted"));
       void refresh();
     },
     onError: (error) => toast.error(error.message),
@@ -112,27 +112,24 @@ function AgentCredentialsGroup({
 
   return (
     <SettingsGroup title={t("credentials.title")}>
-      {data.entries.map((entry, index) => (
-        <SettingsRow
-          key={entry.ref}
-          label={entry.label}
-          hint={
-            index === data.entries.length - 1
-              ? t("credentials.note")
-              : undefined
-          }
-        >
-          <span className="flex items-center gap-2 text-[11px] text-muted-foreground">
+      {data.entries.map((entry) => (
+        <SettingsRow key={entry.ref} label={entry.label}>
+          <span className="flex items-center gap-2 text-caption text-muted-foreground">
             {!entry.isSet && (
-              <Badge variant="outline">{t("credentials.notSet")}</Badge>
+              <StatusPill tone="paused" label={t("credentials.notSet")} />
             )}
             {agentLabel(entry.providerId)} · {entry.kind}
-            <IconButton
-              label={t("credentials.delete")}
-              onClick={() => setRemoving(entry)}
-            >
-              <Trash2 />
-            </IconButton>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <IconButton
+                  label={t("credentials.delete")}
+                  onClick={() => setRemoving(entry)}
+                >
+                  <Trash2 />
+                </IconButton>
+              </TooltipTrigger>
+              <TooltipContent>{t("credentials.delete")}</TooltipContent>
+            </Tooltip>
           </span>
         </SettingsRow>
       ))}
@@ -140,7 +137,7 @@ function AgentCredentialsGroup({
         <SettingsRow label={t("credentials.empty")} />
       )}
       <SettingsRow label={null}>
-        <Button variant="secondary" size="sm" onClick={() => setAdding(true)}>
+        <Button variant="outline" size="sm" onClick={() => setAdding(true)}>
           <Plus />
           {t("credentials.add")}
         </Button>
@@ -152,7 +149,6 @@ function AgentCredentialsGroup({
         onClose={() => setAdding(false)}
         onSaved={() => {
           setAdding(false);
-          toast.success(t("credentials.saved"));
           void refresh();
         }}
       />
@@ -174,6 +170,7 @@ function AgentCredentialsGroup({
               {t("credentials.cancel")}
             </ResponsiveAlertDialogCancel>
             <ResponsiveAlertDialogAction
+              variant="destructive-solid"
               onClick={() => {
                 if (removing) remove.mutate(removing.ref);
                 setRemoving(null);
@@ -280,7 +277,7 @@ function CredentialDialog({
             <Label htmlFor="credential-label">{t("credentials.label")}</Label>
             <Input
               id="credential-label"
-              className="h-8 text-xs"
+              className="text-meta"
               maxLength={200}
               value={label}
               onChange={(event) => setLabel(event.target.value)}
@@ -293,7 +290,7 @@ function CredentialDialog({
               type="password"
               autoComplete="off"
               spellCheck={false}
-              className="h-8 text-xs"
+              className="text-meta"
               value={value}
               onChange={(event) => setValue(event.target.value)}
             />

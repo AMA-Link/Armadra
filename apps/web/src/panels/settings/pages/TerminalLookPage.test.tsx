@@ -57,6 +57,16 @@ afterEach(() => {
 });
 
 describe("设置 → 终端外观（§2.4）", () => {
+  it("页头在，预览是一张卡；说明文字没有了", () => {
+    render(<TerminalLookPage />);
+    expect(
+      document.querySelector("[data-slot=settings-page-header] h2"),
+    ).toBeTruthy();
+    const preview = screen.getByTestId("terminal-font-preview");
+    expect(preview.closest("[data-slot=card]")).toBeTruthy();
+    expect(screen.queryByText(zh("terminal.settings.preview"))).toBeNull();
+  });
+
   it("四组都在：字体与排版、光标、键盘、渲染（原终端页的外观项一项不丢）", () => {
     render(<TerminalLookPage />);
     for (const key of [

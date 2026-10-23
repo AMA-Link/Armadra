@@ -32,6 +32,7 @@ vi.mock("@/api/client", () => ({
 
 import { usePreferencesStore } from "@/app/preferences-store";
 import { LanguageServicePanel } from "./LanguageServicePanel";
+import { TooltipProvider } from "@/ui/tooltip";
 
 function descriptor(overrides: Record<string, unknown> = {}) {
   return {
@@ -54,7 +55,9 @@ function view(children: ReactNode) {
     defaultOptions: { queries: { retry: false } },
   });
   return render(
-    <QueryClientProvider client={client}>{children}</QueryClientProvider>,
+    <QueryClientProvider client={client}>
+      <TooltipProvider>{children}</TooltipProvider>
+    </QueryClientProvider>,
   );
 }
 

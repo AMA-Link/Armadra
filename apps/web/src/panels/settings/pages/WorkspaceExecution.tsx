@@ -46,7 +46,7 @@ export function WorkspaceExecution() {
     <SettingsGroup>
       <SettingsRow
         label={t("gitRepo.allowExecution")}
-        hint={t("gitRepo.executionDetail")}
+        {...(save.error ? { footnote: t("gitRepo.permissionSaveFailed") } : {})}
       >
         <Switch
           checked={workspace.permissions.execute}
@@ -69,11 +69,6 @@ export function WorkspaceExecution() {
           }}
         />
       </SettingsRow>
-      {save.error && (
-        <p role="alert" className="px-4 pb-3 text-xs text-destructive">
-          {t("gitRepo.permissionSaveFailed")}
-        </p>
-      )}
     </SettingsGroup>
   );
 }

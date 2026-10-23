@@ -4,6 +4,7 @@ import { refreshPageErrorReporting } from "../../../diagnostics/report";
 import { usePreferencesStore, useT } from "../../../app/preferences-store";
 import { useCanvasStore } from "../../../store/canvas-store";
 import { SettingsGroup } from "../SettingsGroup";
+import { SettingsPageHeader } from "../SettingsPageHeader";
 import { SettingsLoadable } from "../SettingsLoadable";
 import { SettingsRow } from "../SettingsRow";
 import { useRuntimeSettings } from "../use-runtime-settings";
@@ -38,49 +39,52 @@ export function GeneralPage() {
   const setPanel = useCanvasStore((state) => state.setPanel);
 
   return (
-    <SettingsGroup>
-      <SettingsRow label={t("settings.sidebar")}>
-        <Switch
-          checked={sidebarOpen}
-          aria-label={t("settings.sidebar")}
-          onCheckedChange={(next) =>
-            setPanel("sidebar", next ? "open" : "collapsed")
-          }
-        />
-      </SettingsRow>
+    <>
+      <SettingsPageHeader />
+      <SettingsGroup>
+        <SettingsRow label={t("settings.sidebar")}>
+          <Switch
+            checked={sidebarOpen}
+            aria-label={t("settings.sidebar")}
+            onCheckedChange={(next) =>
+              setPanel("sidebar", next ? "open" : "collapsed")
+            }
+          />
+        </SettingsRow>
 
-      <SettingsRow label={t("settings.splashAnimation")}>
-        <Switch
-          checked={splash}
-          aria-label={t("settings.splashAnimation")}
-          onCheckedChange={setSplash}
-        />
-      </SettingsRow>
+        <SettingsRow label={t("settings.splashAnimation")}>
+          <Switch
+            checked={splash}
+            aria-label={t("settings.splashAnimation")}
+            onCheckedChange={setSplash}
+          />
+        </SettingsRow>
 
-      <SettingsRow label={t("settings.restoreWorkspace")}>
-        <Switch
-          checked={restore}
-          aria-label={t("settings.restoreWorkspace")}
-          onCheckedChange={setRestore}
-        />
-      </SettingsRow>
+        <SettingsRow label={t("settings.restoreWorkspace")}>
+          <Switch
+            checked={restore}
+            aria-label={t("settings.restoreWorkspace")}
+            onCheckedChange={setRestore}
+          />
+        </SettingsRow>
 
-      <SettingsRow label={t("settings.showSystemFiles")}>
-        <Switch
-          checked={systemFiles}
-          aria-label={t("settings.showSystemFiles")}
-          onCheckedChange={setSystemFiles}
-        />
-      </SettingsRow>
+        <SettingsRow label={t("settings.showSystemFiles")}>
+          <Switch
+            checked={systemFiles}
+            aria-label={t("settings.showSystemFiles")}
+            onCheckedChange={setSystemFiles}
+          />
+        </SettingsRow>
 
-      <SettingsRow label={t("settings.showUsage")}>
-        <Switch
-          checked={showUsage}
-          aria-label={t("settings.showUsage")}
-          onCheckedChange={setShowUsage}
-        />
-      </SettingsRow>
-    </SettingsGroup>
+        <SettingsRow label={t("settings.showUsage")}>
+          <Switch
+            checked={showUsage}
+            aria-label={t("settings.showUsage")}
+            onCheckedChange={setShowUsage}
+          />
+        </SettingsRow>
+      </SettingsGroup>
+    </>
   );
 }
 
@@ -130,10 +134,7 @@ export function CrashReportGroup() {
   return (
     <SettingsLoadable grouped loading={!settings.data} control="switch">
       <SettingsGroup>
-        <SettingsRow
-          label={t("settings.diagnostics.crashReports")}
-          hint={t("settings.diagnostics.crashReports.note")}
-        >
+        <SettingsRow label={t("settings.diagnostics.crashReports")}>
           <Switch
             checked={enabled}
             aria-label={t("settings.diagnostics.crashReports")}
@@ -161,7 +162,7 @@ export function CrashReportGroup() {
               spellCheck={false}
               maxLength={512}
               placeholder="https://key@host/1"
-              className={`h-8 text-xs ${CONTROL_WIDTH}`}
+              className={`text-meta ${CONTROL_WIDTH}`}
               value={draft}
               onChange={(event) => setDraft(event.target.value)}
               onBlur={commit}
