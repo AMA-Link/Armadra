@@ -126,6 +126,29 @@ describe("mock 注册令牌", () => {
   });
 });
 
+describe("mock 主机设置", () => {
+  it("缺省角色取团队的缺省主机角色，主机自己改过以主机为准", async () => {
+    const api = createMockApi({
+      ...OPTIONS,
+      settings: { defaultHostRole: "editor" },
+    });
+    expect(
+      (await api.client.sources.get({ sourceId: BUILD })).settings,
+    ).toMatchObject({
+      defaultRole: "editor",
+    });
+    await api.client.sources.update({
+      sourceId: BUILD,
+      settings: { defaultRole: "driver" },
+    });
+    expect(
+      (await api.client.sources.get({ sourceId: BUILD })).settings,
+    ).toMatchObject({
+      defaultRole: "driver",
+    });
+  });
+});
+
 describe("mock 授予", () => {
   it("同主机同主体已有授予：create 答 409 conflict；换范围走 update（整体替换）", async () => {
     const api = createMockApi(OPTIONS);
