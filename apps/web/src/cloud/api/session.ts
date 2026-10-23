@@ -1,3 +1,5 @@
+import type { MeStreamEvent } from "@armadra/platform-protocol/cloud-api";
+
 import type { CloudClient } from "./client";
 
 export type InvitationPreview = Awaited<
@@ -10,6 +12,11 @@ export type InvitationPreview = Awaited<
  * Cookie `__Host-armadra-ops`，CSRF 值也另给一份，两边互不覆盖。
  */
 export const CSRF_HEADER = "X-Armadra-CSRF";
+
+export interface StreamHandlers {
+  readonly onEvent: (event: MeStreamEvent) => void;
+  readonly onResync: () => void;
+}
 
 /** 内存里的 CSRF 值，可订阅（运营会话是否在，靠它有没有值）。 */
 export interface CsrfStore {
@@ -54,6 +61,11 @@ export interface CloudApi {
     invitationId: string,
     token: string,
   ): Promise<InvitationPreview>;
+  /**
+   * 订阅 me-stream（`/v1/me/stream`，cloud-api §6、§32）：事件逐个给 `onEvent`；断线重连后
+   * 给 `onResync`（断线期间的事件丢了，调用方整体重拉）。返回退订函数。
+   */
+  stream(handlers: StreamHandlers): () => void;
   /** 控制台会话失效且续不上：清缓存、回登录。 */
   onSessionLost(listener: () => void): () => void;
   /** 登出：服务端撤销（失败也继续）、清掉内存里的 CSRF 值。 */

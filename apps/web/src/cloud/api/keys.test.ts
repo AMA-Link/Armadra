@@ -105,6 +105,31 @@ describe("查询键", () => {
         cloudKeys.usage("t:t1"),
       ),
     ).toBe(true);
+    // 我收到的邀请与待信任请求在个人空间的键下，团队事件也要让它们过期。
+    expect(
+      hit(
+        {
+          type: "invitationChanged",
+          invitationId: "i",
+          teamId: "t1",
+          state: "accepted",
+          ...at,
+        },
+        cloudKeys.invitations("me"),
+      ),
+    ).toBe(true);
+    expect(
+      hit(
+        {
+          type: "deviceTrustRequested",
+          requestId: "r",
+          sourceId: "s",
+          teamId: "t1",
+          ...at,
+        },
+        cloudKeys.trust("me"),
+      ),
+    ).toBe(true);
     // 上下线是就地改缓存，不重拉。
     expect(
       invalidationsFor({

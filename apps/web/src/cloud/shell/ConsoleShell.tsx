@@ -9,6 +9,7 @@ import { IconButton } from "@/ui/icon-button";
 import { Sheet, SheetContent, SheetTitle } from "@/ui/sheet";
 import { RouteLink } from "../RouteLink";
 import type { RouteMatch } from "../router";
+import { TooltipProvider } from "@/ui/tooltip";
 import { ConsoleNav } from "./ConsoleNav";
 import { SpaceSwitcher } from "./SpaceSwitcher";
 import { UserMenu } from "./UserMenu";
@@ -236,7 +237,7 @@ export function ConsoleShell(props: ConsoleShellProps) {
               ) : null}
             </Alert>
           )}
-          {children}
+          <TooltipProvider>{children}</TooltipProvider>
         </main>
       </div>
     </div>

@@ -76,6 +76,8 @@ export function invalidationsFor(
       return [
         (key) => key[1] === "spaces",
         under("invitations", space(event.teamId)),
+        // 我收到的邀请在个人空间的键下（概览的待处理）。
+        under("invitations", "me"),
       ];
     case "grantChanged":
       return [
@@ -89,7 +91,7 @@ export function invalidationsFor(
     case "linkUsed":
       return [under("links", space(event.teamId))];
     case "deviceTrustRequested":
-      return [under("trust", space(event.teamId))];
+      return [under("trust", space(event.teamId)), under("trust", "me")];
     case "deviceTrustResolved":
       return [under("trust")];
     case "planChanged": {

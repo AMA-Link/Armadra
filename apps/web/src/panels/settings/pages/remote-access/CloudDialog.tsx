@@ -134,7 +134,7 @@ export function AddCloudDialog({
         remote: answer.remote,
         userCode: code.userCode,
         verificationUrl: code.verificationUrl,
-        intervalMs: code.intervalMs,
+        intervalMs: code.intervalMs ?? 5_000,
         outcome: "waiting",
       });
       onChanged();
