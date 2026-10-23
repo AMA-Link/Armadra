@@ -21,7 +21,11 @@ import { DataList, type DataColumn } from "../ui/DataList";
 import { InlineError } from "../ui/InlineError";
 import { PageState } from "../ui/PageState";
 import { RelativeTime } from "../ui/RelativeTime";
+import type { TeamRole } from "../shell/model";
+import type { TeamSpace } from "../team/data";
 import { HostMenu, HostStatus, RevokeHostConfirm } from "./HostActions";
+import { HostSettingsGroup } from "./HostSettingsGroup";
+import { TeamAccessTab } from "./TeamAccessTab";
 import {
   useHost,
   useHostAccess,
@@ -42,7 +46,7 @@ function AccessTab({
   space,
   host,
 }: {
-  space: CloudSpace;
+  space: Extract<CloudSpace, { kind: "personal" }>;
   host: HostDetailData;
 }) {
   const t = useT();
@@ -132,7 +136,7 @@ function AccessTab({
   );
 }
 
-/** 设置页签：危险操作。团队主机的链接创建者、访客与缺省权限随团队主机页（U5）加进来。 */
+/** 设置页签：团队主机有链接创建者、访客与缺省权限三项（改动即存），其后是危险操作。 */
 function SettingsTab({
   space,
   host,
@@ -143,7 +147,14 @@ function SettingsTab({
   const t = useT();
   const [confirm, setConfirm] = React.useState(false);
   return (
-    <>
+    <div className="flex flex-col gap-6">
+      {host.settings ? (
+        <HostSettingsGroup
+          space={space}
+          sourceId={host.sourceId}
+          settings={host.settings}
+        />
+      ) : null}
       <SettingsGroup title={t("cloud.common.dangerZone")}>
         <SettingsRow label={t("cloud.hosts.revoke")}>
           <Button variant="destructive" onClick={() => setConfirm(true)}>
@@ -159,7 +170,7 @@ function SettingsTab({
           onRevoked={() => navigate(`${spaceBase(space)}/hosts`)}
         />
       ) : null}
-    </>
+    </div>
   );
 }
 
@@ -170,9 +181,12 @@ function SettingsTab({
 export function HostDetail({
   space,
   match,
+  team,
 }: {
   space: CloudSpace;
   match: RouteMatch;
+  /** 团队空间：本人的角色与团队名（owner / admin 管理全部主机，其余角色只管自己的）。 */
+  team?: { readonly role: TeamRole; readonly name: string };
 }) {
   const t = useT();
   const sourceId = match.params.host ?? "";
@@ -192,8 +206,17 @@ export function HostDetail({
     );
 
   const data = host.data;
-  const tabs: Tab[] = data.owner ? ["access", "links", "settings"] : ["links"];
-  const tab: Tab = tabs.find((entry) => entry === requested) ?? tabs[0]!;
+  // 团队里 owner / admin 管理全部主机；其余角色只管自己登记的，看别人的主机没有页签。
+  const manage =
+    data.owner ||
+    (team !== undefined && ["owner", "admin"].includes(team.role));
+  const tabs: Tab[] = manage
+    ? ["access", "links", "settings"]
+    : team
+      ? []
+      : ["links"];
+  const tab: Tab | undefined =
+    tabs.find((entry) => entry === requested) ?? tabs[0];
   const setTab = (value: string) => {
     const params = new URLSearchParams(window.location.search);
     params.set("tab", value);
@@ -243,7 +266,7 @@ export function HostDetail({
           <div className="flex shrink-0 items-center gap-1">
             <HostMenu
               space={space}
-              host={data}
+              host={{ ...data, owner: manage }}
               layout="table"
               onRevoked={() => navigate(`${base}/hosts`)}
             />
@@ -260,36 +283,49 @@ export function HostDetail({
           </div>
         ) : null}
       </header>
-      <Tabs value={tab} onValueChange={setTab}>
-        <TabsList variant="line" className="mb-4">
-          {tabs.map((entry) => (
-            <TabsTrigger key={entry} value={entry}>
-              {t(
-                entry === "access"
-                  ? "cloud.hosts.tabAccess"
-                  : entry === "links"
-                    ? "cloud.hosts.tabLinks"
-                    : "cloud.hosts.tabSettings",
+      {tab === undefined ? null : (
+        <Tabs value={tab} onValueChange={setTab}>
+          <TabsList variant="line" className="mb-4">
+            {tabs.map((entry) => (
+              <TabsTrigger key={entry} value={entry}>
+                {t(
+                  entry === "access"
+                    ? "cloud.hosts.tabAccess"
+                    : entry === "links"
+                      ? "cloud.hosts.tabLinks"
+                      : "cloud.hosts.tabSettings",
+                )}
+              </TabsTrigger>
+            ))}
+          </TabsList>
+          {tab === "access" ? (
+            <TabsContent value="access">
+              {space.kind === "team" && team ? (
+                <TeamAccessTab
+                  space={space as TeamSpace}
+                  host={data}
+                  teamName={team.name}
+                />
+              ) : (
+                <AccessTab
+                  space={space as Extract<CloudSpace, { kind: "personal" }>}
+                  host={data}
+                />
               )}
-            </TabsTrigger>
-          ))}
-        </TabsList>
-        {tab === "access" ? (
-          <TabsContent value="access">
-            <AccessTab space={space} host={data} />
-          </TabsContent>
-        ) : null}
-        {tab === "links" ? (
-          <TabsContent value="links">
-            <LinksView space={space} sourceId={data.sourceId} variant="tab" />
-          </TabsContent>
-        ) : null}
-        {tab === "settings" ? (
-          <TabsContent value="settings">
-            <SettingsTab space={space} host={data} />
-          </TabsContent>
-        ) : null}
-      </Tabs>
+            </TabsContent>
+          ) : null}
+          {tab === "links" ? (
+            <TabsContent value="links">
+              <LinksView space={space} sourceId={data.sourceId} variant="tab" />
+            </TabsContent>
+          ) : null}
+          {tab === "settings" ? (
+            <TabsContent value="settings">
+              <SettingsTab space={space} host={data} />
+            </TabsContent>
+          ) : null}
+        </Tabs>
+      )}
     </>
   );
 }

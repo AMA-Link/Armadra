@@ -52,7 +52,9 @@ export function ConfirmAction({
         <ResponsiveAlertDialogHeader>
           <ResponsiveAlertDialogTitle>{title}</ResponsiveAlertDialogTitle>
         </ResponsiveAlertDialogHeader>
-        {consequence ? <p className="text-body">{consequence}</p> : null}
+        {consequence ? (
+          <p className="text-body whitespace-pre-line">{consequence}</p>
+        ) : null}
         <ResponsiveAlertDialogFooter>
           <ResponsiveAlertDialogCancel>
             {t("cloud.common.cancel")}

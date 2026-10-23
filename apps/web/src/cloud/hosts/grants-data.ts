@@ -8,8 +8,6 @@ import { keyOfSpace, spaceWire, type CloudSpace } from "../space";
 /** 授予与有效权限的数据层（云端控制台 §6.2 `grants` / `access`），团队空间的主机详情与授予页共用。 */
 type Grants = CloudClient["grants"];
 export type Grant = Awaited<ReturnType<Grants["list"]>>["grants"][number];
-export type Effective = Awaited<ReturnType<Grants["effective"]>>;
-export type EffectiveSource = Effective["from"][number];
 export type GrantRole = Grant["role"];
 export type GrantSubject = Grant["subject"];
 export type HostSettings = NonNullable<
@@ -27,20 +25,6 @@ export function useHostGrants(
     queryKey: cloudKeys.grants(keyOfSpace(space), { sourceId }),
     enabled,
     queryFn: () => api.client.grants.list({ sourceId }),
-  });
-}
-
-/** 某个人在本人能管的主机上的授予（授予页展开一行时取）。 */
-export function useAccountGrants(
-  space: CloudSpace,
-  accountId: string,
-  enabled = true,
-) {
-  const api = useCloudApi();
-  return useQuery({
-    queryKey: cloudKeys.grants(keyOfSpace(space), { accountId }),
-    enabled,
-    queryFn: () => api.client.grants.list({ accountId }),
   });
 }
 

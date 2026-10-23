@@ -63,9 +63,12 @@ export function HostTable({
   space,
   rows,
   revoked = false,
+  manager = false,
 }: {
   space: CloudSpace;
   rows: readonly HostRow[];
+  /** 团队 owner / admin：重命名与撤销对全部主机可用，不只是自己登记的。 */
+  manager?: boolean;
   /** 这批都是已撤销的（`status=revoked` 的筛选结果）。 */
   revoked?: boolean;
 }) {
@@ -146,7 +149,11 @@ export function HostTable({
         name: t("cloud.nav.hosts"),
       })}
       actions={(row, layout) => (
-        <HostMenu space={space} host={row} layout={layout} />
+        <HostMenu
+          space={space}
+          host={manager ? { ...row, owner: true } : row}
+          layout={layout}
+        />
       )}
       onRowOpen={(row) =>
         navigate(`${base}/hosts/${encodeURIComponent(row.sourceId)}`)
@@ -163,9 +170,14 @@ export function HostTable({
 export function HostDirectory({
   space,
   match,
+  manager = false,
+  emptyAction,
 }: {
   space: CloudSpace;
   match: RouteMatch;
+  manager?: boolean;
+  /** 空目录里的主动作（「登记主机」）。 */
+  emptyAction?: React.ReactNode;
 }) {
   const t = useT();
   const filters = filtersOf(match.query, space);
@@ -220,7 +232,7 @@ export function HostDirectory({
         </Button>
       </EmptyState>
     ) : (
-      <EmptyState title={t("cloud.hosts.empty")} />
+      <EmptyState title={t("cloud.hosts.empty")}>{emptyAction}</EmptyState>
     );
   else
     body = (
@@ -229,6 +241,7 @@ export function HostDirectory({
           space={space}
           rows={rows}
           revoked={filters.status === "revoked"}
+          manager={manager}
         />
         {hosts.hasNextPage ? (
           <Button
