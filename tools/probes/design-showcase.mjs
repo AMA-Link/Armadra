@@ -13,8 +13,8 @@
 //   * `prefers-reduced-motion: reduce` 下 `canvas` 分区的动画必须静止
 //     （隔 700ms 的两张截图逐字节相同，且没有在跑的动画）；
 //   * `forced-colors: active` 下 `components` 分区的焦点仍有轮廓；
-//   * `components` 分区在每个桌面宽度上打开真的设置弹窗：宽 = 80vw（±1px，
-//     再夹进视口 −48），两套主题各截一张 `settings-dialog-<主题>-<宽>.png`；
+//   * `components` 分区在每个桌面宽度上打开真的设置弹窗：宽 = 视口 −48（上限 1600，
+//     ±1px），两套主题各截一张 `settings-dialog-<主题>-<宽>.png`；
 //   * 控制台 error 与未捕获异常一律算失败；
 //   * `apps/web/dist/` 存在时（CI 先构建再跑探针）确认里面没有展示页。
 //
@@ -375,8 +375,8 @@ await h.run(async () => {
 
   /* ------------------------------ 设置弹窗 ------------------------------ */
 
-  // 桌面宽度上（≥1024）弹窗宽 = max(760, 80vw)，再夹进视口 −48（设计系统
-  // §2.7）；更窄时是底部 Sheet，只截图。展示页没有 core：设置页取数失败的
+  // 桌面宽度上（≥1024）弹窗宽 = min(视口 −48, 1600)（设计系统 §2.7）；更窄时是
+  // 底部 Sheet，只截图。展示页没有 core：设置页取数失败的
   // 网络报错是预期的，不计入控制台。
   if (only.includes("components")) {
     report.settingsDialog = [];
@@ -397,10 +397,8 @@ await h.run(async () => {
           const nav = document.querySelector('[data-testid="settings-dialog"] nav').getBoundingClientRect();
           return { width: box.width, height: box.height, nav: nav.width };
         `);
-        const expected = Math.min(
-          Math.max(760, viewport.width * 0.8),
-          viewport.width - 48,
-        );
+        // 近全窗（设计系统 §2.7）：视口 −48，上限 1600
+        const expected = Math.min(viewport.width - 48, 1600);
         const name = `settings-dialog-${theme}-${viewport.width}`;
         // 弹窗是 fixed：截当前视口（不给 clip——clip 用的是文档坐标）。
         const shot = await page.call("Page.captureScreenshot", {
