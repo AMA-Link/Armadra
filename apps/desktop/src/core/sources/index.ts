@@ -202,6 +202,7 @@ export function install(
         revoke: (input) => cloud.revoke(input),
         register: (input) => cloud.register(input, who()),
         bind: (assertion) => cloud.bind(who(), assertion),
+        sourceId: async () => (await cloud.status()).sourceId,
       };
     },
     // 只有真网络才探信任锚；测试的假对端不探。
@@ -284,6 +285,15 @@ export function install(
     remoteDevicePoll: (input) => service.remoteDevicePoll(input.serviceId),
     remoteSpaces: (input) => service.remoteSpaces(input.serviceId),
     remoteRegister: (input) => service.remoteRegister(input),
+    cloudAccess: (input) => service.console.access(input.serviceId),
+    cloudGrantCreate: (input) => service.console.grantCreate(input),
+    cloudGrantUpdate: (input) => service.console.grantUpdate(input),
+    cloudGrantRevoke: (input) =>
+      service.console.grantRevoke(input.serviceId, input.grantId),
+    cloudInvite: (input) => service.console.invite(input),
+    cloudTrustList: (input) => service.console.trustList(input.serviceId),
+    cloudTrustReject: (input) =>
+      service.console.trustReject(input.serviceId, input.requestId),
     remoteUpdate: (input) => service.remoteUpdate(input),
     remoteRemove: (input) => service.remoteRemove(input.serviceId),
     remoteSources: (input) => service.remoteSources(input.serviceId),

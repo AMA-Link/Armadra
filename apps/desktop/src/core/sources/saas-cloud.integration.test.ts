@@ -30,6 +30,19 @@ import { SourcesStore } from "./store";
 const base = process.env.SAAS_CLOUD_BASE;
 const token = process.env.SAAS_APPROVER_TOKEN ?? "";
 const password = process.env.SAAS_APPROVER_PASSWORD ?? "";
+/** 团队成员 B 的账号标识（授予的对象）与 mailpit 地址；探针起好才有。 */
+const memberId = process.env.SAAS_MEMBER_ACCOUNT ?? "";
+const mailBase = process.env.SAAS_MAIL_BASE ?? "";
+
+async function get(path: string) {
+  const response = await fetch(`${base}${path}`, {
+    headers: {
+      authorization: `Bearer ${token}`,
+      "x-forwarded-for": "10.9.9.9",
+    },
+  });
+  return { status: response.status, body: (await response.json()) as never };
+}
 
 async function post(path: string, body: unknown) {
   const response = await fetch(`${base}${path}`, {
@@ -104,6 +117,7 @@ describe.skipIf(base === undefined)("真实控制面", () => {
           revoke: (input) => cloudDomain.revoke(input, owner),
           register: (input) => cloudDomain.register(input, owner),
           bind: (assertion) => cloudDomain.bind(owner, assertion),
+          sourceId: async () => (await cloudDomain.status()).sourceId,
         }),
       });
       service.ensureLocal();
@@ -143,6 +157,111 @@ describe.skipIf(base === undefined)("真实控制面", () => {
       expect(done.remote.registered).toBe(true);
       expect(cloudDomain.registered(base ?? "")).toBe(true);
       expect(relay.started).toEqual([base]);
+
+      // ---- 授予与邀请（契约 §33.12）：团队主机，对象是团队成员 B ----
+      const access = await service.console.access(serviceId);
+      expect(access).toMatchObject({
+        sourceId: hostId,
+        space: { kind: "team", teamId: team.teamId },
+        canManage: true,
+        grants: [],
+      });
+      expect(access.members.map((one) => one.accountId)).toContain(memberId);
+      const failure = async (work: Promise<unknown>) => {
+        try {
+          await work;
+          return "ok";
+        } catch (error) {
+          return (error as { code?: string }).code ?? String(error);
+        }
+      };
+
+      const expiresAtMs = Date.now() + 3 * 24 * 60 * 60 * 1000;
+      const first = await service.console.grantCreate({
+        serviceId,
+        subject: { kind: "member", accountId: memberId },
+        role: "driver",
+        workspaceIds: ["w-probe"],
+        expiresAtMs,
+      });
+      expect(first.grant).toMatchObject({
+        role: "driver",
+        workspaceIds: ["w-probe"],
+        subject: { kind: "member", accountId: memberId },
+      });
+      const listed = await get(`/v1/grants?sourceId=${hostId}`);
+      expect(
+        (listed.body as { grants: { grantId: string }[] }).grants.map(
+          (one) => one.grantId,
+        ),
+      ).toContain(first.grant.grantId);
+
+      // 对已经有授予的人再新建一条：云端一律 conflict（不合成），调整走 grants.update。
+      for (const [role, ws] of [
+        ["viewer", []],
+        ["viewer", ["w-probe"]],
+        ["driver", []],
+        ["editor", ["w2"]],
+      ] as const) {
+        expect(
+          await failure(
+            service.console.grantCreate({
+              serviceId,
+              subject: { kind: "member", accountId: memberId },
+              role,
+              workspaceIds: [...ws],
+            }),
+          ),
+        ).toBe("conflict");
+      }
+      const after = await service.console.access(serviceId);
+      expect(after.grants.map((one) => [one.role, one.workspaceIds])).toEqual([
+        ["driver", ["w-probe"]],
+      ]);
+
+      const target = after.grants.find((one) => one.role === "driver");
+      expect(target).toBeDefined();
+      if (target !== undefined) {
+        const updated = await service.console.grantUpdate({
+          serviceId,
+          grantId: target.grantId,
+          role: "operator",
+          workspaceIds: [],
+          expiresAtMs: null,
+        });
+        expect(updated.grant).toMatchObject({
+          role: "operator",
+          workspaceIds: [],
+          expiresAtMs: null,
+        });
+      }
+      for (const one of (await service.console.access(serviceId)).grants) {
+        await service.console.grantRevoke(serviceId, one.grantId);
+      }
+      expect((await service.console.access(serviceId)).grants).toEqual([]);
+      expect(
+        await failure(service.console.grantRevoke(serviceId, "nope")),
+      ).toBe("not_found");
+
+      // 按邮箱邀请外人（kind = host）；已是成员的邮箱按码拒绝。
+      const email = `guest-${Date.now()}@example.com`;
+      const invited = await service.console.invite({
+        serviceId,
+        email,
+        role: "viewer",
+        workspaceIds: ["w-probe"],
+        expiresAtMs,
+      });
+      expect(invited.invitation).toMatchObject({ email });
+      expect(invited.invitation.invitationId).not.toBe("");
+      if (mailBase !== "") {
+        const mail = (await (
+          await fetch(`${mailBase}/api/v1/search?query=to:${email}`)
+        ).json()) as { messages_count?: number; total?: number };
+        expect(mail.total ?? mail.messages_count ?? 0).toBeGreaterThan(0);
+      }
+      // 待信任：没有请求；校验码云端本来就没有。
+      expect((await service.console.trustList(serviceId)).requests).toEqual([]);
     } finally {
       for (const cleanup of cleanups) cleanup();
       opened.close();

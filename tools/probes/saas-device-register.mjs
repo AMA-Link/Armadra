@@ -5,7 +5,8 @@
 // 起一次性的 PostgreSQL / Redis / mailpit 容器（随机端口与口令）和本地构建的控制面
 // （armadra-cloud 的 `go/cmd/armadra-cloud`，找法见 `cloud-source.mjs`），建一个已验证邮箱、
 // 有团队的账号，再跑 `saas-cloud.integration.test.ts`：core 发起设备码、由该账号批准、轮询到
-// 就绪、取 `me.spaces`、取注册令牌并经真实的 `CloudRegistry` 登记（`sources.register`、取 JWKS、写登记行）。不起中继节点，隧道是假的，所以不验证隧道。
+// 就绪、取 `me.spaces`、取注册令牌并经真实的 `CloudRegistry` 登记（`sources.register`、取 JWKS、写登记行）；
+// 再对团队成员 B 发授予、合成冲突、改角色、撤销，并按邮箱邀请外人（契约 §33.12）。不起中继节点，隧道是假的，所以不验证隧道。
 // 跑完停掉并删除自己起的容器与临时目录。要 Docker 与 Go。产物：<输出目录>/result.json。
 import { spawnSync } from "node:child_process";
 import { randomBytes } from "node:crypto";
@@ -179,10 +180,50 @@ try {
       anonymous: true,
     },
   );
-  await approver.expectCall("建团队", 200, "", "POST", "/v1/teams", {
-    body: { slug: `t-${tag}`, name: "研发" },
-  });
+  const created = await approver.expectCall(
+    "建团队",
+    200,
+    "",
+    "POST",
+    "/v1/teams",
+    {
+      body: { slug: `t-${tag}`, name: "研发" },
+    },
+  );
+  const teamId = created.body.teamId;
   step("批准人账号与团队");
+
+  // 团队成员 B：授予与邀请（契约 §33.12）要有人可授。邀请邮件先到，B 之后才注册。
+  const member = new lib.Client(base, "B", "bearer");
+  await approver.expectCall("邀请成员", 200, "", "POST", "/v1/invitations", {
+    body: { kind: "team", teamId, email: member.email, role: "member" },
+  });
+  const invite = await mail.link(
+    member.email,
+    /\/invite\/([A-Za-z0-9_-]+)#(\S+)/,
+  );
+  await member.register();
+  const memberMail = await mail.link(member.email, /\/verify#(\S+)/);
+  await member.expectCall(
+    "成员邮箱验证",
+    200,
+    "",
+    "POST",
+    "/v1/auth/email/verify",
+    {
+      body: { token: memberMail.match[1] },
+      anonymous: true,
+    },
+  );
+  await member.expectCall(
+    "成员接受邀请",
+    200,
+    "",
+    "POST",
+    `/v1/invitations/${invite.match[1]}/accept`,
+    { body: { token: invite.match[2] } },
+  );
+  step("团队成员 B");
 
   const run = spawnSync(
     "pnpm",
@@ -201,12 +242,14 @@ try {
         SAAS_CLOUD_BASE: base,
         SAAS_APPROVER_TOKEN: approver.access,
         SAAS_APPROVER_PASSWORD: approver.password,
+        SAAS_MEMBER_ACCOUNT: member.accountId,
+        SAAS_MAIL_BASE: `http://127.0.0.1:${ports.mail}`,
       },
       stdio: "inherit",
     },
   );
   if (run.status !== 0) throw new Error(`集成测试失败（退出码 ${run.status}）`);
-  step("core 设备码登录、空间、注册令牌与登记");
+  step("core 设备码登录、空间、注册令牌与登记，授予与邀请（§33.12）");
   result.status = "ok";
 } catch (error) {
   result.error = String(error?.message ?? error);

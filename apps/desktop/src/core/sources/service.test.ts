@@ -569,6 +569,7 @@ describe("本机登记到远程服务（契约 §31）", () => {
       },
       register: async () => ({ sourceId: HOST_ID }),
       bind: async () => ({ bound: true }),
+      sourceId: async () => HOST_ID,
     };
     service = new SourcesService({
       store: new SourcesStore(opened.database),
@@ -1109,6 +1110,7 @@ describe("Armadra 云：设备码登录与登记到空间（契约 §33.11）", 
           bound.push(assertion);
           return { bound: true };
         },
+        sourceId: async () => HOST_ID,
       }),
     });
   });

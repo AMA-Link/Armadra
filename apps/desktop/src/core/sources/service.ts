@@ -31,7 +31,8 @@ import type {
   SourceAssertion,
 } from "./remote-client";
 import { parsePairLink } from "./pair-link";
-import { CloudSignIn } from "./saas-signin";
+import { CloudConsole } from "./saas-console";
+import { CloudSignIn, type CloudSignInHost } from "./saas-signin";
 
 export { parsePairLink };
 import { challengeTokenFor, PASSWORD_CHANGE_CAPABILITY } from "./remote-gate";
@@ -87,6 +88,8 @@ export interface CloudRegistrations {
   }): Promise<{ sourceId: string }>;
   /** 把断言的账号映射到当前登录的人（契约 §31 `bind`）。 */
   bind(assertion: string): Promise<unknown>;
+  /** 本机在远程服务上的 `sourceId`（授予与邀请的目标主机，契约 §33.12）。 */
+  sourceId(): Promise<string>;
 }
 
 export interface SourcesServiceOptions {
@@ -164,6 +167,8 @@ export class SourcesService {
   private readonly now: () => number;
   private readonly newId: () => string;
   private readonly cloudSignIn: CloudSignIn;
+  /** Armadra 云控制台的触点（契约 §33.12），见 `saas-console.ts`。 */
+  readonly console: CloudConsole;
   /** 远程服务的访问令牌：只在内存。 */
   private readonly access = new Map<string, CachedAccess>();
   private readonly capabilities = new Map<string, readonly string[]>();
@@ -180,7 +185,7 @@ export class SourcesService {
     this.peer = options.peer;
     this.now = options.now ?? Date.now;
     this.newId = options.newId ?? (() => randomBytes(16).toString("hex"));
-    this.cloudSignIn = new CloudSignIn({
+    const signInHost: CloudSignInHost = {
       store: this.store,
       secrets: this.secrets,
       remote: this.remote,
@@ -195,7 +200,9 @@ export class SourcesService {
       remember: (id, session) => this.remember(id, session),
       setCapabilities: (id, list) => void this.capabilities.set(id, list),
       serial: (key, work) => this.serial(key, work),
-    });
+    };
+    this.cloudSignIn = new CloudSignIn(signInHost);
+    this.console = new CloudConsole(signInHost);
   }
 
   /** 本机那一行：启动时 upsert，不可删。只碰 SQLite。 */
