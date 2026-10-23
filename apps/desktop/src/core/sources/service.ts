@@ -32,6 +32,7 @@ import type {
 } from "./remote-client";
 import { parsePairLink } from "./pair-link";
 import { CloudConsole } from "./saas-console";
+import { saasMountInfo } from "./saas-mount";
 import { CloudSignIn, type CloudSignInHost } from "./saas-signin";
 
 export { parsePairLink };
@@ -691,10 +692,7 @@ export class SourcesService {
         });
         // 分享方可能改了角色或到期（契约 §68）；只改 shared 的行。
         if (logged.share !== undefined) {
-          this.store.setShare(
-            row.sourceId,
-            shareColumns(await this.cloudSignIn.withTeamName(logged.share)),
-          );
+          this.store.setShare(row.sourceId, shareColumns(logged.share));
         }
         return logged;
       });
@@ -715,9 +713,6 @@ export class SourcesService {
     remote: RemoteRow,
     sourceId: string,
   ): Promise<SourceAssertion> {
-    if (remote.kind === "saas") {
-      throw fail("not_implemented", "SaaS 远程服务尚未开放");
-    }
     const token = await this.remoteAccess(remote);
     return this.remote.assertion(
       this.endpoint(remote),
@@ -1154,8 +1149,6 @@ export class SourcesService {
     serviceId: string,
   ): Promise<{ sources: RemoteSourceSummary[] }> {
     const row = this.remoteRow(serviceId);
-    if (row.kind === "saas")
-      throw fail("not_implemented", "SaaS 远程服务尚未开放");
     const token = await this.remoteAccess(row);
     const listed = await this.remote.sources(
       this.endpoint(row),
@@ -1220,6 +1213,11 @@ export class SourcesService {
         )
         .catch(() => "");
     }
+    // Armadra 云：别人的主机记 shared，团队只从自己的云得出（契约 §86）。
+    const saas = await saasMountInfo(this.remote, remote, token, assertion, {
+      endpoint: this.endpoint(remote),
+      sourceId: input.sourceId,
+    });
     const row = this.saveRelayRoute({
       sourceId: input.sourceId,
       existing,
@@ -1227,8 +1225,8 @@ export class SourcesService {
       relayOrigin,
       issuer: remote.issuer,
       principalHint: credentials.principalHint,
-      // 用自己的账号挂上的：我的电脑（契约 §68）。
-      share: undefined,
+      share: saas?.shared ? (credentials.share ?? null) : undefined,
+      ...(saas === undefined ? {} : { team: saas }),
     });
     this.options.log.info("mounted a relayed source", {
       sourceId: input.sourceId,
@@ -1254,6 +1252,8 @@ export class SourcesService {
      * （`mine`）。已经是 `mine` 的行按链接再加入一次仍是 `mine`。
      */
     share: CloudLoginShare | undefined | null;
+    /** Armadra 云挂载时自己的云得出的团队（契约 §86）。 */
+    team?: { teamId: string; teamName: string };
   }): SourceRow {
     const at = this.now();
     const { existing } = input;
@@ -1274,7 +1274,7 @@ export class SourcesService {
       ...(shared
         ? {
             origin: "shared" as const,
-            ...shareColumns(input.share ?? undefined),
+            ...shareColumns(input.share ?? undefined, input.team),
           }
         : MINE),
     });
@@ -1420,7 +1420,7 @@ export class SourcesService {
       issuer,
       principalHint: credentials.principalHint,
       // 分享方没报（旧 core）时是 null：仍记成 shared，分享信息留空。
-      share: (await this.cloudSignIn.withTeamName(credentials.share)) ?? null,
+      share: credentials.share ?? null,
     });
     this.options.log.info("mounted a source by share link", {
       sourceId: accepted.sourceId,

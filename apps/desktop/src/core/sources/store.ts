@@ -283,21 +283,17 @@ export class SourcesStore {
     return Number(result.changes) > 0;
   }
 
-  /** 只改分享信息（契约 §68：重新 `cloud/login` 时分享方报的新值）。 */
-  setShare(sourceId: string, share: SourceShare): void {
+  /** 只改分享信息（契约 §68：重新 `cloud/login` 时分享方报的新值）；团队不动。 */
+  setShare(
+    sourceId: string,
+    share: Omit<SourceShare, "teamId" | "teamName">,
+  ): void {
     this.database
       .prepare(
-        "UPDATE client_sources SET owner_label = ?, share_role = ?, share_expires_at_ms = ?, " +
-          "team_id = ?, team_name = ? WHERE source_id = ? AND origin = 'shared'",
+        "UPDATE client_sources SET owner_label = ?, share_role = ?, share_expires_at_ms = ? " +
+          "WHERE source_id = ? AND origin = 'shared'",
       )
-      .run(
-        share.ownerLabel,
-        share.shareRole,
-        share.shareExpiresAtMs,
-        share.teamId,
-        share.teamName,
-        sourceId,
-      );
+      .run(share.ownerLabel, share.shareRole, share.shareExpiresAtMs, sourceId);
   }
 
   /** 钉住的对端 core 身份公钥（契约 §78）；没钉是 `null`。 */

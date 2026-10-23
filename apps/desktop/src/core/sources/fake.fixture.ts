@@ -91,12 +91,7 @@ export interface FakeCore {
   /** hello 报的「主机名称」（契约 §61）；不给不报。 */
   hostName?: string;
   /** `cloud/login` 答的 `share`（契约 §68）；不给不报（旧对端、owner）。 */
-  share?: {
-    ownerName: string;
-    role: string;
-    expiresAtMs: number;
-    team?: { teamId: string; name?: string };
-  };
+  share?: { ownerName: string; role: string; expiresAtMs: number };
 }
 
 /** 假中继上的一条分享链接（cloud-api §5）。 */
@@ -154,6 +149,10 @@ export interface FakeWorld {
       limited: boolean;
     };
     spaces: Record<string, unknown>[];
+    /** `me.sources` 的 `owner`（缺省 true）；假就是别人的主机。 */
+    owner?: boolean;
+    /** 断言（JWS 载荷）带的 `team.teamId`；不给不带。 */
+    assertionTeam?: string;
     /** 设备码答案里的 `verificationUrl`；不给就是 issuer 同源的 `/device`。 */
     verificationUrl?: string;
     /** 下一次取注册令牌答的错误（一次性）。 */
@@ -518,7 +517,7 @@ async function cloud(
         kind: "desktop",
         online: world.cloud.online,
         lastSeenAtMs: null,
-        owner: true,
+        owner: world.cloud.owner !== false,
         via: "owner",
         relayOrigin: ISSUER,
         coreVersion: "0.0.0",
@@ -602,7 +601,12 @@ async function cloud(
     world.cloud.assertions += 1;
     const sourceId = match[1] as string;
     return json(200, {
-      assertion: token(`assertion-${sourceId}`),
+      assertion:
+        world.cloud.assertionTeam === undefined
+          ? token(`assertion-${sourceId}`)
+          : `assertion-${sourceId}.${Buffer.from(
+              JSON.stringify({ team: { teamId: world.cloud.assertionTeam } }),
+            ).toString("base64url")}.sig`,
       assertionExpiresAtMs: Date.now() + 300_000,
       relayToken: token("relay"),
       relayTokenExpiresAtMs: Date.now() + 3_600_000,

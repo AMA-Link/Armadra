@@ -81,8 +81,6 @@ export interface CloudLoginResult {
     readonly ownerName: string;
     readonly role: ShareRole;
     readonly expiresAtMs: number;
-    /** 契约 §86：SaaS 登记、断言带 `team` 时的团队标识；名字断言里没有，对端自己补。 */
-    readonly team?: { readonly teamId: string };
   };
 }
 
@@ -410,9 +408,6 @@ export class CloudLogin {
             share: {
               ownerName: ownerDisplayName(store, currentHostName()),
               ...share,
-              ...(registration.mode === "saas" && claims.team !== undefined
-                ? { team: { teamId: claims.team.teamId } }
-                : {}),
             },
           }),
     };

@@ -1108,11 +1108,6 @@ describe("cloud/login 的范围、角色同步与租约（契约 §60）", () =>
     const first = await login("acct:saas", { team, role: "editor" });
     expect(first.status, first.text).toBe(200);
     expect(first.body.created).toBe(true);
-    // 契约 §86：share 带上断言里的团队标识（名字断言里没有）。
-    expect(first.body.share).toMatchObject({
-      role: "editor",
-      team: { teamId: "team_1" },
-    });
     const principalId = principalOf(first);
     expect(grantsOf(principalId)).toEqual([
       ["host", "*", "", "editor", cloudProvider(ISSUER)],

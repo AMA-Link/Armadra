@@ -84,13 +84,19 @@ export const MINE = {
   teamName: "",
 } as const;
 
-/** `cloud/login` 报的分享信息 → 源行的三列（契约 §68）。 */
-export function shareColumns(share: CloudLoginShare | undefined): SourceShare {
+/**
+ * `cloud/login` 报的分享信息 → 源行的列（契约 §68）。团队（契约 §86）不取自对端的
+ * 答案——对端是别人的 core，它的话不作分组依据——只取自接收方自己的云，由调用方给。
+ */
+export function shareColumns(
+  share: CloudLoginShare | undefined,
+  team: { teamId: string; teamName: string } = { teamId: "", teamName: "" },
+): SourceShare {
   return {
     ownerLabel: clip(share?.ownerName ?? "", 128),
     shareRole: share?.role ?? "",
     shareExpiresAtMs: share?.expiresAtMs ?? 0,
-    teamId: clip(share?.teamId ?? "", 128),
-    teamName: clip(share?.teamName ?? "", 128),
+    teamId: clip(team.teamId, 128),
+    teamName: clip(team.teamName, 128),
   };
 }

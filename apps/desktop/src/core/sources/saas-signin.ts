@@ -265,39 +265,4 @@ export class CloudSignIn {
       sourceId: registered.sourceId,
     };
   }
-
-  /**
-   * 分享方只报团队标识时（契约 §86：断言里没有名字）用本机登录着的 Armadra 云补名字；
-   * 哪个云都取不到、或没有这个团队，名字留空，不拦调用方。
-   */
-  async withTeamName<T extends { teamId: string; teamName: string }>(
-    share: T | undefined,
-  ): Promise<T | undefined> {
-    if (share === undefined || share.teamId === "" || share.teamName !== "") {
-      return share;
-    }
-    return { ...share, teamName: await this.teamName(share.teamId) };
-  }
-
-  private async teamName(teamId: string): Promise<string> {
-    const { host } = this;
-    for (const row of host.store.remotes()) {
-      if (row.kind !== "saas") continue;
-      try {
-        const token = await host.remoteAccess(row);
-        const spaces = await host.remote.spaces(
-          host.endpoint(row),
-          token.accessToken,
-        );
-        for (const space of spaces) {
-          if (space.kind === "team" && space.teamId === teamId) {
-            return space.name;
-          }
-        }
-      } catch {
-        /* 这个云取不到就试下一个。 */
-      }
-    }
-    return "";
-  }
 }

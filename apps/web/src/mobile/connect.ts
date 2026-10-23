@@ -569,13 +569,7 @@ export function createRelayEnrollment(
     name: string,
     slot: string,
     origin: ConnectionOrigin = "mine",
-    share: {
-      readonly role?: string;
-      readonly expiresAtMs?: number;
-      /** 分享经由的团队（契约 §86）；按链接加入时总会带，个人分享是空串。 */
-      readonly teamId?: string;
-      readonly teamName?: string;
-    } = {},
+    share: { readonly role?: string; readonly expiresAtMs?: number } = {},
   ) => {
     upsertConnection({
       sourceId,
@@ -583,9 +577,6 @@ export function createRelayEnrollment(
       origin,
       ...(isShareRole(share.role) ? { shareRole: share.role } : {}),
       ...(share.expiresAtMs ? { shareExpiresAtMs: share.expiresAtMs } : {}),
-      ...(share.teamId === undefined
-        ? {}
-        : { teamId: share.teamId, teamName: share.teamName ?? "" }),
       ...(name ? { defaultLabel: name } : {}),
       baseUrl: "",
       relayOrigin: issuer,
@@ -670,8 +661,6 @@ export function createRelayEnrollment(
           connectionOf(accepted.sourceId, name, slot, "shared", {
             ...(info?.role ? { role: info.role } : {}),
             ...(info?.expiresAtMs ? { expiresAtMs: info.expiresAtMs } : {}),
-            teamId: login.team?.teamId ?? "",
-            teamName: login.team?.name ?? "",
           });
           // 加入的主机不顶替这个页面的主连接：有自己的电脑就仍以它为主，加入的
           // 作为同伴挂上、直接打开它的工作空间；一台自己的都没有时它只好当主连接。

@@ -264,7 +264,7 @@ const assertion = (id: string) => () => ({
   },
 });
 
-const coreLoginWith = (share?: Record<string, unknown>) => ({
+const coreLogin = () => ({
   body: {
     session: {
       hostId: HOST,
@@ -273,11 +273,8 @@ const coreLoginWith = (share?: Record<string, unknown>) => ({
     },
     principal: { principalId: "p", kind: "owner", displayName: "o" },
     created: false,
-    ...(share === undefined ? {} : { share }),
   },
 });
-
-const coreLogin = () => coreLoginWith();
 
 describe("添加连接 · 局域网（现有方式）记进连接表", () => {
   it("配对成功：以 core 的 hostId 记一行直连并设为当前", async () => {
@@ -708,57 +705,6 @@ describe("添加连接 · 分享链接 / 二维码", () => {
     });
     expect(originOf(loadConnections()[0]!)).toBe("mine");
     expect(reload).toHaveBeenCalledOnce();
-  });
-
-  it("契约 §86：主机在 share 里报了团队，加入的连接记团队；没报的是个人分享", async () => {
-    const run = async (share?: Record<string, unknown>) => {
-      localStorage.clear();
-      const { bridge } = fakeBridge({
-        peek: { fingerprint: RELAY_FP, trusted: false, pinned: true },
-      });
-      const net = routedFetch({
-        [`GET /v1/links/${LINK_ID}`]: () => ({
-          body: {
-            label: "",
-            role: "viewer",
-            sourceName: "MacBook",
-            expiresAtMs: 0,
-            exhausted: false,
-          },
-        }),
-        [`POST /v1/links/${LINK_ID}/accept`]: () => ({
-          body: {
-            sourceId: HOST,
-            relayOrigin: ISSUER,
-            relayBaseUrl: `${ISSUER}/s/${HOST}`,
-            assertion: "jws.guest",
-            relayToken: "relay.guest",
-            guestSession: {
-              accessToken: "guest-access",
-              refreshToken: "guest-refresh",
-              accessExpiresAtMs: Date.now() + 900_000,
-              expiresAtMs: Date.now() + 9_000_000,
-            },
-          },
-        }),
-        [`POST /s/${HOST}/api/identity/cloud/login`]: () =>
-          coreLoginWith(share),
-      });
-      const enroll = createRelayEnrollment({
-        bridge,
-        cloud: { fetch: net.fetch },
-        e2e: plainE2e(net.fetch),
-        reload: vi.fn(),
-      });
-      await expect(enroll.join(SHARE)).resolves.toEqual({ kind: "done" });
-      return loadConnections().find((row) => row.sourceId === HOST)!;
-    };
-    expect(
-      await run({ team: { teamId: "team-1", name: "研发组" } }),
-    ).toMatchObject({ origin: "shared", teamId: "team-1", teamName: "研发组" });
-    const personal = await run();
-    expect(personal.origin).toBe("shared");
-    expect(personal.teamId).toBeUndefined();
   });
 
   it("深链形式同样挂载；新的自签中转要先核对指纹；失效的链接说明原因", async () => {

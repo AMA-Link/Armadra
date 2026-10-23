@@ -68,30 +68,43 @@ describe("0054 source_teams", () => {
     }
   });
 
-  it("setShare 写团队，下一次不报团队时清回个人；只改 shared 的行", () => {
+  it("upsert 写团队；setShare 只改分享信息、不动团队，且只改 shared 的行", () => {
     upTo(54);
-    database
-      .prepare(
-        "INSERT INTO client_sources(source_id, kind, label, added_at_ms) VALUES(?, 'relayed', 'x', 1)",
-      )
-      .run(JOINED);
     const store = new SourcesStore(database);
-    const share = {
+    store.upsert({
+      sourceId: JOINED,
+      kind: "relayed",
+      label: "x",
+      defaultLabel: "x",
+      baseUrl: "",
+      relayOrigin: "https://relay.test",
+      fingerprint: "",
+      cloudIssuer: "https://relay.test",
+      principalHint: "",
+      addedAtMs: 1,
+      lastOkAtMs: 0,
+      orderIndex: 1,
+      origin: "shared",
       ownerLabel: "Alice",
-      shareRole: "viewer" as const,
+      shareRole: "viewer",
       shareExpiresAtMs: 0,
       teamId: "team-1",
       teamName: "研发组",
-    };
-    store.setShare(JOINED, share);
-    expect(store.get(JOINED)).toMatchObject({ teamId: "", teamName: "" });
-    database.prepare("UPDATE client_sources SET origin = 'shared'").run();
-    store.setShare(JOINED, share);
+    });
     expect(store.get(JOINED)).toMatchObject({
       teamId: "team-1",
       teamName: "研发组",
     });
-    store.setShare(JOINED, { ...share, teamId: "", teamName: "" });
-    expect(store.get(JOINED)).toMatchObject({ teamId: "", teamName: "" });
+    store.setShare(JOINED, {
+      ownerLabel: "Bob",
+      shareRole: "editor",
+      shareExpiresAtMs: 5,
+    });
+    expect(store.get(JOINED)).toMatchObject({
+      ownerLabel: "Bob",
+      shareRole: "editor",
+      teamId: "team-1",
+      teamName: "研发组",
+    });
   });
 });

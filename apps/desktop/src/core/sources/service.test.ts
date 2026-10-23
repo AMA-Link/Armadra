@@ -978,67 +978,6 @@ describe("契约 §33.7：按分享链接挂载", () => {
     ).toMatchObject({ shareRole: "editor", shareExpiresAtMs: 9_000_000 });
   });
 
-  it("契约 §86：share 带团队时写团队，重新登录后跟随；不报团队是个人分享", async () => {
-    share();
-    const core = world.cores.get(`${ISSUER}/s/${RELAYED_ID}`)!;
-    core.share = {
-      ownerName: "Alice",
-      role: "viewer",
-      expiresAtMs: 0,
-      team: { teamId: "team-1", name: "研发组" },
-    };
-    expect(
-      await service.mountByLink({ url, fingerprint: RELAY_FP }),
-    ).toMatchObject({ teamId: "team-1", teamName: "研发组" });
-
-    core.share = { ownerName: "Alice", role: "viewer", expiresAtMs: 0 };
-    core.sessions.revokeAll();
-    await service.session(RELAYED_ID, "relayed");
-    expect(
-      (await service.list()).sources.find((one) => one.sourceId === RELAYED_ID),
-    ).toMatchObject({ teamId: "", teamName: "" });
-    expect(
-      (await service.list()).sources.find((one) => one.kind === "local"),
-    ).toMatchObject({ teamId: "", teamName: "" });
-  });
-
-  it("契约 §86：只报团队标识时用本机登录着的 Armadra 云补名字，取不到留空", async () => {
-    share();
-    const core = world.cores.get(`${ISSUER}/s/${RELAYED_ID}`)!;
-    core.share = {
-      ownerName: "Alice",
-      role: "viewer",
-      expiresAtMs: 0,
-      team: { teamId: "team-1" },
-    };
-    const internals = service as unknown as {
-      remoteAccess(row: unknown): Promise<{ accessToken: string }>;
-      remote: { spaces(): Promise<unknown[]> };
-    };
-    const spaces = [
-      { kind: "team", teamId: "team-2", slug: "b", name: "设计组" },
-      { kind: "team", teamId: "team-1", slug: "a", name: "研发组" },
-    ];
-    internals.remoteAccess = async () => ({ accessToken: "t" });
-    internals.remote.spaces = async () => spaces;
-    opened.database
-      .prepare(
-        "INSERT INTO remote_services(service_id, kind, issuer, label, account_hint, added_at_ms) VALUES(lower(hex(randomblob(16))), 'saas', 'https://cloud.test', 'cloud', 'a@b', 1)",
-      )
-      .run();
-    expect(
-      await service.mountByLink({ url, fingerprint: RELAY_FP }),
-    ).toMatchObject({ teamId: "team-1", teamName: "研发组" });
-
-    internals.remote.spaces = async () => {
-      throw new Error("offline");
-    };
-    share();
-    expect(
-      await service.mountByLink({ url, fingerprint: RELAY_FP }),
-    ).toMatchObject({ teamId: "team-1", teamName: "" });
-  });
-
   it("契约 §68：分享方不报 share（旧 core）仍是 shared，分享信息留空；角色不认识当未知", async () => {
     share();
     const core = world.cores.get(`${ISSUER}/s/${RELAYED_ID}`)!;
@@ -1392,5 +1331,100 @@ describe("Armadra 云：设备码登录与登记到空间（契约 §33.11）", 
       ),
     ).toBe("team_role_insufficient");
     expect(registrations).toEqual([]);
+  });
+});
+
+describe("契约 §86：Armadra 云挂载的团队与归属", () => {
+  let saas: SourcesService;
+  let clock: number;
+
+  beforeEach(async () => {
+    clock = Date.now();
+    world.cloud.mode = "saas";
+    world.fingerprints.delete(ISSUER);
+    saas = new SourcesService({
+      store: new SourcesStore(opened.database),
+      secrets: new SourceSecrets(() => backend),
+      remote: new RemoteClient(world.transport, {
+        platform: "desktop",
+        name: "test",
+      }),
+      peer: new SourceClient(world.transport, plainSealed(world.transport)),
+      hostId: () => HOST_ID,
+      hostLabel: () => "this-mac",
+      log: { info: () => undefined, warn: () => undefined },
+      now: () => clock,
+    });
+    const { remote } = await saas.remoteAdd({ kind: "saas", issuer: ISSUER });
+    world.cloud.device.status = "approved";
+    clock += 6_000;
+    await saas.remoteDevicePoll(remote.serviceId);
+    world.cloud.spaces = [
+      { kind: "personal", plan: "free" },
+      {
+        kind: "team",
+        teamId: "team-1",
+        slug: "rd",
+        name: "研发组",
+        role: "member",
+        plan: "team",
+      },
+    ];
+    serviceId = remote.serviceId;
+  });
+  let serviceId: string;
+
+  it("别人的团队主机：shared，团队来自自己拿到的断言，名字来自这个云的 me.spaces", async () => {
+    world.cloud.owner = false;
+    world.cloud.assertionTeam = "team-1";
+    const mounted = await saas.mount({ serviceId, sourceId: RELAYED_ID });
+    expect(mounted).toMatchObject({
+      origin: "shared",
+      teamId: "team-1",
+      teamName: "研发组",
+    });
+  });
+
+  it("名字取不到留空；断言不带团队是个人分享；对端 share.team 不采信", async () => {
+    world.cloud.owner = false;
+    world.cloud.assertionTeam = "team-unknown";
+    const core = world.cores.get(`${ISSUER}/s/${RELAYED_ID}`)!;
+    (core as { share?: unknown }).share = {
+      ownerName: "Alice",
+      role: "viewer",
+      expiresAtMs: 0,
+      team: { teamId: "evil", name: "冒充" },
+    };
+    expect(await saas.mount({ serviceId, sourceId: RELAYED_ID })).toMatchObject(
+      {
+        origin: "shared",
+        ownerLabel: "Alice",
+        teamId: "team-unknown",
+        teamName: "",
+      },
+    );
+    delete world.cloud.assertionTeam;
+    const personal = await saas.mount({ serviceId, sourceId: RELAYED_ID });
+    expect(personal).toMatchObject({
+      origin: "shared",
+      teamId: "",
+      teamName: "",
+    });
+  });
+
+  it("自己的主机（owner）：mine，不记团队；个人中转挂载不记团队", async () => {
+    world.cloud.assertionTeam = "team-1";
+    expect(await saas.mount({ serviceId, sourceId: RELAYED_ID })).toMatchObject(
+      {
+        origin: "mine",
+        teamId: "",
+        teamName: "",
+      },
+    );
+  });
+
+  it("remoteSources 对 SaaS 远程可用", async () => {
+    const listed = await saas.remoteSources(serviceId);
+    expect(Array.isArray(listed.sources)).toBe(true);
   });
 });
