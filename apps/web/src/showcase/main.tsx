@@ -3,6 +3,7 @@ if (!import.meta.env.DEV) throw new Error("design showcase is dev-only");
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { MotionConfig } from "motion/react";
+import { MOTION_TRANSITION } from "@/ui/motion";
 
 import "../styles/app.css";
 import "../styles/nodes.css";
@@ -46,10 +47,7 @@ installShowcaseContrast();
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
-    <MotionConfig
-      reducedMotion="user"
-      transition={{ duration: 0.16, ease: [0.32, 0.72, 0, 1] }}
-    >
+    <MotionConfig reducedMotion="user" transition={MOTION_TRANSITION}>
       <ShowcaseProviders>
         <ShowcaseApp only={query.get("only") === "1"} />
       </ShowcaseProviders>

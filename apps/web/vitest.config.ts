@@ -7,6 +7,8 @@ export default defineConfig({
       // 与 vite.config.ts / tsconfig.app.json 的 paths 保持一致：
       // src/ui 下 shadcn 生成的组件之间用 `@/` 互相引用。
       "@": fileURLToPath(new URL("./src", import.meta.url)),
+      // 与 vite.config.ts 一致：裸 `cn` 走 `src/lib/cn.ts`。
+      cn: fileURLToPath(new URL("./src/lib/cn.ts", import.meta.url)),
     },
   },
   test: {

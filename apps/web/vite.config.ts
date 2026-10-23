@@ -203,6 +203,9 @@ export default defineConfig(({ command }) => ({
       // shadcn CLI 生成的组件用 `@/` 引用彼此，别名必须和
       // tsconfig.app.json 的 paths 保持一致。
       "@": fileURLToPath(new URL("./src", import.meta.url)),
+      // 裸 `cn`（shadcn CLI 生成的组件用）也走我们登记过设计系统类名的合并器
+      // （`src/lib/cn.ts`）；npm 包的 `cn` 认不出 `text-meta` / `rounded-control`。
+      cn: fileURLToPath(new URL("./src/lib/cn.ts", import.meta.url)),
     },
   },
   build: {

@@ -6,6 +6,8 @@ import { Button } from "@/ui/button";
 import { ColorDot } from "@/ui/color-dot";
 import { IconButton } from "@/ui/icon-button";
 import { Kbd, KbdGroup } from "@/ui/kbd";
+import { ariaKeyShortcuts } from "@/ui/kbd-format";
+import { Shimmer } from "@/ui/shimmer";
 import { Popover, PopoverContent, PopoverTrigger } from "@/ui/popover";
 import { STATUS_PILL_LABELS, StatusPill } from "@/ui/status-pill";
 import { Switch } from "@/ui/switch";
@@ -29,6 +31,9 @@ import {
 import { Empty, EmptyHeader, EmptyTitle } from "@/ui/empty";
 import { Field, FieldError, FieldLabel } from "@/ui/field";
 import { Input } from "@/ui/input";
+import { InputGroup, InputGroupInput } from "@/ui/input-group";
+import { Select, SelectTrigger, SelectValue } from "@/ui/select";
+import { Textarea } from "@/ui/textarea";
 import { InputOTP, InputOTPGroup, InputOTPSlot } from "@/ui/input-otp";
 import { Item, ItemContent, ItemTitle } from "@/ui/item";
 import { Label } from "@/ui/label";
@@ -36,7 +41,17 @@ import { MemberDot, memberColorVar } from "@/ui/member-dot";
 import { RadioGroup, RadioGroupItem } from "@/ui/radio-group";
 import { Skeleton } from "@/ui/skeleton";
 import { Spinner } from "@/ui/spinner";
-import { Table, TableBody, TableCell, TableRow } from "@/ui/table";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/ui/table";
+import { EmptyState, ErrorState } from "@/ui/state";
+import { IndicatorGroup, Indicator } from "@/ui/indicator";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/ui/tabs";
 
 beforeAll(() => {
   // Radix 的定位层（floating-ui）在 jsdom 下需要这两个 API
@@ -434,5 +449,496 @@ describe("MemberDot", () => {
     expect(memberColorVar(8)).toBe("var(--member-8)");
     expect(memberColorVar(9)).toBe("var(--member-1)");
     expect(memberColorVar(18)).toBe("var(--member-2)");
+  });
+});
+
+describe("Button 变体与尺寸（设计系统 §9）", () => {
+  it.each([
+    "default",
+    "outline",
+    "secondary",
+    "ghost",
+    "destructive",
+    "destructive-solid",
+    "link",
+  ] as const)("variant=%s 落到 data-variant", (variant) => {
+    render(<Button variant={variant}>动作</Button>);
+    expect(screen.getByRole("button").dataset.variant).toBe(variant);
+  });
+
+  it("destructive-solid 是危险实底 + 反白字，不借品牌蓝", () => {
+    render(<Button variant="destructive-solid">删除</Button>);
+    const cls = screen.getByRole("button").className;
+    expect(cls).toContain("bg-danger-solid");
+    expect(cls).toContain("text-primary-foreground");
+    expect(cls).not.toContain("bg-primary");
+  });
+
+  it.each([
+    ["xs", "h-6"],
+    ["sm", "h-7"],
+    ["default", "h-8"],
+    ["lg", "h-9"],
+    ["touch", "h-11"],
+  ] as const)("size=%s 高度档 %s，圆角统一 rounded-control", (size, height) => {
+    render(<Button size={size}>动作</Button>);
+    const button = screen.getByRole("button");
+    expect(button.dataset.size).toBe(size);
+    expect(button.className).toMatch(new RegExp(`\\b${height}\\b`));
+    expect(button.className).toContain("rounded-control");
+  });
+
+  it("过渡点名属性、按下反馈由 motion-press 给，不用 transition-all", () => {
+    render(<Button>动作</Button>);
+    const cls = screen.getByRole("button").className;
+    expect(cls).toContain("motion-press");
+    expect(cls).not.toContain("transition-all");
+  });
+
+  it("static 关掉按下缩放（data-static）", () => {
+    render(<Button static>动作</Button>);
+    expect(screen.getByRole("button").dataset.static).toBe("true");
+  });
+
+  it("loading：aria-busy、不 disabled、Spinner 顶替 data-icon=inline-start 的图标、标签微光、点击被吞", () => {
+    const onClick = vi.fn();
+    render(
+      <Button size="sm" loading onClick={onClick}>
+        <Check data-icon="inline-start" data-testid="icon" />
+        保存
+      </Button>,
+    );
+    const button = screen.getByRole("button", { name: "保存" });
+    expect(button.getAttribute("aria-busy")).toBe("true");
+    expect((button as HTMLButtonElement).disabled).toBe(false);
+    expect(screen.queryByTestId("icon")).toBeNull();
+    const spinner = button.querySelector("[data-slot='spinner']");
+    expect(spinner).not.toBeNull();
+    expect(spinner!.getAttribute("class")).toContain("size-3");
+    expect(button.querySelector("[data-slot='shimmer']")).not.toBeNull();
+    fireEvent.click(button);
+    expect(onClick).not.toHaveBeenCalled();
+  });
+
+  it("loading 结束后恢复图标与点击", () => {
+    const onClick = vi.fn();
+    const { rerender } = render(
+      <Button loading onClick={onClick}>
+        <Check data-icon="inline-start" data-testid="icon" />
+        保存
+      </Button>,
+    );
+    rerender(
+      <Button onClick={onClick}>
+        <Check data-icon="inline-start" data-testid="icon" />
+        保存
+      </Button>,
+    );
+    const button = screen.getByRole("button");
+    expect(button.getAttribute("aria-busy")).toBeNull();
+    expect(screen.getByTestId("icon")).not.toBeNull();
+    fireEvent.click(button);
+    expect(onClick).toHaveBeenCalledTimes(1);
+  });
+
+  it("shortcut：尾部 Kbd 与 aria-keyshortcuts", () => {
+    render(<Button shortcut="⌘↵">发送</Button>);
+    const button = screen.getByRole("button");
+    expect(button.querySelector("kbd")?.textContent).toBe("⌘↵");
+    expect(button.getAttribute("aria-keyshortcuts")).toBe("Meta+Enter");
+  });
+});
+
+describe("ariaKeyShortcuts", () => {
+  it.each([
+    ["⌘K", "Meta+K"],
+    ["⌘⇧P", "Meta+Shift+P"],
+    ["Ctrl+Shift+K", "Control+Shift+K"],
+    ["↵", "Enter"],
+    ["Esc", "Escape"],
+    ["⌃⌥↓", "Control+Alt+ArrowDown"],
+  ])("%s → %s", (display, expected) => {
+    expect(ariaKeyShortcuts(display)).toBe(expected);
+  });
+});
+
+describe("Badge 尺寸与变体（设计系统 §9）", () => {
+  it("sm 18 / md 20，默认 md；圆角 pill、等宽数字", () => {
+    const { rerender } = render(<Badge>3</Badge>);
+    const badge = () => screen.getByText("3");
+    expect(badge().dataset.size).toBe("md");
+    expect(badge().className).toContain("h-5");
+    rerender(<Badge size="sm">3</Badge>);
+    expect(badge().dataset.size).toBe("sm");
+    expect(badge().className).toContain("h-[18px]");
+    expect(badge().className).toContain("rounded-pill");
+    expect(badge().className).toContain("tabular-nums");
+  });
+
+  it.each([
+    ["success", "bg-success-soft", "text-success-text"],
+    ["warn", "bg-warn-soft", "text-warn-text"],
+    ["brand", "bg-brand-soft", "text-brand-text"],
+    ["destructive", "bg-danger-soft", "text-danger-text"],
+  ] as const)("%s 用软底 + 文字色", (variant, bg, text) => {
+    render(<Badge variant={variant}>状态</Badge>);
+    const cls = screen.getByText("状态").className;
+    expect(cls).toContain(bg);
+    expect(cls).toContain(text);
+  });
+
+  it("九个变体都有 data-variant", () => {
+    const variants = [
+      "default",
+      "secondary",
+      "outline",
+      "ghost",
+      "destructive",
+      "link",
+      "success",
+      "warn",
+      "brand",
+    ] as const;
+    render(
+      <>
+        {variants.map((variant) => (
+          <Badge key={variant} variant={variant}>
+            {variant}
+          </Badge>
+        ))}
+      </>,
+    );
+    for (const variant of variants)
+      expect(screen.getByText(variant).dataset.variant).toBe(variant);
+  });
+});
+
+describe("Kbd / Spinner / Shimmer", () => {
+  it("Kbd 在按钮与 Tooltip 内收成 16 高（样式由祖先 data-slot 决定）", () => {
+    render(<Kbd>⌘K</Kbd>);
+    const cls = screen.getByText("⌘K").className;
+    expect(cls).toContain("h-5");
+    expect(cls).toContain("in-data-[slot=button]:h-4");
+    expect(cls).toContain("in-data-[slot=tooltip-content]:h-4");
+    expect(cls).toContain("rounded-tight");
+  });
+
+  it("Spinner 两档尺寸与三种状态；done 画对勾，failed 是 ×", () => {
+    const { container, rerender } = render(<Spinner size={12} />);
+    const spinner = () =>
+      container.querySelector("[data-slot='spinner']") as SVGElement;
+    expect(spinner().getAttribute("class")).toContain("size-3");
+    expect(spinner().getAttribute("class")).toContain("anim-spin");
+    rerender(<Spinner />);
+    expect(spinner().getAttribute("class")).toContain("size-4");
+    rerender(<Spinner state="done" />);
+    expect(spinner().dataset.state).toBe("done");
+    expect(spinner().querySelector(".anim-check-draw")).not.toBeNull();
+    expect(spinner().getAttribute("class")).not.toContain("anim-spin");
+    rerender(<Spinner state="failed" />);
+    expect(spinner().dataset.state).toBe("failed");
+  });
+
+  it("Spinner 有 aria-label 时是 role=status，否则装饰", () => {
+    const { container, rerender } = render(<Spinner />);
+    expect(
+      container
+        .querySelector("[data-slot='spinner']")!
+        .getAttribute("aria-hidden"),
+    ).toBe("true");
+    rerender(<Spinner aria-label="保存中" />);
+    expect(screen.getByRole("status", { name: "保存中" })).not.toBeNull();
+  });
+
+  it("Shimmer：active 时带遮罩类，关掉后原样输出", () => {
+    const { rerender } = render(<Shimmer>保存</Shimmer>);
+    expect(screen.getByText("保存").className).toContain("anim-shimmer");
+    rerender(<Shimmer active={false}>保存</Shimmer>);
+    expect(screen.getByText("保存").className).not.toContain("anim-shimmer");
+  });
+});
+
+describe("Input / Textarea / Select / InputGroup 四档高度（设计系统 §2.13）", () => {
+  it.each([
+    ["xs", "h-6"],
+    ["sm", "h-7"],
+    ["default", "h-8"],
+    ["touch", "h-11"],
+  ] as const)("Input size=%s → %s，圆角 rounded-control", (size, height) => {
+    render(<Input aria-label="名称" size={size} />);
+    const input = screen.getByRole("textbox");
+    expect(input.dataset.size).toBe(size);
+    expect(input.className).toMatch(new RegExp(`\\b${height}\\b`));
+    expect(input.className).toContain("rounded-control");
+  });
+
+  it("Input 手机上 16px（text-base），桌面落回正文档；touch 档任何视口都是 16", () => {
+    const { rerender } = render(<Input aria-label="名称" />);
+    const cls = () => screen.getByRole("textbox").className;
+    expect(cls()).toContain("text-base");
+    expect(cls()).toContain("md:text-body");
+    rerender(<Input aria-label="名称" size="touch" />);
+    expect(cls()).toContain("text-base");
+    expect(cls()).not.toContain("md:text-body");
+  });
+
+  it("Input 不再把 size 当成原生数字属性，过渡点名属性", () => {
+    render(<Input aria-label="名称" />);
+    const input = screen.getByRole("textbox");
+    expect(input.getAttribute("size")).toBeNull();
+    expect(input.className).not.toContain("transition-all");
+    expect(input.className).toContain(
+      "transition-[color,background-color,border-color]",
+    );
+  });
+
+  it.each([
+    ["xs", "px-1.5"],
+    ["sm", "px-2"],
+    ["default", "px-2.5"],
+    ["touch", "px-3"],
+  ] as const)("Textarea size=%s → %s", (size, padding) => {
+    render(<Textarea aria-label="备注" size={size} />);
+    const area = screen.getByRole("textbox");
+    expect(area.dataset.size).toBe(size);
+    expect(area.className).toContain(padding);
+  });
+
+  it.each([
+    ["xs", "data-[size=xs]:h-6"],
+    ["sm", "data-[size=sm]:h-7"],
+    ["default", "data-[size=default]:h-8"],
+    ["touch", "data-[size=touch]:h-11"],
+  ] as const)(
+    "SelectTrigger size=%s 带 data-size 并有对应高度类",
+    (size, cls) => {
+      render(
+        <Select>
+          <SelectTrigger size={size} aria-label="选择">
+            <SelectValue placeholder="选择" />
+          </SelectTrigger>
+        </Select>,
+      );
+      const trigger = screen.getByRole("combobox");
+      expect(trigger.dataset.size).toBe(size);
+      expect(trigger.className).toContain(cls);
+      expect(trigger.className).toContain("rounded-control");
+    },
+  );
+
+  it.each([
+    ["xs", "h-6"],
+    ["sm", "h-7"],
+    ["default", "h-8"],
+    ["touch", "h-11"],
+  ] as const)("InputGroup size=%s → %s", (size, height) => {
+    render(
+      <InputGroup size={size}>
+        <InputGroupInput aria-label="搜索" />
+      </InputGroup>,
+    );
+    const group = screen.getByRole("group");
+    expect(group.dataset.size).toBe(size);
+    expect(group.className).toMatch(new RegExp(`\\b${height}\\b`));
+  });
+});
+
+describe("动效 CSS 约定落在组件上（设计系统 §8）", () => {
+  it("Switch 与 Checkbox 过渡点名属性、不用 transition-all，Checkbox 圆角 tight", () => {
+    render(
+      <>
+        <Switch aria-label="开关" />
+        <Checkbox aria-label="勾选" />
+      </>,
+    );
+    const toggle = screen.getByRole("switch");
+    const box = screen.getByRole("checkbox");
+    expect(toggle.className).not.toContain("transition-all");
+    expect(toggle.className).toContain(
+      "transition-[background-color,border-color]",
+    );
+    expect(box.className).not.toContain("transition-all");
+    expect(box.className).toContain("rounded-tight");
+  });
+});
+
+describe("Tabs segmented / line 与共享指示器（设计系统 §9）", () => {
+  const renderTabs = (variant: "segmented" | "line" | "default") =>
+    render(
+      <Tabs defaultValue="a">
+        <TabsList variant={variant} aria-label="范围">
+          <TabsTrigger value="a">全部</TabsTrigger>
+          <TabsTrigger value="b">本机</TabsTrigger>
+        </TabsList>
+        <TabsContent value="a">A</TabsContent>
+        <TabsContent value="b">B</TabsContent>
+      </Tabs>,
+    );
+
+  it("segmented：raised 底、rounded-card、p-[3px]；当前项里有一块指示器，点另一项后移过去", () => {
+    renderTabs("segmented");
+    const list = screen.getByRole("tablist");
+    expect(list.dataset.variant).toBe("segmented");
+    expect(list.className).toContain("bg-raised");
+    expect(list.className).toContain("rounded-card");
+    expect(list.className).toContain("p-[3px]");
+    const [first, second] = screen.getAllByRole("tab");
+    expect(first!.querySelector("[data-slot='indicator']")).not.toBeNull();
+    expect(second!.querySelector("[data-slot='indicator']")).toBeNull();
+    fireEvent.mouseDown(second!, { button: 0 });
+    expect(second!.getAttribute("aria-selected")).toBe("true");
+    expect(second!.querySelector("[data-slot='indicator']")).not.toBeNull();
+    expect(first!.querySelector("[data-slot='indicator']")).toBeNull();
+    expect(screen.getAllByRole("tab")[1]!.className).toContain(
+      "rounded-control",
+    );
+  });
+
+  it("segmented 触发器 28 高，sm 档 24", () => {
+    const { unmount } = renderTabs("segmented");
+    expect(screen.getAllByRole("tab")[0]!.className).toContain(
+      "group-data-[variant=segmented]/tabs-list:h-7",
+    );
+    unmount();
+    render(
+      <Tabs defaultValue="a">
+        <TabsList variant="segmented" size="sm">
+          <TabsTrigger value="a">全部</TabsTrigger>
+        </TabsList>
+      </Tabs>,
+    );
+    expect(screen.getByRole("tablist").dataset.size).toBe("sm");
+    expect(screen.getByRole("tab").className).toContain(
+      "group-data-[size=sm]/tabs-list:group-data-[variant=segmented]/tabs-list:h-6",
+    );
+  });
+
+  it("line：下划线就是指示器，不再用每项的 after 伪元素；default 不画指示器", () => {
+    const { unmount } = renderTabs("line");
+    const first = screen.getAllByRole("tab")[0]!;
+    expect(first.querySelector("[data-slot='indicator']")).not.toBeNull();
+    expect(first.className).not.toContain("after:");
+    unmount();
+    renderTabs("default");
+    expect(document.querySelector("[data-slot='indicator']")).toBeNull();
+  });
+
+  it("受控的 value 也驱动指示器", () => {
+    const { rerender } = render(
+      <Tabs value="b">
+        <TabsList variant="segmented">
+          <TabsTrigger value="a">全部</TabsTrigger>
+          <TabsTrigger value="b">本机</TabsTrigger>
+        </TabsList>
+      </Tabs>,
+    );
+    expect(
+      screen.getAllByRole("tab")[1]!.querySelector("[data-slot='indicator']"),
+    ).not.toBeNull();
+    rerender(
+      <Tabs value="a">
+        <TabsList variant="segmented">
+          <TabsTrigger value="a">全部</TabsTrigger>
+          <TabsTrigger value="b">本机</TabsTrigger>
+        </TabsList>
+      </Tabs>,
+    );
+    expect(
+      screen.getAllByRole("tab")[0]!.querySelector("[data-slot='indicator']"),
+    ).not.toBeNull();
+  });
+
+  it("IndicatorGroup 之外的 Indicator 也能渲染（不平移）", () => {
+    render(
+      <>
+        <Indicator data-testid="solo" />
+        <IndicatorGroup id="g">
+          <Indicator kind="hover" data-testid="hover" />
+        </IndicatorGroup>
+      </>,
+    );
+    expect(screen.getByTestId("solo").dataset.kind).toBe("active");
+    expect(screen.getByTestId("hover").dataset.kind).toBe("hover");
+    expect(screen.getByTestId("hover").getAttribute("aria-hidden")).toBe(
+      "true",
+    );
+  });
+});
+
+describe("Card 变体（设计系统 §9）", () => {
+  it("default：1px 边、rounded-card、无阴影也无 ring", () => {
+    render(<Card data-testid="card">内容</Card>);
+    const card = screen.getByTestId("card");
+    expect(card.dataset.variant).toBe("default");
+    expect(card.className).toContain("rounded-card");
+    expect(card.className).toContain("border-border");
+    expect(card.className).not.toMatch(/\bshadow|ring-1/);
+  });
+
+  it("tray 与 table 打 data-variant；table 去掉内边距", () => {
+    render(
+      <>
+        <Card variant="tray" data-testid="tray" />
+        <Card variant="table" data-testid="table" />
+      </>,
+    );
+    expect(screen.getByTestId("tray").dataset.variant).toBe("tray");
+    expect(screen.getByTestId("table").className).toContain(
+      "data-[variant=table]:py-0",
+    );
+  });
+});
+
+describe("Table 与空态", () => {
+  it("表头 raised 32 高 text-caption，行 36（sm 28），单元格 px-3", () => {
+    const { rerender } = render(
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead>名称</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          <TableRow>
+            <TableCell>行</TableCell>
+          </TableRow>
+        </TableBody>
+      </Table>,
+    );
+    expect(screen.getByText("名称").className).toContain("h-8");
+    expect(screen.getByText("名称").className).toContain("bg-raised");
+    expect(screen.getByText("名称").className).toContain("text-caption");
+    expect(screen.getByText("行").className).toContain("px-3");
+    const row = () => screen.getByText("行").closest("tr")!;
+    expect(row().className).toContain("h-9");
+    expect(document.querySelector("table")!.dataset.size).toBe("default");
+    rerender(
+      <Table size="sm">
+        <TableBody>
+          <TableRow>
+            <TableCell>行</TableCell>
+          </TableRow>
+        </TableBody>
+      </Table>,
+    );
+    expect(document.querySelector("table")!.dataset.size).toBe("sm");
+    expect(row().className).toContain("group-data-[size=sm]/table:h-7");
+  });
+
+  it("EmptyState 整块是虚线 1px 框，inline 去掉边框", () => {
+    const { rerender } = render(<EmptyState title="暂无记录" />);
+    const box = () =>
+      document.querySelector("[data-state-kind='empty']") as HTMLElement;
+    expect(box().className).toContain("border-dashed");
+    expect(box().className).toMatch(/\bborder\b/);
+    rerender(<EmptyState title="暂无记录" inline />);
+    expect(box().className).toContain("border-0");
+  });
+
+  it("ErrorState 行内带重试", () => {
+    const retry = vi.fn();
+    render(<ErrorState title="加载失败" retryLabel="重试" onRetry={retry} />);
+    fireEvent.click(screen.getByRole("button", { name: "重试" }));
+    expect(retry).toHaveBeenCalled();
   });
 });

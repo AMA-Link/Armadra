@@ -49,6 +49,7 @@ const AGENTS = ["claude", "codex", "opencode", "pi", "omp", "copilot", "ama"];
 const STATUS: [string, string, string][] = [
   ["--danger", "--danger-text", "--danger-soft"],
   ["--warn", "--warn-text", "--warn-soft"],
+  ["--caution", "--caution-text", "--caution-soft"],
   ["--success", "--success-text", "--success-soft"],
   ["--agent-working", "--working-text", "--agent-working-soft"],
 ];
@@ -95,8 +96,30 @@ export function contrastPairs(theme: "dark" | "light"): ContrastPair[] {
     if (theme === "dark" && text === "--working-text") continue;
     pairs.push({ fg: text, bg: "--surface-card", over: soft, kind: "text" });
   }
-  pairs.push({ fg: "--caution", bg: "--surface-card", kind: "text" });
   pairs.push({ fg: "--on-accent", bg: "--danger-solid", kind: "text" });
+  // Badge success / warn / brand / destructive 软底落在面板上（Badge 常坐在侧栏与抽屉里）
+  for (const [text, soft] of [
+    ["--success-text", "--success-soft"],
+    ["--warn-text", "--warn-soft"],
+    ["--brand-text", "--brand-soft"],
+    ["--danger-text", "--danger-soft"],
+    ["--caution-text", "--caution-soft"],
+  ] as const) {
+    pairs.push({ fg: text, bg: "--panel", over: soft, kind: "text" });
+  }
+  // Tooltip：`--bg` 字叠在 `--text` 底上（底本身半透明，落在卡片上）
+  pairs.push({
+    fg: "--bg",
+    bg: "--surface-card",
+    over: "--text",
+    kind: "text",
+  });
+  // Kbd：次要文字落在 `--surface-raised` 上
+  pairs.push({
+    fg: "--muted-foreground",
+    bg: "--surface-raised",
+    kind: "text",
+  });
   for (const id of AGENTS) {
     pairs.push({ fg: `--agent-${id}`, bg: "--surface-card", kind: "graphic" });
     for (const bg of READING) {

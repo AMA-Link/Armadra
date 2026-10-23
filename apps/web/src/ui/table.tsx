@@ -1,9 +1,18 @@
 "use client";
 
 import * as React from "react";
-import { cn } from "cn";
+import { cn } from "@/lib/cn";
 
-function Table({ className, ...props }: React.ComponentProps<"table">) {
+/**
+ * 表格（设计系统 §9）：表头 `--surface-raised` 32 高、`text-caption` 500；行 36（`size="sm"` 28）；
+ * 单元格 `px-3`；数字列自己加 `text-end tabular-nums`；长串 `overflow-wrap: anywhere`。
+ * 行 hover `--hover`，选中行 `--brand-soft`。放进 `Card variant="table"` 就是表格卡。
+ */
+function Table({
+  className,
+  size = "default",
+  ...props
+}: React.ComponentProps<"table"> & { size?: "default" | "sm" }) {
   return (
     <div
       data-slot="table-container"
@@ -11,7 +20,8 @@ function Table({ className, ...props }: React.ComponentProps<"table">) {
     >
       <table
         data-slot="table"
-        className={cn("w-full caption-bottom text-sm", className)}
+        data-size={size}
+        className={cn("group/table w-full caption-bottom text-body", className)}
         {...props}
       />
     </div>
@@ -56,7 +66,7 @@ function TableRow({ className, ...props }: React.ComponentProps<"tr">) {
     <tr
       data-slot="table-row"
       className={cn(
-        "border-b transition-colors hover:bg-muted/50 has-aria-expanded:bg-muted/50 data-[state=selected]:bg-muted",
+        "h-9 border-b transition-colors duration-(--dur-instant) hover:bg-hover has-aria-expanded:bg-hover group-data-[size=sm]/table:h-7 data-[state=selected]:bg-brand-soft",
         className,
       )}
       {...props}
@@ -69,7 +79,7 @@ function TableHead({ className, ...props }: React.ComponentProps<"th">) {
     <th
       data-slot="table-head"
       className={cn(
-        "h-10 px-2 text-left align-middle font-medium whitespace-nowrap text-foreground [&:has([role=checkbox])]:pr-0",
+        "h-8 bg-raised px-3 text-left align-middle text-caption font-medium whitespace-nowrap text-muted-foreground [&:has([role=checkbox])]:pr-0",
         className,
       )}
       {...props}
@@ -82,7 +92,7 @@ function TableCell({ className, ...props }: React.ComponentProps<"td">) {
     <td
       data-slot="table-cell"
       className={cn(
-        "p-2 align-middle whitespace-nowrap [&:has([role=checkbox])]:pr-0",
+        "px-3 py-2 align-middle whitespace-nowrap [&:has([role=checkbox])]:pr-0",
         className,
       )}
       {...props}
@@ -97,7 +107,7 @@ function TableCaption({
   return (
     <caption
       data-slot="table-caption"
-      className={cn("mt-4 text-sm text-muted-foreground", className)}
+      className={cn("mt-4 text-body text-muted-foreground", className)}
       {...props}
     />
   );

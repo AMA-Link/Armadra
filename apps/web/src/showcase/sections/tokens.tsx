@@ -33,32 +33,46 @@ const BRAND = ["--brand", "--brand-text", "--brand-solid", "--focus-ring"];
 const STATUS: [string, string, string | null][] = [
   ["--danger", "--danger-text", "--danger-soft"],
   ["--warn", "--warn-text", "--warn-soft"],
-  ["--caution", "--caution", null],
+  ["--caution", "--caution-text", "--caution-soft"],
   ["--success", "--success-text", "--success-soft"],
   ["--agent-working", "--working-text", "--agent-working-soft"],
 ];
+/** 六档语义字号类 + Tailwind 刻度（`text-sm` / `text-xs` 已对齐到 13 / 12）。 */
 const TYPE_SCALE = [
-  "--text-display",
-  "--text-title",
-  "--text-section",
-  "--text-body",
-  "--text-caption",
-  "--text-code",
-];
+  ["--text-display", "text-display"],
+  ["--text-title", "text-title"],
+  ["--text-section", "text-section"],
+  ["--text-body", "text-body"],
+  ["--text-meta", "text-meta"],
+  ["--text-caption", "text-caption"],
+  ["--text-body", "text-sm"],
+  ["--text-meta", "text-xs"],
+] as const;
+/** 七档语义圆角，类名与令牌一一对应。 */
 const RADII = [
-  "--r-control",
-  "--r-card",
-  "--r-panel",
-  "--r-dialog",
-  "--r-pill",
-];
+  ["--r-tight", "rounded-tight"],
+  ["--r-control", "rounded-control"],
+  ["--r-card", "rounded-card"],
+  ["--r-panel", "rounded-panel"],
+  ["--r-dialog", "rounded-dialog"],
+  ["--r-float", "rounded-float"],
+  ["--r-pill", "rounded-pill"],
+] as const;
+/** 三档阴影；卡片没有阴影，只有 1px 边。 */
 const SHADOWS = [
-  "--shadow-pill",
-  "--shadow-node",
-  "--shadow-overlay",
-  "--shadow-dialog",
+  ["--shadow-node", "shadow-node"],
+  ["--shadow-overlay", "shadow-overlay"],
+  ["--shadow-dialog", "shadow-dialog"],
+] as const;
+const DURATIONS = [
+  "--dur-instant",
+  "--dur-fast",
+  "--dur-base",
+  "--dur-slow",
+  "--dur-page",
+  "--dur-hero",
 ];
-const DURATIONS = ["--dur-fast", "--dur-base", "--dur-slow", "--dur-page"];
+const CURVES = ["--ease-out", "--ease-in-out", "--ease-drawer", "--ease-color"];
 const LAYERS = [
   "--z-pills",
   "--z-canvas-overlay",
@@ -266,42 +280,54 @@ export default function TokensSection() {
 
       <Group title={t("showcase.tokens.type")}>
         <div className="flex w-full flex-col gap-2">
-          {TYPE_SCALE.map((token) => (
-            <div key={token} className="flex items-baseline gap-4">
-              <span className="w-32 shrink-0">
-                <TokenName name={token} />
+          {TYPE_SCALE.map(([token, cls]) => (
+            <div key={cls} className="flex items-baseline gap-4">
+              <span className="w-40 shrink-0">
+                <TokenName name={`${cls} · ${token}`} />
               </span>
-              <span
-                className={token === "--text-code" ? "font-mono" : undefined}
-                style={{ fontSize: `var(${token})` }}
-              >
+              <span className={cls} data-type-sample={cls}>
                 {t("showcase.tokens.sample")}
               </span>
             </div>
           ))}
+          <div className="flex items-baseline gap-4">
+            <span className="w-40 shrink-0">
+              <TokenName name="font-mono · tabular-nums" />
+            </span>
+            <span className="font-mono text-meta tabular-nums">
+              0123456789 · 1,284 · 142%
+            </span>
+          </div>
         </div>
       </Group>
 
       <Group title={t("showcase.tokens.radius")}>
-        {RADII.map((token) => (
+        {RADII.map(([token, cls]) => (
           <div key={token} className="flex w-28 flex-col gap-1">
             <div
-              className="h-12 border border-border-strong bg-card"
-              style={{ borderRadius: `var(${token})` }}
+              className={`h-12 border border-border-strong bg-card ${cls}`}
+              data-radius-sample={cls}
             />
-            <TokenName name={token} />
+            <TokenName name={`${cls} · ${token}`} />
           </div>
         ))}
       </Group>
 
       <Group title={t("showcase.tokens.shadow")}>
-        {SHADOWS.map((token) => (
+        <div className="flex w-32 flex-col gap-2 p-2">
+          <div
+            className="h-12 rounded-card border border-border bg-card"
+            data-shadow-sample="none"
+          />
+          <TokenName name="card · border" />
+        </div>
+        {SHADOWS.map(([token, cls]) => (
           <div key={token} className="flex w-32 flex-col gap-2 p-2">
             <div
-              className="h-12 rounded-[var(--r-card)] bg-card"
-              style={{ boxShadow: `var(${token})` }}
+              className={`h-12 rounded-card bg-card ${cls}`}
+              data-shadow-sample={cls}
             />
-            <TokenName name={token} />
+            <TokenName name={`${cls} · ${token}`} />
           </div>
         ))}
       </Group>
@@ -321,10 +347,10 @@ export default function TokensSection() {
               <span className="w-32 shrink-0">
                 <TokenName name={token} />
               </span>
-              <div className="relative h-6 flex-1 max-w-80">
+              <div className="relative h-6 max-w-80 flex-1">
                 <div
                   data-motion-sample
-                  className="absolute top-0 left-0 size-6 rounded-[var(--r-pill)] bg-[var(--brand)]"
+                  className="absolute top-0 left-0 size-6 rounded-pill bg-brand"
                   style={{
                     transform: played ? "translateX(280px)" : "none",
                     transition: `transform var(${token}) var(--ease-out)`,
@@ -333,6 +359,62 @@ export default function TokensSection() {
               </div>
             </div>
           ))}
+          <TokenName name={t("showcase.tokens.curves")} />
+          {CURVES.map((token) => (
+            <div key={token} className="flex items-center gap-4">
+              <span className="w-32 shrink-0">
+                <TokenName name={token} />
+              </span>
+              <div className="relative h-6 max-w-80 flex-1">
+                <div
+                  data-curve-sample
+                  className="absolute top-0 left-0 size-6 rounded-pill bg-brand"
+                  style={{
+                    transform: played ? "translateX(280px)" : "none",
+                    transition: `transform var(--dur-page) var(${token})`,
+                  }}
+                />
+              </div>
+            </div>
+          ))}
+          <TokenName name={t("showcase.tokens.scale")} />
+          <div className="flex flex-wrap items-center gap-6 text-meta">
+            <span className="font-mono text-muted-foreground">
+              --press-scale · --pop-scale · --stagger
+            </span>
+            {(["--press-scale", "--pop-scale"] as const).map((token) => (
+              <div
+                key={token}
+                data-scale-sample={token}
+                className="h-8 w-20 rounded-control border border-border-strong bg-card"
+                style={{
+                  transform: played ? `scale(var(${token}))` : "none",
+                  transition: "transform var(--dur-base) var(--ease-out)",
+                }}
+              />
+            ))}
+            {[0, 1, 2, 3, 4, 5].map((index) => (
+              <span
+                key={index}
+                data-stagger-sample={index}
+                className="size-3 rounded-tight bg-brand"
+                style={{
+                  opacity: played ? 1 : 0.2,
+                  transition:
+                    "opacity var(--dur-slow) var(--ease-out) calc(var(--stagger) * " +
+                    index +
+                    ")",
+                }}
+              />
+            ))}
+          </div>
+        </div>
+      </Group>
+
+      <Group title={t("showcase.tokens.hairline")}>
+        <div className="flex w-full max-w-md flex-col gap-3">
+          <div className="hairline-x" data-hairline-sample />
+          <div className="h-px w-full bg-border" />
         </div>
       </Group>
 

@@ -9,8 +9,12 @@ export const BUTTON_VARIANTS = [
   "secondary",
   "ghost",
   "destructive",
+  "destructive-solid",
   "link",
 ] as const;
+
+/** 控件高度五档（设计系统 §2.13）：24 / 28 / 32 / 36 / 44。 */
+export const BUTTON_SIZES = ["xs", "sm", "default", "lg", "touch"] as const;
 
 export const BADGE_VARIANTS = [
   "default",
@@ -18,8 +22,15 @@ export const BADGE_VARIANTS = [
   "destructive",
   "outline",
   "ghost",
+  "link",
+  "success",
+  "warn",
+  "brand",
 ] as const;
 
+export const BADGE_SIZES = ["sm", "md"] as const;
+
+/** 状态色的八个 tone（设计系统 §11.1）。 */
 export const STATUS_TONES = [
   "working",
   "attention",
@@ -28,6 +39,35 @@ export const STATUS_TONES = [
   "paused",
   "unread",
   "idle",
+  "done",
+] as const;
+
+/** `StatusLine` 的阶段：细节是数据（命令、文件名），等宽显示。 */
+export const STATUS_LINES = [
+  { tone: "working", spinning: true, detail: "pnpm test", seconds: 12 },
+  {
+    tone: "attention",
+    spinning: false,
+    detail: "src/canvas/sync/project.ts",
+    seconds: 95,
+  },
+  { tone: "failed", spinning: false, detail: "exit 1", seconds: 4 },
+  { tone: "done", spinning: false, detail: "", seconds: 640 },
+] as const;
+
+/** 用量托盘（设计系统 §5.17）：值卡 / 阈值刻度 / 空值。 */
+export const TRAY_CARDS = [
+  { id: "claude", used: 82, delta: 15.2, window: "5h" },
+  { id: "codex", used: 41, delta: -3, window: "5h" },
+  { id: "copilot", used: Number.NaN, delta: null, window: "30d" },
+  { id: "ama", used: 142, delta: null, window: "7d" },
+] as const;
+
+/** 边界值（设计系统 §12）：超长无空格串、两字名、emoji 首字。 */
+export const EDGE_LABELS = [
+  "ab",
+  "🙂 表情开头的标签",
+  "averyveryverylongunbrokenlabelthatmustnotbreakthelayoutatall.txt",
 ] as const;
 
 export const AGENT_IDS = [

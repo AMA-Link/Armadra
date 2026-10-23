@@ -32,6 +32,15 @@ const DATA_FILES = [
 const DATA_PREFIXES = ["showcase/", "canvas/test-support/"];
 const DATA_SUFFIXES = [".fixture.ts", ".fixture.tsx", "fixtures.ts"];
 
+/**
+ * 另外扫的 CSS（设计系统 §10）：动效文件一个字面色也不许有；开屏样式的存量在
+ * 动效与开屏包里改读根令牌后归零。登记个数，只减不增。
+ */
+const CSS_SOURCES: Readonly<Record<string, number>> = {
+  "styles/motion.css": 0,
+  "splash/splash.css": 12,
+};
+
 /** 存量：文件 → 现有字面色值个数。 */
 const LEGACY_COLOR_BUDGET: Readonly<Record<string, number>> = {
   "agent/launch.ts": 1,
@@ -123,6 +132,19 @@ describe("字面色值与 dark: 守卫", () => {
     );
     expect(stale).toEqual([]);
   });
+});
+
+describe("CSS 里的字面色值", () => {
+  it.each(Object.entries(CSS_SOURCES))(
+    "%s 的字面色值个数等于登记（%d）",
+    (file, budget) => {
+      const css = blankComments(
+        readSource(fileURLToPath(new URL(file, `file://${SRC}`))),
+      );
+      const hits = [...css.matchAll(HEX), ...css.matchAll(COLOR_FN)];
+      expect(hits.length).toBe(budget);
+    },
+  );
 });
 
 describe("扫描器真的扫得到违规", () => {

@@ -42,10 +42,13 @@ describe("Spinner", () => {
     expect(icon.getAttribute("role")).toBeNull();
   });
 
-  it("调用方传了 label 才是 status，并带 reduced-motion 类", () => {
+  it("调用方传了 label 才是 status；转圈是 anim-spin，减少动效下保留（motion.css）", () => {
     render(<Spinner aria-label="保存中" />);
     const icon = screen.getByRole("status", { name: "保存中" });
-    expect(icon.getAttribute("class")).toContain("motion-reduce:animate-none");
+    expect(icon.getAttribute("class")).toContain("anim-spin");
+    expect(icon.getAttribute("class")).not.toContain(
+      "motion-reduce:animate-none",
+    );
   });
 });
 

@@ -1,6 +1,7 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { MotionConfig } from "motion/react";
+import { MOTION_TRANSITION } from "./ui/motion";
 // Tailwind v4 入口；它自己 @import 了 tokens.css，这里不再单独引入
 import "./styles/app.css";
 import "./styles/nodes.css";
@@ -60,8 +61,8 @@ function boot() {
       <StrictMode>
         <MotionConfig
           reducedMotion="user"
-          // 与 tokens.css 的 `--ease-out` 同一条曲线（设计系统 §2.10）
-          transition={{ duration: 0.16, ease: [0.32, 0.72, 0, 1] }}
+          // 与 tokens.css 的 `--dur-base` / `--ease-out` 同值（设计系统 §8.2）
+          transition={MOTION_TRANSITION}
         >
           <MobileRoot entry={entry} />
           <PendingApprovalDialog />

@@ -38,7 +38,7 @@ function DialogOverlay({
     <DialogPrimitive.Overlay
       data-slot="dialog-overlay"
       className={cn(
-        "fixed inset-0 isolate z-50 bg-black/10 duration-[120ms] supports-backdrop-filter:backdrop-blur-xs data-open:animate-in data-open:fade-in-0 data-closed:animate-out data-closed:fade-out-0",
+        "motion-overlay fixed inset-0 isolate z-(--z-dialog) bg-scrim supports-backdrop-filter:backdrop-blur-xs",
         className,
       )}
       {...props}
@@ -60,9 +60,9 @@ function DialogContent({
       <DialogPrimitive.Content
         data-slot="dialog-content"
         className={cn(
-          "fixed z-50 grid w-full -translate-x-1/2 -translate-y-1/2 gap-4 overflow-y-auto",
+          "motion-dialog fixed z-(--z-dialog) grid w-full -translate-x-1/2 -translate-y-1/2 gap-4 overflow-y-auto",
           SAFE_CENTERED,
-          "rounded-[var(--r-dialog)] bg-popover p-5 text-[length:var(--text-body)] text-popover-foreground shadow-[var(--shadow-dialog)] ring-1 ring-[var(--border)] duration-[120ms] outline-none sm:max-w-[480px] data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95",
+          "rounded-dialog border border-border-strong bg-popover p-6 text-body text-popover-foreground shadow-dialog outline-none sm:max-w-[520px]",
           className,
         )}
         {...props}
@@ -129,10 +129,7 @@ function DialogTitle({
   return (
     <DialogPrimitive.Title
       data-slot="dialog-title"
-      className={cn(
-        "font-heading text-[length:var(--text-section)] leading-none font-semibold",
-        className,
-      )}
+      className={cn("font-heading text-title font-semibold", className)}
       {...props}
     />
   );
@@ -146,7 +143,7 @@ function DialogDescription({
     <DialogPrimitive.Description
       data-slot="dialog-description"
       className={cn(
-        "text-[length:var(--text-body)] text-muted-foreground *:[a]:underline *:[a]:underline-offset-3 *:[a]:hover:text-foreground",
+        "text-body text-muted-foreground *:[a]:underline *:[a]:underline-offset-3 *:[a]:hover:text-foreground",
         className,
       )}
       {...props}
