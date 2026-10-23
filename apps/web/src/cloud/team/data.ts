@@ -210,7 +210,10 @@ export function useTransferOwnership(space: TeamSpace) {
   });
 }
 
-/** 改动即存：先改缓存，失败回滚（调用方给 sonner）。 */
+/**
+ * 改动即存：先改缓存让开关立刻动，结束后（成败都）重拉以服务端为准——连点几项时不手工恢复快照，
+ * 免得把另一项在途的修改一并盖回去。失败的提示归调用方（sonner）。
+ */
 export function useUpdateSettings(space: TeamSpace) {
   const api = useCloudApi();
   const client = useQueryClient();
@@ -220,15 +223,11 @@ export function useUpdateSettings(space: TeamSpace) {
       api.client.teams.settingsUpdate({ teamId: teamId(space), ...patch }),
     onMutate: async (patch) => {
       await client.cancelQueries({ queryKey: key });
-      const previous = client.getQueryData<TeamSettings>(key);
-      if (previous)
-        client.setQueryData<TeamSettings>(key, { ...previous, ...patch });
-      return { previous };
+      client.setQueryData<TeamSettings>(key, (previous) =>
+        previous ? { ...previous, ...patch } : previous,
+      );
     },
-    onError: (_failure, _patch, context) => {
-      if (context?.previous) client.setQueryData(key, context.previous);
-    },
-    onSuccess: (settings) => client.setQueryData(key, settings),
+    onSettled: () => client.invalidateQueries({ queryKey: key }),
   });
 }
 

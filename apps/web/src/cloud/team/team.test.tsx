@@ -518,13 +518,85 @@ describe("危险操作", () => {
     await waitFor(() => expect(api.client.teams.members).toBeTruthy());
   });
 
-  it("最后一个所有者离开：错误提示先转移所有权，对话框留着", async () => {
+  it("所有者不渲染「离开团队」（要先转移所有权）", async () => {
     mount("/t/lab/settings", { ...OPTIONS, roles: { lab: "owner" } });
-    fireEvent.click(await screen.findByRole("button", { name: "离开团队" }));
-    const dialog = await screen.findByRole("alertdialog");
-    fireEvent.click(within(dialog).getByRole("button", { name: "离开团队" }));
-    expect(await screen.findByText("先把所有权转给另一位管理员")).toBeTruthy();
-    expect(window.location.pathname).toBe("/t/lab/settings");
+    await screen.findByRole("button", { name: "删除团队" });
+    expect(screen.queryByRole("button", { name: "离开团队" })).toBeNull();
+  });
+
+  it("团队关了访客：邀请与改角色都没有「访客」选项，已是访客的行仍显示当前值", async () => {
+    mount("/t/rd/members", { ...OPTIONS, settings: { allowGuests: false } });
+    const trigger = await screen.findByRole("combobox", {
+      name: "王五 的角色",
+    });
+    // 设置取到之前「访客」还在；等它取到再看选项。
+    await waitFor(async () => {
+      fireEvent.keyDown(trigger, { key: "ArrowDown" });
+      const options = await screen.findAllByRole("option");
+      expect(options.map((option) => option.textContent)).toEqual([
+        "管理员",
+        "成员",
+        "账单",
+      ]);
+      fireEvent.keyDown(options[0]!, { key: "Escape" });
+    });
+    fireEvent.click(screen.getByRole("button", { name: "邀请成员" }));
+    const dialog = await screen.findByRole("dialog", { name: "邀请成员" });
+    const role = within(dialog).getByRole("combobox", { name: "角色" });
+    fireEvent.keyDown(role, { key: "ArrowDown" });
+    expect(
+      (await screen.findAllByRole("option")).map(
+        (option) => option.textContent,
+      ),
+    ).toEqual(["管理员", "成员", "账单"]);
+    fireEvent.keyDown(screen.getAllByRole("option")[0]!, { key: "Escape" });
+    fireEvent.click(within(dialog).getByRole("button", { name: "取消" }));
+    fireEvent.mouseDown(screen.getByRole("tab", { name: /访客/ }), {
+      button: 0,
+    });
+    fireEvent.keyDown(screen.getByRole("tab", { name: /访客/ }), {
+      key: "Enter",
+    });
+    expect(
+      (await screen.findByRole("combobox", { name: "赵六 的角色" }))
+        .textContent,
+    ).toBe("访客");
+  });
+
+  it("撤销邀请后那一行消失；云端返回的已接受邀请不显示", async () => {
+    mount("/t/rd/members?tab=invitations", OPTIONS);
+    const table = await screen.findByRole("table", { name: "邀请" });
+    expect(within(table).queryByText("done@example.test")).toBeNull();
+    const menu = await openMenu(`${MOCK_INVITE_BY_OWNER} 的操作`);
+    fireEvent.click(within(menu).getByRole("menuitem", { name: "撤销邀请" }));
+    fireEvent.click(
+      within(await screen.findByRole("alertdialog")).getByRole("button", {
+        name: "撤销邀请",
+      }),
+    );
+    await waitFor(() =>
+      expect(screen.queryByText(MOCK_INVITE_BY_OWNER)).toBeNull(),
+    );
+  });
+
+  it("恢复超额：给「已拥有另一个团队」的文案", async () => {
+    const api = mount("/t/lab/settings", {
+      ...OPTIONS,
+      hosts: [],
+      deleted: ["lab"],
+      roles: { lab: "owner" },
+    });
+    await api.client.teams.create({ slug: "alpha", name: "Alpha" });
+    window.history.pushState(null, "", "/t/lab");
+    window.dispatchEvent(new PopStateEvent("popstate"));
+    fireEvent.click(await screen.findByRole("button", { name: "恢复团队" }));
+    expect(
+      (
+        await screen.findAllByText(
+          "你已拥有另一个团队：删除或转移它，或升级后再恢复",
+        )
+      ).length,
+    ).toBeGreaterThan(0);
   });
 
   it("不是成员的团队地址仍是「找不到」", async () => {

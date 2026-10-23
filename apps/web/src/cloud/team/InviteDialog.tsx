@@ -21,7 +21,7 @@ import { Textarea } from "@/ui/textarea";
 import { toast } from "@/ui/toast";
 import { describeFailure } from "../api/errors";
 import { tp } from "../i18n-plural";
-import { useInvite, type TeamSpace } from "./data";
+import { useInvite, useTeamSettings, type TeamSpace } from "./data";
 import { INVITE_ROLES, type InviteRole } from "./roles";
 
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -54,6 +54,8 @@ export function InviteDialog({
 }) {
   const t = useT();
   const invite = useInvite(space);
+  // 团队关了访客：不提供「访客」这个角色（云端也会答 guests_disabled）。
+  const guestsAllowed = useTeamSettings(space).data?.allowGuests !== false;
   const [text, setText] = React.useState("");
   const [role, setRole] = React.useState<InviteRole>("member");
   const [error, setError] = React.useState("");
@@ -147,7 +149,9 @@ export function InviteDialog({
                 <SelectValue />
               </SelectTrigger>
               <SelectContent className="z-[var(--z-dialog)]">
-                {INVITE_ROLES.map((entry) => (
+                {INVITE_ROLES.filter(
+                  (entry) => entry !== "guest" || guestsAllowed,
+                ).map((entry) => (
                   <SelectItem key={entry} value={entry}>
                     {t(`cloud.team.role.${entry}`)}
                   </SelectItem>

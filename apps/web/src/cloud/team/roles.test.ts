@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { ALL_ROLES, INVITE_ROLES, teamCaps } from "./roles";
 
 describe("团队角色能力", () => {
-  it("只有 owner / admin 管邀请与设置；转移与删除只有 owner；每个角色都能离开", () => {
+  it("只有 owner / admin 管邀请与设置；转移与删除只有 owner；owner 不能直接离开，其余都能", () => {
     const table = ALL_ROLES.map((role) => {
       const caps = teamCaps(role);
       return [
@@ -17,7 +17,7 @@ describe("团队角色能力", () => {
       ];
     });
     expect(table).toEqual([
-      ["owner", true, true, true, true, true, true],
+      ["owner", true, true, true, true, false, true],
       ["admin", true, true, false, false, true, true],
       ["member", false, false, false, false, true, true],
       ["billing", false, false, false, false, true, true],

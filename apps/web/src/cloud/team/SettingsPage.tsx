@@ -51,13 +51,18 @@ function GeneralGroup({ space, name }: { space: TeamSpace; name: string }) {
   const id = React.useId();
   const save = async () => {
     const next = (draft ?? name).trim();
-    setDraft(null);
-    if (next === "" || next === name) return;
+    if (next === "" || next === name) {
+      setDraft(null);
+      return;
+    }
+    // 保存结束前一直显示输入的值，免得先闪回旧名字。
     try {
       await rename.mutateAsync(next);
       toast.success(t("cloud.common.saved"));
     } catch (failure) {
       toast.error(describeFailure(failure));
+    } finally {
+      setDraft(null);
     }
   };
   return (

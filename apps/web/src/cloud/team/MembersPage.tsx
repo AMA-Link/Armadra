@@ -42,6 +42,7 @@ import {
   useResendInvitation,
   useRevokeInvitation,
   useTeamInvitations,
+  useTeamSettings,
   type TeamInvitation,
   type TeamMember,
   type TeamSpace,
@@ -79,10 +80,12 @@ function RoleCell({
   space,
   member,
   caps,
+  guestsAllowed,
 }: {
   space: TeamSpace;
   member: TeamMember;
   caps: TeamCaps;
+  guestsAllowed: boolean;
 }) {
   const t = useT();
   const change = useChangeRole(space);
@@ -113,7 +116,10 @@ function RoleCell({
         <SelectValue />
       </SelectTrigger>
       <SelectContent className="z-[var(--z-dialog)]">
-        {INVITE_ROLES.map((entry) => (
+        {INVITE_ROLES.filter(
+          (entry) =>
+            entry !== "guest" || guestsAllowed || member.role === "guest",
+        ).map((entry) => (
           <SelectItem key={entry} value={entry}>
             {roleLabel(t, entry)}
           </SelectItem>
@@ -216,6 +222,7 @@ function MembersTable({
   caps,
   selfId,
   guests,
+  guestsAllowed,
 }: {
   space: TeamSpace;
   teamName: string;
@@ -223,6 +230,7 @@ function MembersTable({
   caps: TeamCaps;
   selfId: string | undefined;
   guests: boolean;
+  guestsAllowed: boolean;
 }) {
   const t = useT();
   const columns = React.useMemo<DataColumn<TeamMember>[]>(
@@ -243,7 +251,14 @@ function MembersTable({
         id: "role",
         header: t("cloud.team.role"),
         role: "trailing",
-        cell: (row) => <RoleCell space={space} member={row} caps={caps} />,
+        cell: (row) => (
+          <RoleCell
+            space={space}
+            member={row}
+            caps={caps}
+            guestsAllowed={guestsAllowed}
+          />
+        ),
       },
       ...(guests
         ? [
@@ -261,7 +276,7 @@ function MembersTable({
         cell: (row) => <RelativeTime ms={row.joinedAtMs} />,
       },
     ],
-    [t, space, caps, guests],
+    [t, space, caps, guests, guestsAllowed],
   );
   return (
     <DataList
@@ -362,7 +377,10 @@ function InvitationsTab({
     [members],
   );
   const rows = React.useMemo(
-    () => invitations.data?.invitations ?? [],
+    () =>
+      (invitations.data?.invitations ?? []).filter(
+        (row) => row.state === "pending" || row.state === "expired",
+      ),
     [invitations.data],
   );
   const columns = React.useMemo<DataColumn<TeamInvitation>[]>(
@@ -458,6 +476,8 @@ export function MembersPage({
   const t = useT();
   const caps = React.useMemo(() => teamCaps(role), [role]);
   const members = useMembers(space);
+  const settings = useTeamSettings(space, caps.editSettings);
+  const guestsAllowed = settings.data?.allowGuests !== false;
   const me = useMe();
   const [inviting, setInviting] = React.useState(false);
   const tabs = TABS.filter(
@@ -499,6 +519,7 @@ export function MembersPage({
         caps={caps}
         selfId={selfId}
         guests={onlyGuests}
+        guestsAllowed={guestsAllowed}
       />
     );
 

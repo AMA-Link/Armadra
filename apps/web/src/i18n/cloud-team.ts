@@ -17,6 +17,8 @@ export const cloudTeam: MessageModule = {
     "cloud.team.deletedAlert": "团队将于 {date} 清除",
     "cloud.team.restore": "恢复团队",
     "cloud.team.restored": "已恢复团队",
+    "cloud.team.restoreLimit":
+      "你已拥有另一个团队：删除或转移它，或升级后再恢复",
     "cloud.team.role.owner": "所有者",
     "cloud.team.role.admin": "管理员",
     "cloud.team.role.member": "成员",
@@ -93,6 +95,8 @@ export const cloudTeam: MessageModule = {
     "cloud.team.deletedAlert": "This team will be purged on {date}",
     "cloud.team.restore": "Restore team",
     "cloud.team.restored": "Team restored",
+    "cloud.team.restoreLimit":
+      "You already own another team. Delete or transfer it, or upgrade, then restore",
     "cloud.team.role.owner": "Owner",
     "cloud.team.role.admin": "Admin",
     "cloud.team.role.member": "Member",

@@ -41,7 +41,11 @@ export function DeletedTeamPage({ slug }: { slug: string }) {
       toast.success(t("cloud.team.restored"));
       navigate(spacePath({ team: team.slug }), { replace: true });
     } catch (failure) {
-      toast.error(describeFailure(failure));
+      toast.error(
+        toCloudError(failure).code === "limit_reached"
+          ? t("cloud.team.restoreLimit")
+          : describeFailure(failure),
+      );
     }
   };
   return (

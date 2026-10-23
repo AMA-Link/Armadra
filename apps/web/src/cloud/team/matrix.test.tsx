@@ -25,7 +25,7 @@ const MEMBERS_PAGE: Record<
     invitationsTab: true,
     roleSelect: true,
     removeOthers: true,
-    leaveSelf: true,
+    leaveSelf: false,
   },
   admin: {
     invite: true,
@@ -71,7 +71,7 @@ const SETTINGS_PAGE: Record<
     general: true,
     access: true,
     transfer: true,
-    leave: true,
+    leave: false,
     delete: true,
   },
   admin: {
@@ -181,7 +181,7 @@ describe("角色矩阵 · 设置与危险操作", () => {
     it(role, async () => {
       mount("/t/rd/settings", { ...OPTIONS, roles: { rd: role } });
       const expected = SETTINGS_PAGE[role];
-      await screen.findByRole("button", { name: "离开团队" });
+      await screen.findByRole("heading", { level: 1, name: "设置" });
       expect(present(() => screen.queryByLabelText("名称"))).toBe(
         expected.general,
       );

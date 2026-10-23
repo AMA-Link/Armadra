@@ -15,7 +15,7 @@ export interface TeamCaps {
   readonly editSettings: boolean;
   readonly transfer: boolean;
   readonly delete: boolean;
-  /** 本人的「离开团队」：每个角色都有。 */
+  /** 本人的「离开团队」：除 owner 外每个角色都有（owner 要先转移所有权）。 */
   readonly leave: boolean;
   /** 概览里的卡：guest 只有主机；billing 没有主机。 */
   readonly overview: {
@@ -37,7 +37,7 @@ export function teamCaps(role: TeamRole): TeamCaps {
     editSettings: manager,
     transfer: role === "owner",
     delete: role === "owner",
-    leave: true,
+    leave: role !== "owner",
     overview: {
       hosts: role !== "billing",
       members: role !== "guest",
