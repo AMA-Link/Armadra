@@ -16,6 +16,7 @@ import {
 const api = vi.hoisted(() => ({
   listSources: vi.fn(),
   cloudTrustList: vi.fn(),
+  cloudAccess: vi.fn(),
   cloudTrustReject: vi.fn(),
 }));
 vi.mock("../api/remote-services", async (original) => ({
@@ -23,6 +24,7 @@ vi.mock("../api/remote-services", async (original) => ({
   ...api,
 }));
 vi.mock("../api/client", () => ({
+  localClient: () => ({ devices: host.localDevices }),
   runtimeApi: {
     health: () => Promise.resolve({ ok: true }),
     terminalBackend: () => Promise.resolve({ kind: "direct" }),
@@ -37,6 +39,10 @@ vi.mock("../platform", async (original) => ({
 }));
 const host = vi.hoisted(() => ({
   devices: {
+    list: vi.fn(),
+    approve: vi.fn(),
+  },
+  localDevices: {
     list: vi.fn(),
     approve: vi.fn(),
   },
@@ -114,6 +120,7 @@ beforeEach(() => {
   api.listSources.mockResolvedValue({ sources: [], remotes: [cloud] });
   api.cloudTrustList.mockResolvedValue({ requests: [request] });
   api.cloudTrustReject.mockResolvedValue({});
+  api.cloudAccess.mockResolvedValue({ sourceId: "e".repeat(32) });
   host.devices.list.mockResolvedValue({ devices: [pending()] });
   host.devices.approve.mockResolvedValue({
     device: pending({ status: "trusted", pendingId: null }),
@@ -125,6 +132,8 @@ afterEach(() => {
     ...Object.values(api),
     host.devices.list,
     host.devices.approve,
+    host.localDevices.list,
+    host.localDevices.approve,
     ...Object.values(toasts),
   ])
     spy.mockReset();
@@ -258,5 +267,67 @@ describe("待信任设备横幅与对话框", () => {
       expect(api.cloudTrustReject).toHaveBeenCalledWith("cloud", "r1"),
     );
     expect(host.devices.approve).not.toHaveBeenCalled();
+  });
+
+  it("请求的主机就是本机：与本机登记 id 相等，走本机 core，不查源表", async () => {
+    api.cloudAccess.mockResolvedValue({ sourceId: HOST });
+    host.localDevices.list.mockResolvedValue({ devices: [pending()] });
+    host.localDevices.approve.mockResolvedValue({
+      device: pending({ status: "trusted", pendingId: null }),
+    });
+    await openDialog();
+    await typeCode("482913");
+    fireEvent.click(screen.getByRole("button", { name: "Trust" }));
+    await waitFor(() =>
+      expect(host.localDevices.approve).toHaveBeenCalledWith({
+        pendingId: "pend-1",
+        sas: "482913",
+      }),
+    );
+    expect(host.devices.approve).not.toHaveBeenCalled();
+  });
+
+  it("只认精确匹配：成员对不上就不放行，不退回模糊匹配", async () => {
+    host.devices.list.mockResolvedValue({
+      devices: [pending({ principalName: "Cy" })],
+    });
+    await openDialog();
+    await typeCode("482913");
+    fireEvent.click(screen.getByRole("button", { name: "Trust" }));
+    await waitFor(() =>
+      expect(toasts.error).toHaveBeenCalledWith(
+        "This host has no request from that device yet. Ask it to reconnect",
+      ),
+    );
+    expect(host.devices.approve).not.toHaveBeenCalled();
+  });
+
+  it("同名同成员多条申请：不猜，提示去主机处理", async () => {
+    host.devices.list.mockResolvedValue({
+      devices: [pending({ pendingId: "a" }), pending({ pendingId: "b" })],
+    });
+    await openDialog();
+    await typeCode("482913");
+    fireEvent.click(screen.getByRole("button", { name: "Trust" }));
+    await waitFor(() =>
+      expect(toasts.error).toHaveBeenCalledWith(
+        "The host has several requests with that name. Handle it in the host's device list",
+      ),
+    );
+    expect(host.devices.approve).not.toHaveBeenCalled();
+  });
+
+  it("明确没有背书权限：不再显示「信任」，只留「拒绝」并说在已信任的设备上处理", async () => {
+    host.devices.list.mockRejectedValueOnce(
+      new RuntimeRequestError(403, "x", "forbidden"),
+    );
+    await openDialog();
+    await typeCode("482913");
+    fireEvent.click(screen.getByRole("button", { name: "Trust" }));
+    expect(
+      await screen.findByText("Use a trusted device"),
+    ).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Trust" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Decline" })).toBeTruthy();
   });
 });

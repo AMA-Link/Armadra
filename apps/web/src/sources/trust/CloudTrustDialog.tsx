@@ -16,6 +16,7 @@ import { Field, FieldGroup, FieldLabel } from "@/ui/field";
 import { InputOTP, InputOTPGroup, InputOTPSlot } from "@/ui/input-otp";
 import { toast } from "@/ui/toast";
 import {
+  HostPendingAmbiguous,
   HostPendingUnavailable,
   type TrustItem,
   approveOnHost,
@@ -59,6 +60,8 @@ function TrustBody({ item }: { item: TrustItem }) {
   const client = useQueryClient();
   const [sas, setSas] = React.useState("");
   const [invalid, setInvalid] = React.useState(false);
+  // 这台电脑明确没有背书权限：不再给「信任」，只留「拒绝」，并说要在已信任的设备上处理。
+  const [notEndorser, setNotEndorser] = React.useState(false);
   const refresh = () =>
     client.invalidateQueries({ queryKey: cloudTrustKey(item.serviceId) });
 
@@ -71,8 +74,15 @@ function TrustBody({ item }: { item: TrustItem }) {
     onError: (error: unknown) => {
       if (error instanceof RuntimeRequestError && error.code === "sas_mismatch")
         setInvalid(true);
+      else if (error instanceof HostPendingAmbiguous)
+        toast.error(t("trust.ambiguous"));
       else if (error instanceof HostPendingUnavailable)
         toast.error(t("trust.unavailable"));
+      else if (
+        error instanceof RuntimeRequestError &&
+        (error.code === "forbidden" || error.code === "device_untrusted")
+      )
+        setNotEndorser(true);
       else
         toast.error(
           error instanceof Error ? error.message : t("error.internal"),
@@ -113,39 +123,45 @@ function TrustBody({ item }: { item: TrustItem }) {
             <dt>{t("trust.host")}</dt>
             <dd className="min-w-0 truncate">{item.sourceName}</dd>
           </dl>
-          <Field data-invalid={invalid}>
-            <FieldLabel htmlFor="cloud-trust-sas">
-              {t("e2e.approve.hint")}
-            </FieldLabel>
-            <InputOTP
-              id="cloud-trust-sas"
-              maxLength={6}
-              inputMode="numeric"
-              pattern="^[0-9]*$"
-              autoComplete="off"
-              value={sas}
-              onChange={(value) => {
-                setSas(value);
-                setInvalid(false);
-              }}
-              aria-invalid={invalid}
-            >
-              <InputOTPGroup>
-                {Array.from({ length: 6 }, (_, index) => (
-                  <InputOTPSlot
-                    key={index}
-                    index={index}
-                    aria-invalid={invalid}
-                  />
-                ))}
-              </InputOTPGroup>
-            </InputOTP>
-            {invalid && (
-              <span className="text-meta text-destructive" role="status">
-                {t("e2e.approve.mismatch")}
-              </span>
-            )}
-          </Field>
+          {notEndorser ? (
+            <span className="text-body text-destructive" role="status">
+              {t("cloud.trust.useTrusted")}
+            </span>
+          ) : (
+            <Field data-invalid={invalid}>
+              <FieldLabel htmlFor="cloud-trust-sas">
+                {t("e2e.approve.hint")}
+              </FieldLabel>
+              <InputOTP
+                id="cloud-trust-sas"
+                maxLength={6}
+                inputMode="numeric"
+                pattern="^[0-9]*$"
+                autoComplete="off"
+                value={sas}
+                onChange={(value) => {
+                  setSas(value);
+                  setInvalid(false);
+                }}
+                aria-invalid={invalid}
+              >
+                <InputOTPGroup>
+                  {Array.from({ length: 6 }, (_, index) => (
+                    <InputOTPSlot
+                      key={index}
+                      index={index}
+                      aria-invalid={invalid}
+                    />
+                  ))}
+                </InputOTPGroup>
+              </InputOTP>
+              {invalid && (
+                <span className="text-meta text-destructive" role="status">
+                  {t("e2e.approve.mismatch")}
+                </span>
+              )}
+            </Field>
+          )}
         </FieldGroup>
       </form>
       <ResponsiveDialogFooter>
@@ -158,14 +174,16 @@ function TrustBody({ item }: { item: TrustItem }) {
         >
           {t("e2e.approve.reject")}
         </Button>
-        <Button
-          type="submit"
-          form="cloud-trust-form"
-          disabled={sas.length !== 6 || busy}
-          loading={trust.isPending}
-        >
-          {t("trust.trust")}
-        </Button>
+        {!notEndorser && (
+          <Button
+            type="submit"
+            form="cloud-trust-form"
+            disabled={sas.length !== 6 || busy}
+            loading={trust.isPending}
+          >
+            {t("trust.trust")}
+          </Button>
+        )}
       </ResponsiveDialogFooter>
     </>
   );

@@ -32,6 +32,15 @@ import {
   InputGroupButton,
   InputGroupInput,
 } from "@/ui/input-group";
+import {
+  ResponsiveAlertDialog,
+  ResponsiveAlertDialogAction,
+  ResponsiveAlertDialogCancel,
+  ResponsiveAlertDialogContent,
+  ResponsiveAlertDialogFooter,
+  ResponsiveAlertDialogHeader,
+  ResponsiveAlertDialogTitle,
+} from "@/panels/ResponsiveDialog";
 import { COMMAND_INPUT_FOCUS } from "@/panels/tabs-focus";
 import { Popover, PopoverContent, PopoverTrigger } from "@/ui/popover";
 import { Separator } from "@/ui/separator";
@@ -74,9 +83,18 @@ const QUOTA_KEYS = new Set([
 ]);
 
 /** 授予与邀请的错误：按 `code` 取文案；会降低已有角色的 `conflict` 与配额各有一句。 */
-function failureText(t: ReturnType<typeof useT>, error: unknown): string {
+function failureText(
+  t: ReturnType<typeof useT>,
+  error: unknown,
+  during: "grant" | "invite" = "grant",
+): string {
   if (error instanceof RuntimeRequestError) {
-    if (error.code === "conflict") return t("share.cloud.conflict");
+    if (error.code === "conflict")
+      return t(
+        during === "invite"
+          ? "share.cloud.inviteConflict"
+          : "share.cloud.conflict",
+      );
     if (error.code === "limit_reached") {
       const quota = (error.body as { details?: { quota?: unknown } } | null)
         ?.details?.quota;
@@ -89,8 +107,18 @@ function failureText(t: ReturnType<typeof useT>, error: unknown): string {
 
 /** 待确认的提示：哪种操作会降低谁的有效角色。 */
 interface Warning {
-  readonly kind: "update" | "invite";
+  readonly kind: "update" | "invite" | "row";
   readonly member: Target;
+  /** `row`：行里降级的那条授予与新角色。 */
+  readonly grantId?: string;
+  readonly role?: CloudRole;
+}
+
+/** 新范围是否比现有的小（整台 → 部分，或丢了某个工作空间）。 */
+function narrows(held: readonly string[], next: readonly string[]): boolean {
+  if (next.length === 0) return false;
+  if (held.length === 0) return true;
+  return held.some((id) => !next.includes(id));
 }
 
 /** 这个账号在这台主机上的授予（成员 / 访客）。 */
@@ -147,13 +175,36 @@ export function CloudShare({
   const [role, setRole] = React.useState<CloudRole>("viewer");
   const [range, setRange] = React.useState<Range>("workspace");
   const [days, setDays] = React.useState<number>(7);
+  // 更新已有授予时，到期只在管理员明确改过才传（缺省 7 天不覆盖他原来的到期）。
+  const [daysTouched, setDaysTouched] = React.useState(false);
+  const [removing, setRemoving] = React.useState<{
+    grantId: string;
+    name: string;
+  } | null>(null);
   const [picked, setPicked] = React.useState<Target | null>(null);
   const [email, setEmail] = React.useState("");
   const [confirming, setConfirming] = React.useState<Warning | null>(null);
 
   const refresh = () =>
     client.invalidateQueries({ queryKey: cloudAccessKey(serviceId) });
-  const workspaceIds = range === "workspace" ? [workspaceId] : [];
+  const team = data?.space.kind === "team";
+  const knownByEmail = (address: string) =>
+    data?.members.find(
+      (one) =>
+        one.email !== "" && one.email.toLowerCase() === address.toLowerCase(),
+    );
+  // 团队主机上，访客的授予与非成员的邀请必须限定工作空间（云端 `workspaceIds` 不能为空）。
+  const wholeBlocked =
+    team &&
+    (picked?.role === "guest" ||
+      (email.trim() !== "" && knownByEmail(email.trim()) === undefined));
+  const effectiveRange: Range = wholeBlocked ? "workspace" : range;
+  const workspaceIds = effectiveRange === "workspace" ? [workspaceId] : [];
+  /** 更新已有授予的新范围：只放宽——已有整台保持整台，否则并上当前工作空间。 */
+  const updatedScope = (held: CloudGrant): string[] =>
+    held.workspaceIds.length === 0 || effectiveRange === "host"
+      ? []
+      : [...new Set([...held.workspaceIds, workspaceId])];
   const expiresAtMs = () => Date.now() + days * DAY_MS;
 
   const grant = useMutation({
@@ -174,13 +225,14 @@ export function CloudShare({
             serviceId,
             grantId: held.grantId,
             role,
-            workspaceIds,
-            expiresAtMs: expiresAtMs(),
+            workspaceIds: updatedScope(held),
+            ...(daysTouched ? { expiresAtMs: expiresAtMs() } : {}),
           });
     },
     onSuccess: (_value, target) => {
       setConfirming(null);
       setPicked(null);
+      setDaysTouched(false);
       toast.success(t("share.cloud.granted", { name: nameOf(target) }));
       void refresh();
     },
@@ -201,7 +253,7 @@ export function CloudShare({
       toast.success(t("share.cloud.invited", { email: invitation.email }));
       void refresh();
     },
-    onError: (error: unknown) => toast.error(failureText(t, error)),
+    onError: (error: unknown) => toast.error(failureText(t, error, "invite")),
   });
   const update = useMutation({
     mutationFn: (input: { grantId: string; role: CloudRole }) =>
@@ -217,7 +269,6 @@ export function CloudShare({
 
   if (data === undefined || !data.canManage) return null;
 
-  const team = data.space.kind === "team";
   const members = data.members;
   const names = new Map(members.map((one) => [one.accountId, nameOf(one)]));
   const listed = data.grants.filter(
@@ -228,10 +279,23 @@ export function CloudShare({
 
   function submitGrant(target: Target) {
     const held = grantsOf(data, target.accountId);
-    // 已有授予时是更新：角色比现有的低，就会降低他的有效角色。
-    const before = composeRole(live(held));
-    const lowers =
-      before !== null && rankOf(role) < rankOf(before) && held.length > 0;
+    const first = held[0];
+    let lowers = false;
+    if (first !== undefined) {
+      // 已有授予时是更新：角色更低、范围更小或到期更早，都会收窄他的有效权限。
+      const before = composeRole(live(held));
+      const scope = updatedScope(first);
+      const sooner =
+        daysTouched &&
+        first.expiresAtMs !== null &&
+        expiresAtMs() < first.expiresAtMs;
+      const newlyFinite = daysTouched && first.expiresAtMs === null;
+      lowers =
+        (before !== null && rankOf(role) < rankOf(before)) ||
+        narrows(first.workspaceIds, scope) ||
+        sooner ||
+        newlyFinite;
+    }
     if (lowers && confirming?.kind !== "update") {
       setConfirming({ kind: "update", member: target });
       return;
@@ -241,10 +305,7 @@ export function CloudShare({
 
   function submitInvite(address: string) {
     // 邮箱对应团队里已有授予的成员：按合成规则预判这张邀请会不会降低他的有效角色。
-    const known = members.find(
-      (one) =>
-        one.email !== "" && one.email.toLowerCase() === address.toLowerCase(),
-    );
+    const known = knownByEmail(address);
     const lowers =
       known !== undefined &&
       lowersEffectiveRole(
@@ -262,6 +323,24 @@ export function CloudShare({
   const inviteReady = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
   const canInvite = !team || data.allowGuests;
 
+  function onRowRole(row: CloudGrant, name: string, next: CloudRole) {
+    if (rankOf(next) < rankOf(row.role)) {
+      setConfirming({
+        kind: "row",
+        member: {
+          accountId: subjectId(row),
+          displayName: name,
+          email: "",
+          role: "",
+        },
+        grantId: row.grantId,
+        role: next,
+      });
+      return;
+    }
+    update.mutate({ grantId: row.grantId, role: next });
+  }
+
   return (
     <div data-slot="share-cloud" className="flex min-w-0 flex-col gap-4">
       <Separator />
@@ -271,14 +350,14 @@ export function CloudShare({
         </Field>
         <Pick
           label={t("sharing.scope")}
-          value={range}
+          value={effectiveRange}
           onChange={(value) => {
             setRange(value as Range);
             setConfirming(null);
           }}
           options={[
             ["workspace", t("share.scope.workspace")],
-            ["host", t("share.cloud.scope.host")],
+            ["host", t("share.cloud.scope.host"), wholeBlocked],
           ]}
         />
         <Pick
@@ -296,7 +375,10 @@ export function CloudShare({
         <Pick
           label={t("remote.invite.expires")}
           value={String(days)}
-          onChange={(value) => setDays(Number(value))}
+          onChange={(value) => {
+            setDays(Number(value));
+            setDaysTouched(true);
+          }}
           options={EXPIRY_DAYS.map((one) => [
             String(one),
             t(`remote.invite.day${one}`),
@@ -330,9 +412,9 @@ export function CloudShare({
           <Alert variant="destructive" data-slot="share-cloud-lowers">
             <AlertTitle>
               {t(
-                confirming.kind === "update"
-                  ? "share.cloud.lowers.update"
-                  : "share.cloud.lowers.invite",
+                confirming.kind === "invite"
+                  ? "share.cloud.lowers.invite"
+                  : "share.cloud.lowers.update",
                 { name: nameOf(confirming.member) },
               )}
             </AlertTitle>
@@ -342,16 +424,24 @@ export function CloudShare({
                 size="xs"
                 variant="secondary"
                 disabled={grant.isPending || invite.isPending}
-                onClick={() =>
-                  confirming.kind === "update"
-                    ? grant.mutate(confirming.member)
-                    : invite.mutate(email.trim())
-                }
+                onClick={() => {
+                  if (confirming.kind === "update")
+                    grant.mutate(confirming.member);
+                  else if (confirming.kind === "invite")
+                    invite.mutate(email.trim());
+                  else if (confirming.grantId && confirming.role) {
+                    update.mutate({
+                      grantId: confirming.grantId,
+                      role: confirming.role,
+                    });
+                    setConfirming(null);
+                  }
+                }}
               >
                 {t(
-                  confirming.kind === "update"
-                    ? "share.cloud.lowers.confirm"
-                    : "share.cloud.lowers.confirmInvite",
+                  confirming.kind === "invite"
+                    ? "share.cloud.lowers.confirmInvite"
+                    : "share.cloud.lowers.confirm",
                 )}
               </Button>
             </div>
@@ -403,13 +493,50 @@ export function CloudShare({
               grant={one}
               name={names.get(subjectId(one)) ?? subjectId(one).slice(0, 8)}
               onRole={(next) =>
-                update.mutate({ grantId: one.grantId, role: next })
+                onRowRole(
+                  one,
+                  names.get(subjectId(one)) ?? subjectId(one).slice(0, 8),
+                  next,
+                )
               }
-              onRemove={() => revoke.mutate(one.grantId)}
+              onRemove={() =>
+                setRemoving({
+                  grantId: one.grantId,
+                  name: names.get(subjectId(one)) ?? subjectId(one).slice(0, 8),
+                })
+              }
             />
           ))}
         </ul>
       )}
+      <ResponsiveAlertDialog
+        open={removing !== null}
+        onOpenChange={(open) => {
+          if (!open) setRemoving(null);
+        }}
+      >
+        <ResponsiveAlertDialogContent className="z-[var(--z-dialog)]">
+          <ResponsiveAlertDialogHeader>
+            <ResponsiveAlertDialogTitle>
+              {t("share.cloud.revokeConfirm", { name: removing?.name ?? "" })}
+            </ResponsiveAlertDialogTitle>
+          </ResponsiveAlertDialogHeader>
+          <ResponsiveAlertDialogFooter>
+            <ResponsiveAlertDialogCancel>
+              {t("remote.cancel")}
+            </ResponsiveAlertDialogCancel>
+            <ResponsiveAlertDialogAction
+              variant="destructive"
+              onClick={() => {
+                if (removing !== null) revoke.mutate(removing.grantId);
+                setRemoving(null);
+              }}
+            >
+              {t("share.cloud.revokeAction")}
+            </ResponsiveAlertDialogAction>
+          </ResponsiveAlertDialogFooter>
+        </ResponsiveAlertDialogContent>
+      </ResponsiveAlertDialog>
     </div>
   );
 }
@@ -549,7 +676,7 @@ function Pick({
 }: {
   label: string;
   value: string;
-  options: readonly (readonly [string, string])[];
+  options: readonly (readonly [string, string, boolean?])[];
   onChange(value: string): void;
 }) {
   return (
@@ -560,8 +687,8 @@ function Pick({
           <SelectValue />
         </SelectTrigger>
         <SelectContent className="z-[var(--z-dialog)]">
-          {options.map(([id, text]) => (
-            <SelectItem key={id} value={id}>
+          {options.map(([id, text, disabled]) => (
+            <SelectItem key={id} value={id} disabled={disabled === true}>
               {text}
             </SelectItem>
           ))}

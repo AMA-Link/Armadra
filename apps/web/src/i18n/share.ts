@@ -30,7 +30,10 @@ export const share: MessageModule = {
     "share.cloud.invited": "已邀请 {email}",
     "share.cloud.revoke": "移除 {name}",
     "share.cloud.update": "更新",
-    "share.cloud.lowers.update": "权限比 {name} 现有的低，会降低他的有效权限",
+    "share.cloud.lowers.update": "会降低 {name} 现有的角色、缩小范围或缩短到期",
+    "share.cloud.revokeConfirm": "移除 {name} 的授予？",
+    "share.cloud.revokeAction": "移除",
+    "share.cloud.inviteConflict": "已有一张待接受的邀请，或与他现有的授予冲突",
     "share.cloud.lowers.invite":
       "范围更宽而权限更低，可能降低 {name} 现有的有效权限，他接受时云端会拒绝",
     "share.cloud.lowers.confirm": "仍要更新",
@@ -63,7 +66,11 @@ export const share: MessageModule = {
     "share.cloud.revoke": "Remove {name}",
     "share.cloud.update": "Update",
     "share.cloud.lowers.update":
-      "A lower role than {name} has now would lower their effective role",
+      "This would lower {name}'s role, narrow the scope or shorten the expiry",
+    "share.cloud.revokeConfirm": "Remove {name}'s grant?",
+    "share.cloud.revokeAction": "Remove",
+    "share.cloud.inviteConflict":
+      "An invitation is already pending, or it conflicts with their grant",
     "share.cloud.lowers.invite":
       "Wider scope with a lower role may lower {name}'s effective role. The cloud rejects it when they accept",
     "share.cloud.lowers.confirm": "Update anyway",

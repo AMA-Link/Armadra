@@ -7,9 +7,11 @@ import {
 
 import {
   type CloudTrustRequest,
+  cloudAccess,
   cloudTrustList,
   listSources,
 } from "../../api/remote-services";
+import { localClient } from "../../api/client";
 import { useAccess } from "../../app/use-access";
 import { isDesktop } from "../../platform";
 import { sourceRegistry } from "../registry";
@@ -76,25 +78,37 @@ export async function approveOnHost(
   item: TrustItem,
   sas: string,
 ): Promise<TrustedDevice> {
-  const client = sourceRegistry().get(item.sourceId)?.client;
+  const client = await hostClient(item);
   if (client === undefined) throw new HostPendingUnavailable();
   const listed = trustedDeviceListSchema.parse(await client.devices.list());
-  const pending = listed.devices.filter(
+  // 只认精确匹配（设备名 + 成员）：云端的请求没有 pendingId，模糊匹配会把校验码交给
+  // 别人的申请。同名多条时让人去主机的设备列表里处理。
+  const matches = listed.devices.filter(
     (device) =>
       device.status === "pending" &&
       device.pendingId !== null &&
-      device.label === item.device.name,
+      device.label === item.device.name &&
+      (device.principalName === item.member.displayName ||
+        device.principalName === item.member.email),
   );
-  const exact = pending.filter(
-    (device) =>
-      device.principalName === item.member.displayName ||
-      device.principalName === item.member.email,
-  );
-  const match = (exact.length > 0 ? exact : pending)[0];
+  if (matches.length > 1) throw new HostPendingAmbiguous();
+  const match = matches[0];
   if (match?.pendingId == null) throw new HostPendingUnavailable();
   return trustedDeviceSchema.parse(
     (await client.devices.approve({ pendingId: match.pendingId, sas })).device,
   );
+}
+
+/**
+ * 请求里的主机是不是本机：与本机登记在这个云上的 id（`cloudAccess().sourceId`）比较，
+ * 是就走本机 core；否则按源表找挂载的那台主机。
+ */
+async function hostClient(item: TrustItem) {
+  const local = await cloudAccess(item.serviceId)
+    .then((access) => access.sourceId)
+    .catch(() => null);
+  if (local !== null && local === item.sourceId) return localClient();
+  return sourceRegistry().get(item.sourceId)?.client;
 }
 
 /** 主机上找不到这台设备的待确认申请，或这台电脑够不到那台主机。 */
@@ -102,5 +116,13 @@ export class HostPendingUnavailable extends Error {
   constructor() {
     super("no matching pending device on the host");
     this.name = "HostPendingUnavailable";
+  }
+}
+
+/** 主机上有不止一条同名同成员的待确认申请：不猜，去主机的设备列表里处理。 */
+export class HostPendingAmbiguous extends Error {
+  constructor() {
+    super("several matching pending devices on the host");
+    this.name = "HostPendingAmbiguous";
   }
 }
