@@ -102,6 +102,7 @@ export function InlineName({
     <>
       <Input
         ref={input}
+        size="sm"
         value={draft}
         aria-label={label}
         aria-invalid={Boolean(error)}
@@ -109,7 +110,7 @@ export function InlineName({
         title={error || label}
         maxLength={120}
         readOnly={pending}
-        className="h-6 min-w-0 flex-1 rounded-tight px-1 py-0 text-body shadow-none"
+        className="min-w-0 flex-1 rounded-tight px-1 py-0 shadow-none"
         onChange={(event) => {
           setDraft(event.target.value);
           setError("");

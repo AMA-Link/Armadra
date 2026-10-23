@@ -126,7 +126,7 @@ export function SessionsSection({ boardId }: { boardId: string }) {
               {history.map((row) => (
                 <li
                   key={row.sessionId}
-                  className="flex h-7 items-center gap-1 px-1.5"
+                  className="flex h-(--row-h) items-center gap-1 px-1.5"
                 >
                   <span className="flex-1 truncate text-body text-muted-foreground">
                     {row.title}

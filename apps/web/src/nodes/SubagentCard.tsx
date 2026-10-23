@@ -57,7 +57,7 @@ export function SubagentCard({ card, now: fixedNow }: SubagentCardProps) {
       className="flex w-full flex-col overflow-hidden rounded-card border border-l-2 border-border bg-card shadow-node"
       style={{ borderLeftColor: "var(--agent-working)" }}
     >
-      <div className="flex h-7 items-center gap-2 px-2">
+      <div className="flex h-(--row-h) items-center gap-2 px-2">
         <StatusPill
           tone={working ? "working" : "done"}
           label={t(working ? "subagent.working" : "subagent.done")}

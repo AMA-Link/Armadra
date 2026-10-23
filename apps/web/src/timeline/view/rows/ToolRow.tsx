@@ -22,6 +22,7 @@ import type {
   TimelineToolStatus,
 } from "@armadra/shared";
 
+import { TOOL_STATUS_TONES } from "@/agent/display";
 import { useT } from "@/app/preferences-store";
 import { DiffCounts, diffStat } from "@/acp/DiffBlock";
 import { basename } from "@/files/file-operations";
@@ -34,7 +35,7 @@ import {
 } from "@/ui/collapsible";
 import { Shimmer } from "@/ui/shimmer";
 import { Spinner } from "@/ui/spinner";
-import { StatusPill, type StatusTone } from "@/ui/status-pill";
+import { StatusPill } from "@/ui/status-pill";
 import { formatDuration } from "../format";
 import { ToolContentView } from "../parts/ToolContentView";
 import { ToolInput } from "../parts/ToolInput";
@@ -52,14 +53,6 @@ export const KIND_ICONS: Record<TimelineToolKind, LucideIcon> = {
   switch_mode: ArrowLeftRight,
   other: Wrench,
   subagent: Bot,
-};
-
-export const STATUS_TONES: Record<TimelineToolStatus, StatusTone> = {
-  pending: "queued",
-  in_progress: "working",
-  completed: "done",
-  failed: "failed",
-  cancelled: "paused",
 };
 
 /** 工具行上最多画几枚文件胶囊，其余折成 `+N`。 */
@@ -236,7 +229,7 @@ function ToolRowImpl({ item, nested, approval, renderApproval }: ToolRowProps) {
                 </span>
               )}
               <StatusPill
-                tone={STATUS_TONES[item.status]}
+                tone={TOOL_STATUS_TONES[item.status]}
                 label={t(`timeline.tool.status.${item.status}`)}
               />
             </span>

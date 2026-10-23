@@ -91,7 +91,7 @@ export function NotificationPanel({ onClose }: { onClose: () => void }) {
                 key={workspace.workspaceId}
                 aria-label={displayName(workspace.name, t)}
               >
-                <h2 className="flex h-7 min-w-0 items-center gap-1 px-1.5 text-caption font-medium">
+                <h2 className="flex h-(--row-h) min-w-0 items-center gap-1 px-1.5 text-caption font-medium">
                   <span className="min-w-0 truncate">
                     {displayName(workspace.name, t)}
                   </span>
@@ -105,7 +105,7 @@ export function NotificationPanel({ onClose }: { onClose: () => void }) {
                     aria-label={displayName(board.name, t)}
                     className="pl-2"
                   >
-                    <h3 className="flex h-6 min-w-0 items-center gap-1 px-1.5 text-caption font-medium text-muted-foreground">
+                    <h3 className="flex min-w-0 items-center gap-1 px-1.5 py-1 text-caption font-medium text-muted-foreground">
                       <span className="min-w-0 truncate">
                         {displayName(board.name, t)}
                       </span>
@@ -172,7 +172,7 @@ export function NeedRow({
         size="xs"
         data-need-row=""
         data-tree={tree ? "true" : undefined}
-        className="min-h-[36px] flex-nowrap gap-1.5 rounded-control px-1.5 py-0.5 hover:bg-hover"
+        className="min-h-(--row-h-table) flex-nowrap gap-1.5 rounded-control px-1.5 py-0.5 hover:bg-hover"
       >
         <Button
           variant="ghost"
@@ -232,11 +232,11 @@ function NotificationSkeleton() {
     >
       {[0, 1].map((group) => (
         <div key={group}>
-          <div className="flex h-7 items-center px-1.5">
+          <div className="flex h-(--row-h) items-center px-1.5">
             <Skeleton className="h-3 w-1/3" />
           </div>
           <div className="pl-2">
-            <div className="flex h-6 items-center px-1.5">
+            <div className="flex items-center px-1.5 py-1.5">
               <Skeleton className="h-3 w-1/4" />
             </div>
             <SkeletonList rows={2} size="tall" secondary />

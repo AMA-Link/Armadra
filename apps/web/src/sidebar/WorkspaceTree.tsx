@@ -18,13 +18,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import {
-  Folder,
-  LoaderCircle,
-  MoreHorizontal,
-  Plus,
-  SquarePen,
-} from "lucide-react";
+import { Folder, MoreHorizontal, Plus, SquarePen } from "lucide-react";
 import type { WorkspaceSummary } from "@armadra/shared";
 
 import { useSessions } from "../agent/sessions";
@@ -41,6 +35,7 @@ import {
 import { NewWorkspaceDialog } from "../panels/NewWorkspaceDialog";
 import { useCanvasStore } from "../store/canvas-store";
 import { Button } from "@/ui/button";
+import { Spinner } from "@/ui/spinner";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -313,10 +308,7 @@ function LocalGroup({
           className="flex items-center gap-2 px-2 py-2 text-meta leading-relaxed text-muted-foreground"
         >
           {folderImport.busy && (
-            <LoaderCircle
-              aria-hidden
-              className="size-3.5 shrink-0 animate-spin"
-            />
+            <Spinner size={12} aria-hidden className="shrink-0" />
           )}
           {t(
             folderImport.busy
@@ -502,7 +494,7 @@ function WorkspaceRow({
 
   return (
     <li>
-      <div className="group/ws motion-hover flex h-7 items-center gap-1 rounded-control pr-1 pl-1.5 hover:bg-hover">
+      <div className="group/ws motion-hover flex h-(--row-h) items-center gap-1 rounded-control pr-1 pl-1.5 hover:bg-hover">
         <Folder className="size-3.5 shrink-0 opacity-60" />
         <InlineName
           name={displayName(summary.name, t)}
@@ -582,7 +574,7 @@ function WorkspaceRow({
               <Button
                 variant="ghost"
                 size="sm"
-                className="motion-hover h-7 w-full justify-start px-1.5 text-body font-normal text-muted-foreground hover:bg-hover"
+                className="motion-hover w-full justify-start px-1.5 text-body font-normal text-muted-foreground hover:bg-hover"
                 onClick={() => setExpandedAll((value) => !value)}
               >
                 {expandedAll ? t("sidebar.showLess") : t("sidebar.showMore")}
