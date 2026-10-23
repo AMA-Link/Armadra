@@ -154,12 +154,6 @@ const RADII: Record<string, string> = {
   "--r-pill": "999px",
 };
 
-/**
- * 功能代码里还没迁走的旧名字，指向新档位。只许减少，批次 3 清零；
- * 其余旧名字（`--r-md`、`--r-lg`、`--shadow-card`）必须不存在。
- */
-const LEGACY_TOKENS = ["--r-sm", "--r-xl", "--shadow-pill"];
-
 /** §3.4 的节点调色板 7 色。 */
 const NODE_PALETTE = [
   "#0a84ff",
@@ -411,19 +405,18 @@ describe("tokens.css", () => {
     }
   });
 
-  it("旧圆角名 --r-md / --r-lg 与 --shadow-card 已删除；其余旧名只许留在 LEGACY 登记里", () => {
-    for (const name of ["--r-md", "--r-lg", "--shadow-card"]) {
+  it("旧名字 --r-md / --r-lg / --r-sm / --r-xl 与 --shadow-card / --shadow-pill 已全部删除", () => {
+    for (const name of [
+      "--r-md",
+      "--r-lg",
+      "--r-sm",
+      "--r-xl",
+      "--shadow-card",
+      "--shadow-pill",
+    ]) {
       expect(dark.has(name)).toBe(false);
       expect(light.has(name)).toBe(false);
     }
-    const legacy = ["--r-sm", "--r-xl", "--shadow-pill"].filter((name) =>
-      dark.has(name),
-    );
-    expect(legacy.sort()).toEqual([...LEGACY_TOKENS].sort());
-    // 旧名字只是新档位的别名，不再带自己的数值
-    for (const name of legacy)
-      expect(dark.get(name)).toMatch(/^var\(--(?:r|shadow)-[\w-]+\)$/);
-    expect(light.has("--shadow-pill")).toBe(false);
   });
 
   it("三档阴影：节点 / 浮层 / 对话框，浅色各自减半，卡片没有阴影", () => {

@@ -344,14 +344,6 @@
   /* 开屏动画：盖住一切，包括对话框——它出现时 App 才刚开始挂载 */
   --z-splash: 90;
 
-  /* ── LEGACY 别名（批次 3 删除）──────────────────────────────────────
-     功能代码里还有少数调用点没迁到语义名字（`rounded-[var(--r-sm)]`、
-     `shadow-[var(--shadow-pill)]`），在各自的包迁完之前先指向新档位，免得悄悄
-     失效。`tokens.test.ts` 的 `LEGACY_TOKENS` 登记现状，只许减少。 */
-  --r-sm: var(--r-control);
-  --r-xl: var(--r-float);
-  --shadow-pill: var(--shadow-overlay);
-
   /* ── shadcn 契约（`src/ui/*` 直接依赖这些名字的语义） ─────────────── */
   --background: var(--bg);
   --foreground: var(--text);
