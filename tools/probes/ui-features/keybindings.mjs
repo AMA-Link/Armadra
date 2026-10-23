@@ -4,7 +4,7 @@
 // 「侧栏」写条件（写错语法、写不认识的键时有提示且不能保存）。改完回到画布
 // 用真实的键盘事件按一遍，确认改动真的生效：设为无的键不再打开抽屉，两组键
 // 都能打开源码控制，条件为假时侧栏键不起作用、改成真后又起作用。
-import { sleep } from "./harness.mjs";
+import { openPhoneSettingsPage, sleep } from "./harness.mjs";
 
 const META = 4;
 // 这一场景按 macOS 的键位写（⌘、`platform == mac`）。页面按 UA 判平台，
@@ -34,8 +34,9 @@ async function openShortcuts(page) {
     `return [...document.querySelectorAll('[role="dialog"] button')].find((b) => b.textContent.trim() === "快捷键");`,
     "快捷键页",
   );
+  // 配置档下拉不再带可见标签，只有 aria-label。
   await page.until(
-    `return document.body.innerText.includes("配置档")`,
+    `return !!document.querySelector('[role="dialog"] [aria-label="配置档"]')`,
     "快捷键页载入",
   );
 }
@@ -265,12 +266,9 @@ export default async function keybindings({ stack, output, report, scenario }) {
     "手机底栏「设置」",
   );
   await phone.dialogSettled("手机设置抽屉停稳");
-  await phone.clickOn(
-    `return [...document.querySelectorAll('[role="dialog"] button, [role="dialog"] a')].find((b) => b.textContent.trim() === "快捷键");`,
-    "手机快捷键页",
-  );
+  await openPhoneSettingsPage(phone, "快捷键");
   await phone.until(
-    `return document.body.innerText.includes("配置档")`,
+    `return !!document.querySelector('[role="dialog"] [aria-label="配置档"]')`,
     "手机快捷键页载入",
   );
   await sleep(500);
