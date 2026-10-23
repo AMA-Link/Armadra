@@ -867,7 +867,11 @@ export default async function run12() {
         );
         mark(id, "approvalBlocked", status(nodes[id].id)?.state === "blocked");
         await page.capture("12-claude-approval");
-        await clickInNode(id, '[data-slot="acp-permission"] button', "拒绝");
+        // 拒绝按钮带「Esc」快捷键提示：按选项种类找，不按文字。
+        await clickInNode(
+          id,
+          '[data-slot="acp-permission"] button[data-option^="reject"]',
+        );
         await waitTurn(id, sessions.claude, since);
         const approval = one(
           "SELECT id, answer, request_json FROM agent_approvals WHERE node_id = ? ORDER BY created_at DESC LIMIT 1",

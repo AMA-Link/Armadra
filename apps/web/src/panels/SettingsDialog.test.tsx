@@ -222,14 +222,14 @@ describe("SettingsDialog", () => {
     });
   });
 
-  it("弹窗近全窗：按视口取 --settings-dialog-w/h，导航宽度走令牌，正文列不封顶（设计系统 §5.17）", async () => {
+  it("弹窗按视口取 --settings-dialog-w/h（四周各留 48px），导航宽度走令牌，正文列不封顶（设计系统 §5.17）", async () => {
     open();
     await screen.findByText(zh("settings.theme"));
     const dialog = screen.getByTestId("settings-dialog");
     expect(dialog.className).toContain("w-[var(--settings-dialog-w)]");
     expect(dialog.className).toContain("h-[var(--settings-dialog-h)]");
     expect(dialog.className).toContain(
-      "max-h-[calc(100dvh-48px-var(--safe-top)-var(--safe-bottom))]",
+      "max-h-[calc(100dvh-96px-var(--safe-top)-var(--safe-bottom))]",
     );
     expect(dialog.className).toContain("max-lg:w-[calc(100vw-32px)]");
     expect(dialog.className).not.toContain("w-[920px]");

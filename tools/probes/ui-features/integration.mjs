@@ -19,7 +19,7 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { removeTree, sleep } from "./harness.mjs";
+import { openPhoneSettingsPage, removeTree, sleep } from "./harness.mjs";
 
 /** 别的工具装进同一个文件的 Hook：不列、不改、不删。 */
 const OTHER_TOOL = "sh '/Users/dev/.othertool/agent-hooks/claude.sh'";
@@ -198,10 +198,7 @@ export default async function integration({ stack, output, report, scenario }) {
     "手机底栏「设置」",
   );
   await phone.dialogSettled("手机设置抽屉停稳");
-  await phone.clickOn(
-    `return [...document.querySelectorAll('[role="dialog"] button, [role="dialog"] a')].find((b) => b.getAttribute("aria-label") === "Agent CLI");`,
-    "手机 Agent CLI 页",
-  );
+  await openPhoneSettingsPage(phone, "Agent CLI");
   await openClaude(phone);
   await phone.clickOn(badge, "手机上点开「清理旧版 11」");
   await phone.until(
