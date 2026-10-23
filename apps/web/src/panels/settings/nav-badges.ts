@@ -3,6 +3,7 @@ import { useQueries, useQuery } from "@tanstack/react-query";
 
 import { listInvitations } from "@/api/accounts";
 import { localRuntimeApi } from "@/api/client";
+import { permits, resumeIdentity } from "@/api/identity";
 import { usePreferencesStore } from "@/app/preferences-store";
 import { useAgentsQuery } from "@/app/use-agents";
 import { useHostConnection } from "@/host/use-host-connection";
@@ -22,7 +23,8 @@ export type NavBadges = Readonly<Record<string, NavBadge | undefined>>;
  *
  * - `notifications`：需要你处理的事（通知 store 的条数）；
  * - `agents`：需安装或需更新的 Agent CLI 数（与 Agent CLI 页的状态同一个判定）；
- * - `accounts`：待接受的邀请数；
+ * - `accounts`：待接受的邀请数（只给能管邀请的人：`identity:manage`，与账号页同一判定；
+ *   成员拉邀请列表会吃 403）；
  * - `service`：本机服务连不上时一个提示点。
  *
  * 查询只对导航里真的列出的分区发（`visible`），键与对应页面一致，所以打开那一页时
@@ -48,10 +50,18 @@ export function useSettingsNavBadges(visible: ReadonlySet<string>): NavBadges {
     })),
   });
   const accountsVisible = visible.has("accounts");
+  const session = useQuery({
+    queryKey: ["identity", "session"],
+    queryFn: resumeIdentity,
+    enabled: accountsVisible,
+    staleTime: 30_000,
+  });
+  const canManage =
+    session.data != null && permits(session.data, "identity:manage");
   const invitations = useQuery({
     queryKey: ["accounts", "invitations"],
     queryFn: listInvitations,
-    enabled: accountsVisible,
+    enabled: accountsVisible && canManage,
   });
   const serviceVisible = visible.has("service");
   const { state, check } = useHostConnection();
