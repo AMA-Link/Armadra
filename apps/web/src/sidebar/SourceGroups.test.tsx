@@ -208,6 +208,87 @@ describe("侧栏三组", () => {
     expect(order()).toEqual(["local", "a", "ann", "joined"]);
   });
 
+  it("他人分享按团队分小组：团队在前可折叠、个人分享在后，折叠状态记在本机", async () => {
+    await hydrate([
+      descriptor("a", 1),
+      descriptor("p1", 2, { origin: "shared", ownerName: "pat" }),
+      descriptor("t1", 3, {
+        origin: "shared",
+        ownerName: "ann",
+        teamId: "team-1",
+        teamName: "R&D",
+      }),
+      descriptor("t2", 4, {
+        origin: "shared",
+        ownerName: "bob",
+        teamId: "team-2",
+        teamName: "Design",
+      }),
+    ]);
+    mount();
+    const shared = screen.getByRole("region", { name: "Shared with me" });
+    const groups = [...shared.querySelectorAll("[data-team-group]")].map(
+      (one) => one.getAttribute("data-team-group"),
+    );
+    expect(groups).toEqual(["team-1", "team-2", ""]);
+    const rd = within(shared).getByRole("region", { name: "R&D" });
+    expect(within(rd).getByRole("region", { name: "ann" })).toBeTruthy();
+    const personal = within(shared).getByRole("region", { name: "Personal" });
+    expect(within(personal).getByRole("region", { name: "pat" })).toBeTruthy();
+    // 团队小组在个人分享之前。
+    expect(order()).toEqual(["local", "a", "t1", "t2", "p1"]);
+
+    const toggle = within(rd).getByRole("button", { name: "R&D" });
+    expect(toggle.getAttribute("aria-expanded")).toBe("true");
+    fireEvent.click(toggle);
+    expect(toggle.getAttribute("aria-expanded")).toBe("false");
+    expect(within(rd).queryByRole("region", { name: "ann" })).toBeNull();
+    expect(localStorage.getItem("armadra.sidebar.teams.team-1")).toBe("0");
+    expect(localStorage.getItem("armadra.sidebar.teams.team-2")).toBeNull();
+  });
+
+  it("折叠状态在重新挂载后还在；只有一个团队且没有个人分享时不画小组标题", async () => {
+    localStorage.setItem("armadra.sidebar.teams.team-1", "0");
+    await hydrate([
+      descriptor("t1", 1, {
+        origin: "shared",
+        ownerName: "ann",
+        teamId: "team-1",
+        teamName: "R&D",
+      }),
+      descriptor("t2", 2, {
+        origin: "shared",
+        ownerName: "bob",
+        teamId: "team-1",
+        teamName: "R&D",
+      }),
+    ]);
+    mount();
+    const shared = screen.getByRole("region", { name: "Shared with me" });
+    // 单团队、无个人分享：没有标题按钮，也就折不起来。
+    expect(within(shared).queryByRole("button", { name: "R&D" })).toBeNull();
+    expect(within(shared).getByRole("region", { name: "ann" })).toBeTruthy();
+    expect(within(shared).getByRole("region", { name: "bob" })).toBeTruthy();
+  });
+
+  it("团队小组折叠状态读自本机", async () => {
+    localStorage.setItem("armadra.sidebar.teams.team-1", "0");
+    await hydrate([
+      descriptor("p1", 1, { origin: "shared", ownerName: "pat" }),
+      descriptor("t1", 2, {
+        origin: "shared",
+        ownerName: "ann",
+        teamId: "team-1",
+        teamName: "R&D",
+      }),
+    ]);
+    mount();
+    const toggle = screen.getByRole("button", { name: "R&D" });
+    expect(toggle.getAttribute("aria-expanded")).toBe("false");
+    expect(screen.queryByRole("region", { name: "ann" })).toBeNull();
+    expect(screen.getByRole("region", { name: "pat" })).toBeTruthy();
+  });
+
   it("点一行打开那个工作空间（带上它的源）；当前那台换成树", async () => {
     await hydrate([descriptor("a", 1)]);
     listed.data = [

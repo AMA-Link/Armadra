@@ -402,4 +402,30 @@ describe("连接表 v4：来历 origin", () => {
       shareExpiresAtMs: 99,
     });
   });
+
+  it("契约 §86：团队随行存取；再加入一次以对端这一次报的为准，没说团队就沿用", () => {
+    upsertConnection({
+      ...RELAYED,
+      sourceId: "t",
+      origin: "shared",
+      teamId: "team-1",
+      teamName: "研发组",
+    });
+    expect(loadConnections().find((row) => row.sourceId === "t")).toMatchObject(
+      { teamId: "team-1", teamName: "研发组" },
+    );
+    upsertConnection({ ...RELAYED, sourceId: "t", label: "改了" });
+    expect(loadConnections().find((row) => row.sourceId === "t")).toMatchObject(
+      { teamId: "team-1", teamName: "研发组" },
+    );
+    upsertConnection({
+      ...RELAYED,
+      sourceId: "t",
+      teamId: "",
+      teamName: "",
+    });
+    const cleared = loadConnections().find((row) => row.sourceId === "t")!;
+    expect(cleared.teamId).toBeUndefined();
+    expect(cleared.teamName).toBeUndefined();
+  });
 });

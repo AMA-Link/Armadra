@@ -40,6 +40,8 @@ function row(sourceId: string, overrides: Partial<SourceRow> = {}): SourceRow {
     ownerLabel: "",
     shareRole: "",
     shareExpiresAtMs: 0,
+    teamId: "",
+    teamName: "",
     ...overrides,
   };
 }

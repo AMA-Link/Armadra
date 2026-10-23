@@ -22,6 +22,7 @@ import {
 } from "./recent";
 import {
   layoutByOrigin,
+  layoutByTeam,
   layoutServices,
   serviceRowOf,
   type ServiceRow,
@@ -267,6 +268,49 @@ describe("选择服务 · 整页", () => {
     expect(sharedRow.textContent).toContain("小王 · 查看 · 有效至");
     expect(sharedRow.textContent).not.toContain("互联网");
     expect(document.body.textContent).not.toMatch(/中转|中继|签发方|挂载|隧道/);
+  });
+
+  it("契约 §86：他人分享按团队分小组，个人分享在后；单团队无个人分享不画小组标题", () => {
+    const shared = (id: string, patch: Record<string, unknown> = {}) =>
+      serviceRowOf({
+        ...viaRelay(id, id),
+        origin: "shared",
+        ownerName: id,
+        ...patch,
+      } as SourceDescriptor);
+    const all = [
+      shared("p1"),
+      shared("a1", { teamId: "team-1", teamName: "研发组" }),
+      shared("b1", { teamId: "team-2", teamName: "设计组" }),
+      shared("a2", { teamId: "team-1", teamName: "研发组" }),
+    ];
+    const layout = layoutByTeam(all);
+    expect(layout.teams.map((team) => [team.name, team.rows.length])).toEqual([
+      ["研发组", 2],
+      ["设计组", 1],
+    ]);
+    expect(layout.personal.map((row) => row.sourceId)).toEqual(["p1"]);
+    const { unmount } = render(
+      <ServicePicker variant="page" rows={all} onEnter={vi.fn()} />,
+    );
+    const teams = [...document.querySelectorAll("[data-team-group]")].map(
+      (one) => one.getAttribute("data-team-group"),
+    );
+    expect(teams).toEqual(["team-1", "team-2", ""]);
+    expect(
+      screen
+        .getAllByRole("heading", { level: 4 })
+        .map((head) => head.textContent),
+    ).toEqual(["研发组", "设计组", "个人"]);
+    unmount();
+    render(
+      <ServicePicker
+        variant="page"
+        rows={[shared("a1", { teamId: "team-1", teamName: "研发组" })]}
+        onEnter={vi.fn()}
+      />,
+    );
+    expect(screen.queryAllByRole("heading", { level: 4 })).toHaveLength(0);
   });
 
   it("没有分享时只有一组，旧数据（无来历）当作自己的", () => {

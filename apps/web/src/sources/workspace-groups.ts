@@ -137,3 +137,45 @@ export function ownerNameOf(connection: SourceConnection): string {
     connection.descriptor.ownerName ?? fromHello ?? sourceNameOf(connection)
   );
 }
+
+/** 「他人分享」里的一个团队小组（契约 §86）。 */
+export interface TeamGroup {
+  readonly teamId: string;
+  /** 小组标题：团队名，没有名字退回团队标识的前 8 位。 */
+  readonly name: string;
+  readonly sections: readonly SourceSection[];
+}
+
+export interface SharedLayout {
+  readonly teams: readonly TeamGroup[];
+  /** 不经团队的分享（链接、个人邀请，或对端没报团队）。 */
+  readonly personal: readonly SourceSection[];
+}
+
+/**
+ * 他人分享按团队分小组：团队小组按首次出现的顺序，个人分享排在团队之后。同一个
+ * 团队里有一台报了名字就用它的名字。
+ */
+export function groupByTeam(sections: readonly SourceSection[]): SharedLayout {
+  const teams = new Map<string, { name: string; sections: SourceSection[] }>();
+  const personal: SourceSection[] = [];
+  for (const section of sections) {
+    const { teamId, teamName } = section.connection.descriptor;
+    if (teamId === undefined || teamId === "") {
+      personal.push(section);
+      continue;
+    }
+    const team = teams.get(teamId) ?? { name: "", sections: [] };
+    if (team.name === "" && teamName !== undefined) team.name = teamName;
+    team.sections.push(section);
+    teams.set(teamId, team);
+  }
+  return {
+    teams: [...teams].map(([teamId, team]) => ({
+      teamId,
+      name: team.name || teamId.slice(0, 8),
+      sections: team.sections,
+    })),
+    personal,
+  };
+}

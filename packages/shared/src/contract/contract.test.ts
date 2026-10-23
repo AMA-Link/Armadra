@@ -313,6 +313,8 @@ describe("§55 在协议包的形状上追加", () => {
         "ownerLabel",
         "shareRole",
         "shareExpiresAtMs",
+        "teamId",
+        "teamName",
         "identityPub",
       ],
     );
@@ -326,6 +328,8 @@ describe("§55 在协议包的形状上追加", () => {
         "ownerLabel",
         "shareRole",
         "shareExpiresAtMs",
+        "teamId",
+        "teamName",
         "identityPub",
       ],
     );

@@ -11,6 +11,7 @@ import {
 } from "./workspace-cache";
 import {
   type SourceListing,
+  groupByTeam,
   groupWorkspaces,
   initialOf,
 } from "./workspace-groups";
@@ -205,5 +206,38 @@ describe("工作空间名缓存", () => {
     expect(cachedWorkspaces("b")).toEqual([]);
     localStorage.setItem("armadra.sources.workspaceNames", "{broken");
     expect(cachedWorkspaces("a")).toEqual([]);
+  });
+});
+
+describe("groupByTeam（契约 §86）", () => {
+  const section = (id: string, patch: Partial<SourceDescriptor>) => ({
+    connection: connection(descriptor(id, { origin: "shared", ...patch })),
+    state: "ready" as const,
+    workspaces: [],
+    stale: false,
+  });
+
+  it("按团队分，团队按首次出现的顺序，个人分享在后；没名字退回标识前 8 位", () => {
+    const layout = groupByTeam([
+      section("p1", {}),
+      section("a1", { teamId: "team-aaaaaaaa-1", teamName: "" }),
+      section("b1", { teamId: "team-b", teamName: "设计组" }),
+      section("a2", { teamId: "team-aaaaaaaa-1", teamName: "研发组" }),
+    ]);
+    expect(layout.teams.map((team) => [team.teamId, team.name])).toEqual([
+      ["team-aaaaaaaa-1", "研发组"],
+      ["team-b", "设计组"],
+    ]);
+    expect(
+      layout.teams[0]!.sections.map(
+        (one) => one.connection.descriptor.sourceId,
+      ),
+    ).toEqual(["a1", "a2"]);
+    expect(
+      layout.personal.map((one) => one.connection.descriptor.sourceId),
+    ).toEqual(["p1"]);
+    expect(
+      groupByTeam([section("a", { teamId: "abcdefghijkl" })]).teams[0]!.name,
+    ).toBe("abcdefgh");
   });
 });

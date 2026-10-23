@@ -74,7 +74,12 @@ function time(value: unknown): number | undefined {
 
 type ShareFields = Pick<
   SourceDescriptor,
-  "origin" | "ownerName" | "shareRole" | "shareExpiresAt"
+  | "origin"
+  | "ownerName"
+  | "shareRole"
+  | "shareExpiresAt"
+  | "teamId"
+  | "teamName"
 >;
 
 /**
@@ -88,11 +93,16 @@ export function shareFieldsOf(row: object): ShareFields {
   const ownerName = text(raw.ownerName) ?? text(raw.ownerLabel);
   const shareRole = isShareRole(raw.shareRole) ? raw.shareRole : undefined;
   const shareExpiresAt = time(raw.shareExpiresAtMs) ?? time(raw.shareExpiresAt);
+  const teamId = text(raw.teamId);
+  const teamName = text(raw.teamName);
   return {
     ...(origin === undefined ? {} : { origin }),
     ...(ownerName === undefined ? {} : { ownerName }),
     ...(shareRole === undefined ? {} : { shareRole }),
     ...(shareExpiresAt === undefined ? {} : { shareExpiresAt }),
+    // 团队名没有团队标识就不成立（契约 §86）。
+    ...(teamId === undefined ? {} : { teamId }),
+    ...(teamId === undefined || teamName === undefined ? {} : { teamName }),
   };
 }
 

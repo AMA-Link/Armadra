@@ -1,5 +1,5 @@
 /**
- * 客户端源表与远程服务的 SQL（迁移 0039、0044、0047，契约 §33、§55、§68）。
+ * 客户端源表与远程服务的 SQL（迁移 0039、0044、0047、0054，契约 §33、§55、§68、§86）。
  *
  * 一个源可以有几条到达方式（`client_source_routes`，一条路一行）；`client_sources`
  * 上的地址列是首选路由的镜像（{@link SourcesStore.mirror}），旧读者照旧读它们。
@@ -23,6 +23,9 @@ export interface SourceShare {
   readonly shareRole: SourceShareRole;
   /** 分享到期的时刻；0 = 未知或不过期。 */
   readonly shareExpiresAtMs: number;
+  /** 分享经由的团队（契约 §86，迁移 0054）；个人分享或对端没报是空串 / 省略。 */
+  readonly teamId: string;
+  readonly teamName: string;
 }
 
 export interface SourceRow {
@@ -45,6 +48,9 @@ export interface SourceRow {
   readonly ownerLabel: string;
   readonly shareRole: SourceShareRole;
   readonly shareExpiresAtMs: number;
+  /** 分享经由的团队（契约 §86，迁移 0054）；个人分享、`mine` 与旧对端是空串。 */
+  readonly teamId: string;
+  readonly teamName: string;
   /** 钉住的对端身份公钥（base64url，迁移 0050）；没钉过不出现。 */
   readonly identityPub?: string;
 }
@@ -127,6 +133,8 @@ interface SourceRecord {
   owner_label: string;
   share_role: SourceShareRole;
   share_expires_at_ms: number;
+  team_id: string;
+  team_name: string;
   identity_pub?: Uint8Array;
 }
 
@@ -160,6 +168,8 @@ function sourceOf(record: SourceRecord): SourceRow {
     ownerLabel: record.owner_label,
     shareRole: record.share_role,
     shareExpiresAtMs: Number(record.share_expires_at_ms),
+    teamId: record.team_id,
+    teamName: record.team_name,
     ...(record.identity_pub !== undefined && record.identity_pub.length === 32
       ? { identityPub: Buffer.from(record.identity_pub).toString("base64url") }
       : {}),
@@ -183,7 +193,7 @@ function remoteOf(record: RemoteRecord): RemoteRow {
 const SOURCE_COLUMNS =
   "source_id, kind, label, default_label, base_url, relay_origin, fingerprint, cloud_issuer, " +
   "principal_hint, added_at_ms, last_ok_at_ms, order_index, origin, owner_label, share_role, " +
-  "share_expires_at_ms";
+  "share_expires_at_ms, team_id, team_name";
 /** 读的时候多带钉住的身份公钥（迁移 0050）；写不经这一列（`setIdentityPub`）。 */
 const SOURCE_READ_COLUMNS = `${SOURCE_COLUMNS}, identity_pub`;
 const REMOTE_COLUMNS =
@@ -216,7 +226,7 @@ export class SourcesStore {
   upsert(row: SourceRow): SourceRow {
     this.database
       .prepare(
-        `INSERT INTO client_sources(${SOURCE_COLUMNS}) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ` +
+        `INSERT INTO client_sources(${SOURCE_COLUMNS}) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ` +
           "ON CONFLICT(source_id) DO UPDATE SET kind = excluded.kind, label = excluded.label, " +
           "default_label = excluded.default_label, " +
           "base_url = excluded.base_url, relay_origin = excluded.relay_origin, " +
@@ -224,7 +234,8 @@ export class SourcesStore {
           "principal_hint = excluded.principal_hint, last_ok_at_ms = excluded.last_ok_at_ms, " +
           "order_index = excluded.order_index, origin = excluded.origin, " +
           "owner_label = excluded.owner_label, share_role = excluded.share_role, " +
-          "share_expires_at_ms = excluded.share_expires_at_ms",
+          "share_expires_at_ms = excluded.share_expires_at_ms, team_id = excluded.team_id, " +
+          "team_name = excluded.team_name",
       )
       .run(
         row.sourceId,
@@ -243,6 +254,8 @@ export class SourcesStore {
         row.ownerLabel,
         row.shareRole,
         row.shareExpiresAtMs,
+        row.teamId,
+        row.teamName,
       );
     return this.get(row.sourceId) as SourceRow;
   }
@@ -270,8 +283,11 @@ export class SourcesStore {
     return Number(result.changes) > 0;
   }
 
-  /** 只改分享信息（契约 §68：重新 `cloud/login` 时分享方报的新值）。 */
-  setShare(sourceId: string, share: SourceShare): void {
+  /** 只改分享信息（契约 §68：重新 `cloud/login` 时分享方报的新值）；团队不动。 */
+  setShare(
+    sourceId: string,
+    share: Omit<SourceShare, "teamId" | "teamName">,
+  ): void {
     this.database
       .prepare(
         "UPDATE client_sources SET owner_label = ?, share_role = ?, share_expires_at_ms = ? " +
