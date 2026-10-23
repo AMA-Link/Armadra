@@ -1,4 +1,4 @@
-import { toast } from "sonner";
+import { toast } from "@/ui/toast";
 import type { GitRepositoryOperation } from "@armadra/shared";
 
 import { t } from "../../../app/preferences-store";
@@ -61,9 +61,8 @@ export function followOperation(
 
   const finish = (operation: GitRepositoryOperation) => {
     stopped = true;
-    // 同一个 id 的提示是合并更新的：不显式清掉，进行中那条的「取消」与常驻
-    // 时长会留在结局上。
-    const settled = { id, action: undefined, duration: undefined };
+    // 同一个 id 原地换成结局：新提示不带进行中那条的「取消」，时长按结局类型取默认。
+    const settled = { id };
     switch (operation.state) {
       case "failed":
         toast.error(operation.message ?? t("gitRepo.failed"), settled);

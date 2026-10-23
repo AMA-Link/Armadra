@@ -63,23 +63,13 @@ const zh = {
   "automation.create": "创建",
   "automation.save": "保存新版本",
   "automation.edit": "编辑",
-  "automation.editNote": "改动会保存为这个计划的新一版，仍是草稿。",
-  "automation.editActiveNote":
-    "这个计划正在运行中。保存新版本会作废当前激活，把它退回草稿——要重新启用才会继续执行。",
-  "automation.savedDraft": "已保存为新版本；计划回到草稿，需要重新启用",
   "automation.runs.more": "加载更早的记录",
   "automation.runs.plan": "计划",
   "automation.cancel": "取消",
-  "automation.confirmActivate": "启用这个计划？",
-  "automation.confirmActivateNote":
-    "启用会绑定你现在看到的这一版配置。之后任何编辑都会让它回到草稿。",
-  "automation.confirmRunNow": "立即运行？",
-  "automation.confirmRunNowNote":
-    "这会额外排一次执行，不改动计划，也不跳过目标占用检查。",
+  "automation.confirmActivate": "启用「{name}」？",
+  "automation.confirmRunNow": "立即运行「{name}」？",
   "automation.detach": "移除展示，保留计划",
-  "automation.detachNote": "只从画布上拿掉这张卡片，计划继续在 Host 上运行。",
   "automation.disableAndDetach": "停用并移除",
-  "automation.disableAndDetachNote": "先暂停计划，再从画布上移除这张卡片。",
 
   /* 创建向导 */
   "automation.wizard.location": "执行位置",
@@ -106,12 +96,6 @@ const zh = {
   "automation.wizard.promptRequired": "写入 Agent 的计划必须填提示词",
   "automation.wizard.agentTargetRequired": "先选择一个 Agent 节点",
   "automation.wizard.coldStart": "会话不在时按冻结定义启动",
-  "automation.wizard.coldStartNote":
-    "不勾选时，节点上没有运行中的会话就跳过这次执行，不启动任何进程。",
-  "automation.wizard.agentDeliveryNote":
-    "只在前台是该 Agent、上一回合已结束且期间没有别的输入时投递；写入成功只表示已投递，不代表任务完成。",
-  "automation.wizard.fromNative":
-    "来源：原生活动卡片。确认后创建为草稿，原生循环不受影响，也不会自动启用。",
   "automation.wizard.scheduleKind": "计划类型",
   "automation.wizard.at": "执行时间",
   "automation.wizard.interval": "间隔（毫秒）",
@@ -135,19 +119,10 @@ const zh = {
   "automation.wizard.invalidPath": "需要一个绝对路径",
   "automation.wizard.invalidTime": "请填写一个有效时间",
   "automation.wizard.invalidInterval": "间隔必须是正整数毫秒",
-  "automation.wizard.created": "计划已创建为草稿，启用后才会执行",
-  "automation.wizard.saved":
-    "保存的是这个计划的新一版；保存后它回到草稿，重新启用才会继续执行。",
-  "automation.wizard.editNote":
-    "正在编辑一个已有的计划。保存会写入新一版并作废当前激活。",
-  "automation.wizard.editTargetFrozen":
-    "目标沿用这份计划冻结下来的那一个；换目标是另一件事，要新建一份计划。",
   "automation.wizard.payloadUnavailable":
     "读不到已存的内容，因此不能保存——否则会把提示词清空。",
   "automation.wizard.dialect.cron": "cron",
   "automation.wizard.dialect.launchd": "launchd",
-  "automation.wizard.recurrenceTranslated":
-    "已按下面这条原生规则预填日程；仍然由你确认后才创建草稿。",
   "automation.wizard.recurrence.unsupportedDialect":
     "不认识这种调度器，日程没有预填；下面是原文。",
   "automation.wizard.recurrence.unsupportedSyntax":
@@ -259,27 +234,13 @@ const en: Record<keyof typeof zh, string> = {
   "automation.create": "Create",
   "automation.save": "Save new version",
   "automation.edit": "Edit",
-  "automation.editNote":
-    "Changes are stored as a new version of this plan, still a draft.",
-  "automation.editActiveNote":
-    "This plan is active. Saving a new version invalidates the current activation and returns it to draft — it runs again only once re-activated.",
-  "automation.savedDraft":
-    "Saved as a new version. The plan is a draft again and needs re-activating.",
   "automation.runs.more": "Load older runs",
   "automation.runs.plan": "Plan",
   "automation.cancel": "Cancel",
-  "automation.confirmActivate": "Activate this plan?",
-  "automation.confirmActivateNote":
-    "Activation binds the exact configuration shown here. Any later edit returns it to draft.",
-  "automation.confirmRunNow": "Run now?",
-  "automation.confirmRunNowNote":
-    "This queues one extra run. It does not edit the schedule or skip the target check.",
+  "automation.confirmActivate": 'Activate "{name}"?',
+  "automation.confirmRunNow": 'Run "{name}" now?',
   "automation.detach": "Remove card, keep plan",
-  "automation.detachNote":
-    "Only takes the card off the canvas; the plan keeps running on the Host.",
   "automation.disableAndDetach": "Pause and remove",
-  "automation.disableAndDetachNote":
-    "Pauses the plan first, then removes the card from the canvas.",
 
   "automation.wizard.location": "Execution location",
   "automation.wizard.currentHost": "Current Host",
@@ -307,12 +268,6 @@ const en: Record<keyof typeof zh, string> = {
   "automation.wizard.agentTargetRequired": "Choose an Agent node first",
   "automation.wizard.coldStart":
     "Start the frozen definition when no session is running",
-  "automation.wizard.coldStartNote":
-    "Left off, a run is skipped when the node has no running session; no process is ever started.",
-  "automation.wizard.agentDeliveryNote":
-    "Delivered only while that Agent is in the foreground, its last turn has finished and nothing else has been typed since. A written prompt means delivered, never finished.",
-  "automation.wizard.fromNative":
-    "From a native activity card. Confirming creates a draft; the CLI's own loop is untouched and nothing is enabled automatically.",
   "automation.wizard.scheduleKind": "Schedule",
   "automation.wizard.at": "Run at",
   "automation.wizard.interval": "Interval (ms)",
@@ -338,20 +293,10 @@ const en: Record<keyof typeof zh, string> = {
   "automation.wizard.invalidTime": "Enter a valid time",
   "automation.wizard.invalidInterval":
     "The interval must be a positive number of milliseconds",
-  "automation.wizard.created":
-    "Created as a draft; it runs only once activated",
-  "automation.wizard.saved":
-    "Saves a new version of this plan. It returns to draft, and runs again only once you re-activate it.",
-  "automation.wizard.editNote":
-    "Editing an existing plan. Saving stores a new version and invalidates the current activation.",
-  "automation.wizard.editTargetFrozen":
-    "The target stays the one this plan froze. Pointing a plan somewhere else is a different decision — create a new plan for it.",
   "automation.wizard.payloadUnavailable":
     "The stored content could not be read, so this cannot be saved — doing so would blank the prompt.",
   "automation.wizard.dialect.cron": "cron",
   "automation.wizard.dialect.launchd": "launchd",
-  "automation.wizard.recurrenceTranslated":
-    "The schedule below was filled in from this native rule. It still becomes a draft only when you confirm.",
   "automation.wizard.recurrence.unsupportedDialect":
     "This scheduler is not one we can read, so nothing was filled in. Its rule is shown as written.",
   "automation.wizard.recurrence.unsupportedSyntax":

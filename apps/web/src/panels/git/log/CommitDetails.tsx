@@ -6,8 +6,9 @@ import type { GitLogCommit } from "@armadra/shared";
 import { useT, usePreferencesStore } from "../../../app/preferences-store";
 import { gitGateway, type GitTarget } from "../../../git/gateway";
 import { writeClipboard } from "../../../terminal/TerminalSurface";
-import { cn } from "../../../lib/cn";
+import { Badge } from "../../../ui/badge";
 import { Button } from "../../../ui/button";
+import { EmptyState } from "../../../ui/state";
 import { ReadError } from "../forms";
 import { GitLoadable } from "../git-loading";
 import { refBadges } from "../CommitGraph";
@@ -93,14 +94,13 @@ export function CommitDetails({
   return (
     <div
       data-slot="git-log-details"
-      className="flex min-h-0 min-w-0 flex-1 flex-col overflow-auto p-2 text-xs"
+      className="flex min-h-0 min-w-0 flex-1 flex-col overflow-auto p-2 text-meta"
     >
       <div className="flex min-w-0 items-center gap-1">
         <span className="min-w-0 flex-1 truncate font-mono">{commit.oid}</span>
         <Button
-          size="sm"
+          size="icon-xs"
           variant="ghost"
-          className="h-6 px-1.5"
           aria-label={t("gitLog.details.copyHash")}
           onClick={() => {
             writeClipboard(commit.oid);
@@ -113,19 +113,19 @@ export function CommitDetails({
       {badges.length > 0 && (
         <div className="mt-1 flex flex-wrap gap-1">
           {badges.map((badge) => (
-            <span
+            <Badge
               key={`${badge.kind}:${badge.label}`}
-              className={cn(
-                "rounded px-1 text-[length:var(--text-caption)] leading-4",
+              size="sm"
+              variant={
                 badge.kind === "tag"
-                  ? "bg-[color-mix(in_srgb,var(--brand)_16%,transparent)] text-[var(--brand-text)]"
+                  ? "brand"
                   : badge.kind === "head"
-                    ? "bg-foreground text-background"
-                    : "border border-border text-muted-foreground",
-              )}
+                    ? "default"
+                    : "outline"
+              }
             >
               {badge.label}
-            </span>
+            </Badge>
           ))}
         </div>
       )}
@@ -154,10 +154,10 @@ export function CommitDetails({
           {commit.parents.map((oid, index) => (
             <Button
               key={oid}
-              size="sm"
+              size="xs"
               variant="ghost"
               aria-pressed={base === oid || (base === null && index === 0)}
-              className="h-6 px-1.5 font-mono text-[11px] aria-pressed:bg-muted"
+              className="font-mono aria-pressed:bg-muted"
               onClick={() => {
                 onBaseChange(index === 0 ? null : oid);
                 setFile(null);
@@ -170,13 +170,12 @@ export function CommitDetails({
       )}
 
       <div className="mt-3 flex items-center gap-1 border-t border-border pt-2">
-        <h3 className="min-w-0 flex-1 truncate font-semibold">
+        <h3 className="min-w-0 flex-1 truncate font-medium">
           {t("gitLog.details.files")}
         </h3>
         <Button
-          size="sm"
+          size="icon-xs"
           variant="ghost"
-          className="h-6 px-1.5"
           aria-pressed={flat}
           aria-label={t(flat ? "gitLog.details.tree" : "gitLog.details.flat")}
           onClick={() => setPreference("flatFiles", !flat)}
@@ -192,7 +191,7 @@ export function CommitDetails({
         <p className="text-muted-foreground">{t("gitRepo.filesTruncated")}</p>
       )}
       {detail.data && detail.data.files.length === 0 && (
-        <p className="text-muted-foreground">{t("gitRepo.noChangedFiles")}</p>
+        <EmptyState inline title={t("gitRepo.noChangedFiles")} />
       )}
       <ul className="min-w-0">
         {rows.map((row) =>
@@ -203,7 +202,9 @@ export function CommitDetails({
               style={{ paddingLeft: `${row.depth * 12}px` }}
             >
               <span className="min-w-0 flex-1 truncate">{row.label}</span>
-              <span className="shrink-0 tabular-nums">{row.count}</span>
+              <span data-numeric className="shrink-0">
+                {row.count}
+              </span>
             </li>
           ) : (
             <li key={`file:${row.path}`} className="min-w-0">
@@ -216,7 +217,7 @@ export function CommitDetails({
                   onOpenFile?.(row.path);
                 }}
                 style={{ paddingLeft: `${row.depth * 12}px` }}
-                className="h-auto w-full min-w-0 justify-start gap-2 rounded border-0 py-0.5 pr-1 text-left text-[length:inherit] font-normal hover:bg-muted aria-pressed:bg-muted"
+                className="h-auto w-full min-w-0 justify-start gap-2 rounded-tight border-0 py-0.5 pr-1 text-left font-normal hover:bg-muted aria-pressed:bg-muted"
               >
                 <span className="w-3 shrink-0 font-mono">
                   {row.file?.status.slice(0, 1)}
@@ -230,7 +231,7 @@ export function CommitDetails({
                     </span>
                   )}
                 </span>
-                <span className="shrink-0 font-mono text-[length:var(--text-caption)] text-muted-foreground">
+                <span className="shrink-0 font-mono text-caption text-muted-foreground">
                   {row.file?.additions === null || row.file?.deletions === null
                     ? t("gitRepo.binaryFile")
                     : `+${row.file?.additions} −${row.file?.deletions}`}
@@ -246,12 +247,7 @@ export function CommitDetails({
           <div className="flex items-center gap-1">
             <FileDiff aria-hidden className="size-3 shrink-0" />
             <span className="min-w-0 flex-1 truncate font-mono">{file}</span>
-            <Button
-              size="sm"
-              variant="ghost"
-              className="h-6 px-1.5"
-              onClick={() => setFile(null)}
-            >
+            <Button size="xs" variant="ghost" onClick={() => setFile(null)}>
               {t("gitLog.details.closeDiff")}
             </Button>
           </div>
@@ -268,7 +264,7 @@ export function CommitDetails({
               )}
               <pre
                 aria-label={t("gitRepo.filePatch")}
-                className="max-h-72 overflow-auto rounded-md bg-muted p-2 font-mono text-[11px] leading-4"
+                className="max-h-72 overflow-auto rounded-control bg-muted p-2 font-mono text-caption leading-4"
               >
                 {patch.data.patch}
               </pre>

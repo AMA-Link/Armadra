@@ -1,6 +1,6 @@
 import * as React from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { toast } from "sonner";
+import { toast } from "@/ui/toast";
 import { Workflow } from "lucide-react";
 import type { WorkflowDraftRow } from "@armadra/shared";
 
@@ -10,7 +10,6 @@ import { Button } from "@/ui/button";
 import {
   Card,
   CardContent,
-  CardDescription,
   CardFooter,
   CardHeader,
   CardTitle,
@@ -74,7 +73,6 @@ export function DraftCard({ row }: { row: WorkflowDraftRow }) {
       }),
     onSuccess: () => {
       void refresh();
-      toast.success(t("workflow.toast.saved"));
       openWorkflowPanel("templates");
     },
     onError: (error) => toast.error(t(workflowErrorKey(error))),
@@ -90,19 +88,17 @@ export function DraftCard({ row }: { row: WorkflowDraftRow }) {
       size="sm"
       data-slot="workflow-draft"
       data-draft-id={row.id}
-      className="pointer-events-auto min-w-0 gap-2 shadow-[var(--shadow-node)]"
+      className="pointer-events-auto min-w-0 gap-2 shadow-node"
     >
       <CardHeader className="gap-0.5">
-        <CardDescription className="flex items-center gap-1 text-[11px]">
+        <p className="flex items-center gap-1 text-caption text-muted-foreground">
           <Workflow className="size-3.5" />
           {t("workflow.draft.label")}
-        </CardDescription>
-        <CardTitle className="truncate text-[13px]">
-          {row.draft.title}
-        </CardTitle>
+        </p>
+        <CardTitle className="truncate text-body">{row.draft.title}</CardTitle>
       </CardHeader>
       <CardContent className="min-w-0 space-y-2">
-        <p className="truncate text-[12px] text-muted-foreground">
+        <p className="truncate text-meta text-muted-foreground">
           {t("workflow.library.stats", {
             roles: row.draft.roles.length,
             steps: row.draft.steps.length,

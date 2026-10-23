@@ -148,7 +148,7 @@ describe("提交表格骨架", () => {
     tick(SKELETON_DELAY_MS * 2);
     expect(container.querySelector("[data-slot=git-log-skeleton]")).toBeNull();
     expect(container.querySelector("p[role=status]")!.className).toContain(
-      "h-6",
+      "h-[28px]",
     );
   });
 });
@@ -161,7 +161,7 @@ describe("代码托管列表骨架", () => {
     );
     expect(rows).toHaveLength(5);
     rows.forEach((row) => {
-      expect(row.className).toContain("rounded-lg");
+      expect(row.className).toContain("rounded-card");
       expect(row.className).toContain("border-border");
     });
   });

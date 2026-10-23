@@ -18,7 +18,6 @@ import {
   ResponsiveAlertDialogAction,
   ResponsiveAlertDialogCancel,
   ResponsiveAlertDialogContent,
-  ResponsiveAlertDialogDescription,
   ResponsiveAlertDialogFooter,
   ResponsiveAlertDialogHeader,
   ResponsiveAlertDialogTitle,
@@ -60,7 +59,7 @@ export function ChangesHunks(props: ChangesHunksProps) {
 
 function HunkBody({ hunk }: { hunk: GitHunk }) {
   return (
-    <pre className="max-h-64 min-w-0 overflow-auto rounded-md bg-muted/40 p-2 font-mono text-[11px] leading-5">
+    <pre className="max-h-64 min-w-0 overflow-auto rounded-control bg-muted/40 p-2 font-mono text-caption leading-5">
       <code>
         {hunk.header}
         {"\n"}
@@ -174,7 +173,9 @@ function HunkSession({
   return (
     <section aria-label={t("gitHunk.title")} className="min-w-0 space-y-2 p-3">
       <div className="flex min-w-0 flex-wrap items-center gap-2">
-        <h3 className="min-w-0 flex-1 break-all text-xs font-medium">{file}</h3>
+        <h3 className="min-w-0 flex-1 break-all text-meta font-medium">
+          {file}
+        </h3>
         <Badge variant="outline">
           {t(scope === "staged" ? "gitHunk.staged" : "gitHunk.worktree")}
         </Badge>
@@ -189,31 +190,31 @@ function HunkSession({
       </Button>
       <GitLoadable loading={query.isLoading} kind="blocks" size={2} />
       {query.error && (
-        <p role="alert" className="break-words text-xs text-destructive">
+        <p role="alert" className="break-words text-meta text-destructive">
           {query.error.message}
         </p>
       )}
       {mutation.isPending && (
-        <p role="status" className="text-xs">
+        <p role="status" className="text-meta">
           {t("gitHunk.busy")}
         </p>
       )}
       {mutation.error && (
         <div
           role="alert"
-          className="space-y-1 break-words text-xs text-destructive"
+          className="space-y-1 break-words text-meta text-destructive"
         >
           <p>{mutation.error.message || t("gitHunk.failed")}</p>
           <p>{t("gitHunk.uncertain")}</p>
         </div>
       )}
       {mutation.isSuccess && (
-        <p role="status" className="text-xs">
+        <p role="status" className="text-meta">
           {t("gitHunk.applied")}
         </p>
       )}
       {query.data && !query.data.supported && (
-        <p className="text-xs text-muted-foreground">
+        <p className="text-meta text-muted-foreground">
           {t(
             query.data.unsupportedReason &&
               reasons.has(query.data.unsupportedReason)
@@ -226,7 +227,7 @@ function HunkSession({
         query.data.hunks.map((hunk) => (
           <section
             key={hunk.id}
-            className="min-w-0 space-y-2 rounded-md border border-border p-3"
+            className="min-w-0 space-y-2 rounded-control border border-border p-3"
           >
             <HunkBody hunk={hunk} />
             <div className="flex flex-wrap gap-2">
@@ -260,19 +261,19 @@ function HunkSession({
           if (!open) setConfirmation(null);
         }}
       >
-        <ResponsiveAlertDialogContent className="max-h-[90dvh] overflow-y-auto">
+        <ResponsiveAlertDialogContent
+          aria-describedby={undefined}
+          className="max-h-[90dvh] overflow-y-auto"
+        >
           <ResponsiveAlertDialogHeader>
             <ResponsiveAlertDialogTitle>
               {t("gitHunk.revertTitle")}
             </ResponsiveAlertDialogTitle>
-            <ResponsiveAlertDialogDescription>
-              {t("gitHunk.revertDescription")}
-            </ResponsiveAlertDialogDescription>
           </ResponsiveAlertDialogHeader>
-          <p className="break-all text-xs font-medium">{file}</p>
+          <p className="break-all font-mono text-meta">{file}</p>
           {confirmation && <HunkBody hunk={confirmation.hunk} />}
           {!confirmationCurrent && (
-            <p role="alert" className="text-xs">
+            <p role="alert" className="text-meta">
               {t("gitHunk.stale")}
             </p>
           )}
@@ -281,6 +282,7 @@ function HunkSession({
               {t("gitHunk.cancel")}
             </ResponsiveAlertDialogCancel>
             <ResponsiveAlertDialogAction
+              variant="destructive-solid"
               disabled={busy || !confirmationCurrent}
               onClick={() => {
                 if (confirmation && confirmationCurrent && !busy) {

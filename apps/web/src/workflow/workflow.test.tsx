@@ -345,7 +345,7 @@ describe("两次运行对比", () => {
     expect(screen.getByText("结论 A")).toBeTruthy();
     expect(screen.getByText("结论 B")).toBeTruthy();
     expect(screen.getAllByText("不同")).toHaveLength(2);
-    expect(screen.getByText("没有这一步")).toBeTruthy();
+    expect(screen.getByText("—")).toBeTruthy();
   });
 });
 

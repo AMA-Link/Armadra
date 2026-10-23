@@ -1,5 +1,5 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { toast } from "sonner";
+import { toast } from "@/ui/toast";
 import {
   ChevronRight,
   GitCompareArrows,
@@ -27,7 +27,6 @@ import {
   Item,
   ItemActions,
   ItemContent,
-  ItemDescription,
   ItemGroup,
   ItemTitle,
 } from "@/ui/item";
@@ -79,7 +78,7 @@ export function RunPanel({
           <EmptyMedia variant="icon">
             <ListChecks />
           </EmptyMedia>
-          <EmptyTitle className="text-[13px] font-normal text-muted-foreground">
+          <EmptyTitle className="text-body font-normal text-muted-foreground">
             {t("workflow.runs.empty")}
           </EmptyTitle>
         </EmptyHeader>
@@ -176,14 +175,14 @@ function RunRow({
           </Button>
         </CollapsibleTrigger>
         <ItemContent className="min-w-0 gap-0.5">
-          <ItemTitle className="w-full min-w-0 text-[12px]">
+          <ItemTitle className="w-full min-w-0 text-meta">
             <span className="shrink-0 tabular-nums text-muted-foreground">
               {clock(run.startedAt, locale)}
             </span>
             <span className="min-w-0 truncate">{run.title}</span>
           </ItemTitle>
           {params || outputs > 0 ? (
-            <ItemDescription className="truncate text-[11px]">
+            <p className="truncate text-caption text-muted-foreground">
               {[
                 params,
                 outputs > 0
@@ -192,7 +191,7 @@ function RunRow({
               ]
                 .filter(Boolean)
                 .join(" · ")}
-            </ItemDescription>
+            </p>
           ) : null}
         </ItemContent>
         <ItemActions className="shrink-0 gap-1">
@@ -220,7 +219,7 @@ function RunRow({
       <CollapsibleContent>
         <div className="ml-6 min-w-0 space-y-1.5 border-l border-border py-2 pl-3">
           {run.reason ? (
-            <p className="text-[11px] text-muted-foreground">
+            <p className="text-caption text-muted-foreground">
               {t("workflow.runs.reason", { reason: run.reason })}
             </p>
           ) : null}
@@ -269,8 +268,8 @@ function StepLine({ step }: { step: WorkflowRunStepJson }) {
       data-step-id={step.stepId}
       className="min-w-0 space-y-1"
     >
-      <div className="flex min-w-0 items-center gap-1.5 text-[12px]">
-        <Badge variant="outline" className="h-[18px] px-1 text-[11px]">
+      <div className="flex min-w-0 items-center gap-1.5 text-meta">
+        <Badge variant="outline" size="sm">
           {t(`workflow.kind.${step.kind}`)}
         </Badge>
         <span className="min-w-0 truncate font-medium">{step.stepId}</span>
@@ -286,18 +285,18 @@ function StepLine({ step }: { step: WorkflowRunStepJson }) {
         />
       </div>
       {step.decision ? (
-        <p className="text-[11px] text-muted-foreground">
+        <p className="text-caption text-muted-foreground">
           {t(`workflow.decision.${step.decision}`)}
           {step.note ? ` · ${step.note}` : ""}
         </p>
       ) : null}
       {step.reason && step.status !== "done" ? (
-        <p className="text-[11px] text-muted-foreground">{step.reason}</p>
+        <p className="text-caption text-muted-foreground">{step.reason}</p>
       ) : null}
       {step.outputs.map((output) => (
         <pre
           key={`${output.key}-${output.at}`}
-          className="max-h-32 min-w-0 overflow-auto rounded-[var(--r-control)] bg-muted px-2 py-1 font-sans text-[11px] whitespace-pre-wrap select-text"
+          className="max-h-32 min-w-0 overflow-auto rounded-control bg-muted px-2 py-1 font-sans text-caption whitespace-pre-wrap select-text"
         >
           {output.body}
         </pre>

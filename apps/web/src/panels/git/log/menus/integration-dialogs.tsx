@@ -11,7 +11,6 @@ import { Button } from "../../../../ui/button";
 import {
   ResponsiveDialog,
   ResponsiveDialogContent,
-  ResponsiveDialogDescription,
   ResponsiveDialogHeader,
   ResponsiveDialogTitle,
 } from "../../../ResponsiveDialog";
@@ -57,16 +56,19 @@ export function RebaseTodoDialog({
         if (!open) onClose();
       }}
     >
-      <ResponsiveDialogContent className="max-w-3xl">
+      <ResponsiveDialogContent
+        aria-describedby={undefined}
+        className="max-w-3xl"
+      >
         <ResponsiveDialogHeader>
           <ResponsiveDialogTitle>
             {t("gitRepo.rebaseTodo")}
           </ResponsiveDialogTitle>
-          <ResponsiveDialogDescription className="break-all font-mono">
+          <p className="break-all font-mono text-meta text-muted-foreground">
             {target?.oid.slice(0, 12)}
-          </ResponsiveDialogDescription>
+          </p>
         </ResponsiveDialogHeader>
-        <div className="max-h-[60vh] min-w-0 overflow-auto text-xs">
+        <div className="max-h-[60vh] min-w-0 overflow-auto text-meta">
           {target && (
             <RebaseTodo
               key={`${target.repositoryPath}:${target.oid}`}
@@ -120,14 +122,14 @@ export function CherryPickDialog({
         if (!open) onClose();
       }}
     >
-      <ResponsiveDialogContent className="max-w-3xl">
+      <ResponsiveDialogContent
+        aria-describedby={undefined}
+        className="max-w-3xl"
+      >
         <ResponsiveDialogHeader>
           <ResponsiveDialogTitle>
             {t("gitIntegration.cherryPick")}
           </ResponsiveDialogTitle>
-          <ResponsiveDialogDescription>
-            {t("gitLog.menu.cherryPickPasteOid")}
-          </ResponsiveDialogDescription>
         </ResponsiveDialogHeader>
         {target && (
           <Button
@@ -139,7 +141,7 @@ export function CherryPickDialog({
             {target.oid}
           </Button>
         )}
-        <div className="max-h-[60vh] min-w-0 overflow-auto text-xs">
+        <div className="max-h-[60vh] min-w-0 overflow-auto text-meta">
           {target && state && (
             <CherryPick
               key={`${target.repositoryPath}:${target.oid}`}

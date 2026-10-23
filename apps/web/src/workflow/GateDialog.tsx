@@ -1,6 +1,6 @@
 import * as React from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { toast } from "sonner";
+import { toast } from "@/ui/toast";
 
 import { useT } from "@/app/preferences-store";
 import {
@@ -58,6 +58,7 @@ export function GateDialogView({
       }}
     >
       <ResponsiveDialogContent
+        aria-describedby={undefined}
         className="sm:max-w-[420px]"
         data-slot="workflow-gate-dialog"
       >

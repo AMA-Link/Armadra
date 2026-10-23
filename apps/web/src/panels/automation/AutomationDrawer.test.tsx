@@ -228,7 +228,7 @@ describe("plan actions", () => {
     ready(api);
     renderDrawer();
     fireEvent.click(await screen.findByText("启用"));
-    expect(await screen.findByText("启用这个计划？")).toBeTruthy();
+    expect(await screen.findByText(/^启用「.+」？$/)).toBeTruthy();
     // The exact revision, version and digest the user is looking at.
     expect(screen.getByText("03".repeat(32))).toBeTruthy();
     expect(api.activatePlan).not.toHaveBeenCalled();
@@ -248,7 +248,7 @@ describe("plan actions", () => {
     ready(api);
     renderDrawer();
     fireEvent.click(await screen.findByText("立即运行"));
-    expect(await screen.findByText("立即运行？")).toBeTruthy();
+    expect(await screen.findByText(/^立即运行「.+」？$/)).toBeTruthy();
     expect(api.runNow).not.toHaveBeenCalled();
     fireEvent.click(screen.getAllByText("立即运行").at(-1)!);
     await waitFor(() =>
@@ -287,9 +287,10 @@ describe("plan actions", () => {
     });
     ready(api);
     renderDrawer();
-    expect(await screen.findByText("需处理")).toBeTruthy();
+    expect(
+      await screen.findByText(/^需处理 · TARGET_UNSUPPORTED$/),
+    ).toBeTruthy();
     expect(screen.getByText("已启用")).toBeTruthy();
-    expect(screen.getByText(/TARGET_UNSUPPORTED/)).toBeTruthy();
   });
 });
 
@@ -471,9 +472,7 @@ describe("editing a plan", () => {
     ready(api);
     renderDrawer();
     fireEvent.click(await screen.findByText("编辑"));
-    expect(
-      await screen.findByText(/目标沿用这份计划冻结下来的那一个/),
-    ).toBeTruthy();
+    expect(await screen.findByText("保存新版本")).toBeTruthy();
     // The target pickers are gone: repointing a plan is a different decision.
     expect(screen.queryByText("已有的命令会话")).toBeNull();
   });

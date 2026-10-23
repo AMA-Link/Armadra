@@ -5,13 +5,13 @@ import {
   ResponsiveAlertDialogAction,
   ResponsiveAlertDialogCancel,
   ResponsiveAlertDialogContent,
-  ResponsiveAlertDialogDescription,
   ResponsiveAlertDialogFooter,
   ResponsiveAlertDialogHeader,
   ResponsiveAlertDialogTitle,
 } from "@/panels/ResponsiveDialog";
 import { Badge } from "@/ui/badge";
 import { Button } from "@/ui/button";
+import { StatusPill } from "@/ui/status-pill";
 import { useQuery } from "@tanstack/react-query";
 import { useT } from "@/app/preferences-store";
 import { useAccess } from "@/app/use-access";
@@ -19,7 +19,13 @@ import { useCanvasStore } from "@/store/canvas-store";
 import { workflowsApi } from "@/workflow/api";
 import { FrozenScheduleAlert } from "@/workflow/FrozenScheduleAlert";
 import { workflowKeys } from "@/workflow/store";
-import { digestLabel, instant, planStateKey, scheduleKind } from "./model";
+import {
+  digestLabel,
+  instant,
+  planStateKey,
+  planTone,
+  scheduleKind,
+} from "./model";
 import {
   AutomationPlanState,
   type AutomationPlanSnapshot,
@@ -102,14 +108,14 @@ export function PlanRow({
     <section
       data-slot="automation-plan"
       data-plan-id={plan.id}
-      className="min-w-0 space-y-2 rounded-lg border border-border p-3"
+      className="min-w-0 space-y-2 rounded-card border border-border p-3"
     >
       <div className="flex min-w-0 flex-wrap items-center gap-2">
-        <h3 className="min-w-0 flex-1 truncate text-[13px] font-medium">
+        <h3 className="min-w-0 flex-1 truncate text-body font-medium">
           {plan.config?.title || plan.id}
         </h3>
-        <Badge variant="secondary">{t(planStateKey(plan))}</Badge>
-        <Badge variant="outline">
+        <StatusPill tone={planTone(plan)} label={t(planStateKey(plan))} />
+        <Badge variant="outline" size="sm">
           {t(
             kind
               ? `automation.schedule.${kind}`
@@ -117,17 +123,12 @@ export function PlanRow({
           )}
         </Badge>
         {plan.needsAttention && (
-          <Badge variant="destructive" title={plan.attentionReasonCode}>
+          <Badge variant="destructive" size="sm">
             {t("automation.needsAttention")}
+            {plan.attentionReasonCode ? ` · ${plan.attentionReasonCode}` : ""}
           </Badge>
         )}
       </div>
-      {plan.needsAttention && (
-        <p className="text-[11px] text-destructive">
-          {t("automation.needsAttentionNote")}
-          {plan.attentionReasonCode ? ` · ${plan.attentionReasonCode}` : ""}
-        </p>
-      )}
       {frozen && (
         <FrozenScheduleAlert
           templateId={template.id}
@@ -137,7 +138,7 @@ export function PlanRow({
           canManage={canManage}
         />
       )}
-      <dl className="grid min-w-0 grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-[12px]">
+      <dl className="grid min-w-0 grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-meta">
         <dt className="text-muted-foreground">{t("automation.nextDue")}</dt>
         <dd className="min-w-0 truncate">
           {instant(plan.nextDueUnixMs, locale, zone) ??
@@ -164,21 +165,11 @@ export function PlanRow({
       </dl>
 
       <div className="flex flex-wrap gap-2">
-        <Button
-          size="sm"
-          variant="secondary"
-          className="min-h-10"
-          onClick={onViewRuns}
-        >
+        <Button size="sm" variant="secondary" onClick={onViewRuns}>
           {t("automation.viewRuns")}
         </Button>
         {!hasCard && (
-          <Button
-            size="sm"
-            variant="ghost"
-            className="min-h-10"
-            onClick={onShowOnCanvas}
-          >
+          <Button size="sm" variant="ghost" onClick={onShowOnCanvas}>
             {t("automation.showOnCanvas")}
           </Button>
         )}
@@ -187,16 +178,10 @@ export function PlanRow({
           <Button
             size="sm"
             variant="ghost"
-            className="min-h-10"
             data-slot="automation-edit"
             disabled={busy}
-            // 编辑保存的是这份计划的新一版；Host 会因此作废激活、把它退回
-            // 草稿，所以按钮下面那句话必须说出来，而不是让人事后发现。
-            title={
-              plan.state === ACTIVE
-                ? t("automation.editActiveNote")
-                : t("automation.editNote")
-            }
+            // 编辑保存的是这份计划的新一版；Host 会因此作废激活、把它退回草稿，
+            // 状态胶囊随之变成「草稿」。
             onClick={onEdit}
           >
             {t("automation.edit")}
@@ -205,7 +190,6 @@ export function PlanRow({
         {canManage && plan.state !== ACTIVE && (
           <Button
             size="sm"
-            className="min-h-10"
             disabled={busy}
             onClick={() => setConfirm("activate")}
           >
@@ -217,7 +201,6 @@ export function PlanRow({
             <Button
               size="sm"
               variant="outline"
-              className="min-h-10"
               disabled={busy}
               onClick={onPause}
             >
@@ -226,7 +209,6 @@ export function PlanRow({
             <Button
               size="sm"
               variant="secondary"
-              className="min-h-10"
               disabled={busy}
               onClick={() => setConfirm("runNow")}
             >
@@ -238,22 +220,14 @@ export function PlanRow({
 
       {hasCard && (
         <div className="flex flex-wrap gap-2 border-t border-border pt-2">
-          <Button
-            size="sm"
-            variant="ghost"
-            className="min-h-10"
-            title={t("automation.detachNote")}
-            onClick={onDetach}
-          >
+          <Button size="sm" variant="ghost" onClick={onDetach}>
             {t("automation.detach")}
           </Button>
           {canManage && (
             <Button
               size="sm"
               variant="destructive"
-              className="min-h-10"
               disabled={busy}
-              title={t("automation.disableAndDetachNote")}
               onClick={onDisableAndDetach}
             >
               {t("automation.disableAndDetach")}
@@ -268,24 +242,18 @@ export function PlanRow({
           if (!open) setConfirm(null);
         }}
       >
-        <ResponsiveAlertDialogContent className="z-[var(--z-dialog)]">
+        <ResponsiveAlertDialogContent aria-describedby={undefined}>
           <ResponsiveAlertDialogHeader>
             <ResponsiveAlertDialogTitle>
               {t(
                 confirm === "runNow"
                   ? "automation.confirmRunNow"
                   : "automation.confirmActivate",
+                { name: plan.config?.title || plan.id },
               )}
             </ResponsiveAlertDialogTitle>
-            <ResponsiveAlertDialogDescription>
-              {t(
-                confirm === "runNow"
-                  ? "automation.confirmRunNowNote"
-                  : "automation.confirmActivateNote",
-              )}
-            </ResponsiveAlertDialogDescription>
           </ResponsiveAlertDialogHeader>
-          <dl className="grid min-w-0 grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-[12px]">
+          <dl className="grid min-w-0 grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-meta">
             <dt className="text-muted-foreground">
               {t("automation.configVersion")}
             </dt>
@@ -297,16 +265,15 @@ export function PlanRow({
             <dt className="text-muted-foreground">
               {t("automation.configSha")}
             </dt>
-            <dd className="min-w-0 break-all font-mono text-[11px] select-text">
+            <dd className="min-w-0 break-all font-mono text-caption select-text">
               {digest}
             </dd>
           </dl>
           <ResponsiveAlertDialogFooter>
-            <ResponsiveAlertDialogCancel className="min-h-10">
+            <ResponsiveAlertDialogCancel>
               {t("automation.cancel")}
             </ResponsiveAlertDialogCancel>
             <ResponsiveAlertDialogAction
-              className="min-h-10"
               disabled={busy}
               onClick={() => {
                 const action = confirm;

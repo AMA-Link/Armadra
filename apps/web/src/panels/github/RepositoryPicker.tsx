@@ -33,7 +33,8 @@ export function RepositoryPicker({
             autoComplete="off"
             spellCheck={false}
             onChange={(event) => onRemoteUrl(event.target.value)}
-            className="h-9 min-w-0"
+            size="sm"
+            className="min-w-0"
           />
         </Field>
       </div>
@@ -41,7 +42,7 @@ export function RepositoryPicker({
         type="submit"
         size="sm"
         variant="secondary"
-        className="min-h-9 shrink-0"
+        className="shrink-0"
         disabled={busy || !remoteUrl.trim()}
       >
         {t("github.resolve")}

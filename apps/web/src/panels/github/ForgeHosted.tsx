@@ -8,6 +8,7 @@ import { Button } from "@/ui/button";
 import { IconButton } from "@/ui/icon-button";
 import { Skeleton } from "@/ui/skeleton";
 import { Spinner } from "@/ui/spinner";
+import { EmptyState } from "@/ui/state";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/ui/tabs";
 import { useT } from "@/app/preferences-store";
 import { openExternal } from "@/platform";
@@ -86,7 +87,7 @@ function Failure({ error }: { error: unknown }) {
     <p
       role="status"
       data-slot="forge-failure"
-      className="px-3 py-2 text-[12px] text-destructive"
+      className="px-3 py-2 text-meta text-destructive"
     >
       {t(forgeFailureKey(error))}
     </p>
@@ -148,13 +149,13 @@ export function ForgeHosted({
       data-forge={forge}
     >
       <TabsList
-        className="h-10 w-full shrink-0 rounded-none border-b border-border"
+        className="w-full shrink-0 rounded-none border-b border-border"
         variant="line"
       >
-        <TabsTrigger value="issues" className="min-w-0 text-xs">
+        <TabsTrigger value="issues" className="min-w-0 text-meta">
           {t("forge.tab.issues")}
         </TabsTrigger>
-        <TabsTrigger value="pulls" className="min-w-0 text-xs">
+        <TabsTrigger value="pulls" className="min-w-0 text-meta">
           {t(`forge.tab.pulls.${forge === "gitlab" ? "gitlab" : "gitea"}`)}
         </TabsTrigger>
       </TabsList>
@@ -165,10 +166,10 @@ export function ForgeHosted({
               value={state}
               onValueChange={(next) => setState(next as ForgeListState)}
             >
-              <SelectTrigger className="h-9 w-full min-w-0">
+              <SelectTrigger size="sm" className="w-full min-w-0">
                 <SelectValue />
               </SelectTrigger>
-              <SelectContent className="z-[var(--z-dialog)]">
+              <SelectContent>
                 {(["open", "closed", "all"] as const).map((value) => (
                   <SelectItem key={value} value={value}>
                     {t(`forge.state.${value}`)}
@@ -243,13 +244,7 @@ function More({
   const t = useT();
   if (!visible) return null;
   return (
-    <Button
-      size="sm"
-      variant="ghost"
-      className="min-h-10"
-      disabled={busy}
-      onClick={onMore}
-    >
+    <Button size="sm" variant="ghost" disabled={busy} onClick={onMore}>
       {busy ? <Spinner data-icon="inline-start" /> : null}
       {t("forge.more")}
     </Button>
@@ -289,9 +284,7 @@ function IssueList({
     >
       <div className="min-w-0 space-y-1.5 p-(--space-page)">
         {issues.data && items.length === 0 && (
-          <p className="text-[12px] text-muted-foreground">
-            {t("forge.empty")}
-          </p>
+          <EmptyState inline title={t("forge.empty")} />
         )}
         {items.map((issue) => (
           <Row
@@ -347,9 +340,7 @@ function PullList({
     >
       <div className="min-w-0 space-y-1.5 p-(--space-page)">
         {pulls.data && items.length === 0 && (
-          <p className="text-[12px] text-muted-foreground">
-            {t("forge.empty")}
-          </p>
+          <EmptyState inline title={t("forge.empty")} />
         )}
         {items.map((pull) => (
           <Row
@@ -391,7 +382,7 @@ export function ForgeListSkeleton({ label }: { label: string }) {
       {[0, 1, 2, 3, 4].map((index) => (
         <div
           key={index}
-          className="flex min-h-10 min-w-0 flex-col gap-1 rounded-lg border border-border px-3 py-2"
+          className="flex min-h-14 min-w-0 flex-col gap-1 rounded-card border border-border px-3 py-2"
         >
           <div className="flex items-center gap-2">
             <Skeleton className="h-4 w-8 shrink-0" />
@@ -446,27 +437,27 @@ function Row({
     <article
       data-slot={slot}
       data-number={number}
-      className="min-w-0 rounded-lg border border-border"
+      className="min-w-0 rounded-card border border-border"
     >
       <Button
         variant="ghost"
-        className="h-auto min-h-10 w-full min-w-0 flex-col items-stretch gap-1 px-3 py-2 text-left"
+        className="h-auto w-full min-w-0 flex-col items-stretch gap-1 px-3 py-2 text-left"
         onClick={onOpen}
       >
         <span className="flex min-w-0 items-center gap-2">
           <span className="shrink-0 tabular-nums text-muted-foreground">
             #{number}
           </span>
-          <span className="min-w-0 flex-1 truncate text-[13px] font-medium">
+          <span className="min-w-0 flex-1 truncate text-body font-medium">
             {title}
           </span>
           {badges.map((badge) => (
-            <Badge key={badge} variant="secondary">
+            <Badge key={badge} variant="secondary" size="sm">
               {badge}
             </Badge>
           ))}
         </span>
-        <span className="min-w-0 truncate text-[12px] font-normal text-muted-foreground">
+        <span className="min-w-0 truncate text-meta font-normal text-muted-foreground">
           {meta.filter(Boolean).join(" · ")}
         </span>
       </Button>
@@ -491,7 +482,7 @@ function Back({ onBack, url }: { onBack: () => void; url: string }) {
 
 function Heading({ number, title }: { number: number; title: string }) {
   return (
-    <h3 className="min-w-0 text-[14px] font-semibold break-words">
+    <h3 className="min-w-0 text-section font-semibold break-words">
       <span className="mr-2 tabular-nums text-muted-foreground">#{number}</span>
       {title}
     </h3>
@@ -501,7 +492,7 @@ function Heading({ number, title }: { number: number; title: string }) {
 function Body({ text }: { text: string }) {
   if (!text) return null;
   return (
-    <p className="min-w-0 text-[13px] leading-5 break-words whitespace-pre-wrap select-text">
+    <p className="min-w-0 text-body leading-5 break-words whitespace-pre-wrap select-text">
       {text}
     </p>
   );
@@ -557,14 +548,16 @@ function IssueBody({ issue, locale }: { issue: ForgeIssue; locale: string }) {
       <div className="flex min-w-0 flex-col gap-(--space-group)">
         <Heading number={issue.number} title={issue.title} />
         <div className="flex min-w-0 flex-wrap items-center gap-2">
-          <Badge variant="secondary">{t(`forge.state.${issue.state}`)}</Badge>
+          <Badge variant="secondary" size="sm">
+            {t(`forge.state.${issue.state}`)}
+          </Badge>
           {issue.labels.map((label) => (
-            <Badge key={label} variant="outline">
+            <Badge key={label} variant="outline" size="sm">
               {label}
             </Badge>
           ))}
         </div>
-        <dl className="grid min-w-0 grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-[12px]">
+        <dl className="grid min-w-0 grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-meta">
           <dt className="text-muted-foreground">{t("forge.author")}</dt>
           <dd className="min-w-0 truncate">{issue.author}</dd>
           <dt className="text-muted-foreground">{t("forge.updatedAt")}</dt>
@@ -622,10 +615,16 @@ export function PullBody({
       <div className="flex min-w-0 flex-col gap-(--space-group)">
         <Heading number={pull.number} title={pull.title} />
         <div className="flex min-w-0 flex-wrap items-center gap-2">
-          <Badge variant="secondary">{t(`forge.state.${pull.state}`)}</Badge>
-          {pull.draft && <Badge variant="outline">{t("forge.draft")}</Badge>}
+          <Badge variant="secondary" size="sm">
+            {t(`forge.state.${pull.state}`)}
+          </Badge>
+          {pull.draft && (
+            <Badge variant="outline" size="sm">
+              {t("forge.draft")}
+            </Badge>
+          )}
         </div>
-        <dl className="grid min-w-0 grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-[12px]">
+        <dl className="grid min-w-0 grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-meta">
           <dt className="text-muted-foreground">{t("forge.pull.branches")}</dt>
           <dd className="min-w-0 truncate font-mono">
             {pull.headRef} → {pull.baseRef}

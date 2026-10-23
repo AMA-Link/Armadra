@@ -417,9 +417,6 @@ describe("cross-repository commit", () => {
       name: "Amend the previous commit",
     }) as HTMLInputElement;
     expect(amend.disabled).toBe(true);
-    expect(
-      screen.getByText(/Amending is not offered across repositories/),
-    ).toBeTruthy();
   });
 
   it("asks for confirmation before the push half of commit and push", async () => {

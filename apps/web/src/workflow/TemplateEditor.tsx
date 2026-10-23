@@ -1,6 +1,6 @@
 import * as React from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { toast } from "sonner";
+import { toast } from "@/ui/toast";
 import {
   DndContext,
   type DragEndEvent,
@@ -160,13 +160,13 @@ function StepItem({
         variant="ghost"
         size="sm"
         aria-current={selected || undefined}
-        className="h-7 min-w-0 flex-1 justify-start gap-2 px-1 font-normal hover:bg-transparent"
+        className="min-w-0 flex-1 justify-start gap-2 px-1 font-normal hover:bg-transparent"
         onClick={onSelect}
       >
         <span className="tabular-nums text-muted-foreground">{index + 1}</span>
         <span className="min-w-0 truncate">{step.id}</span>
         <span className="flex-1" />
-        <Badge variant="outline" className="h-[18px] px-1 text-[11px]">
+        <Badge variant="outline" size="sm">
           {t(`workflow.kind.${step.kind}`)}
         </Badge>
       </Button>
@@ -240,17 +240,16 @@ export function TemplateEditor({
       const frozen = result.frozenSchedules;
       const ready = upgradableSchedules(frozen, workspaceId);
       if (frozen.length > 0) {
-        toast.message(t("workflow.toast.frozen", { count: frozen.length }), {
-          action:
-            ready.length > 0
-              ? {
+        toast.info(t("workflow.toast.frozen", { count: frozen.length }), {
+          ...(ready.length > 0
+            ? {
+                action: {
                   label: t("workflow.upgrade"),
                   onClick: () => upgrade(result.template.id, ready),
-                }
-              : undefined,
+                },
+              }
+            : {}),
         });
-      } else {
-        toast.success(t("workflow.toast.saved"));
       }
       onClose();
     },
@@ -316,7 +315,7 @@ export function TemplateEditor({
               />
             </Field>
             <div className="flex items-center justify-between">
-              <p className="text-[12px] font-medium">
+              <p className="text-meta font-medium">
                 {t("workflow.editor.steps")}
               </p>
               <DropdownMenu>
@@ -407,7 +406,7 @@ export function TemplateEditor({
                           >
                             <SelectValue />
                           </SelectTrigger>
-                          <SelectContent className="z-[var(--z-dialog)]">
+                          <SelectContent>
                             {draft.roles.map((role) => (
                               <SelectItem key={role.id} value={role.id}>
                                 {role.title ?? role.id} · {role.agentId}
@@ -443,7 +442,7 @@ export function TemplateEditor({
                           .map((other) => (
                             <label
                               key={other.id}
-                              className="flex items-center gap-1.5 text-[12px]"
+                              className="flex items-center gap-1.5 text-meta"
                             >
                               <Checkbox
                                 checked={step.from.includes(other.id)}
@@ -490,7 +489,7 @@ export function TemplateEditor({
                             return (
                               <label
                                 key={other.id}
-                                className="flex items-center gap-1.5 text-[12px]"
+                                className="flex items-center gap-1.5 text-meta"
                               >
                                 <Checkbox
                                   checked={checked}
@@ -536,7 +535,7 @@ export function TemplateEditor({
                       data-role-id={role.id}
                       className="flex min-w-0 items-center gap-2"
                     >
-                      <span className="w-16 shrink-0 truncate font-mono text-[12px]">
+                      <span className="w-16 shrink-0 truncate font-mono text-meta">
                         {role.id}
                       </span>
                       <Input
@@ -544,7 +543,7 @@ export function TemplateEditor({
                           id: role.id,
                         })}
                         placeholder={role.id}
-                        className="h-8 min-w-0 flex-1"
+                        className="min-w-0 flex-1"
                         maxLength={160}
                         value={role.title ?? ""}
                         onChange={(event) =>
@@ -573,7 +572,7 @@ export function TemplateEditor({
                         >
                           <SelectValue />
                         </SelectTrigger>
-                        <SelectContent className="z-[var(--z-dialog)]">
+                        <SelectContent>
                           {agentChoices(role.agentId).map((agentId) => (
                             <SelectItem key={agentId} value={agentId}>
                               {agentId}
@@ -605,7 +604,7 @@ export function TemplateEditor({
                       <Field key={param.name} orientation="horizontal">
                         <FieldLabel
                           htmlFor={`workflow-editor-param-${param.name}`}
-                          className="w-32 shrink-0 font-mono text-[12px]"
+                          className="w-32 shrink-0 font-mono text-meta"
                         >
                           {param.name}
                         </FieldLabel>
@@ -667,9 +666,9 @@ export function TemplateEditor({
         data-slot="workflow-editor"
         role="region"
         aria-label={title}
-        className="min-w-0 gap-3 overflow-visible rounded-xl border border-border p-4 py-4 text-[length:inherit] ring-0 sm:h-[560px]"
+        className="min-w-0 gap-3 overflow-visible rounded-panel border border-border p-4 py-4 ring-0 sm:h-[560px]"
       >
-        <h3 className="text-[14px] font-semibold">{title}</h3>
+        <h3 className="text-section font-semibold">{title}</h3>
         {content}
         <div className="flex justify-end gap-2">{actions}</div>
       </Card>
@@ -684,6 +683,7 @@ export function TemplateEditor({
       }}
     >
       <ResponsiveDialogContent
+        aria-describedby={undefined}
         data-slot="workflow-editor"
         className="flex h-[min(680px,calc(100dvh-48px-var(--safe-top)-var(--safe-bottom)))] flex-col gap-3 sm:max-w-[920px]"
       >

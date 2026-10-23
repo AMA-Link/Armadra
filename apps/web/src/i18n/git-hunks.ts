@@ -27,8 +27,6 @@ export const gitHunks: MessageModule = {
     "gitHunk.unsupported.unsupportedPatch":
       "此差异不符合可安全应用的文本片段格式，请使用整文件操作。",
     "gitHunk.revertTitle": "还原这一片段？",
-    "gitHunk.revertDescription":
-      "只丢弃下方片段中的未暂存修改，保留其他修改和暂存区内容。此操作不能通过 Git 自动找回。",
     "gitHunk.cancel": "取消",
     "gitHunk.worktree": "工作区修改",
     "gitHunk.staged": "已暂存修改",
@@ -65,8 +63,6 @@ export const gitHunks: MessageModule = {
     "gitHunk.unsupported.unsupportedPatch":
       "This diff is not a supported, safely applicable text patch. Use whole-file operations.",
     "gitHunk.revertTitle": "Discard this hunk?",
-    "gitHunk.revertDescription":
-      "Discard only the unstaged edits shown below, preserving other edits and the index. Git cannot automatically recover these discarded edits.",
     "gitHunk.cancel": "Cancel",
     "gitHunk.worktree": "Working tree changes",
     "gitHunk.staged": "Staged changes",

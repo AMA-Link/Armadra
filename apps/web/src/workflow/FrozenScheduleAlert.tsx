@@ -1,10 +1,10 @@
 import * as React from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { toast } from "sonner";
+import { toast } from "@/ui/toast";
 import type { WorkflowUpgradeResult } from "@armadra/shared";
 
 import { useT } from "@/app/preferences-store";
-import { Alert, AlertDescription, AlertTitle } from "@/ui/alert";
+import { Alert, AlertTitle } from "@/ui/alert";
 import { Button } from "@/ui/button";
 import { workflowErrorKey, workflowsApi } from "./api";
 
@@ -64,22 +64,19 @@ export function FrozenScheduleAlert({
       }
       setRefusal(null);
       void client.invalidateQueries({ queryKey: ["automation"] });
-      toast.success(
-        t("workflow.toast.upgraded", { count: result.upgraded.length }),
-      );
     },
     onError: (error) => toast.error(t(workflowErrorKey(error))),
   });
   const message = refusal ? refusalMessage(refusal) : null;
   return (
     <Alert data-slot="automation-workflow-frozen" className="py-2">
-      <AlertTitle className="text-[12px]">
+      <AlertTitle className="text-meta">
         {t("workflow.frozen.title", { version: templateVersion })}
       </AlertTitle>
       {message ? (
-        <AlertDescription className="text-[12px]">
+        <p className="text-meta text-muted-foreground">
           {t(message.key, { names: message.names })}
-        </AlertDescription>
+        </p>
       ) : null}
       {canManage ? (
         <div className="pt-1">

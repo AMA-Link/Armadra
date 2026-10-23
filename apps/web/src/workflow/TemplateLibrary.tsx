@@ -1,6 +1,6 @@
 import * as React from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { toast } from "sonner";
+import { toast } from "@/ui/toast";
 import {
   CalendarClock,
   MoreHorizontal,
@@ -18,7 +18,6 @@ import {
   ResponsiveAlertDialogAction,
   ResponsiveAlertDialogCancel,
   ResponsiveAlertDialogContent,
-  ResponsiveAlertDialogDescription,
   ResponsiveAlertDialogFooter,
   ResponsiveAlertDialogHeader,
   ResponsiveAlertDialogTitle,
@@ -29,11 +28,11 @@ import {
   ResponsiveDialogTitle,
 } from "@/panels/ResponsiveDialog";
 import { useCanvasStore } from "@/store/canvas-store";
+import { Badge } from "@/ui/badge";
 import { Button } from "@/ui/button";
 import {
   Card,
   CardContent,
-  CardDescription,
   CardFooter,
   CardHeader,
   CardTitle,
@@ -118,7 +117,7 @@ export function TemplateLibrary({
           <EmptyMedia variant="icon">
             <Workflow />
           </EmptyMedia>
-          <EmptyTitle className="text-[13px] font-normal text-muted-foreground">
+          <EmptyTitle className="text-body font-normal text-muted-foreground">
             {t("workflow.library.empty")}
           </EmptyTitle>
         </EmptyHeader>
@@ -143,10 +142,10 @@ export function TemplateLibrary({
               className="h-full min-w-0"
             >
               <CardHeader>
-                <CardTitle className="truncate text-[13px]">
+                <CardTitle className="truncate text-body">
                   {template.name}
                 </CardTitle>
-                <CardDescription className="truncate text-[12px]">
+                <p className="truncate text-meta text-muted-foreground">
                   {t("workflow.library.stats", {
                     roles: stats.roles,
                     steps: stats.steps,
@@ -157,16 +156,18 @@ export function TemplateLibrary({
                         when: relativeTime(stats.lastRunAt, locale, now),
                       })
                     : t("workflow.library.never")}
-                </CardDescription>
+                </p>
               </CardHeader>
               <CardContent className="flex min-w-0 flex-1 flex-wrap content-start gap-1">
                 {template.template.roles.map((role) => (
-                  <span
+                  <Badge
                     key={role.id}
-                    className="truncate rounded-[var(--r-control)] bg-muted px-1.5 text-[11px] leading-[18px] text-muted-foreground"
+                    variant="secondary"
+                    size="sm"
+                    className="justify-start truncate text-muted-foreground"
                   >
                     {role.title ?? role.id} · {role.agentId}
-                  </span>
+                  </Badge>
                 ))}
               </CardContent>
               <CardFooter className="gap-1 border-t border-border py-2">
@@ -228,21 +229,18 @@ export function TemplateLibrary({
           if (!open) setDeleting(null);
         }}
       >
-        <ResponsiveAlertDialogContent>
+        <ResponsiveAlertDialogContent aria-describedby={undefined}>
           <ResponsiveAlertDialogHeader>
             <ResponsiveAlertDialogTitle>
               {t("workflow.delete.title", { name: deleting?.name ?? "" })}
             </ResponsiveAlertDialogTitle>
-            <ResponsiveAlertDialogDescription>
-              {t("workflow.delete.body")}
-            </ResponsiveAlertDialogDescription>
           </ResponsiveAlertDialogHeader>
           <ResponsiveAlertDialogFooter>
             <ResponsiveAlertDialogCancel>
               {t("workflow.cancel")}
             </ResponsiveAlertDialogCancel>
             <ResponsiveAlertDialogAction
-              variant="destructive"
+              variant="destructive-solid"
               onClick={() => {
                 if (deleting) remove.mutate(deleting.id);
                 setDeleting(null);
@@ -288,7 +286,6 @@ export function StartRunDialog({
       }),
     onSuccess: (started) => {
       void client.invalidateQueries({ queryKey: workflowKeys.all });
-      toast.success(t("workflow.toast.started"));
       setTab("runs");
       expand(started.id);
       onClose();
@@ -321,7 +318,10 @@ export function StartRunDialog({
         if (!open) onClose();
       }}
     >
-      <ResponsiveDialogContent className="sm:max-w-[440px]">
+      <ResponsiveDialogContent
+        aria-describedby={undefined}
+        className="sm:max-w-[440px]"
+      >
         <form className="grid gap-4" onSubmit={submit}>
           <ResponsiveDialogHeader>
             <ResponsiveDialogTitle>

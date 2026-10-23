@@ -6,6 +6,7 @@ import {
   AutomationRun,
   AutomationRunState,
 } from "../../api/automations";
+import type { StatusTone } from "@/ui/status-pill";
 
 /**
  * Display model for the automation page. Everything here is a pure function of
@@ -186,6 +187,46 @@ export function runStateKey(run: AutomationRun | undefined): string {
   return `automation.runState.${
     RUN_STATES[run?.state ?? AutomationRunState.UNSPECIFIED] ?? "unspecified"
   }`;
+}
+
+/** 计划状态在状态胶囊里的颜色：已启用是完成色，草稿 / 已结束 / 已删除是空闲。 */
+export function planTone(plan: AutomationPlan | undefined): StatusTone {
+  switch (plan?.state) {
+    case AutomationPlanState.ACTIVE:
+      return "done";
+    case AutomationPlanState.PAUSED:
+      return "paused";
+    default:
+      return "idle";
+  }
+}
+
+/**
+ * 运行状态在状态胶囊里的颜色。「已投递」不画成完成（它只是递到了），
+ * 「结果未知」用需要你的颜色，不归进成功或失败。
+ */
+export function runTone(run: AutomationRun | undefined): StatusTone {
+  switch (run?.state) {
+    case AutomationRunState.DUE:
+    case AutomationRunState.CLAIMED:
+    case AutomationRunState.WAITING_TARGET:
+      return "queued";
+    case AutomationRunState.DISPATCHING:
+    case AutomationRunState.RUNNING:
+      return "working";
+    case AutomationRunState.DELIVERED:
+      return "unread";
+    case AutomationRunState.SUCCEEDED:
+      return "done";
+    case AutomationRunState.FAILED:
+      return "failed";
+    case AutomationRunState.CANCELLED:
+      return "paused";
+    case AutomationRunState.UNKNOWN:
+      return "attention";
+    default:
+      return "idle";
+  }
 }
 
 /**

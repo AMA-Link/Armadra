@@ -9,6 +9,7 @@ import type {
 } from "@armadra/shared";
 import { sk } from "../../sources/scope";
 import { useT } from "../../app/preferences-store";
+import { Badge } from "../../ui/badge";
 import { Button } from "../../ui/button";
 import {
   Select,
@@ -19,6 +20,7 @@ import {
 } from "../../ui/select";
 import { Check, Field, ReadError } from "./forms";
 import { Input } from "../../ui/input";
+import { EmptyState } from "../../ui/state";
 import { writeClipboard } from "../../terminal/TerminalSurface";
 import {
   branchFromCommit,
@@ -86,8 +88,7 @@ export function Reflog({
   });
   const entries = log.data?.pages.flatMap((page) => page.entries) ?? [];
   return (
-    <div className="min-w-0 space-y-2 p-3 text-xs">
-      <p className="text-muted-foreground">{t("gitRepo.reflogSafety")}</p>
+    <div className="min-w-0 space-y-2 p-3 text-meta">
       <form
         className="flex flex-wrap items-end gap-2"
         onSubmit={(event) => {
@@ -114,14 +115,16 @@ export function Reflog({
       {log.error && (
         <ReadError error={log.error} retry={() => void log.refetch()} />
       )}
-      {log.data && entries.length === 0 && <p>{t("gitRepo.reflogEmpty")}</p>}
+      {log.data && entries.length === 0 && (
+        <EmptyState inline title={t("gitRepo.reflogEmpty")} />
+      )}
       <ol className="space-y-1">
         {entries.map((entry) => (
           <li key={entry.selector} className="min-w-0">
             <Button
               type="button"
               variant="ghost"
-              className="h-auto w-full flex-col items-stretch justify-start gap-0 rounded-md border-border p-2 text-left text-[length:inherit] font-normal whitespace-normal hover:bg-accent"
+              className="h-auto w-full flex-col items-stretch justify-start gap-0 rounded-control border-border p-2 text-left font-normal whitespace-normal hover:bg-accent"
               aria-expanded={selected === entry.selector}
               onClick={() =>
                 setSelected(selected === entry.selector ? null : entry.selector)
@@ -130,7 +133,9 @@ export function Reflog({
               <span className="flex flex-wrap items-baseline gap-2">
                 <span className="font-mono">{entry.selector}</span>
                 {entry.action && (
-                  <span className="rounded bg-muted px-1">{entry.action}</span>
+                  <Badge variant="secondary" size="sm">
+                    {entry.action}
+                  </Badge>
                 )}
                 <span className="min-w-0 flex-1 break-words">
                   {entry.message}
@@ -219,7 +224,6 @@ function ReflogActions({
           {t("gitRepo.checkoutCommit")}
         </Button>
       </div>
-      <p className="text-muted-foreground">{t("gitRepo.detachedSafety")}</p>
       <form
         className="space-y-2"
         onSubmit={(event) => {
@@ -265,10 +269,10 @@ function ReflogActions({
                 setDiscardChanges(false);
               }}
             >
-              <SelectTrigger className="h-9 w-full min-w-0">
+              <SelectTrigger className="w-full min-w-0">
                 <SelectValue />
               </SelectTrigger>
-              <SelectContent className="z-[var(--z-dialog)]">
+              <SelectContent>
                 {(["soft", "mixed", "hard"] as const).map((mode) => (
                   <SelectItem key={mode} value={mode}>
                     {t(`gitRepo.reset.${mode}`)}
@@ -277,9 +281,6 @@ function ReflogActions({
               </SelectContent>
             </Select>
           </Field>
-          <p className="text-muted-foreground">
-            {t(`gitRepo.resetSafety.${resetMode}`)}
-          </p>
           {resetMode === "hard" && state?.dirty && (
             <Check
               label={t("gitRepo.resetDiscard")}

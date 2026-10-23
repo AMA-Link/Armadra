@@ -185,24 +185,23 @@ function AssistantSession({
   return (
     <section
       aria-label={t("gitMessage.title")}
-      className="max-h-[50dvh] overflow-y-auto min-w-0 space-y-2 rounded-md border border-border p-3 text-xs"
+      className="max-h-[50dvh] overflow-y-auto min-w-0 space-y-2 rounded-control border border-border p-3 text-meta"
     >
       <h3 className="font-medium">{t("gitMessage.title")}</h3>
-      <p className="text-muted-foreground">{t("gitMessage.note")}</p>
       <Field label={t("gitMessage.provider")}>
         <Loadable
           loading={choices.isPending}
-          skeleton={<Skeleton className="h-9 w-full" />}
+          skeleton={<Skeleton className="h-8 w-full" />}
         >
           <Select
             value={selected?.id ?? ""}
             disabled={busy !== null}
             onValueChange={setChosen}
           >
-            <SelectTrigger className="h-9 w-full min-w-0">
+            <SelectTrigger className="w-full min-w-0">
               <SelectValue />
             </SelectTrigger>
-            <SelectContent className="z-[var(--z-dialog)]">
+            <SelectContent>
               {choices.data?.map((provider) => (
                 <SelectItem key={provider.id} value={provider.id}>
                   {provider.label}
@@ -218,10 +217,10 @@ function AssistantSession({
           disabled={busy !== null}
           onValueChange={(next) => setLanguage(next as GitMessageLanguage)}
         >
-          <SelectTrigger className="h-9 w-full min-w-0">
+          <SelectTrigger className="w-full min-w-0">
             <SelectValue />
           </SelectTrigger>
-          <SelectContent className="z-[var(--z-dialog)]">
+          <SelectContent>
             {GIT_MESSAGE_LANGUAGES.map((value) => (
               <SelectItem key={value} value={value}>
                 {t(`gitMessage.language.${value}`)}
@@ -235,12 +234,6 @@ function AssistantSession({
         checked={conventional}
         onChange={setConventional}
       />
-      <p className="break-words text-muted-foreground">
-        {t("gitMessage.optionsNote")}
-      </p>
-      <p className="break-words text-muted-foreground">
-        {t("gitMessage.credentials")}
-      </p>
       {selected && (!selected.available || selected.id !== "claude-bare") && (
         <p role="status">
           {t(
@@ -345,7 +338,6 @@ function AssistantSession({
           >
             {t(busy === "fill" ? "gitMessage.checking" : "gitMessage.fill")}
           </Button>
-          <p className="text-muted-foreground">{t("gitMessage.draftOnly")}</p>
         </>
       )}
     </section>

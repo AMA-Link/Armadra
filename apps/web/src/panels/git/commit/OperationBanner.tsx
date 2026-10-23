@@ -55,13 +55,10 @@ function Banner({
     <section
       aria-label={t(`gitIntegration.kind.${state.kind}`)}
       // 横幅可以很长（未被接管的会话要解释两句），但它不该把变更树挤没了。
-      className="max-h-28 min-w-0 space-y-2 overflow-auto border-b border-border bg-[color-mix(in_oklab,var(--warn)_12%,transparent)] px-3 py-2 text-xs"
+      className="max-h-28 min-w-0 space-y-2 overflow-auto border-b border-border bg-warn-soft px-3 py-2 text-meta"
     >
       <div className="flex min-w-0 flex-wrap items-center gap-2">
-        <AlertTriangle
-          aria-hidden
-          className="size-4 shrink-0 text-[var(--warn)]"
-        />
+        <AlertTriangle aria-hidden className="size-4 shrink-0 text-warn-text" />
         <span className="font-medium">
           {t(`gitIntegration.kind.${state.kind}`)}
         </span>
@@ -77,7 +74,7 @@ function Banner({
           {state.head.branch ?? t("gitRepo.detached")}
         </span>
         {state.conflicts.length > 0 && (
-          <span className="text-[var(--danger-text)] tabular-nums">
+          <span className="text-danger-text tabular-nums">
             {t("gitCommit.group.conflicts")} {state.conflicts.length}
           </span>
         )}
@@ -116,19 +113,12 @@ function Banner({
               {t(`gitIntegration.abort${label}`)}
             </Button>
           </div>
-          {/* 跳过一个被重放的提交是丢弃它，不是「先放着」。 */}
-          {state.kind === "rebase" && state.canSkip && (
-            <p className="text-muted-foreground">
-              {t("gitRepo.skipReplayedCommitHint")}
-            </p>
-          )}
         </>
       ) : (
         // 别的 Git 工具开的会话：这里没有它的 sessionId，按下去只会被拒。
-        <div role="alert" className="space-y-1 text-[var(--warn)]">
-          <p>{t("gitIntegration.external")}</p>
-          <p>{t("gitIntegration.restart")}</p>
-        </div>
+        <p role="alert" className="text-warn-text">
+          {t("gitIntegration.external")}
+        </p>
       )}
     </section>
   );

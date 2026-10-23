@@ -5,9 +5,11 @@ import type { GitLogCommit } from "@armadra/shared";
 import { useT, usePreferencesStore } from "../../../app/preferences-store";
 import { cn } from "../../../lib/cn";
 import { Loadable } from "../../../loading/Loadable";
+import { Badge } from "../../../ui/badge";
 import { Button } from "../../../ui/button";
 import { Skeleton } from "../../../ui/skeleton";
 import { Spinner } from "../../../ui/spinner";
+import { EmptyState } from "../../../ui/state";
 import {
   LANE_WIDTH,
   MAX_LANES,
@@ -22,7 +24,7 @@ import { commitKey, logGraphKeys, repositoryColor } from "./graph";
  *
  * 三件事决定了它必须是虚拟化的、而且图与行必须同源：
  *
- * 1. **行高固定 24px**（紧凑档 20px），滚到底自动续页。历史动辄上万行，
+ * 1. **行高固定 28px**（紧凑档 24px），滚到底自动续页。历史动辄上万行，
  *    一次全画出来的表格在滚动时会掉帧到没法用。
  * 2. **图只画可见区间**。车道布局仍然按**整页**算——车道是「哪个父提交还没
  *    出现」，只看可见的十几行会把跨出屏幕的线算错——但 `<path>` / `<circle>`
@@ -31,9 +33,9 @@ import { commitKey, logGraphKeys, repositoryColor } from "./graph";
  *    下移一格，图的 y 也跟着移，否则线会连到错位的行上。
  */
 
-/** 行高：常规 24px，紧凑 20px（§2.2 与工具栏的「紧凑行」）。 */
-export const LOG_ROW_HEIGHT = 24;
-export const LOG_COMPACT_ROW_HEIGHT = 20;
+/** 行高：常规 28px，紧凑 24px（§2.2 与工具栏的「紧凑行」）。 */
+export const LOG_ROW_HEIGHT = 28;
+export const LOG_COMPACT_ROW_HEIGHT = 24;
 
 export interface LogTableProps {
   commits: readonly GitLogCommit[];
@@ -163,7 +165,7 @@ export function LogTable({
     <div className="flex min-h-0 min-w-0 flex-1 flex-col">
       <div
         role="row"
-        className="flex shrink-0 items-center gap-2 border-b border-border pr-3 text-[11px] text-muted-foreground"
+        className="flex shrink-0 items-center gap-2 border-b border-border pr-3 text-caption text-muted-foreground"
         style={{ height: rowHeight, paddingLeft: gutter }}
       >
         <span role="columnheader" className="min-w-0 flex-1 truncate">
@@ -228,7 +230,7 @@ export function LogTable({
                     data-parent={edge.parent}
                     fill="none"
                     stroke={color}
-                    strokeWidth="1.5"
+                    className="stroke-[1.5]"
                     strokeLinecap="round"
                     strokeDasharray={edge.to ? undefined : "3 3"}
                     d={
@@ -248,14 +250,14 @@ export function LogTable({
                     r={3.5}
                     fill="var(--background)"
                     stroke="var(--muted-foreground)"
-                    strokeWidth="1.5"
+                    className="stroke-[1.5]"
                     strokeDasharray="2 2"
                   />
                   <path
                     d={`M${x(0)},${rowHeight / 2} v${rowHeight}`}
                     fill="none"
                     stroke="var(--muted-foreground)"
-                    strokeWidth="1.5"
+                    className="stroke-[1.5]"
                     strokeDasharray="3 3"
                   />
                 </g>
@@ -276,7 +278,7 @@ export function LogTable({
                     r={selected === commitKey(commit) ? 4.5 : 3.5}
                     fill={merge ? "var(--background)" : laneColor(point.lane)}
                     stroke={laneColor(point.lane)}
-                    strokeWidth="2"
+                    className="stroke-2"
                   />
                 );
               })}
@@ -342,16 +344,14 @@ export function LogTable({
       {hasMore && (
         <p
           role="status"
-          className="flex h-6 shrink-0 items-center gap-1.5 border-t border-border px-3 text-[11px] text-muted-foreground"
+          className="flex h-[28px] shrink-0 items-center gap-1.5 border-t border-border px-3 text-caption text-muted-foreground"
         >
-          {loading ? <Spinner className="size-3" /> : null}
+          {loading ? <Spinner size={12} /> : null}
           {t("gitLog.table.more")}
         </p>
       )}
       {!loading && rows.length === 0 && (
-        <p className="px-3 py-2 text-xs text-muted-foreground">
-          {t("gitLog.table.empty")}
-        </p>
+        <EmptyState inline title={t("gitLog.table.empty")} />
       )}
     </div>
   );
@@ -421,7 +421,7 @@ function UncommittedRow({
       aria-pressed={selected}
       onClick={onSelect}
       style={{ height, paddingLeft: gutter }}
-      className="h-auto justify-start rounded-none border-0 font-normal active:not-aria-[haspopup]:translate-y-0 w-full min-w-0 gap-2 pr-3 text-left text-xs italic text-muted-foreground hover:bg-muted aria-pressed:bg-muted"
+      className="h-auto justify-start rounded-none border-0 font-normal active:not-aria-[haspopup]:translate-y-0 w-full min-w-0 gap-2 pr-3 text-left text-meta italic text-muted-foreground hover:bg-muted aria-pressed:bg-muted"
     >
       <span className="min-w-0 flex-1 truncate">
         {t("gitLog.table.uncommitted")}
@@ -463,7 +463,7 @@ function CommitRow({
       onClick={onSelect}
       style={{ height, paddingLeft: gutter }}
       className={cn(
-        "h-auto justify-start rounded-none border-0 font-normal active:not-aria-[haspopup]:translate-y-0 relative w-full min-w-0 gap-2 pr-3 text-left text-xs hover:bg-muted aria-pressed:bg-muted",
+        "h-auto justify-start rounded-none border-0 font-normal active:not-aria-[haspopup]:translate-y-0 relative w-full min-w-0 gap-2 pr-3 text-left text-meta hover:bg-muted aria-pressed:bg-muted",
         mine && "font-medium text-foreground",
       )}
     >
@@ -479,20 +479,21 @@ function CommitRow({
         {commit.subject || commit.oid.slice(0, 12)}
       </span>
       {badges.map((badge) => (
-        <span
+        <Badge
           key={`${badge.kind}:${badge.label}`}
           title={badge.label}
-          className={cn(
-            "max-w-28 shrink-0 truncate rounded px-1 text-[length:var(--text-caption)] leading-4",
+          size="sm"
+          variant={
             badge.kind === "tag"
-              ? "bg-[color-mix(in_srgb,var(--brand)_16%,transparent)] text-[var(--brand-text)]"
+              ? "brand"
               : badge.kind === "head"
-                ? "bg-foreground text-background"
-                : "border border-border text-muted-foreground",
-          )}
+                ? "default"
+                : "outline"
+          }
+          className="max-w-28 justify-start truncate"
         >
           {badge.label}
-        </span>
+        </Badge>
       ))}
       {!narrow && (
         <span
@@ -503,7 +504,8 @@ function CommitRow({
         </span>
       )}
       <span
-        className="w-20 shrink-0 truncate text-right tabular-nums text-muted-foreground"
+        data-numeric
+        className="w-20 shrink-0 truncate text-right text-muted-foreground"
         title={commit.committerTime}
       >
         {when}
