@@ -10,6 +10,8 @@ import { StatusPill } from "@/ui/status-pill";
 
 export interface SubagentCardProps {
   card: SubagentCardModel;
+  /** 固定「此刻」（毫秒）：计时不再走秒。展示页与测试用，让画面静止。 */
+  now?: number;
 }
 
 /**
@@ -20,17 +22,18 @@ export interface SubagentCardProps {
  * 撤销。转录尾部不在事件里，所以展开显示的是子代理返回的 `result`——
  * 没有 `result` 就直说没有，而不是留一块空白。
  */
-export function SubagentCard({ card }: SubagentCardProps) {
+export function SubagentCard({ card, now: fixedNow }: SubagentCardProps) {
   const t = useT();
   const working = card.state === "working";
-  const [now, setNow] = React.useState(() => Date.now());
+  const [tick, setNow] = React.useState(() => Date.now());
+  const now = fixedNow ?? tick;
   const [open, setOpen] = React.useState(false);
 
   React.useEffect(() => {
-    if (!working) return;
+    if (!working || fixedNow !== undefined) return;
     const timer = setInterval(() => setNow(Date.now()), 1_000);
     return () => clearInterval(timer);
-  }, [working]);
+  }, [working, fixedNow]);
 
   // 结束之后用回报的时长；还在跑就自己数秒。
   const elapsed = working

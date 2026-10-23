@@ -29,6 +29,8 @@ export const TONES: readonly StatusTone[] = [
 ];
 
 const AT = "2026-10-23T10:00:00.000Z";
+/** 展示页的「此刻」：固定住，计时与相对时间不随真实时间走，截图才稳定。 */
+export const SHOWCASE_NOW = Date.parse(AT);
 const BOARD = "00000000-0000-4000-8000-0000000000d0";
 
 /** 经 `sessionDisplay` 恰好得到这个 tone 的状态镜像；`idle` 没有上报。 */
@@ -62,7 +64,7 @@ export function mirroredFor(
     case "queued":
       return {
         ...base,
-        activity: { phase: "starting", since: Date.now(), rev: "b:1" },
+        activity: { phase: "starting", since: SHOWCASE_NOW, rev: "b:1" },
       } as MirroredStatus;
     case "idle":
       return undefined;
@@ -119,7 +121,7 @@ export function worldOf(root: Spec): StatusWorld {
         id: `${spec.id}-card-${index}`,
         parentId: spec.id,
         taskLabel: card.label,
-        startedAt: Date.now() - 20_000,
+        startedAt: SHOWCASE_NOW - 20_000,
         state: card.state,
       }));
     for (const child of spec.children ?? []) {
@@ -273,14 +275,14 @@ export const SUBAGENT_CARDS: readonly SubagentCardModel[] = [
     parentId: SOURCE,
     type: "Explore",
     taskLabel: "整理 changelog",
-    startedAt: Date.now() - 42_000,
+    startedAt: SHOWCASE_NOW - 42_000,
     state: "working",
   },
   {
     id: "c2",
     parentId: SOURCE,
     taskLabel: "审查 src/x",
-    startedAt: Date.now() - 200_000,
+    startedAt: SHOWCASE_NOW - 200_000,
     state: "done",
     durationMs: 184_000,
     tokens: 1234,
@@ -291,7 +293,7 @@ export const SUBAGENT_CARDS: readonly SubagentCardModel[] = [
     id: "c3",
     parentId: SOURCE,
     taskLabel: "跑一遍测试",
-    startedAt: Date.now() - 90_000,
+    startedAt: SHOWCASE_NOW - 90_000,
     state: "done",
     durationMs: 61_000,
   },
@@ -336,7 +338,7 @@ export const NEED_ITEMS: readonly NeedItem[] = [
     nodeId: SOURCE,
     title: "审查 src/x 与 src/y",
     need: "approval",
-    updatedAt: new Date(Date.now() - 4 * 60_000).toISOString(),
+    updatedAt: new Date(SHOWCASE_NOW - 4 * 60_000).toISOString(),
     sessionId: "session-ama",
   },
   {
@@ -346,7 +348,7 @@ export const NEED_ITEMS: readonly NeedItem[] = [
     nodeId: "00000000-0000-4000-8000-0000000000d3",
     title: "整理发布说明",
     need: "input",
-    updatedAt: new Date(Date.now() - 40 * 60_000).toISOString(),
+    updatedAt: new Date(SHOWCASE_NOW - 40 * 60_000).toISOString(),
     sessionId: "session-claude",
   },
   {
@@ -356,6 +358,6 @@ export const NEED_ITEMS: readonly NeedItem[] = [
     nodeId: "00000000-0000-4000-8000-0000000000d4",
     title: "性能回归",
     need: "error",
-    updatedAt: new Date(Date.now() - 3 * 3_600_000).toISOString(),
+    updatedAt: new Date(SHOWCASE_NOW - 3 * 3_600_000).toISOString(),
   },
 ];

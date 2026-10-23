@@ -154,11 +154,14 @@ export function NeedRow({
   label,
   onSelect,
   onInspect,
+  now,
 }: {
   item: NeedItem;
   label: string;
   onSelect: () => void;
   onInspect: (tab: AgentInspectTarget["tab"]) => void;
+  /** 固定「此刻」（毫秒）：相对时间不随真实时间走。展示页用。 */
+  now?: number;
 }) {
   const t = useT();
   const tree = useAgentTree(item.nodeId, item.title);
@@ -188,7 +191,7 @@ export function NeedRow({
             data-numeric
             className="shrink-0 font-mono text-caption text-muted-foreground"
           >
-            {formatRelativeTime(item.updatedAt)}
+            {formatRelativeTime(item.updatedAt, now)}
           </span>
         </button>
         <ItemActions className="gap-1">

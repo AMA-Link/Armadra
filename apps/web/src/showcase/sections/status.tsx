@@ -27,6 +27,7 @@ import {
   ACTIVITY_WORLD,
   NEED_ITEMS,
   SESSION_ROWS,
+  SHOWCASE_NOW,
   SUBAGENT_CARDS,
   TONES,
   TREE_FIXTURES,
@@ -142,9 +143,10 @@ function Matrix() {
                     detail={tone === "working" ? "pnpm test" : undefined}
                     since={
                       tone === "working" || tone === "attention"
-                        ? Date.now() - 12_000
+                        ? SHOWCASE_NOW - 12_000
                         : undefined
                     }
+                    now={SHOWCASE_NOW}
                     spinning={line.spinning}
                   />
                 </td>
@@ -163,18 +165,18 @@ function Trees() {
     <div className="flex flex-wrap items-start gap-x-8 gap-y-(--space-block)">
       {TREE_FIXTURES.map(({ name, tree }) => (
         <Sample key={name} name={name}>
-          <div className="flex items-start gap-6">
+          <div className="flex flex-wrap items-start gap-6">
             <div className="flex h-12 items-center rounded-card border border-border px-3">
               <AgentTree tree={tree} size="sm" />
             </div>
-            <div className="w-60">
+            <div className="w-60 max-w-full">
               <AgentTree tree={tree} size="md" />
             </div>
           </div>
         </Sample>
       ))}
       <Sample name="tree · md folded">
-        <div className="w-60">
+        <div className="w-60 max-w-full">
           <AgentTree
             tree={three.tree}
             size="md"
@@ -256,7 +258,7 @@ function States() {
       <Sample name="SubagentCard" wide>
         <div className="flex w-full flex-col gap-2">
           {SUBAGENT_CARDS.map((card) => (
-            <SubagentCard key={card.id} card={card} />
+            <SubagentCard key={card.id} card={card} now={SHOWCASE_NOW} />
           ))}
         </div>
       </Sample>
@@ -282,6 +284,7 @@ function States() {
               label={t(`notifications.need.${item.need}`)}
               onSelect={() => undefined}
               onInspect={() => undefined}
+              now={SHOWCASE_NOW}
             />
           ))}
         </ul>
