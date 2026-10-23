@@ -66,8 +66,8 @@ const LAYOUT_CONSTANTS: Record<string, string> = {
   "--dock-h": "44px",
   "--drawer-w": "360px",
   "--scm-w": "460px",
-  "--settings-dialog-w": "min(calc(100vw - 48px), 1600px)",
-  "--settings-dialog-h": "min(calc(100dvh - 48px), 1040px)",
+  "--settings-dialog-w": "min(calc(100vw - 96px), 1280px)",
+  "--settings-dialog-h": "min(calc(100dvh - 96px), 860px)",
   "--settings-nav-w": "clamp(200px, 18%, 256px)",
   "--settings-topbar-h": "48px",
 };
