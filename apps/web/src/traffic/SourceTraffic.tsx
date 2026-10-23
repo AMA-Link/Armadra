@@ -46,7 +46,7 @@ export function MonthTrafficLine({
   return (
     <span
       data-slot="month-traffic"
-      className="text-[length:var(--text-caption)] text-muted-foreground tabular-nums"
+      className="text-caption text-muted-foreground tabular-nums"
       aria-label={t("traffic.monthLine", { up, down })}
     >
       ↑ {up} ↓ {down}
@@ -94,7 +94,7 @@ export function SourceTraffic({ sourceId, name, ledger }: SourceTrafficProps) {
         value={range}
         onValueChange={(value) => setRange(value as TrafficRange)}
       >
-        <TabsList className="w-full">
+        <TabsList variant="segmented" size="sm" className="w-full">
           {RANGES.map((value) => (
             <TabsTrigger key={value} value={value}>
               {t(`traffic.range.${value}`)}
