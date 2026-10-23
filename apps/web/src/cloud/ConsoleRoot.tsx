@@ -11,7 +11,8 @@ import { cloudKeys } from "./api/keys";
 import { createCloudQueryClient, useConsoleSession } from "./api/queries";
 import type { CloudApi } from "./api/session";
 import { PublicPage, hasPublicPage } from "./auth/PublicPage";
-import { navigate, useRoute } from "./router";
+import { OpsPage } from "./ops/OpsPages";
+import { navigate, useRoute, type RouteMatch } from "./router";
 import { ConsoleShell } from "./shell/ConsoleShell";
 import { PageHeader } from "./shell/PageHeader";
 import {
@@ -46,9 +47,12 @@ function ConsoleView({
   session,
   onSignOut,
   onResendVerification,
+  renderPage,
   children,
 }: {
   session: ConsoleSession | null;
+  /** 当前页的内容；缺省（或答 `undefined`）只画页头。 */
+  renderPage?: (match: RouteMatch) => React.ReactNode;
   onSignOut?: () => void;
   onResendVerification?: () => Promise<void>;
   /** 会话还没到时画在外壳之外的东西（加载、取会话失败）。 */
@@ -88,7 +92,9 @@ function ConsoleView({
         {...(onSignOut ? { onSignOut } : {})}
         {...(onResendVerification ? { onResendVerification } : {})}
       >
-        <PageHeader title={entry ? t(entry.labelKey) : ""} />
+        {renderPage?.(match) ?? (
+          <PageHeader title={entry ? t(entry.labelKey) : ""} />
+        )}
       </ConsoleShell>
     );
   }
@@ -127,6 +133,11 @@ function ConsoleView({
 
 /* ------------------------------- 数据层 ------------------------------- */
 
+/** 带数据的页面（要 `CloudApiProvider`，所以只在 `ConsoleData` 里接上）。 */
+function renderPage(match: RouteMatch): React.ReactNode {
+  return match.area === "ops" ? <OpsPage match={match} /> : undefined;
+}
+
 /** 用哪套客户端：调用方给的；DEV 且地址带 `?mock` 是内存 mock（生产构建里这支被摇掉）；否则连来源自己。 */
 function useCloudApiSource(given?: CloudApi): CloudApi | null {
   const [api, setApi] = React.useState<CloudApi | null>(
@@ -157,6 +168,35 @@ function ConsoleData({ onJoined }: { onJoined?: () => void }) {
     enabled: !expired && !publicPage,
   });
   const lost = !publicPage && (expired || isSessionError(error));
+
+  // 运营会话过期或刷新页面后丢了内存里的 CSRF：账号有运营范围就先静默续，续不上去运营登录；
+  // 没有运营范围的账号仍是「找不到」，不暴露这一区（云端控制台 §1.3、§1.4）。
+  const wantsOps =
+    match?.area === "ops" &&
+    session !== undefined &&
+    session !== null &&
+    !session.operator &&
+    session.operatorScope === true;
+  const [opsRefresh, setOpsRefresh] = React.useState<"idle" | "failed">("idle");
+  React.useEffect(() => {
+    if (!wantsOps) {
+      setOpsRefresh("idle");
+      return;
+    }
+    let live = true;
+    api.ops.auth.refresh({ scope: "operator" }).catch(() => {
+      if (!live) return;
+      setOpsRefresh("failed");
+      const path = window.location.pathname + window.location.search;
+      navigate(`/login?scope=operator&next=${encodeURIComponent(path)}`, {
+        replace: true,
+      });
+    });
+    return () => {
+      live = false;
+    };
+  }, [wantsOps, api]);
+  const recovering = wantsOps && opsRefresh === "idle";
 
   // 会话没了且续不上：回 `/login?next=<当前路径>`（云端控制台 §1.3）。
   React.useEffect(() => {
@@ -210,10 +250,17 @@ function ConsoleData({ onJoined }: { onJoined?: () => void }) {
       />
     );
   if (lost) return null;
+  if (recovering)
+    return (
+      <ConsoleView session={null}>
+        <div aria-busy="true" />
+      </ConsoleView>
+    );
   if (session)
     return (
       <ConsoleView
         session={session}
+        renderPage={renderPage}
         onSignOut={signOut}
         onResendVerification={resend}
       />

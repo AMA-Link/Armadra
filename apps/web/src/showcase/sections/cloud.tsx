@@ -14,6 +14,8 @@ import { DevicePage } from "@/cloud/auth/DevicePage";
 import { LinkPage } from "@/cloud/auth/LinkPage";
 import { MOCK_DEVICE_CODES, MOCK_LINK } from "@/cloud/mock/fixtures";
 import { PageHeader } from "@/cloud/shell/PageHeader";
+import { OpsPage } from "@/cloud/ops/OpsPages";
+import { OPS_QUERY_KEY } from "@/cloud/ops/TenantsPage";
 import { matchRoute } from "@/cloud/router";
 import { DataList, type DataColumn } from "@/cloud/ui/DataList";
 import { PageState } from "@/cloud/ui/PageState";
@@ -116,7 +118,9 @@ function MockConsole({
 }: {
   children: (session: ConsoleSession) => React.ReactNode;
 }) {
-  const [api] = React.useState(() => createMockApi({ operatorAccount: true }));
+  const [api] = React.useState(() =>
+    createMockApi({ operatorAccount: true, operatorSession: true }),
+  );
   const [client] = React.useState(createCloudQueryClient);
   return (
     <QueryClientProvider client={client}>
@@ -142,6 +146,8 @@ function FromSession({
  * 在固定侧栏与顶栏加抽屉之间切换，探针 390 / 768 / 1440 各截一张。
  */
 export default function CloudSection() {
+  // 租户样本要有搜索结果：搜索词只在 sessionStorage 里（不进地址）。
+  sessionStorage.setItem(OPS_QUERY_KEY, "li");
   return (
     <MockConsole>{(session) => <CloudSamples session={session} />}</MockConsole>
   );
@@ -193,6 +199,7 @@ function CloudSamples({ session }: { session: ConsoleSession }) {
   const t = useT();
   const columns = useHostColumns();
   const [confirm, setConfirm] = React.useState(false);
+  const [suspend, setSuspend] = React.useState(false);
   const actions = (row: CloudHostRow, layout: "table" | "list") => (
     <>
       {layout === "table" ? (
@@ -250,6 +257,22 @@ function CloudSamples({ session }: { session: ConsoleSession }) {
             onRowOpen={noop}
           />
         </ConsoleShell>
+      </div>
+
+      <div className="flex flex-col gap-4">
+        {["/ops", "/ops/nodes", "/ops/status"].map((path) => {
+          const match = matchRoute(...(path.split("?") as [string, string?]));
+          return (
+            <div
+              key={path}
+              className="h-[420px] overflow-hidden rounded-card border border-border"
+            >
+              <ConsoleShell {...shellProps} match={match!} operator>
+                <OpsPage match={match!} />
+              </ConsoleShell>
+            </div>
+          );
+        })}
       </div>
 
       <div className="grid gap-4 md:grid-cols-2">
@@ -337,7 +360,23 @@ function CloudSamples({ session }: { session: ConsoleSession }) {
         >
           {t("showcase.cloud.deleteTeam")}
         </Button>
+        <Button
+          variant="destructive"
+          className="self-start"
+          onClick={() => setSuspend(true)}
+        >
+          {t("cloud.ops.suspend")}
+        </Button>
       </div>
+      <TypedConfirm
+        open={suspend}
+        reason
+        onOpenChange={setSuspend}
+        title={t("cloud.ops.suspendTitle", { name: CLOUD_TEAMS[0]!.name })}
+        expected={CLOUD_TEAMS[0]!.name}
+        actionLabel={t("cloud.ops.suspend")}
+        onConfirm={noop}
+      />
       <TypedConfirm
         open={confirm}
         onOpenChange={setConfirm}

@@ -89,6 +89,99 @@ export const ROLE_SCOPES: Readonly<Record<MockRole, readonly string[]>> = {
   guest: [],
 };
 
+/** 运营后台的内存数据（名字、邮箱、节点号是数据不是界面文案）。 */
+export interface MockOpsAccount {
+  readonly accountId: string;
+  readonly email: string;
+  readonly displayName: string;
+  readonly plan: string;
+  readonly hostCount: number;
+  readonly teamCount: number;
+  readonly createdAtMs: number;
+}
+
+/** 协议包黄金夹具里的运营对象号：契约一致性测试的入参直接命中它们。 */
+export const GOLDEN_OPS_ACCOUNT = "acct_01JAAAAAAAAAAAAAAAAAAAAAAA";
+export const GOLDEN_OPS_TEAM = "team_01JAAAAAAAAAAAAAAAAAAAAAAA";
+
+export const MOCK_OPS_ACCOUNTS: readonly MockOpsAccount[] = [
+  {
+    accountId: GOLDEN_OPS_ACCOUNT,
+    email: "dev@example.com",
+    displayName: "Dev",
+    plan: "free",
+    hostCount: 1,
+    teamCount: 0,
+    createdAtMs: Date.UTC(2025, 5, 1),
+  },
+  {
+    accountId: MOCK_ACCOUNT.accountId,
+    email: MOCK_ACCOUNT.email,
+    displayName: MOCK_ACCOUNT.displayName,
+    plan: "free",
+    hostCount: 3,
+    teamCount: 2,
+    createdAtMs: Date.UTC(2025, 0, 9),
+  },
+  {
+    accountId: "acct_mock_lisi",
+    email: "lisi@example.com",
+    displayName: "李四",
+    plan: "free",
+    hostCount: 2,
+    teamCount: 1,
+    createdAtMs: Date.UTC(2025, 2, 2),
+  },
+];
+
+export interface MockOpsNode {
+  readonly node: string;
+  readonly region: string;
+  readonly online: boolean;
+  readonly tunnels: number;
+  readonly connections: number;
+  readonly draining: boolean;
+  readonly lastSeenAtMs: number | null;
+}
+
+export const MOCK_OPS_NODES: readonly MockOpsNode[] = [
+  {
+    node: "relay-1",
+    region: "ap-east",
+    online: true,
+    tunnels: 1,
+    connections: 2,
+    draining: false,
+    lastSeenAtMs: Date.UTC(2025, 9, 9, 9, 4),
+  },
+  {
+    node: "relay-hk-1",
+    region: "hk",
+    online: true,
+    tunnels: 12,
+    connections: 31,
+    draining: false,
+    lastSeenAtMs: Date.UTC(2025, 9, 9, 9, 5),
+  },
+  {
+    node: "relay-sg-1",
+    region: "sg",
+    online: true,
+    tunnels: 4,
+    connections: 6,
+    draining: true,
+    lastSeenAtMs: Date.UTC(2025, 9, 9, 9, 5),
+  },
+  {
+    node: "relay-us-1",
+    region: "us",
+    online: false,
+    tunnels: 0,
+    connections: 0,
+    draining: false,
+    lastSeenAtMs: Date.UTC(2025, 9, 8, 22, 0),
+  },
+];
 /** 设备授权页（`/device`）的样本码：`pending` 在等批准，`expired` 已过期，`limited` 猜码被限流；别的都是查无此码。 */
 export const MOCK_DEVICE_CODES = {
   pending: "BCDF-GHJK",
