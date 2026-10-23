@@ -204,7 +204,7 @@ describe("分享弹层：Armadra 云的授予与邀请（云端控制台 §3.5.2
     );
   });
 
-  it("访客按 guest 授予；整台范围工作空间为空", async () => {
+  it("访客按 guest 授予，且限定工作空间（团队主机上不能整台）", async () => {
     mount();
     const scope = await section();
     choose(scope, "Scope", "Whole computer");
@@ -216,8 +216,21 @@ describe("分享弹层：Armadra 云的授予与邀请（云端控制台 §3.5.2
         expect.objectContaining({
           subject: { kind: "guest", accountId: "a3" },
           role: "editor",
-          workspaceIds: [],
+          workspaceIds: ["w1"],
         }),
+      ),
+    );
+  });
+
+  it("成员可以整台：workspaceIds 为空", async () => {
+    mount();
+    const scope = await section();
+    choose(scope, "Scope", "Whole computer");
+    await pickMember(scope, "Bo");
+    fireEvent.click(scope.getByRole("button", { name: "Grant" }));
+    await waitFor(() =>
+      expect(api.cloudGrantCreate).toHaveBeenCalledWith(
+        expect.objectContaining({ workspaceIds: [] }),
       ),
     );
   });
@@ -273,7 +286,7 @@ describe("分享弹层：Armadra 云的授予与邀请（云端控制台 §3.5.2
     fireEvent.click(scope.getByRole("button", { name: "Update" }));
     expect(
       await scope.findByText(
-        "A lower role than Bo has now would lower their effective role",
+        "This would lower Bo's role, narrow the scope or shorten the expiry",
       ),
     ).toBeTruthy();
     expect(api.cloudGrantUpdate).not.toHaveBeenCalled();
@@ -446,8 +459,132 @@ describe("分享弹层：Armadra 云的授予与邀请（云端控制台 §3.5.2
       }),
     );
     fireEvent.click(within(list).getByRole("button", { name: "Remove Bo" }));
+    expect(api.cloudGrantRevoke).not.toHaveBeenCalled();
+    fireEvent.click(await screen.findByRole("button", { name: "Remove" }));
     await waitFor(() =>
       expect(api.cloudGrantRevoke).toHaveBeenCalledWith("cloud", "g1"),
+    );
+  });
+
+  it("更新只放宽范围：已有部分范围时并上当前工作空间，到期没改就不传", async () => {
+    api.cloudAccess.mockResolvedValue({
+      ...baseAccess,
+      grants: [
+        {
+          grantId: "g1",
+          subject: { kind: "member", accountId: "a2" },
+          role: "viewer",
+          workspaceIds: ["other"],
+          expiresAtMs: Date.now() + 86_400_000,
+        },
+      ],
+    });
+    api.cloudGrantUpdate.mockResolvedValue({ grant: {} });
+    mount();
+    const scope = await section();
+    choose(scope, "Role", "Can edit");
+    await pickMember(scope, "Bo");
+    fireEvent.click(scope.getByRole("button", { name: "Update" }));
+    await waitFor(() => expect(api.cloudGrantUpdate).toHaveBeenCalled());
+    const call = api.cloudGrantUpdate.mock.calls[0]?.[0];
+    expect(call.workspaceIds).toEqual(["other", "w1"]);
+    expect("expiresAtMs" in call).toBe(false);
+  });
+
+  it("已有整台授予：更新保持整台；明确改了到期才传，缩短到期要确认", async () => {
+    api.cloudAccess.mockResolvedValue({
+      ...baseAccess,
+      grants: [
+        {
+          grantId: "g1",
+          subject: { kind: "member", accountId: "a2" },
+          role: "viewer",
+          workspaceIds: [],
+          expiresAtMs: Date.now() + 20 * 86_400_000,
+        },
+      ],
+    });
+    api.cloudGrantUpdate.mockResolvedValue({ grant: {} });
+    mount();
+    const scope = await section();
+    choose(scope, "Expires in", "1 day");
+    await pickMember(scope, "Bo");
+    fireEvent.click(scope.getByRole("button", { name: "Update" }));
+    expect(
+      await scope.findByRole("button", { name: "Update anyway" }),
+    ).toBeTruthy();
+    expect(api.cloudGrantUpdate).not.toHaveBeenCalled();
+    fireEvent.click(scope.getByRole("button", { name: "Update anyway" }));
+    await waitFor(() => expect(api.cloudGrantUpdate).toHaveBeenCalled());
+    const call = api.cloudGrantUpdate.mock.calls[0]?.[0];
+    expect(call.workspaceIds).toEqual([]);
+    expect(call.expiresAtMs).toBeGreaterThan(Date.now());
+  });
+
+  it("行里降级走同一确认", async () => {
+    api.cloudAccess.mockResolvedValue({
+      ...baseAccess,
+      grants: [
+        {
+          grantId: "g1",
+          subject: { kind: "member", accountId: "a2" },
+          role: "editor",
+          workspaceIds: ["w1"],
+          expiresAtMs: null,
+        },
+      ],
+    });
+    api.cloudGrantUpdate.mockResolvedValue({ grant: {} });
+    mount();
+    const scope = await section();
+    const list = scope.getByRole("list", { name: "Granted" });
+    choose(within(list), "Bo · Role", "View only");
+    expect(api.cloudGrantUpdate).not.toHaveBeenCalled();
+    fireEvent.click(
+      await scope.findByRole("button", { name: "Update anyway" }),
+    );
+    await waitFor(() =>
+      expect(api.cloudGrantUpdate).toHaveBeenCalledWith({
+        serviceId: "cloud",
+        grantId: "g1",
+        role: "viewer",
+      }),
+    );
+  });
+
+  it("团队主机：访客的授予与非成员的邀请不能选「整台主机」", async () => {
+    mount();
+    const scope = await section();
+    await pickMember(scope, "Cy");
+    fireEvent.pointerDown(scope.getByRole("combobox", { name: "Scope" }), {
+      button: 0,
+      ctrlKey: false,
+      pointerType: "mouse",
+    });
+    expect(
+      screen
+        .getByRole("option", { name: "Whole computer" })
+        .getAttribute("aria-disabled"),
+    ).toBe("true");
+    fireEvent.keyDown(document.activeElement ?? document.body, {
+      key: "Escape",
+    });
+  });
+
+  it("邀请的 409 是「已有待接受的邀请」，和授予的文案分开", async () => {
+    api.cloudInvite.mockRejectedValueOnce(
+      new RuntimeRequestError(409, "x", "conflict"),
+    );
+    mount();
+    const scope = await section();
+    fireEvent.change(scope.getByRole("textbox", { name: "Email" }), {
+      target: { value: "bo@x.test" },
+    });
+    fireEvent.click(scope.getByRole("button", { name: "Invite" }));
+    await waitFor(() =>
+      expect(toasts.error).toHaveBeenCalledWith(
+        "An invitation is already pending, or it conflicts with their grant",
+      ),
     );
   });
 });

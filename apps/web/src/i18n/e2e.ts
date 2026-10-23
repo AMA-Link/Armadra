@@ -27,6 +27,7 @@ export const e2e: MessageModule = {
     "trust.trust": "信任",
     "trust.trusted": "已信任 {device}",
     "trust.unavailable": "这台主机上还没有这台设备的申请，让它重新连接",
+    "trust.ambiguous": "主机上有多条同名设备的申请，到主机的设备列表里处理",
     "trust.banner": "{name} 的新设备待信任",
     "trust.banner.many": "{count} 台新设备待信任",
     "trust.banner.view": "查看",
@@ -74,6 +75,8 @@ export const e2e: MessageModule = {
     "trust.trusted": "Trusted {device}",
     "trust.unavailable":
       "This host has no request from that device yet. Ask it to reconnect",
+    "trust.ambiguous":
+      "The host has several requests with that name. Handle it in the host's device list",
     "trust.banner": "{name}'s new device needs trust",
     "trust.banner.many": "{count} new devices need trust",
     "trust.banner.view": "View",
