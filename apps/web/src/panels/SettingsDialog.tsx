@@ -41,14 +41,14 @@ import {
 import { useCompactLayout } from "@/platform/layout";
 
 /**
- * 弹窗尺寸（设计系统 §2.7）。桌面按视口比例取 `--settings-dialog-w/h`（近全窗，
- * 上限 1600 × 1040），再夹进视口减 48px 与安全区；平板（768–1023）满宽减 32、
+ * 弹窗尺寸（设计系统 §2.7）。桌面按视口比例取 `--settings-dialog-w/h`（四周各留
+ * 48px，上限 1280 × 860），再夹进视口减 96px 与安全区；平板（768–1023）满宽减 32、
  * 满高减 48。
  */
 export const SETTINGS_DIALOG_CLASS = cn(
   "h-[var(--settings-dialog-h)] w-[var(--settings-dialog-w)]",
-  "max-h-[calc(100dvh-48px-var(--safe-top)-var(--safe-bottom))]",
-  "max-w-[calc(100vw-48px-var(--safe-left)-var(--safe-right))] sm:max-w-[calc(100vw-48px-var(--safe-left)-var(--safe-right))]",
+  "max-h-[calc(100dvh-96px-var(--safe-top)-var(--safe-bottom))]",
+  "max-w-[calc(100vw-96px-var(--safe-left)-var(--safe-right))] sm:max-w-[calc(100vw-96px-var(--safe-left)-var(--safe-right))]",
   "max-lg:h-[calc(100dvh-48px-var(--safe-top)-var(--safe-bottom))] max-lg:w-[calc(100vw-32px)]",
   "max-lg:max-w-[calc(100vw-32px)] max-lg:sm:max-w-[calc(100vw-32px)]",
 );
@@ -66,7 +66,7 @@ const NARROW_WIDTH = 720;
 /**
  * 设置工作台（⌘,，设计系统 §5.17）。
  *
- * 近全窗：左导航贴在窗口底上，右侧顶栏（面包屑 + 搜索 + 关闭）下面是一块 16 圆角、
+ * 大窗（四周各留 48px）：左导航贴在窗口底上，右侧顶栏（面包屑 + 搜索 + 关闭）下面是一块 16 圆角、
  * 1px 边的内容面板，里面是**当前分区独立的一页**——切分区整页替换，没有跨分区
  * 滚动。子页（SSH 主机、自定义 Agent）在同一块面板里推入，面包屑多一级，页头左侧
  * 出现「←」；不叠第二层对话框。手机是整高底部 Sheet，导航收进顶部 `Select`。
