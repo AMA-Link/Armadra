@@ -82,7 +82,7 @@ export function CommitMessage({
       className="flex shrink-0 flex-col gap-2 border-t border-border p-3"
     >
       <div className="flex min-w-0 items-center gap-2">
-        <span className="min-w-0 flex-1 truncate text-[11px] font-semibold tracking-wide text-muted-foreground">
+        <span className="min-w-0 flex-1 truncate text-caption font-medium text-muted-foreground">
           {t("gitCommit.message")}
         </span>
         <DropdownMenu>
@@ -139,7 +139,7 @@ export function CommitMessage({
         aria-label={t("gitCommit.message")}
         className="min-h-[72px] resize-none"
       />
-      <div className="space-y-1 text-xs">
+      <div className="space-y-1 text-meta">
         <label className="flex min-h-8 items-center gap-2">
           <Checkbox
             checked={amend}
@@ -148,14 +148,6 @@ export function CommitMessage({
           />
           {t("gitCommit.amend")}
         </label>
-        {!single && targets.length > 1 && (
-          <p className="text-muted-foreground">
-            {t("gitCommit.amendMultiple")}
-          </p>
-        )}
-        {single && !amendable && (
-          <p className="text-muted-foreground">{t("scm.amendUnavailable")}</p>
-        )}
         {amend && head && (
           <>
             <p className="break-words text-muted-foreground">
@@ -163,9 +155,8 @@ export function CommitMessage({
               <span className="font-mono">{head.oid.slice(0, 10)}</span>{" "}
               {head.subject}
             </p>
-            <p className="text-muted-foreground">{t("scm.amendSafety")}</p>
             {head.published && (
-              <label className="flex min-h-8 items-center gap-2 rounded-md border border-destructive p-2">
+              <label className="flex min-h-8 items-center gap-2 rounded-control border border-destructive p-2">
                 <Checkbox
                   checked={acknowledgePublished}
                   onCheckedChange={(next) =>
@@ -179,12 +170,12 @@ export function CommitMessage({
         )}
       </div>
       {targets.length === 0 ? (
-        <p className="text-xs text-muted-foreground">
+        <p className="text-meta text-muted-foreground">
           {t("gitCommit.nothingSelected")}
         </p>
       ) : (
         showRepositories && (
-          <p className="break-words text-xs text-muted-foreground">
+          <p className="break-words text-meta text-muted-foreground">
             {t("gitCommit.commitsInto", {
               count: targets.length,
               repositories: targets.map((target) => target.name).join(", "),
@@ -193,7 +184,10 @@ export function CommitMessage({
         )
       )}
       {outcomes.length > 0 && (
-        <ul aria-label={t("gitCommit.progress")} className="space-y-1 text-xs">
+        <ul
+          aria-label={t("gitCommit.progress")}
+          className="space-y-1 text-meta"
+        >
           {outcomes.map((outcome) => (
             <li
               key={outcome.repositoryPath}

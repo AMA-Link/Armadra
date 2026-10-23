@@ -7,6 +7,7 @@
  */
 import { useQueryClient } from "@tanstack/react-query";
 import { useT } from "../../../app/preferences-store";
+import { EmptyState } from "../../../ui/state";
 import { ChangesHunks } from "../ChangesHunks";
 import { invalidateGitQueries } from "../queries";
 import { runtimeApi } from "../../../api/client";
@@ -26,12 +27,7 @@ export function ChangeDiff({
 }) {
   const t = useT();
   const client = useQueryClient();
-  if (!node)
-    return (
-      <p className="p-3 text-xs text-muted-foreground">
-        {t("gitCommit.selectFile")}
-      </p>
-    );
+  if (!node) return <EmptyState inline title={t("gitCommit.selectFile")} />;
   return (
     // hunk 视图自己带文件名与 scope 徽标，这里不再重复一行标题。
     <div className="flex min-h-0 min-w-0 flex-col">

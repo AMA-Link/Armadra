@@ -97,13 +97,12 @@ describe("operation banner", () => {
     expect(onResume.mock.calls[0]![1].action.kind).toBe("abortIntegration");
   });
 
-  it("offers skip during a rebase and calls it out as a discard", () => {
+  it("offers skip during a rebase", () => {
     const onResume = view({ kind: "rebase", canSkip: true });
     fireEvent.click(
       screen.getByRole("button", { name: "gitRepo.skipReplayedCommit" }),
     );
     expect(onResume.mock.calls[0]![1].action.kind).toBe("skipIntegration");
-    expect(screen.getByText("gitRepo.skipReplayedCommitHint")).toBeTruthy();
   });
 
   it("does not offer skip during a merge", () => {

@@ -13,10 +13,10 @@ import { useGitTarget } from "../../../git/target";
 import { useT } from "../../../app/preferences-store";
 import { Button } from "../../../ui/button";
 import { Input } from "../../../ui/input";
+import { EmptyState } from "../../../ui/state";
 import {
   ResponsiveDialog,
   ResponsiveDialogContent,
-  ResponsiveDialogDescription,
   ResponsiveDialogFooter,
   ResponsiveDialogHeader,
   ResponsiveDialogTitle,
@@ -70,12 +70,12 @@ function RepositoryPicker({
     <Field label={t("gitRepo.repository")}>
       <Select value={value} onValueChange={onChange}>
         <SelectTrigger
-          className="h-9 w-full min-w-0"
+          className="w-full min-w-0"
           aria-label={t("gitRepo.repository")}
         >
           <SelectValue />
         </SelectTrigger>
-        <SelectContent className="z-[var(--z-dialog)]">
+        <SelectContent>
           {repositories.map((repository) => (
             <SelectItem
               key={repository.repositoryPath}
@@ -129,14 +129,14 @@ export function StashDialog({
   };
   return (
     <ResponsiveDialog open={open} onOpenChange={onOpenChange}>
-      <ResponsiveDialogContent className="max-h-[90dvh] overflow-y-auto">
+      <ResponsiveDialogContent
+        aria-describedby={undefined}
+        className="max-h-[90dvh] overflow-y-auto"
+      >
         <ResponsiveDialogHeader>
           <ResponsiveDialogTitle>{t("gitCommit.stash")}</ResponsiveDialogTitle>
-          <ResponsiveDialogDescription>
-            {t("gitStash.safety")}
-          </ResponsiveDialogDescription>
         </ResponsiveDialogHeader>
-        <div className="space-y-3 text-xs">
+        <div className="space-y-3 text-meta">
           <RepositoryPicker
             repositories={repositories}
             value={repositoryPath}
@@ -160,9 +160,11 @@ export function StashDialog({
               retry={() => void snapshot.refetch()}
             />
           )}
-          {state && !state.dirty && <p>{t("gitStash.noChanges")}</p>}
+          {state && !state.dirty && (
+            <EmptyState inline title={t("gitStash.noChanges")} />
+          )}
           {state?.hasConflicts && (
-            <p role="alert" className="text-[var(--warn)]">
+            <p role="alert" className="text-warn-text">
               {t("gitStash.existingConflicts")}
             </p>
           )}
@@ -243,16 +245,16 @@ export function UnstashDialog({
   };
   return (
     <ResponsiveDialog open={open} onOpenChange={onOpenChange}>
-      <ResponsiveDialogContent className="max-h-[90dvh] overflow-y-auto">
+      <ResponsiveDialogContent
+        aria-describedby={undefined}
+        className="max-h-[90dvh] overflow-y-auto"
+      >
         <ResponsiveDialogHeader>
           <ResponsiveDialogTitle>
             {t("gitCommit.unstash")}
           </ResponsiveDialogTitle>
-          <ResponsiveDialogDescription>
-            {t("gitStash.conflictSafety")}
-          </ResponsiveDialogDescription>
         </ResponsiveDialogHeader>
-        <div className="space-y-3 text-xs">
+        <div className="space-y-3 text-meta">
           <RepositoryPicker
             repositories={repositories}
             value={repositoryPath}
@@ -267,7 +269,9 @@ export function UnstashDialog({
               retry={() => void snapshot.refetch()}
             />
           )}
-          {state?.stashes.length === 0 && <p>{t("gitStash.empty")}</p>}
+          {state?.stashes.length === 0 && (
+            <EmptyState inline title={t("gitStash.empty")} />
+          )}
           <ul aria-label={t("gitStash.title")} className="space-y-1">
             {state?.stashes.map((entry) => (
               <li key={`${entry.selector}:${entry.oid}`}>
@@ -276,7 +280,7 @@ export function UnstashDialog({
                   variant="ghost"
                   aria-pressed={entry.oid === selectedOid}
                   onClick={() => setSelectedOid(entry.oid)}
-                  className="h-auto w-full min-w-0 flex-col items-stretch justify-start gap-0.5 rounded-md px-2 py-1.5 text-left text-[length:inherit] font-normal whitespace-normal hover:bg-muted aria-pressed:bg-muted"
+                  className="h-auto w-full min-w-0 flex-col items-stretch justify-start gap-0.5 rounded-control px-2 py-1.5 text-left font-normal whitespace-normal hover:bg-muted aria-pressed:bg-muted"
                 >
                   <span className="min-w-0 truncate font-medium">
                     {entry.subject}
@@ -299,7 +303,7 @@ export function UnstashDialog({
               )}
               {reviewed && detail.data && (
                 <pre
-                  className="max-h-64 overflow-auto rounded bg-muted p-2 text-[11px]"
+                  className="max-h-64 overflow-auto rounded-tight bg-muted p-2 text-caption"
                   tabIndex={0}
                 >
                   {detail.data.patch || t("gitStash.noPatch")}
@@ -313,9 +317,6 @@ export function UnstashDialog({
               {!isUniqueStash(state, selected) && (
                 <p role="alert">{t("gitStash.duplicate")}</p>
               )}
-              <p className="text-muted-foreground">
-                {t("gitStash.dropSafety")}
-              </p>
             </section>
           )}
         </div>
@@ -337,7 +338,7 @@ export function UnstashDialog({
             {t("gitRepo.popStash")}
           </Button>
           <Button
-            variant="destructive"
+            variant="destructive-solid"
             size="sm"
             disabled={busy || !selected}
             onClick={() => act("dropStash")}

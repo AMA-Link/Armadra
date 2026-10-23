@@ -12,7 +12,7 @@ import {
   useQueryClient,
   type QueryKey,
 } from "@tanstack/react-query";
-import { toast } from "sonner";
+import { toast } from "@/ui/toast";
 import type { GitStatusBatch } from "@armadra/shared";
 import { gitGateway } from "../../../git/gateway";
 import { gitTarget } from "../../../git/target";

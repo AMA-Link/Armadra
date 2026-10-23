@@ -17,6 +17,7 @@ import { useT } from "../../../app/preferences-store";
 import { cn } from "../../../lib/cn";
 import { Badge } from "../../../ui/badge";
 import { Checkbox as CheckboxPrimitive } from "../../../ui/checkbox";
+import { EmptyState } from "../../../ui/state";
 import { FileTypeIcon } from "../../../nodes/files/file-icons";
 import {
   pendingKey,
@@ -81,15 +82,16 @@ function StatusBadge({ node }: { node: ChangeFileNode }) {
   return (
     <Badge
       variant="ghost"
-      className="h-4 w-4 shrink-0 justify-center p-0 font-mono text-[length:var(--text-caption)] font-bold"
-      style={{
-        color: conflicted ? "var(--danger)" : STATUS_COLOR[node.status],
-      }}
-      title={t(
+      className="h-4 w-4 shrink-0 justify-center p-0 font-mono text-caption font-bold"
+      role="img"
+      aria-label={t(
         conflicted
           ? "gitCommit.group.conflicts"
           : `explorer.status.${node.status}`,
       )}
+      style={{
+        color: conflicted ? "var(--danger)" : STATUS_COLOR[node.status],
+      }}
     >
       {conflicted ? "U" : node.status}
     </Badge>
@@ -122,7 +124,7 @@ function FileRow({
       title={node.path}
       style={{ paddingLeft: `${node.depth * 14 + 8}px` }}
       className={cn(
-        "group flex h-7 min-w-0 cursor-default items-center gap-2 rounded-md pr-2 text-[13px] hover:bg-muted",
+        "group flex h-[28px] min-w-0 cursor-default items-center gap-2 rounded-control pr-2 text-body hover:bg-muted",
         selected && "bg-muted",
       )}
       onClick={() => onSelect(node)}
@@ -156,17 +158,14 @@ function FileRow({
       <span className="min-w-0 flex-1 truncate">{node.label}</span>
       {node.originPath && (
         <span
-          className="min-w-0 shrink truncate text-[11px] text-muted-foreground"
+          className="min-w-0 shrink truncate text-caption text-muted-foreground"
           title={t("gitCommit.renamedFrom", { path: node.originPath })}
         >
           ← {node.originPath}
         </span>
       )}
       {node.group === "conflicts" && (
-        <GitMerge
-          aria-hidden
-          className="size-3.5 shrink-0 text-[var(--danger-text)]"
-        />
+        <GitMerge aria-hidden className="size-3.5 shrink-0 text-danger-text" />
       )}
       <StatusBadge node={node} />
     </div>
@@ -197,7 +196,7 @@ function DirectoryRow({
       tabIndex={0}
       title={node.path}
       style={{ paddingLeft: `${node.depth * 14 + 8}px` }}
-      className="flex h-7 min-w-0 cursor-default items-center gap-2 rounded-md pr-2 text-[13px] hover:bg-muted"
+      className="flex h-[28px] min-w-0 cursor-default items-center gap-2 rounded-control pr-2 text-body hover:bg-muted"
       onClick={() => onCollapse(node.id)}
       onKeyDown={(event) => {
         if (event.key === "Enter" || event.key === " ") {
@@ -228,7 +227,7 @@ function DirectoryRow({
       />
       <Folder aria-hidden className="size-4 shrink-0 text-muted-foreground" />
       <span className="min-w-0 flex-1 truncate">{node.label}</span>
-      <span className="shrink-0 text-[11px] tabular-nums text-muted-foreground">
+      <span className="shrink-0 text-caption tabular-nums text-muted-foreground">
         {node.files.length}
       </span>
     </div>
@@ -313,12 +312,7 @@ export function ChangeTree({
       return next;
     });
   const total = groups.reduce((count, group) => count + group.count, 0);
-  if (total === 0)
-    return (
-      <p className="px-4 py-3 text-xs text-muted-foreground">
-        {t("gitCommit.clean")}
-      </p>
-    );
+  if (total === 0) return <EmptyState inline title={t("gitCommit.clean")} />;
   return (
     <div
       role="tree"
@@ -331,7 +325,7 @@ export function ChangeTree({
             {showRepositories && (
               <h3
                 title={repository.repositoryPath}
-                className="flex min-w-0 items-center gap-2 px-2 py-1.5 text-[11px] font-semibold tracking-wide text-muted-foreground"
+                className="flex min-w-0 items-center gap-2 px-2 py-1.5 text-caption font-medium text-muted-foreground"
               >
                 <FolderGit2 aria-hidden className="size-3.5 shrink-0" />
                 <span className="min-w-0 flex-1 truncate">
@@ -345,10 +339,9 @@ export function ChangeTree({
                 <div key={section.group} className="min-w-0">
                   <h4
                     className={cn(
-                      "px-2 py-1 text-[11px] font-semibold tracking-wide text-muted-foreground",
+                      "px-2 py-1 text-caption font-medium text-muted-foreground",
                       showRepositories && "pl-4",
-                      section.group === "conflicts" &&
-                        "text-[var(--danger-text)]",
+                      section.group === "conflicts" && "text-danger-text",
                     )}
                   >
                     {t(`gitCommit.group.${section.group}`)}

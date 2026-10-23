@@ -7,7 +7,7 @@
  */
 import { useEffect, useState } from "react";
 import { useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
-import { toast } from "sonner";
+import { toast } from "@/ui/toast";
 import {
   Archive,
   ArchiveRestore,
@@ -45,6 +45,7 @@ import {
   type ChangeFileNode,
   type RepositoryChangeGroup,
 } from "./build-change-tree";
+import { EmptyState } from "../../../ui/state";
 import { ChangeDiff } from "./ChangeDiff";
 import { ChangeTree } from "./ChangeTree";
 import { CommitMessage, type CommitOutcome } from "./CommitMessage";
@@ -319,8 +320,8 @@ export function CommitPage({
       {/* 发现跑完了却一个检出都没有：这个工作空间还不是仓库。此处是整个界面
           里唯一说得出这件事的地方，所以初始化的入口也只能在这里。 */}
       {repositories.isSuccess && records.length === 0 && (
-        <div className="space-y-2 px-4 py-3 text-xs">
-          <p className="text-muted-foreground">{t("gitCommit.noRepository")}</p>
+        <div className="space-y-2 px-4 py-3 text-meta">
+          <EmptyState inline title={t("gitCommit.noRepository")} />
           <Button
             size="sm"
             variant="outline"
@@ -353,14 +354,9 @@ export function CommitPage({
       data-keybinding-scope="scm"
       className="flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto"
     >
-      <div className="flex h-9 shrink-0 items-center gap-1 border-b border-border px-2">
+      <div className="flex shrink-0 items-center gap-1 border-b border-border px-2 py-1">
         {compact && drilled ? (
-          <Button
-            size="sm"
-            variant="ghost"
-            className="min-h-8 px-2"
-            onClick={() => setDrilled(false)}
-          >
+          <Button size="sm" variant="ghost" onClick={() => setDrilled(false)}>
             <ChevronLeft aria-hidden />
             {t("scm.back")}
           </Button>
