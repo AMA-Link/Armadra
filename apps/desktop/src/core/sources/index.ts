@@ -16,7 +16,7 @@ import { contract } from "@armadra/shared";
 
 import { AccountsService } from "../identity/accounts";
 import { cloudDomain, cloudProvider } from "../identity/cloud";
-import { currentSubject } from "../identity/gate";
+import { currentSubject, requestIdentity } from "../identity/gate";
 import { disableLinkGuests } from "../identity/grant-sync";
 import { IdentityStore } from "../identity/store";
 import { CoreFailure, fail } from "../http/errors";
@@ -187,7 +187,23 @@ export function install(
     // 本机行的缺省名跟着「主机名称」（契约 §61）。
     hostLabel: currentHostName,
     log: context.log,
-    cloud: () => cloudDomain(),
+    cloud: () => {
+      const cloud = cloudDomain();
+      if (cloud === undefined) return undefined;
+      // 登记、映射的「本人」：请求的主体；没有请求主体（桌面壳的本机动作）时是 owner。
+      const who = () => {
+        const id = requestIdentity()?.subject.principalId;
+        return id === undefined || id === ""
+          ? identity.transaction((tx) => tx.owner()?.principalId ?? "")
+          : id;
+      };
+      return {
+        registered: (issuer) => cloud.registered(issuer),
+        revoke: (input) => cloud.revoke(input),
+        register: (input) => cloud.register(input, who()),
+        bind: (assertion) => cloud.bind(who(), assertion),
+      };
+    },
     // 只有真网络才探信任锚；测试的假对端不探。
     ...(transport === networkTransport
       ? { anchorProbe: (origin: string) => presentedAnchor(origin) }
@@ -266,6 +282,8 @@ export function install(
     routeRemove: (input) => service.routeRemove(input),
     remoteAdd: (input) => service.remoteAdd(input),
     remoteDevicePoll: (input) => service.remoteDevicePoll(input.serviceId),
+    remoteSpaces: (input) => service.remoteSpaces(input.serviceId),
+    remoteRegister: (input) => service.remoteRegister(input),
     remoteUpdate: (input) => service.remoteUpdate(input),
     remoteRemove: (input) => service.remoteRemove(input.serviceId),
     remoteSources: (input) => service.remoteSources(input.serviceId),

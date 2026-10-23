@@ -53,6 +53,8 @@ export const REMOTE_SERVICE_ROUTES: readonly RouteEntry[] = (
     ["", ["PUT", "DELETE"]],
     ["/poll", ["POST"]],
     ["/sources", ["GET"]],
+    ["/spaces", ["GET"]],
+    ["/register", ["POST"]],
     ["/mount", ["POST"]],
     ["/session", ["POST"]],
     ["/logout", ["POST"]],
