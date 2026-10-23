@@ -370,16 +370,15 @@ async function scenario(ctx) {
     });
     await page.fill('input[aria-label="远程项目路径"]', project);
     await page.click('[role="dialog"] button', "打开远程项目");
-    await page.waitFor(
-      `return document.body.innerText.includes("已打开 project");`,
-      {
-        what: "「已打开」提示",
-        timeout: 60_000,
-      },
-    );
-    const listed = (await api("/api/workspaces")).body.find(
-      (item) => item.executionHostId === HOST_ID,
-    );
+    // 界面统一后打开成功不再弹「已打开」提示，以 core 里建出的工作空间为准。
+    let listed;
+    for (const deadline = Date.now() + 60_000; Date.now() < deadline; ) {
+      listed = (await api("/api/workspaces")).body.find(
+        (item) => item.executionHostId === HOST_ID,
+      );
+      if (listed) break;
+      await sleep(500);
+    }
     ctx.remote = listed;
     check(
       listed?.rootPath === project,
@@ -812,14 +811,19 @@ async function scenario(ctx) {
       await page.fill('input[aria-label="该主机上的项目路径"]', root);
       await page.click('[role="dialog"] button', "切换", { exact: true });
     };
+    const untilHost = async (accept, what) => {
+      for (const deadline = Date.now() + 60_000; Date.now() < deadline; ) {
+        const current = (await api("/api/workspaces")).body.find(
+          (item) => item.id === created.id,
+        );
+        if (current && accept(current.executionHostId)) return;
+        await sleep(500);
+      }
+      throw new Error(`等待超时：${what}`);
+    };
     await switchTo(HOST_NAME);
-    await page.waitFor(
-      `return document.body.innerText.includes("已切换到 ${HOST_NAME}");`,
-      {
-        what: "「已切换到假远端」",
-        timeout: 60_000,
-      },
-    );
+    // 界面统一后切换成功不再弹「已切换」提示，以 core 里工作空间的绑定为准。
+    await untilHost((id) => id === HOST_ID, "工作空间改绑到假远端");
     await page.capture("07a-switched-remote");
     const remote = (await api("/api/workspaces")).body.find(
       (item) => item.id === created.id,
@@ -838,13 +842,7 @@ async function scenario(ctx) {
     await page.capture("07b-remote-file");
     await page.click('button[aria-label="资源管理器"]');
     await switchTo("本机");
-    await page.waitFor(
-      `return document.body.innerText.includes("已切换到 本机");`,
-      {
-        what: "「已切换到本机」",
-        timeout: 60_000,
-      },
-    );
+    await untilHost((id) => !id, "工作空间回到本机");
     await page.capture("07c-switched-local");
     const local = (await api("/api/workspaces")).body.find(
       (item) => item.id === created.id,

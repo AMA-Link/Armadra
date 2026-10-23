@@ -568,9 +568,13 @@ await h.run(async () => {
   await member.fill('input[aria-label="口令"]', "correct horse battery");
   await member.capture("03-member-redeem");
   await member.click('[role="dialog"] button', "加入");
-  await member.waitFor(`return document.body.innerText.includes("已加入");`, {
-    what: "兑换成功提示",
-  });
+  // 界面统一后兑换成功不再弹「已加入」提示：成功时对话框收起，失败走错误提示。
+  await member.waitFor(
+    `return !document.body.innerText.includes("接受邀请");`,
+    {
+      what: "兑换对话框收起",
+    },
+  );
   step("成员经邀请注册");
   release();
   await sleep(2500);
