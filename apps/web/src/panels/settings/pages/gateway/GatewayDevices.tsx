@@ -8,15 +8,14 @@ import {
   ResponsiveAlertDialogAction,
   ResponsiveAlertDialogCancel,
   ResponsiveAlertDialogContent,
-  ResponsiveAlertDialogDescription,
   ResponsiveAlertDialogFooter,
   ResponsiveAlertDialogHeader,
   ResponsiveAlertDialogTitle,
 } from "@/panels/ResponsiveDialog";
 import { Badge } from "@/ui/badge";
-import { Card } from "@/ui/card";
 import { Button } from "@/ui/button";
 import { Spinner } from "@/ui/spinner";
+import { SettingsTableCard } from "../../SettingsTableCard";
 import {
   Table,
   TableBody,
@@ -96,9 +95,8 @@ export function GatewayDevices({
 
   return (
     <section className="flex min-w-0 flex-col gap-2">
-      <h3 className="px-0.5 text-[13px] font-medium">{t("gateway.devices")}</h3>
-      <Card className="gap-0 overflow-visible rounded-lg border border-border/70 py-0 text-[length:inherit] ring-0 px-2">
-        <Table className="text-[13px]">
+      <SettingsTableCard title={t("gateway.devices")}>
+        <Table>
           <TableHeader>
             <TableRow>
               <TableHead>{t("gateway.devices.name")}</TableHead>
@@ -121,7 +119,7 @@ export function GatewayDevices({
                         type="button"
                         size="sm"
                         variant="ghost"
-                        className="-ml-2 gap-1 text-[12px] text-muted-foreground"
+                        className="-ml-2 gap-1 text-meta text-muted-foreground"
                         aria-expanded={!folded.has(group.origin)}
                         onClick={() =>
                           setFolded((previous) => {
@@ -148,7 +146,7 @@ export function GatewayDevices({
                       <TableCell className="max-w-[16rem] truncate font-medium">
                         {device.name || device.deviceId}
                         {device.deviceId === currentDeviceId && (
-                          <Badge variant="secondary" className="ml-2">
+                          <Badge variant="secondary" size="sm" className="ml-2">
                             {t("gateway.devices.current")}
                           </Badge>
                         )}
@@ -171,6 +169,7 @@ export function GatewayDevices({
                       </TableCell>
                       <TableCell>
                         <Badge
+                          size="sm"
                           variant={
                             device.role === "owner" ? "secondary" : "outline"
                           }
@@ -213,7 +212,7 @@ export function GatewayDevices({
             ))}
           </TableBody>
         </Table>
-      </Card>
+      </SettingsTableCard>
       {hasMore && onMore && (
         <Button
           type="button"
@@ -244,11 +243,8 @@ export function GatewayDevices({
             <ResponsiveAlertDialogTitle>
               {t("gateway.devices.confirmTitle")}
             </ResponsiveAlertDialogTitle>
-            <ResponsiveAlertDialogDescription>
-              {t("gateway.devices.confirmNote")}
-            </ResponsiveAlertDialogDescription>
           </ResponsiveAlertDialogHeader>
-          <p className="break-words text-[13px] font-medium">
+          <p className="break-words text-body font-medium">
             {confirm?.name || confirm?.deviceId}
           </p>
           <ResponsiveAlertDialogFooter>

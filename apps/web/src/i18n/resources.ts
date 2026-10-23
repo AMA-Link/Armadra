@@ -28,8 +28,6 @@ export const resources: MessageModule = {
     "resources.pressure.warning": "偏紧",
     "resources.pressure.critical": "紧张",
     "resources.pressure.unknown": "未知",
-    "resources.pressure.hint":
-      "系统自己给的判断，不是已用比例：可回收的缓存也算「已用」，比例高不等于有压力。这台机器不报时显示未知，不显示「正常」。",
     "resources.location.remote": "远程",
 
     "resources.sessions": "会话",
@@ -43,10 +41,7 @@ export const resources: MessageModule = {
     "resources.session.children": "子进程 {count}",
     "resources.session.locate": "定位到节点",
     "resources.session.end": "结束会话",
-    "resources.session.memoryEstimated":
-      "进程树 RSS 之和；共享内存会被重复计入，是估计值",
-    "resources.endTitle": "结束这个会话？",
-    "resources.endBody": "「{name}」里正在运行的进程会被终止，无法恢复。",
+    "resources.endTitle": "结束「{name}」？",
     "resources.endFailed": "结束会话失败",
 
     "resources.unknown.remote": "在远程主机上运行，本机测不到指标",
@@ -71,9 +66,6 @@ export const resources: MessageModule = {
     "resources.component.shellGpu": "GPU 进程",
     "resources.component.shellUtility": "辅助进程",
     "resources.component.browserGuest": "浏览器节点页面",
-    "resources.component.selfOnly": "只算这个进程；它启动的会话在上面各有一行",
-    "resources.component.tree": "含子进程",
-    "resources.component.single": "单个进程",
 
     "resources.memory.badge": "会话内存 {value}",
     "resources.memory.title": "会话内存",
@@ -81,16 +73,9 @@ export const resources: MessageModule = {
     "resources.memory.children": "子进程",
     "resources.memory.threshold": "提醒阈值",
     "resources.memory.unknown": "unknown",
-    "resources.memory.unknownNote":
-      "这一份样本没测到数字。显示 unknown 而不是 0——0 的意思是「量到了，是零」。",
-    "resources.memory.overNote":
-      "已超过阈值：只是变色并提醒一次，不会终止或休眠这个会话。",
-    "resources.memory.slowNote": "节点当前不可见，采样降到 30 秒一次。",
     "resources.memory.alertTitle": "会话内存偏高",
     "resources.memory.alertBody": "进程树已占用 {value}，超过阈值 {limit}。",
     "resources.memory.thresholdLabel": "内存提醒阈值",
-    "resources.memory.thresholdHint":
-      "终端节点徽标超过它就变色，并按会话提醒一次；不会自动结束任何会话。",
     "resources.memory.threshold.value": "{value} GB",
 
     "resources.orphans": "孤立会话",
@@ -98,16 +83,12 @@ export const resources: MessageModule = {
     "resources.orphan.no-row": "无会话记录",
     "resources.orphan.adopt": "附着到新节点",
     "resources.orphan.terminate": "终止",
-    "resources.orphan.terminateTitle": "终止这个孤立会话？",
-    "resources.orphan.terminateBody":
-      "「{name}」的进程树会被终止，会话不再存在。",
+    "resources.orphan.terminateTitle": "终止孤立会话「{name}」？",
     "resources.adoptFailed": "认领会话失败",
 
     "resources.power": "防休眠",
     "resources.power.manual": "手动阻止系统空闲睡眠",
     "resources.power.manualReason": "用户在资源面板中手动开启",
-    "resources.power.scope":
-      "只阻止系统空闲睡眠；不常亮屏幕，也不影响合盖或手动睡眠。",
     "resources.power.expires": "{value}到期",
     "resources.power.unavailable": "这个平台没有可用的防休眠机制",
     "resources.power.failed": "防休眠操作失败",
@@ -121,13 +102,8 @@ export const resources: MessageModule = {
     "resources.power.policy.automation": "策略：有自动化运行时",
     "resources.power.policy.manual": "策略：手动",
     "resources.power.policyLabel": "防休眠策略",
-    "resources.power.policyHint":
-      "只阻止系统空闲睡眠；租约全部释放或 Runtime 退出时立即解除。",
     "resources.power.whileWorkingLabel": "工作时保持唤醒",
-    "resources.power.whileWorkingHint":
-      "有 Agent 在一轮里或自动化在运行时自动申请，全部结束后释放。",
     "resources.intervalLabel": "采样间隔",
-    "resources.intervalHint": "面板打开时才采样；关闭后 Runtime 自动停止。",
     "resources.interval.value": "{value} 秒",
 
     "cluster.resources": "资源",
@@ -150,8 +126,6 @@ export const resources: MessageModule = {
     "resources.pressure.warning": "Warning",
     "resources.pressure.critical": "Critical",
     "resources.pressure.unknown": "Unknown",
-    "resources.pressure.hint":
-      "The operating system's own verdict, not the used ratio: reclaimable caches count as used, so a high ratio does not mean pressure. A machine that does not report one shows unknown, never “normal”.",
     "resources.location.remote": "Remote",
 
     "resources.sessions": "Sessions",
@@ -165,11 +139,7 @@ export const resources: MessageModule = {
     "resources.session.children": "{count} children",
     "resources.session.locate": "Find on canvas",
     "resources.session.end": "End session",
-    "resources.session.memoryEstimated":
-      "Sum of the process tree’s RSS; shared pages are counted more than once, so this is an estimate",
-    "resources.endTitle": "End this session?",
-    "resources.endBody":
-      "The processes running in “{name}” are terminated and cannot be resumed.",
+    "resources.endTitle": "End “{name}”?",
     "resources.endFailed": "Could not end the session",
 
     "resources.unknown.remote": "Runs on a remote host; not measurable here",
@@ -194,10 +164,6 @@ export const resources: MessageModule = {
     "resources.component.shellGpu": "GPU process",
     "resources.component.shellUtility": "Helper process",
     "resources.component.browserGuest": "Browser node page",
-    "resources.component.selfOnly":
-      "This process only; the sessions it starts have their own rows above",
-    "resources.component.tree": "Includes child processes",
-    "resources.component.single": "This process only",
 
     "resources.memory.badge": "Session memory {value}",
     "resources.memory.title": "Session memory",
@@ -205,18 +171,10 @@ export const resources: MessageModule = {
     "resources.memory.children": "Children",
     "resources.memory.threshold": "Reminder threshold",
     "resources.memory.unknown": "unknown",
-    "resources.memory.unknownNote":
-      "This sample carries no figure. It reads unknown rather than 0, because 0 would mean “measured, and it is zero”.",
-    "resources.memory.overNote":
-      "Above the threshold. That colours the badge and reminds you once; it never ends or hibernates the session.",
-    "resources.memory.slowNote":
-      "This node is not visible, so it is sampled every 30 seconds.",
     "resources.memory.alertTitle": "A session is using a lot of memory",
     "resources.memory.alertBody":
       "Its process tree is at {value}, above the {limit} threshold.",
     "resources.memory.thresholdLabel": "Memory reminder threshold",
-    "resources.memory.thresholdHint":
-      "A terminal node's badge changes colour above this and reminds you once per session. Nothing is ended automatically.",
     "resources.memory.threshold.value": "{value} GB",
 
     "resources.orphans": "Orphaned sessions",
@@ -224,16 +182,12 @@ export const resources: MessageModule = {
     "resources.orphan.no-row": "No record",
     "resources.orphan.adopt": "Attach to a new node",
     "resources.orphan.terminate": "Terminate",
-    "resources.orphan.terminateTitle": "Terminate this orphaned session?",
-    "resources.orphan.terminateBody":
-      "The process tree of “{name}” is terminated and the session stops existing.",
+    "resources.orphan.terminateTitle": "Terminate orphan “{name}”?",
     "resources.adoptFailed": "Could not adopt the session",
 
     "resources.power": "Keep awake",
     "resources.power.manual": "Hold off idle system sleep",
     "resources.power.manualReason": "Switched on from the resources panel",
-    "resources.power.scope":
-      "Only idle system sleep is held off. The display still sleeps, and closing the lid or sleeping manually still works.",
     "resources.power.expires": "expires {value}",
     "resources.power.unavailable":
       "This platform has no sleep inhibitor available",
@@ -248,14 +202,8 @@ export const resources: MessageModule = {
     "resources.power.policy.automation": "Policy: while automations run",
     "resources.power.policy.manual": "Policy: manual only",
     "resources.power.policyLabel": "Keep-awake policy",
-    "resources.power.policyHint":
-      "Only idle system sleep is held off, and it is released the moment the last lease goes away or the runtime exits.",
     "resources.power.whileWorkingLabel": "Stay awake while working",
-    "resources.power.whileWorkingHint":
-      "Requested while an agent is in a turn or an automation runs, released once all of them finish.",
     "resources.intervalLabel": "Sampling interval",
-    "resources.intervalHint":
-      "Sampling only runs while the panel is open; the runtime stops on its own once it closes.",
     "resources.interval.value": "{value}s",
 
     "cluster.resources": "Resources",

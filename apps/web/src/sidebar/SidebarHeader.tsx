@@ -10,7 +10,7 @@ export function SidebarHeader() {
   const t = useT();
   return (
     <div className="flex h-9 shrink-0 items-center px-3.5">
-      <span className="truncate text-[length:var(--text-section)] font-semibold">
+      <span className="truncate text-section font-semibold">
         {t("app.brand")}
       </span>
     </div>

@@ -139,7 +139,7 @@ export function HostTraffic() {
             value={range}
             onValueChange={(value) => setRange(value as Range)}
           >
-            <TabsList>
+            <TabsList variant="segmented" size="sm">
               {RANGES.map((value) => (
                 <TabsTrigger key={value} value={value}>
                   {t(`traffic.range.${value}`)}

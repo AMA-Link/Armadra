@@ -110,7 +110,7 @@ export function ReadOnlyTerminal({
   return (
     <div
       data-slot="read-only-terminal"
-      className="h-full min-h-0 w-full overflow-hidden bg-[var(--term-bg)] p-2"
+      className="h-full min-h-0 w-full overflow-hidden bg-term p-2"
     >
       <div ref={containerRef} className="h-full w-full" />
     </div>

@@ -15,6 +15,7 @@ import { useT } from "@/app/preferences-store";
 import { useLayoutDirection } from "@/canvas/layout-direction";
 import { useThrottledValue } from "@/lib/use-throttled-value";
 import { IconButton } from "@/ui/icon-button";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/ui/tooltip";
 import type { Box } from "../geometry";
 import { isItemId } from "../whiteboard/model";
 import { useFamilies, type Family } from "../family";
@@ -273,7 +274,7 @@ export function MinimapLinkLayer() {
           d={path.d}
           fill="none"
           stroke={path.color}
-          strokeWidth={layer.width}
+          style={{ strokeWidth: layer.width }}
           strokeLinecap="round"
           vectorEffect="non-scaling-stroke"
         />
@@ -323,22 +324,26 @@ export function MinimapToggle({
             }
       }
     >
-      <IconButton
-        size={collapsed ? "cluster" : "inline"}
-        data-slot="minimap-toggle"
-        data-reveal={reveal ? "true" : undefined}
-        className={
-          collapsed
-            ? "minimap-toggle border border-border bg-[var(--panel)]/90 backdrop-blur-[12px]"
-            : "minimap-toggle bg-[var(--panel)]/90 hover:bg-[var(--hover)] hover:text-foreground"
-        }
-        label={label}
-        title={label}
-        aria-expanded={!collapsed}
-        onClick={onToggle}
-      >
-        {collapsed ? <Map /> : <Minus />}
-      </IconButton>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <IconButton
+            size={collapsed ? "cluster" : "inline"}
+            data-slot="minimap-toggle"
+            data-reveal={reveal ? "true" : undefined}
+            className={
+              collapsed
+                ? "minimap-toggle border border-border-strong bg-panel/90 backdrop-blur-[12px]"
+                : "minimap-toggle bg-panel/90 hover:bg-hover hover:text-foreground"
+            }
+            label={label}
+            aria-expanded={!collapsed}
+            onClick={onToggle}
+          >
+            {collapsed ? <Map /> : <Minus />}
+          </IconButton>
+        </TooltipTrigger>
+        <TooltipContent side="top">{label}</TooltipContent>
+      </Tooltip>
     </Panel>
   );
 }

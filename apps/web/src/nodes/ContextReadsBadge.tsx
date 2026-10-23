@@ -24,7 +24,6 @@ import { usePageVisible } from "@/panels/resources/use-visibility";
 import { Badge } from "@/ui/badge";
 import { Button } from "@/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/ui/popover";
-import { HEADER_CHIP_CLASS } from "./header-chip";
 
 /** 悬停里最多几条。再多就不是「最近」了，那是审计面板的事。 */
 const RECENT_SHOWN = 5;
@@ -60,12 +59,7 @@ export function ContextReadsBadge({
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
-        <Badge
-          asChild
-          variant="outline"
-          className={HEADER_CHIP_CLASS}
-          data-no-drag="true"
-        >
+        <Badge asChild variant="outline" size="sm" data-no-drag="true">
           <Button
             type="button"
             variant="ghost"
@@ -85,7 +79,7 @@ export function ContextReadsBadge({
         </Badge>
       </PopoverTrigger>
       <PopoverContent
-        className="w-72 max-w-[calc(100vw-1rem)] text-xs"
+        className="w-72 max-w-[calc(100vw-1rem)] text-meta"
         onPointerDown={(event) => event.stopPropagation()}
       >
         <h3 className="font-medium">{t("contextReads.title")}</h3>

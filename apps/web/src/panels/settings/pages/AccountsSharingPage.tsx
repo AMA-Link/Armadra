@@ -1,7 +1,7 @@
 import * as React from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Ellipsis, KeyRound, ShieldAlert, Trash2 } from "lucide-react";
-import { toast } from "sonner";
+import { toast } from "@/ui/toast";
 
 import {
   SHARE_ROLES,
@@ -34,6 +34,7 @@ import {
   type IdentitySession,
 } from "../../../api/identity";
 import { localizedFailure } from "../../../api/request";
+import { initialOf } from "../../../sources/workspace-groups";
 import { useWorkspacesQuery } from "../../../app/workspaces-query";
 import { usePreferencesStore, useT } from "../../../app/preferences-store";
 import { resetMfa } from "../../../api/security";
@@ -50,6 +51,20 @@ import { SettingsRow } from "../SettingsRow";
 import { CONTROL_WIDTH } from "./GeneralPage";
 import { useOrigins } from "./origins";
 import { Alert, AlertTitle } from "@/ui/alert";
+import { Avatar, AvatarFallback } from "@/ui/avatar";
+import { StatusPill } from "@/ui/status-pill";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/ui/table";
+import { SettingsKpi, SettingsKpiGrid } from "../SettingsKpi";
+import { SettingsPageHeader } from "../SettingsPageHeader";
+import { SettingsTableCard } from "../SettingsTableCard";
+import { Layers, Mail, Users } from "lucide-react";
 import { Card } from "@/ui/card";
 import { Button } from "@/ui/button";
 import {
@@ -125,9 +140,31 @@ export function AccountsSharingPage() {
   const canManage =
     session?.scopes.some((scope) => scope.permission === "identity:manage") ??
     false;
+  // 页头的两个动作开的是下面成员与邀请块里的对话框，状态放在这一层。
+  const [addingMember, setAddingMember] = React.useState(false);
+  const [creatingInvite, setCreatingInvite] = React.useState(false);
 
   return (
     <PasswordWarning.Provider value={() => setBreached(true)}>
+      <SettingsPageHeader
+        actions={
+          session && canManage ? (
+            <>
+              <Button size="sm" onClick={() => setAddingMember(true)}>
+                {t("sharing.members.add")}
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => setCreatingInvite(true)}
+              >
+                {t("sharing.invites.create")}
+              </Button>
+            </>
+          ) : undefined
+        }
+      />
+      {session && canManage && <AccountsKpis />}
       {breached && (
         <Alert data-slot="password-breached">
           <ShieldAlert />
@@ -159,9 +196,16 @@ export function AccountsSharingPage() {
           <Members
             self={session.device.principalId}
             selfOwner={session.device.role !== "member"}
+            adding={addingMember}
+            onAddingChange={setAddingMember}
           />
           <Groups />
-          <Invitations />
+          <Invitations
+            controlled={{
+              open: creatingInvite,
+              onOpenChange: setCreatingInvite,
+            }}
+          />
           <Sharing />
         </>
       )}
@@ -254,7 +298,7 @@ function usePasswordAct() {
 
 function OriginText({ label }: { label: string | null }) {
   if (label === null) return null;
-  return <span className="text-[12px] text-muted-foreground">{label}</span>;
+  return <span className="text-meta text-muted-foreground">{label}</span>;
 }
 
 function usePrincipals() {
@@ -262,6 +306,41 @@ function usePrincipals() {
     queryKey: ["accounts", "principals"],
     queryFn: listPrincipals,
   });
+}
+
+/** 页头下的托盘：成员 · 组 · 待接受的邀请（各自已有查询的长度，无刻度）。 */
+function AccountsKpis() {
+  const t = useT();
+  const principals = usePrincipals();
+  const groups = useGroups();
+  const invitations = useQuery({
+    queryKey: ["accounts", "invitations"],
+    queryFn: listInvitations,
+  });
+  const now = Date.now();
+  const pending = invitations.data?.filter(
+    (invitation) =>
+      invitation.consumedAtMs === 0 && invitation.expiresAtMs > now,
+  );
+  return (
+    <SettingsKpiGrid>
+      <SettingsKpi
+        icon={<Users />}
+        label={t("sharing.members")}
+        value={principals.data?.length ?? null}
+      />
+      <SettingsKpi
+        icon={<Layers />}
+        label={t("sharing.groups")}
+        value={groups.data?.length ?? null}
+      />
+      <SettingsKpi
+        icon={<Mail />}
+        label={t("sharing.invites.pending")}
+        value={pending?.length ?? null}
+      />
+    </SettingsKpiGrid>
+  );
 }
 
 function useGroups() {
@@ -428,7 +507,6 @@ function RedeemDialog({
             displayName: (displayName ?? "").trim(),
             password: password ?? "",
           });
-          toast.success(t("sharing.redeem.done"));
           if (session.passwordBreached === true) warn();
           onClose(session);
           return false;
@@ -453,7 +531,7 @@ function MyAccount({ session }: { session: IdentitySession }) {
   return (
     <SettingsGroup title={t("sharing.me")}>
       <SettingsRow label={t("sharing.accountId")}>
-        <span className="max-w-[260px] truncate font-mono text-[12px] select-text">
+        <span className="max-w-[260px] truncate font-mono text-meta select-text">
           {principalId}
         </span>
       </SettingsRow>
@@ -483,7 +561,19 @@ function MyAccount({ session }: { session: IdentitySession }) {
 
 /* ---------------------------------- 成员 ---------------------------------- */
 
-function Members({ self, selfOwner }: { self: string; selfOwner: boolean }) {
+type MemberFilter = "all" | "active" | "disabled";
+
+function Members({
+  self,
+  selfOwner,
+  adding,
+  onAddingChange,
+}: {
+  self: string;
+  selfOwner: boolean;
+  adding: boolean;
+  onAddingChange: (open: boolean) => void;
+}) {
   const t = useT();
   const act = useAct();
   const passwordAct = usePasswordAct();
@@ -491,76 +581,134 @@ function Members({ self, selfOwner }: { self: string; selfOwner: boolean }) {
   const origins = useOrigins(
     (principals.data ?? []).map((principal) => principal.principalId),
   );
-  const [adding, setAdding] = React.useState(false);
+  const [filter, setFilter] = React.useState<MemberFilter>("all");
   const [confirm, setConfirm] = React.useState<Principal | null>(null);
   const [resetting, setResetting] = React.useState<ResetTarget | null>(null);
   const [mfaConfirm, setMfaConfirm] = React.useState<Principal | null>(null);
+  const rows = (principals.data ?? []).filter(
+    (principal) =>
+      filter === "all" ||
+      (filter === "disabled") === principal.disabledAtMs > 0,
+  );
   return (
-    <SettingsGroup title={t("sharing.members")}>
-      {(principals.data ?? []).map((principal) => (
-        <SettingsRow
-          key={principal.principalId}
-          label={principalName(principal, t)}
-        >
-          <OriginText label={origins.label(principal.principalId)} />
-          {principal.disabledAtMs > 0 ? (
-            <span className="text-[12px] text-muted-foreground">
-              {t("sharing.members.disabled")}
-            </span>
-          ) : principal.principalId !== self &&
-            (principal.kind !== "owner" || selfOwner) ? (
-            // owner 的重置只有 owner 自己能签；他的两步验证与停用不在这里动。
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <IconButton
-                  label={t("sharing.members.actions", {
-                    name: principalName(principal, t),
-                  })}
-                >
-                  <Ellipsis />
-                </IconButton>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="z-[var(--z-dialog)]">
-                <DropdownMenuItem
-                  onSelect={() =>
-                    setResetting({
-                      principalId: principal.principalId,
-                      name: principalName(principal, t),
-                    })
-                  }
-                >
-                  <KeyRound />
-                  {t("reset.issue")}
-                </DropdownMenuItem>
-                {principal.kind !== "owner" && (
-                  <>
-                    <DropdownMenuItem onSelect={() => setMfaConfirm(principal)}>
-                      {t("sharing.members.resetMfa")}
-                    </DropdownMenuItem>
-                    <DropdownMenuSeparator />
-                    <DropdownMenuItem
-                      variant="destructive"
-                      onSelect={() => setConfirm(principal)}
-                    >
-                      {t("sharing.members.disable")}
-                    </DropdownMenuItem>
-                  </>
-                )}
-              </DropdownMenuContent>
-            </DropdownMenu>
-          ) : null}
-        </SettingsRow>
-      ))}
-      <SettingsRow label={null}>
-        <Button
-          type="button"
-          size="sm"
-          variant="secondary"
-          onClick={() => setAdding(true)}
-        >
-          {t("sharing.members.add")}
-        </Button>
-      </SettingsRow>
+    <>
+      <SettingsTableCard
+        title={t("sharing.members")}
+        loading={principals.isLoading}
+        skeleton={{ rows: 3, columns: 4 }}
+        filter={{
+          value: filter,
+          onValueChange: setFilter,
+          label: t("sharing.members.filter"),
+          options: [
+            { value: "all", label: t("sharing.members.filter.all") },
+            { value: "active", label: t("sharing.members.enabled") },
+            { value: "disabled", label: t("sharing.members.disabled") },
+          ],
+        }}
+      >
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>{t("sharing.members.name")}</TableHead>
+              <TableHead>{t("sharing.members.status")}</TableHead>
+              <TableHead className="w-0">
+                <span className="sr-only">
+                  {t("sharing.members.actions", { name: "" })}
+                </span>
+              </TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {rows.map((principal) => {
+              const name = principalName(principal, t);
+              const origin = origins.label(principal.principalId);
+              const disabled = principal.disabledAtMs > 0;
+              return (
+                <TableRow key={principal.principalId}>
+                  <TableCell>
+                    <span className="flex min-w-0 items-center gap-2">
+                      <Avatar
+                        size="sm"
+                        aria-hidden
+                        className="size-5 data-[size=sm]:size-5"
+                      >
+                        <AvatarFallback className="text-caption font-medium">
+                          {initialOf(name)}
+                        </AvatarFallback>
+                      </Avatar>
+                      <span className="truncate font-medium">{name}</span>
+                      {origin && (
+                        <span className="truncate text-meta text-muted-foreground">
+                          {origin}
+                        </span>
+                      )}
+                    </span>
+                  </TableCell>
+                  <TableCell>
+                    <StatusPill
+                      tone={disabled ? "paused" : "done"}
+                      label={t(
+                        disabled
+                          ? "sharing.members.disabled"
+                          : "sharing.members.enabled",
+                      )}
+                    />
+                  </TableCell>
+                  <TableCell className="text-right">
+                    {!disabled &&
+                    principal.principalId !== self &&
+                    (principal.kind !== "owner" || selfOwner) ? (
+                      // owner 的重置只有 owner 自己能签；他的两步验证与停用不在这里动。
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <IconButton
+                            label={t("sharing.members.actions", { name })}
+                          >
+                            <Ellipsis />
+                          </IconButton>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent
+                          align="end"
+                          className="z-[var(--z-dialog)]"
+                        >
+                          <DropdownMenuItem
+                            onSelect={() =>
+                              setResetting({
+                                principalId: principal.principalId,
+                                name,
+                              })
+                            }
+                          >
+                            <KeyRound />
+                            {t("reset.issue")}
+                          </DropdownMenuItem>
+                          {principal.kind !== "owner" && (
+                            <>
+                              <DropdownMenuItem
+                                onSelect={() => setMfaConfirm(principal)}
+                              >
+                                {t("sharing.members.resetMfa")}
+                              </DropdownMenuItem>
+                              <DropdownMenuSeparator />
+                              <DropdownMenuItem
+                                variant="destructive"
+                                onSelect={() => setConfirm(principal)}
+                              >
+                                {t("sharing.members.disable")}
+                              </DropdownMenuItem>
+                            </>
+                          )}
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    ) : null}
+                  </TableCell>
+                </TableRow>
+              );
+            })}
+          </TableBody>
+        </Table>
+      </SettingsTableCard>
       <FormDialog
         open={adding}
         title={t("sharing.members.add")}
@@ -569,7 +717,7 @@ function Members({ self, selfOwner }: { self: string; selfOwner: boolean }) {
           { label: t("sharing.members.initialPassword"), secret: true },
         ]}
         submitLabel={t("sharing.save")}
-        onClose={() => setAdding(false)}
+        onClose={() => onAddingChange(false)}
         onSubmit={([name, password]) =>
           passwordAct(() => createMember((name ?? "").trim(), password ?? ""))
         }
@@ -648,7 +796,7 @@ function Members({ self, selfOwner }: { self: string; selfOwner: boolean }) {
           </ResponsiveAlertDialogFooter>
         </ResponsiveAlertDialogContent>
       </ResponsiveAlertDialog>
-    </SettingsGroup>
+    </>
   );
 }
 
@@ -671,7 +819,7 @@ function Groups({ only }: { only?: Group[] }) {
           label={group.name}
           onClick={() => setManaging(group.groupId)}
         >
-          <span className="text-[12px] text-muted-foreground">
+          <span className="text-meta text-muted-foreground">
             {t("sharing.groups.count", { count: group.members.length })}
           </span>
         </SettingsRow>
@@ -749,7 +897,7 @@ function GroupDialog({
         <ResponsiveDialogHeader>
           <ResponsiveDialogTitle>{group.name}</ResponsiveDialogTitle>
         </ResponsiveDialogHeader>
-        <Card className="gap-0 overflow-visible rounded-lg border border-border/70 py-0 text-[length:inherit] ring-0 settings-group divide-y divide-border/60">
+        <Card className="settings-group gap-0 py-0 divide-y divide-border/60 overflow-visible">
           {group.members.length === 0 && (
             <SettingsRow label={t("sharing.groups.empty")} />
           )}
@@ -912,7 +1060,14 @@ function WorkspaceSelect({
  * `groupsOnly`：组管理员签的邀请只能指向他管的组（兑换即入组，拿到的是组上
  * 的共享），所以对话框里选组而不是选工作空间与角色。
  */
-function Invitations({ groupsOnly }: { groupsOnly?: Group[] }) {
+function Invitations({
+  groupsOnly,
+  controlled,
+}: {
+  groupsOnly?: Group[];
+  /** 页头的「生成邀请」开这里的对话框时由页面持有开关；不给就用行尾的按钮。 */
+  controlled?: { open: boolean; onOpenChange: (open: boolean) => void };
+}) {
   const t = useT();
   const act = useAct();
   const workspaces = useWorkspacesQuery();
@@ -924,7 +1079,9 @@ function Invitations({ groupsOnly }: { groupsOnly?: Group[] }) {
   const origins = useOrigins(
     (invitations.data ?? []).map((invitation) => invitation.issuedBy),
   );
-  const [open, setOpen] = React.useState(false);
+  const [localOpen, setLocalOpen] = React.useState(false);
+  const open = controlled ? controlled.open : localOpen;
+  const setOpen = controlled ? controlled.onOpenChange : setLocalOpen;
   const [workspaceId, setWorkspaceId] = React.useState("");
   const [groupId, setGroupId] = React.useState("");
   const [role, setRole] = React.useState<ShareRole>("viewer");
@@ -962,7 +1119,7 @@ function Invitations({ groupsOnly }: { groupsOnly?: Group[] }) {
             label={labelOf(invitation)}
           >
             <OriginText label={origins.label(invitation.issuedBy)} />
-            <span className="text-[12px] text-muted-foreground">
+            <span className="text-meta text-muted-foreground">
               {t("sharing.invites.expires", {
                 time: format.format(invitation.expiresAtMs),
               })}
@@ -980,27 +1137,35 @@ function Invitations({ groupsOnly }: { groupsOnly?: Group[] }) {
           </SettingsRow>
         ))}
       </SettingsLoadable>
-      <SettingsRow label={null}>
-        <Button
-          type="button"
-          size="sm"
-          variant="secondary"
-          onClick={() => {
-            setLink("");
-            setOpen(true);
-          }}
-        >
-          {t("sharing.invites.create")}
-        </Button>
-      </SettingsRow>
-      <ResponsiveDialog open={open} onOpenChange={setOpen}>
+      {!controlled && (
+        <SettingsRow label={null}>
+          <Button
+            type="button"
+            size="sm"
+            variant="secondary"
+            onClick={() => {
+              setLink("");
+              setOpen(true);
+            }}
+          >
+            {t("sharing.invites.create")}
+          </Button>
+        </SettingsRow>
+      )}
+      <ResponsiveDialog
+        open={open}
+        onOpenChange={(next) => {
+          if (next) setLink("");
+          setOpen(next);
+        }}
+      >
         <ResponsiveDialogContent className="z-[var(--z-dialog)] sm:max-w-[440px]">
           <ResponsiveDialogHeader>
             <ResponsiveDialogTitle>
               {t("sharing.invites.create")}
             </ResponsiveDialogTitle>
           </ResponsiveDialogHeader>
-          <Card className="gap-0 overflow-visible rounded-lg border border-border/70 py-0 text-[length:inherit] ring-0 settings-group divide-y divide-border/60">
+          <Card className="settings-group gap-0 py-0 divide-y divide-border/60 overflow-visible">
             {groupsOnly ? (
               <SettingsRow label={t("sharing.groups")}>
                 <Select value={groupId} onValueChange={setGroupId}>

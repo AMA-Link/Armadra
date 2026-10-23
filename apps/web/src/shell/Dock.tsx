@@ -25,7 +25,6 @@ import {
   zoomByStep,
   zoomToLevel,
 } from "../canvas/flow/use-flow-viewport";
-import { commandKeysLabel } from "../keybindings/active";
 import { useCanUndo, useCanRedo, useCanvasStore } from "../store/canvas-store";
 import { useEnabledAgents } from "../app/use-agents";
 import { useT } from "../app/preferences-store";
@@ -50,8 +49,11 @@ import { runCanvasCommand } from "@/canvas/commands";
 import { tidySelection } from "@/canvas/tidy-flow";
 import { tidyInDirection } from "@/canvas/layout-direction";
 import { Separator } from "@/ui/separator";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/ui/tooltip";
+import { StatusDot, type StatusTone } from "@/ui/status-pill";
+import { TextSwap } from "@/ui/text-swap";
+import { Tooltip, TooltipTrigger } from "@/ui/tooltip";
 import { cn } from "@/lib/cn";
+import { CommandTip } from "./command-tip";
 
 /** 缩放档位（右键菜单）+ 适应。以视口中心为锚点。 */
 export const ZOOM_STEPS = [0.25, 0.5, 0.75, 1, 1.5, 2] as const;
@@ -110,7 +112,7 @@ export function Dock() {
     >
       <div
         data-slot="dock"
-        className="canvas-dock z-[var(--z-dock)] flex h-[var(--dock-h)] items-center gap-1 rounded-[var(--r-panel)] border border-border bg-[var(--panel)]/90 px-1.5 shadow-[var(--shadow-pill)] backdrop-blur-[12px]"
+        className="canvas-dock z-[var(--z-dock)] flex h-[var(--dock-h)] items-center gap-1 rounded-panel border border-border-strong bg-panel/90 px-1.5 shadow-overlay backdrop-blur-[12px]"
       >
         <Tooltip delayDuration={500}>
           <TooltipTrigger asChild>
@@ -125,9 +127,7 @@ export function Dock() {
               {locked ? <Lock /> : <LockOpen />}
             </IconButton>
           </TooltipTrigger>
-          <TooltipContent>
-            {locked ? t("canvas.unlock") : t("canvas.lock")}
-          </TooltipContent>
+          <CommandTip label={locked ? t("canvas.unlock") : t("canvas.lock")} />
         </Tooltip>
 
         <Separator orientation="vertical" className="mx-1 h-5" />
@@ -146,9 +146,7 @@ export function Dock() {
               </DropdownMenuTrigger>
             </TooltipTrigger>
             {/* 菜单展开时不再挂提示：它会压在第一条菜单项上。 */}
-            {addMenu.menuOpen ? null : (
-              <TooltipContent>{t("dock.add")}</TooltipContent>
-            )}
+            {addMenu.menuOpen ? null : <CommandTip label={t("dock.add")} />}
           </Tooltip>
           <DropdownMenuContent
             align="center"
@@ -181,7 +179,7 @@ export function Dock() {
               <Undo2 />
             </IconButton>
           </TooltipTrigger>
-          <TooltipContent>{t("dock.undo")}</TooltipContent>
+          <CommandTip label={t("dock.undo")} command="canvas.undo" />
         </Tooltip>
 
         <Tooltip delayDuration={500}>
@@ -195,7 +193,7 @@ export function Dock() {
               <Redo2 />
             </IconButton>
           </TooltipTrigger>
-          <TooltipContent>{t("dock.redo")}</TooltipContent>
+          <CommandTip label={t("dock.redo")} command="canvas.redo" />
         </Tooltip>
 
         <TidyButton label={tidyLabel} />
@@ -234,7 +232,7 @@ export function TidyButton({ label }: { label: string }) {
             </IconButton>
           </ContextMenuTrigger>
         </TooltipTrigger>
-        <TooltipContent>{label}</TooltipContent>
+        <CommandTip label={label} command="canvas.tidy" />
       </Tooltip>
       <ContextMenuContent className="z-[var(--z-menu)] w-auto min-w-32">
         <ContextMenuItem onSelect={() => tidyInDirection("vertical")}>
@@ -246,16 +244,6 @@ export function TidyButton({ label }: { label: string }) {
       </ContextMenuContent>
     </ContextMenu>
   );
-}
-
-/** 缩放 −/+ 的提示：名字 + 当前键位（键位从命令表读，不写死）。 */
-function zoomTooltip(
-  command: "canvas.zoomIn" | "canvas.zoomOut",
-  t: ReturnType<typeof useT>,
-): string {
-  const label = t(`cmd.${command}`);
-  const keys = commandKeysLabel(command);
-  return keys ? `${label} · ${keys}` : label;
 }
 
 /**
@@ -281,7 +269,7 @@ export function ZoomControls({ zoom }: { zoom: number }) {
             <Minus />
           </IconButton>
         </TooltipTrigger>
-        <TooltipContent>{zoomTooltip("canvas.zoomOut", t)}</TooltipContent>
+        <CommandTip label={t("cmd.canvas.zoomOut")} command="canvas.zoomOut" />
       </Tooltip>
       <ContextMenu>
         <Tooltip delayDuration={500}>
@@ -290,14 +278,14 @@ export function ZoomControls({ zoom }: { zoom: number }) {
               <IconButton
                 size="dock"
                 label={t("dock.zoomFit")}
-                className="w-[52px] text-[length:var(--text-caption)] font-medium tabular-nums"
+                className="w-[52px] text-caption font-medium tabular-nums"
                 onClick={fitView}
               >
-                {Math.round(zoom * 100)}%
+                <TextSwap>{`${Math.round(zoom * 100)}%`}</TextSwap>
               </IconButton>
             </ContextMenuTrigger>
           </TooltipTrigger>
-          <TooltipContent>{t("dock.zoomFitHint")}</TooltipContent>
+          <CommandTip label={t("dock.zoomFitHint")} command="canvas.fitView" />
         </Tooltip>
         <ContextMenuContent className="z-[var(--z-menu)] w-auto min-w-32">
           {ZOOM_STEPS.map((step) => (
@@ -326,13 +314,20 @@ export function ZoomControls({ zoom }: { zoom: number }) {
             <Plus />
           </IconButton>
         </TooltipTrigger>
-        <TooltipContent>{zoomTooltip("canvas.zoomIn", t)}</TooltipContent>
+        <CommandTip label={t("cmd.canvas.zoomIn")} command="canvas.zoomIn" />
       </Tooltip>
     </>
   );
 }
 
-/** 保存状态：一个 10px 的点，说明只在 Tooltip 里。 */
+/** 保存态 → 状态点：未保存与保存中同色（保存中呼吸），失败红，其余绿。 */
+const SAVE_TONE: Record<string, StatusTone> = {
+  error: "failed",
+  saving: "attention",
+  dirty: "attention",
+};
+
+/** 保存状态：一个 6px 的状态点，说明只在 Tooltip 里。 */
 function SaveDot() {
   const t = useT();
   const saveState = useCanvasStore((state) => state.saveState);
@@ -340,21 +335,18 @@ function SaveDot() {
   return (
     <Tooltip delayDuration={500}>
       <TooltipTrigger asChild>
-        <span
+        <StatusDot
+          tone={SAVE_TONE[saveState] ?? "done"}
+          size={6}
+          pulse={saveState === "saving"}
           data-slot="save-dot"
           data-state={saveState}
           role="status"
-          aria-label={label}
-          className={cn(
-            "mx-1 size-2 shrink-0 rounded-full",
-            saveState === "error" && "bg-danger",
-            saveState === "saving" && "anim-dot-pulse bg-warn",
-            saveState === "dirty" && "bg-warn",
-            (saveState === "saved" || saveState === "idle") && "bg-success/70",
-          )}
+          label={label}
+          className="mx-1.5"
         />
       </TooltipTrigger>
-      <TooltipContent>{label}</TooltipContent>
+      <CommandTip label={label} />
     </Tooltip>
   );
 }

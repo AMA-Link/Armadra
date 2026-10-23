@@ -8,7 +8,7 @@ import {
 import { sk } from "../sources/scope";
 import { useQueryClient } from "@tanstack/react-query";
 import type { WorkspaceSummary } from "@armadra/shared";
-import { toast } from "sonner";
+import { toast } from "@/ui/toast";
 import { runtimeApi } from "../api/client";
 import { isDesktop, onFileDrop, pickDirectory } from "../platform";
 import {
@@ -79,7 +79,7 @@ export function useProjectFolderImport() {
             openWorkspace(workspace);
             void queryClient.invalidateQueries({ queryKey: sk("workspaces") });
             if (copied)
-              toast.success(t("folderImport.copied", { name: workspace.name }));
+              toast.info(t("folderImport.copied", { name: workspace.name }));
           } catch (error) {
             report(
               error,

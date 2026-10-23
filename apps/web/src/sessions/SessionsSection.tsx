@@ -7,7 +7,6 @@
  * Agent 的时候一个输入框只是噪音。
  */
 import { useMemo, useState } from "react";
-import { toast } from "sonner";
 import { ChevronDown, ChevronRight } from "lucide-react";
 
 import {
@@ -21,6 +20,8 @@ import { useT } from "../app/preferences-store";
 import { useCanvasStore } from "../store/canvas-store";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
+import { useRoving } from "../ui/roving";
+import { toast } from "../ui/toast";
 import { SessionRow } from "./SessionRow";
 
 /** 分区顺序（§22）：先要人管的，再运行中，最后是安静的。 */
@@ -39,6 +40,7 @@ export function SessionsSection({ boardId }: { boardId: string }) {
   const workspace = useCanvasStore((state) => state.workspace);
   const removeNodes = useCanvasStore((state) => state.removeNodes);
   const t = useT();
+  const roving = useRoving<HTMLElement>();
 
   const [filter, setFilter] = useState("");
   const [historyOpen, setHistoryOpen] = useState(false);
@@ -62,7 +64,17 @@ export function SessionsSection({ boardId }: { boardId: string }) {
   if (!workspace) return null;
 
   return (
-    <section aria-label={t("sessions.agents")} className="pl-1">
+    <section
+      aria-label={t("sessions.agents")}
+      className="pl-1"
+      ref={roving.ref}
+      onFocusCapture={roving.onFocusCapture}
+      onKeyDown={(event) => {
+        // 过滤框与改名框里的 Home / End / ↑↓ 归输入框自己。
+        if (event.target instanceof HTMLInputElement) return;
+        roving.onKeyDown(event);
+      }}
+    >
       {alive.length >= FILTER_THRESHOLD && (
         <div className="py-1 pr-1">
           <Input
@@ -75,14 +87,14 @@ export function SessionsSection({ boardId }: { boardId: string }) {
             }}
             placeholder={t("sessions.filter")}
             aria-label={t("sessions.filter")}
-            className="h-7 text-[length:var(--text-body)]"
+            size="sm"
           />
         </div>
       )}
 
       {sections.map((section) => (
         <section key={section.bucket}>
-          <h3 className="flex h-6 items-center gap-1 px-1.5 text-[length:var(--text-caption)] font-medium tracking-[.04em] text-muted-foreground uppercase">
+          <h3 className="flex items-center gap-1 px-1.5 py-1 text-caption font-medium tracking-[.04em] text-muted-foreground uppercase">
             {t(`sessions.bucket.${section.bucket}`)}
             <span className="tabular-nums">{section.rows.length}</span>
           </h3>
@@ -97,7 +109,7 @@ export function SessionsSection({ boardId }: { boardId: string }) {
           <Button
             variant="ghost"
             size="sm"
-            className="motion-hover h-7 w-full justify-start gap-1 px-1.5 text-[length:var(--text-body)] font-normal text-muted-foreground hover:bg-[var(--hover)]"
+            className="w-full justify-start gap-1 px-1.5 font-normal text-muted-foreground hover:bg-hover"
             aria-expanded={historyOpen}
             onClick={() => setHistoryOpen((value) => !value)}
           >
@@ -116,7 +128,7 @@ export function SessionsSection({ boardId }: { boardId: string }) {
                   key={row.sessionId}
                   className="flex h-7 items-center gap-1 px-1.5"
                 >
-                  <span className="flex-1 truncate text-[length:var(--text-body)] text-muted-foreground">
+                  <span className="flex-1 truncate text-body text-muted-foreground">
                     {row.title}
                   </span>
                   <Button

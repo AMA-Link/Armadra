@@ -11,6 +11,7 @@ import {
   baseOf,
   classBases,
   countHits,
+  guardedSources,
   scanGuarded,
   uiSources,
 } from "../lib/class-scan";
@@ -125,7 +126,8 @@ describe("扫描器", () => {
 
 describe("功能代码里不再写禁用的类名", () => {
   it("真的扫到了功能代码，而不是空跑", () => {
-    expect(scanned().size).toBeGreaterThan(50);
+    // 存量归零后命中文件会越来越少，这里只确认扫描范围本身覆盖了功能代码。
+    expect(guardedSources(SRC).length).toBeGreaterThan(300);
     expect([...scanned().keys()].some((file) => file.startsWith("ui/"))).toBe(
       false,
     );

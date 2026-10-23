@@ -682,6 +682,35 @@ function syncShellAppearance(state: PreferencesState): void {
   });
 }
 
+let themeSwitchFrame = 0;
+
+/**
+ * 切换主题的那一帧：`<html data-theme-switching>` 让 `tokens.css` 里的
+ * `[data-theme-switching] * { transition: none !important }` 生效，调用方随后写
+ * `data-theme`。样式表里的过渡（背景、边框、文字色……）因此在同一次样式重算里
+ * 直接落到新值，不会逐个元素渐变。
+ */
+function beginThemeSwitch(root: HTMLElement): void {
+  root.dataset.themeSwitching = "";
+}
+
+/**
+ * 写完新主题之后：强制一次样式重算（此时过渡仍被抑制），下一帧再摘掉标记。
+ * 连着切两次时只留最后一次的摘除。
+ */
+function endThemeSwitchNextFrame(root: HTMLElement): void {
+  void root.offsetWidth;
+  if (typeof requestAnimationFrame !== "function") {
+    delete root.dataset.themeSwitching;
+    return;
+  }
+  if (themeSwitchFrame) cancelAnimationFrame(themeSwitchFrame);
+  themeSwitchFrame = requestAnimationFrame(() => {
+    themeSwitchFrame = 0;
+    delete root.dataset.themeSwitching;
+  });
+}
+
 /**
  * 把主题与语言写到 `<html>` 上，并跟随系统主题变化。
  * App 挂一次；`sonner` 与 tokens.css 都盯着 `data-theme`。
@@ -695,9 +724,17 @@ export function syncDocumentPreferences(): () => void {
     const state = usePreferencesStore.getState();
     const resolved = resolveTheme(state);
     const root = document.documentElement;
+    // 主题或色板真的变了才抑制过渡：整页瞬间换色，而不是逐个元素渐变
+    // （设计系统 §8.6）。首次同步与无关偏好的变化不碰。
+    const repaint =
+      (root.dataset.theme !== undefined && root.dataset.theme !== resolved) ||
+      (root.dataset.backdrop !== undefined &&
+        root.dataset.backdrop !== state.backdrop);
+    if (repaint) beginThemeSwitch(root);
     root.dataset.theme = resolved;
     root.style.colorScheme = resolved;
     applyBackdrop(root, state);
+    if (repaint) endThemeSwitchNextFrame(root);
     syncShellAppearance(state);
     syncNativeStatusBar(resolved);
     root.lang = state.locale;

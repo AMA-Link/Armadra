@@ -3,8 +3,6 @@ import type { MessageModule } from "./index";
 export const agentCapabilities: MessageModule = {
   "zh-CN": {
     "capability.title": "继承的能力",
-    "capability.note":
-      "仅继承基础适配器已有的能力，可关闭但不能额外授予。能力是否真的可用仍取决于实际 CLI 与执行主机。",
     "capability.probeUnknown": "未探测到 CLI 版本；未知能力不会显示对应操作。",
     "capability.name.hooks": "状态 Hook",
     "capability.name.resume": "恢复会话",
@@ -27,8 +25,6 @@ export const agentCapabilities: MessageModule = {
   },
   en: {
     "capability.title": "Inherited capabilities",
-    "capability.note":
-      "Inherits only existing base-adapter capabilities. You can disable them, not grant extra ones. Whether a capability truly works also depends on the CLI and the execution host.",
     "capability.probeUnknown":
       "The CLI version was not detected. Unknown capabilities show no controls.",
     "capability.name.hooks": "Status hooks",

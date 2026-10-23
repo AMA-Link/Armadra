@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { toast } from "sonner";
+import { toast } from "@/ui/toast";
 
 import { CLOSE_REVOKED, closeMessageKey, onControlClosed } from "../api/ws";
 import { t } from "./preferences-store";

@@ -8,6 +8,7 @@ import { useCanvasStore } from "@/store/canvas-store";
 import { currentPresence, presenceClientId } from "@/store/canvas/presence";
 import { Avatar, AvatarFallback } from "@/ui/avatar";
 import { memberColorVar } from "@/ui/member-dot";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/ui/tooltip";
 
 /** 头像最多画几个，其余收成「+N」。 */
 export const MAX_MEMBERS = 4;
@@ -82,7 +83,7 @@ export function SharedWorkspaceBar({ className }: { className?: string }) {
     <div
       data-shared-workspace-bar
       className={cn(
-        "flex h-7 min-w-0 items-center gap-2 text-[length:var(--text-body)]",
+        "flex h-[28px] min-w-0 items-center gap-2 text-body",
         className,
       )}
     >
@@ -105,23 +106,26 @@ export function SharedWorkspaceBar({ className }: { className?: string }) {
           className="flex shrink-0 items-center -space-x-1"
         >
           {visible.map((member) => (
-            <Avatar
-              key={member.key}
-              size="sm"
-              title={member.name}
-              aria-label={member.name}
-              className="size-5 after:hidden data-[size=sm]:size-5"
-              style={{ boxShadow: `0 0 0 2px ${member.color}` }}
-            >
-              <AvatarFallback className="bg-card text-[length:var(--text-caption)] font-medium text-foreground">
-                {initialOf(member.name)}
-              </AvatarFallback>
-            </Avatar>
+            <Tooltip key={member.key}>
+              <TooltipTrigger asChild>
+                <Avatar
+                  size="sm"
+                  aria-label={member.name}
+                  className="size-5 after:hidden data-[size=sm]:size-5"
+                  style={{ boxShadow: `0 0 0 2px ${member.color}` }}
+                >
+                  <AvatarFallback className="bg-card text-caption font-medium text-foreground">
+                    {initialOf(member.name)}
+                  </AvatarFallback>
+                </Avatar>
+              </TooltipTrigger>
+              <TooltipContent side="bottom">{member.name}</TooltipContent>
+            </Tooltip>
           ))}
           {hidden > 0 && (
             <span
               aria-label={t("realtime.presence.more", { count: hidden })}
-              className="pl-2 text-[length:var(--text-caption)] text-muted-foreground tabular-nums"
+              className="pl-2 text-caption text-muted-foreground tabular-nums"
             >
               +{hidden}
             </span>

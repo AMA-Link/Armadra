@@ -15,12 +15,15 @@ export function EmptyState({
   title,
   icon,
   inline = false,
+  headingLevel,
   className,
   children,
 }: {
   title: string;
   icon?: ReactNode;
   inline?: boolean;
+  /** 整页状态把标题当页标题（`role="heading"`），行内与区块里不传。 */
+  headingLevel?: 1 | 2 | 3;
   className?: string;
   children?: ReactNode;
 }) {
@@ -39,6 +42,9 @@ export function EmptyState({
           <EmptyMedia variant="icon">{icon}</EmptyMedia>
         ) : null}
         <EmptyTitle
+          {...(headingLevel === undefined
+            ? {}
+            : { role: "heading", "aria-level": headingLevel })}
           className={
             inline ? "text-meta font-normal text-muted-foreground" : undefined
           }

@@ -14,6 +14,7 @@ import {
 } from "../../../app/preferences-store";
 import { colorHex } from "../../../canvas/whiteboard/palette";
 import { SettingsGroup } from "../SettingsGroup";
+import { SettingsPageHeader } from "../SettingsPageHeader";
 import { SettingsRow } from "../SettingsRow";
 import { CONTROL_WIDTH } from "./GeneralPage";
 import { Button } from "@/ui/button";
@@ -26,6 +27,7 @@ import {
   SelectValue,
 } from "@/ui/select";
 import { Switch } from "@/ui/switch";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/ui/tooltip";
 import { LayoutDirectionRow } from "@/canvas/LayoutDirectionRow";
 
 /**
@@ -51,6 +53,7 @@ export function WhiteboardPage() {
 
   return (
     <>
+      <SettingsPageHeader />
       <SettingsGroup>
         <SettingsRow label={t("settings.whiteboard.background")}>
           <Select
@@ -260,23 +263,28 @@ function WhiteboardSwatches({
       {WHITEBOARD_COLORS.map((color) => {
         const selected = value === color;
         return (
-          <Button
-            key={color}
-            variant="ghost"
-            size="icon-sm"
-            role="radio"
-            aria-checked={selected}
-            aria-label={t(`settings.whiteboard.color.${color}`)}
-            title={t(`settings.whiteboard.color.${color}`)}
-            onClick={() => onChange(color)}
-          >
-            <ColorDot
-              color={colorHex(color, "light")}
-              size={14}
-              selected={selected}
-              className="border border-border"
-            />
-          </Button>
+          <Tooltip key={color}>
+            <TooltipTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                role="radio"
+                aria-checked={selected}
+                aria-label={t(`settings.whiteboard.color.${color}`)}
+                onClick={() => onChange(color)}
+              >
+                <ColorDot
+                  color={colorHex(color, "light")}
+                  size={14}
+                  selected={selected}
+                  className="border border-border"
+                />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>
+              {t(`settings.whiteboard.color.${color}`)}
+            </TooltipContent>
+          </Tooltip>
         );
       })}
     </div>

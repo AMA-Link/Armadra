@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -41,6 +42,17 @@ vi.mock("../api/client", () => {
     /** 设置页经归属网关路由：探不到归属，整个域就是只读的。 */
   };
   return { runtimeApi: api, localRuntimeApi: api };
+});
+
+/** 默认关着的功能（用量、凭据）在个别用例里强行打开。 */
+const forcedFeatures = vi.hoisted(() => new Set<string>());
+vi.mock("@/lib/features", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/features")>();
+  return {
+    ...actual,
+    featureEnabled: (flag: Parameters<typeof actual.featureEnabled>[0]) =>
+      forcedFeatures.has(flag) || actual.featureEnabled(flag),
+  };
 });
 
 /** 六个域都由 Runtime 写、都已落定；设置页只看 `settings` 那一行。 */
@@ -89,7 +101,7 @@ function zh(key: string) {
 }
 
 function nav() {
-  return screen.getByRole("navigation");
+  return screen.getByRole("navigation", { name: zh("settings.title") });
 }
 
 function navItem(label: string) {
@@ -181,6 +193,7 @@ describe("SettingsDialog", () => {
       revision: 4,
     });
     testSshHost.mockReset();
+    forcedFeatures.clear();
     usePreferencesStore.setState({
       lastSettingsSection: null,
       settingsSubpage: null,
@@ -209,7 +222,7 @@ describe("SettingsDialog", () => {
     });
   });
 
-  it("弹窗按视口比例取尺寸，导航按比例夹在 176–240，正文列不封顶（设计系统 §2.7）", async () => {
+  it("弹窗近全窗：按视口取 --settings-dialog-w/h，导航宽度走令牌，正文列不封顶（设计系统 §5.17）", async () => {
     open();
     await screen.findByText(zh("settings.theme"));
     const dialog = screen.getByTestId("settings-dialog");
@@ -220,26 +233,189 @@ describe("SettingsDialog", () => {
     );
     expect(dialog.className).toContain("max-lg:w-[calc(100vw-32px)]");
     expect(dialog.className).not.toContain("w-[920px]");
+    expect(dialog.className).toContain("material-backdrop");
     const column = screen
       .getByTestId("settings-page")
       .querySelector('[data-slot="settings-column"]') as HTMLElement;
     expect(column.className).not.toContain("max-w-[960px]");
     expect(column.className).toContain("w-full");
-    expect(nav().className).toContain("w-[clamp(176px,16%,240px)]");
+    // 导航贴在窗口底上（没有边线与卡片），内容是一块独立的 1px 边面板
+    expect(nav().className).toContain("settings-navigation");
+    expect(nav().className).not.toContain("border-r");
+    const panel = screen
+      .getByTestId("settings-page")
+      .closest('[data-slot="settings-panel"]') as HTMLElement;
+    expect(panel.className).toContain("rounded-float");
+    expect(panel.dataset.slot).toBe("settings-panel");
   });
 
-  it("设置就在本机改时页头不画作用范围徽标", async () => {
+  it("设置就在本机改时顶栏不画作用范围徽标", async () => {
     open();
     await screen.findByText(zh("settings.theme"));
-    const scope = () =>
-      screen
-        .getByTestId("settings-heading")
-        .parentElement?.querySelector("[data-settings-scope]");
+    const scope = () => document.querySelector("[data-settings-scope]");
     expect(scope()).toBeNull();
     fireEvent.click(navItem(zh("settings.section.about")));
     expect(scope()).toBeNull();
     fireEvent.click(navItem(zh("settings.section.security")));
     expect(scope()).toBeNull();
+  });
+
+  it("顶栏面包屑：设置 › 分组 › 页名，子页多一级", async () => {
+    open();
+    await screen.findByText(zh("settings.theme"));
+    const crumbs = () =>
+      within(
+        screen.getByRole("navigation", { name: zh("settings.breadcrumb") }),
+      )
+        .getAllByRole("listitem")
+        .map((item) => item.textContent?.replace("›", ""));
+    expect(crumbs()).toEqual([
+      zh("settings.breadcrumb.root"),
+      zh("settings.group.frequent"),
+      zh("settings.section.defaults"),
+    ]);
+    // 末级是当前页
+    const last = within(
+      screen.getByRole("navigation", { name: zh("settings.breadcrumb") }),
+    )
+      .getAllByRole("listitem")
+      .at(-1)!;
+    expect(last.getAttribute("aria-current")).toBe("page");
+
+    fireEvent.click(navItem(zh("settings.section.machines")));
+    fireEvent.click(await screen.findByRole("button", { name: /构建机/ }));
+    expect(crumbs()).toEqual([
+      zh("settings.breadcrumb.root"),
+      zh("settings.group.host"),
+      zh("settings.section.machines"),
+      zh("ssh.dialog.edit"),
+    ]);
+  });
+
+  it("⌘F 聚焦顶栏搜索", async () => {
+    open();
+    await screen.findByText(zh("settings.theme"));
+    const input = screen.getByPlaceholderText(zh("settings.search"));
+    expect(document.activeElement).not.toBe(input);
+    fireEvent.keyDown(navItem(zh("settings.section.general")), {
+      key: "f",
+      metaKey: true,
+    });
+    expect(document.activeElement).toBe(input);
+  });
+
+  it("搜索「用量」：列出页名与行名，选中后跳到那一页并高亮该行", async () => {
+    forcedFeatures.add("usage");
+    open();
+    await screen.findByText(zh("settings.theme"));
+    const input = screen.getByPlaceholderText(zh("settings.search"));
+    fireEvent.focus(input);
+    fireEvent.change(input, { target: { value: "用量" } });
+    // 页名命中
+    const usage = await screen.findByRole("option", {
+      name: zh("settings.section.usage"),
+    });
+    // 行名命中：「通用 › 显示用量」
+    expect(
+      screen.getByRole("option", {
+        name: `${zh("settings.section.general")} › ${zh("settings.showUsage")}`,
+      }),
+    ).toBeTruthy();
+    fireEvent.click(usage);
+    await waitFor(() => expect(page().dataset.section).toBe("usage"));
+    expect(usePreferencesStore.getState().lastSettingsSection).toBe("usage");
+    // 选中后搜索框清空、列表收起
+    expect((input as HTMLInputElement).value).toBe("");
+    expect(screen.queryByRole("option")).toBeNull();
+
+    // 选行：跳到那一页并给该行 data-highlight
+    fireEvent.focus(input);
+    fireEvent.change(input, { target: { value: zh("settings.showUsage") } });
+    fireEvent.click(
+      await screen.findByRole("option", {
+        name: `${zh("settings.section.general")} › ${zh("settings.showUsage")}`,
+      }),
+    );
+    await waitFor(() => expect(page().dataset.section).toBe("general"));
+    await waitFor(() =>
+      expect(
+        page()
+          .querySelector(`[data-settings-label="${zh("settings.showUsage")}"]`)
+          ?.getAttribute("data-highlight"),
+      ).toBe("true"),
+    );
+  });
+
+  it("没有匹配时列表写「没有匹配项」", async () => {
+    open();
+    await screen.findByText(zh("settings.theme"));
+    const input = screen.getByPlaceholderText(zh("settings.search"));
+    fireEvent.focus(input);
+    fireEvent.change(input, { target: { value: "zzzzqqq" } });
+    expect(await screen.findByText(zh("settings.search.empty"))).toBeTruthy();
+  });
+
+  it("导航里 ↑↓ 在项之间移动、Home / End 跳首尾", async () => {
+    open();
+    await screen.findByText(zh("settings.theme"));
+    const items = within(nav()).getAllByRole("button");
+    const first = items[0]!;
+    first.focus();
+    fireEvent.keyDown(first, { key: "ArrowDown" });
+    expect(document.activeElement).toBe(items[1]);
+    fireEvent.keyDown(items[1]!, { key: "ArrowUp" });
+    expect(document.activeElement).toBe(first);
+    fireEvent.keyDown(first, { key: "End" });
+    expect(document.activeElement).toBe(items.at(-1));
+    fireEvent.keyDown(items.at(-1)!, { key: "Home" });
+    expect(document.activeElement).toBe(first);
+  });
+
+  it("Esc 先退子页，再关弹窗", async () => {
+    open();
+    fireEvent.click(navItem(zh("settings.section.machines")));
+    fireEvent.click(await screen.findByRole("button", { name: /构建机/ }));
+    expect(usePreferencesStore.getState().settingsSubpage).toBe("ssh:box");
+    fireEvent.keyDown(screen.getByTestId("settings-dialog"), { key: "Escape" });
+    await waitFor(() =>
+      expect(usePreferencesStore.getState().settingsSubpage).toBeNull(),
+    );
+    expect(useCanvasStore.getState().panels.settings).toBe(true);
+    fireEvent.keyDown(screen.getByTestId("settings-dialog"), { key: "Escape" });
+    await waitFor(() =>
+      expect(useCanvasStore.getState().panels.settings).toBe(false),
+    );
+  });
+
+  it("⌘, 打开无出场动画，菜单点开按对话框出场", async () => {
+    const closed = (store: boolean) =>
+      useCanvasStore.setState((state) => ({
+        panels: { ...state.panels, settings: store },
+      }));
+    closed(false);
+    open();
+    expect(screen.queryByTestId("settings-dialog")).toBeNull();
+    // 键盘：最近的输入是 keydown
+    fireEvent.keyDown(document.body, { key: ",", metaKey: true });
+    act(() => closed(true));
+    expect(
+      (await screen.findByTestId("settings-dialog")).hasAttribute(
+        "data-instant",
+      ),
+    ).toBe(true);
+    act(() => closed(false));
+    await waitFor(() =>
+      expect(screen.queryByTestId("settings-dialog")).toBeNull(),
+    );
+    // 指针：最近的输入是 pointerdown
+    fireEvent.pointerDown(document.body);
+    fireEvent.mouseDown(document.body);
+    act(() => closed(true));
+    expect(
+      (await screen.findByTestId("settings-dialog")).hasAttribute(
+        "data-instant",
+      ),
+    ).toBe(false);
   });
 
   it("手机底部 Sheet 取整高，压过 Sheet 自己的 h-auto", () => {
@@ -248,7 +424,7 @@ describe("SettingsDialog", () => {
     );
   });
 
-  it("导航列出注册表里的每个分区，且没有搜索框", async () => {
+  it("导航列出注册表里的每个分区，顶栏有设置搜索", async () => {
     open();
     await screen.findByText(zh("settings.theme"));
     // 壳不在时「浏览器」那一行不该出现：它上面每一项都只对 `<webview>`
@@ -259,7 +435,7 @@ describe("SettingsDialog", () => {
       expect(navItem(zh(section.labelKey)), section.id).toBeTruthy();
     }
     expect(within(nav()).getAllByRole("button")).toHaveLength(sections.length);
-    expect(screen.queryByPlaceholderText(/搜索/)).toBeNull();
+    expect(screen.getByPlaceholderText(zh("settings.search"))).toBeTruthy();
     expect(screen.queryByText(zh("settings.nodeColorStyle"))).toBeNull();
   });
 
@@ -282,6 +458,18 @@ describe("SettingsDialog", () => {
       expect(screen.getByTestId("settings-heading").textContent).toBe(
         zh(section.labelKey),
       );
+      // 每页一个页头，里面只有页名与动作槽：没有副标题
+      const headers = page().querySelectorAll(
+        '[data-slot="settings-page-header"]',
+      );
+      expect(headers, section.id).toHaveLength(1);
+      for (const child of Array.from(headers[0]!.children)) {
+        expect(
+          child.tagName === "H2" ||
+            child.getAttribute("data-slot") === "settings-page-actions",
+          `${section.id}: ${child.outerHTML}`,
+        ).toBe(true);
+      }
       expect(navItem(zh(section.labelKey)).dataset.active).toBe("true");
       expect(usePreferencesStore.getState().lastSettingsSection).toBe(
         section.id,
@@ -367,11 +555,22 @@ describe("SettingsDialog", () => {
   });
 
   it("Agent CLI 一家一行，三态写进偏好", async () => {
+    // 注入齐全 = 就绪：动作位才是三态选择（缺技能时动作位是「更新」）。
+    agentIntegration.mockResolvedValue({
+      agentId: "claude",
+      mode: "canvas",
+      hook: { installed: true, revision: 3 },
+      skill: { installed: true, revision: 3 },
+      legacy: { found: [] },
+      revision: 3,
+    });
     open();
     fireEvent.click(navItem(zh("settings.section.agents")));
-    const trigger = await screen.findByRole("combobox", {
-      name: `Claude Code ${zh("agents.row.mode")}`,
-    });
+    const trigger = await screen.findByRole(
+      "combobox",
+      { name: `Claude Code ${zh("agents.row.mode")}` },
+      { timeout: 5_000 },
+    );
     const choose = (option: string) => {
       fireEvent.pointerDown(
         screen.getByRole("combobox", {
@@ -399,14 +598,15 @@ describe("SettingsDialog", () => {
   it("Agent CLI 子页：注入缺哪一半、旧残留与重新生成", async () => {
     open();
     fireEvent.click(navItem(zh("settings.section.agents")));
-    // 技能没生成：主表这一行是「需更新」，动作是「更新」。
-    expect(
-      await screen.findByText(
-        zh("agents.state.updateNeeded"),
-        {},
-        { timeout: 5_000 },
-      ),
-    ).toBeTruthy();
+    // 技能没生成：主表这一行是「需更新」胶囊，动作是「更新」。
+    await waitFor(
+      () =>
+        expect(
+          page().querySelector('[data-agent-state="updateNeeded"]')
+            ?.textContent,
+        ).toBe(zh("agents.state.updateNeeded")),
+      { timeout: 5_000 },
+    );
     fireEvent.click(screen.getByRole("button", { name: /Claude Code/ }));
     expect(screen.getByTestId("settings-heading").textContent).toBe(
       "Claude Code",
@@ -469,10 +669,11 @@ describe("SettingsDialog", () => {
     expect(await screen.findByText("/tmp/armadra")).toBeTruthy();
     expect(screen.getByText("2 KB")).toBeTruthy();
     fireEvent.click(navItem(zh("settings.section.sessions")));
-    expect(
-      await screen.findByText(
-        zh("settings.conversationCount").replace("{value}", "12"),
-      ),
-    ).toBeTruthy();
+    // 已索引会话是一张托盘：大数字就是条数
+    await waitFor(() =>
+      expect(
+        page().querySelector('[data-slot="tray-value"]')?.textContent,
+      ).toBe("12"),
+    );
   });
 });

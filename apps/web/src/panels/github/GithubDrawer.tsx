@@ -8,6 +8,7 @@ import { IconButton } from "@/ui/icon-button";
 import { Loadable } from "@/loading/Loadable";
 import { ScrollArea } from "@/ui/scroll-area";
 import { Skeleton } from "@/ui/skeleton";
+import { EmptyState } from "@/ui/state";
 import { SheetTitle } from "@/ui/sheet";
 import { WorkPanelSheet } from "../WorkPanelSheet";
 import { usePreferencesStore, useT } from "@/app/preferences-store";
@@ -119,8 +120,8 @@ export function GithubDrawer() {
       open={open}
       onClose={() => setPanel("github", "closed")}
     >
-      <div className="flex h-10 shrink-0 items-center gap-1 border-b border-border px-3">
-        <SheetTitle className="shrink-0 truncate text-[13px] font-semibold">
+      <div className="flex shrink-0 items-center gap-1 border-b border-border px-3 py-1.5">
+        <SheetTitle className="shrink-0 truncate text-body font-semibold">
           {t("forge.title")}
         </SheetTitle>
         <div className="flex-1" />
@@ -143,17 +144,13 @@ export function GithubDrawer() {
       </div>
 
       {blocked ? (
-        <div
-          role="status"
-          className="flex min-w-0 flex-col items-start gap-(--space-group) p-(--space-page) text-[13px] leading-5"
+        <EmptyState
+          title={t(`github.blocked.${blocked}`)}
+          className="min-w-0 p-4"
         >
-          <p className="text-muted-foreground">
-            {t(`github.blocked.${blocked}`)}
-          </p>
           <Button
             size="sm"
             variant="secondary"
-            className="min-h-10"
             onClick={() =>
               toSettings(
                 blocked === "signedOut" ||
@@ -166,7 +163,7 @@ export function GithubDrawer() {
           >
             {t("github.blocked.action")}
           </Button>
-        </div>
+        </EmptyState>
       ) : !sessionClient ? (
         <Loadable
           loading
@@ -186,7 +183,7 @@ export function GithubDrawer() {
             busy={detection.isFetching}
           />
           {detection.isError && (
-            <p role="status" className="px-3 py-2 text-[12px] text-destructive">
+            <p role="status" className="px-3 py-2 text-meta text-destructive">
               {t(forgeFailureKey(detection.error))}
             </p>
           )}
@@ -199,29 +196,24 @@ export function GithubDrawer() {
             </Loadable>
           )}
           {found && !ready && (
-            <div
-              role="status"
-              data-slot="forge-unconfigured"
-              className="flex min-w-0 flex-col items-start gap-(--space-group) p-(--space-page) text-[13px] leading-5"
+            <EmptyState
+              title={t(
+                found.forge === null ? "forge.unknown" : "forge.noCredential",
+              )}
+              className="m-(--space-page) w-auto"
             >
-              <p className="text-muted-foreground">
-                {t(
-                  found.forge === null ? "forge.unknown" : "forge.noCredential",
-                )}
-              </p>
               <Button
                 size="sm"
                 variant="secondary"
-                className="min-h-10"
                 onClick={() => toSettings("forge")}
               >
                 {t("forge.configure")}
               </Button>
-            </div>
+            </EmptyState>
           )}
           {found && ready && (
             <>
-              <div className="flex min-w-0 items-center gap-2 border-b border-border px-3 py-2 text-[12px]">
+              <div className="flex min-w-0 items-center gap-2 border-b border-border px-3 py-2 text-meta">
                 <span
                   data-slot="forge-repository"
                   // GitLab 多级子组的路径可能很长：截断时悬停看全。
@@ -230,11 +222,11 @@ export function GithubDrawer() {
                 >
                   {found.repository.owner}/{found.repository.name}
                 </span>
-                <Badge variant="outline">
+                <Badge variant="outline" size="sm">
                   {FORGE_NAMES[found.forge ?? ""] ?? found.forge}
                 </Badge>
                 {found.accountLogin && (
-                  <Badge variant="secondary" className="truncate">
+                  <Badge variant="secondary" size="sm" className="truncate">
                     {found.accountLogin}
                   </Badge>
                 )}

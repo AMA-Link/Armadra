@@ -10,7 +10,8 @@ import {
 import { adapterInstallKey } from "@/acp/adapter-install";
 import { AgentRow } from "@/panels/settings/pages/AgentsPage";
 import { AgentDetailPage } from "@/panels/settings/pages/AgentDetailPage";
-import { SettingsGroup } from "@/panels/settings/SettingsGroup";
+import { Card } from "@/ui/card";
+import { Table, TableBody } from "@/ui/table";
 import { MachinesTable } from "@/panels/settings/pages/execution-hosts/MachinesTable";
 import { integrationKey } from "@/panels/settings/pages/integration/use-integration";
 import { CLI_GROUP, FLEET, idleJob } from "../fixtures/integration";
@@ -33,7 +34,7 @@ function Sample({
 }) {
   return (
     <figure className="flex min-w-0 flex-col gap-2">
-      <figcaption className="text-[12px] text-muted-foreground">
+      <figcaption className="text-meta text-muted-foreground">
         {caption}
       </figcaption>
       {children}
@@ -74,11 +75,15 @@ function useCliCache() {
 function CliTable() {
   useCliCache();
   return (
-    <SettingsGroup>
-      {CLI_GROUP.map(({ agent }) => (
-        <AgentRow key={agent.id} agent={agent} />
-      ))}
-    </SettingsGroup>
+    <Card variant="table">
+      <Table>
+        <TableBody>
+          {CLI_GROUP.map(({ agent }) => (
+            <AgentRow key={agent.id} agent={agent} />
+          ))}
+        </TableBody>
+      </Table>
+    </Card>
   );
 }
 
@@ -117,14 +122,14 @@ function ForgeSamples() {
     <>
       <div className="flex min-w-0 flex-col gap-6">
         <Sample caption={t("forge.showcase.gitea")}>
-          <div className="rounded-lg border border-border">
+          <div className="rounded-card border border-border">
             <ForgeHosted detection={GITEA_DETECTION} locale={locale} open />
           </div>
         </Sample>
       </div>
       <div className="flex min-w-0 flex-col gap-6">
         <Sample caption={t("forge.showcase.gitlab")}>
-          <div className="min-w-0 space-y-3 rounded-lg border border-border p-3">
+          <div className="min-w-0 space-y-3 rounded-card border border-border p-3">
             <PullBody pull={GITLAB_MR} locale={locale} />
           </div>
         </Sample>

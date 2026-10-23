@@ -17,6 +17,7 @@ import {
 } from "../../../api/identity";
 
 const probe = vi.fn();
+const backupData = vi.fn();
 vi.mock("../../../host/connection", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../../host/connection")>()),
   probeHost: (...args: unknown[]) => probe(...args),
@@ -45,9 +46,18 @@ vi.mock("../../../api/client", () => ({
       conversations: 3,
       boardLogRetentionDays: 30,
     }),
-    backupData: vi.fn(),
+    backupData: (...args: unknown[]) => backupData(...args),
     localSettings: async () => ({ file: "", paths: [] }),
   },
+}));
+const sampling = vi.hoisted(() => ({ snapshot: null as unknown }));
+vi.mock("../../resources/use-resources", () => ({
+  useResources: () => ({
+    snapshot: sampling.snapshot,
+    error: null,
+    loading: false,
+    refresh: () => undefined,
+  }),
 }));
 vi.mock("../use-runtime-settings", () => ({
   useRuntimeSettings: () => ({
@@ -90,6 +100,8 @@ afterEach(() => {
   access.remote = false;
   settingsState.data = {};
   settingsState.mutate.mockReset();
+  sampling.snapshot = null;
+  backupData.mockReset();
   cleanup();
 });
 
@@ -174,11 +186,73 @@ describe("设置 → 本机服务", () => {
     );
   });
 
+  it("页头只有一个动作「立即备份」，没有副标题；点击备份数据库", async () => {
+    backupData.mockResolvedValue({ path: "/tmp/x", bytes: 1 });
+    draw();
+    const heading = screen.getByTestId("settings-heading");
+    expect(heading.parentElement?.querySelector("p")).toBeNull();
+    const actions = heading.parentElement!.querySelector(
+      "[data-slot=settings-page-actions]",
+    )!;
+    expect(actions.querySelectorAll("button")).toHaveLength(1);
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "立即备份" }));
+    });
+    expect(backupData).toHaveBeenCalledTimes(1);
+    // 备份挪到页头：数据组里不再有那一行
+    expect(screen.queryByText("备份数据库")).toBeNull();
+  });
+
+  it("托盘：五张，值来自资源采样；没有样本时全是 —", async () => {
+    draw();
+    const values = () =>
+      [...document.querySelectorAll("[data-slot=tray-value]")].map(
+        (node) => node.textContent,
+      );
+    expect(values()).toEqual(["—", "—", "—", "—", "—"]);
+    cleanup();
+    sampling.snapshot = {
+      host: {
+        hostId: "local",
+        location: "local",
+        platform: "darwin",
+        cpuPercent: 12,
+        cpuCores: 8,
+        memory: {
+          totalBytes: 100,
+          usedBytes: 50,
+          availableBytes: 50,
+          swapTotalBytes: null,
+          swapUsedBytes: null,
+          pressure: null,
+        },
+        loadAverage: null,
+        disk: null,
+        power: { source: null, batteryPercent: null, charging: null },
+        uptimeSeconds: 7_200,
+        sampledAt: "2026-10-23T08:00:00Z",
+      },
+      executionHosts: [],
+      sessions: [
+        { sessionId: "a", alive: true, unknownReason: null },
+        { sessionId: "b", alive: false, unknownReason: "exited" },
+      ],
+      components: [],
+    };
+    draw();
+    await waitFor(() =>
+      expect(values()).toEqual(["12%", "50%", "—", "2小时 0分", "1"]),
+    );
+  });
+
   it("成员只见连接状态", async () => {
     access.member = true;
     draw();
     await waitFor(() => expect(probe).toHaveBeenCalled());
     expect(screen.queryByText("终端会话")).toBeNull();
     expect(screen.queryByText("数据")).toBeNull();
+    // 托盘与备份都是整台机器的事，成员没有
+    expect(document.querySelector("[data-slot=settings-kpi]")).toBeNull();
+    expect(screen.queryByRole("button", { name: "立即备份" })).toBeNull();
   });
 });

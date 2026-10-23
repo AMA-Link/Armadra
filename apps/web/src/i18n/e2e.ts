@@ -11,7 +11,6 @@ export const e2e: MessageModule = {
   "zh-CN": {
     "e2e.pending.title": "等待「{name}」确认",
     "e2e.pending.titleUnnamed": "等待这台电脑确认",
-    "e2e.pending.hint": "请在那台电脑上输入",
     "e2e.pending.rejected": "这台电脑拒绝了此设备",
     "e2e.pending.cancel": "取消",
     "e2e.pending.close": "关闭",
@@ -48,7 +47,6 @@ export const e2e: MessageModule = {
   en: {
     "e2e.pending.title": "Waiting for “{name}” to confirm",
     "e2e.pending.titleUnnamed": "Waiting for the computer to confirm",
-    "e2e.pending.hint": "Enter this on that computer",
     "e2e.pending.rejected": "That computer declined this device",
     "e2e.pending.cancel": "Cancel",
     "e2e.pending.close": "Close",

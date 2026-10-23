@@ -6,7 +6,7 @@
  * 确认框上只有那一句话，别的说明一律不写（§14）。
  */
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { toast } from "sonner";
+import { toast } from "@/ui/toast";
 
 import { runtimeApi } from "../api/client";
 import {

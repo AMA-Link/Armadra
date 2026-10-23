@@ -11,6 +11,7 @@ import {
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 
 import { usePreferencesStore } from "@/app/preferences-store";
+import { TooltipProvider } from "@/ui/tooltip";
 
 const api = vi.hoisted(() => ({
   executionHosts: vi.fn(),
@@ -34,7 +35,7 @@ const runtime = vi.hoisted(() => ({
 }));
 const compact = vi.hoisted(() => ({ value: false }));
 vi.mock("@/api/client", () => ({ localRuntimeApi: api }));
-vi.mock("sonner", () => ({ toast: toasts }));
+vi.mock("@/ui/toast", () => ({ toast: toasts }));
 vi.mock("@/platform/layout", async (original) => ({
   ...(await original<typeof import("@/platform/layout")>()),
   useCompactLayout: () => compact.value,
@@ -71,7 +72,9 @@ function mount() {
   });
   return render(
     <QueryClientProvider client={client}>
-      <MachinesPage />
+      <TooltipProvider>
+        <MachinesPage />
+      </TooltipProvider>
     </QueryClientProvider>,
   );
 }
@@ -83,14 +86,25 @@ async function click(element: Element) {
 }
 
 describe("设置 → SSH", () => {
-  it("一张表：名称 · 地址 · 验证；不列 Worker 与工作区数，不再查执行主机表", async () => {
+  it("页头有「添加主机」且没有副标题；表格卡：名称 · 地址 · Worker · 操作，不再查执行主机表", async () => {
     mount();
+    const heading = await screen.findByTestId("settings-heading");
+    expect(heading.tagName).toBe("H2");
+    expect(
+      heading.parentElement?.querySelectorAll("p, [data-slot=description]"),
+    ).toHaveLength(0);
+    expect(screen.getByRole("button", { name: "Add host" })).toBeTruthy();
     const table = await screen.findByRole("table");
     const row = within(table).getByText("Build box").closest("tr")!;
     expect(within(row).getByText("ci@build.example:2222")).toBeTruthy();
     expect(within(row).getByRole("button", { name: "Validate" })).toBeTruthy();
-    expect(within(table).getAllByRole("columnheader")).toHaveLength(3);
-    expect(screen.queryByText("Worker")).toBeNull();
+    expect(within(row).getByRole("button", { name: "Resync" })).toBeTruthy();
+    expect(within(row).getByRole("button", { name: "Open" })).toBeTruthy();
+    expect(
+      within(table)
+        .getAllByRole("columnheader")
+        .map((cell) => cell.textContent),
+    ).toEqual(["Name", "Address", "Worker", "Actions"]);
     expect(screen.queryByRole("button", { name: "Resync all" })).toBeNull();
     expect(
       screen.queryByRole("button", { name: "Import / export" }),
@@ -98,7 +112,14 @@ describe("设置 → SSH", () => {
     expect(api.executionHosts).not.toHaveBeenCalled();
   });
 
-  it("验证一步问完：只跑终端的机器连得上就是答案，Worker 握手成功说版本", async () => {
+  it("没配 Worker 的主机不给「重新同步」", async () => {
+    runtime.hosts = [boxSsh];
+    mount();
+    const table = await screen.findByRole("table");
+    expect(within(table).queryByRole("button", { name: "Resync" })).toBeNull();
+  });
+
+  it("验证一步问完：结论落在 Worker 胶囊上，只有失败才弹提示", async () => {
     api.validateExecutionHost.mockResolvedValue({
       executionHostId: "build-box",
       reachable: true,
@@ -108,10 +129,12 @@ describe("设置 → SSH", () => {
       detail: "",
     });
     mount();
+    const status = (name: string) =>
+      screen.findByText(name, { selector: "[data-slot=status-pill]" });
+    expect(screen.queryByText("Reachable, no Worker")).toBeNull();
     await click(await screen.findByRole("button", { name: "Validate" }));
-    await waitFor(() =>
-      expect(toasts.success).toHaveBeenCalledWith("Reachable, no Worker"),
-    );
+    expect((await status("Reachable, no Worker")).dataset.tone).toBe("paused");
+    expect(toasts.error).not.toHaveBeenCalled();
 
     api.validateExecutionHost.mockResolvedValue({
       executionHostId: "build-box",
@@ -122,6 +145,7 @@ describe("设置 → SSH", () => {
       detail: "ssh: connect timed out",
     });
     await click(screen.getByRole("button", { name: "Validate" }));
+    expect((await status("Unreachable")).dataset.tone).toBe("failed");
     await waitFor(() =>
       expect(toasts.error).toHaveBeenCalledWith("Unreachable", {
         description: "ssh: connect timed out",
@@ -139,10 +163,22 @@ describe("设置 → SSH", () => {
       detail: "",
     });
     await click(screen.getByRole("button", { name: "Validate" }));
+    expect((await status("Worker 0.1.0 · linux/aarch64")).dataset.tone).toBe(
+      "done",
+    );
+    expect(toasts.success).not.toHaveBeenCalled();
+  });
+
+  it("表里「重新同步」直接重连 Worker", async () => {
+    api.resyncExecutionHost.mockResolvedValue({
+      executionHostId: "build-box",
+      name: "Build box",
+    });
+    mount();
+    await click(await screen.findByRole("button", { name: "Resync" }));
+    expect(api.resyncExecutionHost).toHaveBeenCalledWith("build-box");
     await waitFor(() =>
-      expect(toasts.success).toHaveBeenCalledWith(
-        "Worker 0.1.0 · linux/aarch64",
-      ),
+      expect(toasts.success).toHaveBeenCalledWith("Resynced Build box"),
     );
   });
 
@@ -174,7 +210,8 @@ describe("设置 → SSH", () => {
   it("新建主机：五项平铺，额外参数与 Worker 收在「高级」里，保存带上已有主机", async () => {
     runtime.hosts = [boxSsh];
     mount();
-    await click(await screen.findByRole("button", { name: "Add" }));
+    await click(await screen.findByRole("button", { name: "Add host" }));
+    expect(screen.getByTestId("settings-heading").textContent).toBe("Add host");
     expect(screen.getByLabelText("Name")).toBeTruthy();
     expect(screen.getByLabelText("Key")).toBeTruthy();
     expect(screen.queryByLabelText("Worker path")).toBeNull();
@@ -197,11 +234,12 @@ describe("设置 → SSH", () => {
     ]);
   });
 
-  it("没有主机：一句话加「添加」", async () => {
+  it("没有主机：卡内一句空态，页头仍有「添加主机」", async () => {
     runtime.hosts = [];
     mount();
     expect(await screen.findByText("No hosts yet")).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Add" })).toBeTruthy();
+    expect(screen.queryByRole("table")).toBeNull();
+    expect(screen.getAllByRole("button", { name: "Add host" })).toHaveLength(1);
   });
 
   it("窄屏：一台一张条目，不画表格", async () => {

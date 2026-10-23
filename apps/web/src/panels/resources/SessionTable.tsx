@@ -9,19 +9,18 @@
  */
 import { useState } from "react";
 import { ChevronDown, ChevronRight, Crosshair, X } from "lucide-react";
-import { toast } from "sonner";
 import type { SessionResources } from "@armadra/shared";
 
 import { sessionGateway } from "@/session";
 import { useT } from "@/app/preferences-store";
 import { centerNode } from "@/sessions/SessionRow";
 import { useCanvasStore } from "@/store/canvas-store";
+import { toast } from "@/ui/toast";
 import {
   ResponsiveAlertDialog,
   ResponsiveAlertDialogAction,
   ResponsiveAlertDialogCancel,
   ResponsiveAlertDialogContent,
-  ResponsiveAlertDialogDescription,
   ResponsiveAlertDialogFooter,
   ResponsiveAlertDialogHeader,
   ResponsiveAlertDialogTitle,
@@ -45,6 +44,7 @@ import {
   type SessionSort,
 } from "./metrics";
 import { Button } from "@/ui/button";
+import { cn } from "@/lib/cn";
 
 export function SessionTable({
   sessions,
@@ -142,7 +142,7 @@ export function SessionTable({
           data-host={value === "all" ? "all" : (value ?? "unknown")}
           data-active={host === value ? "true" : undefined}
           onClick={() => setHost(value)}
-          className="block h-auto max-w-32 truncate rounded-[var(--r-control)] px-1.5 py-0.5 text-[11px] font-normal text-muted-foreground hover:bg-accent data-[active=true]:bg-accent data-[active=true]:text-foreground"
+          className="block h-auto max-w-32 truncate rounded-control px-1.5 py-0.5 text-caption font-normal text-muted-foreground hover:bg-accent data-[active=true]:bg-accent data-[active=true]:text-foreground"
         >
           {value === "all" ? t("resources.host.filter.all") : hostLabel(value)}
         </Button>
@@ -166,7 +166,7 @@ export function SessionTable({
             type="button"
             onClick={() => onSorted(key)}
             data-active={sort === key ? "true" : undefined}
-            className="h-auto rounded-[var(--r-control)] px-1.5 py-0.5 text-[11px] font-normal text-muted-foreground hover:bg-accent data-[active=true]:bg-accent data-[active=true]:text-foreground"
+            className="h-auto rounded-control px-1.5 py-0.5 text-caption font-normal text-muted-foreground hover:bg-accent data-[active=true]:bg-accent data-[active=true]:text-foreground"
           >
             {t(`resources.sort.${key}`)}
           </Button>
@@ -199,7 +199,7 @@ export function SessionTable({
               key={session.sessionId}
               data-high={high ? "true" : undefined}
               title={detail}
-              className="group flex flex-col rounded-[var(--r-control)] px-1.5 py-1 hover:bg-accent data-[high=true]:bg-[var(--danger)]/8"
+              className="group flex flex-col rounded-control px-1.5 py-1 hover:bg-accent data-[high=true]:bg-danger/8"
             >
               {/*
                 两行：名字一行独占（只给操作按钮让位），说明与数字一行。原来四样挤
@@ -232,21 +232,16 @@ export function SessionTable({
                   className="flex min-w-0 flex-1 items-center gap-1.5"
                   title={titleOf(session)}
                 >
-                  <span className="truncate text-[12px]">
-                    {titleOf(session)}
-                  </span>
+                  <span className="truncate text-meta">{titleOf(session)}</span>
                   {session.location === "remote" && (
-                    <Badge
-                      variant="outline"
-                      className="text-[length:var(--text-caption)]"
-                    >
+                    <Badge variant="outline" className="text-caption">
                       {t("resources.location.remote")}
                     </Badge>
                   )}
                   {high && (
                     <Badge
                       variant="outline"
-                      className="border-[var(--danger)] text-[length:var(--text-caption)] text-[var(--danger-text)]"
+                      className="border-danger text-caption text-danger-text"
                     >
                       {t("resources.session.high")}
                     </Badge>
@@ -278,19 +273,14 @@ export function SessionTable({
               </div>
               <div className="flex w-full items-center gap-2 pl-8">
                 <span className="flex-1" />
-                <span className="w-14 shrink-0 text-right text-[12px] tabular-nums">
+                <span className="w-14 shrink-0 text-right text-meta tabular-nums">
                   {formatPercent(session.cpuPercent)}
                 </span>
                 <span
-                  className={`w-20 shrink-0 text-right text-[12px] tabular-nums ${
-                    high ? "text-[var(--danger-text)]" : ""
-                  }`}
-                  // 共享页会被重复计入，所以这是估计值而不是独占内存（设计 §8）。
-                  title={
-                    session.memoryEstimated
-                      ? t("resources.session.memoryEstimated")
-                      : undefined
-                  }
+                  className={cn(
+                    "w-20 shrink-0 text-right text-meta tabular-nums",
+                    high && "text-danger-text",
+                  )}
                 >
                   {formatMetricBytes(session.memoryBytes)}
                   {session.memoryEstimated && session.memoryBytes !== null ? (
@@ -317,7 +307,7 @@ export function SessionTable({
           data-slot="resource-idle-toggle"
           aria-expanded={showIdle}
           onClick={() => setShowIdle((current) => !current)}
-          className="mt-1 text-[11px] font-normal text-muted-foreground"
+          className="mt-1 text-caption font-normal text-muted-foreground"
         >
           {showIdle ? <ChevronDown /> : <ChevronRight />}
           {t("resources.idle", { count: idleCount })}
@@ -330,24 +320,21 @@ export function SessionTable({
           if (!open) setEnding(null);
         }}
       >
-        <ResponsiveAlertDialogContent>
+        <ResponsiveAlertDialogContent aria-describedby={undefined}>
           <ResponsiveAlertDialogHeader>
             <ResponsiveAlertDialogTitle>
-              {t("resources.endTitle")}
-            </ResponsiveAlertDialogTitle>
-            <ResponsiveAlertDialogDescription>
-              {t("resources.endBody", {
+              {t("resources.endTitle", {
                 name: ending ? titleOf(ending) : "",
               })}
-            </ResponsiveAlertDialogDescription>
+            </ResponsiveAlertDialogTitle>
           </ResponsiveAlertDialogHeader>
           <ResponsiveAlertDialogFooter>
             <ResponsiveAlertDialogCancel>
               {t("resources.cancel")}
             </ResponsiveAlertDialogCancel>
             <ResponsiveAlertDialogAction
+              variant="destructive-solid"
               onClick={() => ending && endSession(ending)}
-              className="bg-[var(--danger)] text-white hover:bg-[var(--danger)]/90"
             >
               {t("resources.session.end")}
             </ResponsiveAlertDialogAction>

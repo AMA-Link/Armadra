@@ -104,7 +104,6 @@ export const security: MessageModule = {
     "security.sessions.signOutNamed": "退出 {name}",
     "security.sessions.signOutOthers": "退出其他全部",
     "security.sessions.everyone": "所有成员",
-    "security.sessions.signedOut": "已退出 {count} 个会话",
 
     "security.lockouts": "锁定的账号",
     "security.lockouts.failures": "失败次数",
@@ -321,7 +320,6 @@ export const security: MessageModule = {
     "security.sessions.signOutNamed": "Sign out {name}",
     "security.sessions.signOutOthers": "Sign out all others",
     "security.sessions.everyone": "Everyone",
-    "security.sessions.signedOut": "Signed out {count} sessions",
 
     "security.lockouts": "Locked accounts",
     "security.lockouts.failures": "Failures",

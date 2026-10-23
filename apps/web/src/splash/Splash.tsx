@@ -1,9 +1,16 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react";
 import {
   useResolvedTheme,
   usePreferencesStore,
   useT,
 } from "../app/preferences-store";
+import { setSplashPhase } from "./session";
 import { SplashStage, type SplashStageHandle } from "./SplashStage";
 import {
   advanceSplashClock,
@@ -19,8 +26,11 @@ import "./splash.css";
  * Runtime——覆盖层不挡数据加载，只挡这几秒的鼠标和键盘。
  */
 
-/** 淡出时长，与 splash.css 里的 transition 保持一致。 */
-export const FADE_MS = 260;
+/** 读不到令牌时（测试环境没加载样式表）的退路，与 `tokens.css` 同值。 */
+const FALLBACK_PAGE_MS = 280;
+const FALLBACK_FAST_MS = 120;
+/** 淡出时长的上限，给挂载方算硬上限用；令牌改大时这里跟着改。 */
+export const SPLASH_FADE_MAX_MS = FALLBACK_PAGE_MS;
 /** rAF 不来时的兜底节拍；要比单步上限短，否则只靠它推进会变慢。 */
 const FALLBACK_TICK_MS = SPLASH_MAX_STEP_MS - 10;
 /**
@@ -32,6 +42,28 @@ export const SPLASH_FUSE_MS = SPLASH_DURATION_MS + 1000;
 export const SKIP_AFTER_MS = 1000;
 /** `prefers-reduced-motion` 下只停终态这么久。 */
 export const REDUCED_HOLD_MS = 1000;
+
+/** 读 `<html>` 上的时长令牌（`280ms` / `0.28s`），读不到用退路。 */
+function tokenMs(name: string, fallback: number): number {
+  if (typeof document === "undefined") return fallback;
+  const raw = getComputedStyle(document.documentElement)
+    .getPropertyValue(name)
+    .trim();
+  const parsed = /^(\d*\.?\d+)(ms|s)$/.exec(raw);
+  if (!parsed) return fallback;
+  const value = Number(parsed[1]);
+  return parsed[2] === "s" ? value * 1000 : value;
+}
+
+/**
+ * 淡出时长：与 `splash.css` 的 transition 读同一个令牌——`--dur-page`，减少动效下
+ * `--dur-fast`（只保留透明度变化）。不再在 JS 和 CSS 里各写一份。
+ */
+export function splashFadeMs(reduced: boolean): number {
+  return reduced
+    ? tokenMs("--dur-fast", FALLBACK_FAST_MS)
+    : tokenMs("--dur-page", FALLBACK_PAGE_MS);
+}
 
 function prefersReducedMotion(): boolean {
   if (typeof window === "undefined" || typeof window.matchMedia !== "function")
@@ -79,6 +111,15 @@ export function Splash({ onDismiss }: SplashProps) {
   const [reduced, setReduced] = useState(prefersReducedMotion);
 
   const finish = useCallback(() => setLeaving(true), []);
+
+  // 覆盖层一挂上就把解析后的主题写到 <html>：splash.css 读的是根令牌，
+  // 终帧与随后挂载的 App 首帧用同一组底色。`syncDocumentPreferences` 之后
+  // 重复写同值无害。
+  useLayoutEffect(() => {
+    const root = document.documentElement;
+    root.dataset.theme = theme;
+    root.style.colorScheme = theme;
+  }, [theme]);
 
   useEffect(() => {
     if (
@@ -155,12 +196,13 @@ export function Splash({ onDismiss }: SplashProps) {
     return () => window.clearTimeout(timer);
   }, [leaving, finish]);
 
-  // 淡出结束后才把 DOM 摘掉。
+  // 开始退场就告诉 App（首屏错落入场从这一刻起算），淡出结束后才把 DOM 摘掉。
   useEffect(() => {
     if (!leaving) return;
-    const timer = window.setTimeout(onDismiss, FADE_MS);
+    setSplashPhase("leaving");
+    const timer = window.setTimeout(onDismiss, splashFadeMs(reduced));
     return () => window.clearTimeout(timer);
-  }, [leaving, onDismiss]);
+  }, [leaving, onDismiss, reduced]);
 
   const skip = useCallback(() => {
     if (Date.now() - openedAt.current < SKIP_AFTER_MS) return;

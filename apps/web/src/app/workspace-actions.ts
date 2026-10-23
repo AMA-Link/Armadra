@@ -3,7 +3,7 @@ import { activeSourceId } from "../sources/scope";
 import { useCallback } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import type { Workspace, WorkspaceSummary } from "@armadra/shared";
-import { toast } from "sonner";
+import { toast } from "@/ui/toast";
 import { isConflict, runtimeApi } from "../api/client";
 import { filesGateway } from "../files/gateway";
 import { isDesktop, pickDirectory } from "../platform";

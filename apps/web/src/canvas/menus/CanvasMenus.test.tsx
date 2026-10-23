@@ -252,6 +252,26 @@ describe("useCanvasMenus", () => {
     expect(screen.queryByText("置顶")).toBeNull();
   });
 
+  /** 禁用原因直接显示在菜单项右侧，不再依赖原生 `title`（禁用项收不到悬停）。 */
+  it("节点菜单的扩展项把禁用原因显示成值", async () => {
+    const { registerNodeMenuItems, clearNodeMenuItems } = await import(
+      "./node-menu"
+    );
+    registerNodeMenuItems("sticky", () => [
+      {
+        id: "extra.locked",
+        label: "额外动作",
+        disabled: true,
+        hint: "需要先保存",
+        run: vi.fn(),
+      },
+    ]);
+    openWith(() => handlers.onNodeContextMenu(mouse, { id: node.id } as never));
+    expect(screen.getByText("需要先保存")).toBeTruthy();
+    expect(screen.getByText("额外动作").closest("[title]")).toBeNull();
+    clearNodeMenuItems();
+  });
+
   /** 节点在菜单展开前被远端删掉时不该弹一个空菜单。 */
   it("目标节点不在文档里时退回新建菜单", () => {
     openWith(() =>

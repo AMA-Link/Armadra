@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import type { ReactFlowInstance } from "@xyflow/react";
 import type { AgentInfo, Workspace } from "@armadra/shared";
 
 const fetchAgents = vi.fn();
@@ -19,6 +20,7 @@ import { usePreferencesStore } from "../app/preferences-store";
 import { useCanvasStore } from "../store/canvas-store";
 import { initialPanels } from "../store/canvas/internal";
 import { MAX_ZOOM, MIN_ZOOM } from "../canvas/zoom";
+import { setFlow } from "../canvas/flow/flow-context";
 import { Dock, TidyButton, ZoomControls } from "./Dock";
 
 installDomPolyfills();
@@ -120,6 +122,40 @@ describe("Dock", () => {
     expect(dot?.textContent).toBe("");
   });
 
+  it("Dock 是 12 圆角、1px 强边、浮层阴影", () => {
+    const { container } = render(
+      <TestProviders>
+        <Dock />
+      </TestProviders>,
+    );
+    const dock = container.querySelector("[data-slot='dock']")!;
+    for (const name of [
+      "rounded-panel",
+      "border-border-strong",
+      "shadow-overlay",
+    ])
+      expect(dock.classList.contains(name)).toBe(true);
+  });
+
+  it("保存点是 6px 的状态点，未保存为注意色、已保存为完成色", () => {
+    useCanvasStore.setState({ saveState: "dirty" });
+    const { container, rerender } = render(
+      <TestProviders>
+        <Dock />
+      </TestProviders>,
+    );
+    const dot = () => container.querySelector("[data-slot='save-dot']")!;
+    expect(dot().getAttribute("data-size")).toBe("6");
+    expect(dot().getAttribute("aria-label")).toBe("未保存");
+    useCanvasStore.setState({ saveState: "saved" });
+    rerender(
+      <TestProviders>
+        <Dock />
+      </TestProviders>,
+    );
+    expect(dot().getAttribute("aria-label")).toBe("已保存");
+  });
+
   it("保存指示灯报的是保存态本身", () => {
     useCanvasStore.setState({ saveState: "dirty" });
     const { container } = render(
@@ -214,6 +250,40 @@ describe("缩放段 [−] [NN%] [+]", () => {
     );
     expect(screen.getByLabelText("缩小")).toBeTruthy();
     expect(screen.getByLabelText("放大")).toBeTruthy();
+  });
+});
+
+describe("工具组与缩放百分比", () => {
+  beforeEach(() => {
+    fetchAgents.mockReset().mockResolvedValue([claude]);
+    useCanvasStore.setState({ workspace, saveState: "saved" });
+  });
+  afterEach(() => setFlow(null));
+
+  it("画布挂载后工具组里有一块共享指示器", () => {
+    setFlow({} as ReactFlowInstance);
+    const { container } = render(
+      <TestProviders>
+        <Dock />
+      </TestProviders>,
+    );
+    const expanded = container.querySelector(".dock-tools-expanded")!;
+    expect(expanded.querySelectorAll("[data-slot='indicator']")).toHaveLength(
+      1,
+    );
+  });
+
+  it("缩放百分比用 TextSwap 渲染，数字等宽", () => {
+    render(
+      <TestProviders>
+        <ZoomControls zoom={0.8} />
+      </TestProviders>,
+    );
+    const fit = screen.getByLabelText("适应");
+    expect(fit.querySelector("[data-slot='text-swap']")?.textContent).toBe(
+      "80%",
+    );
+    expect(fit.classList.contains("tabular-nums")).toBe(true);
   });
 });
 

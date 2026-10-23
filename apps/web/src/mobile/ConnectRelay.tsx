@@ -7,13 +7,8 @@ import { Checkbox } from "@/ui/checkbox";
 import { Field, FieldError, FieldLabel } from "@/ui/field";
 import { Input } from "@/ui/input";
 import { Item, ItemGroup, ItemTitle } from "@/ui/item";
-import { Spinner } from "@/ui/spinner";
 
 import type { RelaySourceChoice } from "./connect";
-
-/** 手机输入 16px，防 iOS 聚焦时放大整页（设计系统 §2.3）。 */
-const TOUCH_INPUT =
-  "h-11 text-[length:var(--text-input-touch)] md:text-[length:var(--text-input-touch)]";
 
 export interface RelayFormProps {
   readonly busy: boolean;
@@ -83,7 +78,7 @@ export function RelayForm({
             spellCheck={false}
             placeholder="relay.example.com"
             disabled={busy}
-            className={TOUCH_INPUT}
+            size="touch"
             onChange={(event) => edit(setIssuer)(event.target.value)}
           />
         </Field>
@@ -100,7 +95,7 @@ export function RelayForm({
           autoComplete="username"
           spellCheck={false}
           disabled={busy}
-          className={TOUCH_INPUT}
+          size="touch"
           onChange={(event) => edit(setAccount)(event.target.value)}
         />
       </Field>
@@ -116,18 +111,18 @@ export function RelayForm({
           disabled={busy}
           aria-invalid={invalid}
           aria-describedby={message ? errorId : undefined}
-          className={TOUCH_INPUT}
+          size="touch"
           onChange={(event) => edit(setPassword)(event.target.value)}
         />
         {message && <FieldError id={errorId}>{message}</FieldError>}
       </Field>
       <Button
+        loading={busy}
         type="submit"
-        size="lg"
-        className="h-11 w-full"
+        size="touch"
+        className="w-full"
         disabled={busy || !ready}
       >
-        {busy && <Spinner aria-label={t("mobileConnect.connecting")} />}
         {t("mobileConnect.relay.signIn")}
       </Button>
     </form>
@@ -167,13 +162,13 @@ export function FingerprintStep({
   return (
     <div className="flex flex-col gap-(--space-block)">
       <div className="flex flex-col gap-2">
-        <p className="font-mono text-[13px] text-muted-foreground tabular-nums">
+        <p className="font-mono text-body text-muted-foreground tabular-nums">
           {host}
         </p>
         <Item variant="muted" className="flex-col items-start">
           <div
             role="group"
-            className="flex flex-col gap-1 font-mono text-[13px] leading-5 tabular-nums"
+            className="flex flex-col gap-1 font-mono text-body leading-5 tabular-nums"
             aria-label={t("mobileConnect.fingerprint.label")}
           >
             {groupFingerprint(fingerprint).map((row, index) => (
@@ -185,20 +180,20 @@ export function FingerprintStep({
       </div>
       <div className="flex flex-col gap-2">
         <Button
+          loading={busy}
           type="button"
-          size="lg"
-          className="h-11 w-full"
+          size="touch"
+          className="w-full"
           disabled={busy}
           onClick={onTrust}
         >
-          {busy && <Spinner aria-label={t("mobileConnect.connecting")} />}
           {t("mobileConnect.fingerprint.trust")}
         </Button>
         <Button
           type="button"
-          size="lg"
+          size="touch"
           variant="ghost"
-          className="h-11 w-full"
+          className="w-full"
           disabled={busy}
           onClick={onCancel}
         >
@@ -273,13 +268,13 @@ export function SourcesStep({
       </ItemGroup>
       {message && <FieldError id={errorId}>{message}</FieldError>}
       <Button
+        loading={busy}
         type="button"
-        size="lg"
-        className="h-11 w-full"
+        size="touch"
+        className="w-full"
         disabled={busy || picked.size === 0}
         onClick={() => onMount([...picked])}
       >
-        {busy && <Spinner aria-label={t("mobileConnect.connecting")} />}
         {t("mobileConnect.sources.add")}
       </Button>
     </div>

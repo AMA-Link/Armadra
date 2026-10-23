@@ -150,7 +150,7 @@ export function NodeNameDialog() {
           {verdicts.map((entry, index) => (
             <div key={entry.node.id} className="flex flex-col gap-1">
               <label
-                className="text-xs text-[var(--muted-foreground)]"
+                className="text-meta text-muted-foreground"
                 htmlFor={`node-name-${entry.node.id}`}
               >
                 {entry.node.title}
@@ -174,7 +174,7 @@ export function NodeNameDialog() {
                 }}
               />
               {entry.problem === null ? null : (
-                <span className="text-xs text-[var(--danger-text)]">
+                <span className="text-meta text-danger-text">
                   {entry.problem}
                 </span>
               )}
@@ -186,7 +186,7 @@ export function NodeNameDialog() {
           */}
           {edgeId === undefined ? null : (
             <div className="flex flex-col gap-1">
-              <span className="text-xs text-[var(--muted-foreground)]">
+              <span className="text-meta text-muted-foreground">
                 {t("edge.role.title")}
               </span>
               <ToggleGroup

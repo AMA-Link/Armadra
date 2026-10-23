@@ -70,7 +70,7 @@ describe("ResponsiveDialog", () => {
     expect(dialog.getAttribute("data-slot")).toBe("sheet-content");
     expect(dialog.getAttribute("data-side")).toBe("bottom");
     expect(dialog.getAttribute("data-responsive")).toBe("sheet");
-    expect(dialog.className).toContain("rounded-t-[14px]");
+    expect(dialog.className).toContain("rounded-t-dialog");
     expect(dialog.className).toContain(
       "max-h-[calc(100dvh-48px-var(--safe-top))]",
     );
@@ -140,7 +140,7 @@ describe("ResponsiveAlertDialog", () => {
     expect(dialog.getAttribute("data-responsive")).toBe("sheet");
     expect(dialog.className).toContain("bottom-0");
     expect(dialog.className).not.toContain("top-[calc(50%+");
-    expect(dialog.className).toContain("rounded-t-[14px]");
+    expect(dialog.className).toContain("rounded-t-dialog");
     expect(dialog.className).toContain("var(--safe-bottom)");
     expect(dialog.className).not.toContain("sm:max-w-[420px]");
     expect(

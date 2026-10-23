@@ -9,7 +9,6 @@ import { Input } from "../../../../ui/input";
 import {
   ResponsiveDialog,
   ResponsiveDialogContent,
-  ResponsiveDialogDescription,
   ResponsiveDialogFooter,
   ResponsiveDialogHeader,
   ResponsiveDialogTitle,
@@ -113,15 +112,15 @@ export function WorktreeCreateDialog({
         if (!open) onClose();
       }}
     >
-      <ResponsiveDialogContent>
+      <ResponsiveDialogContent aria-describedby={undefined}>
         <ResponsiveDialogHeader>
           <ResponsiveDialogTitle>
             {t("gitRepo.createWorktree")}
           </ResponsiveDialogTitle>
           {repositoryPath && (
-            <ResponsiveDialogDescription className="break-all font-mono">
+            <p className="break-all font-mono text-meta text-muted-foreground">
               {repositoryPath}
-            </ResponsiveDialogDescription>
+            </p>
           )}
         </ResponsiveDialogHeader>
         <form
@@ -155,10 +154,10 @@ export function WorktreeCreateDialog({
                     patch({ branch: next === NONE ? "" : next })
                   }
                 >
-                  <SelectTrigger className="h-9 w-full min-w-0">
+                  <SelectTrigger className="w-full min-w-0">
                     <SelectValue />
                   </SelectTrigger>
-                  <SelectContent className="z-[var(--z-dialog)]">
+                  <SelectContent>
                     <SelectItem value={NONE}>
                       {t("gitRepo.chooseBranch")}
                     </SelectItem>
@@ -211,9 +210,6 @@ export function WorktreeCreateDialog({
               retry={() => void snapshot.refetch()}
             />
           )}
-          <p className="text-xs text-muted-foreground">
-            {t("gitRepo.worktreeSafety")}
-          </p>
           <ResponsiveDialogFooter>
             <Button type="submit" disabled={busy || !ready}>
               {t("gitRepo.createWorktree")}

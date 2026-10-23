@@ -19,7 +19,7 @@ export function AppSkeleton({ hidden = false }: { hidden?: boolean }) {
       )}
     >
       <aside className="material-sidebar hidden h-full w-[var(--sidebar-w)] shrink-0 flex-col gap-2 border-r border-border p-2 md:flex">
-        <div className="flex h-9 items-center px-2">
+        <div className="flex h-8 items-center px-2">
           <Skeleton className="h-4 w-28" />
         </div>
         <SkeletonList rows={4} leading="icon" label={t("state.loading")} />

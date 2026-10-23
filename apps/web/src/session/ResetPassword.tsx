@@ -12,7 +12,6 @@ import { Button } from "@/ui/button";
 import { Field, FieldError, FieldLabel } from "@/ui/field";
 import { Input } from "@/ui/input";
 import { Skeleton } from "@/ui/skeleton";
-import { Spinner } from "@/ui/spinner";
 
 export type ResetStage =
   | { kind: "loading" }
@@ -123,7 +122,7 @@ export function ResetPassword({
     >
       <div className="flex flex-col items-center gap-3">
         <BrandMark className="size-12" />
-        <h1 className="text-[length:var(--text-display)] leading-tight font-semibold">
+        <h1 className="text-display leading-tight font-semibold">
           {stage.kind === "done"
             ? t("reset.done")
             : stage.kind === "invalid"
@@ -131,7 +130,7 @@ export function ResetPassword({
               : t("reset.title")}
         </h1>
         {stage.kind === "ready" && (
-          <p className="flex flex-col items-center gap-0.5 text-center text-[13px] text-muted-foreground">
+          <p className="flex flex-col items-center gap-0.5 text-center text-body text-muted-foreground">
             {stage.info.displayName && (
               <span className="font-medium text-foreground">
                 {stage.info.displayName}
@@ -143,7 +142,7 @@ export function ResetPassword({
           </p>
         )}
         {stage.kind === "invalid" && (
-          <p className="text-center text-[13px] text-muted-foreground">
+          <p className="text-center text-body text-muted-foreground">
             {error || t("reset.invalidHint")}
           </p>
         )}
@@ -151,8 +150,8 @@ export function ResetPassword({
 
       {stage.kind === "loading" && (
         <div className="flex flex-col gap-3">
-          <Skeleton className="h-9 w-full" />
-          <Skeleton className="h-9 w-full" />
+          <Skeleton className="h-8 w-full" />
+          <Skeleton className="h-8 w-full" />
         </div>
       )}
 
@@ -173,7 +172,6 @@ export function ResetPassword({
               type="password"
               autoComplete="new-password"
               autoFocus={focus}
-              className="text-base md:text-sm"
               value={password}
               disabled={busy}
               aria-invalid={error !== "" || undefined}
@@ -192,7 +190,6 @@ export function ResetPassword({
               id={`${id}-repeat`}
               type="password"
               autoComplete="new-password"
-              className="text-base md:text-sm"
               value={repeat}
               disabled={busy}
               aria-invalid={mismatch || undefined}
@@ -205,10 +202,11 @@ export function ResetPassword({
           </Field>
           <Button
             type="submit"
+            size="lg"
             className="w-full"
             disabled={busy || !password || !repeat}
+            loading={busy}
           >
-            {busy && <Spinner aria-label={t("reset.submit")} />}
             {t("reset.submit")}
           </Button>
         </form>
@@ -224,6 +222,7 @@ export function ResetPassword({
           )}
           <Button
             type="button"
+            size="lg"
             className="w-full"
             autoFocus={focus}
             onClick={() => onSignIn(stage.principalId)}
@@ -237,6 +236,7 @@ export function ResetPassword({
         <Button
           type="button"
           variant="outline"
+          size="lg"
           className="w-full"
           onClick={() => onSignIn("")}
         >

@@ -1,6 +1,6 @@
 import * as React from "react";
 import { useMutation } from "@tanstack/react-query";
-import { toast } from "sonner";
+import { toast } from "@/ui/toast";
 import type {
   AgentHistory,
   AgentInfo,
@@ -22,19 +22,9 @@ import { useIntegrationRefresh } from "./use-integration";
  * 弹层、重新生成与清理两个动作、一次性的迁移提示。
  */
 
-/** 一行右侧的值：13px 灰字，不是徽标。 */
-export function RowValue({
-  children,
-  title,
-}: {
-  children: React.ReactNode;
-  title?: string;
-}) {
-  return (
-    <span title={title} className="text-[13px] text-muted-foreground">
-      {children}
-    </span>
-  );
+/** 一行右侧的值：`text-body` 灰字，不是徽标。 */
+export function RowValue({ children }: { children: React.ReactNode }) {
+  return <span className="text-body text-muted-foreground">{children}</span>;
 }
 
 const HISTORY_PARTS = ["index", "cost", "transcript"] as const;
@@ -148,10 +138,8 @@ export function useIntegrationActions(agent: AgentInfo) {
   const refresh = useIntegrationRefresh();
   const regenerate = useMutation({
     mutationFn: () => localRuntimeApi.installAgentIntegration(agent.id),
-    onSuccess: () => {
-      refresh(agent.id);
-      toast.success(t("integration.regenerated"));
-    },
+    // 结果就在眼前：状态行与按钮立刻换成新的，不再弹成功提示。
+    onSuccess: () => refresh(agent.id),
     onError: (cause: Error) =>
       toast.error(t("integration.failed"), { description: cause.message }),
   });
@@ -236,17 +224,13 @@ export function CleanupButton({
           {t("integration.action.repair", { count: findings.length })}
         </Button>
       </PopoverTrigger>
-      {/* 设置对话框在 --z-dialog 上，弹层与它同层、后挂载，才不会被盖住。 */}
-      <PopoverContent
-        align="end"
-        className="z-[var(--z-dialog)] w-[28rem] max-w-[90vw] p-0"
-      >
+      <PopoverContent align="end" className="w-[28rem] max-w-[90vw] p-0">
         <ScrollArea className="max-h-80">
           <div className="flex flex-col gap-3 p-3">
             {groups.map((group) => (
               <section key={group.path} className="flex min-w-0 flex-col gap-1">
                 <span
-                  className="truncate text-xs font-medium text-foreground"
+                  className="truncate text-meta font-medium text-foreground"
                   title={group.path}
                 >
                   {shortenHome(group.path)}
@@ -258,13 +242,13 @@ export function CleanupButton({
                       className="flex min-w-0 items-start gap-2"
                     >
                       <code
-                        className="line-clamp-2 min-w-0 flex-1 rounded bg-muted px-1.5 py-0.5 font-mono text-[11px] leading-4 break-all text-muted-foreground"
+                        className="line-clamp-2 min-w-0 flex-1 rounded-tight bg-muted px-1.5 py-0.5 font-mono text-caption break-all text-muted-foreground"
                         title={entry.detail}
                       >
                         {shortenHome(entry.detail)}
                       </code>
                       {entry.count > 1 && (
-                        <span className="shrink-0 text-[11px] leading-5 text-muted-foreground tabular-nums">
+                        <span className="shrink-0 text-caption text-muted-foreground tabular-nums">
                           ×{entry.count}
                         </span>
                       )}

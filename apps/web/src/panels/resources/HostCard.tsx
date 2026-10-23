@@ -47,12 +47,12 @@ export function HostCard({
     <section
       data-slot="host-card"
       data-location={host.location}
-      className="flex flex-col gap-(--space-group) rounded-[var(--r-card)] border border-border p-3"
+      className="flex flex-col gap-(--space-group) rounded-card border border-border p-3"
     >
       <header className="flex items-center gap-2">
-        <h3 className="text-[13px] font-semibold">{t("resources.host")}</h3>
+        <h3 className="text-body font-semibold">{t("resources.host")}</h3>
         {name !== undefined && (
-          <Badge variant="secondary" className="max-w-40 truncate text-[11px]">
+          <Badge variant="secondary" className="max-w-40 truncate text-caption">
             {name}
           </Badge>
         )}
@@ -62,7 +62,7 @@ export function HostCard({
         两列而不是按视口切到三列：抽屉固定是窄的，`sm:` 看的是窗口宽度，桌面窗口
         一定满足，结果每格只剩一百来像素，「99% 326 MB / …」这类值全被截掉。
       */}
-      <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-[12px]">
+      <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-meta">
         <Metric
           label={t("resources.host.cpu")}
           value={formatPercent(host.cpuPercent)}
@@ -83,7 +83,6 @@ export function HostCard({
           slot="memory-pressure"
           label={t("resources.host.pressure")}
           value={t(`resources.pressure.${host.memory.pressure ?? "unknown"}`)}
-          title={t("resources.pressure.hint")}
         />
         <Metric label={t("resources.host.swap")} value={swap} />
         <Metric
@@ -114,11 +113,11 @@ function Metric({
 }) {
   return (
     <div className="min-w-0" data-slot={slot} title={title}>
-      <dt className="truncate text-[11px] text-muted-foreground">{label}</dt>
+      <dt className="truncate text-caption text-muted-foreground">{label}</dt>
       <dd className="tabular-nums [overflow-wrap:anywhere]">{value}</dd>
       {/* 补充说明另起一行、可以折行：和值挤在一行时被截掉的总是它。 */}
       {hint ? (
-        <dd className="text-[11px] text-muted-foreground tabular-nums [overflow-wrap:anywhere]">
+        <dd className="text-caption text-muted-foreground tabular-nums [overflow-wrap:anywhere]">
           {hint}
         </dd>
       ) : null}

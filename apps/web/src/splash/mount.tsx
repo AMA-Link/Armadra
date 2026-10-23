@@ -1,10 +1,10 @@
 import { createRoot } from "react-dom/client";
 import { usePreferencesStore } from "../app/preferences-store";
-import { FADE_MS, Splash, SPLASH_FUSE_MS } from "./Splash";
-import { markSplashShown, shouldShowSplash } from "./session";
+import { Splash, SPLASH_FADE_MAX_MS, SPLASH_FUSE_MS } from "./Splash";
+import { markSplashShown, setSplashPhase, shouldShowSplash } from "./session";
 
 /** 覆盖层无论如何都会在这个时刻之前消失：保险丝加淡出，再留两秒余量。 */
-export const SPLASH_HARD_LIMIT_MS = SPLASH_FUSE_MS + FADE_MS + 2000;
+export const SPLASH_HARD_LIMIT_MS = SPLASH_FUSE_MS + SPLASH_FADE_MAX_MS + 2000;
 
 /**
  * 把开屏动画挂到自己的 React root 上。
@@ -22,6 +22,7 @@ export function mountSplash(): void {
   const { splashAnimation } = usePreferencesStore.getState();
   if (!shouldShowSplash(splashAnimation)) return;
   markSplashShown();
+  setSplashPhase("playing");
 
   const host = document.createElement("div");
   host.id = "splash-root";
@@ -31,6 +32,7 @@ export function mountSplash(): void {
   const dismiss = () => {
     if (dismissed) return;
     dismissed = true;
+    setSplashPhase("done");
     // 卸载自己的 root 必须错开当前这次渲染，否则 React 会警告同步卸载。
     setTimeout(() => {
       root.unmount();

@@ -85,10 +85,10 @@ function AssistantRowImpl({ item, prompt, onRegenerate }: AssistantRowProps) {
         <PartView key={index} part={part} />
       ))}
       {item.streaming && empty && (
-        <Spinner aria-hidden className="size-3 text-muted-foreground" />
+        <Spinner size={12} className="text-muted-foreground" />
       )}
       {text.trim() !== "" && (
-        <ActionBar className="absolute -top-2 right-0 rounded-[var(--r-control)] bg-[var(--card)]">
+        <ActionBar className="absolute -top-2 right-0 rounded-control bg-card">
           <CopyAction text={text} />
           {onRegenerate !== undefined &&
             prompt !== undefined &&

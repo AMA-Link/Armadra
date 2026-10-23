@@ -10,14 +10,15 @@
  *  3. **策略在设置页改。** 这里只显示当前策略并给一个手动开关。
  */
 import { useState } from "react";
-import { toast } from "sonner";
 import type { PowerState } from "@armadra/shared";
 
 import { runtimeApi } from "@/api/client";
 import { useT } from "@/app/preferences-store";
 import { formatRelativeTime } from "@/lib/format";
 import { Badge } from "@/ui/badge";
+import { StatusDot } from "@/ui/status-pill";
 import { Switch } from "@/ui/switch";
+import { toast } from "@/ui/toast";
 
 /** 手动租约的 TTL：面板开着时会跟着采样一起续，关掉后十分钟自然释放。 */
 const MANUAL_TTL_SECONDS = 600;
@@ -63,48 +64,34 @@ export function PowerSection({
   };
 
   return (
-    <section className="rounded-[var(--r-card)] border border-border p-3">
-      <div
-        className="flex items-center gap-2 py-1"
-        // 只挡系统空闲睡眠：说明留在悬停提示里。
-        title={
-          power.inhibitor.available
-            ? t("resources.power.scope")
-            : (power.inhibitor.detail ?? t("resources.power.unavailable"))
-        }
-      >
+    <section className="rounded-card border border-border p-3">
+      <div className="flex items-center gap-2 py-1">
         <Switch
           id="power-manual"
           checked={manual !== null}
           disabled={busy || !power.inhibitor.available}
           onCheckedChange={(next) => void toggle(next)}
         />
-        <label htmlFor="power-manual" className="flex-1 text-[12px]">
+        <label htmlFor="power-manual" className="flex-1 text-meta">
           {t("resources.power.manual")}
         </label>
+        {!power.inhibitor.available && (
+          <span className="shrink-0 text-caption text-muted-foreground">
+            {power.inhibitor.detail ?? t("resources.power.unavailable")}
+          </span>
+        )}
       </div>
 
       {power.leases.length > 0 && (
         <ul className="mt-2 flex flex-col gap-0.5 border-t border-border pt-2">
           {power.leases.map((lease) => (
-            <li key={lease.id} className="flex items-center gap-2 text-[12px]">
-              <span
-                aria-hidden
-                className="size-1.5 shrink-0 rounded-full"
-                style={{
-                  background: lease.active
-                    ? "var(--success)"
-                    : "var(--muted-foreground)",
-                }}
-              />
+            <li key={lease.id} className="flex items-center gap-2 text-meta">
+              <StatusDot tone={lease.active ? "done" : "idle"} size={6} />
               <span className="min-w-0 flex-1 truncate">{lease.reason}</span>
-              <Badge
-                variant="ghost"
-                className="shrink-0 text-[length:var(--text-caption)]"
-              >
+              <Badge variant="ghost" className="shrink-0 text-caption">
                 {t(`resources.power.source.${lease.source}`)}
               </Badge>
-              <span className="shrink-0 text-[11px] text-muted-foreground">
+              <span className="shrink-0 text-caption text-muted-foreground">
                 {lease.blockedBy
                   ? t(`resources.power.blocked.${lease.blockedBy}`)
                   : t("resources.power.expires", {

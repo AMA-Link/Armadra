@@ -29,7 +29,7 @@ vi.mock("../../api/client", () => ({
   },
 }));
 
-vi.mock("sonner", () => ({
+vi.mock("@/ui/toast", () => ({
   toast: {
     info: vi.fn(),
     error: (...args: unknown[]) => error(...args),

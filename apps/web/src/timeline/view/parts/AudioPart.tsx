@@ -47,11 +47,11 @@ export function AudioPart({
             {t("timeline.audio")}
           </Button>
         </CollapsibleTrigger>
-        <Badge variant="outline" className="font-mono">
+        <Badge variant="outline" size="sm" className="font-mono">
           {mimeType}
         </Badge>
         {bytes !== undefined && (
-          <span className="text-[length:var(--text-caption)] text-muted-foreground tabular-nums">
+          <span className="text-caption text-muted-foreground tabular-nums">
             {formatBytes(bytes)}
           </span>
         )}
@@ -62,7 +62,7 @@ export function AudioPart({
             <track kind="captions" />
           </audio>
         ) : failed ? (
-          <span className="text-[length:var(--text-caption)] text-muted-foreground">
+          <span className="text-caption text-muted-foreground">
             {t("timeline.audio.failed")}
           </span>
         ) : (

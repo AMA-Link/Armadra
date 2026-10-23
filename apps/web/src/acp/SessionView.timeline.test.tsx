@@ -257,7 +257,7 @@ describe("SessionView on the timeline", () => {
     const cards = document.querySelectorAll("[data-slot=acp-permission]");
     expect(cards).toHaveLength(1);
     expect(cards[0]?.textContent).toContain("rm -rf dist");
-    fireEvent.click(screen.getByRole("button", { name: "本次允许" }));
+    fireEvent.click(screen.getByRole("button", { name: /^允许/ }));
     expect(api.answer).toHaveBeenCalledWith("p1", "allow", "ok");
     expect(document.querySelector("[data-slot=acp-permission]")).toBeNull();
     // core 回执：审批条目收成一行结局。
@@ -309,7 +309,7 @@ describe("SessionView on the timeline", () => {
     );
     await screen.findByText("first answer");
     expect(screen.queryByLabelText("消息")).toBeNull();
-    expect(screen.queryByRole("button", { name: "本次允许" })).toBeNull();
+    expect(screen.queryByRole("button", { name: /^允许/ })).toBeNull();
     expect(api.createSession).not.toHaveBeenCalled();
   });
 

@@ -46,7 +46,7 @@ function Sample({
 }) {
   return (
     <figure className="flex min-w-0 flex-col gap-2">
-      <figcaption className="text-[12px] text-muted-foreground">
+      <figcaption className="text-meta text-muted-foreground">
         {caption}
       </figcaption>
       {children}
@@ -57,7 +57,7 @@ function Sample({
 /** 登录样本坐在一张卡上，和设置对话框里的底色一样。 */
 function Card({ children }: { children: ReactNode }) {
   return (
-    <div className="rounded-lg border border-border/70 bg-[var(--surface-card)] px-4">
+    <div className="rounded-card border border-border/70 bg-card px-4">
       {children}
     </div>
   );
@@ -89,7 +89,7 @@ export default function AuthSection() {
     <div className="flex flex-col gap-8">
       <Sample caption={t("security.showcase.fullPage")}>
         {/* 整页登录（`app/IdentityGate`）：没有侧栏，一列在视口里居中。 */}
-        <div className="flex h-[560px] overflow-hidden rounded-lg border border-border/70 bg-background px-6">
+        <div className="flex h-[560px] overflow-hidden rounded-card border border-border/70 bg-background px-6">
           <div className="m-auto w-full">
             <SignIn
               autoFocus={false}

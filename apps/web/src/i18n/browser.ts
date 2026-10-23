@@ -80,17 +80,11 @@ const zh = {
   /* 设置 → 浏览器（复查 §5.2）。三项都是内存开关，说的是「这台机器愿意为
      看不见的页面留多少」。 */
   "browser.settings.discard": "隐藏后回收页面",
-  "browser.settings.discardHint":
-    "回收会释放那个页面的进程；回到它时整页重新加载。正在加载、正在出声、Agent 正在操作的页面不回收。",
   "browser.settings.discardMinutes": "隐藏多少分钟后回收",
   "browser.settings.backgroundMax": "后台页面上限",
-  "browser.settings.backgroundMaxHint": "超过上限时释放最久没回去的那个页面。",
   "browser.settings.startPage": "新节点起始页",
   "browser.settings.startPageDefault": "默认",
-  "browser.settings.clearData": "清理浏览数据",
-  "browser.settings.clearDataHint":
-    "清除所有浏览器节点的 Cookie、网站存储、缓存和地址历史，已登录的站点需要重新登录。",
-  "browser.settings.clear": "清理",
+  "browser.settings.clear": "清理数据",
   "browser.settings.clearConfirm": "清理所有浏览器节点的浏览数据？",
   "browser.settings.cleared": "浏览数据已清理",
   "browser.settings.clearFailed": "有部分浏览数据没能清理",
@@ -159,18 +153,11 @@ const en: Record<keyof typeof zh, string> = {
   "browser.download.unnamed": "file",
 
   "browser.settings.discard": "Free hidden pages",
-  "browser.settings.discardHint":
-    "Freeing a page releases its process; coming back reloads it. Pages that are loading, making sound, or being driven by an agent are never freed.",
   "browser.settings.discardMinutes": "Free after this many minutes hidden",
   "browser.settings.backgroundMax": "Background page limit",
-  "browser.settings.backgroundMaxHint":
-    "Past the limit, the page you went back to least recently is released.",
   "browser.settings.startPage": "New node start page",
   "browser.settings.startPageDefault": "Default",
-  "browser.settings.clearData": "Clear browsing data",
-  "browser.settings.clearDataHint":
-    "Clears cookies, site storage, cache and address history for every browser node. Signed-in sites will ask you to sign in again.",
-  "browser.settings.clear": "Clear",
+  "browser.settings.clear": "Clear data",
   "browser.settings.clearConfirm":
     "Clear browsing data for every browser node?",
   "browser.settings.cleared": "Browsing data cleared",

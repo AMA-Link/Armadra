@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   act,
   cleanup,
+  createEvent,
   fireEvent,
   render,
   screen,
@@ -24,7 +25,7 @@ const api = vi.hoisted(() => ({
 vi.mock("./api", () => ({ acpApi: api }));
 
 const toasts = vi.hoisted(() => ({ error: vi.fn() }));
-vi.mock("sonner", () => ({
+vi.mock("@/ui/toast", () => ({
   toast: { error: (...args: unknown[]) => toasts.error(...args) },
 }));
 
@@ -249,5 +250,35 @@ describe("SessionView sends attachments (§56)", () => {
     );
     expect(api.prompt).not.toHaveBeenCalled();
     expect(screen.getByText("notes.txt")).toBeTruthy();
+  });
+
+  it("covers the view with a dashed brand frame while files are dragged over", async () => {
+    withCapabilities();
+    render(<SessionView nodeId="n1" data={data} />);
+    await screen.findByRole("button", { name: "添加附件" });
+    const view = document.querySelector("[data-slot=acp-session-view]")!;
+    const overlay = () =>
+      document.querySelector("[data-slot=acp-drop-overlay]");
+    // 拖的不是文件：没有覆盖层。
+    fireEvent.dragOver(view, { dataTransfer: { types: ["text/plain"] } });
+    expect(overlay()).toBeNull();
+    fireEvent.dragOver(view, { dataTransfer: { types: ["Files"] } });
+    expect(overlay()?.className).toContain("border-dashed");
+    expect(overlay()?.className).toContain("border-brand");
+    // 在子元素之间移动不收起，离开视图才收。
+    const leave = (to: EventTarget | null) => {
+      const event = createEvent.dragLeave(view);
+      Object.defineProperty(event, "relatedTarget", { value: to });
+      fireEvent(view, event);
+    };
+    leave(view.firstElementChild);
+    expect(overlay()).not.toBeNull();
+    leave(document.body);
+    expect(overlay()).toBeNull();
+    fireEvent.dragOver(view, { dataTransfer: { types: ["Files"] } });
+    fireEvent.drop(view, {
+      dataTransfer: { types: ["Files"], files: [], items: [] },
+    });
+    expect(overlay()).toBeNull();
   });
 });

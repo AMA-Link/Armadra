@@ -65,12 +65,17 @@ export const ResponsiveDialogClose = DialogClose;
 export function ResponsiveDialogContent({
   className,
   children,
+  instant = false,
   ...props
-}: React.ComponentProps<typeof DialogContent>) {
+}: React.ComponentProps<typeof DialogContent> & {
+  /** 键盘触发的打开：内容渲染终态、不播出场动画（设计系统 §8.1，`data-instant`）。 */
+  instant?: boolean;
+}) {
   const compact = useResponsiveDialogCompact();
+  const motion = instant ? { "data-instant": "true" } : {};
   if (!compact)
     return (
-      <DialogContent className={className} {...props}>
+      <DialogContent className={className} {...motion} {...props}>
         {children}
       </DialogContent>
     );
@@ -78,12 +83,13 @@ export function ResponsiveDialogContent({
     <SheetContent
       side="bottom"
       data-responsive="sheet"
+      {...motion}
       className={cn(
         className,
         // 手机形态压过调用方给桌面对话框定的宽度与高度。
         // 最高处离状态栏下沿 48px；左右与底边让开刘海和主页横条（`--safe-*`）。
         "inset-x-0 max-h-[calc(100dvh-48px-var(--safe-top))] w-full max-w-none gap-4 overflow-y-auto sm:max-w-none",
-        "rounded-t-[14px] border-t border-border pt-3 pr-[calc(1rem+var(--safe-right))] pl-[calc(1rem+var(--safe-left))]",
+        "rounded-t-dialog border-t border-border pt-3 pr-[calc(1rem+var(--safe-right))] pl-[calc(1rem+var(--safe-left))]",
         "pb-[calc(1rem+var(--safe-bottom))]",
       )}
       {...props}
@@ -91,7 +97,7 @@ export function ResponsiveDialogContent({
       <div
         aria-hidden
         data-slot="responsive-dialog-handle"
-        className="mx-auto h-1 w-9 shrink-0 rounded-full bg-[var(--border-strong)]"
+        className="mx-auto h-1 w-9 shrink-0 rounded-full bg-border-strong"
       />
       {children}
     </SheetContent>
@@ -171,7 +177,7 @@ const ALERT_SHEET = cn(
   "top-auto bottom-0 left-0 w-full max-w-none sm:max-w-none translate-x-0 translate-y-0",
   "data-[size=default]:max-w-none data-[size=sm]:max-w-none data-[size=default]:sm:max-w-none",
   "max-h-[calc(100dvh-48px-var(--safe-top))] overflow-y-auto",
-  "rounded-none rounded-t-[14px] pt-3 pr-[calc(1rem+var(--safe-right))] pb-[calc(1rem+var(--safe-bottom))] pl-[calc(1rem+var(--safe-left))]",
+  "rounded-none rounded-t-dialog pt-3 pr-[calc(1rem+var(--safe-right))] pb-[calc(1rem+var(--safe-bottom))] pl-[calc(1rem+var(--safe-left))]",
   "data-open:zoom-in-100 data-open:slide-in-from-bottom data-closed:zoom-out-100 data-closed:slide-out-to-bottom",
 );
 
@@ -197,7 +203,7 @@ export function ResponsiveAlertDialogContent({
       <div
         aria-hidden
         data-slot="responsive-dialog-handle"
-        className="mx-auto h-1 w-9 shrink-0 rounded-full bg-[var(--border-strong)]"
+        className="mx-auto h-1 w-9 shrink-0 rounded-full bg-border-strong"
       />
       {children}
     </AlertDialogContent>

@@ -61,7 +61,6 @@ export const languageService: MessageModule = {
     "lsp.preview.apply": "应用",
     "lsp.preview.cancel": "取消",
     "lsp.preview.close": "关闭",
-    "lsp.preview.files": "{count} 个文件",
     "lsp.preview.noChanges": "没有需要修改的文件",
     "lsp.preview.blocked": "有文件无法修改，整次修改都不会应用",
     "lsp.preview.applied": "已写入 {count} 个文件",
@@ -154,7 +153,6 @@ export const languageService: MessageModule = {
     "lsp.preview.apply": "Apply",
     "lsp.preview.cancel": "Cancel",
     "lsp.preview.close": "Close",
-    "lsp.preview.files": "{count} files",
     "lsp.preview.noChanges": "Nothing to change",
     "lsp.preview.blocked":
       "Some files cannot be changed, so nothing is applied",

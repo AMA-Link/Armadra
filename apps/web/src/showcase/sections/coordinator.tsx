@@ -13,6 +13,8 @@ import type { CanvasNode } from "@armadra/shared";
 import "@xyflow/react/dist/style.css";
 import "../../styles/canvas.css";
 import { useT } from "@/app/preferences-store";
+import { agentTreeOf } from "@/agent/agent-tree-model";
+import { displayOfStatus } from "@/agent/display";
 import { agentColorVar } from "@/agent/launch";
 import { edgeTypes } from "@/canvas/flow/edges/edge-types";
 import { DispatchView } from "@/coordinator/DispatchDrawer";
@@ -20,14 +22,15 @@ import { buildDispatch } from "@/coordinator/model";
 import { NodeShell } from "@/nodes/NodeShell";
 import { Badge } from "@/ui/badge";
 import { ColorDot } from "@/ui/color-dot";
-import type { StatusTone } from "@/ui/status-pill";
 import { DraftCard } from "@/workflow/DraftCard";
 import { WorkflowStepBadge, useWorkflowNodeSteps } from "@/workflow/node-steps";
 import {
   BODY_LINES,
+  COORDINATOR_CARDS,
   COORDINATOR_EDGES,
   COORDINATOR_IDS,
   COORDINATOR_NODES,
+  COORDINATOR_STATUSES,
   DISPATCH_NOW,
   DISPATCH_STATES,
   DISPATCH_TASKS,
@@ -51,21 +54,13 @@ type CoordinatorFlowNode = Node<CanvasNode, "member">;
 const WIDTH = 1032;
 const HEIGHT = 324;
 
-const TONES: Record<string, { tone: StatusTone; label: string }> = {
-  [COORDINATOR_IDS.lead]: { tone: "working", label: "showcase.tone.working" },
-  [COORDINATOR_IDS.done]: { tone: "done", label: "showcase.tone.done" },
-  [COORDINATOR_IDS.working]: {
-    tone: "working",
-    label: "showcase.tone.working",
-  },
-  [COORDINATOR_IDS.failed]: { tone: "failed", label: "showcase.tone.failed" },
-};
-
 function MemberNode({ data: node }: NodeProps<CoordinatorFlowNode>) {
   const t = useT();
   const agentId =
     node.data.kind === "terminal" ? (node.data.agent?.id ?? "") : "";
-  const tone = TONES[node.id];
+  // 节点头的状态与成员行、顶部 Agent 树同源：状态镜像 → `displayOfStatus`。
+  const display = displayOfStatus(COORDINATOR_STATUSES[node.id]);
+  const status = { tone: display.tone, label: t(display.labelKey) };
   const lead = node.id === COORDINATOR_IDS.lead;
   return (
     <NodeShell
@@ -74,20 +69,17 @@ function MemberNode({ data: node }: NodeProps<CoordinatorFlowNode>) {
       headerMark={<ColorDot color={agentColorVar(agentId)} size={8} />}
       headerChips={
         lead ? (
-          <Badge
-            variant="secondary"
-            className="h-[18px] px-1.5 text-[length:var(--text-caption)]"
-          >
+          <Badge variant="secondary" size="sm">
             {t("showcase.coordinator.members", { count: 3 })}
           </Badge>
         ) : (
           <WorkflowStepBadge nodeId={node.id} />
         )
       }
-      {...(tone ? { status: { tone: tone.tone, label: t(tone.label) } } : {})}
-      {...(tone?.tone === "working" ? { glow: "working" as const } : {})}
+      status={status}
+      {...(display.tone === "working" ? { glow: "working" as const } : {})}
     >
-      <div className="h-full truncate bg-[var(--term-bg)] px-3 py-2 font-mono text-[length:var(--text-code)] text-[var(--term-fg)]">
+      <div className="h-full truncate bg-term px-3 py-2 font-mono text-code text-[var(--term-fg)]">
         {BODY_LINES[node.id]}
       </div>
     </NodeShell>
@@ -146,7 +138,7 @@ export default function CoordinatorSection() {
       >
         <div
           data-showcase-coordinator
-          className="canvas-stage relative origin-top-left overflow-hidden rounded-[var(--r-panel)] border border-border"
+          className="canvas-stage relative origin-top-left overflow-hidden rounded-panel border border-border"
           style={{
             width: WIDTH + 2,
             height: HEIGHT + 2,
@@ -179,13 +171,13 @@ export default function CoordinatorSection() {
       </div>
       <div className="flex min-w-0 flex-wrap items-start gap-6">
         <DrawerFrame>
-          <DispatchView model={DISPATCH} onFocusLead={() => {}} />
+          <DispatchView model={DISPATCH} tree={TREE} onFocusLead={() => {}} />
         </DrawerFrame>
         <DrawerFrame>
           <DispatchView model={EMPTY} onFocusLead={() => {}} />
         </DrawerFrame>
         <DrawerFrame>
-          <DispatchView model={DISPATCH} offline />
+          <DispatchView model={DISPATCH} tree={TREE} offline />
         </DrawerFrame>
         <div className="min-w-0 max-w-[360px]">
           <DraftCard row={DRAFT} />
@@ -211,6 +203,21 @@ const DISPATCH = buildDispatch({
   now: DISPATCH_NOW,
 });
 
+/** 抽屉顶部的缩略树：根 = ama，三个成员，其中一个带两个子代理。 */
+const TREE = agentTreeOf(
+  COORDINATOR_IDS.lead,
+  {
+    nodes: [...COORDINATOR_NODES, SUMMARY_NODE],
+    edges: COORDINATOR_EDGES.map((edge) => ({
+      source: edge.source,
+      target: edge.target,
+      role: "supervises" as const,
+    })),
+  },
+  COORDINATOR_STATUSES,
+  COORDINATOR_CARDS,
+);
+
 const EMPTY = buildDispatch({
   coordinatorId: COORDINATOR_IDS.lead,
   nodes: COORDINATOR_NODES.slice(0, 1),
@@ -226,9 +233,9 @@ function DrawerFrame({ children }: { children: React.ReactNode }) {
   return (
     <section
       data-showcase-dispatch
-      className="w-[min(100%,var(--drawer-w))] min-w-0 overflow-hidden rounded-[var(--r-panel)] border border-border bg-[var(--panel)]"
+      className="w-[min(100%,var(--drawer-w))] min-w-0 overflow-hidden rounded-panel border border-border bg-panel"
     >
-      <div className="flex h-10 items-center border-b border-border px-3 text-[13px] font-semibold">
+      <div className="flex h-10 items-center border-b border-border px-3 text-body font-semibold">
         {t("coordinator.title")}
       </div>
       {children}

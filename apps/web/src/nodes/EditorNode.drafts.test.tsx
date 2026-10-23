@@ -396,6 +396,12 @@ describe("relocating a draft whose file is gone", () => {
     await relocateTo("other.txt");
     fireEvent.click(screen.getByRole("button", { name: "Overwrite" }));
     expect(mocks.write).not.toHaveBeenCalled();
+    // 确认的对象写进标题，对话框没有 Description
+    const dialog = await screen.findByRole("dialog");
+    expect(dialog.textContent).toContain("other.txt");
+    expect(
+      dialog.querySelector('[data-slot$="dialog-description"]'),
+    ).toBeNull();
     fireEvent.click(await screen.findByRole("button", { name: "Overwrite" }));
     await waitFor(() =>
       expect(mocks.write).toHaveBeenCalledWith(

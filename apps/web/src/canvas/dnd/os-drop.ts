@@ -21,7 +21,7 @@ import {
   WORKSPACE_FILE_DROP_EVENT,
   type WorkspaceFileDropDetail,
 } from "../../files/workspace-drag";
-import { toast } from "sonner";
+import { toast } from "@/ui/toast";
 import { t, usePreferencesStore } from "../../app/preferences-store";
 
 /**

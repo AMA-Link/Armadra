@@ -1,6 +1,6 @@
 import * as React from "react";
 import { Bell } from "lucide-react";
-import { toast } from "sonner";
+import { toast } from "@/ui/toast";
 import {
   PUSH_PREFERENCE_KINDS,
   type PushConfig,
@@ -151,7 +151,7 @@ export function PushKindsPrompt({
         {visiblePushKinds().map((kind) => (
           <label
             key={kind}
-            className="flex items-center justify-between gap-3 text-sm"
+            className="flex items-center justify-between gap-3 text-body"
           >
             {t(`push.kind.${kind}`)}
             <Switch
@@ -317,7 +317,7 @@ export function PushPermissionDock({
   children: React.ReactNode;
 }) {
   return (
-    <div className="pointer-events-none fixed right-[calc(0.5rem+var(--safe-right))] bottom-[calc(var(--mobile-nav-h)+var(--safe-bottom)+8px)] left-[calc(0.5rem+var(--safe-left))] z-[var(--z-toast)] flex justify-center [&>*]:pointer-events-auto [&>*]:w-full [&>*]:max-w-md [&>*]:bg-popover [&>*]:shadow-[var(--shadow-overlay)]">
+    <div className="pointer-events-none fixed right-[calc(0.5rem+var(--safe-right))] bottom-[calc(var(--mobile-nav-h)+var(--safe-bottom)+8px)] left-[calc(0.5rem+var(--safe-left))] z-[var(--z-toast)] flex justify-center [&>*]:pointer-events-auto [&>*]:w-full [&>*]:max-w-md [&>*]:bg-popover [&>*]:shadow-overlay">
       {children}
     </div>
   );

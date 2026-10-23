@@ -32,36 +32,16 @@ export function ComponentList({
       {components.map((component) => (
         <li
           key={`${component.process.pid}:${component.process.startTimeUnixMs ?? "?"}`}
-          title={[
-            component.tree
-              ? t("resources.component.tree")
-              : component.kind === "runtime"
-                ? t("resources.component.selfOnly")
-                : t("resources.component.single"),
-            `pid ${component.process.pid}`,
-            component.location === "remote"
-              ? t("resources.location.remote")
-              : null,
-            component.unknownReason === "remote"
-              ? t("resources.unknown.remote")
-              : null,
-          ]
-            .filter(Boolean)
-            .join(" · ")}
-          className="flex flex-col rounded-[var(--r-control)] px-1.5 py-1 hover:bg-accent"
+          className="flex flex-col rounded-control px-1.5 py-1 hover:bg-accent"
         >
-          {/*
-            说明单独占一整行并允许折行：它是一句解释（「只算这个进程：它启动的
-            会话在上面」），截成「只算这个进程：它启动的会话在…」等于没说。
-          */}
           <div className="flex w-full items-center gap-2">
-            <div className="min-w-0 flex-1 truncate text-[12px]">
+            <div className="min-w-0 flex-1 truncate text-meta">
               {t(`resources.component.${component.kind}`)}
             </div>
-            <span className="w-14 shrink-0 text-right text-[12px] tabular-nums">
+            <span className="w-14 shrink-0 text-right text-meta tabular-nums">
               {formatPercent(component.process.cpuPercent)}
             </span>
-            <span className="w-20 shrink-0 text-right text-[12px] tabular-nums">
+            <span className="w-20 shrink-0 text-right text-meta tabular-nums">
               {formatMetricBytes(component.process.memoryBytes)}
             </span>
           </div>

@@ -29,6 +29,7 @@ vi.mock("@/store/canvas-store", () => {
 import { installDomPolyfills } from "@/app/test-harness";
 import { renderFlow } from "@/canvas/test-support";
 import { COLLAPSED_HEIGHT } from "@/nodes/registry";
+import { ENTER_SETTLE_MS, setSettledSince } from "../node-enter";
 import { ArmadraNode } from "./ArmadraNode";
 
 /**
@@ -59,14 +60,14 @@ function node(patch: Partial<CanvasNode> = {}): CanvasNode {
   } as CanvasNode;
 }
 
-function renderNode(target = node(), selected = false) {
+function renderNode(target = node(), selected = false, dragging = false) {
   return renderFlow(
     <ArmadraNode
       id={target.id}
       type="armadra"
       data={target}
       selected={selected}
-      dragging={false}
+      dragging={dragging}
       zIndex={1}
       isConnectable
       positionAbsoluteX={0}
@@ -124,5 +125,43 @@ describe("ArmadraNode", () => {
   it("便签走通用包壳，标题渲染在头部", () => {
     renderNode();
     expect(screen.getByText("便签")).toBeTruthy();
+  });
+});
+
+describe("ArmadraNode 拖动与入场", () => {
+  it("拖动中写 data-dragging，松手撤掉", () => {
+    const dragged = renderNode(node(), false, true);
+    expect(
+      dragged.container
+        .querySelector('[data-slot="node-host"]')
+        ?.getAttribute("data-dragging"),
+    ).toBe("true");
+    dragged.unmount();
+
+    const still = renderNode(node(), false, false);
+    expect(
+      still.container
+        .querySelector('[data-slot="node-host"]')
+        ?.hasAttribute("data-dragging"),
+    ).toBe(false);
+  });
+
+  it("画布载入后才挂上来的节点写 data-entering，刚载入时挂载的不写", () => {
+    setSettledSince(Date.now());
+    const loading = renderNode();
+    expect(
+      loading.container
+        .querySelector('[data-slot="node-host"]')
+        ?.hasAttribute("data-entering"),
+    ).toBe(false);
+    loading.unmount();
+
+    setSettledSince(Date.now() - ENTER_SETTLE_MS - 1);
+    const created = renderNode();
+    expect(
+      created.container
+        .querySelector('[data-slot="node-host"]')
+        ?.getAttribute("data-entering"),
+    ).toBe("true");
   });
 });

@@ -17,7 +17,7 @@ vi.mock("@armadra/shared", async (importOriginal) => ({
 }));
 
 const info = vi.fn();
-vi.mock("sonner", () => ({
+vi.mock("@/ui/toast", () => ({
   toast: { info: (...args: unknown[]) => info(...args) },
 }));
 

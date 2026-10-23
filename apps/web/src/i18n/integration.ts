@@ -10,6 +10,14 @@ import type { MessageModule } from "./index";
 export const integration: MessageModule = {
   "zh-CN": {
     "integration.empty": "没有可接入的 CLI",
+    "settings.kpi.ready": "就绪",
+    "settings.kpi.installNeeded": "需安装",
+    "settings.kpi.updateNeeded": "需更新",
+    "agents.col.name": "名称",
+    "agents.col.state": "状态",
+    "agents.col.views": "画布视图",
+    "agents.col.action": "操作",
+    "agents.action.regenerateAll": "重新生成注入",
     "agents.state.installNeeded": "需安装",
     "agents.state.updateNeeded": "需更新",
     "agents.state.disabled": "已禁用",
@@ -19,7 +27,7 @@ export const integration: MessageModule = {
     "agents.group.injection": "画布注入",
     "agents.row.mode": "启用",
     "agents.row.artifacts": "Hook 与技能", // i18n-exempt
-    "agents.sessions.indexed": "已索引",
+    "agents.sessions.indexed": "已索引会话",
     "agents.showcase.detail": "子页：注入待更新，带本产品旧版本残留",
     "integration.row.cli": "CLI", // i18n-exempt
     "integration.row.acp": "ACP", // i18n-exempt
@@ -44,7 +52,6 @@ export const integration: MessageModule = {
     "integration.action.output": "查看输出",
     "integration.action.retry": "重试",
     "integration.install.failed": "{name} 没有装上",
-    "integration.install.done": "{name} 已安装",
     "integration.install.npmMissing": "没有找到 npm", // i18n-exempt
     "integration.install.busy": "正在装另一项",
     "integration.acp.failure.failed": "npm 安装失败（退出码 {code}）", // i18n-exempt
@@ -66,7 +73,6 @@ export const integration: MessageModule = {
     "integration.reason.acp_missing": "ACP 未安装", // i18n-exempt
     "integration.reason.mcp_not_wired": "适配器不接画布工具",
     "integration.reason.client_without_mcp": "客户端不带画布工具",
-    "integration.revision": "第 {n} 版",
     "integration.row.mods": "Mods", // i18n-exempt
     "integration.mods.on": "已启用",
     "integration.mods.onSession": "已启用 · {n} 个会话",
@@ -80,7 +86,6 @@ export const integration: MessageModule = {
     "integration.mods.reason.remote_unprobed": "远程机器暂不支持",
     "integration.migrated.notice": "已清理 {name} 的旧全局安装",
     "integration.regenerate": "重新生成",
-    "integration.regenerated": "注入产物已重新生成",
     "integration.failed": "接入操作失败",
     "integration.repair": "清理",
     "integration.repair.done": "已清理旧残留",
@@ -92,6 +97,14 @@ export const integration: MessageModule = {
   },
   en: {
     "integration.empty": "No CLI to integrate",
+    "settings.kpi.ready": "Ready",
+    "settings.kpi.installNeeded": "Install needed",
+    "settings.kpi.updateNeeded": "Update needed",
+    "agents.col.name": "Name",
+    "agents.col.state": "Status",
+    "agents.col.views": "Canvas views",
+    "agents.col.action": "Action",
+    "agents.action.regenerateAll": "Regenerate injection",
     "agents.state.installNeeded": "Install needed",
     "agents.state.updateNeeded": "Update needed",
     "agents.state.disabled": "Disabled",
@@ -101,7 +114,7 @@ export const integration: MessageModule = {
     "agents.group.injection": "Canvas injection",
     "agents.row.mode": "Availability",
     "agents.row.artifacts": "Hooks & skill",
-    "agents.sessions.indexed": "Indexed",
+    "agents.sessions.indexed": "Indexed sessions",
     "agents.showcase.detail": "Detail: injection out of date, old entries left",
     "integration.row.cli": "CLI",
     "integration.row.acp": "ACP",
@@ -126,7 +139,6 @@ export const integration: MessageModule = {
     "integration.action.output": "View output",
     "integration.action.retry": "Retry",
     "integration.install.failed": "{name} was not installed",
-    "integration.install.done": "{name} installed",
     "integration.install.npmMissing": "npm not found",
     "integration.install.busy": "Another install is running",
     "integration.acp.failure.failed": "npm install failed (exit code {code})",
@@ -148,7 +160,6 @@ export const integration: MessageModule = {
     "integration.reason.acp_missing": "ACP not installed",
     "integration.reason.mcp_not_wired": "The adapter has no canvas tools",
     "integration.reason.client_without_mcp": "The client has no canvas tools",
-    "integration.revision": "Revision {n}",
     "integration.row.mods": "Mods",
     "integration.mods.on": "On",
     "integration.mods.onSession": "On · {n} session",
@@ -163,7 +174,6 @@ export const integration: MessageModule = {
     "integration.mods.reason.remote_unprobed": "Not on remote hosts yet",
     "integration.migrated.notice": "Removed the old global install for {name}",
     "integration.regenerate": "Regenerate",
-    "integration.regenerated": "Injection regenerated",
     "integration.failed": "Integration action failed",
     "integration.repair": "Clean up",
     "integration.repair.done": "Leftovers cleaned up",

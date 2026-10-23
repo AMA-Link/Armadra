@@ -233,3 +233,14 @@ it("reports the init script state", async () => {
   mount(binding({ initScript: "pnpm install", initScriptState: "failed" }));
   expect(await screen.findByText("Init script failed")).toBeTruthy();
 });
+
+it("修复提示只有原因与两个动作，没有常驻说明段落", async () => {
+  vi.spyOn(runtimeApi, "gitRepositories").mockResolvedValue(list(0, false));
+  vi.spyOn(runtimeApi, "gitRepositoryBranches").mockRejectedValue(
+    new Error("no branches"),
+  );
+  mount(binding());
+  const alert = await screen.findByRole("alert");
+  expect(alert.querySelectorAll("p")).toHaveLength(1);
+  expect(alert.textContent).not.toContain("only clears the binding");
+});

@@ -98,7 +98,6 @@ const zh = {
   "editor.eol.crlf": "CRLF",
   "editor.eol.mixed": "混合换行",
   "editor.eol.none": "无换行",
-  "editor.eolMixed": "混合换行，保存会统一成 LF",
   "editor.fileReadonly": "文件只读",
 
   /* 变更 */
@@ -131,8 +130,6 @@ const zh = {
   "subagent.fallback": "子代理",
   "subagent.working": "运行中",
   "subagent.done": "已完成",
-  "subagent.tokens": "tokens",
-  "subagent.toolUses": "工具",
 } as const;
 
 const en: Record<keyof typeof zh, string> = {
@@ -221,7 +218,6 @@ const en: Record<keyof typeof zh, string> = {
   "editor.eol.crlf": "CRLF",
   "editor.eol.mixed": "Mixed line endings",
   "editor.eol.none": "No line break",
-  "editor.eolMixed": "Mixed line endings; saving normalizes them to LF",
   "editor.fileReadonly": "File is read-only",
 
   "diff.refresh": "Refresh",
@@ -251,8 +247,6 @@ const en: Record<keyof typeof zh, string> = {
   "subagent.fallback": "Subagent",
   "subagent.working": "Working",
   "subagent.done": "Done",
-  "subagent.tokens": "tokens",
-  "subagent.toolUses": "tools",
 };
 
 export const nodes: MessageModule = { "zh-CN": zh, en };

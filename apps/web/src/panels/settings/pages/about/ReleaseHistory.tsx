@@ -1,5 +1,4 @@
-import { Loadable } from "@/loading/Loadable";
-import { SkeletonList } from "@/ui/skeletons";
+import { Alert, AlertTitle } from "@/ui/alert";
 import { ValueLoadable } from "../../SettingsLoadable";
 import * as React from "react";
 import Markdown, { type Components } from "react-markdown";
@@ -10,8 +9,7 @@ import type { Release, ReleaseAsset, UpdateReleases } from "@armadra/shared";
 import { runtimeApi } from "../../../../api/client";
 import { useT } from "../../../../app/preferences-store";
 import { formatBytes, formatRelativeTime } from "../../../../lib/format";
-import { SettingsGroup } from "../../SettingsGroup";
-import { SettingsRow } from "../../SettingsRow";
+import { SettingsTableCard } from "../../SettingsTableCard";
 import { packageAssets } from "../../../../updates/releases";
 import {
   Accordion,
@@ -116,13 +114,28 @@ export function ReleaseHistory({
 }) {
   const t = useT();
   const error = data?.error ?? null;
+  const empty = !loading && !(data && data.releases.length > 0);
   return (
     <>
-      <SettingsGroup title={t("updates.history")}>
-        <SettingsRow label={t("updates.history.checkedAt")}>
-          <div className="flex items-center gap-3">
+      <SettingsTableCard
+        title={t("updates.history")}
+        loading={loading}
+        skeleton={{ rows: 3, columns: 3 }}
+        empty={
+          empty
+            ? {
+                title: t(
+                  failed
+                    ? "updates.history.loadFailed"
+                    : "updates.history.empty",
+                ),
+              }
+            : null
+        }
+        actions={
+          <>
             <ValueLoadable loading={loading} className="h-4 w-24">
-              <span className="text-[13px] tabular-nums text-muted-foreground">
+              <span className="text-meta tabular-nums text-muted-foreground">
                 {data?.checkedAt
                   ? formatRelativeTime(data.checkedAt)
                   : t("updates.history.never")}
@@ -131,7 +144,7 @@ export function ReleaseHistory({
             {onRefresh && (
               <Button
                 size="sm"
-                variant="secondary"
+                variant="outline"
                 disabled={refreshing || coolingDown}
                 onClick={onRefresh}
               >
@@ -139,60 +152,37 @@ export function ReleaseHistory({
                 {t("updates.history.refresh")}
               </Button>
             )}
-          </div>
-        </SettingsRow>
-        <Loadable
-          loading={loading}
-          skeleton={
-            <SkeletonList
-              rows={3}
-              label={t("state.loading")}
-              rowClassName="h-[45px] px-4"
-            />
-          }
-        >
-          {data && data.releases.length > 0 ? (
-            <Accordion type="single" collapsible className="px-4">
-              {data.releases.map((release) => (
-                <ReleaseItem
-                  key={release.tag}
-                  release={release}
-                  current={release.version === current}
-                  latest={release.version === latest}
-                  assets={assets(release)}
-                  onOpen={onOpen}
-                />
-              ))}
-            </Accordion>
-          ) : (
-            <SettingsRow
-              label={
-                <span className="text-muted-foreground">
-                  {t(
-                    failed
-                      ? "updates.history.loadFailed"
-                      : "updates.history.empty",
-                  )}
-                </span>
-              }
-            />
-          )}
-        </Loadable>
-      </SettingsGroup>
+          </>
+        }
+      >
+        {data && data.releases.length > 0 && (
+          <Accordion type="single" collapsible className="px-4">
+            {data.releases.map((release) => (
+              <ReleaseItem
+                key={release.tag}
+                release={release}
+                current={release.version === current}
+                latest={release.version === latest}
+                assets={assets(release)}
+                onOpen={onOpen}
+              />
+            ))}
+          </Accordion>
+        )}
+      </SettingsTableCard>
       {error && (
-        <p
-          data-slot="releases-error"
-          className="text-[13px] leading-5 text-muted-foreground"
-        >
-          {t(`updates.history.error.${error.code}`)}
-        </p>
-      )}
-      {error && error.retryAfterMs > 0 && (
-        <p className="text-[13px] leading-5 text-muted-foreground">
-          {t("updates.retryAfter", {
-            value: Math.ceil(error.retryAfterMs / 60_000),
-          })}
-        </p>
+        <Alert variant="destructive" data-slot="releases-error">
+          <AlertTitle className="font-normal">
+            {t(`updates.history.error.${error.code}`)}
+            {error.retryAfterMs > 0 && (
+              <span className="ml-2 tabular-nums">
+                {t("updates.retryAfter", {
+                  value: Math.ceil(error.retryAfterMs / 60_000),
+                })}
+              </span>
+            )}
+          </AlertTitle>
+        </Alert>
       )}
     </>
   );
@@ -217,21 +207,17 @@ function ReleaseItem({
     <AccordionItem value={release.tag} data-release={release.version}>
       <AccordionTrigger className="items-center gap-3 py-3 font-normal hover:no-underline">
         <span className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
-          <span className="text-[13px] tabular-nums text-foreground">
+          <span className="text-body tabular-nums text-foreground">
             {release.version}
           </span>
           {current && (
-            <Badge variant="secondary" className="h-5 px-1.5 text-[11px]">
+            <Badge variant="secondary" size="sm">
               {t("updates.history.current")}
             </Badge>
           )}
-          {latest && (
-            <Badge className="h-5 px-1.5 text-[11px]">
-              {t("updates.history.latest")}
-            </Badge>
-          )}
+          {latest && <Badge size="sm">{t("updates.history.latest")}</Badge>}
           {release.prerelease && (
-            <Badge variant="outline" className="h-5 px-1.5 text-[11px]">
+            <Badge variant="outline" size="sm">
               {t("updates.channel.beta")}
             </Badge>
           )}
@@ -239,7 +225,7 @@ function ReleaseItem({
         {!Number.isNaN(date.getTime()) && (
           <time
             dateTime={release.publishedAt}
-            className="text-[12px] tabular-nums text-muted-foreground"
+            className="text-meta tabular-nums text-muted-foreground"
           >
             {t("time.yearMonthDay", {
               year: date.getFullYear(),
@@ -322,7 +308,7 @@ export function ReleaseNotes({
   return (
     <div
       data-slot="release-notes"
-      className="sticky-markdown text-[13px] leading-relaxed break-words text-foreground"
+      className="sticky-markdown text-body leading-relaxed break-words text-foreground"
     >
       <Markdown
         remarkPlugins={[remarkGfm]}

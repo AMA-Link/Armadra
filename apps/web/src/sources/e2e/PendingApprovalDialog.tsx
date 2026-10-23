@@ -6,7 +6,6 @@ import { Button } from "@/ui/button";
 import {
   ResponsiveDialog,
   ResponsiveDialogContent,
-  ResponsiveDialogDescription,
   ResponsiveDialogFooter,
   ResponsiveDialogHeader,
   ResponsiveDialogTitle,
@@ -35,18 +34,17 @@ export function PendingApprovalDialog() {
     rejected ? pendingApprovals.dismiss(current.sourceId) : current.cancel();
   return (
     <ResponsiveDialog open onOpenChange={(open) => !open && close()}>
-      <ResponsiveDialogContent showCloseButton={false} className="sm:max-w-sm">
+      <ResponsiveDialogContent
+        showCloseButton={false}
+        aria-describedby={undefined}
+        className="sm:max-w-sm"
+      >
         <ResponsiveDialogHeader>
           <ResponsiveDialogTitle>
             {current.label
               ? t("e2e.pending.title", { name: current.label })
               : t("e2e.pending.titleUnnamed")}
           </ResponsiveDialogTitle>
-          {!rejected && (
-            <ResponsiveDialogDescription>
-              {t("e2e.pending.hint")}
-            </ResponsiveDialogDescription>
-          )}
         </ResponsiveDialogHeader>
         {rejected ? (
           <Alert variant="destructive">
@@ -54,7 +52,7 @@ export function PendingApprovalDialog() {
           </Alert>
         ) : (
           <p
-            className="py-2 text-center font-mono text-3xl font-medium tabular-nums tracking-[0.2em]"
+            className="py-2 text-center font-mono text-display font-medium tabular-nums tracking-[0.2em]"
             aria-live="polite"
           >
             {groupedSas(current.sas)}

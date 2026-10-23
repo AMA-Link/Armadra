@@ -22,7 +22,7 @@
  */
 import type { ContentSource, Position, Size } from "@armadra/shared";
 import { MAX_STICKY_CONTENT } from "@armadra/shared";
-import { toast } from "sonner";
+import { toast } from "@/ui/toast";
 
 import { t } from "@/app/preferences-store";
 import { createContentReference } from "@/canvas/create-content-reference";

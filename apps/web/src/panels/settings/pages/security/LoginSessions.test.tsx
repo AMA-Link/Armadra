@@ -8,7 +8,7 @@ const mocks = vi.hoisted(() => ({
   toastError: vi.fn(),
 }));
 
-vi.mock("sonner", () => ({
+vi.mock("@/ui/toast", () => ({
   toast: { success: mocks.toastSuccess, error: mocks.toastError },
 }));
 

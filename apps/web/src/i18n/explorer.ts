@@ -34,26 +34,17 @@ export const explorer: MessageModule = {
     "scm.unstage": "取消暂存",
     "scm.revertTitle": "还原「{path}」？",
     "scm.restore": "还原",
-    "scm.restoreDescription":
-      "从 index 还原：工作区回到已暂存的版本，暂存内容保留，只丢弃暂存之后的改动。从 HEAD 覆盖：文件回到已提交的版本，同时取消暂存，暂存的改动也一起丢弃。两者都不可撤销。",
     "scm.restoreFromIndex": "从 index 还原工作区",
     "scm.restoreFromHead": "从 HEAD 覆盖（同时取消暂存）",
-    "scm.restoreUntracked": "该文件未被跟踪，还原就是删除它，无法撤销。",
     "scm.restoreDelete": "删除未跟踪文件",
     "scm.cancel": "取消",
     "scm.commit": "提交",
     "scm.amend": "改写上一个提交（amend）",
     "scm.amendTarget": "将被改写的提交",
-    "scm.amendSafety":
-      "amend 用新提交替换上面这个提交，历史因此被改写。只提交索引里的内容，不会自动推送，也不会强制推送。",
     "scm.amendPublished":
       "该提交已存在于远端跟踪引用中；我确认要改写这段已发布历史",
-    "scm.amendUnavailable":
-      "上一个提交的信息超出可重新提交的长度，改写会丢内容，因此不提供 amend。",
     "scm.init": "初始化 Git 仓库",
     "scm.initTitle": "在此工作区初始化 Git 仓库？",
-    "scm.initDescription":
-      "在工作区根目录执行 git init，创建 .git 目录。现有文件不会被改动，也不会自动暂存或提交。已属于其他仓库的目录会被拒绝，不会嵌套第二个仓库。",
     "scm.initConfirm": "初始化仓库",
     "scm.failed": "操作失败",
   },
@@ -89,27 +80,17 @@ export const explorer: MessageModule = {
     "scm.unstage": "Unstage",
     "scm.revertTitle": "Restore “{path}”?",
     "scm.restore": "Restore",
-    "scm.restoreDescription":
-      "Restore from the index: the working tree returns to the staged version and the staged change is kept; only the edits made after staging are lost. Overwrite from HEAD: the file returns to the committed version and is unstaged, so the staged change is discarded too. Neither can be undone.",
     "scm.restoreFromIndex": "Restore working tree from the index",
     "scm.restoreFromHead": "Overwrite from HEAD (also unstages)",
-    "scm.restoreUntracked":
-      "This file is untracked, so restoring it means deleting it. This cannot be undone.",
     "scm.restoreDelete": "Delete untracked file",
     "scm.cancel": "Cancel",
     "scm.commit": "Commit",
     "scm.amend": "Amend the previous commit",
     "scm.amendTarget": "Commit this rewrites",
-    "scm.amendSafety":
-      "Amend replaces the commit above with a new one, so it rewrites history. It commits only what is in the index, and it never pushes or force-pushes.",
     "scm.amendPublished":
       "A remote-tracking ref already contains this commit; I want to rewrite that published history",
-    "scm.amendUnavailable":
-      "The previous commit's message is longer than an amend may resend, so rewriting it would drop content. Amend is unavailable.",
     "scm.init": "Initialize Git repository",
     "scm.initTitle": "Initialize a Git repository in this workspace?",
-    "scm.initDescription":
-      "Runs git init in the workspace root and creates a .git directory. Existing files are left alone and nothing is staged or committed. A directory that already belongs to another repository is refused rather than nested.",
     "scm.initConfirm": "Initialize repository",
     "scm.failed": "The operation failed",
   },

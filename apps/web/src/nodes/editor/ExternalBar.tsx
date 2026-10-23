@@ -34,37 +34,37 @@ export function ExternalBar({
   return (
     <div
       role="status"
-      className="flex shrink-0 flex-wrap items-center gap-1.5 border-b border-[var(--border)] bg-[var(--warn-soft)] px-2 py-1"
+      className="flex shrink-0 flex-wrap items-center gap-1.5 border-b border-border bg-warn-soft px-2 py-1"
     >
-      <span className="min-w-0 flex-1 truncate text-[length:var(--text-caption)]">
+      <span className="min-w-0 flex-1 truncate text-caption">
         {t(`editor.external.${change.kind}`)}
       </span>
       {!removed && (
-        <Button variant="ghost" size="sm" className="h-6" onClick={onCompare}>
+        <Button variant="ghost" size="xs" onClick={onCompare}>
           {t("editor.compare")}
         </Button>
       )}
       {!removed && dirty && (
-        <Button variant="ghost" size="sm" className="h-6" onClick={onMerge}>
+        <Button variant="ghost" size="xs" onClick={onMerge}>
           {t("editor.draft.merge")}
         </Button>
       )}
       {!removed && (
-        <Button variant="ghost" size="sm" className="h-6" onClick={onReload}>
+        <Button variant="ghost" size="xs" onClick={onReload}>
           {t("editor.reloadDiscard")}
         </Button>
       )}
       {removed && (
-        <Button variant="ghost" size="sm" className="h-6" onClick={onSaveAs}>
+        <Button variant="ghost" size="xs" onClick={onSaveAs}>
           {t("editor.saveAs")}
         </Button>
       )}
       {removed && (
-        <Button variant="ghost" size="sm" className="h-6" onClick={onRelocate}>
+        <Button variant="ghost" size="xs" onClick={onRelocate}>
           {t("editor.relocate")}
         </Button>
       )}
-      <Button variant="secondary" size="sm" className="h-6" onClick={onKeep}>
+      <Button variant="secondary" size="xs" onClick={onKeep}>
         {t("editor.keepDraft")}
       </Button>
     </div>

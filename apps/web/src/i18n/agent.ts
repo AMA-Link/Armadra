@@ -12,7 +12,6 @@ const zh = {
   "agent.amaKeys.save": "保存",
   "agent.amaKeys.clear": "清除",
   "agent.amaKeys.set": "已设置",
-  "agent.amaKeys.saved": "已保存",
   "agent.amaKeys.failed": "保存失败",
   "agent.permissionMode": "权限模式",
   "agent.mode.default": "默认",
@@ -22,8 +21,6 @@ const zh = {
   "agent.recycle": "回收会话",
   "agent.model": "模型",
   "agent.modelDefault": "CLI 默认",
-  "agent.modelHint":
-    "仅对下一次启动的会话生效；当前会话保持不变，也不会被重启。",
   "agent.modelQueued": "下一次启动使用 {model}；当前会话不受影响。",
 
   /* 程序自报（契约 §53）：进度跟在胶囊后面。胶囊文案在 `status.*`。 */
@@ -41,7 +38,6 @@ const en: Record<keyof typeof zh, string> = {
   "agent.amaKeys.save": "Save",
   "agent.amaKeys.clear": "Clear",
   "agent.amaKeys.set": "Set",
-  "agent.amaKeys.saved": "Saved",
   "agent.amaKeys.failed": "Could not save",
   "agent.permissionMode": "Permission mode",
   "agent.mode.default": "Default",
@@ -51,8 +47,6 @@ const en: Record<keyof typeof zh, string> = {
   "agent.recycle": "Recycle session",
   "agent.model": "Model",
   "agent.modelDefault": "CLI default",
-  "agent.modelHint":
-    "Applies to the next session this node starts. The running session is unchanged and is not restarted.",
   "agent.modelQueued":
     "The next session will use {model}. The running one is unaffected.",
 

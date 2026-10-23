@@ -32,14 +32,14 @@ export function ConsoleNav({
               <Button
                 asChild
                 variant="ghost"
-                className="w-full justify-start gap-2 px-2 font-normal text-muted-foreground aria-[current=page]:bg-brand-soft aria-[current=page]:text-brand-text pointer-coarse:h-11"
+                className="w-full justify-start gap-2 px-2 font-normal text-muted-foreground aria-[current=page]:bg-brand-soft aria-[current=page]:text-brand-text pointer-coarse:h-[44px]"
               >
                 <RouteLink
                   href={navHref(area, entry, teamSlug)}
                   aria-current={entry.id === active ? "page" : undefined}
                   onClick={onNavigate}
                 >
-                  <entry.icon aria-hidden strokeWidth={1.5} />
+                  <entry.icon aria-hidden />
                   <span className="min-w-0 truncate">{t(entry.labelKey)}</span>
                   {count > 0 ? (
                     <Badge variant="secondary" className="ms-auto tabular-nums">

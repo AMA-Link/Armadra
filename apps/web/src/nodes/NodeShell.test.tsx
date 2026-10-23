@@ -57,6 +57,7 @@ function makeNode(patch: Partial<CanvasNode> = {}): CanvasNode {
     title: "便签 1",
     color: "#ffd60a",
     position: { x: 0, y: 0 },
+    size: { width: 480, height: 320 },
     data: { kind: "sticky", content: "" },
     createdAt: "2026-09-04T00:00:00.000Z",
     updatedAt: "2026-09-04T00:00:00.000Z",
@@ -170,7 +171,7 @@ describe("NodeShell", () => {
   });
 
   /**
-   * 头部密度（契约 §3.4，2026-09-19）：30px 一行、标题 12px、图标钮 24×24。
+   * 头部密度（契约 §3.4，2026-09-19）：30px 一行、标题 `text-meta`（12px）、图标钮 24×24。
    * 节点体拿走剩下的全部高度，所以内容是「按比例」铺满的，不靠固定像素。
    */
   it("keeps the header at 30px and the body on the remaining height", () => {
@@ -181,7 +182,9 @@ describe("NodeShell", () => {
     expect(header.style.height).toBe("30px");
     expect(HEADER_HEIGHT).toBe(30);
 
-    expect(screen.getByText("便签 1").className).toContain("text-[12px]");
+    const title = screen.getByText("便签 1");
+    expect(title.className).toContain("text-meta");
+    expect(title.className).toContain("font-medium");
     expect(screen.getByLabelText("关闭").className).toContain("size-[24px]");
 
     const body = view.container.querySelector(
@@ -525,6 +528,62 @@ describe("NodeShell", () => {
       second.container.querySelector('[data-slot="status-dot"]'),
     ).not.toBeNull();
     expect(second.container.textContent).not.toContain("RUNNING");
+  });
+
+  it("窄于 560 的节点只画 StatusDot，≥ 560 出 StatusPill sm 带字", () => {
+    const narrow = renderShell({
+      node: makeNode({ size: { width: 559, height: 320 } }),
+      status: { tone: "working", label: "运行中" },
+    });
+    expect(
+      narrow.container.querySelector('[data-slot="status-dot"]'),
+    ).not.toBeNull();
+    expect(
+      narrow.container.querySelector('[data-slot="status-pill"]'),
+    ).toBeNull();
+    narrow.unmount();
+
+    const wide = renderShell({
+      node: makeNode({ size: { width: 560, height: 320 } }),
+      status: { tone: "working", label: "运行中" },
+    });
+    const pill = wide.container.querySelector('[data-slot="status-pill"]');
+    expect(pill).not.toBeNull();
+    expect(pill?.getAttribute("data-size")).toBe("sm");
+    expect(pill?.textContent).toContain("运行中");
+    expect(wide.container.querySelector('[data-slot="status-dot"]')).toBeNull();
+  });
+
+  it("statusPopover 槽位：不传不可点，传了状态段是个触发器，点开出内容", () => {
+    const plain = renderShell({
+      status: { tone: "working", label: "运行中" },
+    });
+    expect(
+      plain.container.querySelector('[data-slot="node-status-trigger"]'),
+    ).toBeNull();
+    plain.unmount();
+
+    renderShell({
+      status: { tone: "working", label: "运行中" },
+      statusPopover: <div data-testid="status-popover">状态行</div>,
+    });
+    fireEvent.click(screen.getByRole("button", { name: "运行中" }));
+    expect(screen.getByTestId("status-popover")).toBeTruthy();
+  });
+
+  it("节点框是 card 圆角 + 1px 边 + 节点阴影用的 node-frame，选中换品牌边", () => {
+    const idle = renderShell();
+    const frame = idle.container.querySelector(".node-frame") as HTMLElement;
+    expect(frame.className).toContain("rounded-card");
+    expect(frame.className).toContain("border-border");
+    expect(frame.className).not.toContain("border-brand");
+    idle.unmount();
+
+    const selected = renderShell({ selected: true });
+    expect(
+      (selected.container.querySelector(".node-frame") as HTMLElement)
+        .className,
+    ).toContain("border-brand");
   });
 
   it("keeps the header to a single row and adds no strip below it", () => {

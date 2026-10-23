@@ -5,6 +5,7 @@ import { useT, usePreferencesStore } from "../../../app/preferences-store";
 import { cn } from "../../../lib/cn";
 import { Button } from "../../../ui/button";
 import { Input } from "../../../ui/input";
+import { Tooltip, TooltipContent, TooltipTrigger } from "../../../ui/tooltip";
 import {
   DropdownMenu,
   DropdownMenuCheckboxItem,
@@ -91,30 +92,39 @@ export function LogToolbar({
           onChange={(event) => set("searchText", event.target.value)}
           placeholder={t("gitLog.toolbar.search")}
           aria-label={t("gitLog.toolbar.search")}
-          className="h-7 min-w-0 flex-1 text-xs"
+          size="sm"
+          className="min-w-0 flex-1"
         />
-        <Button
-          size="sm"
-          variant="ghost"
-          aria-pressed={git.searchRegex}
-          aria-label={t("gitLog.toolbar.regex")}
-          title={t("gitLog.toolbar.regex")}
-          className="h-7 px-1.5 aria-pressed:bg-muted"
-          onClick={() => set("searchRegex", !git.searchRegex)}
-        >
-          <Regex className="size-3.5" />
-        </Button>
-        <Button
-          size="sm"
-          variant="ghost"
-          aria-pressed={git.searchMatchCase}
-          aria-label={t("gitLog.toolbar.matchCase")}
-          title={t("gitLog.toolbar.matchCase")}
-          className="h-7 px-1.5 font-mono text-[11px] aria-pressed:bg-muted"
-          onClick={() => set("searchMatchCase", !git.searchMatchCase)}
-        >
-          Cc
-        </Button>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              size="icon-sm"
+              variant="ghost"
+              aria-pressed={git.searchRegex}
+              aria-label={t("gitLog.toolbar.regex")}
+              className="aria-pressed:bg-muted"
+              onClick={() => set("searchRegex", !git.searchRegex)}
+            >
+              <Regex />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>{t("gitLog.toolbar.regex")}</TooltipContent>
+        </Tooltip>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              size="icon-sm"
+              variant="ghost"
+              aria-pressed={git.searchMatchCase}
+              aria-label={t("gitLog.toolbar.matchCase")}
+              className="font-mono text-caption aria-pressed:bg-muted"
+              onClick={() => set("searchMatchCase", !git.searchMatchCase)}
+            >
+              Cc
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>{t("gitLog.toolbar.matchCase")}</TooltipContent>
+        </Tooltip>
       </div>
 
       <Facet label={t("gitLog.toolbar.branch")} count={git.selectedRefs.length}>
@@ -176,21 +186,21 @@ export function LogToolbar({
         ))}
         {git.dateRange === "custom" && (
           <div className="space-y-1 p-2">
-            <label className="block text-[11px] text-muted-foreground">
+            <label className="block text-caption text-muted-foreground">
               {t("gitLog.toolbar.since")}
               <Input
                 type="date"
                 value={git.since}
-                className="h-7 text-xs"
+                size="sm"
                 onChange={(event) => set("since", event.target.value)}
               />
             </label>
-            <label className="block text-[11px] text-muted-foreground">
+            <label className="block text-caption text-muted-foreground">
               {t("gitLog.toolbar.until")}
               <Input
                 type="date"
                 value={git.until}
-                className="h-7 text-xs"
+                size="sm"
                 onChange={(event) => set("until", event.target.value)}
               />
             </label>
@@ -235,7 +245,7 @@ export function LogToolbar({
             value={path}
             placeholder={t("gitLog.toolbar.pathInput")}
             aria-label={t("gitLog.toolbar.pathInput")}
-            className="h-7 text-xs"
+            size="sm"
             onChange={(event) => setPath(event.target.value)}
             onKeyDown={(event) => {
               if (event.key !== "Enter" || path.trim() === "") return;
@@ -247,7 +257,6 @@ export function LogToolbar({
           <Button
             size="sm"
             variant="outline"
-            className="h-7"
             disabled={path.trim() === ""}
             onClick={() => {
               set("paths", [...new Set([...git.paths, path.trim()])]);
@@ -276,13 +285,11 @@ export function LogToolbar({
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <Button
-            size="sm"
+            size="icon-sm"
             variant="ghost"
-            className="h-7 px-1.5"
             aria-label={t("gitLog.toolbar.settings")}
-            title={t("gitLog.toolbar.settings")}
           >
-            <Settings2 className="size-3.5" />
+            <Settings2 />
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end">
@@ -297,7 +304,6 @@ export function LogToolbar({
         <Button
           size="sm"
           variant="ghost"
-          className="h-7 px-1.5 text-xs"
           onClick={() => {
             set("searchText", "");
             set("authors", []);
@@ -338,11 +344,11 @@ function Facet({
           size="sm"
           variant="ghost"
           aria-label={label}
-          className={cn("h-7 gap-1 px-1.5 text-xs", count > 0 && "bg-muted")}
+          className={cn(count > 0 && "bg-muted")}
         >
           {label}
           {count > 0 && (
-            <span className="tabular-nums text-[length:var(--text-caption)]">
+            <span data-numeric className="text-caption">
               {count}
             </span>
           )}

@@ -28,7 +28,7 @@ import {
 } from "@/ui/command";
 import { Input } from "@/ui/input";
 import { Progress } from "@/ui/progress";
-import { Spinner } from "@/ui/spinner";
+import { EmptyState } from "@/ui/state";
 import {
   Select,
   SelectContent,
@@ -283,9 +283,9 @@ export function NewWorkspaceDialog({
                   aria-busy="true"
                   aria-label={t("state.loading")}
                   data-slot="new-workspace-skeleton"
-                  className="overflow-hidden rounded-[var(--r-card)] border border-border bg-[var(--card)]"
+                  className="overflow-hidden rounded-card border border-border bg-card"
                 >
-                  <div className="flex h-9 items-center border-b border-border px-3">
+                  <div className="flex h-8 items-center border-b border-border px-3">
                     <Skeleton className="h-3 w-1/3" />
                   </div>
                   <div className="flex h-56 flex-col p-1">
@@ -295,11 +295,14 @@ export function NewWorkspaceDialog({
               }
             >
               {host === null ? (
-                <div className="flex h-40 items-center justify-center text-muted-foreground">
-                  {accounts.isError
-                    ? (accounts.error as Error).message
-                    : t("newWorkspace.notConnected")}
-                </div>
+                <EmptyState
+                  className="h-40"
+                  title={
+                    accounts.isError
+                      ? (accounts.error as Error).message
+                      : t("newWorkspace.notConnected")
+                  }
+                />
               ) : (
                 <div className="flex flex-col gap-2">
                   {accountList.length > 1 && (
@@ -328,7 +331,7 @@ export function NewWorkspaceDialog({
                       </SelectContent>
                     </Select>
                   )}
-                  <Command className="rounded-[var(--r-card)]! border border-border bg-[var(--card)]">
+                  <Command className="rounded-card! border border-border bg-card">
                     <CommandInput
                       className={COMMAND_INPUT_FOCUS}
                       placeholder={t("newWorkspace.search")}
@@ -366,14 +369,11 @@ export function NewWorkspaceDialog({
                     <Button
                       variant="ghost"
                       size="sm"
-                      disabled={busy || repositories.isFetchingNextPage}
+                      disabled={busy}
+                      loading={repositories.isFetchingNextPage}
                       onClick={() => void repositories.fetchNextPage()}
                     >
-                      {repositories.isFetchingNextPage ? (
-                        <Spinner />
-                      ) : (
-                        t("forge.more")
-                      )}
+                      {t("forge.more")}
                     </Button>
                   )}
                 </div>
@@ -382,7 +382,7 @@ export function NewWorkspaceDialog({
           </TabsContent>
 
           <TabsContent value="local">
-            <div className="grid grid-cols-[72px_1fr] items-center gap-x-3 rounded-[var(--r-card)] border border-border bg-[var(--card)] p-4">
+            <div className="grid grid-cols-[72px_1fr] items-center gap-x-3 rounded-card border border-border bg-card p-4">
               <label className="text-muted-foreground" htmlFor="workspace-path">
                 {t("workspace.path")}
               </label>
@@ -409,7 +409,7 @@ export function NewWorkspaceDialog({
           </TabsContent>
 
           <TabsContent value="url">
-            <div className="grid grid-cols-[72px_1fr] items-center gap-x-3 rounded-[var(--r-card)] border border-border bg-[var(--card)] p-4">
+            <div className="grid grid-cols-[72px_1fr] items-center gap-x-3 rounded-card border border-border bg-card p-4">
               <label className="text-muted-foreground" htmlFor="clone-url">
                 {t("clone.url")}
               </label>
@@ -426,7 +426,7 @@ export function NewWorkspaceDialog({
         </Tabs>
 
         {mode !== "local" && (
-          <div className="grid grid-cols-[72px_1fr] items-center gap-x-3 rounded-[var(--r-card)] border border-border bg-[var(--card)] p-4">
+          <div className="grid grid-cols-[72px_1fr] items-center gap-x-3 rounded-card border border-border bg-card p-4">
             <label className="text-muted-foreground" htmlFor="clone-parent">
               {t("folder.parent")}
             </label>
@@ -459,7 +459,7 @@ export function NewWorkspaceDialog({
               aria-label={t("clone.progress")}
               className={percent === null ? "animate-pulse" : undefined}
             />
-            <span className="truncate font-mono text-[length:var(--text-caption)] text-muted-foreground">
+            <span className="truncate font-mono text-caption text-muted-foreground">
               {lastLine}
             </span>
           </div>

@@ -2,8 +2,7 @@ import * as React from "react";
 import type { ActivityPhase, SessionActivity } from "@armadra/shared";
 
 import { useT } from "@/app/preferences-store";
-import { cn } from "@/lib/cn";
-import { Spinner } from "@/ui/spinner";
+import { StatusLine, type StatusTone } from "@/ui/status-pill";
 import { formatDuration } from "./format";
 import { useSmoothedActivity } from "../use-activity";
 import { displayPhaseOf, type DisplayPhase } from "./display-phase";
@@ -11,6 +10,7 @@ import { displayPhaseOf, type DisplayPhase } from "./display-phase";
 /** 超过这么久没有输出，追加「已 N 无输出」。 */
 export const QUIET_AFTER_MS = 60_000;
 
+/** 在跑的阶段：前导转圈，色调 `working`。审批、出错、休眠、退出不转。 */
 const SPINNING: ReadonlySet<DisplayPhase> = new Set<ActivityPhase>([
   "starting",
   "restoring",
@@ -20,6 +20,16 @@ const SPINNING: ReadonlySet<DisplayPhase> = new Set<ActivityPhase>([
   "responding",
   "switching",
 ]);
+
+/** 阶段 → `StatusLine` 的色调（与设计系统 §11.1 一致）。 */
+export function toneOfPhase(phase: DisplayPhase): StatusTone {
+  if (phase === "failed") return "failed";
+  if (phase === "awaiting_approval" || phase === "awaiting_input")
+    return "attention";
+  if (phase === "sleeping") return "paused";
+  if (phase === "exited" || phase === "idle") return "idle";
+  return "working";
+}
 
 function useNow(active: boolean, intervalMs = 1000): number {
   const [now, setNow] = React.useState(() => Date.now());
@@ -60,9 +70,10 @@ export interface ActivityLineProps {
 }
 
 /**
- * 活动行（设计 §7）：`Spinner` + 阶段 + 细节 + 计时，如「运行 · pnpm test · 12 s」。
- * 阶段经页面数据层的 `useSmoothedActivity` 防闪烁（显示 300 ms、保持 500 ms）；审批与出错不转圈，换成对应色调；
- * `aria-live="polite"` 的只有阶段文字，计时不播报。
+ * 活动行（设计系统 §5.1 / §11.1）：一条 `StatusLine`——阶段 + 细节 + 计时，如
+ * 「运行 · pnpm test · 12 s」；超过 60 s 没有输出时细节后追加「已 N 无输出」。
+ * 阶段经页面数据层的 `useSmoothedActivity` 防闪烁（显示 300 ms、保持 500 ms）；审批与
+ * 出错不转圈，换成对应色调；`aria-live="polite"` 的只有阶段文字，计时不播报。
  */
 export function ActivityLine({ activity, now: fixedNow }: ActivityLineProps) {
   const t = useT();
@@ -74,50 +85,36 @@ export function ActivityLine({ activity, now: fixedNow }: ActivityLineProps) {
   const now = fixedNow ?? clock;
   if (!visible) return null;
 
-  const elapsed = formatDuration(
-    Math.max(0, now - (shown.turnStartedAt ?? shown.since)),
-  );
+  const waiting = phase === "awaiting_approval" || phase === "awaiting_input";
   const quiet =
     shown.lastOutputAt !== undefined &&
-    phase !== "awaiting_approval" &&
-    phase !== "awaiting_input" &&
+    !waiting &&
     now - shown.lastOutputAt >= QUIET_AFTER_MS
-      ? formatDuration(now - shown.lastOutputAt)
+      ? t("timeline.activity.quiet", {
+          time: formatDuration(now - shown.lastOutputAt),
+        })
       : "";
-  const detail = detailOf(shown, phase, t);
-  const tone =
-    phase === "failed"
-      ? "text-[var(--danger-text)]"
-      : phase === "awaiting_approval" || phase === "awaiting_input"
-        ? "text-[var(--warn-text)]"
-        : "text-muted-foreground";
+  const detail = [detailOf(shown, phase, t), quiet]
+    .filter((part) => part !== "")
+    .join(" · ");
+  const tone = toneOfPhase(phase);
   return (
-    <div
+    <StatusLine
       data-slot="timeline-activity"
       data-phase={phase}
-      className={cn("flex min-w-0 items-center gap-2 px-2 py-1 text-xs", tone)}
-    >
-      {SPINNING.has(phase) && (
-        <Spinner aria-hidden className="size-3 motion-reduce:animate-none" />
-      )}
-      <span aria-live="polite" className="shrink-0">
-        {t(`timeline.activity.${phase}`)}
-      </span>
-      {detail !== "" && (
-        <span className="min-w-0 truncate" title={detail}>
-          · {detail}
-        </span>
-      )}
-      <span aria-hidden className="shrink-0 tabular-nums">
-        {phase === "awaiting_approval" || phase === "awaiting_input"
-          ? ""
-          : `· ${elapsed}`}
-      </span>
-      {quiet !== "" && (
-        <span aria-hidden className="shrink-0 tabular-nums">
-          · {t("timeline.activity.quiet", { time: quiet })}
-        </span>
-      )}
-    </div>
+      tone={tone}
+      label={t(`timeline.activity.${phase}`)}
+      detail={detail}
+      since={waiting ? undefined : (shown.turnStartedAt ?? shown.since)}
+      spinning={SPINNING.has(phase)}
+      now={now}
+      className={
+        tone === "failed"
+          ? "px-2 py-1 text-danger-text"
+          : tone === "attention"
+            ? "px-2 py-1 text-warn-text"
+            : "px-2 py-1"
+      }
+    />
   );
 }

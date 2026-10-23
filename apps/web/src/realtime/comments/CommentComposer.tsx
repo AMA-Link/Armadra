@@ -175,7 +175,7 @@ export function CommentComposer({
         }}
         className="gap-1.5"
       >
-        <TabsList variant="line" className="h-7">
+        <TabsList variant="line">
           <TabsTrigger value="write">{t("comments.write")}</TabsTrigger>
           <TabsTrigger value="preview">{t("comments.preview")}</TabsTrigger>
         </TabsList>
@@ -224,7 +224,7 @@ export function CommentComposer({
         <TabsContent value="preview">
           <CommentBody
             body={encodeMentions(trimmed, picked)}
-            className="max-h-48 min-h-16 overflow-auto rounded-md border border-input px-2.5 py-2"
+            className="max-h-48 min-h-16 overflow-auto rounded-control border border-input px-2.5 py-2"
           />
         </TabsContent>
       </Tabs>

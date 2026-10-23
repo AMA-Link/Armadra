@@ -101,7 +101,7 @@ export function CherryPick({
     );
   return (
     <form
-      className="space-y-2 rounded-md border border-border p-3"
+      className="space-y-2 rounded-control border border-border p-3"
       onSubmit={(event) => {
         event.preventDefault();
         if (ready())
@@ -130,7 +130,6 @@ export function CherryPick({
           autoComplete="off"
         />
       </Field>
-      <p className="text-muted-foreground">{t("gitIntegration.pickSafety")}</p>
       <GitLoadable loading={metadata.isFetching} size={3} />
       {metadata.error && (
         <ReadError
@@ -156,11 +155,11 @@ export function CherryPick({
               >
                 <SelectTrigger
                   aria-label={t("gitIntegration.mainline")}
-                  className="h-9 w-full min-w-0"
+                  className="w-full min-w-0"
                 >
                   <SelectValue />
                 </SelectTrigger>
-                <SelectContent className="z-[var(--z-dialog)]">
+                <SelectContent>
                   <SelectItem value={NONE}>
                     {t("gitIntegration.chooseMainline")}
                   </SelectItem>
@@ -174,7 +173,6 @@ export function CherryPick({
                   ))}
                 </SelectContent>
               </Select>
-              <span>{t("gitIntegration.mainlineSafety")}</span>
             </Field>
           )}
           {isMerge && (
@@ -189,7 +187,7 @@ export function CherryPick({
               <details open>
                 <summary>{t("gitIntegration.pickDiff")}</summary>
                 <pre
-                  className="max-h-80 overflow-auto rounded bg-muted p-2 text-[11px]"
+                  className="max-h-80 overflow-auto rounded-tight bg-muted p-2 text-caption"
                   tabIndex={0}
                 >
                   {preview.patch || t("gitIntegration.emptyPreview")}

@@ -52,17 +52,17 @@ export function GitToolWindow() {
       onHeightChange={(height) => set("windowHeight", height)}
       maximized={maximized}
     >
-      <div className="flex h-10 shrink-0 items-center gap-1 border-b border-border px-2">
+      <div className="flex shrink-0 items-center gap-1 border-b border-border px-2 py-1">
         <Tabs
           value={tab}
           onValueChange={(value) => setTab(value as "log" | "commit")}
           className="min-w-0 gap-0"
         >
-          <TabsList variant="line" className="h-9">
-            <TabsTrigger value="log" className="text-xs">
+          <TabsList variant="line">
+            <TabsTrigger value="log" className="text-meta">
               {t("gitLog.tab.log")}
             </TabsTrigger>
-            <TabsTrigger value="commit" className="text-xs">
+            <TabsTrigger value="commit" className="text-meta">
               {t("gitLog.tab.commit")}
             </TabsTrigger>
           </TabsList>

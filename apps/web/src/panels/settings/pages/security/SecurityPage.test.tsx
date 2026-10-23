@@ -8,7 +8,7 @@ const mocks = vi.hoisted(() => ({
   toastError: vi.fn(),
 }));
 
-vi.mock("sonner", () => ({
+vi.mock("@/ui/toast", () => ({
   toast: { success: mocks.toastSuccess, error: mocks.toastError },
 }));
 
@@ -127,7 +127,7 @@ describe("SecurityPage", () => {
   it("owner 看得到审计", async () => {
     mocks.resume.mockResolvedValue(session(["identity:manage"]));
     mount();
-    expect(await screen.findByRole("heading", { name: "审计" })).toBeTruthy();
+    expect(await screen.findByText("审计")).toBeTruthy();
     expect(screen.queryByRole("switch", { name: "所有成员" })).toBeNull();
   });
 

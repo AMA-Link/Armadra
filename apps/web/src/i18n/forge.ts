@@ -61,8 +61,6 @@ export const forge: MessageModule = {
     "forge.settings.save": "保存",
     "forge.settings.remove": "删除",
     "forge.settings.clearToken": "清除令牌",
-    "forge.settings.saved": "已保存",
-    "forge.settings.removed": "已删除",
     "forge.settings.credential": "有令牌",
     "forge.settings.noCredential": "无令牌",
 
@@ -128,8 +126,6 @@ export const forge: MessageModule = {
     "forge.settings.save": "Save",
     "forge.settings.remove": "Delete",
     "forge.settings.clearToken": "Clear token",
-    "forge.settings.saved": "Saved",
-    "forge.settings.removed": "Deleted",
     "forge.settings.credential": "Token set",
     "forge.settings.noCredential": "No token",
 

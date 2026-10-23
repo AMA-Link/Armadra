@@ -12,15 +12,13 @@ import {
   type IdentitySession,
 } from "../../../api/identity";
 import { usePreferencesStore, useT } from "../../../app/preferences-store";
-import {
-  isNativeShell,
-  nativeSessionFailureKey,
-} from "../../../host/native-session";
+import { nativeSessionFailureKey } from "../../../host/native-session";
 import { Alert, AlertTitle } from "@/ui/alert";
 import { Button } from "@/ui/button";
 import { Textarea } from "@/ui/textarea";
 import { ValueLoadable } from "../SettingsLoadable";
 import { SettingsGroup } from "../SettingsGroup";
+import { SettingsRow } from "../SettingsRow";
 
 export interface HostIdentityPanelProps {
   hello?: IdentityHello;
@@ -154,193 +152,182 @@ export function HostIdentityPanel({
       : "—";
 
   return (
-    <section aria-labelledby={`${id}-title`} className="min-w-0 space-y-2">
-      <h3 id={`${id}-title`} className="text-[13px] font-medium">
+    <section
+      aria-labelledby={`${id}-title`}
+      className="flex min-w-0 flex-col gap-(--space-group)"
+    >
+      <h3
+        id={`${id}-title`}
+        className="px-0.5 text-body font-medium text-foreground"
+      >
         {t("hostIdentity.title")}
       </h3>
       {unavailable ? (
-        <p className="text-[13px] leading-5 text-muted-foreground">
-          {t(unavailable)}
-        </p>
+        <Alert role="status">
+          <AlertTitle className="font-normal break-words">
+            {t(unavailable)}
+          </AlertTitle>
+        </Alert>
       ) : (
         <SettingsGroup>
-          <div className="min-w-0 space-y-4 px-4 py-3" aria-busy={busy}>
+          <div className="min-w-0" aria-busy={busy}>
             {error ? (
-              <Alert variant="destructive" role="status" aria-live="polite">
-                <AlertTitle className="text-[12px] leading-5 font-normal break-words">
-                  {t(error)}
-                </AlertTitle>
-              </Alert>
+              <div className="px-4 py-2">
+                <Alert variant="destructive" role="status" aria-live="polite">
+                  <AlertTitle className="font-normal break-words">
+                    {t(error)}
+                  </AlertTitle>
+                </Alert>
+              </div>
             ) : (
-              <ValueLoadable loading={busy && !session} className="h-5 w-56">
-                <p
-                  role="status"
-                  aria-live="polite"
-                  className="break-words text-[12px] leading-5 text-muted-foreground"
-                >
-                  {t(
-                    busy
-                      ? "hostIdentity.busy"
-                      : (notice ??
-                          (!session
-                            ? "hostIdentity.signedOut"
-                            : "hostIdentity.current")),
-                  )}
-                </p>
-              </ValueLoadable>
-            )}
-            {!session ? (
-              <form
-                className="space-y-3"
-                onSubmit={(event) => {
-                  event.preventDefault();
-                  if (busy || !ticket.trim()) return;
-                  const material = ticket;
-                  setTicket("");
-                  void run(async (mark) =>
-                    accept(mark, await pairIdentity(material)),
-                  );
-                }}
-              >
-                <label
-                  htmlFor={`${id}-ticket`}
-                  className="block text-[13px] font-medium"
-                >
-                  {t("hostIdentity.ticket")}
-                </label>
-                <Textarea
-                  id={`${id}-ticket`}
-                  rows={3}
-                  maxLength={8192}
-                  autoComplete="off"
-                  autoCapitalize="none"
-                  spellCheck={false}
-                  value={ticket}
-                  disabled={busy}
-                  aria-describedby={`${id}-ticket-help`}
-                  onChange={(event) => setTicket(event.target.value)}
-                  className="min-w-0 resize-y text-[12px]"
-                />
-                <p
-                  id={`${id}-ticket-help`}
-                  className="text-[11px] leading-4 text-muted-foreground"
-                >
-                  {t(
-                    isNativeShell()
-                      ? "hostIdentity.ticketHelp"
-                      : "hostIdentity.ticketHelp.server",
-                  )}
-                </p>
-                <div className="flex flex-wrap gap-2">
-                  <Button
-                    type="submit"
-                    size="sm"
-                    className="min-h-10"
-                    disabled={busy || !ticket.trim()}
+              <div className="px-4 py-2">
+                <ValueLoadable loading={busy && !session} className="h-5 w-56">
+                  <div
+                    role="status"
+                    aria-live="polite"
+                    className="break-words text-meta text-muted-foreground"
                   >
-                    {t("hostIdentity.pair")}
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="secondary"
-                    size="sm"
-                    className="min-h-10"
-                    disabled={busy}
-                    onClick={() =>
-                      void run(async (mark) =>
-                        accept(mark, await resumeIdentity()),
-                      )
-                    }
-                  >
-                    {t("hostIdentity.restore")}
-                  </Button>
-                </div>
-              </form>
-            ) : (
-              <>
-                <dl className="grid min-w-0 gap-3 text-[12px]">
-                  <div>
-                    <dt className="text-muted-foreground">
-                      {t("hostIdentity.current")}
-                    </dt>
-                    <dd className="mt-1 break-words font-medium">
-                      {session.device.displayName} · {t("hostIdentity.owner")}
-                    </dd>
-                    <dd className="mt-1 break-all text-muted-foreground select-text">
-                      {session.device.deviceId}
-                    </dd>
+                    {t(
+                      busy
+                        ? "hostIdentity.busy"
+                        : (notice ??
+                            (!session
+                              ? "hostIdentity.signedOut"
+                              : "hostIdentity.current")),
+                    )}
                   </div>
-                  <div>
-                    <dt className="text-muted-foreground">
-                      {t("hostIdentity.expires")}
-                    </dt>
-                    <dd className="mt-1">{expiry}</dd>
-                  </div>
-                </dl>
-                <details>
-                  <summary className="cursor-pointer text-[12px] focus-visible:outline-2 focus-visible:outline-ring">
-                    {t("hostIdentity.permissions")}
-                  </summary>
-                  <ul className="mt-2 space-y-2 text-[12px]">
-                    {session.scopes.map((scope, index) => (
-                      <li
-                        key={`${scope.permission}-${index}`}
-                        className="break-words"
-                      >
-                        {t(`hostIdentity.scope.${scope.permission}`)} ·{" "}
-                        {scope.workspaceId
-                          ? t("hostIdentity.workspace", {
-                              id: scope.workspaceId,
-                            })
-                          : t("hostIdentity.allWorkspaces")}
-                        {scope.executionHostId && (
-                          <>
-                            {" "}
-                            ·{" "}
-                            {t("hostIdentity.executionHost", {
-                              id: scope.executionHostId,
-                            })}
-                          </>
-                        )}
-                      </li>
-                    ))}
-                  </ul>
-                </details>
-                <div className="flex flex-wrap gap-2">
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="secondary"
-                    className="min-h-10"
-                    disabled={busy}
-                    onClick={() =>
-                      void run(async (mark) =>
-                        accept(mark, await resumeIdentity()),
-                      )
-                    }
-                  >
-                    {t("hostIdentity.restore")}
-                  </Button>
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="outline"
-                    className="min-h-10"
-                    disabled={busy}
-                    onClick={() =>
-                      void run(async (mark) => {
-                        await logoutIdentity();
-                        await accept(mark, null);
-                        if (live(mark)) setNotice("hostIdentity.loggedOut");
-                      })
-                    }
-                  >
-                    {t("hostIdentity.logout")}
-                  </Button>
-                </div>
-              </>
+                </ValueLoadable>
+              </div>
             )}
           </div>
+          {!session ? (
+            <form
+              className="flex min-w-0 flex-col gap-3 px-4 py-3"
+              onSubmit={(event) => {
+                event.preventDefault();
+                if (busy || !ticket.trim()) return;
+                const material = ticket;
+                setTicket("");
+                void run(async (mark) =>
+                  accept(mark, await pairIdentity(material)),
+                );
+              }}
+            >
+              <label
+                htmlFor={`${id}-ticket`}
+                className="block text-body font-medium"
+              >
+                {t("hostIdentity.ticket")}
+              </label>
+              <Textarea
+                id={`${id}-ticket`}
+                rows={3}
+                maxLength={8192}
+                autoComplete="off"
+                autoCapitalize="none"
+                spellCheck={false}
+                value={ticket}
+                disabled={busy}
+                onChange={(event) => setTicket(event.target.value)}
+                className="min-w-0 resize-y text-meta"
+              />
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  type="submit"
+                  size="sm"
+                  disabled={busy || !ticket.trim()}
+                >
+                  {t("hostIdentity.pair")}
+                </Button>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  disabled={busy}
+                  onClick={() =>
+                    void run(async (mark) =>
+                      accept(mark, await resumeIdentity()),
+                    )
+                  }
+                >
+                  {t("hostIdentity.restore")}
+                </Button>
+              </div>
+            </form>
+          ) : (
+            <>
+              <SettingsRow
+                label={t("hostIdentity.current")}
+                footnote={session.device.deviceId}
+              >
+                <span className="min-w-0 break-words text-body font-medium">
+                  {session.device.displayName} · {t("hostIdentity.owner")}
+                </span>
+              </SettingsRow>
+              <SettingsRow label={t("hostIdentity.expires")}>
+                <span className="text-body tabular-nums">{expiry}</span>
+              </SettingsRow>
+              <details className="px-4 py-2">
+                <summary className="cursor-pointer text-body focus-visible:outline-2 focus-visible:outline-ring">
+                  {t("hostIdentity.permissions")}
+                </summary>
+                <ul className="mt-2 space-y-2 text-meta">
+                  {session.scopes.map((scope, index) => (
+                    <li
+                      key={`${scope.permission}-${index}`}
+                      className="break-words"
+                    >
+                      {t(`hostIdentity.scope.${scope.permission}`)} ·{" "}
+                      {scope.workspaceId
+                        ? t("hostIdentity.workspace", {
+                            id: scope.workspaceId,
+                          })
+                        : t("hostIdentity.allWorkspaces")}
+                      {scope.executionHostId && (
+                        <>
+                          {" "}
+                          ·{" "}
+                          {t("hostIdentity.executionHost", {
+                            id: scope.executionHostId,
+                          })}
+                        </>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              </details>
+              <SettingsRow label={null}>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="secondary"
+                  disabled={busy}
+                  onClick={() =>
+                    void run(async (mark) =>
+                      accept(mark, await resumeIdentity()),
+                    )
+                  }
+                >
+                  {t("hostIdentity.restore")}
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  disabled={busy}
+                  onClick={() =>
+                    void run(async (mark) => {
+                      await logoutIdentity();
+                      await accept(mark, null);
+                      if (live(mark)) setNotice("hostIdentity.loggedOut");
+                    })
+                  }
+                >
+                  {t("hostIdentity.logout")}
+                </Button>
+              </SettingsRow>
+            </>
+          )}
         </SettingsGroup>
       )}
     </section>

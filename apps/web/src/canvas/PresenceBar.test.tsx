@@ -167,7 +167,7 @@ describe("presence", () => {
     expect(screen.getByLabelText("本机另一个窗口")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "接管" }));
     // 没有确认框：一次点击就接过来。
-    expect(screen.queryByText("接管编辑？")).toBeNull();
+    expect(screen.queryByRole("alertdialog")).toBeNull();
     expect(acquireLease).toHaveBeenCalledWith(board.workspaceId, board.id, {
       clientId: ME,
       deviceName: expect.any(String),
@@ -185,7 +185,15 @@ describe("presence", () => {
     fireEvent.click(screen.getByRole("button", { name: "接管" }));
     expect(acquireLease).not.toHaveBeenCalled();
     const buttons = await screen.findAllByRole("button", { name: "接管" });
-    fireEvent.click(buttons[buttons.length - 1] as HTMLElement);
+    // 确认框：后果写进标题，没有 Description；确认钮是危险实底
+    const dialog = screen.getByRole("alertdialog");
+    expect(dialog.textContent).toContain("未保存的改动会丢失");
+    expect(
+      dialog.querySelector("[data-slot='alert-dialog-description']"),
+    ).toBeNull();
+    const confirm = buttons[buttons.length - 1] as HTMLElement;
+    expect(confirm.getAttribute("data-variant")).toBe("destructive-solid");
+    fireEvent.click(confirm);
     expect(acquireLease).toHaveBeenCalledWith(board.workspaceId, board.id, {
       clientId: ME,
       deviceName: expect.any(String),
@@ -194,6 +202,18 @@ describe("presence", () => {
     await vi.waitFor(() =>
       expect(isReadOnly(useCanvasStore.getState())).toBe(false),
     );
+  });
+
+  it("设备条是 card 圆角、1px 强边、浮层阴影", () => {
+    applyPresence(presence(OTHER, [ME, OTHER]));
+    const { container } = mount();
+    const bar = container.querySelector("[data-slot='presence-bar']")!;
+    for (const name of [
+      "rounded-card",
+      "border-border-strong",
+      "shadow-overlay",
+    ])
+      expect(bar.classList.contains(name)).toBe(true);
   });
 });
 

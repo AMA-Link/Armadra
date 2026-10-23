@@ -37,6 +37,7 @@ export function RunCompare({
       }}
     >
       <ResponsiveDialogContent
+        aria-describedby={undefined}
         className="sm:max-w-[860px]"
         data-slot="workflow-compare-dialog"
       >
@@ -57,23 +58,13 @@ export function RunCompare({
                   data-same={row.same}
                   className="col-span-2 grid min-w-0 grid-cols-subgrid gap-y-1 border-t border-border pt-2"
                 >
-                  <div className="col-span-2 flex min-w-0 items-center gap-1.5 text-[12px]">
-                    <Badge
-                      variant="outline"
-                      className="h-[18px] px-1 text-[11px]"
-                    >
+                  <div className="col-span-2 flex min-w-0 items-center gap-1.5 text-meta">
+                    <Badge variant="outline" size="sm">
                       {t(`workflow.kind.${row.kind}`)}
                     </Badge>
                     <span className="font-medium">{row.stepId}</span>
                     <span className="flex-1" />
-                    <Badge
-                      variant={row.same ? "secondary" : "outline"}
-                      className={
-                        row.same
-                          ? "text-[11px]"
-                          : "text-[11px] text-[var(--warn-text)]"
-                      }
-                    >
+                    <Badge variant={row.same ? "secondary" : "warn"} size="sm">
                       {t(
                         row.same
                           ? "workflow.compare.same"
@@ -98,7 +89,7 @@ function RunHead({ run }: { run: WorkflowRunJson }) {
   const locale = usePreferencesStore((state) => state.locale);
   return (
     <div className="min-w-0 space-y-0.5">
-      <div className="flex min-w-0 items-center gap-1.5 text-[12px]">
+      <div className="flex min-w-0 items-center gap-1.5 text-meta">
         <span className="tabular-nums text-muted-foreground">
           {new Intl.DateTimeFormat(locale, {
             month: "2-digit",
@@ -112,7 +103,7 @@ function RunHead({ run }: { run: WorkflowRunJson }) {
           label={t(`workflow.status.${run.status}`)}
         />
       </div>
-      <p className="truncate text-[11px] text-muted-foreground">
+      <p className="truncate text-caption text-muted-foreground">
         {paramSummary(run.params) || run.title}
       </p>
     </div>
@@ -122,11 +113,7 @@ function RunHead({ run }: { run: WorkflowRunJson }) {
 function StepCell({ step }: { step: WorkflowRunStepJson | null }) {
   const t = useT();
   if (step === null) {
-    return (
-      <p className="text-[11px] text-muted-foreground">
-        {t("workflow.compare.missing")}
-      </p>
-    );
+    return <span className="text-caption text-muted-foreground">—</span>;
   }
   return (
     <div className="min-w-0 space-y-1">
@@ -135,20 +122,15 @@ function StepCell({ step }: { step: WorkflowRunStepJson | null }) {
         label={t(`workflow.step.${step.status}`)}
       />
       {step.decision ? (
-        <p className="text-[11px] text-muted-foreground">
+        <p className="text-caption text-muted-foreground">
           {t(`workflow.decision.${step.decision}`)}
           {step.note ? ` · ${step.note}` : ""}
-        </p>
-      ) : null}
-      {step.outputs.length === 0 && step.kind !== "gate" ? (
-        <p className="text-[11px] text-muted-foreground">
-          {t("workflow.compare.none")}
         </p>
       ) : null}
       {step.outputs.map((output) => (
         <pre
           key={`${output.key}-${output.at}`}
-          className="max-h-40 min-w-0 overflow-auto rounded-[var(--r-control)] bg-muted px-2 py-1 font-sans text-[11px] whitespace-pre-wrap select-text"
+          className="max-h-40 min-w-0 overflow-auto rounded-control bg-muted px-2 py-1 font-sans text-caption whitespace-pre-wrap select-text"
         >
           {output.body}
         </pre>

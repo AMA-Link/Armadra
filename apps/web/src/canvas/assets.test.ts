@@ -11,7 +11,7 @@ vi.mock("../api/client", () => ({
   },
 }));
 
-vi.mock("sonner", () => ({
+vi.mock("@/ui/toast", () => ({
   toast: { error: (...args: unknown[]) => error(...args) },
 }));
 

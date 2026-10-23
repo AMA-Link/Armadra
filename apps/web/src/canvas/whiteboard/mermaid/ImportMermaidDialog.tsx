@@ -1,12 +1,11 @@
 import * as React from "react";
-import { toast } from "sonner";
+import { toast } from "@/ui/toast";
 
 import { useT } from "@/app/preferences-store";
 import { Button } from "@/ui/button";
 import {
   ResponsiveDialog,
   ResponsiveDialogContent,
-  ResponsiveDialogDescription,
   ResponsiveDialogFooter,
   ResponsiveDialogHeader,
   ResponsiveDialogTitle,
@@ -94,9 +93,8 @@ export function ImportMermaidDialog() {
     setBusy(true);
     try {
       const outcome = await importMermaidText(source, at);
-      if (outcome.kind === "graph") {
-        toast.success(t("mermaid.imported", { count: outcome.ids.length }));
-      } else {
+      // 流程图落成图形，结果就在画布上，不再弹提示。
+      if (outcome.kind !== "graph") {
         // 非 flowchart：渲染成 SVG 之后交给现成的资产导入路径（它会先
         // 栅格化成 PNG 再上传，内容寻址与 8 MiB 上限都归它管）。
         const rendered = svg || (await renderMermaidSvg(source));
@@ -104,9 +102,7 @@ export function ImportMermaidDialog() {
           [svgToFile(rendered, outcome.diagramType || "diagram")],
           at,
         );
-        toast.success(
-          t("mermaid.importedImage", { type: outcome.diagramType }),
-        );
+        toast.info(t("mermaid.importedImage", { type: outcome.diagramType }));
       }
       closeMermaidImport();
     } catch (cause) {
@@ -133,9 +129,6 @@ export function ImportMermaidDialog() {
       <ResponsiveDialogContent className="z-[var(--z-dialog)] sm:max-w-3xl">
         <ResponsiveDialogHeader>
           <ResponsiveDialogTitle>{t("mermaid.title")}</ResponsiveDialogTitle>
-          <ResponsiveDialogDescription>
-            {t("mermaid.description")}
-          </ResponsiveDialogDescription>
         </ResponsiveDialogHeader>
 
         {/* 宽屏并排，窄屏切页签——并排在 390px 上两边都没法用。 */}
@@ -165,7 +158,7 @@ export function ImportMermaidDialog() {
         </Tabs>
 
         {message ? (
-          <p className="text-destructive text-sm break-words">{message}</p>
+          <p className="text-danger-text text-body break-words">{message}</p>
         ) : null}
 
         <ResponsiveDialogFooter>
@@ -196,7 +189,7 @@ function Source({
       onChange={(event) => onChange(event.target.value)}
       placeholder={placeholder}
       spellCheck={false}
-      className="h-72 resize-none font-mono text-xs"
+      className="h-72 resize-none font-mono text-meta"
     />
   );
 }
@@ -210,14 +203,14 @@ function Source({
  */
 function Preview({ svg, empty }: { svg: string; empty: string }) {
   return (
-    <div className="bg-muted/40 flex h-72 items-center justify-center overflow-auto rounded-md border p-2">
+    <div className="bg-muted/40 flex h-72 items-center justify-center overflow-auto rounded-control border p-2">
       {svg ? (
         <div
           className="[&_svg]:h-auto [&_svg]:max-w-full"
           dangerouslySetInnerHTML={{ __html: svg }}
         />
       ) : (
-        <span className="text-muted-foreground text-xs">{empty}</span>
+        <span className="text-muted-foreground text-meta">{empty}</span>
       )}
     </div>
   );

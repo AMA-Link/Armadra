@@ -5,6 +5,7 @@ import { useRemoteAccess } from "../remote-access";
 import { ScopeBadge } from "../scope-badge";
 import { PushDevices } from "./PushDevices";
 import { SettingsGroup } from "../SettingsGroup";
+import { SettingsPageHeader } from "../SettingsPageHeader";
 import { SettingsLoadable } from "../SettingsLoadable";
 import { SettingsRow } from "../SettingsRow";
 import { useRuntimeSettings } from "../use-runtime-settings";
@@ -39,6 +40,18 @@ export function NotificationsPage() {
 
   return (
     <>
+      <SettingsPageHeader
+        actions={
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={!sound}
+            onClick={() => playStatusSound()}
+          >
+            {t("settings.preview")}
+          </Button>
+        }
+      />
       <SettingsGroup>
         <SettingsRow label={t("settings.notifyNeedsYou")}>
           <Switch
@@ -71,20 +84,9 @@ export function NotificationsPage() {
             value={[volume]}
             onValueChange={([next]) => setVolume(next ?? 0)}
           />
-          <span className="w-8 text-right text-[11px] tabular-nums text-muted-foreground">
+          <span className="w-8 text-right text-caption tabular-nums text-muted-foreground">
             {volume}
           </span>
-        </SettingsRow>
-
-        <SettingsRow label={t("settings.soundPreview")}>
-          <Button
-            variant="secondary"
-            size="sm"
-            disabled={!sound}
-            onClick={() => playStatusSound()}
-          >
-            {t("settings.preview")}
-          </Button>
         </SettingsRow>
       </SettingsGroup>
 
@@ -98,7 +100,7 @@ function UpdateNotifyRow() {
   const { settings, save } = useRuntimeSettings({ scope: "local" });
   return (
     <SettingsLoadable loading={settings.isLoading} control="switch">
-      <SettingsRow label={t("updates.notify")} hint={t("updates.notify.note")}>
+      <SettingsRow label={t("updates.notify")}>
         <ScopeBadge scope="host" />
         <Switch
           checked={settings.data?.updates?.notify ?? true}

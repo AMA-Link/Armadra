@@ -14,11 +14,14 @@ import { SourceBadge } from "@/acp/SourceBadge";
 import type { NodeBodyProps } from "./registry";
 
 /**
- * 便签（§3.4）。使用中性节点表面；平时渲染 Markdown，
- * 点击切成 textarea，失焦提交。底部只有一行相对时间——没有字数、没有提示。
+ * 便签（设计系统 §4）。颜色只做两件事：顶部 3px 色条，和 10% 混进 `--card` 的底；
+ * 平时渲染 Markdown，点击正文或底栏「编辑」切成 textarea，失焦提交。
+ * 底栏是 `text-caption` 等宽的一行：标签与相对时间，没有提示。
  */
 export function StickyNode({ id, node }: NodeBodyProps) {
   const t = useT();
+  // 便签色来自节点自己的颜色（默认黄 = `--node-color-3`）；色值只经 CSS 变量进样式
+  const color = node.color || "var(--node-color-3)";
   const content = node.data.kind === "sticky" ? node.data.content : "";
   const source = node.data.kind === "sticky" ? node.data.source : undefined;
   const [editing, setEditing] = React.useState(false);
@@ -64,17 +67,29 @@ export function StickyNode({ id, node }: NodeBodyProps) {
     [id],
   );
 
+  function startEditing() {
+    base.current = content;
+    setDraft(content);
+    setEditing(true);
+  }
+
   return (
     <div
       data-slot="sticky-node"
-      className="flex h-full w-full flex-col bg-[var(--card)]"
+      style={{ "--sticky-color": color } as React.CSSProperties}
+      className="flex h-full w-full flex-col bg-[color-mix(in_srgb,var(--sticky-color)_10%,var(--card))]"
     >
+      <div
+        aria-hidden
+        data-slot="sticky-bar"
+        className="h-[3px] shrink-0 bg-(--sticky-color)"
+      />
       {editing ? (
         <Textarea
           autoFocus
           aria-label={t("node.sticky")}
           placeholder={t("sticky.placeholder")}
-          className="min-h-0 flex-1 resize-none rounded-none border-0 bg-transparent text-xs leading-relaxed focus-visible:ring-0"
+          className="min-h-0 flex-1 resize-none rounded-none border-0 bg-transparent text-body leading-relaxed focus-visible:ring-0"
           value={draft}
           onChange={(event) => setDraft(event.target.value)}
           onBlur={(event) => commit(event.target.value)}
@@ -87,39 +102,30 @@ export function StickyNode({ id, node }: NodeBodyProps) {
         />
       ) : (
         <div
-          role="button"
-          tabIndex={0}
-          aria-label={t("node.sticky")}
-          className="sticky-markdown min-h-0 flex-1 cursor-text overflow-auto px-2 py-1.5 text-xs leading-relaxed"
-          onClick={() => {
-            base.current = content;
-            setDraft(content);
-            setEditing(true);
-          }}
-          onKeyDown={(event) => {
-            if (event.key === "Enter") {
-              base.current = content;
-              setDraft(content);
-              setEditing(true);
-            }
-          }}
+          data-slot="sticky-markdown"
+          className="sticky-markdown min-h-0 flex-1 cursor-text overflow-auto px-2 py-1.5 text-body leading-relaxed"
+          onClick={startEditing}
         >
           <Markdown remarkPlugins={[remarkGfm]}>{content}</Markdown>
         </div>
       )}
       {/* 标签（§17）：便签把它画在自己正文的底栏里——节点头部不许多出一行。 */}
-      <div className="flex shrink-0 items-center gap-1.5 px-2 pb-1 text-[length:var(--text-caption)] text-muted-foreground">
+      <div className="flex shrink-0 items-center gap-1.5 px-2 pb-1 font-mono text-caption text-muted-foreground">
         {/* 输出到画板的便签：来自哪个 Agent，点一下跳回去（ACP 设计 §7）。 */}
         {source && <SourceBadge source={source} at={node.createdAt} />}
         <NodeLabelChips node={node} />
         <Button
           variant="ghost"
           size="xs"
-          className="h-[16px] px-1 text-[length:var(--text-caption)] font-normal"
           onClick={() => openNodeAnnotation(id, "labels")}
         >
           {t("meta.labels")}
         </Button>
+        {!editing && (
+          <Button variant="ghost" size="xs" onClick={startEditing}>
+            {t("editor.previewEdit")}
+          </Button>
+        )}
         <span className="ml-auto shrink-0">
           {formatRelativeTime(node.updatedAt)}
         </span>

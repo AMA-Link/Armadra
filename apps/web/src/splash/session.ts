@@ -43,3 +43,41 @@ export function shouldShowSplash(enabled: boolean): boolean {
   if (!enabled) return false;
   return !readShown();
 }
+
+/* ------------------------------ 开屏阶段 ------------------------------ */
+
+/**
+ * 开屏现在走到哪一步：`idle` 没放（关了 / 同一页面会话放过）、`playing` 在放、
+ * `leaving` 覆盖层开始淡出、`done` 已摘掉。App 首屏的错落入场读它——只有「这一次
+ * 刚放过开屏」才播，平时的首帧不播（设计系统 §8.7）。
+ */
+export type SplashPhase = "idle" | "playing" | "leaving" | "done";
+
+let phase: SplashPhase = "idle";
+const listeners = new Set<() => void>();
+
+export function splashPhase(): SplashPhase {
+  return phase;
+}
+
+export function setSplashPhase(next: SplashPhase): void {
+  if (phase === next) return;
+  phase = next;
+  for (const listener of [...listeners]) listener();
+}
+
+/** `useSyncExternalStore` 的订阅函数。 */
+export function subscribeSplashPhase(listener: () => void): () => void {
+  listeners.add(listener);
+  return () => void listeners.delete(listener);
+}
+
+/** 这一页面会话放过开屏，并且覆盖层已经开始退场或已摘掉。 */
+export function splashJustDismissed(): boolean {
+  return phase === "leaving" || phase === "done";
+}
+
+/** 只给测试用：回到没放过的状态。 */
+export function resetSplashPhase(): void {
+  setSplashPhase("idle");
+}

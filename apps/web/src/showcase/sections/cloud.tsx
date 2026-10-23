@@ -185,7 +185,7 @@ function CloudSamples({ session }: { session: ConsoleSession }) {
 
   return (
     <div className="flex flex-col gap-6">
-      <div className="h-[620px] overflow-hidden rounded-[var(--r-card)] border border-border">
+      <div className="h-[620px] overflow-hidden rounded-card border border-border">
         <ConsoleShell
           {...shellProps}
           match={team}
@@ -213,7 +213,7 @@ function CloudSamples({ session }: { session: ConsoleSession }) {
         ].map(({ match, operator }) => (
           <div
             key={match.id}
-            className="h-[460px] max-w-[280px] overflow-hidden rounded-[var(--r-card)] border border-border bg-panel"
+            className="h-[460px] max-w-[280px] overflow-hidden rounded-card border border-border bg-panel"
           >
             <ConsoleSidebar {...shellProps} match={match} operator={operator} />
           </div>

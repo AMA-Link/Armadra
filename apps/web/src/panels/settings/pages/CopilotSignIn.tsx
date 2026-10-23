@@ -95,7 +95,7 @@ export function CopilotSignIn({
         }
       >
         <Button
-          variant="secondary"
+          variant="outline"
           size="sm"
           disabled={
             disabled ||
@@ -113,16 +113,13 @@ export function CopilotSignIn({
       </SettingsRow>
 
       {pending && (
-        <div
-          role="status"
-          className="flex flex-col gap-1 px-4 pb-3 text-[13px] leading-5"
-        >
+        <div role="status" className="flex flex-col gap-1 px-4 pb-3 text-body">
           <span className="text-muted-foreground">
             {t("settings.copilotPrompt", { value: pending.verificationUri })}
           </span>
           <code
             data-slot="copilot-user-code"
-            className="w-fit rounded-md bg-muted px-2 py-1 font-mono text-sm tracking-widest tabular-nums"
+            className="w-fit rounded-control bg-muted px-2 py-1 font-mono text-body tracking-widest tabular-nums"
           >
             {pending.userCode}
           </code>
@@ -130,17 +127,17 @@ export function CopilotSignIn({
       )}
 
       {progress && progress !== "pending" && (
-        <p
+        <div
           role="status"
           data-slot="copilot-progress"
-          className={`px-4 pb-3 text-xs ${
+          className={`px-4 pb-3 text-meta ${
             progress === "authorized"
               ? "text-muted-foreground"
               : "text-danger-text"
           }`}
         >
           {t(`settings.copilot.${progress}`)}
-        </p>
+        </div>
       )}
     </SettingsGroup>
   );

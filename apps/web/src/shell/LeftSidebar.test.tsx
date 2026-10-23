@@ -47,6 +47,7 @@ vi.mock("../platform", () => ({
 import { installDomPolyfills, TestProviders } from "../app/test-harness";
 import { usePreferencesStore } from "../app/preferences-store";
 import { useCanvasStore } from "../store/canvas-store";
+import { useNeedsStore } from "../notifications/needs-store";
 import { LeftSidebar } from "./LeftSidebar";
 
 installDomPolyfills();
@@ -397,5 +398,40 @@ describe("LeftSidebar", () => {
     )!;
 
     expect(toggle.style.left).toBe("8px");
+  });
+});
+
+describe("LeftSidebar 铃铛与折叠钮的角标", () => {
+  afterEach(() => useNeedsStore.getState().set([], []));
+
+  it("有待处理的事：两处都是状态族的 StatusDot 6（attention、贴角），没有就不画", () => {
+    renderSidebar();
+    expect(document.querySelectorAll("[data-slot=status-dot]")).toHaveLength(0);
+
+    act(() =>
+      useNeedsStore.getState().set(
+        [
+          {
+            key: "w:n",
+            workspaceId: "w",
+            boardId: "b",
+            nodeId: "n",
+            title: "claude",
+            need: "approval",
+            updatedAt: timestamp,
+          },
+        ],
+        [],
+      ),
+    );
+    const dots = [...document.querySelectorAll("[data-slot=status-dot]")];
+    // 铃铛一颗，折叠钮一颗
+    expect(dots).toHaveLength(2);
+    for (const dot of dots) {
+      expect(dot.getAttribute("data-tone")).toBe("attention");
+      expect(dot.getAttribute("data-size")).toBe("6");
+      expect(dot.getAttribute("aria-label")).toBe("有待处理的事");
+    }
+    expect(screen.getByLabelText("通知").contains(dots[0]!)).toBe(true);
   });
 });

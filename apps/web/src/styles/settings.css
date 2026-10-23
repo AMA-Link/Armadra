@@ -1,51 +1,79 @@
 /*
- * 设置工作台的响应式规则（从 `app.css` 抽出，内容不变；P1 起由设置包维护）。
- * 经 `app.css` 引入。
+ * 设置工作台的样式（设计系统 §5.17）：外壳的宽度与响应式、行高、子页推入与搜索命中的
+ * 高亮。内容面板、导航、托盘、表格卡都用 `ui/` 的变体，这里只放变体表达不了的几条规则。
+ * 经 `app.css` 引入，设置包维护。
  */
 
-/* Settings adapt to available dialog width; labels never disappear under controls. */
-.settings-layout {
-  container: settings / inline-size;
+/* 导航宽度跟令牌；窄栏（容器 ≤ 720，由外壳量出来写 `data-narrow`）只留 52 的图标列 */
+.settings-navigation {
+  width: var(--settings-nav-w);
 }
-@container settings (max-width: 720px) {
-  .settings-navigation {
-    width: 164px;
-    padding-inline: 8px;
-  }
-  .settings-page {
-    padding-inline: 16px;
-  }
-  .settings-row {
-    flex-wrap: wrap;
-    gap: 8px;
-    padding-inline: 12px;
-  }
-  .settings-row-controls {
-    margin-left: auto;
-    flex-wrap: wrap;
-  }
+.settings-layout[data-narrow="true"] .settings-navigation {
+  width: 52px;
+  padding-inline: 6px;
 }
-@container settings (max-width: 520px) {
-  .settings-navigation {
-    width: 52px;
-    padding-inline: 6px;
-  }
-  .settings-navigation button {
-    justify-content: center;
-    padding-inline: 0;
-  }
-  .settings-nav-label,
-  .settings-nav-group {
-    display: none;
-  }
-  .settings-page {
-    padding-inline: 12px;
-  }
+.settings-layout[data-narrow="true"] .settings-page {
+  padding: 16px;
+}
+
+/* 设置行 40（上下 8）；行骨架与它同高，内容换进来时不跳 */
+.settings-row,
+.settings-group [data-slot="skeleton-settings-row"] {
+  min-height: 40px;
+  padding-block: 8px;
+}
+.settings-layout[data-narrow="true"] .settings-row,
+.settings-layout[data-compact="true"] .settings-row {
+  flex-wrap: wrap;
+  gap: 8px;
+  padding-inline: 12px;
+}
+.settings-layout[data-narrow="true"] .settings-row-controls,
+.settings-layout[data-compact="true"] .settings-row-controls {
+  margin-left: auto;
+  flex-wrap: wrap;
+}
+.settings-layout[data-compact="true"] .settings-page {
+  padding: 12px;
 }
 
 @media (max-width: 767px) {
   .settings-row-controls > * {
     min-width: 0;
     max-width: 100%;
+  }
+}
+
+/* 子页在同一块面板里推入：右移 16 → 0，`--dur-page` `--ease-drawer` */
+@keyframes settings-push {
+  from {
+    opacity: 0;
+    transform: translateX(16px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.settings-page[data-pushed="true"] {
+  animation: settings-push var(--dur-page) var(--ease-drawer);
+}
+
+/* 搜索命中的行：`--brand-soft` 底闪一次后淡出 */
+@keyframes settings-highlight {
+  from {
+    background-color: var(--brand-soft);
+  }
+  to {
+    background-color: transparent;
+  }
+}
+.settings-row[data-highlight="true"] {
+  animation: settings-highlight var(--dur-page) var(--ease-out) 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .settings-page[data-pushed="true"] {
+    animation: none;
   }
 }

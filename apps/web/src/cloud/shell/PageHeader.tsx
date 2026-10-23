@@ -10,7 +10,7 @@ export function PageHeader({
 }) {
   return (
     <header className="flex min-h-8 items-center justify-between gap-3 pb-6">
-      <h1 className="min-w-0 text-[length:var(--text-title)] leading-6 font-semibold text-balance">
+      <h1 className="min-w-0 text-title leading-6 font-semibold text-balance">
         {title}
       </h1>
       {action}

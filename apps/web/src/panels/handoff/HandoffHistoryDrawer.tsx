@@ -13,6 +13,7 @@ import { WorkPanelSheet } from "../WorkPanelSheet";
 import { runtimeApi } from "@/api/client";
 import { usePreferencesStore, useT } from "@/app/preferences-store";
 import { useCanvasStore } from "@/store/canvas-store";
+import { EmptyState, ErrorState } from "@/ui/state";
 import { sk } from "../../sources/scope";
 
 /**
@@ -60,8 +61,8 @@ export function HandoffHistoryDrawer() {
       open={open}
       onClose={() => setPanel("handoff", "closed")}
     >
-      <div className="flex h-10 shrink-0 items-center gap-1 border-b border-border px-3">
-        <SheetTitle className="shrink-0 truncate text-[13px] font-semibold">
+      <div className="flex h-8 shrink-0 items-center gap-1 border-b border-border px-3">
+        <SheetTitle className="shrink-0 truncate text-body font-semibold">
           {t("handoff.historyTitle")}
         </SheetTitle>
         <div className="flex-1" />
@@ -86,20 +87,16 @@ export function HandoffHistoryDrawer() {
           className="p-(--space-page)"
         >
           <div className="flex min-w-0 flex-col gap-(--space-group) p-(--space-page)">
-            {!workspaceId && (
-              <p role="status" className="text-[12px] text-muted-foreground">
-                {t("handoff.noWorkspace")}
-              </p>
-            )}
+            {!workspaceId && <EmptyState title={t("handoff.noWorkspace")} />}
             {history.isError && (
-              <p role="status" className="text-[12px] text-destructive">
-                {t("handoff.historyFailed")}
-              </p>
+              <ErrorState
+                title={t("handoff.historyFailed")}
+                retryLabel={t("handoff.reload")}
+                onRetry={() => void history.refetch()}
+              />
             )}
             {history.isSuccess && history.data.length === 0 && (
-              <p className="text-[12px] text-muted-foreground">
-                {t("handoff.noHistory")}
-              </p>
+              <EmptyState title={t("handoff.noHistory")} />
             )}
             {history.data?.map((view) => (
               <HandoffRow key={view.bundle.handoffId} view={view} at={at} />
@@ -124,7 +121,7 @@ function HandoffHistorySkeleton({ label }: { label: string }) {
         <div
           key={index}
           data-slot="handoff-history-skeleton"
-          className="min-w-0 space-y-1 rounded-md border border-border p-3"
+          className="min-w-0 space-y-1 rounded-card border border-border p-3"
         >
           <div className="flex items-center gap-2">
             <Skeleton className="h-5 w-14 rounded-full" />
@@ -153,7 +150,7 @@ function HandoffRow({
     <div
       data-slot="handoff-history-row"
       data-state={view.state}
-      className="min-w-0 space-y-1 rounded-md border border-border p-3 text-[12px]"
+      className="min-w-0 space-y-1 rounded-card border border-border p-3 text-meta"
     >
       <div className="flex min-w-0 flex-wrap items-center gap-2">
         <Badge variant="outline">{t(`handoff.${view.state}`)}</Badge>
@@ -167,7 +164,7 @@ function HandoffRow({
           {target.nodeTitle || target.agentId}
         </span>
       </div>
-      <dl className="grid min-w-0 grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 text-[11px] text-muted-foreground">
+      <dl className="grid min-w-0 grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 text-caption text-muted-foreground">
         <dt>{t("handoff.historyAgents")}</dt>
         <dd className="min-w-0 truncate">
           {source.agentId} → {target.agentId}

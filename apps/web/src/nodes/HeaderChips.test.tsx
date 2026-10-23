@@ -4,14 +4,13 @@ import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import { installDomPolyfills, TestProviders } from "@/app/test-harness";
 import { Badge } from "@/ui/badge";
 import { HeaderChips, MAX_VISIBLE_CHIPS, overflowCount } from "./HeaderChips";
-import { HEADER_CHIP_CLASS } from "./header-chip";
 
 beforeAll(installDomPolyfills);
 afterEach(cleanup);
 
 function chips(count: number) {
   return Array.from({ length: count }, (_, index) => (
-    <Badge key={index} variant="outline" className={HEADER_CHIP_CLASS}>
+    <Badge key={index} variant="outline" size="sm">
       {`chip ${index}`}
     </Badge>
   ));
@@ -51,8 +50,11 @@ describe("HeaderChips", () => {
       expect(element).toBeTruthy();
       return element as HTMLElement;
     });
+    // 胶囊统一是 `Badge outline size=sm`（18 / caption / 等宽数字），折叠计数也是
+    expect(overflow.dataset.variant).toBe("outline");
+    expect(overflow.dataset.size).toBe("sm");
     expect(overflow.className).toContain("h-[18px]");
     expect(overflow.className).toContain("tabular-nums");
-    expect(screen.getByText("chip 0").className).toContain("h-[18px]");
+    expect(screen.getByText("chip 0").dataset.size).toBe("sm");
   });
 });

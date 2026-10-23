@@ -1,4 +1,5 @@
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
+import { TooltipProvider } from "@/ui/tooltip";
 import { cleanup, fireEvent, render } from "@testing-library/react";
 import {
   Position,
@@ -78,20 +79,22 @@ function renderEdge(selected = false) {
   };
   return render(
     <ReactFlowProvider>
-      <ReactFlow
-        width={800}
-        height={600}
-        nodeTypes={nodeTypes}
-        edgeTypes={edgeTypes}
-        nodes={[
-          flowNode(ITEM, "wb.shape", 0, item),
-          flowNode(NODE, "armadra", 300, makeNode("terminal", { id: NODE })),
-        ]}
-        edges={[edge]}
-        viewport={{ x: 0, y: 0, zoom: 1 }}
-        onViewportChange={() => undefined}
-        onError={() => undefined}
-      />
+      <TooltipProvider delayDuration={0}>
+        <ReactFlow
+          width={800}
+          height={600}
+          nodeTypes={nodeTypes}
+          edgeTypes={edgeTypes}
+          nodes={[
+            flowNode(ITEM, "wb.shape", 0, item),
+            flowNode(NODE, "armadra", 300, makeNode("terminal", { id: NODE })),
+          ]}
+          edges={[edge]}
+          viewport={{ x: 0, y: 0, zoom: 1 }}
+          onViewportChange={() => undefined}
+          onError={() => undefined}
+        />
+      </TooltipProvider>
     </ReactFlowProvider>,
   );
 }

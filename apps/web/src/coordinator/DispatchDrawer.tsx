@@ -2,13 +2,14 @@ import { activeSourceId, unscoped } from "@/sources/scope";
 import * as React from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { RotateCw, X } from "lucide-react";
-import { toast } from "sonner";
 
 import { onWorkspaceConnection } from "@/api/events";
 import { useT } from "@/app/preferences-store";
 import { useAccess } from "@/app/use-access";
 import { agentColorVar } from "@/agent/launch";
+import type { AgentTree as AgentTreeModel } from "@/agent/agent-tree-model";
 import { useAgentStatusStore } from "@/agent/status-store";
+import { useAgentTree } from "@/agent/use-agent-tree";
 import { requestCenterOnNode } from "@/canvas/flow/flow-context";
 import { cn } from "@/lib/cn";
 import { formatDuration } from "@/lib/format";
@@ -16,6 +17,7 @@ import { terminalHandle } from "@/nodes/terminal-registry";
 import { WorkPanelSheet } from "@/panels/WorkPanelSheet";
 import { useCanvasStore } from "@/store/canvas-store";
 import { AgentAvatar } from "@/ui/agent-avatar";
+import { AgentTree } from "@/ui/agent-tree";
 import { Alert, AlertAction, AlertTitle } from "@/ui/alert";
 import { Badge } from "@/ui/badge";
 import { Button } from "@/ui/button";
@@ -31,9 +33,9 @@ import {
 } from "@/ui/item";
 import { ScrollArea } from "@/ui/scroll-area";
 import { SheetTitle } from "@/ui/sheet";
-import { Skeleton } from "@/ui/skeleton";
-import { Spinner } from "@/ui/spinner";
-import { StatusPill } from "@/ui/status-pill";
+import { SkeletonList } from "@/ui/skeletons";
+import { StatusLine } from "@/ui/status-pill";
+import { toast } from "@/ui/toast";
 import { coordinatorApi, coordinatorKeys } from "./api";
 import {
   type DispatchMember,
@@ -43,9 +45,9 @@ import {
 import { closeDispatchDrawer, useDispatchTarget } from "./store";
 
 /**
- * 协调者（ama）的分派抽屉（设计系统 §5.4）：右侧 `--drawer-w`，ama 一行、
- * 成员一行一个（左侧 2px Agent 色、状态胶囊、耗时）、汇总便签「打开」、失败
- * 行「重试」（契约 §15.7：把任务提示词从 ama 再投一次）。
+ * 协调者（ama）的分派抽屉（设计系统 §5.4）：右侧 `--drawer-w`，顶部缩略 Agent 树
+ * （根 = ama）、ama 一行、成员一行一个（左侧 2px Agent 色、`StatusLine`：状态 ·
+ * 耗时）、汇总便签「打开」、失败行「重试」（契约 §15.7：把任务提示词从 ama 再投一次）。
  *
  * 五态（§5.16）：空 → 一句 + 聚焦 ama；加载 → Skeleton；错误 → 行内
  * `Alert destructive` + 重试；权限 → 不能起 Agent 的人看到「只读」而不是
@@ -54,6 +56,8 @@ import { closeDispatchDrawer, useDispatchTarget } from "./store";
 
 export interface DispatchViewProps {
   readonly model: DispatchModel;
+  /** 顶部的缩略 Agent 树（`useAgentTree(ama)`）；没有下级时不传。 */
+  readonly tree?: AgentTreeModel | null;
   readonly loading?: boolean;
   readonly error?: boolean;
   readonly offline?: boolean;
@@ -70,6 +74,7 @@ export interface DispatchViewProps {
 /** 纯展示：真抽屉与展示页共用。 */
 export function DispatchView({
   model,
+  tree = null,
   loading = false,
   error = false,
   offline = false,
@@ -91,14 +96,16 @@ export function DispatchView({
     >
       {offline ? (
         <Alert data-slot="dispatch-offline">
-          <AlertTitle className="text-xs">
+          <AlertTitle className="text-meta">
             {t("coordinator.offline")}
           </AlertTitle>
         </Alert>
       ) : null}
       {error ? (
         <Alert variant="destructive" data-slot="dispatch-error">
-          <AlertTitle className="text-xs">{t("coordinator.error")}</AlertTitle>
+          <AlertTitle className="text-meta">
+            {t("coordinator.error")}
+          </AlertTitle>
           {onReload ? (
             <AlertAction>
               <Button size="xs" variant="outline" onClick={onReload}>
@@ -107,6 +114,15 @@ export function DispatchView({
             </AlertAction>
           ) : null}
         </Alert>
+      ) : null}
+
+      {tree ? (
+        <div
+          data-slot="dispatch-agent-tree"
+          className={cn(offline && "opacity-50")}
+        >
+          <AgentTree tree={tree} size="md" />
+        </div>
       ) : null}
 
       <div
@@ -124,31 +140,25 @@ export function DispatchView({
               <ItemTitle className="w-full min-w-0">
                 <span className="truncate">{model.lead.title}</span>
               </ItemTitle>
-            </ItemContent>
-            {model.lead.status ? (
-              <ItemActions>
-                <StatusPill
+              {model.lead.status ? (
+                <StatusLine
                   tone={model.lead.status.tone}
                   label={t(model.lead.status.label)}
+                  spinning={model.lead.status.tone === "working"}
                 />
-              </ItemActions>
-            ) : null}
+              ) : null}
+            </ItemContent>
           </Item>
         ) : null}
 
         {loading ? (
-          <div
-            className="flex flex-col gap-2 pl-3"
-            data-slot="dispatch-loading"
-          >
-            <Skeleton className="h-9 w-full" />
-            <Skeleton className="h-9 w-full" />
-            <Skeleton className="h-9 w-full" />
+          <div className="pl-3" data-slot="dispatch-loading">
+            <SkeletonList rows={3} size="tall" label={t("state.loading")} />
           </div>
         ) : empty && !error ? (
           <Empty className="border-0 p-6" data-slot="dispatch-empty">
             <EmptyHeader>
-              <EmptyTitle className="text-[13px] font-normal text-muted-foreground">
+              <EmptyTitle className="text-body font-normal text-muted-foreground">
                 {t("coordinator.empty")}
               </EmptyTitle>
             </EmptyHeader>
@@ -251,33 +261,35 @@ function MemberRow({
             </span>
           </Button>
         </ItemTitle>
+        <StatusLine
+          tone={member.status.tone}
+          label={t(member.status.label)}
+          detail={
+            member.elapsedMs !== null
+              ? formatDuration(member.elapsedMs)
+              : undefined
+          }
+          spinning={member.status.tone === "working"}
+        />
       </ItemContent>
-      <ItemActions className="gap-2">
-        <StatusPill tone={member.status.tone} label={t(member.status.label)} />
-        {member.elapsedMs !== null ? (
-          <span className="text-[length:var(--text-caption)] text-muted-foreground tabular-nums">
-            {formatDuration(member.elapsedMs)}
-          </span>
-        ) : null}
-        {failed && member.taskId !== null && member.retryable ? (
-          canRetry ? (
+      {failed && member.taskId !== null && member.retryable ? (
+        <ItemActions>
+          {canRetry ? (
             <Button
               size="xs"
               variant="outline"
-              disabled={offline || retrying}
+              disabled={offline}
+              loading={retrying}
               data-slot="dispatch-retry"
               onClick={() => onRetry?.(member.taskId as string)}
             >
-              {retrying ? (
-                <Spinner aria-label={t("coordinator.retrying")} />
-              ) : null}
               {t("coordinator.retry")}
             </Button>
           ) : (
             <Badge variant="outline">{t("coordinator.readOnly")}</Badge>
-          )
-        ) : null}
-      </ItemActions>
+          )}
+        </ItemActions>
+      ) : null}
     </Item>
   );
 }
@@ -329,6 +341,7 @@ export function DispatchDrawer() {
   const document = useCanvasStore((state) => state.document);
   const coordinatorId = useDispatchTarget((state) => state.nodeId);
   const statuses = useAgentStatusStore((state) => state.statuses);
+  const tree = useAgentTree(coordinatorId);
   const access = useAccess();
   const online = useWorkspaceOnline(workspaceId);
   const client = useQueryClient();
@@ -384,7 +397,7 @@ export function DispatchDrawer() {
   return (
     <WorkPanelSheet panel="dispatch" open={open} onClose={closeDispatchDrawer}>
       <div className="flex h-10 shrink-0 items-center gap-1 border-b border-border px-3">
-        <SheetTitle className="flex-1 truncate text-[13px] font-semibold">
+        <SheetTitle className="flex-1 truncate text-body font-semibold">
           {t("coordinator.title")}
         </SheetTitle>
         <IconButton
@@ -403,6 +416,7 @@ export function DispatchDrawer() {
       <ScrollArea className="min-h-0 flex-1">
         <DispatchView
           model={model}
+          tree={tree}
           loading={tasks.isPending && tasks.fetchStatus !== "idle"}
           error={tasks.isError}
           offline={!online}

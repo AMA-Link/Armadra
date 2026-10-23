@@ -1,6 +1,6 @@
 import { scoped } from "../sources/scope";
 import * as React from "react";
-import { toast } from "sonner";
+import { toast } from "@/ui/toast";
 import {
   sessionDisplay,
   type AcpStartPhase,
@@ -32,6 +32,7 @@ import { acpApi } from "./api";
 import { linkTarget, openLink } from "./open-link";
 import {
   type PromptAttachment,
+  DropOverlay,
   usePromptAttachments,
 } from "./PromptAttachments";
 import { useTimelineTitle } from "@/meta/timeline-title";
@@ -521,6 +522,7 @@ export function SessionView({
   );
 
   const promptDisabled = !connected || session.failed;
+  const [dragging, setDragging] = React.useState(false);
   const attachments = usePromptAttachments(
     sessionId ? feed.promptCapabilities : null,
     Boolean(data.ssh),
@@ -747,9 +749,9 @@ export function SessionView({
         {session.phase && (
           <div
             data-slot="acp-starting"
-            className="flex items-center gap-1.5 text-[11px] text-muted-foreground"
+            className="flex items-center gap-1.5 text-caption text-muted-foreground"
           >
-            <Spinner aria-hidden className="size-3" />
+            <Spinner size={12} />
             <span>{t(`acp.starting.${session.phase}`)}</span>
             {session.cold && <span>{t("acp.starting.cold")}</span>}
           </div>
@@ -783,7 +785,7 @@ export function SessionView({
     body = (
       <Empty className="h-full border-0 p-4">
         <EmptyHeader>
-          <EmptyTitle className="text-[13px] font-normal text-muted-foreground">
+          <EmptyTitle className="text-body font-normal text-muted-foreground">
             {t(readOnly ? "acp.empty.readOnly" : "acp.empty")}
           </EmptyTitle>
         </EmptyHeader>
@@ -815,7 +817,7 @@ export function SessionView({
       <div
         data-slot="acp-session-view"
         data-read-only={readOnly || undefined}
-        className="nopan nodrag nowheel flex h-full w-full cursor-auto flex-col bg-[var(--card)] select-text"
+        className="nopan nodrag nowheel relative flex h-full w-full cursor-auto flex-col bg-card select-text"
         // 拖进会话视图任何地方的文件都成输入框的附件（契约 §56），不交给画布。
         onDragOver={(event) => {
           if (readOnly) return;
@@ -823,8 +825,15 @@ export function SessionView({
           event.preventDefault();
           event.stopPropagation();
           event.dataTransfer.dropEffect = promptDisabled ? "none" : "copy";
+          setDragging(true);
+        }}
+        onDragLeave={(event) => {
+          // 移到子元素上也会触发：只有真正离开会话视图才收起覆盖层。
+          if (!event.currentTarget.contains(event.relatedTarget as Node | null))
+            setDragging(false);
         }}
         onDrop={(event) => {
+          setDragging(false);
           if (readOnly) return;
           const files = filesOf(event.dataTransfer);
           if (files.length === 0) return;
@@ -838,9 +847,10 @@ export function SessionView({
             inputRef.current?.focus();
         }}
       >
+        {dragging && !readOnly && <DropOverlay disabled={promptDisabled} />}
         {!connected && (
           <Alert className="rounded-none border-x-0 border-t-0 py-1.5">
-            <AlertTitle className="text-xs">{t("acp.offline")}</AlertTitle>
+            <AlertTitle className="text-meta">{t("acp.offline")}</AlertTitle>
           </Alert>
         )}
         <div className="flex min-h-0 flex-1 flex-col">{body}</div>

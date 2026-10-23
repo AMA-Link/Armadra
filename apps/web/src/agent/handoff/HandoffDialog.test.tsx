@@ -24,7 +24,7 @@ const api = vi.hoisted(() => ({
 }));
 vi.mock("@/api/client", () => ({ runtimeApi: api }));
 vi.mock("@/api/events", () => ({ onWorkspaceEvent: () => () => undefined }));
-vi.mock("sonner", () => ({
+vi.mock("@/ui/toast", () => ({
   toast: { success: vi.fn(), error: vi.fn(), info: vi.fn() },
 }));
 

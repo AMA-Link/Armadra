@@ -42,7 +42,7 @@ export function HistoryMenu({
       <DropdownMenuContent align="end" className="max-w-96">
         {entries.slice(0, SHOWN).map((url) => (
           <DropdownMenuItem key={url} onSelect={() => onOpen(url)}>
-            <span className="truncate font-mono text-[12px]">{url}</span>
+            <span className="truncate font-mono text-meta">{url}</span>
           </DropdownMenuItem>
         ))}
         <DropdownMenuSeparator />

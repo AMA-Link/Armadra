@@ -1,0 +1,60 @@
+/*
+ * 首屏错落入场（设计系统 §8.7）：开屏刚退场的那一次，侧栏 → 画布 → Dock / 工具簇
+ * 三块依次 `opacity 0 → 1` + 下移 4px 回到原位，`--dur-slow` `--ease-out`，间隔
+ * `--first-step`。`App` 只在 `splashJustDismissed()` 时给根容器打 `data-enter`：
+ *
+ *  - `wait`：开屏还在放（或刚开始淡出的头 80ms），三块先藏好，免得露出一帧终态再消失；
+ *  - `play`：三块各带延迟入场，动画期间一切可点、可聚焦；
+ *  - 没有 `data-enter`：平时的首帧，什么都不播。
+ *
+ * 位移用独立的 `translate` 属性，不碰元素自己的 `transform`（Dock 行、节点定位用得到）。
+ * 减少动效下 `App` 不打 `data-enter`；下面的保底规则防的是中途切换。
+ */
+
+@keyframes armadra-first-in {
+  from {
+    opacity: 0;
+    translate: 0 4px;
+  }
+}
+
+.app-shell {
+  --first-step: 100ms;
+}
+
+.app-shell[data-enter="wait"] > aside.material-sidebar,
+.app-shell[data-enter="wait"] > main,
+.app-shell[data-enter="wait"]
+  main
+  :is([data-slot="dock"], [data-slot="controls-cluster"]) {
+  opacity: 0;
+}
+
+.app-shell[data-enter="play"] > aside.material-sidebar,
+.app-shell[data-enter="play"] > main,
+.app-shell[data-enter="play"]
+  main
+  :is([data-slot="dock"], [data-slot="controls-cluster"]) {
+  animation: armadra-first-in var(--dur-slow) var(--ease-out) both;
+}
+
+.app-shell[data-enter="play"] > main {
+  animation-delay: var(--first-step);
+}
+
+.app-shell[data-enter="play"]
+  main
+  :is([data-slot="dock"], [data-slot="controls-cluster"]) {
+  animation-delay: calc(var(--first-step) * 2);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .app-shell[data-enter] > aside.material-sidebar,
+  .app-shell[data-enter] > main,
+  .app-shell[data-enter]
+    main
+    :is([data-slot="dock"], [data-slot="controls-cluster"]) {
+    opacity: 1;
+    animation: none;
+  }
+}

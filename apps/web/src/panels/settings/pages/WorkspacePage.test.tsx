@@ -30,7 +30,7 @@ vi.mock("../../../api/client", () => ({
   runtimeApi: api,
   executionHostRefusal: refusal,
 }));
-vi.mock("sonner", () => ({ toast: toasts }));
+vi.mock("@/ui/toast", () => ({ toast: toasts }));
 vi.mock("../use-runtime-settings", () => ({
   useRuntimeSettings: () => ({
     settings: { data: {} },
@@ -51,6 +51,7 @@ vi.mock("../../../realtime/RealtimeSetting", () => ({
   RealtimeSetting: () => <div data-testid="realtime" />,
 }));
 
+import { TooltipProvider } from "@/ui/tooltip";
 import { WorkspacePage } from "./WorkspacePage";
 
 const local = {
@@ -92,7 +93,9 @@ function mount(withWorkspace = true) {
   });
   render(
     <QueryClientProvider client={client}>
-      <WorkspacePage />
+      <TooltipProvider>
+        <WorkspacePage />
+      </TooltipProvider>
     </QueryClientProvider>,
   );
 }

@@ -12,6 +12,7 @@ import { useAgentsQuery } from "../../../app/use-agents";
 import { useT } from "../../../app/preferences-store";
 import { useCanvasStore } from "../../../store/canvas-store";
 import { SettingsGroup } from "../SettingsGroup";
+import { SettingsPageHeader } from "../SettingsPageHeader";
 import { SettingsLoadable } from "../SettingsLoadable";
 import { SettingsRow } from "../SettingsRow";
 import { useRuntimeSettings } from "../use-runtime-settings";
@@ -57,6 +58,7 @@ export function WorkspacePage() {
   if (!workspace || !workspaceId) {
     return (
       <>
+        <SettingsPageHeader />
         <SettingsGroup>
           <SettingsRow label={t("settings.noWorkspace")} />
         </SettingsGroup>
@@ -67,11 +69,14 @@ export function WorkspacePage() {
 
   if (subpage.current === "executionHosts:switch") {
     return (
-      <SwitchExecutionHost
-        workspace={workspace}
-        hosts={hosts.data ?? []}
-        onDone={subpage.close}
-      />
+      <>
+        <SettingsPageHeader />
+        <SwitchExecutionHost
+          workspace={workspace}
+          hosts={hosts.data ?? []}
+          onDone={subpage.close}
+        />
+      </>
     );
   }
 
@@ -85,6 +90,20 @@ export function WorkspacePage() {
 
   return (
     <>
+      <SettingsPageHeader
+        title={workspace.name}
+        actions={
+          remote ? (
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => subpage.open("executionHosts", "switch")}
+            >
+              {t("executionHosts.switch")}
+            </Button>
+          ) : undefined
+        }
+      />
       <WorkspaceExecution />
       <SettingsGroup>
         <SettingsLoadable
@@ -93,20 +112,13 @@ export function WorkspacePage() {
         >
           {remote && (
             <SettingsRow label={t("executionHosts.runsOn")}>
-              <span className="max-w-[240px] truncate text-[13px] text-muted-foreground">
+              <span className="max-w-[240px] truncate text-body text-muted-foreground">
                 {executionHostLabel(
                   current,
                   workspace.executionHostId ?? "",
                   t,
                 )}
               </span>
-              <Button
-                size="sm"
-                variant="secondary"
-                onClick={() => subpage.open("executionHosts", "switch")}
-              >
-                {t("executionHosts.switch")}
-              </Button>
             </SettingsRow>
           )}
           <SettingsRow label={t("settings.workspaceDefaultAgent")}>

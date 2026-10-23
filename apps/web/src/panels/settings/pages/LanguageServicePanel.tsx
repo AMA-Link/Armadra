@@ -3,22 +3,32 @@ import { SkeletonList } from "@/ui/skeletons";
 import * as React from "react";
 import { useQuery } from "@tanstack/react-query";
 import { RotateCw } from "lucide-react";
-import { toast } from "sonner";
+import { toast } from "@/ui/toast";
 
 import { isUnsupportedOnRemote, runtimeApi } from "@/api/client";
 import { useT } from "@/app/preferences-store";
 import { refreshFormatOnSave } from "@/editor/language/settings";
 import { useLanguageStatusStore } from "@/editor/language/status-store";
-import { Badge } from "@/ui/badge";
 import { Button } from "@/ui/button";
 import { IconButton } from "@/ui/icon-button";
 import { Input } from "@/ui/input";
+import { StatusPill, type StatusTone } from "@/ui/status-pill";
 import { Switch } from "@/ui/switch";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/ui/tooltip";
 import { LocalSourceBadge } from "../local-source";
 import { SettingsGroup } from "../SettingsGroup";
 import { SettingsRow } from "../SettingsRow";
 import { useRuntimeSettings } from "../use-runtime-settings";
 import { sk } from "../../../sources/scope";
+
+/** 语言服务状态 → 状态族色调。 */
+const STATE_TONE: Record<string, StatusTone> = {
+  running: "done",
+  starting: "working",
+  reconnecting: "working",
+  crashed: "failed",
+  disconnected: "attention",
+};
 
 /**
  * 设置 → 工作区里的语言服务表（语言服务设计 §4.2、§6.1）。
@@ -112,7 +122,8 @@ export function LanguageServicePanel({ workspaceId }: { workspaceId: string }) {
           <SkeletonList
             rows={2}
             label={t("state.loading")}
-            rowClassName="h-24 px-4"
+            size="tall"
+            rowClassName="px-4"
           />
         }
       >
@@ -131,16 +142,15 @@ export function LanguageServicePanel({ workspaceId }: { workspaceId: string }) {
               data-testid={`lsp-row-${server.serverId}`}
             >
               <div className="flex min-w-0 items-center gap-2">
-                <span className="min-w-0 flex-1 truncate text-[13px]">
+                <span className="min-w-0 flex-1 truncate text-body">
                   {server.languageId} · {server.serverId}
                 </span>
-                <Badge
-                  variant={server.state === "running" ? "default" : "outline"}
-                >
-                  {t(`lsp.state.${server.state}`)}
-                </Badge>
+                <StatusPill
+                  tone={STATE_TONE[server.state] ?? "paused"}
+                  label={t(`lsp.state.${server.state}`)}
+                />
                 {server.version && (
-                  <span className="text-[11px] text-muted-foreground">
+                  <span className="text-caption text-muted-foreground">
                     {server.version}
                   </span>
                 )}
@@ -156,13 +166,18 @@ export function LanguageServicePanel({ workspaceId }: { workspaceId: string }) {
                     })
                   }
                 />
-                <IconButton
-                  label={`${server.serverId} · ${t("lsp.restart")}`}
-                  disabled={busy === server.serverId}
-                  onClick={() => void control(server.serverId, "restart")}
-                >
-                  <RotateCw />
-                </IconButton>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <IconButton
+                      label={`${server.serverId} · ${t("lsp.restart")}`}
+                      disabled={busy === server.serverId}
+                      onClick={() => void control(server.serverId, "restart")}
+                    >
+                      <RotateCw />
+                    </IconButton>
+                  </TooltipTrigger>
+                  <TooltipContent>{t("lsp.restart")}</TooltipContent>
+                </Tooltip>
                 <Button
                   size="sm"
                   variant="ghost"
@@ -174,16 +189,16 @@ export function LanguageServicePanel({ workspaceId }: { workspaceId: string }) {
               </div>
 
               {server.reason && (
-                <p className="text-[11px] text-muted-foreground">
+                <span className="text-caption text-muted-foreground">
                   {t(`lsp.reason.${server.reason}`)}
-                </p>
+                </span>
               )}
 
               <Input
                 defaultValue={override.path ?? ""}
                 placeholder={server.executable || t("lsp.pathPlaceholder")}
                 aria-label={`${server.serverId} · ${t("lsp.pathOverride")}`}
-                className="h-8 text-[12px]"
+                className="text-meta"
                 onBlur={(event) => {
                   const next = event.target.value.trim();
                   if (next === (override.path ?? "")) return;
@@ -199,7 +214,7 @@ export function LanguageServicePanel({ workspaceId }: { workspaceId: string }) {
               />
 
               {tail && (
-                <pre className="max-h-24 overflow-auto whitespace-pre-wrap break-all rounded-[var(--radius-sm)] bg-[var(--surface-sunken)] p-2 text-[11px] text-muted-foreground">
+                <pre className="max-h-24 overflow-auto whitespace-pre-wrap break-all rounded-control bg-sunken p-2 text-caption text-muted-foreground">
                   {tail}
                 </pre>
               )}

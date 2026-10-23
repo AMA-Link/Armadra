@@ -87,7 +87,7 @@ export function Donut({
             r={(OUTER + INNER) / 2}
             fill="none"
             stroke="var(--muted)"
-            strokeWidth={OUTER - INNER}
+            style={{ strokeWidth: OUTER - INNER }}
           />
         )}
         {arcs.map((arc) => (

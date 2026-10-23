@@ -48,19 +48,14 @@ export function ModelCatalogPanel() {
 
   return (
     <SettingsGroup>
-      <SettingsRow
-        label={t("settings.priceSource")}
-        hint={t("settings.priceSourceHint", {
-          path: "model-pricing.json",
-        })}
-      >
-        <span className="text-right text-xs text-muted-foreground">
+      <SettingsRow label={t("settings.priceSource")}>
+        <span className="text-right text-meta text-muted-foreground">
           {source}
         </span>
       </SettingsRow>
       <SettingsRow label={t("settings.priceUpdated")}>
         <ValueLoadable loading={catalog.isLoading} className="h-4 w-32">
-          <span className="text-right text-xs text-muted-foreground">
+          <span className="text-right text-meta text-muted-foreground">
             {updated}
             {document
               ? ` · ${t("settings.priceModelCount", {
@@ -72,14 +67,14 @@ export function ModelCatalogPanel() {
       </SettingsRow>
       {failed && (
         <SettingsRow label={null}>
-          <span role="status" className="text-[11px] text-danger-text">
+          <span role="status" className="text-caption text-danger-text">
             {t("settings.priceRefreshFailed")}
           </span>
         </SettingsRow>
       )}
       <SettingsRow label={null}>
         <Button
-          variant="secondary"
+          variant="outline"
           size="sm"
           disabled={refresh.isPending}
           onClick={() => refresh.mutate()}

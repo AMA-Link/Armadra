@@ -15,6 +15,8 @@ import { useCanvasStore } from "@/store/canvas-store";
 import { IconButton } from "@/ui/icon-button";
 import { ScrollArea } from "@/ui/scroll-area";
 import { SheetTitle } from "@/ui/sheet";
+import { EmptyState } from "@/ui/state";
+import { StatusDot } from "@/ui/status-pill";
 import { WorkPanelSheet } from "../WorkPanelSheet";
 import { Button } from "@/ui/button";
 
@@ -40,11 +42,11 @@ export function ProblemsPanel() {
       open={mode === "drawer"}
       onClose={() => setPanel("problems", "closed")}
     >
-      <div className="flex h-10 shrink-0 items-center gap-1 border-b border-border px-3">
-        <SheetTitle className="flex-1 truncate text-[13px] font-semibold">
+      <div className="flex h-8 shrink-0 items-center gap-1 border-b border-border px-3">
+        <SheetTitle className="flex-1 truncate text-body font-semibold">
           {t("problems.title")}
         </SheetTitle>
-        <span className="text-[length:var(--text-caption)] text-muted-foreground">
+        <span className="text-caption text-muted-foreground">
           {t("problems.summary", {
             errors: String(counts.errors),
             warnings: String(counts.warnings),
@@ -60,11 +62,7 @@ export function ProblemsPanel() {
 
       <ScrollArea className="min-h-0 flex-1">
         <div className="flex flex-col gap-(--space-block) p-(--space-page)">
-          {groups.length === 0 && (
-            <p className="text-[12px] text-muted-foreground">
-              {t("problems.empty")}
-            </p>
-          )}
+          {groups.length === 0 && <EmptyState title={t("problems.empty")} />}
           {groups.map((group) => {
             const path = pathOfUri(group.uri);
             return (
@@ -72,7 +70,7 @@ export function ProblemsPanel() {
                 key={group.uri}
                 className="flex min-w-0 flex-col gap-(--space-group)"
               >
-                <p className="truncate text-[12px] font-medium">
+                <p className="truncate text-meta font-medium">
                   {path ?? group.uri}
                 </p>
                 <ul className="flex flex-col">
@@ -93,11 +91,11 @@ export function ProblemsPanel() {
   );
 }
 
-const SEVERITY_COLOR = {
-  error: "bg-[var(--danger)]",
-  warning: "bg-[var(--warn)]",
-  info: "bg-[var(--brand)]",
-  hint: "bg-[var(--faint)]",
+const SEVERITY_TONE = {
+  error: "failed",
+  warning: "attention",
+  info: "unread",
+  hint: "idle",
 } as const;
 
 function DiagnosticRow({
@@ -118,16 +116,13 @@ function DiagnosticRow({
         size="xs"
         type="button"
         disabled={!path}
-        className="flex h-auto w-full justify-start font-normal min-w-0 items-start gap-2 rounded-[var(--radius-sm)] px-1 py-1 text-left hover:bg-[var(--hover)] disabled:cursor-default disabled:opacity-100 disabled:hover:bg-transparent"
+        className="flex h-auto w-full justify-start font-normal min-w-0 items-start gap-2 rounded-tight px-1 py-1 text-left hover:bg-hover disabled:cursor-default disabled:opacity-100 disabled:hover:bg-transparent"
         onClick={() => {
           if (path) openFileInEditor(path, { line });
         }}
       >
-        <span
-          aria-hidden
-          className={`mt-1.5 size-[7px] shrink-0 rounded-full ${SEVERITY_COLOR[severity]}`}
-        />
-        <span className="min-w-0 flex-1 text-[12px]">
+        <StatusDot tone={SEVERITY_TONE[severity]} size={6} className="mt-1.5" />
+        <span className="min-w-0 flex-1 text-meta">
           <span className="break-words">{diagnostic.message}</span>
           <span className="pl-2 text-muted-foreground">
             {t("problems.at", { line: String(line) })}

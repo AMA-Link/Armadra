@@ -49,7 +49,7 @@ function TurnFooterImpl({ item, onRetry, onContinue }: TurnFooterProps) {
     <div
       data-slot="timeline-turn"
       data-stop={reason}
-      className="flex items-center justify-center gap-2 py-0.5 text-[11px] text-muted-foreground"
+      className="flex items-center justify-center gap-2 py-0.5 text-caption text-muted-foreground"
     >
       <span>
         {t(cancelled ? "timeline.turn.cancelled" : "timeline.turn.limit")}

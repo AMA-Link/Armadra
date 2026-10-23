@@ -9,8 +9,9 @@ import {
 } from "@/ui/dropdown-menu";
 import { Popover, PopoverContent, PopoverTrigger } from "@/ui/popover";
 import { IconButton } from "@/ui/icon-button";
+import { Indicator, IndicatorGroup } from "@/ui/indicator";
 import { Separator } from "@/ui/separator";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/ui/tooltip";
+import { Tooltip, TooltipTrigger } from "@/ui/tooltip";
 import { useT } from "@/app/preferences-store";
 import { useCanvasLocked } from "@/canvas/canvas-lock";
 import { useCompactLayout } from "@/platform/layout";
@@ -36,7 +37,8 @@ import {
   type CanvasToolSpec,
   type DockToolItem,
 } from "@/canvas/tools";
-import { commandKeysLabel, type CommandId } from "@/keybindings";
+import type { CommandId } from "@/keybindings";
+import { CommandTip } from "./command-tip";
 import { useMenuTooltip } from "./menu-tooltip";
 
 /**
@@ -45,6 +47,9 @@ import { useMenuTooltip } from "./menu-tooltip";
  * 高亮跟着 `interaction/tool-store` 走，点击只发画布命令——真正的
  * `setTool` 在 `FlowWorkspace` 里注册，所以快捷键、命令面板、这一排按钮
  * 走的是同一条路径。
+ *
+ * 当前工具那一格的底块是共享指示器（`ui/indicator`）：切工具时它平移过去，
+ * 而不是各格各自亮灭。展开态与收起弹层各一组，互不抢 `layoutId`。
  *
  * 画布没挂载（启动页）时整组不渲染：没有画布就没有工具可切。
  *
@@ -72,8 +77,8 @@ export function DockTools() {
   const disabled = (id: string) => locked && isToolDisabledWhenLocked(id);
   const items = phone ? PHONE_DOCK_TOOL_ITEMS : DOCK_TOOL_ITEMS;
 
-  const buttons = (
-    <>
+  const buttons = (group: string) => (
+    <IndicatorGroup id={group}>
       {items.map((item) => (
         <DockToolSlot
           key={item.kind === "group" ? item.group : item.tool.id}
@@ -83,13 +88,15 @@ export function DockTools() {
         />
       ))}
       {phone ? null : <ImportToolButton disabled={locked} />}
-    </>
+    </IndicatorGroup>
   );
 
   return (
     <>
       <Separator orientation="vertical" className="mx-1 h-5" />
-      <div className="dock-tools-expanded items-center gap-1">{buttons}</div>
+      <div className="dock-tools-expanded items-center gap-1">
+        {buttons("dock-tools")}
+      </div>
       <div className="dock-tools-compact">
         <Popover>
           <PopoverTrigger asChild>
@@ -103,7 +110,7 @@ export function DockTools() {
             className="z-[var(--z-menu)] grid w-auto min-w-0 grid-cols-5 gap-1 p-2"
             aria-label={t("dock.tools")}
           >
-            {buttons}
+            {buttons("dock-tools-popover")}
           </PopoverContent>
         </Popover>
       </div>
@@ -148,15 +155,13 @@ function DockToolSlot({
   );
 }
 
-/** 工具按钮上的 Tooltip：名字 + 当前键位（键位从命令表读，不写死）。 */
-function toolTooltip(
-  labelKey: string,
-  command: string,
-  t: ReturnType<typeof useT>,
-): string {
-  const keys = commandKeysLabel(command as CommandId);
-  const label = t(labelKey);
-  return keys ? `${label} · ${keys}` : label;
+/** 工具按钮的底：当前工具那一格里放共享指示器，按钮自己的 active 底让给它。 */
+const TOOL_BUTTON_CLASS = "relative isolate data-[active=true]:bg-transparent";
+
+function ActiveMark({ active }: { active: boolean }) {
+  return active ? (
+    <Indicator className="inset-0 rounded-control bg-brand-soft" />
+  ) : null;
 }
 
 interface ToolButtonProps {
@@ -176,14 +181,17 @@ function ToolButton({ tool, active, disabled }: ToolButtonProps) {
           label={t(tool.labelKey)}
           active={active}
           disabled={disabled}
+          className={TOOL_BUTTON_CLASS}
           onClick={() => runCanvasCommand(tool.command)}
         >
           <Icon />
+          <ActiveMark active={active} />
         </IconButton>
       </TooltipTrigger>
-      <TooltipContent>
-        {toolTooltip(tool.labelKey, tool.command, t)}
-      </TooltipContent>
+      <CommandTip
+        label={t(tool.labelKey)}
+        command={tool.command as CommandId}
+      />
     </Tooltip>
   );
 }
@@ -215,16 +223,19 @@ function GeoToolButton({ tool, active, disabled }: ToolButtonProps) {
               label={t(tool.labelKey)}
               active={active}
               disabled={disabled}
+              className={TOOL_BUTTON_CLASS}
             >
               <Icon />
+              <ActiveMark active={active} />
             </IconButton>
           </DropdownMenuTrigger>
         </TooltipTrigger>
         {/* 菜单展开时不再挂提示：它会压在第一条菜单项上。 */}
         {menu.menuOpen ? null : (
-          <TooltipContent>
-            {toolTooltip(tool.labelKey, tool.command, t)}
-          </TooltipContent>
+          <CommandTip
+            label={t(tool.labelKey)}
+            command={tool.command as CommandId}
+          />
         )}
       </Tooltip>
       <DropdownMenuContent
@@ -295,15 +306,18 @@ function ToolGroupButton({
               label={t(current.labelKey)}
               active={active}
               disabled={disabled(current.id)}
+              className={TOOL_BUTTON_CLASS}
             >
               <Icon />
+              <ActiveMark active={active} />
             </IconButton>
           </DropdownMenuTrigger>
         </TooltipTrigger>
         {menu.menuOpen ? null : (
-          <TooltipContent>
-            {toolTooltip(current.labelKey, current.command, t)}
-          </TooltipContent>
+          <CommandTip
+            label={t(current.labelKey)}
+            command={current.command as CommandId}
+          />
         )}
       </Tooltip>
       <DropdownMenuContent
@@ -351,7 +365,7 @@ function ImportToolButton({ disabled }: { disabled: boolean }) {
           <Icon />
         </IconButton>
       </TooltipTrigger>
-      <TooltipContent>{t(IMPORT_TOOL.labelKey)}</TooltipContent>
+      <CommandTip label={t(IMPORT_TOOL.labelKey)} />
     </Tooltip>
   );
 }

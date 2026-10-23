@@ -17,8 +17,10 @@ import {
   type SessionActivity,
   type SessionDisplay,
   type StatusTone,
+  type TimelineToolStatus,
 } from "@armadra/shared";
 
+import type { ServiceStatus } from "../services/probe";
 import type { MirroredStatus } from "./status-store";
 
 /**
@@ -80,6 +82,25 @@ export const NEED_TONE: Record<HumanNeed, StatusTone> = {
   handoff: "queued",
 };
 
+/**
+ * 时间线工具行的状态 → tone。`timeline/view/rows/ToolRow` 原先自己写一份，
+ * 状态族只认这里（设计系统 §11.1）。
+ */
+export const TOOL_STATUS_TONES: Record<TimelineToolStatus, StatusTone> = {
+  pending: "queued",
+  in_progress: "working",
+  completed: "done",
+  failed: "failed",
+  cancelled: "paused",
+};
+
+/** 本机服务探测结果 → tone（原 `ServicePicker.STATUS_TONE`）。 */
+export const SERVICE_STATUS_TONES: Record<ServiceStatus, StatusTone> = {
+  online: "done",
+  offline: "idle",
+  unknown: "queued",
+};
+
 /** 静止的常态（空闲、已读的完成）不画胶囊：空闲不占头部空间。 */
 const QUIET_TONES: ReadonlySet<StatusTone> = new Set(["idle", "done"]);
 
@@ -126,6 +147,36 @@ export function headerOf(
     ...(pill ? { pill } : {}),
     ...(glow ? { glow } : {}),
     ...(display.progress !== undefined ? { progress: display.progress } : {}),
+  };
+}
+
+/**
+ * `StatusLine` 要的那一行：阶段 · 细节 · 计时。节点头胶囊、侧栏、抽屉、活动卡
+ * 都从同一个 `SessionDisplay` 来，这里只把它翻成已本地化的文案；三种形态
+ * （点、胶囊、行）因此对同一个 tone 说同一句话。
+ */
+export interface StatusLineModel {
+  tone: StatusTone;
+  /** 阶段文案（已本地化）。 */
+  phaseLabel: string;
+  detail: string | undefined;
+  /** 阶段开始的毫秒时间戳。 */
+  since: number | undefined;
+  /** 只有「在跑」转圈；等审批 / 出错 / 排队都不转。 */
+  spinning: boolean;
+}
+
+export function lineOf(
+  display: SessionDisplay,
+  activity: SessionActivity | undefined,
+  t: (key: string) => string,
+): StatusLineModel {
+  return {
+    tone: display.tone,
+    phaseLabel: t(display.labelKey),
+    detail: display.detail,
+    since: display.since ?? activity?.since,
+    spinning: display.tone === "working",
   };
 }
 

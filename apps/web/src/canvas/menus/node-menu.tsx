@@ -46,7 +46,7 @@ export interface NodeMenuItem {
   icon?: LucideIcon;
   disabled?: boolean;
   destructive?: boolean;
-  /** 禁用原因（悬停提示）。 */
+  /** 禁用原因，显示在菜单项右侧。 */
   hint?: string;
   run: () => void;
   /** 给了就渲染成一层子菜单（`run` 不再被调用）；只支持一层。 */
@@ -248,11 +248,15 @@ function ExtraItem({ item }: { item: NodeMenuItem }) {
     <ContextMenuItem
       disabled={item.disabled}
       variant={item.destructive ? "destructive" : "default"}
-      title={item.hint}
       onSelect={item.run}
     >
       {Icon ? <Icon /> : null}
-      <span className="truncate">{item.label}</span>
+      <span className="min-w-0 flex-1 truncate">{item.label}</span>
+      {item.hint ? (
+        <span className="max-w-28 shrink-0 truncate text-caption text-muted-foreground">
+          {item.hint}
+        </span>
+      ) : null}
     </ContextMenuItem>
   );
 }

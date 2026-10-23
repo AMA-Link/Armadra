@@ -201,6 +201,47 @@ describe("SessionsSection", () => {
     expect(container.querySelectorAll('[data-tone="done"]')).toHaveLength(1);
   });
 
+  it("前导是 StatusDot 8：带状态文案，需要你的会话呼吸；行是 roving 的一项", async () => {
+    const { container } = renderSection();
+    await screen.findByText("接口重构");
+    const dotOf = (title: string) =>
+      screen
+        .getByText(title)
+        .closest("button")!
+        .querySelector("[data-slot=status-dot]")!;
+    const working = dotOf("接口重构");
+    expect(working.getAttribute("data-size")).toBe("8");
+    expect(working.getAttribute("data-tone")).toBe("working");
+    expect(working.getAttribute("aria-label")).toBe("运行中");
+    const asking = dotOf("登录修复");
+    expect(asking.getAttribute("data-tone")).toBe("attention");
+    expect(asking.getAttribute("aria-label")).toBe("等待审批");
+    expect(asking.className).toContain("anim-dot-pulse");
+    // 不再有铃铛 / 对勾图标当前导
+    expect(
+      container.querySelector("svg.lucide-bell, svg.lucide-check"),
+    ).toBeNull();
+    // 只有一个 Tab 停靠点
+    const stops = [...container.querySelectorAll("[data-roving-item]")].filter(
+      (item) => (item as HTMLElement).tabIndex === 0,
+    );
+    expect(stops).toHaveLength(1);
+  });
+
+  it("↑↓ 在会话行之间移动", async () => {
+    const { container } = renderSection();
+    await screen.findByText("接口重构");
+    const rows = [
+      ...container.querySelectorAll<HTMLElement>("[data-roving-item]"),
+    ];
+    expect(rows.length).toBeGreaterThanOrEqual(2);
+    rows[0]!.focus();
+    fireEvent.keyDown(rows[0]!, { key: "ArrowDown" });
+    expect(window.document.activeElement).toBe(rows[1]);
+    fireEvent.keyDown(rows[1]!, { key: "ArrowUp" });
+    expect(window.document.activeElement).toBe(rows[0]);
+  });
+
   it("marks an ACP-driven session row and leaves PTY rows alone", async () => {
     sessions.mockResolvedValue([
       session({

@@ -16,7 +16,7 @@
 import { useCallback } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import type { FileEntryKind } from "@armadra/shared";
-import { toast } from "sonner";
+import { toast } from "@/ui/toast";
 
 import { runtimeApi } from "@/api/client";
 import { t } from "@/app/preferences-store";
@@ -109,10 +109,7 @@ export function useFileActions(workspaceId: string | undefined): FileActions {
             onClick: () => {
               void runtimeApi
                 .restoreTrash(workspaceId, entry.id)
-                .then((restored) => {
-                  refresh();
-                  toast(t("fileOps.restored", { path: restored.path }));
-                }, fail);
+                .then(() => refresh(), fail);
             },
           },
         });

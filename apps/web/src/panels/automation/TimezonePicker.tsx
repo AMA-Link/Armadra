@@ -92,7 +92,7 @@ export function TimezonePicker({
       </PopoverTrigger>
       <PopoverContent
         align="start"
-        className="z-[var(--z-dialog)] w-(--radix-popover-trigger-width) min-w-60 p-0"
+        className="w-(--radix-popover-trigger-width) min-w-60 p-0"
       >
         {open && (
           <TimezoneList
@@ -127,7 +127,7 @@ function TimezoneList({
   const zones = React.useMemo(timezoneOptions, []);
   const shown = visibleZones(zones, query, selected);
   return (
-    <Command shouldFilter={false} className="rounded-lg!">
+    <Command shouldFilter={false} className="rounded-card!">
       <CommandInput
         className={COMMAND_INPUT_FOCUS}
         placeholder={t("automation.wizard.timezoneSearch")}

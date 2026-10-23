@@ -90,8 +90,6 @@ export const gitLog: MessageModule = {
     "gitLog.menu.resetHere": "把当前分支重置到这里",
     "gitLog.menu.rebaseFromHere": "从这里交互式 rebase…",
     "gitLog.menu.cherryPick": "cherry-pick…",
-    "gitLog.menu.cherryPickPasteOid":
-      "复制下面这个 OID 填进表单，再看差异并执行。",
     "gitLog.menu.merge": "合并到当前分支",
     "gitLog.menu.rebaseOnto": "把当前分支 rebase 到此",
     "gitLog.menu.setUpstream": "设置上游",
@@ -100,7 +98,6 @@ export const gitLog: MessageModule = {
     "gitLog.menu.fetchPrune": "获取并清理已删除的远端分支",
     "gitLog.menu.editRemoteUrl": "修改远端地址…",
     "gitLog.menu.renameRemote": "重命名远端…",
-    "gitLog.menu.remoteUrlRetype": "地址不会被回填，请输入完整的新地址。",
     "gitLog.menu.newWorktree": "新建 Worktree…",
     "gitLog.menu.openFrame": "在 Frame 里打开",
     "gitLog.menu.stashApply": "应用这条 stash",
@@ -206,8 +203,6 @@ export const gitLog: MessageModule = {
     "gitLog.menu.resetHere": "Reset the current branch here",
     "gitLog.menu.rebaseFromHere": "Interactive rebase from here…",
     "gitLog.menu.cherryPick": "Cherry-pick…",
-    "gitLog.menu.cherryPickPasteOid":
-      "Copy the OID below into the form, review the diff, then run it.",
     "gitLog.menu.merge": "Merge into the current branch",
     "gitLog.menu.rebaseOnto": "Rebase the current branch onto this",
     "gitLog.menu.setUpstream": "Set upstream",
@@ -216,8 +211,6 @@ export const gitLog: MessageModule = {
     "gitLog.menu.fetchPrune": "Fetch and prune deleted remote branches",
     "gitLog.menu.editRemoteUrl": "Change the remote URL…",
     "gitLog.menu.renameRemote": "Rename the remote…",
-    "gitLog.menu.remoteUrlRetype":
-      "The URL is never prefilled; type the complete new one.",
     "gitLog.menu.newWorktree": "New worktree…",
     "gitLog.menu.openFrame": "Open in a Frame",
     "gitLog.menu.stashApply": "Apply this stash",

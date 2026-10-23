@@ -74,7 +74,7 @@ describe("SettingsLoadable", () => {
     cleanup();
     const fake = render(<SkeletonSettingsRow control="switch" />).container
       .firstElementChild as HTMLElement;
-    for (const cls of ["min-h-12", "px-4", "py-3", "gap-4"]) {
+    for (const cls of ["px-4", "gap-4"]) {
       expect(real?.className, cls).toContain(cls);
       expect(fake.className, cls).toContain(cls);
     }

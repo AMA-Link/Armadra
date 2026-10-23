@@ -12,7 +12,6 @@
  */
 import { useState } from "react";
 import { CornerUpLeft, X } from "lucide-react";
-import { toast } from "sonner";
 import type { OrphanSession } from "@armadra/shared";
 
 import { runtimeApi } from "@/api/client";
@@ -24,7 +23,6 @@ import {
   ResponsiveAlertDialogAction,
   ResponsiveAlertDialogCancel,
   ResponsiveAlertDialogContent,
-  ResponsiveAlertDialogDescription,
   ResponsiveAlertDialogFooter,
   ResponsiveAlertDialogHeader,
   ResponsiveAlertDialogTitle,
@@ -32,6 +30,7 @@ import {
 import { Badge } from "@/ui/badge";
 import { Button } from "@/ui/button";
 import { IconButton } from "@/ui/icon-button";
+import { toast } from "@/ui/toast";
 import { nodeDropPosition } from "@/canvas/placement";
 
 export function OrphanList({
@@ -97,32 +96,29 @@ export function OrphanList({
         {orphans.map((orphan) => (
           <li
             key={orphan.id}
-            className="flex items-center gap-2 rounded-[var(--r-control)] px-1.5 py-1 hover:bg-accent"
+            className="flex items-center gap-2 rounded-control px-1.5 py-1 hover:bg-accent"
           >
             <div className="min-w-0 flex-1">
               <div className="flex items-center gap-1.5">
-                <span className="truncate text-[12px]" title={label(orphan)}>
+                <span className="truncate text-meta" title={label(orphan)}>
                   {label(orphan)}
                 </span>
-                <Badge
-                  variant="outline"
-                  className="text-[length:var(--text-caption)]"
-                >
+                <Badge variant="outline" className="text-caption">
                   {t(`resources.orphan.${orphan.reason}`)}
                 </Badge>
               </div>
               {orphan.cwd && (
                 // 路径折行而不截断：截掉的总是最有用的尾巴。
-                <div className="font-mono text-[11px] text-muted-foreground [overflow-wrap:anywhere]">
+                <div className="font-mono text-caption text-muted-foreground [overflow-wrap:anywhere]">
                   {orphan.cwd}
                 </div>
               )}
             </div>
             {orphan.adoptable && (
               <Button
-                size="sm"
+                size="xs"
                 variant="ghost"
-                className="h-6 shrink-0 px-1.5 text-[11px]"
+                className="shrink-0 text-caption"
                 onClick={() => void adopt(orphan)}
               >
                 <CornerUpLeft />
@@ -145,24 +141,21 @@ export function OrphanList({
           if (!open) setEnding(null);
         }}
       >
-        <ResponsiveAlertDialogContent>
+        <ResponsiveAlertDialogContent aria-describedby={undefined}>
           <ResponsiveAlertDialogHeader>
             <ResponsiveAlertDialogTitle>
-              {t("resources.orphan.terminateTitle")}
-            </ResponsiveAlertDialogTitle>
-            <ResponsiveAlertDialogDescription>
-              {t("resources.orphan.terminateBody", {
+              {t("resources.orphan.terminateTitle", {
                 name: ending ? label(ending) : "",
               })}
-            </ResponsiveAlertDialogDescription>
+            </ResponsiveAlertDialogTitle>
           </ResponsiveAlertDialogHeader>
           <ResponsiveAlertDialogFooter>
             <ResponsiveAlertDialogCancel>
               {t("resources.cancel")}
             </ResponsiveAlertDialogCancel>
             <ResponsiveAlertDialogAction
+              variant="destructive-solid"
               onClick={() => ending && terminate(ending)}
-              className="bg-[var(--danger)] text-white hover:bg-[var(--danger)]/90"
             >
               {t("resources.orphan.terminate")}
             </ResponsiveAlertDialogAction>

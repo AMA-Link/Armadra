@@ -8,10 +8,6 @@ export const hostIdentity: MessageModule = {
     "hostIdentity.busy": "正在处理…",
     "hostIdentity.signedOut": "此页面尚未登录。",
     "hostIdentity.ticket": "一次性配对票据",
-    "hostIdentity.ticketHelp":
-      "粘贴本机配对命令输出的完整 JSON 或 ticket 值。提交后清空，不保存在本设备。",
-    "hostIdentity.ticketHelp.server":
-      "粘贴服务器启动时打印的配对链接里 #pair= 之后的那一段。提交后清空，不保存在本设备。",
     "hostIdentity.pair": "配对此设备",
     "hostIdentity.restore": "恢复登录状态",
     "hostIdentity.current": "当前设备",
@@ -69,10 +65,6 @@ export const hostIdentity: MessageModule = {
     "hostIdentity.busy": "Working…",
     "hostIdentity.signedOut": "This page is not signed in.",
     "hostIdentity.ticket": "One-time pairing ticket",
-    "hostIdentity.ticketHelp":
-      "Paste the full JSON or ticket value from the local pairing command. It is cleared on submission and never saved on this device.",
-    "hostIdentity.ticketHelp.server":
-      "Paste the part after #pair= from the pairing link the server printed at startup. It is cleared on submission and never saved on this device.",
     "hostIdentity.pair": "Pair this device",
     "hostIdentity.restore": "Restore sign-in",
     "hostIdentity.current": "Current device",

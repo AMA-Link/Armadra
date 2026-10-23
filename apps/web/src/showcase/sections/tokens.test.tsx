@@ -4,9 +4,6 @@ import { cleanup, render } from "@testing-library/react";
 import { installDomPolyfills } from "@/app/test-harness";
 import { ShowcaseProviders } from "../harness";
 import { SHOWCASE_SECTION_IDS } from "../ShowcaseApp";
-import MotionSection from "./motion";
-import SettingsSection from "./settings";
-import StatusSection from "./status";
 import TokensSection from "./tokens";
 
 // jsdom 不加载样式表，算不出计算色：对比度读数在探针里（真实浏览器）验，这里只验结构。
@@ -83,14 +80,9 @@ describe("tokens 分区（设计系统 §2）", () => {
   });
 });
 
-describe("占位分区", () => {
-  it("settings / status / motion 已登记，且只渲染标题（本体为空）", () => {
+describe("新增分区", () => {
+  it("settings / status / motion 已登记", () => {
     for (const id of ["settings", "status", "motion"])
       expect(SHOWCASE_SECTION_IDS).toContain(id);
-    for (const Section of [SettingsSection, StatusSection, MotionSection]) {
-      const { container, unmount } = render(<Section />);
-      expect(container.childElementCount).toBe(0);
-      unmount();
-    }
   });
 });

@@ -6,7 +6,7 @@ import {
   type MouseEvent,
 } from "react";
 import type { FileEntry } from "@armadra/shared";
-import { toast } from "sonner";
+import { toast } from "@/ui/toast";
 import { currentSource } from "../api/source";
 import { t } from "../app/preferences-store";
 import { isDesktop } from "../platform";
@@ -147,7 +147,7 @@ export function useWorkspaceFileDrag(
           ghost.dataset.fileDragPreview = "true";
           ghost.setAttribute("aria-hidden", "true");
           ghost.className =
-            "pointer-events-none fixed z-[9999] max-w-60 truncate rounded-md border border-border bg-popover px-2 py-1 text-xs text-foreground shadow-lg";
+            "pointer-events-none fixed z-[9999] max-w-60 truncate rounded-control border border-border bg-popover px-2 py-1 text-meta text-foreground shadow-overlay";
           ghost.textContent = entry.name;
           document.body.append(ghost);
         }

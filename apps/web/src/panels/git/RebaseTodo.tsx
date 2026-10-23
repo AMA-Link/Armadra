@@ -12,6 +12,7 @@ import type {
 import { sk } from "../../sources/scope";
 import { useT } from "../../app/preferences-store";
 import { Button } from "../../ui/button";
+import { EmptyState } from "../../ui/state";
 import { Textarea } from "../../ui/textarea";
 import {
   Select,
@@ -122,27 +123,26 @@ export function RebaseTodo({
   const blocked =
     disabled || invalid || !state || Boolean(preview.data?.hasMerges);
   return (
-    <section className="min-w-0 space-y-2 rounded-md border border-border p-3">
+    <section className="min-w-0 space-y-2 rounded-control border border-border p-3">
       <h3 className="font-medium">{t("gitRepo.rebaseTodo")}</h3>
-      <p className="text-muted-foreground">{t("gitRepo.rebaseTodoSafety")}</p>
-      {!onto && <p>{t("gitRepo.rebaseTodoChoose")}</p>}
+      {!onto && <EmptyState inline title={t("gitRepo.rebaseTodoChoose")} />}
       {onto && <GitLoadable loading={preview.isLoading} size={4} />}
       {preview.error && (
         <ReadError error={preview.error} retry={() => void preview.refetch()} />
       )}
       {preview.data?.hasMerges && (
-        <p role="alert" className="text-[var(--warn)]">
+        <p role="alert" className="text-warn-text">
           {t("gitRepo.rebaseTodoMerges")}
         </p>
       )}
       {preview.data && entries.length === 0 && !preview.data.hasMerges && (
-        <p>{t("gitRepo.rebaseTodoEmpty")}</p>
+        <EmptyState inline title={t("gitRepo.rebaseTodoEmpty")} />
       )}
       <ol className="space-y-2">
         {entries.map((entry, index) => (
           <li
             key={entry.oid}
-            className="min-w-0 space-y-2 rounded-md border border-border p-3"
+            className="min-w-0 space-y-2 rounded-control border border-border p-3"
           >
             <p className="break-words">{subject(entry.oid)}</p>
             <p className="break-all font-mono text-muted-foreground">
@@ -156,10 +156,10 @@ export function RebaseTodo({
                   setCommand(index, next as GitRebaseTodoCommand)
                 }
               >
-                <SelectTrigger className="h-9 w-full min-w-0">
+                <SelectTrigger className="w-full min-w-0">
                   <SelectValue />
                 </SelectTrigger>
-                <SelectContent className="z-[var(--z-dialog)]">
+                <SelectContent>
                   {(
                     [
                       "pick",
@@ -193,11 +193,6 @@ export function RebaseTodo({
                   {t("gitRepo.rebaseTodoRewordNeedsMessage")}
                 </p>
               )}
-            {entry.command === "edit" && (
-              <p className="text-muted-foreground">
-                {t("gitRepo.rebaseTodoEditStops")}
-              </p>
-            )}
             {combining(entry.command) && !keptBefore[index] && (
               <p role="alert" className="text-destructive">
                 {t("gitRepo.rebaseTodoSquashNeedsKept")}

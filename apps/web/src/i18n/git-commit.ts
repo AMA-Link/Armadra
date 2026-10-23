@@ -21,8 +21,6 @@ export const gitCommit: MessageModule = {
     "gitCommit.history": "最近用过的信息",
     "gitCommit.assistant": "AI 生成",
     "gitCommit.amend": "修正上一次提交",
-    "gitCommit.amendMultiple":
-      "跨仓库提交时不提供修正：每个仓库的上一次提交各不相同。",
     "gitCommit.amendCommit": "修正并提交",
     "gitCommit.commit": "提交",
     "gitCommit.commitAndPush": "提交并推送",
@@ -57,8 +55,6 @@ export const gitCommit: MessageModule = {
     "gitCommit.history": "Recent messages",
     "gitCommit.assistant": "Generate with AI",
     "gitCommit.amend": "Amend the previous commit",
-    "gitCommit.amendMultiple":
-      "Amending is not offered across repositories: each one has its own previous commit.",
     "gitCommit.amendCommit": "Amend and commit",
     "gitCommit.commit": "Commit",
     "gitCommit.commitAndPush": "Commit and push",

@@ -5,7 +5,7 @@
  * `use-board-sync` 订阅同一把 key，会把新列表灌回 store，侧栏不维护第二份。
  */
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { toast } from "sonner";
+import { toast } from "@/ui/toast";
 
 import type { Board, WorkspaceSummary } from "@armadra/shared";
 import { useCanvasStore } from "../store/canvas-store";

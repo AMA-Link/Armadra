@@ -1,5 +1,5 @@
-import { useMemo, useState } from "react";
-import { Bot } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Bot, type LucideIcon } from "lucide-react";
 import { basename } from "../agent/sessions";
 import { formatRelativeTime } from "../lib/format";
 import {
@@ -7,7 +7,7 @@ import {
   useConversations,
   type Conversation,
 } from "../meta/conversations";
-import { COMMANDS, commandKeysLabel } from "../keybindings";
+import { COMMANDS, commandKeysLabel, formatKeys } from "../keybindings";
 import { useCanvasStore } from "../store/canvas-store";
 import { useCommandDispatch } from "../app/commands";
 import { useEnabledAgents } from "../app/use-agents";
@@ -26,14 +26,48 @@ import {
   CommandList,
   CommandShortcut,
 } from "@/ui/command";
+import { Spinner } from "@/ui/spinner";
 import { COMMAND_INPUT_FOCUS } from "./tabs-focus";
+import { readRecent, rememberRecent } from "./palette-recent";
+import { QUICK_PICK_COUNT, quickPickKeyDown } from "./quick-pick";
 
 /** 一次最多列这么多个跳转目标，超过靠输入过滤。 */
 const MAX_NODE_RESULTS = 50;
 
+/** 运行后项尾的对勾停多久（设计系统 §11.2）。 */
+export const RAN_MARK_MS = 800;
+
 /**
- * 命令面板（⌘K，§3.6）。三组：新建 / 跳转 / 命令。
- * 没有说明文字，右侧只显示快捷键。
+ * 运行完面板不关的命令：只改视图、不移动焦点、常常要连着按几次（放大、缩小、
+ * 撤销、重做、网格）。其余命令运行即关，焦点交给它们打开的东西。
+ */
+export const STAY_OPEN_COMMANDS: ReadonlySet<string> = new Set([
+  "canvas.zoomIn",
+  "canvas.zoomOut",
+  "canvas.zoom100",
+  "canvas.undo",
+  "canvas.redo",
+  "canvas.toggleGrid",
+]);
+
+/** 面板里一行可运行的项：新建菜单项或命令表里的命令。 */
+interface Entry {
+  /** `new:<菜单项 id>` / `cmd:<命令 id>`，也是「最近」里存的值。 */
+  key: string;
+  label: string;
+  icon?: LucideIcon;
+  /** 右侧显示的快捷键（已按平台和用户键位格式化）。 */
+  keys: string;
+  disabled: boolean;
+  stay: boolean;
+  run: () => void;
+}
+
+/**
+ * 命令面板（⌘K，§3.6）：键盘中枢。开关没有动画；没输入时先列「最近」，前五项
+ * 右侧是 ⌘1–⌘5（输入之后 ⌘1–⌘5 运行当前排在前五的行）；快捷键用 `Kbd` 显示；
+ * 不关面板的命令运行后项尾画出对勾 800ms。其余是新建 / 跳转 / 命令三组。
+ * 没有说明文字。
  */
 export function CommandPalette() {
   const t = useT();
@@ -66,6 +100,97 @@ export function CommandPalette() {
   );
 
   const close = () => setPanel("palette", false);
+
+  // 最近使用：每次打开重新读一遍，别处记下的也算
+  const [recent, setRecent] = useState<string[]>([]);
+  useEffect(() => {
+    if (open) setRecent(readRecent());
+    else setQuery("");
+  }, [open]);
+
+  // 运行后项尾的对勾
+  const [ranKey, setRanKey] = useState<string | null>(null);
+  const ranTimer = useRef<number | undefined>(undefined);
+  useEffect(() => () => window.clearTimeout(ranTimer.current), []);
+  useEffect(() => {
+    if (!open) setRanKey(null);
+  }, [open]);
+
+  const context = workspace
+    ? { addNode, position: centerPosition(), workspace, agents }
+    : null;
+  const newEntries: Entry[] = context
+    ? newItems.map((item) => ({
+        key: `new:${item.id}`,
+        label: item.label,
+        icon: item.icon,
+        keys: item.shortcut ? commandKeysLabel(item.shortcut) : "",
+        disabled: Boolean(item.disabledReason?.(context)),
+        stay: false,
+        run: () => item.run({ ...context, position: centerPosition() }),
+      }))
+    : [];
+  const commandEntries: Entry[] = COMMANDS.filter(
+    (command) => command.id !== "app.commandPalette",
+  ).map((command) => ({
+    key: `cmd:${command.id}`,
+    label: t(command.labelKey),
+    keys: commandKeysLabel(command.id),
+    disabled: false,
+    stay: STAY_OPEN_COMMANDS.has(command.id),
+    run: () => run(command.id),
+  }));
+
+  // 没输入时「最近」置顶，主列表里不再重复；输入后它退场，交给 cmdk 排序
+  const byKey = new Map(
+    [...newEntries, ...commandEntries].map((e) => [e.key, e]),
+  );
+  const recentEntries =
+    query.trim() === ""
+      ? recent
+          .map((key) => byKey.get(key))
+          .filter((entry): entry is Entry => entry !== undefined)
+      : [];
+  const recentKeys = new Set(recentEntries.map((entry) => entry.key));
+
+  function activate(entry: Entry) {
+    // 只落盘，不刷新这一次的列表：连按几次时行不该在手底下跳到「最近」去
+    rememberRecent(entry.key);
+    if (!entry.stay) {
+      close();
+      entry.run();
+      return;
+    }
+    entry.run();
+    setRanKey(entry.key);
+    window.clearTimeout(ranTimer.current);
+    ranTimer.current = window.setTimeout(() => setRanKey(null), RAN_MARK_MS);
+  }
+
+  /** 一行：图标、名字、右侧的快捷键（或 ⌘N 快选号），运行后换成对勾。 */
+  function row(entry: Entry, group: string, quickPick?: number) {
+    const Icon = entry.icon;
+    const trailing =
+      quickPick === undefined ? entry.keys : formatKeys(`Mod+${quickPick}`);
+    return (
+      <CommandItem
+        key={`${group}:${entry.key}`}
+        value={`${group} ${entry.label}`}
+        disabled={entry.disabled}
+        onSelect={() => activate(entry)}
+      >
+        {Icon && <Icon />}
+        {entry.label}
+        {ranKey === entry.key ? (
+          <span data-slot="command-shortcut" className="ml-auto inline-flex">
+            <Spinner state="done" aria-label={t("palette.ran")} />
+          </span>
+        ) : (
+          trailing && <CommandShortcut>{trailing}</CommandShortcut>
+        )}
+      </CommandItem>
+    );
+  }
 
   /** 选中一条历史对话：在视口中心开一个以 `--resume` 启动的终端节点。 */
   function resume(conversation: Conversation) {
@@ -105,45 +230,26 @@ export function CommandPalette() {
         placeholder={t("palette.placeholder")}
         value={query}
         onValueChange={setQuery}
+        onKeyDown={quickPickKeyDown}
       />
       <CommandList>
         <CommandEmpty>{t("palette.empty")}</CommandEmpty>
 
-        {workspace && (
+        {recentEntries.length > 0 && (
+          <CommandGroup heading={t("palette.recent")}>
+            {recentEntries
+              .slice(0, QUICK_PICK_COUNT)
+              .map((entry, index) =>
+                row(entry, t("palette.recent"), index + 1),
+              )}
+          </CommandGroup>
+        )}
+
+        {newEntries.length > 0 && (
           <CommandGroup heading={t("palette.new")}>
-            {newItems.map((item) => {
-              const Icon = item.icon;
-              const disabled = item.disabledReason?.({
-                addNode,
-                position: centerPosition(),
-                workspace,
-                agents,
-              });
-              return (
-                <CommandItem
-                  key={item.id}
-                  value={`${t("palette.new")} ${item.label}`}
-                  disabled={Boolean(disabled)}
-                  onSelect={() => {
-                    close();
-                    item.run({
-                      addNode,
-                      position: centerPosition(),
-                      workspace,
-                      agents,
-                    });
-                  }}
-                >
-                  <Icon />
-                  {item.label}
-                  {item.shortcut && (
-                    <CommandShortcut>
-                      {commandKeysLabel(item.shortcut)}
-                    </CommandShortcut>
-                  )}
-                </CommandItem>
-              );
-            })}
+            {newEntries
+              .filter((entry) => !recentKeys.has(entry.key))
+              .map((entry) => row(entry, t("palette.new")))}
           </CommandGroup>
         )}
 
@@ -179,12 +285,13 @@ export function CommandPalette() {
                 <span className="min-w-0 flex-1 truncate">
                   {conversation.title}
                 </span>
-                <CommandShortcut className="truncate">
+                {/* 目录名和时间是文字，不是快捷键：不放进 Kbd */}
+                <span className="max-w-[30%] truncate text-caption text-muted-foreground">
                   {basename(conversation.cwd)}
-                </CommandShortcut>
-                <CommandShortcut className="tabular-nums">
+                </span>
+                <span className="shrink-0 text-caption text-muted-foreground tabular-nums">
                   {formatRelativeTime(conversation.updatedAt)}
-                </CommandShortcut>
+                </span>
               </CommandItem>
             ))}
           </CommandGroup>
@@ -213,21 +320,9 @@ export function CommandPalette() {
         )}
 
         <CommandGroup heading={t("palette.command")}>
-          {COMMANDS.filter(
-            (command) => command.id !== "app.commandPalette",
-          ).map((command) => (
-            <CommandItem
-              key={command.id}
-              value={`${t("palette.command")} ${t(command.labelKey)}`}
-              onSelect={() => {
-                close();
-                run(command.id);
-              }}
-            >
-              {t(command.labelKey)}
-              <CommandShortcut>{commandKeysLabel(command.id)}</CommandShortcut>
-            </CommandItem>
-          ))}
+          {commandEntries
+            .filter((entry) => !recentKeys.has(entry.key))
+            .map((entry) => row(entry, t("palette.command")))}
         </CommandGroup>
       </CommandList>
     </CommandDialog>

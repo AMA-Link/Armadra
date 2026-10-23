@@ -16,15 +16,12 @@ export const usage: MessageModule = {
     "usage.incident.critical": "严重中断",
     "usage.incident.maintenance": "维护中",
     "usage.statusPage": "服务状态徽标",
-    "usage.statusPageHint":
-      "读取 Anthropic、OpenAI、GitHub 的公开状态页，有事故时在用量卡上标出。",
     "usage.updated": "更新于 {value}",
     "usage.resetUnknown": "重置时间未知",
     "usage.awaitingRefresh": "窗口已到期，等待刷新",
     "usage.stale": "数据已过期，请刷新",
     "usage.refreshError": "刷新失败，请稍后重试",
     "usage.cooldown": "{seconds} 秒后可刷新",
-    "usage.cadence": "每 5 分钟自动更新",
     "usage.status.unavailable": "未找到可用的登录凭据",
     "usage.status.unavailableHint":
       "在 {provider} 的 CLI 里登录一次，然后回来刷新",
@@ -46,16 +43,10 @@ export const usage: MessageModule = {
       "额度读取已默认关闭，可在「设置 → 账号与用量」开启",
     "usage.estimate.local": "本地估算",
     /* 出站政策（外部服务 §9.3）。 */
-    "usage.policy.claude":
-      "使用 Claude Code 的登录令牌调用未公开端点，可能违反 Anthropic 条款",
-    "usage.policy.copilot": "调用 GitHub 内部端点，可能违反 Copilot 条款",
-    "usage.policy.codex": "非官方端点",
     "usage.policy.notice": "{providers} 的额度读取现已默认关闭",
     "usage.policy.open": "打开设置",
     "usage.policy.separator": "、",
     "usage.catalogAutoRefresh": "自动更新模型目录",
-    "usage.source.opencode": "请在 OpenCode 或所用服务商查看",
-    "usage.source.provider": "额度随所选模型的服务商计算",
 
     "usage.provider.copilot": "Copilot", // i18n-exempt
     "usage.unlimited": "无限制",
@@ -134,15 +125,12 @@ export const usage: MessageModule = {
     "usage.incident.critical": "Major outage",
     "usage.incident.maintenance": "Maintenance",
     "usage.statusPage": "Service status badges",
-    "usage.statusPageHint":
-      "Reads the public status pages of Anthropic, OpenAI and GitHub and marks incidents on the usage cards.",
     "usage.updated": "Updated {value}",
     "usage.resetUnknown": "Reset time unknown",
     "usage.awaitingRefresh": "Window ended; awaiting refresh",
     "usage.stale": "Data is out of date. Refresh to update.",
     "usage.refreshError": "Refresh failed. Try again later.",
     "usage.cooldown": "Refresh in {seconds}s",
-    "usage.cadence": "Updates automatically every 5 minutes",
     "usage.status.unavailable": "No usable sign-in credentials found",
     "usage.status.unavailableHint":
       "Sign in once in the {provider} CLI, then refresh here",
@@ -169,18 +157,11 @@ export const usage: MessageModule = {
     "usage.reason.policy_off":
       "Quota reading is off by default; turn it on under Settings → Account & usage",
     "usage.estimate.local": "Local estimate",
-    "usage.policy.claude":
-      "Calls an undocumented endpoint with Claude Code's sign-in token; may violate Anthropic's terms",
-    "usage.policy.copilot":
-      "Calls an internal GitHub endpoint; may violate Copilot's terms",
-    "usage.policy.codex": "Unofficial endpoint",
     "usage.policy.notice":
       "Quota reading for {providers} is now off by default",
     "usage.policy.open": "Open settings",
     "usage.policy.separator": " and ",
     "usage.catalogAutoRefresh": "Update model catalog automatically",
-    "usage.source.opencode": "View in OpenCode or your model provider",
-    "usage.source.provider": "Quota belongs to the selected model provider",
 
     "usage.provider.copilot": "Copilot",
     "usage.unlimited": "Unlimited",

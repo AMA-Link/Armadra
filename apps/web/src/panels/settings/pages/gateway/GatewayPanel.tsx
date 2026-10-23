@@ -11,7 +11,7 @@ import { usePreferencesStore, useT } from "../../../../app/preferences-store";
 import { CONTROL_WIDTH } from "../GeneralPage";
 import { SettingsGroup } from "../../SettingsGroup";
 import { SettingsRow } from "../../SettingsRow";
-import { Alert, AlertDescription, AlertTitle } from "@/ui/alert";
+import { Alert, AlertTitle } from "@/ui/alert";
 import { Input } from "@/ui/input";
 import {
   Select,
@@ -178,17 +178,19 @@ export function GatewayPanel({
       )}
       {renewFailed && (
         <Alert variant="destructive" data-slot="gateway-acme-renew-failed">
-          <AlertTitle>{t("gateway.acme.renewFailed")}</AlertTitle>
-          {retryAt && (
-            <AlertDescription className="tabular-nums">
-              {t("gateway.acme.retryAt", {
-                time: retryAt.toLocaleString(locale, {
-                  dateStyle: "medium",
-                  timeStyle: "short",
-                }),
-              })}
-            </AlertDescription>
-          )}
+          <AlertTitle>
+            {t("gateway.acme.renewFailed")}
+            {retryAt && (
+              <span className="ml-2 font-normal tabular-nums">
+                {t("gateway.acme.retryAt", {
+                  time: retryAt.toLocaleString(locale, {
+                    dateStyle: "medium",
+                    timeStyle: "short",
+                  }),
+                })}
+              </span>
+            )}
+          </AlertTitle>
         </Alert>
       )}
       {starting && (
@@ -327,7 +329,7 @@ export function GatewayAdvanced({
             <CommitInput
               label={t(`gateway.tls.${key}`)}
               disabled={locked}
-              className="h-8 w-[240px] max-w-full font-mono text-[12px]"
+              className="h-8 w-[240px] max-w-full font-mono text-meta"
               value={status.tls[key]}
               onCommit={(value) => onConfigure({ tls: { [key]: value } })}
             />

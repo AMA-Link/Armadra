@@ -82,7 +82,7 @@ function DraftShape({
         x2={draft.current.x}
         y2={draft.current.y}
         stroke={color}
-        strokeWidth={width}
+        style={{ strokeWidth: width }}
         strokeDasharray={dashArray(draft.style.dash, width)}
         strokeLinecap="round"
       />
@@ -98,7 +98,7 @@ function DraftShape({
         fill={opacity > 0 ? color : "none"}
         fillOpacity={opacity > 0 ? opacity : undefined}
         stroke={color}
-        strokeWidth={width}
+        style={{ strokeWidth: width }}
         strokeDasharray={dashArray(draft.style.dash, width)}
         strokeLinejoin="round"
       />

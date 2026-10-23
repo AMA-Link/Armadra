@@ -11,7 +11,6 @@ const zh = {
   "agentInspect.menu": "更多",
   "agentInspect.transcript": "转录",
   "agentInspect.screen": "终端画面",
-  "agentInspect.description": "只读一眼，不写入这个会话，也不触发新的一轮。",
   "agentInspect.loading": "读取中…",
   "agentInspect.truncated": "只显示了尾部；更早的内容请直接看转录文件。",
   "agentInspect.unavailable": "这个会话现在读不到。",
@@ -21,8 +20,6 @@ const en: Record<keyof typeof zh, string> = {
   "agentInspect.menu": "More",
   "agentInspect.transcript": "Transcript",
   "agentInspect.screen": "Terminal screen",
-  "agentInspect.description":
-    "A read-only look. Nothing is written to the session and no turn is started.",
   "agentInspect.loading": "Reading…",
   "agentInspect.truncated":
     "Only the tail is shown. Read the transcript file for anything earlier.",

@@ -38,7 +38,7 @@ const DATA_SUFFIXES = [".fixture.ts", ".fixture.tsx", "fixtures.ts"];
  */
 const CSS_SOURCES: Readonly<Record<string, number>> = {
   "styles/motion.css": 0,
-  "splash/splash.css": 12,
+  "splash/splash.css": 0,
 };
 
 /** 存量：文件 → 现有字面色值个数。 */

@@ -6,7 +6,6 @@ import {
   ResponsiveAlertDialogAction,
   ResponsiveAlertDialogCancel,
   ResponsiveAlertDialogContent,
-  ResponsiveAlertDialogDescription,
   ResponsiveAlertDialogFooter,
   ResponsiveAlertDialogHeader,
   ResponsiveAlertDialogTitle,
@@ -49,17 +48,24 @@ export function RepositoryConfirmDialog({
         if (!open) setConfirmation(null);
       }}
     >
-      <ResponsiveAlertDialogContent className="max-h-[90dvh] overflow-y-auto">
+      <ResponsiveAlertDialogContent
+        aria-describedby={undefined}
+        className="max-h-[90dvh] overflow-y-auto"
+      >
         <ResponsiveAlertDialogHeader>
           <ResponsiveAlertDialogTitle>
-            {t("gitRepo.confirmTitle")}
+            {confirmation
+              ? t("gitRepo.confirmAction", {
+                  action:
+                    confirmation.action.kind === "reset"
+                      ? `${t("gitRepo.reset")} · ${confirmation.action.mode}`
+                      : t(`gitRepo.${confirmation.action.kind}`),
+                })
+              : t("gitRepo.confirmTitle")}
           </ResponsiveAlertDialogTitle>
-          <ResponsiveAlertDialogDescription>
-            {t("gitRepo.confirmDescription")}
-          </ResponsiveAlertDialogDescription>
         </ResponsiveAlertDialogHeader>
         {confirmation && (
-          <dl className="space-y-2 break-all text-xs">
+          <dl className="space-y-2 break-all text-meta">
             {confirmation.review && (
               <div>
                 <dt className="text-muted-foreground">
@@ -82,7 +88,6 @@ export function RepositoryConfirmDialog({
             )}
             {confirmation.action.kind === "startCherryPick" && (
               <div>
-                <dt>{t("gitIntegration.pickSafety")}</dt>
                 <dd>
                   {confirmation.action.recordOrigin ? "✓ " : "— "}
                   {t("gitIntegration.recordOrigin")}
@@ -95,51 +100,15 @@ export function RepositoryConfirmDialog({
                 )}
               </div>
             )}
-            {confirmation.action.kind === "revert" && (
-              <div>
-                <dd>{t("gitRepo.revertSafety")}</dd>
-                {confirmation.action.mainline && (
+            {confirmation.action.kind === "revert" &&
+              confirmation.action.mainline && (
+                <div>
                   <dd>
                     {t("gitIntegration.mainline")}:{" "}
                     {confirmation.action.mainline}
                   </dd>
-                )}
-              </div>
-            )}
-            {confirmation.action.kind === "checkoutCommit" && (
-              <div>
-                <dd>{t("gitRepo.detachedSafety")}</dd>
-              </div>
-            )}
-            {confirmation.action.kind === "reset" && (
-              <div>
-                <dd>{t(`gitRepo.resetSafety.${confirmation.action.mode}`)}</dd>
-                {confirmation.action.discardChanges && (
-                  <dd>{t("gitRepo.resetRecovery")}</dd>
-                )}
-              </div>
-            )}
-            {confirmation.action.kind === "skipIntegration" && (
-              <div>
-                <dd>{t("gitIntegration.skipSafety")}</dd>
-              </div>
-            )}
-            {confirmation.action.kind === "startMerge" && (
-              <div>
-                <dd>{t("gitIntegration.startSafety")}</dd>
-              </div>
-            )}
-            {confirmation.action.kind === "startRebase" && (
-              <div>
-                <dd>{t("gitIntegration.rebaseSafety")}</dd>
-              </div>
-            )}
-            {confirmation.action.kind === "startInteractiveRebase" && (
-              <div>
-                <dd>{t("gitRepo.rebaseTodoSafety")}</dd>
-                <dd>{t("gitIntegration.rebaseSafety")}</dd>
-              </div>
-            )}
+                </div>
+              )}
             {confirmation.action.kind === "sync" && (
               <div>
                 <dt className="text-muted-foreground">
@@ -149,18 +118,16 @@ export function RepositoryConfirmDialog({
                   {confirmation.action.expectedRemoteOid ??
                     t("gitRepo.remoteBranchMissing")}
                 </dd>
-                <dd>{t("gitRepo.syncSafety")}</dd>
               </div>
             )}
             {lease && (
-              <div className="space-y-1 rounded-md border border-destructive p-2">
+              <div className="space-y-1 rounded-control border border-destructive p-2">
                 <dt className="text-muted-foreground">
                   {t("gitRepo.leaseReplaces")}
                 </dt>
                 <dd className="font-mono">{lease.expectedRemoteOid}</dd>
-                <dd>{t("gitRepo.leaseSafety")}</dd>
                 <dd>
-                  <label className="flex min-h-9 items-center gap-2">
+                  <label className="flex items-center gap-2 py-1">
                     <Checkbox
                       checked={acknowledged}
                       onCheckedChange={(next) => setAcknowledged(next === true)}
@@ -170,14 +137,8 @@ export function RepositoryConfirmDialog({
                 </dd>
               </div>
             )}
-            {confirmation.action.kind === "abortIntegration" && (
-              <div>
-                <dd>{t("gitIntegration.abortSafety")}</dd>
-              </div>
-            )}
             {confirmation.action.kind === "createStash" && (
               <div>
-                <dt>{t("gitStash.safety")}</dt>
                 <dd>
                   {confirmation.action.includeUntracked ? "✓ " : "— "}
                   {t("gitStash.includeUntracked")}
@@ -187,17 +148,10 @@ export function RepositoryConfirmDialog({
             {(confirmation.action.kind === "applyStash" ||
               confirmation.action.kind === "popStash") && (
               <div>
-                <dt>{t("gitStash.conflictSafety")}</dt>
                 <dd>
                   {confirmation.action.reinstateIndex ? "✓ " : "— "}
                   {t("gitStash.reinstateIndex")}
                 </dd>
-              </div>
-            )}
-            {(confirmation.action.kind === "popStash" ||
-              confirmation.action.kind === "dropStash") && (
-              <div>
-                <dd>{t("gitStash.dropSafety")}</dd>
               </div>
             )}
             <div>
@@ -207,9 +161,7 @@ export function RepositoryConfirmDialog({
               <dd>{repositoryPath}</dd>
             </div>
             <div>
-              <dt className="text-muted-foreground">
-                {t(`gitRepo.${confirmation.action.kind}`)}
-              </dt>
+              <dt className="text-muted-foreground">{t("gitRepo.target")}</dt>
               <dd>{actionTarget(confirmation.action)}</dd>
             </div>
             <div>
@@ -226,6 +178,7 @@ export function RepositoryConfirmDialog({
             {t("gitRepo.cancel")}
           </ResponsiveAlertDialogCancel>
           <ResponsiveAlertDialogAction
+            variant={lease ? "destructive-solid" : "default"}
             disabled={blocked || (Boolean(lease) && !acknowledged)}
             onClick={() => {
               if (confirmation && !blocked && (!lease || acknowledged)) {

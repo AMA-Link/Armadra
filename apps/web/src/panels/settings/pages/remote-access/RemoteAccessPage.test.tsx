@@ -57,7 +57,7 @@ vi.mock("../../../../sources/bootstrap", () => boot);
 vi.mock("../../../../app/workspaces-query", () => ({
   useWorkspacesQuery: () => ({ data: [{ id: "w1", name: "Project" }] }),
 }));
-vi.mock("sonner", () => ({ toast: toasts }));
+vi.mock("@/ui/toast", () => ({ toast: toasts }));
 vi.mock("../../../../agent/sessions", async (original) => ({
   ...(await original<typeof import("../../../../agent/sessions")>()),
   sessionsQuery: (workspaceId: string | null) => ({
@@ -192,13 +192,20 @@ describe("远程访问页", () => {
     api.listSources.mockResolvedValue({ sources: [local], remotes: [] });
     mount();
     expect(await screen.findByText("This computer")).toBeTruthy();
+    // 页头没有副标题；托盘三张：对外服务、中继、我的其他电脑（计数）。
+    expect(screen.getByTestId("settings-heading")).toBeTruthy();
+    expect(screen.getAllByText("Access service").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Relay").length).toBeGreaterThan(0);
+    expect(
+      document.querySelectorAll('[data-slot="settings-kpi"]'),
+    ).toHaveLength(3);
     expect(screen.getByText("Shared with me")).toBeTruthy();
     const toggle = await screen.findByRole("switch", { name: ALLOW });
     expect(toggle.getAttribute("aria-checked")).toBe("false");
     // 关着时没有可达范围；没有中转账号时不单列一张空的账号卡。
     expect(screen.queryByRole("combobox", { name: "Reach" })).toBeNull();
     expect(screen.queryByText("Remote access accounts")).toBeNull();
-    expect(screen.getByText("My other computers")).toBeTruthy();
+    expect(screen.getAllByText("My other computers").length).toBeGreaterThan(0);
     expect(
       screen.getByRole("button", { name: "Pair another computer of mine" }),
     ).toBeTruthy();
@@ -509,7 +516,9 @@ describe("远程访问页", () => {
         label: "this-mac",
       }),
     );
-    expect(await screen.findByText("Connecting")).toBeTruthy();
+    expect((await screen.findAllByText("Connecting")).length).toBeGreaterThan(
+      0,
+    );
     expect(await screen.findByText("No active links")).toBeTruthy();
 
     fireEvent.click(screen.getByRole("button", { name: "New link" }));
@@ -838,7 +847,8 @@ describe("通过链接加入（A4-3p）", () => {
     expect(sessionStorage.getItem("armadra.sources.openAfterJoin")).toBe(
       joined.sourceId,
     );
-    expect(toasts.success).toHaveBeenCalledWith("Joined");
+    // 加入成功页面会重载到新来源：成功不弹提示。
+    expect(toasts.success).not.toHaveBeenCalled();
   });
 
   it("失败按码说明：过期的链接", async () => {
@@ -955,9 +965,7 @@ describe("中继侧待清理（契约 §31.4）", () => {
     await waitFor(() =>
       expect(api.retryRelayCleanup).toHaveBeenCalledWith(ISSUER),
     );
-    await waitFor(() =>
-      expect(toasts.success).toHaveBeenCalledWith("Cleaned up"),
-    );
+    expect(toasts.success).not.toHaveBeenCalled();
   });
 
   it("重命名（§61）：中转账号能改，占位是缺省名；清空即恢复", async () => {
@@ -979,7 +987,7 @@ describe("中继侧待清理（契约 §31.4）", () => {
     await waitFor(() =>
       expect(api.renameRemote).toHaveBeenCalledWith("svc", ""),
     );
-    await waitFor(() => expect(toasts.success).toHaveBeenCalledWith("Renamed"));
+    expect(toasts.success).not.toHaveBeenCalled();
   });
 
   it("远程服务已删、中继侧还欠着：单独一行，重试失败按码说明", async () => {
@@ -1041,7 +1049,9 @@ describe("分享收尾（P4）", () => {
     api.shareStatus.mockResolvedValue(tunnel("connecting"));
     api.listShareLinks.mockResolvedValue([]);
     mount();
-    expect(await screen.findByText("Connecting")).toBeTruthy();
+    expect((await screen.findAllByText("Connecting")).length).toBeGreaterThan(
+      0,
+    );
     const reads = api.shareStatus.mock.calls.length;
     api.shareStatus.mockResolvedValue(tunnel("ready"));
     dispatchWorkspaceEvent(
@@ -1054,7 +1064,7 @@ describe("分享收尾（P4）", () => {
       { type: "cloud.tunnel", issuer: ISSUER, state: "ready" },
       localSource.sourceId,
     );
-    expect(await screen.findByText("Online")).toBeTruthy();
+    expect((await screen.findAllByText("Online")).length).toBeGreaterThan(0);
     expect(api.shareStatus.mock.calls.length).toBe(reads + 1);
   });
 
@@ -1182,9 +1192,7 @@ describe("分享收尾（P4）", () => {
         "Design review",
       ),
     );
-    await waitFor(() =>
-      expect(toasts.success).toHaveBeenCalledWith("Note updated"),
-    );
+    expect(toasts.success).not.toHaveBeenCalled();
     await waitFor(() => expect(api.listShareLinks).toHaveBeenCalledTimes(2));
   });
 
@@ -1240,9 +1248,7 @@ describe("分享收尾（P4）", () => {
     await waitFor(() =>
       expect(api.dismissRelayCleanup).toHaveBeenCalledWith(ISSUER),
     );
-    await waitFor(() =>
-      expect(toasts.success).toHaveBeenCalledWith("Cleanup dismissed"),
-    );
+    expect(toasts.success).not.toHaveBeenCalled();
   });
 });
 

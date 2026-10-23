@@ -3,7 +3,7 @@ import { srcKey } from "@/sources/scope";
 import * as React from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Download } from "lucide-react";
-import { toast } from "sonner";
+import { toast } from "@/ui/toast";
 import {
   type AdapterInstallJob,
   type AdapterInstallTarget,
@@ -21,6 +21,7 @@ import { Button } from "@/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/ui/popover";
 import { ScrollArea } from "@/ui/scroll-area";
 import { Spinner } from "@/ui/spinner";
+import { TextSwap } from "@/ui/text-swap";
 
 /**
  * 适配器与 CLI 的安装（契约 §39.7、§47）：集成页的 CLI / ACP 两行与新建向导
@@ -145,12 +146,8 @@ export function useInstallJob(
     if (before !== "running" || state === "running" || !query.data) return;
     void client.invalidateQueries({ queryKey: ["agents"] });
     void client.invalidateQueries({ queryKey: integrationKey(agent.id) });
-    if (state === "succeeded") {
-      toast.success(
-        t("integration.install.done", { name: query.data.package }),
-      );
-    }
-  }, [state, query.data, client, t, agent.id]);
+    // 结果就在行里（状态换了），不再弹成功提示。
+  }, [state, query.data, client, agent.id]);
 
   const running = state === "running" || start.isPending;
   return {
@@ -208,6 +205,12 @@ export function CopyCommandButton({
   variant?: "ghost" | "outline";
 }) {
   const t = useT();
+  const [copied, setCopied] = React.useState(false);
+  React.useEffect(() => {
+    if (!copied) return;
+    const timer = setTimeout(() => setCopied(false), 1500);
+    return () => clearTimeout(timer);
+  }, [copied]);
   return (
     <Button
       variant={variant}
@@ -215,12 +218,14 @@ export function CopyCommandButton({
       title={command}
       onClick={() => {
         void navigator.clipboard?.writeText(command).then(
-          () => toast.success(t("acp.message.copied")),
+          () => setCopied(true),
           () => undefined,
         );
       }}
     >
-      {t("integration.action.copyCommand")}
+      <TextSwap>
+        {t(copied ? "acp.message.copied" : "integration.action.copyCommand")}
+      </TextSwap>
     </Button>
   );
 }
@@ -314,15 +319,13 @@ function OutputButton({ job }: { job: AdapterInstallJob }) {
       <PopoverContent
         align="end"
         collisionPadding={8}
-        className="z-[var(--z-dialog)] w-[28rem] max-w-[calc(100vw-16px)] p-0"
+        className="w-[28rem] max-w-[calc(100vw-16px)] p-0"
       >
         <div className="flex flex-col gap-2 p-3">
-          <p className="text-xs text-[var(--danger-text)]">
-            {failureText(t, job)}
-          </p>
+          <p className="text-meta text-danger-text">{failureText(t, job)}</p>
           <ScrollArea className="max-h-60">
             <pre
-              className="font-mono text-[11px] leading-4 break-all whitespace-pre-wrap text-muted-foreground"
+              className="font-mono text-caption break-all whitespace-pre-wrap text-muted-foreground"
               data-slot="acp-install-output"
             >
               {lines.length > 0 ? lines.join("\n") : "—"}

@@ -8,7 +8,7 @@ import {
 } from "@tanstack/react-query";
 import { sk } from "../../../sources/scope";
 import { ChevronLeft, PanelLeft, PanelRight, X } from "lucide-react";
-import { toast } from "sonner";
+import { toast } from "@/ui/toast";
 import type {
   GitExpectedState,
   GitLogCommit,
@@ -418,7 +418,7 @@ export function LogPage({ workspaceId }: LogPageProps) {
           className="max-h-64 shrink-0 overflow-auto border-b border-border"
         >
           <div className="flex items-center gap-1 px-2 pt-1">
-            <h3 className="min-w-0 flex-1 truncate text-xs font-semibold">
+            <h3 className="min-w-0 flex-1 truncate text-meta font-medium">
               {t("gitLog.reflog.title")}
             </h3>
             <IconButton
@@ -444,7 +444,7 @@ export function LogPage({ workspaceId }: LogPageProps) {
         <ReadError error={log.error} retry={() => void log.refetch()} />
       )}
       {pages[0]?.truncated && (
-        <p className="px-2 py-1 text-[11px] text-muted-foreground">
+        <p className="px-2 py-1 text-caption text-muted-foreground">
           {t("gitLog.table.truncated")}
         </p>
       )}
@@ -569,12 +569,11 @@ export function LogPage({ workspaceId }: LogPageProps) {
   if (compact) {
     return (
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-        <div className="flex min-h-10 shrink-0 items-center gap-1 border-b border-border px-2">
+        <div className="flex shrink-0 items-center gap-1 border-b border-border px-2 py-1">
           {stage !== "commits" && (
             <Button
-              size="sm"
+              size="touch"
               variant="ghost"
-              className="min-h-9 px-2"
               onClick={() =>
                 setStage(
                   stage === "diff"
@@ -591,15 +590,14 @@ export function LogPage({ workspaceId }: LogPageProps) {
           )}
           {stage === "commits" && (
             <Button
-              size="sm"
+              size="touch"
               variant="ghost"
-              className="min-h-9 px-2"
               onClick={() => setStage("tree")}
             >
               {t("gitLog.mobile.branches")}
             </Button>
           )}
-          <span className="min-w-0 flex-1 truncate text-[13px]">
+          <span className="min-w-0 flex-1 truncate text-body">
             {t(`gitLog.mobile.${stage === "tree" ? "branches" : stage}`)}
           </span>
         </div>

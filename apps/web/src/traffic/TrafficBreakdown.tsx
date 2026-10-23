@@ -13,8 +13,9 @@ import {
   ResponsiveAlertDialogTitle,
 } from "@/panels/ResponsiveDialog";
 import { Button } from "@/ui/button";
-import { Empty, EmptyHeader, EmptyTitle } from "@/ui/empty";
 import { Progress } from "@/ui/progress";
+import { EmptyState } from "@/ui/state";
+import { Tray, TrayCard, TrayValue } from "@/ui/tray";
 
 /** 一行分项：类别或对端。`up` 是本机发出的，`down` 是收到的。 */
 export interface TrafficBreakdownRow {
@@ -66,7 +67,7 @@ export function TrafficBreakdown({
       data-slot="traffic-breakdown"
       className="flex flex-col gap-(--space-section)"
     >
-      <dl className="grid grid-cols-3 gap-2">
+      <Tray className="grid grid-cols-3">
         <Cell
           icon={<ArrowUp />}
           label={t("traffic.up")}
@@ -85,13 +86,9 @@ export function TrafficBreakdown({
           value={String(streams)}
           slot="streams"
         />
-      </dl>
+      </Tray>
       {empty ? (
-        <Empty className="py-6">
-          <EmptyHeader>
-            <EmptyTitle>{t("traffic.empty")}</EmptyTitle>
-          </EmptyHeader>
-        </Empty>
+        <EmptyState title={t("traffic.empty")} className="py-6" />
       ) : (
         <ul className="flex flex-col gap-3" aria-label={t("traffic.title")}>
           {sorted.map((row) => {
@@ -102,7 +99,7 @@ export function TrafficBreakdown({
                 data-traffic-row={row.key}
                 className="flex flex-col gap-1.5"
               >
-                <div className="flex items-baseline justify-between gap-3 text-[length:var(--text-body)]">
+                <div className="flex items-baseline justify-between gap-3 text-body">
                   <span className="min-w-0 truncate">{row.label}</span>
                   <span className="shrink-0 text-muted-foreground tabular-nums">
                     {formatBytes(total)}
@@ -148,7 +145,7 @@ export function TrafficBreakdown({
               {t("traffic.cancel")}
             </ResponsiveAlertDialogCancel>
             <ResponsiveAlertDialogAction
-              variant="destructive"
+              variant="destructive-solid"
               onClick={() => {
                 onClear?.();
                 setConfirming(false);
@@ -175,17 +172,14 @@ function Cell({
   slot: string;
 }) {
   return (
-    <div
-      data-traffic-cell={slot}
-      className="flex flex-col gap-1 rounded-lg border px-3 py-2"
-    >
-      <dt className="flex items-center gap-1 text-muted-foreground [&_svg]:size-3.5">
+    <TrayCard data-traffic-cell={slot} className="gap-1">
+      <span
+        aria-hidden
+        className="flex items-center text-muted-foreground [&_svg]:size-3.5"
+      >
         {icon}
-        <span className="sr-only">{label}</span>
-      </dt>
-      <dd className="text-[length:var(--text-title)] font-semibold tabular-nums">
-        {value}
-      </dd>
-    </div>
+      </span>
+      <TrayValue label={label} value={value} fromZero={false} />
+    </TrayCard>
   );
 }

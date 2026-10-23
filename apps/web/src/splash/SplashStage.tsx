@@ -306,9 +306,9 @@ export function SplashStage({ ref, label }: SplashStageProps) {
             height="380"
           >
             <g
+              className="splash-brush"
               fill="none"
               stroke="white"
-              strokeWidth="72"
               strokeLinecap="round"
               strokeLinejoin="round"
             >

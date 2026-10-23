@@ -14,7 +14,7 @@ vi.mock("./content-links", () => ({
   MAX_LINKS: 64,
   useContentLinks: () => content.current,
 }));
-import { toast } from "sonner";
+import { toast } from "@/ui/toast";
 import { runtimeApi } from "@/api/client";
 import { useCanvasStore } from "@/store/canvas-store";
 import { usePublishContextLinks } from "./context-links";

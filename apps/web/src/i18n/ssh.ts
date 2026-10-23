@@ -8,7 +8,6 @@ import type { MessageModule } from "./index";
  */
 export const ssh: MessageModule = {
   "zh-CN": {
-    "ssh.add": "添加",
     "ssh.delete": "删除",
     "ssh.empty": "还没有主机",
     "ssh.field.name": "名称",
@@ -29,7 +28,6 @@ export const ssh: MessageModule = {
     "ssh.field.workerStateDir": "Worker 状态目录",
     "ssh.remote.path": "远程项目路径",
     "ssh.remote.open": "打开远程项目",
-    "ssh.remote.opened": "已打开 {name}",
     "ssh.remote.failed": "无法打开远程项目",
     "ssh.hostKey.action": "主机密钥",
     "ssh.hostKey.title": "主机密钥 · {name}",
@@ -58,7 +56,6 @@ export const ssh: MessageModule = {
     "ssh.execution.poll": "轮询监听",
   },
   en: {
-    "ssh.add": "Add",
     "ssh.delete": "Delete",
     "ssh.empty": "No hosts yet",
     "ssh.field.name": "Name",
@@ -79,7 +76,6 @@ export const ssh: MessageModule = {
     "ssh.field.workerStateDir": "Worker state directory",
     "ssh.remote.path": "Remote project path",
     "ssh.remote.open": "Open remote project",
-    "ssh.remote.opened": "Opened {name}",
     "ssh.remote.failed": "Could not open the remote project",
     "ssh.hostKey.action": "Host key",
     "ssh.hostKey.title": "Host key · {name}",

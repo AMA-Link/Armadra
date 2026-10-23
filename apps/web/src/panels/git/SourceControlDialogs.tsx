@@ -7,7 +7,6 @@ import {
   ResponsiveAlertDialogAction,
   ResponsiveAlertDialogCancel,
   ResponsiveAlertDialogContent,
-  ResponsiveAlertDialogDescription,
   ResponsiveAlertDialogFooter,
   ResponsiveAlertDialogHeader,
   ResponsiveAlertDialogTitle,
@@ -48,14 +47,11 @@ export function SourceControlDialogs({
           if (!next) setConfirmInit(false);
         }}
       >
-        <ResponsiveAlertDialogContent>
+        <ResponsiveAlertDialogContent aria-describedby={undefined}>
           <ResponsiveAlertDialogHeader>
             <ResponsiveAlertDialogTitle>
               {t("scm.initTitle")}
             </ResponsiveAlertDialogTitle>
-            <ResponsiveAlertDialogDescription>
-              {t("scm.initDescription")}
-            </ResponsiveAlertDialogDescription>
           </ResponsiveAlertDialogHeader>
           <ResponsiveAlertDialogFooter>
             <ResponsiveAlertDialogCancel>
@@ -84,18 +80,11 @@ export function SourceControlDialogs({
           if (!next) setRestore(null);
         }}
       >
-        <ResponsiveAlertDialogContent>
+        <ResponsiveAlertDialogContent aria-describedby={undefined}>
           <ResponsiveAlertDialogHeader>
             <ResponsiveAlertDialogTitle>
               {t("scm.revertTitle", { path: restore?.path ?? "" })}
             </ResponsiveAlertDialogTitle>
-            <ResponsiveAlertDialogDescription>
-              {t(
-                restore?.untracked
-                  ? "scm.restoreUntracked"
-                  : "scm.restoreDescription",
-              )}
-            </ResponsiveAlertDialogDescription>
           </ResponsiveAlertDialogHeader>
           <ResponsiveAlertDialogFooter>
             <ResponsiveAlertDialogCancel>
@@ -103,6 +92,7 @@ export function SourceControlDialogs({
             </ResponsiveAlertDialogCancel>
             {restore?.untracked ? (
               <ResponsiveAlertDialogAction
+                variant="destructive-solid"
                 onClick={() => {
                   if (restore)
                     revert({
@@ -119,6 +109,7 @@ export function SourceControlDialogs({
               (["index", "head"] as const).map((source) => (
                 <ResponsiveAlertDialogAction
                   key={source}
+                  variant={source === "head" ? "destructive-solid" : "default"}
                   onClick={() => {
                     if (restore)
                       revert({

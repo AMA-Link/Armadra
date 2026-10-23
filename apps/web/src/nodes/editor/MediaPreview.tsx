@@ -30,7 +30,7 @@ export function MediaPreview({
     return <ImagePreview src={src} title={title} onError={onError} />;
   if (media === "video")
     return (
-      <div className="flex h-full w-full items-center justify-center bg-[var(--surface-sunken)]">
+      <div className="flex h-full w-full items-center justify-center bg-sunken">
         <video
           src={src}
           controls
@@ -43,7 +43,9 @@ export function MediaPreview({
   if (media === "audio")
     return (
       <div className="flex h-full w-full flex-col items-center justify-center gap-3 p-4">
-        <p className="max-w-full truncate text-sm">{title}</p>
+        <p className="max-w-full truncate text-body" title={title}>
+          {title}
+        </p>
         <audio
           src={src}
           controls
@@ -60,7 +62,7 @@ export function MediaPreview({
       // 不加 sandbox：带沙箱的框架里引擎直接拒绝启动 PDF 查看器。blob 是
       // 页面按 `application/pdf` 自己包的，引擎把它交给查看器而不是当 HTML
       // 解析，所以这里没有可执行的页面内容。
-      className="h-full w-full border-0 bg-[var(--surface-sunken)]"
+      className="h-full w-full border-0 bg-sunken"
     />
   );
 }
@@ -173,7 +175,7 @@ function ImagePreview({
           />
         </div>
       </div>
-      <div className="absolute bottom-2 right-2 flex items-center gap-1.5 rounded-[var(--radius-sm)] bg-[var(--surface-deep)]/90 p-1">
+      <div className="absolute bottom-2 right-2 flex items-center gap-1.5 rounded-tight bg-deep/90 p-1">
         <Badge variant="outline" className="tabular-nums">
           {Math.round(displayedScale() * 100)}%
         </Badge>

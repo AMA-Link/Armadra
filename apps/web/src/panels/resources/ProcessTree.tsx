@@ -28,7 +28,7 @@ export function ProcessTree({
       {processes.map((process) => (
         <li
           key={`${process.pid}:${process.startTimeUnixMs ?? "?"}`}
-          className="flex items-center gap-2 text-[11px] text-muted-foreground"
+          className="flex items-center gap-2 text-caption text-muted-foreground"
         >
           <span
             className="min-w-0 flex-1 truncate"
@@ -46,7 +46,7 @@ export function ProcessTree({
         </li>
       ))}
       {truncated && (
-        <li className="text-[11px] text-muted-foreground">
+        <li className="text-caption text-muted-foreground">
           {t("resources.session.treeTruncated", { count: processes.length })}
         </li>
       )}
