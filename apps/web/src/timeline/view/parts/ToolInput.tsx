@@ -19,7 +19,7 @@ export function ToolInput({ input }: { input: TimelineToolInput }) {
   return (
     <div
       data-slot="timeline-tool-input"
-      className="flex min-w-0 flex-col gap-0.5 text-xs"
+      className="flex min-w-0 flex-col gap-0.5 text-meta"
     >
       {input.command !== undefined && (
         <div className="flex min-w-0 items-start gap-1.5 font-mono">

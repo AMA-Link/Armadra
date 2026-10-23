@@ -1,4 +1,5 @@
 import * as React from "react";
+import { act } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   cleanup,
@@ -30,7 +31,7 @@ import {
 import { AssistantRow } from "./rows/AssistantRow";
 import { NoticeRow } from "./rows/NoticeRow";
 import { ThoughtRow } from "./rows/ThoughtRow";
-import { ToolRow } from "./rows/ToolRow";
+import { DONE_FLASH_MS, ToolRow } from "./rows/ToolRow";
 import { TurnFooter } from "./rows/TurnFooter";
 import { UserRow } from "./rows/UserRow";
 import {
@@ -227,21 +228,41 @@ describe("AssistantRow", () => {
 });
 
 describe("ThoughtRow", () => {
-  it("is collapsed by default, shows the duration, expands to markdown", () => {
+  it("is collapsed by default, says how long it thought, expands to markdown", () => {
     const item = as(thoughtItem(1, "deep *thought*"), "thought");
     render(<ThoughtRow item={item} />);
-    expect(screen.getByRole("button").textContent).toContain("思考 · 12 s");
+    // 结束后固定成「思考了 12 s」，没有微光。
+    expect(screen.getByRole("button").textContent).toBe("思考了 12 s");
+    expect(
+      document.querySelector("[data-slot=shimmer]")?.className,
+    ).not.toContain("anim-shimmer");
     expect(screen.queryByText(/deep/)).toBeNull();
     fireEvent.click(screen.getByRole("button"));
     expect(screen.getByText(/deep/)).toBeTruthy();
   });
 
-  it("shows a spinner in the title while streaming", () => {
-    const item = as(thoughtItem(1, "partial", 0, true), "thought");
+  it("shimmers the label and counts up while streaming", () => {
+    const item = {
+      ...as(thoughtItem(1, "partial", 0, true), "thought"),
+      at: 1_000,
+    };
+    render(<ThoughtRow item={item} now={13_000} />);
+    const row = document.querySelector("[data-streaming]")!;
+    const shimmer = row.querySelector("[data-slot=shimmer]") as HTMLElement;
+    expect(shimmer.className).toContain("anim-shimmer");
+    expect(shimmer.textContent).toBe("思考");
+    expect(row.textContent).toBe("思考12 s");
+    // 不再用转圈，微光就是「还在想」。
+    expect(row.querySelector("[data-slot=spinner]")).toBeNull();
+  });
+
+  it("falls back to the plain label when a finished thought has no duration", () => {
+    const item = {
+      ...as(thoughtItem(1, "old"), "thought"),
+      durationMs: undefined,
+    };
     render(<ThoughtRow item={item} />);
-    expect(
-      document.querySelector("[data-streaming] [data-slot=spinner]"),
-    ).toBeTruthy();
+    expect(screen.getByRole("button").textContent).toBe("思考");
   });
 });
 
@@ -537,6 +558,25 @@ describe("PlanBar", () => {
     expect(
       document.querySelectorAll("[data-slot=timeline-plan-list] li"),
     ).toHaveLength(3);
+    // 步骤前是状态圆点：完成 / 进行中 / 排队。
+    expect(
+      [
+        ...document.querySelectorAll(
+          "[data-slot=timeline-plan-list] [data-slot=status-dot]",
+        ),
+      ].map((dot) => dot.getAttribute("data-tone")),
+    ).toEqual(["done", "working", "queued"]);
+  });
+
+  it("draws progress as a 20-cell tick bar", () => {
+    render(<PlanBar plan={plan} />);
+    const bar = document.querySelector("[data-slot=progress]")!;
+    expect(bar.getAttribute("data-variant")).toBe("ticks");
+    expect(bar.querySelectorAll("[data-slot=progress-tick]")).toHaveLength(20);
+    // 1 / 3 ≈ 33% → 7 格亮
+    expect(
+      bar.querySelectorAll("[data-slot=progress-tick][data-filled=true]"),
+    ).toHaveLength(7);
   });
 
   it("renders nothing without a plan", () => {
@@ -607,5 +647,89 @@ describe("NoticeRow and TurnFooter", () => {
 
     const { container } = render(<TurnFooter item={footer({})} />);
     expect(container.textContent).toBe("");
+  });
+});
+
+describe("ToolRow 界面（设计系统 §5.1）", () => {
+  const row = (patch: Partial<TimelineToolItem> = {}) =>
+    toolItem(1, "t1", patch);
+
+  it("is a 28px row with a monospace tool name", () => {
+    render(<ToolRow item={row({ title: "pnpm test" })} />);
+    const button = screen.getByRole("button");
+    expect(button.getAttribute("data-size")).toBe("sm");
+    const name = screen.getByText("pnpm test");
+    expect(name.className).toContain("font-mono");
+    expect(name.className).toContain("text-meta");
+  });
+
+  it("shimmers the name and spins only while running", () => {
+    const { rerender } = render(
+      <ToolRow item={row({ status: "in_progress" })} />,
+    );
+    expect(document.querySelector("[data-slot=shimmer]")?.className).toContain(
+      "anim-shimmer",
+    );
+    expect(
+      document.querySelector("[data-slot=spinner][data-state=spinning]"),
+    ).toBeTruthy();
+    rerender(<ToolRow item={row({ status: "completed" })} />);
+    expect(
+      document.querySelector("[data-slot=shimmer]")?.className,
+    ).not.toContain("anim-shimmer");
+  });
+
+  it("closes a run into a check mark that then gives way to the kind icon", () => {
+    vi.useFakeTimers();
+    try {
+      const { rerender } = render(
+        <ToolRow item={row({ status: "in_progress" })} />,
+      );
+      rerender(<ToolRow item={row({ status: "completed", endedAt: 2000 })} />);
+      expect(
+        document.querySelector("[data-slot=spinner][data-state=done]"),
+      ).toBeTruthy();
+      act(() => void vi.advanceTimersByTime(DONE_FLASH_MS + 10));
+      expect(document.querySelector("[data-slot=spinner]")).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("does not flash a check for a row that was already finished", () => {
+    render(<ToolRow item={row({ status: "completed" })} />);
+    expect(document.querySelector("[data-slot=spinner]")).toBeNull();
+  });
+
+  it("sums +N −M over the diffs and uses the line counts of truncated ones", () => {
+    render(
+      <ToolRow
+        item={row({
+          toolKind: "edit",
+          content: [
+            {
+              type: "diff",
+              path: "/repo/a.ts",
+              oldText: "a\n",
+              newText: "b\nc\n",
+            },
+            {
+              type: "diff",
+              path: "/repo/big.ts",
+              truncated: true,
+              addedLines: 10,
+              removedLines: 4,
+            },
+          ],
+        })}
+      />,
+    );
+    expect(
+      screen.getByRole("button").querySelector("[data-slot=diff-counts]")
+        ?.textContent,
+    ).toBe("+12−5");
+    cleanup();
+    render(<ToolRow item={row({ toolKind: "read" })} />);
+    expect(document.querySelector("[data-slot=diff-counts]")).toBeNull();
   });
 });

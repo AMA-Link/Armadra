@@ -35,10 +35,10 @@ export function TerminalBlock({
   return (
     <div
       data-slot="timeline-terminal"
-      className="overflow-hidden rounded-[var(--r-control)] bg-[var(--surface-sunken)]"
+      className="overflow-hidden rounded-control bg-sunken"
     >
       {(command !== undefined || exitCode !== undefined) && (
-        <div className="flex items-center gap-2 border-b border-[var(--border)] px-2 py-1 font-mono text-xs">
+        <div className="flex items-center gap-2 border-b border-border px-2 py-1 font-mono text-meta">
           <span className="text-muted-foreground">$</span>
           <span className="min-w-0 flex-1 truncate" title={command}>
             {command}
@@ -47,7 +47,8 @@ export function TerminalBlock({
             <Badge
               variant={failed ? "destructive" : "outline"}
               data-slot="timeline-exit"
-              className="shrink-0 tabular-nums"
+              size="sm"
+              className="shrink-0"
             >
               {t("timeline.terminal.exit", { code: exitCode })}
             </Badge>
@@ -55,7 +56,7 @@ export function TerminalBlock({
         </div>
       )}
       {truncated && (
-        <div className="px-2 pt-1 text-[length:var(--text-caption)] text-muted-foreground">
+        <div className="px-2 pt-1 text-caption text-muted-foreground">
           {originalBytes !== undefined
             ? t("timeline.truncated.of", { size: formatBytes(originalBytes) })
             : t("timeline.truncated")}
@@ -63,7 +64,7 @@ export function TerminalBlock({
       )}
       {(output ?? "") !== "" && (
         <ScrollArea className="max-h-64">
-          <pre className="px-2 py-1 font-mono text-xs break-words whitespace-pre-wrap">
+          <pre className="px-2 py-1 font-mono text-meta break-words whitespace-pre-wrap">
             {spans.map((span, index) => (
               <span
                 key={index}

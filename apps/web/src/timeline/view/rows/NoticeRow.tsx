@@ -27,7 +27,7 @@ function NoticeRowImpl({ item }: NoticeRowProps) {
     <div
       data-slot="timeline-notice"
       data-notice={item.code}
-      className="flex items-center gap-2 py-0.5 text-[11px] text-muted-foreground"
+      className="flex items-center gap-2 py-0.5 text-caption text-muted-foreground"
     >
       <Separator className="flex-1" />
       <span className="max-w-[70%] truncate">

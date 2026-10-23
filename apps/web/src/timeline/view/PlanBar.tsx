@@ -1,10 +1,11 @@
-import { Check, ChevronDown, Circle, CircleDot } from "lucide-react";
+import { ChevronDown } from "lucide-react";
 import type { TimelinePlanEntry, TimelinePlanItem } from "@armadra/shared";
 
 import { useT } from "@/app/preferences-store";
 import { Button } from "@/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/ui/popover";
 import { Progress } from "@/ui/progress";
+import { StatusDot, type StatusTone } from "@/ui/status-pill";
 
 export function planProgress(entries: readonly TimelinePlanEntry[]): {
   done: number;
@@ -19,12 +20,16 @@ export function planProgress(entries: readonly TimelinePlanEntry[]): {
   return { done, total: entries.length, current };
 }
 
-function EntryIcon({ status }: { status: string | undefined }) {
-  if (status === "completed")
-    return <Check className="text-[var(--success)]" />;
-  if (status === "in_progress")
-    return <CircleDot className="text-[var(--brand-text)]" />;
-  return <Circle className="text-muted-foreground" />;
+/** 步骤状态 → 圆点色调：完成 / 进行中 / 其余排队。 */
+export function toneOfEntry(status: string | undefined): StatusTone {
+  if (status === "completed") return "done";
+  if (status === "in_progress") return "working";
+  return "queued";
+}
+
+function EntryDot({ status }: { status: string | undefined }) {
+  const tone = toneOfEntry(status);
+  return <StatusDot tone={tone} size={6} pulse={false} />;
 }
 
 /** 会话顶部的计划条：当前项与进度（x / n），点开是清单。 */
@@ -45,14 +50,23 @@ export function PlanBar({
           size="sm"
           data-slot="timeline-plan-bar"
           aria-label={t("timeline.plan")}
-          className="h-8 w-full min-w-0 justify-start gap-2 px-2 font-normal"
+          className="w-full min-w-0 justify-start gap-2 px-2 font-normal"
         >
-          <EntryIcon status={current?.status} />
-          <span className="min-w-0 flex-1 truncate text-left text-xs">
+          <EntryDot status={current?.status} />
+          <span className="min-w-0 flex-1 truncate text-left text-meta">
             {current?.content}
           </span>
-          <Progress value={(done / total) * 100} className="w-16 shrink-0" />
-          <span className="shrink-0 text-[length:var(--text-caption)] text-muted-foreground tabular-nums">
+          <Progress
+            variant="ticks"
+            tone="brand"
+            value={(done / total) * 100}
+            aria-hidden
+            className="w-24 shrink-0"
+          />
+          <span
+            data-numeric
+            className="shrink-0 font-mono text-caption text-muted-foreground"
+          >
             {done} / {total}
           </span>
           <ChevronDown className="text-muted-foreground" />
@@ -64,9 +78,9 @@ export function PlanBar({
             <li
               key={index}
               data-status={entry.status}
-              className="flex items-start gap-2 text-xs [&_svg]:mt-0.5 [&_svg]:size-3.5 [&_svg]:shrink-0"
+              className="flex items-start gap-2 text-meta [&>[data-slot=status-dot]]:mt-[5px]"
             >
-              <EntryIcon status={entry.status} />
+              <EntryDot status={entry.status} />
               <span
                 className={
                   entry.status === "completed"

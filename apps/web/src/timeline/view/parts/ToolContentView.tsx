@@ -1,9 +1,8 @@
 import type { TimelineToolContent } from "@armadra/shared";
 
 import { useT } from "@/app/preferences-store";
-import { DiffBlock } from "@/acp/DiffBlock";
+import { DiffBlock, DiffCounts } from "@/acp/DiffBlock";
 import { formatBytes } from "@/lib/format";
-import { Badge } from "@/ui/badge";
 import { useTimelineServices } from "../services";
 import { CodeBlock } from "./CodeBlock";
 import { ImagePart } from "./ImagePart";
@@ -29,7 +28,7 @@ export function ToolContentView({
       return (
         <div className="flex flex-col gap-0.5">
           {content.truncated && (
-            <span className="text-[length:var(--text-caption)] text-muted-foreground">
+            <span className="text-caption text-muted-foreground">
               {content.originalBytes !== undefined
                 ? t("timeline.truncated.of", {
                     size: formatBytes(content.originalBytes),
@@ -45,17 +44,15 @@ export function ToolContentView({
         return (
           <div
             data-slot="timeline-diff-summary"
-            className="flex items-center gap-2 font-mono text-xs"
+            className="flex items-center gap-2 font-mono text-meta"
           >
             <span className="min-w-0 truncate" title={content.path}>
               {content.path}
             </span>
-            <Badge variant="outline" className="tabular-nums">
-              +{content.addedLines ?? 0}
-            </Badge>
-            <Badge variant="outline" className="tabular-nums">
-              −{content.removedLines ?? 0}
-            </Badge>
+            <DiffCounts
+              additions={content.addedLines ?? 0}
+              deletions={content.removedLines ?? 0}
+            />
           </div>
         );
       }

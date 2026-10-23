@@ -168,7 +168,7 @@ export function VirtualTurnList<T>({
           size="icon-sm"
           aria-label={t("timeline.toBottom")}
           data-slot="timeline-to-bottom"
-          className="absolute right-3 bottom-3 rounded-full shadow-sm"
+          className="absolute right-3 bottom-3 rounded-pill shadow-overlay"
           onClick={toBottom}
         >
           <ArrowDown />

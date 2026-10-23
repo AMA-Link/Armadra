@@ -70,13 +70,13 @@ export const ActivityGroup = React.memo(function ActivityGroup({
         <Button
           variant="ghost"
           size="sm"
-          className="h-7 w-full min-w-0 justify-start gap-1.5 px-2 font-normal text-muted-foreground"
+          className="w-full min-w-0 justify-start gap-1.5 px-2 font-normal text-muted-foreground"
         >
           {open ? <ChevronDown /> : <ChevronRight />}
-          <span className="min-w-0 truncate text-xs">
+          <span className="min-w-0 truncate text-meta">
             {summaryLabel(entry.summary, t)}
           </span>
-          {entry.running && <Spinner aria-hidden className="size-3" />}
+          {entry.running && <Spinner size={12} />}
         </Button>
       </CollapsibleTrigger>
       <CollapsibleContent className="flex flex-col gap-0.5">
