@@ -4,6 +4,7 @@ import type { RouteId, RouteMatch } from "../router";
 import { navigate } from "../router";
 import { DevicePage } from "./DevicePage";
 import { InvitePage } from "./InvitePage";
+import { LinkPage } from "./LinkPage";
 import { LoginPage } from "./LoginPage";
 import { RegisterPage } from "./RegisterPage";
 import { ResetPage } from "./ResetPage";
@@ -18,6 +19,7 @@ const PUBLIC_PAGES: ReadonlySet<RouteId> = new Set([
   "reset",
   "invite",
   "device",
+  "join",
 ]);
 
 export const hasPublicPage = (match: RouteMatch | null): match is RouteMatch =>
@@ -33,15 +35,18 @@ function landing(match: RouteMatch): string {
 /**
  * 公开页的分发。`finish(path)` 由上层给：清缓存、重新取会话、再跳转。
  *
- * 邮件链接的令牌在 `#` 片段里：挂载时读进内存并立刻从地址栏移除。邀请要穿过登录 / 注册再回来，
- * 所以它留在这一层的状态里（登录、注册、邀请共用同一个实例），地址里从不再带令牌。
+ * 邮件链接的令牌在 `#` 片段里：挂载时读进内存并立刻从地址栏移除。邀请与分享链接要穿过登录 / 注册再回来，
+ * 所以它留在这一层的状态里（登录、注册、邀请、落地页共用同一个实例），地址里从不再带令牌。
  */
 export function PublicPage({
   match,
   finish,
+  onJoined,
 }: {
   match: RouteMatch;
   finish: (path: string) => void;
+  /** 分享链接加入成功、画布接管（`/j/`，由入口给；没给就回控制台首页）。 */
+  onJoined?: () => void;
 }) {
   const [token] = React.useState(() => fragmentToken());
   React.useEffect(() => stripFragment(), []);
@@ -92,6 +97,22 @@ export function PublicPage({
           onDone={() => finish("/")}
         />
       );
+    case "join": {
+      const id = match.params.linkId ?? "";
+      return (
+        <LinkPage
+          linkId={id}
+          fragment={token}
+          onNeedLogin={() =>
+            navigate(`/login?next=${encodeURIComponent(`/j/${id}`)}`, {
+              replace: true,
+            })
+          }
+          onJoined={onJoined ?? (() => finish("/"))}
+          onDone={() => finish("/")}
+        />
+      );
+    }
     default:
       return null;
   }

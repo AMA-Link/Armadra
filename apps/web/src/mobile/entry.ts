@@ -13,7 +13,7 @@ import { installLocalTransport, localSource } from "../api/source";
 import { isDesktop } from "../platform";
 import { isCompactLayout } from "../platform/layout";
 import { isNativeShell } from "../host/native-session";
-import { detectConsole } from "../cloud/entry";
+import { detectConsole, isSaasOrigin } from "../cloud/entry";
 import {
   detectRelayHost,
   startHostedRelay,
@@ -322,7 +322,18 @@ export function startupTarget(
  */
 export async function prepareEntry(): Promise<Entry> {
   const joinLinkId = joinPageLinkId();
-  if (joinLinkId !== null) return { kind: "join", linkId: joinLinkId };
+  if (joinLinkId !== null) {
+    // SaaS 云端托管的 `/j/`：控制台里的落地页（要登录的链接可以带着片段去登录再回来，
+    // 云端控制台 §3.1.6）；个人中转托管的仍是 `JoinPage`。
+    if (
+      !isNativeShell() &&
+      !RUNTIME_VIA_SERVER_SHELL &&
+      !import.meta.env.DEV &&
+      (await isSaasOrigin())
+    )
+      return { kind: "console", path: globalThis.location.pathname };
+    return { kind: "join", linkId: joinLinkId };
+  }
   if (isNativeApp()) {
     const origin = savedRuntimeOrigin();
     const link = takeLinkFragment();

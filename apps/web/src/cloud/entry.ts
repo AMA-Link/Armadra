@@ -5,9 +5,27 @@ import { underRelayAppPath } from "../sources/hosted";
 const NOT_CONSOLE = /^\/(h|j)(\/|$)/;
 
 /**
- * 这一页是不是 SaaS 控制台（云端控制台 §1.2）：同源的 `/.well-known/armadra-platform`
- * 答 `mode = saas` 且 `webApp` 就是页面来源，路径不是画布与落地页。答控制台路径
- * 或 `null`；问不到当作不是。个人中转的 `/app/` 下不问（那里是中继托管页）。
+ * 这个来源是不是 SaaS 控制台所在（云端控制台 §1.2）：同源的 `/.well-known/armadra-platform`
+ * 答 `mode = saas` 且 `webApp` 就是页面来源。问不到当作不是。
+ */
+export async function isSaasOrigin(
+  location: Pick<Location, "origin"> | undefined = globalThis.location,
+): Promise<boolean> {
+  if (location === undefined) return false;
+  const info = await cloudPlatformInfo(location.origin, {
+    timeoutMs: 2_500,
+  }).catch(() => null);
+  if (info === null || info.mode !== "saas") return false;
+  try {
+    return new URL(info.webApp ?? "").origin === location.origin;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * 这一页是不是 SaaS 控制台：来源是控制台（{@link isSaasOrigin}），路径不是画布与落地页。
+ * 答控制台路径或 `null`。个人中转的 `/app/` 下不问（那里是中继托管页）。
  */
 export async function detectConsole(
   location:
@@ -20,15 +38,5 @@ export async function detectConsole(
     NOT_CONSOLE.test(location.pathname)
   )
     return null;
-  const info = await cloudPlatformInfo(location.origin, {
-    timeoutMs: 2_500,
-  }).catch(() => null);
-  if (info === null || info.mode !== "saas") return null;
-  try {
-    return new URL(info.webApp ?? "").origin === location.origin
-      ? location.pathname
-      : null;
-  } catch {
-    return null;
-  }
+  return (await isSaasOrigin(location)) ? location.pathname : null;
 }

@@ -193,6 +193,16 @@ const HANDLERS: Readonly<Record<string, Handler>> = {
     state.decided.add(openDeviceRequest(input, state));
     return {};
   },
+  "links.accept": (input, state, options) => {
+    if (input.linkId === MOCK_LINK.gone)
+      throw new CloudConsoleError("link_invalid", 404);
+    if (options.linkRequiresAccount && !state.signedIn)
+      throw new CloudConsoleError("anonymous_links_disabled", 403);
+    return {
+      ...(golden("links.accept") as object),
+      guestSession: SESSION.session,
+    };
+  },
   "links.get": (input, _state, options) => {
     if (input.linkId === MOCK_LINK.gone)
       throw new CloudConsoleError("link_invalid", 404);
