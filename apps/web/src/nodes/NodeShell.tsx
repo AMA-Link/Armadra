@@ -420,7 +420,6 @@ function NodeStatus({
             size="xs"
             data-no-drag="true"
             data-slot="node-status-trigger"
-            aria-label={status.label}
             className="px-1"
           >
             {mark}

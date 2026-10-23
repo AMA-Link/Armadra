@@ -379,6 +379,30 @@ describe("TerminalNode body", () => {
     expect(screen.queryByRole("button", { name: "允许" })).toBeNull();
   });
 
+  it("opens a status popover on Agent nodes only: the stage line, no tree without subordinates", () => {
+    useAgentStatusStore.setState({
+      statuses: {
+        [scoped("n1")]: {
+          nodeId: "n1",
+          workspaceId: "w",
+          agentId: "codex",
+          state: "working",
+          unread: false,
+          verified: true,
+          restored: false,
+          updatedAt: "2026-10-03T00:00:00.000Z",
+        },
+      } as never,
+    });
+    renderNode(terminalNode({ kind: "terminal", agent: { id: "codex" } }));
+    fireEvent.click(
+      document.querySelector('[data-slot="node-status-trigger"]')!,
+    );
+    const popover = document.querySelector('[data-slot="node-status-popover"]');
+    expect(popover?.querySelector('[data-slot="status-line"]')).toBeTruthy();
+    expect(popover?.querySelector('[data-slot="agent-tree"]')).toBeNull();
+  });
+
   it("puts the running workflow step in front of the status pill", () => {
     useWorkflowNodeSteps.setState({ steps: { n1: 2 } });
     renderNode(terminalNode({ kind: "terminal", agent: { id: "codex" } }));
