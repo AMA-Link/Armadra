@@ -5,6 +5,7 @@ import { cloudContract } from "@armadra/platform-protocol/cloud-api";
 
 import { CloudConsoleError, toCloudError } from "./errors";
 import { createRefreshCoordinator } from "./refresh-lock";
+import { openMeStream } from "./stream";
 import {
   createCloudFetch,
   createCsrfStore,
@@ -163,6 +164,14 @@ export function createCloudApi(options: CreateCloudApiOptions): CloudApi {
       active: () => opsCsrf.get() !== undefined,
       subscribe: opsCsrf.subscribe,
     },
+    stream: (handlers) =>
+      openMeStream(
+        {
+          origin: options.origin,
+          ticket: () => client.me.streamTicket({}),
+        },
+        handlers,
+      ),
     onSessionLost(listener) {
       lost.add(listener);
       return () => lost.delete(listener);

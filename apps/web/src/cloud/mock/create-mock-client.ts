@@ -1,19 +1,30 @@
 import {
   cloudContract,
   listProcedures,
+  type MeStreamEvent,
   type ProcedureEntry,
 } from "@armadra/platform-protocol/cloud-api";
 import { errorStatus, isErrorCode } from "@armadra/platform-protocol/errors";
 
 import type { CloudClient } from "../api/client";
 import { CloudConsoleError } from "../api/errors";
-import { createCsrfStore, type CloudApi } from "../api/session";
+import {
+  createCsrfStore,
+  type CloudApi,
+  type StreamHandlers,
+} from "../api/session";
+import {
+  applyEventToDirectory,
+  createDirectoryState,
+  DIRECTORY_HANDLERS,
+  type DirectoryOptions,
+  type DirectoryState,
+} from "./directory";
 import {
   GOLDEN_OPS_TEAM,
   MOCK_ACCOUNT,
   MOCK_DEVICE_CODES,
   MOCK_DEVICE_REQUEST,
-  MOCK_HOSTS,
   MOCK_OPS_ACCOUNTS,
   MOCK_OPS_NODES,
   MOCK_LINK,
@@ -28,7 +39,7 @@ import {
  * 账号、空间、主机与登录由下面的处理器带状态地答；其余过程答协议包夹具里的那份黄金样本
  * （各页批次里再换成带状态的实现）。只在 DEV 与测试里被 import。
  */
-export interface MockOptions {
+export interface MockOptions extends DirectoryOptions {
   /** 每次调用的延迟（毫秒）。 */
   readonly latencyMs?: number;
   /** 指定过程失败：`{ "sources.list": "limit_reached" }`（`?mockFail=sources.list:limit_reached`）。 */
@@ -114,6 +125,8 @@ interface State {
   admin: AdminState;
   /** 已提权（`auth.stepUp` 成功过）。 */
   elevated: boolean;
+  /** 个人空间页的数据：主机目录、链接、设备、安全日志。 */
+  directory: DirectoryState;
   /** 已批准或拒绝的设备码（之后答 `not_found`，与云端一致）。 */
   decided: Set<string>;
 }
@@ -462,26 +475,20 @@ const HANDLERS: Readonly<Record<string, Handler>> = {
       })),
     ],
   }),
-  "sources.list": (input) => {
-    const space = input.space as { kind: string; teamId?: string } | undefined;
-    const status = input.status as string | undefined;
-    const q = typeof input.q === "string" ? input.q.toLowerCase() : "";
-    const sources = MOCK_HOSTS.filter((row) => {
-      const inSpace =
-        space === undefined ||
-        (space.kind === "personal"
-          ? row.space === undefined
-          : row.space?.kind === "team" && row.space.teamId === space.teamId);
-      return (
-        inSpace &&
-        (status === undefined || (status === "online") === row.online) &&
-        row.name.toLowerCase().includes(q)
-      );
-    });
-    return { sources, nextCursor: null };
+  ...Object.fromEntries(
+    Object.entries(DIRECTORY_HANDLERS).map(([key, handler]) => [
+      key,
+      ((input, state) => handler(input, state.directory)) as Handler,
+    ]),
+  ),
+  "auth.changePassword": (input, state) => {
+    DIRECTORY_HANDLERS["auth.changePassword"]!(input, state.directory);
+    return sessionOf(state);
   },
-  "sources.get": (input) => {
-    const found = MOCK_HOSTS.find((row) => row.sourceId === input.sourceId);
+  "sources.get": (input, state) => {
+    const found = state.directory.hosts.find(
+      (row) => row.sourceId === input.sourceId,
+    );
     if (!found) throw new CloudConsoleError("not_found", 404);
     return { ...(golden("sources.get") as object), ...found };
   },
@@ -541,7 +548,12 @@ async function check(
 }
 
 /** 内存里的客户端束（控制台与运营两个客户端共享同一份状态）。 */
-export function createMockApi(options: MockOptions = {}): CloudApi {
+export type MockApi = CloudApi & {
+  /** 推一条 me-stream 事件（测试与展示页），mock 的状态跟着变。 */
+  emit(event: MeStreamEvent): void;
+};
+
+export function createMockApi(options: MockOptions = {}): MockApi {
   const state: State = {
     signedIn: options.signedIn ?? true,
     operatorSession: options.operatorSession ?? false,
@@ -549,6 +561,7 @@ export function createMockApi(options: MockOptions = {}): CloudApi {
     displayName: MOCK_ACCOUNT.displayName,
     emailVerified: options.emailVerified ?? MOCK_ACCOUNT.emailVerified,
     admin: createAdminState(),
+    directory: createDirectoryState(options),
     elevated: false,
     decided: new Set(),
   };
@@ -630,8 +643,17 @@ export function createMockApi(options: MockOptions = {}): CloudApi {
   };
 
   const client = build(false);
+  const streams = new Set<StreamHandlers>();
   return {
     client,
+    stream(handlers) {
+      streams.add(handlers);
+      return () => streams.delete(handlers);
+    },
+    emit(event) {
+      applyEventToDirectory(state.directory, event);
+      for (const handlers of [...streams]) handlers.onEvent(event);
+    },
     ops: build(true),
     ensureCsrf: async () => state.signedIn,
     invitationPreview: (invitationId, token) =>
