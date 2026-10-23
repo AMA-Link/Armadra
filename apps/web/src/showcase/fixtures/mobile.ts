@@ -37,6 +37,48 @@ export const MOBILE_CONNECTIONS = [
     lastUsedAt: null,
   },
 ] as const satisfies readonly ServiceRow[];
+/** 他人分享的样本（契约 §86）：两个团队各一台、一台个人分享。 */
+const sharedRow = (
+  sourceId: string,
+  name: string,
+  ownerName: string,
+  team?: { teamId: string; teamName: string },
+) =>
+  ({
+    sourceId,
+    name,
+    defaultName: name,
+    local: false,
+    origin: "shared",
+    ownerName,
+    shareRole: "operator",
+    shareExpiresAtMs: 0,
+    ...(team ?? {}),
+    routes: [
+      {
+        via: "relayed",
+        issuer: `https://${MOBILE_RELAY_HOST}`,
+        serviceName: MOBILE_RELAY_HOST,
+      },
+    ],
+    lastUsedAt: null,
+  }) as const satisfies ServiceRow;
+export const MOBILE_TEAM_CONNECTIONS = [
+  ...MOBILE_CONNECTIONS,
+  sharedRow("c0ffee00000000000000000000000001", "build-01", "Alice", {
+    teamId: "team-rd",
+    teamName: "研发组",
+  }),
+  sharedRow("c0ffee00000000000000000000000002", "mac-studio", "Bob", {
+    teamId: "team-rd",
+    teamName: "研发组",
+  }),
+  sharedRow("c0ffee00000000000000000000000003", "render-box", "Carol", {
+    teamId: "team-design",
+    teamName: "设计组",
+  }),
+  sharedRow("c0ffee00000000000000000000000004", "demo", "Dave"),
+] as const satisfies readonly ServiceRow[];
 /** 选择页的在线状态样本。 */
 export const MOBILE_CONNECTION_STATUSES = {
   [MOBILE_CONNECTIONS[0].sourceId]: "online",
@@ -65,6 +107,7 @@ export const MOBILE_SAMPLES = [
   "codeNative",
   "error",
   "list",
+  "teams",
   "add",
   "relay",
   "fingerprint",

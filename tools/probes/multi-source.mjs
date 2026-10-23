@@ -11,6 +11,8 @@
 // 步骤，每步都有断言与截图：
 //   1. 起中继容器、两台 core 各自登记；桌面挂上两个经中继的源，页面重载；
 //   2. 侧栏：本机的工作空间在树里，两个经中继的源各一组（就绪、各列出自己的工作空间）；
+//      2a. 他人分享按团队分小组（契约 §86）：改源表把两个源记成研发组与个人分享，看小组标题、
+//      折叠与展开，再恢复；
 //      2b. 设置 → 远程访问 →「切换服务」对话框（A7-1）：切到服务器后侧栏与「当前服务」
 //      一致，再切回本机；
 //   3. 每个源各开一个终端并回显——先点服务器组，再点 NAT 组，最后点（此时成了一组的）
@@ -44,6 +46,7 @@ import {
 } from "node:fs";
 import { createServer } from "node:http";
 import { join, resolve } from "node:path";
+import { DatabaseSync } from "node:sqlite";
 
 import { NO_RELAY_HINT, findCloudSource } from "./cloud-source.mjs";
 import {
@@ -411,6 +414,66 @@ try {
   );
   await win.capture(join(output, "02-sidebar-groups.png"));
   await noteGroups();
+
+  /* -------- 2b. 他人分享按团队分小组（契约 §86）：改源表的归属与团队，看侧栏 -------- */
+  // 云端的团队主机要真实的 SaaS 控制面，这里只验侧栏怎么画：直接改桌面 core 的
+  // 源表（WAL，core 开着也能写），NAT 源记成研发组的分享、第二台记成个人分享，
+  // 看完恢复，后面的步骤照旧。
+  const sourcesTable = (sql, ...params) => {
+    const database = new DatabaseSync(join(electron.data, "canvas.db"));
+    try {
+      database.exec("PRAGMA busy_timeout = 5000");
+      database.prepare(sql).run(...params);
+    } finally {
+      database.close();
+    }
+  };
+  const teamGroupsNow = () =>
+    win.evaluate(
+      `return [...document.querySelectorAll("[data-team-group]")].map((g) => g.getAttribute("data-team-group"));`,
+    );
+  sourcesTable(
+    "UPDATE client_sources SET origin = 'shared', owner_label = 'Alice', share_role = 'operator', team_id = 'team-rd', team_name = '研发组' WHERE source_id = ?",
+    natId,
+  );
+  sourcesTable(
+    "UPDATE client_sources SET origin = 'shared', owner_label = 'Dave', share_role = 'viewer' WHERE source_id = ?",
+    serverId,
+  );
+  await reloadAfterMount(win);
+  await waitGroupReady(natId, natSeed.workspace.id, "NAT 组（分享）就绪");
+  const teamGroups = await teamGroupsNow();
+  run.check(
+    teamGroups.length === 2 &&
+      teamGroups[0] === "team-rd" &&
+      teamGroups[1] === "",
+    "他人分享：研发组小组在前，个人分享在后",
+    teamGroups,
+  );
+  const teamToggle = `return [...document.querySelectorAll('[data-team-group="team-rd"] button[aria-expanded]')][0]`;
+  await win.capture(join(output, "02b-sidebar-teams.png"));
+  await win.clickOn(teamToggle, "折叠研发组");
+  await win.until(
+    `return !document.querySelector('${group(natId)}')`,
+    "折叠后研发组里的源不再显示",
+  );
+  await win.capture(join(output, "02c-sidebar-teams-collapsed.png"));
+  await win.clickOn(teamToggle, "展开研发组");
+  await win.until(
+    `return !!document.querySelector('${group(natId)}')`,
+    "展开后研发组里的源回来",
+  );
+  sourcesTable(
+    "UPDATE client_sources SET origin = 'mine', owner_label = '', share_role = '', team_id = '', team_name = '' WHERE source_id IN (?, ?)",
+    natId,
+    serverId,
+  );
+  await reloadAfterMount(win);
+  await waitGroupReady(natId, natSeed.workspace.id, "NAT 组恢复就绪");
+  run.check(
+    (await teamGroupsNow()).length === 0,
+    "恢复成自己的电脑后没有团队小组",
+  );
 
   /* -------------------- 3. 每个源各开一个终端并回显 -------------------- */
   await openFromGroup(serverId, serverSeed.workspace.id, "服务器组的工作空间");
