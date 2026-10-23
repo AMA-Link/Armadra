@@ -242,6 +242,9 @@ describe("SettingsDialog", () => {
     // 导航贴在窗口底上（没有边线与卡片），内容是一块独立的 1px 边面板
     expect(nav().className).toContain("settings-navigation");
     expect(nav().className).not.toContain("border-r");
+    // 导航溢出走 ScrollArea（细、悬停才显示），不再露出原生粗滚动条
+    expect(nav().className).not.toContain("overflow-y-auto");
+    expect(nav().closest('[data-slot="scroll-area"]')).not.toBeNull();
     const panel = screen
       .getByTestId("settings-page")
       .closest('[data-slot="settings-panel"]') as HTMLElement;
