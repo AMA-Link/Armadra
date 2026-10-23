@@ -4333,6 +4333,7 @@ App 对每个候选算 `ISK_i` 并核对 `confirm_i(server)`；一个都对不�
 - 经通道的已有会话：会话的 `channel_device_id` 必须等于这条通道的设备钥，且这把钥对会话主体仍是 `trusted`，否则 `401 unauthenticated`。不经通道签的会话进不了通道，经通道签的进不了明文中继路径（§32.3），WebSocket 票（§32.3 第 4 条）同样按兑换它的那条流判。
 - 新设备的屏幕与 core 各自从握手推出同一个 6 位校验码（§78）。主人在本机核对后 `approve`；中间人两侧的校验码必然不同。校验码只在 core 内存里，属于申请它的那条通道；core 重启或通道重建后由新通道重新登记，过期答 `409 sas_expired`。
 - 事件：工作空间事件流（§5）上的 `devices.pending { pendingId, deviceId, label, platform }`（有新的待确认）与 `devices.changed { deviceId }`（批准、拒绝、撤销、删除、改名），发给每块正被人看着的画布，不进 outbox；校验码不在事件里。
+- 上报云端（无形状变化）：登记在 SaaS 签发方（`mode = saas`）的团队成员新设备进入 `pending` 时，core 以源身份调云端 `sources.trustRequest`（`{ pendingId, accountId, deviceId, expiresAtMs }`，`pendingId` 即本节的 `pendingId`，到期 = 校验码有效期，至多 24 小时），批准、拒绝、撤销、重连换号或到期后调 `sources.trustResolve`（`trusted` / `expired`）。个人中转不上报；校验码不出 core。网络失败、429、5xx 有界退避重试，冷却期的 `rejected` 与 404 / 409 / 501 按正常处理，永不阻塞登录。背书只在桌面与原生端进行，网页控制台不提供。
 
 <!-- rpc:begin contract=§77.1 -->
 
