@@ -139,6 +139,21 @@ export interface FakeWorld {
      * `challenge.token === "turnstile-ok"`，其余答 `challenge_invalid`。
      */
     challenge: { siteKey: string; scope: string[] } | null;
+    /** `platform.info.mode`：缺省 personal；SaaS 才有设备码、空间与注册令牌。 */
+    mode: "personal" | "saas";
+    /** 设备码登录的服务端状态（批准前 `pending`）。 */
+    device: {
+      status: "pending" | "approved" | "denied" | "expired";
+      polls: number;
+      /** 下一次轮询答 429 `rate_limited`（一次性）。 */
+      limited: boolean;
+    };
+    spaces: Record<string, unknown>[];
+    /** 下一次取注册令牌答的错误（一次性）。 */
+    tokenRefusal?: { status: number; code: string };
+    registrationTokens: { space: unknown }[];
+    /** 设备码批准的答案发出之前执行（制造竞态）。 */
+    beforeApproved?: () => Promise<void>;
   };
   readonly cores: Map<string, FakeCore>;
   /** 直连 hello 不回答（等超时）。 */
@@ -202,6 +217,10 @@ export function fakeWorld(): FakeWorld {
       ],
       name: "",
       challenge: null,
+      mode: "personal",
+      device: { status: "pending", polls: 0, limited: false },
+      spaces: [{ kind: "personal", plan: "free" }],
+      registrationTokens: [],
     },
     cores,
     slow: new Set(),
@@ -256,7 +275,7 @@ function sessionBody(world: FakeWorld, refreshToken: string, device: string) {
       expiresAtMs: Date.now() + 30 * 86_400_000,
       account: {
         accountId: `acct:${ACCOUNT}`,
-        email: null,
+        email: world.cloud.mode === "saas" ? "ada@example.test" : null,
         displayName: ACCOUNT,
         emailVerified: false,
       },
@@ -294,7 +313,7 @@ async function cloud(
   const input = body(request);
   if (path === "/.well-known/armadra-platform") {
     return json(200, {
-      mode: "personal",
+      mode: world.cloud.mode,
       ...(world.cloud.name === "" ? {} : { name: world.cloud.name }),
       issuer: ISSUER,
       protocol: { major: 0, minor: 1 },
@@ -333,6 +352,51 @@ async function cloud(
       200,
       sessionBody(world, world.cloud.sessions.issue(device), device),
     );
+  }
+  if (path === "/v1/auth/device/start") {
+    world.cloud.device = { status: "pending", polls: 0, limited: false };
+    return json(200, {
+      deviceCode: "device-secret-code",
+      userCode: "ABCD-EFGH",
+      verificationUrl: `${ISSUER}/device`,
+      expiresAtMs: Date.now() + 600_000,
+      intervalMs: 5_000,
+    });
+  }
+  if (path === "/v1/auth/device/poll") {
+    const device = world.cloud.device;
+    device.polls += 1;
+    if (input.deviceCode !== "device-secret-code") {
+      return json(404, { code: "not_found", message: "no" });
+    }
+    if (device.limited) {
+      device.limited = false;
+      return json(429, {
+        code: "rate_limited",
+        message: "slow",
+        details: { retryAfterMs: 7_000 },
+      });
+    }
+    if (device.status !== "approved")
+      return json(200, { status: device.status });
+    await world.cloud.beforeApproved?.();
+    const id = `dev-${Math.random().toString(36).slice(2, 8)}`;
+    return json(200, {
+      status: "approved",
+      ...sessionBody(world, world.cloud.sessions.issue(id), id),
+    });
+  }
+  if (path === "/v1/me/spaces") {
+    return json(200, { spaces: world.cloud.spaces });
+  }
+  if (path === "/v1/sources/registration-tokens") {
+    const refusal = world.cloud.tokenRefusal;
+    if (refusal !== undefined) {
+      world.cloud.tokenRefusal = undefined;
+      return json(refusal.status, { code: refusal.code, message: "no" });
+    }
+    world.cloud.registrationTokens.push({ space: input.space });
+    return json(200, { registrationToken: "reg-token-secret" });
   }
   if (path === "/v1/auth/refresh") {
     const rotated = world.cloud.sessions.rotate(String(input.refreshToken));

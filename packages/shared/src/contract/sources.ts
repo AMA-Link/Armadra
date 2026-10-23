@@ -108,8 +108,55 @@ export const remoteAddInputSchema = z.discriminatedUnion("kind", [
   saasAddInput,
 ]);
 
+/**
+ * SaaS 设备码登录的待办（§33.11）：只含给人看的部分。`deviceCode` 秘密留在 core 内存，
+ * 不进任何答案；`intervalMs` 是服务端要求的最短轮询间隔。
+ */
+export const remoteDeviceCodeSchema = z.object({
+  userCode: z.string(),
+  verificationUrl: z.string(),
+  expiresAtMs: z.number().int(),
+  intervalMs: z.number().int(),
+});
+
 export const remoteAddOutputSchema = protocolRemoteAddOutputSchema.extend({
   remote: remoteServiceSchema,
+  next: z.union([
+    z.literal("ready"),
+    z.object({ deviceCode: remoteDeviceCodeSchema }),
+  ]),
+});
+
+/** `me.spaces` 的一行（§33.11）：个人空间，或所属的一个团队与我在其中的角色。 */
+export const remoteSpaceSchema = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("personal"), plan: z.string() }),
+  z.object({
+    kind: z.literal("team"),
+    teamId: z.string(),
+    slug: z.string(),
+    name: z.string(),
+    role: z.string(),
+    plan: z.string(),
+  }),
+]);
+
+export const remoteSpacesOutputSchema = z.object({
+  spaces: z.array(remoteSpaceSchema),
+});
+
+/** `sources.remoteRegister`（§33.11）：登记到所选空间。 */
+export const remoteRegisterInputSchema = z.object({
+  serviceId: serviceIdInputSchema.shape.serviceId,
+  space: z.discriminatedUnion("kind", [
+    z.object({ kind: z.literal("personal") }),
+    z.object({ kind: z.literal("team"), teamId: z.string().min(1).max(128) }),
+  ]),
+  label: z.string().max(128).optional(),
+});
+
+export const remoteRegisterOutputSchema = z.object({
+  remote: remoteServiceSchema,
+  sourceId: z.string(),
 });
 
 export const sourcesListOutputSchema = protocolSourcesListOutputSchema.extend({
@@ -369,6 +416,7 @@ export const sources = {
       ...denied,
       ...errors.pick(
         "bad_request",
+        "conflict",
         "address_invalid",
         "address_https_only",
         "address_plaintext_loopback_only",
@@ -388,8 +436,78 @@ export const sources = {
   remoteDevicePoll: oc
     .input(serviceIdInputSchema)
     .output(remoteDevicePollOutputSchema)
-    .errors({ ...denied, ...errors.pick("not_found", "not_implemented") })
+    .errors({
+      ...denied,
+      ...errors.pick(
+        "not_found",
+        "rate_limited",
+        "source_unreachable",
+        "not_implemented",
+      ),
+    })
     .meta(write("§33.2", "POST", "/api/sources/remotes/{serviceId}/poll")),
+  /** Armadra 云：登录后可登记的空间（`me.spaces`，§33.11）。 */
+  remoteSpaces: oc
+    .input(serviceIdInputSchema)
+    .output(remoteSpacesOutputSchema)
+    .errors({
+      ...denied,
+      ...errors.pick(
+        "not_found",
+        "source_unauthorized",
+        "source_unreachable",
+        "not_implemented",
+      ),
+    })
+    .meta(
+      meta({
+        scope: "settings:read",
+        since: "1.50",
+        contract: "§33.11",
+        legacy: {
+          method: "GET",
+          path: "/api/sources/remotes/{serviceId}/spaces",
+        },
+      }),
+    ),
+  /** Armadra 云：按所选空间取注册令牌并把本机登记进去（§33.11）。 */
+  remoteRegister: oc
+    .input(remoteRegisterInputSchema)
+    .output(remoteRegisterOutputSchema)
+    .errors({
+      ...denied,
+      ...errors.pick(
+        "bad_request",
+        "not_found",
+        "conflict",
+        "rate_limited",
+        "limit_reached",
+        "source_unauthorized",
+        "source_unreachable",
+        "cloud_already_registered",
+        "cloud_issuer_mismatch",
+        "registration_token_invalid",
+        "protocol_unsupported",
+        "email_unverified",
+        "team_role_insufficient",
+        "team_policy_denied",
+        "host_registration_disabled",
+        "team_suspended",
+        "team_deleted",
+        "not_implemented",
+      ),
+    })
+    .meta(
+      meta({
+        scope: "settings:write",
+        since: "1.50",
+        contract: "§33.11",
+        legacy: {
+          method: "POST",
+          path: "/api/sources/remotes/{serviceId}/register",
+        },
+      }),
+    ),
   /** 改远程服务的显示名，只在本机；空串恢复成它报的名字（§61）。 */
   remoteUpdate: oc
     .input(remoteUpdateInputSchema)

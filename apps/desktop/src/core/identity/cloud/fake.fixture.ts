@@ -50,7 +50,11 @@ export interface FakeRelayWorld {
   jwksDown: boolean;
   jwksFetches: number;
   /** 下一次登记答的错误码（一次性）。 */
-  refuseRegister?: { status: number; code: string };
+  refuseRegister?: {
+    status: number;
+    code: string;
+    details?: Record<string, unknown>;
+  };
 }
 
 export function fakeRelayWorld(issuer = ISSUER): FakeRelayWorld {
@@ -89,7 +93,13 @@ export function fakeRelayWorld(issuer = ISSUER): FakeRelayWorld {
           world.refuseRegister = undefined;
           return {
             status: refusal.status,
-            body: { code: refusal.code, message: "refused" },
+            body: {
+              code: refusal.code,
+              message: "refused",
+              ...(refusal.details === undefined
+                ? {}
+                : { details: refusal.details }),
+            },
           };
         }
         if (body.registrationToken !== REGISTRATION_TOKEN) {
