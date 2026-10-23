@@ -1,5 +1,4 @@
 import * as React from "react";
-import { toast } from "sonner";
 import type {
   AcpElicitationAction,
   AcpElicitationAnswer,
@@ -10,15 +9,15 @@ import type {
 import { useT } from "@/app/preferences-store";
 import { useAgentStatusStore } from "@/agent/status-store";
 import {
-  APPROVAL_BUTTON,
   ApprovalActions,
   ApprovalShell,
   ApprovalText,
   ApprovalTitle,
   AwaitingDriver,
+  useApprovalSize,
 } from "@/approval/ApprovalShell";
 import { Button } from "@/ui/button";
-import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/ui/field";
+import { Field, FieldGroup, FieldLabel } from "@/ui/field";
 import { Input } from "@/ui/input";
 import {
   Select,
@@ -28,6 +27,7 @@ import {
   SelectValue,
 } from "@/ui/select";
 import { Switch } from "@/ui/switch";
+import { toast } from "@/ui/toast";
 import { acpApi } from "./api";
 import { useAnsweredStore } from "./answered";
 import type { AcpElicitationView } from "./approval-views";
@@ -131,9 +131,11 @@ function FormField({
   field,
   value,
   required,
+  size,
   onChange,
 }: {
   id: string;
+  size: "default" | "touch";
   name: string;
   field: AcpElicitationField;
   value: Value;
@@ -141,8 +143,9 @@ function FormField({
   onChange: (value: Value) => void;
 }) {
   const label = field.title ?? name;
+  // Agent 给的字段说明是要回答的内容本身（不是界面自己的解释文字），照原样放在字段下面。
   const description = field.description ? (
-    <FieldDescription className="text-xs">{field.description}</FieldDescription>
+    <span className="text-meta text-muted-foreground">{field.description}</span>
   ) : null;
 
   if (field.type === "boolean") {
@@ -154,7 +157,7 @@ function FormField({
           checked={value === true}
           onCheckedChange={(checked) => onChange(checked)}
         />
-        <FieldLabel htmlFor={id} className="text-[13px] font-normal">
+        <FieldLabel htmlFor={id} className="text-body font-normal">
           {label}
         </FieldLabel>
       </Field>
@@ -162,7 +165,7 @@ function FormField({
   }
 
   const labelNode = (
-    <FieldLabel htmlFor={id} className="text-[13px] font-normal">
+    <FieldLabel htmlFor={id} className="text-body font-normal">
       {label}
       {required && <span aria-hidden>*</span>}
     </FieldLabel>
@@ -177,11 +180,7 @@ function FormField({
           value={typeof value === "string" && value !== "" ? value : undefined}
           onValueChange={onChange}
         >
-          <SelectTrigger
-            id={id}
-            size="sm"
-            className="w-full text-[13px] pointer-coarse:h-10"
-          >
+          <SelectTrigger id={id} size={size} className="w-full">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -217,8 +216,7 @@ function FormField({
         type={type}
         value={typeof value === "string" ? value : ""}
         required={required}
-        // 手机上沿用输入框默认的 16px：小于 16px，iOS 聚焦时会放大整页。
-        className="h-8 md:text-[13px] pointer-coarse:h-10"
+        size={size}
         aria-invalid={fieldValid(field, value) ? undefined : true}
         {...(numeric
           ? {
@@ -255,6 +253,7 @@ export function ElicitationCard({
   onAnswered?: () => void;
 }) {
   const t = useT();
+  const size = useApprovalSize();
   const idBase = React.useId();
   const titleId = `${idBase}-title`;
   const cardRef = React.useRef<HTMLDivElement>(null);
@@ -313,6 +312,7 @@ export function ElicitationCard({
                   field={field}
                   value={values[name] ?? ""}
                   required={required.has(name)}
+                  size={size}
                   onChange={(value) =>
                     setValues((previous) => ({ ...previous, [name]: value }))
                   }
@@ -326,50 +326,49 @@ export function ElicitationCard({
               target="_blank"
               rel="noopener noreferrer"
               title={url}
-              className="truncate text-xs text-[var(--brand-text)] underline underline-offset-4"
+              className="truncate font-mono text-meta text-brand-text underline underline-offset-4"
             >
               {url}
             </a>
           )}
           <ApprovalActions
             leading={
-              accept ? (
-                <Button
-                  type="submit"
-                  size="sm"
-                  className={APPROVAL_BUTTON}
-                  disabled={busy || !canAccept}
-                >
-                  {t(
-                    elicitation.mode === "url"
-                      ? "acp.elicitation.continue"
-                      : "acp.elicitation.submit",
-                  )}
-                </Button>
-              ) : null
+              <Button
+                type="button"
+                size={size}
+                variant="ghost"
+                disabled={busy}
+                onClick={() => void send("cancel")}
+              >
+                {t("acp.elicitation.cancel")}
+              </Button>
             }
             trailing={
               <>
                 <Button
                   type="button"
-                  size="sm"
+                  size={size}
                   variant="outline"
-                  className={APPROVAL_BUTTON}
                   disabled={busy}
                   onClick={() => void send("decline")}
                 >
                   {t("acp.elicitation.decline")}
                 </Button>
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="ghost"
-                  className={APPROVAL_BUTTON}
-                  disabled={busy}
-                  onClick={() => void send("cancel")}
-                >
-                  {t("acp.elicitation.cancel")}
-                </Button>
+                {accept && (
+                  <Button
+                    type="submit"
+                    size={size}
+                    shortcut="↵"
+                    loading={busy}
+                    disabled={!canAccept}
+                  >
+                    {t(
+                      elicitation.mode === "url"
+                        ? "acp.elicitation.continue"
+                        : "acp.elicitation.submit",
+                    )}
+                  </Button>
+                )}
               </>
             }
           />

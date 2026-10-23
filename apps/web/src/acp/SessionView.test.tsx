@@ -539,10 +539,10 @@ describe("SessionView", () => {
     expect((await screen.findAllByText("rm -rf dist")).length).toBeGreaterThan(
       0,
     );
-    fireEvent.click(await screen.findByRole("button", { name: "本次允许" }));
+    fireEvent.click(await screen.findByRole("button", { name: /^允许/ }));
     expect(api.answer).toHaveBeenCalledWith("n1-1-acp-t2", "allow", "ok");
     // 答过的卡先收起，不等回执。
-    expect(screen.queryByRole("button", { name: "本次允许" })).toBeNull();
+    expect(screen.queryByRole("button", { name: /^允许/ })).toBeNull();
 
     push({
       op: "put",
@@ -586,7 +586,7 @@ describe("SessionView", () => {
     expect(await screen.findByText("hello")).toBeTruthy();
     expect(screen.getByText("hi there")).toBeTruthy();
     expect(screen.getAllByText("write a.ts").length).toBeGreaterThan(0);
-    expect(screen.getByRole("button", { name: "始终允许" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: /^始终允许/ })).toBeTruthy();
     expect(screen.getByLabelText("模式")).toBeTruthy();
   });
 
@@ -952,7 +952,7 @@ describe("SessionView", () => {
       }),
     } as never);
     expect(await screen.findByText("Pick a color")).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "提交" }));
+    fireEvent.click(screen.getByRole("button", { name: /^提交/ }));
     await waitFor(() =>
       expect(api.answerElicitation).toHaveBeenCalledWith("n1-1-acp-e1", {
         action: "accept",

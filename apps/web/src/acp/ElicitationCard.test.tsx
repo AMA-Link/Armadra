@@ -105,7 +105,7 @@ describe("ElicitationCard", () => {
     );
     render(<ElicitationCard view={view} canAnswer />);
     const submit = screen.getByRole("button", {
-      name: "提交",
+      name: /^提交/,
     }) as HTMLButtonElement;
     expect(submit.disabled).toBe(true);
     fireEvent.change(screen.getByLabelText(/Name/), {
@@ -163,7 +163,7 @@ describe("ElicitationCard", () => {
         canAnswer
       />,
     );
-    expect(screen.queryByRole("button", { name: "提交" })).toBeNull();
+    expect(screen.queryByRole("button", { name: /^提交/ })).toBeNull();
     expect(screen.getByRole("button", { name: "拒绝" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "取消" })).toBeTruthy();
   });
@@ -185,7 +185,7 @@ describe("ElicitationCard", () => {
     const link = screen.getByRole("link") as HTMLAnchorElement;
     expect(link.href).toBe("https://example.com/auth");
     expect(link.rel).toContain("noopener");
-    fireEvent.click(screen.getByRole("button", { name: "继续" }));
+    fireEvent.click(screen.getByRole("button", { name: /^继续/ }));
     await waitFor(() =>
       expect(api.answerElicitation).toHaveBeenCalledWith("e3", {
         action: "accept",
@@ -203,12 +203,12 @@ describe("ElicitationCard", () => {
     );
   });
 
-  it("submit leads, decline and cancel sit apart at the end", () => {
+  it("cancel sits apart at the start, decline and the primary submit at the end", () => {
     render(<ElicitationCard view={view} canAnswer />);
     const [lead, tail] = document.querySelectorAll(
       "[data-slot=approval-actions] > div",
     ) as unknown as [HTMLElement, HTMLElement];
-    expect(lead.textContent).toBe("提交");
+    expect(lead.textContent).toBe("取消");
     expect(
       [...tail.querySelectorAll("button")].map((button) => [
         button.textContent,
@@ -216,7 +216,7 @@ describe("ElicitationCard", () => {
       ]),
     ).toEqual([
       ["拒绝", "outline"],
-      ["取消", "ghost"],
+      ["提交↵", "default"],
     ]);
   });
 
