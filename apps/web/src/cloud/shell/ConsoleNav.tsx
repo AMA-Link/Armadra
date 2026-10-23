@@ -32,7 +32,7 @@ export function ConsoleNav({
               <Button
                 asChild
                 variant="ghost"
-                className="w-full justify-start gap-2 px-2 font-normal text-muted-foreground aria-[current=page]:bg-brand-soft aria-[current=page]:text-brand-text pointer-coarse:h-11"
+                className="w-full justify-start gap-2 px-2 font-normal text-muted-foreground aria-[current=page]:bg-brand-soft aria-[current=page]:text-brand-text pointer-coarse:h-[44px]"
               >
                 <RouteLink
                   href={navHref(area, entry, teamSlug)}

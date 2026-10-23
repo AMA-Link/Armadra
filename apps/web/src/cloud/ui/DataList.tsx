@@ -101,7 +101,7 @@ export function DataList<T>({
             return (
               <TableRow
                 key={rowKey(row)}
-                className={sub.length > 0 ? "h-[52px]" : "h-11"}
+                className={sub.length > 0 ? "h-[52px]" : undefined}
               >
                 {cells.map((column) => (
                   <TableCell
@@ -194,7 +194,7 @@ function SecondaryLine({
 }) {
   if (parts.length === 0) return null;
   return (
-    <div className="flex min-w-0 flex-wrap gap-x-1 text-[length:var(--text-caption)] text-muted-foreground tabular-nums">
+    <div className="flex min-w-0 flex-wrap gap-x-1 text-caption text-muted-foreground tabular-nums">
       {parts.map(([id, node], at) => (
         <React.Fragment key={id}>
           {at > 0 ? <span aria-hidden>·</span> : null}

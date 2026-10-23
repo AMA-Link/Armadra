@@ -77,7 +77,7 @@ export function ConsoleSidebar({
       <div className="flex flex-col gap-1 p-3">
         {area === "ops" ? (
           <>
-            <div className="flex h-10 items-center gap-2 px-2">
+            <div className="flex h-[36px] items-center gap-2 px-2">
               <span className="min-w-0 truncate font-medium">
                 {t("cloud.nav.ops")}
               </span>
@@ -150,7 +150,7 @@ export function ConsoleShell(props: ConsoleShellProps) {
     <div className="flex h-full min-h-0 w-full flex-col bg-background text-foreground lg:flex-row">
       <a
         href="#main"
-        className="sr-only focus-visible:not-sr-only focus-visible:fixed focus-visible:start-3 focus-visible:top-3 focus-visible:z-50 focus-visible:rounded-lg focus-visible:bg-card focus-visible:px-3 focus-visible:py-2 focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none"
+        className="sr-only focus-visible:not-sr-only focus-visible:fixed focus-visible:start-3 focus-visible:top-3 focus-visible:z-50 focus-visible:rounded-card focus-visible:bg-card focus-visible:px-3 focus-visible:py-2 focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none"
         onClick={(event) => {
           event.preventDefault();
           main.current?.focus();

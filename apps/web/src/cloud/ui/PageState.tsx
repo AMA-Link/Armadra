@@ -4,13 +4,7 @@ import { useT } from "@/app/preferences-store";
 import { cloudMessage } from "../api/errors";
 import { cn } from "@/lib/cn";
 import { Button } from "@/ui/button";
-import {
-  Empty,
-  EmptyContent,
-  EmptyHeader,
-  EmptyMedia,
-  EmptyTitle,
-} from "@/ui/empty";
+import { EmptyState } from "@/ui/state";
 
 /** 整页的五种状态（云端控制台 §3.0）。 */
 export type PageStateKind =
@@ -41,7 +35,7 @@ export function pageStateKind(code?: string): PageStateKind {
 }
 
 /**
- * 整页状态：`Empty` + 一句标题 + 一个按钮。现有 `ErrorState` 只用在行内与区块内。
+ * 整页状态：`EmptyState` + 一个按钮（与桌面端同一套空态）。`ErrorState` 只用在行内与区块内。
  * 找不到与没有权限回「概览」、登录过期去「重新登录」，另两种是「重试」；对应回调没给就不画按钮。
  */
 export function PageState({
@@ -95,20 +89,14 @@ export function PageState({
   };
   const [labelKey, run] = view.action;
   return (
-    <Empty data-page-state={kind} className={cn("min-h-[60dvh]", className)}>
-      <EmptyHeader>
-        <EmptyMedia variant="icon">
-          <view.Icon aria-hidden strokeWidth={1.5} />
-        </EmptyMedia>
-        <EmptyTitle role="heading" aria-level={1}>
-          {view.title}
-        </EmptyTitle>
-      </EmptyHeader>
-      {run ? (
-        <EmptyContent>
-          <Button onClick={run}>{t(labelKey)}</Button>
-        </EmptyContent>
-      ) : null}
-    </Empty>
+    <div data-page-state={kind} className={cn("flex min-h-[60dvh]", className)}>
+      <EmptyState
+        icon={<view.Icon aria-hidden />}
+        title={view.title}
+        headingLevel={1}
+      >
+        {run ? <Button onClick={run}>{t(labelKey)}</Button> : null}
+      </EmptyState>
+    </div>
   );
 }

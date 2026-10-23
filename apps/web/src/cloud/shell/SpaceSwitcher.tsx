@@ -66,7 +66,8 @@ export function SpaceSwitcher({
       <DropdownMenuTrigger asChild>
         <Button
           variant="ghost"
-          className="h-10 w-full justify-start gap-2 px-2"
+          size="lg"
+          className="w-full justify-start gap-2 px-2"
         >
           <SpaceAvatar {...(team ? { team } : {})} />
           <span className="min-w-0 truncate font-medium">

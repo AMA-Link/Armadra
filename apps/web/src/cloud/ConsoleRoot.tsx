@@ -3,7 +3,7 @@ import { QueryClientProvider, useQueryClient } from "@tanstack/react-query";
 
 import { useT } from "@/app/preferences-store";
 import { Toaster } from "@/ui/sonner";
-import { toast } from "sonner";
+import { toast } from "@/ui/toast";
 import { CloudApiProvider, useCloudApi } from "./api/context";
 import { createCloudApi } from "./api/client";
 import { describeFailure, isSessionError, toCloudError } from "./api/errors";
