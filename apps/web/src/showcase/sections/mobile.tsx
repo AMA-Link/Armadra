@@ -242,6 +242,7 @@ function Screen({
                 onSubmit={sent}
                 onCancel={noop}
                 onMode={noop}
+                compact
               />
             </div>
           </FocusFrame>

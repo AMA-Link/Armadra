@@ -45,10 +45,10 @@ export default function StatesSection() {
           </EmptyContent>
         </Empty>
 
-        <div className="flex flex-col gap-3 rounded-[var(--r-card)] border border-border bg-card p-4">
+        <div className="flex flex-col gap-3 rounded-card border border-border bg-card p-4">
           {[0, 1, 2].map((row) => (
             <div key={row} className="flex items-center gap-3">
-              <Skeleton className="size-6 rounded-[var(--r-pill)]" />
+              <Skeleton className="size-6 rounded-pill" />
               <div className="flex flex-1 flex-col gap-1.5">
                 <Skeleton className="h-3 w-2/3" />
                 <Skeleton className="h-3 w-1/3" />
@@ -81,7 +81,7 @@ export default function StatesSection() {
 
         <div
           data-sample="inline-states"
-          className="flex flex-col gap-1 rounded-[var(--r-card)] border border-border bg-card py-2 text-xs"
+          className="flex flex-col gap-1 rounded-card border border-border bg-card py-2 text-meta"
         >
           <div role="status" className="flex flex-col gap-1.5 px-3 py-1.5">
             <span className="sr-only">{t("showcase.state.loading")}</span>
@@ -90,7 +90,7 @@ export default function StatesSection() {
           </div>
           <Alert
             variant="destructive"
-            className="flex items-center gap-1 rounded-none border-0 bg-transparent px-3 py-1 text-xs"
+            className="flex items-center gap-1 rounded-none border-0 bg-transparent px-3 py-1 text-meta"
           >
             <AlertTitle className="min-w-0 flex-1 truncate font-normal">
               {t("showcase.sample.alertTitle")}
@@ -100,7 +100,7 @@ export default function StatesSection() {
             </IconButton>
           </Alert>
           <Empty className="items-start gap-0 rounded-none p-0 px-3 py-1 text-left">
-            <EmptyDescription className="text-xs">
+            <EmptyDescription className="text-meta">
               {t("showcase.sample.emptyTitle")}
             </EmptyDescription>
           </Empty>
@@ -114,10 +114,10 @@ export default function StatesSection() {
         data-sample="skeletons"
         className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3"
       >
-        <div className="rounded-[var(--r-card)] border border-border bg-card py-2">
+        <div className="rounded-card border border-border bg-card py-2">
           <SkeletonList rows={4} leading="icon" label={t("state.loading")} />
         </div>
-        <div className="rounded-[var(--r-card)] border border-border bg-card py-2">
+        <div className="rounded-card border border-border bg-card py-2">
           <SkeletonList
             rows={3}
             leading="avatar"
@@ -127,23 +127,23 @@ export default function StatesSection() {
           />
         </div>
         <SkeletonCard lines={3} label={t("state.loading")} />
-        <div className="rounded-[var(--r-card)] border border-border bg-card">
+        <div className="rounded-card border border-border bg-card">
           <SkeletonTable rows={4} columns={3} label={t("state.loading")} />
         </div>
-        <div className="rounded-[var(--r-card)] border border-border bg-card p-4">
+        <div className="rounded-card border border-border bg-card p-4">
           <SkeletonForm rows={3} label={t("state.loading")} />
         </div>
-        <div className="rounded-[var(--r-card)] border border-border bg-card py-1">
+        <div className="rounded-card border border-border bg-card py-1">
           <SkeletonSettings
             rows={3}
             control="switch"
             label={t("state.loading")}
           />
         </div>
-        <div className="h-40 overflow-hidden rounded-[var(--r-card)] border border-border">
+        <div className="h-40 overflow-hidden rounded-card border border-border">
           <SkeletonNodeBody lines={5} label={t("state.loading")} />
         </div>
-        <div className="rounded-[var(--r-card)] border border-border bg-card">
+        <div className="rounded-card border border-border bg-card">
           <SkeletonTurns turns={2} label={t("state.loading")} />
         </div>
         <div className="flex flex-col gap-3">
@@ -153,7 +153,7 @@ export default function StatesSection() {
             onRetry={() => undefined}
           />
           <EmptyState title={t("showcase.sample.emptyTitle")} />
-          <div className="rounded-[var(--r-card)] border border-border bg-card py-1">
+          <div className="rounded-card border border-border bg-card py-1">
             <ErrorState
               inline
               title={t("state.error")}

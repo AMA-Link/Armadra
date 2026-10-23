@@ -24,7 +24,7 @@ function renderTokens() {
 }
 
 describe("tokens 分区（设计系统 §2）", () => {
-  it("字号六档用真的语义类渲染，另有 text-sm / text-xs 两个刻度", () => {
+  it("字号六档用真的语义类渲染", () => {
     const { container } = renderTokens();
     const classes = [
       ...container.querySelectorAll<HTMLElement>("[data-type-sample]"),
@@ -36,8 +36,6 @@ describe("tokens 分区（设计系统 §2）", () => {
       "text-body",
       "text-meta",
       "text-caption",
-      "text-sm",
-      "text-xs",
     ]);
   });
 

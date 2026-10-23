@@ -355,7 +355,7 @@ function StateMatrix() {
               <th
                 key={state}
                 scope="col"
-                className="text-[length:var(--text-caption)] font-medium text-muted-foreground"
+                className="text-caption font-medium text-muted-foreground"
               >
                 {t(`showcase.state.${state}`)}
               </th>
@@ -367,7 +367,7 @@ function StateMatrix() {
             <tr key={row.name}>
               <th
                 scope="row"
-                className="pr-2 font-mono text-[length:var(--text-caption)] font-normal whitespace-nowrap text-muted-foreground"
+                className="pr-2 font-mono text-caption font-normal whitespace-nowrap text-muted-foreground"
               >
                 {row.name}
               </th>
@@ -610,7 +610,7 @@ function Gallery() {
         <Accordion type="single" collapsible defaultValue="read">
           {ACCORDION_ITEMS.map((item) => (
             <AccordionItem key={item.id} value={item.id}>
-              <AccordionTrigger className="font-mono text-[length:var(--text-code)]">
+              <AccordionTrigger className="font-mono text-meta">
                 {item.title}
               </AccordionTrigger>
               <AccordionContent>{item.body}</AccordionContent>
@@ -639,7 +639,7 @@ function Gallery() {
           </TooltipTrigger>
           <TooltipContent>{t("showcase.sample.create")}</TooltipContent>
         </Tooltip>
-        <Separator orientation="vertical" className="h-6" />
+        <Separator orientation="vertical" className="h-(--row-h)" />
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button variant="outline" size="sm">
@@ -736,7 +736,7 @@ function Gallery() {
               {t("showcase.sample.more")}
             </Button>
           </PopoverTrigger>
-          <PopoverContent className="w-56 text-xs">
+          <PopoverContent className="w-56 text-meta">
             {SESSIONS[0].title}
           </PopoverContent>
         </Popover>
@@ -746,14 +746,14 @@ function Gallery() {
               {agentLabel(SESSIONS[0].agent)}
             </Button>
           </HoverCardTrigger>
-          <HoverCardContent className="w-56 text-xs">
+          <HoverCardContent className="w-56 text-meta">
             {SESSIONS[0].title}
           </HoverCardContent>
         </HoverCard>
         <BrandMark className="size-6" />
       </Sample>
       <Sample name="scroll-area" wide>
-        <ScrollArea className="h-24 w-full rounded-[var(--r-control)] border">
+        <ScrollArea className="h-24 w-full rounded-control border">
           <div className="flex flex-col gap-1 p-2">
             {[...SESSIONS, ...SESSIONS].map((session, index) => (
               <span key={`${session.id}-${index}`} className="truncate">
@@ -764,7 +764,7 @@ function Gallery() {
         </ScrollArea>
       </Sample>
       <Sample name="command" wide>
-        <Command className="h-auto rounded-[var(--r-card)] border">
+        <Command className="h-auto rounded-card border">
           <CommandInput
             className={COMMAND_INPUT_FOCUS}
             aria-label={t("showcase.sample.search")}
@@ -784,7 +784,7 @@ function Gallery() {
       </Sample>
       <Sample name="resizable" wide>
         {/* 面板组自己写了内联的 100% 高：高度给外面这一层。 */}
-        <div className="h-24 w-full overflow-hidden rounded-[var(--r-card)] border">
+        <div className="h-24 w-full overflow-hidden rounded-card border">
           <ResizablePanelGroup orientation="horizontal">
             <ResizablePanel defaultSize="40%">
               <div className="flex h-full items-center justify-center text-muted-foreground">
@@ -847,7 +847,7 @@ function Gallery() {
           </Button>
         </div>
         <ContextMenu>
-          <ContextMenuTrigger className="flex h-16 w-full items-center justify-center rounded-[var(--r-card)] border border-dashed text-muted-foreground">
+          <ContextMenuTrigger className="flex h-16 w-full items-center justify-center rounded-card border border-dashed text-muted-foreground">
             {SESSIONS[0].title}
           </ContextMenuTrigger>
           <ContextMenuContent>
