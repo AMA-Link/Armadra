@@ -7,7 +7,7 @@ import {
   type NativeRecurrence,
 } from "@armadra/shared";
 
-import { Alert, AlertDescription, AlertTitle } from "@/ui/alert";
+import { Alert, AlertTitle } from "@/ui/alert";
 import { Button } from "@/ui/button";
 import { Checkbox } from "@/ui/checkbox";
 import { Input } from "@/ui/input";
@@ -128,10 +128,10 @@ const SCHEDULE_KINDS: AutomationScheduleKind[] = [
 function field(label: string, control: React.ReactNode, help?: string) {
   return (
     <label className="block min-w-0 space-y-1">
-      <span className="block text-[12px] font-medium">{label}</span>
+      <span className="block text-meta font-medium">{label}</span>
       {control}
       {help ? (
-        <span className="block text-[11px] text-destructive">{help}</span>
+        <span className="block text-caption text-destructive">{help}</span>
       ) : null}
     </label>
   );
@@ -489,53 +489,39 @@ export function CreatePlanForm({
       <fieldset className="min-w-0 space-y-(--space-block)" disabled={busy}>
         {field(
           t("automation.wizard.location"),
-          <p className="truncate rounded-md border border-border px-3 py-2 text-[12px] text-muted-foreground select-text">
+          <p className="truncate rounded-control border border-border px-3 py-2 text-meta text-muted-foreground select-text">
             {t("automation.wizard.currentHost")} · {hostId}
           </p>,
         )}
-
-        {prefill?.origin === "native" ? (
-          <Alert role="status">
-            <AlertDescription className="text-[11px]">
-              {t("automation.wizard.fromNative")}
-            </AlertDescription>
-          </Alert>
-        ) : null}
 
         {/*
           原生规则：翻得动就把日程字段填好，翻不动就把原文原样摆出来，
           让人自己决定怎么写——不硬凑一个「差不多」的周期。
         */}
         {translated ? (
-          <Alert
+          <div
             role="status"
             data-slot="native-recurrence"
             data-translated={translated.ok ? "true" : "false"}
+            className="min-w-0 space-y-1 text-meta"
           >
-            <AlertDescription className="min-w-0 space-y-1 text-[11px] [&_p:not(:last-child)]:mb-0">
-              <p>
-                {translated.ok
-                  ? t("automation.wizard.recurrenceTranslated")
-                  : t(`automation.wizard.recurrence.${translated.reason}`)}
+            {translated.ok ? null : (
+              <p className="text-warn-text">
+                {t(`automation.wizard.recurrence.${translated.reason}`)}
               </p>
-              <p className="min-w-0 break-all font-mono select-text">
-                {t(`automation.wizard.dialect.${translated.source.dialect}`)} ·{" "}
-                {translated.source.rule}
-              </p>
-            </AlertDescription>
-          </Alert>
+            )}
+            <p className="min-w-0 break-all font-mono text-muted-foreground select-text">
+              {t(`automation.wizard.dialect.${translated.source.dialect}`)} ·{" "}
+              {translated.source.rule}
+            </p>
+          </div>
         ) : null}
 
         {edit ? (
           <>
-            <Alert role="status" data-slot="automation-edit-notice">
-              <AlertDescription className="text-[11px]">
-                {t("automation.wizard.editNote")}
-              </AlertDescription>
-            </Alert>
             {field(
               t("automation.wizard.targetKind"),
-              <p className="min-w-0 truncate rounded-md border border-border px-3 py-2 text-[12px] text-muted-foreground select-text">
+              <p className="min-w-0 truncate rounded-control border border-border px-3 py-2 text-meta text-muted-foreground select-text">
                 {t(`automation.wizard.targetKind.${targetKind}`)} ·{" "}
                 {frozenTarget?.kind === "agent"
                   ? frozenTarget.agentLaunch.agentId
@@ -544,9 +530,6 @@ export function CreatePlanForm({
                     : (frozenTarget?.sessionId ?? "")}
               </p>,
             )}
-            <p className="text-[11px] text-muted-foreground">
-              {t("automation.wizard.editTargetFrozen")}
-            </p>
           </>
         ) : (
           field(
@@ -560,7 +543,7 @@ export function CreatePlanForm({
               <SelectTrigger size="sm" className="w-full">
                 <SelectValue />
               </SelectTrigger>
-              <SelectContent className="z-[var(--z-dialog)]">
+              <SelectContent>
                 <SelectItem value="command">
                   {t("automation.wizard.targetKind.command")}
                 </SelectItem>
@@ -598,7 +581,7 @@ export function CreatePlanForm({
                 >
                   <SelectValue />
                 </SelectTrigger>
-                <SelectContent className="z-[var(--z-dialog)]">
+                <SelectContent>
                   {(templates.data ?? []).map((item) => (
                     <SelectItem key={item.id} value={item.id}>
                       {item.name}
@@ -639,7 +622,7 @@ export function CreatePlanForm({
                 <SelectTrigger size="sm" className="w-full">
                   <SelectValue />
                 </SelectTrigger>
-                <SelectContent className="z-[var(--z-dialog)]">
+                <SelectContent>
                   {agents.map((option) => (
                     <SelectItem key={option.nodeId} value={option.nodeId}>
                       {option.title} · {option.agentId}
@@ -649,7 +632,7 @@ export function CreatePlanForm({
               </Select>,
               problem("session"),
             )}
-            <label className="flex min-w-0 items-start gap-2 text-[12px]">
+            <label className="flex min-w-0 items-start gap-2 text-meta">
               <Checkbox
                 className="mt-0.5"
                 checked={coldStart}
@@ -659,14 +642,8 @@ export function CreatePlanForm({
                 <span className="block font-medium">
                   {t("automation.wizard.coldStart")}
                 </span>
-                <span className="block text-[11px] text-muted-foreground">
-                  {t("automation.wizard.coldStartNote")}
-                </span>
               </span>
             </label>
-            <p className="text-[11px] text-muted-foreground">
-              {t("automation.wizard.agentDeliveryNote")}
-            </p>
           </>
         ) : null}
 
@@ -681,7 +658,7 @@ export function CreatePlanForm({
               <SelectTrigger size="sm" className="w-full">
                 <SelectValue />
               </SelectTrigger>
-              <SelectContent className="z-[var(--z-dialog)]">
+              <SelectContent>
                 <SelectItem value="existing" disabled={ready.length === 0}>
                   {t("automation.wizard.existingSession")}
                 </SelectItem>
@@ -700,7 +677,7 @@ export function CreatePlanForm({
               <SelectTrigger size="sm" className="w-full">
                 <SelectValue />
               </SelectTrigger>
-              <SelectContent className="z-[var(--z-dialog)]">
+              <SelectContent>
                 {ready.map((session) => (
                   <SelectItem key={session.sessionId} value={session.sessionId}>
                     {session.sessionId} · {session.rootPath}
@@ -780,7 +757,7 @@ export function CreatePlanForm({
 
         {targetKind === "workflow"
           ? problem("payload") && (
-              <p role="status" className="text-[11px] text-destructive">
+              <p role="status" className="text-caption text-destructive">
                 {problem("payload")}
               </p>
             )
@@ -807,7 +784,7 @@ export function CreatePlanForm({
             <SelectTrigger size="sm" className="w-full">
               <SelectValue />
             </SelectTrigger>
-            <SelectContent className="z-[var(--z-dialog)]">
+            <SelectContent>
               {SCHEDULE_KINDS.map((kind) => (
                 <SelectItem key={kind} value={kind}>
                   {t(`automation.schedule.${kind}`)}
@@ -923,7 +900,7 @@ export function CreatePlanForm({
             <SelectTrigger size="sm" className="w-full">
               <SelectValue />
             </SelectTrigger>
-            <SelectContent className="z-[var(--z-dialog)]">
+            <SelectContent>
               <SelectItem value="skip">
                 {t("automation.wizard.misfire.skip")}
               </SelectItem>
@@ -944,7 +921,7 @@ export function CreatePlanForm({
             <SelectTrigger size="sm" className="w-full">
               <SelectValue />
             </SelectTrigger>
-            <SelectContent className="z-[var(--z-dialog)]">
+            <SelectContent>
               <SelectItem value="forbid">
                 {t("automation.wizard.concurrency.forbid")}
               </SelectItem>
@@ -964,12 +941,9 @@ export function CreatePlanForm({
           problem("busyTtlMs"),
         )}
 
-        <p className="text-[11px] text-muted-foreground">
-          {t(edit ? "automation.wizard.saved" : "automation.wizard.created")}
-        </p>
         {edit && stored.isError ? (
           <Alert variant="destructive">
-            <AlertTitle className="text-[12px] font-normal">
+            <AlertTitle className="text-meta font-normal">
               {t("automation.wizard.payloadUnavailable")}
             </AlertTitle>
           </Alert>
@@ -977,7 +951,6 @@ export function CreatePlanForm({
         <Button
           type="submit"
           size="sm"
-          className="min-h-10"
           data-slot="automation-submit"
           // An edit cannot be saved before the stored payload has been read:
           // sending an empty one would blank the prompt without saying so.

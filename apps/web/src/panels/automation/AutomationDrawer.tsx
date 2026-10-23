@@ -1,16 +1,16 @@
 import * as React from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { toast } from "sonner";
+import { toast } from "@/ui/toast";
 import { CalendarClock, RotateCw, X } from "lucide-react";
 
 import { Alert, AlertTitle } from "@/ui/alert";
 import { Badge } from "@/ui/badge";
 import { Button } from "@/ui/button";
-import { Empty, EmptyHeader, EmptyMedia, EmptyTitle } from "@/ui/empty";
 import { IconButton } from "@/ui/icon-button";
 import { ScrollArea } from "@/ui/scroll-area";
 import { SheetTitle } from "@/ui/sheet";
 import { Skeleton } from "@/ui/skeleton";
+import { EmptyState } from "@/ui/state";
 import { WorkPanelSheet } from "../WorkPanelSheet";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/ui/tabs";
 import { Loadable } from "@/loading/Loadable";
@@ -135,16 +135,13 @@ export function AutomationDrawer() {
         expectedRevision: request.expectedRevision,
       });
     },
-    onSuccess: (snapshot, request) => {
+    // An edit stores a new version and hands the plan back as a draft; the
+    // plans tab shows it as one, so there is no toast to say so.
+    onSuccess: (snapshot) => {
       invalidate();
       stopEditing();
       setTab("plans");
       focus(snapshot.plan?.id ?? null);
-      // An edit stores a new version and hands the plan back as a draft. Say
-      // so: a person who edited a running plan and walked away would otherwise
-      // believe it was still armed.
-      if (request.expectedRevision > 0n)
-        toast.success(t("automation.savedDraft"));
     },
     onError: fail,
   });
@@ -214,12 +211,12 @@ export function AutomationDrawer() {
       open={open}
       onClose={() => setPanel("automation", "closed")}
     >
-      <div className="flex h-10 shrink-0 items-center gap-1 border-b border-border px-3">
-        <SheetTitle className="shrink-0 truncate text-[13px] font-semibold">
+      <div className="flex shrink-0 items-center gap-1 border-b border-border px-3 py-1.5">
+        <SheetTitle className="shrink-0 truncate text-body font-semibold">
           {t("automation.title")}
         </SheetTitle>
         {state.status === "ready" && !canManage && (
-          <Badge variant="outline" className="ml-2 truncate">
+          <Badge variant="outline" size="sm" className="ml-2 truncate">
             {t("automation.readOnly")}
           </Badge>
         )}
@@ -238,16 +235,13 @@ export function AutomationDrawer() {
       </div>
 
       {blocked ? (
-        <Empty role="status" className="min-w-0 p-4">
-          <EmptyHeader>
-            <EmptyTitle className="text-[13px] leading-5 font-normal text-muted-foreground">
-              {t(`automation.blocked.${blocked}`)}
-            </EmptyTitle>
-          </EmptyHeader>
+        <EmptyState
+          title={t(`automation.blocked.${blocked}`)}
+          className="min-w-0 p-4"
+        >
           <Button
             size="sm"
             variant="secondary"
-            className="min-h-10"
             onClick={() => {
               setPanel("automation", "closed");
               usePreferencesStore
@@ -258,7 +252,7 @@ export function AutomationDrawer() {
           >
             {t("automation.blocked.action")}
           </Button>
-        </Empty>
+        </EmptyState>
       ) : !client ? (
         <Loadable
           loading
@@ -275,14 +269,14 @@ export function AutomationDrawer() {
           className="min-h-0 min-w-0 flex-1 gap-0"
         >
           <TabsList
-            className="h-10 w-full shrink-0 rounded-none border-b border-border"
+            className="w-full shrink-0 rounded-none border-b border-border"
             variant="line"
           >
             {(["plans", "runs", "create"] as const).map((value) => (
               <TabsTrigger
                 key={value}
                 value={value}
-                className="min-w-0 text-xs"
+                className="min-w-0 text-meta"
                 disabled={value === "create" && !canManage}
               >
                 {t(`automation.tab.${value}`)}
@@ -312,16 +306,10 @@ export function AutomationDrawer() {
                   </Alert>
                 )}
                 {plans.isSuccess && plans.data.length === 0 && (
-                  <Empty data-slot="automation-empty">
-                    <EmptyHeader>
-                      <EmptyMedia variant="icon">
-                        <CalendarClock />
-                      </EmptyMedia>
-                      <EmptyTitle className="text-[13px] font-normal text-muted-foreground">
-                        {t("automation.empty")}
-                      </EmptyTitle>
-                    </EmptyHeader>
-                  </Empty>
+                  <EmptyState
+                    title={t("automation.empty")}
+                    icon={<CalendarClock />}
+                  />
                 )}
                 {plans.data?.map((snapshot) => (
                   <PlanRow
@@ -391,13 +379,7 @@ export function AutomationDrawer() {
                   }}
                 />
               ) : (
-                <Empty>
-                  <EmptyHeader>
-                    <EmptyTitle className="text-[13px] font-normal text-muted-foreground">
-                      {t("automation.readOnly")}
-                    </EmptyTitle>
-                  </EmptyHeader>
-                </Empty>
+                <EmptyState title={t("automation.readOnly")} />
               )}
             </ScrollArea>
           </TabsContent>
@@ -419,8 +401,8 @@ function AutomationSkeleton({ label }: { label: string }) {
       aria-label={label}
       className="flex flex-col gap-(--space-group) p-(--space-page)"
     >
-      <Skeleton className="h-16 w-full rounded-[var(--r-card)]" />
-      <Skeleton className="h-16 w-full rounded-[var(--r-card)]" />
+      <Skeleton className="h-16 w-full rounded-card" />
+      <Skeleton className="h-16 w-full rounded-card" />
     </div>
   );
 }
