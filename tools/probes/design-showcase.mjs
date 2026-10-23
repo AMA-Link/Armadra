@@ -16,7 +16,7 @@
 //     `<分区>-<主题>-1440-reduced-motion.png`；`motion` 分区另跑十种配方的基线对照与
 //     指示器 / 数字当拍落位（原 `motion-reduced.mjs`，已并入这里）；
 //   * `forced-colors: active` 下 `components` 分区的焦点仍有轮廓；
-//   * `components` 分区在每个桌面宽度上打开真的设置弹窗：宽 = 视口 −48（上限 1600，
+//   * `components` 分区在每个桌面宽度上打开真的设置弹窗：宽 = 视口 −96（上限 1280，
 //     ±1px），两套主题各截一张 `settings-dialog-<主题>-<宽>.png`；
 //   * 控制台 error 与未捕获异常一律算失败；
 //   * `apps/web/dist/` 存在时（CI 先构建再跑探针）确认里面没有展示页。
@@ -409,7 +409,7 @@ await h.run(async () => {
 
   /* ------------------------------ 设置弹窗 ------------------------------ */
 
-  // 桌面宽度上（≥1024）弹窗宽 = min(视口 −48, 1600)（设计系统 §2.7）；更窄时是
+  // 桌面宽度上（≥1024）弹窗宽 = min(视口 −96, 1280)（设计系统 §2.7）；更窄时是
   // 底部 Sheet，只截图。展示页没有 core：设置页取数失败的
   // 网络报错是预期的，不计入控制台。
   if (only.includes("components")) {
@@ -432,8 +432,8 @@ await h.run(async () => {
           const nav = document.querySelector('[data-testid="settings-dialog"] nav');
           return { width: box.width, height: box.height, nav: nav ? nav.getBoundingClientRect().width : null };
         `);
-        // 近全窗（设计系统 §2.7）：视口 −48，上限 1600
-        const expected = Math.min(viewport.width - 48, 1600);
+        // 设计系统 §2.7：四周各留 48px（视口 −96），上限 1280
+        const expected = Math.min(viewport.width - 96, 1280);
         // 工作台左导航（设计系统 §2.7 `--settings-nav-w`）：clamp(200px, 18%, 256px)
         const expectedNav = Math.min(Math.max(size.width * 0.18, 200), 256);
         const name = `settings-dialog-${theme}-${viewport.width}`;
