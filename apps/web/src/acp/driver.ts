@@ -14,7 +14,7 @@ import {
   type AgentView,
   type TerminalAgent,
 } from "@armadra/shared";
-import { toast } from "sonner";
+import { toast } from "@/ui/toast";
 
 import { agentAcpInfo } from "@/agent/launch";
 import { RuntimeRequestError } from "@/api/request";

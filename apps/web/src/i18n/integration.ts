@@ -44,7 +44,6 @@ export const integration: MessageModule = {
     "integration.action.output": "查看输出",
     "integration.action.retry": "重试",
     "integration.install.failed": "{name} 没有装上",
-    "integration.install.done": "{name} 已安装",
     "integration.install.npmMissing": "没有找到 npm", // i18n-exempt
     "integration.install.busy": "正在装另一项",
     "integration.acp.failure.failed": "npm 安装失败（退出码 {code}）", // i18n-exempt
@@ -126,7 +125,6 @@ export const integration: MessageModule = {
     "integration.action.output": "View output",
     "integration.action.retry": "Retry",
     "integration.install.failed": "{name} was not installed",
-    "integration.install.done": "{name} installed",
     "integration.install.npmMissing": "npm not found",
     "integration.install.busy": "Another install is running",
     "integration.acp.failure.failed": "npm install failed (exit code {code})",

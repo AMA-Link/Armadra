@@ -18,11 +18,14 @@ import {
   ACP_ITEMS,
   ACP_MODELS,
   ACP_MODES,
+  ACP_MODES_SHORT,
   ACP_NODE_ID,
   ACP_PERMISSION,
+  ACP_PERMISSION_EDIT,
   ACP_PERMISSION_LONG,
   ACP_SESSION_ID,
   ACP_STOP_ITEMS,
+  ACP_STREAMING_ACTIVITY,
   ACP_STREAMING_ITEMS,
   ACP_USAGE,
   acpShowcaseBlob,
@@ -48,7 +51,7 @@ function Frame({
 }) {
   return (
     <div
-      className={`flex flex-col overflow-hidden rounded-[var(--r-card)] border border-border bg-[var(--card)] ${className}`}
+      className={`flex flex-col overflow-hidden rounded-card border border-border bg-card ${className}`}
     >
       {children}
     </div>
@@ -57,12 +60,6 @@ function Frame({
 
 const noop = () => undefined;
 const sent = async () => true;
-
-const STREAMING_ACTIVITY = {
-  phase: "responding",
-  since: 0,
-  rev: "showcase:1",
-} as const;
 
 const SERVICES = { loadBlob: acpShowcaseBlob, source: SOURCE };
 
@@ -87,7 +84,7 @@ export default function AcpSection() {
             sessionId={null}
             disabled={false}
             streaming={false}
-            modes={ACP_MODES}
+            modes={ACP_MODES_SHORT}
             onSubmit={sent}
             onCancel={noop}
             onMode={noop}
@@ -100,7 +97,7 @@ export default function AcpSection() {
 
       <div className="flex min-w-0 flex-col gap-4">
         <Frame className="flex-row items-start gap-2 p-2.5 pb-44">
-          <div className="sticky-markdown min-w-0 flex-1 text-[13px] leading-relaxed">
+          <div className="sticky-markdown min-w-0 flex-1 text-body leading-relaxed">
             <Markdown>{ACP_EXPORT_TEXT.split("\n\n")[0] ?? ""}</Markdown>
           </div>
           <ExportMenu
@@ -110,14 +107,19 @@ export default function AcpSection() {
           />
         </Frame>
         <Frame>
-          <div className="flex h-[200px] flex-col">
+          <div className="flex h-[240px] flex-col">
             <TimelineView
               items={ACP_STREAMING_ITEMS}
-              activity={STREAMING_ACTIVITY}
+              activity={ACP_STREAMING_ACTIVITY}
             />
           </div>
           <PermissionCard
             permission={ACP_PERMISSION}
+            canAnswer
+            className="mx-2 mb-1.5"
+          />
+          <PermissionCard
+            permission={ACP_PERMISSION_EDIT}
             canAnswer
             className="mx-2 mb-1.5"
           />
@@ -187,7 +189,7 @@ export default function AcpSection() {
 
         <Frame>
           <Alert className="rounded-none border-x-0 border-t-0 py-1.5">
-            <AlertTitle className="text-xs">{t("acp.offline")}</AlertTitle>
+            <AlertTitle className="text-meta">{t("acp.offline")}</AlertTitle>
           </Alert>
           <PromptBox
             sessionId={null}

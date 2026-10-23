@@ -52,7 +52,7 @@ vi.mock("@/canvas/dnd/external-content", async (original) => ({
   measureImage: vi.fn(async () => ({ w: 300, h: 200 })),
 }));
 
-const { toast } = await import("sonner");
+const { toast } = await import("@/ui/toast");
 const { useCanvasStore, resetHistory } = await import("@/store/canvas-store");
 const { undo } = await import("@/store/canvas/history");
 const { emptyWhiteboard } = await import("@/canvas/whiteboard/model");

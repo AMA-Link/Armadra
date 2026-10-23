@@ -36,9 +36,20 @@ describe("ActivityLine", () => {
       />,
     );
     const line = document.querySelector("[data-slot=timeline-activity]");
-    expect(line?.textContent).toBe("运行· pnpm test· 12 s");
+    // 一条 `StatusLine`：阶段 + 细节（等宽）+ 计时。
+    expect(line?.textContent).toBe("运行pnpm test12 秒");
+    expect(line?.getAttribute("data-tone")).toBe("working");
     expect(line?.querySelector("[data-slot=spinner]")).toBeTruthy();
+    // 只播报阶段，细节与计时不进 aria-live。
     expect(line?.querySelector("[aria-live=polite]")?.textContent).toBe("运行");
+    expect(
+      line?.querySelector("[data-slot=status-line-detail]")?.textContent,
+    ).toBe("pnpm test");
+    expect(
+      line
+        ?.querySelector("[data-slot=status-line-since]")
+        ?.getAttribute("data-numeric"),
+    ).not.toBeNull();
   });
 
   it("appends the quiet hint after 60 s without output", () => {
@@ -57,7 +68,10 @@ describe("ActivityLine", () => {
     );
     const line = () => document.querySelector("[data-slot=timeline-activity]");
     expect(line()?.querySelector("[data-slot=spinner]")).toBeNull();
+    expect(line()?.getAttribute("data-tone")).toBe("attention");
     expect(line()?.className).toContain("warn-text");
+    // 等待审批不计时。
+    expect(line()?.querySelector("[data-slot=status-line-since]")).toBeNull();
     rerender(
       <ActivityLine
         activity={activity("idle", { lastOutcome: { kind: "failed", at: 1 } })}
@@ -65,6 +79,7 @@ describe("ActivityLine", () => {
       />,
     );
     expect(phaseOf()).toBe("failed");
+    expect(line()?.getAttribute("data-tone")).toBe("failed");
     expect(line()?.className).toContain("danger-text");
   });
 

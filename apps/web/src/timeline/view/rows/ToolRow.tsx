@@ -23,6 +23,7 @@ import type {
 } from "@armadra/shared";
 
 import { useT } from "@/app/preferences-store";
+import { DiffCounts, diffStat } from "@/acp/DiffBlock";
 import { basename } from "@/files/file-operations";
 import { Badge } from "@/ui/badge";
 import { Button } from "@/ui/button";
@@ -31,6 +32,8 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from "@/ui/collapsible";
+import { Shimmer } from "@/ui/shimmer";
+import { Spinner } from "@/ui/spinner";
 import { StatusPill, type StatusTone } from "@/ui/status-pill";
 import { formatDuration } from "../format";
 import { ToolContentView } from "../parts/ToolContentView";
@@ -62,6 +65,77 @@ export const STATUS_TONES: Record<TimelineToolStatus, StatusTone> = {
 /** 工具行上最多画几枚文件胶囊，其余折成 `+N`。 */
 export const MAX_LOCATIONS = 2;
 
+/** 完成（或失败）那一下的对勾在图标位上停留多久，之后换回按 kind 的图标。 */
+export const DONE_FLASH_MS = 800;
+
+/** 超过这个长度的差异不在渲染时现算行数（大文件整份替换时拖慢列表）。 */
+const STAT_MAX_CHARS = 400_000;
+
+/**
+ * 工具行右侧的 `+N −M`：差异内容按文件累加；超限的差异只带行数，直接用。
+ * 没有差异内容的工具返回 `null`。
+ */
+export function toolDiffStat(
+  content: readonly TimelineToolItem["content"][number][],
+): { additions: number; deletions: number } | null {
+  let additions = 0;
+  let deletions = 0;
+  let any = false;
+  for (const part of content) {
+    if (part.type !== "diff") continue;
+    any = true;
+    if (part.truncated) {
+      additions += part.addedLines ?? 0;
+      deletions += part.removedLines ?? 0;
+      continue;
+    }
+    const before = part.oldText ?? "";
+    const after = part.newText ?? "";
+    if (before.length + after.length > STAT_MAX_CHARS) continue;
+    const stat = diffStat(before, after);
+    additions += stat.additions;
+    deletions += stat.deletions;
+  }
+  return any ? { additions, deletions } : null;
+}
+
+/**
+ * 图标位：运行中是 `Spinner 12`；刚结束那 {@link DONE_FLASH_MS} 毫秒收成对勾 / ×；
+ * 其余是按 kind 的图标。第一次渲染时就已结束的行（历史）不闪。
+ */
+function LeadIcon({
+  Icon,
+  status,
+}: {
+  Icon: LucideIcon;
+  status: TimelineToolStatus;
+}) {
+  const last = React.useRef(status);
+  const [flash, setFlash] = React.useState<"done" | "failed" | null>(null);
+  React.useEffect(() => {
+    const before = last.current;
+    last.current = status;
+    if (before !== "in_progress") return;
+    if (status === "completed" || status === "failed") {
+      setFlash(status === "completed" ? "done" : "failed");
+      const timer = setTimeout(() => setFlash(null), DONE_FLASH_MS);
+      return () => clearTimeout(timer);
+    }
+    return undefined;
+  }, [status]);
+  if (status === "in_progress")
+    return <Spinner size={12} className="text-muted-foreground" />;
+  if (flash !== null)
+    return (
+      <Spinner
+        size={12}
+        state={flash}
+        className={flash === "done" ? "text-success-text" : "text-danger-text"}
+      />
+    );
+  return <Icon className="text-muted-foreground" />;
+}
+
 export interface ToolRowProps {
   item: TimelineToolItem;
   /** 子代理内部的调用（挂在它下面，随这一行展开）。 */
@@ -81,6 +155,7 @@ function ToolRowImpl({ item, nested, approval, renderApproval }: ToolRowProps) {
   const [open, setOpen] = React.useState(false);
   const Icon = KIND_ICONS[item.toolKind];
   const running = item.status === "in_progress" || item.status === "pending";
+  const stat = React.useMemo(() => toolDiffStat(item.content), [item.content]);
   const shown = item.locations.slice(0, MAX_LOCATIONS);
   const rest = item.locations.length - shown.length;
   const duration =
@@ -112,19 +187,25 @@ function ToolRowImpl({ item, nested, approval, renderApproval }: ToolRowProps) {
             variant="ghost"
             size="sm"
             disabled={!hasBody}
-            className="h-7 w-full min-w-0 justify-start gap-1.5 px-2 font-normal disabled:opacity-100"
+            className="w-full min-w-0 justify-start gap-1.5 px-2 font-normal disabled:opacity-100"
           >
             {open ? (
               <ChevronDown className="text-muted-foreground" />
             ) : (
               <ChevronRight className="text-muted-foreground" />
             )}
-            <Icon className="text-muted-foreground" />
-            <span className="min-w-0 truncate text-xs">{item.title}</span>
+            <LeadIcon Icon={Icon} status={item.status} />
+            <Shimmer
+              active={item.status === "in_progress"}
+              className="min-w-0 truncate font-mono text-meta"
+            >
+              {item.title}
+            </Shimmer>
             {shown.map((location, index) => (
               <Badge
                 key={index}
                 variant="outline"
+                size="sm"
                 title={location.path}
                 className="max-w-28 min-w-0 shrink font-mono"
               >
@@ -135,13 +216,22 @@ function ToolRowImpl({ item, nested, approval, renderApproval }: ToolRowProps) {
               </Badge>
             ))}
             {rest > 0 && (
-              <Badge variant="outline" className="shrink-0 tabular-nums">
+              <Badge variant="outline" size="sm" className="shrink-0">
                 {t("timeline.tool.more", { count: rest })}
               </Badge>
             )}
+            {stat !== null && (
+              <DiffCounts
+                additions={stat.additions}
+                deletions={stat.deletions}
+              />
+            )}
             <span className="ml-auto flex shrink-0 items-center gap-1.5">
               {duration !== "" && (
-                <span className="text-[length:var(--text-caption)] text-muted-foreground tabular-nums">
+                <span
+                  data-numeric
+                  className="font-mono text-caption text-muted-foreground"
+                >
                   {duration}
                 </span>
               )}

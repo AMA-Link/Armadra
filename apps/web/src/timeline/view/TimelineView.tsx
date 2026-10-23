@@ -53,7 +53,7 @@ function PlanLine({ plan }: { plan: TimelinePlanItem }) {
   return (
     <div
       data-slot="timeline-plan-line"
-      className="flex items-center gap-1.5 px-2 text-xs text-muted-foreground"
+      className="flex items-center gap-1.5 px-2 text-meta text-muted-foreground"
     >
       <ListChecks className="size-3.5 shrink-0" />
       <span className="min-w-0 truncate">{current?.content}</span>

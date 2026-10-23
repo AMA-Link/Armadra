@@ -1,6 +1,5 @@
 import * as React from "react";
-import { File as FileIcon, FileText, X } from "lucide-react";
-import { toast } from "sonner";
+import { File as FileIcon, FileText, Paperclip, X } from "lucide-react";
 import {
   MAX_ACP_ATTACHMENTS,
   MAX_ACP_IMAGE_BYTES,
@@ -9,8 +8,9 @@ import {
 } from "@armadra/shared";
 
 import { useT } from "@/app/preferences-store";
-import { Badge } from "@/ui/badge";
+import { cn } from "@/lib/cn";
 import { Button } from "@/ui/button";
+import { toast } from "@/ui/toast";
 
 /**
  * 输入框里待发的附件（契约 §56）：粘贴、拖放或点回形针加进来，发出去之前可以
@@ -172,13 +172,13 @@ export function AttachmentTray({
           return (
             <li
               key={item.key}
-              className="relative flex items-center gap-0.5 rounded-[var(--r-control)] border border-[var(--border)] p-0.5"
+              className="relative flex items-center gap-0.5 rounded-control border border-border p-0.5"
               title={name}
             >
               <img
                 src={item.preview}
                 alt={name}
-                className="size-8 rounded-[calc(var(--r-control)-2px)] object-cover"
+                className="size-8 rounded-tight object-cover"
               />
               {remove}
             </li>
@@ -186,15 +186,42 @@ export function AttachmentTray({
         }
         const Icon = item.file.type.startsWith("text/") ? FileText : FileIcon;
         return (
-          <li key={item.key} title={name}>
-            <Badge variant="outline" className="h-7 max-w-48 gap-1 pr-0.5">
-              <Icon aria-hidden />
-              <span className="truncate">{name}</span>
-              {remove}
-            </Badge>
+          <li
+            key={item.key}
+            title={name}
+            className="flex h-8 max-w-48 items-center gap-1 rounded-control border border-border-strong pl-2 text-meta [&>svg]:size-3.5 [&>svg]:shrink-0 [&>svg]:text-muted-foreground"
+          >
+            <Icon aria-hidden />
+            <span className="min-w-0 truncate">{name}</span>
+            {remove}
           </li>
         );
       })}
     </ul>
+  );
+}
+
+/**
+ * 拖文件进会话视图时盖上的一层：`--brand` 1.5px 虚线框 + 图标与一个词；只给视觉，
+ * 事件仍由会话视图根上的 `onDragOver / onDrop` 处理（`pointer-events-none`）。
+ * 不能收的时候（离线、没开好）`disabled` 换成 `--border-strong` 灰框。
+ */
+export function DropOverlay({ disabled = false }: { disabled?: boolean }) {
+  const t = useT();
+  return (
+    <div
+      data-slot="acp-drop-overlay"
+      data-disabled={disabled || undefined}
+      aria-hidden
+      className={cn(
+        "pointer-events-none absolute inset-1.5 z-10 flex items-center justify-center gap-1.5 rounded-card border-[1.5px] border-dashed bg-card/80 text-body",
+        disabled
+          ? "border-border-strong text-muted-foreground"
+          : "border-brand text-brand-text",
+      )}
+    >
+      <Paperclip className="size-4" />
+      {t("acp.attach")}
+    </div>
   );
 }

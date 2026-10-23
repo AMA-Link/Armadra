@@ -25,7 +25,7 @@ function UserRowImpl({ item, onEdit }: UserRowProps) {
     >
       <Card
         data-role="user"
-        className="gap-1.5 rounded-[var(--r-card)] bg-[var(--surface-raised)] px-2.5 py-1.5 text-[13px] [overflow-wrap:anywhere] whitespace-pre-wrap"
+        className="gap-1.5 rounded-card bg-raised px-2.5 py-1.5 text-body [overflow-wrap:anywhere] whitespace-pre-wrap"
       >
         {item.text !== "" && <span>{item.text}</span>}
         {attachments.length > 0 && (
@@ -40,7 +40,12 @@ function UserRowImpl({ item, onEdit }: UserRowProps) {
                   name={attachment.name}
                 />
               ) : (
-                <Badge key={index} variant="outline" title={attachment.uri}>
+                <Badge
+                  key={index}
+                  variant="outline"
+                  size="sm"
+                  title={attachment.uri}
+                >
                   <FileText />
                   {attachment.name ?? attachment.uri}
                 </Badge>
