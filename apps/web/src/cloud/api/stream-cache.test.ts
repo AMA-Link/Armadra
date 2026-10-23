@@ -72,6 +72,35 @@ describe("applyMeStreamEvent（缓存层）", () => {
     });
   });
 
+  it("带 status 筛选的目录：上下线不就地改，而是让那份缓存过期", () => {
+    const { client, listKey, sources } = seeded();
+    const filtered = cloudKeys.hosts("me", { status: "online", limit: 50 });
+    client.setQueryData(filtered, {
+      pages: [{ sources: [row("a", true)], nextCursor: null }],
+      pageParams: [undefined],
+    });
+    applyMeStreamEvent(client, {
+      type: "sourceOffline",
+      sourceId: "a",
+      atMs: 9,
+    });
+    expect(sources(filtered)[0]).toMatchObject({ online: true });
+    expect(client.getQueryState(filtered)?.isInvalidated).toBe(true);
+    expect(sources(listKey)[0]).toMatchObject({ online: false });
+    expect(client.getQueryState(listKey)?.isInvalidated).toBe(false);
+  });
+
+  it("所有目录里都没有这台主机：让目录过期重拉", () => {
+    const { client, listKey } = seeded();
+    applyMeStreamEvent(client, {
+      type: "sourceOnline",
+      sourceId: "new",
+      sinceMs: 1,
+      relayOrigin: "https://relay.test",
+    });
+    expect(client.getQueryState(listKey)?.isInvalidated).toBe(true);
+  });
+
   it("sourceRevoked 把它从全部目录里去掉，详情标为过期去重拉", () => {
     const { client, listKey, previewKey, teamKey, sources } = seeded();
     applyMeStreamEvent(client, { type: "sourceRevoked", sourceId: "a" });
