@@ -191,4 +191,29 @@ describe("改一条授予", () => {
     expect(edit({ role: "driver" })).toBe(false);
     expect(edit({})).toBe(false);
   });
+
+  it("别的来路兜住的降低不提示：团队 driver 整台 + 本人 operator 整台，本人改 viewer", () => {
+    const team = {
+      role: "driver",
+      workspaceIds: [],
+      expiresAtMs: null,
+    } as const;
+    const own = {
+      role: "operator",
+      workspaceIds: [],
+      expiresAtMs: null,
+    } as const;
+    expect(
+      updateNarrows(
+        [team, own],
+        own,
+        { role: "viewer", workspaceIds: [] },
+        NOW,
+      ),
+    ).toBe(false);
+    // 没有兜底来路时同样的改动要提示。
+    expect(
+      updateNarrows([own], own, { role: "viewer", workspaceIds: [] }, NOW),
+    ).toBe(true);
+  });
 });
