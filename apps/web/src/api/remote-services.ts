@@ -155,6 +155,14 @@ export function registerToSpace(input: {
   return localClient().sources.remoteRegister(input);
 }
 
+/**
+ * Armadra 云控制台的个人页地址：控制台与云端 API 同一来源（`platform.info.webApp` 即
+ * 页面来源，云端控制台 §1.2），所以是 `<issuer>/me`。
+ */
+export function cloudConsoleUrl(issuer: string): string {
+  return new URL("/me", issuer).href;
+}
+
 /* ------------------- Armadra 云：授予、邀请与待信任设备 ------------------- */
 
 export type {

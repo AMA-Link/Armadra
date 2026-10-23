@@ -61,6 +61,7 @@ export function RemoteRow({
   onSignIn,
   onSignOut,
   onInternet,
+  onOpenConsole,
   onRetryCleanup,
   onChangePassword,
   onRename,
@@ -76,6 +77,8 @@ export function RemoteRow({
   onSignOut(): void;
   /** 能开路线的账号才给（个人中转、登录着、有账号名）。 */
   onInternet?: (on: boolean) => void;
+  /** Armadra 云的行才给：在系统浏览器里打开控制台（云端控制台 §3.5.1）。 */
+  onOpenConsole?: () => void;
   onRetryCleanup(): void;
   onChangePassword(): void;
   onRename(): void;
@@ -125,6 +128,11 @@ export function RemoteRow({
                 ? "remote.internet.start"
                 : "remote.internet.stop",
             )}
+          </DropdownMenuItem>
+        )}
+        {onOpenConsole && (
+          <DropdownMenuItem onSelect={onOpenConsole}>
+            {t("remote.cloud.openConsole")}
           </DropdownMenuItem>
         )}
         {signedIn && changeable.data === true && (

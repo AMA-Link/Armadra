@@ -5,6 +5,7 @@ import { toast } from "@/ui/toast";
 
 import {
   type ClientSource,
+  cloudConsoleUrl,
   dismissRelayCleanup,
   forgetSource,
   logoutRemote,
@@ -17,6 +18,7 @@ import {
   retryRelayCleanup,
 } from "../../../../api/remote-services";
 import { useT } from "../../../../app/preferences-store";
+import { openExternal } from "../../../../platform";
 import { applySourceTable } from "../../../../sources/bootstrap";
 import { useCurrentSource } from "../../../../sources/context";
 import { hostedRelay } from "../../../../sources/hosted";
@@ -103,6 +105,11 @@ export function RemoteAccessPage() {
 
   const [adding, setAdding] = React.useState<RelayDraft | null>(null);
   const [addingCloud, setAddingCloud] = React.useState<string | null>(null);
+  // 云端控制台与 API 同一来源：系统浏览器打开 `<issuer>/me`（云端控制台 §3.5.1）。
+  const openConsole = async (issuer: string) => {
+    if (!(await openExternal(cloudConsoleUrl(issuer))))
+      toast.error(t("remote.cloud.openFailed"));
+  };
   const [addingDirect, setAddingDirect] = React.useState(false);
   const [mounting, setMounting] = React.useState(false);
   const [traffic, setTraffic] = React.useState<SourceTrafficTarget | null>(
@@ -269,6 +276,9 @@ export function RemoteAccessPage() {
                           else internet.stop.mutate([remote.issuer]);
                         },
                       }
+                    : {})}
+                  {...(remote.kind === "saas"
+                    ? { onOpenConsole: () => void openConsole(remote.issuer) }
                     : {})}
                   onSignIn={() =>
                     remote.kind === "saas"
