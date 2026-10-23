@@ -2,17 +2,17 @@ import { useT } from "@/app/preferences-store";
 import { DeferredSkeleton } from "@/loading/DeferredSkeleton";
 import { Skeleton } from "@/ui/skeleton";
 import { SKELETON_ROW, SkeletonList } from "@/ui/skeletons";
-import { cn } from "cn";
+import { cn } from "@/lib/cn";
 
 /**
  * 节点体里「首批数据还没到」的占位（设计系统 §5.16）。
  *
  * 都包在 `DeferredSkeleton` 里：200 ms 内不可见地占位，换成真内容时不跳。
- * 行高与各节点的真实行同一份：文件行用 `FILES_ROW`，差异文件头取 `compact`（h-7）。
+ * 行高与各节点的真实行同一份：文件行与差异文件头同取 `compact`（28）。
  */
 
 /** 文件节点的目录项行高；`FilesNode` 的真实行与这里的骨架共用。 */
-export const FILES_ROW = "h-6";
+export const FILES_ROW = SKELETON_ROW.compact;
 
 const CODE_WIDTHS = ["w-2/3", "w-1/2", "w-3/5", "w-4/5", "w-2/5"] as const;
 
@@ -80,7 +80,7 @@ export function DiffSkeleton({ files = 3 }: { files?: number }) {
                 SKELETON_ROW.compact,
               )}
             >
-              <Skeleton className="size-3.5 rounded-sm" />
+              <Skeleton className="size-3.5 rounded-tight" />
               <Skeleton className="h-3 w-1/2" />
             </div>
             <div className="flex flex-col gap-1.5 px-3 pb-2">

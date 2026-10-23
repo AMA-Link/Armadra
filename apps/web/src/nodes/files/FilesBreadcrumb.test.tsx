@@ -1,5 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render as renderPlain,
+  screen,
+} from "@testing-library/react";
+import type { ReactElement } from "react";
+
+import { TooltipProvider } from "@/ui/tooltip";
 
 import { FilesBreadcrumb } from "./FilesBreadcrumb";
 import { breadcrumbs, DEFAULT_TAIL } from "./breadcrumb";
@@ -14,6 +22,10 @@ const deep = breadcrumbs(
   "Users/yovinchen/Projects/Code/Desktop/armadra/apps/web/src",
   "Armadra",
 );
+
+/** 「…」带 Tooltip，需要 Provider（应用里在 App 根上）。 */
+const render = (ui: ReactElement) =>
+  renderPlain(ui, { wrapper: TooltipProvider });
 
 /** Radix 的下拉是 pointerdown 触发的，`click` 打不开。 */
 function openMenu(trigger: HTMLElement) {

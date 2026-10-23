@@ -7,8 +7,8 @@ import { Input } from "@/ui/input";
 import { ScrollArea } from "@/ui/scroll-area";
 import { runtimeApi } from "@/api/client";
 import { usePreferencesStore, useT } from "@/app/preferences-store";
-import { cn } from "cn";
-import { FILES_ROW, FilesSkeleton } from "./NodeSkeletons";
+import { cn } from "@/lib/cn";
+import { FilesSkeleton } from "./NodeSkeletons";
 import { useCanvasStore } from "@/store/canvas-store";
 import { NodeShell } from "./NodeShell";
 import { NODE_META, type NodeBodyProps } from "./registry";
@@ -21,12 +21,12 @@ import { isSystemFile } from "./files/system-files";
 /** 新开的编辑器节点放在文件节点右边这么远。 */
 const SPAWN_GAP = 24;
 
-const STATUS_COLOR: Record<GitFileStatus["status"], string> = {
-  M: "var(--warn)",
-  A: "var(--success)",
-  D: "var(--danger)",
-  R: "var(--brand)",
-  "?": "var(--muted-foreground)",
+const STATUS_CLASS: Record<GitFileStatus["status"], string> = {
+  M: "text-warn-text",
+  A: "text-success-text",
+  D: "text-danger-text",
+  R: "text-brand-text",
+  "?": "text-muted-foreground",
 };
 
 /**
@@ -146,7 +146,7 @@ export function FilesNode({ id, node, selected }: NodeBodyProps) {
           <Input
             aria-label={t("files.filter")}
             placeholder={t("files.filter")}
-            className="h-6 text-xs"
+            size="xs"
             value={filter}
             onChange={(event) => setFilter(event.target.value)}
           />
@@ -167,10 +167,7 @@ export function FilesNode({ id, node, selected }: NodeBodyProps) {
                 {...dragProps(entry)}
                 variant="ghost"
                 size="sm"
-                className={cn(
-                  FILES_ROW,
-                  "w-full cursor-grab justify-start gap-1.5 rounded-none px-2 font-normal active:cursor-grabbing",
-                )}
+                className="w-full cursor-grab justify-start gap-1.5 rounded-none px-2 font-normal active:cursor-grabbing"
                 onClick={() => {
                   if (entry.kind === "directory") navigate(entry.path);
                 }}
@@ -179,12 +176,15 @@ export function FilesNode({ id, node, selected }: NodeBodyProps) {
                 }}
               >
                 <FileTypeIcon path={entry.name} kind={entry.kind} />
-                <span className="truncate text-[11px]">{entry.name}</span>
+                <span className="truncate text-meta">{entry.name}</span>
                 {badge && (
                   <span
-                    className="ml-auto shrink-0 font-mono text-[length:var(--text-caption)] font-bold"
-                    style={{ color: STATUS_COLOR[badge] }}
-                    title={t(`files.status.${badge}`)}
+                    role="img"
+                    aria-label={t(`files.status.${badge}`)}
+                    className={cn(
+                      "ml-auto shrink-0 font-mono text-caption font-bold",
+                      STATUS_CLASS[badge],
+                    )}
                   >
                     {badge}
                   </span>
