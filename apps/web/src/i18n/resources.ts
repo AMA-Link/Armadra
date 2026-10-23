@@ -89,8 +89,6 @@ export const resources: MessageModule = {
     "resources.memory.alertTitle": "会话内存偏高",
     "resources.memory.alertBody": "进程树已占用 {value}，超过阈值 {limit}。",
     "resources.memory.thresholdLabel": "内存提醒阈值",
-    "resources.memory.thresholdHint":
-      "终端节点徽标超过它就变色，并按会话提醒一次；不会自动结束任何会话。",
     "resources.memory.threshold.value": "{value} GB",
 
     "resources.orphans": "孤立会话",
@@ -121,13 +119,8 @@ export const resources: MessageModule = {
     "resources.power.policy.automation": "策略：有自动化运行时",
     "resources.power.policy.manual": "策略：手动",
     "resources.power.policyLabel": "防休眠策略",
-    "resources.power.policyHint":
-      "只阻止系统空闲睡眠；租约全部释放或 Runtime 退出时立即解除。",
     "resources.power.whileWorkingLabel": "工作时保持唤醒",
-    "resources.power.whileWorkingHint":
-      "有 Agent 在一轮里或自动化在运行时自动申请，全部结束后释放。",
     "resources.intervalLabel": "采样间隔",
-    "resources.intervalHint": "面板打开时才采样；关闭后 Runtime 自动停止。",
     "resources.interval.value": "{value} 秒",
 
     "cluster.resources": "资源",
@@ -215,8 +208,6 @@ export const resources: MessageModule = {
     "resources.memory.alertBody":
       "Its process tree is at {value}, above the {limit} threshold.",
     "resources.memory.thresholdLabel": "Memory reminder threshold",
-    "resources.memory.thresholdHint":
-      "A terminal node's badge changes colour above this and reminds you once per session. Nothing is ended automatically.",
     "resources.memory.threshold.value": "{value} GB",
 
     "resources.orphans": "Orphaned sessions",
@@ -248,14 +239,8 @@ export const resources: MessageModule = {
     "resources.power.policy.automation": "Policy: while automations run",
     "resources.power.policy.manual": "Policy: manual only",
     "resources.power.policyLabel": "Keep-awake policy",
-    "resources.power.policyHint":
-      "Only idle system sleep is held off, and it is released the moment the last lease goes away or the runtime exits.",
     "resources.power.whileWorkingLabel": "Stay awake while working",
-    "resources.power.whileWorkingHint":
-      "Requested while an agent is in a turn or an automation runs, released once all of them finish.",
     "resources.intervalLabel": "Sampling interval",
-    "resources.intervalHint":
-      "Sampling only runs while the panel is open; the runtime stops on its own once it closes.",
     "resources.interval.value": "{value}s",
 
     "cluster.resources": "Resources",

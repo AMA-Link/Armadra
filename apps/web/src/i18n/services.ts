@@ -31,7 +31,6 @@ export const services: MessageModule = {
     "services.renameRow": "重命名 {name}",
     "services.name": "名称",
     "services.save": "保存",
-    "services.renamed": "已重命名",
   },
   en: {
     "services.title": "Choose a service",
@@ -58,6 +57,5 @@ export const services: MessageModule = {
     "services.renameRow": "Rename {name}",
     "services.name": "Name",
     "services.save": "Save",
-    "services.renamed": "Renamed",
   },
 };

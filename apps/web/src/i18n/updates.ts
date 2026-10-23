@@ -44,8 +44,6 @@ export const updates: MessageModule = {
     "updates.autoCheck": "自动检查更新",
     "updates.autoDownload": "自动下载更新",
     "updates.notify": "更新下载完成",
-    "updates.notify.note":
-      "关掉后只有托盘菜单里会出现「重启以完成更新」，不再发系统通知。",
     "updates.missing.pubkey": "此构建无法验证更新包。",
     "updates.missing.endpoints":
       "此构建没有内置发布地址；更新地址来自后台服务给出的同一次发布。",
@@ -54,8 +52,6 @@ export const updates: MessageModule = {
       "后台服务在另一台机器上，更新它不等于更新这里的应用。",
     "updates.unsupported.managedPackage":
       "这种安装方式需要下载新安装包来更新。",
-    "updates.partial.hostNotChecked": "后台服务未给出结果。",
-    "updates.partial.shellNotChecked": "桌面壳未检查。",
     "updates.progress": "已下载",
     "updates.retryAfter": "可在 {value} 分钟后重试。",
     "updates.downloaded.note":
@@ -122,7 +118,6 @@ export const updates: MessageModule = {
       "此版本没有可询问的发布来源，无法判断有没有新版本。",
     "updates.blocked.action": "前往本机服务设置",
     "updates.history": "版本历史",
-    "updates.history.checkedAt": "上次检查",
     "updates.history.never": "从未",
     "updates.history.refresh": "刷新",
     "updates.history.empty": "暂无发布",
@@ -183,8 +178,6 @@ export const updates: MessageModule = {
     "updates.autoCheck": "Check automatically",
     "updates.autoDownload": "Download automatically",
     "updates.notify": "Update downloaded",
-    "updates.notify.note":
-      "With this off, only the tray menu offers \u201cRestart to finish updating\u201d; no system notification is sent.",
     "updates.missing.pubkey": "This build cannot verify update packages.",
     "updates.missing.endpoints":
       "This build carries no release address; the manifest comes from the release the background service describes.",
@@ -194,8 +187,6 @@ export const updates: MessageModule = {
       "The background service runs on another machine; updating it is not updating this application.",
     "updates.unsupported.managedPackage":
       "This kind of installation updates by downloading a new installer.",
-    "updates.partial.hostNotChecked": "The background service did not answer.",
-    "updates.partial.shellNotChecked": "The desktop shell did not check.",
     "updates.progress": "Downloaded",
     "updates.retryAfter": "You can try again in {value} minutes.",
     "updates.downloaded.note":
@@ -273,7 +264,6 @@ export const updates: MessageModule = {
       "This build has no release source to ask, so it cannot tell whether a newer version exists.",
     "updates.blocked.action": "Open local service settings",
     "updates.history": "Release history",
-    "updates.history.checkedAt": "Last checked",
     "updates.history.never": "Never",
     "updates.history.refresh": "Refresh",
     "updates.history.empty": "No releases yet",

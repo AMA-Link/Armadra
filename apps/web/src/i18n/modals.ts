@@ -74,15 +74,9 @@ export const modals: MessageModule = {
     "settings.cadence.manual": "手动",
     "settings.cadence.minutes": "每 {count} 分钟",
     "settings.codexCliFallback": "Codex CLI 回退",
-    "settings.codexCliFallbackHint": "OAuth 取不到时启动本机 codex 读取额度。",
     "settings.costEnabled": "本地成本统计",
-    "settings.costEnabledHint": "扫描本机转录汇总 token；正文不出现在结果里。",
     "settings.claudeLocalWindow": "Claude 本地额度估算",
-    "settings.claudeLocalWindowHint":
-      "额度读取关着时，按本机转录估算 5 小时与 7 天窗口。",
     "settings.priceSource": "价格来源",
-    "settings.priceSourceHint":
-      "上下文上限用同一份目录；{path} 里的价格仍然优先。",
     "settings.priceSource.network": "models.dev",
     "settings.priceSource.cache": "models.dev（本地缓存）",
     "settings.priceSource.builtIn": "随版本发布的内置表",
@@ -110,15 +104,12 @@ export const modals: MessageModule = {
     "settings.showSystemFiles": "显示系统文件",
     "settings.splashAnimation": "启动动画",
     "settings.diagnostics.crashReports": "崩溃上报",
-    "settings.diagnostics.crashReports.note":
-      "仅发送脱敏后的错误信息到你自托管的服务。",
     "settings.diagnostics.dsn": "DSN",
     "settings.diagnostics.dsnInvalid": "DSN 无效",
 
     "settings.notifyNeedsYou": "需要你时通知",
     "settings.sound": "提示音",
     "settings.soundVolume": "音量",
-    "settings.soundPreview": "试听",
     "settings.preview": "播放",
 
     "settings.defaultAgent": "默认 Agent", // i18n-exempt
@@ -130,12 +121,8 @@ export const modals: MessageModule = {
     "settings.launchCommand": "自定义启动命令",
     "settings.autoTitle": "自动命名",
     "settings.autoTitle.label": "为占位标题自动生成名称",
-    "settings.autoTitle.note":
-      "只在标题仍是默认名时应用；你改过名之后不再覆盖。每个会话代次只生成一次。",
     "settings.conversations": "会话索引",
     "settings.conversations.scope": "索引范围",
-    "settings.conversations.scopeNote":
-      "命令面板能搜到哪些历史会话。只索引本应用工作空间下的那些会更快，也不会把别的项目摊在面前。",
     "settings.conversations.scope.workspaces": "本应用的工作空间",
     "settings.conversations.scope.all": "全部项目",
     "settings.customAgent.add": "添加",
@@ -197,7 +184,6 @@ export const modals: MessageModule = {
     "settings.whiteboard.color.light-violet": "浅紫",
 
     "settings.terminalBackend": "终端后端",
-    "settings.terminalBackend.restart": "改动在下次启动应用时生效",
     "settings.backend.auto": "自动",
     "settings.backend.tmux": "tmux", // i18n-exempt
     "settings.backend.direct": "直连",
@@ -218,11 +204,8 @@ export const modals: MessageModule = {
     "settings.reveal.copied": "路径已复制到剪贴板",
     "settings.reveal.failed": "打不开这个目录",
     "settings.dbSize": "数据库大小",
-    "settings.conversationCount": "{value} 条",
-    "settings.rebuild": "重建",
-    "settings.rebuild.done": "已重建 {value} 条",
-    "settings.backup": "备份数据库",
-    "settings.backup.run": "备份",
+    "settings.rebuild": "重建索引",
+    "settings.backup.run": "立即备份",
     "settings.backup.done": "已备份到 {path}",
     "settings.backup.failed": "备份失败",
     "settings.logRetention": "日志保留天数",
@@ -236,42 +219,37 @@ export const modals: MessageModule = {
     "settings.credential.file": "文件",
     "settings.credential.none": "未找到",
 
+    "settings.shortcut.filter.all": "全部",
+    "settings.shortcut.filter.changed": "已改",
+    "settings.shortcut.empty": "没有匹配的命令",
+    "settings.shortcut.col.command": "命令",
+    "settings.shortcut.col.keys": "快捷键",
+    "settings.shortcut.col.source": "来源",
+    "settings.shortcut.col.actions": "操作",
     "settings.shortcut.recording": "按下组合键…",
     "settings.shortcut.conflict": "冲突",
     "settings.shortcut.unbound": "未绑定",
     "settings.shortcut.enabled": "启用快捷键",
-    "settings.shortcut.note": "Esc 取消，Backspace 重置本层。", // i18n-exempt
     "settings.shortcut.source.default": "默认",
     "settings.shortcut.source.global": "全局",
     "settings.shortcut.source.profile": "配置档",
     "settings.shortcut.source.device": "本设备",
     "settings.shortcut.profile": "配置档",
-    "settings.shortcut.profile.note":
-      "一整套键位。换档立刻生效，各档的修改互不覆盖。",
     "settings.shortcut.profile.default": "默认",
     "settings.shortcut.profile.vscode": "VS Code 风格",
     "settings.shortcut.profile.create": "新建配置档",
-    "settings.shortcut.profile.create.note":
-      "只用小写字母、数字和连字符。新档从默认键位开始，不复制当前档。",
     "settings.shortcut.profile.invalid": "这个名字不能用，或者已经有同名的档。",
     "settings.shortcut.profile.delete": "删除这个配置档",
     "settings.shortcut.layer": "保存到",
-    "settings.shortcut.layer.note":
-      "全局键位跟随设置同步到其它设备；本设备键位只留在这台机器上。",
     "settings.shortcut.platform": "平台",
     "settings.shortcut.platform.mac": "macOS",
     "settings.shortcut.platform.other": "Windows / Linux",
-    "settings.shortcut.platform.preview":
-      "正在查看另一个平台的键位，只读；录制只写当前这台机器所在的平台。",
     "settings.shortcut.reset": "重置「{command}」到上一层：{keys}",
     "settings.shortcut.resetAll": "全部重置",
     "settings.shortcut.transfer": "导入 / 导出",
-    "settings.shortcut.transfer.note":
-      "导出的是两层覆盖，不含默认键位。粘贴一份配置后点导入会整体替换现有覆盖。",
     "settings.shortcut.transfer.close": "关闭",
     "settings.shortcut.import.apply": "导入",
     "settings.shortcut.import.invalid": "无法识别这份快捷键配置。",
-    "settings.shortcut.import.done": "已导入快捷键配置。",
     "settings.shortcut.more": "「{command}」的更多操作",
     "settings.shortcut.add": "再添加一组按键",
     "settings.shortcut.removeOne": "移除 {keys}",
@@ -290,8 +268,6 @@ export const modals: MessageModule = {
     "settings.scope.browser": "浏览器节点",
     "settings.scope.scm": "源码控制",
     "settings.scope.global": "系统全局热键",
-    "settings.scope.global.note":
-      "这两个在应用没有焦点时也会触发，所以默认都不绑；被别的程序占用时这里会写明。",
     "settings.shortcut.global.taken": "已被其它程序占用",
     "settings.shortcut.global.invalid": "系统不接受这个组合",
 
@@ -382,17 +358,9 @@ export const modals: MessageModule = {
     "settings.cadence.manual": "Manual",
     "settings.cadence.minutes": "Every {count} min",
     "settings.codexCliFallback": "Codex CLI fallback",
-    "settings.codexCliFallbackHint":
-      "Run the local codex binary when OAuth returns nothing.",
     "settings.costEnabled": "Local cost tracking",
-    "settings.costEnabledHint":
-      "Counts tokens in local transcripts; their text never leaves your machine.",
     "settings.claudeLocalWindow": "Claude local window estimate",
-    "settings.claudeLocalWindowHint":
-      "With quota reads off, estimate the 5-hour and 7-day windows from local transcripts.",
     "settings.priceSource": "Price source",
-    "settings.priceSourceHint":
-      "Context limits come from the same catalog; prices in {path} still win.",
     "settings.priceSource.network": "models.dev",
     "settings.priceSource.cache": "models.dev (cached locally)",
     "settings.priceSource.builtIn": "Built into this release",
@@ -424,15 +392,12 @@ export const modals: MessageModule = {
     "settings.showSystemFiles": "Show system files",
     "settings.splashAnimation": "Startup animation",
     "settings.diagnostics.crashReports": "Crash reports",
-    "settings.diagnostics.crashReports.note":
-      "Sends only scrubbed error details to your self-hosted server.",
     "settings.diagnostics.dsn": "DSN",
     "settings.diagnostics.dsnInvalid": "Invalid DSN",
 
     "settings.notifyNeedsYou": "Notify when input is needed",
     "settings.sound": "Sound",
     "settings.soundVolume": "Volume",
-    "settings.soundPreview": "Preview",
     "settings.preview": "Play",
 
     "settings.defaultAgent": "Default agent",
@@ -445,12 +410,8 @@ export const modals: MessageModule = {
     "settings.autoTitle": "Automatic naming",
     "settings.autoTitle.label":
       "Name nodes that still carry a placeholder title",
-    "settings.autoTitle.note":
-      "Applies only while the title is still the default one, and never after you rename a node. Generated once per session generation.",
     "settings.conversations": "Conversation index",
     "settings.conversations.scope": "Index scope",
-    "settings.conversations.scopeNote":
-      "Which past sessions the command palette can find. Indexing only this app's workspaces is faster and keeps unrelated projects out of the list.",
     "settings.conversations.scope.workspaces": "This app's workspaces",
     "settings.conversations.scope.all": "All projects",
     "settings.customAgent.add": "Add",
@@ -512,8 +473,6 @@ export const modals: MessageModule = {
     "settings.whiteboard.color.light-violet": "Light violet",
 
     "settings.terminalBackend": "Terminal backend",
-    "settings.terminalBackend.restart":
-      "Takes effect the next time the app starts",
     "settings.backend.auto": "Auto",
     "settings.backend.tmux": "tmux",
     "settings.backend.direct": "Direct",
@@ -534,11 +493,8 @@ export const modals: MessageModule = {
     "settings.reveal.copied": "Path copied to the clipboard",
     "settings.reveal.failed": "That folder could not be opened",
     "settings.dbSize": "Database size",
-    "settings.conversationCount": "{value} entries",
-    "settings.rebuild": "Rebuild",
-    "settings.rebuild.done": "Indexed {value} entries",
-    "settings.backup": "Back up database",
-    "settings.backup.run": "Back up",
+    "settings.rebuild": "Rebuild index",
+    "settings.backup.run": "Back up now",
     "settings.backup.done": "Copied to {path}",
     "settings.backup.failed": "Backup failed",
     "settings.logRetention": "Log retention",
@@ -552,44 +508,39 @@ export const modals: MessageModule = {
     "settings.credential.file": "File",
     "settings.credential.none": "Not found",
 
+    "settings.shortcut.filter.all": "All",
+    "settings.shortcut.filter.changed": "Changed",
+    "settings.shortcut.empty": "No matching commands",
+    "settings.shortcut.col.command": "Command",
+    "settings.shortcut.col.keys": "Shortcut",
+    "settings.shortcut.col.source": "Source",
+    "settings.shortcut.col.actions": "Actions",
     "settings.shortcut.recording": "Press a combination…",
     "settings.shortcut.conflict": "Conflict",
     "settings.shortcut.unbound": "Unbound",
     "settings.shortcut.enabled": "Enable shortcuts",
-    "settings.shortcut.note": "Esc cancels, Backspace resets this layer.",
     "settings.shortcut.source.default": "Default",
     "settings.shortcut.source.global": "Global",
     "settings.shortcut.source.profile": "Profile",
     "settings.shortcut.source.device": "This device",
     "settings.shortcut.profile": "Profile",
-    "settings.shortcut.profile.note":
-      "A whole set of keys. Switching takes effect at once, and each profile keeps its own changes.",
     "settings.shortcut.profile.default": "Default",
     "settings.shortcut.profile.vscode": "VS Code style",
     "settings.shortcut.profile.create": "New profile",
-    "settings.shortcut.profile.create.note":
-      "Lowercase letters, digits and hyphens. A new profile starts from the built-in keys; it does not copy this one.",
     "settings.shortcut.profile.invalid":
       "That name cannot be used, or a profile already has it.",
     "settings.shortcut.profile.delete": "Delete this profile",
     "settings.shortcut.layer": "Save to",
-    "settings.shortcut.layer.note":
-      "Global shortcuts follow your settings to other devices; device shortcuts stay on this machine.",
     "settings.shortcut.platform": "Platform",
     "settings.shortcut.platform.mac": "macOS",
     "settings.shortcut.platform.other": "Windows / Linux",
-    "settings.shortcut.platform.preview":
-      "Showing another platform's keys, read-only. Recording always writes the platform this machine runs.",
     "settings.shortcut.reset": "Reset “{command}” to the layer below: {keys}",
     "settings.shortcut.resetAll": "Reset all",
     "settings.shortcut.transfer": "Import / export",
-    "settings.shortcut.transfer.note":
-      "The export contains both override layers, not the defaults. Pasting a configuration and importing replaces the existing overrides.",
     "settings.shortcut.transfer.close": "Close",
     "settings.shortcut.import.apply": "Import",
     "settings.shortcut.import.invalid":
       "This shortcut configuration was not recognised.",
-    "settings.shortcut.import.done": "Shortcut configuration imported.",
     "settings.shortcut.more": "More actions for “{command}”",
     "settings.shortcut.add": "Add another key",
     "settings.shortcut.removeOne": "Remove {keys}",
@@ -609,8 +560,6 @@ export const modals: MessageModule = {
     "settings.scope.browser": "Browser nodes",
     "settings.scope.scm": "Source control",
     "settings.scope.global": "System-wide hotkeys",
-    "settings.scope.global.note":
-      "These fire even when the app has no focus, so none is bound by default; a combination another program already holds is reported here.",
     "settings.shortcut.global.taken": "Another program holds this",
     "settings.shortcut.global.invalid":
       "The system will not take this combination",
