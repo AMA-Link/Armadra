@@ -6,6 +6,7 @@ import {
   authorizeManagedInput,
   assertSubmitInput,
 } from "./manager-status";
+import { writeReply } from "./replies";
 import { sequenceSessionEnvironment } from "./sequences";
 import {
   connectProgramStatus,
@@ -790,6 +791,7 @@ export class TerminalManager {
     sessionId: string,
     size?: TerminalSize,
     writer = "",
+    readOnly = false,
   ): Promise<AttachSession> {
     if (this.stopping) throw conflict("Core is shutting down");
     const record = this.records.get(sessionId);
@@ -818,7 +820,7 @@ export class TerminalManager {
       }
     }
     this.attachments.acquire(sessionId);
-    this.viewers.add(sessionId, attachment.attachmentId, writer, own);
+    this.viewers.add(sessionId, attachment.attachmentId, writer, own, readOnly);
     await this.viewers.refresh(sessionId);
     this.setAttachState(sessionId, "live");
     // Only a backend that does not redraw owes the socket a replay.
@@ -888,6 +890,23 @@ export class TerminalManager {
       const submittedRevision = record.inputRevision;
       await this.backend(record.kind).input(record.key, bytes);
       onWritten?.(submittedRevision);
+    });
+  }
+
+  /** One view's answer to a program's query (#518, `writeReply`). */
+  reply(
+    sessionId: string,
+    generation: number,
+    data: string,
+    attachmentId: number,
+  ): Promise<boolean> {
+    const { key } = this.checked(sessionId, generation);
+    return this.withKey(key, () => {
+      const record = this.checked(sessionId, generation);
+      return writeReply(this.backend(record.kind), record.key, data, {
+        attachmentId,
+        responder: () => this.viewers.responder(sessionId, record),
+      });
     });
   }
 

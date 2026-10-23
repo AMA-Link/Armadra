@@ -498,6 +498,22 @@ export class TmuxBackend implements TerminalBackend, AdoptableBackend {
   }
 
   /**
+   * tmux asks each client its own questions (DA, colours) on attach, so the
+   * answer goes back down the client that was asked (#518). Not through
+   * `input`: that writes into the newest client, and leaves copy-mode.
+   */
+  async reply(
+    key: SessionKey,
+    attachmentId: number,
+    bytes: Buffer,
+  ): Promise<void> {
+    this.sessions
+      .get(key)
+      ?.clients.get(attachmentId)
+      ?.pty?.write(bytes.toString("utf8"));
+  }
+
+  /**
    * A tmux buffer, not keystrokes: `-p` wraps it in the bracketed-paste
    * sequence, `-d` deletes the buffer afterwards.
    */

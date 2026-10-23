@@ -209,6 +209,14 @@ export class SshBackend implements TerminalBackend {
     return this.options.inner.input(key, bytes);
   }
 
+  /** Only when the inner backend has a view per viewer (tmux does). */
+  get reply(): TerminalBackend["reply"] {
+    const inner = this.options.inner;
+    return inner.reply === undefined
+      ? undefined
+      : (key, attachmentId, bytes) => inner.reply!(key, attachmentId, bytes);
+  }
+
   paste(key: SessionKey, text: string, pressEnter: boolean): Promise<void> {
     return this.options.inner.paste(key, text, pressEnter);
   }

@@ -101,6 +101,16 @@ class FakeBackend implements AdoptableBackend {
     this.calls.push(`input:${key}:${bytes.toString("utf8")}`);
   }
 
+  async reply(
+    key: SessionKey,
+    attachmentId: number,
+    bytes: Buffer,
+  ): Promise<void> {
+    this.calls.push(
+      `reply${attachmentId}:${key}:${JSON.stringify(bytes.toString("utf8"))}`,
+    );
+  }
+
   async paste(key: SessionKey, text: string, enter: boolean): Promise<void> {
     this.calls.push(`paste:${key}:${text}:${String(enter)}`);
   }
@@ -253,6 +263,7 @@ function harness(
   // direct / session-host：只有一个 pty，没有每端自己的视图。
   if (options.singlePty === true) {
     Object.defineProperty(backend, "resizeViewer", { value: undefined });
+    Object.defineProperty(backend, "reply", { value: undefined });
   }
   const leases: LeaseEvent[] = [];
   const programs: Harness["programs"] = [];
@@ -1394,5 +1405,81 @@ describe("the window size of a terminal several viewers watch", () => {
     expect(manager.windowOf(session.id)?.viewers.map((v) => v.cols)).toEqual([
       120, 40,
     ]);
+  });
+});
+
+describe("a query several views answer (#518)", () => {
+  const DA = "\x1b[?1;2c";
+  const settle = () => new Promise((resolve) => setImmediate(resolve));
+  const replies = (backend: FakeBackend) =>
+    backend.calls.filter(
+      (call) => call.startsWith("input:") || call.startsWith("reply"),
+    );
+
+  it("on a single pty keeps the responder's answer and drops the rest", async () => {
+    const { manager, backend } = harness(undefined, { singlePty: true });
+    const session = await spawn(manager);
+    const desk = await manager.attach(
+      session.id,
+      { cols: 120, rows: 40 },
+      "desk",
+    );
+    const phone = await manager.attach(session.id, undefined, "phone");
+    const deskId = desk.attachment.attachmentId;
+    const phoneId = phone.attachment.attachmentId;
+
+    // Nobody typed: the earliest view at the window's size answers.
+    expect(await manager.reply(session.id, 1, DA, phoneId)).toBe(false);
+    expect(await manager.reply(session.id, 1, DA, deskId)).toBe(true);
+    expect(replies(backend)).toEqual([`input:${session.sessionKey}:${DA}`]);
+
+    // The phone types: now its answer is the one that counts.
+    manager.noteViewerInput(session.id, phoneId);
+    expect(await manager.reply(session.id, 1, DA, deskId)).toBe(false);
+    expect(await manager.reply(session.id, 1, DA, phoneId)).toBe(true);
+    expect(replies(backend)).toHaveLength(2);
+
+    // It leaves: the desk answers again.
+    await manager.detached(session.id, phoneId);
+    expect(await manager.reply(session.id, 1, DA, deskId)).toBe(true);
+    expect(replies(backend)).toHaveLength(3);
+  });
+
+  it("never waits on a read-only view", async () => {
+    const { manager, backend } = harness(undefined, { singlePty: true });
+    const session = await spawn(manager);
+    await manager.attach(session.id, { cols: 120, rows: 40 }, "", true);
+    const phone = await manager.attach(session.id, undefined, "phone");
+    expect(
+      await manager.reply(session.id, 1, DA, phone.attachment.attachmentId),
+    ).toBe(true);
+    expect(replies(backend)).toHaveLength(1);
+  });
+
+  it("with a view per viewer sends each answer back down its own view", async () => {
+    const { manager, backend } = harness();
+    const session = await spawn(manager);
+    const desk = await manager.attach(session.id, undefined, "desk");
+    const phone = await manager.attach(session.id, undefined, "phone");
+    await manager.reply(session.id, 1, DA, desk.attachment.attachmentId);
+    await manager.reply(session.id, 1, DA, phone.attachment.attachmentId);
+    expect(replies(backend)).toEqual([
+      `reply${desk.attachment.attachmentId}:${session.sessionKey}:${JSON.stringify(DA)}`,
+      `reply${phone.attachment.attachmentId}:${session.sessionKey}:${JSON.stringify(DA)}`,
+    ]);
+  });
+
+  it("is not someone driving: the lease and the window stay", async () => {
+    const { manager, leases } = harness(undefined, { singlePty: true });
+    const session = await spawn(manager);
+    const desk = await manager.attach(
+      session.id,
+      { cols: 120, rows: 40 },
+      "desk",
+    );
+    await manager.reply(session.id, 1, DA, desk.attachment.attachmentId);
+    await settle();
+    expect(leases).toEqual([]);
+    expect(manager.driveLease(session.id).state).toBe("free");
   });
 });

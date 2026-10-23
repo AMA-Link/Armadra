@@ -286,6 +286,14 @@ export interface TerminalBackend {
 
   input(key: SessionKey, bytes: Buffer): Promise<void>;
 
+  /**
+   * A backend with a view per viewer (tmux: a client pty each) is asked its
+   * own questions by each view, so a view's answer to a query goes back to
+   * that view alone (#518), without leaving copy-mode. Absent on a backend
+   * with one pty, where the manager keeps one view's answer and drops the rest.
+   */
+  reply?(key: SessionKey, attachmentId: number, bytes: Buffer): Promise<void>;
+
   /** Bracketed paste, so a CLI that understands it treats the text as data. */
   paste(key: SessionKey, text: string, pressEnter: boolean): Promise<void>;
 

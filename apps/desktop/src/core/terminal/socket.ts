@@ -7,6 +7,7 @@ import {
 } from "./backend";
 import { DEFAULT_COLS, DEFAULT_ROWS, type TerminalManager } from "./manager";
 import { deviceOrLocal, humanActor } from "../drive/lease";
+import { isTerminalReplyData } from "./replies";
 import { CLOSE_BACKPRESSURE, SendQueue, wsTarget } from "../http/stream-queue";
 
 /**
@@ -96,7 +97,13 @@ export type ServerFrame =
   | { readonly type: "stale"; readonly generation: number };
 
 export type ClientFrame =
-  | { readonly type: "input"; readonly data: string; readonly inputId?: number }
+  | {
+      readonly type: "input";
+      readonly data: string;
+      readonly inputId?: number;
+      /** The page's terminal answering a query, not keystrokes (#518). */
+      readonly reply?: true;
+    }
   | { readonly type: "resize"; readonly cols: number; readonly rows: number }
   | { readonly type: "terminate"; readonly mode?: TerminateMode };
 
@@ -129,6 +136,7 @@ export function decodeFrame(text: string): ClientFrame | undefined {
       ...(typeof inputId === "number" && Number.isFinite(inputId)
         ? { inputId }
         : {}),
+      ...(frame.reply === true ? { reply: true as const } : {}),
     };
   }
   if (
@@ -222,7 +230,12 @@ export async function serveTerminalSocket(
 
   let attached;
   try {
-    attached = await manager.attach(sessionId, requested, writer);
+    attached = await manager.attach(
+      sessionId,
+      requested,
+      writer,
+      options.readOnly === true,
+    );
   } catch (error) {
     // Nothing live behind the row: the socket still gets a `hello` and the
     // final `status`, so the page can show the exit instead of a blank pane.
@@ -363,6 +376,23 @@ export async function serveTerminalSocket(
         if (frame === undefined) return;
         if (options.readOnly === true && frame.type !== "resize") return;
         try {
+          // 对查询的应答（#518）：几个视图都会答，manager 只留一份；也不算
+          // 「人在驱动」，只看不打字的那一端不该因此抢走租约和窗口。标记
+          // 不作数，内容整段是应答格式才走这条路，否则按键入处理。
+          if (
+            frame.type === "input" &&
+            frame.reply === true &&
+            frame.inputId === undefined &&
+            isTerminalReplyData(frame.data)
+          ) {
+            await manager.reply(
+              sessionId,
+              generation,
+              frame.data,
+              attachment.attachmentId,
+            );
+            return;
+          }
           if (frame.type === "input") {
             // 键盘上来的字节就是「人在驱动」（设计 `agent-delivery.md`
             // §6.1）：它抢占 Agent 的租约，而 Agent 的下一次投递会被告知

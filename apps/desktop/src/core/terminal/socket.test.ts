@@ -119,6 +119,16 @@ describe("client frames", () => {
     expect(decodeFrame('{"type":"whatever"}')).toBeUndefined();
   });
 
+  it("keeps the reply mark only when it is literally true (#518)", () => {
+    expect(
+      decodeFrame('{"type":"input","data":"\\u001b[?1;2c","reply":true}'),
+    ).toEqual({ type: "input", data: "\u001b[?1;2c", reply: true });
+    expect(decodeFrame('{"type":"input","data":"a","reply":"yes"}')).toEqual({
+      type: "input",
+      data: "a",
+    });
+  });
+
   it("ignores an input id that is not a finite number", () => {
     expect(decodeFrame('{"type":"input","data":"a","inputId":"3"}')).toEqual({
       type: "input",
@@ -356,7 +366,7 @@ describe("a viewer's own size", () => {
     });
     await new Promise((resolve) => setImmediate(resolve));
     // No size in the request: the manager decides where the viewer starts.
-    expect(calls[0]).toEqual(["attach", "s1", undefined, "phone"]);
+    expect(calls[0]).toEqual(["attach", "s1", undefined, "phone", false]);
     expect(sent[0]).toMatchObject({ type: "hello", cols: 132, rows: 43 });
 
     handlers.get("message")?.(
@@ -377,5 +387,77 @@ describe("a viewer's own size", () => {
     );
     connection.close();
     await served;
+  });
+});
+
+describe("a view answering a query (#518)", () => {
+  async function serve(frame: Record<string, unknown>) {
+    const handlers = new Map<string, (data?: unknown) => void>();
+    const calls: unknown[][] = [];
+    const attachment: Attachment = {
+      attachmentId: 9,
+      generation: 1,
+      onData: () => {},
+      onExit: () => {},
+    };
+    const manager = {
+      attach: async () => ({
+        attachment,
+        record: { kind: "direct" },
+        snapshot: undefined,
+        size: { cols: 80, rows: 24 },
+      }),
+      acknowledgedInput: () => 0,
+      generation: () => 1,
+      noteOutput: () => {},
+      noteViewerInput: (...args: unknown[]) =>
+        calls.push(["noteViewerInput", ...args]),
+      input: async (...args: unknown[]) => calls.push(["input", ...args]),
+      reply: async (...args: unknown[]) => {
+        calls.push(["reply", ...args]);
+        return true;
+      },
+      detached: async () => {},
+    } as unknown as TerminalManager;
+    const connection = {
+      readyState: 1,
+      bufferedAmount: 0,
+      send: () => {},
+      close: () => handlers.get("close")?.(),
+      on: (event: string, handler: (data?: unknown) => void) => {
+        handlers.set(event, handler);
+      },
+    } as unknown as WebSocket;
+    const served = serveTerminalSocket(connection, {
+      manager,
+      sessionId: "s1",
+      writer: "phone",
+    });
+    await new Promise((resolve) => setImmediate(resolve));
+    handlers.get("message")?.(JSON.stringify(frame));
+    await new Promise((resolve) => setImmediate(resolve));
+    connection.close();
+    await served;
+    return calls;
+  }
+
+  it("hands a reply to the manager as one, without driving", async () => {
+    const calls = await serve({
+      type: "input",
+      data: "\u001b[?1;2c\u001b[>0;276;0c",
+      reply: true,
+    });
+    expect(calls).toEqual([
+      ["reply", "s1", 1, "\u001b[?1;2c\u001b[>0;276;0c", 9],
+    ]);
+  });
+
+  it("treats a marked frame that is not a reply as typing", async () => {
+    const calls = await serve({
+      type: "input",
+      data: "rm -rf ~\r",
+      reply: true,
+    });
+    expect(calls.map((call) => call[0])).toEqual(["noteViewerInput", "input"]);
   });
 });
