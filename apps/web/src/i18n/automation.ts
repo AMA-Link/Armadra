@@ -36,8 +36,6 @@ const zh = {
   "automation.planState.expired": "已结束",
   "automation.planState.deleted": "已删除",
   "automation.needsAttention": "需处理",
-  "automation.needsAttentionNote":
-    "目标连续拒绝执行，需要修复目标或重新定义计划",
 
   /* 计划字段 */
   "automation.schedule.once": "一次性",
@@ -204,8 +202,6 @@ const en: Record<keyof typeof zh, string> = {
   "automation.planState.expired": "Finished",
   "automation.planState.deleted": "Deleted",
   "automation.needsAttention": "Needs attention",
-  "automation.needsAttentionNote":
-    "The target refused repeatedly; repair it or redefine the plan",
 
   "automation.schedule.once": "Once",
   "automation.schedule.interval": "Interval",

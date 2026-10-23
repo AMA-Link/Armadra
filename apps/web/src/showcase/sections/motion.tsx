@@ -277,6 +277,7 @@ function ShimmerDemo() {
  * （240ms 画出）；旁边是终态 done / failed。
  */
 function CheckDemo({ run }: { run: number }) {
+  const t = useT();
   const [state, setState] = React.useState<SpinnerState>("spinning");
   React.useEffect(() => {
     if (run === 0) return;
@@ -285,7 +286,7 @@ function CheckDemo({ run }: { run: number }) {
   }, [run]);
   return (
     <Sample name="check-draw">
-      <Spinner state={state} aria-label="check-draw" />
+      <Spinner state={state} aria-label={t("state.loading")} />
       <Spinner state="done" />
       <Spinner state="failed" />
     </Sample>

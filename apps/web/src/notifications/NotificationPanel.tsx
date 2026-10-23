@@ -29,6 +29,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/ui/dropdown-menu";
+import { Button } from "@/ui/button";
 import { IconButton } from "@/ui/icon-button";
 import { Item, ItemActions } from "@/ui/item";
 import { useRoving } from "@/ui/roving";
@@ -173,10 +174,10 @@ export function NeedRow({
         data-tree={tree ? "true" : undefined}
         className="min-h-[36px] flex-nowrap gap-1.5 rounded-control px-1.5 py-0.5 hover:bg-hover"
       >
-        <button
-          type="button"
+        <Button
+          variant="ghost"
           data-roving-item
-          className="flex min-w-0 flex-1 items-center gap-1.5 self-stretch rounded-tight py-1 text-left outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+          className="h-auto min-w-0 flex-1 justify-start gap-1.5 self-stretch rounded-tight px-0 py-1 text-left font-normal hover:bg-transparent"
           onClick={onSelect}
         >
           <span className="min-w-0 flex-1 truncate text-body">
@@ -193,7 +194,7 @@ export function NeedRow({
           >
             {formatRelativeTime(item.updatedAt, now)}
           </span>
-        </button>
+        </Button>
         <ItemActions className="gap-1">
           {tree ? <AgentTree tree={tree} size="sm" /> : null}
           {item.sessionId && (
