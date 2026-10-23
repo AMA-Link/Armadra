@@ -812,14 +812,20 @@ async function scenario(ctx) {
       await page.fill('input[aria-label="该主机上的项目路径"]', root);
       await page.click('[role="dialog"] button', "切换", { exact: true });
     };
+    // 切换成功不再弹「已切换到 …」：工作空间页上直接显示当前主机。按接口等改绑落地。
+    const boundTo = async (hostId, what) => {
+      const deadline = Date.now() + 60_000;
+      for (;;) {
+        const item = (await api("/api/workspaces")).body.find(
+          (entry) => entry.id === created.id,
+        );
+        if ((item?.executionHostId ?? "") === hostId) return;
+        if (Date.now() > deadline) throw new Error(`等待超时：${what}`);
+        await sleep(250);
+      }
+    };
     await switchTo(HOST_NAME);
-    await page.waitFor(
-      `return document.body.innerText.includes("已切换到 ${HOST_NAME}");`,
-      {
-        what: "「已切换到假远端」",
-        timeout: 60_000,
-      },
-    );
+    await boundTo(HOST_ID, "工作空间改绑到假远端");
     await page.capture("07a-switched-remote");
     const remote = (await api("/api/workspaces")).body.find(
       (item) => item.id === created.id,
@@ -838,13 +844,7 @@ async function scenario(ctx) {
     await page.capture("07b-remote-file");
     await page.click('button[aria-label="资源管理器"]');
     await switchTo("本机");
-    await page.waitFor(
-      `return document.body.innerText.includes("已切换到 本机");`,
-      {
-        what: "「已切换到本机」",
-        timeout: 60_000,
-      },
-    );
+    await boundTo("", "工作空间改绑回本机");
     await page.capture("07c-switched-local");
     const local = (await api("/api/workspaces")).body.find(
       (item) => item.id === created.id,

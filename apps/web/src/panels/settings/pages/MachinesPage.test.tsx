@@ -20,7 +20,9 @@ const api = vi.hoisted(() => ({
   importExecutionHosts: vi.fn(),
   resyncExecutionHost: vi.fn(),
   scanSshHostKeys: vi.fn(),
+  openRemoteWorkspace: vi.fn(),
 }));
+const openWorkspace = vi.hoisted(() => vi.fn());
 const toasts = vi.hoisted(() => {
   const toast = Object.assign(vi.fn(), {
     success: vi.fn(),
@@ -36,6 +38,9 @@ const runtime = vi.hoisted(() => ({
 const compact = vi.hoisted(() => ({ value: false }));
 vi.mock("@/api/client", () => ({ localRuntimeApi: api }));
 vi.mock("@/ui/toast", () => ({ toast: toasts }));
+vi.mock("../../../app/workspace-actions", () => ({
+  useOpenWorkspace: () => openWorkspace,
+}));
 vi.mock("@/platform/layout", async (original) => ({
   ...(await original<typeof import("@/platform/layout")>()),
   useCompactLayout: () => compact.value,
@@ -64,6 +69,7 @@ afterEach(() => {
   for (const spy of [toasts, toasts.success, toasts.error, toasts.warning])
     spy.mockReset();
   runtime.mutate.mockReset();
+  openWorkspace.mockReset();
 });
 
 function mount() {
@@ -110,6 +116,33 @@ describe("设置 → SSH", () => {
       screen.queryByRole("button", { name: "Import / export" }),
     ).toBeNull();
     expect(api.executionHosts).not.toHaveBeenCalled();
+  });
+
+  it("打开远程项目：切到那块工作空间，并提示已打开（切换在对话框背后，看不见）", async () => {
+    api.openRemoteWorkspace.mockResolvedValue({
+      id: "ws-remote",
+      name: "project",
+    });
+    mount();
+    const table = await screen.findByRole("table");
+    await click(within(table).getByRole("button", { name: "Open" }));
+    const path = await screen.findByRole("textbox", {
+      name: "Remote project path",
+    });
+    fireEvent.change(path, { target: { value: "/srv/project" } });
+    await click(screen.getByRole("button", { name: "Open remote project" }));
+    await waitFor(() =>
+      expect(toasts.success).toHaveBeenCalledWith("Opened project"),
+    );
+    expect(api.openRemoteWorkspace).toHaveBeenCalledWith({
+      name: "project",
+      executionHostId: "build-box",
+      rootPath: "/srv/project",
+    });
+    expect(openWorkspace).toHaveBeenCalledWith({
+      id: "ws-remote",
+      name: "project",
+    });
   });
 
   it("没配 Worker 的主机不给「重新同步」", async () => {

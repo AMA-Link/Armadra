@@ -406,9 +406,10 @@ await h.run(async () => {
   );
   check(status(A)?.state === "blocked", "request_permission → blocked");
   await page.capture("03-permission-card");
-  await page.click(`${node(A)} [data-slot="acp-permission"] button`, "拒绝", {
-    exact: true,
-  });
+  // 拒绝按钮带「Esc」快捷键提示，文字不再只是「拒绝」：按选项种类找。
+  await page.click(
+    `${node(A)} [data-slot="acp-permission"] button[data-option^="reject"]`,
+  );
   await page.waitFor(
     `return document.querySelector(${JSON.stringify(node(A))})?.innerText.includes("write rejected");`,
     { what: "Agent 收到拒绝" },
@@ -558,7 +559,8 @@ await h.run(async () => {
     await page.click(`${card} [role="combobox"]`);
     await page.click('[role="option"]', "blue", { exact: true });
     await page.fill(`${card} input[type="number"]`, "2");
-    await page.click(`${card} button`, "提交", { exact: true });
+    // 提交钮带「↵」快捷键提示，文字不再只是「提交」：按表单的提交钮找。
+    await page.click(`${card} button[type="submit"]`);
     await page.waitFor(
       `return document.querySelector(${JSON.stringify(node(C))})?.innerText.includes('elicit: accept {"color":"blue","count":2}');`,
       { what: "Agent 收到页面填的内容" },

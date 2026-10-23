@@ -321,11 +321,11 @@
   --drawer-w: 360px;
   --scm-w: 460px;
   /*
-   * 设置工作台（设计系统 §2.7 / §5.17）：近全窗，视口减 48px，上限 1600 × 1040；
+   * 设置工作台（设计系统 §2.7 / §5.17）：视口四周各留 48px（减 96px），上限 1280 × 860；
    * 再由调用方夹进安全区。平板与手机的形态在 `SettingsDialog` 里另给。
    */
-  --settings-dialog-w: min(calc(100vw - 48px), 1600px);
-  --settings-dialog-h: min(calc(100dvh - 48px), 1040px);
+  --settings-dialog-w: min(calc(100vw - 96px), 1280px);
+  --settings-dialog-h: min(calc(100dvh - 96px), 860px);
   --settings-nav-w: clamp(200px, 18%, 256px);
   --settings-topbar-h: 48px;
   /* Git 工具窗口停在底部（Git 工具窗口设计 §2.1）；拖过之后走偏好里的 px。 */
