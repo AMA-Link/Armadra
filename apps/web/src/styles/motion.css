@@ -338,11 +338,11 @@
 
 /* 校验失败：输入类控件 `aria-invalid` 的那一刻抖两次（红边由组件自己的 aria-invalid 样式给） */
 :where(
-    [data-slot="input"],
-    [data-slot="textarea"],
-    [data-slot="select-trigger"],
-    [data-slot="input-group"]
-  )[aria-invalid="true"],
+  [data-slot="input"],
+  [data-slot="textarea"],
+  [data-slot="select-trigger"],
+  [data-slot="input-group"]
+)[aria-invalid="true"],
 [data-slot="input-group"]:has([aria-invalid="true"]) {
   animation: armadra-shake 240ms linear;
 }
