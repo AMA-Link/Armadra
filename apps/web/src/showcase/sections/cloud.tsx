@@ -7,7 +7,13 @@ import { usePreferencesStore } from "@/app/preferences-store";
 import { CloudApiProvider } from "@/cloud/api/context";
 import { createCloudQueryClient, useConsoleSession } from "@/cloud/api/queries";
 import type { ConsoleSession } from "@/cloud/ConsoleRoot";
-import { createMockApi } from "@/cloud/mock/create-mock-client";
+import {
+  createMockApi,
+  type MockOptions,
+} from "@/cloud/mock/create-mock-client";
+import { CreateTeamDialog } from "@/cloud/team/CreateTeamDialog";
+import { DeletedTeamPage } from "@/cloud/team/DeletedTeamPage";
+import { TeamPage } from "@/cloud/team/TeamPage";
 import { ConsoleSidebar, ConsoleShell } from "@/cloud/shell/ConsoleShell";
 import { EmbeddedAuth } from "@/cloud/auth/AuthLayout";
 import { DevicePage } from "@/cloud/auth/DevicePage";
@@ -120,11 +126,17 @@ function useHostColumns(): DataColumn<CloudHostRow>[] {
  */
 function MockConsole({
   children,
+  options,
 }: {
   children: (session: ConsoleSession) => React.ReactNode;
+  options?: MockOptions;
 }) {
   const [api] = React.useState(() =>
-    createMockApi({ operatorAccount: true, operatorSession: true }),
+    createMockApi({
+      operatorAccount: true,
+      operatorSession: true,
+      ...options,
+    }),
   );
   const [client] = React.useState(createCloudQueryClient);
   return (
@@ -155,6 +167,80 @@ export default function CloudSection() {
   sessionStorage.setItem(OPS_QUERY_KEY, "li");
   return (
     <MockConsole>{(session) => <CloudSamples session={session} />}</MockConsole>
+  );
+}
+
+const TEAM_PATHS = [
+  "/t/rd",
+  "/t/rd/members",
+  "/t/rd/members?tab=invitations",
+  "/t/rd/settings",
+] as const;
+
+/**
+ * 团队空间（U4）：管理员视角的概览、成员（成员页签与邀请页签）、设置；所有者视角的设置（带转移与
+ * 删除）；成员与访客视角的概览；恢复期内的团队；创建团队对话框。页面用同一个 mock 客户端取数。
+ */
+function TeamSamples() {
+  const t = useT();
+  const [creating, setCreating] = React.useState(false);
+  const frame = "h-[520px] overflow-hidden rounded-card border border-border";
+  const page = (path: string) =>
+    matchRoute(...(path.split("?") as [string, string?]))!;
+  const shell = (session: ConsoleSession, path: string) => (
+    <div key={path} className={frame}>
+      <ConsoleShell
+        user={session.user}
+        teams={session.teams}
+        counts={CLOUD_COUNTS}
+        match={page(path)}
+      >
+        <TeamPage match={page(path)} />
+      </ConsoleShell>
+    </div>
+  );
+  return (
+    <div className="flex flex-col gap-4">
+      <MockConsole options={{ emailVerified: true }}>
+        {(session) => (
+          <div className="flex flex-col gap-4">
+            {TEAM_PATHS.map((path) => shell(session, path))}
+          </div>
+        )}
+      </MockConsole>
+      <MockConsole options={{ emailVerified: true, roles: { rd: "owner" } }}>
+        {(session) => shell(session, "/t/rd/settings")}
+      </MockConsole>
+      <div className="grid gap-4 lg:grid-cols-2">
+        <MockConsole options={{ emailVerified: true, roles: { rd: "member" } }}>
+          {(session) => shell(session, "/t/rd/members")}
+        </MockConsole>
+        <MockConsole options={{ emailVerified: true, roles: { rd: "guest" } }}>
+          {(session) => shell(session, "/t/rd")}
+        </MockConsole>
+      </div>
+      <div className="h-[320px] overflow-hidden rounded-card border border-border">
+        <MockConsole options={{ roles: { lab: "owner" }, deleted: ["lab"] }}>
+          {() => <DeletedTeamPage slug="lab" />}
+        </MockConsole>
+      </div>
+      <MockConsole options={{ emailVerified: true }}>
+        {() => (
+          <>
+            <Button
+              variant="outline"
+              className="self-start"
+              onClick={() => setCreating(true)}
+            >
+              {t("cloud.team.create")}
+            </Button>
+            {creating ? (
+              <CreateTeamDialog onClose={() => setCreating(false)} />
+            ) : null}
+          </>
+        )}
+      </MockConsole>
+    </div>
   );
 }
 
@@ -369,6 +455,8 @@ function CloudSamples({ session }: { session: ConsoleSession }) {
           />
         </div>
       </div>
+
+      <TeamSamples />
 
       <PublicSamples />
 

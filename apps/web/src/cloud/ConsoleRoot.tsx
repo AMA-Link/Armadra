@@ -14,6 +14,9 @@ import type { CloudApi } from "./api/session";
 import { PublicPage, hasPublicPage } from "./auth/PublicPage";
 import { OpsPage } from "./ops/OpsPages";
 import { PersonalPage } from "./personal/PersonalPages";
+import { CreateTeamDialog } from "./team/CreateTeamDialog";
+import { DeletedTeamPage } from "./team/DeletedTeamPage";
+import { TeamPage } from "./team/TeamPage";
 import { navigate, useRoute, type RouteMatch } from "./router";
 import { ConsoleShell } from "./shell/ConsoleShell";
 import { PageHeader } from "./shell/PageHeader";
@@ -50,11 +53,17 @@ function ConsoleView({
   onSignOut,
   onResendVerification,
   renderPage,
+  renderCreateTeam,
+  renderMissingTeam,
   children,
 }: {
   session: ConsoleSession | null;
   /** 当前页的内容；缺省（或答 `undefined`）只画页头。 */
   renderPage?: (match: RouteMatch) => React.ReactNode;
+  /** 「创建团队」对话框；没给（没有数据层）空间菜单里就没有这一项。 */
+  renderCreateTeam?: (close: () => void) => React.ReactNode;
+  /** 地址里的团队不在空间列表里时画什么（恢复期内的团队）；答 `undefined` 就是「找不到」。 */
+  renderMissingTeam?: (match: RouteMatch) => React.ReactNode;
   onSignOut?: () => void;
   onResendVerification?: () => Promise<void>;
   /** 会话还没到时画在外壳之外的东西（加载、取会话失败）。 */
@@ -72,6 +81,7 @@ function ConsoleView({
     else if (decision === "ok") rememberSpace(match);
   }, [session, match, decision, teams]);
 
+  const [creating, setCreating] = React.useState(false);
   const home = () => navigate("/");
   if (
     session &&
@@ -93,10 +103,12 @@ function ConsoleView({
         {...(session.counts ? { counts: session.counts } : {})}
         {...(onSignOut ? { onSignOut } : {})}
         {...(onResendVerification ? { onResendVerification } : {})}
+        {...(renderCreateTeam ? { onCreateTeam: () => setCreating(true) } : {})}
       >
         {renderPage?.(match) ?? (
           <PageHeader title={entry ? t(entry.labelKey) : ""} />
         )}
+        {creating ? renderCreateTeam?.(() => setCreating(false)) : null}
       </ConsoleShell>
     );
   }
@@ -119,11 +131,15 @@ function ConsoleView({
         />
       );
   } else if (match?.area !== "home") {
+    const missingTeam =
+      decision === "notFound" && match?.area === "team"
+        ? renderMissingTeam?.(match)
+        : undefined;
     body =
       decision === "forbidden" ? (
         <PageState code="forbidden" onHome={home} />
       ) : (
-        <PageState kind="notFound" onHome={home} />
+        (missingTeam ?? <PageState kind="notFound" onHome={home} />)
       );
   }
   return (
@@ -139,8 +155,16 @@ function ConsoleView({
 function renderPage(match: RouteMatch): React.ReactNode {
   if (match.area === "ops") return <OpsPage match={match} />;
   if (match.area === "personal") return <PersonalPage match={match} />;
+  if (match.area === "team") return <TeamPage match={match} />;
   return undefined;
 }
+
+const renderCreateTeam = (close: () => void) => (
+  <CreateTeamDialog onClose={close} />
+);
+
+const renderMissingTeam = (match: RouteMatch) =>
+  match.params.team ? <DeletedTeamPage slug={match.params.team} /> : undefined;
 
 /** 用哪套客户端：调用方给的；DEV 且地址带 `?mock` 是内存 mock（生产构建里这支被摇掉）；否则连来源自己。 */
 function useCloudApiSource(given?: CloudApi): CloudApi | null {
@@ -275,6 +299,8 @@ function ConsoleData({ onJoined }: { onJoined?: () => void }) {
       <ConsoleView
         session={session}
         renderPage={renderPage}
+        renderCreateTeam={renderCreateTeam}
+        renderMissingTeam={renderMissingTeam}
         onSignOut={signOut}
         onResendVerification={resend}
       />

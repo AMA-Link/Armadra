@@ -19,6 +19,30 @@ export const MOCK_ACCOUNT = {
   emailVerified: false,
 } as const;
 
+/** 样本里的人（名字与邮箱是数据，不是界面文案）。 */
+export const MOCK_PEOPLE = {
+  owner: {
+    accountId: "acct_mock_lisi",
+    email: "lisi@example.com",
+    displayName: "李四",
+  },
+  member: {
+    accountId: "acct_mock_wangwu",
+    email: "wangwu@example.com",
+    displayName: "王五",
+  },
+  guest: {
+    accountId: "acct_mock_zhaoliu",
+    email: "zhaoliu@example.com",
+    displayName: "赵六",
+  },
+  billing: {
+    accountId: "acct_mock_sunqi",
+    email: "sunqi@example.com",
+    displayName: "孙七",
+  },
+} as const;
+
 export interface MockTeam {
   readonly teamId: string;
   readonly slug: string;
