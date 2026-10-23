@@ -324,9 +324,7 @@ describe("待信任设备横幅与对话框", () => {
     await openDialog();
     await typeCode("482913");
     fireEvent.click(screen.getByRole("button", { name: "Trust" }));
-    expect(
-      await screen.findByText("Use a trusted device"),
-    ).toBeTruthy();
+    expect(await screen.findByText("Use a trusted device")).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Trust" })).toBeNull();
     expect(screen.getByRole("button", { name: "Decline" })).toBeTruthy();
   });
