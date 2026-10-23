@@ -102,15 +102,16 @@ export function DiffNode({ node, selected }: NodeBodyProps) {
 
   return (
     <NodeShell node={node} selected={selected} headerActions={headerActions}>
-      <div className="flex flex-wrap items-center gap-2 border-b border-[var(--border)] px-2 py-1.5">
+      <div className="flex flex-wrap items-center gap-2 border-b border-border px-2 py-1.5">
         <Input
           value={search}
           onChange={(event) => setSearch(event.target.value)}
           placeholder={t("diff.search")}
           aria-label={t("diff.search")}
-          className="h-7 min-w-32 flex-1 text-[11px]"
+          size="sm"
+          className="min-w-32 flex-1"
         />
-        <label className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+        <label className="flex items-center gap-1.5 text-caption text-muted-foreground">
           <Checkbox
             className="size-3.5"
             checked={ignoreWhitespace}
@@ -147,12 +148,12 @@ export function DiffNode({ node, selected }: NodeBodyProps) {
   );
 }
 
-const STATUS_COLOR: Record<GitFileDiff["status"], string> = {
-  M: "var(--warn)",
-  A: "var(--success)",
-  D: "var(--danger)",
-  R: "var(--brand)",
-  "?": "var(--muted-foreground)",
+const STATUS_CLASS: Record<GitFileDiff["status"], string> = {
+  M: "text-warn-text",
+  A: "text-success-text",
+  D: "text-danger-text",
+  R: "text-brand-text",
+  "?": "text-muted-foreground",
 };
 
 function DiffFileRow({
@@ -186,34 +187,36 @@ function DiffFileRow({
     file.status !== "?" &&
     file.patch === "";
   return (
-    <div className="border-b border-[var(--border)] last:border-b-0">
+    <div className="border-b border-border last:border-b-0">
       <Button
         variant="ghost"
         size="sm"
-        className="h-7 w-full justify-start gap-1.5 rounded-none px-1.5 font-normal"
+        className="w-full justify-start gap-1.5 rounded-none px-1.5 font-normal"
         aria-expanded={open}
         onClick={onToggle}
       >
         {open ? <ChevronDown /> : <ChevronRight />}
         <span
           aria-hidden
-          className="w-3 shrink-0 text-center font-mono text-[length:var(--text-caption)] font-bold"
-          style={{ color: STATUS_COLOR[file.status] }}
+          className={cn(
+            "w-3 shrink-0 text-center font-mono text-caption font-bold",
+            STATUS_CLASS[file.status],
+          )}
         >
           {file.status}
         </span>
-        <span className="truncate font-mono text-[11px]">{file.path}</span>
-        <span className="ml-auto shrink-0 font-mono text-[length:var(--text-caption)] text-[var(--success)]">
+        <span className="truncate font-mono text-caption">{file.path}</span>
+        <span className="ml-auto shrink-0 font-mono text-caption text-success-text">
           +{file.additions}
         </span>
-        <span className="shrink-0 font-mono text-[length:var(--text-caption)] text-[var(--danger-text)]">
+        <span className="shrink-0 font-mono text-caption text-danger-text">
           −{file.deletions}
         </span>
       </Button>
       {open && (
-        <div className="bg-[var(--surface-sunken)] py-1">
+        <div className="bg-sunken py-1">
           {search.trim() && (
-            <p className="px-2 pb-1 text-[length:var(--text-caption)] text-muted-foreground">
+            <p className="px-2 pb-1 font-mono text-caption text-muted-foreground">
               {t("diff.matches", { count: matches })}
             </p>
           )}
@@ -250,7 +253,7 @@ export function PatchBody({
   const lines = React.useMemo(() => patch.split("\n"), [patch]);
   const needle = search.trim().toLowerCase();
   return (
-    <pre className="overflow-x-auto font-mono text-[11px] leading-[1.45]">
+    <pre className="overflow-x-auto font-mono text-caption leading-[1.45]">
       {lines.map((line, index) => (
         <div
           key={index}
@@ -260,15 +263,15 @@ export function PatchBody({
           className={cn(
             "px-2 whitespace-pre",
             line.startsWith("@@")
-              ? "bg-[var(--brand-soft)] text-[var(--brand-text)]"
+              ? "bg-brand-soft text-brand-text"
               : line.startsWith("+") && !line.startsWith("+++")
-                ? "bg-[var(--success-soft)] text-[var(--success)]"
+                ? "bg-success-soft text-success-text"
                 : line.startsWith("-") && !line.startsWith("---")
-                  ? "bg-[var(--danger-soft)] text-[var(--danger-text)]"
+                  ? "bg-danger-soft text-danger-text"
                   : "text-muted-foreground",
             needle &&
               line.toLowerCase().includes(needle) &&
-              "outline outline-1 -outline-offset-1 outline-[var(--brand)]",
+              "outline outline-1 -outline-offset-1 outline-brand",
           )}
         >
           {line || " "}
@@ -291,7 +294,7 @@ function SideBySideBody({
 }) {
   const needle = search.trim().toLowerCase();
   return (
-    <div className="overflow-x-auto font-mono text-[11px] leading-[1.45]">
+    <div className="overflow-x-auto font-mono text-caption leading-[1.45]">
       {rows.map((row, index) => {
         const highlighted = rowMatches(row, needle);
         return (
@@ -301,7 +304,7 @@ function SideBySideBody({
             className={cn(
               "grid grid-cols-2 gap-px",
               highlighted &&
-                "outline outline-1 -outline-offset-1 outline-[var(--brand)]",
+                "outline outline-1 -outline-offset-1 outline-brand",
             )}
           >
             {(["left", "right"] as const).map((side) => {
@@ -313,21 +316,21 @@ function SideBySideBody({
                   className={cn(
                     "flex min-w-0 gap-2 px-2 whitespace-pre",
                     row.kind === "hunk"
-                      ? "bg-[var(--brand-soft)] text-[var(--brand-text)]"
+                      ? "bg-brand-soft text-brand-text"
                       : row.kind === "meta"
                         ? "text-muted-foreground"
                         : !cell
-                          ? "bg-[var(--surface-sunken)]"
+                          ? "bg-sunken"
                           : changed && side === "left"
-                            ? "bg-[var(--danger-soft)] text-[var(--danger-text)]"
+                            ? "bg-danger-soft text-danger-text"
                             : changed
-                              ? "bg-[var(--success-soft)] text-[var(--success)]"
+                              ? "bg-success-soft text-success-text"
                               : "text-muted-foreground",
                   )}
                 >
                   <span
                     aria-hidden
-                    className="w-8 shrink-0 text-right text-[length:var(--text-caption)] text-muted-foreground"
+                    className="w-8 shrink-0 text-right text-caption text-muted-foreground"
                   >
                     {cell?.number ?? ""}
                   </span>
