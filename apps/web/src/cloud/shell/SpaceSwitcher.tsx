@@ -42,7 +42,7 @@ function SpaceAvatar({ team }: { team?: ConsoleTeam }) {
         {team ? (
           [...team.name][0]
         ) : (
-          <UserRound aria-hidden className="size-3.5" strokeWidth={1.5} />
+          <UserRound aria-hidden className="size-3.5" />
         )}
       </AvatarFallback>
     </Avatar>
@@ -76,7 +76,6 @@ export function SpaceSwitcher({
           <ChevronsUpDown
             aria-hidden
             className="ms-auto text-muted-foreground"
-            strokeWidth={1.5}
           />
         </Button>
       </DropdownMenuTrigger>

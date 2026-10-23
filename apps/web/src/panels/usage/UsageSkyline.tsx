@@ -225,7 +225,7 @@ export function UsageSkyline({
                   stroke={
                     row.key === selected ? "var(--foreground)" : undefined
                   }
-                  strokeWidth={row.key === selected ? 1.5 : 0}
+                  style={{ strokeWidth: row.key === selected ? 1.5 : 0 }}
                 />
               ))}
             </Bar>

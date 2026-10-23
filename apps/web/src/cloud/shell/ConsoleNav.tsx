@@ -39,7 +39,7 @@ export function ConsoleNav({
                   aria-current={entry.id === active ? "page" : undefined}
                   onClick={onNavigate}
                 >
-                  <entry.icon aria-hidden strokeWidth={1.5} />
+                  <entry.icon aria-hidden />
                   <span className="min-w-0 truncate">{t(entry.labelKey)}</span>
                   {count > 0 ? (
                     <Badge variant="secondary" className="ms-auto tabular-nums">

@@ -123,7 +123,6 @@ export function DimensionChart({
                   type="monotone"
                   stackId="usage"
                   stroke={`var(--color-${item.key})`}
-                  strokeWidth={1}
                   strokeOpacity={dimmed ? 0.15 : 1}
                   fill={`var(--color-${item.key})`}
                   fillOpacity={dimmed ? 0.15 : 0.45}

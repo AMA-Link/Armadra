@@ -201,7 +201,7 @@ function Screen({
         );
       case "push":
         return (
-          <div className="relative h-full bg-[var(--bg)]">
+          <div className="relative h-full bg-background">
             <PushPermissionDock>
               <PushPermissionPrompt
                 busy={false}
@@ -217,7 +217,7 @@ function Screen({
           <FocusFrame title="claude · parseConfig">
             <div
               data-slot="acp-session-view"
-              className="flex min-h-0 flex-1 flex-col bg-[var(--card)] [&_textarea]:text-[length:var(--text-input-touch)]"
+              className="flex min-h-0 flex-1 flex-col bg-card [&_textarea]:[font-size:var(--text-input-touch)]"
             >
               <div className="flex min-h-0 flex-1 flex-col">
                 <TimelineView
@@ -249,7 +249,7 @@ function Screen({
       case "focusTerminal":
         return (
           <FocusFrame title={t("node.terminal")}>
-            <pre className="min-h-0 flex-1 overflow-hidden bg-[var(--terminal-bg,var(--card))] p-3 font-mono text-[12px] leading-5 text-foreground">
+            <pre className="min-h-0 flex-1 overflow-hidden bg-term p-3 font-mono text-meta leading-5 text-foreground">
               {
                 "$ pnpm test\n\n ✓ src/config.test.ts (12)\n ✓ src/loader.test.ts (7)\n\n Test Files  2 passed (2)\n      Tests  19 passed (19)\n$ "
               }
@@ -261,12 +261,12 @@ function Screen({
   })();
   return (
     <figure className="flex flex-col gap-2">
-      <figcaption className="text-[12px] text-muted-foreground">
+      <figcaption className="text-meta text-muted-foreground">
         {t(`mobileConnect.showcase.${id}`)}
       </figcaption>
       <div
         data-mobile-sample={id}
-        className="relative h-[844px] w-full max-w-[390px] overflow-hidden rounded-[var(--r-panel)] border border-border bg-background [transform:translateZ(0)] sm:w-[390px] [&_[data-slot=mobile-connect]]:min-h-full"
+        className="relative h-[844px] w-full max-w-[390px] overflow-hidden rounded-panel border border-border bg-background [transform:translateZ(0)] sm:w-[390px] [&_[data-slot=mobile-connect]]:min-h-full"
       >
         {body}
       </div>
@@ -286,7 +286,7 @@ function FocusFrame({
   return (
     <div className="flex h-full flex-col bg-background">
       <div className="flex min-h-12 shrink-0 items-center gap-2 border-b border-border px-2">
-        <Button size="sm" variant="ghost" className="min-h-10 shrink-0 px-2">
+        <Button size="touch" variant="ghost" className="shrink-0">
           <ChevronLeft aria-hidden />
           <span>{t("mobile.focus.back")}</span>
         </Button>
