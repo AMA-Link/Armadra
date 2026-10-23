@@ -5,6 +5,7 @@ import { localRuntimeApi } from "../../api/client";
 import { useT } from "../../app/preferences-store";
 import { lk } from "./local-key";
 import { Badge } from "@/ui/badge";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/ui/tooltip";
 
 /**
  * 「这条设置存在本机」的来源标记（Host 业务所有权迁移 §1.4）。
@@ -37,14 +38,17 @@ export function LocalSourceBadge({ path }: { path: string }) {
   const { file, isLocal } = useLocalSettings();
   if (!isLocal(path)) return null;
   return (
-    <Badge
-      variant="secondary"
-      className="shrink-0 font-normal"
-      // 文件名放 title 而不是行内：一行设置里塞一条路径会把标签挤没，
-      // 但「存在哪」是想弄清楚同步行为的人第一个要问的。
-      title={t("settings.source.localFootnote", { file })}
-    >
-      {t("settings.source.local")}
-    </Badge>
+    // 文件名放提示里而不是行内：一行设置里塞一条路径会把标签挤没，
+    // 但「存在哪」是想弄清楚同步行为的人第一个要问的。
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <Badge variant="secondary" className="shrink-0 font-normal">
+          {t("settings.source.local")}
+        </Badge>
+      </TooltipTrigger>
+      <TooltipContent>
+        {t("settings.source.localFootnote", { file })}
+      </TooltipContent>
+    </Tooltip>
   );
 }

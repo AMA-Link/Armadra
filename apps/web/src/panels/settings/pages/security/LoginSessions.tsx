@@ -1,7 +1,7 @@
 import * as React from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { IdentitySessionRow } from "@armadra/shared";
-import { toast } from "sonner";
+import { toast } from "@/ui/toast";
 
 import {
   onIdentitySessionChange,
@@ -20,6 +20,16 @@ import { securityFailure } from "../../../../session/sign-in-errors";
 import { SessionList } from "./SessionList";
 
 const KEY = ["identity", "security"] as const;
+
+/** 本人的登录会话数（与会话表同一份查询）；读不到时是 `null`。 */
+export function useLoginSessionCount(): number | null {
+  const sessions = useQuery({
+    queryKey: [...KEY, "sessions", false],
+    queryFn: () => listSessions(false),
+    retry: false,
+  });
+  return sessions.data ? sessions.data.length : null;
+}
 
 /**
  * 设备与会话 → 登录会话（§2.1）。要一条身份会话；没有时（还没配对或登录）
@@ -99,8 +109,7 @@ function LoginSessionList({ session }: { session: IdentitySession }) {
       }
       onRevokeOthers={() =>
         act("others", async () => {
-          const count = await revokeOtherSessions();
-          toast.success(t("security.sessions.signedOut", { count }));
+          await revokeOtherSessions();
         })
       }
     />

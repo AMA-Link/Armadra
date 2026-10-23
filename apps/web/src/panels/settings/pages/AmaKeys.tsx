@@ -1,7 +1,7 @@
 import * as React from "react";
 import { lk } from "../local-key";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { toast } from "sonner";
+import { toast } from "@/ui/toast";
 
 import { localRuntimeApi } from "../../../api/client";
 import { useT } from "../../../app/preferences-store";
@@ -46,7 +46,6 @@ export function AmaKeys({ disabled }: { disabled?: boolean }) {
     onSuccess: (next) => {
       setKey("");
       queryClient.setQueryData(QUERY_KEY, next);
-      toast.success(t("agent.amaKeys.saved"));
     },
     onError: () => toast.error(t("agent.amaKeys.failed")),
   });
@@ -93,7 +92,7 @@ export function AmaKeys({ disabled }: { disabled?: boolean }) {
           <Input
             type="password"
             autoComplete="off"
-            className="h-8 w-[200px] text-xs"
+            className="w-[200px] text-meta"
             aria-label={t("agent.amaKeys.key")}
             value={key}
             disabled={busy}
@@ -102,7 +101,7 @@ export function AmaKeys({ disabled }: { disabled?: boolean }) {
           <Button
             type="submit"
             size="sm"
-            variant="secondary"
+            variant="outline"
             disabled={busy || selected === undefined || key.trim() === ""}
           >
             {t("agent.amaKeys.save")}
@@ -112,7 +111,7 @@ export function AmaKeys({ disabled }: { disabled?: boolean }) {
       {set.map((entry) => (
         <SettingsRow key={entry.id} label={entry.id}>
           <span className="flex items-center gap-2">
-            <span className="text-[11px] text-muted-foreground">
+            <span className="text-caption text-muted-foreground">
               {t("agent.amaKeys.set")}
             </span>
             <Button

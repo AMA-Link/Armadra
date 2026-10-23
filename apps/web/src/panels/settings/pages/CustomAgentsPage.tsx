@@ -1,5 +1,5 @@
 import * as React from "react";
-import { Plus } from "lucide-react";
+import { Pencil, Plus } from "lucide-react";
 import {
   AGENT_IDS,
   customAgentSchema,
@@ -7,14 +7,17 @@ import {
   type AgentCapability,
   type CustomAgent,
 } from "@armadra/shared";
-import { toast } from "sonner";
+import { toast } from "@/ui/toast";
 import { CapabilityInheritance } from "@/agent/CapabilityInheritance";
 
+import { agentLabel } from "@/agent/launch";
 import { useAgentsQuery } from "../../../app/use-agents";
 import { useT } from "../../../app/preferences-store";
 import { SettingsGroup } from "../SettingsGroup";
 import { SettingsLoadable } from "../SettingsLoadable";
+import { SettingsPageHeader } from "../SettingsPageHeader";
 import { SettingsRow } from "../SettingsRow";
+import { SettingsTableCard } from "../SettingsTableCard";
 import { useSubpage } from "../subpage";
 import { useRuntimeSettings } from "../use-runtime-settings";
 import { CONTROL_WIDTH } from "./GeneralPage";
@@ -36,7 +39,16 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/ui/select";
-import { Empty, EmptyContent, EmptyHeader, EmptyTitle } from "@/ui/empty";
+import { IconButton } from "@/ui/icon-button";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/ui/table";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/ui/tooltip";
 
 /**
  * 设置 → 自定义 Agent（§2.1）。
@@ -70,59 +82,93 @@ export function CustomAgentsPage() {
 
   const addCustom = (
     <Button
-      variant="secondary"
       size="sm"
       disabled={!settings.data}
       onClick={() => subpage.open("agent", "new")}
     >
-      <Plus />
+      <Plus data-icon="inline-start" />
       {t("settings.customAgent.add")}
     </Button>
   );
 
-  // 设置未到之前画行骨架，不先闪一下空态。
-  const wrap = (body: React.ReactNode) => (
-    <SettingsLoadable
-      grouped
-      loading={settings.isLoading}
-      rows={2}
-      control="switch"
-    >
-      {body}
-    </SettingsLoadable>
-  );
-
-  if (custom.length === 0) {
-    // 空态：一句话 + 一个动作（设计系统 §5.16）。
-    return wrap(
-      <SettingsGroup>
-        <Empty className="py-6">
-          <EmptyHeader>
-            <EmptyTitle className="text-[13px] font-normal text-muted-foreground">
-              {t("settings.customAgent.empty")}
-            </EmptyTitle>
-          </EmptyHeader>
-          <EmptyContent>{addCustom}</EmptyContent>
-        </Empty>
-      </SettingsGroup>,
-    );
-  }
-
-  return wrap(
-    <SettingsGroup>
-      {custom.map((agent) => (
-        <SettingsRow
-          key={agent.id}
-          label={agent.label}
-          onClick={() => subpage.open("agent", agent.id)}
+  return (
+    <>
+      <SettingsPageHeader actions={custom.length > 0 ? addCustom : undefined} />
+      <SettingsLoadable
+        grouped
+        loading={settings.isLoading}
+        rows={2}
+        control="switch"
+      >
+        <SettingsTableCard
+          title={t("settings.section.customAgents")}
+          empty={
+            custom.length === 0
+              ? {
+                  title: t("settings.customAgent.empty"),
+                  action: addCustom,
+                }
+              : null
+          }
         >
-          <span className="max-w-[240px] truncate font-mono text-[11px] text-muted-foreground">
-            {agent.launchCmd}
-          </span>
-        </SettingsRow>
-      ))}
-      <SettingsRow label={null}>{addCustom}</SettingsRow>
-    </SettingsGroup>,
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>{t("settings.customAgent.name")}</TableHead>
+                <TableHead>{t("settings.customAgent.base")}</TableHead>
+                <TableHead>{t("settings.customAgent.command")}</TableHead>
+                <TableHead className="w-10">
+                  <span className="sr-only">
+                    {t("settings.customAgent.edit")}
+                  </span>
+                </TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {custom.map((agent) => (
+                <TableRow key={agent.id}>
+                  <TableCell>
+                    <Button
+                      variant="ghost"
+                      size="xs"
+                      data-roving-item
+                      className="-mx-1.5 max-w-full justify-start font-normal"
+                      onClick={() => subpage.open("agent", agent.id)}
+                    >
+                      <span className="truncate">{agent.label}</span>
+                    </Button>
+                  </TableCell>
+                  <TableCell className="text-muted-foreground">
+                    {agentLabel(agent.baseAgent)}
+                  </TableCell>
+                  <TableCell
+                    className="max-w-[320px] truncate font-mono text-meta text-muted-foreground"
+                    title={agent.launchCmd}
+                  >
+                    {agent.launchCmd}
+                  </TableCell>
+                  <TableCell className="text-end">
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <IconButton
+                          label={t("settings.customAgent.edit")}
+                          onClick={() => subpage.open("agent", agent.id)}
+                        >
+                          <Pencil />
+                        </IconButton>
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        {t("settings.customAgent.edit")}
+                      </TooltipContent>
+                    </Tooltip>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </SettingsTableCard>
+      </SettingsLoadable>
+    </>
   );
 }
 
@@ -235,11 +281,12 @@ function CustomAgentForm({
 
   return (
     <>
+      <SettingsPageHeader />
       <SettingsGroup>
         {fields.map((field) => (
           <SettingsRow key={field.key} label={field.label}>
             <Input
-              className="h-8 w-[280px] text-xs"
+              className="w-[280px] text-meta"
               aria-label={field.label}
               value={form[field.key]}
               onChange={(event) => set(field.key)(event.target.value)}
@@ -249,7 +296,7 @@ function CustomAgentForm({
 
         <SettingsRow label={t("settings.customAgent.env")}>
           <Input
-            className="h-8 w-[280px] text-xs"
+            className="w-[280px] text-meta"
             aria-label={t("settings.customAgent.env")}
             placeholder="KEY=value"
             value={form.env}
@@ -296,7 +343,7 @@ function CustomAgentForm({
         </div>
       </SettingsGroup>
 
-      <div className="flex items-center justify-between gap-2">
+      <div className="sticky bottom-0 z-10 -mb-(--space-section) flex items-center justify-between gap-2 bg-card py-3">
         <div>
           {existing && (
             <Button
@@ -355,6 +402,7 @@ function CustomAgentForm({
               {t("dialog.cancel")}
             </ResponsiveAlertDialogCancel>
             <ResponsiveAlertDialogAction
+              variant="destructive-solid"
               onClick={() =>
                 onSubmit(custom.filter((entry) => entry.id !== existing?.id))
               }

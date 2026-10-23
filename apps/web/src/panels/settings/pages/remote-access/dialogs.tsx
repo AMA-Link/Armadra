@@ -2,7 +2,7 @@ import { Loadable } from "@/loading/Loadable";
 import { SkeletonList } from "@/ui/skeletons";
 import * as React from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { toast } from "sonner";
+import { toast } from "@/ui/toast";
 
 import {
   type RemoteService,
@@ -38,6 +38,7 @@ import {
 } from "@/ui/select";
 import { Spinner } from "@/ui/spinner";
 import { StatusPill } from "@/ui/status-pill";
+import { EmptyState } from "@/ui/state";
 
 /*
  * 远程访问页的对话框：登录中转账号、配对另一台我的电脑（链接或地址 + 配对码）、
@@ -50,12 +51,12 @@ export function FingerprintCheck({ fingerprint }: { fingerprint: string }) {
   const t = useT();
   return (
     <div className="flex min-w-0 flex-col gap-1">
-      <span className="text-[12px] text-muted-foreground">
+      <span className="text-meta text-muted-foreground">
         {t("remote.fingerprint")}
       </span>
       <p
         data-slot="fingerprint"
-        className="font-mono text-[12px] leading-5 select-text"
+        className="font-mono text-meta leading-5 select-text"
       >
         {/* 只在冒号后折行：一组两位不被拆开，好逐组对照。 */}
         {groupFingerprint(fingerprint)
@@ -191,7 +192,7 @@ export function AddRelayDialog({
         >
           {confirming ? (
             <>
-              <p className="text-[13px] break-all">{issuer.trim()}</p>
+              <p className="text-body break-all">{issuer.trim()}</p>
               <FingerprintCheck fingerprint={confirming} />
             </>
           ) : (
@@ -357,7 +358,7 @@ export function AddDirectDialog({
         >
           {confirming ? (
             <>
-              <p className="text-[13px] break-all">{address.trim()}</p>
+              <p className="text-body break-all">{address.trim()}</p>
               <FingerprintCheck fingerprint={confirming} />
             </>
           ) : (
@@ -497,7 +498,7 @@ export function JoinLinkDialog({
         >
           {confirming ? (
             <>
-              {host && <p className="text-[13px] break-all">{host}</p>}
+              {host && <p className="text-body break-all">{host}</p>}
               <FingerprintCheck fingerprint={confirming} />
             </>
           ) : (
@@ -568,7 +569,6 @@ export function MountDialog({
       void client.invalidateQueries({
         queryKey: ["sources", "remote", chosen?.serviceId ?? ""],
       });
-      toast.success(t("remote.added"));
       onMounted();
     },
     onError: (error: Error) => toast.error(error.message),
@@ -611,21 +611,15 @@ export function MountDialog({
           <Loadable
             loading={listing.isPending}
             skeleton={
-              <SkeletonList
-                rows={3}
-                label={t("state.loading")}
-                rowClassName="h-11 px-0"
-              />
+              <SkeletonList rows={3} label={t("state.loading")} size="tall" />
             }
           >
             {listing.isError ? (
-              <p role="alert" className="text-[13px] text-destructive">
+              <p role="alert" className="text-body text-destructive">
                 {listing.error.message}
               </p>
             ) : rows.length === 0 ? (
-              <p className="text-[13px] text-muted-foreground">
-                {t("remote.mount.empty")}
-              </p>
+              <EmptyState inline title={t("remote.mount.empty")} />
             ) : (
               <ul className="flex flex-col divide-y divide-border/60">
                 {rows.map((source) => (
@@ -634,9 +628,7 @@ export function MountDialog({
                     className="flex min-w-0 items-center justify-between gap-3 py-2"
                   >
                     <span className="flex min-w-0 items-center gap-2">
-                      <span className="truncate text-[13px]">
-                        {source.name}
-                      </span>
+                      <span className="truncate text-body">{source.name}</span>
                       <StatusPill
                         tone={source.online ? "done" : "idle"}
                         label={t(
@@ -647,7 +639,7 @@ export function MountDialog({
                       />
                     </span>
                     {source.mounted ? (
-                      <Badge variant="secondary" className="font-normal">
+                      <Badge variant="secondary" size="sm">
                         {t("remote.mounted")}
                       </Badge>
                     ) : (

@@ -262,8 +262,13 @@ describe("设置 → 账号与共享", () => {
       session(OWNER, "owner", ["identity:manage", "identity:read"]),
     );
     mount();
-    expect(await screen.findByText("成员")).toBeTruthy();
-    expect(screen.getByText("组")).toBeTruthy();
+    // 页头（无副标题）+ 托盘三张：成员 · 组 · 待接受。
+    expect((await screen.findByTestId("settings-heading")).textContent).toBe(
+      "设置",
+    );
+    expect((await screen.findAllByText("成员")).length).toBeGreaterThan(0);
+    expect(screen.getAllByText("组").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("待接受").length).toBeGreaterThan(0);
     expect(screen.getByText("邀请")).toBeTruthy();
     expect(screen.getByText("共享")).toBeTruthy();
     expect(await screen.findByText("前端组")).toBeTruthy();

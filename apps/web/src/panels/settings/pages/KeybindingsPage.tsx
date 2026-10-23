@@ -1,10 +1,10 @@
 import * as React from "react";
 import { Ellipsis, Plus, RotateCcw, Trash2 } from "lucide-react";
-import { toast } from "sonner";
 
 import type { RuntimeSettingsPatch } from "../../../api/client";
 import { useT } from "../../../app/preferences-store";
 import { useAccess } from "../../../app/use-access";
+import { toast } from "@/ui/toast";
 import {
   COMMANDS,
   COMMAND_BY_ID,
@@ -54,9 +54,12 @@ import {
   selectProfilePatch,
   storedProfiles,
 } from "../keymap-profiles";
+import { useSettingsQuery } from "../page-context";
 import { SettingsGroup } from "../SettingsGroup";
 import { SettingsLoadable } from "../SettingsLoadable";
+import { SettingsPageHeader } from "../SettingsPageHeader";
 import { SettingsRow } from "../SettingsRow";
+import { SettingsTableCard } from "../SettingsTableCard";
 import { useRuntimeSettings } from "../use-runtime-settings";
 import { Badge } from "@/ui/badge";
 import { Button } from "@/ui/button";
@@ -73,6 +76,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/ui/dropdown-menu";
+import { IconButton } from "@/ui/icon-button";
 import { Input } from "@/ui/input";
 import { Kbd } from "@/ui/kbd";
 import {
@@ -83,7 +87,16 @@ import {
   SelectValue,
 } from "@/ui/select";
 import { Switch } from "@/ui/switch";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/ui/table";
 import { Textarea } from "@/ui/textarea";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/ui/tooltip";
 import { isDesktop } from "@/platform";
 
 const SCOPES: readonly CommandScope[] = [
@@ -95,6 +108,9 @@ const SCOPES: readonly CommandScope[] = [
   "scm",
   "global",
 ];
+
+/** 表格筛选：全部 / 已改（本设备或全局层有覆盖）/ 未绑定。 */
+type KeymapFilter = "all" | "changed" | "unbound";
 
 /** 录制写到哪一层。默认写全局：多数人只有一套键位，换台机器还想要它。 */
 type WriteLayer = "global" | "device";
@@ -165,6 +181,9 @@ export function KeybindingsPage() {
     text: string;
   } | null>(null);
   const [transfer, setTransfer] = React.useState<string | null>(null);
+  const [filter, setFilter] = React.useState<KeymapFilter>("all");
+  // 顶栏搜索也过滤这张表
+  const query = useSettingsQuery();
   const [naming, setNaming] = React.useState<string | null>(null);
   // 壳最后一次向系统注册全局热键的结果。空表就是「这一轮什么也没确认」，
   // 那时不写任何徽标，而不是写「已生效」。
@@ -325,346 +344,468 @@ export function KeybindingsPage() {
     if (Object.keys(inProfiles).length > 0) keymap.profiles = inProfiles;
     save.mutate({ keymap });
     setTransfer(null);
-    toast.success(t("settings.shortcut.import.done"));
   }
 
-  return (
-    <SettingsLoadable
-      grouped
-      loading={settings.isLoading}
-      rows={4}
-      control="select"
-    >
-      <SettingsGroup>
-        {member ? null : (
-          <>
-            {/* 总开关（契约 §66）。重新打开时删掉这个键，回到缺省。 */}
-            <SettingsRow label={t("settings.shortcut.enabled")}>
-              <Switch
-                checked={enabled}
-                aria-label={t("settings.shortcut.enabled")}
-                onCheckedChange={(next) =>
-                  save.mutate({ keymap: { enabled: next ? null : false } })
-                }
-              />
-            </SettingsRow>
-            <SettingsRow label={t("settings.shortcut.profile")}>
-              <Select value={profile} onValueChange={chooseProfile}>
-                <SelectTrigger
-                  aria-label={t("settings.shortcut.profile")}
-                  size="sm"
-                  className="w-40"
-                >
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent className="z-[var(--z-dialog)]">
-                  {Object.keys(profiles)
-                    .sort(
-                      (left, right) =>
-                        Number(!isBuiltinProfile(left)) -
-                          Number(!isBuiltinProfile(right)) ||
-                        left.localeCompare(right),
-                    )
-                    .map((id) => (
-                      <SelectItem key={id} value={id}>
-                        {isBuiltinProfile(id)
-                          ? t(`settings.shortcut.profile.${id}`)
-                          : id}
-                      </SelectItem>
-                    ))}
-                </SelectContent>
-              </Select>
-              <Button
-                variant="ghost"
-                size="icon"
-                aria-label={t("settings.shortcut.profile.create")}
-                onClick={() => setNaming("")}
-              >
-                <Plus className="size-4" />
-              </Button>
-              {!isBuiltinProfile(profile) && (
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  aria-label={t("settings.shortcut.profile.delete")}
-                  onClick={removeProfile}
-                >
-                  <Trash2 className="size-4" />
-                </Button>
-              )}
-            </SettingsRow>
-            <SettingsRow
-              label={t("settings.shortcut.layer")}
-              hint={t("settings.shortcut.layer.note")}
-            >
-              <Select
-                value={layer}
-                onValueChange={(value) => setLayer(value as WriteLayer)}
-              >
-                <SelectTrigger
-                  aria-label={t("settings.shortcut.layer")}
-                  size="sm"
-                  className="w-40"
-                >
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent className="z-[var(--z-dialog)]">
-                  <SelectItem value="global">
-                    {t("settings.shortcut.source.global")}
-                  </SelectItem>
-                  <SelectItem value="device">
-                    {t("settings.shortcut.source.device")}
-                  </SelectItem>
-                </SelectContent>
-              </Select>
-            </SettingsRow>
-          </>
-        )}
-        <SettingsRow
-          label={t("settings.shortcut.platform")}
-          footnote={
-            preview ? t("settings.shortcut.platform.preview") : undefined
-          }
-        >
-          <Select
-            value={platform}
-            onValueChange={(value) => setPlatform(value as PlatformName)}
-          >
-            <SelectTrigger
-              aria-label={t("settings.shortcut.platform")}
-              size="sm"
-              className="w-40"
-            >
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent className="z-[var(--z-dialog)]">
-              <SelectItem value={here}>
-                {t(`settings.shortcut.platform.${here}`)}
-              </SelectItem>
-              <SelectItem value={otherPlatform(here)}>
-                {t(`settings.shortcut.platform.${otherPlatform(here)}`)}
-              </SelectItem>
-            </SelectContent>
-          </Select>
-        </SettingsRow>
-        <SettingsRow label={null}>
-          <Button
-            variant="secondary"
-            size="sm"
-            onClick={() =>
-              setTransfer(
-                exportKeymap(
-                  profiles[DEFAULT_PROFILE_ID] ?? emptyKeymap(),
-                  device,
-                  profiles,
-                  profile,
-                ),
-              )
-            }
-          >
-            {t("settings.shortcut.transfer")}
-          </Button>
-          <Button variant="secondary" size="sm" onClick={resetAll}>
-            {t("settings.shortcut.resetAll")}
-          </Button>
-        </SettingsRow>
-      </SettingsGroup>
+  /** 重置按钮的名字：说清会落到哪个键位，不然「上一层」只是个说法。 */
+  const resetLabel = (
+    command: (typeof COMMANDS)[number],
+    below: string | null,
+    mac: boolean,
+  ) =>
+    t("settings.shortcut.reset", {
+      command: t(command.labelKey),
+      keys: formatKeys(below, { mac }) || t("settings.shortcut.unbound"),
+    });
 
-      {SCOPES.filter(
-        // 全局热键要靠桌面壳去向系统注册；浏览器里连能不能注册都无从谈起，
-        // 显示一组按了没反应的键位比不显示更糟。
-        (scope) => scope !== "global" || isDesktop(),
-      ).map((scope) => (
-        <SettingsGroup key={scope} title={t(`settings.scope.${scope}`)}>
-          {COMMANDS.filter((command) => command.scope === scope).map(
-            (command, index) => {
-              const source: KeymapSource = keymapSource(
-                command.id,
-                platform,
-                global,
-                device,
-                preset,
-              );
-              const below =
-                source === "default" || source === "profile"
-                  ? null
-                  : keysBelow(command.id, platform, source, global, preset);
-              const mac = platform === "mac";
-              const chords = splitChords(
-                commandKeys(command.id, { keymap, mac }),
-              );
-              const whenSource = keymapSource(
-                command.id,
-                "when",
-                global,
-                device,
-              );
-              const when = commandWhen(command.id, keymap);
-              const active =
-                recording?.id === command.id ? recording.mode : null;
-              return (
-                <SettingsRow
-                  key={command.id}
-                  label={t(command.labelKey)}
-                  hint={
-                    index !== 0
-                      ? undefined
-                      : scope === "app"
-                        ? t("settings.shortcut.note")
-                        : scope === "global"
-                          ? t("settings.scope.global.note")
-                          : undefined
-                  }
-                >
-                  {conflicts.has(command.id) && (
-                    <Badge variant="destructive">
-                      {t("settings.shortcut.conflict")}
-                    </Badge>
-                  )}
-                  {/*
-                   * 被别的程序占住的组合键在这里说明白。设置里写着一个键、
-                   * 按下去却什么也不发生，是这一组最容易出现的问题。
-                   */}
-                  {(registered[command.id] === "taken" ||
-                    registered[command.id] === "invalid") && (
-                    <Badge variant="destructive">
-                      {t(`settings.shortcut.global.${registered[command.id]}`)}
-                    </Badge>
-                  )}
-                  {/* 用户改过的条件写出来：它决定这组键在哪儿算数。 */}
-                  {whenSource !== "default" && when && (
-                    <code className="max-w-40 truncate font-mono text-[11px] text-muted-foreground">
-                      {when}
-                    </code>
-                  )}
-                  <span className="text-[11px] text-muted-foreground">
-                    {t(`settings.shortcut.source.${source}`)}
-                  </span>
-                  <Button
-                    variant="ghost"
+  const visibleScopes = SCOPES.filter(
+    // 全局热键要靠桌面壳去向系统注册；浏览器里连能不能注册都无从谈起，
+    // 显示一组按了没反应的键位比不显示更糟。
+    (scope) => scope !== "global" || isDesktop(),
+  );
+  const mac = platform === "mac";
+  const needle = query.toLocaleLowerCase();
+  const entries = visibleScopes.map((scope) => ({
+    scope,
+    rows: COMMANDS.filter((command) => command.scope === scope).flatMap(
+      (command) => {
+        const source: KeymapSource = keymapSource(
+          command.id,
+          platform,
+          global,
+          device,
+          preset,
+        );
+        const keys = commandKeys(command.id, { keymap, mac });
+        const chords = splitChords(keys);
+        if (
+          filter === "changed" &&
+          (source === "default" || source === "profile")
+        )
+          return [];
+        if (filter === "unbound" && chords.length > 0) return [];
+        if (needle !== "") {
+          const text = [
+            t(command.labelKey),
+            ...chords.map((chord) => formatKeys(chord, { mac })),
+          ]
+            .join(" ")
+            .toLocaleLowerCase();
+          if (!text.includes(needle)) return [];
+        }
+        return [{ command, source, chords }];
+      },
+    ),
+  }));
+  const rowCount = entries.reduce(
+    (total, entry) => total + entry.rows.length,
+    0,
+  );
+
+  return (
+    <>
+      <SettingsPageHeader
+        actions={
+          <>
+            {member ? null : (
+              <>
+                <Select value={profile} onValueChange={chooseProfile}>
+                  <SelectTrigger
+                    aria-label={t("settings.shortcut.profile")}
                     size="sm"
-                    data-recording={active !== null}
-                    aria-label={t(command.labelKey)}
-                    disabled={preview}
-                    className="h-auto gap-1 px-1 py-0.5 data-[recording=true]:bg-muted"
-                    onClick={() =>
-                      setRecording((current) =>
-                        current?.id === command.id
-                          ? null
-                          : { id: command.id, mode: "replace" },
-                      )
-                    }
+                    className="w-40"
                   >
-                    {active === "replace" ? (
-                      <span className="text-[11px] text-muted-foreground">
-                        {t("settings.shortcut.recording")}
-                      </span>
-                    ) : chords.length === 0 ? (
-                      <Kbd>{t("settings.shortcut.unbound")}</Kbd>
-                    ) : (
-                      chords.map((chord, position) => (
-                        <Kbd key={`${position}:${chord}`}>
-                          {formatKeys(chord, { mac })}
-                        </Kbd>
-                      ))
-                    )}
-                    {active === "append" && (
-                      <span className="text-[11px] text-muted-foreground">
-                        {t("settings.shortcut.recording")}
-                      </span>
-                    )}
-                  </Button>
-                  {!preview && (
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button
-                          variant="ghost"
-                          size="icon-xs"
-                          aria-label={t("settings.shortcut.more", {
-                            command: t(command.labelKey),
-                          })}
-                          className="text-muted-foreground"
-                        >
-                          <Ellipsis />
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent
-                        align="end"
-                        className="z-[var(--z-dialog)]"
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {Object.keys(profiles)
+                      .sort(
+                        (left, right) =>
+                          Number(!isBuiltinProfile(left)) -
+                            Number(!isBuiltinProfile(right)) ||
+                          left.localeCompare(right),
+                      )
+                      .map((id) => (
+                        <SelectItem key={id} value={id}>
+                          {isBuiltinProfile(id)
+                            ? t(`settings.shortcut.profile.${id}`)
+                            : id}
+                        </SelectItem>
+                      ))}
+                  </SelectContent>
+                </Select>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <IconButton
+                      size="cluster"
+                      label={t("settings.shortcut.profile.create")}
+                      onClick={() => setNaming("")}
+                    >
+                      <Plus />
+                    </IconButton>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    {t("settings.shortcut.profile.create")}
+                  </TooltipContent>
+                </Tooltip>
+                {!isBuiltinProfile(profile) && (
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <IconButton
+                        size="cluster"
+                        label={t("settings.shortcut.profile.delete")}
+                        onClick={removeProfile}
                       >
-                        <DropdownMenuItem
-                          onSelect={() =>
-                            setRecording({ id: command.id, mode: "append" })
-                          }
-                        >
-                          {t("settings.shortcut.add")}
-                        </DropdownMenuItem>
-                        {chords.length > 1 &&
-                          chords.map((chord, position) => (
-                            <DropdownMenuItem
-                              key={`${position}:${chord}`}
-                              onSelect={() =>
-                                write(
-                                  command.id,
-                                  removeChord(keysHere(command.id), position),
+                        <Trash2 />
+                      </IconButton>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      {t("settings.shortcut.profile.delete")}
+                    </TooltipContent>
+                  </Tooltip>
+                )}
+              </>
+            )}
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() =>
+                setTransfer(
+                  exportKeymap(
+                    profiles[DEFAULT_PROFILE_ID] ?? emptyKeymap(),
+                    device,
+                    profiles,
+                    profile,
+                  ),
+                )
+              }
+            >
+              {t("settings.shortcut.transfer")}
+            </Button>
+            <Button variant="outline" size="sm" onClick={resetAll}>
+              {t("settings.shortcut.resetAll")}
+            </Button>
+          </>
+        }
+      />
+
+      <SettingsLoadable
+        grouped
+        loading={settings.isLoading}
+        rows={3}
+        control="select"
+      >
+        <SettingsGroup>
+          {member ? null : (
+            <>
+              {/* 总开关（契约 §66）。重新打开时删掉这个键，回到缺省。 */}
+              <SettingsRow label={t("settings.shortcut.enabled")}>
+                <Switch
+                  checked={enabled}
+                  aria-label={t("settings.shortcut.enabled")}
+                  onCheckedChange={(next) =>
+                    save.mutate({ keymap: { enabled: next ? null : false } })
+                  }
+                />
+              </SettingsRow>
+              <SettingsRow label={t("settings.shortcut.layer")}>
+                <Select
+                  value={layer}
+                  onValueChange={(value) => setLayer(value as WriteLayer)}
+                >
+                  <SelectTrigger
+                    aria-label={t("settings.shortcut.layer")}
+                    size="sm"
+                    className="w-40"
+                  >
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="global">
+                      {t("settings.shortcut.source.global")}
+                    </SelectItem>
+                    <SelectItem value="device">
+                      {t("settings.shortcut.source.device")}
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+              </SettingsRow>
+            </>
+          )}
+          <SettingsRow label={t("settings.shortcut.platform")}>
+            <Select
+              value={platform}
+              onValueChange={(value) => setPlatform(value as PlatformName)}
+            >
+              <SelectTrigger
+                aria-label={t("settings.shortcut.platform")}
+                size="sm"
+                className="w-40"
+              >
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={here}>
+                  {t(`settings.shortcut.platform.${here}`)}
+                </SelectItem>
+                <SelectItem value={otherPlatform(here)}>
+                  {t(`settings.shortcut.platform.${otherPlatform(here)}`)}
+                </SelectItem>
+              </SelectContent>
+            </Select>
+          </SettingsRow>
+        </SettingsGroup>
+
+        <SettingsTableCard<KeymapFilter>
+          title={t("settings.section.keybindings")}
+          loading={settings.isLoading}
+          skeleton={{ rows: 6, columns: 5 }}
+          empty={
+            rowCount === 0 ? { title: t("settings.shortcut.empty") } : null
+          }
+          filter={{
+            value: filter,
+            onValueChange: setFilter,
+            label: t("settings.section.keybindings"),
+            options: [
+              { value: "all", label: t("settings.shortcut.filter.all") },
+              {
+                value: "changed",
+                label: t("settings.shortcut.filter.changed"),
+              },
+              { value: "unbound", label: t("settings.shortcut.unbound") },
+            ],
+          }}
+        >
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>{t("settings.shortcut.col.command")}</TableHead>
+                <TableHead>{t("settings.shortcut.col.keys")}</TableHead>
+                <TableHead className="hidden sm:table-cell">
+                  {t("settings.shortcut.col.source")}
+                </TableHead>
+                <TableHead className="hidden md:table-cell">
+                  {t("settings.shortcut.when")}
+                </TableHead>
+                <TableHead>
+                  <span className="sr-only">
+                    {t("settings.shortcut.col.actions")}
+                  </span>
+                </TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {entries
+                .filter((entry) => entry.rows.length > 0)
+                .map((entry) => (
+                  <React.Fragment key={entry.scope}>
+                    <TableRow className="hover:bg-transparent">
+                      <TableCell
+                        colSpan={5}
+                        className="text-caption font-medium text-muted-foreground"
+                      >
+                        {t(`settings.scope.${entry.scope}`)}
+                      </TableCell>
+                    </TableRow>
+                    {entry.rows.map(({ command, source, chords }) => {
+                      const below =
+                        source === "default" || source === "profile"
+                          ? null
+                          : keysBelow(
+                              command.id,
+                              platform,
+                              source,
+                              global,
+                              preset,
+                            );
+                      const when = commandWhen(command.id, keymap);
+                      const active =
+                        recording?.id === command.id ? recording.mode : null;
+                      return (
+                        <TableRow key={command.id} data-command={command.id}>
+                          <TableCell>
+                            <span className="inline-flex flex-wrap items-center gap-1.5">
+                              {t(command.labelKey)}
+                              {conflicts.has(command.id) && (
+                                <Badge variant="destructive" size="sm">
+                                  {t("settings.shortcut.conflict")}
+                                </Badge>
+                              )}
+                              {/*
+                               * 被别的程序占住的组合键在这里说明白。设置里写着一个键、
+                               * 按下去却什么也不发生，是这一组最容易出现的问题。
+                               */}
+                              {(registered[command.id] === "taken" ||
+                                registered[command.id] === "invalid") && (
+                                <Badge variant="destructive" size="sm">
+                                  {t(
+                                    `settings.shortcut.global.${registered[command.id]}`,
+                                  )}
+                                </Badge>
+                              )}
+                            </span>
+                          </TableCell>
+                          <TableCell>
+                            <Button
+                              variant="ghost"
+                              size="xs"
+                              data-roving-item
+                              data-recording={active !== null}
+                              aria-label={t(command.labelKey)}
+                              disabled={preview}
+                              className="-ml-1.5 gap-1 data-[recording=true]:bg-muted"
+                              onClick={() =>
+                                setRecording((current) =>
+                                  current?.id === command.id
+                                    ? null
+                                    : { id: command.id, mode: "replace" },
                                 )
                               }
                             >
-                              {t("settings.shortcut.removeOne", {
-                                keys: formatKeys(chord, { mac }),
-                              })}
-                            </DropdownMenuItem>
-                          ))}
-                        {chords.length > 0 && (
-                          <DropdownMenuItem
-                            onSelect={() => write(command.id, "")}
-                          >
-                            {t("settings.shortcut.clear")}
-                          </DropdownMenuItem>
-                        )}
-                        <DropdownMenuSeparator />
-                        <DropdownMenuItem
-                          onSelect={() =>
-                            setEditingWhen({
-                              id: command.id,
-                              text: when ?? "",
-                            })
-                          }
-                        >
-                          {t("settings.shortcut.when.edit")}
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  )}
-                  {source !== "default" && source !== "profile" && !preview && (
-                    <Button
-                      variant="ghost"
-                      size="icon-xs"
-                      aria-label={t("settings.shortcut.reset", {
-                        command: t(command.labelKey),
-                        // 说清会落到哪个键位，不然「上一层」只是个说法。
-                        keys:
-                          formatKeys(below, { mac }) ||
-                          t("settings.shortcut.unbound"),
-                      })}
-                      className="text-muted-foreground"
-                      onClick={() => resetOne(command.id)}
-                    >
-                      <RotateCcw />
-                    </Button>
-                  )}
-                </SettingsRow>
-              );
-            },
-          )}
-        </SettingsGroup>
-      ))}
+                              {active === "replace" ? (
+                                <span className="text-caption text-muted-foreground">
+                                  {t("settings.shortcut.recording")}
+                                </span>
+                              ) : chords.length === 0 ? (
+                                <Kbd>{t("settings.shortcut.unbound")}</Kbd>
+                              ) : (
+                                chords.map((chord, position) => (
+                                  <Kbd key={`${position}:${chord}`}>
+                                    {formatKeys(chord, { mac })}
+                                  </Kbd>
+                                ))
+                              )}
+                              {active === "append" && (
+                                <span className="text-caption text-muted-foreground">
+                                  {t("settings.shortcut.recording")}
+                                </span>
+                              )}
+                            </Button>
+                          </TableCell>
+                          <TableCell className="hidden sm:table-cell">
+                            <Badge variant="outline" size="sm">
+                              {t(`settings.shortcut.source.${source}`)}
+                            </Badge>
+                          </TableCell>
+                          <TableCell className="hidden md:table-cell">
+                            {when && (
+                              <code
+                                title={when}
+                                className="block max-w-48 truncate font-mono text-caption text-muted-foreground"
+                              >
+                                {when}
+                              </code>
+                            )}
+                          </TableCell>
+                          <TableCell>
+                            <div className="flex items-center justify-end gap-1">
+                              {!preview && (
+                                <DropdownMenu>
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <DropdownMenuTrigger asChild>
+                                        <IconButton
+                                          size="inline"
+                                          label={t("settings.shortcut.more", {
+                                            command: t(command.labelKey),
+                                          })}
+                                        >
+                                          <Ellipsis />
+                                        </IconButton>
+                                      </DropdownMenuTrigger>
+                                    </TooltipTrigger>
+                                    <TooltipContent>
+                                      {t("settings.shortcut.more", {
+                                        command: t(command.labelKey),
+                                      })}
+                                    </TooltipContent>
+                                  </Tooltip>
+                                  <DropdownMenuContent align="end">
+                                    <DropdownMenuItem
+                                      onSelect={() =>
+                                        setRecording({
+                                          id: command.id,
+                                          mode: "append",
+                                        })
+                                      }
+                                    >
+                                      {t("settings.shortcut.add")}
+                                    </DropdownMenuItem>
+                                    {chords.length > 1 &&
+                                      chords.map((chord, position) => (
+                                        <DropdownMenuItem
+                                          key={`${position}:${chord}`}
+                                          onSelect={() =>
+                                            write(
+                                              command.id,
+                                              removeChord(
+                                                keysHere(command.id),
+                                                position,
+                                              ),
+                                            )
+                                          }
+                                        >
+                                          {t("settings.shortcut.removeOne", {
+                                            keys: formatKeys(chord, { mac }),
+                                          })}
+                                        </DropdownMenuItem>
+                                      ))}
+                                    {chords.length > 0 && (
+                                      <DropdownMenuItem
+                                        onSelect={() => write(command.id, "")}
+                                      >
+                                        {t("settings.shortcut.clear")}
+                                      </DropdownMenuItem>
+                                    )}
+                                    <DropdownMenuSeparator />
+                                    <DropdownMenuItem
+                                      onSelect={() =>
+                                        setEditingWhen({
+                                          id: command.id,
+                                          text: when ?? "",
+                                        })
+                                      }
+                                    >
+                                      {t("settings.shortcut.when.edit")}
+                                    </DropdownMenuItem>
+                                  </DropdownMenuContent>
+                                </DropdownMenu>
+                              )}
+                              {source !== "default" &&
+                                source !== "profile" &&
+                                !preview && (
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <IconButton
+                                        size="inline"
+                                        label={resetLabel(command, below, mac)}
+                                        onClick={() => resetOne(command.id)}
+                                      >
+                                        <RotateCcw />
+                                      </IconButton>
+                                    </TooltipTrigger>
+                                    <TooltipContent>
+                                      {resetLabel(command, below, mac)}
+                                    </TooltipContent>
+                                  </Tooltip>
+                                )}
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
+                  </React.Fragment>
+                ))}
+            </TableBody>
+          </Table>
+        </SettingsTableCard>
+      </SettingsLoadable>
 
       <ResponsiveDialog
         open={editingWhen !== null}
         onOpenChange={(open) => !open && setEditingWhen(null)}
       >
-        <ResponsiveDialogContent className="z-[var(--z-dialog)] sm:max-w-[460px]">
+        <ResponsiveDialogContent className="sm:max-w-[460px]">
           <ResponsiveDialogHeader>
             <ResponsiveDialogTitle>
               {editingWhen &&
@@ -676,7 +817,7 @@ export function KeybindingsPage() {
           <Input
             aria-label={t("settings.shortcut.when")}
             aria-invalid={whenCheck !== null}
-            className="font-mono text-[12px]"
+            className="font-mono text-meta"
             spellCheck={false}
             autoFocus
             value={editingWhen?.text ?? ""}
@@ -689,7 +830,7 @@ export function KeybindingsPage() {
             }}
           />
           {whenCheck && (
-            <p role="alert" className="text-[13px] text-destructive">
+            <p role="alert" className="text-body text-danger-text">
               {whenCheck.problem === "syntax"
                 ? t("settings.shortcut.when.syntax")
                 : t("settings.shortcut.when.unknown", {
@@ -715,7 +856,7 @@ export function KeybindingsPage() {
                 </Button>
               )}
             <Button
-              variant="secondary"
+              variant="outline"
               size="sm"
               onClick={() => setEditingWhen(null)}
             >
@@ -732,7 +873,7 @@ export function KeybindingsPage() {
         open={naming !== null}
         onOpenChange={(open) => !open && setNaming(null)}
       >
-        <ResponsiveDialogContent className="z-[var(--z-dialog)] sm:max-w-[420px]">
+        <ResponsiveDialogContent className="sm:max-w-[420px]">
           <ResponsiveDialogHeader>
             <ResponsiveDialogTitle>
               {t("settings.shortcut.profile.create")}
@@ -747,15 +888,8 @@ export function KeybindingsPage() {
               if (event.key === "Enter") createProfile(naming ?? "");
             }}
           />
-          <p className="text-[13px] text-muted-foreground">
-            {t("settings.shortcut.profile.create.note")}
-          </p>
           <div className="flex flex-wrap justify-end gap-2">
-            <Button
-              variant="secondary"
-              size="sm"
-              onClick={() => setNaming(null)}
-            >
+            <Button variant="outline" size="sm" onClick={() => setNaming(null)}>
               {t("settings.shortcut.transfer.close")}
             </Button>
             <Button size="sm" onClick={() => createProfile(naming ?? "")}>
@@ -769,25 +903,22 @@ export function KeybindingsPage() {
         open={transfer !== null}
         onOpenChange={(open) => !open && setTransfer(null)}
       >
-        <ResponsiveDialogContent className="z-[var(--z-dialog)] sm:max-w-[520px]">
+        <ResponsiveDialogContent className="sm:max-w-[520px]">
           <ResponsiveDialogHeader>
             <ResponsiveDialogTitle>
               {t("settings.shortcut.transfer")}
             </ResponsiveDialogTitle>
           </ResponsiveDialogHeader>
-          <p className="text-[13px] text-muted-foreground">
-            {t("settings.shortcut.transfer.note")}
-          </p>
           <Textarea
             aria-label={t("settings.shortcut.transfer")}
-            className="h-56 font-mono text-[12px]"
+            className="h-56 font-mono text-meta"
             spellCheck={false}
             value={transfer ?? ""}
             onChange={(event) => setTransfer(event.target.value)}
           />
           <div className="flex flex-wrap justify-end gap-2">
             <Button
-              variant="secondary"
+              variant="outline"
               size="sm"
               onClick={() => setTransfer(null)}
             >
@@ -799,6 +930,6 @@ export function KeybindingsPage() {
           </div>
         </ResponsiveDialogContent>
       </ResponsiveDialog>
-    </SettingsLoadable>
+    </>
   );
 }

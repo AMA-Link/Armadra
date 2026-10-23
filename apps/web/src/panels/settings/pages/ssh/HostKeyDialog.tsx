@@ -1,13 +1,15 @@
 import * as React from "react";
 import { useMutation } from "@tanstack/react-query";
 import { KeyRound } from "lucide-react";
-import { toast } from "sonner";
 import type { SshHost, SshHostKey, SshHostKeyScan } from "@armadra/shared";
 
 import { localRuntimeApi } from "@/api/client";
 import { useT } from "@/app/preferences-store";
-import { Badge } from "@/ui/badge";
 import { Button } from "@/ui/button";
+import { Spinner } from "@/ui/spinner";
+import { StatusPill } from "@/ui/status-pill";
+import { EmptyState } from "@/ui/state";
+import { toast } from "@/ui/toast";
 import {
   ResponsiveAlertDialog,
   ResponsiveAlertDialogAction,
@@ -91,7 +93,7 @@ export function HostKeyDialog({ host }: { host: SshHost }) {
           }
         }}
       >
-        <ResponsiveDialogContent className="z-[var(--z-dialog)]">
+        <ResponsiveDialogContent>
           <ResponsiveDialogHeader>
             <ResponsiveDialogTitle>
               {t("ssh.hostKey.title", { name: host.name })}
@@ -100,7 +102,11 @@ export function HostKeyDialog({ host }: { host: SshHost }) {
 
           {changed && (
             <div className="flex flex-col gap-1">
-              <Badge variant="destructive">{t("ssh.hostKey.changed")}</Badge>
+              <StatusPill
+                tone="failed"
+                label={t("ssh.hostKey.changed")}
+                className="self-start"
+              />
               {scan?.known.map((fingerprint) => (
                 <Known key={fingerprint} fingerprint={fingerprint} />
               ))}
@@ -109,14 +115,10 @@ export function HostKeyDialog({ host }: { host: SshHost }) {
 
           <div className="flex flex-col gap-2">
             {rescan.isPending && (
-              <p className="text-xs text-muted-foreground">
-                {t("ssh.hostKey.scanning")}
-              </p>
+              <Spinner aria-label={t("ssh.hostKey.scanning")} />
             )}
             {scan?.keys.length === 0 && !rescan.isPending && (
-              <p className="text-xs text-muted-foreground">
-                {t("ssh.hostKey.empty")}
-              </p>
+              <EmptyState inline title={t("ssh.hostKey.empty")} />
             )}
             {scan?.keys.map((key) => (
               <div
@@ -124,13 +126,13 @@ export function HostKeyDialog({ host }: { host: SshHost }) {
                 className="flex items-center justify-between gap-3"
               >
                 <span className="flex min-w-0 flex-col gap-0.5">
-                  <span className="text-[13px] leading-5">{key.keyType}</span>
-                  <span className="truncate font-mono text-[11px] leading-4 text-muted-foreground">
+                  <span className="text-body">{key.keyType}</span>
+                  <span className="truncate font-mono text-caption text-muted-foreground">
                     {key.fingerprint}
                   </span>
                 </span>
                 {key.trusted ? (
-                  <Badge variant="outline">{t("ssh.hostKey.trusted")}</Badge>
+                  <StatusPill tone="done" label={t("ssh.hostKey.trusted")} />
                 ) : (
                   <Button
                     variant="secondary"
@@ -179,7 +181,7 @@ export function HostKeyDialog({ host }: { host: SshHost }) {
           if (!next) setPending(null);
         }}
       >
-        <ResponsiveAlertDialogContent className="z-[var(--z-dialog)]">
+        <ResponsiveAlertDialogContent>
           <ResponsiveAlertDialogHeader>
             <ResponsiveAlertDialogTitle>
               {t("ssh.hostKey.replaceTitle", {
@@ -197,6 +199,7 @@ export function HostKeyDialog({ host }: { host: SshHost }) {
               {t("ssh.dialog.cancel")}
             </ResponsiveAlertDialogCancel>
             <ResponsiveAlertDialogAction
+              variant="destructive-solid"
               onClick={() => {
                 if (pending)
                   trust.mutate({ line: pending.line, replace: true });
@@ -216,12 +219,10 @@ function Known({ fingerprint }: { fingerprint: string }) {
   const t = useT();
   return (
     <span className="flex items-center gap-2">
-      <span className="text-[11px] leading-4 text-muted-foreground">
+      <span className="text-caption text-muted-foreground">
         {t("ssh.hostKey.known")}
       </span>
-      <span className="truncate font-mono text-[11px] leading-4">
-        {fingerprint}
-      </span>
+      <span className="truncate font-mono text-caption">{fingerprint}</span>
     </span>
   );
 }

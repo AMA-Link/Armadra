@@ -57,8 +57,15 @@ describe("设置 → 会话", () => {
     expect(usePreferencesStore.getState().autoTitle).toBe(false);
     expect(screen.getByText("会话索引")).toBeTruthy();
     expect(screen.getByRole("combobox", { name: "索引范围" })).toBeTruthy();
-    expect(await screen.findByText("7 条")).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "重建" }));
+    // 页头：页名 + 「重建索引」，没有副标题；已索引会话是一张托盘
+    expect(screen.getByTestId("settings-heading")).toBeTruthy();
+    expect(screen.getAllByText("已索引会话").length).toBeGreaterThan(0);
+    await waitFor(() =>
+      expect(
+        document.querySelector("[data-slot=tray-value]")?.textContent,
+      ).toBe("7"),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "重建索引" }));
     await waitFor(() => expect(api.refreshConversations).toHaveBeenCalled());
   });
 });

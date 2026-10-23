@@ -120,8 +120,8 @@ export function PasskeyList({
         </Alert>
       )}
       {list.passkeys.length > 0 && (
-        <Card className="gap-0 overflow-visible rounded-lg border border-border/70 py-0 text-[length:inherit] ring-0 px-2">
-          <Table className="text-[13px]">
+        <Card variant="table">
+          <Table>
             <TableHeader>
               <TableRow>
                 <TableHead>{t("security.name")}</TableHead>
@@ -158,7 +158,7 @@ export function PasskeyList({
                             id={`rename-${passkey.credentialId}`}
                             autoFocus
                             maxLength={64}
-                            className="h-7"
+                            size="sm"
                             value={editing.label}
                             disabled={saving}
                             onChange={(event) =>

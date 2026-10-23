@@ -57,7 +57,11 @@ describe("设置 → 通知（§2.2 映射）", () => {
     ])
       expect(screen.getByRole("switch", { name: zh(key) }), key).toBeTruthy();
     expect(screen.getByText(zh("settings.soundVolume"))).toBeTruthy();
-    expect(screen.getByText(zh("settings.soundPreview"))).toBeTruthy();
+    expect(
+      screen.getByRole("button", { name: zh("settings.preview") }),
+    ).toBeTruthy();
+    // 页头存在，且没有副标题（只有一个 h2 与动作）
+    expect(screen.getByTestId("settings-heading")).toBeTruthy();
     // 设置恒指本机（#301）：本机改本机不画作用范围徽标。
     expect(document.querySelector("[data-settings-scope]")).toBeNull();
     fireEvent.click(screen.getByRole("switch", { name: zh("updates.notify") }));

@@ -39,6 +39,7 @@ import { installDomPolyfills, optionLabels } from "../../../app/test-harness";
 import { usePreferencesStore } from "../../../app/preferences-store";
 import { translate } from "../../../i18n";
 import { DefaultsPage } from "./DefaultsPage";
+import { TooltipProvider } from "@/ui/tooltip";
 
 installDomPolyfills();
 const zh = (key: string, values?: Record<string, string>) =>
@@ -54,7 +55,11 @@ afterEach(cleanup);
 
 describe("设置 → 默认（§2.2 映射）", () => {
   it("首行是 Agent 默认视图（主机项，行尾徽标），其后默认 Agent、权限、简洁模式、主题、语言", () => {
-    render(<DefaultsPage />);
+    render(
+      <TooltipProvider>
+        <DefaultsPage />
+      </TooltipProvider>,
+    );
     const rows = screen
       .getAllByRole("combobox")
       .map((element) => element.getAttribute("aria-label"));
@@ -74,7 +79,11 @@ describe("设置 → 默认（§2.2 映射）", () => {
 
   it("页面的本机在别处（手机、经 Gateway 的网页）：徽标写主机与它的名字", () => {
     access.remote = true;
-    render(<DefaultsPage />);
+    render(
+      <TooltipProvider>
+        <DefaultsPage />
+      </TooltipProvider>,
+    );
     expect(document.querySelector("[data-settings-scope]")?.textContent).toBe(
       zh("settings.scope.hostNamed", { name: "家里的 Mac mini" }),
     );
@@ -82,7 +91,11 @@ describe("设置 → 默认（§2.2 映射）", () => {
 
   it("成员不画主机那一行，也不去读设置文档", () => {
     access.member = true;
-    render(<DefaultsPage />);
+    render(
+      <TooltipProvider>
+        <DefaultsPage />
+      </TooltipProvider>,
+    );
     expect(
       screen.queryByRole("combobox", {
         name: zh("acp.settings.defaultDriver"),
@@ -95,7 +108,11 @@ describe("设置 → 默认（§2.2 映射）", () => {
   });
 
   it("默认视图两档：会话视图在前", async () => {
-    render(<DefaultsPage />);
+    render(
+      <TooltipProvider>
+        <DefaultsPage />
+      </TooltipProvider>,
+    );
     const labels = await optionLabels(
       screen.getByRole("combobox", { name: zh("acp.settings.defaultDriver") }),
     );
@@ -106,7 +123,11 @@ describe("设置 → 默认（§2.2 映射）", () => {
 describe("设置 → 默认：背景色板（#474）", () => {
   it("五格按顺序排开，当前那格按下；点一格就换", () => {
     usePreferencesStore.setState({ backdrop: "plain" });
-    render(<DefaultsPage />);
+    render(
+      <TooltipProvider>
+        <DefaultsPage />
+      </TooltipProvider>,
+    );
     const group = screen.getByRole("radiogroup", {
       name: zh("settings.backdrop"),
     });
@@ -124,7 +145,11 @@ describe("设置 → 默认：背景色板（#474）", () => {
   });
 
   it("网页里没有半透明窗口开关", () => {
-    render(<DefaultsPage />);
+    render(
+      <TooltipProvider>
+        <DefaultsPage />
+      </TooltipProvider>,
+    );
     expect(
       screen.queryByRole("switch", { name: zh("settings.translucentWindow") }),
     ).toBeNull();

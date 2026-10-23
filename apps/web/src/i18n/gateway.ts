@@ -50,7 +50,6 @@ export const gateway: MessageModule = {
     "gateway.devices.revoke": "撤销",
     "gateway.devices.revokeNamed": "撤销 {name}",
     "gateway.devices.confirmTitle": "撤销这台设备？",
-    "gateway.devices.confirmNote": "它会立即退出，要再用需重新配对。",
     "gateway.devices.cancel": "取消",
     "gateway.devices.revokeFailed": "没能撤销",
     "gateway.devices.current": "当前",
@@ -120,8 +119,6 @@ export const gateway: MessageModule = {
     "gateway.devices.revoke": "Revoke",
     "gateway.devices.revokeNamed": "Revoke {name}",
     "gateway.devices.confirmTitle": "Revoke this device?",
-    "gateway.devices.confirmNote":
-      "It is signed out right away and has to pair again.",
     "gateway.devices.cancel": "Cancel",
     "gateway.devices.revokeFailed": "Could not revoke",
     "gateway.devices.current": "Current",

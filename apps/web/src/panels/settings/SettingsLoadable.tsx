@@ -79,8 +79,8 @@ export function ValueLoadable({
 }
 
 /**
- * 设置页里 `Card` + `Table` 的占位：卡片壳、表头 h-10、行 h-11，与真实表格（`TableHead` /
- * `TableCell` 的 p-2）同高；`title` 给就带上分组小标题。
+ * 设置页里表格卡（`Card variant="table"` + `Table`）的占位：表头 32、行 36，与真实表格同高；
+ * `title` 给就带上分组小标题。
  */
 export function TableCardSkeleton({
   rows = 3,
@@ -93,19 +93,14 @@ export function TableCardSkeleton({
 }) {
   const t = useT();
   const card = (
-    <Card className="gap-0 overflow-visible rounded-lg border border-border/70 px-2 py-0 text-[length:inherit] ring-0">
-      <SkeletonTable
-        rows={rows}
-        columns={columns}
-        label={t("state.loading")}
-        className="[&_[data-slot=skeleton-table-head]]:h-10 [&_[data-slot=skeleton-table-row]]:h-11"
-      />
+    <Card variant="table">
+      <SkeletonTable rows={rows} columns={columns} label={t("state.loading")} />
     </Card>
   );
   if (title === undefined) return card;
   return (
     <section className="flex min-w-0 flex-col gap-(--space-group)">
-      <h3 className="px-0.5 text-[13px] font-medium">{title}</h3>
+      <h3 className="px-0.5 text-body font-medium">{title}</h3>
       {card}
     </section>
   );

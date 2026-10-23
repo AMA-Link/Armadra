@@ -18,6 +18,11 @@ export const host: MessageModule = {
     "host.group.terminal": "终端会话",
     "host.group.power": "电源与资源",
     "host.group.data": "数据",
+    "host.kpi.uptime": "运行时长",
+    "host.kpi.sessions": "活跃会话",
+    "host.uptime.day": "天",
+    "host.uptime.hour": "小时",
+    "host.uptime.minute": "分",
     "host.error.network":
       "无法连接。请确认服务已启动、地址正确，且允许此页面来源。桌面端当前仅允许默认本机地址。",
     "host.error.invalidResponse": "服务返回了无效的连接信息。",
@@ -44,6 +49,11 @@ export const host: MessageModule = {
     "host.group.terminal": "Terminal sessions",
     "host.group.power": "Power & resources",
     "host.group.data": "Data",
+    "host.kpi.uptime": "Uptime",
+    "host.kpi.sessions": "Live sessions",
+    "host.uptime.day": "d",
+    "host.uptime.hour": "h",
+    "host.uptime.minute": "m",
     "host.error.network":
       "Cannot connect. Check that the service is running, the address is correct, and this page origin is allowed. The desktop app currently allows only the default local address.",
     "host.error.invalidResponse":

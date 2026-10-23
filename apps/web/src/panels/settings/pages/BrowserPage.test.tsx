@@ -52,6 +52,16 @@ afterEach(() => {
 });
 
 describe("设置 → 浏览器", () => {
+  it("「清理数据」在页头，行里没有重复的清理行", () => {
+    render(<BrowserPage />);
+    const header = document.querySelector("[data-slot=settings-page-header]");
+    expect(header?.querySelector("button")?.textContent).toBe("清理数据");
+    expect(document.querySelectorAll("button").length).toBeGreaterThan(1);
+    expect(
+      document.querySelectorAll("[data-settings-label='清理浏览数据']").length,
+    ).toBe(0);
+  });
+
   it("回收开关默认开，关掉之后偏好里就是关的", () => {
     render(<BrowserPage />);
     const toggle = screen.getByRole("switch");
@@ -103,9 +113,9 @@ describe("起始页与清理浏览数据", () => {
     resetBrowserHistoryCache();
     recordBrowserHistory("ws-1", "https://example.com/");
     render(<BrowserPage />);
-    fireEvent.click(screen.getByRole("button", { name: "清理" }));
+    fireEvent.click(screen.getByRole("button", { name: "清理数据" }));
     // 确认框里的那一个。
-    const buttons = await screen.findAllByRole("button", { name: "清理" });
+    const buttons = await screen.findAllByRole("button", { name: "清理数据" });
     fireEvent.click(buttons[buttons.length - 1]!);
     await waitFor(() =>
       expect(clearData).toHaveBeenCalledWith({ workspaceIds: ["ws-1"] }),

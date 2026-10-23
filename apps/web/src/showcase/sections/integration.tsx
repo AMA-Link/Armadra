@@ -10,7 +10,8 @@ import {
 import { adapterInstallKey } from "@/acp/adapter-install";
 import { AgentRow } from "@/panels/settings/pages/AgentsPage";
 import { AgentDetailPage } from "@/panels/settings/pages/AgentDetailPage";
-import { SettingsGroup } from "@/panels/settings/SettingsGroup";
+import { Card } from "@/ui/card";
+import { Table, TableBody } from "@/ui/table";
 import { MachinesTable } from "@/panels/settings/pages/execution-hosts/MachinesTable";
 import { integrationKey } from "@/panels/settings/pages/integration/use-integration";
 import { CLI_GROUP, FLEET, idleJob } from "../fixtures/integration";
@@ -74,11 +75,15 @@ function useCliCache() {
 function CliTable() {
   useCliCache();
   return (
-    <SettingsGroup>
-      {CLI_GROUP.map(({ agent }) => (
-        <AgentRow key={agent.id} agent={agent} />
-      ))}
-    </SettingsGroup>
+    <Card variant="table">
+      <Table>
+        <TableBody>
+          {CLI_GROUP.map(({ agent }) => (
+            <AgentRow key={agent.id} agent={agent} />
+          ))}
+        </TableBody>
+      </Table>
+    </Card>
   );
 }
 

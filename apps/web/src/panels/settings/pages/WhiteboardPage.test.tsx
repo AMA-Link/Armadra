@@ -16,6 +16,7 @@ import { usePreferencesStore } from "../../../app/preferences-store";
 import { translate } from "../../../i18n";
 import { installDomPolyfills } from "../../../app/test-harness";
 import { WhiteboardPage } from "./WhiteboardPage";
+import { TooltipProvider } from "@/ui/tooltip";
 
 installDomPolyfills();
 
@@ -26,7 +27,11 @@ afterEach(cleanup);
 
 describe("设置 → 画布（§2.2 映射）", () => {
   it("白板各项都在；实时协同移到了工作空间页", () => {
-    render(<WhiteboardPage />);
+    render(
+      <TooltipProvider>
+        <WhiteboardPage />
+      </TooltipProvider>,
+    );
     for (const key of [
       "settings.whiteboard.background",
       "settings.whiteboard.gridSize",
@@ -57,7 +62,11 @@ describe("设置 → 画布（§2.2 映射）", () => {
 describe("布局方向（契约 §50）", () => {
   it("一行 Select，缺省纵向；改横向写进主机设置的 canvas.layoutDirection", async () => {
     runtime.mutate.mockClear();
-    render(<WhiteboardPage />);
+    render(
+      <TooltipProvider>
+        <WhiteboardPage />
+      </TooltipProvider>,
+    );
     const select = screen.getByRole("combobox", {
       name: zh("canvas.layoutDirection"),
     });

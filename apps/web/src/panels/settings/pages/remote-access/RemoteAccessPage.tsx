@@ -1,7 +1,7 @@
 import * as React from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { ChevronRight } from "lucide-react";
-import { toast } from "sonner";
+import { ChevronRight, Globe, Laptop, Waypoints } from "lucide-react";
+import { toast } from "@/ui/toast";
 
 import {
   type ClientSource,
@@ -35,8 +35,9 @@ import {
   ResponsiveAlertDialogHeader,
   ResponsiveAlertDialogTitle,
 } from "@/panels/ResponsiveDialog";
-import { Badge } from "@/ui/badge";
 import { Button } from "@/ui/button";
+import { StatusPill } from "@/ui/status-pill";
+import { Tray, TrayCard, TrayHeader } from "@/ui/tray";
 import {
   Collapsible,
   CollapsibleContent,
@@ -49,6 +50,8 @@ import {
   useTunnelEvents,
 } from "../../RemoteShare";
 import { SettingsGroup } from "../../SettingsGroup";
+import { SettingsKpi, SettingsKpiGrid } from "../../SettingsKpi";
+import { SettingsPageHeader } from "../../SettingsPageHeader";
 import { SettingsRow } from "../../SettingsRow";
 import { sameOrigin, useRemoteAccess } from "../../remote-access";
 import { GatewayAdvanced } from "../gateway/GatewayPanel";
@@ -72,8 +75,9 @@ import { HostAccess } from "./HostAccess";
 import { canShare, useGateway, useInternetRoute } from "./hooks";
 import { hostOf, useSourceTable, useSourceTableChanged } from "./keys";
 import { MineRow, RemoteRow, RowMenu, SharedRow } from "./rows";
+import { tunnelPill } from "../../RemoteShare";
 
-const HEADING = "px-0.5 text-[15px] font-semibold text-foreground";
+const HEADING = "px-0.5 text-section font-medium text-foreground";
 
 /**
  * 设置 → 远程访问（#301）。固定操作本机 core，两块：
@@ -148,10 +152,7 @@ export function RemoteAccessPage() {
 
   const logout = useMutation({
     mutationFn: (serviceId: string) => logoutRemote(serviceId),
-    onSuccess: () => {
-      void changed();
-      toast.success(t("remote.signedOut"));
-    },
+    onSuccess: () => void changed(),
     onError: (error: Error) => toast.error(error.message),
   });
   const forget = useMutation({
@@ -163,17 +164,14 @@ export function RemoteAccessPage() {
     mutationFn: (issuer: string) => retryRelayCleanup(issuer),
     onSuccess: (code) => {
       void changed();
-      if (code === null) toast.success(t("remote.relayPending.cleaned"));
-      else toast.error(relayPendingReason(t, code) || t("remote.relayPending"));
+      if (code !== null)
+        toast.error(relayPendingReason(t, code) || t("remote.relayPending"));
     },
     onError: (error: Error) => toast.error(error.message),
   });
   const dismiss = useMutation({
     mutationFn: (issuer: string) => dismissRelayCleanup(issuer),
-    onSuccess: () => {
-      void changed();
-      toast.success(t("remote.relayPending.dismissed"));
-    },
+    onSuccess: () => void changed(),
     onError: (error: Error) => toast.error(error.message),
   });
   const remove = useMutation({
@@ -190,7 +188,6 @@ export function RemoteAccessPage() {
     },
     onSuccess: (code, target) => {
       void changed();
-      if (target.leave) toast.success(t("remote.left"));
       if (code !== null) {
         toast.warning(t("remote.relayPending"), {
           description: relayPendingReason(t, code),
@@ -202,13 +199,55 @@ export function RemoteAccessPage() {
 
   const advancedRows = gateway.status?.enabled || orphans.length > 0;
 
+  const gatewayStatus = gateway.status;
+  const route = internet.registered
+    .map((remote) => internet.tunnelOf(remote.issuer))
+    .find((state) => state !== null);
+  const routePill = route ? tunnelPill(route) : null;
+
   return (
     <>
+      <SettingsPageHeader />
+      <SettingsKpiGrid>
+        <SettingsKpi
+          icon={<Laptop />}
+          label={t("remote.kpi.gateway")}
+          value={
+            gatewayStatus?.enabled && gatewayStatus.running
+              ? (gatewayStatus.origin ?? "").replace(/^https?:\/\//, "")
+              : gatewayStatus?.enabled
+                ? "—"
+                : t("remote.kpi.off")
+          }
+          meta={
+            gatewayStatus?.enabled
+              ? t(`gateway.listen.${gatewayStatus.listen}`)
+              : undefined
+          }
+        />
+        <Tray data-slot="settings-kpi">
+          <TrayHeader icon={<Waypoints />} label={t("remote.kpi.relay")} />
+          <TrayCard>
+            <div className="flex h-[28px] items-center">
+              <StatusPill
+                size="md"
+                tone={routePill?.tone ?? "paused"}
+                label={routePill ? t(routePill.key) : t("remote.kpi.off")}
+              />
+            </div>
+          </TrayCard>
+        </Tray>
+        <SettingsKpi
+          icon={<Globe />}
+          label={t("remote.mine")}
+          value={mine.length}
+        />
+      </SettingsKpiGrid>
       <section
         data-remote-block="host"
         className="flex min-w-0 flex-col gap-(--space-group)"
       >
-        <h2 className={HEADING}>{t("remote.host")}</h2>
+        <h3 className={HEADING}>{t("remote.host")}</h3>
         <div className="flex min-w-0 flex-col gap-(--space-block)">
           <HostAccess />
 
@@ -320,7 +359,7 @@ export function RemoteAccessPage() {
                 type="button"
                 variant="ghost"
                 size="sm"
-                className="-mx-2 w-fit text-[13px] font-normal text-muted-foreground"
+                className="-mx-2 w-fit text-body font-normal text-muted-foreground"
               >
                 <ChevronRight className="transition-transform group-data-[state=open]/advanced:rotate-90" />
                 {t("remote.advanced")}
@@ -341,9 +380,10 @@ export function RemoteAccessPage() {
                     label={hostOf(one.issuer)}
                     footnote={relayPendingReason(t, one.code)}
                   >
-                    <Badge variant="outline" className="font-normal">
-                      {t("remote.relayPending")}
-                    </Badge>
+                    <StatusPill
+                      tone="attention"
+                      label={t("remote.relayPending")}
+                    />
                     <Button
                       size="sm"
                       variant="secondary"
@@ -384,7 +424,7 @@ export function RemoteAccessPage() {
         data-remote-block="joined"
         className="flex min-w-0 flex-col gap-(--space-group)"
       >
-        <h2 className={HEADING}>{t("remote.joined")}</h2>
+        <h3 className={HEADING}>{t("remote.joined")}</h3>
         <SettingsGroup>
           {shared.map((source) => (
             <SharedRow
@@ -425,7 +465,6 @@ export function RemoteAccessPage() {
         onClose={() => setAdding(null)}
         onDone={() => {
           setAdding(null);
-          toast.success(t("remote.added"));
           void changed();
         }}
       />
@@ -434,7 +473,6 @@ export function RemoteAccessPage() {
         onClose={() => setAddingDirect(false)}
         onDone={() => {
           setAddingDirect(false);
-          toast.success(t("remote.added"));
           void changed();
         }}
       />
@@ -443,7 +481,6 @@ export function RemoteAccessPage() {
         onClose={() => setJoining(null)}
         onJoined={(sourceId) => {
           setJoining(null);
-          toast.success(t("links.joined"));
           // 先记下要打开的源：收尾时壳可能为放行新来源重载页面。
           openAfterJoin(sourceId);
           void changed();
@@ -467,7 +504,6 @@ export function RemoteAccessPage() {
           if (renaming.kind === "remote")
             await renameRemote(renaming.id, label);
           else await renameSource(renaming.id, label);
-          toast.success(t("services.renamed"));
           void changed();
         }}
       />

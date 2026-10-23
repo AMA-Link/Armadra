@@ -20,8 +20,10 @@ import { RENDER_BUDGET_CHOICES } from "../../../terminal/render-budget";
 import { useMonospaceFonts } from "../../../terminal/surface/fonts";
 import { useSkeletonPhase } from "@/loading/use-skeleton-phase";
 import { SettingsGroup } from "../SettingsGroup";
+import { SettingsPageHeader } from "../SettingsPageHeader";
 import { SettingsRow } from "../SettingsRow";
 import { CONTROL_WIDTH } from "./GeneralPage";
+import { Card } from "@/ui/card";
 import { Input } from "@/ui/input";
 import { Label } from "@/ui/label";
 import {
@@ -55,10 +57,11 @@ export function TerminalLookPage() {
 
   return (
     <>
+      <SettingsPageHeader />
+      <PreviewCard terminal={terminal} />
       <SettingsGroup title={t("terminal.settings.group.type")}>
         <FontRows terminal={terminal} set={set} />
         <SpacingRow terminal={terminal} set={set} />
-        <PreviewRow terminal={terminal} />
       </SettingsGroup>
 
       <SettingsGroup title={t("terminal.settings.group.cursor")}>
@@ -140,10 +143,7 @@ export function TerminalLookPage() {
 
         {/* 名额只约束纯 WebGL 档；`auto` 自带上限，DOM 下没有意义。 */}
         {terminal.renderer === "webgl" && (
-          <SettingsRow
-            label={t("terminal.settings.renderBudget")}
-            hint={t("terminal.settings.renderBudgetHint")}
-          >
+          <SettingsRow label={t("terminal.settings.renderBudget")}>
             <Select
               value={String(renderBudget)}
               onValueChange={(value) => setRenderBudget(Number(value))}
@@ -176,10 +176,7 @@ export function TerminalLookPage() {
           />
         </SettingsRow>
 
-        <SettingsRow
-          label={t("terminal.settings.releaseAfter")}
-          hint={t("terminal.settings.releaseAfterHint")}
-        >
+        <SettingsRow label={t("terminal.settings.releaseAfter")}>
           <Select
             value={terminal.releaseAfter}
             onValueChange={(value) =>
@@ -305,7 +302,7 @@ function FontRows({
       {choice === CUSTOM && (
         <SettingsRow label={t("terminal.settings.fontStack")}>
           <Input
-            className="h-8 w-[280px] max-w-full font-mono text-xs"
+            className="w-[280px] max-w-full font-mono text-meta"
             aria-label={t("terminal.settings.fontStack")}
             spellCheck={false}
             autoComplete="off"
@@ -350,19 +347,19 @@ function SpacingRow({
   ] as const;
 
   return (
-    <div className="settings-row flex min-h-12 w-full flex-wrap items-center gap-x-6 gap-y-2 px-4 py-3">
+    <div className="settings-row flex w-full flex-wrap items-center gap-x-6 gap-y-2 px-4 py-2">
       {fields.map((field) => (
         <div key={field.key} className="flex items-center gap-2">
           <Label
             htmlFor={`${id}-${field.key}`}
-            className="text-[13px] font-normal text-foreground"
+            className="text-body font-normal text-foreground"
           >
             {field.label}
           </Label>
           <Input
             id={`${id}-${field.key}`}
             type="number"
-            className="h-8 w-[76px] text-xs tabular-nums"
+            className="w-[76px] text-meta tabular-nums"
             min={field.range[0]}
             max={field.range[1]}
             step={field.step}
@@ -379,16 +376,18 @@ function SpacingRow({
   );
 }
 
-function PreviewRow({ terminal }: { terminal: TerminalPreferences }) {
+function PreviewCard({ terminal }: { terminal: TerminalPreferences }) {
   const t = useT();
   const family = terminal.fontFamily.trim();
   return (
-    <div className="px-4 py-3">
+    <Card size="sm" className="p-0">
       <pre
         aria-label={t("terminal.settings.preview")}
         data-testid="terminal-font-preview"
-        className="overflow-x-auto rounded-md bg-[var(--term-bg)] px-3 py-2 text-[var(--term-fg)]"
+        className="overflow-x-auto px-3 py-2"
         style={{
+          backgroundColor: "var(--term-bg)",
+          color: "var(--term-fg)",
           fontFamily: family
             ? `${family}, var(--font-code)`
             : "var(--font-code)",
@@ -399,6 +398,6 @@ function PreviewRow({ terminal }: { terminal: TerminalPreferences }) {
       >
         {t("terminal.settings.previewSample")}
       </pre>
-    </div>
+    </Card>
   );
 }

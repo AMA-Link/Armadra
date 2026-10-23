@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { toast } from "sonner";
+import { toast } from "@/ui/toast";
 
 import type { RuntimeSettingsPatch } from "../../api/client";
 import { useT } from "../../app/preferences-store";

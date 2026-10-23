@@ -64,26 +64,18 @@ const zh = {
   "terminal.settings.renderer.webgl": "WebGL",
   "terminal.settings.renderer.auto": "自动（实验）",
   "terminal.settings.renderBudget": "渲染名额",
-  "terminal.settings.renderBudgetHint":
-    "同时使用 WebGL 的终端数量，超出的批量刷新；聚焦的终端始终全速。",
   "terminal.settings.repaintThrottle": "缩小时限帧重绘（实验）",
   "terminal.settings.releaseAfter": "离屏多久后释放终端画面",
   "terminal.settings.releaseAfter.5m": "5 分钟",
   "terminal.settings.releaseAfter.10m": "10 分钟",
   "terminal.settings.releaseAfter.30m": "30 分钟",
   "terminal.settings.releaseAfter.never": "从不",
-  "terminal.settings.releaseAfterHint":
-    "只释放页面里的画面，会话继续运行；回到视口时重新接上。",
   "terminal.settings.dormantAfter": "会话休眠",
-  "terminal.settings.dormantAfterHint":
-    "无人附着这么久后放慢输出投递。进程照跑，回放不丢，重新打开即恢复。",
   "terminal.settings.dormant.off": "关闭",
   "terminal.settings.dormant.30s": "30 秒",
   "terminal.settings.dormant.2m": "2 分钟",
   "terminal.settings.dormant.10m": "10 分钟",
   "terminal.settings.eco": "节能休眠",
-  "terminal.settings.ecoHint":
-    "空闲的 Agent 会话结束进程、释放内存，点开节点时接回原来的对话。",
   "terminal.settings.ecoIdle": "空闲多久后休眠",
   "terminal.settings.ecoIdle.15m": "15 分钟",
   "terminal.settings.ecoIdle.30m": "30 分钟",
@@ -151,8 +143,6 @@ const en: Record<keyof typeof zh, string> = {
   "terminal.settings.renderer.webgl": "WebGL",
   "terminal.settings.renderer.auto": "Auto (experimental)",
   "terminal.settings.renderBudget": "Render slots",
-  "terminal.settings.renderBudgetHint":
-    "Terminals using WebGL at once; the rest refresh in batches. The focused terminal always renders at full speed.",
   "terminal.settings.repaintThrottle":
     "Throttle repaint when zoomed out (experimental)",
   "terminal.settings.releaseAfter": "Release terminal view after",
@@ -160,18 +150,12 @@ const en: Record<keyof typeof zh, string> = {
   "terminal.settings.releaseAfter.10m": "10 minutes",
   "terminal.settings.releaseAfter.30m": "30 minutes",
   "terminal.settings.releaseAfter.never": "Never",
-  "terminal.settings.releaseAfterHint":
-    "Only the on-page view is released; the session keeps running and reattaches when scrolled back into view.",
   "terminal.settings.dormantAfter": "Session dormancy",
-  "terminal.settings.dormantAfterHint":
-    "Slow output delivery down after nothing has been attached this long. The process keeps running, no output is lost, and reopening resumes it.",
   "terminal.settings.dormant.off": "Off",
   "terminal.settings.dormant.30s": "30 seconds",
   "terminal.settings.dormant.2m": "2 minutes",
   "terminal.settings.dormant.10m": "10 minutes",
   "terminal.settings.eco": "Energy-saving hibernation",
-  "terminal.settings.ecoHint":
-    "Idle agent sessions end their process to free memory; opening the node resumes the same conversation.",
   "terminal.settings.ecoIdle": "Hibernate after",
   "terminal.settings.ecoIdle.15m": "15 minutes",
   "terminal.settings.ecoIdle.30m": "30 minutes",

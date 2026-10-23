@@ -54,13 +54,13 @@ export function CaInstallGuide({
   return (
     <Collapsible
       defaultOpen={defaultOpen}
-      className="group/ca rounded-lg border border-border/70 bg-card"
+      className="group/ca rounded-card border border-border/70 bg-card"
     >
       <CollapsibleTrigger asChild>
         <Button
           type="button"
           variant="ghost"
-          className="h-12 w-full justify-between rounded-lg px-4 text-[13px] font-normal"
+          className="h-12 w-full justify-between rounded-card px-4 text-body font-normal"
         >
           {t("gateway.ca.title")}
           <ChevronDown className="size-4 text-muted-foreground transition-transform group-data-[state=open]/ca:rotate-180" />
@@ -74,7 +74,7 @@ export function CaInstallGuide({
           </TabsList>
           {(Object.keys(STEPS) as (keyof typeof STEPS)[]).map((key) => (
             <TabsContent key={key} value={key}>
-              <ol className="mt-2 flex list-decimal flex-col gap-1.5 pl-5 text-[13px] leading-5">
+              <ol className="mt-2 flex list-decimal flex-col gap-1.5 pl-5 text-body leading-5">
                 {STEPS[key].map((step) => (
                   <li key={step}>{t(step)}</li>
                 ))}

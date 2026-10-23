@@ -284,7 +284,7 @@ describe("Agent CLI 子页", () => {
     expect(mock.uninstallIntegration).not.toHaveBeenCalled();
   });
 
-  /** 启动器少带了东西：值是「注入受限」，原因在悬停提示里。 */
+  /** 启动器少带了东西：值是「注入受限」，原因写在行脚注里。 */
   it("shows the launcher warning as the injection value", async () => {
     mock.integration.mockResolvedValue({
       ...healthy,
@@ -296,13 +296,15 @@ describe("Agent CLI 子页", () => {
       },
     });
     view();
-    const warning = await screen.findByText(zh("integration.state.limited"));
-    expect(warning.getAttribute("title")).toBe(
-      "Codex 0.133.0 is older than 0.134.0",
-    );
-    // 终端驱动受限、没有 ACP 入口：在画布中创建 Agent 不可用，原因在提示里。
+    expect(
+      (await screen.findAllByText(zh("integration.state.limited"))).length,
+    ).toBeGreaterThan(0);
+    expect(
+      screen.getByText("Codex 0.133.0 is older than 0.134.0"),
+    ).toBeTruthy();
+    // 终端驱动受限、没有 ACP 入口：在画布中创建 Agent 不可用，原因写在脚注里。
     const spawn = screen.getByText(zh("integration.canvasAgents.none"));
-    expect(spawn.getAttribute("title")).toBe(
+    expect(spawn.closest(".settings-row")?.textContent ?? "").toContain(
       zh("integration.reason.launcher_limited"),
     );
   });
@@ -344,8 +346,8 @@ describe("Agent CLI 子页", () => {
     expect(screen.getByText(zh("integration.mods.fallback"))).toBeTruthy();
   });
 
-  /** 门关着：值「未启用」，原因（含版本号）只在悬停提示里，不写说明段。 */
-  it("says the mod is off and why, in the hover text only", async () => {
+  /** 门关着：值「未启用」，原因（含版本号）是行脚注，不写说明段。 */
+  it("says the mod is off and why, as the row footnote", async () => {
     mock.integration.mockResolvedValue({
       ...healthy,
       mods: {
@@ -357,12 +359,14 @@ describe("Agent CLI 子页", () => {
       },
     });
     view();
-    const off = await screen.findByText(zh("integration.mods.off"));
-    expect(off.getAttribute("title")).toBe(
-      zh("integration.mods.reason.version_below_min")
-        .replace("{version}", "2.1.280")
-        .replace("{min}", "2.1.293"),
-    );
+    await screen.findByText(zh("integration.mods.off"));
+    expect(
+      screen.getByText(
+        zh("integration.mods.reason.version_below_min")
+          .replace("{version}", "2.1.280")
+          .replace("{min}", "2.1.293"),
+      ),
+    ).toBeTruthy();
     expect(screen.queryByText(zh("integration.mods.fallback"))).toBeNull();
   });
 
@@ -487,14 +491,16 @@ describe("Agent CLI 主表", () => {
     ...extra,
   });
 
-  it("一家一行：正常时不画状态徽标，写出能用的视图，动作是三态", async () => {
+  it("一家一行：就绪也有状态胶囊，写出能用的视图，动作是三态", async () => {
     mock.agents.mockReset().mockResolvedValue([claude]);
     mock.integration.mockReset().mockResolvedValue(ok("claude"));
     const { container } = view(null);
     expect(
       await screen.findByText(zh("integration.canvasAgents.both")),
     ).toBeTruthy();
-    expect(container.querySelector("[data-agent-state]")).toBeNull();
+    expect(
+      container.querySelector('[data-agent-state="ready"]')?.textContent,
+    ).toBe(zh("settings.kpi.ready"));
     expect(
       screen.getByRole("combobox", {
         name: `Claude Code ${zh("agents.row.mode")}`,
@@ -518,9 +524,17 @@ describe("Agent CLI 主表", () => {
     await waitFor(() =>
       expect(container.querySelectorAll("[data-agent-state]")).toHaveLength(3),
     );
-    expect(screen.getByText(zh("agents.state.installNeeded"))).toBeTruthy();
-    expect(screen.getByText(zh("agents.state.updateNeeded"))).toBeTruthy();
-    expect(screen.getByText(zh("agents.state.disabled"))).toBeTruthy();
+    const pill = (state: string) =>
+      container.querySelector(`[data-agent-state="${state}"]`);
+    expect(pill("installNeeded")?.textContent).toBe(
+      zh("agents.state.installNeeded"),
+    );
+    expect(pill("updateNeeded")?.textContent).toBe(
+      zh("agents.state.updateNeeded"),
+    );
+    expect(pill("disabled")?.textContent).toBe(zh("agents.state.disabled"));
+    expect(pill("installNeeded")?.getAttribute("data-tone")).toBe("attention");
+    expect(pill("disabled")?.getAttribute("data-tone")).toBe("paused");
     const install = await screen.findByRole("button", {
       name: zh("integration.action.install"),
     });
@@ -563,5 +577,55 @@ describe("Agent CLI 主表", () => {
     expect(
       await screen.findByRole("heading", { name: zh("agents.group.launch") }),
     ).toBeTruthy();
+  });
+
+  it("三张托盘数就绪 / 需安装 / 需更新，刻度是占总数的比例", async () => {
+    mock.agents.mockReset().mockResolvedValue([
+      { ...claude, installed: false },
+      { ...claude, id: "codex", label: "Codex", launchCmd: "codex" },
+      { ...claude, id: "pi", label: "Pi", launchCmd: "pi" },
+      { ...claude, id: "ama", label: "Ama", launchCmd: "ama" },
+    ]);
+    mock.integration
+      .mockReset()
+      .mockImplementation(async (id: string) =>
+        ok(id, id === "codex" ? { stale: true } : {}),
+      );
+    const { container } = view(null);
+    await waitFor(() =>
+      expect(
+        container.querySelector('[data-agent-state="updateNeeded"]'),
+      ).not.toBeNull(),
+    );
+    const trays = [...container.querySelectorAll('[data-slot="settings-kpi"]')];
+    expect(trays).toHaveLength(3);
+    const [ready, install, update] = trays as HTMLElement[];
+    await waitFor(() => expect(ready!.textContent).toContain("2 / 4"));
+    expect(install!.textContent).toContain("1 / 4");
+    expect(update!.textContent).toContain("1 / 4");
+    expect(
+      ready!
+        .querySelector('[data-slot="progress"]')
+        ?.getAttribute("aria-valuenow"),
+    ).toBe("50");
+  });
+
+  it("页头有「重新生成注入」，没有副标题", async () => {
+    mock.agents.mockReset().mockResolvedValue([claude]);
+    mock.integration.mockReset().mockResolvedValue(ok("claude"));
+    const { container } = view(null);
+    expect(
+      container.querySelector('[data-slot="settings-page-header"]'),
+    ).not.toBeNull();
+    const regenerate = await screen.findByRole("button", {
+      name: zh("agents.action.regenerateAll"),
+    });
+    await waitFor(() =>
+      expect((regenerate as HTMLButtonElement).disabled).toBe(false),
+    );
+    fireEvent.click(regenerate);
+    await waitFor(() =>
+      expect(mock.installIntegration).toHaveBeenCalledWith("claude"),
+    );
   });
 });

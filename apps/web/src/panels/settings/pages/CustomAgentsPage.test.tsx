@@ -46,6 +46,35 @@ describe("设置 → 自定义 Agent", () => {
     expect(usePreferencesStore.getState().settingsSubpage).toBe("agent:new");
   });
 
+  it("空态只有一个「添加」；有数据时「添加」在页头，列表是表格卡", () => {
+    draw();
+    expect(screen.getAllByRole("button", { name: "添加" })).toHaveLength(1);
+    expect(
+      document.querySelector("[data-slot=settings-page-header] button"),
+    ).toBeNull();
+    cleanup();
+    runtime.custom = [
+      {
+        id: "custom:abc",
+        label: "我的 Agent",
+        launchCmd: "my-agent",
+        args: [],
+        baseAgent: "claude",
+      },
+    ];
+    draw();
+    expect(
+      document.querySelector("[data-slot=settings-page-header] button")
+        ?.textContent,
+    ).toBe("添加");
+    const card = document.querySelector("[data-slot=settings-table-card]");
+    expect(card?.getAttribute("data-variant")).toBe("table");
+    expect(
+      [...(card?.querySelectorAll("th") ?? [])].map((cell) => cell.textContent),
+    ).toEqual(["名称", "基础 Agent", "命令", "编辑自定义 Agent"]);
+    expect(card?.querySelectorAll("tbody tr")).toHaveLength(1);
+  });
+
   it("一条一行，点一行进编辑子页，删除放在子页页尾", () => {
     runtime.custom = [
       {

@@ -1,13 +1,13 @@
 import * as React from "react";
 import type { MfaStatus, TotpEnrollment } from "@armadra/shared";
-import { toast } from "sonner";
+import { toast } from "@/ui/toast";
 
 import { useT } from "../../../../app/preferences-store";
 import { QrImage } from "../gateway/PairingCard";
 import { SecuritySection, downloadText } from "./parts";
 import { Alert, AlertAction, AlertTitle } from "@/ui/alert";
 import { Card } from "@/ui/card";
-import { Badge } from "@/ui/badge";
+import { StatusPill } from "@/ui/status-pill";
 import { Button } from "@/ui/button";
 import { Field, FieldError, FieldLabel } from "@/ui/field";
 import { InputOTP, InputOTPGroup, InputOTPSlot } from "@/ui/input-otp";
@@ -60,9 +60,10 @@ export function MfaSetup({
       action={
         stage.kind === "idle" ? (
           <div className="flex items-center gap-2">
-            <Badge variant={enabled ? "secondary" : "outline"}>
-              {t(enabled ? "security.mfa.on" : "security.mfa.off")}
-            </Badge>
+            <StatusPill
+              tone={enabled ? "done" : "paused"}
+              label={t(enabled ? "security.mfa.on" : "security.mfa.off")}
+            />
             {!enabled && (
               <Button
                 type="button"
@@ -97,7 +98,7 @@ export function MfaSetup({
       )}
 
       {stage.kind === "idle" && enabled && (
-        <Card className="gap-0 overflow-visible rounded-lg border border-border/70 py-0 text-[length:inherit] ring-0 flex flex-wrap items-center justify-between gap-2 px-3 py-2 text-[13px]">
+        <Card className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 text-body">
           <span className="text-muted-foreground tabular-nums">
             {t("security.mfa.remaining", {
               count: status.recoveryCodesRemaining,
@@ -128,7 +129,7 @@ export function MfaSetup({
       )}
 
       {stage.kind === "enrolling" && (
-        <Card className="gap-0 overflow-visible rounded-lg border border-border/70 py-0 text-[length:inherit] ring-0 flex flex-col gap-4 p-4 sm:flex-row">
+        <Card className="flex flex-col gap-4 p-4 sm:flex-row">
           <QrImage
             text={stage.enrollment.otpauthUri}
             label={t("security.mfa.qr")}
@@ -137,7 +138,7 @@ export function MfaSetup({
             <Field>
               <FieldLabel>{t("security.mfa.secret")}</FieldLabel>
               <div className="flex items-center gap-2">
-                <code className="min-w-0 flex-1 rounded-md bg-muted px-2 py-1 font-mono text-[12px] break-all select-all">
+                <code className="min-w-0 flex-1 rounded-control bg-muted px-2 py-1 font-mono text-meta break-all select-all">
                   {groupSecret(stage.enrollment.secret)}
                 </code>
                 <CopyButton text={stage.enrollment.secret} />
@@ -156,7 +157,7 @@ export function MfaSetup({
       )}
 
       {stage.kind === "verify" && (
-        <Card className="gap-0 overflow-visible rounded-lg border border-border/70 py-0 text-[length:inherit] ring-0 p-4">
+        <Card className="p-4">
           <CodeForm
             label={t("auth.mfa.code")}
             submit={t(
@@ -174,13 +175,13 @@ export function MfaSetup({
       )}
 
       {stage.kind === "codes" && (
-        <Card className="gap-0 overflow-visible rounded-lg border border-border/70 py-0 text-[length:inherit] ring-0 flex flex-col gap-3 p-4">
-          <h4 className="text-[13px] font-medium">
+        <Card className="flex flex-col gap-3 p-4">
+          <h4 className="text-body font-medium">
             {t("security.mfa.codesTitle")}
           </h4>
           <ol
             aria-label={t("security.mfa.codesTitle")}
-            className="grid grid-cols-2 gap-x-6 gap-y-1 font-mono text-[13px] tabular-nums select-all"
+            className="grid grid-cols-2 gap-x-6 gap-y-1 font-mono text-body tabular-nums select-all"
           >
             {stage.codes.map((code) => (
               <li key={code}>{code}</li>

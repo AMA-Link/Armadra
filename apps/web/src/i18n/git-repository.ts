@@ -5,8 +5,6 @@ export const gitRepository: MessageModule = {
     "gitRepo.executionRequired":
       "此 Git 操作需要工作区执行权限。请在设置 → 工作区开启后重试；Git 可能调用仓库钩子、过滤器或远程连接程序。",
     "gitRepo.allowExecution": "允许工作区执行命令",
-    "gitRepo.executionDetail":
-      "控制应用发起的新命令，包含 Git 钩子、过滤器和远程连接。关闭不会终止已经运行的进程。",
     "gitRepo.permissionSaveFailed": "无法保存工作区执行权限",
     "gitRepo.chooseBranch": "选择已有分支",
     "gitRepo.changes": "变更",
@@ -133,8 +131,6 @@ export const gitRepository: MessageModule = {
     "gitRepo.executionRequired":
       "This Git operation requires workspace execution permission. Enable it in Settings → Workspace, then retry. Git may invoke hooks, filters, or remote connection programs.",
     "gitRepo.allowExecution": "Allow workspace commands",
-    "gitRepo.executionDetail":
-      "Controls new commands started by the app, including Git hooks, filters, and remote connections. Turning it off does not stop running processes.",
     "gitRepo.permissionSaveFailed":
       "Could not save workspace execution permission",
     "gitRepo.chooseBranch": "Choose an existing branch",

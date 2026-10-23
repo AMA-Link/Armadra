@@ -104,9 +104,7 @@ export function RemoteRow({
     >
       {pill && <StatusPill tone={pill.tone} label={t(pill.key)} />}
       {pending !== null && (
-        <Badge variant="outline" className="font-normal">
-          {t("remote.relayPending")}
-        </Badge>
+        <StatusPill tone="attention" label={t("remote.relayPending")} />
       )}
       {!remote.hasCredentials && (
         <Button size="sm" variant="secondary" onClick={onSignIn}>
@@ -267,7 +265,7 @@ export function SharedRow({
             aria-hidden
             className="size-5 data-[size=sm]:size-5"
           >
-            <AvatarFallback className="text-[length:var(--text-caption)] font-medium">
+            <AvatarFallback className="text-caption font-medium">
               {initialOf(owner)}
             </AvatarFallback>
           </Avatar>
@@ -277,7 +275,7 @@ export function SharedRow({
       {...(facts.length > 0 ? { footnote: facts.join(" · ") } : {})}
     >
       {source.shareRole !== "" && (
-        <Badge variant="secondary" className="font-normal">
+        <Badge variant="secondary" size="sm">
           {t(`workspaceGroups.role.${source.shareRole}`)}
         </Badge>
       )}

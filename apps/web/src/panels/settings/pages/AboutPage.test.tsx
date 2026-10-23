@@ -244,7 +244,13 @@ describe("设置 → 关于：手机 / 平板 App", () => {
     updates.start.mockClear();
     draw({ state: "idle" });
     expect(await screen.findByText("1.0.0（3185）")).toBeTruthy();
-    expect(screen.getByText("App 版本")).toBeTruthy();
+    // 页头没有副标题；版本、主机版本、协议是三张托盘（无刻度）。
+    expect(screen.getByTestId("settings-heading")).toBeTruthy();
+    expect(
+      document.querySelectorAll('[data-slot="settings-kpi"]'),
+    ).toHaveLength(3);
+    expect(document.querySelector('[data-slot="progress"]')).toBeNull();
+    expect(screen.getAllByText("App 版本").length).toBeGreaterThan(0);
     expect(await screen.findByText("0.2.5")).toBeTruthy();
     expect(await screen.findByText("1.26")).toBeTruthy();
     expect(screen.queryByRole("alert")).toBeNull();
@@ -262,11 +268,6 @@ describe("设置 → 关于：手机 / 平板 App", () => {
     native.protocol = { major: 1, minor: 13 };
     draw({ state: "idle" });
     expect(await screen.findByText("主机版本过旧")).toBeTruthy();
-    expect(
-      screen.getByText(
-        "主机协议 1.13，App 需要 1.14 或更新。请更新电脑端或服务器端。",
-      ),
-    ).toBeTruthy();
   });
 
   it("主机的协议主版本更新：提示更新 App（英文）", async () => {
@@ -287,7 +288,7 @@ describe("设置 → 关于：版本与更新", () => {
     health.version = "0.3.1";
     draw({ state: "idle" });
     expect(await screen.findByText("0.3.1")).toBeTruthy();
-    expect(screen.getByText("主机版本")).toBeTruthy();
+    expect(screen.getAllByText("主机版本").length).toBeGreaterThan(0);
     expect(screen.queryByRole("combobox")).toBeNull();
     expect(screen.queryByRole("switch")).toBeNull();
     // 只剩版本历史的「刷新」与开源许可。
@@ -400,8 +401,6 @@ describe("设置 → 关于：版本与更新", () => {
     );
     await waitFor(() => expect(status()).toBe("无法确认"));
     expect(screen.queryByText("已是最新版本")).toBeNull();
-    expect(screen.getByText("后台服务未给出结果。")).toBeTruthy();
-    expect(screen.getByText("无法读取发布来源，请稍后重试。")).toBeTruthy();
   });
 
   it("says which half of the updater configuration is missing", async () => {
@@ -410,7 +409,6 @@ describe("设置 → 关于：版本与更新", () => {
       answered("upToDate"),
     );
     await waitFor(() => expect(status()).toBe("此构建不能自动更新"));
-    expect(screen.getByText("此构建无法验证更新包。")).toBeTruthy();
     expect(screen.queryByText(/没有内置发布地址/)).toBeNull();
     // 缺公钥不是哪条设置能改的：没有去服务设置的按钮。
     expect(
@@ -420,7 +418,7 @@ describe("设置 → 关于：版本与更新", () => {
 
   it("routes a blocked release side to the background service settings", async () => {
     draw({ state: "idle" }, { kind: "blocked", reason: "signedOut" });
-    expect(await screen.findByText("此设备尚未登录后台服务。")).toBeTruthy();
+    await waitFor(() => expect(status()).not.toBe(""));
     expect(screen.queryByRole("button", { name: "检查更新" })).toBeNull();
   });
 
@@ -442,7 +440,6 @@ describe("设置 → 关于：版本与更新", () => {
       answered("available"),
     );
     await waitFor(() => expect(status()).toBe("已下载，重启后生效"));
-    expect(screen.getByText(/终端会话会保留/)).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "重启并更新" }));
     expect(updates.install).toHaveBeenCalled();
   });
@@ -688,9 +685,6 @@ describe("设置 → 关于：受管安装", () => {
         "https://github.invalid/Armadra_0.2.0_darwin-aarch64.dmg",
       ]),
     );
-    expect(
-      screen.getByText("这种安装方式需要下载新安装包来更新。"),
-    ).toBeTruthy();
   });
 
   it("壳还没有下载地址时按平台从 §64 的最新发布里挑", async () => {

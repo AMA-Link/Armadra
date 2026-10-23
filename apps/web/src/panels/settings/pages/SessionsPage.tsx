@@ -1,6 +1,8 @@
 import { lk } from "../local-key";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { toast } from "sonner";
+import { History } from "lucide-react";
+
+import { toast } from "@/ui/toast";
 
 import { localRuntimeApi } from "../../../api/client";
 import {
@@ -10,7 +12,9 @@ import {
 import { usePreferencesStore, useT } from "../../../app/preferences-store";
 import { ScopeBadge } from "../scope-badge";
 import { SettingsGroup } from "../SettingsGroup";
-import { SettingsLoadable, ValueLoadable } from "../SettingsLoadable";
+import { SettingsKpi, SettingsKpiGrid } from "../SettingsKpi";
+import { SettingsLoadable } from "../SettingsLoadable";
+import { SettingsPageHeader } from "../SettingsPageHeader";
 import { SettingsRow } from "../SettingsRow";
 import { useRuntimeSettings } from "../use-runtime-settings";
 import { CONTROL_WIDTH } from "./GeneralPage";
@@ -43,10 +47,9 @@ export function SessionsPage() {
   });
   const rebuild = useMutation({
     mutationFn: localRuntimeApi.refreshConversations,
-    onSuccess: (report) => {
+    onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: LOCAL_DATA_INFO_KEY });
       void queryClient.invalidateQueries({ queryKey: ["conversations"] });
-      toast.success(t("settings.rebuild.done", { value: report.total }));
     },
     onError: (cause: Error) =>
       toast.error(t("settings.saveFailed"), { description: cause.message }),
@@ -54,11 +57,27 @@ export function SessionsPage() {
 
   return (
     <>
+      <SettingsPageHeader
+        actions={
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={rebuild.isPending}
+            onClick={() => rebuild.mutate()}
+          >
+            {t("settings.rebuild")}
+          </Button>
+        }
+      />
+      <SettingsKpiGrid>
+        <SettingsKpi
+          icon={<History />}
+          label={t("agents.sessions.indexed")}
+          value={info.data?.conversations ?? null}
+        />
+      </SettingsKpiGrid>
       <SettingsGroup>
-        <SettingsRow
-          label={t("settings.autoTitle.label")}
-          hint={t("settings.autoTitle.note")}
-        >
+        <SettingsRow label={t("settings.autoTitle.label")}>
           <ScopeBadge scope="device" />
           <Switch
             checked={autoTitle}
@@ -70,10 +89,7 @@ export function SessionsPage() {
 
       <SettingsGroup title={t("settings.conversations")}>
         <SettingsLoadable loading={settings.isLoading} control="select">
-          <SettingsRow
-            label={t("settings.conversations.scope")}
-            hint={t("settings.conversations.scopeNote")}
-          >
+          <SettingsRow label={t("settings.conversations.scope")}>
             <Select
               value={settings.data?.conversations?.scope ?? "workspaces"}
               disabled={!settings.data}
@@ -100,25 +116,6 @@ export function SessionsPage() {
             </Select>
           </SettingsRow>
         </SettingsLoadable>
-        <SettingsRow label={t("agents.sessions.indexed")}>
-          <ValueLoadable loading={info.isLoading}>
-            <span className="text-[13px] tabular-nums text-muted-foreground">
-              {info.data
-                ? t("settings.conversationCount", {
-                    value: info.data.conversations,
-                  })
-                : "—"}
-            </span>
-          </ValueLoadable>
-          <Button
-            variant="secondary"
-            size="sm"
-            disabled={rebuild.isPending}
-            onClick={() => rebuild.mutate()}
-          >
-            {t("settings.rebuild")}
-          </Button>
-        </SettingsRow>
       </SettingsGroup>
     </>
   );

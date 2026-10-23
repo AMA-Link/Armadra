@@ -9,7 +9,6 @@ import { identityHello } from "../../../api/identity";
 import {
   formatProtocol,
   hostCompatibility,
-  MINIMUM_HOST_PROTOCOL,
 } from "../../../mobile/host-compatibility";
 import { nativeBridge, type NativeBridge } from "../../../mobile/native-bridge";
 import { usePreferencesStore, useT } from "../../../app/preferences-store";
@@ -44,9 +43,12 @@ import { AndroidUpdateGroup, MobileReleaseNotice } from "./about/MobileUpdate";
 import { SettingsGroup } from "../SettingsGroup";
 import { SettingsLoadable, ValueLoadable } from "../SettingsLoadable";
 import { SettingsRow } from "../SettingsRow";
+import { SettingsKpi, SettingsKpiGrid } from "../SettingsKpi";
+import { SettingsPageHeader } from "../SettingsPageHeader";
+import { Boxes, Cpu, Network } from "lucide-react";
 import { useRemoteAccess } from "../remote-access";
 import { useRuntimeSettings } from "../use-runtime-settings";
-import { Alert, AlertDescription, AlertTitle } from "@/ui/alert";
+import { Alert, AlertTitle } from "@/ui/alert";
 import { Button } from "@/ui/button";
 import {
   Select,
@@ -167,7 +169,7 @@ function LicensesGroup() {
             }
           >
             <ScrollArea className="h-[60vh]">
-              <pre className="whitespace-pre-wrap break-words pr-3 font-mono text-[12px] leading-relaxed text-muted-foreground">
+              <pre className="whitespace-pre-wrap break-words pr-3 font-mono text-meta leading-relaxed text-muted-foreground">
                 {notices.data}
               </pre>
             </ScrollArea>
@@ -233,47 +235,44 @@ export function MobileAbout({
   );
   return (
     <>
-      <SettingsGroup>
-        <SettingsRow label={t("updates.appVersion")}>
-          <ValueLoadable loading={app.isLoading} className="h-4 w-16">
-            <span className="text-[13px] tabular-nums text-muted-foreground">
-              {app.data
+      <SettingsPageHeader />
+      <SettingsKpiGrid>
+        <SettingsKpi
+          icon={<Boxes />}
+          label={t("updates.appVersion")}
+          value={
+            app.isLoading
+              ? null
+              : app.data
                 ? t("updates.appVersion.value", {
                     version: app.data.version,
                     build: app.data.build,
                   })
-                : unknown}
-            </span>
-          </ValueLoadable>
-        </SettingsRow>
-        <SettingsRow label={t("updates.hostVersion")}>
-          <ValueLoadable loading={health.isLoading} className="h-4 w-16">
-            <span className="text-[13px] tabular-nums text-muted-foreground">
-              {health.data?.version || unknown}
-            </span>
-          </ValueLoadable>
-        </SettingsRow>
-        <SettingsRow label={t("updates.hostProtocol")}>
-          <ValueLoadable loading={hello.isLoading} className="h-4 w-16">
-            <span className="text-[13px] tabular-nums text-muted-foreground">
-              {protocol && verdict !== "unknown"
+                : unknown
+          }
+        />
+        <SettingsKpi
+          icon={<Cpu />}
+          label={t("updates.hostVersion")}
+          value={health.isLoading ? null : health.data?.version || unknown}
+        />
+        <SettingsKpi
+          icon={<Network />}
+          label={t("updates.hostProtocol")}
+          value={
+            hello.isLoading
+              ? null
+              : protocol && verdict !== "unknown"
                 ? formatProtocol(protocol)
-                : unknown}
-            </span>
-          </ValueLoadable>
-        </SettingsRow>
-      </SettingsGroup>
+                : unknown
+          }
+        />
+      </SettingsKpiGrid>
       {protocol && (verdict === "updateHost" || verdict === "updateApp") && (
         <Alert variant="destructive" data-slot="host-protocol">
           <AlertTitle className="font-normal">
             {t(`updates.hostProtocol.${verdict}`)}
           </AlertTitle>
-          <AlertDescription>
-            {t(`updates.hostProtocol.${verdict}.detail`, {
-              host: formatProtocol(protocol),
-              minimum: formatProtocol(MINIMUM_HOST_PROTOCOL),
-            })}
-          </AlertDescription>
         </Alert>
       )}
       {apk ? (
@@ -352,15 +351,18 @@ function RemoteUpdates() {
   });
   return (
     <>
-      <SettingsGroup>
-        <SettingsRow label={t("updates.hostVersion")}>
-          <ValueLoadable loading={health.isLoading} className="h-4 w-16">
-            <span className="text-[13px] tabular-nums text-muted-foreground">
-              {health.data?.version || t("updates.version.unknown")}
-            </span>
-          </ValueLoadable>
-        </SettingsRow>
-      </SettingsGroup>
+      <SettingsPageHeader />
+      <SettingsKpiGrid>
+        <SettingsKpi
+          icon={<Cpu />}
+          label={t("updates.hostVersion")}
+          value={
+            health.isLoading
+              ? null
+              : health.data?.version || t("updates.version.unknown")
+          }
+        />
+      </SettingsKpiGrid>
       <HostReleases browser={!hasShellUpdater()} />
     </>
   );
@@ -491,10 +493,38 @@ function LocalUpdates() {
     }
   }
 
+  const rowsView = {
+    ...view,
+    actions: view.actions.filter((action) => action !== "check"),
+  };
   return (
     <>
+      <SettingsPageHeader
+        actions={
+          view.actions.includes("check") ? (
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={busy || !installed}
+              onClick={() => perform("check")}
+            >
+              {busy && <Spinner aria-hidden />}
+              {t(busy ? "updates.checking" : "updates.check")}
+            </Button>
+          ) : undefined
+        }
+      />
+      <SettingsKpiGrid>
+        <SettingsKpi
+          icon={<Boxes />}
+          label={t("updates.appVersion")}
+          value={
+            health.isLoading ? null : installed || t("updates.version.unknown")
+          }
+        />
+      </SettingsKpiGrid>
       {restart && (
-        <SettingsGroup title={t("updates.nav")}>
+        <SettingsGroup>
           <SettingsRow
             label={
               restart.outcome === "completed"
@@ -524,15 +554,7 @@ function LocalUpdates() {
         </SettingsGroup>
       )}
 
-      <SettingsGroup>
-        <SettingsRow label={t("updates.version")}>
-          <ValueLoadable loading={health.isLoading} className="h-4 w-16">
-            <span className="text-[13px] tabular-nums text-muted-foreground">
-              {installed || t("updates.version.unknown")}
-            </span>
-          </ValueLoadable>
-        </SettingsRow>
-
+      <SettingsGroup title={t("updates.nav")}>
         <SettingsLoadable loading={settings.isLoading} control="select">
           <SettingsRow label={t("updates.channel")}>
             <Select
@@ -588,7 +610,7 @@ function LocalUpdates() {
         </SettingsLoadable>
 
         <UpdateStatusRows
-          view={view}
+          view={rowsView}
           installed={installed}
           busy={busy}
           notesUrl={notesUrl}
@@ -653,11 +675,20 @@ export function UpdateStatusRows({
   );
   return (
     <>
-      <SettingsRow label={t("updates.status")}>
+      <SettingsRow
+        label={t("updates.status")}
+        {...(view.retryAfterMs > 0
+          ? {
+              footnote: t("updates.retryAfter", {
+                value: Math.ceil(view.retryAfterMs / 60_000),
+              }),
+            }
+          : {})}
+      >
         <span
           role="status"
           aria-live="polite"
-          className="text-right text-[13px] text-muted-foreground"
+          className="text-right text-body text-muted-foreground"
         >
           {t(view.statusKey)}
         </span>
@@ -677,7 +708,7 @@ export function UpdateStatusRows({
                   : null
               }
             />
-            <span className="text-[12px] tabular-nums text-muted-foreground">
+            <span className="text-meta tabular-nums text-muted-foreground">
               {formatProgress(progress.receivedBytes, progress.totalBytes)}
             </span>
           </div>
@@ -691,7 +722,6 @@ export function UpdateStatusRows({
               <Button
                 key={action}
                 size="sm"
-                className="min-h-10"
                 variant={index === 0 ? "default" : "secondary"}
                 disabled={
                   (busy && action !== "cancel") ||
@@ -720,42 +750,20 @@ export function UpdateStatusRows({
 }
 
 /**
- * 分组下面的补充句子。失败时它们是错误本身，放进 `Alert destructive`（设计系统
- * §5.14 / §5.16）；其余状态仍是一行灰字。
+ * 分组下面的错误：失败时放进 `Alert destructive`（设计系统 §5.14 / §5.16）；其余
+ * 状态不写补充句子。
  */
 export function UpdateStatusNotes({ view }: { view: UpdatesView }) {
   const t = useT();
-  const failed = view.state === "failed";
+  if (view.state !== "failed" || view.detailKeys.length === 0) return null;
   return (
-    <>
-      {failed && view.detailKeys.length > 0 ? (
-        <Alert variant="destructive" data-slot="updates-failed">
-          <AlertTitle className="font-normal">{t(view.statusKey)}</AlertTitle>
-          {view.detailKeys.map((key) => (
-            <AlertDescription key={key}>{t(key)}</AlertDescription>
-          ))}
-        </Alert>
-      ) : (
-        view.detailKeys.map((key) => (
-          <p key={key} className="text-[13px] leading-5 text-muted-foreground">
-            {t(key)}
-          </p>
-        ))
-      )}
-
-      {view.partial && (
-        <p className="text-[13px] leading-5 text-muted-foreground">
-          {t(`updates.partial.${view.partial}`)}
-        </p>
-      )}
-
-      {view.retryAfterMs > 0 && (
-        <p className="text-[13px] leading-5 text-muted-foreground">
-          {t("updates.retryAfter", {
-            value: Math.ceil(view.retryAfterMs / 60_000),
-          })}
-        </p>
-      )}
-    </>
+    <Alert variant="destructive" data-slot="updates-failed">
+      <AlertTitle className="font-normal">{t(view.statusKey)}</AlertTitle>
+      {view.detailKeys.map((key) => (
+        <div key={key} className="text-body text-destructive/90">
+          {t(key)}
+        </div>
+      ))}
+    </Alert>
   );
 }

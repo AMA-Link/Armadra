@@ -3,7 +3,7 @@ import * as React from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { E2ePairingPayload, TrustedDevice } from "@armadra/shared";
 import { MoreHorizontal } from "lucide-react";
-import { toast } from "sonner";
+import { toast } from "@/ui/toast";
 
 import { DEVICES_QUERY_KEY, devicesApi } from "../../../../api/devices";
 import { onWorkspaceEvent } from "../../../../api/events";
@@ -13,14 +13,13 @@ import { usePreferencesStore, useT } from "../../../../app/preferences-store";
 import { useAccess } from "../../../../app/use-access";
 import { SecuritySectionSkeleton } from "./parts";
 import { QrImage } from "../gateway/PairingCard";
-import { Badge } from "@/ui/badge";
+import { StatusPill } from "@/ui/status-pill";
 import { Button } from "@/ui/button";
-import { Card } from "@/ui/card";
+import { SettingsTableCard } from "../../SettingsTableCard";
 import { IconButton } from "@/ui/icon-button";
 import {
   ResponsiveDialog,
   ResponsiveDialogContent,
-  ResponsiveDialogDescription,
   ResponsiveDialogFooter,
   ResponsiveDialogHeader,
   ResponsiveDialogTitle,
@@ -42,11 +41,11 @@ import {
   TableRow,
 } from "@/ui/table";
 
-const STATUS_VARIANT = {
-  pending: "default",
-  trusted: "secondary",
-  rejected: "outline",
-  revoked: "outline",
+const STATUS_TONE = {
+  pending: "attention",
+  trusted: "done",
+  rejected: "paused",
+  revoked: "paused",
 } as const;
 
 function failureText(t: ReturnType<typeof useT>, error: unknown): string {
@@ -143,7 +142,7 @@ function ApproveForm({
         {t("e2e.approve.reject")}
       </Button>
       {invalid && (
-        <span className="text-[12px] text-destructive" role="status">
+        <span className="text-meta text-destructive" role="status">
           {t("e2e.approve.mismatch")}
         </span>
       )}
@@ -195,13 +194,12 @@ export function E2eDevices() {
       skeleton={<SecuritySectionSkeleton title={t("e2e.devices.title")} />}
     >
       <section className="flex min-w-0 flex-col gap-2">
-        <div className="flex items-center justify-between gap-2 px-0.5">
-          <h3 className="text-[13px] font-medium">{t("e2e.devices.title")}</h3>
-          <PairDeviceButton />
-        </div>
-        {rows.length > 0 && (
-          <Card className="gap-0 overflow-visible rounded-lg border border-border/70 px-2 py-0 text-[length:inherit] ring-0">
-            <Table className="text-[13px]">
+        <SettingsTableCard
+          title={t("e2e.devices.title")}
+          actions={<PairDeviceButton />}
+        >
+          {rows.length > 0 && (
+            <Table>
               <TableHeader>
                 <TableRow>
                   <TableHead>{t("e2e.devices.name")}</TableHead>
@@ -229,9 +227,10 @@ export function E2eDevices() {
                         {device.principalName || "—"}
                       </TableCell>
                       <TableCell>
-                        <Badge variant={STATUS_VARIANT[device.status]}>
-                          {t(`e2e.devices.status.${device.status}`)}
-                        </Badge>
+                        <StatusPill
+                          tone={STATUS_TONE[device.status]}
+                          label={t(`e2e.devices.status.${device.status}`)}
+                        />
                       </TableCell>
                       <TableCell className="text-muted-foreground tabular-nums">
                         {device.lastSeenAtMs > 0
@@ -290,8 +289,8 @@ export function E2eDevices() {
                 ))}
               </TableBody>
             </Table>
-          </Card>
-        )}
+          )}
+        </SettingsTableCard>
         <ResponsiveDialog
           open={renaming !== null}
           onOpenChange={(open) => !open && setRenaming(null)}
@@ -375,9 +374,9 @@ function PairDeviceButton() {
           {payload !== null && (
             <div className="flex flex-col items-center gap-3">
               <QrImage text={payload.uri} label={t("e2e.pair.title")} />
-              <p className="font-mono text-[13px] text-muted-foreground tabular-nums">
+              <div className="font-mono text-body text-muted-foreground tabular-nums">
                 {shortFingerprint(payload.fingerprint)}
-              </p>
+              </div>
             </div>
           )}
         </ResponsiveDialogContent>
@@ -416,9 +415,6 @@ export function DeviceApprovalPrompt() {
           <ResponsiveDialogTitle>
             {t("e2e.approve.title", { name: pending.label || "—" })}
           </ResponsiveDialogTitle>
-          <ResponsiveDialogDescription>
-            {t("e2e.approve.hint")}
-          </ResponsiveDialogDescription>
         </ResponsiveDialogHeader>
         <ApproveForm
           device={{ pendingId: pending.pendingId, label: pending.label }}

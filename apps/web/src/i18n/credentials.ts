@@ -15,12 +15,8 @@ const zh = {
   "credentials.cancel": "取消",
   "credentials.delete": "删除",
   "credentials.deleteConfirm": "删除凭据「{label}」？",
-  "credentials.deleted": "已删除凭据",
-  "credentials.saved": "已保存凭据",
   "credentials.notSet": "未设置",
   "credentials.pending": "待实测",
-  "credentials.note":
-    "凭据只交给 CLI 进程，但 CLI 启动的子进程也能读到，请使用权限最小的令牌。",
   "credentials.unavailable.credential_backend_insecure":
     "本机密钥存储是明文文件，不能保存凭据",
   "credentials.unavailable.credential_unsupported_here":
@@ -50,12 +46,8 @@ const en: typeof zh = {
   "credentials.cancel": "Cancel",
   "credentials.delete": "Delete",
   "credentials.deleteConfirm": "Delete credential “{label}”?",
-  "credentials.deleted": "Credential deleted",
-  "credentials.saved": "Credential saved",
   "credentials.notSet": "Not set",
   "credentials.pending": "Pending verification",
-  "credentials.note":
-    "Credentials go to the CLI process only, but processes the CLI starts can read them too. Use the narrowest token you can.",
   "credentials.unavailable.credential_backend_insecure":
     "This host stores secrets in a plain file, so credentials cannot be saved",
   "credentials.unavailable.credential_unsupported_here":

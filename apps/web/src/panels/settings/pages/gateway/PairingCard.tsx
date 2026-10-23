@@ -1,6 +1,6 @@
 import * as React from "react";
 import { Copy, Download, RefreshCw } from "lucide-react";
-import { toast } from "sonner";
+import { toast } from "@/ui/toast";
 import type { GatewayPairingPayload } from "@armadra/shared";
 
 import { useT } from "../../../../app/preferences-store";
@@ -42,7 +42,7 @@ export function QrImage({
       data-qr-text={text}
       viewBox={`${-QUIET} ${-QUIET} ${extent} ${extent}`}
       shapeRendering="crispEdges"
-      className={`size-[200px] shrink-0 rounded-md transition-opacity ${dimmed ? "opacity-20" : ""}`}
+      className={`size-[200px] shrink-0 rounded-control transition-opacity ${dimmed ? "opacity-20" : ""}`}
     >
       <rect x={-QUIET} y={-QUIET} width={extent} height={extent} fill="white" />
       <path d={qrPath(code)} fill="black" />
@@ -105,11 +105,19 @@ export function PairingCard({
   const remaining = expiresAt - now;
   const expired = pairing !== null && remaining <= 0;
 
+  const [copied, setCopied] = React.useState(false);
+  React.useEffect(() => {
+    if (!copied) return;
+    const timer = setTimeout(() => setCopied(false), 1500);
+    return () => clearTimeout(timer);
+  }, [copied]);
+
   async function copy() {
     if (!pairing) return;
     try {
       await navigator.clipboard.writeText(pairing.webUrl);
-      toast.success(t("gateway.pair.copied"));
+      // 文字替换式反馈：按钮上的字换成「已复制」，不弹 toast。
+      setCopied(true);
     } catch {
       toast.error(t("gateway.pair.copyFailed"));
     }
@@ -139,7 +147,7 @@ export function PairingCard({
               <SelectTrigger
                 size="sm"
                 aria-label={t("gateway.pair.origin")}
-                className="w-full max-w-full font-mono text-[12px]"
+                className="w-full max-w-full font-mono text-meta"
               >
                 <SelectValue />
               </SelectTrigger>
@@ -148,7 +156,7 @@ export function PairingCard({
                   <SelectItem
                     key={origin}
                     value={origin}
-                    className="font-mono text-[12px]"
+                    className="font-mono text-meta"
                   >
                     {origin}
                   </SelectItem>
@@ -156,7 +164,7 @@ export function PairingCard({
               </SelectContent>
             </Select>
           ) : (
-            <p className="break-all font-mono text-[13px] select-text">
+            <p className="break-all font-mono text-body select-text">
               {pairing?.origin ?? origins[0]}
             </p>
           )}
@@ -169,7 +177,7 @@ export function PairingCard({
               onClick={() => void copy()}
             >
               <Copy data-icon="inline-start" />
-              {t("gateway.pair.copy")}
+              {copied ? t("gateway.pair.copied") : t("gateway.pair.copy")}
             </Button>
             <Button
               type="button"
@@ -184,7 +192,7 @@ export function PairingCard({
           </div>
           {pairing && (
             <div
-              className="flex flex-wrap items-center gap-2 text-[12px] tabular-nums"
+              className="flex flex-wrap items-center gap-2 text-meta tabular-nums"
               aria-live="off"
             >
               {pairing.code && !expired && (
@@ -194,7 +202,7 @@ export function PairingCard({
                   </span>
                   <Kbd
                     data-pairing-code
-                    className="h-6 px-1.5 font-mono text-[13px] tracking-[0.12em] text-foreground select-text"
+                    className="h-5 px-1.5 font-mono text-body tracking-[0.12em] text-foreground select-text"
                   >
                     {pairing.code}
                   </Kbd>
@@ -217,11 +225,11 @@ export function PairingCard({
           )}
           {fingerprint && (
             <div className="mt-auto flex min-w-0 flex-col gap-2 border-t border-border/60 pt-3">
-              <div className="min-w-0 text-[12px]">
+              <div className="min-w-0 text-meta">
                 <span className="text-muted-foreground">
                   {t("gateway.fingerprint")}
                 </span>
-                <p className="mt-1 break-all font-mono text-[11px] leading-4 select-text">
+                <p className="mt-1 break-all font-mono text-caption leading-4 select-text">
                   {groupFingerprint(fingerprint)}
                 </p>
               </div>

@@ -1,3 +1,4 @@
+import { SettingsPageHeader } from "../SettingsPageHeader";
 import { useRuntimeSettings } from "../use-runtime-settings";
 import { AgentCredentials } from "./AgentCredentials";
 import { AmaKeys } from "./AmaKeys";
@@ -17,6 +18,7 @@ export function CredentialsPage() {
     settings.data?.usage?.copilotUsage === true;
   return (
     <>
+      <SettingsPageHeader />
       <AgentCredentials />
       <AmaKeys />
       <CopilotSignIn disabled={busy} signInDisabled={!copilotUsage} />

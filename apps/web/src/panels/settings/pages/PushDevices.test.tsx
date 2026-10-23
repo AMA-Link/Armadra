@@ -17,7 +17,7 @@ vi.mock("../../../api/push", () => ({
     setKinds: (deviceId: string, kinds: string[]) => setKinds(deviceId, kinds),
   },
 }));
-vi.mock("sonner", () => ({
+vi.mock("@/ui/toast", () => ({
   toast: { error: (...args: unknown[]) => toastError(...args) },
 }));
 

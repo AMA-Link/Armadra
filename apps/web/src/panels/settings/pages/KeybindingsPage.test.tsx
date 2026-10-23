@@ -26,7 +26,7 @@ vi.mock("../../../api/client", () => ({
 
 /** 六个域都由 Runtime 写、都已落定；设置页只看 `settings` 那一行。 */
 
-vi.mock("sonner", () => ({
+vi.mock("@/ui/toast", () => ({
   toast: { error: vi.fn(), success: vi.fn() },
 }));
 
@@ -39,6 +39,7 @@ import {
 } from "../../../keybindings";
 import { useDeviceKeymapStore } from "../device-keymap-store";
 import { currentPlatform, emptyKeymap, otherPlatform } from "../keymap";
+import { SettingsPageContext } from "../page-context";
 import { KeybindingsPage } from "./KeybindingsPage";
 
 installDomPolyfills();
@@ -85,7 +86,7 @@ function dialogOf(control: HTMLElement) {
 
 /** 那一行里显示的来源（默认 / 全局 / 本设备）。 */
 function paletteSource() {
-  return paletteChip().closest(".settings-row")!.textContent ?? "";
+  return paletteChip().closest("tr")!.textContent ?? "";
 }
 
 const runPalette = vi.fn();
@@ -93,14 +94,19 @@ function ActiveShortcuts() {
   useKeybindings({ "app.commandPalette": runPalette });
   return null;
 }
-function view() {
+function view(query = "") {
   return render(
     <TestProviders>
-      <ActiveShortcuts />
-      <KeybindingsPage />
+      <SettingsPageContext.Provider value={{ sectionId: "keybindings", query }}>
+        <ActiveShortcuts />
+        <KeybindingsPage />
+      </SettingsPageContext.Provider>
     </TestProviders>,
   );
 }
+
+const chipOf = (key: string) =>
+  screen.queryByLabelText(zh(key), { selector: "button" });
 
 const mod = () => (isMacPlatform() ? { metaKey: true } : { ctrlKey: true });
 
@@ -291,9 +297,6 @@ describe("KeybindingsPage", { timeout: 15_000 }, () => {
     await waitFor(() =>
       expect(paletteSource()).toContain(zh("settings.shortcut.source.global")),
     );
-    expect(
-      screen.getByText(zh("settings.shortcut.platform.preview")),
-    ).toBeTruthy();
     // 录制与重置在预览下都不可用：抓到的是本机的物理键。
     expect((paletteChip() as HTMLButtonElement).disabled).toBe(true);
     expect(
@@ -444,7 +447,7 @@ describe("KeybindingsPage", { timeout: 15_000 }, () => {
     // 默认档里改的那条在这个档里不生效。
     const tidy = screen
       .getByLabelText(zh("cmd.canvas.tidy"), { selector: "button" })
-      .closest(".settings-row")!.textContent;
+      .closest("tr")!.textContent;
     expect(tidy).toContain(zh("settings.shortcut.source.default"));
   });
 
@@ -663,6 +666,68 @@ describe("KeybindingsPage", { timeout: 15_000 }, () => {
         keymap: { when: { "app.commandPalette": null } },
       }),
     );
+  });
+
+  it("页头有配置档与重置全部，没有副标题", async () => {
+    const { container } = view();
+    await screen.findByLabelText(zh("cmd.app.commandPalette"), {
+      selector: "button",
+    });
+    const header = container.querySelector(
+      '[data-slot="settings-page-header"]',
+    )!;
+    expect(header).not.toBeNull();
+    expect(
+      within(header as HTMLElement).getByRole("combobox", {
+        name: zh("settings.shortcut.profile"),
+      }),
+    ).toBeTruthy();
+    expect(
+      within(header as HTMLElement).getByRole("button", {
+        name: zh("settings.shortcut.resetAll"),
+      }),
+    ).toBeTruthy();
+  });
+
+  it("筛选「已改」只留有覆盖的命令，「未绑定」只留没有键的命令", async () => {
+    fetchSettings.mockResolvedValue(
+      documentWith({ [here]: { "app.commandPalette": "" } }),
+    );
+    view();
+    await screen.findByLabelText(zh("cmd.app.commandPalette"), {
+      selector: "button",
+    });
+    expect(chipOf("cmd.canvas.tidy")).not.toBeNull();
+    fireEvent.mouseDown(
+      screen.getByRole("tab", { name: zh("settings.shortcut.filter.changed") }),
+      { button: 0 },
+    );
+    await waitFor(() => expect(chipOf("cmd.canvas.tidy")).toBeNull());
+    expect(chipOf("cmd.app.commandPalette")).not.toBeNull();
+    fireEvent.mouseDown(
+      screen.getByRole("tab", { name: zh("settings.shortcut.unbound") }),
+      { button: 0 },
+    );
+    await waitFor(() => expect(chipOf("cmd.canvas.tidy")).toBeNull());
+    expect(chipOf("cmd.app.commandPalette")).not.toBeNull();
+    fireEvent.mouseDown(
+      screen.getByRole("tab", { name: zh("settings.shortcut.filter.all") }),
+      { button: 0 },
+    );
+    await waitFor(() => expect(chipOf("cmd.canvas.tidy")).not.toBeNull());
+  });
+
+  it("顶栏搜索过滤这张表：匹配命令名，大小写不敏感", async () => {
+    view(zh("cmd.app.commandPalette"));
+    await screen.findByLabelText(zh("cmd.app.commandPalette"), {
+      selector: "button",
+    });
+    expect(chipOf("cmd.canvas.tidy")).toBeNull();
+  });
+
+  it("搜索没有命中时卡内一句空态", async () => {
+    view("zzzz-no-such-command");
+    expect(await screen.findByText(zh("settings.shortcut.empty"))).toBeTruthy();
   });
 });
 

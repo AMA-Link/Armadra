@@ -10,6 +10,7 @@ import {
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { useCanvasStore } from "@/store/canvas-store";
 import { usePreferencesStore } from "@/app/preferences-store";
+import { translate } from "@/i18n";
 const update = vi.hoisted(() => vi.fn());
 vi.mock("@/api/client", () => ({
   RuntimeRequestError: class RuntimeRequestError extends Error {},
@@ -91,7 +92,7 @@ describe("workspace execution permission", () => {
     );
     update.mockRejectedValue(new Error("failed"));
     fireEvent.click(screen.getByRole("switch"));
-    await screen.findByRole("alert");
+    await screen.findByText(translate("en", "gitRepo.permissionSaveFailed"));
     expect(useCanvasStore.getState().workspace?.permissions.execute).toBe(
       false,
     );

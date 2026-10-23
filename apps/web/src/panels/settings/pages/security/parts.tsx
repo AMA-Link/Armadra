@@ -24,8 +24,8 @@ export function SecuritySection({
 }) {
   return (
     <section className="flex min-w-0 flex-col gap-2">
-      <div className="flex min-h-7 items-center justify-between gap-2 px-0.5">
-        <h3 className="text-[13px] font-medium">{title}</h3>
+      <div className="flex min-h-8 items-center justify-between gap-2 px-0.5">
+        <h3 className="text-body font-medium">{title}</h3>
         {action}
       </div>
       {children}
@@ -38,8 +38,8 @@ export function SecuritySectionSkeleton({ title }: { title: string }) {
   return (
     <SecuritySection title={title}>
       <div data-slot="security-loading" className="flex flex-col gap-2">
-        <Skeleton className="h-9 w-full" />
-        <Skeleton className="h-9 w-full" />
+        <Skeleton className="h-8 w-full" />
+        <Skeleton className="h-8 w-full" />
       </div>
     </SecuritySection>
   );
@@ -95,7 +95,7 @@ export function ConfirmRemove({
           <ResponsiveAlertDialogTitle>{title}</ResponsiveAlertDialogTitle>
         </ResponsiveAlertDialogHeader>
         {subject && (
-          <p className="text-[13px] font-medium break-words">{subject}</p>
+          <p className="text-body font-medium break-words">{subject}</p>
         )}
         <ResponsiveAlertDialogFooter>
           <ResponsiveAlertDialogCancel>

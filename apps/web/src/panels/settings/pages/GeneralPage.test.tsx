@@ -50,6 +50,13 @@ describe("通用页与崩溃上报", () => {
   });
   afterEach(cleanup);
 
+  it("页头只有页名，没有副标题", () => {
+    render(<GeneralPage />);
+    const header = document.querySelector("[data-slot=settings-page-header]");
+    expect(header?.querySelector("h2")).toBeTruthy();
+    expect(header?.querySelector("p")).toBeNull();
+  });
+
   it("缺省关：没有 DSN 输入框", () => {
     render(<CrashReportGroup />);
     expect(switchFor().getAttribute("aria-checked")).toBe("false");

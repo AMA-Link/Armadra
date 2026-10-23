@@ -46,13 +46,11 @@ export function AndroidUpdateGroup({
       <SettingsGroup>
         <SettingsRow
           label={t("updates.newVersion", { version: update.release.version })}
+          {...(status !== null && !failed
+            ? { footnote: t(`updates.android.${status}`) }
+            : {})}
         >
-          <Button
-            size="sm"
-            className="min-h-10"
-            disabled={busy}
-            onClick={() => void run()}
-          >
+          <Button size="sm" disabled={busy} onClick={() => void run()}>
             {busy && <Spinner aria-hidden />}
             {t(
               status === null || status === "started"
@@ -68,16 +66,7 @@ export function AndroidUpdateGroup({
             {t(`updates.android.${status}`)}
           </AlertTitle>
         </Alert>
-      ) : (
-        status !== null && (
-          <p
-            role="status"
-            className="text-[13px] leading-5 text-muted-foreground"
-          >
-            {t(`updates.android.${status}`)}
-          </p>
-        )
-      )}
+      ) : null}
     </>
   );
 }
@@ -99,7 +88,6 @@ export function MobileReleaseNotice({
         <Button
           size="sm"
           variant="secondary"
-          className="min-h-10"
           onClick={() => onOpen(release.url)}
         >
           {t("updates.action.notes")}

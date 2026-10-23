@@ -1,5 +1,5 @@
 import { Copy } from "lucide-react";
-import { toast } from "sonner";
+import { toast } from "@/ui/toast";
 
 import { useT } from "../../../../app/preferences-store";
 import { serverUpgradeCommands } from "../../../../updates/releases";
@@ -44,13 +44,13 @@ function CommandRow({ label, command }: { label: string; command: string }) {
   };
   return (
     <div className="flex flex-col gap-1.5 px-4 py-3">
-      <span className="text-[13px] leading-5 text-foreground">{label}</span>
+      <span className="text-body leading-5 text-foreground">{label}</span>
       <InputGroup>
         <InputGroupInput
           readOnly
           aria-label={label}
           value={command}
-          className="font-mono text-[12px]"
+          className="font-mono text-meta"
           onFocus={(event) => event.currentTarget.select()}
         />
         <InputGroupAddon align="inline-end">

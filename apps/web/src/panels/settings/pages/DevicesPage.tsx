@@ -9,14 +9,18 @@ import { useHostConnection } from "../../../host/use-host-connection";
 import { Alert, AlertAction, AlertTitle } from "@/ui/alert";
 import { Button } from "@/ui/button";
 import { Skeleton } from "@/ui/skeleton";
+import { MonitorSmartphone, Smartphone } from "lucide-react";
+import { SettingsKpi, SettingsKpiGrid } from "../SettingsKpi";
+import { SettingsPageHeader } from "../SettingsPageHeader";
 import { HostIdentityPanel } from "./HostIdentityPanel";
 import { PageCaGuide } from "./gateway/CaInstallGuide";
 import {
   GatewayDevicesSection,
+  useGatewayDeviceCount,
   type GatewayIdentity,
 } from "./gateway/GatewaySection";
 import { E2eDevices } from "./security/E2eDevices";
-import { LoginSessions } from "./security/LoginSessions";
+import { LoginSessions, useLoginSessionCount } from "./security/LoginSessions";
 
 /** 带着配对票时检查失败的自动重试：次数与间隔。 */
 const AUTO_RETRIES = 2;
@@ -33,6 +37,8 @@ const AUTO_RETRY_MS = 1_000;
 export function DevicesPage() {
   const t = useT();
   const { state, check } = useHostConnection();
+  const deviceCount = useGatewayDeviceCount();
+  const sessionCount = useLoginSessionCount();
   // 设备表只有一份；「设备登录」报上这台设备是谁、能不能管理。撤销了自己就
   // 让「设备登录」重新取一次会话（得到的是已退出）。
   const [identity, setIdentity] = useState<GatewayIdentity | null>(null);
@@ -72,6 +78,19 @@ export function DevicesPage() {
 
   return (
     <>
+      <SettingsPageHeader />
+      <SettingsKpiGrid>
+        <SettingsKpi
+          icon={<MonitorSmartphone />}
+          label={t("gateway.devices")}
+          value={deviceCount}
+        />
+        <SettingsKpi
+          icon={<Smartphone />}
+          label={t("security.sessions")}
+          value={sessionCount}
+        />
+      </SettingsKpiGrid>
       <PageCaGuide />
       {state.status === "connected" ? (
         <HostIdentityPanel

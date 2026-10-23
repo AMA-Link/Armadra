@@ -1,7 +1,7 @@
 import { Loadable } from "@/loading/Loadable";
 import { SkeletonList } from "@/ui/skeletons";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { toast } from "sonner";
+import { toast } from "@/ui/toast";
 import {
   PUSH_PREFERENCE_KINDS,
   type PushDevice,
@@ -86,7 +86,8 @@ export function PushDevices() {
           <SkeletonList
             rows={1}
             label={t("state.loading")}
-            rowClassName="h-11 px-4"
+            size="tall"
+            rowClassName="px-4"
           />
         </SettingsGroup>
       }
@@ -106,17 +107,14 @@ export function PushDevices() {
               >
                 <AccordionTrigger className="items-center gap-3 py-3 font-normal hover:no-underline">
                   <span className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
-                    <span className="truncate text-[13px] text-foreground">
+                    <span className="truncate text-body text-foreground">
                       {name}
                     </span>
-                    <span className="text-[11px] text-muted-foreground">
+                    <span className="text-caption text-muted-foreground">
                       {t(`push.platform.${device.platform}`)}
                     </span>
                     {device.current && (
-                      <Badge
-                        variant="secondary"
-                        className="h-5 px-1.5 text-[11px]"
-                      >
+                      <Badge variant="secondary" size="sm">
                         {t("push.device.current")}
                       </Badge>
                     )}

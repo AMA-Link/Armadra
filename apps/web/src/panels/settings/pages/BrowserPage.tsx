@@ -5,8 +5,9 @@ import {
   useT,
 } from "../../../app/preferences-store";
 import * as React from "react";
-import { toast } from "sonner";
+import { toast } from "@/ui/toast";
 import { SettingsGroup } from "../SettingsGroup";
+import { SettingsPageHeader } from "../SettingsPageHeader";
 import { SettingsRow } from "../SettingsRow";
 import { useQuery } from "@tanstack/react-query";
 import { localRuntimeApi } from "../../../api/client";
@@ -75,11 +76,20 @@ export function BrowserPage() {
 
   return (
     <>
+      <SettingsPageHeader
+        actions={
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={clearing}
+            onClick={() => setConfirming(true)}
+          >
+            {t("browser.settings.clear")}
+          </Button>
+        }
+      />
       <SettingsGroup>
-        <SettingsRow
-          label={t("browser.settings.discard")}
-          hint={t("browser.settings.discardHint")}
-        >
+        <SettingsRow label={t("browser.settings.discard")}>
           <Switch
             checked={browser.discard}
             onCheckedChange={(checked) => set("discard", checked)}
@@ -90,7 +100,7 @@ export function BrowserPage() {
         <SettingsRow label={t("browser.settings.discardMinutes")}>
           <Input
             type="number"
-            className="h-8 w-[90px] text-xs"
+            className="w-[90px] text-meta"
             aria-label={t("browser.settings.discardMinutes")}
             min={BROWSER_DISCARD_MINUTES_RANGE[0]}
             max={BROWSER_DISCARD_MINUTES_RANGE[1]}
@@ -108,13 +118,10 @@ export function BrowserPage() {
           />
         </SettingsRow>
 
-        <SettingsRow
-          label={t("browser.settings.backgroundMax")}
-          hint={t("browser.settings.backgroundMaxHint")}
-        >
+        <SettingsRow label={t("browser.settings.backgroundMax")}>
           <Input
             type="number"
-            className="h-8 w-[90px] text-xs"
+            className="w-[90px] text-meta"
             aria-label={t("browser.settings.backgroundMax")}
             min={BROWSER_BACKGROUND_MAX_RANGE[0]}
             max={BROWSER_BACKGROUND_MAX_RANGE[1]}
@@ -136,7 +143,7 @@ export function BrowserPage() {
       <SettingsGroup>
         <SettingsRow label={t("browser.settings.startPage")}>
           <Input
-            className="h-8 w-[220px] font-mono text-xs"
+            className="w-[220px] font-mono text-meta"
             aria-label={t("browser.settings.startPage")}
             placeholder={t("browser.settings.startPageDefault")}
             value={startPage}
@@ -146,20 +153,6 @@ export function BrowserPage() {
               if (event.key === "Enter") saveStartPage();
             }}
           />
-        </SettingsRow>
-
-        <SettingsRow
-          label={t("browser.settings.clearData")}
-          hint={t("browser.settings.clearDataHint")}
-        >
-          <Button
-            variant="outline"
-            size="sm"
-            disabled={clearing}
-            onClick={() => setConfirming(true)}
-          >
-            {t("browser.settings.clear")}
-          </Button>
         </SettingsRow>
       </SettingsGroup>
 
@@ -174,7 +167,10 @@ export function BrowserPage() {
             <ResponsiveAlertDialogCancel>
               {t("dialog.cancel")}
             </ResponsiveAlertDialogCancel>
-            <ResponsiveAlertDialogAction onClick={() => void clearData()}>
+            <ResponsiveAlertDialogAction
+              variant="destructive-solid"
+              onClick={() => void clearData()}
+            >
               {t("browser.settings.clear")}
             </ResponsiveAlertDialogAction>
           </ResponsiveAlertDialogFooter>
