@@ -12,7 +12,11 @@ import {
 } from "../app/preferences-store";
 import { setSplashPhase } from "./session";
 import { SplashStage, type SplashStageHandle } from "./SplashStage";
-import { SPLASH_DURATION_MS, SPLASH_FPS } from "./timeline";
+import {
+  advanceSplashClock,
+  SPLASH_DURATION_MS,
+  SPLASH_MAX_STEP_MS,
+} from "./timeline";
 import "./splash.css";
 
 /**
@@ -25,6 +29,15 @@ import "./splash.css";
 /** 读不到令牌时（测试环境没加载样式表）的退路，与 `tokens.css` 同值。 */
 const FALLBACK_PAGE_MS = 280;
 const FALLBACK_FAST_MS = 120;
+/** 淡出时长的上限，给挂载方算硬上限用；令牌改大时这里跟着改。 */
+export const SPLASH_FADE_MAX_MS = FALLBACK_PAGE_MS;
+/** rAF 不来时的兜底节拍；要比单步上限短，否则只靠它推进会变慢。 */
+const FALLBACK_TICK_MS = SPLASH_MAX_STEP_MS - 10;
+/**
+ * 保险丝：动画最多因为卡顿多拖这么久，到点就走。覆盖层吃掉所有输入，卡住
+ * 等于把整个 App 锁死，所以它的寿命不能只系在动画循环上。
+ */
+export const SPLASH_FUSE_MS = SPLASH_DURATION_MS + 1000;
 /** 播满 1 秒才允许跳过：太早的一次误点会让人根本没看见动画。 */
 export const SKIP_AFTER_MS = 1000;
 /** `prefers-reduced-motion` 下只停终态这么久。 */
@@ -130,17 +143,21 @@ export function Splash({ onDismiss }: SplashProps) {
       const timer = window.setTimeout(finish, REDUCED_HOLD_MS);
       return () => window.clearTimeout(timer);
     }
-    // 按 30fps 取整推进：和设计稿的逐帧导出一致，高刷屏上也不会多画。
+    // 每个显示帧都推进：位移、遮罩和笔迹都是连续的，跟着屏幕刷新率走才顺，
+    // 高刷屏上也一样。走姿仍是精灵图上的四张，换姿势的时刻由时间轴决定，
+    // 与帧率无关。
+    //
+    // 时间按帧间隔累加，单步有上限（`advanceSplashClock`）：主线程卡住时画面
+    // 停在原地，恢复后从停下的地方继续，不会跳过一段。
     //
     // 每一帧同时挂 rAF 和一个定时器，谁先到谁推进、另一个作废。只靠 rAF 不
-    // 行：桌面壳的窗口是先隐藏着加载页面、Runtime 就绪后才显示的，WKWebView
-    // 在这段时间里不派发 rAF，显示之后也不一定恢复——动画会停在第一帧，
-    // 覆盖层把整个 App 压在底下。定时器不受渲染节流影响，兜住这种情况。
-    const frameInterval = 1000 / SPLASH_FPS;
+    // 行：窗口先隐藏着加载页面时，有的 WebView 不派发 rAF，显示之后也不一定
+    // 恢复——动画会停在第一帧，覆盖层把整个 App 压在底下。定时器不受渲染
+    // 节流影响，兜住这种情况。
     let animation = 0;
     let timer = 0;
-    let started: number | null = null;
-    let lastFrame = -1;
+    let last: number | null = null;
+    let elapsed = 0;
     // 兜底定时器可能在宿主环境拆掉之后才到（测试里 jsdom 先于定时器销毁），
     // 那时 rAF 已不存在：缺了就跳过，不让收尾抛错。
     const cancel = () => {
@@ -150,13 +167,12 @@ export function Splash({ onDismiss }: SplashProps) {
     };
     const tick = (now: number) => {
       cancel();
-      if (started === null) started = now;
-      const elapsed = Math.min(SPLASH_DURATION_MS, now - started);
-      const frame = Math.floor((elapsed * SPLASH_FPS) / 1000);
-      if (frame !== lastFrame) {
-        api.renderAt((frame * 1000) / SPLASH_FPS);
-        lastFrame = frame;
+      // 第一下只记起点：从这一刻起才开始计时，挂载前的那段等待不算进去。
+      if (last !== null) {
+        elapsed = advanceSplashClock(elapsed, now - last);
+        api.renderAt(elapsed);
       }
+      last = now;
       if (elapsed < SPLASH_DURATION_MS) schedule();
       else finish();
     };
@@ -165,7 +181,7 @@ export function Splash({ onDismiss }: SplashProps) {
         animation = requestAnimationFrame(tick);
       timer = window.setTimeout(
         () => tick(performance.now()),
-        frameInterval * 2,
+        FALLBACK_TICK_MS,
       );
     };
     api.renderAt(0);
@@ -173,16 +189,12 @@ export function Splash({ onDismiss }: SplashProps) {
     return cancel;
   }, [reduced, leaving, finish]);
 
-  // 保险丝：不管帧推没推到头，到点就走。覆盖层吃掉所有输入，卡住等于把整个
-  // App 锁死，所以它的寿命不能只系在动画循环上。
+  // 保险丝：不管帧推没推到头，到点就走（见 `SPLASH_FUSE_MS`）。
   useEffect(() => {
     if (leaving) return;
-    const timer = window.setTimeout(
-      finish,
-      SPLASH_DURATION_MS + splashFadeMs(reduced),
-    );
+    const timer = window.setTimeout(finish, SPLASH_FUSE_MS);
     return () => window.clearTimeout(timer);
-  }, [leaving, finish, reduced]);
+  }, [leaving, finish]);
 
   // 开始退场就告诉 App（首屏错落入场从这一刻起算），淡出结束后才把 DOM 摘掉。
   useEffect(() => {

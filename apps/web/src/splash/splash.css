@@ -17,8 +17,15 @@
   cursor: default;
   overflow: hidden;
   opacity: 1;
-  /* 淡出时长读 `--dur-page`；`Splash.tsx` 的 `FADE_MS` 也从同一个令牌取，不再各写一份 */
+  /* 淡出时长读 `--dur-page`；`Splash.tsx` 的 `splashFadeMs` 也从同一个令牌取，不再各写一份 */
   transition: opacity var(--dur-page) var(--ease-out);
+  /*
+   * 底下的 App 正在挂载，布局一直在变：`contain` 把覆盖层的样式、布局、绘制
+   * 和它隔开；`will-change` 让它从一开始就是独立的合成层，淡出时不用临时
+   * 提层、把整块画面重新光栅化一遍。
+   */
+  contain: strict;
+  will-change: opacity;
 
   /* 以下两个是开屏专用（深色） */
   --splash-halo-opacity: 0.6;
@@ -63,13 +70,16 @@
   fill: var(--bg);
 }
 
+/* 光晕的形状在 SplashStage 的径向渐变里，颜色从这里给。 */
+.splash .splash-tip-glow-stop {
+  stop-color: var(--brand);
+}
+
 .splash .splash-tip-halo {
-  fill: var(--brand);
   opacity: var(--splash-halo-opacity);
 }
 
 .splash .splash-tip-light {
-  fill: var(--brand);
   opacity: 0.55;
 }
 
