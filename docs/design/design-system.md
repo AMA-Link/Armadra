@@ -45,7 +45,7 @@
 | `--hover` / `--active` | 白 7% / 12% | `#202020` 6% / 11% | 行与钮的悬停 / 按下                                    |                                                                |
 | `--scrim`              | 黑 55%      | 黑 28%             | 对话框遮罩                                             |                                                                |
 
-终端配色（#501）：`--term-*`（底、前景、选区、ANSI 十六色）在浅色主题下是一套浅底调色板，不再两套主题都深。浅色底 `#fafafa`，前景 `#1f1f1f`，十六色按浅底重调（bright 系列在浅底上更深而不是更亮），每个前景对底 ≥ 4.5:1，选区是品牌蓝 20%；`terminal-palette.test.ts` 逐条守卫。终端偏好「配色」可选「跟随主题」（缺省）或「始终深色」（给按深底配色的 CLI 用）。始终深色时，终端容器与终端节点外框带 `data-term-scheme="dark"`：`tokens.css` 把深色那一整套令牌同时声明在 `[data-term-scheme="dark"]` 与 `:root` 上（深色值只写一处），这棵子树在浅色主题里就地回到深色，外框、头部与 xterm 连成一体；`dark:` 变体也认这个属性。xterm 的 `options.theme` 读容器的计算样式，应用主题或这项设置变化时就地重设，不重建会话。
+终端配色（#501）：`--term-*`（底、前景、选区、ANSI 十六色）在浅色主题下是一套浅底调色板，不再两套主题都深。浅色底 `#fafafa`，前景 `#1f1f1f`，十六色按浅底重调（bright 系列在浅底上更深而不是更亮），每个前景对底 ≥ 4.5:1，选区是品牌蓝 20%；`terminal-palette.test.ts` 逐条守卫。终端偏好「配色」可选「跟随主题」（缺省）或「始终深色」（给按深底配色的 CLI 用）。始终深色时，终端容器与终端节点的框（`.node-frame`，不是外层：骑在边上的连接点、外圈光晕留在应用主题里）带 `data-term-scheme="dark"`，框内重设文字色为 `--text`：`tokens.css` 把深色那一整套令牌同时声明在 `[data-term-scheme="dark"]` 与 `:root` 上（深色值只写一处），这棵子树在浅色主题里就地回到深色，外框、头部与 xterm 连成一体；`dark:` 变体也认这个属性。xterm 的 `options.theme` 读容器的计算样式，应用主题或这项设置变化时就地重设，不重建会话。
 
 规则：文字只放在 `--bg / --panel / --card` 上用 `--muted-foreground`；在 `--surface-overlay` 上（菜单）次要文字对比度 4.7，仍过线，但不要再叠透明度。发丝线的「两端渐隐」形态是工具类 `.hairline-x`（`mask-image: linear-gradient(90deg, transparent, black 20%, black 80%, transparent)`），用于设置工作台分组之间与官网分区之间；卡片边仍是满宽。
 
