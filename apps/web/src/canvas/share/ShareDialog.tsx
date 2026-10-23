@@ -1,7 +1,6 @@
 import * as React from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Copy, Share } from "lucide-react";
-import { toast } from "sonner";
 
 import { sessionsQuery } from "@/agent/sessions";
 import { SHARE_LINK_MAX_USES, createShareLink } from "@/api/remote-services";
@@ -38,7 +37,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/ui/select";
-import { Spinner } from "@/ui/spinner";
+import { toast } from "@/ui/toast";
 import { useShareStore } from "./share-store";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -70,7 +69,7 @@ export function ShareDialog() {
     >
       <ResponsiveDialogContent
         data-testid="share-dialog"
-        className="z-[var(--z-dialog)] sm:max-w-[440px]"
+        className="z-(--z-dialog) sm:max-w-[440px]"
       >
         {request !== null && (
           <ShareBody
@@ -188,7 +187,7 @@ function ShareBody({
               readOnly
               aria-label={t("remote.invite.link")}
               value={created}
-              className="min-w-0 font-mono text-[12px]"
+              className="min-w-0 font-mono text-meta"
               onFocus={(event) => event.target.select()}
             />
             <Button
@@ -231,12 +230,9 @@ function ShareBody({
                   type="button"
                   size="sm"
                   variant="secondary"
-                  disabled={internet.busy}
+                  loading={internet.busy}
                   onClick={turnOnRoute}
                 >
-                  {internet.busy && (
-                    <Spinner data-icon="inline-start" aria-hidden />
-                  )}
                   {t(
                     first === undefined
                       ? "share.signIn"
@@ -298,10 +294,12 @@ function ShareBody({
             {t("share.done")}
           </Button>
         ) : (
-          <Button type="submit" form="canvas-share-form" disabled={!ready}>
-            {create.isPending && (
-              <Spinner data-icon="inline-start" aria-hidden />
-            )}
+          <Button
+            type="submit"
+            form="canvas-share-form"
+            disabled={!ready && !create.isPending}
+            loading={create.isPending}
+          >
             {t("share.create")}
           </Button>
         )}
@@ -314,7 +312,6 @@ function ShareBody({
         }}
         onDone={() => {
           setSigningIn(false);
-          toast.success(t("remote.added"));
           void changed();
         }}
       />

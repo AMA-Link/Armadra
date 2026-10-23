@@ -43,17 +43,14 @@ export function CapabilityInheritance({
   });
   return (
     <fieldset disabled={disabled} className="min-w-0 space-y-2">
-      <legend className="text-sm font-medium">{t("capability.title")}</legend>
-      <p className="max-w-prose text-xs text-muted-foreground">
-        {t("capability.note")}
-      </p>
+      <legend className="text-body font-medium">{t("capability.title")}</legend>
       <div className="flex flex-col gap-y-1">
         {declared.map((capability) => {
           const entry = resolved.find((item) => item.capability === capability);
           return (
             <label
               key={capability}
-              className="flex min-h-8 cursor-pointer items-center gap-2 text-xs"
+              className="flex min-h-8 cursor-pointer items-center gap-2 text-meta"
             >
               <Checkbox
                 checked={!disabledCapabilities.includes(capability)}
@@ -81,7 +78,7 @@ export function CapabilityInheritance({
         })}
       </div>
       {probe?.status !== "ok" && (
-        <p className="max-w-prose text-xs text-muted-foreground">
+        <p className="text-meta text-muted-foreground">
           {t("capability.probeUnknown")}
         </p>
       )}

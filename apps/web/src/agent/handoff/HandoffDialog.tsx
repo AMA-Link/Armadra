@@ -1,7 +1,6 @@
 import * as React from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { HandoffView } from "@armadra/shared";
-import { toast } from "sonner";
 
 import { runtimeApi } from "@/api/client";
 import { onWorkspaceEvent } from "@/api/events";
@@ -28,8 +27,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/ui/select";
+import { EmptyState } from "@/ui/state";
 import { Switch } from "@/ui/switch";
 import { Textarea } from "@/ui/textarea";
+import { toast } from "@/ui/toast";
 import {
   handoffTargets,
   onHandoffRequest,
@@ -164,10 +165,7 @@ export function HandoffDialog() {
         view!.bundle.handoffId,
         view!.digest,
       ),
-    onSuccess: (next) => {
-      setView(next);
-      toast.success(t("handoff.accepted"));
-    },
+    onSuccess: setView,
     onError: (cause: Error) => toast.error(cause.message),
   });
 
@@ -178,10 +176,7 @@ export function HandoffDialog() {
         .then((next) => ({ next, back })),
     onSuccess: ({ next, back }) => {
       if (back) setView(null);
-      else {
-        setView(next);
-        toast.success(t("handoff.cancelledToast"));
-      }
+      else setView(next);
     },
     onError: (cause: Error) => toast.error(cause.message),
   });
@@ -195,13 +190,10 @@ export function HandoffDialog() {
 
   return (
     <ResponsiveDialog open={open} onOpenChange={(next) => !next && close()}>
-      <ResponsiveDialogContent className="z-[var(--z-dialog)] sm:max-w-[560px]">
+      <ResponsiveDialogContent className="z-(--z-dialog) sm:max-w-[560px]">
         <ResponsiveDialogHeader>
           <ResponsiveDialogTitle>{t("handoff.title")}</ResponsiveDialogTitle>
         </ResponsiveDialogHeader>
-        <p className="text-[length:var(--text-caption)] text-muted-foreground">
-          {t("handoff.trust")} {t("handoff.sourceRunning")}
-        </p>
         <ScrollArea className="max-h-[52vh] pr-3">
           {view ? (
             <HandoffPreview view={view} />
@@ -225,9 +217,7 @@ export function HandoffDialog() {
                   {t("handoff.target")}
                 </label>
                 {targets.length === 0 ? (
-                  <p className="text-[length:var(--text-caption)] text-muted-foreground">
-                    {t("handoff.noTargets")}
-                  </p>
+                  <EmptyState inline title={t("handoff.noTargets")} />
                 ) : (
                   <Select value={targetNodeId} onValueChange={setTargetNodeId}>
                     <SelectTrigger id="handoff-target">
@@ -368,7 +358,7 @@ function HandoffPreview({ view }: { view: HandoffView }) {
   const t = useT();
   const { bundle } = view;
   return (
-    <div className="flex flex-col gap-(--space-block) text-[length:var(--text-caption)]">
+    <div className="flex flex-col gap-(--space-block) text-caption">
       <section className="flex flex-col gap-2">
         <span className="font-medium">{t("handoff.target")}</span>
         <span className="text-muted-foreground">
@@ -447,7 +437,7 @@ function HandoffPreview({ view }: { view: HandoffView }) {
             {t("handoff.noExcerpt")}
           </span>
         ) : (
-          <pre className="max-h-40 overflow-auto rounded-[var(--r-input)] bg-muted p-2 whitespace-pre-wrap text-muted-foreground">
+          <pre className="max-h-40 overflow-auto rounded-control bg-muted p-2 whitespace-pre-wrap text-muted-foreground">
             {bundle.transcriptExcerpt}
           </pre>
         )}
