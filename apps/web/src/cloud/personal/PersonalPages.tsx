@@ -1,0 +1,21 @@
+import { useT } from "@/app/preferences-store";
+import { HostDirectory } from "../hosts/HostDirectory";
+import type { RouteMatch } from "../router";
+import { PageHeader } from "../shell/PageHeader";
+import { PERSONAL_SPACE } from "../space";
+
+/** `/me/*` 的页面（云端控制台 §3.2）；还没做的页面只有页头。 */
+export function PersonalPage({ match }: { match: RouteMatch }) {
+  const t = useT();
+  switch (match.id) {
+    case "meHosts":
+      return (
+        <>
+          <PageHeader title={t("cloud.nav.hosts")} />
+          <HostDirectory space={PERSONAL_SPACE} match={match} />
+        </>
+      );
+    default:
+      return <PageHeader title={t(`cloud.nav.${match.nav ?? ""}`)} />;
+  }
+}

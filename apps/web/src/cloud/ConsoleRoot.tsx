@@ -13,6 +13,7 @@ import { createCloudQueryClient, useConsoleSession } from "./api/queries";
 import type { CloudApi } from "./api/session";
 import { PublicPage, hasPublicPage } from "./auth/PublicPage";
 import { OpsPage } from "./ops/OpsPages";
+import { PersonalPage } from "./personal/PersonalPages";
 import { navigate, useRoute, type RouteMatch } from "./router";
 import { ConsoleShell } from "./shell/ConsoleShell";
 import { PageHeader } from "./shell/PageHeader";
@@ -137,6 +138,7 @@ function ConsoleView({
 /** 带数据的页面（要 `CloudApiProvider`，所以只在 `ConsoleData` 里接上）。 */
 function renderPage(match: RouteMatch): React.ReactNode {
   if (match.area === "ops") return <OpsPage match={match} />;
+  if (match.area === "personal") return <PersonalPage match={match} />;
   return undefined;
 }
 

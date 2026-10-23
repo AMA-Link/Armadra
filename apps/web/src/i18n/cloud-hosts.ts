@@ -1,0 +1,43 @@
+import type { MessageModule } from "./index";
+
+/** 云端控制台的主机、访问与链接文案（云端控制台 §5.2 cloud-hosts）；个人空间先用到这一部分，团队授予与申请（U5、U10）接着补。 */
+export const cloudHosts: MessageModule = {
+  "zh-CN": {
+    "cloud.hosts.search": "搜索主机",
+    "cloud.hosts.status": "状态",
+    "cloud.hosts.statusAll": "全部状态",
+    "cloud.hosts.online": "在线",
+    "cloud.hosts.offline": "离线",
+    "cloud.hosts.revoked": "已撤销",
+    "cloud.hosts.tags": "标签",
+    "cloud.hosts.name": "名称",
+    "cloud.hosts.owner": "所有者",
+    "cloud.hosts.lastOnline": "最近在线",
+    "cloud.hosts.empty": "还没有主机",
+    "cloud.hosts.rename": "重命名",
+    "cloud.hosts.nameRequired": "输入主机名称",
+    "cloud.hosts.renameTitle": "重命名「{name}」",
+    "cloud.hosts.revoke": "撤销主机",
+    "cloud.hosts.revokeTitle": "撤销「{name}」？",
+    "cloud.hosts.revokeDone": "已撤销主机",
+  },
+  en: {
+    "cloud.hosts.search": "Search hosts",
+    "cloud.hosts.status": "Status",
+    "cloud.hosts.statusAll": "All statuses",
+    "cloud.hosts.online": "Online",
+    "cloud.hosts.offline": "Offline",
+    "cloud.hosts.revoked": "Revoked",
+    "cloud.hosts.tags": "Tags",
+    "cloud.hosts.name": "Name",
+    "cloud.hosts.owner": "Owner",
+    "cloud.hosts.lastOnline": "Last online",
+    "cloud.hosts.empty": "No hosts yet",
+    "cloud.hosts.rename": "Rename",
+    "cloud.hosts.nameRequired": "Enter a host name",
+    "cloud.hosts.renameTitle": 'Rename "{name}"',
+    "cloud.hosts.revoke": "Revoke host",
+    "cloud.hosts.revokeTitle": 'Revoke "{name}"?',
+    "cloud.hosts.revokeDone": "Host revoked",
+  },
+};
