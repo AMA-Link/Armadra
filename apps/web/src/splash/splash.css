@@ -71,13 +71,16 @@
   fill: var(--splash-bg);
 }
 
+/* 光晕的形状在 SplashStage 的径向渐变里，颜色从这里给。 */
+.splash .splash-tip-glow-stop {
+  stop-color: var(--splash-brand);
+}
+
 .splash .splash-tip-halo {
-  fill: var(--splash-brand);
   opacity: var(--splash-halo-opacity);
 }
 
 .splash .splash-tip-light {
-  fill: var(--splash-brand);
   opacity: 0.55;
 }
 

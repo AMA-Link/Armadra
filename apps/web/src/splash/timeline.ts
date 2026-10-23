@@ -60,13 +60,10 @@ export interface SplashFrame {
   /** 精灵图在 `#walker-frame` 内的偏移，用来切走姿。 */
   sheetX: number;
   sheetY: number;
-  /** 入场遮罩：一块自左向右收回的窗口，先露鼻子再露壳和尾巴。 */
+  /** 入场遮罩的左缘：窗口自右向左打开，先露鼻子再露壳和尾巴。 */
   entranceX: number;
-  entranceWidth: number;
-  /** 走姿 / 静止姿势之间的一次不重叠擦除。 */
-  walkingWidth: number;
-  restingX: number;
-  restingWidth: number;
+  /** 走姿 / 静止姿势之间那道接缝的位置：左边是走姿，右边是静止姿势。 */
+  seam: number;
   idleOpacity: number;
   logoOpacity: number;
   /** 笔迹揭开的进度，0 = 还没写，1 = 写完。 */
@@ -125,10 +122,7 @@ export function splashFrameAt(milliseconds: number): SplashFrame {
     sheetX,
     sheetY,
     entranceX,
-    entranceWidth: 1180 - entranceX,
-    walkingWidth: Math.max(0, seam - 700),
-    restingX: seam,
-    restingWidth: 1180 - seam,
+    seam,
     idleOpacity: settlePose > 0 && reveal < 1 ? 1 : 0,
     logoOpacity: reveal,
     writingProgress: clamp01(time / WRITING_DURATION_MS),

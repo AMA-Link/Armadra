@@ -42,8 +42,8 @@ describe("splash timeline", () => {
     const walking = splashFrameAt(SPLASH_TIMING.entranceStart + 400);
     expect(walking.walkerOpacity).toBe(1);
     expect(walking.logoOpacity).toBe(0);
-    // 入场窗口正在向左退开，露出的宽度比起始的 100 更大。
-    expect(walking.entranceWidth).toBeGreaterThan(100);
+    // 入场窗口正在向左打开，左缘已经离开起始的 990。
+    expect(walking.entranceX).toBeLessThan(990);
 
     const settling = splashFrameAt(SPLASH_TIMING.restStart + 50);
     expect(settling.idleOpacity).toBe(1);
