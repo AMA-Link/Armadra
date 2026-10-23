@@ -8,7 +8,11 @@ import type { CsrfStore } from "./session";
  * 没有 Web Locks 时退成本标签内互斥（跨标签仍可能撞上，只是不更糟）。
  */
 export interface LockManagerLike {
-  request<T>(name: string, callback: () => Promise<T>): Promise<T>;
+  request<T>(
+    name: string,
+    options: { signal: AbortSignal },
+    callback: () => Promise<T>,
+  ): Promise<T>;
 }
 export interface ChannelLike {
   postMessage(message: unknown): void;
@@ -25,6 +29,10 @@ export interface RefreshCoordinatorOptions {
   readonly locks?: LockManagerLike | null;
   readonly channel?: ChannelLike | null;
   readonly now?: () => number;
+  /** 单次刷新的上限（毫秒）：挂住就抛错并放锁，默认 15000。 */
+  readonly refreshTimeoutMs?: number;
+  /** 排队等锁的上限（毫秒）：等不到就当这次续不上（答 false），默认 20000。 */
+  readonly lockWaitMs?: number;
 }
 
 export interface RefreshCoordinator {
@@ -76,8 +84,13 @@ export function createRefreshCoordinator(
     options.csrf.set(event.data.csrf);
   });
 
-  const exclusive = <T>(task: () => Promise<T>): Promise<T> =>
-    locks ? locks.request(lockName, task) : local(task);
+  const refreshTimeoutMs = options.refreshTimeoutMs ?? 15_000;
+  const lockWaitMs = options.lockWaitMs ?? 20_000;
+  const exclusive = <T>(
+    task: () => Promise<T>,
+    waitSignal: AbortSignal,
+  ): Promise<T> =>
+    locks ? locks.request(lockName, { signal: waitSignal }, task) : local(task);
   let tail: Promise<unknown> = Promise.resolve();
   const local = <T>(task: () => Promise<T>): Promise<T> => {
     const next = tail.then(task, task);
@@ -85,16 +98,41 @@ export function createRefreshCoordinator(
     return next;
   };
 
+  const bounded = (refresh: () => Promise<void>): Promise<void> =>
+    new Promise<void>((resolve, reject) => {
+      const timer = setTimeout(
+        () => reject(new Error("refresh timed out")),
+        refreshTimeoutMs,
+      );
+      refresh().then(
+        () => {
+          clearTimeout(timer);
+          resolve();
+        },
+        (error: unknown) => {
+          clearTimeout(timer);
+          reject(error instanceof Error ? error : new Error(String(error)));
+        },
+      );
+    });
+
   return {
-    run: (since, refresh, reuse) =>
-      exclusive(async () => {
+    run: (since, refresh, reuse) => {
+      const waitSignal = AbortSignal.timeout(lockWaitMs);
+      return exclusive(async () => {
         if (lastRefreshAt >= since || reuse?.() === true) return true;
-        await refresh();
+        await bounded(refresh);
         lastRefreshAt = now();
         const csrf = options.csrf.get();
         if (csrf !== undefined)
           channel?.postMessage({ csrf, at: lastRefreshAt } satisfies Message);
         return true;
-      }),
+      }, waitSignal).catch((error: unknown) => {
+        // 等锁超时：本次续不上，交给调用方按失效处理；其余错误照常抛出。
+        if (waitSignal.aborted && (error as Error)?.name === "TimeoutError")
+          return false;
+        throw error;
+      });
+    },
   };
 }

@@ -91,11 +91,14 @@ export function createCloudApi(options: CreateCloudApiOptions): CloudApi {
   });
   const opsRefresh = createRefreshCoordinator({ name: "ops", csrf: opsCsrf });
 
+  // 刷新请求限时 15 秒，挂住时不占着跨标签的锁。
+  const timed: typeof base = (input, init) =>
+    base(input, { ...init, signal: AbortSignal.timeout(15_000) });
   // 刷新自己不走 401 处理，免得递归。
   const plain = createCloudClient(
     options.origin,
     createCloudFetch({
-      fetch: base,
+      fetch: timed,
       csrf: consoleCsrf,
       onSessionLost: () => {},
     }),
@@ -119,7 +122,8 @@ export function createCloudApi(options: CreateCloudApiOptions): CloudApi {
   const opsPlain = createCloudClient(
     options.origin,
     createCloudFetch({
-      ...common(opsCsrf),
+      fetch: timed,
+      csrf: opsCsrf,
       onSessionLost: () => undefined,
     }),
   );
