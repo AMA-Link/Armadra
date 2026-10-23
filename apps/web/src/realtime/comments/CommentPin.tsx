@@ -51,10 +51,8 @@ export const CommentPin = React.forwardRef<HTMLButtonElement, CommentPinProps>(
         data-open={open ? "true" : undefined}
         data-merged={merged}
         className={cn(
-          "relative rounded-full border-2 bg-card p-0 font-medium text-foreground shadow-sm hover:bg-card",
-          dot
-            ? "size-2.5 border-0"
-            : "size-6 text-[length:var(--text-caption)]",
+          "relative rounded-full border-2 bg-card p-0 font-medium text-foreground shadow-node hover:bg-card",
+          dot ? "size-2.5 border-0" : "size-6 text-caption",
           !open && "text-muted-foreground",
           className,
         )}
@@ -74,7 +72,7 @@ export const CommentPin = React.forwardRef<HTMLButtonElement, CommentPinProps>(
         {!dot && open && (
           <span
             aria-hidden
-            className="absolute -top-0.5 -right-0.5 size-2 rounded-full border border-card bg-[var(--brand)]"
+            className="absolute -top-0.5 -right-0.5 size-2 rounded-full border border-card bg-brand"
           />
         )}
       </Button>

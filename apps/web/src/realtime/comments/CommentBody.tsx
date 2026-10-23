@@ -23,7 +23,7 @@ export function CommentBody({
   return (
     <div
       className={cn(
-        "sticky-markdown text-sm break-words text-foreground",
+        "sticky-markdown text-body break-words text-foreground",
         className,
       )}
     >
@@ -67,7 +67,7 @@ const COMPONENTS: Components = {
       return (
         <span
           data-mention={href.slice(PRINCIPAL.length)}
-          className="font-medium text-[var(--brand-text)]"
+          className="font-medium text-brand-text"
         >
           {children}
         </span>

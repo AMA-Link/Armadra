@@ -255,11 +255,10 @@ export function PeerCursor({
         aria-hidden
         className="size-4"
         style={{ color, fill: color }}
-        strokeWidth={1.5}
       />
       {name !== "" && (
         <span
-          className="mt-3 rounded-[var(--r-pill)] border bg-card px-1.5 text-[length:var(--text-caption)] leading-4 whitespace-nowrap text-foreground"
+          className="mt-3 rounded-pill border bg-card px-1.5 text-caption leading-4 whitespace-nowrap text-foreground"
           style={{ borderColor: color }}
         >
           {name}
@@ -346,7 +345,7 @@ function Selections({
           <div
             key={key}
             data-peer-selection={id}
-            className="absolute rounded-[var(--r-card)]"
+            className="absolute rounded-card"
             style={{
               left: box.x - offset,
               top: box.y - offset,

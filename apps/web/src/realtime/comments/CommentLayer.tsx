@@ -1,7 +1,7 @@
 import * as React from "react";
 import { useReactFlow, useStore } from "@xyflow/react";
 import { MessageSquarePlus } from "lucide-react";
-import { toast } from "sonner";
+import { toast } from "@/ui/toast";
 import type { BoardComment, CanvasNode, CommentAnchor } from "@armadra/shared";
 
 import { useAccess } from "@/app/use-access";
@@ -509,7 +509,7 @@ function Comments({
                   key={thread.root.id}
                   data-thread-anchor={key}
                   data-active={key === pinKey ? "true" : undefined}
-                  className="-mx-2 rounded-[var(--r-card)] px-2 py-1 data-[active=true]:bg-[var(--hover)]"
+                  className="-mx-2 rounded-card px-2 py-1 data-[active=true]:bg-hover"
                 >
                   {renderThread(thread, options)}
                 </div>
