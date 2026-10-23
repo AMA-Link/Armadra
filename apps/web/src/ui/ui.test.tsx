@@ -6,6 +6,8 @@ import { Button } from "@/ui/button";
 import { ColorDot } from "@/ui/color-dot";
 import { IconButton } from "@/ui/icon-button";
 import { Kbd, KbdGroup } from "@/ui/kbd";
+import { ariaKeyShortcuts } from "@/ui/kbd-format";
+import { Shimmer } from "@/ui/shimmer";
 import { Popover, PopoverContent, PopoverTrigger } from "@/ui/popover";
 import { STATUS_PILL_LABELS, StatusPill } from "@/ui/status-pill";
 import { Switch } from "@/ui/switch";
@@ -434,5 +436,211 @@ describe("MemberDot", () => {
     expect(memberColorVar(8)).toBe("var(--member-8)");
     expect(memberColorVar(9)).toBe("var(--member-1)");
     expect(memberColorVar(18)).toBe("var(--member-2)");
+  });
+});
+
+describe("Button 变体与尺寸（设计系统 §9）", () => {
+  it.each([
+    "default",
+    "outline",
+    "secondary",
+    "ghost",
+    "destructive",
+    "destructive-solid",
+    "link",
+  ] as const)("variant=%s 落到 data-variant", (variant) => {
+    render(<Button variant={variant}>动作</Button>);
+    expect(screen.getByRole("button").dataset.variant).toBe(variant);
+  });
+
+  it("destructive-solid 是危险实底 + 反白字，不借品牌蓝", () => {
+    render(<Button variant="destructive-solid">删除</Button>);
+    const cls = screen.getByRole("button").className;
+    expect(cls).toContain("bg-danger-solid");
+    expect(cls).toContain("text-primary-foreground");
+    expect(cls).not.toContain("bg-primary");
+  });
+
+  it.each([
+    ["xs", "h-6"],
+    ["sm", "h-7"],
+    ["default", "h-8"],
+    ["lg", "h-9"],
+    ["touch", "h-11"],
+  ] as const)("size=%s 高度档 %s，圆角统一 rounded-control", (size, height) => {
+    render(<Button size={size}>动作</Button>);
+    const button = screen.getByRole("button");
+    expect(button.dataset.size).toBe(size);
+    expect(button.className).toMatch(new RegExp(`\\b${height}\\b`));
+    expect(button.className).toContain("rounded-control");
+  });
+
+  it("过渡点名属性、按下反馈由 motion-press 给，不用 transition-all", () => {
+    render(<Button>动作</Button>);
+    const cls = screen.getByRole("button").className;
+    expect(cls).toContain("motion-press");
+    expect(cls).not.toContain("transition-all");
+  });
+
+  it("static 关掉按下缩放（data-static）", () => {
+    render(<Button static>动作</Button>);
+    expect(screen.getByRole("button").dataset.static).toBe("true");
+  });
+
+  it("loading：aria-busy、不 disabled、Spinner 顶替 data-icon=inline-start 的图标、标签微光、点击被吞", () => {
+    const onClick = vi.fn();
+    render(
+      <Button size="sm" loading onClick={onClick}>
+        <Check data-icon="inline-start" data-testid="icon" />
+        保存
+      </Button>,
+    );
+    const button = screen.getByRole("button", { name: "保存" });
+    expect(button.getAttribute("aria-busy")).toBe("true");
+    expect((button as HTMLButtonElement).disabled).toBe(false);
+    expect(screen.queryByTestId("icon")).toBeNull();
+    const spinner = button.querySelector("[data-slot='spinner']");
+    expect(spinner).not.toBeNull();
+    expect(spinner!.getAttribute("class")).toContain("size-3");
+    expect(button.querySelector("[data-slot='shimmer']")).not.toBeNull();
+    fireEvent.click(button);
+    expect(onClick).not.toHaveBeenCalled();
+  });
+
+  it("loading 结束后恢复图标与点击", () => {
+    const onClick = vi.fn();
+    const { rerender } = render(
+      <Button loading onClick={onClick}>
+        <Check data-icon="inline-start" data-testid="icon" />
+        保存
+      </Button>,
+    );
+    rerender(
+      <Button onClick={onClick}>
+        <Check data-icon="inline-start" data-testid="icon" />
+        保存
+      </Button>,
+    );
+    const button = screen.getByRole("button");
+    expect(button.getAttribute("aria-busy")).toBeNull();
+    expect(screen.getByTestId("icon")).not.toBeNull();
+    fireEvent.click(button);
+    expect(onClick).toHaveBeenCalledTimes(1);
+  });
+
+  it("shortcut：尾部 Kbd 与 aria-keyshortcuts", () => {
+    render(<Button shortcut="⌘↵">发送</Button>);
+    const button = screen.getByRole("button");
+    expect(button.querySelector("kbd")?.textContent).toBe("⌘↵");
+    expect(button.getAttribute("aria-keyshortcuts")).toBe("Meta+Enter");
+  });
+});
+
+describe("ariaKeyShortcuts", () => {
+  it.each([
+    ["⌘K", "Meta+K"],
+    ["⌘⇧P", "Meta+Shift+P"],
+    ["Ctrl+Shift+K", "Control+Shift+K"],
+    ["↵", "Enter"],
+    ["Esc", "Escape"],
+    ["⌃⌥↓", "Control+Alt+ArrowDown"],
+  ])("%s → %s", (display, expected) => {
+    expect(ariaKeyShortcuts(display)).toBe(expected);
+  });
+});
+
+describe("Badge 尺寸与变体（设计系统 §9）", () => {
+  it("sm 18 / md 20，默认 md；圆角 pill、等宽数字", () => {
+    const { rerender } = render(<Badge>3</Badge>);
+    const badge = () => screen.getByText("3");
+    expect(badge().dataset.size).toBe("md");
+    expect(badge().className).toContain("h-5");
+    rerender(<Badge size="sm">3</Badge>);
+    expect(badge().dataset.size).toBe("sm");
+    expect(badge().className).toContain("h-[18px]");
+    expect(badge().className).toContain("rounded-pill");
+    expect(badge().className).toContain("tabular-nums");
+  });
+
+  it.each([
+    ["success", "bg-success-soft", "text-success-text"],
+    ["warn", "bg-warn-soft", "text-warn-text"],
+    ["brand", "bg-brand-soft", "text-brand-text"],
+    ["destructive", "bg-danger-soft", "text-danger-text"],
+  ] as const)("%s 用软底 + 文字色", (variant, bg, text) => {
+    render(<Badge variant={variant}>状态</Badge>);
+    const cls = screen.getByText("状态").className;
+    expect(cls).toContain(bg);
+    expect(cls).toContain(text);
+  });
+
+  it("九个变体都有 data-variant", () => {
+    const variants = [
+      "default",
+      "secondary",
+      "outline",
+      "ghost",
+      "destructive",
+      "link",
+      "success",
+      "warn",
+      "brand",
+    ] as const;
+    render(
+      <>
+        {variants.map((variant) => (
+          <Badge key={variant} variant={variant}>
+            {variant}
+          </Badge>
+        ))}
+      </>,
+    );
+    for (const variant of variants)
+      expect(screen.getByText(variant).dataset.variant).toBe(variant);
+  });
+});
+
+describe("Kbd / Spinner / Shimmer", () => {
+  it("Kbd 在按钮与 Tooltip 内收成 16 高（样式由祖先 data-slot 决定）", () => {
+    render(<Kbd>⌘K</Kbd>);
+    const cls = screen.getByText("⌘K").className;
+    expect(cls).toContain("h-5");
+    expect(cls).toContain("in-data-[slot=button]:h-4");
+    expect(cls).toContain("in-data-[slot=tooltip-content]:h-4");
+    expect(cls).toContain("rounded-tight");
+  });
+
+  it("Spinner 两档尺寸与三种状态；done 画对勾，failed 是 ×", () => {
+    const { container, rerender } = render(<Spinner size={12} />);
+    const spinner = () =>
+      container.querySelector("[data-slot='spinner']") as SVGElement;
+    expect(spinner().getAttribute("class")).toContain("size-3");
+    expect(spinner().getAttribute("class")).toContain("anim-spin");
+    rerender(<Spinner />);
+    expect(spinner().getAttribute("class")).toContain("size-4");
+    rerender(<Spinner state="done" />);
+    expect(spinner().dataset.state).toBe("done");
+    expect(spinner().querySelector(".anim-check-draw")).not.toBeNull();
+    expect(spinner().getAttribute("class")).not.toContain("anim-spin");
+    rerender(<Spinner state="failed" />);
+    expect(spinner().dataset.state).toBe("failed");
+  });
+
+  it("Spinner 有 aria-label 时是 role=status，否则装饰", () => {
+    const { container, rerender } = render(<Spinner />);
+    expect(
+      container
+        .querySelector("[data-slot='spinner']")!
+        .getAttribute("aria-hidden"),
+    ).toBe("true");
+    rerender(<Spinner aria-label="保存中" />);
+    expect(screen.getByRole("status", { name: "保存中" })).not.toBeNull();
+  });
+
+  it("Shimmer：active 时带遮罩类，关掉后原样输出", () => {
+    const { rerender } = render(<Shimmer>保存</Shimmer>);
+    expect(screen.getByText("保存").className).toContain("anim-shimmer");
+    rerender(<Shimmer active={false}>保存</Shimmer>);
+    expect(screen.getByText("保存").className).not.toContain("anim-shimmer");
   });
 });
