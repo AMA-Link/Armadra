@@ -93,6 +93,12 @@ await h.run(async () => {
       style.setProperty("--safe-bottom", "${insets.bottom}px");
       style.setProperty("--safe-left", "${insets.left}px");
       style.setProperty("--window-controls-top", "${insets.controlsTop}px");
+      // 触屏（\`hover: none\`，无头 Linux 上的 Chrome 也是）不出 Tooltip（设计系统
+      // §8.8，motion.css 把它 display:none）；这里量的是几何，不是出不出，
+      // 所以把那条规则盖掉，免得量到一个没有布局的节点。
+      const reveal = document.createElement("style");
+      reveal.textContent = '[data-slot="tooltip-content"] { display: inline-flex !important; }';
+      document.head.append(reveal);
       await import("/src/showcase/overlay-probe.tsx");
       return true;
     `);
