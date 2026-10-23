@@ -70,7 +70,7 @@ export function DimensionChart({
 
   return (
     <section aria-label={title} className="flex flex-col gap-2">
-      <h3 className="text-xs font-medium text-muted-foreground">{title}</h3>
+      <h3 className="text-meta font-medium text-muted-foreground">{title}</h3>
       {series.length > 0 && (
         <ChartContainer
           config={config}
@@ -149,7 +149,7 @@ export function DimensionChart({
             onPressedChange={() =>
               setFocused((current) => (current === item.key ? null : item.key))
             }
-            className="h-auto min-w-0 justify-start gap-1.5 rounded-md px-1 py-0.5 text-left text-xs font-normal transition-opacity data-[dimmed=true]:opacity-40"
+            className="h-auto min-w-0 justify-start gap-1.5 rounded-control px-1 py-0.5 text-left text-meta font-normal transition-opacity data-[dimmed=true]:opacity-40"
           >
             <ColorDot color={item.color} size={8} />
             <span className="min-w-0 flex-1 truncate" title={item.label}>

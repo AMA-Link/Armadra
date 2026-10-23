@@ -167,7 +167,7 @@ export function UsagePanel({ summary }: { summary: CostSummary }) {
                       key={row.agent}
                       data-slot="usage-request-item"
                       data-agent={row.agent}
-                      className="flex items-center gap-1.5 px-1 py-0.5 text-xs"
+                      className="flex items-center gap-1.5 px-1 py-0.5 text-meta"
                     >
                       <ColorDot color={row.color} size={8} />
                       <span
@@ -186,7 +186,7 @@ export function UsagePanel({ summary }: { summary: CostSummary }) {
                 </div>
               )}
               {withoutSource.length > 0 && (
-                <p className="text-[11px] text-muted-foreground">
+                <p className="text-caption text-muted-foreground">
                   {t("usage.breakdown.noLocalSource", {
                     value: withoutSource.join(t("usage.cost.separator")),
                   })}

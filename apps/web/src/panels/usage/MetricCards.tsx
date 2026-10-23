@@ -4,14 +4,13 @@ import { X } from "lucide-react";
 import { useT } from "../../app/preferences-store";
 import { formatTokens, formatUsd, totalTokens } from "../../lib/cost";
 import { IconButton } from "@/ui/icon-button";
-import { AnimatedNumber } from "./AnimatedNumber";
+import { Tray, TrayCard, TrayHeader, TrayValue } from "@/ui/tray";
 import { pointLabel, type UsageMetric } from "./metrics";
 
-const CARD =
-  "flex flex-col gap-0.5 rounded-lg border border-border bg-panel p-(--space-inset) transition-colors data-[active=true]:border-ring/50";
-
-const HEAD = "flex items-center gap-1 text-xs text-muted-foreground";
-
+/**
+ * 用量总览托盘（设计系统 §5.17）：Token 与费用两张托盘内卡，当前指标的那张带品牌边。
+ * 选中某一天时托盘头显示那一天并给一枚清除钮，数字跟着换。
+ */
 export function MetricCards({
   totals,
   point,
@@ -26,56 +25,57 @@ export function MetricCards({
   const t = useT();
   const source = point ?? totals;
   return (
-    <dl className="grid grid-cols-2 gap-(--space-group)">
-      <div
-        data-slot="usage-card"
-        data-metric="tokens"
-        data-active={metric === "tokens"}
-        className={CARD}
-      >
-        <div className={HEAD}>
-          <dt>{t("usage.metric.tokens")}</dt>
-          {point && (
-            <span className="tabular-nums">{pointLabel(point.key)}</span>
-          )}
-        </div>
-        <dd className="text-sm font-medium tabular-nums">
-          <AnimatedNumber
+    <Tray data-slot="usage-metrics">
+      {point && (
+        <TrayHeader
+          label={pointLabel(point.key)}
+          actions={
+            <IconButton
+              label={t("usage.selection.clear")}
+              size="inline"
+              onClick={onClear}
+            >
+              <X />
+            </IconButton>
+          }
+        />
+      )}
+      <div className="grid grid-cols-2 gap-1.5">
+        <TrayCard
+          data-slot="usage-card"
+          data-metric="tokens"
+          data-active={metric === "tokens"}
+          data-selected={metric === "tokens"}
+        >
+          <span className="text-meta text-muted-foreground">
+            {t("usage.metric.tokens")}
+          </span>
+          <TrayValue
+            label={t("usage.metric.tokens")}
             value={totalTokens(source.tokens)}
+            fromZero={false}
             format={(value) =>
               t("usage.cost.tokenCount", { value: formatTokens(value) })
             }
           />
-        </dd>
-      </div>
-      <div
-        data-slot="usage-card"
-        data-metric="cost"
-        data-active={metric === "cost"}
-        className={CARD}
-      >
-        <div className={HEAD}>
-          <dt>{t("usage.metric.cost")}</dt>
-          {point && (
-            <>
-              <span className="tabular-nums">{pointLabel(point.key)}</span>
-              <IconButton
-                label={t("usage.selection.clear")}
-                className="-my-1 ml-auto"
-                onClick={onClear}
-              >
-                <X />
-              </IconButton>
-            </>
-          )}
-        </div>
-        <dd className="text-sm font-medium tabular-nums">
-          <AnimatedNumber
+        </TrayCard>
+        <TrayCard
+          data-slot="usage-card"
+          data-metric="cost"
+          data-active={metric === "cost"}
+          data-selected={metric === "cost"}
+        >
+          <span className="text-meta text-muted-foreground">
+            {t("usage.metric.cost")}
+          </span>
+          <TrayValue
+            label={t("usage.metric.cost")}
             value={source.costUsd ?? 0}
+            fromZero={false}
             format={(value) => formatUsd(value)}
           />
-        </dd>
+        </TrayCard>
       </div>
-    </dl>
+    </Tray>
   );
 }

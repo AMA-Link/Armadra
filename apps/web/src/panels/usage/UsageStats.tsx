@@ -2,7 +2,8 @@ import type { CostPoint, CostRange } from "@armadra/shared";
 
 import { useT } from "../../app/preferences-store";
 import { formatTokens, totalTokens } from "../../lib/cost";
-import { AnimatedNumber } from "./AnimatedNumber";
+import { AnimatedNumber } from "@/ui/animated-number";
+import { Tray, TrayCard } from "@/ui/tray";
 import {
   formatMetric,
   metricValue,
@@ -71,24 +72,28 @@ export function UsageStats({
   ];
 
   return (
-    <dl
-      data-slot="usage-stats"
-      className="grid grid-cols-3 gap-(--space-group) rounded-lg border border-border bg-panel p-(--space-inset)"
-    >
-      {cells.map((cell) => (
-        <div key={cell.key} data-slot="usage-stat" data-stat={cell.key}>
-          <dt className="truncate text-[11px] text-muted-foreground">
-            {cell.label}
-          </dt>
-          <dd className="text-xs font-medium tabular-nums">
-            <AnimatedNumber
-              value={cell.value}
-              unit={metric}
-              format={cell.format}
-            />
-          </dd>
-        </div>
-      ))}
-    </dl>
+    <Tray>
+      <TrayCard>
+        <dl
+          data-slot="usage-stats"
+          className="m-0 grid grid-cols-3 gap-(--space-group)"
+        >
+          {cells.map((cell) => (
+            <div key={cell.key} data-slot="usage-stat" data-stat={cell.key}>
+              <dt className="truncate text-caption text-muted-foreground">
+                {cell.label}
+              </dt>
+              <dd className="m-0 text-meta font-medium tabular-nums">
+                <AnimatedNumber
+                  value={cell.value}
+                  unit={metric}
+                  format={cell.format}
+                />
+              </dd>
+            </div>
+          ))}
+        </dl>
+      </TrayCard>
+    </Tray>
   );
 }

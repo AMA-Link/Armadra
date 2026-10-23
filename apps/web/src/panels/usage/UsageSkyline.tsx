@@ -117,7 +117,7 @@ export function UsageSkyline({
       aria-label={t("usage.skyline.title")}
       className="flex flex-col gap-2"
     >
-      <h3 className="text-xs font-medium text-muted-foreground">
+      <h3 className="text-meta font-medium text-muted-foreground">
         {t("usage.skyline.title")}
       </h3>
 
@@ -129,7 +129,7 @@ export function UsageSkyline({
               value={total}
               unit={metric}
               format={(value) => formatMetric(value, metric)}
-              className="text-xs font-medium"
+              className="text-meta font-medium"
             />
           </div>
         </div>
@@ -139,7 +139,7 @@ export function UsageSkyline({
               key={slice.key}
               data-slot="usage-donut-legend-item"
               data-series={slice.key}
-              className="flex items-center gap-1.5 px-1 text-xs"
+              className="flex items-center gap-1.5 px-1 text-meta"
             >
               <ColorDot color={slice.color} size={8} />
               <span className="min-w-0 flex-1 truncate" title={slice.label}>
@@ -160,7 +160,7 @@ export function UsageSkyline({
 
       <div
         data-slot="usage-skyline-meta"
-        className="h-4 text-[11px] text-muted-foreground tabular-nums"
+        className="h-4 text-caption text-muted-foreground tabular-nums"
       >
         {markedRow &&
           `${formatMetric(markedRow.value, metric)} · ${pointLabel(markedRow.key)}`}

@@ -5,6 +5,7 @@ import { formatTokens } from "../../lib/cost";
 import { formatRelativeTime } from "../../lib/format";
 import { usageEstimatePercent, usageWindowLabel } from "../../lib/usage";
 import { Badge } from "@/ui/badge";
+import { Progress, progressToneFor } from "@/ui/progress";
 
 /**
  * 额度端点关着时的本地估算窗口（契约 §12.1）。和额度窗口分开画，并且总带
@@ -39,34 +40,24 @@ export function LocalEstimate({
             : t("usage.used", { value: Math.round(percent) });
         return (
           <div key={window.key} className="flex min-w-0 flex-col gap-1.5">
-            <div className="flex items-baseline justify-between gap-3 text-xs">
+            <div className="flex items-baseline justify-between gap-3 text-meta">
               <span className="min-w-0 break-words text-muted-foreground">
                 {label}
               </span>
               <span className="shrink-0 font-medium tabular-nums">{value}</span>
             </div>
             {percent !== null && (
-              <div
-                role="progressbar"
+              <Progress
+                variant="ticks"
+                value={percent}
+                tone={progressToneFor(percent)}
                 aria-label={`${name} · ${label} · ${t("usage.estimate.local")}`}
-                aria-valuemin={0}
-                aria-valuemax={100}
-                aria-valuenow={percent}
                 aria-valuetext={value}
-                className="h-1 w-full overflow-hidden rounded-full bg-border"
-              >
-                <div
-                  data-level={
-                    percent >= 95 ? "danger" : percent >= 80 ? "warn" : "normal"
-                  }
-                  className="h-full rounded-full bg-brand data-[level=danger]:bg-danger data-[level=warn]:bg-warn"
-                  style={{ width: `${percent}%` }}
-                />
-              </div>
+              />
             )}
             {window.resetsAtMs !== undefined && window.resetsAtMs > now && (
               <span
-                className="text-xs text-muted-foreground"
+                className="text-meta text-muted-foreground"
                 title={new Date(window.resetsAtMs).toLocaleString()}
               >
                 {t("usage.resetIn", {
