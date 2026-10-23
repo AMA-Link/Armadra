@@ -59,6 +59,7 @@ import {
   ChangePasswordDialog,
   type PasswordTarget,
 } from "../RemotePasswordDialog";
+import { AddCloudDialog } from "./CloudDialog";
 import {
   AddDirectDialog,
   AddRelayDialog,
@@ -101,6 +102,7 @@ export function RemoteAccessPage() {
   useTunnelEvents();
 
   const [adding, setAdding] = React.useState<RelayDraft | null>(null);
+  const [addingCloud, setAddingCloud] = React.useState<string | null>(null);
   const [addingDirect, setAddingDirect] = React.useState(false);
   const [mounting, setMounting] = React.useState(false);
   const [traffic, setTraffic] = React.useState<SourceTrafficTarget | null>(
@@ -269,11 +271,13 @@ export function RemoteAccessPage() {
                       }
                     : {})}
                   onSignIn={() =>
-                    setAdding({
-                      issuer: remote.issuer,
-                      account: remote.accountHint,
-                      fingerprint: remote.fingerprint,
-                    })
+                    remote.kind === "saas"
+                      ? setAddingCloud(remote.issuer)
+                      : setAdding({
+                          issuer: remote.issuer,
+                          account: remote.accountHint,
+                          fingerprint: remote.fingerprint,
+                        })
                   }
                   onSignOut={() => logout.mutate(remote.serviceId)}
                   onRetryCleanup={() => cleanup.mutate(remote.issuer)}
@@ -413,6 +417,13 @@ export function RemoteAccessPage() {
                   >
                     {t("remote.add")}
                   </Button>
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    onClick={() => setAddingCloud("")}
+                  >
+                    {t("remote.cloud.add")}
+                  </Button>
                 </SettingsRow>
               </SettingsGroup>
             </CollapsibleContent>
@@ -467,6 +478,11 @@ export function RemoteAccessPage() {
           setAdding(null);
           void changed();
         }}
+      />
+      <AddCloudDialog
+        initialIssuer={addingCloud}
+        onClose={() => setAddingCloud(null)}
+        onChanged={() => void changed()}
       />
       <AddDirectDialog
         open={addingDirect}

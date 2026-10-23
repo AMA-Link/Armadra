@@ -123,6 +123,40 @@ export function addPersonalRelay(input: {
   );
 }
 
+/* --------------------------- Armadra 云（SaaS） --------------------------- */
+
+/** 加 Armadra 云：答设备码，人在浏览器里批准（契约 §33.11）。 */
+export function addCloud(issuer: string) {
+  return localClient().sources.remoteAdd({
+    kind: "saas",
+    issuer: issuer.trim(),
+  });
+}
+
+export function pollCloudDevice(serviceId: string) {
+  return localClient().sources.remoteDevicePoll({ serviceId });
+}
+
+export function cloudSpaces(serviceId: string) {
+  return localClient().sources.remoteSpaces({ serviceId });
+}
+
+export function registerToSpace(input: {
+  serviceId: string;
+  space: { kind: "personal" } | { kind: "team"; teamId: string };
+}) {
+  return localClient().sources.remoteRegister(input);
+}
+
+/** `rate_limited` 带的退避毫秒数；没有或不是数字是 `null`。 */
+export function retryAfterMs(error: unknown): number | null {
+  if (!(error instanceof RuntimeRequestError) || error.code !== "rate_limited")
+    return null;
+  const body = error.body as { details?: { retryAfterMs?: unknown } } | null;
+  const value = body?.details?.retryAfterMs;
+  return typeof value === "number" && value > 0 ? value : null;
+}
+
 /** 远程服务报这个能力才有改口令（契约 §63，cloud-api §18）。 */
 export const PASSWORD_CHANGE_CAPABILITY = "auth.password-change";
 
