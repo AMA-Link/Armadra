@@ -81,7 +81,6 @@ import {
   isToolDisabledWhenLocked,
   splitSelectionForDelete,
 } from "./tools";
-import { DANGER_ACTION_CLASS } from "@/lib/danger-action";
 import { MAX_ZOOM, MIN_ZOOM } from "./zoom";
 import { tidySelection } from "./tidy-flow";
 import { layoutDirection, useLayoutDirectionSync } from "./layout-direction";
@@ -562,7 +561,7 @@ function FlowWorkspaceInner() {
               {t("delete.cancel")}
             </ResponsiveAlertDialogCancel>
             <ResponsiveAlertDialogAction
-              className={DANGER_ACTION_CLASS}
+              variant="destructive-solid"
               onClick={confirmDelete}
             >
               {t("delete.session.confirm")}
