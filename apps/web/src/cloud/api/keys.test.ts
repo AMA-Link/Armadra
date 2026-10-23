@@ -62,6 +62,25 @@ describe("查询键", () => {
         cloudKeys.access("t:t1", "s2"),
       ),
     ).toBe(false);
+    // 有效权限挂在访问清单之下，随它失效；授予列表按空间失效。
+    expect(
+      hit(
+        { type: "grantChanged", sourceId: "s1", teamId: "t1", ...at },
+        cloudKeys.effective("t:t1", "s1", "acct"),
+      ),
+    ).toBe(true);
+    expect(
+      hit(
+        { type: "grantChanged", sourceId: "s1", teamId: "t1", ...at },
+        cloudKeys.grants("t:t1", { accountId: "acct" }),
+      ),
+    ).toBe(true);
+    expect(
+      hit(
+        { type: "grantChanged", sourceId: "s1", teamId: "t1", ...at },
+        cloudKeys.grants("t:t2", { accountId: "acct" }),
+      ),
+    ).toBe(false);
     // 没有 teamId = 个人空间。
     expect(
       hit(
@@ -82,6 +101,30 @@ describe("查询键", () => {
         cloudKeys.access("t:t9", "s1"),
       ),
     ).toBe(true);
+    expect(
+      hit(
+        { type: "accessRevoked", sourceId: "s1" },
+        cloudKeys.effective("t:t9", "s1", "acct"),
+      ),
+    ).toBe(true);
+    expect(
+      hit(
+        { type: "accessRevoked", sourceId: "s1" },
+        cloudKeys.grants("t:t9", { accountId: "acct" }),
+      ),
+    ).toBe(true);
+    expect(
+      hit(
+        { type: "accessRevoked", sourceId: "s1" },
+        cloudKeys.host("t:t9", "s1"),
+      ),
+    ).toBe(true);
+    expect(
+      hit(
+        { type: "accessRevoked", sourceId: "s1" },
+        cloudKeys.host("t:t9", "s2"),
+      ),
+    ).toBe(false);
     expect(
       hit(
         {
