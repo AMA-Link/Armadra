@@ -32,6 +32,7 @@ import { SOURCE_ERROR } from "../sources/types";
 import { cn } from "@/lib/cn";
 import { Button } from "@/ui/button";
 import { IconButton } from "@/ui/icon-button";
+import { StatusDot, type StatusTone } from "@/ui/status-pill";
 import { noDragProps, trafficLightInset } from "./window-region";
 import { useCompactLayout } from "../platform/layout";
 import { WORK_PANEL_WIDTH, openRightDrawer } from "../panels/WorkPanelSheet";
@@ -53,7 +54,7 @@ export const SAVE_RETRY_EVENT = "armadra:save-retry";
  * 本体接；本体在标题带里要写回 `no-drag`，否则桌面壳里按它的按钮是在拖窗口。
  *
  * 只放“需要用户知道且会持续存在”的四件事：保存失败、Runtime 断开、
- * 终端后端降级、CLI 配置里的旧版接入残留。一次性的信息用 sonner toast，
+ * 终端后端降级、CLI 配置里的旧版接入残留。一次性的信息用 toast，
  * 不占画布。
  */
 export function Banners() {
@@ -344,7 +345,18 @@ export function bannerBounds(
   return { left, right };
 }
 
-function Banner({
+/** 横幅的四档语气：危险 / 警告 / 成功 / 信息（信息取品牌色）。 */
+export type BannerTone = "danger" | "warn" | "success" | "info";
+
+/** 语气 → 前导状态点的色相（横幅里的点不呼吸，文字已经说明了状态）。 */
+const BANNER_DOT: Record<BannerTone, StatusTone> = {
+  danger: "failed",
+  warn: "attention",
+  success: "done",
+  info: "unread",
+};
+
+export function Banner({
   tone,
   icon,
   text,
@@ -352,7 +364,7 @@ function Banner({
   onAction,
   onDismiss,
 }: {
-  tone: "danger" | "warn";
+  tone: BannerTone;
   icon: ReactNode;
   text: string;
   actionLabel?: string;
@@ -367,11 +379,10 @@ function Banner({
       data-tone={tone}
       data-slot="banner"
       {...noDragProps()}
-      className="pointer-events-auto motion-fade-in flex h-9 max-w-full min-w-0 items-center gap-2 rounded-[var(--r-card)] border border-border bg-[var(--panel)]/90 pr-1.5 pl-3 shadow-[var(--shadow-pill)] backdrop-blur-[12px] data-[tone=danger]:text-danger-text data-[tone=warn]:text-warn"
+      className="pointer-events-auto motion-fade-in flex h-[36px] max-w-full min-w-0 items-center gap-2 rounded-card border border-border-strong bg-panel/90 pr-1.5 pl-3 shadow-overlay backdrop-blur-[12px] data-[tone=danger]:text-danger-text data-[tone=info]:text-brand-text data-[tone=success]:text-success-text data-[tone=warn]:text-warn-text"
     >
-      <span className="shrink-0 [&_svg]:size-4 [&_svg]:[stroke-width:1.5]">
-        {icon}
-      </span>
+      <StatusDot tone={BANNER_DOT[tone]} size={6} pulse={false} />
+      <span className="shrink-0 [&_svg]:size-4">{icon}</span>
       <span className="min-w-0 truncate text-foreground" title={text}>
         {text}
       </span>
