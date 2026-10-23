@@ -182,7 +182,7 @@ export function StatusDot({
       data-size={size}
       style={{ backgroundColor: color ?? TONE_COLOR[tone], ...style }}
       className={cn(
-        "shrink-0 rounded-pill",
+        "inline-block shrink-0 rounded-pill",
         size === 6 ? "size-[6px]" : "size-2",
         corner &&
           "absolute top-0 right-0 translate-x-1/3 -translate-y-1/3 ring-2 ring-panel",

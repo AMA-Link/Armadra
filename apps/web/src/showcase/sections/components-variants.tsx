@@ -284,7 +284,7 @@ export function VariantSamples() {
           </div>
         ))}
       </Sample>
-      <Sample name="status-dot · status-pill" wide>
+      <Sample name="status-dot · status-pill" full>
         <StatusFamily />
       </Sample>
       <Sample name="status-line" wide>
