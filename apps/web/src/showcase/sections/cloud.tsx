@@ -11,6 +11,7 @@ import { createMockApi } from "@/cloud/mock/create-mock-client";
 import { ConsoleSidebar, ConsoleShell } from "@/cloud/shell/ConsoleShell";
 import { PageHeader } from "@/cloud/shell/PageHeader";
 import { OpsPage } from "@/cloud/ops/OpsPages";
+import { OPS_QUERY_KEY } from "@/cloud/ops/TenantsPage";
 import { matchRoute } from "@/cloud/router";
 import { DataList, type DataColumn } from "@/cloud/ui/DataList";
 import { PageState } from "@/cloud/ui/PageState";
@@ -141,6 +142,8 @@ function FromSession({
  * 在固定侧栏与顶栏加抽屉之间切换，探针 390 / 768 / 1440 各截一张。
  */
 export default function CloudSection() {
+  // 租户样本要有搜索结果：搜索词只在 sessionStorage 里（不进地址）。
+  sessionStorage.setItem(OPS_QUERY_KEY, "li");
   return (
     <MockConsole>{(session) => <CloudSamples session={session} />}</MockConsole>
   );
@@ -211,7 +214,7 @@ function CloudSamples({ session }: { session: ConsoleSession }) {
       </div>
 
       <div className="flex flex-col gap-4">
-        {["/ops?q=li", "/ops/nodes", "/ops/status"].map((path) => {
+        {["/ops", "/ops/nodes", "/ops/status"].map((path) => {
           const match = matchRoute(...(path.split("?") as [string, string?]));
           return (
             <div

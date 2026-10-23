@@ -8,6 +8,7 @@ import {
 } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { OPS_QUERY_KEY } from "./TenantsPage";
 import { ConsoleRoot } from "../ConsoleRoot";
 import { createMockApi, type MockOptions } from "../mock/create-mock-client";
 
@@ -25,11 +26,13 @@ beforeEach(() => {
 afterEach(() => {
   cleanup();
   localStorage.clear();
+  sessionStorage.clear();
   visit("/");
 });
 
-const mount = (path: string, options: MockOptions = {}) => {
+const mount = (path: string, options: MockOptions = {}, q?: string) => {
   visit(path);
+  if (q !== undefined) sessionStorage.setItem(OPS_QUERY_KEY, q);
   const api = createMockApi({
     operatorAccount: true,
     operatorSession: true,
@@ -66,7 +69,7 @@ describe("运营后台门控", () => {
       "/ops/status",
       "/ops/tenants/acct_mock_lisi?kind=account",
     ]) {
-      mount(path, { operatorSession: false });
+      mount(path, { operatorAccount: false, operatorSession: false });
       expect((await h1()).textContent).toBe("找不到这个页面");
       expect(screen.queryByRole("navigation")).toBeNull();
       expect(screen.queryByText("运营")).toBeNull();
@@ -105,15 +108,15 @@ describe("租户", () => {
     await h1();
     expect(screen.queryByRole("table")).toBeNull();
     cleanup();
-    mount("/ops?q=li");
+    mount("/ops", {}, "li");
     expect(await screen.findByText("李四")).toBeTruthy();
     cleanup();
-    mount("/ops?q=zzz");
+    mount("/ops", {}, "zzz");
     expect(await screen.findByText("没有匹配「zzz」的租户")).toBeTruthy();
   });
 
   it("停用团队：理由必填、名称要对；成功后详情变「已停用」，可恢复", async () => {
-    const api = mount("/ops?q=研发");
+    const api = mount("/ops", {}, "研发");
     const status = vi.spyOn(api.ops.admin, "teamStatus");
     fireEvent.click(await screen.findByRole("link", { name: "研发组" }));
     const detail = await screen.findByRole("dialog");
@@ -152,7 +155,7 @@ describe("租户", () => {
   });
 
   it("停用自己被拒：提示没有权限，确认框留着", async () => {
-    mount("/ops?q=张三");
+    mount("/ops", {}, "张三");
     fireEvent.click(await screen.findByRole("link", { name: "张三" }));
     const detail = await screen.findByRole("dialog");
     fireEvent.click(
@@ -234,5 +237,77 @@ describe("事故开关", () => {
           .getAttribute("aria-checked"),
       ).toBe("false"),
     );
+  });
+});
+
+describe("运营会话恢复与细节", () => {
+  it("有运营范围但无运营会话：续得上就留在页内", async () => {
+    mount("/ops/nodes", { operatorSession: false, operatorRefreshable: true });
+    expect(await screen.findByText("relay-hk-1")).toBeTruthy();
+    expect(window.location.pathname).toBe("/ops/nodes");
+  });
+
+  it("有运营范围但续不上：跳运营登录并带回当前路径", async () => {
+    mount("/ops/status", { operatorSession: false });
+    await waitFor(() =>
+      expect(window.location.pathname + window.location.search).toBe(
+        "/login?scope=operator&next=%2Fops%2Fstatus",
+      ),
+    );
+  });
+
+  it("没有运营范围：仍是找不到，不尝试续也不跳登录", async () => {
+    mount("/ops", { operatorAccount: false, operatorSession: false });
+    expect((await h1()).textContent).toBe("找不到这个页面");
+    expect(window.location.pathname).toBe("/ops");
+  });
+
+  it("搜索词不进地址栏，详情链接也不带它，输入框限 128 字", async () => {
+    mount("/ops");
+    const box = (await screen.findByRole("searchbox")) as HTMLInputElement;
+    expect(box.maxLength).toBe(128);
+    fireEvent.change(box, { target: { value: "研发" } });
+    fireEvent.submit(box.closest("form")!);
+    const link = await screen.findByRole("link", { name: "研发组" });
+    expect(window.location.search).toBe("");
+    expect(link.getAttribute("href")).not.toContain("q=");
+    expect(sessionStorage.getItem(OPS_QUERY_KEY)).toBe("研发");
+  });
+
+  it("审计动作码走 i18n，认不出的原样显示", async () => {
+    mount("/ops", {}, "研发");
+    fireEvent.click(await screen.findByRole("link", { name: "研发组" }));
+    const detail = await screen.findByRole("dialog");
+    await within(detail).findByText("正常");
+    fireEvent.click(within(detail).getByRole("button", { name: "停用" }));
+    await confirmWith("停用", { reason: "滥用", name: "研发组" });
+    expect(await within(detail).findByText("停用团队")).toBeTruthy();
+  });
+
+  it("事故开关：答复值与期望不符不弹成功；答复没有第三项就隐藏它", async () => {
+    const api = mount("/ops/status");
+    const real = api.ops.admin.incident;
+    vi.spyOn(api.ops.admin, "incidentSet").mockResolvedValue({
+      pauseAssertions: false,
+      pauseRegistrations: false,
+      rejectNewConnections: false,
+      updatedAtMs: 1,
+    } as never);
+    fireEvent.click(await screen.findByRole("switch", { name: "签发访问" }));
+    await confirmWith("暂停签发", { reason: "事故", name: "签发访问" });
+    expect(
+      await screen.findByText("服务端没有按要求更新，请刷新后重试"),
+    ).toBeTruthy();
+    cleanup();
+
+    const api2 = mount("/ops/status");
+    vi.spyOn(api2.ops.admin, "incident").mockImplementation(async (input) => {
+      const { rejectNewConnections: _drop, ...rest } = (await real(
+        input,
+      )) as Record<string, unknown>;
+      return rest as never;
+    });
+    await screen.findByRole("switch", { name: "签发访问" });
+    expect(screen.getAllByRole("switch")).toHaveLength(2);
   });
 });

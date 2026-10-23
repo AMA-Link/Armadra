@@ -38,6 +38,8 @@ export interface MockOptions {
   readonly operatorAccount?: boolean;
   /** 运营会话一开始就在（缺省 false）。 */
   readonly operatorSession?: boolean;
+  /** 运营会话不在，但 `auth.refresh { scope: "operator" }` 能续上（缺省 false）。 */
+  readonly operatorRefreshable?: boolean;
   /** 本人在各团队的角色覆盖（角色矩阵测试用）。 */
   readonly roles?: Readonly<Record<string, MockRole>>;
 }
@@ -99,6 +101,7 @@ interface State {
   operatorSession: boolean;
   /** 运营登录走完密码，等两步验证。 */
   pendingOperator: boolean;
+  syncOperator?: () => void;
   displayName: string;
   emailVerified: boolean;
   admin: AdminState;
@@ -324,7 +327,15 @@ const HANDLERS: Readonly<Record<string, Handler>> = {
     } else state.signedIn = true;
     return sessionOf(state);
   },
-  "auth.refresh": (_input, state) => sessionOf(state),
+  "auth.refresh": (input, state, options) => {
+    if ((input as { scope?: string }).scope === "operator") {
+      if (!state.operatorSession && !options.operatorRefreshable)
+        throw new CloudConsoleError("unauthenticated", 401);
+      state.operatorSession = true;
+      state.syncOperator?.();
+    }
+    return sessionOf(state);
+  },
   "auth.logout": (_input, state) => {
     state.signedIn = false;
     state.operatorSession = false;
@@ -456,6 +467,7 @@ export function createMockApi(options: MockOptions = {}): CloudApi {
   const syncOperator = () =>
     operatorChanged.set(state.operatorSession ? "ops" : undefined);
   syncOperator();
+  state.syncOperator = syncOperator;
 
   const build = (asOperator: boolean): CloudClient => {
     const root: Record<string, Record<string, unknown>> = {};

@@ -24,7 +24,12 @@ import { navigate, type RouteMatch } from "../router";
 import { PageHeader } from "../shell/PageHeader";
 import { DataList, type DataColumn } from "../ui/DataList";
 import { TypedConfirm } from "../ui/TypedConfirm";
-import { OpsError, useFormatDate, usePlanLabel } from "./common";
+import {
+  OpsError,
+  useActionLabel,
+  useFormatDate,
+  usePlanLabel,
+} from "./common";
 import {
   useSetTenantStatus,
   useTenantDetail,
@@ -35,13 +40,19 @@ import {
   type TenantKind,
 } from "./data";
 
-const detailHref = (kind: TenantKind, id: string, q: string) => {
-  const query = new URLSearchParams({ kind });
-  if (q !== "") query.set("q", q);
-  return `/ops/tenants/${encodeURIComponent(id)}?${query}`;
+/** 搜索词是邮箱等个人信息：不进地址栏（历史、日志、Referer），只留在本标签页的 sessionStorage（设计 §1.4 的例外）。 */
+export const OPS_QUERY_KEY = "armadra.cloud.ops.q";
+const readQuery = () => {
+  try {
+    return sessionStorage.getItem(OPS_QUERY_KEY) ?? "";
+  } catch {
+    return "";
+  }
 };
-const listHref = (q: string) =>
-  q === "" ? "/ops" : `/ops?q=${encodeURIComponent(q)}`;
+const SEARCH_MAX = 128;
+
+const detailHref = (kind: TenantKind, id: string) =>
+  `/ops/tenants/${encodeURIComponent(id)}?${new URLSearchParams({ kind })}`;
 
 function StatusBadge({ suspended }: { suspended: boolean }) {
   const t = useT();
@@ -59,9 +70,8 @@ export function TenantsPage({ match }: { match: RouteMatch }) {
   const t = useT();
   const plan = usePlanLabel();
   const date = useFormatDate();
-  const q = (match.query.get("q") ?? "").trim();
+  const [q, setQ] = React.useState(readQuery);
   const [draft, setDraft] = React.useState(q);
-  React.useEffect(() => setDraft(q), [q]);
   const result = useTenants(q);
   const rows = React.useMemo(
     () => result.data?.pages.flatMap((page) => page.tenants) ?? [],
@@ -89,7 +99,7 @@ export function TenantsPage({ match }: { match: RouteMatch }) {
         role: "primary",
         cell: (row) => (
           <RouteLink
-            href={detailHref(row.kind, row.id, q)}
+            href={detailHref(row.kind, row.id)}
             className="rounded-control underline-offset-4 hover:underline focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none"
             translate="no"
           >
@@ -120,10 +130,10 @@ export function TenantsPage({ match }: { match: RouteMatch }) {
         cell: (row) => date(row.createdAtMs),
       },
     ],
-    [t, plan, date, q],
+    [t, plan, date],
   );
 
-  const close = () => navigate(listHref(q));
+  const close = () => navigate("/ops");
   const kindParam = match.query.get("kind");
   const detail: { kind: TenantKind; id: string } | null =
     match.id === "opsTenant" &&
@@ -140,7 +150,14 @@ export function TenantsPage({ match }: { match: RouteMatch }) {
         className="mb-6"
         onSubmit={(event) => {
           event.preventDefault();
-          navigate(listHref(draft.trim()));
+          const next = draft.trim();
+          try {
+            sessionStorage.setItem(OPS_QUERY_KEY, next);
+          } catch {
+            /* 没有存储也能搜，只是返回后不记得 */
+          }
+          setQ(next);
+          if (match.id !== "ops") navigate("/ops");
         }}
       >
         <InputGroup className="max-w-md">
@@ -153,6 +170,7 @@ export function TenantsPage({ match }: { match: RouteMatch }) {
             aria-label={t("cloud.ops.search")}
             placeholder={t("cloud.ops.search")}
             autoComplete="off"
+            maxLength={SEARCH_MAX}
             value={draft}
             onChange={(event) => setDraft(event.target.value)}
           />
@@ -171,7 +189,7 @@ export function TenantsPage({ match }: { match: RouteMatch }) {
             rows={rows}
             columns={columns}
             rowKey={(row) => `${row.kind}:${row.id}`}
-            onRowOpen={(row) => navigate(detailHref(row.kind, row.id, q))}
+            onRowOpen={(row) => navigate(detailHref(row.kind, row.id))}
           />
           {result.hasNextPage ? (
             <Button
@@ -215,6 +233,7 @@ function TenantDialog({
 }) {
   const t = useT();
   const plan = usePlanLabel();
+  const actionLabel = useActionLabel();
   const date = useFormatDate();
   const query = useTenantDetail(kind, id);
   const setStatus = useSetTenantStatus();
@@ -315,7 +334,10 @@ function TenantDialog({
                   <SettingsRow label={t("cloud.ops.noActions")} />
                 ) : (
                   (query.data.recentActions ?? []).map((event) => (
-                    <SettingsRow key={event.eventId} label={event.action}>
+                    <SettingsRow
+                      key={event.eventId}
+                      label={actionLabel(event.action)}
+                    >
                       {value(formatRelativeTime(event.atMs))}
                     </SettingsRow>
                   ))

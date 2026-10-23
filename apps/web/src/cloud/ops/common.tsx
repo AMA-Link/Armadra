@@ -13,6 +13,16 @@ export function useFormatDate(): (ms: number) => string {
   }, [locale]);
 }
 
+/** 运营动作码（审计里的 `team.suspend` 等）；认不出的原样显示。 */
+export function useActionLabel(): (code: string) => string {
+  const t = useT();
+  return (code) => {
+    const key = `cloud.ops.action.${code}`;
+    const label = t(key);
+    return label === key ? code : label;
+  };
+}
+
 /** 计划名；认不出的计划原样显示。 */
 export function usePlanLabel(): (plan: string) => string {
   const t = useT();

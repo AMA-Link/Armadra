@@ -79,7 +79,11 @@ export function StatusPage() {
         />
       ) : (
         <SettingsGroup title={t("cloud.ops.incident")}>
-          {SWITCHES.map((def) => (
+          {SWITCHES.filter(
+            (def) =>
+              def.field !== "rejectNewConnections" ||
+              def.field in incident.data,
+          ).map((def) => (
             <SettingsRow key={def.id} label={t(def.label)}>
               <Switch
                 aria-label={t(def.label)}
@@ -104,10 +108,15 @@ export function StatusPage() {
           )}
           onConfirm={async (reason) => {
             try {
-              await save.mutateAsync({
+              const reply = await save.mutateAsync({
                 [pending.def.field]: !pending.turnOn,
                 reason,
               });
+              // 服务端答了成功却没按要求改：不弹成功，开关显示答复里的真实值。
+              if (reply[pending.def.field] !== !pending.turnOn) {
+                toast.error(t("cloud.ops.incidentMismatch"));
+                return;
+              }
               toast.success(
                 t("cloud.ops.incidentDone", { name: t(pending.def.label) }),
               );
