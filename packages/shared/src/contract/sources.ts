@@ -643,7 +643,7 @@ export const sources = {
   cloudAccess: oc
     .input(serviceIdInputSchema)
     .output(cloudAccessOutputSchema)
-    .errors({ ...denied, ...cloudErrors("not_found") })
+    .errors({ ...denied, ...cloudErrors("not_found", "conflict") })
     .meta(cloudMeta("settings:read")),
   /** Armadra 云：给成员 / 访客发一条授予（`grants.create`，§33.12）。 */
   cloudGrantCreate: oc
