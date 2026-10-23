@@ -206,10 +206,13 @@ export class CloudLogin {
       token === "" &&
       registration.mode === "saas" &&
       claims.role !== undefined &&
-      (claims.team === undefined || claims.team.role !== "billing")
+      (claims.team === undefined
+        ? claims.org === undefined
+        : claims.team.role !== "billing")
     ) {
       // SaaS：团队就是准入（协议 1.4）；个人空间主机的访客只带 `role` / `scp`、不带
-      // `team`，同样准入（#483，`MIN_CORE_VERSION_ROLE_ONLY_ASSERTION`）。授予随后按声明同步。
+      // `team`，同样准入（#483，`MIN_CORE_VERSION_ROLE_ONLY_ASSERTION`）；旧的 `org` 声明不算。
+      // 授予随后按声明同步。
       try {
         principalId = registerExternal(store, this.now(), {
           displayName: clipName(claims.name, claims.sub.slice(0, 64)),

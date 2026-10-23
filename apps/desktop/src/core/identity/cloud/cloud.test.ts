@@ -1172,6 +1172,7 @@ describe("cloud/login 的范围、角色同步与租约（契约 §60）", () =>
     for (const extra of [
       { team: { teamId: "team_1", role: "member" } },
       { org: { orgId: "org_1", role: "member" } },
+      { org: { orgId: "org_1", role: "member" }, role: "editor" },
       {},
     ]) {
       const answer = await login("acct:nobody", extra);
@@ -1210,6 +1211,29 @@ describe("cloud/login 的范围、角色同步与租约（契约 §60）", () =>
     expect(host.status, host.text).toBe(200);
     expect(grantsOf(principalOf(host))).toEqual([
       ["host", "*", "", "viewer", cloudProvider(ISSUER)],
+    ]);
+  });
+
+  it("SaaS：团队成员之后改成只带 role 的访客断言，团队角色清掉、授予按新声明替换", async () => {
+    core.database
+      .prepare("UPDATE cloud_registrations SET mode = 'saas' WHERE issuer = ?")
+      .run(ISSUER);
+    const member = await login("acct:moved", {
+      team: { teamId: "team_1", role: "admin" },
+      role: "editor",
+    });
+    expect(member.status, member.text).toBe(200);
+    const principalId = principalOf(member);
+    expect(teamRoleOf(core.database, principalId)?.role).toBe("admin");
+    const visitor = await login("acct:moved", {
+      role: "viewer",
+      scp: ["ws:ws-1"],
+    });
+    expect(visitor.status, visitor.text).toBe(200);
+    expect(visitor.body.created).toBe(false);
+    expect(teamRoleOf(core.database, principalId)).toBeUndefined();
+    expect(grantsOf(principalId)).toEqual([
+      ["workspace", "ws-1", "", "viewer", cloudProvider(ISSUER)],
     ]);
   });
 
