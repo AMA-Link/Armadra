@@ -8,8 +8,11 @@
 
 /** 整段时长；结束后画面停在终态。 */
 export const SPLASH_DURATION_MS = 4000;
-/** 按 30fps 取整推进：和设计稿的逐帧导出对齐，也省掉高刷屏上的无用重绘。 */
-export const SPLASH_FPS = 30;
+/**
+ * 两帧之间时间轴最多前进这么多。主线程被占住更久（App 在底下挂载、拉数据）
+ * 时画面原地停住，回来后接着往下走，而不是按墙钟一下跳过一段。
+ */
+export const SPLASH_MAX_STEP_MS = 50;
 /** 写完字之后整块签名下移到最终位置所用的时间。 */
 const SETTLE_START_MS = 1500;
 const SETTLE_DURATION_MS = 470;
@@ -40,6 +43,16 @@ const POSE_OFFSETS = [
   { x: 78, y: 25 },
 ] as const;
 
+/**
+ * 时间轴往前走一步：`gap` 是这一帧与上一帧的间隔。负的间隔（rAF 的帧时间
+ * 戳略早于定时器的 `performance.now()`）当作 0，过长的夹到
+ * `SPLASH_MAX_STEP_MS`，走到头就停在 `SPLASH_DURATION_MS`。
+ */
+export function advanceSplashClock(elapsed: number, gap: number): number {
+  const step = Math.max(0, Math.min(SPLASH_MAX_STEP_MS, gap));
+  return Math.min(SPLASH_DURATION_MS, elapsed + step);
+}
+
 export function clamp01(value: number): number {
   return Math.max(0, Math.min(1, value));
 }
@@ -60,13 +73,10 @@ export interface SplashFrame {
   /** 精灵图在 `#walker-frame` 内的偏移，用来切走姿。 */
   sheetX: number;
   sheetY: number;
-  /** 入场遮罩：一块自左向右收回的窗口，先露鼻子再露壳和尾巴。 */
+  /** 入场遮罩的左缘：窗口自右向左打开，先露鼻子再露壳和尾巴。 */
   entranceX: number;
-  entranceWidth: number;
-  /** 走姿 / 静止姿势之间的一次不重叠擦除。 */
-  walkingWidth: number;
-  restingX: number;
-  restingWidth: number;
+  /** 走姿 / 静止姿势之间那道接缝的位置：左边是走姿，右边是静止姿势。 */
+  seam: number;
   idleOpacity: number;
   logoOpacity: number;
   /** 笔迹揭开的进度，0 = 还没写，1 = 写完。 */
@@ -125,10 +135,7 @@ export function splashFrameAt(milliseconds: number): SplashFrame {
     sheetX,
     sheetY,
     entranceX,
-    entranceWidth: 1180 - entranceX,
-    walkingWidth: Math.max(0, seam - 700),
-    restingX: seam,
-    restingWidth: 1180 - seam,
+    seam,
     idleOpacity: settlePose > 0 && reveal < 1 ? 1 : 0,
     logoOpacity: reveal,
     writingProgress: clamp01(time / WRITING_DURATION_MS),

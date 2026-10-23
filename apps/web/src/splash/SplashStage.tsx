@@ -16,6 +16,15 @@ import { splashFrameAt, type SplashFrame } from "./timeline";
  * 由 Vite 当资源处理；把 1.5 MB 的 base64 塞回源码会让入口 chunk 直接翻倍。
  */
 
+/** σ=3 的阶跃边缘在 -3σ…+3σ 七个点上的值（标准正态分布函数）。 */
+const FEATHER = [0.0013, 0.0228, 0.1587, 0.5, 0.8413, 0.9772, 0.9987];
+/**
+ * 半径 10 的圆做 σ=7 高斯模糊后，从圆心到 31（R+3σ）九个等距点上的值；
+ * 下面那条是半径 4、σ=2，到 10 为止。数值积分得出。
+ */
+const HALO_GLOW = [0.64, 0.586, 0.446, 0.278, 0.139, 0.055, 0.017, 0.004, 0];
+const LIGHT_GLOW = [0.865, 0.812, 0.659, 0.442, 0.232, 0.092, 0.027, 0.006, 0];
+
 export interface SplashStageHandle {
   /** 渲染 `[0, SPLASH_DURATION_MS]` 里的某一刻；越界会被夹住。 */
   renderAt: (milliseconds: number) => void;
@@ -47,11 +56,13 @@ export function SplashStage({ ref, label }: SplashStageProps) {
     walker.current?.setAttribute("opacity", String(frame.walkerOpacity));
     sheet.current?.setAttribute("x", String(frame.sheetX));
     sheet.current?.setAttribute("y", String(frame.sheetY));
-    entrance.current?.setAttribute("x", String(frame.entranceX));
-    entrance.current?.setAttribute("width", String(frame.entranceWidth));
-    walking.current?.setAttribute("width", String(frame.walkingWidth));
-    resting.current?.setAttribute("x", String(frame.restingX));
-    resting.current?.setAttribute("width", String(frame.restingWidth));
+    entrance.current?.setAttribute(
+      "transform",
+      `translate(${frame.entranceX} 0)`,
+    );
+    const seam = `translate(${frame.seam} 0)`;
+    walking.current?.setAttribute("transform", seam);
+    resting.current?.setAttribute("transform", seam);
     idle.current?.setAttribute("opacity", String(frame.idleOpacity));
     logo.current?.setAttribute("opacity", String(frame.logoOpacity));
 
@@ -102,16 +113,46 @@ export function SplashStage({ ref, label }: SplashStageProps) {
       aria-label={label}
     >
       <defs>
-        <filter
-          id="splash-soft-edge"
-          x="-10%"
-          y="-10%"
-          width="120%"
-          height="120%"
+        {/*
+         * 遮罩的软边用渐变画，不用模糊滤镜：遮罩每帧都在动，滤镜意味着每帧把
+         * 遮罩重新光栅化再做一次高斯模糊。两条渐变是 σ=3 高斯模糊后的阶跃边缘
+         * （正态分布函数在 ±3σ 内取七个点），和原来的模糊边缘逐点对得上。
+         * 坐标系跟着引用它的矩形走，矩形用 transform 平移，羽化带就跟着移动。
+         */}
+        <linearGradient
+          id="splash-feather-rise"
+          gradientUnits="userSpaceOnUse"
+          x1="-9"
+          x2="9"
         >
-          <feGaussianBlur stdDeviation="3" />
-        </filter>
-        {/* 入场遮罩：一块自左向右收回的窗口，先露鼻子再露壳和尾巴。 */}
+          {FEATHER.map((opacity, index) => (
+            <stop
+              key={index}
+              offset={index / (FEATHER.length - 1)}
+              stopColor="white"
+              stopOpacity={opacity}
+            />
+          ))}
+        </linearGradient>
+        <linearGradient
+          id="splash-feather-fall"
+          gradientUnits="userSpaceOnUse"
+          x1="-9"
+          x2="9"
+        >
+          {FEATHER.map((opacity, index) => (
+            <stop
+              key={index}
+              offset={index / (FEATHER.length - 1)}
+              stopColor="white"
+              stopOpacity={1 - opacity}
+            />
+          ))}
+        </linearGradient>
+        {/*
+         * 入场遮罩：一块自右向左打开的窗口，先露鼻子再露壳和尾巴。矩形的
+         * 原点就是左缘，右侧一直铺到遮罩区域外；上下沿也在犰狳之外，不需要软边。
+         */}
         <mask
           id="splash-entrance-clip"
           maskUnits="userSpaceOnUse"
@@ -123,15 +164,18 @@ export function SplashStage({ ref, label }: SplashStageProps) {
         >
           <rect
             ref={entrance}
-            fill="white"
-            filter="url(#splash-soft-edge)"
-            x="1080"
-            y="170"
-            width="100"
-            height="340"
+            fill="url(#splash-feather-rise)"
+            transform="translate(990 0)"
+            x="-9"
+            y="140"
+            width="720"
+            height="420"
           />
         </mask>
-        {/* 走姿与静止姿势各占一半，接缝一次扫过去，不做半透明叠化。 */}
+        {/*
+         * 走姿与静止姿势以同一道接缝分开：左边走姿、右边静止姿势，接缝一次扫
+         * 过去，不做半透明叠化。两块矩形的原点都在接缝上。
+         */}
         <mask
           id="splash-walking-clip"
           maskUnits="userSpaceOnUse"
@@ -143,12 +187,12 @@ export function SplashStage({ ref, label }: SplashStageProps) {
         >
           <rect
             ref={walking}
-            fill="white"
-            filter="url(#splash-soft-edge)"
-            x="700"
-            y="170"
-            width="480"
-            height="340"
+            fill="url(#splash-feather-fall)"
+            transform="translate(1130 0)"
+            x="-720"
+            y="140"
+            width="729"
+            height="420"
           />
         </mask>
         <mask
@@ -162,34 +206,38 @@ export function SplashStage({ ref, label }: SplashStageProps) {
         >
           <rect
             ref={resting}
-            fill="white"
-            filter="url(#splash-soft-edge)"
-            x="1180"
-            y="170"
-            width="0"
-            height="340"
+            fill="url(#splash-feather-rise)"
+            transform="translate(1130 0)"
+            x="-9"
+            y="140"
+            width="720"
+            height="420"
           />
         </mask>
-        <filter
-          id="splash-blue"
-          x="-200%"
-          y="-200%"
-          width="500%"
-          height="500%"
-          colorInterpolationFilters="sRGB"
-        >
-          <feGaussianBlur stdDeviation="7" />
-        </filter>
-        <filter
-          id="splash-cyan"
-          x="-200%"
-          y="-200%"
-          width="500%"
-          height="500%"
-          colorInterpolationFilters="sRGB"
-        >
-          <feGaussianBlur stdDeviation="2" />
-        </filter>
+        {/*
+         * 笔尖的两层光晕：原来是实心圆加高斯模糊（r=10/σ=7、r=4/σ=2），这里
+         * 换成算好的径向渐变，笔尖每帧都在移动，省掉两次逐帧模糊。
+         */}
+        <radialGradient id="splash-tip-halo-glow">
+          {HALO_GLOW.map((opacity, index) => (
+            <stop
+              key={index}
+              className="splash-tip-glow-stop"
+              offset={index / (HALO_GLOW.length - 1)}
+              stopOpacity={opacity}
+            />
+          ))}
+        </radialGradient>
+        <radialGradient id="splash-tip-light-glow">
+          {LIGHT_GLOW.map((opacity, index) => (
+            <stop
+              key={index}
+              className="splash-tip-glow-stop"
+              offset={index / (LIGHT_GLOW.length - 1)}
+              stopOpacity={opacity}
+            />
+          ))}
+        </radialGradient>
       </defs>
 
       <rect className="splash-stage-bg" width="1920" height="1080" />
@@ -276,13 +324,13 @@ export function SplashStage({ ref, label }: SplashStageProps) {
         <g ref={tip} opacity="0" pointerEvents="none">
           <circle
             className="splash-tip-halo"
-            r="10"
-            filter="url(#splash-blue)"
+            r="31"
+            fill="url(#splash-tip-halo-glow)"
           />
           <circle
             className="splash-tip-light"
-            r="4"
-            filter="url(#splash-cyan)"
+            r="10"
+            fill="url(#splash-tip-light-glow)"
           />
           <circle className="splash-tip-core" r="2.6" />
         </g>

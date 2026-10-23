@@ -1,11 +1,10 @@
 import { createRoot } from "react-dom/client";
 import { usePreferencesStore } from "../app/preferences-store";
-import { Splash } from "./Splash";
+import { Splash, SPLASH_FADE_MAX_MS, SPLASH_FUSE_MS } from "./Splash";
 import { markSplashShown, setSplashPhase, shouldShowSplash } from "./session";
-import { SPLASH_DURATION_MS } from "./timeline";
 
-/** 覆盖层无论如何都会在这个时刻之前消失：动画全长加淡出，再留两秒余量。 */
-export const SPLASH_HARD_LIMIT_MS = SPLASH_DURATION_MS + 2260;
+/** 覆盖层无论如何都会在这个时刻之前消失：保险丝加淡出，再留两秒余量。 */
+export const SPLASH_HARD_LIMIT_MS = SPLASH_FUSE_MS + SPLASH_FADE_MAX_MS + 2000;
 
 /**
  * 把开屏动画挂到自己的 React root 上。

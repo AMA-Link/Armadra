@@ -5,7 +5,7 @@ import { describe, expect, it } from "vitest";
 
 /**
  * 开屏样式的守卫（设计系统 §8.7）：颜色只读根令牌，淡出读 `--dur-page`；
- * `Splash.tsx` 的 `FADE_MS` 读同一个令牌，行为在 `Splash.test.tsx`。
+ * `Splash.tsx` 的 `splashFadeMs` 读同一个令牌，行为在 `Splash.test.tsx`。
  */
 describe("splash.css", () => {
   const css = readFileSync(
