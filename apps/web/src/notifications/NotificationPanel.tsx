@@ -149,7 +149,7 @@ export function NotificationPanel({ onClose }: { onClose: () => void }) {
   );
 }
 
-function NeedRow({
+export function NeedRow({
   item,
   label,
   onSelect,
