@@ -5,6 +5,7 @@ import {
   meStreamEventSchema,
   type MeStreamEvent,
 } from "@armadra/platform-protocol/cloud-api";
+import { TICKET_SUBPROTOCOL_PREFIX } from "@armadra/platform-protocol";
 
 import { invalidationsFor } from "./keys";
 import type { StreamHandlers } from "./session";
@@ -17,7 +18,6 @@ import type { StreamHandlers } from "./session";
 interface HostPage {
   sources: { sourceId: string; online: boolean; lastSeenAtMs: number | null }[];
 }
-type HostList = InfiniteData<HostPage> | undefined;
 interface LinkPage {
   links: { linkId: string; uses: number }[];
 }
@@ -25,29 +25,52 @@ interface LinkPage {
 const isKind = (kind: string) => (key: readonly unknown[]) =>
   key[0] === "cloud" && key[2] === kind;
 
-/** 改目录缓存里某台主机；`patch` 答 `null` = 从目录里去掉。 */
+/**
+ * 改目录缓存里某台主机；`patch` 为 `"remove"` = 从目录里去掉。带 `status` 筛选的目录里，
+ * 上下线会让这一行换列表，所以改成让那份缓存过期重拉；所有目录里都找不到这一行
+ * （新上线的主机、别的页没缓存）则让全部目录过期重拉。
+ */
 function patchHosts(
   client: QueryClient,
   sourceId: string,
-  patch: (
-    row: HostPage["sources"][number],
-  ) => HostPage["sources"][number] | null,
+  patch: Partial<HostPage["sources"][number]> | "remove",
 ) {
-  client.setQueriesData<HostList>(
-    { predicate: (query) => isKind("hosts")(query.queryKey) },
-    (data) =>
-      data && {
-        ...data,
-        pages: data.pages.map((page) => ({
-          ...page,
-          sources: page.sources.flatMap((row) => {
-            if (row.sourceId !== sourceId) return [row];
-            const next = patch(row);
-            return next === null ? [] : [next];
-          }),
-        })),
-      },
-  );
+  let found = false;
+  const refetch = new Set<unknown>();
+  const lists = client
+    .getQueryCache()
+    .findAll({ predicate: (query) => isKind("hosts")(query.queryKey) });
+  for (const query of lists) {
+    const data = query.state.data as InfiniteData<HostPage> | undefined;
+    if (
+      !data ||
+      !data.pages.some((page) =>
+        page.sources.some((row) => row.sourceId === sourceId),
+      )
+    )
+      continue;
+    found = true;
+    const filters = query.queryKey[3] as { status?: string } | undefined;
+    if (filters?.status && patch !== "remove") {
+      refetch.add(query);
+      continue;
+    }
+    client.setQueryData<InfiniteData<HostPage>>(query.queryKey, {
+      ...data,
+      pages: data.pages.map((page) => ({
+        ...page,
+        sources: page.sources.flatMap((row) => {
+          if (row.sourceId !== sourceId) return [row];
+          return patch === "remove" ? [] : [{ ...row, ...patch }];
+        }),
+      })),
+    });
+  }
+  if (!found || refetch.size > 0)
+    void client.invalidateQueries({
+      predicate: (query) =>
+        isKind("hosts")(query.queryKey) && (!found || refetch.has(query)),
+    });
 }
 
 function patchHostDetail(
@@ -68,19 +91,19 @@ export function applyMeStreamEvent(client: QueryClient, event: MeStreamEvent) {
   switch (event.type) {
     case "sourceOnline": {
       const patch = { online: true, lastSeenAtMs: event.sinceMs };
-      patchHosts(client, event.sourceId, (row) => ({ ...row, ...patch }));
+      patchHosts(client, event.sourceId, patch);
       patchHostDetail(client, event.sourceId, patch);
       return;
     }
     case "sourceOffline": {
       const patch = { online: false, lastSeenAtMs: event.atMs };
-      patchHosts(client, event.sourceId, (row) => ({ ...row, ...patch }));
+      patchHosts(client, event.sourceId, patch);
       patchHostDetail(client, event.sourceId, patch);
       return;
     }
     case "sourceRevoked":
       // 撤销的主机不再出现在目录里；详情重拉后是「找不到」。
-      patchHosts(client, event.sourceId, () => null);
+      patchHosts(client, event.sourceId, "remove");
       void client.invalidateQueries({
         predicate: (query) =>
           isKind("host")(query.queryKey) &&
@@ -134,12 +157,17 @@ export interface MeStreamOptions {
   readonly createSocket?: (url: string, protocols: string[]) => WebSocket;
 }
 
-const RETRY_MIN_MS = 1_000;
-const RETRY_MAX_MS = 30_000;
+const RETRY_BASE_MS = 1_000;
+const RETRY_CAP_MS = 30_000;
+/** 连上后撑过这么久才算稳定、退避从头开始（免得连上就断的服务被一直重连）。 */
+const STABLE_MS = 10_000;
+/** 第一次断线后随机等 0–1 秒再连，免得服务重启时所有页面同一刻重连。 */
+const FIRST_JITTER_MS = 1_000;
 
 /**
  * 连 `/v1/me/stream`：用票据做子协议 `armadra-ticket.<t>` 升级；每 30 秒发 `ping`；
- * 断线按 1s、2s…30s 退避重连，重连成功后 `onResync`。不认识的事件类型忽略（§32）。
+ * 断线后全抖动退避（0 到 min(30s, 1s·2^n) 随机）重连，连上 10 秒才重置退避；
+ * 只要之前有过失败或断线，连上后就 `onResync`（期间的事件丢了）。不认识的事件类型忽略（§32）。
  */
 export function openMeStream(
   options: MeStreamOptions,
@@ -153,25 +181,32 @@ export function openMeStream(
   let socket: WebSocket | null = null;
   let pinger: ReturnType<typeof setInterval> | undefined;
   let retry: ReturnType<typeof setTimeout> | undefined;
-  let delay = RETRY_MIN_MS;
-  let opened = false;
+  let stable: ReturnType<typeof setTimeout> | undefined;
+  let attempt = 0;
+  let missed = false;
 
   const schedule = () => {
     if (stopped) return;
-    retry = setTimeout(connect, delay);
-    delay = Math.min(delay * 2, RETRY_MAX_MS);
+    const ceiling =
+      attempt === 0
+        ? FIRST_JITTER_MS
+        : Math.min(RETRY_CAP_MS, RETRY_BASE_MS * 2 ** attempt);
+    attempt += 1;
+    missed = true;
+    retry = setTimeout(connect, Math.random() * ceiling);
   };
 
   function connect() {
     options.ticket().then(
       ({ ticket }) => {
         if (stopped) return;
-        const ws = create(url, [`armadra-ticket.${ticket}`]);
+        const ws = create(url, [`${TICKET_SUBPROTOCOL_PREFIX}${ticket}`]);
         socket = ws;
         ws.onopen = () => {
-          delay = RETRY_MIN_MS;
-          if (opened) handlers.onResync();
-          opened = true;
+          if (missed) handlers.onResync();
+          stable = setTimeout(() => {
+            attempt = 0;
+          }, STABLE_MS);
           pinger = setInterval(() => {
             if (ws.readyState === 1) ws.send(JSON.stringify({ type: "ping" }));
           }, ME_STREAM_PING_MS);
@@ -189,6 +224,7 @@ export function openMeStream(
         };
         ws.onclose = () => {
           clearInterval(pinger);
+          clearTimeout(stable);
           socket = null;
           schedule();
         };
@@ -201,6 +237,7 @@ export function openMeStream(
   return () => {
     stopped = true;
     clearTimeout(retry);
+    clearTimeout(stable);
     clearInterval(pinger);
     socket?.close();
   };

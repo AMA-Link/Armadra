@@ -109,4 +109,66 @@ describe("openMeStream", () => {
     expect(FakeSocket.all[0]!.url).toBe("ws://localhost:3000/v1/me/stream");
     stop();
   });
+
+  it("全抖动退避：等待在 0 到 min(30s, 1s·2^n) 之间；连上不足 10 秒就断，退避不重置", async () => {
+    vi.useFakeTimers();
+    vi.spyOn(Math, "random").mockReturnValue(0.999);
+    const { stop } = open();
+    await vi.advanceTimersByTimeAsync(0);
+    FakeSocket.all[0]!.onopen?.();
+    FakeSocket.all[0]!.onclose?.(); // 第一次断线：最多等 1s
+    await vi.advanceTimersByTimeAsync(999);
+    expect(FakeSocket.all).toHaveLength(2);
+    FakeSocket.all[1]!.onopen?.();
+    await vi.advanceTimersByTimeAsync(5_000); // 不到 10 秒
+    FakeSocket.all[1]!.onclose?.(); // 第二次：上限 2s，不是又回到 1s
+    await vi.advanceTimersByTimeAsync(1_500);
+    expect(FakeSocket.all).toHaveLength(2);
+    await vi.advanceTimersByTimeAsync(500);
+    expect(FakeSocket.all).toHaveLength(3);
+    stop();
+  });
+
+  it("连上撑过 10 秒后退避从头开始", async () => {
+    vi.useFakeTimers();
+    vi.spyOn(Math, "random").mockReturnValue(0.999);
+    const { stop } = open();
+    await vi.advanceTimersByTimeAsync(0);
+    FakeSocket.all[0]!.onclose?.();
+    await vi.advanceTimersByTimeAsync(999);
+    FakeSocket.all[1]!.onopen?.();
+    await vi.advanceTimersByTimeAsync(10_000);
+    FakeSocket.all[1]!.onclose?.();
+    await vi.advanceTimersByTimeAsync(1_000); // 重置后上限回到 1s
+    expect(FakeSocket.all).toHaveLength(3);
+    stop();
+  });
+
+  it("首次连接失败后才连上也要 onResync；一次就连上不 resync", async () => {
+    vi.useFakeTimers();
+    const first = open();
+    await vi.advanceTimersByTimeAsync(0);
+    FakeSocket.all[0]!.onopen?.();
+    expect(first.onResync).not.toHaveBeenCalled();
+    first.stop();
+    FakeSocket.all = [];
+    const ticket = vi
+      .fn()
+      .mockRejectedValueOnce(new Error("down"))
+      .mockResolvedValue({ ticket: "tk" });
+    const onResync = vi.fn();
+    const stop = openMeStream(
+      {
+        origin: "http://localhost:3000",
+        ticket,
+        createSocket: (url, protocols) =>
+          new FakeSocket(url, protocols) as unknown as WebSocket,
+      },
+      { onEvent: vi.fn(), onResync },
+    );
+    await vi.advanceTimersByTimeAsync(1_000);
+    FakeSocket.all[0]!.onopen?.();
+    expect(onResync).toHaveBeenCalledOnce();
+    stop();
+  });
 });
