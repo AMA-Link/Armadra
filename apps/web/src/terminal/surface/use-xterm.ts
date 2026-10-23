@@ -25,7 +25,8 @@ import { compensateScaledPointer } from "./scaled-pointer";
 import { applyOscTitle } from "./title";
 import { registerProgramOsc } from "./program-osc";
 import { ctrlEnterInput, trackKeyProtocol } from "./key-protocol";
-import { deliverInput } from "./use-handle";
+import { deliverInput, deliverReply } from "./use-handle";
+import { trackQueryReplies } from "./query-reply";
 import { loseWebglContexts } from "../render-budget";
 import { RESIZE_DEBOUNCE_MS, TERMINAL_SCROLLBACK } from "./constants";
 import type { SurfaceRefs } from "./refs";
@@ -167,7 +168,13 @@ export function useXtermInstance(
      * `\e[<0;8;3M` frames). Its payload is also Latin-1 bytes-in-a-string,
      * which our JSON/UTF-8 transport would re-encode wrongly anyway.
      */
-    const input = terminal.onData((chunk) => deliverInput(refs, chunk));
+    // 对查询的应答单独标出来（#518）：几个视图看同一个会话时 core 只收一份。
+    const replies = trackQueryReplies(terminal.parser);
+    const input = terminal.onData((chunk) =>
+      replies.isReply(chunk)
+        ? deliverReply(refs, chunk)
+        : deliverInput(refs, chunk),
+    );
     // 选中即复制（设置项，默认关）。`onSelectionChange` 在拖拽过程中会连发，
     // 拿到空选区时不要清掉剪贴板。
     const selection = terminal.onSelectionChange(() => {
@@ -265,6 +272,7 @@ export function useXtermInstance(
       observer.disconnect();
       unwatchTheme();
       input.dispose();
+      replies.dispose();
       selection.dispose();
       bell.dispose();
       title.dispose();

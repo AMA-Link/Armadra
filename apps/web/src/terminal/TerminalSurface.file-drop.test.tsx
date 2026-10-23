@@ -110,6 +110,7 @@ vi.mock("@xterm/xterm", () => ({
       registerOscHandler: () => ({ dispose() {} }),
       registerCsiHandler: () => ({ dispose() {} }),
       registerEscHandler: () => ({ dispose() {} }),
+      registerDcsHandler: () => ({ dispose() {} }),
     };
     textarea = undefined;
     loadAddon() {}
