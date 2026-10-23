@@ -81,7 +81,15 @@ describe("状态描边", () => {
       minimapFill({ color: "var(--node-color-2)", selected: true }),
     ).toContain("80%");
     expect(minimapFill({ plain: true })).toBe(
-      "color-mix(in srgb, var(--muted-foreground) 35%, transparent)",
+      "color-mix(in srgb, var(--faint) 35%, transparent)",
+    );
+  });
+
+  it("无状态节点与白板对象用弱前景色 --faint，不用偏深的 --muted-foreground", () => {
+    expect(MINIMAP_COLORS.plain).toBe("var(--faint)");
+    expect(minimapStroke({})).toBe("var(--faint)");
+    expect(minimapFill({ selected: true })).toBe(
+      "color-mix(in srgb, var(--faint) 80%, transparent)",
     );
   });
 

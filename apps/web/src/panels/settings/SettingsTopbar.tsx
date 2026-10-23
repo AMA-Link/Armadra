@@ -11,7 +11,8 @@ import { subpageTitleKey } from "./subpage";
 /**
  * 设置顶栏（设计系统 §5.17）：左面包屑「设置 › 分组 › 页名（› 子页）」，末级 `text-body`
  * 500 `--text`，其余 `--muted-foreground`，分隔符 `›` 用 `--faint`；右侧搜索、作用范围
- * 徽标、关闭。面包屑是 `nav` + `ol`，末级 `aria-current="page"`。
+ * 徽标、关闭。左缘与下方内容面板里的页标题对齐（面板 1px 边 + 页内边距，见
+ * `styles/settings.css`）。面包屑是 `nav` + `ol`，末级 `aria-current="page"`。
  */
 export function SettingsTopbar({
   section,
@@ -34,7 +35,7 @@ export function SettingsTopbar({
   return (
     <div
       data-slot="settings-topbar"
-      className="flex h-(--settings-topbar-h) shrink-0 items-center gap-3 pr-4"
+      className="settings-topbar flex h-(--settings-topbar-h) shrink-0 items-center gap-3 pr-4"
     >
       <nav aria-label={t("settings.breadcrumb")} className="min-w-0 flex-1">
         <ol className="flex min-w-0 items-center gap-1.5 text-body text-muted-foreground">
