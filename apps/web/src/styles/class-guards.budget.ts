@@ -395,7 +395,6 @@ export const LEGACY_BUDGET: Readonly<
     "realtime/CursorLayer.tsx": 1,
     "shell/Banners.tsx": 1,
     "showcase/sections/canvas.tsx": 1,
-    "splash/SplashStage.tsx": 1,
   },
   "sonner-import": {
     "acp/adapter-install.tsx": 1,

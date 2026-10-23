@@ -1,9 +1,14 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, render } from "@testing-library/react";
 import { usePreferencesStore } from "../app/preferences-store";
-import { Splash, REDUCED_HOLD_MS, SKIP_AFTER_MS } from "./Splash";
+import { Splash, REDUCED_HOLD_MS, SKIP_AFTER_MS, splashFadeMs } from "./Splash";
 import { mountSplash } from "./mount";
-import { clearSplashShown } from "./session";
+import {
+  clearSplashShown,
+  resetSplashPhase,
+  splashJustDismissed,
+  splashPhase,
+} from "./session";
 import { SPLASH_DURATION_MS } from "./timeline";
 
 /**
@@ -76,6 +81,11 @@ afterEach(() => {
   cleanup();
   vi.useRealTimers();
   document.getElementById("splash-root")?.remove();
+  document.documentElement.style.removeProperty("--dur-page");
+  document.documentElement.style.removeProperty("--dur-fast");
+  delete document.documentElement.dataset.theme;
+  document.documentElement.style.removeProperty("color-scheme");
+  resetSplashPhase();
 });
 
 describe("Splash theme", () => {
@@ -233,5 +243,71 @@ describe("mountSplash", () => {
     act(() => mountSplash());
     expect(overlay()).toBeNull();
     expect(document.getElementById("splash-root")).toBeNull();
+  });
+});
+
+describe("Splash 与 App 的接缝", () => {
+  it("挂上就把解析后的主题写到 <html>，不等 App 挂载", () => {
+    usePreferencesStore.setState({ theme: "light" });
+    document.documentElement.dataset.theme = "dark";
+    render(<Splash onDismiss={() => undefined} />);
+    expect(document.documentElement.dataset.theme).toBe("light");
+    expect(document.documentElement.style.colorScheme).toBe("light");
+  });
+
+  it("系统外观中途变了，<html> 跟着变", () => {
+    render(<Splash onDismiss={() => undefined} />);
+    expect(document.documentElement.dataset.theme).toBe("light");
+    changeSystem({ dark: true });
+    expect(document.documentElement.dataset.theme).toBe("dark");
+  });
+
+  it("淡出时长读 --dur-page，不是写死的数", () => {
+    vi.useFakeTimers();
+    document.documentElement.style.setProperty("--dur-page", "500ms");
+    const onDismiss = vi.fn();
+    render(<Splash onDismiss={onDismiss} />);
+    act(() => void vi.advanceTimersByTime(SKIP_AFTER_MS + 10));
+    act(() => {
+      window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
+    });
+    act(() => void vi.advanceTimersByTime(400));
+    expect(onDismiss).not.toHaveBeenCalled();
+    act(() => void vi.advanceTimersByTime(110));
+    expect(onDismiss).toHaveBeenCalledTimes(1);
+  });
+
+  it("减少动效下淡出读 --dur-fast", () => {
+    vi.useFakeTimers();
+    media.reduce = true;
+    document.documentElement.style.setProperty("--dur-fast", "0.2s");
+    const onDismiss = vi.fn();
+    render(<Splash onDismiss={onDismiss} />);
+    act(() => void vi.advanceTimersByTime(REDUCED_HOLD_MS));
+    expect(overlay()?.dataset.splashState).toBe("leaving");
+    act(() => void vi.advanceTimersByTime(150));
+    expect(onDismiss).not.toHaveBeenCalled();
+    act(() => void vi.advanceTimersByTime(60));
+    expect(onDismiss).toHaveBeenCalledTimes(1);
+  });
+
+  it("令牌读不到时退回与 tokens.css 同值的 280 / 120", () => {
+    expect(splashFadeMs(false)).toBe(280);
+    expect(splashFadeMs(true)).toBe(120);
+  });
+
+  it("开始退场就告诉 App：phase 走 playing → leaving → done", () => {
+    vi.useFakeTimers();
+    act(() => mountSplash());
+    expect(splashPhase()).toBe("playing");
+    expect(splashJustDismissed()).toBe(false);
+    act(() => void vi.advanceTimersByTime(SKIP_AFTER_MS + 10));
+    act(() => {
+      window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
+    });
+    expect(splashPhase()).toBe("leaving");
+    expect(splashJustDismissed()).toBe(true);
+    act(() => void vi.advanceTimersByTime(400));
+    expect(splashPhase()).toBe("done");
   });
 });

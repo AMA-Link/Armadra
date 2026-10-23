@@ -1,10 +1,10 @@
 /*
  * 开屏动画的样式。
  *
- * 覆盖层比 App 先挂，那时 `<html data-theme>` 还是 index.html 里写死的值，
- * 所以这里不继承 `:root` 的主题变量，而是自己按 `data-splash-theme` 挑一套。
- * 取值与 styles/tokens.css 的同名 token 逐条对齐（`--bg` / `--text` /
- * `--brand` / `--brand-text`），改 tokens 时这里要跟着改。
+ * 颜色全部读根令牌（`--bg` / `--text` / `--brand` / `--brand-text`）：覆盖层一挂上，
+ * `Splash` 就把解析后的主题写到 `<html data-theme>`，所以这里和随后挂载的 App
+ * 用的是同一组值，终帧与 App 首帧底色逐像素一致，淡出时不闪。开屏只多两个
+ * 专用值（透明度与描边，不是色）：`--splash-halo-opacity`、`--splash-walker-rim`。
  */
 
 .splash {
@@ -17,34 +17,22 @@
   cursor: default;
   overflow: hidden;
   opacity: 1;
-  transition: opacity 260ms ease;
+  /* 淡出时长读 `--dur-page`；`Splash.tsx` 的 `FADE_MS` 也从同一个令牌取，不再各写一份 */
+  transition: opacity var(--dur-page) var(--ease-out);
 
-  /* 深色（tokens.css 的 :root 默认） */
-  --splash-bg: #1c1c1c;
-  --splash-text: rgb(255 255 255 / 85%);
-  --splash-brand: #0a84ff;
-  --splash-brand-text: #6cb0ff;
-  /* 以下四个是开屏专用，tokens.css 里没有对应项 */
-  --splash-ink: #ffffff;
-  --splash-ink-alpha: 0.85;
+  /* 以下两个是开屏专用（深色） */
   --splash-halo-opacity: 0.6;
-  --splash-tip-core: var(--splash-brand-text);
-  --splash-walker-rim: rgb(255 255 255 / 24%);
+  --splash-walker-rim: color-mix(in srgb, var(--text) 28%, transparent);
+  --splash-tip-core: var(--brand-text);
 
-  background: var(--splash-bg);
+  background: var(--bg);
 }
 
-/* 浅色（tokens.css 的 :root[data-theme="light"]） */
+/* 浅色：光晕更淡，笔尖亮点用品牌色本身 */
 .splash[data-splash-theme="light"] {
-  --splash-bg: #f7f7f7;
-  --splash-text: rgb(32 32 32 / 90%);
-  --splash-brand: #007aff;
-  --splash-brand-text: #0a5fc4;
-  --splash-ink: #202020;
-  --splash-ink-alpha: 0.9;
   --splash-halo-opacity: 0.2;
-  --splash-tip-core: var(--splash-brand);
-  --splash-walker-rim: rgb(32 32 32 / 10%);
+  --splash-walker-rim: color-mix(in srgb, var(--text) 11%, transparent);
+  --splash-tip-core: var(--brand);
 }
 
 .splash[data-splash-state="leaving"] {
@@ -63,21 +51,25 @@
 }
 
 .splash .splash-ink {
-  fill: var(--splash-ink);
-  opacity: var(--splash-ink-alpha);
+  fill: var(--text);
+}
+
+/* 书写遮罩的笔刷：一条中心线加粗成 72（画面坐标）才是那把刷子，不是图标线宽 */
+.splash .splash-brush {
+  stroke-width: 72px;
 }
 
 .splash .splash-stage-bg {
-  fill: var(--splash-bg);
+  fill: var(--bg);
 }
 
 .splash .splash-tip-halo {
-  fill: var(--splash-brand);
+  fill: var(--brand);
   opacity: var(--splash-halo-opacity);
 }
 
 .splash .splash-tip-light {
-  fill: var(--splash-brand);
+  fill: var(--brand);
   opacity: 0.55;
 }
 
@@ -89,8 +81,9 @@
   filter: drop-shadow(0 0 1px var(--splash-walker-rim));
 }
 
+/* 减少动效：淡出换成 `--dur-fast`（只保留透明度变化） */
 @media (prefers-reduced-motion: reduce) {
   .splash {
-    transition-duration: 1ms;
+    transition-duration: var(--dur-fast);
   }
 }

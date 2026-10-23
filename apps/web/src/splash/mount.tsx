@@ -1,7 +1,7 @@
 import { createRoot } from "react-dom/client";
 import { usePreferencesStore } from "../app/preferences-store";
 import { Splash } from "./Splash";
-import { markSplashShown, shouldShowSplash } from "./session";
+import { markSplashShown, setSplashPhase, shouldShowSplash } from "./session";
 import { SPLASH_DURATION_MS } from "./timeline";
 
 /** 覆盖层无论如何都会在这个时刻之前消失：动画全长加淡出，再留两秒余量。 */
@@ -23,6 +23,7 @@ export function mountSplash(): void {
   const { splashAnimation } = usePreferencesStore.getState();
   if (!shouldShowSplash(splashAnimation)) return;
   markSplashShown();
+  setSplashPhase("playing");
 
   const host = document.createElement("div");
   host.id = "splash-root";
@@ -32,6 +33,7 @@ export function mountSplash(): void {
   const dismiss = () => {
     if (dismissed) return;
     dismissed = true;
+    setSplashPhase("done");
     // 卸载自己的 root 必须错开当前这次渲染，否则 React 会警告同步卸载。
     setTimeout(() => {
       root.unmount();
