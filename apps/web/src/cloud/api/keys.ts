@@ -86,6 +86,9 @@ export function invalidationsFor(
       return [
         under("grants", space(event.teamId)),
         under("access", space(event.teamId), event.sourceId),
+        // 成员能不能看到这台主机随授予变：目录与详情一并重拉。
+        under("hosts", space(event.teamId)),
+        under("host", space(event.teamId), event.sourceId),
       ];
     case "accessRevoked":
       // 撤销类事件不报空间：访问清单、有效权限、授予列表，以及本人看得到的主机目录与详情都重拉。

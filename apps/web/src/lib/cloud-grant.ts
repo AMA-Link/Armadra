@@ -162,8 +162,8 @@ export interface GrantEdit {
 }
 
 /**
- * 把 `target`（这个人的授予之一）改成 `next` 之后，他的有效权限是否收窄：任一来路角色更低、
- * 范围更小或到期更早，或合成结果收窄。`held` 是他在这台主机上的全部授予（含 `target`）。
+ * 把 `target`（这个人的授予之一）改成 `next` 之后，他的有效权限是否收窄：按合成结果判断
+ * （别的来路已经兜住的降低不算，例如团队 driver 整台加本人 operator 整台，本人改 viewer 不变）。`held` 是他在这台主机上的全部授予（含 `target`）。
  */
 export function updateNarrows(
   held: readonly GrantShape[],
@@ -171,10 +171,6 @@ export function updateNarrows(
   next: GrantEdit,
   now: number,
 ): boolean {
-  const before = composeRole(liveGrants(held, now));
-  if (before !== null && rank(next.role) < rank(before)) return true;
-  if (narrowsScope(target.workspaceIds, next.workspaceIds)) return true;
-  if (shortensExpiry(target.expiresAtMs ?? null, next.expiresAtMs)) return true;
   const replaced: GrantShape = {
     role: next.role,
     workspaceIds: next.workspaceIds,

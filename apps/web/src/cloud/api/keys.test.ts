@@ -81,6 +81,25 @@ describe("查询键", () => {
         cloudKeys.grants("t:t2", { accountId: "acct" }),
       ),
     ).toBe(false);
+    // 授予变了，成员能不能看到这台主机也变：目录与详情重拉。
+    expect(
+      hit(
+        { type: "grantChanged", sourceId: "s1", teamId: "t1", ...at },
+        cloudKeys.hosts("t:t1", {}),
+      ),
+    ).toBe(true);
+    expect(
+      hit(
+        { type: "grantChanged", sourceId: "s1", teamId: "t1", ...at },
+        cloudKeys.host("t:t1", "s1"),
+      ),
+    ).toBe(true);
+    expect(
+      hit(
+        { type: "grantChanged", sourceId: "s1", teamId: "t1", ...at },
+        cloudKeys.host("t:t1", "s2"),
+      ),
+    ).toBe(false);
     // 没有 teamId = 个人空间。
     expect(
       hit(
