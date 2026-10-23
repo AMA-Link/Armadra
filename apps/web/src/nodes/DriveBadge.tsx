@@ -6,7 +6,6 @@ import { runtimeApi } from "@/api/client";
 import { useT } from "@/app/preferences-store";
 import { Badge } from "@/ui/badge";
 import { Button } from "@/ui/button";
-import { HEADER_CHIP_CLASS } from "./header-chip";
 
 /**
  * 谁在驱动这个终端（设计 `agent-delivery.md` §6）。
@@ -41,7 +40,7 @@ export function DriveBadge({
     <>
       <Badge
         variant={lease?.state === "agent" ? "default" : "outline"}
-        className={HEADER_CHIP_CLASS}
+        size="sm"
         data-slot="terminal-driver"
         title={t(label.key, { name: label.name })}
       >

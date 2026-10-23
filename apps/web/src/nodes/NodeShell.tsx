@@ -24,7 +24,8 @@ import {
 } from "@/ui/dropdown-menu";
 import { IconButton } from "@/ui/icon-button";
 import { Input } from "@/ui/input";
-import { StatusDot, type StatusTone } from "@/ui/status-pill";
+import { Popover, PopoverContent, PopoverTrigger } from "@/ui/popover";
+import { StatusDot, StatusPill, type StatusTone } from "@/ui/status-pill";
 import { useT } from "@/app/preferences-store";
 import { useCanvasStore } from "@/store/canvas-store";
 import { useCompactLayout } from "@/platform/layout";
@@ -76,8 +77,16 @@ export interface NodeShellProps {
     pendingId: string;
     onAnswer: (decision: "allow" | "deny") => void;
   };
+  /**
+   * 状态段的弹层内容（`StatusLine` + `AgentTree`）。传了它，状态段就是一个可点的
+   * 触发器，点开弹出这块内容；不传，状态段只是展示（P6 接线时填）。
+   */
+  statusPopover?: React.ReactNode;
   children: React.ReactNode;
 }
+
+/** 节点至少这么宽，状态段才带字（`StatusPill sm`）；更窄只画圆点。 */
+export const STATUS_PILL_MIN_WIDTH = 560;
 
 /* -------------------------------------------------------------------------- */
 /* 通用外壳                                                                     */
@@ -206,6 +215,7 @@ export function NodeShell({
   headerActions,
   menuItems,
   approval,
+  statusPopover,
   children,
 }: NodeShellProps) {
   const meta = nodeMeta(node.type);
@@ -232,9 +242,9 @@ export function NodeShell({
           最小尺寸按 `NODE_META.minSize`。 */}
       <div
         className={cn(
-          "node-frame flex h-full w-full flex-col overflow-hidden rounded-[var(--r-card)]",
-          "border border-[var(--border)] bg-[var(--card)]",
-          selected && "border-[var(--brand)]",
+          "node-frame flex h-full w-full flex-col overflow-hidden rounded-card",
+          "border border-border bg-card",
+          selected && "border-brand",
         )}
       >
         <NodeHeader
@@ -247,6 +257,7 @@ export function NodeShell({
           headerActions={headerActions}
           menuItems={menuItems}
           approval={approval}
+          statusPopover={statusPopover}
         />
 
         {/* 折叠时只隐藏，不卸载：xterm / CodeMirror 的实例必须活着（§3.4） */}
@@ -293,6 +304,7 @@ export function NodeHeader({
   headerActions,
   menuItems,
   approval,
+  statusPopover,
 }: {
   node: CanvasNode;
   collapsed: boolean;
@@ -303,6 +315,7 @@ export function NodeHeader({
   headerActions?: React.ReactNode;
   menuItems?: React.ReactNode;
   approval?: NodeShellProps["approval"];
+  statusPopover?: React.ReactNode;
 }) {
   const t = useT();
   // 改名的开合放在头部：标题与 `···` 里的「重命名」是同一个入口，触屏上
@@ -314,7 +327,7 @@ export function NodeHeader({
       className={cn(
         DRAG_HANDLE_CLASS,
         "flex shrink-0 items-center gap-2 px-1.5",
-        "bg-[var(--card)]",
+        "bg-card",
       )}
       style={{ height: HEADER_HEIGHT }}
       // 头部是拖拽区：只有里面的控件吃掉 pointerdown，其余放行给 select 工具
@@ -340,13 +353,11 @@ export function NodeHeader({
       <HeaderChips>{headerChips}</HeaderChips>
 
       {status && (
-        <span className="node-header-status">
-          <StatusDot
-            tone={status.tone}
-            label={status.label}
-            {...(status.pulse === undefined ? {} : { pulse: status.pulse })}
-          />
-        </span>
+        <NodeStatus
+          status={status}
+          wide={node.size.width >= STATUS_PILL_MIN_WIDTH}
+          popover={statusPopover}
+        />
       )}
 
       {approval && <HeaderApproval onAnswer={approval.onAnswer} />}
@@ -366,7 +377,7 @@ export function NodeHeader({
         />
 
         <IconButton
-          className="hover:text-[var(--danger-text)]"
+          className="hover:text-danger-text"
           label={t("node.close")}
           onClick={() => closeNode(node.id)}
         >
@@ -374,6 +385,52 @@ export function NodeHeader({
         </IconButton>
       </span>
     </div>
+  );
+}
+
+/**
+ * 状态段：窄节点只画 `StatusDot 8`，宽节点（≥ 560）画 `StatusPill sm`（带字）。
+ * 传了 `popover` 就整段可点，点开弹出 `StatusLine + AgentTree`；`≤ 440` 的藏起来
+ * 由 `nodes.css` 的容器查询管。
+ */
+function NodeStatus({
+  status,
+  wide,
+  popover,
+}: {
+  status: NonNullable<NodeShellProps["status"]>;
+  wide: boolean;
+  popover?: React.ReactNode;
+}) {
+  const pulse = status.pulse === undefined ? {} : { pulse: status.pulse };
+  const mark = wide ? (
+    <StatusPill tone={status.tone} label={status.label} {...pulse} />
+  ) : (
+    <StatusDot tone={status.tone} label={status.label} {...pulse} />
+  );
+  if (popover === undefined || popover === null) {
+    return <span className="node-header-status">{mark}</span>;
+  }
+  return (
+    <span className="node-header-status">
+      <Popover>
+        <PopoverTrigger asChild>
+          <Button
+            variant="ghost"
+            size="xs"
+            data-no-drag="true"
+            data-slot="node-status-trigger"
+            aria-label={status.label}
+            className="px-1"
+          >
+            {mark}
+          </Button>
+        </PopoverTrigger>
+        <PopoverContent align="end" className="w-80 max-w-96">
+          {popover}
+        </PopoverContent>
+      </Popover>
+    </span>
   );
 }
 
@@ -510,7 +567,8 @@ function NodeTitle({
       <Input
         autoFocus
         aria-label={t("node.title")}
-        className="node-title h-6 min-w-0 flex-1 px-1.5 text-[12px]"
+        size="xs"
+        className="node-title min-w-0 flex-1"
         value={draft}
         onFocus={(event) => event.currentTarget.select()}
         onChange={(event) => setDraft(event.target.value)}
@@ -555,7 +613,7 @@ function NodeTitle({
       role="textbox"
       tabIndex={0}
       title={node.title}
-      className="node-title min-w-0 flex-1 truncate rounded-sm text-[12px] font-medium text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      className="node-title min-w-0 flex-1 truncate rounded-tight text-meta font-medium text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring"
       onDoubleClick={(event) => {
         if (event.shiftKey || event.ctrlKey || event.metaKey || event.altKey)
           return;

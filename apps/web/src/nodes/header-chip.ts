@@ -1,9 +1,7 @@
 /**
- * 节点头胶囊的统一外观（设计系统 §4 节点头）。
+ * 节点头胶囊现在直接是 `Badge variant="outline" size="sm"`（18 / caption / `px-1.5` /
+ * 等宽数字），不再需要这条类名。
  *
- * 胶囊簇里的每一枚——内存、账号、交接、依赖、驱动、排队、上下文读取——都用
- * `Badge` 加这一条：18px 高、caption 字号、`px-1.5`、等宽数字。可点的胶囊是
- * `Badge asChild` 包一枚 `Button`，外观仍走这条，所以同一行里不会一枚高一枚矮。
+ * @deprecated 只给还没迁的调用点留着（`panels/resources/MemoryBadge`），批次 3 删除。
  */
-export const HEADER_CHIP_CLASS =
-  "h-[18px] px-1.5 text-[length:var(--text-caption)] tabular-nums";
+export const HEADER_CHIP_CLASS = "";

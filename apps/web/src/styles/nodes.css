@@ -108,14 +108,37 @@
 }
 
 .node-frame {
-  box-shadow:
-    0 1px 2px rgb(0 0 0 / 8%),
-    0 3px 10px rgb(0 0 0 / 10%);
-  transition: border-color var(--dur-fast) var(--ease-out);
+  box-shadow: var(--shadow-node);
+  /* 阴影不做动画（每帧重算模糊）；只过渡边框色 */
+  transition: border-color var(--dur-fast) var(--ease-color);
+}
+
+/* 悬停：边框升到 `--border-strong`；触屏没有悬停，不画 */
+@media (hover: hover) and (pointer: fine) {
+  [data-slot="node-shell"]:hover > .node-frame {
+    border-color: var(--border-strong);
+  }
 }
 
 [data-slot="node-shell"]:focus-within > .node-frame {
   border-color: var(--border-strong);
+}
+
+/*
+ * 拖动中（`ArmadraNode` 在外层写 `data-dragging`）：阴影叠两层 = 加倍，并提示浏览器
+ * 这个节点要动。松手即撤，没有惯性。
+ */
+[data-dragging="true"] .node-frame {
+  box-shadow: var(--shadow-node), var(--shadow-node);
+  will-change: transform;
+}
+
+/*
+ * 新建节点入场（`ArmadraNode` 对画布稳定之后挂上的节点写 `data-entering`）：
+ * 0.96 → 1 + 淡入，`--dur-slow`。删除时 React Flow 同步卸载，没有退场。
+ */
+[data-entering="true"] .node-frame {
+  animation: armadra-pop-in var(--dur-slow) var(--ease-out) both;
 }
 
 /* 工作流运行里已完成的角色节点（设计系统 §4）：1px `--success`，选中时让给品牌色。 */
@@ -124,8 +147,21 @@
   border-color: var(--success);
 }
 
+/* 选中：品牌蓝 1.5px（1px 边 + 0.5px 外环，不改节点盒子的尺寸） */
 [data-slot="node-shell"][data-selected="true"] > .node-frame {
   border-color: var(--brand);
+  box-shadow:
+    var(--shadow-node),
+    0 0 0 0.5px var(--brand);
+}
+
+[data-dragging="true"]
+  [data-slot="node-shell"][data-selected="true"]
+  > .node-frame {
+  box-shadow:
+    var(--shadow-node),
+    var(--shadow-node),
+    0 0 0 0.5px var(--brand);
 }
 
 /* An inset separator does not change the header's measured height on collapse. */
@@ -142,7 +178,13 @@
 @media (prefers-reduced-motion: reduce) {
   .node-frame,
   .react-flow__handle.node-connection-handle {
-    transition: none;
+    transition-duration: var(--dur-fast);
+  }
+
+  /* 入场：不缩放，只淡入 */
+  [data-entering="true"] .node-frame {
+    animation-name: armadra-fade-in !important;
+    animation-duration: var(--dur-fast) !important;
   }
 }
 
@@ -212,6 +254,35 @@
   [data-slot="node-header"] {
     gap: 3px;
     padding-inline: 5px;
+  }
+}
+
+/*
+ * 不可连接（拖线悬在一个连不上的节点上，如它自己）：该节点的把手整圈变 `--danger`
+ * 并左右各 2px 抖两次。React Flow 在悬停的落点把手上标 `connectingto`，合法时
+ * 再加 `valid`；没有 `valid` 就是不可连接。抖动用独立的 `translate` 属性，
+ * 不动把手自己定位用的 `transform`。
+ */
+[data-slot="node-shell"]:has(
+    [data-slot="connection-drop"].connectingto:not(.valid)
+  )
+  .react-flow__handle.node-connection-handle {
+  background: var(--danger);
+  opacity: 1;
+  animation: armadra-handle-shake 240ms linear;
+}
+
+@keyframes armadra-handle-shake {
+  25% {
+    translate: -2px 0;
+  }
+
+  50% {
+    translate: 2px 0;
+  }
+
+  75% {
+    translate: -2px 0;
   }
 }
 

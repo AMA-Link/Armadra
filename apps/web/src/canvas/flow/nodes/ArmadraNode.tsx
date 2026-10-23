@@ -13,6 +13,7 @@ import { NodeShell } from "@/nodes/NodeShell";
 import { NodeBodyFallback } from "@/nodes/NodeBodyFallback";
 import { useCanvasStore } from "@/store/canvas-store";
 import { clearDrafts, setDraft } from "../drafts";
+import { useNodeEntering } from "../node-enter";
 import type { ArmadraFlowNode } from "../../sync/project";
 
 /**
@@ -64,9 +65,11 @@ export function ArmadraNode({
   id,
   data,
   selected = false,
+  dragging = false,
 }: NodeProps<ArmadraFlowNode>) {
   const node = data;
   const meta = NODE_META[node.type];
+  const entering = useNodeEntering();
   const collapsed = node.collapsed === true;
   const focused = useCanvasStore((state) => state.focusNodeId === id);
 
@@ -80,7 +83,14 @@ export function ArmadraNode({
   const Body = NODE_BODY[node.type];
 
   return (
-    <>
+    // `contents`：不生成盒子，只给样式一个挂 `data-dragging`（拖动中阴影加倍、
+    // `will-change`）与 `data-entering`（新建入场）的地方，布局与以前完全一样。
+    <div
+      data-slot="node-host"
+      data-dragging={dragging ? "true" : undefined}
+      data-entering={entering ? "true" : undefined}
+      className="contents"
+    >
       <NodeResizer
         isVisible={selected}
         minWidth={meta.minSize.width}
@@ -115,7 +125,7 @@ export function ArmadraNode({
           </React.Suspense>
         </NodeShell>
       )}
-    </>
+    </div>
   );
 }
 
