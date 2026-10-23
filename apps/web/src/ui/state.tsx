@@ -1,6 +1,6 @@
 import { RotateCw } from "lucide-react";
 import type { ReactNode } from "react";
-import { cn } from "cn";
+import { cn } from "@/lib/cn";
 
 import { Alert, AlertAction, AlertTitle } from "@/ui/alert";
 import { Empty, EmptyHeader, EmptyMedia, EmptyTitle } from "@/ui/empty";
@@ -29,8 +29,8 @@ export function EmptyState({
       data-state-kind="empty"
       className={cn(
         inline
-          ? "items-start gap-0 rounded-none p-0 px-3 py-1.5 text-left"
-          : "border border-dashed border-border",
+          ? "items-start gap-0 rounded-none border-0 p-0 px-3 py-1.5 text-left"
+          : undefined,
         className,
       )}
     >
@@ -40,7 +40,7 @@ export function EmptyState({
         ) : null}
         <EmptyTitle
           className={
-            inline ? "text-xs font-normal text-muted-foreground" : undefined
+            inline ? "text-meta font-normal text-muted-foreground" : undefined
           }
         >
           {title}
@@ -70,7 +70,7 @@ export function ErrorState({
       data-state-kind="error"
       className={cn(
         inline
-          ? "flex items-center gap-1 rounded-none border-0 bg-transparent px-3 py-1 text-xs"
+          ? "flex items-center gap-1 rounded-none border-0 bg-transparent px-3 py-1 text-meta"
           : "self-start",
         className,
       )}

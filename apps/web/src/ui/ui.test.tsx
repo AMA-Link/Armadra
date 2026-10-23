@@ -41,7 +41,17 @@ import { MemberDot, memberColorVar } from "@/ui/member-dot";
 import { RadioGroup, RadioGroupItem } from "@/ui/radio-group";
 import { Skeleton } from "@/ui/skeleton";
 import { Spinner } from "@/ui/spinner";
-import { Table, TableBody, TableCell, TableRow } from "@/ui/table";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/ui/table";
+import { EmptyState, ErrorState } from "@/ui/state";
+import { IndicatorGroup, Indicator } from "@/ui/indicator";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/ui/tabs";
 
 beforeAll(() => {
   // Radix 的定位层（floating-ui）在 jsdom 下需要这两个 API
@@ -749,5 +759,186 @@ describe("动效 CSS 约定落在组件上（设计系统 §8）", () => {
     );
     expect(box.className).not.toContain("transition-all");
     expect(box.className).toContain("rounded-tight");
+  });
+});
+
+describe("Tabs segmented / line 与共享指示器（设计系统 §9）", () => {
+  const renderTabs = (variant: "segmented" | "line" | "default") =>
+    render(
+      <Tabs defaultValue="a">
+        <TabsList variant={variant} aria-label="范围">
+          <TabsTrigger value="a">全部</TabsTrigger>
+          <TabsTrigger value="b">本机</TabsTrigger>
+        </TabsList>
+        <TabsContent value="a">A</TabsContent>
+        <TabsContent value="b">B</TabsContent>
+      </Tabs>,
+    );
+
+  it("segmented：raised 底、rounded-card、p-[3px]；当前项里有一块指示器，点另一项后移过去", () => {
+    renderTabs("segmented");
+    const list = screen.getByRole("tablist");
+    expect(list.dataset.variant).toBe("segmented");
+    expect(list.className).toContain("bg-raised");
+    expect(list.className).toContain("rounded-card");
+    expect(list.className).toContain("p-[3px]");
+    const [first, second] = screen.getAllByRole("tab");
+    expect(first!.querySelector("[data-slot='indicator']")).not.toBeNull();
+    expect(second!.querySelector("[data-slot='indicator']")).toBeNull();
+    fireEvent.mouseDown(second!, { button: 0 });
+    expect(second!.getAttribute("aria-selected")).toBe("true");
+    expect(second!.querySelector("[data-slot='indicator']")).not.toBeNull();
+    expect(first!.querySelector("[data-slot='indicator']")).toBeNull();
+    expect(screen.getAllByRole("tab")[1]!.className).toContain(
+      "rounded-control",
+    );
+  });
+
+  it("segmented 触发器 28 高，sm 档 24", () => {
+    const { unmount } = renderTabs("segmented");
+    expect(screen.getAllByRole("tab")[0]!.className).toContain(
+      "group-data-[variant=segmented]/tabs-list:h-7",
+    );
+    unmount();
+    render(
+      <Tabs defaultValue="a">
+        <TabsList variant="segmented" size="sm">
+          <TabsTrigger value="a">全部</TabsTrigger>
+        </TabsList>
+      </Tabs>,
+    );
+    expect(screen.getByRole("tablist").dataset.size).toBe("sm");
+    expect(screen.getByRole("tab").className).toContain(
+      "group-data-[size=sm]/tabs-list:group-data-[variant=segmented]/tabs-list:h-6",
+    );
+  });
+
+  it("line：下划线就是指示器，不再用每项的 after 伪元素；default 不画指示器", () => {
+    const { unmount } = renderTabs("line");
+    const first = screen.getAllByRole("tab")[0]!;
+    expect(first.querySelector("[data-slot='indicator']")).not.toBeNull();
+    expect(first.className).not.toContain("after:");
+    unmount();
+    renderTabs("default");
+    expect(document.querySelector("[data-slot='indicator']")).toBeNull();
+  });
+
+  it("受控的 value 也驱动指示器", () => {
+    const { rerender } = render(
+      <Tabs value="b">
+        <TabsList variant="segmented">
+          <TabsTrigger value="a">全部</TabsTrigger>
+          <TabsTrigger value="b">本机</TabsTrigger>
+        </TabsList>
+      </Tabs>,
+    );
+    expect(
+      screen.getAllByRole("tab")[1]!.querySelector("[data-slot='indicator']"),
+    ).not.toBeNull();
+    rerender(
+      <Tabs value="a">
+        <TabsList variant="segmented">
+          <TabsTrigger value="a">全部</TabsTrigger>
+          <TabsTrigger value="b">本机</TabsTrigger>
+        </TabsList>
+      </Tabs>,
+    );
+    expect(
+      screen.getAllByRole("tab")[0]!.querySelector("[data-slot='indicator']"),
+    ).not.toBeNull();
+  });
+
+  it("IndicatorGroup 之外的 Indicator 也能渲染（不平移）", () => {
+    render(
+      <>
+        <Indicator data-testid="solo" />
+        <IndicatorGroup id="g">
+          <Indicator kind="hover" data-testid="hover" />
+        </IndicatorGroup>
+      </>,
+    );
+    expect(screen.getByTestId("solo").dataset.kind).toBe("active");
+    expect(screen.getByTestId("hover").dataset.kind).toBe("hover");
+    expect(screen.getByTestId("hover").getAttribute("aria-hidden")).toBe(
+      "true",
+    );
+  });
+});
+
+describe("Card 变体（设计系统 §9）", () => {
+  it("default：1px 边、rounded-card、无阴影也无 ring", () => {
+    render(<Card data-testid="card">内容</Card>);
+    const card = screen.getByTestId("card");
+    expect(card.dataset.variant).toBe("default");
+    expect(card.className).toContain("rounded-card");
+    expect(card.className).toContain("border-border");
+    expect(card.className).not.toMatch(/\bshadow|ring-1/);
+  });
+
+  it("tray 与 table 打 data-variant；table 去掉内边距", () => {
+    render(
+      <>
+        <Card variant="tray" data-testid="tray" />
+        <Card variant="table" data-testid="table" />
+      </>,
+    );
+    expect(screen.getByTestId("tray").dataset.variant).toBe("tray");
+    expect(screen.getByTestId("table").className).toContain(
+      "data-[variant=table]:py-0",
+    );
+  });
+});
+
+describe("Table 与空态", () => {
+  it("表头 raised 32 高 text-caption，行 36（sm 28），单元格 px-3", () => {
+    const { rerender } = render(
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead>名称</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          <TableRow>
+            <TableCell>行</TableCell>
+          </TableRow>
+        </TableBody>
+      </Table>,
+    );
+    expect(screen.getByText("名称").className).toContain("h-8");
+    expect(screen.getByText("名称").className).toContain("bg-raised");
+    expect(screen.getByText("名称").className).toContain("text-caption");
+    expect(screen.getByText("行").className).toContain("px-3");
+    const row = () => screen.getByText("行").closest("tr")!;
+    expect(row().className).toContain("h-9");
+    expect(document.querySelector("table")!.dataset.size).toBe("default");
+    rerender(
+      <Table size="sm">
+        <TableBody>
+          <TableRow>
+            <TableCell>行</TableCell>
+          </TableRow>
+        </TableBody>
+      </Table>,
+    );
+    expect(document.querySelector("table")!.dataset.size).toBe("sm");
+    expect(row().className).toContain("group-data-[size=sm]/table:h-7");
+  });
+
+  it("EmptyState 整块是虚线 1px 框，inline 去掉边框", () => {
+    const { rerender } = render(<EmptyState title="暂无记录" />);
+    const box = () =>
+      document.querySelector("[data-state-kind='empty']") as HTMLElement;
+    expect(box().className).toContain("border-dashed");
+    expect(box().className).toMatch(/\bborder\b/);
+    rerender(<EmptyState title="暂无记录" inline />);
+    expect(box().className).toContain("border-0");
+  });
+
+  it("ErrorState 行内带重试", () => {
+    const retry = vi.fn();
+    render(<ErrorState title="加载失败" retryLabel="重试" onRetry={retry} />);
+    fireEvent.click(screen.getByRole("button", { name: "重试" }));
+    expect(retry).toHaveBeenCalled();
   });
 });
