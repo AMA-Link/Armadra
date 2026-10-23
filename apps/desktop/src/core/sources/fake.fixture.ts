@@ -152,6 +152,24 @@ export interface FakeWorld {
     /** 下一次取注册令牌答的错误（一次性）。 */
     tokenRefusal?: { status: number; code: string };
     registrationTokens: { space: unknown }[];
+    /** Armadra 云控制台（授予、邀请、待信任；cloud-api §24、§22、§31）。 */
+    console: {
+      space: Record<string, unknown>;
+      allowGuests: boolean;
+      members: Record<string, unknown>[];
+      grants: Record<string, unknown>[];
+      invitations: Record<string, unknown>[];
+      trust: Record<string, unknown>[];
+      rejected: string[];
+      /** 下一次控制台类调用答的错误（一次性）。 */
+      refusal?: {
+        status: number;
+        code: string;
+        details?: unknown;
+        /** 只对这个路径前缀生效。 */
+        path?: string;
+      };
+    };
     /** 设备码批准的答案发出之前执行（制造竞态）。 */
     beforeApproved?: () => Promise<void>;
   };
@@ -221,6 +239,15 @@ export function fakeWorld(): FakeWorld {
       device: { status: "pending", polls: 0, limited: false },
       spaces: [{ kind: "personal", plan: "free" }],
       registrationTokens: [],
+      console: {
+        space: { kind: "team", teamId: "t1" },
+        allowGuests: true,
+        members: [],
+        grants: [],
+        invitations: [],
+        trust: [],
+        rejected: [],
+      },
     },
     cores,
     slow: new Set(),
@@ -445,6 +472,8 @@ async function cloud(
   if (!world.cloud.accessTokens.has(access)) {
     return json(401, { code: "unauthenticated", message: "no" });
   }
+  const consoleAnswer = consoleRoutes(world, request, path, input);
+  if (consoleAnswer !== undefined) return consoleAnswer;
   if (path === "/v1/auth/logout") return json(200, {});
   if (path === "/v1/auth/password") {
     // 改口令（cloud-api §18）：挑战 → 旧口令 → 策略；成功换口令、撤销别的设备。
@@ -703,4 +732,111 @@ export function plainSealed(transport: Transport): ChannelRequest {
     }),
     sas: "000000",
   });
+}
+
+/** 控制台类的 `/v1/*`：主机信息、团队成员、授予、邀请、待信任请求。 */
+function consoleRoutes(
+  world: FakeWorld,
+  request: OutboundRequest,
+  path: string,
+  input: Record<string, unknown>,
+): OutboundAnswer | undefined {
+  const state = world.cloud.console;
+  const matches =
+    /^\/v1\/(sources\/[0-9a-f]{32}|teams\/[^/]+\/members|grants|invitations|trust-requests)/.test(
+      path,
+    );
+  if (!matches) return undefined;
+  const refusal = state.refusal;
+  if (refusal !== undefined && path.startsWith(refusal.path ?? "/v1/")) {
+    state.refusal = undefined;
+    return json(refusal.status, {
+      code: refusal.code,
+      message: "no",
+      ...(refusal.details === undefined ? {} : { details: refusal.details }),
+    });
+  }
+  if (request.method === "GET" && /^\/v1\/sources\/[0-9a-f]{32}$/.test(path)) {
+    return json(200, {
+      sourceId: path.split("/").pop(),
+      space: state.space,
+      settings: {
+        linkCreators: "owner",
+        allowGuests: state.allowGuests,
+        defaultRole: "viewer",
+      },
+    });
+  }
+  if (request.method === "GET" && path.endsWith("/members")) {
+    return json(200, { members: state.members });
+  }
+  if (path === "/v1/grants" && request.method === "GET") {
+    return json(200, { grants: state.grants });
+  }
+  if (path === "/v1/grants" && request.method === "POST") {
+    // 云端对已经有授予的人再建一条一律 409（不合成，调整走 grants.update）。
+    const subject = JSON.stringify(input.subject);
+    if (state.grants.some((one) => JSON.stringify(one.subject) === subject)) {
+      return json(409, { code: "conflict", message: "exists" });
+    }
+    const grant = {
+      grantId: `g${state.grants.length + 1}`,
+      sourceId: input.sourceId,
+      subject: input.subject,
+      role: input.role,
+      workspaceIds: input.workspaceIds ?? [],
+      expiresAtMs: input.expiresAtMs ?? null,
+      grantedBy: "acct:owner",
+      createdAtMs: Date.now(),
+      revokedAtMs: null,
+    };
+    state.grants.push(grant);
+    return json(200, grant);
+  }
+  const grantId = /^\/v1\/grants\/([^/]+)$/.exec(path)?.[1];
+  if (grantId !== undefined) {
+    const grant = state.grants.find((one) => one.grantId === grantId);
+    if (grant === undefined) {
+      return json(404, { code: "not_found", message: "no" });
+    }
+    if (request.method === "PATCH") {
+      grant.role = input.role ?? grant.role;
+      if (input.workspaceIds !== undefined) {
+        grant.workspaceIds = input.workspaceIds;
+      }
+      if (input.expiresAtMs !== undefined) {
+        grant.expiresAtMs = input.expiresAtMs;
+      }
+      return json(200, grant);
+    }
+    state.grants = state.grants.filter((one) => one !== grant);
+    return json(200, {});
+  }
+  if (path === "/v1/invitations" && request.method === "POST") {
+    const invitation = {
+      invitationId: `i${state.invitations.length + 1}`,
+      kind: input.kind,
+      email: input.email,
+      state: "pending",
+      sourceId: input.sourceId,
+      hostRole: input.role,
+      workspaceIds: input.workspaceIds ?? [],
+      invitedBy: "acct:owner",
+      createdAtMs: Date.now(),
+      expiresAtMs: Date.now() + 7 * 86_400_000,
+      decidedAtMs: null,
+    };
+    state.invitations.push(invitation);
+    return json(200, invitation);
+  }
+  if (path === "/v1/trust-requests" && request.method === "GET") {
+    return json(200, { requests: state.trust });
+  }
+  const reject = /^\/v1\/trust-requests\/([^/]+)\/reject$/.exec(path)?.[1];
+  if (reject !== undefined) {
+    state.rejected.push(reject);
+    state.trust = state.trust.filter((one) => one.requestId !== reject);
+    return json(200, {});
+  }
+  return undefined;
 }
