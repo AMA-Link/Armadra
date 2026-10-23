@@ -9,6 +9,10 @@ import { createCloudQueryClient, useConsoleSession } from "@/cloud/api/queries";
 import type { ConsoleSession } from "@/cloud/ConsoleRoot";
 import { createMockApi } from "@/cloud/mock/create-mock-client";
 import { ConsoleSidebar, ConsoleShell } from "@/cloud/shell/ConsoleShell";
+import { EmbeddedAuth } from "@/cloud/auth/AuthLayout";
+import { DevicePage } from "@/cloud/auth/DevicePage";
+import { LinkPage } from "@/cloud/auth/LinkPage";
+import { MOCK_DEVICE_CODES, MOCK_LINK } from "@/cloud/mock/fixtures";
 import { PageHeader } from "@/cloud/shell/PageHeader";
 import { matchRoute } from "@/cloud/router";
 import { DataList, type DataColumn } from "@/cloud/ui/DataList";
@@ -133,13 +137,55 @@ function FromSession({
 }
 
 /**
- * `cloud` 分区（云端控制台 §7 U1a、U1b）：外壳（带未验证提示与计数）、两种侧栏、整页
- * 四态、`DataList` 的表格与列表两种渲染、`Progress` 三档、输入确认。外壳随视口宽度
+ * `cloud` 分区（云端控制台 §7 U1a、U1b、U2b）：外壳（带未验证提示与计数）、两种侧栏、整页
+ * 四态、设备授权与分享链接落地的公开页、`DataList` 的表格与列表两种渲染、`Progress` 三档、输入确认。外壳随视口宽度
  * 在固定侧栏与顶栏加抽屉之间切换，探针 390 / 768 / 1440 各截一张。
  */
 export default function CloudSection() {
   return (
     <MockConsole>{(session) => <CloudSamples session={session} />}</MockConsole>
+  );
+}
+
+const FRAGMENT = `${"S".repeat(43)}.${"c".repeat(32)}.${"D".repeat(43)}`;
+const SAMPLE_LINK = "0123456789abcdef";
+
+/**
+ * 公开页二（U2b）：设备授权的请求卡、过期码的错误态，分享链接落地的可加入 / 次数用完（禁用）/
+ * 已失效三态。页面用同一个 mock 客户端取数，和真实页面走同一条路；嵌在框里，不当 `main`。
+ */
+function PublicSamples() {
+  const frame = "h-[520px] overflow-hidden rounded-card border border-border";
+  return (
+    <EmbeddedAuth.Provider value>
+      <div className="grid gap-4 lg:grid-cols-2">
+        <div className={frame}>
+          <DevicePage
+            code={MOCK_DEVICE_CODES.pending}
+            onNeedLogin={noop}
+            onDone={noop}
+          />
+        </div>
+        <div className={frame}>
+          <DevicePage
+            code={MOCK_DEVICE_CODES.expired}
+            onNeedLogin={noop}
+            onDone={noop}
+          />
+        </div>
+        {[SAMPLE_LINK, MOCK_LINK.exhausted, MOCK_LINK.gone].map((linkId) => (
+          <div key={linkId} className={frame}>
+            <LinkPage
+              linkId={linkId}
+              fragment={FRAGMENT}
+              onNeedLogin={noop}
+              onJoined={noop}
+              onDone={noop}
+            />
+          </div>
+        ))}
+      </div>
+    </EmbeddedAuth.Provider>
   );
 }
 
@@ -272,6 +318,8 @@ function CloudSamples({ session }: { session: ConsoleSession }) {
           />
         </div>
       </div>
+
+      <PublicSamples />
 
       <div className="flex max-w-sm flex-col gap-4">
         {CLOUD_QUOTAS.map(({ tone, value }) => (
