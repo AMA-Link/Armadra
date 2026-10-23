@@ -44,7 +44,8 @@
     var(--panel) 92%,
     transparent
   );
-  --xy-minimap-mask-background-color: var(--scrim);
+  /* 视口外的遮罩用 `--hover` 这层淡色：浅色主题里 `--scrim` 会把外圈压成一圈粗灰框 */
+  --xy-minimap-mask-background-color: var(--hover);
 
   /* 归属链接：一行小字，不该抢注意力 */
   --xy-attribution-background-color: color-mix(

@@ -63,8 +63,8 @@ export const MINIMAP_COLORS = {
   failed: "var(--status-failed)",
   /** 未读。 */
   unread: "var(--brand)",
-  /** 无状态的节点、白板对象与分组：一块低对比的底。 */
-  plain: "var(--muted-foreground)",
+  /** 无状态的节点、白板对象与分组：一块低对比的底（弱前景色 `--faint`）。 */
+  plain: "var(--faint)",
 } as const;
 
 export interface MinimapItem {
@@ -122,10 +122,10 @@ export function minimapStrokeWidth(stroke: string): number {
 
 /**
  * 矩形填充：节点按 `familyOf` 的颜色取 55%（选中 80%），分组 35%；
- * 白板对象没有家族色，退回中性色 35%。
+ * 白板对象没有家族色，退回弱前景色 `--faint` 35%。
  */
 export function minimapFill(item: MinimapItem): string {
-  const color = item.color ?? "var(--muted-foreground)";
+  const color = item.color ?? "var(--faint)";
   const alpha = item.plain ? 0.35 : item.selected ? 0.8 : 0.55;
   return `color-mix(in srgb, ${color} ${Math.round(alpha * 100)}%, transparent)`;
 }
