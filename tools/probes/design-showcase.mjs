@@ -269,7 +269,7 @@ await h.run(async () => {
   step("Vite 已启动", origin);
 
   const chrome = await startChrome(h);
-  const page = await chrome.open({ name: "showcase" });
+  let page = await chrome.open({ name: "showcase" });
   let visit = 0;
 
   const setViewport = async ({ width, height }) => {
@@ -285,13 +285,26 @@ await h.run(async () => {
     visit += 1;
     const url = `${origin}/showcase.html?theme=${theme}&only=1&visit=${visit}#${section}`;
     await page.call("Page.navigate", { url });
-    await page.waitFor(
-      `return document.readyState === "complete" &&
-         document.documentElement.dataset.showcaseReady === "true" &&
-         document.documentElement.dataset.theme === ${JSON.stringify(theme)} &&
-         !!document.querySelector('[data-showcase-section=${JSON.stringify(section)}]');`,
-      { timeout: 60_000, what: `${section} 就绪` },
-    );
+    try {
+      await page.waitFor(
+        `return document.readyState === "complete" &&
+           document.documentElement.dataset.showcaseReady === "true" &&
+           document.documentElement.dataset.theme === ${JSON.stringify(theme)} &&
+           !!document.querySelector('[data-showcase-section=${JSON.stringify(section)}]');`,
+        { timeout: 60_000, what: `${section} 就绪` },
+      );
+    } catch (error) {
+      // 超时时带上页面状态与控制台错误，方便区分是没渲染、主题没切还是页面崩了
+      const state = await page
+        .evaluate(
+          `return { ready: document.documentElement.dataset.showcaseReady, theme: document.documentElement.dataset.theme, readyState: document.readyState, sections: [...document.querySelectorAll("[data-showcase-section]")].map((node) => node.dataset.showcaseSection), text: document.body.innerText.slice(0, 200) };`,
+        )
+        .catch((failure) => ({ evaluateFailed: String(failure) }));
+      const { errors } = page.drain();
+      throw new Error(
+        `${error.message}；页面状态 ${JSON.stringify(state)}；控制台 ${JSON.stringify(errors).slice(0, 600)}`,
+      );
+    }
     await page.evaluate(`await document.fonts.ready; return true;`);
     await sleep(300);
   };
@@ -311,6 +324,18 @@ await h.run(async () => {
     const path = file ? join(output, `${file}.png`) : null;
     if (path) writeFileSync(path, bytes);
     return { path, bytes, height };
+  };
+  /**
+   * 换一个新页面（新渲染进程），旧页面导航到 about:blank 释放内存。整张矩阵连着
+   * 在同一个渲染进程里导航几十次后，Chrome 渲染进程会内存涨满、卡在 GC 里
+   * （实测第 37 次导航起 canvas 分区一直不就绪），所以每个「视口 × 主题」一轮换一次。
+   */
+  const recycle = async () => {
+    const previous = page;
+    page = await chrome.open({ name: "showcase" });
+    await previous
+      .call("Page.navigate", { url: "about:blank" })
+      .catch(() => {});
   };
   const drainConsole = (where) => {
     const { errors } = page.drain();
@@ -349,9 +374,15 @@ await h.run(async () => {
 
   /* ------------------------------ 截图矩阵 ------------------------------ */
 
+  let round = 0;
   for (const viewport of viewports) {
     await setViewport(viewport);
     for (const theme of themes) {
+      if (round > 0) {
+        await recycle();
+        await setViewport(viewport);
+      }
+      round += 1;
       for (const section of only) {
         const started = Date.now();
         await open(section, theme);
@@ -397,8 +428,9 @@ await h.run(async () => {
         await sleep(600);
         const size = await page.evaluate(`
           const box = document.querySelector('[data-testid="settings-dialog"]').getBoundingClientRect();
-          const nav = document.querySelector('[data-testid="settings-dialog"] nav').getBoundingClientRect();
-          return { width: box.width, height: box.height, nav: nav.width };
+          // 手机是底部 Sheet，没有左导航
+          const nav = document.querySelector('[data-testid="settings-dialog"] nav');
+          return { width: box.width, height: box.height, nav: nav ? nav.getBoundingClientRect().width : null };
         `);
         // 近全窗（设计系统 §2.7）：视口 −48，上限 1600
         const expected = Math.min(viewport.width - 48, 1600);
@@ -554,11 +586,18 @@ await h.run(async () => {
     });
     await open("canvas", theme);
     await sleep(500);
-    const running = await page.evaluate(`
-      return document.getAnimations()
-        .filter((animation) => animation.playState === "running")
-        .map((animation) => animation.animationName ?? animation.constructor.name);
-    `);
+    // 过渡（`--dur-fast`）收尾需要几帧，负载高时第一次采样会撞上：最多等 5 秒，
+    // 直到没有在跑的动画；无限循环的永远等不到，照样失败。
+    let running = [];
+    for (let waited = 0; waited <= 5000; waited += 250) {
+      running = await page.evaluate(`
+        return document.getAnimations()
+          .filter((animation) => animation.playState === "running")
+          .map((animation) => animation.animationName ?? animation.constructor.name);
+      `);
+      if (running.length === 0) break;
+      await sleep(250);
+    }
     // 先等画布稳定。整页截图（captureBeyondViewport）会临时改视口尺寸，触发
     // 画布的 ResizeObserver 与句柄重排，截图结束后才落定——紧挨着的下一张图会
     // 拿到半成品。所以：字体就绪、两帧渲染之后，每隔 300ms 截一张，连续两张

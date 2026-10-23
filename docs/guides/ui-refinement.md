@@ -1,6 +1,6 @@
 # 桌面界面与交互规范
 
-本轮以 Codex App 的桌面工具风格为方向：系统字体、中性灰表面、清晰的分组与低噪声图标。保留 Armadra 的画布与原生终端，不将它改成聊天产品。Impeccable 4.1.3 已安装于 `.claude/skills/impeccable`；使用其 polish、animate 和 craft-floor 规则审查已有界面，而不是引入另一套组件库。基础控件仍使用 shadcn / Radix。
+桌面工具风格：系统字体、中性灰表面、1px 细边与发丝线、品牌蓝只用于焦点、选中与主操作、低噪声图标。保留 Armadra 的画布与原生终端，不将它改成聊天产品。权威规则是[设计系统](../design/design-system.md)，可见验收面是[设计展示页](../design/design-showcase.md)；基础控件只用 `apps/web/src/ui/` 里的 shadcn / Radix 组件及其变体，不另造组件库。
 
 ## 五处问题与修复
 
@@ -18,7 +18,8 @@
 - 画布宽度大于 1000px 时，Dock 使用扣除右侧导航后的空间。更窄时，导航放在 Dock 上方，绘图按钮收进工具面板；工具没有被删除。
 - 缩略图正常为 200×150px；窄画布缩为 160×120px；用户收起时只占 36×36px。球体跟随缩略图边缘，而不是另写一个固定偏移。
 - 节点按内容的标准尺寸新建（浏览器 1280×800、终端 960×600，全表见[计划书 §3.4](../contracts/v3-agent-terminal-plan.md)），落在视口中心；缩放低于 0.5 时相机对准新节点并抬到 100%。外壳只留必要的一条：头部 30px、折叠 32px、头部图标钮 24px、终端内边距 4px、浏览器工具栏 28px，其余高度归内容，终端字号默认 12px。
-- 设置页使用导航和内容两栏。内容独立滚动；空间不足时控件可以换行，极窄窗口使用带可访问名称的图标导航。
+- 设置是近全窗的工作台（宽 = 视口 −48，上限 1600；左导航 `clamp(200px, 18%, 256px)`，顶栏 48px 含面包屑与搜索）：导航和内容两栏，内容独立滚动；平板满宽，手机是整高底部 Sheet。设置页不写说明文字，数值型数据用 KPI 托盘（`Tray`）。
+- 行高与控件高度走令牌：列表 / 树 / 工具条行 `--row-h` 28，表格 / 通知 / 横幅行 `--row-h-table` 36；控件 xs 24 · sm 28 · default 32 · lg 36 · touch 44，功能代码不手写 `h-6 / h-7 / h-9 / h-10 / h-11` 与 `h-[28px]`。
 - 浅色为白色画布与中性灰侧栏；深色为层次分明的灰色表面。ANSI 终端保留深色背景，避免 CLI 的颜色对比失效。
 
 ## 开屏动画
@@ -38,10 +39,19 @@
 
 Runtime 的额度刷新串行化并执行 30 秒冷却，后台每 5 分钟查询；前端周期性读取缓存，不把缓存读取时间当成额度更新时间。禁用查询不会伪装成账户登出。OpenCode、Pi、OMP 没有接入统一额度 API，设置页提供查看提示而不是假百分比。
 
+## 统一规则与守卫
+
+界面统一（Issue #494）把风格收进令牌与变体，由测试拦住回潮：
+
+- 圆角七档（`rounded-tight / control / card / panel / dialog / float / pill`）、字号六档（`text-display / title / section / body / meta / caption`）、阴影三档（`shadow-node / overlay / dialog`，卡片只有 1px 边）、动效令牌（`--dur-*`、`--ease-*`，减少动效下位移 / 缩放 / 循环关闭、透明度保留）。
+- 状态只用 `StatusDot / StatusPill / StatusLine / AgentTree` 一族，tone 映射唯一来源是 `agent/display.ts`；危险确认用 `variant="destructive-solid"`；快捷键提示用 `Kbd`（按钮的 `shortcut`、Tooltip 的 `shortcut`）；toast 只从 `@/ui/toast` 引。
+- 节点头状态段对 Agent 终端节点可点：弹出阶段一行（`StatusLine`）和有下级时的 `AgentTree`。
+- 守卫：`styles/class-guards.test.ts`（圆角 / 阴影 / 控件高度 / 行高 / 变量类 / 过渡 / 线宽 / 字号，存量登记表已清空，新增违规直接失败）、`styles/no-literal-color.test.ts`（字面色只在数据文件）、`i18n/i18n.test.ts`（说明类键中文 ≤ 36 字）、`panels/no-description.test.ts`（对话框不写 Description）。
+
 ## 验证方法
 
-使用脚本启动源码和独立临时数据目录，避免误操作已安装的应用或用户正在工作的终端。布局检查覆盖 1440×920、1280×720、960×600 和更窄的浏览器窗口、深浅主题、侧栏及缩略图展开/收起；检查控件边界不重叠。桌面标题栏用当前 debug 二进制核验。
+使用脚本启动源码和独立临时数据目录，避免误操作已安装的应用或用户正在工作的终端。布局检查覆盖 1440×920、1280×720、960×600 和更窄的浏览器窗口、深浅主题、侧栏及缩略图展开/收起；检查控件边界不重叠。桌面标题栏用当前 debug 二进制核验。样式回归用[设计展示页探针](../../tools/probes/README.md)：17 个分区 × 深浅主题 × 三种视口的整页截图，加对比度、Tab 焦点环、减少动效、强制颜色与设置弹窗尺寸核验，`--diff` 对照改动前后。
 
 自动测试覆盖模型窗口映射、过期与刷新错误、键盘交互、连线端口与预览几何一致、真实 CLI 参数和协作协议边界。真实进程树测试需要允许执行系统 `ps`，沙箱拒绝不等于产品断言失败。
 
-参考：[Impeccable](https://impeccable.style/)、[Codex App 设置](https://developers.openai.com/codex/app/settings/)。Armadra 的额度查询与节点协作实现、具体 CLI 能力与协议来源见 [协作设计](./agent-collaboration.md)。
+Armadra 的额度查询与节点协作实现、具体 CLI 能力与协议来源见 [协作设计](./agent-collaboration.md)。
