@@ -229,12 +229,20 @@ function rejected(status: number, body: unknown, during: string): never {
       );
     // 登记到空间（cloud-api §6、§21）：团队与计划的拒绝，码原样透传，页面按码取文案。
     case "host_registration_disabled":
+      throw fail(
+        "host_registration_disabled",
+        "远程服务不允许在这个空间登记主机",
+      );
     case "team_role_insufficient":
+      throw fail("team_role_insufficient", "远程服务不允许在这个空间登记主机");
     case "team_policy_denied":
+      throw fail("team_policy_denied", "远程服务不允许在这个空间登记主机");
     case "email_unverified":
+      throw fail("email_unverified", "远程服务不允许在这个空间登记主机");
     case "team_suspended":
+      throw fail("team_suspended", "远程服务不允许在这个空间登记主机");
     case "team_deleted":
-      throw fail(code, "远程服务不允许在这个空间登记主机");
+      throw fail("team_deleted", "远程服务不允许在这个空间登记主机");
     case "limit_reached":
       throw fail(
         "limit_reached",

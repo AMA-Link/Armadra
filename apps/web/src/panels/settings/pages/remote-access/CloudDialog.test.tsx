@@ -150,13 +150,10 @@ describe("添加 Armadra 云", () => {
     await screen.findByRole("button", { name: "Register this computer" });
     const note = /run commands as this computer's system account/;
     expect(screen.queryByText(note)).toBeNull();
-    expect(
-      screen.getByText("You cannot register hosts in the dimmed teams"),
-    ).toBeTruthy();
     fireEvent.click(screen.getByRole("combobox"));
     expect(
       screen
-        .getByRole("option", { name: "Billing" })
+        .getByRole("option", { name: /Billing/ })
         .getAttribute("aria-disabled"),
     ).toBe("true");
     fireEvent.click(screen.getByRole("option", { name: "Acme" }));

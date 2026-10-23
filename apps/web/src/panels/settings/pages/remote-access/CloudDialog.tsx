@@ -18,7 +18,7 @@ import {
   ResponsiveDialogHeader,
   ResponsiveDialogTitle,
 } from "@/panels/ResponsiveDialog";
-import { Alert, AlertDescription } from "@/ui/alert";
+import { Alert } from "@/ui/alert";
 import { Button } from "@/ui/button";
 import { Field, FieldError, FieldGroup, FieldLabel } from "@/ui/field";
 import { Input } from "@/ui/input";
@@ -281,7 +281,10 @@ export function AddCloudDialog({
               >
                 {step.userCode}
               </p>
-              <p className="text-body text-muted-foreground">
+              <span
+                role="status"
+                className="flex items-center gap-2 text-body text-muted-foreground"
+              >
                 {step.outcome === "waiting" && (
                   <>
                     <Spinner data-icon="inline-start" aria-hidden />
@@ -290,14 +293,12 @@ export function AddCloudDialog({
                 )}
                 {step.outcome === "denied" && t("remote.cloud.denied")}
                 {step.outcome === "expired" && t("remote.cloud.codeExpired")}
-              </p>
+              </span>
             </div>
           )}
           {step.kind === "space" &&
             (step.spaces.length === 0 ? (
-              <p className="text-body text-muted-foreground">
-                {t("remote.cloud.noSpaces")}
-              </p>
+              <Alert>{t("remote.cloud.noSpaces")}</Alert>
             ) : (
               <Field className="gap-1.5">
                 <FieldLabel htmlFor="cloud-space">
@@ -315,21 +316,19 @@ export function AddCloudDialog({
                         disabled={blocked(space)}
                       >
                         {spaceLabel(space)}
+                        {blocked(space) && (
+                          <span className="text-muted-foreground">
+                            {` · ${t("remote.cloud.space.blocked")}`}
+                          </span>
+                        )}
                       </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
-                {step.spaces.some(blocked) && (
-                  <p className="text-meta text-muted-foreground">
-                    {t("remote.cloud.space.blocked")}
-                  </p>
-                )}
               </Field>
             ))}
           {step.kind === "space" && chosen.startsWith("team:") && (
-            <Alert>
-              <AlertDescription>{t("remote.cloud.teamShell")}</AlertDescription>
-            </Alert>
+            <Alert>{t("remote.cloud.teamShell")}</Alert>
           )}
           {error && <FieldError>{error}</FieldError>}
           <ResponsiveDialogFooter>
