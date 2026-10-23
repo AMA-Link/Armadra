@@ -273,4 +273,147 @@ describe("PromptBox", () => {
     expect(input.value).toBe("/init ");
     expect(onSubmit).not.toHaveBeenCalled();
   });
+
+  it("draws the context as a 20-cell tick bar whose tone follows 80% and 95%", () => {
+    const cells = () =>
+      document.querySelectorAll(
+        "[data-slot=acp-usage] [data-slot=progress-tick]",
+      );
+    const trigger = () => document.querySelector("[data-slot=acp-usage]")!;
+    renderBox({ usage: { used: 50, size: 100 } });
+    expect(cells()).toHaveLength(20);
+    expect(
+      document.querySelectorAll(
+        "[data-slot=acp-usage] [data-slot=progress-tick][data-filled=true]",
+      ),
+    ).toHaveLength(10);
+    expect(trigger().getAttribute("data-tone")).toBe("brand");
+    expect(trigger().getAttribute("data-warn")).toBeNull();
+    cleanup();
+    renderBox({ usage: { used: 80, size: 100 } });
+    expect(trigger().getAttribute("data-tone")).toBe("warn");
+    expect(trigger().getAttribute("data-warn")).toBe("true");
+    cleanup();
+    renderBox({ usage: { used: 94, size: 100 } });
+    expect(trigger().getAttribute("data-tone")).toBe("warn");
+    cleanup();
+    renderBox({ usage: { used: 95, size: 100 } });
+    expect(trigger().getAttribute("data-tone")).toBe("danger");
+    cleanup();
+    // 溢出与零总量不画成 NaN。
+    renderBox({ usage: { used: 500, size: 100 } });
+    expect(cells()).toHaveLength(20);
+    expect(trigger().textContent).toBe("500 / 100");
+  });
+
+  it("opens the context popover: big number, remaining, cost, percent", async () => {
+    renderBox({
+      usage: {
+        used: 183_400,
+        size: 200_000,
+        cost: { amount: 1.5, currency: "USD" },
+      },
+    });
+    fireEvent.click(document.querySelector("[data-slot=acp-usage]")!);
+    const popover = await waitFor(() => {
+      const node = document.querySelector("[data-slot=acp-usage-popover]");
+      expect(node).toBeTruthy();
+      return node as HTMLElement;
+    });
+    expect(popover.textContent).toContain("18.3万");
+    expect(popover.textContent).toContain("92%");
+    expect(popover.textContent).toContain("$1.50");
+    const remaining = popover.querySelector("[data-slot=acp-usage-remaining]")!;
+    expect(remaining.textContent).toBe("剩余 1.7万");
+    // ≥80% 剩余用警示文字色
+    expect(remaining.className).toContain("text-warn-text");
+  });
+
+  it("offers Compact only when the agent has the command, and sends it", async () => {
+    renderBox({
+      usage: { used: 10, size: 100 },
+      commands: [{ name: "review", description: "" }],
+    });
+    fireEvent.click(document.querySelector("[data-slot=acp-usage]")!);
+    await screen.findByText(/剩余/);
+    expect(document.querySelector("[data-slot=acp-usage-compact]")).toBeNull();
+    cleanup();
+
+    renderBox({
+      usage: { used: 10, size: 100 },
+      commands: [{ name: "compact", description: "" }],
+    });
+    fireEvent.click(document.querySelector("[data-slot=acp-usage]")!);
+    const compact = await screen.findByRole("button", { name: "压缩" });
+    fireEvent.click(compact);
+    expect(onSubmit).toHaveBeenCalledWith("/compact");
+  });
+
+  it("disables Compact while a turn is running", async () => {
+    renderBox({
+      streaming: true,
+      usage: { used: 10, size: 100 },
+      commands: [{ name: "compact", description: "" }],
+    });
+    fireEvent.click(document.querySelector("[data-slot=acp-usage]")!);
+    const compact = (await screen.findByRole("button", {
+      name: "压缩",
+    })) as HTMLButtonElement;
+    expect(compact.disabled).toBe(true);
+  });
+
+  it("puts every control on the 32px tier with the Enter / Esc hints on the send button", () => {
+    renderBox({
+      modes: MODES,
+      models: MODELS,
+      onModel,
+      usage: { used: 1, size: 2 },
+    });
+    expect(screen.getByLabelText("模型").getAttribute("data-size")).toBe(
+      "default",
+    );
+    const send = screen.getByRole("button", { name: "发送" });
+    expect(send.getAttribute("data-size")).toBe("default");
+    expect(send.querySelector("[data-slot=kbd]")?.textContent).toBe("↵");
+    expect(send.getAttribute("aria-keyshortcuts")).toBe("Enter");
+    cleanup();
+    renderBox({ streaming: true });
+    const stop = screen.getByRole("button", { name: "停止" });
+    expect(stop.querySelector("[data-slot=kbd]")?.textContent).toBe("Esc");
+  });
+
+  it("draws the mode as a segmented control when there are few short modes", () => {
+    renderBox({ modes: MODES });
+    const list = screen.getByLabelText("模式");
+    expect(list.getAttribute("data-variant")).toBe("segmented");
+    expect(
+      [...list.querySelectorAll("[role=tab]")].map((tab) => tab.textContent),
+    ).toEqual(["Default", "Plan"]);
+    fireEvent.mouseDown(screen.getByRole("tab", { name: "Plan" }));
+    expect(onMode).toHaveBeenCalledWith("plan");
+    cleanup();
+    // 名字长或模式多：回落到 Select。
+    renderBox({
+      modes: {
+        currentModeId: "a",
+        availableModes: [
+          { id: "a", name: "Accept edits and run" },
+          { id: "b", name: "Plan" },
+        ],
+      },
+    });
+    expect(screen.getByLabelText("模式").getAttribute("data-slot")).toBe(
+      "select-trigger",
+    );
+    cleanup();
+    renderBox({
+      modes: {
+        currentModeId: "a",
+        availableModes: ["a", "b", "c", "d"].map((id) => ({ id, name: id })),
+      },
+    });
+    expect(screen.getByLabelText("模式").getAttribute("data-slot")).toBe(
+      "select-trigger",
+    );
+  });
 });
