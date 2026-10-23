@@ -16,6 +16,9 @@ import { MOCK_HOSTS, MOCK_TEAMS } from "./fixtures";
 const NOT_FOR_CONSOLE = new Set(["source", "billing-webhook", "relay-node"]);
 const entries = listProcedures(cloudContract);
 
+/** 团队与团队邀请带状态（按种子团队与角色答），黄金入参里的团队号不存在；它们在 `teams.test.ts` 里逐个走一遍。 */
+const STATEFUL_TEAM = /^(teams\.|invitations\.(create|list|resend|revoke)$)/;
+
 async function validate(schema: unknown, value: unknown) {
   const standard = (
     schema as { "~standard": { validate(v: unknown): unknown } }
@@ -44,6 +47,7 @@ describe("mock 与协议包契约一致", () => {
 
   it("控制台可调用的每个过程：黄金入参被接受，出参过契约的 zod schema", async () => {
     for (const entry of entries) {
+      if (STATEFUL_TEAM.test(entry.key)) continue;
       const callable = entry.meta.scope.some(
         (scope) => !NOT_FOR_CONSOLE.has(scope),
       );

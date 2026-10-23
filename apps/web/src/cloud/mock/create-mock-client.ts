@@ -21,6 +21,14 @@ import {
   type DirectoryState,
 } from "./directory";
 import {
+  activeMemberships,
+  createTeamsState,
+  TEAM_HANDLERS,
+  teamInvitationHandlers,
+  type TeamsOptions,
+  type TeamsState,
+} from "./teams";
+import {
   GOLDEN_OPS_TEAM,
   MOCK_ACCOUNT,
   MOCK_DEVICE_CODES,
@@ -30,7 +38,6 @@ import {
   MOCK_LINK,
   MOCK_TEAMS,
   ROLE_SCOPES,
-  type MockRole,
 } from "./fixtures";
 
 /**
@@ -39,7 +46,7 @@ import {
  * 账号、空间、主机与登录由下面的处理器带状态地答；其余过程答协议包夹具里的那份黄金样本
  * （各页批次里再换成带状态的实现）。只在 DEV 与测试里被 import。
  */
-export interface MockOptions extends DirectoryOptions {
+export interface MockOptions extends DirectoryOptions, TeamsOptions {
   /** 每次调用的延迟（毫秒）。 */
   readonly latencyMs?: number;
   /** 指定过程失败：`{ "sources.list": "limit_reached" }`（`?mockFail=sources.list:limit_reached`）。 */
@@ -54,8 +61,6 @@ export interface MockOptions extends DirectoryOptions {
   readonly operatorSession?: boolean;
   /** 运营会话不在，但 `auth.refresh { scope: "operator" }` 能续上（缺省 false）。 */
   readonly operatorRefreshable?: boolean;
-  /** 本人在各团队的角色覆盖（角色矩阵测试用）。 */
-  readonly roles?: Readonly<Record<string, MockRole>>;
   /** 批准设备码要先提权（`auth.stepUp`），否则答 `mfa_required`（缺省 false）。 */
   readonly deviceNeedsStepUp?: boolean;
   /** 分享链接要求登录（`links.get.requiresAccount`，缺省 false）。 */
@@ -127,6 +132,8 @@ interface State {
   elevated: boolean;
   /** 个人空间页的数据：主机目录、链接、设备、安全日志。 */
   directory: DirectoryState;
+  /** 团队空间（U4）的带状态数据：团队、成员、邀请、设置。 */
+  teams: TeamsState;
   /** 已批准或拒绝的设备码（之后答 `not_found`，与云端一致）。 */
   decided: Set<string>;
 }
@@ -147,10 +154,14 @@ const sessionOf = (state: State) => ({
   csrfToken: "mock-csrf",
 });
 
-const rolesOf = (options: MockOptions) =>
-  MOCK_TEAMS.map((team) => ({
-    ...team,
-    role: options.roles?.[team.slug] ?? team.role,
+/** 本人所在（且没进恢复期）的团队与角色，`me.spaces` / `me.get` / 范围表共用。 */
+const rolesOf = (state: State) =>
+  activeMemberships(state.teams).map(({ team, role }) => ({
+    teamId: team.teamId,
+    slug: team.slug,
+    name: team.name,
+    plan: team.plan,
+    role,
   }));
 
 const NOW = Date.UTC(2025, 9, 9, 9, 6);
@@ -352,6 +363,14 @@ function openDeviceRequest(input: Input, state: State) {
   return code;
 }
 
+const TEAM_HANDLERS_AS_STATE: Readonly<Record<string, Handler>> =
+  Object.fromEntries(
+    Object.entries(TEAM_HANDLERS).map(([key, handler]) => [
+      key,
+      ((input, state) => handler(input, state)) as Handler,
+    ]),
+  );
+
 /** 带状态的处理器；没有的过程答黄金夹具。 */
 const HANDLERS: Readonly<Record<string, Handler>> = {
   ...ADMIN_HANDLERS,
@@ -448,7 +467,7 @@ const HANDLERS: Readonly<Record<string, Handler>> = {
     ...MOCK_ACCOUNT,
     displayName: state.displayName,
     emailVerified: state.emailVerified,
-    teams: rolesOf(options).map(({ teamId, slug, name, role }) => ({
+    teams: rolesOf(state).map(({ teamId, slug, name, role }) => ({
       teamId,
       slug,
       name,
@@ -462,10 +481,10 @@ const HANDLERS: Readonly<Record<string, Handler>> = {
       state.displayName = input.displayName;
     return HANDLERS["me.get"]!({}, state, options);
   },
-  "me.spaces": (_input, _state, options) => ({
+  "me.spaces": (_input, state) => ({
     spaces: [
       { kind: "personal", plan: "free" },
-      ...rolesOf(options).map(({ teamId, slug, name, role, plan }) => ({
+      ...rolesOf(state).map(({ teamId, slug, name, role, plan }) => ({
         kind: "team",
         teamId,
         slug,
@@ -479,6 +498,22 @@ const HANDLERS: Readonly<Record<string, Handler>> = {
     Object.entries(DIRECTORY_HANDLERS).map(([key, handler]) => [
       key,
       ((input, state) => handler(input, state.directory)) as Handler,
+    ]),
+  ),
+  ...TEAM_HANDLERS_AS_STATE,
+  ...Object.fromEntries(
+    Object.entries(
+      teamInvitationHandlers(
+        Object.fromEntries(
+          Object.entries(DIRECTORY_HANDLERS).map(([key, handler]) => [
+            key,
+            (input, ctx) => handler(input, ctx.directory),
+          ]),
+        ),
+      ),
+    ).map(([key, handler]) => [
+      key,
+      ((input, state) => handler(input, state)) as Handler,
     ]),
   ),
   "auth.changePassword": (input, state) => {
@@ -499,19 +534,20 @@ function allowed(
   entry: ProcedureEntry,
   input: Input,
   state: State,
-  options: MockOptions,
   asOperator: boolean,
 ): boolean {
   const space = input.space as { teamId?: string } | undefined;
   const teamId = (input.teamId ?? space?.teamId) as string | undefined;
-  const role = rolesOf(options).find((team) => team.teamId === teamId)?.role;
+  const role = rolesOf(state).find((team) => team.teamId === teamId)?.role;
+  // 团队与邀请的过程由处理器按云端的角色表自己核对（billing 能读成员，范围表表达不了）。
+  const teamOwned = /^(teams|invitations)\./.test(entry.key);
   return entry.meta.scope.some((scope) => {
     if (scope === "anonymous") return true;
     if (scope === "operator") return asOperator && state.operatorSession;
     if (scope.startsWith("team:"))
       return (
         state.signedIn &&
-        (role === undefined || ROLE_SCOPES[role].includes(scope))
+        (role === undefined || teamOwned || ROLE_SCOPES[role].includes(scope))
       );
     // session / owner / group:lead：登录了就放行（资源归属在各页的带状态实现里再细化）。
     return (
@@ -562,6 +598,7 @@ export function createMockApi(options: MockOptions = {}): MockApi {
     emailVerified: options.emailVerified ?? MOCK_ACCOUNT.emailVerified,
     admin: createAdminState(),
     directory: createDirectoryState(options),
+    teams: createTeamsState(options),
     elevated: false,
     decided: new Set(),
   };
@@ -595,13 +632,7 @@ export function createMockApi(options: MockOptions = {}): MockApi {
           throw new CloudConsoleError("bad_request", 400, issues);
         })) as Input;
         if (
-          !allowed(
-            entry,
-            { ...(raw as Input), ...input },
-            state,
-            options,
-            asOperator,
-          )
+          !allowed(entry, { ...(raw as Input), ...input }, state, asOperator)
         ) {
           const needsLogin = entry.meta.scope.every(
             (scope) => scope === "session" || scope === "operator",
