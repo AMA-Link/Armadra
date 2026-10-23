@@ -5,17 +5,81 @@ services:
   cloud:
     build:
       context: "${ARMADRA_DEV_STACK_CLOUD_SRC:?set ARMADRA_DEV_STACK_CLOUD_SRC}"
-      dockerfile: apps/cloud/Dockerfile
+      dockerfile: go/Dockerfile.cloud
     image: armadra-dev-cloud:local
+    # Go 镜像：入口是 armadra-cloud（distroless，没有 shell），serve 不再自动迁移，
+    # 所以先等下面的 migrate 跑完；连非回环库必须 sslmode=require（platform-postgres 在下面开了 TLS）。
+    command: ["serve"]
+    environment:
+      ARMADRA_CLOUD_DATABASE_URL: "postgres://armadra:${PLATFORM_DB_PASSWORD:?run pnpm dev-stack up}@platform-postgres:5432/armadra_cloud?sslmode=require"
+      # 开发栈不接发信（SMTP_TLS=none 只许回环，mailpit 在另一个容器里），所以不要求邮箱验证。
+      ARMADRA_CLOUD_REQUIRE_EMAIL_VERIFIED: "0"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+
+  # serve 不自动迁移：一次性服务，迁移完成后 cloud 才启动（命令幂等）。
+  migrate:
+    build:
+      context: "${ARMADRA_DEV_STACK_CLOUD_SRC:?set ARMADRA_DEV_STACK_CLOUD_SRC}"
+      dockerfile: go/Dockerfile.cloud
+    image: armadra-dev-cloud:local
+    profiles: ["platform"]
+    command: ["migrate"]
+    environment:
+      ARMADRA_CLOUD_ISSUER: "http://127.0.0.1:8100"
+      ARMADRA_CLOUD_APP_ORIGIN: "http://127.0.0.1:8100"
+      ARMADRA_CLOUD_DATABASE_URL: "postgres://armadra:${PLATFORM_DB_PASSWORD:?run pnpm dev-stack up}@platform-postgres:5432/armadra_cloud?sslmode=require"
+      ARMADRA_CLOUD_REDIS_URL: "redis://platform-redis:6379"
+      ARMADRA_CLOUD_MASTER_KEY: "${ARMADRA_CLOUD_MASTER_KEY:?run pnpm dev-stack up}"
+      ARMADRA_CLOUD_RELAY_DOMAIN: src.localhost
+    depends_on:
+      platform-postgres:
+        condition: service_healthy
+    restart: "no"
+
+  # platform-postgres 开 TLS（自签证书，sslmode=require 不校验）：首次生成，已有则跳过；属主 postgres（uid 70）。
+  pg-tls:
+    image: alpine/openssl:3.5.4
+    profiles: ["platform"]
+    entrypoint: ["sh", "-c"]
+    command:
+      - 'if [ ! -s /tls/server.key ]; then openssl req -x509 -newkey rsa:3072 -nodes -days 3650 -subj "/CN=platform-postgres" -keyout /tls/server.key -out /tls/server.crt; fi; chown 70:70 /tls/server.key /tls/server.crt && chmod 600 /tls/server.key && chmod 644 /tls/server.crt'
+    volumes:
+      - pg-tls:/tls
+    restart: "no"
+
+  platform-postgres:
+    command:
+      - postgres
+      - -c
+      - ssl=on
+      - -c
+      - ssl_cert_file=/tls/server.crt
+      - -c
+      - ssl_key_file=/tls/server.key
+    volumes:
+      - platform-postgres:/var/lib/postgresql/data
+      - pg-tls:/tls:ro
+    depends_on:
+      pg-tls:
+        condition: service_completed_successfully
 
   relay:
     build:
       context: "${ARMADRA_DEV_STACK_CLOUD_SRC:?set ARMADRA_DEV_STACK_CLOUD_SRC}"
       dockerfile: go/Dockerfile
     image: armadra-dev-relay:local
+    environment:
+      # 令牌的 iss 是对外的 issuer（逐字比较），容器内走 cloud:8100 取 JWKS。
+      RELAY_CLOUD_ISSUER: "http://127.0.0.1:8100"
+      RELAY_JWKS_URL: "http://cloud:8100/.well-known/jwks.json"
 
   relay-personal:
     build:
       context: "${ARMADRA_DEV_STACK_CLOUD_SRC:?set ARMADRA_DEV_STACK_CLOUD_SRC}"
       dockerfile: go/Dockerfile
     image: armadra-dev-relay:local
+
+volumes:
+  pg-tls:

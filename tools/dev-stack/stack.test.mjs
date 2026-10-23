@@ -213,13 +213,29 @@ test("ARMADRA_DEV_STACK_CLOUD_SRC：本地构建叠加文件与目录解析", ()
     );
     assert.match(
       overlay.services[name].build.dockerfile,
-      /^(apps\/(cloud|relay)|go)\/Dockerfile$/,
+      /^go\/Dockerfile(\.cloud)?$/,
     );
   }
+  // Go 控制面：先迁移再 serve，连库要 TLS（sslmode=require），relay 用 JWKS 地址取钥。
+  assert.equal(overlay.services.cloud.build.dockerfile, "go/Dockerfile.cloud");
+  assert.equal(
+    overlay.services.cloud.depends_on.migrate.condition,
+    "service_completed_successfully",
+  );
+  assert.deepEqual(overlay.services.migrate.command, ["migrate"]);
+  assert.match(
+    overlay.services.cloud.environment.ARMADRA_CLOUD_DATABASE_URL,
+    /\?sslmode=require$/,
+  );
+  assert.ok(overlay.services["pg-tls"]);
+  assert.ok(
+    overlay.services["platform-postgres"].command.includes("ssl=on"),
+  );
+  assert.match(overlay.services.relay.environment.RELAY_JWKS_URL, /cloud:8100/);
   const fake = mkdtempSync(join(tmpdir(), "cloud-src-"));
   try {
-    mkdirSync(join(fake, "apps", "cloud"), { recursive: true });
-    writeFileSync(join(fake, "apps", "cloud", "Dockerfile"), "FROM scratch\n");
+    mkdirSync(join(fake, "go"), { recursive: true });
+    writeFileSync(join(fake, "go", "Dockerfile.cloud"), "FROM scratch\n");
     assert.equal(resolveCloudSrc({ ARMADRA_DEV_STACK_CLOUD_SRC: fake }), fake);
     assert.throws(
       () => resolveCloudSrc({ ARMADRA_DEV_STACK_CLOUD_SRC: join(fake, "no") }),
@@ -231,11 +247,9 @@ test("ARMADRA_DEV_STACK_CLOUD_SRC：本地构建叠加文件与目录解析", ()
       const repo = join(parent, "armadra");
       mkdirSync(repo);
       assert.equal(resolveCloudSrc({}, { repoRoot: repo }), null);
-      mkdirSync(join(parent, "armadra-cloud", "apps", "cloud"), {
-        recursive: true,
-      });
+      mkdirSync(join(parent, "armadra-cloud", "go"), { recursive: true });
       writeFileSync(
-        join(parent, "armadra-cloud", "apps", "cloud", "Dockerfile"),
+        join(parent, "armadra-cloud", "go", "Dockerfile.cloud"),
         "FROM scratch\n",
       );
       const notes = [];
