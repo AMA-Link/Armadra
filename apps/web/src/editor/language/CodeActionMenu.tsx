@@ -7,7 +7,6 @@ import {
   CommandGroup,
   CommandItem,
   CommandList,
-  CommandShortcut,
 } from "@/ui/command";
 import { runCodeAction, useCodeActionStore } from "./code-actions";
 
@@ -65,9 +64,9 @@ export function CodeActionMenu() {
               >
                 <span className="min-w-0 flex-1 truncate">{action.title}</span>
                 {action.kind && (
-                  <CommandShortcut className="truncate">
+                  <span className="ml-auto truncate text-meta text-muted-foreground">
                     {action.kind}
-                  </CommandShortcut>
+                  </span>
                 )}
               </CommandItem>
             ))}

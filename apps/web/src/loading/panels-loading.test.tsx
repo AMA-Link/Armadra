@@ -148,7 +148,7 @@ describe("提交表格骨架", () => {
     tick(SKELETON_DELAY_MS * 2);
     expect(container.querySelector("[data-slot=git-log-skeleton]")).toBeNull();
     expect(container.querySelector("p[role=status]")!.className).toContain(
-      "h-[28px]",
+      "h-(--row-h)",
     );
   });
 });

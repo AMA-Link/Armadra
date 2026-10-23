@@ -22,7 +22,6 @@ import { basename } from "@/files/file-operations";
 import { unifiedLineDiff } from "@/lib/line-diff";
 import { Badge } from "@/ui/badge";
 import { Button } from "@/ui/button";
-import { Kbd } from "@/ui/kbd";
 import {
   Collapsible,
   CollapsibleContent,
@@ -411,13 +410,11 @@ export function PermissionCard({
                   variant={
                     reject.kind === "reject_always" ? "destructive" : "outline"
                   }
-                  aria-keyshortcuts="Escape"
+                  shortcut="Esc"
                   data-option={reject.kind}
                   onClick={() => answer(reject)}
                 >
                   {t("acp.permission.reject")}
-                  {/* 不用 `shortcut`：卡片根带 `data-variant="default"`，`Kbd` 的 `in-data-[variant=default]` 会把它染成实底按钮里的白字 */}
-                  <Kbd className="bg-raised! text-muted-foreground!">Esc</Kbd>
                 </Button>
               )}
               {allow !== undefined && (

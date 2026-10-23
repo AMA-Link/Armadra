@@ -37,7 +37,7 @@ const STATUS: [string, string, string | null][] = [
   ["--success", "--success-text", "--success-soft"],
   ["--agent-working", "--working-text", "--agent-working-soft"],
 ];
-/** 六档语义字号类 + Tailwind 刻度（`text-sm` / `text-xs` 已对齐到 13 / 12）。 */
+/** 六档语义字号类。 */
 const TYPE_SCALE = [
   ["--text-display", "text-display"],
   ["--text-title", "text-title"],
@@ -45,8 +45,6 @@ const TYPE_SCALE = [
   ["--text-body", "text-body"],
   ["--text-meta", "text-meta"],
   ["--text-caption", "text-caption"],
-  ["--text-body", "text-sm"],
-  ["--text-meta", "text-xs"],
 ] as const;
 /** 七档语义圆角，类名与令牌一一对应。 */
 const RADII = [
@@ -111,7 +109,7 @@ function Ratio({ pair }: { pair: Omit<ContrastPair, "kind"> }) {
   );
   const ratio = useMeasured(read);
   return (
-    <span className="font-mono text-[length:var(--text-caption)] text-muted-foreground tabular-nums">
+    <span className="font-mono text-caption text-muted-foreground tabular-nums">
       {ratio === null ? "" : ratio.toFixed(1)}
     </span>
   );
@@ -119,7 +117,7 @@ function Ratio({ pair }: { pair: Omit<ContrastPair, "kind"> }) {
 
 function TokenName({ name }: { name: string }) {
   return (
-    <span className="font-mono text-[length:var(--text-caption)] break-all text-muted-foreground">
+    <span className="font-mono text-caption break-all text-muted-foreground">
       {name}
     </span>
   );
@@ -138,7 +136,7 @@ function Swatch({
   return (
     <div className="flex w-28 flex-col gap-1" data-token={token}>
       <div
-        className="flex h-12 items-center justify-center rounded-[var(--r-control)] border border-border"
+        className="flex h-12 items-center justify-center rounded-control border border-border"
         style={{ background: `var(${token})` }}
       >
         {children}
@@ -158,7 +156,7 @@ function Group({
 }) {
   return (
     <div className="flex flex-col gap-2">
-      <h3 className="text-[length:var(--text-section)] font-medium">{title}</h3>
+      <h3 className="text-section font-medium">{title}</h3>
       <div className="flex flex-wrap gap-3">{children}</div>
     </div>
   );
@@ -196,7 +194,7 @@ export default function TokensSection() {
         {TEXTS.map((token) => (
           <div key={token} className="flex w-28 flex-col gap-1">
             <div
-              className="flex h-12 items-center rounded-[var(--r-control)] border border-border bg-card px-2 text-[length:var(--text-body)]"
+              className="flex h-12 items-center rounded-control border border-border bg-card px-2 text-body"
               style={{ color: `var(${token})` }}
             >
               Aa
@@ -233,7 +231,7 @@ export default function TokensSection() {
             <Swatch token={graphic} pair={{ fg: graphic, bg: CARD }} />
             <div className="flex w-28 flex-col gap-1">
               <div
-                className="flex h-12 items-center rounded-[var(--r-control)] border border-border bg-card px-2 text-[length:var(--text-body)] font-medium"
+                className="flex h-12 items-center rounded-control border border-border bg-card px-2 text-body font-medium"
                 style={{ color: `var(${text})` }}
               >
                 Aa
@@ -251,10 +249,10 @@ export default function TokensSection() {
       <Group title={t("showcase.tokens.agents")}>
         {AGENTS.map((id) => (
           <div key={id} className="flex w-36 flex-col gap-1">
-            <div className="flex h-12 items-center gap-2 rounded-[var(--r-control)] border border-border bg-card px-2">
+            <div className="flex h-12 items-center gap-2 rounded-control border border-border bg-card px-2">
               <AgentAvatar agentId={id} size={24} />
               <span
-                className="text-[length:var(--text-body)] font-medium"
+                className="text-body font-medium"
                 style={{ color: `var(--agent-${id}-text)` }}
               >
                 {id}
@@ -347,10 +345,10 @@ export default function TokensSection() {
               <span className="w-32 shrink-0">
                 <TokenName name={token} />
               </span>
-              <div className="relative h-6 max-w-80 flex-1">
+              <div className="relative h-(--row-h) max-w-80 flex-1">
                 <div
                   data-motion-sample
-                  className="absolute top-0 left-0 size-6 rounded-pill bg-brand"
+                  className="absolute top-0.5 left-0 size-6 rounded-pill bg-brand"
                   style={{
                     transform: played ? "translateX(280px)" : "none",
                     transition: `transform var(${token}) var(--ease-out)`,
@@ -365,10 +363,10 @@ export default function TokensSection() {
               <span className="w-32 shrink-0">
                 <TokenName name={token} />
               </span>
-              <div className="relative h-6 max-w-80 flex-1">
+              <div className="relative h-(--row-h) max-w-80 flex-1">
                 <div
                   data-curve-sample
-                  className="absolute top-0 left-0 size-6 rounded-pill bg-brand"
+                  className="absolute top-0.5 left-0 size-6 rounded-pill bg-brand"
                   style={{
                     transform: played ? "translateX(280px)" : "none",
                     transition: `transform var(--dur-page) var(${token})`,
@@ -429,9 +427,7 @@ export default function TokensSection() {
           <TableBody>
             {(layers ?? []).map(([name, value]) => (
               <TableRow key={name}>
-                <TableCell className="font-mono text-[length:var(--text-caption)]">
-                  {name}
-                </TableCell>
+                <TableCell className="font-mono text-caption">{name}</TableCell>
                 <TableCell className="text-right tabular-nums">
                   {value}
                 </TableCell>

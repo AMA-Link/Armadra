@@ -93,7 +93,7 @@ export function NodeObservationDrawer() {
       onClose={close}
       label={t("nodeObservation.open")}
     >
-      <div className="flex h-10 shrink-0 items-center gap-1 border-b border-border px-3">
+      <div className="flex h-(--row-h-table) shrink-0 items-center gap-1 border-b border-border px-3">
         {selected && (
           <IconButton
             label={t("nodeObservation.back")}

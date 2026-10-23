@@ -30,7 +30,6 @@ import { Button } from "@/ui/button";
 import { Badge } from "@/ui/badge";
 import { DropdownMenuLabel } from "@/ui/dropdown-menu";
 import { cn } from "@/lib/cn";
-import { HEADER_CHIP_CLASS } from "@/nodes/header-chip";
 
 export interface MemoryBadgeProps {
   nodeId: string;
@@ -111,11 +110,7 @@ export function MemoryBadge({
         <Badge
           asChild
           variant="outline"
-          className={cn(
-            HEADER_CHIP_CLASS,
-            "font-normal",
-            over && "text-danger-text",
-          )}
+          className={cn("font-normal", over && "text-danger-text")}
           data-no-drag="true"
         >
           <Button

@@ -371,7 +371,7 @@ export function WebviewSurface({ id, node, selected }: NodeBodyProps) {
       >
         {/* 工具栏 28px：地址栏 20px + 上下 4px。页面本身才是内容，这条边不该
             比一个真浏览器的还厚（契约 §3.4，2026-09-19）。 */}
-        <div className="flex h-[28px] shrink-0 items-center gap-1 px-1">
+        <div className="flex h-(--row-h) shrink-0 items-center gap-1 px-1">
           {/*
             站点图标。只有一个标签时标签条整条不渲染，于是在这之前 favicon
             在界面上没有任何位置——而「这是哪个站点」是导航期间最先变、也最

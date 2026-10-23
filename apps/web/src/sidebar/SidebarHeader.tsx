@@ -9,7 +9,7 @@ import { useT } from "../app/preferences-store";
 export function SidebarHeader() {
   const t = useT();
   return (
-    <div className="flex h-9 shrink-0 items-center px-3.5">
+    <div className="flex h-(--row-h-table) shrink-0 items-center px-3.5">
       <span className="truncate text-section font-semibold">
         {t("app.brand")}
       </span>

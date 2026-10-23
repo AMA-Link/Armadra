@@ -65,7 +65,7 @@ function TrayHeader({
   );
 }
 
-/** 托盘内卡：`Card variant="tray"`，`rounded-card`、`p-3`、行间距 8。 */
+/** 托盘内卡：`Card variant="tray"`，`rounded-card`、四周 `p-3`（Card 自己只给上下）、行间距 8。 */
 function TrayCard({
   className,
   ...props
@@ -74,7 +74,7 @@ function TrayCard({
     <Card
       variant="tray"
       data-slot="tray-card"
-      className={cn("min-w-0 gap-2", className)}
+      className={cn("min-w-0 gap-2 px-3", className)}
       {...props}
     />
   );

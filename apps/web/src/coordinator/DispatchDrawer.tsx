@@ -396,7 +396,7 @@ export function DispatchDrawer() {
 
   return (
     <WorkPanelSheet panel="dispatch" open={open} onClose={closeDispatchDrawer}>
-      <div className="flex h-10 shrink-0 items-center gap-1 border-b border-border px-3">
+      <div className="flex h-(--row-h-table) shrink-0 items-center gap-1 border-b border-border px-3">
         <SheetTitle className="flex-1 truncate text-body font-semibold">
           {t("coordinator.title")}
         </SheetTitle>

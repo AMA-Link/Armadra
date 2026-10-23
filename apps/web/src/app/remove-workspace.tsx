@@ -70,7 +70,11 @@ export function RemoveWorkspaceDialog({
           <ResponsiveAlertDialogCancel>
             {t("launcher.cancel")}
           </ResponsiveAlertDialogCancel>
-          <ResponsiveAlertDialogAction disabled={pending} onClick={onConfirm}>
+          <ResponsiveAlertDialogAction
+            variant="destructive-solid"
+            disabled={pending}
+            onClick={onConfirm}
+          >
             {t("launcher.removeConfirm")}
           </ResponsiveAlertDialogAction>
         </ResponsiveAlertDialogFooter>

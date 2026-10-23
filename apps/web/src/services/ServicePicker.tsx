@@ -2,6 +2,7 @@ import * as React from "react";
 import { ChartNoAxesColumn, ExternalLink, Pencil, Trash2 } from "lucide-react";
 
 import { usePreferencesStore, useT } from "../app/preferences-store";
+import { SERVICE_STATUS_TONES } from "../agent/display";
 import { formatRelativeTime } from "../lib/format";
 import {
   ResponsiveAlertDialog,
@@ -26,7 +27,7 @@ import {
   ItemTitle,
 } from "@/ui/item";
 import { Spinner } from "@/ui/spinner";
-import { StatusPill, type StatusTone } from "@/ui/status-pill";
+import { StatusPill } from "@/ui/status-pill";
 import type { TrafficTotals } from "../sources/traffic-meter";
 import { MonthTrafficLine } from "../traffic/SourceTraffic";
 import type { ServiceStatus } from "./probe";
@@ -80,19 +81,13 @@ export interface ServicePickerProps {
   readonly onTraffic?: (sourceId: string) => void;
 }
 
-const STATUS_TONE: Record<ServiceStatus, StatusTone> = {
-  online: "done",
-  offline: "idle",
-  unknown: "queued",
-};
-
 function ServiceStatusPill({ status }: { status: ServiceStatus }) {
   const t = useT();
   const label = t(`services.status.${status}`);
   return (
     <StatusPill
       data-service-status={status}
-      tone={STATUS_TONE[status]}
+      tone={SERVICE_STATUS_TONES[status]}
       // 未知时只呼吸不写字；读屏仍读到「未知」。
       label={
         status === "unknown" ? <span className="sr-only">{label}</span> : label
@@ -145,8 +140,7 @@ function groupTitle(group: ServiceGroup, t: ReturnType<typeof useT>): string {
   return t("services.group.relay", { name: group.name });
 }
 
-const HEADING =
-  "px-1 text-[length:var(--text-caption)] font-medium text-muted-foreground";
+const HEADING = "px-1 text-caption font-medium text-muted-foreground";
 
 /**
  * 选择服务（A7-1，多端入口设计 §1.3）：原生 App 的整页、中继托管页面登录后
@@ -212,7 +206,7 @@ export function ServicePicker({
         <ItemContent className="min-w-0">
           <ItemTitle className="max-w-full truncate">{row.name}</ItemTitle>
           {line !== "" && (
-            <ItemDescription className="truncate text-[length:var(--text-caption)]">
+            <ItemDescription className="truncate text-caption">
               {line}
             </ItemDescription>
           )}
@@ -247,7 +241,7 @@ export function ServicePicker({
               type="button"
               variant="ghost"
               disabled={locked || (disableOffline && status === "offline")}
-              className="h-auto min-h-12 min-w-0 flex-1 justify-start gap-2.5 rounded-lg px-3 py-2 text-left font-normal whitespace-normal"
+              className="h-auto min-h-12 min-w-0 flex-1 justify-start gap-2.5 rounded-card px-3 py-2 text-left font-normal whitespace-normal"
               onClick={() => onEnter(row.sourceId)}
             >
               {content}
@@ -424,7 +418,7 @@ export function ServicePicker({
                   className="flex flex-col gap-(--space-group)"
                 >
                   {(showGroupHeads || out) && (
-                    <div className="flex min-h-6 items-center gap-2">
+                    <div className="flex items-center gap-2">
                       <h3 className={`${HEADING} min-w-0 flex-1 truncate`}>
                         {groupTitle(group, t)}
                       </h3>

@@ -4373,3 +4373,18 @@ nightly 在 `b8353492`（运行 37338174906）之后连续失败。逐个作业�
 
 - iOS 与 Android 的插件类（`ArmadraNativePlugin`）没有在本机编译（Android SDK 未配、Xcode 工程未跑），只有纯逻辑部分有单测；真机或模拟器上的读写待验证。
 - 趋势只画明文字节，线上字节（`transport`）仍只在 `traffic.summary` 的线路行里。
+
+## 界面统一批次 3：收尾（P6，Refs #494，2026-10-23）
+
+做了什么：
+
+- **守卫归零**：`class-guards.budget.ts` 登记 62 → 0（展示页、`ServicePicker`、侧栏、通知、会话、协调者、观察抽屉的存量全部改成语义写法），新增 `row-height` 规则；`no-literal-color.test.ts` 的存量登记清空，用户可选底色、品牌色回退、导出图底色、提交图泳道色并入数据文件；`i18n.test.ts` 新增「说明类键中文 ≤ 36 字」规则（错误文案走豁免表）。
+- **令牌**：新增 `--row-h`（28）/`--row-h-table`（36），12 个文件里的 `h-[28px]` / `h-[36px]` 迁成 `h-(--row-h)` 类；删除旧别名 `--r-sm / --r-xl / --shadow-pill`、`lib/danger-action.ts`、`nodes/header-chip.ts`。
+- **组件修正**：`Kbd` 只认外层按钮自己的变体（不再被 `Card` 的 `data-variant` 染白），权限卡拒绝钮改回 `shortcut="Esc"`；`TrayCard` 补左右内边距 12；`ToolRow` / `ServicePicker` 的 tone 表改用 `agent/display.ts`；`CommandShortcut` 不再放路径文字；导入中改 `Spinner`；移除工作空间确认钮改 `destructive-solid`。
+- **节点头状态弹层**：Agent 终端节点的状态段可点，弹出 `StatusLine`（`nodes/NodeStatusPopover.tsx`）+ 有下级时的 `AgentTree md`。
+- **探针**：设置导航宽度预期改为 `clamp(200px, 18%, 256px)`；并入原 `motion-reduced.mjs`，`status` / `coordinator` / `motion` 三个分区纳入减少动效检查；每轮换新页面，避免整张矩阵在同一渲染进程里卡死；手机 Sheet 没有左导航时不再报错。
+- **文档**：`design-showcase.md` 分区表与 17 分区 / 102 张矩阵、`design-system.md` §2.7 行高令牌、`ui-refinement.md` 与设计系统对齐。
+
+实测：探针全矩阵 17 分区 × 2 主题 × 3 视口 = 102 张，`status: ok`（对比度 98 / 99 对、Tab 129/129、减少动效、强制颜色、设置弹窗尺寸全过），截图在 `/tmp/ui-unify-shots/final/`。
+
+没做 / 限制：`apps/desktop` 壳的 `dialog.showErrorBox` 中文硬编码（壳代码，不在本批范围）；真实应用（隔离数据目录）里的设置、画布、ACP 三处核对未做，只核对了展示页。

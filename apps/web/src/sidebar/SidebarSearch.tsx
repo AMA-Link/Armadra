@@ -35,7 +35,6 @@ import {
   CommandInput,
   CommandItem,
   CommandList,
-  CommandShortcut,
 } from "@/ui/command";
 import {
   ResponsiveDialog,
@@ -184,9 +183,9 @@ export function SidebarSearch({ open, onOpenChange }: SidebarSearchProps) {
                         {hit.snippet}
                       </span>
                     )}
-                    <CommandShortcut className="truncate">
+                    <span className="ml-auto truncate text-meta text-muted-foreground">
                       {hit.boardName}
-                    </CommandShortcut>
+                    </span>
                   </CommandItem>
                 ))}
               </CommandGroup>
@@ -204,12 +203,12 @@ export function SidebarSearch({ open, onOpenChange }: SidebarSearchProps) {
                     <span className="min-w-0 flex-1 truncate">
                       {conversation.title}
                     </span>
-                    <CommandShortcut className="truncate">
+                    <span className="ml-auto truncate text-meta text-muted-foreground">
                       {basename(conversation.cwd)}
-                    </CommandShortcut>
-                    <CommandShortcut className="tabular-nums">
+                    </span>
+                    <span className="shrink-0 text-meta tabular-nums text-muted-foreground">
                       {formatRelativeTime(conversation.updatedAt)}
-                    </CommandShortcut>
+                    </span>
                   </CommandItem>
                 ))}
               </CommandGroup>

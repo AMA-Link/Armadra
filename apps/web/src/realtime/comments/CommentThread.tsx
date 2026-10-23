@@ -176,7 +176,7 @@ function CommentEntry({
 
   return (
     <div data-slot="comment" className="flex flex-col gap-1.5">
-      <div className="flex h-[28px] items-center gap-2">
+      <div className="flex h-(--row-h) items-center gap-2">
         <Avatar
           size="sm"
           className="size-5"

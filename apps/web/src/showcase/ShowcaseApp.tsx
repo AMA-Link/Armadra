@@ -86,10 +86,7 @@ function Section({ id }: { id: ShowcaseSectionId }) {
       aria-labelledby={`${id}-title`}
       className="flex scroll-mt-6 flex-col gap-(--space-group)"
     >
-      <h2
-        id={`${id}-title`}
-        className="text-[length:var(--text-title)] leading-6 font-semibold"
-      >
+      <h2 id={`${id}-title`} className="text-title leading-6 font-semibold">
         {t(`showcase.section.${id}`)}
       </h2>
       <Body />
@@ -196,7 +193,7 @@ export function ShowcaseApp({ only }: { only: boolean }) {
             data-active={id === active}
             aria-current={id === active ? "page" : undefined}
             className={cn(
-              "h-8 w-full justify-start px-2 text-[13px] font-normal text-muted-foreground",
+              "h-8 w-full justify-start px-2 text-body font-normal text-muted-foreground",
               "data-[active=true]:bg-raised data-[active=true]:text-foreground",
             )}
             onClick={() => select(id)}

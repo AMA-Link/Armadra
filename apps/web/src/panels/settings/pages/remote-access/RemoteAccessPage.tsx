@@ -228,7 +228,7 @@ export function RemoteAccessPage() {
         <Tray data-slot="settings-kpi">
           <TrayHeader icon={<Waypoints />} label={t("remote.kpi.relay")} />
           <TrayCard>
-            <div className="flex h-[28px] items-center">
+            <div className="flex h-(--row-h) items-center">
               <StatusPill
                 size="md"
                 tone={routePill?.tone ?? "paused"}

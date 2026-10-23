@@ -11,7 +11,10 @@
 //   * `components` 分区按 Tab 走一遍：每个可聚焦元素都要被走到、命中
 //     `:focus-visible`、并且看得见焦点环；
 //   * `prefers-reduced-motion: reduce` 下 `canvas` 分区的动画必须静止
-//     （隔 700ms 的两张截图逐字节相同，且没有在跑的动画）；
+//     （隔 700ms 的两张截图逐字节相同，且没有在跑的动画）；`status`、`coordinator`、
+//     `motion` 三个分区没有位移 / 缩放 / 无限循环的动画（转圈除外），各存一张
+//     `<分区>-<主题>-1440-reduced-motion.png`；`motion` 分区另跑十种配方的基线对照与
+//     指示器 / 数字当拍落位（原 `motion-reduced.mjs`，已并入这里）；
 //   * `forced-colors: active` 下 `components` 分区的焦点仍有轮廓；
 //   * `components` 分区在每个桌面宽度上打开真的设置弹窗：宽 = 视口 −48（上限 1600，
 //     ±1px），两套主题各截一张 `settings-dialog-<主题>-<宽>.png`；
@@ -266,7 +269,7 @@ await h.run(async () => {
   step("Vite 已启动", origin);
 
   const chrome = await startChrome(h);
-  const page = await chrome.open({ name: "showcase" });
+  let page = await chrome.open({ name: "showcase" });
   let visit = 0;
 
   const setViewport = async ({ width, height }) => {
@@ -282,13 +285,26 @@ await h.run(async () => {
     visit += 1;
     const url = `${origin}/showcase.html?theme=${theme}&only=1&visit=${visit}#${section}`;
     await page.call("Page.navigate", { url });
-    await page.waitFor(
-      `return document.readyState === "complete" &&
-         document.documentElement.dataset.showcaseReady === "true" &&
-         document.documentElement.dataset.theme === ${JSON.stringify(theme)} &&
-         !!document.querySelector('[data-showcase-section=${JSON.stringify(section)}]');`,
-      { timeout: 60_000, what: `${section} 就绪` },
-    );
+    try {
+      await page.waitFor(
+        `return document.readyState === "complete" &&
+           document.documentElement.dataset.showcaseReady === "true" &&
+           document.documentElement.dataset.theme === ${JSON.stringify(theme)} &&
+           !!document.querySelector('[data-showcase-section=${JSON.stringify(section)}]');`,
+        { timeout: 60_000, what: `${section} 就绪` },
+      );
+    } catch (error) {
+      // 超时时带上页面状态与控制台错误，方便区分是没渲染、主题没切还是页面崩了
+      const state = await page
+        .evaluate(
+          `return { ready: document.documentElement.dataset.showcaseReady, theme: document.documentElement.dataset.theme, readyState: document.readyState, sections: [...document.querySelectorAll("[data-showcase-section]")].map((node) => node.dataset.showcaseSection), text: document.body.innerText.slice(0, 200) };`,
+        )
+        .catch((failure) => ({ evaluateFailed: String(failure) }));
+      const { errors } = page.drain();
+      throw new Error(
+        `${error.message}；页面状态 ${JSON.stringify(state)}；控制台 ${JSON.stringify(errors).slice(0, 600)}`,
+      );
+    }
     await page.evaluate(`await document.fonts.ready; return true;`);
     await sleep(300);
   };
@@ -308,6 +324,18 @@ await h.run(async () => {
     const path = file ? join(output, `${file}.png`) : null;
     if (path) writeFileSync(path, bytes);
     return { path, bytes, height };
+  };
+  /**
+   * 换一个新页面（新渲染进程），旧页面导航到 about:blank 释放内存。整张矩阵连着
+   * 在同一个渲染进程里导航几十次后，Chrome 渲染进程会内存涨满、卡在 GC 里
+   * （实测第 37 次导航起 canvas 分区一直不就绪），所以每个「视口 × 主题」一轮换一次。
+   */
+  const recycle = async () => {
+    const previous = page;
+    page = await chrome.open({ name: "showcase" });
+    await previous
+      .call("Page.navigate", { url: "about:blank" })
+      .catch(() => {});
   };
   const drainConsole = (where) => {
     const { errors } = page.drain();
@@ -346,9 +374,15 @@ await h.run(async () => {
 
   /* ------------------------------ 截图矩阵 ------------------------------ */
 
+  let round = 0;
   for (const viewport of viewports) {
     await setViewport(viewport);
     for (const theme of themes) {
+      if (round > 0) {
+        await recycle();
+        await setViewport(viewport);
+      }
+      round += 1;
       for (const section of only) {
         const started = Date.now();
         await open(section, theme);
@@ -394,11 +428,14 @@ await h.run(async () => {
         await sleep(600);
         const size = await page.evaluate(`
           const box = document.querySelector('[data-testid="settings-dialog"]').getBoundingClientRect();
-          const nav = document.querySelector('[data-testid="settings-dialog"] nav').getBoundingClientRect();
-          return { width: box.width, height: box.height, nav: nav.width };
+          // 手机是底部 Sheet，没有左导航
+          const nav = document.querySelector('[data-testid="settings-dialog"] nav');
+          return { width: box.width, height: box.height, nav: nav ? nav.getBoundingClientRect().width : null };
         `);
         // 近全窗（设计系统 §2.7）：视口 −48，上限 1600
         const expected = Math.min(viewport.width - 48, 1600);
+        // 工作台左导航（设计系统 §2.7 `--settings-nav-w`）：clamp(200px, 18%, 256px)
+        const expectedNav = Math.min(Math.max(size.width * 0.18, 200), 256);
         const name = `settings-dialog-${theme}-${viewport.width}`;
         // 弹窗是 fixed：截当前视口（不给 clip——clip 用的是文档坐标）。
         const shot = await page.call("Page.captureScreenshot", {
@@ -414,10 +451,9 @@ await h.run(async () => {
         }
         check(
           Math.abs(size.width - expected) <= 1 &&
-            size.nav >= 176 &&
-            size.nav <= 240,
+            Math.abs(size.nav - expectedNav) <= 2,
           `设置弹窗 ${name}`,
-          `${Math.round(size.width)}px（应为 ${Math.round(expected)}），导航 ${Math.round(size.nav)}px`,
+          `${Math.round(size.width)}px（应为 ${Math.round(expected)}），导航 ${Math.round(size.nav)}px（应为 ${Math.round(expectedNav)}）`,
         );
       }
     }
@@ -550,11 +586,18 @@ await h.run(async () => {
     });
     await open("canvas", theme);
     await sleep(500);
-    const running = await page.evaluate(`
-      return document.getAnimations()
-        .filter((animation) => animation.playState === "running")
-        .map((animation) => animation.animationName ?? animation.constructor.name);
-    `);
+    // 过渡（`--dur-fast`）收尾需要几帧，负载高时第一次采样会撞上：最多等 5 秒，
+    // 直到没有在跑的动画；无限循环的永远等不到，照样失败。
+    let running = [];
+    for (let waited = 0; waited <= 5000; waited += 250) {
+      running = await page.evaluate(`
+        return document.getAnimations()
+          .filter((animation) => animation.playState === "running")
+          .map((animation) => animation.animationName ?? animation.constructor.name);
+      `);
+      if (running.length === 0) break;
+      await sleep(250);
+    }
     // 先等画布稳定。整页截图（captureBeyondViewport）会临时改视口尺寸，触发
     // 画布的 ResizeObserver 与句柄重排，截图结束后才落定——紧挨着的下一张图会
     // 拿到半成品。所以：字体就绪、两帧渲染之后，每隔 300ms 截一张，连续两张
@@ -618,6 +661,181 @@ await h.run(async () => {
     );
     await page.call("Emulation.setEmulatedMedia", { features: [] });
     drainConsole("reduced-motion");
+  }
+
+  /* ------------------------ 减少动效：status / coordinator / motion ------------------------ */
+
+  // 位移类（transform / translate / scale / rotate）或无限循环的动画，转圈除外。
+  // 减少动效下 `tokens.css` 把循环压成一次、`motion.css` 把位移换成淡入。
+  const MOTION_COLLECT = `
+    const MOVES = ["transform", "translate", "scale", "rotate"];
+    const collect = (root) =>
+      root
+        .getAnimations({ subtree: true })
+        .filter((animation) => animation.playState === "running")
+        .map((animation) => {
+          const keys = new Set(
+            animation.effect.getKeyframes().flatMap((frame) => Object.keys(frame)),
+          );
+          const timing = animation.effect.getComputedTiming();
+          return {
+            name: animation.animationName ?? "transition:" + animation.transitionProperty,
+            moves: MOVES.some((key) => keys.has(key)),
+            infinite: timing.iterations === Infinity,
+          };
+        })
+        .filter((animation) => !/spin/.test(animation.name));
+  `;
+  const reduceMotion = (on) =>
+    page.call("Emulation.setEmulatedMedia", {
+      features: [
+        {
+          name: "prefers-reduced-motion",
+          value: on ? "reduce" : "no-preference",
+        },
+      ],
+    });
+  const reducedSections = ["status", "coordinator", "motion"].filter((id) =>
+    only.includes(id),
+  );
+  if (reducedSections.length > 0) {
+    await setViewport(VIEWPORTS[0]);
+    report.reducedSections = {};
+    await reduceMotion(true);
+    for (const section of reducedSections) {
+      for (const theme of themes) {
+        await open(section, theme);
+        await sleep(600);
+        const running = await page.evaluate(`
+          ${MOTION_COLLECT}
+          return collect(document);
+        `);
+        const bad = running.filter((a) => a.moves || a.infinite);
+        const shot = await capture(
+          `${section}-${theme}-1440-reduced-motion`,
+          1440,
+        );
+        report.reducedSections[`${section}:${theme}`] = {
+          running,
+          file: shot.path,
+        };
+        check(
+          bad.length === 0,
+          `减少动效 ${section} · ${theme}：无位移 / 缩放、无循环`,
+          bad.length ? bad : shot.path,
+        );
+        drainConsole(`reduced-${section}`);
+      }
+    }
+    await reduceMotion(false);
+  }
+
+  if (only.includes("motion")) {
+    const RECIPES = [
+      "press",
+      "pop",
+      "indicator",
+      "text-swap",
+      "number-roll",
+      "list-stagger",
+      "icon-swap",
+      "shake",
+      "shimmer",
+      "check-draw",
+    ];
+    const openMotion = async (theme) => {
+      await open("motion", theme);
+      await page.waitFor(
+        `return !!document.querySelector('[data-motion-cell="check-draw"]');`,
+        { timeout: 60_000, what: "motion 配方格就绪" },
+      );
+    };
+    /** 点一格的重放，等 80ms，返回这一格里在跑的位移类 / 无限循环动画。 */
+    const replay = (recipe) =>
+      page.evaluate(`
+        ${MOTION_COLLECT}
+        const cell = document.querySelector('[data-motion-cell="${recipe}"]');
+        cell.querySelector("button[aria-label]").click();
+        await new Promise((done) => setTimeout(done, 80));
+        return collect(cell);
+      `);
+    const probeIndicator = `
+      const cell = document.querySelector('[data-motion-cell="indicator"]');
+      const tab = [...cell.querySelectorAll("button")].find((node) => node.textContent === "画布");
+      tab.click();
+      await new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done)));
+      await new Promise((done) => setTimeout(done, 40));
+      const box = cell.querySelector('[data-slot="indicator"][data-kind="active"]').getBoundingClientRect();
+      const target = tab.getBoundingClientRect();
+      return { offset: Math.abs(box.left - target.left), left: box.left, target: target.left };
+    `;
+    const probeNumber = `
+      const cell = document.querySelector('[data-motion-cell="number-roll"]');
+      const buttons = cell.querySelectorAll("button");
+      buttons[buttons.length - 1].click();
+      await new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done)));
+      return cell.querySelector("[data-numeric]").textContent;
+    `;
+    report.motionRecipes = { baseline: {}, reduced: {} };
+    // 基线（不减少）：证明下面的检测不是空跑
+    await reduceMotion(false);
+    await openMotion("dark");
+    const baseline = report.motionRecipes.baseline;
+    for (const recipe of RECIPES) baseline[recipe] = await replay(recipe);
+    check(
+      baseline["list-stagger"].some((a) => a.moves),
+      "基线：列表错落有位移动画（检测不是空跑）",
+      baseline["list-stagger"],
+    );
+    check(
+      baseline.pop.some((a) => a.moves),
+      "基线：发芽有缩放动画",
+      baseline.pop,
+    );
+    check(
+      baseline.shake.some((a) => a.moves),
+      "基线：shake 有位移动画",
+      baseline.shake,
+    );
+    check(
+      baseline.shimmer.some((a) => a.infinite),
+      "基线：shimmer 是循环",
+      baseline.shimmer,
+    );
+    await openMotion("dark");
+    const slide = await page.evaluate(probeIndicator);
+    check(slide.offset > 2, "基线：指示器在平移（40ms 时还没到）", slide);
+    await openMotion("dark");
+    const rolling = await page.evaluate(probeNumber);
+    check(rolling !== "9,031", "基线：数字在滚动（两帧后还不是新值）", rolling);
+
+    // 减少动效：每格重放后没有位移 / 循环；指示器与数字当拍落位
+    await reduceMotion(true);
+    for (const theme of themes) {
+      await openMotion(theme);
+      for (const recipe of RECIPES) {
+        const running = await replay(recipe);
+        report.motionRecipes.reduced[`${theme}:${recipe}`] = running;
+        const bad = running.filter((a) => a.moves || a.infinite);
+        check(
+          bad.length === 0,
+          `减少动效 ${theme} · ${recipe}：无位移 / 缩放、无循环`,
+          bad,
+        );
+      }
+    }
+    await openMotion("dark");
+    const stillSlide = await page.evaluate(probeIndicator);
+    check(
+      stillSlide.offset < 2,
+      "减少动效：指示器当拍落到目标位置",
+      stillSlide,
+    );
+    await openMotion("dark");
+    const stillNumber = await page.evaluate(probeNumber);
+    check(stillNumber === "9,031", "减少动效：数字当拍就是新值", stillNumber);
+    await reduceMotion(false);
+    drainConsole("motion-recipes");
   }
 
   /* ----------------------------- 强制颜色 ------------------------------- */

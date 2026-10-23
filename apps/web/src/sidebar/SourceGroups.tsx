@@ -371,7 +371,7 @@ function SourceBlock({
         {...sortable?.handle}
         aria-label={sortable ? sortable.label(name) : undefined}
         className={cn(
-          "flex h-7 items-center gap-2 rounded-control px-1.5",
+          "flex h-(--row-h) items-center gap-2 rounded-control px-1.5",
           section.state === "offline" && "opacity-60",
           sortable &&
             "cursor-grab touch-none outline-none focus-visible:ring-3 focus-visible:ring-ring/50 active:cursor-grabbing",
@@ -433,7 +433,7 @@ function WorkspaceRows({
             size="sm"
             disabled={!usable}
             data-source-workspace={workspace.id}
-            className="h-7 w-full justify-start gap-2 px-1.5 font-normal"
+            className="w-full justify-start gap-2 px-1.5 font-normal"
             onClick={() => onOpen(sourceId, workspace.id)}
           >
             <Folder className="size-4 shrink-0 text-muted-foreground" />

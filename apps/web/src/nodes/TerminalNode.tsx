@@ -28,6 +28,7 @@ import { useNodeCapabilities } from "@/agent/capabilities";
 import { PendingLaunchButton } from "@/agent/PendingLaunchButton";
 import { ManualRunButton } from "@/agent/ManualRunButton";
 import { useSimpleMode } from "@/acp/simple-mode";
+import { lineOf } from "@/agent/display";
 import { useAgentStatus, useAgentStatusStore } from "@/agent/status-store";
 import {
   headerStateFor,
@@ -52,6 +53,7 @@ import { openHandoff } from "@/agent/handoff/handoff-targets";
 import { useSshHosts } from "@/panels/settings/ssh-hosts";
 import { GithubReferenceBadge } from "@/panels/github/GithubReferenceBadge";
 import { NodeShell, type NodeShellProps } from "./NodeShell";
+import { NodeStatusPopover } from "./NodeStatusPopover";
 import type { NodeBodyProps } from "./registry";
 import { answerApproval } from "./runtime-extras";
 import {
@@ -351,6 +353,27 @@ export function TerminalNode({ id, node, selected, collapsed }: NodeBodyProps) {
               }
             : undefined;
 
+  // 状态段点开：Agent 节点才有（阶段一行 + 有下级时的树）。头部显示的是上报状态时
+  // 用它翻出的一行，显示的是退出 / 掉线 / 休眠时退回头部自己的 tone 与文案。
+  const headerDriven =
+    !launchFailed &&
+    !exited &&
+    surface.render !== "disconnected" &&
+    !hibernated &&
+    Boolean(header.pill);
+  const statusPopover =
+    agent && nodeStatus ? (
+      <NodeStatusPopover
+        nodeId={id}
+        status={nodeStatus}
+        line={
+          headerDriven && header.display
+            ? lineOf(header.display, agentStatus?.activity, t)
+            : undefined
+        }
+      />
+    ) : undefined;
+
   /**
    * 头部只留「一眼就要看到」的那几样（F5）。
    *
@@ -617,6 +640,7 @@ export function TerminalNode({ id, node, selected, collapsed }: NodeBodyProps) {
         node={node}
         selected={selected}
         {...(nodeStatus ? { status: nodeStatus } : {})}
+        {...(statusPopover ? { statusPopover } : {})}
         {...(header.glow ? { glow: header.glow } : {})}
         {...(approval ? { approval } : {})}
         // 简洁模式：头部只留状态胶囊与审批（ACP 设计 §8 第 3 条）。
