@@ -18,6 +18,13 @@
   overflow: hidden;
   opacity: 1;
   transition: opacity 260ms ease;
+  /*
+   * 底下的 App 正在挂载，布局一直在变：`contain` 把覆盖层的样式、布局、绘制
+   * 和它隔开；`will-change` 让它从一开始就是独立的合成层，淡出时不用临时
+   * 提层、把整块画面重新光栅化一遍。
+   */
+  contain: strict;
+  will-change: opacity;
 
   /* 深色（tokens.css 的 :root 默认） */
   --splash-bg: #1c1c1c;
