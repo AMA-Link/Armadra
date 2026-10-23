@@ -44,6 +44,7 @@ import {
   DeviceRegistry,
   TrustedDeviceStore,
 } from "./e2e/devices";
+import { TrustReporter } from "./e2e/trust-report";
 import { PairingSecrets, ShareLinkStore } from "./e2e/pairing";
 import { setE2eDevices, setE2ePairing } from "./e2e/peer";
 import { installE2eRoutes } from "./e2e/routes";
@@ -168,9 +169,22 @@ export function installRelay(
   };
   const channels = new Map<number, E2eChannel>();
   let nextChannelId = 1;
+  const deviceStore = new TrustedDeviceStore(context.db.database);
+  // 新设备待信任上报给 SaaS 云端（#482）；个人中转不报，校验码不经手。
+  const trustReporter = new TrustReporter({
+    transport,
+    signSourceJws: (audience) => cloud.signSourceJws(audience),
+    fingerprint: (issuer) => cloud.fingerprint(issuer),
+    modeOf: (issuer) => cloud.registration(issuer)?.mode,
+    lookup: (pendingId) => deviceStore.byRequest(pendingId),
+    log: context.log,
+  });
   const devices = new DeviceRegistry({
-    store: new TrustedDeviceStore(context.db.database),
-    emit: publishDevice,
+    store: deviceStore,
+    emit: (event) => {
+      publishDevice(event);
+      trustReporter.handle(event);
+    },
     disconnect: (deviceId) => {
       for (const channel of [...channels.values()]) {
         if (channel.peer?.deviceId === deviceId) channel.close();
@@ -367,6 +381,7 @@ export function installRelay(
     },
     close: () => {
       unsubscribe();
+      trustReporter.close();
       relay.stopAll();
       for (const channel of [...channels.values()]) channel.close();
       setE2eDevices(undefined);
