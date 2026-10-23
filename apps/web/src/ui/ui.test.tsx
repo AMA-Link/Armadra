@@ -623,6 +623,18 @@ describe("Kbd / Spinner / Shimmer", () => {
     expect(cls).toContain("rounded-tight");
   });
 
+  it("Kbd 的实底按钮配色只认外层按钮自己的变体，不认带 data-variant 的祖先", () => {
+    render(<Kbd>↵</Kbd>);
+    const cls = screen.getByText("↵").className;
+    expect(cls).toContain(
+      "group-data-[variant=default]/button:text-primary-foreground",
+    );
+    expect(cls).toContain(
+      "group-data-[variant=destructive-solid]/button:text-primary-foreground",
+    );
+    expect(cls).not.toContain("in-data-[variant=");
+  });
+
   it("Spinner 两档尺寸与三种状态；done 画对勾，failed 是 ×", () => {
     const { container, rerender } = render(<Spinner size={12} />);
     const spinner = () =>

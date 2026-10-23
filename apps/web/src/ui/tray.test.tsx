@@ -30,6 +30,8 @@ describe("Tray（KPI 托盘，设计系统 §3.3）", () => {
     expect(card.dataset.variant).toBe("tray");
     expect(card.dataset.slot).toBe("tray-card");
     expect(card.className).toContain("rounded-card");
+    // Card 自己只给上下 12，左右由 TrayCard 补齐，内容不贴内卡边缘
+    expect(card.className).toContain("px-3");
   });
 
   it("头：图标 14 + text-meta 标签 + 右侧动作槽，24 高", () => {
