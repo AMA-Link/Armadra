@@ -263,6 +263,17 @@ describe("SettingsDialog", () => {
     expect(scope()).toBeNull();
   });
 
+  it("顶栏带 settings-topbar 样式钩子，左缘与面板里页标题对齐", async () => {
+    open();
+    await screen.findByText(zh("settings.theme"));
+    const topbar = document.querySelector(
+      '[data-slot="settings-topbar"]',
+    ) as HTMLElement;
+    expect(topbar.className).toContain("settings-topbar");
+    // 左内边距由 settings.css 按令牌给，不再贴着面板外缘
+    expect(topbar.className).not.toMatch(/\bpl-|\bpx-/);
+  });
+
   it("顶栏面包屑：设置 › 分组 › 页名，子页多一级", async () => {
     open();
     await screen.findByText(zh("settings.theme"));
