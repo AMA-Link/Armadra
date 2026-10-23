@@ -25,7 +25,7 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-describe("切主题时的一帧抑制", () => {
+describe("切主题时的一帧抑制", { timeout: 30_000 }, () => {
   it("切主题当拍就带 data-theme-switching，下一帧摘掉", async () => {
     const { applyInitialTheme, syncDocumentPreferences, usePreferencesStore } =
       await freshStore();

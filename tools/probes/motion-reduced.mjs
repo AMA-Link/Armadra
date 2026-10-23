@@ -20,9 +20,7 @@ import { fileURLToPath } from "node:url";
 import { harness, sleep, startChrome, startVite } from "./shell-e2e-lib.mjs";
 
 const root = fileURLToPath(new URL("../../", import.meta.url));
-const output = resolve(
-  process.argv[2] ?? join(root, "target/motion-reduced"),
-);
+const output = resolve(process.argv[2] ?? join(root, "target/motion-reduced"));
 mkdirSync(output, { recursive: true });
 
 const h = harness(output);
@@ -100,7 +98,10 @@ await h.run(async () => {
   const reduce = (on) =>
     page.call("Emulation.setEmulatedMedia", {
       features: [
-        { name: "prefers-reduced-motion", value: on ? "reduce" : "no-preference" },
+        {
+          name: "prefers-reduced-motion",
+          value: on ? "reduce" : "no-preference",
+        },
       ],
     });
 
