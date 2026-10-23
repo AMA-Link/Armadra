@@ -8,7 +8,7 @@
 //   1. ARMADRA_RELAY_BIN 指定的二进制；
 //   2. 检出里的 `go/bin/armadra-relay`：每次先 `go build`（增量，没改动时很快），找不到 go 时
 //      退回已有的二进制并警告；
-//   3. 镜像：ARMADRA_PROBE_RELAY_IMAGE，或从检出的 `apps/relay/Dockerfile` 构建，
+//   3. 镜像：ARMADRA_PROBE_RELAY_IMAGE，或从检出的 `go/Dockerfile` 构建，
 //      `docker run` 起同样的命令行（数据目录等路径原样挂进容器）。
 import { spawn, spawnSync } from "node:child_process";
 import { randomBytes } from "node:crypto";
@@ -62,7 +62,7 @@ export function ensureRelayImage(cloudHome, env = process.env) {
   const tag = "armadra-probe-relay:local";
   const built = spawnSync(
     "docker",
-    ["build", "-q", "-f", "apps/relay/Dockerfile", "-t", tag, "."],
+    ["build", "-q", "-f", "go/Dockerfile", "-t", tag, "."],
     { cwd: cloudHome, encoding: "utf8", timeout: 900_000 },
   );
   if (built.status !== 0)

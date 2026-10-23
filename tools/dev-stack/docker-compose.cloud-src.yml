@@ -11,11 +11,11 @@ services:
   relay:
     build:
       context: "${ARMADRA_DEV_STACK_CLOUD_SRC:?set ARMADRA_DEV_STACK_CLOUD_SRC}"
-      dockerfile: apps/relay/Dockerfile
+      dockerfile: go/Dockerfile
     image: armadra-dev-relay:local
 
   relay-personal:
     build:
       context: "${ARMADRA_DEV_STACK_CLOUD_SRC:?set ARMADRA_DEV_STACK_CLOUD_SRC}"
-      dockerfile: apps/relay/Dockerfile
+      dockerfile: go/Dockerfile
     image: armadra-dev-relay:local

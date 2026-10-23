@@ -213,7 +213,7 @@ test("ARMADRA_DEV_STACK_CLOUD_SRC：本地构建叠加文件与目录解析", ()
     );
     assert.match(
       overlay.services[name].build.dockerfile,
-      /^apps\/(cloud|relay)\/Dockerfile$/,
+      /^(apps\/(cloud|relay)|go)\/Dockerfile$/,
     );
   }
   const fake = mkdtempSync(join(tmpdir(), "cloud-src-"));
