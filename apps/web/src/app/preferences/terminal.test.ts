@@ -62,6 +62,15 @@ describe("storedTerminalPreferences", () => {
     expect(storedTerminalPreferences().renderer).toBe("dom");
   });
 
+  it("配色（#501）：缺省跟随主题，存过的读回，坏值回落缺省，键名固定", () => {
+    expect(storedTerminalPreferences().colorScheme).toBe("follow");
+    expect(TERMINAL_KEYS.colorScheme).toBe("armadra.terminal.colorScheme");
+    localStorage.setItem(TERMINAL_KEYS.colorScheme, "dark");
+    expect(storedTerminalPreferences().colorScheme).toBe("dark");
+    localStorage.setItem(TERMINAL_KEYS.colorScheme, "light");
+    expect(storedTerminalPreferences().colorScheme).toBe("follow");
+  });
+
   it("旧的布尔 armadra.terminal.webgl 不读（按设计不做兼容）", () => {
     localStorage.setItem("armadra.terminal.webgl", "true");
     const preferences = storedTerminalPreferences();

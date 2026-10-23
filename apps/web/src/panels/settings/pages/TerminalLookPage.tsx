@@ -1,6 +1,7 @@
 import * as React from "react";
 
 import {
+  TERMINAL_COLOR_SCHEMES,
   TERMINAL_CURSOR_STYLES,
   TERMINAL_FONT_SIZE_RANGE,
   TERMINAL_LETTER_SPACING_RANGE,
@@ -8,6 +9,7 @@ import {
   TERMINAL_RENDERERS,
   usePreferencesStore,
   useT,
+  type TerminalColorScheme,
   type TerminalCursorStyle,
   type TerminalPreferences,
   type TerminalRenderer,
@@ -36,6 +38,7 @@ import {
 import { Skeleton } from "@/ui/skeleton";
 import { Switch } from "@/ui/switch";
 import { clamp } from "@/lib/math";
+import { terminalSchemeAttribute } from "@/terminal/surface/appearance";
 
 /** `Select` 不收空串：跟随系统与自定义各用一个不会是字体名的值。 */
 const SYSTEM = "__system";
@@ -60,6 +63,29 @@ export function TerminalLookPage() {
       <SettingsPageHeader />
       <PreviewCard terminal={terminal} />
       <SettingsGroup title={t("terminal.settings.group.type")}>
+        <SettingsRow label={t("terminal.settings.colorScheme")}>
+          <Select
+            value={terminal.colorScheme}
+            onValueChange={(value) =>
+              set("colorScheme", value as TerminalColorScheme)
+            }
+          >
+            <SelectTrigger
+              aria-label={t("terminal.settings.colorScheme")}
+              size="sm"
+              className={CONTROL_WIDTH}
+            >
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent className="z-[var(--z-dialog)]">
+              {TERMINAL_COLOR_SCHEMES.map((scheme) => (
+                <SelectItem key={scheme} value={scheme}>
+                  {t(`terminal.colorScheme.${scheme}`)}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </SettingsRow>
         <FontRows terminal={terminal} set={set} />
         <SpacingRow terminal={terminal} set={set} />
       </SettingsGroup>
@@ -384,6 +410,7 @@ function PreviewCard({ terminal }: { terminal: TerminalPreferences }) {
       <pre
         aria-label={t("terminal.settings.preview")}
         data-testid="terminal-font-preview"
+        data-term-scheme={terminalSchemeAttribute(terminal.colorScheme)}
         className="overflow-x-auto px-3 py-2"
         style={{
           backgroundColor: "var(--term-bg)",

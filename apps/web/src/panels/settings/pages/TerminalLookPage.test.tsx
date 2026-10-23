@@ -48,7 +48,12 @@ beforeEach(() => {
   usePreferencesStore.setState({ locale: "zh-CN" });
   fonts.value = ["JetBrains Mono", "Menlo"];
   setFont("");
-  setTerminal({ renderer: "dom", repaintThrottle: "off", releaseAfter: "10m" });
+  setTerminal({
+    colorScheme: "follow",
+    renderer: "dom",
+    repaintThrottle: "off",
+    releaseAfter: "10m",
+  });
   localStorage.clear();
 });
 afterEach(() => {
@@ -99,6 +104,29 @@ describe("设置 → 终端外观（§2.4）", () => {
     expect(
       screen.getByLabelText(zh("terminal.settings.preview")).textContent,
     ).toBe(zh("terminal.settings.previewSample"));
+  });
+
+  it("配色（#501）：跟随主题（缺省）/ 始终深色，选了即写进偏好与 localStorage，预览跟着走", async () => {
+    render(<TerminalLookPage />);
+    const scheme = screen.getByRole("combobox", {
+      name: zh("terminal.settings.colorScheme"),
+    });
+    expect(await optionLabels(scheme)).toEqual([
+      zh("terminal.colorScheme.follow"),
+      zh("terminal.colorScheme.dark"),
+    ]);
+    const preview = screen.getByTestId("terminal-font-preview");
+    expect(usePreferencesStore.getState().terminal.colorScheme).toBe("follow");
+    expect(preview.hasAttribute("data-term-scheme")).toBe(false);
+
+    await chooseOption(scheme, zh("terminal.colorScheme.dark"));
+    expect(usePreferencesStore.getState().terminal.colorScheme).toBe("dark");
+    expect(localStorage.getItem("armadra.terminal.colorScheme")).toBe("dark");
+    expect(preview.getAttribute("data-term-scheme")).toBe("dark");
+
+    await chooseOption(scheme, zh("terminal.colorScheme.follow"));
+    expect(usePreferencesStore.getState().terminal.colorScheme).toBe("follow");
+    expect(preview.hasAttribute("data-term-scheme")).toBe(false);
   });
 
   it("字体是探测到的等宽字体：跟随系统在前、自定义在后", async () => {
