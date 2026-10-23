@@ -432,6 +432,7 @@ export class CloudLogin {
       principalId,
       issuer,
       issuerDeviceId: claims.device.deviceId,
+      accountId: claims.sub,
       ...(invitationToken !== undefined && linkId !== undefined
         ? {
             invitation: {
