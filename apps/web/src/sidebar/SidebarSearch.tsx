@@ -40,7 +40,6 @@ import {
 import {
   ResponsiveDialog,
   ResponsiveDialogContent,
-  ResponsiveDialogDescription,
   ResponsiveDialogHeader,
   ResponsiveDialogTitle,
 } from "@/panels/ResponsiveDialog";
@@ -140,13 +139,11 @@ export function SidebarSearch({ open, onOpenChange }: SidebarSearchProps) {
     <ResponsiveDialog open={open} onOpenChange={onOpenChange}>
       <ResponsiveDialogContent
         showCloseButton={false}
-        className="top-1/4 z-[var(--z-dialog)] max-w-[600px]! translate-y-0 overflow-hidden rounded-[var(--r-dialog)]! p-0 sm:max-w-[600px]"
+        aria-describedby={undefined}
+        className="top-1/4 z-(--z-dialog) max-w-[600px]! translate-y-0 overflow-hidden rounded-dialog! p-0 sm:max-w-[600px]"
       >
         <ResponsiveDialogHeader className="sr-only">
           <ResponsiveDialogTitle>{t("search.title")}</ResponsiveDialogTitle>
-          <ResponsiveDialogDescription>
-            {t("search.placeholder")}
-          </ResponsiveDialogDescription>
         </ResponsiveDialogHeader>
         <Command className="p-0" shouldFilter={false}>
           <CommandInput

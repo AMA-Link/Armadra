@@ -18,7 +18,6 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { Folder } from "lucide-react";
-import { toast } from "sonner";
 
 import { reorderSources } from "../api/remote-services";
 import { RUNTIME_VIA_SERVER_SHELL } from "../api/request";
@@ -47,9 +46,9 @@ import { cn } from "@/lib/cn";
 import { Avatar, AvatarFallback } from "@/ui/avatar";
 import { Badge } from "@/ui/badge";
 import { Button } from "@/ui/button";
-import { ColorDot } from "@/ui/color-dot";
 import { Spinner } from "@/ui/spinner";
-import { TONE_COLOR } from "@/ui/status-pill";
+import { StatusDot } from "@/ui/status-pill";
+import { toast } from "@/ui/toast";
 
 /**
  * 侧栏的三组（#301）：这台电脑、我的其他电脑、他人分享。点哪个工作空间就
@@ -365,7 +364,7 @@ function SourceBlock({
       data-dragging={sortable?.dragging || undefined}
       className={cn(
         "relative",
-        sortable?.dragging && "rounded-md bg-sidebar shadow-sm",
+        sortable?.dragging && "rounded-control bg-sidebar shadow-overlay",
       )}
     >
       <div
@@ -377,7 +376,6 @@ function SourceBlock({
           sortable &&
             "cursor-grab touch-none outline-none focus-visible:ring-3 focus-visible:ring-ring/50 active:cursor-grabbing",
         )}
-        title={t(pill.key)}
       >
         {shared ? (
           <Avatar size="sm" className="size-5" aria-hidden>
@@ -386,15 +384,15 @@ function SourceBlock({
             </AvatarFallback>
           </Avatar>
         ) : section.state === "loading" ? (
-          <Spinner aria-hidden className="size-3 text-muted-foreground" />
+          <Spinner size={12} aria-hidden className="text-muted-foreground" />
         ) : (
-          <ColorDot color={TONE_COLOR[pill.tone]} size={6} />
+          <StatusDot tone={pill.tone} size={6} />
         )}
         <h3 className="min-w-0 flex-1 truncate text-[length:var(--text-body)] text-muted-foreground">
           {name}
         </h3>
         {shared && section.state === "loading" && (
-          <Spinner aria-hidden className="size-3 text-muted-foreground" />
+          <Spinner size={12} aria-hidden className="text-muted-foreground" />
         )}
         {shared && (
           <Badge variant="secondary" data-share-role>

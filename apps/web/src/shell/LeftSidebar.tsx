@@ -30,12 +30,12 @@ import { useT } from "../app/preferences-store";
 import { commandKeysLabel } from "../keybindings";
 import { SidebarHeader } from "../sidebar/SidebarHeader";
 import { SidebarSearch } from "../sidebar/SidebarSearch";
-import { SignalDot } from "../sidebar/SignalDot";
 import { WorkspaceTree } from "../sidebar/WorkspaceTree";
 import { useCanvasStore } from "../store/canvas-store";
 import { Button } from "@/ui/button";
 import { IconButton } from "@/ui/icon-button";
 import { Separator } from "@/ui/separator";
+import { StatusDot } from "@/ui/status-pill";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/ui/tooltip";
 import {
   dragRegionProps,
@@ -178,7 +178,7 @@ function TitlebarRow({
     >
       {brand ? (
         // 折叠钮固定在左上角（28px + 8px 边距），产品名从它右边起。
-        <span className="mr-auto truncate pl-[calc(var(--safe-left)+var(--window-controls-left)+36px)] text-[length:var(--text-section)] font-semibold">
+        <span className="mr-auto truncate pl-[calc(var(--safe-left)+var(--window-controls-left)+36px)] text-section font-semibold">
           {t("app.brand")}
         </span>
       ) : null}
@@ -202,9 +202,11 @@ function TitlebarRow({
         >
           <Bell />
           {hasSignal && (
-            <SignalDot
+            <StatusDot
               corner
               tone="attention"
+              size={6}
+              className="pointer-events-none top-[5px] right-[5px] translate-x-0 translate-y-0"
               label={t("sidebar.hasNotifications")}
             />
           )}
@@ -253,9 +255,11 @@ function SidebarToggle({ open }: { open: boolean }) {
           >
             <PanelLeft />
             {hasSignal && (
-              <SignalDot
+              <StatusDot
                 corner
                 tone="attention"
+                size={6}
+                className="pointer-events-none top-[5px] right-[5px] translate-x-0 translate-y-0"
                 label={t("sidebar.hasNotifications")}
               />
             )}
@@ -281,7 +285,7 @@ function SidebarFooter({ onNavigate }: { onNavigate?: () => void }) {
       <Button
         variant="ghost"
         size="sm"
-        className="motion-hover h-7 w-full justify-start gap-2 px-1.5 text-[length:var(--text-body)] font-normal hover:bg-[var(--hover)]"
+        className="motion-hover w-full justify-start gap-2 px-1.5 font-normal hover:bg-hover"
         onClick={() => {
           onNavigate?.();
           setPanel("settings", !settings);
