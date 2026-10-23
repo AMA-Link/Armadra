@@ -2,6 +2,7 @@ import {
   driveTargetFor,
   observedActivityFor,
   automatedInputWritable,
+  authorizeDrive,
   authorizeManagedInput,
   assertSubmitInput,
 } from "./manager-status";
@@ -55,7 +56,6 @@ import {
   mergeReports,
   reconcile,
 } from "./gc";
-import { audit } from "../identity/audit";
 import { type Actor, type Lease, freeLease } from "../drive/lease";
 import { loadSession } from "../collab/nodes";
 import {
@@ -68,8 +68,6 @@ import { destroyRowBackend, reapPersistent } from "./reap";
 import { LimitGate } from "./limits";
 import { insertSessionRow } from "./session-row";
 import { type ObservedActivity } from "../agent/target-state";
-import { allows } from "../identity/gate";
-import { scope } from "../identity/scopes";
 import {
   DriveBook,
   InputLedger,
@@ -879,34 +877,7 @@ export class TerminalManager {
     beforeWrite?: () => void,
   ): Promise<void> {
     const first = this.checked(sessionId, generation);
-    // `terminal:drive` 的判定入口（设计 §4.4）：写入者 ≠ 会话创建者时才要这条
-    // 授权。今天两者都是本机 owner，所以恒通过——入口在这里，是为了让第二个
-    // principal 出现时不必重新找一遍所有写入路径。
-    const takeover =
-      this.drive.creator(sessionId) !== undefined &&
-      (writer?.principalId ?? "") !== this.drive.creator(sessionId);
-    if (
-      !this.drive.permits(sessionId, writer, (workspaceId) =>
-        allows([scope("terminal:drive", workspaceId)]),
-      )
-    ) {
-      throw new TerminalError(
-        403,
-        "forbidden",
-        "Writing into another person's terminal requires terminal:drive",
-      );
-    }
-    if (takeover) {
-      // 终端接管，设计 §4.5 的第五个审计写入点。写在这里而不是附着时：附着只
-      // 是看，而接管是「有人开始替另一个人按键」，那一刻才值得记。
-      audit({
-        action: "terminal.drive",
-        target: sessionId,
-        principalId: writer?.principalId ?? "",
-        workspaceId: first.workspaceId,
-        detail: { creator: this.drive.creator(sessionId) ?? "" },
-      });
-    }
+    authorizeDrive(this.drive, first, writer);
     this.noteDrive(sessionId, driver);
     return this.withKey(first.key, async () => {
       const record = this.checked(sessionId, generation);

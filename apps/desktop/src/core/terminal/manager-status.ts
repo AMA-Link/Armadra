@@ -7,6 +7,48 @@ import type { DriveTarget, SessionRecord } from "./manager";
 import type { Actor } from "../drive/lease";
 import { runDeliveryBridge } from "../runs/registry";
 import { TerminalError } from "./backend";
+import type { DriveBook, TerminalWriter } from "./input";
+import { audit } from "../identity/audit";
+import { allows } from "../identity/gate";
+import { scope } from "../identity/scopes";
+
+/**
+ * `terminal:drive` 的判定入口（设计 §4.4）：写入者 ≠ 会话创建者时才要这条
+ * 授权。今天两者都是本机 owner，所以恒通过——入口在这里，是为了让第二个
+ * principal 出现时不必重新找一遍所有写入路径。
+ */
+export function authorizeDrive(
+  drive: DriveBook,
+  record: SessionRecord,
+  writer: TerminalWriter | undefined,
+): void {
+  const sessionId = record.id;
+  const takeover =
+    drive.creator(sessionId) !== undefined &&
+    (writer?.principalId ?? "") !== drive.creator(sessionId);
+  if (
+    !drive.permits(sessionId, writer, (workspaceId) =>
+      allows([scope("terminal:drive", workspaceId)]),
+    )
+  ) {
+    throw new TerminalError(
+      403,
+      "forbidden",
+      "Writing into another person's terminal requires terminal:drive",
+    );
+  }
+  if (takeover) {
+    // 终端接管，设计 §4.5 的第五个审计写入点。写在这里而不是附着时：附着只
+    // 是看，而接管是「有人开始替另一个人按键」，那一刻才值得记。
+    audit({
+      action: "terminal.drive",
+      target: sessionId,
+      principalId: writer?.principalId ?? "",
+      workspaceId: record.workspaceId,
+      detail: { creator: drive.creator(sessionId) ?? "" },
+    });
+  }
+}
 
 export function authorizeManagedInput(
   database: DatabaseSync,
