@@ -45,14 +45,36 @@ afterEach(() => {
 });
 
 describe("StickyNode", () => {
-  it("does not tint the surface with a historical node colour", () => {
+  it("便签色只做顶部 3px 色条和 10% 混入卡片色的底", () => {
     const { container } = renderSticky();
     const surface = container.querySelector(
       '[data-slot="sticky-node"]',
     ) as HTMLElement;
-    expect(surface.style.background).toBe("");
+    expect(surface.style.getPropertyValue("--sticky-color")).toBe("#ffd60a");
+    expect(surface.className).toContain(
+      "bg-[color-mix(in_srgb,var(--sticky-color)_10%,var(--card))]",
+    );
     expect(surface.style.boxShadow).toBe("");
-    expect(surface.className).toContain("bg-[var(--card)]");
+    const bar = container.querySelector('[data-slot="sticky-bar"]');
+    expect(bar?.className).toContain("h-[3px]");
+    expect(bar?.className).toContain("bg-(--sticky-color)");
+  });
+
+  it("没有 role=button 的正文；编辑入口是底栏的 ghost xs 按钮", () => {
+    const { container } = renderSticky();
+    expect(container.querySelector('[role="button"]')).toBeNull();
+    const edit = screen.getByRole("button", { name: "编辑" });
+    expect(edit.getAttribute("data-variant")).toBe("ghost");
+    expect(edit.getAttribute("data-size")).toBe("xs");
+  });
+
+  it("底栏用 text-caption 等宽", () => {
+    const { container } = renderSticky();
+    const footer = container.querySelector(
+      '[data-slot="sticky-node"] > div:last-child',
+    ) as HTMLElement;
+    expect(footer.className).toContain("text-caption");
+    expect(footer.className).toContain("font-mono");
   });
 
   it("renders the content as Markdown when idle", () => {
@@ -64,7 +86,7 @@ describe("StickyNode", () => {
 
   it("switches to a textarea on click and commits on blur", () => {
     renderSticky();
-    fireEvent.click(screen.getByRole("button", { name: "便签" }));
+    fireEvent.click(screen.getByRole("button", { name: "编辑" }));
     const textarea = screen.getByLabelText("便签") as HTMLTextAreaElement;
     expect(textarea.value).toBe("# 标题\n\n- [x] 完成");
 
@@ -90,7 +112,7 @@ describe("StickyNode", () => {
       />
     );
     const { rerender } = render(view(base));
-    fireEvent.click(screen.getByRole("button", { name: "便签" }));
+    fireEvent.click(screen.getByRole("button", { name: "编辑" }));
     const textarea = screen.getByLabelText("便签") as HTMLTextAreaElement;
     fireEvent.change(textarea, { target: { value: "hello world" } });
     // 编辑期间另一个人在前面加了字（实时板的远端灌入）。
@@ -108,7 +130,7 @@ describe("StickyNode", () => {
 
   it("does not write per keystroke", () => {
     renderSticky();
-    fireEvent.click(screen.getByRole("button", { name: "便签" }));
+    fireEvent.click(screen.getByRole("button", { name: "编辑" }));
     const textarea = screen.getByLabelText("便签");
     for (const char of "abcdefghij") {
       fireEvent.change(textarea, {
@@ -120,7 +142,7 @@ describe("StickyNode", () => {
 
   it("commits the draft when it is unmounted mid-edit", () => {
     const { unmount } = renderSticky();
-    fireEvent.click(screen.getByRole("button", { name: "便签" }));
+    fireEvent.click(screen.getByRole("button", { name: "编辑" }));
     const textarea = screen.getByLabelText("便签");
     fireEvent.change(textarea, { target: { value: "没来得及失焦" } });
     unmount();
@@ -131,7 +153,7 @@ describe("StickyNode", () => {
 
   it("drops the draft on Escape", () => {
     renderSticky();
-    fireEvent.click(screen.getByRole("button", { name: "便签" }));
+    fireEvent.click(screen.getByRole("button", { name: "编辑" }));
     const textarea = screen.getByLabelText("便签");
     fireEvent.change(textarea, { target: { value: "不要保存" } });
     fireEvent.keyDown(textarea, { key: "Escape" });
