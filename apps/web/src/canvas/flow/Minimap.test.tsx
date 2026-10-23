@@ -12,6 +12,7 @@ import type { AgentGlow } from "@/agent/display";
 import { installDomPolyfills } from "@/app/test-harness";
 import { useMinimapPreferences } from "@/app/minimap-preferences";
 import { toItemId } from "@/canvas/whiteboard/model";
+import { TooltipProvider } from "@/ui/tooltip";
 import {
   MINIMAP_COLORS,
   Minimap,
@@ -158,9 +159,11 @@ describe("节点 → 上色输入", () => {
 describe("收起开关", () => {
   const renderPanel = () =>
     render(
-      <ReactFlowProvider>
-        <Minimap />
-      </ReactFlowProvider>,
+      <TooltipProvider>
+        <ReactFlowProvider>
+          <Minimap />
+        </ReactFlowProvider>
+      </TooltipProvider>,
     );
 
   it("展开时画缩略图，点一下收起后只剩按钮", () => {
@@ -176,6 +179,16 @@ describe("收起开关", () => {
     expect(screen.queryByTestId("rf__minimap")).toBeNull();
     const expand = screen.getByRole("button", { name: "展开缩略图" });
     expect(expand.querySelector(".lucide-map")).toBeTruthy();
+  });
+
+  it("收起钮不带原生 title（说明走 Tooltip），收起后是强边的 cluster 钮", () => {
+    renderPanel();
+    const collapse = screen.getByRole("button", { name: "收起缩略图" });
+    expect(collapse.hasAttribute("title")).toBe(false);
+    fireEvent.click(collapse);
+    const expand = screen.getByRole("button", { name: "展开缩略图" });
+    expect(expand.hasAttribute("title")).toBe(false);
+    expect(expand.classList.contains("border-border-strong")).toBe(true);
   });
 
   it("收起状态记在 `minimap-preferences` 里，重挂之后还在", () => {
@@ -206,17 +219,19 @@ describe("小地图里的连线（#216）", () => {
   });
   const renderFlow = (nodes: Node[], edges: Edge[]) =>
     render(
-      <ReactFlowProvider>
-        <ReactFlow
-          width={800}
-          height={600}
-          nodeTypes={nodeTypes}
-          nodes={nodes}
-          edges={edges}
-        >
-          <Minimap />
-        </ReactFlow>
-      </ReactFlowProvider>,
+      <TooltipProvider>
+        <ReactFlowProvider>
+          <ReactFlow
+            width={800}
+            height={600}
+            nodeTypes={nodeTypes}
+            nodes={nodes}
+            edges={edges}
+          >
+            <Minimap />
+          </ReactFlow>
+        </ReactFlowProvider>
+      </TooltipProvider>,
     );
 
   it("整层连线只画一次，按颜色合并成 path，压在所有节点矩形下面", () => {
