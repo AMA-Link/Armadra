@@ -17,11 +17,7 @@ export function MembersChip({ nodeId }: { nodeId: string }) {
       : 0,
   );
   return (
-    <Badge
-      asChild
-      variant="secondary"
-      className="h-[18px] px-1.5 text-[length:var(--text-caption)]"
-    >
+    <Badge asChild variant="secondary" size="sm">
       <Button
         variant="secondary"
         size="xs"

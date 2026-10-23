@@ -8,7 +8,6 @@ export const sessions: MessageModule = {
     "sessions.rename": "重命名",
     "sessions.terminate": "结束会话",
     "sessions.terminateTitle": "结束「{title}」？",
-    "sessions.terminateDescription": "该会话的进程与持久会话都会被销毁。",
     "sessions.terminateConfirm": "结束",
     "sessions.terminateFailed": "结束会话失败",
     "sessions.cancel": "取消",
@@ -28,8 +27,6 @@ export const sessions: MessageModule = {
     "sessions.rename": "Rename",
     "sessions.terminate": "End session",
     "sessions.terminateTitle": "End “{title}”?",
-    "sessions.terminateDescription":
-      "The process and its persistent session are destroyed.",
     "sessions.terminateConfirm": "End",
     "sessions.terminateFailed": "Could not end the session",
     "sessions.cancel": "Cancel",

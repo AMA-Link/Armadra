@@ -1,19 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, render, screen } from "@testing-library/react";
 import type { CanvasNode } from "@armadra/shared";
-
-/** 功能开关（#295）：这里测的是功能本身，按开着测。 */
-const featureFlags = vi.hoisted(() => ({
-  credentials: true,
-  usage: true,
-  activityCards: true,
-  scheduledTasks: true,
-  workflows: true,
-}));
-vi.mock("@armadra/shared", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("@armadra/shared")>()),
-  FEATURE_FLAGS: featureFlags,
-}));
 
 const terminal = {
   id: "33333333-3333-4333-8333-333333333333",
@@ -47,7 +34,7 @@ const store = vi.hoisted(() => ({
 
 const agent = vi.hoisted(() => ({
   status: undefined as Record<string, unknown> | undefined,
-  cards: [] as Record<string, unknown>[],
+  tree: null as unknown,
 }));
 
 vi.mock("@/store/canvas-store", () => {
@@ -59,14 +46,11 @@ vi.mock("@/store/canvas-store", () => {
 vi.mock("@/agent/status-store", () => ({
   useAgentStatus: () => agent.status,
 }));
-vi.mock("@/agent/subagent-store", () => ({
-  useSubagentCards: () => agent.cards,
-}));
-const propose = vi.hoisted(() => vi.fn());
-vi.mock("@/panels/automation/open", () => ({
-  proposePlanFromNative: propose,
+vi.mock("@/agent/use-agent-tree", () => ({
+  useAgentTree: () => agent.tree,
 }));
 
+import type { AgentTree as AgentTreeModel } from "@/agent/agent-tree-model";
 import { AgentActivityNode } from "./AgentActivityNode";
 
 const node = {
@@ -103,102 +87,101 @@ function renderCard(override: CanvasNode = node) {
   );
 }
 
+const TREE: AgentTreeModel = {
+  root: {
+    id: terminal.id,
+    label: "Claude",
+    tone: "working",
+    kind: "agent",
+    hidden: 0,
+    children: [
+      {
+        id: `${terminal.id}/card-1`,
+        label: "评审改动",
+        tone: "working",
+        kind: "subagent",
+        children: [],
+        hidden: 0,
+      },
+    ],
+  },
+  summary: { total: 1, byTone: { working: 1 } },
+};
+
 beforeEach(() => {
-  featureFlags.scheduledTasks = true;
-  featureFlags.activityCards = true;
   store.document.nodes = [terminal];
   agent.status = undefined;
-  agent.cards = [];
+  agent.tree = null;
 });
 afterEach(cleanup);
 
 describe("agent activity card", () => {
-  it("活动卡片与定时任务暂时下线（#295）时旧卡片照常显示，不给「转为平台计划」", () => {
-    featureFlags.scheduledTasks = false;
-    featureFlags.activityCards = false;
-    renderCard();
-    expect(screen.getByText("已观察 0 次")).toBeTruthy();
-    expect(screen.queryByRole("button", { name: "转为平台计划" })).toBeNull();
+  it("只剩状态信息：来源节点名 + StatusLine，没有任何按钮", () => {
+    const { container } = renderCard();
+    const card = container.querySelector("[data-slot=agent-activity-card]")!;
+    expect(card.textContent).toContain("Claude");
+    expect(card.querySelector("[data-slot=status-line]")).toBeTruthy();
+    // 没有「转为平台计划」，也没有暂停 / 取消 / 说明文字
+    expect(card.querySelector("button")).toBeNull();
+    for (const text of [
+      "转为平台计划",
+      "已观察",
+      "最近一次",
+      "还没有观察到活动",
+      "只读观察",
+      "暂停",
+      "立即运行",
+    ])
+      expect(screen.queryByText(new RegExp(text))).toBeNull();
   });
 
-  it("observes a real node without extra labels", () => {
-    renderCard();
-    // 卡片标题与被观察节点标题同名，两处都出现。
-    expect(screen.getAllByText("Claude").length).toBeGreaterThan(1);
-    expect(screen.queryByText("只读观察")).toBeNull();
-    expect(screen.queryByText("CLI 循环")).toBeNull();
+  it("StatusLine 与节点头、侧栏同一个 tone 与文案", () => {
+    agent.status = {
+      nodeId: terminal.id,
+      workspaceId: "w",
+      agentId: "claude",
+      state: "blocked",
+      pendingId: "p",
+      unread: false,
+      verified: true,
+      restored: false,
+      alive: true,
+      updatedAt: "2026-09-05T00:00:00.000Z",
+    };
+    const { container } = renderCard();
+    const line = container.querySelector("[data-slot=status-line]")!;
+    expect(line.getAttribute("data-tone")).toBe("attention");
+    expect(line.textContent).toContain("等待审批");
   });
 
-  it("reports zero observations rather than inventing a loop", () => {
-    renderCard();
-    expect(screen.getByText("已观察 0 次")).toBeTruthy();
-    expect(screen.getByText("还没有观察到活动")).toBeTruthy();
+  it("没有下级与卡片时不渲染 AgentTree", () => {
+    const { container } = renderCard();
+    expect(container.querySelector("[data-slot=agent-tree]")).toBeNull();
   });
 
-  it("shows the latest observation from the existing hook stream", () => {
-    agent.cards = [
-      {
-        id: "card-1",
-        parentId: terminal.id,
-        taskLabel: "评审改动",
-        startedAt: Date.parse("2026-09-05T12:00:00Z"),
-        state: "done",
-      },
-    ];
-    renderCard();
-    expect(screen.getByText("已观察 1 次")).toBeTruthy();
-    expect(screen.getByText("评审改动")).toBeTruthy();
-  });
-
-  it("says so when the observed node has left the canvas", () => {
-    store.document.nodes = [];
-    renderCard();
-    expect(screen.getByText("被观察的节点已不在这块画布上")).toBeTruthy();
-  });
-
-  it("offers no pause or cancel — hiding it never stops the CLI's loop", () => {
-    renderCard();
+  it("有下级时渲染 AgentTree md", () => {
+    agent.tree = TREE;
+    const { container } = renderCard();
+    const tree = container.querySelector(
+      "[data-slot=agent-tree][data-size=md]",
+    );
+    expect(tree).toBeTruthy();
+    expect(screen.getByRole("tree")).toBeTruthy();
     expect(
-      screen.queryByText("隐藏这张卡片不会取消 CLI 自己的循环"),
-    ).toBeNull();
+      screen.getByRole("treeitem", { name: "评审改动 · 运行中" }),
+    ).toBeTruthy();
+  });
+
+  it("来源节点已不在画布上：EmptyState，不画状态行", () => {
+    store.document.nodes = [];
+    const { container } = renderCard();
+    expect(screen.getByText("被观察的节点已不在这块画布上")).toBeTruthy();
+    expect(container.querySelector("[data-slot=status-line]")).toBeNull();
+  });
+
+  it("没有暂停或取消——隐藏它不会停下 CLI 自己的循环", () => {
+    renderCard();
     for (const label of ["暂停", "立即运行", "启用"])
       expect(screen.queryByText(label)).toBeNull();
-  });
-
-  it("proposes a platform plan without creating or activating one", () => {
-    store.document.nodes = [
-      {
-        ...terminal,
-        data: {
-          kind: "terminal",
-          sessionId: "01a072aa-0000-7000-8000-000000000001",
-          agent: { id: "claude" },
-        },
-      } as unknown as CanvasNode,
-    ];
-    renderCard();
-    const button = screen.getByRole("button", { name: "转为平台计划" });
-    fireEvent.click(button);
-    // A draft the person still confirms: nothing is created here, and the
-    // native card and its CLI loop are untouched.
-    expect(propose).toHaveBeenCalledWith({
-      targetKind: "agent",
-      nodeId: terminal.id,
-      title: "Claude",
-      origin: "native",
-    });
-    expect(store.addNode).not.toHaveBeenCalled();
-    expect(store.removeNodes).not.toHaveBeenCalled();
-  });
-
-  it("says so rather than offering a plan with nothing to target", () => {
-    // The observed node has no Agent session, so no plan could name a target.
-    renderCard();
-    const button = screen.getByRole("button", { name: "转为平台计划" });
-    expect((button as HTMLButtonElement).disabled).toBe(true);
-    // 原因进悬停提示，不再占一行小字。
-    expect(button.getAttribute("title")).toBe(
-      "被观察的节点上没有可作为目标的 Agent 会话",
-    );
   });
 });

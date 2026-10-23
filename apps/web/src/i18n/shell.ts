@@ -86,7 +86,6 @@ export const shell: MessageModule = {
     "sidebar.boardMenu": "画布操作",
     "sidebar.boardDelete": "删除",
     "sidebar.boardDeleteTitle": "删除「{name}」？",
-    "sidebar.boardDeleteDescription": "画布与其中的节点都会被删除。",
     "sidebar.boardDeleteConfirm": "删除画布",
     "sidebar.cancel": "取消",
 
@@ -195,7 +194,6 @@ export const shell: MessageModule = {
     "sidebar.boardMenu": "Board actions",
     "sidebar.boardDelete": "Delete",
     "sidebar.boardDeleteTitle": "Delete “{name}”?",
-    "sidebar.boardDeleteDescription": "The board and its nodes are removed.",
     "sidebar.boardDeleteConfirm": "Delete board",
     "sidebar.cancel": "Cancel",
 

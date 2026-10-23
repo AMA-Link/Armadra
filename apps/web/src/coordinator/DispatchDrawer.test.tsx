@@ -22,7 +22,24 @@ import { TestProviders, installDomPolyfills } from "@/app/test-harness";
 import { usePreferencesStore } from "@/app/preferences-store";
 import { useAgentStatusStore } from "@/agent/status-store";
 import { useCanvasStore } from "@/store/canvas-store";
+import { agentTreeOf } from "@/agent/agent-tree-model";
+import type { MirroredStatus } from "@/agent/status-store";
 import type { DispatchTask } from "./api";
+
+function mirrored(state: string, extra: Partial<MirroredStatus> = {}) {
+  return {
+    nodeId: "x",
+    workspaceId: "w",
+    agentId: "claude",
+    state,
+    unread: false,
+    verified: true,
+    restored: false,
+    alive: true,
+    updatedAt: "2026-10-04T08:00:00.000Z",
+    ...extra,
+  } as unknown as MirroredStatus;
+}
 
 const api = vi.hoisted(() => ({ tasks: vi.fn(), retry: vi.fn() }));
 
@@ -305,6 +322,19 @@ describe("DispatchView 五态", () => {
     expect((rows[0] as HTMLElement).style.borderLeftColor).toBe(
       "var(--agent-claude)",
     );
+    // 成员行是 StatusLine：阶段 · 耗时，tone 与任务状态一致
+    const lines = [...rows].map((row) =>
+      row.querySelector("[data-slot=status-line]"),
+    );
+    expect(lines.map((line) => line?.getAttribute("data-tone"))).toEqual([
+      "done",
+      "working",
+      "failed",
+    ]);
+    expect(rows[0]!.querySelector("[data-slot=status-pill]")).toBeNull();
+    // 运行中的行转圈，别的不转
+    expect(lines[1]!.querySelector("[data-slot=spinner]")).toBeTruthy();
+    expect(lines[0]!.querySelector("[data-slot=spinner]")).toBeNull();
     expect(within(rows[0] as HTMLElement).getByText("已完成")).toBeTruthy();
     expect(
       within(rows[0] as HTMLElement).getByText("12 分 00 秒"),
@@ -317,6 +347,38 @@ describe("DispatchView 五态", () => {
     expect(screen.getByText("汇总 → 便签「审查结论」")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "打开" }));
     expect(onOpen).toHaveBeenCalledWith(ID.sticky);
+  });
+
+  it("顶部是缩略 Agent 树（根 = ama）；没有下级就不画", () => {
+    const tree = agentTreeOf(
+      ID.lead,
+      { nodes: NODES, edges: EDGES },
+      { [ID.pi]: mirrored("done", { errored: true, unread: true }) },
+      {},
+    );
+    const { container, rerender } = render(
+      <TestProviders>
+        <DispatchView model={full()} tree={tree} />
+      </TestProviders>,
+    );
+    const host = container.querySelector(
+      "[data-slot=agent-tree][data-size=md]",
+    )!;
+    expect(host).toBeTruthy();
+    expect(host.textContent).toContain("3 个子 Agent，1 个失败，2 个空闲");
+    // 树在 ama 行之前
+    const view = container.querySelector("[data-slot=dispatch-view]")!;
+    expect(
+      host.compareDocumentPosition(
+        view.querySelector("[data-slot=dispatch-lead]")!,
+      ) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    rerender(
+      <TestProviders>
+        <DispatchView model={full()} tree={null} />
+      </TestProviders>,
+    );
+    expect(container.querySelector("[data-slot=agent-tree]")).toBeNull();
   });
 
   it("权限：不能起 Agent 的人看到「只读」", () => {
@@ -365,6 +427,22 @@ describe("DispatchDrawer", () => {
     expect(api.tasks).toHaveBeenCalledWith(BOARD);
     fireEvent.click(screen.getByRole("button", { name: "重试" }));
     await waitFor(() => expect(api.retry).toHaveBeenCalledWith("sess:pi"));
+  });
+
+  it("真抽屉顶部按画布上的 supervises 边画出 ama 的下级树", async () => {
+    api.tasks.mockResolvedValue(TASKS);
+    openDispatchDrawer(ID.lead);
+    render(
+      <TestProviders>
+        <DispatchDrawer />
+      </TestProviders>,
+    );
+    await waitFor(() =>
+      expect(
+        document.querySelector("[data-slot=agent-tree][data-size=md]"),
+      ).toBeTruthy(),
+    );
+    expect(screen.getAllByRole("treeitem")).toHaveLength(4);
   });
 
   it("re-reads the task rows on a workflow.task frame instead of polling", async () => {

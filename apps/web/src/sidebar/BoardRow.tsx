@@ -15,7 +15,6 @@ import {
   ResponsiveAlertDialogAction,
   ResponsiveAlertDialogCancel,
   ResponsiveAlertDialogContent,
-  ResponsiveAlertDialogDescription,
   ResponsiveAlertDialogFooter,
   ResponsiveAlertDialogHeader,
   ResponsiveAlertDialogTitle,
@@ -33,10 +32,9 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/ui/dropdown-menu";
-import { DANGER_ACTION_CLASS } from "@/lib/danger-action";
 import { IconButton } from "@/ui/icon-button";
+import { StatusDot } from "@/ui/status-pill";
 import type { BoardEntry, BoardSignal } from "./board-tree";
-import { SignalDot } from "./SignalDot";
 import { displayName } from "./display-name";
 
 export interface BoardRowProps {
@@ -105,7 +103,7 @@ export function BoardRow({
           <div
             data-active={active ? "true" : undefined}
             className={cn(
-              "group/board motion-hover flex h-7 items-center gap-1 rounded-[var(--r-control)] pr-1 hover:bg-[var(--hover)] data-[active=true]:bg-[color-mix(in_srgb,var(--brand)_15%,transparent)] data-[active=true]:text-[var(--brand-text)]",
+              "group/board motion-hover flex h-7 items-center gap-1 rounded-control pr-1 hover:bg-hover data-[active=true]:bg-brand-soft data-[active=true]:text-brand-text",
               indent ? "pl-4" : "pl-1.5",
             )}
           >
@@ -124,9 +122,13 @@ export function BoardRow({
               onSave={onRename}
             />
             {signal?.attention ? (
-              <SignalDot tone="attention" label={t("sidebar.needsYou")} />
+              <StatusDot
+                tone="attention"
+                size={6}
+                label={t("sidebar.needsYou")}
+              />
             ) : signal?.unread ? (
-              <SignalDot tone="unread" label={t("sidebar.unread")} />
+              <StatusDot tone="unread" size={6} label={t("sidebar.unread")} />
             ) : null}
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
@@ -139,7 +141,7 @@ export function BoardRow({
               </DropdownMenuTrigger>
               <DropdownMenuContent
                 align="start"
-                className="z-[var(--z-menu)]"
+                className="z-(--z-menu)"
                 onCloseAutoFocus={(event) => {
                   if (editing) event.preventDefault();
                 }}
@@ -158,7 +160,7 @@ export function BoardRow({
           </div>
         </ContextMenuTrigger>
         <ContextMenuContent
-          className="z-[var(--z-menu)]"
+          className="z-(--z-menu)"
           onCloseAutoFocus={(event) => {
             if (editing) event.preventDefault();
           }}
@@ -176,23 +178,23 @@ export function BoardRow({
       </ContextMenu>
 
       <ResponsiveAlertDialog open={confirming} onOpenChange={setConfirming}>
-        <ResponsiveAlertDialogContent className="z-[var(--z-dialog)]">
+        <ResponsiveAlertDialogContent
+          className="z-(--z-dialog)"
+          aria-describedby={undefined}
+        >
           <ResponsiveAlertDialogHeader>
             <ResponsiveAlertDialogTitle>
               {t("sidebar.boardDeleteTitle", {
                 name: displayName(board.name, t),
               })}
             </ResponsiveAlertDialogTitle>
-            <ResponsiveAlertDialogDescription>
-              {t("sidebar.boardDeleteDescription")}
-            </ResponsiveAlertDialogDescription>
           </ResponsiveAlertDialogHeader>
           <ResponsiveAlertDialogFooter>
             <ResponsiveAlertDialogCancel>
               {t("sidebar.cancel")}
             </ResponsiveAlertDialogCancel>
             <ResponsiveAlertDialogAction
-              className={DANGER_ACTION_CLASS}
+              variant="destructive-solid"
               onClick={() => {
                 setConfirming(false);
                 onDelete();

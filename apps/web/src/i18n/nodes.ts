@@ -131,8 +131,6 @@ const zh = {
   "subagent.fallback": "子代理",
   "subagent.working": "运行中",
   "subagent.done": "已完成",
-  "subagent.tokens": "tokens",
-  "subagent.toolUses": "工具",
 } as const;
 
 const en: Record<keyof typeof zh, string> = {
@@ -251,8 +249,6 @@ const en: Record<keyof typeof zh, string> = {
   "subagent.fallback": "Subagent",
   "subagent.working": "Working",
   "subagent.done": "Done",
-  "subagent.tokens": "tokens",
-  "subagent.toolUses": "tools",
 };
 
 export const nodes: MessageModule = { "zh-CN": zh, en };

@@ -1,5 +1,8 @@
 import type { AgentState, CanvasNode, WorkflowDraftRow } from "@armadra/shared";
+import type { MirroredStatus } from "@/agent/status-store";
+import type { SubagentCardModel } from "@/agent/subagent-store";
 import type { DispatchTask } from "@/coordinator/api";
+import { mirroredFor } from "./status";
 
 /**
  * `coordinator` 分区的假数据（设计展示页 §2.1，设计系统 §5.4）：ama 派出三个
@@ -61,6 +64,38 @@ export const COORDINATOR_EDGES = [
   target,
   data: { role: "supervises" },
 }));
+
+/**
+ * 四个节点的状态镜像：节点头胶囊、成员行、顶部 Agent 树都从它经 `displayOfStatus`
+ * 取 tone 与文案，展示页不再自己写 tone 表。
+ */
+export const COORDINATOR_STATUSES: Record<string, MirroredStatus | undefined> =
+  {
+    [COORDINATOR_IDS.lead]: mirroredFor(COORDINATOR_IDS.lead, "working"),
+    [COORDINATOR_IDS.done]: mirroredFor(COORDINATOR_IDS.done, "done"),
+    [COORDINATOR_IDS.working]: mirroredFor(COORDINATOR_IDS.working, "working"),
+    [COORDINATOR_IDS.failed]: mirroredFor(COORDINATOR_IDS.failed, "failed"),
+  };
+
+/** 正在跑的成员此刻派出的两个子代理（顶部 Agent 树的叶子）。 */
+export const COORDINATOR_CARDS: Record<string, SubagentCardModel[]> = {
+  [COORDINATOR_IDS.working]: [
+    {
+      id: "k1",
+      parentId: COORDINATOR_IDS.working,
+      taskLabel: "读取 store",
+      startedAt: Date.parse(AT),
+      state: "done",
+    },
+    {
+      id: "k2",
+      parentId: COORDINATOR_IDS.working,
+      taskLabel: "补测试",
+      startedAt: Date.parse(AT),
+      state: "working",
+    },
+  ],
+};
 
 /** 正在跑的那一个成员是工作流的第几步。 */
 export const WORKING_STEP = 2;

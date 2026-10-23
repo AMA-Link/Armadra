@@ -1,12 +1,12 @@
 /**
  * 会话行（§3.5）。
  *
- * 左侧状态标记 → 标题（双击改名）→ Agent 标签 → `×` 结束；
- * 第二行是目录名与「处于该状态多久」。点击行选中并把画布居中到该节点。
+ * 左侧 `StatusDot 8`（需要你 / 运行中呼吸，未读、完成、空闲各自一色）→ 标题（双击
+ * 改名）→ Agent 标签 → `×` 结束；第二行等宽：目录名与「处于该状态多久」。点击行选中并
+ * 把画布居中到该节点。行是 roving 列表的一项（↑↓ 在会话间移动）。
  */
 import { useEffect, useRef, useState } from "react";
-import { Bell, Check, X } from "lucide-react";
-import { toast } from "sonner";
+import { X } from "lucide-react";
 
 import { agentLabel, agentTextColorVar } from "../agent/launch";
 import { basename, type SessionRow as SessionRowData } from "../agent/sessions";
@@ -26,17 +26,16 @@ import {
   ResponsiveAlertDialogAction,
   ResponsiveAlertDialogCancel,
   ResponsiveAlertDialogContent,
-  ResponsiveAlertDialogDescription,
   ResponsiveAlertDialogFooter,
   ResponsiveAlertDialogHeader,
   ResponsiveAlertDialogTitle,
 } from "@/panels/ResponsiveDialog";
 import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
-import { ColorDot } from "../ui/color-dot";
 import { IconButton } from "../ui/icon-button";
 import { Input } from "../ui/input";
-import { TONE_COLOR } from "../ui/status-pill";
+import { StatusDot } from "../ui/status-pill";
+import { toast } from "../ui/toast";
 
 /**
  * 居中事件的定义搬到了 `canvas/flow/flow-context.ts`，这里只转出去，
@@ -104,7 +103,7 @@ export function SessionRow({ row }: { row: SessionRowData }) {
 
   return (
     <div
-      className="group flex items-start gap-0.5 rounded-[var(--r-control)] pr-1"
+      className="group flex items-start gap-0.5 rounded-control pr-1"
       data-selected={selected ? "true" : undefined}
       onAuxClick={(event) => {
         // 中键 = `×`：先问一句再结束。
@@ -118,7 +117,8 @@ export function SessionRow({ row }: { row: SessionRowData }) {
           ref={input}
           value={draft}
           autoFocus
-          className="h-8 flex-1 text-[length:var(--text-body)]"
+          size="sm"
+          className="flex-1"
           aria-label={t("sessions.rename")}
           onChange={(event) => setDraft(event.target.value)}
           onBlur={commitRename}
@@ -133,7 +133,8 @@ export function SessionRow({ row }: { row: SessionRowData }) {
       ) : (
         <Button
           variant="ghost"
-          className="motion-hover h-auto min-h-[40px] flex-1 flex-col items-stretch gap-px rounded-[var(--r-control)] px-2 py-1 font-normal hover:bg-[var(--hover)] data-[selected=true]:bg-[color-mix(in_srgb,var(--brand)_15%,transparent)] data-[selected=true]:text-[var(--brand-text)]"
+          className="h-auto min-h-14 flex-1 flex-col items-stretch justify-center gap-0 rounded-control px-2 py-1 font-normal hover:bg-hover data-[selected=true]:bg-brand-soft data-[selected=true]:text-brand-text"
+          data-roving-item
           data-selected={selected ? "true" : undefined}
           title={row.cwd}
           onClick={activate}
@@ -143,33 +144,20 @@ export function SessionRow({ row }: { row: SessionRowData }) {
           }}
         >
           <span className="flex w-full items-center gap-1.5">
-            {display.tone === "attention" ? (
-              <Bell
-                className="anim-dot-pulse size-3.5 shrink-0"
-                style={{ color: TONE_COLOR.attention }}
-                data-tone={display.tone}
-              />
-            ) : display.tone === "unread" ? (
-              <Check
-                className="size-3.5 shrink-0"
-                style={{ color: TONE_COLOR.unread }}
-                data-tone={display.tone}
-              />
-            ) : (
-              <ColorDot
-                size={8}
-                color={TONE_COLOR[display.tone]}
-                data-tone={display.tone}
-              />
-            )}
-            <span className="flex-1 truncate text-left text-[length:var(--text-body)]">
+            <StatusDot
+              tone={display.tone}
+              size={8}
+              label={t(display.labelKey)}
+            />
+            <span className="flex-1 truncate text-left text-body">
               {row.title}
             </span>
             {acp && (
               <Badge
                 variant="outline"
                 data-slot="session-row-acp"
-                className="h-4 shrink-0 px-1 text-[length:var(--text-caption)] font-normal"
+                size="sm"
+                className="shrink-0 font-normal"
               >
                 {t("acp.backend")}
               </Badge>
@@ -177,16 +165,16 @@ export function SessionRow({ row }: { row: SessionRowData }) {
             {agentId && (
               <span
                 data-slot="session-row-agent"
-                className="shrink-0 text-[length:var(--text-caption)]"
+                className="shrink-0 text-caption"
                 style={{ color: agentTextColorVar(agentId) }}
               >
                 {agentLabel(agentId)}
               </span>
             )}
           </span>
-          <span className="flex w-full items-center gap-1.5 text-[length:var(--text-caption)] font-normal text-muted-foreground">
+          <span className="flex w-full items-center gap-1.5 font-mono text-caption font-normal text-muted-foreground">
             <span className="truncate">{basename(row.cwd)}</span>
-            <span className="ml-auto shrink-0 tabular-nums">
+            <span data-numeric className="ml-auto shrink-0">
               {formatDuration(row.sinceMs)}
             </span>
           </span>
@@ -195,27 +183,27 @@ export function SessionRow({ row }: { row: SessionRowData }) {
 
       <IconButton
         label={t("sessions.terminate")}
-        className="mt-1.5 opacity-0 transition-opacity duration-[var(--dur-base)] group-focus-within:opacity-100 group-hover:opacity-100"
+        className="mt-1.5 opacity-0 transition-opacity duration-(--dur-base) group-focus-within:opacity-100 group-hover:opacity-100"
         onClick={() => setConfirming(true)}
       >
         <X />
       </IconButton>
 
       <ResponsiveAlertDialog open={confirming} onOpenChange={setConfirming}>
-        <ResponsiveAlertDialogContent>
+        <ResponsiveAlertDialogContent aria-describedby={undefined}>
           <ResponsiveAlertDialogHeader>
             <ResponsiveAlertDialogTitle>
               {t("sessions.terminateTitle", { title: row.title })}
             </ResponsiveAlertDialogTitle>
-            <ResponsiveAlertDialogDescription>
-              {t("sessions.terminateDescription")}
-            </ResponsiveAlertDialogDescription>
           </ResponsiveAlertDialogHeader>
           <ResponsiveAlertDialogFooter>
             <ResponsiveAlertDialogCancel>
               {t("sessions.cancel")}
             </ResponsiveAlertDialogCancel>
-            <ResponsiveAlertDialogAction onClick={terminate}>
+            <ResponsiveAlertDialogAction
+              variant="destructive-solid"
+              onClick={terminate}
+            >
               {t("sessions.terminateConfirm")}
             </ResponsiveAlertDialogAction>
           </ResponsiveAlertDialogFooter>

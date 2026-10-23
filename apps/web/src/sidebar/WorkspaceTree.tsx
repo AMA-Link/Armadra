@@ -267,8 +267,8 @@ function GroupTitle({
   action?: ReactNode;
 }) {
   return (
-    <div className="flex h-7 items-center gap-1 px-1.5">
-      <h2 className="min-w-0 flex-1 truncate text-[length:var(--text-caption)] font-medium tracking-[.04em] text-muted-foreground uppercase">
+    <div className="flex items-center gap-1 px-1.5 py-1.5">
+      <h2 className="min-w-0 flex-1 truncate text-caption font-medium tracking-[.04em] text-muted-foreground uppercase">
         {children}
       </h2>
       {action}
@@ -297,7 +297,7 @@ function LocalGroup({
       data-workspace-group="local"
       data-project-drop-zone={current || undefined}
       data-dragging={folderImport.dragging}
-      className="min-h-36 rounded-lg transition-colors data-[dragging=true]:bg-accent/60"
+      className="min-h-36 rounded-card transition-colors data-[dragging=true]:bg-accent/60"
       {...(current ? folderImport.events : {})}
     >
       <GroupTitle
@@ -310,7 +310,7 @@ function LocalGroup({
       {(folderImport.dragging || folderImport.busy) && (
         <p
           role="status"
-          className="flex items-center gap-2 px-2 py-2 text-xs leading-relaxed text-muted-foreground"
+          className="flex items-center gap-2 px-2 py-2 text-meta leading-relaxed text-muted-foreground"
         >
           {folderImport.busy && (
             <LoaderCircle
@@ -384,12 +384,12 @@ function NewBoardRow() {
 
   return (
     <div className="px-2 pb-1">
-      <div className="group/new motion-hover flex h-8 items-center rounded-[var(--r-control)] pr-1 hover:bg-[var(--hover)]">
+      <div className="group/new motion-hover flex h-8 items-center rounded-control pr-1 hover:bg-hover">
         <Button
           variant="ghost"
           size="sm"
           disabled={!workspace || create.isPending}
-          className="min-w-0 flex-1 justify-start gap-2 px-1.5 text-[length:var(--text-body)] font-normal hover:bg-transparent"
+          className="min-w-0 flex-1 justify-start gap-2 px-1.5 text-body font-normal hover:bg-transparent"
           onClick={run}
         >
           <SquarePen className="size-4 shrink-0 opacity-70" />
@@ -502,7 +502,7 @@ function WorkspaceRow({
 
   return (
     <li>
-      <div className="group/ws motion-hover flex h-7 items-center gap-1 rounded-[var(--r-control)] pr-1 pl-1.5 hover:bg-[var(--hover)]">
+      <div className="group/ws motion-hover flex h-7 items-center gap-1 rounded-control pr-1 pl-1.5 hover:bg-hover">
         <Folder className="size-3.5 shrink-0 opacity-60" />
         <InlineName
           name={displayName(summary.name, t)}
@@ -582,7 +582,7 @@ function WorkspaceRow({
               <Button
                 variant="ghost"
                 size="sm"
-                className="motion-hover h-7 w-full justify-start px-1.5 text-[length:var(--text-body)] font-normal text-muted-foreground hover:bg-[var(--hover)]"
+                className="motion-hover h-7 w-full justify-start px-1.5 text-body font-normal text-muted-foreground hover:bg-hover"
                 onClick={() => setExpandedAll((value) => !value)}
               >
                 {expandedAll ? t("sidebar.showLess") : t("sidebar.showMore")}

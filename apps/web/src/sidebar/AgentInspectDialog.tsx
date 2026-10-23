@@ -17,7 +17,6 @@ import { useT } from "../app/preferences-store";
 import {
   ResponsiveDialog,
   ResponsiveDialogContent,
-  ResponsiveDialogDescription,
   ResponsiveDialogHeader,
   ResponsiveDialogTitle,
 } from "@/panels/ResponsiveDialog";
@@ -120,12 +119,12 @@ export function AgentInspectDialog({
         if (!open) onClose();
       }}
     >
-      <ResponsiveDialogContent className="max-w-[min(64rem,92vw)]">
+      <ResponsiveDialogContent
+        className="max-w-[min(64rem,92vw)]"
+        aria-describedby={undefined}
+      >
         <ResponsiveDialogHeader>
           <ResponsiveDialogTitle>{target?.title ?? ""}</ResponsiveDialogTitle>
-          <ResponsiveDialogDescription>
-            {t("agentInspect.description")}
-          </ResponsiveDialogDescription>
         </ResponsiveDialogHeader>
         <Tabs
           value={tab}
@@ -138,7 +137,7 @@ export function AgentInspectDialog({
             <TabsTrigger value="screen">{t("agentInspect.screen")}</TabsTrigger>
           </TabsList>
           <TabsContent value={tab} className={TABS_CONTENT_FOCUS}>
-            <ScrollArea className="h-[min(60vh,32rem)] rounded-[var(--r-control)] border">
+            <ScrollArea className="h-[min(60vh,32rem)] rounded-control border">
               {panel.loading ? (
                 <div
                   role="status"
@@ -157,13 +156,13 @@ export function AgentInspectDialog({
                   </AlertTitle>
                 </Alert>
               ) : (
-                <pre className="p-3 text-[length:var(--text-caption)] whitespace-pre-wrap">
+                <pre className="p-3 text-caption whitespace-pre-wrap">
                   {panel.text}
                 </pre>
               )}
             </ScrollArea>
             {panel.truncated ? (
-              <p className="pt-1.5 text-[length:var(--text-caption)] text-muted-foreground">
+              <p className="pt-1.5 text-caption text-muted-foreground">
                 {t("agentInspect.truncated")}
               </p>
             ) : null}
