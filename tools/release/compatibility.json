@@ -47,23 +47,23 @@
   },
   "agent": {
     "package": "@armadra/agent",
-    "version": "0.9.3",
+    "version": "0.10.0",
     "hostApi": 1
   },
   "platform": {
     "package": "@armadra/platform-protocol",
-    "version": "0.9.3",
+    "version": "0.10.0",
     "protocol": {
       "major": 1,
       "minor": 4
     },
     "tarball": {
-      "file": "armadra-platform-protocol-0.9.3.tgz",
-      "sha256": "57d7398965472270a44edbc56fa945693199b7fd3eaea566896eb7326b7fb1db"
+      "file": "armadra-platform-protocol-0.10.0.tgz",
+      "sha256": "3ac47b67117c987d6cb247f49ebecdec0f4f1da30cbf1cd3162d65dfec024e93"
     },
     "images": {
-      "cloud": "ghcr.io/ama-link/armadra-cloud:0.9.3",
-      "relay": "ghcr.io/ama-link/armadra-relay:0.9.3"
+      "cloud": "ghcr.io/ama-link/armadra-cloud:0.10.0",
+      "relay": "ghcr.io/ama-link/armadra-relay:0.10.0"
     }
   },
   "mobile": {
