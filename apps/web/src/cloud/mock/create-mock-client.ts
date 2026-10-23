@@ -1,13 +1,18 @@
 import {
   cloudContract,
   listProcedures,
+  type MeStreamEvent,
   type ProcedureEntry,
 } from "@armadra/platform-protocol/cloud-api";
 import { errorStatus, isErrorCode } from "@armadra/platform-protocol/errors";
 
 import type { CloudClient } from "../api/client";
 import { CloudConsoleError } from "../api/errors";
-import { createCsrfStore, type CloudApi } from "../api/session";
+import {
+  createCsrfStore,
+  type CloudApi,
+  type StreamHandlers,
+} from "../api/session";
 import {
   GOLDEN_OPS_TEAM,
   MOCK_ACCOUNT,
@@ -541,7 +546,12 @@ async function check(
 }
 
 /** 内存里的客户端束（控制台与运营两个客户端共享同一份状态）。 */
-export function createMockApi(options: MockOptions = {}): CloudApi {
+export type MockApi = CloudApi & {
+  /** 推一条 me-stream 事件（测试与展示页）。 */
+  emit(event: MeStreamEvent): void;
+};
+
+export function createMockApi(options: MockOptions = {}): MockApi {
   const state: State = {
     signedIn: options.signedIn ?? true,
     operatorSession: options.operatorSession ?? false,
@@ -630,8 +640,16 @@ export function createMockApi(options: MockOptions = {}): CloudApi {
   };
 
   const client = build(false);
+  const streams = new Set<StreamHandlers>();
   return {
     client,
+    stream(handlers) {
+      streams.add(handlers);
+      return () => streams.delete(handlers);
+    },
+    emit(event) {
+      for (const handlers of [...streams]) handlers.onEvent(event);
+    },
     ops: build(true),
     ensureCsrf: async () => state.signedIn,
     invitationPreview: (invitationId, token) =>
