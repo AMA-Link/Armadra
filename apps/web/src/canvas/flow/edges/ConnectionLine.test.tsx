@@ -99,4 +99,34 @@ describe("ConnectionLine", () => {
       cleanup();
     }
   });
+
+  it("线宽走样式，不写 strokeWidth 属性", () => {
+    const { container } = renderLine(internalNode(300, 0));
+    expect(path(container).hasAttribute("stroke-width")).toBe(false);
+    expect(path(container).style.strokeWidth).toBe("2");
+  });
+
+  it("吸到目标上的终点圆点标 data-snapped，悬空时不标", () => {
+    const landed = renderLine(internalNode(300, 0), "valid");
+    expect(
+      landed.container.querySelector("circle")?.getAttribute("data-snapped"),
+    ).toBe("true");
+    cleanup();
+    const loose = renderLine(null);
+    expect(
+      loose.container.querySelector("circle")?.hasAttribute("data-snapped"),
+    ).toBe(false);
+  });
+
+  it("目标不可连接时终点圆点抖动（anim-shake），其余状态不抖", () => {
+    const invalid = renderLine(internalNode(300, 0), "invalid");
+    expect(
+      invalid.container.querySelector("circle")?.getAttribute("class"),
+    ).toContain("anim-shake");
+    cleanup();
+    const valid = renderLine(internalNode(300, 0), "valid");
+    expect(
+      valid.container.querySelector("circle")?.getAttribute("class") ?? "",
+    ).not.toContain("anim-shake");
+  });
 });

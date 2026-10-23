@@ -112,9 +112,21 @@
   white-space: nowrap;
 }
 
-/* 连线预览与选中的边比默认粗一点，免得在点阵背景上看不见 */
-.canvas-stage .react-flow__edge.selected .react-flow__edge-path {
-  stroke-width: 2.5;
+/*
+ * 拖线预览的终点圆点吸到目标上（`ConnectionLine` 标 `data-snapped`）：`--dur-slow`
+ * 软位移。只在吸上之后过渡，拖线中圆点要紧跟指针，不能落后。线宽（常态 2、选中 3.5）
+ * 由 `LinkEdge` 自己写在样式里，这里不再覆盖。
+ */
+.canvas-stage [data-slot="connection-line"] circle[data-snapped="true"] {
+  transition:
+    cx var(--dur-slow) var(--ease-in-out),
+    cy var(--dur-slow) var(--ease-in-out);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .canvas-stage [data-slot="connection-line"] circle[data-snapped="true"] {
+    transition: none;
+  }
 }
 
 /* resize 把手：默认 4px 太小，触屏上根本按不住 */
@@ -122,7 +134,7 @@
   width: 8px;
   height: 8px;
   border: 1.5px solid var(--panel);
-  border-radius: 2px;
+  border-radius: var(--r-tight);
 }
 .canvas-stage .react-flow__resize-control.line {
   border-color: transparent;
@@ -140,9 +152,9 @@
   width: var(--minimap-w);
   height: var(--minimap-h);
   overflow: hidden;
-  border: 1px solid var(--border);
-  border-radius: var(--r-card);
-  box-shadow: var(--shadow-pill);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-panel);
+  box-shadow: var(--shadow-overlay);
   backdrop-filter: blur(12px);
 }
 
@@ -185,14 +197,14 @@
  * 剩下那块画布里居中。
  */
 .canvas-dock-row {
-  transition: right 150ms ease-out;
+  transition: right var(--dur-base) var(--ease-out);
 }
 .canvas-dock-row[data-panel-inset="true"] {
   grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
 }
 @media (prefers-reduced-motion: reduce) {
   .canvas-dock-row {
-    transition: none;
+    transition-duration: var(--dur-fast);
   }
 }
 .canvas-dock {
