@@ -2,6 +2,9 @@ import * as React from "react";
 
 import { BrandMark } from "@/ui/brand-mark";
 
+/** 展示页里把公开页嵌在别的页面中：不当 `main` 地标、不占 `#main`。 */
+export const EmbeddedAuth = React.createContext(false);
+
 /** 公开页的一列（设计系统 §5.9：360 宽、BrandMark 居中、标题在下）。 */
 export function AuthLayout({
   title,
@@ -12,9 +15,11 @@ export function AuthLayout({
   subtitle?: string;
   children?: React.ReactNode;
 }) {
+  const embedded = React.useContext(EmbeddedAuth);
+  const Root = embedded ? "div" : "main";
   return (
-    <main
-      id="main"
+    <Root
+      {...(embedded ? {} : { id: "main" })}
       className="flex h-full min-h-0 flex-col items-center overflow-y-auto bg-background px-4 py-10"
     >
       <div
@@ -34,6 +39,6 @@ export function AuthLayout({
         </div>
         {children}
       </div>
-    </main>
+    </Root>
   );
 }

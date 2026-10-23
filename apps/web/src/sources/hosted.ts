@@ -5,6 +5,7 @@ import {
 } from "../api/identity";
 import { setHostedRuntimeBase } from "../api/runtime-url";
 import {
+  type CloudAccept,
   type CloudOptions,
   type CloudSource,
   CloudError,
@@ -545,14 +546,19 @@ export interface HostedRelay {
    * 按分享链接以访客加入（客户端包 §6.1，A4-3p）：匿名 `links.accept` → 访客的
    * 远程服务会话进保管处 → 经中继 `cloud/login` 带邀请令牌换源会话 → 同
    * {@link enter} 装成本机源。答加入的源。失败抛（远程服务的拒绝是 `CloudError`）。
+   * `accepted`：调用方已经（带着云会话）接受过链接，直接用这份结果，不再匿名接受
+   * （云端控制台的 SaaS 落地页，`cloud/auth/LinkPage.tsx`）。
    */
-  join(link: {
-    readonly linkId: string;
-    readonly secret: string;
-    readonly invitationToken: string;
-    /** 链接片段第三段：core 身份指纹前缀（契约 §80）。 */
-    readonly identityFp?: string;
-  }): Promise<string>;
+  join(
+    link: {
+      readonly linkId: string;
+      readonly secret: string;
+      readonly invitationToken: string;
+      /** 链接片段第三段：core 身份指纹前缀（契约 §80）。 */
+      readonly identityFp?: string;
+    },
+    accepted?: CloudAccept,
+  ): Promise<string>;
   /**
    * 刷新页面之后：用记下的刷新令牌静默续上远程服务，再进上次那台主机。没有
    * 记下的、刷新令牌被拒：`null`（重新登录）。
@@ -832,14 +838,18 @@ export function createHostedRelay(options: HostedRelayOptions): HostedRelay {
   const hosted: HostedRelay = {
     issuer,
     provider,
-    async join(link) {
-      const accepted = await cloudAcceptLink(
-        issuer,
-        link.linkId,
-        link.secret,
-        browserDevice(),
-        options.cloud,
-      );
+    async join(link, acceptedAlready) {
+      // 控制台页面自己带会话接受（让云端记到账号上、过「要登录」的设置），接受的结果传进来；
+      // 其余（个人中转的落地页）在这里匿名接受。
+      const accepted =
+        acceptedAlready ??
+        (await cloudAcceptLink(
+          issuer,
+          link.linkId,
+          link.secret,
+          browserDevice(),
+          options.cloud,
+        ));
       const guestSession = accepted.guestSession;
       if (guestSession.refreshToken === undefined)
         throw new CloudError(502, "bad_response");
