@@ -11,7 +11,8 @@ import { cloudKeys } from "./api/keys";
 import { createCloudQueryClient, useConsoleSession } from "./api/queries";
 import type { CloudApi } from "./api/session";
 import { PublicPage, hasPublicPage } from "./auth/PublicPage";
-import { navigate, useRoute } from "./router";
+import { OpsPage } from "./ops/OpsPages";
+import { navigate, useRoute, type RouteMatch } from "./router";
 import { ConsoleShell } from "./shell/ConsoleShell";
 import { PageHeader } from "./shell/PageHeader";
 import {
@@ -46,9 +47,12 @@ function ConsoleView({
   session,
   onSignOut,
   onResendVerification,
+  renderPage,
   children,
 }: {
   session: ConsoleSession | null;
+  /** 当前页的内容；缺省（或答 `undefined`）只画页头。 */
+  renderPage?: (match: RouteMatch) => React.ReactNode;
   onSignOut?: () => void;
   onResendVerification?: () => Promise<void>;
   /** 会话还没到时画在外壳之外的东西（加载、取会话失败）。 */
@@ -88,7 +92,9 @@ function ConsoleView({
         {...(onSignOut ? { onSignOut } : {})}
         {...(onResendVerification ? { onResendVerification } : {})}
       >
-        <PageHeader title={entry ? t(entry.labelKey) : ""} />
+        {renderPage?.(match) ?? (
+          <PageHeader title={entry ? t(entry.labelKey) : ""} />
+        )}
       </ConsoleShell>
     );
   }
@@ -126,6 +132,11 @@ function ConsoleView({
 }
 
 /* ------------------------------- 数据层 ------------------------------- */
+
+/** 带数据的页面（要 `CloudApiProvider`，所以只在 `ConsoleData` 里接上）。 */
+function renderPage(match: RouteMatch): React.ReactNode {
+  return match.area === "ops" ? <OpsPage match={match} /> : undefined;
+}
 
 /** 用哪套客户端：调用方给的；DEV 且地址带 `?mock` 是内存 mock（生产构建里这支被摇掉）；否则连来源自己。 */
 function useCloudApiSource(given?: CloudApi): CloudApi | null {
@@ -207,6 +218,7 @@ function ConsoleData() {
     return (
       <ConsoleView
         session={session}
+        renderPage={renderPage}
         onSignOut={signOut}
         onResendVerification={resend}
       />
