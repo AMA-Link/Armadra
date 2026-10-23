@@ -2,11 +2,31 @@
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
+import {
+  DURATION,
+  EASE_DRAWER,
+  EASE_IN_OUT,
+  EASE_OUT,
+  MOTION_SPRING,
+  MOTION_TRANSITION,
+} from "../ui/motion";
 
 // vitest 默认把 CSS 模块 stub 成空串（`test.css: false`），连 `?raw` 也一样，
 // 所以这里直接按文件读——本来要断言的也就是源文件的文本。
 const tokensCss = readFileSync(
   fileURLToPath(new URL("./tokens.css", import.meta.url)),
+  "utf8",
+);
+const appCss = readFileSync(
+  fileURLToPath(new URL("./app.css", import.meta.url)),
+  "utf8",
+);
+const motionCss = readFileSync(
+  fileURLToPath(new URL("./motion.css", import.meta.url)),
+  "utf8",
+);
+const settingsCss = readFileSync(
+  fileURLToPath(new URL("./settings.css", import.meta.url)),
   "utf8",
 );
 
@@ -44,8 +64,10 @@ const LAYOUT_CONSTANTS: Record<string, string> = {
   "--dock-h": "44px",
   "--drawer-w": "360px",
   "--scm-w": "460px",
-  "--settings-dialog-w": "max(760px, 80vw)",
-  "--settings-dialog-h": "max(560px, 82dvh)",
+  "--settings-dialog-w": "min(calc(100vw - 48px), 1600px)",
+  "--settings-dialog-h": "min(calc(100dvh - 48px), 1040px)",
+  "--settings-nav-w": "clamp(200px, 18%, 256px)",
+  "--settings-topbar-h": "48px",
 };
 
 /** §3.1 的 z 轴栈，顺序不能乱。 */
@@ -88,17 +110,53 @@ const THEMED_ADDITIONS = [
   "--warn-text",
   "--success-text",
   "--working-text",
+  "--caution-text",
+  "--caution-soft",
   ...Array.from({ length: 8 }, (_, index) => `--member-${index + 1}`),
 ];
 
 /** 设计系统 §2.6–§2.10 新增、与主题无关的常量。 */
 const SCALE_ADDITIONS: Record<string, string> = {
   "--text-display": "22px",
-  "--text-code": "12px",
+  "--text-meta": "12px",
+  "--text-code": "var(--text-meta)",
   "--text-input-touch": "16px",
-  "--dur-page": "220ms",
   "--r-pill": "999px",
 };
+
+/** 设计系统 §2.10 / §8.2：动效令牌的定值。 */
+const MOTION_TOKENS: Record<string, string> = {
+  "--dur-instant": "100ms",
+  "--dur-fast": "120ms",
+  "--dur-base": "160ms",
+  "--dur-slow": "200ms",
+  "--dur-page": "280ms",
+  "--dur-hero": "600ms",
+  "--ease-out": "cubic-bezier(0.23, 1, 0.32, 1)",
+  "--ease-in-out": "cubic-bezier(0.77, 0, 0.175, 1)",
+  "--ease-drawer": "cubic-bezier(0.32, 0.72, 0, 1)",
+  "--ease-color": "ease",
+  "--press-scale": "0.97",
+  "--pop-scale": "0.96",
+  "--stagger": "40ms",
+};
+
+/** 设计系统 §2.8：七档语义圆角。 */
+const RADII: Record<string, string> = {
+  "--r-tight": "4px",
+  "--r-control": "6px",
+  "--r-card": "10px",
+  "--r-panel": "12px",
+  "--r-dialog": "14px",
+  "--r-float": "16px",
+  "--r-pill": "999px",
+};
+
+/**
+ * 功能代码里还没迁走的旧名字，指向新档位。只许减少，批次 3 清零；
+ * 其余旧名字（`--r-md`、`--r-lg`、`--shadow-card`）必须不存在。
+ */
+const LEGACY_TOKENS = ["--r-sm", "--r-xl", "--shadow-pill"];
 
 /** §3.4 的节点调色板 7 色。 */
 const NODE_PALETTE = [
@@ -198,9 +256,30 @@ describe("tokens.css", () => {
       "--radius-sm",
       "--radius-md",
       "--radius-lg",
+      "--radius-xl",
+      "--radius-2xl",
     ]) {
       expect(dark.has(name)).toBe(true);
     }
+  });
+
+  it("shadcn 圆角别名对齐语义档（sm=tight、md=control、lg=card、xl=panel、2xl=float）", () => {
+    expect(dark.get("--radius-sm")).toBe("var(--r-tight)");
+    expect(dark.get("--radius-md")).toBe("var(--r-control)");
+    expect(dark.get("--radius-lg")).toBe("var(--r-card)");
+    expect(dark.get("--radius-xl")).toBe("var(--r-panel)");
+    expect(dark.get("--radius-2xl")).toBe("var(--r-float)");
+    for (const [alias, token] of [
+      ["sm", "tight"],
+      ["md", "control"],
+      ["lg", "card"],
+      ["xl", "panel"],
+      ["2xl", "float"],
+    ]) {
+      expect(appCss).toContain(`--radius-${alias}: var(--r-${token});`);
+    }
+    // 派生的 calc 档删掉了
+    expect(appCss).not.toMatch(/--radius-[234]xl:\s*calc/);
   });
 
   it("品牌色与 shadcn 的 --accent 是两个不同的东西", () => {
@@ -322,16 +401,41 @@ describe("tokens.css", () => {
     }
   });
 
-  it("四档语义圆角齐全（§24.2）", () => {
-    const radii: Record<string, string> = {
-      "--r-control": "6px",
-      "--r-card": "10px",
-      "--r-panel": "12px",
-      "--r-dialog": "14px",
-    };
-    for (const [name, value] of Object.entries(radii)) {
+  it("七档语义圆角齐全，Tailwind 工具类 rounded-* 都映射到位（§2.8）", () => {
+    for (const [name, value] of Object.entries(RADII)) {
       expect(dark.get(name)).toBe(value);
+      const tier = name.replace("--r-", "");
+      expect(appCss).toContain(`--radius-${tier}: var(${name});`);
     }
+  });
+
+  it("旧圆角名 --r-md / --r-lg 与 --shadow-card 已删除；其余旧名只许留在 LEGACY 登记里", () => {
+    for (const name of ["--r-md", "--r-lg", "--shadow-card"]) {
+      expect(dark.has(name)).toBe(false);
+      expect(light.has(name)).toBe(false);
+    }
+    const legacy = ["--r-sm", "--r-xl", "--shadow-pill"].filter((name) =>
+      dark.has(name),
+    );
+    expect(legacy.sort()).toEqual([...LEGACY_TOKENS].sort());
+    // 旧名字只是新档位的别名，不再带自己的数值
+    for (const name of legacy)
+      expect(dark.get(name)).toMatch(/^var\(--(?:r|shadow)-[\w-]+\)$/);
+    expect(light.has("--shadow-pill")).toBe(false);
+  });
+
+  it("三档阴影：节点 / 浮层 / 对话框，浅色各自减半，卡片没有阴影", () => {
+    for (const name of [
+      "--shadow-node",
+      "--shadow-overlay",
+      "--shadow-dialog",
+    ]) {
+      expect(dark.get(name)).toMatch(/^0 /);
+      expect(light.get(name)).toMatch(/^0 /);
+      expect(light.get(name)).not.toBe(dark.get(name));
+    }
+    expect(dark.get("--shadow-overlay")).toBe("0 4px 12px rgb(0 0 0 / 28%)");
+    expect(light.get("--shadow-overlay")).toBe("0 4px 12px rgb(0 0 0 / 8%)");
   });
 
   it("间距层级由内向外递增，区块间距拉得开（§2.7）", () => {
@@ -361,19 +465,82 @@ describe("tokens.css", () => {
     expect(section).toBeGreaterThanOrEqual(1.5 * block);
   });
 
-  it("字号阶梯是 17/15/13/11，没有 11px 以下的档位", () => {
+  it("字号阶梯是 22/17/15/13/12/11，没有 11px 以下的档位", () => {
+    expect(dark.get("--text-display")).toBe("22px");
     expect(dark.get("--text-title")).toBe("17px");
     expect(dark.get("--text-section")).toBe("15px");
     expect(dark.get("--text-body")).toBe("13px");
+    expect(dark.get("--text-meta")).toBe("12px");
     expect(dark.get("--text-caption")).toBe("11px");
   });
 
-  it("动效时长落在 120–180ms（§24.2）", () => {
-    for (const name of ["--dur-fast", "--dur-base", "--dur-slow"]) {
-      const value = Number((dark.get(name) ?? "").replace("ms", ""));
-      expect(value).toBeGreaterThanOrEqual(120);
-      expect(value).toBeLessThanOrEqual(180);
+  it("app.css 的 @theme 把 Tailwind 刻度对齐阶梯：text-sm = 13、text-xs = 12，语义类与 tokens.css 同值", () => {
+    const theme = customProperties(ruleBody(appCss, "@theme {"));
+    expect(theme.get("--text-sm")).toBe("13px");
+    expect(theme.get("--text-sm--line-height")).toBe("19px");
+    expect(theme.get("--text-xs")).toBe("12px");
+    expect(theme.get("--text-xs--line-height")).toBe("16px");
+    // --text-base 不动：手机输入的 `text-base md:text-sm` 靠它保持 16
+    expect(theme.has("--text-base")).toBe(false);
+    for (const tier of [
+      "display",
+      "title",
+      "section",
+      "body",
+      "meta",
+      "caption",
+    ]) {
+      expect(theme.get(`--text-${tier}`), tier).toBe(
+        dark.get(`--text-${tier}`),
+      );
+      expect(theme.get(`--text-${tier}--line-height`), tier).toMatch(/px$/);
     }
+  });
+
+  it("动效令牌按 §8.2 取定值（6 档时长、4 条曲线、按下 / 发芽缩放、错落）", () => {
+    for (const [name, value] of Object.entries(MOTION_TOKENS)) {
+      expect(dark.get(name), name).toBe(value);
+    }
+  });
+
+  it("没有 ease-in 与回弹曲线；字面 cubic-bezier 只出现在 tokens.css", () => {
+    const curves = [...tokensCss.matchAll(/cubic-bezier\(([^)]*)\)/g)].map(
+      (match) => match[1]!.split(",").map(Number),
+    );
+    expect(curves.length).toBe(3);
+    for (const [, y1, , y2] of curves) {
+      // 回弹 = 控制点越界（y 小于 0 或大于 1）；ease-in 起手控制点 x1 > 0.4 且 y1 = 0
+      expect(y1).toBeGreaterThanOrEqual(0);
+      expect(y1).toBeLessThanOrEqual(1);
+      expect(y2).toBeGreaterThanOrEqual(0);
+      expect(y2).toBeLessThanOrEqual(1);
+    }
+    for (const value of [...dark.values(), ...light.values()])
+      expect(value).not.toMatch(/\bease-in\b(?!-out)/);
+    expect(motionCss).not.toContain("cubic-bezier(");
+    expect(appCss).not.toContain("cubic-bezier(");
+  });
+
+  it("ui/motion.ts 的曲线与时长就是 tokens.css 的令牌（motion 库侧同值）", () => {
+    const bezier = (name: string) =>
+      /cubic-bezier\(([^)]*)\)/
+        .exec(dark.get(name) ?? "")![1]!
+        .split(",")
+        .map(Number);
+    expect([...EASE_OUT]).toEqual(bezier("--ease-out"));
+    expect([...EASE_IN_OUT]).toEqual(bezier("--ease-in-out"));
+    expect([...EASE_DRAWER]).toEqual(bezier("--ease-drawer"));
+    for (const [key, ms] of Object.entries(DURATION)) {
+      expect(`${Math.round(ms * 1000)}ms`, key).toBe(dark.get(`--dur-${key}`));
+    }
+    expect(MOTION_TRANSITION.duration).toBe(DURATION.base);
+    expect(MOTION_SPRING).toEqual({ type: "spring", duration: 0.3, bounce: 0 });
+  });
+
+  it("状态色三件套：caution 也有 -text / -soft，--status-done 指向 --success", () => {
+    expect(dark.get("--status-done")).toBe("var(--success)");
+    expect(light.has("--caution-soft")).toBe(true);
+    expect(dark.get("--caution-text")).toBe(dark.get("--caution"));
   });
 
   it("侧栏材质两套主题都声明了", () => {
@@ -381,9 +548,53 @@ describe("tokens.css", () => {
     expect(light.has("--sidebar-material")).toBe(true);
   });
 
-  it("有 prefers-reduced-motion 保护", () => {
+  it("有 prefers-reduced-motion 保护：循环关掉，透明度与颜色过渡压到 --dur-fast", () => {
     expect(tokensCss).toContain("prefers-reduced-motion: reduce");
     expect(tokensCss).toMatch(/animation-iteration-count:\s*1\s*!important/);
+    expect(tokensCss).toMatch(
+      /transition-duration:\s*var\(--dur-fast\)\s*!important/,
+    );
+    // Spinner 是唯一保留的循环；浮层与进场在减少动效下换成淡入
+    expect(motionCss).toMatch(
+      /\.anim-spin\s*\{[^}]*animation-iteration-count:\s*infinite\s*!important/,
+    );
+    expect(motionCss).toContain("animation-name: armadra-fade-in !important");
+  });
+
+  it("切换主题的一帧关掉全部过渡", () => {
+    expect(tokensCss).toMatch(
+      /\[data-theme-switching\] \*[\s\S]*?transition:\s*none\s*!important/,
+    );
+  });
+
+  it("app.css 引入 motion.css 与 settings.css，设置规则不再留在 app.css", () => {
+    expect(appCss).toContain('@import "./motion.css"');
+    expect(appCss).toContain('@import "./settings.css"');
+    expect(appCss).not.toContain(".settings-");
+    expect(settingsCss).toContain(".settings-layout");
+    expect(settingsCss).toContain("@container settings (max-width: 520px)");
+    expect(settingsCss).toContain(".settings-row-controls");
+  });
+
+  it("图标线宽 1.5 全局、会变的数字等宽、发丝线两端渐隐", () => {
+    expect(appCss).toMatch(/\.lucide\s*\{\s*stroke-width:\s*1\.5px/);
+    expect(appCss).toMatch(
+      /\[data-numeric\][^{]*\{\s*font-variant-numeric:\s*tabular-nums/,
+    );
+    expect(appCss).toMatch(
+      /\.hairline-x\s*\{[^}]*mask-image:\s*linear-gradient\(\s*90deg,\s*transparent/,
+    );
+  });
+
+  it("浏览器 theme-color 与 --bg 同值", () => {
+    const html = readFileSync(
+      fileURLToPath(new URL("../../index.html", import.meta.url)),
+      "utf8",
+    );
+    const colors = [
+      ...html.matchAll(/name="theme-color"\s+content="(#[0-9a-f]{6})"/g),
+    ].map((match) => match[1]);
+    expect(colors.sort()).toEqual([dark.get("--bg"), light.get("--bg")].sort());
   });
 
   it("不加载在线字体", () => {

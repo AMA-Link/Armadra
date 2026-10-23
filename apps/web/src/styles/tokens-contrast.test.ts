@@ -201,6 +201,48 @@ describe.each(THEMES)("%s 主题对比度", (theme) => {
     ).toBeGreaterThanOrEqual(TEXT);
   });
 
+  it("§2.3 caution 三件套：-text 叠在 -soft 上、Badge success / warn / brand / danger 文字叠在自身衬底上 ≥ 4.5", () => {
+    for (const bg of READING_SURFACES) {
+      expect(ratio(theme, "--caution-text", bg)).toBeGreaterThanOrEqual(TEXT);
+    }
+    const cases: Array<[string, string]> = [
+      ["--caution-text", "--caution-soft"],
+      ["--success-text", "--success-soft"],
+      ["--warn-text", "--warn-soft"],
+      ["--danger-text", "--danger-soft"],
+      ["--brand-text", "--brand-soft"],
+    ];
+    for (const [text, soft] of cases) {
+      // 深色 working 的同类例外见上；这里五对都要过，Badge 可能落在卡片或面板上
+      for (const bg of ["--surface-card", "--panel"]) {
+        const tinted = flatten(theme, soft, bg);
+        expect(
+          contrastOver(resolve(theme, text), tinted),
+          `${text} on ${soft} over ${bg}`,
+        ).toBeGreaterThanOrEqual(TEXT);
+      }
+    }
+  });
+
+  it("§9 Tooltip：--bg 字叠在 --text 底上 ≥ 4.5；Kbd 的次要文字落在 --surface-raised 上 ≥ 4.5", () => {
+    for (const under of ["--bg", "--surface-card"]) {
+      const tip = flatten(theme, "--text", under);
+      expect(
+        contrastOver(resolve(theme, "--bg"), tip),
+        `tooltip over ${under}`,
+      ).toBeGreaterThanOrEqual(TEXT);
+    }
+    expect(
+      ratio(theme, "--muted-foreground", "--surface-raised"),
+    ).toBeGreaterThanOrEqual(TEXT);
+  });
+
+  it("§2.1 --faint 只做装饰：刻度条未填格与禁用态不要求 4.5，但对 --card 至少可辨（≥ 1.5）", () => {
+    expect(ratio(theme, "--faint", "--surface-card")).toBeGreaterThanOrEqual(
+      1.5,
+    );
+  });
+
   it.each(AGENTS)(
     "§2.4 %s：标识色 ≥ 3，文字色 ≥ 4.5，实底头像上的字 ≥ 4.5",
     (id) => {

@@ -14,6 +14,9 @@
    shadcn/tailwind.css 提供 data-open / data-closed 等自定义 variant。 */
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
+/* 关键帧与动效工具类（设计系统 §8）、设置工作台的容器查询规则 */
+@import "./motion.css";
+@import "./settings.css";
 
 /*
  * 深色是默认（没有 data-theme 属性时即深色），浅色靠 `[data-theme=light]`。
@@ -21,6 +24,44 @@
  * 少数地方（终端、代码块）。日常配色请直接用 token，不要写 dark: 分支。
  */
 @custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+
+/*
+ * 悬停只在真正有悬停的设备上生效（设计系统 §8.4）：触屏上 `:hover` 会被点按误触发。
+ * Tailwind 自带的 `hover:` 只判 `hover: hover`，这里再加 `pointer: fine`。
+ */
+@custom-variant hover {
+  @media (hover: hover) and (pointer: fine) {
+    &:hover {
+      @slot;
+    }
+  }
+}
+
+/*
+ * 字号刻度对齐到设计系统阶梯（§2.6）：shadcn 生成件写的是 Tailwind 刻度，
+ * `text-sm` 原本是 14、`text-xs` 是 12。这里把刻度本身改成 13 / 12，ui/ 里的
+ * `text-sm` 不用逐个改就落到正文档；`--text-base` 保持 16（只给手机输入）。
+ * 六档语义类 `text-display / title / section / body / meta / caption` 同时在这里
+ * 声明，值与 `tokens.css` 一致（`tokens.test.ts` 逐条核对）。
+ */
+@theme {
+  --text-display: 22px;
+  --text-display--line-height: 28px;
+  --text-title: 17px;
+  --text-title--line-height: 24px;
+  --text-section: 15px;
+  --text-section--line-height: 22px;
+  --text-body: 13px;
+  --text-body--line-height: 19px;
+  --text-meta: 12px;
+  --text-meta--line-height: 16px;
+  --text-caption: 11px;
+  --text-caption--line-height: 16px;
+  --text-sm: 13px;
+  --text-sm--line-height: 19px;
+  --text-xs: 12px;
+  --text-xs--line-height: 16px;
+}
 
 @theme inline {
   /* ── shadcn 契约色 ───────────────────────────────────────────────── */
@@ -75,6 +116,8 @@
   --color-warn-soft: var(--warn-soft);
   --color-warn-text: var(--warn-text);
   --color-caution: var(--caution);
+  --color-caution-soft: var(--caution-soft);
+  --color-caution-text: var(--caution-text);
   --color-danger: var(--danger);
   --color-danger-soft: var(--danger-soft);
   --color-danger-text: var(--danger-text);
@@ -110,17 +153,19 @@
   --color-member-7: var(--member-7);
   --color-member-8: var(--member-8);
 
-  /* ── 圆角 ────────────────────────────────────────────────────────── */
-  --radius-sm: var(--r-sm);
-  --radius-md: var(--r-control);
-  --radius-lg: var(--r-card);
-  --radius-xl: var(--r-xl);
-  /* §24.2 的四档语义圆角：`rounded-control` / `-card` / `-panel` / `-dialog` */
+  /* ── 圆角（设计系统 §2.8）：七档语义，shadcn 别名重映射到同一张表 ─── */
+  --radius-tight: var(--r-tight);
   --radius-control: var(--r-control);
   --radius-card: var(--r-card);
   --radius-panel: var(--r-panel);
   --radius-dialog: var(--r-dialog);
+  --radius-float: var(--r-float);
   --radius-pill: var(--r-pill);
+  --radius-sm: var(--r-tight);
+  --radius-md: var(--r-control);
+  --radius-lg: var(--r-card);
+  --radius-xl: var(--r-panel);
+  --radius-2xl: var(--r-float);
 
   /* ── 字体 ────────────────────────────────────────────────────────── */
   --font-sans: var(--font-ui);
@@ -139,9 +184,6 @@
   --color-chart-3: var(--chart-3);
   --color-chart-2: var(--chart-2);
   --color-chart-1: var(--chart-1);
-  --radius-2xl: calc(var(--radius) * 1.8);
-  --radius-3xl: calc(var(--radius) * 2.2);
-  --radius-4xl: calc(var(--radius) * 2.6);
 }
 
 @layer base {
@@ -153,6 +195,28 @@
   body,
   #root {
     height: 100%;
+  }
+
+  /* 图标线宽 1.5 全局生效（设计系统 §2.12）；要用 2 的地方显式写 `stroke-2` */
+  .lucide {
+    stroke-width: 1.5px;
+  }
+
+  /* 会变的值一律等宽数字（§2.6）：组件里的数字容器标 `data-numeric` */
+  [data-numeric],
+  time,
+  kbd {
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* 标题平衡换行、说明文字 pretty、路径与 ID 任意处折行（§2.6） */
+  h1,
+  h2,
+  h3 {
+    text-wrap: balance;
+  }
+  .text-display {
+    letter-spacing: -0.01em;
   }
 
   body {
@@ -237,18 +301,42 @@
     );
   }
 
-  /* §24.2 动效：hover/选中 150ms，只动颜色与不透明度，不动尺寸 */
+  /* 悬停底色（设计系统 §8.4）：`--dur-instant` `--ease-color`，只动颜色与透明度 */
   .motion-hover {
     transition:
-      background-color var(--dur-base) var(--ease-out),
-      border-color var(--dur-base) var(--ease-out),
-      color var(--dur-base) var(--ease-out),
-      opacity var(--dur-base) var(--ease-out);
+      background-color var(--dur-instant) var(--ease-color),
+      border-color var(--dur-instant) var(--ease-color),
+      color var(--dur-instant) var(--ease-color),
+      opacity var(--dur-instant) var(--ease-color);
   }
 
   /* 页面/浮层出场：120ms 纯淡入，无位移无弹跳 */
   .motion-fade-in {
     animation: armadra-fade-in var(--dur-fast) var(--ease-out);
+  }
+
+  /* 三档阴影（设计系统 §2.9）：卡片没有阴影，只有 1px 边 */
+  .shadow-node {
+    box-shadow: var(--shadow-node);
+  }
+  .shadow-overlay {
+    box-shadow: var(--shadow-overlay);
+  }
+  .shadow-dialog {
+    box-shadow: var(--shadow-dialog);
+  }
+
+  /* 两端渐隐的发丝线（§2.1）：设置工作台分组之间、官网分区之间 */
+  .hairline-x {
+    height: 1px;
+    background: var(--border-strong);
+    mask-image: linear-gradient(
+      90deg,
+      transparent,
+      black 20%,
+      black 80%,
+      transparent
+    );
   }
 
   /* 拖拽把手：节点头部、组标签 */
@@ -315,46 +403,6 @@
   }
 }
 
-/* Settings adapt to available dialog width; labels never disappear under controls. */
-.settings-layout {
-  container: settings / inline-size;
-}
-@container settings (max-width: 720px) {
-  .settings-navigation {
-    width: 164px;
-    padding-inline: 8px;
-  }
-  .settings-page {
-    padding-inline: 16px;
-  }
-  .settings-row {
-    flex-wrap: wrap;
-    gap: 8px;
-    padding-inline: 12px;
-  }
-  .settings-row-controls {
-    margin-left: auto;
-    flex-wrap: wrap;
-  }
-}
-@container settings (max-width: 520px) {
-  .settings-navigation {
-    width: 52px;
-    padding-inline: 6px;
-  }
-  .settings-navigation button {
-    justify-content: center;
-    padding-inline: 0;
-  }
-  .settings-nav-label,
-  .settings-nav-group {
-    display: none;
-  }
-  .settings-page {
-    padding-inline: 12px;
-  }
-}
-
 /* A browser's address bar and soft keyboard must not push controls off screen. */
 @supports (height: 100dvh) {
   #root {
@@ -362,10 +410,6 @@
   }
 }
 @media (max-width: 767px) {
-  .settings-row-controls > * {
-    min-width: 0;
-    max-width: 100%;
-  }
   [data-slot="sheet-content"][data-side="right"] {
     max-width: 100vw;
   }

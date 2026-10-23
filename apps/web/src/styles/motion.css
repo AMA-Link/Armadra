@@ -1,0 +1,380 @@
+/*
+ * 动效关键帧与工具类 —— 设计系统 §8
+ *
+ * 数值全部取自 `tokens.css` 的令牌（时长、曲线、缩放、错落），这里不出现字面的
+ * 时间曲线或颜色。规则摘要：
+ *  - 只动 opacity / transform / filter / clip-path / mask；没有回弹，不用 ease-in。
+ *  - 浮层从触发点生长（origin 由 Radix 的 `--radix-*-transform-origin` 给，
+ *    生成件里的 `origin-(--radix-…)` 负责）；对话框居中。
+ *  - 退场永远比入场短。
+ *  - 键盘触发的面板不播动画：调用方给 `data-instant`，Tooltip 与菜单在
+ *    `data-state="instant-open"` 下直接渲染终态。
+ *  - `prefers-reduced-motion`：位移与缩放换成淡入，循环停掉，`Spinner` 保留转圈。
+ */
+
+/* ── 关键帧 ─────────────────────────────────────────────────────────── */
+
+@keyframes armadra-pop-in {
+  from {
+    opacity: 0;
+    transform: scale(var(--pop-scale));
+  }
+}
+
+@keyframes armadra-pop-out {
+  to {
+    opacity: 0;
+    transform: scale(0.98);
+  }
+}
+
+@keyframes armadra-tip-in {
+  from {
+    opacity: 0;
+    transform: scale(0.97);
+  }
+}
+
+@keyframes armadra-fade-out {
+  to {
+    opacity: 0;
+  }
+}
+
+@keyframes armadra-rise-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+}
+
+@keyframes armadra-slide-in-right {
+  from {
+    transform: translateX(100%);
+  }
+}
+@keyframes armadra-slide-in-left {
+  from {
+    transform: translateX(-100%);
+  }
+}
+@keyframes armadra-slide-in-top {
+  from {
+    transform: translateY(-100%);
+  }
+}
+@keyframes armadra-slide-in-bottom {
+  from {
+    transform: translateY(100%);
+  }
+}
+@keyframes armadra-slide-out-right {
+  to {
+    transform: translateX(100%);
+  }
+}
+@keyframes armadra-slide-out-left {
+  to {
+    transform: translateX(-100%);
+  }
+}
+@keyframes armadra-slide-out-top {
+  to {
+    transform: translateY(-100%);
+  }
+}
+@keyframes armadra-slide-out-bottom {
+  to {
+    transform: translateY(100%);
+  }
+}
+
+/* 文字微光：用遮罩扫过，文字色不变（加载中的按钮标签、思考行标签） */
+@keyframes armadra-shimmer {
+  from {
+    mask-position: 100% 0;
+  }
+  to {
+    mask-position: 0 0;
+  }
+}
+
+/* 校验失败：左右各 4px 抖两次，240ms 匀速，无回弹 */
+@keyframes armadra-shake {
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+  25% {
+    transform: translateX(-4px);
+  }
+  50% {
+    transform: translateX(4px);
+  }
+  75% {
+    transform: translateX(-4px);
+  }
+}
+
+@keyframes armadra-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* 对勾画出（Spinner done）：路径长度按 24 估，`pathLength=1` 的写法见 spinner.tsx */
+@keyframes armadra-check-draw {
+  from {
+    stroke-dashoffset: 1;
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+/* 刻度条逐格点亮 */
+@keyframes armadra-tick-in {
+  from {
+    opacity: 0;
+  }
+}
+
+/* 不确定进度：条在轨道里匀速扫过 */
+@keyframes armadra-indeterminate {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(250%);
+  }
+}
+
+@layer utilities {
+  /* ── 浮层发芽（菜单 / Popover / Select / HoverCard） ───────────────── */
+  .motion-pop:where([data-state="open"], [data-open]:not([data-open="false"])) {
+    animation: armadra-pop-in var(--dur-slow) var(--ease-out) both;
+  }
+  .motion-pop:where(
+    [data-state="closed"],
+    [data-closed]:not([data-closed="false"])
+  ) {
+    animation: armadra-pop-out var(--dur-fast) var(--ease-out) both;
+  }
+
+  /* ── Tooltip：0.97 起，第二个起即时出现 ───────────────────────────── */
+  .motion-tip:where(
+    [data-state="delayed-open"],
+    [data-state="open"],
+    [data-open]:not([data-open="false"])
+  ) {
+    animation: armadra-tip-in var(--dur-fast) var(--ease-out) both;
+  }
+  .motion-tip:where(
+    [data-state="closed"],
+    [data-closed]:not([data-closed="false"])
+  ) {
+    animation: armadra-fade-out var(--dur-fast) var(--ease-out) both;
+  }
+
+  /* ── 对话框：遮罩淡入、内容 0.96 → 1，居中不设起点 ────────────────── */
+  .motion-dialog:where(
+    [data-state="open"],
+    [data-open]:not([data-open="false"])
+  ) {
+    animation: armadra-pop-in var(--dur-page) var(--ease-out) both;
+  }
+  .motion-dialog:where(
+    [data-state="closed"],
+    [data-closed]:not([data-closed="false"])
+  ) {
+    animation: armadra-pop-out var(--dur-fast) var(--ease-out) both;
+  }
+  .motion-overlay:where(
+    [data-state="open"],
+    [data-open]:not([data-open="false"])
+  ) {
+    animation: armadra-fade-in var(--dur-page) var(--ease-out) both;
+  }
+  .motion-overlay:where(
+    [data-state="closed"],
+    [data-closed]:not([data-closed="false"])
+  ) {
+    animation: armadra-fade-out var(--dur-fast) var(--ease-out) both;
+  }
+
+  /* ── Sheet：从来的方向滑入，反向收起（比入场短） ───────────────────── */
+  .motion-sheet:where(
+    [data-state="open"],
+    [data-open]:not([data-open="false"])
+  ) {
+    animation: var(--sheet-in, armadra-slide-in-right) var(--dur-page)
+      var(--ease-drawer) both;
+  }
+  .motion-sheet:where(
+    [data-state="closed"],
+    [data-closed]:not([data-closed="false"])
+  ) {
+    animation: var(--sheet-out, armadra-slide-out-right) var(--dur-slow)
+      var(--ease-drawer) both;
+  }
+  .motion-sheet[data-side="right"] {
+    --sheet-in: armadra-slide-in-right;
+    --sheet-out: armadra-slide-out-right;
+  }
+  .motion-sheet[data-side="left"] {
+    --sheet-in: armadra-slide-in-left;
+    --sheet-out: armadra-slide-out-left;
+  }
+  .motion-sheet[data-side="top"] {
+    --sheet-in: armadra-slide-in-top;
+    --sheet-out: armadra-slide-out-top;
+  }
+  .motion-sheet[data-side="bottom"] {
+    --sheet-in: armadra-slide-in-bottom;
+    --sheet-out: armadra-slide-out-bottom;
+  }
+
+  /* 键盘触发的面板与紧邻的第二个 Tooltip：直接渲染终态 */
+  .motion-pop[data-instant],
+  .motion-dialog[data-instant],
+  .motion-overlay[data-instant],
+  .motion-sheet[data-instant],
+  .motion-tip[data-instant],
+  .motion-tip[data-state="instant-open"],
+  .motion-pop[data-state="instant-open"] {
+    animation: none;
+  }
+
+  /* ── 按下 / 悬停 ──────────────────────────────────────────────────── */
+  /* 按下 0.97，`:hover:active` 才生效（触屏的 :hover 会跟着 :active 一起来）；
+     `static` 与禁用态不反馈 */
+  .motion-press {
+    transition:
+      transform var(--dur-instant) var(--ease-out),
+      color var(--dur-instant) var(--ease-color),
+      background-color var(--dur-instant) var(--ease-color),
+      border-color var(--dur-instant) var(--ease-color),
+      opacity var(--dur-instant) var(--ease-color);
+  }
+  .motion-press:not(
+      :disabled,
+      [aria-disabled="true"],
+      [data-static="true"],
+      [aria-haspopup]
+    ):hover:active {
+    transform: scale(var(--press-scale));
+  }
+
+  /* ── 进场 ─────────────────────────────────────────────────────────── */
+  /* 偶尔出现的列表项：第 i 项延迟 i × 40ms，最多前 6 项错落（总长 ≤ 300ms） */
+  .motion-enter-list {
+    animation: armadra-rise-in var(--dur-slow) var(--ease-out) both;
+    animation-delay: calc(min(var(--i, 0), 6) * var(--stagger));
+  }
+  .motion-rise-in {
+    animation: armadra-rise-in var(--dur-slow) var(--ease-out) both;
+  }
+
+  /* ── 循环与反馈 ───────────────────────────────────────────────────── */
+  .anim-shimmer {
+    mask-image: linear-gradient(
+      90deg,
+      black 35%,
+      color-mix(in srgb, black 40%, transparent) 50%,
+      black 65%
+    );
+    mask-size: 250% 100%;
+    animation: armadra-shimmer 1.4s linear infinite;
+  }
+  .anim-shake {
+    animation: armadra-shake 240ms linear;
+  }
+  /* 一圈 0.8s：更快的转圈让加载显得更短 */
+  .anim-spin {
+    animation: armadra-spin 0.8s linear infinite;
+  }
+  .anim-check-draw {
+    stroke-dasharray: 1;
+    animation: armadra-check-draw 240ms var(--ease-out) both;
+  }
+  .anim-tick-in {
+    animation: armadra-tick-in var(--dur-fast) var(--ease-out) both;
+    animation-delay: calc(var(--i, 0) * 15ms);
+  }
+  .anim-indeterminate {
+    animation: armadra-indeterminate 1.2s linear infinite;
+  }
+}
+
+/* ── 减少动效（设计系统 §8.8）：减少而不是归零 ─────────────────────────
+   全局的 `*` 规则（tokens.css）把动画压成一帧；这里让浮层与进场改成 120ms
+   淡入，Spinner 保留转圈——它是唯一必要的循环。用类选择器 + !important 盖过
+   `*`（特异性 0）。 */
+@media (prefers-reduced-motion: reduce) {
+  .motion-pop:where([data-state="open"], [data-open]:not([data-open="false"])),
+  .motion-tip:where(
+    [data-state="delayed-open"],
+    [data-state="open"],
+    [data-open]:not([data-open="false"])
+  ),
+  .motion-dialog:where(
+    [data-state="open"],
+    [data-open]:not([data-open="false"])
+  ),
+  .motion-overlay:where(
+    [data-state="open"],
+    [data-open]:not([data-open="false"])
+  ),
+  .motion-sheet:where(
+    [data-state="open"],
+    [data-open]:not([data-open="false"])
+  ),
+  .motion-enter-list,
+  .motion-rise-in {
+    animation-name: armadra-fade-in !important;
+    animation-duration: var(--dur-fast) !important;
+    animation-delay: 0ms !important;
+  }
+  .motion-pop:where(
+    [data-state="closed"],
+    [data-closed]:not([data-closed="false"])
+  ),
+  .motion-tip:where(
+    [data-state="closed"],
+    [data-closed]:not([data-closed="false"])
+  ),
+  .motion-dialog:where(
+    [data-state="closed"],
+    [data-closed]:not([data-closed="false"])
+  ),
+  .motion-overlay:where(
+    [data-state="closed"],
+    [data-closed]:not([data-closed="false"])
+  ),
+  .motion-sheet:where(
+    [data-state="closed"],
+    [data-closed]:not([data-closed="false"])
+  ) {
+    animation-name: armadra-fade-out !important;
+    animation-duration: var(--dur-fast) !important;
+  }
+  .motion-press:not(
+      :disabled,
+      [aria-disabled="true"],
+      [data-static="true"],
+      [aria-haspopup]
+    ):hover:active {
+    transform: none;
+  }
+  .anim-spin {
+    animation-duration: 0.8s !important;
+    animation-iteration-count: infinite !important;
+  }
+  /* 微光与不确定进度静止；刻度条直接点亮 */
+  .anim-shimmer {
+    mask-image: none;
+  }
+  .anim-tick-in {
+    animation-delay: 0ms !important;
+  }
+}

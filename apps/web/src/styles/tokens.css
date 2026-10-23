@@ -109,6 +109,8 @@
   --warn: #ff9f0a;
   --warn-soft: rgb(255 159 10 / 16%);
   --caution: #ffd60a;
+  --caution-text: #ffd60a;
+  --caution-soft: rgb(255 214 10 / 16%);
   --success: #32d74b;
   --success-soft: rgb(50 215 75 / 16%);
   /* 状态色三件套（设计系统 §2.3）：`--<s>` 是图形，`--<s>-text` 是文字（≥4.5:1，
@@ -151,6 +153,8 @@
   --status-paused: var(--muted-foreground);
   --status-unread: var(--brand);
   --status-idle: var(--faint);
+  /* 「已完成」的状态色；功能代码不再直接写 `var(--success)` 表示完成 */
+  --status-done: var(--success);
 
   /* ── 节点调色板 7 色（§3.4） ─────────────────────────────────────── */
   --node-color-1: #0a84ff;
@@ -187,55 +191,69 @@
      对画布底色 ≥ 3:1。派发线取簇色，两类线一眼分开。 */
   --link-context: #ff5fb8;
 
-  /* ── 圆角 ────────────────────────────────────────────────────────── */
-  /* `--r-*` 是原始值，`--radius*` 是 §4.3 与 shadcn 组件都要读的名字。
-     分两层是因为 Tailwind 的 `@theme` 也会写 `--radius-sm` 这类名字，
-     若两边同名互相引用就形成自引用循环。 */
-  --r-sm: 6px;
-  --r-md: 8px;
-  --r-lg: 12px;
-  --r-xl: 16px;
-  /* §24.2 的四档语义圆角：控件 6 / 卡片 10 / 面板 12 / 对话框 14 */
+  /* ── 圆角（设计系统 §2.8）──────────────────────────────────────────
+     七档语义，同心规则「外圆角 = 内圆角 + 内边距」。`--radius-*` 是 shadcn
+     组件读的名字，分两层是因为 Tailwind 的 `@theme` 也会写同名变量，两边互相
+     引用会形成自引用循环。 */
+  --r-tight: 4px;
   --r-control: 6px;
   --r-card: 10px;
   --r-panel: 12px;
   --r-dialog: 14px;
-  /* 头像、胶囊圆点、光标标签 */
+  --r-float: 16px;
+  /* 头像、圆点、Badge、StatusPill、分段控件指示器 */
   --r-pill: 999px;
-  /* shadcn 组件的控件（按钮、输入框、下拉）写 `rounded-lg`、菜单项写
-     `rounded-md`：映射到 §24.2 的语义档，控件 10 / 菜单项 6。菜单容器
-     `rounded-lg` 10 = 菜单项 6 + 内边距 4，同心。 */
-  --radius-sm: var(--r-sm);
+  /* shadcn 别名对齐到语义档：sm = tight、md = control、lg = card、xl = panel、
+     2xl = float；`--radius` 是同心计算的基数（= 控件）。 */
+  --radius-sm: var(--r-tight);
   --radius-md: var(--r-control);
-  --radius: var(--r-md);
+  --radius: var(--r-control);
   --radius-lg: var(--r-card);
-  --radius-xl: var(--r-xl);
+  --radius-xl: var(--r-panel);
+  --radius-2xl: var(--r-float);
 
-  /* ── 字号阶梯（§24.2「字体层级」；界面里不允许出现 11px 以下） ────── */
+  /* ── 字号阶梯（设计系统 §2.6；界面里不允许出现 11px 以下） ──────────
+     六档语义 + 手机输入档。`app.css` 的 `@theme` 把 Tailwind 刻度 `text-sm` /
+     `text-xs` 对齐到 13 / 12，ui/ 生成件不用逐个改。 */
+  --text-display: 22px;
   --text-title: 17px;
   --text-section: 15px;
   --text-body: 13px;
+  --text-meta: 12px;
   --text-caption: 11px;
-  /* 登录页、向导、手机整页的页标题 */
-  --text-display: 22px;
-  /* 代码块、差异、终端默认 */
-  --text-code: 12px;
+  /* 代码块、差异、终端默认：`--text-meta` 的别名 */
+  --text-code: var(--text-meta);
   /* 手机上输入框的字号：不到 16px 时 iOS 聚焦会缩放页面 */
   --text-input-touch: 16px;
 
-  /* ── 动效（§24.2：只动 opacity/transform，120–180ms ease-out） ───── */
+  /* ── 动效（设计系统 §2.10 / §8.2）：定值，不是范围；没有回弹，不用 ease-in。
+     字面 `cubic-bezier(` 只允许出现在这里。 */
+  --dur-instant: 100ms;
   --dur-fast: 120ms;
-  --dur-base: 150ms;
-  --dur-slow: 180ms;
-  /* 手机整页推入、Sheet 升起、向导步进 */
-  --dur-page: 220ms;
-  --ease-out: cubic-bezier(0.32, 0.72, 0, 1);
+  --dur-base: 160ms;
+  --dur-slow: 200ms;
+  /* 对话框、Sheet、设置子页与手机整页推入、整理时的节点位移 */
+  --dur-page: 280ms;
+  /* 开屏淡出后的首屏错落入场、官网首屏 */
+  --dur-hero: 600ms;
+  /* 一切进场与退场、按下 */
+  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+  /* 已在屏上的元素移动 / 变形：指示器平移、整理、把手吸附 */
+  --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
+  /* Sheet、抽屉、设置子页与手机页面推入（原 `--ease-out` 的值） */
+  --ease-drawer: cubic-bezier(0.32, 0.72, 0, 1);
+  /* 悬停与颜色变化 */
+  --ease-color: ease;
+  --press-scale: 0.97;
+  --pop-scale: 0.96;
+  --stagger: 40ms;
 
-  /* ── 阴影（§24.3-3；浅色下整体减半） ─────────────────────────────── */
-  --shadow-node: 0 1px 2px rgb(0 0 0 / 20%), 0 8px 24px rgb(0 0 0 / 18%);
+  /* ── 阴影（设计系统 §2.9）：三档，卡片没有阴影只有 1px 边 ──────────
+     节点（拖动中加倍）、浮层（菜单 / Popover / Tooltip / Dock / 横幅 / Toast）、
+     对话框。浅色下整体减半。阴影不做动画。 */
+  --shadow-node: 0 1px 2px rgb(0 0 0 / 20%), 0 4px 12px rgb(0 0 0 / 14%);
+  --shadow-overlay: 0 4px 12px rgb(0 0 0 / 28%);
   --shadow-dialog: 0 2px 8px rgb(0 0 0 / 24%), 0 24px 64px rgb(0 0 0 / 36%);
-  --shadow-overlay: var(--shadow-dialog);
-  --shadow-pill: 0 1px 2px rgb(0 0 0 / 24%);
 
   /* ── 字体（全部为系统字体，不加载在线字体，§4.3 规则三） ──────────── */
   --font-ui:
@@ -292,17 +310,20 @@
   --drawer-w: 360px;
   --scm-w: 460px;
   /*
-   * 设置弹窗（设计系统 §2.7）：按视口比例取、不封顶——屏越大弹窗越大
-   * （1280 → 1024、1920 → 1536、2560 → 2048）；再由调用方的 max-* 夹进
-   * 视口减 48px 与安全区。平板与手机的形态在 `SettingsDialog` 里另给。
+   * 设置工作台（设计系统 §2.7 / §5.17）：近全窗，视口减 48px，上限 1600 × 1040；
+   * 再由调用方夹进安全区。平板与手机的形态在 `SettingsDialog` 里另给。
    */
-  --settings-dialog-w: max(760px, 80vw);
-  --settings-dialog-h: max(560px, 82dvh);
+  --settings-dialog-w: min(calc(100vw - 48px), 1600px);
+  --settings-dialog-h: min(calc(100dvh - 48px), 1040px);
+  --settings-nav-w: clamp(200px, 18%, 256px);
+  --settings-topbar-h: 48px;
   /* Git 工具窗口停在底部（Git 工具窗口设计 §2.1）；拖过之后走偏好里的 px。 */
   --git-window-h: 40vh;
 
   /* ── z 轴栈（§3.1，唯一真相） ───────────────────────────────────── */
   --z-pills: 5;
+  /* 画布内的成员光标、评论钉、投递流光（节点与 pills 之上） */
+  --z-canvas-overlay: 8;
   --z-sessions: 12;
   --z-dock: 20;
   --z-cluster: 26;
@@ -313,14 +334,20 @@
   --z-focus: 40;
   --z-menu: 46;
   --z-dialog: 55;
-  /* 画布内的成员光标、评论钉、投递流光（节点与 pills 之上） */
-  --z-canvas-overlay: 8;
   /* 手机焦点页（`shell/MobileFocusPage`），盖住对话框 */
   --z-focus-page: 60;
   /* sonner：高于一切对话框，低于开屏 */
   --z-toast: 70;
   /* 开屏动画：盖住一切，包括对话框——它出现时 App 才刚开始挂载 */
   --z-splash: 90;
+
+  /* ── LEGACY 别名（批次 3 删除）──────────────────────────────────────
+     功能代码里还有少数调用点没迁到语义名字（`rounded-[var(--r-sm)]`、
+     `shadow-[var(--shadow-pill)]`），在各自的包迁完之前先指向新档位，免得悄悄
+     失效。`tokens.test.ts` 的 `LEGACY_TOKENS` 登记现状，只许减少。 */
+  --r-sm: var(--r-control);
+  --r-xl: var(--r-float);
+  --shadow-pill: var(--shadow-overlay);
 
   /* ── shadcn 契约（`src/ui/*` 直接依赖这些名字的语义） ─────────────── */
   --background: var(--bg);
@@ -423,6 +450,8 @@
   --warn-soft: rgb(163 90 0 / 10%);
   --warn-text: #8f4e00;
   --caution: #7f6000;
+  --caution-text: #7f6000;
+  --caution-soft: rgb(127 96 0 / 10%);
   --success: #177a2e;
   --success-soft: rgb(23 122 46 / 10%);
   --success-text: #15702a;
@@ -470,10 +499,10 @@
   /* 上下文线：浅底上压暗，对白色画布仍 ≥ 4.5:1。 */
   --link-context: #c2187a;
 
-  /* 浅色下阴影减半（§24.2 最后一行） */
-  --shadow-node: 0 1px 2px rgb(0 0 0 / 10%), 0 8px 24px rgb(0 0 0 / 9%);
+  /* 浅色下阴影减半（设计系统 §2.9） */
+  --shadow-node: 0 1px 2px rgb(0 0 0 / 8%), 0 4px 12px rgb(0 0 0 / 6%);
+  --shadow-overlay: 0 4px 12px rgb(0 0 0 / 8%);
   --shadow-dialog: 0 2px 8px rgb(0 0 0 / 12%), 0 24px 64px rgb(0 0 0 / 18%);
-  --shadow-pill: 0 1px 2px rgb(0 0 0 / 12%);
 
   /* shadcn 契约在浅色下重新声明一遍：两套主题各自分叉的余地留着，
      `styles/tokens.test.ts` 也会逐条校验它们都在。 */
@@ -548,8 +577,10 @@ html[data-desktop] {
 }
 
 /*
- * 减少动效：关掉节点脉冲光晕与一切循环动画（§4.3 规则三）。
- * 状态仍然靠“图标 + 文字”表达，所以关掉动画不丢信息。
+ * 减少动效（设计系统 §8.8）：减少而不是归零。位移、缩放、视差与一切循环（脉冲、
+ * rope、流光、微光、光晕呼吸）关闭；透明度与颜色过渡保留，压到 `--dur-fast`。
+ * `*` 的特异性为 0，`styles/motion.css` 里的工具类（淡入替代、转圈）用类选择器
+ * 加 `!important` 就能盖过这里。状态仍然靠“图标 + 文字”表达，关掉动画不丢信息。
  */
 @media (prefers-reduced-motion: reduce) {
   *,
@@ -557,9 +588,19 @@ html[data-desktop] {
   *::after {
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
-    transition-duration: 0.01ms !important;
+    transition-duration: var(--dur-fast) !important;
     scroll-behavior: auto !important;
   }
+}
+
+/*
+ * 切换主题的一帧（`syncDocumentPreferences` 在写 `data-theme` 前加上、下一帧移除）：
+ * 整页瞬间换色，而不是逐个元素渐变。
+ */
+[data-theme-switching] *,
+[data-theme-switching] *::before,
+[data-theme-switching] *::after {
+  transition: none !important;
 }
 
 @media (forced-colors: active) {
