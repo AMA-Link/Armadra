@@ -122,9 +122,9 @@ describe("控制台经客户端取会话", () => {
 });
 
 describe("运营后台门控", () => {
-  it("没有运营会话访问 /ops/* 整页找不到，即便账号有运营范围", async () => {
+  it("没有运营范围的账号访问 /ops/* 整页找不到", async () => {
     visit("/ops/nodes");
-    mount({ operatorAccount: true });
+    mount();
     expect((await h1()).textContent).toBe("找不到这个页面");
     expect(screen.queryByRole("navigation")).toBeNull();
   });
@@ -147,11 +147,15 @@ describe("运营后台门控", () => {
     expect(screen.queryByRole("menuitem", { name: "运营后台" })).toBeNull();
   });
 
-  it("运营会话在：进得去 /ops，菜单直达 /ops；会话到期（CSRF 清掉）立刻又是找不到", async () => {
+  it("运营会话在：进得去 /ops，菜单直达 /ops；会话到期（CSRF 清掉）续不上就回运营登录", async () => {
     visit("/ops/nodes");
     const api = mount({ operatorAccount: true, operatorSession: true });
     expect((await h1()).textContent).toBe("节点");
     await act(() => api.signOut());
-    expect((await h1()).textContent).toBe("找不到这个页面");
+    await waitFor(() =>
+      expect(window.location.pathname + window.location.search).toBe(
+        "/login?scope=operator&next=%2Fops%2Fnodes",
+      ),
+    );
   });
 });
