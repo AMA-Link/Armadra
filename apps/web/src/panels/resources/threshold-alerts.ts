@@ -11,7 +11,7 @@
  * 只是提醒：不终止、不休眠、不做任何处置（设计 §8）。
  */
 import { useEffect } from "react";
-import { toast } from "sonner";
+import { toast } from "@/ui/toast";
 import { create } from "zustand";
 import type { ResourcesThresholdEvent } from "@armadra/shared";
 

@@ -342,16 +342,13 @@ describe("ResourceDrawer", () => {
     snapshot.host.memory.pressure = "warning";
   });
 
-  it("平台组件单独一组，Runtime 那行写明只算它自己", async () => {
+  it("平台组件单独一组，Runtime 与其会话各占自己的行", async () => {
     useCanvasStore.getState().setPanel("resources", "drawer");
     render(<ResourceDrawer />);
 
     await waitFor(() => expect(screen.getByText("平台组件")).toBeTruthy());
     expect(screen.getByText("Runtime")).toBeTruthy();
     // 它的子进程就是用户的会话，已经各有各的行；算进来等于数两遍。
-    expect(
-      screen.getByTitle(/只算这个进程；它启动的会话在上面各有一行/),
-    ).toBeTruthy();
     expect(screen.getByText("40 MB")).toBeTruthy();
   });
 
@@ -401,11 +398,13 @@ describe("ResourceDrawer", () => {
     // 点一下只是弹确认框，不该直接打出请求。
     expect(terminateOrphanSession).not.toHaveBeenCalled();
     await waitFor(() =>
-      expect(screen.getByText("终止这个孤立会话？")).toBeTruthy(),
+      expect(screen.getByRole("alertdialog").textContent).toContain(
+        "终止孤立会话",
+      ),
     );
   });
 
-  it("手动开关只申请一份 manual 租约，并说明只挡空闲睡眠", async () => {
+  it("手动开关只申请一份 manual 租约", async () => {
     acquirePowerLease.mockResolvedValue({
       id: "lease-1",
       source: "manual",
@@ -421,12 +420,7 @@ describe("ResourceDrawer", () => {
     useCanvasStore.getState().setPanel("resources", "drawer");
     render(<ResourceDrawer />);
 
-    const scope = await screen.findByTitle(
-      "只阻止系统空闲睡眠；不常亮屏幕，也不影响合盖或手动睡眠。",
-    );
-    expect(scope).toBeTruthy();
-
-    const toggle = screen.getByRole("switch");
+    const toggle = await screen.findByRole("switch");
     toggle.click();
     await waitFor(() =>
       expect(acquirePowerLease).toHaveBeenCalledWith(

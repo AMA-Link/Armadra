@@ -18,7 +18,7 @@ import { ScrollArea } from "../ui/scroll-area";
 import { SheetTitle } from "../ui/sheet";
 import { WorkPanelSheet } from "./WorkPanelSheet";
 import { IconButton } from "../ui/icon-button";
-import { Alert, AlertTitle } from "../ui/alert";
+import { ErrorState } from "../ui/state";
 import { Skeleton } from "../ui/skeleton";
 import { ComponentList } from "./resources/ComponentList";
 import { HostCard } from "./resources/HostCard";
@@ -74,11 +74,11 @@ export function ResourceDrawer() {
       <ScrollArea className="min-h-0 flex-1">
         <div className="flex flex-col gap-(--space-section) p-(--space-page)">
           {error && !snapshot && (
-            <Alert variant="destructive">
-              <AlertTitle className="font-normal break-words">
-                {error}
-              </AlertTitle>
-            </Alert>
+            <ErrorState
+              title={error}
+              retryLabel={t("resources.refresh")}
+              onRetry={refresh}
+            />
           )}
           {/* 还没有过样本时不画表格：等第一份真实数字，别先显示一屏 0——
               只放两块卡片形状的骨架占位。 */}

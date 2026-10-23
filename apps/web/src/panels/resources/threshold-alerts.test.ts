@@ -7,7 +7,7 @@ const centerOn = vi.fn();
 vi.mock("@/platform", () => ({
   notify: (...args: unknown[]) => notify(...args),
 }));
-vi.mock("sonner", () => ({
+vi.mock("@/ui/toast", () => ({
   toast: { warning: (...args: unknown[]) => toastWarning(...args) },
 }));
 vi.mock("@/canvas/flow/flow-context", () => ({
