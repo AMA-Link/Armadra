@@ -10,7 +10,13 @@ import {
   type NodeProps,
   type NodeTypes,
 } from "@xyflow/react";
-import { MousePointer2 } from "lucide-react";
+import {
+  AlertTriangle,
+  CheckCircle2,
+  Info,
+  MousePointer2,
+  WifiOff,
+} from "lucide-react";
 import type { BoardDocument, CanvasNode } from "@armadra/shared";
 
 import "@xyflow/react/dist/style.css";
@@ -31,11 +37,13 @@ import type { CanvasFlowNode } from "@/canvas/sync/project";
 import { useCanvasStore } from "@/store/canvas-store";
 import GroupNode from "@/canvas/flow/nodes/GroupNode";
 import { NodeShell } from "@/nodes/NodeShell";
-import { HEADER_CHIP_CLASS } from "@/nodes/header-chip";
+import { StickyNode } from "@/nodes/StickyNode";
+import { Banner } from "@/shell/Banners";
 import { Badge } from "@/ui/badge";
 import { ColorDot } from "@/ui/color-dot";
 import { memberColorVar } from "@/ui/member-dot";
 import {
+  BANNER_SAMPLES,
   CANVAS_EDGES,
   CANVAS_IDS,
   CANVAS_NODES,
@@ -43,6 +51,8 @@ import {
   CLUSTER_NODES,
   FOLLOW_EDGES,
   FOLLOW_NODES,
+  STATE_IDS,
+  STATE_NODES,
   DELIVERY,
   EDITOR_LINES,
   PEERS,
@@ -66,7 +76,10 @@ const HEIGHT = 400;
 
 function TerminalBody() {
   return (
-    <div className="h-full bg-[var(--term-bg)] px-3 py-2 font-mono text-[length:var(--text-code)] leading-[1.5] text-[var(--term-fg)]">
+    <div
+      className="h-full bg-term px-3 py-2 font-mono text-meta leading-[1.5]"
+      style={{ color: "var(--term-fg)" }}
+    >
       {TERMINAL_LINES.map((line) => (
         <div key={line} className="truncate whitespace-pre">
           {line}
@@ -78,7 +91,7 @@ function TerminalBody() {
 
 function EditorBody() {
   return (
-    <div className="h-full px-3 py-2 font-mono text-[length:var(--text-code)] leading-[1.5]">
+    <div className="h-full px-3 py-2 font-mono text-meta leading-[1.5]">
       {EDITOR_LINES.map((line) => (
         <div key={line} className="truncate whitespace-pre">
           {line}
@@ -88,11 +101,16 @@ function EditorBody() {
   );
 }
 
-function StickyBody({ content }: { content: string }) {
+/** 真的便签正文：顶部 3px 色条 + 10% 混色底 + 等宽底栏。 */
+function StickyBody({ node }: { node: CanvasNode }) {
   return (
-    <div className="h-full px-3 py-2 text-[length:var(--text-body)] whitespace-pre-line">
-      {content}
-    </div>
+    <StickyNode
+      id={node.id}
+      node={node}
+      selected={false}
+      collapsed={false}
+      focused={false}
+    />
   );
 }
 
@@ -111,13 +129,13 @@ function ShowcaseNode({ data: node }: NodeProps<ShowcaseFlowNode>) {
     ) : node.data.kind === "editor" ? (
       <EditorBody />
     ) : node.data.kind === "sticky" ? (
-      <StickyBody content={node.data.content} />
+      <StickyBody node={node} />
     ) : null;
   const working = node.id === CANVAS_IDS.terminal;
   const unread = node.id === CANVAS_IDS.editor;
   return (
     <div
-      className="h-full w-full rounded-[var(--r-card)]"
+      className="h-full w-full rounded-card"
       style={
         peer ? { outline: `1.5px dashed ${peer}`, outlineOffset: 2 } : undefined
       }
@@ -194,13 +212,9 @@ function PeerCursor({
       className="pointer-events-none absolute flex items-start"
       style={{ transform: `translate(${x}px, ${y}px)`, left: 0, top: 0 }}
     >
-      <MousePointer2
-        className="size-4"
-        style={{ color, fill: color }}
-        strokeWidth={1.5}
-      />
+      <MousePointer2 className="size-4" style={{ color, fill: color }} />
       <span
-        className="mt-3 rounded-[var(--r-pill)] border bg-card px-1.5 text-[length:var(--text-caption)] leading-4"
+        className="mt-3 rounded-pill border bg-card px-1.5 text-caption leading-4"
         style={{ borderColor: color }}
       >
         {name}
@@ -226,7 +240,7 @@ function CommentPin({
   return (
     <div
       data-comment-pin={resolved ? "resolved" : "open"}
-      className="pointer-events-none absolute flex size-6 items-center justify-center rounded-[var(--r-pill)] border-2 bg-card text-[length:var(--text-caption)] font-medium tabular-nums"
+      className="pointer-events-none absolute flex size-6 items-center justify-center rounded-pill border-2 bg-card text-caption font-medium tabular-nums"
       style={{
         left: x - 12,
         top: y - 12,
@@ -236,7 +250,7 @@ function CommentPin({
     >
       {count}
       {resolved ? null : (
-        <span className="absolute -top-0.5 -right-0.5 size-2 rounded-[var(--r-pill)] bg-[var(--brand)]" />
+        <span className="absolute -top-0.5 -right-0.5 size-2 rounded-pill bg-brand" />
       )}
     </div>
   );
@@ -244,22 +258,25 @@ function CommentPin({
 
 /* ------------------------- 节点头：全部常显（§4） ------------------------- */
 
-const HEADER_WIDTH = 600;
+/** ≥ 560 宽状态段出 `StatusPill sm`；更窄只画 `StatusDot 8`。 */
+const HEADER_WIDTHS = [600, 480] as const;
 const HEADER_HEIGHT_PX = 72;
 
 /** 一个头部塞满的终端：名字、三枚胶囊加一枚折叠计数、状态、审批、动作。 */
-const HEADER_NODE: CanvasNode = {
-  ...(CANVAS_NODES.find((node) => node.id === CANVAS_IDS.terminal) ??
-    CANVAS_NODES[0]!),
-  id: "00000000-0000-4000-8000-0000000000f1",
-  position: { x: 0, y: 0 },
-  size: { width: HEADER_WIDTH, height: HEADER_HEIGHT_PX },
-  data: {
-    kind: "terminal",
-    agent: { id: "claude" },
-    handle: "reviewer",
-  } as CanvasNode["data"],
-};
+function headerNodeOf(width: number): CanvasNode {
+  return {
+    ...(CANVAS_NODES.find((node) => node.id === CANVAS_IDS.terminal) ??
+      CANVAS_NODES[0]!),
+    id: `00000000-0000-4000-8000-0000000000f${width}`,
+    position: { x: 0, y: 0 },
+    size: { width, height: HEADER_HEIGHT_PX },
+    data: {
+      kind: "terminal",
+      agent: { id: "claude" },
+      handle: "reviewer",
+    } as CanvasNode["data"],
+  };
+}
 
 function HeaderSpecimenNode({ data: node }: NodeProps<ShowcaseFlowNode>) {
   const t = useT();
@@ -270,16 +287,16 @@ function HeaderSpecimenNode({ data: node }: NodeProps<ShowcaseFlowNode>) {
       headerMark={<ColorDot color={agentColorVar("claude")} size={8} />}
       headerChips={
         <>
-          <Badge variant="outline" className={HEADER_CHIP_CLASS}>
+          <Badge variant="outline" size="sm">
             6.6 MB
           </Badge>
-          <Badge variant="outline" className={HEADER_CHIP_CLASS}>
+          <Badge variant="outline" size="sm">
             {t("delivery.queued", { count: 2 })}
           </Badge>
-          <Badge variant="outline" className={HEADER_CHIP_CLASS}>
+          <Badge variant="outline" size="sm">
             {t("contextReads.count", { count: 3 })}
           </Badge>
-          <Badge variant="destructive" className={HEADER_CHIP_CLASS}>
+          <Badge variant="destructive" size="sm">
             exit 1
           </Badge>
         </>
@@ -294,29 +311,36 @@ function HeaderSpecimenNode({ data: node }: NodeProps<ShowcaseFlowNode>) {
 
 const headerNodeTypes: NodeTypes = { showcase: HeaderSpecimenNode };
 
-const headerFlowNodes: ShowcaseFlowNode[] = [
-  {
-    id: HEADER_NODE.id,
-    type: "showcase",
-    position: { x: 0, y: 0 },
-    data: HEADER_NODE,
-    width: HEADER_WIDTH,
-    height: HEADER_HEIGHT_PX,
-    draggable: false,
-    selectable: false,
-    dragHandle: ".drag-handle",
-  },
-];
+function headerFlowNodesOf(width: number): ShowcaseFlowNode[] {
+  const node = headerNodeOf(width);
+  return [
+    {
+      id: node.id,
+      type: "showcase",
+      position: { x: 0, y: 0 },
+      data: node,
+      width,
+      height: HEADER_HEIGHT_PX,
+      draggable: false,
+      selectable: false,
+      dragHandle: ".drag-handle",
+    },
+  ];
+}
+
+const headerFlowNodes = new Map<number, ShowcaseFlowNode[]>(
+  HEADER_WIDTHS.map((width) => [width, headerFlowNodesOf(width)]),
+);
 
 /** 节点头四段的固定状态：不悬停、不选中，所有控件也都在（设计系统 §4）。 */
-function HeaderSpecimen({ scale }: { scale: number }) {
+function HeaderSpecimen({ scale, width }: { scale: number; width: number }) {
   return (
     <div style={{ height: (HEADER_HEIGHT_PX + 2) * scale }}>
       <div
-        data-showcase-node-header
-        className="canvas-stage relative origin-top-left overflow-hidden rounded-[var(--r-panel)] border border-border"
+        data-showcase-node-header={width}
+        className="canvas-stage relative origin-top-left overflow-hidden rounded-panel border border-border"
         style={{
-          width: HEADER_WIDTH + 2,
+          width: width + 2,
           height: HEADER_HEIGHT_PX + 2,
           transform: scale < 1 ? `scale(${scale})` : undefined,
         }}
@@ -324,7 +348,7 @@ function HeaderSpecimen({ scale }: { scale: number }) {
         {/* 自己的 provider：展示页外层那一个归上面的假画布，共用会互相覆盖节点。 */}
         <ReactFlowProvider>
           <ReactFlow
-            nodes={headerFlowNodes}
+            nodes={headerFlowNodes.get(width) ?? []}
             edges={[]}
             nodeTypes={headerNodeTypes}
             defaultViewport={{ x: 0, y: 0, zoom: 1 }}
@@ -340,6 +364,106 @@ function HeaderSpecimen({ scale }: { scale: number }) {
           />
         </ReactFlowProvider>
       </div>
+    </div>
+  );
+}
+
+/* ------------------------- 节点状态：平时 / 选中 / 拖动 ------------------------- */
+
+const STATE_HEIGHT = 160;
+
+function StateNodeView({ data: node }: NodeProps<ShowcaseFlowNode>) {
+  return (
+    <div
+      data-slot="node-host"
+      data-dragging={node.id === STATE_IDS.dragging ? "true" : undefined}
+      className="contents"
+    >
+      <NodeShell node={node} selected={node.id === STATE_IDS.selected}>
+        <StickyBody node={node} />
+      </NodeShell>
+    </div>
+  );
+}
+
+const stateNodeTypes: NodeTypes = { showcase: StateNodeView };
+
+const stateFlowNodes: ShowcaseFlowNode[] = STATE_NODES.map((node) => ({
+  id: node.id,
+  type: "showcase",
+  position: node.position,
+  data: node,
+  width: node.size.width,
+  height: node.size.height,
+  draggable: false,
+  selectable: false,
+  dragHandle: ".drag-handle",
+}));
+
+function StateSpecimen({ scale }: { scale: number }) {
+  return (
+    <div style={{ height: (STATE_HEIGHT + 2) * scale }}>
+      <div
+        data-showcase-node-states
+        className="canvas-stage relative origin-top-left overflow-hidden rounded-panel border border-border"
+        style={{
+          width: WIDTH + 2,
+          height: STATE_HEIGHT + 2,
+          transform: scale < 1 ? `scale(${scale})` : undefined,
+        }}
+      >
+        <ReactFlowProvider>
+          <ReactFlow
+            nodes={stateFlowNodes}
+            edges={[]}
+            nodeTypes={stateNodeTypes}
+            defaultViewport={{ x: 0, y: 0, zoom: 1 }}
+            nodesDraggable={false}
+            nodesConnectable={false}
+            elementsSelectable={false}
+            panOnDrag={false}
+            zoomOnScroll={false}
+            zoomOnPinch={false}
+            zoomOnDoubleClick={false}
+            preventScrolling={false}
+            proOptions={{ hideAttribution: true }}
+          >
+            <Background
+              variant={BackgroundVariant.Dots}
+              color="var(--canvas-dot)"
+              gap={20}
+            />
+          </ReactFlow>
+        </ReactFlowProvider>
+      </div>
+    </div>
+  );
+}
+
+/* ----------------------------- 横幅：四档语气 ----------------------------- */
+
+const BANNER_ICON = {
+  danger: <WifiOff />,
+  warn: <AlertTriangle />,
+  success: <CheckCircle2 />,
+  info: <Info />,
+} as const;
+
+function BannerSpecimen() {
+  return (
+    <div data-showcase-banners className="flex flex-col items-start gap-2">
+      {BANNER_SAMPLES.map((sample) => (
+        <Banner
+          key={sample.tone}
+          tone={sample.tone}
+          icon={BANNER_ICON[sample.tone]}
+          text={sample.text}
+          {...(sample.action
+            ? { actionLabel: sample.action, onAction: () => undefined }
+            : {})}
+          onDismiss={() => undefined}
+        />
+      ))}
     </div>
   );
 }
@@ -444,7 +568,7 @@ function ClusterSpecimen({ scale }: { scale: number }) {
     <div style={{ height: (CLUSTER_HEIGHT + 2) * scale }}>
       <div
         data-showcase-clusters
-        className="canvas-stage relative origin-top-left overflow-hidden rounded-[var(--r-panel)] border border-border"
+        className="canvas-stage relative origin-top-left overflow-hidden rounded-panel border border-border"
         style={{
           ...MINIMAP_VARS,
           width: CLUSTER_WIDTH + 2,
@@ -504,7 +628,7 @@ function FollowSpecimen({ scale }: { scale: number }) {
     <div style={{ height: (CLUSTER_HEIGHT + 2) * scale }}>
       <div
         data-showcase-follow
-        className="canvas-stage relative origin-top-left overflow-hidden rounded-[var(--r-panel)] border border-border"
+        className="canvas-stage relative origin-top-left overflow-hidden rounded-panel border border-border"
         style={{
           ...MINIMAP_VARS,
           width: CLUSTER_WIDTH + 2,
@@ -585,7 +709,7 @@ export default function CanvasSection() {
       <div style={{ height: (HEIGHT + 2) * scale }}>
         <div
           data-showcase-canvas
-          className="canvas-stage relative origin-top-left overflow-hidden rounded-[var(--r-panel)] border border-border"
+          className="canvas-stage relative origin-top-left overflow-hidden rounded-panel border border-border"
           style={{
             width: WIDTH + 2,
             height: HEIGHT + 2,
@@ -633,7 +757,11 @@ export default function CanvasSection() {
           </div>
         </div>
       </div>
-      <HeaderSpecimen scale={scale} />
+      {HEADER_WIDTHS.map((width) => (
+        <HeaderSpecimen key={width} scale={scale} width={width} />
+      ))}
+      <StateSpecimen scale={scale} />
+      <BannerSpecimen />
       <ClusterSpecimen scale={scale} />
       <FollowSpecimen scale={scale} />
     </div>

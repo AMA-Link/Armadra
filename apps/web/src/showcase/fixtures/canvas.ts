@@ -254,3 +254,51 @@ export const FOLLOW_EDGES = [
   createdAt: AT,
   updatedAt: AT,
 }));
+
+/** 横幅四档语气的样例文案（设计系统 §4 横幅）。 */
+export const BANNER_SAMPLES = [
+  { tone: "danger", text: "画布保存失败", action: "重试" },
+  { tone: "warn", text: "终端已降级为直连", action: "设置" },
+  { tone: "success", text: "本地服务已重连", action: null },
+  { tone: "info", text: "已切到只读视图", action: null },
+] as const;
+
+/**
+ * 节点状态样本：同一张便签的三个状态——平时、选中（品牌蓝 1.5px）、拖动中（阴影加倍）。
+ * 三种便签色（`--node-color-1/2/3`）顺带展示顶部 3px 色条。
+ */
+export const STATE_IDS = {
+  rest: "00000000-0000-4000-8000-000000000301",
+  selected: "00000000-0000-4000-8000-000000000302",
+  dragging: "00000000-0000-4000-8000-000000000303",
+} as const;
+
+export const STATE_NODES: CanvasNode[] = [
+  node({
+    id: STATE_IDS.rest,
+    type: "sticky",
+    title: "平时",
+    color: "var(--node-color-3)",
+    position: { x: 20, y: 24 },
+    size: { width: 168, height: 112 },
+    data: { kind: "sticky", content: "约定：先写测试。" },
+  }),
+  node({
+    id: STATE_IDS.selected,
+    type: "sticky",
+    title: "选中",
+    color: "var(--node-color-1)",
+    position: { x: 216, y: 24 },
+    size: { width: 168, height: 112 },
+    data: { kind: "sticky", content: "约定：先写测试。" },
+  }),
+  node({
+    id: STATE_IDS.dragging,
+    type: "sticky",
+    title: "拖动中",
+    color: "var(--node-color-2)",
+    position: { x: 412, y: 24 },
+    size: { width: 168, height: 112 },
+    data: { kind: "sticky", content: "约定：先写测试。" },
+  }),
+];
