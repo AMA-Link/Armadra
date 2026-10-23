@@ -509,16 +509,11 @@ describe("远程服务（个人中转）", () => {
     });
   });
 
-  it("SaaS 只预留：加入与轮询答 not_implemented", async () => {
-    expect(
-      await code(
-        service.remoteAdd({ kind: "saas", issuer: "https://cloud.test" }),
-      ),
-    ).toBe("not_implemented");
+  it("个人中转的轮询：加入即就绪；没有这一行答 not_found", async () => {
     const { remote } = await addRemote();
-    expect(await code(service.remoteDevicePoll(remote.serviceId))).toBe(
-      "not_implemented",
-    );
+    expect(await service.remoteDevicePoll(remote.serviceId)).toEqual({
+      status: "ready",
+    });
     expect(await code(service.remoteDevicePoll("9".repeat(32)))).toBe(
       "not_found",
     );
@@ -572,6 +567,8 @@ describe("本机登记到远程服务（契约 §31）", () => {
         removed.push(world.cloud.sources.map((one) => one.sourceId));
         return {};
       },
+      register: async () => ({ sourceId: HOST_ID }),
+      bind: async () => ({ bound: true }),
     };
     service = new SourcesService({
       store: new SourcesStore(opened.database),
@@ -1071,5 +1068,228 @@ describe("契约 §33.7：按分享链接挂载", () => {
     expect(
       await code(service.mountByLink({ url, fingerprint: RELAY_FP })),
     ).toBe("conflict");
+  });
+});
+
+describe("Armadra 云：设备码登录与登记到空间（契约 §33.11）", () => {
+  let clock: number;
+  let registrations: { issuer: string; registrationToken: string }[];
+  let bound: string[];
+  let saas: SourcesService;
+
+  beforeEach(() => {
+    clock = Date.now();
+    registrations = [];
+    bound = [];
+    world.cloud.mode = "saas";
+    // 云端用系统信任，不钉指纹。
+    world.fingerprints.delete(ISSUER);
+    const registered = new Set<string>();
+    saas = new SourcesService({
+      store: new SourcesStore(opened.database),
+      secrets: new SourceSecrets(() => backend),
+      remote: new RemoteClient(world.transport, {
+        platform: "desktop",
+        name: "test",
+      }),
+      peer: new SourceClient(world.transport, plainSealed(world.transport)),
+      hostId: () => HOST_ID,
+      hostLabel: () => "this-mac",
+      log: { info: () => undefined, warn: () => undefined },
+      now: () => clock,
+      cloud: () => ({
+        registered: (issuer) => registered.has(issuer),
+        revoke: async () => ({}),
+        register: async (input) => {
+          registrations.push(input);
+          registered.add(input.issuer);
+          return { sourceId: HOST_ID };
+        },
+        bind: async (assertion) => {
+          bound.push(assertion);
+          return { bound: true };
+        },
+      }),
+    });
+  });
+
+  async function start() {
+    return saas.remoteAdd({ kind: "saas", issuer: ISSUER });
+  }
+
+  it("加入：只答给人看的设备码，deviceCode 不进答案与库", async () => {
+    const added = await start();
+    expect(added.remote).toMatchObject({
+      kind: "saas",
+      issuer: ISSUER,
+      hasCredentials: false,
+    });
+    expect(added.next).toEqual({
+      deviceCode: {
+        userCode: "ABCD-EFGH",
+        verificationUrl: `${ISSUER}/device`,
+        expiresAtMs: expect.any(Number),
+        intervalMs: 5_000,
+      },
+    });
+    expect(JSON.stringify(added)).not.toContain("device-secret-code");
+    const again = await start();
+    expect(again.remote.serviceId).toBe(added.remote.serviceId);
+    expect((await saas.list()).remotes).toHaveLength(1);
+  });
+
+  it("加入个人中转的地址当 SaaS：bad_request；已是个人中转：conflict", async () => {
+    world.cloud.mode = "personal";
+    expect(await code(start())).toBe("bad_request");
+    await addRemote();
+    expect(await code(start())).toBe("conflict");
+  });
+
+  it("轮询：pending → 批准后存会话答 ready，账号提示取邮箱", async () => {
+    const { remote } = await start();
+    expect(await saas.remoteDevicePoll(remote.serviceId)).toEqual({
+      status: "pending",
+    });
+    // 间隔没到不再问服务端。
+    const before = world.cloud.device.polls;
+    expect(await saas.remoteDevicePoll(remote.serviceId)).toEqual({
+      status: "pending",
+    });
+    expect(world.cloud.device.polls).toBe(before);
+    world.cloud.device.status = "approved";
+    clock += 6_000;
+    expect(await saas.remoteDevicePoll(remote.serviceId)).toEqual({
+      status: "ready",
+    });
+    expect(backend.values.has(`armadra-remote-${remote.serviceId}`)).toBe(true);
+    const row = (await saas.list()).remotes[0];
+    expect(row).toMatchObject({
+      hasCredentials: true,
+      accountHint: "ada@example.test",
+    });
+    // 终结后再轮询仍是 ready，且不再问服务端。
+    const polls = world.cloud.device.polls;
+    expect(await saas.remoteDevicePoll(remote.serviceId)).toEqual({
+      status: "ready",
+    });
+    expect(world.cloud.device.polls).toBe(polls);
+  });
+
+  it("轮询：denied 终结；码过期按本机时钟判；限流带 retryAfterMs", async () => {
+    const { remote } = await start();
+    world.cloud.device.limited = true;
+    const limited = await saas
+      .remoteDevicePoll(remote.serviceId)
+      .catch((error: unknown) => error);
+    expect(limited).toBeInstanceOf(CoreFailure);
+    expect((limited as CoreFailure).code).toBe("rate_limited");
+    expect((limited as CoreFailure).details).toEqual({ retryAfterMs: 7_000 });
+    world.cloud.device.status = "denied";
+    clock += 6_000;
+    expect(await saas.remoteDevicePoll(remote.serviceId)).toEqual({
+      status: "denied",
+    });
+    // 码已丢（没有凭据）：需要重来。
+    expect(await saas.remoteDevicePoll(remote.serviceId)).toEqual({
+      status: "expired",
+    });
+    const second = await start();
+    clock += 700_000;
+    expect(await saas.remoteDevicePoll(second.remote.serviceId)).toEqual({
+      status: "expired",
+    });
+  });
+
+  it("个人中转没有空间：remoteSpaces、remoteRegister 答 not_implemented", async () => {
+    world.cloud.mode = "personal";
+    world.fingerprints.set(ISSUER, RELAY_FP);
+    const { remote } = await addRemote();
+    expect(await code(saas.remoteSpaces(remote.serviceId))).toBe(
+      "not_implemented",
+    );
+    expect(
+      await code(
+        saas.remoteRegister({
+          serviceId: remote.serviceId,
+          space: { kind: "personal" },
+        }),
+      ),
+    ).toBe("not_implemented");
+  });
+
+  async function signedIn() {
+    const { remote } = await start();
+    world.cloud.device.status = "approved";
+    clock += 6_000;
+    await saas.remoteDevicePoll(remote.serviceId);
+    return remote.serviceId;
+  }
+
+  it("remoteSpaces：个人空间与团队，不认识的行丢掉", async () => {
+    world.cloud.spaces = [
+      { kind: "personal", plan: "free" },
+      {
+        kind: "team",
+        teamId: "t1",
+        slug: "acme",
+        name: "Acme",
+        role: "admin",
+        plan: "team",
+      },
+      { kind: "other" },
+    ];
+    const serviceId = await signedIn();
+    expect((await saas.remoteSpaces(serviceId)).spaces).toEqual([
+      { kind: "personal", plan: "free" },
+      {
+        kind: "team",
+        teamId: "t1",
+        slug: "acme",
+        name: "Acme",
+        role: "admin",
+        plan: "team",
+      },
+    ]);
+  });
+
+  it("remoteRegister：令牌只在调用里转一圈，登记后映射账号，答案里没有令牌", async () => {
+    const serviceId = await signedIn();
+    const done = await saas.remoteRegister({
+      serviceId,
+      space: { kind: "team", teamId: "t1" },
+      label: "工作站",
+    });
+    expect(done).toMatchObject({ sourceId: HOST_ID });
+    expect(JSON.stringify(done)).not.toContain("reg-token-secret");
+    expect(world.cloud.registrationTokens).toEqual([
+      { space: { kind: "team", teamId: "t1" } },
+    ]);
+    expect(registrations).toEqual([
+      expect.objectContaining({
+        issuer: ISSUER,
+        registrationToken: "reg-token-secret",
+        label: "工作站",
+      }),
+    ]);
+    expect(bound).toHaveLength(1);
+    expect(
+      await code(
+        saas.remoteRegister({ serviceId, space: { kind: "personal" } }),
+      ),
+    ).toBe("cloud_already_registered");
+  });
+
+  it("remoteRegister：服务端拒绝的码原样透传，不登记", async () => {
+    const serviceId = await signedIn();
+    world.cloud.tokenRefusal = { status: 403, code: "team_role_insufficient" };
+    expect(
+      await code(
+        saas.remoteRegister({
+          serviceId,
+          space: { kind: "team", teamId: "t1" },
+        }),
+      ),
+    ).toBe("team_role_insufficient");
+    expect(registrations).toEqual([]);
   });
 });

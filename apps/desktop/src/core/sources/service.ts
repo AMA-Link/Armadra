@@ -30,6 +30,10 @@ import type {
   RemoteEndpoint,
   SourceAssertion,
 } from "./remote-client";
+import { parsePairLink } from "./pair-link";
+import { CloudSignIn } from "./saas-signin";
+
+export { parsePairLink };
 import { challengeTokenFor, PASSWORD_CHANGE_CAPABILITY } from "./remote-gate";
 import {
   MINE,
@@ -75,6 +79,14 @@ export interface CloudRegistrations {
   registered(issuer: string): boolean;
   /** 本机撤销，并尽力删中继侧的源记录（契约 §31.4）。 */
   revoke(input: { issuer: string }): Promise<unknown>;
+  /** 登记到远程服务（契约 §31.2）；`registrationToken` 用完即弃。 */
+  register(input: {
+    issuer: string;
+    registrationToken: string;
+    label?: string;
+  }): Promise<{ sourceId: string }>;
+  /** 把断言的账号映射到当前登录的人（契约 §31 `bind`）。 */
+  bind(assertion: string): Promise<unknown>;
 }
 
 export interface SourcesServiceOptions {
@@ -136,40 +148,6 @@ function wsBaseOf(httpBase: string): string {
   return httpBase.replace(/^http/, "ws");
 }
 
-/** `#pair=<票>&fp=<指纹>` 的网页链接，或 `armadra://pair?host=…&ticket=…&fp=…`。 */
-export function parsePairLink(link: string): {
-  origin: string;
-  ticket: string;
-  fingerprint: string;
-} {
-  let url: URL;
-  try {
-    url = new URL(link.trim());
-  } catch {
-    throw fail("bad_request", "配对链接不是一个合法的地址");
-  }
-  if (url.protocol === "armadra:") {
-    const host = url.searchParams.get("host") ?? "";
-    const ticket = url.searchParams.get("ticket") ?? "";
-    if (host === "" || ticket === "") {
-      throw fail("bad_request", "配对链接缺少地址或票");
-    }
-    return {
-      origin: normalizeOrigin(`https://${host}`),
-      ticket,
-      fingerprint: url.searchParams.get("fp") ?? "",
-    };
-  }
-  const fragment = new URLSearchParams(url.hash.replace(/^#/, ""));
-  const ticket = fragment.get("pair") ?? "";
-  if (ticket === "") throw fail("bad_request", "配对链接里没有票");
-  return {
-    origin: normalizeOrigin(url.origin),
-    ticket,
-    fingerprint: fragment.get("fp") ?? "",
-  };
-}
-
 /** 一条中继的来源：断言给的 `relayOrigin`，没有就是 `relayBaseUrl` 的来源。 */
 function relayOriginOf(assertion: {
   relayOrigin?: string;
@@ -185,6 +163,7 @@ export class SourcesService {
   private readonly peer: SourceClient;
   private readonly now: () => number;
   private readonly newId: () => string;
+  private readonly cloudSignIn: CloudSignIn;
   /** 远程服务的访问令牌：只在内存。 */
   private readonly access = new Map<string, CachedAccess>();
   private readonly capabilities = new Map<string, readonly string[]>();
@@ -201,6 +180,22 @@ export class SourcesService {
     this.peer = options.peer;
     this.now = options.now ?? Date.now;
     this.newId = options.newId ?? (() => randomBytes(16).toString("hex"));
+    this.cloudSignIn = new CloudSignIn({
+      store: this.store,
+      secrets: this.secrets,
+      remote: this.remote,
+      log: options.log,
+      cloud: options.cloud,
+      now: () => this.now(),
+      newId: () => this.newId(),
+      remoteRow: (id) => this.remoteRow(id),
+      remoteJson: (row) => this.remoteJson(row),
+      endpoint: (row) => this.endpoint(row),
+      remoteAccess: (row) => this.remoteAccess(row),
+      remember: (id, session) => this.remember(id, session),
+      setCapabilities: (id, list) => void this.capabilities.set(id, list),
+      serial: (key, work) => this.serial(key, work),
+    });
   }
 
   /** 本机那一行：启动时 upsert，不可删。只碰 SQLite。 */
@@ -930,11 +925,20 @@ export class SourcesService {
           challengeToken?: string | undefined;
         }
       | { kind: "saas"; issuer: string; label?: string | undefined },
-  ): Promise<{ remote: RemoteService; next: "ready" }> {
-    if (input.kind === "saas") {
-      // SaaS 服务端预留（总计划 §12.2）：类型保留，能力就绪前答明确的 501。
-      throw fail("not_implemented", "SaaS 远程服务尚未开放");
-    }
+  ): Promise<{
+    remote: RemoteService;
+    next:
+      | "ready"
+      | {
+          deviceCode: {
+            userCode: string;
+            verificationUrl: string;
+            expiresAtMs: number;
+            intervalMs: number;
+          };
+        };
+  }> {
+    if (input.kind === "saas") return this.cloudSignIn.start(input);
     const issuer = normalizeOrigin(input.issuer);
     const fingerprint = normalizeFingerprint(input.fingerprint);
     const label = checkLabel(input.label);
@@ -986,9 +990,6 @@ export class SourcesService {
     const row = this.store.remoteByIssuer(issuer);
     if (row === undefined) {
       throw fail("source_unauthorized", "没有这个远程服务的登录");
-    }
-    if (row.kind === "saas") {
-      throw fail("not_implemented", "SaaS 远程服务尚未开放");
     }
     const token = await this.remoteAccess(row);
     try {
@@ -1076,10 +1077,17 @@ export class SourcesService {
     return {};
   }
 
-  async remoteDevicePoll(serviceId: string): Promise<never> {
-    this.remoteRow(serviceId);
-    // 只有 SaaS 的设备码登录要轮询；个人中转加入即就绪。
-    throw fail("not_implemented", "设备码登录尚未开放");
+  /** Armadra 云的设备码登录、空间与登记（契约 §33.11），见 `saas-signin.ts`。 */
+  remoteDevicePoll(serviceId: string) {
+    return this.cloudSignIn.poll(serviceId);
+  }
+
+  remoteSpaces(serviceId: string) {
+    return this.cloudSignIn.spaces(serviceId);
+  }
+
+  remoteRegister(input: Parameters<CloudSignIn["register"]>[0]) {
+    return this.cloudSignIn.register(input);
   }
 
   async remoteRemove(serviceId: string): Promise<Record<string, never>> {
@@ -1100,6 +1108,7 @@ export class SourcesService {
     }
     this.access.delete(serviceId);
     this.capabilities.delete(serviceId);
+    this.cloudSignIn.forget(serviceId);
     await this.secrets.clearRemote(serviceId);
     // 经它发出的分享链接随登记一起失效（中继侧的源已删），存着的整条链接也删。
     await this.secrets.clearShareLinks(serviceId).catch(() => undefined);

@@ -5,8 +5,9 @@
  * 只实现个人中转用到的那几条：`platform.info`、`auth.login`、`auth.refresh`、
  * `auth.logout`、`auth.changePassword`（契约 §63）、`me.sources`、`sources.assertion`、
  * `sources.revoke`、`links.accept`，
- * 以及分享链接的 `links.create` / `links.list` / `links.update` / `links.revoke`（契约 §33.9、§33.10）。SaaS 的设备码登录等能力就绪
- * 后再加；在那之前 `service.ts` 对 `saas` 答 `not_implemented`。
+ * 以及分享链接的 `links.create` / `links.list` / `links.update` / `links.revoke`（契约 §33.9、§33.10）。
+ * SaaS（Armadra 云）的设备码登录与登记到空间用 `deviceStart` / `devicePoll` / `spaces` /
+ * `registrationToken`（契约 §33.11）；SaaS 的源目录、断言与分享链接仍答 `not_implemented`。
  *
  * 线上编码是普通 JSON（上游 OpenAPI 编码），错误是 `{ code, message, … }`。这里把
  * 远程服务的码收拢成 core 契约 §33 的码；远程服务的原话不透传（它可能是别的
@@ -27,6 +28,8 @@ export interface CloudSession {
   readonly accessExpiresAtMs: number;
   readonly accountId: string;
   readonly displayName: string;
+  /** SaaS 账号的邮箱；个人中转没有，是空串。 */
+  readonly email: string;
   readonly deviceId: string;
 }
 
@@ -122,6 +125,37 @@ export interface LinkSummary {
   readonly scope?: LinkScope;
 }
 
+/** `auth.deviceStart` 的答案（cloud-api §2）：`deviceCode` 是秘密，只留在 core。 */
+export interface DeviceStart {
+  readonly deviceCode: string;
+  readonly userCode: string;
+  readonly verificationUrl: string;
+  readonly expiresAtMs: number;
+  readonly intervalMs: number;
+}
+
+/** `auth.devicePoll` 的答案：批准时带会话（发起设备恒为 Bearer，带刷新令牌）。 */
+export type DevicePoll =
+  | { readonly status: "pending" | "denied" | "expired" }
+  | { readonly status: "approved"; readonly session: CloudSession };
+
+/** `me.spaces` 的一行：个人空间或所属的一个团队（cloud-api §21）。 */
+export type CloudSpace =
+  | { readonly kind: "personal"; readonly plan: string }
+  | {
+      readonly kind: "team";
+      readonly teamId: string;
+      readonly slug: string;
+      readonly name: string;
+      readonly role: string;
+      readonly plan: string;
+    };
+
+/** 注册令牌签给哪个空间。 */
+export type SpaceRef =
+  | { readonly kind: "personal" }
+  | { readonly kind: "team"; readonly teamId: string };
+
 /** 远程服务的一个地址：issuer 来源加它的 CA 指纹（空 = 系统信任）。 */
 export interface RemoteEndpoint {
   readonly issuer: string;
@@ -160,6 +194,7 @@ function sessionOf(body: unknown): CloudSession {
     accessExpiresAtMs: num(session.accessExpiresAtMs),
     accountId: str(account.accountId),
     displayName: str(account.displayName),
+    email: str(account.email),
     deviceId: str(device.deviceId),
   };
 }
@@ -185,7 +220,29 @@ function rejected(status: number, body: unknown, during: string): never {
           : undefined,
       );
     case "rate_limited":
-      throw fail("rate_limited", "远程服务限流，请稍后重试");
+      throw fail(
+        "rate_limited",
+        "远程服务限流，请稍后重试",
+        typeof details.retryAfterMs === "number"
+          ? { retryAfterMs: details.retryAfterMs }
+          : undefined,
+      );
+    // 登记到空间（cloud-api §6、§21）：团队与计划的拒绝，码原样透传，页面按码取文案。
+    case "host_registration_disabled":
+    case "team_role_insufficient":
+    case "team_policy_denied":
+    case "email_unverified":
+    case "team_suspended":
+    case "team_deleted":
+      throw fail(code, "远程服务不允许在这个空间登记主机");
+    case "limit_reached":
+      throw fail(
+        "limit_reached",
+        "这个空间的主机数已到上限",
+        typeof details.quota === "string"
+          ? { quota: details.quota, used: details.used, limit: details.limit }
+          : undefined,
+      );
     // 改口令（cloud-api §18）：新口令不合策略，码原样透传，页面按码取文案。
     case "password_too_short":
       throw fail("password_too_short", "新口令太短");
@@ -386,6 +443,112 @@ export class RemoteClient {
         refreshToken,
       }),
     );
+  }
+
+  /**
+   * 设备码登录（cloud-api §2）：匿名发起，答 8 位 `userCode` 与浏览器里批准的地址。
+   * `deviceCode` 是只给发起设备的秘密，调用方不得写日志、不得交给页面。
+   */
+  async deviceStart(endpoint: RemoteEndpoint): Promise<DeviceStart> {
+    const body = record(
+      await this.call(endpoint, "POST", "/v1/auth/device/start", "设备码登录", {
+        device: this.device,
+      }),
+    );
+    const start: DeviceStart = {
+      deviceCode: str(body.deviceCode),
+      userCode: str(body.userCode),
+      verificationUrl: str(body.verificationUrl),
+      expiresAtMs: num(body.expiresAtMs),
+      intervalMs: num(body.intervalMs),
+    };
+    if (
+      start.deviceCode === "" ||
+      !/^[A-Z]{4}-[A-Z]{4}$/.test(start.userCode) ||
+      start.expiresAtMs === 0
+    ) {
+      throw fail("source_unreachable", "远程服务的设备码答案不完整");
+    }
+    return start;
+  }
+
+  async devicePoll(
+    endpoint: RemoteEndpoint,
+    deviceCode: string,
+  ): Promise<DevicePoll> {
+    const body = record(
+      await this.call(endpoint, "POST", "/v1/auth/device/poll", "轮询设备码", {
+        deviceCode,
+      }),
+    );
+    switch (body.status) {
+      case "pending":
+      case "denied":
+      case "expired":
+        return { status: body.status };
+      case "approved":
+        return { status: "approved", session: sessionOf(body) };
+      default:
+        throw fail("source_unreachable", "远程服务的轮询答案不认识");
+    }
+  }
+
+  async spaces(
+    endpoint: RemoteEndpoint,
+    accessToken: string,
+  ): Promise<CloudSpace[]> {
+    const body = record(
+      await this.call(
+        endpoint,
+        "GET",
+        "/v1/me/spaces",
+        "取空间",
+        undefined,
+        accessToken,
+      ),
+    );
+    const rows = Array.isArray(body.spaces) ? body.spaces : [];
+    return rows.flatMap((value): CloudSpace[] => {
+      const row = record(value);
+      if (row.kind === "personal") {
+        return [{ kind: "personal", plan: str(row.plan) }];
+      }
+      const teamId = str(row.teamId);
+      if (row.kind !== "team" || teamId === "") return [];
+      return [
+        {
+          kind: "team",
+          teamId,
+          slug: str(row.slug),
+          name: str(row.name),
+          role: str(row.role),
+          plan: str(row.plan),
+        },
+      ];
+    });
+  }
+
+  /** 一枚注册令牌（十分钟、一次性）；只在调用方手里转一圈，立刻交给登记。 */
+  async registrationToken(
+    endpoint: RemoteEndpoint,
+    accessToken: string,
+    space: SpaceRef,
+  ): Promise<string> {
+    const body = record(
+      await this.call(
+        endpoint,
+        "POST",
+        "/v1/sources/registration-tokens",
+        "取注册令牌",
+        { space },
+        accessToken,
+      ),
+    );
+    const token = str(body.registrationToken);
+    if (token === "") {
+      throw fail("source_unreachable", "远程服务的注册令牌答案不完整");
+    }
+    return token;
   }
 
   async logout(endpoint: RemoteEndpoint, accessToken: string): Promise<void> {

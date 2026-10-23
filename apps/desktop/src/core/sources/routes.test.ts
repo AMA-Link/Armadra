@@ -163,13 +163,13 @@ describe("凭据边界", () => {
     expect(refused.text).not.toContain(PASSWORD);
   });
 
-  it("SaaS 预留：501 not_implemented", async () => {
+  it("SaaS 加入只信系统证书：自签的个人中转不会被当成 Armadra 云", async () => {
     const refused = await rpc("sources.remoteAdd", {
       kind: "saas",
-      issuer: "https://cloud.test",
+      issuer: ISSUER,
     });
-    expect(refused.status).toBe(501);
-    expect(refused.body.code).toBe("not_implemented");
+    expect(refused.status).toBe(400);
+    expect(refused.body.code).toBe("fingerprint_mismatch");
   });
 });
 
