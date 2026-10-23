@@ -49,6 +49,11 @@ export const remote: MessageModule = {
     "remote.cloud.register": "登记这台电脑",
     "remote.cloud.noSpaces": "没有可登记的空间",
     "remote.cloud.done": "完成",
+    "remote.cloud.retry": "重试",
+    "remote.cloud.teamShell": "能进终端的成员可以用这台电脑的系统账号执行命令",
+    "remote.cloud.space.blocked": "你在灰色的团队里不能登记主机",
+    "remote.cloud.hostsLimit": "这个空间的主机数已到上限，升级或撤销一台主机",
+    "remote.cloud.limitReached": "远程服务的上限已到",
     "remote.kind.direct": "局域网",
     "remote.kind.relayed": "互联网",
     "remote.field.issuer": "地址",
@@ -195,6 +200,14 @@ export const remote: MessageModule = {
     "remote.cloud.register": "Register this computer",
     "remote.cloud.noSpaces": "No space to register to",
     "remote.cloud.done": "Done",
+    "remote.cloud.retry": "Retry",
+    "remote.cloud.teamShell":
+      "Members who can open a terminal can run commands as this computer's system account",
+    "remote.cloud.space.blocked":
+      "You cannot register hosts in the dimmed teams",
+    "remote.cloud.hostsLimit":
+      "This space has reached its host limit. Upgrade or revoke a host",
+    "remote.cloud.limitReached": "The remote service limit is reached",
     "remote.kind.direct": "Local network",
     "remote.kind.relayed": "Internet",
     "remote.field.issuer": "Address",

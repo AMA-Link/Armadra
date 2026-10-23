@@ -122,4 +122,96 @@ describe("添加 Armadra 云", () => {
     expect(api.pollCloudDevice).toHaveBeenCalledTimes(calls);
     expect(screen.getByRole("button", { name: "New code" })).toBeTruthy();
   });
+
+  it("选团队空间出现终端提醒，选个人不出现；角色受限的团队置灰", async () => {
+    api.cloudSpaces.mockResolvedValue({
+      spaces: [
+        { kind: "personal", plan: "free" },
+        {
+          kind: "team",
+          teamId: "t1",
+          slug: "acme",
+          name: "Acme",
+          role: "admin",
+          plan: "team",
+        },
+        {
+          kind: "team",
+          teamId: "t2",
+          slug: "bill",
+          name: "Billing",
+          role: "billing",
+          plan: "team",
+        },
+      ],
+    });
+    api.pollCloudDevice.mockResolvedValue({ status: "ready" });
+    mount();
+    await screen.findByRole("button", { name: "Register this computer" });
+    const note = /run commands as this computer's system account/;
+    expect(screen.queryByText(note)).toBeNull();
+    expect(
+      screen.getByText("You cannot register hosts in the dimmed teams"),
+    ).toBeTruthy();
+    fireEvent.click(screen.getByRole("combobox"));
+    expect(
+      screen
+        .getByRole("option", { name: "Billing" })
+        .getAttribute("aria-disabled"),
+    ).toBe("true");
+    fireEvent.click(screen.getByRole("option", { name: "Acme" }));
+    expect(await screen.findByText(note)).toBeTruthy();
+    fireEvent.click(screen.getByRole("combobox"));
+    fireEvent.click(screen.getByRole("option", { name: "Personal space" }));
+    await waitFor(() => expect(screen.queryByText(note)).toBeNull());
+  });
+
+  it("已登记的重新登录就绪后直接关闭，不进登记步骤", async () => {
+    api.addCloud.mockResolvedValue({
+      remote: { ...remote, registered: true },
+      next: {
+        deviceCode: {
+          userCode: "ABCD-EFGH",
+          verificationUrl: "https://cloud.test/device",
+          expiresAtMs: Date.now() + 600_000,
+          intervalMs: 10,
+        },
+      },
+    });
+    api.pollCloudDevice.mockResolvedValue({ status: "ready" });
+    const { onClose } = mount();
+    await waitFor(() => expect(onClose).toHaveBeenCalled());
+    expect(api.cloudSpaces).not.toHaveBeenCalled();
+  });
+
+  it("轮询出错：停止并给新设备码；取空间失败单独重试", async () => {
+    api.pollCloudDevice.mockRejectedValue(new Error("boom"));
+    mount();
+    expect(await screen.findByText("boom")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "New code" })).toBeTruthy();
+    cleanup();
+    vi.clearAllMocks();
+    api.addCloud.mockResolvedValue({
+      remote,
+      next: {
+        deviceCode: {
+          userCode: "ABCD-EFGH",
+          verificationUrl: "https://cloud.test/device",
+          expiresAtMs: Date.now() + 600_000,
+          intervalMs: 10,
+        },
+      },
+    });
+    api.pollCloudDevice.mockResolvedValue({ status: "ready" });
+    api.cloudSpaces
+      .mockRejectedValueOnce(new Error("spaces down"))
+      .mockResolvedValue({ spaces: [{ kind: "personal", plan: "free" }] });
+    mount();
+    expect(await screen.findByText("spaces down")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    expect(
+      await screen.findByRole("button", { name: "Register this computer" }),
+    ).toBeTruthy();
+    expect(api.pollCloudDevice).toHaveBeenCalledTimes(1);
+  });
 });

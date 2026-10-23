@@ -9,6 +9,7 @@ import {
   retryAfterMs,
 } from "../../../../api/remote-services";
 import { useT } from "../../../../app/preferences-store";
+import { RuntimeRequestError } from "../../../../api/request";
 import { openExternal } from "../../../../platform";
 import {
   ResponsiveDialog,
@@ -17,6 +18,7 @@ import {
   ResponsiveDialogHeader,
   ResponsiveDialogTitle,
 } from "@/panels/ResponsiveDialog";
+import { Alert, AlertDescription } from "@/ui/alert";
 import { Button } from "@/ui/button";
 import { Field, FieldError, FieldGroup, FieldLabel } from "@/ui/field";
 import { Input } from "@/ui/input";
@@ -44,8 +46,9 @@ type Step =
       readonly userCode: string;
       readonly verificationUrl: string;
       readonly intervalMs: number;
-      readonly outcome: "waiting" | "denied" | "expired";
+      readonly outcome: "waiting" | "denied" | "expired" | "failed";
     }
+  | { readonly kind: "spaces-failed"; readonly remote: RemoteService }
   | {
       readonly kind: "space";
       readonly remote: RemoteService;
@@ -53,6 +56,13 @@ type Step =
     };
 
 const PERSONAL = "personal";
+
+/** 这些角色不能登记主机（cloud-api §21）：置灰并附脚注。 */
+const BLOCKED_ROLES = new Set(["guest", "billing"]);
+
+function blocked(space: Space): boolean {
+  return space.kind === "team" && BLOCKED_ROLES.has(space.role);
+}
 
 function spaceValue(space: Space): string {
   return space.kind === "personal" ? PERSONAL : `team:${space.teamId}`;
@@ -76,6 +86,23 @@ export function AddCloudDialog({
   const [error, setError] = React.useState("");
   const [busy, setBusy] = React.useState(false);
   const open = initialIssuer !== null;
+
+  // 主机配额与别的上限分开说（details.quota === "hosts"）。
+  function failureText(failure: unknown): string {
+    if (
+      failure instanceof RuntimeRequestError &&
+      failure.code === "limit_reached"
+    ) {
+      const details = (failure.body as { details?: { quota?: unknown } } | null)
+        ?.details;
+      return t(
+        details?.quota === "hosts"
+          ? "remote.cloud.hostsLimit"
+          : "remote.cloud.limitReached",
+      );
+    }
+    return failure instanceof Error ? failure.message : String(failure);
+  }
 
   React.useEffect(() => {
     if (initialIssuer === null) return;
@@ -112,17 +139,30 @@ export function AddCloudDialog({
       });
       onChanged();
     } catch (failure) {
-      setError(failure instanceof Error ? failure.message : String(failure));
+      setError(failureText(failure));
     } finally {
       setBusy(false);
     }
   }
 
   async function toSpaces(remote: RemoteService) {
-    const { spaces } = await cloudSpaces(remote.serviceId);
-    setChosen(spaces[0] === undefined ? PERSONAL : spaceValue(spaces[0]));
-    setStep({ kind: "space", remote, spaces });
-    onChanged();
+    // 这台电脑已经登记到它：重新登录就绪后不再登记。
+    if (remote.registered) {
+      onChanged();
+      onClose();
+      return;
+    }
+    try {
+      const { spaces } = await cloudSpaces(remote.serviceId);
+      const first = spaces.find((one) => !blocked(one));
+      setChosen(first === undefined ? PERSONAL : spaceValue(first));
+      setError("");
+      setStep({ kind: "space", remote, spaces });
+      onChanged();
+    } catch (failure) {
+      setError(failureText(failure));
+      setStep({ kind: "spaces-failed", remote });
+    }
   }
 
   // 等批准：按服务端要求的间隔轮询；限流听 retryAfterMs；终结就停。
@@ -149,9 +189,8 @@ export function AddCloudDialog({
         if (cancelled) return;
         const wait = retryAfterMs(failure);
         if (wait === null) {
-          setError(
-            failure instanceof Error ? failure.message : String(failure),
-          );
+          setError(failureText(failure));
+          setStep({ ...waiting, outcome: "failed" });
           return;
         }
         next = wait;
@@ -182,7 +221,7 @@ export function AddCloudDialog({
       onChanged();
       onClose();
     } catch (failure) {
-      setError(failure instanceof Error ? failure.message : String(failure));
+      setError(failureText(failure));
     } finally {
       setBusy(false);
     }
@@ -273,14 +312,25 @@ export function AddCloudDialog({
                       <SelectItem
                         key={spaceValue(space)}
                         value={spaceValue(space)}
+                        disabled={blocked(space)}
                       >
                         {spaceLabel(space)}
                       </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
+                {step.spaces.some(blocked) && (
+                  <p className="text-meta text-muted-foreground">
+                    {t("remote.cloud.space.blocked")}
+                  </p>
+                )}
               </Field>
             ))}
+          {step.kind === "space" && chosen.startsWith("team:") && (
+            <Alert>
+              <AlertDescription>{t("remote.cloud.teamShell")}</AlertDescription>
+            </Alert>
+          )}
           {error && <FieldError>{error}</FieldError>}
           <ResponsiveDialogFooter>
             <Button type="button" variant="outline" onClick={onClose}>
@@ -313,8 +363,21 @@ export function AddCloudDialog({
                 {t("remote.cloud.newCode")}
               </Button>
             )}
+            {step.kind === "spaces-failed" && (
+              <Button type="button" onClick={() => void toSpaces(step.remote)}>
+                {t("remote.cloud.retry")}
+              </Button>
+            )}
             {step.kind === "space" && step.spaces.length > 0 && (
-              <Button type="submit" disabled={busy}>
+              <Button
+                type="submit"
+                disabled={
+                  busy ||
+                  !step.spaces.some(
+                    (one) => spaceValue(one) === chosen && !blocked(one),
+                  )
+                }
+              >
                 {busy && <Spinner data-icon="inline-start" aria-hidden />}
                 {t("remote.cloud.register")}
               </Button>
