@@ -87,4 +87,14 @@ describe("canvas.css 令牌（设计系统 §2.8 / §2.9 / §8）", () => {
     expect(snap).toContain("cx var(--dur-slow) var(--ease-in-out)");
     expect(snap).toContain("cy var(--dur-slow) var(--ease-in-out)");
   });
+
+  it("减少动效下缩略图与收起钮不过渡（全局压制不归零，位置一变会被拖着走）", () => {
+    const at = canvasCss.indexOf(
+      "@media (prefers-reduced-motion: reduce) {\n  .canvas-stage .react-flow__minimap",
+    );
+    expect(at).toBeGreaterThanOrEqual(0);
+    const media = canvasCss.slice(at, canvasCss.indexOf("}\n}", at));
+    expect(media).toContain(".canvas-stage .minimap-toggle-panel");
+    expect(media).toMatch(/transition:\s*none\s*!important/);
+  });
 });

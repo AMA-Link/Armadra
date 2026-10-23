@@ -299,6 +299,17 @@
 .canvas-stage .minimap-toggle-panel {
   pointer-events: none;
 }
+/*
+ * 减少动效下全局把过渡压成 `--dur-fast` 而不是归零（tokens.css），任何没写
+ * `transition` 的元素都会对位置变化做一次 120ms 的 `all` 过渡。缩略图与它的收起钮
+ * 的位置由容器尺寸决定，窗口一变就会被拖着走一小段，所以这两个明确不过渡。
+ */
+@media (prefers-reduced-motion: reduce) {
+  .canvas-stage .react-flow__minimap,
+  .canvas-stage .minimap-toggle-panel {
+    transition: none !important;
+  }
+}
 .canvas-stage .minimap-toggle[aria-expanded="true"] {
   opacity: 0;
   pointer-events: none;
