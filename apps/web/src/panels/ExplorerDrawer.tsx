@@ -45,8 +45,8 @@ export function ExplorerDrawer() {
   // `SheetTitle` 是 Radix Dialog.Title，只能长在 Sheet 里；
   // pin 成浮卡时不再有 Dialog 上下文，标题退回普通标题元素。
   const renderHeader = (Title: typeof SheetTitle | "h2") => (
-    <div className="flex h-10 shrink-0 items-center gap-1 border-b border-border px-3">
-      <Title className="flex-1 truncate text-[13px] font-semibold">
+    <div className="flex h-8 shrink-0 items-center gap-1 border-b border-border px-3">
+      <Title className="flex-1 truncate text-body font-semibold">
         {t("explorer.title")}
       </Title>
       <ExecutionHostBadge />
@@ -104,7 +104,7 @@ export function ExplorerDrawer() {
       <aside
         aria-label={t("explorer.title")}
         style={{ width: PINNED_PANEL_WIDTH.explorer }}
-        className="fixed top-[calc(96px+var(--safe-top))] right-[calc(14px+var(--safe-right))] bottom-[calc(14px+var(--safe-bottom))] z-[var(--z-cluster)] flex max-w-[calc(100vw-28px)] flex-col overflow-hidden rounded-xl border border-border bg-[color-mix(in_srgb,var(--card)_96%,transparent)] shadow-[var(--shadow-overlay)] backdrop-blur-md"
+        className="fixed top-[calc(96px+var(--safe-top))] right-[calc(14px+var(--safe-right))] bottom-[calc(14px+var(--safe-bottom))] z-[var(--z-cluster)] flex max-w-[calc(100vw-28px)] flex-col overflow-hidden rounded-panel border border-border bg-card/95 shadow-overlay backdrop-blur-md"
       >
         {renderHeader("h2")}
         {body}

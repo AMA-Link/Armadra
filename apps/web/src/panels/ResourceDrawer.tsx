@@ -56,8 +56,8 @@ export function ResourceDrawer() {
       open={open}
       onClose={() => setPanel("resources", "closed")}
     >
-      <div className="flex h-10 shrink-0 items-center gap-1 border-b border-border px-3">
-        <SheetTitle className="flex-1 truncate text-[13px] font-semibold">
+      <div className="flex h-8 shrink-0 items-center gap-1 border-b border-border px-3">
+        <SheetTitle className="flex-1 truncate text-body font-semibold">
           {t("resources.title")}
         </SheetTitle>
         <IconButton label={t("resources.refresh")} onClick={refresh}>
@@ -91,8 +91,8 @@ export function ResourceDrawer() {
                 aria-label={t("state.loading")}
                 className="flex flex-col gap-(--space-group)"
               >
-                <Skeleton className="h-20 w-full rounded-[var(--r-card)]" />
-                <Skeleton className="h-32 w-full rounded-[var(--r-card)]" />
+                <Skeleton className="h-20 w-full rounded-card" />
+                <Skeleton className="h-32 w-full rounded-card" />
               </div>
             }
           >
@@ -122,7 +122,7 @@ export function ResourceDrawer() {
               {(liveSessions(snapshot.sessions).length > 0 ||
                 snapshot.executionHosts.length > 0) && (
                 <section className="flex flex-col gap-(--space-group)">
-                  <h3 className="text-[13px] font-semibold">
+                  <h3 className="text-body font-semibold">
                     {t("resources.sessions")}
                   </h3>
                   <SessionTable
@@ -144,7 +144,7 @@ export function ResourceDrawer() {
 
               {componentsOnHost(snapshot.components, host).length > 0 && (
                 <section className="flex flex-col gap-(--space-group)">
-                  <h3 className="text-[13px] font-semibold">
+                  <h3 className="text-body font-semibold">
                     {t("resources.components")}
                   </h3>
                   <ComponentList
@@ -155,7 +155,7 @@ export function ResourceDrawer() {
 
               {workspaceId && snapshot.orphans.length > 0 && (
                 <section className="flex flex-col gap-(--space-group)">
-                  <h3 className="text-[13px] font-semibold">
+                  <h3 className="text-body font-semibold">
                     {t("resources.orphans")}
                   </h3>
                   <OrphanList

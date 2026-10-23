@@ -28,7 +28,6 @@ import {
   FolderPlus,
   Image as ImageIcon,
   Pencil,
-  RotateCw,
   Trash2,
 } from "lucide-react";
 import { sk } from "../sources/scope";
@@ -49,7 +48,6 @@ import {
   ResponsiveAlertDialogAction,
   ResponsiveAlertDialogCancel,
   ResponsiveAlertDialogContent,
-  ResponsiveAlertDialogDescription,
   ResponsiveAlertDialogFooter,
   ResponsiveAlertDialogHeader,
   ResponsiveAlertDialogTitle,
@@ -62,8 +60,7 @@ import {
   ContextMenuTrigger,
 } from "../ui/context-menu";
 import { IconButton } from "../ui/icon-button";
-import { Alert, AlertTitle } from "../ui/alert";
-import { Empty, EmptyDescription } from "../ui/empty";
+import { EmptyState, ErrorState } from "@/ui/state";
 import { nodeDropPosition } from "@/canvas/placement";
 import { FileEntryDialog } from "./FileEntryDialog";
 import { useWorkspaceFileDrag } from "../files/use-workspace-file-drag";
@@ -139,7 +136,7 @@ export function FileTree() {
   if (!workspace) return null;
 
   return (
-    <div className="flex flex-col py-1 text-[13px]">
+    <div className="flex flex-col py-1 text-body">
       {writable && (
         <div className="flex shrink-0 items-center gap-0.5 px-2 pb-1">
           <IconButton
@@ -221,22 +218,23 @@ export function FileTree() {
           if (!open) setPending(null);
         }}
       >
-        <ResponsiveAlertDialogContent className="z-[var(--z-dialog)]">
+        <ResponsiveAlertDialogContent
+          className="z-(--z-dialog)"
+          aria-describedby={undefined}
+        >
           <ResponsiveAlertDialogHeader>
             <ResponsiveAlertDialogTitle>
               {t("fileOps.deleteTitle", {
                 name: pending?.kind === "delete" ? pending.name : "",
               })}
             </ResponsiveAlertDialogTitle>
-            <ResponsiveAlertDialogDescription>
-              {t("fileOps.deleteDescription")}
-            </ResponsiveAlertDialogDescription>
           </ResponsiveAlertDialogHeader>
           <ResponsiveAlertDialogFooter>
             <ResponsiveAlertDialogCancel>
               {t("dialog.cancel")}
             </ResponsiveAlertDialogCancel>
             <ResponsiveAlertDialogAction
+              variant="destructive-solid"
               onClick={() => {
                 if (pending?.kind !== "delete") return;
                 actions.trashEntry(pending.path, pending.name);
@@ -304,31 +302,19 @@ function Directory({
         {null}
       </Loadable>
       {files.isError && (
-        <Alert
-          variant="destructive"
-          className="flex items-center gap-1 rounded-none border-0 bg-transparent px-2 py-1 text-xs"
-          style={indent(depth)}
-        >
-          <AlertTitle className="min-w-0 flex-1 truncate font-normal">
-            {files.error.message}
-          </AlertTitle>
-          <IconButton
-            label={t("explorer.retry")}
-            onClick={() => void files.refetch()}
-          >
-            <RotateCw />
-          </IconButton>
-        </Alert>
+        <div style={indent(depth)}>
+          <ErrorState
+            inline
+            title={files.error.message}
+            retryLabel={t("explorer.retry")}
+            onRetry={() => void files.refetch()}
+          />
+        </div>
       )}
       {files.isSuccess && entries.length === 0 && (
-        <Empty
-          className="items-start gap-0 rounded-none p-0 px-2 py-1 text-left"
-          style={indent(depth)}
-        >
-          <EmptyDescription className="text-xs">
-            {t("explorer.empty")}
-          </EmptyDescription>
-        </Empty>
+        <div style={indent(depth)}>
+          <EmptyState inline title={t("explorer.empty")} />
+        </div>
       )}
       {entries.map((entry) => (
         <Row
@@ -346,7 +332,7 @@ function Directory({
       ))}
       {files.data?.truncated && (
         <p
-          className="px-2 py-1 text-xs text-muted-foreground"
+          className="px-2 py-1 text-meta text-muted-foreground"
           role="status"
           style={indent(depth)}
         >
@@ -430,9 +416,9 @@ function Row({
       title={entry.path}
       style={indent(depth)}
       className={cn(
-        "h-7 w-full cursor-grab justify-start gap-1.5 rounded-md pr-2 font-normal active:cursor-grabbing",
+        "w-full cursor-grab justify-start gap-1.5 rounded-control pr-2 font-normal active:cursor-grabbing",
         badge && "text-foreground",
-        dropping && "bg-[var(--hover)] ring-1 ring-[var(--brand)]",
+        dropping && "bg-hover ring-1 ring-brand",
       )}
       onClick={activate}
       onDragOver={(event) => {
@@ -465,7 +451,7 @@ function Row({
       {badge && (
         <Badge
           variant="ghost"
-          className="ml-auto h-4 px-1 font-mono text-[length:var(--text-caption)]"
+          className="ml-auto h-4 px-1 font-mono text-caption"
           style={{ color: STATUS_COLOR[badge] }}
           title={t(`explorer.status.${badge}`)}
         >

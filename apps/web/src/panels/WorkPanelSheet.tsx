@@ -298,7 +298,7 @@ export function WorkPanelSheet({
                 nudge(-24);
               }
             }}
-            className="absolute inset-x-0 top-0 z-10 h-1.5 cursor-ns-resize hover:bg-[var(--brand)]/40 focus-visible:bg-[var(--brand)]/40 focus-visible:outline-none"
+            className="absolute inset-x-0 top-0 z-10 h-1.5 cursor-ns-resize hover:bg-brand/40 focus-visible:bg-brand/40 focus-visible:outline-none"
           />
         )}
         {children}

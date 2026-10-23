@@ -1,17 +1,16 @@
 import { useEffect, useRef, useState } from "react";
-import { toast } from "sonner";
 
 import { runtimeApi } from "../api/client";
 import { onWorkspaceEvent } from "../api/events";
 import { useT } from "../app/preferences-store";
 import { useAccess } from "../app/use-access";
 import { useCanvasStore } from "../store/canvas-store";
+import { toast } from "@/ui/toast";
 import {
   ResponsiveAlertDialog,
   ResponsiveAlertDialogAction,
   ResponsiveAlertDialogCancel,
   ResponsiveAlertDialogContent,
-  ResponsiveAlertDialogDescription,
   ResponsiveAlertDialogFooter,
   ResponsiveAlertDialogHeader,
   ResponsiveAlertDialogTitle,
@@ -95,20 +94,23 @@ export function ControlConfirmDialog() {
         if (!open) answer(false);
       }}
     >
-      <ResponsiveAlertDialogContent className="z-[var(--z-dialog)]">
+      <ResponsiveAlertDialogContent
+        className="z-(--z-dialog)"
+        aria-describedby={undefined}
+      >
         <ResponsiveAlertDialogHeader>
           <ResponsiveAlertDialogTitle>
-            {t("confirm.title")}
-          </ResponsiveAlertDialogTitle>
-          <ResponsiveAlertDialogDescription>
             {current?.summary}
-          </ResponsiveAlertDialogDescription>
+          </ResponsiveAlertDialogTitle>
         </ResponsiveAlertDialogHeader>
         <ResponsiveAlertDialogFooter>
           <ResponsiveAlertDialogCancel onClick={() => answer(false)}>
             {t("confirm.deny")}
           </ResponsiveAlertDialogCancel>
-          <ResponsiveAlertDialogAction onClick={() => answer(true)}>
+          <ResponsiveAlertDialogAction
+            variant="destructive-solid"
+            onClick={() => answer(true)}
+          >
             {t("confirm.allow")}
           </ResponsiveAlertDialogAction>
         </ResponsiveAlertDialogFooter>
