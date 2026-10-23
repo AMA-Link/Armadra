@@ -21,9 +21,16 @@
 /*
  * 深色是默认（没有 data-theme 属性时即深色），浅色靠 `[data-theme=light]`。
  * 所以 `dark:` 变体只在显式标了 dark 时命中——用于“浅色下也要强制暗底”的
- * 少数地方（终端、代码块）。日常配色请直接用 token，不要写 dark: 分支。
+ * 少数地方（终端、代码块）；终端偏好「始终深色」的子树（`data-term-scheme`）也算。日常配色请直接用 token，不要写 dark: 分支。
  */
-@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+@custom-variant dark (
+  &:where(
+    [data-theme="dark"],
+    [data-theme="dark"] *,
+    [data-term-scheme="dark"],
+    [data-term-scheme="dark"] *
+  )
+);
 
 /*
  * 悬停只在真正有悬停的设备上生效（设计系统 §8.4）：触屏上 `:hover` 会被点按误触发。

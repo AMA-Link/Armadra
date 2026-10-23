@@ -20,6 +20,14 @@
  *   品牌色一律用 `--brand-text` / `--brand-soft`。
  */
 
+/*
+ * 深色这一整套同时声明在 `[data-term-scheme="dark"]` 上：终端偏好选了「始终
+ * 深色」时，终端容器与终端节点外框带这个属性，在浅色主题里把自己那一棵子树
+ * 重新声明回深色（`--term-*` 调色板、表面、文字、边线全部由同一份值解析，
+ * 不再另写一遍）。`:root` 才有的文档级声明（`color` / `background` /
+ * `font-family`）单独放在下面，不会落到节点外框上。
+ */
+[data-term-scheme="dark"],
 :root {
   color-scheme: dark;
 
@@ -41,9 +49,9 @@
      由窗口的 sidebar 材质透上来（§24.2「源列表侧栏」）。 */
   --sidebar-material: color-mix(in srgb, var(--panel) 94%, transparent);
 
-  /* 终端表面。两套主题下都是深色（§4.3）：CLI 的 ANSI 配色是按深底
-     设计的，翻成浅色会让一半的 TUI 变得读不了。所以下面这一整组只在
-     `:root` 声明一次，浅色主题只覆盖 `--term-bg` 的具体深浅。 */
+  /* 终端表面。深色主题（以及终端偏好「始终深色」的子树）用这一套；浅色主题
+     在浅色主题块里整组覆盖（#501）。ANSI 十六色在两套里各按
+     自己的底色重调：深色按深底，浅色每个前景对 `--term-bg` ≥ 4.5:1。 */
   --term-bg: #0a0a0a;
   --term-fg: #e6e6e6;
   --term-selection: #3a5a8c66;
@@ -391,7 +399,9 @@
   --sidebar-accent-foreground: var(--accent-foreground);
   --sidebar-border: var(--border);
   --sidebar-ring: var(--ring);
+}
 
+:root {
   color: var(--text);
   background: var(--bg);
   font-family: var(--font-ui);
@@ -407,7 +417,29 @@
   --panel-header: var(--card);
   --canvas-bg: #ffffff;
   --canvas-dot: #d8d8d8;
-  --term-bg: #171717;
+
+  /* 终端浅色调色板（#501）。底 #fafafa，与画布 / 卡片的白区分得开又不刺眼；
+     十六色每个前景对底 ≥ 4.5:1（`terminal-palette.test.ts` 逐条守卫）。
+     bright 系列在浅底上更深（强调），而不是更亮。选区是品牌蓝 20%。 */
+  --term-bg: #fafafa;
+  --term-fg: #1f1f1f;
+  --term-selection: #007aff33;
+  --term-ansi-black: #1f1f1f;
+  --term-ansi-red: #c4281c;
+  --term-ansi-green: #1a7f37;
+  --term-ansi-yellow: #875e00;
+  --term-ansi-blue: #0a5fc4;
+  --term-ansi-magenta: #8f3bb8;
+  --term-ansi-cyan: #0b7285;
+  --term-ansi-white: #6b6b6b;
+  --term-ansi-bright-black: #737373;
+  --term-ansi-bright-red: #d1242f;
+  --term-ansi-bright-green: #116329;
+  --term-ansi-bright-yellow: #6f4e00;
+  --term-ansi-bright-blue: #0550ae;
+  --term-ansi-bright-magenta: #7c2fa3;
+  --term-ansi-bright-cyan: #055d6b;
+  --term-ansi-bright-white: #595959;
 
   --sidebar-material: color-mix(in srgb, var(--panel) 94%, transparent);
 
