@@ -134,7 +134,7 @@ export function buildAccessRows(
   return [...rows, ...people];
 }
 
-/** 一次改动：新增一条授予，或改已有一条的角色 / 到期（范围不动）。 */
+/** 一次改动：新增一条授予、改已有一条的角色 / 到期（范围不动），或撤销若干条。 */
 export type GrantChange =
   | {
       readonly kind: "add";
@@ -149,9 +149,15 @@ export type GrantChange =
       readonly role: GrantRole;
       /** `undefined` = 不改到期。 */
       readonly expiresAtMs?: number | null;
-    };
+    }
+  | { readonly kind: "revoke"; readonly grantIds: readonly string[] };
 
-/** 这次改动会收窄的人（角色降低、范围变小或到期提前，云端会撤他们已签的令牌）。 */
+const affects = (subject: GrantSubject, member: TeamMember): boolean =>
+  subject.kind === "team"
+    ? isStaff(member.role)
+    : subject.kind !== "group" && subject.accountId === member.accountId;
+
+/** 这次改动会收窄的人（角色降低、范围变小或到期提前、没了访问，云端会撤他们已签的令牌）。 */
 export function narrowedBy(input: {
   readonly grants: readonly Grant[];
   readonly members: readonly TeamMember[];
@@ -160,51 +166,72 @@ export function narrowedBy(input: {
   readonly now: number;
 }): TeamMember[] {
   const { grants, members, ownerId, change, now } = input;
-  const target =
-    change.kind === "update"
-      ? grants.find((grant) => grant.grantId === change.grantId)
-      : undefined;
-  const subject = change.kind === "add" ? change.subject : target?.subject;
-  if (!subject) return [];
-  const affected = members.filter((member) =>
-    subject.kind === "team"
-      ? isStaff(member.role)
-      : subject.kind !== "group" && subject.accountId === member.accountId,
-  );
-  const next: Grant[] =
-    change.kind === "add"
-      ? [
-          ...grants,
-          {
-            grantId: "",
-            sourceId: "",
-            subject: change.subject,
+  const byId = (id: string) => grants.find((grant) => grant.grantId === id);
+  let subjects: GrantSubject[];
+  let next: Grant[];
+  if (change.kind === "add") {
+    subjects = [change.subject];
+    next = [
+      ...grants,
+      {
+        grantId: "",
+        sourceId: "",
+        subject: change.subject,
+        role: change.role,
+        workspaceIds: [...change.workspaceIds],
+        expiresAtMs: change.expiresAtMs,
+        grantedBy: "",
+        createdAtMs: now,
+        revokedAtMs: null,
+      },
+    ];
+  } else if (change.kind === "update") {
+    const target = byId(change.grantId);
+    if (!target) return [];
+    subjects = [target.subject];
+    next = grants.map((grant) =>
+      grant.grantId === change.grantId
+        ? {
+            ...grant,
             role: change.role,
-            workspaceIds: [...change.workspaceIds],
-            expiresAtMs: change.expiresAtMs,
-            grantedBy: "",
-            createdAtMs: now,
-            revokedAtMs: null,
-          },
-        ]
-      : grants.map((grant) =>
-          grant.grantId === change.grantId
-            ? {
-                ...grant,
-                role: change.role,
-                ...(change.expiresAtMs === undefined
-                  ? {}
-                  : { expiresAtMs: change.expiresAtMs }),
-              }
-            : grant,
-        );
-  return affected.filter(
+            ...(change.expiresAtMs === undefined
+              ? {}
+              : { expiresAtMs: change.expiresAtMs }),
+          }
+        : grant,
+    );
+  } else {
+    subjects = change.grantIds.flatMap((id) => byId(id)?.subject ?? []);
+    next = grants.filter((grant) => !change.grantIds.includes(grant.grantId));
+  }
+  return members.filter(
     (member) =>
       member.accountId !== ownerId &&
+      subjects.some((subject) => affects(subject, member)) &&
       narrowsAccess(
         shapesFor(member.accountId, grants, members, ownerId),
         shapesFor(member.accountId, next, members, ownerId),
         now,
       ),
+  );
+}
+
+/** 撤销他本人的授予后，团队全员的授予（未过期）是否还让他保有访问：他得是团队的非访客成员。 */
+export function coveredByTeam(
+  accountId: string,
+  grants: readonly Grant[],
+  members: readonly TeamMember[],
+  now: number,
+): boolean {
+  const member = members.find((one) => one.accountId === accountId);
+  return (
+    member !== undefined &&
+    isStaff(member.role) &&
+    grants.some(
+      (grant) =>
+        grant.subject.kind === "team" &&
+        grant.revokedAtMs === null &&
+        (grant.expiresAtMs === null || grant.expiresAtMs > now),
+    )
   );
 }

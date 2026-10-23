@@ -1,7 +1,12 @@
 import { describe, expect, it } from "vitest";
 
 import type { TeamMember } from "../team/data";
-import { buildAccessRows, narrowedBy, shapesFor } from "./access-model";
+import {
+  buildAccessRows,
+  coveredByTeam,
+  narrowedBy,
+  shapesFor,
+} from "./access-model";
 import type { HostAccess } from "./data";
 import type { Grant } from "./grants-data";
 
@@ -195,5 +200,54 @@ describe("这次改动会收窄谁", () => {
     });
     // Ann 另有本人的 editor，合成不变；Bob 只靠团队全员，被降低。
     expect(hit.map((one) => one.accountId)).toEqual(["bob"]);
+  });
+});
+
+describe("撤销会收窄谁", () => {
+  const base = { members: MEMBERS, ownerId: "owner", now: NOW } as const;
+
+  it("撤销团队全员：只靠它的人被收窄，另有本人授予兜底的不算", () => {
+    const everyone = team("editor");
+    const hit = narrowedBy({
+      ...base,
+      grants: [everyone, member("ann", "editor")],
+      change: { kind: "revoke", grantIds: [everyone.grantId] },
+    });
+    expect(hit.map((one) => one.accountId)).toEqual(["bob"]);
+  });
+
+  it("撤销个人的授予：团队全员兜着时只看角色是否更低", () => {
+    const own = member("ann", "driver");
+    const every = team("viewer");
+    expect(
+      narrowedBy({
+        ...base,
+        grants: [every, own],
+        change: { kind: "revoke", grantIds: [own.grantId] },
+      }).map((one) => one.accountId),
+    ).toEqual(["ann"]);
+    const same = member("ann", "viewer");
+    expect(
+      narrowedBy({
+        ...base,
+        grants: [every, same],
+        change: { kind: "revoke", grantIds: [same.grantId] },
+      }),
+    ).toEqual([]);
+  });
+});
+
+describe("团队全员是否仍兜着他", () => {
+  it("要是非访客成员且团队授予没撤没过期", () => {
+    const live = team("viewer");
+    expect(coveredByTeam("ann", [live], MEMBERS, NOW)).toBe(true);
+    expect(coveredByTeam("gus", [live], MEMBERS, NOW)).toBe(false);
+    expect(coveredByTeam("nobody", [live], MEMBERS, NOW)).toBe(false);
+    expect(
+      coveredByTeam("ann", [{ ...live, expiresAtMs: NOW - 1 }], MEMBERS, NOW),
+    ).toBe(false);
+    expect(
+      coveredByTeam("ann", [{ ...live, revokedAtMs: 5 }], MEMBERS, NOW),
+    ).toBe(false);
   });
 });
