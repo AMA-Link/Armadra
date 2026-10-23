@@ -198,11 +198,6 @@ const zh = {
 
   /* 原生活动卡片 */
   "activity.missingSource": "被观察的节点已不在这块画布上",
-  "activity.iterations": "已观察 {count} 次",
-  "activity.latest": "最近一次",
-  "activity.none": "还没有观察到活动",
-  "activity.convert": "转为平台计划",
-  "activity.convertUnavailable": "被观察的节点上没有可作为目标的 Agent 会话",
 } as const;
 
 const en: Record<keyof typeof zh, string> = {
@@ -400,12 +395,6 @@ const en: Record<keyof typeof zh, string> = {
     "Outcome unknown; reload to check before retrying",
 
   "activity.missingSource": "The observed node is no longer on this canvas",
-  "activity.iterations": "{count} observed",
-  "activity.latest": "Latest",
-  "activity.none": "No activity observed yet",
-  "activity.convert": "Turn into a platform plan",
-  "activity.convertUnavailable":
-    "The observed node has no Agent session to target",
 };
 
 export const automation: MessageModule = { "zh-CN": zh, en };
