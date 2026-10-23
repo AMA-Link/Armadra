@@ -258,3 +258,65 @@ describe("QuickOpen", () => {
     expect(fileIndex).not.toHaveBeenCalledWith(workspace.id, ":30");
   });
 });
+
+/**
+ * 键盘中枢形态（设计系统 §8.3 / §11.2）：开关没有动画；行尾的路径是文字不是
+ * `Kbd`；⌘1–⌘5 直接打开排在前面的结果。
+ */
+describe("QuickOpen 键盘中枢", () => {
+  const input = () => screen.getByPlaceholderText("按文件名查找");
+
+  it("没有开关动画：内容带 data-instant，没有 animate-in / zoom 类", async () => {
+    renderQuickOpen();
+    await screen.findByPlaceholderText("按文件名查找");
+    const content = window.document.querySelector(
+      '[data-slot="dialog-content"]',
+    ) as HTMLElement;
+    expect(content.dataset.instant).toBeDefined();
+    expect(window.document.body.innerHTML).not.toMatch(
+      /animate-in|zoom-in-95|slide-in/,
+    );
+  });
+
+  it("行尾的路径是文字，不放进 Kbd", async () => {
+    renderQuickOpen();
+    fireEvent.change(input(), { target: { value: "client" } });
+    const path = await screen.findByText("src/api/client.ts");
+    expect(path.closest("kbd")).toBeNull();
+    expect(path.getAttribute("data-slot")).toBe("quick-open-path");
+    expect(window.document.querySelectorAll("kbd")).toHaveLength(0);
+  });
+
+  it("⌘N 打开排在第 N 位的结果", async () => {
+    fileIndex.mockResolvedValue({
+      entries: [
+        { path: "src/a.ts", name: "a.ts", size: 1 },
+        { path: "src/b.ts", name: "b.ts", size: 1 },
+        { path: "src/c.ts", name: "c.ts", size: 1 },
+      ],
+      truncated: false,
+      scanned: 3,
+    });
+    renderQuickOpen();
+    fireEvent.change(input(), { target: { value: "src" } });
+    await screen.findByText("c.ts");
+    fireEvent.keyDown(input(), { key: "2", ctrlKey: true });
+    expect(openFileInEditor).toHaveBeenCalledWith("src/b.ts");
+    expect(useCanvasStore.getState().panels.quickOpen).toBe(false);
+  });
+
+  it("骨架行高与结果行一致（compact，28）", async () => {
+    fileIndex.mockReturnValue(new Promise(() => undefined));
+    renderQuickOpen();
+    fireEvent.change(input(), { target: { value: "x" } });
+    await waitFor(() =>
+      expect(
+        window.document.querySelector('[data-slot="skeleton-row"]'),
+      ).not.toBeNull(),
+    );
+    const rows = window.document.querySelectorAll('[data-slot="skeleton-row"]');
+    for (const rowElement of rows) {
+      expect((rowElement as HTMLElement).dataset.size).toBe("compact");
+    }
+  });
+});
