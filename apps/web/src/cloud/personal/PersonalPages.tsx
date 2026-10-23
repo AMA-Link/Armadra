@@ -5,11 +5,14 @@ import { LinksView } from "../links/LinksView";
 import type { RouteMatch } from "../router";
 import { PageHeader } from "../shell/PageHeader";
 import { PERSONAL_SPACE } from "../space";
+import { OverviewPage } from "./OverviewPage";
 
 /** `/me/*` 的页面（云端控制台 §3.2）；还没做的页面只有页头。 */
 export function PersonalPage({ match }: { match: RouteMatch }) {
   const t = useT();
   switch (match.id) {
+    case "me":
+      return <OverviewPage />;
     case "meHosts":
       return (
         <>
