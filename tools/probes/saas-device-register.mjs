@@ -5,7 +5,7 @@
 // 起一次性的 PostgreSQL / Redis / mailpit 容器（随机端口与口令）和本地构建的控制面
 // （armadra-cloud 的 `go/cmd/armadra-cloud`，找法见 `cloud-source.mjs`），建一个已验证邮箱、
 // 有团队的账号，再跑 `saas-cloud.integration.test.ts`：core 发起设备码、由该账号批准、轮询到
-// 就绪、取 `me.spaces`、取注册令牌并登记。不起中继节点，所以不验证隧道。
+// 就绪、取 `me.spaces`、取注册令牌并经真实的 `CloudRegistry` 登记（`sources.register`、取 JWKS、写登记行）。不起中继节点，隧道是假的，所以不验证隧道。
 // 跑完停掉并删除自己起的容器与临时目录。要 Docker 与 Go。产物：<输出目录>/result.json。
 import { spawnSync } from "node:child_process";
 import { randomBytes } from "node:crypto";

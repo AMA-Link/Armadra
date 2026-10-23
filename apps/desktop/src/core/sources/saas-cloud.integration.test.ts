@@ -2,8 +2,15 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { openFreshDatabase } from "../db/fresh.fixture";
+import { AccountsService } from "../identity/accounts";
+import { Authorizer } from "../identity/authorize";
+import { fakeRelay } from "../identity/cloud/fake.fixture";
+import { installCloud } from "../identity/cloud";
+import { IdentityService } from "../identity/service";
+import { IdentityStore } from "../identity/store";
+import { allScopes } from "../identity/scopes";
 import { tempDir } from "../testing/temp-dir";
-import { migrationsDir } from "../workspaces/fixture";
+import { fixture, migrationsDir } from "../workspaces/fixture";
 import { memoryBackend, plainSealed } from "./fake.fixture";
 import { networkTransport } from "./http-client";
 import { RemoteClient } from "./remote-client";
@@ -17,11 +24,12 @@ import { SourcesStore } from "./store";
  * 只在 `tools/probes/saas-device-register.mjs` 起好控制面并设了下面几个环境变量时运行：
  * `SAAS_CLOUD_BASE`（控制面地址）、`SAAS_APPROVER_TOKEN`（已验证邮箱、建好团队的账号的
  * 访问令牌）、`SAAS_APPROVER_PASSWORD`（该账号口令，批准新设备要先提权）。
+ * 登记走真实的 `CloudRegistry`（`sources.register` 带注册令牌、取 JWKS、写登记行）；
+ * 中继隧道换成假的，所以不验证隧道。
  */
 const base = process.env.SAAS_CLOUD_BASE;
 const token = process.env.SAAS_APPROVER_TOKEN ?? "";
 const password = process.env.SAAS_APPROVER_PASSWORD ?? "";
-const HOST_ID = "f".repeat(32);
 
 async function post(path: string, body: unknown) {
   const response = await fetch(`${base}${path}`, {
@@ -42,8 +50,44 @@ describe.skipIf(base === undefined)("真实控制面", () => {
       join(tempDir("armadra-saas-"), "canvas.db"),
       migrationsDir(),
     );
+    const cleanups: (() => void)[] = [];
     try {
-      const registrations: { registrationToken: string }[] = [];
+      const instance = "0123456789abcdef0123456789abcdef";
+      const relay = fakeRelay();
+      let identity!: IdentityStore;
+      let owner = "";
+      let cloudDomain!: ReturnType<typeof installCloud>;
+      const core = fixture([
+        (context) => {
+          identity = new IdentityStore(context.db.database);
+          const identityService = new IdentityService(identity, instance);
+          cloudDomain = installCloud(context, {
+            store: identity,
+            service: identityService,
+            accounts: new AccountsService({ store: identity }),
+            authorizer: new Authorizer(identity),
+            capabilities: () => ["identity.native-session.v1"],
+            coreVersion: "0.11.0",
+            secrets: () => memoryBackend(),
+          });
+          cloudDomain.attachRelay(relay);
+          const ticket = identityService.issueBootstrap({
+            hostId: identity.hostId(),
+            instanceId: instance,
+            origin: "http://127.0.0.1:1420",
+            deviceName: "probe",
+            scopes: allScopes(),
+          });
+          owner = identityService.consumeBootstrap({
+            ticket: ticket.ticket,
+            hostId: identity.hostId(),
+            instanceId: instance,
+            origin: "http://127.0.0.1:1420",
+          }).principal.principalId;
+        },
+      ]);
+      cleanups.push(() => core.close());
+      const hostId = identity.hostId();
       const service = new SourcesService({
         store: new SourcesStore(opened.database),
         secrets: new SourceSecrets(() => memoryBackend()),
@@ -52,17 +96,14 @@ describe.skipIf(base === undefined)("真实控制面", () => {
           name: "saas-probe",
         }),
         peer: new SourceClient(networkTransport, plainSealed(networkTransport)),
-        hostId: () => HOST_ID,
+        hostId: () => hostId,
         hostLabel: () => "this-mac",
         log: { info: () => undefined, warn: () => undefined },
         cloud: () => ({
-          registered: () => false,
-          revoke: async () => ({}),
-          register: async (input) => {
-            registrations.push(input);
-            return { sourceId: HOST_ID };
-          },
-          bind: async () => ({}),
+          registered: (issuer) => cloudDomain.registered(issuer),
+          revoke: (input) => cloudDomain.revoke(input, owner),
+          register: (input) => cloudDomain.register(input, owner),
+          bind: (assertion) => cloudDomain.bind(owner, assertion),
         }),
       });
       service.ensureLocal();
@@ -98,9 +139,12 @@ describe.skipIf(base === undefined)("真实控制面", () => {
         serviceId,
         space: { kind: "team", teamId: team.teamId },
       });
-      expect(done.sourceId).toBe(HOST_ID);
-      expect(registrations[0]?.registrationToken.length).toBeGreaterThan(20);
+      expect(done.sourceId).toBe(hostId);
+      expect(done.remote.registered).toBe(true);
+      expect(cloudDomain.registered(base ?? "")).toBe(true);
+      expect(relay.started).toEqual([base]);
     } finally {
+      for (const cleanup of cleanups) cleanup();
       opened.close();
     }
   }, 60_000);
