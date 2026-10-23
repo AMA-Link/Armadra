@@ -181,9 +181,28 @@ describe("NodeObservationDrawer", () => {
 
   it("draws a question and an approval in the same attention tone", () => {
     showAgent({ state: "waiting" });
-    const pill = screen
+    const line = screen
       .getByText("等待回答")
-      .closest("[data-slot=status-pill]");
-    expect(pill?.getAttribute("data-tone")).toBe("attention");
+      .closest("[data-slot=status-line]");
+    expect(line?.getAttribute("data-tone")).toBe("attention");
+    // 状态只有 StatusLine 一种写法，不再是胶囊
+    expect(document.querySelector("[data-slot=status-pill]")).toBeNull();
+  });
+
+  it("详情页的状态行带细节与计时（与节点头同一个显示结果）", () => {
+    showAgent({
+      state: "working",
+      activity: {
+        phase: "tool",
+        detail: { label: "读取 src/a.ts" },
+        since: Date.now() - 5_000,
+        rev: "b:1",
+      },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /验收要点/ }));
+    const line = document.querySelector("[data-slot=status-line]")!;
+    expect(line.getAttribute("data-tone")).toBe("working");
+    expect(line.textContent).toContain("调用工具");
+    expect(line.textContent).toContain("读取 src/a.ts");
   });
 });

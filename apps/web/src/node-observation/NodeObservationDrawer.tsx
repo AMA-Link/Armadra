@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { ArrowLeft, Crosshair, X } from "lucide-react";
 import type { CanvasNode } from "@armadra/shared";
 
-import { displayOfStatus } from "../agent/display";
+import { displayOfStatus, lineOf } from "../agent/display";
 import { useProgramStatusStore } from "../agent/program-status-store";
 import {
   useAgentStatusStore,
@@ -21,7 +21,7 @@ import { IconButton } from "@/ui/icon-button";
 import { ScrollArea } from "@/ui/scroll-area";
 import { SheetTitle } from "@/ui/sheet";
 import { SkeletonList } from "@/ui/skeletons";
-import { StatusPill } from "@/ui/status-pill";
+import { StatusLine } from "@/ui/status-pill";
 import { cn } from "@/lib/cn";
 import { nodeTreeRows } from "./tree";
 
@@ -64,16 +64,13 @@ export function NodeObservationDrawer() {
   };
   const selectedStatus = selected ? nodeStatus(selected) : undefined;
   // 状态的色调与文案和节点头、侧栏、铃铛是同一个 `sessionDisplay()` 的结果（S2/S6）。
-  const stateOf = (node: CanvasNode, status: MirroredStatus | undefined) => {
-    const display = displayOfStatus(
-      status,
-      programs[scoped(node.id, sourceId)],
+  const stateOf = (node: CanvasNode, status: MirroredStatus | undefined) =>
+    lineOf(
+      displayOfStatus(status, programs[scoped(node.id, sourceId)]),
+      status?.activity,
+      t,
     );
-    return { tone: display.tone, key: display.labelKey };
-  };
-  const selectedState = selected
-    ? stateOf(selected, selectedStatus)
-    : { tone: "idle" as const, key: "status.unknown" };
+  const selectedState = selected ? stateOf(selected, selectedStatus) : null;
 
   useEffect(() => setDetailNodeId(null), [workspaceId, boardId, sourceId]);
   useEffect(() => {
@@ -105,7 +102,7 @@ export function NodeObservationDrawer() {
             <ArrowLeft />
           </IconButton>
         )}
-        <SheetTitle className="min-w-0 flex-1 truncate text-[13px] font-semibold">
+        <SheetTitle className="min-w-0 flex-1 truncate text-body font-semibold">
           {selected?.title ?? t("nodeObservation.open")}
         </SheetTitle>
         <IconButton label={t("nodeObservation.close")} onClick={close}>
@@ -120,14 +117,18 @@ export function NodeObservationDrawer() {
               <span className="min-w-0 flex-1 truncate font-medium">
                 {selected.title}
               </span>
-              {isAgent(selected, selectedStatus) && (
-                <StatusPill
+              {selectedState && isAgent(selected, selectedStatus) && (
+                <StatusLine
+                  className="w-auto shrink-0"
                   tone={selectedState.tone}
-                  label={t(selectedState.key)}
+                  label={selectedState.phaseLabel}
+                  detail={selectedState.detail}
+                  since={selectedState.since}
+                  spinning={selectedState.spinning}
                 />
               )}
             </div>
-            <div className="flex flex-col gap-(--space-group) text-[length:var(--text-caption)] text-muted-foreground">
+            <div className="flex flex-col gap-(--space-group) text-caption text-muted-foreground">
               <div>{t(NODE_META[selected.type].labelKey)}</div>
               {selected.parentId && (
                 <div>
@@ -170,7 +171,7 @@ export function NodeObservationDrawer() {
             inline
           >
             <div className="pb-3">
-              <div className="px-4 py-2 text-[length:var(--text-caption)] text-muted-foreground">
+              <div className="px-4 py-2 text-caption text-muted-foreground">
                 {t("nodeObservation.count", { count: rows.length })}
               </div>
               {rows.map(({ node, depth }) => {
@@ -188,7 +189,7 @@ export function NodeObservationDrawer() {
                     aria-pressed={active}
                     className={cn(
                       "h-auto min-h-12 w-full min-w-0 justify-start rounded-none border-b border-border px-3 py-2 text-left font-normal",
-                      active && "bg-[var(--brand-soft)]",
+                      active && "bg-brand-soft",
                     )}
                     style={{ paddingLeft: 12 + Math.min(depth, 6) * 16 }}
                     onClick={() => {
@@ -201,7 +202,13 @@ export function NodeObservationDrawer() {
                       {node.title}
                     </span>
                     {agent && (
-                      <StatusPill tone={state.tone} label={t(state.key)} />
+                      <StatusLine
+                        compact
+                        className="w-auto shrink-0"
+                        tone={state.tone}
+                        label={state.phaseLabel}
+                        spinning={state.spinning}
+                      />
                     )}
                   </Button>
                 );
