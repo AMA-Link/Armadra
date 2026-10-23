@@ -72,6 +72,11 @@ export interface NodeShellProps {
   headerActions?: React.ReactNode;
   /** `···` 菜单里由节点类型自己提供的条目，排在通用的视图项之前。 */
   menuItems?: React.ReactNode;
+  /**
+   * 终端配色为「始终深色」时传 `dark`：外框与头部在这棵子树上重新声明深色令牌，
+   * 与里面深色的 xterm 连成一体（#501）。其余节点体不传。
+   */
+  termScheme?: "dark";
   /** `blocked` 且有 pendingId 时头部直接出现允许/拒绝两个内联按钮。 */
   approval?: {
     pendingId: string;
@@ -216,6 +221,7 @@ export function NodeShell({
   menuItems,
   approval,
   statusPopover,
+  termScheme,
   children,
 }: NodeShellProps) {
   const meta = nodeMeta(node.type);
@@ -235,6 +241,7 @@ export function NodeShell({
       data-collapsed={collapsed ? "true" : undefined}
       data-selected={selected ? "true" : undefined}
       data-node-type={node.type}
+      data-term-scheme={termScheme}
       className="node-glow relative h-full w-full"
       style={collapsed ? { height: COLLAPSED_HEIGHT } : undefined}
     >

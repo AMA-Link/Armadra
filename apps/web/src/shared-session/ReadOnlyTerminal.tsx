@@ -9,7 +9,12 @@ import { terminalWebSocketUrl } from "@/api/sockets";
 import type { Source } from "@/api/source";
 import { usePreferencesStore } from "@/app/preferences-store";
 import { TERMINAL_SCROLLBACK } from "@/terminal/surface/constants";
-import { terminalAppearance } from "@/terminal/surface/appearance";
+import {
+  terminalAppearance,
+  terminalSchemeAttribute,
+  terminalTheme,
+  watchAppTheme,
+} from "@/terminal/surface/appearance";
 import {
   createTerminalTransport,
   type TerminalTransport,
@@ -35,6 +40,10 @@ export function ReadOnlyTerminal({
   onState?: (state: ReadOnlyTerminalState) => void;
 }) {
   const containerRef = React.useRef<HTMLDivElement>(null);
+  const terminalRef = React.useRef<Terminal | null>(null);
+  const colorScheme = usePreferencesStore(
+    (state) => state.terminal.colorScheme,
+  );
   const stateRef = React.useRef(onState);
   stateRef.current = onState;
 
@@ -48,6 +57,7 @@ export function ReadOnlyTerminal({
       disableStdin: true,
       cursorBlink: false,
     });
+    terminalRef.current = terminal;
     terminal.loadAddon(new Unicode11Addon());
     terminal.unicode.activeVersion = "11";
     const fit = new FitAddon();
@@ -104,12 +114,27 @@ export function ReadOnlyTerminal({
       observer.disconnect();
       transport?.close();
       terminal.dispose();
+      terminalRef.current = null;
     };
   }, [source, sessionId]);
+
+  // 应用主题或终端配色变了：只换调色板，不重建（与 `TerminalSurface` 一致，#501）。
+  // 属性随渲染写在外层上，所以这个 effect 跑的时候计算样式已经是新的。
+  React.useEffect(() => {
+    const apply = () => {
+      const container = containerRef.current;
+      const terminal = terminalRef.current;
+      if (container && terminal)
+        terminal.options.theme = terminalTheme(container);
+    };
+    apply();
+    return watchAppTheme(apply);
+  }, [colorScheme]);
 
   return (
     <div
       data-slot="read-only-terminal"
+      data-term-scheme={terminalSchemeAttribute(colorScheme)}
       className="h-full min-h-0 w-full overflow-hidden bg-term p-2"
     >
       <div ref={containerRef} className="h-full w-full" />

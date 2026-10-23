@@ -125,6 +125,25 @@ afterEach(() => {
 });
 
 describe("NodeShell", () => {
+  it("termScheme 写成外层的 data-term-scheme；不传就没有（#501）", () => {
+    const node = makeNode();
+    const view = renderFlow(
+      <NodeShell node={node} selected={false} termScheme="dark">
+        <div />
+      </NodeShell>,
+      { nodeId: node.id },
+    );
+    const shell = () =>
+      view.container.querySelector<HTMLElement>('[data-slot="node-shell"]')!;
+    expect(shell().getAttribute("data-term-scheme")).toBe("dark");
+    view.rerenderNode(
+      <NodeShell node={node} selected={false}>
+        <div />
+      </NodeShell>,
+    );
+    expect(shell().hasAttribute("data-term-scheme")).toBe(false);
+  });
+
   it("uses the shared header geometry and keeps the body mounted across collapse", () => {
     const mounted = vi.fn();
     const unmounted = vi.fn();

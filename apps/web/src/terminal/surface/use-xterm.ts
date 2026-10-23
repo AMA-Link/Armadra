@@ -18,7 +18,7 @@ import {
   WheelAccumulator,
   postScroll,
 } from "../scrollback";
-import { terminalAppearance, terminalTheme } from "./appearance";
+import { terminalAppearance, terminalTheme, watchAppTheme } from "./appearance";
 import { writeClipboard } from "./clipboard";
 import { guardPointerRelease } from "./pointer-release";
 import { compensateScaledPointer } from "./scaled-pointer";
@@ -202,13 +202,10 @@ export function useXtermInstance(
     });
     observer.observe(body);
 
-    // 主题切换时只换调色板，不重建实例（否则整屏内容会没）
-    const themeWatcher = new MutationObserver(() => {
+    // 应用主题切换时只换调色板，不重建实例（否则整屏内容会没）。终端偏好里
+    // 的「配色」变化走偏好依赖（`TerminalSurface` 的外观 effect）。
+    const unwatchTheme = watchAppTheme(() => {
       terminal.options.theme = terminalTheme(container);
-    });
-    themeWatcher.observe(document.documentElement, {
-      attributes: true,
-      attributeFilter: ["data-theme"],
     });
 
     /*
@@ -266,7 +263,7 @@ export function useXtermInstance(
       if (scrollTimer) clearTimeout(scrollTimer);
       body.removeEventListener("wheel", onWheel, { capture: true });
       observer.disconnect();
-      themeWatcher.disconnect();
+      unwatchTheme();
       input.dispose();
       selection.dispose();
       bell.dispose();
