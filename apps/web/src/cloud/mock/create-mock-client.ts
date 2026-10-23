@@ -308,9 +308,13 @@ export function createMockApi(options: MockOptions = {}): CloudApi {
     return root as unknown as CloudClient;
   };
 
+  const client = build(false);
   return {
-    client: build(false),
+    client,
     ops: build(true),
+    ensureCsrf: async () => state.signedIn,
+    invitationPreview: (invitationId, token) =>
+      client.invitations.get({ invitationId, token }),
     operator: {
       active: () => state.operatorSession,
       subscribe: operatorChanged.subscribe,
