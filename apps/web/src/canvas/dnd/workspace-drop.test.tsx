@@ -75,7 +75,7 @@ vi.mock("./external-content", () => ({
   routeFile: (file: { type: string }) =>
     file.type.startsWith("image/") ? "image" : "file",
 }));
-vi.mock("sonner", () => ({
+vi.mock("@/ui/toast", () => ({
   toast: { error: (...args: unknown[]) => mocks.error(...args) },
 }));
 

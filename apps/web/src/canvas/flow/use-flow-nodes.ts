@@ -6,7 +6,7 @@ import type {
   IsValidConnection,
   NodeChange,
 } from "@xyflow/react";
-import { toast } from "sonner";
+import { toast } from "@/ui/toast";
 
 import { t } from "@/app/preferences-store";
 import { useCanvasStore } from "@/store/canvas-store";

@@ -1,6 +1,6 @@
 import type { LucideIcon } from "lucide-react";
 import { supportedPermissionModes } from "@armadra/shared";
-import { toast } from "sonner";
+import { toast } from "@/ui/toast";
 import { usePreferencesStore } from "../../app/preferences-store";
 import {
   Activity,
