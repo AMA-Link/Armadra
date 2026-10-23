@@ -6,10 +6,12 @@ import {
   screen,
   waitFor,
 } from "@testing-library/react";
+import { readJsonFixture } from "@armadra/platform-protocol/fixtures";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { ConsoleRoot } from "../ConsoleRoot";
-import { CloudConsoleError } from "../api/errors";
+import { createCloudApi } from "../api/client";
+import { CSRF_HEADER } from "../api/session";
 import { createMockApi, type MockOptions } from "../mock/create-mock-client";
 import { matchRoute } from "../router";
 import { safeNext } from "./redirect";
@@ -188,22 +190,208 @@ describe("邮件链接", () => {
     expect(here()).toBe("/login");
   });
 
-  it("/invite/:id#令牌：匿名取摘要；没登录点接受会带着 next 与片段去登录", async () => {
+  it("/invite/:id#令牌：令牌读进内存并立刻离开地址栏；没登录点接受去登录，地址里没有令牌，登录后回邀请页再用同一令牌接受", async () => {
     visit("/invite/inv1#itok");
     const api = createMockApi({ signedIn: false });
-    const get = vi.spyOn(api.client.invitations, "get");
-    vi.spyOn(api.client.invitations, "accept").mockRejectedValue(
-      new CloudConsoleError("unauthenticated", 401),
-    );
+    const preview = vi.spyOn(api, "invitationPreview");
+    const accept = vi.spyOn(api.client.invitations, "accept");
     render(<ConsoleRoot api={api} />);
     await screen.findByRole("button", { name: "接受" });
-    expect(get.mock.calls[0]![0]).toEqual({
-      invitationId: "inv1",
-      token: "itok",
-    });
+    expect(preview.mock.calls[0]).toEqual(["inv1", "itok"]);
+    expect(window.location.hash).toBe("");
+    const before = window.history.length;
     act(() => screen.getByRole("button", { name: "接受" }).click());
     await waitFor(() => expect(here()).toContain("/login?next="));
     expect(decodeURIComponent(here())).toContain("/invite/inv1");
-    expect(window.location.hash).toBe("#itok");
+    expect(window.location.hash).toBe("");
+    // replace：不多一条 /invite 历史
+    expect(window.history.length).toBe(before);
+    expect(accept).not.toHaveBeenCalled();
+    await h1();
+    type("邮箱", "zed@example.com");
+    type("口令", "correct horse");
+    fireEvent.submit(screen.getByLabelText("邮箱").closest("form")!);
+    await waitFor(() => expect(here()).toBe("/invite/inv1"));
+    expect(window.location.hash).toBe("");
+    act(() => screen.getByRole("button", { name: "接受" }).click());
+    await waitFor(() => expect(accept).toHaveBeenCalledTimes(1));
+    expect(accept.mock.calls[0]![0]).toEqual({
+      invitationId: "inv1",
+      token: "itok",
+    });
+  });
+});
+
+const json = (body: unknown, status = 200) =>
+  new Response(JSON.stringify(body), {
+    status,
+    headers: { "content-type": "application/json" },
+  });
+const fx = (name: string) =>
+  readJsonFixture<{ output?: unknown; outputs?: unknown[] }>(
+    `cloud-api/${name}.json`,
+  );
+
+/** 假来源：记下每次请求（方法、路径、查询、CSRF 头、请求体）。 */
+function origin(routes: Record<string, () => Response>) {
+  const seen: {
+    method: string;
+    path: string;
+    search: string;
+    csrf: string | null;
+    body: string;
+  }[] = [];
+  const fetcher = (async (input: RequestInfo | URL) => {
+    const request = input as Request;
+    const url = new URL(request.url);
+    seen.push({
+      method: request.method,
+      path: url.pathname,
+      search: url.search,
+      csrf: request.headers.get(CSRF_HEADER),
+      body: await request.clone().text(),
+    });
+    const route = routes[`${request.method} ${url.pathname}`];
+    return route ? route() : json({ code: "not_found", message: "x" }, 404);
+  }) as unknown as typeof fetch;
+  return { seen, fetcher };
+}
+const SESSION = fx("auth.refresh").output as object;
+const PREVIEW = fx("invitations.get").output;
+
+describe("运营登录走运营客户端（真实 cloud fetch）", () => {
+  it("login 写进运营 CSRF、运营会话生效，控制台 CSRF 不变", async () => {
+    visit("/login?scope=operator");
+    const { seen, fetcher } = origin({
+      "GET /v1/me": () =>
+        json({ ...(fx("me.get").output as object), csrfToken: "console-csrf" }),
+      "POST /v1/auth/login": () => json({ ...SESSION, csrfToken: "ops-csrf" }),
+      "POST /v1/me/email": () => json({}),
+    });
+    const api = createCloudApi({ origin: "http://app.test", fetch: fetcher });
+    await api.client.me.get({});
+    expect(api.operator.active()).toBe(false);
+    render(<ConsoleRoot api={api} />);
+    await h1();
+    type("邮箱", "ops@example.com");
+    type("口令", "correct horse");
+    fireEvent.submit(screen.getByLabelText("邮箱").closest("form")!);
+    await waitFor(() => expect(api.operator.active()).toBe(true));
+    expect(seen.find((r) => r.path === "/v1/auth/login")!.body).toContain(
+      '"scope":"operator"',
+    );
+    // 控制台写操作仍带控制台的 CSRF，没被运营值盖掉。
+    await api.client.me.emailChange({ newEmail: "x@y.test", password: "p" });
+    expect(seen.filter((r) => r.path === "/v1/me/email")[0]!.csrf).toBe(
+      "console-csrf",
+    );
+  });
+});
+
+describe("邀请页写操作与预览（真实 cloud fetch）", () => {
+  const mountInvite = (routes: Record<string, () => Response>) => {
+    visit("/invite/inv1#itok");
+    const o = origin({
+      "POST /v1/invitations/inv1/preview": () => json(PREVIEW),
+      ...routes,
+    });
+    render(
+      <ConsoleRoot
+        api={createCloudApi({ origin: "http://app.test", fetch: o.fetcher })}
+      />,
+    );
+    return o;
+  };
+
+  it("预览是 POST /preview，令牌在请求体里，不在查询里", async () => {
+    const { seen } = mountInvite({});
+    await screen.findByRole("button", { name: "接受" });
+    const call = seen.find((r) => r.path.endsWith("/preview"))!;
+    expect(call.method).toBe("POST");
+    expect(call.search).toBe("");
+    expect(JSON.parse(call.body)).toEqual({ token: "itok" });
+    expect(
+      seen.some((r) => r.method === "GET" && r.path.includes("inv1")),
+    ).toBe(false);
+  });
+
+  it("CSRF 为空：接受前先 auth.refresh，随后的 accept 带上它给的 csrfToken", async () => {
+    const { seen } = mountInvite({
+      "POST /v1/auth/refresh": () => json({ ...SESSION, csrfToken: "fresh" }),
+      "POST /v1/invitations/inv1/accept": () => json({}),
+    });
+    await screen.findByRole("button", { name: "接受" });
+    act(() => screen.getByRole("button", { name: "接受" }).click());
+    await screen.findByText("已接受");
+    const order = seen.map((r) => r.path);
+    expect(order.indexOf("/v1/auth/refresh")).toBeLessThan(
+      order.indexOf("/v1/invitations/inv1/accept"),
+    );
+    expect(seen.find((r) => r.path.endsWith("/accept"))!.csrf).toBe("fresh");
+  });
+
+  it("refresh 失败：带 next 去登录，不发 accept，也不显示「没有权限」", async () => {
+    const { seen } = mountInvite({
+      "POST /v1/auth/refresh": () =>
+        json({ code: "session_expired", message: "x" }, 401),
+    });
+    await screen.findByRole("button", { name: "接受" });
+    act(() => screen.getByRole("button", { name: "接受" }).click());
+    await waitFor(() => expect(here()).toContain("/login?next="));
+    expect(seen.some((r) => r.path.endsWith("/accept"))).toBe(false);
+    expect(screen.queryByText("没有权限执行这个操作")).toBeNull();
+  });
+
+  it("未登录先拿到 403：同样走登录分支", async () => {
+    mountInvite({
+      "POST /v1/auth/refresh": () => json({ ...SESSION, csrfToken: "c" }),
+      "POST /v1/invitations/inv1/accept": () =>
+        json({ code: "forbidden", message: "x" }, 403),
+    });
+    await screen.findByRole("button", { name: "接受" });
+    act(() => screen.getByRole("button", { name: "接受" }).click());
+    await waitFor(() => expect(here()).toContain("/login?next="));
+    expect(screen.queryByText("没有权限执行这个操作")).toBeNull();
+  });
+});
+
+describe("挑战令牌", () => {
+  it("有 siteKey 时每次登录失败都换一个新令牌（组件重建），不复用旧的", async () => {
+    const turnstile = await import("../../challenge/turnstile");
+    let issued = 0;
+    vi.spyOn(turnstile, "loadTurnstile").mockResolvedValue({
+      render: (_el: unknown, options: { callback: (t: string) => void }) => {
+        options.callback(`tok${++issued}`);
+        return `w${issued}`;
+      },
+      remove: () => undefined,
+    } as never);
+    visit("/login");
+    const api = createMockApi({
+      signedIn: false,
+      fail: { "auth.login": "credentials_invalid" },
+    });
+    vi.spyOn(api.client.platform, "info").mockResolvedValue({
+      ...(fx("platform.info").output as object),
+      challenge: { provider: "turnstile", siteKey: "k", scope: ["auth.login"] },
+    } as never);
+    const login = vi.spyOn(api.client.auth, "login");
+    render(<ConsoleRoot api={api} />);
+    await h1();
+    type("邮箱", "zed@example.com");
+    type("口令", "x");
+    const submit = () =>
+      fireEvent.submit(screen.getByLabelText("邮箱").closest("form")!);
+    await waitFor(() => expect(issued).toBe(1));
+    submit();
+    await screen.findByText("账号或口令不正确");
+    await waitFor(() => expect(issued).toBe(2));
+    type("口令", "y");
+    submit();
+    await waitFor(() => expect(login).toHaveBeenCalledTimes(2));
+    expect(login.mock.calls.map((c) => c[0].challenge?.token)).toEqual([
+      "tok1",
+      "tok2",
+    ]);
   });
 });
