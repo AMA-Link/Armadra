@@ -8,6 +8,7 @@ import {
   ServerOff,
   Recycle,
   Repeat2,
+  ShieldQuestion,
   TerminalSquare,
   X,
 } from "lucide-react";
@@ -27,6 +28,8 @@ import { useEnabledAgents } from "../app/use-agents";
 import { useCanvasStore, type PanelState } from "../store/canvas-store";
 import { useOfflineBanner } from "../realtime/OfflineBanner";
 import { hostedRelay, type HostedStatus } from "../sources/hosted";
+import { useCloudTrust } from "../sources/trust/cloud-trust";
+import { useTrustDialog } from "../sources/trust/trust-store";
 import { useMobileRelayDown } from "../mobile/relay-status";
 import { SOURCE_ERROR } from "../sources/types";
 import { cn } from "@/lib/cn";
@@ -126,6 +129,9 @@ export function Banners() {
 
   const items: ReactNode[] = [];
   const offline = useOfflineBanner();
+  // Armadra 云转来的待信任新设备（云端控制台 §3.5.3）；校验码不在横幅里。
+  const trust = useCloudTrust().items;
+  const showTrust = useTrustDialog((state) => state.show);
   // 桌面壳签不出票：每个请求都会 401，说清楚原因（契约 §3.2）。
   const shellFailure = useSyncExternalStore(
     onIdentitySessionChange,
@@ -198,6 +204,29 @@ export function Banners() {
         tone="warn"
         icon={offline.icon}
         text={offline.text}
+      />,
+    );
+  }
+
+  if (trust.length > 0) {
+    const first = trust[0]!;
+    items.push(
+      <Banner
+        key="cloud-trust"
+        tone="info"
+        icon={<ShieldQuestion />}
+        text={
+          trust.length === 1
+            ? t("trust.banner", {
+                name:
+                  first.member.displayName ||
+                  first.member.email ||
+                  first.member.accountId,
+              })
+            : t("trust.banner.many", { count: trust.length })
+        }
+        actionLabel={t("trust.banner.view")}
+        onAction={showTrust}
       />,
     );
   }
