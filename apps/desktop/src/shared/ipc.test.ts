@@ -71,6 +71,8 @@ describe("the IPC table", () => {
         "app:sources-changed",
         // A4-3p: the page takes the share deep link the shell received.
         "app:take-join-link",
+        // U7b: the page takes the `armadra://cloud` deep link the shell received.
+        "app:take-cloud-link",
         // P4: the page hands a share link to the system share menu.
         "app:share",
         // A7-1: the switch-service dialog opens a source in a new window.

@@ -22,14 +22,9 @@ import { Alert } from "@/ui/alert";
 import { Button } from "@/ui/button";
 import { Field, FieldError, FieldGroup, FieldLabel } from "@/ui/field";
 import { Input } from "@/ui/input";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/ui/select";
+import { RadioGroup, RadioGroupItem } from "@/ui/radio-group";
 import { Spinner } from "@/ui/spinner";
+import { toast } from "@/ui/toast";
 import { checkAddress } from "../remote-address";
 
 /*
@@ -45,6 +40,7 @@ type Step =
       readonly remote: RemoteService;
       readonly userCode: string;
       readonly verificationUrl: string;
+      readonly expiresAtMs: number;
       readonly intervalMs: number;
       readonly outcome: "waiting" | "denied" | "expired" | "failed";
     }
@@ -68,13 +64,39 @@ function spaceValue(space: Space): string {
   return space.kind === "personal" ? PERSONAL : `team:${space.teamId}`;
 }
 
+/** 距离 `expiresAtMs` 还剩几毫秒，每秒刷新；不倒计时（`null`）恒为 `null`。 */
+function useRemaining(expiresAtMs: number | null): number | null {
+  const [now, setNow] = React.useState(() => Date.now());
+  React.useEffect(() => {
+    if (expiresAtMs === null) return;
+    setNow(Date.now());
+    const timer = setInterval(() => setNow(Date.now()), 1_000);
+    return () => clearInterval(timer);
+  }, [expiresAtMs]);
+  return expiresAtMs === null ? null : Math.max(0, expiresAtMs - now);
+}
+
+/** 「9:41」：分秒，补零，不带小时（设备码只有十分钟）。 */
+function clock(ms: number): string {
+  const total = Math.ceil(ms / 1_000);
+  return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, "0")}`;
+}
+
 export function AddCloudDialog({
   initialIssuer,
+  fromLink = false,
+  knownIssuers = [],
+  onStep,
   onClose,
   onChanged,
 }: {
   /** `null` 关着；空串是新加；有地址是重新登录。 */
   initialIssuer: string | null;
+  /** 地址是深链带来的：不是已有的账号时，在地址步骤醒目显示目标域名。 */
+  fromLink?: boolean;
+  knownIssuers?: readonly string[];
+  /** 回报当前在哪一步（页面据此决定要不要接受新的深链）。 */
+  onStep?: (kind: Step["kind"]) => void;
   onClose(): void;
   /** 源表变了（登录成功或登记成功）。 */
   onChanged(): void;
@@ -86,6 +108,20 @@ export function AddCloudDialog({
   const [error, setError] = React.useState("");
   const [busy, setBusy] = React.useState(false);
   const open = initialIssuer !== null;
+  React.useEffect(() => {
+    onStep?.(step.kind);
+  }, [step.kind, onStep]);
+  const linkedHost = (() => {
+    if (!fromLink || issuer === "") return null;
+    try {
+      const url = new URL(issuer);
+      return knownIssuers.some((one) => new URL(one).origin === url.origin)
+        ? null
+        : url.host;
+    } catch {
+      return null;
+    }
+  })();
 
   // 主机配额与别的上限分开说（details.quota === "hosts"）。
   function failureText(failure: unknown): string {
@@ -134,6 +170,7 @@ export function AddCloudDialog({
         remote: answer.remote,
         userCode: code.userCode,
         verificationUrl: code.verificationUrl,
+        expiresAtMs: code.expiresAtMs,
         intervalMs: code.intervalMs ?? 5_000,
         outcome: "waiting",
       });
@@ -168,6 +205,13 @@ export function AddCloudDialog({
   // 等批准：按服务端要求的间隔轮询；限流听 retryAfterMs；终结就停。
   const waiting =
     step.kind === "code" && step.outcome === "waiting" ? step : null;
+  const remaining = useRemaining(waiting === null ? null : waiting.expiresAtMs);
+  // 倒计时走完而轮询还没来得及报：本地先收尾，设备码不再显示可用。
+  React.useEffect(() => {
+    if (waiting !== null && remaining === 0)
+      setStep({ ...waiting, outcome: "expired" });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [remaining === 0]);
   React.useEffect(() => {
     if (waiting === null || !open) return;
     let cancelled = false;
@@ -227,6 +271,15 @@ export function AddCloudDialog({
     }
   }
 
+  async function copyCode(userCode: string) {
+    try {
+      await navigator.clipboard.writeText(userCode);
+      toast.success(t("remote.cloud.copied"));
+    } catch {
+      toast.error(t("remote.invite.copyFailed"));
+    }
+  }
+
   const spaceLabel = (space: Space) =>
     space.kind === "personal" ? t("remote.cloud.space.personal") : space.name;
 
@@ -251,6 +304,14 @@ export function AddCloudDialog({
             else if (step.kind === "space") void register();
           }}
         >
+          {step.kind === "address" && linkedHost !== null && (
+            <Alert variant="destructive" data-slot="cloud-link-target">
+              <span>{t("remote.cloud.linkTarget")}</span>
+              <span className="font-mono font-medium break-all">
+                {linkedHost}
+              </span>
+            </Alert>
+          )}
           {step.kind === "address" && (
             <FieldGroup className="gap-3">
               <Field className="gap-1.5" data-invalid={error !== ""}>
@@ -281,6 +342,16 @@ export function AddCloudDialog({
               >
                 {step.userCode}
               </p>
+              {step.outcome === "waiting" && remaining !== null && (
+                <span
+                  data-slot="code-countdown"
+                  role="timer"
+                  aria-label={t("remote.cloud.expiresIn")}
+                  className="font-mono text-meta text-muted-foreground tabular-nums"
+                >
+                  {clock(remaining)}
+                </span>
+              )}
               <span
                 role="status"
                 className="flex items-center gap-2 text-body text-muted-foreground"
@@ -301,30 +372,36 @@ export function AddCloudDialog({
               <Alert>{t("remote.cloud.noSpaces")}</Alert>
             ) : (
               <Field className="gap-1.5">
-                <FieldLabel htmlFor="cloud-space">
+                <FieldLabel id="cloud-space-label">
                   {t("remote.cloud.registerTo")}
                 </FieldLabel>
-                <Select value={chosen} onValueChange={setChosen}>
-                  <SelectTrigger id="cloud-space">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {step.spaces.map((space) => (
-                      <SelectItem
-                        key={spaceValue(space)}
+                <RadioGroup
+                  value={chosen}
+                  onValueChange={setChosen}
+                  aria-labelledby="cloud-space-label"
+                >
+                  {step.spaces.map((space) => (
+                    <Field
+                      key={spaceValue(space)}
+                      orientation="horizontal"
+                      data-disabled={blocked(space)}
+                    >
+                      <RadioGroupItem
+                        id={`cloud-space-${spaceValue(space)}`}
                         value={spaceValue(space)}
                         disabled={blocked(space)}
-                      >
+                      />
+                      <FieldLabel htmlFor={`cloud-space-${spaceValue(space)}`}>
                         {spaceLabel(space)}
                         {blocked(space) && (
                           <span className="text-muted-foreground">
                             {` · ${t("remote.cloud.space.blocked")}`}
                           </span>
                         )}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                      </FieldLabel>
+                    </Field>
+                  ))}
+                </RadioGroup>
               </Field>
             ))}
           {step.kind === "space" && chosen.startsWith("team:") && (
@@ -344,12 +421,21 @@ export function AddCloudDialog({
               </Button>
             )}
             {step.kind === "code" && step.outcome === "waiting" && (
-              <Button
-                type="button"
-                onClick={() => void openExternal(step.verificationUrl)}
-              >
-                {t("remote.cloud.openBrowser")}
-              </Button>
+              <>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => void copyCode(step.userCode)}
+                >
+                  {t("remote.cloud.copy")}
+                </Button>
+                <Button
+                  type="button"
+                  onClick={() => void openExternal(step.verificationUrl)}
+                >
+                  {t("remote.cloud.openBrowser")}
+                </Button>
+              </>
             )}
             {step.kind === "code" && step.outcome !== "waiting" && (
               <Button

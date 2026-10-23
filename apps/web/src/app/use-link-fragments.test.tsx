@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { usePreferencesStore } from "./preferences-store";
 import { useCanvasStore } from "@/store/canvas-store";
 import { useLinkFragments } from "./use-link-fragments";
+import { takeCloudIntent } from "../sources/cloud-intent";
 import { takeJoinLink } from "../sources/join-intent";
 
 /**
@@ -117,5 +118,58 @@ describe("分享链接（A4-3p）", () => {
     expect(takeJoinLink()).toBeNull();
     push?.(deep);
     expect(takeJoinLink()).toBe(deep);
+  });
+});
+
+describe("armadra://cloud 深链（云端控制台 §3.5.1）", () => {
+  afterEach(() => {
+    takeCloudIntent();
+    delete (window as { armadra?: unknown }).armadra;
+  });
+
+  it("桌面壳：启动时那条与之后推来的都交出，打开到「远程服务」；认不出的不理", async () => {
+    let push: ((url: string) => void) | undefined;
+    (window as { armadra?: unknown }).armadra = {
+      sources: {
+        changed: async () => ({ reload: false }),
+        takeCloudLink: async () =>
+          `armadra://cloud?issuer=${encodeURIComponent("https://cloud.example.com")}`,
+        onCloudLink: (listener: (url: string) => void) => {
+          push = listener;
+          return () => undefined;
+        },
+      },
+    };
+    renderHook(() => useLinkFragments(false, false, true));
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(useCanvasStore.getState().panels.settings).toBe(true);
+    expect(usePreferencesStore.getState().lastSettingsSection).toBe(
+      "remoteAccess",
+    );
+    expect(takeCloudIntent()).toBe("https://cloud.example.com");
+    useCanvasStore.getState().setPanel("settings", false);
+    push?.("armadra://cloud?issuer=http%3A%2F%2Fevil.example.com");
+    expect(takeCloudIntent()).toBeNull();
+    expect(useCanvasStore.getState().panels.settings).toBe(false);
+    push?.("armadra://cloud");
+    expect(takeCloudIntent()).toBe("");
+    expect(useCanvasStore.getState().panels.settings).toBe(true);
+  });
+
+  it("不在桌面壳里：不取", async () => {
+    let taken = false;
+    (window as { armadra?: unknown }).armadra = {
+      sources: {
+        takeCloudLink: async () => {
+          taken = true;
+          return "armadra://cloud";
+        },
+      },
+    };
+    renderHook(() => useLinkFragments(false, false, false));
+    await Promise.resolve();
+    expect(taken).toBe(false);
+    expect(takeCloudIntent()).toBeNull();
   });
 });

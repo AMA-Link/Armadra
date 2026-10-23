@@ -5,6 +5,7 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from "@testing-library/react";
 
 import { usePreferencesStore } from "@/app/preferences-store";
@@ -20,6 +21,8 @@ vi.mock("../../../../api/remote-services", async (original) => ({
   ...(await original<typeof import("../../../../api/remote-services")>()),
   ...api,
 }));
+const toasts = vi.hoisted(() => ({ success: vi.fn(), error: vi.fn() }));
+vi.mock("@/ui/toast", () => ({ toast: toasts }));
 const platform = vi.hoisted(() => ({ openExternal: vi.fn() }));
 vi.mock("../../../../platform", async (original) => ({
   ...(await original<typeof import("../../../../platform")>()),
@@ -150,16 +153,20 @@ describe("添加 Armadra 云", () => {
     await screen.findByRole("button", { name: "Register this computer" });
     const note = /run commands as this computer's system account/;
     expect(screen.queryByText(note)).toBeNull();
-    fireEvent.click(screen.getByRole("combobox"));
+    const group = screen.getByRole("radiogroup", { name: "Register to" });
     expect(
-      screen
-        .getByRole("option", { name: /Billing/ })
-        .getAttribute("aria-disabled"),
+      within(group)
+        .getByRole("radio", { name: "Personal space" })
+        .getAttribute("aria-checked"),
     ).toBe("true");
-    fireEvent.click(screen.getByRole("option", { name: "Acme" }));
+    const billing = within(group).getByRole("radio", { name: /Billing/ });
+    expect(billing.hasAttribute("disabled")).toBe(true);
+    expect(group.textContent).toContain("Cannot register hosts");
+    fireEvent.click(within(group).getByRole("radio", { name: "Acme" }));
     expect(await screen.findByText(note)).toBeTruthy();
-    fireEvent.click(screen.getByRole("combobox"));
-    fireEvent.click(screen.getByRole("option", { name: "Personal space" }));
+    fireEvent.click(
+      within(group).getByRole("radio", { name: "Personal space" }),
+    );
     await waitFor(() => expect(screen.queryByText(note)).toBeNull());
   });
 
@@ -210,5 +217,66 @@ describe("添加 Armadra 云", () => {
       await screen.findByRole("button", { name: "Register this computer" }),
     ).toBeTruthy();
     expect(api.pollCloudDevice).toHaveBeenCalledTimes(1);
+  });
+
+  it("设备码旁有倒计时（tabular）", async () => {
+    api.addCloud.mockResolvedValue({
+      remote,
+      next: {
+        deviceCode: {
+          userCode: "ABCD-EFGH",
+          verificationUrl: "https://cloud.test/device",
+          expiresAtMs: Date.now() + 64_500,
+          intervalMs: 600_000,
+        },
+      },
+    });
+    api.pollCloudDevice.mockResolvedValue({ status: "pending" });
+    mount();
+    const timer = await screen.findByRole("timer", {
+      name: "Time left on the device code",
+    });
+    expect(timer.textContent).toMatch(/^1:0[3-5]$/);
+    expect(timer.className).toContain("tabular-nums");
+  });
+
+  it("倒计时走完：本地收尾成「已过期」，给新设备码", async () => {
+    api.addCloud.mockResolvedValue({
+      remote,
+      next: {
+        deviceCode: {
+          userCode: "ABCD-EFGH",
+          verificationUrl: "https://cloud.test/device",
+          expiresAtMs: Date.now() + 1_200,
+          intervalMs: 600_000,
+        },
+      },
+    });
+    api.pollCloudDevice.mockResolvedValue({ status: "pending" });
+    mount();
+    expect(
+      await screen.findByText(
+        "The device code expired",
+        {},
+        { timeout: 5_000 },
+      ),
+    ).toBeTruthy();
+    expect(screen.queryByRole("timer")).toBeNull();
+    expect(screen.getByRole("button", { name: "New code" })).toBeTruthy();
+  });
+
+  it("复制设备码：写剪贴板并提示", async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "clipboard", {
+      value: { writeText },
+      configurable: true,
+    });
+    api.pollCloudDevice.mockResolvedValue({ status: "pending" });
+    mount();
+    fireEvent.click(await screen.findByRole("button", { name: "Copy" }));
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith("ABCD-EFGH"));
+    await waitFor(() =>
+      expect(toasts.success).toHaveBeenCalledWith("Device code copied"),
+    );
   });
 });

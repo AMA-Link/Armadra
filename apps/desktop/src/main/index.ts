@@ -13,10 +13,12 @@ import {
   ipcRejection,
 } from "../shared/ipc";
 import { dataDir } from "../shell-core/paths";
+import { PendingCloudLink, cloudLinkFromArgv } from "../shell-core/cloud-link";
 import { PendingJoinLink, joinLinkFromArgv } from "../shell-core/join-link";
 import {
   type SecondInstanceData,
   instanceProfileDir,
+  cloudLinkOfData,
   joinLinkOfData,
 } from "../shell-core/single-instance";
 import { DEFAULT_DEV_RENDERER_URL } from "../shell-core/window-rules";
@@ -131,6 +133,7 @@ import { versionLine } from "./version-flag";
   if (profile !== null) app.setPath("userData", profile);
   const handoff: SecondInstanceData = {
     joinLink: joinLinkFromArgv(process.argv),
+    cloudLink: cloudLinkFromArgv(process.argv),
   };
   if (!app.requestSingleInstanceLock(handoff)) {
     // 交接在上面那次调用里已同步送达；同步退出，后面的装配不运行。
@@ -190,14 +193,30 @@ function receiveJoinLink(url: unknown): void {
   revealWindow();
 }
 
+/**
+ * 「回到 Armadra 云」深链（`armadra://cloud`，云端控制台 §3.5.1）：同一个模式。页面
+ * 取走后只打开「添加 Armadra 云」对话框，不自动登录（`shell-core/cloud-link.ts`）。
+ */
+const cloudLinks = new PendingCloudLink(cloudLinkFromArgv(process.argv));
+
+function receiveCloudLink(url: unknown): void {
+  if (!cloudLinks.offer(url)) return;
+  const window = getMainWindow();
+  if (window === null) return;
+  window.webContents.send(IPC.sourcesCloudLink.channel);
+  revealWindow();
+}
+
 app.on("open-url", (event, url) => {
   event.preventDefault();
   receiveJoinLink(url);
+  receiveCloudLink(url);
 });
 // 同一份数据目录的第二个实例（Windows 与 Linux 上点深链）：深链优先取它交来的
 // 附加数据，没有再从它的 argv 找；只预填、不挂载。有没有深链都把窗口拿到前面。
 app.on("second-instance", (_event, argv, _cwd, data) => {
   receiveJoinLink(joinLinkOfData(data) ?? joinLinkFromArgv(argv));
+  receiveCloudLink(cloudLinkOfData(data) ?? cloudLinkFromArgv(argv));
   // 窗口还没建（启动途中）就不抢着建：页面载入后自己来取深链。
   if (getMainWindow() !== null) revealWindow();
 });
@@ -228,6 +247,7 @@ function registerIpc(): void {
     [IPC.sourcesChanged.channel]: () =>
       coreFetch === null ? { reload: false } : refreshRemoteTrust(coreFetch),
     [IPC.sourcesTakeJoinLink.channel]: () => joinLinks.take(),
+    [IPC.sourcesTakeCloudLink.channel]: () => cloudLinks.take(),
     // 分享链接交给系统分享菜单；没有菜单的平台答 false，页面退回复制。
     [IPC.appShare.channel]: (request) => shareUrl(request, getMainWindow()),
     // 「切换服务」的「在新窗口打开」：同一张页面另开一扇窗，`?source=` 定初始当前源。

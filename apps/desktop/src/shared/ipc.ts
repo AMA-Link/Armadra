@@ -215,6 +215,14 @@ export const IPC = {
   sourcesTakeJoinLink: spec("app:take-join-link", "invoke", "window"),
 
   /**
+   * 「回到 Armadra 云」深链（`armadra://cloud`，云端控制台 §3.5.1）：与分享深链同一
+   * 模式——壳校验形状后推不带数据的提醒，页面经 `app:take-cloud-link` 取走（只取
+   * 一次）；页面只据此打开「添加 Armadra 云」对话框，不自动登录。
+   */
+  sourcesCloudLink: spec("app:cloud-link", "event", "window"),
+  sourcesTakeCloudLink: spec("app:take-cloud-link", "invoke", "window"),
+
+  /**
    * 分享链接交给系统分享菜单（macOS `ShareMenu`）：`{ title, url }`，答
    * `{ shared }`。平台没有菜单或请求不像样答 `false`，页面退回复制
    * （`main/share.ts`）。
@@ -293,6 +301,7 @@ export const IMPLEMENTED_CHANNELS: readonly string[] = [
   IPC.gatewayRefresh.channel,
   IPC.sourcesChanged.channel,
   IPC.sourcesTakeJoinLink.channel,
+  IPC.sourcesTakeCloudLink.channel,
   IPC.appShare.channel,
   IPC.windowOpen.channel,
   IPC.windowAppearance.channel,

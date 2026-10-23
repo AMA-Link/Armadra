@@ -1140,6 +1140,21 @@ describe("Armadra 云：设备码登录与登记到空间（契约 §33.11）", 
     expect((await saas.list()).remotes).toHaveLength(1);
   });
 
+  it("设备码的 verificationUrl 必须与 issuer 同源且是 https：否则拒绝，不留设备码", async () => {
+    for (const url of [
+      "https://evil.example/device",
+      "http://relay.test/device",
+      "https://relay.test.evil.example/device",
+      "javascript:alert(1)",
+    ]) {
+      world.cloud.verificationUrl = url;
+      expect(await code(start()), url).toBe("source_unreachable");
+    }
+    expect((await saas.list()).remotes).toEqual([]);
+    world.cloud.verificationUrl = `${ISSUER}/device?x=1`;
+    expect((await start()).next).not.toBe("ready");
+  });
+
   it("加入个人中转的地址当 SaaS：bad_request；已是个人中转：conflict", async () => {
     world.cloud.mode = "personal";
     expect(await code(start())).toBe("bad_request");

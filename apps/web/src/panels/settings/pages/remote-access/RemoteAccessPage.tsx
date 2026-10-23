@@ -5,6 +5,7 @@ import { toast } from "@/ui/toast";
 
 import {
   type ClientSource,
+  cloudConsoleUrl,
   dismissRelayCleanup,
   forgetSource,
   logoutRemote,
@@ -17,7 +18,12 @@ import {
   retryRelayCleanup,
 } from "../../../../api/remote-services";
 import { useT } from "../../../../app/preferences-store";
+import { openExternal } from "../../../../platform";
 import { applySourceTable } from "../../../../sources/bootstrap";
+import {
+  onCloudIntent,
+  takeCloudIntent,
+} from "../../../../sources/cloud-intent";
 import { useCurrentSource } from "../../../../sources/context";
 import { hostedRelay } from "../../../../sources/hosted";
 import {
@@ -102,7 +108,36 @@ export function RemoteAccessPage() {
   useTunnelEvents();
 
   const [adding, setAdding] = React.useState<RelayDraft | null>(null);
-  const [addingCloud, setAddingCloud] = React.useState<string | null>(null);
+  // `armadra://cloud` 深链（云端控制台 §3.5.1）：打开「添加 Armadra 云」，地址预填；
+  // 人点了「获取设备码」才开始登录。
+  const [addingCloud, setAddingCloud] = React.useState<string | null>(
+    takeCloudIntent,
+  );
+  // 这个地址是深链带来的（不是人填的）：对话框醒目显示目标域名。
+  const [cloudFromLink, setCloudFromLink] = React.useState(
+    () => addingCloud !== null && addingCloud !== "",
+  );
+  // 对话框此刻在哪一步（由它回报）：只有在填地址那一步才接受新的深链，别的步骤
+  // （设备码、选空间）正在进行，新深链丢掉，免得被悄悄换成别的云。
+  const cloudStep = React.useRef<string>("address");
+  const cloudOpen = React.useRef(false);
+  cloudOpen.current = addingCloud !== null;
+  React.useEffect(
+    () =>
+      onCloudIntent(() => {
+        const issuer = takeCloudIntent();
+        if (issuer === null) return;
+        if (cloudOpen.current && cloudStep.current !== "address") return;
+        setAddingCloud(issuer);
+        setCloudFromLink(issuer !== "");
+      }),
+    [],
+  );
+  // 云端控制台与 API 同一来源：系统浏览器打开 `<issuer>/me`（云端控制台 §3.5.1）。
+  const openConsole = async (issuer: string) => {
+    if (!(await openExternal(cloudConsoleUrl(issuer))))
+      toast.error(t("remote.cloud.openFailed"));
+  };
   const [addingDirect, setAddingDirect] = React.useState(false);
   const [mounting, setMounting] = React.useState(false);
   const [traffic, setTraffic] = React.useState<SourceTrafficTarget | null>(
@@ -269,6 +304,9 @@ export function RemoteAccessPage() {
                           else internet.stop.mutate([remote.issuer]);
                         },
                       }
+                    : {})}
+                  {...(remote.kind === "saas"
+                    ? { onOpenConsole: () => void openConsole(remote.issuer) }
                     : {})}
                   onSignIn={() =>
                     remote.kind === "saas"
@@ -481,7 +519,15 @@ export function RemoteAccessPage() {
       />
       <AddCloudDialog
         initialIssuer={addingCloud}
-        onClose={() => setAddingCloud(null)}
+        fromLink={cloudFromLink}
+        knownIssuers={remotes.map((remote) => remote.issuer)}
+        onStep={(kind) => {
+          cloudStep.current = kind;
+        }}
+        onClose={() => {
+          setAddingCloud(null);
+          setCloudFromLink(false);
+        }}
         onChanged={() => void changed()}
       />
       <AddDirectDialog
