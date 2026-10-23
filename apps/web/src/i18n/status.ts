@@ -47,9 +47,6 @@ const zh = {
   "agentTree.state.done": "已完成",
   "agentTree.state.idle": "空闲",
   "agentTree.more": "还有 {count} 个",
-  "agentTree.moreBelow": "还有下级",
-  "agentTree.collapse": "折叠 {name}",
-  "agentTree.expand": "展开 {name}",
 } as const;
 
 const en: Record<keyof typeof zh, string> = {
@@ -95,9 +92,6 @@ const en: Record<keyof typeof zh, string> = {
   "agentTree.state.done": "Done",
   "agentTree.state.idle": "Idle",
   "agentTree.more": "{count} more",
-  "agentTree.moreBelow": "Has sub-agents",
-  "agentTree.collapse": "Collapse {name}",
-  "agentTree.expand": "Expand {name}",
 };
 
 export const status: MessageModule = { "zh-CN": zh, en };
