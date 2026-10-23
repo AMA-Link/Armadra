@@ -36,6 +36,7 @@ import {
   type ServiceGroup,
   type ServiceRow,
   layoutByOrigin,
+  layoutByTeam,
   layoutServices,
 } from "./rows";
 
@@ -402,9 +403,16 @@ export function ServicePicker({
                     {t(`services.group.${group.key}`)}
                   </h3>
                 )}
-                <ItemGroup className="gap-2">
-                  {group.rows.map((row) => renderRow(row, group.key))}
-                </ItemGroup>
+                {group.key === "shared" ? (
+                  <SharedTeamRows
+                    rows={group.rows}
+                    render={(row) => renderRow(row, group.key)}
+                  />
+                ) : (
+                  <ItemGroup className="gap-2">
+                    {group.rows.map((row) => renderRow(row, group.key))}
+                  </ItemGroup>
+                )}
               </section>
             ))}
           {variant === "dialog" &&
@@ -488,5 +496,46 @@ export function ServicePicker({
         </ResponsiveAlertDialogContent>
       </ResponsiveAlertDialog>
     </div>
+  );
+}
+
+/**
+ * 手机的「他人分享」按团队分小组（云端控制台 §3.5.5，与桌面侧栏同一规矩）：团队在前，
+ * 个人分享在后；只有一个团队且没有个人分享时不画小组标题。
+ */
+function SharedTeamRows({
+  rows,
+  render,
+}: {
+  rows: readonly ServiceRow[];
+  render: (row: ServiceRow) => React.ReactNode;
+}) {
+  const t = useT();
+  const { teams, personal } = layoutByTeam(rows);
+  const titled = teams.length > 1 || (teams.length > 0 && personal.length > 0);
+  const list = (items: readonly ServiceRow[]) => (
+    <ItemGroup className="gap-2">{items.map(render)}</ItemGroup>
+  );
+  return (
+    <>
+      {teams.map((team) => (
+        <div
+          key={team.teamId}
+          data-team-group={team.teamId}
+          className="flex flex-col gap-2"
+        >
+          {titled && <h4 className={HEADING}>{team.name}</h4>}
+          {list(team.rows)}
+        </div>
+      ))}
+      {personal.length > 0 && (
+        <div data-team-group="" className="flex flex-col gap-2">
+          {teams.length > 0 && (
+            <h4 className={HEADING}>{t("workspaceGroups.personal")}</h4>
+          )}
+          {list(personal)}
+        </div>
+      )}
+    </>
   );
 }

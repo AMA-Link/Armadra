@@ -145,8 +145,18 @@ const coreSessionSchema = z.object({
       refreshToken: z.string().min(1),
     }),
   }),
+  /** 契约 §86：分享方报的团队；个人分享、owner 与旧 core 没有。 */
+  share: z
+    .looseObject({
+      team: z
+        .object({ teamId: z.string().min(1), name: z.string().optional() })
+        .optional(),
+    })
+    .optional(),
 });
-export type CoreCloudSession = z.infer<typeof coreSessionSchema>["session"];
+export type CoreCloudSession = z.infer<typeof coreSessionSchema>["session"] & {
+  readonly team?: { readonly teamId: string; readonly name?: string };
+};
 
 const coreRefreshSchema = z.object({
   hostId: z.string().default(""),
@@ -471,7 +481,8 @@ export async function coreCloudLogin(
     },
     options,
   );
-  return answer.session;
+  const team = answer.share?.team;
+  return team === undefined ? answer.session : { ...answer.session, team };
 }
 
 /**
