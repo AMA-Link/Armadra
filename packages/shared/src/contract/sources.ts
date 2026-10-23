@@ -80,6 +80,9 @@ export const clientSourceSchema = protocolClientSourceSchema.extend({
   shareRole: sourceShareRoleSchema,
   /** §68：分享到期的时刻；0 = 未知、不过期或 `mine`。 */
   shareExpiresAtMs: z.number().int(),
+  /** §86（迁移 0054）：分享经由的团队；个人分享、`mine` 与旧对端是空串。 */
+  teamId: z.string(),
+  teamName: z.string(),
   /**
    * §80：本机经端到端通道连过这台时钉住的对端身份公钥（base64url）；没钉过是空串。
    * 别的设备经本机的通道读它，就不必对这台电脑做 TOFU（背书）。

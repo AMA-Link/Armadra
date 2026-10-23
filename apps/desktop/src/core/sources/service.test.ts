@@ -978,6 +978,67 @@ describe("契约 §33.7：按分享链接挂载", () => {
     ).toMatchObject({ shareRole: "editor", shareExpiresAtMs: 9_000_000 });
   });
 
+  it("契约 §86：share 带团队时写团队，重新登录后跟随；不报团队是个人分享", async () => {
+    share();
+    const core = world.cores.get(`${ISSUER}/s/${RELAYED_ID}`)!;
+    core.share = {
+      ownerName: "Alice",
+      role: "viewer",
+      expiresAtMs: 0,
+      team: { teamId: "team-1", name: "研发组" },
+    };
+    expect(
+      await service.mountByLink({ url, fingerprint: RELAY_FP }),
+    ).toMatchObject({ teamId: "team-1", teamName: "研发组" });
+
+    core.share = { ownerName: "Alice", role: "viewer", expiresAtMs: 0 };
+    core.sessions.revokeAll();
+    await service.session(RELAYED_ID, "relayed");
+    expect(
+      (await service.list()).sources.find((one) => one.sourceId === RELAYED_ID),
+    ).toMatchObject({ teamId: "", teamName: "" });
+    expect(
+      (await service.list()).sources.find((one) => one.kind === "local"),
+    ).toMatchObject({ teamId: "", teamName: "" });
+  });
+
+  it("契约 §86：只报团队标识时用本机登录着的 Armadra 云补名字，取不到留空", async () => {
+    share();
+    const core = world.cores.get(`${ISSUER}/s/${RELAYED_ID}`)!;
+    core.share = {
+      ownerName: "Alice",
+      role: "viewer",
+      expiresAtMs: 0,
+      team: { teamId: "team-1" },
+    };
+    const internals = service as unknown as {
+      remoteAccess(row: unknown): Promise<{ accessToken: string }>;
+      remote: { spaces(): Promise<unknown[]> };
+    };
+    const spaces = [
+      { kind: "team", teamId: "team-2", slug: "b", name: "设计组" },
+      { kind: "team", teamId: "team-1", slug: "a", name: "研发组" },
+    ];
+    internals.remoteAccess = async () => ({ accessToken: "t" });
+    internals.remote.spaces = async () => spaces;
+    opened.database
+      .prepare(
+        "INSERT INTO remote_services(service_id, kind, issuer, label, account_hint, added_at_ms) VALUES(lower(hex(randomblob(16))), 'saas', 'https://cloud.test', 'cloud', 'a@b', 1)",
+      )
+      .run();
+    expect(
+      await service.mountByLink({ url, fingerprint: RELAY_FP }),
+    ).toMatchObject({ teamId: "team-1", teamName: "研发组" });
+
+    internals.remote.spaces = async () => {
+      throw new Error("offline");
+    };
+    share();
+    expect(
+      await service.mountByLink({ url, fingerprint: RELAY_FP }),
+    ).toMatchObject({ teamId: "team-1", teamName: "" });
+  });
+
   it("契约 §68：分享方不报 share（旧 core）仍是 shared，分享信息留空；角色不认识当未知", async () => {
     share();
     const core = world.cores.get(`${ISSUER}/s/${RELAYED_ID}`)!;

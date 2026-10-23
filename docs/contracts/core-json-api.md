@@ -4664,3 +4664,25 @@ owner（本机会话，或已信任设备经通道的 owner 会话）：`{ sourc
 - **两个上限都只约束成员**：owner 与没有请求身份的动作（桌面壳、依赖编排、定时冷启动、休眠唤醒还原）不受限，单人桌面不会因为开了 9 个 Agent 被拦；`revive` 不经判定。同一成员 / 同一工作空间的并发 spawn 在管理器里排队，判定与插行之间不会被并发穿过。
 - 值写成负数、小数或非数字时退回缺省（与设置文档其它段同一规矩）。
 - 托管源的配额计数（`usage_counters`）由编排器上报，不在 core。
+
+## 86. 分享来的源按团队分组：`client_sources.team_id` / `team_name`
+
+> 状态：实施契约（云端控制台 U7c，设计 `docs/design/cloud-console.md` §3.5.4、§3.5.5；云端跟踪 AMA-Link/armadra-cloud#60）。接着 §68：追加两列与一个可选字段，不改 §68 的任何约定，协议 minor 不变。
+
+侧栏与手机的「他人分享」按团队分小组。团队只是展示用的分组提示，权限照旧由分享方的 core 判定（§60）。
+
+### 86.1 源表的团队（迁移 0054）
+
+- **`client_sources` 加两列**：`team_id`（不超过 128，缺省空串）、`team_name`（不超过 128，缺省空串）。空 `team_id` = 个人分享（链接、个人邀请）、本机、配对、用自己的账号挂上的，以及不报团队的旧对端；不回填，旧行全是空串。
+- **写入规矩**：与 §68.1 的分享信息同一处——`sources.mountByLink` 新建或合并 `shared` 行时写入，经中继重新 `cloud/login`（刷新令牌失效）时按对端这一次报的覆盖（对端不再报团队就清回个人）；`sources.addDirect`、`sources.mount` 与 `mine` 的行一律空串。`setShare` 只改 `shared` 的行。
+- **出参**：`ClientSource` 多 `teamId: string` 与 `teamName: string`（`sources.list`、`sources.mountByLink` 等返回源的地方）；`mine` 与个人分享是空串。
+
+### 86.2 `cloud/login` 的 `share.team`
+
+- `POST /api/identity/cloud/login`（§31.3）答案里的 `share`（§68.3）追加可选 `team: { teamId: string, name?: string }`。被分享的主机是 SaaS 登记（`mode = saas`）且断言带 `team` 时，主机报断言里的 `team.teamId`；断言里没有团队名字，主机不报 `name`。个人中转登记、断言不带 `team`、owner 自己登录时没有 `team`。
+- 接收方（`SourcesService`）按报的值写 §86.1 的两列：`teamId` 去首尾空白后截到 128；没有 `name` 时，用本机登录着的 Armadra 云（`remote_services.kind = saas`）的 `me.spaces` 里同一 `teamId` 的名字补上；取不到不拦挂载，`team_name` 留空。形状不对的 `team` 当没报。
+
+### 86.3 页面的分组规矩
+
+- 「他人分享」按 `teamId` 分小组，小组标题是 `teamName`，没有名字时退回 `teamId` 的前 8 位；`teamId` 为空的归个人分享，排在团队小组之后。只有一个团队、没有个人分享时不画小组标题。团队小组之间按首次出现的源表顺序。
+- 手机连接表（`armadra.sources`，页面本地存储）的行同样带可选 `teamId` / `teamName`（缺省空串，不升表版本），手机连接页的「他人分享」与桌面侧栏同一规矩。

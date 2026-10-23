@@ -73,6 +73,9 @@ export interface CloudLoginShare {
   readonly role: "" | "viewer" | "editor" | "operator" | "driver";
   /** 0 = 不过期。 */
   readonly expiresAtMs: number;
+  /** 分享经由的团队（契约 §86）；个人分享、对端没报是空串。 */
+  readonly teamId: string;
+  readonly teamName: string;
 }
 
 const SHARE_ROLES = new Set(["viewer", "editor", "operator", "driver"]);
@@ -83,7 +86,11 @@ function shareOf(value: unknown): CloudLoginShare | undefined {
   const share = value as Record<string, unknown>;
   const role = str(share.role);
   const expires = share.expiresAtMs;
+  const team = record(share.team);
+  const teamId = str(team.teamId).trim().slice(0, 128);
   return {
+    teamId,
+    teamName: teamId === "" ? "" : str(team.name).trim().slice(0, 128),
     ownerName: str(share.ownerName).trim().slice(0, 128),
     role: SHARE_ROLES.has(role) ? (role as CloudLoginShare["role"]) : "",
     expiresAtMs:

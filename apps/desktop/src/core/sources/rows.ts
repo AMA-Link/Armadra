@@ -80,6 +80,8 @@ export const MINE = {
   ownerLabel: "",
   shareRole: "",
   shareExpiresAtMs: 0,
+  teamId: "",
+  teamName: "",
 } as const;
 
 /** `cloud/login` 报的分享信息 → 源行的三列（契约 §68）。 */
@@ -88,5 +90,7 @@ export function shareColumns(share: CloudLoginShare | undefined): SourceShare {
     ownerLabel: clip(share?.ownerName ?? "", 128),
     shareRole: share?.role ?? "",
     shareExpiresAtMs: share?.expiresAtMs ?? 0,
+    teamId: clip(share?.teamId ?? "", 128),
+    teamName: clip(share?.teamName ?? "", 128),
   };
 }

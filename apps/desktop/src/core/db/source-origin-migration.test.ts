@@ -122,6 +122,8 @@ describe("0047 source_origin", () => {
       ownerLabel: "Alice",
       shareRole: "viewer",
       shareExpiresAtMs: 7,
+      teamId: "",
+      teamName: "",
     });
     // setShare 只改 shared 的行。
     expect(store.get(JOINED)).toMatchObject({ origin: "mine", shareRole: "" });
@@ -130,12 +132,16 @@ describe("0047 source_origin", () => {
       ownerLabel: "Alice",
       shareRole: "viewer",
       shareExpiresAtMs: 7,
+      teamId: "",
+      teamName: "",
     });
     expect(store.get(JOINED)).toMatchObject({
       origin: "shared",
       ownerLabel: "Alice",
       shareRole: "viewer",
       shareExpiresAtMs: 7,
+      teamId: "",
+      teamName: "",
     });
   });
 });

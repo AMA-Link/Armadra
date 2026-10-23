@@ -91,7 +91,12 @@ export interface FakeCore {
   /** hello 报的「主机名称」（契约 §61）；不给不报。 */
   hostName?: string;
   /** `cloud/login` 答的 `share`（契约 §68）；不给不报（旧对端、owner）。 */
-  share?: { ownerName: string; role: string; expiresAtMs: number };
+  share?: {
+    ownerName: string;
+    role: string;
+    expiresAtMs: number;
+    team?: { teamId: string; name?: string };
+  };
 }
 
 /** 假中继上的一条分享链接（cloud-api §5）。 */
