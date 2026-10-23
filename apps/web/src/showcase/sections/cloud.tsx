@@ -12,9 +12,14 @@ import { ConsoleSidebar, ConsoleShell } from "@/cloud/shell/ConsoleShell";
 import { EmbeddedAuth } from "@/cloud/auth/AuthLayout";
 import { DevicePage } from "@/cloud/auth/DevicePage";
 import { LinkPage } from "@/cloud/auth/LinkPage";
-import { MOCK_DEVICE_CODES, MOCK_LINK } from "@/cloud/mock/fixtures";
+import {
+  MOCK_DEVICE_CODES,
+  MOCK_LINK,
+  MOCK_PERSONAL,
+} from "@/cloud/mock/fixtures";
 import { PageHeader } from "@/cloud/shell/PageHeader";
 import { OpsPage } from "@/cloud/ops/OpsPages";
+import { PersonalPage } from "@/cloud/personal/PersonalPages";
 import { OPS_QUERY_KEY } from "@/cloud/ops/TenantsPage";
 import { matchRoute } from "@/cloud/router";
 import { DataList, type DataColumn } from "@/cloud/ui/DataList";
@@ -141,7 +146,7 @@ function FromSession({
 }
 
 /**
- * `cloud` 分区（云端控制台 §7 U1a、U1b、U2b）：外壳（带未验证提示与计数）、两种侧栏、整页
+ * `cloud` 分区（云端控制台 §7 U1a、U1b、U2b、U3、U8）：外壳（带未验证提示与计数）、两种侧栏、整页
  * 四态、设备授权与分享链接落地的公开页、`DataList` 的表格与列表两种渲染、`Progress` 三档、输入确认。外壳随视口宽度
  * 在固定侧栏与顶栏加抽屉之间切换，探针 390 / 768 / 1440 各截一张。
  */
@@ -257,6 +262,24 @@ function CloudSamples({ session }: { session: ConsoleSession }) {
             onRowOpen={noop}
           />
         </ConsoleShell>
+      </div>
+
+      <div className="flex flex-col gap-4">
+        {["/me/hosts", `/me/hosts/${MOCK_PERSONAL.linkHost}`, "/me/links"].map(
+          (path) => {
+            const match = matchRoute(path)!;
+            return (
+              <div
+                key={path}
+                className="h-[520px] overflow-hidden rounded-card border border-border"
+              >
+                <ConsoleShell {...shellProps} match={match}>
+                  <PersonalPage match={match} />
+                </ConsoleShell>
+              </div>
+            );
+          },
+        )}
       </div>
 
       <div className="flex flex-col gap-4">
