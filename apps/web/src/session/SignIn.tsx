@@ -203,7 +203,7 @@ export function SignIn({
     >
       <div className="flex flex-col items-center gap-3">
         <BrandMark className="size-12" />
-        <h1 className="text-[length:var(--text-display)] leading-tight font-semibold">
+        <h1 className="text-display leading-tight font-semibold">
           {step === "mfa" || step === "recovery"
             ? t("auth.mfa.title")
             : t("auth.title")}
@@ -241,7 +241,6 @@ export function SignIn({
               id={`${id}-account`}
               autoComplete="username webauthn"
               autoFocus={focus}
-              className="text-base md:text-sm"
               value={account}
               disabled={disabled}
               aria-invalid={error !== "" || undefined}
@@ -251,6 +250,7 @@ export function SignIn({
           </Field>
           <Button
             type="submit"
+            size="lg"
             className="w-full"
             disabled={disabled || !account.trim()}
           >
@@ -258,7 +258,7 @@ export function SignIn({
           </Button>
           {(passkey || available.length > 0) && (
             // 「或」坐在任意底色上（设置对话框、整页），所以不给文字垫底色。
-            <div className="my-1 flex items-center gap-3 text-xs text-muted-foreground">
+            <div className="my-1 flex items-center gap-3 text-meta text-muted-foreground">
               <Separator className="flex-1" />
               {t("auth.or")}
               <Separator className="flex-1" />
@@ -268,15 +268,13 @@ export function SignIn({
             <Button
               type="button"
               variant="outline"
+              size="lg"
               className="w-full"
               disabled={disabled}
+              loading={busy === "passkey"}
               onClick={signInWithPasskey}
             >
-              {busy === "passkey" ? (
-                <Spinner aria-label={t("auth.passkey")} />
-              ) : (
-                <KeyRound />
-              )}
+              <KeyRound data-icon="inline-start" />
               {t("auth.passkey")}
             </Button>
           )}
@@ -285,13 +283,12 @@ export function SignIn({
               key={provider.id}
               type="button"
               variant="outline"
+              size="lg"
               className="w-full"
               disabled={disabled}
+              loading={busy === provider.id}
               onClick={() => startProvider(provider.id)}
             >
-              {busy === provider.id && (
-                <Spinner aria-label={providerLabel(provider, t)} />
-              )}
               {providerLabel(provider, t)}
             </Button>
           ))}
@@ -324,7 +321,6 @@ export function SignIn({
               type="password"
               autoComplete="current-password"
               autoFocus={focus}
-              className="text-base md:text-sm"
               value={password}
               disabled={disabled}
               aria-invalid={error !== "" || undefined}
@@ -334,15 +330,17 @@ export function SignIn({
           </Field>
           <Button
             type="submit"
+            size="lg"
             className="w-full"
             disabled={disabled || !password}
+            loading={busy === "form"}
           >
-            {busy === "form" && <Spinner aria-label={t("auth.signIn")} />}
             {t("auth.signIn")}
           </Button>
           <Button
             type="button"
             variant="ghost"
+            size="lg"
             className="w-full"
             disabled={busy !== ""}
             onClick={() => {
@@ -358,7 +356,7 @@ export function SignIn({
           {forgot ? (
             <p
               role="status"
-              className="text-center text-[13px] text-muted-foreground"
+              className="text-center text-body text-muted-foreground"
             >
               {t("auth.forgot.hint")}
             </p>
@@ -410,7 +408,7 @@ export function SignIn({
                   <InputOTPSlot
                     key={index}
                     index={index}
-                    className="size-10 text-base"
+                    className="size-10"
                     aria-invalid={error !== "" || undefined}
                   />
                 ))}
@@ -451,7 +449,7 @@ export function SignIn({
               autoComplete="one-time-code"
               autoFocus={focus}
               spellCheck={false}
-              className="font-mono text-base md:text-sm"
+              className="font-mono"
               value={code}
               disabled={disabled}
               aria-invalid={error !== "" || undefined}
@@ -461,10 +459,11 @@ export function SignIn({
           </Field>
           <Button
             type="submit"
+            size="lg"
             className="w-full"
             disabled={disabled || !code.trim()}
+            loading={busy === "form"}
           >
-            {busy === "form" && <Spinner aria-label={t("auth.verify")} />}
             {t("auth.verify")}
           </Button>
           <Button

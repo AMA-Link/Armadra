@@ -106,7 +106,7 @@ export function ChallengeFrame({
   if (failed) {
     return (
       <div className="flex flex-col items-center gap-3 py-2">
-        <p role="alert" className="text-sm text-muted-foreground">
+        <p role="alert" className="text-body text-muted-foreground">
           {t("challenge.loadFailed")}
         </p>
         <Button

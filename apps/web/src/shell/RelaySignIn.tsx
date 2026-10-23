@@ -186,15 +186,15 @@ export function RelaySignIn({
     >
       <div className="flex w-full max-w-sm flex-col gap-(--space-section)">
         <div className="flex flex-col items-center gap-3 text-center">
-          <BrandMark className="size-12 rounded-[var(--r-panel)]" />
-          <h1 className="text-[length:var(--text-display)] leading-tight font-semibold text-balance">
+          <BrandMark className="size-12 rounded-panel" />
+          <h1 className="text-display leading-tight font-semibold text-balance">
             {t(
               hosts === null
                 ? "remote.hosted.title"
                 : "remote.hosted.chooseHost",
             )}
           </h1>
-          <p className="font-mono text-[13px] text-muted-foreground tabular-nums">
+          <p className="font-mono text-body text-muted-foreground tabular-nums">
             {host}
           </p>
         </div>
@@ -223,7 +223,7 @@ export function RelaySignIn({
             )}
             {trafficRow !== undefined && (
               <>
-                <h2 className="truncate text-center text-[length:var(--text-section)] font-semibold">
+                <h2 className="truncate text-center text-section font-semibold">
                   {trafficRow.name}
                 </h2>
                 <SourceTraffic
@@ -232,9 +232,9 @@ export function RelaySignIn({
                 />
                 <Button
                   type="button"
-                  size="lg"
+                  size="touch"
                   variant="ghost"
-                  className="h-11 w-full"
+                  className="w-full"
                   onClick={() => setTrafficId(null)}
                 >
                   <ChevronLeft data-icon="inline-start" />
@@ -266,7 +266,7 @@ export function RelaySignIn({
           </div>
         )}
         {/* 浏览器端的边界（端到端加密设计 §5）：页面由中继下发，下发那一刻的投毒防不住。 */}
-        <p className="text-center text-[12px] text-muted-foreground text-balance">
+        <p className="text-center text-meta text-muted-foreground text-balance">
           {t("e2e.browserNotice")}
         </p>
       </div>

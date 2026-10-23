@@ -18,7 +18,6 @@ import { openAfterJoin } from "../sources/join-intent";
 import { Alert, AlertTitle } from "@/ui/alert";
 import { BrandMark } from "@/ui/brand-mark";
 import { Button } from "@/ui/button";
-import { Spinner } from "@/ui/spinner";
 
 /** 加入之后页面落在哪（远程服务托管的页面根，cloud-api §10）。 */
 const APP_PATH = "/app/";
@@ -145,8 +144,8 @@ export function JoinPage({
     >
       <div className="flex w-full max-w-sm flex-col gap-(--space-section)">
         <div className="flex flex-col items-center gap-3 text-center">
-          <BrandMark className="size-12 rounded-[var(--r-panel)]" />
-          <h1 className="text-[length:var(--text-display)] leading-tight font-semibold text-balance">
+          <BrandMark className="size-12 rounded-panel" />
+          <h1 className="text-display leading-tight font-semibold text-balance">
             {t("links.page.title")}
           </h1>
           <Loadable
@@ -165,10 +164,10 @@ export function JoinPage({
             }
           >
             {name && (
-              <p className="text-[15px] font-medium break-words">{name}</p>
+              <p className="text-section font-medium break-words">{name}</p>
             )}
             {meta && (
-              <p className="text-[13px] text-muted-foreground tabular-nums">
+              <p className="text-body text-muted-foreground tabular-nums">
                 {meta}
               </p>
             )}
@@ -185,23 +184,23 @@ export function JoinPage({
                 <AlertTitle>{failure}</AlertTitle>
               </Alert>
             )}
-            <Button asChild size="lg" className="h-11 w-full">
+            <Button asChild size="touch" className="w-full">
               <a href={joinDeepLink(link)}>{t("links.page.openApp")}</a>
             </Button>
             <Button
               type="button"
-              size="lg"
+              size="touch"
               variant="ghost"
-              className="h-11 w-full"
-              disabled={busy || info?.exhausted === true}
+              className="w-full"
+              disabled={info?.exhausted === true}
+              loading={busy}
               onClick={() => void join()}
             >
-              {busy && <Spinner data-icon="inline-start" aria-hidden />}
               {failure && !busy
                 ? t("links.page.retry")
                 : t("links.page.joinInBrowser")}
             </Button>
-            <p className="text-center text-[12px] text-muted-foreground text-balance">
+            <p className="text-center text-meta text-muted-foreground text-balance">
               {t("e2e.browserNotice")}
             </p>
           </div>

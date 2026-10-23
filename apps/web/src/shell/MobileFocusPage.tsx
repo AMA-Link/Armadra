@@ -94,9 +94,9 @@ export function MobileFocusPage() {
       <div className="flex min-h-12 shrink-0 items-center gap-2 border-b border-border pr-2 pl-[calc(0.5rem+var(--window-controls-left))]">
         <Button
           type="button"
-          size="sm"
+          size="touch"
           variant="ghost"
-          className="min-h-10 shrink-0 px-2"
+          className="shrink-0"
           onClick={() => setFocusNode(null)}
         >
           <ChevronLeft aria-hidden />
@@ -138,7 +138,7 @@ export function MobileFocusPage() {
           "[&_[data-slot=connection-handle]]:hidden",
           "[&_.node-frame]:rounded-none [&_.node-frame]:border-0",
           // 会话视图的输入框在手机上 16px，否则 iOS 聚焦时放大整页（设计系统 §2.3）。
-          "[&_[data-slot=acp-session-view]_textarea]:text-[length:var(--text-input-touch)]",
+          "[&_[data-slot=acp-session-view]_textarea]:[font-size:var(--text-input-touch)]",
           "[&_[data-slot=acp-session-view]]:pb-[var(--safe-bottom)]",
         )}
         data-node-type={node.type}
@@ -173,7 +173,7 @@ export function TerminalKeyBar({ nodeId }: { nodeId: string }) {
       aria-label={t("mobile.keys.label")}
       role="toolbar"
       data-slot="mobile-key-bar"
-      className="shrink-0 border-t border-border bg-[var(--panel)] pb-[var(--safe-bottom)]"
+      className="shrink-0 border-t border-border bg-panel pb-[var(--safe-bottom)]"
     >
       {controls && (
         <div className="flex gap-1 overflow-x-auto px-2 pt-2">
@@ -223,15 +223,15 @@ function KeyButton({
   return (
     <Button
       variant="outline"
-      size="xs"
+      size="touch"
       type="button"
       aria-pressed={pressed}
       className={cn(
-        "h-auto min-h-10 min-w-11 shrink-0 rounded-md border border-border px-2",
-        "font-mono text-[13px] leading-none font-normal",
+        "min-w-11 shrink-0 border border-border px-2",
+        "font-mono text-body leading-none font-normal",
         // 按下（Ctrl 锁住）是选中态：品牌浅底 + 品牌字（设计系统 §3.4）。
         pressed
-          ? "border-[var(--brand)] bg-[var(--brand-soft)] text-[var(--brand-text)]"
+          ? "border-brand bg-brand-soft text-brand-text"
           : "bg-card text-foreground",
       )}
       // 按下不抢终端的焦点，否则每按一个键软键盘就收一次。

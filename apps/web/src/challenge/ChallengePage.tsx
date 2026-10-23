@@ -3,6 +3,7 @@ import * as React from "react";
 import { syncDocumentPreferences, useT } from "../app/preferences-store";
 import { Button } from "@/ui/button";
 import { Input } from "@/ui/input";
+import { TextSwap } from "@/ui/text-swap";
 import { TurnstileWidget } from "./TurnstileWidget";
 import {
   CHALLENGE_MESSAGE,
@@ -68,7 +69,7 @@ export function ChallengePage({
               readOnly
               aria-label={t("challenge.token")}
               value={token}
-              className="font-mono text-[12px]"
+              className="font-mono text-meta"
               onFocus={(event) => event.target.select()}
             />
             <Button
@@ -82,7 +83,9 @@ export function ChallengePage({
                 )
               }
             >
-              {copied ? t("challenge.copied") : t("challenge.copy")}
+              <TextSwap>
+                {copied ? t("challenge.copied") : t("challenge.copy")}
+              </TextSwap>
             </Button>
           </div>
         )}

@@ -2,6 +2,7 @@ import type { UsageProvider } from "@armadra/shared";
 import { useT } from "../app/preferences-store";
 import { formatRelativeTime } from "../lib/format";
 import { LocalEstimate } from "../panels/usage/LocalEstimate";
+import { Progress, progressToneFor } from "../ui/progress";
 import {
   UNAVAILABLE_REASONS,
   usageLocalEstimate,
@@ -29,13 +30,13 @@ export function ProviderDetail({
     <div className="flex min-w-0 flex-col gap-3">
       <div className="flex flex-col gap-1">
         <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
-          <span className="text-sm font-medium">
+          <span className="text-body font-medium">
             {t(`usage.provider.${provider.id}`)}
           </span>
           {Number.isFinite(fetchedAt) && (
             <time
               dateTime={provider.fetchedAt!}
-              className="text-xs text-muted-foreground"
+              className="text-meta text-muted-foreground"
               title={new Date(fetchedAt).toLocaleString()}
             >
               {t("usage.updated", {
@@ -47,7 +48,7 @@ export function ProviderDetail({
         {showCredentialSource &&
           provider.credentialSource &&
           provider.credentialSource !== "none" && (
-            <span className="text-xs text-muted-foreground">
+            <span className="text-meta text-muted-foreground">
               {t("settings.credentialSource")} ·{" "}
               {t(`settings.credential.${provider.credentialSource}`)}
             </span>
@@ -56,7 +57,7 @@ export function ProviderDetail({
       {provider.status === "unavailable" &&
       UNAVAILABLE_REASONS.has(provider.reason ?? "") ? (
         <>
-          <p className="text-xs leading-relaxed text-muted-foreground">
+          <p className="text-meta leading-relaxed text-muted-foreground">
             {t(usageReasonKey(provider.reason))}
           </p>
           {estimate && (
@@ -64,7 +65,7 @@ export function ProviderDetail({
           )}
         </>
       ) : provider.status !== "ok" ? (
-        <p className="text-xs leading-relaxed text-muted-foreground">
+        <p className="text-meta leading-relaxed text-muted-foreground">
           {t(
             provider.status === "error"
               ? "usage.status.error"
@@ -81,7 +82,7 @@ export function ProviderDetail({
       ) : (
         <>
           {usageIsStale(provider, now) && (
-            <p className="text-xs text-warn">{t("usage.stale")}</p>
+            <p className="text-meta text-warn-text">{t("usage.stale")}</p>
           )}
           {provider.windows.map((window) => {
             const percent = usagePercent(provider, window, now);
@@ -89,7 +90,7 @@ export function ProviderDetail({
             const resetAt = Date.parse(window.resetsAt ?? "");
             return (
               <div key={window.key} className="flex min-w-0 flex-col gap-1.5">
-                <div className="flex items-baseline justify-between gap-3 text-xs">
+                <div className="flex items-baseline justify-between gap-3 text-meta">
                   <span className="min-w-0 break-words text-muted-foreground">
                     {name}
                   </span>
@@ -99,35 +100,18 @@ export function ProviderDetail({
                       : t("usage.used", { value: Math.round(percent) })}
                   </span>
                 </div>
-                <div
-                  role="progressbar"
+                <Progress
+                  value={percent}
+                  tone={progressToneFor(percent ?? 0)}
                   aria-label={`${t(`usage.provider.${provider.id}`)} · ${name}`}
-                  aria-valuemin={0}
-                  aria-valuemax={100}
-                  aria-valuenow={percent ?? undefined}
                   aria-valuetext={
                     percent === null
                       ? t("usage.stale")
                       : t("usage.used", { value: Math.round(percent) })
                   }
-                  className="h-1 w-full overflow-hidden rounded-full bg-border"
-                >
-                  {percent !== null && (
-                    <div
-                      data-level={
-                        percent >= 95
-                          ? "danger"
-                          : percent >= 80
-                            ? "warn"
-                            : "normal"
-                      }
-                      className="h-full rounded-full bg-brand data-[level=danger]:bg-danger data-[level=warn]:bg-warn"
-                      style={{ width: `${percent}%` }}
-                    />
-                  )}
-                </div>
+                />
                 <span
-                  className="text-xs text-muted-foreground"
+                  className="text-meta text-muted-foreground"
                   title={
                     Number.isFinite(resetAt)
                       ? new Date(resetAt).toLocaleString()
