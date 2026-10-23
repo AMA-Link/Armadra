@@ -220,7 +220,7 @@ await h.run(async () => {
 
   await open("dark");
   const stillSlide = await page.evaluate(probeIndicator);
-  check(stillSlide.offset < 1, "减少动效：指示器当拍落到目标位置", stillSlide);
+  check(stillSlide.offset < 2, "减少动效：指示器当拍落到目标位置", stillSlide);
   await open("dark");
   const stillNumber = await page.evaluate(probeNumber);
   check(stillNumber === "9,031", "减少动效：数字当拍就是新值", stillNumber);

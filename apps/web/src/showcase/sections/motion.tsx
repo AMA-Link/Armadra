@@ -120,11 +120,13 @@ function IndicatorTabs({
   return (
     <div className="relative flex gap-1 rounded-card border border-border bg-muted p-0.5">
       {INDICATOR_ITEMS.map((item) => (
-        <button
+        <Button
           key={item}
-          type="button"
+          variant="ghost"
+          size="sm"
+          static
           data-active={item === active ? "true" : undefined}
-          className="relative isolate rounded-control px-3 py-1 text-body text-muted-foreground outline-none focus-visible:ring-3 focus-visible:ring-ring/50 data-[active=true]:text-foreground"
+          className="relative isolate text-muted-foreground hover:bg-transparent data-[active=true]:text-foreground"
           onClick={() => onPick(item)}
           {...hoverProps(item)}
         >
@@ -138,7 +140,7 @@ function IndicatorTabs({
             <Indicator className="inset-0 rounded-control border border-border bg-background" />
           )}
           {item}
-        </button>
+        </Button>
       ))}
     </div>
   );
