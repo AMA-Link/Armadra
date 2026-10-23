@@ -41,7 +41,6 @@ export const fileWorkflow: MessageModule = {
     "fileOps.move": "移动",
     "fileOps.delete": "删除到回收站",
     "fileOps.deleteTitle": "删除「{name}」？",
-    "fileOps.deleteDescription": "移动到工作区回收站，可以恢复。",
     "fileOps.deleted": "已移到回收站",
     "fileOps.undo": "撤销",
     "fileOps.restored": "已恢复 {path}",
@@ -88,8 +87,6 @@ export const fileWorkflow: MessageModule = {
     "fileOps.move": "Move",
     "fileOps.delete": "Delete to trash",
     "fileOps.deleteTitle": "Delete “{name}”?",
-    "fileOps.deleteDescription":
-      "It moves to the workspace trash and can be restored.",
     "fileOps.deleted": "Moved to trash",
     "fileOps.undo": "Undo",
     "fileOps.restored": "Restored {path}",
