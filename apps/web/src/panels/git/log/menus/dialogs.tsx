@@ -6,10 +6,10 @@ import type { GitRemoteRecord, GitStashDetail } from "@armadra/shared";
 import { useT } from "../../../../app/preferences-store";
 import { Button } from "../../../../ui/button";
 import { Input } from "../../../../ui/input";
+import { EmptyState } from "../../../../ui/state";
 import {
   ResponsiveDialog,
   ResponsiveDialogContent,
-  ResponsiveDialogDescription,
   ResponsiveDialogFooter,
   ResponsiveDialogHeader,
   ResponsiveDialogTitle,
@@ -77,15 +77,15 @@ export function NamePromptDialog({
         if (!open) onClose();
       }}
     >
-      <ResponsiveDialogContent>
+      <ResponsiveDialogContent aria-describedby={undefined}>
         <ResponsiveDialogHeader>
           <ResponsiveDialogTitle>
             {t(promptTitleKey(prompt))}
           </ResponsiveDialogTitle>
           {prompt?.reference && (
-            <ResponsiveDialogDescription className="break-all font-mono">
+            <p className="break-all font-mono text-meta text-muted-foreground">
               {prompt.reference}
-            </ResponsiveDialogDescription>
+            </p>
           )}
         </ResponsiveDialogHeader>
         {fields.name && (
@@ -129,21 +129,16 @@ export function NamePromptDialog({
                 submit();
               }}
             />
-            {prompt?.kind === "remoteUrl" && (
-              <p className="text-xs text-muted-foreground">
-                {t("gitLog.menu.remoteUrlRetype")}
-              </p>
-            )}
           </>
         )}
         {currentRemote && (
-          <p className="break-all font-mono text-xs text-muted-foreground">
+          <p className="break-all font-mono text-meta text-muted-foreground">
             {/* 脱敏之后才显示，并且不回填——`[redacted]` 写回配置就把凭据删了。 */}
             {redactRemoteUrl(currentRemote.fetchUrl)}
           </p>
         )}
         {prompt?.oid && (
-          <p className="font-mono text-xs text-muted-foreground">
+          <p className="font-mono text-meta text-muted-foreground">
             {prompt.oid.slice(0, 12)}
           </p>
         )}
@@ -195,30 +190,31 @@ export function StashDiffDialog({
         if (!open) onClose();
       }}
     >
-      <ResponsiveDialogContent className="max-w-3xl">
+      <ResponsiveDialogContent
+        aria-describedby={undefined}
+        className="max-w-3xl"
+      >
         <ResponsiveDialogHeader>
           <ResponsiveDialogTitle>
             {t("gitLog.stash.diffTitle")}
           </ResponsiveDialogTitle>
-          <ResponsiveDialogDescription className="break-all font-mono">
+          <p className="break-all font-mono text-meta text-muted-foreground">
             {target?.oid.slice(0, 12)}
-          </ResponsiveDialogDescription>
+          </p>
         </ResponsiveDialogHeader>
         {target && <GitLoadable loading={detail.isLoading} size={3} />}
         {detail.error && (
           <ReadError error={detail.error} retry={() => void detail.refetch()} />
         )}
         {detail.data && sections.length === 0 && (
-          <p className="text-xs text-muted-foreground">
-            {t("gitLog.stash.empty")}
-          </p>
+          <EmptyState inline title={t("gitLog.stash.empty")} />
         )}
         {sections.map((section) => (
           <section key={section.key} className="min-w-0 space-y-1">
-            <h3 className="text-xs font-medium">{t(section.key)}</h3>
+            <h3 className="text-meta font-medium">{t(section.key)}</h3>
             <pre
               tabIndex={0}
-              className="max-h-72 overflow-auto rounded bg-muted p-2 text-[11px]"
+              className="max-h-72 overflow-auto rounded-tight bg-muted p-2 text-caption"
             >
               {section.patch}
             </pre>

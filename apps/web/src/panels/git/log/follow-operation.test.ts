@@ -6,7 +6,7 @@ const dismiss = vi.fn();
 const error = vi.fn();
 const warning = vi.fn();
 const info = vi.fn();
-vi.mock("sonner", () => ({
+vi.mock("@/ui/toast", () => ({
   toast: {
     loading: (...args: unknown[]) => loading(...args),
     dismiss: (...args: unknown[]) => dismiss(...args),
@@ -120,8 +120,6 @@ describe("followOperation", () => {
     // 结局不带进行中那条的「取消」，也不再常驻。
     expect(warning).toHaveBeenCalledWith(t("gitRepo.unknown"), {
       id: "git-operation-op-1",
-      action: undefined,
-      duration: undefined,
     });
   });
 });

@@ -214,7 +214,7 @@ export function CommitGraphLanes({
               data-parent={edge.parent}
               fill="none"
               stroke={color}
-              strokeWidth="1.5"
+              className="stroke-[1.5]"
               strokeLinecap="round"
               strokeDasharray={edge.to ? undefined : "3 3"}
               d={
@@ -245,7 +245,7 @@ export function CommitGraphLanes({
               r={selected === commit.oid ? 4.5 : 3.5}
               fill={merge ? "var(--background)" : laneColor(point.lane)}
               stroke={laneColor(point.lane)}
-              strokeWidth="2"
+              className="stroke-2"
             >
               <title>{commit.oid}</title>
             </circle>
