@@ -458,6 +458,8 @@ export async function coreCloudLogin(
   assertion: string,
   invitationToken: string | undefined,
   options: CloudOptions = {},
+  /** 当前会话的刷新令牌：SaaS 来源的限寿会话在原会话上续期（core 契约 §31.3，#484）。 */
+  refreshToken?: string,
 ): Promise<CoreCloudSession> {
   const answer = await send(
     `${trimmed(relayBaseUrl)}/api/identity/cloud/login`,
@@ -467,6 +469,7 @@ export async function coreCloudLogin(
       body: {
         assertion,
         ...(invitationToken === undefined ? {} : { invitationToken }),
+        ...(refreshToken === undefined ? {} : { refreshToken }),
       },
     },
     options,

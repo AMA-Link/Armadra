@@ -174,12 +174,46 @@ describe("经中继取访问", () => {
       "core-b",
     );
     const login = net.calls.find((call) => call.key.endsWith("cloud/login"))!;
+    // 带上当前刷新令牌，core 在原会话上续期（#484）。
     expect(JSON.parse(String(login.init.body))).toMatchObject({
       assertion: "jws.fresh",
+      refreshToken: "core-r",
     });
     expect(await vault.session(SOURCE)).toMatchObject({
       refreshToken: "core-r3",
     });
+  });
+
+  it("刷新遇到限流或 5xx：原样上抛，不拿新断言去登录（#484）", async () => {
+    for (const status of [429, 503]) {
+      const vault = await vaultWithCloud();
+      await vault.saveSession(SOURCE, ISSUER, {
+        accessToken: "old",
+        refreshToken: "core-r",
+        expiresAtMs: NOW + 10_000,
+      });
+      const net = routedFetch({
+        "POST /v1/auth/refresh": () => ({
+          body: cloudSession("cloud-a", "cloud-r2"),
+        }),
+        [`POST /v1/sources/${SOURCE}/assertion`]: () => ({ body: assertion() }),
+        [`POST /s/${SOURCE}/api/identity/session/refresh`]: () => ({
+          status,
+          body: { code: "rate_limited", message: "" },
+        }),
+      });
+      const relay = createRelayedAccess({
+        vault,
+        device,
+        cloud: { fetch: net.fetch },
+        e2e: plainE2e(net.fetch),
+        now: () => NOW,
+      });
+      await expect(relay.access(ISSUER, SOURCE, false)).rejects.toBeDefined();
+      expect(net.calls.some((call) => call.key.endsWith("cloud/login"))).toBe(
+        false,
+      );
+    }
   });
 
   it("拒绝码：源不在线 → source_offline；撤销 → source_revoked；未关联照原码", async () => {
