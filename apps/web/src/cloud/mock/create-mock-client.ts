@@ -15,6 +15,12 @@ import {
 } from "../api/session";
 import { BILLING_HANDLERS } from "./billing";
 import {
+  AUDIT_HANDLERS,
+  createAuditState,
+  type AuditOptions,
+  type AuditState,
+} from "./audit";
+import {
   applyEventToDirectory,
   createDirectoryState,
   DIRECTORY_HANDLERS,
@@ -56,7 +62,8 @@ import {
 export interface MockOptions
   extends DirectoryOptions,
     TeamsOptions,
-    GrantsOptions {
+    GrantsOptions,
+    AuditOptions {
   /** 每次调用的延迟（毫秒）。 */
   readonly latencyMs?: number;
   /** 指定过程失败：`{ "sources.list": "limit_reached" }`（`?mockFail=sources.list:limit_reached`）。 */
@@ -146,6 +153,8 @@ interface State {
   teams: TeamsState;
   /** 团队主机的授予（U5）：授予、主机设置、标签与注册令牌。 */
   grants: GrantsState;
+  /** 团队审计（U6）：事件，最新的在前由处理器排。 */
+  audit: AuditState;
   /** 已批准或拒绝的设备码（之后答 `not_found`，与云端一致）。 */
   decided: Set<string>;
 }
@@ -514,6 +523,12 @@ const HANDLERS: Readonly<Record<string, Handler>> = {
   ),
   ...TEAM_HANDLERS_AS_STATE,
   ...Object.fromEntries(
+    Object.entries(AUDIT_HANDLERS).map(([key, handler]) => [
+      key,
+      ((input, state) => handler(input, state.audit)) as Handler,
+    ]),
+  ),
+  ...Object.fromEntries(
     Object.entries(BILLING_HANDLERS).map(([key, handler]) => [
       key,
       ((input, state) => handler(input, state.teams)) as Handler,
@@ -619,6 +634,7 @@ export function createMockApi(options: MockOptions = {}): MockApi {
     directory: createDirectoryState(options),
     teams: createTeamsState(options),
     grants: createGrantsState(options),
+    audit: createAuditState(options),
     elevated: false,
     decided: new Set(),
   };
