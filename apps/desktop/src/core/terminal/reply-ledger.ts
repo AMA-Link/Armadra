@@ -16,7 +16,8 @@ import { isTerminalReplyData, replyEnd } from "./replies";
  *
  * 没有待答查询时到来的应答（序号超过该视图见到的查询数）丢弃：没有谁在等它，
  * 放进去只会成为输入里的垃圾字符。查询超过 `REPLY_WINDOW_MS` 没人答，应答
- * 也不再放行，并把各视图的欠账记平，后面的应答不被它拖累。
+ * 也不再放行（只有一个视图附着时不判过期：没有第二份要去重），并把各视图的
+ * 欠账记平，后面的应答不被它拖累。
  */
 
 /** 一次查询之后多久内的应答算数。 */
@@ -299,6 +300,9 @@ export class QueryLedger {
 
   private fresh(session: Session, kind: Kind): boolean {
     const last = session.lastAsked.get(kind);
-    return last !== undefined && this.clock() - last <= this.windowMs;
+    if (last === undefined) return false;
+    // 只有一个视图时没有第二份要去重，迟到的应答照放：时限只用来在几个
+    // 视图之间防止一份过期的应答混进输入。
+    return session.views.size === 1 || this.clock() - last <= this.windowMs;
   }
 }

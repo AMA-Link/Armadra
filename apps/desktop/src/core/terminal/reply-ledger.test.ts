@@ -113,6 +113,21 @@ describe("the ledger of pending queries (#518)", () => {
     expect(book.accept("s", 1, DA)).toBe("");
   });
 
+  it("does not expire an answer while a single view is attached", () => {
+    const time = { now: 1000 };
+    const book = new QueryLedger(() => time.now);
+    book.attach("s", 1);
+    book.output("s", 1, "\x1b[c");
+    time.now += REPLY_WINDOW_MS * 10;
+    expect(book.accept("s", 1, DA)).toBe(DA);
+    // With a second view the window applies again.
+    book.attach("s", 2);
+    book.output("s", 1, "\x1b[c");
+    book.output("s", 2, "\x1b[c");
+    time.now += REPLY_WINDOW_MS + 1;
+    expect(book.accept("s", 1, DA)).toBe("");
+  });
+
   it("says whether a reply is owed, for senders that do not mark it", () => {
     const { book } = ledger();
     expect(book.expects("s", 1, DA)).toBe(false);
