@@ -394,7 +394,7 @@ describe("a viewer's own size", () => {
 });
 
 describe("a view answering a query (#518)", () => {
-  async function serve(frame: Record<string, unknown>) {
+  async function serve(frame: Record<string, unknown>, owed = false) {
     const handlers = new Map<string, (data?: unknown) => void>();
     const calls: unknown[][] = [];
     const attachment: Attachment = {
@@ -413,7 +413,9 @@ describe("a view answering a query (#518)", () => {
       acknowledgedInput: () => 0,
       generation: () => 1,
       noteOutput: () => {},
-      queries: { output: () => {}, expects: () => false },
+      queries: { output: () => {}, expects: () => owed },
+      noteInputApplied: (...args: unknown[]) =>
+        calls.push(["noteInputApplied", ...args]),
       noteViewerInput: (...args: unknown[]) =>
         calls.push(["noteViewerInput", ...args]),
       input: async (...args: unknown[]) => calls.push(["input", ...args]),
@@ -462,6 +464,28 @@ describe("a view answering a query (#518)", () => {
       data: "rm -rf ~\r",
       reply: true,
     });
+    expect(calls.map((call) => call[0])).toEqual(["noteViewerInput", "input"]);
+  });
+
+  it("takes an unmarked reply while a query is owed, and acknowledges it", async () => {
+    const calls = await serve(
+      { type: "input", data: "\u001b[?1;2c", inputId: 4 },
+      true,
+    );
+    expect(calls.map((call) => call[0])).toEqual(["reply", "noteInputApplied"]);
+  });
+
+  it("types an unmarked reply-shaped input when nothing is owed", async () => {
+    // Shift+F3 arrives as a cursor-report shaped sequence.
+    const calls = await serve({ type: "input", data: "\u001b[1;2R" });
+    expect(calls.map((call) => call[0])).toEqual(["noteViewerInput", "input"]);
+  });
+
+  it("still types an unmarked input that is not all reply while one is owed", async () => {
+    const calls = await serve(
+      { type: "input", data: "\u001b[?1;2cls\r" },
+      true,
+    );
     expect(calls.map((call) => call[0])).toEqual(["noteViewerInput", "input"]);
   });
 });

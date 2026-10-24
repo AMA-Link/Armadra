@@ -374,12 +374,17 @@ export async function serveTerminalSocket(
         try {
           // 对查询的应答（#518）：几个视图都会答，core 对每次待答查询只收
           // 第一份；也不算「人在驱动」，只看不打字的那一端不该因此抢走租约
-          // 和窗口。标记不作数，内容整段是应答格式才走这条路，否则按键入
-          // 处理。
+          // 和窗口。内容必须整段是应答格式才走这条路，否则按键入处理：带
+          // `reply` 标记的，或者没带标记（旧页面）但此刻正有查询等着它答的。
           if (
             frame.type === "input" &&
             isTerminalReplyData(frame.data) &&
-            frame.reply === true
+            (frame.reply === true ||
+              manager.queries.expects(
+                sessionId,
+                attachment.attachmentId,
+                frame.data,
+              ))
           ) {
             await manager.reply(
               sessionId,
