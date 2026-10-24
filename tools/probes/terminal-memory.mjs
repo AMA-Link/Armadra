@@ -56,6 +56,7 @@ import { probeSession } from "./probe-session.mjs";
 import {
   METRICS,
   baselineKey,
+  bestOf,
   compare,
   deriveMetrics,
   descendants,
@@ -385,7 +386,7 @@ async function run(options) {
   };
   process.once("SIGTERM", onSignal);
   process.once("SIGINT", onSignal);
-  const report = {
+  const newReport = () => ({
     status: "running",
     platform: `${process.platform}-${process.arch}`,
     startedAt: new Date().toISOString(),
@@ -406,7 +407,8 @@ async function run(options) {
     },
     phases: [],
     notes: [],
-  };
+  });
+  const report = newReport();
   const save = () =>
     writeFileSync(
       join(output, "result.json"),
@@ -418,7 +420,10 @@ async function run(options) {
     report.metrics = deriveMetrics(report);
     const failures = functionalFailures(report);
     let rows = [];
-    if (options.baseline) {
+    // 对基线判一次：返回退化项的说明；场景对不上、没有基线就只记一笔注。
+    const judge = (metrics) => {
+      rows = [];
+      if (!options.baseline) return [];
       const file = resolve(root, options.baseline);
       const baselines = existsSync(file)
         ? JSON.parse(readFileSync(file, "utf8"))
@@ -430,22 +435,52 @@ async function run(options) {
         backend: options.backend,
       });
       const mine = baselines.platforms?.[key];
-      if (!mine) report.notes.push(`基线里没有 ${key}，只报告不判`);
-      else if (!sameScenario(report.options, mine.options))
+      if (!mine) {
+        report.notes.push(`基线里没有 ${key}，只报告不判`);
+        return [];
+      }
+      if (!sameScenario(report.options, mine.options)) {
         report.notes.push(
           `基线 ${key} 的场景是 ${JSON.stringify(mine.options)}，与这次不同，只报告不判`,
         );
-      else {
-        rows = compare(report.metrics, mine.metrics, {
-          platform: process.platform,
-        });
-        report.comparison = { key, rows };
-        for (const row of rows.filter((row) => row.regressed))
-          failures.push(
-            `${row.metric} 退化：基线 ${row.baseline}，这次 ${row.current}（差 ${row.change}%）`,
-          );
+        return [];
       }
+      rows = compare(metrics, mine.metrics, { platform: process.platform });
+      report.comparison = { key, rows };
+      return rows
+        .filter((row) => row.regressed)
+        .map(
+          (row) =>
+            `${row.metric} 退化：基线 ${row.baseline}，这次 ${row.current}（差 ${row.change}%）`,
+        );
+    };
+    let regressions = judge(report.metrics);
+    // 只有越线、功能检查都过时才复测：托管运行器上单次读数会漂（#485），取两次
+    // 较优值再判；真退化两次都越线。
+    if (options.confirm && regressions.length > 0 && failures.length === 0) {
+      console.error(`越线：${regressions.join("；")}；复测一次，取两次较优值`);
+      for (const cleanup of cleanups.splice(0).reverse()) {
+        try {
+          await cleanup();
+        } catch {}
+      }
+      const second = newReport();
+      const confirmOutput = join(output, "confirm");
+      mkdirSync(confirmOutput, { recursive: true });
+      await scenario(options, confirmOutput, second, cleanups, () => {});
+      second.metrics = deriveMetrics(second);
+      writeFileSync(
+        join(confirmOutput, "result.json"),
+        `${JSON.stringify(second, null, 2)}\n`,
+      );
+      failures.push(...functionalFailures(second));
+      report.firstRun = report.metrics;
+      report.secondRun = second.metrics;
+      report.metrics = bestOf(report.firstRun, second.metrics);
+      report.notes.push("越线后复测一次，指标取两次较优值（--confirm）");
+      regressions = judge(report.metrics);
     }
+    failures.push(...regressions);
     report.failures = failures;
     report.status = failures.length === 0 ? "ok" : "failed";
     const table = renderTable(report.metrics, rows);

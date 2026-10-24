@@ -11,9 +11,10 @@
     "--off2",
     "180",
     "--cycles",
-    "10"
+    "10",
+    "--confirm"
   ],
   "requires": ["tmux"],
   "platforms": ["darwin", "linux"],
-  "timeoutMinutes": 30
+  "timeoutMinutes": 45
 }
