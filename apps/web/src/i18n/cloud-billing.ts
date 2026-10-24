@@ -1,6 +1,6 @@
 import type { MessageModule } from "./index";
 
-/** 云端控制台的计划与用量文案（云端控制台 §5.2 cloud-billing）；个人概览先用到这一部分，用量与计划页（U6）接着补。 */
+/** 云端控制台的计划与用量文案（云端控制台 §5.2 cloud-billing）：个人概览与用量与计划页（M1 只读）；付款、升级、发票随 M2。 */
 export const cloudBilling: MessageModule = {
   "zh-CN": {
     "cloud.billing.plan": "计划",
@@ -9,7 +9,21 @@ export const cloudBilling: MessageModule = {
     "cloud.billing.team": "团队版",
     "cloud.billing.enterprise": "企业版",
     "cloud.billing.hosts": "主机",
+    "cloud.billing.members": "成员",
+    "cloud.billing.guests": "访客",
+    "cloud.billing.connections": "同时连接",
     "cloud.billing.traffic": "本月流量",
+    "cloud.billing.usage": "用量",
+    "cloud.billing.seats.one": "{count} 个席位",
+    "cloud.billing.seats.other": "{count} 个席位",
+    "cloud.billing.renews": "续费日 {date}",
+    "cloud.billing.endsOn": "{date} 到期，不再续费",
+    "cloud.billing.trialEnds": "试用到 {date}",
+    "cloud.billing.pastDue": "付款逾期",
+    "cloud.billing.canceled": "已取消",
+    "cloud.billing.daily": "每日流量",
+    "cloud.billing.date": "日期",
+    "cloud.billing.overage": "本月流量已超出，同时连接将受限",
     "cloud.billing.of": "{used} / {limit}",
     "cloud.billing.unlimited": "不限",
     "cloud.billing.nearLimit": "接近上限",
@@ -22,7 +36,22 @@ export const cloudBilling: MessageModule = {
     "cloud.billing.team": "Team",
     "cloud.billing.enterprise": "Enterprise",
     "cloud.billing.hosts": "Hosts",
+    "cloud.billing.members": "Members",
+    "cloud.billing.guests": "Guests",
+    "cloud.billing.connections": "Concurrent connections",
     "cloud.billing.traffic": "Traffic this month",
+    "cloud.billing.usage": "Usage",
+    "cloud.billing.seats.one": "{count} seat",
+    "cloud.billing.seats.other": "{count} seats",
+    "cloud.billing.renews": "Renews {date}",
+    "cloud.billing.endsOn": "Ends {date}, no renewal",
+    "cloud.billing.trialEnds": "Trial ends {date}",
+    "cloud.billing.pastDue": "Payment overdue",
+    "cloud.billing.canceled": "Canceled",
+    "cloud.billing.daily": "Daily traffic",
+    "cloud.billing.date": "Date",
+    "cloud.billing.overage":
+      "Traffic limit exceeded. Connections will be limited",
     "cloud.billing.of": "{used} / {limit}",
     "cloud.billing.unlimited": "Unlimited",
     "cloud.billing.nearLimit": "Near limit",
