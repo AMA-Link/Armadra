@@ -1,6 +1,8 @@
 import { cleanup, configure, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, vi } from "vitest";
 
+import { toast } from "@/ui/toast";
+
 import { ConsoleRoot } from "./ConsoleRoot";
 import type { HostEndorser } from "./trust/endorser";
 import {
@@ -42,6 +44,8 @@ export function installConsoleHarness() {
     configure({ asyncUtilTimeout: ASYNC_UTIL_TIMEOUT_MS });
   });
   afterEach(() => {
+    // 卸载之前清提示（全局 setup 在每条用例前也会清）。
+    toast.dismiss();
     cleanup();
     localStorage.clear();
     sessionStorage.clear();

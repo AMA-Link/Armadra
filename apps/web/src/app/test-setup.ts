@@ -6,7 +6,7 @@
  * 留在 `app/test-harness.tsx`。
  */
 
-import { afterAll, afterEach, beforeEach } from "vitest";
+import { afterAll, beforeEach } from "vitest";
 
 /**
  * React Flow 的容器用 `ResizeObserver` 量自己的尺寸（`useResizeHandler`），
@@ -113,11 +113,12 @@ if (typeof document !== "undefined") {
 
 /**
  * sonner 的提示存在模块级，卸载不会带走它：上一条用例的提示会漏进下一条用例的查询
- * （曾让一条断言靠漏下来的提示通过）。每条用例后清掉；只在 sonner 已被加载时才动它。
+ * （曾让一条断言靠漏下来的提示通过）。setupFiles 的 afterEach 比文件自己的
+ * afterEach(cleanup) 先注册、后执行，那时 Toaster 已卸载，按 DOM 判断会漏掉；
+ * 所以在每条用例前无条件清（sonner 的状态在模块里，不依赖 DOM）。
  */
 if (typeof document !== "undefined") {
-  afterEach(async () => {
-    if (document.querySelector("[data-sonner-toaster]") === null) return;
+  beforeEach(async () => {
     (await import("sonner")).toast.dismiss();
   });
 }
