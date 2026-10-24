@@ -3,6 +3,7 @@
  *
  * 提示里的标记决定做什么：
  *   [term]        跑一条会输出两行、退出码 5 的命令：create → 挂到工具 → wait_for_exit → output → release
+ *   [term-live]   同 [term]，但第二行要等测试写出 live.release 才打：「命令还在跑」的窗口由测试关，不靠定时
  *   [term-hang]   起一个写 pid 文件然后一直挂着的命令，回合结束也不 release、不 kill
  *   [term-escape] 想在工作空间之外开终端，把错误回报出来
  *   [caps]        回报 initialize 时客户端声明的 terminal 能力
@@ -62,13 +63,16 @@ async function prompt(params) {
   const text = (params.prompt ?? []).map((block) => block.text ?? "").join(" ");
   if (text.includes("[caps]"))
     await say(`caps:${JSON.stringify(clientTerminal)}`);
-  if (text.includes("[term]")) {
+  if (text.includes("[term]") || text.includes("[term-live]")) {
+    const gated = text.includes("[term-live]");
     const { terminalId } = await peer.request("terminal/create", {
       sessionId: SESSION,
       command: process.execPath,
       args: [
         "-e",
-        "console.log('line one'); setTimeout(() => { console.log('line two'); process.exit(5); }, 300)",
+        gated
+          ? "console.log('line one'); const t = setInterval(() => { if (require('fs').existsSync('live.release')) { clearInterval(t); console.log('line two'); process.exit(5); } }, 20)"
+          : "console.log('line one'); setTimeout(() => { console.log('line two'); process.exit(5); }, 300)",
       ],
     });
     await update({

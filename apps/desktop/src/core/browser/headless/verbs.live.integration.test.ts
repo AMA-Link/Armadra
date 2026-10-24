@@ -161,9 +161,18 @@ afterAll(async () => {
   }
 });
 
+/**
+ * Verbs that only look. A background tab's renderer can be extremely slow
+ * (not dead) on a machine under heavy load: one `DOM.getDocument` took 1.5 s,
+ * the next call 30 s (#356, R-90). Looking again is harmless, so these get one
+ * more try after the diagnosis; verbs that act are never repeated.
+ */
+const LOOKS_ONLY = new Set(["read", "capture"]);
+
 async function run(
   verb: string,
   source: Record<string, unknown> = {},
+  retried = false,
 ): Promise<string> {
   const payload = withWorkspace(shellArgs(verb, source), workspace);
   try {
@@ -174,9 +183,10 @@ async function run(
       const report = await backend!.node("live-verbs")?.diagnose();
       // eslint-disable-next-line no-console
       console.error(
-        `[live verbs] ${verb} stalled:`,
+        `[live verbs] ${verb} stalled${retried ? " again" : ""}:`,
         JSON.stringify(report ?? "no node"),
       );
+      if (!retried && LOOKS_ONLY.has(verb)) return run(verb, source, true);
     }
     throw error;
   }

@@ -27,6 +27,7 @@ const BOOLEAN_FLAGS = [
   "unpacked",
   "no-baseline",
   "vmmap",
+  "confirm",
 ];
 const STRING_FLAGS = ["app", "baseline", "release-after", "machine"];
 
@@ -54,6 +55,7 @@ export function parseArgs(argv) {
     eldPreload: false,
     unpacked: false,
     vmmap: false,
+    confirm: false,
     app: undefined,
     baseline: "tools/probes/terminal-memory-baseline.json",
     releaseAfter: undefined,
@@ -604,6 +606,30 @@ export const METRICS = {
 };
 
 export const REGRESSION = 0.2;
+
+/**
+ * 两次测量取每项的较优值（`better: "lower"` 取小；`exact` 取第一次，那是个数）。
+ * 托管运行器上同一提交的单次读数会漂（Renderer 活跃 391–641 MiB、离屏 176–235
+ * MiB、事件循环最大延迟 74–318 ms，见 AMA-Link/Armadra#485），而基线是三次的中位数；
+ * 单次越线就判退化会天天误报。真退化两次都会越线，取较优值仍然抓得住。
+ */
+export function bestOf(first, second) {
+  const merged = {};
+  for (const metric of Object.keys({ ...first, ...second })) {
+    const a = first?.[metric];
+    const b = second?.[metric];
+    if (typeof a !== "number" || typeof b !== "number") {
+      merged[metric] = typeof a === "number" ? a : (b ?? null);
+      continue;
+    }
+    const rule = METRICS[metric];
+    if (rule?.exact) merged[metric] = a;
+    else
+      merged[metric] =
+        rule?.better === "higher" ? Math.max(a, b) : Math.min(a, b);
+  }
+  return merged;
+}
 
 /**
  * 这次的数字对一份基线：每项 `{ metric, baseline, current, change, regressed, note? }`。

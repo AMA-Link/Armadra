@@ -1,4 +1,4 @@
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -104,7 +104,9 @@ describe("terminal/*", () => {
 
   it("输出是实时的：命令还在跑时工具行已经有第一行", async () => {
     await boot();
-    const { rowId } = await start("[term]");
+    // 第二行与退出由测试放行（live.release），不靠子进程里的定时：慢机器（Windows
+    // CI）上轮询错过一个 300 ms 的窗口，「还在跑」就永远等不到。
+    const { rowId } = await start("[term-live]");
     const early = await until(
       () =>
         items(rowId).find((i) => i.kind === "tool") as
@@ -115,6 +117,7 @@ describe("terminal/*", () => {
         tool.content[0].exitCode === undefined,
     );
     expect(early?.content[0]?.output).not.toContain("line two");
+    writeFileSync(join(open!.core.directory, "live.release"), "");
     await until(turnsEnded, (turns) => turns.length > 0);
   });
 

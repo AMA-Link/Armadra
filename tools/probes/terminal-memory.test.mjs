@@ -33,6 +33,7 @@ import {
   summarizeDiagnostics,
   summarizePreload,
   sumByRole,
+  bestOf,
 } from "./terminal-memory-lib.mjs";
 
 const root = fileURLToPath(new URL("../../", import.meta.url));
@@ -576,13 +577,14 @@ test("B 档清单：terminal-memory 在 darwin / linux 上跑，参数是设计 
   assert.equal(entry.tier, "b");
   assert.deepEqual(entry.platforms, ["darwin", "linux"]);
   assert.deepEqual(entry.requires, ["tmux"]);
-  assert.equal(entry.timeoutMinutes, 30);
+  assert.equal(entry.timeoutMinutes, 45);
   const options = parseArgs(
     entry.args.map((arg) => arg.replace("{out}", "out")),
   );
   assert.equal(options.terminals, 10);
   assert.equal(options.off2, 180);
   assert.equal(options.cycles, 10);
+  assert.equal(options.confirm, true);
   // 清单与基线的场景一致，基线录好之后 B 档才真的会比。
   assert.equal(sameScenario(options, { ...options }), true);
 
@@ -595,4 +597,43 @@ test("B 档清单：terminal-memory 在 darwin / linux 上跑，参数是设计 
     listed,
     /^terminal-memory \[darwin, linux\]  tools\/probes\/terminal-memory\.mjs$/m,
   );
+});
+
+test("bestOf: 两次读数每项取较优值，个数取第一次，缺的一边用另一边", () => {
+  const merged = bestOf(
+    {
+      rendererActiveMiB: 641,
+      rendererOffscreenLongMiB: 176,
+      tmuxProcs: 31,
+      gpuOffscreenLongMiB: null,
+    },
+    {
+      rendererActiveMiB: 450,
+      rendererOffscreenLongMiB: 235,
+      tmuxProcs: 30,
+      gpuOffscreenLongMiB: null,
+    },
+  );
+  assert.equal(merged.rendererActiveMiB, 450);
+  assert.equal(merged.rendererOffscreenLongMiB, 176);
+  assert.equal(merged.tmuxProcs, 31);
+  assert.equal(merged.gpuOffscreenLongMiB, null);
+  assert.equal(
+    bestOf({ runtimeEldMaxMs: null }, { runtimeEldMaxMs: 5 }).runtimeEldMaxMs,
+    5,
+  );
+});
+
+test("parseArgs: --confirm 缺省关", () => {
+  assert.equal(parseArgs([]).confirm, false);
+  assert.equal(parseArgs(["--confirm"]).confirm, true);
+});
+
+test("bestOf: exact 的取第一次，不被另一次的个数带偏", () => {
+  const merged = bestOf(
+    { tmuxProcs: 31, rendererActiveMiB: 5 },
+    { tmuxProcs: 30, rendererActiveMiB: 3 },
+  );
+  assert.equal(merged.tmuxProcs, 31);
+  assert.equal(merged.rendererActiveMiB, 3);
 });
