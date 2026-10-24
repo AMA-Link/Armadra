@@ -302,6 +302,13 @@ export function guestKeys(
   }
 }
 
+/** 这条链接是否已经加入过：存储里有它没到期、还带刷新令牌的访客记录。 */
+export function hasGuestRecord(issuer: string, linkId: string): boolean {
+  return guestKeys(browserLocalStorage(), issuer).includes(
+    guestKey(issuer, linkId),
+  );
+}
+
 /** 丢掉这个签发方下全部访客记录（账号登录是明确换身份）。 */
 export function clearGuestRecords(
   storage: Storage | null,
@@ -564,6 +571,11 @@ export interface HostedRelay {
    * 记下的、刷新令牌被拒：`null`（重新登录）。
    */
   resume(): Promise<HostedResume>;
+  /**
+   * 只续这一条分享链接的访客记录（分享链接落地页的「打开」）：不遍历别的链接的记录，
+   * 也不退回账号记录；这条记录续不上就丢掉它，答 `null`。
+   */
+  resumeLink(linkId: string): Promise<HostedResume>;
   /** 这个页面是不是以访客身份（分享链接）进来的；是就给那份分享，否则 `null`。 */
   guest(): GuestShare | null;
   readonly status: HostedStatus;
@@ -921,7 +933,7 @@ export function createHostedRelay(options: HostedRelayOptions): HostedRelay {
       vault.rememberShare({
         role: info?.role ?? "",
         name: name || info?.sourceName || "",
-        ownerName: "",
+        ownerName: info?.ownerName ?? "",
         expiresAtMs,
       });
       await hosted.enter({ sourceId: accepted.sourceId, name });
@@ -1037,6 +1049,18 @@ export function createHostedRelay(options: HostedRelayOptions): HostedRelay {
       }
       switchToAccount();
       return (await resumeWith()) ?? null;
+    },
+    async resumeLink(linkId) {
+      const key = guestKey(issuer, linkId);
+      if (!guestKeys(guestStorage, issuer, now()).includes(key)) return null;
+      switchToGuest(key);
+      const resumed = await resumeWith();
+      if (resumed === undefined) {
+        vault.clear();
+        switchToAccount();
+        return null;
+      }
+      return resumed;
     },
     guest: () => (guest ? vault.share() : null),
     get status() {

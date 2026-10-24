@@ -354,11 +354,15 @@ describe("mock 团队：设置与危险操作", () => {
     ).toMatchObject({ code: "team_role_insufficient" });
   });
 
-  it("删除：有在线主机答 conflict；删除后进恢复期，其余调用答 team_deleted，所有者能恢复", async () => {
+  it("删除：有在线主机答 team_hosts_online；删除后进恢复期，其余调用答 team_deleted，所有者能恢复", async () => {
     const busy = createMockApi({ roles: { rd: "owner" } });
     expect(
       await failure(busy.client.teams.delete({ teamId: RD })),
-    ).toMatchObject({ code: "conflict" });
+    ).toMatchObject({
+      code: "team_hosts_online",
+      status: 409,
+      details: { onlineHosts: expect.any(Number) },
+    });
     const owner = createMockApi({ roles: { lab: "owner" }, hosts: [] });
     const { purgeAtMs } = await owner.client.teams.delete({ teamId: LAB });
     expect(purgeAtMs - Date.now()).toBeGreaterThan(29 * 86_400_000);

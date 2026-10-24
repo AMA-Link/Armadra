@@ -82,6 +82,10 @@ export interface MockOptions
   readonly deviceNeedsStepUp?: boolean;
   /** 分享链接要求登录（`links.get.requiresAccount`，缺省 false）。 */
   readonly linkRequiresAccount?: boolean;
+  /** 分享链接的主人名（`links.get.ownerName`，协议包 0.11.0 起；缺省不带）。 */
+  readonly linkOwnerName?: string;
+  /** 设备码请求来源（`auth.deviceGet.ipPrefix`，协议包 0.11.0 起；缺省不带）。 */
+  readonly deviceIpPrefix?: string;
 }
 
 /** 协议包的黄金夹具：开发服务器与测试里都能 glob，生产构建不会 import 到这里。 */
@@ -443,9 +447,12 @@ const HANDLERS: Readonly<Record<string, Handler>> = {
     state.elevated = true;
     return { elevatedUntilMs: Date.now() + 600_000 };
   },
-  "auth.deviceGet": (input, state) => {
+  "auth.deviceGet": (input, state, options) => {
     openDeviceRequest(input, state);
     return {
+      ...(options.deviceIpPrefix === undefined
+        ? {}
+        : { ipPrefix: options.deviceIpPrefix }),
       platform: "desktop",
       name: MOCK_DEVICE_REQUEST.name,
       requestedAtMs: Date.now() - 20_000,
@@ -484,6 +491,9 @@ const HANDLERS: Readonly<Record<string, Handler>> = {
       expiresAtMs: Date.now() + 86_400_000,
       exhausted: input.linkId === MOCK_LINK.exhausted,
       requiresAccount: options.linkRequiresAccount === true,
+      ...(options.linkOwnerName === undefined
+        ? {}
+        : { ownerName: options.linkOwnerName }),
     };
   },
   "me.get": (_input, state, options) => ({
@@ -592,6 +602,12 @@ function allowed(
   });
 }
 
+/** 协议包 0.10.0 的出参 schema 没有、0.11.0 起才有的可选字段（升级后删）。 */
+const WIDENED_OUTPUT: Readonly<Record<string, readonly string[]>> = {
+  "links.get": ["ownerName"],
+  "auth.deviceGet": ["ipPrefix"],
+};
+
 async function check(
   schema: unknown,
   value: unknown,
@@ -699,14 +715,22 @@ export function createMockApi(options: MockOptions = {}): MockApi {
             );
           },
         );
-        return entry.key.startsWith("admin.incident")
-          ? {
-              ...(checked as object),
-              rejectNewConnections: (
-                output as { rejectNewConnections?: boolean }
-              ).rejectNewConnections,
-            }
-          : checked;
+        if (entry.key.startsWith("admin.incident"))
+          return {
+            ...(checked as object),
+            rejectNewConnections: (output as { rejectNewConnections?: boolean })
+              .rejectNewConnections,
+          };
+        // 协议包 0.10.0 还没有的可选出参字段（0.11.0 起有）：校验会剥掉，补回处理器给的值。
+        const added = WIDENED_OUTPUT[entry.key];
+        if (added !== undefined && typeof output === "object") {
+          const extra: Record<string, unknown> = {};
+          for (const field of added)
+            if (field in (output as object))
+              extra[field] = (output as Record<string, unknown>)[field];
+          return { ...(checked as object), ...extra };
+        }
+        return checked;
       };
     }
     return root as unknown as CloudClient;

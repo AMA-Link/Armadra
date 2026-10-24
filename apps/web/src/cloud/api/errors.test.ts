@@ -46,6 +46,7 @@ const SHOWN = [
   "team_owner_required",
   "team_suspended",
   "team_deleted",
+  "team_hosts_online",
   "invitation_expired",
   "invitation_email_mismatch",
   "member_exists",

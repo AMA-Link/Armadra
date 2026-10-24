@@ -12,6 +12,7 @@ import { cloudKeys } from "../api/keys";
 /** 运营后台的数据层（云端控制台 §6.2 `["cloud","ops",…]`）：全部走运营客户端 `api.ops`。 */
 
 type Admin = CloudClient["admin"];
+type DrainInput = Parameters<Admin["relayNodeDrain"]>[0] & { reason?: string };
 type Result<K extends keyof Admin> = Awaited<ReturnType<Admin[K]>>;
 
 export type Tenant = Result<"tenants">["tenants"][number];
@@ -112,12 +113,12 @@ export function useDrainNode() {
   const client = useQueryClient();
   return useMutation({
     mutationFn: ({ node, reason }: { node: string; reason: string }) =>
-      // 契约（0.10.0）的排空入参还没有 `reason`；cloud-api §28 要求所有运营写动作带理由，先随体带上。
+      // 协议包 0.10.0 的排空入参还没有 `reason`（0.11.0 起有，cloud#121）：放宽入参类型后随体发出。
       api.ops.admin.relayNodeDrain({
         node,
         drain: true,
         reason,
-      } as Parameters<Admin["relayNodeDrain"]>[0]),
+      } as DrainInput),
     onSuccess: () =>
       client.invalidateQueries({ queryKey: cloudKeys.ops("nodes") }),
   });

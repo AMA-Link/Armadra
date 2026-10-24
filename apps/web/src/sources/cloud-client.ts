@@ -130,6 +130,8 @@ const linkInfoSchema = z.object({
   sourceName: z.string().default(""),
   expiresAtMs: z.number().default(0),
   exhausted: z.boolean().default(false),
+  // 协议包 0.10.0 的 `links.get` 没有这一项（0.11.0 起有，cloud#60）；缺了就不显示主人。
+  ownerName: z.string().optional(),
 });
 export type CloudLinkInfo = z.infer<typeof linkInfoSchema>;
 

@@ -219,9 +219,10 @@ export function translate(
   values: TranslateValues = {},
 ): string {
   const template = messages[locale][key] ?? messages["zh-CN"][key] ?? key;
-  return Object.entries(values).reduce(
-    (text, [name, replacement]) =>
-      text.replaceAll(`{${name}}`, String(replacement)),
-    template,
+  // 一次扫过：替换进去的值里即使带着 `{name}` 也不会被再替换一遍。
+  return template.replace(/\{(\w+)\}/g, (whole, name: string) =>
+    Object.prototype.hasOwnProperty.call(values, name)
+      ? String(values[name])
+      : whole,
   );
 }

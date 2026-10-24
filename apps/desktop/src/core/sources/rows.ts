@@ -153,8 +153,11 @@ export function saveRelayRoute(
             input.team ??
               (existing?.origin === "shared" ? existing : undefined),
           ),
-          // 对端没报分享信息（旧 core）而行本来就是 shared：沿用已有的。
-          ...(input.share == null && existing?.origin === "shared"
+          // 对端没报分享信息（旧 core）而行本来就是 shared：归属已确定或云没变时沿用已有的，
+          // 否则分享方可能已换，不再显示旧分享方。
+          ...(input.share == null &&
+          existing?.origin === "shared" &&
+          (input.determined === true || existing.cloudIssuer === input.issuer)
             ? {
                 ownerLabel: existing.ownerLabel,
                 shareRole: existing.shareRole,
