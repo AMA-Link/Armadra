@@ -7,6 +7,7 @@ import {
   assertSubmitInput,
 } from "./manager-status";
 import { writeReply } from "./replies";
+import { QueryLedger } from "./reply-ledger";
 import { sequenceSessionEnvironment } from "./sequences";
 import {
   connectProgramStatus,
@@ -134,6 +135,8 @@ export class TerminalManager {
   private readonly timers: NodeJS.Timeout[] = [];
   private readonly lastRowWrite = new Map<string, number>();
   /** Who watches each session, at which size (ui-acp-refresh §7.3 E-1). */
+  /** Pending terminal queries per view (#518); the socket feeds and asks it. */
+  readonly queries = new QueryLedger(() => this.clock());
   private readonly viewers = new TerminalWindows({
     window: (sessionId) => {
       const record = this.records.get(sessionId);
@@ -700,6 +703,7 @@ export class TerminalManager {
     this.attachments.forget(sessionId);
     this.lastRowWrite.delete(sessionId);
     this.viewers.forget(sessionId);
+    this.queries.forget(sessionId);
     this.drive.forget(sessionId);
     // 租约的对象是一个 PTY 会话：那个进程没了，谁在驱动它这个问题就不存在了。
     this.drives.forget(sessionId);
@@ -791,7 +795,6 @@ export class TerminalManager {
     sessionId: string,
     size?: TerminalSize,
     writer = "",
-    readOnly = false,
   ): Promise<AttachSession> {
     if (this.stopping) throw conflict("Core is shutting down");
     const record = this.records.get(sessionId);
@@ -820,7 +823,11 @@ export class TerminalManager {
       }
     }
     this.attachments.acquire(sessionId);
-    this.viewers.add(sessionId, attachment.attachmentId, writer, own, readOnly);
+    this.viewers.add(sessionId, attachment.attachmentId, writer, own);
+    // Only a single-pty backend has duplicate answers to sort out.
+    if (backend.reply === undefined) {
+      this.queries.attach(sessionId, attachment.attachmentId);
+    }
     await this.viewers.refresh(sessionId);
     this.setAttachState(sessionId, "live");
     // Only a backend that does not redraw owes the socket a replay.
@@ -835,6 +842,7 @@ export class TerminalManager {
     const record = this.records.get(sessionId);
     this.attachments.release(sessionId);
     this.viewers.remove(sessionId, attachmentId);
+    this.queries.detach(sessionId, attachmentId);
     if (record === undefined) return;
     await this.backend(record.kind).detach(record.key, attachmentId);
     await this.viewers.refresh(sessionId);
@@ -905,7 +913,7 @@ export class TerminalManager {
       const record = this.checked(sessionId, generation);
       return writeReply(this.backend(record.kind), record.key, data, {
         attachmentId,
-        responder: () => this.viewers.responder(sessionId, record),
+        firstOf: (reply) => this.queries.accept(sessionId, attachmentId, reply),
       });
     });
   }

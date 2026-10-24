@@ -1,5 +1,4 @@
-import type { SessionKey, TerminalBackend, TerminalSize } from "./backend";
-import type { WindowViewer } from "./viewers";
+import type { SessionKey, TerminalBackend } from "./backend";
 
 /**
  * 页面的终端对程序查询的应答（#518）：DA、DSR/CPR、DECRQM、DECRQSS、窗口报告、
@@ -33,7 +32,7 @@ export function isTerminalReplyData(data: string): boolean {
 }
 
 /** One reply starting at `start`; returns the index just past it. */
-function replyEnd(data: string, start: number): number | undefined {
+export function replyEnd(data: string, start: number): number | undefined {
   if (data[start] !== "\x1b") return undefined;
   const kind = data[start + 1];
   if (kind === "[") {
@@ -57,53 +56,30 @@ function replyEnd(data: string, start: number): number | undefined {
 }
 
 /**
- * 单 pty 的会话里，谁的应答算数（应答者）：
- *
- *   1. 最近敲过键的那个视图——人在用它，查询多半是它这次输入引起的；
- *   2. 否则，尺寸等于当前窗口的最早附着视图：CPR、窗口报告按它的格子才对；
- *   3. 再否则，最早附着的视图。
- *
- * 只读视图（契约 §60）不参加：它的终端不答，选上它就没人答了。没有可写视图时
- * 返回 `undefined`。
- */
-export function replyResponder(
-  viewers: readonly WindowViewer[],
-  window: TerminalSize,
-  driving?: number,
-): number | undefined {
-  const writable = viewers.filter((viewer) => viewer.readOnly !== true);
-  const driver = writable.find((viewer) => viewer.id === driving);
-  if (driver !== undefined) return driver.id;
-  const sized = writable.find(
-    (viewer) => viewer.cols === window.cols && viewer.rows === window.rows,
-  );
-  return (sized ?? writable[0])?.id;
-}
-
-/**
  * Writes one view's answer to a query the program sent. Every view answers,
  * so only one answer may reach the program:
  *
  *   * a backend with a view per viewer (tmux) sends it back down the
  *     sender's own client — tmux asked that client;
- *   * a backend with one pty takes it from the responder and drops the rest.
+ *   * a backend with one pty takes what `firstOf` lets through — the first
+ *     answer to each pending query (`QueryLedger`) — and drops the rest.
  *
  * A reply is not someone driving: no lease, no activity, no input revision.
  * The caller has checked that `data` is all replies (`isTerminalReplyData`).
- * Resolves to whether the answer was written.
+ * Resolves to whether anything was written.
  */
 export async function writeReply(
   backend: TerminalBackend,
   key: SessionKey,
   data: string,
-  from: { attachmentId: number; responder: () => number | undefined },
+  from: { attachmentId: number; firstOf: (data: string) => string },
 ): Promise<boolean> {
-  const bytes = Buffer.from(data, "utf8");
   if (backend.reply !== undefined) {
-    await backend.reply(key, from.attachmentId, bytes);
+    await backend.reply(key, from.attachmentId, Buffer.from(data, "utf8"));
     return true;
   }
-  if (from.responder() !== from.attachmentId) return false;
-  await backend.input(key, bytes);
+  const kept = from.firstOf(data);
+  if (kept === "") return false;
+  await backend.input(key, Buffer.from(kept, "utf8"));
   return true;
 }

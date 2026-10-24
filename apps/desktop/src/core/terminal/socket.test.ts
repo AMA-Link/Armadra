@@ -195,6 +195,7 @@ describe("a stream that ended", () => {
       generation: () => currentGeneration,
       markExited: (_id: string, code: number | null) => marked.push(code ?? -1),
       noteOutput: () => {},
+      queries: { output: () => {}, expects: () => false },
       detached: async () => {},
     } as unknown as TerminalManager;
     const connection = {
@@ -287,6 +288,7 @@ describe("a socket that closes while it is still attaching", () => {
       acknowledgedInput: () => 0,
       generation: () => 1,
       noteOutput: () => {},
+      queries: { output: () => {}, expects: () => false },
       detached: async (_id: string, attachmentId: number) => {
         detached.push(attachmentId);
       },
@@ -341,6 +343,7 @@ describe("a viewer's own size", () => {
       acknowledgedInput: () => 0,
       generation: () => 1,
       noteOutput: () => {},
+      queries: { output: () => {}, expects: () => false },
       noteViewerInput: (...args: unknown[]) =>
         calls.push(["noteViewerInput", ...args]),
       input: async () => calls.push(["input"]),
@@ -366,7 +369,7 @@ describe("a viewer's own size", () => {
     });
     await new Promise((resolve) => setImmediate(resolve));
     // No size in the request: the manager decides where the viewer starts.
-    expect(calls[0]).toEqual(["attach", "s1", undefined, "phone", false]);
+    expect(calls[0]).toEqual(["attach", "s1", undefined, "phone"]);
     expect(sent[0]).toMatchObject({ type: "hello", cols: 132, rows: 43 });
 
     handlers.get("message")?.(
@@ -410,6 +413,7 @@ describe("a view answering a query (#518)", () => {
       acknowledgedInput: () => 0,
       generation: () => 1,
       noteOutput: () => {},
+      queries: { output: () => {}, expects: () => false },
       noteViewerInput: (...args: unknown[]) =>
         calls.push(["noteViewerInput", ...args]),
       input: async (...args: unknown[]) => calls.push(["input", ...args]),

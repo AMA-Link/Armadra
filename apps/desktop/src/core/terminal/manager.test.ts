@@ -1410,76 +1410,153 @@ describe("the window size of a terminal several viewers watch", () => {
 
 describe("a query several views answer (#518)", () => {
   const DA = "\x1b[?1;2c";
+  const DA2 = "\x1b[>0;276;0c";
+  const ASK = "\x1b[c";
+  const ASK2 = "\x1b[>c";
   const settle = () => new Promise((resolve) => setImmediate(resolve));
   const replies = (backend: FakeBackend) =>
     backend.calls.filter(
       (call) => call.startsWith("input:") || call.startsWith("reply"),
     );
 
-  it("on a single pty keeps the responder's answer and drops the rest", async () => {
-    const { manager, backend } = harness(undefined, { singlePty: true });
-    const session = await spawn(manager);
-    const desk = await manager.attach(
+  async function twoViews(options: { singlePty?: boolean } = {}) {
+    const made = harness(undefined, { singlePty: true, ...options });
+    const session = await spawn(made.manager);
+    const desk = await made.manager.attach(
       session.id,
       { cols: 120, rows: 40 },
       "desk",
     );
-    const phone = await manager.attach(session.id, undefined, "phone");
-    const deskId = desk.attachment.attachmentId;
-    const phoneId = phone.attachment.attachmentId;
+    const phone = await made.manager.attach(session.id, undefined, "phone");
+    return {
+      ...made,
+      session,
+      deskId: desk.attachment.attachmentId,
+      phoneId: phone.attachment.attachmentId,
+      /** The program's output reaches both views. */
+      output(text: string, ...views: number[]) {
+        for (const view of views) {
+          made.manager.queries.output(session.id, view, text);
+        }
+      },
+    };
+  }
 
-    // Nobody typed: the earliest view at the window's size answers.
-    expect(await manager.reply(session.id, 1, DA, phoneId)).toBe(false);
-    expect(await manager.reply(session.id, 1, DA, deskId)).toBe(true);
-    expect(replies(backend)).toEqual([`input:${session.sessionKey}:${DA}`]);
-
-    // The phone types: now its answer is the one that counts.
-    manager.noteViewerInput(session.id, phoneId);
-    expect(await manager.reply(session.id, 1, DA, deskId)).toBe(false);
-    expect(await manager.reply(session.id, 1, DA, phoneId)).toBe(true);
-    expect(replies(backend)).toHaveLength(2);
-
-    // It leaves: the desk answers again.
-    await manager.detached(session.id, phoneId);
-    expect(await manager.reply(session.id, 1, DA, deskId)).toBe(true);
-    expect(replies(backend)).toHaveLength(3);
+  it("takes the first answer to a query from whichever view gives it", async () => {
+    const t = await twoViews();
+    t.output(ASK, t.deskId, t.phoneId);
+    // The desk is silent (off screen, backgrounded); the phone answers.
+    expect(await t.manager.reply(t.session.id, 1, DA, t.phoneId)).toBe(true);
+    expect(replies(t.backend)).toEqual([`input:${t.session.sessionKey}:${DA}`]);
+    // The desk's late answer to the same query is dropped.
+    expect(await t.manager.reply(t.session.id, 1, DA, t.deskId)).toBe(false);
+    expect(replies(t.backend)).toHaveLength(1);
   });
 
-  it("never waits on a read-only view", async () => {
-    const { manager, backend } = harness(undefined, { singlePty: true });
-    const session = await spawn(manager);
-    await manager.attach(session.id, { cols: 120, rows: 40 }, "", true);
-    const phone = await manager.attach(session.id, undefined, "phone");
+  it("lets only one of two prompt answers through", async () => {
+    const t = await twoViews();
+    t.output(ASK + ASK2, t.deskId, t.phoneId);
+    expect(await t.manager.reply(t.session.id, 1, DA + DA2, t.deskId)).toBe(
+      true,
+    );
+    expect(await t.manager.reply(t.session.id, 1, DA + DA2, t.phoneId)).toBe(
+      false,
+    );
+    expect(replies(t.backend)).toEqual([
+      `input:${t.session.sessionKey}:${DA}${DA2}`,
+    ]);
+  });
+
+  it("answers a query the answering view's peer was waiting on when it left", async () => {
+    const t = await twoViews();
+    t.output(ASK, t.deskId, t.phoneId);
+    await t.manager.detached(t.session.id, t.deskId);
+    expect(await t.manager.reply(t.session.id, 1, DA, t.phoneId)).toBe(true);
+    expect(replies(t.backend)).toHaveLength(1);
+  });
+
+  it("answers each of several queued queries once", async () => {
+    const t = await twoViews();
+    t.output(ASK + ASK, t.deskId, t.phoneId);
+    for (const view of [t.deskId, t.phoneId]) {
+      await t.manager.reply(t.session.id, 1, DA, view);
+      await t.manager.reply(t.session.id, 1, DA, view);
+    }
+    expect(replies(t.backend)).toHaveLength(2);
+  });
+
+  it("counts a query split across output chunks", async () => {
+    const t = await twoViews();
+    for (const chunk of ["\x1b", "[", ">0", "c"]) {
+      t.output(chunk, t.deskId, t.phoneId);
+    }
+    expect(await t.manager.reply(t.session.id, 1, DA2, t.phoneId)).toBe(true);
+    expect(await t.manager.reply(t.session.id, 1, DA2, t.deskId)).toBe(false);
+  });
+
+  it("drops an answer nobody asked for", async () => {
+    const t = await twoViews();
+    expect(await t.manager.reply(t.session.id, 1, DA, t.deskId)).toBe(false);
+    t.output(ASK, t.deskId, t.phoneId);
+    // A DSR answer does not answer a DA query.
+    expect(await t.manager.reply(t.session.id, 1, "\x1b[0n", t.deskId)).toBe(
+      false,
+    );
+    expect(replies(t.backend)).toEqual([]);
+  });
+
+  it("lets a view that attaches late answer only what it saw", async () => {
+    const made = harness(undefined, { singlePty: true });
+    const session = await spawn(made.manager);
+    const desk = await made.manager.attach(session.id, undefined, "desk");
+    const deskId = desk.attachment.attachmentId;
+    made.manager.queries.output(session.id, deskId, ASK);
+    expect(await made.manager.reply(session.id, 1, DA, deskId)).toBe(true);
+    const phone = await made.manager.attach(session.id, undefined, "phone");
+    const phoneId = phone.attachment.attachmentId;
+    // The phone never saw the first query: its answer is nobody's.
+    expect(await made.manager.reply(session.id, 1, DA, phoneId)).toBe(false);
+    made.manager.queries.output(session.id, deskId, ASK);
+    made.manager.queries.output(session.id, phoneId, ASK);
+    expect(await made.manager.reply(session.id, 1, DA, phoneId)).toBe(true);
+    expect(await made.manager.reply(session.id, 1, DA, deskId)).toBe(false);
+  });
+
+  it("holds when both views attach and leave together", async () => {
+    const made = harness(undefined, { singlePty: true });
+    const session = await spawn(made.manager);
+    const [a, b] = await Promise.all([
+      made.manager.attach(session.id, undefined, "a"),
+      made.manager.attach(session.id, undefined, "b"),
+    ]);
+    const ids = [a.attachment.attachmentId, b.attachment.attachmentId];
+    for (const id of ids) made.manager.queries.output(session.id, id, ASK);
+    await Promise.all(ids.map((id) => made.manager.detached(session.id, id)));
+    expect(await made.manager.reply(session.id, 1, DA, ids[0]!)).toBe(false);
+    // A fresh attach starts clean.
+    const c = await made.manager.attach(session.id, undefined, "c");
+    made.manager.queries.output(session.id, c.attachment.attachmentId, ASK);
     expect(
-      await manager.reply(session.id, 1, DA, phone.attachment.attachmentId),
+      await made.manager.reply(session.id, 1, DA, c.attachment.attachmentId),
     ).toBe(true);
-    expect(replies(backend)).toHaveLength(1);
   });
 
   it("with a view per viewer sends each answer back down its own view", async () => {
-    const { manager, backend } = harness();
-    const session = await spawn(manager);
-    const desk = await manager.attach(session.id, undefined, "desk");
-    const phone = await manager.attach(session.id, undefined, "phone");
-    await manager.reply(session.id, 1, DA, desk.attachment.attachmentId);
-    await manager.reply(session.id, 1, DA, phone.attachment.attachmentId);
-    expect(replies(backend)).toEqual([
-      `reply${desk.attachment.attachmentId}:${session.sessionKey}:${JSON.stringify(DA)}`,
-      `reply${phone.attachment.attachmentId}:${session.sessionKey}:${JSON.stringify(DA)}`,
+    const t = await twoViews({ singlePty: false });
+    await t.manager.reply(t.session.id, 1, DA, t.deskId);
+    await t.manager.reply(t.session.id, 1, DA, t.phoneId);
+    expect(replies(t.backend)).toEqual([
+      `reply${t.deskId}:${t.session.sessionKey}:${JSON.stringify(DA)}`,
+      `reply${t.phoneId}:${t.session.sessionKey}:${JSON.stringify(DA)}`,
     ]);
   });
 
   it("is not someone driving: the lease and the window stay", async () => {
-    const { manager, leases } = harness(undefined, { singlePty: true });
-    const session = await spawn(manager);
-    const desk = await manager.attach(
-      session.id,
-      { cols: 120, rows: 40 },
-      "desk",
-    );
-    await manager.reply(session.id, 1, DA, desk.attachment.attachmentId);
+    const t = await twoViews();
+    t.output(ASK, t.deskId);
+    await t.manager.reply(t.session.id, 1, DA, t.deskId);
     await settle();
-    expect(leases).toEqual([]);
-    expect(manager.driveLease(session.id).state).toBe("free");
+    expect(t.leases).toEqual([]);
+    expect(t.manager.driveLease(t.session.id).state).toBe("free");
   });
 });

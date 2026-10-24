@@ -230,12 +230,7 @@ export async function serveTerminalSocket(
 
   let attached;
   try {
-    attached = await manager.attach(
-      sessionId,
-      requested,
-      writer,
-      options.readOnly === true,
-    );
+    attached = await manager.attach(sessionId, requested, writer);
   } catch (error) {
     // Nothing live behind the row: the socket still gets a `hello` and the
     // final `status`, so the page can show the exit instead of a blank pane.
@@ -332,6 +327,7 @@ export async function serveTerminalSocket(
     // decoding each chunk alone would put a permanent U+FFFD on the screen.
     const text = decoder.write(chunk);
     if (text === "") return;
+    manager.queries.output(sessionId, attachment.attachmentId, text);
     pending += text;
     pendingBytes += chunk.byteLength;
     if (pendingBytes >= FLUSH_BYTES) {
@@ -376,14 +372,14 @@ export async function serveTerminalSocket(
         if (frame === undefined) return;
         if (options.readOnly === true && frame.type !== "resize") return;
         try {
-          // 对查询的应答（#518）：几个视图都会答，manager 只留一份；也不算
-          // 「人在驱动」，只看不打字的那一端不该因此抢走租约和窗口。标记
-          // 不作数，内容整段是应答格式才走这条路，否则按键入处理。
+          // 对查询的应答（#518）：几个视图都会答，core 对每次待答查询只收
+          // 第一份；也不算「人在驱动」，只看不打字的那一端不该因此抢走租约
+          // 和窗口。标记不作数，内容整段是应答格式才走这条路，否则按键入
+          // 处理。
           if (
             frame.type === "input" &&
-            frame.reply === true &&
-            frame.inputId === undefined &&
-            isTerminalReplyData(frame.data)
+            isTerminalReplyData(frame.data) &&
+            frame.reply === true
           ) {
             await manager.reply(
               sessionId,
@@ -391,6 +387,11 @@ export async function serveTerminalSocket(
               frame.data,
               attachment.attachmentId,
             );
+            // 旧页面把应答也记在输入账里，不确认它就会一直重发。
+            if (frame.inputId !== undefined && frame.inputId > 0) {
+              manager.noteInputApplied(sessionId, writer, frame.inputId);
+              send({ type: "ack", inputId: frame.inputId });
+            }
             return;
           }
           if (frame.type === "input") {

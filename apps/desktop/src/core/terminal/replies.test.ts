@@ -1,10 +1,5 @@
 import { describe, expect, it } from "vitest";
-import {
-  MAX_REPLY_LENGTH,
-  isTerminalReplyData,
-  replyResponder,
-} from "./replies";
-import type { WindowViewer } from "./viewers";
+import { MAX_REPLY_LENGTH, isTerminalReplyData } from "./replies";
 
 describe("terminal reply data (#518)", () => {
   it("accepts what xterm answers to the queries it knows", () => {
@@ -41,46 +36,5 @@ describe("terminal reply data (#518)", () => {
     ]) {
       expect(isTerminalReplyData(data), JSON.stringify(data)).toBe(false);
     }
-  });
-});
-
-describe("the responder of a single-pty session (#518)", () => {
-  const viewer = (
-    id: number,
-    cols = 80,
-    rows = 24,
-    readOnly = false,
-  ): WindowViewer => ({
-    id,
-    actor: `d${id}`,
-    cols,
-    rows,
-    ...(readOnly ? { readOnly } : {}),
-  });
-  const window = { cols: 80, rows: 24 };
-
-  it("is the view that last typed", () => {
-    expect(replyResponder([viewer(1), viewer(2)], window, 2)).toBe(2);
-  });
-
-  it("else the earliest view at the window's size, else the earliest", () => {
-    expect(
-      replyResponder([viewer(1, 40, 12), viewer(2), viewer(3)], window),
-    ).toBe(2);
-    expect(replyResponder([viewer(1, 40, 12), viewer(2, 50, 14)], window)).toBe(
-      1,
-    );
-    // A driver that has gone is no longer one.
-    expect(replyResponder([viewer(1), viewer(2)], window, 7)).toBe(1);
-  });
-
-  it("never elects a read-only view, whose terminal does not answer", () => {
-    expect(replyResponder([viewer(1, 80, 24, true), viewer(2)], window)).toBe(
-      2,
-    );
-    expect(
-      replyResponder([viewer(1, 80, 24, true)], window, 1),
-    ).toBeUndefined();
-    expect(replyResponder([], window)).toBeUndefined();
   });
 });

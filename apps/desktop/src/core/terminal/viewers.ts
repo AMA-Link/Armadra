@@ -1,6 +1,5 @@
 import { type Lease, deviceOrLocal } from "../drive/lease";
 import type { TerminalSize } from "./backend";
-import { replyResponder } from "./replies";
 
 /**
  * 多端观看同一个终端时的尺寸（ui-acp-refresh §7.3 E-1）。
@@ -19,8 +18,6 @@ export interface WindowViewer {
   readonly actor: string;
   readonly cols: number;
   readonly rows: number;
-  /** 只读附着（契约 §60）：它的终端不答查询，不被选为应答者（#518）。 */
-  readonly readOnly?: boolean;
 }
 
 /**
@@ -99,24 +96,13 @@ export class TerminalWindows {
 
   constructor(private readonly host: WindowHost) {}
 
-  add(
-    sessionId: string,
-    id: number,
-    writer: string,
-    size: TerminalSize,
-    readOnly = false,
-  ) {
+  add(sessionId: string, id: number, writer: string, size: TerminalSize) {
     let viewers = this.viewers.get(sessionId);
     if (viewers === undefined) {
       viewers = new Map();
       this.viewers.set(sessionId, viewers);
     }
-    viewers.set(id, {
-      id,
-      actor: deviceOrLocal(writer),
-      ...size,
-      ...(readOnly ? { readOnly } : {}),
-    });
+    viewers.set(id, { id, actor: deviceOrLocal(writer), ...size });
   }
 
   remove(sessionId: string, id: number): void {
@@ -147,15 +133,6 @@ export class TerminalWindows {
     if (viewer.cols === size.cols && viewer.rows === size.rows) return "same";
     viewers.set(viewer.id, { ...viewer, ...size });
     return "changed";
-  }
-
-  /** 单 pty 的会话里应答算数的那个视图（`replyResponder`，#518）。 */
-  responder(sessionId: string, window: TerminalSize): number | undefined {
-    return replyResponder(
-      this.list(sessionId),
-      window,
-      this.driving.get(sessionId),
-    );
   }
 
   list(sessionId: string): readonly WindowViewer[] {
