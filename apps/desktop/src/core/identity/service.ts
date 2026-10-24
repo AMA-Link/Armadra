@@ -621,8 +621,9 @@ export class IdentityService {
         revokedAtMs: 0,
       };
       if (reused === undefined) tx.createDevice(device);
-      const accessExpiresAtMs = now + ACCESS_TTL_MS;
       const expiresAtMs = now + (request.bounded?.ttlMs ?? SESSION_TTL_MS);
+      // 限寿会话可能短于访问期（寿命下限 5 分钟），访问期截到会话到期。
+      const accessExpiresAtMs = Math.min(now + ACCESS_TTL_MS, expiresAtMs);
       const session: IdentitySession = {
         sessionId,
         deviceId: device.deviceId,
