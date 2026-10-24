@@ -24,7 +24,7 @@
  * 丢弃还没发出的尾巴并归还信用，不再把对端已经不要的字节发出去。
  *
  * 计数（契约 §76）：给了 {@link StreamTrafficCounter} 时，收到的每块 `DATA`（对端 →
- * 本机）与发出的每块（本机 → 对端）各报一次字节数，流从流表摘掉时 `close()`。
+ * 本机）与发出的每块（本机 → 对端）各报一次字节数，流从流表摘掉时（排空之后）`close()`。
  * 准入认出请求是谁后调 `identify`。计数器只做加法，不碰库。
  *
  * 本类对角色无感：测试里的假中继用同一份。
@@ -462,7 +462,6 @@ export class TunnelDuplex extends Duplex {
   private release(): void {
     if (this.released) return;
     this.released = true;
-    this.counter?.close();
     this.settle();
   }
 
@@ -472,6 +471,9 @@ export class TunnelDuplex extends Duplex {
       return;
     }
     this.settled = true;
+    // 尾巴出帧时才记出向字节（`popFrame`），所以等出队列清空再关计数器，实时速率
+    // 采样不漏这一截。
+    this.counter?.close();
     this.host.closed(this);
   };
 

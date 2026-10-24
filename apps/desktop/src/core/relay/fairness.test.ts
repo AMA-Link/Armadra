@@ -9,7 +9,12 @@ import {
 
 import { LOW_WATER, TunnelWriter, type WriterSocket } from "./writer";
 import { WRITE_BUDGET } from "./sched";
-import { CreditPool, type StreamHost, TunnelDuplex } from "./streams";
+import {
+  CreditPool,
+  type StreamHost,
+  type StreamTrafficCounter,
+  TunnelDuplex,
+} from "./streams";
 
 /**
  * 写端公平调度（#564，移植自中继 `fairness_test.go`）：假 ws 里 `bufferedAmount` 与「链路
@@ -102,11 +107,14 @@ class Rig {
     };
   }
 
-  open(): TunnelDuplex {
-    const stream = new TunnelDuplex(this.nextId, this.host, {
-      streamWindow: this.streamWindow,
-      maxDataChunk: CHUNK,
-    });
+  open(counter?: StreamTrafficCounter): TunnelDuplex {
+    const stream = new TunnelDuplex(
+      this.nextId,
+      this.host,
+      { streamWindow: this.streamWindow, maxDataChunk: CHUNK },
+      undefined,
+      counter,
+    );
     this.nextId += 1;
     stream.on("error", () => undefined);
     return stream;
@@ -420,6 +428,29 @@ describe("写端公平调度", () => {
         .some((f) => f.type === "rst" && f.streamId === stream.streamId),
     ).toBe(false);
     expect(rig.writer.backlog).toBe(0);
+  });
+
+  it("计数器在尾巴出帧之后才关：出向字节一个不漏", async () => {
+    const rig = new Rig(4 << 20, 8 << 20);
+    let out = 0;
+    let outAtClose: number | undefined;
+    const counter: StreamTrafficCounter = {
+      add: (_in, bytesOut) => {
+        expect(outAtClose).toBeUndefined();
+        out += bytesOut;
+      },
+      identify: () => undefined,
+      close: () => {
+        outAtClose = out;
+      },
+    };
+    const stream = rig.open(counter);
+    stream.write(Buffer.alloc(1 << 20, 1));
+    await rig.run(2);
+    stream.destroy();
+    expect(outAtClose).toBeUndefined();
+    await rig.until(() => outAtClose !== undefined);
+    expect(outAtClose).toBe(1 << 20);
   });
 
   it("大量 1 字节写入不是平方量级，字节一个不少", async () => {
