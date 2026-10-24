@@ -53,6 +53,17 @@ export const cloudLoginProbeInputSchema = cloudLoginInputSchema.extend({
   probe: z.boolean().optional(),
 });
 
+/** `probe: true` 的答案：设备已受信（不受信答 `device_untrusted`），没有会话。 */
+export const cloudLoginProbeOutputSchema = z.object({
+  trusted: z.literal(true),
+});
+
+/** 普通登录答 {@link cloudLoginOutputSchema}，`probe` 答 {@link cloudLoginProbeOutputSchema}。 */
+export const cloudLoginAnswerSchema = z.union([
+  cloudLoginOutputSchema,
+  cloudLoginProbeOutputSchema,
+]);
+
 export { cloudLoginInputSchema, cloudStatusOutputSchema, tunnelStatusSchema };
 
 const denied = errors.pick("unauthenticated", "forbidden");
@@ -100,7 +111,7 @@ export const cloud = {
   /** 匿名：断言（+ 邀请令牌）换本机会话。Bearer 来源答 `session.native`。 */
   login: oc
     .input(cloudLoginProbeInputSchema)
-    .output(cloudLoginOutputSchema)
+    .output(cloudLoginAnswerSchema)
     .errors({
       ...assertionRefused,
       ...errors.pick(
