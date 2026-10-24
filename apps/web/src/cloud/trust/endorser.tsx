@@ -5,17 +5,20 @@ import type { CloudClient } from "../api/client";
 /** 一条待信任请求（云端 `trust.list`）：没有校验码，云端不经手它。 */
 export type TrustRequest = Awaited<
   ReturnType<CloudClient["trust"]["list"]>
->["requests"][number];
+>["requests"][number] & {
+  /** 协议包 0.10.0 的 `trustRequest` 没有它，云端 0.11 起可选下发（armadra-cloud#126）；形状同 `@armadra/shared` 的 `cloudTrustRequestSchema`。 */
+  readonly pendingId?: string;
+};
 
 /** 主机 core 上这条待确认设备的号（`devices.approve` 的 `pendingId`），与云端的 `trq_` 请求号不是一回事。 */
 export type EndorsableRequest = TrustRequest & { readonly pendingId: string };
 
 /**
- * 请求带的 core `pendingId`；没有（未知）是 `undefined`。现契约（协议 0.10.0）的 `trustRequest` 不带它，
- * 待云端补字段（armadra-cloud 跟进）；补上之前所有请求都不可背书，页面只给「在已信任的设备上处理」。
+ * 请求带的 core `pendingId`；没有（未知）是 `undefined`。协议 0.10.0 的 `trustRequest` 不带它，
+ * 云端 0.11 起可选下发（armadra-cloud#126）；旧云端的请求都不可背书，页面只给「在已信任的设备上处理」。
  */
 export function pendingIdOf(request: TrustRequest): string | undefined {
-  const value = (request as { pendingId?: unknown }).pendingId;
+  const value: unknown = request.pendingId;
   return typeof value === "string" && value !== "" ? value : undefined;
 }
 
@@ -28,10 +31,14 @@ export function pendingIdOf(request: TrustRequest): string | undefined {
  *   `sas_mismatch`、`sas_expired`、`device_untrusted`、`forbidden`、`e2e_device_unavailable`。
  *
  * 没有实现（`null`）或请求不带 `pendingId` 时，这一行按「不可背书」画，不渲染「信任」。
+ * 生产实现是 `browser-endorser.ts`。
  */
 export interface HostEndorser {
+  /** `true` / `false` 是确定的答案（会缓存）；通道一时开不了抛带 `code` 的错，不缓存。 */
   canEndorse(sourceId: string): Promise<boolean>;
   approve(request: EndorsableRequest, sas: string): Promise<void>;
+  /** 登出或卸载：关掉通道、忘掉访问；之后再调用会按需重开。 */
+  dispose?(): void;
 }
 
 const EndorserContext = React.createContext<HostEndorser | null>(null);
