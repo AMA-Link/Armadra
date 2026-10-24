@@ -113,12 +113,18 @@ async function setup({ expiresAtMs = 0 } = {}) {
   let channel = fakeChannel("c1", expiresAtMs);
   let peer: "online" | "offline" = "online";
   let issued = 1;
+  let dropNext = false;
   /** 重取一份访问：主机不在就抛；在就开一条新通道。 */
   const issue = async () => {
     if (peer === "offline")
       throw Object.assign(new Error("offline"), { code: "source_offline" });
     issued += 1;
     channel = fakeChannel(`c${issued}`, expiresAtMs);
+    // 新通道刚开好、还没交到手里就又关了（对端又掉了）。
+    if (dropNext) {
+      dropNext = false;
+      channel.close();
+    }
     return channel.access;
   };
   const provider: CredentialProvider = {
@@ -146,6 +152,9 @@ async function setup({ expiresAtMs = 0 } = {}) {
     },
     setPeer(next: "online" | "offline") {
       peer = next;
+    },
+    dropNextChannel() {
+      dropNext = true;
     },
   };
 }
@@ -276,5 +285,22 @@ describe("经中继装成本机源：端到端通道关了之后", () => {
     const answer = await localSource.fetch(`${RELAY_B}/api/x`);
     expect(answer.status).toBe(200);
     expect(world.provider.refresh).toHaveBeenCalledTimes(1);
+  });
+
+  it("换通道期间新通道又关了：不在它上面开流，冷却过后再换一条", async () => {
+    const world = await setup();
+    await stream();
+    world.channel.close();
+    world.dropNextChannel();
+    await expect(world.entered.recover()).resolves.toBe(false);
+    expect(world.provider.getAccess).toHaveBeenCalledTimes(1);
+    expect(world.provider.invalidate).toHaveBeenCalledTimes(2);
+    await expect(stream()).resolves.toBe("closed");
+    expect(opened).toEqual(["c1"]);
+
+    world.clock.at += CHANNEL_RETRY_MS;
+    await expect(stream()).resolves.toBe("opened");
+    expect(world.provider.getAccess).toHaveBeenCalledTimes(2);
+    expect(opened).toEqual(["c1", "c3"]);
   });
 });
