@@ -24,6 +24,7 @@ import {
   sessionKey as asSessionKey,
   tailLines,
   trimCaptured,
+  type AttachOptions,
 } from "../backend";
 import {
   type ClientMessage,
@@ -414,6 +415,7 @@ export class SessionHostBackend implements AdoptableBackend {
     key: SessionKey,
     generation: number,
     size: TerminalSize,
+    options: AttachOptions = {},
   ): Promise<Attachment> {
     const remembered = this.remembered(key);
     if (remembered.generation !== generation) {
@@ -536,6 +538,9 @@ export class SessionHostBackend implements AdoptableBackend {
       sessionKey: key,
       generation,
       size: clampSize(size),
+      // Only said when false: a host that predates the field ignores it and
+      // an older core never sends it, which both mean "writable".
+      ...(options.readOnly === true ? { writable: false } : {}),
     });
     if (answer.type === "error") {
       stopFeeding();

@@ -432,3 +432,11 @@ test("the quiet wait ignores the snapshot and restarts on every output frame", a
   assert.equal(result.ok, true);
   assert.equal(result.reason, "quiet");
 });
+
+test("the query program is valid JavaScript and the page helpers carry the watchers", async () => {
+  const lib = await import("./windows-acceptance-lib.mjs");
+  assert.doesNotThrow(() => new Function(lib.QUERY_SCRIPT));
+  for (const name of ["watchOpen", "watchRead", "watchSend", "watchClose"])
+    assert.ok(lib.PAGE_HELPERS.includes(name), name);
+  assert.ok(lib.PAGE_HELPERS.includes("replies=1"));
+});

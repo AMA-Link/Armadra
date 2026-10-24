@@ -79,6 +79,7 @@ import {
   parseArgs,
   probeLaunchConfig,
   selfTests,
+  sessionHostReplies,
   setEnvLine,
   snapshot,
   summarize,
@@ -434,7 +435,6 @@ async function runFull(options, result, record, out) {
   const say = (message) => console.log(`\n== ${message}`);
   let installDir;
   let exe = options.app;
-
   let hostPid;
   let dataDir;
   let probeHomePath;
@@ -745,6 +745,7 @@ async function runFull(options, result, record, out) {
       };
     });
 
+    await sessionHostReplies(record, app, result, { workspaceId, wsDir });
     say("画布启动器");
     const probeDir = join(work, "launcher");
     mkdirSync(join(probeDir, "run"), { recursive: true });

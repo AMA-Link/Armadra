@@ -1263,6 +1263,17 @@ describe("a query several views answer (#518)", () => {
     expect(replies(t.backend)).toHaveLength(1);
   });
 
+  it("tells the backend which attachment is read-only", async () => {
+    const made = harness(undefined, { singlePty: true });
+    const session = await spawn(made.manager);
+    await made.manager.attach(session.id, undefined, "desk");
+    await made.manager.attach(session.id, undefined, "watch", true);
+    expect(made.backend.attachOptions).toEqual([
+      { readOnly: false },
+      { readOnly: true },
+    ]);
+  });
+
   it("drops an answer from a view with no right to drive", async () => {
     const t = await twoViews();
     t.output(ASK, t.deskId);

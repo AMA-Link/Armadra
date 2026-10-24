@@ -15,7 +15,7 @@ import {
 import { request as httpsRequest } from "node:https";
 import { createServer } from "node:net";
 import os from "node:os";
-import { basename, join, resolve } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 
 export const SCHEMA = "armadra-windows-acceptance/1";
@@ -44,6 +44,10 @@ export const CHECKS = [
     "cmd / pwsh 7 / Windows PowerShell 5.1 各起一个终端，输入有回显，capture 读得到",
   ],
   ["sessionHost.process", "会话宿主进程在，命名管道 armadra-session-* 在"],
+  [
+    "sessionHost.replies",
+    "会话宿主与查询应答（#565）：附着回放里的旧查询不算待答，实时查询只答一份；宿主在没有可写附着时代答、有可写附着时不答、附着离开后接着答",
+  ],
   [
     "launcher.dialects",
     "armadra-launch.exe 在三种 shell 里：参数原样、注入在后、门关时不注入",
@@ -668,9 +672,260 @@ export const PAGE_HELPERS = `(() => {
       socket.onerror = () => { clearTimeout(timer); done({ ok: false, reason: "socket error" }); };
     });
   }
-  globalThis.__acceptance = { httpBase, wsBase, api, terminal, events };
+  // 长开的附着（#565）：探针自己当一个页面，声明 replies=1，只在被告知时才发应答，
+  // 这样「谁在答查询」完全由探针决定。
+  const watchers = new Map();
+  async function watchOpen(key, sessionId) {
+    const protocols = await wsProtocols();
+    return await new Promise((done) => {
+      const socket = new WebSocket(wsBase + "/api/terminals/" + sessionId + "/ws?writer=acceptance-" + key + "&replies=1", protocols);
+      const state = { socket, hello: null, seen: "" };
+      watchers.set(key, state);
+      const timer = setTimeout(() => done({ ok: false, reason: "timeout" }), 20000);
+      socket.onmessage = (event) => {
+        const frame = JSON.parse(event.data);
+        if (frame.type === "hello") {
+          state.hello = frame;
+          clearTimeout(timer);
+          done({ ok: true });
+        } else if (frame.type === "output" || frame.type === "snapshot") {
+          state.seen += frame.data;
+        }
+      };
+      socket.onerror = () => { clearTimeout(timer); done({ ok: false, reason: "socket error" }); };
+    });
+  }
+  function watchRead(key) {
+    const state = watchers.get(key);
+    return state ? { seen: state.seen.slice(-8000), open: state.socket.readyState === 1 } : null;
+  }
+  function watchSend(key, frame) {
+    const state = watchers.get(key);
+    if (!state || state.socket.readyState !== 1) return false;
+    state.socket.send(JSON.stringify(frame));
+    return true;
+  }
+  function watchClose(key) {
+    const state = watchers.get(key);
+    watchers.delete(key);
+    try { state?.socket.close(); } catch {}
+    return true;
+  }
+  globalThis.__acceptance = { httpBase, wsBase, api, terminal, events, watchOpen, watchRead, watchSend, watchClose };
   return { httpBase, wsBase };
 })()`;
+
+/**
+ * 会话宿主代答验收的被测程序（#565）：往终端里发查询，把收到的每一段输入原样记成
+ * `GOT:<阶段>:<十六进制>`，所以「谁答了查询」读 capture 就知道。
+ *
+ *   * `replay`：先发一次 DA1（`ESC [ c`）和 `REPLAYSENT`，6 秒后再发一次 DA1 和
+ *     `SECONDQUERY`，此后的输入记在阶段 `live` 下，之前的记在 `replay` 下；
+ *   * `loop`：每秒发一次 DSR 5n（`ESC [ 5 n`）和 `TICK:<n>`，输入记在当时的 n 下。
+ */
+export const QUERY_SCRIPT = [
+  "const mode = process.argv[2];",
+  "let phase = mode === 'replay' ? 'replay' : 0;",
+  "if (process.stdin.isTTY) process.stdin.setRawMode(true);",
+  "process.stdin.resume();",
+  "process.stdin.on('data', (chunk) => process.stdout.write('\\r\\nGOT:' + phase + ':' + chunk.toString('hex') + '\\r\\n'));",
+  "if (mode === 'replay') {",
+  "  process.stdout.write('\\x1b[c\\r\\nREPLAYSENT\\r\\n');",
+  "  setTimeout(() => { phase = 'live'; process.stdout.write('\\x1b[c\\r\\nSECONDQUERY\\r\\n'); }, 6000);",
+  "  setTimeout(() => process.exit(0), 40000);",
+  "} else {",
+  "  const timer = setInterval(() => {",
+  "    phase += 1;",
+  "    process.stdout.write('\\x1b[5n\\r\\nTICK:' + phase + '\\r\\n');",
+  "    if (phase >= 90) { clearInterval(timer); process.exit(0); }",
+  "  }, 1000);",
+  "}",
+].join("\n");
+
+/** capture 文本里程序记下的输入：`{ phase, hex }`。 */
+export function receivedInputs(text) {
+  return [...String(text).matchAll(/GOT:(\w+):([0-9a-f]+)/g)].map((match) => ({
+    phase: /^\d+$/.test(match[1]) ? Number(match[1]) : match[1],
+    hex: match[2],
+  }));
+}
+
+/** 程序打到第几个 TICK 了。 */
+export function lastTick(text) {
+  let last = 0;
+  for (const match of String(text).matchAll(/TICK:(\d+)/g))
+    last = Math.max(last, Number(match[1]));
+  return last;
+}
+
+/**
+ * 宿主代答三段的判定：`inputs` 是 `receivedInputs` 的结果，三个区间都是 [from, to]
+ * 的 TICK 号（两头已经留出附着与断开的时延）。没有可写附着的头尾两段每个 TICK 都该
+ * 有一份宿主的应答；有可写附着（而它不答）的中间一段一份都不该有。
+ */
+export function hostAnswerVerdict(inputs, { before, during, after }) {
+  const within = ([from, to]) =>
+    inputs.filter(
+      (row) =>
+        typeof row.phase === "number" && row.phase >= from && row.phase <= to,
+    );
+  const counts = {
+    before: within(before).length,
+    during: within(during).length,
+    after: within(after).length,
+  };
+  const span = (range) => range[1] - range[0] + 1;
+  return {
+    ok:
+      counts.before >= span(before) - 1 &&
+      counts.during === 0 &&
+      counts.after >= span(after) - 1,
+    counts,
+  };
+}
+
+/**
+ * `sessionHost.replies`（#565）：见 CHECKS 里的说明与 `QUERY_SCRIPT`。`app` 要有
+ * `api`、`terminal`、`evaluate`；长开的附着经页面里的 `watch*` 助手。
+ */
+export async function sessionHostReplies(record, app, result, dirs) {
+  const shell = result.machine.shells.cmd;
+  if (!shell) return record.skip("sessionHost.replies", "没有 cmd.exe");
+  const work = dirname(dirs.wsDir);
+  return await record.check("sessionHost.replies", () =>
+    runSessionHostReplies({ app, shell, work, ...dirs }),
+  );
+}
+
+async function runSessionHostReplies({ app, work, workspaceId, wsDir, shell }) {
+  const watch = (action, ...args) =>
+    app.evaluate(
+      `(globalThis.__acceptance).watch${action}(${args.map((arg) => JSON.stringify(arg)).join(", ")})`,
+    );
+  const script = join(work, "query-program.js");
+  writeFileSync(script, QUERY_SCRIPT);
+  const start = async (mode, wanted) => {
+    const response = await app.api("POST", "/api/terminals", {
+      workspaceId,
+      cwd: wsDir,
+      shell,
+    });
+    const id = response.body?.id;
+    if (typeof id !== "string") return { error: response };
+    const typed = await app.terminal(
+      id,
+      [`"${process.execPath}" "${script}" ${mode}\r`],
+      wanted,
+      60_000,
+    );
+    return { id, typed };
+  };
+  const screen = async (id) => {
+    const capture = await app.api(
+      "GET",
+      `/api/terminals/${id}/capture?lines=500`,
+    );
+    return typeof capture.body?.data === "string" ? capture.body.data : "";
+  };
+  const finish = (id) =>
+    app.api("POST", `/api/terminals/${id}/terminate`, {
+      mode: "session",
+    });
+  const detail = {};
+
+  // 一、附着回放里带着查询：回放是过去，视图对它的应答没有人在等，不能变成输入；
+  // 随后程序发的实时查询，只放行一份。
+  const replay = await start("replay", "REPLAYSENT");
+  if (replay.id === undefined) {
+    return { ok: false, detail: { replay } };
+  }
+  const opened = await watch("Open", "late", replay.id);
+  await sleep(500);
+  const late = await watch("Read", "late");
+  const replayed = (late?.seen ?? "").includes("\u001b[c");
+  // 回放里那次查询的应答（页面的终端会这么答）：不该到达程序。
+  await watch("Send", "late", {
+    type: "input",
+    data: "\u001b[?1;2c",
+    reply: true,
+  });
+  let sawSecond = false;
+  for (let waited = 0; waited < 20_000; waited += 250) {
+    const now = await watch("Read", "late");
+    if ((now?.seen ?? "").includes("SECONDQUERY")) {
+      sawSecond = true;
+      break;
+    }
+    await sleep(250);
+  }
+  if (sawSecond) {
+    // 同一条实时查询两份应答（两个视图都会答）：只该有一份到程序。这里用同一条
+    // socket 连发两份，账上第二份已经没有待答查询，必须被丢掉。
+    for (let copy = 0; copy < 2; copy += 1) {
+      await watch("Send", "late", {
+        type: "input",
+        data: "\u001b[?1;2c",
+        reply: true,
+      });
+    }
+  }
+  await sleep(2_000);
+  const inputs = receivedInputs(await screen(replay.id));
+  await watch("Close", "late");
+  await finish(replay.id);
+  const stale = inputs.filter((row) => row.phase === "replay");
+  const live = inputs.filter((row) => row.phase === "live");
+  detail.replay = {
+    attached: opened?.ok === true,
+    replayHadQuery: replayed,
+    sawSecondQuery: sawSecond,
+    staleAnswersReachedProgram: stale.length,
+    liveAnswersReachedProgram: live.length,
+  };
+  const replayOk =
+    opened?.ok === true &&
+    replayed &&
+    sawSecond &&
+    stale.length === 0 &&
+    live.length === 1;
+
+  // 二、宿主代答的切换：没有附着时宿主答；有可写附着（页面的终端负责答，这里它
+  // 故意不答）时宿主不答；附着离开后宿主接着答。TICK 号两头各留两格余量。
+  const loop = await start("loop", "TICK:1");
+  if (loop.id === undefined) {
+    detail.replay.ok = replayOk;
+    return { ok: false, detail: { ...detail, loop } };
+  }
+  let at = 0;
+  for (let waited = 0; waited < 20_000 && at < 6; waited += 500) {
+    at = lastTick(await screen(loop.id));
+    if (at < 6) await sleep(500);
+  }
+  const watching = await watch("Open", "quiet", loop.id);
+  const attachedAt = lastTick(await screen(loop.id));
+  await sleep(6_000);
+  const leftAt = lastTick(await screen(loop.id));
+  await watch("Close", "quiet");
+  await sleep(7_000);
+  const text = await screen(loop.id);
+  await finish(loop.id);
+  const verdict = hostAnswerVerdict(receivedInputs(text), {
+    before: [2, Math.max(2, attachedAt - 2)],
+    during: [attachedAt + 2, Math.max(attachedAt + 2, leftAt - 2)],
+    after: [leftAt + 2, Math.max(leftAt + 2, lastTick(text) - 1)],
+  });
+  detail.hostAnswers = {
+    attached: watching?.ok === true,
+    attachedAtTick: attachedAt,
+    leftAtTick: leftAt,
+    lastTick: lastTick(text),
+    counts: verdict.counts,
+  };
+  return {
+    ok: replayOk && watching?.ok === true && verdict.ok,
+    detail,
+  };
+}
 
 export function newestUninstaller(installDir) {
   try {
@@ -944,6 +1199,42 @@ export function selfTests() {
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
+  });
+  test("hostAnswers", () => {
+    const text = [
+      "TICK:1",
+      "GOT:3:1b5b306e",
+      "GOT:4:1b5b306e",
+      "TICK:7",
+      "GOT:12:1b5b306e",
+      "GOT:13:1b5b306e",
+      "GOT:replay:1b5b3f31",
+      "GOT:live:1b5b3f31",
+    ].join("\r\n");
+    equal(
+      receivedInputs(text).map((row) => row.phase),
+      [3, 4, 12, 13, "replay", "live"],
+      "输入记录",
+    );
+    equal(lastTick(text), 7, "最后的 TICK");
+    equal(
+      hostAnswerVerdict(receivedInputs(text), {
+        before: [3, 4],
+        during: [6, 11],
+        after: [12, 13],
+      }),
+      { ok: true, counts: { before: 2, during: 0, after: 2 } },
+      "三段判定",
+    );
+    equal(
+      hostAnswerVerdict(receivedInputs(text), {
+        before: [3, 4],
+        during: [3, 4],
+        after: [12, 13],
+      }).ok,
+      false,
+      "中间一段有应答要判失败",
+    );
   });
   test("launchLines", () => {
     const exe = "C:\\data dir\\run\\probe.exe";

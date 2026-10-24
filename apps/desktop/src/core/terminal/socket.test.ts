@@ -369,7 +369,7 @@ describe("a viewer's own size", () => {
     });
     await new Promise((resolve) => setImmediate(resolve));
     // No size in the request: the manager decides where the viewer starts.
-    expect(calls[0]).toEqual(["attach", "s1", undefined, "phone"]);
+    expect(calls[0]).toEqual(["attach", "s1", undefined, "phone", false]);
     expect(sent[0]).toMatchObject({ type: "hello", cols: 132, rows: 43 });
 
     handlers.get("message")?.(
@@ -398,6 +398,7 @@ describe("a view answering a query (#518)", () => {
     sent: Record<string, unknown> | Record<string, unknown>[],
     owed = false,
     feed: [string, boolean?][] = [],
+    marksReplies = false,
   ) {
     const frames = Array.isArray(sent) ? sent : [sent];
     let emit: ((chunk: Buffer, replay?: boolean) => void) | undefined;
@@ -424,6 +425,8 @@ describe("a view answering a query (#518)", () => {
       queries: {
         output: (_session: string, _view: number, text: string) =>
           calls.push(["output", text]),
+        seed: (_session: string, _view: number, text: string) =>
+          calls.push(["seed", text]),
         expects: () => owed,
       },
       noteInputApplied: (...args: unknown[]) =>
@@ -450,6 +453,7 @@ describe("a view answering a query (#518)", () => {
       manager,
       sessionId: "s1",
       writer: "phone",
+      marksReplies,
     });
     await new Promise((resolve) => setImmediate(resolve));
     for (const [text, replay] of feed) emit?.(Buffer.from(text), replay);
@@ -506,7 +510,23 @@ describe("a view answering a query (#518)", () => {
 
   it("counts live output as queries but not the replay of an attach", async () => {
     const calls = await serve([], false, [["\u001b[c", true], ["\u001b[>c"]]);
-    expect(calls).toEqual([["output", "\u001b[>c"]]);
+    // The replay is not a question, but its tail may be half of one.
+    expect(calls).toEqual([
+      ["seed", "\u001b[c"],
+      ["output", "\u001b[>c"],
+    ]);
+  });
+
+  it("never guesses on a socket whose page declared it marks replies", async () => {
+    // Shift+F3 is the same bytes as a cursor report: without the declaration
+    // the first one would be taken for an answer, here it is a key.
+    const calls = await serve(
+      { type: "input", data: "\u001b[1;2R" },
+      true,
+      [],
+      true,
+    );
+    expect(calls.map((call) => call[0])).toEqual(["noteViewerInput", "input"]);
   });
 
   it("stops guessing once a page has marked a reply", async () => {

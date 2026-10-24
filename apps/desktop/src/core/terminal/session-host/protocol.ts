@@ -278,6 +278,12 @@ export type ClientMessage =
       sessionKey: string;
       generation: number;
       size: HostSize;
+      /**
+       * `false` when this attachment's viewer cannot answer the program's
+       * console queries (a read-only view, #565). Absent means writable, so
+       * a core that predates the field attaches as it always did.
+       */
+      writable?: boolean;
     }
   | { type: "detach"; id: number; sessionKey: string }
   | { type: "write"; id: number; sessionKey: string; data: string }

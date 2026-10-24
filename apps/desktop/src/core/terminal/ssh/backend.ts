@@ -53,6 +53,7 @@ import {
   type TerminateMode,
   TerminalError,
   isAdoptable,
+  type AttachOptions,
 } from "../backend";
 import { remoteShellCommand, sshArgv } from "./argv";
 import type { AskpassService } from "./askpass";
@@ -197,8 +198,9 @@ export class SshBackend implements TerminalBackend {
     key: SessionKey,
     generation: number,
     size: TerminalSize,
+    options?: AttachOptions,
   ): Promise<Attachment> {
-    return this.options.inner.attach(key, generation, size);
+    return this.options.inner.attach(key, generation, size, options);
   }
 
   detach(key: SessionKey, attachmentId: number): Promise<void> {

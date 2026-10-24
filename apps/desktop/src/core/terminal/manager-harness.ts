@@ -4,6 +4,7 @@ import {
   type Attachment,
   type BackendCapabilities,
   type BackendKind,
+  type AttachOptions,
   type BackendNotice,
   type BackendRef,
   type ForegroundInfo,
@@ -40,6 +41,8 @@ export class FakeBackend implements AdoptableBackend {
   readonly kind: BackendKind = "tmux";
   readonly sessions = new Map<SessionKey, FakeSession>();
   readonly calls: string[] = [];
+  /** What each `attach` was told about its viewer (#565). */
+  readonly attachOptions: (AttachOptions | undefined)[] = [];
   /** Window and per-viewer resizes, apart from `calls` so no other test moves. */
   readonly sizes: string[] = [];
   private readonly sinks: ((notice: BackendNotice) => void)[] = [];
@@ -76,7 +79,9 @@ export class FakeBackend implements AdoptableBackend {
     key: SessionKey,
     generation: number,
     _size: TerminalSize,
+    options?: AttachOptions,
   ): Promise<Attachment> {
+    this.attachOptions.push(options);
     const session = this.sessions.get(key);
     if (session === undefined) throw notFound("gone");
     if (session.generation !== generation) throw conflict("stale");

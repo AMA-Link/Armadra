@@ -936,6 +936,7 @@ export function install(
         sessionId,
         writer: validWriter(request.query.get("writer")) ?? "",
         readOnly: access.readOnly,
+        marksReplies: request.query.get("replies") === "1",
         onError: (failure) =>
           context.log.warn("terminal socket", {
             sessionId,

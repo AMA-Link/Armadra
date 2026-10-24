@@ -182,6 +182,11 @@ export interface SocketOptions {
    * 送，`input` 与 `terminate` 帧悄悄丢掉；`resize` 只改这一端自己的视图，照收。
    */
   readonly readOnly?: boolean;
+  /**
+   * 页面在连接时就声明它会给应答标 `reply`（URL 参数 `replies=1`，契约 §87）：
+   * 这条 socket 一开始就不再按旧页面猜，省掉重连后等第一份标记应答的窗口。
+   */
+  readonly marksReplies?: boolean;
   readonly onError?: (error: unknown) => void;
 }
 
@@ -230,7 +235,12 @@ export async function serveTerminalSocket(
 
   let attached;
   try {
-    attached = await manager.attach(sessionId, requested, writer);
+    attached = await manager.attach(
+      sessionId,
+      requested,
+      writer,
+      options.readOnly === true,
+    );
   } catch (error) {
     // Nothing live behind the row: the socket still gets a `hello` and the
     // final `status`, so the page can show the exit instead of a blank pane.
@@ -302,7 +312,7 @@ export async function serveTerminalSocket(
   let pendingBytes = 0;
   let timer: NodeJS.Timeout | undefined;
   let closed = false;
-  let marksReplies = false;
+  let marksReplies = options.marksReplies === true;
 
   const flush = (): void => {
     if (timer !== undefined) {
@@ -331,6 +341,9 @@ export async function serveTerminalSocket(
     // 回放是会话的过去，不是程序此刻的提问：不计入待答查询（#518）。
     if (replay !== true) {
       manager.queries.output(sessionId, attachment.attachmentId, text);
+    } else {
+      // 回放截在查询序列中间时，后半截随实时输出到达：把半截留作初始缓冲。
+      manager.queries.seed(sessionId, attachment.attachmentId, text);
     }
     pending += text;
     pendingBytes += chunk.byteLength;

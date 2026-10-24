@@ -267,6 +267,16 @@ export class NotImplemented extends TerminalError {
 
 /* -------------------------------- the contract ----------------------------- */
 
+/** What the caller knows about the viewer that is attaching. */
+export interface AttachOptions {
+  /**
+   * The viewer cannot answer the program's queries (§60 read-only attach).
+   * A session host that answers console queries itself when no viewer can
+   * (#565) needs to know.
+   */
+  readonly readOnly?: boolean;
+}
+
 export interface TerminalBackend {
   readonly kind: BackendKind;
 
@@ -283,6 +293,7 @@ export interface TerminalBackend {
     key: SessionKey,
     generation: number,
     size: TerminalSize,
+    options?: AttachOptions,
   ): Promise<Attachment>;
 
   /** Ends one attachment. The session keeps running — this is not a kill. */
