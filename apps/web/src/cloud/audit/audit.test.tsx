@@ -1,5 +1,5 @@
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { chooseOption, installDomPolyfills } from "../../app/test-harness";
 import { MOCK_HOSTS } from "../mock/fixtures";
@@ -177,6 +177,18 @@ describe("团队 · 审计", () => {
       ).toBe("129"),
     );
     expect(screen.queryByRole("button", { name: "加载更多" })).toBeNull();
+  });
+
+  it("翻页用首屏定下的 fromMs，列表起点不随时间漂", async () => {
+    const api = mount("/t/rd/audit", { ...OPTIONS, extraAudit: 120 });
+    const list = vi.spyOn(api.client.audit, "list");
+    fireEvent.click(await screen.findByRole("button", { name: "加载更多" }));
+    await waitFor(() =>
+      expect(list.mock.calls.length).toBeGreaterThanOrEqual(1),
+    );
+    await new Promise((done) => setTimeout(done, 20));
+    const froms = new Set(list.mock.calls.map(([input]) => input.fromMs));
+    expect(froms.size).toBe(1);
   });
 
   it("窄屏同一份数据画成两行：动作 · 时间，成员 · 对象", async () => {

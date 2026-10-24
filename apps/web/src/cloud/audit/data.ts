@@ -1,3 +1,4 @@
+import * as React from "react";
 import { keepPreviousData, useInfiniteQuery } from "@tanstack/react-query";
 
 import { useCloudApi } from "../api/context";
@@ -17,19 +18,26 @@ export const AUDIT_PAGE = 100;
 export function useAuditEvents(space: TeamSpace, filters: AuditFilters) {
   const api = useCloudApi();
   const { range, actor, host, type } = filters;
+  // 起点在首屏（或换筛选）时定下并进查询键：翻页与重拉用同一个 `fromMs`，列表不会随时间漂。
+  const fromMs = React.useMemo(
+    () => Date.now() - RANGE_MS[range],
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- 筛选变了才重新定起点
+    [range, actor, host, type],
+  );
   return useInfiniteQuery({
     queryKey: cloudKeys.audit(keyOfSpace(space), {
       range,
       actor,
       host,
       type,
+      fromMs,
     }),
     initialPageParam: undefined as string | undefined,
     placeholderData: keepPreviousData,
     queryFn: ({ pageParam }) =>
       api.client.audit.list({
         teamId: space.teamId,
-        fromMs: Date.now() - RANGE_MS[range],
+        fromMs,
         limit: AUDIT_PAGE,
         ...(actor ? { actor } : {}),
         ...(host ? { sourceId: host } : {}),

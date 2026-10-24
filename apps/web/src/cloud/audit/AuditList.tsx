@@ -139,7 +139,11 @@ export function AuditList({
       return next;
     });
 
-  const renderRow = (event: AuditEvent, index: number) => {
+  const renderRow = (
+    event: AuditEvent,
+    index: number,
+    place?: { top: number },
+  ) => {
     const name = actionLabel(event.action);
     const person = who(event);
     const expanded = open.has(event.eventId);
@@ -160,10 +164,17 @@ export function AuditList({
     const target = targetText(event);
     return (
       <div
+        key={event.eventId}
         role="row"
         aria-rowindex={index + 2}
         data-event={event.eventId}
-        className="border-b border-border/60"
+        className={cn(
+          "border-b border-border/60",
+          place && "absolute inset-x-0 top-0",
+        )}
+        {...(place
+          ? { style: { transform: `translateY(${place.top}px)` } }
+          : {})}
       >
         {compact ? (
           <div
@@ -269,21 +280,15 @@ export function AuditList({
       >
         {virtual ? (
           <div
+            role="presentation"
             className="relative w-full"
             style={{ height: virtualizer.getTotalSize() }}
           >
-            {virtualizer.getVirtualItems().map((item) => {
-              const event = events[item.index]!;
-              return (
-                <div
-                  key={event.eventId}
-                  className="absolute inset-x-0 top-0"
-                  style={{ transform: `translateY(${item.start}px)` }}
-                >
-                  {renderRow(event, item.index)}
-                </div>
-              );
-            })}
+            {virtualizer
+              .getVirtualItems()
+              .map((item) =>
+                renderRow(events[item.index]!, item.index, { top: item.start }),
+              )}
           </div>
         ) : (
           events.map((event, index) => (
