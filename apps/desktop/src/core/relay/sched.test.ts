@@ -114,6 +114,21 @@ describe("写端调度器", () => {
     expect(drain(q, 1000).indexOf("s")).toBeGreaterThan(0);
   });
 
+  it("报告进度时不在批首追平：出过帧的流隔了一批、但没报告写出，再就绪仍是老流", () => {
+    const q = new Sched<Item>({ reportsSent: true });
+    const a = item("a", 100, 100);
+    const s = item("s", 1, 10);
+    q.add(s, s.flow, 10);
+    q.add(a, a.flow, 10_000);
+    expect(drain(q, 1000)).toEqual(["s", "a"]);
+    // 又取了一批（不含 s），写端没报告任何帧写出：s 的上一帧仍在传输层前面排着。
+    expect(drain(q, 1000)).toEqual(["a"]);
+    s.left = 1;
+    q.add(s, s.flow, 10);
+    // 按批追平（中继的做法）会把 s 当成稀疏流排第一。
+    expect(drain(q, 1000)).toEqual(["a", "s"]);
+  });
+
   it("不报告进度：退回「上一批开始之后」，一批之内写出与否不影响判定", () => {
     const q = new Sched<Item>();
     const a = item("a", 100, 100);
