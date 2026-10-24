@@ -9,7 +9,8 @@
  *   不设水位的话调度只是把 JS 队列换成 `ws` 的内部缓冲，后到的控制帧与稀疏流的帧
  *   仍排在已经交出去的字节后面。有了水位，一个新帧之前至多还有「低水位 + 一批 +
  *   一块」的字节，与就绪流的数量无关；
- * - 每帧写完的回调推动下一轮，不轮询。
+ * - 每帧写完的回调推动下一轮，不轮询；DATA / END 帧的回调同时向调度器报告写出进度
+ *   （`Sched.noteSent`），流的上一帧写出之后再就绪才算稀疏流。
  *
  * 线上协议与信用记账不变：调度只改已扣过信用的帧的出帧顺序。
  */
@@ -48,7 +49,7 @@ export interface TunnelWriterOptions {
 
 export class TunnelWriter {
   private ctl: Uint8Array[] = [];
-  private readonly sched = new Sched<TunnelDuplex>();
+  private readonly sched = new Sched<TunnelDuplex>({ reportsSent: true });
   private kicked = false;
   private closed = false;
   private inflight = 0;
@@ -135,22 +136,37 @@ export class TunnelWriter {
   private writeBatch(socket: WriterSocket): void {
     const ctl = this.ctl;
     this.ctl = [];
-    for (const frame of ctl) this.write(socket, frame, 0);
-    this.sched.drain(this.budget, (stream) => {
+    for (const frame of ctl) this.write(socket, frame, 0, 0);
+    this.sched.drain(this.budget, (stream, seq) => {
       const next = stream.popFrame();
       if (next === undefined) return { size: -1, more: false };
       const sealed =
         next.frame.type === "data" && stream.tunnel?.open.kind === "e2e"
           ? next.size
           : 0;
-      this.write(socket, encodeFrame(next.frame), sealed);
+      this.write(socket, encodeFrame(next.frame), sealed, seq);
       return { size: next.size, more: next.more };
     });
   }
 
-  private write(socket: WriterSocket, data: Uint8Array, sealed: number): void {
+  /** `seq` 是调度器给这一帧的序号（控制帧为 0）：写出后报告进度，稀疏流判定按它。 */
+  private write(
+    socket: WriterSocket,
+    data: Uint8Array,
+    sealed: number,
+    seq: number,
+  ): void {
     this.options.onWire?.(data.length - sealed);
     this.inflight += 1;
-    socket.send(data, { binary: true }, this.written);
+    socket.send(
+      data,
+      { binary: true },
+      seq === 0
+        ? this.written
+        : () => {
+            this.sched.noteSent(seq);
+            this.written();
+          },
+    );
   }
 }

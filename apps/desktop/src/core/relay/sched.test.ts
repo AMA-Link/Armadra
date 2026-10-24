@@ -75,10 +75,55 @@ describe("写端调度器", () => {
     // 排着超过上限的积压：不算稀疏，按老流排在 bulk 后面。
     drain(q, 1000);
     const heavy = item("heavy", 2, 10);
-    heavy.flow.served = 0;
+    heavy.flow.seq = 0;
     q.add(heavy, heavy.flow, 1 << 20);
     const got = drain(q, 1000);
     expect(got.indexOf("bulk")).toBeLessThan(got.indexOf("heavy"));
+  });
+
+  it("写端报告进度：上一帧已写出的流再就绪排最前，还没写出的排在老流之后", () => {
+    const q = new Sched<Item>({ reportsSent: true });
+    const a = item("a", 100, 100);
+    const b = item("b", 100, 100);
+    const k = item("k", 1, 10);
+    const s = item("s", 1, 10);
+    q.add(k, k.flow, 10);
+    q.add(s, s.flow, 10);
+    q.add(a, a.flow, 10_000);
+    q.add(b, b.flow, 10_000);
+    const seqs = new Map<string, number>();
+    const base = q.drain(1000, (it, seq) => {
+      it.left -= 1;
+      seqs.set(it.name, seq);
+      return { size: it.frame, more: it.left > 0 };
+    });
+    // 帧序：k=1 s=2 a=3 b=4，step 拿到的序号就是 base + k。
+    expect([...seqs.values()]).toEqual([1, 2, 3, 4].map((n) => base + n));
+    // 写端写到第 1 帧：k 的帧已写出，s、a、b 的还没；这一批还没写完，k 与 s 又各来一个按键。
+    q.noteSent(seqs.get("k") as number);
+    k.left = 1;
+    s.left = 1;
+    q.add(k, k.flow, 10);
+    q.add(s, s.flow, 10);
+    const order = drain(q, 1000);
+    expect(order[0]).toBe("k");
+    expect(order.indexOf("s")).toBeGreaterThan(order.indexOf("a"));
+    // 报告进度时不按批追平：s 的上一帧（序号 2）直到写出才算稀疏。
+    s.left = 1;
+    q.add(s, s.flow, 10);
+    expect(drain(q, 1000).indexOf("s")).toBeGreaterThan(0);
+  });
+
+  it("不报告进度：退回「上一批开始之后」，一批之内写出与否不影响判定", () => {
+    const q = new Sched<Item>();
+    const a = item("a", 100, 100);
+    const k = item("k", 1, 10);
+    q.add(k, k.flow, 10);
+    q.add(a, a.flow, 10_000);
+    drain(q, 1000);
+    k.left = 1;
+    q.add(k, k.flow, 10);
+    expect(drain(q, 1000)).toEqual(["a", "k"]);
   });
 
   it("没有可出的帧的流被摘掉，可再次加入；重置后为空", () => {

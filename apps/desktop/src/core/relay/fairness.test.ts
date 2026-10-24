@@ -111,7 +111,7 @@ class Rig {
   }
 
   /** 链路跑 `rounds` 回合，每回合写出 `perRound` 字节，回合之间让出事件循环。 */
-  async run(rounds: number, perRound = CHUNK): Promise<void> {
+  async run(rounds: number, perRound: number = CHUNK): Promise<void> {
     for (let i = 0; i < rounds; i += 1) {
       await settle();
       this.socket.link(perRound);
@@ -177,6 +177,31 @@ describe("写端公平调度", () => {
       }
       expect(worst).toBeLessThanOrEqual(BOUND);
     }
+  });
+
+  it("慢链路：按键赶在一批写完之前到达，上一帧已写出就仍先于大流量流（cloud#133）", async () => {
+    const { rig } = await bulkRig(16);
+    const probe = rig.open();
+    const mine = (f: Frame): boolean =>
+      f.type === "data" && f.streamId === probe.streamId;
+    let worst = 0;
+    let from = rig.socket.written.length;
+    probe.write(Buffer.alloc(16, 1));
+    for (let key = 0; key < 6; key += 1) {
+      // 链路每回合只写出一帧：一批要好几回合才写完。
+      let ahead: number | undefined;
+      for (let i = 0; i < 400 && ahead === undefined; i += 1) {
+        await rig.run(1, 1);
+        ahead = rig.ahead(from, mine);
+      }
+      expect(ahead).toBeDefined();
+      worst = Math.max(worst, ahead as number);
+      // 上一帧刚写出、这一批还排在 ws 里没写完，下一个按键就来了。
+      expect(rig.socket.bufferedAmount).toBeGreaterThan(LOW_WATER);
+      from = rig.socket.written.length;
+      probe.write(Buffer.alloc(16, key + 2));
+    }
+    expect(worst).toBeLessThanOrEqual(BOUND);
   });
 
   it("对照：不走调度（先进先出）时探测帧前的字节远超上界", async () => {
