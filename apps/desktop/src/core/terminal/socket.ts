@@ -302,6 +302,7 @@ export async function serveTerminalSocket(
   let pendingBytes = 0;
   let timer: NodeJS.Timeout | undefined;
   let closed = false;
+  let marksReplies = false;
 
   const flush = (): void => {
     if (timer !== undefined) {
@@ -379,15 +380,21 @@ export async function serveTerminalSocket(
           // 第一份；也不算「人在驱动」，只看不打字的那一端不该因此抢走租约
           // 和窗口。内容必须整段是应答格式才走这条路，否则按键入处理：带
           // `reply` 标记的，或者没带标记（旧页面）但此刻正有查询等着它答的。
+          // 页面发过一次带标记的应答，就是会标记的新页面：此后没带标记的
+          // 是真按键（Shift/Ctrl+F3 与光标位置报告同形），不再按旧页面猜。
+          if (frame.type === "input" && frame.reply === true) {
+            marksReplies = true;
+          }
           if (
             frame.type === "input" &&
             isTerminalReplyData(frame.data) &&
             (frame.reply === true ||
-              manager.queries.expects(
-                sessionId,
-                attachment.attachmentId,
-                frame.data,
-              ))
+              (!marksReplies &&
+                manager.queries.expects(
+                  sessionId,
+                  attachment.attachmentId,
+                  frame.data,
+                )))
           ) {
             await manager.reply(
               sessionId,

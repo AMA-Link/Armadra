@@ -508,4 +508,22 @@ describe("a view answering a query (#518)", () => {
     const calls = await serve([], false, [["\u001b[c", true], ["\u001b[>c"]]);
     expect(calls).toEqual([["output", "\u001b[>c"]]);
   });
+
+  it("stops guessing once a page has marked a reply", async () => {
+    const reply = "\u001b[?1;2c";
+    const calls = await serve(
+      [
+        { type: "input", data: reply, reply: true },
+        // Shift+F3 looks like a cursor report, and a page that marks its
+        // replies is telling us this is a key.
+        { type: "input", data: "\u001b[1;2R" },
+      ],
+      true,
+    );
+    expect(calls.map((call) => call[0])).toEqual([
+      "reply",
+      "noteViewerInput",
+      "input",
+    ]);
+  });
 });
