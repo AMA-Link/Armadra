@@ -241,6 +241,27 @@ async function oneBackend({ stack, output, report, scenario }, backend) {
       "解冻后第一个页面迟到的应答被丢弃，没有漏进第二个页面的屏幕",
       leaked.join(" | "),
     );
+    // 第三个页面晚到：它附着时拿到的快照 / 回放里带着前几轮的旧查询，不该
+    // 被当成新查询；之后真实的查询仍只答一份，它的屏幕上也没有旧应答碎片。
+    const late = await attachedPage(stack, workspace, board, terminal);
+    pages.push(late);
+    await sleep(1500);
+    const lateRound = await runOn(late, terminal, 5);
+    run.check(
+      lateRound === "ccR",
+      "晚到的第三个页面附着后，真实查询仍各一份",
+      lateRound,
+    );
+    const lateText = await late.evaluate(`return ${rowsText(terminal.id)};`);
+    const lateLeaked = lateText
+      .split("\n")
+      .filter((line) => !line.includes("replies-") && LEAKED.test(line));
+    run.check(
+      lateLeaked.length === 0,
+      "晚到的页面屏幕上没有旧应答碎片",
+      lateLeaked.join(" | "),
+    );
+
     await run.shot(desk, `terminal-replies-${backend}`);
     run.consoleClean(desk);
     run.consoleClean(phone);
