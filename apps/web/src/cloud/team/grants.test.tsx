@@ -387,4 +387,34 @@ describe("授予页 · 主机很多、取数失败与撤销提示", () => {
       expect(screen.queryByRole("status", { name: "授予" })).toBeNull(),
     );
   });
+
+  it("撤销确认依赖的访问表取失败：显示原因并给重试，重试后恢复可点", async () => {
+    let broken = true;
+    mount("/t/rd/grants", OPTIONS, null, (api) => {
+      const real = api.client.sources.accessList;
+      api.client.sources.accessList = (async (
+        input: Parameters<typeof real>[0],
+      ) => {
+        if (broken) throw new CloudConsoleError("team_role_insufficient", 403);
+        return real(input);
+      }) as typeof real;
+    });
+    await expand("团队全员");
+    const list = await screen.findByRole("list", { name: "团队全员" });
+    fireEvent.click(
+      within(list).getAllByRole("button", {
+        name: /^撤销 团队全员 · build-01/,
+      })[0]!,
+    );
+    const confirm = await screen.findByRole("alertdialog");
+    const retry = await within(confirm).findByRole("button", { name: "重试" });
+    expect(
+      within(confirm).queryByRole("button", { name: "撤销访问" }),
+    ).toBeNull();
+    broken = false;
+    fireEvent.click(retry);
+    expect(
+      await within(confirm).findByRole("button", { name: "撤销访问" }),
+    ).toBeTruthy();
+  });
 });

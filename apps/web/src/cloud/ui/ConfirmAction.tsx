@@ -22,6 +22,8 @@ export interface ConfirmActionProps {
   readonly consequence?: string;
   /** 确认依赖的数据还没到时为 true：确认按钮转圈并不可点。 */
   readonly pending?: boolean;
+  /** 确认依赖的数据取失败时给：确认按钮换成「重试」，不永远转圈。 */
+  readonly onRetry?: () => void;
   /** 抛错时对话框留着，失败的提示归调用方（sonner）。 */
   readonly onConfirm: () => void | Promise<void>;
 }
@@ -34,6 +36,7 @@ export function ConfirmAction({
   actionLabel,
   consequence,
   pending = false,
+  onRetry,
   onConfirm,
 }: ConfirmActionProps) {
   const t = useT();
@@ -62,13 +65,19 @@ export function ConfirmAction({
           <ResponsiveAlertDialogCancel>
             {t("cloud.common.cancel")}
           </ResponsiveAlertDialogCancel>
-          <Button
-            variant="destructive-solid"
-            loading={busy || pending}
-            onClick={() => void run()}
-          >
-            {actionLabel}
-          </Button>
+          {onRetry ? (
+            <Button variant="outline" onClick={onRetry}>
+              {t("cloud.common.retry")}
+            </Button>
+          ) : (
+            <Button
+              variant="destructive-solid"
+              loading={busy || pending}
+              onClick={() => void run()}
+            >
+              {actionLabel}
+            </Button>
+          )}
         </ResponsiveAlertDialogFooter>
       </ResponsiveAlertDialogContent>
     </ResponsiveAlertDialog>
