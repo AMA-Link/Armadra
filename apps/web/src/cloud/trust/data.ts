@@ -42,12 +42,16 @@ export function useCanEndorse(space: CloudSpace, request: TrustRequest) {
     queryFn: () =>
       (endorser as NonNullable<typeof endorser>).canEndorse(request.sourceId),
   });
+  const client = useQueryClient();
+  const refusal = refusedKey(space, request.requestId);
   const refused = useQuery({
-    queryKey: refusedKey(space, request.requestId),
+    queryKey: refusal,
     enabled: false,
     initialData: false,
     staleTime: Infinity,
     gcTime: Infinity,
+    // 值只由 `useRefuseRequest` 写；有人按前缀重拉时读回已记下的，不报「没有 queryFn」（#556）。
+    queryFn: () => client.getQueryData<boolean>(refusal) ?? false,
   });
   return {
     pending: enabled && probe.isPending,
