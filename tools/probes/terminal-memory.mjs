@@ -57,7 +57,6 @@ import {
   METRICS,
   baselineKey,
   bestOf,
-  METRICS,
   compare,
   deriveMetrics,
   descendants,
