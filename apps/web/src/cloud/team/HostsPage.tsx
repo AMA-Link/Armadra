@@ -53,6 +53,7 @@ export function TeamHostsPage({
       {registering ? (
         <RegisterHostDialog
           space={space}
+          role={role}
           onClose={() => setRegistering(false)}
         />
       ) : null}

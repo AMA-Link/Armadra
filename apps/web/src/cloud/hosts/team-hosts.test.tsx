@@ -182,7 +182,7 @@ describe("登记对话框", () => {
     fireEvent.click(within(dialog).getByRole("button", { name: "复制命令" }));
     await waitFor(() =>
       expect(write).toHaveBeenCalledWith(
-        `read -rs T && printf %s "$T" | armadra-server cloud register --issuer 'https://app.armadra.test' --token-stdin`,
+        `printf 'Token: ' && read -rs T && printf %s "$T" | armadra-server cloud register --issuer 'https://app.armadra.test' --token-stdin; unset T`,
       ),
     );
   });
@@ -209,9 +209,10 @@ describe("登记对话框", () => {
     ).toBeTruthy();
   });
 
-  it("主机数到上限：给「用量与计划」入口", async () => {
+  it("主机数到上限：owner 有「用量与计划」入口", async () => {
     mount("/t/rd/hosts", {
       ...OPTIONS,
+      roles: { rd: "owner" },
       fail: { "sources.registrationToken": "limit_reached" },
     });
     fireEvent.click(await screen.findByRole("button", { name: "登记主机" }));
@@ -224,6 +225,22 @@ describe("登记对话框", () => {
         .getByRole("link", { name: "用量与计划" })
         .getAttribute("href"),
     ).toBe("/t/rd/billing");
+  });
+
+  it("主机数到上限：admin 没有「用量与计划」入口", async () => {
+    mount("/t/rd/hosts", {
+      ...OPTIONS,
+      roles: { rd: "admin" },
+      fail: { "sources.registrationToken": "limit_reached" },
+    });
+    fireEvent.click(await screen.findByRole("button", { name: "登记主机" }));
+    const dialog = await screen.findByRole("dialog", { name: "登记主机" });
+    expect(
+      await within(dialog).findByText("主机数已达上限，升级或撤销一台主机"),
+    ).toBeTruthy();
+    expect(
+      within(dialog).queryByRole("link", { name: "用量与计划" }),
+    ).toBeNull();
   });
 });
 
