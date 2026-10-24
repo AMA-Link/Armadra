@@ -4,6 +4,7 @@ import { z } from "zod";
 
 import { ERROR_CODES, errors, isRegisteredErrorCode } from "./errors.js";
 import { contract, contractEntries } from "./index.js";
+import { cloudTrustRequestSchema } from "./sources.js";
 import { SCOPES } from "./meta.js";
 
 /**
@@ -379,6 +380,44 @@ describe("§55 在协议包的形状上追加", () => {
       protocol.sourcesSessionInputSchema,
       ["route"],
     );
+  });
+});
+
+describe("设备信任请求在协议包的形状上追加 pendingId", () => {
+  // 协议包 0.10.0 的 `trustRequest` 不带 core 的 `pendingId`（云端 0.11 起可选下发）：协议包的每个字段
+  // 逐个存在，只多这一项；协议包接受的值我们都接受。
+  it("协议包的字段逐个保留，只多可选的 pendingId", async () => {
+    const protocol = await import("@armadra/platform-protocol/cloud-api");
+    type Shaped = { shape: Record<string, unknown> };
+    type Parsing = { safeParse: (value: unknown) => { success: boolean } };
+    const listed = (
+      protocol.cloudContract.trust.list as unknown as {
+        "~orpc": { outputSchema: Shaped };
+      }
+    )["~orpc"].outputSchema.shape.requests as unknown as {
+      element: Shaped & Parsing;
+    };
+    const theirs = listed.element;
+    const ours = cloudTrustRequestSchema as unknown as Shaped & Parsing;
+    expect(
+      Object.keys(ours.shape).filter((key) => !(key in theirs.shape)),
+    ).toEqual(["pendingId"]);
+    for (const key of Object.keys(theirs.shape))
+      expect(key in ours.shape, key).toBe(true);
+    const sample = {
+      requestId: "trq_1",
+      sourceId: "a".repeat(32),
+      sourceName: "mac",
+      teamId: null,
+      member: { accountId: "acc_1", email: "a@b.c", displayName: "A" },
+      device: { name: "iPad", platform: "ios" },
+      requestedAtMs: 1,
+      expiresAtMs: 2,
+    };
+    expect(theirs.safeParse(sample).success).toBe(true);
+    expect(ours.safeParse(sample).success).toBe(true);
+    expect(ours.safeParse({ ...sample, pendingId: "p1" }).success).toBe(true);
+    expect(ours.safeParse({ ...sample, pendingId: "" }).success).toBe(false);
   });
 });
 

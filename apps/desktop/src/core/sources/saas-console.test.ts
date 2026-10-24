@@ -384,6 +384,33 @@ describe("Armadra 云控制台触点（契约 §33.12）", () => {
     );
   });
 
+  it("待信任：云端带 pendingId 就原样交出，没带就没有这一项", async () => {
+    const serviceId = await signedIn();
+    const row = (requestId: string, extra: object) => ({
+      requestId,
+      sourceId: HOST_ID,
+      sourceName: "build-01",
+      teamId: "t1",
+      member: { accountId: "a2", email: "b@x.test", displayName: "B" },
+      device: { name: "iPhone", platform: "ios" },
+      requestedAtMs: 1,
+      expiresAtMs: 2,
+      ...extra,
+    });
+    world.cloud.console.trust = [
+      row("r1", { pendingId: "pend-1" }),
+      row("r2", {}),
+      row("r3", { pendingId: "" }),
+    ];
+    const listed = await saas.console.trustList(serviceId);
+    expect(listed.requests.map((one) => one.pendingId)).toEqual([
+      "pend-1",
+      undefined,
+      undefined,
+    ]);
+    expect("pendingId" in listed.requests[1]!).toBe(false);
+  });
+
   it("个人中转没有控制台触点", async () => {
     world.cloud.mode = "personal";
     world.fingerprints.set(ISSUER, RELAY_FP);
