@@ -164,7 +164,10 @@ export function createBrowserEndorser(
     else next();
   };
 
-  async function use<T>(sourceId: string, run: () => Promise<T>): Promise<T> {
+  async function withSlot<T>(
+    sourceId: string,
+    run: () => Promise<T>,
+  ): Promise<T> {
     await acquire();
     try {
       enter(sourceId);
@@ -191,7 +194,7 @@ export function createBrowserEndorser(
 
   return {
     canEndorse(sourceId) {
-      return use(sourceId, async () => {
+      return withSlot(sourceId, async () => {
         try {
           await access(sourceId, false);
           return true;
@@ -206,7 +209,7 @@ export function createBrowserEndorser(
 
     approve(request: EndorsableRequest, sas: string) {
       if (request.pendingId === "") return Promise.reject(coded("not_found"));
-      return use(request.sourceId, async () => {
+      return withSlot(request.sourceId, async () => {
         const send = async (granted: SourceAccess) => {
           const fetcher = granted.e2e?.fetch;
           if (fetcher === undefined) throw coded("e2e_device_unavailable");
