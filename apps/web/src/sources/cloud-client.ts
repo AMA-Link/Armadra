@@ -474,6 +474,64 @@ export async function coreCloudLogin(
   return answer.session;
 }
 
+const probeSchema = z.object({ trusted: z.literal(true) });
+
+/**
+ * `cloud/login` 的只判定模式（core 契约 §31.3 追加，经端到端通道）：这把设备钥是不是这个人的
+ * 已信任设备。`true` = 是；`false` = 不是（`device_untrusted`，或 `device_pending` /
+ * `device_rejected`）；其余失败照常抛。不建待确认、不开会话。
+ */
+export async function coreCloudProbe(
+  relayBaseUrl: string,
+  relayToken: string,
+  assertion: string,
+  options: CloudOptions = {},
+): Promise<boolean> {
+  try {
+    await send(
+      `${trimmed(relayBaseUrl)}/api/identity/cloud/login`,
+      probeSchema,
+      { headers: relayHeaders(relayToken), body: { assertion, probe: true } },
+      options,
+    );
+    return true;
+  } catch (error) {
+    if (
+      error instanceof CloudError &&
+      (error.code === "device_untrusted" ||
+        error.code === "device_pending" ||
+        error.code === "device_rejected")
+    )
+      return false;
+    throw error;
+  }
+}
+
+/** `POST <基址>/api/identity/session/logout`（刷新令牌当 Bearer）：注销一份会话。 */
+export async function coreLogout(
+  base: string,
+  refreshToken: string,
+  relayToken: string | undefined,
+  options: CloudOptions = {},
+  csrfToken?: string,
+): Promise<void> {
+  await send(
+    `${trimmed(base)}/api/identity/session/logout`,
+    z.unknown(),
+    {
+      method: "POST",
+      headers: {
+        ...bearer(refreshToken),
+        ...(relayToken === undefined ? {} : relayHeaders(relayToken)),
+        ...(csrfToken === undefined || csrfToken === ""
+          ? {}
+          : { "X-Armadra-CSRF": csrfToken }),
+      },
+    },
+    options,
+  );
+}
+
 /**
  * `POST <基址>/api/identity/session/refresh`（刷新令牌当 Bearer，轮换）：直连与
  * 经中继同一条；经中继时带 `relayToken`。Bearer 模式不核 CSRF（契约 §17.4）；
