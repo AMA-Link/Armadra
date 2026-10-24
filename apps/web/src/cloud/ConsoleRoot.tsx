@@ -17,7 +17,12 @@ import { PersonalPage } from "./personal/PersonalPages";
 import { CreateTeamDialog } from "./team/CreateTeamDialog";
 import { DeletedTeamPage } from "./team/DeletedTeamPage";
 import { TeamPage } from "./team/TeamPage";
-import { EndorserProvider, type HostEndorser } from "./trust/endorser";
+import { createBrowserEndorser } from "./trust/browser-endorser";
+import {
+  EndorserProvider,
+  useEndorser,
+  type HostEndorser,
+} from "./trust/endorser";
 import { navigate, useRoute, type RouteMatch } from "./router";
 import { ConsoleShell } from "./shell/ConsoleShell";
 import { PageHeader } from "./shell/PageHeader";
@@ -189,6 +194,7 @@ function useCloudApiSource(given?: CloudApi): CloudApi | null {
 function ConsoleData({ onJoined }: { onJoined?: () => void }) {
   const api = useCloudApi();
   const client = useQueryClient();
+  const endorser = useEndorser();
   const [expired, setExpired] = React.useState(false);
   const match = useRoute();
   // 登录、注册、验证、找回、邀请不需要会话：不取，也不因为取不到而跳登录。
@@ -259,14 +265,16 @@ function ConsoleData({ onJoined }: { onJoined?: () => void }) {
   React.useEffect(
     () =>
       api.onSessionLost(() => {
+        endorser?.dispose?.();
         client.removeQueries({ queryKey: cloudKeys.all });
         setExpired(true);
       }),
-    [api, client],
+    [api, client, endorser],
   );
 
   const signOut = () => {
     void api.signOut().finally(() => {
+      endorser?.dispose?.();
       client.removeQueries({ queryKey: cloudKeys.all });
       navigate("/login");
     });
@@ -324,24 +332,38 @@ function ConsoleData({ onJoined }: { onJoined?: () => void }) {
 export function ConsoleRoot({
   session,
   api: given,
-  endorser = null,
+  endorser,
   onJoined,
 }: {
   session?: ConsoleSession | null;
   api?: CloudApi;
-  /** 端到端背书（设备信任页）；没有就一律「在已信任的设备上处理」。 */
+  /**
+   * 端到端背书（设备信任页）。缺省是生产实现（`trust/browser-endorser.ts`，经 `browser-cloud`
+   * 凭据提供方与端到端通道）；显式给 `null` 就一律「在已信任的设备上处理」。
+   */
   endorser?: HostEndorser | null;
   /** `/j/` 的分享链接加入成功、画布接管（由入口给）。 */
   onJoined?: () => void;
 }) {
   const api = useCloudApiSource(given);
   const [queryClient] = React.useState(createCloudQueryClient);
+  // 缺省的生产背书人跟着客户端走；通道与访问按需才开，卸载时放掉。
+  const production = React.useMemo(
+    () =>
+      endorser === undefined && api !== null
+        ? createBrowserEndorser({ client: api.client, issuer: location.origin })
+        : null,
+    [endorser, api],
+  );
+  React.useEffect(() => () => production?.dispose(), [production]);
   if (session !== undefined) return <ConsoleView session={session} />;
   if (api === null) return null;
   return (
     <QueryClientProvider client={queryClient}>
       <CloudApiProvider api={api}>
-        <EndorserProvider endorser={endorser}>
+        <EndorserProvider
+          endorser={endorser === undefined ? production : endorser}
+        >
           <ConsoleData {...(onJoined ? { onJoined } : {})} />
         </EndorserProvider>
         <Toaster />
