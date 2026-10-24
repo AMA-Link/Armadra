@@ -1,4 +1,4 @@
-import { cleanup, render, screen, within } from "@testing-library/react";
+import { act, cleanup, render, screen, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 import { installDomPolyfills } from "../app/test-harness";
@@ -64,6 +64,24 @@ describe("ConsoleRoot · 背书人注入", () => {
     render(<ConsoleRoot api={addPendingIds(createMockApi(OPTIONS))} />);
     await trustRows();
     cleanup();
+    expect(built.dispose).toHaveBeenCalled();
+  });
+
+  it("会话丢失时放掉通道与主机会话", async () => {
+    built.create.mockReset();
+    built.dispose.mockReset();
+    visit("/t/rd/trust");
+    fake(true);
+    const api = addPendingIds(createMockApi(OPTIONS));
+    let lose: (() => void) | undefined;
+    api.onSessionLost = (listener) => {
+      lose = listener;
+      return () => undefined;
+    };
+    render(<ConsoleRoot api={api} />);
+    await trustRows();
+    built.dispose.mockClear();
+    act(() => lose?.());
     expect(built.dispose).toHaveBeenCalled();
   });
 

@@ -204,6 +204,10 @@ function ConsoleData({ onJoined }: { onJoined?: () => void }) {
   });
   const lost = !publicPage && (expired || isSessionError(error));
 
+  // 换了账号（或会话没了）：上一位的端到端通道与主机会话一并放掉，下一位从头开。
+  const account = session?.user.email;
+  React.useEffect(() => () => endorser?.dispose?.(), [endorser, account]);
+
   // 运营会话过期或刷新页面后丢了内存里的 CSRF：账号有运营范围就先静默续，续不上去运营登录；
   // 没有运营范围的账号仍是「找不到」，不暴露这一区（云端控制台 §1.3、§1.4）。
   const wantsOps =
