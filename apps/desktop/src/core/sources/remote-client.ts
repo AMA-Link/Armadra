@@ -7,7 +7,7 @@
  * `sources.revoke`、`links.accept`，
  * 以及分享链接的 `links.create` / `links.list` / `links.update` / `links.revoke`（契约 §33.9、§33.10）。
  * SaaS（Armadra 云）的设备码登录与登记到空间用 `deviceStart` / `devicePoll` / `spaces` /
- * `registrationToken`（契约 §33.11）；SaaS 的源目录、断言与分享链接仍答 `not_implemented`。
+ * `registrationToken`（契约 §33.11）；SaaS 的源目录与断言已实现（挂载见契约 §86），分享链接仍答 `not_implemented`。
  *
  * 线上编码是普通 JSON（上游 OpenAPI 编码），错误是 `{ code, message, … }`。这里把
  * 远程服务的码收拢成 core 契约 §33 的码；远程服务的原话不透传（它可能是别的
