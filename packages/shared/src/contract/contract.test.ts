@@ -4,6 +4,12 @@ import { z } from "zod";
 
 import { ERROR_CODES, errors, isRegisteredErrorCode } from "./errors.js";
 import { contract, contractEntries } from "./index.js";
+import {
+  cloudLoginAnswerSchema,
+  cloudLoginOutputSchema,
+  cloudLoginProbeInputSchema,
+} from "./cloud.js";
+import { cloudTrustRequestSchema } from "./sources.js";
 import { SCOPES } from "./meta.js";
 
 /**
@@ -382,12 +388,49 @@ describe("§55 在协议包的形状上追加", () => {
   });
 });
 
+describe("设备信任请求在协议包的形状上追加 pendingId", () => {
+  // 协议包 0.10.0 的 `trustRequest` 不带 core 的 `pendingId`（云端 0.11 起可选下发）：协议包的每个字段
+  // 逐个存在，只多这一项；协议包接受的值我们都接受。
+  it("协议包的字段逐个保留，只多可选的 pendingId", async () => {
+    const protocol = await import("@armadra/platform-protocol/cloud-api");
+    type Shaped = { shape: Record<string, unknown> };
+    type Parsing = { safeParse: (value: unknown) => { success: boolean } };
+    const listed = (
+      protocol.cloudContract.trust.list as unknown as {
+        "~orpc": { outputSchema: Shaped };
+      }
+    )["~orpc"].outputSchema.shape.requests as unknown as {
+      element: Shaped & Parsing;
+    };
+    const theirs = listed.element;
+    const ours = cloudTrustRequestSchema as unknown as Shaped & Parsing;
+    expect(
+      Object.keys(ours.shape).filter((key) => !(key in theirs.shape)),
+    ).toEqual(["pendingId"]);
+    for (const key of Object.keys(theirs.shape))
+      expect(key in ours.shape, key).toBe(true);
+    const sample = {
+      requestId: "trq_1",
+      sourceId: "a".repeat(32),
+      sourceName: "mac",
+      teamId: null,
+      member: { accountId: "acc_1", email: "a@b.c", displayName: "A" },
+      device: { name: "iPad", platform: "ios" },
+      requestedAtMs: 1,
+      expiresAtMs: 2,
+    };
+    expect(theirs.safeParse(sample).success).toBe(true);
+    expect(ours.safeParse(sample).success).toBe(true);
+    expect(ours.safeParse({ ...sample, pendingId: "p1" }).success).toBe(true);
+    expect(ours.safeParse({ ...sample, pendingId: "" }).success).toBe(false);
+  });
+});
+
 describe("§68 cloud/login 的出参在协议包的形状上追加 share", () => {
   it("协议包的字段逐个沿用，只多 share", async () => {
     const protocol = await import("@armadra/platform-protocol/core-api");
     type Shaped = { shape: Record<string, unknown> };
-    const entry = entries.find((one) => one.name === "identity.cloud.login");
-    const ours = (def(entry!).outputSchema as unknown as Shaped).shape;
+    const ours = (cloudLoginOutputSchema as unknown as Shaped).shape;
     const theirs = (protocol.cloudLoginOutputSchema as unknown as Shaped).shape;
     for (const key of Object.keys(theirs))
       expect(ours[key], key).toBe(theirs[key]);
@@ -397,11 +440,63 @@ describe("§68 cloud/login 的出参在协议包的形状上追加 share", () =>
   });
 });
 
+describe("§31.1 cloud/login 的入参在协议包的形状上追加 probe", () => {
+  it("协议包的字段逐个沿用，只多可选的 probe", async () => {
+    const protocol = await import("@armadra/platform-protocol/core-api");
+    type Shaped = { shape: Record<string, unknown> };
+    const entry = entries.find((one) => one.name === "identity.cloud.login");
+    const ours = (def(entry!).inputSchema as unknown as Shaped).shape;
+    const theirs = (protocol.cloudLoginInputSchema as unknown as Shaped).shape;
+    for (const key of Object.keys(theirs))
+      expect(ours[key], key).toBe(theirs[key]);
+    expect(Object.keys(ours).filter((key) => !(key in theirs))).toEqual([
+      "probe",
+    ]);
+  });
+});
+
+describe("§31.3 cloud/login 的 probe：出入参在契约里互不冲突", () => {
+  const entry = () =>
+    entries.find((one) => one.name === "identity.cloud.login")!;
+
+  it("带 probe 的入参合法，出参是登录出参与 { trusted: true } 的并集", () => {
+    expect(def(entry()).inputSchema).toBe(cloudLoginProbeInputSchema);
+    expect(def(entry()).outputSchema).toBe(cloudLoginAnswerSchema);
+    const input = def(entry()).inputSchema as unknown as {
+      safeParse: (value: unknown) => { success: boolean };
+    };
+    expect(input.safeParse({ assertion: "jws", probe: true }).success).toBe(
+      true,
+    );
+    expect(input.safeParse({ assertion: "jws", probe: "yes" }).success).toBe(
+      false,
+    );
+    const output = def(entry()).outputSchema as unknown as {
+      safeParse: (value: unknown) => { success: boolean };
+    };
+    expect(output.safeParse({ trusted: true }).success).toBe(true);
+    expect(output.safeParse({ trusted: false }).success).toBe(false);
+    expect(output.safeParse({}).success).toBe(false);
+    const login = {
+      session: { hostId: "h", device: { deviceId: "d", name: "n" } },
+      principal: { principalId: "p", kind: "member", displayName: "A" },
+      created: false,
+    };
+    expect(cloudLoginOutputSchema.safeParse(login).success).toBe(
+      output.safeParse(login).success,
+    );
+  });
+
+  it("login 是匿名面，只经旧路径暴露：RPC 路径不实现，probe 也不会在那里被校验出参", () => {
+    expect(entry().meta.scope).toBeNull();
+    expect(entry().meta.legacy?.path).toBe("/api/identity/cloud/login");
+  });
+});
+
 describe("§31 与协议包同一份", () => {
   it("identity.cloud.* 的出入参就是协议包 core-api 的 schema 对象", async () => {
     const protocol = await import("@armadra/platform-protocol/core-api");
     const pairs: [string, "inputSchema" | "outputSchema", unknown][] = [
-      ["identity.cloud.login", "inputSchema", protocol.cloudLoginInputSchema],
       [
         "identity.cloud.register",
         "inputSchema",

@@ -10381,6 +10381,10 @@
                             "type": "integer",
                             "minimum": -9007199254740991,
                             "maximum": 9007199254740991
+                          },
+                          "pendingId": {
+                            "type": "string",
+                            "minLength": 1
                           }
                         },
                         "required": [
@@ -12718,6 +12722,9 @@
                   },
                   "invitationToken": {
                     "type": "string"
+                  },
+                  "probe": {
+                    "type": "boolean"
                   }
                 },
                 "required": ["assertion"]
@@ -12731,125 +12738,143 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "object",
-                  "properties": {
-                    "session": {
+                  "anyOf": [
+                    {
                       "type": "object",
                       "properties": {
-                        "hostId": {
-                          "type": "string"
-                        },
-                        "device": {
+                        "session": {
                           "type": "object",
                           "properties": {
-                            "deviceId": {
+                            "hostId": {
                               "type": "string"
                             },
+                            "device": {
+                              "type": "object",
+                              "properties": {
+                                "deviceId": {
+                                  "type": "string"
+                                },
+                                "principalId": {
+                                  "type": "string",
+                                  "default": ""
+                                },
+                                "displayName": {
+                                  "type": "string",
+                                  "default": ""
+                                },
+                                "role": {
+                                  "type": "string",
+                                  "default": "owner"
+                                },
+                                "createdAtUnixMs": {
+                                  "type": "number",
+                                  "default": 0
+                                },
+                                "revision": {
+                                  "type": "number",
+                                  "default": 0
+                                }
+                              },
+                              "required": ["deviceId"]
+                            },
+                            "scopes": {
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "properties": {
+                                  "permission": {
+                                    "type": "string"
+                                  },
+                                  "workspaceId": {
+                                    "type": "string",
+                                    "default": ""
+                                  },
+                                  "executionHostId": {
+                                    "type": "string",
+                                    "default": ""
+                                  }
+                                },
+                                "required": ["permission"]
+                              },
+                              "default": []
+                            },
+                            "expiresAtUnixMs": {
+                              "type": "number",
+                              "default": 0
+                            },
+                            "csrfToken": {
+                              "type": "string"
+                            },
+                            "native": {
+                              "type": "object",
+                              "properties": {
+                                "accessToken": {
+                                  "type": "string"
+                                },
+                                "refreshToken": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": ["accessToken", "refreshToken"]
+                            }
+                          },
+                          "required": ["hostId", "device"]
+                        },
+                        "principal": {
+                          "type": "object",
+                          "properties": {
                             "principalId": {
-                              "type": "string",
-                              "default": ""
+                              "type": "string"
+                            },
+                            "kind": {
+                              "enum": ["owner", "member"],
+                              "type": "string"
                             },
                             "displayName": {
-                              "type": "string",
-                              "default": ""
-                            },
-                            "role": {
-                              "type": "string",
-                              "default": "owner"
-                            },
-                            "createdAtUnixMs": {
-                              "type": "number",
-                              "default": 0
-                            },
-                            "revision": {
-                              "type": "number",
-                              "default": 0
+                              "type": "string"
                             }
                           },
-                          "required": ["deviceId"]
+                          "required": ["principalId", "kind", "displayName"]
                         },
-                        "scopes": {
-                          "type": "array",
-                          "items": {
-                            "type": "object",
-                            "properties": {
-                              "permission": {
-                                "type": "string"
-                              },
-                              "workspaceId": {
-                                "type": "string",
-                                "default": ""
-                              },
-                              "executionHostId": {
-                                "type": "string",
-                                "default": ""
-                              }
-                            },
-                            "required": ["permission"]
-                          },
-                          "default": []
+                        "created": {
+                          "type": "boolean"
                         },
-                        "expiresAtUnixMs": {
-                          "type": "number",
-                          "default": 0
-                        },
-                        "csrfToken": {
-                          "type": "string"
-                        },
-                        "native": {
+                        "share": {
                           "type": "object",
                           "properties": {
-                            "accessToken": {
+                            "ownerName": {
                               "type": "string"
                             },
-                            "refreshToken": {
+                            "role": {
+                              "enum": [
+                                "viewer",
+                                "editor",
+                                "operator",
+                                "driver"
+                              ],
                               "type": "string"
+                            },
+                            "expiresAtMs": {
+                              "type": "integer",
+                              "minimum": -9007199254740991,
+                              "maximum": 9007199254740991
                             }
                           },
-                          "required": ["accessToken", "refreshToken"]
+                          "required": ["ownerName", "role", "expiresAtMs"]
                         }
                       },
-                      "required": ["hostId", "device"]
+                      "required": ["session", "principal", "created"]
                     },
-                    "principal": {
+                    {
                       "type": "object",
                       "properties": {
-                        "principalId": {
-                          "type": "string"
-                        },
-                        "kind": {
-                          "enum": ["owner", "member"],
-                          "type": "string"
-                        },
-                        "displayName": {
-                          "type": "string"
+                        "trusted": {
+                          "const": true
                         }
                       },
-                      "required": ["principalId", "kind", "displayName"]
-                    },
-                    "created": {
-                      "type": "boolean"
-                    },
-                    "share": {
-                      "type": "object",
-                      "properties": {
-                        "ownerName": {
-                          "type": "string"
-                        },
-                        "role": {
-                          "enum": ["viewer", "editor", "operator", "driver"],
-                          "type": "string"
-                        },
-                        "expiresAtMs": {
-                          "type": "integer",
-                          "minimum": -9007199254740991,
-                          "maximum": 9007199254740991
-                        }
-                      },
-                      "required": ["ownerName", "role", "expiresAtMs"]
+                      "required": ["trusted"]
                     }
-                  },
-                  "required": ["session", "principal", "created"]
+                  ]
                 }
               }
             }

@@ -152,6 +152,41 @@ export class CloudLogin {
     }
   }
 
+  /**
+   * 只判定（`cloud/login` 的 `probe`，契约 §31.1 追加）：验断言、按 `sub` 限流，然后只问「这把
+   * 设备钥对这个人是不是已信任」。受信答 `true`；不受信一律 `device_untrusted`——**不**建待确认
+   * 记录、不发 `devices.pending`、不上报云端、不建账号、不写团队角色与授予、不开会话。给
+   * 浏览器问「我能不能背书」用：判定本身不能惊动主人，也不能留下任何状态。
+   */
+  async probe(input: {
+    readonly assertion: string;
+    readonly channel?: ChannelPeer | undefined;
+  }): Promise<{ trusted: true }> {
+    if (input.channel === undefined)
+      throw fail("bad_request", "判定设备只能经端到端通道");
+    const { claims, registration } = await this.options.verifier.verify(
+      input.assertion,
+    );
+    this.admitSubject(claims);
+    const provider = cloudProvider(registration.issuer);
+    const principalId = this.options.store.transaction((tx) => {
+      const existing = tx.accounts.liveOAuth(provider, claims.sub);
+      if (existing === undefined) return undefined;
+      const principal = tx.accounts.principal(existing.principalId);
+      return principal === undefined || principal.disabledAtMs !== 0
+        ? undefined
+        : principal.principalId;
+    });
+    const devices = (this.options.devices ?? e2eDevices)();
+    if (
+      principalId === undefined ||
+      devices === undefined ||
+      !devices.trusted(input.channel.deviceId, principalId)
+    )
+      throw fail("device_untrusted", "这台设备还不是受信设备");
+    return { trusted: true };
+  }
+
   async login(input: {
     readonly assertion: string;
     readonly invitationToken?: string | undefined;

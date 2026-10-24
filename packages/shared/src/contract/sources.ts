@@ -251,7 +251,11 @@ export const cloudInviteInputSchema = z.object({
   expiresAtMs: z.number().int().optional(),
 });
 
-/** 待信任的新设备（cloud-api §31 `trust.list`）；没有校验码。 */
+/**
+ * 待信任的新设备（cloud-api §31 `trust.list`）；没有校验码。`pendingId` 是主机 core 上这条待确认
+ * 设备的号（`devices.approve` 的入参，不是 `requestId`）：协议包 0.10.0 的 `trustRequest` 没有它，
+ * 云端 0.11 起可选下发（AMA-Link/armadra-cloud#126）；协议包带上它后改回同一对象。
+ */
 export const cloudTrustRequestSchema = z.object({
   requestId: z.string(),
   sourceId: z.string(),
@@ -265,6 +269,7 @@ export const cloudTrustRequestSchema = z.object({
   device: z.object({ name: z.string(), platform: z.string() }),
   requestedAtMs: z.number().int(),
   expiresAtMs: z.number().int(),
+  pendingId: z.string().min(1).optional(),
 });
 
 export const cloudTrustRejectInputSchema = z.object({

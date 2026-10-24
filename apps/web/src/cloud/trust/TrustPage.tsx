@@ -30,6 +30,7 @@ import {
   endorseKey,
   useApproveTrust,
   useCanEndorse,
+  useRefuseRequest,
   useRejectTrust,
   useTrustRequests,
 } from "./data";
@@ -56,6 +57,7 @@ function TrustDialog({
   const t = useT();
   const approve = useApproveTrust(space);
   const client = useQueryClient();
+  const refuse = useRefuseRequest(space);
   const [sas, setSas] = React.useState("");
   const [busy, setBusy] = React.useState(false);
   const [problem, setProblem] = React.useState<"mismatch" | "expired" | null>(
@@ -75,9 +77,14 @@ function TrustDialog({
       const code = endorseCode(failure);
       if (code === "sas_mismatch") setProblem("mismatch");
       else if (code === "sas_expired") setProblem("expired");
-      else if (code === "device_untrusted" || code === "forbidden") {
-        // 主机说这台浏览器不能背书：改成不可背书，并让「是不是受信设备」的判定作废。
+      else if (code === "forbidden") {
+        // 主机说这个人不能背书这条请求：只这一条记成不可背书；同一台主机上别的请求条件各不相同，不动。
         setNotTrusted(true);
+        refuse(request.requestId);
+      } else if (code === "device_untrusted") {
+        // 主机说这台浏览器不是受信设备：这一条不可背书，这台主机的判定作废重判。
+        setNotTrusted(true);
+        refuse(request.requestId);
         void client.invalidateQueries({
           queryKey: endorseKey(space, request.sourceId),
         });
@@ -181,23 +188,28 @@ function TrustActions({
   const reject = useRejectTrust(space);
   const [dialog, setDialog] = React.useState<"trust" | "reject" | null>(null);
   if (pending) return null;
-  if (!trusted)
+  // 对话框开着时（刚被主机拒绝）行尾已是徽标，对话框留着把原因说完，由人关掉。
+  if (!trusted && dialog !== "trust")
     return <Badge variant="outline">{t("cloud.trust.useTrusted")}</Badge>;
   return (
     <>
-      <ButtonGroup>
-        <Button
-          variant="outline"
-          size="sm"
-          loading={reject.isPending}
-          onClick={() => setDialog("reject")}
-        >
-          {t("e2e.approve.reject")}
-        </Button>
-        <Button size="sm" onClick={() => setDialog("trust")}>
-          {t("trust.trust")}
-        </Button>
-      </ButtonGroup>
+      {trusted ? (
+        <ButtonGroup>
+          <Button
+            variant="outline"
+            size="sm"
+            loading={reject.isPending}
+            onClick={() => setDialog("reject")}
+          >
+            {t("e2e.approve.reject")}
+          </Button>
+          <Button size="sm" onClick={() => setDialog("trust")}>
+            {t("trust.trust")}
+          </Button>
+        </ButtonGroup>
+      ) : (
+        <Badge variant="outline">{t("cloud.trust.useTrusted")}</Badge>
+      )}
       {dialog === "trust" ? (
         <TrustDialog
           space={space}
