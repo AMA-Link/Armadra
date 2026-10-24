@@ -230,7 +230,12 @@ export async function serveTerminalSocket(
 
   let attached;
   try {
-    attached = await manager.attach(sessionId, requested, writer);
+    attached = await manager.attach(
+      sessionId,
+      requested,
+      writer,
+      options.readOnly === true,
+    );
   } catch (error) {
     // Nothing live behind the row: the socket still gets a `hello` and the
     // final `status`, so the page can show the exit instead of a blank pane.

@@ -796,6 +796,7 @@ export class TerminalManager {
     sessionId: string,
     size?: TerminalSize,
     writer = "",
+    readOnly = false,
   ): Promise<AttachSession> {
     if (this.stopping) throw conflict("Core is shutting down");
     const record = this.records.get(sessionId);
@@ -811,6 +812,7 @@ export class TerminalManager {
       record.key,
       record.generation,
       backend.resizeViewer === undefined ? window : own,
+      { readOnly },
     );
     // Waking is deliberately *after* the backend attach and deliberately not a
     // create: a dormant session is a running process whose delivery was slowed

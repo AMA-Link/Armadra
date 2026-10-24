@@ -56,6 +56,8 @@ export class SessionEntry {
   /** Next output frame number. Starts at 1 so zero can mean "no frame yet". */
   private nextFrame = 1;
   private readonly subscriberSet = new Set<ConnectionId>();
+  /** Subscribers whose viewer cannot answer console queries (#565). */
+  private readonly readOnlySet = new Set<ConnectionId>();
   /**
    * Connections that have asked the reader to stop. A set rather than a
    * counter, so a repeated pause is idempotent and a disconnect clears the
@@ -94,12 +96,27 @@ export class SessionEntry {
     return sequence;
   }
 
-  subscribe(connection: ConnectionId): void {
+  subscribe(connection: ConnectionId, writable = true): void {
     this.subscriberSet.add(connection);
+    if (writable) this.readOnlySet.delete(connection);
+    else this.readOnlySet.add(connection);
+  }
+
+  /**
+   * Whether some subscriber can answer the program's console queries. A
+   * read-only viewer's terminal never does, so with only those attached the
+   * host answers itself (#565).
+   */
+  get hasWritableSubscriber(): boolean {
+    for (const connection of this.subscriberSet) {
+      if (!this.readOnlySet.has(connection)) return true;
+    }
+    return false;
   }
 
   unsubscribe(connection: ConnectionId): boolean {
     this.pauseOwners.delete(connection);
+    this.readOnlySet.delete(connection);
     return this.subscriberSet.delete(connection);
   }
 
@@ -112,6 +129,7 @@ export class SessionEntry {
 
   releaseAll(connection: ConnectionId): boolean {
     this.subscriberSet.delete(connection);
+    this.readOnlySet.delete(connection);
     const wasPaused = this.paused;
     this.pauseOwners.delete(connection);
     return wasPaused && !this.paused;
@@ -268,9 +286,10 @@ export class SessionTable {
     generation: number,
     connection: ConnectionId,
     size: HostSize,
+    writable = true,
   ): SessionEntry {
     const entry = this.current(key, generation);
-    entry.subscribe(connection);
+    entry.subscribe(connection, writable);
     // The most recent attach owns the size, which is `window-size latest` by
     // another name: a phone glancing at a session must not shrink the TUI on
     // the desktop that is driving it, but the device that just arrived is the

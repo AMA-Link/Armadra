@@ -591,6 +591,7 @@ export class SessionHost {
           message.sessionKey,
           message.generation,
           message.size,
+          message.writable !== false,
         );
         return;
       case "detach": {
@@ -793,11 +794,12 @@ export class SessionHost {
     key: string,
     generation: number,
     size: HostSize,
+    writable: boolean,
   ): void {
     const current = this.table.get(key)?.generation;
     let entry;
     try {
-      entry = this.table.attach(key, generation, id, size);
+      entry = this.table.attach(key, generation, id, size, writable);
     } catch (error) {
       if (!(error instanceof SessionError)) throw error;
       if (error.code === "stale" && current !== undefined) {
@@ -885,12 +887,13 @@ export class SessionHost {
     const subscribers = current ? entry.subscribers() : [];
     // Answer the terminal's own questions before anything else: a console that
     // asked where the cursor is waits for this, and there may be no UI to
-    // answer for it. With a subscriber the page's terminal answers (a second
-    // answer would land in the program's input, #518), so the host only
-    // answers when nobody is attached; it keeps observing either way so a
-    // sequence split across chunks stays whole.
+    // answer for it. With a writable subscriber the page's terminal answers
+    // (a second answer would land in the program's input, #518), so the host
+    // only answers when nobody who can answer is attached — no subscriber, or
+    // only read-only ones, whose terminals never answer (#565). It keeps
+    // observing either way so a sequence split across chunks stays whole.
     const reply = live.responder.observe(chunk);
-    if (reply.byteLength > 0 && subscribers.length === 0) {
+    if (reply.byteLength > 0 && !(current && entry.hasWritableSubscriber)) {
       live.console.write(reply);
     }
     live.replay.push(chunk);
