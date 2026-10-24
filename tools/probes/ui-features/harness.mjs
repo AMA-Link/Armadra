@@ -512,6 +512,29 @@ async function createPage(
     until(expression, what, timing) {
       return until(() => page.evaluate(expression), what, timing);
     },
+    /**
+     * 同 `until`，但每一拍先把页面推到前台并逼出一帧。xterm 的 DOM 渲染器靠
+     * `requestAnimationFrame` 把缓冲区写进 `.xterm-rows`；无头浏览器里后台标签页
+     * （多标签、手机视口、Electron 窗口失焦）不出帧，终端明明收到了字，DOM 行却
+     * 是空的，等多久都读不到——直到有人截了一张图才冒出来（AMA-Link/Armadra#488）。
+     * 读终端画面一律用这个，不要直接 `until`。
+     */
+    untilPainted(expression, what, timing = {}) {
+      return until(
+        async () => {
+          await call("Page.bringToFront").catch(() => {});
+          // 1x1 的截图足够让合成器出一帧，不花编码一整页的钱。
+          await call("Page.captureScreenshot", {
+            format: "jpeg",
+            quality: 1,
+            clip: { x: 0, y: 0, width: 1, height: 1, scale: 1 },
+          }).catch(() => {});
+          return page.evaluate(expression);
+        },
+        what,
+        { every: 300, ...timing },
+      );
+    },
     async capture(file) {
       const shot = await call("Page.captureScreenshot", { format: "png" });
       writeFileSync(file, Buffer.from(shot.data, "base64"));

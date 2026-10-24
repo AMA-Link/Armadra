@@ -253,6 +253,31 @@ export async function startChrome(h) {
   return { open };
 }
 
+/**
+ * 数 `ERR_NETWORK_CHANGED`（diag 有上限，按个数数不准）。重载说明（kind 为
+ * `retry`）里也带这个词，不能算作新的网络变化，否则一次变化会把重载次数跑满，
+ * 页面成功后还会再刷新，耗掉一次性的配对票 / 邀请链接。
+ */
+export function networkChangeGate() {
+  let count = 0;
+  let seen = 0;
+  return {
+    note(entry) {
+      if (entry.kind !== "retry" && /ERR_NETWORK_CHANGED/.test(entry.text))
+        count += 1;
+    },
+    /** 自上次问起，有没有新的网络变化。 */
+    fresh() {
+      const hit = count > seen;
+      seen = count;
+      return hit;
+    },
+  };
+}
+
+/** 页面被 `ERR_NETWORK_CHANGED` 掐掉后最多重载几次。 */
+const NETWORK_CHANGED_RELOADS = 3;
+
 async function page(h, call, listeners, sessionId, { width, height, name }) {
   const errors = [];
   const responses = [];
@@ -261,7 +286,9 @@ async function page(h, call, listeners, sessionId, { width, height, name }) {
   const traffic = [];
   /** 资源加载失败、浏览器日志里的错误、导航错误：只在失败现场里看，不当控制台错误断言。 */
   const diag = [];
+  const changes = networkChangeGate();
   const note = (entry) => {
+    changes.note(entry);
     diag.push(entry);
     if (diag.length > 100) diag.shift();
   };
@@ -424,6 +451,7 @@ async function page(h, call, listeners, sessionId, { width, height, name }) {
     return path;
   };
   const navigate = async (url) => {
+    changes.fresh();
     const answer = await call("Page.navigate", { url });
     // 导航本身失败（连不上、证书、被拒）时只回 errorText，不抛错。
     if (answer?.errorText)
@@ -432,6 +460,22 @@ async function page(h, call, listeners, sessionId, { width, height, name }) {
         text: `${answer.errorText} ${url.replace(/#pair=\S+/g, "#pair=…")}`,
       });
     await waitFor(`return document.readyState === "complete";`);
+    // 容器刚起时网桥一出现，Chrome 的网络变化通知会把在途请求以
+    // `ERR_NETWORK_CHANGED` 掐掉；入口脚本的懒加载块（模块脚本）被掐了不会重试，
+    // 页面就停在空白根节点上，既没有控制台错误也没有接口请求（R-89，#356：夜间
+    // 五次现场逐字相同）。这是浏览器与运行器的网络事件，不是页面的问题：发现
+    // 就在网络稳住之后重载，同一张票还在片段里（页面没走到取票那一步）。
+    for (let reload = 0; reload < NETWORK_CHANGED_RELOADS; reload += 1) {
+      await sleep(1_000);
+      if (!changes.fresh()) break;
+      note({
+        kind: "retry",
+        text: `ERR_NETWORK_CHANGED，第 ${reload + 1} 次重载 ${url.replace(/#pair=\S+/g, "#pair=…")}`,
+      });
+      await sleep(1_000);
+      await call("Page.reload", {});
+      await waitFor(`return document.readyState === "complete";`);
+    }
   };
   /** 开屏动画盖在页面上，而且吃掉指针事件（`splash/mount.tsx`）。 */
   const settle = async () => {

@@ -100,14 +100,16 @@ describe("withSilence", () => {
     let touch: () => void = () => undefined;
     const never = new Promise<never>(() => undefined);
     const started = Date.now();
-    const pending = withSilence(never, 80, (fn) => {
+    // 窗口与节拍都放宽：机器高负载时 40 ms 的定时器会被饿过 80 ms 的窗口，
+    // 「一直有动静」就成了误判超时。窗口里留 6 拍的余量。
+    const pending = withSilence(never, 300, (fn) => {
       touch = fn;
     });
-    const ticker = setInterval(touch, 40);
-    setTimeout(() => clearInterval(ticker), 240);
+    const ticker = setInterval(touch, 50);
+    setTimeout(() => clearInterval(ticker), 600);
     await expect(pending).rejects.toMatchObject({ code: "acp_resume_timeout" });
-    // 一直有动静的 240 ms 里不会超时，停了之后再等一个窗口才拒。
-    expect(Date.now() - started).toBeGreaterThanOrEqual(270);
+    // 一直有动静的 600 ms 里不会超时，停了之后再等一个窗口才拒。
+    expect(Date.now() - started).toBeGreaterThanOrEqual(850);
   });
 
   it("passes the result through when the work finishes first", async () => {
