@@ -140,6 +140,7 @@ export function parsePanePids(output: string): Map<string, number> {
 export function panePids(
   dataDir?: string,
   ambient: NodeJS.ProcessEnv = process.env,
+  timeoutMs = TMUX_TIMEOUT_MS,
 ): Map<string, number> {
   if (process.platform === "win32") return new Map();
   let output: string;
@@ -152,7 +153,7 @@ export function panePids(
         maxBuffer: 4 * 1024 * 1024,
         stdio: ["ignore", "pipe", "ignore"],
         env: tmuxEnvironment(ambient),
-        timeout: TMUX_TIMEOUT_MS,
+        timeout: timeoutMs,
         killSignal: "SIGKILL",
       },
     );

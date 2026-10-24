@@ -73,7 +73,13 @@ describe("panePids", () => {
       chmodSync(fake, 0o755);
 
       // PATH 留空：找到的只能是 ~/.local/bin 那一份。
-      const pids = panePids(join(home, "data"), { HOME: home, PATH: "" });
+      // 期限放宽：生产的 1.5 s 管的是采样循环；这里要验的是 PATH，夹具是要启动
+      // /bin/sh 的，机器高负载时 1.5 s 会超时，把「找不到」误判成空表。
+      const pids = panePids(
+        join(home, "data"),
+        { HOME: home, PATH: "" },
+        30_000,
+      );
       expect(pids.get("armadra-probe")).toBe(4242);
     },
   );
