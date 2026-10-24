@@ -1433,11 +1433,30 @@ describe("契约 §86：Armadra 云挂载的团队与归属", () => {
     world.cloud.sourcesFail = false;
     world.cloud.owner = false;
     await saas.mount({ serviceId, sourceId: RELAYED_ID });
-    // 已是别人分享的：目录取不到时仍是 shared。
+    // 已是别人分享的：目录取不到时仍是 shared，团队不动。
     world.cloud.sourcesFail = true;
     expect(await saas.mount({ serviceId, sourceId: RELAYED_ID })).toMatchObject(
-      { origin: "shared" },
+      { origin: "shared", teamId: "team-1", teamName: "研发组" },
     );
+  });
+
+  it("中继重新登录时按自己的云刷新团队（换团队、被移出）", async () => {
+    world.cloud.owner = false;
+    world.cloud.assertionTeam = "team-1";
+    await saas.mount({ serviceId, sourceId: RELAYED_ID });
+    const core = world.cores.get(`${ISSUER}/s/${RELAYED_ID}`)!;
+    world.cloud.assertionTeam = "team-2";
+    core.sessions.revokeAll();
+    await saas.session(RELAYED_ID, "relayed");
+    expect(
+      (await saas.list()).sources.find((one) => one.sourceId === RELAYED_ID),
+    ).toMatchObject({ origin: "shared", teamId: "team-2", teamName: "" });
+    delete world.cloud.assertionTeam;
+    core.sessions.revokeAll();
+    await saas.session(RELAYED_ID, "relayed");
+    expect(
+      (await saas.list()).sources.find((one) => one.sourceId === RELAYED_ID),
+    ).toMatchObject({ teamId: "", teamName: "" });
   });
 
   it("自己的主机（owner）：mine，不记团队；个人中转挂载不记团队", async () => {

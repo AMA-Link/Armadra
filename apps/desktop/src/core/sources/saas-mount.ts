@@ -7,13 +7,15 @@
  */
 
 import type { RemoteClient, RemoteEndpoint } from "./remote-client";
-import type { RemoteRow } from "./store";
+import type { RemoteRow, SourcesStore } from "./store";
 
 export interface SaasMountInfo {
   /** 不是我自己的主机（`me.sources` 的 `owner` 为假）：记 `shared`；目录取不到是 `undefined`（不判）。 */
   readonly shared: boolean | undefined;
   readonly teamId: string;
   readonly teamName: string;
+  /** 能据以写团队的值；归属没判出来（目录取不到）时没有，调用方不动原有的团队。 */
+  readonly team: { teamId: string; teamName: string } | undefined;
 }
 
 /** 断言（JWS）载荷里的 `team.teamId`；`aud` 不是这台源或认不出是空串。 */
@@ -58,5 +60,24 @@ export async function saasMountInfo(
       }
     }
   }
-  return { shared, teamId, teamName };
+  return {
+    shared,
+    teamId,
+    teamName,
+    team: shared === undefined ? undefined : { teamId, teamName },
+  };
+}
+
+/** 中继重新登录后按自己的云刷新团队（被移出团队、主机换了团队）；只改别人分享的行。 */
+export async function refreshMountedTeam(
+  client: RemoteClient,
+  store: SourcesStore,
+  remote: RemoteRow,
+  token: { accessToken: string } | undefined,
+  signed: { assertion: string },
+  at: { endpoint: RemoteEndpoint; sourceId: string },
+): Promise<void> {
+  const info = await saasMountInfo(client, remote, token, signed, at);
+  if (info?.shared === true && info.team !== undefined)
+    store.setTeam(at.sourceId, info.team);
 }

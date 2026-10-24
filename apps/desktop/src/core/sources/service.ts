@@ -32,7 +32,7 @@ import type {
 } from "./remote-client";
 import { parsePairLink } from "./pair-link";
 import { CloudConsole } from "./saas-console";
-import { saasMountInfo } from "./saas-mount";
+import { refreshMountedTeam, saasMountInfo } from "./saas-mount";
 import { CloudSignIn, type CloudSignInHost } from "./saas-signin";
 
 export { parsePairLink };
@@ -44,11 +44,11 @@ import {
   naming,
   renameLabel,
   routeJson,
+  saveRelayRoute,
   shareColumns,
 } from "./rows";
 import type { SourceSecrets, StoredCredential } from "./secrets";
 import type {
-  CloudLoginShare,
   NativeCredentials,
   SourceAddress,
   SourceClient,
@@ -694,6 +694,16 @@ export class SourcesService {
         if (logged.share !== undefined) {
           this.store.setShare(row.sourceId, shareColumns(logged.share));
         }
+        // 团队随断言变：Armadra 云的别人主机按自己的云刷新。
+        if (row.origin === "shared")
+          await refreshMountedTeam(
+            this.remote,
+            this.store,
+            remote,
+            this.access.get(remote.serviceId),
+            assertion,
+            { endpoint: this.endpoint(remote), sourceId: row.sourceId },
+          );
         return logged;
       });
     }
@@ -1202,17 +1212,12 @@ export class SourcesService {
     });
     // 缺省名取远程服务目录里的那个（那台主机登记的「主机名称」，契约 §61）；
     // 拿不到不拦挂载，缺省名不变。
-    let name = "";
     const token = this.access.get(remote.serviceId);
-    if (token !== undefined) {
-      name = await this.remote
-        .sources(this.endpoint(remote), token.accessToken)
-        .then(
-          (rows) =>
-            rows.find((one) => one.sourceId === input.sourceId)?.name ?? "",
-        )
-        .catch(() => "");
-    }
+    const name = await this.catalogName(
+      this.endpoint(remote),
+      token,
+      input.sourceId,
+    );
     // Armadra 云：别人的主机记 shared，团队只从自己的云得出（契约 §86）。
     const saas = await saasMountInfo(this.remote, remote, token, assertion, {
       endpoint: this.endpoint(remote),
@@ -1220,7 +1225,7 @@ export class SourcesService {
     });
     // 目录取不到（`shared` 未知）：沿用这台原来的归属，不默认判成别人的，也不动团队。
     const shared = saas?.shared ?? existing?.origin === "shared";
-    const row = this.saveRelayRoute({
+    const row = saveRelayRoute(this.store, this.now(), {
       sourceId: input.sourceId,
       existing,
       ...naming(existing, label, name, input.sourceId.slice(0, 8)),
@@ -1228,9 +1233,7 @@ export class SourcesService {
       issuer: remote.issuer,
       principalHint: credentials.principalHint,
       share: shared ? (credentials.share ?? null) : undefined,
-      ...(saas === undefined || saas.shared === undefined
-        ? {}
-        : { team: saas }),
+      team: saas?.team,
     });
     this.options.log.info("mounted a relayed source", {
       sourceId: input.sourceId,
@@ -1239,59 +1242,17 @@ export class SourcesService {
     return this.sourceJson(row);
   }
 
-  /**
-   * 挂载的落库：源行建或留（显示名、主体提示），中继这条路 upsert 一行；镜像由
-   * 首选路由决定，挂第二个中继不改原来的首选（契约 §55）。
-   */
-  private saveRelayRoute(input: {
-    sourceId: string;
-    existing: SourceRow | undefined;
-    label: string;
-    defaultLabel: string;
-    relayOrigin: string;
-    issuer: string;
-    principalHint: string;
-    /**
-     * 按分享链接加入时分享方报的信息（契约 §68）；`undefined` = 用自己的账号挂上
-     * （`mine`）。已经是 `mine` 的行按链接再加入一次仍是 `mine`。
-     */
-    share: CloudLoginShare | undefined | null;
-    /** Armadra 云挂载时自己的云得出的团队（契约 §86）。 */
-    team?: { teamId: string; teamName: string };
-  }): SourceRow {
-    const at = this.now();
-    const { existing } = input;
-    const shared = input.share !== undefined && existing?.origin !== "mine";
-    this.store.upsert({
-      sourceId: input.sourceId,
-      kind: existing?.kind ?? "relayed",
-      label: clip(input.label, 128),
-      defaultLabel: clip(input.defaultLabel, 128),
-      baseUrl: existing?.baseUrl ?? "",
-      relayOrigin: existing?.relayOrigin || input.relayOrigin,
-      fingerprint: existing?.fingerprint ?? "",
-      cloudIssuer: existing?.relayOrigin ? existing.cloudIssuer : input.issuer,
-      principalHint: input.principalHint,
-      addedAtMs: existing?.addedAtMs ?? at,
-      lastOkAtMs: at,
-      orderIndex: existing?.orderIndex ?? this.store.nextOrder(),
-      ...(shared
-        ? {
-            origin: "shared" as const,
-            ...shareColumns(input.share ?? undefined, input.team),
-          }
-        : MINE),
-    });
-    this.store.upsertRoute({
-      sourceId: input.sourceId,
-      via: "relayed",
-      origin: input.relayOrigin,
-      cloudIssuer: input.issuer,
-      fingerprint: "",
-      addedAtMs: at,
-      lastOkAtMs: at,
-    });
-    return this.row(input.sourceId);
+  /** 远程服务目录里这台主机登记的名字；没登录、取不到或没有这台都是空串，不拦挂载。 */
+  private async catalogName(
+    endpoint: RemoteEndpoint,
+    token: { accessToken: string } | undefined,
+    sourceId: string,
+  ): Promise<string> {
+    if (token === undefined) return "";
+    const rows = await this.remote
+      .sources(endpoint, token.accessToken)
+      .catch(() => []);
+    return rows.find((one) => one.sourceId === sourceId)?.name ?? "";
   }
 
   /**
@@ -1405,18 +1366,12 @@ export class SourcesService {
       deviceId: credentials.deviceId,
     });
     // 缺省名取远程服务目录里的那个（访客只看得到这一个源）；拿不到不拦挂载。
-    let name = "";
-    const token = this.access.get(serviceId);
-    if (token !== undefined) {
-      name = await this.remote
-        .sources(endpoint, token.accessToken)
-        .then(
-          (rows) =>
-            rows.find((one) => one.sourceId === accepted.sourceId)?.name ?? "",
-        )
-        .catch(() => "");
-    }
-    const row = this.saveRelayRoute({
+    const name = await this.catalogName(
+      endpoint,
+      this.access.get(serviceId),
+      accepted.sourceId,
+    );
+    const row = saveRelayRoute(this.store, this.now(), {
       sourceId: accepted.sourceId,
       existing,
       ...naming(existing, label, name, accepted.sourceId.slice(0, 8)),
