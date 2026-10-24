@@ -17600,7 +17600,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### nodemailer@10.0.13
+### nodemailer@10.1.4
 
 License: MIT-0
 Author: Andris Reinman
