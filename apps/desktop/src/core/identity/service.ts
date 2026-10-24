@@ -48,6 +48,17 @@ import {
 export const BOOTSTRAP_TTL_MS = 2 * 60 * 1000;
 export const ACCESS_TTL_MS = 15 * 60 * 1000;
 export const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+/**
+ * 经 Armadra 云（`saas` 签发方）断言准入的会话寿命（#484）：刷新令牌续不过它，到期必须带新断言
+ * 重新 `cloud/login`，云端的降级、缩小范围、撤销于是最迟一小时内在 core 生效（授予整份同步，
+ * 契约 §60）。个人中转与本地登录仍是 {@link SESSION_TTL_MS}。
+ */
+export const SAAS_SESSION_TTL_MS = 60 * 60 * 1000;
+/**
+ * 限寿会话（寿命短于 {@link SESSION_TTL_MS}）的最后这一段不再接受刷新：刷新只会把访问令牌截到
+ * 会话到期、客户端反复刷新；拒绝后客户端改用新断言重登，访问令牌此时仍有效，不出现空档。
+ */
+export const BOUNDED_SESSION_RELOGIN_LEAD_MS = 60 * 1000;
 
 /**
  * 设备在它的 principal 上的角色。
@@ -541,6 +552,8 @@ export class IdentityService {
     userAgent?: string;
     /** 经中继端到端通道登录时那条通道的设备钥（契约 §77）。 */
     channelDeviceId?: string;
+    /** 会话寿命；缺省 {@link SESSION_TTL_MS}。SaaS 来源的会话限寿（#484）。 */
+    ttlMs?: number;
   }): SessionCredentials {
     if (
       !ID_PATTERN.test(request.principalId) ||
@@ -572,7 +585,7 @@ export class IdentityService {
       };
       tx.createDevice(device);
       const accessExpiresAtMs = now + ACCESS_TTL_MS;
-      const expiresAtMs = now + SESSION_TTL_MS;
+      const expiresAtMs = now + (request.ttlMs ?? SESSION_TTL_MS);
       const session: IdentitySession = {
         sessionId,
         deviceId,
@@ -763,6 +776,13 @@ export class IdentityService {
         !refreshCsrfValid(request, live.session.csrfHash) ||
         (request.channelDeviceId !== undefined &&
           (live.session.channelDeviceId ?? "") !== request.channelDeviceId)
+      ) {
+        throw new IdentityError("unauthenticated");
+      }
+      // 限寿会话（SaaS 来源，#484）临近到期不再续：客户端改用新断言重登。
+      if (
+        live.session.expiresAtMs - live.session.createdAtMs < SESSION_TTL_MS &&
+        live.session.expiresAtMs - now <= BOUNDED_SESSION_RELOGIN_LEAD_MS
       ) {
         throw new IdentityError("unauthenticated");
       }

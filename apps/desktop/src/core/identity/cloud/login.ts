@@ -25,7 +25,8 @@
  *    记录、答 `403 device_pending { pendingId }`，主人在本机核对校验码后放行；被拒或
  *    撤销 → `403 device_rejected`。会话绑这把钥。断言负责「这是谁」，设备钥负责
  *    「确实是他的设备」——中继单方面签的断言换不到会话。
- * 7. 建设备与会话（`method = "cloud"`），审计 `cloud.login`（带 `jti` / `team`）。
+ * 7. 建设备与会话（`method = "cloud"`）；SaaS 签发方来的会话寿命约一小时（#484），刷新续不过它，
+ *    到期带新断言重登，授予随之整份同步，审计 `cloud.login`（带 `jti` / `team`）。
  */
 
 import {
@@ -46,7 +47,11 @@ import {
 import { currentHostName } from "../../settings";
 import { IdentityError } from "../errors";
 import { type ShareRole, grantScopes } from "../roles";
-import type { IdentityService, SessionCredentials } from "../service";
+import {
+  type IdentityService,
+  SAAS_SESSION_TTL_MS,
+  type SessionCredentials,
+} from "../service";
 import type { IdentityStore } from "../store";
 import { IpBuckets } from "../throttle";
 import { newId, parseToken, validName } from "../tokens";
@@ -94,6 +99,8 @@ export interface CloudLoginOptions {
   readonly orgDefaultRole?: () => ShareRole | null;
   /** 设备登记（契约 §77）；缺省这一轮装好的那份。 */
   readonly devices?: () => DeviceRegistry | undefined;
+  /** SaaS 来源会话的寿命（#484）；缺省 {@link SAAS_SESSION_TTL_MS}。个人中转不受影响。 */
+  readonly saasSessionTtlMs?: number;
   readonly now?: () => number;
 }
 
@@ -372,6 +379,11 @@ export class CloudLogin {
           origin: input.origin,
           deviceName: clipName(claims.device.name, "Armadra"),
           method: "cloud",
+          ...(registration.mode === "saas"
+            ? {
+                ttlMs: this.options.saasSessionTtlMs ?? SAAS_SESSION_TTL_MS,
+              }
+            : {}),
           remoteIp: input.remoteIp,
           userAgent: input.userAgent,
           ...(channelDeviceId === "" ? {} : { channelDeviceId }),

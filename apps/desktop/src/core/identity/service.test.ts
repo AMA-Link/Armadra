@@ -9,6 +9,8 @@ import {
   IdentityService,
   devicePlatform,
   SESSION_TTL_MS,
+  SAAS_SESSION_TTL_MS,
+  BOUNDED_SESSION_RELOGIN_LEAD_MS,
 } from "./service";
 import { allScopes, scope } from "./scopes";
 import { IdentityStore } from "./store";
@@ -864,5 +866,60 @@ describe("本机设备复用", () => {
     expect(pairAt(fix, "http://127.0.0.1:50004").principal.deviceId).toBe(
       next.principal.deviceId,
     );
+  });
+});
+
+describe("限寿会话（SaaS 来源，#484）", () => {
+  const open = (fix: ReturnType<typeof fixture>, ttlMs?: number) =>
+    fix.service.openSession({
+      principalId: pair(fix).credentials.principal.principalId,
+      hostId: fix.hostId,
+      origin: ORIGIN,
+      deviceName: "云端设备",
+      method: "cloud",
+      ...(ttlMs === undefined ? {} : { ttlMs }),
+    });
+  const refresh = (
+    fix: ReturnType<typeof fixture>,
+    credentials: ReturnType<typeof open>,
+  ) =>
+    fix.service.refresh({
+      refreshToken: credentials.refreshToken,
+      csrfToken: credentials.csrfToken,
+      hostId: fix.hostId,
+      origin: ORIGIN,
+    });
+
+  it("寿命取 ttlMs，缺省仍是 30 天", () => {
+    const fix = fixture();
+    expect(open(fix).expiresAtMs - fix.at()).toBe(SESSION_TTL_MS);
+    expect(open(fix, SAAS_SESSION_TTL_MS).expiresAtMs - fix.at()).toBe(
+      SAAS_SESSION_TTL_MS,
+    );
+  });
+
+  it("刷新续不过寿命：访问令牌截到会话到期，到期后刷新被拒", () => {
+    const fix = fixture();
+    const credentials = open(fix, SAAS_SESSION_TTL_MS);
+    fix.advance(SAAS_SESSION_TTL_MS - 10 * 60_000);
+    const rotated = refresh(fix, credentials);
+    expect(rotated.expiresAtMs).toBe(credentials.expiresAtMs);
+    expect(rotated.accessExpiresAtMs).toBe(credentials.expiresAtMs);
+    fix.advance(10 * 60_000);
+    expect(kind(() => refresh(fix, rotated))).toBe("unauthenticated");
+  });
+
+  it("到期前最后一段拒绝刷新，客户端改用新断言重登", () => {
+    const fix = fixture();
+    const credentials = open(fix, SAAS_SESSION_TTL_MS);
+    fix.advance(SAAS_SESSION_TTL_MS - BOUNDED_SESSION_RELOGIN_LEAD_MS);
+    expect(kind(() => refresh(fix, credentials))).toBe("unauthenticated");
+  });
+
+  it("30 天的会话不受最后一段限制", () => {
+    const fix = fixture();
+    const credentials = open(fix);
+    fix.advance(SESSION_TTL_MS - BOUNDED_SESSION_RELOGIN_LEAD_MS / 2);
+    expect(refresh(fix, credentials).expiresAtMs).toBe(credentials.expiresAtMs);
   });
 });
