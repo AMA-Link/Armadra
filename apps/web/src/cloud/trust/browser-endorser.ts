@@ -1,6 +1,8 @@
 import {
+  CLOUD_PROBE_CAPABILITY,
   CloudError,
   browserDevice,
+  coreCapabilities,
   coreCloudLogin,
   coreCloudProbe,
   coreLogout,
@@ -89,6 +91,8 @@ interface Opened {
   readonly assertion: CloudAssertion;
   readonly base: string;
   readonly fetch: typeof fetch;
+  /** 这台 core 认 `probe`（能力位 `identity.cloud.probe.v1`）；旧 core 不认，不能向它发 `cloud/login`。 */
+  readonly probes: boolean;
 }
 
 export function createBrowserEndorser(
@@ -100,6 +104,9 @@ export function createBrowserEndorser(
   let channels: E2eChannels | undefined = options.channels;
   const channelsOf = () =>
     (channels ??= new E2eChannels({ deviceName: () => browserDevice().name }));
+
+  /** 每条通道读一次 core 报的能力（按通道对象缓存；通道换了就重读）。 */
+  const capable = new WeakMap<object, Promise<boolean>>();
 
   /** 每次 `dispose()` 加一：进行中的操作完成时发现变了，就自己收尾并失败。 */
   let generation = 0;
@@ -233,11 +240,33 @@ export function createBrowserEndorser(
       throw unavailable();
     }
     live();
-    return { assertion, base, fetch: all.fetchFor(channel, base) };
+    const fetcher = all.fetchFor(channel, base);
+    let known = capable.get(channel);
+    if (known === undefined) {
+      known = coreCapabilities(base, assertion.relayToken, { fetch: fetcher })
+        .then((names) => names.includes(CLOUD_PROBE_CAPABILITY))
+        .catch((error: unknown) => {
+          // 读不到（断了、限流）不是「不支持」：别缓存，稍后重试。
+          capable.delete(channel);
+          throw error;
+        });
+      capable.set(channel, known);
+    }
+    let probes: boolean;
+    try {
+      probes = await known;
+    } catch {
+      throw unavailable();
+    }
+    live();
+    return { assertion, base, fetch: fetcher, probes };
   }
 
   async function probe(sourceId: string, live: Live): Promise<boolean> {
     const opened = await open(sourceId, live);
+    // 旧 core 不认 probe：发过去就是一次普通登录（不受信会写待确认，受信会留下会话）。
+    // 没有能力位就直接按不可背书，一个 cloud/login 都不发。
+    if (!opened.probes) return false;
     try {
       return await coreCloudProbe(
         opened.base,

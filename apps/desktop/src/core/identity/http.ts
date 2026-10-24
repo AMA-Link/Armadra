@@ -33,6 +33,8 @@ export const API_PREFIX = "/api/identity/";
 /** Hello 里报的两个会话能力名，`apps/web/src/host/native-session.ts` 认这两个。 */
 export const NATIVE_SESSION_CAPABILITY = "identity.native-session.v1";
 export const BROWSER_SESSION_CAPABILITY = "identity.browser-session.v1";
+/** `cloud/login` 认 `probe`（只判定，不建待确认、不开会话；契约 §31.3）。旧 core 没有这一位，会把 probe 当普通登录。 */
+export const CLOUD_PROBE_CAPABILITY = "identity.cloud.probe.v1";
 
 export interface IdentityHttpOptions {
   readonly service: IdentityService;
@@ -269,6 +271,7 @@ export class IdentityHttp {
     return [
       NATIVE_SESSION_CAPABILITY,
       BROWSER_SESSION_CAPABILITY,
+      CLOUD_PROBE_CAPABILITY,
       ...(this.options.capabilities?.() ?? []),
     ];
   }

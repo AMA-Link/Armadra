@@ -61,6 +61,11 @@ interface Options {
   maxOpen?: number;
   channelFailure?: unknown;
   assertionGate?: Promise<void>;
+  /** core 在 hello 里报的能力名；缺省认 probe。 */
+  capabilities?: string[];
+  hello?: () => Reply;
+  /** 通道对象固定（真实通道开着就是同一个对象）。 */
+  stableChannel?: boolean;
 }
 
 function setup(options: Options = {}) {
@@ -96,6 +101,17 @@ function setup(options: Options = {}) {
         typeof init.body === "string" ? JSON.parse(init.body) : {}
       ) as Record<string, unknown>;
       calls.push({ path, init, body });
+      if (path === "/api/identity/hello")
+        return reply(
+          options.hello?.() ?? {
+            body: {
+              capabilities: options.capabilities ?? [
+                "identity.native-session.v1",
+                "identity.cloud.probe.v1",
+              ],
+            },
+          },
+        );
       if (path === "/api/identity/cloud/login") {
         if (body.probe === true)
           return reply(
@@ -134,6 +150,10 @@ function setup(options: Options = {}) {
   const awaitApproval = vi.fn(channels.awaitApproval);
   const close = vi.fn();
   Object.assign(channels, { awaitApproval, close });
+  if (options.stableChannel === true) {
+    const same = { sas: "000000" };
+    Object.assign(channels, { channel: async () => same });
+  }
   if (options.channelFailure !== undefined)
     Object.assign(channels, {
       channel: async () => {
@@ -241,10 +261,60 @@ describe("生产背书人 · canEndorse（只用 probe）", () => {
   });
 });
 
+describe("生产背书人 · 旧 core（没有 probe 能力位）", () => {
+  const old = { capabilities: ["identity.native-session.v1"] };
+
+  it("canEndorse：直接不可背书，不发任何 cloud/login", async () => {
+    const { endorser, at } = setup(old);
+    expect(await endorser.canEndorse(SOURCE)).toBe(false);
+    expect(at("/api/identity/cloud/login")).toHaveLength(0);
+    expect(at("/api/identity/hello")).toHaveLength(1);
+  });
+
+  it("approve：device_untrusted，不 probe、不登录、不调 devices.approve", async () => {
+    const { endorser, at } = setup(old);
+    await expect(endorser.approve(request(), SAS)).rejects.toMatchObject({
+      code: "device_untrusted",
+    });
+    expect(at("/api/identity/cloud/login")).toHaveLength(0);
+    expect(at("/api/devices/approve")).toHaveLength(0);
+  });
+
+  it("hello 读不到（404 / 断了）：旧 core 同样不发 cloud/login", async () => {
+    const { endorser, at } = setup({
+      hello: () => ({ status: 404, body: { code: "not_found", message: "" } }),
+    });
+    await expect(endorser.canEndorse(SOURCE)).rejects.toMatchObject({
+      code: "e2e_device_unavailable",
+    });
+    expect(at("/api/identity/cloud/login")).toHaveLength(0);
+  });
+
+  it("能力按通道读一次：同一条通道上重复判定不再读 hello；读失败不缓存", async () => {
+    const { endorser, at } = setup({ stableChannel: true });
+    await endorser.canEndorse(SOURCE);
+    await endorser.canEndorse(SOURCE);
+    await endorser.canEndorse("other");
+    expect(at("/api/identity/hello")).toHaveLength(1);
+    let down = true;
+    const retry = setup({
+      stableChannel: true,
+      hello: () =>
+        down
+          ? { status: 503, body: { code: "source_offline", message: "" } }
+          : { body: { capabilities: ["identity.cloud.probe.v1"] } },
+    });
+    await expect(retry.endorser.canEndorse(SOURCE)).rejects.toBeDefined();
+    down = false;
+    expect(await retry.endorser.canEndorse(SOURCE)).toBe(true);
+  });
+});
+
 describe("生产背书人 · approve", () => {
   it("先确认受信、再登录取会话，校验码与 pendingId 经通道交给 devices.approve", async () => {
-    const { endorser, calls } = setup();
+    const { endorser, calls: all } = setup();
     await endorser.approve(request(), SAS);
+    const calls = all.filter((call) => call.path !== "/api/identity/hello");
     expect(calls.map((call) => call.path)).toEqual([
       "/api/identity/cloud/login",
       "/api/identity/cloud/login",
@@ -443,7 +513,10 @@ describe("生产背书人 · 通道与会话的生命周期", () => {
       ok: true,
       status: 200,
       headers: new Headers(),
-      json: async () => ({ trusted: true }),
+      json: async () => ({
+        trusted: true,
+        capabilities: ["identity.cloud.probe.v1"],
+      }),
     })) as unknown as typeof fetch;
     const sources = {
       assertion: vi.fn(async (input: { sourceId: string }) => {

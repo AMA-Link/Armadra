@@ -474,6 +474,28 @@ export async function coreCloudLogin(
   return answer.session;
 }
 
+const helloSchema = z.object({
+  capabilities: z.array(z.string()).default([]),
+});
+
+/** core 在 `cloud/login` 里认 `probe` 的能力位（core 契约 §31.3）；旧 core 没有，会把 probe 当普通登录。 */
+export const CLOUD_PROBE_CAPABILITY = "identity.cloud.probe.v1";
+
+/** `GET <基址>/api/identity/hello`（匿名）：这台 core 报的能力名。 */
+export async function coreCapabilities(
+  relayBaseUrl: string,
+  relayToken: string,
+  options: CloudOptions = {},
+): Promise<readonly string[]> {
+  const answer = await send(
+    `${trimmed(relayBaseUrl)}/api/identity/hello`,
+    helloSchema,
+    { method: "GET", headers: relayHeaders(relayToken) },
+    options,
+  );
+  return answer.capabilities;
+}
+
 const probeSchema = z.object({ trusted: z.literal(true) });
 
 /**
