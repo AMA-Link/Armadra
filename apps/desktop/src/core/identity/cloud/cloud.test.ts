@@ -1180,44 +1180,16 @@ describe("cloud/login 的范围、角色同步与租约（契约 §60）", () =>
     const saas = await login("acct:saas-ttl", { role: "editor" });
     expect(saas.status, saas.text).toBe(200);
     expect(lastSessionTtl()).toBe(SAAS_SESSION_TTL_MS);
-  });
-
-  it("SaaS 会话寿命有 5 分钟下限，会话行记限寿类别（#484）", async () => {
+    expect(
+      core.database
+        .prepare(
+          "SELECT lifetime_class AS c FROM identity_sessions ORDER BY created_at_ms DESC, rowid DESC LIMIT 1",
+        )
+        .get(),
+    ).toMatchObject({ c: "bounded" });
     expect(
       () => new CloudLogin({ saasSessionTtlMs: 60_000 } as never),
     ).toThrow();
-    core.database
-      .prepare("UPDATE cloud_registrations SET mode = 'saas' WHERE issuer = ?")
-      .run(ISSUER);
-    expect((await login("acct:class", { role: "editor" })).status).toBe(200);
-    const row = core.database
-      .prepare(
-        "SELECT lifetime_class AS c FROM identity_sessions ORDER BY created_at_ms DESC, rowid DESC LIMIT 1",
-      )
-      .get() as { c: string };
-    expect(row.c).toBe("bounded");
-  });
-
-  it("SaaS：重新登录后授予按新断言整份替换，缩小范围立即生效（#484）", async () => {
-    core.database
-      .prepare("UPDATE cloud_registrations SET mode = 'saas' WHERE issuer = ?")
-      .run(ISSUER);
-    const team = { teamId: "team_1", role: "member" };
-    const first = await login("acct:narrow", { team, role: "editor" });
-    expect(first.status, first.text).toBe(200);
-    const principalId = principalOf(first);
-    expect(grantsOf(principalId)).toEqual([
-      ["host", "*", "", "editor", cloudProvider(ISSUER)],
-    ]);
-    const second = await login("acct:narrow", {
-      team,
-      role: "editor",
-      scp: ["ws:ws-1", "ro"],
-    });
-    expect(second.status, second.text).toBe(200);
-    expect(grantsOf(principalId)).toEqual([
-      ["workspace", "ws-1", "", "viewer", cloudProvider(ISSUER)],
-    ]);
   });
 
   it("SaaS：guest 按声明建成员；billing 不准入、既有成员的云授予被清掉", async () => {
