@@ -15,11 +15,12 @@ import type { ServerResponse } from "node:http";
 
 import {
   cloudBindInputSchema,
-  cloudLoginInputSchema,
   cloudRegisterInputSchema,
   cloudRevokeInputSchema,
   cloudTrustedOriginsInputSchema,
 } from "@armadra/platform-protocol/core-api";
+
+import { cloudLoginProbeInputSchema } from "@armadra/shared";
 
 import { CoreFailure, fail } from "../../http/errors";
 import { channelPeerOf } from "../../relay/e2e/peer";
@@ -201,7 +202,17 @@ export class CloudHttp {
     throttle?.checkIp(remoteIp);
     let result: Awaited<ReturnType<CloudService["login"]>>;
     try {
-      const input = parse(cloudLoginInputSchema, body(request));
+      const input = parse(cloudLoginProbeInputSchema, body(request));
+      if (input.probe === true) {
+        // 只判定：不建会话，答 `{ trusted: true }`；不受信答 `device_untrusted`（不算失败的登录）。
+        const verdict = await cloud.probe({
+          assertion: input.assertion,
+          channel: channelPeerOf(request.raw.socket),
+        });
+        response.setHeader("cache-control", "no-store");
+        this.json(response, cors, 200, verdict);
+        return;
+      }
       result = await cloud.login({
         assertion: input.assertion,
         invitationToken: input.invitationToken,
@@ -212,7 +223,12 @@ export class CloudHttp {
       });
     } catch (error) {
       // 等主人核对设备不是一次失败的登录。
-      if (!(error instanceof CoreFailure && error.code === "device_pending"))
+      if (
+        !(
+          error instanceof CoreFailure &&
+          (error.code === "device_pending" || error.code === "device_untrusted")
+        )
+      )
         throttle?.chargeIp(remoteIp);
       throw error;
     }

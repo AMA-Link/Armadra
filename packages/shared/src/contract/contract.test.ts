@@ -436,11 +436,25 @@ describe("§68 cloud/login 的出参在协议包的形状上追加 share", () =>
   });
 });
 
+describe("§31.1 cloud/login 的入参在协议包的形状上追加 probe", () => {
+  it("协议包的字段逐个沿用，只多可选的 probe", async () => {
+    const protocol = await import("@armadra/platform-protocol/core-api");
+    type Shaped = { shape: Record<string, unknown> };
+    const entry = entries.find((one) => one.name === "identity.cloud.login");
+    const ours = (def(entry!).inputSchema as unknown as Shaped).shape;
+    const theirs = (protocol.cloudLoginInputSchema as unknown as Shaped).shape;
+    for (const key of Object.keys(theirs))
+      expect(ours[key], key).toBe(theirs[key]);
+    expect(Object.keys(ours).filter((key) => !(key in theirs))).toEqual([
+      "probe",
+    ]);
+  });
+});
+
 describe("§31 与协议包同一份", () => {
   it("identity.cloud.* 的出入参就是协议包 core-api 的 schema 对象", async () => {
     const protocol = await import("@armadra/platform-protocol/core-api");
     const pairs: [string, "inputSchema" | "outputSchema", unknown][] = [
-      ["identity.cloud.login", "inputSchema", protocol.cloudLoginInputSchema],
       [
         "identity.cloud.register",
         "inputSchema",

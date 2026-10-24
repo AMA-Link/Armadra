@@ -247,6 +247,7 @@ export type {
 export {
   cloudLoginInputSchema,
   cloudLoginOutputSchema,
+  cloudLoginProbeInputSchema,
   cloudStatusOutputSchema,
   tunnelStatusSchema,
 } from "./cloud.js";

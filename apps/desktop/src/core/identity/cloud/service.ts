@@ -59,6 +59,13 @@ export class CloudService {
     return this.logins.login(input);
   }
 
+  probe(input: {
+    readonly assertion: string;
+    readonly channel?: ChannelPeer | undefined;
+  }): Promise<{ trusted: true }> {
+    return this.logins.probe(input);
+  }
+
   bind(principalId: string, assertion: string): Promise<{ bound: true }> {
     return this.logins.bind(principalId, assertion);
   }

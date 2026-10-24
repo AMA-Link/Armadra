@@ -44,6 +44,15 @@ export const cloudLoginOutputSchema = protocolCloudLoginOutputSchema.extend({
   share: cloudLoginShareSchema.optional(),
 });
 
+/**
+ * 协议包的入参加可选的 `probe`（§31.1 追加）：`true` 时只判定「这把设备钥是不是这个人的已信任
+ * 设备」，答 `200 { trusted: true }`，不受信答 `403 device_untrusted`；不建待确认记录、不发
+ * 事件、不开会话，且只能经端到端通道。协议包带上它后改回同一对象。
+ */
+export const cloudLoginProbeInputSchema = cloudLoginInputSchema.extend({
+  probe: z.boolean().optional(),
+});
+
 export { cloudLoginInputSchema, cloudStatusOutputSchema, tunnelStatusSchema };
 
 const denied = errors.pick("unauthenticated", "forbidden");
@@ -90,13 +99,14 @@ export type RelayPending = z.infer<typeof relayPendingSchema>;
 export const cloud = {
   /** 匿名：断言（+ 邀请令牌）换本机会话。Bearer 来源答 `session.native`。 */
   login: oc
-    .input(cloudLoginInputSchema)
+    .input(cloudLoginProbeInputSchema)
     .output(cloudLoginOutputSchema)
     .errors({
       ...assertionRefused,
       ...errors.pick(
         "bad_request",
         "forbidden",
+        "device_untrusted",
         "cloud_account_unlinked",
         "invitation_invalid",
         "rate_limited",

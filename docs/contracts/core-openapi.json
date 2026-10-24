@@ -12722,6 +12722,9 @@
                   },
                   "invitationToken": {
                     "type": "string"
+                  },
+                  "probe": {
+                    "type": "boolean"
                   }
                 },
                 "required": ["assertion"]
