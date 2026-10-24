@@ -53,6 +53,7 @@
     "0051_share_links.sql": "1a727afab3ac468df17de108a5931342d2d41f8386e4521d41d3fdbafb0423ec",
     "0052_timelines.sql": "247c35e0e100053b74a346754b0e7527bcc5fb1e64d29458e6b36a647656810b",
     "0053_cloud_team_roles.sql": "a04ddbc87ca18470e2b024b4043edc56957b1305bd1e5bf788ef0d09c0763dd5",
-    "0054_source_teams.sql": "d347a5df4ee3d597571b295a70834dec9569105c949bb311fcc73d30fd69d264"
+    "0054_source_teams.sql": "d347a5df4ee3d597571b295a70834dec9569105c949bb311fcc73d30fd69d264",
+    "0055_session_lifetime_class.sql": "c640154594ff2628165ecf2dbbc22ad931bb116555e20a83db70702beb7c0710"
   }
 }

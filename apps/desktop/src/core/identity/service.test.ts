@@ -10,7 +10,7 @@ import {
   devicePlatform,
   SESSION_TTL_MS,
   SAAS_SESSION_TTL_MS,
-  BOUNDED_SESSION_RELOGIN_LEAD_MS,
+  reloginLeadMs,
 } from "./service";
 import { allScopes, scope } from "./scopes";
 import { IdentityStore } from "./store";
@@ -870,14 +870,15 @@ describe("本机设备复用", () => {
 });
 
 describe("限寿会话（SaaS 来源，#484）", () => {
-  const open = (fix: ReturnType<typeof fixture>, ttlMs?: number) =>
+  const open = (fix: ReturnType<typeof fixture>, ttlMs?: number, channel = "") =>
     fix.service.openSession({
       principalId: pair(fix).credentials.principal.principalId,
       hostId: fix.hostId,
       origin: ORIGIN,
       deviceName: "云端设备",
       method: "cloud",
-      ...(ttlMs === undefined ? {} : { ttlMs }),
+      ...(ttlMs === undefined ? {} : { bounded: { ttlMs } }),
+      ...(channel === "" ? {} : { channelDeviceId: channel }),
     });
   const refresh = (
     fix: ReturnType<typeof fixture>,
@@ -912,14 +913,30 @@ describe("限寿会话（SaaS 来源，#484）", () => {
   it("到期前最后一段拒绝刷新，客户端改用新断言重登", () => {
     const fix = fixture();
     const credentials = open(fix, SAAS_SESSION_TTL_MS);
-    fix.advance(SAAS_SESSION_TTL_MS - BOUNDED_SESSION_RELOGIN_LEAD_MS);
+    fix.advance(SAAS_SESSION_TTL_MS - reloginLeadMs(credentials.principal.sessionId));
     expect(kind(() => refresh(fix, credentials))).toBe("unauthenticated");
+  });
+
+  it("同一把通道设备钥的云登录复用身份设备，只多会话（#484）", () => {
+    const fix = fixture();
+    const channel = "c".repeat(32);
+    const devices = () => fix.store.transaction((tx) => tx.devices("", 100));
+    const first = open(fix, SAAS_SESSION_TTL_MS, channel);
+    const before = devices().length;
+    fix.advance(SAAS_SESSION_TTL_MS);
+    const second = open(fix, SAAS_SESSION_TTL_MS, channel);
+    expect(devices().length).toBe(before);
+    expect(second.principal.deviceId).toBe(first.principal.deviceId);
+    expect(second.principal.sessionId).not.toBe(first.principal.sessionId);
+    // 另一把通道钥是另一台设备。
+    open(fix, SAAS_SESSION_TTL_MS, "d".repeat(32));
+    expect(devices().length).toBe(before + 1);
   });
 
   it("30 天的会话不受最后一段限制", () => {
     const fix = fixture();
     const credentials = open(fix);
-    fix.advance(SESSION_TTL_MS - BOUNDED_SESSION_RELOGIN_LEAD_MS / 2);
+    fix.advance(SESSION_TTL_MS - 1_000);
     expect(refresh(fix, credentials).expiresAtMs).toBe(credentials.expiresAtMs);
   });
 });

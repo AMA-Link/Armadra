@@ -49,6 +49,7 @@ import { IdentityError } from "../errors";
 import { type ShareRole, grantScopes } from "../roles";
 import {
   type IdentityService,
+  MIN_BOUNDED_SESSION_TTL_MS,
   SAAS_SESSION_TTL_MS,
   type SessionCredentials,
 } from "../service";
@@ -140,10 +141,14 @@ function clipName(value: string | undefined, fallback: string): string {
 
 export class CloudLogin {
   private readonly now: () => number;
+  private readonly saasTtlMs: number;
   private readonly subjects = new IpBuckets(SUBJECT_LOGINS_PER_MINUTE, 60_000);
 
   constructor(private readonly options: CloudLoginOptions) {
     this.now = options.now ?? Date.now;
+    this.saasTtlMs = options.saasSessionTtlMs ?? SAAS_SESSION_TTL_MS;
+    if (this.saasTtlMs < MIN_BOUNDED_SESSION_TTL_MS)
+      throw new Error("SaaS 会话寿命不能短于 5 分钟");
   }
 
   /** 每个 `sub` 一个桶；空了答 `rate_limited`（`details.retryAfterMs`）。 */
@@ -380,9 +385,7 @@ export class CloudLogin {
           deviceName: clipName(claims.device.name, "Armadra"),
           method: "cloud",
           ...(registration.mode === "saas"
-            ? {
-                ttlMs: this.options.saasSessionTtlMs ?? SAAS_SESSION_TTL_MS,
-              }
+            ? { bounded: { ttlMs: this.saasTtlMs } }
             : {}),
           remoteIp: input.remoteIp,
           userAgent: input.userAgent,

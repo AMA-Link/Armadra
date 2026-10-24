@@ -59,6 +59,16 @@ export const SAAS_SESSION_TTL_MS = 60 * 60 * 1000;
  * 会话到期、客户端反复刷新；拒绝后客户端改用新断言重登，访问令牌此时仍有效，不出现空档。
  */
 export const BOUNDED_SESSION_RELOGIN_LEAD_MS = 60 * 1000;
+/** 在最后这一段之内按会话 id 摊开 0–30 秒，免得同一时刻的会话扎堆重登。 */
+const RELOGIN_JITTER_MS = 30 * 1000;
+/** 这条限寿会话开始拒绝刷新的剩余时间：30–60 秒，由会话 id 决定（稳定、可测）。 */
+export function reloginLeadMs(sessionId: string): number {
+  let sum = 0;
+  for (let i = 0; i < sessionId.length; i++) sum += sessionId.charCodeAt(i);
+  return BOUNDED_SESSION_RELOGIN_LEAD_MS - (sum % RELOGIN_JITTER_MS);
+}
+/** 限寿会话寿命的下限：再短就是每几分钟一次重登。 */
+export const MIN_BOUNDED_SESSION_TTL_MS = 5 * 60 * 1000;
 
 /**
  * 设备在它的 principal 上的角色。
@@ -552,8 +562,11 @@ export class IdentityService {
     userAgent?: string;
     /** 经中继端到端通道登录时那条通道的设备钥（契约 §77）。 */
     channelDeviceId?: string;
-    /** 会话寿命；缺省 {@link SESSION_TTL_MS}。SaaS 来源的会话限寿（#484）。 */
-    ttlMs?: number;
+    /**
+     * 限寿会话（SaaS 来源，#484）：寿命取 `ttlMs`，会话行记 `lifetime_class = 'bounded'`，
+     * 刷新续不过寿命。缺省是 {@link SESSION_TTL_MS} 的常规会话。
+     */
+    bounded?: { ttlMs: number };
   }): SessionCredentials {
     if (
       !ID_PATTERN.test(request.principalId) ||
@@ -574,7 +587,16 @@ export class IdentityService {
       const granted =
         principal.kind === "owner" ? allScopes() : [scope("identity:read")];
       const encoded = encodeScopes(granted);
-      const device: IdentityDevice = {
+      // 经通道的云登录每小时重登：同一主体 + 同一把通道设备钥复用未撤销的身份设备，
+      // 只多一条会话（#484）；否则设备列表、推送登记与审计会随重登堆积。
+      const reused =
+        request.method === "cloud" && (request.channelDeviceId ?? "") !== ""
+          ? tx.deviceForChannel(
+              principal.principalId,
+              request.channelDeviceId ?? "",
+            )
+          : undefined;
+      const device: IdentityDevice = reused ?? {
         deviceId,
         principalId: principal.principalId,
         name: request.deviceName,
@@ -583,13 +605,13 @@ export class IdentityService {
         createdAtMs: now,
         revokedAtMs: 0,
       };
-      tx.createDevice(device);
+      if (reused === undefined) tx.createDevice(device);
       const accessExpiresAtMs = now + ACCESS_TTL_MS;
-      const expiresAtMs = now + (request.ttlMs ?? SESSION_TTL_MS);
+      const expiresAtMs = now + (request.bounded?.ttlMs ?? SESSION_TTL_MS);
       const session: IdentitySession = {
         sessionId,
-        deviceId,
-        deviceEpoch: 1,
+        deviceId: device.deviceId,
+        deviceEpoch: device.epoch,
         origin: request.origin,
         scopes: encoded,
         accessHash: digest("access", secrets.accessToken),
@@ -604,12 +626,13 @@ export class IdentityService {
         remoteIp: request.remoteIp ?? "",
         userAgent: request.userAgent ?? "",
         channelDeviceId: request.channelDeviceId ?? "",
+        lifetimeClass: request.bounded === undefined ? "standard" : "bounded",
       };
       tx.createSession(session);
       tx.accounts.appendAudit({
         atMs: now,
         principalId: principal.principalId,
-        deviceId,
+        deviceId: device.deviceId,
         action: "identity.login",
         target: sessionId,
         workspaceId: "",
@@ -781,8 +804,8 @@ export class IdentityService {
       }
       // 限寿会话（SaaS 来源，#484）临近到期不再续：客户端改用新断言重登。
       if (
-        live.session.expiresAtMs - live.session.createdAtMs < SESSION_TTL_MS &&
-        live.session.expiresAtMs - now <= BOUNDED_SESSION_RELOGIN_LEAD_MS
+        live.session.lifetimeClass === "bounded" &&
+        live.session.expiresAtMs - now <= reloginLeadMs(sessionId)
       ) {
         throw new IdentityError("unauthenticated");
       }
