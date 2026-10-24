@@ -180,15 +180,27 @@ describe("团队 · 审计", () => {
   });
 
   it("翻页用首屏定下的 fromMs，列表起点不随时间漂", async () => {
-    const api = mount("/t/rd/audit", { ...OPTIONS, extraAudit: 120 });
-    const list = vi.spyOn(api.client.audit, "list");
-    fireEvent.click(await screen.findByRole("button", { name: "加载更多" }));
-    await waitFor(() =>
-      expect(list.mock.calls.length).toBeGreaterThanOrEqual(1),
-    );
-    await new Promise((done) => setTimeout(done, 20));
-    const froms = new Set(list.mock.calls.map(([input]) => input.fromMs));
-    expect(froms.size).toBe(1);
+    // 先监听再挂载：首屏那一次也要记到。
+    const froms: unknown[] = [];
+    mount("/t/rd/audit", { ...OPTIONS, extraAudit: 120 }, null, (api) => {
+      const real = api.client.audit.list;
+      api.client.audit.list = ((input: Parameters<typeof real>[0]) => {
+        froms.push(input.fromMs);
+        return real(input);
+      }) as typeof real;
+    });
+    const more = await screen.findByRole("button", { name: "加载更多" });
+    expect(froms).toHaveLength(1);
+    // 翻页前把时钟拨快：若第二页重新取「现在」，起点就会变。
+    const clock = vi.spyOn(Date, "now").mockReturnValue(Date.now() + 3_600_000);
+    try {
+      fireEvent.click(more);
+      await waitFor(() => expect(froms).toHaveLength(2));
+    } finally {
+      clock.mockRestore();
+    }
+    expect(froms[0]).toBeTypeOf("number");
+    expect(froms[1]).toBe(froms[0]);
   });
 
   it("窄屏同一份数据画成两行：动作 · 时间，成员 · 对象", async () => {

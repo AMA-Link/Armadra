@@ -4675,16 +4675,16 @@ owner（本机会话，或已信任设备经通道的 owner 会话）：`{ sourc
 ### 86.1 源表的团队（迁移 0054）
 
 - **`client_sources` 加两列**：`team_id`（不超过 128，缺省空串）、`team_name`（不超过 128，缺省空串）。空 `team_id` = 个人分享（链接、个人邀请）、本机、配对、用自己的账号挂上的，以及拿不到团队的行；不回填，旧行全是空串。
-- **写入规矩**：只有 `sources.mount` 对 Armadra 云（`remote_services.kind = saas`）的远程挂载会写，`setShare`（重新 `cloud/login` 时更新分享信息）不动这两列。`sources.mountByLink`（个人中转）、`sources.addDirect` 与 `mine` 的行一律空串。
+- **写入规矩**：只有对 Armadra 云（`remote_services.kind = saas`）的远程挂载会写：`sources.mount` 挂载时写，经中继重新 `cloud/login`（会话换票回退到断言）时按同一规矩纠正归属与这两列（目录明确答了才改；目录失败不动；对端没报分享信息而行本来就是 `shared` 时沿用原有的分享信息）；`setShare`（更新分享信息）不动这两列。`sources.mountByLink`（个人中转）不带团队，对已有的 `shared` 行再挂一次时**保留**原有团队，不覆盖成空串；`sources.addDirect` 与 `mine` 的行一律空串。
 - **出参**：`ClientSource` 多 `teamId: string` 与 `teamName: string`；`mine` 与个人分享是空串。
 
 ### 86.2 团队只从接收方自己的云得出；Armadra 云挂载
 
 - **不采信对端 core**：`cloud/login` 的答案（§31.3、§68.3）里对端报的任何团队都不作分组依据，接收方不读。分组依据只来自接收方自己向 Armadra 云取得的数据。
-- **`sources.mount` 对 SaaS 远程开放**（此前一律 `501 not_implemented`；`remoteSources` 与会话换票同样放开）。挂载时：`owner` 取自 `me.sources` 里该主机的 `owner`——为假的记 `shared`（分享信息取对端 `cloud/login` 的 `share`），为真的记 `mine` 且不记团队；`teamId` 取接收方自己从 `/v1/sources/{id}/assertion` 换来的断言载荷里的 `team.teamId`（只读不验，验签是主机的事，值只作分组展示）；`teamName` 只取签发这份断言的那个远程的 `me.spaces` 里同一 `teamId` 的名字，取不到留空，不拦挂载。
+- **`sources.mount` 对 SaaS 远程开放**（此前一律 `501 not_implemented`；`remoteSources` 与会话换票同样放开）。挂载时：`owner` 取自 `me.sources` 里该主机的 `owner`——为假的记 `shared`（分享信息取对端 `cloud/login` 的 `share`；对端没报且行已是 `shared` 时沿用原有的），为真的记 `mine` 且不记团队。**目录明确答复时覆盖已有归属**（`owner` 为假把 `mine` 改成 `shared` 带团队，为真把 `shared` 改成 `mine` 并清团队）；目录成功但没列出这台，按 `shared`；`me.sources` 调用失败时已有的行保持原归属与团队，新挂载按 `shared`（下次再挂可自愈）；`teamId` 取接收方自己从 `/v1/sources/{id}/assertion` 换来的断言载荷里的 `team.teamId`，且只在载荷的 `aud` 等于该源号时采用，不一致按无团队（只读不验，验签是主机的事，值只作分组展示）；`teamName` 只取签发这份断言的那个远程的 `me.spaces` 里同一 `teamId` 的名字，取不到留空，不拦挂载。
 - 其余用到 SaaS 远程的入口（改口令、`remoteEndpoint`、`remoteSession`）不变，仍 `501`。
 
 ### 86.3 页面的分组规矩
 
 - 「他人分享」按 `teamId` 分小组，小组标题是 `teamName`，没有名字时退回 `teamId` 的前 8 位；`teamId` 为空的归个人分享，排在团队小组之后。只有一个团队、没有个人分享时不画小组标题。团队小组之间按首次出现的源表顺序。
-- 手机连接表（`armadra.sources`，页面本地存储）的行同样带可选 `teamId` / `teamName`（缺省空串，不升表版本），手机连接页的「他人分享」与桌面侧栏同一规矩；手机拿不到云数据时没有团队，一律是个人分享、不分团队组。
+- 手机连接表（`armadra.sources`，页面本地存储）的行同样带可选 `teamId` / `teamName`（缺省空串，不升表版本），手机连接页的「他人分享」与桌面侧栏同一规矩；手机拿不到云数据时没有团队，一律是个人分享、不分团队组。**现状**：手机端目前没有团队数据来源（手机不登录 Armadra 云，连接表里的团队字段恒为空串），分组逻辑只为将来的来源预留；有来源之前手机连接页不出现团队小组。

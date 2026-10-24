@@ -296,6 +296,27 @@ export class SourcesStore {
       .run(share.ownerLabel, share.shareRole, share.shareExpiresAtMs, sourceId);
   }
 
+  /** 改归属与分享、团队列（中继重新登录时按自己的云纠正，契约 §86）。 */
+  setAttribution(
+    sourceId: string,
+    value: { origin: "mine" | "shared" } & SourceShare,
+  ): void {
+    this.database
+      .prepare(
+        "UPDATE client_sources SET origin = ?, owner_label = ?, share_role = ?, " +
+          "share_expires_at_ms = ?, team_id = ?, team_name = ? WHERE source_id = ?",
+      )
+      .run(
+        value.origin,
+        value.ownerLabel,
+        value.shareRole,
+        value.shareExpiresAtMs,
+        value.teamId,
+        value.teamName,
+        sourceId,
+      );
+  }
+
   /** 钉住的对端 core 身份公钥（契约 §78）；没钉是 `null`。 */
   identityPub(sourceId: string): Uint8Array | null {
     const row = this.database

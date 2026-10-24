@@ -18,16 +18,18 @@ import { toast } from "@/ui/toast";
 import { describeFailure, toCloudError } from "../api/errors";
 import { useCloudApi } from "../api/context";
 import { RouteLink } from "../RouteLink";
+import type { TeamRole } from "../shell/model";
 import { spaceBase, type CloudSpace } from "../space";
 import { useRegistrationToken } from "./grants-data";
 
 /**
  * 在服务器上登记的命令（`armadra-server cloud register`）：令牌不进命令行也不进 shell 历史——
- * `read -rs` 静默读入（把上面的令牌粘贴进去），再经标准输入交给 `--token-stdin`；issuer 加单引号。
+ * `read -rs` 静默读入（先 `printf` 出提示，免得看起来卡住；把上面的令牌粘贴进去，`echo` 补上被静默吞掉的换行），再经标准输入交给
+ * `--token-stdin`，末尾 `unset T` 清掉变量；issuer 加单引号。
  */
 function registerCommand(issuer: string): string {
   const quoted = `'${issuer.replaceAll("'", "'\\''")}'`;
-  return `read -rs T && printf %s "$T" | armadra-server cloud register --issuer ${quoted} --token-stdin`;
+  return `printf 'Token: ' && read -rs T && echo && printf %s "$T" | armadra-server cloud register --issuer ${quoted} --token-stdin; unset T`;
 }
 
 /** 桌面壳认的深链只带 `issuer`（干净的来源）；认不出就不带参数。 */
@@ -42,8 +44,16 @@ function appLink(issuer: string): string {
 
 const MINUTE = 60_000;
 
-/** 失败旁边的动作：邮箱未验证 → 重新发送验证邮件；主机数到上限 → 去用量与计划。 */
-function FailureActions({ space, code }: { space: CloudSpace; code: string }) {
+/** 失败旁边的动作：邮箱未验证 → 重新发送验证邮件；主机数到上限 → owner、billing 去用量与计划。 */
+function FailureActions({
+  space,
+  code,
+  role,
+}: {
+  space: CloudSpace;
+  code: string;
+  role: TeamRole | undefined;
+}) {
   const t = useT();
   const api = useCloudApi();
   const [sent, setSent] = React.useState(false);
@@ -64,7 +74,12 @@ function FailureActions({ space, code }: { space: CloudSpace; code: string }) {
         {t(sent ? "cloud.unverified.sent" : "cloud.unverified.resend")}
       </Button>
     );
-  if (code === "limit_reached" && space.kind === "team")
+  // 用量与计划只有 owner、billing 进得去；admin 点进去没有权限（待 armadra-cloud#125）。
+  if (
+    code === "limit_reached" &&
+    space.kind === "team" &&
+    (role === "owner" || role === "billing")
+  )
     return (
       <Button asChild size="sm" variant="outline">
         <RouteLink href={`${spaceBase(space)}/billing`}>
@@ -82,9 +97,12 @@ function FailureActions({ space, code }: { space: CloudSpace; code: string }) {
  */
 export function RegisterHostDialog({
   space,
+  role,
   onClose,
 }: {
   space: CloudSpace;
+  /** 团队里的角色；个人空间不给。 */
+  role?: TeamRole;
   onClose: () => void;
 }) {
   const t = useT();
@@ -143,7 +161,11 @@ export function RegisterHostDialog({
             <AlertTitle className="min-w-0 flex-1">
               {describeFailure(error)}
             </AlertTitle>
-            <FailureActions space={space} code={toCloudError(error).code} />
+            <FailureActions
+              space={space}
+              code={toCloudError(error).code}
+              role={role}
+            />
           </Alert>
         ) : data ? (
           <Tabs defaultValue="app">

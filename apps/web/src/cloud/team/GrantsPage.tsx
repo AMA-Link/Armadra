@@ -10,6 +10,7 @@ import { Badge } from "@/ui/badge";
 import { Button } from "@/ui/button";
 import { InputGroup, InputGroupAddon, InputGroupInput } from "@/ui/input-group";
 import { SkeletonTable } from "@/ui/skeletons";
+import { Spinner } from "@/ui/spinner";
 import { EmptyState, ErrorState } from "@/ui/state";
 import { toast } from "@/ui/toast";
 import { describeFailure } from "../api/errors";
@@ -217,16 +218,26 @@ function RevokeEntryConfirm({
     style: "narrow",
     type: "conjunction",
   });
+  // 授予与访问表都到了才算得出收窄谁：所有者没到时会被误列进收窄名单。
+  const ready = grants.data !== undefined && access.data !== undefined;
+  const failure = grants.isError
+    ? grants.error
+    : access.isError
+      ? access.error
+      : null;
   const now = Date.now();
   const all = grants.data?.grants ?? [];
-  const lowered = narrowedBy({
-    grants: all,
-    members,
-    ownerId:
-      access.data?.access.find((row) => row.via === "owner")?.accountId ?? null,
-    change: { kind: "revoke", grantIds: [entry.grant.grantId] },
-    now,
-  });
+  const lowered = !ready
+    ? []
+    : narrowedBy({
+        grants: all,
+        members,
+        ownerId:
+          access.data?.access.find((row) => row.via === "owner")?.accountId ??
+          null,
+        change: { kind: "revoke", grantIds: [entry.grant.grantId] },
+        now,
+      });
   const subject = entry.grant.subject;
   const consequences = [
     ...(lowered.length > 0
@@ -253,9 +264,19 @@ function RevokeEntryConfirm({
       onOpenChange={(next) => !next && onClose()}
       title={t("cloud.grants.revokeTitle", { name, host: entry.host.name })}
       actionLabel={t("cloud.hosts.removeAccess")}
-      {...(consequences.length > 0
-        ? { consequence: consequences.join("\n") }
-        : {})}
+      pending={!ready}
+      {...(failure
+        ? {
+            consequence: describeFailure(failure),
+            retrying: grants.isFetching || access.isFetching,
+            onRetry: () => {
+              if (grants.isError) void grants.refetch();
+              if (access.isError) void access.refetch();
+            },
+          }
+        : consequences.length > 0
+          ? { consequence: consequences.join("\n") }
+          : {})}
       onConfirm={async () => {
         try {
           await revoke.mutateAsync({ grantId: entry.grant.grantId, sourceId });
@@ -443,8 +464,9 @@ export function GrantsPage({
     const one = lists[index];
     return one?.isError ? [{ host, one }] : [];
   });
-  const loading =
-    hosts.isPending || members.isPending || lists.some((one) => one.isPending);
+  // 整页骨架只等主机目录与成员；各台主机的授予在行内标「加载中」，不拖住整页。
+  const loading = hosts.isPending || members.isPending;
+  const hostsLoading = lists.some((one) => one.isPending);
   const add = (
     <Button size="sm" onClick={() => setDialog({ kind: "add" })}>
       {t("cloud.hosts.addAccess")}
@@ -464,6 +486,7 @@ export function GrantsPage({
     );
   else if (loading)
     body = <SkeletonTable rows={4} columns={4} label={t("cloud.nav.grants")} />;
+  else if (rows.length === 0 && hostsLoading) body = null;
   else if (rows.length === 0 && failedHosts.length === 0)
     body = <EmptyState title={t("cloud.grants.empty")}>{add}</EmptyState>;
   else if (rows.length === 0) body = null;
@@ -544,6 +567,11 @@ export function GrantsPage({
           className="mb-4"
         />
       ))}
+      {hostsLoading ? (
+        <div className="mb-4 flex justify-center">
+          <Spinner aria-label={t("cloud.nav.grants")} />
+        </div>
+      ) : null}
       {body}
       {rows.length > 0 && shown.length === 0 ? (
         <EmptyState title={t("cloud.common.noMatch", { query: query.trim() })}>

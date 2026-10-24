@@ -21,7 +21,14 @@ const OPTIONS = { emailVerified: true } as const;
 const BUILD = MOCK_HOSTS[0]!.sourceId;
 const STUDIO = MOCK_HOSTS[1]!.sourceId;
 
-const table = () => screen.findByRole("table", { name: "授予" });
+/** 授予表；各台主机的授予都到齐（行内加载提示消失）才返回。 */
+const table = async () => {
+  const grid = await screen.findByRole("table", { name: "授予" });
+  await waitFor(() =>
+    expect(screen.queryByRole("status", { name: "授予" })).toBeNull(),
+  );
+  return grid;
+};
 
 /** 行里的名字（头像首字不算）。 */
 const nameOf = (row: HTMLElement) =>
@@ -154,11 +161,11 @@ describe("授予页 · 增改撤", () => {
     expect(
       within(confirm).getByText("撤销 李四 对 build-01 的访问？"),
     ).toBeTruthy();
-    fireEvent.click(within(confirm).getByRole("button", { name: "撤销访问" }));
-    await waitFor(async () => {
-      const grid = await table();
-      expect(within(grid).queryByText("李四")).toBeNull();
-    });
+    const action = within(confirm).getByRole("button", { name: "撤销访问" });
+    await waitFor(() => expect(action.getAttribute("aria-busy")).toBeNull());
+    fireEvent.click(action);
+    const grid = await screen.findByRole("table", { name: "授予" });
+    await waitFor(() => expect(within(grid).queryByText("李四")).toBeNull());
   });
 
   it("行内「改权限」固定主机与对象；降角色先提示，确认后更新", async () => {
@@ -319,6 +326,103 @@ describe("授予页 · 主机很多、取数失败与撤销提示", () => {
       await within(confirm).findByText(
         "会降低 王五 的权限，他们已有的连接会断开",
       ),
+    ).toBeTruthy();
+  });
+
+  it("撤销确认等授予与访问表都到了才可点：所有者不会被误列进收窄名单", async () => {
+    let release: () => void = () => undefined;
+    const gate = new Promise<void>((go) => {
+      release = go;
+    });
+    mount("/t/rd/grants", OPTIONS, null, (api) => {
+      const real = api.client.sources.accessList;
+      api.client.sources.accessList = (async (
+        input: Parameters<typeof real>[0],
+      ) => {
+        await gate;
+        return real(input);
+      }) as typeof real;
+    });
+    await expand("团队全员");
+    const list = await screen.findByRole("list", { name: "团队全员" });
+    fireEvent.click(
+      within(list).getAllByRole("button", {
+        name: /^撤销 团队全员 · build-01/,
+      })[0]!,
+    );
+    const confirm = await screen.findByRole("alertdialog");
+    const action = within(confirm).getByRole("button", { name: "撤销访问" });
+    expect(action.getAttribute("aria-busy")).toBe("true");
+    expect(within(confirm).queryByText(/会降低/)).toBeNull();
+    await act(async () => {
+      release();
+    });
+    await waitFor(() => expect(action.getAttribute("aria-busy")).toBeNull());
+    expect(
+      await within(confirm).findByText(
+        "会降低 王五 的权限，他们已有的连接会断开",
+      ),
+    ).toBeTruthy();
+  });
+
+  it("某台主机的授予还在加载：整页不回骨架，其余主机的行照常列出", async () => {
+    let release: () => void = () => undefined;
+    const gate = new Promise<void>((go) => {
+      release = go;
+    });
+    mount("/t/rd/grants", OPTIONS, null, (api) => {
+      const real = api.client.grants.list;
+      api.client.grants.list = (async (input: Parameters<typeof real>[0]) => {
+        if (input.sourceId === STUDIO) await gate;
+        return real(input);
+      }) as typeof real;
+    });
+    const grid = await screen.findByRole("table", { name: "授予" });
+    expect(await within(grid).findByText("赵六")).toBeTruthy();
+    expect(screen.getByRole("status", { name: "授予" })).toBeTruthy();
+    await act(async () => {
+      release();
+    });
+    await waitFor(() =>
+      expect(screen.queryByRole("status", { name: "授予" })).toBeNull(),
+    );
+  });
+
+  it("撤销确认依赖的访问表取失败：显示原因并给重试，重试后恢复可点", async () => {
+    let broken = true;
+    let proceed: () => void = () => undefined;
+    const retryGate = new Promise<void>((go) => {
+      proceed = go;
+    });
+    mount("/t/rd/grants", OPTIONS, null, (api) => {
+      const real = api.client.sources.accessList;
+      api.client.sources.accessList = (async (
+        input: Parameters<typeof real>[0],
+      ) => {
+        if (broken) throw new CloudConsoleError("team_role_insufficient", 403);
+        await retryGate;
+        return real(input);
+      }) as typeof real;
+    });
+    await expand("团队全员");
+    const list = await screen.findByRole("list", { name: "团队全员" });
+    fireEvent.click(
+      within(list).getAllByRole("button", {
+        name: /^撤销 团队全员 · build-01/,
+      })[0]!,
+    );
+    const confirm = await screen.findByRole("alertdialog");
+    const retry = await within(confirm).findByRole("button", { name: "重试" });
+    expect(
+      within(confirm).queryByRole("button", { name: "撤销访问" }),
+    ).toBeNull();
+    broken = false;
+    fireEvent.click(retry);
+    // 重试在途：按钮转圈，不可再点。
+    await waitFor(() => expect(retry.getAttribute("aria-busy")).toBe("true"));
+    proceed();
+    expect(
+      await within(confirm).findByRole("button", { name: "撤销访问" }),
     ).toBeTruthy();
   });
 });

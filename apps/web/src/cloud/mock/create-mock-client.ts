@@ -198,7 +198,10 @@ const opsTeams = () =>
     ...MOCK_TEAMS,
   ].map((team, index) => ({
     team,
-    memberCount: index === 0 ? 7 : 3,
+    // 研发组的成员数与席位和团队页、计划卡一致（5 人，其中访客 1 位不占席位）。
+    memberCount:
+      team.teamId === MOCK_TEAMS[0]!.teamId ? 5 : index === 0 ? 7 : 3,
+    seats: team.teamId === MOCK_TEAMS[0]!.teamId ? 4 : index === 0 ? 7 : 3,
     hostCount: index === 0 ? 3 : 2,
     createdAtMs: Date.UTC(2025, 2, 2 + index),
   }));
@@ -256,7 +259,7 @@ const teamOut = (state: State, id: string) => {
     hostCount: row.hostCount,
     createdAtMs: row.createdAtMs,
     deletedAtMs: null,
-    seats: row.memberCount,
+    seats: row.seats,
     relayBytesMonth: 1_073_741_824,
     recentActions: recent(state, id),
   };
