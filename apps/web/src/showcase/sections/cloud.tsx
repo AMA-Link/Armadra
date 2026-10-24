@@ -339,7 +339,7 @@ const SAMPLE_ENDORSER: HostEndorser = {
   approve: async () => undefined,
 };
 
-const U6_PATHS = ["/t/rd/trust"] as const;
+const U6_PATHS = ["/t/rd/links", "/t/rd/trust"] as const;
 
 /** 链接与设备信任（U6）：团队链接列表、设备信任（受信设备上的「拒绝 / 信任」与「在已信任的设备上处理」两种行）。 */
 function LinkTrustSamples() {
