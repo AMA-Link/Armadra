@@ -76,6 +76,8 @@ class Rig {
   readonly writer: TunnelWriter;
   readonly pool: CreditPool;
   readonly host: StreamHost;
+  /** 宿主收到 `closed`（从流表摘掉）的流，按顺序。 */
+  readonly closed: number[] = [];
   private nextId = 1;
 
   constructor(
@@ -96,7 +98,7 @@ class Rig {
         : { schedule: (stream: TunnelDuplex) => this.writer.schedule(stream) }),
       sendCredit: this.pool,
       consumed: () => undefined,
-      closed: () => undefined,
+      closed: (stream) => this.closed.push(stream.streamId),
     };
   }
 
@@ -360,6 +362,49 @@ describe("写端公平调度", () => {
       (f) => "streamId" in f && f.streamId === stream.streamId,
     );
     expect(mine.map((f) => f.type)).toEqual(["data", "rst"]);
+  });
+
+  it("平静销毁后排空中：尾巴发完才摘表，RST 在最后", async () => {
+    const rig = new Rig(4 << 20, 8 << 20);
+    const stream = rig.open();
+    stream.write(Buffer.alloc(1 << 20, 1));
+    await rig.run(2);
+    stream.destroy();
+    expect(rig.closed).toEqual([]);
+    // 出队列清空（尾巴都交给了 ws）才摘表；之后链路把缓冲里的写完。
+    await rig.until(() => rig.closed.includes(stream.streamId));
+    expect(stream.queuedBytes).toBe(0);
+    await rig.run(20);
+    const mine = rig.socket.written.filter(
+      (f) => "streamId" in f && f.streamId === stream.streamId,
+    );
+    expect(rig.socket.dataBytes).toBe(1 << 20);
+    expect(mine.at(-1)?.type).toBe("rst");
+    expect(rig.closed).toEqual([stream.streamId]);
+  });
+
+  it("排空中收到对端 RST：丢弃尾巴、归还信用、摘表，不再发出该流的帧", async () => {
+    const rig = new Rig(4 << 20, 8 << 20);
+    const stream = rig.open();
+    stream.write(Buffer.alloc(2 << 20, 1));
+    await rig.run(3);
+    stream.destroy();
+    expect(rig.closed).toEqual([]);
+    const sent = rig.socket.dataBytes + rig.socket.bufferedData;
+    expect(sent).toBeLessThan(2 << 20);
+    stream.receiveRst(RST.clientGone);
+    expect(rig.pool.available).toBe(8 * 2 ** 20 - sent);
+    await settle();
+    expect(rig.closed).toEqual([stream.streamId]);
+    const frames = rig.socket.written.length;
+    await rig.run(100);
+    expect(rig.socket.dataBytes).toBe(sent);
+    expect(
+      rig.socket.written
+        .slice(frames)
+        .some((f) => f.type === "rst" && f.streamId === stream.streamId),
+    ).toBe(false);
+    expect(rig.writer.backlog).toBe(0);
   });
 
   it("大量 1 字节写入不是平方量级，字节一个不少", async () => {

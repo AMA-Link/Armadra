@@ -19,7 +19,9 @@
  * 比授予的信用多 → `receiveData` 答 `false`，宿主发 `RST 5` 并以 4400 关隧道。
  *
  * 关闭：收 `END` → `push(null)`；本地 `end()` → 发 `END`；收 `RST` → `destroy`；
- * 本地 `destroy()` → 发 `RST`（无错误时 `clientGone`）。两端都 `END` 后从流表摘掉。
+ * 本地 `destroy()` → 发 `RST`（无错误时 `clientGone`）。两端都 `END` 或销毁后，等出队列
+ * 清空（尾巴发完）才从流表摘掉：这段「排空中」对端仍找得到这条流，它的 RST 到来时
+ * 丢弃还没发出的尾巴并归还信用，不再把对端已经不要的字节发出去。
  *
  * 计数（契约 §76）：给了 {@link StreamTrafficCounter} 时，收到的每块 `DATA`（对端 →
  * 本机）与发出的每块（本机 → 对端）各报一次字节数，流从流表摘掉时 `close()`。
@@ -176,7 +178,10 @@ export class TunnelDuplex extends Duplex {
   private eofPushed = false;
   private localEnded = false;
   private peerReset = false;
+  /** 两端都结束或已销毁，不再需要这条流（尾巴可能还在出队列里）。 */
   private released = false;
+  /** 已从流表摘掉（`released` 且出队列已清空）。 */
+  private settled = false;
   /** 已扣过信用、等调度器出帧的 DATA / END；`outHead` 之前的已出队。 */
   private out: (Buffer | typeof END | number)[] = [];
   private outHead = 0;
@@ -242,6 +247,11 @@ export class TunnelDuplex extends Duplex {
 
   receiveRst(code: number): void {
     this.peerReset = true;
+    if (this.destroyed) {
+      // 排空中（平静销毁后尾巴还没发完）：对端已经不要了，丢弃并归还信用。
+      this.dropOut();
+      return;
+    }
     this.destroy(new StreamResetError(code));
   }
 
@@ -355,6 +365,8 @@ export class TunnelDuplex extends Duplex {
       this.outHead = 0;
     }
     const more = this.outHead < this.out.length;
+    // 排空中的流发完了尾巴：摘表放到本轮之后，不在调度器出帧的半途回调宿主。
+    if (!more && this.released) queueMicrotask(this.settle);
     if (typeof item === "number") {
       return {
         frame: { type: "rst", streamId: this.streamId, code: item },
@@ -385,6 +397,7 @@ export class TunnelDuplex extends Duplex {
     this.outHead = 0;
     this.outBytes = 0;
     if (dropped > 0) this.host.sendCredit.add(dropped);
+    this.settle();
   }
 
   override _final(callback: (error?: Error | null) => void): void {
@@ -446,8 +459,17 @@ export class TunnelDuplex extends Duplex {
     if (this.released) return;
     this.released = true;
     this.counter?.close();
-    this.host.closed(this);
+    this.settle();
   }
+
+  /** 已经不需要、出队列也清空了：从流表摘掉。 */
+  private readonly settle = (): void => {
+    if (!this.released || this.settled || this.outHead < this.out.length) {
+      return;
+    }
+    this.settled = true;
+    this.host.closed(this);
+  };
 
   /* -------------------------- net.Socket 兼容 -------------------------- */
 
