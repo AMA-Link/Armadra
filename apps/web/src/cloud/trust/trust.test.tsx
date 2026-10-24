@@ -8,7 +8,9 @@ import {
 import { describe, expect, it, vi } from "vitest";
 
 import { installDomPolyfills } from "../../app/test-harness";
+import { MOCK_PERSONAL } from "../mock/fixtures";
 import { h1, installConsoleHarness, mount } from "../testkit";
+import { addPendingIds } from "../mock/pending-ids";
 import type { HostEndorser } from "./endorser";
 
 installConsoleHarness();
@@ -56,7 +58,9 @@ describe("团队 · 设备信任", () => {
     expect(text).toContain("赵六");
     expect(text).toContain("Pixel 9");
     expect(text).toContain("Android");
-    expect(text).toContain("mac-studio");
+    expect(text).toContain("build-01");
+    // 访客的请求只给主机所有者：别人主机（mac-studio）上的访客请求本人看不到。
+    expect(text).not.toContain("Galaxy S");
     // 列表里没有 6 位数字（校验码）；云端的答复里也没有 `sas` 字段。
     expect(text).not.toMatch(/\d{6}/);
     const answer = await api.client.trust.list({
@@ -67,7 +71,7 @@ describe("团队 · 设备信任", () => {
   });
 
   it("不是该主机的受信设备：行尾是「在已信任的设备上处理」，不渲染按钮", async () => {
-    mount("/t/rd/trust", OPTIONS, endorser([]));
+    mount("/t/rd/trust", OPTIONS, endorser([]), addPendingIds);
     const list = await rows();
     for (const row of list) {
       await waitFor(() =>
@@ -84,15 +88,21 @@ describe("团队 · 设备信任", () => {
     expect(within(first!).queryByRole("button")).toBeNull();
   });
 
+  it("请求不带 core 的 pendingId（现契约）：即使这台浏览器是受信设备也不可背书", async () => {
+    mount("/t/rd/trust", OPTIONS, endorser([MOCK_PERSONAL.linkHost]));
+    const [first] = await rows();
+    expect(within(first!).getByText("在已信任的设备上处理")).toBeTruthy();
+    expect(within(first!).queryByRole("button")).toBeNull();
+  });
+
   it("是受信设备：按主机判定，只有那台主机的行有「拒绝 / 信任」", async () => {
-    // 李四的请求在 build-01（laptop 号），赵六的在 mac-studio。
-    const api = mount("/t/rd/trust", OPTIONS, endorser([]));
-    const { requests } = await api.client.trust.list({
-      space: { kind: "team", teamId: "team_mock_rd" },
-    });
-    const ipad = requests.find((row) => row.requestId === "trust_ipad")!;
-    document.body.innerHTML = "";
-    mount("/t/rd/trust", OPTIONS, endorser([ipad.sourceId]));
+    // 李四的请求在 laptop 号那台主机，赵六的在 build-01。
+    mount(
+      "/t/rd/trust",
+      OPTIONS,
+      endorser([MOCK_PERSONAL.linkHost]),
+      addPendingIds,
+    );
     const list = await rows();
     const byName = (name: string) =>
       list.find((row) => row.textContent?.includes(name))!;
@@ -111,7 +121,7 @@ describe("团队 · 设备信任", () => {
   it("信任：输入 6 位码交给端到端通道，成功后关闭；码不进地址与本地存储", async () => {
     const host = endorser(["any"]);
     host.canEndorse = async () => true;
-    mount("/t/rd/trust", OPTIONS, host);
+    mount("/t/rd/trust", OPTIONS, host, addPendingIds);
     const list = await rows();
     const ipad = list.find((row) => row.textContent?.includes("李四"))!;
     const dialog = await openDialog(ipad);
@@ -129,10 +139,12 @@ describe("团队 · 设备信任", () => {
     fireEvent.click(confirm);
     await waitFor(() => expect(host.approve).toHaveBeenCalledTimes(1));
     const [request, sas] = host.approve.mock.calls[0] as [
-      { requestId: string },
+      { requestId: string; pendingId: string },
       string,
     ];
     expect(request.requestId).toBe("trust_ipad");
+    // 交给主机的是 core 的 pendingId，不是云端的请求号。
+    expect(request.pendingId).toBe("pending_trust_ipad");
     expect(sas).toBe("482916");
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
     expect(window.location.href).not.toContain("482916");
@@ -146,7 +158,7 @@ describe("团队 · 设备信任", () => {
         });
     });
     host.canEndorse = async () => true;
-    mount("/t/rd/trust", OPTIONS, host);
+    mount("/t/rd/trust", OPTIONS, host, addPendingIds);
     const ipad = (await rows()).find((row) =>
       row.textContent?.includes("李四"),
     )!;
@@ -167,7 +179,7 @@ describe("团队 · 设备信任", () => {
       });
     });
     host.canEndorse = async () => true;
-    mount("/t/rd/trust", OPTIONS, host);
+    mount("/t/rd/trust", OPTIONS, host, addPendingIds);
     const ipad = (await rows()).find((row) =>
       row.textContent?.includes("李四"),
     )!;
@@ -180,15 +192,53 @@ describe("团队 · 设备信任", () => {
     expect(within(dialog).queryByRole("button", { name: "信任" })).toBeNull();
   });
 
-  it("拒绝：只调 trust.reject（请求号，不带码），这一行消失", async () => {
+  it("主机答 forbidden 同样算不是受信设备，并让受信判定作废重判", async () => {
+    const host = endorser([], async () => {
+      throw Object.assign(new Error("forbidden"), { code: "forbidden" });
+    });
+    const probe = vi.fn(async () => true);
+    host.canEndorse = probe;
+    mount("/t/rd/trust", OPTIONS, host, addPendingIds);
+    const ipad = (await rows()).find((row) =>
+      row.textContent?.includes("李四"),
+    )!;
+    const dialog = await openDialog(ipad);
+    expect(probe).toHaveBeenCalledTimes(2);
+    typeCode(dialog, "222222");
+    fireEvent.click(within(dialog).getByRole("button", { name: "信任" }));
+    expect(
+      await within(dialog).findByText("在已信任的设备上处理"),
+    ).toBeTruthy();
+    await waitFor(() => expect(probe.mock.calls.length).toBeGreaterThan(2));
+  });
+
+  it("受信判定缓存：同一台主机重复进页面不再重开通道（窗口聚焦也不重判）", async () => {
+    const host = endorser([]);
+    const probe = vi.fn(async () => true);
+    host.canEndorse = probe;
+    mount("/t/rd/trust", OPTIONS, host, addPendingIds);
+    await rows();
+    await waitFor(() => expect(probe).toHaveBeenCalledTimes(2));
+    act(() => {
+      window.dispatchEvent(new Event("focus"));
+    });
+    await new Promise((done) => setTimeout(done, 30));
+    expect(probe).toHaveBeenCalledTimes(2);
+  });
+
+  it("拒绝：先二次确认；只调 trust.reject（请求号，不带码），这一行消失", async () => {
     const host = endorser([]);
     host.canEndorse = async () => true;
-    const api = mount("/t/rd/trust", OPTIONS, host);
+    const api = mount("/t/rd/trust", OPTIONS, host, addPendingIds);
     const reject = vi.spyOn(api.client.trust, "reject");
     const ipad = (await rows()).find((row) =>
       row.textContent?.includes("李四"),
     )!;
     fireEvent.click(await within(ipad).findByRole("button", { name: "拒绝" }));
+    const confirm = await screen.findByRole("alertdialog");
+    expect(within(confirm).getByText("拒绝 李四 的 iPad？")).toBeTruthy();
+    expect(reject).not.toHaveBeenCalled();
+    fireEvent.click(within(confirm).getByRole("button", { name: "拒绝" }));
     await waitFor(() =>
       expect(reject).toHaveBeenCalledWith({ requestId: "trust_ipad" }),
     );

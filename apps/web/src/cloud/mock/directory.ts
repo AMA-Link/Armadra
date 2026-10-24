@@ -70,7 +70,14 @@ export interface DirectoryState {
   /** 已按主机撤销访问的账号。 */
   revokedAccess: Set<string>;
   /** 待信任请求（已被拒绝的从这里删掉）。 */
-  trust: TrustRow[];
+  trust: TrustEntry[];
+}
+
+/** 待信任请求与云端判背书人要用的两项（不出线）：请求者是不是访客、主机所有者是不是本人。 */
+interface TrustEntry {
+  row: TrustRow;
+  guest: boolean;
+  hostOwnedBySelf: boolean;
 }
 
 type TrustRow = Awaited<
@@ -218,7 +225,7 @@ function dailyTraffic(days: number) {
 }
 
 /** 待信任请求的样本：没有校验码（云端不经手它）。 */
-function trustRows(more: boolean, golden: boolean): TrustRow[] {
+function trustRows(more: boolean, golden: boolean): TrustEntry[] {
   const now = Date.now();
   const team = MOCK_TEAMS[0]!.teamId;
   const rows: TrustRow[] = [
@@ -245,8 +252,8 @@ function trustRows(more: boolean, golden: boolean): TrustRow[] {
   if (more)
     rows.push({
       requestId: "trust_pixel",
-      sourceId: MOCK_HOSTS[1]!.sourceId,
-      sourceName: "mac-studio",
+      sourceId: MOCK_HOSTS[0]!.sourceId,
+      sourceName: "build-01",
       teamId: team,
       member: {
         accountId: MOCK_PEOPLE.guest.accountId,
@@ -257,7 +264,28 @@ function trustRows(more: boolean, golden: boolean): TrustRow[] {
       requestedAtMs: now - 120_000,
       expiresAtMs: now + 3_600_000,
     });
-  return rows;
+  const entries: TrustEntry[] = rows.map((row) => ({
+    row,
+    guest: row.member.accountId === MOCK_PEOPLE.guest.accountId,
+    hostOwnedBySelf:
+      MOCK_HOSTS.find((host) => host.sourceId === row.sourceId)?.owner ??
+      row.sourceId === MOCK_PERSONAL.linkHost,
+  }));
+  // 访客的请求只给主机所有者（云端 `isEndorser`）：别人主机上的访客请求本人看不到。
+  if (more)
+    entries.push({
+      row: {
+        ...rows[0]!,
+        requestId: "trust_galaxy",
+        sourceId: MOCK_HOSTS[1]!.sourceId,
+        sourceName: "mac-studio",
+        member: { ...MOCK_PEOPLE.guest },
+        device: { name: "Galaxy S", platform: "android" },
+      },
+      guest: true,
+      hostOwnedBySelf: false,
+    });
+  return entries;
 }
 
 /** 游标就是偏移量；缺省一页 50 条。 */
@@ -431,19 +459,22 @@ export const DIRECTORY_HANDLERS: Readonly<Record<string, DirectoryHandler>> = {
   "trust.list": (input, state) => {
     const space = input.space as { kind: string; teamId?: string } | undefined;
     return {
-      requests: state.trust.filter(
-        (row) =>
-          space === undefined ||
-          (space.kind === "team" && row.teamId === space.teamId),
-      ),
+      requests: state.trust
+        .filter(
+          (entry) =>
+            (!entry.guest || entry.hostOwnedBySelf) &&
+            (space === undefined ||
+              (space.kind === "team" && entry.row.teamId === space.teamId)),
+        )
+        .map((entry) => entry.row),
     };
   },
   "trust.reject": (input, state) => {
-    const row = state.trust.find(
-      (entry) => entry.requestId === input.requestId,
+    const entry = state.trust.find(
+      (item) => item.row.requestId === input.requestId,
     );
-    if (!row) throw new CloudConsoleError("not_found", 404);
-    state.trust = state.trust.filter((entry) => entry !== row);
+    if (!entry) throw new CloudConsoleError("not_found", 404);
+    state.trust = state.trust.filter((item) => item !== entry);
     return {};
   },
   "invitations.list": (input, state) => ({
