@@ -246,12 +246,15 @@ describe("经中继装成本机源：端到端通道关了之后", () => {
     world.channel.close();
     await expect(stream()).resolves.toBe("closed");
     const tries = vi.mocked(world.provider.getAccess).mock.calls.length;
+    const refreshTries = vi.mocked(world.provider.refresh).mock.calls.length;
     await Promise.all(
       [1, 2, 3].map(() =>
         localSource.fetch(`${RELAY_B}/api/x`).catch(() => undefined),
       ),
     );
     expect(world.provider.getAccess).toHaveBeenCalledTimes(tries);
+    // 要防的退化走的是续期（refresh），只数取访问测不出来。
+    expect(world.provider.refresh).toHaveBeenCalledTimes(refreshTries);
   });
 
   it("用户点「重连」：冷却里也立刻换通道，流在新通道上恢复", async () => {
