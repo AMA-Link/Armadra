@@ -10,6 +10,7 @@ import { setHostedRuntimeBase } from "../api/runtime-url";
 import { routedFetch } from "../mobile/testing";
 import {
   HOSTED_RESUME_KEY,
+  guestKey,
   RELAY_DOWN_AFTER_MS,
   createHostedRelay,
   detectRelayHost,
@@ -768,5 +769,100 @@ describe("刷新页面不丢登录", () => {
       failure: "revoked",
       hosts: [{ sourceId: SOURCE }],
     });
+  });
+});
+
+describe("只续当前链接的访客记录（resumeLink）", () => {
+  const OTHER = "b".repeat(32);
+
+  it("两条记录并存时只进这条链接的主机，不碰别的链接，续不上不退回账号", async () => {
+    const items = new Map<string, string>();
+    const guestStorage = {
+      get length() {
+        return items.size;
+      },
+      clear: () => items.clear(),
+      getItem: (key: string) => items.get(key) ?? null,
+      key: (index: number) => [...items.keys()][index] ?? null,
+      removeItem: (key: string) => void items.delete(key),
+      setItem: (key: string, value: string) => void items.set(key, value),
+    } as Storage;
+    const record = (sourceId: string, token: string) =>
+      JSON.stringify({
+        issuer: ISSUER,
+        cloudRefreshToken: token,
+        sources: { [sourceId]: `core-${sourceId[0]}` },
+        entered: { sourceId, name: sourceId[0] },
+        expiresAtMs: NOW + 3_600_000,
+      });
+    items.set(guestKey(ISSUER, "link-a"), record(SOURCE, "tok-a"));
+    items.set(guestKey(ISSUER, "link-b"), record(OTHER, "tok-b"));
+    const routes: Record<string, () => { status?: number; body: unknown }> = {};
+    for (const id of [SOURCE, OTHER]) {
+      routes[`POST /v1/sources/${id}/assertion`] = () => ({
+        body: {
+          assertion: "jws",
+          relayToken: "relay.jwt",
+          relayTokenExpiresAtMs: NOW + 3_600_000,
+          relayOrigin: ISSUER,
+          relayBaseUrl: `${ISSUER}/s/${id}`,
+          online: true,
+        },
+      });
+      routes[`POST /s/${id}/api/identity/session/refresh`] = () => ({
+        body: {
+          hostId: id,
+          expiresAtUnixMs: NOW + 900_000,
+          native: { accessToken: `acc-${id[0]}`, refreshToken: `rot-${id[0]}` },
+        },
+      });
+    }
+    const net = routedFetch({
+      ...routes,
+      "POST /v1/auth/refresh": (init) => ({
+        body: {
+          session: {
+            accessToken: "cloud-a",
+            refreshToken: `${JSON.parse(String(init.body)).refreshToken}-n`,
+            accessExpiresAtMs: NOW + 900_000,
+            expiresAtMs: NOW + 9_000_000,
+          },
+        },
+      }),
+      "GET /v1/me/sources": () => ({
+        body: {
+          sources: [
+            { sourceId: SOURCE, name: "a", online: true },
+            { sourceId: OTHER, name: "b", online: true },
+          ],
+        },
+      }),
+    });
+    const entered: string[] = [];
+    const relay = createHostedRelay({
+      issuer: ISSUER,
+      cloud: { fetch: net.fetch },
+      e2e: plainE2e(net.fetch),
+      guestStorage,
+      enter: async (options) => {
+        entered.push(options.descriptor.sourceId);
+        return fakeEnter(options);
+      },
+      wake: vi.fn(),
+      createStream: () => ({
+        issuer: ISSUER,
+        state: "open",
+        close: () => undefined,
+      }),
+    });
+    await expect(relay.resumeLink("link-b")).resolves.toEqual({
+      kind: "entered",
+    });
+    expect(entered).toEqual([OTHER]);
+    // 没有这条链接的记录：不进任何主机，别的链接的记录原样留着。
+    await expect(relay.resumeLink("link-none")).resolves.toBeNull();
+    expect(entered).toEqual([OTHER]);
+    expect(guestStorage.getItem(guestKey(ISSUER, "link-a"))).not.toBeNull();
+    relay.dispose();
   });
 });

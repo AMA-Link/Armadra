@@ -23,6 +23,7 @@ export const cloudErrors: MessageModule = {
     "error.teamOwnerRequired": "先转移你名下团队的所有权",
     "error.teamSuspended": "团队已停用，联系支持",
     "error.teamDeleted": "团队已删除，所有者可在 30 天内恢复",
+    "error.teamHostsOnline": "团队还有在线主机，先让它们下线或撤销",
     "error.invitationExpired": "邀请已过期，请对方重新邀请",
     "error.invitationEmailMismatch": "用 {email} 登录后接受",
     "error.memberExists": "已是团队成员",
@@ -63,6 +64,8 @@ export const cloudErrors: MessageModule = {
     "error.teamSuspended": "This team is suspended. Contact support",
     "error.teamDeleted":
       "Team deleted. The owner can restore it within 30 days",
+    "error.teamHostsOnline":
+      "The team still has online hosts. Take them offline or revoke them first",
     "error.invitationExpired": "Invitation expired. Ask for a new one",
     "error.invitationEmailMismatch": "Sign in as {email} to accept",
     "error.memberExists": "Already a member",

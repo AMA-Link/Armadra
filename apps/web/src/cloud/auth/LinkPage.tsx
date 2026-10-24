@@ -4,6 +4,7 @@ import { type JoinLink, parseJoinLink } from "@armadra/shared";
 
 import { usePreferencesStore, useT } from "@/app/preferences-store";
 import { Alert, AlertTitle } from "@/ui/alert";
+import { Avatar, AvatarFallback } from "@/ui/avatar";
 import { Badge } from "@/ui/badge";
 import { Button } from "@/ui/button";
 import { Skeleton } from "@/ui/skeleton";
@@ -16,7 +17,7 @@ import {
   browserDevice,
   parseCloudAccept,
 } from "../../sources/cloud-client";
-import { startHostedRelay } from "../../sources/hosted";
+import { hasGuestRecord, startHostedRelay } from "../../sources/hosted";
 import { openAfterJoin } from "../../sources/join-intent";
 import { useCloudApi } from "../api/context";
 import type { InvitationPreview } from "../api/session";
@@ -36,9 +37,19 @@ const APP_PATH = "/app/";
 
 const ROLES = new Set(["viewer", "editor", "operator", "driver"]);
 
+/** 协议包 0.10.0 的 `links.get` 答复没有 `ownerName`（0.11.0 起有，cloud#60）：放宽后缺了就不显示主人。 */
 type Info = Awaited<
   ReturnType<ReturnType<typeof useCloudApi>["client"]["links"]["get"]>
->;
+> & { ownerName?: string };
+
+/** 中继报接受时换来的令牌失效：保留的接受结果不能再用，要重新接受。 */
+const RELAY_CREDENTIAL_CODES: ReadonlySet<string> = new Set([
+  "relay_token_invalid",
+  "credentials_invalid",
+  // 接受结果里的断言只有 5 分钟：放久了 core 先答失效，或该断言已用过。
+  "cloud_assertion_invalid",
+  "cloud_assertion_replayed",
+]);
 type Stage =
   | { kind: "loading" }
   | { kind: "ready"; info: Info }
@@ -52,6 +63,10 @@ export type JoinWithAccept = (
 
 const hostedJoin: JoinWithAccept = (link, accepted) =>
   startHostedRelay({ issuer: link.issuer }).join(link, accepted);
+
+const hostedResume = async (link: JoinLink): Promise<boolean> =>
+  (await startHostedRelay({ issuer: link.issuer }).resumeLink(link.linkId))
+    ?.kind === "entered";
 
 /** 加入失败 → 界面那句：云端的码按控制台文案，中继与 core 那一段按个人中转的文案。 */
 function failureText(failure: unknown, fallback: string): string {
@@ -76,6 +91,7 @@ export function LinkPage({
   onJoined,
   onDone,
   join: joinWithAccept = hostedJoin,
+  resume: resumeJoined = hostedResume,
 }: {
   linkId: string;
   /** `#` 之后的 `<秘密>.<邀请令牌>[.<指纹>]`；没有是 `""`。 */
@@ -86,6 +102,8 @@ export function LinkPage({
   onJoined: () => void;
   onDone: () => void;
   join?: JoinWithAccept;
+  /** 用本机留着的访客记录重新进入；进去了答 `true`（缺省经页面的托管中继；测试换掉）。 */
+  resume?: (link: JoinLink) => Promise<boolean>;
 }) {
   const t = useT();
   const api = useCloudApi();
@@ -112,6 +130,10 @@ export function LinkPage({
   const [busy, setBusy] = React.useState(false);
   // 接受过一次：重试只重跑加入。`links.accept` 会消耗次数，不能因为中继那一步失败就再接受一遍。
   const accepted = React.useRef<CloudAccept | null>(null);
+  // 这条链接已经加入过（本机留着访客记录）：主按钮是「打开」，续不上再回到「加入」。
+  const [joinedBefore, setJoinedBefore] = React.useState(
+    () => link !== null && hasGuestRecord(link.issuer, linkId),
+  );
 
   React.useEffect(() => {
     if (link === null) return;
@@ -146,14 +168,50 @@ export function LinkPage({
 
   const needsLogin = needAccount && signedIn !== true;
 
+  const enterDone = () => {
+    openAfterJoin(LOCAL_SOURCE_ID);
+    try {
+      // 与个人中转的落地页一致：换成托管页的根，刷新能续上（`/h/<源>` 的 SaaS 入口还没有）。
+      globalThis.history.replaceState(null, "", APP_PATH);
+    } catch {
+      /* 地址栏停在 /j/ 也能用，只是刷新会回到落地页。 */
+    }
+    onJoined();
+  };
+
+  const reopen = async () => {
+    if (link === null || busy) return;
+    setBusy(true);
+    setError("");
+    try {
+      const resumed = await resumeJoined(link);
+      if (resumed) enterDone();
+      else {
+        setJoinedBefore(false);
+        setError(t("links.page.failed"));
+      }
+    } catch {
+      setJoinedBefore(false);
+      setError(t("links.page.failed"));
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const run = async () => {
     if (link === null || busy || stage.kind !== "ready") return;
+    if (joinedBefore && !needsLogin) {
+      await reopen();
+      return;
+    }
     if (needsLogin) {
       onNeedLogin();
       return;
     }
     setBusy(true);
     setError("");
+    // 只有沿用保留下来的旧结果碰到凭据失效才作废；刚接受的不清（再接受只会白耗次数）。
+    const reused = accepted.current !== null;
     try {
       // 有会话就带着会话接受（写操作要 CSRF 值）；没有就是匿名访客。
       const session = await api.ensureCsrf();
@@ -180,14 +238,7 @@ export function LinkPage({
         accepted.current = parseCloudAccept(answer);
       }
       await joinWithAccept(link, accepted.current);
-      openAfterJoin(LOCAL_SOURCE_ID);
-      try {
-        // 与个人中转的落地页一致：换成托管页的根，刷新能续上（`/h/<源>` 的 SaaS 入口还没有）。
-        globalThis.history.replaceState(null, "", APP_PATH);
-      } catch {
-        /* 地址栏停在 /j/ 也能用，只是刷新会回到落地页。 */
-      }
-      onJoined();
+      enterDone();
     } catch (failure) {
       // 挑战令牌一次性：任何一次失败都换新的。
       if (siteKey !== null) {
@@ -195,6 +246,16 @@ export function LinkPage({
         setWidget((n) => n + 1);
       }
       const failed = toCloudError(failure).code;
+      // 保留的接受结果放久了，中继令牌过期：丢掉它，下一次重试重新接受。
+      const relayCode = (failure as { code?: unknown } | null)?.code;
+      if (
+        reused &&
+        accepted.current !== null &&
+        (RELAY_CREDENTIAL_CODES.has(failed) ||
+          (typeof relayCode === "string" &&
+            RELAY_CREDENTIAL_CODES.has(relayCode)))
+      )
+        accepted.current = null;
       if (failed === "link_frozen") {
         setStage({
           kind: "failed",
@@ -246,10 +307,15 @@ export function LinkPage({
     );
 
   const { info } = stage;
-  const name =
+  const target =
     info.kind === "team_join"
       ? t("cloud.auth.linkTeam", { name: info.teamName ?? info.label })
       : info.sourceName || info.label;
+  const owner = info.ownerName?.trim() ?? "";
+  const name =
+    owner !== "" && target !== ""
+      ? t("cloud.auth.linkJoinOwner", { owner, target })
+      : target;
   const role =
     info.role !== undefined && ROLES.has(info.role)
       ? t(`sharing.role.${info.role}`)
@@ -268,6 +334,13 @@ export function LinkPage({
 
   return (
     <AuthLayout title={t("links.page.title")} subtitle={name}>
+      {owner !== "" && (
+        <Avatar className="self-center">
+          <AvatarFallback aria-hidden>
+            {Array.from(owner)[0]?.toUpperCase()}
+          </AvatarFallback>
+        </Avatar>
+      )}
       {(role !== "" || until !== "") && (
         <p className="flex flex-wrap items-center justify-center gap-2 text-body text-muted-foreground tabular-nums">
           {role !== "" && <Badge variant="outline">{role}</Badge>}
@@ -293,17 +366,22 @@ export function LinkPage({
         className="w-full"
         autoFocus
         disabled={
-          info.exhausted ||
-          (!needsLogin && !verified && accepted.current === null)
+          (info.exhausted && !joinedBefore) ||
+          (!needsLogin &&
+            !joinedBefore &&
+            !verified &&
+            accepted.current === null)
         }
         loading={busy}
         onClick={() => void run()}
       >
         {needsLogin
           ? t("cloud.auth.linkSignIn")
-          : error !== "" && !busy
-            ? t("links.page.retry")
-            : t("cloud.auth.linkJoin")}
+          : joinedBefore
+            ? t("cloud.auth.linkOpen")
+            : error !== "" && !busy
+              ? t("links.page.retry")
+              : t("cloud.auth.linkJoin")}
       </Button>
     </AuthLayout>
   );

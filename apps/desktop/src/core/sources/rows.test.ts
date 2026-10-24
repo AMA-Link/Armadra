@@ -27,6 +27,8 @@ afterEach(() => opened.close());
 const save = (input: {
   share: { ownerName: string; role: "viewer"; expiresAtMs: number } | null;
   team?: { teamId: string; teamName: string };
+  issuer?: string;
+  determined?: boolean;
 }) =>
   saveRelayRoute(store, 1_000, {
     sourceId: SOURCE,
@@ -34,9 +36,9 @@ const save = (input: {
     label: "host",
     defaultLabel: "host",
     relayOrigin: "https://relay.test",
-    issuer: "https://cloud.test",
     principalHint: "",
     ...input,
+    issuer: input.issuer ?? "https://cloud.test",
   });
 
 describe("saveRelayRoute 的团队", () => {
@@ -60,5 +62,24 @@ describe("saveRelayRoute 的团队", () => {
     expect(
       save({ share: { ownerName: "Alice", role: "viewer", expiresAtMs: 0 } }),
     ).toMatchObject({ origin: "shared", teamId: "", teamName: "" });
+  });
+
+  it("旧 core 不报分享信息：云没变时沿用分享方，云变了则清空，已确定时沿用", () => {
+    save({ share: { ownerName: "Alice", role: "viewer", expiresAtMs: 5 } });
+    expect(save({ share: null })).toMatchObject({
+      origin: "shared",
+      ownerLabel: "Alice",
+      shareRole: "viewer",
+      shareExpiresAtMs: 5,
+    });
+    expect(save({ share: null, issuer: "https://other.test" })).toMatchObject({
+      origin: "shared",
+      ownerLabel: "",
+      shareRole: "",
+    });
+    save({ share: { ownerName: "Bob", role: "viewer", expiresAtMs: 0 } });
+    expect(
+      save({ share: null, issuer: "https://other.test", determined: true }),
+    ).toMatchObject({ ownerLabel: "Bob" });
   });
 });

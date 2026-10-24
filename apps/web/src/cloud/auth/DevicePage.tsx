@@ -41,6 +41,8 @@ export interface DeviceRequest {
   readonly platform: string;
   readonly name: string;
   readonly requestedAtMs: number;
+  /** 发起请求的 IP（IPv6 截到 /64）；协议包 0.10.0 的答复没有，0.11.0 起有（cloud#88）。 */
+  readonly ipPrefix?: string;
 }
 
 type Stage =
@@ -176,6 +178,8 @@ export function DevicePage({
     approve: boolean,
   ): Promise<string> => {
     if (busy) return "";
+    // 防御纵深：链接来的码没核对前不批准（按钮本来就禁用）。
+    if (approve && fromUrl && !verified) return "";
     setBusy(true);
     setError("");
     try {
@@ -298,6 +302,11 @@ export function DevicePage({
                   ),
                 })}
               </p>
+              {request.ipPrefix !== undefined && request.ipPrefix !== "" && (
+                <p className="text-meta text-muted-foreground tabular-nums break-all">
+                  {t("cloud.auth.deviceFrom", { ip: request.ipPrefix })}
+                </p>
+              )}
             </div>
           </CardContent>
         </Card>

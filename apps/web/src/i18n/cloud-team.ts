@@ -78,7 +78,6 @@ export const cloudTeam: MessageModule = {
     "cloud.team.deleteTitle": "删除「{team}」？",
     "cloud.team.deleteAction": "删除团队",
     "cloud.team.deleted": "已删除团队，30 天内可恢复",
-    "cloud.team.deleteBlocked": "团队还有在线主机，先让它们下线或撤销",
   },
   en: {
     "cloud.team.create": "Create team",
@@ -156,7 +155,5 @@ export const cloudTeam: MessageModule = {
     "cloud.team.deleteTitle": 'Delete "{team}"?',
     "cloud.team.deleteAction": "Delete team",
     "cloud.team.deleted": "Team deleted. You can restore it for 30 days",
-    "cloud.team.deleteBlocked":
-      "The team still has online hosts. Take them offline or revoke them first",
   },
 };
