@@ -1,3 +1,4 @@
+import type { TerminalBackend } from "./backend";
 import { isTerminalReplyData, replyEnd } from "./replies";
 
 /**
@@ -194,7 +195,13 @@ export class QueryLedger {
     private readonly windowMs = REPLY_WINDOW_MS,
   ) {}
 
-  attach(sessionId: string, id: number): void {
+  /** A backend with a view per viewer (`reply`) has no duplicates to track. */
+  attach(
+    sessionId: string,
+    id: number,
+    backend: Pick<TerminalBackend, "reply"> = {},
+  ): void {
+    if (backend.reply !== undefined) return;
     let session = this.sessions.get(sessionId);
     if (session === undefined) {
       session = {

@@ -135,9 +135,9 @@ export class TerminalManager {
   private readonly drives: TerminalDriveBook;
   private readonly timers: NodeJS.Timeout[] = [];
   private readonly lastRowWrite = new Map<string, number>();
-  /** Who watches each session, at which size (ui-acp-refresh §7.3 E-1). */
   /** Pending terminal queries per view (#518); the socket feeds and asks it. */
   readonly queries = new QueryLedger(() => this.clock());
+  /** Who watches each session, at which size (ui-acp-refresh §7.3 E-1). */
   private readonly viewers = new TerminalWindows({
     window: (sessionId) => {
       const record = this.records.get(sessionId);
@@ -825,10 +825,7 @@ export class TerminalManager {
     }
     this.attachments.acquire(sessionId);
     this.viewers.add(sessionId, attachment.attachmentId, writer, own);
-    // Only a single-pty backend has duplicate answers to sort out.
-    if (backend.reply === undefined) {
-      this.queries.attach(sessionId, attachment.attachmentId);
-    }
+    this.queries.attach(sessionId, attachment.attachmentId, backend);
     await this.viewers.refresh(sessionId);
     this.setAttachState(sessionId, "live");
     // Only a backend that does not redraw owes the socket a replay.
@@ -903,16 +900,16 @@ export class TerminalManager {
   }
 
   /** One view's answer to a program's query (#518, `writeReply`). */
-  reply(
+  async reply(
     sessionId: string,
     generation: number,
     data: string,
     attachmentId: number,
   ): Promise<boolean> {
     const { key } = this.checked(sessionId, generation);
-    // 同一道 `terminal:drive` 判定，但不写审计：没资格的应答直接丢弃。
-    if (!mayDrive(this.drive, sessionId, undefined))
-      return Promise.resolve(false);
+    // 同一道 `terminal:drive` 判定，不写审计，没资格就丢弃。写入者今天恒为
+    // owner（undefined）；有第二个 principal 时这里与 `input()` 都要传真实的。
+    if (!mayDrive(this.drive, sessionId, undefined)) return false;
     return this.withKey(key, () => {
       const record = this.checked(sessionId, generation);
       return writeReply(this.backend(record.kind), record.key, data, {
