@@ -8,6 +8,12 @@
  * 上游：WebSocket 的 `bufferedAmount` 含这一段，所以五条流的发送队列（A3-0 的
  * `SendQueue`）照常按它判拥塞。
  *
+ * 出帧顺序（公平调度，`./sched`）：扣过信用的 DATA / END 先进这条流自己的出队列，
+ * 宿主（`StreamHost.schedule`）按调度器决定哪条流下一个出帧，而不是谁先写谁先走。
+ * 宿主不给 `schedule`（端到端通道里的内层流、测试夹具）就直接 `sendFrame`，同以前。
+ * 流在 RST（收到或发出）时丢弃出队列里没发出去的 DATA，并把它们占的隧道信用还回去：
+ * 对端从没收到这些字节，不会为它们补 WINDOW。
+ *
  * 读（中继 → core）：`DATA` 先进本地队列，`_read` 被调时才 `push`；交出去的字节
  * 累计到窗口一半时发 `WINDOW(streamId, 已消费)`，隧道级的由宿主同样补回。对端发得
  * 比授予的信用多 → `receiveData` 答 `false`，宿主发 `RST 5` 并以 4400 关隧道。
@@ -31,6 +37,7 @@ import {
 } from "@armadra/platform-protocol/tunnel";
 
 import type { ChannelPeer } from "./e2e/peer";
+import { type Flow, newFlow } from "./sched";
 
 export class StreamResetError extends Error {
   constructor(readonly rstCode: number) {
@@ -74,7 +81,13 @@ export class CreditPool {
 }
 
 export interface StreamHost {
+  /** 控制帧（WINDOW、RST）与不走调度时的 DATA / END。 */
   sendFrame(frame: Frame): void;
+  /**
+   * 流的出队列有了数据，请宿主的写调度器安排出帧（调度器之后调 `popFrame`）。
+   * 不给就不走调度，流直接 `sendFrame`。
+   */
+  schedule?(stream: TunnelDuplex): void;
   /** 隧道级发送信用。 */
   readonly sendCredit: CreditPool;
   /** 本端交给消费者的字节数（隧道级补信用用）。 */
@@ -146,6 +159,9 @@ interface PendingWrite {
   readonly callback: (error?: Error | null) => void;
 }
 
+/** 出队列里的 END 标记；数字是排在尾巴后面的 RST 码。 */
+const END = Symbol("end");
+
 export class TunnelDuplex extends Duplex {
   /** 本端还能发的流信用。 */
   private sendCredit: number;
@@ -161,6 +177,13 @@ export class TunnelDuplex extends Duplex {
   private localEnded = false;
   private peerReset = false;
   private released = false;
+  /** 已扣过信用、等调度器出帧的 DATA / END；`outHead` 之前的已出队。 */
+  private out: (Buffer | typeof END | number)[] = [];
+  private outHead = 0;
+  /** `out` 里的 DATA 字节（入队 / 出队时增减，调度器判断稀疏流不必遍历）。 */
+  private outBytes = 0;
+  /** 写端调度器里的状态。 */
+  readonly flow: Flow = newFlow();
 
   /**
    * `net.Socket` 的几个字段：Node 的 HTTP 层与身份域按它们认来源地址与 TLS。
@@ -285,22 +308,94 @@ export class TunnelDuplex extends Duplex {
         return;
       }
       this.sendCredit -= granted;
-      this.counter?.add(0, granted);
-      this.host.sendFrame({
-        type: "data",
-        streamId: this.streamId,
-        bytes: pending.chunk.subarray(pending.offset, pending.offset + granted),
-      });
+      this.emitData(
+        pending.chunk.subarray(pending.offset, pending.offset + granted),
+      );
       pending.offset += granted;
     }
     this.pending = null;
     pending.callback();
   };
 
+  /** 一块已扣过信用的 DATA：进出队列等调度，宿主不调度就直接发。 */
+  private emitData(bytes: Buffer): void {
+    if (this.host.schedule === undefined) {
+      this.counter?.add(0, bytes.length);
+      this.host.sendFrame({ type: "data", streamId: this.streamId, bytes });
+      return;
+    }
+    this.out.push(bytes);
+    this.outBytes += bytes.length;
+    this.host.schedule(this);
+  }
+
+  private hasScheduler(): boolean {
+    return this.host.schedule !== undefined;
+  }
+
+  /** 出队列里排着的 DATA 字节（调度器判断稀疏流用）。 */
+  get queuedBytes(): number {
+    return this.outBytes;
+  }
+
+  /**
+   * 调度器取下一帧：答帧、它的载荷字节与出队列里是否还有；队列空答 `undefined`。
+   * 计数在这里记：丢弃的字节没有发出去，不算。
+   */
+  popFrame(): { frame: Frame; size: number; more: boolean } | undefined {
+    if (this.outHead >= this.out.length) return undefined;
+    const item = this.out[this.outHead] as Buffer | typeof END | number;
+    this.out[this.outHead] = END;
+    this.outHead += 1;
+    if (this.outHead >= this.out.length) {
+      this.out = [];
+      this.outHead = 0;
+    } else if (this.outHead >= 1024 && this.outHead * 2 >= this.out.length) {
+      this.out = this.out.slice(this.outHead);
+      this.outHead = 0;
+    }
+    const more = this.outHead < this.out.length;
+    if (typeof item === "number") {
+      return {
+        frame: { type: "rst", streamId: this.streamId, code: item },
+        size: 0,
+        more,
+      };
+    }
+    if (item === END) {
+      return {
+        frame: { type: "end", streamId: this.streamId },
+        size: 0,
+        more,
+      };
+    }
+    this.outBytes -= item.length;
+    this.counter?.add(0, item.length);
+    return {
+      frame: { type: "data", streamId: this.streamId, bytes: item },
+      size: item.length,
+      more,
+    };
+  }
+
+  /** 丢掉出队列里没发出去的帧，把 DATA 占的隧道信用还回去。 */
+  private dropOut(): void {
+    const dropped = this.outBytes;
+    this.out = [];
+    this.outHead = 0;
+    this.outBytes = 0;
+    if (dropped > 0) this.host.sendCredit.add(dropped);
+  }
+
   override _final(callback: (error?: Error | null) => void): void {
     if (!this.peerReset) {
       this.localEnded = true;
-      this.host.sendFrame({ type: "end", streamId: this.streamId });
+      if (this.host.schedule === undefined) {
+        this.host.sendFrame({ type: "end", streamId: this.streamId });
+      } else {
+        this.out.push(END);
+        this.host.schedule(this);
+      }
     }
     callback();
     this.maybeRelease();
@@ -312,14 +407,28 @@ export class TunnelDuplex extends Duplex {
   ): void {
     this.host.sendCredit.cancel(this.pump);
     this.pending = null;
-    if (!this.peerReset && !(this.localEnded && this.remoteEnded)) {
+    const resetting = !this.peerReset && !(this.localEnded && this.remoteEnded);
+    // 对端复位或本端出错中止：排着的 DATA 作废（信用还回去），RST 走控制队列先行。
+    // 本端平静地销毁（没有错误，或已经 END）：先 `write` 再 `destroy()` 是常见写法
+    // （升级被拒绝时先写 401 再销毁），出队列里的尾巴照常发完，RST 排在后面，对端先
+    // 看到完整的字节，与改成调度之前的出帧顺序相同。两端都正常结束后销毁：尾巴（含
+    // END）也发完，不发 RST。
+    const finishing =
+      resetting && this.hasScheduler() && (this.localEnded || error === null);
+    if (this.peerReset || (resetting && !finishing)) this.dropOut();
+    if (resetting) {
       const code =
         error instanceof StreamResetError
           ? error.rstCode
           : error
             ? RST.internal
             : RST.clientGone;
-      this.host.sendFrame({ type: "rst", streamId: this.streamId, code });
+      if (finishing) {
+        this.out.push(code);
+        this.host.schedule?.(this);
+      } else {
+        this.host.sendFrame({ type: "rst", streamId: this.streamId, code });
+      }
     }
     // 队列里还没交出去的字节也要把隧道级信用还回去。
     const dropped = this.queue.reduce((sum, chunk) => sum + chunk.length, 0);

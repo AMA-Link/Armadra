@@ -1,0 +1,98 @@
+import { describe, expect, it } from "vitest";
+
+import { type Flow, Sched, newFlow } from "./sched";
+
+/** 调度器本身（移植自中继 `sched_test.go`）：轮转、稀疏流先出、预算、每批至少一条老流出帧、重置。 */
+
+interface Item {
+  readonly name: string;
+  readonly flow: Flow;
+  left: number;
+  readonly frame: number;
+}
+
+function item(name: string, left: number, frame: number): Item {
+  return { name, flow: newFlow(), left, frame };
+}
+
+function drain(q: Sched<Item>, budget: number): string[] {
+  const out: string[] = [];
+  q.drain(budget, (it) => {
+    if (it.left === 0) return { size: -1, more: false };
+    it.left -= 1;
+    out.push(it.name);
+    return { size: it.frame, more: it.left > 0 };
+  });
+  return out;
+}
+
+describe("写端调度器", () => {
+  it("老流轮转、稀疏流先出、老流每批至少一帧", () => {
+    const q = new Sched<Item>();
+    const bulk = [
+      item("a", 100, 100),
+      item("b", 100, 100),
+      item("c", 100, 100),
+    ];
+    for (const it of bulk) q.add(it, it.flow, it.left * it.frame);
+    // 预算 250：100 + 100 未到、再一帧到 300 就停。
+    expect(drain(q, 250)).toEqual(["a", "b", "c"]);
+    // 已在队列里的忽略。
+    for (const it of bulk) q.add(it, it.flow, it.left * it.frame);
+    for (let round = 0; round < 4; round += 1) drain(q, 250);
+    const [a, , c] = bulk as [Item, Item, Item];
+    expect(Math.abs(c.left - a.left)).toBeLessThanOrEqual(1);
+    // 停了几批之后才就绪的小流排在老流前面。
+    const probe = item("p", 1, 10);
+    q.add(probe, probe.flow, 10);
+    expect(drain(q, 250)[0]).toBe("p");
+    // 稀疏流再多，老流也每批至少一帧。
+    for (let i = 0; i < 50; i += 1) {
+      const it = item("s", 1, 100);
+      q.add(it, it.flow, 100);
+    }
+    const got = drain(q, 100);
+    expect(got.some((n) => n === "a" || n === "b" || n === "c")).toBe(true);
+  });
+
+  it("上一批刚出过帧、下一批还没开始就又就绪的流不算稀疏；隔了一批才醒来的才算", () => {
+    const q = new Sched<Item>();
+    const bulk = item("bulk", 100, 100);
+    const chatty = item("chatty", 1, 10);
+    q.add(bulk, bulk.flow, 10_000);
+    q.add(chatty, chatty.flow, 10);
+    // 第一批之前谁都没出过帧：按入队顺序。
+    expect(drain(q, 1000)).toEqual(["bulk", "chatty"]);
+    // chatty 在批与批之间补数据：served 等于当前批次，进老流，排在 bulk 后面。
+    chatty.left = 1;
+    q.add(chatty, chatty.flow, 10);
+    expect(drain(q, 1000)).toEqual(["bulk", "chatty"]);
+    // 一批里没有它之后再就绪，才是刚醒来的稀疏流，先于 bulk。
+    drain(q, 1000);
+    chatty.left = 1;
+    q.add(chatty, chatty.flow, 10);
+    expect(drain(q, 1000)).toEqual(["chatty", "bulk"]);
+    // 排着超过上限的积压：不算稀疏，按老流排在 bulk 后面。
+    drain(q, 1000);
+    const heavy = item("heavy", 2, 10);
+    heavy.flow.served = 0;
+    q.add(heavy, heavy.flow, 1 << 20);
+    const got = drain(q, 1000);
+    expect(got.indexOf("bulk")).toBeLessThan(got.indexOf("heavy"));
+  });
+
+  it("没有可出的帧的流被摘掉，可再次加入；重置后为空", () => {
+    const q = new Sched<Item>();
+    const dead = item("dead", 0, 0);
+    q.add(dead, dead.flow, 0);
+    const live = item("live", 2, 1);
+    q.add(live, live.flow, 2);
+    expect(drain(q, 100)).toEqual(["live"]);
+    dead.left = 1;
+    q.add(dead, dead.flow, 1);
+    expect(drain(q, 100)).toHaveLength(2);
+    q.reset();
+    expect(drain(q, 100)).toEqual([]);
+    expect(q.size).toBe(0);
+  });
+});
