@@ -60,7 +60,12 @@ const fakeEnter = async (options: EnterRouteOptions) => {
   );
   const route = { via: "relayed" as const, access };
   options.useRoute(route);
-  return { route, renew: async () => true, dispose: () => undefined };
+  return {
+    route,
+    renew: async () => true,
+    recover: async () => true,
+    dispose: () => undefined,
+  };
 };
 
 /** 中继与主机：访客的刷新令牌每用一次就旋转，旧的作废。 */

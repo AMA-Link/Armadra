@@ -46,6 +46,11 @@ export interface BearerTransport {
    */
   refresh(rejected?: string): Promise<boolean>;
   /**
+   * 用户点了「重连」：底层的通道（契约 §78）断着就不等自动重试的冷却、立刻换一条。
+   * 可用答 `true`；没有通道这一说的传输不给。
+   */
+  reconnect?(): Promise<boolean>;
+  /**
    * 每个请求另带的头（经中继时是中继令牌）。调用方自己带了同名头的不覆盖；
    * 身份面的请求也带——中继不分路径，没有令牌就不转。
    */

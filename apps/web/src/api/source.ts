@@ -181,6 +181,14 @@ export function installLocalTransport(next: BearerTransport | null): void {
   ticketed = new WeakMap();
 }
 
+/**
+ * 用户手动重连本机源（「本地服务已断开」的「重连」）：传输的通道断着就立刻换一条，
+ * 不等自动重试的冷却。没装传输、或传输没有通道时答 `true`。
+ */
+export function reconnectLocalTransport(): Promise<boolean> {
+  return transport?.reconnect?.() ?? Promise.resolve(true);
+}
+
 /* --------------------------------- 当前源 --------------------------------- */
 
 let resolveCurrent: () => Source = () => localSource;

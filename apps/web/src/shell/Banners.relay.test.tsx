@@ -1,5 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { act, cleanup, render, screen } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 
 import type { HostedRelay, HostedStatus } from "../sources/hosted";
 
@@ -29,6 +36,7 @@ const { installDomPolyfills, TestProviders } = await import(
 );
 const { usePreferencesStore } = await import("../app/preferences-store");
 const { Banners } = await import("./Banners");
+const { installLocalTransport } = await import("../api/source");
 
 installDomPolyfills();
 
@@ -135,6 +143,34 @@ describe("手机经中继的连接", () => {
     );
     expect(await screen.findByText("本地服务已断开")).toBeTruthy();
     expect(screen.queryByText("中转不可用，正在重连")).toBeNull();
+  });
+
+  it("运行时断开时点「重连」：先让传输强制换通道，再重新问", async () => {
+    health.fail = true;
+    const reconnect = vi.fn(async () => true);
+    installLocalTransport({
+      origin: "https://relay.example",
+      authorization: () => "",
+      wsTicket: async () => "",
+      refresh: async () => false,
+      reconnect,
+    });
+    try {
+      render(
+        <TestProviders>
+          <Banners />
+        </TestProviders>,
+      );
+      expect(await screen.findByText("本地服务已断开")).toBeTruthy();
+      health.fail = false;
+      fireEvent.click(screen.getByRole("button", { name: "重连" }));
+      await waitFor(() => expect(reconnect).toHaveBeenCalledTimes(1));
+      await waitFor(() =>
+        expect(screen.queryByText("本地服务已断开")).toBeNull(),
+      );
+    } finally {
+      installLocalTransport(null);
+    }
   });
 
   it("直连或运行时正常：不去问中继", async () => {

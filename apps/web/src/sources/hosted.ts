@@ -741,8 +741,11 @@ export function createHostedRelay(options: HostedRelayOptions): HostedRelay {
       return status;
     },
     async connect() {
-      // 主机回来了：隧道是新的，会话在 core 的库里还在；叫醒在退避里的流。
-      setStatus("ready", null);
+      // 主机回来了：隧道是新的，会话在 core 的库里还在。旧的端到端通道随旧隧道
+      // 关了：先换一条新通道（重取断言、重开 /_relay/e2e），再叫醒在退避里的流，
+      // 它们在新通道上重连。换不上也叫醒：流的换票会再试（单飞、有冷却）。
+      const recovered = (await entered?.recover()) ?? true;
+      if (recovered) setStatus("ready", null);
       wake();
     },
     revoke(failure) {
