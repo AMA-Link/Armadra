@@ -1412,6 +1412,16 @@ describe("契约 §86：Armadra 云挂载的团队与归属", () => {
     });
   });
 
+  it("断言的 aud 不是这台源：按无团队处理", async () => {
+    world.cloud.owner = false;
+    world.cloud.assertionTeam = "team-1";
+    world.cloud.assertionAud = "ffffffffffffffffffffffffffffffff";
+    expect(await saas.mount({ serviceId, sourceId: RELAYED_ID })).toMatchObject(
+      { origin: "shared", teamId: "", teamName: "" },
+    );
+    delete world.cloud.assertionAud;
+  });
+
   it("自己的主机（owner）：mine，不记团队；个人中转挂载不记团队", async () => {
     world.cloud.assertionTeam = "team-1";
     expect(await saas.mount({ serviceId, sourceId: RELAYED_ID })).toMatchObject(

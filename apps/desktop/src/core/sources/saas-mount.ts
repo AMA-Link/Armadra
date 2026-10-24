@@ -16,12 +16,13 @@ export interface SaasMountInfo {
   readonly teamName: string;
 }
 
-/** 断言（JWS）载荷里的 `team.teamId`；认不出是空串。 */
-export function assertionTeamId(assertion: string): string {
+/** 断言（JWS）载荷里的 `team.teamId`；`aud` 不是这台源或认不出是空串。 */
+export function assertionTeamId(assertion: string, sourceId: string): string {
   try {
     const payload = JSON.parse(
       Buffer.from(assertion.split(".")[1] ?? "", "base64url").toString("utf8"),
-    ) as { team?: { teamId?: unknown } };
+    ) as { aud?: unknown; team?: { teamId?: unknown } };
+    if (payload.aud !== sourceId) return "";
     const teamId = payload.team?.teamId;
     return typeof teamId === "string" ? teamId.trim().slice(0, 128) : "";
   } catch {
@@ -42,7 +43,7 @@ export async function saasMountInfo(
   const { accessToken } = token;
   const listed = await client.sources(endpoint, accessToken).catch(() => []);
   const mine = listed.find((one) => one.sourceId === sourceId)?.owner === true;
-  const teamId = mine ? "" : assertionTeamId(signed.assertion);
+  const teamId = mine ? "" : assertionTeamId(signed.assertion, sourceId);
   let teamName = "";
   if (teamId !== "") {
     const spaces = await client.spaces(endpoint, accessToken).catch(() => []);

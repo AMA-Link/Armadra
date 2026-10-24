@@ -153,6 +153,8 @@ export interface FakeWorld {
     owner?: boolean;
     /** 断言（JWS 载荷）带的 `team.teamId`；不给不带。 */
     assertionTeam?: string;
+    /** 断言载荷的 `aud`；不给就是请求的源号。 */
+    assertionAud?: string;
     /** 设备码答案里的 `verificationUrl`；不给就是 issuer 同源的 `/device`。 */
     verificationUrl?: string;
     /** 下一次取注册令牌答的错误（一次性）。 */
@@ -605,7 +607,10 @@ async function cloud(
         world.cloud.assertionTeam === undefined
           ? token(`assertion-${sourceId}`)
           : `assertion-${sourceId}.${Buffer.from(
-              JSON.stringify({ team: { teamId: world.cloud.assertionTeam } }),
+              JSON.stringify({
+                aud: world.cloud.assertionAud ?? sourceId,
+                team: { teamId: world.cloud.assertionTeam },
+              }),
             ).toString("base64url")}.sig`,
       assertionExpiresAtMs: Date.now() + 300_000,
       relayToken: token("relay"),
