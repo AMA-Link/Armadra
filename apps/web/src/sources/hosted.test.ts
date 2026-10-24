@@ -156,7 +156,12 @@ const fakeEnter = async (options: EnterRouteOptions) => {
   );
   const route = { via: "relayed" as const, access };
   options.useRoute(route);
-  return { route, renew: async () => true, dispose: () => undefined };
+  return {
+    route,
+    renew: async () => true,
+    recover: async () => true,
+    dispose: () => undefined,
+  };
 };
 
 function hosted(mount?: (options: SiblingMountOptions) => unknown) {
@@ -228,6 +233,46 @@ describe("中继托管页面的源", () => {
       lastError: { code: "source_access_denied" },
     });
     expect(seen).toEqual(["waitingForSource", "ready", "unauthorized"]);
+  });
+
+  it("主机上线：先换端到端通道（recover），再叫醒流；换不上不报就绪、照样叫醒", async () => {
+    const net = relayNet();
+    let stream: RemoteStreamOptions | null = null;
+    const order: string[] = [];
+    let recovers = true;
+    const wake = vi.fn(() => void order.push("wake"));
+    const relay = createHostedRelay({
+      issuer: ISSUER,
+      cloud: { fetch: net.fetch },
+      e2e: plainE2e(net.fetch),
+      enter: async (options) => ({
+        ...(await fakeEnter(options)),
+        recover: async () => {
+          order.push("recover");
+          return recovers;
+        },
+      }),
+      wake,
+      createStream: (options) => {
+        stream = options;
+        return { issuer: ISSUER, state: "open", close: () => undefined };
+      },
+    });
+    await relay.enter((await relay.signIn("dev", "pw"))[0]!);
+
+    stream!.onEvent({ type: "sourceOffline", sourceId: SOURCE });
+    recovers = false;
+    stream!.onEvent({ type: "sourceOnline", sourceId: SOURCE });
+    await vi.waitFor(() => expect(wake).toHaveBeenCalledTimes(1));
+    expect(order).toEqual(["recover", "wake"]);
+    expect(relay.status.state).toBe("waitingForSource");
+
+    recovers = true;
+    stream!.onEvent({ type: "sourceOnline", sourceId: SOURCE });
+    await vi.waitFor(() => expect(wake).toHaveBeenCalledTimes(2));
+    expect(order).toEqual(["recover", "wake", "recover", "wake"]);
+    expect(relay.status.state).toBe("ready");
+    relay.dispose();
   });
 
   it("流重开时对一次目录：主机离线就等，回来了就叫醒", async () => {
