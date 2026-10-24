@@ -414,8 +414,13 @@ describe("危险操作", () => {
     await screen.findByRole("heading", { name: /团队将于/ });
     await api.client.teams.create({ slug: "alpha", name: "Alpha" });
     fireEvent.click(screen.getByRole("button", { name: "恢复团队" }));
+    // 恢复页自己的文案；原先断言的是「创建团队」的额度文案，靠上一个用例漏下来的提示才通过。
     expect(
-      (await screen.findAllByText("免费版只能建一个团队，升级后再建")).length,
+      (
+        await screen.findAllByText(
+          "你已拥有另一个团队：删除或转移它，或升级后再恢复",
+        )
+      ).length,
     ).toBeGreaterThan(0);
     expect(screen.getByRole("button", { name: "恢复团队" })).toBeTruthy();
   });
@@ -442,80 +447,6 @@ describe("危险操作", () => {
     await waitFor(() =>
       expect(screen.queryByRole("combobox", { name: "新所有者" })).toBeNull(),
     );
-  });
-
-  it("删除团队：输入地址确认，不一致不提交；有在线主机时给原因", async () => {
-    mount("/t/rd/settings", { ...OPTIONS, roles: { rd: "owner" } });
-    fireEvent.click(await screen.findByRole("button", { name: "删除团队" }));
-    const dialog = await screen.findByRole("alertdialog");
-    expect(within(dialog).getByText("删除「研发组」？")).toBeTruthy();
-    const input = within(dialog).getByLabelText("输入 rd 确认");
-    fireEvent.change(input, { target: { value: "rd-x" } });
-    fireEvent.click(within(dialog).getByRole("button", { name: "删除团队" }));
-    expect(await within(dialog).findByText("与 rd 不一致")).toBeTruthy();
-    expect(window.location.pathname).toBe("/t/rd/settings");
-    fireEvent.change(input, { target: { value: "rd" } });
-    fireEvent.click(within(dialog).getByRole("button", { name: "删除团队" }));
-    expect(
-      await screen.findByText("团队还有在线主机，先让它们下线或撤销"),
-    ).toBeTruthy();
-    // 对话框留着可以重试。
-    expect(screen.getByRole("alertdialog")).toBeTruthy();
-  });
-
-  it("删除后进恢复期：整页给清除日期，所有者恢复后回到团队", async () => {
-    mount("/t/lab/settings", {
-      ...OPTIONS,
-      hosts: [],
-      roles: { lab: "owner" },
-    });
-    fireEvent.click(await screen.findByRole("button", { name: "删除团队" }));
-    const dialog = await screen.findByRole("alertdialog");
-    fireEvent.change(within(dialog).getByLabelText("输入 lab 确认"), {
-      target: { value: "lab" },
-    });
-    fireEvent.click(within(dialog).getByRole("button", { name: "删除团队" }));
-    expect(
-      await screen.findByRole("heading", { name: /团队将于 .+ 清除/ }),
-    ).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "恢复团队" }));
-    expect(await screen.findByText("已恢复团队")).toBeTruthy();
-    expect((await h1()).textContent).toBe("概览");
-    expect(window.location.pathname).toBe("/t/lab");
-  });
-
-  it("恢复受团队数额度限制：另有自己拥有的团队时给额度文案，仍停在恢复页", async () => {
-    const api = mount("/t/lab/settings", {
-      ...OPTIONS,
-      hosts: [],
-      roles: { lab: "owner" },
-    });
-    fireEvent.click(await screen.findByRole("button", { name: "删除团队" }));
-    const dialog = await screen.findByRole("alertdialog");
-    fireEvent.change(within(dialog).getByLabelText("输入 lab 确认"), {
-      target: { value: "lab" },
-    });
-    fireEvent.click(within(dialog).getByRole("button", { name: "删除团队" }));
-    await screen.findByRole("heading", { name: /团队将于/ });
-    await api.client.teams.create({ slug: "alpha", name: "Alpha" });
-    fireEvent.click(screen.getByRole("button", { name: "恢复团队" }));
-    expect(
-      (await screen.findAllByText("免费版只能建一个团队，升级后再建")).length,
-    ).toBeGreaterThan(0);
-    expect(screen.getByRole("button", { name: "恢复团队" })).toBeTruthy();
-  });
-
-  it("没有管理员就没有转移这一行", async () => {
-    const api = mount("/t/rd/settings", { ...OPTIONS, roles: { rd: "owner" } });
-    expect(
-      await screen.findByRole("combobox", { name: "新所有者" }),
-    ).toBeTruthy();
-    await api.client.teams.memberRole({
-      teamId: "team_mock_rd",
-      accountId: "acct_mock_lisi",
-      role: "member",
-    });
-    await waitFor(() => expect(api.client.teams.members).toBeTruthy());
   });
 
   it("所有者不渲染「离开团队」（要先转移所有权）", async () => {
