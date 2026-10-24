@@ -269,17 +269,6 @@ disabled ─start()─▶ connecting ─ws open─▶ authenticating ─ready─
 - `admittedServer = CoreServer.createListener({ admitted: true })`；`admittedServer.emit("connection", duplex)` —— Node 用 `duplex` 解析 HTTP / 升级；`duplex.remoteAddress` 伪装成 `open.remoteIp`，`duplex.encrypted = true`，并把 `open.clientOrigin` 放在 `duplex.armadraOrigin` 供 `admission.ts` 读（不信任头里的 Origin，以 `OPEN` 元数据为准；两者不一致 → 403）。
 - 流数超过 `limits.maxStreams` → `RST refused`。
 
-### 4.7 写端公平调度（#564，设计：armadra-cloud `docs/design/relay-fair-scheduling.md` §2、§6）
-
-core → 中继方向（客户端回显、终端输出、文件下载）原先是先进先出：每块扣完信用就 `ws.send`，一条大流量流排着 256 KiB 时，同一条隧道上的终端按键回显要排在它后面。现在与 Go 中继（`go/internal/tunnel/sched.go`）同一套规则，**线上协议与信用记账不变**，与 Go / Workers 中继互通：
-
-- `TunnelDuplex` 扣完信用的 DATA / END 先进自己的出队列，不直接发；`StreamHost.schedule(stream)` 通知写端。宿主不提供 `schedule`（端到端通道里的内层流、测试夹具）时流仍直接 `sendFrame`，行为同以前。
-- `TunnelWriter`（`writer.ts`）持有控制帧队列（WINDOW、PING / PONG、RST、拒绝 OPEN 的 RST）和 `Sched`（`sched.ts`）。每批：先写全部控制帧；稀疏流（刚从空闲转为就绪、排着不超过 16 KiB、上一批开始之后才就绪）先于持续积压的老流各出一帧；老流轮转，每流每批一帧；一批至多 128 KiB（两个最大块）DATA，至少一条老流出一帧，没轮到的留在队首。每流出队列字节数随入队 / 出队增减，判断稀疏流不遍历。
-- 取下一批之前看 `ws.bufferedAmount`：不超过低水位（一块，64 KiB）才取，每帧写完的回调推动下一轮（同一回合排进来的帧在微任务里凑成一批）。`ws.send` 是异步缓冲，不设水位的话调度只是把 JS 队列换成 `ws` 内部缓冲，后到的帧仍排在已交出去的字节后面。有水位时，一个新到的控制帧或稀疏流的帧之前最多还有「低水位 + 一批 + 一块」字节，约 256 KiB，与就绪流数量无关（改前随流数线性增长）；`ws` 之外的内核发送缓冲不受控，由 TCP 决定。
-- 流内顺序不变，END 在最后一块之后。收到 RST、或本端因错误中止：RST 走控制队列先行，该流排着的 DATA 与 END 丢弃，占用的隧道信用经 `CreditPool.add` 归还（这些字节从没上线，对端不会为它们补 `WINDOW`）；流量计数在出帧时才记，丢弃的不算。本端平静地销毁（没有错误，或已经 END；常见写法是先写完响应再 `destroy()`）：已写的字节照常发完，RST 排在后面，对端看到的顺序与改前一致。隧道关闭：优雅关闭前先 `flushAll`（最后的 RST / END 不丢），`finish` 时清空队列与调度器。
-- 慢链路的代价（armadra-cloud#132 第 2 项）：稀疏流判定是「上一批开始之后才就绪」，批次推进的速度就是链路写完一批的速度。链路慢到写一批（128 KiB）比两次按键的间隔还久（约 4 MB/s 以下），连续按键落在同一批里，交互流会失去稀疏优先，退化为老流轮转（每批一帧，等待随同时就绪的流数增长，但仍不会排到别的流积压之后，好于先进先出）。是否改为「上一帧写出后才就绪」的判定随中继侧的评估一起定。
-- 测试：`sched.test.ts`（调度器本身）、`fairness.test.ts`（假 ws，`bufferedAmount` 与链路速率可控；探测帧与 PONG 之前写出的字节有上界且与大流量流数量无关、先进先出对照、水位、轮转与无饥饿、流内有序、RST 丢弃与信用归还、大量 1 字节写入非平方、关闭清空）。延迟按「探测帧入队后写出了多少字节」度量，不依赖时钟。
-
 ### 4.4 准入（`admission.ts`）
 
 与 Gateway Bearer 模式等价，在 `admittedServer` 的 `request` / `upgrade` 之前（`createListener({ admitted: true, gate })` 加一个可选 `gate` 参数，隧道传入本模块）：
@@ -300,6 +289,18 @@ core → 中继方向（客户端回显、终端输出、文件下载）原先�
 - `admission.test.ts`：Origin 不在表 403；`loopbackOnlyPath` 403；无 Bearer 401；票兑换成功 / 来源不符拒绝；`OPEN.clientOrigin` 与头不一致 403。
 - `frames.test.ts`：协议包黄金字节（core 侧也跑一遍，守钉住的版本）。
 - 集成 `relay.integration.test.ts`（需 dev-stack `personal` 或 `platform` profile，否则 skip）：core 经真中继开终端、实时板、事件流；4401 换票；撤销登记即断。
+
+### 4.7 写端公平调度（#564，设计：armadra-cloud `docs/design/relay-fair-scheduling.md` §2、§6）
+
+core → 中继方向（客户端回显、终端输出、文件下载）原先是先进先出：每块扣完信用就 `ws.send`，一条大流量流排着 256 KiB 时，同一条隧道上的终端按键回显要排在它后面。现在与 Go 中继（`go/internal/tunnel/sched.go`）同一套规则，**线上协议与信用记账不变**，与 Go / Workers 中继互通：
+
+- `TunnelDuplex` 扣完信用的 DATA / END 先进自己的出队列，不直接发；`StreamHost.schedule(stream)` 通知写端。宿主不提供 `schedule`（端到端通道里的内层流、测试夹具）时流仍直接 `sendFrame`，行为同以前。
+- `TunnelWriter`（`writer.ts`）持有控制帧队列（WINDOW、PING / PONG、RST、拒绝 OPEN 的 RST）和 `Sched`（`sched.ts`）。每批：先写全部控制帧；稀疏流（刚从空闲转为就绪、排着不超过 16 KiB、上一帧已经写出之后才就绪）先于持续积压的老流各出一帧；老流轮转，每流每批一帧；一批至多 128 KiB（两个最大块）DATA，至少一条老流出一帧，没轮到的留在队首。每流出队列字节数随入队 / 出队增减，判断稀疏流不遍历。
+- 稀疏流判定按帧（与中继 armadra-cloud#133 的 `NoteSent` 一致）：调度器给每个出帧的 DATA / END 一个全局序号，`drain` 把序号交给写端（并返回这一批之前的序号基数），写端在 `ws.send` 的写完回调里调 `Sched.noteSent(seq)` 报告已写出的进度；流记着自己上一帧的序号，`flow.seq <= sent` 时再就绪才进 `fresh`。不报告进度的调用方（`new Sched()` 不带 `reportsSent`）每批开始把已写出追到上一批末尾，退化为「上一批开始之后才就绪」。core 的写端不等上一批写完就取下一批（只看水位），所以报告进度时不按批追平，否则还在 `ws` 缓冲里的帧会被当成已写出。
+- 取下一批之前看 `ws.bufferedAmount`：不超过低水位（一块，64 KiB）才取，每帧写完的回调推动下一轮（同一回合排进来的帧在微任务里凑成一批）。`ws.send` 是异步缓冲，不设水位的话调度只是把 JS 队列换成 `ws` 内部缓冲，后到的帧仍排在已交出去的字节后面。有水位时，一个新到的控制帧或稀疏流的帧之前最多还有「低水位 + 一批 + 一块」字节，约 256 KiB，与就绪流数量无关（改前随流数线性增长）；`ws` 之外的内核发送缓冲不受控，由 TCP 决定。
+- 流内顺序不变，END 在最后一块之后。收到 RST、或本端因错误中止：RST 走控制队列先行，该流排着的 DATA 与 END 丢弃，占用的隧道信用经 `CreditPool.add` 归还（这些字节从没上线，对端不会为它们补 `WINDOW`）；流量计数在出帧时才记，丢弃的不算。本端平静地销毁（没有错误；常见写法是先写完响应再 `destroy()`），或已经 END 之后才出错（字节已完整，丢掉只会截断响应，RST 码仍是 `internal`）：已写的字节照常发完，RST 排在后面，对端看到的顺序与改前一致。这段「排空中」流仍留在流表里（仍占 `maxStreams` 的名额，与中继看到的一致），出队列清空才摘表；其间对端的 RST 到来时丢弃还没发出的尾巴并归还信用；流量计数器也等出队列清空才 `close()`，实时速率不漏尾巴。隧道关闭：优雅关闭前先 `flushAll`（最后的 RST / END 不丢），`finish` 时清空队列与调度器。
+- 慢链路的代价（参照 armadra-cloud `relay-fair-scheduling.md` §2「慢链路上的稀疏流判定」）：旧的按批判定下，链路慢到写一批（128 KiB）比两次按键的间隔还久（约 4 MB/s 以下）时，交互流的下一个按键总在它上一帧所在批写完之前到达，被判成老流而失去优先；按帧判定后只要上一帧已经写出就仍是稀疏流。这不给抢优先开口子：持续积压的流一直在队列里，`add` 直接忽略；`fresh` 每流每批仍至多一帧，每批仍至少一条老流出帧；上一帧还没写出就又就绪的流照旧进老流。剩下的代价：上一帧还排在当前批里大流量流之后、还没写出时下一个按键就到了，这个按键进老流轮转，最坏排在 N 条大流量流之后约 N 块（N 是就绪的大流量流数）；按键持续密集、每次都赶在上一帧写出之前到达时，这条流可能一直留在老流，表现与旧的按批判定相同。大量稀疏流同时就绪时的上界仍是「稀疏流数 × 16 KiB」。
+- 测试：`sched.test.ts`（调度器本身；报告进度时上一帧已写出的流再就绪排最前、没写出的排在老流之后，不报告时退回按批判定）、`fairness.test.ts`（假 ws，`bufferedAmount` 与链路速率可控；探测帧与 PONG 之前写出的字节有上界且与大流量流数量无关、先进先出对照、水位、轮转与无饥饿、流内有序、RST 丢弃与信用归还、慢链路上按键赶在一批写完之前到达仍先于大流量流、已 END 后出错尾巴先发完、排空中摘表时机与对端 RST 丢尾巴、计数器在尾巴之后关、大量 1 字节写入非平方、关闭清空）。延迟按「探测帧入队后写出了多少字节」度量，不依赖时钟。
 
 ## §5 A4-1 邀请多次使用（`identity/accounts.ts`、`accounts-http.ts`，§10 追加）
 
