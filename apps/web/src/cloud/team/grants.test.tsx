@@ -21,7 +21,14 @@ const OPTIONS = { emailVerified: true } as const;
 const BUILD = MOCK_HOSTS[0]!.sourceId;
 const STUDIO = MOCK_HOSTS[1]!.sourceId;
 
-const table = () => screen.findByRole("table", { name: "授予" });
+/** 授予表；各台主机的授予都到齐（行内加载提示消失）才返回。 */
+const table = async () => {
+  const grid = await screen.findByRole("table", { name: "授予" });
+  await waitFor(() =>
+    expect(screen.queryByRole("status", { name: "授予" })).toBeNull(),
+  );
+  return grid;
+};
 
 /** 行里的名字（头像首字不算）。 */
 const nameOf = (row: HTMLElement) =>
@@ -356,5 +363,28 @@ describe("授予页 · 主机很多、取数失败与撤销提示", () => {
         "会降低 王五 的权限，他们已有的连接会断开",
       ),
     ).toBeTruthy();
+  });
+
+  it("某台主机的授予还在加载：整页不回骨架，其余主机的行照常列出", async () => {
+    let release: () => void = () => undefined;
+    const gate = new Promise<void>((go) => {
+      release = go;
+    });
+    mount("/t/rd/grants", OPTIONS, null, (api) => {
+      const real = api.client.grants.list;
+      api.client.grants.list = (async (input: Parameters<typeof real>[0]) => {
+        if (input.sourceId === STUDIO) await gate;
+        return real(input);
+      }) as typeof real;
+    });
+    const grid = await screen.findByRole("table", { name: "授予" });
+    expect(await within(grid).findByText("赵六")).toBeTruthy();
+    expect(screen.getByRole("status", { name: "授予" })).toBeTruthy();
+    await act(async () => {
+      release();
+    });
+    await waitFor(() =>
+      expect(screen.queryByRole("status", { name: "授予" })).toBeNull(),
+    );
   });
 });

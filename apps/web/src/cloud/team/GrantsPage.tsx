@@ -10,6 +10,7 @@ import { Badge } from "@/ui/badge";
 import { Button } from "@/ui/button";
 import { InputGroup, InputGroupAddon, InputGroupInput } from "@/ui/input-group";
 import { SkeletonTable } from "@/ui/skeletons";
+import { Spinner } from "@/ui/spinner";
 import { EmptyState, ErrorState } from "@/ui/state";
 import { toast } from "@/ui/toast";
 import { describeFailure } from "../api/errors";
@@ -449,8 +450,9 @@ export function GrantsPage({
     const one = lists[index];
     return one?.isError ? [{ host, one }] : [];
   });
-  const loading =
-    hosts.isPending || members.isPending || lists.some((one) => one.isPending);
+  // 整页骨架只等主机目录与成员；各台主机的授予在行内标「加载中」，不拖住整页。
+  const loading = hosts.isPending || members.isPending;
+  const hostsLoading = lists.some((one) => one.isPending);
   const add = (
     <Button size="sm" onClick={() => setDialog({ kind: "add" })}>
       {t("cloud.hosts.addAccess")}
@@ -470,6 +472,7 @@ export function GrantsPage({
     );
   else if (loading)
     body = <SkeletonTable rows={4} columns={4} label={t("cloud.nav.grants")} />;
+  else if (rows.length === 0 && hostsLoading) body = null;
   else if (rows.length === 0 && failedHosts.length === 0)
     body = <EmptyState title={t("cloud.grants.empty")}>{add}</EmptyState>;
   else if (rows.length === 0) body = null;
@@ -550,6 +553,11 @@ export function GrantsPage({
           className="mb-4"
         />
       ))}
+      {hostsLoading ? (
+        <div className="mb-4 flex justify-center">
+          <Spinner aria-label={t("cloud.nav.grants")} />
+        </div>
+      ) : null}
       {body}
       {rows.length > 0 && shown.length === 0 ? (
         <EmptyState title={t("cloud.common.noMatch", { query: query.trim() })}>
