@@ -5,6 +5,7 @@ import {
   type SocketLike,
   type TerminalTransport,
 } from "./transport";
+import { TerminalInputLog } from "./input-log";
 
 /** 最小可用的假 WebSocket：只记录发出的帧，事件由测试手动触发。 */
 class FakeSocket implements SocketLike {
@@ -147,6 +148,29 @@ describe("terminal transport", () => {
       type: "terminate",
       mode: "session",
     });
+  });
+
+  it("sends query replies flagged, unlogged and only while live (#518)", () => {
+    const log = new TerminalInputLog("w1");
+    const logged = createTerminalTransport(
+      "ws://x",
+      handlers,
+      () => socket,
+      log,
+    );
+    // 还没 hello：应答对的是此刻的查询，不攒到之后。
+    logged.reply("\x1b[?1;2c");
+    expect(socket.sent).toHaveLength(0);
+    socket.frame(HELLO);
+    logged.reply("\x1b[?1;2c");
+    expect(socket.parsedSent()).toEqual([
+      { type: "input", data: "\x1b[?1;2c", reply: true },
+    ]);
+    // 不进输入账：重连之后不会被当成没确认的键入重发。
+    expect(log.resume(0)).toEqual([]);
+    logged.close();
+    logged.reply("\x1b[?1;2c");
+    expect(socket.sent).toHaveLength(1);
   });
 
   it("stops sending after close", () => {

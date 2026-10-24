@@ -32,6 +32,16 @@ export function deliverInput(refs: SurfaceRefs, data: string): void {
   refs.reviveRef.current?.();
 }
 
+/**
+ * 把 xterm 对程序查询的应答交给会话（#518）。只在传输活着时发：应答对的是此刻
+ * 的查询，排到重连之后再送就成了垃圾输入；也不叫醒生命周期。
+ */
+export function deliverReply(refs: SurfaceRefs, data: string): void {
+  if (!data) return;
+  const transport = refs.transportRef.current;
+  if (transport?.state === "live") transport.reply(data);
+}
+
 /** 传输建好后调用：排着的输入按序交给它。 */
 export function flushPendingInput(refs: SurfaceRefs): void {
   const transport = refs.transportRef.current;

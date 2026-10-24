@@ -45,6 +45,7 @@ function harness() {
     acknowledgedInput: () => 0,
     generation: () => 1,
     noteOutput: () => {},
+    queries: { output: () => {}, expects: () => false },
     detached: async () => {},
   } as unknown as TerminalManager;
   const connection = {

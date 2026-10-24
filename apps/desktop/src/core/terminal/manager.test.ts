@@ -1,304 +1,17 @@
 import type { DatabaseSync } from "node:sqlite";
 import { afterEach, describe, expect, it } from "vitest";
-import {
-  type AdoptableBackend,
-  type Attachment,
-  type BackendCapabilities,
-  type BackendKind,
-  type BackendNotice,
-  type BackendRef,
-  type ForegroundInfo,
-  type ProgramTap,
-  type SessionKey,
-  type TerminalHandle,
-  type TerminalSize,
-  type TerminalSpec,
-  type TerminateMode,
-  conflict,
-  notFound,
-  sessionName,
-} from "./backend";
-import { TerminalManager } from "./manager";
+import { type SessionKey, sessionName } from "./backend";
+import type { DriveBook } from "./input";
+import { FakeBackend, closeHarness, harness, spawn } from "./manager-harness";
 import { type WindowViewer, windowSizeOf } from "./viewers";
 import { type Lease, agentActor, freeLease, humanActor } from "../drive/lease";
 import {
   TERMINAL_AGENT_IDLE_SECONDS,
   TERMINAL_HUMAN_IDLE_SECONDS,
 } from "./drive";
-import { fixture, type Fixture } from "../workspaces/fixture";
 import { runAs } from "../identity/gate";
 
-/**
- * The manager's own decisions, on a fake backend and a clock the test owns.
- *
- * Everything here is about *bookkeeping*: which row moves, which generation
- * wins, what a sweep is allowed to touch, when a session falls asleep. None of
- * it needs a PTY, and giving it one would make a suite about database rows
- * take twenty seconds and depend on the machine's load.
- */
-
-interface FakeSession {
-  generation: number;
-  dormant: boolean;
-  destroyed: boolean;
-}
-
-class FakeBackend implements AdoptableBackend {
-  readonly kind: BackendKind = "tmux";
-  readonly sessions = new Map<SessionKey, FakeSession>();
-  readonly calls: string[] = [];
-  /** Window and per-viewer resizes, apart from `calls` so no other test moves. */
-  readonly sizes: string[] = [];
-  private readonly sinks: ((notice: BackendNotice) => void)[] = [];
-  private nextId = 1;
-  /** Set to make the next `create` fail, as a recycle onto a dead shell would. */
-  failCreate = false;
-
-  async create(spec: TerminalSpec): Promise<TerminalHandle> {
-    this.calls.push(`create:${spec.sessionKey}:${spec.generation}`);
-    if (this.failCreate) throw notFound("no backend");
-    this.sessions.set(spec.sessionKey, {
-      generation: spec.generation,
-      dormant: false,
-      destroyed: false,
-    });
-    return {
-      sessionKey: spec.sessionKey,
-      generation: spec.generation,
-      backendRef: sessionName(
-        spec.workspaceId,
-        spec.sessionKey,
-        spec.generation,
-      ),
-      pid: 1234,
-    };
-  }
-
-  async adopt(key: SessionKey, _reference: string, generation: number) {
-    this.sessions.set(key, { generation, dormant: false, destroyed: false });
-    return 4321;
-  }
-
-  async attach(
-    key: SessionKey,
-    generation: number,
-    _size: TerminalSize,
-  ): Promise<Attachment> {
-    const session = this.sessions.get(key);
-    if (session === undefined) throw notFound("gone");
-    if (session.generation !== generation) throw conflict("stale");
-    return {
-      attachmentId: this.nextId++,
-      generation: session.generation,
-      onData: () => {},
-      onExit: () => {},
-    };
-  }
-
-  async detach(): Promise<void> {}
-
-  async input(key: SessionKey, bytes: Buffer): Promise<void> {
-    this.calls.push(`input:${key}:${bytes.toString("utf8")}`);
-  }
-
-  async paste(key: SessionKey, text: string, enter: boolean): Promise<void> {
-    this.calls.push(`paste:${key}:${text}:${String(enter)}`);
-  }
-
-  async resize(_key: SessionKey, size: TerminalSize): Promise<void> {
-    this.sizes.push(`window:${size.cols}x${size.rows}`);
-  }
-
-  async resizeViewer(
-    _key: SessionKey,
-    attachmentId: number,
-    size: TerminalSize,
-  ): Promise<void> {
-    this.sizes.push(`viewer${attachmentId}:${size.cols}x${size.rows}`);
-  }
-
-  async capture(): Promise<string> {
-    return "line one\nline two";
-  }
-
-  async signal(key: SessionKey): Promise<void> {
-    this.calls.push(`signal:${key}`);
-  }
-
-  async terminate(key: SessionKey, mode: TerminateMode): Promise<void> {
-    this.calls.push(`terminate:${key}:${mode}`);
-    if (mode === "session") this.sessions.delete(key);
-  }
-
-  async getForeground(): Promise<ForegroundInfo> {
-    return { pid: 1234, command: "claude", children: [] };
-  }
-
-  getCapabilities(): BackendCapabilities {
-    return {
-      kind: "tmux",
-      persistent: true,
-      redrawsOnAttach: true,
-      usable: true,
-    };
-  }
-
-  async list(): Promise<BackendRef[]> {
-    return [...this.sessions.entries()].map(([key, session]) => ({
-      name: sessionName("ws", key, session.generation),
-      attached: false,
-    }));
-  }
-
-  async destroyByReference(reference: string): Promise<void> {
-    this.calls.push(`destroyRef:${reference}`);
-  }
-
-  async scroll(key: SessionKey, lines: number): Promise<void> {
-    this.calls.push(`scroll:${key}:${lines}`);
-  }
-
-  async setDormant(key: SessionKey, dormant: boolean): Promise<void> {
-    const session = this.sessions.get(key);
-    if (session === undefined) throw notFound("gone");
-    session.dormant = dormant;
-    this.calls.push(`dormant:${key}:${String(dormant)}`);
-  }
-
-  notices(listener: (notice: BackendNotice) => void): void {
-    this.sinks.push(listener);
-  }
-
-  /** Reports a session that ended with nothing attached to it. */
-  announce(notice: BackendNotice): void {
-    for (const sink of this.sinks) sink(notice);
-  }
-
-  async reapAll(): Promise<void> {
-    this.calls.push("reapAll");
-  }
-
-  async detachAll(): Promise<void> {
-    this.calls.push("detachAll");
-  }
-
-  private readonly programListeners: ((
-    key: SessionKey,
-    generation: number,
-    chunk: Buffer,
-  ) => void)[] = [];
-
-  readonly programTap: ProgramTap = {
-    subscribe: (listener) => {
-      this.programListeners.push(listener);
-    },
-    answer: async (key, bytes) => {
-      this.calls.push(
-        `answer:${key}:${JSON.stringify(bytes.toString("utf8"))}`,
-      );
-    },
-  };
-
-  /** What the program wrote, as the tap would hand it over. */
-  print(key: string, generation: number, text: string): void {
-    for (const listener of this.programListeners)
-      listener(key as SessionKey, generation, Buffer.from(text, "latin1"));
-  }
-}
-
-let open: Fixture | undefined;
-
-afterEach(() => {
-  open?.close();
-  open = undefined;
-});
-
-interface Harness {
-  manager: TerminalManager;
-  backend: FakeBackend;
-  database: DatabaseSync;
-  advance: (ms: number) => void;
-  /** 每一次租约换手，按发生顺序。 */
-  leases: LeaseEvent[];
-  /** 契约 §53 的每一帧。 */
-  programs: { sessionId: string; nodeId: string | null; state?: string }[];
-}
-
-interface LeaseEvent {
-  sessionId: string;
-  nodeId: string | null;
-  lease: Lease;
-}
-
-function harness(
-  policy?: {
-    detachedGraceMinutes: number;
-    dormantAfterSeconds: number;
-  },
-  options: {
-    singlePty?: boolean;
-    limits?: { terminalsPerPrincipal: number; agentsPerWorkspace: number };
-  } = {},
-): Harness {
-  open = fixture([]);
-  const database = open.database;
-  database
-    .prepare(
-      `INSERT INTO workspaces (id, name, root_path, created_at, updated_at)
-         VALUES ('ws', 'Canvas', ?, '2026-09-19T00:00:00Z', '2026-09-19T00:00:00Z')`,
-    )
-    .run(`${open.directory}/ws`);
-  let now = Date.parse("2026-09-20T12:00:00.000Z");
-  const backend = new FakeBackend();
-  // direct / session-host：只有一个 pty，没有每端自己的视图。
-  if (options.singlePty === true) {
-    Object.defineProperty(backend, "resizeViewer", { value: undefined });
-  }
-  const leases: LeaseEvent[] = [];
-  const programs: Harness["programs"] = [];
-  const manager = new TerminalManager({
-    database,
-    backends: new Map([["tmux", backend]]),
-    effective: "tmux",
-    ...(options.limits === undefined ? {} : { limits: () => options.limits! }),
-    onProgramStatus: (event) => {
-      programs.push({
-        sessionId: event.sessionId,
-        nodeId: event.nodeId,
-        ...(event.status === undefined ? {} : { state: event.status.state }),
-      });
-    },
-    onLease: (event) => {
-      leases.push({
-        sessionId: event.sessionId,
-        nodeId: event.nodeId,
-        lease: event.lease,
-      });
-    },
-    policy: () =>
-      policy ?? { detachedGraceMinutes: 1440, dormantAfterSeconds: 120 },
-    now: () => new Date(now).toISOString(),
-    clock: () => now,
-  });
-  return {
-    manager,
-    backend,
-    database,
-    leases,
-    programs,
-    advance: (ms) => {
-      now += ms;
-    },
-  };
-}
-
-const spawn = (manager: TerminalManager, nodeId?: string) =>
-  manager.spawn({
-    workspaceId: "ws",
-    cwd: "/tmp",
-    command: "/bin/sh",
-    ...(nodeId === undefined ? {} : { ownerNodeId: nodeId }),
-  });
+afterEach(closeHarness);
 
 describe("per-core limits (A6-2)", () => {
   const member = (principalId: string) => ({
@@ -961,9 +674,7 @@ describe("shutdown", () => {
       ).status,
     ).toBe("exited");
     // core 关库之后才到的那条：不抛、不成未处理的拒绝。
-    const closing = open!;
-    open = undefined;
-    closing.close();
+    closeHarness();
     const unhandled: unknown[] = [];
     const record = (reason: unknown) => unhandled.push(reason);
     process.on("unhandledRejection", record);
@@ -1394,5 +1105,191 @@ describe("the window size of a terminal several viewers watch", () => {
     expect(manager.windowOf(session.id)?.viewers.map((v) => v.cols)).toEqual([
       120, 40,
     ]);
+  });
+});
+
+describe("a query several views answer (#518)", () => {
+  const DA = "\x1b[?1;2c";
+  const DA2 = "\x1b[>0;276;0c";
+  const ASK = "\x1b[c";
+  const ASK2 = "\x1b[>c";
+  const settle = () => new Promise((resolve) => setImmediate(resolve));
+  const replies = (backend: FakeBackend) =>
+    backend.calls.filter(
+      (call) => call.startsWith("input:") || call.startsWith("reply"),
+    );
+
+  async function twoViews(options: { singlePty?: boolean } = {}) {
+    const made = harness(undefined, { singlePty: true, ...options });
+    const session = await spawn(made.manager);
+    const desk = await made.manager.attach(
+      session.id,
+      { cols: 120, rows: 40 },
+      "desk",
+    );
+    const phone = await made.manager.attach(session.id, undefined, "phone");
+    return {
+      ...made,
+      session,
+      deskId: desk.attachment.attachmentId,
+      phoneId: phone.attachment.attachmentId,
+      /** The program's output reaches both views. */
+      output(text: string, ...views: number[]) {
+        for (const view of views) {
+          made.manager.queries.output(session.id, view, text);
+        }
+      },
+    };
+  }
+
+  it("takes the first answer to a query from whichever view gives it", async () => {
+    const t = await twoViews();
+    t.output(ASK, t.deskId, t.phoneId);
+    // The desk is silent (off screen, backgrounded); the phone answers.
+    expect(await t.manager.reply(t.session.id, 1, DA, t.phoneId)).toBe(true);
+    expect(replies(t.backend)).toEqual([`input:${t.session.sessionKey}:${DA}`]);
+    // The desk's late answer to the same query is dropped.
+    expect(await t.manager.reply(t.session.id, 1, DA, t.deskId)).toBe(false);
+    expect(replies(t.backend)).toHaveLength(1);
+  });
+
+  it("lets only one of two prompt answers through", async () => {
+    const t = await twoViews();
+    t.output(ASK + ASK2, t.deskId, t.phoneId);
+    expect(await t.manager.reply(t.session.id, 1, DA + DA2, t.deskId)).toBe(
+      true,
+    );
+    expect(await t.manager.reply(t.session.id, 1, DA + DA2, t.phoneId)).toBe(
+      false,
+    );
+    expect(replies(t.backend)).toEqual([
+      `input:${t.session.sessionKey}:${DA}${DA2}`,
+    ]);
+  });
+
+  it("answers a query the answering view's peer was waiting on when it left", async () => {
+    const t = await twoViews();
+    t.output(ASK, t.deskId, t.phoneId);
+    await t.manager.detached(t.session.id, t.deskId);
+    expect(await t.manager.reply(t.session.id, 1, DA, t.phoneId)).toBe(true);
+    expect(replies(t.backend)).toHaveLength(1);
+  });
+
+  it("answers each of several queued queries once", async () => {
+    const t = await twoViews();
+    t.output(ASK + ASK, t.deskId, t.phoneId);
+    for (const view of [t.deskId, t.phoneId]) {
+      await t.manager.reply(t.session.id, 1, DA, view);
+      await t.manager.reply(t.session.id, 1, DA, view);
+    }
+    expect(replies(t.backend)).toHaveLength(2);
+  });
+
+  it("counts a query split across output chunks", async () => {
+    const t = await twoViews();
+    for (const chunk of ["\x1b", "[", ">0", "c"]) {
+      t.output(chunk, t.deskId, t.phoneId);
+    }
+    expect(await t.manager.reply(t.session.id, 1, DA2, t.phoneId)).toBe(true);
+    expect(await t.manager.reply(t.session.id, 1, DA2, t.deskId)).toBe(false);
+  });
+
+  it("drops an answer nobody asked for", async () => {
+    const t = await twoViews();
+    expect(await t.manager.reply(t.session.id, 1, DA, t.deskId)).toBe(false);
+    t.output(ASK, t.deskId, t.phoneId);
+    // A DSR answer does not answer a DA query.
+    expect(await t.manager.reply(t.session.id, 1, "\x1b[0n", t.deskId)).toBe(
+      false,
+    );
+    expect(replies(t.backend)).toEqual([]);
+  });
+
+  it("lets a view that attaches late answer only what it saw", async () => {
+    const made = harness(undefined, { singlePty: true });
+    const session = await spawn(made.manager);
+    const desk = await made.manager.attach(session.id, undefined, "desk");
+    const deskId = desk.attachment.attachmentId;
+    made.manager.queries.output(session.id, deskId, ASK);
+    expect(await made.manager.reply(session.id, 1, DA, deskId)).toBe(true);
+    const phone = await made.manager.attach(session.id, undefined, "phone");
+    const phoneId = phone.attachment.attachmentId;
+    // The phone never saw the first query: its answer is nobody's.
+    expect(await made.manager.reply(session.id, 1, DA, phoneId)).toBe(false);
+    made.manager.queries.output(session.id, deskId, ASK);
+    made.manager.queries.output(session.id, phoneId, ASK);
+    expect(await made.manager.reply(session.id, 1, DA, phoneId)).toBe(true);
+    expect(await made.manager.reply(session.id, 1, DA, deskId)).toBe(false);
+  });
+
+  it("holds when both views attach and leave together", async () => {
+    const made = harness(undefined, { singlePty: true });
+    const session = await spawn(made.manager);
+    const [a, b] = await Promise.all([
+      made.manager.attach(session.id, undefined, "a"),
+      made.manager.attach(session.id, undefined, "b"),
+    ]);
+    const ids = [a.attachment.attachmentId, b.attachment.attachmentId];
+    for (const id of ids) made.manager.queries.output(session.id, id, ASK);
+    await Promise.all(ids.map((id) => made.manager.detached(session.id, id)));
+    expect(await made.manager.reply(session.id, 1, DA, ids[0]!)).toBe(false);
+    // A fresh attach starts clean.
+    const c = await made.manager.attach(session.id, undefined, "c");
+    made.manager.queries.output(session.id, c.attachment.attachmentId, ASK);
+    expect(
+      await made.manager.reply(session.id, 1, DA, c.attachment.attachmentId),
+    ).toBe(true);
+  });
+
+  it("with a view per viewer sends each answer back down its own view", async () => {
+    const t = await twoViews({ singlePty: false });
+    await t.manager.reply(t.session.id, 1, DA, t.deskId);
+    await t.manager.reply(t.session.id, 1, DA, t.phoneId);
+    expect(replies(t.backend)).toEqual([
+      `reply${t.deskId}:${t.session.sessionKey}:${JSON.stringify(DA)}`,
+      `reply${t.phoneId}:${t.session.sessionKey}:${JSON.stringify(DA)}`,
+    ]);
+  });
+
+  it("never waits on a read-only view, which counts the query and says nothing", async () => {
+    const t = await twoViews();
+    // A read-only page attaches like any other (§60) but its terminal never
+    // answers; it is not chosen, so it cannot leave the others unheard.
+    const watcher = await t.manager.attach(t.session.id, undefined, "");
+    const watcherId = watcher.attachment.attachmentId;
+    t.output(ASK, t.deskId, t.phoneId, watcherId);
+    expect(await t.manager.reply(t.session.id, 1, DA, t.phoneId)).toBe(true);
+    expect(await t.manager.reply(t.session.id, 1, DA, t.deskId)).toBe(false);
+    expect(replies(t.backend)).toHaveLength(1);
+  });
+
+  it("drops an answer from a view with no right to drive", async () => {
+    const t = await twoViews();
+    t.output(ASK, t.deskId);
+    // The terminal was opened by somebody else, and nothing grants drive.
+    (t.manager as unknown as { drive: DriveBook }).drive.remember(
+      t.session.id,
+      "ws",
+      "someone-else",
+    );
+    const answer = () => t.manager.reply(t.session.id, 1, DA, t.deskId);
+    expect(
+      await runAs(
+        { subject: { principalId: "m1", kind: "member", scopes: [] } },
+        answer,
+      ),
+    ).toBe(false);
+    expect(replies(t.backend)).toEqual([]);
+    // The owner holds every scope.
+    expect(await answer()).toBe(true);
+  });
+
+  it("is not someone driving: the lease and the window stay", async () => {
+    const t = await twoViews();
+    t.output(ASK, t.deskId);
+    await t.manager.reply(t.session.id, 1, DA, t.deskId);
+    await settle();
+    expect(t.leases).toEqual([]);
+    expect(t.manager.driveLease(t.session.id).state).toBe("free");
   });
 });

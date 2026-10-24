@@ -346,6 +346,37 @@ describe("attach", () => {
   });
 
   /**
+   * The host answers the console's own questions only while nobody is
+   * attached; with a page attached its terminal answers, and a second answer
+   * would land in the program's input (#518).
+   */
+  it("answers a console query itself only when nobody is attached", async () => {
+    const harness = await serve();
+    const client = await connect(harness);
+    await created(client);
+    harness.last().emit(Buffer.from("\u001b[c"));
+    await until(() => harness.last().writes.length === 1, "the host's answer");
+    expect(harness.last().writes).toEqual(["\u001b[?1;0c"]);
+
+    const attacher = await connect(harness);
+    attacher.link.expectOutput(1);
+    const id = attacher.next();
+    await attacher.link.request(id, {
+      type: "attach",
+      id,
+      sessionKey: "node-a",
+      generation: 1,
+      size: { cols: 80, rows: 24 },
+    });
+    harness.last().emit(Buffer.from("\u001b[c"));
+    await until(
+      () => attacher.events.some((event) => event.type === "output"),
+      "live output",
+    );
+    expect(harness.last().writes).toHaveLength(1);
+  });
+
+  /**
    * The fence. A client holding the generation you recycled away from is told
    * so, and is never quietly served the session that replaced it.
    */

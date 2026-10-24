@@ -7,6 +7,7 @@ import {
 } from "./backend";
 import { DEFAULT_COLS, DEFAULT_ROWS, type TerminalManager } from "./manager";
 import { deviceOrLocal, humanActor } from "../drive/lease";
+import { isTerminalReplyData } from "./replies";
 import { CLOSE_BACKPRESSURE, SendQueue, wsTarget } from "../http/stream-queue";
 
 /**
@@ -96,7 +97,13 @@ export type ServerFrame =
   | { readonly type: "stale"; readonly generation: number };
 
 export type ClientFrame =
-  | { readonly type: "input"; readonly data: string; readonly inputId?: number }
+  | {
+      readonly type: "input";
+      readonly data: string;
+      readonly inputId?: number;
+      /** The page's terminal answering a query, not keystrokes (#518). */
+      readonly reply?: true;
+    }
   | { readonly type: "resize"; readonly cols: number; readonly rows: number }
   | { readonly type: "terminate"; readonly mode?: TerminateMode };
 
@@ -129,6 +136,7 @@ export function decodeFrame(text: string): ClientFrame | undefined {
       ...(typeof inputId === "number" && Number.isFinite(inputId)
         ? { inputId }
         : {}),
+      ...(frame.reply === true ? { reply: true as const } : {}),
     };
   }
   if (
@@ -294,6 +302,7 @@ export async function serveTerminalSocket(
   let pendingBytes = 0;
   let timer: NodeJS.Timeout | undefined;
   let closed = false;
+  let marksReplies = false;
 
   const flush = (): void => {
     if (timer !== undefined) {
@@ -314,11 +323,15 @@ export async function serveTerminalSocket(
     }
   };
 
-  attachment.onData((chunk) => {
+  attachment.onData((chunk, replay) => {
     // Decoded across chunk boundaries: a PTY read can end mid-character, and
     // decoding each chunk alone would put a permanent U+FFFD on the screen.
     const text = decoder.write(chunk);
     if (text === "") return;
+    // 回放是会话的过去，不是程序此刻的提问：不计入待答查询（#518）。
+    if (replay !== true) {
+      manager.queries.output(sessionId, attachment.attachmentId, text);
+    }
     pending += text;
     pendingBytes += chunk.byteLength;
     if (pendingBytes >= FLUSH_BYTES) {
@@ -363,6 +376,39 @@ export async function serveTerminalSocket(
         if (frame === undefined) return;
         if (options.readOnly === true && frame.type !== "resize") return;
         try {
+          // 对查询的应答（#518）：几个视图都会答，core 对每次待答查询只收
+          // 第一份；也不算「人在驱动」，只看不打字的那一端不该因此抢走租约
+          // 和窗口。内容必须整段是应答格式才走这条路，否则按键入处理：带
+          // `reply` 标记的，或者没带标记（旧页面）但此刻正有查询等着它答的。
+          // 页面发过一次带标记的应答，就是会标记的新页面：此后没带标记的
+          // 是真按键（Shift/Ctrl+F3 与光标位置报告同形），不再按旧页面猜。
+          if (frame.type === "input" && frame.reply === true) {
+            marksReplies = true;
+          }
+          if (
+            frame.type === "input" &&
+            isTerminalReplyData(frame.data) &&
+            (frame.reply === true ||
+              (!marksReplies &&
+                manager.queries.expects(
+                  sessionId,
+                  attachment.attachmentId,
+                  frame.data,
+                )))
+          ) {
+            await manager.reply(
+              sessionId,
+              generation,
+              frame.data,
+              attachment.attachmentId,
+            );
+            // 旧页面把应答也记在输入账里，不确认它就会一直重发。
+            if (frame.inputId !== undefined && frame.inputId > 0) {
+              manager.noteInputApplied(sessionId, writer, frame.inputId);
+              send({ type: "ack", inputId: frame.inputId });
+            }
+            return;
+          }
           if (frame.type === "input") {
             // 键盘上来的字节就是「人在驱动」（设计 `agent-delivery.md`
             // §6.1）：它抢占 Agent 的租约，而 Agent 的下一次投递会被告知

@@ -880,16 +880,22 @@ export class SessionHost {
   private pump(key: string, generation: number, chunk: Buffer): void {
     const live = this.live.get(key);
     if (live === undefined) return;
+    const entry = this.table.get(key);
+    const current = entry?.generation === generation;
+    const subscribers = current ? entry.subscribers() : [];
     // Answer the terminal's own questions before anything else: a console that
     // asked where the cursor is waits for this, and there may be no UI to
-    // answer for it.
+    // answer for it. With a subscriber the page's terminal answers (a second
+    // answer would land in the program's input, #518), so the host only
+    // answers when nobody is attached; it keeps observing either way so a
+    // sequence split across chunks stays whole.
     const reply = live.responder.observe(chunk);
-    if (reply.byteLength > 0) live.console.write(reply);
+    if (reply.byteLength > 0 && subscribers.length === 0) {
+      live.console.write(reply);
+    }
     live.replay.push(chunk);
 
-    const entry = this.table.get(key);
-    if (entry === undefined || entry.generation !== generation) return;
-    const subscribers = entry.subscribers();
+    if (entry === undefined || !current) return;
     if (subscribers.length === 0) return;
     const frames: Buffer[] = [];
     for (let offset = 0; offset < chunk.byteLength; offset += OUTPUT_CHUNK) {

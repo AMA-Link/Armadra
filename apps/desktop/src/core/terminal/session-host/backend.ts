@@ -422,9 +422,9 @@ export class SessionHostBackend implements AdoptableBackend {
       );
     }
 
-    const dataListeners: ((chunk: Buffer) => void)[] = [];
+    const dataListeners: ((chunk: Buffer, replay?: boolean) => void)[] = [];
     const exitListeners: ((exitCode: number | undefined) => void)[] = [];
-    const buffered: Buffer[] = [];
+    const buffered: { payload: Buffer; replay: boolean }[] = [];
     let subscribed = false;
     let ended = false;
     /** Set once the first frame of this attach's replay (or output) arrived. */
@@ -470,10 +470,10 @@ export class SessionHostBackend implements AdoptableBackend {
         remembered.screen.write(remembered.decoder.write(payload));
       }
       if (!subscribed) {
-        buffered.push(payload);
+        buffered.push({ payload, replay: !live });
         return;
       }
-      for (const listener of dataListeners) listener(payload);
+      for (const listener of dataListeners) listener(payload, !live);
     };
     /**
      * A gap or a stale generation must resolve into a fresh attach with a
@@ -555,7 +555,8 @@ export class SessionHostBackend implements AdoptableBackend {
         dataListeners.push(listener);
         if (subscribed) return;
         subscribed = true;
-        for (const chunk of buffered.splice(0)) listener(chunk);
+        for (const chunk of buffered.splice(0))
+          listener(chunk.payload, chunk.replay);
       },
       onExit: (listener) => exitListeners.push(listener),
       // One host connection per attachment: not reading it is the pause.

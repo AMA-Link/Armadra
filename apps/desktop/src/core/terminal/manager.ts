@@ -2,9 +2,13 @@ import {
   driveTargetFor,
   observedActivityFor,
   automatedInputWritable,
+  authorizeDrive,
+  mayDrive,
   authorizeManagedInput,
   assertSubmitInput,
 } from "./manager-status";
+import { writeReply } from "./replies";
+import { QueryLedger } from "./reply-ledger";
 import { sequenceSessionEnvironment } from "./sequences";
 import {
   connectProgramStatus,
@@ -55,7 +59,6 @@ import {
   mergeReports,
   reconcile,
 } from "./gc";
-import { audit } from "../identity/audit";
 import { type Actor, type Lease, freeLease } from "../drive/lease";
 import { loadSession } from "../collab/nodes";
 import {
@@ -68,8 +71,6 @@ import { destroyRowBackend, reapPersistent } from "./reap";
 import { LimitGate } from "./limits";
 import { insertSessionRow } from "./session-row";
 import { type ObservedActivity } from "../agent/target-state";
-import { allows } from "../identity/gate";
-import { scope } from "../identity/scopes";
 import {
   DriveBook,
   InputLedger,
@@ -134,6 +135,8 @@ export class TerminalManager {
   private readonly drives: TerminalDriveBook;
   private readonly timers: NodeJS.Timeout[] = [];
   private readonly lastRowWrite = new Map<string, number>();
+  /** Pending terminal queries per view (#518); the socket feeds and asks it. */
+  readonly queries = new QueryLedger(() => this.clock());
   /** Who watches each session, at which size (ui-acp-refresh §7.3 E-1). */
   private readonly viewers = new TerminalWindows({
     window: (sessionId) => {
@@ -701,6 +704,7 @@ export class TerminalManager {
     this.attachments.forget(sessionId);
     this.lastRowWrite.delete(sessionId);
     this.viewers.forget(sessionId);
+    this.queries.forget(sessionId);
     this.drive.forget(sessionId);
     // 租约的对象是一个 PTY 会话：那个进程没了，谁在驱动它这个问题就不存在了。
     this.drives.forget(sessionId);
@@ -821,6 +825,7 @@ export class TerminalManager {
     }
     this.attachments.acquire(sessionId);
     this.viewers.add(sessionId, attachment.attachmentId, writer, own);
+    this.queries.attach(sessionId, attachment.attachmentId, backend);
     await this.viewers.refresh(sessionId);
     this.setAttachState(sessionId, "live");
     // Only a backend that does not redraw owes the socket a replay.
@@ -835,6 +840,7 @@ export class TerminalManager {
     const record = this.records.get(sessionId);
     this.attachments.release(sessionId);
     this.viewers.remove(sessionId, attachmentId);
+    this.queries.detach(sessionId, attachmentId);
     if (record === undefined) return;
     await this.backend(record.kind).detach(record.key, attachmentId);
     await this.viewers.refresh(sessionId);
@@ -879,34 +885,7 @@ export class TerminalManager {
     beforeWrite?: () => void,
   ): Promise<void> {
     const first = this.checked(sessionId, generation);
-    // `terminal:drive` 的判定入口（设计 §4.4）：写入者 ≠ 会话创建者时才要这条
-    // 授权。今天两者都是本机 owner，所以恒通过——入口在这里，是为了让第二个
-    // principal 出现时不必重新找一遍所有写入路径。
-    const takeover =
-      this.drive.creator(sessionId) !== undefined &&
-      (writer?.principalId ?? "") !== this.drive.creator(sessionId);
-    if (
-      !this.drive.permits(sessionId, writer, (workspaceId) =>
-        allows([scope("terminal:drive", workspaceId)]),
-      )
-    ) {
-      throw new TerminalError(
-        403,
-        "forbidden",
-        "Writing into another person's terminal requires terminal:drive",
-      );
-    }
-    if (takeover) {
-      // 终端接管，设计 §4.5 的第五个审计写入点。写在这里而不是附着时：附着只
-      // 是看，而接管是「有人开始替另一个人按键」，那一刻才值得记。
-      audit({
-        action: "terminal.drive",
-        target: sessionId,
-        principalId: writer?.principalId ?? "",
-        workspaceId: first.workspaceId,
-        detail: { creator: this.drive.creator(sessionId) ?? "" },
-      });
-    }
+    authorizeDrive(this.drive, first, writer);
     this.noteDrive(sessionId, driver);
     return this.withKey(first.key, async () => {
       const record = this.checked(sessionId, generation);
@@ -917,6 +896,26 @@ export class TerminalManager {
       const submittedRevision = record.inputRevision;
       await this.backend(record.kind).input(record.key, bytes);
       onWritten?.(submittedRevision);
+    });
+  }
+
+  /** One view's answer to a program's query (#518, `writeReply`). */
+  async reply(
+    sessionId: string,
+    generation: number,
+    data: string,
+    attachmentId: number,
+  ): Promise<boolean> {
+    const { key } = this.checked(sessionId, generation);
+    // 同一道 `terminal:drive` 判定，不写审计，没资格就丢弃。写入者今天恒为
+    // owner（undefined）；有第二个 principal 时这里与 `input()` 都要传真实的。
+    if (!mayDrive(this.drive, sessionId, undefined)) return false;
+    return this.withKey(key, () => {
+      const record = this.checked(sessionId, generation);
+      return writeReply(this.backend(record.kind), record.key, data, {
+        attachmentId,
+        firstOf: (reply) => this.queries.accept(sessionId, attachmentId, reply),
+      });
     });
   }
 

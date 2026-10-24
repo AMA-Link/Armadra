@@ -241,6 +241,14 @@ export const terminalClientMessageSchema = z.discriminatedUnion("type", [
      * keystrokes into a live shell (client platforms, mobile reconnect).
      */
     inputId: z.number().int().positive().optional(),
+    /**
+     * The bytes are the page's terminal answering a query the program sent
+     * (DA, DSR/CPR, DECRQM, OSC colours), not keystrokes. Sent without an
+     * `inputId`: a reply is never resent. When several views watch one
+     * session the runtime keeps one view's answer and drops the others
+     * (issue #518).
+     */
+    reply: z.literal(true).optional(),
   }),
   z.object({
     type: z.literal("resize"),

@@ -119,6 +119,16 @@ describe("client frames", () => {
     expect(decodeFrame('{"type":"whatever"}')).toBeUndefined();
   });
 
+  it("keeps the reply mark only when it is literally true (#518)", () => {
+    expect(
+      decodeFrame('{"type":"input","data":"\\u001b[?1;2c","reply":true}'),
+    ).toEqual({ type: "input", data: "\u001b[?1;2c", reply: true });
+    expect(decodeFrame('{"type":"input","data":"a","reply":"yes"}')).toEqual({
+      type: "input",
+      data: "a",
+    });
+  });
+
   it("ignores an input id that is not a finite number", () => {
     expect(decodeFrame('{"type":"input","data":"a","inputId":"3"}')).toEqual({
       type: "input",
@@ -185,6 +195,7 @@ describe("a stream that ended", () => {
       generation: () => currentGeneration,
       markExited: (_id: string, code: number | null) => marked.push(code ?? -1),
       noteOutput: () => {},
+      queries: { output: () => {}, expects: () => false },
       detached: async () => {},
     } as unknown as TerminalManager;
     const connection = {
@@ -277,6 +288,7 @@ describe("a socket that closes while it is still attaching", () => {
       acknowledgedInput: () => 0,
       generation: () => 1,
       noteOutput: () => {},
+      queries: { output: () => {}, expects: () => false },
       detached: async (_id: string, attachmentId: number) => {
         detached.push(attachmentId);
       },
@@ -331,6 +343,7 @@ describe("a viewer's own size", () => {
       acknowledgedInput: () => 0,
       generation: () => 1,
       noteOutput: () => {},
+      queries: { output: () => {}, expects: () => false },
       noteViewerInput: (...args: unknown[]) =>
         calls.push(["noteViewerInput", ...args]),
       input: async () => calls.push(["input"]),
@@ -377,5 +390,140 @@ describe("a viewer's own size", () => {
     );
     connection.close();
     await served;
+  });
+});
+
+describe("a view answering a query (#518)", () => {
+  async function serve(
+    sent: Record<string, unknown> | Record<string, unknown>[],
+    owed = false,
+    feed: [string, boolean?][] = [],
+  ) {
+    const frames = Array.isArray(sent) ? sent : [sent];
+    let emit: ((chunk: Buffer, replay?: boolean) => void) | undefined;
+    const handlers = new Map<string, (data?: unknown) => void>();
+    const calls: unknown[][] = [];
+    const attachment: Attachment = {
+      attachmentId: 9,
+      generation: 1,
+      onData: (listener) => {
+        emit = listener;
+      },
+      onExit: () => {},
+    };
+    const manager = {
+      attach: async () => ({
+        attachment,
+        record: { kind: "direct" },
+        snapshot: undefined,
+        size: { cols: 80, rows: 24 },
+      }),
+      acknowledgedInput: () => 0,
+      generation: () => 1,
+      noteOutput: () => {},
+      queries: {
+        output: (_session: string, _view: number, text: string) =>
+          calls.push(["output", text]),
+        expects: () => owed,
+      },
+      noteInputApplied: (...args: unknown[]) =>
+        calls.push(["noteInputApplied", ...args]),
+      noteViewerInput: (...args: unknown[]) =>
+        calls.push(["noteViewerInput", ...args]),
+      input: async (...args: unknown[]) => calls.push(["input", ...args]),
+      reply: async (...args: unknown[]) => {
+        calls.push(["reply", ...args]);
+        return true;
+      },
+      detached: async () => {},
+    } as unknown as TerminalManager;
+    const connection = {
+      readyState: 1,
+      bufferedAmount: 0,
+      send: () => {},
+      close: () => handlers.get("close")?.(),
+      on: (event: string, handler: (data?: unknown) => void) => {
+        handlers.set(event, handler);
+      },
+    } as unknown as WebSocket;
+    const served = serveTerminalSocket(connection, {
+      manager,
+      sessionId: "s1",
+      writer: "phone",
+    });
+    await new Promise((resolve) => setImmediate(resolve));
+    for (const [text, replay] of feed) emit?.(Buffer.from(text), replay);
+    for (const frame of frames) {
+      handlers.get("message")?.(JSON.stringify(frame));
+      await new Promise((resolve) => setImmediate(resolve));
+    }
+    connection.close();
+    await served;
+    return calls;
+  }
+
+  it("hands a reply to the manager as one, without driving", async () => {
+    const calls = await serve({
+      type: "input",
+      data: "\u001b[?1;2c\u001b[>0;276;0c",
+      reply: true,
+    });
+    expect(calls).toEqual([
+      ["reply", "s1", 1, "\u001b[?1;2c\u001b[>0;276;0c", 9],
+    ]);
+  });
+
+  it("treats a marked frame that is not a reply as typing", async () => {
+    const calls = await serve({
+      type: "input",
+      data: "rm -rf ~\r",
+      reply: true,
+    });
+    expect(calls.map((call) => call[0])).toEqual(["noteViewerInput", "input"]);
+  });
+
+  it("takes an unmarked reply while a query is owed, and acknowledges it", async () => {
+    const calls = await serve(
+      { type: "input", data: "\u001b[?1;2c", inputId: 4 },
+      true,
+    );
+    expect(calls.map((call) => call[0])).toEqual(["reply", "noteInputApplied"]);
+  });
+
+  it("types an unmarked reply-shaped input when nothing is owed", async () => {
+    // Shift+F3 arrives as a cursor-report shaped sequence.
+    const calls = await serve({ type: "input", data: "\u001b[1;2R" });
+    expect(calls.map((call) => call[0])).toEqual(["noteViewerInput", "input"]);
+  });
+
+  it("still types an unmarked input that is not all reply while one is owed", async () => {
+    const calls = await serve(
+      { type: "input", data: "\u001b[?1;2cls\r" },
+      true,
+    );
+    expect(calls.map((call) => call[0])).toEqual(["noteViewerInput", "input"]);
+  });
+
+  it("counts live output as queries but not the replay of an attach", async () => {
+    const calls = await serve([], false, [["\u001b[c", true], ["\u001b[>c"]]);
+    expect(calls).toEqual([["output", "\u001b[>c"]]);
+  });
+
+  it("stops guessing once a page has marked a reply", async () => {
+    const reply = "\u001b[?1;2c";
+    const calls = await serve(
+      [
+        { type: "input", data: reply, reply: true },
+        // Shift+F3 looks like a cursor report, and a page that marks its
+        // replies is telling us this is a key.
+        { type: "input", data: "\u001b[1;2R" },
+      ],
+      true,
+    );
+    expect(calls.map((call) => call[0])).toEqual([
+      "reply",
+      "noteViewerInput",
+      "input",
+    ]);
   });
 });

@@ -61,6 +61,11 @@ export interface TerminalTransport {
   readonly state: TerminalTransportState;
   readonly generation: number | null;
   input: (data: string) => void;
+  /**
+   * xterm 对程序查询的应答（#518）。不进输入账、不排队：只在 `live` 时发，
+   * 重连之后也不重发——过期的应答只会是垃圾输入。
+   */
+  reply: (data: string) => void;
   resize: (cols: number, rows: number) => void;
   terminate: (mode: TerminateMode) => void;
   send: (message: TerminalClientMessage) => void;
@@ -244,6 +249,9 @@ export function createTerminalTransport(
       // 账就是队列：attach 之前的输入不再进 pendingOut，否则 hello 之后会被
       // 重发路径和 flush 各发一次。
       if (state === "live") rawSend({ type: "input", data, inputId: entry.id });
+    },
+    reply: (data) => {
+      if (state === "live") rawSend({ type: "input", data, reply: true });
     },
     resize: (cols, rows) => send({ type: "resize", cols, rows }),
     terminate: (mode) => send({ type: "terminate", mode }),
