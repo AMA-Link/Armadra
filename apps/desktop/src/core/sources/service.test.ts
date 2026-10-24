@@ -1424,20 +1424,17 @@ describe("契约 §86：Armadra 云挂载的团队与归属", () => {
 
   const listed = async () =>
     (await saas.list()).sources.find((one) => one.sourceId === RELAYED_ID);
-
   it("me.sources 取不到：新挂载按 shared，恢复后再挂以目录为准；已有行保持原归属", async () => {
     world.cloud.sourcesFail = true;
     world.cloud.assertionTeam = "team-1";
     expect(await saas.mount({ serviceId, sourceId: RELAYED_ID })).toMatchObject(
       { origin: "shared", teamId: "team-1", teamName: "研发组" },
     );
-    // 目录恢复，明确不是自己的：仍是 shared 带团队。
     world.cloud.sourcesFail = false;
     world.cloud.owner = false;
     expect(await saas.mount({ serviceId, sourceId: RELAYED_ID })).toMatchObject(
       { origin: "shared", teamId: "team-1", teamName: "研发组" },
     );
-    // 目录又失败：已有行保持原归属与团队。
     world.cloud.sourcesFail = true;
     world.cloud.assertionTeam = "team-2";
     expect(await saas.mount({ serviceId, sourceId: RELAYED_ID })).toMatchObject(
@@ -1445,14 +1442,7 @@ describe("契约 §86：Armadra 云挂载的团队与归属", () => {
     );
   });
 
-  it("目录成功但没列出这台：按 shared", async () => {
-    world.cloud.sources.splice(0);
-    expect(await saas.mount({ serviceId, sourceId: RELAYED_ID })).toMatchObject(
-      { origin: "shared" },
-    );
-  });
-
-  it("目录明确答了就覆盖已有归属：owner=false 把 mine 改 shared，owner=true 把 shared 改 mine 并清团队", async () => {
+  it("目录明确答了就覆盖已有归属：owner=false 把 mine 改 shared，owner=true 把 shared 改 mine 并清团队；没列出这台按 shared", async () => {
     world.cloud.assertionTeam = "team-1";
     await saas.mount({ serviceId, sourceId: RELAYED_ID });
     expect(await listed()).toMatchObject({ origin: "mine" });
@@ -1463,6 +1453,10 @@ describe("契约 §86：Armadra 云挂载的团队与归属", () => {
     world.cloud.owner = true;
     expect(await saas.mount({ serviceId, sourceId: RELAYED_ID })).toMatchObject(
       { origin: "mine", teamId: "", teamName: "" },
+    );
+    world.cloud.sources.splice(0);
+    expect(await saas.mount({ serviceId, sourceId: RELAYED_ID })).toMatchObject(
+      { origin: "shared" },
     );
   });
 
