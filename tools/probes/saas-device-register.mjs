@@ -6,7 +6,9 @@
 // （armadra-cloud 的 `go/cmd/armadra-cloud`，找法见 `cloud-source.mjs`），建一个已验证邮箱、
 // 有团队的账号，再跑 `saas-cloud.integration.test.ts`：core 发起设备码、由该账号批准、轮询到
 // 就绪、取 `me.spaces`、取注册令牌并经真实的 `CloudRegistry` 登记（`sources.register`、取 JWKS、写登记行）；
-// 再对团队成员 B 发授予、合成冲突、改角色、撤销，并按邮箱邀请外人（契约 §33.12）。不起中继节点，隧道是假的，所以不验证隧道。
+// 再对团队成员 B 发授予、合成冲突、改角色、撤销，并按邮箱邀请外人（契约 §33.12）；
+// 然后跑 `saas-trust-report.integration.test.ts`：core 的待信任上报器（契约 §31）对真实服务端报
+// `trustRequest`（含 `pendingId`）并收尾 `trustResolve`。不起中继节点，隧道是假的，所以不验证隧道。
 // 跑完停掉并删除自己起的容器与临时目录。要 Docker 与 Go。产物：<输出目录>/result.json。
 import { spawnSync } from "node:child_process";
 import { randomBytes } from "node:crypto";
@@ -38,6 +40,8 @@ const IMAGES = {
   redis: "redis:8.8.3-alpine",
   mailpit: "axllent/mailpit:v1.31.4",
 };
+// 容器名前缀可改（`PROBE_CONTAINER_PREFIX`），同机并行跑几份时各删各的。
+const prefix = process.env.PROBE_CONTAINER_PREFIX ?? "armadra-saas-device";
 const tag = randomBytes(4).toString("hex");
 const work = mkdtempSync(join(tmpdir(), "armadra-saas-device-"));
 const containers = [];
@@ -58,7 +62,7 @@ try {
   };
   const pgPassword = randomBytes(12).toString("hex");
   const base = `http://127.0.0.1:${ports.cloud}`;
-  const pgName = `armadra-saas-device-pg-${tag}`;
+  const pgName = `${prefix}-pg-${tag}`;
   const env = {
     ARMADRA_CLOUD_ISSUER: base,
     ARMADRA_CLOUD_APP_ORIGIN: base,
@@ -93,14 +97,14 @@ try {
     POSTGRES_DB: "armadra_cloud",
   });
   await launch(
-    `armadra-saas-device-redis-${tag}`,
+    `${prefix}-redis-${tag}`,
     IMAGES.redis,
     [[ports.redis, 6379]],
     {},
     ["redis-server", "--save", "", "--appendonly", "no"],
   );
   await launch(
-    `armadra-saas-device-mail-${tag}`,
+    `${prefix}-mail-${tag}`,
     IMAGES.mailpit,
     [
       [ports.smtp, 1025],
@@ -225,31 +229,31 @@ try {
   );
   step("团队成员 B");
 
-  const run = spawnSync(
-    "pnpm",
-    [
-      "--filter",
-      "@armadra/desktop",
-      "exec",
-      "vitest",
-      "run",
-      "src/core/sources/saas-cloud.integration.test.ts",
-    ],
-    {
-      cwd: root,
-      env: {
-        ...process.env,
-        SAAS_CLOUD_BASE: base,
-        SAAS_APPROVER_TOKEN: approver.access,
-        SAAS_APPROVER_PASSWORD: approver.password,
-        SAAS_MEMBER_ACCOUNT: member.accountId,
-        SAAS_MAIL_BASE: `http://127.0.0.1:${ports.mail}`,
-      },
-      stdio: "inherit",
-    },
-  );
+  const testEnv = {
+    ...process.env,
+    SAAS_CLOUD_BASE: base,
+    SAAS_APPROVER_TOKEN: approver.access,
+    SAAS_APPROVER_PASSWORD: approver.password,
+    SAAS_MEMBER_ACCOUNT: member.accountId,
+    SAAS_MEMBER_DEVICE: member.deviceId,
+    SAAS_MAIL_BASE: `http://127.0.0.1:${ports.mail}`,
+  };
+  // 逐个文件跑（不并行）：待信任上报的用例会在云端留下与列表相关的状态。
+  const runTest = (file) =>
+    spawnSync(
+      "pnpm",
+      ["--filter", "@armadra/desktop", "exec", "vitest", "run", file],
+      { cwd: root, env: testEnv, stdio: "inherit" },
+    );
+  const run = runTest("src/core/sources/saas-cloud.integration.test.ts");
   if (run.status !== 0) throw new Error(`集成测试失败（退出码 ${run.status}）`);
   step("core 设备码登录、空间、注册令牌与登记，授予与邀请（§33.12）");
+  const trust = runTest(
+    "src/core/sources/saas-trust-report.integration.test.ts",
+  );
+  if (trust.status !== 0)
+    throw new Error(`待信任上报集成测试失败（退出码 ${trust.status}）`);
+  step("待信任上报（§31 trustRequest / trustResolve）被真实服务端接受");
   result.status = "ok";
 } catch (error) {
   result.error = String(error?.message ?? error);
