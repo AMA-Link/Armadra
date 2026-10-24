@@ -55,6 +55,7 @@ export class CloudService {
     readonly remoteIp: string;
     readonly userAgent: string;
     readonly channel?: ChannelPeer | undefined;
+    readonly refreshToken?: string | undefined;
   }): Promise<CloudLoginResult> {
     return this.logins.login(input);
   }

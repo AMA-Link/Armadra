@@ -51,6 +51,8 @@ export interface IdentitySession {
    * 不经通道签的会话。
    */
   readonly channelDeviceId?: string;
+  /** 寿命类别（迁移 0055）：`bounded` = 限寿会话（SaaS 来源），缺省 `standard`。 */
+  readonly lifetimeClass?: "standard" | "bounded";
 }
 export interface IdentityTicket {
   readonly ticketId: string;
@@ -300,7 +302,7 @@ export class IdentityTx {
       .prepare(
         "SELECT session_id, device_id, device_epoch, origin, scopes, access_hash, refresh_hash, csrf_hash, " +
           "rotation, created_at_ms, access_expires_at_ms, expires_at_ms, revoked_at_ms, " +
-          "last_seen_at_ms, remote_ip, user_agent, channel_device_id FROM identity_sessions WHERE session_id = ?",
+          "last_seen_at_ms, remote_ip, user_agent, channel_device_id, lifetime_class FROM identity_sessions WHERE session_id = ?",
       )
       .get(sessionId) as Record<string, unknown> | undefined;
     return row === undefined ? undefined : toSession(row);
@@ -311,8 +313,8 @@ export class IdentityTx {
       .prepare(
         "INSERT INTO identity_sessions(session_id, device_id, device_epoch, origin, scopes, access_hash, " +
           "refresh_hash, csrf_hash, rotation, created_at_ms, access_expires_at_ms, expires_at_ms, revoked_at_ms, " +
-          "last_seen_at_ms, remote_ip, user_agent, channel_device_id) " +
-          "VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?)",
+          "last_seen_at_ms, remote_ip, user_agent, channel_device_id, lifetime_class) " +
+          "VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?)",
       )
       .run(
         session.sessionId,
@@ -331,7 +333,64 @@ export class IdentityTx {
         (session.remoteIp ?? "").slice(0, 64),
         (session.userAgent ?? "").slice(0, 256),
         session.channelDeviceId ?? "",
+        session.lifetimeClass ?? "standard",
       );
+  }
+
+  /**
+   * 这个主体名下、绑过这把通道设备钥且没撤销的身份设备（#484）：SaaS 会话每小时重登，
+   * 复用它而不是每次新建一行。最早建的优先。
+   */
+  deviceForChannel(
+    principalId: string,
+    channelDeviceId: string,
+    role: IdentityDevice["role"],
+  ): IdentityDevice | undefined {
+    const row = this.database
+      .prepare(
+        "SELECT d.device_id, d.principal_id, d.name, d.role, d.epoch, d.created_at_ms, d.revoked_at_ms " +
+          "FROM identity_devices d WHERE d.principal_id = ? AND d.revoked_at_ms = 0 AND d.role = ? AND EXISTS (" +
+          "SELECT 1 FROM identity_sessions s WHERE s.device_id = d.device_id AND s.channel_device_id = ?) " +
+          "ORDER BY d.created_at_ms, d.device_id LIMIT 1",
+      )
+      .get(principalId, role, channelDeviceId) as
+      | Record<string, unknown>
+      | undefined;
+    return row === undefined ? undefined : toDevice(row);
+  }
+
+  /** 复用设备时跟上客户端当前报的名字。 */
+  renameDevice(deviceId: string, name: string): void {
+    this.database
+      .prepare("UPDATE identity_devices SET name = ? WHERE device_id = ?")
+      .run(name, deviceId);
+  }
+
+  /** 同一会话上带新断言续期：换三把密钥、延长到期（#484）。 */
+  extendSession(
+    sessionId: string,
+    expectedRotation: number,
+    accessHash: Buffer,
+    refreshHash: Buffer,
+    csrfHash: Buffer,
+    accessExpiresAtMs: number,
+    expiresAtMs: number,
+  ): void {
+    const changes = this.database
+      .prepare(
+        "UPDATE identity_sessions SET access_hash = ?, refresh_hash = ?, csrf_hash = ?, " +
+          "access_expires_at_ms = ?, expires_at_ms = ?, rotation = rotation + 1 WHERE session_id = ? AND rotation = ?",
+      )
+      .run(
+        new Uint8Array(accessHash),
+        new Uint8Array(refreshHash),
+        new Uint8Array(csrfHash),
+        accessExpiresAtMs,
+        expiresAtMs,
+        sessionId,
+        expectedRotation,
+      ).changes;
+    if (Number(changes) !== 1) throw new IdentityError("conflict");
   }
 
   /** 三把密钥一起换，rotation 递增。用过的刷新票再也换不出东西。 */
@@ -831,6 +890,7 @@ function toSession(row: Record<string, unknown>): IdentitySession {
     remoteIp: String(row.remote_ip ?? ""),
     userAgent: String(row.user_agent ?? ""),
     channelDeviceId: String(row.channel_device_id ?? ""),
+    lifetimeClass: row.lifetime_class === "bounded" ? "bounded" : "standard",
   };
 }
 

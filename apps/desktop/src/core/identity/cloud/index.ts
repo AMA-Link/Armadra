@@ -55,6 +55,8 @@ export interface CloudDeps {
   readonly secrets?: () => SecretBackend;
   readonly now?: () => number;
   readonly orgDefaultRole?: () => ShareRole | null;
+  /** SaaS 来源会话的寿命（#484）；缺省一小时。 */
+  readonly saasSessionTtlMs?: number;
 }
 
 let assembled: CloudService | undefined;
@@ -95,6 +97,9 @@ export function installCloud(
     cloud,
     verifier,
     now,
+    ...(deps.saasSessionTtlMs === undefined
+      ? {}
+      : { saasSessionTtlMs: deps.saasSessionTtlMs }),
     ...(deps.orgDefaultRole === undefined
       ? {}
       : { orgDefaultRole: deps.orgDefaultRole }),

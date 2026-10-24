@@ -173,8 +173,10 @@ describe("手机的凭据来源 · 经中继", () => {
         body: { code: "unauthenticated", message: "" },
       }),
       [`POST /s/${SOURCE}/api/identity/cloud/login`]: (init) => {
-        expect(JSON.parse(String(init.body))).toEqual({
+        // 带上被拒的当前刷新令牌，core 能在原会话上续期（#484）。
+        expect(JSON.parse(String(init.body))).toMatchObject({
           assertion: "jws.assertion",
+          refreshToken: expect.any(String),
         });
         return {
           body: { session: coreSession(SESSION_C, SESSION_B) },

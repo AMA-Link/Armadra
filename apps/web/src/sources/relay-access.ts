@@ -275,10 +275,12 @@ export function createRelayedAccess(
               : { csrfToken: rotated.csrfToken }),
           };
         } catch (error) {
-          // 连不上不是「会话被拒」：往上抛，别白白换一次登录。
+          // 连不上不是「会话被拒」：往上抛，别白白换一次登录。只有会话被拒（401 / 403，含
+          // SaaS 限寿会话到期前 core 拒绝刷新，#484）才改用新断言重登；限流与 5xx 原样上抛。
           if (!(error instanceof CloudError)) throw error;
           if (error.code === "source_offline")
             throw unauthorized(SOURCE_ERROR.offline);
+          if (error.status !== 401 && error.status !== 403) throw error;
         }
       }
       if (next === null) {
@@ -290,6 +292,8 @@ export function createRelayedAccess(
               assertion.assertion,
               undefined,
               coreOptions,
+              // 带上当前刷新令牌：SaaS 来源的限寿会话在原会话上续期，长连接不断。
+              session?.refreshToken,
             );
           const login = await send().catch(async (error: unknown) => {
             // 新设备：等主人在那台电脑上核对校验码，放行后再登录一次（契约 §77）。

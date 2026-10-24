@@ -10,7 +10,8 @@ import { Authorizer } from "../authorize";
 import { disableLinkGuests } from "../grant-sync";
 import { roleScopes, sessionViewerScopes } from "../roles";
 import { allScopes, scope } from "../scopes";
-import { IdentityService } from "../service";
+import { IdentityService, SAAS_SESSION_TTL_MS } from "../service";
+import { CloudLogin } from "./login";
 import { IdentityStore } from "../store";
 import {
   ISSUER,
@@ -1154,6 +1155,41 @@ describe("cloud/login 的范围、角色同步与租约（契约 §60）", () =>
     // 之后的断言不再带 team：团队角色清掉（背书不再成立）。
     expect((await login("acct:saas", { role: "editor" })).status).toBe(200);
     expect(teamRoleOf(core.database, principalId)).toBeUndefined();
+  });
+
+  const lastSessionTtl = () =>
+    (
+      core.database
+        .prepare(
+          "SELECT expires_at_ms - created_at_ms AS ttl FROM identity_sessions ORDER BY created_at_ms DESC, rowid DESC LIMIT 1",
+        )
+        .get() as { ttl: number }
+    ).ttl;
+
+  it("SaaS 来源的会话寿命一小时；个人中转与登记之外的仍是 30 天（#484）", async () => {
+    const invitation = accounts.issueInvitation(ownerSubject(), {
+      role: "editor",
+      targetHost: true,
+    });
+    const personal = await login("acct:personal", {}, invitation.token);
+    expect(personal.status, personal.text).toBe(200);
+    expect(lastSessionTtl()).toBe(30 * DAY);
+    core.database
+      .prepare("UPDATE cloud_registrations SET mode = 'saas' WHERE issuer = ?")
+      .run(ISSUER);
+    const saas = await login("acct:saas-ttl", { role: "editor" });
+    expect(saas.status, saas.text).toBe(200);
+    expect(lastSessionTtl()).toBe(SAAS_SESSION_TTL_MS);
+    expect(
+      core.database
+        .prepare(
+          "SELECT lifetime_class AS c FROM identity_sessions ORDER BY created_at_ms DESC, rowid DESC LIMIT 1",
+        )
+        .get(),
+    ).toMatchObject({ c: "bounded" });
+    expect(
+      () => new CloudLogin({ saasSessionTtlMs: 60_000 } as never),
+    ).toThrow();
   });
 
   it("SaaS：guest 按声明建成员；billing 不准入、既有成员的云授予被清掉", async () => {

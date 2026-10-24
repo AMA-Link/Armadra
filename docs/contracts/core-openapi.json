@@ -12725,6 +12725,11 @@
                   },
                   "probe": {
                     "type": "boolean"
+                  },
+                  "refreshToken": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 512
                   }
                 },
                 "required": ["assertion"]

@@ -440,8 +440,8 @@ describe("§68 cloud/login 的出参在协议包的形状上追加 share", () =>
   });
 });
 
-describe("§31.1 cloud/login 的入参在协议包的形状上追加 probe", () => {
-  it("协议包的字段逐个沿用，只多可选的 probe", async () => {
+describe("§31.1 cloud/login 的入参在协议包的形状上追加 probe 与 refreshToken", () => {
+  it("协议包的字段逐个沿用，只多可选的 probe 与 refreshToken（#484）", async () => {
     const protocol = await import("@armadra/platform-protocol/core-api");
     type Shaped = { shape: Record<string, unknown> };
     const entry = entries.find((one) => one.name === "identity.cloud.login");
@@ -451,6 +451,7 @@ describe("§31.1 cloud/login 的入参在协议包的形状上追加 probe", () 
       expect(ours[key], key).toBe(theirs[key]);
     expect(Object.keys(ours).filter((key) => !(key in theirs))).toEqual([
       "probe",
+      "refreshToken",
     ]);
   });
 });

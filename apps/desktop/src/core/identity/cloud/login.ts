@@ -25,7 +25,8 @@
  *    记录、答 `403 device_pending { pendingId }`，主人在本机核对校验码后放行；被拒或
  *    撤销 → `403 device_rejected`。会话绑这把钥。断言负责「这是谁」，设备钥负责
  *    「确实是他的设备」——中继单方面签的断言换不到会话。
- * 7. 建设备与会话（`method = "cloud"`），审计 `cloud.login`（带 `jti` / `team`）。
+ * 7. 建设备与会话（`method = "cloud"`）；SaaS 签发方来的会话寿命约一小时（#484），刷新续不过它，
+ *    到期带新断言重登，授予随之整份同步，审计 `cloud.login`（带 `jti` / `team`）。
  */
 
 import {
@@ -46,7 +47,12 @@ import {
 import { currentHostName } from "../../settings";
 import { IdentityError } from "../errors";
 import { type ShareRole, grantScopes } from "../roles";
-import type { IdentityService, SessionCredentials } from "../service";
+import {
+  type IdentityService,
+  MIN_BOUNDED_SESSION_TTL_MS,
+  SAAS_SESSION_TTL_MS,
+  type SessionCredentials,
+} from "../service";
 import type { IdentityStore } from "../store";
 import { IpBuckets } from "../throttle";
 import { newId, parseToken, validName } from "../tokens";
@@ -94,6 +100,8 @@ export interface CloudLoginOptions {
   readonly orgDefaultRole?: () => ShareRole | null;
   /** 设备登记（契约 §77）；缺省这一轮装好的那份。 */
   readonly devices?: () => DeviceRegistry | undefined;
+  /** SaaS 来源会话的寿命（#484）；缺省 {@link SAAS_SESSION_TTL_MS}。个人中转不受影响。 */
+  readonly saasSessionTtlMs?: number;
   readonly now?: () => number;
 }
 
@@ -131,12 +139,32 @@ function clipName(value: string | undefined, fallback: string): string {
   return validName(trimmed) ? trimmed : fallback;
 }
 
+interface LoginInput {
+  readonly assertion: string;
+  readonly invitationToken?: string | undefined;
+  /** 会话绑定的来源（规范拼法）。 */
+  readonly origin: string;
+  readonly remoteIp: string;
+  readonly userAgent: string;
+  /** 经端到端通道来的：通道对端的设备钥（契约 §77）。明文路径没有。 */
+  readonly channel?: ChannelPeer | undefined;
+  /**
+   * 续同一会话（#484）：当前限寿会话的刷新令牌。断言有效、主体与通道设备钥都与该会话一致时，
+   * 在原会话上重新同步授予并延长寿命；否则退回新建会话。
+   */
+  readonly refreshToken?: string | undefined;
+}
+
 export class CloudLogin {
   private readonly now: () => number;
+  private readonly saasTtlMs: number;
   private readonly subjects = new IpBuckets(SUBJECT_LOGINS_PER_MINUTE, 60_000);
 
   constructor(private readonly options: CloudLoginOptions) {
     this.now = options.now ?? Date.now;
+    this.saasTtlMs = options.saasSessionTtlMs ?? SAAS_SESSION_TTL_MS;
+    if (this.saasTtlMs < MIN_BOUNDED_SESSION_TTL_MS)
+      throw new Error("SaaS 会话寿命不能短于 5 分钟");
   }
 
   /** 每个 `sub` 一个桶；空了答 `rate_limited`（`details.retryAfterMs`）。 */
@@ -187,20 +215,34 @@ export class CloudLogin {
     return { trusted: true };
   }
 
-  async login(input: {
-    readonly assertion: string;
-    readonly invitationToken?: string | undefined;
-    /** 会话绑定的来源（规范拼法）。 */
-    readonly origin: string;
-    readonly remoteIp: string;
-    readonly userAgent: string;
-    /** 经端到端通道来的：通道对端的设备钥（契约 §77）。明文路径没有。 */
-    readonly channel?: ChannelPeer | undefined;
-  }): Promise<CloudLoginResult> {
+  /**
+   * 登录：按 `(iss, sub)` 每分钟 5 次限流，**入口预扣**（验完断言、查完桶就同步占位，并发突发绕不过），
+   * 失败一律不退——包括 `device_pending`：否则同一份断言换新设备钥可以无限插待确认记录、刷屏主人
+   * （#484）。只有真正的续期（带刷新令牌在同一会话上续）成功时才退还，免得每小时的续期互相挤掉。
+   */
+  async login(input: LoginInput): Promise<CloudLoginResult> {
+    const state: { key?: string; refund: boolean } = { refund: false };
+    const result = await this.loginInner(input, state);
+    if (state.key !== undefined && state.refund)
+      this.subjects.refund(state.key);
+    return result;
+  }
+
+  private async loginInner(
+    input: LoginInput,
+    state: { key?: string; refund: boolean },
+  ): Promise<CloudLoginResult> {
     const { claims, registration } = await this.options.verifier.verify(
       input.assertion,
     );
-    this.admitSubject(claims);
+    const subjectKey = `${claims.iss}\u0000${claims.sub}`;
+    const verdict = this.subjects.take(subjectKey, this.now());
+    if (!verdict.ok) {
+      throw fail("rate_limited", "这个账号登录得太频繁，请稍后重试", {
+        retryAfterMs: verdict.retryAfterMs,
+      });
+    }
+    state.key = subjectKey;
     const provider = cloudProvider(registration.issuer);
     const { store, accounts, service } = this.options;
 
@@ -364,25 +406,46 @@ export class CloudLogin {
       provenance,
       ...(asserted === undefined ? {} : { asserted }),
     });
-    const credentials = (() => {
-      try {
-        return service.openSession({
-          principalId,
-          hostId: service.hostId(),
-          origin: input.origin,
-          deviceName: clipName(claims.device.name, "Armadra"),
-          method: "cloud",
-          remoteIp: input.remoteIp,
-          userAgent: input.userAgent,
-          ...(channelDeviceId === "" ? {} : { channelDeviceId }),
-        });
-      } catch (error) {
-        if (error instanceof IdentityError) {
-          throw fail("forbidden", "这个账号在这台机器上已停用");
+    const bounded =
+      registration.mode === "saas" ? { ttlMs: this.saasTtlMs } : undefined;
+    // 带着当前刷新令牌来：在同一会话上续期，长连接的复核跟得上，不必断开（#484）。
+    const continued =
+      bounded !== undefined &&
+      channelDeviceId !== "" &&
+      input.refreshToken !== undefined
+        ? service.continueBounded({
+            refreshToken: input.refreshToken,
+            hostId: service.hostId(),
+            origin: input.origin,
+            principalId,
+            channelDeviceId,
+            ttlMs: bounded.ttlMs,
+          })
+        : undefined;
+    // 真正的续期（同一会话）退还入口预扣的那一次。
+    state.refund = continued !== undefined;
+    const credentials =
+      continued ??
+      (() => {
+        try {
+          return service.openSession({
+            principalId,
+            hostId: service.hostId(),
+            origin: input.origin,
+            deviceName: clipName(claims.device.name, "Armadra"),
+            method: "cloud",
+            ...(bounded === undefined ? {} : { bounded }),
+            remoteIp: input.remoteIp,
+            userAgent: input.userAgent,
+            ...(channelDeviceId === "" ? {} : { channelDeviceId }),
+          });
+        } catch (error) {
+          if (error instanceof IdentityError) {
+            throw fail("forbidden", "这个账号在这台机器上已停用");
+          }
+          throw error;
         }
-        throw error;
-      }
-    })();
+      })();
 
     const principal = store.transaction((tx) => {
       const row = tx.accounts.principal(principalId);
@@ -401,6 +464,7 @@ export class CloudLogin {
           created,
           jti: claims.jti,
           ...(channelDeviceId === "" ? {} : { e2eDevice: channelDeviceId }),
+          ...(continued === undefined ? {} : { renewed: true }),
           ...(claims.link === undefined ? {} : { link: claims.link.linkId }),
           ...(claims.team === undefined ? {} : { team: claims.team.teamId }),
           ...(claims.role === undefined ? {} : { role: claims.role }),

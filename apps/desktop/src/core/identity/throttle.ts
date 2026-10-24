@@ -74,6 +74,13 @@ export class IpBuckets {
     return { ok: true, retryAfterMs: 0 };
   }
 
+  /** 退还一个令牌（不超过容量）；没有这个桶就什么也不做。 */
+  refund(ip: string): void {
+    const bucket = this.buckets.get(ip);
+    if (bucket !== undefined)
+      bucket.tokens = Math.min(this.capacity, bucket.tokens + 1);
+  }
+
   /** 只看不拿：桶里还有没有一个令牌。空 IP 不限。 */
   peek(ip: string, nowMs: number): { ok: boolean; retryAfterMs: number } {
     if (ip === "") return { ok: true, retryAfterMs: 0 };

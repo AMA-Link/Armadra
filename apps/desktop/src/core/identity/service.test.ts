@@ -9,6 +9,8 @@ import {
   IdentityService,
   devicePlatform,
   SESSION_TTL_MS,
+  SAAS_SESSION_TTL_MS,
+  reloginLeadMs,
 } from "./service";
 import { allScopes, scope } from "./scopes";
 import { IdentityStore } from "./store";
@@ -45,6 +47,7 @@ function fixture(start = 1_700_000_000_000) {
   return {
     service,
     store,
+    database: opened.database,
     hostId,
     advance: (ms: number) => {
       now += ms;
@@ -864,5 +867,154 @@ describe("本机设备复用", () => {
     expect(pairAt(fix, "http://127.0.0.1:50004").principal.deviceId).toBe(
       next.principal.deviceId,
     );
+  });
+});
+
+describe("限寿会话（SaaS 来源，#484）", () => {
+  const open = (
+    fix: ReturnType<typeof fixture>,
+    ttlMs?: number,
+    channel = "",
+  ) =>
+    fix.service.openSession({
+      principalId: pair(fix).credentials.principal.principalId,
+      hostId: fix.hostId,
+      origin: ORIGIN,
+      deviceName: "云端设备",
+      method: "cloud",
+      ...(ttlMs === undefined ? {} : { bounded: { ttlMs } }),
+      ...(channel === "" ? {} : { channelDeviceId: channel }),
+    });
+  const refresh = (
+    fix: ReturnType<typeof fixture>,
+    credentials: ReturnType<typeof open>,
+  ) =>
+    fix.service.refresh({
+      refreshToken: credentials.refreshToken,
+      csrfToken: credentials.csrfToken,
+      hostId: fix.hostId,
+      origin: ORIGIN,
+    });
+
+  it("寿命取 ttlMs，缺省仍是 30 天", () => {
+    const fix = fixture();
+    expect(open(fix).expiresAtMs - fix.at()).toBe(SESSION_TTL_MS);
+    expect(open(fix, SAAS_SESSION_TTL_MS).expiresAtMs - fix.at()).toBe(
+      SAAS_SESSION_TTL_MS,
+    );
+  });
+
+  it("刷新续不过寿命：访问令牌截到会话到期，到期后刷新被拒", () => {
+    const fix = fixture();
+    const credentials = open(fix, SAAS_SESSION_TTL_MS);
+    fix.advance(SAAS_SESSION_TTL_MS - 10 * 60_000);
+    const rotated = refresh(fix, credentials);
+    expect(rotated.expiresAtMs).toBe(credentials.expiresAtMs);
+    expect(rotated.accessExpiresAtMs).toBe(credentials.expiresAtMs);
+    fix.advance(10 * 60_000);
+    expect(kind(() => refresh(fix, rotated))).toBe("unauthenticated");
+  });
+
+  it("到期前最后一段拒绝刷新，客户端改用新断言重登", () => {
+    const fix = fixture();
+    const credentials = open(fix, SAAS_SESSION_TTL_MS);
+    fix.advance(
+      SAAS_SESSION_TTL_MS - reloginLeadMs(credentials.principal.sessionId),
+    );
+    expect(kind(() => refresh(fix, credentials))).toBe("unauthenticated");
+  });
+
+  it("同一把通道设备钥的云登录复用身份设备，只多会话（#484）", () => {
+    const fix = fixture();
+    const channel = "c".repeat(32);
+    const devices = () => fix.store.transaction((tx) => tx.devices("", 100));
+    const first = open(fix, SAAS_SESSION_TTL_MS, channel);
+    const before = devices().length;
+    fix.advance(SAAS_SESSION_TTL_MS);
+    const second = open(fix, SAAS_SESSION_TTL_MS, channel);
+    expect(devices().length).toBe(before);
+    expect(second.principal.deviceId).toBe(first.principal.deviceId);
+    expect(second.principal.sessionId).not.toBe(first.principal.sessionId);
+    // 另一把通道钥是另一台设备。
+    open(fix, SAAS_SESSION_TTL_MS, "d".repeat(32));
+    expect(devices().length).toBe(before + 1);
+    // 复用时名字跟上客户端当前报的；角色变了（owner ↔ member）不复用。
+    const renamed = fix.service.openSession({
+      principalId: first.principal.principalId,
+      hostId: fix.hostId,
+      origin: ORIGIN,
+      deviceName: "新名字",
+      method: "cloud",
+      channelDeviceId: channel,
+      bounded: { ttlMs: SAAS_SESSION_TTL_MS },
+    });
+    expect(renamed.principal.deviceId).toBe(first.principal.deviceId);
+    expect(renamed.principal.deviceName).toBe("新名字");
+    expect(
+      fix.store.transaction((tx) => tx.device(first.principal.deviceId))?.name,
+    ).toBe("新名字");
+    fix.database
+      .prepare(
+        "UPDATE identity_devices SET role = 'member' WHERE device_id = ?",
+      )
+      .run(first.principal.deviceId);
+    expect(open(fix, SAAS_SESSION_TTL_MS, channel).principal.deviceId).not.toBe(
+      first.principal.deviceId,
+    );
+  });
+
+  describe("带新断言续同一会话", () => {
+    const channel = "c".repeat(32);
+    const cont = (
+      fix: ReturnType<typeof fixture>,
+      credentials: ReturnType<typeof open>,
+      over: Partial<Parameters<typeof fix.service.continueBounded>[0]> = {},
+    ) =>
+      fix.service.continueBounded({
+        refreshToken: credentials.refreshToken,
+        hostId: fix.hostId,
+        origin: ORIGIN,
+        principalId: credentials.principal.principalId,
+        channelDeviceId: channel,
+        ttlMs: SAAS_SESSION_TTL_MS,
+        ...over,
+      });
+
+    it("会话 id 不变，换三把密钥并把寿命重新延长；旧刷新令牌作废", () => {
+      const fix = fixture();
+      const first = open(fix, SAAS_SESSION_TTL_MS, channel);
+      fix.advance(SAAS_SESSION_TTL_MS - 20_000);
+      expect(kind(() => refresh(fix, first))).toBe("unauthenticated");
+      const next = cont(fix, first);
+      expect(next?.principal.sessionId).toBe(first.principal.sessionId);
+      expect(next?.expiresAtMs).toBe(fix.at() + SAAS_SESSION_TTL_MS);
+      expect(next?.refreshToken).not.toBe(first.refreshToken);
+      expect(cont(fix, first)).toBeUndefined();
+      expect(next && refresh(fix, next).expiresAtMs).toBe(next?.expiresAtMs);
+    });
+
+    it("别人的刷新令牌、别的通道钥、常规会话、已到期的会话都续不了", () => {
+      const fix = fixture();
+      const mine = open(fix, SAAS_SESSION_TTL_MS, channel);
+      expect(cont(fix, mine, { principalId: "f".repeat(32) })).toBeUndefined();
+      expect(
+        cont(fix, mine, { channelDeviceId: "d".repeat(32) }),
+      ).toBeUndefined();
+      expect(
+        cont(fix, mine, { refreshToken: `${mine.principal.sessionId}.forged` }),
+      ).toBeUndefined();
+      expect(cont(fix, mine, { refreshToken: "garbage" })).toBeUndefined();
+      const standard = open(fix, undefined, channel);
+      expect(cont(fix, standard)).toBeUndefined();
+      fix.advance(SAAS_SESSION_TTL_MS);
+      expect(cont(fix, mine)).toBeUndefined();
+    });
+  });
+
+  it("30 天的会话不受最后一段限制", () => {
+    const fix = fixture();
+    const credentials = open(fix);
+    fix.advance(SESSION_TTL_MS - 1_000);
+    expect(refresh(fix, credentials).expiresAtMs).toBe(credentials.expiresAtMs);
   });
 });
