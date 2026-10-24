@@ -167,7 +167,7 @@ afterAll(async () => {
  * the next call 30 s (#356, R-90). Looking again is harmless, so these get one
  * more try after the diagnosis; verbs that act are never repeated.
  */
-const LOOKS_ONLY = new Set(["read", "screenshot"]);
+const LOOKS_ONLY = new Set(["read", "capture"]);
 
 async function run(
   verb: string,
