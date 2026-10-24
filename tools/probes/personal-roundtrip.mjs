@@ -71,6 +71,7 @@ import {
   spawnRelay as spawnRelayIn,
   terminalInPage,
   terminalRoundTrip,
+  untilApproved,
 } from "./platform-lib.mjs";
 import { probeSession } from "./probe-session.mjs";
 import { startWorkerd } from "./workerd-relay.mjs";
@@ -380,35 +381,12 @@ try {
   const { owner, rpc } = ownerClient(session);
 
   // 经中转来的新设备（契约 §77）：页面弹出校验码，主人在这台 core 上核对放行。
-  const SAS_ON_PAGE = `const el = [...document.querySelectorAll('[role="dialog"] p')].find((one) => /^\\d{3} \\d{3}$/.test(one.innerText.trim())); return el ? el.innerText.replace(/\\s/g, "") : null;`;
-  const untilApproved = async (p, readyBody, what, timeout = 60_000) => {
-    const deadline = Date.now() + timeout;
-    let approvals = 0;
-    while (Date.now() < deadline) {
-      if (await p.evaluate(readyBody)) return approvals;
-      const sas = await p.evaluate(SAS_ON_PAGE);
-      if (sas) {
-        const listed = await owner("/api/devices");
-        for (const device of (listed.devices ?? []).filter(
-          (row) => row.status === "pending" && row.pendingId,
-        )) {
-          const answer = await session.fetch("/api/devices/approve", {
-            method: "POST",
-            headers: { "content-type": "application/json" },
-            body: JSON.stringify({ pendingId: device.pendingId, sas }),
-          });
-          await answer.text();
-          if (answer.ok) {
-            approvals += 1;
-            run.ok(`${what}：主人核对页面上的校验码，放行这台新设备`);
-            break;
-          }
-        }
-      }
-      await sleep(400);
-    }
-    throw new Error(`等待超时：${what}`);
-  };
+  const untilApprovedHere = (p, readyBody, what, timeout = 60_000) =>
+    untilApproved(p, session, readyBody, what, {
+      timeout,
+      onApproved: () =>
+        run.ok(`${what}：主人核对页面上的校验码，放行这台新设备`),
+    });
 
   const registered = await timed("2-tunnel", () =>
     registerSource({
@@ -543,7 +521,7 @@ try {
     );
     await page.type(password);
     await page.key("Enter");
-    await untilApproved(
+    await untilApprovedHere(
       page,
       `return !!document.querySelector('${nodeAt(sticky.id)}')`,
       "账号口令登录后进画布",
@@ -758,7 +736,7 @@ try {
     );
     await shotAt(guest, "04-join-landing-1440");
     await guest.clickOn(buttonByText("在浏览器中加入"), "在浏览器中加入");
-    await untilApproved(
+    await untilApprovedHere(
       guest,
       `return location.pathname === "/app/" ? true : null;`,
       "访客加入",

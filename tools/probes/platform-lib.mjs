@@ -412,6 +412,50 @@ export const buttonByText = (texts, selector = "button") => `
 export const buttonExists = (texts) =>
   `return !!(() => { ${buttonByText(texts)} })();`;
 
+/** 页面上 §77 待确认对话框里的校验码（`123 456` 答 `"123456"`）；没有答 `null`。 */
+export const SAS_ON_PAGE = `const el = [...document.querySelectorAll('[role="dialog"] p')].find((one) => /^\\d{3} \\d{3}$/.test(one.innerText.trim())); return el ? el.innerText.replace(/\\s/g, "") : null;`;
+
+/**
+ * 经中转来的新设备（契约 §77）：等页面就绪（`readyBody` 答真）；其间页面停在「等待
+ * 这台电脑确认」时读出校验码，用 `session`（那台 core 的本机主人会话）列出待确认的
+ * 设备并按校验码放行。每放行一次叫 `onApproved()`；答放行了几次，超时抛。
+ */
+export async function untilApproved(
+  page,
+  session,
+  readyBody,
+  what,
+  { timeout = 60_000, onApproved } = {},
+) {
+  const { owner } = ownerClient(session);
+  const deadline = Date.now() + timeout;
+  let approvals = 0;
+  while (Date.now() < deadline) {
+    if (await page.evaluate(readyBody)) return approvals;
+    const sas = await page.evaluate(SAS_ON_PAGE);
+    if (sas) {
+      const listed = await owner("/api/devices");
+      for (const device of (listed.devices ?? []).filter(
+        (row) => row.status === "pending" && row.pendingId,
+      )) {
+        const answer = await session.fetch("/api/devices/approve", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ pendingId: device.pendingId, sas }),
+        });
+        await answer.text();
+        if (answer.ok) {
+          approvals += 1;
+          onApproved?.();
+          break;
+        }
+      }
+    }
+    await sleep(400);
+  }
+  throw new Error(`等待超时：${what}`);
+}
+
 export const hasText = (page, text, what, timeout = 30_000) =>
   page.until(
     `return document.body.innerText.includes(${JSON.stringify(text)}) ? true : null;`,

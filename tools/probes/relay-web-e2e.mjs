@@ -5,7 +5,7 @@
 // profile 的无头 Chrome：
 //
 //   1. 打开中继的 `/app/`：页面认出自己由中继托管，中继账号口令登录，只有一台
-//      在线主机就直接进画布；
+//      在线主机就直接进画布（这个浏览器是新设备，主人在 core 上核对校验码放行，§77）；
 //   2. 经中继操作：画布出来、终端收发（`echo $((40+2))relay` → `42relay`）；
 //      刷新页面后不登录、静默续上（标签页只记刷新令牌）、终端照常；
 //      实时板（本机页面拖一下，中继页面看到；中继页面拖一下，本机看到）；
@@ -44,6 +44,7 @@ import {
   until,
   writeResult,
 } from "./ui-features/harness.mjs";
+import { untilApproved } from "./platform-lib.mjs";
 import { probeSession } from "./probe-session.mjs";
 import { runDesktop } from "./relay-desktop.mjs";
 
@@ -334,7 +335,6 @@ try {
   const page = await stack.browser.page(await stack.browser.context());
   opened.push(["relay", page]);
   const sockets = [];
-  const frames = [];
   report.relaySockets = sockets;
   stack.browser.on((message) => {
     if (message.sessionId !== page.sessionId) return;
@@ -370,12 +370,6 @@ try {
     else if (method === "Network.webSocketHandshakeResponseReceived") {
       const entry = sockets.find((item) => item.id === params.requestId);
       if (entry) entry.status = params.response.status;
-    } else if (method === "Network.webSocketFrameReceived") {
-      frames.push({
-        id: params.requestId,
-        data: String(params.response.payloadData ?? "").slice(0, 400),
-      });
-      if (frames.length > 2000) frames.shift();
     } else if (method === "Network.webSocketClosed") {
       const entry = sockets.find((item) => item.id === params.requestId);
       if (entry) entry.closed = true;
@@ -424,6 +418,17 @@ try {
   );
   await page.type(password);
   await page.key("Enter");
+  // 这个浏览器是经中转来的新设备（契约 §77）：页面停在「等待这台电脑确认」并给出
+  // 校验码，主人在 core 上核对放行。
+  await untilApproved(
+    page,
+    session,
+    `return !!document.querySelector('${nodeAt(sticky.id)}')`,
+    "中继账号登录后进画布",
+    {
+      onApproved: () => run.ok("主人核对页面上的校验码，放行这台新设备"),
+    },
+  );
   await page.until(
     `return !!document.querySelector('${nodeAt(sticky.id)}')`,
     "经中继进画布、便签出现",
@@ -521,26 +526,35 @@ try {
   await sleep(500);
 
   /**
-   * 控制面的事件订阅续上：最新那条 `/api/ws` 上收到本机拖动物化出的
-   * `board.changed`（订阅重订、按 lastEventId 续上）。
+   * 控制面的事件订阅续上：页面的控制面流收到本机拖动物化出的 `board.changed`
+   * （订阅重订、按 lastEventId 续上）。经端到端通道时（契约 §78）浏览器里只有
+   * `/_relay/e2e` 一条真 WebSocket、帧是密文，所以在页面里数：流把每条消息作为
+   * `MessageEvent` 派发给页面代码，拦 `dispatchEvent` 就看得到明文。拖之前
+   * `markControl()` 清零，拖之后 `controlResumed()` 等数到。
    */
-  const controlResumed = (when) => {
-    const latest = sockets
-      .filter((item) => item.url?.endsWith("/api/ws"))
-      .at(-1)?.id;
-    return until(
-      () =>
-        latest !== undefined &&
-        frames.some(
-          (frame) =>
-            frame.id === latest && frame.data.includes("board.changed"),
-        )
-          ? true
-          : null,
+  const markControl = () =>
+    page.evaluate(`
+      if (!window.__probeControl) {
+        window.__probeControl = { boardChanged: 0 };
+        const dispatch = EventTarget.prototype.dispatchEvent;
+        EventTarget.prototype.dispatchEvent = function (event) {
+          if (
+            event instanceof MessageEvent &&
+            typeof event.data === "string" &&
+            event.data.includes('"board.changed"')
+          )
+            window.__probeControl.boardChanged += 1;
+          return dispatch.call(this, event);
+        };
+      }
+      window.__probeControl.boardChanged = 0;
+      return true;`);
+  const controlResumed = (when) =>
+    page.until(
+      `return (window.__probeControl?.boardChanged ?? 0) > 0 ? true : null;`,
       `${when}控制面收到 board.changed（事件订阅续上）`,
       { timeout: 30_000 },
     );
-  };
 
   /* ------------------------ 3. 主机下线再上线 ------------------------ */
   // 主机这一侧停掉隧道：中继答源离线（4404 / 503），me.stream 推 sourceOffline；
@@ -566,6 +580,7 @@ try {
     { timeout: 60_000 },
   );
   await terminalRoundTrip(page, terminal.id, "online");
+  await markControl();
   await dragNode(local, sticky.id, 60, 0);
   const afterOnline = await positionOf(local, sticky.id);
   await waitAt(
@@ -604,6 +619,7 @@ try {
   );
   const tunnelBackMs = Date.now() - downAt;
   // 页面恢复：实时板与终端都回来了。
+  await markControl();
   await dragNode(local, sticky.id, 0, -100);
   const again = await positionOf(local, sticky.id);
   await waitAt(page, sticky.id, again, "中继重启后中继页面又看到本机的拖动");
