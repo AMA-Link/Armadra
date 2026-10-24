@@ -17,6 +17,16 @@ import { scope } from "../identity/scopes";
  * 授权。今天两者都是本机 owner，所以恒通过——入口在这里，是为了让第二个
  * principal 出现时不必重新找一遍所有写入路径。
  */
+export function mayDrive(
+  drive: DriveBook,
+  sessionId: string,
+  writer: TerminalWriter | undefined,
+): boolean {
+  return drive.permits(sessionId, writer, (workspaceId) =>
+    allows([scope("terminal:drive", workspaceId)]),
+  );
+}
+
 export function authorizeDrive(
   drive: DriveBook,
   record: SessionRecord,
@@ -26,11 +36,7 @@ export function authorizeDrive(
   const takeover =
     drive.creator(sessionId) !== undefined &&
     (writer?.principalId ?? "") !== drive.creator(sessionId);
-  if (
-    !drive.permits(sessionId, writer, (workspaceId) =>
-      allows([scope("terminal:drive", workspaceId)]),
-    )
-  ) {
+  if (!mayDrive(drive, sessionId, writer)) {
     throw new TerminalError(
       403,
       "forbidden",

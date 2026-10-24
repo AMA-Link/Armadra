@@ -18,6 +18,7 @@ import {
   notFound,
   sessionName,
 } from "./backend";
+import type { DriveBook } from "./input";
 import { TerminalManager } from "./manager";
 import { type WindowViewer, windowSizeOf } from "./viewers";
 import { type Lease, agentActor, freeLease, humanActor } from "../drive/lease";
@@ -1549,6 +1550,27 @@ describe("a query several views answer (#518)", () => {
       `reply${t.deskId}:${t.session.sessionKey}:${JSON.stringify(DA)}`,
       `reply${t.phoneId}:${t.session.sessionKey}:${JSON.stringify(DA)}`,
     ]);
+  });
+
+  it("drops an answer from a view with no right to drive", async () => {
+    const t = await twoViews();
+    t.output(ASK, t.deskId);
+    // The terminal was opened by somebody else, and nothing grants drive.
+    (t.manager as unknown as { drive: DriveBook }).drive.remember(
+      t.session.id,
+      "ws",
+      "someone-else",
+    );
+    const answer = () => t.manager.reply(t.session.id, 1, DA, t.deskId);
+    expect(
+      await runAs(
+        { subject: { principalId: "m1", kind: "member", scopes: [] } },
+        answer,
+      ),
+    ).toBe(false);
+    expect(replies(t.backend)).toEqual([]);
+    // The owner holds every scope.
+    expect(await answer()).toBe(true);
   });
 
   it("is not someone driving: the lease and the window stay", async () => {

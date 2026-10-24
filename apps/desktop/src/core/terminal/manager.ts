@@ -3,6 +3,7 @@ import {
   observedActivityFor,
   automatedInputWritable,
   authorizeDrive,
+  mayDrive,
   authorizeManagedInput,
   assertSubmitInput,
 } from "./manager-status";
@@ -909,6 +910,9 @@ export class TerminalManager {
     attachmentId: number,
   ): Promise<boolean> {
     const { key } = this.checked(sessionId, generation);
+    // 同一道 `terminal:drive` 判定，但不写审计：没资格的应答直接丢弃。
+    if (!mayDrive(this.drive, sessionId, undefined))
+      return Promise.resolve(false);
     return this.withKey(key, () => {
       const record = this.checked(sessionId, generation);
       return writeReply(this.backend(record.kind), record.key, data, {
