@@ -39,6 +39,8 @@ class FakeSocket implements WriterSocket {
   dataBytes = 0;
   /** 在 ws 缓冲里、还没上线的 DATA 载荷字节。 */
   bufferedData = 0;
+  /** `send` 被调的次数（写端每交出一帧加一）。 */
+  sends = 0;
 
   get bufferedAmount(): number {
     return this.buffered;
@@ -50,6 +52,7 @@ class FakeSocket implements WriterSocket {
     callback: (error?: Error) => void,
   ): void {
     this.queue.push({ data, callback });
+    this.sends += 1;
     this.buffered += data.length;
     const frame = decodeFrame(data);
     if (frame.type === "data") this.bufferedData += frame.bytes.length;
@@ -189,29 +192,48 @@ describe("写端公平调度", () => {
     }
   });
 
-  it("慢链路：按键赶在一批写完之前到达，上一帧已写出就仍先于大流量流（cloud#133）", async () => {
-    const { rig } = await bulkRig(16);
+  it("慢链路：上一帧还在 ws 缓冲里时再来的按键进老流，上一帧写出后再来的才先出（cloud#133）", async () => {
+    // 低水位放到四块：上一帧还在 ws 缓冲里，写端就已经又取了一批。
+    const rig = new Rig(4 << 20, 1 << 30, { lowWater: 4 * CHUNK });
+    const payload = Buffer.alloc(4 << 20, 1);
+    for (let i = 0; i < 16; i += 1) rig.open().write(payload);
+    await rig.run(40);
     const probe = rig.open();
-    const mine = (f: Frame): boolean =>
-      f.type === "data" && f.streamId === probe.streamId;
-    let worst = 0;
-    let from = rig.socket.written.length;
-    probe.write(Buffer.alloc(16, 1));
-    for (let key = 0; key < 6; key += 1) {
-      // 链路每回合只写出一帧：一批要好几回合才写完。
-      let ahead: number | undefined;
-      for (let i = 0; i < 400 && ahead === undefined; i += 1) {
-        await rig.run(1, 1);
-        ahead = rig.ahead(from, mine);
+    const written = (): number =>
+      rig.socket.written.filter(
+        (f) => f.type === "data" && f.streamId === probe.streamId,
+      ).length;
+    // 链路每回合只写出一帧。
+    const step = (): Promise<void> => rig.run(1, 1);
+    for (let key = 1; key <= 3; key += 1) {
+      // 1. 上一帧已写出后再来的按键：稀疏流，且排在大流量流前面。
+      const from = rig.socket.written.length;
+      probe.write(Buffer.alloc(16, key));
+      expect(probe.flow.queued).toBe(1);
+      for (let i = 0; i < 2000 && probe.queuedBytes > 0; i += 1) await step();
+      expect(probe.queuedBytes).toBe(0);
+      // 2. 它的帧已交给 ws、还没写出，写端又取过一批之后，下一个按键到达：上一帧没写出，
+      //    不算稀疏，进老流（按批追平会把它当成稀疏流）。
+      const sends = rig.socket.sends;
+      for (let i = 0; i < 2000 && rig.socket.sends === sends; i += 1) {
+        await step();
       }
-      expect(ahead).toBeDefined();
-      worst = Math.max(worst, ahead as number);
-      // 上一帧刚写出、这一批还排在 ws 里没写完，下一个按键就来了。
-      expect(rig.socket.bufferedAmount).toBeGreaterThan(LOW_WATER);
-      from = rig.socket.written.length;
-      probe.write(Buffer.alloc(16, key + 2));
+      expect(rig.socket.sends).toBeGreaterThan(sends);
+      expect(written()).toBe(2 * key - 2);
+      probe.write(Buffer.alloc(16, key));
+      expect(probe.flow.queued).toBe(2);
+      // 两帧都写出、出队列也空了，再进下一轮。
+      for (let i = 0; i < 4000 && written() < 2 * key; i += 1) await step();
+      expect(written()).toBe(2 * key);
+      const ahead = rig.ahead(
+        from,
+        (f) => f.type === "data" && f.streamId === probe.streamId,
+      );
+      // 第一个按键之前至多「低水位 + 一批 + 一块」。
+      expect(ahead as number).toBeLessThanOrEqual(
+        4 * CHUNK + WRITE_BUDGET + CHUNK,
+      );
     }
-    expect(worst).toBeLessThanOrEqual(BOUND);
   });
 
   it("对照：不走调度（先进先出）时探测帧前的字节远超上界", async () => {
