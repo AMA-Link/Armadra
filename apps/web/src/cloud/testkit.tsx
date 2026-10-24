@@ -2,6 +2,7 @@ import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach } from "vitest";
 
 import { ConsoleRoot } from "./ConsoleRoot";
+import type { HostEndorser } from "./trust/endorser";
 import {
   createMockApi,
   type MockApi,
@@ -35,10 +36,16 @@ export function installConsoleHarness() {
   });
 }
 
-export function mount(path: string, options: MockOptions = {}): MockApi {
+export function mount(
+  path: string,
+  options: MockOptions = {},
+  endorser: HostEndorser | null = null,
+  prepare?: (api: MockApi) => void,
+): MockApi {
   visit(path);
   const api = createMockApi(options);
-  render(<ConsoleRoot api={api} />);
+  prepare?.(api);
+  render(<ConsoleRoot api={api} endorser={endorser} />);
   return api;
 }
 

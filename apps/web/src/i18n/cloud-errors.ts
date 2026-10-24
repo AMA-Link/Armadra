@@ -40,7 +40,7 @@ export const cloudErrors: MessageModule = {
     "cloud.billing.limit.hosts": "主机数已达上限，升级或撤销一台主机",
     "cloud.billing.limit.members": "成员数已达上限，升级或移除一位成员",
     "cloud.billing.limit.guests": "访客数已达上限，升级或移除一位访客",
-    "cloud.billing.limit.connections": "同时连接已达上限，关掉一个连接后重试",
+    "cloud.billing.limit.concurrent": "同时连接已达上限，关掉一个连接后重试",
     "cloud.billing.limit.traffic": "本月流量已用完，升级后继续",
     "cloud.billing.limit.teams": "免费版只能建一个团队，升级后再建",
   },
@@ -84,7 +84,7 @@ export const cloudErrors: MessageModule = {
       "Member limit reached. Upgrade or remove a member",
     "cloud.billing.limit.guests":
       "Guest limit reached. Upgrade or remove a guest",
-    "cloud.billing.limit.connections":
+    "cloud.billing.limit.concurrent":
       "Connection limit reached. Close a connection and try again",
     "cloud.billing.limit.traffic":
       "Monthly traffic used up. Upgrade to continue",

@@ -17,6 +17,7 @@ import { PersonalPage } from "./personal/PersonalPages";
 import { CreateTeamDialog } from "./team/CreateTeamDialog";
 import { DeletedTeamPage } from "./team/DeletedTeamPage";
 import { TeamPage } from "./team/TeamPage";
+import { EndorserProvider, type HostEndorser } from "./trust/endorser";
 import { navigate, useRoute, type RouteMatch } from "./router";
 import { ConsoleShell } from "./shell/ConsoleShell";
 import { PageHeader } from "./shell/PageHeader";
@@ -323,10 +324,13 @@ function ConsoleData({ onJoined }: { onJoined?: () => void }) {
 export function ConsoleRoot({
   session,
   api: given,
+  endorser = null,
   onJoined,
 }: {
   session?: ConsoleSession | null;
   api?: CloudApi;
+  /** 端到端背书（设备信任页）；没有就一律「在已信任的设备上处理」。 */
+  endorser?: HostEndorser | null;
   /** `/j/` 的分享链接加入成功、画布接管（由入口给）。 */
   onJoined?: () => void;
 }) {
@@ -337,7 +341,9 @@ export function ConsoleRoot({
   return (
     <QueryClientProvider client={queryClient}>
       <CloudApiProvider api={api}>
-        <ConsoleData {...(onJoined ? { onJoined } : {})} />
+        <EndorserProvider endorser={endorser}>
+          <ConsoleData {...(onJoined ? { onJoined } : {})} />
+        </EndorserProvider>
         <Toaster />
       </CloudApiProvider>
     </QueryClientProvider>

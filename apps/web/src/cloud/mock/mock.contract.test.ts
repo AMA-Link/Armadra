@@ -36,6 +36,7 @@ function optionsFor(key: string) {
   // 授予的黄金入参指向一条已有的授予（更新、撤销、撤销某人的访问都命中它）。
   if (/^(grants\.|sources\.accessRevoke)/.test(key))
     return { ...base, grantsGolden: true };
+  if (key === "trust.reject") return { ...base, goldenTrust: true };
   if (key === "teams.leave")
     return { ...base, roles: { "dev-team": "admin" } } as const;
   return base;
