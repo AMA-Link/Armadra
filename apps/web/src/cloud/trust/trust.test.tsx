@@ -8,7 +8,7 @@ import {
 import { describe, expect, it, vi } from "vitest";
 
 import { installDomPolyfills } from "../../app/test-harness";
-import { MOCK_PERSONAL } from "../mock/fixtures";
+import { MOCK_PERSONAL, MOCK_TEAMS } from "../mock/fixtures";
 import { h1, installConsoleHarness, mount } from "../testkit";
 import { addPendingIds } from "../mock/pending-ids";
 import type { HostEndorser } from "./endorser";
@@ -192,9 +192,55 @@ describe("团队 · 设备信任", () => {
     expect(within(dialog).queryByRole("button", { name: "信任" })).toBeNull();
   });
 
-  it("主机答 forbidden 同样算不是受信设备，并让受信判定作废重判", async () => {
+  it("主机答 forbidden：只这一条请求记成不可背书，同一台主机的另一条仍可信任", async () => {
+    const host = endorser([], async (request) => {
+      if (request.pendingId === "pending_trust_ipad")
+        throw Object.assign(new Error("forbidden"), { code: "forbidden" });
+    });
+    const probe = vi.fn(async () => true);
+    host.canEndorse = probe;
+    // goldenTrust 多一条与 iPad 同一台主机的请求。
+    mount(
+      "/t/rd/trust",
+      { ...OPTIONS, goldenTrust: true },
+      host,
+      addPendingIds,
+    );
+    const lisi = async () =>
+      (await rows()).filter((row) => row.textContent?.includes("李四"));
+    expect(await lisi()).toHaveLength(2);
+    const dialog = await openDialog((await lisi())[0]!);
+    // 同一台主机只判一次受信（两条李四 + 赵六，两台主机）。
+    expect(probe).toHaveBeenCalledTimes(2);
+    typeCode(dialog, "222222");
+    fireEvent.click(within(dialog).getByRole("button", { name: "信任" }));
+    expect(
+      await within(dialog).findByText("在已信任的设备上处理"),
+    ).toBeTruthy();
+    expect(within(dialog).queryByRole("button", { name: "信任" })).toBeNull();
+    fireEvent.click(within(dialog).getByRole("button", { name: "取消" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    // 最终状态：被拒的那条是徽标、没有按钮；没有重判把按钮请回来。
+    const [refused, sibling] = await lisi();
+    expect(within(refused!).getByText("在已信任的设备上处理")).toBeTruthy();
+    expect(within(refused!).queryByRole("button")).toBeNull();
+    await new Promise((done) => setTimeout(done, 30));
+    expect(within((await lisi())[0]!).queryByRole("button")).toBeNull();
+    expect(probe).toHaveBeenCalledTimes(2);
+    // 同一台主机的另一条请求不受影响，还能信任。
+    expect(within(sibling!).getByRole("button", { name: "信任" })).toBeTruthy();
+    const second = await openDialog(sibling!);
+    typeCode(second, "333333");
+    fireEvent.click(within(second).getByRole("button", { name: "信任" }));
+    await waitFor(() => expect(host.approve).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+  });
+
+  it("主机答 device_untrusted：这台主机的受信判定作废重判，被拒的那条仍不可背书", async () => {
     const host = endorser([], async () => {
-      throw Object.assign(new Error("forbidden"), { code: "forbidden" });
+      throw Object.assign(new Error("device_untrusted"), {
+        code: "device_untrusted",
+      });
     });
     const probe = vi.fn(async () => true);
     host.canEndorse = probe;
@@ -203,13 +249,32 @@ describe("团队 · 设备信任", () => {
       row.textContent?.includes("李四"),
     )!;
     const dialog = await openDialog(ipad);
-    expect(probe).toHaveBeenCalledTimes(2);
     typeCode(dialog, "222222");
     fireEvent.click(within(dialog).getByRole("button", { name: "信任" }));
     expect(
       await within(dialog).findByText("在已信任的设备上处理"),
     ).toBeTruthy();
     await waitFor(() => expect(probe.mock.calls.length).toBeGreaterThan(2));
+    fireEvent.click(within(dialog).getByRole("button", { name: "取消" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    const after = (await rows()).find((row) =>
+      row.textContent?.includes("李四"),
+    )!;
+    expect(within(after).queryByRole("button")).toBeNull();
+  });
+
+  it("通道一时开不了（判定抛错）：这一行按不可背书画，不渲染按钮", async () => {
+    const host = endorser([]);
+    host.canEndorse = vi.fn(async () => {
+      throw Object.assign(new Error("e"), { code: "e2e_device_unavailable" });
+    });
+    mount("/t/rd/trust", OPTIONS, host, addPendingIds);
+    for (const row of await rows()) {
+      await waitFor(() =>
+        expect(within(row).getByText("在已信任的设备上处理")).toBeTruthy(),
+      );
+      expect(within(row).queryByRole("button")).toBeNull();
+    }
   });
 
   it("受信判定缓存：同一台主机重复进页面不再重开通道（窗口聚焦也不重判）", async () => {
@@ -244,6 +309,49 @@ describe("团队 · 设备信任", () => {
     );
     await waitFor(() => expect(screen.queryByText("李四")).toBeNull());
     expect(host.approve).not.toHaveBeenCalled();
+  });
+
+  it("deviceTrustRequested / Resolved 只让列表过期，不触发受信判定重判（免得判定与事件回环）", async () => {
+    const host = endorser([]);
+    const probe = vi.fn(async () => true);
+    host.canEndorse = probe;
+    let listed = 0;
+    const api = mount("/t/rd/trust", OPTIONS, host, (made) => {
+      addPendingIds(made);
+      const list = made.client.trust.list;
+      made.client.trust.list = (async (...args: Parameters<typeof list>) => {
+        listed += 1;
+        return list(...args);
+      }) as typeof list;
+    });
+    await rows();
+    await waitFor(() => expect(probe).toHaveBeenCalledTimes(2));
+    expect(listed).toBe(1);
+    // 带团队页实际的 teamId（rd 团队）：走的是团队空间的失效路径，不是个人空间的。
+    const teamId = MOCK_TEAMS[0]!.teamId;
+    act(() =>
+      api.emit({
+        type: "deviceTrustRequested",
+        requestId: "trust_new",
+        sourceId: "s",
+        teamId,
+        atMs: 1,
+      } as never),
+    );
+    await waitFor(() => expect(listed).toBe(2));
+    act(() =>
+      api.emit({
+        type: "deviceTrustResolved",
+        requestId: "trust_new",
+        outcome: "trusted",
+        teamId,
+        atMs: 1,
+      } as never),
+    );
+    await waitFor(() => expect(listed).toBe(3));
+    await new Promise((done) => setTimeout(done, 50));
+    await rows();
+    expect(probe).toHaveBeenCalledTimes(2);
   });
 
   it("deviceTrustResolved 让列表重拉；空：「没有待信任的设备」", async () => {

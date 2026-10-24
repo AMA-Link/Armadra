@@ -213,6 +213,8 @@ export interface CloudTrustRequest {
   readonly device: { readonly name: string; readonly platform: string };
   readonly requestedAtMs: number;
   readonly expiresAtMs: number;
+  /** 主机 core 上这条待确认设备的号；云端 0.11 起可选下发，旧云端没有。 */
+  readonly pendingId?: string;
 }
 
 const ROLES: ReadonlySet<string> = new Set([
@@ -1178,6 +1180,9 @@ export class RemoteClient {
           device: { name: str(device.name), platform: str(device.platform) },
           requestedAtMs: num(row.requestedAtMs),
           expiresAtMs: num(row.expiresAtMs),
+          ...(str(row.pendingId) === ""
+            ? {}
+            : { pendingId: str(row.pendingId) }),
         },
       ];
     });

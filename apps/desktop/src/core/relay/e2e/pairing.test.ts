@@ -1,5 +1,5 @@
 import { randomBytes } from "node:crypto";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { signAssertion } from "../../identity/cloud/fake.fixture";
 import { cloudProvider } from "../../identity/cloud/store";
@@ -457,5 +457,84 @@ describe("团队成员背书（契约 §60.4）", () => {
     admin.client.close();
     target.client.close();
     client.close();
+  });
+});
+
+describe("cloud/login 的只判定模式 probe", () => {
+  const sessions = () =>
+    (
+      world.core.database
+        .prepare("SELECT COUNT(*) AS n FROM identity_sessions")
+        .get() as { n: number }
+    ).n;
+
+  function probe(client: E2eTestClient) {
+    return client.request({
+      method: "POST",
+      path: "/api/identity/cloud/login",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        assertion: signAssertion({ aud: sourceId, nowMs: Date.now() }),
+        probe: true,
+      }),
+    });
+  }
+
+  it("受信设备：答 trusted，不开会话", async () => {
+    const trusted = await connect(41, e2ePairing()!.issue().secret);
+    expect(
+      (
+        await login(
+          trusted,
+          signAssertion({ aud: sourceId, nowMs: Date.now() }),
+        )
+      ).status,
+    ).toBe(200);
+    const before = sessions();
+    const answer = await probe(trusted);
+    expect(answer.status, answer.body.toString()).toBe(200);
+    expect(answer.json()).toEqual({ trusted: true });
+    expect(sessions()).toBe(before);
+    trusted.close();
+  });
+
+  it("不受信的设备：device_untrusted，不建待确认、不发事件、不开会话", async () => {
+    const trusted = await connect(42, e2ePairing()!.issue().secret);
+    await login(trusted, signAssertion({ aud: sourceId, nowMs: Date.now() }));
+    const devices = e2eDevices()!;
+    const admit = vi.spyOn(devices, "admit");
+    const rows = devices.list().length;
+    const before = sessions();
+    const stranger = await connect(43);
+    const answer = await probe(stranger);
+    expect(answer.status).toBe(403);
+    expect(answer.json()).toMatchObject({ code: "device_untrusted" });
+    expect(admit).not.toHaveBeenCalled();
+    expect(devices.list()).toHaveLength(rows);
+    expect(devices.list().some((row) => row.status === "pending")).toBe(false);
+    expect(sessions()).toBe(before);
+    // 同一张断言没被消耗成「待确认」：之后真登录照常建待确认。
+    const real = await login(
+      stranger,
+      signAssertion({ aud: sourceId, nowMs: Date.now() }),
+    );
+    expect(real.json()).toMatchObject({ code: "device_pending" });
+    trusted.close();
+    stranger.close();
+  });
+
+  it("不经端到端通道的 probe：bad_request", async () => {
+    const answer = await fetch(`${world.base}/api/identity/cloud/login`, {
+      method: "POST",
+      headers: {
+        origin: "http://127.0.0.1:1420",
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        assertion: signAssertion({ aud: sourceId, nowMs: Date.now() }),
+        probe: true,
+      }),
+    });
+    expect(answer.status).toBe(400);
   });
 });
