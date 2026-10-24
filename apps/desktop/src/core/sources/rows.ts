@@ -123,10 +123,14 @@ export function saveRelayRoute(
     share: CloudLoginShare | undefined | null;
     /** Armadra 云挂载时自己的云得出的团队（契约 §86）。 */
     team?: { teamId: string; teamName: string } | undefined;
+    /** 归属已由自己的云确定（SaaS 目录明确答了）：不受「已是 mine 就一直是 mine」的保护。 */
+    determined?: boolean;
   },
 ): SourceRow {
   const { existing } = input;
-  const shared = input.share !== undefined && existing?.origin !== "mine";
+  const shared =
+    input.share !== undefined &&
+    (input.determined === true || existing?.origin !== "mine");
   store.upsert({
     sourceId: input.sourceId,
     kind: existing?.kind ?? "relayed",

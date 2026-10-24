@@ -1422,41 +1422,70 @@ describe("契约 §86：Armadra 云挂载的团队与归属", () => {
     delete world.cloud.assertionAud;
   });
 
-  it("me.sources 取不到：不默认判成别人的，沿用原归属", async () => {
+  const listed = async () =>
+    (await saas.list()).sources.find((one) => one.sourceId === RELAYED_ID);
+
+  it("me.sources 取不到：新挂载按 shared，恢复后再挂以目录为准；已有行保持原归属", async () => {
     world.cloud.sourcesFail = true;
     world.cloud.assertionTeam = "team-1";
-    // 新挂载、目录取不到：不判成别人的。
     expect(await saas.mount({ serviceId, sourceId: RELAYED_ID })).toMatchObject(
-      { origin: "mine", teamId: "", teamName: "" },
+      { origin: "shared", teamId: "team-1", teamName: "研发组" },
     );
-    await saas.remove(RELAYED_ID);
+    // 目录恢复，明确不是自己的：仍是 shared 带团队。
     world.cloud.sourcesFail = false;
     world.cloud.owner = false;
-    await saas.mount({ serviceId, sourceId: RELAYED_ID });
-    // 已是别人分享的：目录取不到时仍是 shared，团队不动。
+    expect(await saas.mount({ serviceId, sourceId: RELAYED_ID })).toMatchObject(
+      { origin: "shared", teamId: "team-1", teamName: "研发组" },
+    );
+    // 目录又失败：已有行保持原归属与团队。
     world.cloud.sourcesFail = true;
+    world.cloud.assertionTeam = "team-2";
     expect(await saas.mount({ serviceId, sourceId: RELAYED_ID })).toMatchObject(
       { origin: "shared", teamId: "team-1", teamName: "研发组" },
     );
   });
 
-  it("中继重新登录时按自己的云刷新团队（换团队、被移出）", async () => {
+  it("目录成功但没列出这台：按 shared", async () => {
+    world.cloud.sources.splice(0);
+    expect(await saas.mount({ serviceId, sourceId: RELAYED_ID })).toMatchObject(
+      { origin: "shared" },
+    );
+  });
+
+  it("目录明确答了就覆盖已有归属：owner=false 把 mine 改 shared，owner=true 把 shared 改 mine 并清团队", async () => {
+    world.cloud.assertionTeam = "team-1";
+    await saas.mount({ serviceId, sourceId: RELAYED_ID });
+    expect(await listed()).toMatchObject({ origin: "mine" });
     world.cloud.owner = false;
+    expect(await saas.mount({ serviceId, sourceId: RELAYED_ID })).toMatchObject(
+      { origin: "shared", teamId: "team-1", teamName: "研发组" },
+    );
+    world.cloud.owner = true;
+    expect(await saas.mount({ serviceId, sourceId: RELAYED_ID })).toMatchObject(
+      { origin: "mine", teamId: "", teamName: "" },
+    );
+  });
+
+  it("中继重新登录按自己的云纠正归属：mine 变 shared 带团队，shared 变 mine", async () => {
     world.cloud.assertionTeam = "team-1";
     await saas.mount({ serviceId, sourceId: RELAYED_ID });
     const core = world.cores.get(`${ISSUER}/s/${RELAYED_ID}`)!;
-    world.cloud.assertionTeam = "team-2";
+    world.cloud.owner = false;
     core.sessions.revokeAll();
     await saas.session(RELAYED_ID, "relayed");
-    expect(
-      (await saas.list()).sources.find((one) => one.sourceId === RELAYED_ID),
-    ).toMatchObject({ origin: "shared", teamId: "team-2", teamName: "" });
-    delete world.cloud.assertionTeam;
+    expect(await listed()).toMatchObject({
+      origin: "shared",
+      teamId: "team-1",
+      teamName: "研发组",
+    });
+    world.cloud.owner = true;
     core.sessions.revokeAll();
     await saas.session(RELAYED_ID, "relayed");
-    expect(
-      (await saas.list()).sources.find((one) => one.sourceId === RELAYED_ID),
-    ).toMatchObject({ teamId: "", teamName: "" });
+    expect(await listed()).toMatchObject({
+      origin: "mine",
+      teamId: "",
+      teamName: "",
+    });
   });
 
   it("自己的主机（owner）：mine，不记团队；个人中转挂载不记团队", async () => {

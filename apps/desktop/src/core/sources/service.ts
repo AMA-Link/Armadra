@@ -32,7 +32,7 @@ import type {
 } from "./remote-client";
 import { parsePairLink } from "./pair-link";
 import { CloudConsole } from "./saas-console";
-import { refreshMountedTeam, saasMountInfo } from "./saas-mount";
+import { refreshMountedAttribution, saasMountInfo } from "./saas-mount";
 import { CloudSignIn, type CloudSignInHost } from "./saas-signin";
 
 export { parsePairLink };
@@ -694,16 +694,16 @@ export class SourcesService {
         if (logged.share !== undefined) {
           this.store.setShare(row.sourceId, shareColumns(logged.share));
         }
-        // 团队随断言变：Armadra 云的别人主机按自己的云刷新。
-        if (row.origin === "shared")
-          await refreshMountedTeam(
-            this.remote,
-            this.store,
-            remote,
-            this.access.get(remote.serviceId),
-            assertion,
-            { endpoint: this.endpoint(remote), sourceId: row.sourceId },
-          );
+        // 归属与团队随断言变：Armadra 云的主机按自己的云纠正。
+        await refreshMountedAttribution(
+          this.remote,
+          this.store,
+          remote,
+          this.access.get(remote.serviceId),
+          assertion,
+          { endpoint: this.endpoint(remote), sourceId: row.sourceId },
+          logged.share,
+        );
         return logged;
       });
     }
@@ -1223,8 +1223,13 @@ export class SourcesService {
       endpoint: this.endpoint(remote),
       sourceId: input.sourceId,
     });
-    // 目录取不到（`shared` 未知）：沿用这台原来的归属，不默认判成别人的，也不动团队。
-    const shared = saas?.shared ?? existing?.origin === "shared";
+    // 归属（契约 §86.2）：目录明确答了就以它为准（覆盖已有的）；目录调用失败时已有行
+    // 保持原归属、新挂载按 shared，下次再挂可自愈；非 SaaS 远程（个人中转）不是别人的。
+    const shared =
+      remote.kind === "saas" &&
+      (saas?.shared ??
+        (existing === undefined || existing.origin === "shared"));
+    const decided = saas?.shared !== undefined;
     const row = saveRelayRoute(this.store, this.now(), {
       sourceId: input.sourceId,
       existing,
@@ -1233,7 +1238,12 @@ export class SourcesService {
       issuer: remote.issuer,
       principalHint: credentials.principalHint,
       share: shared ? (credentials.share ?? null) : undefined,
-      team: saas?.team,
+      // 目录失败且已有行：团队不动。
+      team:
+        saas === undefined || (!decided && existing !== undefined)
+          ? undefined
+          : { teamId: saas.teamId, teamName: saas.teamName },
+      determined: decided,
     });
     this.options.log.info("mounted a relayed source", {
       sourceId: input.sourceId,

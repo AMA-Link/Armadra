@@ -7,15 +7,18 @@
  */
 
 import type { RemoteClient, RemoteEndpoint } from "./remote-client";
+import { MINE, shareColumns } from "./rows";
+import type { CloudLoginShare } from "./source-client";
 import type { RemoteRow, SourcesStore } from "./store";
 
 export interface SaasMountInfo {
-  /** 不是我自己的主机（`me.sources` 的 `owner` 为假）：记 `shared`；目录取不到是 `undefined`（不判）。 */
+  /**
+   * 目录明确 `owner` 为假（或目录成功但没列出这台）= `true`，为真 = `false`（自己的）；
+   * 目录调用失败 = `undefined`：没判出来，已有的行保持原归属，新挂载按 shared。
+   */
   readonly shared: boolean | undefined;
   readonly teamId: string;
   readonly teamName: string;
-  /** 能据以写团队的值；归属没判出来（目录取不到）时没有，调用方不动原有的团队。 */
-  readonly team: { teamId: string; teamName: string } | undefined;
 }
 
 /** 断言（JWS）载荷里的 `team.teamId`；`aud` 不是这台源或认不出是空串。 */
@@ -47,8 +50,8 @@ export async function saasMountInfo(
     .sources(endpoint, accessToken)
     .catch(() => undefined);
   const entry = listed?.find((one) => one.sourceId === sourceId);
-  // 目录取不到、或目录里没有这台：不知道是不是别人的，不判（调用方沿用原归属与团队）。
-  const shared = entry === undefined ? undefined : entry.owner !== true;
+  // 目录成功但没列出这台：按 shared（与原行为一致）；目录调用失败才是未判。
+  const shared = listed === undefined ? undefined : entry?.owner !== true;
   const teamId =
     shared === false ? "" : assertionTeamId(signed.assertion, sourceId);
   let teamName = "";
@@ -60,24 +63,37 @@ export async function saasMountInfo(
       }
     }
   }
-  return {
-    shared,
-    teamId,
-    teamName,
-    team: shared === undefined ? undefined : { teamId, teamName },
-  };
+  return { shared, teamId, teamName };
 }
 
-/** 中继重新登录后按自己的云刷新团队（被移出团队、主机换了团队）；只改别人分享的行。 */
-export async function refreshMountedTeam(
+/**
+ * 中继重新登录后按自己的云纠正归属与团队：目录明确答了才改（别人的 → shared 带团队，
+ * 自己的 → mine 清团队），目录失败不动。
+ */
+export async function refreshMountedAttribution(
   client: RemoteClient,
   store: SourcesStore,
   remote: RemoteRow,
   token: { accessToken: string } | undefined,
   signed: { assertion: string },
   at: { endpoint: RemoteEndpoint; sourceId: string },
+  share: CloudLoginShare | undefined,
 ): Promise<void> {
   const info = await saasMountInfo(client, remote, token, signed, at);
-  if (info?.shared === true && info.team !== undefined)
-    store.setTeam(at.sourceId, info.team);
+  if (info?.shared === undefined) return;
+  const row = store.get(at.sourceId);
+  if (!info.shared) return store.setAttribution(at.sourceId, MINE);
+  const base = shareColumns(share, info);
+  // 分享方这次没报分享信息、行本来就是 shared：留着原来的，只纠正团队。
+  store.setAttribution(at.sourceId, {
+    origin: "shared",
+    ...(share === undefined && row?.origin === "shared"
+      ? {
+          ...base,
+          ownerLabel: row.ownerLabel,
+          shareRole: row.shareRole,
+          shareExpiresAtMs: row.shareExpiresAtMs,
+        }
+      : base),
+  });
 }
