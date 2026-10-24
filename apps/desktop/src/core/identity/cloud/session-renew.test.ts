@@ -1,4 +1,12 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import {
+  afterAll,
+  afterEach,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+} from "vitest";
 
 import { type Fixture, fixture } from "../../workspaces/fixture";
 import { type ChannelPeer, setE2eDevices } from "../../relay/e2e/peer";
@@ -31,6 +39,8 @@ let core: Fixture;
 let store: IdentityStore;
 let service: IdentityService;
 let cloud: CloudService;
+/** 只有个别用例改 SaaS 会话寿命；缺省用产品值。 */
+let saasTtlMs: number | undefined;
 
 const peer = (id: string): ChannelPeer =>
   ({
@@ -58,6 +68,7 @@ beforeEach(async () => {
         coreVersion: "0.0.0-test",
         transport: world.transport,
         secrets: () => backend,
+        ...(saasTtlMs === undefined ? {} : { saasSessionTtlMs: saasTtlMs }),
       });
       cloud.attachRelay(relay);
     },
@@ -322,6 +333,52 @@ describe("带当前刷新令牌重登（#484）", () => {
       "device_pending",
       "device_pending",
       "device_pending",
+      "rate_limited",
+    ]);
+  });
+});
+
+describe("寿命配得很短时续期退还窗口跟着缩（#566 复核）", () => {
+  beforeAll(() => {
+    saasTtlMs = 5 * 60 * 1000;
+  });
+  afterAll(() => {
+    saasTtlMs = undefined;
+  });
+
+  it("寿命 5 分钟：刚开会话就续照常扣，临近到期才退还", async () => {
+    await registerSaas();
+    let current = await login(
+      "acct:h",
+      { role: "editor" },
+      { channel: peer("a") },
+    );
+    const codes: string[] = [];
+    for (let round = 0; round < 6; round += 1) {
+      // 剩余约 5 分钟：小于固定的 10 分钟窗口，但不小于寿命的一半，不该退还。
+      codes.push(
+        await login(
+          "acct:h",
+          { role: "editor" },
+          {
+            channel: peer("a"),
+            refreshToken: current.credentials.refreshToken,
+          },
+        ).then(
+          (next) => {
+            current = next;
+            return "ok";
+          },
+          (error: { code: string }) => error.code,
+        ),
+      );
+    }
+    expect(codes).toEqual([
+      "ok",
+      "ok",
+      "ok",
+      "ok",
+      "rate_limited",
       "rate_limited",
     ]);
   });

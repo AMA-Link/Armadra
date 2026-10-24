@@ -424,9 +424,11 @@ export class CloudLogin {
           })
         : undefined;
     // 真正的续期（同一会话）且临近到期时退还入口预扣的那一次；提前续的照常扣（#563）。
+    // 窗口不超过寿命的一半：寿命配得很短时，续完的剩余寿命不会一开始就落在窗口里。
     state.refund =
       continued !== undefined &&
-      continued.remainingMs < RENEWAL_REFUND_WINDOW_MS;
+      continued.remainingMs <
+        Math.min(RENEWAL_REFUND_WINDOW_MS, this.saasTtlMs / 2);
     const credentials =
       continued ??
       (() => {
