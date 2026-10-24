@@ -72,9 +72,11 @@ describe("saveRelayRoute 的团队", () => {
       shareRole: "viewer",
       shareExpiresAtMs: 5,
     });
-    expect(
-      save({ share: null, issuer: "https://other.test" }),
-    ).toMatchObject({ origin: "shared", ownerLabel: "", shareRole: "" });
+    expect(save({ share: null, issuer: "https://other.test" })).toMatchObject({
+      origin: "shared",
+      ownerLabel: "",
+      shareRole: "",
+    });
     save({ share: { ownerName: "Bob", role: "viewer", expiresAtMs: 0 } });
     expect(
       save({ share: null, issuer: "https://other.test", determined: true }),
