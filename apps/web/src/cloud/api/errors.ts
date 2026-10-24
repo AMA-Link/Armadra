@@ -56,6 +56,8 @@ export const CLOUD_MESSAGE_BY_CODE: Readonly<Record<string, string>> = {
   team_owner_required: "error.teamOwnerRequired",
   team_suspended: "error.teamSuspended",
   team_deleted: "error.teamDeleted",
+  // 协议包 0.11.0（cloud#124）才有的码：团队还有在线主机，不能删除。
+  team_hosts_online: "error.teamHostsOnline",
   invitation_expired: "error.invitationExpired",
   invitation_email_mismatch: "error.invitationEmailMismatch",
   invitation_revoked: "error.invitationRevoked",
