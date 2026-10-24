@@ -64,9 +64,19 @@ export type JoinWithAccept = (
 const hostedJoin: JoinWithAccept = (link, accepted) =>
   startHostedRelay({ issuer: link.issuer }).join(link, accepted);
 
-const hostedResume = async (link: JoinLink): Promise<boolean> =>
-  (await startHostedRelay({ issuer: link.issuer }).resumeLink(link.linkId))
-    ?.kind === "entered";
+/** 「打开」的结果：进去了 / 这条记录没有了（回到「加入」）/ 连不上或进主机失败（记录还在，保留「打开」）。 */
+export type ResumeOutcome = "entered" | "gone" | "failed";
+
+const hostedResume = async (link: JoinLink): Promise<ResumeOutcome> => {
+  const resumed = await startHostedRelay({
+    issuer: link.issuer,
+  }).resumeLink(link.linkId);
+  return resumed?.kind === "entered"
+    ? "entered"
+    : resumed?.kind === "gone"
+      ? "gone"
+      : "failed";
+};
 
 /** 加入失败 → 界面那句：云端的码按控制台文案，中继与 core 那一段按个人中转的文案。 */
 function failureText(failure: unknown, fallback: string): string {
@@ -102,8 +112,8 @@ export function LinkPage({
   onJoined: () => void;
   onDone: () => void;
   join?: JoinWithAccept;
-  /** 用本机留着的访客记录重新进入；进去了答 `true`（缺省经页面的托管中继；测试换掉）。 */
-  resume?: (link: JoinLink) => Promise<boolean>;
+  /** 用本机留着的访客记录重新进入；结果见 `ResumeOutcome`（缺省经页面的托管中继；测试换掉）。 */
+  resume?: (link: JoinLink) => Promise<ResumeOutcome>;
 }) {
   const t = useT();
   const api = useCloudApi();
@@ -185,13 +195,13 @@ export function LinkPage({
     setError("");
     try {
       const resumed = await resumeJoined(link);
-      if (resumed) enterDone();
+      if (resumed === "entered") enterDone();
       else {
-        setJoinedBefore(false);
+        // 记录没有了才回到「加入」；连不上只提示错误，保留「打开」，不引导重新接受（会多耗链接次数）。
+        if (resumed === "gone") setJoinedBefore(false);
         setError(t("links.page.failed"));
       }
     } catch {
-      setJoinedBefore(false);
       setError(t("links.page.failed"));
     } finally {
       setBusy(false);

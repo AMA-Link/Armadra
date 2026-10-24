@@ -50,6 +50,7 @@ import { type ShareRole, grantScopes } from "../roles";
 import {
   type IdentityService,
   MIN_BOUNDED_SESSION_TTL_MS,
+  RENEWAL_REFUND_WINDOW_MS,
   SAAS_SESSION_TTL_MS,
   type SessionCredentials,
 } from "../service";
@@ -218,7 +219,7 @@ export class CloudLogin {
   /**
    * 登录：按 `(iss, sub)` 每分钟 5 次限流，**入口预扣**（验完断言、查完桶就同步占位，并发突发绕不过），
    * 失败一律不退——包括 `device_pending`：否则同一份断言换新设备钥可以无限插待确认记录、刷屏主人
-   * （#484）。只有真正的续期（带刷新令牌在同一会话上续）成功时才退还，免得每小时的续期互相挤掉。
+   * （#484）。只有真正的续期（带刷新令牌在同一会话上续）成功、且会话剩余寿命不足 `RENEWAL_REFUND_WINDOW_MS` 时才退还，免得每小时的续期互相挤掉；提前续的照常扣。
    */
   async login(input: LoginInput): Promise<CloudLoginResult> {
     const state: { key?: string; refund: boolean } = { refund: false };
@@ -422,8 +423,12 @@ export class CloudLogin {
             ttlMs: bounded.ttlMs,
           })
         : undefined;
-    // 真正的续期（同一会话）退还入口预扣的那一次。
-    state.refund = continued !== undefined;
+    // 真正的续期（同一会话）且临近到期时退还入口预扣的那一次；提前续的照常扣（#563）。
+    // 窗口不超过寿命的一半：寿命配得很短时，续完的剩余寿命不会一开始就落在窗口里。
+    state.refund =
+      continued !== undefined &&
+      continued.remainingMs <
+        Math.min(RENEWAL_REFUND_WINDOW_MS, this.saasTtlMs / 2);
     const credentials =
       continued ??
       (() => {

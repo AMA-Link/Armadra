@@ -860,8 +860,87 @@ describe("只续当前链接的访客记录（resumeLink）", () => {
     });
     expect(entered).toEqual([OTHER]);
     // 没有这条链接的记录：不进任何主机，别的链接的记录原样留着。
-    await expect(relay.resumeLink("link-none")).resolves.toBeNull();
+    await expect(relay.resumeLink("link-none")).resolves.toEqual({
+      kind: "gone",
+    });
     expect(entered).toEqual([OTHER]);
+    expect(guestStorage.getItem(guestKey(ISSUER, "link-a"))).not.toBeNull();
+    relay.dispose();
+  });
+
+  /** 一份只有这条链接的访客记录；`fetch` 由用例给。 */
+  const solo = (fetch: typeof globalThis.fetch) => {
+    const items = new Map<string, string>();
+    const guestStorage = {
+      get length() {
+        return items.size;
+      },
+      clear: () => items.clear(),
+      getItem: (key: string) => items.get(key) ?? null,
+      key: (index: number) => [...items.keys()][index] ?? null,
+      removeItem: (key: string) => void items.delete(key),
+      setItem: (key: string, value: string) => void items.set(key, value),
+    } as Storage;
+    items.set(
+      guestKey(ISSUER, "link-a"),
+      JSON.stringify({
+        issuer: ISSUER,
+        cloudRefreshToken: "tok-a",
+        sources: { [SOURCE]: "core-a" },
+        entered: { sourceId: SOURCE, name: "a" },
+        // 带上分享信息：停在访客身份时 `guest()` 才答非 null，断言才锁得住「切回账号」。
+        share: { role: "viewer", name: "a", ownerName: "o", expiresAtMs: 0 },
+        expiresAtMs: NOW + 3_600_000,
+      }),
+    );
+    const relay = createHostedRelay({
+      issuer: ISSUER,
+      cloud: { fetch },
+      e2e: plainE2e(fetch),
+      guestStorage,
+      enter: async (options) => fakeEnter(options),
+      wake: vi.fn(),
+      createStream: () => ({
+        issuer: ISSUER,
+        state: "open",
+        close: () => undefined,
+      }),
+    });
+    return { relay, guestStorage };
+  };
+
+  it("连不上中继：答 null、页面退回账号身份、记录留着（落地页保留「打开」）", async () => {
+    const { relay, guestStorage } = solo((async () => {
+      throw new TypeError("offline");
+    }) as typeof globalThis.fetch);
+    await expect(relay.resumeLink("link-a")).resolves.toBeNull();
+    expect(relay.guest()).toBeNull();
+    expect(guestStorage.getItem(guestKey(ISSUER, "link-a"))).not.toBeNull();
+    relay.dispose();
+  });
+
+  it("进主机失败：答 signedIn、页面退回账号身份、记录留着", async () => {
+    const net = routedFetch({
+      "POST /v1/auth/refresh": () => ({
+        body: {
+          session: {
+            accessToken: "cloud-a",
+            refreshToken: "tok-a-n",
+            accessExpiresAtMs: NOW + 900_000,
+            expiresAtMs: NOW + 9_000_000,
+          },
+        },
+      }),
+      "GET /v1/me/sources": () => ({
+        body: { sources: [{ sourceId: SOURCE, name: "a", online: true }] },
+      }),
+    });
+    const { relay, guestStorage } = solo(net.fetch);
+    // 没有这台主机的断言路由：进主机失败。
+    await expect(relay.resumeLink("link-a")).resolves.toMatchObject({
+      kind: "signedIn",
+    });
+    expect(relay.guest()).toBeNull();
     expect(guestStorage.getItem(guestKey(ISSUER, "link-a"))).not.toBeNull();
     relay.dispose();
   });

@@ -1,4 +1,12 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import {
+  afterAll,
+  afterEach,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+} from "vitest";
 
 import { type Fixture, fixture } from "../../workspaces/fixture";
 import { type ChannelPeer, setE2eDevices } from "../../relay/e2e/peer";
@@ -31,6 +39,8 @@ let core: Fixture;
 let store: IdentityStore;
 let service: IdentityService;
 let cloud: CloudService;
+/** 只有个别用例改 SaaS 会话寿命；缺省用产品值。 */
+let saasTtlMs: number | undefined;
 
 const peer = (id: string): ChannelPeer =>
   ({
@@ -58,6 +68,7 @@ beforeEach(async () => {
         coreVersion: "0.0.0-test",
         transport: world.transport,
         secrets: () => backend,
+        ...(saasTtlMs === undefined ? {} : { saasSessionTtlMs: saasTtlMs }),
       });
       cloud.attachRelay(relay);
     },
@@ -211,7 +222,15 @@ describe("带当前刷新令牌重登（#484）", () => {
     );
   });
 
-  it("真正的续期不吃 (iss, sub) 每分钟 5 次的限流；新建会话照常扣", async () => {
+  /** 把这条会话的到期时间改成「还剩 remainingMs」，模拟客户端在到期前才来续。 */
+  const nearExpiry = (sessionId: string, remainingMs: number) =>
+    core.database
+      .prepare(
+        "UPDATE identity_sessions SET expires_at_ms = ?, access_expires_at_ms = MIN(access_expires_at_ms, ?) WHERE session_id = ?",
+      )
+      .run(Date.now() + remainingMs, Date.now() + remainingMs, sessionId);
+
+  it("临近到期（客户端约 60 秒前）的续期不吃 (iss, sub) 每分钟 5 次的限流；新建会话照常扣", async () => {
     await registerSaas();
     let current = await login(
       "acct:d",
@@ -219,6 +238,7 @@ describe("带当前刷新令牌重登（#484）", () => {
       { channel: peer("a") },
     );
     for (let round = 0; round < 8; round += 1) {
+      nearExpiry(current.credentials.principal.sessionId, 90_000);
       current = await login(
         "acct:d",
         { role: "editor" },
@@ -231,6 +251,44 @@ describe("带当前刷新令牌重登（#484）", () => {
     await expect(
       login("acct:d", { role: "editor" }, { channel: peer("a") }),
     ).rejects.toMatchObject({ code: "rate_limited" });
+  });
+
+  it("提前很久就续的不退还：同一 sub 的续期也有速率上限（#563）", async () => {
+    await registerSaas();
+    let current = await login(
+      "acct:g",
+      { role: "editor" },
+      { channel: peer("a") },
+    );
+    const codes: string[] = [];
+    for (let round = 0; round < 6; round += 1) {
+      // 刚开会话就续，剩余寿命远大于退还窗口。
+      codes.push(
+        await login(
+          "acct:g",
+          { role: "editor" },
+          {
+            channel: peer("a"),
+            refreshToken: current.credentials.refreshToken,
+          },
+        ).then(
+          (next) => {
+            current = next;
+            return "ok";
+          },
+          (error: { code: string }) => error.code,
+        ),
+      );
+    }
+    // 第一次登录扣 1 次，之后每次续期照扣：再成功 4 次，第 5 次起被限。
+    expect(codes).toEqual([
+      "ok",
+      "ok",
+      "ok",
+      "ok",
+      "rate_limited",
+      "rate_limited",
+    ]);
   });
 
   it("并发突发绕不过限流：同一 sub 同时 8 次新建会话，恰好 5 次成功", async () => {
@@ -275,6 +333,52 @@ describe("带当前刷新令牌重登（#484）", () => {
       "device_pending",
       "device_pending",
       "device_pending",
+      "rate_limited",
+    ]);
+  });
+});
+
+describe("寿命配得很短时续期退还窗口跟着缩（#566 复核）", () => {
+  beforeAll(() => {
+    saasTtlMs = 5 * 60 * 1000;
+  });
+  afterAll(() => {
+    saasTtlMs = undefined;
+  });
+
+  it("寿命 5 分钟：刚开会话就续照常扣，临近到期才退还", async () => {
+    await registerSaas();
+    let current = await login(
+      "acct:h",
+      { role: "editor" },
+      { channel: peer("a") },
+    );
+    const codes: string[] = [];
+    for (let round = 0; round < 6; round += 1) {
+      // 剩余约 5 分钟：小于固定的 10 分钟窗口，但不小于寿命的一半，不该退还。
+      codes.push(
+        await login(
+          "acct:h",
+          { role: "editor" },
+          {
+            channel: peer("a"),
+            refreshToken: current.credentials.refreshToken,
+          },
+        ).then(
+          (next) => {
+            current = next;
+            return "ok";
+          },
+          (error: { code: string }) => error.code,
+        ),
+      );
+    }
+    expect(codes).toEqual([
+      "ok",
+      "ok",
+      "ok",
+      "ok",
+      "rate_limited",
       "rate_limited",
     ]);
   });

@@ -67,6 +67,12 @@ export function reloginLeadMs(sessionId: string): number {
   for (let i = 0; i < sessionId.length; i++) sum += sessionId.charCodeAt(i);
   return BOUNDED_SESSION_RELOGIN_LEAD_MS - (sum % RELOGIN_JITTER_MS);
 }
+/**
+ * 续期退还 `(iss, sub)` 限流令牌的窗口（#563）：只有会话剩余寿命不足这么久时的续期才退还。客户端在
+ * 到期前约 60 秒才续（最后 30–60 秒服务端还会拒绝刷新、逼它重登），正常续期远在窗口之内；
+ * 提前很久就续的不退，同一 sub 的续期因此仍有速率上限。
+ */
+export const RENEWAL_REFUND_WINDOW_MS = 10 * 60 * 1000;
 /** 限寿会话寿命的下限：再短就是每几分钟一次重登。 */
 export const MIN_BOUNDED_SESSION_TTL_MS = 5 * 60 * 1000;
 
@@ -615,8 +621,9 @@ export class IdentityService {
         revokedAtMs: 0,
       };
       if (reused === undefined) tx.createDevice(device);
-      const accessExpiresAtMs = now + ACCESS_TTL_MS;
       const expiresAtMs = now + (request.bounded?.ttlMs ?? SESSION_TTL_MS);
+      // 限寿会话可能短于访问期（寿命下限 5 分钟），访问期截到会话到期。
+      const accessExpiresAtMs = Math.min(now + ACCESS_TTL_MS, expiresAtMs);
       const session: IdentitySession = {
         sessionId,
         deviceId: device.deviceId,
@@ -674,7 +681,7 @@ export class IdentityService {
     principalId: string;
     channelDeviceId: string;
     ttlMs: number;
-  }): SessionCredentials | undefined {
+  }): (SessionCredentials & { remainingMs: number }) | undefined {
     const sessionId = parseToken(request.refreshToken);
     if (
       sessionId === undefined ||
@@ -709,6 +716,8 @@ export class IdentityService {
           ...secrets,
           accessExpiresAtMs,
           expiresAtMs,
+          // 续之前还剩多久（登录层据此决定退不退限流令牌，#563）。
+          remainingMs: Math.max(0, live.session.expiresAtMs - now),
           principal: principalOf(
             this.store.hostId(),
             { ...live.session, accessExpiresAtMs, expiresAtMs },
