@@ -390,12 +390,17 @@ describe("授予页 · 主机很多、取数失败与撤销提示", () => {
 
   it("撤销确认依赖的访问表取失败：显示原因并给重试，重试后恢复可点", async () => {
     let broken = true;
+    let proceed: () => void = () => undefined;
+    const retryGate = new Promise<void>((go) => {
+      proceed = go;
+    });
     mount("/t/rd/grants", OPTIONS, null, (api) => {
       const real = api.client.sources.accessList;
       api.client.sources.accessList = (async (
         input: Parameters<typeof real>[0],
       ) => {
         if (broken) throw new CloudConsoleError("team_role_insufficient", 403);
+        await retryGate;
         return real(input);
       }) as typeof real;
     });
@@ -413,6 +418,9 @@ describe("授予页 · 主机很多、取数失败与撤销提示", () => {
     ).toBeNull();
     broken = false;
     fireEvent.click(retry);
+    // 重试在途：按钮转圈，不可再点。
+    await waitFor(() => expect(retry.getAttribute("aria-busy")).toBe("true"));
+    proceed();
     expect(
       await within(confirm).findByRole("button", { name: "撤销访问" }),
     ).toBeTruthy();

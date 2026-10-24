@@ -24,6 +24,8 @@ export interface ConfirmActionProps {
   readonly pending?: boolean;
   /** 确认依赖的数据取失败时给：确认按钮换成「重试」，不永远转圈。 */
   readonly onRetry?: () => void;
+  /** 重试在途时为 true：「重试」按钮转圈，不可再点。 */
+  readonly retrying?: boolean;
   /** 抛错时对话框留着，失败的提示归调用方（sonner）。 */
   readonly onConfirm: () => void | Promise<void>;
 }
@@ -37,6 +39,7 @@ export function ConfirmAction({
   consequence,
   pending = false,
   onRetry,
+  retrying = false,
   onConfirm,
 }: ConfirmActionProps) {
   const t = useT();
@@ -66,7 +69,7 @@ export function ConfirmAction({
             {t("cloud.common.cancel")}
           </ResponsiveAlertDialogCancel>
           {onRetry ? (
-            <Button variant="outline" onClick={onRetry}>
+            <Button variant="outline" loading={retrying} onClick={onRetry}>
               {t("cloud.common.retry")}
             </Button>
           ) : (
