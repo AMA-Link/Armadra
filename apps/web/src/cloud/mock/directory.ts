@@ -1,9 +1,11 @@
 import type { MeStreamEvent } from "@armadra/platform-protocol/cloud-api";
 
+import type { CloudClient } from "../api/client";
 import { CloudConsoleError } from "../api/errors";
 import {
   MOCK_ACCOUNT,
   MOCK_HOSTS,
+  MOCK_PEOPLE,
   MOCK_PERSONAL,
   MOCK_TEAMS,
   type MockHost,
@@ -25,6 +27,10 @@ export interface DirectoryOptions {
   readonly without?: readonly ("links" | "pending" | "log")[];
   /** 安全日志额外塞多少条（翻页测试用）。 */
   readonly extraLog?: number;
+  /** 多一条待信任请求（赵六的 Pixel 9，团队页的多行测试用）。 */
+  readonly moreTrust?: boolean;
+  /** 种进协议包黄金夹具里的待信任请求号（契约一致性测试的 `trust.reject` 命中它）。 */
+  readonly goldenTrust?: boolean;
 }
 
 interface Link {
@@ -63,7 +69,13 @@ export interface DirectoryState {
   without: ReadonlySet<string>;
   /** 已按主机撤销访问的账号。 */
   revokedAccess: Set<string>;
+  /** 待信任请求（已被拒绝的从这里删掉）。 */
+  trust: TrustRow[];
 }
+
+type TrustRow = Awaited<
+  ReturnType<CloudClient["trust"]["list"]>
+>["requests"][number];
 
 /** 当前口令填这个就答 `credentials_invalid`（其余都算对）。 */
 export const WRONG_PASSWORD = "wrong";
@@ -148,11 +160,57 @@ export function createDirectoryState(
       })),
     ],
     revokedAccess: new Set(),
+    trust: without.has("pending")
+      ? []
+      : trustRows(options.moreTrust === true, options.goldenTrust === true),
     without,
   };
   if (without.has("links")) state.links = [];
   if (without.has("log")) state.log = [];
   return state;
+}
+
+/** 待信任请求的样本：没有校验码（云端不经手它）。 */
+function trustRows(more: boolean, golden: boolean): TrustRow[] {
+  const now = Date.now();
+  const team = MOCK_TEAMS[0]!.teamId;
+  const rows: TrustRow[] = [
+    {
+      requestId: "trust_ipad",
+      sourceId: MOCK_PERSONAL.linkHost,
+      sourceName: "build-01",
+      teamId: team,
+      member: {
+        accountId: "acct_mock_lisi",
+        email: "lisi@example.com",
+        displayName: MOCK_PERSONAL.person,
+      },
+      device: { name: "iPad", platform: "ios" },
+      requestedAtMs: now - 600_000,
+      expiresAtMs: now + 3_600_000,
+    },
+  ];
+  if (golden)
+    rows.push({
+      ...rows[0]!,
+      requestId: "trq_01JAAAAAAAAAAAAAAAAAAAAAAA",
+    });
+  if (more)
+    rows.push({
+      requestId: "trust_pixel",
+      sourceId: MOCK_HOSTS[1]!.sourceId,
+      sourceName: "mac-studio",
+      teamId: team,
+      member: {
+        accountId: MOCK_PEOPLE.guest.accountId,
+        email: MOCK_PEOPLE.guest.email,
+        displayName: MOCK_PEOPLE.guest.displayName,
+      },
+      device: { name: "Pixel 9", platform: "android" },
+      requestedAtMs: now - 120_000,
+      expiresAtMs: now + 3_600_000,
+    });
+  return rows;
 }
 
 /** 游标就是偏移量；缺省一页 50 条。 */
@@ -311,26 +369,24 @@ export const DIRECTORY_HANDLERS: Readonly<Record<string, DirectoryHandler>> = {
       { metric: "traffic", value: 1_288_490_189, limit: 5_368_709_120 },
     ],
   }),
-  "trust.list": (_input, state) => ({
-    requests: state.without.has("pending")
-      ? []
-      : [
-          {
-            requestId: "trust_ipad",
-            sourceId: MOCK_PERSONAL.linkHost,
-            sourceName: "build-01",
-            teamId: MOCK_TEAMS[0]!.teamId,
-            member: {
-              accountId: "acct_mock_lisi",
-              email: "lisi@example.com",
-              displayName: MOCK_PERSONAL.person,
-            },
-            device: { name: "iPad", platform: "ios" as const },
-            requestedAtMs: Date.now() - 600_000,
-            expiresAtMs: Date.now() + 3_600_000,
-          },
-        ],
-  }),
+  "trust.list": (input, state) => {
+    const space = input.space as { kind: string; teamId?: string } | undefined;
+    return {
+      requests: state.trust.filter(
+        (row) =>
+          space === undefined ||
+          (space.kind === "team" && row.teamId === space.teamId),
+      ),
+    };
+  },
+  "trust.reject": (input, state) => {
+    const row = state.trust.find(
+      (entry) => entry.requestId === input.requestId,
+    );
+    if (!row) throw new CloudConsoleError("not_found", 404);
+    state.trust = state.trust.filter((entry) => entry !== row);
+    return {};
+  },
   "invitations.list": (input, state) => ({
     invitations:
       input.box === "received" && !state.without.has("pending")

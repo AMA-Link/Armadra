@@ -18,6 +18,7 @@ import type { TeamSpace } from "@/cloud/team/data";
 import { CreateTeamDialog } from "@/cloud/team/CreateTeamDialog";
 import { DeletedTeamPage } from "@/cloud/team/DeletedTeamPage";
 import { TeamPage } from "@/cloud/team/TeamPage";
+import { EndorserProvider, type HostEndorser } from "@/cloud/trust/endorser";
 import { ConsoleSidebar, ConsoleShell } from "@/cloud/shell/ConsoleShell";
 import { EmbeddedAuth } from "@/cloud/auth/AuthLayout";
 import { DevicePage } from "@/cloud/auth/DevicePage";
@@ -162,7 +163,7 @@ function FromSession({
 }
 
 /**
- * `cloud` 分区（云端控制台 §7 U1a、U1b、U2b、U3、U8）：外壳（带未验证提示与计数）、两种侧栏、整页
+ * `cloud` 分区（云端控制台 §7 U1a、U1b、U2b、U3、U5、U6、U8）：外壳（带未验证提示与计数）、两种侧栏、整页
  * 四态、设备授权与分享链接落地的公开页、`DataList` 的表格与列表两种渲染、`Progress` 三档、输入确认。外壳随视口宽度
  * 在固定侧栏与顶栏加抽屉之间切换，探针 390 / 768 / 1440 各截一张。
  */
@@ -329,6 +330,44 @@ function HostSamples() {
       </MockConsole>
       <HostDialogSamples />
     </div>
+  );
+}
+
+/** 展示页的背书端：只有 laptop 号那台主机是受信设备，所以信任页一行有按钮、一行是徽标。 */
+const SAMPLE_ENDORSER: HostEndorser = {
+  canEndorse: async (sourceId) => sourceId === MOCK_PERSONAL.linkHost,
+  approve: async () => undefined,
+};
+
+const U6_PATHS = ["/t/rd/trust"] as const;
+
+/** 链接与设备信任（U6）：团队链接列表、设备信任（受信设备上的「拒绝 / 信任」与「在已信任的设备上处理」两种行）。 */
+function LinkTrustSamples() {
+  const page = (path: string) => matchRoute(path)!;
+  return (
+    <MockConsole options={{ emailVerified: true, moreTrust: true }}>
+      {(session) => (
+        <EndorserProvider endorser={SAMPLE_ENDORSER}>
+          <div className="flex flex-col gap-4">
+            {U6_PATHS.map((path) => (
+              <div
+                key={path}
+                className="h-[520px] overflow-hidden rounded-card border border-border"
+              >
+                <ConsoleShell
+                  user={session.user}
+                  teams={session.teams}
+                  counts={CLOUD_COUNTS}
+                  match={page(path)}
+                >
+                  <TeamPage match={page(path)} />
+                </ConsoleShell>
+              </div>
+            ))}
+          </div>
+        </EndorserProvider>
+      )}
+    </MockConsole>
   );
 }
 
@@ -547,6 +586,8 @@ function CloudSamples({ session }: { session: ConsoleSession }) {
       <TeamSamples />
 
       <HostSamples />
+
+      <LinkTrustSamples />
 
       <PublicSamples />
 
