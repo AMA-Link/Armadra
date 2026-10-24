@@ -1,4 +1,5 @@
 import { cloudContract } from "@armadra/platform-protocol/cloud-api";
+import { ERROR_CODES } from "@armadra/platform-protocol/errors";
 import { describe, expect, it } from "vitest";
 
 /**
@@ -23,19 +24,25 @@ const procedure = (group: string, name: string): Procedure["~orpc"] =>
   )["~orpc"];
 
 describe("协议包 0.10.0 尚无的可选字段（升级后删手写放宽）", () => {
+  // 每条先断言一个已有字段：schema 结构变了（shape 取不到）时，「没有」不会悄悄通过。
   it("links.get 出参没有 ownerName", () => {
-    expect(procedure("links", "get").outputSchema?.shape).not.toHaveProperty(
-      "ownerName",
-    );
+    const shape = procedure("links", "get").outputSchema?.shape;
+    expect(shape).toHaveProperty("label");
+    expect(shape).not.toHaveProperty("ownerName");
   });
   it("auth.deviceGet 出参没有 ipPrefix", () => {
-    expect(
-      procedure("auth", "deviceGet").outputSchema?.shape,
-    ).not.toHaveProperty("ipPrefix");
+    const shape = procedure("auth", "deviceGet").outputSchema?.shape;
+    expect(shape).toHaveProperty("platform");
+    expect(shape).not.toHaveProperty("ipPrefix");
   });
   it("admin.relayNodeDrain 入参没有 reason", () => {
-    expect(
-      procedure("admin", "relayNodeDrain").inputSchema?.shape,
-    ).not.toHaveProperty("reason");
+    const shape = procedure("admin", "relayNodeDrain").inputSchema?.shape;
+    expect(shape).toHaveProperty("node");
+    expect(shape).not.toHaveProperty("reason");
+  });
+  it("team_hosts_online 尚不在协议包的错误码里", () => {
+    // 先断言一个已有的码：枚举取不到时「没有」不会悄悄通过。
+    expect(ERROR_CODES).toContain("team_deleted");
+    expect(ERROR_CODES).not.toContain("team_hosts_online");
   });
 });
