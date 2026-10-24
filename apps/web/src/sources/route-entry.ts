@@ -163,17 +163,44 @@ export async function enterRoute(
       });
     return renewing;
   };
+  let reopening: Promise<void> | null = null;
   /**
-   * 通道关了就先换一条：并发的只换一次；上一次换不上还在冷却里的直接答 `false`
-   * （`force` 不看冷却）。手里的通道可用答 `true`。
+   * 换一条通道：凭据来源的缓存在通道关时已作废，重新取一份访问（重取断言、重开
+   * 通道），会话还新鲜就照用、不轮换刷新令牌（参照 `connection.ts`）。之后真被
+   * core 拒了（401）才由传输的 `refresh` 续。
+   */
+  const reopenChannel = (): Promise<void> => {
+    reopening ??= provider
+      .getAccess(
+        descriptor.sourceId,
+        via,
+        ...(route.origin === undefined ? [] : [route.origin]),
+      )
+      .then(async (next) => {
+        adopt(next);
+        scheduleRenewal();
+        await options.restore();
+        options.onRenewed?.(next);
+      })
+      .catch(() => {
+        options.onRenewed?.(null);
+      })
+      .finally(() => {
+        reopening = null;
+      });
+    return reopening;
+  };
+  /**
+   * 通道关了就先换一条：并发的只换一次（正在续期的就等那一次）；上一次换不上还在
+   * 冷却里的直接答 `false`（`force` 不看冷却）。手里的通道可用答 `true`。
    */
   const ensureChannel = async (force = false): Promise<boolean> => {
     if (!channelDown) return true;
-    if (renewing === null) {
+    if (renewing === null && reopening === null) {
       if (!force && now() - lastChannelTry < CHANNEL_RETRY_MS) return false;
       lastChannelTry = now();
     }
-    await renewActive();
+    await (renewing ?? reopenChannel());
     return !channelDown;
   };
   const stale = () =>

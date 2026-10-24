@@ -40,6 +40,8 @@ const descriptor: SourceDescriptor = {
 
 /** 每条流的底层 socket 开在哪条通道上。 */
 let opened: string[] = [];
+/** 接下来几个请求被 core 以会话失效拒掉（401）。 */
+let refusals = 0;
 
 /** 一条假的通道：`close()` 叫监听者（已关的立刻叫）。 */
 function fakeChannel(name: string, expiresAtMs = 0) {
@@ -47,6 +49,12 @@ function fakeChannel(name: string, expiresAtMs = 0) {
   const listeners = new Set<() => void>();
   const fetch = vi.fn(async () => {
     if (closed) throw new TypeError("channel closed");
+    if (refusals > 0) {
+      refusals -= 1;
+      return new Response(JSON.stringify({ code: "unauthenticated" }), {
+        status: 401,
+      });
+    }
     return new Response("{}");
   });
   class ChannelSocket extends EventTarget {
@@ -97,6 +105,7 @@ afterEach(() => {
   entered = null;
   installLocalTransport(null);
   opened = [];
+  refusals = 0;
 });
 
 async function setup({ expiresAtMs = 0 } = {}) {
@@ -104,15 +113,17 @@ async function setup({ expiresAtMs = 0 } = {}) {
   let channel = fakeChannel("c1", expiresAtMs);
   let peer: "online" | "offline" = "online";
   let issued = 1;
+  /** 重取一份访问：主机不在就抛；在就开一条新通道。 */
+  const issue = async () => {
+    if (peer === "offline")
+      throw Object.assign(new Error("offline"), { code: "source_offline" });
+    issued += 1;
+    channel = fakeChannel(`c${issued}`, expiresAtMs);
+    return channel.access;
+  };
   const provider: CredentialProvider = {
-    getAccess: vi.fn(async () => channel.access),
-    refresh: vi.fn(async () => {
-      if (peer === "offline")
-        throw Object.assign(new Error("offline"), { code: "source_offline" });
-      issued += 1;
-      channel = fakeChannel(`c${issued}`);
-      return channel.access;
-    }),
+    getAccess: vi.fn(issue),
+    refresh: vi.fn(issue),
     invalidate: vi.fn(),
   };
   vi.mocked(pickRoute).mockResolvedValue({
@@ -166,14 +177,14 @@ describe("经中继装成本机源：端到端通道关了之后", () => {
     expect(world.provider.invalidate).toHaveBeenCalledWith(B);
 
     await expect(stream()).resolves.toBe("closed");
-    expect(world.provider.refresh).toHaveBeenCalledTimes(1);
+    expect(world.provider.getAccess).toHaveBeenCalledTimes(1);
     // 几条流同时在退避里醒来：冷却内一次也不再换，也都不碰旧通道。
     await expect(Promise.all([stream(), stream(), stream()])).resolves.toEqual([
       "closed",
       "closed",
       "closed",
     ]);
-    expect(world.provider.refresh).toHaveBeenCalledTimes(1);
+    expect(world.provider.getAccess).toHaveBeenCalledTimes(1);
     expect(opened).toEqual(["c1"]);
 
     // 请求同样不发到已关的通道上。
@@ -185,7 +196,7 @@ describe("经中继装成本机源：端到端通道关了之后", () => {
     world.setPeer("online");
     world.clock.at += CHANNEL_RETRY_MS;
     await expect(stream()).resolves.toBe("opened");
-    expect(world.provider.refresh).toHaveBeenCalledTimes(2);
+    expect(world.provider.getAccess).toHaveBeenCalledTimes(2);
     expect(opened).toEqual(["c1", "c2"]);
   });
 
@@ -198,12 +209,12 @@ describe("经中继装成本机源：端到端通道关了之后", () => {
 
     world.setPeer("online");
     await expect(world.entered.recover()).resolves.toBe(true);
-    expect(world.provider.refresh).toHaveBeenCalledTimes(2);
+    expect(world.provider.getAccess).toHaveBeenCalledTimes(2);
     await expect(stream()).resolves.toBe("opened");
     expect(opened).toEqual(["c1", "c2"]);
     // 通道好着时 recover 不再换。
     await expect(world.entered.recover()).resolves.toBe(true);
-    expect(world.provider.refresh).toHaveBeenCalledTimes(2);
+    expect(world.provider.getAccess).toHaveBeenCalledTimes(2);
   });
 
   it("没有上线事件（隧道换节点）：流的重连自己换上新通道；并发的只换一次", async () => {
@@ -215,7 +226,7 @@ describe("经中继装成本机源：端到端通道关了之后", () => {
       "opened",
       "opened",
     ]);
-    expect(world.provider.refresh).toHaveBeenCalledTimes(1);
+    expect(world.provider.getAccess).toHaveBeenCalledTimes(1);
     expect(opened).toEqual(["c1", "c2", "c2", "c2"]);
   });
 
@@ -225,13 +236,13 @@ describe("经中继装成本机源：端到端通道关了之后", () => {
     world.setPeer("offline");
     world.channel.close();
     await expect(stream()).resolves.toBe("closed");
-    const tries = vi.mocked(world.provider.refresh).mock.calls.length;
+    const tries = vi.mocked(world.provider.getAccess).mock.calls.length;
     await Promise.all(
       [1, 2, 3].map(() =>
         localSource.fetch(`${RELAY_B}/api/x`).catch(() => undefined),
       ),
     );
-    expect(world.provider.refresh).toHaveBeenCalledTimes(tries);
+    expect(world.provider.getAccess).toHaveBeenCalledTimes(tries);
   });
 
   it("用户点「重连」：冷却里也立刻换通道，流在新通道上恢复", async () => {
@@ -240,15 +251,30 @@ describe("经中继装成本机源：端到端通道关了之后", () => {
     world.setPeer("offline");
     world.channel.close();
     await expect(stream()).resolves.toBe("closed");
-    const tries = vi.mocked(world.provider.refresh).mock.calls.length;
+    const tries = vi.mocked(world.provider.getAccess).mock.calls.length;
 
     world.setPeer("online");
     // 还在冷却里：自动重试不换。
     await expect(stream()).resolves.toBe("closed");
-    expect(world.provider.refresh).toHaveBeenCalledTimes(tries);
+    expect(world.provider.getAccess).toHaveBeenCalledTimes(tries);
     await expect(reconnectLocalTransport()).resolves.toBe(true);
-    expect(world.provider.refresh).toHaveBeenCalledTimes(tries + 1);
+    expect(world.provider.getAccess).toHaveBeenCalledTimes(tries + 1);
     await expect(stream()).resolves.toBe("opened");
     expect(opened).toEqual(["c1", "c2"]);
+  });
+
+  it("换通道只重取访问、不轮换刷新令牌；之后真被 core 拒了才续", async () => {
+    const world = await setup();
+    await stream();
+    world.channel.close();
+    await expect(world.entered.recover()).resolves.toBe(true);
+    expect(world.provider.getAccess).toHaveBeenCalledTimes(1);
+    expect(world.provider.refresh).not.toHaveBeenCalled();
+    await expect(stream()).resolves.toBe("opened");
+
+    refusals = 1;
+    const answer = await localSource.fetch(`${RELAY_B}/api/x`);
+    expect(answer.status).toBe(200);
+    expect(world.provider.refresh).toHaveBeenCalledTimes(1);
   });
 });
