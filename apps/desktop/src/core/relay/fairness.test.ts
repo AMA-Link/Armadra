@@ -9,7 +9,12 @@ import {
 
 import { LOW_WATER, TunnelWriter, type WriterSocket } from "./writer";
 import { WRITE_BUDGET } from "./sched";
-import { CreditPool, type StreamHost, TunnelDuplex } from "./streams";
+import {
+  CreditPool,
+  type StreamHost,
+  type StreamTrafficCounter,
+  TunnelDuplex,
+} from "./streams";
 
 /**
  * 写端公平调度（#564，移植自中继 `fairness_test.go`）：假 ws 里 `bufferedAmount` 与「链路
@@ -34,6 +39,8 @@ class FakeSocket implements WriterSocket {
   dataBytes = 0;
   /** 在 ws 缓冲里、还没上线的 DATA 载荷字节。 */
   bufferedData = 0;
+  /** `send` 被调的次数（写端每交出一帧加一）。 */
+  sends = 0;
 
   get bufferedAmount(): number {
     return this.buffered;
@@ -45,6 +52,7 @@ class FakeSocket implements WriterSocket {
     callback: (error?: Error) => void,
   ): void {
     this.queue.push({ data, callback });
+    this.sends += 1;
     this.buffered += data.length;
     const frame = decodeFrame(data);
     if (frame.type === "data") this.bufferedData += frame.bytes.length;
@@ -76,6 +84,8 @@ class Rig {
   readonly writer: TunnelWriter;
   readonly pool: CreditPool;
   readonly host: StreamHost;
+  /** 宿主收到 `closed`（从流表摘掉）的流，按顺序。 */
+  readonly closed: number[] = [];
   private nextId = 1;
 
   constructor(
@@ -96,22 +106,25 @@ class Rig {
         : { schedule: (stream: TunnelDuplex) => this.writer.schedule(stream) }),
       sendCredit: this.pool,
       consumed: () => undefined,
-      closed: () => undefined,
+      closed: (stream) => this.closed.push(stream.streamId),
     };
   }
 
-  open(): TunnelDuplex {
-    const stream = new TunnelDuplex(this.nextId, this.host, {
-      streamWindow: this.streamWindow,
-      maxDataChunk: CHUNK,
-    });
+  open(counter?: StreamTrafficCounter): TunnelDuplex {
+    const stream = new TunnelDuplex(
+      this.nextId,
+      this.host,
+      { streamWindow: this.streamWindow, maxDataChunk: CHUNK },
+      undefined,
+      counter,
+    );
     this.nextId += 1;
     stream.on("error", () => undefined);
     return stream;
   }
 
   /** 链路跑 `rounds` 回合，每回合写出 `perRound` 字节，回合之间让出事件循环。 */
-  async run(rounds: number, perRound = CHUNK): Promise<void> {
+  async run(rounds: number, perRound: number = CHUNK): Promise<void> {
     for (let i = 0; i < rounds; i += 1) {
       await settle();
       this.socket.link(perRound);
@@ -176,6 +189,50 @@ describe("写端公平调度", () => {
         await rig.run(3);
       }
       expect(worst).toBeLessThanOrEqual(BOUND);
+    }
+  });
+
+  it("慢链路：上一帧还在 ws 缓冲里时再来的按键进老流，上一帧写出后再来的才先出（cloud#133）", async () => {
+    // 低水位放到四块：上一帧还在 ws 缓冲里，写端就已经又取了一批。
+    const rig = new Rig(4 << 20, 1 << 30, { lowWater: 4 * CHUNK });
+    const payload = Buffer.alloc(4 << 20, 1);
+    for (let i = 0; i < 16; i += 1) rig.open().write(payload);
+    await rig.run(40);
+    const probe = rig.open();
+    const written = (): number =>
+      rig.socket.written.filter(
+        (f) => f.type === "data" && f.streamId === probe.streamId,
+      ).length;
+    // 链路每回合只写出一帧。
+    const step = (): Promise<void> => rig.run(1, 1);
+    for (let key = 1; key <= 3; key += 1) {
+      // 1. 上一帧已写出后再来的按键：稀疏流，且排在大流量流前面。
+      const from = rig.socket.written.length;
+      probe.write(Buffer.alloc(16, key));
+      expect(probe.flow.queued).toBe(1);
+      for (let i = 0; i < 2000 && probe.queuedBytes > 0; i += 1) await step();
+      expect(probe.queuedBytes).toBe(0);
+      // 2. 它的帧已交给 ws、还没写出，写端又取过一批之后，下一个按键到达：上一帧没写出，
+      //    不算稀疏，进老流（按批追平会把它当成稀疏流）。
+      const sends = rig.socket.sends;
+      for (let i = 0; i < 2000 && rig.socket.sends === sends; i += 1) {
+        await step();
+      }
+      expect(rig.socket.sends).toBeGreaterThan(sends);
+      expect(written()).toBe(2 * key - 2);
+      probe.write(Buffer.alloc(16, key));
+      expect(probe.flow.queued).toBe(2);
+      // 两帧都写出、出队列也空了，再进下一轮。
+      for (let i = 0; i < 4000 && written() < 2 * key; i += 1) await step();
+      expect(written()).toBe(2 * key);
+      const ahead = rig.ahead(
+        from,
+        (f) => f.type === "data" && f.streamId === probe.streamId,
+      );
+      // 第一个按键之前至多「低水位 + 一批 + 一块」。
+      expect(ahead as number).toBeLessThanOrEqual(
+        4 * CHUNK + WRITE_BUDGET + CHUNK,
+      );
     }
   });
 
@@ -335,6 +392,87 @@ describe("写端公平调度", () => {
       (f) => "streamId" in f && f.streamId === stream.streamId,
     );
     expect(mine.map((f) => f.type)).toEqual(["data", "rst"]);
+  });
+
+  it("已经 END 之后才出错：尾巴与 END 先发完，RST internal 在最后", async () => {
+    const rig = new Rig();
+    const stream = rig.open();
+    stream.write(Buffer.from("HTTP/1.1 200 OK\r\n\r\n"));
+    stream.end();
+    await new Promise<void>((resolve) => stream.once("finish", resolve));
+    stream.destroy(new Error("late"));
+    await rig.run(4);
+    const mine = rig.socket.written.filter(
+      (f) => "streamId" in f && f.streamId === stream.streamId,
+    );
+    expect(mine.map((f) => f.type)).toEqual(["data", "end", "rst"]);
+    expect(mine.at(-1)).toMatchObject({ code: RST.internal });
+  });
+
+  it("平静销毁后排空中：尾巴发完才摘表，RST 在最后", async () => {
+    const rig = new Rig(4 << 20, 8 << 20);
+    const stream = rig.open();
+    stream.write(Buffer.alloc(1 << 20, 1));
+    await rig.run(2);
+    stream.destroy();
+    expect(rig.closed).toEqual([]);
+    // 出队列清空（尾巴都交给了 ws）才摘表；之后链路把缓冲里的写完。
+    await rig.until(() => rig.closed.includes(stream.streamId));
+    expect(stream.queuedBytes).toBe(0);
+    await rig.run(20);
+    const mine = rig.socket.written.filter(
+      (f) => "streamId" in f && f.streamId === stream.streamId,
+    );
+    expect(rig.socket.dataBytes).toBe(1 << 20);
+    expect(mine.at(-1)?.type).toBe("rst");
+    expect(rig.closed).toEqual([stream.streamId]);
+  });
+
+  it("排空中收到对端 RST：丢弃尾巴、归还信用、摘表，不再发出该流的帧", async () => {
+    const rig = new Rig(4 << 20, 8 << 20);
+    const stream = rig.open();
+    stream.write(Buffer.alloc(2 << 20, 1));
+    await rig.run(3);
+    stream.destroy();
+    expect(rig.closed).toEqual([]);
+    const sent = rig.socket.dataBytes + rig.socket.bufferedData;
+    expect(sent).toBeLessThan(2 << 20);
+    stream.receiveRst(RST.clientGone);
+    expect(rig.pool.available).toBe(8 * 2 ** 20 - sent);
+    await settle();
+    expect(rig.closed).toEqual([stream.streamId]);
+    const frames = rig.socket.written.length;
+    await rig.run(100);
+    expect(rig.socket.dataBytes).toBe(sent);
+    expect(
+      rig.socket.written
+        .slice(frames)
+        .some((f) => f.type === "rst" && f.streamId === stream.streamId),
+    ).toBe(false);
+    expect(rig.writer.backlog).toBe(0);
+  });
+
+  it("计数器在尾巴出帧之后才关：出向字节一个不漏", async () => {
+    const rig = new Rig(4 << 20, 8 << 20);
+    let out = 0;
+    let outAtClose: number | undefined;
+    const counter: StreamTrafficCounter = {
+      add: (_in, bytesOut) => {
+        expect(outAtClose).toBeUndefined();
+        out += bytesOut;
+      },
+      identify: () => undefined,
+      close: () => {
+        outAtClose = out;
+      },
+    };
+    const stream = rig.open(counter);
+    stream.write(Buffer.alloc(1 << 20, 1));
+    await rig.run(2);
+    stream.destroy();
+    expect(outAtClose).toBeUndefined();
+    await rig.until(() => outAtClose !== undefined);
+    expect(outAtClose).toBe(1 << 20);
   });
 
   it("大量 1 字节写入不是平方量级，字节一个不少", async () => {

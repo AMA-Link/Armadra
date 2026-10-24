@@ -19,10 +19,12 @@
  * 比授予的信用多 → `receiveData` 答 `false`，宿主发 `RST 5` 并以 4400 关隧道。
  *
  * 关闭：收 `END` → `push(null)`；本地 `end()` → 发 `END`；收 `RST` → `destroy`；
- * 本地 `destroy()` → 发 `RST`（无错误时 `clientGone`）。两端都 `END` 后从流表摘掉。
+ * 本地 `destroy()` → 发 `RST`（无错误时 `clientGone`）。两端都 `END` 或销毁后，等出队列
+ * 清空（尾巴发完）才从流表摘掉：这段「排空中」对端仍找得到这条流，它的 RST 到来时
+ * 丢弃还没发出的尾巴并归还信用，不再把对端已经不要的字节发出去。
  *
  * 计数（契约 §76）：给了 {@link StreamTrafficCounter} 时，收到的每块 `DATA`（对端 →
- * 本机）与发出的每块（本机 → 对端）各报一次字节数，流从流表摘掉时 `close()`。
+ * 本机）与发出的每块（本机 → 对端）各报一次字节数，流从流表摘掉时（排空之后）`close()`。
  * 准入认出请求是谁后调 `identify`。计数器只做加法，不碰库。
  *
  * 本类对角色无感：测试里的假中继用同一份。
@@ -176,7 +178,10 @@ export class TunnelDuplex extends Duplex {
   private eofPushed = false;
   private localEnded = false;
   private peerReset = false;
+  /** 两端都结束或已销毁，不再需要这条流（尾巴可能还在出队列里）。 */
   private released = false;
+  /** 已从流表摘掉（`released` 且出队列已清空）。 */
+  private settled = false;
   /** 已扣过信用、等调度器出帧的 DATA / END；`outHead` 之前的已出队。 */
   private out: (Buffer | typeof END | number)[] = [];
   private outHead = 0;
@@ -242,6 +247,11 @@ export class TunnelDuplex extends Duplex {
 
   receiveRst(code: number): void {
     this.peerReset = true;
+    if (this.destroyed) {
+      // 排空中（平静销毁后尾巴还没发完）：对端已经不要了，丢弃并归还信用。
+      this.dropOut();
+      return;
+    }
     this.destroy(new StreamResetError(code));
   }
 
@@ -355,6 +365,8 @@ export class TunnelDuplex extends Duplex {
       this.outHead = 0;
     }
     const more = this.outHead < this.out.length;
+    // 排空中的流发完了尾巴：摘表放到本轮之后，不在调度器出帧的半途回调宿主。
+    if (!more && this.released) queueMicrotask(this.settle);
     if (typeof item === "number") {
       return {
         frame: { type: "rst", streamId: this.streamId, code: item },
@@ -385,6 +397,7 @@ export class TunnelDuplex extends Duplex {
     this.outHead = 0;
     this.outBytes = 0;
     if (dropped > 0) this.host.sendCredit.add(dropped);
+    this.settle();
   }
 
   override _final(callback: (error?: Error | null) => void): void {
@@ -408,11 +421,15 @@ export class TunnelDuplex extends Duplex {
     this.host.sendCredit.cancel(this.pump);
     this.pending = null;
     const resetting = !this.peerReset && !(this.localEnded && this.remoteEnded);
-    // 对端复位或本端出错中止：排着的 DATA 作废（信用还回去），RST 走控制队列先行。
-    // 本端平静地销毁（没有错误，或已经 END）：先 `write` 再 `destroy()` 是常见写法
-    // （升级被拒绝时先写 401 再销毁），出队列里的尾巴照常发完，RST 排在后面，对端先
-    // 看到完整的字节，与改成调度之前的出帧顺序相同。两端都正常结束后销毁：尾巴（含
-    // END）也发完，不发 RST。
+    // 对端复位，或本端还没 END 就出错中止：排着的 DATA 作废（信用还回去），RST 走
+    // 控制队列先行。
+    // 尾巴照常发完、RST 排在后面的两种：
+    // - 没有错误的销毁：先 `write` 再 `destroy()` 是常见写法（升级被拒绝时先写 401
+    //   再销毁），对端先看到完整的字节，与改成调度之前的出帧顺序相同；
+    // - 已经 END 之后才出错：本端的字节已经写完整（END 已排进出队列），这时的错误与
+    //   这些字节无关，丢掉只会把一个完整的响应截断，所以同样先发完，RST 码仍是
+    //   `internal`。
+    // 两端都正常结束后销毁：尾巴（含 END）也发完，不发 RST。
     const finishing =
       resetting && this.hasScheduler() && (this.localEnded || error === null);
     if (this.peerReset || (resetting && !finishing)) this.dropOut();
@@ -445,9 +462,20 @@ export class TunnelDuplex extends Duplex {
   private release(): void {
     if (this.released) return;
     this.released = true;
+    this.settle();
+  }
+
+  /** 已经不需要、出队列也清空了：从流表摘掉。 */
+  private readonly settle = (): void => {
+    if (!this.released || this.settled || this.outHead < this.out.length) {
+      return;
+    }
+    this.settled = true;
+    // 尾巴出帧时才记出向字节（`popFrame`），所以等出队列清空再关计数器，实时速率
+    // 采样不漏这一截。
     this.counter?.close();
     this.host.closed(this);
-  }
+  };
 
   /* -------------------------- net.Socket 兼容 -------------------------- */
 
