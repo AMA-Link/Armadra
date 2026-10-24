@@ -253,6 +253,28 @@ export async function startChrome(h) {
   return { open };
 }
 
+/**
+ * 数 `ERR_NETWORK_CHANGED`（diag 有上限，按个数数不准）。重载说明（kind 为
+ * `retry`）里也带这个词，不能算作新的网络变化，否则一次变化会把重载次数跑满，
+ * 页面成功后还会再刷新，耗掉一次性的配对票 / 邀请链接。
+ */
+export function networkChangeGate() {
+  let count = 0;
+  let seen = 0;
+  return {
+    note(entry) {
+      if (entry.kind !== "retry" && /ERR_NETWORK_CHANGED/.test(entry.text))
+        count += 1;
+    },
+    /** 自上次问起，有没有新的网络变化。 */
+    fresh() {
+      const hit = count > seen;
+      seen = count;
+      return hit;
+    },
+  };
+}
+
 /** 页面被 `ERR_NETWORK_CHANGED` 掐掉后最多重载几次。 */
 const NETWORK_CHANGED_RELOADS = 3;
 
@@ -264,10 +286,9 @@ async function page(h, call, listeners, sessionId, { width, height, name }) {
   const traffic = [];
   /** 资源加载失败、浏览器日志里的错误、导航错误：只在失败现场里看，不当控制台错误断言。 */
   const diag = [];
-  /** 见到 `ERR_NETWORK_CHANGED` 的次数（diag 有上限，按个数数不准）。 */
-  let networkChanged = 0;
+  const changes = networkChangeGate();
   const note = (entry) => {
-    if (/ERR_NETWORK_CHANGED/.test(entry.text)) networkChanged += 1;
+    changes.note(entry);
     diag.push(entry);
     if (diag.length > 100) diag.shift();
   };
@@ -429,9 +450,8 @@ async function page(h, call, listeners, sessionId, { width, height, name }) {
     h.report.shots.push(path);
     return path;
   };
-  let seen = 0;
   const navigate = async (url) => {
-    seen = networkChanged;
+    changes.fresh();
     const answer = await call("Page.navigate", { url });
     // 导航本身失败（连不上、证书、被拒）时只回 errorText，不抛错。
     if (answer?.errorText)
@@ -447,9 +467,7 @@ async function page(h, call, listeners, sessionId, { width, height, name }) {
     // 就在网络稳住之后重载，同一张票还在片段里（页面没走到取票那一步）。
     for (let reload = 0; reload < NETWORK_CHANGED_RELOADS; reload += 1) {
       await sleep(1_000);
-      const hit = networkChanged > seen;
-      seen = networkChanged;
-      if (!hit) break;
+      if (!changes.fresh()) break;
       note({
         kind: "retry",
         text: `ERR_NETWORK_CHANGED，第 ${reload + 1} 次重载 ${url.replace(/#pair=\S+/g, "#pair=…")}`,
