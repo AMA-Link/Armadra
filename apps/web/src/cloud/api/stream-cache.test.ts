@@ -148,6 +148,29 @@ describe("applyMeStreamEvent（缓存层）", () => {
     );
   });
 
+  it("设备信任事件只让请求列表过期，背书判定与拒绝记录的键不动", () => {
+    const client = new QueryClient();
+    const probe = cloudKeys.endorse("t:t1", "s");
+    const refused = cloudKeys.endorseRefused("t:t1", "r");
+    client.setQueryData(cloudKeys.trust("t:t1"), { requests: [] });
+    client.setQueryData(probe, true);
+    client.setQueryData(refused, true);
+    for (const type of ["deviceTrustRequested", "deviceTrustResolved"])
+      applyMeStreamEvent(client, {
+        type,
+        requestId: "r",
+        sourceId: "s",
+        teamId: "t1",
+        outcome: "trusted",
+        atMs: 1,
+      } as never);
+    expect(client.getQueryState(cloudKeys.trust("t:t1"))?.isInvalidated).toBe(
+      true,
+    );
+    expect(client.getQueryState(probe)?.isInvalidated).toBe(false);
+    expect(client.getQueryState(refused)?.isInvalidated).toBe(false);
+  });
+
   it("ping 与不认识的事件什么也不做", () => {
     const { client, listKey, sources } = seeded();
     applyMeStreamEvent(client, { type: "ping", ts: 1 });

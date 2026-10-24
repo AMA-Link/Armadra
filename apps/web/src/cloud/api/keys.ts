@@ -39,6 +39,15 @@ export const cloudKeys = {
   links: (space: SpaceKey, filters?: Filters) =>
     ["cloud", space, "links", filters ?? {}] as const,
   trust: (space: SpaceKey) => ["cloud", space, "trust"] as const,
+  /**
+   * 本浏览器是不是某台主机的受信设备（背书人判定），以及被主机拒绝背书的请求。**不挂在 `trust`
+   * 之下**：`deviceTrustRequested` 只让列表过期；判定要是跟着重判，每次判定都可能引出新请求，
+   * 形成「重判 → 事件 → 重判」的回环。
+   */
+  endorse: (space: SpaceKey, sourceId: string) =>
+    ["cloud", space, "endorse", sourceId] as const,
+  endorseRefused: (space: SpaceKey, requestId: string) =>
+    ["cloud", space, "endorse-refused", requestId] as const,
   audit: (space: SpaceKey, filters?: Filters, cursor?: string) =>
     ["cloud", space, "audit", filters ?? {}, cursor ?? null] as const,
   plan: (space: SpaceKey) => ["cloud", space, "plan"] as const,
@@ -102,6 +111,7 @@ export function invalidationsFor(
       return [under("requests", space(event.teamId))];
     case "linkUsed":
       return [under("links", space(event.teamId))];
+    // 只让请求列表过期；背书判定（`endorse`）不在其中，见 `cloudKeys.endorse`。
     case "deviceTrustRequested":
       return [under("trust", space(event.teamId)), under("trust", "me")];
     case "deviceTrustResolved":

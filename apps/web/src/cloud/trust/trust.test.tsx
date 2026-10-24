@@ -311,6 +311,27 @@ describe("团队 · 设备信任", () => {
     expect(host.approve).not.toHaveBeenCalled();
   });
 
+  it("deviceTrustRequested / Resolved 只让列表过期，不触发受信判定重判（免得判定与事件回环）", async () => {
+    const host = endorser([]);
+    const probe = vi.fn(async () => true);
+    host.canEndorse = probe;
+    const api = mount("/t/rd/trust", OPTIONS, host, addPendingIds);
+    await rows();
+    await waitFor(() => expect(probe).toHaveBeenCalledTimes(2));
+    for (const type of ["deviceTrustRequested", "deviceTrustResolved"])
+      act(() =>
+        api.emit({
+          type,
+          requestId: "trust_ipad",
+          sourceId: "s",
+          atMs: 1,
+        } as never),
+      );
+    await new Promise((done) => setTimeout(done, 50));
+    await rows();
+    expect(probe).toHaveBeenCalledTimes(2);
+  });
+
   it("deviceTrustResolved 让列表重拉；空：「没有待信任的设备」", async () => {
     const api = mount("/t/rd/trust", { emailVerified: true });
     await rows();
