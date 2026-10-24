@@ -1690,24 +1690,12 @@ apps/web/src/cloud/
 - **A1 现状**：core 一侧已实现——`apps/desktop/src/core/relay/e2e/routes.ts` 的 `authorizeEndorsement`（迁移 0053 `cloud_team_roles`）接受经云端断言以团队角色准入、且设备已受信的会话调 `devices.approve`（团队 owner / admin 批同团队成员，member 只批自己，不批主机 owner，不抬权）；桌面横幅与对话框（U7b）已在用。团队设置的「新设备背书人」「成员可从自己已信任的设备背书」由云端 `trust.list` / `trust.reject` 按设置收窄，core 不读团队设置。U6 没有改 core 的准入。
 - **背书端口**：控制台里「浏览器是不是该主机的受信设备」与「把校验码交给主机」走 `cloud/trust/endorser.tsx` 的 `HostEndorser`（`canEndorse` / `approve` / 可选 `dispose`），由 `ConsoleRoot` 的 `endorser` 属性注入。`approve` 要的是 core 的 `pendingId`（`devices.approve` 的入参），**不是**云端的 `trq_` 请求号；页面只在请求带 `pendingId` 时才给「信任」，没有就一律「在已信任的设备上处理」，桌面横幅（U7b）那种按设备名加成员的模糊匹配，浏览器侧不照搬。
 - **背书端口的当前状态（Refs #552）**：接线已完成，是否可用只差云端下发 `pendingId`。
-  - **生产实现** `cloud/trust/browser-endorser.ts`：`ConsoleRoot` 的 `endorser` 缺省即它（显式给 `null` 才关）。用 `sources/credentials.ts` 的 `browser-cloud` 提供方（Cookie 会话经 `sources.assertion` 取断言）和 `E2eChannels` 开端到端通道登录主机，不另造信任通道。`canEndorse` = 登录成功；主机答 `device_pending`（本浏览器还不是受信设备）直接记为「否」，不等主人核对、不弹待确认对话框；通道一时开不了（离线、握手失败）判定抛错，该行先按不可背书画、不缓存。`approve` = 同一条通道里 `POST /api/devices/approve { pendingId, sas }`（Bearer 为刚登录的会话，401 换一份会话再发一次），是否放行由 core 的 `authorizeEndorsement` 判定（契约 §60.4）；错误只带码，不带文字。
-  - **通道生命周期**：按需才开，同一个源复用一条；空闲 60 秒关闭并忘掉访问；同时打开与同时进行的操作都不超过 3，超出时先关最久没用的；`dispose()` 在登出、会话丢失与控制台卸载时调用。判定结果在页面里缓存 5 分钟，窗口聚焦不重判。
-  - **协议**：协议包 0.10.0 的 `trustRequest` 没有 `pendingId`；`packages/shared` 的 `cloudTrustRequestSchema` 手写放宽为可选字符串并有超集守卫（`contract.test.ts`），core 的 `trust-requests` 解析原样转交；控制台的 `TrustRequest` 类型同样带可选 `pendingId`。协议包带上该字段后改回同一对象。
+  - **生产实现** `cloud/trust/browser-endorser.ts`：`ConsoleRoot` 的 `endorser` 缺省即它（显式给 `null` 才关），经 `E2eChannels` 端到端通道与 `sources.assertion` 的断言和主机 core 说话，不另造信任通道；换账号、会话丢失、登出、卸载时 `dispose()`。
+  - **判定只用 `probe`**：`canEndorse` 发 `cloud/login` 的只判定模式（core 契约 §31.3「`login` 的 `probe`」）。受信答 `{ trusted: true }`，不受信答 `device_untrusted`，**不**建待确认记录、不发 `devices.pending`、不上报云端、不开会话；因此判定不会惊动主人，也不会引出 `deviceTrustRequested`。其余失败（限流、离线、通道断、断言被拒）不是确定的「否」：判定抛 `e2e_device_unavailable`，该行先按不可背书画、不缓存。旧 core 不认 `probe`，会按普通登录处理，要求主机升级。
+  - **`approve`**：没有会话时先 probe 确认受信（不受信直接 `device_untrusted`，不去登录，免得在主机上挂起一条待确认），再正常登录取会话（设备已受信），同一条通道里 `POST /api/devices/approve { pendingId, sas }`；401 换一份会话重发一次。放行与否由 core 的 `authorizeEndorsement` 判定（契约 §60.4）。只有 `device_rejected`、`device_pending`、`device_untrusted` 算「不受信」，其余失败一律 `e2e_device_unavailable`。错误只带码，不带文字。
+  - **通道与会话的生命周期**：按需才开，同一个源复用一条；空闲 60 秒先注销会话（`session/logout`）再关通道；同时打开与同时进行的操作都不超过 3，超出时先关最久没用的；`dispose()` 立刻注销并关闭全部，仍在进行的操作完成时发现代数变了，自己收尾并失败，不写回。判定结果在页面里缓存 5 分钟，窗口聚焦不重判；查询键 `cloudKeys.endorse` 不挂在 `trust` 之下，`deviceTrustRequested` / `Resolved` 只让请求列表过期，免得判定与事件互相引发。
+  - **协议**：协议包 0.10.0 的 `trustRequest` 没有 `pendingId`；`packages/shared` 的 `cloudTrustRequestSchema` 手写放宽为可选字符串、`identity.cloud.login` 的入参手写放宽 `probe`，都有超集守卫（`contract.test.ts`）；core 的 `trust-requests` 解析原样转交 `pendingId`；控制台的 `TrustRequest` 类型同样带可选 `pendingId`。协议包带上这些字段后改回同一对象。
   - **依赖**：云端 0.11 起下发 `pendingId`（AMA-Link/armadra-cloud#126）。在那之前旧云端的请求都不带，生产页面表现为全部「在已信任的设备上处理」；测试与展示页用 `mock/pending-ids.ts` 模拟补字段后的形状。
-- 与上文的差异：
-  - 控制台的授予范围是整台主机（§0 #5、D6）：添加访问不选工作空间；已有工作空间范围的授予（经分享弹层建的）在控制台只改角色与到期，范围原样保留；团队访客在团队主机上必须限定工作空间，所以访客不能经控制台授予。
-  - 「在 Armadra 里登记」的深链只带 `issuer`（桌面壳 `cloud-link.ts` 只认这一个参数），不带 `space`。
-  - 主机详情对非管理者（既不是主机所有者也不是团队 owner / admin）没有页签：`grants.effective` 与 `grants.list` 都要管理权，契约里没有「看自己的权限」的过程。
-  - 授予页对本人管得了的每台主机各取一次 `grants.list`（云端没有按团队列全部授予的过程），与主机详情共用缓存；主机超过 200 台时只覆盖前 200 台。
-  - 行菜单的「标签」、`申请访问`（M2）、`移到其他空间`（M2）与分组来源（M2）不在本批。
-- 撤销即时反映：`grantChanged` 让该空间的授予列表、该主机的访问清单与有效权限过期；`accessRevoked`（不报空间）另让所有空间的授予列表、主机目录与该主机详情过期。
-- 会收窄某人有效权限的改动（降角色、缩范围、提前到期，以及新增更宽而更低的授予造成的合成降级）：对话框列出受影响的人，按钮改为「仍然授予 / 仍然更新」，云端随后撤他们已签的令牌。
-
-**U6 落地说明**（Refs AMA-Link/Armadra#547，三包：a 设备信任与团队链接、b 用量与计划、c 审计）：
-
-- `/t/:team/links`、`/t/:team/trust`、`/t/:team/billing`、`/t/:team/audit` 已实现。链接页与个人空间共用 `cloud/links/LinksView`；新增 `cloud/trust/`、`cloud/billing/`、`cloud/audit/` 与文案模块 `cloud-audit.ts`、`cloud-billing.ts`（M1 部分）。
-- **A1 现状**：core 一侧已实现——`apps/desktop/src/core/relay/e2e/routes.ts` 的 `authorizeEndorsement`（迁移 0053 `cloud_team_roles`）接受经云端断言以团队角色准入、且设备已受信的会话调 `devices.approve`（团队 owner / admin 批同团队成员，member 只批自己，不批主机 owner，不抬权）；桌面横幅与对话框（U7b）已在用。团队设置的「新设备背书人」「成员可从自己已信任的设备背书」由云端 `trust.list` / `trust.reject` 按设置收窄，core 不读团队设置。U6 没有改 core 的准入。
-- **背书端口**：控制台里「浏览器是不是该主机的受信设备」与「把校验码交给主机」走 `cloud/trust/endorser.tsx` 的 `HostEndorser`（`canEndorse` / `approve`），由 `ConsoleRoot` 的 `endorser` 属性注入。`approve` 要的是 core 的 `pendingId`（`devices.approve` 的入参），**不是**云端的 `trq_` 请求号；现契约（协议 0.10.0）的 `trustRequest` 不带 `pendingId`，所以页面只在请求带 `pendingId` 时才给「信任」，没有就一律「在已信任的设备上处理」。**待云端补 `pendingId` 字段**（armadra-cloud 跟进）；补上之前生产端口不可实现，桌面横幅（U7b）靠设备名加成员在主机的待确认列表里匹配，浏览器侧不照搬这种模糊匹配。此外还缺入口给 `browser-cloud` 凭据提供方（`sources/credentials.ts` 已有）接 `E2eChannels`，两件事都到位后才有生产实现；测试与展示页用 `mock/pending-ids.ts` 模拟补字段后的形状。
 - 与上文的差异：
   - 链接页没有「新建链接」与「创建人」列、「已冻结」徽标：`links.create` 的 `source_invite` 要 core 邀请 id（只在客户端分享弹层有），`team_join` 属 M2；`linkSummary` 不带创建人与冻结状态。列表只列、改备注、撤销，与 U3 一致。
   - 设备信任页另有「平台」列；拒绝只调 `trust.reject`；校验码只存在于对话框组件状态，经 `HostEndorser.approve` 的参数交出去，不进 `useMutation` 变量、地址、本地存储与日志。`sas_mismatch` / `sas_expired` / `device_untrusted` / `forbidden` / `e2e_device_unavailable` 按 code 取现有文案；`forbidden`（背书人的团队角色、授予或待批的人不满足 core 的条件）只把**那一条请求**按请求号记成不可背书，同一台主机的其他请求不受影响，对话框留着说明原因；`device_untrusted`（本浏览器不是该主机的受信设备）另让这台主机的受信判定作废重判。
