@@ -13,6 +13,7 @@ import {
   type CloudApi,
   type StreamHandlers,
 } from "../api/session";
+import { BILLING_HANDLERS } from "./billing";
 import {
   applyEventToDirectory,
   createDirectoryState,
@@ -512,6 +513,12 @@ const HANDLERS: Readonly<Record<string, Handler>> = {
     ]),
   ),
   ...TEAM_HANDLERS_AS_STATE,
+  ...Object.fromEntries(
+    Object.entries(BILLING_HANDLERS).map(([key, handler]) => [
+      key,
+      ((input, state) => handler(input, state.teams)) as Handler,
+    ]),
+  ),
   ...Object.fromEntries(
     Object.entries(grantHandlers(DIRECTORY_HANDLERS)).map(([key, handler]) => [
       key,

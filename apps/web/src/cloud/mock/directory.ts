@@ -382,21 +382,6 @@ export const DIRECTORY_HANDLERS: Readonly<Record<string, DirectoryHandler>> = {
       throw new CloudConsoleError("password_too_short", 400);
     return undefined;
   },
-  "billing.plan": (input) => ({
-    space: input.space,
-    plan: "free",
-    status: "active" as const,
-    seats: 1,
-    periodEndsAtMs: null,
-  }),
-  "billing.usage": (input) => ({
-    space: input.space,
-    period: "2025-10",
-    usage: [
-      { metric: "hosts", value: 2, limit: 3 },
-      { metric: "traffic", value: 1_288_490_189, limit: 5_368_709_120 },
-    ],
-  }),
   "trust.list": (input, state) => {
     const space = input.space as { kind: string; teamId?: string } | undefined;
     return {
