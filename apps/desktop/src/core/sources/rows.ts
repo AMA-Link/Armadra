@@ -153,6 +153,14 @@ export function saveRelayRoute(
             input.team ??
               (existing?.origin === "shared" ? existing : undefined),
           ),
+          // 对端没报分享信息（旧 core）而行本来就是 shared：沿用已有的。
+          ...(input.share == null && existing?.origin === "shared"
+            ? {
+                ownerLabel: existing.ownerLabel,
+                shareRole: existing.shareRole,
+                shareExpiresAtMs: existing.shareExpiresAtMs,
+              }
+            : {}),
         }
       : MINE),
   });
