@@ -1422,6 +1422,24 @@ describe("契约 §86：Armadra 云挂载的团队与归属", () => {
     delete world.cloud.assertionAud;
   });
 
+  it("me.sources 取不到：不默认判成别人的，沿用原归属", async () => {
+    world.cloud.sourcesFail = true;
+    world.cloud.assertionTeam = "team-1";
+    // 新挂载、目录取不到：不判成别人的。
+    expect(await saas.mount({ serviceId, sourceId: RELAYED_ID })).toMatchObject(
+      { origin: "mine", teamId: "", teamName: "" },
+    );
+    await saas.remove(RELAYED_ID);
+    world.cloud.sourcesFail = false;
+    world.cloud.owner = false;
+    await saas.mount({ serviceId, sourceId: RELAYED_ID });
+    // 已是别人分享的：目录取不到时仍是 shared。
+    world.cloud.sourcesFail = true;
+    expect(await saas.mount({ serviceId, sourceId: RELAYED_ID })).toMatchObject(
+      { origin: "shared" },
+    );
+  });
+
   it("自己的主机（owner）：mine，不记团队；个人中转挂载不记团队", async () => {
     world.cloud.assertionTeam = "team-1";
     expect(await saas.mount({ serviceId, sourceId: RELAYED_ID })).toMatchObject(

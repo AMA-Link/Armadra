@@ -10,8 +10,8 @@ import type { RemoteClient, RemoteEndpoint } from "./remote-client";
 import type { RemoteRow } from "./store";
 
 export interface SaasMountInfo {
-  /** 不是我自己的主机（`me.sources` 的 `owner` 为假）：记 `shared`。 */
-  readonly shared: boolean;
+  /** 不是我自己的主机（`me.sources` 的 `owner` 为假）：记 `shared`；目录取不到是 `undefined`（不判）。 */
+  readonly shared: boolean | undefined;
   readonly teamId: string;
   readonly teamName: string;
 }
@@ -41,9 +41,14 @@ export async function saasMountInfo(
   if (remote.kind !== "saas" || token === undefined) return undefined;
   const { endpoint, sourceId } = at;
   const { accessToken } = token;
-  const listed = await client.sources(endpoint, accessToken).catch(() => []);
-  const mine = listed.find((one) => one.sourceId === sourceId)?.owner === true;
-  const teamId = mine ? "" : assertionTeamId(signed.assertion, sourceId);
+  const listed = await client
+    .sources(endpoint, accessToken)
+    .catch(() => undefined);
+  const entry = listed?.find((one) => one.sourceId === sourceId);
+  // 目录取不到、或目录里没有这台：不知道是不是别人的，不判（调用方沿用原归属与团队）。
+  const shared = entry === undefined ? undefined : entry.owner !== true;
+  const teamId =
+    shared === false ? "" : assertionTeamId(signed.assertion, sourceId);
   let teamName = "";
   if (teamId !== "") {
     const spaces = await client.spaces(endpoint, accessToken).catch(() => []);
@@ -53,5 +58,5 @@ export async function saasMountInfo(
       }
     }
   }
-  return { shared: !mine, teamId, teamName };
+  return { shared, teamId, teamName };
 }

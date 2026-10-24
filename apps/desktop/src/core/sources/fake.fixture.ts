@@ -155,6 +155,8 @@ export interface FakeWorld {
     assertionTeam?: string;
     /** 断言载荷的 `aud`；不给就是请求的源号。 */
     assertionAud?: string;
+    /** `me.sources` 答 500（测试用）。 */
+    sourcesFail?: boolean;
     /** 设备码答案里的 `verificationUrl`；不给就是 issuer 同源的 `/device`。 */
     verificationUrl?: string;
     /** 下一次取注册令牌答的错误（一次性）。 */
@@ -513,6 +515,9 @@ async function cloud(
     );
   }
   if (path === "/v1/me/sources") {
+    if (world.cloud.sourcesFail === true) {
+      return json(500, { code: "internal", message: "no" });
+    }
     return json(200, {
       sources: world.cloud.sources.map((one) => ({
         ...one,

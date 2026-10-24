@@ -1218,6 +1218,8 @@ export class SourcesService {
       endpoint: this.endpoint(remote),
       sourceId: input.sourceId,
     });
+    // 目录取不到（`shared` 未知）：沿用这台原来的归属，不默认判成别人的，也不动团队。
+    const shared = saas?.shared ?? existing?.origin === "shared";
     const row = this.saveRelayRoute({
       sourceId: input.sourceId,
       existing,
@@ -1225,8 +1227,10 @@ export class SourcesService {
       relayOrigin,
       issuer: remote.issuer,
       principalHint: credentials.principalHint,
-      share: saas?.shared ? (credentials.share ?? null) : undefined,
-      ...(saas === undefined ? {} : { team: saas }),
+      share: shared ? (credentials.share ?? null) : undefined,
+      ...(saas === undefined || saas.shared === undefined
+        ? {}
+        : { team: saas }),
     });
     this.options.log.info("mounted a relayed source", {
       sourceId: input.sourceId,
