@@ -190,7 +190,9 @@ export async function enterRoute(
     authorization: currentAccessToken,
     prepare: async () => {
       if (channelDown) await ensureChannel();
-      if (stale()) await renewActive();
+      // 通道断着（冷却里没换上）就不在这里续：令牌过期了也一样，续期交给
+      // `ensureChannel` 与定时器，否则主机长时间离线时每个请求都续一次。
+      if (stale() && !channelDown) await renewActive();
     },
     // 流（重）连先换票：通道关着先换一条，换不上就这一次不连（流按退避再来）。
     wsTicket: async () => {
@@ -218,8 +220,9 @@ export async function enterRoute(
   scheduleRenewal();
   // 回到前台：后台里定时器可能被挂起，令牌已经过期了。
   const onVisible = () => {
-    if (globalThis.document?.visibilityState === "visible" && stale())
-      void renewActive();
+    if (globalThis.document?.visibilityState !== "visible") return;
+    if (channelDown) void ensureChannel();
+    else if (stale()) void renewActive();
   };
   globalThis.document?.addEventListener?.("visibilitychange", onVisible);
   return {

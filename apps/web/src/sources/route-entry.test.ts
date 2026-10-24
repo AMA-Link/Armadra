@@ -38,7 +38,7 @@ const descriptor: SourceDescriptor = {
 let opened: string[] = [];
 
 /** 一条假的通道：`close()` 叫监听者（已关的立刻叫）。 */
-function fakeChannel(name: string) {
+function fakeChannel(name: string, expiresAtMs = 0) {
   let closed = false;
   const listeners = new Set<() => void>();
   const fetch = vi.fn(async () => {
@@ -58,7 +58,7 @@ function fakeChannel(name: string) {
   }
   const access: SourceAccess = {
     accessToken: name,
-    expiresAtMs: 0,
+    expiresAtMs,
     httpBase: RELAY_B,
     wsBase: RELAY_B.replace(/^https/, "wss"),
     relayToken: "RT",
@@ -95,9 +95,9 @@ afterEach(() => {
   opened = [];
 });
 
-async function setup() {
+async function setup({ expiresAtMs = 0 } = {}) {
   const clock = { at: 1_000_000 };
-  let channel = fakeChannel("c1");
+  let channel = fakeChannel("c1", expiresAtMs);
   let peer: "online" | "offline" = "online";
   let issued = 1;
   const provider: CredentialProvider = {
@@ -213,5 +213,20 @@ describe("经中继装成本机源：端到端通道关了之后", () => {
     ]);
     expect(world.provider.refresh).toHaveBeenCalledTimes(1);
     expect(opened).toEqual(["c1", "c2", "c2", "c2"]);
+  });
+
+  it("令牌快过期、通道断着又在冷却里：请求不各自续期，续期只交给换通道", async () => {
+    const world = await setup({ expiresAtMs: 1_000_000 + 10_000 });
+    await stream();
+    world.setPeer("offline");
+    world.channel.close();
+    await expect(stream()).resolves.toBe("closed");
+    const tries = vi.mocked(world.provider.refresh).mock.calls.length;
+    await Promise.all(
+      [1, 2, 3].map(() =>
+        localSource.fetch(`${RELAY_B}/api/x`).catch(() => undefined),
+      ),
+    );
+    expect(world.provider.refresh).toHaveBeenCalledTimes(tries);
   });
 });
