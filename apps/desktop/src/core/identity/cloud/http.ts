@@ -223,13 +223,8 @@ export class CloudHttp {
         channel: channelPeerOf(request.raw.socket),
       });
     } catch (error) {
-      // 等主人核对设备不是一次失败的登录。
-      if (
-        !(
-          error instanceof CoreFailure &&
-          (error.code === "device_pending" || error.code === "device_untrusted")
-        )
-      )
+      // 只判定「设备不受信」不是一次失败的登录；`device_pending` 要扣（否则换设备钥可无限刷待确认，#484）。
+      if (!(error instanceof CoreFailure && error.code === "device_untrusted"))
         throttle?.chargeIp(remoteIp);
       throw error;
     }

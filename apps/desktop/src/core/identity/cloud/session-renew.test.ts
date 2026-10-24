@@ -211,10 +211,71 @@ describe("带当前刷新令牌重登（#484）", () => {
     );
   });
 
-  it("SaaS 经已受信设备的续期不吃 (iss, sub) 每分钟 5 次的限流", async () => {
+  it("真正的续期不吃 (iss, sub) 每分钟 5 次的限流；新建会话照常扣", async () => {
     await registerSaas();
+    let current = await login(
+      "acct:d",
+      { role: "editor" },
+      { channel: peer("a") },
+    );
     for (let round = 0; round < 8; round += 1) {
-      await login("acct:d", { role: "editor" }, { channel: peer("a") });
+      current = await login(
+        "acct:d",
+        { role: "editor" },
+        { channel: peer("a"), refreshToken: current.credentials.refreshToken },
+      );
     }
+    // 上面第一次登录扣了 1 次，续期都退还：再新建 4 次会话，第 5 次起被限。
+    for (let round = 0; round < 4; round += 1)
+      await login("acct:d", { role: "editor" }, { channel: peer("a") });
+    await expect(
+      login("acct:d", { role: "editor" }, { channel: peer("a") }),
+    ).rejects.toMatchObject({ code: "rate_limited" });
+  });
+
+  it("并发突发绕不过限流：同一 sub 同时 8 次新建会话，恰好 5 次成功", async () => {
+    await registerSaas();
+    const results = await Promise.allSettled(
+      Array.from({ length: 8 }, () =>
+        login("acct:e", { role: "editor" }, { channel: peer("a") }),
+      ),
+    );
+    expect(results.filter((r) => r.status === "fulfilled")).toHaveLength(5);
+    expect(
+      results.filter(
+        (r) =>
+          r.status === "rejected" &&
+          (r.reason as { code?: string }).code === "rate_limited",
+      ),
+    ).toHaveLength(3);
+  });
+
+  it("device_pending 也扣：同一 sub 以新设备钥连登，第 6 次答 rate_limited", async () => {
+    await registerSaas();
+    await login("acct:f", { role: "editor" }, { channel: peer("a") });
+    setE2eDevices({
+      trusted: () => false,
+      admit: () => ({ status: "pending", requestId: "r".repeat(32) }),
+    } as unknown as DeviceRegistry);
+    const codes: string[] = [];
+    for (let round = 0; round < 5; round += 1) {
+      codes.push(
+        await login(
+          "acct:f",
+          { role: "editor" },
+          { channel: peer(String(round + 1)) },
+        ).then(
+          () => "ok",
+          (error: { code: string }) => error.code,
+        ),
+      );
+    }
+    expect(codes).toEqual([
+      "device_pending",
+      "device_pending",
+      "device_pending",
+      "device_pending",
+      "rate_limited",
+    ]);
   });
 });

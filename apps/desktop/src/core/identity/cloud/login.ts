@@ -216,35 +216,27 @@ export class CloudLogin {
   }
 
   /**
-   * 登录：按 `(iss, sub)` 每分钟 5 次限流，先只看不扣，结束时才扣；SaaS 来源经已受信设备通道
-   * 的成功登录（每小时的续期）不扣（#484）——否则同一分钟扎堆续期会互相挤掉。
+   * 登录：按 `(iss, sub)` 每分钟 5 次限流，**入口预扣**（验完断言、查完桶就同步占位，并发突发绕不过），
+   * 失败一律不退——包括 `device_pending`：否则同一份断言换新设备钥可以无限插待确认记录、刷屏主人
+   * （#484）。只有真正的续期（带刷新令牌在同一会话上续）成功时才退还，免得每小时的续期互相挤掉。
    */
   async login(input: LoginInput): Promise<CloudLoginResult> {
-    const state: { key?: string; exempt: boolean } = { exempt: false };
-    try {
-      const result = await this.loginInner(input, state);
-      if (state.key !== undefined && !state.exempt)
-        this.subjects.take(state.key, this.now());
-      return result;
-    } catch (error) {
-      const waiting =
-        error instanceof CoreFailure &&
-        (error.code === "device_pending" || error.code === "rate_limited");
-      if (state.key !== undefined && !waiting)
-        this.subjects.take(state.key, this.now());
-      throw error;
-    }
+    const state: { key?: string; refund: boolean } = { refund: false };
+    const result = await this.loginInner(input, state);
+    if (state.key !== undefined && state.refund)
+      this.subjects.refund(state.key);
+    return result;
   }
 
   private async loginInner(
     input: LoginInput,
-    state: { key?: string; exempt: boolean },
+    state: { key?: string; refund: boolean },
   ): Promise<CloudLoginResult> {
     const { claims, registration } = await this.options.verifier.verify(
       input.assertion,
     );
     const subjectKey = `${claims.iss}\u0000${claims.sub}`;
-    const verdict = this.subjects.peek(subjectKey, this.now());
+    const verdict = this.subjects.take(subjectKey, this.now());
     if (!verdict.ok) {
       throw fail("rate_limited", "这个账号登录得太频繁，请稍后重试", {
         retryAfterMs: verdict.retryAfterMs,
@@ -414,8 +406,6 @@ export class CloudLogin {
       provenance,
       ...(asserted === undefined ? {} : { asserted }),
     });
-    // SaaS 来源经已受信设备通道的续期免扣限流（设备这一关已过）。
-    state.exempt = registration.mode === "saas" && channelDeviceId !== "";
     const bounded =
       registration.mode === "saas" ? { ttlMs: this.saasTtlMs } : undefined;
     // 带着当前刷新令牌来：在同一会话上续期，长连接的复核跟得上，不必断开（#484）。
@@ -432,6 +422,8 @@ export class CloudLogin {
             ttlMs: bounded.ttlMs,
           })
         : undefined;
+    // 真正的续期（同一会话）退还入口预扣的那一次。
+    state.refund = continued !== undefined;
     const credentials =
       continued ??
       (() => {
