@@ -291,4 +291,15 @@ describe("设备授权页", () => {
       screen.getByRole("button", { name: "授权" }).hasAttribute("disabled"),
     ).toBe(false);
   });
+
+  it("答复带 ipPrefix：显示请求来源；没有时不显示", async () => {
+    visit(`/device?code=${CODE}`);
+    mount({ deviceIpPrefix: "203.0.113.7" });
+    expect(await screen.findByText("请求来自 203.0.113.7")).toBeTruthy();
+    cleanup();
+    visit(`/device?code=${CODE}`);
+    mount();
+    await screen.findByText("build-01 请求登录");
+    expect(screen.queryByText(/请求来自/)).toBeNull();
+  });
 });

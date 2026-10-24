@@ -15,7 +15,7 @@ import {
 import { SkeletonSettings } from "@/ui/skeletons";
 import { Switch } from "@/ui/switch";
 import { toast } from "@/ui/toast";
-import { describeFailure, toCloudError } from "../api/errors";
+import { describeFailure } from "../api/errors";
 import { navigate } from "../router";
 import { PageHeader } from "../shell/PageHeader";
 import type { TeamRole } from "../shell/model";
@@ -302,11 +302,7 @@ function DangerGroup({
           try {
             await remove.mutateAsync();
           } catch (failure) {
-            toast.error(
-              toCloudError(failure).code === "conflict"
-                ? t("cloud.team.deleteBlocked")
-                : describeFailure(failure),
-            );
+            toast.error(describeFailure(failure));
             throw failure;
           }
           toast.success(t("cloud.team.deleted"));

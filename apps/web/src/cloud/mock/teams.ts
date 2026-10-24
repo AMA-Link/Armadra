@@ -505,7 +505,22 @@ export const TEAM_HANDLERS: Readonly<Record<string, Handler>> = {
         host.space?.kind === "team" &&
         host.space.teamId === team.teamId,
     );
-    if (online) fail("conflict");
+    if (online) {
+      const onlineHosts = ctx.directory.hosts.filter(
+        (host) =>
+          host.online &&
+          host.space?.kind === "team" &&
+          host.space.teamId === team.teamId,
+      ).length;
+      throw new CloudConsoleError(
+        "team_hosts_online",
+        409,
+        "team_hosts_online",
+        {
+          onlineHosts,
+        },
+      );
+    }
     const now = Date.now();
     team.deletedAtMs = now;
     team.purgeAtMs = now + RECOVERY_MS;

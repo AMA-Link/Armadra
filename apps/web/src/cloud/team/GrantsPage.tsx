@@ -268,7 +268,9 @@ function RevokeEntryConfirm({
       {...(failure
         ? {
             consequence: describeFailure(failure),
-            retrying: grants.isFetching || access.isFetching,
+            retrying:
+              (grants.isError && grants.isFetching) ||
+              (access.isError && access.isFetching),
             onRetry: () => {
               if (grants.isError) void grants.refetch();
               if (access.isError) void access.refetch();
