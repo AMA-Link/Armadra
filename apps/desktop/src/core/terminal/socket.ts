@@ -322,12 +322,15 @@ export async function serveTerminalSocket(
     }
   };
 
-  attachment.onData((chunk) => {
+  attachment.onData((chunk, replay) => {
     // Decoded across chunk boundaries: a PTY read can end mid-character, and
     // decoding each chunk alone would put a permanent U+FFFD on the screen.
     const text = decoder.write(chunk);
     if (text === "") return;
-    manager.queries.output(sessionId, attachment.attachmentId, text);
+    // 回放是会话的过去，不是程序此刻的提问：不计入待答查询（#518）。
+    if (replay !== true) {
+      manager.queries.output(sessionId, attachment.attachmentId, text);
+    }
     pending += text;
     pendingBytes += chunk.byteLength;
     if (pendingBytes >= FLUSH_BYTES) {

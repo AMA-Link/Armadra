@@ -155,8 +155,12 @@ export interface TerminalHandle {
 export interface Attachment {
   readonly attachmentId: number;
   readonly generation: number;
-  /** Raw PTY bytes. Never decoded here — see `Utf8Decoder` at the socket. */
-  onData(listener: (chunk: Buffer) => void): void;
+  /**
+   * Raw PTY bytes. Never decoded here — see `Utf8Decoder` at the socket.
+   * `replay` marks the session's past being redrawn on attach (session host):
+   * the screen takes it, but the program is not asking anything of it now.
+   */
+  onData(listener: (chunk: Buffer, replay?: boolean) => void): void;
   /** The session ended by itself. Not called for a detach. */
   onExit(listener: (exitCode: number | undefined) => void): void;
   /**

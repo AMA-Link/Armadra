@@ -394,13 +394,21 @@ describe("a viewer's own size", () => {
 });
 
 describe("a view answering a query (#518)", () => {
-  async function serve(frame: Record<string, unknown>, owed = false) {
+  async function serve(
+    sent: Record<string, unknown> | Record<string, unknown>[],
+    owed = false,
+    feed: [string, boolean?][] = [],
+  ) {
+    const frames = Array.isArray(sent) ? sent : [sent];
+    let emit: ((chunk: Buffer, replay?: boolean) => void) | undefined;
     const handlers = new Map<string, (data?: unknown) => void>();
     const calls: unknown[][] = [];
     const attachment: Attachment = {
       attachmentId: 9,
       generation: 1,
-      onData: () => {},
+      onData: (listener) => {
+        emit = listener;
+      },
       onExit: () => {},
     };
     const manager = {
@@ -413,7 +421,11 @@ describe("a view answering a query (#518)", () => {
       acknowledgedInput: () => 0,
       generation: () => 1,
       noteOutput: () => {},
-      queries: { output: () => {}, expects: () => owed },
+      queries: {
+        output: (_session: string, _view: number, text: string) =>
+          calls.push(["output", text]),
+        expects: () => owed,
+      },
       noteInputApplied: (...args: unknown[]) =>
         calls.push(["noteInputApplied", ...args]),
       noteViewerInput: (...args: unknown[]) =>
@@ -440,8 +452,11 @@ describe("a view answering a query (#518)", () => {
       writer: "phone",
     });
     await new Promise((resolve) => setImmediate(resolve));
-    handlers.get("message")?.(JSON.stringify(frame));
-    await new Promise((resolve) => setImmediate(resolve));
+    for (const [text, replay] of feed) emit?.(Buffer.from(text), replay);
+    for (const frame of frames) {
+      handlers.get("message")?.(JSON.stringify(frame));
+      await new Promise((resolve) => setImmediate(resolve));
+    }
     connection.close();
     await served;
     return calls;
@@ -487,5 +502,10 @@ describe("a view answering a query (#518)", () => {
       true,
     );
     expect(calls.map((call) => call[0])).toEqual(["noteViewerInput", "input"]);
+  });
+
+  it("counts live output as queries but not the replay of an attach", async () => {
+    const calls = await serve([], false, [["\u001b[c", true], ["\u001b[>c"]]);
+    expect(calls).toEqual([["output", "\u001b[>c"]]);
   });
 });
