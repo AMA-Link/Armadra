@@ -140,6 +140,48 @@ describe("经中继取访问", () => {
     });
   });
 
+  it("SaaS 会话到期（#484）：core 拒绝刷新，带新断言重新 cloud/login，不打扰用户", async () => {
+    const vault = await vaultWithCloud();
+    await vault.saveSession(SOURCE, ISSUER, {
+      accessToken: "old",
+      refreshToken: "core-r",
+      expiresAtMs: NOW + 10_000,
+      csrfToken: "x".repeat(43),
+    });
+    const net = routedFetch({
+      "POST /v1/auth/refresh": () => ({
+        body: cloudSession("cloud-a", "cloud-r2"),
+      }),
+      [`POST /v1/sources/${SOURCE}/assertion`]: () => ({
+        body: assertion({ assertion: "jws.fresh" }),
+      }),
+      [`POST /s/${SOURCE}/api/identity/session/refresh`]: () => ({
+        status: 401,
+        body: { code: "unauthenticated", message: "" },
+      }),
+      [`POST /s/${SOURCE}/api/identity/cloud/login`]: () => ({
+        body: coreLogin("core-b", "core-r3", "d".repeat(43)),
+      }),
+    });
+    const relay = createRelayedAccess({
+      vault,
+      device,
+      cloud: { fetch: net.fetch },
+      e2e: plainE2e(net.fetch),
+      now: () => NOW,
+    });
+    expect((await relay.access(ISSUER, SOURCE, false)).accessToken).toBe(
+      "core-b",
+    );
+    const login = net.calls.find((call) => call.key.endsWith("cloud/login"))!;
+    expect(JSON.parse(String(login.init.body))).toMatchObject({
+      assertion: "jws.fresh",
+    });
+    expect(await vault.session(SOURCE)).toMatchObject({
+      refreshToken: "core-r3",
+    });
+  });
+
   it("拒绝码：源不在线 → source_offline；撤销 → source_revoked；未关联照原码", async () => {
     const run = async (routes: Parameters<typeof routedFetch>[0]) => {
       const net = routedFetch(routes);
