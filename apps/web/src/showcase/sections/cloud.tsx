@@ -339,9 +339,14 @@ const SAMPLE_ENDORSER: HostEndorser = {
   approve: async () => undefined,
 };
 
-const U6_PATHS = ["/t/rd/links", "/t/rd/trust"] as const;
+const U6_PATHS = [
+  "/t/rd/links",
+  "/t/rd/trust",
+  "/t/rd/audit",
+  "/t/rd/billing",
+] as const;
 
-/** 链接与设备信任（U6）：团队链接列表、设备信任（受信设备上的「拒绝 / 信任」与「在已信任的设备上处理」两种行）。 */
+/** 链接、设备信任、审计、用量与计划（U6）：设备信任有「拒绝 / 信任」与「在已信任的设备上处理」两种行；Lab 团队的用量有已达上限、接近上限与超额提示。 */
 function LinkTrustSamples() {
   const page = (path: string) => matchRoute(path)!;
   return (
@@ -366,6 +371,26 @@ function LinkTrustSamples() {
             ))}
           </div>
         </EndorserProvider>
+      )}
+    </MockConsole>
+  );
+}
+
+function UsageSamples() {
+  const match = matchRoute("/t/lab/billing")!;
+  return (
+    <MockConsole options={{ emailVerified: true, roles: { lab: "owner" } }}>
+      {(session) => (
+        <div className="h-[560px] overflow-hidden rounded-card border border-border">
+          <ConsoleShell
+            user={session.user}
+            teams={session.teams}
+            counts={CLOUD_COUNTS}
+            match={match}
+          >
+            <TeamPage match={match} />
+          </ConsoleShell>
+        </div>
       )}
     </MockConsole>
   );
@@ -588,6 +613,8 @@ function CloudSamples({ session }: { session: ConsoleSession }) {
       <HostSamples />
 
       <LinkTrustSamples />
+
+      <UsageSamples />
 
       <PublicSamples />
 

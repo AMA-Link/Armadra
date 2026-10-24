@@ -1,6 +1,7 @@
 import { useT } from "@/app/preferences-store";
 import type { RouteMatch } from "../router";
 import { PageHeader } from "../shell/PageHeader";
+import { AuditPage } from "../audit/AuditPage";
 import { BillingPage } from "../billing/BillingPage";
 import { TrustPage } from "../trust/TrustPage";
 import { useTeamSpace } from "./data";
@@ -40,6 +41,8 @@ export function TeamPage({ match }: { match: RouteMatch }) {
       return <TeamLinksPage space={space} />;
     case "teamTrust":
       return <TrustPage space={space} />;
+    case "teamAudit":
+      return <AuditPage match={match} space={space} />;
     case "teamBilling":
       return <BillingPage space={space} />;
     case "teamSettings":

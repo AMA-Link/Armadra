@@ -14,6 +14,7 @@ import { cloudShell } from "./cloud-shell";
 import { cloudOps } from "./cloud-ops";
 import { cloudHosts } from "./cloud-hosts";
 import { cloudAccount } from "./cloud-account";
+import { cloudAudit } from "./cloud-audit";
 import { cloudBilling } from "./cloud-billing";
 import { cloudTeam } from "./cloud-team";
 import { collab } from "./collab";
@@ -174,6 +175,7 @@ export const MESSAGE_MODULES = {
   "cloud-ops": cloudOps,
   "cloud-hosts": cloudHosts,
   "cloud-account": cloudAccount,
+  "cloud-audit": cloudAudit,
   "cloud-billing": cloudBilling,
   "cloud-team": cloudTeam,
   services,
