@@ -1,4 +1,5 @@
 import * as React from "react";
+import { useQueryClient } from "@tanstack/react-query";
 
 import { useT } from "@/app/preferences-store";
 import {
@@ -22,9 +23,11 @@ import { navigate } from "../router";
 import { PageHeader } from "../shell/PageHeader";
 import { spaceBase, type CloudSpace } from "../space";
 import { DataList, type DataColumn } from "../ui/DataList";
+import { ConfirmAction } from "../ui/ConfirmAction";
 import { PageState } from "../ui/PageState";
 import { RelativeTime } from "../ui/RelativeTime";
 import {
+  endorseKey,
   useApproveTrust,
   useCanEndorse,
   useRejectTrust,
@@ -52,6 +55,7 @@ function TrustDialog({
 }) {
   const t = useT();
   const approve = useApproveTrust(space);
+  const client = useQueryClient();
   const [sas, setSas] = React.useState("");
   const [busy, setBusy] = React.useState(false);
   const [problem, setProblem] = React.useState<"mismatch" | "expired" | null>(
@@ -71,8 +75,13 @@ function TrustDialog({
       const code = endorseCode(failure);
       if (code === "sas_mismatch") setProblem("mismatch");
       else if (code === "sas_expired") setProblem("expired");
-      else if (code === "device_untrusted") setNotTrusted(true);
-      else if (code === "e2e_device_unavailable")
+      else if (code === "device_untrusted" || code === "forbidden") {
+        // 主机说这台浏览器不能背书：改成不可背书，并让「是不是受信设备」的判定作废。
+        setNotTrusted(true);
+        void client.invalidateQueries({
+          queryKey: endorseKey(space, request.sourceId),
+        });
+      } else if (code === "e2e_device_unavailable")
         toast.error(t("trust.unavailable"));
       else toast.error(describeFailure(failure));
     } finally {
@@ -168,9 +177,9 @@ function TrustActions({
   request: TrustRequest;
 }) {
   const t = useT();
-  const { pending, trusted } = useCanEndorse(space, request.sourceId);
+  const { pending, trusted } = useCanEndorse(space, request);
   const reject = useRejectTrust(space);
-  const [open, setOpen] = React.useState(false);
+  const [dialog, setDialog] = React.useState<"trust" | "reject" | null>(null);
   if (pending) return null;
   if (!trusted)
     return <Badge variant="outline">{t("cloud.trust.useTrusted")}</Badge>;
@@ -181,25 +190,38 @@ function TrustActions({
           variant="outline"
           size="sm"
           loading={reject.isPending}
-          onClick={() =>
-            reject.mutate(request.requestId, {
-              onError: (failure) => toast.error(describeFailure(failure)),
-            })
-          }
+          onClick={() => setDialog("reject")}
         >
           {t("e2e.approve.reject")}
         </Button>
-        <Button size="sm" onClick={() => setOpen(true)}>
+        <Button size="sm" onClick={() => setDialog("trust")}>
           {t("trust.trust")}
         </Button>
       </ButtonGroup>
-      {open ? (
+      {dialog === "trust" ? (
         <TrustDialog
           space={space}
           request={request}
-          onClose={() => setOpen(false)}
+          onClose={() => setDialog(null)}
         />
       ) : null}
+      <ConfirmAction
+        open={dialog === "reject"}
+        onOpenChange={(next) => !next && setDialog(null)}
+        title={t("cloud.trust.rejectTitle", {
+          member: memberName(request),
+          device: request.device.name,
+        })}
+        actionLabel={t("e2e.approve.reject")}
+        onConfirm={async () => {
+          try {
+            await reject.mutateAsync(request.requestId);
+          } catch (failure) {
+            toast.error(describeFailure(failure));
+            throw failure;
+          }
+        }}
+      />
     </>
   );
 }

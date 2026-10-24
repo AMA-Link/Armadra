@@ -13,6 +13,7 @@ import {
   type CloudApi,
   type StreamHandlers,
 } from "../api/session";
+import { BILLING_HANDLERS } from "./billing";
 import {
   AUDIT_HANDLERS,
   createAuditState,
@@ -525,6 +526,12 @@ const HANDLERS: Readonly<Record<string, Handler>> = {
     Object.entries(AUDIT_HANDLERS).map(([key, handler]) => [
       key,
       ((input, state) => handler(input, state.audit)) as Handler,
+    ]),
+  ),
+  ...Object.fromEntries(
+    Object.entries(BILLING_HANDLERS).map(([key, handler]) => [
+      key,
+      ((input, state) => handler(input, state.teams)) as Handler,
     ]),
   ),
   ...Object.fromEntries(

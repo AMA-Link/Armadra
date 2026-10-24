@@ -9,8 +9,10 @@ import { createCloudQueryClient, useConsoleSession } from "@/cloud/api/queries";
 import type { ConsoleSession } from "@/cloud/ConsoleRoot";
 import {
   createMockApi,
+  type MockApi,
   type MockOptions,
 } from "@/cloud/mock/create-mock-client";
+import { addPendingIds } from "@/cloud/mock/pending-ids";
 import { GrantDialog } from "@/cloud/hosts/GrantDialog";
 import { RegisterHostDialog } from "@/cloud/hosts/RegisterHostDialog";
 import { MOCK_HOSTS } from "@/cloud/mock/fixtures";
@@ -132,17 +134,20 @@ function useHostColumns(): DataColumn<CloudHostRow>[] {
 function MockConsole({
   children,
   options,
+  prepare,
 }: {
   children: (session: ConsoleSession) => React.ReactNode;
   options?: MockOptions;
+  prepare?: (api: MockApi) => MockApi;
 }) {
-  const [api] = React.useState(() =>
-    createMockApi({
+  const [api] = React.useState(() => {
+    const made = createMockApi({
       operatorAccount: true,
       operatorSession: true,
       ...options,
-    }),
-  );
+    });
+    return prepare ? prepare(made) : made;
+  });
   const [client] = React.useState(createCloudQueryClient);
   return (
     <QueryClientProvider client={client}>
@@ -350,7 +355,10 @@ const U6_PATHS = [
 function LinkTrustSamples() {
   const page = (path: string) => matchRoute(path)!;
   return (
-    <MockConsole options={{ emailVerified: true, moreTrust: true }}>
+    <MockConsole
+      options={{ emailVerified: true, moreTrust: true }}
+      prepare={addPendingIds}
+    >
       {(session) => (
         <EndorserProvider endorser={SAMPLE_ENDORSER}>
           <div className="flex flex-col gap-4">

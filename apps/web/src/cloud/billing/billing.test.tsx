@@ -10,7 +10,7 @@ import { quotaLevel, quotaPercent } from "./quota";
 installConsoleHarness();
 installDomPolyfills();
 
-const OPTIONS = { emailVerified: true } as const;
+const OPTIONS = { emailVerified: true, roles: { rd: "owner" } } as const;
 
 /** 一项配额所在的那一行。 */
 async function row(label: string) {
@@ -92,14 +92,14 @@ describe("团队 · 用量与计划", () => {
     expect((await h1()).textContent).toBe("用量与计划");
     const plan = await screen.findByText("团队版");
     const card = plan.closest("[data-slot='billing-plan']") as HTMLElement;
-    expect(within(card).getByText("3 个席位")).toBeTruthy();
+    expect(within(card).getByText("4 个席位")).toBeTruthy();
     expect(within(card).getByText(/^续费日 /)).toBeTruthy();
     expect(within(await row("主机")).getByText("7 / 9")).toBeTruthy();
     const members = await row("成员");
     expect(within(members).getByText("6 / 不限")).toBeTruthy();
     expect(within(members).queryByRole("progressbar")).toBeNull();
     expect(within(await row("访客")).getByText("2 / 6")).toBeTruthy();
-    expect(within(await row("同时连接")).getByText("12 / 60")).toBeTruthy();
+    expect(within(await row("同时连接")).getByText("0 / 60")).toBeTruthy();
     expect(
       within(await row("本月流量")).getByText("38 GB / 150 GB"),
     ).toBeTruthy();
@@ -113,9 +113,13 @@ describe("团队 · 用量与计划", () => {
     mount("/t/rd/billing", OPTIONS);
     const chart = await screen.findByRole("img", { name: "每日流量" });
     expect(chart).toBeTruthy();
+    const now = new Date();
+    const daysInMonth = new Date(
+      Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 0),
+    ).getUTCDate();
     const table = screen.getByRole("table", { name: "每日流量", hidden: true });
     expect(within(table).getAllByRole("row", { hidden: true })).toHaveLength(
-      91,
+      daysInMonth + 1,
     );
   });
 
@@ -141,7 +145,12 @@ describe("团队 · 用量与计划", () => {
         "本月流量已超出，同时连接将受限",
       ),
     ).toBeTruthy();
-    expect(screen.getByText("免费版")).toBeTruthy();
+    const card = screen
+      .getByText("免费版")
+      .closest("[data-slot='billing-plan']") as HTMLElement;
+    // 免费版没有续费日（云端照样报本周期结束日，页面不显示）。
+    expect(within(card).queryByText(/续费日/)).toBeNull();
+    expect(within(card).getByText("2 个席位")).toBeTruthy();
   });
 
   it("billing 角色能看；planChanged 让计划与用量重拉", async () => {
@@ -166,11 +175,33 @@ describe("团队 · 用量与计划", () => {
     expect(calls).toBeGreaterThan(0);
   });
 
-  it("取数失败：整页状态可重试；没有权限：整页「没有权限」", async () => {
+  it("取数失败（云端答 team_role_insufficient）：整页状态按 code 出文案", async () => {
     mount("/t/rd/billing", {
       ...OPTIONS,
       fail: { "billing.plan": "team_role_insufficient" },
     });
-    await screen.findByRole("button", { name: "重试" });
+    expect(
+      await screen.findByText("你的角色不能做这件事，联系团队管理员"),
+    ).toBeTruthy();
+  });
+
+  it("admin 不在用量与计划的放行里：侧栏没有这一项，地址直达是整页「没有权限」", async () => {
+    mount("/t/rd/billing", { emailVerified: true });
+    await screen.findByRole("button", { name: "回到概览" });
+    expect(
+      document.querySelector("[data-page-state='forbidden']"),
+    ).toBeTruthy();
+    expect(screen.queryByRole("link", { name: "用量与计划" })).toBeNull();
+  });
+
+  it("云端按角色答：admin 直接调 billing.* 得 team_role_insufficient，owner 与 billing 通过", async () => {
+    const admin = mount("/t/rd", { emailVerified: true });
+    const space = { kind: "team", teamId: "team_mock_rd" } as const;
+    await expect(admin.client.billing.plan({ space })).rejects.toMatchObject({
+      code: "team_role_insufficient",
+    });
+    await expect(admin.client.billing.usage({ space })).rejects.toMatchObject({
+      code: "team_role_insufficient",
+    });
   });
 });
