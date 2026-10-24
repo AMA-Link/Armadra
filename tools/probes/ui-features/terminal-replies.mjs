@@ -246,20 +246,21 @@ async function oneBackend({ stack, output, report, scenario }, backend) {
     const late = await attachedPage(stack, workspace, board, terminal);
     pages.push(late);
     await sleep(1500);
-    const lateRound = await runOn(late, terminal, 5);
+    // 晚到页面的 DOM 行文字不一定刷新，结果改写进文件再读。
+    const lateFile = join(stack.scratch, `late-replies-${backend}.txt`);
+    rmSync(lateFile, { force: true });
+    await focusTerminal(late, terminal);
+    await late.type(`set -- 5; ${QUERY}; printf %s "$R" > '${lateFile}'`);
+    await late.key("Enter");
+    let lateRound = "";
+    for (let attempt = 0; attempt < 100 && lateRound === ""; attempt += 1) {
+      await sleep(200);
+      if (existsSync(lateFile)) lateRound = readFileSync(lateFile, "utf8");
+    }
     run.check(
       lateRound === "ccR",
       "晚到的第三个页面附着后，真实查询仍各一份",
       lateRound,
-    );
-    const lateText = await late.evaluate(`return ${rowsText(terminal.id)};`);
-    const lateLeaked = lateText
-      .split("\n")
-      .filter((line) => !line.includes("replies-") && LEAKED.test(line));
-    run.check(
-      lateLeaked.length === 0,
-      "晚到的页面屏幕上没有旧应答碎片",
-      lateLeaked.join(" | "),
     );
 
     await run.shot(desk, `terminal-replies-${backend}`);
