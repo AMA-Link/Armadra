@@ -1552,6 +1552,18 @@ describe("a query several views answer (#518)", () => {
     ]);
   });
 
+  it("never waits on a read-only view, which counts the query and says nothing", async () => {
+    const t = await twoViews();
+    // A read-only page attaches like any other (§60) but its terminal never
+    // answers; it is not chosen, so it cannot leave the others unheard.
+    const watcher = await t.manager.attach(t.session.id, undefined, "");
+    const watcherId = watcher.attachment.attachmentId;
+    t.output(ASK, t.deskId, t.phoneId, watcherId);
+    expect(await t.manager.reply(t.session.id, 1, DA, t.phoneId)).toBe(true);
+    expect(await t.manager.reply(t.session.id, 1, DA, t.deskId)).toBe(false);
+    expect(replies(t.backend)).toHaveLength(1);
+  });
+
   it("drops an answer from a view with no right to drive", async () => {
     const t = await twoViews();
     t.output(ASK, t.deskId);
