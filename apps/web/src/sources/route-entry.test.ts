@@ -1,6 +1,10 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { installLocalTransport, localSource } from "../api/source";
+import {
+  installLocalTransport,
+  localSource,
+  reconnectLocalTransport,
+} from "../api/source";
 import { CHANNEL_RETRY_MS, type EnteredRoute, enterRoute } from "./route-entry";
 import { pickRoute } from "./routing";
 import type {
@@ -228,5 +232,23 @@ describe("经中继装成本机源：端到端通道关了之后", () => {
       ),
     );
     expect(world.provider.refresh).toHaveBeenCalledTimes(tries);
+  });
+
+  it("用户点「重连」：冷却里也立刻换通道，流在新通道上恢复", async () => {
+    const world = await setup();
+    await stream();
+    world.setPeer("offline");
+    world.channel.close();
+    await expect(stream()).resolves.toBe("closed");
+    const tries = vi.mocked(world.provider.refresh).mock.calls.length;
+
+    world.setPeer("online");
+    // 还在冷却里：自动重试不换。
+    await expect(stream()).resolves.toBe("closed");
+    expect(world.provider.refresh).toHaveBeenCalledTimes(tries);
+    await expect(reconnectLocalTransport()).resolves.toBe(true);
+    expect(world.provider.refresh).toHaveBeenCalledTimes(tries + 1);
+    await expect(stream()).resolves.toBe("opened");
+    expect(opened).toEqual(["c1", "c2"]);
   });
 });

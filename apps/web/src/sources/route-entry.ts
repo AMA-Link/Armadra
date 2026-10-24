@@ -200,6 +200,8 @@ export async function enterRoute(
       return ticketWithRefresh(fetchWsTicket, renewActive);
     },
     refresh: renewActive,
+    // 手动重连：冷却只管自动重试，人点了就立刻换。
+    reconnect: () => ensureChannel(true),
     ...(relayed
       ? {
           // 经端到端通道（契约 §78）：字节走通道，中继令牌只在开通道时用过。

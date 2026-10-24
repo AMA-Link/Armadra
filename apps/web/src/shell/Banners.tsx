@@ -13,6 +13,7 @@ import {
   X,
 } from "lucide-react";
 import { runtimeApi } from "../api/client";
+import { reconnectLocalTransport } from "../api/source";
 import {
   onIdentitySessionChange,
   shellBearer,
@@ -253,7 +254,12 @@ export function Banners() {
         icon={<PlugZap />}
         text={t("banner.runtimeDown")}
         actionLabel={t("banner.runtimeRetry")}
-        onAction={() => void health.refetch()}
+        // 经中继时通道可能还在自动重试的冷却里：先强制换一条再问。
+        onAction={() =>
+          void reconnectLocalTransport()
+            .catch(() => false)
+            .finally(() => void health.refetch())
+        }
         onDismiss={() => setDismissed((list) => [...list, "runtime"])}
       />,
     );
