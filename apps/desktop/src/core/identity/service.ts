@@ -653,6 +653,68 @@ export class IdentityService {
   }
 
   /**
+   * 带新断言续同一条限寿会话（#484，`cloud/login` 的 `refreshToken`）：刷新令牌对得上、会话还活着、
+   * 限寿类别、主体与通道设备钥都一致时，换三把密钥并把寿命重新延长 `ttlMs`，会话 id 不变——
+   * 长连接按会话 id 复核，续期后不会被 4401 关掉。任何一项不符答 `undefined`，由调用方新建会话。
+   * 授予的整份同步由调用方在这之前做完。
+   */
+  continueBounded(request: {
+    refreshToken: string;
+    hostId: string;
+    origin: string;
+    principalId: string;
+    channelDeviceId: string;
+    ttlMs: number;
+  }): SessionCredentials | undefined {
+    const sessionId = parseToken(request.refreshToken);
+    if (
+      sessionId === undefined ||
+      request.channelDeviceId === "" ||
+      !this.audience(request.hostId, request.origin)
+    )
+      return undefined;
+    const secrets = makeSecrets(sessionId);
+    try {
+      return this.store.transaction((tx) => {
+        const now = this.now();
+        const live = this.liveSession(tx, sessionId, request.origin, now);
+        if (
+          live.session.lifetimeClass !== "bounded" ||
+          !matches("refresh", request.refreshToken, live.session.refreshHash) ||
+          live.device.principalId !== request.principalId ||
+          (live.session.channelDeviceId ?? "") !== request.channelDeviceId
+        )
+          return undefined;
+        const expiresAtMs = now + request.ttlMs;
+        const accessExpiresAtMs = Math.min(now + ACCESS_TTL_MS, expiresAtMs);
+        tx.extendSession(
+          sessionId,
+          live.session.rotation,
+          digest("access", secrets.accessToken),
+          digest("refresh", secrets.refreshToken),
+          digest("csrf", secrets.csrfToken),
+          accessExpiresAtMs,
+          expiresAtMs,
+        );
+        return {
+          ...secrets,
+          accessExpiresAtMs,
+          expiresAtMs,
+          principal: principalOf(
+            this.store.hostId(),
+            { ...live.session, accessExpiresAtMs, expiresAtMs },
+            live.device,
+            live.scopes,
+          ),
+        };
+      });
+    } catch (error) {
+      if (error instanceof IdentityError) return undefined;
+      throw error;
+    }
+  }
+
+  /**
    * 我的会话（契约 §18.4）。`all` 只给有 `identity:manage` 的人（owner）：列出
    * 所有人的。只列还活着的；`current` 标出发这个请求的那一个。
    */

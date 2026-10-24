@@ -51,6 +51,11 @@ export const cloudLoginOutputSchema = protocolCloudLoginOutputSchema.extend({
  */
 export const cloudLoginProbeInputSchema = cloudLoginInputSchema.extend({
   probe: z.boolean().optional(),
+  /**
+   * 续同一会话（§31.3 追加，#484）：当前限寿会话的刷新令牌。断言有效且主体、通道设备钥与该会话
+   * 一致时在原会话上续期（会话 id 不变），否则新建会话。
+   */
+  refreshToken: z.string().min(1).max(512).optional(),
 });
 
 /** `probe: true` 的答案：设备已受信（不受信答 `device_untrusted`），没有会话。 */

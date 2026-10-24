@@ -216,6 +216,7 @@ export class CloudHttp {
       result = await cloud.login({
         assertion: input.assertion,
         invitationToken: input.invitationToken,
+        refreshToken: input.refreshToken,
         origin,
         remoteIp,
         userAgent: (header(request, "user-agent") ?? "").slice(0, 256),

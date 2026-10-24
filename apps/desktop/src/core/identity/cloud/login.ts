@@ -139,6 +139,22 @@ function clipName(value: string | undefined, fallback: string): string {
   return validName(trimmed) ? trimmed : fallback;
 }
 
+interface LoginInput {
+  readonly assertion: string;
+  readonly invitationToken?: string | undefined;
+  /** 会话绑定的来源（规范拼法）。 */
+  readonly origin: string;
+  readonly remoteIp: string;
+  readonly userAgent: string;
+  /** 经端到端通道来的：通道对端的设备钥（契约 §77）。明文路径没有。 */
+  readonly channel?: ChannelPeer | undefined;
+  /**
+   * 续同一会话（#484）：当前限寿会话的刷新令牌。断言有效、主体与通道设备钥都与该会话一致时，
+   * 在原会话上重新同步授予并延长寿命；否则退回新建会话。
+   */
+  readonly refreshToken?: string | undefined;
+}
+
 export class CloudLogin {
   private readonly now: () => number;
   private readonly saasTtlMs: number;
@@ -199,20 +215,42 @@ export class CloudLogin {
     return { trusted: true };
   }
 
-  async login(input: {
-    readonly assertion: string;
-    readonly invitationToken?: string | undefined;
-    /** 会话绑定的来源（规范拼法）。 */
-    readonly origin: string;
-    readonly remoteIp: string;
-    readonly userAgent: string;
-    /** 经端到端通道来的：通道对端的设备钥（契约 §77）。明文路径没有。 */
-    readonly channel?: ChannelPeer | undefined;
-  }): Promise<CloudLoginResult> {
+  /**
+   * 登录：按 `(iss, sub)` 每分钟 5 次限流，先只看不扣，结束时才扣；SaaS 来源经已受信设备通道
+   * 的成功登录（每小时的续期）不扣（#484）——否则同一分钟扎堆续期会互相挤掉。
+   */
+  async login(input: LoginInput): Promise<CloudLoginResult> {
+    const state: { key?: string; exempt: boolean } = { exempt: false };
+    try {
+      const result = await this.loginInner(input, state);
+      if (state.key !== undefined && !state.exempt)
+        this.subjects.take(state.key, this.now());
+      return result;
+    } catch (error) {
+      const waiting =
+        error instanceof CoreFailure &&
+        (error.code === "device_pending" || error.code === "rate_limited");
+      if (state.key !== undefined && !waiting)
+        this.subjects.take(state.key, this.now());
+      throw error;
+    }
+  }
+
+  private async loginInner(
+    input: LoginInput,
+    state: { key?: string; exempt: boolean },
+  ): Promise<CloudLoginResult> {
     const { claims, registration } = await this.options.verifier.verify(
       input.assertion,
     );
-    this.admitSubject(claims);
+    const subjectKey = `${claims.iss}\u0000${claims.sub}`;
+    const verdict = this.subjects.peek(subjectKey, this.now());
+    if (!verdict.ok) {
+      throw fail("rate_limited", "这个账号登录得太频繁，请稍后重试", {
+        retryAfterMs: verdict.retryAfterMs,
+      });
+    }
+    state.key = subjectKey;
     const provider = cloudProvider(registration.issuer);
     const { store, accounts, service } = this.options;
 
@@ -376,28 +414,46 @@ export class CloudLogin {
       provenance,
       ...(asserted === undefined ? {} : { asserted }),
     });
-    const credentials = (() => {
-      try {
-        return service.openSession({
-          principalId,
-          hostId: service.hostId(),
-          origin: input.origin,
-          deviceName: clipName(claims.device.name, "Armadra"),
-          method: "cloud",
-          ...(registration.mode === "saas"
-            ? { bounded: { ttlMs: this.saasTtlMs } }
-            : {}),
-          remoteIp: input.remoteIp,
-          userAgent: input.userAgent,
-          ...(channelDeviceId === "" ? {} : { channelDeviceId }),
-        });
-      } catch (error) {
-        if (error instanceof IdentityError) {
-          throw fail("forbidden", "这个账号在这台机器上已停用");
+    // SaaS 来源经已受信设备通道的续期免扣限流（设备这一关已过）。
+    state.exempt = registration.mode === "saas" && channelDeviceId !== "";
+    const bounded =
+      registration.mode === "saas" ? { ttlMs: this.saasTtlMs } : undefined;
+    // 带着当前刷新令牌来：在同一会话上续期，长连接的复核跟得上，不必断开（#484）。
+    const continued =
+      bounded !== undefined &&
+      channelDeviceId !== "" &&
+      input.refreshToken !== undefined
+        ? service.continueBounded({
+            refreshToken: input.refreshToken,
+            hostId: service.hostId(),
+            origin: input.origin,
+            principalId,
+            channelDeviceId,
+            ttlMs: bounded.ttlMs,
+          })
+        : undefined;
+    const credentials =
+      continued ??
+      (() => {
+        try {
+          return service.openSession({
+            principalId,
+            hostId: service.hostId(),
+            origin: input.origin,
+            deviceName: clipName(claims.device.name, "Armadra"),
+            method: "cloud",
+            ...(bounded === undefined ? {} : { bounded }),
+            remoteIp: input.remoteIp,
+            userAgent: input.userAgent,
+            ...(channelDeviceId === "" ? {} : { channelDeviceId }),
+          });
+        } catch (error) {
+          if (error instanceof IdentityError) {
+            throw fail("forbidden", "这个账号在这台机器上已停用");
+          }
+          throw error;
         }
-        throw error;
-      }
-    })();
+      })();
 
     const principal = store.transaction((tx) => {
       const row = tx.accounts.principal(principalId);
@@ -416,6 +472,7 @@ export class CloudLogin {
           created,
           jti: claims.jti,
           ...(channelDeviceId === "" ? {} : { e2eDevice: channelDeviceId }),
+          ...(continued === undefined ? {} : { renewed: true }),
           ...(claims.link === undefined ? {} : { link: claims.link.linkId }),
           ...(claims.team === undefined ? {} : { team: claims.team.teamId }),
           ...(claims.role === undefined ? {} : { role: claims.role }),
