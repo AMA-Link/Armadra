@@ -302,6 +302,13 @@ export function guestKeys(
   }
 }
 
+/** 这条链接是否已经加入过：存储里有它没到期、还带刷新令牌的访客记录。 */
+export function hasGuestRecord(issuer: string, linkId: string): boolean {
+  return guestKeys(browserLocalStorage(), issuer).includes(
+    guestKey(issuer, linkId),
+  );
+}
+
 /** 丢掉这个签发方下全部访客记录（账号登录是明确换身份）。 */
 export function clearGuestRecords(
   storage: Storage | null,
@@ -921,7 +928,7 @@ export function createHostedRelay(options: HostedRelayOptions): HostedRelay {
       vault.rememberShare({
         role: info?.role ?? "",
         name: name || info?.sourceName || "",
-        ownerName: "",
+        ownerName: info?.ownerName ?? "",
         expiresAtMs,
       });
       await hosted.enter({ sourceId: accepted.sourceId, name });
