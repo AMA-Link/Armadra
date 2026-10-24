@@ -119,7 +119,9 @@ if (typeof document !== "undefined") {
  */
 if (typeof document !== "undefined") {
   beforeEach(async () => {
-    (await import("sonner")).toast.dismiss();
+    // 有的用例把 sonner 整个换成桩（没有 dismiss）：桩没有状态可清。
+    const { toast } = await import("sonner");
+    if (typeof toast?.dismiss === "function") toast.dismiss();
   });
 }
 
