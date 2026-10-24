@@ -336,6 +336,9 @@ export async function serveTerminalSocket(
     // 回放是会话的过去，不是程序此刻的提问：不计入待答查询（#518）。
     if (replay !== true) {
       manager.queries.output(sessionId, attachment.attachmentId, text);
+    } else {
+      // 回放截在查询序列中间时，后半截随实时输出到达：把半截留作初始缓冲。
+      manager.queries.seed(sessionId, attachment.attachmentId, text);
     }
     pending += text;
     pendingBytes += chunk.byteLength;

@@ -86,6 +86,32 @@ describe("the ledger of pending queries (#518)", () => {
     expect(book.accept("s", 1, DA)).toBe("");
   });
 
+  it("counts a query the replay cut in half once its rest arrives live", () => {
+    const { book } = ledger();
+    // The replay's own queries are the past: seeding does not count them.
+    book.seed("s", 1, "old\x1b[c\x1b[6n and then \x1b[");
+    expect(book.expects("s", 1, DA)).toBe(false);
+    book.output("s", 1, "c");
+    expect(book.expects("s", 1, DA)).toBe(true);
+    expect(book.expects("s", 1, "\x1b[3;4R")).toBe(false);
+    expect(book.accept("s", 1, DA)).toBe(DA);
+  });
+
+  it("joins a seed that spans several replay chunks", () => {
+    const { book } = ledger();
+    book.seed("s", 1, "text\x1b]11");
+    book.seed("s", 1, ";?");
+    book.output("s", 1, "\x07");
+    expect(book.accept("s", 1, "\x1b]11;rgb:0000/0000/0000\x07")).not.toBe("");
+  });
+
+  it("forgets a seed that turned out to be no query", () => {
+    const { book } = ledger();
+    book.seed("s", 1, "x\x1b[3");
+    book.output("s", 1, "1mred\x1b[c");
+    expect(book.expects("s", 1, DA)).toBe(true);
+  });
+
   it("keeps the kinds apart", () => {
     const { book } = ledger();
     book.output("s", 1, "\x1b[c\x1b[6n");
