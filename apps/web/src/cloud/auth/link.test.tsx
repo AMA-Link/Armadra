@@ -7,10 +7,13 @@ import {
 } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const hosted = vi.hoisted(() => ({ join: vi.fn(), resume: vi.fn() }));
+const hosted = vi.hoisted(() => ({ join: vi.fn(), resumeLink: vi.fn() }));
 vi.mock("../../sources/hosted", async (original) => ({
   ...(await original<typeof import("../../sources/hosted")>()),
-  startHostedRelay: () => ({ join: hosted.join, resume: hosted.resume }),
+  startHostedRelay: () => ({
+    join: hosted.join,
+    resumeLink: hosted.resumeLink,
+  }),
 }));
 vi.mock("../../challenge/TurnstileWidget", () => ({
   TurnstileWidget: ({ onToken }: { onToken: (token: string) => void }) => (
@@ -37,7 +40,7 @@ const LOGIN_FOR_LINK = `/login?next=${encodeURIComponent(`/j/${LINK_ID}`)}`;
 
 beforeEach(() => {
   usePreferencesStore.getState().setLocale("zh-CN");
-  hosted.resume.mockReset();
+  hosted.resumeLink.mockReset();
   hosted.join.mockReset();
   hosted.join.mockResolvedValue("a".repeat(32));
 });
@@ -284,15 +287,18 @@ describe("分享链接落地页（SaaS）", () => {
         entered: null,
       }),
     );
-    hosted.resume.mockResolvedValueOnce(null);
+    hosted.resumeLink.mockResolvedValueOnce(null);
     const { api, onJoined } = mount({ signedIn: false });
     const accept = vi.spyOn(api.client.links, "accept");
     fireEvent.click(await screen.findByRole("button", { name: "打开" }));
-    await join();
+    expect((await screen.findByRole("alert")).textContent).toContain(
+      "没能加入",
+    );
+    await screen.findByRole("button", { name: "重试" });
     expect(onJoined).not.toHaveBeenCalled();
     cleanup();
     visit(`/j/${LINK_ID}${HASH}`);
-    hosted.resume.mockResolvedValueOnce({ kind: "entered" });
+    hosted.resumeLink.mockResolvedValueOnce({ kind: "entered" });
     const again = mount({ signedIn: false });
     fireEvent.click(await screen.findByRole("button", { name: "打开" }));
     await waitFor(() => expect(again.onJoined).toHaveBeenCalledOnce());
@@ -300,16 +306,28 @@ describe("分享链接落地页（SaaS）", () => {
     expect(hosted.join).not.toHaveBeenCalled();
   });
 
-  it("保留的接受结果在中继报凭据失效后作废：重试重新 links.accept", async () => {
+  it("刚接受的结果碰到失效不作废；沿用的旧结果碰到失效才作废并重新 links.accept", async () => {
     visit(`/j/${LINK_ID}${HASH}`);
     hosted.join.mockRejectedValueOnce(
-      Object.assign(new Error("x"), { code: "relay_token_invalid" }),
+      Object.assign(new Error("x"), { code: "cloud_assertion_replayed" }),
+    );
+    hosted.join.mockRejectedValueOnce(
+      Object.assign(new Error("x"), { code: "cloud_assertion_invalid" }),
     );
     const { api, onJoined } = mount({ signedIn: false });
     const accept = vi.spyOn(api.client.links, "accept");
     fireEvent.click(await join());
     fireEvent.click(await screen.findByRole("button", { name: "重试" }));
+    // 第二次是沿用旧结果碰到失效：作废，第三次重新接受。
+    await waitFor(() => expect(hosted.join).toHaveBeenCalledTimes(2));
+    fireEvent.click(await screen.findByRole("button", { name: "重试" }));
     await waitFor(() => expect(onJoined).toHaveBeenCalledOnce());
     expect(accept).toHaveBeenCalledTimes(2);
+  });
+
+  it("主人名里带 {target} 也原样显示，不被二次替换", async () => {
+    visit(`/j/${LINK_ID}${HASH}`);
+    mount({ signedIn: false, linkOwnerName: "{target}x" });
+    expect(await screen.findByText("加入 {target}x 的 studio")).toBeTruthy();
   });
 });

@@ -46,6 +46,9 @@ type Info = Awaited<
 const RELAY_CREDENTIAL_CODES: ReadonlySet<string> = new Set([
   "relay_token_invalid",
   "credentials_invalid",
+  // 接受结果里的断言只有 5 分钟：放久了 core 先答失效，或该断言已用过。
+  "cloud_assertion_invalid",
+  "cloud_assertion_replayed",
 ]);
 type Stage =
   | { kind: "loading" }
@@ -62,8 +65,8 @@ const hostedJoin: JoinWithAccept = (link, accepted) =>
   startHostedRelay({ issuer: link.issuer }).join(link, accepted);
 
 const hostedResume = async (link: JoinLink): Promise<boolean> =>
-  (await startHostedRelay({ issuer: link.issuer }).resume())?.kind ===
-  "entered";
+  (await startHostedRelay({ issuer: link.issuer }).resumeLink(link.linkId))
+    ?.kind === "entered";
 
 /** 加入失败 → 界面那句：云端的码按控制台文案，中继与 core 那一段按个人中转的文案。 */
 function failureText(failure: unknown, fallback: string): string {
@@ -183,9 +186,13 @@ export function LinkPage({
     try {
       const resumed = await resumeJoined(link);
       if (resumed) enterDone();
-      else setJoinedBefore(false);
+      else {
+        setJoinedBefore(false);
+        setError(t("links.page.failed"));
+      }
     } catch {
       setJoinedBefore(false);
+      setError(t("links.page.failed"));
     } finally {
       setBusy(false);
     }
@@ -203,6 +210,8 @@ export function LinkPage({
     }
     setBusy(true);
     setError("");
+    // 只有沿用保留下来的旧结果碰到凭据失效才作废；刚接受的不清（再接受只会白耗次数）。
+    const reused = accepted.current !== null;
     try {
       // 有会话就带着会话接受（写操作要 CSRF 值）；没有就是匿名访客。
       const session = await api.ensureCsrf();
@@ -240,6 +249,7 @@ export function LinkPage({
       // 保留的接受结果放久了，中继令牌过期：丢掉它，下一次重试重新接受。
       const relayCode = (failure as { code?: unknown } | null)?.code;
       if (
+        reused &&
         accepted.current !== null &&
         (RELAY_CREDENTIAL_CODES.has(failed) ||
           (typeof relayCode === "string" &&

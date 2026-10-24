@@ -571,6 +571,11 @@ export interface HostedRelay {
    * 记下的、刷新令牌被拒：`null`（重新登录）。
    */
   resume(): Promise<HostedResume>;
+  /**
+   * 只续这一条分享链接的访客记录（分享链接落地页的「打开」）：不遍历别的链接的记录，
+   * 也不退回账号记录；这条记录续不上就丢掉它，答 `null`。
+   */
+  resumeLink(linkId: string): Promise<HostedResume>;
   /** 这个页面是不是以访客身份（分享链接）进来的；是就给那份分享，否则 `null`。 */
   guest(): GuestShare | null;
   readonly status: HostedStatus;
@@ -1044,6 +1049,18 @@ export function createHostedRelay(options: HostedRelayOptions): HostedRelay {
       }
       switchToAccount();
       return (await resumeWith()) ?? null;
+    },
+    async resumeLink(linkId) {
+      const key = guestKey(issuer, linkId);
+      if (!guestKeys(guestStorage, issuer, now()).includes(key)) return null;
+      switchToGuest(key);
+      const resumed = await resumeWith();
+      if (resumed === undefined) {
+        vault.clear();
+        switchToAccount();
+        return null;
+      }
+      return resumed;
     },
     guest: () => (guest ? vault.share() : null),
     get status() {
