@@ -83,7 +83,8 @@ export const NAV: Readonly<Record<NavArea, readonly NavItem[]>> = {
     item("links", Link2, STAFF),
     item("trust", Fingerprint, [...STAFF, "guest"]),
     item("audit", ScrollText, MANAGERS),
-    item("billing", Gauge, [...MANAGERS, "billing"]),
+    // 云端 billing.plan / usage 只放 owner 与 billing（teams.MinBilling），admin 进去只会是「没有权限」。
+    item("billing", Gauge, ["owner", "billing"]),
     item("settings", Settings),
     item("tokens", KeyRound, MANAGERS),
   ],

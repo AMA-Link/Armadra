@@ -177,53 +177,6 @@ export function createDirectoryState(
   return state;
 }
 
-const GB = 1_073_741_824;
-
-const teamOf = (space: unknown) => {
-  const wire = space as { kind?: string; teamId?: string } | undefined;
-  return wire?.kind === "team"
-    ? MOCK_TEAMS.find((team) => team.teamId === wire.teamId)
-    : undefined;
-};
-
-/** 各空间的用量样本：个人 Free；研发组（团队版）宽松；Lab（Free）主机用尽、成员接近、流量超出。 */
-function usageFor(slug: string | undefined) {
-  if (slug === "rd")
-    return [
-      { metric: "hosts" as const, value: 7, limit: 9 },
-      { metric: "members" as const, value: 6, limit: null },
-      { metric: "guests" as const, value: 2, limit: 6 },
-      { metric: "concurrent" as const, value: 12, limit: 60 },
-      { metric: "traffic" as const, value: 38 * GB, limit: 150 * GB },
-    ];
-  if (slug === "lab")
-    return [
-      { metric: "hosts" as const, value: 3, limit: 3 },
-      { metric: "members" as const, value: 4, limit: 5 },
-      { metric: "guests" as const, value: 1, limit: 2 },
-      { metric: "concurrent" as const, value: 2, limit: 10 },
-      { metric: "traffic" as const, value: 5.4 * GB, limit: 5 * GB },
-    ];
-  return [
-    { metric: "hosts" as const, value: 2, limit: 3 },
-    { metric: "traffic" as const, value: 1_288_490_189, limit: 5 * GB },
-  ];
-}
-
-/** 本月按天的流量，一天一条（当天 UTC 零点）。 */
-function dailyTraffic(days: number) {
-  const today = new Date();
-  const start = Date.UTC(
-    today.getUTCFullYear(),
-    today.getUTCMonth(),
-    today.getUTCDate(),
-  );
-  return Array.from({ length: days }, (_, index) => ({
-    startMs: start - (days - 1 - index) * DAY,
-    relayBytes: Math.round((((index * 37) % 11) + 1) * 0.25 * GB),
-  }));
-}
-
 /** 待信任请求的样本：没有校验码（云端不经手它）。 */
 function trustRows(more: boolean, golden: boolean): TrustEntry[] {
   const now = Date.now();
@@ -428,33 +381,6 @@ export const DIRECTORY_HANDLERS: Readonly<Record<string, DirectoryHandler>> = {
     if (String(input.newPassword).length < 8)
       throw new CloudConsoleError("password_too_short", 400);
     return undefined;
-  },
-  "billing.plan": (input) => {
-    const team = teamOf(input.space);
-    const now = new Date();
-    return {
-      space: input.space,
-      plan: team?.plan ?? "free",
-      status: "active" as const,
-      seats: team && team.plan !== "free" ? 3 : 1,
-      periodEndsAtMs:
-        team && team.plan !== "free"
-          ? Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1)
-          : null,
-    };
-  },
-  "billing.usage": (input) => {
-    const team = teamOf(input.space);
-    const now = new Date();
-    const period = `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, "0")}`;
-    return {
-      space: input.space,
-      period,
-      usage: usageFor(team?.slug),
-      ...(input.granularity === "day"
-        ? { series: dailyTraffic(team?.slug === "lab" ? 40 : 90) }
-        : {}),
-    };
   },
   "trust.list": (input, state) => {
     const space = input.space as { kind: string; teamId?: string } | undefined;

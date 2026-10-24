@@ -54,8 +54,11 @@ function PlanCard({ plan }: { plan: BillingPlan }) {
   const date = useDate();
   const key = `cloud.billing.${plan.plan}`;
   const name = t(key) === key ? plan.plan : t(key);
-  const when =
-    plan.status === "trialing" && plan.trialEndsAtMs != null
+  // 免费版没有续费：云端照样报本周期结束日，不显示它。
+  const free = plan.plan === "free";
+  const when = free
+    ? null
+    : plan.status === "trialing" && plan.trialEndsAtMs != null
       ? t("cloud.billing.trialEnds", { date: date(plan.trialEndsAtMs) })
       : plan.periodEndsAtMs !== null
         ? t(

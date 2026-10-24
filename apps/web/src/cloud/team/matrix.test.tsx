@@ -207,7 +207,7 @@ describe("角色矩阵 · 侧栏", () => {
   const NAV_ITEMS = ["成员", "设置", "审计", "用量与计划"];
   const VISIBLE: Record<TeamRole, string[]> = {
     owner: ["成员", "设置", "审计", "用量与计划"],
-    admin: ["成员", "设置", "审计", "用量与计划"],
+    admin: ["成员", "设置", "审计"],
     member: ["成员", "设置"],
     billing: ["成员", "设置", "用量与计划"],
     guest: ["设置"],
