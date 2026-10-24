@@ -255,6 +255,17 @@ export class QueryLedger {
     }
   }
 
+  /**
+   * 视图 `id` 的回放来了一块文本。回放是会话的过去，里面的查询不计数；但回放
+   * 末尾若截在一条查询序列中间，后半截会随实时输出到达，不带上前半截就认不出
+   * 它（#565）。所以只留末尾的半截序列作这个视图的初始缓冲，不记任何查询。
+   */
+  seed(sessionId: string, id: number, text: string): void {
+    const view = this.sessions.get(sessionId)?.views.get(id);
+    if (view === undefined) return;
+    view.tail = scanQueries(view.tail + text).rest;
+  }
+
   /** 视图 `id` 此刻有没有等着它答的查询：`data` 的每一条应答都对得上。 */
   expects(sessionId: string, id: number, data: string): boolean {
     const session = this.sessions.get(sessionId);

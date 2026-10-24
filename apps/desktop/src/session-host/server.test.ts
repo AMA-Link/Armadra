@@ -377,6 +377,56 @@ describe("attach", () => {
   });
 
   /**
+   * A read-only view's terminal never answers (#565), so the host keeps
+   * answering while only read-only subscribers are attached, and stops the
+   * moment a writable one joins. An attach that does not say (an older core)
+   * is writable.
+   */
+  it("answers a console query itself while only read-only views are attached", async () => {
+    const harness = await serve();
+    const client = await connect(harness);
+    await created(client);
+
+    const watcher = await connect(harness);
+    watcher.link.expectOutput(1);
+    const watcherId = watcher.next();
+    await watcher.link.request(watcherId, {
+      type: "attach",
+      id: watcherId,
+      sessionKey: "node-a",
+      generation: 1,
+      size: { cols: 80, rows: 24 },
+      writable: false,
+    });
+    harness.last().emit(Buffer.from("\u001b[c"));
+    await until(() => harness.last().writes.length === 1, "the host's answer");
+    expect(harness.last().writes).toEqual(["\u001b[?1;0c"]);
+
+    const driver = await connect(harness);
+    driver.link.expectOutput(1);
+    const driverId = driver.next();
+    await driver.link.request(driverId, {
+      type: "attach",
+      id: driverId,
+      sessionKey: "node-a",
+      generation: 1,
+      size: { cols: 80, rows: 24 },
+    });
+    harness.last().emit(Buffer.from("\u001b[c"));
+    await until(
+      () => driver.events.filter((event) => event.type === "output").length > 0,
+      "live output",
+    );
+    expect(harness.last().writes).toHaveLength(1);
+
+    // The writable view leaves: the read-only one alone cannot answer.
+    driver.link.close();
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    harness.last().emit(Buffer.from("\u001b[c"));
+    await until(() => harness.last().writes.length === 2, "the host's answer");
+  });
+
+  /**
    * The fence. A client holding the generation you recycled away from is told
    * so, and is never quietly served the session that replaced it.
    */

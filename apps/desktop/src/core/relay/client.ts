@@ -37,7 +37,6 @@ import {
   challengeSchema,
   challengeSigningInput,
   decodeFrame,
-  encodeFrame,
   readySchema,
   rejectSchema,
 } from "@armadra/platform-protocol/tunnel";
@@ -50,6 +49,7 @@ import {
   TunnelDuplex,
   type TunnelTrafficMeter,
 } from "./streams";
+import { TunnelWriter } from "./writer";
 
 export type TunnelState = TunnelStatus["state"];
 
@@ -456,6 +456,8 @@ class TunnelConnection {
   private readonly nonce = randomBytes(16).toString("base64url");
   error: TunnelErrorInfo | undefined;
   private readonly host: StreamHost;
+  /** 写端：控制帧队列 + 每流出队列 + 公平调度（`./writer`）。 */
+  private readonly writer: TunnelWriter;
 
   constructor(
     private readonly deps: ConnectionDeps,
@@ -463,8 +465,18 @@ class TunnelConnection {
   ) {
     // eslint-disable-next-line @typescript-eslint/no-this-alias
     const self = this;
+    this.writer = new TunnelWriter({
+      socket: () =>
+        this.ws?.readyState === WebSocket.OPEN &&
+        this.phase !== "closed" &&
+        this.phase !== "handshake"
+          ? this.ws
+          : undefined,
+      onWire: (bytes) => this.wire(0, bytes),
+    });
     this.host = {
       sendFrame: (frame) => this.send(frame),
+      schedule: (stream) => this.writer.schedule(stream),
       // 每次就绪换新的信用池：读当前那个。
       get sendCredit() {
         return self.sendPool;
@@ -540,6 +552,8 @@ class TunnelConnection {
   close(code: number, reason: string): void {
     if (this.phase === "closed") return;
     const ws = this.ws;
+    // 最后的 RST / END / WINDOW 先写出去，再关（流销毁时才会清掉出队列）。
+    this.writer.flushAll();
     this.finish(code);
     if (ws === undefined) return;
     if (ws.readyState === WebSocket.CONNECTING) ws.terminate();
@@ -754,14 +768,7 @@ class TunnelConnection {
   private send(frame: Frame): void {
     if (this.ws?.readyState !== WebSocket.OPEN) return;
     if (this.phase === "closed" || this.phase === "handshake") return;
-    const encoded = encodeFrame(frame);
-    const sealed =
-      frame.type === "data" &&
-      this.streams.get(frame.streamId)?.tunnel?.open.kind === "e2e"
-        ? frame.bytes.length
-        : 0;
-    this.wire(0, encoded.length - sealed);
-    this.ws.send(encoded, { binary: true });
+    this.writer.control(frame);
   }
 
   private consumed(bytes: number): void {
@@ -844,6 +851,7 @@ class TunnelConnection {
   private finish(code: number): void {
     if (this.phase === "closed") return;
     this.phase = "closed";
+    this.writer.reset();
     if (this.heartbeat !== undefined) clearInterval(this.heartbeat);
     if (this.watchdog !== undefined) clearTimeout(this.watchdog);
     if (this.handshakeTimer !== undefined) clearTimeout(this.handshakeTimer);

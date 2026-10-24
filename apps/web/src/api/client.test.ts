@@ -434,6 +434,15 @@ describe("WebSocket 地址", () => {
     expect(terminalWebSocketUrl("abc")).toBe(
       "ws://127.0.0.1:43120/api/terminals/abc/ws",
     );
+    expect(terminalWebSocketUrl("abc", "w1")).toBe(
+      "ws://127.0.0.1:43120/api/terminals/abc/ws?writer=w1",
+    );
+    expect(terminalWebSocketUrl("abc", "w1", undefined, true)).toBe(
+      "ws://127.0.0.1:43120/api/terminals/abc/ws?writer=w1&replies=1",
+    );
+    expect(terminalWebSocketUrl("abc", undefined, undefined, true)).toBe(
+      "ws://127.0.0.1:43120/api/terminals/abc/ws?replies=1",
+    );
     expect(workspaceEventsUrl(workspaceId)).toBe(
       `ws://127.0.0.1:43120/api/workspaces/${workspaceId}/events`,
     );
