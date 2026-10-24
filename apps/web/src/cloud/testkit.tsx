@@ -40,9 +40,11 @@ export function mount(
   path: string,
   options: MockOptions = {},
   endorser: HostEndorser | null = null,
+  prepare?: (api: MockApi) => void,
 ): MockApi {
   visit(path);
   const api = createMockApi(options);
+  prepare?.(api);
   render(<ConsoleRoot api={api} endorser={endorser} />);
   return api;
 }
