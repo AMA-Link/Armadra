@@ -526,7 +526,7 @@ try {
   await sleep(500);
 
   /**
-   * 控制面的事件订阅续上：页面的控制面流收到本机拖动物化出的 `board.changed`
+   * 控制面的事件订阅续上：页面的控制面流（`/api/ws`）收到本机拖动物化出的 `board.changed`
    * （订阅重订、按 lastEventId 续上）。经端到端通道时（契约 §78）浏览器里只有
    * `/_relay/e2e` 一条真 WebSocket、帧是密文，所以在页面里数：流把每条消息作为
    * `MessageEvent` 派发给页面代码，拦 `dispatchEvent` 就看得到明文。拖之前
@@ -538,8 +538,10 @@ try {
         window.__probeControl = { boardChanged: 0 };
         const dispatch = EventTarget.prototype.dispatchEvent;
         EventTarget.prototype.dispatchEvent = function (event) {
+          // 只认控制面那条流（/api/ws）：别的流的消息里碰巧有这几个字不算。
           if (
             event instanceof MessageEvent &&
+            String(this?.url ?? "").split("?")[0].endsWith("/api/ws") &&
             typeof event.data === "string" &&
             event.data.includes('"board.changed"')
           )
