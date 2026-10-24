@@ -697,7 +697,8 @@ async function sessionShare({
     "访客直接落在被分享会话的只读查看页",
     { timeout: 60_000 },
   );
-  const text = await guest.until(
+  // 后台标签页不出帧，xterm 的 DOM 行写不进去：用逼帧的等待（Refs #488）。
+  const text = await guest.untilPainted(
     `const rows = document.querySelector('[data-slot="shared-session"] .xterm-rows')?.innerText ?? "";
      return rows.includes(${JSON.stringify(MARKER)}) ? rows : null;`,
     "只读查看页上看得到终端画面",

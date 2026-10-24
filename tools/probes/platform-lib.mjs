@@ -433,7 +433,9 @@ export async function terminalRoundTrip(page, id, tag) {
   await sleep(400);
   await page.type(`echo $((40+2))${tag}`);
   await page.key("Enter");
-  await page.until(
+  // 后台标签页不出帧，DOM 行读不到：用逼帧的等待（Refs #488）。
+  await (page.untilPainted ?? page.until).call(
+    page,
     `return (document.querySelector('${nodeAt(id)} .xterm-rows')?.innerText ?? "").includes("42${tag}")`,
     `终端回显 42${tag}`,
     { timeout: 30_000 },
