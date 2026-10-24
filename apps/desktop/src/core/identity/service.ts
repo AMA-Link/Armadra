@@ -589,18 +589,27 @@ export class IdentityService {
       const encoded = encodeScopes(granted);
       // 经通道的云登录每小时重登：同一主体 + 同一把通道设备钥复用未撤销的身份设备，
       // 只多一条会话（#484）；否则设备列表、推送登记与审计会随重登堆积。
-      const reused =
+      const deviceRole = principal.kind === "owner" ? "owner" : "member";
+      const found =
         request.method === "cloud" && (request.channelDeviceId ?? "") !== ""
           ? tx.deviceForChannel(
               principal.principalId,
               request.channelDeviceId ?? "",
+              deviceRole,
             )
           : undefined;
+      // 名字跟着客户端当前报的走。
+      if (found !== undefined && found.name !== request.deviceName)
+        tx.renameDevice(found.deviceId, request.deviceName);
+      const reused =
+        found === undefined
+          ? undefined
+          : { ...found, name: request.deviceName };
       const device: IdentityDevice = reused ?? {
         deviceId,
         principalId: principal.principalId,
         name: request.deviceName,
-        role: principal.kind === "owner" ? "owner" : "member",
+        role: deviceRole,
         epoch: 1,
         createdAtMs: now,
         revokedAtMs: 0,

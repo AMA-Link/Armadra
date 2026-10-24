@@ -344,16 +344,26 @@ export class IdentityTx {
   deviceForChannel(
     principalId: string,
     channelDeviceId: string,
+    role: IdentityDevice["role"],
   ): IdentityDevice | undefined {
     const row = this.database
       .prepare(
         "SELECT d.device_id, d.principal_id, d.name, d.role, d.epoch, d.created_at_ms, d.revoked_at_ms " +
-          "FROM identity_devices d WHERE d.principal_id = ? AND d.revoked_at_ms = 0 AND EXISTS (" +
+          "FROM identity_devices d WHERE d.principal_id = ? AND d.revoked_at_ms = 0 AND d.role = ? AND EXISTS (" +
           "SELECT 1 FROM identity_sessions s WHERE s.device_id = d.device_id AND s.channel_device_id = ?) " +
           "ORDER BY d.created_at_ms, d.device_id LIMIT 1",
       )
-      .get(principalId, channelDeviceId) as Record<string, unknown> | undefined;
+      .get(principalId, role, channelDeviceId) as
+      | Record<string, unknown>
+      | undefined;
     return row === undefined ? undefined : toDevice(row);
+  }
+
+  /** 复用设备时跟上客户端当前报的名字。 */
+  renameDevice(deviceId: string, name: string): void {
+    this.database
+      .prepare("UPDATE identity_devices SET name = ? WHERE device_id = ?")
+      .run(name, deviceId);
   }
 
   /** 同一会话上带新断言续期：换三把密钥、延长到期（#484）。 */

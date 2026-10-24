@@ -47,6 +47,7 @@ function fixture(start = 1_700_000_000_000) {
   return {
     service,
     store,
+    database: opened.database,
     hostId,
     advance: (ms: number) => {
       now += ms;
@@ -937,6 +938,29 @@ describe("限寿会话（SaaS 来源，#484）", () => {
     // 另一把通道钥是另一台设备。
     open(fix, SAAS_SESSION_TTL_MS, "d".repeat(32));
     expect(devices().length).toBe(before + 1);
+    // 复用时名字跟上客户端当前报的；角色变了（owner ↔ member）不复用。
+    const renamed = fix.service.openSession({
+      principalId: first.principal.principalId,
+      hostId: fix.hostId,
+      origin: ORIGIN,
+      deviceName: "新名字",
+      method: "cloud",
+      channelDeviceId: channel,
+      bounded: { ttlMs: SAAS_SESSION_TTL_MS },
+    });
+    expect(renamed.principal.deviceId).toBe(first.principal.deviceId);
+    expect(renamed.principal.deviceName).toBe("新名字");
+    expect(
+      fix.store.transaction((tx) => tx.device(first.principal.deviceId))?.name,
+    ).toBe("新名字");
+    fix.database
+      .prepare(
+        "UPDATE identity_devices SET role = 'member' WHERE device_id = ?",
+      )
+      .run(first.principal.deviceId);
+    expect(open(fix, SAAS_SESSION_TTL_MS, channel).principal.deviceId).not.toBe(
+      first.principal.deviceId,
+    );
   });
 
   describe("带新断言续同一会话", () => {
