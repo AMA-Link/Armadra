@@ -82,7 +82,7 @@ const QUOTAS: ReadonlySet<string> = new Set([
   "hosts",
   "members",
   "guests",
-  "connections",
+  "concurrent",
   "traffic",
   "teams",
 ]);

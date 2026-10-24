@@ -53,6 +53,9 @@ export interface DataListProps<T> {
   readonly actionsHeader?: string;
   /** 强制一种渲染；缺省 ≥768 表格、≤767 列表。 */
   readonly layout?: "table" | "list";
+  /** 行下方展开的内容（有效权限的各条来源之类）：只对 `expanded` 里的行渲染，两种渲染同一份。 */
+  readonly detail?: (row: T) => React.ReactNode;
+  readonly expanded?: ReadonlySet<string>;
 }
 
 export function DataList<T>({
@@ -64,6 +67,8 @@ export function DataList<T>({
   actionsHeader,
   layout,
   onRowOpen,
+  detail,
+  expanded,
 }: DataListProps<T>) {
   const compact = useCompactLayout();
   const list = (layout ?? (compact ? "list" : "table")) === "list";
@@ -98,34 +103,47 @@ export function DataList<T>({
             const sub = subs
               .map((column) => [column.id, column.cell(row)] as const)
               .filter(([, node]) => present(node));
+            const open = detail && expanded?.has(rowKey(row));
             return (
-              <TableRow
-                key={rowKey(row)}
-                className={sub.length > 0 ? "h-[52px]" : undefined}
-              >
-                {cells.map((column) => (
-                  <TableCell
-                    key={column.id}
-                    className={cn(column.numeric && "text-end tabular-nums")}
-                  >
-                    {column.role === "primary" && sub.length > 0 ? (
-                      <div className="flex flex-col gap-0.5">
-                        {column.cell(row)}
-                        <SecondaryLine parts={sub} />
+              <React.Fragment key={rowKey(row)}>
+                <TableRow
+                  className={sub.length > 0 ? "h-[52px]" : undefined}
+                  {...(open ? { "data-expanded": true } : {})}
+                >
+                  {cells.map((column) => (
+                    <TableCell
+                      key={column.id}
+                      className={cn(column.numeric && "text-end tabular-nums")}
+                    >
+                      {column.role === "primary" && sub.length > 0 ? (
+                        <div className="flex flex-col gap-0.5">
+                          {column.cell(row)}
+                          <SecondaryLine parts={sub} />
+                        </div>
+                      ) : (
+                        column.cell(row)
+                      )}
+                    </TableCell>
+                  ))}
+                  {actions ? (
+                    <TableCell className="text-end">
+                      <div className="flex items-center justify-end gap-1">
+                        {actions(row, "table")}
                       </div>
-                    ) : (
-                      column.cell(row)
-                    )}
-                  </TableCell>
-                ))}
-                {actions ? (
-                  <TableCell className="text-end">
-                    <div className="flex items-center justify-end gap-1">
-                      {actions(row, "table")}
-                    </div>
-                  </TableCell>
+                    </TableCell>
+                  ) : null}
+                </TableRow>
+                {open ? (
+                  <TableRow className="hover:bg-transparent">
+                    <TableCell
+                      colSpan={cells.length + (actions ? 1 : 0)}
+                      className="bg-muted/30 px-3 py-2 whitespace-normal"
+                    >
+                      {detail(row)}
+                    </TableCell>
+                  </TableRow>
                 ) : null}
-              </TableRow>
+              </React.Fragment>
             );
           })}
         </TableBody>
@@ -180,6 +198,9 @@ export function DataList<T>({
             </ItemContent>
             {actions ? <ItemActions>{actions(row, "list")}</ItemActions> : null}
           </Item>
+          {detail && expanded?.has(rowKey(row)) ? (
+            <div className="bg-muted/30 px-3 py-2">{detail(row)}</div>
+          ) : null}
         </React.Fragment>
       ))}
     </ItemGroup>

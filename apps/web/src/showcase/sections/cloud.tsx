@@ -7,9 +7,33 @@ import { usePreferencesStore } from "@/app/preferences-store";
 import { CloudApiProvider } from "@/cloud/api/context";
 import { createCloudQueryClient, useConsoleSession } from "@/cloud/api/queries";
 import type { ConsoleSession } from "@/cloud/ConsoleRoot";
-import { createMockApi } from "@/cloud/mock/create-mock-client";
+import {
+  createMockApi,
+  type MockApi,
+  type MockOptions,
+} from "@/cloud/mock/create-mock-client";
+import { addPendingIds } from "@/cloud/mock/pending-ids";
+import { GrantDialog } from "@/cloud/hosts/GrantDialog";
+import { RegisterHostDialog } from "@/cloud/hosts/RegisterHostDialog";
+import { MOCK_HOSTS } from "@/cloud/mock/fixtures";
+import type { TeamSpace } from "@/cloud/team/data";
+import { CreateTeamDialog } from "@/cloud/team/CreateTeamDialog";
+import { DeletedTeamPage } from "@/cloud/team/DeletedTeamPage";
+import { TeamPage } from "@/cloud/team/TeamPage";
+import { EndorserProvider, type HostEndorser } from "@/cloud/trust/endorser";
 import { ConsoleSidebar, ConsoleShell } from "@/cloud/shell/ConsoleShell";
+import { EmbeddedAuth } from "@/cloud/auth/AuthLayout";
+import { DevicePage } from "@/cloud/auth/DevicePage";
+import { LinkPage } from "@/cloud/auth/LinkPage";
+import {
+  MOCK_DEVICE_CODES,
+  MOCK_LINK,
+  MOCK_PERSONAL,
+} from "@/cloud/mock/fixtures";
 import { PageHeader } from "@/cloud/shell/PageHeader";
+import { OpsPage } from "@/cloud/ops/OpsPages";
+import { PersonalPage } from "@/cloud/personal/PersonalPages";
+import { OPS_QUERY_KEY } from "@/cloud/ops/TenantsPage";
 import { matchRoute } from "@/cloud/router";
 import { DataList, type DataColumn } from "@/cloud/ui/DataList";
 import { PageState } from "@/cloud/ui/PageState";
@@ -109,10 +133,21 @@ function useHostColumns(): DataColumn<CloudHostRow>[] {
  */
 function MockConsole({
   children,
+  options,
+  prepare,
 }: {
   children: (session: ConsoleSession) => React.ReactNode;
+  options?: MockOptions;
+  prepare?: (api: MockApi) => MockApi;
 }) {
-  const [api] = React.useState(() => createMockApi({ operatorAccount: true }));
+  const [api] = React.useState(() => {
+    const made = createMockApi({
+      operatorAccount: true,
+      operatorSession: true,
+      ...options,
+    });
+    return prepare ? prepare(made) : made;
+  });
   const [client] = React.useState(createCloudQueryClient);
   return (
     <QueryClientProvider client={client}>
@@ -133,13 +168,281 @@ function FromSession({
 }
 
 /**
- * `cloud` 分区（云端控制台 §7 U1a、U1b）：外壳（带未验证提示与计数）、两种侧栏、整页
- * 四态、`DataList` 的表格与列表两种渲染、`Progress` 三档、输入确认。外壳随视口宽度
+ * `cloud` 分区（云端控制台 §7 U1a、U1b、U2b、U3、U5、U6、U8）：外壳（带未验证提示与计数）、两种侧栏、整页
+ * 四态、设备授权与分享链接落地的公开页、`DataList` 的表格与列表两种渲染、`Progress` 三档、输入确认。外壳随视口宽度
  * 在固定侧栏与顶栏加抽屉之间切换，探针 390 / 768 / 1440 各截一张。
  */
 export default function CloudSection() {
+  // 租户样本要有搜索结果：搜索词只在 sessionStorage 里（不进地址）。
+  sessionStorage.setItem(OPS_QUERY_KEY, "li");
   return (
     <MockConsole>{(session) => <CloudSamples session={session} />}</MockConsole>
+  );
+}
+
+const TEAM_PATHS = [
+  "/t/rd",
+  "/t/rd/members",
+  "/t/rd/members?tab=invitations",
+  "/t/rd/settings",
+] as const;
+
+/**
+ * 团队空间（U4）：管理员视角的概览、成员（成员页签与邀请页签）、设置；所有者视角的设置（带转移与
+ * 删除）；成员与访客视角的概览；恢复期内的团队；创建团队对话框。页面用同一个 mock 客户端取数。
+ */
+function TeamSamples() {
+  const t = useT();
+  const [creating, setCreating] = React.useState(false);
+  const frame = "h-[520px] overflow-hidden rounded-card border border-border";
+  const page = (path: string) =>
+    matchRoute(...(path.split("?") as [string, string?]))!;
+  const shell = (session: ConsoleSession, path: string) => (
+    <div key={path} className={frame}>
+      <ConsoleShell
+        user={session.user}
+        teams={session.teams}
+        counts={CLOUD_COUNTS}
+        match={page(path)}
+      >
+        <TeamPage match={page(path)} />
+      </ConsoleShell>
+    </div>
+  );
+  return (
+    <div className="flex flex-col gap-4">
+      <MockConsole options={{ emailVerified: true }}>
+        {(session) => (
+          <div className="flex flex-col gap-4">
+            {TEAM_PATHS.map((path) => shell(session, path))}
+          </div>
+        )}
+      </MockConsole>
+      <MockConsole options={{ emailVerified: true, roles: { rd: "owner" } }}>
+        {(session) => shell(session, "/t/rd/settings")}
+      </MockConsole>
+      <div className="grid gap-4 lg:grid-cols-2">
+        <MockConsole options={{ emailVerified: true, roles: { rd: "member" } }}>
+          {(session) => shell(session, "/t/rd/members")}
+        </MockConsole>
+        <MockConsole options={{ emailVerified: true, roles: { rd: "guest" } }}>
+          {(session) => shell(session, "/t/rd")}
+        </MockConsole>
+      </div>
+      <div className="h-[320px] overflow-hidden rounded-card border border-border">
+        <MockConsole options={{ roles: { lab: "owner" }, deleted: ["lab"] }}>
+          {() => <DeletedTeamPage slug="lab" />}
+        </MockConsole>
+      </div>
+      <MockConsole options={{ emailVerified: true }}>
+        {() => (
+          <>
+            <Button
+              variant="outline"
+              className="self-start"
+              onClick={() => setCreating(true)}
+            >
+              {t("cloud.team.create")}
+            </Button>
+            {creating ? (
+              <CreateTeamDialog onClose={() => setCreating(false)} />
+            ) : null}
+          </>
+        )}
+      </MockConsole>
+    </div>
+  );
+}
+
+const RD_SPACE: TeamSpace = {
+  kind: "team",
+  teamId: "team_mock_rd",
+  slug: "rd",
+};
+const BUILD_HOST = MOCK_HOSTS[0]!.sourceId;
+
+const HOST_PATHS = [
+  "/t/rd/hosts",
+  `/t/rd/hosts/${BUILD_HOST}`,
+  `/t/rd/hosts/${BUILD_HOST}?tab=settings`,
+  "/t/rd/grants",
+] as const;
+
+/** 登记主机与添加访问两个对话框，各用一个按钮打开（不占版面）。 */
+function HostDialogSamples() {
+  const t = useT();
+  const [open, setOpen] = React.useState<"register" | "grant" | null>(null);
+  return (
+    <MockConsole options={{ emailVerified: true }}>
+      {() => (
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={() => setOpen("register")}>
+            {t("cloud.hosts.register")}
+          </Button>
+          <Button variant="outline" onClick={() => setOpen("grant")}>
+            {t("cloud.hosts.addAccess")}
+          </Button>
+          {open === "register" ? (
+            <RegisterHostDialog
+              space={RD_SPACE}
+              onClose={() => setOpen(null)}
+            />
+          ) : null}
+          {open === "grant" ? (
+            <GrantDialog
+              space={RD_SPACE}
+              sourceId={BUILD_HOST}
+              onClose={() => setOpen(null)}
+            />
+          ) : null}
+        </div>
+      )}
+    </MockConsole>
+  );
+}
+
+/**
+ * 团队主机与授予（U5）：主机目录、主机详情（访问带合成降级与来源展开、设置）、按人的授予页，
+ * member 视角的目录（只见自己登记的与被授予的），以及登记、添加访问两个对话框。
+ */
+function HostSamples() {
+  const page = (path: string) =>
+    matchRoute(...(path.split("?") as [string, string?]))!;
+  const frame = "h-[520px] overflow-hidden rounded-card border border-border";
+  const shell = (session: ConsoleSession, path: string) => (
+    <div key={path} className={frame}>
+      <ConsoleShell
+        user={session.user}
+        teams={session.teams}
+        counts={CLOUD_COUNTS}
+        match={page(path)}
+      >
+        <TeamPage match={page(path)} />
+      </ConsoleShell>
+    </div>
+  );
+  return (
+    <div className="flex flex-col gap-4">
+      <MockConsole options={{ emailVerified: true }}>
+        {(session) => (
+          <div className="flex flex-col gap-4">
+            {HOST_PATHS.map((path) => shell(session, path))}
+          </div>
+        )}
+      </MockConsole>
+      <MockConsole options={{ emailVerified: true, roles: { rd: "member" } }}>
+        {(session) => shell(session, "/t/rd/hosts")}
+      </MockConsole>
+      <HostDialogSamples />
+    </div>
+  );
+}
+
+/** 展示页的背书端：只有 laptop 号那台主机是受信设备，所以信任页一行有按钮、一行是徽标。 */
+const SAMPLE_ENDORSER: HostEndorser = {
+  canEndorse: async (sourceId) => sourceId === MOCK_PERSONAL.linkHost,
+  approve: async () => undefined,
+};
+
+const U6_PATHS = [
+  "/t/rd/links",
+  "/t/rd/trust",
+  "/t/rd/audit",
+  "/t/rd/billing",
+] as const;
+
+/** 链接、设备信任、审计、用量与计划（U6）：设备信任有「拒绝 / 信任」与「在已信任的设备上处理」两种行；Lab 团队的用量有已达上限、接近上限与超额提示。 */
+function LinkTrustSamples() {
+  const page = (path: string) => matchRoute(path)!;
+  return (
+    <MockConsole
+      options={{ emailVerified: true, moreTrust: true }}
+      prepare={addPendingIds}
+    >
+      {(session) => (
+        <EndorserProvider endorser={SAMPLE_ENDORSER}>
+          <div className="flex flex-col gap-4">
+            {U6_PATHS.map((path) => (
+              <div
+                key={path}
+                className="h-[520px] overflow-hidden rounded-card border border-border"
+              >
+                <ConsoleShell
+                  user={session.user}
+                  teams={session.teams}
+                  counts={CLOUD_COUNTS}
+                  match={page(path)}
+                >
+                  <TeamPage match={page(path)} />
+                </ConsoleShell>
+              </div>
+            ))}
+          </div>
+        </EndorserProvider>
+      )}
+    </MockConsole>
+  );
+}
+
+function UsageSamples() {
+  const match = matchRoute("/t/lab/billing")!;
+  return (
+    <MockConsole options={{ emailVerified: true, roles: { lab: "owner" } }}>
+      {(session) => (
+        <div className="h-[560px] overflow-hidden rounded-card border border-border">
+          <ConsoleShell
+            user={session.user}
+            teams={session.teams}
+            counts={CLOUD_COUNTS}
+            match={match}
+          >
+            <TeamPage match={match} />
+          </ConsoleShell>
+        </div>
+      )}
+    </MockConsole>
+  );
+}
+
+const FRAGMENT = `${"S".repeat(43)}.${"c".repeat(32)}.${"D".repeat(43)}`;
+const SAMPLE_LINK = "0123456789abcdef";
+
+/**
+ * 公开页二（U2b）：设备授权的请求卡、过期码的错误态，分享链接落地的可加入 / 次数用完（禁用）/
+ * 已失效三态。页面用同一个 mock 客户端取数，和真实页面走同一条路；嵌在框里，不当 `main`。
+ */
+function PublicSamples() {
+  const frame = "h-[520px] overflow-hidden rounded-card border border-border";
+  return (
+    <EmbeddedAuth.Provider value>
+      <div className="grid gap-4 lg:grid-cols-2">
+        <div className={frame}>
+          <DevicePage
+            code={MOCK_DEVICE_CODES.pending}
+            onNeedLogin={noop}
+            onDone={noop}
+          />
+        </div>
+        <div className={frame}>
+          <DevicePage
+            code={MOCK_DEVICE_CODES.expired}
+            onNeedLogin={noop}
+            onDone={noop}
+          />
+        </div>
+        {[SAMPLE_LINK, MOCK_LINK.exhausted, MOCK_LINK.gone].map((linkId) => (
+          <div key={linkId} className={frame}>
+            <LinkPage
+              linkId={linkId}
+              fragment={FRAGMENT}
+              onNeedLogin={noop}
+              onJoined={noop}
+              onDone={noop}
+            />
+          </div>
+        ))}
+      </div>
+    </EmbeddedAuth.Provider>
   );
 }
 
@@ -147,6 +450,7 @@ function CloudSamples({ session }: { session: ConsoleSession }) {
   const t = useT();
   const columns = useHostColumns();
   const [confirm, setConfirm] = React.useState(false);
+  const [suspend, setSuspend] = React.useState(false);
   const actions = (row: CloudHostRow, layout: "table" | "list") => (
     <>
       {layout === "table" ? (
@@ -204,6 +508,45 @@ function CloudSamples({ session }: { session: ConsoleSession }) {
             onRowOpen={noop}
           />
         </ConsoleShell>
+      </div>
+
+      <div className="flex flex-col gap-4">
+        {[
+          "/me",
+          "/me/hosts",
+          `/me/hosts/${MOCK_PERSONAL.linkHost}`,
+          "/me/links",
+          "/me/account",
+          "/me/account?tab=devices",
+        ].map((path) => {
+          const match = matchRoute(...(path.split("?") as [string, string?]))!;
+          return (
+            <div
+              key={path}
+              className="h-[520px] overflow-hidden rounded-card border border-border"
+            >
+              <ConsoleShell {...shellProps} match={match}>
+                <PersonalPage match={match} />
+              </ConsoleShell>
+            </div>
+          );
+        })}
+      </div>
+
+      <div className="flex flex-col gap-4">
+        {["/ops", "/ops/nodes", "/ops/status"].map((path) => {
+          const match = matchRoute(...(path.split("?") as [string, string?]));
+          return (
+            <div
+              key={path}
+              className="h-[420px] overflow-hidden rounded-card border border-border"
+            >
+              <ConsoleShell {...shellProps} match={match!} operator>
+                <OpsPage match={match!} />
+              </ConsoleShell>
+            </div>
+          );
+        })}
       </div>
 
       <div className="grid gap-4 md:grid-cols-2">
@@ -273,6 +616,16 @@ function CloudSamples({ session }: { session: ConsoleSession }) {
         </div>
       </div>
 
+      <TeamSamples />
+
+      <HostSamples />
+
+      <LinkTrustSamples />
+
+      <UsageSamples />
+
+      <PublicSamples />
+
       <div className="flex max-w-sm flex-col gap-4">
         {CLOUD_QUOTAS.map(({ tone, value }) => (
           <Progress
@@ -289,7 +642,23 @@ function CloudSamples({ session }: { session: ConsoleSession }) {
         >
           {t("showcase.cloud.deleteTeam")}
         </Button>
+        <Button
+          variant="destructive"
+          className="self-start"
+          onClick={() => setSuspend(true)}
+        >
+          {t("cloud.ops.suspend")}
+        </Button>
       </div>
+      <TypedConfirm
+        open={suspend}
+        reason
+        onOpenChange={setSuspend}
+        title={t("cloud.ops.suspendTitle", { name: CLOUD_TEAMS[0]!.name })}
+        expected={CLOUD_TEAMS[0]!.name}
+        actionLabel={t("cloud.ops.suspend")}
+        onConfirm={noop}
+      />
       <TypedConfirm
         open={confirm}
         onOpenChange={setConfirm}

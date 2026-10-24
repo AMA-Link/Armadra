@@ -4,8 +4,8 @@
  * 登记的顺序：本地先判（地址、令牌、已登记）→ 读 `/.well-known/armadra-platform`
  * （协议 major 必须相同、自报的 issuer 必须就是填的地址）→ 源密钥对（没有就生成）
  * → `POST /v1/sources/register` → 取 JWKS → 写行 → 起隧道（不等）→ 审计。任何一步
- * 失败都不留行。只实现个人中转这一个签发方：`saas` 答 `not_implemented`，形状与
- * 流程不变，SaaS 服务端就绪后放开这一处即可（总计划 §12.2）。
+ * 失败都不留行。个人中转与 Armadra 云（`saas`）两种签发方流程相同，行上的 `mode`
+ * 取自握手；SaaS 的空间、主机配额与团队状态由远程服务在 `sources.register` 里判定。
  *
  * 撤销先在本机完成（停隧道、记撤销时刻），再尽力删中继侧的源记录
  * （`DELETE <issuer>/v1/sources/{sourceId}`，要远程服务 owner 的会话，经源表域挂上的
@@ -198,10 +198,6 @@ export class CloudRegistry {
     }
     if (!this.sameIssuer(info.issuer, issuer)) {
       throw fail("cloud_issuer_mismatch", "远程服务自报的地址与填写的不一致");
-    }
-    if (info.mode !== "personal") {
-      // SaaS 签发方只留接口（总计划 §12.2）：形状与流程相同，服务端就绪后放开。
-      throw fail("not_implemented", "SaaS 远程服务尚未开放");
     }
     const sourceId = this.options.hostId();
     const publicKey: Ed25519PublicJwk = await sourceKey.publicJwk();

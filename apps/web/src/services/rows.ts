@@ -37,6 +37,9 @@ export interface ServiceRow {
   readonly shareRole?: string;
   /** 分享到期的时刻（毫秒）；不知道是 0。 */
   readonly shareExpiresAtMs?: number;
+  /** 分享经由的团队（契约 §86）；个人分享、自己的电脑与旧数据是空串。 */
+  readonly teamId?: string;
+  readonly teamName?: string;
   /** 到达方式，首选在前；本机没有。 */
   readonly routes: readonly ServiceRoute[];
   /** 上次进入成功的时刻；没进过是 `null`。 */
@@ -106,6 +109,8 @@ export function serviceRowOf(
     readonly ownerName?: string;
     readonly shareRole?: string;
     readonly shareExpiresAtMs?: number;
+    readonly teamId?: string;
+    readonly teamName?: string;
   };
   const used = options.recent?.find(
     (entry) => entry.sourceId === descriptor.sourceId,
@@ -125,6 +130,8 @@ export function serviceRowOf(
     ownerName: extra.ownerName ?? "",
     shareRole: extra.shareRole ?? "",
     shareExpiresAtMs: extra.shareExpiresAtMs ?? 0,
+    teamId: extra.teamId ?? "",
+    teamName: extra.teamName ?? "",
     routes,
     lastUsedAt: used?.at ?? null,
   };
@@ -190,4 +197,40 @@ export function layoutByOrigin(rows: readonly ServiceRow[]): OriginGroup[] {
     ...(mine.length > 0 ? [{ key: "mine" as const, rows: mine }] : []),
     ...(shared.length > 0 ? [{ key: "shared" as const, rows: shared }] : []),
   ];
+}
+
+/** 「他人分享」里的一个团队小组（契约 §86，与侧栏同一规矩）。 */
+export interface TeamRows {
+  readonly teamId: string;
+  /** 小组标题：团队名，没有名字退回团队标识的前 8 位。 */
+  readonly name: string;
+  readonly rows: readonly ServiceRow[];
+}
+
+/** 团队小组按首次出现的顺序，不经团队的分享（个人分享）排在后面。 */
+export function layoutByTeam(rows: readonly ServiceRow[]): {
+  readonly teams: readonly TeamRows[];
+  readonly personal: readonly ServiceRow[];
+} {
+  const teams = new Map<string, { name: string; rows: ServiceRow[] }>();
+  const personal: ServiceRow[] = [];
+  for (const row of rows) {
+    const teamId = row.teamId ?? "";
+    if (teamId === "") {
+      personal.push(row);
+      continue;
+    }
+    const team = teams.get(teamId) ?? { name: "", rows: [] };
+    if (team.name === "" && row.teamName) team.name = row.teamName;
+    team.rows.push(row);
+    teams.set(teamId, team);
+  }
+  return {
+    teams: [...teams].map(([teamId, team]) => ({
+      teamId,
+      name: team.name || teamId.slice(0, 8),
+      rows: team.rows,
+    })),
+    personal,
+  };
 }

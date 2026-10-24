@@ -76,17 +76,17 @@ describe("控制台经客户端取会话", () => {
     expect((await h1()).textContent).toBe("找不到这个页面");
   });
 
-  it("没登录：me.get 答 session_expired，整页「登录已过期」，重新登录带上 next", async () => {
-    visit("/t/rd/hosts");
+  it("没登录：me.get 答 session_expired，跳 /login 并带上 next，登录页渲染表单而不是「找不到」", async () => {
+    visit("/t/rd/hosts?status=online");
     mount({ signedIn: false });
-    expect((await h1()).textContent).toBe("登录已过期");
-    act(() => screen.getByRole("button", { name: "重新登录" }).click());
+    expect((await h1()).textContent).toBe("登录");
     expect(window.location.pathname + window.location.search).toBe(
-      `/login?next=${encodeURIComponent("/t/rd/hosts")}`,
+      `/login?next=${encodeURIComponent("/t/rd/hosts?status=online")}`,
     );
+    expect(screen.getByLabelText("邮箱")).toBeTruthy();
   });
 
-  it("使用中会话失效且续不上：清掉缓存，整页换成「登录已过期」", async () => {
+  it("使用中会话失效且续不上：清掉缓存，回 /login", async () => {
     visit("/me");
     const api = createMockApi();
     const lost = vi.spyOn(api, "onSessionLost");
@@ -94,7 +94,8 @@ describe("控制台经客户端取会话", () => {
     await h1();
     const listener = lost.mock.calls[0]![0];
     act(() => listener());
-    expect((await h1()).textContent).toBe("登录已过期");
+    expect((await h1()).textContent).toBe("登录");
+    expect(window.location.pathname).toBe("/login");
     expect(screen.queryByRole("navigation")).toBeNull();
   });
 
@@ -121,9 +122,9 @@ describe("控制台经客户端取会话", () => {
 });
 
 describe("运营后台门控", () => {
-  it("没有运营会话访问 /ops/* 整页找不到，即便账号有运营范围", async () => {
+  it("没有运营范围的账号访问 /ops/* 整页找不到", async () => {
     visit("/ops/nodes");
-    mount({ operatorAccount: true });
+    mount();
     expect((await h1()).textContent).toBe("找不到这个页面");
     expect(screen.queryByRole("navigation")).toBeNull();
   });
@@ -146,11 +147,15 @@ describe("运营后台门控", () => {
     expect(screen.queryByRole("menuitem", { name: "运营后台" })).toBeNull();
   });
 
-  it("运营会话在：进得去 /ops，菜单直达 /ops；会话到期（CSRF 清掉）立刻又是找不到", async () => {
+  it("运营会话在：进得去 /ops，菜单直达 /ops；会话到期（CSRF 清掉）续不上就回运营登录", async () => {
     visit("/ops/nodes");
     const api = mount({ operatorAccount: true, operatorSession: true });
     expect((await h1()).textContent).toBe("节点");
     await act(() => api.signOut());
-    expect((await h1()).textContent).toBe("找不到这个页面");
+    await waitFor(() =>
+      expect(window.location.pathname + window.location.search).toBe(
+        "/login?scope=operator&next=%2Fops%2Fnodes",
+      ),
+    );
   });
 });

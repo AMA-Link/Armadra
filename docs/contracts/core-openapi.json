@@ -1,7 +1,7 @@
 {
   "info": {
     "title": "Armadra core",
-    "version": "1.48",
+    "version": "1.51",
     "description": "契约 procedure 的入参与出参（docs/contracts/core-json-api.md §34）。线上是 `POST /api/rpc/<域>/<动词>`，体按 `{ json }` 编码，下列 schema 是 `json` 那一格；失败一律是 `CoreError`。由 tools/contract/generate.mjs 生成，不要手改。"
   },
   "openapi": "3.1.1",
@@ -7108,6 +7108,12 @@
                             "minimum": -9007199254740991,
                             "maximum": 9007199254740991
                           },
+                          "teamId": {
+                            "type": "string"
+                          },
+                          "teamName": {
+                            "type": "string"
+                          },
                           "identityPub": {
                             "type": "string"
                           }
@@ -7131,6 +7137,8 @@
                           "ownerLabel",
                           "shareRole",
                           "shareExpiresAtMs",
+                          "teamId",
+                          "teamName",
                           "identityPub"
                         ]
                       }
@@ -7374,6 +7382,12 @@
                       "minimum": -9007199254740991,
                       "maximum": 9007199254740991
                     },
+                    "teamId": {
+                      "type": "string"
+                    },
+                    "teamName": {
+                      "type": "string"
+                    },
                     "identityPub": {
                       "type": "string"
                     }
@@ -7397,6 +7411,8 @@
                     "ownerLabel",
                     "shareRole",
                     "shareExpiresAtMs",
+                    "teamId",
+                    "teamName",
                     "identityPub"
                   ]
                 }
@@ -7607,6 +7623,12 @@
                       "minimum": -9007199254740991,
                       "maximum": 9007199254740991
                     },
+                    "teamId": {
+                      "type": "string"
+                    },
+                    "teamName": {
+                      "type": "string"
+                    },
                     "identityPub": {
                       "type": "string"
                     }
@@ -7630,6 +7652,8 @@
                     "ownerLabel",
                     "shareRole",
                     "shareExpiresAtMs",
+                    "teamId",
+                    "teamName",
                     "identityPub"
                   ]
                 }
@@ -8138,6 +8162,12 @@
                       "minimum": -9007199254740991,
                       "maximum": 9007199254740991
                     },
+                    "teamId": {
+                      "type": "string"
+                    },
+                    "teamName": {
+                      "type": "string"
+                    },
                     "identityPub": {
                       "type": "string"
                     }
@@ -8161,6 +8191,8 @@
                     "ownerLabel",
                     "shareRole",
                     "shareExpiresAtMs",
+                    "teamId",
+                    "teamName",
                     "identityPub"
                   ]
                 }
@@ -8356,6 +8388,12 @@
                       "minimum": -9007199254740991,
                       "maximum": 9007199254740991
                     },
+                    "teamId": {
+                      "type": "string"
+                    },
+                    "teamName": {
+                      "type": "string"
+                    },
                     "identityPub": {
                       "type": "string"
                     }
@@ -8379,6 +8417,8 @@
                     "ownerLabel",
                     "shareRole",
                     "shareExpiresAtMs",
+                    "teamId",
+                    "teamName",
                     "identityPub"
                   ]
                 }
@@ -8583,6 +8623,11 @@
                                   "type": "integer",
                                   "minimum": -9007199254740991,
                                   "maximum": 9007199254740991
+                                },
+                                "intervalMs": {
+                                  "type": "integer",
+                                  "minimum": -9007199254740991,
+                                  "maximum": 9007199254740991
                                 }
                               },
                               "required": [
@@ -8624,6 +8669,16 @@
           },
           "403": {
             "description": "403",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CoreError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "409",
             "content": {
               "application/json": {
                 "schema": {
@@ -8741,8 +8796,28 @@
               }
             }
           },
+          "429": {
+            "description": "429",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CoreError"
+                }
+              }
+            }
+          },
           "501": {
             "description": "501",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CoreError"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "502",
             "content": {
               "application/json": {
                 "schema": {
@@ -8760,6 +8835,1794 @@
             "method": "POST",
             "path": "/api/sources/remotes/{serviceId}/poll"
           }
+        }
+      }
+    },
+    "/api/rpc/sources/remoteSpaces": {
+      "post": {
+        "operationId": "sources.remoteSpaces",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "serviceId": {
+                    "type": "string"
+                  }
+                },
+                "required": ["serviceId"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "spaces": {
+                      "type": "array",
+                      "items": {
+                        "anyOf": [
+                          {
+                            "type": "object",
+                            "properties": {
+                              "kind": {
+                                "const": "personal"
+                              },
+                              "plan": {
+                                "type": "string"
+                              }
+                            },
+                            "required": ["kind", "plan"]
+                          },
+                          {
+                            "type": "object",
+                            "properties": {
+                              "kind": {
+                                "const": "team"
+                              },
+                              "teamId": {
+                                "type": "string"
+                              },
+                              "slug": {
+                                "type": "string"
+                              },
+                              "name": {
+                                "type": "string"
+                              },
+                              "role": {
+                                "type": "string"
+                              },
+                              "plan": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "kind",
+                              "teamId",
+                              "slug",
+                              "name",
+                              "role",
+                              "plan"
+                            ]
+                          }
+                        ]
+                      }
+                    }
+                  },
+                  "required": ["spaces"]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "401",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CoreError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "403",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CoreError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "404",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CoreError"
+                }
+              }
+            }
+          },
+          "501": {
+            "description": "501",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CoreError"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "502",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CoreError"
+                }
+              }
+            }
+          }
+        },
+        "x-armadra": {
+          "contract": "§33.11",
+          "scope": "settings:read",
+          "since": "1.50",
+          "legacy": {
+            "method": "GET",
+            "path": "/api/sources/remotes/{serviceId}/spaces"
+          }
+        }
+      }
+    },
+    "/api/rpc/sources/remoteRegister": {
+      "post": {
+        "operationId": "sources.remoteRegister",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "serviceId": {
+                    "type": "string"
+                  },
+                  "space": {
+                    "anyOf": [
+                      {
+                        "type": "object",
+                        "properties": {
+                          "kind": {
+                            "const": "personal"
+                          }
+                        },
+                        "required": ["kind"]
+                      },
+                      {
+                        "type": "object",
+                        "properties": {
+                          "kind": {
+                            "const": "team"
+                          },
+                          "teamId": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 128
+                          }
+                        },
+                        "required": ["kind", "teamId"]
+                      }
+                    ]
+                  },
+                  "label": {
+                    "type": "string",
+                    "maxLength": 128
+                  }
+                },
+                "required": ["serviceId", "space"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "remote": {
+                      "type": "object",
+                      "properties": {
+                        "serviceId": {
+                          "type": "string"
+                        },
+                        "kind": {
+                          "enum": ["personal", "saas"],
+                          "type": "string"
+                        },
+                        "issuer": {
+                          "type": "string"
+                        },
+                        "label": {
+                          "type": "string"
+                        },
+                        "accountHint": {
+                          "type": "string"
+                        },
+                        "fingerprint": {
+                          "type": "string"
+                        },
+                        "addedAtMs": {
+                          "type": "integer",
+                          "minimum": -9007199254740991,
+                          "maximum": 9007199254740991
+                        },
+                        "lastOkAtMs": {
+                          "type": "integer",
+                          "minimum": -9007199254740991,
+                          "maximum": 9007199254740991
+                        },
+                        "registered": {
+                          "type": "boolean"
+                        },
+                        "hasCredentials": {
+                          "type": "boolean"
+                        },
+                        "defaultLabel": {
+                          "type": "string"
+                        },
+                        "guest": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "serviceId",
+                        "kind",
+                        "issuer",
+                        "label",
+                        "accountHint",
+                        "fingerprint",
+                        "addedAtMs",
+                        "lastOkAtMs",
+                        "registered",
+                        "hasCredentials",
+                        "defaultLabel",
+                        "guest"
+                      ]
+                    },
+                    "sourceId": {
+                      "type": "string"
+                    }
+                  },
+                  "required": ["remote", "sourceId"]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "400",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CoreError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "401",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CoreError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "403",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CoreError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "404",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CoreError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "409",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CoreError"
+                }
+              }
+            }
+          },
+          "410": {
+            "description": "410",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CoreError"
+                }
+              }
+            }
+          },
+          "426": {
+            "description": "426",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CoreError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "429",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CoreError"
+                }
+              }
+            }
+          },
+          "501": {
+            "description": "501",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CoreError"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "502",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CoreError"
+                }
+              }
+            }
+          }
+        },
+        "x-armadra": {
+          "contract": "§33.11",
+          "scope": "settings:write",
+          "since": "1.50",
+          "legacy": {
+            "method": "POST",
+            "path": "/api/sources/remotes/{serviceId}/register"
+          }
+        }
+      }
+    },
+    "/api/rpc/sources/cloudAccess": {
+      "post": {
+        "operationId": "sources.cloudAccess",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "serviceId": {
+                    "type": "string"
+                  }
+                },
+                "required": ["serviceId"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "sourceId": {
+                      "type": "string"
+                    },
+                    "space": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "properties": {
+                            "kind": {
+                              "const": "personal"
+                            }
+                          },
+                          "required": ["kind"]
+                        },
+                        {
+                          "type": "object",
+                          "properties": {
+                            "kind": {
+                              "const": "team"
+                            },
+                            "teamId": {
+                              "type": "string"
+                            }
+                          },
+                          "required": ["kind", "teamId"]
+                        }
+                      ]
+                    },
+                    "allowGuests": {
+                      "type": "boolean"
+                    },
+                    "canManage": {
+                      "type": "boolean"
+                    },
+                    "members": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "accountId": {
+                            "type": "string"
+                          },
+                          "email": {
+                            "type": "string"
+                          },
+                          "displayName": {
+                            "type": "string"
+                          },
+                          "role": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "accountId",
+                          "email",
+                          "displayName",
+                          "role"
+                        ]
+                      }
+                    },
+                    "grants": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "grantId": {
+                            "type": "string"
+                          },
+                          "subject": {
+                            "anyOf": [
+                              {
+                                "type": "object",
+                                "properties": {
+                                  "kind": {
+                                    "const": "team"
+                                  },
+                                  "teamId": {
+                                    "type": "string"
+                                  }
+                                },
+                                "required": ["kind", "teamId"]
+                              },
+                              {
+                                "type": "object",
+                                "properties": {
+                                  "kind": {
+                                    "const": "member"
+                                  },
+                                  "accountId": {
+                                    "type": "string"
+                                  }
+                                },
+                                "required": ["kind", "accountId"]
+                              },
+                              {
+                                "type": "object",
+                                "properties": {
+                                  "kind": {
+                                    "const": "group"
+                                  },
+                                  "groupId": {
+                                    "type": "string"
+                                  }
+                                },
+                                "required": ["kind", "groupId"]
+                              },
+                              {
+                                "type": "object",
+                                "properties": {
+                                  "kind": {
+                                    "const": "guest"
+                                  },
+                                  "accountId": {
+                                    "type": "string"
+                                  }
+                                },
+                                "required": ["kind", "accountId"]
+                              }
+                            ]
+                          },
+                          "role": {
+                            "enum": ["viewer", "editor", "operator", "driver"],
+                            "type": "string"
+                          },
+                          "workspaceIds": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          },
+                          "expiresAtMs": {
+                            "anyOf": [
+                              {
+                                "type": "integer",
+                                "minimum": -9007199254740991,
+                                "maximum": 9007199254740991
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          }
+                        },
+                        "required": [
+                          "grantId",
+                          "subject",
+                          "role",
+                          "workspaceIds",
+                          "expiresAtMs"
+                        ]
+                      }
+                    }
+                  },
+                  "required": [
+                    "sourceId",
+                    "space",
+                    "allowGuests",
+                    "canManage",
+                    "members",
+                    "grants"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "400",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CoreError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "401",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CoreError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "403",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CoreError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "404",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CoreError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "409",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CoreError"
+                }
+              }
+            }
+          },
+          "410": {
+            "description": "410",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CoreError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "429",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CoreError"
+                }
+              }
+            }
+          },
+          "501": {
+            "description": "501",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CoreError"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "502",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CoreError"
+                }
+              }
+            }
+          }
+        },
+        "x-armadra": {
+          "contract": "§33.12",
+          "scope": "settings:read",
+          "since": "1.51"
+        }
+      }
+    },
+    "/api/rpc/sources/cloudGrantCreate": {
+      "post": {
+        "operationId": "sources.cloudGrantCreate",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "serviceId": {
+                    "type": "string"
+                  },
+                  "subject": {
+                    "anyOf": [
+                      {
+                        "type": "object",
+                        "properties": {
+                          "kind": {
+                            "const": "member"
+                          },
+                          "accountId": {
+                            "type": "string",
+                            "minLength": 1
+                          }
+                        },
+                        "required": ["kind", "accountId"]
+                      },
+                      {
+                        "type": "object",
+                        "properties": {
+                          "kind": {
+                            "const": "guest"
+                          },
+                          "accountId": {
+                            "type": "string",
+                            "minLength": 1
+                          }
+                        },
+                        "required": ["kind", "accountId"]
+                      }
+                    ]
+                  },
+                  "role": {
+                    "enum": ["viewer", "editor", "operator", "driver"],
+                    "type": "string"
+                  },
+                  "workspaceIds": {
+                    "type": "array",
+                    "maxItems": 64,
+                    "items": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 128
+                    }
+                  },
+                  "expiresAtMs": {
+                    "type": "integer",
+                    "minimum": -9007199254740991,
+                    "maximum": 9007199254740991
+                  }
+                },
+                "required": ["serviceId", "subject", "role", "workspaceIds"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "grant": {
+                      "type": "object",
+                      "properties": {
+                        "grantId": {
+                          "type": "string"
+                        },
+                        "subject": {
+                          "anyOf": [
+                            {
+                              "type": "object",
+                              "properties": {
+                                "kind": {
+                                  "const": "team"
+                                },
+                                "teamId": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": ["kind", "teamId"]
+                            },
+                            {
+                              "type": "object",
+                              "properties": {
+                                "kind": {
+                                  "const": "member"
+                                },
+                                "accountId": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": ["kind", "accountId"]
+                            },
+                            {
+                              "type": "object",
+                              "properties": {
+                                "kind": {
+                                  "const": "group"
+                                },
+                                "groupId": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": ["kind", "groupId"]
+                            },
+                            {
+                              "type": "object",
+                              "properties": {
+                                "kind": {
+                                  "const": "guest"
+                                },
+                                "accountId": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": ["kind", "accountId"]
+                            }
+                          ]
+                        },
+                        "role": {
+                          "enum": ["viewer", "editor", "operator", "driver"],
+                          "type": "string"
+                        },
+                        "workspaceIds": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        },
+                        "expiresAtMs": {
+                          "anyOf": [
+                            {
+                              "type": "integer",
+                              "minimum": -9007199254740991,
+                              "maximum": 9007199254740991
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        }
+                      },
+                      "required": [
+                        "grantId",
+                        "subject",
+                        "role",
+                        "workspaceIds",
+                        "expiresAtMs"
+                      ]
+                    }
+                  },
+                  "required": ["grant"]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "400",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CoreError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "401",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CoreError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "403",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CoreError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "409",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CoreError"
+                }
+              }
+            }
+          },
+          "410": {
+            "description": "410",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CoreError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "429",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CoreError"
+                }
+              }
+            }
+          },
+          "501": {
+            "description": "501",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CoreError"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "502",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CoreError"
+                }
+              }
+            }
+          }
+        },
+        "x-armadra": {
+          "contract": "§33.12",
+          "scope": "settings:write",
+          "since": "1.51"
+        }
+      }
+    },
+    "/api/rpc/sources/cloudGrantUpdate": {
+      "post": {
+        "operationId": "sources.cloudGrantUpdate",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "serviceId": {
+                    "type": "string"
+                  },
+                  "grantId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 128
+                  },
+                  "role": {
+                    "enum": ["viewer", "editor", "operator", "driver"],
+                    "type": "string"
+                  },
+                  "workspaceIds": {
+                    "type": "array",
+                    "maxItems": 64,
+                    "items": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 128
+                    }
+                  },
+                  "expiresAtMs": {
+                    "anyOf": [
+                      {
+                        "type": "integer",
+                        "minimum": -9007199254740991,
+                        "maximum": 9007199254740991
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                },
+                "required": ["serviceId", "grantId", "role"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "grant": {
+                      "type": "object",
+                      "properties": {
+                        "grantId": {
+                          "type": "string"
+                        },
+                        "subject": {
+                          "anyOf": [
+                            {
+                              "type": "object",
+                              "properties": {
+                                "kind": {
+                                  "const": "team"
+                                },
+                                "teamId": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": ["kind", "teamId"]
+                            },
+                            {
+                              "type": "object",
+                              "properties": {
+                                "kind": {
+                                  "const": "member"
+                                },
+                                "accountId": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": ["kind", "accountId"]
+                            },
+                            {
+                              "type": "object",
+                              "properties": {
+                                "kind": {
+                                  "const": "group"
+                                },
+                                "groupId": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": ["kind", "groupId"]
+                            },
+                            {
+                              "type": "object",
+                              "properties": {
+                                "kind": {
+                                  "const": "guest"
+                                },
+                                "accountId": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": ["kind", "accountId"]
+                            }
+                          ]
+                        },
+                        "role": {
+                          "enum": ["viewer", "editor", "operator", "driver"],
+                          "type": "string"
+                        },
+                        "workspaceIds": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        },
+                        "expiresAtMs": {
+                          "anyOf": [
+                            {
+                              "type": "integer",
+                              "minimum": -9007199254740991,
+                              "maximum": 9007199254740991
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        }
+                      },
+                      "required": [
+                        "grantId",
+                        "subject",
+                        "role",
+                        "workspaceIds",
+                        "expiresAtMs"
+                      ]
+                    }
+                  },
+                  "required": ["grant"]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "400",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CoreError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "401",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CoreError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "403",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CoreError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "404",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CoreError"
+                }
+              }
+            }
+          },
+          "410": {
+            "description": "410",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CoreError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "429",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CoreError"
+                }
+              }
+            }
+          },
+          "501": {
+            "description": "501",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CoreError"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "502",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CoreError"
+                }
+              }
+            }
+          }
+        },
+        "x-armadra": {
+          "contract": "§33.12",
+          "scope": "settings:write",
+          "since": "1.51"
+        }
+      }
+    },
+    "/api/rpc/sources/cloudGrantRevoke": {
+      "post": {
+        "operationId": "sources.cloudGrantRevoke",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "serviceId": {
+                    "type": "string"
+                  },
+                  "grantId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 128
+                  }
+                },
+                "required": ["serviceId", "grantId"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "400",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CoreError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "401",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CoreError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "403",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CoreError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "404",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CoreError"
+                }
+              }
+            }
+          },
+          "410": {
+            "description": "410",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CoreError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "429",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CoreError"
+                }
+              }
+            }
+          },
+          "501": {
+            "description": "501",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CoreError"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "502",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CoreError"
+                }
+              }
+            }
+          }
+        },
+        "x-armadra": {
+          "contract": "§33.12",
+          "scope": "settings:write",
+          "since": "1.51"
+        }
+      }
+    },
+    "/api/rpc/sources/cloudInvite": {
+      "post": {
+        "operationId": "sources.cloudInvite",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "serviceId": {
+                    "type": "string"
+                  },
+                  "email": {
+                    "type": "string",
+                    "minLength": 3,
+                    "maxLength": 320
+                  },
+                  "role": {
+                    "enum": ["viewer", "editor", "operator", "driver"],
+                    "type": "string"
+                  },
+                  "workspaceIds": {
+                    "type": "array",
+                    "maxItems": 64,
+                    "items": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 128
+                    }
+                  },
+                  "expiresAtMs": {
+                    "type": "integer",
+                    "minimum": -9007199254740991,
+                    "maximum": 9007199254740991
+                  }
+                },
+                "required": ["serviceId", "email", "role", "workspaceIds"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "invitation": {
+                      "type": "object",
+                      "properties": {
+                        "invitationId": {
+                          "type": "string"
+                        },
+                        "email": {
+                          "type": "string"
+                        },
+                        "expiresAtMs": {
+                          "type": "integer",
+                          "minimum": -9007199254740991,
+                          "maximum": 9007199254740991
+                        }
+                      },
+                      "required": ["invitationId", "email", "expiresAtMs"]
+                    }
+                  },
+                  "required": ["invitation"]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "400",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CoreError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "401",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CoreError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "403",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CoreError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "409",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CoreError"
+                }
+              }
+            }
+          },
+          "410": {
+            "description": "410",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CoreError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "429",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CoreError"
+                }
+              }
+            }
+          },
+          "501": {
+            "description": "501",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CoreError"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "502",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CoreError"
+                }
+              }
+            }
+          }
+        },
+        "x-armadra": {
+          "contract": "§33.12",
+          "scope": "settings:write",
+          "since": "1.51"
+        }
+      }
+    },
+    "/api/rpc/sources/cloudTrustList": {
+      "post": {
+        "operationId": "sources.cloudTrustList",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "serviceId": {
+                    "type": "string"
+                  }
+                },
+                "required": ["serviceId"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "requests": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "requestId": {
+                            "type": "string"
+                          },
+                          "sourceId": {
+                            "type": "string"
+                          },
+                          "sourceName": {
+                            "type": "string"
+                          },
+                          "teamId": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "member": {
+                            "type": "object",
+                            "properties": {
+                              "accountId": {
+                                "type": "string"
+                              },
+                              "email": {
+                                "type": "string"
+                              },
+                              "displayName": {
+                                "type": "string"
+                              }
+                            },
+                            "required": ["accountId", "email", "displayName"]
+                          },
+                          "device": {
+                            "type": "object",
+                            "properties": {
+                              "name": {
+                                "type": "string"
+                              },
+                              "platform": {
+                                "type": "string"
+                              }
+                            },
+                            "required": ["name", "platform"]
+                          },
+                          "requestedAtMs": {
+                            "type": "integer",
+                            "minimum": -9007199254740991,
+                            "maximum": 9007199254740991
+                          },
+                          "expiresAtMs": {
+                            "type": "integer",
+                            "minimum": -9007199254740991,
+                            "maximum": 9007199254740991
+                          },
+                          "pendingId": {
+                            "type": "string",
+                            "minLength": 1
+                          }
+                        },
+                        "required": [
+                          "requestId",
+                          "sourceId",
+                          "sourceName",
+                          "teamId",
+                          "member",
+                          "device",
+                          "requestedAtMs",
+                          "expiresAtMs"
+                        ]
+                      }
+                    }
+                  },
+                  "required": ["requests"]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "400",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CoreError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "401",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CoreError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "403",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CoreError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "404",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CoreError"
+                }
+              }
+            }
+          },
+          "410": {
+            "description": "410",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CoreError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "429",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CoreError"
+                }
+              }
+            }
+          },
+          "501": {
+            "description": "501",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CoreError"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "502",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CoreError"
+                }
+              }
+            }
+          }
+        },
+        "x-armadra": {
+          "contract": "§33.12",
+          "scope": "settings:read",
+          "since": "1.51"
+        }
+      }
+    },
+    "/api/rpc/sources/cloudTrustReject": {
+      "post": {
+        "operationId": "sources.cloudTrustReject",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "serviceId": {
+                    "type": "string"
+                  },
+                  "requestId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 128
+                  }
+                },
+                "required": ["serviceId", "requestId"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "400",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CoreError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "401",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CoreError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "403",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CoreError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "404",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CoreError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "409",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CoreError"
+                }
+              }
+            }
+          },
+          "410": {
+            "description": "410",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CoreError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "429",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CoreError"
+                }
+              }
+            }
+          },
+          "501": {
+            "description": "501",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CoreError"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "502",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CoreError"
+                }
+              }
+            }
+          }
+        },
+        "x-armadra": {
+          "contract": "§33.12",
+          "scope": "settings:write",
+          "since": "1.51"
         }
       }
     },
@@ -9269,6 +11132,12 @@
                       "minimum": -9007199254740991,
                       "maximum": 9007199254740991
                     },
+                    "teamId": {
+                      "type": "string"
+                    },
+                    "teamName": {
+                      "type": "string"
+                    },
                     "identityPub": {
                       "type": "string"
                     }
@@ -9292,6 +11161,8 @@
                     "ownerLabel",
                     "shareRole",
                     "shareExpiresAtMs",
+                    "teamId",
+                    "teamName",
                     "identityPub"
                   ]
                 }
@@ -9830,6 +11701,12 @@
                       "minimum": -9007199254740991,
                       "maximum": 9007199254740991
                     },
+                    "teamId": {
+                      "type": "string"
+                    },
+                    "teamName": {
+                      "type": "string"
+                    },
                     "identityPub": {
                       "type": "string"
                     }
@@ -9853,6 +11730,8 @@
                     "ownerLabel",
                     "shareRole",
                     "shareExpiresAtMs",
+                    "teamId",
+                    "teamName",
                     "identityPub"
                   ]
                 }
@@ -10843,6 +12722,9 @@
                   },
                   "invitationToken": {
                     "type": "string"
+                  },
+                  "probe": {
+                    "type": "boolean"
                   }
                 },
                 "required": ["assertion"]
@@ -10856,125 +12738,143 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "object",
-                  "properties": {
-                    "session": {
+                  "anyOf": [
+                    {
                       "type": "object",
                       "properties": {
-                        "hostId": {
-                          "type": "string"
-                        },
-                        "device": {
+                        "session": {
                           "type": "object",
                           "properties": {
-                            "deviceId": {
+                            "hostId": {
                               "type": "string"
                             },
+                            "device": {
+                              "type": "object",
+                              "properties": {
+                                "deviceId": {
+                                  "type": "string"
+                                },
+                                "principalId": {
+                                  "type": "string",
+                                  "default": ""
+                                },
+                                "displayName": {
+                                  "type": "string",
+                                  "default": ""
+                                },
+                                "role": {
+                                  "type": "string",
+                                  "default": "owner"
+                                },
+                                "createdAtUnixMs": {
+                                  "type": "number",
+                                  "default": 0
+                                },
+                                "revision": {
+                                  "type": "number",
+                                  "default": 0
+                                }
+                              },
+                              "required": ["deviceId"]
+                            },
+                            "scopes": {
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "properties": {
+                                  "permission": {
+                                    "type": "string"
+                                  },
+                                  "workspaceId": {
+                                    "type": "string",
+                                    "default": ""
+                                  },
+                                  "executionHostId": {
+                                    "type": "string",
+                                    "default": ""
+                                  }
+                                },
+                                "required": ["permission"]
+                              },
+                              "default": []
+                            },
+                            "expiresAtUnixMs": {
+                              "type": "number",
+                              "default": 0
+                            },
+                            "csrfToken": {
+                              "type": "string"
+                            },
+                            "native": {
+                              "type": "object",
+                              "properties": {
+                                "accessToken": {
+                                  "type": "string"
+                                },
+                                "refreshToken": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": ["accessToken", "refreshToken"]
+                            }
+                          },
+                          "required": ["hostId", "device"]
+                        },
+                        "principal": {
+                          "type": "object",
+                          "properties": {
                             "principalId": {
-                              "type": "string",
-                              "default": ""
+                              "type": "string"
+                            },
+                            "kind": {
+                              "enum": ["owner", "member"],
+                              "type": "string"
                             },
                             "displayName": {
-                              "type": "string",
-                              "default": ""
-                            },
-                            "role": {
-                              "type": "string",
-                              "default": "owner"
-                            },
-                            "createdAtUnixMs": {
-                              "type": "number",
-                              "default": 0
-                            },
-                            "revision": {
-                              "type": "number",
-                              "default": 0
+                              "type": "string"
                             }
                           },
-                          "required": ["deviceId"]
+                          "required": ["principalId", "kind", "displayName"]
                         },
-                        "scopes": {
-                          "type": "array",
-                          "items": {
-                            "type": "object",
-                            "properties": {
-                              "permission": {
-                                "type": "string"
-                              },
-                              "workspaceId": {
-                                "type": "string",
-                                "default": ""
-                              },
-                              "executionHostId": {
-                                "type": "string",
-                                "default": ""
-                              }
-                            },
-                            "required": ["permission"]
-                          },
-                          "default": []
+                        "created": {
+                          "type": "boolean"
                         },
-                        "expiresAtUnixMs": {
-                          "type": "number",
-                          "default": 0
-                        },
-                        "csrfToken": {
-                          "type": "string"
-                        },
-                        "native": {
+                        "share": {
                           "type": "object",
                           "properties": {
-                            "accessToken": {
+                            "ownerName": {
                               "type": "string"
                             },
-                            "refreshToken": {
+                            "role": {
+                              "enum": [
+                                "viewer",
+                                "editor",
+                                "operator",
+                                "driver"
+                              ],
                               "type": "string"
+                            },
+                            "expiresAtMs": {
+                              "type": "integer",
+                              "minimum": -9007199254740991,
+                              "maximum": 9007199254740991
                             }
                           },
-                          "required": ["accessToken", "refreshToken"]
+                          "required": ["ownerName", "role", "expiresAtMs"]
                         }
                       },
-                      "required": ["hostId", "device"]
+                      "required": ["session", "principal", "created"]
                     },
-                    "principal": {
+                    {
                       "type": "object",
                       "properties": {
-                        "principalId": {
-                          "type": "string"
-                        },
-                        "kind": {
-                          "enum": ["owner", "member"],
-                          "type": "string"
-                        },
-                        "displayName": {
-                          "type": "string"
+                        "trusted": {
+                          "const": true
                         }
                       },
-                      "required": ["principalId", "kind", "displayName"]
-                    },
-                    "created": {
-                      "type": "boolean"
-                    },
-                    "share": {
-                      "type": "object",
-                      "properties": {
-                        "ownerName": {
-                          "type": "string"
-                        },
-                        "role": {
-                          "enum": ["viewer", "editor", "operator", "driver"],
-                          "type": "string"
-                        },
-                        "expiresAtMs": {
-                          "type": "integer",
-                          "minimum": -9007199254740991,
-                          "maximum": 9007199254740991
-                        }
-                      },
-                      "required": ["ownerName", "role", "expiresAtMs"]
+                      "required": ["trusted"]
                     }
-                  },
-                  "required": ["session", "principal", "created"]
+                  ]
                 }
               }
             }

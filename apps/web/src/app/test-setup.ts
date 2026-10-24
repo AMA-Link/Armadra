@@ -112,6 +112,20 @@ if (typeof document !== "undefined") {
 }
 
 /**
+ * sonner 的提示存在模块级，卸载不会带走它：上一条用例的提示会漏进下一条用例的查询
+ * （曾让一条断言靠漏下来的提示通过）。setupFiles 的 afterEach 比文件自己的
+ * afterEach(cleanup) 先注册、后执行，那时 Toaster 已卸载，按 DOM 判断会漏掉；
+ * 所以在每条用例前无条件清（sonner 的状态在模块里，不依赖 DOM）。
+ */
+if (typeof document !== "undefined") {
+  beforeEach(async () => {
+    // 有的用例把 sonner 整个换成桩（没有 dismiss）：桩没有状态可清。
+    const { toast } = await import("sonner");
+    if (typeof toast?.dismiss === "function") toast.dismiss();
+  });
+}
+
+/**
  * Radix 的 FocusScope 卸载时用 `setTimeout(0)` 派发 `focusScope.autoFocusOnUnmount`
  * 再把焦点还回去。文件里最后一条用例在 afterEach 里 cleanup 卸掉对话框 / 下拉，
  * 这个计时器还没跑，vitest 就拆了 jsdom 环境；计时器随后在 Node 里触发，

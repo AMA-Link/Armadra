@@ -6,6 +6,7 @@ import { openDatabase } from "../db/open";
 import type { CoreRequest } from "../http/router";
 import {
   BROWSER_SESSION_CAPABILITY,
+  CLOUD_PROBE_CAPABILITY,
   IdentityHttp,
   NATIVE_SESSION_CAPABILITY,
   anonymousLoopbackOwner,
@@ -156,6 +157,7 @@ describe("身份域的 JSON 面", () => {
     // 页面靠这两个名字决定走原生传输还是浏览器会话。
     expect(hello.capabilities).toContain(NATIVE_SESSION_CAPABILITY);
     expect(hello.capabilities).toContain(BROWSER_SESSION_CAPABILITY);
+    expect(hello.capabilities).toContain(CLOUD_PROBE_CAPABILITY);
   });
 
   it("Hello 报主机名称（契约 §61），每次现读；没装配时是空串", async () => {

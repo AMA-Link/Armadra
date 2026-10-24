@@ -272,6 +272,13 @@ export type DeviceEvent =
       readonly deviceId: string;
       readonly label: string;
       readonly platform: string;
+      /** 只给 core 内部的上报用，不进工作空间事件。 */
+      readonly principalId: string;
+      readonly issuer: string;
+      readonly issuerDeviceId: string;
+      readonly accountId: string;
+      /** 待确认到这个时刻过期（校验码的有效期）。 */
+      readonly expiresAtMs: number;
     }
   | { readonly type: "devices.changed"; readonly deviceId: string };
 
@@ -302,7 +309,7 @@ export interface DeviceRegistryOptions {
 }
 
 /** 校验码保留多久（同一条通道一般远短于此）。 */
-const SAS_TTL_MS = 30 * 60_000;
+export const SAS_TTL_MS = 30 * 60_000;
 
 type Waiter = (status: DeviceStatus) => void;
 
@@ -350,6 +357,8 @@ export class DeviceRegistry {
     readonly principalId: string;
     readonly issuer: string;
     readonly issuerDeviceId: string;
+    /** 云端账号（断言的 `sub`），只用于向云端上报待信任。 */
+    readonly accountId?: string;
     readonly approvedBy?: string;
     /** 同一个 `approvedBy` 最多几台（访客链接的名额）；`null` / 不给 = 不限。 */
     readonly maxDevices?: number | null;
@@ -443,6 +452,11 @@ export class DeviceRegistry {
       deviceId: device.deviceId,
       label: device.label,
       platform: device.platform,
+      principalId,
+      issuer: input.issuer,
+      issuerDeviceId: input.issuerDeviceId,
+      accountId: input.accountId ?? "",
+      expiresAtMs: at + SAS_TTL_MS,
     });
     return { status: "pending", requestId };
   }

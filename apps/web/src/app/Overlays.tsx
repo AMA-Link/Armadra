@@ -22,6 +22,7 @@ import {
   QuickOpen,
   SettingsDialog,
   ShareDialog,
+  CloudTrustDialog,
   GitToolWindow,
   SshPromptDialog,
   UsageDashboard,
@@ -36,6 +37,7 @@ import { useLinkFragments } from "./use-link-fragments";
 import { useSourcesBootstrap } from "./use-sources-bootstrap";
 import { panelHidden } from "@/lib/features";
 import { useShareStore } from "@/canvas/share/share-store";
+import { useTrustDialog } from "@/sources/trust/trust-store";
 
 /**
  * 所有浮层的挂载点。
@@ -76,6 +78,7 @@ export function Overlays() {
   const editPreview = useOverlayRequested("editPreview");
   const merge = useOverlayRequested("merge");
   const share = useShareStore((state) => state.request !== null);
+  const trust = useTrustDialog((state) => state.open);
   useLinkFragments();
   useSourcesBootstrap();
 
@@ -129,6 +132,9 @@ export function Overlays() {
       </Gate>
       <Gate open={share} shape="dialog">
         <ShareDialog />
+      </Gate>
+      <Gate open={trust} shape="dialog">
+        <CloudTrustDialog />
       </Gate>
       <Gate open={panels.palette} shape="dialog">
         <CommandPalette />

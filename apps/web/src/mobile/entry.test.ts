@@ -182,6 +182,41 @@ describe("入口分支", () => {
     }
   });
 
+  it("/j/ 在 SaaS 来源上是控制台里的落地页；个人中转、问不到、开发构建仍是 JoinPage", async () => {
+    const platform = (mode: string) =>
+      vi.fn<typeof globalThis.fetch>(
+        async () =>
+          new Response(
+            JSON.stringify({
+              mode,
+              issuer: location.origin,
+              capabilities: [],
+              webApp: location.origin,
+            }),
+          ),
+      );
+    history.replaceState(null, "", "/j/0123456789abcdef#secret.token");
+    const join = { kind: "join", linkId: "0123456789abcdef" };
+    // 开发构建不问。
+    const dev = platform("saas");
+    vi.stubGlobal("fetch", dev);
+    await expect(prepareEntry()).resolves.toEqual(join);
+    expect(dev).not.toHaveBeenCalled();
+    vi.stubEnv("DEV", false);
+    try {
+      await expect(prepareEntry()).resolves.toEqual({
+        kind: "console",
+        path: "/j/0123456789abcdef",
+      });
+      vi.stubGlobal("fetch", platform("personal"));
+      await expect(prepareEntry()).resolves.toEqual(join);
+      vi.stubGlobal("fetch", async () => Promise.reject(new Error("offline")));
+      await expect(prepareEntry()).resolves.toEqual(join);
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
   it("桌面与普通网页直接是画布，不装任何传输", async () => {
     await expect(prepareEntry()).resolves.toEqual({ kind: "app" });
     history.replaceState(null, "", "/#pair=abc");

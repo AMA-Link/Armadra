@@ -7,7 +7,7 @@ import type { ClientSourceRoute } from "@armadra/shared";
 
 import { fail } from "../http/errors";
 import type { CloudLoginShare } from "./source-client";
-import type { RouteRow, SourceShare } from "./store";
+import type { RouteRow, SourceRow, SourceShare, SourcesStore } from "./store";
 
 export function clip(value: string, max: number): string {
   return value.length > max ? value.slice(0, max) : value;
@@ -80,13 +80,98 @@ export const MINE = {
   ownerLabel: "",
   shareRole: "",
   shareExpiresAtMs: 0,
+  teamId: "",
+  teamName: "",
 } as const;
 
-/** `cloud/login` 报的分享信息 → 源行的三列（契约 §68）。 */
-export function shareColumns(share: CloudLoginShare | undefined): SourceShare {
+/**
+ * `cloud/login` 报的分享信息 → 源行的列（契约 §68）。团队（契约 §86）不取自对端的
+ * 答案——对端是别人的 core，它的话不作分组依据——只取自接收方自己的云，由调用方给。
+ */
+export function shareColumns(
+  share: CloudLoginShare | undefined,
+  team: { teamId: string; teamName: string } = { teamId: "", teamName: "" },
+): SourceShare {
   return {
     ownerLabel: clip(share?.ownerName ?? "", 128),
     shareRole: share?.role ?? "",
     shareExpiresAtMs: share?.expiresAtMs ?? 0,
+    teamId: clip(team.teamId, 128),
+    teamName: clip(team.teamName, 128),
   };
+}
+
+/**
+ * 挂载的落库：源行建或留（显示名、主体提示），中继这条路 upsert 一行；镜像由
+ * 首选路由决定，挂第二个中继不改原来的首选（契约 §55）。
+ */
+export function saveRelayRoute(
+  store: SourcesStore,
+  at: number,
+  input: {
+    sourceId: string;
+    existing: SourceRow | undefined;
+    label: string;
+    defaultLabel: string;
+    relayOrigin: string;
+    issuer: string;
+    principalHint: string;
+    /**
+     * 按分享链接加入时分享方报的信息（契约 §68）；`undefined` = 用自己的账号挂上
+     * （`mine`）。已经是 `mine` 的行按链接再加入一次仍是 `mine`。
+     */
+    share: CloudLoginShare | undefined | null;
+    /** Armadra 云挂载时自己的云得出的团队（契约 §86）。 */
+    team?: { teamId: string; teamName: string } | undefined;
+    /** 归属已由自己的云确定（SaaS 目录明确答了）：不受「已是 mine 就一直是 mine」的保护。 */
+    determined?: boolean;
+  },
+): SourceRow {
+  const { existing } = input;
+  const shared =
+    input.share !== undefined &&
+    (input.determined === true || existing?.origin !== "mine");
+  store.upsert({
+    sourceId: input.sourceId,
+    kind: existing?.kind ?? "relayed",
+    label: clip(input.label, 128),
+    defaultLabel: clip(input.defaultLabel, 128),
+    baseUrl: existing?.baseUrl ?? "",
+    relayOrigin: existing?.relayOrigin || input.relayOrigin,
+    fingerprint: existing?.fingerprint ?? "",
+    cloudIssuer: existing?.relayOrigin ? existing.cloudIssuer : input.issuer,
+    principalHint: input.principalHint,
+    addedAtMs: existing?.addedAtMs ?? at,
+    lastOkAtMs: at,
+    orderIndex: existing?.orderIndex ?? store.nextOrder(),
+    ...(shared
+      ? {
+          origin: "shared" as const,
+          // 没带团队（个人链接挂载、目录取不到）时留住已有的团队，不清空。
+          ...shareColumns(
+            input.share ?? undefined,
+            input.team ??
+              (existing?.origin === "shared" ? existing : undefined),
+          ),
+          // 对端没报分享信息（旧 core）而行本来就是 shared：沿用已有的。
+          ...(input.share == null && existing?.origin === "shared"
+            ? {
+                ownerLabel: existing.ownerLabel,
+                shareRole: existing.shareRole,
+                shareExpiresAtMs: existing.shareExpiresAtMs,
+              }
+            : {}),
+        }
+      : MINE),
+  });
+  store.upsertRoute({
+    sourceId: input.sourceId,
+    via: "relayed",
+    origin: input.relayOrigin,
+    cloudIssuer: input.issuer,
+    fingerprint: "",
+    addedAtMs: at,
+    lastOkAtMs: at,
+  });
+  return store.get(input.sourceId) as SourceRow;
 }

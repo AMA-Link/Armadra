@@ -9,6 +9,7 @@ import { IconButton } from "@/ui/icon-button";
 import { Sheet, SheetContent, SheetTitle } from "@/ui/sheet";
 import { RouteLink } from "../RouteLink";
 import type { RouteMatch } from "../router";
+import { TooltipProvider } from "@/ui/tooltip";
 import { ConsoleNav } from "./ConsoleNav";
 import { SpaceSwitcher } from "./SpaceSwitcher";
 import { UserMenu } from "./UserMenu";
@@ -45,6 +46,8 @@ export interface ConsoleShellProps {
   /** 导航项上的待处理数（只画 >0 的）。 */
   readonly counts?: Readonly<Record<string, number>>;
   readonly onSignOut?: () => void;
+  /** 空间菜单里的「创建团队」；没给就不画。 */
+  readonly onCreateTeam?: () => void;
   /** 重新发送验证邮件；没给就不画按钮。 */
   readonly onResendVerification?: () => Promise<void>;
   readonly children: React.ReactNode;
@@ -65,6 +68,7 @@ export function ConsoleSidebar({
   operatorHref,
   counts,
   onSignOut,
+  onCreateTeam,
   onNavigate,
 }: Omit<ConsoleShellProps, "children" | "onResendVerification"> & {
   onNavigate?: () => void;
@@ -95,7 +99,11 @@ export function ConsoleSidebar({
             </Button>
           </>
         ) : (
-          <SpaceSwitcher teams={teams} current={team?.slug ?? null} />
+          <SpaceSwitcher
+            teams={teams}
+            current={team?.slug ?? null}
+            {...(onCreateTeam ? { onCreateTeam } : {})}
+          />
         )}
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto">
@@ -236,7 +244,7 @@ export function ConsoleShell(props: ConsoleShellProps) {
               ) : null}
             </Alert>
           )}
-          {children}
+          <TooltipProvider>{children}</TooltipProvider>
         </main>
       </div>
     </div>

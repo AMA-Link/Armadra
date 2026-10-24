@@ -1,0 +1,475 @@
+import * as React from "react";
+
+import {
+  type RemoteService,
+  addCloud,
+  cloudSpaces,
+  pollCloudDevice,
+  registerToSpace,
+  retryAfterMs,
+} from "../../../../api/remote-services";
+import { useT } from "../../../../app/preferences-store";
+import { RuntimeRequestError } from "../../../../api/request";
+import { openExternal } from "../../../../platform";
+import {
+  ResponsiveDialog,
+  ResponsiveDialogContent,
+  ResponsiveDialogFooter,
+  ResponsiveDialogHeader,
+  ResponsiveDialogTitle,
+} from "@/panels/ResponsiveDialog";
+import { Alert } from "@/ui/alert";
+import { Button } from "@/ui/button";
+import { Field, FieldError, FieldGroup, FieldLabel } from "@/ui/field";
+import { Input } from "@/ui/input";
+import { RadioGroup, RadioGroupItem } from "@/ui/radio-group";
+import { Spinner } from "@/ui/spinner";
+import { toast } from "@/ui/toast";
+import { checkAddress } from "../remote-address";
+
+/*
+ * 添加 Armadra 云（契约 §33.11）：地址 → 设备码（在浏览器里批准）→ 选空间登记这台电脑。
+ * 设备码的秘密部分留在 core，这里只有给人看的 8 位码。
+ */
+
+type Space = Awaited<ReturnType<typeof cloudSpaces>>["spaces"][number];
+type Step =
+  | { readonly kind: "address" }
+  | {
+      readonly kind: "code";
+      readonly remote: RemoteService;
+      readonly userCode: string;
+      readonly verificationUrl: string;
+      readonly expiresAtMs: number;
+      readonly intervalMs: number;
+      readonly outcome: "waiting" | "denied" | "expired" | "failed";
+    }
+  | { readonly kind: "spaces-failed"; readonly remote: RemoteService }
+  | {
+      readonly kind: "space";
+      readonly remote: RemoteService;
+      readonly spaces: readonly Space[];
+    };
+
+const PERSONAL = "personal";
+
+/** 这些角色不能登记主机（cloud-api §21）：置灰并附脚注。 */
+const BLOCKED_ROLES = new Set(["guest", "billing"]);
+
+function blocked(space: Space): boolean {
+  return space.kind === "team" && BLOCKED_ROLES.has(space.role);
+}
+
+function spaceValue(space: Space): string {
+  return space.kind === "personal" ? PERSONAL : `team:${space.teamId}`;
+}
+
+/** 距离 `expiresAtMs` 还剩几毫秒，每秒刷新；不倒计时（`null`）恒为 `null`。 */
+function useRemaining(expiresAtMs: number | null): number | null {
+  const [now, setNow] = React.useState(() => Date.now());
+  React.useEffect(() => {
+    if (expiresAtMs === null) return;
+    setNow(Date.now());
+    const timer = setInterval(() => setNow(Date.now()), 1_000);
+    return () => clearInterval(timer);
+  }, [expiresAtMs]);
+  return expiresAtMs === null ? null : Math.max(0, expiresAtMs - now);
+}
+
+/** 「9:41」：分秒，补零，不带小时（设备码只有十分钟）。 */
+function clock(ms: number): string {
+  const total = Math.ceil(ms / 1_000);
+  return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, "0")}`;
+}
+
+export function AddCloudDialog({
+  initialIssuer,
+  fromLink = false,
+  knownIssuers = [],
+  onStep,
+  onClose,
+  onChanged,
+}: {
+  /** `null` 关着；空串是新加；有地址是重新登录。 */
+  initialIssuer: string | null;
+  /** 地址是深链带来的：不是已有的账号时，在地址步骤醒目显示目标域名。 */
+  fromLink?: boolean;
+  knownIssuers?: readonly string[];
+  /** 回报当前在哪一步（页面据此决定要不要接受新的深链）。 */
+  onStep?: (kind: Step["kind"]) => void;
+  onClose(): void;
+  /** 源表变了（登录成功或登记成功）。 */
+  onChanged(): void;
+}) {
+  const t = useT();
+  const [issuer, setIssuer] = React.useState("");
+  const [step, setStep] = React.useState<Step>({ kind: "address" });
+  const [chosen, setChosen] = React.useState(PERSONAL);
+  const [error, setError] = React.useState("");
+  const [busy, setBusy] = React.useState(false);
+  const open = initialIssuer !== null;
+  React.useEffect(() => {
+    onStep?.(step.kind);
+  }, [step.kind, onStep]);
+  const linkedHost = (() => {
+    if (!fromLink || issuer === "") return null;
+    try {
+      const url = new URL(issuer);
+      return knownIssuers.some((one) => new URL(one).origin === url.origin)
+        ? null
+        : url.host;
+    } catch {
+      return null;
+    }
+  })();
+
+  // 主机配额与别的上限分开说（details.quota === "hosts"）。
+  function failureText(failure: unknown): string {
+    if (
+      failure instanceof RuntimeRequestError &&
+      failure.code === "limit_reached"
+    ) {
+      const details = (failure.body as { details?: { quota?: unknown } } | null)
+        ?.details;
+      return t(
+        details?.quota === "hosts"
+          ? "remote.cloud.hostsLimit"
+          : "remote.cloud.limitReached",
+      );
+    }
+    return failure instanceof Error ? failure.message : String(failure);
+  }
+
+  React.useEffect(() => {
+    if (initialIssuer === null) return;
+    setIssuer(initialIssuer);
+    setStep({ kind: "address" });
+    setChosen(PERSONAL);
+    setError("");
+    setBusy(false);
+  }, [initialIssuer]);
+
+  async function start() {
+    if (busy) return;
+    const checked = checkAddress(issuer);
+    if (!checked.ok) {
+      setError(t(checked.error));
+      return;
+    }
+    setBusy(true);
+    setError("");
+    try {
+      const answer = await addCloud(checked.address);
+      if (answer.next === "ready") {
+        await toSpaces(answer.remote);
+        return;
+      }
+      const code = answer.next.deviceCode;
+      setStep({
+        kind: "code",
+        remote: answer.remote,
+        userCode: code.userCode,
+        verificationUrl: code.verificationUrl,
+        expiresAtMs: code.expiresAtMs,
+        intervalMs: code.intervalMs ?? 5_000,
+        outcome: "waiting",
+      });
+      onChanged();
+    } catch (failure) {
+      setError(failureText(failure));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function toSpaces(remote: RemoteService) {
+    // 这台电脑已经登记到它：重新登录就绪后不再登记。
+    if (remote.registered) {
+      onChanged();
+      onClose();
+      return;
+    }
+    try {
+      const { spaces } = await cloudSpaces(remote.serviceId);
+      const first = spaces.find((one) => !blocked(one));
+      setChosen(first === undefined ? PERSONAL : spaceValue(first));
+      setError("");
+      setStep({ kind: "space", remote, spaces });
+      onChanged();
+    } catch (failure) {
+      setError(failureText(failure));
+      setStep({ kind: "spaces-failed", remote });
+    }
+  }
+
+  // 等批准：按服务端要求的间隔轮询；限流听 retryAfterMs；终结就停。
+  const waiting =
+    step.kind === "code" && step.outcome === "waiting" ? step : null;
+  const remaining = useRemaining(waiting === null ? null : waiting.expiresAtMs);
+  // 倒计时走完而轮询还没来得及报：本地先收尾，设备码不再显示可用。
+  React.useEffect(() => {
+    if (waiting !== null && remaining === 0)
+      setStep({ ...waiting, outcome: "expired" });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [remaining === 0]);
+  React.useEffect(() => {
+    if (waiting === null || !open) return;
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const tick = async () => {
+      let next = waiting.intervalMs;
+      try {
+        const { status } = await pollCloudDevice(waiting.remote.serviceId);
+        if (cancelled) return;
+        if (status === "ready") {
+          await toSpaces(waiting.remote);
+          return;
+        }
+        if (status !== "pending") {
+          setStep({ ...waiting, outcome: status });
+          return;
+        }
+      } catch (failure) {
+        if (cancelled) return;
+        const wait = retryAfterMs(failure);
+        if (wait === null) {
+          setError(failureText(failure));
+          setStep({ ...waiting, outcome: "failed" });
+          return;
+        }
+        next = wait;
+      }
+      timer = setTimeout(() => void tick(), next);
+    };
+    timer = setTimeout(() => void tick(), waiting.intervalMs);
+    return () => {
+      cancelled = true;
+      if (timer !== undefined) clearTimeout(timer);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [waiting?.remote.serviceId, waiting?.userCode, open]);
+
+  async function register() {
+    if (step.kind !== "space" || busy) return;
+    setBusy(true);
+    setError("");
+    try {
+      const picked = step.spaces.find((one) => spaceValue(one) === chosen);
+      await registerToSpace({
+        serviceId: step.remote.serviceId,
+        space:
+          picked?.kind === "team"
+            ? { kind: "team", teamId: picked.teamId }
+            : { kind: "personal" },
+      });
+      onChanged();
+      onClose();
+    } catch (failure) {
+      setError(failureText(failure));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function copyCode(userCode: string) {
+    try {
+      await navigator.clipboard.writeText(userCode);
+      toast.success(t("remote.cloud.copied"));
+    } catch {
+      toast.error(t("remote.invite.copyFailed"));
+    }
+  }
+
+  const spaceLabel = (space: Space) =>
+    space.kind === "personal" ? t("remote.cloud.space.personal") : space.name;
+
+  return (
+    <ResponsiveDialog
+      open={open}
+      onOpenChange={(next) => {
+        if (!next) onClose();
+      }}
+    >
+      <ResponsiveDialogContent className="z-[var(--z-dialog)] sm:max-w-[420px]">
+        <ResponsiveDialogHeader>
+          <ResponsiveDialogTitle>
+            {t("remote.cloud.signIn")}
+          </ResponsiveDialogTitle>
+        </ResponsiveDialogHeader>
+        <form
+          className="flex flex-col gap-4"
+          onSubmit={(event) => {
+            event.preventDefault();
+            if (step.kind === "address") void start();
+            else if (step.kind === "space") void register();
+          }}
+        >
+          {step.kind === "address" && linkedHost !== null && (
+            <Alert variant="destructive" data-slot="cloud-link-target">
+              <span>{t("remote.cloud.linkTarget")}</span>
+              <span className="font-mono font-medium break-all">
+                {linkedHost}
+              </span>
+            </Alert>
+          )}
+          {step.kind === "address" && (
+            <FieldGroup className="gap-3">
+              <Field className="gap-1.5" data-invalid={error !== ""}>
+                <FieldLabel htmlFor="cloud-issuer">
+                  {t("remote.field.issuer")}
+                </FieldLabel>
+                <Input
+                  id="cloud-issuer"
+                  inputMode="url"
+                  autoComplete="url"
+                  spellCheck={false}
+                  placeholder="https://cloud.example.com"
+                  aria-invalid={error !== ""}
+                  value={issuer}
+                  onChange={(event) => setIssuer(event.target.value)}
+                />
+              </Field>
+            </FieldGroup>
+          )}
+          {step.kind === "code" && (
+            <div className="flex min-w-0 flex-col gap-3">
+              <span className="text-meta text-muted-foreground">
+                {t("remote.cloud.code")}
+              </span>
+              <p
+                data-slot="user-code"
+                className="font-mono text-title select-text"
+              >
+                {step.userCode}
+              </p>
+              {step.outcome === "waiting" && remaining !== null && (
+                <span
+                  data-slot="code-countdown"
+                  role="timer"
+                  aria-label={t("remote.cloud.expiresIn")}
+                  className="font-mono text-meta text-muted-foreground tabular-nums"
+                >
+                  {clock(remaining)}
+                </span>
+              )}
+              <span
+                role="status"
+                className="flex items-center gap-2 text-body text-muted-foreground"
+              >
+                {step.outcome === "waiting" && (
+                  <>
+                    <Spinner data-icon="inline-start" aria-hidden />
+                    {t("remote.cloud.waiting")}
+                  </>
+                )}
+                {step.outcome === "denied" && t("remote.cloud.denied")}
+                {step.outcome === "expired" && t("remote.cloud.codeExpired")}
+              </span>
+            </div>
+          )}
+          {step.kind === "space" &&
+            (step.spaces.length === 0 ? (
+              <Alert>{t("remote.cloud.noSpaces")}</Alert>
+            ) : (
+              <Field className="gap-1.5">
+                <FieldLabel id="cloud-space-label">
+                  {t("remote.cloud.registerTo")}
+                </FieldLabel>
+                <RadioGroup
+                  value={chosen}
+                  onValueChange={setChosen}
+                  aria-labelledby="cloud-space-label"
+                >
+                  {step.spaces.map((space) => (
+                    <Field
+                      key={spaceValue(space)}
+                      orientation="horizontal"
+                      data-disabled={blocked(space)}
+                    >
+                      <RadioGroupItem
+                        id={`cloud-space-${spaceValue(space)}`}
+                        value={spaceValue(space)}
+                        disabled={blocked(space)}
+                      />
+                      <FieldLabel htmlFor={`cloud-space-${spaceValue(space)}`}>
+                        {spaceLabel(space)}
+                        {blocked(space) && (
+                          <span className="text-muted-foreground">
+                            {` · ${t("remote.cloud.space.blocked")}`}
+                          </span>
+                        )}
+                      </FieldLabel>
+                    </Field>
+                  ))}
+                </RadioGroup>
+              </Field>
+            ))}
+          {step.kind === "space" && chosen.startsWith("team:") && (
+            <Alert>{t("remote.cloud.teamShell")}</Alert>
+          )}
+          {error && <FieldError>{error}</FieldError>}
+          <ResponsiveDialogFooter>
+            <Button type="button" variant="outline" onClick={onClose}>
+              {step.kind === "space" && step.spaces.length === 0
+                ? t("remote.cloud.done")
+                : t("remote.cancel")}
+            </Button>
+            {step.kind === "address" && (
+              <Button type="submit" disabled={busy || issuer.trim() === ""}>
+                {busy && <Spinner data-icon="inline-start" aria-hidden />}
+                {t("remote.cloud.start")}
+              </Button>
+            )}
+            {step.kind === "code" && step.outcome === "waiting" && (
+              <>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => void copyCode(step.userCode)}
+                >
+                  {t("remote.cloud.copy")}
+                </Button>
+                <Button
+                  type="button"
+                  onClick={() => void openExternal(step.verificationUrl)}
+                >
+                  {t("remote.cloud.openBrowser")}
+                </Button>
+              </>
+            )}
+            {step.kind === "code" && step.outcome !== "waiting" && (
+              <Button
+                type="button"
+                onClick={() => {
+                  setError("");
+                  setStep({ kind: "address" });
+                }}
+              >
+                {t("remote.cloud.newCode")}
+              </Button>
+            )}
+            {step.kind === "spaces-failed" && (
+              <Button type="button" onClick={() => void toSpaces(step.remote)}>
+                {t("remote.cloud.retry")}
+              </Button>
+            )}
+            {step.kind === "space" && step.spaces.length > 0 && (
+              <Button
+                type="submit"
+                disabled={
+                  busy ||
+                  !step.spaces.some(
+                    (one) => spaceValue(one) === chosen && !blocked(one),
+                  )
+                }
+              >
+                {busy && <Spinner data-icon="inline-start" aria-hidden />}
+                {t("remote.cloud.register")}
+              </Button>
+            )}
+          </ResponsiveDialogFooter>
+        </form>
+      </ResponsiveDialogContent>
+    </ResponsiveDialog>
+  );
+}

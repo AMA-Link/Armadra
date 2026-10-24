@@ -118,6 +118,11 @@ const acceptSchema = z.object({
 });
 export type CloudAccept = z.infer<typeof acceptSchema>;
 
+/** 控制台页面经类型化客户端接受链接后，把答复交给 {@link HostedRelay.join}：按同一份 schema 收紧。 */
+export function parseCloudAccept(value: unknown): CloudAccept {
+  return acceptSchema.parse(value);
+}
+
 /** `links.get`（匿名）：落地页显示的那几项（cloud-api §5）。 */
 const linkInfoSchema = z.object({
   label: z.string().default(""),
@@ -467,6 +472,86 @@ export async function coreCloudLogin(
     options,
   );
   return answer.session;
+}
+
+const helloSchema = z.object({
+  capabilities: z.array(z.string()).default([]),
+});
+
+/** core 在 `cloud/login` 里认 `probe` 的能力位（core 契约 §31.3）；旧 core 没有，会把 probe 当普通登录。 */
+export const CLOUD_PROBE_CAPABILITY = "identity.cloud.probe.v1";
+
+/** `GET <基址>/api/identity/hello`（匿名）：这台 core 报的能力名。 */
+export async function coreCapabilities(
+  relayBaseUrl: string,
+  relayToken: string,
+  options: CloudOptions = {},
+): Promise<readonly string[]> {
+  const answer = await send(
+    `${trimmed(relayBaseUrl)}/api/identity/hello`,
+    helloSchema,
+    { method: "GET", headers: relayHeaders(relayToken) },
+    options,
+  );
+  return answer.capabilities;
+}
+
+const probeSchema = z.object({ trusted: z.literal(true) });
+
+/**
+ * `cloud/login` 的只判定模式（core 契约 §31.3 追加，经端到端通道）：这把设备钥是不是这个人的
+ * 已信任设备。`true` = 是；`false` = 不是（`device_untrusted`，或 `device_pending` /
+ * `device_rejected`）；其余失败照常抛。不建待确认、不开会话。
+ */
+export async function coreCloudProbe(
+  relayBaseUrl: string,
+  relayToken: string,
+  assertion: string,
+  options: CloudOptions = {},
+): Promise<boolean> {
+  try {
+    await send(
+      `${trimmed(relayBaseUrl)}/api/identity/cloud/login`,
+      probeSchema,
+      { headers: relayHeaders(relayToken), body: { assertion, probe: true } },
+      options,
+    );
+    return true;
+  } catch (error) {
+    if (
+      error instanceof CloudError &&
+      (error.code === "device_untrusted" ||
+        error.code === "device_pending" ||
+        error.code === "device_rejected")
+    )
+      return false;
+    throw error;
+  }
+}
+
+/** `POST <基址>/api/identity/session/logout`（刷新令牌当 Bearer）：注销一份会话。 */
+export async function coreLogout(
+  base: string,
+  refreshToken: string,
+  relayToken: string | undefined,
+  options: CloudOptions = {},
+  csrfToken?: string,
+): Promise<void> {
+  await send(
+    `${trimmed(base)}/api/identity/session/logout`,
+    z.unknown(),
+    {
+      method: "POST",
+      headers: {
+        ...bearer(refreshToken),
+        ...(relayToken === undefined ? {} : relayHeaders(relayToken)),
+        ...(csrfToken === undefined || csrfToken === ""
+          ? {}
+          : { "X-Armadra-CSRF": csrfToken }),
+      },
+    },
+    options,
+  );
 }
 
 /**

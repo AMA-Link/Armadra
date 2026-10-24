@@ -16,6 +16,32 @@ import { MOCK_HOSTS, MOCK_TEAMS } from "./fixtures";
 const NOT_FOR_CONSOLE = new Set(["source", "billing-webhook", "relay-node"]);
 const entries = listProcedures(cloudContract);
 
+/** 黄金入参本身就会被拒的过程：分组授予是 M2，云端答 `plan_feature_unavailable`。 */
+const REJECTED_BY_DESIGN: Readonly<Record<string, string>> = {
+  "grants.create": "plan_feature_unavailable",
+};
+
+/**
+ * 团队与团队邀请带状态：黄金入参里的团队号靠 `golden` 选项种进去（本人是所有者，黄金账号是管理员）。
+ * `teams.create` 的黄金地址与它撞，用 `noTeams`；`teams.leave` 要本人不是所有者。
+ */
+function optionsFor(key: string) {
+  const base = {
+    operatorAccount: true,
+    operatorSession: true,
+    emailVerified: true,
+    golden: true,
+  } as const;
+  if (key === "teams.create") return { ...base, golden: false, noTeams: true };
+  // 授予的黄金入参指向一条已有的授予（更新、撤销、撤销某人的访问都命中它）。
+  if (/^(grants\.|sources\.accessRevoke)/.test(key))
+    return { ...base, grantsGolden: true };
+  if (key === "trust.reject") return { ...base, goldenTrust: true };
+  if (key === "teams.leave")
+    return { ...base, roles: { "dev-team": "admin" } } as const;
+  return base;
+}
+
 async function validate(schema: unknown, value: unknown) {
   const standard = (
     schema as { "~standard": { validate(v: unknown): unknown } }
@@ -47,10 +73,7 @@ describe("mock 与协议包契约一致", () => {
       const callable = entry.meta.scope.some(
         (scope) => !NOT_FOR_CONSOLE.has(scope),
       );
-      const api = createMockApi({
-        operatorAccount: true,
-        operatorSession: true,
-      });
+      const api = createMockApi(optionsFor(entry.key));
       const asOperator =
         !entry.meta.scope.includes("session") &&
         entry.meta.scope.includes("operator");
@@ -59,6 +82,13 @@ describe("mock 与协议包契约一致", () => {
       if (!callable) {
         await expect(call(input), entry.key).rejects.toMatchObject({
           code: "forbidden",
+        });
+        continue;
+      }
+      const rejected = REJECTED_BY_DESIGN[entry.key];
+      if (rejected !== undefined) {
+        await expect(call(input), entry.key).rejects.toMatchObject({
+          code: rejected,
         });
         continue;
       }

@@ -291,7 +291,7 @@ describe("登记", () => {
     expect(other.body.code).toBe("fingerprint_mismatch");
   });
 
-  it("协议 major 不符 426、自报 issuer 不符 400、SaaS 501，都不留行", async () => {
+  it("协议 major 不符 426、自报 issuer 不符 400，都不留行", async () => {
     world.info = { ...world.info, protocol: { major: 2, minor: 0 } };
     expect((await register()).body.code).toBe("protocol_unsupported");
     expect((await register()).status).toBe(426);
@@ -303,10 +303,35 @@ describe("登记", () => {
     const mismatch = await register();
     expect(mismatch.status).toBe(400);
     expect(mismatch.body.code).toBe("cloud_issuer_mismatch");
+    expect(cloud.registered(ISSUER)).toBe(false);
+    expect(relay.started).toEqual([]);
+  });
+
+  it("SaaS 签发方与个人中转同一流程，行上 mode 取自握手", async () => {
     world.info = { ...world.info, issuer: ISSUER, mode: "saas" };
     const saas = await register();
-    expect(saas.status).toBe(501);
-    expect(saas.body.code).toBe("not_implemented");
+    expect(saas.status, saas.text).toBe(200);
+    expect(cloud.registration(ISSUER)?.mode).toBe("saas");
+    expect(relay.started).toEqual([ISSUER]);
+  });
+
+  it("SaaS 登记的拒绝：主机配额带 quota、团队停用，都不留行", async () => {
+    world.info = { ...world.info, issuer: ISSUER, mode: "saas" };
+    world.refuseRegister = {
+      status: 429,
+      code: "limit_reached",
+      details: { quota: "hosts", used: 3, limit: 3 },
+    };
+    const full = await register();
+    expect(full.status).toBe(429);
+    expect(full.body).toMatchObject({
+      code: "limit_reached",
+      details: { quota: "hosts", used: 3, limit: 3 },
+    });
+    world.refuseRegister = { status: 403, code: "team_suspended" };
+    const suspended = await register();
+    expect(suspended.status).toBe(403);
+    expect(suspended.body.code).toBe("team_suspended");
     expect(cloud.registered(ISSUER)).toBe(false);
     expect(relay.started).toEqual([]);
   });

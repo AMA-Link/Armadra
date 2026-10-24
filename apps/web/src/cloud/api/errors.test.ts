@@ -120,7 +120,7 @@ describe("错误码 → 文案", () => {
     expect(cloudMessage("limit_reached", { quota: "x" })).toBe(
       cloudMessage("limit_reached"),
     );
-    for (const quota of ["hosts", "members", "guests", "connections"])
+    for (const quota of ["hosts", "members", "guests", "concurrent"])
       expect(cloudMessage("limit_reached", { quota })).toContain("上限");
   });
 

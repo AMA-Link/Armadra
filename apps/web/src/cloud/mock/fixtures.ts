@@ -19,6 +19,30 @@ export const MOCK_ACCOUNT = {
   emailVerified: false,
 } as const;
 
+/** 样本里的人（名字与邮箱是数据，不是界面文案）。 */
+export const MOCK_PEOPLE = {
+  owner: {
+    accountId: "acct_mock_lisi",
+    email: "lisi@example.com",
+    displayName: "李四",
+  },
+  member: {
+    accountId: "acct_mock_wangwu",
+    email: "wangwu@example.com",
+    displayName: "王五",
+  },
+  guest: {
+    accountId: "acct_mock_zhaoliu",
+    email: "zhaoliu@example.com",
+    displayName: "赵六",
+  },
+  billing: {
+    accountId: "acct_mock_sunqi",
+    email: "sunqi@example.com",
+    displayName: "孙七",
+  },
+} as const;
+
 export interface MockTeam {
   readonly teamId: string;
   readonly slug: string;
@@ -88,3 +112,171 @@ export const ROLE_SCOPES: Readonly<Record<MockRole, readonly string[]>> = {
   billing: ["team:billing"],
   guest: [],
 };
+
+/** 运营后台的内存数据（名字、邮箱、节点号是数据不是界面文案）。 */
+export interface MockOpsAccount {
+  readonly accountId: string;
+  readonly email: string;
+  readonly displayName: string;
+  readonly plan: string;
+  readonly hostCount: number;
+  readonly teamCount: number;
+  readonly createdAtMs: number;
+}
+
+/** 协议包黄金夹具里的运营对象号：契约一致性测试的入参直接命中它们。 */
+export const GOLDEN_OPS_ACCOUNT = "acct_01JAAAAAAAAAAAAAAAAAAAAAAA";
+export const GOLDEN_OPS_TEAM = "team_01JAAAAAAAAAAAAAAAAAAAAAAA";
+
+export const MOCK_OPS_ACCOUNTS: readonly MockOpsAccount[] = [
+  {
+    accountId: GOLDEN_OPS_ACCOUNT,
+    email: "dev@example.com",
+    displayName: "Dev",
+    plan: "free",
+    hostCount: 1,
+    teamCount: 0,
+    createdAtMs: Date.UTC(2025, 5, 1),
+  },
+  {
+    accountId: MOCK_ACCOUNT.accountId,
+    email: MOCK_ACCOUNT.email,
+    displayName: MOCK_ACCOUNT.displayName,
+    plan: "free",
+    hostCount: 3,
+    teamCount: 2,
+    createdAtMs: Date.UTC(2025, 0, 9),
+  },
+  {
+    accountId: "acct_mock_lisi",
+    email: "lisi@example.com",
+    displayName: "李四",
+    plan: "free",
+    hostCount: 2,
+    teamCount: 1,
+    createdAtMs: Date.UTC(2025, 2, 2),
+  },
+];
+
+export interface MockOpsNode {
+  readonly node: string;
+  readonly region: string;
+  readonly online: boolean;
+  readonly tunnels: number;
+  readonly connections: number;
+  readonly draining: boolean;
+  readonly lastSeenAtMs: number | null;
+}
+
+export const MOCK_OPS_NODES: readonly MockOpsNode[] = [
+  {
+    node: "relay-1",
+    region: "ap-east",
+    online: true,
+    tunnels: 1,
+    connections: 2,
+    draining: false,
+    lastSeenAtMs: Date.UTC(2025, 9, 9, 9, 4),
+  },
+  {
+    node: "relay-hk-1",
+    region: "hk",
+    online: true,
+    tunnels: 12,
+    connections: 31,
+    draining: false,
+    lastSeenAtMs: Date.UTC(2025, 9, 9, 9, 5),
+  },
+  {
+    node: "relay-sg-1",
+    region: "sg",
+    online: true,
+    tunnels: 4,
+    connections: 6,
+    draining: true,
+    lastSeenAtMs: Date.UTC(2025, 9, 9, 9, 5),
+  },
+  {
+    node: "relay-us-1",
+    region: "us",
+    online: false,
+    tunnels: 0,
+    connections: 0,
+    draining: false,
+    lastSeenAtMs: Date.UTC(2025, 9, 8, 22, 0),
+  },
+];
+/** 设备授权页（`/device`）的样本码：`pending` 在等批准，`expired` 已过期，`limited` 猜码被限流；别的都是查无此码。 */
+export const MOCK_DEVICE_CODES = {
+  pending: "BCDF-GHJK",
+  expired: "LMNP-QRST",
+  limited: "VWXZ-BCDF",
+} as const;
+
+export const MOCK_DEVICE_REQUEST = { name: "build-01" } as const;
+
+/** 分享链接落地页（`/j/`）的样本：`gone` 已失效，`exhausted` 次数用完。 */
+export const MOCK_LINK = {
+  gone: "gone0000000000aa",
+  exhausted: "used0000000000aa",
+  sourceName: "studio",
+} as const;
+
+/** 个人空间页（U3）的内存数据：链接、设备、安全日志、主机上的访问。名字与设备名是数据不是界面文案。 */
+export const MOCK_PERSONAL = {
+  /** 第一条链接的备注与别人的名字（数据）。 */
+  linkLabel: "给小李看进度",
+  person: "李四",
+  /** 链接指向的主机（个人空间的 laptop）。 */
+  linkHost: hex(6),
+  devices: [
+    {
+      deviceId: "dev_current",
+      platform: "browser",
+      name: "Chrome",
+      minutesAgo: 0,
+      current: true,
+    },
+    {
+      deviceId: "dev_ipad",
+      platform: "ios",
+      name: "iPad",
+      minutesAgo: 90,
+      current: false,
+    },
+    {
+      deviceId: "dev_build",
+      platform: "desktop",
+      name: "build-01",
+      minutesAgo: 4_000,
+      current: false,
+    },
+  ],
+  /** 安全日志，最近的在前；动作名与云端 `security.*` 一致。 */
+  log: [
+    {
+      action: "security.login",
+      device: "Chrome",
+      ip: "203.0.113.0/24",
+      minutesAgo: 1,
+    },
+    {
+      action: "security.newDevice",
+      device: "iPad",
+      ip: "198.51.100.0/24",
+      minutesAgo: 90,
+    },
+    {
+      action: "security.passwordChanged",
+      device: null,
+      ip: null,
+      minutesAgo: 2_000,
+    },
+    {
+      action: "security.emailVerified",
+      device: null,
+      ip: null,
+      minutesAgo: 9_000,
+    },
+  ],
+} as const;

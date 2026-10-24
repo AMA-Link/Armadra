@@ -111,6 +111,16 @@ const MESSAGE_BY_CODE: Readonly<Record<string, string>> = {
   source_access_denied: "error.sourceAccessDenied",
   source_revoked: "error.sourceRevoked",
   limit_reached: "error.limitReached",
+  // Armadra 云的空间、授予、邀请与设备信任（契约 §33.11、§33.12）。
+  email_unverified: "error.emailUnverified",
+  team_role_insufficient: "error.teamRoleInsufficient",
+  team_policy_denied: "error.teamPolicyDenied",
+  host_registration_disabled: "error.hostRegistrationDisabled",
+  team_suspended: "error.teamSuspended",
+  team_deleted: "error.teamDeleted",
+  guests_disabled: "error.guestsDisabled",
+  member_exists: "error.memberExists",
+  device_untrusted: "cloud.trust.useTrusted",
   // 分享链接（契约 §33.7；手机与托管页面直接调远程服务时同样的码）。
   link_invalid: "error.linkInvalid",
   link_expired: "error.linkExpired",

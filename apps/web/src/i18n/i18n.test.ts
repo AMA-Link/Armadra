@@ -237,11 +237,15 @@ describe("说明类键", () => {
  * 接在词尾的也算，只要静态部分里至少有一个点（排除普通的模板字符串）。
  */
 function dynamicPrefixes(corpus: string): Set<string> {
-  return new Set(
-    [...corpus.matchAll(/`([a-zA-Z][\w-]*\.[\w.-]*)\$\{/g)].map(
+  return new Set([
+    ...[...corpus.matchAll(/`([a-zA-Z][\w-]*\.[\w.-]*)\$\{/g)].map(
       (match) => match[1] as string,
     ),
-  );
+    // 复数键：`tp("cloud.common.expiresIn", n)` 取 `cloud.common.expiresIn.one` / `.other`。
+    ...[...corpus.matchAll(/\btp\(\s*"([a-zA-Z][\w.-]*)"/g)].map(
+      (match) => `${match[1] as string}.`,
+    ),
+  ]);
 }
 
 /**

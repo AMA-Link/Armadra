@@ -17,7 +17,7 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { Folder } from "lucide-react";
+import { ChevronDown, Folder } from "lucide-react";
 
 import { reorderSources } from "../api/remote-services";
 import { RUNTIME_VIA_SERVER_SHELL } from "../api/request";
@@ -37,6 +37,7 @@ import { cachedWorkspaces } from "../sources/workspace-cache";
 import {
   type SourceSection,
   type WorkspaceGroupKey,
+  groupByTeam,
   groupWorkspaces,
   initialOf,
   ownerNameOf,
@@ -46,6 +47,11 @@ import { cn } from "@/lib/cn";
 import { Avatar, AvatarFallback } from "@/ui/avatar";
 import { Badge } from "@/ui/badge";
 import { Button } from "@/ui/button";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/ui/collapsible";
 import { Spinner } from "@/ui/spinner";
 import { StatusDot } from "@/ui/status-pill";
 import { toast } from "@/ui/toast";
@@ -143,14 +149,18 @@ function Groups({
             className="mt-2"
           >
             <GroupHeading>{t(`workspaceGroups.${group.key}`)}</GroupHeading>
-            <RemoteSections
-              kind={group.key}
-              sections={group.sections}
-              order={order}
-              onOrder={setOrder}
-              allSources={sources}
-              contentOf={contentOf}
-            />
+            {group.key === "shared" ? (
+              <SharedTeams sections={group.sections} contentOf={contentOf} />
+            ) : (
+              <RemoteSections
+                kind={group.key}
+                sections={group.sections}
+                order={order}
+                onOrder={setOrder}
+                allSources={sources}
+                contentOf={contentOf}
+              />
+            )}
           </section>
         );
       })}
@@ -165,6 +175,118 @@ function GroupHeading({ children }: { children: string }) {
         {children}
       </h2>
     </div>
+  );
+}
+
+/** 团队小组的展开状态存在本机（契约 §86）：缺省展开，折起记 `0`。 */
+function teamOpenKey(teamId: string): string {
+  return `armadra.sidebar.teams.${teamId}`;
+}
+
+function readTeamOpen(teamId: string): boolean {
+  try {
+    return globalThis.localStorage?.getItem(teamOpenKey(teamId)) !== "0";
+  } catch {
+    return true;
+  }
+}
+
+function writeTeamOpen(teamId: string, open: boolean): void {
+  try {
+    globalThis.localStorage?.setItem(teamOpenKey(teamId), open ? "1" : "0");
+  } catch {
+    /* 记不下只是下次又展开。 */
+  }
+}
+
+/**
+ * 「他人分享」按团队分小组（云端控制台 §3.5.4）：团队小组在前，各是一个可折叠的
+ * 标题；不经团队的分享在后，形态不变。只有一个团队且没有个人分享时不画小组标题。
+ */
+function SharedTeams({
+  sections,
+  contentOf,
+}: {
+  sections: readonly SourceSection[];
+  contentOf: (section: SourceSection) => React.ReactNode;
+}) {
+  const t = useT();
+  const { teams, personal } = groupByTeam(sections);
+  const blocks = (list: readonly SourceSection[]) =>
+    list.map((section) => (
+      <SourceBlock
+        key={section.connection.descriptor.sourceId}
+        kind="shared"
+        section={section}
+      >
+        {contentOf(section)}
+      </SourceBlock>
+    ));
+  if (teams.length === 0) return <>{blocks(personal)}</>;
+  const titled = teams.length > 1 || personal.length > 0;
+  return (
+    <>
+      {teams.map((team) =>
+        titled ? (
+          <TeamGroupBlock key={team.teamId} team={team}>
+            {blocks(team.sections)}
+          </TeamGroupBlock>
+        ) : (
+          <div key={team.teamId} data-team-group={team.teamId}>
+            {blocks(team.sections)}
+          </div>
+        ),
+      )}
+      {personal.length > 0 && (
+        <section aria-label={t("workspaceGroups.personal")} data-team-group="">
+          <h3 className="flex h-(--row-h) items-center px-1.5 text-caption font-medium text-muted-foreground">
+            {t("workspaceGroups.personal")}
+          </h3>
+          {blocks(personal)}
+        </section>
+      )}
+    </>
+  );
+}
+
+function TeamGroupBlock({
+  team,
+  children,
+}: {
+  team: { teamId: string; name: string };
+  children: React.ReactNode;
+}) {
+  const [open, setOpen] = React.useState(() => readTeamOpen(team.teamId));
+  return (
+    <Collapsible
+      asChild
+      open={open}
+      onOpenChange={(next) => {
+        setOpen(next);
+        writeTeamOpen(team.teamId, next);
+      }}
+    >
+      <section aria-label={team.name} data-team-group={team.teamId}>
+        <CollapsibleTrigger asChild>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="w-full justify-start gap-1.5 px-1.5 text-caption font-medium text-muted-foreground"
+          >
+            <ChevronDown
+              aria-hidden
+              className={cn(
+                "size-3.5 shrink-0 transition-transform",
+                !open && "-rotate-90",
+              )}
+            />
+            <span className="min-w-0 truncate">{team.name}</span>
+          </Button>
+        </CollapsibleTrigger>
+        <CollapsibleContent>{children}</CollapsibleContent>
+      </section>
+    </Collapsible>
   );
 }
 

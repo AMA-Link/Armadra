@@ -19,7 +19,7 @@ import {
 } from "@armadra/platform-protocol/core-api";
 import { z } from "zod";
 
-import { errors } from "./errors.js";
+import { type ErrorCode, errors } from "./errors.js";
 import { meta, oc } from "./meta.js";
 
 /**
@@ -80,6 +80,9 @@ export const clientSourceSchema = protocolClientSourceSchema.extend({
   shareRole: sourceShareRoleSchema,
   /** §68：分享到期的时刻；0 = 未知、不过期或 `mine`。 */
   shareExpiresAtMs: z.number().int(),
+  /** §86（迁移 0054）：分享经由的团队；个人分享、`mine` 与旧对端是空串。 */
+  teamId: z.string(),
+  teamName: z.string(),
   /**
    * §80：本机经端到端通道连过这台时钉住的对端身份公钥（base64url）；没钉过是空串。
    * 别的设备经本机的通道读它，就不必对这台电脑做 TOFU（背书）。
@@ -108,8 +111,170 @@ export const remoteAddInputSchema = z.discriminatedUnion("kind", [
   saasAddInput,
 ]);
 
+/**
+ * SaaS 设备码登录的待办（§33.11）：只含给人看的部分。`deviceCode` 秘密留在 core 内存，
+ * 不进任何答案；`intervalMs` 是服务端要求的最短轮询间隔。
+ */
+export const remoteDeviceCodeSchema = z.object({
+  userCode: z.string(),
+  verificationUrl: z.string(),
+  expiresAtMs: z.number().int(),
+  // 协议包 0.10.0 的设备码没有这一项；core 总会带上，页面缺省按 5 秒轮询。
+  intervalMs: z.number().int().optional(),
+});
+
 export const remoteAddOutputSchema = protocolRemoteAddOutputSchema.extend({
   remote: remoteServiceSchema,
+  next: z.union([
+    z.literal("ready"),
+    z.object({ deviceCode: remoteDeviceCodeSchema }),
+  ]),
+});
+
+/** `me.spaces` 的一行（§33.11）：个人空间，或所属的一个团队与我在其中的角色。 */
+export const remoteSpaceSchema = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("personal"), plan: z.string() }),
+  z.object({
+    kind: z.literal("team"),
+    teamId: z.string(),
+    slug: z.string(),
+    name: z.string(),
+    role: z.string(),
+    plan: z.string(),
+  }),
+]);
+
+export const remoteSpacesOutputSchema = z.object({
+  spaces: z.array(remoteSpaceSchema),
+});
+
+/** `sources.remoteRegister`（§33.11）：登记到所选空间。 */
+export const remoteRegisterInputSchema = z.object({
+  serviceId: serviceIdInputSchema.shape.serviceId,
+  space: z.discriminatedUnion("kind", [
+    z.object({ kind: z.literal("personal") }),
+    z.object({ kind: z.literal("team"), teamId: z.string().min(1).max(128) }),
+  ]),
+  label: z.string().max(128).optional(),
+});
+
+export const remoteRegisterOutputSchema = z.object({
+  remote: remoteServiceSchema,
+  sourceId: z.string(),
+});
+
+/** 主机角色四档（cloud-api §24）。 */
+export const cloudRoleSchema = z.enum([
+  "viewer",
+  "editor",
+  "operator",
+  "driver",
+]);
+
+/** 授予的主体（cloud-api §24）。 */
+export const cloudSubjectSchema = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("team"), teamId: z.string() }),
+  z.object({ kind: z.literal("member"), accountId: z.string() }),
+  z.object({ kind: z.literal("group"), groupId: z.string() }),
+  z.object({ kind: z.literal("guest"), accountId: z.string() }),
+]);
+
+/** 一条授予：`workspaceIds` 空 = 整台主机；`expiresAtMs` 空 = 不过期。 */
+export const cloudGrantSchema = z.object({
+  grantId: z.string(),
+  subject: cloudSubjectSchema,
+  role: cloudRoleSchema,
+  workspaceIds: z.array(z.string()),
+  expiresAtMs: z.number().int().nullable(),
+});
+
+/** 授予的目标：团队成员或访客（团队全员与分组不在分享弹层里发）。 */
+export const cloudGrantTargetSchema = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("member"), accountId: z.string().min(1) }),
+  z.object({ kind: z.literal("guest"), accountId: z.string().min(1) }),
+]);
+
+const cloudWorkspaceIds = z.array(z.string().min(1).max(128)).max(64);
+
+/** 本机登记到的空间（`sources.get` 的 `space`）。 */
+export const cloudHostSpaceSchema = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("personal") }),
+  z.object({ kind: z.literal("team"), teamId: z.string() }),
+]);
+
+/** `sources.cloudAccess`（§33.12）：本机在这个 Armadra 云上的授予与可授予的成员。 */
+export const cloudAccessOutputSchema = z.object({
+  sourceId: z.string(),
+  space: cloudHostSpaceSchema,
+  /** 团队主机是否允许访客；个人空间恒为 true。关着时邀请非成员会被拒。 */
+  allowGuests: z.boolean(),
+  /** 当前账号能不能管这台主机的授予与邀请；不能时 `grants` 与 `members` 为空。 */
+  canManage: z.boolean(),
+  members: z.array(
+    z.object({
+      accountId: z.string(),
+      email: z.string(),
+      displayName: z.string(),
+      role: z.string(),
+    }),
+  ),
+  grants: z.array(cloudGrantSchema),
+});
+
+export const cloudGrantCreateInputSchema = z.object({
+  serviceId: serviceIdInputSchema.shape.serviceId,
+  subject: cloudGrantTargetSchema,
+  role: cloudRoleSchema,
+  workspaceIds: cloudWorkspaceIds,
+  expiresAtMs: z.number().int().optional(),
+});
+
+/** 改一条授予：角色必给；`workspaceIds` / `expiresAtMs` 给了才改（`expiresAtMs: null` = 不过期）。 */
+export const cloudGrantUpdateInputSchema = z.object({
+  serviceId: serviceIdInputSchema.shape.serviceId,
+  grantId: z.string().min(1).max(128),
+  role: cloudRoleSchema,
+  workspaceIds: cloudWorkspaceIds.optional(),
+  expiresAtMs: z.number().int().nullable().optional(),
+});
+
+export const cloudGrantRefInputSchema = z.object({
+  serviceId: serviceIdInputSchema.shape.serviceId,
+  grantId: z.string().min(1).max(128),
+});
+
+export const cloudInviteInputSchema = z.object({
+  serviceId: serviceIdInputSchema.shape.serviceId,
+  email: z.string().min(3).max(320),
+  role: cloudRoleSchema,
+  workspaceIds: cloudWorkspaceIds,
+  expiresAtMs: z.number().int().optional(),
+});
+
+/**
+ * 待信任的新设备（cloud-api §31 `trust.list`）；没有校验码。`pendingId` 是主机 core 上这条待确认
+ * 设备的号（`devices.approve` 的入参，不是 `requestId`）：协议包 0.10.0 的 `trustRequest` 没有它，
+ * 云端 0.11 起可选下发（AMA-Link/armadra-cloud#126）；协议包带上它后改回同一对象。
+ */
+export const cloudTrustRequestSchema = z.object({
+  requestId: z.string(),
+  sourceId: z.string(),
+  sourceName: z.string(),
+  teamId: z.string().nullable(),
+  member: z.object({
+    accountId: z.string(),
+    email: z.string(),
+    displayName: z.string(),
+  }),
+  device: z.object({ name: z.string(), platform: z.string() }),
+  requestedAtMs: z.number().int(),
+  expiresAtMs: z.number().int(),
+  pendingId: z.string().min(1).optional(),
+});
+
+export const cloudTrustRejectInputSchema = z.object({
+  serviceId: serviceIdInputSchema.shape.serviceId,
+  requestId: z.string().min(1).max(128),
 });
 
 export const sourcesListOutputSchema = protocolSourcesListOutputSchema.extend({
@@ -176,6 +341,28 @@ const write = (
   });
 
 const denied = errors.pick("unauthenticated", "forbidden");
+
+/** §33.12 各条共用的错误：登录与连接类加云端对授予、邀请、信任的拒绝。 */
+const cloudBaseErrors = errors.pick(
+  "bad_request",
+  "rate_limited",
+  "source_unauthorized",
+  "source_unreachable",
+  "not_implemented",
+  "source_access_denied",
+  "team_role_insufficient",
+  "team_policy_denied",
+  "guests_disabled",
+  "team_deleted",
+);
+
+const cloudErrors = <const K extends ErrorCode>(...extra: readonly K[]) => ({
+  ...cloudBaseErrors,
+  ...errors.pick(...extra),
+});
+
+const cloudMeta = (scope: "settings:read" | "settings:write") =>
+  meta({ scope, since: "1.51", contract: "§33.12" });
 
 /**
  * `sources.mountByLink` 的入参（契约 §33.7）：分享链接原样交给 core——网页链接
@@ -369,6 +556,7 @@ export const sources = {
       ...denied,
       ...errors.pick(
         "bad_request",
+        "conflict",
         "address_invalid",
         "address_https_only",
         "address_plaintext_loopback_only",
@@ -388,8 +576,142 @@ export const sources = {
   remoteDevicePoll: oc
     .input(serviceIdInputSchema)
     .output(remoteDevicePollOutputSchema)
-    .errors({ ...denied, ...errors.pick("not_found", "not_implemented") })
+    .errors({
+      ...denied,
+      ...errors.pick(
+        "not_found",
+        "rate_limited",
+        "source_unreachable",
+        "not_implemented",
+      ),
+    })
     .meta(write("§33.2", "POST", "/api/sources/remotes/{serviceId}/poll")),
+  /** Armadra 云：登录后可登记的空间（`me.spaces`，§33.11）。 */
+  remoteSpaces: oc
+    .input(serviceIdInputSchema)
+    .output(remoteSpacesOutputSchema)
+    .errors({
+      ...denied,
+      ...errors.pick(
+        "not_found",
+        "source_unauthorized",
+        "source_unreachable",
+        "not_implemented",
+      ),
+    })
+    .meta(
+      meta({
+        scope: "settings:read",
+        since: "1.50",
+        contract: "§33.11",
+        legacy: {
+          method: "GET",
+          path: "/api/sources/remotes/{serviceId}/spaces",
+        },
+      }),
+    ),
+  /** Armadra 云：按所选空间取注册令牌并把本机登记进去（§33.11）。 */
+  remoteRegister: oc
+    .input(remoteRegisterInputSchema)
+    .output(remoteRegisterOutputSchema)
+    .errors({
+      ...denied,
+      ...errors.pick(
+        "bad_request",
+        "not_found",
+        "conflict",
+        "rate_limited",
+        "limit_reached",
+        "source_unauthorized",
+        "source_unreachable",
+        "cloud_already_registered",
+        "cloud_issuer_mismatch",
+        "registration_token_invalid",
+        "protocol_unsupported",
+        "email_unverified",
+        "team_role_insufficient",
+        "team_policy_denied",
+        "host_registration_disabled",
+        "team_suspended",
+        "team_deleted",
+        "not_implemented",
+      ),
+    })
+    .meta(
+      meta({
+        scope: "settings:write",
+        since: "1.50",
+        contract: "§33.11",
+        legacy: {
+          method: "POST",
+          path: "/api/sources/remotes/{serviceId}/register",
+        },
+      }),
+    ),
+  /** Armadra 云：本机主机的授予、可授予的团队成员与主机设置（§33.12）。 */
+  cloudAccess: oc
+    .input(serviceIdInputSchema)
+    .output(cloudAccessOutputSchema)
+    .errors({ ...denied, ...cloudErrors("not_found", "conflict") })
+    .meta(cloudMeta("settings:read")),
+  /** Armadra 云：给成员 / 访客发一条授予（`grants.create`，§33.12）。 */
+  cloudGrantCreate: oc
+    .input(cloudGrantCreateInputSchema)
+    .output(z.object({ grant: cloudGrantSchema }))
+    .errors({
+      ...denied,
+      ...cloudErrors("conflict", "limit_reached", "email_unverified"),
+    })
+    .meta(cloudMeta("settings:write")),
+  /** Armadra 云：改一条授予的角色（`grants.update`）。 */
+  cloudGrantUpdate: oc
+    .input(cloudGrantUpdateInputSchema)
+    .output(z.object({ grant: cloudGrantSchema }))
+    .errors({ ...denied, ...cloudErrors("not_found") })
+    .meta(cloudMeta("settings:write")),
+  /** Armadra 云：撤销一条授予（`grants.revoke`）。 */
+  cloudGrantRevoke: oc
+    .input(cloudGrantRefInputSchema)
+    .output(empty)
+    .errors({ ...denied, ...cloudErrors("not_found") })
+    .meta(cloudMeta("settings:write")),
+  /** Armadra 云：按邮箱发主机邀请（`invitations.create`，`kind = host`）。 */
+  cloudInvite: oc
+    .input(cloudInviteInputSchema)
+    .output(
+      z.object({
+        invitation: z.object({
+          invitationId: z.string(),
+          email: z.string(),
+          expiresAtMs: z.number().int(),
+        }),
+      }),
+    )
+    .errors({
+      ...denied,
+      ...cloudErrors(
+        "conflict",
+        "member_exists",
+        "limit_reached",
+        "email_unverified",
+      ),
+    })
+    .meta(cloudMeta("settings:write")),
+  /** Armadra 云：我能背书的待信任新设备（`trust.list`，§33.12）。 */
+  cloudTrustList: oc
+    .input(serviceIdInputSchema)
+    .output(z.object({ requests: z.array(cloudTrustRequestSchema) }))
+    .errors({ ...denied, ...cloudErrors("not_found") })
+    .meta(cloudMeta("settings:read")),
+  /** Armadra 云：拒绝一条待信任请求（`trust.reject`）；批准走端到端通道，不经云端。 */
+  cloudTrustReject: oc
+    .input(cloudTrustRejectInputSchema)
+    .output(empty)
+    .errors({
+      ...denied,
+      ...cloudErrors("not_found", "conflict", "device_untrusted"),
+    })
+    .meta(cloudMeta("settings:write")),
   /** 改远程服务的显示名，只在本机；空串恢复成它报的名字（§61）。 */
   remoteUpdate: oc
     .input(remoteUpdateInputSchema)
@@ -662,6 +984,12 @@ export const sources = {
     ),
 };
 
+export type CloudAccess = z.infer<typeof cloudAccessOutputSchema>;
+export type CloudGrant = z.infer<typeof cloudGrantSchema>;
+export type CloudGrantCreateInput = z.infer<typeof cloudGrantCreateInputSchema>;
+export type CloudGrantUpdateInput = z.infer<typeof cloudGrantUpdateInputSchema>;
+export type CloudInviteInput = z.infer<typeof cloudInviteInputSchema>;
+export type CloudTrustRequest = z.infer<typeof cloudTrustRequestSchema>;
 export type ClientSource = z.infer<typeof clientSourceSchema>;
 export type ClientSourceRoute = z.infer<typeof clientSourceRouteSchema>;
 export type SourceRouteRef = z.infer<typeof sourceRouteRefSchema>;

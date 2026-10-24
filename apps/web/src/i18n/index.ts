@@ -9,7 +9,14 @@ import { browser } from "./browser";
 import { canvas } from "./canvas";
 import { challenge } from "./challenge";
 import { cloudErrors } from "./cloud-errors";
+import { cloudAuth } from "./cloud-auth";
 import { cloudShell } from "./cloud-shell";
+import { cloudOps } from "./cloud-ops";
+import { cloudHosts } from "./cloud-hosts";
+import { cloudAccount } from "./cloud-account";
+import { cloudAudit } from "./cloud-audit";
+import { cloudBilling } from "./cloud-billing";
+import { cloudTeam } from "./cloud-team";
 import { collab } from "./collab";
 import { connection } from "./connection";
 import { commands } from "./commands";
@@ -163,7 +170,14 @@ export const MESSAGE_MODULES = {
   e2e,
   challenge,
   "cloud-errors": cloudErrors,
+  "cloud-auth": cloudAuth,
   "cloud-shell": cloudShell,
+  "cloud-ops": cloudOps,
+  "cloud-hosts": cloudHosts,
+  "cloud-account": cloudAccount,
+  "cloud-audit": cloudAudit,
+  "cloud-billing": cloudBilling,
+  "cloud-team": cloudTeam,
   services,
   links,
   "mod-commands": modCommands,

@@ -70,6 +70,9 @@ export interface SourceDescriptor {
   readonly shareRole?: ShareRole;
   /** 分享到期的时刻（毫秒）；不到期或不知道时不出现。 */
   readonly shareExpiresAt?: number;
+  /** 分享经由的团队（契约 §86）；个人分享、我自己的电脑与旧 core 不出现。 */
+  readonly teamId?: string;
+  readonly teamName?: string;
 }
 
 export type SourceState =

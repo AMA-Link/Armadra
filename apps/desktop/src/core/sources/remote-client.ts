@@ -5,8 +5,9 @@
  * 只实现个人中转用到的那几条：`platform.info`、`auth.login`、`auth.refresh`、
  * `auth.logout`、`auth.changePassword`（契约 §63）、`me.sources`、`sources.assertion`、
  * `sources.revoke`、`links.accept`，
- * 以及分享链接的 `links.create` / `links.list` / `links.update` / `links.revoke`（契约 §33.9、§33.10）。SaaS 的设备码登录等能力就绪
- * 后再加；在那之前 `service.ts` 对 `saas` 答 `not_implemented`。
+ * 以及分享链接的 `links.create` / `links.list` / `links.update` / `links.revoke`（契约 §33.9、§33.10）。
+ * SaaS（Armadra 云）的设备码登录与登记到空间用 `deviceStart` / `devicePoll` / `spaces` /
+ * `registrationToken`（契约 §33.11）；SaaS 的源目录与断言已实现（挂载见契约 §86），分享链接仍答 `not_implemented`。
  *
  * 线上编码是普通 JSON（上游 OpenAPI 编码），错误是 `{ code, message, … }`。这里把
  * 远程服务的码收拢成 core 契约 §33 的码；远程服务的原话不透传（它可能是别的
@@ -15,6 +16,15 @@
 
 import { fail } from "../http/errors";
 import type { Transport } from "./http-client";
+import {
+  CONSOLE_DURING,
+  CONSOLE_GRANTS,
+  CONSOLE_HOST,
+  CONSOLE_INVITE,
+  CONSOLE_MEMBERS,
+  CONSOLE_TRUST,
+  consoleRejection,
+} from "./saas-errors";
 
 export interface DeviceInput {
   readonly platform: "desktop" | "server";
@@ -27,6 +37,8 @@ export interface CloudSession {
   readonly accessExpiresAtMs: number;
   readonly accountId: string;
   readonly displayName: string;
+  /** SaaS 账号的邮箱；个人中转没有，是空串。 */
+  readonly email: string;
   readonly deviceId: string;
 }
 
@@ -122,6 +134,37 @@ export interface LinkSummary {
   readonly scope?: LinkScope;
 }
 
+/** `auth.deviceStart` 的答案（cloud-api §2）：`deviceCode` 是秘密，只留在 core。 */
+export interface DeviceStart {
+  readonly deviceCode: string;
+  readonly userCode: string;
+  readonly verificationUrl: string;
+  readonly expiresAtMs: number;
+  readonly intervalMs: number;
+}
+
+/** `auth.devicePoll` 的答案：批准时带会话（发起设备恒为 Bearer，带刷新令牌）。 */
+export type DevicePoll =
+  | { readonly status: "pending" | "denied" | "expired" }
+  | { readonly status: "approved"; readonly session: CloudSession };
+
+/** `me.spaces` 的一行：个人空间或所属的一个团队（cloud-api §21）。 */
+export type CloudSpace =
+  | { readonly kind: "personal"; readonly plan: string }
+  | {
+      readonly kind: "team";
+      readonly teamId: string;
+      readonly slug: string;
+      readonly name: string;
+      readonly role: string;
+      readonly plan: string;
+    };
+
+/** 注册令牌签给哪个空间。 */
+export type SpaceRef =
+  | { readonly kind: "personal" }
+  | { readonly kind: "team"; readonly teamId: string };
+
 /** 远程服务的一个地址：issuer 来源加它的 CA 指纹（空 = 系统信任）。 */
 export interface RemoteEndpoint {
   readonly issuer: string;
@@ -129,6 +172,96 @@ export interface RemoteEndpoint {
 }
 
 const TIMEOUT_MS = 10_000;
+
+/** `sources.get` 里这一台主机要的两样：登记在哪个空间、是否允许访客。 */
+export interface CloudHostInfo {
+  readonly space: SpaceRef;
+  readonly allowGuests: boolean;
+}
+
+export interface CloudMember {
+  readonly accountId: string;
+  readonly email: string;
+  readonly displayName: string;
+  readonly role: "admin" | "member" | "guest";
+}
+
+export type CloudRole = "viewer" | "editor" | "operator" | "driver";
+
+export interface CloudGrant {
+  readonly grantId: string;
+  readonly subject:
+    | { readonly kind: "team"; readonly teamId: string }
+    | { readonly kind: "member"; readonly accountId: string }
+    | { readonly kind: "group"; readonly groupId: string }
+    | { readonly kind: "guest"; readonly accountId: string };
+  readonly role: CloudRole;
+  readonly workspaceIds: string[];
+  readonly expiresAtMs: number | null;
+}
+
+export interface CloudTrustRequest {
+  readonly requestId: string;
+  readonly sourceId: string;
+  readonly sourceName: string;
+  readonly teamId: string | null;
+  readonly member: {
+    readonly accountId: string;
+    readonly email: string;
+    readonly displayName: string;
+  };
+  readonly device: { readonly name: string; readonly platform: string };
+  readonly requestedAtMs: number;
+  readonly expiresAtMs: number;
+  /** 主机 core 上这条待确认设备的号；云端 0.11 起可选下发，旧云端没有。 */
+  readonly pendingId?: string;
+}
+
+const ROLES: ReadonlySet<string> = new Set([
+  "viewer",
+  "editor",
+  "operator",
+  "driver",
+]);
+
+/** 授予的一行；撤销了的、形状不对的丢掉（`null`）。 */
+function grantOf(value: unknown): CloudGrant | null {
+  const row = record(value);
+  const grantId = str(row.grantId);
+  const subject = record(row.subject);
+  const role = str(row.role);
+  if (
+    grantId === "" ||
+    !ROLES.has(role) ||
+    typeof row.revokedAtMs === "number"
+  ) {
+    return null;
+  }
+  let who: CloudGrant["subject"];
+  switch (subject.kind) {
+    case "team":
+      who = { kind: "team", teamId: str(subject.teamId) };
+      break;
+    case "group":
+      who = { kind: "group", groupId: str(subject.groupId) };
+      break;
+    case "member":
+    case "guest":
+      who = { kind: subject.kind, accountId: str(subject.accountId) };
+      break;
+    default:
+      return null;
+  }
+  return {
+    grantId,
+    subject: who,
+    role: role as CloudRole,
+    workspaceIds: Array.isArray(row.workspaceIds)
+      ? row.workspaceIds.filter((one): one is string => typeof one === "string")
+      : [],
+    expiresAtMs: typeof row.expiresAtMs === "number" ? row.expiresAtMs : null,
+  };
+}
 
 function record(value: unknown): Record<string, unknown> {
   return typeof value === "object" && value !== null
@@ -160,6 +293,7 @@ function sessionOf(body: unknown): CloudSession {
     accessExpiresAtMs: num(session.accessExpiresAtMs),
     accountId: str(account.accountId),
     displayName: str(account.displayName),
+    email: str(account.email),
     deviceId: str(device.deviceId),
   };
 }
@@ -169,6 +303,10 @@ function rejected(status: number, body: unknown, during: string): never {
   const answer = record(body);
   const code = str(answer.code);
   const details = record(answer.details);
+  if (CONSOLE_DURING.has(during)) {
+    const mapped = consoleRejection(code, details);
+    if (mapped !== undefined) throw mapped;
+  }
   if (code === "bad_request" && during === "建分享链接") {
     throw fail("bad_request", "远程服务不接受这条链接的参数");
   }
@@ -185,7 +323,39 @@ function rejected(status: number, body: unknown, during: string): never {
           : undefined,
       );
     case "rate_limited":
-      throw fail("rate_limited", "远程服务限流，请稍后重试");
+      throw fail(
+        "rate_limited",
+        "远程服务限流，请稍后重试",
+        typeof details.retryAfterMs === "number"
+          ? { retryAfterMs: details.retryAfterMs }
+          : undefined,
+      );
+    // 登记到空间（cloud-api §6、§21）：团队与计划的拒绝，码原样透传，页面按码取文案。
+    case "host_registration_disabled":
+      throw fail(
+        "host_registration_disabled",
+        "远程服务不允许在这个空间登记主机",
+      );
+    case "team_role_insufficient":
+      throw fail("team_role_insufficient", "远程服务不允许在这个空间登记主机");
+    case "team_policy_denied":
+      throw fail("team_policy_denied", "远程服务不允许在这个空间登记主机");
+    case "email_unverified":
+      throw fail("email_unverified", "远程服务不允许在这个空间登记主机");
+    case "team_suspended":
+      throw fail("team_suspended", "远程服务不允许在这个空间登记主机");
+    case "team_deleted":
+      throw fail("team_deleted", "远程服务不允许在这个空间登记主机");
+    case "limit_reached":
+      throw fail(
+        "limit_reached",
+        details.quota === "hosts"
+          ? "这个空间的主机数已到上限"
+          : "远程服务的上限已到",
+        typeof details.quota === "string"
+          ? { quota: details.quota, used: details.used, limit: details.limit }
+          : undefined,
+      );
     // 改口令（cloud-api §18）：新口令不合策略，码原样透传，页面按码取文案。
     case "password_too_short":
       throw fail("password_too_short", "新口令太短");
@@ -275,6 +445,27 @@ function linkSummaryOf(value: unknown): LinkSummary | null {
     revokedAtMs: typeof row.revokedAtMs === "number" ? row.revokedAtMs : null,
     ...(scopeOf(row.scope) === undefined ? {} : { scope: scopeOf(row.scope) }),
   };
+}
+
+const LOOPBACK_HOSTS = new Set(["localhost", "127.0.0.1", "[::1]"]);
+
+/** `url` 是 `issuer` 同源的 https 地址（回环上的 http 例外，与 issuer 的规则一致）。 */
+function sameOriginUrl(url: string, issuer: string): boolean {
+  try {
+    const target = new URL(url);
+    const origin = new URL(issuer);
+    const scheme =
+      target.protocol === "https:" ||
+      (target.protocol === "http:" && LOOPBACK_HOSTS.has(target.hostname));
+    return (
+      scheme &&
+      target.origin === origin.origin &&
+      target.username === "" &&
+      target.password === ""
+    );
+  } catch {
+    return false;
+  }
 }
 
 export class RemoteClient {
@@ -386,6 +577,117 @@ export class RemoteClient {
         refreshToken,
       }),
     );
+  }
+
+  /**
+   * 设备码登录（cloud-api §2）：匿名发起，答 8 位 `userCode` 与浏览器里批准的地址。
+   * `deviceCode` 是只给发起设备的秘密，调用方不得写日志、不得交给页面。
+   */
+  async deviceStart(endpoint: RemoteEndpoint): Promise<DeviceStart> {
+    const body = record(
+      await this.call(endpoint, "POST", "/v1/auth/device/start", "设备码登录", {
+        device: this.device,
+      }),
+    );
+    const start: DeviceStart = {
+      deviceCode: str(body.deviceCode),
+      userCode: str(body.userCode),
+      verificationUrl: str(body.verificationUrl),
+      expiresAtMs: num(body.expiresAtMs),
+      intervalMs: num(body.intervalMs),
+    };
+    if (
+      start.deviceCode === "" ||
+      !/^[A-Z]{4}-[A-Z]{4}$/.test(start.userCode) ||
+      start.expiresAtMs === 0
+    ) {
+      throw fail("source_unreachable", "远程服务的设备码答案不完整");
+    }
+    // 页面会让人在浏览器里打开这个地址：必须是 issuer 同源的 https（回环才允许 http），
+    // 否则被攻陷或配错的远程服务能把人带去别的站点。
+    if (!sameOriginUrl(start.verificationUrl, endpoint.issuer)) {
+      throw fail("source_unreachable", "远程服务的设备码地址与它自己不同源");
+    }
+    return start;
+  }
+
+  async devicePoll(
+    endpoint: RemoteEndpoint,
+    deviceCode: string,
+  ): Promise<DevicePoll> {
+    const body = record(
+      await this.call(endpoint, "POST", "/v1/auth/device/poll", "轮询设备码", {
+        deviceCode,
+      }),
+    );
+    switch (body.status) {
+      case "pending":
+      case "denied":
+      case "expired":
+        return { status: body.status };
+      case "approved":
+        return { status: "approved", session: sessionOf(body) };
+      default:
+        throw fail("source_unreachable", "远程服务的轮询答案不认识");
+    }
+  }
+
+  async spaces(
+    endpoint: RemoteEndpoint,
+    accessToken: string,
+  ): Promise<CloudSpace[]> {
+    const body = record(
+      await this.call(
+        endpoint,
+        "GET",
+        "/v1/me/spaces",
+        "取空间",
+        undefined,
+        accessToken,
+      ),
+    );
+    const rows = Array.isArray(body.spaces) ? body.spaces : [];
+    return rows.flatMap((value): CloudSpace[] => {
+      const row = record(value);
+      if (row.kind === "personal") {
+        return [{ kind: "personal", plan: str(row.plan) }];
+      }
+      const teamId = str(row.teamId);
+      if (row.kind !== "team" || teamId === "") return [];
+      return [
+        {
+          kind: "team",
+          teamId,
+          slug: str(row.slug),
+          name: str(row.name),
+          role: str(row.role),
+          plan: str(row.plan),
+        },
+      ];
+    });
+  }
+
+  /** 一枚注册令牌（十分钟、一次性）；只在调用方手里转一圈，立刻交给登记。 */
+  async registrationToken(
+    endpoint: RemoteEndpoint,
+    accessToken: string,
+    space: SpaceRef,
+  ): Promise<string> {
+    const body = record(
+      await this.call(
+        endpoint,
+        "POST",
+        "/v1/sources/registration-tokens",
+        "取注册令牌",
+        { space },
+        accessToken,
+      ),
+    );
+    const token = str(body.registrationToken);
+    if (token === "") {
+      throw fail("source_unreachable", "远程服务的注册令牌答案不完整");
+    }
+    return token;
   }
 
   async logout(endpoint: RemoteEndpoint, accessToken: string): Promise<void> {
@@ -623,6 +925,280 @@ export class RemoteClient {
       `/v1/links/${encodeURIComponent(linkId)}`,
       "撤销分享链接",
       undefined,
+      accessToken,
+    );
+  }
+
+  /** `GET /v1/sources/{sourceId}`：这台主机登记在哪个空间、主机设置（cloud-api §4）。 */
+  async hostInfo(
+    endpoint: RemoteEndpoint,
+    accessToken: string,
+    sourceId: string,
+  ): Promise<CloudHostInfo> {
+    const body = record(
+      await this.call(
+        endpoint,
+        "GET",
+        `/v1/sources/${encodeURIComponent(sourceId)}`,
+        CONSOLE_HOST,
+        undefined,
+        accessToken,
+      ),
+    );
+    const space = record(body.space);
+    const teamId = str(space.teamId);
+    const settings = record(body.settings);
+    return {
+      space:
+        space.kind === "team" && teamId !== ""
+          ? { kind: "team", teamId }
+          : { kind: "personal" },
+      allowGuests: settings.allowGuests !== false,
+    };
+  }
+
+  /** `GET /v1/teams/{teamId}/members`：团队成员（只留能被授予的角色）。 */
+  async teamMembers(
+    endpoint: RemoteEndpoint,
+    accessToken: string,
+    teamId: string,
+  ): Promise<CloudMember[]> {
+    const body = record(
+      await this.call(
+        endpoint,
+        "GET",
+        `/v1/teams/${encodeURIComponent(teamId)}/members`,
+        CONSOLE_MEMBERS,
+        undefined,
+        accessToken,
+      ),
+    );
+    const rows = Array.isArray(body.members) ? body.members : [];
+    return rows.flatMap((value): CloudMember[] => {
+      const row = record(value);
+      const accountId = str(row.accountId);
+      const role = str(row.role);
+      if (
+        accountId === "" ||
+        (role !== "admin" && role !== "member" && role !== "guest")
+      ) {
+        return [];
+      }
+      return [
+        {
+          accountId,
+          email: str(row.email),
+          displayName: str(row.displayName),
+          role,
+        },
+      ];
+    });
+  }
+
+  /** `GET /v1/grants?sourceId=`：这台主机现有的授予（未撤销的）。 */
+  async listGrants(
+    endpoint: RemoteEndpoint,
+    accessToken: string,
+    sourceId: string,
+  ): Promise<CloudGrant[]> {
+    const body = record(
+      await this.call(
+        endpoint,
+        "GET",
+        `/v1/grants?sourceId=${encodeURIComponent(sourceId)}`,
+        CONSOLE_GRANTS,
+        undefined,
+        accessToken,
+      ),
+    );
+    const rows = Array.isArray(body.grants) ? body.grants : [];
+    return rows.flatMap((value) => {
+      const grant = grantOf(value);
+      return grant === null ? [] : [grant];
+    });
+  }
+
+  async createGrant(
+    endpoint: RemoteEndpoint,
+    accessToken: string,
+    input: {
+      sourceId: string;
+      subject: { kind: "member" | "guest"; accountId: string };
+      role: string;
+      workspaceIds: readonly string[];
+      expiresAtMs?: number | undefined;
+    },
+  ): Promise<CloudGrant> {
+    const grant = grantOf(
+      await this.call(
+        endpoint,
+        "POST",
+        "/v1/grants",
+        CONSOLE_GRANTS,
+        {
+          sourceId: input.sourceId,
+          subject: input.subject,
+          role: input.role,
+          workspaceIds: input.workspaceIds,
+          ...(input.expiresAtMs === undefined
+            ? {}
+            : { expiresAtMs: input.expiresAtMs }),
+        },
+        accessToken,
+      ),
+    );
+    if (grant === null) {
+      throw fail("source_unreachable", "远程服务授予的答案不完整");
+    }
+    return grant;
+  }
+
+  async updateGrant(
+    endpoint: RemoteEndpoint,
+    accessToken: string,
+    grantId: string,
+    patch: {
+      role: string;
+      workspaceIds?: readonly string[] | undefined;
+      expiresAtMs?: number | null | undefined;
+    },
+  ): Promise<CloudGrant> {
+    const grant = grantOf(
+      await this.call(
+        endpoint,
+        "PATCH",
+        `/v1/grants/${encodeURIComponent(grantId)}`,
+        CONSOLE_GRANTS,
+        {
+          role: patch.role,
+          ...(patch.workspaceIds === undefined
+            ? {}
+            : { workspaceIds: patch.workspaceIds }),
+          ...(patch.expiresAtMs === undefined
+            ? {}
+            : { expiresAtMs: patch.expiresAtMs }),
+        },
+        accessToken,
+      ),
+    );
+    if (grant === null) {
+      throw fail("source_unreachable", "远程服务改授予的答案不完整");
+    }
+    return grant;
+  }
+
+  async revokeGrant(
+    endpoint: RemoteEndpoint,
+    accessToken: string,
+    grantId: string,
+  ): Promise<void> {
+    await this.call(
+      endpoint,
+      "DELETE",
+      `/v1/grants/${encodeURIComponent(grantId)}`,
+      CONSOLE_GRANTS,
+      undefined,
+      accessToken,
+    );
+  }
+
+  /** `POST /v1/invitations`（`kind = host`）。 */
+  async inviteToHost(
+    endpoint: RemoteEndpoint,
+    accessToken: string,
+    input: {
+      sourceId: string;
+      email: string;
+      role: string;
+      workspaceIds: readonly string[];
+      expiresAtMs?: number | undefined;
+    },
+  ): Promise<{ invitationId: string; email: string; expiresAtMs: number }> {
+    const body = record(
+      await this.call(
+        endpoint,
+        "POST",
+        "/v1/invitations",
+        CONSOLE_INVITE,
+        {
+          kind: "host",
+          sourceId: input.sourceId,
+          email: input.email,
+          role: input.role,
+          workspaceIds: input.workspaceIds,
+          ...(input.expiresAtMs === undefined
+            ? {}
+            : { expiresAtMs: input.expiresAtMs }),
+        },
+        accessToken,
+      ),
+    );
+    const invitationId = str(body.invitationId);
+    if (invitationId === "") {
+      throw fail("source_unreachable", "远程服务邀请的答案不完整");
+    }
+    return {
+      invitationId,
+      email: str(body.email),
+      expiresAtMs: num(body.expiresAtMs),
+    };
+  }
+
+  /** `GET /v1/trust-requests`：我能背书的待信任新设备（不含校验码）。 */
+  async trustRequests(
+    endpoint: RemoteEndpoint,
+    accessToken: string,
+  ): Promise<CloudTrustRequest[]> {
+    const body = record(
+      await this.call(
+        endpoint,
+        "GET",
+        "/v1/trust-requests",
+        CONSOLE_TRUST,
+        undefined,
+        accessToken,
+      ),
+    );
+    const rows = Array.isArray(body.requests) ? body.requests : [];
+    return rows.flatMap((value): CloudTrustRequest[] => {
+      const row = record(value);
+      const requestId = str(row.requestId);
+      const member = record(row.member);
+      const device = record(row.device);
+      if (requestId === "") return [];
+      return [
+        {
+          requestId,
+          sourceId: str(row.sourceId),
+          sourceName: str(row.sourceName),
+          teamId: str(row.teamId) === "" ? null : str(row.teamId),
+          member: {
+            accountId: str(member.accountId),
+            email: str(member.email),
+            displayName: str(member.displayName),
+          },
+          device: { name: str(device.name), platform: str(device.platform) },
+          requestedAtMs: num(row.requestedAtMs),
+          expiresAtMs: num(row.expiresAtMs),
+          ...(str(row.pendingId) === ""
+            ? {}
+            : { pendingId: str(row.pendingId) }),
+        },
+      ];
+    });
+  }
+
+  async rejectTrust(
+    endpoint: RemoteEndpoint,
+    accessToken: string,
+    requestId: string,
+  ): Promise<void> {
+    await this.call(
+      endpoint,
+      "POST",
+      `/v1/trust-requests/${encodeURIComponent(requestId)}/reject`,
+      CONSOLE_TRUST,
+      {},
       accessToken,
     );
   }

@@ -89,6 +89,8 @@
 
 角色门槛之外的团队路径整页显示 `PageState`（§3.0，`error.forbidden`），导航里不出现；`/ops/*` 例外：没有运营会话的人一律整页「找不到这个页面」（与不认识的路径相同），不暴露运营后台的存在；不认识的路径整页「找不到这个页面」+「回到概览」。筛选、标签页、分页游标进查询参数（`?status=online&tab=access`），可分享、可后退。
 
+运营租户搜索是「筛选进查询参数」的例外：搜索词多是邮箱等个人信息，不进地址栏（浏览历史、日志、Referer 都会带走），只存在本标签页的 `sessionStorage`（`armadra.cloud.ops.q`），详情链接也不带它；输入框限 128 字。契约里 `admin.tenants` 的 `GET ?q=` 改请求体后，请求也不再把它放进地址（armadra-cloud 跟进）。
+
 ## §2 信息架构
 
 ### 2.1 外壳
@@ -282,9 +284,13 @@
 ── 第二步 ────────────────────────────────
    ┌ Card ──────────────────────────────┐
    │ (▣) build-01 请求登录               │   平台图标 + 名称
-   │     macOS · 刚刚                    │   11 muted
+   │     桌面 · 刚刚                     │   11 muted；平台认不出显示「设备」
    └─────────────────────────────────────┘
-   [ 拒绝 ]                    [ 授权 ]      outline 左 / default 右
+        设备码                                11 muted
+       BCDF-GHJK                              大号等宽：供与设备上显示的码对照
+   请确认设备上显示的就是这个码。不是你本人刚发起的登录，请点拒绝    固定提示，不可关
+   [✓] 我已在设备上核对过这个码              仅当码来自 URL（?code=）
+   [ 拒绝 ]                    [ 授权 ]      outline 左 / default 右；未勾选时「授权」禁用
 ── 完成 ──────────────────────────────────
    ✓ 已授权，可以回到 build-01             Empty，图标 CircleCheck
 ```
@@ -293,20 +299,20 @@
 | ---- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | 目的 | 桌面 core、CLI 用设备码登录时，在已登录的浏览器里批准                                                                                                                                            |
 | 组件 | `InputOTP`、`Card`、`Button`、`Empty`、`Spinner`、`Alert`                                                                                                                                        |
-| 行为 | `?code=` 预填并直接进第二步；未登录 → `/login?next=/device?code=…`                                                                                                                               |
+| 行为 | `?code=` 预填并直接进第二步（链接可能是别人发来的：第二步必须勾「我已在设备上核对过这个码」才能授权，手输的码本身就是核对，不需要勾）；未登录 → `/login?next=/device?code=…`                     |
 | 状态 | `device_code_expired` → 码下一行 +「回到设备上重新获取」不另加按钮；`device_code_denied` 与自己点了「拒绝」之后都显示 `error.deviceCodeDenied`「已拒绝这次登录」；`not_found` → 「设备码不正确」 |
 | 过程 | `auth.deviceGet`（显示平台与名字，能力设计 §11.5 要求）、`auth.deviceApprove`、`auth.deviceDeny`                                                                                                 |
 
 #### 3.1.6 链接落地 `/j/:linkId`（M1，扩展现有 `JoinPage`）
 
-| 项   | 内容                                                                                                                                                                          |
-| ---- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 目的 | 一次「加入」点击后直达画布 `/h/:host`                                                                                                                                         |
-| 组件 | 现有 `JoinPage` 的 `Card` + `Avatar`（主人首字）+ `Badge outline`（权限）+ `Button`                                                                                           |
-| 内容 | 「加入 {owner} 的 {target}」、权限、「有效期至 {date}」                                                                                                                       |
-| 动作 | 链接要求登录且未登录：主「登录后加入」→ `/login?next=`；否则主「加入」；已加入过：「打开」                                                                                    |
-| 状态 | `link_invalid` / `link_expired` / `link_exhausted` / `link_secret_invalid` → 现有 `error.link*`；`anonymous_links_disabled` → 改成「登录后加入」；`link_frozen` → `PageState` |
-| 过程 | `links.get`、`links.accept`                                                                                                                                                   |
+| 项   | 内容                                                                                                                                                                           |
+| ---- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| 目的 | 一次「加入」点击后直达画布 `/h/:host`（`/h/` 的 SaaS 入口实现之前，接受后以访客经托管中继进画布，地址换成 `/app/`，与个人中转一致；中继那一步失败重试不再重复 `links.accept`） |
+| 组件 | 现有 `JoinPage` 的 `Card` + `Avatar`（主人首字）+ `Badge outline`（权限）+ `Button`                                                                                            |
+| 内容 | 「加入 {owner} 的 {target}」、权限、「有效期至 {date}」                                                                                                                        |
+| 动作 | 链接要求登录且未登录：主「登录后加入」→ `/login?next=`；否则主「加入」；已加入过：「打开」                                                                                     |
+| 状态 | `link_invalid` / `link_expired` / `link_exhausted` / `link_secret_invalid` → 现有 `error.link*`；`anonymous_links_disabled` → 改成「登录后加入」；`link_frozen` → `PageState`  |
+| 过程 | `links.get`、`links.accept`                                                                                                                                                    |
 
 #### 3.1.7 邀请落地 `/invite/:id`（M1）
 
@@ -574,7 +580,7 @@
 | 组件 | `Table` / `Item`、`Avatar`、`Badge outline`、`ButtonGroup`、`ResponsiveDialog`、`InputOTP`                                                                                                                                                                                                                                                                      |
 | 行为 | 列表只显示成员、设备、平台、主机、时间，**不显示校验码**：背书人输入新设备上显示的 6 位码，由端到端通道在主机侧核对（core 契约 §80 第 8 项「已受信设备背书」），云端看不到、也不经手这个码。浏览器本身是否是该主机的受信设备，由 `browser-cloud` 提供方尝试打开端到端通道判定；是 → 「信任」可用；否 → 行尾 `Badge outline`「在已信任的设备上处理」，不渲染按钮 |
 | 空   | 「没有待信任的设备」                                                                                                                                                                                                                                                                                                                                            |
-| 错误 | `sas_mismatch` / `sas_expired`（现有 `e2e.approve.*`）、`device_untrusted`、`e2e_device_unavailable`                                                                                                                                                                                                                                                            |
+| 错误 | `sas_mismatch` / `sas_expired`（现有 `e2e.approve.*`）、`device_untrusted`、`forbidden`、`e2e_device_unavailable`                                                                                                                                                                                                                                               |
 | 实时 | `deviceTrustRequested` / `deviceTrustResolved`                                                                                                                                                                                                                                                                                                                  |
 | core | 背书人不一定是主机本地 owner（团队 admin、成员本人从另一台设备）：主机 core 要接受经云端断言以团队角色准入的会话调 `devices.approve`（§80 第 8 项），条件是该会话的设备已受信、团队设置的「新设备背书人」包含此人的角色；这一条随 A1 在 core 实现，U6 依赖它                                                                                                    |
 | 过程 | `trust.list`（协议 1.4 的 `trustRequest` 现带 `sas` 字段，应删除，§6.5）、`trust.reject`（只记拒绝；批准走端到端通道，不经云端）                                                                                                                                                                                                                                |
@@ -733,11 +739,14 @@
 | 按邮箱邀请 | `InputGroup`（邮箱）+「邀请」                         | 生成主机邀请（`invitations.create`（主机邀请））；团队关了访客时整行不渲染           |
 | 范围       | 沿用弹层的「此工作空间 / 仅此会话」                   | 授予的范围 = `ws:<id>`；会话只读 = `sess:<id>`（能力设计 §11.3）                     |
 
+- **U7b 实现与实测（对真实控制面）**：授予的范围只有此工作空间 / 整台主机（云端授予不带 `sess:<id>`，会话只读仍走分享链接）。`grants.create` 对已经有授予的人一律 `409 conflict`（不合成），所以成员已有授予时主按钮是「更新」（`grants.update`）；范围并集、取覆盖全部范围的最高角色（#112）的合成只发生在主机邀请被接受时，更宽而更低的邀请会降低邮箱对应成员的有效角色、被云端拒绝。降低角色的更新、以及这样的邀请，在弹层里先提示管理员确认。核心调用见 core 契约 §33.12。
+
 #### 3.5.3 待信任设备（M1）
 
 - 背书人（主机 owner / 团队 admin / 本人另一台设备）收到 `deviceTrustRequested`：桌面在 `shell/Banners.tsx` 加一条「{member} 的新设备待信任」+「查看」；手机同一条 + 推送。
 - 「查看」→ `ResponsiveDialog`：设备名、平台、`InputOTP` 输入新设备上显示的 6 位校验码（现有 `e2e.approve.hint`）、「拒绝」outline /「信任」default；码只在端到端通道里核对，横幅与对话框都不显示它（core 契约 §80 第 8 项「已受信设备背书」）。
 - 被背书的一方沿用现有 `PendingApprovalDialog`。
+- **U7b 实现**：横幅与对话框只在桌面壳里查云端（`trust.list`，每 30 秒与窗口聚焦时重读；me-stream 的 `deviceTrustRequested` 到页面的订阅另做）。「信任」找到主机上与请求对得上的待确认设备（设备名、成员），把校验码交给那台主机的 `devices.approve`；主机不在这台电脑的源表里或没有对应申请时提示重连，不报校验码错。「拒绝」只调 `trust.reject`（requestId），不带校验码。
 
 #### 3.5.4 侧栏「他人分享」按团队分小组（M1）
 
@@ -756,6 +765,7 @@
 ```
 
 - 分组键：断言里的 `team.teamId` 经 `sources.list` 带出的团队名（`client_sources` 需要 `team_id` / `team_name` 两列，见 §7 U7c）。
+- **U7c 实现**：迁移 0054 给 `client_sources` 加 `team_id` / `team_name`，团队只由接收方自己的云得出（`sources.mount` 对 SaaS 远程取断言里的 `team.teamId`，名字取该云的 `me.spaces`），不采信对端 core 报的团队；契约 §86。拿不到团队的分享按个人分享排在团队小组之后，那一组在有团队小组时才画标题「个人」。
 - 只有一个团队且没有个人分享时不画小组标题。展开状态存 `armadra.sidebar.teams.<teamId>`。
 - 手机两组（我的电脑 / 他人分享）同规则。
 
@@ -1654,6 +1664,45 @@ apps/web/src/cloud/
 | U10 | M2 团队能力：分组、访问申请、主机移动、审计查询与导出（标签授予等契约补上，§6.5）                                                                                                                                                                                                                                                                                                                                                     | U5、U6；G M2 团队                                      | 组长权限测试；申请 → 批准 → 访问清单联动测试                                                                                                         |
 | U11 | M2 计费：升级 / 试用 / 管理付款、席位、发票、超额提示                                                                                                                                                                                                                                                                                                                                                                                 | U6；G 计费                                             | 配额阈值色与文字测试；结账跳转测试                                                                                                                   |
 | U12 | M2 运营：滥用与冻结链接、功能开关、对外状态                                                                                                                                                                                                                                                                                                                                                                                           | U8；G M2 后台                                          | 同 U8                                                                                                                                                |
+
+**U3 落地说明**（Refs AMA-Link/Armadra#528，三包 #529 数据层与 me-stream、#530 主机与链接、概览与账号）：
+
+- `/me`、`/me/hosts`、`/me/hosts/:host`、`/me/links`、`/me/account` 已实现。主机目录、主机详情与链接列表是个人 / 团队共用的组件（`cloud/hosts/`、`cloud/links/`，`space` 参数），U5 直接复用。
+- 与上文的差异（契约没有对应字段，或属于后续批次）：账号页没有「更换头像」与「邮件语言」（`me.update` 只收 `displayName`）；设备表没有「IP 前缀」列（`me.devices` 不报）；「待验证：{email}」徽标只在发起更改的那次会话里显示（`me.get` 不报待验证邮箱）；「登记主机」对话框属 U5；链接的新建在客户端分享弹层（需要 core 的邀请 id），控制台只列表、改备注与撤销；概览「待处理」里收到的邀请没有「查看」按钮（接受要用邮件里的令牌）。
+- 撤销的主机不再出现在目录里，`status=revoked` 对个人空间恒为空，所以个人空间的状态筛选不给「已撤销」。
+- me-stream 的落点：`sourceOnline` / `sourceOffline` / `sourceRevoked` 与 `linkUsed` 就地改查询缓存，其余事件只让对应的键过期；断线退避重连后整体过期重拉（运营数据除外）。
+
+**U5 落地说明**（Refs AMA-Link/Armadra#541）：
+
+- `/t/:team/hosts`、`/t/:team/hosts/:host`、`/t/:team/grants` 已实现；目录、详情是与个人空间共用的 `cloud/hosts/` 组件（`team` 参数带角色与团队名），授予合成与收窄判断在 `lib/cloud-grant.ts`，分享弹层 `CloudShare` 与控制台共用同一套。
+- 与上文的差异：
+  - 控制台的授予范围是整台主机（§0 #5、D6）：添加访问不选工作空间；已有工作空间范围的授予（经分享弹层建的）在控制台只改角色与到期，范围原样保留；团队访客在团队主机上必须限定工作空间，所以访客不能经控制台授予。
+  - 「在 Armadra 里登记」的深链只带 `issuer`（桌面壳 `cloud-link.ts` 只认这一个参数），不带 `space`。
+  - 主机详情对非管理者（既不是主机所有者也不是团队 owner / admin）没有页签：`grants.effective` 与 `grants.list` 都要管理权，契约里没有「看自己的权限」的过程。
+  - 授予页对本人管得了的每台主机各取一次 `grants.list`（云端没有按团队列全部授予的过程），与主机详情共用缓存；主机超过 200 台时只覆盖前 200 台。
+  - 行菜单的「标签」、`申请访问`（M2）、`移到其他空间`（M2）与分组来源（M2）不在本批。
+- 撤销即时反映：`grantChanged` 让该空间的授予列表、该主机的访问清单与有效权限过期；`accessRevoked`（不报空间）另让所有空间的授予列表、主机目录与该主机详情过期。
+- 会收窄某人有效权限的改动（降角色、缩范围、提前到期，以及新增更宽而更低的授予造成的合成降级）：对话框列出受影响的人，按钮改为「仍然授予 / 仍然更新」，云端随后撤他们已签的令牌。
+
+**U6 落地说明**（Refs AMA-Link/Armadra#547，三包：a 设备信任与团队链接、b 用量与计划、c 审计）：
+
+- `/t/:team/links`、`/t/:team/trust`、`/t/:team/billing`、`/t/:team/audit` 已实现。链接页与个人空间共用 `cloud/links/LinksView`；新增 `cloud/trust/`、`cloud/billing/`、`cloud/audit/` 与文案模块 `cloud-audit.ts`、`cloud-billing.ts`（M1 部分）。
+- **A1 现状**：core 一侧已实现——`apps/desktop/src/core/relay/e2e/routes.ts` 的 `authorizeEndorsement`（迁移 0053 `cloud_team_roles`）接受经云端断言以团队角色准入、且设备已受信的会话调 `devices.approve`（团队 owner / admin 批同团队成员，member 只批自己，不批主机 owner，不抬权）；桌面横幅与对话框（U7b）已在用。团队设置的「新设备背书人」「成员可从自己已信任的设备背书」由云端 `trust.list` / `trust.reject` 按设置收窄，core 不读团队设置。U6 没有改 core 的准入。
+- **背书端口**：控制台里「浏览器是不是该主机的受信设备」与「把校验码交给主机」走 `cloud/trust/endorser.tsx` 的 `HostEndorser`（`canEndorse` / `approve` / 可选 `dispose`），由 `ConsoleRoot` 的 `endorser` 属性注入。`approve` 要的是 core 的 `pendingId`（`devices.approve` 的入参），**不是**云端的 `trq_` 请求号；页面只在请求带 `pendingId` 时才给「信任」，没有就一律「在已信任的设备上处理」，桌面横幅（U7b）那种按设备名加成员的模糊匹配，浏览器侧不照搬。
+- **背书端口的当前状态（Refs #552）**：接线已完成，是否可用只差云端下发 `pendingId`。
+  - **生产实现** `cloud/trust/browser-endorser.ts`：`ConsoleRoot` 的 `endorser` 缺省即它（显式给 `null` 才关），经 `E2eChannels` 端到端通道与 `sources.assertion` 的断言和主机 core 说话，不另造信任通道；换账号、会话丢失、登出、卸载时 `dispose()`。
+  - **判定只用 `probe`**：`canEndorse` 发 `cloud/login` 的只判定模式（core 契约 §31.3「`login` 的 `probe`」）。受信答 `{ trusted: true }`，不受信答 `device_untrusted`，**不**建待确认记录、不发 `devices.pending`、不上报云端、不开会话；因此判定不会惊动主人，也不会引出 `deviceTrustRequested`。其余失败（限流、离线、通道断、断言被拒）不是确定的「否」：判定抛 `e2e_device_unavailable`，该行先按不可背书画、不缓存。旧 core 的协议包入参会丢掉 `probe`、按普通登录处理（不受信写待确认，受信留下会话），所以判定前先经通道读一次 `GET /api/identity/hello`（按通道缓存），没有能力位 `identity.cloud.probe.v1` 就直接按不可背书，一个 `cloud/login` 都不发（`approve` 同样不走 probe → 登录）；读不到 hello 是暂时失败，不缓存。
+  - **`approve`**：没有会话时先 probe 确认受信（不受信直接 `device_untrusted`，不去登录，免得在主机上挂起一条待确认），再正常登录取会话（设备已受信），同一条通道里 `POST /api/devices/approve { pendingId, sas }`；401 换一份会话重发一次。放行与否由 core 的 `authorizeEndorsement` 判定（契约 §60.4）。只有 `device_rejected`、`device_pending`、`device_untrusted` 算「不受信」，其余失败一律 `e2e_device_unavailable`。错误只带码，不带文字。
+  - **通道与会话的生命周期**：按需才开，同一个源复用一条；空闲 60 秒先注销会话（`session/logout`）再关通道；同时打开与同时进行的操作都不超过 3，超出时先关最久没用的；`dispose()` 立刻注销并关闭全部，仍在进行的操作完成时发现代数变了，自己收尾并失败，不写回。判定结果在页面里缓存 5 分钟，窗口聚焦不重判；查询键 `cloudKeys.endorse` 不挂在 `trust` 之下，`deviceTrustRequested` / `Resolved` 只让请求列表过期，免得判定与事件互相引发。
+  - **协议**：协议包 0.10.0 的 `trustRequest` 没有 `pendingId`；`packages/shared` 的 `cloudTrustRequestSchema` 手写放宽为可选字符串、`identity.cloud.login` 的入参手写放宽 `probe`，都有超集守卫（`contract.test.ts`）；core 的 `trust-requests` 解析原样转交 `pendingId`；控制台的 `TrustRequest` 类型同样带可选 `pendingId`。协议包带上这些字段后改回同一对象。
+  - **依赖**：云端 0.11 起下发 `pendingId`（AMA-Link/armadra-cloud#126）。在那之前旧云端的请求都不带，生产页面表现为全部「在已信任的设备上处理」；测试与展示页用 `mock/pending-ids.ts` 模拟补字段后的形状。
+- 与上文的差异：
+  - 链接页没有「新建链接」与「创建人」列、「已冻结」徽标：`links.create` 的 `source_invite` 要 core 邀请 id（只在客户端分享弹层有），`team_join` 属 M2；`linkSummary` 不带创建人与冻结状态。列表只列、改备注、撤销，与 U3 一致。
+  - 设备信任页另有「平台」列；拒绝只调 `trust.reject`；校验码只存在于对话框组件状态，经 `HostEndorser.approve` 的参数交出去，不进 `useMutation` 变量、地址、本地存储与日志。`sas_mismatch` / `sas_expired` / `device_untrusted` / `forbidden` / `e2e_device_unavailable` 按 code 取现有文案；`forbidden`（背书人的团队角色、授予或待批的人不满足 core 的条件）只把**那一条请求**按请求号记成不可背书，同一台主机的其他请求不受影响，对话框留着说明原因；`device_untrusted`（本浏览器不是该主机的受信设备）另让这台主机的受信判定作废重判。
+  - 审计的动作名按云端实际发出的点分名（`grant.create`、`member.role`…）取 `cloud.audit.a.*`，设计稿里的驼峰名作废；认不出的动作显示原名；「类型」筛选按动作前缀（`action=grant.`）。游标不进地址（与主机目录一致，页面内累计）；时间范围不按计划保留期收窄（契约不报保留期）；导出随 M2，未做。
+  - 用量与计划只放 owner 与 billing（云端 `teams.MinBilling`），admin 没有这一项（侧栏与路由 gate 都去掉；云端放开 admin 只读另开 issue）。用量页的超额提示不带日期：契约没有宽限期字段，文案 `cloud.billing.overage` 改为「本月流量已超出，同时连接将受限」。付款、升级、试用、发票随 M2。
+  - 同时连接的配额在协议里叫 `concurrent`（U1 的映射写成了 `connections`），文案键改为 `cloud.billing.limit.concurrent`，并有测试遍历协议包的 `QUOTAS` 保证每个配额都有文案。
+- 审计行高固定（展开只是换一个高度），超过 50 行才用 `@tanstack/react-virtual`；窄屏同一份数据画成两行。
 
 每批都按 ≤ 1500 行（含测试）切；估算超出时在开 PR 前再拆。M3（域名验证、单点登录、按域名自动加入、定期复核、Webhook、区域）要先有自己的设计，不在本表。
 

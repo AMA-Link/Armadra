@@ -151,6 +151,21 @@ export const ERROR_CODES = {
     i18n: "error.registrationTokenInvalid",
   },
   protocol_unsupported: { status: 426, i18n: "error.protocolUnsupported" },
+  // 登记到 Armadra 云的空间（契约 §33.11）：协议包 `errors` 注册表同拼法、同状态。
+  email_unverified: { status: 403, i18n: "error.emailUnverified" },
+  team_role_insufficient: { status: 403, i18n: "error.teamRoleInsufficient" },
+  team_policy_denied: { status: 403, i18n: "error.teamPolicyDenied" },
+  host_registration_disabled: {
+    status: 403,
+    i18n: "error.hostRegistrationDisabled",
+  },
+  team_suspended: { status: 403, i18n: "error.teamSuspended" },
+  team_deleted: { status: 410, i18n: "error.teamDeleted" },
+  // 授予、邀请与设备信任（契约 §33.12）：同样与协议包同拼法、同状态。
+  source_access_denied: { status: 403, i18n: "error.sourceAccessDenied" },
+  guests_disabled: { status: 403, i18n: "error.guestsDisabled" },
+  member_exists: { status: 409, i18n: "error.memberExists" },
+  device_untrusted: { status: 403, i18n: "cloud.trust.useTrusted" },
   // 按分享链接挂载（契约 §33.7）：远程服务 `links.accept` 的拒绝，拼法与状态同协议包。
   link_expired: { status: 410, i18n: "error.linkExpired" },
   link_exhausted: { status: 410, i18n: "error.linkExhausted" },

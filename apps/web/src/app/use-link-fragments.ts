@@ -8,6 +8,7 @@ import { hasOAuthFragment } from "../api/security";
 import { RUNTIME_VIA_SERVER_SHELL } from "../api/request";
 import { isNativeApp } from "../mobile/native-bridge";
 import { isDesktop } from "../platform";
+import { offerCloudLink } from "../sources/cloud-intent";
 import { offerJoinLink } from "../sources/join-intent";
 import { useCanvasStore } from "../store/canvas-store";
 import { usePreferencesStore } from "./preferences-store";
@@ -42,6 +43,13 @@ export function takeJoinFragment(): string | null {
   return isJoinLink(link) ? link : null;
 }
 
+/** `armadra://cloud`：打开到「远程访问」，由那一页打开「添加 Armadra 云」（地址预填）。 */
+function openCloudWith(link: string): void {
+  if (!offerCloudLink(link)) return;
+  usePreferencesStore.getState().setLastSettingsSection(REMOTE_SECTION);
+  useCanvasStore.getState().setPanel("settings", true);
+}
+
 function openRemoteWith(link: string): void {
   offerJoinLink(link);
   usePreferencesStore.getState().setLastSettingsSection(REMOTE_SECTION);
@@ -59,7 +67,9 @@ function openRemoteWith(link: string): void {
  *
  * 分享链接（客户端包 §6.2）：桌面壳与服务器壳的页面认 `#join=<链接>`，桌面壳另外
  * 收 `armadra://join` 深链（启动时那一条与之后每一条）——都打开到「远程访问」并
- * 预填「通过链接加入」，人点「加入」才挂载。
+ * 预填「通过链接加入」，人点「加入」才挂载。桌面壳另收 `armadra://cloud`（云端控制台
+ * §3.5.1）：打开到「远程访问」并打开「添加 Armadra 云」，地址可预填，人点「获取设备码」
+ * 才开始登录。
  *
  * 必须挂在浮层闸门之外（`Overlays.tsx`）：设置对话框只在打开之后才挂载，把
  * 这段判断放进对话框里，等于链接打开后什么都不会发生。
@@ -82,7 +92,19 @@ export function useLinkFragments(
       ?.takeJoinLink?.()
       .then(offer)
       .catch(() => undefined);
-    return bridge?.onJoinLink?.(offer);
+    const offerCloud = (url: unknown) => {
+      if (typeof url === "string") openCloudWith(url);
+    };
+    void bridge
+      ?.takeCloudLink?.()
+      .then(offerCloud)
+      .catch(() => undefined);
+    const offJoin = bridge?.onJoinLink?.(offer);
+    const offCloud = bridge?.onCloudLink?.(offerCloud);
+    return () => {
+      offJoin?.();
+      offCloud?.();
+    };
   }, [serverShell, desktop]);
 
   useEffect(() => {

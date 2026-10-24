@@ -129,6 +129,8 @@ function withMirror(
     ownerName?: string | undefined;
     shareRole?: ShareRole | undefined;
     shareExpiresAtMs?: number | undefined;
+    teamId?: string | undefined;
+    teamName?: string | undefined;
   },
   routes: readonly SourceRoute[],
 ): StoredConnection | null {
@@ -162,6 +164,9 @@ function withMirror(
     ...(base.shareExpiresAtMs
       ? { shareExpiresAtMs: base.shareExpiresAtMs }
       : {}),
+    // 团队（契约 §86）：没有标识就没有名字；旧行没有这两项，不升表版本。
+    ...(base.teamId ? { teamId: base.teamId } : {}),
+    ...(base.teamId && base.teamName ? { teamName: base.teamName } : {}),
   };
 }
 
@@ -191,6 +196,8 @@ function descriptorOf(value: unknown): StoredConnection | null {
       shareRole: isShareRole(row.shareRole) ? row.shareRole : undefined,
       shareExpiresAtMs:
         typeof row.shareExpiresAtMs === "number" ? row.shareExpiresAtMs : 0,
+      teamId: text(row.teamId),
+      teamName: text(row.teamName),
     },
     routes,
   );
@@ -318,6 +325,8 @@ export function upsertConnection(
     readonly ownerName?: string;
     readonly shareRole?: ShareRole;
     readonly shareExpiresAtMs?: number;
+    readonly teamId?: string;
+    readonly teamName?: string;
   },
 ): StoredConnection {
   const rows = loadConnections();
@@ -373,6 +382,12 @@ export function upsertConnection(
       ownerName: incoming.ownerName ?? existing?.ownerName,
       shareRole: incoming.shareRole ?? existing?.shareRole,
       shareExpiresAtMs: incoming.shareExpiresAtMs ?? existing?.shareExpiresAtMs,
+      // 再加入一次时对端这一次报的为准：没说团队就沿用，说了空串就清回个人。
+      teamId: incoming.teamId ?? existing?.teamId,
+      teamName:
+        incoming.teamId === undefined
+          ? existing?.teamName
+          : (incoming.teamName ?? ""),
     },
     routes,
   );

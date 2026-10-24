@@ -68,6 +68,7 @@ export const mobileConnect: MessageModule = {
     "mobileConnect.showcase.fingerprint": "核对指纹",
     "mobileConnect.showcase.sources": "选择主机",
     "mobileConnect.showcase.list": "连接列表",
+    "mobileConnect.showcase.teams": "连接列表 · 按团队分组",
   },
   en: {
     "mobileConnect.title": "Connect to Armadra",
@@ -141,5 +142,6 @@ export const mobileConnect: MessageModule = {
     "mobileConnect.showcase.fingerprint": "Verify fingerprint",
     "mobileConnect.showcase.sources": "Choose hosts",
     "mobileConnect.showcase.list": "Connections",
+    "mobileConnect.showcase.teams": "Connections · grouped by team",
   },
 };

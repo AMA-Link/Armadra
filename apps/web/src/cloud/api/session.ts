@@ -1,4 +1,10 @@
+import type { MeStreamEvent } from "@armadra/platform-protocol/cloud-api";
+
 import type { CloudClient } from "./client";
+
+export type InvitationPreview = Awaited<
+  ReturnType<CloudClient["invitations"]["get"]>
+>;
 
 /**
  * 控制台的会话（云端控制台 §1.3）：令牌在 `__Host-armadra-cloud` Cookie 里，页面不读不存；
@@ -6,6 +12,11 @@ import type { CloudClient } from "./client";
  * Cookie `__Host-armadra-ops`，CSRF 值也另给一份，两边互不覆盖。
  */
 export const CSRF_HEADER = "X-Armadra-CSRF";
+
+export interface StreamHandlers {
+  readonly onEvent: (event: MeStreamEvent) => void;
+  readonly onResync: () => void;
+}
 
 /** 内存里的 CSRF 值，可订阅（运营会话是否在，靠它有没有值）。 */
 export interface CsrfStore {
@@ -40,6 +51,21 @@ export interface CloudApi {
   readonly ops: CloudClient;
   /** 运营会话是否在（运营登录成功拿到了它自己的 CSRF 值）。 */
   readonly operator: Pick<CsrfStore, "subscribe"> & { active(): boolean };
+  /** 写操作前保证内存里有 CSRF 值：没有就 `auth.refresh`（免 CSRF，答复带 `csrfToken`）。答 `false` = 没有会话。 */
+  ensureCsrf(): Promise<boolean>;
+  /**
+   * 邀请摘要：`POST /v1/invitations/{id}/preview`，令牌在请求体里，不进查询（cloud-api §22）。
+   * 协议包 0.10.0 还没有这个过程，这里手写；升到 0.11.0 后改用包里的 `invitations.preview`。
+   */
+  invitationPreview(
+    invitationId: string,
+    token: string,
+  ): Promise<InvitationPreview>;
+  /**
+   * 订阅 me-stream（`/v1/me/stream`，cloud-api §6、§32）：事件逐个给 `onEvent`；断线重连后
+   * 给 `onResync`（断线期间的事件丢了，调用方整体重拉）。返回退订函数。
+   */
+  stream(handlers: StreamHandlers): () => void;
   /** 控制台会话失效且续不上：清缓存、回登录。 */
   onSessionLost(listener: () => void): () => void;
   /** 登出：服务端撤销（失败也继续）、清掉内存里的 CSRF 值。 */
@@ -65,7 +91,7 @@ export interface CloudFetchOptions {
    * 会话类 401 后续一次（Cookie 会话：`auth.refresh`）。答 `true` = 续上了，原请求重发一次。
    * 没给 = 不续，直接算失效（运营会话 1 小时到期回登录这一步）。
    */
-  readonly refresh?: () => Promise<boolean>;
+  readonly refresh?: (since: number) => Promise<boolean>;
   /** 续不上或被撤销。 */
   readonly onSessionLost: () => void;
 }
@@ -90,8 +116,8 @@ async function codeOf(response: Response): Promise<string | undefined> {
  */
 export function createCloudFetch(options: CloudFetchOptions): typeof fetch {
   let refreshing: Promise<boolean> | null = null;
-  const refreshOnce = () => {
-    refreshing ??= (options.refresh?.() ?? Promise.resolve(false))
+  const refreshOnce = (since: number) => {
+    refreshing ??= (options.refresh?.(since) ?? Promise.resolve(false))
       .catch(() => false)
       .finally(() => {
         refreshing = null;
@@ -116,11 +142,12 @@ export function createCloudFetch(options: CloudFetchOptions): typeof fetch {
     const request = input instanceof Request ? input : new Request(input);
     const spare = request.clone();
     const path = new URL(request.url).pathname;
+    const sentAt = Date.now();
     let response = await send(request, init);
 
     if (response.status === 401 && !AUTH_PATH.test(path)) {
       const revoked = (await codeOf(response)) === "session_revoked";
-      if (!revoked && (await refreshOnce())) {
+      if (!revoked && (await refreshOnce(sentAt))) {
         response = await send(spare, init);
         if (response.status === 401) options.onSessionLost();
       } else options.onSessionLost();

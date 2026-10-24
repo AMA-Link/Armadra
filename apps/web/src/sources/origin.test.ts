@@ -76,6 +76,16 @@ describe("归属（契约 §68）", () => {
     ).toEqual({});
   });
 
+  it("shareFieldsOf：团队标识才带团队名（契约 §86）", () => {
+    expect(
+      shareFieldsOf({ origin: "shared", teamId: "t1", teamName: " 研发组 " }),
+    ).toEqual({ origin: "shared", teamId: "t1", teamName: "研发组" });
+    expect(shareFieldsOf({ teamId: "", teamName: "研发组" })).toEqual({});
+    expect(shareFieldsOf({ teamId: "t1", teamName: "" })).toEqual({
+      teamId: "t1",
+    });
+  });
+
   it("权限缺省只读", () => {
     expect(shareRoleOf(descriptor("a"))).toBe("viewer");
     expect(shareRoleOf(descriptor("a", { shareRole: "operator" }))).toBe(

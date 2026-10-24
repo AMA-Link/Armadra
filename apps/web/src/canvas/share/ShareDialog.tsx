@@ -26,6 +26,7 @@ import {
   useSourceTableChanged,
 } from "@/panels/settings/pages/remote-access/keys";
 import { useCanvasStore } from "@/store/canvas-store";
+import { CloudShare } from "./CloudShare";
 import { Button } from "@/ui/button";
 import { Field, FieldGroup, FieldLabel } from "@/ui/field";
 import { IconButton } from "@/ui/icon-button";
@@ -112,6 +113,11 @@ function ShareBody({
   const session =
     sessionList.find((one) => one.sessionId === sessionId) ?? sessionList[0];
   const account = internet.registered[0];
+  // 本机已登记到 Armadra 云：多出授予与邀请一组（云端控制台 §3.5.2）。
+  const cloud = internet.remotes.find(
+    (remote) =>
+      remote.kind === "saas" && remote.registered && remote.hasCredentials,
+  );
 
   // 为开路线先登录的：账号到了就开。
   const first = internet.shareable[0];
@@ -284,6 +290,9 @@ function ShareBody({
             />
           </FieldGroup>
         </form>
+      )}
+      {created === null && cloud !== undefined && (
+        <CloudShare serviceId={cloud.serviceId} workspaceId={workspaceId} />
       )}
       <ResponsiveDialogFooter>
         <Button type="button" variant="ghost" onClick={manage}>

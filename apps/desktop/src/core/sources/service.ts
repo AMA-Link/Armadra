@@ -30,6 +30,12 @@ import type {
   RemoteEndpoint,
   SourceAssertion,
 } from "./remote-client";
+import { parsePairLink } from "./pair-link";
+import { CloudConsole } from "./saas-console";
+import { refreshMountedAttribution, saasMountInfo } from "./saas-mount";
+import { CloudSignIn, type CloudSignInHost } from "./saas-signin";
+
+export { parsePairLink };
 import { challengeTokenFor, PASSWORD_CHANGE_CAPABILITY } from "./remote-gate";
 import {
   MINE,
@@ -38,11 +44,11 @@ import {
   naming,
   renameLabel,
   routeJson,
+  saveRelayRoute,
   shareColumns,
 } from "./rows";
 import type { SourceSecrets, StoredCredential } from "./secrets";
 import type {
-  CloudLoginShare,
   NativeCredentials,
   SourceAddress,
   SourceClient,
@@ -75,6 +81,16 @@ export interface CloudRegistrations {
   registered(issuer: string): boolean;
   /** 本机撤销，并尽力删中继侧的源记录（契约 §31.4）。 */
   revoke(input: { issuer: string }): Promise<unknown>;
+  /** 登记到远程服务（契约 §31.2）；`registrationToken` 用完即弃。 */
+  register(input: {
+    issuer: string;
+    registrationToken: string;
+    label?: string;
+  }): Promise<{ sourceId: string }>;
+  /** 把断言的账号映射到当前登录的人（契约 §31 `bind`）。 */
+  bind(assertion: string): Promise<unknown>;
+  /** 本机在远程服务上的 `sourceId`（授予与邀请的目标主机，契约 §33.12）。 */
+  sourceId(): Promise<string>;
 }
 
 export interface SourcesServiceOptions {
@@ -136,40 +152,6 @@ function wsBaseOf(httpBase: string): string {
   return httpBase.replace(/^http/, "ws");
 }
 
-/** `#pair=<票>&fp=<指纹>` 的网页链接，或 `armadra://pair?host=…&ticket=…&fp=…`。 */
-export function parsePairLink(link: string): {
-  origin: string;
-  ticket: string;
-  fingerprint: string;
-} {
-  let url: URL;
-  try {
-    url = new URL(link.trim());
-  } catch {
-    throw fail("bad_request", "配对链接不是一个合法的地址");
-  }
-  if (url.protocol === "armadra:") {
-    const host = url.searchParams.get("host") ?? "";
-    const ticket = url.searchParams.get("ticket") ?? "";
-    if (host === "" || ticket === "") {
-      throw fail("bad_request", "配对链接缺少地址或票");
-    }
-    return {
-      origin: normalizeOrigin(`https://${host}`),
-      ticket,
-      fingerprint: url.searchParams.get("fp") ?? "",
-    };
-  }
-  const fragment = new URLSearchParams(url.hash.replace(/^#/, ""));
-  const ticket = fragment.get("pair") ?? "";
-  if (ticket === "") throw fail("bad_request", "配对链接里没有票");
-  return {
-    origin: normalizeOrigin(url.origin),
-    ticket,
-    fingerprint: fragment.get("fp") ?? "",
-  };
-}
-
 /** 一条中继的来源：断言给的 `relayOrigin`，没有就是 `relayBaseUrl` 的来源。 */
 function relayOriginOf(assertion: {
   relayOrigin?: string;
@@ -185,6 +167,9 @@ export class SourcesService {
   private readonly peer: SourceClient;
   private readonly now: () => number;
   private readonly newId: () => string;
+  private readonly cloudSignIn: CloudSignIn;
+  /** Armadra 云控制台的触点（契约 §33.12），见 `saas-console.ts`。 */
+  readonly console: CloudConsole;
   /** 远程服务的访问令牌：只在内存。 */
   private readonly access = new Map<string, CachedAccess>();
   private readonly capabilities = new Map<string, readonly string[]>();
@@ -201,6 +186,24 @@ export class SourcesService {
     this.peer = options.peer;
     this.now = options.now ?? Date.now;
     this.newId = options.newId ?? (() => randomBytes(16).toString("hex"));
+    const signInHost: CloudSignInHost = {
+      store: this.store,
+      secrets: this.secrets,
+      remote: this.remote,
+      log: options.log,
+      cloud: options.cloud,
+      now: () => this.now(),
+      newId: () => this.newId(),
+      remoteRow: (id) => this.remoteRow(id),
+      remoteJson: (row) => this.remoteJson(row),
+      endpoint: (row) => this.endpoint(row),
+      remoteAccess: (row) => this.remoteAccess(row),
+      remember: (id, session) => this.remember(id, session),
+      setCapabilities: (id, list) => void this.capabilities.set(id, list),
+      serial: (key, work) => this.serial(key, work),
+    };
+    this.cloudSignIn = new CloudSignIn(signInHost);
+    this.console = new CloudConsole(signInHost);
   }
 
   /** 本机那一行：启动时 upsert，不可删。只碰 SQLite。 */
@@ -691,6 +694,16 @@ export class SourcesService {
         if (logged.share !== undefined) {
           this.store.setShare(row.sourceId, shareColumns(logged.share));
         }
+        // 归属与团队随断言变：Armadra 云的主机按自己的云纠正。
+        await refreshMountedAttribution(
+          this.remote,
+          this.store,
+          remote,
+          this.access.get(remote.serviceId),
+          assertion,
+          { endpoint: this.endpoint(remote), sourceId: row.sourceId },
+          logged.share,
+        );
         return logged;
       });
     }
@@ -710,9 +723,6 @@ export class SourcesService {
     remote: RemoteRow,
     sourceId: string,
   ): Promise<SourceAssertion> {
-    if (remote.kind === "saas") {
-      throw fail("not_implemented", "SaaS 远程服务尚未开放");
-    }
     const token = await this.remoteAccess(remote);
     return this.remote.assertion(
       this.endpoint(remote),
@@ -930,11 +940,20 @@ export class SourcesService {
           challengeToken?: string | undefined;
         }
       | { kind: "saas"; issuer: string; label?: string | undefined },
-  ): Promise<{ remote: RemoteService; next: "ready" }> {
-    if (input.kind === "saas") {
-      // SaaS 服务端预留（总计划 §12.2）：类型保留，能力就绪前答明确的 501。
-      throw fail("not_implemented", "SaaS 远程服务尚未开放");
-    }
+  ): Promise<{
+    remote: RemoteService;
+    next:
+      | "ready"
+      | {
+          deviceCode: {
+            userCode: string;
+            verificationUrl: string;
+            expiresAtMs: number;
+            intervalMs: number;
+          };
+        };
+  }> {
+    if (input.kind === "saas") return this.cloudSignIn.start(input);
     const issuer = normalizeOrigin(input.issuer);
     const fingerprint = normalizeFingerprint(input.fingerprint);
     const label = checkLabel(input.label);
@@ -986,9 +1005,6 @@ export class SourcesService {
     const row = this.store.remoteByIssuer(issuer);
     if (row === undefined) {
       throw fail("source_unauthorized", "没有这个远程服务的登录");
-    }
-    if (row.kind === "saas") {
-      throw fail("not_implemented", "SaaS 远程服务尚未开放");
     }
     const token = await this.remoteAccess(row);
     try {
@@ -1076,10 +1092,17 @@ export class SourcesService {
     return {};
   }
 
-  async remoteDevicePoll(serviceId: string): Promise<never> {
-    this.remoteRow(serviceId);
-    // 只有 SaaS 的设备码登录要轮询；个人中转加入即就绪。
-    throw fail("not_implemented", "设备码登录尚未开放");
+  /** Armadra 云的设备码登录、空间与登记（契约 §33.11），见 `saas-signin.ts`。 */
+  remoteDevicePoll(serviceId: string) {
+    return this.cloudSignIn.poll(serviceId);
+  }
+
+  remoteSpaces(serviceId: string) {
+    return this.cloudSignIn.spaces(serviceId);
+  }
+
+  remoteRegister(input: Parameters<CloudSignIn["register"]>[0]) {
+    return this.cloudSignIn.register(input);
   }
 
   async remoteRemove(serviceId: string): Promise<Record<string, never>> {
@@ -1098,12 +1121,16 @@ export class SourcesService {
         .logout(this.endpoint(row), cached.accessToken)
         .catch(() => undefined);
     }
-    this.access.delete(serviceId);
-    this.capabilities.delete(serviceId);
-    await this.secrets.clearRemote(serviceId);
-    // 经它发出的分享链接随登记一起失效（中继侧的源已删），存着的整条链接也删。
-    await this.secrets.clearShareLinks(serviceId).catch(() => undefined);
-    this.store.deleteRemote(serviceId);
+    // 清理与设备码轮询的落地用同一把锁：批准恰好在删除途中到达时，轮询看到行没了就丢弃会话。
+    await this.serial(`remote ${serviceId}`, async () => {
+      this.access.delete(serviceId);
+      this.capabilities.delete(serviceId);
+      this.cloudSignIn.forget(serviceId);
+      await this.secrets.clearRemote(serviceId);
+      // 经它发出的分享链接随登记一起失效（中继侧的源已删），存着的整条链接也删。
+      await this.secrets.clearShareLinks(serviceId).catch(() => undefined);
+      this.store.deleteRemote(serviceId);
+    });
     this.options.log.info("removed a remote service", { serviceId });
     return {};
   }
@@ -1132,8 +1159,6 @@ export class SourcesService {
     serviceId: string,
   ): Promise<{ sources: RemoteSourceSummary[] }> {
     const row = this.remoteRow(serviceId);
-    if (row.kind === "saas")
-      throw fail("not_implemented", "SaaS 远程服务尚未开放");
     const token = await this.remoteAccess(row);
     const listed = await this.remote.sources(
       this.endpoint(row),
@@ -1187,26 +1212,38 @@ export class SourcesService {
     });
     // 缺省名取远程服务目录里的那个（那台主机登记的「主机名称」，契约 §61）；
     // 拿不到不拦挂载，缺省名不变。
-    let name = "";
     const token = this.access.get(remote.serviceId);
-    if (token !== undefined) {
-      name = await this.remote
-        .sources(this.endpoint(remote), token.accessToken)
-        .then(
-          (rows) =>
-            rows.find((one) => one.sourceId === input.sourceId)?.name ?? "",
-        )
-        .catch(() => "");
-    }
-    const row = this.saveRelayRoute({
+    const name = await this.catalogName(
+      this.endpoint(remote),
+      token,
+      input.sourceId,
+    );
+    // Armadra 云：别人的主机记 shared，团队只从自己的云得出（契约 §86）。
+    const saas = await saasMountInfo(this.remote, remote, token, assertion, {
+      endpoint: this.endpoint(remote),
+      sourceId: input.sourceId,
+    });
+    // 归属（契约 §86.2）：目录明确答了就以它为准（覆盖已有的）；目录调用失败时已有行
+    // 保持原归属、新挂载按 shared，下次再挂可自愈；非 SaaS 远程（个人中转）不是别人的。
+    const shared =
+      remote.kind === "saas" &&
+      (saas?.shared ??
+        (existing === undefined || existing.origin === "shared"));
+    const decided = saas?.shared !== undefined;
+    const row = saveRelayRoute(this.store, this.now(), {
       sourceId: input.sourceId,
       existing,
       ...naming(existing, label, name, input.sourceId.slice(0, 8)),
       relayOrigin,
       issuer: remote.issuer,
       principalHint: credentials.principalHint,
-      // 用自己的账号挂上的：我的电脑（契约 §68）。
-      share: undefined,
+      share: shared ? (credentials.share ?? null) : undefined,
+      // 目录失败且已有行：团队不动。
+      team:
+        saas === undefined || (!decided && existing !== undefined)
+          ? undefined
+          : { teamId: saas.teamId, teamName: saas.teamName },
+      determined: decided,
     });
     this.options.log.info("mounted a relayed source", {
       sourceId: input.sourceId,
@@ -1215,57 +1252,17 @@ export class SourcesService {
     return this.sourceJson(row);
   }
 
-  /**
-   * 挂载的落库：源行建或留（显示名、主体提示），中继这条路 upsert 一行；镜像由
-   * 首选路由决定，挂第二个中继不改原来的首选（契约 §55）。
-   */
-  private saveRelayRoute(input: {
-    sourceId: string;
-    existing: SourceRow | undefined;
-    label: string;
-    defaultLabel: string;
-    relayOrigin: string;
-    issuer: string;
-    principalHint: string;
-    /**
-     * 按分享链接加入时分享方报的信息（契约 §68）；`undefined` = 用自己的账号挂上
-     * （`mine`）。已经是 `mine` 的行按链接再加入一次仍是 `mine`。
-     */
-    share: CloudLoginShare | undefined | null;
-  }): SourceRow {
-    const at = this.now();
-    const { existing } = input;
-    const shared = input.share !== undefined && existing?.origin !== "mine";
-    this.store.upsert({
-      sourceId: input.sourceId,
-      kind: existing?.kind ?? "relayed",
-      label: clip(input.label, 128),
-      defaultLabel: clip(input.defaultLabel, 128),
-      baseUrl: existing?.baseUrl ?? "",
-      relayOrigin: existing?.relayOrigin || input.relayOrigin,
-      fingerprint: existing?.fingerprint ?? "",
-      cloudIssuer: existing?.relayOrigin ? existing.cloudIssuer : input.issuer,
-      principalHint: input.principalHint,
-      addedAtMs: existing?.addedAtMs ?? at,
-      lastOkAtMs: at,
-      orderIndex: existing?.orderIndex ?? this.store.nextOrder(),
-      ...(shared
-        ? {
-            origin: "shared" as const,
-            ...shareColumns(input.share ?? undefined),
-          }
-        : MINE),
-    });
-    this.store.upsertRoute({
-      sourceId: input.sourceId,
-      via: "relayed",
-      origin: input.relayOrigin,
-      cloudIssuer: input.issuer,
-      fingerprint: "",
-      addedAtMs: at,
-      lastOkAtMs: at,
-    });
-    return this.row(input.sourceId);
+  /** 远程服务目录里这台主机登记的名字；没登录、取不到或没有这台都是空串，不拦挂载。 */
+  private async catalogName(
+    endpoint: RemoteEndpoint,
+    token: { accessToken: string } | undefined,
+    sourceId: string,
+  ): Promise<string> {
+    if (token === undefined) return "";
+    const rows = await this.remote
+      .sources(endpoint, token.accessToken)
+      .catch(() => []);
+    return rows.find((one) => one.sourceId === sourceId)?.name ?? "";
   }
 
   /**
@@ -1379,18 +1376,12 @@ export class SourcesService {
       deviceId: credentials.deviceId,
     });
     // 缺省名取远程服务目录里的那个（访客只看得到这一个源）；拿不到不拦挂载。
-    let name = "";
-    const token = this.access.get(serviceId);
-    if (token !== undefined) {
-      name = await this.remote
-        .sources(endpoint, token.accessToken)
-        .then(
-          (rows) =>
-            rows.find((one) => one.sourceId === accepted.sourceId)?.name ?? "",
-        )
-        .catch(() => "");
-    }
-    const row = this.saveRelayRoute({
+    const name = await this.catalogName(
+      endpoint,
+      this.access.get(serviceId),
+      accepted.sourceId,
+    );
+    const row = saveRelayRoute(this.store, this.now(), {
       sourceId: accepted.sourceId,
       existing,
       ...naming(existing, label, name, accepted.sourceId.slice(0, 8)),

@@ -62,6 +62,44 @@ describe("查询键", () => {
         cloudKeys.access("t:t1", "s2"),
       ),
     ).toBe(false);
+    // 有效权限挂在访问清单之下，随它失效；授予列表按空间失效。
+    expect(
+      hit(
+        { type: "grantChanged", sourceId: "s1", teamId: "t1", ...at },
+        cloudKeys.effective("t:t1", "s1", "acct"),
+      ),
+    ).toBe(true);
+    expect(
+      hit(
+        { type: "grantChanged", sourceId: "s1", teamId: "t1", ...at },
+        cloudKeys.grants("t:t1", { accountId: "acct" }),
+      ),
+    ).toBe(true);
+    expect(
+      hit(
+        { type: "grantChanged", sourceId: "s1", teamId: "t1", ...at },
+        cloudKeys.grants("t:t2", { accountId: "acct" }),
+      ),
+    ).toBe(false);
+    // 授予变了，成员能不能看到这台主机也变：目录与详情重拉。
+    expect(
+      hit(
+        { type: "grantChanged", sourceId: "s1", teamId: "t1", ...at },
+        cloudKeys.hosts("t:t1", {}),
+      ),
+    ).toBe(true);
+    expect(
+      hit(
+        { type: "grantChanged", sourceId: "s1", teamId: "t1", ...at },
+        cloudKeys.host("t:t1", "s1"),
+      ),
+    ).toBe(true);
+    expect(
+      hit(
+        { type: "grantChanged", sourceId: "s1", teamId: "t1", ...at },
+        cloudKeys.host("t:t1", "s2"),
+      ),
+    ).toBe(false);
     // 没有 teamId = 个人空间。
     expect(
       hit(
@@ -84,6 +122,30 @@ describe("查询键", () => {
     ).toBe(true);
     expect(
       hit(
+        { type: "accessRevoked", sourceId: "s1" },
+        cloudKeys.effective("t:t9", "s1", "acct"),
+      ),
+    ).toBe(true);
+    expect(
+      hit(
+        { type: "accessRevoked", sourceId: "s1" },
+        cloudKeys.grants("t:t9", { accountId: "acct" }),
+      ),
+    ).toBe(true);
+    expect(
+      hit(
+        { type: "accessRevoked", sourceId: "s1" },
+        cloudKeys.host("t:t9", "s1"),
+      ),
+    ).toBe(true);
+    expect(
+      hit(
+        { type: "accessRevoked", sourceId: "s1" },
+        cloudKeys.host("t:t9", "s2"),
+      ),
+    ).toBe(false);
+    expect(
+      hit(
         {
           type: "deviceTrustResolved",
           requestId: "r",
@@ -103,6 +165,31 @@ describe("查询键", () => {
           ...at,
         },
         cloudKeys.usage("t:t1"),
+      ),
+    ).toBe(true);
+    // 我收到的邀请与待信任请求在个人空间的键下，团队事件也要让它们过期。
+    expect(
+      hit(
+        {
+          type: "invitationChanged",
+          invitationId: "i",
+          teamId: "t1",
+          state: "accepted",
+          ...at,
+        },
+        cloudKeys.invitations("me"),
+      ),
+    ).toBe(true);
+    expect(
+      hit(
+        {
+          type: "deviceTrustRequested",
+          requestId: "r",
+          sourceId: "s",
+          teamId: "t1",
+          ...at,
+        },
+        cloudKeys.trust("me"),
       ),
     ).toBe(true);
     // 上下线是就地改缓存，不重拉。

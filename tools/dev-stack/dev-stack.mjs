@@ -62,14 +62,14 @@ export function resolveCloudSrc(
   const explicit = env.ARMADRA_DEV_STACK_CLOUD_SRC;
   if (explicit) {
     const dir = resolve(explicit);
-    if (!existsSync(join(dir, "apps", "cloud", "Dockerfile")))
+    if (!existsSync(join(dir, "go", "Dockerfile.cloud")))
       throw new Error(
-        `ARMADRA_DEV_STACK_CLOUD_SRC=${explicit} 不是 armadra-cloud 的克隆（缺 apps/cloud/Dockerfile）`,
+        `ARMADRA_DEV_STACK_CLOUD_SRC=${explicit} 不是 armadra-cloud 的克隆（缺 go/Dockerfile.cloud）`,
       );
     return dir;
   }
   const sibling = resolve(repoRoot, "..", "armadra-cloud");
-  if (existsSync(join(sibling, "apps", "cloud", "Dockerfile"))) {
+  if (existsSync(join(sibling, "go", "Dockerfile.cloud"))) {
     note(
       `云仓镜像从本地克隆构建：${sibling}（设 ARMADRA_DEV_STACK_CLOUD_SRC 可改）`,
     );
@@ -228,8 +228,9 @@ function printResults(results) {
 }
 
 /**
- * cloud 起来后跑一次迁移（命令幂等）。签名密钥与 seed 账号等云仓的 `keys generate` /
- * `seed` 命令落地后（C2-1）再接进来。
+ * 拉 GHCR 镜像（0.10.0 仍是 TS 版）时，cloud 起来后在容器里跑一次迁移（命令幂等）。
+ * 本地源码构建的 Go 镜像不走这里：serve 不自动迁移，由 compose 叠加文件里的一次性
+ * `migrate` 服务先跑完，cloud 依赖它（见 docker-compose.cloud-src.yml）。
  */
 function migrateCloud() {
   const result = compose(
@@ -488,7 +489,7 @@ export async function main(argv) {
     );
     if (natUp.status !== 0) return natUp.status ?? 1;
   }
-  if (services.some((s) => s.name === "cloud")) {
+  if (services.some((s) => s.name === "cloud") && !resolveCloudSrc()) {
     const migrated = migrateCloud();
     if (migrated !== 0) return migrated;
   }

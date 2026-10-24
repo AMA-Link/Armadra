@@ -200,6 +200,80 @@ describe("控制台客户端", () => {
       ).toEqual(["{}"]);
     });
 
+    it("两个 createCloudApi（两标签）共享锁各自 401 一次：/v1/auth/refresh 只打一次", async () => {
+      const tails = new Map<string, Promise<unknown>>();
+      const locks = {
+        request: (
+          name: string,
+          _options: unknown,
+          callback: () => Promise<unknown>,
+        ) => {
+          const next = (tails.get(name) ?? Promise.resolve()).then(
+            callback,
+            callback,
+          );
+          tails.set(
+            name,
+            next.catch(() => undefined),
+          );
+          return next;
+        },
+      };
+      const ends: Array<(event: { data: unknown }) => void> = [];
+      class SyncChannel {
+        private listener?: (event: { data: unknown }) => void;
+        addEventListener(
+          _type: string,
+          listener: (event: { data: unknown }) => void,
+        ) {
+          this.listener = listener;
+          ends.push(listener);
+        }
+        postMessage(data: unknown) {
+          for (const other of ends)
+            if (other !== this.listener) other({ data });
+        }
+      }
+      vi.stubGlobal("BroadcastChannel", SyncChannel);
+      Object.defineProperty(navigator, "locks", {
+        value: locks,
+        configurable: true,
+      });
+      try {
+        let fresh = false;
+        const { seen, fetcher } = origin({
+          "GET /v1/me": () =>
+            fresh
+              ? json(ME)
+              : json({ code: "session_expired", message: "x" }, 401),
+          "POST /v1/auth/refresh": () => {
+            fresh = true;
+            return json({ ...SESSION, csrfToken: "c4" });
+          },
+        });
+        const one = createCloudApi({
+          origin: "https://app.example",
+          fetch: fetcher,
+        });
+        const two = createCloudApi({
+          origin: "https://app.example",
+          fetch: fetcher,
+        });
+        const [a, b] = await Promise.all([
+          one.client.me.get({}),
+          two.client.me.get({}),
+        ]);
+        expect(a.email).toBe("dev@armadra.test");
+        expect(b.email).toBe("dev@armadra.test");
+        expect(
+          seen.filter((row) => row.path === "/v1/auth/refresh"),
+        ).toHaveLength(1);
+      } finally {
+        Reflect.deleteProperty(navigator, "locks");
+        vi.unstubAllGlobals();
+      }
+    });
+
     it("刷新失败：通知会话失效，调用方拿到 session_expired", async () => {
       const { fetcher } = origin({
         "GET /v1/me": () =>

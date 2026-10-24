@@ -33,6 +33,7 @@ import {
   MOBILE_RELAY_HOST,
   MOBILE_SAMPLES,
   MOBILE_SOURCES,
+  MOBILE_TEAM_CONNECTIONS,
   type MobileSampleId,
 } from "../fixtures/mobile";
 
@@ -143,6 +144,21 @@ function Screen({
             canScan
             relay={relayStub}
             connections={MOBILE_CONNECTIONS}
+            statuses={MOBILE_CONNECTION_STATUSES}
+            activeId={MOBILE_CONNECTIONS[0].sourceId}
+            initialView="list"
+            onRename={() => undefined}
+            onConnect={never}
+            onScan={never}
+          />
+        );
+      case "teams":
+        return (
+          <ConnectScreen
+            mode="native"
+            canScan
+            relay={relayStub}
+            connections={MOBILE_TEAM_CONNECTIONS}
             statuses={MOBILE_CONNECTION_STATUSES}
             activeId={MOBILE_CONNECTIONS[0].sourceId}
             initialView="list"

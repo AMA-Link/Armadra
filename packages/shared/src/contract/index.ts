@@ -225,6 +225,12 @@ export {
   sourceSessionSchema,
 } from "./sources.js";
 export type {
+  CloudAccess,
+  CloudGrant,
+  CloudGrantCreateInput,
+  CloudGrantUpdateInput,
+  CloudInviteInput,
+  CloudTrustRequest,
   ClientSource,
   ClientSourceRoute,
   SourceRouteRef,
@@ -240,7 +246,10 @@ export type {
 } from "./sources.js";
 export {
   cloudLoginInputSchema,
+  cloudLoginAnswerSchema,
   cloudLoginOutputSchema,
+  cloudLoginProbeInputSchema,
+  cloudLoginProbeOutputSchema,
   cloudStatusOutputSchema,
   tunnelStatusSchema,
 } from "./cloud.js";
