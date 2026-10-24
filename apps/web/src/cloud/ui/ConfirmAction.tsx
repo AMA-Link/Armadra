@@ -20,6 +20,8 @@ export interface ConfirmActionProps {
   readonly actionLabel: string;
   /** 后果的一行（「已加入的人一并停用」）；不是说明。 */
   readonly consequence?: string;
+  /** 确认依赖的数据还没到时为 true：确认按钮转圈并不可点。 */
+  readonly pending?: boolean;
   /** 抛错时对话框留着，失败的提示归调用方（sonner）。 */
   readonly onConfirm: () => void | Promise<void>;
 }
@@ -31,6 +33,7 @@ export function ConfirmAction({
   title,
   actionLabel,
   consequence,
+  pending = false,
   onConfirm,
 }: ConfirmActionProps) {
   const t = useT();
@@ -61,7 +64,7 @@ export function ConfirmAction({
           </ResponsiveAlertDialogCancel>
           <Button
             variant="destructive-solid"
-            loading={busy}
+            loading={busy || pending}
             onClick={() => void run()}
           >
             {actionLabel}

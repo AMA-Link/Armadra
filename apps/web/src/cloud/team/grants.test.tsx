@@ -154,11 +154,11 @@ describe("授予页 · 增改撤", () => {
     expect(
       within(confirm).getByText("撤销 李四 对 build-01 的访问？"),
     ).toBeTruthy();
-    fireEvent.click(within(confirm).getByRole("button", { name: "撤销访问" }));
-    await waitFor(async () => {
-      const grid = await table();
-      expect(within(grid).queryByText("李四")).toBeNull();
-    });
+    const action = within(confirm).getByRole("button", { name: "撤销访问" });
+    await waitFor(() => expect(action.getAttribute("aria-busy")).toBeNull());
+    fireEvent.click(action);
+    const grid = await screen.findByRole("table", { name: "授予" });
+    await waitFor(() => expect(within(grid).queryByText("李四")).toBeNull());
   });
 
   it("行内「改权限」固定主机与对象；降角色先提示，确认后更新", async () => {
@@ -315,6 +315,42 @@ describe("授予页 · 主机很多、取数失败与撤销提示", () => {
       })[0]!,
     );
     const confirm = await screen.findByRole("alertdialog");
+    expect(
+      await within(confirm).findByText(
+        "会降低 王五 的权限，他们已有的连接会断开",
+      ),
+    ).toBeTruthy();
+  });
+
+  it("撤销确认等授予与访问表都到了才可点：所有者不会被误列进收窄名单", async () => {
+    let release: () => void = () => undefined;
+    const gate = new Promise<void>((go) => {
+      release = go;
+    });
+    mount("/t/rd/grants", OPTIONS, null, (api) => {
+      const real = api.client.sources.accessList;
+      api.client.sources.accessList = (async (
+        input: Parameters<typeof real>[0],
+      ) => {
+        await gate;
+        return real(input);
+      }) as typeof real;
+    });
+    await expand("团队全员");
+    const list = await screen.findByRole("list", { name: "团队全员" });
+    fireEvent.click(
+      within(list).getAllByRole("button", {
+        name: /^撤销 团队全员 · build-01/,
+      })[0]!,
+    );
+    const confirm = await screen.findByRole("alertdialog");
+    const action = within(confirm).getByRole("button", { name: "撤销访问" });
+    expect(action.getAttribute("aria-busy")).toBe("true");
+    expect(within(confirm).queryByText(/会降低/)).toBeNull();
+    await act(async () => {
+      release();
+    });
+    await waitFor(() => expect(action.getAttribute("aria-busy")).toBeNull());
     expect(
       await within(confirm).findByText(
         "会降低 王五 的权限，他们已有的连接会断开",

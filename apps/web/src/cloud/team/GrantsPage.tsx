@@ -217,16 +217,21 @@ function RevokeEntryConfirm({
     style: "narrow",
     type: "conjunction",
   });
+  // 授予与访问表都到了才算得出收窄谁：所有者没到时会被误列进收窄名单。
+  const ready = grants.data !== undefined && access.data !== undefined;
   const now = Date.now();
   const all = grants.data?.grants ?? [];
-  const lowered = narrowedBy({
-    grants: all,
-    members,
-    ownerId:
-      access.data?.access.find((row) => row.via === "owner")?.accountId ?? null,
-    change: { kind: "revoke", grantIds: [entry.grant.grantId] },
-    now,
-  });
+  const lowered = !ready
+    ? []
+    : narrowedBy({
+        grants: all,
+        members,
+        ownerId:
+          access.data?.access.find((row) => row.via === "owner")?.accountId ??
+          null,
+        change: { kind: "revoke", grantIds: [entry.grant.grantId] },
+        now,
+      });
   const subject = entry.grant.subject;
   const consequences = [
     ...(lowered.length > 0
@@ -253,6 +258,7 @@ function RevokeEntryConfirm({
       onOpenChange={(next) => !next && onClose()}
       title={t("cloud.grants.revokeTitle", { name, host: entry.host.name })}
       actionLabel={t("cloud.hosts.removeAccess")}
+      pending={!ready}
       {...(consequences.length > 0
         ? { consequence: consequences.join("\n") }
         : {})}
