@@ -6,7 +6,7 @@
  * 留在 `app/test-harness.tsx`。
  */
 
-import { afterAll, beforeEach } from "vitest";
+import { afterAll, afterEach, beforeEach } from "vitest";
 
 /**
  * React Flow 的容器用 `ResizeObserver` 量自己的尺寸（`useResizeHandler`），
@@ -108,6 +108,17 @@ if (typeof document !== "undefined") {
     for (const style of document.head.querySelectorAll("style")) {
       if (style.textContent?.includes("[data-sonner-toaster]")) style.remove();
     }
+  });
+}
+
+/**
+ * sonner 的提示存在模块级，卸载不会带走它：上一条用例的提示会漏进下一条用例的查询
+ * （曾让一条断言靠漏下来的提示通过）。每条用例后清掉；只在 sonner 已被加载时才动它。
+ */
+if (typeof document !== "undefined") {
+  afterEach(async () => {
+    if (document.querySelector("[data-sonner-toaster]") === null) return;
+    (await import("sonner")).toast.dismiss();
   });
 }
 

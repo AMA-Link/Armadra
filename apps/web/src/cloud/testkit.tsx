@@ -1,8 +1,6 @@
 import { cleanup, configure, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, vi } from "vitest";
 
-import { toast } from "@/ui/toast";
-
 import { ConsoleRoot } from "./ConsoleRoot";
 import type { HostEndorser } from "./trust/endorser";
 import {
@@ -45,8 +43,6 @@ export function installConsoleHarness() {
   });
   afterEach(() => {
     cleanup();
-    // sonner 的提示存在模块级，不随卸载消失：上一个用例的提示会漏进下一个用例的查询。
-    toast.dismiss();
     localStorage.clear();
     sessionStorage.clear();
     visit("/");
