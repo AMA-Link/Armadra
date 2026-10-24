@@ -12512,7 +12512,7 @@ TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
 SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-### dompurify@3.4.16
+### dompurify@3.4.17
 
 License: (MPL-2.0 OR Apache-2.0)
 Author: Dr.-Ing. Mario Heiderich, Cure53
@@ -20371,7 +20371,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### zod@4.4.3
+### zod@4.6.6
 
 License: MIT
 Author: Colin McDonnell

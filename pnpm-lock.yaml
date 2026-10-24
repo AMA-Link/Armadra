@@ -193,7 +193,7 @@ overrides:
   ip-address@<10.7.1: 10.7.1
   hono@<4.13.7: 4.13.7
   fast-uri@>=3.0.0 <3.1.8: 3.1.8
-  dompurify@>=3.4.13 <3.4.16: 3.4.16
+  dompurify@<3.4.17: 3.4.17
   lodash-es@<4.17.24: 4.18.1
   '@peculiar/asn1-schema': 2.10.0
   uuid@<11.1.1: 11.1.1
@@ -214,7 +214,7 @@ importers:
         version: 1.15.4(@opentelemetry/api@1.9.1)(ws@8.21.0)
       '@orpc/zod':
         specifier: 1.15.4
-        version: 1.15.4(@opentelemetry/api@1.9.1)(@orpc/contract@1.15.4(@opentelemetry/api@1.9.1))(@orpc/server@1.15.4(@opentelemetry/api@1.9.1)(ws@8.21.0))(ws@8.21.0)(zod@4.4.3)
+        version: 1.15.4(@opentelemetry/api@1.9.1)(@orpc/contract@1.15.4(@opentelemetry/api@1.9.1))(@orpc/server@1.15.4(@opentelemetry/api@1.9.1)(ws@8.21.0))(ws@8.21.0)(zod@4.6.6)
       '@vitest/coverage-v8':
         specifier: 4.1.11
         version: 4.1.11(vitest@4.1.11)
@@ -256,7 +256,7 @@ importers:
     dependencies:
       '@armadra/platform-protocol':
         specifier: file:../../tools/vendor/armadra-platform-protocol-0.10.0.tgz
-        version: file:tools/vendor/armadra-platform-protocol-0.10.0.tgz(@opentelemetry/api@1.9.1)(zod@4.4.3)
+        version: file:tools/vendor/armadra-platform-protocol-0.10.0.tgz(@opentelemetry/api@1.9.1)(zod@4.6.6)
       '@armadra/shared':
         specifier: workspace:*
         version: link:../../packages/shared
@@ -415,7 +415,7 @@ importers:
     dependencies:
       '@armadra/platform-protocol':
         specifier: file:../../tools/vendor/armadra-platform-protocol-0.10.0.tgz
-        version: file:tools/vendor/armadra-platform-protocol-0.10.0.tgz(@opentelemetry/api@1.9.1)(zod@4.4.3)
+        version: file:tools/vendor/armadra-platform-protocol-0.10.0.tgz(@opentelemetry/api@1.9.1)(zod@4.6.6)
       '@armadra/shared':
         specifier: workspace:*
         version: link:../../packages/shared
@@ -582,8 +582,8 @@ importers:
         specifier: 13.6.33
         version: 13.6.33
       zod:
-        specifier: 4.4.3
-        version: 4.4.3
+        specifier: 4.6.6
+        version: 4.6.6
       zustand:
         specifier: 5.0.14
         version: 5.0.14(@types/react@19.2.14)(immer@11.1.18)(react@19.2.8)(use-sync-external-store@1.6.0(react@19.2.8))
@@ -632,7 +632,7 @@ importers:
     dependencies:
       '@armadra/platform-protocol':
         specifier: file:../../tools/vendor/armadra-platform-protocol-0.10.0.tgz
-        version: file:tools/vendor/armadra-platform-protocol-0.10.0.tgz(@opentelemetry/api@1.9.1)(zod@4.4.3)
+        version: file:tools/vendor/armadra-platform-protocol-0.10.0.tgz(@opentelemetry/api@1.9.1)(zod@4.6.6)
       '@noble/curves':
         specifier: 2.4.0
         version: 2.4.0
@@ -643,8 +643,8 @@ importers:
         specifier: 1.15.4
         version: 1.15.4(@opentelemetry/api@1.9.1)
       zod:
-        specifier: 4.4.3
-        version: 4.4.3
+        specifier: 4.6.6
+        version: 4.6.6
     devDependencies:
       typescript:
         specifier: 5.9.2
@@ -1608,6 +1608,7 @@ packages:
   '@opentelemetry/sdk-trace-base@2.11.0':
     resolution: {integrity: sha512-H19x/TX/LZdqiYOjM7fqtSxwlplC5pgelavqbQdHbhdq0q/AI/TGkM2dfGuuynTXmJPeF2HoZVoPDu+TGoW78A==}
     engines: {node: ^18.19.0 || >=20.6.0}
+    deprecated: Use @opentelemetry/sdk-trace package
     peerDependencies:
       '@opentelemetry/api': '>=1.3.0 <1.10.0'
 
@@ -3416,19 +3417,9 @@ packages:
 
   ajv-formats@2.1.1:
     resolution: {integrity: sha512-Wx0Kx52hxE7C18hkMEggYlEifqWZtYaRgouJor+WMdPnQyEK13vgEWyVNup7SoeeoLMsr4kf5h6dOW11I15MUA==}
-    peerDependencies:
-      ajv: ^8.0.0
-    peerDependenciesMeta:
-      ajv:
-        optional: true
 
   ajv-formats@3.0.1:
     resolution: {integrity: sha512-8iUql50EUR+uUcdRQ3HDqa6EVyo3docL8g5WJ3FNcWmu62IbkGUue/pEyLBW8VGKKucTPgqeks4fIU1DA4yowQ==}
-    peerDependencies:
-      ajv: ^8.0.0
-    peerDependenciesMeta:
-      ajv:
-        optional: true
 
   ajv@6.15.0:
     resolution: {integrity: sha512-fgFx7Hfoq60ytK2c7DhnF8jIvzYgOMxfugjLOSMHjLIPgenqa7S7oaagATUq99mV6IYvN2tRmC0wnTYX6iPbMw==}
@@ -4184,8 +4175,8 @@ packages:
   dom-accessibility-api@0.5.16:
     resolution: {integrity: sha512-X7BJ2yElsnOJ30pZF4uIIDfBEVgF4XEBxL9Bxhy6dnrm5hkzqmsWHGTiHqRiITNhMyFLyAiWndIJP7Z1NTteDg==}
 
-  dompurify@3.4.16:
-    resolution: {integrity: sha512-sqo+pNp3qRhCIpbgRi1y8Tgk27Bo2Ry7w0dC1NBeNTdZChWjz9Xb/KOoZbRP/R6pQZ80Qw8YhXw13hWWBbMRnQ==}
+  dompurify@3.4.17:
+    resolution: {integrity: sha512-B/pSlYVHQ58kqISD/yDjuJ1yfzI34m1gF4lAod2bwSRhiN4K5Cl3H8Af7hqB2PmTL911tdEudnnXn5FnhRoz0w==}
 
   dot-prop@6.0.1:
     resolution: {integrity: sha512-tE7ztYzXHIeyvc7N+hR3oi7FIbf/NIjVP9hmAt3yMXzrQ072/fpjGLx2GxNxGxUl5V73MEqYzioOMoVhGMJ5cA==}
@@ -7242,6 +7233,9 @@ packages:
   zod@4.4.3:
     resolution: {integrity: sha512-ytENFjIJFl2UwYglde2jchW2Hwm4GJFLDiSXWdTrJQBIN9Fcyp7n4DhxJEiWNAJMV1/BqWfW/kkg71UDcHJyTQ==}
 
+  zod@4.6.6:
+    resolution: {integrity: sha512-4UmzQUF5fxvfcYHlbjBmejU+w+hbDnWFx4aS8kBx7nPBHcO2SqPbpAG8snbdg+Xse4pRefR98hgjFgIMCI/UhA==}
+
   zustand@4.5.7:
     resolution: {integrity: sha512-CHOUy7mu3lbD6o6LJLfllpjkzhHXSBlX8B9+qPddUsIfeF5S/UZ5q0kmCsnRqT1UHFQZchNFDDzMbQsuesHWlw==}
     engines: {node: '>=12.7.0'}
@@ -7287,10 +7281,10 @@ snapshots:
 
   '@armadra/agent@0.10.0': {}
 
-  '@armadra/platform-protocol@file:tools/vendor/armadra-platform-protocol-0.10.0.tgz(@opentelemetry/api@1.9.1)(zod@4.4.3)':
+  '@armadra/platform-protocol@file:tools/vendor/armadra-platform-protocol-0.10.0.tgz(@opentelemetry/api@1.9.1)(zod@4.6.6)':
     dependencies:
       '@orpc/contract': 1.15.4(@opentelemetry/api@1.9.1)
-      zod: 4.4.3
+      zod: 4.6.6
     transitivePeerDependencies:
       - '@opentelemetry/api'
 
@@ -8291,7 +8285,7 @@ snapshots:
     dependencies:
       '@hono/node-server': 2.1.1(hono@4.13.7)
       ajv: 8.20.0
-      ajv-formats: 3.0.1(ajv@8.20.0)
+      ajv-formats: 3.0.1
       content-type: 1.0.5
       cors: 2.8.6
       cross-spawn: 7.0.6
@@ -8510,7 +8504,7 @@ snapshots:
     transitivePeerDependencies:
       - '@opentelemetry/api'
 
-  '@orpc/zod@1.15.4(@opentelemetry/api@1.9.1)(@orpc/contract@1.15.4(@opentelemetry/api@1.9.1))(@orpc/server@1.15.4(@opentelemetry/api@1.9.1)(ws@8.21.0))(ws@8.21.0)(zod@4.4.3)':
+  '@orpc/zod@1.15.4(@opentelemetry/api@1.9.1)(@orpc/contract@1.15.4(@opentelemetry/api@1.9.1))(@orpc/server@1.15.4(@opentelemetry/api@1.9.1)(ws@8.21.0))(ws@8.21.0)(zod@4.6.6)':
     dependencies:
       '@orpc/contract': 1.15.4(@opentelemetry/api@1.9.1)
       '@orpc/json-schema': 1.15.4(@opentelemetry/api@1.9.1)(ws@8.21.0)
@@ -8519,7 +8513,7 @@ snapshots:
       '@orpc/shared': 1.15.4(@opentelemetry/api@1.9.1)
       escape-string-regexp: 5.0.0
       wildcard-match: 5.1.6
-      zod: 4.4.3
+      zod: 4.6.6
     transitivePeerDependencies:
       - '@opentelemetry/api'
       - crossws
@@ -10302,12 +10296,12 @@ snapshots:
 
   agent-base@7.1.4: {}
 
-  ajv-formats@2.1.1(ajv@8.20.0):
-    optionalDependencies:
+  ajv-formats@2.1.1:
+    dependencies:
       ajv: 8.20.0
 
-  ajv-formats@3.0.1(ajv@8.20.0):
-    optionalDependencies:
+  ajv-formats@3.0.1:
+    dependencies:
       ajv: 8.20.0
 
   ajv@6.15.0:
@@ -10757,7 +10751,7 @@ snapshots:
   conf@10.2.0:
     dependencies:
       ajv: 8.20.0
-      ajv-formats: 2.1.1(ajv@8.20.0)
+      ajv-formats: 2.1.1
       atomically: 1.7.0
       debounce-fn: 4.0.0
       dot-prop: 6.0.1
@@ -11131,7 +11125,7 @@ snapshots:
 
   dom-accessibility-api@0.5.16: {}
 
-  dompurify@3.4.16:
+  dompurify@3.4.17:
     optionalDependencies:
       '@types/trusted-types': 2.0.7
 
@@ -12783,7 +12777,7 @@ snapshots:
       d3-sankey: 0.12.3
       dagre-d3-es: 7.0.14
       dayjs: 1.11.23
-      dompurify: 3.4.16
+      dompurify: 3.4.17
       elkjs: 0.9.3
       es-toolkit: 1.52.0
       katex: 0.16.47
@@ -14795,6 +14789,8 @@ snapshots:
   zod@3.25.76: {}
 
   zod@4.4.3: {}
+
+  zod@4.6.6: {}
 
   zustand@4.5.7(@types/react@19.2.14)(immer@11.1.18)(react@19.2.8):
     dependencies:
