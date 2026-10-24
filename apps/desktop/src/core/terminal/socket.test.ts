@@ -398,6 +398,7 @@ describe("a view answering a query (#518)", () => {
     sent: Record<string, unknown> | Record<string, unknown>[],
     owed = false,
     feed: [string, boolean?][] = [],
+    marksReplies = false,
   ) {
     const frames = Array.isArray(sent) ? sent : [sent];
     let emit: ((chunk: Buffer, replay?: boolean) => void) | undefined;
@@ -452,6 +453,7 @@ describe("a view answering a query (#518)", () => {
       manager,
       sessionId: "s1",
       writer: "phone",
+      marksReplies,
     });
     await new Promise((resolve) => setImmediate(resolve));
     for (const [text, replay] of feed) emit?.(Buffer.from(text), replay);
@@ -513,6 +515,18 @@ describe("a view answering a query (#518)", () => {
       ["seed", "\u001b[c"],
       ["output", "\u001b[>c"],
     ]);
+  });
+
+  it("never guesses on a socket whose page declared it marks replies", async () => {
+    // Shift+F3 is the same bytes as a cursor report: without the declaration
+    // the first one would be taken for an answer, here it is a key.
+    const calls = await serve(
+      { type: "input", data: "\u001b[1;2R" },
+      true,
+      [],
+      true,
+    );
+    expect(calls.map((call) => call[0])).toEqual(["noteViewerInput", "input"]);
   });
 
   it("stops guessing once a page has marked a reply", async () => {

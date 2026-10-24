@@ -103,7 +103,7 @@ export function useTerminalTransport(
     };
     const log = refs.inputLogRef.current!;
     const transport = createTerminalTransport(
-      terminalWebSocketUrl(sessionId, log.writerId),
+      terminalWebSocketUrl(sessionId, log.writerId, undefined, true),
       {
         onHello: (hello) => {
           if (disposed) return;

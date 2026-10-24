@@ -16,15 +16,23 @@ function socketUrl(pathname: string, source: Source): string {
 
 /**
  * `writerId` 让 Runtime 在 `hello` 里带回这个客户端已经落地的输入序号，
- * 重连时只重发没落地的那几条（见 `terminal/input-log.ts`）。
+ * 重连时只重发没落地的那几条（见 `terminal/input-log.ts`）。`marksReplies` 声明
+ * 这条连接的页面会标记应答（`replies=1`）。
  */
 export function terminalWebSocketUrl(
   sessionId: string,
   writerId?: string,
   source: Source = currentSource(),
+  marksReplies = false,
 ): string {
   const base = socketUrl(`/api/terminals/${sessionId}/ws`, source);
-  return writerId ? `${base}?writer=${query(writerId)}` : base;
+  const params = [
+    ...(writerId ? [`writer=${query(writerId)}`] : []),
+    // 这一页会把对终端查询的应答标上 `reply`（契约 §87）：core 一开始就不再
+    // 按旧页面猜。旧 core 不认这个参数，忽略即可。
+    ...(marksReplies ? ["replies=1"] : []),
+  ];
+  return params.length === 0 ? base : `${base}?${params.join("&")}`;
 }
 
 /**
