@@ -8,7 +8,7 @@ import {
 import { describe, expect, it, vi } from "vitest";
 
 import { installDomPolyfills } from "../../app/test-harness";
-import { MOCK_PERSONAL } from "../mock/fixtures";
+import { MOCK_PERSONAL, MOCK_TEAMS } from "../mock/fixtures";
 import { h1, installConsoleHarness, mount } from "../testkit";
 import { addPendingIds } from "../mock/pending-ids";
 import type { HostEndorser } from "./endorser";
@@ -315,18 +315,40 @@ describe("团队 · 设备信任", () => {
     const host = endorser([]);
     const probe = vi.fn(async () => true);
     host.canEndorse = probe;
-    const api = mount("/t/rd/trust", OPTIONS, host, addPendingIds);
+    let listed = 0;
+    const api = mount("/t/rd/trust", OPTIONS, host, (made) => {
+      addPendingIds(made);
+      const list = made.client.trust.list;
+      made.client.trust.list = (async (...args: Parameters<typeof list>) => {
+        listed += 1;
+        return list(...args);
+      }) as typeof list;
+    });
     await rows();
     await waitFor(() => expect(probe).toHaveBeenCalledTimes(2));
-    for (const type of ["deviceTrustRequested", "deviceTrustResolved"])
-      act(() =>
-        api.emit({
-          type,
-          requestId: "trust_ipad",
-          sourceId: "s",
-          atMs: 1,
-        } as never),
-      );
+    expect(listed).toBe(1);
+    // 带团队页实际的 teamId（rd 团队）：走的是团队空间的失效路径，不是个人空间的。
+    const teamId = MOCK_TEAMS[0]!.teamId;
+    act(() =>
+      api.emit({
+        type: "deviceTrustRequested",
+        requestId: "trust_new",
+        sourceId: "s",
+        teamId,
+        atMs: 1,
+      } as never),
+    );
+    await waitFor(() => expect(listed).toBe(2));
+    act(() =>
+      api.emit({
+        type: "deviceTrustResolved",
+        requestId: "trust_new",
+        outcome: "trusted",
+        teamId,
+        atMs: 1,
+      } as never),
+    );
+    await waitFor(() => expect(listed).toBe(3));
     await new Promise((done) => setTimeout(done, 50));
     await rows();
     expect(probe).toHaveBeenCalledTimes(2);
