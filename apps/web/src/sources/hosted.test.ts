@@ -888,6 +888,8 @@ describe("只续当前链接的访客记录（resumeLink）", () => {
         cloudRefreshToken: "tok-a",
         sources: { [SOURCE]: "core-a" },
         entered: { sourceId: SOURCE, name: "a" },
+        // 带上分享信息：停在访客身份时 `guest()` 才答非 null，断言才锁得住「切回账号」。
+        share: { role: "viewer", name: "a", ownerName: "o", expiresAtMs: 0 },
         expiresAtMs: NOW + 3_600_000,
       }),
     );
