@@ -276,7 +276,7 @@ describe("分享链接落地页（SaaS）", () => {
     expect(screen.queryByText(/^加入 .* 的/)).toBeNull();
   });
 
-  it("已加入过：主按钮是「打开」，经访客记录续上而不再接受；续不上回到「加入」", async () => {
+  it("已加入过：主按钮是「打开」，经访客记录续上而不再接受；连不上中继保留「打开」，记录没有了才回到「加入」", async () => {
     visit(`/j/${LINK_ID}${HASH}`);
     localStorage.setItem(
       guestKey(window.location.origin, LINK_ID),
@@ -294,6 +294,14 @@ describe("分享链接落地页（SaaS）", () => {
     expect((await screen.findByRole("alert")).textContent).toContain(
       "没能加入",
     );
+    // 连不上中继：记录还在，只提示错误，按钮仍是「打开」，不引导重新接受。
+    expect(screen.getByRole("button", { name: "打开" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "加入" })).toBeNull();
+    expect(accept).not.toHaveBeenCalled();
+    expect(onJoined).not.toHaveBeenCalled();
+    // 记录没有了（被收回 / 过期）：回到「加入」。
+    hosted.resumeLink.mockResolvedValueOnce({ kind: "gone" });
+    fireEvent.click(screen.getByRole("button", { name: "打开" }));
     await screen.findByRole("button", { name: "重试" });
     expect(onJoined).not.toHaveBeenCalled();
     cleanup();

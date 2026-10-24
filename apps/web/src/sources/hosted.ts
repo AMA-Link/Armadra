@@ -436,6 +436,12 @@ export type HostedResume =
     }
   | null;
 
+/**
+ * 只续一条链接的结果：{@link HostedResume} 之外多一种「这条记录没有了」（没有、过期、被收回）——
+ * 与 `null`（连不上中继，记录还留着）分开，落地页据此决定是保留「打开」还是回到「加入」。
+ */
+export type LinkResume = HostedResume | { readonly kind: "gone" };
+
 /* --------------------------------- 状态 ---------------------------------- */
 
 export interface HostedStatus {
@@ -573,9 +579,10 @@ export interface HostedRelay {
   resume(): Promise<HostedResume>;
   /**
    * 只续这一条分享链接的访客记录（分享链接落地页的「打开」）：不遍历别的链接的记录，
-   * 也不退回账号记录；这条记录续不上就丢掉它，答 `null`。
+   * 也不退回账号记录。没进去时页面一律退回账号身份：记录没有 / 被收回答 `{ kind: "gone" }`
+   * （作废那份记录）；连不上中继答 `null`、进主机失败答 `signedIn`，两者记录都留着。
    */
-  resumeLink(linkId: string): Promise<HostedResume>;
+  resumeLink(linkId: string): Promise<LinkResume>;
   /** 这个页面是不是以访客身份（分享链接）进来的；是就给那份分享，否则 `null`。 */
   guest(): GuestShare | null;
   readonly status: HostedStatus;
@@ -1052,15 +1059,15 @@ export function createHostedRelay(options: HostedRelayOptions): HostedRelay {
     },
     async resumeLink(linkId) {
       const key = guestKey(issuer, linkId);
-      if (!guestKeys(guestStorage, issuer, now()).includes(key)) return null;
+      if (!guestKeys(guestStorage, issuer, now()).includes(key))
+        return { kind: "gone" };
       switchToGuest(key);
       const resumed = await resumeWith();
-      if (resumed === undefined) {
-        vault.clear();
-        switchToAccount();
-        return null;
-      }
-      return resumed;
+      if (resumed?.kind === "entered") return resumed;
+      // 没进去（连不上中继、进主机失败、记录作废）：页面不能停在访客身份上。
+      if (resumed === undefined) vault.clear();
+      switchToAccount();
+      return resumed === undefined ? { kind: "gone" } : resumed;
     },
     guest: () => (guest ? vault.share() : null),
     get status() {
