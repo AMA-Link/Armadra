@@ -364,6 +364,21 @@ describe("写端公平调度", () => {
     expect(mine.map((f) => f.type)).toEqual(["data", "rst"]);
   });
 
+  it("已经 END 之后才出错：尾巴与 END 先发完，RST internal 在最后", async () => {
+    const rig = new Rig();
+    const stream = rig.open();
+    stream.write(Buffer.from("HTTP/1.1 200 OK\r\n\r\n"));
+    stream.end();
+    await new Promise<void>((resolve) => stream.once("finish", resolve));
+    stream.destroy(new Error("late"));
+    await rig.run(4);
+    const mine = rig.socket.written.filter(
+      (f) => "streamId" in f && f.streamId === stream.streamId,
+    );
+    expect(mine.map((f) => f.type)).toEqual(["data", "end", "rst"]);
+    expect(mine.at(-1)).toMatchObject({ code: RST.internal });
+  });
+
   it("平静销毁后排空中：尾巴发完才摘表，RST 在最后", async () => {
     const rig = new Rig(4 << 20, 8 << 20);
     const stream = rig.open();

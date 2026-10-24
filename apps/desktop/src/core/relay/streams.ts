@@ -421,11 +421,15 @@ export class TunnelDuplex extends Duplex {
     this.host.sendCredit.cancel(this.pump);
     this.pending = null;
     const resetting = !this.peerReset && !(this.localEnded && this.remoteEnded);
-    // 对端复位或本端出错中止：排着的 DATA 作废（信用还回去），RST 走控制队列先行。
-    // 本端平静地销毁（没有错误，或已经 END）：先 `write` 再 `destroy()` 是常见写法
-    // （升级被拒绝时先写 401 再销毁），出队列里的尾巴照常发完，RST 排在后面，对端先
-    // 看到完整的字节，与改成调度之前的出帧顺序相同。两端都正常结束后销毁：尾巴（含
-    // END）也发完，不发 RST。
+    // 对端复位，或本端还没 END 就出错中止：排着的 DATA 作废（信用还回去），RST 走
+    // 控制队列先行。
+    // 尾巴照常发完、RST 排在后面的两种：
+    // - 没有错误的销毁：先 `write` 再 `destroy()` 是常见写法（升级被拒绝时先写 401
+    //   再销毁），对端先看到完整的字节，与改成调度之前的出帧顺序相同；
+    // - 已经 END 之后才出错：本端的字节已经写完整（END 已排进出队列），这时的错误与
+    //   这些字节无关，丢掉只会把一个完整的响应截断，所以同样先发完，RST 码仍是
+    //   `internal`。
+    // 两端都正常结束后销毁：尾巴（含 END）也发完，不发 RST。
     const finishing =
       resetting && this.hasScheduler() && (this.localEnded || error === null);
     if (this.peerReset || (resetting && !finishing)) this.dropOut();
