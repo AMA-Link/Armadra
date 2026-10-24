@@ -1684,6 +1684,19 @@ apps/web/src/cloud/
 - 撤销即时反映：`grantChanged` 让该空间的授予列表、该主机的访问清单与有效权限过期；`accessRevoked`（不报空间）另让所有空间的授予列表、主机目录与该主机详情过期。
 - 会收窄某人有效权限的改动（降角色、缩范围、提前到期，以及新增更宽而更低的授予造成的合成降级）：对话框列出受影响的人，按钮改为「仍然授予 / 仍然更新」，云端随后撤他们已签的令牌。
 
+**U6 落地说明**（Refs AMA-Link/Armadra#547，三包：a 设备信任与团队链接、b 用量与计划、c 审计）：
+
+- `/t/:team/links`、`/t/:team/trust`、`/t/:team/billing`、`/t/:team/audit` 已实现。链接页与个人空间共用 `cloud/links/LinksView`；新增 `cloud/trust/`、`cloud/billing/`、`cloud/audit/` 与文案模块 `cloud-audit.ts`、`cloud-billing.ts`（M1 部分）。
+- **A1 现状**：core 一侧已实现——`apps/desktop/src/core/relay/e2e/routes.ts` 的 `authorizeEndorsement`（迁移 0053 `cloud_team_roles`）接受经云端断言以团队角色准入、且设备已受信的会话调 `devices.approve`（团队 owner / admin 批同团队成员，member 只批自己，不批主机 owner，不抬权）；桌面横幅与对话框（U7b）已在用。团队设置的「新设备背书人」「成员可从自己已信任的设备背书」由云端 `trust.list` / `trust.reject` 按设置收窄，core 不读团队设置。U6 没有改 core 的准入。
+- **背书端口**：控制台里「浏览器是不是该主机的受信设备」与「把校验码交给主机」走 `cloud/trust/endorser.tsx` 的 `HostEndorser`（`canEndorse` / `approve`），由 `ConsoleRoot` 的 `endorser` 属性注入。`browser-cloud` 凭据提供方在 `sources/credentials.ts` 已有，但控制台入口还没有给它接 `E2eChannels`（端到端通道管理器），所以生产构建里 `endorser = null`：每一行都是「在已信任的设备上处理」，不渲染「信任」。接上后只需在入口构造一个实现，页面、对话框与测试不变。待做：入口接线（单独一批，不属于 core）。
+- 与上文的差异：
+  - 链接页没有「新建链接」与「创建人」列、「已冻结」徽标：`links.create` 的 `source_invite` 要 core 邀请 id（只在客户端分享弹层有），`team_join` 属 M2；`linkSummary` 不带创建人与冻结状态。列表只列、改备注、撤销，与 U3 一致。
+  - 设备信任页另有「平台」列；拒绝只调 `trust.reject`；校验码只存在于对话框组件状态，经 `HostEndorser.approve` 的参数交出去，不进 `useMutation` 变量、地址、本地存储与日志。`sas_mismatch` / `sas_expired` / `device_untrusted` / `e2e_device_unavailable` 按 code 取现有文案。
+  - 审计的动作名按云端实际发出的点分名（`grant.create`、`member.role`…）取 `cloud.audit.a.*`，设计稿里的驼峰名作废；认不出的动作显示原名；「类型」筛选按动作前缀（`action=grant.`）。游标不进地址（与主机目录一致，页面内累计）；时间范围不按计划保留期收窄（契约不报保留期）；导出随 M2，未做。
+  - 用量页的超额提示不带日期：契约没有宽限期字段，文案 `cloud.billing.overage` 改为「本月流量已超出，同时连接将受限」。付款、升级、试用、发票随 M2。
+  - 同时连接的配额在协议里叫 `concurrent`（U1 的映射写成了 `connections`），文案键改为 `cloud.billing.limit.concurrent`，并有测试遍历协议包的 `QUOTAS` 保证每个配额都有文案。
+- 审计行高固定（展开只是换一个高度），超过 50 行才用 `@tanstack/react-virtual`；窄屏同一份数据画成两行。
+
 每批都按 ≤ 1500 行（含测试）切；估算超出时在开 PR 前再拆。M3（域名验证、单点登录、按域名自动加入、定期复核、Webhook、区域）要先有自己的设计，不在本表。
 
 每批共同验收：`pnpm --filter @armadra/web test`、`typecheck`、`pnpm repo:check`；新文案中英同步（`i18n.test.ts`）；展示页 `cloud` 分区补样本；`tools/probes/design-showcase.mjs --only=cloud` 在 390 / 768 / 1440 × 深 / 浅 生成截图（探针矩阵为 `cloud` 分区加 768 宽），`result.json.status = ok`、对比度无低于阈值、控制台无错；`locale=en` 再跑一遍 1440 深色看文字增长；`forced-colors` 与 `prefers-reduced-motion` 各一张。

@@ -13,8 +13,8 @@ import { OverviewPage } from "./OverviewPage";
 import { SettingsPage } from "./SettingsPage";
 
 /**
- * `/t/:team/*` 的页面（云端控制台 §3.3）：概览、主机目录与详情、授予、成员与邀请、链接、设备信任、设置；其余页（审计…）
- * 由各自的批次接上，这之前只有页头。团队的名字、角色、计划取自 `me.spaces`（外壳已经取过）。
+ * `/t/:team/*` 的页面（云端控制台 §3.3）：概览、主机目录与详情、授予、成员与邀请、链接、设备信任、审计、用量与计划、设置；
+ * 分组、访问申请、API 令牌（M2）还只有页头。团队的名字、角色、计划取自 `me.spaces`（外壳已经取过）。
  */
 export function TeamPage({ match }: { match: RouteMatch }) {
   const t = useT();
