@@ -182,7 +182,7 @@ describe("登记对话框", () => {
     fireEvent.click(within(dialog).getByRole("button", { name: "复制命令" }));
     await waitFor(() =>
       expect(write).toHaveBeenCalledWith(
-        `printf 'Token: ' && read -rs T && printf %s "$T" | armadra-server cloud register --issuer 'https://app.armadra.test' --token-stdin; unset T`,
+        `printf 'Token: ' && read -rs T && echo && printf %s "$T" | armadra-server cloud register --issuer 'https://app.armadra.test' --token-stdin; unset T`,
       ),
     );
   });

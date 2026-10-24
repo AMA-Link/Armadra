@@ -24,12 +24,12 @@ import { useRegistrationToken } from "./grants-data";
 
 /**
  * 在服务器上登记的命令（`armadra-server cloud register`）：令牌不进命令行也不进 shell 历史——
- * `read -rs` 静默读入（先 `printf` 出提示，免得看起来卡住；把上面的令牌粘贴进去），再经标准输入交给
+ * `read -rs` 静默读入（先 `printf` 出提示，免得看起来卡住；把上面的令牌粘贴进去，`echo` 补上被静默吞掉的换行），再经标准输入交给
  * `--token-stdin`，末尾 `unset T` 清掉变量；issuer 加单引号。
  */
 function registerCommand(issuer: string): string {
   const quoted = `'${issuer.replaceAll("'", "'\\''")}'`;
-  return `printf 'Token: ' && read -rs T && printf %s "$T" | armadra-server cloud register --issuer ${quoted} --token-stdin; unset T`;
+  return `printf 'Token: ' && read -rs T && echo && printf %s "$T" | armadra-server cloud register --issuer ${quoted} --token-stdin; unset T`;
 }
 
 /** 桌面壳认的深链只带 `issuer`（干净的来源）；认不出就不带参数。 */
