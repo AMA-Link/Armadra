@@ -628,3 +628,12 @@ test("parseArgs: --confirm 缺省关", () => {
   assert.equal(parseArgs([]).confirm, false);
   assert.equal(parseArgs(["--confirm"]).confirm, true);
 });
+
+test("bestOf: exact 的取第一次，不被另一次的个数带偏", () => {
+  const merged = bestOf(
+    { tmuxProcs: 31, rendererActiveMiB: 5 },
+    { tmuxProcs: 30, rendererActiveMiB: 3 },
+  );
+  assert.equal(merged.tmuxProcs, 31);
+  assert.equal(merged.rendererActiveMiB, 3);
+});

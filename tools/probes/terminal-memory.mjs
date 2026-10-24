@@ -57,6 +57,7 @@ import {
   METRICS,
   baselineKey,
   bestOf,
+  METRICS,
   compare,
   deriveMetrics,
   descendants,
@@ -457,7 +458,11 @@ async function run(options) {
     let regressions = judge(report.metrics);
     // 只有越线、功能检查都过时才复测：托管运行器上单次读数会漂（#485），取两次
     // 较优值再判；真退化两次都越线。
-    if (options.confirm && regressions.length > 0 && failures.length === 0) {
+    // 越线项全是 exact 指标（进程数）时不复测：复测取第一次的值，不会变。
+    const flaky = rows.some(
+      (row) => row.regressed && !METRICS[row.metric]?.exact,
+    );
+    if (options.confirm && flaky && failures.length === 0) {
       console.error(`越线：${regressions.join("；")}；复测一次，取两次较优值`);
       for (const cleanup of cleanups.splice(0).reverse()) {
         try {

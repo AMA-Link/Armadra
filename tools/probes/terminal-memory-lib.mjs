@@ -622,7 +622,11 @@ export function bestOf(first, second) {
       merged[metric] = typeof a === "number" ? a : (b ?? null);
       continue;
     }
-    merged[metric] = METRICS[metric]?.exact ? a : Math.min(a, b);
+    const rule = METRICS[metric];
+    if (rule?.exact) merged[metric] = a;
+    else
+      merged[metric] =
+        rule?.better === "higher" ? Math.max(a, b) : Math.min(a, b);
   }
   return merged;
 }
