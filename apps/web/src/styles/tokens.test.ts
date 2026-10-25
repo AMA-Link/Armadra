@@ -363,6 +363,25 @@ describe("tokens.css", () => {
     expect(light.get("--mm-group")).toBe("transparent");
   });
 
+  it("小地图填充浓度：深色 55 / 80 / 35，浅色更淡（#577）", () => {
+    const pct = (map: Map<string, string>, name: string) =>
+      Number.parseFloat(map.get(name) ?? "NaN");
+    expect(dark.get("--mm-fill")).toBe("55%");
+    expect(dark.get("--mm-fill-selected")).toBe("80%");
+    expect(dark.get("--mm-fill-plain")).toBe("35%");
+    for (const name of ["--mm-fill", "--mm-fill-selected", "--mm-fill-plain"]) {
+      expect(light.get(name)).toMatch(/^\d+%$/);
+      expect(pct(light, name)).toBeLessThan(pct(dark, name));
+    }
+    // 选中仍比常态浓，常态仍比分组浓：层次不变。
+    expect(pct(light, "--mm-fill-selected")).toBeGreaterThan(
+      pct(light, "--mm-fill"),
+    );
+    expect(pct(light, "--mm-fill")).toBeGreaterThan(
+      pct(light, "--mm-fill-plain"),
+    );
+  });
+
   it("节点调色板是 §3.4 的 7 色", () => {
     const palette = Array.from({ length: 7 }, (_, index) =>
       dark.get(`--node-color-${index + 1}`),

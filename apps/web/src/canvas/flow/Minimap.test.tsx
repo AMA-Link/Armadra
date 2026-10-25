@@ -73,15 +73,15 @@ describe("状态描边", () => {
     expect(minimapStrokeWidth(MINIMAP_COLORS.plain)).toBe(2);
   });
 
-  it("填充按家族色取 55%，选中 80%，分组与白板对象 35%（ui-wave2 §5.2）", () => {
+  it("填充按家族色混透明，浓度取主题令牌：常态 / 选中 / 分组与白板对象（#577）", () => {
     expect(minimapFill({ color: "var(--node-color-2)" })).toBe(
-      "color-mix(in srgb, var(--node-color-2) 55%, transparent)",
+      "color-mix(in srgb, var(--node-color-2) var(--mm-fill), transparent)",
     );
-    expect(
-      minimapFill({ color: "var(--node-color-2)", selected: true }),
-    ).toContain("80%");
+    expect(minimapFill({ color: "var(--node-color-2)", selected: true })).toBe(
+      "color-mix(in srgb, var(--node-color-2) var(--mm-fill-selected), transparent)",
+    );
     expect(minimapFill({ plain: true })).toBe(
-      "color-mix(in srgb, var(--faint) 35%, transparent)",
+      "color-mix(in srgb, var(--faint) var(--mm-fill-plain), transparent)",
     );
   });
 
@@ -89,7 +89,7 @@ describe("状态描边", () => {
     expect(MINIMAP_COLORS.plain).toBe("var(--faint)");
     expect(minimapStroke({})).toBe("var(--faint)");
     expect(minimapFill({ selected: true })).toBe(
-      "color-mix(in srgb, var(--faint) 80%, transparent)",
+      "color-mix(in srgb, var(--faint) var(--mm-fill-selected), transparent)",
     );
   });
 
@@ -145,7 +145,7 @@ describe("节点 → 上色输入", () => {
       cluster: true,
     });
     expect(minimapFill(member)).toBe(
-      "color-mix(in srgb, var(--node-color-1) 55%, transparent)",
+      "color-mix(in srgb, var(--node-color-1) var(--mm-fill), transparent)",
     );
     expect(minimapItemOf(flowNode("n2", "armadra"), noGlow, families)).toEqual({
       plain: false,

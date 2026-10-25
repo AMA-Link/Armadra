@@ -121,13 +121,18 @@ export function minimapStrokeWidth(stroke: string): number {
 }
 
 /**
- * 矩形填充：节点按 `familyOf` 的颜色取 55%（选中 80%），分组 35%；
- * 白板对象没有家族色，退回弱前景色 `--faint` 35%。
+ * 矩形填充：节点按 `familyOf` 的颜色混透明，浓度取主题令牌——常态 `--mm-fill`、
+ * 选中 `--mm-fill-selected`、分组与白板对象 `--mm-fill-plain`（深色 55% / 80% /
+ * 35%，浅色更淡，`styles/tokens.css`）。白板对象没有家族色，退回弱前景色 `--faint`。
  */
 export function minimapFill(item: MinimapItem): string {
   const color = item.color ?? "var(--faint)";
-  const alpha = item.plain ? 0.35 : item.selected ? 0.8 : 0.55;
-  return `color-mix(in srgb, ${color} ${Math.round(alpha * 100)}%, transparent)`;
+  const strength = item.plain
+    ? "var(--mm-fill-plain)"
+    : item.selected
+      ? "var(--mm-fill-selected)"
+      : "var(--mm-fill)";
+  return `color-mix(in srgb, ${color} ${strength}, transparent)`;
 }
 
 /** RF 的节点 → 上色要看的那几个位（分组和白板对象都算 `plain`）。 */
