@@ -193,6 +193,10 @@
   --mm-diff: #c8a2ff;
   --mm-automation: #b0b86a;
   --mm-group: transparent;
+  /* 块的填充浓度（与类型色混透明）：常态 / 选中 / 分组与白板对象。 */
+  --mm-fill: 55%;
+  --mm-fill-selected: 80%;
+  --mm-fill-plain: 35%;
 
   /* ── 连线（ui-wave2 §3.2）：上下文线专用色 ───────────────────────────
      品红，色相与派发簇的五色（--node-color-1/2/3/6/7）都隔开 60° 以上，
@@ -522,6 +526,10 @@
   --mm-diff: #a082cc;
   --mm-automation: #8d9355;
   --mm-group: transparent;
+  /* 浅底上同样的浓度显得一块块发黑：调淡，类型色之间仍分得开。 */
+  --mm-fill: 32%;
+  --mm-fill-selected: 50%;
+  --mm-fill-plain: 25%;
 
   /* 上下文线：浅底上压暗，对白色画布仍 ≥ 4.5:1。 */
   --link-context: #c2187a;
