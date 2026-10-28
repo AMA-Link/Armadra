@@ -427,14 +427,27 @@ export interface BrowserCloudDeps {
 /** 控制台客户端的失败（`status` + `code`）→ 中继登录流程认得的 {@link CloudError}。 */
 function asCloudError(error: unknown): unknown {
   if (error instanceof CloudError) return error;
-  const { status, code, message } = (error ?? {}) as {
+  const { status, code, message, details } = (error ?? {}) as {
     status?: unknown;
     code?: unknown;
     message?: unknown;
+    details?: unknown;
   };
-  return typeof status === "number" && typeof code === "string"
-    ? new CloudError(status, code, typeof message === "string" ? message : code)
-    : error;
+  if (typeof status !== "number" || typeof code !== "string") return error;
+  // `details` 原样带上：限流的 `retryAfterMs`、待确认的 `pendingId` 都在里面。
+  const record =
+    typeof details === "object" && details !== null
+      ? (details as Record<string, unknown>)
+      : {};
+  const retryAfterMs =
+    typeof record.retryAfterMs === "number" ? record.retryAfterMs : 0;
+  return new CloudError(
+    status,
+    code,
+    typeof message === "string" ? message : code,
+    retryAfterMs,
+    record,
+  );
 }
 
 /**

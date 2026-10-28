@@ -152,6 +152,7 @@ function setup(
     login?: () => { status?: number; body: unknown };
     principal?: string;
     timers?: (() => void)[];
+    later?: (run: () => void, ms: number) => unknown;
   } = {},
 ) {
   const storage = over.storage ?? memoryStorage();
@@ -226,7 +227,7 @@ function setup(
       },
       clearTimeout: () => undefined,
     },
-    setTimeout: (run) => setTimeout(run, 0),
+    setTimeout: over.later ?? ((run) => setTimeout(run, 0)),
     entry: {
       enter: fakeEnter,
       mount: (() => ({
@@ -394,6 +395,77 @@ describe("控制台 /h/ 进主机", () => {
     await ctx.host.signOut();
     expect(recordAtLogout).toBeNull();
     expect(ctx.host.view.kind).toBe("signedOut");
+  });
+
+  it("进入被限流：按对端给的 Retry-After 再试，没给就从 5 秒起翻倍", async () => {
+    const delays: number[] = [];
+    const pending: (() => void)[] = [];
+    let retryAfterMs: number | undefined = 7_000;
+    const ctx = setup({
+      assertion: async () => {
+        throw Object.assign(new Error("429"), {
+          status: 429,
+          code: "rate_limited",
+          ...(retryAfterMs === undefined ? {} : { details: { retryAfterMs } }),
+        });
+      },
+      later: (run, ms) => {
+        // 认领的等待照常跑；记下其余的延时。
+        if (ms > 1_000) {
+          delays.push(ms);
+          pending.push(run);
+        } else setTimeout(run, 0);
+        return 0;
+      },
+    });
+    await ctx.host.open();
+    expect(ctx.host.view).toEqual({ kind: "connecting", rateLimited: true });
+    expect(delays).toEqual([7_000]);
+    retryAfterMs = undefined;
+    pending.shift()!();
+    await vi.waitFor(() => expect(delays).toHaveLength(2));
+    pending.shift()!();
+    await vi.waitFor(() => expect(delays).toHaveLength(3));
+    expect(delays.slice(1)).toEqual([10_000, 20_000]);
+  });
+
+  it("重登被限流：按 Retry-After 再排一次重登", async () => {
+    const delays: number[] = [];
+    const pending: (() => void)[] = [];
+    let limited = false;
+    const ctx = setup({
+      login: () =>
+        limited
+          ? {
+              status: 429,
+              body: {
+                code: "rate_limited",
+                message: "",
+                details: { retryAfterMs: 9_000 },
+              },
+            }
+          : { body: { session: coreSession("login-1") } },
+      later: (run, ms) => {
+        if (ms > 1_000) {
+          delays.push(ms);
+          pending.push(run);
+        } else setTimeout(run, 0);
+        return 0;
+      },
+    });
+    await ctx.host.open();
+    limited = true;
+    ctx.streams[0]!.onEvent({ type: "grantChanged", sourceId: HOST });
+    ctx.timers.shift()!();
+    await vi.waitFor(() => expect(delays).toEqual([9_000]));
+    limited = false;
+    pending.shift()!();
+    // 再排的那一次仍经去抖：排上了一个新的重登计时。
+    await vi.waitFor(() => expect(ctx.timers.length).toBeGreaterThan(0));
+    ctx.advance(60_000);
+    ctx.timers.shift()!();
+    await vi.waitFor(() => expect(ctx.logins()).toBe(3));
+    expect(ctx.host.view.kind).toBe("entered");
   });
 
   it("换账号的广播：别的账号 → 登出；同一个账号不动", async () => {

@@ -11,6 +11,7 @@ import {
 } from "../api/identity";
 import type { CloudClient } from "../cloud/api/client";
 import { browserDevice } from "./cloud-client";
+import { retryAfterOf } from "./connection";
 import { createBrowserCloudCredentialProvider } from "./credentials";
 import { type E2eChannels, e2eChannels, setApprovalHint } from "./e2e/manager";
 import {
@@ -57,8 +58,17 @@ import { SOURCE_ERROR, SourceError } from "./types";
 export const LOGOUT_TIMEOUT_MS = 3_000;
 /** 复制出的标签页等多久没人认领就用这份记录。 */
 export const CLAIM_WAIT_MS = 300;
-/** 限流时多久后再试。 */
-export const RATE_LIMIT_RETRY_MS = 20_000;
+/** 限流而对端没说等多久：从这么久起翻倍退避，封顶 {@link RATE_LIMIT_MAX_MS}。 */
+export const RATE_LIMIT_BASE_MS = 5_000;
+export const RATE_LIMIT_MAX_MS = 60_000;
+
+/** 限流后等多久：对端给的 Retry-After（错误自身或经中继带上来的原因里）优先，没有按次数退避。 */
+export function rateLimitDelay(error: unknown, attempt: number): number {
+  const given =
+    retryAfterOf(error) || retryAfterOf((error as { cause?: unknown })?.cause);
+  if (given > 0) return given;
+  return Math.min(RATE_LIMIT_BASE_MS * 2 ** attempt, RATE_LIMIT_MAX_MS);
+}
 
 interface HostRecord {
   readonly refreshToken: string;
@@ -405,14 +415,28 @@ export function createConsoleHost(options: ConsoleHostOptions): ConsoleHost {
     ownerMismatch = info?.owner === true && !isLocalOwner(session);
   };
 
+  /** 重登连着被限流了几次（退避用）；成功归零。 */
+  let reloginLimited = 0;
   const scheduler = createReloginScheduler({
     ...options.scheduler,
     run: async () => {
       try {
         await provider.relogin(hostId);
         await identity.restore(true);
+        reloginLimited = 0;
       } catch (error) {
         const code = codeOf(error);
+        if (code === "rate_limited") {
+          // 授予还没同步上：按 Retry-After 再排一次（仍经去抖合并）。
+          later(
+            () => {
+              if (!closed && !disposed) scheduler.request(hostId);
+            },
+            rateLimitDelay(error, reloginLimited),
+          );
+          reloginLimited += 1;
+          return;
+        }
         if (
           code === HOST_FAILURE.teamSuspended ||
           code === SOURCE_ERROR.accessRevoked ||
@@ -492,6 +516,8 @@ export function createConsoleHost(options: ConsoleHostOptions): ConsoleHost {
     });
   };
   let retryTimer: unknown = null;
+  /** 进入连着被限流了几次（退避用）；进去了归零。 */
+  let rateLimited = 0;
 
   /* ------------------------------ 认领 ------------------------------- */
 
@@ -647,6 +673,7 @@ export function createConsoleHost(options: ConsoleHostOptions): ConsoleHost {
           return;
         }
         wasEntered = true;
+        rateLimited = 0;
         stopWaiting();
         setView({ kind: "entered" });
         return;
@@ -665,7 +692,11 @@ export function createConsoleHost(options: ConsoleHostOptions): ConsoleHost {
         }
         if (code === "rate_limited") {
           setView({ kind: "connecting", rateLimited: true });
-          retryTimer = later(() => void open(), RATE_LIMIT_RETRY_MS);
+          retryTimer = later(
+            () => void open(),
+            rateLimitDelay(error, rateLimited),
+          );
+          rateLimited += 1;
           return;
         }
         if (code === SOURCE_ERROR.unauthorized) {
