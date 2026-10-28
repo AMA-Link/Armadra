@@ -352,7 +352,7 @@ describe("契约 §86：Armadra 云挂载的团队与归属", () => {
     ).toBe("bad_request");
   });
 
-  it("重登被明确拒绝才删存着的令牌；待确认、限流留着", async () => {
+  it("重登被白名单里的拒绝才删存着的令牌；限流、5xx、bad_request 留着", async () => {
     world.cloud.owner = false;
     await saas.mount({ serviceId, sourceId: RELAYED_ID });
     const core = relayedCore();
@@ -362,6 +362,18 @@ describe("契约 §86：Armadra 云挂载的团队与归属", () => {
       "rate_limited",
     );
     expect(await stored()).toBeDefined();
+    for (const [code, status] of [
+      ["internal", 500],
+      ["bad_request", 400],
+    ] as const) {
+      core.refuseCloudLogin = code;
+      core.refuseCloudLoginStatus = status;
+      expect(await failure(saas.session(RELAYED_ID, "relayed"))).toBe(
+        "source_unreachable",
+      );
+      expect(await stored()).toBeDefined();
+    }
+    delete core.refuseCloudLoginStatus;
     core.refuseCloudLogin = "cloud_account_unlinked";
     expect(await failure(saas.session(RELAYED_ID, "relayed"))).toBe(
       "cloud_account_unlinked",

@@ -86,6 +86,8 @@ export interface FakeCore {
   readonly requireRelayToken: boolean;
   cloudLogins: number;
   refuseCloudLogin?: string;
+  /** `refuseCloudLogin` 用的状态码；缺省 401。 */
+  refuseCloudLoginStatus?: number;
   /** 刷新一律答 401（限寿会话临近到期时主机的做法，#559）；不撤销会话。 */
   refuseRefresh?: boolean;
   /** 最近一次 `cloud/login` 带的刷新令牌（续同一会话，§31.3）。 */
@@ -705,7 +707,10 @@ async function peer(
   if (path === "/api/identity/cloud/login") {
     core.cloudLogins += 1;
     if (core.refuseCloudLogin !== undefined) {
-      return json(401, { code: core.refuseCloudLogin, message: "refused" });
+      return json(core.refuseCloudLoginStatus ?? 401, {
+        code: core.refuseCloudLogin,
+        message: "refused",
+      });
     }
     if (typeof input.invitationToken === "string") {
       core.lastInvitation = input.invitationToken;

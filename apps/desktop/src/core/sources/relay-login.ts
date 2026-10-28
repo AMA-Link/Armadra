@@ -24,16 +24,23 @@ import type {
 } from "./source-client";
 import type { RemoteRow, SourcesStore } from "./store";
 
-/** 重登时这几种失败不删存着的刷新令牌：放行、恢复或稍后还要拿它续同一会话。 */
-const TRANSIENT = new Set([
-  "device_pending",
-  "rate_limited",
-  "source_offline",
-  "source_unreachable",
+/**
+ * 重登被这几种失败拒绝才删存着的刷新令牌（白名单）：对端或远程服务明确说这把会话不能再用。
+ * 其余（待确认、限流、不在线、连不上、5xx、`forbidden`、`bad_request`……）一律按暂时性，
+ * 留着它，放行或恢复后还要拿它续同一会话。
+ */
+export const RELOGIN_REFUSALS: ReadonlySet<string> = new Set([
+  "source_unauthorized",
+  "device_rejected",
+  "cloud_account_unlinked",
+  "cloud_not_registered",
+  "source_revoked",
+  "source_access_denied",
+  "source_access_revoked",
 ]);
 
 function refused(error: unknown): boolean {
-  return error instanceof CoreFailure && !TRANSIENT.has(error.code);
+  return error instanceof CoreFailure && RELOGIN_REFUSALS.has(error.code);
 }
 
 export interface RelayLoginDeps {
@@ -72,7 +79,7 @@ export async function loginAtRelay(
       stored?.refreshToken,
     );
   } catch (error) {
-    // 明确的拒绝：这把刷新令牌续不上了，留着只会让下一次再撞一次。
+    // 白名单里的明确拒绝：这把刷新令牌续不上了，留着只会让下一次再撞一次。
     if (stored !== undefined && refused(error)) {
       await deps.secrets.putSource(sourceId, key, undefined);
     }

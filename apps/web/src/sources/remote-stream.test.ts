@@ -451,18 +451,30 @@ describe("授予与成员事件 → 去抖重登（契约 §88.2）", () => {
     world.dispose();
   });
 
-  it("重登被明确拒绝：那台失权；限流不动", async () => {
-    let code = "rate_limited";
+  it("重登被白名单里的拒绝才失权；限流、500、forbidden、bad_request、网络错误不动", async () => {
+    let code: string | undefined = "rate_limited";
     const relogin = vi.fn(async () => {
-      throw Object.assign(new Error(code), { code });
+      throw Object.assign(new Error(code ?? "network"), code ? { code } : {});
     });
     const world = setup(relogin);
     await world.b.connect();
-    world.push({ type: "grantChanged", sourceId: SOURCE, atMs: 1 });
-    await flush();
-    expect(world.b.status.state).toBe("ready");
+    const socket = world.b.socket("/api/ws", { environment: null });
+    let at = 0;
+    for (const transient of [
+      "rate_limited",
+      "internal",
+      "forbidden",
+      "bad_request",
+      undefined,
+    ]) {
+      code = transient;
+      world.push({ type: "grantChanged", sourceId: SOURCE, atMs: (at += 1) });
+      await flush();
+      expect(world.b.status.state, String(transient)).toBe("ready");
+      expect(socket.state).not.toBe("closed");
+    }
     code = "source_access_denied";
-    world.push({ type: "grantChanged", sourceId: SOURCE, atMs: 2 });
+    world.push({ type: "grantChanged", sourceId: SOURCE, atMs: (at += 1) });
     await flush();
     expect(world.b.status).toMatchObject({
       state: "unauthorized",

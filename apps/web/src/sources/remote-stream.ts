@@ -19,12 +19,18 @@ import {
   failureOf,
 } from "./types";
 
-/** 重登这几种失败不收回访问：放行、恢复或稍后再试即可（契约 §88.2）。 */
-const RELOGIN_TRANSIENT = new Set([
-  "device_pending",
-  "rate_limited",
-  "source_offline",
-  "source_unreachable",
+/**
+ * 重登被这几种失败拒绝才收回这个源的访问（白名单，契约 §88.2）；其余一律按暂时性，
+ * 开着的终端与流不动，等下一次事件或到期续期再试。与 core 删刷新令牌的白名单一致。
+ */
+const RELOGIN_REFUSALS = new Set([
+  "source_unauthorized",
+  "device_rejected",
+  "cloud_account_unlinked",
+  "cloud_not_registered",
+  "source_revoked",
+  "source_access_denied",
+  "source_access_revoked",
 ]);
 
 /**
@@ -270,7 +276,7 @@ export function attachRemoteStreams(
     } catch (error) {
       // 认不出码的（网络错误）当作暂时的：不为一次没发出去的重登收回访问。
       const failure = failureOf(error, SOURCE_ERROR.unreachable);
-      if (!RELOGIN_TRANSIENT.has(failure.code))
+      if (RELOGIN_REFUSALS.has(failure.code))
         registry.get(sourceId)?.revoke(failure);
       return;
     }
