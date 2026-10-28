@@ -343,7 +343,7 @@ export async function startStack(options = {}) {
 
 /* ------------------------------ 浏览器级 CDP ------------------------------ */
 
-async function connectBrowser(url) {
+export async function connectBrowser(url) {
   const socket = new WebSocket(url);
   await once(socket, "open");
   let sequence = 0;
