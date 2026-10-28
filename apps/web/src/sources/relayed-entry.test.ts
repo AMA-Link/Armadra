@@ -171,6 +171,34 @@ describe("经中继进主机（与会话来源无关）", () => {
     expect(seen).toEqual(["idle"]);
   });
 
+  it("再次 enter：先卸下上一次的路由与流", async () => {
+    const disposed = vi.fn();
+    const closed = vi.fn();
+    const { entry } = setup({
+      enter: (async (options: EnterRouteOptions) => {
+        const route = { via: "relayed" as const, access };
+        options.useRoute(route);
+        return {
+          route,
+          renew: async () => true,
+          recover: async () => true,
+          dispose: disposed,
+        };
+      }) as never,
+      createStream: () => ({
+        issuer: ISSUER,
+        state: "open",
+        close: closed,
+      }),
+    });
+    await entry.enter({ sourceId: SOURCE, name: "laptop" });
+    expect(disposed).not.toHaveBeenCalled();
+    await entry.enter({ sourceId: SOURCE, name: "laptop" });
+    expect(disposed).toHaveBeenCalledTimes(1);
+    expect(closed).toHaveBeenCalled();
+    expect(entry.status.state).toBe("ready");
+  });
+
   it("close：只卸下，记下的会话留着（刷新、重进还能续）", async () => {
     const { entry, sessions, provider } = setup();
     await entry.enter({ sourceId: SOURCE, name: "laptop" });

@@ -308,6 +308,9 @@ export function createRelayedEntry(options: RelayedEntryOptions): RelayedEntry {
       };
     },
     async enter(source) {
+      // 再次进入：先卸下上一次的路由、流与其余主机（定时器、通道监听不能留着两份）。
+      if (entered !== null || stream !== null || siblings !== null)
+        close(false);
       const descriptor = relayedDescriptor(issuer, source);
       setStatus("connecting", null);
       const store: HostedSessionStore = {

@@ -119,6 +119,9 @@ function channelBus() {
   };
 }
 
+/** 卸下过的路由（`dispose` 调过几次，按进入的先后）。 */
+const routes: { disposed: number }[] = [];
+
 /** 不碰真本机源：取访问、装上这一路，就当装好了。 */
 const fakeEnter = async (options: EnterRouteOptions) => {
   const access = await options.provider.getAccess(
@@ -127,11 +130,15 @@ const fakeEnter = async (options: EnterRouteOptions) => {
   );
   const route = { via: "relayed" as const, access };
   options.useRoute(route);
+  const record = { disposed: 0 };
+  routes.push(record);
   return {
     route,
     renew: async () => true,
     recover: async () => true,
-    dispose: () => undefined,
+    dispose: () => {
+      record.disposed += 1;
+    },
   };
 };
 
@@ -523,6 +530,39 @@ describe("控制台 /h/ 进主机", () => {
     ctx.streams[0]!.onEvent({ type: "grantChanged", sourceId: HOST });
     ctx.timers[0]!();
     await vi.waitFor(() => expect(ctx.host.view).toEqual({ kind: "expired" }));
+  });
+
+  it("同一个实例再次 open、中途换了账号：先经旧路由吊销上一位的会话，再卸下旧路由", async () => {
+    routes.length = 0;
+    let account = ACCOUNT;
+    const ctx = setup({
+      me: async () => ({ accountId: account, teams: [] }),
+    });
+    await ctx.host.open();
+    expect(ctx.host.view.kind).toBe("entered");
+    expect(routes).toHaveLength(1);
+    const oldKey = hostSessionKey(ACCOUNT, HOST);
+    expect(ctx.storage.getItem(oldKey)).not.toBeNull();
+    account = "acct-b";
+    await ctx.host.open();
+    expect(ctx.identity.logout).toHaveBeenCalledTimes(1);
+    expect(routes[0]!.disposed).toBeGreaterThan(0);
+    expect(routes).toHaveLength(2);
+    expect(routes[1]!.disposed).toBe(0);
+    expect(ctx.storage.getItem(oldKey)).toBeNull();
+    // 新账号重新 cloud/login，不拿上一位的刷新令牌续。
+    expect(ctx.logins()).toBe(2);
+    expect(ctx.refreshes()).toBe(0);
+  });
+
+  it("同一个账号再次 open：卸下旧路由，不登出", async () => {
+    routes.length = 0;
+    const ctx = setup();
+    await ctx.host.open();
+    await ctx.host.open();
+    expect(ctx.identity.logout).not.toHaveBeenCalled();
+    expect(routes[0]!.disposed).toBeGreaterThan(0);
+    expect(ctx.host.view.kind).toBe("entered");
   });
 
   it("主人映射：控制台说是主人、主机侧会话没有 settings:write → ownerMismatch", async () => {

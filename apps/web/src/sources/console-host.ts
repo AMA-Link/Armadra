@@ -53,6 +53,8 @@ import { SOURCE_ERROR, SourceError } from "./types";
  *   分出「版本太旧」与「没有权限」（§2.5）。
  */
 
+/** 登出经通道吊销主机侧会话最多等多久。 */
+export const LOGOUT_TIMEOUT_MS = 3_000;
 /** 复制出的标签页等多久没人认领就用这份记录。 */
 export const CLAIM_WAIT_MS = 300;
 /** 限流时多久后再试。 */
@@ -274,6 +276,8 @@ export function createConsoleHost(options: ConsoleHostOptions): ConsoleHost {
   /** 续上的会话主体与记下的不符（记录已丢）：本次进入改用 `cloud/login` 再试一次。 */
   let principalChanged = false;
   let disposed = false;
+  /** 进过主机（路由装着）：再次 `open()` 前要先卸下。 */
+  let wasEntered = false;
   /** 登出了（本页或别处）：凭据提供方不再要断言。 */
   let closed = false;
   const listeners = new Set<() => void>();
@@ -498,6 +502,13 @@ export function createConsoleHost(options: ConsoleHostOptions): ConsoleHost {
     if (claimedByOther) writeRecord(storage, at, null);
   };
 
+  /** 经当前路由 `session/logout`，最多等 `ms`（标签页冻结、通道挂住时不卡住）。 */
+  const logoutWithin = (ms: number): Promise<void> =>
+    Promise.race([
+      identity.logout().catch(() => undefined),
+      new Promise<void>((resolve) => later(resolve, ms)),
+    ]);
+
   /** 被登出（本页或别处）：尽力吊销主机侧会话，清本条，盖上「已登出」。 */
   let signingOut: Promise<void> | null = null;
   const signedOut = (): Promise<void> => {
@@ -567,10 +578,16 @@ export function createConsoleHost(options: ConsoleHostOptions): ConsoleHost {
       else fail(codeOf(error));
       return;
     }
-    // 同一个标签页里换了账号：上一位的记录不再续。
+    // 同一个标签页里换了账号：上一位的主机侧会话先经还装着的路由吊销（限时），再丢它的记录。
     if (accountId !== null && accountId !== me.accountId) {
-      live = undefined;
+      if (wasEntered) await logoutWithin(LOGOUT_TIMEOUT_MS);
+      sessions.clear();
       provider.clear();
+    }
+    // 再次进入：先卸下上一次的路由。
+    if (wasEntered) {
+      entry.close();
+      wasEntered = false;
     }
     accountId = me.accountId;
     clearHostSessions(storage, (stored) =>
@@ -608,6 +625,7 @@ export function createConsoleHost(options: ConsoleHostOptions): ConsoleHost {
     for (let attempt = 0; attempt < 2; attempt += 1) {
       try {
         await entry.enter({ sourceId: hostId, name: detail.name });
+        wasEntered = true;
         stopWaiting();
         setView({ kind: "entered" });
         return;
