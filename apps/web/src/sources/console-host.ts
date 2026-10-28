@@ -276,6 +276,8 @@ export function createConsoleHost(options: ConsoleHostOptions): ConsoleHost {
   /** 续上的会话主体与记下的不符（记录已丢）：本次进入改用 `cloud/login` 再试一次。 */
   let principalChanged = false;
   let disposed = false;
+  /** 每次 `open()` 与登出各进一代：进行中的 `open()` 每次醒来先看自己是不是还是这一代。 */
+  let generation = 0;
   /** 进过主机（路由装着）：再次 `open()` 前要先卸下。 */
   let wasEntered = false;
   /** 登出了（本页或别处）：凭据提供方不再要断言。 */
@@ -320,7 +322,8 @@ export function createConsoleHost(options: ConsoleHostOptions): ConsoleHost {
           };
     },
     save(sourceId: string, session: RelaySession): void {
-      if (sourceId !== hostId) return;
+      // 登出之后（或登出中）进行中的换票答回来：不再写回记录。
+      if (sourceId !== hostId || closed) return;
       live = session;
       const at = key();
       if (at === null) return;
@@ -515,6 +518,7 @@ export function createConsoleHost(options: ConsoleHostOptions): ConsoleHost {
     if (view.kind === "signedOut") return Promise.resolve();
     signingOut ??= (async () => {
       closed = true;
+      generation += 1;
       stopWaiting();
       if (view.kind === "entered" || view.kind === "expired")
         await identity.logout().catch(() => undefined);
@@ -569,18 +573,24 @@ export function createConsoleHost(options: ConsoleHostOptions): ConsoleHost {
     if (retryTimer !== null) cancel(retryTimer);
     retryTimer = null;
     closed = false;
+    const mine = (generation += 1);
+    /** 这一次已经过时（又开了一次、登出了、销毁了）：不再改视图、不再写记录。 */
+    const stale = () => generation !== mine || closed || disposed;
     setView({ kind: "connecting" });
     let me: Awaited<ReturnType<CloudClient["me"]["get"]>>;
     try {
       me = await client.me.get({});
     } catch (error) {
+      if (stale()) return;
       if (statusOf(error) === 401) setView({ kind: "login" });
       else fail(codeOf(error));
       return;
     }
+    if (stale()) return;
     // 同一个标签页里换了账号：上一位的主机侧会话先经还装着的路由吊销（限时），再丢它的记录。
     if (accountId !== null && accountId !== me.accountId) {
       if (wasEntered) await logoutWithin(LOGOUT_TIMEOUT_MS);
+      if (stale()) return;
       sessions.clear();
       provider.clear();
     }
@@ -596,10 +606,12 @@ export function createConsoleHost(options: ConsoleHostOptions): ConsoleHost {
     try {
       detail = await client.sources.get({ sourceId: hostId });
     } catch (error) {
+      if (stale()) return;
       if (statusOf(error) === 401) setView({ kind: "login" });
       else fail(codeOf(error) || HOST_FAILURE.failed);
       return;
     }
+    if (stale()) return;
     const space = detail.space;
     const team =
       space?.kind === "team"
@@ -621,15 +633,22 @@ export function createConsoleHost(options: ConsoleHostOptions): ConsoleHost {
       return;
     }
     await claim(key()!);
+    if (stale()) return;
     principalChanged = false;
     for (let attempt = 0; attempt < 2; attempt += 1) {
       try {
         await entry.enter({ sourceId: hostId, name: detail.name });
+        if (stale()) {
+          // 进去的这一刻已经登出了：刚装上的路由也卸下。
+          entry.close();
+          return;
+        }
         wasEntered = true;
         stopWaiting();
         setView({ kind: "entered" });
         return;
       } catch (error) {
+        if (stale()) return;
         const code = codeOf(error);
         // 主体不符：记录已丢，重新 cloud/login 一次。
         if (principalChanged && attempt === 0) {

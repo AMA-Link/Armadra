@@ -555,6 +555,33 @@ describe("控制台 /h/ 进主机", () => {
     expect(ctx.refreshes()).toBe(0);
   });
 
+  it("进行中的 open 遇到登出：醒来不覆盖「已登出」、不写回记录、刚装上的路由卸下", async () => {
+    routes.length = 0;
+    let release: () => void = () => undefined;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const bus = channelBus();
+    const ctx = setup({
+      bus,
+      assertion: async () => {
+        await gate;
+        return assertion();
+      },
+    });
+    const opening = ctx.host.open();
+    await vi.waitFor(() =>
+      expect(ctx.client.sources.assertion).toHaveBeenCalled(),
+    );
+    bus.open().postMessage({ type: "signedOut" });
+    await vi.waitFor(() => expect(ctx.host.view.kind).toBe("signedOut"));
+    release();
+    await opening;
+    expect(ctx.host.view.kind).toBe("signedOut");
+    expect(record(ctx.storage)).toBeNull();
+    for (const route of routes) expect(route.disposed).toBeGreaterThan(0);
+  });
+
   it("同一个账号再次 open：卸下旧路由，不登出", async () => {
     routes.length = 0;
     const ctx = setup();
