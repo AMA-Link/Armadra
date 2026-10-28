@@ -2,6 +2,7 @@ import * as React from "react";
 import { shellDialect, type ShellDialect } from "@armadra/shared";
 
 import { systemApi } from "@/api/system";
+import { createProbe } from "@/lib/probe";
 import type { PathRules } from "@/lib/host-path";
 
 /**
@@ -19,28 +20,25 @@ export interface CoreHost {
 }
 
 let host: CoreHost = {};
-let probe: Promise<void> | undefined;
 const listeners = new Set<() => void>();
 
 function publish(): void {
   for (const listener of listeners) listener();
 }
 
-/** 发起那一次询问；已经问过或正在问时什么都不做。 */
+// 问不到时按退避再问（`lib/probe.ts`），同一时刻只有一次在途。
+const probe = createProbe(async () => {
+  const health = await systemApi.health();
+  host = {
+    ...(health.platform ? { platform: health.platform } : {}),
+    ...(health.defaultShell ? { defaultShell: health.defaultShell } : {}),
+  };
+  publish();
+});
+
+/** 发起那一次询问；已经问到、正在问或还在失败后的退避里时什么都不做。 */
 export function ensureCoreHost(): void {
-  if (probe !== undefined) return;
-  probe = systemApi
-    .health()
-    .then((health) => {
-      host = {
-        ...(health.platform ? { platform: health.platform } : {}),
-        ...(health.defaultShell ? { defaultShell: health.defaultShell } : {}),
-      };
-      publish();
-    })
-    .catch(() => {
-      probe = undefined;
-    });
+  probe.ensure();
 }
 
 export function coreHost(): CoreHost {
@@ -79,6 +77,6 @@ export function useCoreHost(): CoreHost {
 /** 测试用：直接给出答案，或者回到还没问过的状态。 */
 export function setCoreHost(next: CoreHost | undefined): void {
   host = next ?? {};
-  probe = next === undefined ? undefined : Promise.resolve();
+  probe.reset(next !== undefined);
   publish();
 }

@@ -1,5 +1,6 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -35,6 +36,8 @@ vi.mock("../api/security", async (original) => {
 import { usePreferencesStore } from "./preferences-store";
 import { installDomPolyfills } from "./test-harness";
 import { IdentityGate, forgetPendingReset } from "./IdentityGate";
+import { useAccess } from "./use-access";
+import * as React from "react";
 
 installDomPolyfills();
 
@@ -100,6 +103,61 @@ describe("IdentityGate", () => {
     mocks.resume.mockRejectedValue(new Error("offline"));
     mount();
     expect(await screen.findByText("画布")).toBeTruthy();
+  });
+
+  /**
+   * 背后不是 core（控制面、配错的反向代理）：会话问不到，进壳之后壳里读会话的
+   * 组件不能让查询回到 pending、把壳卸掉再挂上——那样每挂一次就重问一次，
+   * 成了每秒几百次的请求风暴（#581）。
+   */
+  it("问不到会话进壳后不卸载重挂，重问有上界", async () => {
+    vi.useFakeTimers();
+    try {
+      // 像真的网络一样过一会儿才失败：重问期间查询停在 pending，入口门看得见。
+      mocks.resume.mockImplementation(
+        () =>
+          new Promise((_, reject) =>
+            setTimeout(() => reject(new Error("404")), 30),
+          ),
+      );
+      let mounts = 0;
+      function Reader() {
+        useAccess(true);
+        React.useEffect(() => {
+          mounts += 1;
+        }, []);
+        return <div>画布</div>;
+      }
+      const client = new QueryClient({
+        defaultOptions: { queries: { retry: false } },
+      });
+      render(
+        <QueryClientProvider client={client}>
+          <IdentityGate server>
+            <Reader />
+            <Reader />
+            <Reader />
+          </IdentityGate>
+        </QueryClientProvider>,
+      );
+      const advance = (ms: number) =>
+        act(() => vi.advanceTimersByTimeAsync(ms));
+      await advance(100);
+      expect(screen.getAllByText("画布")).toHaveLength(3);
+      expect(mounts).toBe(3);
+      // 推过 1 秒、2 秒、4 秒三次退避重问：每次重问查询都回到 pending，入口门
+      // 不能因此再画骨架屏把画布卸掉（`errorUpdateCount === 0` 那条判据）。
+      for (let step = 0; step < 80; step += 1) await advance(100);
+      expect(mocks.resume.mock.calls.length).toBeGreaterThanOrEqual(3);
+      // 8 秒里：第一次加 1+2+4 秒的退避，最多 4～5 次；旧行为是成百上千次。
+      expect(mocks.resume.mock.calls.length).toBeLessThanOrEqual(5);
+      expect(mounts).toBe(3);
+      expect(screen.getAllByText("画布")).toHaveLength(3);
+    } finally {
+      // 先在假定时器下卸掉，查询的定时器不带进下一条用例。
+      cleanup();
+      vi.useRealTimers();
+    }
   });
 
   it("带着邀请、配对或 OAuth 片段时进壳，由设置页接手", async () => {

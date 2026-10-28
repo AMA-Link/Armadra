@@ -46,4 +46,24 @@ describe("browser availability", () => {
     expect(result.current).toBe(true);
     expect(health).not.toHaveBeenCalled();
   });
+
+  /** 背后没有 core（#581）：重挂载、多个节点头一起要，失败后的请求也有上界。 */
+  it("backs off after a failure instead of asking on every mount", async () => {
+    vi.useFakeTimers();
+    try {
+      health.mockRejectedValue(new Error("404"));
+      for (let tick = 0; tick < 300; tick += 1) {
+        const hooks = [0, 1, 2].map(() =>
+          renderHook(() => useHeadlessBrowser()),
+        );
+        await act(() => vi.advanceTimersByTimeAsync(100));
+        for (const hook of hooks) hook.unmount();
+      }
+      // 30 秒里不断重挂：1+2+4+8+16 秒的退避，最多 5～6 次；不退避是上千次。
+      expect(health.mock.calls.length).toBeGreaterThanOrEqual(4);
+      expect(health.mock.calls.length).toBeLessThanOrEqual(6);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });

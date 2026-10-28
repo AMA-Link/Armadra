@@ -49,8 +49,8 @@ function boot() {
 
   /**
    * 入口分支（架构 §10）：原生 App 还没连上 Gateway、或手机浏览器扫码带着配对
-   * 票打开时先是连接页；其余（桌面窗口、普通网页）直接是画布，`prepareEntry`
-   * 在那条路上不发请求。
+   * 票打开时先是连接页；SaaS 控制面上是控制台（同源平台信息说了算）；其余
+   * （桌面窗口、服务器壳托管的网页）直接是画布。
    */
   const entry: Promise<Entry> = prepareEntry().catch(
     (): Entry => ({ kind: "app" }),
