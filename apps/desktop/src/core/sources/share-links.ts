@@ -17,7 +17,12 @@
  * 它时，列表顺手把存着的那份删掉。
  */
 
-import type { ShareLink, ShareLinkState, ShareTarget } from "@armadra/shared";
+import type {
+  ErrorCode,
+  ShareLink,
+  ShareLinkState,
+  ShareTarget,
+} from "@armadra/shared";
 
 import { CoreFailure, fail } from "../http/errors";
 import { IdentityError } from "../identity/errors";
@@ -430,7 +435,7 @@ export class ShareLinks {
     } catch (error) {
       // 链接没建成，邀请也不留：没有链接指向的邀请只是一枚多余的令牌。
       this.revokeInvitation(invitation.invitationId);
-      throw error;
+      throw linkRefusal(error);
     }
     const e2e = this.options.e2e?.();
     // 第三段是 core 身份公钥指纹前 16 位：访客据此钉扎，中继换不了 core 的身份。
@@ -606,6 +611,24 @@ function shareLinkOf(
     devices: e2e?.devices(row.linkId) ?? 0,
     maxDevices: e2e?.maxDevices(row.linkId) ?? null,
   };
+}
+
+/**
+ * Armadra 云按团队设置拒绝建链接（cloud-api §5 `links.create`，契约 §88.4）：码原样
+ * 透传，说明换成建链接的——远程服务客户端给这几个码的是登记主机的说法。
+ */
+const LINK_REFUSALS: Readonly<Partial<Record<ErrorCode, string>>> = {
+  team_policy_denied: "团队设置不允许你建分享链接",
+  team_role_insufficient: "你在团队里的角色不能建分享链接",
+  guests_disabled: "团队不允许访客",
+  source_access_denied: "你没有这台主机的分享权限",
+  team_suspended: "团队已停用",
+};
+
+function linkRefusal(error: unknown): unknown {
+  if (!(error instanceof CoreFailure)) return error;
+  const message = LINK_REFUSALS[error.code as ErrorCode];
+  return message === undefined ? error : fail(error.code as ErrorCode, message);
 }
 
 function sameOrigin(url: string, issuer: string): boolean {

@@ -462,3 +462,127 @@ describe("契约 §60：分享范围", () => {
     expect(guestsDisabled).toEqual([`${ISSUER} ${created.link.linkId}`]);
   });
 });
+
+describe("契约 §88.4：Armadra 云远程的分享链接", () => {
+  it("设备码登录的 SaaS 远程：建、列、再取、撤销走同一条；链接在控制台来源上，片段三段", async () => {
+    world.cloud.mode = "saas";
+    world.fingerprints.delete(ISSUER);
+    let clock = Date.now();
+    const secrets = new SourceSecrets(() => backend);
+    let refusal: string | undefined;
+    const remote = new RemoteClient(
+      async (request) =>
+        refusal !== undefined &&
+        request.method === "POST" &&
+        request.url === `${ISSUER}/v1/links`
+          ? {
+              status: 403,
+              headers: {},
+              body: { code: refusal, message: "原话不透传" },
+            }
+          : world.transport(request),
+      { platform: "server", name: "test" },
+    );
+    const saas = new SourcesService({
+      store: new SourcesStore(opened.database),
+      secrets,
+      remote,
+      peer: new SourceClient(world.transport, plainSealed(world.transport)),
+      hostId: () => HOST_ID,
+      hostLabel: () => "this-mac",
+      log: { info: () => undefined, warn: () => undefined },
+      now: () => clock,
+    });
+    await saas.remoteRemove(serviceId);
+    const added = await saas.remoteAdd({ kind: "saas", issuer: ISSUER });
+    world.cloud.device.status = "approved";
+    clock += 6_000;
+    expect(await saas.remoteDevicePoll(added.remote.serviceId)).toEqual({
+      status: "ready",
+    });
+    const saved: unknown[] = [];
+    const cloudLinks = new ShareLinks({
+      secrets,
+      remote,
+      access: (id) => saas.remoteEndpoint(id),
+      issuerOf: (id) => saas.remoteIssuer(id),
+      capabilities: (id, options) => saas.remoteCapabilities(id, options),
+      registrations: () => ({
+        registered: (issuer) => issuer === ISSUER,
+        sourceId: async () => THIS_SOURCE,
+      }),
+      invitations: () => ({
+        issue: (input) => {
+          const invitationId = "c".repeat(32);
+          issued.push({ ...input, invitationId });
+          return {
+            invitationId,
+            token: `${invitationId}.TOKEN`,
+            expiresAtMs: Date.now() + input.ttlMs,
+          };
+        },
+        revoke: (invitationId) => void revoked.push(invitationId),
+      }),
+      log: { info: () => undefined, warn: () => undefined },
+      e2e: () => ({
+        fingerprint: async () =>
+          "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567ABCDEFGHIJKLMNOPQRST",
+        save: (row) => void saved.push(row),
+        maxDevices: () => 5,
+        devices: () => 0,
+        revoke: () => undefined,
+      }),
+    });
+    const created = await cloudLinks.create({
+      serviceId: added.remote.serviceId,
+      workspaceId: "",
+      target: "host",
+      role: "viewer",
+      ttlMs: DAY,
+      maxUses: 5,
+    });
+    const link = world.cloud.links.get(created.link.linkId);
+    expect(link).toMatchObject({ sourceId: THIS_SOURCE, role: "viewer" });
+    expect(new URL(created.url).origin).toBe(new URL(ISSUER).origin);
+    expect(created.url).toBe(
+      `${ISSUER}/j/${created.link.linkId}#${link?.secret}.${"c".repeat(32)}.TOKEN.ABCDEFGHIJKLMNOP`,
+    );
+    expect(issued.at(-1)).toMatchObject({ targetHost: true, maxUses: 5 });
+    expect(saved).toHaveLength(1);
+    const listed = await cloudLinks.list(added.remote.serviceId);
+    expect(listed.links.map((one) => one.linkId)).toEqual([
+      created.link.linkId,
+    ]);
+    expect(
+      (await cloudLinks.url(added.remote.serviceId, created.link.linkId)).url,
+    ).toBe(created.url);
+    await cloudLinks.revoke(added.remote.serviceId, created.link.linkId);
+    expect(revoked).toContain("c".repeat(32));
+
+    // 团队设置拒绝：码原样透传、换成建链接的说法，刚签的邀请作废。
+    for (const [refused, message] of [
+      ["team_policy_denied", "团队设置不允许你建分享链接"],
+      ["guests_disabled", "团队不允许访客"],
+      ["team_suspended", "团队已停用"],
+    ] as const) {
+      refusal = refused;
+      revoked.length = 0;
+      const failed = await cloudLinks
+        .create({
+          serviceId: added.remote.serviceId,
+          workspaceId: "",
+          target: "host",
+          role: "viewer",
+          ttlMs: DAY,
+          maxUses: 5,
+        })
+        .then(
+          () => undefined,
+          (error: unknown) => error as CoreFailure,
+        );
+      expect(failed?.code).toBe(refused);
+      expect(failed?.message).toBe(message);
+      expect(revoked).toEqual(["c".repeat(32)]);
+    }
+  });
+});
