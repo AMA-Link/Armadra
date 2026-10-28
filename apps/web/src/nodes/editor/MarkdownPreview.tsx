@@ -18,6 +18,11 @@ import { ScrollArea } from "@/ui/scroll-area";
  *    也不让一份 Markdown 把绝对路径变成外部请求；
  *  * 链接一律 `noreferrer`，且只放行 http/https 与文档内锚点——`javascript:`
  *    在这里就是一段没用的文本。
+ *
+ * 与设计 saas-host-open §5.4（Q13）的偏离：设计要求主机内容的预览放进 sandbox `iframe`。这里没有——
+ * Markdown 由 `react-markdown` 生成 React 元素，没有任何写 HTML 的接收点（不装 `rehype-raw`），注入的
+ * 标记只会是文本，`MarkdownPreview.test.tsx` 守着；放进框架反而要经 `srcdoc`（又一个 HTML 接收点）
+ * 并在框架里重做主题与相对图片。真要渲染主机给的 HTML / 文档的地方（PDF）在控制台来源上只给下载。
  */
 export function MarkdownPreview({
   source,

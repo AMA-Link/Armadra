@@ -481,15 +481,24 @@ export function createBrowserCloudCredentialProvider(
   const forced = new Set<string>();
   const relogins = new Set<string>();
   const used = new Set<string>();
+  /** 每个源正在进行的那次换票（不论是否重登）。 */
+  const running = new Map<string, Promise<unknown>>();
   const cached = createCachedCredentialProvider(async (sourceId, via) => {
     used.add(sourceId);
     if (via !== "relayed") throw new SourceError(SOURCE_ERROR.unreachable);
-    return relay.access(
-      deps.issuer,
-      sourceId,
-      forced.delete(sourceId),
-      relogins.delete(sourceId),
-    );
+    const exchange: Promise<SourceAccess> = relay
+      .access(
+        deps.issuer,
+        sourceId,
+        forced.delete(sourceId),
+        relogins.delete(sourceId),
+      )
+      .finally(() => {
+        // 先于缓存的收尾：等它的人醒来时这一项已经不在了。
+        if (running.get(sourceId) === exchange) running.delete(sourceId);
+      });
+    running.set(sourceId, exchange);
+    return exchange;
   }, deps.now);
   return {
     getAccess: (sourceId, via) => cached.getAccess(sourceId, via),
@@ -498,7 +507,12 @@ export function createBrowserCloudCredentialProvider(
       return cached.refresh(sourceId, via);
     },
     invalidate: (sourceId) => cached.invalidate(sourceId),
-    relogin(sourceId) {
+    async relogin(sourceId) {
+      // 进行中的那次是在授予变化之前开始的：不能拿它的结果顶替重登。等它完，再单独开一次
+      // 带重登标记的（标记与开始换票在同一拍里，别的请求插不进来消费它）。
+      // 进行中时 `getAccess` 答的就是那一次（连同缓存的收尾），不会另开。
+      while (running.has(sourceId))
+        await cached.getAccess(sourceId, "relayed").catch(() => undefined);
       relogins.add(sourceId);
       return cached.refresh(sourceId, "relayed");
     },
