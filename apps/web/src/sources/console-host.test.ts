@@ -468,6 +468,27 @@ describe("控制台 /h/ 进主机", () => {
     expect(ctx.host.view.kind).toBe("entered");
   });
 
+  it("memberChanged 只认自己、同团队的：别人的、别的团队的、没带账号的都不重登", async () => {
+    const ctx = setup();
+    await ctx.host.open();
+    const stream = ctx.streams[0]!;
+    stream.onEvent({ type: "memberChanged", teamId: "team-1", accountId: "x" });
+    stream.onEvent({
+      type: "memberChanged",
+      teamId: "team-2",
+      accountId: ACCOUNT,
+    });
+    stream.onEvent({ type: "memberChanged", teamId: "team-1" });
+    stream.onEvent({ type: "grantChanged", sourceId: "d".repeat(32) });
+    expect(ctx.timers).toHaveLength(0);
+    stream.onEvent({
+      type: "memberChanged",
+      teamId: "team-1",
+      accountId: ACCOUNT,
+    });
+    expect(ctx.timers).toHaveLength(1);
+  });
+
   it("换账号的广播：别的账号 → 登出；同一个账号不动", async () => {
     const bus = channelBus();
     const ctx = setup({ bus });
