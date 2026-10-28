@@ -126,6 +126,15 @@ const SCALE_ADDITIONS: Record<string, string> = {
   "--r-pill": "999px",
 };
 
+/** 设计系统 §2.6：字重三档与两档标题字距。 */
+const TYPE_TOKENS: Record<string, string> = {
+  "--fw-regular": "400",
+  "--fw-medium": "510",
+  "--fw-semibold": "590",
+  "--ls-display": "-0.015em",
+  "--ls-title": "-0.01em",
+};
+
 /** 设计系统 §2.10 / §8.2：动效令牌的定值。 */
 const MOTION_TOKENS: Record<string, string> = {
   "--dur-instant": "100ms",
@@ -613,6 +622,72 @@ describe("tokens.css", () => {
 
   it("不加载在线字体", () => {
     expect(tokensCss).not.toMatch(/@font-face|fonts\.googleapis|https?:/);
+  });
+
+  describe("字体（§2.6）", () => {
+    const families = (name: string) =>
+      (dark.get(name) ?? "").split(",").map((family) => family.trim());
+
+    it("界面字体首位是本地打包的 Inter，后面保留中文与系统回退", () => {
+      const ui = families("--font-ui");
+      expect(ui[0]).toBe('"Inter Variable"');
+      expect(ui).toContain('"PingFang SC"');
+      expect(ui).toContain('"Microsoft YaHei"');
+      expect(ui.at(-1)).toBe("sans-serif");
+    });
+
+    it("代码字体首位是 Geist Mono，其后正好是终端那条系统等宽链", () => {
+      const code = families("--font-code");
+      expect(code[0]).toBe('"Geist Mono Variable"');
+      expect(code.slice(1)).toEqual(families("--font-term"));
+      expect(dark.get("--font-mono")).toBe("var(--font-code)");
+    });
+
+    it("终端字体只有系统等宽，不含任何网页字体", () => {
+      const term = families("--font-term");
+      expect(term[0]).toBe("ui-monospace");
+      expect(term).toContain('"PingFang SC"');
+      expect(term.at(-1)).toBe("monospace");
+      expect(dark.get("--font-term")).not.toMatch(/Variable|Inter|Geist/);
+    });
+
+    it("字重与字距令牌按设计系统取值，与主题无关", () => {
+      for (const [name, value] of Object.entries(TYPE_TOKENS)) {
+        expect(dark.get(name), name).toBe(value);
+        expect(light.has(name), name).toBe(false);
+      }
+    });
+
+    it("Tailwind 的 font-normal / medium / semibold 映射到三档字重", () => {
+      expect(appCss).toContain("--font-weight-normal: var(--fw-regular);");
+      expect(appCss).toContain("--font-weight-medium: var(--fw-medium);");
+      expect(appCss).toContain("--font-weight-semibold: var(--fw-semibold);");
+    });
+
+    it("text-display / text-title 的字距读令牌，app.css 不写字面字距", () => {
+      expect(appCss).toMatch(
+        /\.text-display\s*\{\s*letter-spacing:\s*var\(--ls-display\);/,
+      );
+      expect(appCss).toMatch(
+        /\.text-title\s*\{\s*letter-spacing:\s*var\(--ls-title\);/,
+      );
+      expect(appCss).not.toMatch(/letter-spacing:\s*-?\d/);
+    });
+
+    it("入口最先引入两款字体的 @font-face（Inter 带光学尺寸轴）", () => {
+      const main = readFileSync(
+        fileURLToPath(new URL("../main.tsx", import.meta.url)),
+        "utf8",
+      );
+      const imports = [
+        ...main.matchAll(/^import\s+(?:.*\s+from\s+)?"([^"]+)";/gm),
+      ].map((match) => match[1]);
+      expect(imports.slice(0, 2)).toEqual([
+        "@fontsource-variable/inter/opsz.css",
+        "@fontsource-variable/geist-mono",
+      ]);
+      expect(imports.indexOf("./styles/app.css")).toBeGreaterThan(1);
+    });
   });
   /**
    * 几组会被悄悄改坏的对比度（WCAG 2.x 相对亮度公式）：实底按钮的白字、

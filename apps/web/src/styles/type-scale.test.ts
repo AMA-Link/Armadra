@@ -14,7 +14,8 @@ import { LEGACY_BUDGET } from "./class-guards.budget";
  * 功能代码只写语义字号类（`text-display / title / section / body / meta / caption`），
  * 任意值 `text-[13px]`、`text-[length:var(--text-*)]` 与 Tailwind 刻度 `text-sm / xs / base`
  * 由 `class-guards.test.ts` 按 `TYPE_RULES` 登记存量并拦新增（手机输入档的
- * `text-base md:text-sm` 只在 `ui/` 里用，不在扫描范围）。
+ * `text-base md:text-sm` 只在 `ui/` 里用，不在扫描范围）。字重同理：`font-bold` 及以上由
+ * `font-heavy` 规则拦，最重只到 `font-semibold`（590）。
  */
 const SRC = fileURLToPath(new URL("..", import.meta.url));
 const TOO_SMALL = /text-\[(?:[0-9]|10)px\]|font-size:\s*(?:[0-9]|10)px/;
@@ -52,6 +53,14 @@ describe("语义字号类", () => {
       );
     },
   );
+
+  it("字重规则 font-heavy 在规则表里，拦 font-bold 及以上", () => {
+    const rule = TYPE_RULES.find((entry) => entry.id === "font-heavy");
+    expect(rule?.token?.test("font-bold")).toBe(true);
+    expect(rule?.token?.test("font-black")).toBe(true);
+    expect(rule?.token?.test("font-semibold")).toBe(false);
+    expect(rule?.token?.test("font-medium")).toBe(false);
+  });
 
   it("字号规则都登记了存量块，由 class-guards 拦新增", () => {
     for (const rule of TYPE_RULES)

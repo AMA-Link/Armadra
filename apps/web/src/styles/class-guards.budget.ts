@@ -21,4 +21,5 @@ export const LEGACY_BUDGET: Readonly<
   "text-px": {},
   "text-length-var": {},
   "text-scale": {},
+  "font-heavy": {},
 };

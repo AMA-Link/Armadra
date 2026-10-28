@@ -104,23 +104,27 @@
 
 ### §2.6 字号、字重、行高
 
-**阶梯（六档）**。系统字体 `--font-ui`，等宽 `--font-code`；界面不出现 11px 以下（`type-scale.test.ts` 守着）。
+**字体**。界面 `--font-ui` 首位是 Inter（`"Inter Variable"`，开光学尺寸轴），等宽 `--font-code` 首位是 Geist Mono（`"Geist Mono Variable"`）；两款都是 SIL OFL 1.1 的可变字体，由 `@fontsource-variable/*` 随包本地打包（`main.tsx` 最先引入，woff2 由 Vite 打成本地资源，CSP `font-src 'self' data:` 不用改），不加载在线字体，登记在 `THIRD_PARTY_NOTICES.md`。两款只覆盖拉丁、希腊、西里尔，中文逐字回退到后面原有的系统字体链（PingFang SC / Microsoft YaHei / Noto Sans CJK SC）。终端不跟着换：xterm 建实例时就量字宽，网页字体没到就会量错整格，所以终端单独读 `--font-term`（系统等宽链，即 `--font-code` 去掉首位），偏好里填的字体照旧优先；编辑器、代码块、元信息行用 `--font-code`。
+
+**阶梯（六档）**。界面不出现 11px 以下（`type-scale.test.ts` 守着）。
 
 | token                | 值   | 行高 | 字重      | Tailwind 类 **新**                 | 用途                                                        |
 | -------------------- | ---- | ---- | --------- | ---------------------------------- | ----------------------------------------------------------- |
-| `--text-display`     | 22px | 28px | 600       | `text-display`                     | 登录页、设置工作台页头、KPI 大数字、手机整页的页标题        |
-| `--text-title`       | 17px | 24px | 600       | `text-title`                       | 对话框标题（**改**：`DialogTitle` 从 15 回到 17）、抽屉标题 |
-| `--text-section`     | 15px | 22px | 500       | `text-section`                     | 卡片标题、表格卡标题、消息流里的分段                        |
-| `--text-body`        | 13px | 19px | 400 / 500 | `text-body`                        | 正文、标签、按钮、输入、菜单项、设置行、表格单元格          |
+| `--text-display`     | 22px | 28px | 590       | `text-display`                     | 登录页、设置工作台页头、KPI 大数字、手机整页的页标题        |
+| `--text-title`       | 17px | 24px | 590       | `text-title`                       | 对话框标题（**改**：`DialogTitle` 从 15 回到 17）、抽屉标题 |
+| `--text-section`     | 15px | 22px | 510       | `text-section`                     | 卡片标题、表格卡标题、消息流里的分段                        |
+| `--text-body`        | 13px | 19px | 400 / 510 | `text-body`                        | 正文、标签、按钮、输入、菜单项、设置行、表格单元格          |
 | `--text-meta` **新** | 12px | 16px | 400       | `text-meta`                        | 次要行、元信息（时间、路径、字节）、代码块、按钮 xs         |
-| `--text-caption`     | 11px | 16px | 400 / 500 | `text-caption`                     | 胶囊、脚注、连线标签、分组小标题                            |
+| `--text-caption`     | 11px | 16px | 400 / 510 | `text-caption`                     | 胶囊、脚注、连线标签、分组小标题                            |
 | `--text-input-touch` | 16px | —    | —         | （只在 `Input / Textarea` 手机档） | 手机上的输入字号，防 iOS 聚焦缩放                           |
 
 `--text-code`（12px）保留为 `--text-meta` 的别名，代码块行高 1.5。
 
 **13 与 14 的冲突，这样收口**：shadcn 生成件写的是 Tailwind 刻度（`text-sm` = 14、`text-xs` = 12），功能代码写的是 13。本次在 `app.css` 的 `@theme` 里把刻度本身对齐到阶梯：`--text-sm: 13px`（行高 19px）、`--text-xs: 12px`（行高 16px）、`--text-base` 保持 16px（只给手机输入与 `text-base md:text-sm` 这一种写法）。这样 ui/ 里的 `text-sm` 不用逐个改就落到 13；功能代码**只写语义类** `text-body / text-meta / text-caption / text-section / text-title / text-display`，任意值 `text-[13px]` 等由守卫测试禁止（§10），存量用 codemod 一次换掉。
 
-**字重**：正文 400，标签与按钮 500，标题 600；不用 700 及以上，不用 300 以下。标题不全大写、不加字距（中文会散）；分组小标题是 `text-caption` 500 的 `--muted-foreground`，不大写。`text-display` 加 `letter-spacing: -0.01em`，其余 0。
+**字重**：三档令牌 `--fw-regular` 400（正文）、`--fw-medium` 510（标签与按钮）、`--fw-semibold` 590（标题）；可变字体取中间值，比 500 / 600 略收。`app.css` 的 `@theme` 把 Tailwind 的 `font-normal / font-medium / font-semibold` 映射到这三档，CSS 与内联样式里写 `var(--fw-*)`，不写数字。不用 700 及以上（`font-bold / extrabold / black` 由守卫规则 `font-heavy` 拦），不用 300 以下。
+
+**字距**：只收紧两档大标题——`text-display` 读 `--ls-display`（-0.015em），`text-title` 读 `--ls-title`（-0.01em），写在 `app.css` 的 `@layer base`；其余 0。小标签与胶囊不放宽字距（中文会散）；标题不全大写，分组小标题是 `text-caption` 510 的 `--muted-foreground`，不大写。
 
 **数字**：所有会变的值（计时、计数、字节、百分比、版本、价格）加 `tabular-nums`；元信息行整行用 `--font-code`。`app.css` 新增 `@layer base { [data-numeric], time, kbd { font-variant-numeric: tabular-nums } }`，组件里的数字容器统一标 `data-numeric`。千分位与相对时间一律 `Intl.NumberFormat / RelativeTimeFormat`，不手拼。
 
@@ -645,7 +649,7 @@ ui/ 里的 `shadow-md / shadow-lg / shadow-sm / ring-1 ring-foreground/10` 全�
 | ------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `styles/tokens.test.ts`（改）                                                   | §2 全部 token 名在两套主题都存在；新圆角七档、阴影三档、动效令牌值；`--primary` 仍指向 `--brand-solid`；`--r-sm/md/lg/xl`、`--shadow-pill`、`--shadow-card` 不存在；没有 `ease-in` 与回弹曲线                                                                                                                                                                                                                        |
 | `styles/tokens-contrast.test.ts`（改）                                          | 新增 `--caution-text` 对 `--caution-soft`、Badge success / warn 文字对衬底、Tooltip 字对底 ≥ 4.5；`--faint` 刻度未填格不做文字                                                                                                                                                                                                                                                                                       |
-| `styles/type-scale.test.ts`（改）                                               | 11px 以下禁止（不变）；**新增**：功能代码（非 ui/、非 showcase/fixtures）禁止 `text-[Npx]`、`text-[length:var(--text-*)]`、`text-sm / text-xs / text-base`（手机输入档的 `text-base md:text-sm` 例外登记），只许 `text-caption / meta / body / section / title / display`                                                                                                                                            |
+| `styles/type-scale.test.ts`（改）                                               | 11px 以下禁止（不变）；**新增**：功能代码（非 ui/、非 showcase/fixtures）禁止 `text-[Npx]`、`text-[length:var(--text-*)]`、`text-sm / text-xs / text-base`（手机输入档的 `text-base md:text-sm` 例外登记），只许 `text-caption / meta / body / section / title / display`；`font-bold` 及以上禁止（`font-heavy`）                                                                                                    |
 | `styles/class-guards.test.ts`（新）                                             | 功能代码禁止：裸 `rounded`、`rounded-sm/md/lg/xl/2xl/4xl`、`rounded-[…]`；`shadow`、`shadow-sm/md/lg`、`shadow-[…]`；`h-6/h-7/h-9/h-10/h-11/min-h-10/min-h-9` 等手写控件高度；`text-[var(--…)]`、`bg-[var(--…)]`、`border-[var(--…)]`（有对应工具类的）；`transition-all`；`duration-N` / `ease-in` / 字面 `cubic-bezier(`；`strokeWidth=`；`from "sonner"`（只许 ui/toast.tsx）。带 `LEGACY_BUDGET` 表，批次 3 归零 |
 | `styles/no-literal-color.test.ts`（改）                                         | 扫描范围加入 `splash/splash.css`、`styles/motion.css`；`LEGACY_COLOR_BUDGET` 只剩数据文件                                                                                                                                                                                                                                                                                                                            |
 | `ui/ui.test.tsx`（改）                                                          | 每个变体 / 尺寸渲染出对应的 `data-variant / data-size`；`Button loading` 有 `aria-busy` 且无 `disabled`；`Button shortcut` 渲染 `Kbd` 与 `aria-keyshortcuts`；`Badge size`；`Tabs segmented` 有指示器；`Progress ticks` 渲染 20 格；`Tray` 结构；`DialogContent data-instant` 无 animation 类                                                                                                                        |
