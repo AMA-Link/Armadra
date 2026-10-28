@@ -46,6 +46,7 @@ import {
 } from "../grant-sync";
 import { currentHostName } from "../../settings";
 import { IdentityError } from "../errors";
+import { accessChanged } from "../gate";
 import { type ShareRole, grantScopes } from "../roles";
 import {
   type IdentityService,
@@ -54,7 +55,7 @@ import {
   SAAS_SESSION_TTL_MS,
   type SessionCredentials,
 } from "../service";
-import type { IdentityStore } from "../store";
+import type { IdentityStore, IdentityTx } from "../store";
 import { IpBuckets } from "../throttle";
 import { newId, parseToken, validName } from "../tokens";
 import {
@@ -553,23 +554,52 @@ export class CloudLogin {
   /**
    * 把断言的 `sub` 映射到当前登录的人（契约 §31 `bind`）。已经映射给自己是幂等的；
    * 映射给了别人答 `conflict`（撤销那一条要在账号页由 owner 做）。
+   *
+   * **替换自动成员**（契约 §88.5，Q12）：映射指向的是云端准入免邀请自动建的成员
+   * （{@link autoCloudMember}），且发起者是本机 owner 的本地会话（`local`，调用方判：
+   * 不经隧道、会话不绑通道设备钥）时，一笔事务里把映射迁到 owner：吊销那个成员的全部
+   * 会话、停用它、撤掉它经本签发方同步来的授予与团队角色，审计 `cloud.bind.replace`。
+   * 它名下已受信的设备钥不迁。其余情形照旧 `conflict`。
    */
-  async bind(principalId: string, assertion: string): Promise<{ bound: true }> {
+  async bind(
+    principalId: string,
+    assertion: string,
+    options: { readonly local?: boolean } = {},
+  ): Promise<{ bound: true }> {
     const { claims, registration } =
       await this.options.verifier.verify(assertion);
     this.admitSubject(claims);
     const provider = cloudProvider(registration.issuer);
-    this.options.store.transaction((tx) => {
+    const replaced = this.options.store.transaction((tx) => {
       const principal = tx.accounts.principal(principalId);
       if (principal === undefined || principal.disabledAtMs !== 0) {
         throw fail("unauthenticated", "需要一个有效的会话");
       }
-      const existing = tx.accounts.liveOAuth(provider, claims.sub);
-      if (existing !== undefined) {
-        if (existing.principalId === principalId) return;
-        throw fail("conflict", "这个远程服务账号已经关联到别人");
-      }
       const now = this.now();
+      const existing = tx.accounts.liveOAuth(provider, claims.sub);
+      let from: string | undefined;
+      if (existing !== undefined) {
+        if (existing.principalId === principalId) return false;
+        if (
+          options.local !== true ||
+          principal.kind !== "owner" ||
+          !autoCloudMember(tx, existing.principalId, provider, claims.sub)
+        ) {
+          throw fail("conflict", "这个远程服务账号已经关联到别人");
+        }
+        from = existing.principalId;
+        tx.accounts.revokeCredential(existing.credentialId, now);
+        for (const { session } of tx.liveSessions(now, from)) {
+          tx.revokeSession(session.sessionId, now);
+        }
+        if (tx.accounts.principal(from)?.disabledAtMs === 0) {
+          tx.accounts.disablePrincipal(from, now);
+        }
+        for (const grant of tx.accounts.originGrants(from, provider)) {
+          tx.accounts.revokeGrant(grant.grantId, now);
+        }
+        this.options.cloud.clearTeamRole(from, provider);
+      }
       const credentialId = newId();
       tx.accounts.createCredential({
         credentialId,
@@ -591,15 +621,62 @@ export class CloudLogin {
         atMs: now,
         principalId,
         deviceId: "",
-        action: "cloud.bind",
+        action: from === undefined ? "cloud.bind" : "cloud.bind.replace",
         target: credentialId,
         workspaceId: "",
         detailJson: JSON.stringify({
           iss: registration.issuer,
           sub: claims.sub,
+          ...(from === undefined ? {} : { from }),
         }),
       });
+      return from !== undefined;
     });
+    if (replaced) accessChanged();
     return { bound: true };
   }
+}
+
+/**
+ * 这个主体是不是云端准入免邀请自动建的成员（`createdVia = cloud`、不经邀请，见
+ * `registerExternal`）：普通成员、没有口令，唯一的身份凭据就是这个签发方下的这条映射，
+ * 登记审计写的是 `createdVia: "cloud"` 且没有邀请。经分享链接（邀请）建的访客、本机
+ * 建的成员都不是。
+ */
+function autoCloudMember(
+  tx: IdentityTx,
+  principalId: string,
+  provider: string,
+  subject: string,
+): boolean {
+  const principal = tx.accounts.principal(principalId);
+  if (principal === undefined || principal.kind !== "member") return false;
+  const live = tx.accounts
+    .credentialsOf(principalId)
+    .filter((row) => row.revokedAtMs === 0);
+  if (
+    live.length !== 1 ||
+    live[0]?.kind !== "oauth" ||
+    live[0].provider !== provider ||
+    live[0].subject !== subject
+  ) {
+    return false;
+  }
+  return tx.accounts
+    .auditEntries({
+      principalId,
+      actions: ["identity.principal.register"],
+      limit: 10,
+    })
+    .some((row) => {
+      if (row.target !== principalId) return false;
+      try {
+        const detail = JSON.parse(row.detailJson) as Record<string, unknown>;
+        return (
+          detail.createdVia === "cloud" && detail.invitationId === undefined
+        );
+      } catch {
+        return false;
+      }
+    });
 }

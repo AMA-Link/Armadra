@@ -24,6 +24,7 @@ import { cloudLoginProbeInputSchema } from "@armadra/shared";
 
 import { CoreFailure, fail } from "../../http/errors";
 import { channelPeerOf } from "../../relay/e2e/peer";
+import { TunnelDuplex } from "../../relay/streams";
 import type { CoreRequest } from "../../http/router";
 import type { Authorizer } from "../authorize";
 import { IdentityError, IdentityRefusal } from "../errors";
@@ -332,6 +333,12 @@ export class CloudHttp {
         return cloud.bind(
           principal.principalId,
           parse(cloudBindInputSchema, body(request)).assertion,
+          {
+            local: localRequest(
+              request.raw.socket,
+              principal.channelDeviceId ?? "",
+            ),
+          },
         );
       }
       let issuer = "";
@@ -360,4 +367,19 @@ export class CloudHttp {
     });
     response.end(bytes);
   }
+}
+
+/**
+ * 本机的本地会话（契约 §88.5）：请求不经中继隧道（明文或端到端通道都不算），会话也
+ * 不绑通道设备钥。`bind` 的替换路径只对它开放。
+ */
+export function localRequest(
+  socket: unknown,
+  channelDeviceId: string,
+): boolean {
+  return (
+    channelDeviceId === "" &&
+    !(socket instanceof TunnelDuplex) &&
+    channelPeerOf(socket) === undefined
+  );
 }

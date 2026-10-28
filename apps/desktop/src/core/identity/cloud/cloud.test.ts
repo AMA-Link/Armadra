@@ -22,7 +22,9 @@ import {
   memoryBackend,
   signAssertion,
 } from "./fake.fixture";
+import { localRequest } from "./http";
 import { type CloudService, cloudProvider, installCloud } from "./index";
+import { markChannelSocket } from "../../relay/e2e/peer";
 import { teamRoleOf } from "./store";
 
 /**
@@ -1479,5 +1481,163 @@ describe("cloud/login 的范围、角色同步与租约（契约 §60）", () =>
         { provider: cloudProvider(ISSUER), linkId: "lnk_keep" },
       ),
     ).toThrow();
+  });
+});
+
+describe("bind 替换自动成员（契约 §88.5）", () => {
+  const login = (subject: string, extra: Record<string, unknown>) =>
+    call("POST", "/api/identity/cloud/login", {
+      assertion: signAssertion({
+        aud: store.hostId(),
+        nowMs: Date.now(),
+        sub: subject,
+        extra,
+      }),
+    });
+  const principalOf = (answer: Answer) =>
+    (answer.body.principal as { principalId: string }).principalId;
+
+  beforeEach(async () => {
+    expect((await register()).status).toBe(200);
+    core.database
+      .prepare("UPDATE cloud_registrations SET mode = 'saas' WHERE issuer = ?")
+      .run(ISSUER);
+  });
+
+  it("主人先以团队成员被自动建出：owner 本地会话 bind 把映射迁到 owner，成员停用、会话吊销、授予与团队角色清掉", async () => {
+    const team = { teamId: "team_1", role: "owner" };
+    const first = await login("acct:boss", { team, role: "driver" });
+    expect(first.status, first.text).toBe(200);
+    expect(first.body.created).toBe(true);
+    const auto = principalOf(first);
+    const session = (first.body.session as { native: { accessToken: string } })
+      .native;
+    expect(teamRoleOf(core.database, auto)).toBeDefined();
+
+    const bound = await call(
+      "POST",
+      "/api/identity/cloud/bind",
+      { assertion: sub("acct:boss") },
+      asOwner(),
+    );
+    expect(bound.status, bound.text).toBe(200);
+    expect(bound.body).toEqual({ bound: true });
+
+    const after = store.transaction((tx) => ({
+      principal: tx.accounts.principal(auto),
+      grants: tx.accounts.originGrants(auto, cloudProvider(ISSUER)),
+      mapped: tx.accounts.liveOAuth(cloudProvider(ISSUER), "acct:boss"),
+      sessions: tx.liveSessions(Date.now(), auto),
+    }));
+    expect(after.principal?.disabledAtMs).toBeGreaterThan(0);
+    expect(after.grants).toEqual([]);
+    expect(after.mapped?.principalId).toBe(owner.principalId);
+    expect(after.sessions).toEqual([]);
+    expect(teamRoleOf(core.database, auto)).toBeUndefined();
+    // 自动成员的旧会话不能再用。
+    const stale = await call("GET", "/api/identity/cloud", undefined, {
+      token: session.accessToken,
+    });
+    expect(stale.status).toBe(401);
+    const audit = core.database
+      .prepare(
+        "SELECT principal_id, detail_json FROM audit_log WHERE action = 'cloud.bind.replace'",
+      )
+      .all() as { principal_id: string; detail_json: string }[];
+    expect(audit).toHaveLength(1);
+    expect(audit[0]?.principal_id).toBe(owner.principalId);
+    expect(JSON.parse(audit[0]!.detail_json)).toEqual({
+      iss: ISSUER,
+      sub: "acct:boss",
+      from: auto,
+    });
+
+    // 之后同一个账号进来就是 owner；再 bind 幂等。
+    const again = await login("acct:boss", { team, role: "driver" });
+    expect(again.status, again.text).toBe(200);
+    expect(again.body.principal).toMatchObject({
+      principalId: owner.principalId,
+      kind: "owner",
+    });
+    const repeat = await rpc("identity.cloud.bind", {
+      assertion: sub("acct:boss"),
+    });
+    expect(repeat.status, repeat.text).toBe(200);
+  });
+
+  it("RPC（本机壳）同样能替换", async () => {
+    const first = await login("acct:rpc", {
+      team: { teamId: "team_1", role: "member" },
+      role: "operator",
+    });
+    expect(first.status, first.text).toBe(200);
+    const bound = await rpc("identity.cloud.bind", {
+      assertion: sub("acct:rpc"),
+    });
+    expect(bound.status, bound.text).toBe(200);
+    expect(
+      store.transaction((tx) =>
+        tx.accounts.liveOAuth(cloudProvider(ISSUER), "acct:rpc"),
+      )?.principalId,
+    ).toBe(owner.principalId);
+  });
+
+  it("不是自动成员（经邀请或本机建的）：仍 409 conflict，映射不动", async () => {
+    const member = await memberSession();
+    expect(
+      (
+        await call(
+          "POST",
+          "/api/identity/cloud/bind",
+          { assertion: sub("acct:local-member") },
+          { token: member.accessToken },
+        )
+      ).status,
+    ).toBe(200);
+    const taken = await call(
+      "POST",
+      "/api/identity/cloud/bind",
+      { assertion: sub("acct:local-member") },
+      asOwner(),
+    );
+    expect(taken.status).toBe(409);
+    expect(taken.body.code).toBe("conflict");
+    expect(
+      store.transaction((tx) =>
+        tx.accounts.liveOAuth(cloudProvider(ISSUER), "acct:local-member"),
+      )?.principalId,
+    ).toBe(member.principal.principalId);
+  });
+
+  it("不是本地会话（经通道）或发起者不是 owner：409 conflict", async () => {
+    const first = await login("acct:remote", {
+      team: { teamId: "team_1", role: "owner" },
+      role: "driver",
+    });
+    expect(first.status, first.text).toBe(200);
+    const auto = principalOf(first);
+    await expect(
+      cloud.bind(owner.principalId, sub("acct:remote"), { local: false }),
+    ).rejects.toMatchObject({ code: "conflict" });
+    const member = await memberSession();
+    await expect(
+      cloud.bind(member.principal.principalId, sub("acct:remote"), {
+        local: true,
+      }),
+    ).rejects.toMatchObject({ code: "conflict" });
+    expect(
+      store.transaction((tx) =>
+        tx.accounts.liveOAuth(cloudProvider(ISSUER), "acct:remote"),
+      )?.principalId,
+    ).toBe(auto);
+  });
+
+  it("本地判定：经隧道的连接、绑通道设备钥的会话都不算本地", () => {
+    expect(localRequest({}, "")).toBe(true);
+    expect(localRequest(undefined, "")).toBe(true);
+    expect(localRequest({}, "dev_1")).toBe(false);
+    const channel = { tunnel: { channel: { deviceId: "dev_2" } } };
+    markChannelSocket(channel);
+    expect(localRequest(channel, "")).toBe(false);
   });
 });
