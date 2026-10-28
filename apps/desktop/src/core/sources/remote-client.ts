@@ -298,6 +298,9 @@ function sessionOf(body: unknown): CloudSession {
   };
 }
 
+/** 取断言那一次外呼的说法（`rejected` 按它判要不要透传 `source_access_denied`）。 */
+const ASSERTION_DURING = "取断言";
+
 /** 远程服务的失败 → 契约 §33 的码。 */
 const LINK_REFUSAL_CODES: ReadonlySet<string> = new Set([
   "team_role_insufficient",
@@ -391,10 +394,14 @@ function rejected(status: number, body: unknown, during: string): never {
     case "session_revoked":
     case "unauthenticated":
       throw fail("source_unauthorized", "远程服务的登录已失效");
-    // 原样透传（契约 §88.2）：可能是授予被收回，也可能是主机 core 太旧、控制面不签
-    // 它的断言（cloud-api §30 的版本门），由调用方区分，不能并成「重新登录」。
+    // 取断言时原样透传（契约 §88.2）：可能是授予被收回，也可能是主机 core 太旧、控制面
+    // 不签它的断言（cloud-api §30 的版本门），由调用方区分，不能并成「重新登录」。只有这
+    // 一条路透传：`sources.session` / `mount` 的错误表与 §33 表才声明了这个码，其余远程
+    // 调用仍按原来的 `source_unauthorized` 答，不往没声明它的 procedure 里漏新码。
     case "source_access_denied":
-      throw fail("source_access_denied", "远程服务不签这个源的断言");
+      if (during === ASSERTION_DURING)
+        throw fail("source_access_denied", "远程服务不签这个源的断言");
+      throw fail("source_unauthorized", "远程服务不再允许访问这个源");
     case "source_revoked":
     case "forbidden":
       throw fail("source_unauthorized", "远程服务不再允许访问这个源");
@@ -402,7 +409,7 @@ function rejected(status: number, body: unknown, during: string): never {
       throw fail("source_offline", "这台机器当前不在线");
     case "not_found":
       if (
-        during === "取断言" ||
+        during === ASSERTION_DURING ||
         during === "删除源" ||
         during === "撤销分享链接" ||
         during === "改分享链接备注"
@@ -768,7 +775,7 @@ export class RemoteClient {
         endpoint,
         "POST",
         `/v1/sources/${sourceId}/assertion`,
-        "取断言",
+        ASSERTION_DURING,
         { sourceId, device: this.device },
         accessToken,
       ),

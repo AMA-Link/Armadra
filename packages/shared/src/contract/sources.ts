@@ -775,6 +775,8 @@ export const sources = {
         "source_unreachable",
         "cloud_account_unlinked",
         "not_implemented",
+        // §88.2：取断言被拒原样透传（`details.reason = hostOutdated` 是版本门）。
+        "source_access_denied",
       ),
     })
     .meta(write("§33.2", "POST", "/api/sources/remotes/{serviceId}/mount")),

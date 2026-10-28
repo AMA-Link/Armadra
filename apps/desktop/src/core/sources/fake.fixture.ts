@@ -138,6 +138,8 @@ export interface FakeWorld {
     assertions: number;
     /** 断言答 403 `source_access_denied`（授予收回或版本门）。 */
     denyAssertion?: boolean;
+    /** `me.sources` 也答 403 `source_access_denied`（看别的远程调用怎么映射）。 */
+    denySources?: boolean;
     sources: { sourceId: string; name: string; coreVersion?: string }[];
     links: Map<string, FakeLink>;
     /** `platform.info` 报的能力。 */
@@ -531,6 +533,9 @@ async function cloud(
   if (path === "/v1/me/sources") {
     if (world.cloud.sourcesFail === true) {
       return json(500, { code: "internal", message: "no" });
+    }
+    if (world.cloud.denySources === true) {
+      return json(403, { code: "source_access_denied", message: "denied" });
     }
     return json(200, {
       sources: world.cloud.sources.map((one) => ({
