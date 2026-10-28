@@ -23,8 +23,8 @@ export const USAGE = `用法: armadra-server <命令> [选项]
   logs         读日志文件的尾部
   upgrade      校验候选可执行文件并旁写替换（没有 --confirm 只打印计划）
   secrets      密钥后端：rotate 换 master key；set NAME 从标准输入写一个条目
-  cloud        个人中转：register / revoke / status / login（对运行中的服务器壳）
-  invite       签发邀请；--cloud-link 经个人中转生成分享链接
+  cloud        个人中转与 Armadra 云：register / revoke / status / login（对运行中的服务器壳）
+  invite       签发邀请；--cloud-link 经个人中转或 Armadra 云生成分享链接
   devices      经中继端到端通道来的设备：list / approve / reject / revoke
   version      打印版本报告
 
@@ -83,14 +83,17 @@ cloud:
     --label L              登记名，缺省取主机名
   revoke --issuer URL    撤销登记并停隧道
   status                 登记与隧道状态
-  login                  账号口令登录个人中转，再自动登记（中继签注册令牌）
-    --issuer URL --account A [--fingerprint FP] [--label L]
-    --password-stdin       从标准输入读口令；不给时读 ARMADRA_CLOUD_PASSWORD，终端里则提示输入
+  login                  登录并把账号关联为本机主人；本机还没登记就顺带登记
+    个人中转：--issuer URL --account A [--fingerprint FP] [--label L]
+      --password-stdin       从标准输入读口令；不给时读 ARMADRA_CLOUD_PASSWORD，终端里则提示输入
+    Armadra 云：--issuer URL [--space personal|<团队 slug>] [--label L]
+      设备码登录：终端打印设备码与验证地址，在浏览器里批准；已用令牌登记的只做关联
 
 invite:
-  --cloud-link           必须；经个人中转生成 https://<中继>/j/<id>#<密>.<令牌>
-  --issuer URL           已登记的中继地址
-  --workspace ID | --group ID   邀请指向的画布或组（二选一）
+  --cloud-link           必须；生成 https://<远程服务>/j/<id>#<密>.<令牌>.<指纹>
+  --issuer URL           已登记、已登录的个人中转或 Armadra 云地址
+  --host | --workspace ID | --group ID
+                         整台、一块画布或一个组（三选一；--group 只用于个人中转）
   --role R               viewer | editor | operator | driver，默认 viewer
   --max-uses N           最多几个人可用（1–1000），缺省一次性
   --expires 7d           有效期（m / h / d），缺省 7 天，最长 30 天
@@ -193,12 +196,14 @@ const FLAGS: Record<CommandName, readonly string[]> = {
     "--label",
     "--account",
     "--password-stdin",
+    "--space",
     "--data-dir",
     "--output",
   ],
   invite: [
     "--cloud-link",
     "--issuer",
+    "--host",
     "--workspace",
     "--group",
     "--role",
@@ -230,6 +235,7 @@ const SWITCHES = new Set([
   "--token-stdin",
   "--password-stdin",
   "--cloud-link",
+  "--host",
 ]);
 
 /** 可重复的 flag，重复出现是追加而不是覆盖。 */

@@ -1,6 +1,6 @@
 /**
  * `armadra-server cloud …` 与 `armadra-server invite --cloud-link`：对**运行中**的
- * 服务器壳操作个人中转（契约 §31、§33，规格 A4-4）。
+ * 服务器壳操作个人中转与 Armadra 云（契约 §31、§33、§88，规格 A4-4）。
  *
  * CLI 是另一个进程，登记、隧道与会话都在 serve 进程的 core 里，所以这里只做两件事：
  *
@@ -8,9 +8,10 @@
  *      私有通道（`core-control.sock`）要一张一次性票，在回环上 `POST
  *      /api/identity/pair` 换一份 Bearer。文件权限就是鉴权——和桌面壳、探针同一条路。
  *      Windows 上私有通道不开，这些命令不可用。
- *   2. **直接问个人中转**（只有 `cloud login` 与 `invite --cloud-link` 需要）：用
- *      core 持有的远程服务会话（`sources.remoteSession`）向中继要注册令牌、建链接。
- *      经 core 的 `networkTransport`，按指纹钉扎。
+ *   2. **直接问远程服务**（只有 `cloud login` 与 `invite --cloud-link --group` 需要）：
+ *      用 core 持有的远程服务会话（`sources.remoteSession`）向中继要注册令牌、断言、
+ *      建链接。经 core 的 `networkTransport`，按指纹钉扎。Armadra 云的设备码登录、
+ *      登记与分享链接都经 core 的 `sources.*` 完成。
  *
  * 凭据只在内存里过一遍：口令、注册令牌、访问令牌不进输出、不进日志、不进错误信息；
  * 唯一打印的秘密是分享链接本身（它就是这条命令的产物）。
@@ -68,16 +69,29 @@ export interface CloudDeps {
   readonly connect: (dataDir: string) => Promise<LocalCore>;
   readonly transport: Transport;
   readonly now: () => number;
+  /**
+   * 过程中给人看的一行（设备码与验证地址）：写到终端的标准错误，不进 `--output json`
+   * 的文档、不进日志。
+   */
+  readonly notice: (line: string) => void;
+  /** 轮询与等隧道之间的停顿；用例换成不等的。 */
+  readonly wait?: (ms: number) => Promise<void>;
 }
 
 export function defaultDeps(
-  io: Pick<CloudDeps, "env" | "stdin" | "prompt">,
+  io: Pick<CloudDeps, "env" | "stdin" | "prompt"> & {
+    readonly stderr?: (line: string) => void;
+  },
   overrides: Partial<CloudDeps> = {},
 ): CloudDeps {
   return {
     env: io.env,
     stdin: io.stdin,
     prompt: io.prompt,
+    notice: (line) =>
+      io.stderr === undefined
+        ? void process.stderr.write(`${line}\n`)
+        : io.stderr(`${line}\n`),
     connect: connectLocalCore,
     transport: networkTransport,
     now: Date.now,
@@ -219,7 +233,8 @@ function usage(message: string): never {
 
 function issuerOf(values: Values): string {
   const given = single(values, "--issuer");
-  if (given === undefined) usage("需要 --issuer（个人中转的地址）");
+  if (given === undefined)
+    usage("需要 --issuer（个人中转或 Armadra 云的地址）");
   try {
     return normalizeOrigin(given);
   } catch {
@@ -353,9 +368,11 @@ async function relayCall(
 
 interface RemoteRow {
   serviceId: string;
+  kind?: "personal" | "saas";
   issuer: string;
   fingerprint: string;
   registered: boolean;
+  hasCredentials?: boolean;
 }
 
 async function remoteFor(core: LocalCore, issuer: string): Promise<RemoteRow> {
@@ -366,10 +383,45 @@ async function remoteFor(core: LocalCore, issuer: string): Promise<RemoteRow> {
   if (found === undefined) {
     throw new CloudCliError(
       "not_found",
-      "没有登录这个个人中转：先 armadra-server cloud login",
+      `没有登录这个远程服务：先 armadra-server cloud login --issuer ${issuer}`,
     );
   }
   return found;
+}
+
+/** 远程服务的模式（`platform.info`，匿名、按指纹钉扎）。 */
+async function platformMode(
+  deps: CloudDeps,
+  issuer: string,
+  fingerprint: string,
+): Promise<"personal" | "saas"> {
+  let answer: Awaited<ReturnType<Transport>>;
+  try {
+    answer = await deps.transport({
+      method: "GET",
+      url: `${issuer}/.well-known/armadra-platform`,
+      headers: {},
+      fingerprint,
+      timeoutMs: REQUEST_TIMEOUT_MS,
+    });
+  } catch (error) {
+    const code = (error as { code?: unknown }).code;
+    throw new CloudCliError(
+      typeof code === "string" ? code : "source_unreachable",
+      error instanceof Error ? error.message : "连不上这个远程服务",
+    );
+  }
+  const mode =
+    typeof answer.body === "object" && answer.body !== null
+      ? (answer.body as { mode?: unknown }).mode
+      : undefined;
+  if (answer.status !== 200 || (mode !== "personal" && mode !== "saas")) {
+    throw new CloudCliError(
+      "source_unreachable",
+      "这个地址不是个人中转，也不是 Armadra 云",
+    );
+  }
+  return mode;
 }
 
 async function remoteAccess(
@@ -451,7 +503,7 @@ async function bindOwner(
   core: LocalCore,
   deps: CloudDeps,
   input: { issuer: string; fingerprint: string; accessToken: string },
-): Promise<void> {
+): Promise<"bound" | "conflict"> {
   const status = (await core.call("GET", "/api/identity/cloud")) as {
     sourceId?: string;
   };
@@ -473,10 +525,12 @@ async function bindOwner(
     await core.call("POST", "/api/identity/cloud/bind", {
       assertion: signed.assertion,
     });
+    return "bound";
   } catch (error) {
     if (!(error instanceof CloudCliError && error.code === "conflict")) {
       throw error;
     }
+    return "conflict";
   }
 }
 
@@ -489,7 +543,7 @@ export async function runCloud(
   dataDir: string,
   deps: CloudDeps,
   emit: Emit,
-  wait: (ms: number) => Promise<void> = sleep,
+  wait: (ms: number) => Promise<void> = deps.wait ?? sleep,
 ): Promise<void> {
   const action = positionals[0];
   if (
@@ -578,12 +632,20 @@ export async function runCloud(
     );
     return;
   }
-  // login
+  // login：按远程服务的模式分流。参数先于连接取齐。
   const issuer = issuerOf(values);
-  const account = single(values, "--account");
-  if (account === undefined || account === "") usage("需要 --account");
   const fingerprint = fingerprintOf(values);
   const label = single(values, "--label");
+  const account = single(values, "--account");
+  const space = single(values, "--space");
+  const mode = await platformMode(deps, issuer, fingerprint);
+  if (mode === "saas") {
+    if (account !== undefined) usage("Armadra 云用设备码登录，不收 --account");
+    await saasLogin({ issuer, label, space }, dataDir, deps, emit, wait);
+    return;
+  }
+  if (space !== undefined) usage("--space 只用于 Armadra 云");
+  if (account === undefined || account === "") usage("需要 --account");
   const password = await accountPassword(values, deps);
   const core = await deps.connect(dataDir);
   const added = (await core.call("POST", "/api/sources/remotes", {
@@ -633,8 +695,207 @@ export async function runCloud(
   );
 }
 
+/* ----------------------------- Armadra 云登录 ---------------------------- */
+
+interface DeviceCode {
+  userCode: string;
+  verificationUrl: string;
+  expiresAtMs: number;
+  intervalMs?: number;
+}
+
+/** 设备码轮询的最短间隔（core 也按服务端要求兜底）。 */
+const MIN_POLL_MS = 2_000;
+
+/**
+ * Armadra 云（设计 §4.4、§2.6）：设备码登录（码与验证地址只到终端），批准后——
+ *
+ * - 本机还没登记到它：按 `--space` 登记（`sources.remoteRegister`，登记并映射主人）；
+ * - 本机已登记（例如先 `cloud register --token`）：**只绑定**——不再登记（会答
+ *   `cloud_already_registered`），经远程会话取一张为本机签的断言交给 core `bind`，
+ *   把这个账号映射为本机主人。映射若已指向云端准入自动建的成员，core 迁到主人
+ *   （契约 §88.5）。
+ */
+async function saasLogin(
+  input: {
+    issuer: string;
+    label: string | undefined;
+    space: string | undefined;
+  },
+  dataDir: string,
+  deps: CloudDeps,
+  emit: Emit,
+  wait: (ms: number) => Promise<void>,
+): Promise<void> {
+  const { issuer } = input;
+  const core = await deps.connect(dataDir);
+  const added = (await core.call("POST", "/api/sources/remotes", {
+    kind: "saas",
+    issuer,
+    ...(input.label === undefined ? {} : { label: input.label }),
+  })) as {
+    remote?: RemoteRow;
+    next?: "ready" | { deviceCode?: DeviceCode };
+  };
+  const remote = added.remote;
+  if (remote === undefined || added.next === undefined) {
+    throw new CloudCliError("internal", "登录的答案不完整");
+  }
+  if (added.next !== "ready") {
+    const code = added.next.deviceCode;
+    if (code === undefined) {
+      throw new CloudCliError("internal", "登录的答案不完整");
+    }
+    deps.notice(
+      `在浏览器打开 ${code.verificationUrl} 并输入设备码 ${code.userCode}（核对后批准）`,
+    );
+    await awaitApproval(core, remote.serviceId, code, deps, wait);
+  }
+  const status = (await core.call("GET", "/api/identity/cloud")) as {
+    registrations?: { issuer: string }[];
+  };
+  const already = (status.registrations ?? []).some(
+    (row) => row.issuer === issuer,
+  );
+  let tunnel: TunnelView | undefined;
+  if (!already) {
+    const target = await spaceOf(core, remote.serviceId, input.space);
+    await core.call(
+      "POST",
+      `/api/sources/remotes/${remote.serviceId}/register`,
+      {
+        space: target,
+        ...(input.label === undefined ? {} : { label: input.label }),
+      },
+    );
+    tunnel = await settle(core, issuer, deps, wait);
+  } else if (input.space !== undefined) {
+    deps.notice("本机已经登记到这个 Armadra 云，忽略 --space");
+  }
+  // 登记时 core 已尽力映射；这里再确认一次（已映射给自己是幂等的）。
+  const access = await remoteAccess(core, remote.serviceId);
+  const bound = await bindOwner(core, deps, {
+    issuer,
+    fingerprint: remote.fingerprint,
+    accessToken: access,
+  });
+  emit(
+    {
+      command: "cloud login",
+      issuer,
+      mode: "saas",
+      registered: !already,
+      bound: bound === "bound",
+      tunnel,
+    },
+    () => {
+      const owner =
+        bound === "bound"
+          ? "账号已关联为本机主人"
+          : "这个账号已关联到本机的另一个人，没有改动（在账号页撤销那条关联后重试）";
+      return already
+        ? `已登录 ${issuer}；本机早已登记，${owner}`
+        : `已登录 ${issuer} 并登记，${owner}，隧道 ${tunnelText(tunnel)}`;
+    },
+  );
+}
+
+/** 等人在浏览器里批准设备码：按间隔轮询，拒绝或过期即失败。 */
+async function awaitApproval(
+  core: LocalCore,
+  serviceId: string,
+  code: DeviceCode,
+  deps: CloudDeps,
+  wait: (ms: number) => Promise<void>,
+): Promise<void> {
+  const interval = Math.max(code.intervalMs ?? 5_000, MIN_POLL_MS);
+  for (;;) {
+    if (deps.now() >= code.expiresAtMs) {
+      throw new CloudCliError(
+        "device_expired",
+        "设备码已过期，重新运行这条命令",
+      );
+    }
+    await wait(interval);
+    let status: string | undefined;
+    try {
+      status = (
+        (await core.call(
+          "POST",
+          `/api/sources/remotes/${serviceId}/poll`,
+          {},
+        )) as { status?: string }
+      ).status;
+    } catch (error) {
+      // 轮询过快被限流：多等一个间隔再问。
+      if (error instanceof CloudCliError && error.code === "rate_limited") {
+        await wait(interval);
+        continue;
+      }
+      throw error;
+    }
+    if (status === "ready") return;
+    if (status === "denied") {
+      throw new CloudCliError("device_denied", "登录请求被拒绝");
+    }
+    if (status === "expired") {
+      throw new CloudCliError(
+        "device_expired",
+        "设备码已过期，重新运行这条命令",
+      );
+    }
+  }
+}
+
+/** `--space personal | <团队 slug>` → 登记的空间；不给就是个人空间。 */
+async function spaceOf(
+  core: LocalCore,
+  serviceId: string,
+  space: string | undefined,
+): Promise<{ kind: "personal" } | { kind: "team"; teamId: string }> {
+  const listed = (await core.call(
+    "GET",
+    `/api/sources/remotes/${serviceId}/spaces`,
+  )) as {
+    spaces?: (
+      | { kind: "personal" }
+      | { kind: "team"; teamId: string; slug: string }
+    )[];
+  };
+  const spaces = listed.spaces ?? [];
+  if (space === undefined || space === "personal") {
+    if (!spaces.some((one) => one.kind === "personal")) {
+      throw new CloudCliError("not_found", "这个账号没有个人空间");
+    }
+    return { kind: "personal" };
+  }
+  const team = spaces.find(
+    (one): one is { kind: "team"; teamId: string; slug: string } =>
+      one.kind === "team" && one.slug === space,
+  );
+  if (team === undefined) {
+    const slugs = spaces
+      .filter((one) => one.kind === "team")
+      .map((one) => (one as { slug: string }).slug);
+    return usage(
+      `没有这个团队：${space}（可选：personal${slugs.map((one) => `、${one}`).join("")}）`,
+    );
+  }
+  return { kind: "team", teamId: team.teamId };
+}
+
 /* ------------------------------- 分享链接 ------------------------------- */
 
+/** 缺省有效期：7 天（core 再夹到 30 天）。 */
+const DEFAULT_LINK_TTL_MS = 7 * 86_400_000;
+
+/**
+ * `invite --cloud-link`（设计 §4.4，Q7）：经本机 core 的 `sources.shareLinkCreate` 建
+ * 链接——个人中转与 Armadra 云同一条，链接带三段片段（秘密、邀请令牌、身份指纹前缀），
+ * 整条存进 SecretStore，之后在分享弹层里还能再复制。`--host`（整台）与 `--workspace`
+ * 二选一；`--group` 只留给个人中转的旧路径（本机签一张组邀请，再请中继建链接），
+ * Armadra 云上明确报错。
+ */
 export async function runInvite(
   values: Values,
   dataDir: string,
@@ -642,13 +903,17 @@ export async function runInvite(
   emit: Emit,
 ): Promise<void> {
   if (!switched(values, "--cloud-link")) {
-    usage("invite 目前只支持 --cloud-link（经个人中转生成分享链接）");
+    usage("invite 目前只支持 --cloud-link（经远程服务生成分享链接）");
   }
   const issuer = issuerOf(values);
   const workspace = single(values, "--workspace");
   const group = single(values, "--group");
-  if ((workspace === undefined) === (group === undefined)) {
-    usage("--workspace 与 --group 二选一");
+  const host = switched(values, "--host");
+  if (
+    [workspace !== undefined, group !== undefined, host].filter(Boolean)
+      .length !== 1
+  ) {
+    usage("--host、--workspace 与 --group 三选一");
   }
   const role = single(values, "--role") ?? "viewer";
   const maxText = single(values, "--max-uses");
@@ -667,6 +932,9 @@ export async function runInvite(
   const label = (single(values, "--label") ?? "Armadra").slice(0, 128);
   const core = await deps.connect(dataDir);
   const remote = await remoteFor(core, issuer);
+  if (group !== undefined && remote.kind === "saas") {
+    usage("Armadra 云的链接不支持组，用 --host 或 --workspace");
+  }
   const status = (await core.call("GET", "/api/identity/cloud")) as {
     sourceId?: string;
     registrations?: { issuer: string }[];
@@ -677,15 +945,77 @@ export async function runInvite(
   ) {
     throw new CloudCliError(
       "cloud_not_registered",
-      "本机还没有登记到这个个人中转：先 armadra-server cloud register 或 cloud login",
+      "本机还没有登记到这个远程服务：先 armadra-server cloud register 或 cloud login",
     );
   }
+  if (group !== undefined) {
+    await groupInvite(core, deps, emit, {
+      issuer,
+      remote,
+      sourceId: status.sourceId,
+      group,
+      role,
+      label,
+      maxUses,
+      ttlMs,
+    });
+    return;
+  }
+  const created = (await core.call(
+    "POST",
+    `/api/sources/remotes/${remote.serviceId}/links`,
+    {
+      target: host ? "host" : "workspace",
+      workspaceId: workspace ?? "",
+      role,
+      ttlMs: ttlMs ?? DEFAULT_LINK_TTL_MS,
+      maxUses: maxUses ?? 1,
+      label,
+    },
+  )) as {
+    url?: unknown;
+    link?: { linkId?: string; expiresAtMs?: number; role?: string };
+  };
+  if (typeof created.url !== "string") {
+    throw new CloudCliError("source_unreachable", "远程服务没有给出分享链接");
+  }
+  const url = created.url;
+  emit(
+    {
+      command: "invite",
+      cloudLink: true,
+      linkId: created.link?.linkId,
+      url,
+      expiresAtMs: created.link?.expiresAtMs,
+      maxUses: maxUses ?? 1,
+      role: created.link?.role ?? role,
+      target: host ? "host" : "workspace",
+    },
+    () => url,
+  );
+}
+
+/** 个人中转的组邀请（旧路径）：本机签组邀请，再请中继建一条指向它的链接。 */
+async function groupInvite(
+  core: LocalCore,
+  deps: CloudDeps,
+  emit: Emit,
+  input: {
+    issuer: string;
+    remote: RemoteRow;
+    sourceId: string;
+    group: string;
+    role: string;
+    label: string;
+    maxUses: number | undefined;
+    ttlMs: number | undefined;
+  },
+): Promise<void> {
+  const { issuer, remote, role, maxUses, ttlMs } = input;
   const access = await remoteAccess(core, remote.serviceId);
   const invitation = (await core.call("POST", "/api/identity/invitations", {
     role,
-    ...(workspace === undefined
-      ? { targetGroupId: group }
-      : { targetWorkspaceId: workspace }),
+    targetGroupId: input.group,
     ...(ttlMs === undefined ? {} : { ttlMs }),
     ...(maxUses === undefined ? {} : { maxUses }),
   })) as { invitationId: string; token: string; expiresAtMs: number };
@@ -698,9 +1028,9 @@ export async function runInvite(
       accessToken: access,
       body: {
         kind: "source_invite",
-        sourceId: status.sourceId,
+        sourceId: input.sourceId,
         invitationId: invitation.invitationId,
-        label,
+        label: input.label,
         role,
         expiresAtMs: invitation.expiresAtMs,
         ...(maxUses === undefined ? {} : { maxUses }),
