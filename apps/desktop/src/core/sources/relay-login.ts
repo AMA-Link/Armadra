@@ -8,7 +8,12 @@
  *   直连地址只给 owner）。
  */
 
-import { CoreFailure } from "../http/errors";
+import {
+  MIN_CORE_VERSION_ROLE_ONLY_ASSERTION,
+  MIN_CORE_VERSION_TEAM_ASSERTION,
+} from "@armadra/platform-protocol";
+
+import { CoreFailure, fail } from "../http/errors";
 import type {
   RemoteClient,
   RemoteEndpoint,
@@ -226,4 +231,71 @@ export function relayOriginOf(assertion: {
   relayBaseUrl: string;
 }): string {
   return assertion.relayOrigin || new URL(assertion.relayBaseUrl).origin;
+}
+
+/** `a` 是否早于 `b`（`x.y.z`，忽略预发布后缀）；认不出答 `false`。 */
+export function olderThan(a: string, b: string): boolean {
+  const parse = (value: string) =>
+    /^(\d+)\.(\d+)\.(\d+)/.exec(value.trim())?.slice(1).map(Number);
+  const left = parse(a);
+  const right = parse(b);
+  if (left === undefined || right === undefined) return false;
+  for (let index = 0; index < 3; index += 1) {
+    if (left[index]! !== right[index]!) return left[index]! < right[index]!;
+  }
+  return false;
+}
+
+/**
+ * 要断言；答 `source_access_denied` 时分清两种（契约 §88.2）：远程服务目录里这台主机登记的
+ * `coreVersion` 低于控制面签断言的门槛（团队主机看 `MIN_CORE_VERSION_TEAM_ASSERTION`，
+ * 个人空间看 `MIN_CORE_VERSION_ROLE_ONLY_ASSERTION`）就是「主机版本过旧」，`details` 带
+ * `{ reason: "hostOutdated", coreVersion, minVersion }`；否则是访问被收回。目录问不到按后者。
+ */
+export async function assertionExplained(
+  remote: RemoteClient,
+  endpoint: RemoteEndpoint,
+  accessToken: string,
+  sourceId: string,
+  team: boolean,
+): Promise<SourceAssertion> {
+  try {
+    return await remote.assertion(endpoint, accessToken, sourceId);
+  } catch (error) {
+    if (
+      !(error instanceof CoreFailure) ||
+      error.code !== "source_access_denied"
+    )
+      throw error;
+    throw await explainAccessDenied(
+      remote,
+      endpoint,
+      accessToken,
+      sourceId,
+      team,
+    );
+  }
+}
+
+async function explainAccessDenied(
+  remote: RemoteClient,
+  endpoint: RemoteEndpoint,
+  accessToken: string,
+  sourceId: string,
+  team: boolean,
+): Promise<CoreFailure> {
+  const denied = fail("source_access_denied", "远程服务不再允许访问这个源");
+  const listed = await remote.sources(endpoint, accessToken).catch(() => []);
+  const coreVersion =
+    listed.find((one) => one.sourceId === sourceId)?.coreVersion ?? "";
+  const minVersion = team
+    ? MIN_CORE_VERSION_TEAM_ASSERTION
+    : MIN_CORE_VERSION_ROLE_ONLY_ASSERTION;
+  return olderThan(coreVersion, minVersion)
+    ? fail("source_access_denied", "那台主机的 Armadra 版本太旧", {
+        reason: "hostOutdated",
+        coreVersion,
+        minVersion,
+      })
+    : denied;
 }

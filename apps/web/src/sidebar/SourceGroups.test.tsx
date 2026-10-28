@@ -365,6 +365,7 @@ describe("远程服务的登录失效（契约 §88.1）", () => {
     const failures: Record<string, string> = {
       out: "source_unauthorized",
       gone: "source_access_denied",
+      old: "source_host_outdated",
     };
     registry = createSourceRegistry({
       connect: (d) =>
@@ -389,6 +390,17 @@ describe("远程服务的登录失效（契约 §88.1）", () => {
       "remoteAccess",
     );
     expect(useCanvasStore.getState().panels.settings).toBe(true);
+  });
+
+  it("主机版本过旧：段头给版本提示，不给「重新登录」（契约 §88.2）", async () => {
+    desktop.on = true;
+    await hydrate([relayed("old", 1)]);
+    mount();
+    const old = screen.getByRole("region", { name: "old" });
+    expect(within(old).getByText("Update needed")).toBeTruthy();
+    expect(within(old).queryByRole("button", { name: "Sign in again" })).toBe(
+      null,
+    );
   });
 
   it("浏览器页面（没有本机 core 的远程访问页）：不给", async () => {

@@ -675,3 +675,44 @@ describe("经中继的源（A3-4）", () => {
     expect(b.status.via).toBe("direct");
   });
 });
+
+describe("主机版本过旧（契约 §88.2）", () => {
+  const relayedB = descriptor(B, {
+    kind: "relayed",
+    baseUrl: "",
+    relayOrigin: "https://relay.example",
+    cloudIssuer: "https://relay.example",
+  });
+  const outdated = () =>
+    Object.assign(new Error("old"), {
+      code: "source_access_denied",
+      body: {
+        code: "source_access_denied",
+        details: { reason: "hostOutdated", coreVersion: "0.9.0" },
+      },
+    });
+
+  it("source_access_denied 带 hostOutdated：离线并记版本过旧，不是失权；不带的仍是访问收回", async () => {
+    const provider = credentials({ [B]: { relayed: RELAY_B } });
+    provider.getAccess = vi.fn(async () => {
+      throw outdated();
+    });
+    const b = createRemoteConnection(relayedB, {
+      ...options(provider),
+      environment: null,
+    });
+    await b.connect();
+    expect(b.status).toMatchObject({
+      state: "offline",
+      lastError: { code: "source_host_outdated" },
+    });
+    provider.getAccess = vi.fn(async () => {
+      throw Object.assign(new Error("no"), { code: "source_access_denied" });
+    });
+    await b.connect();
+    expect(b.status).toMatchObject({
+      state: "unauthorized",
+      lastError: { code: "source_access_denied" },
+    });
+  });
+});

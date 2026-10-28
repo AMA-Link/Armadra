@@ -454,6 +454,12 @@ describe("授予与成员事件 → 去抖重登（契约 §88.2）", () => {
   it("重登被白名单里的拒绝才失权；限流、500、forbidden、bad_request、网络错误不动", async () => {
     let code: string | undefined = "rate_limited";
     const relogin = vi.fn(async () => {
+      // 版本门：core 透传 source_access_denied，details 说明是主机太旧（契约 §88.2）。
+      if (code === "hostOutdated")
+        throw Object.assign(new Error("old"), {
+          code: "source_access_denied",
+          body: { details: { reason: "hostOutdated" } },
+        });
       throw Object.assign(new Error(code ?? "network"), code ? { code } : {});
     });
     const world = setup(relogin);
@@ -461,6 +467,7 @@ describe("授予与成员事件 → 去抖重登（契约 §88.2）", () => {
     const socket = world.b.socket("/api/ws", { environment: null });
     let at = 0;
     for (const transient of [
+      "hostOutdated",
       "rate_limited",
       "internal",
       "forbidden",

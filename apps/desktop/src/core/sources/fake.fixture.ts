@@ -136,7 +136,9 @@ export interface FakeWorld {
     locked: boolean;
     online: boolean;
     assertions: number;
-    sources: { sourceId: string; name: string }[];
+    /** 断言答 403 `source_access_denied`（授予收回或版本门）。 */
+    denyAssertion?: boolean;
+    sources: { sourceId: string; name: string; coreVersion?: string }[];
     links: Map<string, FakeLink>;
     /** `platform.info` 报的能力。 */
     capabilities: string[];
@@ -535,7 +537,7 @@ async function cloud(
         owner: world.cloud.owner !== false,
         via: "owner",
         relayOrigin: ISSUER,
-        coreVersion: "0.0.0",
+        coreVersion: one.coreVersion ?? "0.0.0",
       })),
     });
   }
@@ -614,6 +616,8 @@ async function cloud(
   const match = /^\/v1\/sources\/([0-9a-f]{32})\/assertion$/.exec(path);
   if (match !== null) {
     world.cloud.assertions += 1;
+    if (world.cloud.denyAssertion === true)
+      return json(403, { code: "source_access_denied", message: "denied" });
     const sourceId = match[1] as string;
     return json(200, {
       assertion:

@@ -33,6 +33,7 @@ import {
   useSources,
 } from "../sources";
 import { originOf, shareRoleOf } from "../sources/origin";
+import { SOURCE_ERROR } from "../sources/types";
 import { SharedSessionRows } from "../shared-session/SharedSessionRows";
 import { cachedWorkspaces } from "../sources/workspace-cache";
 import {
@@ -465,6 +466,14 @@ function signedOut(section: SourceSection): boolean {
   );
 }
 
+/** 主机版本过旧、控制面不签它的断言（契约 §88.2）：段头给版本提示，不给「重新登录」。 */
+function hostOutdated(section: SourceSection): boolean {
+  return (
+    section.state !== "ready" &&
+    section.connection.status.lastError?.code === SOURCE_ERROR.hostOutdated
+  );
+}
+
 function openRemoteAccess(): void {
   usePreferencesStore.getState().setLastSettingsSection(REMOTE_SECTION);
   useCanvasStore.getState().setPanel("settings", true);
@@ -544,6 +553,15 @@ function SourceBlock({
         {shared && (
           <Badge variant="secondary" data-share-role>
             {t(`workspaceGroups.role.${shareRoleOf(connection.descriptor)}`)}
+          </Badge>
+        )}
+        {hostOutdated(section) && (
+          <Badge
+            variant="outline"
+            data-source-outdated
+            title={t("remote.error.hostOutdated")}
+          >
+            {t("remote.status.hostOutdated")}
           </Badge>
         )}
         {signedOut(section) && (

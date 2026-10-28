@@ -347,6 +347,37 @@ describe("契约 §86：Armadra 云挂载的团队与归属", () => {
     expect(c.accessToken).not.toBe(a.accessToken);
   });
 
+  it("断言答 source_access_denied 原样透传：目录里主机版本低于门槛带 hostOutdated，否则是收回", async () => {
+    world.cloud.owner = false;
+    await saas.mount({ serviceId, sourceId: RELAYED_ID });
+    world.cloud.denyAssertion = true;
+    const answer = (promise: Promise<unknown>) =>
+      promise.then(
+        () => null,
+        (error: { code?: string; details?: unknown }) => error,
+      );
+    world.cloud.sources = [
+      { sourceId: RELAYED_ID, name: "h", coreVersion: "0.9.4" },
+    ];
+    const old = await answer(saas.session(RELAYED_ID, "relayed"));
+    expect(old).toMatchObject({
+      code: "source_access_denied",
+      details: { reason: "hostOutdated", coreVersion: "0.9.4" },
+    });
+    world.cloud.sources = [
+      { sourceId: RELAYED_ID, name: "h", coreVersion: "9.0.0" },
+    ];
+    const revoked = (await answer(saas.session(RELAYED_ID, "relayed"))) as {
+      code?: string;
+      details?: unknown;
+    };
+    expect(revoked.code).toBe("source_access_denied");
+    expect(revoked.details).toBeUndefined();
+    // 存着的刷新令牌不动：版本门与收回都不是这把会话的问题。
+    expect(await stored()).toBeDefined();
+    delete world.cloud.denyAssertion;
+  });
+
   it("relogin：跳过刷新，直接带旧刷新令牌 cloud/login", async () => {
     world.cloud.owner = false;
     await saas.mount({ serviceId, sourceId: RELAYED_ID });

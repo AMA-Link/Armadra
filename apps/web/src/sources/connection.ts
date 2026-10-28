@@ -481,9 +481,13 @@ export function createRemoteConnection(
             adopt(await provider.getAccess(id, "relayed", ...onRoute()));
             return true;
           } catch (second) {
+            const failure = failureOf(second, SOURCE_ERROR.unauthorized);
+            // 主机版本过旧（契约 §88.2）不是失权：不画成「需要登录」。
             setStatus(
-              "unauthorized",
-              failureOf(second, SOURCE_ERROR.unauthorized),
+              failure.code === SOURCE_ERROR.hostOutdated
+                ? "offline"
+                : "unauthorized",
+              failure,
             );
             return false;
           }

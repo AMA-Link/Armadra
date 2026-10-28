@@ -33,6 +33,7 @@ import type {
 import { parsePairLink } from "./pair-link";
 import {
   RelayExchanges,
+  assertionExplained,
   pageConnectOrigins,
   relayFingerprint,
   relayOriginOf,
@@ -135,6 +136,7 @@ function telling(failures: readonly unknown[], message: string): CoreFailure {
       error instanceof CoreFailure &&
       (error.code === "source_unauthorized" ||
         error.code === "source_offline" ||
+        error.code === "source_access_denied" ||
         error.code === "fingerprint_mismatch"),
   );
   return useful ?? fail("source_unreachable", message);
@@ -725,10 +727,12 @@ export class SourcesService {
     sourceId: string,
   ): Promise<SourceAssertion> {
     const token = await this.remoteAccess(remote);
-    return this.remote.assertion(
+    return assertionExplained(
+      this.remote,
       this.endpoint(remote),
       token.accessToken,
       sourceId,
+      (this.store.get(sourceId)?.teamId ?? "") !== "",
     );
   }
 
