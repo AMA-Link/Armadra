@@ -612,7 +612,7 @@ ui/ 里的 `shadow-md / shadow-lg / shadow-sm / ring-1 ring-foreground/10` 全�
 
 ### §8.8 减少动效与触屏
 
-`tokens.css` 的全局压制改为「减少而不是归零」：`prefers-reduced-motion: reduce` 下位移、缩放、视差、循环（脉冲、rope、流光、微光、光晕呼吸）全部关闭，透明度与颜色过渡保留但压到 `--dur-fast`；`Spinner` 保留转圈（唯一必要的循环）；弹簧改为淡入；JS 侧（`motion`）走 `useReducedMotion`。`hover: none` 的设备关掉依赖悬停的效果（共享悬停底、Tooltip），悬停才出现的动作常显。触屏点按不画系统高亮（`html` 上 `-webkit-tap-highlight-color: transparent`），按钮、链接、`[role=button]` 与 `label` 用 `touch-action: manipulation`，点下不等双击缩放；`Kbd` 在主指针是粗指针、且没有任何精细指针时隐藏（`pointer-coarse:not-any-pointer-fine:hidden`），接了触控板或鼠标的 iPad 照常显示。
+`tokens.css` 的全局压制改为「减少而不是归零」：`prefers-reduced-motion: reduce` 下位移、缩放、视差、循环（脉冲、rope、流光、微光、光晕呼吸）全部关闭，透明度与颜色过渡保留但压到 `--dur-fast`；`Spinner` 保留转圈（唯一必要的循环）；弹簧改为淡入；JS 侧（`motion`）走 `useReducedMotion`。`hover: none` 的设备关掉依赖悬停的效果（共享悬停底、Tooltip），悬停才出现的动作常显。触屏点按不画系统高亮（`html` 上 `-webkit-tap-highlight-color: transparent`），按钮、链接、`[role=button]` 与 `label` 用 `touch-action: manipulation`，点下不等双击缩放；`Kbd` 在主指针是粗指针、且没有任何精细指针时隐藏（`pointer-coarse:not-any-pointer-fine:hidden`），接了触控板或鼠标的 iPad 照常显示；键帽本身是内容时（配对码、快捷键设置页的绑定）传 `persistent`，触屏上照常显示。
 
 ## §9 组件变体总表 **新**
 

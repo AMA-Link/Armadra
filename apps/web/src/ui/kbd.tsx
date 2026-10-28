@@ -7,11 +7,16 @@ import { cn } from "@/lib/cn";
  * 带 `data-variant` 的 `Card` 等祖先染色。
  *
  * 触屏不显示：主指针是粗指针、且没有任何精细指针时隐藏（手机、平板）；接了触控板
- * 或鼠标的 iPad 有精细指针，照常显示。
+ * 或鼠标的 iPad 有精细指针，照常显示。键帽本身就是内容时（配对码、快捷键设置页里的
+ * 绑定）传 `persistent`，触屏上照常显示。
  */
 const TOUCH_HIDDEN = "pointer-coarse:not-any-pointer-fine:hidden";
 
-function Kbd({ className, ...props }: React.ComponentProps<"kbd">) {
+function Kbd({
+  className,
+  persistent = false,
+  ...props
+}: React.ComponentProps<"kbd"> & { persistent?: boolean }) {
   return (
     <kbd
       data-slot="kbd"
@@ -21,7 +26,7 @@ function Kbd({ className, ...props }: React.ComponentProps<"kbd">) {
         "in-data-[slot=tooltip-content]:bg-background/20 in-data-[slot=tooltip-content]:text-background",
         "group-data-[variant=default]/button:bg-primary-foreground/20 group-data-[variant=default]/button:text-primary-foreground group-data-[variant=destructive-solid]/button:bg-primary-foreground/20 group-data-[variant=destructive-solid]/button:text-primary-foreground",
         "[&_svg:not([class*='size-'])]:size-3",
-        TOUCH_HIDDEN,
+        !persistent && TOUCH_HIDDEN,
         className,
       )}
       {...props}
@@ -29,11 +34,19 @@ function Kbd({ className, ...props }: React.ComponentProps<"kbd">) {
   );
 }
 
-function KbdGroup({ className, ...props }: React.ComponentProps<"div">) {
+function KbdGroup({
+  className,
+  persistent = false,
+  ...props
+}: React.ComponentProps<"div"> & { persistent?: boolean }) {
   return (
     <kbd
       data-slot="kbd-group"
-      className={cn("inline-flex items-center gap-1", TOUCH_HIDDEN, className)}
+      className={cn(
+        "inline-flex items-center gap-1",
+        !persistent && TOUCH_HIDDEN,
+        className,
+      )}
       {...props}
     />
   );

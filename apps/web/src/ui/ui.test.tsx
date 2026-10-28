@@ -655,6 +655,19 @@ describe("Kbd / Spinner / Shimmer", () => {
       );
   });
 
+  it("persistent 的 Kbd 与 KbdGroup（配对码、快捷键设置页）在触屏上照常显示", () => {
+    render(
+      <KbdGroup persistent data-testid="group">
+        <Kbd persistent>A1B2</Kbd>
+      </KbdGroup>,
+    );
+    for (const element of [
+      screen.getByText("A1B2"),
+      screen.getByTestId("group"),
+    ])
+      expect(element.className).not.toContain("not-any-pointer-fine:hidden");
+  });
+
   it("Spinner 两档尺寸与三种状态；done 画对勾，failed 是 ×", () => {
     const { container, rerender } = render(<Spinner size={12} />);
     const spinner = () =>
