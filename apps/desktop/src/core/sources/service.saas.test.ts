@@ -324,6 +324,17 @@ describe("契约 §86：Armadra 云挂载的团队与归属", () => {
     expect((await stored())?.deviceId).toBe(before!.deviceId);
   });
 
+  it("服务器壳页面要连的来源：签发方与挂上的源的中继（契约 §88.1）", async () => {
+    await saas.mount({ serviceId, sourceId: RELAYED_ID });
+    expect(saas.pageConnectOrigins()).toEqual(expect.arrayContaining([ISSUER]));
+    const origins = saas.pageConnectOrigins();
+    const row = (await saas.list()).sources.find(
+      (one) => one.sourceId === RELAYED_ID,
+    )!;
+    expect(origins).toContain(row.relayOrigin);
+    expect(origins).not.toContain("");
+  });
+
   it("relogin 只经中继：指定直连答 bad_request", async () => {
     await saas.mount({ serviceId, sourceId: RELAYED_ID });
     expect(

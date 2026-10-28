@@ -309,6 +309,23 @@ export class SourcesService {
     return { sources, remotes };
   }
 
+  /**
+   * 服务器壳页面要直接连的来源（契约 §88.1）：远程服务的签发方（`me.stream`）与挂上的
+   * 源的每条路（中继或直连）。只读 SQLite；Gateway 据此给页面的 CSP 追加授权。
+   */
+  pageConnectOrigins(): string[] {
+    const origins = new Set<string>();
+    for (const remote of this.store.remotes()) origins.add(remote.issuer);
+    for (const row of this.store.list()) {
+      if (row.kind === "local") continue;
+      if (row.baseUrl !== "") origins.add(row.baseUrl);
+      if (row.relayOrigin !== "") origins.add(row.relayOrigin);
+    }
+    for (const routes of this.store.allRoutes().values())
+      for (const route of routes) origins.add(route.origin);
+    return [...origins];
+  }
+
   private row(sourceId: string): SourceRow {
     const row = this.store.get(sourceId);
     if (row === undefined) throw fail("not_found", "没有这个源");

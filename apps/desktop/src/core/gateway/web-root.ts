@@ -3,7 +3,11 @@ import { lstat, realpath } from "node:fs/promises";
 import type { ServerResponse } from "node:http";
 import { existsSync } from "node:fs";
 import { dirname, extname, join, resolve, sep } from "node:path";
-import { TRANSPORT_SECURITY, serverContentSecurityPolicy } from "./csp";
+import {
+  TRANSPORT_SECURITY,
+  currentPageConnectGrants,
+  serverContentSecurityPolicy,
+} from "./csp";
 
 /**
  * 托管 `apps/web` 的构建产物。
@@ -163,7 +167,9 @@ async function confirm(
 /** 每个静态响应都带的那几个头，包括与桌面壳同源的 CSP。 */
 export function staticHeaders(file?: ServedFile): Record<string, string> {
   return {
-    "content-security-policy": serverContentSecurityPolicy(),
+    "content-security-policy": serverContentSecurityPolicy(
+      currentPageConnectGrants(),
+    ),
     "x-content-type-options": "nosniff",
     "referrer-policy": "no-referrer",
     // 页面只在 TLS 上服务；一年的 HSTS 是这类部署的下限。
