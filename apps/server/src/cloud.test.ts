@@ -29,34 +29,96 @@ function fakeCore(
     registered?: boolean;
     alreadyRegistered?: boolean;
     alreadyBound?: boolean;
+    /** core 的 bind 答 `replaced: true`（替换了自动成员，契约 §88.5）。 */
+    replaced?: boolean;
+    kind?: "personal" | "saas";
+    /** SaaS 设备码轮询依次答的状态（最后一个之后一直答它）。 */
+    polls?: string[];
   } = {},
 ) {
   const calls: Call[] = [];
   let registered = options.registered ?? false;
+  const kind = options.kind ?? "personal";
+  const polls = [...(options.polls ?? ["ready"])];
+  const row = () => ({
+    serviceId: "s".repeat(32),
+    kind,
+    accountHint: kind === "saas" ? "owner@example.test" : "dev",
+    issuer: ISSUER,
+    fingerprint: kind === "saas" ? "" : FINGERPRINT,
+    registered,
+  });
   const core: LocalCore = {
     async call(method, path, body) {
       calls.push({ method, path, body });
       if (method === "GET" && path === "/api/sources") {
+        return { remotes: [row()] };
+      }
+      if (method === "POST" && path === "/api/sources/remotes") {
         return {
-          remotes: [
+          remote: row(),
+          next:
+            kind === "saas"
+              ? {
+                  deviceCode: {
+                    userCode: "BCDF-GHJK",
+                    verificationUrl: `${ISSUER}/device`,
+                    expiresAtMs: 10_000_000,
+                    intervalMs: 5_000,
+                  },
+                }
+              : "ready",
+        };
+      }
+      if (
+        method === "POST" &&
+        path === `/api/sources/remotes/${"s".repeat(32)}/poll`
+      ) {
+        const status = polls.length > 1 ? polls.shift() : polls[0];
+        if (status === "rate_limited") {
+          throw new CloudCliError("rate_limited", "太快");
+        }
+        return { status };
+      }
+      if (
+        method === "GET" &&
+        path === `/api/sources/remotes/${"s".repeat(32)}/spaces`
+      ) {
+        return {
+          spaces: [
+            { kind: "personal", plan: "free" },
             {
-              serviceId: "s".repeat(32),
-              issuer: ISSUER,
-              fingerprint: FINGERPRINT,
-              registered,
+              kind: "team",
+              teamId: "team_1",
+              slug: "rd",
+              name: "研发",
+              role: "owner",
+              plan: "team",
             },
           ],
         };
       }
-      if (method === "POST" && path === "/api/sources/remotes") {
+      if (
+        method === "POST" &&
+        path === `/api/sources/remotes/${"s".repeat(32)}/register`
+      ) {
+        if (registered) {
+          throw new CloudCliError("cloud_already_registered", "已经登记");
+        }
+        registered = true;
+        return { remote: row(), sourceId: "h".repeat(32) };
+      }
+      if (
+        method === "POST" &&
+        path === `/api/sources/remotes/${"s".repeat(32)}/links`
+      ) {
         return {
-          remote: {
-            serviceId: "s".repeat(32),
-            issuer: ISSUER,
-            fingerprint: FINGERPRINT,
-            registered,
+          url: `${ISSUER}/j/L2#sekret.${"i".repeat(32)}.secret.ABCDEFGHIJKLMNOP`,
+          link: {
+            linkId: "L2",
+            expiresAtMs: 2_000_000_000_000,
+            role: "viewer",
           },
-          next: "ready",
         };
       }
       if (path.endsWith("/session")) return { accessToken: ACCESS };
@@ -71,7 +133,9 @@ function fakeCore(
         if (options.alreadyBound === true) {
           throw new CloudCliError("conflict", "已经关联");
         }
-        return { bound: true };
+        return options.replaced === true
+          ? { bound: true, replaced: true }
+          : { bound: true };
       }
       if (method === "GET" && path === "/api/identity/cloud") {
         return {
@@ -129,6 +193,7 @@ function harness(
     stdin?: string;
     prompt?: string;
     link?: { status: number; body: unknown };
+    mode?: "personal" | "saas";
   } = {},
 ) {
   const out: string[] = [];
@@ -149,7 +214,11 @@ function harness(
     cloud: {
       connect: async () => core,
       now: () => (clock.now += 400),
+      wait: async (ms: number) => void (clock.now += ms),
       transport: async (request: OutboundRequest) => {
+        if (request.url.endsWith("/.well-known/armadra-platform")) {
+          return { status: 200, body: { mode: extra.mode ?? "personal" } };
+        }
         relay.push(request);
         if (request.url.endsWith("/v1/sources/registration-tokens")) {
           return {
@@ -471,8 +540,12 @@ describe("invite --cloud-link", () => {
     "--workspace",
     "w1",
   ];
+  const linkCall = (calls: Call[]) =>
+    calls.find(
+      (call) => call.path === `/api/sources/remotes/${"s".repeat(32)}/links`,
+    );
 
-  it("建邀请（maxUses、ttl）→ 中继出链接 → 打印 url#密.令牌", async () => {
+  it("工作空间：改调 core 的 shareLinkCreate（maxUses、ttl），打印三段片段的链接；不再自己签邀请", async () => {
     const { core, calls } = fakeCore({ registered: true });
     const { io, out, relay } = harness(core);
     expect(
@@ -481,38 +554,119 @@ describe("invite --cloud-link", () => {
         io,
       ),
     ).toBe(0);
-    expect(
-      calls.find((call) => call.path === "/api/identity/invitations")?.body,
-    ).toEqual({
+    expect(linkCall(calls)?.body).toEqual({
+      target: "workspace",
+      workspaceId: "w1",
       role: "editor",
-      targetWorkspaceId: "w1",
       ttlMs: 604_800_000,
       maxUses: 5,
+      label: "Armadra",
     });
+    expect(
+      calls.some((call) => call.path === "/api/identity/invitations"),
+    ).toBe(false);
+    expect(relay).toEqual([]);
+    expect(out.join("").trim()).toBe(
+      `${ISSUER}/j/L2#sekret.${"i".repeat(32)}.secret.ABCDEFGHIJKLMNOP`,
+    );
+  });
+
+  it("--host 整台：Armadra 云同一条；缺省一次性、7 天", async () => {
+    const { core, calls } = fakeCore({ registered: true, kind: "saas" });
+    const { io, out } = harness(core, { mode: "saas" });
+    expect(
+      await main(
+        [
+          "invite",
+          "--cloud-link",
+          "--issuer",
+          ISSUER,
+          "--host",
+          "--role",
+          "viewer",
+          "--output",
+          "json",
+        ],
+        io,
+      ),
+    ).toBe(0);
+    expect(linkCall(calls)?.body).toEqual({
+      target: "host",
+      workspaceId: "",
+      role: "viewer",
+      ttlMs: 7 * 86_400_000,
+      maxUses: 1,
+      label: "Armadra",
+    });
+    const document = JSON.parse(out.join("")) as { url: string };
+    // 片段三段之外还带身份指纹前缀：秘密.邀请令牌（含点）.指纹。
+    expect(document.url.split("#")[1]?.split(".").at(-1)).toBe(
+      "ABCDEFGHIJKLMNOP",
+    );
+  });
+
+  it("Armadra 云上 --group 明确报错（用法 2），不建任何东西", async () => {
+    const { core, calls } = fakeCore({ registered: true, kind: "saas" });
+    const { io, err } = harness(core, { mode: "saas" });
+    expect(
+      await main(
+        ["invite", "--cloud-link", "--issuer", ISSUER, "--group", "g1"],
+        io,
+      ),
+    ).toBe(2);
+    expect(err.join("")).toContain("Armadra 云的链接不支持组");
+    expect(calls.map((call) => call.path)).toEqual(["/api/sources"]);
+  });
+
+  it("个人中转的 --group 仍走旧路径：本机签组邀请，中继出链接；中继拒绝时撤掉刚建的邀请", async () => {
+    const { core, calls } = fakeCore({ registered: true });
+    const { io, out, relay } = harness(core);
+    const group = [
+      "invite",
+      "--cloud-link",
+      "--issuer",
+      ISSUER,
+      "--group",
+      "g1",
+    ];
+    expect(await main([...group, "--max-uses", "3"], io)).toBe(0);
+    expect(
+      calls.find((call) => call.path === "/api/identity/invitations")?.body,
+    ).toEqual({ role: "viewer", targetGroupId: "g1", maxUses: 3 });
     expect(relay[0]).toMatchObject({
       url: `${ISSUER}/v1/links`,
       body: {
         kind: "source_invite",
         sourceId: "h".repeat(32),
         invitationId: "i".repeat(32),
-        role: "editor",
-        maxUses: 5,
       },
     });
     expect(out.join("").trim()).toBe(
       `${ISSUER}/j/L1#sekret.${"i".repeat(32)}.secret`,
     );
+
+    const refused = fakeCore({ registered: true });
+    const third = harness(refused.core, {
+      link: {
+        status: 403,
+        body: { code: "source_access_denied", message: "没有权限" },
+      },
+    });
+    expect(await main(group, third.io)).toBe(1);
+    expect(
+      refused.calls.some(
+        (call) =>
+          call.method === "DELETE" &&
+          call.path === `/api/identity/invitations/${"i".repeat(32)}`,
+      ),
+    ).toBe(true);
   });
 
-  it("没登记、参数不对都不建邀请；中继拒绝时撤掉刚建的邀请", async () => {
+  it("没登记、参数不对都不建链接", async () => {
     const unregistered = fakeCore({ registered: false });
     const first = harness(unregistered.core);
     expect(await main(base, first.io)).toBe(1);
-    expect(
-      unregistered.calls.some(
-        (call) => call.path === "/api/identity/invitations",
-      ),
-    ).toBe(false);
+    expect(linkCall(unregistered.calls)).toBeUndefined();
 
     const bad = fakeCore({ registered: true });
     const second = harness(bad.core);
@@ -523,24 +677,127 @@ describe("invite --cloud-link", () => {
       ),
     ).toBe(2);
     expect(await main([...base, "--group", "g1"], second.io)).toBe(2);
+    expect(await main([...base, "--host"], second.io)).toBe(2);
+    expect(
+      await main(["invite", "--cloud-link", "--issuer", ISSUER], second.io),
+    ).toBe(2);
     expect(await main([...base, "--max-uses", "0"], second.io)).toBe(2);
     expect(await main([...base, "--expires", "soon"], second.io)).toBe(2);
     expect(bad.calls).toEqual([]);
+  });
+});
 
-    const refused = fakeCore({ registered: true });
-    const third = harness(refused.core, {
-      link: {
-        status: 403,
-        body: { code: "source_access_denied", message: "没有权限" },
-      },
+describe("cloud login（Armadra 云，设计 §4.4）", () => {
+  const login = ["cloud", "login", "--issuer", ISSUER];
+
+  it("未登记：设备码只打到标准错误，批准后按 --space 登记并关联主人；输出里没有令牌与断言", async () => {
+    const { core, calls } = fakeCore({
+      kind: "saas",
+      polls: ["pending", "rate_limited", "ready"],
     });
-    expect(await main(base, third.io)).toBe(1);
+    const { io, out, err, relay } = harness(core, { mode: "saas" });
+    expect(await main([...login, "--space", "rd", "--label", "box"], io)).toBe(
+      0,
+    );
     expect(
-      refused.calls.some(
-        (call) =>
-          call.method === "DELETE" &&
-          call.path === `/api/identity/invitations/${"i".repeat(32)}`,
-      ),
-    ).toBe(true);
+      calls.find((call) => call.path === "/api/sources/remotes")?.body,
+    ).toEqual({ kind: "saas", issuer: ISSUER, label: "box" });
+    expect(err.join("")).toContain("BCDF-GHJK");
+    expect(err.join("")).toContain(`${ISSUER}/device`);
+    expect(out.join("")).not.toContain("BCDF-GHJK");
+    expect(calls.filter((call) => call.path.endsWith("/poll")).length).toBe(3);
+    expect(calls.find((call) => call.path.endsWith("/register"))?.body).toEqual(
+      { space: { kind: "team", teamId: "team_1" }, label: "box" },
+    );
+    expect(relay.at(-1)).toMatchObject({
+      method: "POST",
+      url: `${ISSUER}/v1/sources/${"h".repeat(32)}/assertion`,
+    });
+    expect(
+      calls.find((call) => call.path === "/api/identity/cloud/bind")?.body,
+    ).toEqual({ assertion: ASSERTION });
+    expect(out.join("")).toContain("已登录");
+    expect(out.join("")).toContain("本机主人");
+    const all = out.join("") + err.join("");
+    for (const secret of [ACCESS, ASSERTION]) expect(all).not.toContain(secret);
+  });
+
+  it("已用 --token 登记：只绑定——不再登记，取断言交给 core bind", async () => {
+    const { core, calls } = fakeCore({ kind: "saas", registered: true });
+    const { io, out } = harness(core, { mode: "saas" });
+    expect(await main([...login, "--output", "json"], io)).toBe(0);
+    expect(calls.some((call) => call.path.endsWith("/register"))).toBe(false);
+    expect(calls.some((call) => call.path.endsWith("/spaces"))).toBe(false);
+    expect(
+      calls.find((call) => call.path === "/api/identity/cloud/bind")?.body,
+    ).toEqual({ assertion: ASSERTION });
+    expect(JSON.parse(out.join(""))).toMatchObject({
+      command: "cloud login",
+      mode: "saas",
+      account: "owner@example.test",
+      registered: false,
+      bound: true,
+      replaced: false,
+    });
+  });
+
+  it("只绑定时替换了自动成员：说明已停用它，并带上账号提示", async () => {
+    const { core } = fakeCore({
+      kind: "saas",
+      registered: true,
+      replaced: true,
+    });
+    const { io, out } = harness(core, { mode: "saas" });
+    expect(await main(login, io)).toBe(0);
+    expect(out.join("")).toContain("owner@example.test");
+    expect(out.join("")).toContain("已停用之前云端自动建的同一账号的成员");
+  });
+
+  it("映射已属本机另一个人（不是自动成员）：如实说没改动，退出 0", async () => {
+    const { core } = fakeCore({
+      kind: "saas",
+      registered: true,
+      alreadyBound: true,
+    });
+    const { io, out } = harness(core, { mode: "saas" });
+    expect(await main(login, io)).toBe(0);
+    expect(out.join("")).toContain("另一个人");
+  });
+
+  it("拒绝或过期：退出 1，不登记；--account 与 --space 用错是用法错误", async () => {
+    for (const status of ["denied", "expired"]) {
+      const { core, calls } = fakeCore({ kind: "saas", polls: [status] });
+      const { io } = harness(core, { mode: "saas" });
+      expect(await main(login, io)).toBe(1);
+      expect(calls.some((call) => call.path.endsWith("/register"))).toBe(false);
+    }
+    const saas = harness(fakeCore({ kind: "saas" }).core, { mode: "saas" });
+    expect(await main([...login, "--account", "dev"], saas.io)).toBe(2);
+    const personal = harness(fakeCore().core, {
+      env: { [PASSWORD_ENV]: PASSWORD },
+    });
+    expect(
+      await main([...login, "--account", "dev", "--space", "rd"], personal.io),
+    ).toBe(2);
+    const unknown = harness(fakeCore({ kind: "saas" }).core, { mode: "saas" });
+    expect(await main([...login, "--space", "nope"], unknown.io)).toBe(2);
+  });
+
+  it("参数解析认 --space 与 --host", () => {
+    expect(
+      parseCommandLine(["cloud", "login", "--issuer", ISSUER, "--space", "rd"]),
+    ).toMatchObject({ kind: "run" });
+    expect(
+      parseCommandLine([
+        "invite",
+        "--cloud-link",
+        "--issuer",
+        ISSUER,
+        "--host",
+      ]),
+    ).toMatchObject({ kind: "run" });
+    expect(
+      parseCommandLine(["invite", "--cloud-link", "--host=1"]),
+    ).toMatchObject({ kind: "error" });
   });
 });

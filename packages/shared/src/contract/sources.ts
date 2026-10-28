@@ -910,6 +910,12 @@ export const sources = {
         "source_unreachable",
         "rate_limited",
         "not_implemented",
+        // §88.4：Armadra 云按团队设置拒绝建链接（cloud-api §5 `links.create`）。
+        "source_access_denied",
+        "team_role_insufficient",
+        "team_policy_denied",
+        "guests_disabled",
+        "team_suspended",
       ),
     })
     .meta(

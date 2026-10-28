@@ -301,6 +301,14 @@ function sessionOf(body: unknown): CloudSession {
 /** 取断言那一次外呼的说法（`rejected` 按它判要不要透传 `source_access_denied`）。 */
 const ASSERTION_DURING = "取断言";
 
+/** 建分享链接时原样透传的团队拒绝码（cloud-api §5，契约 §88.4）。 */
+const LINK_REFUSAL_CODES: ReadonlySet<string> = new Set([
+  "team_role_insufficient",
+  "team_policy_denied",
+  "guests_disabled",
+  "source_access_denied",
+]);
+
 /** 远程服务的失败 → 契约 §33 的码。 */
 function rejected(status: number, body: unknown, during: string): never {
   const answer = record(body);
@@ -312,6 +320,14 @@ function rejected(status: number, body: unknown, during: string): never {
   }
   if (code === "bad_request" && during === "建分享链接") {
     throw fail("bad_request", "远程服务不接受这条链接的参数");
+  }
+  // Armadra 云按团队设置拒绝建链接（cloud-api §5，契约 §88.4）：码原样透传。
+  if (during === "建分享链接") {
+    if (code === "team_suspended") throw fail("team_suspended", "团队已停用");
+    const refused = LINK_REFUSAL_CODES.has(code)
+      ? consoleRejection(code, details)
+      : undefined;
+    if (refused !== undefined) throw refused;
   }
   switch (code) {
     case "credentials_invalid":

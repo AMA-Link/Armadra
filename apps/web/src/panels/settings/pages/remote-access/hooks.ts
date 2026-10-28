@@ -55,19 +55,24 @@ export function useGateway() {
   };
 }
 
-/** 能开互联网路线的账号：个人中转、登录着、有账号名（访客行没有）。 */
+/**
+ * 经它走互联网路线、发分享链接的账号：个人中转要登录着、有账号名（访客行没有）；
+ * Armadra 云要本机已登记到它、登录着（设备码登录的会话签链接，契约 §88.4）。
+ */
 export function canShare(remote: RemoteService): boolean {
-  return (
-    !remote.guest &&
-    remote.kind === "personal" &&
-    remote.hasCredentials &&
-    remote.accountHint !== ""
-  );
+  if (remote.guest || !remote.hasCredentials) return false;
+  if (remote.kind === "saas") return remote.registered;
+  return remote.kind === "personal" && remote.accountHint !== "";
+}
+
+/** 能由这一页一键开路线的账号：只有个人中转（Armadra 云要选空间，走设备码对话框）。 */
+export function canStartRoute(remote: RemoteService): boolean {
+  return canShare(remote) && remote.kind === "personal";
 }
 
 /**
- * 互联网路线：经中转账号把这台电脑登记出去（「分享本机」）。任一账号登记着就算
- * 开着；状态跟着 `cloud.tunnel` 事件走（`useTunnelEvents`，挂在页上）。
+ * 互联网路线：经中转账号或 Armadra 云把这台电脑登记出去（「分享本机」）。任一登记
+ * 都算开着；状态跟着 `cloud.tunnel` 事件走（`useTunnelEvents`，挂在页上）。
  */
 export function useInternetRoute() {
   const t = useT();
@@ -120,8 +125,17 @@ export function useInternetRoute() {
   return {
     remotes,
     shareable,
+    startable: shareable.filter(canStartRoute),
     registered: shareable.filter((remote) => tunnelOf(remote.issuer) !== null),
     on: registrations.length > 0,
+    /**
+     * 路线状态：任一登记的隧道（#586）。只用令牌登记、没有登录行的 Armadra 云登记也算，
+     * 不只看能分享的账号。
+     */
+    route:
+      registrations.find((one) => one.tunnel.state === "ready")?.tunnel.state ??
+      registrations[0]?.tunnel.state ??
+      null,
     issuers: registrations.map((one) => one.issuer),
     tunnelOf,
     start,
