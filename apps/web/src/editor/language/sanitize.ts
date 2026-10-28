@@ -106,12 +106,10 @@ export function sanitizeHTML(html: string): string {
 }
 
 function escapeText(text: string): string {
+  // 数字字符引用：`& < > " '` 都转成 `&#NN;`。
   return text.replace(
-    /[&<>"']/g,
-    (char) =>
-      ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[
-        char
-      ]!,
+    /[&<>\u0022\u0027]/g,
+    (char) => `&#${char.charCodeAt(0)};`,
   );
 }
 
