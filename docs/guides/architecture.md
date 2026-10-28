@@ -662,7 +662,10 @@ core 关停与启动中途失败走同一条收尾（`main.ts` 的 `teardown`）
     经 `sources/mounts.ts` 同时作为远程源挂进页面源表。中继自己停了（`me.stream` 回不到 open）与主机
     下线分开提示。与会话来源无关的两块抽成公共模块：`sources/relayed-entry.ts`（状态机、`me.stream`
     目标与对账、进主机时的会话存处，来源只注入断言、换票与列目录）与 `sources/relay-vault.ts`（保管处与
-    访客记录），`hosted.ts` 只管中继账号与访客这两种会话来源。设置页恒指本机（#301）：除「当前工作空间」页跟随打开的工作空间外一律读写本机 core，
+    访客记录），`hosted.ts` 只管中继账号与访客这两种会话来源。页面准备在控制台来源上强制 Trusted Types
+    （设计 saas-host-open §5.4）：写 HTML 与脚本地址一律经 `lib/trusted-types.ts` 的策略（`armadra` 白名单
+    净化、脚本只认本源与挑战组件；`default` 只放行第三方组件写的纯文本），zod 关掉 `new Function`
+    （`lib/zod-config.ts`）；主机内容的 PDF 在控制台来源上只给下载，类型由页面定。设置页恒指本机（#301）：除「当前工作空间」页跟随打开的工作空间外一律读写本机 core，
     页头写「本机 · <电脑名>」；`panels/settings/remote-access.ts` 只判断页面的本机 core 在不在眼前
     （经中继、直连 Gateway）：在别处时只对眼前设备有意义的分区不列，「在访达中打开」不出，更新页只读报
     主机版本；ownerOnly 的页在这时按那台 core 的身份会话判（`app/use-access.ts`）。页面正走的路在
