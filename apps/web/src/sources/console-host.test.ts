@@ -22,6 +22,7 @@ import {
 } from "./console-host";
 import type { E2eChannels } from "./e2e/manager";
 import type { RemoteStreamOptions } from "./remote-stream";
+import { SourceError } from "./types";
 import type { EnterRouteOptions } from "./route-entry";
 
 /**
@@ -611,6 +612,23 @@ describe("控制台 /h/ 进主机", () => {
     expect(ctx.storage.getItem(key)).toBe(before);
     expect(ctx.storage.getItem(hostSessionKey("acct-old", HOST))).toBeNull();
     expect(ctx.logins()).toBe(1);
+  });
+
+  it("主机身份变了：视图只带对端指纹的前 16 位", async () => {
+    const full = "0123456789abcdef".repeat(4);
+    const ctx = setup({
+      enter: async () => {
+        throw new SourceError("identity_changed", "identity changed", {
+          cause: { fingerprint: full },
+        });
+      },
+    });
+    await ctx.host.open();
+    expect(ctx.host.view).toEqual({
+      kind: "failed",
+      code: "identity_changed",
+      fingerprint: "0123456789abcdef",
+    });
   });
 
   it("换账号的广播：别的账号 → 登出；同一个账号不动", async () => {
