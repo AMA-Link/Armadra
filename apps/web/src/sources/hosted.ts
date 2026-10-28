@@ -1,10 +1,4 @@
 import {
-  type HostedSessionStore,
-  restoreHostedCredentials,
-  setHostedSession,
-} from "../api/identity";
-import { setHostedRuntimeBase } from "../api/runtime-url";
-import {
   type CloudAccept,
   type CloudOptions,
   type CloudSource,
@@ -25,9 +19,7 @@ import {
   fingerprintPrefix,
   sealedJoinOptions,
 } from "./e2e/manager";
-import type { ManagedSocketState } from "./managed-socket";
-import { type SiblingMount, mountSiblingSources } from "./mounts";
-import { sourceRegistry } from "./registry";
+import type { mountSiblingSources } from "./mounts";
 import { createCloudSessions, createRelayedAccess } from "./relay-access";
 import {
   type GuestShare,
@@ -39,22 +31,10 @@ import {
   guestKey,
   guestKeys,
 } from "./relay-vault";
-import {
-  type RemoteStream,
-  type StreamTarget,
-  applyMeStreamEvent,
-  createRemoteStream,
-  resyncTargets,
-} from "./remote-stream";
-import { type EnteredRoute, enterRoute } from "./route-entry";
-import {
-  type CredentialProvider,
-  SOURCE_ERROR,
-  type SourceDescriptor,
-  SourceError,
-  type SourceFailure,
-  type SourceState,
-} from "./types";
+import { type RelayedStatus, createRelayedEntry } from "./relayed-entry";
+import type { createRemoteStream } from "./remote-stream";
+import type { enterRoute } from "./route-entry";
+import { type CredentialProvider, SOURCE_ERROR, SourceError } from "./types";
 
 export {
   type GuestShare,
@@ -70,7 +50,7 @@ export {
   guestKeys,
   hasGuestRecord,
 } from "./relay-vault";
-
+export { RELAY_DOWN_AFTER_MS } from "./relayed-entry";
 /**
  * 中继托管的页面（客户端包 §5，平台设计 §17.3）：个人中转在 `/app/` 托管的就是
  * 这份 `apps/web`。页面背后没有本机 core：用中继账号口令登录远程服务，挑一台
@@ -144,18 +124,8 @@ export type LinkResume = HostedResume | { readonly kind: "gone" };
 
 /* --------------------------------- 状态 ---------------------------------- */
 
-export interface HostedStatus {
-  readonly state: SourceState;
-  readonly lastError: SourceFailure | null;
-  /**
-   * 中继自己停了（不是来源主机下线）：`me.stream` 开过之后连不上中继超过
-   * {@link RELAY_DOWN_AFTER_MS}。中继回来、流重开时落回 `false`。
-   */
-  readonly relayDown: boolean;
-}
-
-/** `me.stream` 断开多久还连不上中继，才算中继停了（重启、换节点的短暂断开不算）。 */
-export const RELAY_DOWN_AFTER_MS = 4_000;
+/** 托管页的状态：与 `/h/` 同一份（{@link RelayedStatus}）。 */
+export type HostedStatus = RelayedStatus;
 
 /** 链接没告诉到期时，访客记录最多留一周。 */
 const GUEST_FALLBACK_MS = 7 * 24 * 3_600_000;
@@ -196,7 +166,6 @@ export function hostedFailureOf(error: unknown): HostedFailure {
     return "unreachable";
   return "failed";
 }
-
 export interface HostedRelayOptions {
   readonly issuer: string;
   readonly cloud?: CloudOptions;
@@ -219,23 +188,6 @@ export interface HostedRelayOptions {
   readonly now?: () => number;
   /** 端到端通道（契约 §78）；不给不开通道（测试），页面入口给。 */
   readonly e2e?: E2eChannels;
-}
-
-/** 目录里的一台主机 → 经这个中继到达的源描述。 */
-function relayedDescriptor(
-  issuer: string,
-  source: Pick<CloudSource, "sourceId" | "name">,
-): SourceDescriptor {
-  return {
-    sourceId: source.sourceId,
-    kind: "relayed",
-    label: source.name,
-    baseUrl: "",
-    relayOrigin: issuer,
-    cloudIssuer: issuer,
-    fingerprint: "",
-    orderIndex: 0,
-  };
 }
 
 export interface HostedRelay {
@@ -359,97 +311,24 @@ export function createHostedRelay(options: HostedRelayOptions): HostedRelay {
     invalidate: (sourceId) => cached.invalidate(sourceId),
   };
 
-  let status: HostedStatus = {
-    state: "idle",
-    lastError: null,
-    relayDown: false,
-  };
-  const listeners = new Set<() => void>();
-  const publish = (next: HostedStatus) => {
-    if (
-      status.state === next.state &&
-      status.lastError?.code === next.lastError?.code &&
-      status.relayDown === next.relayDown
-    )
-      return;
-    status = next;
-    for (const listener of [...listeners]) {
-      try {
-        listener();
-      } catch {
-        /* 一个订阅者出错不拖垮别的。 */
-      }
-    }
-  };
-  const setStatus = (state: SourceState, lastError: SourceFailure | null) =>
-    publish({ ...status, state, lastError });
-
-  /*
-   * 中继自己停了：`me.stream` 就连在中继上，开过之后一直回不到 `open` 就是中继
-   * 不通。主机下线时这条流照常开着（中继推 `sourceOffline`），两者由此分开。
-   */
-  const later =
-    options.setTimeout ?? ((run, ms) => globalThis.setTimeout(run, ms));
-  const cancel =
-    options.clearTimeout ??
-    ((handle) =>
-      globalThis.clearTimeout(handle as ReturnType<typeof setTimeout>));
-  let streamOpened = false;
-  let relayTimer: unknown = null;
-  const stopRelayTimer = () => {
-    if (relayTimer !== null) cancel(relayTimer);
-    relayTimer = null;
-  };
-  const onStreamState = (state: ManagedSocketState) => {
-    if (state === "open") {
-      streamOpened = true;
-      stopRelayTimer();
-      publish({ ...status, relayDown: false });
-      return;
-    }
-    // 自己关的、凭据失效的：不是中继的事。
-    if (state === "closed" || state === "unauthorized") {
-      stopRelayTimer();
-      return;
-    }
-    if (!streamOpened || status.relayDown || relayTimer !== null) return;
-    relayTimer = later(() => {
-      relayTimer = null;
-      publish({ ...status, relayDown: true });
-    }, RELAY_DOWN_AFTER_MS);
-  };
-
-  let entered: EnteredRoute | null = null;
-  let stream: RemoteStream | null = null;
-  let current: string | null = null;
   /** 登录时远程服务答的目录（访客加入时只有那一台）。 */
   let directory: readonly CloudSource[] = [];
-  let siblings: SiblingMount | null = null;
-  /** 一起挂上的其余主机（源表里的远程源）。 */
-  const siblingTargets = () =>
-    siblings === null
-      ? []
-      : siblings.registry
-          .list()
-          .filter((connection) => connection.descriptor.kind !== "local");
-  // 本机源（就是这台主机）上托管的流——控制面——在 4404 之后等着：叫醒它。
-  const wake = options.wake ?? (() => void sourceRegistry().local().connect());
-
-  /** `me.stream` 的事件落到当前这台主机上。 */
-  const target: StreamTarget = {
-    get status() {
-      return status;
+  const entry = createRelayedEntry({
+    issuer,
+    provider,
+    streamAuth: cloudSessions,
+    listSources: async () =>
+      cloudSources(issuer, await cloudSessions.access(issuer), options.cloud),
+    sessions: {
+      load: (sourceId) => vault.session(sourceId),
+      save: (sourceId, session) =>
+        void vault.saveSession(sourceId, issuer, session),
+      clear: () => vault.clear(),
     },
-    async connect() {
-      // 主机回来了：隧道是新的，会话在 core 的库里还在。旧的端到端通道随旧隧道
-      // 关了：先换一条新通道（重取断言、重开 /_relay/e2e），再叫醒在退避里的流，
-      // 它们在新通道上重连。换不上也叫醒：流的换票会再试（单飞、有冷却）。
-      const recovered = (await entered?.recover()) ?? true;
-      if (recovered) setStatus("ready", null);
-      wake();
-    },
-    revoke(failure) {
-      provider.invalidate(current ?? "");
+    directory: () => directory,
+    onEntered: (source) =>
+      vault.rememberEntered({ sourceId: source.sourceId, name: source.name }),
+    onRevoked(failure) {
       // 访客的访问被收回 / 令牌被拒：记下的那份不再有用，刷新后别再试它。
       if (
         guest &&
@@ -458,65 +337,21 @@ export function createHostedRelay(options: HostedRelayOptions): HostedRelay {
           failure.code === SOURCE_ERROR.unauthorized)
       )
         vault.clear();
-      setStatus("unauthorized", failure);
     },
-  };
-
-  /** 流（重）新打开：对一次目录，补上断开期间错过的上下线。 */
-  const resync = async () => {
-    if (current === null) return;
-    try {
-      const listed = await cloudSources(
-        issuer,
-        await cloudSessions.access(issuer),
-        options.cloud,
-      );
-      const row = listed.find((item) => item.sourceId === current);
-      if (row === undefined) {
-        target.revoke({ code: SOURCE_ERROR.accessRevoked, message: "" });
-        return;
-      }
-      // 在线：不论之前看到的是什么都叫醒一次——中继重启时它把经它的流以 4404
-      // 收尾，而这条事件流断着，没收到过下线也就收不到上线。
-      if (row.online && status.state !== "unauthorized") await target.connect();
-      else if (!row.online && status.state === "ready")
-        setStatus("waitingForSource", {
-          code: SOURCE_ERROR.offline,
-          message: "",
-        });
-    } catch {
-      /* 目录取不到：等下一次事件。 */
-    }
-  };
-
-  const startStream = () => {
-    stream?.close();
-    stream = (options.createStream ?? createRemoteStream)({
-      issuer,
-      auth: cloudSessions,
-      ...(options.cloud === undefined ? {} : { cloud: options.cloud }),
-      onEvent(event) {
-        if (!("sourceId" in event)) return;
-        if (event.sourceId !== current) {
-          applyMeStreamEvent(event, siblings?.registry.get(event.sourceId));
-          return;
-        }
-        if (event.type === "sourceOffline") {
-          setStatus("waitingForSource", {
-            code: SOURCE_ERROR.offline,
-            message: "",
-          });
-          return;
-        }
-        applyMeStreamEvent(event, target);
-      },
-      onStateChange: onStreamState,
-      onOpen: () => {
-        void resync();
-        resyncTargets(siblingTargets());
-      },
-    });
-  };
+    ...(options.cloud === undefined ? {} : { cloud: options.cloud }),
+    ...(options.createStream === undefined
+      ? {}
+      : { createStream: options.createStream }),
+    ...(options.enter === undefined ? {} : { enter: options.enter }),
+    ...(options.wake === undefined ? {} : { wake: options.wake }),
+    ...(options.setTimeout === undefined
+      ? {}
+      : { setTimeout: options.setTimeout }),
+    ...(options.clearTimeout === undefined
+      ? {}
+      : { clearTimeout: options.clearTimeout }),
+    ...(options.mount === undefined ? {} : { mount: options.mount }),
+  });
 
   /**
    * 用背后保管处记下的东西续上：进了上次那台（或给目录与原因）；这份记录
@@ -676,79 +511,7 @@ export function createHostedRelay(options: HostedRelayOptions): HostedRelay {
       );
       return [...directory];
     },
-    async enter(source) {
-      const descriptor = relayedDescriptor(issuer, source);
-      setStatus("connecting", null);
-      const store: HostedSessionStore = {
-        load: () => vault.session(source.sourceId),
-        save: (session) =>
-          void vault.saveSession(source.sourceId, issuer, session),
-        // 只在身份面登出时调：刷新之后不该再静默登回去。
-        clear: () => {
-          provider.invalidate(source.sourceId);
-          vault.clear();
-        },
-        recover: async () => {
-          try {
-            await provider.refresh(source.sourceId, "relayed");
-            return true;
-          } catch {
-            return false;
-          }
-        },
-      };
-      try {
-        entered = await (options.enter ?? enterRoute)({
-          descriptor,
-          provider,
-          useRoute(route) {
-            setHostedSession(store);
-            setHostedRuntimeBase(route.access.httpBase);
-          },
-          restore: restoreHostedCredentials,
-          onRenewed(access) {
-            if (access !== null && status.state !== "ready")
-              setStatus("ready", null);
-          },
-        });
-      } catch (error) {
-        const failure = {
-          code:
-            (error as { code?: unknown })?.code &&
-            typeof (error as { code: unknown }).code === "string"
-              ? (error as { code: string }).code
-              : SOURCE_ERROR.unreachable,
-          message: "",
-        };
-        setStatus(
-          failure.code === SOURCE_ERROR.offline
-            ? "waitingForSource"
-            : "offline",
-          failure,
-        );
-        throw error;
-      }
-      if (!(await restoreHostedCredentials())) {
-        setStatus("unauthorized", {
-          code: SOURCE_ERROR.unauthorized,
-          message: "",
-        });
-        throw new SourceError(SOURCE_ERROR.unauthorized);
-      }
-      current = source.sourceId;
-      vault.rememberEntered({
-        sourceId: source.sourceId,
-        name: source.name,
-      });
-      setStatus("ready", null);
-      siblings?.dispose();
-      siblings = (options.mount ?? mountSiblingSources)({
-        primary: descriptor,
-        siblings: directory.map((row) => relayedDescriptor(issuer, row)),
-        provider,
-      });
-      startStream();
-    },
+    enter: (source) => entry.enter(source),
     async resume() {
       // 先试访客的记录（按链接各一份，没到期的），再回账号登录。
       for (const key of guestKeys(guestStorage, issuer, now())) {
@@ -774,33 +537,17 @@ export function createHostedRelay(options: HostedRelayOptions): HostedRelay {
     },
     guest: () => (guest ? vault.share() : null),
     get status() {
-      return status;
+      return entry.status;
     },
-    subscribe(listener) {
-      listeners.add(listener);
-      return () => {
-        listeners.delete(listener);
-      };
-    },
+    subscribe: (listener) => entry.subscribe(listener),
     async signOut() {
       const token = await cloudSessions.access(issuer).catch(() => null);
       if (token !== null) await cloudLogout(issuer, token, options.cloud);
       this.dispose();
     },
     dispose() {
-      stream?.close();
-      stream = null;
-      stopRelayTimer();
-      streamOpened = false;
-      siblings?.dispose();
-      siblings = null;
       directory = [];
-      entered?.dispose();
-      entered = null;
-      vault.clear();
-      if (current !== null) provider.invalidate(current);
-      current = null;
-      publish({ state: "idle", lastError: null, relayDown: false });
+      entry.dispose();
     },
   };
   return hosted;
