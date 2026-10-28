@@ -263,7 +263,7 @@ export function PatchBody({
           className={cn(
             "px-2 whitespace-pre",
             line.startsWith("@@")
-              ? "bg-brand-soft text-brand-text"
+              ? "bg-brand-soft text-foreground"
               : line.startsWith("+") && !line.startsWith("+++")
                 ? "bg-success-soft text-success-text"
                 : line.startsWith("-") && !line.startsWith("---")
@@ -316,7 +316,7 @@ function SideBySideBody({
                   className={cn(
                     "flex min-w-0 gap-2 px-2 whitespace-pre",
                     row.kind === "hunk"
-                      ? "bg-brand-soft text-brand-text"
+                      ? "bg-brand-soft text-foreground"
                       : row.kind === "meta"
                         ? "text-muted-foreground"
                         : !cell

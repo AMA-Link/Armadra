@@ -305,14 +305,14 @@
       black 65%
     );
     mask-size: 250% 100%;
-    animation: armadra-shimmer 1.4s linear infinite;
+    animation: armadra-shimmer var(--dur-loop-shimmer) linear infinite;
   }
   .anim-shake {
     animation: armadra-shake 240ms linear;
   }
-  /* 一圈 0.8s：更快的转圈让加载显得更短 */
+  /* 一圈 800ms：更快的转圈让加载显得更短 */
   .anim-spin {
-    animation: armadra-spin 0.8s linear infinite;
+    animation: armadra-spin var(--dur-loop-spin) linear infinite;
   }
   .anim-swap-out {
     animation: armadra-swap-out var(--dur-fast) var(--ease-out) both;
@@ -332,7 +332,8 @@
     animation: armadra-bump var(--dur-base) var(--ease-out);
   }
   .anim-indeterminate {
-    animation: armadra-indeterminate 1.2s linear infinite;
+    animation: armadra-indeterminate var(--dur-loop-indeterminate) linear
+      infinite;
   }
 }
 
@@ -415,7 +416,7 @@
     transform: none;
   }
   .anim-spin {
-    animation-duration: 0.8s !important;
+    animation-duration: var(--dur-loop-spin) !important;
     animation-iteration-count: infinite !important;
   }
   /* 微光与不确定进度静止；刻度条直接点亮 */

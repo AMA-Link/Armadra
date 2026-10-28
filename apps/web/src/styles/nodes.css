@@ -35,7 +35,7 @@
   width: var(--connection-port-size);
   height: var(--connection-port-size);
   border: 2px solid var(--card);
-  border-radius: 999px;
+  border-radius: var(--r-pill);
   background: var(--muted-foreground);
   box-shadow: 0 0 0 1px var(--border-strong);
   opacity: 0.85;
@@ -53,7 +53,7 @@
   top: 50%;
   width: var(--connection-hit-size);
   height: var(--connection-hit-size);
-  border-radius: 999px;
+  border-radius: var(--r-pill);
   transform: translateY(-50%);
   content: "";
 }
@@ -252,8 +252,8 @@
   }
 
   [data-slot="node-header"] {
-    gap: 3px;
-    padding-inline: 5px;
+    gap: var(--node-header-gap-narrow);
+    padding-inline: var(--node-header-inset-narrow);
   }
 }
 
@@ -315,40 +315,32 @@
 .node-glow::after {
   position: absolute;
   z-index: -1;
-  /* 节点圆角 10 + inset -4 = 外圈 14（§24.3-3） */
-  border-radius: 14px;
+  /* 节点圆角 `--r-card` + 外扩 `--space-item` = 外圈（§24.3-3） */
+  border-radius: calc(var(--r-card) + var(--space-item));
   content: "";
-  inset: -4px;
+  inset: calc(-1 * var(--space-item));
   opacity: 0;
   pointer-events: none;
 }
 
 .node-glow[data-glow="unread"]::after {
-  animation: armadra-glow 2s ease-in-out infinite;
-  box-shadow:
-    0 0 0 2px var(--brand),
-    0 0 18px 2px var(--brand);
+  animation: armadra-glow var(--dur-loop-glow) ease-in-out infinite;
+  box-shadow: var(--shadow-glow-unread);
 }
 
 .node-glow[data-glow="working"]::after {
-  animation: armadra-glow 2.6s ease-in-out infinite;
-  box-shadow:
-    0 0 0 2px var(--agent-working),
-    0 0 18px 2px var(--agent-working);
+  animation: armadra-glow var(--dur-loop-glow-working) ease-in-out infinite;
+  box-shadow: var(--shadow-glow-working);
 }
 
 .node-glow[data-glow="attention"]::after {
-  animation: armadra-glow 1.8s ease-in-out infinite;
-  box-shadow:
-    0 0 0 2px var(--status-attention),
-    0 0 18px 2px var(--status-attention);
+  animation: armadra-glow var(--dur-loop-glow-attention) ease-in-out infinite;
+  box-shadow: var(--shadow-glow-attention);
 }
 
 .node-glow[data-glow="failed"]::after {
-  animation: armadra-glow 2s ease-in-out infinite;
-  box-shadow:
-    0 0 0 2px var(--status-failed),
-    0 0 18px 2px var(--status-failed);
+  animation: armadra-glow var(--dur-loop-glow) ease-in-out infinite;
+  box-shadow: var(--shadow-glow-failed);
 }
 
 @keyframes armadra-glow {
@@ -410,7 +402,7 @@
  * 头部任何一次尺寸变化都会经 flex 传到 body，再触发一轮 fit。
  */
 [data-bell="true"] [data-slot="icon-button"] {
-  animation: armadra-bell 0.6s ease-in-out;
+  animation: armadra-bell var(--dur-loop-bell) ease-in-out;
 }
 
 /*
@@ -487,8 +479,8 @@
 
 .sticky-markdown code {
   padding: 0 0.25em;
-  border-radius: 4px;
-  background: rgb(var(--tint-rgb) / 10%);
+  border-radius: var(--r-tight);
+  background: var(--md-code-bg);
   font-family: var(--font-code);
   font-size: 0.92em;
 }
@@ -496,8 +488,8 @@
 .sticky-markdown pre {
   overflow-x: auto;
   padding: 0.4em 0.6em;
-  border-radius: 6px;
-  background: rgb(var(--tint-rgb) / 8%);
+  border-radius: var(--r-control);
+  background: var(--md-pre-bg);
 }
 
 .sticky-markdown pre code {

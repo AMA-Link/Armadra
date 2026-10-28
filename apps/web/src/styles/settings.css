@@ -12,34 +12,34 @@
   width: 52px;
 }
 .settings-layout[data-narrow="true"] .settings-navigation {
-  padding-inline: 6px;
+  padding-inline: var(--settings-nav-narrow-inset);
 }
 .settings-layout[data-narrow="true"] .settings-page {
-  padding: 16px;
+  padding: var(--space-block);
 }
 
 /*
  * 顶栏面包屑与下方面板里的页标题同一条左边线：面板 1px 边 + 页内边距
- * （常规 `--space-section`，窄栏 16）。
+ * （常规 `--space-section`，窄栏 `--space-block`）。
  */
 .settings-topbar {
   padding-left: calc(var(--space-section) + 1px);
 }
 .settings-layout[data-narrow="true"] .settings-topbar {
-  padding-left: 17px;
+  padding-left: calc(var(--space-block) + 1px);
 }
 
 /* 设置行 40（上下 8）；行骨架与它同高，内容换进来时不跳 */
 .settings-row,
 .settings-group [data-slot="skeleton-settings-row"] {
   min-height: 40px;
-  padding-block: 8px;
+  padding-block: var(--space-group);
 }
 .settings-layout[data-narrow="true"] .settings-row,
 .settings-layout[data-compact="true"] .settings-row {
   flex-wrap: wrap;
-  gap: 8px;
-  padding-inline: 12px;
+  gap: var(--space-group);
+  padding-inline: var(--space-inset);
 }
 .settings-layout[data-narrow="true"] .settings-row-controls,
 .settings-layout[data-compact="true"] .settings-row-controls {
@@ -47,7 +47,7 @@
   flex-wrap: wrap;
 }
 .settings-layout[data-compact="true"] .settings-page {
-  padding: 12px;
+  padding: var(--space-inset);
 }
 
 @media (max-width: 767px) {

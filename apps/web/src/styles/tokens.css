@@ -88,6 +88,12 @@
   --scrim: rgb(0 0 0 / 55%);
   --hover: rgb(var(--tint-rgb) / 7%);
   --active: rgb(var(--tint-rgb) / 12%);
+  /* 细滚动条的拇指：标准属性 `scrollbar-color` 与 WebKit 伪元素各一档 */
+  --scrollbar-thumb: rgb(var(--tint-rgb) / 20%);
+  --scrollbar-thumb-webkit: rgb(var(--tint-rgb) / 18%);
+  /* 便签 Markdown 的行内代码与代码块底 */
+  --md-code-bg: rgb(var(--tint-rgb) / 10%);
+  --md-pre-bg: rgb(var(--tint-rgb) / 8%);
 
   /* ── 线条（§24.2：深色 .08 / 浅色 .10） ──────────────────────────── */
   --border: rgb(var(--tint-rgb) / 8%);
@@ -237,6 +243,13 @@
   --text-code: var(--text-meta);
   /* 手机上输入框的字号：不到 16px 时 iOS 聚焦会缩放页面 */
   --text-input-touch: 16px;
+  /* 六档字号各自的行高；`app.css` 的 `@theme` 读它们 */
+  --leading-display: 28px;
+  --leading-title: 24px;
+  --leading-section: 22px;
+  --leading-body: 19px;
+  --leading-meta: 16px;
+  --leading-caption: 16px;
 
   /* ── 动效（设计系统 §2.10 / §8.2）：定值，不是范围；没有回弹，不用 ease-in。
      字面 `cubic-bezier(` 只允许出现在这里。 */
@@ -246,8 +259,20 @@
   --dur-slow: 200ms;
   /* 对话框、Sheet、设置子页与手机整页推入、整理时的节点位移 */
   --dur-page: 280ms;
-  /* 开屏淡出后的首屏错落入场、官网首屏 */
+  /* 开屏淡出后的首屏错落入场、官网首屏：唯一超过 300ms 的界面动效 */
   --dur-hero: 600ms;
+  /* 状态指示动画的一圈（不是界面过渡）：运行点脉冲、协作绳与投递流光、
+     骨架微光、转圈、不确定进度、节点状态光晕、终端铃声闪两下 */
+  --dur-loop-pulse: 1600ms;
+  --dur-loop-rope: 1000ms;
+  --dur-loop-delivery: 600ms;
+  --dur-loop-shimmer: 1400ms;
+  --dur-loop-spin: 800ms;
+  --dur-loop-indeterminate: 1200ms;
+  --dur-loop-glow: 2000ms;
+  --dur-loop-glow-working: 2600ms;
+  --dur-loop-glow-attention: 1800ms;
+  --dur-loop-bell: 600ms;
   /* 一切进场与退场、按下 */
   --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
   /* 已在屏上的元素移动 / 变形：指示器平移、整理、把手吸附 */
@@ -266,6 +291,17 @@
   --shadow-node: 0 1px 2px rgb(0 0 0 / 20%), 0 4px 12px rgb(0 0 0 / 14%);
   --shadow-overlay: 0 4px 12px rgb(0 0 0 / 28%);
   --shadow-dialog: 0 2px 8px rgb(0 0 0 / 24%), 0 24px 64px rgb(0 0 0 / 36%);
+  /* 不表达层次的两类：展示页强制焦点态的 3px 50% 环（与生成组件 `ring-3
+     ring-ring/50` 一致），节点状态光晕（2px 实环 + 18px 晕） */
+  --shadow-focus-ring: 0 0 0 3px
+    color-mix(in srgb, var(--ring) 50%, transparent);
+  --shadow-glow-unread: 0 0 0 2px var(--brand), 0 0 18px 2px var(--brand);
+  --shadow-glow-working:
+    0 0 0 2px var(--agent-working), 0 0 18px 2px var(--agent-working);
+  --shadow-glow-attention:
+    0 0 0 2px var(--status-attention), 0 0 18px 2px var(--status-attention);
+  --shadow-glow-failed:
+    0 0 0 2px var(--status-failed), 0 0 18px 2px var(--status-failed);
 
   /* ── 字体（设计系统 §2.6）：两款随包本地打包，不加载在线字体（§4.3 规则三） ──
      Inter / Geist Mono 只覆盖拉丁、希腊、西里尔，中文逐字回退到后面的系统字体。 */
@@ -313,6 +349,9 @@
   --dock-h: 44px;
   /* 手机底部导航（`shell/MobileBottomNav`）的高度，不含安全区。 */
   --mobile-nav-h: 56px;
+  /* 窄节点（容器 ≤ 360）头部收紧后的间隙与左右内距 */
+  --node-header-gap-narrow: 3px;
+  --node-header-inset-narrow: 5px;
   /*
    * 安全区（设计系统 §3.1）：状态栏、刘海 / 灵动岛、主页横条、iPad 窗口化时的
    * 窗口控件与缩放手柄占掉的那几条边。页面经 `viewport-fit=cover` 铺到屏幕边缘
@@ -347,6 +386,8 @@
   --settings-dialog-h: min(calc(100dvh - 96px), 860px);
   --settings-nav-w: clamp(200px, 18%, 256px);
   --settings-topbar-h: 48px;
+  /* 窄栏（只留图标列）时导航的左右内距 */
+  --settings-nav-narrow-inset: 6px;
   /* Git 工具窗口停在底部（Git 工具窗口设计 §2.1）；拖过之后走偏好里的 px。 */
   --git-window-h: 40vh;
 

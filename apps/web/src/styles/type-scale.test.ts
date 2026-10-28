@@ -49,7 +49,9 @@ describe("语义字号类", () => {
     (tier) => {
       expect(appCss).toMatch(new RegExp(`--text-${tier}:\\s*\\d+px;`));
       expect(appCss).toMatch(
-        new RegExp(`--text-${tier}--line-height:\\s*\\d+px;`),
+        new RegExp(
+          `--text-${tier}--line-height:\\s*var\\(--leading-${tier}\\);`,
+        ),
       );
     },
   );

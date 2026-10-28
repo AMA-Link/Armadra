@@ -54,11 +54,13 @@
 | token           | 深色      | 浅色      | 用途                                                       | 验证                               |
 | --------------- | --------- | --------- | ---------------------------------------------------------- | ---------------------------------- |
 | `--brand`       | `#0a84ff` | `#007aff` | 选中框、连线预览、把手、未读光晕、进度条、指示器（非文字） | 深 card 3.8 · 浅 white 3.7（≥3:1） |
-| `--brand-text`  | `#6cb0ff` | `#0a5fc4` | 链接、选中行文字、激活图标                                 | 深 card 6.2 · 浅 raised 5.1        |
+| `--brand-text`  | `#6cb0ff` | `#0a5fc4` | 链接与强调性数据（提及、未读、改名标记等）                 | 深 card 6.2 · 浅 raised 5.1        |
 | `--brand-solid` | `#0a6fd6` | `#0066cc` | 实底主按钮（`--primary` 指向它，不变）、`Badge brand` 实底 | 白字 4.9 / 5.6                     |
-| `--brand-soft`  | 品牌 16%  | 品牌 12%  | 选中行底、`--brand-text` 的衬底                            | 文字叠在上面 5.2 / 5.2             |
+| `--brand-soft`  | 品牌 16%  | 品牌 12%  | 选中态的底、`--brand-text` 的衬底                          | 文字叠在上面 5.2 / 5.2             |
 | `--focus-ring`  | `#b8dbff` | `#082340` | 焦点环，shadcn 按 50% 画 3px                               | 50% 叠在最深 / 最浅表面 3.2 / 3.2  |
 | `--on-accent`   | `#ffffff` | `#ffffff` | 实底按钮上的字                                             |                                    |
+
+**选中态 = `--brand-soft` 底 + 正文色**（`text-foreground`），不反白，字与图标都不着强调色：侧栏画板行、会话行、控制台导航当前页、`IconButton active`、`Table` 选中行、差异段头、手机按键条锁住的修饰键、收藏星标都按这条写。`--brand-text` 只给链接与强调性数据；手机底部导航的当前项是导航指示，仍用 `--brand-text`。
 
 主按钮保持品牌蓝实底（§1 第 8 条：主操作是品牌蓝的四个用途之一）。参考套件的反白主按钮不采用。一屏只能有一个 `Button variant=default`；次要动作 `outline`，行内 `ghost`。
 
@@ -118,7 +120,7 @@
 | `--text-caption`     | 11px | 16px | 400 / 500 | `text-caption`                     | 胶囊、脚注、连线标签、分组小标题                            |
 | `--text-input-touch` | 16px | —    | —         | （只在 `Input / Textarea` 手机档） | 手机上的输入字号，防 iOS 聚焦缩放                           |
 
-`--text-code`（12px）保留为 `--text-meta` 的别名，代码块行高 1.5。
+`--text-code`（12px）保留为 `--text-meta` 的别名，代码块行高 1.5。行高列的值是 `tokens.css` 的 `--leading-display / title / section / body / meta / caption`，`app.css` 的 `@theme` 读它们，不写死 px。
 
 **13 与 14 的冲突，这样收口**：shadcn 生成件写的是 Tailwind 刻度（`text-sm` = 14、`text-xs` = 12），功能代码写的是 13。本次在 `app.css` 的 `@theme` 里把刻度本身对齐到阶梯：`--text-sm: 13px`（行高 19px）、`--text-xs: 12px`（行高 16px）、`--text-base` 保持 16px（只给手机输入与 `text-base md:text-sm` 这一种写法）。这样 ui/ 里的 `text-sm` 不用逐个改就落到 13；功能代码**只写语义类** `text-body / text-meta / text-caption / text-section / text-title / text-display`，任意值 `text-[13px]` 等由守卫测试禁止（§10），存量用 codemod 一次换掉。
 
@@ -210,29 +212,32 @@ ui/ 生成件里 `Button / Input / SelectTrigger / Textarea` 的 `rounded-lg` �
 | 3 浮层   | `--surface-overlay` | 1px `--border-strong` | `--shadow-overlay` **改**                              | `0 4px 12px rgb(0 0 0 / 28%)`                              | `0 4px 12px rgb(0 0 0 / 8%)`                               | 菜单、Popover、Tooltip、Dock、横幅、Toast |
 | 4 对话框 | `--card`            | 1px `--border-strong` | `--shadow-dialog`                                      | `0 2px 8px rgb(0 0 0 / 24%), 0 24px 64px rgb(0 0 0 / 36%)` | `0 2px 8px rgb(0 0 0 / 12%), 0 24px 64px rgb(0 0 0 / 18%)` | Dialog、Sheet、焦点页                     |
 
+另有两类不表达层次的投影也是令牌：展示页强制焦点态的 `--shadow-focus-ring`（3px、`--ring` 50%，与生成组件的 `ring-3 ring-ring/50` 一致），节点状态光晕 `--shadow-glow-unread / working / attention / failed`（2px 实环 + 18px 晕）。
+
 ui/ 里的 `shadow-md / shadow-lg / shadow-sm / ring-1 ring-foreground/10` 全部换成 1px `border-border` 或这三个 token 的工具类 `shadow-node / shadow-overlay / shadow-dialog`；功能代码禁止 `shadow`、`shadow-sm/md/lg` 与 `shadow-[…]`。阴影不做动画；需要动的阴影用 `filter: drop-shadow()`。
 
 ### §2.10 动效
 
 动效令牌与配方全部在 §8；这里只列名字，`tokens.css` 与 `styles/motion.css` 逐条对应。
 
-| token                  | 值                                                                                 |
-| ---------------------- | ---------------------------------------------------------------------------------- |
-| `--dur-instant` **新** | 100ms                                                                              |
-| `--dur-fast`           | 120ms                                                                              |
-| `--dur-base` **改**    | 160ms（原 150）                                                                    |
-| `--dur-slow` **改**    | 200ms（原 180）                                                                    |
-| `--dur-page` **改**    | 280ms（原 220）                                                                    |
-| `--dur-hero` **新**    | 600ms                                                                              |
-| `--ease-out` **改**    | `cubic-bezier(0.23, 1, 0.32, 1)`（原 `(0.32, 0.72, 0, 1)` 改名为 `--ease-drawer`） |
-| `--ease-in-out` **新** | `cubic-bezier(0.77, 0, 0.175, 1)`                                                  |
-| `--ease-drawer` **新** | `cubic-bezier(0.32, 0.72, 0, 1)`                                                   |
-| `--ease-color` **新**  | `ease`                                                                             |
-| `--press-scale` **新** | 0.97                                                                               |
-| `--pop-scale` **新**   | 0.96                                                                               |
-| `--stagger` **新**     | 40ms                                                                               |
+| token                  | 值                                                                                                                                                                                          |
+| ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `--dur-instant` **新** | 100ms                                                                                                                                                                                       |
+| `--dur-fast`           | 120ms                                                                                                                                                                                       |
+| `--dur-base` **改**    | 160ms（原 150）                                                                                                                                                                             |
+| `--dur-slow` **改**    | 200ms（原 180）                                                                                                                                                                             |
+| `--dur-page` **改**    | 280ms（原 220）                                                                                                                                                                             |
+| `--dur-hero` **新**    | 600ms                                                                                                                                                                                       |
+| `--ease-out` **改**    | `cubic-bezier(0.23, 1, 0.32, 1)`（原 `(0.32, 0.72, 0, 1)` 改名为 `--ease-drawer`）                                                                                                          |
+| `--ease-in-out` **新** | `cubic-bezier(0.77, 0, 0.175, 1)`                                                                                                                                                           |
+| `--ease-drawer` **新** | `cubic-bezier(0.32, 0.72, 0, 1)`                                                                                                                                                            |
+| `--ease-color` **新**  | `ease`                                                                                                                                                                                      |
+| `--press-scale` **新** | 0.97                                                                                                                                                                                        |
+| `--pop-scale` **新**   | 0.96                                                                                                                                                                                        |
+| `--stagger` **新**     | 40ms                                                                                                                                                                                        |
+| `--dur-loop-*` **新**  | 一圈的时长：`pulse` 1600 · `rope` 1000 · `delivery` 600 · `shimmer` 1400 · `spin` 800 · `indeterminate` 1200 · `glow` 2000 · `glow-working` 2600 · `glow-attention` 1800 · `bell` 600（ms） |
 
-没有回弹曲线；`linear` 只给 spinner、进度与长按填充。
+没有回弹曲线；`linear` 只给 spinner、进度与长按填充。界面动效不超过 300ms，开屏的 `--dur-hero` 是唯一例外（一次性的启动序列）；状态指示动画（循环的脉冲、流光、微光、转圈、不确定进度、光晕，以及终端铃声闪两下）不是界面过渡，一圈的时长读 `--dur-loop-*`，不在样式表里写字面时长。
 
 ### §2.11 z 轴
 
@@ -537,7 +542,8 @@ ui/ 里的 `shadow-md / shadow-lg / shadow-sm / ring-1 ring-foreground/10` 全�
 | `--dur-base`    | 160ms                                          | 选中、指示器平移、文字替换、宽度变化、图标切换                       |
 | `--dur-slow`    | 200ms                                          | 菜单 / Popover / Select 发芽、列表项与节点进出、折叠面板             |
 | `--dur-page`    | 280ms                                          | 对话框、Sheet、设置子页推入、手机整页推入、整理时的节点位移          |
-| `--dur-hero`    | 600ms                                          | 开屏淡出后的首屏错落入场、官网首屏                                   |
+| `--dur-hero`    | 600ms                                          | 开屏淡出后的首屏错落入场、官网首屏；唯一超过 300ms 的界面动效        |
+| `--dur-loop-*`  | 600–2600ms（§2.10）                            | 状态指示动画的一圈：脉冲、流光、微光、转圈、不确定进度、光晕、铃声   |
 | `--ease-out`    | `cubic-bezier(0.23, 1, 0.32, 1)`               | 一切进场与退场、按下、`MotionConfig` 默认                            |
 | `--ease-in-out` | `cubic-bezier(0.77, 0, 0.175, 1)`              | 已在屏上的元素移动 / 变形：指示器平移、整理、把手吸附                |
 | `--ease-drawer` | `cubic-bezier(0.32, 0.72, 0, 1)`               | Sheet、抽屉、设置子页与手机页面推入                                  |
@@ -547,6 +553,8 @@ ui/ 里的 `shadow-md / shadow-lg / shadow-sm / ring-1 ring-foreground/10` 全�
 | `--pop-scale`   | 0.96                                           | 浮层与对话框起始缩放（Tooltip 0.97）                                 |
 | `--stagger`     | 40ms                                           | 列表 / 节点批量入场的错落步长，最多前 6 个有错落，总长 ≤ 300ms       |
 | `MOTION_SPRING` | `{ type: "spring", duration: 0.3, bounce: 0 }` | `motion` 库的唯一弹簧（指示器、布局动画、图标切换）；bounce 永远是 0 |
+
+除 `--dur-hero` 外，界面动效（进场、退场、过渡）都不超过 300ms；样式表里超过 300ms 的时长只能来自 `--dur-hero` 与 `--dur-loop-*`（`styles/css-guards.test.ts` 守着，`tokens.test.ts` 核对超过 300ms 的令牌只有这两类）。
 
 `main.tsx` 的 `MotionConfig` 改为 `transition={{ duration: 0.16, ease: [0.23, 1, 0.32, 1] }}`，`reducedMotion="user"` 不变。`ease-in` 在任何地方都禁止；功能代码与 ui/ 里不出现字面 `cubic-bezier(`（只在 `tokens.css`）。只动 `opacity / transform / color / filter / clip-path`（折叠面板的 `height` 例外，≤ `--dur-slow`，用测量高度不用 `auto`）；`transition-all` 在 ui/ 与功能代码里都**删**，改成点名属性（`transition-[color,background-color,border-color]`、`transition-transform`、`transition-opacity`）。退场永远比入场短：取入场的一半或 `--dur-fast`。
 
@@ -608,7 +616,7 @@ ui/ 里的 `shadow-md / shadow-lg / shadow-sm / ring-1 ring-foreground/10` 全�
 
 ### §8.8 减少动效与触屏
 
-`tokens.css` 的全局压制改为「减少而不是归零」：`prefers-reduced-motion: reduce` 下位移、缩放、视差、循环（脉冲、rope、流光、微光、光晕呼吸）全部关闭，透明度与颜色过渡保留但压到 `--dur-fast`；`Spinner` 保留转圈（唯一必要的循环）；弹簧改为淡入；JS 侧（`motion`）走 `useReducedMotion`。`hover: none` 的设备关掉依赖悬停的效果（共享悬停底、Tooltip），悬停才出现的动作常显。
+`tokens.css` 的全局压制改为「减少而不是归零」：`prefers-reduced-motion: reduce` 下位移、缩放、视差、循环（脉冲、rope、流光、微光、光晕呼吸）全部关闭，透明度与颜色过渡保留但压到 `--dur-fast`；`Spinner` 保留转圈（唯一必要的循环）；弹簧改为淡入；JS 侧（`motion`）走 `useReducedMotion`。`hover: none` 的设备关掉依赖悬停的效果（共享悬停底、Tooltip），悬停才出现的动作常显。触屏点按不画系统高亮（`html` 上 `-webkit-tap-highlight-color: transparent`），按钮、链接、`[role=button]` 与 `label` 用 `touch-action: manipulation`，点下不等双击缩放；`Kbd` 在主指针是粗指针、且没有任何精细指针时隐藏（`pointer-coarse:not-any-pointer-fine:hidden`），接了触控板或鼠标的 iPad 照常显示；键帽本身是内容时（配对码、快捷键设置页的绑定）传 `persistent`，触屏上照常显示。
 
 ## §9 组件变体总表 **新**
 
@@ -651,8 +659,9 @@ ui/ 里的 `shadow-md / shadow-lg / shadow-sm / ring-1 ring-foreground/10` 全�
 | `styles/tokens-contrast.test.ts`（改）                                          | 新增 `--caution-text` 对 `--caution-soft`、Badge success / warn 文字对衬底、Tooltip 字对底 ≥ 4.5；`--faint` 刻度未填格不做文字                                                                                                                                                                                                                                                                                       |
 | `styles/type-scale.test.ts`（改）                                               | 11px 以下禁止（不变）；**新增**：功能代码（非 ui/、非 showcase/fixtures）禁止 `text-[Npx]`、`text-[length:var(--text-*)]`、`text-sm / text-xs / text-base`（手机输入档的 `text-base md:text-sm` 例外登记），只许 `text-caption / meta / body / section / title / display`；`font-bold` 及以上禁止（`font-heavy`）                                                                                                    |
 | `styles/class-guards.test.ts`（新）                                             | 功能代码禁止：裸 `rounded`、`rounded-sm/md/lg/xl/2xl/4xl`、`rounded-[…]`；`shadow`、`shadow-sm/md/lg`、`shadow-[…]`；`h-6/h-7/h-9/h-10/h-11/min-h-10/min-h-9` 等手写控件高度；`text-[var(--…)]`、`bg-[var(--…)]`、`border-[var(--…)]`（有对应工具类的）；`transition-all`；`duration-N` / `ease-in` / 字面 `cubic-bezier(`；`strokeWidth=`；`from "sonner"`（只许 ui/toast.tsx）。带 `LEGACY_BUDGET` 表，批次 3 归零 |
+| `styles/css-guards.test.ts`（新）                                               | `src/` 下的样式表（令牌文件 `tokens.css`、`backdrops.css` 除外）按声明扫描，禁止：写死的字号与行高 px；padding / margin / gap 里 0、1px、2px 以外的 px；字面颜色（遮罩除外）；`transition: all`；非零字面圆角；`ease-in`；`scale(0)`；超过 300ms 的字面时长；带模糊或超过 2px 扩散的字面投影（`var(--shadow-*)`、`none` 与无模糊的 1–2px 细线放过）。例外在同一条声明里写 `design-ok` 并说明原因，现为零处           |
 | `styles/no-literal-color.test.ts`（改）                                         | 扫描范围加入 `splash/splash.css`、`styles/motion.css`；`LEGACY_COLOR_BUDGET` 只剩数据文件                                                                                                                                                                                                                                                                                                                            |
-| `ui/ui.test.tsx`（改）                                                          | 每个变体 / 尺寸渲染出对应的 `data-variant / data-size`；`Button loading` 有 `aria-busy` 且无 `disabled`；`Button shortcut` 渲染 `Kbd` 与 `aria-keyshortcuts`；`Badge size`；`Tabs segmented` 有指示器；`Progress ticks` 渲染 20 格；`Tray` 结构；`DialogContent data-instant` 无 animation 类                                                                                                                        |
+| `ui/ui.test.tsx`（改）                                                          | 每个变体 / 尺寸渲染出对应的 `data-variant / data-size`；`Button loading` 有 `aria-busy` 且无 `disabled`；`Button shortcut` 渲染 `Kbd` 与 `aria-keyshortcuts`；`Badge size`；`Tabs segmented` 有指示器；`Progress ticks` 渲染 20 格；`Tray` 结构；`DialogContent data-instant` 无 animation 类；`IconButton active` 是淡底 + 正文色、不带 `text-brand-text`；`Kbd` / `KbdGroup` 带触屏隐藏类                          |
 | `ui/status-family.test.tsx`（新，替代 `status-pill-contrast.test.ts` 的一部分） | 三件的 tone → 色 / 文字 / 脉冲映射一致；`StatusLine` 的 `aria-live` 只包阶段                                                                                                                                                                                                                                                                                                                                         |
 | `ui/toast.test.tsx`（新）                                                       | `ui/toast` 的五种调用渲染出 `role="status"`、对应 `StatusDot` tone；错误与带动作的 `duration` 为 `Infinity`                                                                                                                                                                                                                                                                                                          |
 | `panels/no-description.test.ts`（新）                                           | 功能代码不出现 `ResponsiveDialogDescription / AlertDialogDescription / DialogDescription / AlertDescription / CardDescription / EmptyDescription / ItemDescription / FieldDescription`（sr-only 例外登记）；`SettingsRow footnote=` 只接变量不接 `t("…")` 字面静态键                                                                                                                                                 |

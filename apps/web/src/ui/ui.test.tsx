@@ -176,6 +176,14 @@ describe("IconButton", () => {
     expect(button.dataset.active).toBe("true");
     expect(button.getAttribute("aria-pressed")).toBe("true");
   });
+
+  it("激活态是强调淡底 + 正文色，图标不着强调色", () => {
+    render(<IconButton label="固定侧栏" active />);
+    const cls = screen.getByRole("button", { name: "固定侧栏" }).className;
+    expect(cls).toContain("data-[active=true]:bg-brand-soft");
+    expect(cls).toContain("data-[active=true]:text-foreground");
+    expect(cls).not.toContain("text-brand-text");
+  });
 });
 
 describe("其余生成组件的冒烟测试", () => {
@@ -633,6 +641,31 @@ describe("Kbd / Spinner / Shimmer", () => {
       "group-data-[variant=destructive-solid]/button:text-primary-foreground",
     );
     expect(cls).not.toContain("in-data-[variant=");
+  });
+
+  it("Kbd 与 KbdGroup 在只有粗指针时隐藏，有精细指针（触控板、鼠标）时照常显示", () => {
+    render(
+      <KbdGroup data-testid="group">
+        <Kbd>⌘</Kbd>
+      </KbdGroup>,
+    );
+    for (const element of [screen.getByText("⌘"), screen.getByTestId("group")])
+      expect(element.className).toContain(
+        "pointer-coarse:not-any-pointer-fine:hidden",
+      );
+  });
+
+  it("persistent 的 Kbd 与 KbdGroup（配对码、快捷键设置页）在触屏上照常显示", () => {
+    render(
+      <KbdGroup persistent data-testid="group">
+        <Kbd persistent>A1B2</Kbd>
+      </KbdGroup>,
+    );
+    for (const element of [
+      screen.getByText("A1B2"),
+      screen.getByTestId("group"),
+    ])
+      expect(element.className).not.toContain("not-any-pointer-fine:hidden");
   });
 
   it("Spinner 两档尺寸与三种状态；done 画对勾，failed 是 ×", () => {

@@ -53,21 +53,21 @@
  */
 @theme {
   --text-display: 22px;
-  --text-display--line-height: 28px;
+  --text-display--line-height: var(--leading-display);
   --text-title: 17px;
-  --text-title--line-height: 24px;
+  --text-title--line-height: var(--leading-title);
   --text-section: 15px;
-  --text-section--line-height: 22px;
+  --text-section--line-height: var(--leading-section);
   --text-body: 13px;
-  --text-body--line-height: 19px;
+  --text-body--line-height: var(--leading-body);
   --text-meta: 12px;
-  --text-meta--line-height: 16px;
+  --text-meta--line-height: var(--leading-meta);
   --text-caption: 11px;
-  --text-caption--line-height: 16px;
+  --text-caption--line-height: var(--leading-caption);
   --text-sm: 13px;
-  --text-sm--line-height: 19px;
+  --text-sm--line-height: var(--leading-body);
   --text-xs: 12px;
-  --text-xs--line-height: 16px;
+  --text-xs--line-height: var(--leading-meta);
 }
 
 @theme inline {
@@ -208,6 +208,17 @@
     height: 100%;
   }
 
+  /* 触屏：不画系统的点按高亮；控件不等双击缩放，点下立即响应（设计系统 §2.2） */
+  html {
+    -webkit-tap-highlight-color: transparent;
+  }
+  button,
+  a,
+  [role="button"],
+  label {
+    touch-action: manipulation;
+  }
+
   /* 图标线宽 1.5 全局生效（设计系统 §2.12）；要用 2 的地方显式写 `stroke-2` */
   .lucide {
     stroke-width: 1.5px;
@@ -263,7 +274,7 @@
   /* 细滚动条：抽屉、会话侧栏、菜单里到处要用 */
   .scrollbar-thin {
     scrollbar-width: thin;
-    scrollbar-color: rgb(var(--tint-rgb) / 20%) transparent;
+    scrollbar-color: var(--scrollbar-thumb) transparent;
   }
 
   .scrollbar-thin::-webkit-scrollbar {
@@ -272,8 +283,8 @@
   }
 
   .scrollbar-thin::-webkit-scrollbar-thumb {
-    background: rgb(var(--tint-rgb) / 18%);
-    border-radius: 999px;
+    background: var(--scrollbar-thumb-webkit);
+    border-radius: var(--r-pill);
   }
 
   .scrollbar-thin::-webkit-scrollbar-track {
@@ -405,15 +416,15 @@
 
 @layer utilities {
   .anim-dot-pulse {
-    animation: armadra-dot-pulse 1.6s ease-in-out infinite;
+    animation: armadra-dot-pulse var(--dur-loop-pulse) ease-in-out infinite;
   }
 
   .anim-rope-flow {
-    animation: armadra-rope-flow 1s linear infinite;
+    animation: armadra-rope-flow var(--dur-loop-rope) linear infinite;
   }
 
   .anim-delivery-flow {
-    animation: armadra-delivery-flow 0.6s linear infinite;
+    animation: armadra-delivery-flow var(--dur-loop-delivery) linear infinite;
   }
 }
 

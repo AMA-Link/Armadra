@@ -667,10 +667,12 @@ export function KeybindingsPage() {
                                   {t("settings.shortcut.recording")}
                                 </span>
                               ) : chords.length === 0 ? (
-                                <Kbd>{t("settings.shortcut.unbound")}</Kbd>
+                                <Kbd persistent>
+                                  {t("settings.shortcut.unbound")}
+                                </Kbd>
                               ) : (
                                 chords.map((chord, position) => (
-                                  <Kbd key={`${position}:${chord}`}>
+                                  <Kbd persistent key={`${position}:${chord}`}>
                                     {formatKeys(chord, { mac })}
                                   </Kbd>
                                 ))
