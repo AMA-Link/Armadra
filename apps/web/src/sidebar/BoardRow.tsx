@@ -103,7 +103,7 @@ export function BoardRow({
           <div
             data-active={active ? "true" : undefined}
             className={cn(
-              "group/board motion-hover flex h-(--row-h) items-center gap-1 rounded-control pr-1 hover:bg-hover data-[active=true]:bg-brand-soft data-[active=true]:text-brand-text",
+              "group/board motion-hover flex h-(--row-h) items-center gap-1 rounded-control pr-1 hover:bg-hover data-[active=true]:bg-brand-soft data-[active=true]:text-foreground",
               indent ? "pl-4" : "pl-1.5",
             )}
           >

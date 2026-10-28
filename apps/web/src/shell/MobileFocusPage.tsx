@@ -229,9 +229,9 @@ function KeyButton({
       className={cn(
         "min-w-11 shrink-0 border border-border px-2",
         "font-mono text-body leading-none font-normal",
-        // 按下（Ctrl 锁住）是选中态：品牌浅底 + 品牌字（设计系统 §3.4）。
+        // 按下（Ctrl 锁住）是选中态：品牌浅底 + 正文色（设计系统 §2.2）。
         pressed
-          ? "border-brand bg-brand-soft text-brand-text"
+          ? "border-brand bg-brand-soft text-foreground"
           : "bg-card text-foreground",
       )}
       // 按下不抢终端的焦点，否则每按一个键软键盘就收一次。
