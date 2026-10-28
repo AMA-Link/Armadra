@@ -201,6 +201,7 @@ export function PairingCard({
                     {t("gateway.pairCode.label")}
                   </span>
                   <Kbd
+                    persistent
                     data-pairing-code
                     className="h-5 px-1.5 font-mono text-body tracking-[0.12em] text-foreground select-text"
                   >

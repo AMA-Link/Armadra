@@ -24,7 +24,7 @@ export interface IconButtonProps
   /** 无障碍名称，必填。 */
   label: string;
   size?: "cluster" | "dock" | "inline";
-  /** 处于激活/开启状态（例如已 pin 的抽屉、已锁定的相机）：`--brand-soft` 底 + `--brand-text` 字。 */
+  /** 处于激活/开启状态（例如已 pin 的抽屉、已锁定的相机）：`--brand-soft` 底 + 正文色，图标不着强调色。 */
   active?: boolean;
   /**
    * 这个动作的快捷键（给人看的写法，如 `⌘K`），写进 `aria-keyshortcuts`。可见的提示放在
@@ -43,7 +43,7 @@ export function IconButton({
   ...props
 }: IconButtonProps) {
   const active_ =
-    "data-[active=true]:bg-brand-soft data-[active=true]:text-brand-text";
+    "data-[active=true]:bg-brand-soft data-[active=true]:text-foreground";
   const preset = {
     cluster: [
       "size-[28px] text-muted-foreground",

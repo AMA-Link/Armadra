@@ -202,7 +202,7 @@ export function BranchTree({
                       )}
                       onClick={(event) => event.stopPropagation()}
                       onPressedChange={() => onToggleFavorite(key)}
-                      className="h-auto min-w-0 shrink-0 rounded-tight p-0.5 text-muted-foreground hover:bg-muted aria-pressed:bg-transparent aria-pressed:text-brand-text data-[state=on]:bg-transparent"
+                      className="h-auto min-w-0 shrink-0 rounded-tight p-0.5 text-muted-foreground hover:bg-muted aria-pressed:bg-transparent aria-pressed:text-foreground data-[state=on]:bg-transparent"
                     >
                       <Star
                         className="size-3"

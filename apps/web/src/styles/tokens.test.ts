@@ -491,9 +491,12 @@ describe("tokens.css", () => {
   it("app.css 的 @theme 把 Tailwind 刻度对齐阶梯：text-sm = 13、text-xs = 12，语义类与 tokens.css 同值", () => {
     const theme = customProperties(ruleBody(appCss, "@theme {"));
     expect(theme.get("--text-sm")).toBe("13px");
-    expect(theme.get("--text-sm--line-height")).toBe("19px");
+    // 行高读 tokens.css 的 `--leading-*`，`@theme` 里不写死 px（CSS 守卫）
+    expect(theme.get("--text-sm--line-height")).toBe("var(--leading-body)");
     expect(theme.get("--text-xs")).toBe("12px");
-    expect(theme.get("--text-xs--line-height")).toBe("16px");
+    expect(theme.get("--text-xs--line-height")).toBe("var(--leading-meta)");
+    expect(dark.get("--leading-body")).toBe("19px");
+    expect(dark.get("--leading-meta")).toBe("16px");
     // --text-base 不动：手机输入的 `text-base md:text-sm` 靠它保持 16
     expect(theme.has("--text-base")).toBe(false);
     for (const tier of [
@@ -507,7 +510,10 @@ describe("tokens.css", () => {
       expect(theme.get(`--text-${tier}`), tier).toBe(
         dark.get(`--text-${tier}`),
       );
-      expect(theme.get(`--text-${tier}--line-height`), tier).toMatch(/px$/);
+      expect(theme.get(`--text-${tier}--line-height`), tier).toBe(
+        `var(--leading-${tier})`,
+      );
+      expect(dark.get(`--leading-${tier}`), tier).toMatch(/^\d+px$/);
     }
   });
 
@@ -515,6 +521,19 @@ describe("tokens.css", () => {
     for (const [name, value] of Object.entries(MOTION_TOKENS)) {
       expect(dark.get(name), name).toBe(value);
     }
+  });
+
+  it("超过 300ms 的时长令牌只有开屏 --dur-hero 与循环的 --dur-loop-*", () => {
+    const ms = (value: string) =>
+      value.endsWith("ms") ? Number.parseFloat(value) : Number.NaN;
+    const long = [...dark]
+      .filter(([name]) => name.startsWith("--dur-"))
+      .filter(([, value]) => !(ms(value) <= 300))
+      .map(([name]) => name)
+      .filter((name) => !name.startsWith("--dur-loop-"));
+    expect(long).toEqual(["--dur-hero"]);
+    expect(dark.get("--dur-loop-spin")).toBe("800ms");
+    expect(dark.get("--dur-loop-pulse")).toBe("1600ms");
   });
 
   it("没有 ease-in 与回弹曲线；字面 cubic-bezier 只出现在 tokens.css", () => {
@@ -597,6 +616,16 @@ describe("tokens.css", () => {
     );
     expect(appCss).toMatch(
       /\.hairline-x\s*\{[^}]*mask-image:\s*linear-gradient\(\s*90deg,\s*transparent/,
+    );
+  });
+
+  it("触屏不画点按高亮，按钮、链接与标签不等双击缩放", () => {
+    const base = ruleBody(appCss, "@layer base {");
+    expect(base).toMatch(
+      /html\s*\{\s*-webkit-tap-highlight-color:\s*transparent;/,
+    );
+    expect(base).toMatch(
+      /button,\s*a,\s*\[role="button"\],\s*label\s*\{\s*touch-action:\s*manipulation;/,
     );
   });
 
