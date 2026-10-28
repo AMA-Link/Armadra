@@ -32,12 +32,13 @@ import {
   writeResult,
 } from "./ui-features/harness.mjs";
 
-/** 云端 `ConsoleCSP` 要的指令（与 `saas-host-e2e.mjs` 的 proposed 档一致）。 */
+/** 云端 `ConsoleCSP` 要的指令（armadra-cloud#153；与 `saas-host-e2e.mjs` 的 proposed 档一致）。 */
 export const MERMAID_CSP = [
   "default-src 'self'",
   "style-src 'self' 'unsafe-inline'",
   "script-src 'self'",
   "img-src 'self' blob: data:",
+  "frame-src https://challenges.cloudflare.com blob:",
   "object-src 'none'",
   "base-uri 'none'",
   "require-trusted-types-for 'script'",
