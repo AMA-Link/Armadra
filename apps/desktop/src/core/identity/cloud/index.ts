@@ -156,7 +156,7 @@ export function installCloud(
             : (deps.store.transaction((tx) => tx.session(sessionId))
                 ?.channelDeviceId ?? "");
         return ready.bind(who, input.assertion, {
-          local: localRequest(call.request.raw.socket, channel),
+          local: localRequest(call.request?.raw, channel),
         });
       },
       trustedOrigins: (input) => ready.trustedOrigins(input),

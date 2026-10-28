@@ -86,6 +86,21 @@ export function markBearerTransport(raw: object): void {
 }
 
 /**
+ * 经 Gateway（同进程 TLS 监听，契约 §17）转交进来的请求：服务器壳网页、局域网配对的
+ * 设备。由 `core/gateway/listener.ts` 在转交之前标上，按请求对象记。「本地会话」
+ * （契约 §88.5）据此把它们排除在外——它们的对端地址可能也是回环（反代转发到本机）。
+ */
+const gatewayRequests = new WeakSet<object>();
+
+export function markGatewayRequest(raw: object): void {
+  gatewayRequests.add(raw);
+}
+
+export function viaGateway(raw: object): boolean {
+  return gatewayRequests.has(raw);
+}
+
+/**
  * 这个请求走不走原生传输：明文连接 + 壳能呈现的回环 HTTP 来源，或者 Gateway
  * 标过的 Bearer 模式请求。
  */

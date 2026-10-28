@@ -1,9 +1,15 @@
-import type { AddressInfo } from "node:net";
+import type { IncomingMessage } from "node:http";
+import { request as httpsRequest } from "node:https";
+import { type AddressInfo, Socket } from "node:net";
+import { TLSSocket } from "node:tls";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { allowOrigins } from "../../http/cors";
 import { installContract } from "../../http/rpc";
+import { accessCookieName } from "../../gateway/admission";
+import { openGateway } from "../../gateway/listener";
 import { markChannelSocket } from "../../relay/e2e/peer";
+import { markGatewayRequest } from "../http";
 import { type Fixture, fixture } from "../../workspaces/fixture";
 import { AccountsService } from "../accounts";
 import { Authorizer } from "../authorize";
@@ -123,6 +129,46 @@ async function call(
     text,
     body: text === "" ? {} : (JSON.parse(text) as Record<string, unknown>),
   };
+}
+
+/** 经 Gateway（自签证书，只在回环上）调 `POST /api/identity/cloud/bind`。 */
+function gatewayCall(
+  origin: string,
+  headers: Record<string, string>,
+): Promise<Answer> {
+  const url = new URL("/api/identity/cloud/bind", origin);
+  const payload = JSON.stringify({ assertion: sub("acct:gateway") });
+  return new Promise((done, failed) => {
+    const client = httpsRequest(
+      {
+        host: url.hostname,
+        port: url.port,
+        path: url.pathname,
+        method: "POST",
+        rejectUnauthorized: false,
+        headers: {
+          ...headers,
+          "content-type": "application/json",
+          "content-length": String(Buffer.byteLength(payload)),
+        },
+      },
+      (response) => {
+        const chunks: Buffer[] = [];
+        response.on("data", (chunk: Buffer) => chunks.push(chunk));
+        response.on("end", () => {
+          const text = Buffer.concat(chunks).toString("utf8");
+          done({
+            status: response.statusCode ?? 0,
+            text,
+            body:
+              text === "" ? {} : (JSON.parse(text) as Record<string, unknown>),
+          });
+        });
+      },
+    );
+    client.on("error", failed);
+    client.end(payload);
+  });
 }
 
 async function rpc(procedure: string, input: unknown = {}): Promise<Answer> {
@@ -318,12 +364,96 @@ describe("bind 替换自动成员（契约 §88.5）", () => {
     ).toBe(auto);
   });
 
-  it("本地判定：经隧道的连接、绑通道设备钥的会话都不算本地", () => {
-    expect(localRequest({}, "")).toBe(true);
+  it("本地判定：经隧道、TLS、Gateway 转交、非回环对端、绑通道设备钥的都不算本地", () => {
+    const socketAt = (remoteAddress: string | undefined, proto = Socket) =>
+      Object.create(proto.prototype, {
+        remoteAddress: { value: remoteAddress },
+        remoteFamily: {
+          value:
+            remoteAddress === undefined
+              ? undefined
+              : remoteAddress.includes(":")
+                ? "IPv6"
+                : "IPv4",
+        },
+      }) as Socket;
+    const raw = (socket: unknown) => ({ socket }) as unknown as IncomingMessage;
+    expect(localRequest(raw(socketAt("127.0.0.1")), "")).toBe(true);
+    expect(localRequest(raw(socketAt("::ffff:127.0.0.1")), "")).toBe(true);
+    expect(localRequest(raw(socketAt("::1")), "")).toBe(true);
+    // unix socket（私有通道）没有对端地址。
+    expect(localRequest(raw(socketAt(undefined)), "")).toBe(true);
     expect(localRequest(undefined, "")).toBe(true);
-    expect(localRequest({}, "dev_1")).toBe(false);
-    const channel = { tunnel: { channel: { deviceId: "dev_2" } } };
+    expect(localRequest(raw(undefined), "")).toBe(false);
+    expect(localRequest(raw({}), "")).toBe(false);
+    expect(localRequest(raw(socketAt("192.168.1.20")), "")).toBe(false);
+    expect(localRequest(raw(socketAt("127.0.0.1")), "dev_1")).toBe(false);
+    expect(
+      localRequest(raw(socketAt("127.0.0.1", TLSSocket as never)), ""),
+    ).toBe(false);
+    const forwarded = raw(socketAt("127.0.0.1"));
+    markGatewayRequest(forwarded);
+    expect(localRequest(forwarded, "")).toBe(false);
+    const channel = Object.assign(socketAt("127.0.0.1"), {
+      tunnel: { channel: { deviceId: "dev_2" } },
+    });
     markChannelSocket(channel);
-    expect(localRequest(channel, "")).toBe(false);
+    expect(localRequest(raw(channel), "")).toBe(false);
+  });
+
+  it("经 Gateway 的 owner 会话（Cookie 与原生 App 的 Bearer 模式）调 bind：409，映射不动", async () => {
+    const first = await login("acct:gateway", {
+      team: { teamId: "team_1", role: "owner" },
+      role: "driver",
+    });
+    expect(first.status, first.text).toBe(200);
+    const auto = principalOf(first);
+    const gateway = await openGateway(core, {
+      listen: { host: "127.0.0.1", port: 0 },
+      publicOrigins: [],
+      hosts: () => ["127.0.0.1"],
+      tls: { generated: "selfSigned" },
+      deviceName: "test",
+    });
+    try {
+      const origin = gateway.origin();
+      const session = () => {
+        const ticket = service.issueBootstrap({
+          hostId: store.hostId(),
+          instanceId: INSTANCE,
+          origin,
+          deviceName: "gateway",
+          scopes: allScopes(),
+        });
+        return service.consumeBootstrap({
+          ticket: ticket.ticket,
+          hostId: store.hostId(),
+          instanceId: INSTANCE,
+          origin,
+        });
+      };
+      const cookie = session();
+      const viaCookie = await gatewayCall(origin, {
+        origin,
+        cookie: `${accessCookieName(store.hostId())}=${cookie.accessToken}`,
+        "x-armadra-csrf": cookie.csrfToken,
+      });
+      expect(viaCookie.status, viaCookie.text).toBe(409);
+      expect(viaCookie.body.code).toBe("conflict");
+      const bearer = session();
+      const viaBearer = await gatewayCall(origin, {
+        origin: "capacitor://localhost",
+        authorization: `Bearer ${bearer.accessToken}`,
+      });
+      expect(viaBearer.status, viaBearer.text).toBe(409);
+      expect(viaBearer.body.code).toBe("conflict");
+    } finally {
+      await gateway.close();
+    }
+    expect(
+      store.transaction((tx) =>
+        tx.accounts.liveOAuth(cloudProvider(ISSUER), "acct:gateway"),
+      )?.principalId,
+    ).toBe(auto);
   });
 });
