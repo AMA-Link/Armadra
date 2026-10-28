@@ -46,6 +46,8 @@ let accounts: AccountsService;
 let cloud: CloudService;
 let base: string;
 let owner: { accessToken: string; principalId: string };
+/** 置上之后，回环监听上新来的请求的连接按端到端通道标记（模拟经通道进来）。 */
+let asChannel: boolean;
 
 beforeEach(async () => {
   world = fakeRelayWorld();
@@ -73,6 +75,14 @@ beforeEach(async () => {
     platform: core.platform,
   });
   const listener = core.server.createListener();
+  asChannel = false;
+  listener.on("request", (request: IncomingMessage) => {
+    if (!asChannel) return;
+    Object.assign(request.socket, {
+      tunnel: { channel: { deviceId: "dev_channel" } },
+    });
+    markChannelSocket(request.socket);
+  });
   await new Promise<void>((done) => listener.listen(0, "127.0.0.1", done));
   base = `http://127.0.0.1:${(listener.address() as AddressInfo).port}`;
   const ticket = service.issueBootstrap({
@@ -453,6 +463,32 @@ describe("bind 替换自动成员（契约 §88.5）", () => {
     expect(
       store.transaction((tx) =>
         tx.accounts.liveOAuth(cloudProvider(ISSUER), "acct:gateway"),
+      )?.principalId,
+    ).toBe(auto);
+  });
+  it("经端到端通道进来的连接：HTTP 路由与 RPC 调 bind 都是 409", async () => {
+    const first = await login("acct:channel", {
+      team: { teamId: "team_1", role: "owner" },
+      role: "driver",
+    });
+    expect(first.status, first.text).toBe(200);
+    const auto = principalOf(first);
+    asChannel = true;
+    const viaHttp = await call(
+      "POST",
+      "/api/identity/cloud/bind",
+      { assertion: sub("acct:channel") },
+      asOwner(),
+    );
+    expect(viaHttp.status, viaHttp.text).toBe(409);
+    expect(viaHttp.body.code).toBe("conflict");
+    const viaRpc = await rpc("identity.cloud.bind", {
+      assertion: sub("acct:channel"),
+    });
+    expect(viaRpc.status, viaRpc.text).toBe(409);
+    expect(
+      store.transaction((tx) =>
+        tx.accounts.liveOAuth(cloudProvider(ISSUER), "acct:channel"),
       )?.principalId,
     ).toBe(auto);
   });
