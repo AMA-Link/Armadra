@@ -176,7 +176,7 @@ describe("契约 §86：Armadra 云挂载的团队与归属", () => {
     world.cloud.assertionTeam = "team-2";
     core.sessions.revokeAll();
     await saas.session(RELAYED_ID, "relayed");
-    await saas.attributionSettled();
+    await saas.attribution.settled();
     expect(await listed()).toMatchObject({
       origin: "shared",
       teamId: "team-2",
@@ -185,7 +185,7 @@ describe("契约 §86：Armadra 云挂载的团队与归属", () => {
     delete world.cloud.assertionTeam;
     core.sessions.revokeAll();
     await saas.session(RELAYED_ID, "relayed");
-    await saas.attributionSettled();
+    await saas.attribution.settled();
     expect(await listed()).toMatchObject({
       origin: "shared",
       teamId: "",
@@ -200,7 +200,7 @@ describe("契约 §86：Armadra 云挂载的团队与归属", () => {
     world.cloud.owner = false;
     core.sessions.revokeAll();
     await saas.session(RELAYED_ID, "relayed");
-    await saas.attributionSettled();
+    await saas.attribution.settled();
     expect(await listed()).toMatchObject({
       origin: "shared",
       teamId: "team-1",
@@ -209,7 +209,7 @@ describe("契约 §86：Armadra 云挂载的团队与归属", () => {
     world.cloud.owner = true;
     core.sessions.revokeAll();
     await saas.session(RELAYED_ID, "relayed");
-    await saas.attributionSettled();
+    await saas.attribution.settled();
     expect(await listed()).toMatchObject({
       origin: "mine",
       teamId: "",
@@ -398,8 +398,44 @@ describe("契约 §86：Armadra 云挂载的团队与归属", () => {
     expect(await listed()).toMatchObject({ teamId: "team-1" });
     release();
     delete world.holdSources;
-    await saas.attributionSettled();
+    await saas.attribution.settled();
     expect(await listed()).toMatchObject({ teamId: "team-2" });
+  });
+
+  it("source_access_denied 只在取断言时透传（session、mount）；别的远程调用仍是 source_unauthorized", async () => {
+    world.cloud.owner = false;
+    world.cloud.denyAssertion = true;
+    world.cloud.sources = [
+      { sourceId: RELAYED_ID, name: "h", coreVersion: "9.0.0" },
+    ];
+    expect(await failure(saas.mount({ serviceId, sourceId: RELAYED_ID }))).toBe(
+      "source_access_denied",
+    );
+    delete world.cloud.denyAssertion;
+    world.cloud.denySources = true;
+    expect(await failure(saas.remoteSources(serviceId))).toBe(
+      "source_unauthorized",
+    );
+    delete world.cloud.denySources;
+  });
+
+  it("连着两次重登：归属纠正按源排队，最后落下的是较新的那次；做完不留条目", async () => {
+    world.cloud.owner = false;
+    world.cloud.assertionTeam = "team-1";
+    await saas.mount({ serviceId, sourceId: RELAYED_ID });
+    let release = () => {};
+    world.holdSources = new Promise<void>((done) => {
+      release = done;
+    });
+    world.cloud.assertionTeam = "team-2";
+    await saas.session(RELAYED_ID, undefined, undefined, true);
+    world.cloud.assertionTeam = "team-3";
+    await saas.session(RELAYED_ID, undefined, undefined, true);
+    release();
+    delete world.holdSources;
+    await saas.attribution.settled();
+    expect(await listed()).toMatchObject({ teamId: "team-3" });
+    expect(saas.attribution.pending).toBe(0);
   });
 
   it("relogin：跳过刷新，直接带旧刷新令牌 cloud/login", async () => {

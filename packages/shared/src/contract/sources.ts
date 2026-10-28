@@ -775,6 +775,8 @@ export const sources = {
         "source_unreachable",
         "cloud_account_unlinked",
         "not_implemented",
+        // §88.2：取断言被拒原样透传（`details.reason = hostOutdated` 是版本门）。
+        "source_access_denied",
       ),
     })
     .meta(write("§33.2", "POST", "/api/sources/remotes/{serviceId}/mount")),
@@ -908,6 +910,12 @@ export const sources = {
         "source_unreachable",
         "rate_limited",
         "not_implemented",
+        // §88.4：Armadra 云按团队设置拒绝建链接（cloud-api §5 `links.create`）。
+        "source_access_denied",
+        "team_role_insufficient",
+        "team_policy_denied",
+        "guests_disabled",
+        "team_suspended",
       ),
     })
     .meta(

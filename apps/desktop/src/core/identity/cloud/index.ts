@@ -24,7 +24,7 @@ import type { IdentityService } from "../service";
 import type { IdentityStore } from "../store";
 import { AssertionVerifier } from "./assertion";
 import { CloudClient } from "./cloud-client";
-import { CLOUD_PREFIX, CloudHttp } from "./http";
+import { CLOUD_PREFIX, CloudHttp, localRequest } from "./http";
 import { JwksCache } from "./jwks";
 import { CloudLogin } from "./login";
 import { CloudRegistry, IDLE_RELAY } from "./register";
@@ -146,9 +146,18 @@ export function installCloud(
       register: (input) => ready.register(input, principalId()),
       revoke: (input) => ready.revoke(input, principalId()),
       status: () => ready.status(),
-      bind: (input) => {
+      bind: (input, call) => {
         const who = principalId() ?? ownerOf(deps.store);
-        return ready.bind(who, input.assertion);
+        // 替换自动成员只给本地会话（契约 §88.5）：不经隧道、会话不绑通道设备钥。
+        const sessionId = requestIdentity()?.session?.sessionId;
+        const channel =
+          sessionId === undefined
+            ? ""
+            : (deps.store.transaction((tx) => tx.session(sessionId))
+                ?.channelDeviceId ?? "");
+        return ready.bind(who, input.assertion, {
+          local: localRequest(call.request?.raw, channel),
+        });
       },
       trustedOrigins: (input) => ready.trustedOrigins(input),
       relayPending: () => ready.relayPending(),

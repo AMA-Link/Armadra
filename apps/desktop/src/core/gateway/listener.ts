@@ -11,7 +11,7 @@ import { applyHttpTimeouts } from "../http/timeouts";
 import type { CoreContext } from "../main";
 import { identityInstanceId } from "../identity";
 import { type RequestIdentity, runAs } from "../identity/gate";
-import { markBearerTransport } from "../identity/http";
+import { markBearerTransport, markGatewayRequest } from "../identity/http";
 import { IdentityService } from "../identity/service";
 import { sessionIdentity } from "../identity/transport";
 import { IdentityStore } from "../identity/store";
@@ -376,6 +376,8 @@ async function handle(
       });
       return;
     }
+    // 经 Gateway 来的不是本机的本地会话（契约 §88.5）：`bind` 不替换映射。
+    markGatewayRequest(request);
     // core 里的路由门与各域的判定按这个身份判（`core/identity/gate.ts`）。
     runAs(requestIdentityOf(admission, state.context), () =>
       state.delegate.emit("request", request, response),

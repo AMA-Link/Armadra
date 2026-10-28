@@ -337,3 +337,49 @@ async function explainAccessDenied(
       })
     : denied;
 }
+
+/**
+ * 重登之后的归属纠正按源排成一条队（契约 §88.2）：同一个源一次只做一件，按发起顺序；
+ * 排队时已有更新的一次跟上来，这一次就不做——它拿的是更早的断言与目录。失败只记一条
+ * warn，字段只有源号与错误码，不记令牌、断言或目录内容。做完的从表里删掉。
+ */
+export class AttributionQueue {
+  private readonly tails = new Map<string, Promise<void>>();
+  private readonly latest = new Map<string, number>();
+
+  run(
+    sourceId: string,
+    task: () => Promise<void>,
+    log: { warn(message: string, fields?: Record<string, unknown>): void },
+  ): Promise<void> {
+    const ticket = (this.latest.get(sourceId) ?? 0) + 1;
+    this.latest.set(sourceId, ticket);
+    const previous = this.tails.get(sourceId) ?? Promise.resolve();
+    const work: Promise<void> = previous
+      .then(() => (this.latest.get(sourceId) === ticket ? task() : undefined))
+      .catch((error: unknown) =>
+        log.warn("relogin attribution failed", {
+          sourceId,
+          code: error instanceof CoreFailure ? error.code : "unknown",
+        }),
+      )
+      .finally(() => {
+        if (this.tails.get(sourceId) === work) {
+          this.tails.delete(sourceId);
+          this.latest.delete(sourceId);
+        }
+      });
+    this.tails.set(sourceId, work);
+    return work;
+  }
+
+  /** 测试用：等队里的都做完。 */
+  async settled(): Promise<void> {
+    await Promise.all(this.tails.values());
+  }
+
+  /** 测试用：还挂着几个源。 */
+  get pending(): number {
+    return this.tails.size;
+  }
+}

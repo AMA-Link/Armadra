@@ -13480,6 +13480,9 @@
                   "properties": {
                     "bound": {
                       "const": true
+                    },
+                    "replaced": {
+                      "const": true
                     }
                   },
                   "required": ["bound"]
