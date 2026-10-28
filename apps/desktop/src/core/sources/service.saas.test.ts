@@ -308,6 +308,45 @@ describe("契约 §86：Armadra 云挂载的团队与归属", () => {
     expect((await stored())?.deviceId).toBe(before!.deviceId);
   });
 
+  it("两个调用方同时到期：只重登一次、共用同一份访问，前一个的访问令牌不被作废", async () => {
+    world.cloud.owner = false;
+    await saas.mount({ serviceId, sourceId: RELAYED_ID });
+    const core = relayedCore();
+    core.refuseRefresh = true;
+    const logins = core.cloudLogins;
+    const [a, b] = await Promise.all([
+      saas.session(RELAYED_ID, "relayed"),
+      saas.session(RELAYED_ID, "relayed"),
+    ]);
+    expect(core.cloudLogins).toBe(logins + 1);
+    expect(core.continued).toBe(1);
+    expect(b.accessToken).toBe(a.accessToken);
+    // 之后再来的（不在那次排队里）照常自己换。
+    await saas.session(RELAYED_ID, "relayed");
+    expect(core.cloudLogins).toBe(logins + 2);
+  });
+
+  it("两个调用方同时刷新：只刷新一次；要重登的不复用刷新换来的那份", async () => {
+    world.cloud.owner = false;
+    await saas.mount({ serviceId, sourceId: RELAYED_ID });
+    const core = relayedCore();
+    const refreshes = () =>
+      world.requests.filter((one) =>
+        one.url.endsWith("/api/identity/session/refresh"),
+      ).length;
+    const before = refreshes();
+    const logins = core.cloudLogins;
+    const [a, b, c] = await Promise.all([
+      saas.session(RELAYED_ID, "relayed"),
+      saas.session(RELAYED_ID, "relayed"),
+      saas.session(RELAYED_ID, undefined, undefined, true),
+    ]);
+    expect(refreshes()).toBe(before + 1);
+    expect(b.accessToken).toBe(a.accessToken);
+    expect(core.cloudLogins).toBe(logins + 1);
+    expect(c.accessToken).not.toBe(a.accessToken);
+  });
+
   it("relogin：跳过刷新，直接带旧刷新令牌 cloud/login", async () => {
     world.cloud.owner = false;
     await saas.mount({ serviceId, sourceId: RELAYED_ID });

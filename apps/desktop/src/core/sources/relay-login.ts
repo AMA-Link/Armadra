@@ -107,6 +107,84 @@ export async function loginAtRelay(
 }
 
 /**
+ * 经中继换一份原生会话（契约 §88.2）：先用存着的刷新令牌；对端答 401（Armadra 云的限寿
+ * 会话临近到期就这样答）时不删它，带着它 `cloud/login` 重登、续同一会话。`relogin`：
+ * 跳过刷新直接重登。调用方负责把整段放进同一把锁里。
+ */
+export async function renewAtRelay(
+  deps: RelayLoginDeps,
+  input: RelayLoginInput,
+  relogin: boolean,
+): Promise<NativeCredentials> {
+  if (!relogin) {
+    const stored = (await deps.secrets.source(input.sourceId)).byOrigin[
+      input.key
+    ];
+    if (stored !== undefined) {
+      try {
+        const fresh = await deps.peer.refresh(
+          input.address,
+          stored.refreshToken,
+        );
+        await deps.secrets.putSource(input.sourceId, input.key, {
+          refreshToken: fresh.refreshToken,
+          deviceId: fresh.deviceId || stored.deviceId,
+        });
+        return fresh;
+      } catch (error) {
+        if (
+          !(error instanceof CoreFailure) ||
+          error.code !== "source_unauthorized"
+        )
+          throw error;
+      }
+    }
+  }
+  return loginAtRelay(deps, input);
+}
+
+/**
+ * 同一条路上并发换票的合并（契约 §88.2）：排队期间别人已经换过一份、那份访问还新鲜，
+ * 就直接用它——再刷新一次会旋转会话、作废刚发给前一个调用方的访问令牌，再重登一次还会
+ * 多扣对端 `cloud/login` 的额度。要重登（授予变了）的只复用重登换来的那份。
+ */
+export class RelayExchanges {
+  private readonly last = new Map<
+    string,
+    { gen: number; relogin: boolean; credentials: NativeCredentials }
+  >();
+
+  generation(key: string): number {
+    return this.last.get(key)?.gen ?? 0;
+  }
+
+  shared(
+    key: string,
+    since: number,
+    relogin: boolean,
+    freshUntil: number,
+  ): NativeCredentials | undefined {
+    const last = this.last.get(key);
+    if (
+      last === undefined ||
+      last.gen === since ||
+      (relogin && !last.relogin) ||
+      last.credentials.accessExpiresAtMs <= freshUntil
+    )
+      return undefined;
+    return last.credentials;
+  }
+
+  record(key: string, relogin: boolean, credentials: NativeCredentials): void {
+    this.last.set(key, {
+      gen: this.generation(key) + 1,
+      relogin,
+      credentials,
+    });
+  }
+}
+
+/**
  * 服务器壳页面要直接连的来源（契约 §88.1）：远程服务的签发方（`me.stream`）与挂上的
  * 源的中继来源是公开域名，匿名也给；直连源的地址（`baseUrl` 与直连的路）是 owner 才
  * 看得到的源表拓扑，只在 `owner` 时给。只读 SQLite。
@@ -126,4 +204,26 @@ export function pageConnectOrigins(
     for (const route of routes)
       if (route.via === "relayed" || owner) origins.add(route.origin);
   return [...origins];
+}
+
+/** 经中继时，中继就是远程服务本身（个人中转）才沿用它的 CA 指纹。 */
+export function relayFingerprint(
+  relayBaseUrl: string,
+  remote: Pick<RemoteRow, "issuer" | "fingerprint">,
+): string {
+  try {
+    return new URL(relayBaseUrl).origin === remote.issuer
+      ? remote.fingerprint
+      : "";
+  } catch {
+    return "";
+  }
+}
+
+/** 一条中继的来源：断言给的 `relayOrigin`，没有就是 `relayBaseUrl` 的来源。 */
+export function relayOriginOf(assertion: {
+  relayOrigin?: string;
+  relayBaseUrl: string;
+}): string {
+  return assertion.relayOrigin || new URL(assertion.relayBaseUrl).origin;
 }

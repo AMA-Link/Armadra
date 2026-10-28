@@ -31,7 +31,13 @@ import type {
   SourceAssertion,
 } from "./remote-client";
 import { parsePairLink } from "./pair-link";
-import { loginAtRelay, pageConnectOrigins } from "./relay-login";
+import {
+  RelayExchanges,
+  pageConnectOrigins,
+  relayFingerprint,
+  relayOriginOf,
+  renewAtRelay,
+} from "./relay-login";
 import { CloudConsole } from "./saas-console";
 import { saasMountInfo } from "./saas-mount";
 import { CloudSignIn, type CloudSignInHost } from "./saas-signin";
@@ -119,20 +125,6 @@ interface CachedAccess {
   readonly accessExpiresAtMs: number;
 }
 
-/** 经中继时，中继就是远程服务本身（个人中转）才沿用它的 CA 指纹。 */
-function relayFingerprint(
-  relayBaseUrl: string,
-  remote: Pick<RemoteRow, "issuer" | "fingerprint">,
-): string {
-  try {
-    return new URL(relayBaseUrl).origin === remote.issuer
-      ? remote.fingerprint
-      : "";
-  } catch {
-    return "";
-  }
-}
-
 /**
  * 几个失败里挑最有用的：拒绝比不可达更有用——页面据此提示重新登录，而不是
  * 「连不上」。都不是就答 `source_unreachable`。
@@ -150,14 +142,6 @@ function telling(failures: readonly unknown[], message: string): CoreFailure {
 
 function wsBaseOf(httpBase: string): string {
   return httpBase.replace(/^http/, "ws");
-}
-
-/** 一条中继的来源：断言给的 `relayOrigin`，没有就是 `relayBaseUrl` 的来源。 */
-function relayOriginOf(assertion: {
-  relayOrigin?: string;
-  relayBaseUrl: string;
-}): string {
-  return assertion.relayOrigin || new URL(assertion.relayBaseUrl).origin;
 }
 
 export class SourcesService {
@@ -178,6 +162,8 @@ export class SourcesService {
    * 整台设备，并发的两次换票会把自己登出。
    */
   private readonly inflight = new Map<string, Promise<unknown>>();
+  /** 经中继换票的合并（契约 §88.2）。 */
+  private readonly exchanges = new RelayExchanges();
 
   constructor(private readonly options: SourcesServiceOptions) {
     this.store = options.store;
@@ -617,7 +603,6 @@ export class SourcesService {
     sourceId: string,
     key: string,
     address: SourceAddress,
-    keep = false,
   ): Promise<NativeCredentials> {
     return this.serial(`source ${sourceId} ${key}`, async () => {
       const stored = (await this.secrets.source(sourceId)).byOrigin[key];
@@ -629,7 +614,6 @@ export class SourcesService {
         fresh = await this.peer.refresh(address, stored.refreshToken);
       } catch (error) {
         if (
-          !keep &&
           error instanceof CoreFailure &&
           error.code === "source_unauthorized"
         ) {
@@ -692,22 +676,18 @@ export class SourcesService {
       relayToken: assertion.relayToken,
       sourceId: row.sourceId,
     };
-    const key = route.origin;
-    let fresh: NativeCredentials | undefined;
-    if (!relogin) {
-      try {
-        fresh = await this.refreshAt(row.sourceId, key, address, true);
-      } catch (error) {
-        if (
-          !(error instanceof CoreFailure) ||
-          error.code !== "source_unauthorized"
-        ) {
-          throw error;
-        }
-      }
-    }
-    fresh ??= await this.serial(`source ${row.sourceId} ${key}`, () =>
-      loginAtRelay(
+    const lock = `source ${row.sourceId} ${route.origin}`;
+    const since = this.exchanges.generation(lock);
+    // 刷新与重登在同一把锁里；排队时别人刚换过的新鲜访问直接共用（契约 §88.2）。
+    const fresh = await this.serial(lock, async () => {
+      const shared = this.exchanges.shared(
+        lock,
+        since,
+        relogin,
+        this.now() + ACCESS_SLACK_MS,
+      );
+      if (shared !== undefined) return shared;
+      const got = await renewAtRelay(
         {
           store: this.store,
           secrets: this.secrets,
@@ -716,15 +696,18 @@ export class SourcesService {
         },
         {
           sourceId: row.sourceId,
-          key,
+          key: route.origin,
           address,
           assertion,
           service: remote,
           endpoint: this.endpoint(remote),
           access: this.access.get(remote.serviceId),
         },
-      ),
-    );
+        relogin,
+      );
+      this.exchanges.record(lock, relogin, got);
+      return got;
+    });
     this.ok(row, route);
     return {
       accessToken: fresh.accessToken,
