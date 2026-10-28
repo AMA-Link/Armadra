@@ -279,7 +279,7 @@ ARMADRA_PERSONAL_RELAY_HOME=<armadra-cloud 检出> node tools/probes/relay-web-e
 
 ```sh
 pnpm libs:build && pnpm --filter @armadra/web build && pnpm --filter @armadra/server build
-# 部署的控制台页面目录挂上这份 apps/web/dist
+# 控制台页面：部署挂上这份 apps/web/dist，或给 ARMADRA_SAAS_WEB_ROOT=apps/web/dist 由探针答（不改部署）
 NODE_EXTRA_CA_CERTS=<ca.crt> ARMADRA_SAAS_ISSUER=https://app.<域> ARMADRA_SAAS_SPKI=<叶证书 SPKI> \
   ARMADRA_SAAS_ACCOUNTS=<{ owner, member } 的邮箱与口令> [ARMADRA_SAAS_TEAM=test-team] \
   [ARMADRA_SAAS_COMPOSE=<compose 包装脚本>] [ARMADRA_SAAS_ONLY=E2,E6] [ARMADRA_SAAS_CSP=current] \

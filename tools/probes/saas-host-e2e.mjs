@@ -18,7 +18,7 @@
 //
 // 用法（仓库根目录）：
 //   pnpm libs:build && pnpm --filter @armadra/web build && pnpm --filter @armadra/server build
-//   # 部署的控制台页面目录挂上这份 apps/web/dist
+//   # 控制台页面：部署挂上这份 apps/web/dist，或给 ARMADRA_SAAS_WEB_ROOT=apps/web/dist 由探针答（不改部署）
 //   NODE_EXTRA_CA_CERTS=<ca.crt> \
 //   ARMADRA_SAAS_ISSUER=https://app.saas.localhost \
 //   ARMADRA_SAAS_SPKI=<leaf.spki 的内容> \
@@ -38,10 +38,11 @@ import {
   mkdtempSync,
   readFileSync,
   rmSync,
+  statSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { extname, join, resolve } from "node:path";
 
 import { nodeAt, terminalRoundTrip, untilApproved } from "./platform-lib.mjs";
 import { probeSession } from "./probe-session.mjs";
@@ -90,7 +91,7 @@ for (const [path, hint] of [
 
 /** 设计 Q13 的 Trusted Types 叠加（控制面的 `ConsoleCSP` 随 B7 加上之前，探针替它加）。 */
 const TRUSTED_TYPES_CSP =
-  "require-trusted-types-for 'script'; trusted-types armadra armadra-sanitize default";
+  "require-trusted-types-for 'script'; trusted-types armadra armadra-sanitize default dompurify";
 /**
  * 控制台页面的 CSP 按哪一份测：缺省 `proposed`——把控制面的 CSP 换成 B7 要提的那一份（原样
  * 加上 `img-src` / `media-src` 的 `blob:` 与 Trusted Types），验证这份改动够用；`current` 不动，
@@ -100,6 +101,40 @@ const CSP_MODE = process.env.ARMADRA_SAAS_CSP ?? "proposed";
 const PROPOSED_EXTRA =
   "img-src 'self' blob: data:; media-src 'self' blob:; " + TRUSTED_TYPES_CSP;
 
+/**
+ * `ARMADRA_SAAS_WEB_ROOT`：控制台页面不用部署挂的那份，而由探针按本地构建（如 `apps/web/dist`）
+ * 答——不改部署的 `WEB_DIR`。`/v1`、`/.well-known` 与中继照常走部署。
+ */
+const WEB_ROOT = process.env.ARMADRA_SAAS_WEB_ROOT
+  ? resolve(process.env.ARMADRA_SAAS_WEB_ROOT)
+  : "";
+/** 控制面回落 `index.html` 的页面路由（与 `go/internal/web/app.go` 的 `IsAppRoute` 同一张表）。 */
+const APP_EXACT = new Set([
+  "/",
+  "/login",
+  "/register",
+  "/verify",
+  "/reset",
+  "/device",
+]);
+const APP_PREFIXES = ["/me/", "/t/", "/h/", "/j/", "/invite/", "/ops/"];
+const isAppRoute = (path) =>
+  APP_EXACT.has(path) ||
+  APP_PREFIXES.some(
+    (prefix) => path.startsWith(prefix) || path === prefix.slice(0, -1),
+  );
+const CONTENT_TYPES = {
+  ".html": "text/html; charset=utf-8",
+  ".js": "text/javascript; charset=utf-8",
+  ".css": "text/css; charset=utf-8",
+  ".svg": "image/svg+xml",
+  ".png": "image/png",
+  ".ico": "image/x-icon",
+  ".json": "application/json",
+  ".webmanifest": "application/manifest+json",
+  ".woff2": "font/woff2",
+  ".wasm": "application/wasm",
+};
 /** WS 握手子协议里的令牌与票、Cookie：写进结果之前打码。 */
 const redact = (text) =>
   String(text)
@@ -113,6 +148,7 @@ const report = {
   issuer: ISSUER,
   cspMode: CSP_MODE,
   violations: [],
+  cspFailures: [],
   scenarios: [],
 };
 const cleanups = [];
@@ -240,7 +276,7 @@ async function startChrome() {
       "--remote-debugging-address=127.0.0.1",
       "--remote-debugging-port=0",
       ...(SPKI ? [`--ignore-certificate-errors-spki-list=${SPKI}`] : []),
-      ...(CSP_MODE === "proposed"
+      ...(CSP_MODE === "proposed" || WEB_ROOT
         ? ["--disable-features=LocalNetworkAccessChecks"]
         : []),
       `--user-data-dir=${profile}`,
@@ -304,6 +340,8 @@ async function openTab(browser, context, label) {
       message.params.name === "__armadraCsp"
     ) {
       const violation = { tab: label, ...JSON.parse(message.params.payload) };
+      // 探针自己检查强制与否时造的那一次。
+      if (String(violation.sample).includes("tt-check.invalid")) return;
       report.violations.push(violation);
       console.log(`  CSP   ${JSON.stringify(violation)}`);
     }
@@ -331,10 +369,14 @@ async function openTab(browser, context, label) {
       page.failures.push(`ws closed ${message.params.requestId}`);
     }
     if (message.method === "Fetch.requestPaused")
-      void useProposedCsp(page, message.params);
+      void intercept(page, message.params);
   });
   await page.call("Network.enable", {});
-  if (CSP_MODE === "proposed")
+  if (WEB_ROOT)
+    await page.call("Fetch.enable", {
+      patterns: [{ urlPattern: `${ISSUER}/*`, requestStage: "Request" }],
+    });
+  else if (CSP_MODE === "proposed")
     await page.call("Fetch.enable", {
       patterns: [
         {
@@ -355,14 +397,63 @@ async function openTab(browser, context, label) {
   return page;
 }
 
+/** 控制面现在给控制台页面的 CSP（本地答页面时照它，再按档位追加）。 */
+let consoleCsp = "";
+
+/** 页面文档最终的 CSP：`proposed` 追加 `blob:` 与 Trusted Types，`current` 原样。 */
+const documentCsp = (base) =>
+  CSP_MODE === "proposed" ? `${base}; ${PROPOSED_EXTRA}` : base;
+
 /**
- * 控制台文档的响应换上 B7 要提的 CSP（控制面现有那份原样保留，追加 `blob:` 与 Trusted Types）。
- * 换掉（而不是叠加）响应头要整份重造响应——`continueResponse` 去不掉已解析的原 CSP；重造的响应
- * 没有对端地址，本地网络访问检查会把页面当公网来源，所以这一档的 Chrome 关掉了那项检查（只用于
- * 本地部署上的模拟）。
+ * 控制台文档换上要测的 CSP；给了 `ARMADRA_SAAS_WEB_ROOT` 时页面与资源也由本地构建答。换掉（而不是
+ * 叠加）响应头要整份重造响应——`continueResponse` 去不掉已解析的原 CSP；重造的响应没有对端地址，
+ * 本地网络访问检查会把页面当公网来源，所以这时的 Chrome 关掉了那项检查（只用于本地部署上的模拟）。
+ * 换不上记一条失败，探针最后据此判失败。
  */
-async function useProposedCsp(page, params) {
+async function intercept(page, params) {
   try {
+    const url = new URL(params.request.url);
+    if (WEB_ROOT && params.responseStatusCode === undefined) {
+      const local = isAppRoute(url.pathname)
+        ? join(WEB_ROOT, "index.html")
+        : join(WEB_ROOT, url.pathname);
+      const servable =
+        !url.pathname.startsWith("/v1/") &&
+        !url.pathname.startsWith("/.well-known/") &&
+        local.startsWith(WEB_ROOT) &&
+        existsSync(local) &&
+        statSync(local).isFile();
+      if (!servable) {
+        await page.call("Fetch.continueRequest", {
+          requestId: params.requestId,
+        });
+        return;
+      }
+      const html = local.endsWith(".html");
+      const headers = [
+        {
+          name: "Content-Type",
+          value: CONTENT_TYPES[extname(local)] ?? "application/octet-stream",
+        },
+        { name: "Cache-Control", value: "no-store" },
+        ...(html
+          ? [
+              {
+                name: "Content-Security-Policy",
+                value: documentCsp(consoleCsp),
+              },
+            ]
+          : []),
+      ];
+      if (html) report.csp = documentCsp(consoleCsp);
+      await page.call("Fetch.fulfillRequest", {
+        requestId: params.requestId,
+        responseCode: 200,
+        responseHeaders: headers,
+        body: readFileSync(local).toString("base64"),
+      });
+      return;
+    }
     if (params.responseStatusCode === undefined) {
       await page.call("Fetch.continueRequest", { requestId: params.requestId });
       return;
@@ -374,7 +465,7 @@ async function useProposedCsp(page, params) {
       ...headers.filter((header) => !isCsp(header)),
       ...headers.filter(isCsp).map((header) => ({
         name: header.name,
-        value: `${header.value}; ${PROPOSED_EXTRA}`,
+        value: documentCsp(header.value),
       })),
     ];
     report.csp = responseHeaders.find(isCsp)?.value;
@@ -390,11 +481,26 @@ async function useProposedCsp(page, params) {
         : Buffer.from(body.body).toString("base64"),
     });
   } catch (error) {
-    console.log(`  warn  换 CSP 失败：${error.message}`);
+    report.cspFailures.push(String(error?.message ?? error));
+    console.log(`  FAIL  换 CSP / 本地页面失败：${error.message}`);
     await page
       .call("Fetch.continueRequest", { requestId: params.requestId })
       .catch(() => undefined);
   }
+}
+
+/**
+ * 页面上 Trusted Types 真的在强制：往 `script.src` 写一个不在白名单里的地址，`default` 策略
+ * 拒绝就抛（不强制时赋值照常成功）。这一次自己造的违规不计入。
+ */
+const TT_PROBE_URL = "https://tt-check.invalid/probe.js";
+async function trustedTypesEnforced(page) {
+  return page.evaluate(`try {
+    document.createElement("script").src = ${JSON.stringify(TT_PROBE_URL)};
+    return false;
+  } catch {
+    return true;
+  }`);
 }
 
 /** 页面里用 Cookie 会话登录控制台（同源 `auth.login`，设 `__Host-armadra-cloud`）。 */
@@ -442,6 +548,9 @@ const hostDir = join(scratch, "host1");
 mkdirSync(hostDir, { recursive: true, mode: 0o700 });
 
 try {
+  consoleCsp =
+    (await fetch(`${ISSUER}/login`)).headers.get("content-security-policy") ??
+    "";
   const ownerToken = await cloudLogin(accounts.owner);
   const memberToken = await cloudLogin(accounts.member);
   const spaces = await cloud("/v1/me/spaces", {}, ownerToken);
@@ -589,6 +698,17 @@ try {
       output,
     );
     await ownerTab.goto(hostUrl);
+    if (CSP_MODE === "proposed") {
+      s.check(
+        /require-trusted-types-for 'script'/.test(report.csp ?? ""),
+        "生效的 CSP 里有 require-trusted-types-for",
+        report.csp ?? "",
+      );
+      s.check(
+        await trustedTypesEnforced(ownerTab),
+        "页面上 Trusted Types 真的在强制",
+      );
+    }
     const approvals = await approve(ownerTab, "owner 进入 host1");
     s.check(approvals === 1, "新浏览器先待确认，主机放行一次", approvals);
     await terminalRoundTrip(ownerTab, terminal.id, "saas");
@@ -900,7 +1020,11 @@ try {
   }
 
   report.status =
-    report.violations.length === 0 ? "passed" : "failed (CSP violations)";
+    report.cspFailures.length > 0
+      ? "failed (CSP not applied)"
+      : report.violations.length === 0
+        ? "passed"
+        : "failed (CSP violations)";
 } catch (error) {
   report.error = String(error?.stack ?? error);
   for (const page of tabs) {
