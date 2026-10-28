@@ -372,7 +372,7 @@ export class CloudHttp {
 /**
  * 本机的本地会话（契约 §88.5）：回环页面、服务器壳 CLI、桌面壳。全部成立才算：
  *
- * - 拿得到连接（没有请求的进程内调用按本机算）；
+ * - 拿得到请求与它的连接（拿不到一律判非本地）；
  * - 不是 Gateway 转交的（服务器壳网页、局域网设备，见 `markGatewayRequest`）；
  * - 连接不是 TLS、不是中继隧道流、不是端到端通道；
  * - 对端是回环地址，或是 unix socket（私有通道）；
@@ -384,8 +384,9 @@ export function localRequest(
   raw: IncomingMessage | undefined,
   channelDeviceId: string,
 ): boolean {
-  if (raw === undefined) return channelDeviceId === "";
-  if (channelDeviceId !== "" || viaGateway(raw)) return false;
+  if (raw === undefined || channelDeviceId !== "" || viaGateway(raw)) {
+    return false;
+  }
   const socket: unknown = raw.socket;
   if (
     !(socket instanceof Socket) ||

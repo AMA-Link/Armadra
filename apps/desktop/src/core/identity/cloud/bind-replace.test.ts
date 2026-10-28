@@ -364,7 +364,7 @@ describe("bind 替换自动成员（契约 §88.5）", () => {
     ).toBe(auto);
   });
 
-  it("本地判定：经隧道、TLS、Gateway 转交、非回环对端、绑通道设备钥的都不算本地", () => {
+  it("本地判定：拿不到连接、经隧道、TLS、Gateway 转交、非回环对端、绑通道设备钥的都不算本地", () => {
     const socketAt = (remoteAddress: string | undefined, proto = Socket) =>
       Object.create(proto.prototype, {
         remoteAddress: { value: remoteAddress },
@@ -383,7 +383,7 @@ describe("bind 替换自动成员（契约 §88.5）", () => {
     expect(localRequest(raw(socketAt("::1")), "")).toBe(true);
     // unix socket（私有通道）没有对端地址。
     expect(localRequest(raw(socketAt(undefined)), "")).toBe(true);
-    expect(localRequest(undefined, "")).toBe(true);
+    expect(localRequest(undefined, "")).toBe(false);
     expect(localRequest(raw(undefined), "")).toBe(false);
     expect(localRequest(raw({}), "")).toBe(false);
     expect(localRequest(raw(socketAt("192.168.1.20")), "")).toBe(false);
