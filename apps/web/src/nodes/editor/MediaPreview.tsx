@@ -158,11 +158,12 @@ function ImagePreview({
                     maxWidth: "none",
                   }
                 : {}),
-              // 透明区域的棋盘格：卡片底与它掺 10% 前景色交替，深浅主题都跟着
+              // 透明区域的棋盘格：卡片底与它掺 16% 前景色交替，深浅主题都跟着
               // token 走。以前用 --surface-deep / --surface-raised 两档表面，
-              // 浅色下两者只差 2/255，几乎看不出格子（G0-4 截图发现）。
+              // 浅色下两者只差 2/255，几乎看不出格子（G0-4 截图发现）；卡片
+              // 改为 #202020、正文改为 #cdcdcd 后 10% 只差约 15/255，也看不出来。
               backgroundImage:
-                "repeating-conic-gradient(var(--card) 0 25%, color-mix(in oklab, var(--card), var(--foreground) 10%) 0 50%)",
+                "repeating-conic-gradient(var(--card) 0 25%, color-mix(in oklab, var(--card), var(--foreground) 16%) 0 50%)",
               backgroundSize: "16px 16px",
               imageRendering:
                 zoom.mode === "scale" && zoom.scale >= 4
