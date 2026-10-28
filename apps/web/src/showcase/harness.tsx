@@ -61,10 +61,19 @@ const STATUS: [string, string, string][] = [
  */
 export function contrastPairs(theme: "dark" | "light"): ContrastPair[] {
   const pairs: ContrastPair[] = [];
-  for (const bg of [...READING, "--surface-overlay"]) {
+  // 墨三阶（第四阶 --faint 只做装饰）落在每一级面上
+  for (const bg of [
+    ...READING,
+    "--surface-sunken",
+    "--surface-overlay",
+    "--surface-raised",
+  ]) {
+    pairs.push({ fg: "--text-strong", bg, kind: "text" });
     pairs.push({ fg: "--text", bg, kind: "text" });
     pairs.push({ fg: "--muted-foreground", bg, kind: "text" });
   }
+  // 分段控件：当前项文字落在 --segment-thumb 上
+  pairs.push({ fg: "--text", bg: "--segment-thumb", kind: "text" });
   pairs.push({ fg: "--brand", bg: "--surface-card", kind: "graphic" });
   for (const bg of [...READING, "--surface-raised"]) {
     pairs.push({ fg: "--brand-text", bg, kind: "text" });
@@ -91,7 +100,8 @@ export function contrastPairs(theme: "dark" | "light"): ContrastPair[] {
   }
   for (const [graphic, text, soft] of STATUS) {
     pairs.push({ fg: graphic, bg: "--surface-card", kind: "graphic" });
-    for (const bg of READING) pairs.push({ fg: text, bg, kind: "text" });
+    for (const bg of [...READING, "--surface-overlay"])
+      pairs.push({ fg: text, bg, kind: "text" });
     // 深色 working 文字不叠在衬底上（设计系统 §2.3 表里没有这一对）。
     if (theme === "dark" && text === "--working-text") continue;
     pairs.push({ fg: text, bg: "--surface-card", over: soft, kind: "text" });

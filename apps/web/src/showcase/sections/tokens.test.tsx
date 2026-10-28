@@ -39,7 +39,7 @@ describe("tokens 分区（设计系统 §2）", () => {
     ]);
   });
 
-  it("圆角七档、阴影三档（外加一张只有 1px 边的卡片）", () => {
+  it("圆角八档、投影六个样本（卡片 / 节点 / 节点抬起 / 浮层 / 对话框 / 键帽）", () => {
     const { container } = renderTokens();
     expect(
       [...container.querySelectorAll<HTMLElement>("[data-radius-sample]")].map(
@@ -48,6 +48,7 @@ describe("tokens 分区（设计系统 §2）", () => {
     ).toEqual([
       "rounded-tight",
       "rounded-control",
+      "rounded-field",
       "rounded-card",
       "rounded-panel",
       "rounded-dialog",
@@ -58,7 +59,14 @@ describe("tokens 分区（设计系统 §2）", () => {
       [...container.querySelectorAll<HTMLElement>("[data-shadow-sample]")].map(
         (node) => node.dataset.shadowSample,
       ),
-    ).toEqual(["none", "shadow-node", "shadow-overlay", "shadow-dialog"]);
+    ).toEqual([
+      "shadow-card",
+      "shadow-node",
+      "shadow-node-lift",
+      "shadow-overlay",
+      "shadow-dialog",
+      "shadow-kbd",
+    ]);
   });
 
   it("动效：六档时长、四条曲线、按下 / 发芽缩放、六格错落", () => {
