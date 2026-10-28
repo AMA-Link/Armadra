@@ -62,7 +62,7 @@ describe("sourceForUrl", () => {
 });
 
 describe("localSource.relayed", () => {
-  it("只有传输带着中继令牌头时才算经中继", async () => {
+  it("传输带着中继令牌头、或字节走端到端通道时算经中继", async () => {
     const { installLocalTransport, localSource } = await import("./source");
     const { RELAY_TOKEN_HEADER } = await import("../sources/transport");
     const transport = {
@@ -79,6 +79,12 @@ describe("localSource.relayed", () => {
       installLocalTransport({
         ...transport,
         extraHeaders: () => ({ [RELAY_TOKEN_HEADER]: "relay-jwt" }),
+      });
+      expect(localSource.relayed?.()).toBe(true);
+      // 端到端通道（控制台 `/h/`、托管页）：浏览器直接取的地址到不了，媒体走整份取回。
+      installLocalTransport({
+        ...transport,
+        baseFetch: () => globalThis.fetch,
       });
       expect(localSource.relayed?.()).toBe(true);
     } finally {

@@ -132,10 +132,11 @@ export const localSource: Source = {
     if (localRuntime().viaServerShell) return cookieSessionFetch(input, init);
     return base(input, init);
   },
-  // 中继托管的页面（`sources/route-entry.ts`）把经中继的那台源装成本机源，
-  // 传输上带着中继令牌头：媒体票还要再换一张中继的（§37.4）。
+  // 中继托管的页面（`sources/route-entry.ts`）把经中继的那台源装成本机源：传输带着中继令牌头，
+  // 或字节走端到端通道（`baseFetch`）。浏览器直接取的地址（媒体票，§37.4）在这两种情况下都
+  // 到不了——端到端通道之外中继不转普通请求（SaaS 的 `*.src` 只转 `/_relay/e2e`）。
   relayed: () =>
-    transport?.baseFetch?.() === undefined &&
+    transport?.baseFetch?.() !== undefined ||
     transport?.extraHeaders?.()[RELAY_TOKEN_HEADER] !== undefined,
   get WebSocket() {
     if (transport === null) return globalThis.WebSocket;
