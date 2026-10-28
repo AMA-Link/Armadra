@@ -146,6 +146,10 @@ export function accessCookieName(hostId: string): string {
   return cookieName(hostId, true, "access");
 }
 
+export function refreshCookieName(hostId: string): string {
+  return cookieName(hostId, true, "refresh");
+}
+
 const FORBIDDEN: Refusal = {
   status: 403,
   body: { code: "forbidden", message: "来源不被允许" },
@@ -232,7 +236,8 @@ export function admit(input: GateInput, context: GateContext): Admission {
 
 /**
  * 发页面（静态 GET）时这次请求是不是本机 owner（契约 §88.1）：带着这个来源上有效的
- * 访问 Cookie、会话属于 owner。只用来决定页面 CSP 里要不要放直连源的地址——认不出、
+ * 访问 Cookie、会话属于 owner；访问 Cookie 没了或过期时，用刷新 Cookie 只读地认一次
+ * （不旋转、不发新凭据）。只用来决定页面 CSP 里要不要放直连源的地址——认不出、
  * 会话过期、成员会话一律按匿名，不拒绝请求。来源取 `https://<Host>`，必须在白名单里。
  */
 export function ownerPageRequest(
@@ -244,19 +249,30 @@ export function ownerPageRequest(
     host === undefined ? undefined : canonicalOrigin(`https://${host}`);
   if (origin === undefined || !context.origins.has(origin)) return false;
   const accessToken = cookieValue(headers, accessCookieName(context.hostId));
-  if (accessToken === "") return false;
-  try {
-    return (
-      context.service.authenticate({
-        accessToken,
-        hostId: context.hostId,
-        origin,
-        requireCsrf: false,
-      }).role === "owner"
-    );
-  } catch {
-    return false;
+  if (accessToken !== "") {
+    try {
+      if (
+        context.service.authenticate({
+          accessToken,
+          hostId: context.hostId,
+          origin,
+          requireCsrf: false,
+        }).role === "owner"
+      )
+        return true;
+    } catch {
+      // 访问凭据过期（只活 15 分钟）：往下用刷新凭据只读地认一次。
+    }
   }
+  const refreshToken = cookieValue(headers, refreshCookieName(context.hostId));
+  return (
+    refreshToken !== "" &&
+    context.service.refreshOwner({
+      refreshToken,
+      hostId: context.hostId,
+      origin,
+    })
+  );
 }
 
 /**

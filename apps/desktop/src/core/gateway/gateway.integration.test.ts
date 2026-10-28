@@ -966,6 +966,39 @@ describe("安全收尾（G3-8）", () => {
       expect(csp(mine)).toContain("https://direct.example:8443");
       const theirs = await remote("/", { origin: null, person: member });
       expect(csp(theirs)).not.toContain("direct.example");
+      // 访问 Cookie 过期（只活 15 分钟）或没带：只读地用刷新 Cookie 认出 owner，不旋转。
+      const only = (person: { cookie: string }, purpose: string) =>
+        person.cookie
+          .split(";")
+          .map((part) => part.trim())
+          .filter((part) => part.includes(`_${purpose}=`))
+          .join("; ");
+      const refreshOnly = only(owner, "refresh");
+      expect(refreshOnly).not.toBe("");
+      const viaRefresh = await remote("/", {
+        origin: null,
+        headers: { cookie: refreshOnly },
+      });
+      expect(csp(viaRefresh)).toContain("https://direct.example:8443");
+      const staleAccess = await remote("/", {
+        origin: null,
+        headers: { cookie: `${refreshOnly}; ${only(member, "access")}` },
+      });
+      expect(csp(staleAccess)).toContain("https://direct.example:8443");
+      const memberRefresh = await remote("/", {
+        origin: null,
+        headers: { cookie: only(member, "refresh") },
+      });
+      expect(csp(memberRefresh)).not.toContain("direct.example");
+      const forged = await remote("/", {
+        origin: null,
+        headers: { cookie: refreshOnly.replace(/=(.*)$/, "=$1x") },
+      });
+      expect(csp(forged)).not.toContain("direct.example");
+      // 没旋转：owner 原来那份会话照常可用。
+      expect((await remote("/api/gateway", { person: owner })).status).toBe(
+        200,
+      );
     } finally {
       providePageConnectGrants(null);
     }
