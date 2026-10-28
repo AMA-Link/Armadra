@@ -44,4 +44,45 @@ describe("hover HTML", () => {
       'href="armadra:///src/main.py"',
     );
   });
+
+  it("嵌套超过上限：深处整段压成纯文本，不原样放过", async () => {
+    const { MAX_SANITIZE_DEPTH } = await import("./sanitize");
+    const open = "<div>".repeat(MAX_SANITIZE_DEPTH + 5);
+    const close = "</div>".repeat(MAX_SANITIZE_DEPTH + 5);
+    const html = sanitizeHTML(
+      `${open}<a href="https://x.example" onclick="pwned()">deep</a>${close}`,
+    );
+    expect(html).toContain("deep");
+    expect(html).not.toContain("<a");
+    expect(html).not.toContain("onclick");
+    const document_ = new DOMParser().parseFromString(html, "text/html");
+    let depth = 0;
+    let element: Element | null = document_.body;
+    while (element?.firstElementChild) {
+      element = element.firstElementChild;
+      depth += 1;
+    }
+    expect(depth).toBeLessThanOrEqual(MAX_SANITIZE_DEPTH);
+  });
+
+  it("解析意外失败：退回转义后的纯文本，不放过标记", () => {
+    const original = globalThis.DOMParser;
+    globalThis.DOMParser = class {
+      parseFromString(): Document {
+        throw new Error("parser exploded");
+      }
+    } as unknown as typeof DOMParser;
+    try {
+      const html = sanitizeHTML(
+        '<img src=x onerror="pwned()">hi <b>there</b> & "q" \'s\'',
+      );
+      expect(html).not.toContain("<");
+      expect(html).not.toContain("onerror");
+      expect(html).toContain("hi");
+      expect(html).toContain("&#38;");
+      expect(html).toContain("&#34;");
+    } finally {
+      globalThis.DOMParser = original;
+    }
+  });
 });

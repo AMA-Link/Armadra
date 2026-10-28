@@ -20,6 +20,8 @@ import { cn } from "@/lib/cn";
 import { formatBytes } from "@/lib/format";
 import { unifiedLineDiff } from "@/lib/line-diff";
 import { directFileUrl, downloadRuntimeFile } from "@/api/assets";
+import { isControlPlanePage } from "@/api/runtime-url";
+import { mediaBlobType } from "./editor/media-type";
 import { useCanvasStore } from "@/store/canvas-store";
 import { Badge } from "@/ui/badge";
 import { Button } from "@/ui/button";
@@ -171,6 +173,12 @@ export function EditorNode({ id, node, selected }: NodeBodyProps) {
             return;
           }
         }
+        // PDF 要放进不带沙箱的框架（查看器在沙箱里起不来），控制台来源（`/h/`）的 CSP
+        // 也不放行 `blob:` 框架：那里只给下载（设计 saas-host-open §5.4）。
+        if (media === "pdf" && isControlPlanePage()) {
+          setState({ kind: "attachment", info });
+          return;
+        }
         // 退回整份取回成 `blob:`（老 core、换票失败、PDF）：要设上限。
         if (info.size > MAX_BLOB_PREVIEW_BYTES) {
           setState({ kind: "attachment", info });
@@ -184,9 +192,10 @@ export function EditorNode({ id, node, selected }: NodeBodyProps) {
         const blob = await response.blob();
         if (cancelled) return;
         // 下载路由永远回 octet-stream；类型在这里按 Runtime 报的 MIME 补上，
-        // 引擎才知道该用哪个播放器或查看器。
+        // 引擎才知道该用哪个播放器或查看器。只认白名单里的类型（`mediaBlobType`）：
+        // `blob:` 与页面同源，报成 `text/html` 的「媒体」会在页面的来源里当网页执行。
         mediaUrl = URL.createObjectURL(
-          new Blob([blob], { type: info.mimeType }),
+          new Blob([blob], { type: mediaBlobType(media, info.mimeType) }),
         );
         setState({ kind: "media", media, src: mediaUrl, info });
         return;
