@@ -557,6 +557,62 @@ describe("控制台 /h/ 进主机", () => {
     expect(ctx.host.view.kind).toBe("signedOut");
   });
 
+  it("enter 成功之后才发现已登出：刚装上的路由卸下，视图仍是已登出", async () => {
+    routes.length = 0;
+    let release: () => void = () => undefined;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    let host: ReturnType<typeof setup>["host"] | null = null;
+    const ctx = setup({
+      enter: async (options) => {
+        const entered = await fakeEnter(options);
+        // 路由已经装上、enter 还没返回时登出。
+        void host!.signOut();
+        await gate;
+        return entered;
+      },
+    });
+    host = ctx.host;
+    const opening = ctx.host.open();
+    await vi.waitFor(() => expect(routes).toHaveLength(1));
+    await vi.waitFor(() => expect(ctx.host.view.kind).toBe("signedOut"));
+    release();
+    await opening;
+    expect(ctx.host.view.kind).toBe("signedOut");
+    expect(routes[0]!.disposed).toBeGreaterThan(0);
+    expect(record(ctx.storage)).toBeNull();
+  });
+
+  it("慢的旧 open 在新 open 之后才醒来：不改视图、不写记录", async () => {
+    let release: () => void = () => undefined;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    let calls = 0;
+    const ctx = setup({
+      me: async () => {
+        calls += 1;
+        if (calls === 1) await gate;
+        return { accountId: calls === 1 ? "acct-old" : ACCOUNT, teams: [] };
+      },
+    });
+    const slow = ctx.host.open();
+    await vi.waitFor(() => expect(calls).toBe(1));
+    await ctx.host.open();
+    expect(ctx.host.view.kind).toBe("entered");
+    const before = ctx.storage.getItem(key);
+    const views: string[] = [];
+    ctx.host.subscribe(() => views.push(ctx.host.view.kind));
+    release();
+    await slow;
+    expect(views).toEqual([]);
+    expect(ctx.host.view.kind).toBe("entered");
+    expect(ctx.storage.getItem(key)).toBe(before);
+    expect(ctx.storage.getItem(hostSessionKey("acct-old", HOST))).toBeNull();
+    expect(ctx.logins()).toBe(1);
+  });
+
   it("换账号的广播：别的账号 → 登出；同一个账号不动", async () => {
     const bus = channelBus();
     const ctx = setup({ bus });
