@@ -309,7 +309,7 @@ export function parseExpires(value: string): number | undefined {
   return ms > 0 ? ms : undefined;
 }
 
-/* ------------------------------ 个人中转 -------------------------------- */
+/* ------------------------------ 远程服务 -------------------------------- */
 
 interface TunnelView {
   state: string;
@@ -348,7 +348,7 @@ async function relayCall(
     const code = (error as { code?: unknown }).code;
     throw new CloudCliError(
       typeof code === "string" ? code : "source_unreachable",
-      error instanceof Error ? error.message : "连不上个人中转",
+      error instanceof Error ? error.message : "连不上远程服务",
     );
   }
   const body =
@@ -360,7 +360,7 @@ async function relayCall(
       typeof body.code === "string" ? body.code : "source_unreachable",
       typeof body.message === "string"
         ? body.message
-        : `个人中转没有完成请求（${answer.status}）`,
+        : `远程服务没有完成请求（${answer.status}）`,
     );
   }
   return body;
@@ -434,7 +434,7 @@ async function remoteAccess(
     {},
   )) as { accessToken?: unknown };
   if (typeof session.accessToken !== "string" || session.accessToken === "") {
-    throw new CloudCliError("source_unauthorized", "个人中转的登录已失效");
+    throw new CloudCliError("source_unauthorized", "远程服务的登录已失效");
   }
   return session.accessToken;
 }
@@ -519,7 +519,7 @@ async function bindOwner(
     body: {},
   });
   if (typeof signed.assertion !== "string" || signed.assertion === "") {
-    throw new CloudCliError("source_unreachable", "个人中转没有给出断言");
+    throw new CloudCliError("source_unreachable", "远程服务没有给出断言");
   }
   try {
     const answer = (await core.call("POST", "/api/identity/cloud/bind", {
@@ -623,7 +623,7 @@ export async function runCloud(
       },
       () =>
         rows.length === 0
-          ? "没有登记到任何个人中转"
+          ? "没有登记到任何远程服务"
           : rows
               .map(
                 (row) =>

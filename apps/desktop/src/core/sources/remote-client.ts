@@ -301,7 +301,7 @@ function sessionOf(body: unknown): CloudSession {
 /** 取断言那一次外呼的说法（`rejected` 按它判要不要透传 `source_access_denied`）。 */
 const ASSERTION_DURING = "取断言";
 
-/** 远程服务的失败 → 契约 §33 的码。 */
+/** 建分享链接时原样透传的团队拒绝码（cloud-api §5，契约 §88.4）。 */
 const LINK_REFUSAL_CODES: ReadonlySet<string> = new Set([
   "team_role_insufficient",
   "team_policy_denied",
@@ -309,6 +309,7 @@ const LINK_REFUSAL_CODES: ReadonlySet<string> = new Set([
   "source_access_denied",
 ]);
 
+/** 远程服务的失败 → 契约 §33 的码。 */
 function rejected(status: number, body: unknown, during: string): never {
   const answer = record(body);
   const code = str(answer.code);
