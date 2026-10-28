@@ -5,7 +5,6 @@ import { hasInvitationFragment } from "../api/accounts";
 import {
   hasPairingFragment,
   onIdentitySessionChange,
-  resumeIdentity,
   type IdentitySession,
 } from "../api/identity";
 import { RUNTIME_VIA_SERVER_SHELL } from "../api/request";
@@ -17,7 +16,7 @@ import {
 import { ResetPassword } from "../session/ResetPassword";
 import { SignIn } from "../session/SignIn";
 import { useCanvasStore } from "../store/canvas-store";
-import { ACCESS_QUERY_KEY } from "./use-access";
+import { ACCESS_QUERY_KEY, accessQueryOptions } from "./use-access";
 import { useSkeletonPhase } from "../loading/use-skeleton-phase";
 import { AppSkeleton } from "./AppSkeleton";
 import { usePreferencesStore } from "./preferences-store";
@@ -90,15 +89,15 @@ export function IdentityGate({
   }, [client, gated]);
 
   const session = useQuery({
-    queryKey: ACCESS_QUERY_KEY,
-    queryFn: () => resumeIdentity(),
+    ...accessQueryOptions,
     enabled: gated && reset === "",
-    staleTime: 30_000,
-    refetchOnWindowFocus: true,
-    retry: false,
   });
+  // 只有第一次问才挡着画骨架屏。问不到之后再问时查询又回到 pending（没有数据），
+  // 这时还挡的话画布会卸载、重挂，重挂又触发重问——没有 core 的页面就这样变成
+  // 每秒几百次请求（#581）。
+  const loading = session.isPending && session.errorUpdateCount === 0;
 
-  const phase = useSkeletonPhase(gated && session.isPending);
+  const phase = useSkeletonPhase(gated && loading);
 
   if (server && reset !== "") {
     return (
@@ -115,7 +114,7 @@ export function IdentityGate({
     );
   }
   if (!gated) return <>{children}</>;
-  if (session.isPending) return <AppSkeleton hidden={phase !== "show"} />;
+  if (loading) return <AppSkeleton hidden={phase !== "show"} />;
   if (session.isError || session.data !== null) return <>{children}</>;
   return (
     <FullPage>

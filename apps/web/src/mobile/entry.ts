@@ -7,7 +7,7 @@ import {
   resumeIdentity,
   setNativeConnection,
 } from "../api/identity";
-import { RUNTIME_VIA_SERVER_SHELL } from "../api/request";
+import { markControlPlanePage, RUNTIME_VIA_SERVER_SHELL } from "../api/request";
 import { savedRuntimeOrigin, setNativeRuntimeBase } from "../api/runtime-url";
 import { installLocalTransport, localSource } from "../api/source";
 import { isDesktop } from "../platform";
@@ -307,8 +307,26 @@ export function startupTarget(
 }
 
 /**
- * 挂载之前决定入口（`main.tsx`）。桌面窗口与普通网页一个分支都不进，直接是
- * 画布——不发请求、不等任何东西。
+ * 这一页可能是 SaaS 控制台：不在桌面窗口里、不是开发构建。
+ *
+ * 不按页面协议猜：同一份产物既由服务器壳在 HTTPS 来源上托管，也挂在 SaaS 控制面
+ * （`https://app.<域>`）上，分得开它们的只有同源的 `/.well-known/armadra-platform`
+ * （`cloud/entry.ts`，一次、2.5 秒超时）。服务器壳不答它，问不到就照旧当服务器壳。
+ */
+function mayBeConsole(): boolean {
+  return !isNativeShell() && !import.meta.env.DEV;
+}
+
+/** 认出是控制台：这一页从此不算服务器壳托管（本机源、CSRF、入口门都随之改）。 */
+function consoleEntry(path: string): Entry {
+  markControlPlanePage();
+  return { kind: "console", path };
+}
+
+/**
+ * 挂载之前决定入口（`main.tsx`）。桌面窗口与开发构建一个分支都不进，直接是
+ * 画布——不发请求、不等任何东西；其余网页先问一次同源的平台信息
+ * （{@link mayBeConsole}），不是控制台再往下走。
  *
  *  - **分享链接落地页**：远程服务托管的页面打开在 `/j/<linkId>` → 落地页。
  *
@@ -325,13 +343,8 @@ export async function prepareEntry(): Promise<Entry> {
   if (joinLinkId !== null) {
     // SaaS 云端托管的 `/j/`：控制台里的落地页（要登录的链接可以带着片段去登录再回来，
     // 云端控制台 §3.1.6）；个人中转托管的仍是 `JoinPage`。
-    if (
-      !isNativeShell() &&
-      !RUNTIME_VIA_SERVER_SHELL &&
-      !import.meta.env.DEV &&
-      (await isSaasOrigin())
-    )
-      return { kind: "console", path: globalThis.location.pathname };
+    if (mayBeConsole() && (await isSaasOrigin()))
+      return consoleEntry(globalThis.location.pathname);
     return { kind: "join", linkId: joinLinkId };
   }
   if (isNativeApp()) {
@@ -393,10 +406,11 @@ export async function prepareEntry(): Promise<Entry> {
       return { kind: "relay", issuer: host.issuer };
     }
   }
-  // 服务器壳托管的页面、桌面窗口与 Vite 开发服务器背后是本机 core，不是控制台。
-  if (!isNativeShell() && !RUNTIME_VIA_SERVER_SHELL && !import.meta.env.DEV) {
+  // 桌面窗口与 Vite 开发服务器背后是本机 core，不是控制台。其余网页（包括
+  // HTTPS 来源上像服务器壳的那些）问一次同源的平台信息才定。
+  if (mayBeConsole()) {
     const path = await detectConsole();
-    if (path !== null) return { kind: "console", path };
+    if (path !== null) return consoleEntry(path);
   }
   if (!RUNTIME_VIA_SERVER_SHELL || !isCompactLayout()) return { kind: "app" };
   if (hasPairingFragment()) {

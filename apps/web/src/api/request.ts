@@ -1,5 +1,6 @@
 import { z } from "zod";
-import { localRuntime } from "./local-runtime";
+import { localRuntime, resetLocalRuntime } from "./local-runtime";
+import { setControlPlanePage } from "./runtime-url";
 import { t } from "../app/preferences-store";
 import { type Source, currentSource } from "./source";
 
@@ -19,7 +20,18 @@ import { type Source, currentSource } from "./source";
  * 收起桌面才有的几页。这是页面本身的事实，不随当前源变；发往哪台 core 由源
  * 决定（`api/source.ts`、`sources/`）。
  */
-export const RUNTIME_VIA_SERVER_SHELL = localRuntime().viaServerShell;
+export let RUNTIME_VIA_SERVER_SHELL = localRuntime().viaServerShell;
+
+/**
+ * 入口认出这一页由 SaaS 控制面托管（`mobile/entry.ts`）：同源背后没有 core，
+ * 页面不是服务器壳托管的。在挂载之前调一次，之后读到的
+ * {@link RUNTIME_VIA_SERVER_SHELL} 与本机源都按这个答案。
+ */
+export function markControlPlanePage(): void {
+  setControlPlanePage(true);
+  resetLocalRuntime();
+  RUNTIME_VIA_SERVER_SHELL = localRuntime().viaServerShell;
+}
 
 /** 204 / 空响应体在进 schema 之前先变成 `undefined`。 */
 export const noContentSchema = z.unknown().transform(() => undefined);

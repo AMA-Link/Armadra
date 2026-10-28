@@ -215,9 +215,12 @@ export function resolveRuntimeUrl(
  * `apps/server` 在一个 HTTPS 来源上同时托管页面与 `/api/**`，此时同源就是唯一
  * 能用的地址，不需要 `VITE_RUNTIME_URL`。
  *
- * 判据是页面协议：开发服务器与 `armadra.sh run web` 都是回环 HTTP，服务器壳
+ * 判据先是页面协议：开发服务器与 `armadra.sh run web` 都是回环 HTTP，服务器壳
  * 只在明确配置的 HTTPS 来源上提供页面；而 HTTPS 页面本来也无法访问
- * `http://127.0.0.1`（混合内容会被浏览器拦掉），所以这里不存在更好的猜测。
+ * `http://127.0.0.1`（混合内容会被浏览器拦掉）。但同一份产物也挂在 SaaS 控制面
+ * （`https://app.<域>`）上，那里同源背后没有 core：入口（`mobile/entry.ts`）
+ * 问过同源的 `/.well-known/armadra-platform`、认出是控制台之后调
+ * `api/request.ts` 的 `markControlPlanePage`，从此这一页不再算服务器壳托管。
  */
 export function serverShellOrigin(pageUrl: string): string | null {
   let url: URL;
@@ -231,15 +234,31 @@ export function serverShellOrigin(pageUrl: string): string | null {
 }
 
 /**
+ * 这一页由 SaaS 控制面托管（入口按同源平台信息认出，一次加载里只定一次）。
+ * 只在内存里：页面重载后由入口重新判定。
+ */
+let controlPlanePage = false;
+
+export function setControlPlanePage(value: boolean): void {
+  controlPlanePage = value;
+}
+
+export function isControlPlanePage(): boolean {
+  return controlPlanePage;
+}
+
+/**
  * 这份页面是不是由服务器壳托管。
  *
  * 只有这种模式下页面拿的是 Cookie 会话，写请求才要带双提交的 CSRF 头；桌面壳
- * 走的是票据换 Bearer 的原生传输，凭据只在页面内存里。
+ * 走的是票据换 Bearer 的原生传输，凭据只在页面内存里。控制面托管的页面
+ * （{@link setControlPlanePage}）背后没有 core，不算。
  */
 export function isServerShellServed(
   configured: string | undefined,
   pageUrl: string,
 ): boolean {
+  if (controlPlanePage) return false;
   const origin = serverShellOrigin(pageUrl);
   return origin !== null && resolveRuntimeUrl(configured, pageUrl) === origin;
 }
