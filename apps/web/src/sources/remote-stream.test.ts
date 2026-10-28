@@ -226,6 +226,29 @@ describe("一条事件流", () => {
     stream.close();
     expect(stream.state).toBe("closed");
   });
+
+  it("注入换票（Cookie 会话）：不碰 Bearer；4401 后直接再换一张", async () => {
+    let issued = 0;
+    const ticket = vi.fn(async () => `cookie-${(issued += 1)}`);
+    const stream = createRemoteStream({
+      issuer: ISSUER,
+      ticket,
+      onEvent: () => undefined,
+      socket: socketOptions,
+      setInterval: () => 0,
+      clearInterval: () => undefined,
+    });
+    await flush();
+    const first = streamSockets()[0]!;
+    expect(first.protocols).toEqual([`${WS_TICKET_PROTOCOL}cookie-1`]);
+    first.open();
+    first.drop(CLOSE_EXPIRED);
+    await flush();
+    expect(streamSockets()[1]!.protocols).toEqual([
+      `${WS_TICKET_PROTOCOL}cookie-2`,
+    ]);
+    stream.close();
+  });
 });
 
 describe("接到源表上", () => {

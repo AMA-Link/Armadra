@@ -547,7 +547,7 @@ export function createHostedRelay(options: HostedRelayOptions): HostedRelay {
     },
     dispose() {
       directory = [];
-      entry.dispose();
+      entry.signOut();
     },
   };
   return hosted;

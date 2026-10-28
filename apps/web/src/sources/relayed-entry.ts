@@ -10,6 +10,7 @@ import { type SiblingMount, mountSiblingSources } from "./mounts";
 import { sourceRegistry } from "./registry";
 import type { RelaySession } from "./relay-access";
 import {
+  type MeStreamEvent,
   type RemoteStream,
   type StreamTarget,
   applyMeStreamEvent,
@@ -33,7 +34,7 @@ import {
  * 以及 `enter` 时的 {@link HostedSessionStore}。
  *
  * 会话来源各自提供的只有三件事：怎样要断言（`provider`，背后是
- * `relay-access.ts`）、怎样换 `me.stream` 的票（`streamAuth` / `createStream`）、
+ * `relay-access.ts`）、怎样换 `me.stream` 的票（`streamAuth` / `streamTicket`）、
  * 怎样列目录（`listSources`）。个人中转托管页（`hosted.ts`，Bearer）与控制台
  * `/h/`（Cookie）共用这一份。
  */
@@ -61,16 +62,30 @@ export interface RelayedSessions {
 export interface RelayedEntryOptions {
   readonly issuer: string;
   readonly provider: CredentialProvider;
-  /** 换 `me.stream` 票用的云端凭据。 */
-  readonly streamAuth: CloudAuth;
+  /** 换 `me.stream` 票用的云端凭据（Bearer）；与 {@link streamTicket} 二选一。 */
+  readonly streamAuth?: CloudAuth;
+  /** 自己换 `me.stream` 的票（控制台的 Cookie 会话）；与 {@link streamAuth} 二选一。 */
+  readonly streamTicket?: () => Promise<string>;
   /** 列这个账号可见的主机（流重开后对账用）。 */
   readonly listSources: () => Promise<readonly CloudSource[]>;
   /** 源 core 会话的保存处。 */
   readonly sessions: RelayedSessions;
   /** 一起挂进页面源表的其余主机（进主机那一刻读；缺省没有）。 */
   readonly directory?: () => readonly Pick<CloudSource, "sourceId" | "name">[];
+  /**
+   * 会话读回之后、算作进去之前核对一次（如身份面会话的主体是不是记下的那位）；抛了就
+   * 当作凭据不对：状态落到 `unauthorized`，`enter` 抛 `source_unauthorized`。
+   */
+  readonly verify?: (
+    source: Pick<CloudSource, "sourceId" | "name">,
+  ) => Promise<void>;
   /** 进去了：记下这台主机（刷新后续上用）。 */
   readonly onEntered?: (source: Pick<CloudSource, "sourceId" | "name">) => void;
+  /**
+   * `me.stream` 的每个事件，在按当前主机过滤之前（授予、成员这类不带当前主机的事件由
+   * 来源自己处理，如去抖后重登）。
+   */
+  readonly onStreamEvent?: (event: MeStreamEvent) => void;
   /** 当前主机被撤销 / 访问被收回 / 凭据被拒（在状态落到 `unauthorized` 之前调）。 */
   readonly onRevoked?: (failure: SourceFailure) => void;
   readonly cloud?: CloudOptions;
@@ -92,8 +107,10 @@ export interface RelayedEntry {
   subscribe(listener: () => void): () => void;
   /** 把这台主机装成页面的本机源；失败抛（状态先落到对应的失败态）。 */
   enter(source: Pick<CloudSource, "sourceId" | "name">): Promise<void>;
-  /** 关流、卸下主机与其余主机、清掉记下的会话，状态回到 `idle`。 */
-  dispose(): void;
+  /** 关流、卸下主机与其余主机，状态回到 `idle`；记下的会话留着（刷新、重进还能续）。 */
+  close(): void;
+  /** 同 {@link close}，另清掉记下的会话（登出、换账号）。 */
+  signOut(): void;
 }
 
 /** 目录里的一台主机 → 经这个中继到达的源描述。 */
@@ -237,9 +254,17 @@ export function createRelayedEntry(options: RelayedEntryOptions): RelayedEntry {
     stream?.close();
     stream = (options.createStream ?? createRemoteStream)({
       issuer,
-      auth: options.streamAuth,
+      ...(options.streamAuth === undefined ? {} : { auth: options.streamAuth }),
+      ...(options.streamTicket === undefined
+        ? {}
+        : { ticket: options.streamTicket }),
       ...(options.cloud === undefined ? {} : { cloud: options.cloud }),
       onEvent(event) {
+        try {
+          options.onStreamEvent?.(event);
+        } catch {
+          /* 来源自己的处理出错不影响状态机。 */
+        }
         if (!("sourceId" in event)) return;
         if (event.sourceId !== current) {
           applyMeStreamEvent(event, siblings?.registry.get(event.sourceId));
@@ -323,7 +348,15 @@ export function createRelayedEntry(options: RelayedEntryOptions): RelayedEntry {
         );
         throw error;
       }
-      if (!(await restoreHostedCredentials())) {
+      const verified =
+        (await restoreHostedCredentials()) &&
+        (await (options.verify?.(source) ?? Promise.resolve()).then(
+          () => true,
+          () => false,
+        ));
+      if (!verified) {
+        entered?.dispose();
+        entered = null;
         setStatus("unauthorized", {
           code: SOURCE_ERROR.unauthorized,
           message: "",
@@ -343,19 +376,22 @@ export function createRelayedEntry(options: RelayedEntryOptions): RelayedEntry {
       });
       startStream();
     },
-    dispose() {
-      stream?.close();
-      stream = null;
-      stopRelayTimer();
-      streamOpened = false;
-      siblings?.dispose();
-      siblings = null;
-      entered?.dispose();
-      entered = null;
-      options.sessions.clear();
-      if (current !== null) provider.invalidate(current);
-      current = null;
-      publish({ state: "idle", lastError: null, relayDown: false });
-    },
+    close: () => close(false),
+    signOut: () => close(true),
   };
+
+  function close(clearSessions: boolean): void {
+    stream?.close();
+    stream = null;
+    stopRelayTimer();
+    streamOpened = false;
+    siblings?.dispose();
+    siblings = null;
+    entered?.dispose();
+    entered = null;
+    if (clearSessions) options.sessions.clear();
+    if (current !== null) provider.invalidate(current);
+    current = null;
+    publish({ state: "idle", lastError: null, relayDown: false });
+  }
 }

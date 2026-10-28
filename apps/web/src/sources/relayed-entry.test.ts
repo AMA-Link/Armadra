@@ -151,12 +151,12 @@ describe("经中继进主机（与会话来源无关）", () => {
     expect(entry.status.state).toBe("unauthorized");
   });
 
-  it("dispose：清掉注入的会话、作废凭据、回到 idle", async () => {
+  it("signOut：清掉注入的会话、作废凭据、回到 idle", async () => {
     const { entry, sessions, provider } = setup();
     await entry.enter({ sourceId: SOURCE, name: "laptop" });
     const seen: string[] = [];
     entry.subscribe(() => seen.push(entry.status.state));
-    entry.dispose();
+    entry.signOut();
     expect(sessions.clear).toHaveBeenCalledTimes(1);
     expect(provider.invalidate).toHaveBeenCalledWith(SOURCE);
     expect(entry.status).toEqual({
@@ -165,5 +165,54 @@ describe("经中继进主机（与会话来源无关）", () => {
       relayDown: false,
     });
     expect(seen).toEqual(["idle"]);
+  });
+
+  it("close：只卸下，记下的会话留着（刷新、重进还能续）", async () => {
+    const { entry, sessions, provider } = setup();
+    await entry.enter({ sourceId: SOURCE, name: "laptop" });
+    entry.close();
+    expect(sessions.clear).not.toHaveBeenCalled();
+    expect(provider.invalidate).toHaveBeenCalledWith(SOURCE);
+    expect(entry.status.state).toBe("idle");
+  });
+
+  it("verify 抛：不算进去，unauthorized 并抛，onEntered 不调", async () => {
+    const verify = vi.fn(async () => {
+      throw new Error("principal changed");
+    });
+    const { entry, onEntered } = setup({ verify });
+    await expect(
+      entry.enter({ sourceId: SOURCE, name: "laptop" }),
+    ).rejects.toMatchObject({ code: "source_unauthorized" });
+    expect(verify).toHaveBeenCalledWith({ sourceId: SOURCE, name: "laptop" });
+    expect(onEntered).not.toHaveBeenCalled();
+    expect(entry.status.state).toBe("unauthorized");
+  });
+
+  it("onStreamEvent：不带当前主机的事件（成员变化）也先交给来源", async () => {
+    const onStreamEvent = vi.fn();
+    const { entry, stream } = setup({ onStreamEvent });
+    await entry.enter({ sourceId: SOURCE, name: "laptop" });
+    const member = {
+      type: "memberChanged" as const,
+      teamId: "team-1",
+      accountId: "acct-1",
+    };
+    stream().onEvent(member);
+    stream().onEvent({ type: "grantChanged", sourceId: SOURCE });
+    expect(onStreamEvent).toHaveBeenNthCalledWith(1, member);
+    expect(onStreamEvent).toHaveBeenNthCalledWith(2, {
+      type: "grantChanged",
+      sourceId: SOURCE,
+    });
+    expect(entry.status.state).toBe("ready");
+  });
+
+  it("streamTicket：换票交给来源，不带 Bearer 凭据", async () => {
+    const streamTicket = vi.fn(async () => "ticket-1");
+    const { entry, stream } = setup({ streamAuth: undefined, streamTicket });
+    await entry.enter({ sourceId: SOURCE, name: "laptop" });
+    expect(stream().auth).toBeUndefined();
+    expect(await stream().ticket?.()).toBe("ticket-1");
   });
 });
