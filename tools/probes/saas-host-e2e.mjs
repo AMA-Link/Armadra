@@ -89,17 +89,36 @@ for (const [path, hint] of [
   }
 }
 
-/** 设计 Q13 的 Trusted Types 叠加（控制面的 `ConsoleCSP` 随 B7 加上之前，探针替它加）。 */
-const TRUSTED_TYPES_CSP =
-  "require-trusted-types-for 'script'; trusted-types armadra armadra-sanitize default dompurify";
 /**
- * 控制台页面的 CSP 按哪一份测：缺省 `proposed`——把控制面的 CSP 换成 B7 要提的那一份（原样
- * 加上 `img-src` / `media-src` 的 `blob:` 与 Trusted Types），验证这份改动够用；`current` 不动，
- * 看控制面现在的 CSP 拦什么。
+ * 控制台页面的 CSP 按哪一份测：缺省 `proposed`——把控制面的 CSP 换成云端要上的那一份
+ * （armadra-cloud#153：原样加 `img-src` / `media-src` 的 `blob:`、`frame-src` 加 `blob:` 与
+ * Trusted Types），验证这份改动够用；`current` 不动，看控制面现在的 CSP 拦什么。
  */
 const CSP_MODE = process.env.ARMADRA_SAAS_CSP ?? "proposed";
-const PROPOSED_EXTRA =
-  "img-src 'self' blob: data:; media-src 'self' blob:; " + TRUSTED_TYPES_CSP;
+/** 要改写或追加的指令（同名的覆盖，`frame-src` 在原值后加 `blob:`）。 */
+const PROPOSED_DIRECTIVES = {
+  "img-src": () => "'self' blob: data:",
+  "media-src": () => "'self' blob:",
+  "frame-src": (current) => `${current ?? ""} blob:`.trim(),
+  "require-trusted-types-for": () => "'script'",
+  "trusted-types": () => "armadra armadra-sanitize default dompurify",
+};
+
+/** 现有 CSP → 云端要上的那一份：逐条指令改写（重复的指令浏览器只认第一条，不能只往后追加）。 */
+function proposedCsp(base) {
+  const directives = new Map();
+  for (const part of base.split(";")) {
+    const trimmed = part.trim();
+    if (trimmed === "") continue;
+    const [name, ...values] = trimmed.split(/\s+/);
+    if (!directives.has(name)) directives.set(name, values.join(" "));
+  }
+  for (const [name, value] of Object.entries(PROPOSED_DIRECTIVES))
+    directives.set(name, value(directives.get(name)));
+  return [...directives]
+    .map(([name, value]) => `${name} ${value}`.trim())
+    .join("; ");
+}
 
 /**
  * `ARMADRA_SAAS_WEB_ROOT`：控制台页面不用部署挂的那份，而由探针按本地构建（如 `apps/web/dist`）
@@ -407,7 +426,7 @@ let consoleCsp = "";
 
 /** 页面文档最终的 CSP：`proposed` 追加 `blob:` 与 Trusted Types，`current` 原样。 */
 const documentCsp = (base) =>
-  CSP_MODE === "proposed" ? `${base}; ${PROPOSED_EXTRA}` : base;
+  CSP_MODE === "proposed" ? proposedCsp(base) : base;
 
 /**
  * 控制台文档换上要测的 CSP；给了 `ARMADRA_SAAS_WEB_ROOT` 时页面与资源也由本地构建答。换掉（而不是
@@ -632,6 +651,11 @@ try {
     ),
   );
   writeFileSync(
+    join(project, "manual.pdf"),
+    // 一份真的 PDF：控制台来源上只给下载，不进框架（`frame-src blob:` 用不上）。
+    "%PDF-1.4\n1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj\n2 0 obj<</Type/Pages/Kids[3 0 R]/Count 1>>endobj\n3 0 obj<</Type/Page/Parent 2 0 R/MediaBox[0 0 200 200]>>endobj\ntrailer<</Root 1 0 R>>\n%%EOF\n",
+  );
+  writeFileSync(
     join(project, "evil.pdf"),
     "<script>top.pwned = 'pdf'</script><h1>not a pdf</h1>",
   );
@@ -674,6 +698,7 @@ try {
   const files = {
     image: fileNode("logo.png", "logo.png", 40),
     pdf: fileNode("evil.pdf", "evil.pdf", 290),
+    manual: fileNode("manual.pdf", "manual.pdf", 790),
     markdown: fileNode("notes.md", "notes.md", 540),
   };
   const document = await local(
@@ -746,6 +771,13 @@ try {
       )),
       "冒充 PDF 的网页不进框架（控制台来源上 PDF 只给下载）",
     );
+    await ownerTab.until(
+      `const node = document.querySelector('${nodeAt(files.manual.id)}');
+       return node && !node.querySelector('iframe') && node.innerText.includes("manual.pdf") ? true : null;`,
+      "真的 PDF 打开成下载卡片",
+      { timeout: 30_000 },
+    );
+    s.ok("真的 PDF 在控制台来源上只给下载、不进框架");
     s.check(
       (await ownerTab.evaluate("return globalThis.pwned ?? null;")) === null,
       "注入的主机文件内容没有执行",
