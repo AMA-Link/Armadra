@@ -66,32 +66,51 @@ function ChartContainer({
   );
 }
 
-function ChartStyle({ id, config }: { id: string; config: ChartConfig }) {
+/** 选择器里的属性值：转义成 CSS 字符串（引号、反斜杠与换行都不能闭合它）。 */
+function cssString(value: string): string {
+  return `"${value.replace(/["\\\n\r\f<>]/g, (char) => `\\${char.charCodeAt(0).toString(16)} `)}"`;
+}
+
+/** 自定义属性名里只留标识符字符。 */
+function cssIdent(value: string): string {
+  return value.replace(/[^\w-]/g, "");
+}
+
+/** 颜色值：带 `;`、`{`、`}`、`<`、`\\` 之类能跳出声明的一律不写。 */
+function cssColor(value: string): string | null {
+  return /^[\w#%(),.\s/-]+$/.test(value) ? value : null;
+}
+
+/** 图表配色的样式表：只由转义过的选择器、标识符与颜色拼成。 */
+function chartStyleText(id: string, config: ChartConfig): string {
   const colorConfig = Object.entries(config).filter(
     ([, item]) => item.theme || item.color,
   );
-  if (!colorConfig.length) return null;
-
-  return (
-    // 文字子节点而不是 `dangerouslySetInnerHTML`：样式表不经 HTML 解析（Trusted Types）。
-    <style>
-      {Object.entries(THEMES)
-        .map(
-          ([theme, prefix]) => `
-${prefix} [data-chart=${id}] {
-${colorConfig
-  .map(([key, item]) => {
-    const color = item.theme?.[theme as keyof typeof item.theme] || item.color;
-    return color ? `  --color-${key}: ${color};` : null;
-  })
-  .filter(Boolean)
-  .join("\n")}
+  return Object.entries(THEMES)
+    .map(([theme, prefix]) => {
+      const declarations = colorConfig
+        .map(([key, item]) => {
+          const raw =
+            item.theme?.[theme as keyof typeof item.theme] || item.color;
+          const color = raw ? cssColor(raw) : null;
+          const name = cssIdent(key);
+          return color && name ? `  --color-${name}: ${color};` : null;
+        })
+        .filter(Boolean)
+        .join("\n");
+      return `\n${prefix} [data-chart=${cssString(id)}] {\n${declarations}\n}\n`;
+    })
+    .join("\n");
 }
-`,
-        )
-        .join("\n")}
-    </style>
+
+function ChartStyle({ id, config }: { id: string; config: ChartConfig }) {
+  const hasColors = Object.values(config).some(
+    (item) => item.theme || item.color,
   );
+  if (!hasColors) return null;
+  // 文字子节点而不是 `dangerouslySetInnerHTML`：样式表不经 HTML 解析（Trusted Types）；
+  // 拼进去的值都转义过（`chartStyleText`）。
+  return <style>{chartStyleText(id, config)}</style>;
 }
 
 const ChartTooltip = RechartsPrimitive.Tooltip;
