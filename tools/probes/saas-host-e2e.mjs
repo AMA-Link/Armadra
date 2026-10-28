@@ -808,12 +808,16 @@ try {
         "select count(*) as n from audit_log where action = 'cloud.login'",
       ),
     )[0]?.n;
-    if (loginsBefore !== undefined && loginsAfter !== undefined)
-      s.check(
-        loginsAfter - loginsBefore <= 2,
-        "连改三次授予，member 的重登不超过 2 次",
-        loginsAfter - loginsBefore,
-      );
+    s.check(
+      typeof loginsBefore === "number" && typeof loginsAfter === "number",
+      "读到 host1 的 cloud.login 审计计数",
+      { loginsBefore, loginsAfter },
+    );
+    s.check(
+      loginsAfter - loginsBefore <= 2,
+      "连改三次授予，member 的重登不超过 2 次",
+      loginsAfter - loginsBefore,
+    );
     await s.shot(memberTab, "e5-member-readonly");
     s.entry.status = "passed";
   }
@@ -875,12 +879,16 @@ try {
       .split("\n")
       .filter((line) => /logout|登出|session/i.test(line))
       .slice(-20);
-    if (liveBefore !== undefined && liveAfter !== undefined)
-      s.check(
-        liveAfter < liveBefore,
-        "host1 上 owner 的会话已吊销",
-        `${liveBefore} → ${liveAfter}`,
-      );
+    s.check(
+      typeof liveBefore === "number" && typeof liveAfter === "number",
+      "读到 host1 上 owner 的会话计数",
+      { liveBefore, liveAfter },
+    );
+    s.check(
+      liveAfter < liveBefore,
+      "host1 上 owner 的会话已吊销",
+      `${liveBefore} → ${liveAfter}`,
+    );
     s.check(
       (await ownerTab.evaluate(
         "return Object.keys(sessionStorage).filter((k) => k.startsWith('armadra.host.')).length;",
