@@ -31,8 +31,9 @@ import type {
   SourceAssertion,
 } from "./remote-client";
 import { parsePairLink } from "./pair-link";
+import { loginAtRelay, pageConnectOrigins } from "./relay-login";
 import { CloudConsole } from "./saas-console";
-import { refreshMountedAttribution, saasMountInfo } from "./saas-mount";
+import { saasMountInfo } from "./saas-mount";
 import { CloudSignIn, type CloudSignInHost } from "./saas-signin";
 
 export { parsePairLink };
@@ -45,7 +46,6 @@ import {
   renameLabel,
   routeJson,
   saveRelayRoute,
-  shareColumns,
 } from "./rows";
 import type { SourceSecrets, StoredCredential } from "./secrets";
 import type {
@@ -146,18 +146,6 @@ function telling(failures: readonly unknown[], message: string): CoreFailure {
         error.code === "fingerprint_mismatch"),
   );
   return useful ?? fail("source_unreachable", message);
-}
-
-/** 重登时这几种失败不删存着的刷新令牌：放行、恢复或稍后还要拿它续同一会话。 */
-const TRANSIENT = new Set([
-  "device_pending",
-  "rate_limited",
-  "source_offline",
-  "source_unreachable",
-]);
-
-function refused(error: unknown): boolean {
-  return error instanceof CoreFailure && !TRANSIENT.has(error.code);
 }
 
 function wsBaseOf(httpBase: string): string {
@@ -314,16 +302,7 @@ export class SourcesService {
    * 源的每条路（中继或直连）。只读 SQLite；Gateway 据此给页面的 CSP 追加授权。
    */
   pageConnectOrigins(): string[] {
-    const origins = new Set<string>();
-    for (const remote of this.store.remotes()) origins.add(remote.issuer);
-    for (const row of this.store.list()) {
-      if (row.kind === "local") continue;
-      if (row.baseUrl !== "") origins.add(row.baseUrl);
-      if (row.relayOrigin !== "") origins.add(row.relayOrigin);
-    }
-    for (const routes of this.store.allRoutes().values())
-      for (const route of routes) origins.add(route.origin);
-    return [...origins];
+    return pageConnectOrigins(this.store);
   }
 
   private row(sourceId: string): SourceRow {
@@ -727,44 +706,25 @@ export class SourcesService {
         }
       }
     }
-    fresh ??= await this.serial(`source ${row.sourceId} ${key}`, async () => {
-      const stored = (await this.secrets.source(row.sourceId)).byOrigin[key];
-      let logged: NativeCredentials;
-      try {
-        logged = await this.peer.cloudLogin(
+    fresh ??= await this.serial(`source ${row.sourceId} ${key}`, () =>
+      loginAtRelay(
+        {
+          store: this.store,
+          secrets: this.secrets,
+          peer: this.peer,
+          remote: this.remote,
+        },
+        {
+          sourceId: row.sourceId,
+          key,
           address,
-          assertion.assertion,
-          undefined,
-          stored?.refreshToken,
-        );
-      } catch (error) {
-        // 明确的拒绝：这把刷新令牌续不上了，留着只会让下一次再撞一次。待确认、限流、
-        // 不在线、连不上都不算——放行或恢复后还要用它续同一会话。
-        if (stored !== undefined && refused(error)) {
-          await this.secrets.putSource(row.sourceId, key, undefined);
-        }
-        throw error;
-      }
-      await this.secrets.putSource(row.sourceId, key, {
-        refreshToken: logged.refreshToken,
-        deviceId: logged.deviceId,
-      });
-      // 分享方可能改了角色或到期（契约 §68）；只改 shared 的行。
-      if (logged.share !== undefined) {
-        this.store.setShare(row.sourceId, shareColumns(logged.share));
-      }
-      // 归属与团队随断言变：Armadra 云的主机按自己的云纠正。
-      await refreshMountedAttribution(
-        this.remote,
-        this.store,
-        remote,
-        this.access.get(remote.serviceId),
-        assertion,
-        { endpoint: this.endpoint(remote), sourceId: row.sourceId },
-        logged.share,
-      );
-      return logged;
-    });
+          assertion,
+          service: remote,
+          endpoint: this.endpoint(remote),
+          access: this.access.get(remote.serviceId),
+        },
+      ),
+    );
     this.ok(row, route);
     return {
       accessToken: fresh.accessToken,
