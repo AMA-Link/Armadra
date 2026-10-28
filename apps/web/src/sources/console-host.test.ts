@@ -22,6 +22,7 @@ import {
 } from "./console-host";
 import type { E2eChannels } from "./e2e/manager";
 import type { RemoteStreamOptions } from "./remote-stream";
+import { SourceError } from "./types";
 import type { EnterRouteOptions } from "./route-entry";
 
 /**
@@ -153,6 +154,7 @@ function setup(
     principal?: string;
     timers?: (() => void)[];
     later?: (run: () => void, ms: number) => unknown;
+    enter?: typeof fakeEnter;
   } = {},
 ) {
   const storage = over.storage ?? memoryStorage();
@@ -229,7 +231,7 @@ function setup(
     },
     setTimeout: over.later ?? ((run) => setTimeout(run, 0)),
     entry: {
-      enter: fakeEnter,
+      enter: over.enter ?? fakeEnter,
       mount: (() => ({
         registry: { list: () => [], get: () => undefined },
         dispose: () => undefined,
@@ -487,6 +489,146 @@ describe("控制台 /h/ 进主机", () => {
       accountId: ACCOUNT,
     });
     expect(ctx.timers).toHaveLength(1);
+  });
+
+  it("限流后登出：排下的重试取消，到点也不把会话登回来", async () => {
+    const pending: (() => void)[] = [];
+    let limited = true;
+    const ctx = setup({
+      assertion: async () => {
+        if (limited)
+          throw Object.assign(new Error("429"), {
+            status: 429,
+            code: "rate_limited",
+          });
+        return assertion();
+      },
+      later: (run, ms) => {
+        if (ms > 1_000) pending.push(run);
+        else setTimeout(run, 0);
+        return pending.length;
+      },
+    });
+    await ctx.host.open();
+    expect(ctx.host.view).toEqual({ kind: "connecting", rateLimited: true });
+    await ctx.host.signOut();
+    expect(ctx.host.view.kind).toBe("signedOut");
+    limited = false;
+    // 即使计时器照样到点（取消不了的环境），回调也认出自己过时了。
+    for (const run of pending.splice(0)) run();
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(ctx.host.view.kind).toBe("signedOut");
+    expect(ctx.logins()).toBe(0);
+    expect(record(ctx.storage)).toBeNull();
+  });
+
+  it("登出之后别的入口不会自动重新进入：sourceOnline、授予与成员事件、换账号广播", async () => {
+    const bus = channelBus();
+    let online = false;
+    const ctx = setup({ bus, detail: async () => detail({ online }) });
+    await ctx.host.open();
+    expect(ctx.host.view.kind).toBe("offline");
+    const waiting = ctx.streams[0]!;
+    await ctx.host.signOut();
+    online = true;
+    waiting.onEvent({ type: "sourceOnline", sourceId: HOST });
+    bus.open().postMessage({ type: "accountChanged", accountId: "acct-b" });
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(ctx.host.view.kind).toBe("signedOut");
+    expect(ctx.logins()).toBe(0);
+    expect(ctx.client.sources.assertion).not.toHaveBeenCalled();
+  });
+
+  it("授予事件在登出之后到：重登不再要断言，也不登回来", async () => {
+    const ctx = setup();
+    await ctx.host.open();
+    const stream = ctx.streams[0]!;
+    await ctx.host.signOut();
+    const asked = ctx.client.sources.assertion.mock.calls.length;
+    stream.onEvent({ type: "grantChanged", sourceId: HOST });
+    stream.onEvent({
+      type: "memberChanged",
+      teamId: "team-1",
+      accountId: ACCOUNT,
+    });
+    for (const run of ctx.timers.splice(0)) run();
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(ctx.client.sources.assertion.mock.calls.length).toBe(asked);
+    expect(ctx.logins()).toBe(1);
+    expect(ctx.host.view.kind).toBe("signedOut");
+  });
+
+  it("enter 成功之后才发现已登出：刚装上的路由卸下，视图仍是已登出", async () => {
+    routes.length = 0;
+    let release: () => void = () => undefined;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    let host: ReturnType<typeof setup>["host"] | null = null;
+    const ctx = setup({
+      enter: async (options) => {
+        const entered = await fakeEnter(options);
+        // 路由已经装上、enter 还没返回时登出。
+        void host!.signOut();
+        await gate;
+        return entered;
+      },
+    });
+    host = ctx.host;
+    const opening = ctx.host.open();
+    await vi.waitFor(() => expect(routes).toHaveLength(1));
+    await vi.waitFor(() => expect(ctx.host.view.kind).toBe("signedOut"));
+    release();
+    await opening;
+    expect(ctx.host.view.kind).toBe("signedOut");
+    expect(routes[0]!.disposed).toBeGreaterThan(0);
+    expect(record(ctx.storage)).toBeNull();
+  });
+
+  it("慢的旧 open 在新 open 之后才醒来：不改视图、不写记录", async () => {
+    let release: () => void = () => undefined;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    let calls = 0;
+    const ctx = setup({
+      me: async () => {
+        calls += 1;
+        if (calls === 1) await gate;
+        return { accountId: calls === 1 ? "acct-old" : ACCOUNT, teams: [] };
+      },
+    });
+    const slow = ctx.host.open();
+    await vi.waitFor(() => expect(calls).toBe(1));
+    await ctx.host.open();
+    expect(ctx.host.view.kind).toBe("entered");
+    const before = ctx.storage.getItem(key);
+    const views: string[] = [];
+    ctx.host.subscribe(() => views.push(ctx.host.view.kind));
+    release();
+    await slow;
+    expect(views).toEqual([]);
+    expect(ctx.host.view.kind).toBe("entered");
+    expect(ctx.storage.getItem(key)).toBe(before);
+    expect(ctx.storage.getItem(hostSessionKey("acct-old", HOST))).toBeNull();
+    expect(ctx.logins()).toBe(1);
+  });
+
+  it("主机身份变了：视图只带对端指纹的前 16 位", async () => {
+    const full = "0123456789abcdef".repeat(4);
+    const ctx = setup({
+      enter: async () => {
+        throw new SourceError("identity_changed", "identity changed", {
+          cause: { fingerprint: full },
+        });
+      },
+    });
+    await ctx.host.open();
+    expect(ctx.host.view).toEqual({
+      kind: "failed",
+      code: "identity_changed",
+      fingerprint: "0123456789abcdef",
+    });
   });
 
   it("换账号的广播：别的账号 → 登出；同一个账号不动", async () => {
