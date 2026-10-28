@@ -492,4 +492,71 @@ describe("bind 替换自动成员（契约 §88.5）", () => {
       )?.principalId,
     ).toBe(auto);
   });
+  it("真实成员：经分享链接（邀请）建的云端成员、自动成员后来加了口令，都是 409", async () => {
+    const invitation = accounts.issueInvitation(
+      { principalId: owner.principalId, kind: "owner", scopes: allScopes() },
+      { role: "viewer", targetWorkspaceId: "ws-1" },
+    );
+    const guest = "guest:lnk_1:abc";
+    const joined = await call("POST", "/api/identity/cloud/login", {
+      assertion: signAssertion({
+        aud: store.hostId(),
+        nowMs: Date.now(),
+        sub: guest,
+        extra: {
+          name: "Guest",
+          link: { linkId: "lnk_1", invitationId: invitation.invitationId },
+        },
+      }),
+      invitationToken: invitation.token,
+    });
+    expect(joined.status, joined.text).toBe(200);
+    const invited = principalOf(joined);
+    const viaLink = await call(
+      "POST",
+      "/api/identity/cloud/bind",
+      { assertion: sub(guest) },
+      asOwner(),
+    );
+    expect(viaLink.status, viaLink.text).toBe(409);
+
+    const first = await login("acct:password", {
+      team: { teamId: "team_1", role: "member" },
+      role: "editor",
+    });
+    expect(first.status, first.text).toBe(200);
+    const auto = principalOf(first);
+    store.transaction((tx) =>
+      tx.accounts.createCredential({
+        credentialId: "c".repeat(32),
+        principalId: auto,
+        kind: "password",
+        provider: "",
+        subject: "",
+        secretHash: Buffer.alloc(32, 1),
+        salt: Buffer.alloc(16, 2),
+        kdf: "scrypt",
+        cost: 16384,
+        block: 8,
+        parallel: 1,
+        length: 32,
+        createdAtMs: Date.now(),
+        revokedAtMs: 0,
+      }),
+    );
+    const withPassword = await call(
+      "POST",
+      "/api/identity/cloud/bind",
+      { assertion: sub("acct:password") },
+      asOwner(),
+    );
+    expect(withPassword.status, withPassword.text).toBe(409);
+    const mapped = store.transaction((tx) => ({
+      link: tx.accounts.liveOAuth(cloudProvider(ISSUER), guest)?.principalId,
+      password: tx.accounts.liveOAuth(cloudProvider(ISSUER), "acct:password")
+        ?.principalId,
+      disabled: tx.accounts.principal(auto)?.disabledAtMs,
+    }));
+    expect(mapped).toEqual({ link: invited, password: auto, disabled: 0 });
+  });
 });
