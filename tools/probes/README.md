@@ -275,7 +275,7 @@ ARMADRA_PERSONAL_RELAY_HOME=<armadra-cloud 检出> node tools/probes/relay-web-e
 
 ## Mermaid 在强制 Trusted Types 下渲染
 
-设计 saas-host-open §5.4 Q13：把 `fixtures/mermaid-trusted-types/` 的页面（应用里同一份 `lib/trusted-types.ts` 与 `renderMermaidSvg`）用 Vite 打包，回环静态服务的响应头带云端 `ConsoleCSP` 要的指令（`require-trusted-types-for 'script'`、`trusted-types armadra armadra-sanitize default dompurify`、`img-src 'self' blob: data:` 等），无头 Chrome 渲染 flowchart / sequence / class / state：与不强制 Trusted Types 的对照同宽、标签齐全、按 `blob:` 图片能显示，`securitypolicyviolation` 为零。名单里少了 `dompurify`（Mermaid 带的 DOMPurify 要建这个策略）时 flowchart 渲染不出来，探针会失败。
+设计 saas-host-open §5.4 Q13：把 `fixtures/mermaid-trusted-types/` 的页面（应用里同一份 `lib/trusted-types.ts` 与 `renderMermaidSvg`）用 Vite 打包，回环静态服务的响应头带云端 `ConsoleCSP` 要的指令（`require-trusted-types-for 'script'`、`trusted-types armadra armadra-sanitize default dompurify`、`img-src 'self' blob: data:`、`frame-src https://challenges.cloudflare.com blob:` 等，与 armadra-cloud#153 一致），无头 Chrome 渲染 flowchart / sequence / class / state：与不强制 Trusted Types 的对照同宽、标签齐全、按 `blob:` 图片能显示，`securitypolicyviolation` 为零。名单里少了 `dompurify`（Mermaid 带的 DOMPurify 要建这个策略）时 flowchart 渲染不出来，探针会失败。
 
 ```sh
 node tools/probes/mermaid-trusted-types.mjs [输出目录]
