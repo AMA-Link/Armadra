@@ -12,6 +12,7 @@ import {
   isNativeApp,
   nativeBridge,
 } from "../mobile/native-bridge";
+import { backoffCeiling } from "../lib/backoff";
 import { localSource } from "./source";
 import {
   type SessionTokens,
@@ -156,6 +157,19 @@ const tokens: SessionTokens = createSessionTokens();
 let csrf = "";
 /** 访问密钥的到期时刻（毫秒）；不知道是 0。 */
 let renewing: Promise<string> | null = null;
+/**
+ * 换不来 CSRF（没有会话、背后不是 core）之后多久再换：1 秒起翻倍，封顶 30 秒。
+ * 写请求每次都先要一枚，不退避的话没有会话的页面每个写请求都会打一次
+ * `session/csrf`。拿到任何一枚（登录、注册、配对、换票）就归零。
+ */
+const CSRF_RETRY = { baseMs: 1_000, capMs: 30_000 } as const;
+let csrfFailures = 0;
+let csrfRetryAt = 0;
+
+function clearCsrfBackoff(): void {
+  csrfFailures = 0;
+  csrfRetryAt = 0;
+}
 const listeners = new Set<(change: IdentityChange) => void>();
 
 /**
@@ -235,6 +249,7 @@ function adoptCsrf(value: string): void {
   if (!SECRET.test(value) || value === csrf) return;
   const had = csrf !== "";
   csrf = value;
+  clearCsrfBackoff();
   const renewed = forgotten;
   forgotten = false;
   // 本来没有令牌的窗口这才算有了会话；已经有的只是换了一枚，不算会话变化。
@@ -265,6 +280,7 @@ function storeCsrf(value: string): IdentityChange | null {
   const renewed = forgotten;
   csrf = next;
   forgotten = false;
+  if (next) clearCsrfBackoff();
   if (next === previous) return null;
   if (next && !bearerTransport()) csrfChannel?.postMessage({ csrf: next });
   if (next === "") return "gone";
@@ -303,6 +319,7 @@ export function resetIdentityCredentials(): void {
   forgotten = false;
   tokens.clear();
   renewing = null;
+  clearCsrfBackoff();
   cookieRenewal = null;
   shellFailure = null;
   clearShellRefresh();
@@ -323,9 +340,18 @@ export async function ensureCsrf(): Promise<string> {
   // 换票落地前后各发一半，落在后面的被 403。所以先等它落地，再看手里是哪一枚。
   if (renewing !== null) await renewing;
   if (csrf) return csrf;
+  // 刚换过没换来：退避期内不再问，照常答空（被拒是 core 的事）。
+  if (Date.now() < csrfRetryAt) return "";
   // 等锁的这段时间里别的窗口可能已经换好并告诉了这里：拿到锁先看一眼。
   renewing ??= withRenewLock(() => (csrf ? Promise.resolve(csrf) : renewCsrf()))
     .catch(() => "")
+    .then((token) => {
+      if (token === "") {
+        csrfRetryAt = Date.now() + backoffCeiling(csrfFailures, CSRF_RETRY);
+        csrfFailures += 1;
+      }
+      return token;
+    })
     .finally(() => {
       renewing = null;
     });
