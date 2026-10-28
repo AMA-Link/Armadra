@@ -48,7 +48,7 @@ checkpoint 和质量门见[真实双 Agent 入口](../../docs/guides/local-cli-p
 | B   | `packaged-smoke`、`deb-install`、`core-terminal-packaged`、`server-perf`、`terminal-memory`、`update-e2e`、`server-e2e --container`、`server-e2e --proxy=caddy`、`crash-report-e2e`、`mobile-shell-e2e`、`windows-acceptance`（windows runner 作业）                                                                                                                                                                                                                                                                                                                                                             | `nightly.yml`                       | 开 issue     |
 | C   | `agent-e2e`（真 CLI 与额度，`ARMADRA_E2E_REAL=1`，见「C 档运行手册」）、`canvas-stress`（真实会话）、`windows-acceptance`（Windows 真机）                                                                                                                                                                                                                                                                                                                                                                                                                                                                        | 手动；清单在执行计划 §5             | 记进状态文档 |
 
-其余脚本（`browser-cdp`、`git-tool-window`、`forge-panel`、`connection-drag`、`canvas-tidy`、`browser-agent-e2e`、`timezone-picker`、`language-load`、`launch-concurrency`）是单项核验，本地按需手动跑；`relay-web-e2e` 要 armadra-cloud 的检出，也是本地手动跑（见「中继托管页面端到端」）。平台探针 `personal-roundtrip`、`multi-source`、`link-join`（A 档）与 `nat-core-offline`、`webkit-roundtrip`（B 档）同样要 armadra-cloud 的检出（CI 上记 skipped）；后两者与 `multi-source` 的中继在容器里（要 Docker），`pnpm platform:e2e` 一次跑完，共用件在 `platform-lib.mjs`；经中继的客户端（端到端通道，复用 `@armadra/shared/e2e`，要先 `pnpm libs:build`）在 `e2e-client.mjs`，`language-load --relay`、`personal-roundtrip --workerd` 与上面几条探针都用它。
+其余脚本（`browser-cdp`、`git-tool-window`、`forge-panel`、`connection-drag`、`canvas-tidy`、`browser-agent-e2e`、`timezone-picker`、`language-load`、`launch-concurrency`）是单项核验，本地按需手动跑；`relay-web-e2e` 要 armadra-cloud 的检出，也是本地手动跑（见「中继托管页面端到端」）；`saas-host-e2e` 要一个已经在跑的 SaaS 部署，本地手动跑（见「控制台 `/h/` 端到端」）。平台探针 `personal-roundtrip`、`multi-source`、`link-join`（A 档）与 `nat-core-offline`、`webkit-roundtrip`（B 档）同样要 armadra-cloud 的检出（CI 上记 skipped）；后两者与 `multi-source` 的中继在容器里（要 Docker），`pnpm platform:e2e` 一次跑完，共用件在 `platform-lib.mjs`；经中继的客户端（端到端通道，复用 `@armadra/shared/e2e`，要先 `pnpm libs:build`）在 `e2e-client.mjs`，`language-load --relay`、`personal-roundtrip --workerd` 与上面几条探针都用它。
 
 探针起的 core、服务器壳、桌面壳一律用临时 HOME（`probe-home.mjs`：HOME、XDG、各 CLI 配置目录与 git 全局配置都指进 mktemp 目录，并去掉指向真实账号的凭据变量），不读写操作员自己的 HOME。新写的探针也照此办；Vite / pnpm 这类工具链进程不在此列。
 
@@ -272,6 +272,21 @@ ARMADRA_PERSONAL_RELAY_HOME=<armadra-cloud 检出> node tools/probes/relay-web-e
 中继是 armadra-cloud 的 Go 二进制（`armadra-relay`），各探针经 `cloud-source.mjs` 按优先级找：`ARMADRA_RELAY_BIN` → 检出里的 `go/bin/armadra-relay`（每次增量 `go build`，找不到 go 时沿用已有的并警告）→ 镜像（`ARMADRA_PROBE_RELAY_IMAGE`，或从检出的 `go/Dockerfile` 构建，`docker run` 同一条命令行；macOS 等非 Linux 平台上不支持 `--tls plain`）。要 `docker pause` 的探针（`multi-source`、`link-join`、`nat-core-offline`）始终用镜像。
 
 验证：打开中继的 `/app/` 是中继登录页，中继账号口令登录后只有一台在线主机就直接进画布，请求都同源（`/v1`、`/s/<源>`）；经中继终端收发、实时板与本机页面双向同步；主机停掉隧道时通知条「等待上线」、再开由 `me.stream` 叫醒；杀掉中继再起，页面不刷新自己恢复。截 390 / 1440 宽、明暗两主题。产物默认在 `target/relay-web-e2e/`。
+
+## 控制台 `/h/` 端到端（SaaS 部署）
+
+设计 saas-host-open §8.1（第一版，E2–E6）：连一个已经在跑的 Armadra 云部署，起一台临时数据目录的服务器壳当 host1（设备码登录 owner、登记到团队即映射主人，跑完撤销这台），无头 Chrome 两个 browser context（owner、member）走 `/h/`：待确认放行、刷新与复制标签页、主机停起与中继节点重建、授予收窄去抖重登、撤销与控制台登出。控制台页面的 CSP 缺省换成 B7 要提的那一份（现有的加 `img-src` / `media-src` 的 `blob:` 与 Trusted Types，`ARMADRA_SAAS_CSP=current` 不换），全程监听 `securitypolicyviolation`，要求违规为零。
+
+```sh
+pnpm libs:build && pnpm --filter @armadra/web build && pnpm --filter @armadra/server build
+# 部署的控制台页面目录挂上这份 apps/web/dist
+NODE_EXTRA_CA_CERTS=<ca.crt> ARMADRA_SAAS_ISSUER=https://app.<域> ARMADRA_SAAS_SPKI=<叶证书 SPKI> \
+  ARMADRA_SAAS_ACCOUNTS=<{ owner, member } 的邮箱与口令> [ARMADRA_SAAS_TEAM=test-team] \
+  [ARMADRA_SAAS_COMPOSE=<compose 包装脚本>] [ARMADRA_SAAS_ONLY=E2,E6] [ARMADRA_SAAS_CSP=current] \
+  node tools/probes/saas-host-e2e.mjs [输出目录]
+```
+
+产物默认在 `target/saas-host-e2e/`：`result.json`（含 `violations`）与截图。
 
 ## 个人中转全流程（V1 / M1）
 
