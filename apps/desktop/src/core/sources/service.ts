@@ -32,6 +32,7 @@ import type {
 } from "./remote-client";
 import { parsePairLink } from "./pair-link";
 import {
+  AttributionQueue,
   RelayExchanges,
   assertionExplained,
   attributeAfterLogin,
@@ -167,7 +168,8 @@ export class SourcesService {
   private readonly inflight = new Map<string, Promise<unknown>>();
   /** 经中继换票的合并（契约 §88.2）。 */
   private readonly exchanges = new RelayExchanges();
-  private readonly attributing = new Map<string, Promise<void>>();
+  /** 重登之后的归属纠正（按源排队，契约 §88.2）；测试经它等做完。 */
+  readonly attribution = new AttributionQueue();
 
   constructor(private readonly options: SourcesServiceOptions) {
     this.store = options.store;
@@ -712,11 +714,14 @@ export class SourcesService {
       if (got.login) logged = got.credentials;
       return got.credentials;
     });
-    // 纠正归属要问远程服务目录：锁外、令牌写回之后异步做（目录失败本来就不动归属）。
-    if (logged !== undefined) {
-      const work = attributeAfterLogin(deps, input, logged).catch(() => {});
-      this.attributing.set(row.sourceId, work);
-    }
+    // 纠正归属要问远程服务目录：锁外、令牌写回之后按源排队异步做，被更新的一次取代就不写。
+    const done = logged;
+    if (done !== undefined)
+      this.attribution.run(
+        row.sourceId,
+        () => attributeAfterLogin(deps, input, done),
+        this.options.log,
+      );
     this.ok(row, route);
     return {
       accessToken: fresh.accessToken,
@@ -893,11 +898,6 @@ export class SourcesService {
     });
     return () =>
       this.relayed(row, winner.route, winner.remote, winner.assertion, relogin);
-  }
-
-  /** 测试用：等重登之后的归属纠正做完。 */
-  async attributionSettled(): Promise<void> {
-    await Promise.all(this.attributing.values());
   }
 
   /* --------------------------- 远程服务 ---------------------------- */
