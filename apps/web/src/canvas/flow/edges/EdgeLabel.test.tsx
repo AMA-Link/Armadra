@@ -8,7 +8,7 @@ afterEach(cleanup);
 describe("EdgeLabel", () => {
   const box = { x: 100, y: 50, width: 60, height: 15, fontSize: 11 };
 
-  it("标签字用等宽字体、500 字重（text-caption 的 SVG 写法）", () => {
+  it("标签字用等宽字体、medium 字重令牌（text-caption 的 SVG 写法）", () => {
     const { container } = render(
       <svg>
         <EdgeLabel box={box} text="共享上下文" />
@@ -16,7 +16,7 @@ describe("EdgeLabel", () => {
     );
     const text = container.querySelector("text") as SVGTextElement;
     expect(text.style.fontFamily).toBe("var(--font-code)");
-    expect(text.style.fontWeight).toBe("500");
+    expect(text.style.fontWeight).toBe("var(--fw-medium)");
     expect(text.getAttribute("font-size")).toBe("11");
   });
 

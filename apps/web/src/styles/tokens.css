@@ -267,17 +267,30 @@
   --shadow-overlay: 0 4px 12px rgb(0 0 0 / 28%);
   --shadow-dialog: 0 2px 8px rgb(0 0 0 / 24%), 0 24px 64px rgb(0 0 0 / 36%);
 
-  /* ── 字体（全部为系统字体，不加载在线字体，§4.3 规则三） ──────────── */
+  /* ── 字体（设计系统 §2.6）：两款随包本地打包，不加载在线字体（§4.3 规则三） ──
+     Inter / Geist Mono 只覆盖拉丁、希腊、西里尔，中文逐字回退到后面的系统字体。 */
   --font-ui:
-    -apple-system, "SF Pro Text", "PingFang SC", system-ui, "Segoe UI",
-    "Microsoft YaHei", sans-serif;
+    "Inter Variable", -apple-system, "SF Pro Text", "PingFang SC", system-ui,
+    "Segoe UI", "Microsoft YaHei", sans-serif;
   /* `--font-code` 是原始值；`--font-mono` 是给旧 CSS 的同义名，
      同时避开 Tailwind `@theme` 里同名变量的自引用循环。 */
   --font-code:
+    "Geist Mono Variable", ui-monospace, sfmono-regular, menlo,
+    "JetBrains Mono", "Cascadia Mono", "PingFang SC", "Hiragino Sans GB",
+    "Microsoft YaHei", "Noto Sans CJK SC", monospace;
+  --font-mono: var(--font-code);
+  /* 终端只用系统等宽：xterm 建实例时就量字宽，网页字体还没到就会量错整格。 */
+  --font-term:
     ui-monospace, sfmono-regular, menlo, "JetBrains Mono", "Cascadia Mono",
     "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans CJK SC",
     monospace;
-  --font-mono: var(--font-code);
+  /* 字重三档：正文、标签与按钮、标题；Tailwind 的 font-normal / medium / semibold 映射到这里 */
+  --fw-regular: 400;
+  --fw-medium: 510;
+  --fw-semibold: 590;
+  /* 字距：只收紧两档大标题，其余 0；小标签不放宽（中文会散） */
+  --ls-display: -0.015em;
+  --ls-title: -0.01em;
 
   /* ── 间距层级（设计系统 §2.7）：由内向外只增不减 ──────────────────
      控件内 4 ≤ 同组 8 < 容器内边距 12 ≤ 子块 16 < 区块 24；面板外边距 16。

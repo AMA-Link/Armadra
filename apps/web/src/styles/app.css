@@ -179,6 +179,9 @@
   --font-sans: var(--font-ui);
   --font-mono: var(--font-code);
   --font-heading: var(--font-ui);
+  --font-weight-normal: var(--fw-regular);
+  --font-weight-medium: var(--fw-medium);
+  --font-weight-semibold: var(--fw-semibold);
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
@@ -224,7 +227,10 @@
     text-wrap: balance;
   }
   .text-display {
-    letter-spacing: -0.01em;
+    letter-spacing: var(--ls-display);
+  }
+  .text-title {
+    letter-spacing: var(--ls-title);
   }
 
   body {

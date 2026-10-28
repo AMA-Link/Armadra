@@ -457,7 +457,7 @@
 .sticky-markdown h3 {
   margin: 0.4em 0 0.2em;
   font-size: 1.08em;
-  font-weight: 600;
+  font-weight: var(--fw-semibold);
 }
 
 .sticky-markdown p,

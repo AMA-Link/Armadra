@@ -108,7 +108,7 @@
   max-width: 100%;
   overflow: hidden;
   font-size: var(--text-caption);
-  font-weight: 500;
+  font-weight: var(--fw-medium);
   text-overflow: ellipsis;
   white-space: nowrap;
 }

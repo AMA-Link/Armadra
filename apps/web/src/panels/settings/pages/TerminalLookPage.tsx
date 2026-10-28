@@ -249,11 +249,11 @@ export function fontChoice(
   return CUSTOM;
 }
 
-/** 当前生效的终端字体栈（`--font-code`），做自定义输入框的占位。 */
+/** 当前生效的终端字体栈（`--font-term`），做自定义输入框的占位。 */
 function effectiveFontStack(): string {
   if (typeof document === "undefined") return "";
   return getComputedStyle(document.documentElement)
-    .getPropertyValue("--font-code")
+    .getPropertyValue("--font-term")
     .replace(/\s+/g, " ")
     .trim();
 }
@@ -416,8 +416,8 @@ function PreviewCard({ terminal }: { terminal: TerminalPreferences }) {
           backgroundColor: "var(--term-bg)",
           color: "var(--term-fg)",
           fontFamily: family
-            ? `${family}, var(--font-code)`
-            : "var(--font-code)",
+            ? `${family}, var(--font-term)`
+            : "var(--font-term)",
           fontSize: terminal.fontSize,
           lineHeight: terminal.lineHeight,
           letterSpacing: terminal.letterSpacing,

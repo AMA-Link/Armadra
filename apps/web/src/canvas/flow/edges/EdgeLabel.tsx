@@ -70,7 +70,7 @@ export function EdgeLabel({ box, text }: { box: LabelBox; text: string }) {
         // 宽度估算（`edge-label.textWidth`）正好是 0.6em 一个字符。
         style={{
           userSelect: "none",
-          fontWeight: 500,
+          fontWeight: "var(--fw-medium)",
           fontFamily: "var(--font-code)",
         }}
       >

@@ -199,7 +199,7 @@ function DiffFileRow({
         <span
           aria-hidden
           className={cn(
-            "w-3 shrink-0 text-center font-mono text-caption font-bold",
+            "w-3 shrink-0 text-center font-mono text-caption font-semibold",
             STATUS_CLASS[file.status],
           )}
         >

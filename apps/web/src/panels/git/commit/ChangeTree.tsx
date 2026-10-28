@@ -82,7 +82,7 @@ function StatusBadge({ node }: { node: ChangeFileNode }) {
   return (
     <Badge
       variant="ghost"
-      className="h-4 w-4 shrink-0 justify-center p-0 font-mono text-caption font-bold"
+      className="h-4 w-4 shrink-0 justify-center p-0 font-mono text-caption font-semibold"
       role="img"
       aria-label={t(
         conflicted

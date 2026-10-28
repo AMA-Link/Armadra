@@ -182,7 +182,7 @@ export function FilesNode({ id, node, selected }: NodeBodyProps) {
                     role="img"
                     aria-label={t(`files.status.${badge}`)}
                     className={cn(
-                      "ml-auto shrink-0 font-mono text-caption font-bold",
+                      "ml-auto shrink-0 font-mono text-caption font-semibold",
                       STATUS_CLASS[badge],
                     )}
                   >
