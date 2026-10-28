@@ -619,6 +619,16 @@ describe("tokens.css", () => {
     );
   });
 
+  it("触屏不画点按高亮，按钮、链接与标签不等双击缩放", () => {
+    const base = ruleBody(appCss, "@layer base {");
+    expect(base).toMatch(
+      /html\s*\{\s*-webkit-tap-highlight-color:\s*transparent;/,
+    );
+    expect(base).toMatch(
+      /button,\s*a,\s*\[role="button"\],\s*label\s*\{\s*touch-action:\s*manipulation;/,
+    );
+  });
+
   it("浏览器 theme-color 与 --bg 同值", () => {
     const html = readFileSync(
       fileURLToPath(new URL("../../index.html", import.meta.url)),

@@ -205,6 +205,17 @@
     height: 100%;
   }
 
+  /* 触屏：不画系统的点按高亮；控件不等双击缩放，点下立即响应（设计系统 §2.2） */
+  html {
+    -webkit-tap-highlight-color: transparent;
+  }
+  button,
+  a,
+  [role="button"],
+  label {
+    touch-action: manipulation;
+  }
+
   /* 图标线宽 1.5 全局生效（设计系统 §2.12）；要用 2 的地方显式写 `stroke-2` */
   .lucide {
     stroke-width: 1.5px;
