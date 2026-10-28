@@ -73,11 +73,11 @@ function ChartStyle({ id, config }: { id: string; config: ChartConfig }) {
   if (!colorConfig.length) return null;
 
   return (
-    <style
-      dangerouslySetInnerHTML={{
-        __html: Object.entries(THEMES)
-          .map(
-            ([theme, prefix]) => `
+    // 文字子节点而不是 `dangerouslySetInnerHTML`：样式表不经 HTML 解析（Trusted Types）。
+    <style>
+      {Object.entries(THEMES)
+        .map(
+          ([theme, prefix]) => `
 ${prefix} [data-chart=${id}] {
 ${colorConfig
   .map(([key, item]) => {
@@ -88,10 +88,9 @@ ${colorConfig
   .join("\n")}
 }
 `,
-          )
-          .join("\n"),
-      }}
-    />
+        )
+        .join("\n")}
+    </style>
   );
 }
 

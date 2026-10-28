@@ -55,10 +55,42 @@ const ALLOWED_ATTRIBUTES = new Set(["class", "href", "title", "start"]);
 /** 只允许这几种 URL 协议；`javascript:` 与 `data:` 一律去掉。 */
 const SAFE_SCHEME = /^(https?:|mailto:|armadra:|#|\/)/i;
 
+/**
+ * 只给这里的 `DOMParser` 用的 Trusted Types 策略（`armadra-sanitize`）：解析进惰性文档，
+ * 不执行脚本、不发请求，出来的只有白名单里的标签。不导出——别处拿它绕过净化就失去意义。
+ */
+interface InertPolicy {
+  createHTML(input: string): unknown;
+}
+let inert: InertPolicy | null | undefined;
+function inertHTML(html: string): string {
+  if (inert === undefined) {
+    const factory = (
+      globalThis as {
+        trustedTypes?: {
+          createPolicy(
+            name: string,
+            rules: { createHTML: (input: string) => string },
+          ): InertPolicy;
+        };
+      }
+    ).trustedTypes;
+    try {
+      inert =
+        factory?.createPolicy("armadra-sanitize", {
+          createHTML: (input) => input,
+        }) ?? null;
+    } catch {
+      inert = null;
+    }
+  }
+  return (inert === null ? html : inert.createHTML(html)) as string;
+}
+
 export function sanitizeHTML(html: string): string {
   if (typeof DOMParser === "undefined") return stripTags(html);
   const document_ = new DOMParser().parseFromString(
-    `<body>${html}</body>`,
+    inertHTML(`<body>${html}</body>`),
     "text/html",
   );
   clean(document_.body);

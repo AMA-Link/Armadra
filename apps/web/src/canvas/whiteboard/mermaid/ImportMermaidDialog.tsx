@@ -195,20 +195,26 @@ function Source({
 }
 
 /**
- * 预览。
- *
- * `dangerouslySetInnerHTML` 在这里是安全的：`securityLevel: "strict"` 与
- * `htmlLabels: false` 已经让 Mermaid 把标签里的 HTML 剥掉、把 `click`
- * 指令禁掉，产出的是一棵纯 SVG（设计 §5）。
+ * 预览：SVG 放进 `<img>`（`blob:`）——图片里的 SVG 不执行脚本、不发请求，也不经
+ * `innerHTML`（控制台来源的 Trusted Types，设计 saas-host-open §5.4）。
  */
 function Preview({ svg, empty }: { svg: string; empty: string }) {
+  const [url, setUrl] = React.useState("");
+  React.useEffect(() => {
+    if (!svg || typeof URL.createObjectURL !== "function") {
+      setUrl("");
+      return;
+    }
+    const made = URL.createObjectURL(
+      new Blob([svg], { type: "image/svg+xml" }),
+    );
+    setUrl(made);
+    return () => URL.revokeObjectURL(made);
+  }, [svg]);
   return (
     <div className="bg-muted/40 flex h-72 items-center justify-center overflow-auto rounded-control border p-2">
       {svg ? (
-        <div
-          className="[&_svg]:h-auto [&_svg]:max-w-full"
-          dangerouslySetInnerHTML={{ __html: svg }}
-        />
+        url && <img src={url} alt="" className="h-auto max-w-full" />
       ) : (
         <span className="text-muted-foreground text-meta">{empty}</span>
       )}
