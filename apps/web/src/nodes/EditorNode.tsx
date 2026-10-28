@@ -21,6 +21,7 @@ import { formatBytes } from "@/lib/format";
 import { unifiedLineDiff } from "@/lib/line-diff";
 import { directFileUrl, downloadRuntimeFile } from "@/api/assets";
 import { isControlPlanePage } from "@/api/runtime-url";
+import { mediaBlobType } from "./editor/media-type";
 import { useCanvasStore } from "@/store/canvas-store";
 import { Badge } from "@/ui/badge";
 import { Button } from "@/ui/button";
@@ -191,13 +192,10 @@ export function EditorNode({ id, node, selected }: NodeBodyProps) {
         const blob = await response.blob();
         if (cancelled) return;
         // 下载路由永远回 octet-stream；类型在这里按 Runtime 报的 MIME 补上，
-        // 引擎才知道该用哪个播放器或查看器。
-        // PDF 的类型由页面定，不信主机报的 MIME：报成 `text/html` 的「PDF」会在页面
-        // 来源的框架里当网页执行。
+        // 引擎才知道该用哪个播放器或查看器。只认白名单里的类型（`mediaBlobType`）：
+        // `blob:` 与页面同源，报成 `text/html` 的「媒体」会在页面的来源里当网页执行。
         mediaUrl = URL.createObjectURL(
-          new Blob([blob], {
-            type: media === "pdf" ? "application/pdf" : info.mimeType,
-          }),
+          new Blob([blob], { type: mediaBlobType(media, info.mimeType) }),
         );
         setState({ kind: "media", media, src: mediaUrl, info });
         return;

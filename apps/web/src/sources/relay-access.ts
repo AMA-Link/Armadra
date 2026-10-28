@@ -185,7 +185,8 @@ const PASSED_THROUGH = new Set(["team_suspended", "rate_limited"]);
 /** 远程服务与源 core 的拒绝 → 源层的码（界面按码取文案）。 */
 function relayFailure(error: unknown): never {
   if (error instanceof CloudError) {
-    if (PASSED_THROUGH.has(error.code)) throw new SourceError(error.code);
+    if (PASSED_THROUGH.has(error.code))
+      throw new SourceError(error.code, error.message, { cause: error });
     if (error.code === "source_offline")
       throw unauthorized(SOURCE_ERROR.offline);
     if (error.code === "source_revoked")
@@ -329,7 +330,9 @@ export function createRelayedAccess(
             if (error.code === "source_offline")
               throw unauthorized(SOURCE_ERROR.offline);
             if (PASSED_THROUGH.has(error.code))
-              throw new SourceError(error.code);
+              throw new SourceError(error.code, error.message, {
+                cause: error,
+              });
             throw new SourceError(
               error.code === "cloud_account_unlinked" ||
               error.code === "cloud_not_registered"

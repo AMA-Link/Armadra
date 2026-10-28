@@ -119,6 +119,9 @@ function channelBus() {
   };
 }
 
+/** 卸下过的路由（`dispose` 调过几次，按进入的先后）。 */
+const routes: { disposed: number }[] = [];
+
 /** 不碰真本机源：取访问、装上这一路，就当装好了。 */
 const fakeEnter = async (options: EnterRouteOptions) => {
   const access = await options.provider.getAccess(
@@ -127,11 +130,15 @@ const fakeEnter = async (options: EnterRouteOptions) => {
   );
   const route = { via: "relayed" as const, access };
   options.useRoute(route);
+  const record = { disposed: 0 };
+  routes.push(record);
   return {
     route,
     renew: async () => true,
     recover: async () => true,
-    dispose: () => undefined,
+    dispose: () => {
+      record.disposed += 1;
+    },
   };
 };
 
@@ -145,6 +152,7 @@ function setup(
     login?: () => { status?: number; body: unknown };
     principal?: string;
     timers?: (() => void)[];
+    later?: (run: () => void, ms: number) => unknown;
   } = {},
 ) {
   const storage = over.storage ?? memoryStorage();
@@ -219,7 +227,7 @@ function setup(
       },
       clearTimeout: () => undefined,
     },
-    setTimeout: (run) => setTimeout(run, 0),
+    setTimeout: over.later ?? ((run) => setTimeout(run, 0)),
     entry: {
       enter: fakeEnter,
       mount: (() => ({
@@ -375,6 +383,112 @@ describe("控制台 /h/ 进主机", () => {
     expect(ctx.identity.logout).toHaveBeenCalledTimes(1);
   });
 
+  it("登出先丢本地记录、再经通道吊销；吊销卡住也按时收尾", async () => {
+    const bus = channelBus();
+    const ctx = setup({ bus });
+    await ctx.host.open();
+    let recordAtLogout: unknown = "unset";
+    ctx.identity.logout.mockImplementation(() => {
+      recordAtLogout = record(ctx.storage);
+      return new Promise<undefined>(() => undefined);
+    });
+    await ctx.host.signOut();
+    expect(recordAtLogout).toBeNull();
+    expect(ctx.host.view.kind).toBe("signedOut");
+  });
+
+  it("进入被限流：按对端给的 Retry-After 再试，没给就从 5 秒起翻倍", async () => {
+    const delays: number[] = [];
+    const pending: (() => void)[] = [];
+    let retryAfterMs: number | undefined = 7_000;
+    const ctx = setup({
+      assertion: async () => {
+        throw Object.assign(new Error("429"), {
+          status: 429,
+          code: "rate_limited",
+          ...(retryAfterMs === undefined ? {} : { details: { retryAfterMs } }),
+        });
+      },
+      later: (run, ms) => {
+        // 认领的等待照常跑；记下其余的延时。
+        if (ms > 1_000) {
+          delays.push(ms);
+          pending.push(run);
+        } else setTimeout(run, 0);
+        return 0;
+      },
+    });
+    await ctx.host.open();
+    expect(ctx.host.view).toEqual({ kind: "connecting", rateLimited: true });
+    expect(delays).toEqual([7_000]);
+    retryAfterMs = undefined;
+    pending.shift()!();
+    await vi.waitFor(() => expect(delays).toHaveLength(2));
+    pending.shift()!();
+    await vi.waitFor(() => expect(delays).toHaveLength(3));
+    expect(delays.slice(1)).toEqual([10_000, 20_000]);
+  });
+
+  it("重登被限流：按 Retry-After 再排一次重登", async () => {
+    const delays: number[] = [];
+    const pending: (() => void)[] = [];
+    let limited = false;
+    const ctx = setup({
+      login: () =>
+        limited
+          ? {
+              status: 429,
+              body: {
+                code: "rate_limited",
+                message: "",
+                details: { retryAfterMs: 9_000 },
+              },
+            }
+          : { body: { session: coreSession("login-1") } },
+      later: (run, ms) => {
+        if (ms > 1_000) {
+          delays.push(ms);
+          pending.push(run);
+        } else setTimeout(run, 0);
+        return 0;
+      },
+    });
+    await ctx.host.open();
+    limited = true;
+    ctx.streams[0]!.onEvent({ type: "grantChanged", sourceId: HOST });
+    ctx.timers.shift()!();
+    await vi.waitFor(() => expect(delays).toEqual([9_000]));
+    limited = false;
+    pending.shift()!();
+    // 再排的那一次仍经去抖：排上了一个新的重登计时。
+    await vi.waitFor(() => expect(ctx.timers.length).toBeGreaterThan(0));
+    ctx.advance(60_000);
+    ctx.timers.shift()!();
+    await vi.waitFor(() => expect(ctx.logins()).toBe(3));
+    expect(ctx.host.view.kind).toBe("entered");
+  });
+
+  it("memberChanged 只认自己、同团队的：别人的、别的团队的、没带账号的都不重登", async () => {
+    const ctx = setup();
+    await ctx.host.open();
+    const stream = ctx.streams[0]!;
+    stream.onEvent({ type: "memberChanged", teamId: "team-1", accountId: "x" });
+    stream.onEvent({
+      type: "memberChanged",
+      teamId: "team-2",
+      accountId: ACCOUNT,
+    });
+    stream.onEvent({ type: "memberChanged", teamId: "team-1" });
+    stream.onEvent({ type: "grantChanged", sourceId: "d".repeat(32) });
+    expect(ctx.timers).toHaveLength(0);
+    stream.onEvent({
+      type: "memberChanged",
+      teamId: "team-1",
+      accountId: ACCOUNT,
+    });
+    expect(ctx.timers).toHaveLength(1);
+  });
+
   it("换账号的广播：别的账号 → 登出；同一个账号不动", async () => {
     const bus = channelBus();
     const ctx = setup({ bus });
@@ -523,6 +637,66 @@ describe("控制台 /h/ 进主机", () => {
     ctx.streams[0]!.onEvent({ type: "grantChanged", sourceId: HOST });
     ctx.timers[0]!();
     await vi.waitFor(() => expect(ctx.host.view).toEqual({ kind: "expired" }));
+  });
+
+  it("同一个实例再次 open、中途换了账号：先经旧路由吊销上一位的会话，再卸下旧路由", async () => {
+    routes.length = 0;
+    let account = ACCOUNT;
+    const ctx = setup({
+      me: async () => ({ accountId: account, teams: [] }),
+    });
+    await ctx.host.open();
+    expect(ctx.host.view.kind).toBe("entered");
+    expect(routes).toHaveLength(1);
+    const oldKey = hostSessionKey(ACCOUNT, HOST);
+    expect(ctx.storage.getItem(oldKey)).not.toBeNull();
+    account = "acct-b";
+    await ctx.host.open();
+    expect(ctx.identity.logout).toHaveBeenCalledTimes(1);
+    expect(routes[0]!.disposed).toBeGreaterThan(0);
+    expect(routes).toHaveLength(2);
+    expect(routes[1]!.disposed).toBe(0);
+    expect(ctx.storage.getItem(oldKey)).toBeNull();
+    // 新账号重新 cloud/login，不拿上一位的刷新令牌续。
+    expect(ctx.logins()).toBe(2);
+    expect(ctx.refreshes()).toBe(0);
+  });
+
+  it("进行中的 open 遇到登出：醒来不覆盖「已登出」、不写回记录、刚装上的路由卸下", async () => {
+    routes.length = 0;
+    let release: () => void = () => undefined;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const bus = channelBus();
+    const ctx = setup({
+      bus,
+      assertion: async () => {
+        await gate;
+        return assertion();
+      },
+    });
+    const opening = ctx.host.open();
+    await vi.waitFor(() =>
+      expect(ctx.client.sources.assertion).toHaveBeenCalled(),
+    );
+    bus.open().postMessage({ type: "signedOut" });
+    await vi.waitFor(() => expect(ctx.host.view.kind).toBe("signedOut"));
+    release();
+    await opening;
+    expect(ctx.host.view.kind).toBe("signedOut");
+    expect(record(ctx.storage)).toBeNull();
+    for (const route of routes) expect(route.disposed).toBeGreaterThan(0);
+  });
+
+  it("同一个账号再次 open：卸下旧路由，不登出", async () => {
+    routes.length = 0;
+    const ctx = setup();
+    await ctx.host.open();
+    await ctx.host.open();
+    expect(ctx.identity.logout).not.toHaveBeenCalled();
+    expect(routes[0]!.disposed).toBeGreaterThan(0);
+    expect(ctx.host.view.kind).toBe("entered");
   });
 
   it("主人映射：控制台说是主人、主机侧会话没有 settings:write → ownerMismatch", async () => {

@@ -48,7 +48,7 @@ checkpoint 和质量门见[真实双 Agent 入口](../../docs/guides/local-cli-p
 | B   | `packaged-smoke`、`deb-install`、`core-terminal-packaged`、`server-perf`、`terminal-memory`、`update-e2e`、`server-e2e --container`、`server-e2e --proxy=caddy`、`crash-report-e2e`、`mobile-shell-e2e`、`windows-acceptance`（windows runner 作业）                                                                                                                                                                                                                                                                                                                                                             | `nightly.yml`                       | 开 issue     |
 | C   | `agent-e2e`（真 CLI 与额度，`ARMADRA_E2E_REAL=1`，见「C 档运行手册」）、`canvas-stress`（真实会话）、`windows-acceptance`（Windows 真机）                                                                                                                                                                                                                                                                                                                                                                                                                                                                        | 手动；清单在执行计划 §5             | 记进状态文档 |
 
-其余脚本（`browser-cdp`、`git-tool-window`、`forge-panel`、`connection-drag`、`canvas-tidy`、`browser-agent-e2e`、`timezone-picker`、`language-load`、`launch-concurrency`）是单项核验，本地按需手动跑；`relay-web-e2e` 要 armadra-cloud 的检出，也是本地手动跑（见「中继托管页面端到端」）。平台探针 `personal-roundtrip`、`multi-source`、`link-join`（A 档）与 `nat-core-offline`、`webkit-roundtrip`（B 档）同样要 armadra-cloud 的检出（CI 上记 skipped）；后两者与 `multi-source` 的中继在容器里（要 Docker），`pnpm platform:e2e` 一次跑完，共用件在 `platform-lib.mjs`；经中继的客户端（端到端通道，复用 `@armadra/shared/e2e`，要先 `pnpm libs:build`）在 `e2e-client.mjs`，`language-load --relay`、`personal-roundtrip --workerd` 与上面几条探针都用它。
+其余脚本（`browser-cdp`、`git-tool-window`、`forge-panel`、`connection-drag`、`canvas-tidy`、`browser-agent-e2e`、`timezone-picker`、`language-load`、`launch-concurrency`）是单项核验，本地按需手动跑；`relay-web-e2e` 要 armadra-cloud 的检出，也是本地手动跑（见「中继托管页面端到端」）；`mermaid-trusted-types` 本地手动跑（见「Mermaid 在强制 Trusted Types 下渲染」）。平台探针 `personal-roundtrip`、`multi-source`、`link-join`（A 档）与 `nat-core-offline`、`webkit-roundtrip`（B 档）同样要 armadra-cloud 的检出（CI 上记 skipped）；后两者与 `multi-source` 的中继在容器里（要 Docker），`pnpm platform:e2e` 一次跑完，共用件在 `platform-lib.mjs`；经中继的客户端（端到端通道，复用 `@armadra/shared/e2e`，要先 `pnpm libs:build`）在 `e2e-client.mjs`，`language-load --relay`、`personal-roundtrip --workerd` 与上面几条探针都用它。
 
 探针起的 core、服务器壳、桌面壳一律用临时 HOME（`probe-home.mjs`：HOME、XDG、各 CLI 配置目录与 git 全局配置都指进 mktemp 目录，并去掉指向真实账号的凭据变量），不读写操作员自己的 HOME。新写的探针也照此办；Vite / pnpm 这类工具链进程不在此列。
 
@@ -272,6 +272,16 @@ ARMADRA_PERSONAL_RELAY_HOME=<armadra-cloud 检出> node tools/probes/relay-web-e
 中继是 armadra-cloud 的 Go 二进制（`armadra-relay`），各探针经 `cloud-source.mjs` 按优先级找：`ARMADRA_RELAY_BIN` → 检出里的 `go/bin/armadra-relay`（每次增量 `go build`，找不到 go 时沿用已有的并警告）→ 镜像（`ARMADRA_PROBE_RELAY_IMAGE`，或从检出的 `go/Dockerfile` 构建，`docker run` 同一条命令行；macOS 等非 Linux 平台上不支持 `--tls plain`）。要 `docker pause` 的探针（`multi-source`、`link-join`、`nat-core-offline`）始终用镜像。
 
 验证：打开中继的 `/app/` 是中继登录页，中继账号口令登录后只有一台在线主机就直接进画布，请求都同源（`/v1`、`/s/<源>`）；经中继终端收发、实时板与本机页面双向同步；主机停掉隧道时通知条「等待上线」、再开由 `me.stream` 叫醒；杀掉中继再起，页面不刷新自己恢复。截 390 / 1440 宽、明暗两主题。产物默认在 `target/relay-web-e2e/`。
+
+## Mermaid 在强制 Trusted Types 下渲染
+
+设计 saas-host-open §5.4 Q13：把 `fixtures/mermaid-trusted-types/` 的页面（应用里同一份 `lib/trusted-types.ts` 与 `renderMermaidSvg`）用 Vite 打包，回环静态服务的响应头带云端 `ConsoleCSP` 要的指令（`require-trusted-types-for 'script'`、`trusted-types armadra armadra-sanitize default dompurify`、`img-src 'self' blob: data:` 等），无头 Chrome 渲染 flowchart / sequence / class / state：与不强制 Trusted Types 的对照同宽、标签齐全、按 `blob:` 图片能显示，`securitypolicyviolation` 为零。名单里少了 `dompurify`（Mermaid 带的 DOMPurify 要建这个策略）时 flowchart 渲染不出来，探针会失败。
+
+```sh
+node tools/probes/mermaid-trusted-types.mjs [输出目录]
+```
+
+产物默认在 `target/mermaid-trusted-types/result.json`。
 
 ## 个人中转全流程（V1 / M1）
 
