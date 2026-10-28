@@ -3,7 +3,7 @@
  *
  * 顺序很重要：先 `tailwindcss`（含它自己的 theme 变量与 preflight），
  * 再 `tokens.css`，这样我们的 token 永远覆盖 Tailwind 的同名默认值。
- * `main.tsx` 必须第一个 import 这个文件。
+ * `main.tsx` 先引两款字体的 @font-face，紧接着第一个 import 这个文件。
  */
 
 @import "tailwindcss";

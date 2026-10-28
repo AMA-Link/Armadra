@@ -5,6 +5,8 @@ import { createRoot } from "react-dom/client";
 import { MotionConfig } from "motion/react";
 import { MOTION_TRANSITION } from "@/ui/motion";
 
+import "@fontsource-variable/inter/opsz.css";
+import "@fontsource-variable/geist-mono";
 import "../styles/app.css";
 import "../styles/nodes.css";
 import "./force-state.css";

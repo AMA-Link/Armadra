@@ -1,3 +1,7 @@
+// 本地打包的两款界面字体（设计系统 §2.6），排在一切样式之前：Inter 开光学尺寸轴，
+// Geist Mono 用默认字重轴。只有 @font-face，woff2 由 Vite 打成本地资源。
+import "@fontsource-variable/inter/opsz.css";
+import "@fontsource-variable/geist-mono";
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { MotionConfig } from "motion/react";
