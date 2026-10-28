@@ -4,6 +4,7 @@ import remarkGfm from "remark-gfm";
 
 import { useAssetUrl } from "@/api/assets";
 import { runtimeApi } from "@/api/client";
+import { isControlPlanePage } from "@/api/runtime-url";
 import { cn } from "@/lib/cn";
 import { ScrollArea } from "@/ui/scroll-area";
 
@@ -36,7 +37,11 @@ export function MarkdownPreview({
   const resolve = React.useCallback(
     (source: string | undefined): string | undefined => {
       if (!source || !workspaceId) return undefined;
-      if (/^(https?:|data:)/i.test(source)) return source;
+      // 控制台来源（`/h/`）上不替主机内容去拉外站图片：CSP 也不放行，留着只是一次被拦的
+      // 请求与一条违规（设计 saas-host-open §5.4）。
+      if (/^https?:/i.test(source))
+        return isControlPlanePage() ? undefined : source;
+      if (/^data:/i.test(source)) return source;
       // `/a.png` 在工作区里就是根下的 a.png；`../` 交给 Runtime 拒绝。
       const relative = source.replace(/^\/+/, "");
       const joined =
