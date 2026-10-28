@@ -38,7 +38,7 @@ export const MERMAID_CSP = [
   "style-src 'self' 'unsafe-inline'",
   "script-src 'self'",
   "img-src 'self' blob: data:",
-  "frame-src https://challenges.cloudflare.com blob:",
+  "frame-src https://challenges.cloudflare.com",
   "object-src 'none'",
   "base-uri 'none'",
   "require-trusted-types-for 'script'",
