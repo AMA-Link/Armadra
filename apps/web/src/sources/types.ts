@@ -152,6 +152,11 @@ export interface CloudAuth {
   access(issuer: string): Promise<string>;
   /** 手里那枚被拒了：丢掉缓存。 */
   invalidate(issuer: string): void;
+  /**
+   * 这个签发方上自己的账号 id（`me.get`）：认 `memberChanged` 是不是自己（契约 §88.2）。
+   * 不给 = 不认成员事件。
+   */
+  accountId?(issuer: string): Promise<string>;
 }
 
 /** 源层自己的失败码（界面按码取文案）。 */

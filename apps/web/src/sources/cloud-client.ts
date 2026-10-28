@@ -384,6 +384,21 @@ export async function cloudStreamTicket(
   return answer.ticket;
 }
 
+/** `GET /v1/me`：只取账号 id（认 `me.stream` 的成员事件是不是自己，契约 §88.2）。 */
+export async function cloudAccountId(
+  issuer: string,
+  accessToken: string,
+  options: CloudOptions = {},
+): Promise<string> {
+  const answer = await send(
+    `${trimmed(issuer)}/v1/me`,
+    z.object({ accountId: z.string() }),
+    { headers: bearer(accessToken) },
+    options,
+  );
+  return answer.accountId;
+}
+
 /** `GET /v1/me/sources`。 */
 export async function cloudSources(
   issuer: string,

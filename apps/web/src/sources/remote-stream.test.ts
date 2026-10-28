@@ -6,6 +6,7 @@ import {
   ME_STREAM_PING_MS,
   type RemoteStreamOptions,
   applyMeStreamEvent,
+  type MeStreamEvent,
   attachRemoteStreams,
   createRemoteStream,
   meStreamUrl,
@@ -363,5 +364,131 @@ describe("接到源表上", () => {
     applyMeStreamEvent({ type: "sourceOnline", sourceId: SOURCE }, ready);
     expect(ready.connect).not.toHaveBeenCalled();
     expect(ready.revoke).not.toHaveBeenCalled();
+  });
+});
+
+describe("授予与成员事件 → 去抖重登（契约 §88.2）", () => {
+  const TEAM = "team-1";
+  const setup = (
+    relogin: (sourceId: string) => Promise<void>,
+    accountId?: string,
+  ) => {
+    const registry = createSourceRegistry({
+      provider: provider(),
+      remote: { fetch: fakeFetch, environment: null },
+    });
+    const b = registry.add({ ...relayed(SOURCE), teamId: TEAM });
+    const c = registry.add(relayed(OTHER));
+    const auth = cloudAuth();
+    const lookups = vi.fn(async () => accountId ?? "");
+    const emit: { onEvent?: (event: MeStreamEvent) => void } = {};
+    const detach = attachRemoteStreams(registry, {
+      auth: accountId === undefined ? auth : { ...auth, accountId: lookups },
+      relogin,
+      scheduler: { delayMs: 0, gapMs: 0 },
+      createStream: (options) => {
+        emit.onEvent = options.onEvent;
+        return { issuer: options.issuer, state: "open", close: () => {} };
+      },
+    });
+    return {
+      registry,
+      b,
+      c,
+      lookups,
+      push: (event: unknown) =>
+        emit.onEvent!(parseMeStreamEvent(JSON.stringify(event))!),
+      dispose() {
+        detach();
+        registry.dispose();
+      },
+    };
+  };
+
+  it("grantChanged：那台去抖后重登，成功后续一次手里的访问；别的签发方不认", async () => {
+    const relogin = vi.fn(async () => undefined);
+    const world = setup(relogin);
+    await world.b.connect();
+    const renew = vi.spyOn(world.b, "renew");
+    for (let i = 0; i < 5; i += 1)
+      world.push({ type: "grantChanged", sourceId: SOURCE, atMs: i });
+    world.push({ type: "grantChanged", sourceId: "d".repeat(32), atMs: 1 });
+    await flush();
+    expect(relogin.mock.calls).toEqual([[SOURCE]]);
+    expect(renew).toHaveBeenCalledTimes(1);
+    world.dispose();
+  });
+
+  it("memberChanged：是自己的账号才重登同团队的那几台；别人的、没带账号的不认", async () => {
+    const relogin = vi.fn(async () => undefined);
+    const world = setup(relogin, "acct-me");
+    world.push({
+      type: "memberChanged",
+      teamId: TEAM,
+      accountId: "acct-other",
+      change: "roleChanged",
+      atMs: 1,
+    });
+    world.push({
+      type: "memberChanged",
+      teamId: TEAM,
+      change: "added",
+      atMs: 1,
+    });
+    await flush();
+    expect(relogin).not.toHaveBeenCalled();
+    world.push({
+      type: "memberChanged",
+      teamId: TEAM,
+      accountId: "acct-me",
+      change: "roleChanged",
+      atMs: 2,
+    });
+    await flush();
+    expect(relogin.mock.calls).toEqual([[SOURCE]]);
+    // 账号 id 按签发方缓存。
+    expect(world.lookups).toHaveBeenCalledTimes(1);
+    world.dispose();
+  });
+
+  it("重登被明确拒绝：那台失权；限流不动", async () => {
+    let code = "rate_limited";
+    const relogin = vi.fn(async () => {
+      throw Object.assign(new Error(code), { code });
+    });
+    const world = setup(relogin);
+    await world.b.connect();
+    world.push({ type: "grantChanged", sourceId: SOURCE, atMs: 1 });
+    await flush();
+    expect(world.b.status.state).toBe("ready");
+    code = "source_access_denied";
+    world.push({ type: "grantChanged", sourceId: SOURCE, atMs: 2 });
+    await flush();
+    expect(world.b.status).toMatchObject({
+      state: "unauthorized",
+      lastError: { code: "source_access_denied" },
+    });
+    world.dispose();
+  });
+
+  it("没给 relogin（手机、托管页）：授予事件照旧忽略", async () => {
+    const registry = createSourceRegistry({
+      provider: provider(),
+      remote: { fetch: fakeFetch, environment: null },
+    });
+    registry.add(relayed(SOURCE));
+    let onEvent: ((event: MeStreamEvent) => void) | undefined;
+    const detach = attachRemoteStreams(registry, {
+      auth: cloudAuth(),
+      createStream: (options) => {
+        onEvent = options.onEvent;
+        return { issuer: options.issuer, state: "open", close: () => {} };
+      },
+    });
+    expect(() =>
+      onEvent!({ type: "grantChanged", sourceId: SOURCE }),
+    ).not.toThrow();
+    detach();
+    registry.dispose();
   });
 });
