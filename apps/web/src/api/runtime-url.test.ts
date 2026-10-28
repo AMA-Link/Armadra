@@ -3,8 +3,10 @@ import {
   forgetRuntimeOrigin,
   gatewayOrigin,
   isNativeAppPage,
+  isControlPlanePage,
   isServerShellServed,
   saveRuntimeOrigin,
+  setControlPlanePage,
   savedRuntimeOrigin,
   serverShellOrigin,
   isShellTransport,
@@ -293,5 +295,38 @@ describe("原生 App 记下的 Gateway 来源", () => {
     expect(gatewayOrigin("https://h/#pair=x")).toBeNull();
     expect(gatewayOrigin("https://h/sub")).toBeNull();
     expect(() => saveRuntimeOrigin("http://h")).toThrow();
+  });
+});
+
+describe("HTTPS 来源：服务器壳还是控制面（#580）", () => {
+  afterEach(() => setControlPlanePage(false));
+
+  it("自签 IP、正式域名、控制面来源装载时都先按服务器壳算", () => {
+    for (const page of [
+      "https://192.168.1.20:8443/",
+      "https://canvas.example/workspace/one",
+      "https://app.saas.example/login",
+    ]) {
+      expect(isServerShellServed(undefined, page)).toBe(true);
+    }
+    // 回环 HTTP（开发服务器、`armadra.sh run web`）不是。
+    expect(isServerShellServed(undefined, "http://127.0.0.1:61000/")).toBe(
+      false,
+    );
+  });
+
+  it("入口认出控制面之后，同一来源不再算服务器壳；地址不变", () => {
+    setControlPlanePage(true);
+    expect(isControlPlanePage()).toBe(true);
+    expect(isServerShellServed(undefined, "https://app.saas.example/")).toBe(
+      false,
+    );
+    expect(resolveRuntimeUrl(undefined, "https://app.saas.example/")).toBe(
+      "https://app.saas.example",
+    );
+    setControlPlanePage(false);
+    expect(isServerShellServed(undefined, "https://app.saas.example/")).toBe(
+      true,
+    );
   });
 });

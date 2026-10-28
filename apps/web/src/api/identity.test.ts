@@ -179,6 +179,67 @@ describe("the browser (server shell) transport", () => {
   });
 
   /**
+   * 背后没有会话（或者不是 core，#581）：换不来时不让每个写请求都打一次
+   * `session/csrf`。1 秒起翻倍、封顶 30 秒；拿到一枚（登录、注册）就归零。
+   */
+  it("backs off renewing after a failure, with a ceiling", async () => {
+    vi.useFakeTimers({ now: 1_000_000, toFake: ["Date"] });
+    try {
+      answer = () => ({ status: 404, body: { code: "not_found" } });
+      for (let i = 0; i < 50; i += 1) expect(await ensureCsrf()).toBe("");
+      expect(calls).toHaveLength(1);
+      vi.advanceTimersByTime(999);
+      await ensureCsrf();
+      expect(calls).toHaveLength(1);
+      vi.advanceTimersByTime(1);
+      await ensureCsrf();
+      expect(calls).toHaveLength(2);
+      // 一分钟里一直在要：次数有上界（1+2+4+8+16+30 秒……），不是每次都发。
+      for (let second = 0; second < 60; second += 1) {
+        vi.advanceTimersByTime(1_000);
+        for (let i = 0; i < 20; i += 1) await ensureCsrf();
+      }
+      expect(calls.length).toBeLessThanOrEqual(8);
+      // 拿到一枚（登录答的）就不再退避：作废后立刻能换。
+      answer = defaultAnswer;
+      rememberCsrf(SECRET);
+      forgetCsrf();
+      const before = calls.length;
+      expect(await ensureCsrf()).toBe(SECRET);
+      expect(calls).toHaveLength(before + 1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  /**
+   * 网络抖动、core 正在重启（5xx）不是「没有会话」：不退避，马上再换就续得上，
+   * 请求层不会把一次能续上的 401 交出去。
+   */
+  it("does not back off after a network error or a 5xx", async () => {
+    vi.useFakeTimers({ now: 1_000_000, toFake: ["Date"] });
+    try {
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async (url: string, init: RequestInit) => {
+          calls.push({ url, init });
+          throw new TypeError("Failed to fetch");
+        }),
+      );
+      expect(await ensureCsrf()).toBe("");
+      answer = () => ({ status: 503, body: { code: "unavailable" } });
+      vi.stubGlobal("fetch", fetchStub());
+      expect(await ensureCsrf()).toBe("");
+      answer = defaultAnswer;
+      // 同一毫秒里再要：直接换，换得上。
+      expect(await ensureCsrf()).toBe(SECRET);
+      expect(calls).toHaveLength(3);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  /**
    * 注册前页面一直在轮询 `session/csrf`（401）。会话一建好，在途的那条带着新
    * Cookie 落地，就把注册刚答出来的令牌作废。此时发出的第一批请求不能拿着
    * 注册的那一枚去赌：等换票落地，用换回来的（AMA-Link/Armadra#355）。

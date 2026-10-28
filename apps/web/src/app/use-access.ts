@@ -6,6 +6,7 @@ import { RUNTIME_VIA_SERVER_SHELL } from "../api/request";
 import { isNativeAppPage } from "../api/runtime-url";
 import { hostedRelay } from "../sources/hosted";
 import { runtimeApi } from "../api/client";
+import { backoffCeiling } from "../lib/backoff";
 
 /**
  * 这个页面背后的人能做什么（服务器账号 R8，权限表见设计
@@ -75,16 +76,38 @@ export function useAccess(server?: boolean): Access {
   return accessOf(useServerSession());
 }
 
+/**
+ * 会话这条查询的选项（`IdentityGate` 与 {@link useAccess} 共用一个键）。
+ *
+ * 问不到（背后不是 core、网络断了）时不随组件挂载重问——画布里挂着几十个读它的
+ * 组件，每挂一个就重问一次，会和入口门的骨架屏互相触发成请求风暴；改为按退避
+ * 自己再问（1 秒起翻倍，封顶 30 秒；页面隐藏时 React Query 不跑定时）。
+ */
+export const accessQueryOptions = {
+  queryKey: ACCESS_QUERY_KEY,
+  queryFn: (): Promise<IdentitySession | null> => resumeIdentity(),
+  // 共享授权随时会变（改角色、撤销）；这份只用来决定摆不摆入口，晚半分钟
+  // 无妨，真正的拦截在 core。
+  staleTime: 30_000,
+  refetchOnWindowFocus: true,
+  retry: false,
+  retryOnMount: false,
+  refetchInterval: (query: {
+    readonly state: {
+      readonly status: string;
+      readonly errorUpdateCount: number;
+    };
+  }): number | false =>
+    query.state.status === "error"
+      ? backoffCeiling(Math.max(0, query.state.errorUpdateCount - 1), {
+          baseMs: 1_000,
+          capMs: 30_000,
+        })
+      : false,
+} as const;
+
 function useServerSession(): IdentitySession | null | undefined {
-  return useQuery({
-    queryKey: ACCESS_QUERY_KEY,
-    queryFn: () => resumeIdentity(),
-    // 共享授权随时会变（改角色、撤销）；这份只用来决定摆不摆入口，晚半分钟
-    // 无妨，真正的拦截在 core。
-    staleTime: 30_000,
-    refetchOnWindowFocus: true,
-    retry: false,
-  }).data;
+  return useQuery(accessQueryOptions).data;
 }
 
 /**
