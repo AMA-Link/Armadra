@@ -446,7 +446,6 @@ interface SortableProps {
   readonly dragging: boolean;
 }
 
-/** 段的状态 → 状态点与读屏文字（在连用转圈）。 */
 /** 设置里「远程访问」那一页（`RemoteAccessPage.REMOTE_SECTION`；懒加载，这里不引它）。 */
 const REMOTE_SECTION = "remoteAccess";
 
@@ -471,6 +470,7 @@ function openRemoteAccess(): void {
   useCanvasStore.getState().setPanel("settings", true);
 }
 
+/** 段的状态 → 状态点与读屏文字（在连用转圈）。 */
 function pillOf(section: SourceSection) {
   const state = section.connection.status.state;
   if (section.state === "ready") return sourcePill("ready");
