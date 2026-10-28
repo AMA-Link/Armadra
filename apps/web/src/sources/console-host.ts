@@ -173,7 +173,12 @@ export type HostView =
       readonly kind: "offline";
       readonly lastSeenAtMs: number | null;
     }
-  | { readonly kind: "failed"; readonly code: string }
+  | {
+      readonly kind: "failed";
+      readonly code: string;
+      /** `identity_changed`：主机现在的身份指纹前 16 位（知道时）。 */
+      readonly fingerprint?: string;
+    }
   | { readonly kind: "entered" }
   /** 进去之后控制台的 Cookie 会话没了：冻结、给「重新登录」，回来后重试。 */
   | { readonly kind: "expired" }
@@ -702,6 +707,19 @@ export function createConsoleHost(options: ConsoleHostOptions): ConsoleHost {
         if (code === SOURCE_ERROR.unauthorized) {
           sessions.clear();
           fail(HOST_FAILURE.failed);
+          return;
+        }
+        if (code === HOST_FAILURE.identityChanged) {
+          const presented = (
+            (error as { cause?: { fingerprint?: unknown } })?.cause ?? {}
+          ).fingerprint;
+          setView({
+            kind: "failed",
+            code,
+            ...(typeof presented === "string" && presented !== ""
+              ? { fingerprint: presented.slice(0, 16) }
+              : {}),
+          });
           return;
         }
         fail(code === SOURCE_ERROR.unreachable ? HOST_FAILURE.failed : code);

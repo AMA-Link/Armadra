@@ -131,6 +131,7 @@ export const cloudHosts: MessageModule = {
     "cloud.host.error.cloud_account_unlinked": "这台主机还没认你的账号",
     "cloud.host.error.e2e_device_unavailable": "这个浏览器不能保存设备钥",
     "cloud.host.error.failed": "打不开这台主机",
+    "cloud.host.fingerprint": "主机现在的身份指纹 {fingerprint}",
     "cloud.host.backToHosts": "回到主机列表",
     "cloud.host.backToOverview": "回到概览",
     "cloud.host.backToHost": "回到主机详情",
@@ -284,6 +285,7 @@ export const cloudHosts: MessageModule = {
     "cloud.host.error.e2e_device_unavailable":
       "This browser can't keep a device key",
     "cloud.host.error.failed": "Couldn't open this host",
+    "cloud.host.fingerprint": "Host identity fingerprint now {fingerprint}",
     "cloud.host.backToHosts": "Back to hosts",
     "cloud.host.backToOverview": "Back to overview",
     "cloud.host.backToHost": "Back to host details",

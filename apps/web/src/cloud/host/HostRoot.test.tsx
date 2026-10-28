@@ -72,6 +72,31 @@ describe("控制台 /h/ 页面", () => {
     expect(screen.queryByTestId("app")).toBeNull();
   });
 
+  it("端到端太旧与「版本太旧」同一句；设备钥不可用给重试", () => {
+    const old = fakeHost({ kind: "failed", code: "e2e_unsupported" });
+    const first = page(old.host);
+    expect(screen.getByText("这台主机的版本太旧，升级后再打开")).toBeTruthy();
+    first.unmount();
+    const key = fakeHost({ kind: "failed", code: "e2e_device_unavailable" });
+    page(key.host);
+    expect(screen.getByText("这个浏览器不能保存设备钥")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "重试" })).toBeTruthy();
+  });
+
+  it("主机身份变了：附上指纹前 16 位，不给「仍然连接」", () => {
+    const { host } = fakeHost({
+      kind: "failed",
+      code: "identity_changed",
+      fingerprint: "0123456789abcdef",
+    });
+    page(host);
+    expect(screen.getByText("主机的身份和上次不同，已停止连接")).toBeTruthy();
+    expect(
+      screen.getByText("主机现在的身份指纹 0123 4567 89ab cdef"),
+    ).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "重试" })).toBeNull();
+  });
+
   it("账号没映射：给出在主机上补登录的命令", () => {
     const { host } = fakeHost({
       kind: "failed",
