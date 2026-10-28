@@ -246,6 +246,15 @@ export interface RemoteConnectionOptions {
 /** 经中继时两次重新探直连之间至少隔这么久（流在退避里会反复触发）。 */
 export const REPROBE_INTERVAL_MS = 5_000;
 
+/**
+ * 经中继的访问到期前多久主动续（契约 §88.2）。落在主机「限寿会话临近到期不再刷新」的
+ * 窗口（到期前 30–60 秒）之内：Armadra 云的会话由本机 core 带旧刷新令牌重登、在同一
+ * 会话上续，开着的流不会在到期时被 4401 关掉；寿命长的会话照常刷新一次。
+ */
+export const RENEW_AHEAD_MS = 20_000;
+/** 主动续失败后隔多久再试（到期之前）。 */
+export const RENEW_AHEAD_RETRY_MS = 5_000;
+
 function originOf(base: string): string {
   try {
     return new URL(base).origin;
@@ -311,6 +320,7 @@ export function createRemoteConnection(
   let hello: HelloInfo | null = null;
   let connecting: Promise<void> | null = null;
   let renewing: Promise<boolean> | null = null;
+  let renewTimer: ReturnType<typeof setTimeout> | null = null;
   let epoch = 0;
   let probing: Promise<void> | null = null;
   let lastProbeAt = Number.NEGATIVE_INFINITY;
@@ -338,9 +348,55 @@ export function createRemoteConnection(
     unwatch?.();
     unwatch = null;
     access = next;
+    scheduleRenewal(next);
     const onClose = next?.e2e?.onClose;
     if (next === null || onClose === undefined) return;
     unwatch = onClose(() => channelClosed(next));
+  }
+
+  /** 经中继的访问到期前主动续一次（{@link RENEW_AHEAD_MS}）。 */
+  function scheduleRenewal(
+    current: SourceAccess | null,
+    delayMs?: number,
+  ): void {
+    if (renewTimer !== null) clearTimeout(renewTimer);
+    renewTimer = null;
+    if (current === null || current.expiresAtMs <= 0) return;
+    renewTimer = setTimeout(
+      () => {
+        renewTimer = null;
+        void renewAhead(current);
+      },
+      delayMs ??
+        Math.max(
+          current.expiresAtMs - now() - RENEW_AHEAD_MS,
+          RENEW_AHEAD_RETRY_MS,
+        ),
+    );
+  }
+
+  /**
+   * 到点：手里还是这一份、经中继、连着时续。失败不改状态（暂时的失败交给 401 那条路），
+   * 到期之前再试。
+   */
+  async function renewAhead(current: SourceAccess): Promise<void> {
+    if (
+      access !== current ||
+      via !== "relayed" ||
+      status.current.state !== "ready"
+    )
+      return;
+    if (renewing !== null) {
+      await renewing;
+      return;
+    }
+    try {
+      const next = await provider.refresh(id, "relayed", ...onRoute());
+      if (access === current) adopt(next);
+    } catch {
+      if (access === current && now() < current.expiresAtMs)
+        scheduleRenewal(current, RENEW_AHEAD_RETRY_MS);
+    }
   }
 
   /**

@@ -482,6 +482,57 @@ describe("经中继的源（A3-4）", () => {
     expect(b.status).toMatchObject({ state: "ready", via: "relayed" });
   });
 
+  it("访问到期前 20 秒主动续（契约 §88.2）；续不上不改状态、到期前再试；断开后不再续", async () => {
+    vi.useFakeTimers();
+    try {
+      let issued = 0;
+      let failNext = false;
+      const make = (): SourceAccess => ({
+        accessToken: `b-${(issued += 1)}`,
+        expiresAtMs: Date.now() + 60_000,
+        httpBase: RELAY_B,
+        wsBase: RELAY_B.replace(/^https/, "wss"),
+        relayToken: "RT",
+      });
+      const provider: CredentialProvider = {
+        getAccess: vi.fn(async () => make()),
+        refresh: vi.fn(async () => {
+          if (failNext) {
+            failNext = false;
+            throw Object.assign(new Error("no"), {
+              code: "source_unreachable",
+            });
+          }
+          return make();
+        }),
+        invalidate: vi.fn(),
+      };
+      const b = createRemoteConnection(
+        { ...relayedB, baseUrl: "" },
+        { ...options(provider), environment: null },
+      );
+      await b.connect();
+      expect(b.status.state).toBe("ready");
+      await vi.advanceTimersByTimeAsync(39_000);
+      expect(provider.refresh).not.toHaveBeenCalled();
+      failNext = true;
+      await vi.advanceTimersByTimeAsync(1_000);
+      expect(provider.refresh).toHaveBeenCalledTimes(1);
+      expect(b.status.state).toBe("ready");
+      await vi.advanceTimersByTimeAsync(5_000);
+      expect(provider.refresh).toHaveBeenCalledTimes(2);
+      // 续上的那份 60 秒后到期：再过 40 秒续下一次，带上新令牌。
+      await vi.advanceTimersByTimeAsync(40_000);
+      expect(provider.refresh).toHaveBeenCalledTimes(3);
+      expect(provider.refresh).toHaveBeenLastCalledWith(B, "relayed");
+      b.disconnect();
+      await vi.advanceTimersByTimeAsync(120_000);
+      expect(provider.refresh).toHaveBeenCalledTimes(3);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("revoke：关流、丢访问，unauthorized 带原因；再 connect 才重连", async () => {
     const provider = credentials({ [B]: { relayed: RELAY_B } });
     const b = createRemoteConnection(
