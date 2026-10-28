@@ -1,5 +1,6 @@
 import * as React from "react";
 import { systemApi } from "@/api/system";
+import { createProbe } from "@/lib/probe";
 import { isDesktop } from "@/platform";
 
 /**
@@ -15,23 +16,23 @@ import { isDesktop } from "@/platform";
  */
 
 let headless = false;
-let probe: Promise<void> | undefined;
 const listeners = new Set<() => void>();
 
+function publish(): void {
+  for (const listener of listeners) listener();
+}
+
+// 问不到时按退避再问（`lib/probe.ts`）：一次网络抖动不该让入口一直藏着，背后
+// 没有 core 时也不该每次重渲染都打一次 `/api/health`。
+const probe = createProbe(async () => {
+  const health = await systemApi.health();
+  headless = health.capabilities?.headlessBrowser === true;
+  publish();
+});
+
 function ensureProbe(): void {
-  if (probe !== undefined || isDesktop()) return;
-  probe = systemApi
-    .health()
-    .then((health) => {
-      headless = health.capabilities?.headlessBrowser === true;
-    })
-    .catch(() => {
-      // 下一次挂载再问：一次网络抖动不该让入口一直藏着。
-      probe = undefined;
-    })
-    .finally(() => {
-      for (const listener of listeners) listener();
-    });
+  if (isDesktop()) return;
+  probe.ensure();
 }
 
 function subscribe(listener: () => void): () => void {
@@ -66,6 +67,6 @@ export function useCanCreateBrowser(): boolean {
 /** 测试用：回到还没问过的状态。 */
 export function resetBrowserAvailability(value = false): void {
   headless = value;
-  probe = value ? Promise.resolve() : undefined;
-  for (const listener of listeners) listener();
+  probe.reset(value);
+  publish();
 }
