@@ -503,7 +503,7 @@ async function bindOwner(
   core: LocalCore,
   deps: CloudDeps,
   input: { issuer: string; fingerprint: string; accessToken: string },
-): Promise<"bound" | "conflict"> {
+): Promise<"bound" | "replaced" | "conflict"> {
   const status = (await core.call("GET", "/api/identity/cloud")) as {
     sourceId?: string;
   };
@@ -522,10 +522,11 @@ async function bindOwner(
     throw new CloudCliError("source_unreachable", "个人中转没有给出断言");
   }
   try {
-    await core.call("POST", "/api/identity/cloud/bind", {
+    const answer = (await core.call("POST", "/api/identity/cloud/bind", {
       assertion: signed.assertion,
-    });
-    return "bound";
+    })) as { replaced?: unknown };
+    // 契约 §88.5：替换了云端准入自动建的成员时答案带 `replaced: true`。
+    return answer.replaced === true ? "replaced" : "bound";
   } catch (error) {
     if (!(error instanceof CloudCliError && error.code === "conflict")) {
       throw error;
@@ -779,25 +780,46 @@ async function saasLogin(
     fingerprint: remote.fingerprint,
     accessToken: access,
   });
+  // 设备码批准之后账号名才写进行里：重读一次，告诉人关联的是哪个账号。
+  const account = await accountHintOf(core, remote.serviceId);
   emit(
     {
       command: "cloud login",
       issuer,
       mode: "saas",
+      account,
       registered: !already,
-      bound: bound === "bound",
+      bound: bound !== "conflict",
+      replaced: bound === "replaced",
       tunnel,
     },
     () => {
+      const who = account === "" ? "" : `（${account}）`;
       const owner =
-        bound === "bound"
-          ? "账号已关联为本机主人"
-          : "这个账号已关联到本机的另一个人，没有改动（在账号页撤销那条关联后重试）";
+        bound === "conflict"
+          ? "这个账号已关联到本机的另一个人，没有改动（在账号页撤销那条关联后重试）"
+          : bound === "replaced"
+            ? "账号已关联为本机主人，已停用之前云端自动建的同一账号的成员"
+            : "账号已关联为本机主人";
       return already
-        ? `已登录 ${issuer}；本机早已登记，${owner}`
-        : `已登录 ${issuer} 并登记，${owner}，隧道 ${tunnelText(tunnel)}`;
+        ? `已登录 ${issuer}${who}；本机早已登记，${owner}`
+        : `已登录 ${issuer}${who} 并登记，${owner}，隧道 ${tunnelText(tunnel)}`;
     },
   );
+}
+
+/** 远程服务行上的账号提示（邮箱或显示名）；取不到是空串。 */
+async function accountHintOf(
+  core: LocalCore,
+  serviceId: string,
+): Promise<string> {
+  const listed = (await core.call("GET", "/api/sources")) as {
+    remotes?: { serviceId: string; accountHint?: unknown }[];
+  };
+  const hint = listed.remotes?.find(
+    (row) => row.serviceId === serviceId,
+  )?.accountHint;
+  return typeof hint === "string" ? hint : "";
 }
 
 /** 等人在浏览器里批准设备码：按间隔轮询，拒绝或过期即失败。 */

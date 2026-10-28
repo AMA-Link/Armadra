@@ -71,7 +71,7 @@ export class CloudService {
     principalId: string,
     assertion: string,
     options: { readonly local?: boolean } = {},
-  ): Promise<{ bound: true }> {
+  ): Promise<{ bound: true; replaced?: true }> {
     return this.logins.bind(principalId, assertion, options);
   }
 

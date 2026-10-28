@@ -29,6 +29,8 @@ function fakeCore(
     registered?: boolean;
     alreadyRegistered?: boolean;
     alreadyBound?: boolean;
+    /** core 的 bind 答 `replaced: true`（替换了自动成员，契约 §88.5）。 */
+    replaced?: boolean;
     kind?: "personal" | "saas";
     /** SaaS 设备码轮询依次答的状态（最后一个之后一直答它）。 */
     polls?: string[];
@@ -41,6 +43,7 @@ function fakeCore(
   const row = () => ({
     serviceId: "s".repeat(32),
     kind,
+    accountHint: kind === "saas" ? "owner@example.test" : "dev",
     issuer: ISSUER,
     fingerprint: kind === "saas" ? "" : FINGERPRINT,
     registered,
@@ -130,7 +133,9 @@ function fakeCore(
         if (options.alreadyBound === true) {
           throw new CloudCliError("conflict", "已经关联");
         }
-        return { bound: true };
+        return options.replaced === true
+          ? { bound: true, replaced: true }
+          : { bound: true };
       }
       if (method === "GET" && path === "/api/identity/cloud") {
         return {
@@ -729,9 +734,23 @@ describe("cloud login（Armadra 云，设计 §4.4）", () => {
     expect(JSON.parse(out.join(""))).toMatchObject({
       command: "cloud login",
       mode: "saas",
+      account: "owner@example.test",
       registered: false,
       bound: true,
+      replaced: false,
     });
+  });
+
+  it("只绑定时替换了自动成员：说明已停用它，并带上账号提示", async () => {
+    const { core } = fakeCore({
+      kind: "saas",
+      registered: true,
+      replaced: true,
+    });
+    const { io, out } = harness(core, { mode: "saas" });
+    expect(await main(login, io)).toBe(0);
+    expect(out.join("")).toContain("owner@example.test");
+    expect(out.join("")).toContain("已停用之前云端自动建的同一账号的成员");
   });
 
   it("映射已属本机另一个人（不是自动成员）：如实说没改动，退出 0", async () => {

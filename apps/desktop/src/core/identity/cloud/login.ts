@@ -559,13 +559,13 @@ export class CloudLogin {
    * （{@link autoCloudMember}），且发起者是本机 owner 的本地会话（`local`，调用方判：
    * 不经隧道、会话不绑通道设备钥）时，一笔事务里把映射迁到 owner：吊销那个成员的全部
    * 会话、停用它、撤掉它经本签发方同步来的授予与团队角色，审计 `cloud.bind.replace`。
-   * 它名下已受信的设备钥不迁。其余情形照旧 `conflict`。
+   * 它名下已受信的设备钥不迁；答案带 `replaced: true`。其余情形照旧 `conflict`。
    */
   async bind(
     principalId: string,
     assertion: string,
     options: { readonly local?: boolean } = {},
-  ): Promise<{ bound: true }> {
+  ): Promise<{ bound: true; replaced?: true }> {
     const { claims, registration } =
       await this.options.verifier.verify(assertion);
     this.admitSubject(claims);
@@ -632,8 +632,9 @@ export class CloudLogin {
       });
       return from !== undefined;
     });
-    if (replaced) accessChanged();
-    return { bound: true };
+    if (!replaced) return { bound: true };
+    accessChanged();
+    return { bound: true, replaced: true };
   }
 }
 

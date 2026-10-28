@@ -263,7 +263,7 @@ describe("bind 替换自动成员（契约 §88.5）", () => {
       asOwner(),
     );
     expect(bound.status, bound.text).toBe(200);
-    expect(bound.body).toEqual({ bound: true });
+    expect(bound.body).toEqual({ bound: true, replaced: true });
 
     const after = store.transaction((tx) => ({
       principal: tx.accounts.principal(auto),
@@ -305,6 +305,7 @@ describe("bind 替换自动成员（契约 §88.5）", () => {
       assertion: sub("acct:boss"),
     });
     expect(repeat.status, repeat.text).toBe(200);
+    expect(repeat.body).toEqual({ json: { bound: true } });
   });
 
   it("RPC（本机壳）同样能替换", async () => {
