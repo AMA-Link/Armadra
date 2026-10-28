@@ -290,7 +290,9 @@ function ConsoleData({ onJoined }: { onJoined?: () => void }) {
 
   const signOut = () => {
     // 先让各 `/h/` 标签页趁通道还在吊销主机侧会话，再登出云端（之后中继断开通道）。
+    // 通知 `/h/` 出了意外也照样登出云端。
     void signOutHostTabs()
+      .catch(() => undefined)
       .then(() => api.signOut())
       .finally(() => {
         announceConsoleSession({ type: "signedOut" });
