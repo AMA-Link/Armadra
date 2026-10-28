@@ -301,8 +301,8 @@ export class SourcesService {
    * 服务器壳页面要直接连的来源（契约 §88.1）：远程服务的签发方（`me.stream`）与挂上的
    * 源的每条路（中继或直连）。只读 SQLite；Gateway 据此给页面的 CSP 追加授权。
    */
-  pageConnectOrigins(): string[] {
-    return pageConnectOrigins(this.store);
+  pageConnectOrigins(owner: boolean): string[] {
+    return pageConnectOrigins(this.store, owner);
   }
 
   private row(sourceId: string): SourceRow {

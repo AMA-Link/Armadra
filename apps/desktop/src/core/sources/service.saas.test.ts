@@ -6,6 +6,8 @@ import type { OpenedDatabase } from "../db/open";
 import { tempDir } from "../testing/temp-dir";
 import { migrationsDir } from "../workspaces/fixture";
 import {
+  GATEWAY,
+  GATEWAY_FP,
   ISSUER,
   RELAYED_ID,
   type FakeWorld,
@@ -324,15 +326,23 @@ describe("契约 §86：Armadra 云挂载的团队与归属", () => {
     expect((await stored())?.deviceId).toBe(before!.deviceId);
   });
 
-  it("服务器壳页面要连的来源：签发方与挂上的源的中继（契约 §88.1）", async () => {
+  it("服务器壳页面要连的来源：匿名只有签发方与中继来源，直连地址只给 owner（契约 §88.1）", async () => {
     await saas.mount({ serviceId, sourceId: RELAYED_ID });
-    expect(saas.pageConnectOrigins()).toEqual(expect.arrayContaining([ISSUER]));
-    const origins = saas.pageConnectOrigins();
+    await saas.addDirect({
+      pairLink: `${GATEWAY}/#pair=ticket-1&fp=${GATEWAY_FP}`,
+    });
     const row = (await saas.list()).sources.find(
       (one) => one.sourceId === RELAYED_ID,
     )!;
-    expect(origins).toContain(row.relayOrigin);
-    expect(origins).not.toContain("");
+    const anonymous = saas.pageConnectOrigins(false);
+    expect(anonymous).toEqual(
+      expect.arrayContaining([ISSUER, row.relayOrigin]),
+    );
+    expect(anonymous).not.toContain(GATEWAY);
+    expect(anonymous).not.toContain("");
+    expect(saas.pageConnectOrigins(true)).toEqual(
+      expect.arrayContaining([ISSUER, row.relayOrigin, GATEWAY]),
+    );
   });
 
   it("relogin 只经中继：指定直连答 bad_request", async () => {

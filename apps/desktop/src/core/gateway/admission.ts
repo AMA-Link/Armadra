@@ -231,6 +231,35 @@ export function admit(input: GateInput, context: GateContext): Admission {
 }
 
 /**
+ * 发页面（静态 GET）时这次请求是不是本机 owner（契约 §88.1）：带着这个来源上有效的
+ * 访问 Cookie、会话属于 owner。只用来决定页面 CSP 里要不要放直连源的地址——认不出、
+ * 会话过期、成员会话一律按匿名，不拒绝请求。来源取 `https://<Host>`，必须在白名单里。
+ */
+export function ownerPageRequest(
+  headers: IncomingHttpHeaders,
+  context: GateContext,
+): boolean {
+  const host = singleHeader(headers, "host");
+  const origin =
+    host === undefined ? undefined : canonicalOrigin(`https://${host}`);
+  if (origin === undefined || !context.origins.has(origin)) return false;
+  const accessToken = cookieValue(headers, accessCookieName(context.hostId));
+  if (accessToken === "") return false;
+  try {
+    return (
+      context.service.authenticate({
+        accessToken,
+        hostId: context.hostId,
+        origin,
+        requireCsrf: false,
+      }).role === "owner"
+    );
+  } catch {
+    return false;
+  }
+}
+
+/**
  * OAuth 回调（契约 §18.5）：从提供方跳回来的顶层导航，没有 `Origin`、
  * `Sec-Fetch-Site: cross-site`。它不认会话——安全性来自一次性的 `state` 与
  * 浏览器绑定 Cookie（`core/identity/oauth/flow.ts`），所以 Origin 与

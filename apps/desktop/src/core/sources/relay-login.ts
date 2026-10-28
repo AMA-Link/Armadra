@@ -4,7 +4,8 @@
  * - {@link loginAtRelay}：用断言 `cloud/login`，带上这条路存着的刷新令牌——Armadra 云的
  *   限寿会话由对端在同一会话 id 上续，长连接不断。成功写回新令牌、纠正分享信息与归属；
  *   被明确拒绝才删存着的令牌，待确认、限流、不在线、连不上都留着。
- * - {@link pageConnectOrigins}：服务器壳页面要直接连的来源（Gateway 给 CSP 追加授权用）。
+ * - {@link pageConnectOrigins}：服务器壳页面要直接连的来源（Gateway 给 CSP 追加授权用；
+ *   直连地址只给 owner）。
  */
 
 import { CoreFailure } from "../http/errors";
@@ -100,17 +101,22 @@ export async function loginAtRelay(
 
 /**
  * 服务器壳页面要直接连的来源（契约 §88.1）：远程服务的签发方（`me.stream`）与挂上的
- * 源的每条路（中继或直连）。只读 SQLite。
+ * 源的中继来源是公开域名，匿名也给；直连源的地址（`baseUrl` 与直连的路）是 owner 才
+ * 看得到的源表拓扑，只在 `owner` 时给。只读 SQLite。
  */
-export function pageConnectOrigins(store: SourcesStore): string[] {
+export function pageConnectOrigins(
+  store: SourcesStore,
+  owner: boolean,
+): string[] {
   const origins = new Set<string>();
   for (const remote of store.remotes()) origins.add(remote.issuer);
   for (const row of store.list()) {
     if (row.kind === "local") continue;
-    if (row.baseUrl !== "") origins.add(row.baseUrl);
     if (row.relayOrigin !== "") origins.add(row.relayOrigin);
+    if (owner && row.baseUrl !== "") origins.add(row.baseUrl);
   }
   for (const routes of store.allRoutes().values())
-    for (const route of routes) origins.add(route.origin);
+    for (const route of routes)
+      if (route.via === "relayed" || owner) origins.add(route.origin);
   return [...origins];
 }

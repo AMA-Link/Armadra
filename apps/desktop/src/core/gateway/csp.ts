@@ -116,19 +116,22 @@ const LOOPBACK = /^(https?|wss?):\/\/(127\.0\.0\.1|localhost)(:\*)?$/;
  * 服务器壳页面按源表追加的连接授权（契约 §88.1）：页面要直接连远程服务（`me.stream`
  * 的票与流）与挂上的源（中继或直连）。只来自这台 core 自己的源表，由源域装上
  * （{@link providePageConnectGrants}）；没装是空表，策略与原来逐字相同。
+ *
+ * `owner`：请求带着本机 owner 的有效会话。匿名也看得到的只有公开域名（远程服务签发方、
+ * 中继来源）；直连源的地址是 owner 才看得到的源表拓扑，只给 owner。
  */
-let pageConnectGrants: () => readonly string[] = () => [];
+let pageConnectGrants: (owner: boolean) => readonly string[] = () => [];
 
 export function providePageConnectGrants(
-  provider: (() => readonly string[]) | null,
+  provider: ((owner: boolean) => readonly string[]) | null,
 ): void {
   pageConnectGrants = provider ?? (() => []);
 }
 
 /** 这一刻要追加的授权（源表读不出时不追加）。 */
-export function currentPageConnectGrants(): readonly string[] {
+export function currentPageConnectGrants(owner: boolean): readonly string[] {
   try {
-    return pageConnectGrants();
+    return pageConnectGrants(owner);
   } catch {
     return [];
   }

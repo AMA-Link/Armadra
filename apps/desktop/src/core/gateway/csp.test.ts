@@ -81,18 +81,21 @@ describe("服务器壳页面按源表追加的连接（契约 §88.1）", () => 
     expect(serverContentSecurityPolicy()).toContain("connect-src 'self';");
   });
 
-  it("授权来自源域装上的提供方；读不出时不追加", () => {
+  it("授权来自源域装上的提供方，按是否 owner 分；读不出时不追加", () => {
     try {
-      providePageConnectGrants(() => ["https://a.test"]);
-      expect(currentPageConnectGrants()).toEqual(["https://a.test"]);
+      providePageConnectGrants((owner) =>
+        owner ? ["https://direct.test", "https://a.test"] : ["https://a.test"],
+      );
+      expect(currentPageConnectGrants(false)).toEqual(["https://a.test"]);
+      expect(currentPageConnectGrants(true)).toContain("https://direct.test");
       providePageConnectGrants(() => {
         throw new Error("db");
       });
-      expect(currentPageConnectGrants()).toEqual([]);
+      expect(currentPageConnectGrants(true)).toEqual([]);
     } finally {
       providePageConnectGrants(null);
     }
-    expect(currentPageConnectGrants()).toEqual([]);
+    expect(currentPageConnectGrants(true)).toEqual([]);
   });
 });
 
