@@ -4740,7 +4740,8 @@ owner（本机会话，或已信任设备经通道的 owner 会话）：`{ sourc
 
 ### 88.5 `identity.cloud.bind` 替换云端自动建的成员
 
-- 断言的 `sub` 已映射给别人时，`bind` 照旧 `409 conflict`，只有一种情形例外：映射指向的是云端准入免邀请自动建的成员（§60.2：普通成员、唯一的身份凭据就是这个签发方下的这条映射、登记审计记 `createdVia: "cloud"` 且不经邀请），**并且**发起者是本机 owner 的本地会话（请求不经中继隧道——明文与端到端通道都不算——会话也不绑通道设备钥，即回环页面、服务器壳 CLI 或桌面壳）。
+- 断言的 `sub` 已映射给别人时，`bind` 照旧 `409 conflict`，只有一种情形例外：映射指向的是云端准入免邀请自动建的成员（§60.2：普通成员、唯一的身份凭据就是这个签发方下的这条映射、登记审计记 `createdVia: "cloud"` 且不经邀请），**并且**发起者是本机 owner 的本地会话：回环页面、服务器壳 CLI 或桌面壳。判定全部成立才算——拿得到请求与连接；不是 Gateway 转交的（服务器壳网页、局域网配对的设备，Cookie 与原生 App 的 Bearer 模式都算 Gateway，哪怕对端地址是回环，例如反代转发到本机）；连接不是 TLS、不是中继隧道（明文与端到端通道都不算）；对端是回环地址或 unix socket（私有通道）；会话不绑通道设备钥。
+- 自动成员的判定依赖它登记时的审计行 `identity.principal.register`（`createdVia: "cloud"`、不带 `invitationId`）。这一行找不到（例如审计被清理过）时按「不是自动成员」处理，答 `409 conflict`——判定失败时拒绝替换，不放宽。
 - 这时一笔事务里把映射迁到 owner：作废那条映射、给 owner 建新的映射；吊销那个成员的全部会话、停用它、撤掉它经本签发方同步来的授予与团队角色（`cloud_team_roles`）。它名下已受信的设备钥不迁（按主体审批，主人的浏览器要重新放行）。审计 `cloud.bind.replace`，`detail` 为 `{ iss, sub, from }`（`from` 是被替换的主体）。答案是 `{ bound: true, replaced: true }`：出参只加可选的 `replaced`，普通绑定与幂等重绑仍是 `{ bound: true }`。
 - 经端到端通道来的会话（含 owner 自己的浏览器）、成员会话、经邀请或本机建的成员：一律 `409 conflict`，与原行为相同。
 - 服务器壳 `armadra-server cloud login --issuer <控制台来源>`：对 Armadra 云走设备码登录（`sources.remoteAdd { kind: "saas" }` + `remoteDevicePoll`，码只打到终端）；本机未登记时按 `--space` 登记（`sources.remoteRegister`），已登记（例如先 `cloud register --token`）时只绑定——经 `sources.remoteSession` 取访问令牌、向远程服务要一张为本机签的断言、交给本机 `bind`，不再调 `remoteRegister`。输出带账号提示（远程服务行的 `accountHint`）；`bind` 答 `replaced` 时说明已停用那个自动成员。
