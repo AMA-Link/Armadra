@@ -100,6 +100,13 @@ const CSP_MODE = process.env.ARMADRA_SAAS_CSP ?? "proposed";
 const PROPOSED_EXTRA =
   "img-src 'self' blob: data:; media-src 'self' blob:; " + TRUSTED_TYPES_CSP;
 
+/** WS 握手子协议里的令牌与票、Cookie：写进结果之前打码。 */
+const redact = (text) =>
+  String(text)
+    .replace(/armadra-(relay|ticket)\.[^\s",;]+/g, "armadra-$1.<redacted>")
+    .replace(/(__Host-armadra-[a-z]+)=[^\s";]+/g, "$1=<redacted>")
+    .replace(/(Bearer\s+)[^\s",]+/gi, "$1<redacted>");
+
 const report = {
   status: "failed",
   output,
@@ -300,10 +307,11 @@ async function openTab(browser, context, label) {
       report.violations.push(violation);
       console.log(`  CSP   ${JSON.stringify(violation)}`);
     }
+    // 只记状态与地址（打码），不记请求头：WS 握手的子协议里是中继令牌与票。
     if (message.method === "Network.responseReceived") {
       const { status, url } = message.params.response;
-      if (status === 429) page.statuses.push({ status, url });
-      if (status >= 400) page.failures.push(`${status} ${url}`);
+      if (status === 429) page.statuses.push({ status, url: redact(url) });
+      if (status >= 400) page.failures.push(redact(`${status} ${url}`));
     }
     if (message.method === "Network.loadingFailed") {
       page.failures.push(
@@ -311,18 +319,13 @@ async function openTab(browser, context, label) {
       );
     }
     if (message.method === "Network.webSocketCreated") {
-      page.failures.push(`ws ${message.params.url.slice(0, 120)}`);
+      page.failures.push(redact(`ws ${message.params.url.slice(0, 120)}`));
     }
     if (message.method === "Network.webSocketHandshakeResponseReceived") {
       page.failures.push(`ws handshake ${message.params.response.status}`);
     }
     if (message.method === "Network.webSocketFrameError") {
-      page.failures.push(`ws error ${message.params.errorMessage}`);
-    }
-    if (message.method === "Network.webSocketWillSendHandshakeRequest") {
-      page.failures.push(
-        `ws will send ${JSON.stringify(message.params.request.headers).slice(0, 300)}`,
-      );
+      page.failures.push(redact(`ws error ${message.params.errorMessage}`));
     }
     if (message.method === "Network.webSocketClosed") {
       page.failures.push(`ws closed ${message.params.requestId}`);
