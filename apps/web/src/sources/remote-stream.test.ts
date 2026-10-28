@@ -373,10 +373,16 @@ describe("授予与成员事件 → 去抖重登（契约 §88.2）", () => {
     relogin: (sourceId: string) => Promise<void>,
     accountId?: string,
   ) => {
+    // 全部确定：假的 fetch / WebSocket，去抖器用手动计时器，不碰真实时间。
     const registry = createSourceRegistry({
       provider: provider(),
-      remote: { fetch: fakeFetch, environment: null },
+      remote: {
+        fetch: fakeFetch,
+        WebSocket: FakeSocket as unknown as typeof WebSocket,
+        environment: null,
+      },
     });
+    const timers: (() => void)[] = [];
     const b = registry.add({ ...relayed(SOURCE), teamId: TEAM });
     const c = registry.add(relayed(OTHER));
     const auth = cloudAuth();
@@ -385,7 +391,12 @@ describe("授予与成员事件 → 去抖重登（契约 §88.2）", () => {
     const detach = attachRemoteStreams(registry, {
       auth: accountId === undefined ? auth : { ...auth, accountId: lookups },
       relogin,
-      scheduler: { delayMs: 0, gapMs: 0 },
+      scheduler: {
+        delayMs: 0,
+        gapMs: 0,
+        setTimeout: (run) => timers.push(run),
+        clearTimeout: () => {},
+      },
       createStream: (options) => {
         emit.onEvent = options.onEvent;
         return { issuer: options.issuer, state: "open", close: () => {} };
@@ -398,6 +409,15 @@ describe("授予与成员事件 → 去抖重登（契约 §88.2）", () => {
       lookups,
       push: (event: unknown) =>
         emit.onEvent!(parseMeStreamEvent(JSON.stringify(event))!),
+      /** 排空微任务、跑到点的去抖计时器，直到没有新的事可做。 */
+      async settle() {
+        for (let round = 0; round < 20; round += 1) {
+          for (let i = 0; i < 10; i += 1) await Promise.resolve();
+          const due = timers.splice(0);
+          if (due.length === 0 && round > 2) return;
+          for (const run of due) run();
+        }
+      },
       dispose() {
         detach();
         registry.dispose();
@@ -413,7 +433,7 @@ describe("授予与成员事件 → 去抖重登（契约 §88.2）", () => {
     for (let i = 0; i < 5; i += 1)
       world.push({ type: "grantChanged", sourceId: SOURCE, atMs: i });
     world.push({ type: "grantChanged", sourceId: "d".repeat(32), atMs: 1 });
-    await flush();
+    await world.settle();
     expect(relogin.mock.calls).toEqual([[SOURCE]]);
     expect(renew).toHaveBeenCalledTimes(1);
     world.dispose();
@@ -435,7 +455,7 @@ describe("授予与成员事件 → 去抖重登（契约 §88.2）", () => {
       change: "added",
       atMs: 1,
     });
-    await flush();
+    await world.settle();
     expect(relogin).not.toHaveBeenCalled();
     world.push({
       type: "memberChanged",
@@ -444,7 +464,7 @@ describe("授予与成员事件 → 去抖重登（契约 §88.2）", () => {
       change: "roleChanged",
       atMs: 2,
     });
-    await flush();
+    await world.settle();
     expect(relogin.mock.calls).toEqual([[SOURCE]]);
     // 账号 id 按签发方缓存。
     expect(world.lookups).toHaveBeenCalledTimes(1);
@@ -476,13 +496,13 @@ describe("授予与成员事件 → 去抖重登（契约 §88.2）", () => {
     ]) {
       code = transient;
       world.push({ type: "grantChanged", sourceId: SOURCE, atMs: (at += 1) });
-      await flush();
+      await world.settle();
       expect(world.b.status.state, String(transient)).toBe("ready");
       expect(socket.state).not.toBe("closed");
     }
     code = "source_access_denied";
     world.push({ type: "grantChanged", sourceId: SOURCE, atMs: (at += 1) });
-    await flush();
+    await world.settle();
     expect(world.b.status).toMatchObject({
       state: "unauthorized",
       lastError: { code: "source_access_denied" },
