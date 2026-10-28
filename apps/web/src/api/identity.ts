@@ -170,6 +170,16 @@ function clearCsrfBackoff(): void {
   csrfFailures = 0;
   csrfRetryAt = 0;
 }
+
+/**
+ * `session/csrf` 明确答了「换不了」：没有会话（401 / 403），或者背后根本不是
+ * core（404 / 405、答了一页 HTML 解不出来）。网络错误、5xx、429 不算。
+ */
+function csrfRenewalRefused(error: unknown): boolean {
+  if (error instanceof IdentityRequestError)
+    return [401, 403, 404, 405].includes(error.status);
+  return error instanceof z.ZodError;
+}
 const listeners = new Set<(change: IdentityChange) => void>();
 
 /**
@@ -344,13 +354,14 @@ export async function ensureCsrf(): Promise<string> {
   if (Date.now() < csrfRetryAt) return "";
   // 等锁的这段时间里别的窗口可能已经换好并告诉了这里：拿到锁先看一眼。
   renewing ??= withRenewLock(() => (csrf ? Promise.resolve(csrf) : renewCsrf()))
-    .catch(() => "")
-    .then((token) => {
-      if (token === "") {
+    .catch((error: unknown) => {
+      // 只有明确的答复才退避：网络断了、core 正在重启（5xx、429）时马上再换得
+      // 上，退避会让请求层把一次能续上的 401 交出去。
+      if (csrfRenewalRefused(error)) {
         csrfRetryAt = Date.now() + backoffCeiling(csrfFailures, CSRF_RETRY);
         csrfFailures += 1;
       }
-      return token;
+      return "";
     })
     .finally(() => {
       renewing = null;
