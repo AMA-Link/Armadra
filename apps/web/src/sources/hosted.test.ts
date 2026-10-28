@@ -17,6 +17,7 @@ import {
   hostedFailureOf,
   underRelayAppPath,
 } from "./hosted";
+import { CloudError } from "./cloud-client";
 import type { SourceConnection } from "./connection";
 import { type SiblingMountOptions, mountSiblingSources } from "./mounts";
 import { createSourceRegistry } from "./registry";
@@ -204,6 +205,13 @@ describe("中继托管页面的源", () => {
     const error = await relay.signIn("dev", "nope").catch((e: unknown) => e);
     expect(hostedFailureOf(error)).toBe("credentials");
     expect(hostedFailureOf(new SourceError("source_offline"))).toBe("offline");
+    // 限流：远程服务直答（CloudError）与经中继登录带上来的（SourceError）一样。
+    expect(hostedFailureOf(new CloudError(429, "rate_limited"))).toBe(
+      "rateLimited",
+    );
+    expect(hostedFailureOf(new SourceError("rate_limited"))).toBe(
+      "rateLimited",
+    );
     expect(hostedFailureOf(new SourceError("cloud_account_unlinked"))).toBe(
       "unlinked",
     );

@@ -90,7 +90,13 @@ export function meStreamUrl(issuer: string): string {
 
 export interface RemoteStreamOptions {
   readonly issuer: string;
-  readonly auth: CloudAuth;
+  /** 换票用的远程服务会话（Bearer）；与 {@link ticket} 二选一。 */
+  readonly auth?: CloudAuth;
+  /**
+   * 自己换票（控制台的 Cookie 会话：`me.streamTicket`，失效时的刷新由它自己的客户端做）。
+   * 给了就不用 {@link auth}；4401 之后直接再换一张。
+   */
+  readonly ticket?: () => Promise<string>;
   readonly onEvent: (event: MeStreamEvent) => void;
   /** 流打开了（首次或重连）。 */
   readonly onOpen?: () => void;
@@ -113,7 +119,9 @@ export interface RemoteStream {
 
 /** 一个远程服务的一条事件流。 */
 export function createRemoteStream(options: RemoteStreamOptions): RemoteStream {
-  const { issuer, auth } = options;
+  const { issuer, auth, ticket } = options;
+  if (auth === undefined && ticket === undefined)
+    throw new Error("remote stream needs auth or ticket");
   const every =
     options.setInterval ?? ((run, ms) => globalThis.setInterval(run, ms));
   const stop =
@@ -129,10 +137,14 @@ export function createRemoteStream(options: RemoteStreamOptions): RemoteStream {
   const socket = new ManagedSocket({
     ...options.socket,
     url: () => meStreamUrl(issuer),
-    ticket: async () =>
-      cloudStreamTicket(issuer, await auth.access(issuer), options.cloud),
-    // 4401：远程服务会话失效（登出、撤销设备、令牌过期）。丢掉缓存再换一次票。
+    ticket:
+      ticket ??
+      (async () =>
+        cloudStreamTicket(issuer, await auth!.access(issuer), options.cloud)),
+    // 4401：远程服务会话失效（登出、撤销设备、令牌过期）。丢掉缓存再换一次票；自己换票的
+    // 来源由它的客户端续会话，这里直接再换。
     renew: async () => {
+      if (auth === undefined) return true;
       auth.invalidate(issuer);
       try {
         await auth.access(issuer);
