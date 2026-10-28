@@ -510,7 +510,7 @@ export function createConsoleHost(options: ConsoleHostOptions): ConsoleHost {
       onEvent(event) {
         if (event.type === "sourceOnline" && event.sourceId === hostId) {
           stopWaiting();
-          void open();
+          if (!closed && !disposed) void open();
         }
       },
     });
@@ -545,6 +545,9 @@ export function createConsoleHost(options: ConsoleHostOptions): ConsoleHost {
     signingOut ??= (async () => {
       closed = true;
       generation += 1;
+      // 限流排下的重试不能在登出之后把会话登回来。
+      if (retryTimer !== null) cancel(retryTimer);
+      retryTimer = null;
       stopWaiting();
       const reachable = view.kind === "entered" || view.kind === "expired";
       // 先丢本地的记录与缓存的访问：吊销卡住、标签页随后被关掉也不留可续的东西。
@@ -693,7 +696,10 @@ export function createConsoleHost(options: ConsoleHostOptions): ConsoleHost {
         if (code === "rate_limited") {
           setView({ kind: "connecting", rateLimited: true });
           retryTimer = later(
-            () => void open(),
+            () => {
+              retryTimer = null;
+              if (!stale()) void open();
+            },
             rateLimitDelay(error, rateLimited),
           );
           rateLimited += 1;
