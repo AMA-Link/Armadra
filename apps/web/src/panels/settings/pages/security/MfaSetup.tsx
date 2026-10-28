@@ -138,7 +138,7 @@ export function MfaSetup({
             <Field>
               <FieldLabel>{t("security.mfa.secret")}</FieldLabel>
               <div className="flex items-center gap-2">
-                <code className="min-w-0 flex-1 rounded-control bg-muted px-2 py-1 font-mono text-meta break-all select-all">
+                <code className="min-w-0 flex-1 rounded-control bg-sunken px-2 py-1 font-mono text-meta break-all select-all">
                   {groupSecret(stage.enrollment.secret)}
                 </code>
                 <CopyButton text={stage.enrollment.secret} />

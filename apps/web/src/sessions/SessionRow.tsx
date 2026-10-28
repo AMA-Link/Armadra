@@ -133,7 +133,7 @@ export function SessionRow({ row }: { row: SessionRowData }) {
       ) : (
         <Button
           variant="ghost"
-          className="h-auto min-h-14 flex-1 flex-col items-stretch justify-center gap-0 rounded-control px-2 py-1 font-normal hover:bg-hover data-[selected=true]:bg-brand-soft data-[selected=true]:text-foreground"
+          className="h-auto min-h-14 flex-1 flex-col items-stretch justify-center gap-0 rounded-control px-2 py-1 font-normal hover:bg-hover data-[selected=true]:bg-brand-soft data-[selected=true]:text-strong"
           data-roving-item
           data-selected={selected ? "true" : undefined}
           title={row.cwd}

@@ -214,7 +214,7 @@ export function StashDiffDialog({
             <h3 className="text-meta font-medium">{t(section.key)}</h3>
             <pre
               tabIndex={0}
-              className="max-h-72 overflow-auto rounded-tight bg-muted p-2 text-caption"
+              className="max-h-72 overflow-auto rounded-tight bg-sunken p-2 text-caption"
             >
               {section.patch}
             </pre>

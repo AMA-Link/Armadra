@@ -203,7 +203,7 @@ function Source({
  */
 function Preview({ svg, empty }: { svg: string; empty: string }) {
   return (
-    <div className="bg-muted/40 flex h-72 items-center justify-center overflow-auto rounded-control border p-2">
+    <div className="bg-sunken flex h-72 items-center justify-center overflow-auto rounded-control border p-2">
       {svg ? (
         <div
           className="[&_svg]:h-auto [&_svg]:max-w-full"

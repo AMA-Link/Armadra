@@ -129,7 +129,7 @@ function HostEntries({
   return (
     <ul
       aria-label={row.kind === "team" ? t("cloud.grants.everyone") : row.name}
-      className="flex flex-col divide-y divide-border/60"
+      className="flex flex-col divide-y divide-border-soft"
     >
       {row.entries.map((entry) => (
         <li

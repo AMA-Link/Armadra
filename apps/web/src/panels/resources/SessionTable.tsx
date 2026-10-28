@@ -142,7 +142,7 @@ export function SessionTable({
           data-host={value === "all" ? "all" : (value ?? "unknown")}
           data-active={host === value ? "true" : undefined}
           onClick={() => setHost(value)}
-          className="block h-auto max-w-32 truncate rounded-control px-1.5 py-0.5 text-caption font-normal text-muted-foreground hover:bg-accent data-[active=true]:bg-accent data-[active=true]:text-foreground"
+          className="block h-auto max-w-32 truncate rounded-control px-1.5 py-0.5 text-caption font-normal text-muted-foreground hover:bg-accent data-[active=true]:bg-accent data-[active=true]:text-strong"
         >
           {value === "all" ? t("resources.host.filter.all") : hostLabel(value)}
         </Button>
@@ -166,7 +166,7 @@ export function SessionTable({
             type="button"
             onClick={() => onSorted(key)}
             data-active={sort === key ? "true" : undefined}
-            className="h-auto rounded-control px-1.5 py-0.5 text-caption font-normal text-muted-foreground hover:bg-accent data-[active=true]:bg-accent data-[active=true]:text-foreground"
+            className="h-auto rounded-control px-1.5 py-0.5 text-caption font-normal text-muted-foreground hover:bg-accent data-[active=true]:bg-accent data-[active=true]:text-strong"
           >
             {t(`resources.sort.${key}`)}
           </Button>

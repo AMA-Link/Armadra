@@ -897,7 +897,7 @@ function GroupDialog({
         <ResponsiveDialogHeader>
           <ResponsiveDialogTitle>{group.name}</ResponsiveDialogTitle>
         </ResponsiveDialogHeader>
-        <Card className="settings-group gap-0 py-0 divide-y divide-border/60 overflow-visible">
+        <Card className="settings-group gap-0 py-0 divide-y divide-border-soft overflow-visible">
           {group.members.length === 0 && (
             <SettingsRow label={t("sharing.groups.empty")} />
           )}
@@ -1165,7 +1165,7 @@ function Invitations({
               {t("sharing.invites.create")}
             </ResponsiveDialogTitle>
           </ResponsiveDialogHeader>
-          <Card className="settings-group gap-0 py-0 divide-y divide-border/60 overflow-visible">
+          <Card className="settings-group gap-0 py-0 divide-y divide-border-soft overflow-visible">
             {groupsOnly ? (
               <SettingsRow label={t("sharing.groups")}>
                 <Select value={groupId} onValueChange={setGroupId}>

@@ -119,7 +119,7 @@ export function CopilotSignIn({
           </span>
           <code
             data-slot="copilot-user-code"
-            className="w-fit rounded-control bg-muted px-2 py-1 font-mono text-body tracking-widest tabular-nums"
+            className="w-fit rounded-control bg-sunken px-2 py-1 font-mono text-body tracking-widest tabular-nums"
           >
             {pending.userCode}
           </code>

@@ -175,7 +175,7 @@ function ImagePreview({
           />
         </div>
       </div>
-      <div className="absolute bottom-2 right-2 flex items-center gap-1.5 rounded-tight bg-deep/90 p-1">
+      <div className="absolute bottom-2 right-2 flex items-center gap-1.5 rounded-tight bg-sunken/90 p-1">
         <Badge variant="outline" className="tabular-nums">
           {Math.round(displayedScale() * 100)}%
         </Badge>

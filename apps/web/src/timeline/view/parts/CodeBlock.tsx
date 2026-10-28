@@ -27,7 +27,7 @@ export function CodeBlock({
       <pre
         ref={ref}
         className={cn(
-          "overflow-x-auto rounded-control bg-raised px-2 py-1 font-mono text-meta",
+          "overflow-x-auto rounded-control bg-sunken px-2 py-1 font-mono text-meta",
           className,
         )}
         {...props}

@@ -384,7 +384,7 @@ export function AuditLog({
                   {expanded && (
                     <TableRow className="hover:bg-transparent">
                       <TableCell colSpan={6} className="p-0 pb-2">
-                        <pre className="max-h-64 overflow-auto rounded-control bg-raised p-3 font-mono text-meta whitespace-pre-wrap break-all">
+                        <pre className="max-h-64 overflow-auto rounded-control bg-sunken p-3 font-mono text-meta whitespace-pre-wrap break-all">
                           {JSON.stringify(
                             {
                               action: entry.action,

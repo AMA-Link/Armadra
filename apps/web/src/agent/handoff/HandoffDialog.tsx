@@ -437,7 +437,7 @@ function HandoffPreview({ view }: { view: HandoffView }) {
             {t("handoff.noExcerpt")}
           </span>
         ) : (
-          <pre className="max-h-40 overflow-auto rounded-control bg-muted p-2 whitespace-pre-wrap text-muted-foreground">
+          <pre className="max-h-40 overflow-auto rounded-control bg-sunken p-2 whitespace-pre-wrap text-muted-foreground">
             {bundle.transcriptExcerpt}
           </pre>
         )}

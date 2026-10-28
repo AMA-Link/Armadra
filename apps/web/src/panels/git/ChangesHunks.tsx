@@ -59,7 +59,7 @@ export function ChangesHunks(props: ChangesHunksProps) {
 
 function HunkBody({ hunk }: { hunk: GitHunk }) {
   return (
-    <pre className="max-h-64 min-w-0 overflow-auto rounded-control bg-muted/40 p-2 font-mono text-caption leading-5">
+    <pre className="max-h-64 min-w-0 overflow-auto rounded-control bg-sunken p-2 font-mono text-caption leading-5">
       <code>
         {hunk.header}
         {"\n"}

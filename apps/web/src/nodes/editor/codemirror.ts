@@ -325,7 +325,7 @@ const EDITOR_THEME_SPEC = {
   },
   ".cm-content": { fontFamily: "var(--font-code)" },
   ".cm-gutters": {
-    backgroundColor: "var(--surface-deep)",
+    backgroundColor: "var(--surface-sunken)",
     color: "var(--faint)",
     border: "none",
   },

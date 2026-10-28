@@ -296,7 +296,7 @@ function StepLine({ step }: { step: WorkflowRunStepJson }) {
       {step.outputs.map((output) => (
         <pre
           key={`${output.key}-${output.at}`}
-          className="max-h-32 min-w-0 overflow-auto rounded-control bg-muted px-2 py-1 font-sans text-caption whitespace-pre-wrap select-text"
+          className="max-h-32 min-w-0 overflow-auto rounded-control bg-sunken px-2 py-1 font-sans text-caption whitespace-pre-wrap select-text"
         >
           {output.body}
         </pre>

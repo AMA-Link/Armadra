@@ -91,7 +91,7 @@ export function SubagentCard({ card, now: fixedNow }: SubagentCardProps) {
         )}
       </div>
       {open && !working && (
-        <pre className="max-h-60 overflow-auto border-t border-border bg-raised px-2 py-1.5 font-mono text-meta whitespace-pre-wrap text-muted-foreground">
+        <pre className="max-h-60 overflow-auto border-t border-border bg-sunken px-2 py-1.5 font-mono text-meta whitespace-pre-wrap text-muted-foreground">
           {card.result ?? t("subagent.noResult")}
         </pre>
       )}

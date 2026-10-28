@@ -155,7 +155,7 @@ function SourcesPanel({
   return (
     <ul
       aria-label={t("cloud.hosts.sourcesOf", { name: row.name })}
-      className="flex flex-col divide-y divide-border/60"
+      className="flex flex-col divide-y divide-border-soft"
     >
       {effective.data.from.map((source, index) => {
         const lowered =

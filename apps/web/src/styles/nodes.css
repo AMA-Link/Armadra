@@ -125,11 +125,11 @@
 }
 
 /*
- * 拖动中（`ArmadraNode` 在外层写 `data-dragging`）：阴影叠两层 = 加倍，并提示浏览器
- * 这个节点要动。松手即撤，没有惯性。
+ * 拖动中（`ArmadraNode` 在外层写 `data-dragging`）：阴影抬到浮层那一档
+ * `--shadow-node-lift`，并提示浏览器这个节点要动。松手即撤，没有惯性。
  */
 [data-dragging="true"] .node-frame {
-  box-shadow: var(--shadow-node), var(--shadow-node);
+  box-shadow: var(--shadow-node-lift);
   will-change: transform;
 }
 
@@ -147,20 +147,11 @@
   border-color: var(--success);
 }
 
-/* 选中：品牌蓝 1.5px（1px 边 + 0.5px 外环，不改节点盒子的尺寸） */
+/* 选中：品牌蓝 1.5px（1px 边 + 0.5px 外环，不改节点盒子的尺寸），阴影同拖动抬一档 */
 [data-slot="node-shell"][data-selected="true"] > .node-frame {
   border-color: var(--brand);
   box-shadow:
-    var(--shadow-node),
-    0 0 0 0.5px var(--brand);
-}
-
-[data-dragging="true"]
-  [data-slot="node-shell"][data-selected="true"]
-  > .node-frame {
-  box-shadow:
-    var(--shadow-node),
-    var(--shadow-node),
+    var(--shadow-node-lift),
     0 0 0 0.5px var(--brand);
 }
 
@@ -315,7 +306,7 @@
 .node-glow::after {
   position: absolute;
   z-index: -1;
-  /* 节点圆角 `--r-card` + 外扩 `--space-item` = 外圈（§24.3-3） */
+  /* 节点圆角 `--r-card` 12 + 外扩 `--space-item` 4 = 外圈 16（= `--r-dialog`，§24.3-3） */
   border-radius: calc(var(--r-card) + var(--space-item));
   content: "";
   inset: calc(-1 * var(--space-item));
