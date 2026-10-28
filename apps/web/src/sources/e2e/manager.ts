@@ -52,6 +52,8 @@ export class E2eAccessError extends Error {
       | "offline"
       | "cancelled",
     message: string = code,
+    /** `identity_changed`：对端现在出示的身份指纹（知道时），界面给人核对前 16 位。 */
+    readonly fingerprint?: string,
   ) {
     super(message);
     this.name = "E2eAccessError";
@@ -260,20 +262,19 @@ export class E2eChannels {
       if (refusal === "offline") throw new E2eAccessError("offline");
       throw new E2eAccessError("unreachable");
     }
+    const presented = await identityFingerprint(channel.coreIdentity);
     if (
       target.fingerprintPrefix !== undefined &&
-      !(await identityFingerprint(channel.coreIdentity)).startsWith(
-        target.fingerprintPrefix,
-      )
+      !presented.startsWith(target.fingerprintPrefix)
     ) {
       channel.close();
-      throw new E2eAccessError("identity_changed");
+      throw new E2eAccessError("identity_changed", undefined, presented);
     }
     if (pinned === null) {
       this.pins.set(target.issuer, target.sourceId, channel.coreIdentity);
     } else if (!same(pinned, channel.coreIdentity)) {
       channel.close();
-      throw new E2eAccessError("identity_changed");
+      throw new E2eAccessError("identity_changed", undefined, presented);
     }
     if (target.identityPub !== undefined || offer !== null)
       this.pins.set(target.issuer, target.sourceId, channel.coreIdentity);

@@ -150,10 +150,11 @@ export function hostedFailureOf(error: unknown): HostedFailure {
   if (error instanceof CloudError) {
     if (code === "credentials_invalid") return "credentials";
     if (code === "account_locked") return "locked";
-    if (code === "rate_limited") return "rateLimited";
     if (code === "challenge_invalid" || code === "challenge_required")
       return "challengeInvalid";
   }
+  // 经中继登录（`relay-access.ts`）把限流原码带成 `SourceError`，远程服务直答的是 `CloudError`。
+  if (code === "rate_limited") return "rateLimited";
   if (code === SOURCE_ERROR.offline) return "offline";
   if (code === "cloud_account_unlinked" || code === "cloud_not_registered")
     return "unlinked";

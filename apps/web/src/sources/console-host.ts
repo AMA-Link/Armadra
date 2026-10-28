@@ -11,6 +11,7 @@ import {
 } from "../api/identity";
 import type { CloudClient } from "../cloud/api/client";
 import { browserDevice } from "./cloud-client";
+import { retryAfterOf } from "./connection";
 import { createBrowserCloudCredentialProvider } from "./credentials";
 import { type E2eChannels, e2eChannels, setApprovalHint } from "./e2e/manager";
 import {
@@ -53,10 +54,21 @@ import { SOURCE_ERROR, SourceError } from "./types";
  *   分出「版本太旧」与「没有权限」（§2.5）。
  */
 
+/** 登出经通道吊销主机侧会话最多等多久。 */
+export const LOGOUT_TIMEOUT_MS = 3_000;
 /** 复制出的标签页等多久没人认领就用这份记录。 */
 export const CLAIM_WAIT_MS = 300;
-/** 限流时多久后再试。 */
-export const RATE_LIMIT_RETRY_MS = 20_000;
+/** 限流而对端没说等多久：从这么久起翻倍退避，封顶 {@link RATE_LIMIT_MAX_MS}。 */
+export const RATE_LIMIT_BASE_MS = 5_000;
+export const RATE_LIMIT_MAX_MS = 60_000;
+
+/** 限流后等多久：对端给的 Retry-After（错误自身或经中继带上来的原因里）优先，没有按次数退避。 */
+export function rateLimitDelay(error: unknown, attempt: number): number {
+  const given =
+    retryAfterOf(error) || retryAfterOf((error as { cause?: unknown })?.cause);
+  if (given > 0) return given;
+  return Math.min(RATE_LIMIT_BASE_MS * 2 ** attempt, RATE_LIMIT_MAX_MS);
+}
 
 interface HostRecord {
   readonly refreshToken: string;
@@ -161,7 +173,12 @@ export type HostView =
       readonly kind: "offline";
       readonly lastSeenAtMs: number | null;
     }
-  | { readonly kind: "failed"; readonly code: string }
+  | {
+      readonly kind: "failed";
+      readonly code: string;
+      /** `identity_changed`：主机现在的身份指纹前 16 位（知道时）。 */
+      readonly fingerprint?: string;
+    }
   | { readonly kind: "entered" }
   /** 进去之后控制台的 Cookie 会话没了：冻结、给「重新登录」，回来后重试。 */
   | { readonly kind: "expired" }
@@ -274,6 +291,10 @@ export function createConsoleHost(options: ConsoleHostOptions): ConsoleHost {
   /** 续上的会话主体与记下的不符（记录已丢）：本次进入改用 `cloud/login` 再试一次。 */
   let principalChanged = false;
   let disposed = false;
+  /** 每次 `open()` 与登出各进一代：进行中的 `open()` 每次醒来先看自己是不是还是这一代。 */
+  let generation = 0;
+  /** 进过主机（路由装着）：再次 `open()` 前要先卸下。 */
+  let wasEntered = false;
   /** 登出了（本页或别处）：凭据提供方不再要断言。 */
   let closed = false;
   const listeners = new Set<() => void>();
@@ -316,7 +337,8 @@ export function createConsoleHost(options: ConsoleHostOptions): ConsoleHost {
           };
     },
     save(sourceId: string, session: RelaySession): void {
-      if (sourceId !== hostId) return;
+      // 登出之后（或登出中）进行中的换票答回来：不再写回记录。
+      if (sourceId !== hostId || closed) return;
       live = session;
       const at = key();
       if (at === null) return;
@@ -398,14 +420,28 @@ export function createConsoleHost(options: ConsoleHostOptions): ConsoleHost {
     ownerMismatch = info?.owner === true && !isLocalOwner(session);
   };
 
+  /** 重登连着被限流了几次（退避用）；成功归零。 */
+  let reloginLimited = 0;
   const scheduler = createReloginScheduler({
     ...options.scheduler,
     run: async () => {
       try {
         await provider.relogin(hostId);
         await identity.restore(true);
+        reloginLimited = 0;
       } catch (error) {
         const code = codeOf(error);
+        if (code === "rate_limited") {
+          // 授予还没同步上：按 Retry-After 再排一次（仍经去抖合并）。
+          later(
+            () => {
+              if (!closed && !disposed) scheduler.request(hostId);
+            },
+            rateLimitDelay(error, reloginLimited),
+          );
+          reloginLimited += 1;
+          return;
+        }
         if (
           code === HOST_FAILURE.teamSuspended ||
           code === SOURCE_ERROR.accessRevoked ||
@@ -485,6 +521,8 @@ export function createConsoleHost(options: ConsoleHostOptions): ConsoleHost {
     });
   };
   let retryTimer: unknown = null;
+  /** 进入连着被限流了几次（退避用）；进去了归零。 */
+  let rateLimited = 0;
 
   /* ------------------------------ 认领 ------------------------------- */
 
@@ -498,18 +536,29 @@ export function createConsoleHost(options: ConsoleHostOptions): ConsoleHost {
     if (claimedByOther) writeRecord(storage, at, null);
   };
 
+  /** 经当前路由 `session/logout`，最多等 `ms`（标签页冻结、通道挂住时不卡住）。 */
+  const logoutWithin = (ms: number): Promise<void> =>
+    Promise.race([
+      identity.logout().catch(() => undefined),
+      new Promise<void>((resolve) => later(resolve, ms)),
+    ]);
+
   /** 被登出（本页或别处）：尽力吊销主机侧会话，清本条，盖上「已登出」。 */
   let signingOut: Promise<void> | null = null;
   const signedOut = (): Promise<void> => {
     if (view.kind === "signedOut") return Promise.resolve();
     signingOut ??= (async () => {
       closed = true;
+      generation += 1;
       stopWaiting();
-      if (view.kind === "entered" || view.kind === "expired")
-        await identity.logout().catch(() => undefined);
+      const reachable = view.kind === "entered" || view.kind === "expired";
+      // 先丢本地的记录与缓存的访问：吊销卡住、标签页随后被关掉也不留可续的东西。
       sessions.clear();
       provider.clear();
+      // 再经还装着的路由吊销主机侧会话（身份面内存里的令牌），限时。
+      if (reachable) await logoutWithin(LOGOUT_TIMEOUT_MS);
       entry.signOut();
+      wasEntered = false;
       setView({ kind: "signedOut" });
     })().finally(() => {
       signingOut = null;
@@ -558,19 +607,31 @@ export function createConsoleHost(options: ConsoleHostOptions): ConsoleHost {
     if (retryTimer !== null) cancel(retryTimer);
     retryTimer = null;
     closed = false;
+    const mine = (generation += 1);
+    /** 这一次已经过时（又开了一次、登出了、销毁了）：不再改视图、不再写记录。 */
+    const stale = () => generation !== mine || closed || disposed;
     setView({ kind: "connecting" });
     let me: Awaited<ReturnType<CloudClient["me"]["get"]>>;
     try {
       me = await client.me.get({});
     } catch (error) {
+      if (stale()) return;
       if (statusOf(error) === 401) setView({ kind: "login" });
       else fail(codeOf(error));
       return;
     }
-    // 同一个标签页里换了账号：上一位的记录不再续。
+    if (stale()) return;
+    // 同一个标签页里换了账号：上一位的主机侧会话先经还装着的路由吊销（限时），再丢它的记录。
     if (accountId !== null && accountId !== me.accountId) {
-      live = undefined;
+      if (wasEntered) await logoutWithin(LOGOUT_TIMEOUT_MS);
+      if (stale()) return;
+      sessions.clear();
       provider.clear();
+    }
+    // 再次进入：先卸下上一次的路由。
+    if (wasEntered) {
+      entry.close();
+      wasEntered = false;
     }
     accountId = me.accountId;
     clearHostSessions(storage, (stored) =>
@@ -579,10 +640,12 @@ export function createConsoleHost(options: ConsoleHostOptions): ConsoleHost {
     try {
       detail = await client.sources.get({ sourceId: hostId });
     } catch (error) {
+      if (stale()) return;
       if (statusOf(error) === 401) setView({ kind: "login" });
       else fail(codeOf(error) || HOST_FAILURE.failed);
       return;
     }
+    if (stale()) return;
     const space = detail.space;
     const team =
       space?.kind === "team"
@@ -604,14 +667,23 @@ export function createConsoleHost(options: ConsoleHostOptions): ConsoleHost {
       return;
     }
     await claim(key()!);
+    if (stale()) return;
     principalChanged = false;
     for (let attempt = 0; attempt < 2; attempt += 1) {
       try {
         await entry.enter({ sourceId: hostId, name: detail.name });
+        if (stale()) {
+          // 进去的这一刻已经登出了：刚装上的路由也卸下。
+          entry.close();
+          return;
+        }
+        wasEntered = true;
+        rateLimited = 0;
         stopWaiting();
         setView({ kind: "entered" });
         return;
       } catch (error) {
+        if (stale()) return;
         const code = codeOf(error);
         // 主体不符：记录已丢，重新 cloud/login 一次。
         if (principalChanged && attempt === 0) {
@@ -625,12 +697,29 @@ export function createConsoleHost(options: ConsoleHostOptions): ConsoleHost {
         }
         if (code === "rate_limited") {
           setView({ kind: "connecting", rateLimited: true });
-          retryTimer = later(() => void open(), RATE_LIMIT_RETRY_MS);
+          retryTimer = later(
+            () => void open(),
+            rateLimitDelay(error, rateLimited),
+          );
+          rateLimited += 1;
           return;
         }
         if (code === SOURCE_ERROR.unauthorized) {
           sessions.clear();
           fail(HOST_FAILURE.failed);
+          return;
+        }
+        if (code === HOST_FAILURE.identityChanged) {
+          const presented = (
+            (error as { cause?: { fingerprint?: unknown } })?.cause ?? {}
+          ).fingerprint;
+          setView({
+            kind: "failed",
+            code,
+            ...(typeof presented === "string" && presented !== ""
+              ? { fingerprint: presented.slice(0, 16) }
+              : {}),
+          });
           return;
         }
         fail(code === SOURCE_ERROR.unreachable ? HOST_FAILURE.failed : code);

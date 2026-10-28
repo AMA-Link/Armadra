@@ -15,7 +15,11 @@ import {
 } from "./relayed-entry";
 import type { RemoteStreamOptions } from "./remote-stream";
 import type { EnterRouteOptions } from "./route-entry";
-import type { CredentialProvider, SourceAccess } from "./types";
+import {
+  type CredentialProvider,
+  type SourceAccess,
+  SourceError,
+} from "./types";
 
 /**
  * 会话来源无关的那一半：来源只注入 provider、换票凭据、列目录与会话保存处，
@@ -167,6 +171,34 @@ describe("经中继进主机（与会话来源无关）", () => {
     expect(seen).toEqual(["idle"]);
   });
 
+  it("再次 enter：先卸下上一次的路由与流", async () => {
+    const disposed = vi.fn();
+    const closed = vi.fn();
+    const { entry } = setup({
+      enter: (async (options: EnterRouteOptions) => {
+        const route = { via: "relayed" as const, access };
+        options.useRoute(route);
+        return {
+          route,
+          renew: async () => true,
+          recover: async () => true,
+          dispose: disposed,
+        };
+      }) as never,
+      createStream: () => ({
+        issuer: ISSUER,
+        state: "open",
+        close: closed,
+      }),
+    });
+    await entry.enter({ sourceId: SOURCE, name: "laptop" });
+    expect(disposed).not.toHaveBeenCalled();
+    await entry.enter({ sourceId: SOURCE, name: "laptop" });
+    expect(disposed).toHaveBeenCalledTimes(1);
+    expect(closed).toHaveBeenCalled();
+    expect(entry.status.state).toBe("ready");
+  });
+
   it("close：只卸下，记下的会话留着（刷新、重进还能续）", async () => {
     const { entry, sessions, provider } = setup();
     await entry.enter({ sourceId: SOURCE, name: "laptop" });
@@ -176,9 +208,9 @@ describe("经中继进主机（与会话来源无关）", () => {
     expect(entry.status.state).toBe("idle");
   });
 
-  it("verify 抛：不算进去，unauthorized 并抛，onEntered 不调", async () => {
+  it("verify 明确拒绝：不算进去，unauthorized 并抛，读进来的令牌丢掉", async () => {
     const verify = vi.fn(async () => {
-      throw new Error("principal changed");
+      throw new SourceError("source_unauthorized");
     });
     const { entry, onEntered } = setup({ verify });
     await expect(
@@ -187,6 +219,20 @@ describe("经中继进主机（与会话来源无关）", () => {
     expect(verify).toHaveBeenCalledWith({ sourceId: SOURCE, name: "laptop" });
     expect(onEntered).not.toHaveBeenCalled();
     expect(entry.status.state).toBe("unauthorized");
+    expect(currentAccessToken()).toBe("");
+  });
+
+  it("verify 连不上（网络错误）：不当成未授权，令牌留着，状态是 offline", async () => {
+    const verify = vi.fn(async () => {
+      throw new TypeError("Failed to fetch");
+    });
+    const { entry, onEntered } = setup({ verify });
+    await expect(
+      entry.enter({ sourceId: SOURCE, name: "laptop" }),
+    ).rejects.toMatchObject({ code: "source_unreachable" });
+    expect(onEntered).not.toHaveBeenCalled();
+    expect(entry.status.state).toBe("offline");
+    expect(currentAccessToken()).toBe("core-a");
   });
 
   it("onStreamEvent：不带当前主机的事件（成员变化）也先交给来源", async () => {

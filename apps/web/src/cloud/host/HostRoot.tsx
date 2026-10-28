@@ -117,6 +117,13 @@ function StateCard({ host, view }: { host: ConsoleHost; view: HostView }) {
       {view.code === HOST_FAILURE.unlinked && (
         <FixCommand issuer={host.issuer} />
       )}
+      {view.fingerprint !== undefined && (
+        <p className="text-center text-meta text-muted-foreground">
+          {t("cloud.host.fingerprint", {
+            fingerprint: view.fingerprint.replace(/(.{4})(?=.)/g, "$1 "),
+          })}
+        </p>
+      )}
       <div className="flex flex-col gap-2">
         {(view.code === HOST_FAILURE.deviceUnavailable ||
           view.code === HOST_FAILURE.failed) && (

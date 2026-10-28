@@ -164,7 +164,10 @@ export function createCloudSessions(
 function e2eFailure(error: unknown): never {
   if (error instanceof E2eAccessError) {
     if (error.code === "identity_changed")
-      throw unauthorized(SOURCE_ERROR.identityChanged);
+      // 原因带着对端现在的指纹（`E2eAccessError.fingerprint`），界面拿它给人核对。
+      throw new SourceError(SOURCE_ERROR.identityChanged, error.message, {
+        cause: error,
+      });
     if (error.code === "device_rejected")
       throw unauthorized(SOURCE_ERROR.deviceRejected);
     if (error.code === "unsupported")
@@ -185,7 +188,8 @@ const PASSED_THROUGH = new Set(["team_suspended", "rate_limited"]);
 /** 远程服务与源 core 的拒绝 → 源层的码（界面按码取文案）。 */
 function relayFailure(error: unknown): never {
   if (error instanceof CloudError) {
-    if (PASSED_THROUGH.has(error.code)) throw new SourceError(error.code);
+    if (PASSED_THROUGH.has(error.code))
+      throw new SourceError(error.code, error.message, { cause: error });
     if (error.code === "source_offline")
       throw unauthorized(SOURCE_ERROR.offline);
     if (error.code === "source_revoked")
@@ -329,7 +333,9 @@ export function createRelayedAccess(
             if (error.code === "source_offline")
               throw unauthorized(SOURCE_ERROR.offline);
             if (PASSED_THROUGH.has(error.code))
-              throw new SourceError(error.code);
+              throw new SourceError(error.code, error.message, {
+                cause: error,
+              });
             throw new SourceError(
               error.code === "cloud_account_unlinked" ||
               error.code === "cloud_not_registered"
