@@ -70,7 +70,12 @@ vi.mock("../api/identity", async (original) => ({
 
 import { IdentityRequestError } from "../api/identity";
 import { resetLocalRuntime } from "../api/local-runtime";
-import { resolveRuntimeUrl, setNativeRuntimeBase } from "../api/runtime-url";
+import {
+  isControlPlanePage,
+  resolveRuntimeUrl,
+  setControlPlanePage,
+  setNativeRuntimeBase,
+} from "../api/runtime-url";
 import { hostedRelay, resetHostedRelay } from "../sources/hosted";
 import { resetSourceRegistry, sourceRegistry } from "../sources/registry";
 import { SourceError } from "../sources/types";
@@ -102,6 +107,7 @@ beforeEach(() => {
 afterEach(() => {
   history.replaceState(null, "", "/");
   setNativeRuntimeBase(null);
+  setControlPlanePage(false);
   resetLocalRuntime();
   resetSourceRegistry();
   vi.unstubAllGlobals();
@@ -174,9 +180,93 @@ describe("入口分支", () => {
       });
       history.replaceState(null, "", "/h/abc");
       await expect(prepareEntry()).resolves.toEqual({ kind: "app" });
+      // 画布路径不问。
+      expect(fetch).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
+  it("HTTPS 来源上像服务器壳的页面（#580）：平台信息说是控制台就进控制台，不再算服务器壳；问不到、不是 saas 仍是服务器壳", async () => {
+    const platform = (answer: () => Promise<Response>) =>
+      vi.fn<typeof globalThis.fetch>(answer);
+    const saas = platform(
+      async () =>
+        new Response(
+          JSON.stringify({
+            mode: "saas",
+            issuer: location.origin,
+            capabilities: [],
+            webApp: location.origin,
+          }),
+        ),
+    );
+    vi.stubEnv("DEV", false);
+    // 页面协议是 https：未配 VITE_RUNTIME_URL 时一律像服务器壳。
+    mocks.served = true;
+    try {
+      history.replaceState(null, "", "/login");
+      vi.stubGlobal("fetch", saas);
+      await expect(prepareEntry()).resolves.toEqual({
+        kind: "console",
+        path: "/login",
+      });
+      // 只问一次同源平台信息。
+      expect(saas).toHaveBeenCalledTimes(1);
+      expect(String(saas.mock.calls[0]?.[0])).toBe(
+        `${location.origin}/.well-known/armadra-platform`,
+      );
+      expect(isControlPlanePage()).toBe(true);
+      setControlPlanePage(false);
+
+      // 服务器壳不答平台信息（404 / 页面回退）：照旧当服务器壳。
       history.replaceState(null, "", "/me");
-      mocks.served = true;
+      vi.stubGlobal(
+        "fetch",
+        platform(async () => new Response("not found", { status: 404 })),
+      );
       await expect(prepareEntry()).resolves.toMatchObject({ kind: "connect" });
+      vi.stubGlobal(
+        "fetch",
+        platform(async () => new Response("<!doctype html>", { status: 200 })),
+      );
+      await expect(prepareEntry()).resolves.toMatchObject({ kind: "connect" });
+      vi.stubGlobal(
+        "fetch",
+        platform(async () => Promise.reject(new Error("offline"))),
+      );
+      await expect(prepareEntry()).resolves.toMatchObject({ kind: "connect" });
+      expect(isControlPlanePage()).toBe(false);
+
+      // 平台信息是别人的控制台（webApp 不是这一页）也不算。
+      vi.stubGlobal(
+        "fetch",
+        platform(
+          async () =>
+            new Response(
+              JSON.stringify({
+                mode: "saas",
+                issuer: "https://elsewhere.example",
+                capabilities: [],
+                webApp: "https://elsewhere.example",
+              }),
+            ),
+        ),
+      );
+      await expect(prepareEntry()).resolves.toMatchObject({ kind: "connect" });
+
+      // 分享落地页同理：服务器壳来源上的 /j/ 仍是 JoinPage，控制台来源上进控制台。
+      history.replaceState(null, "", "/j/0123456789abcdef");
+      await expect(prepareEntry()).resolves.toEqual({
+        kind: "join",
+        linkId: "0123456789abcdef",
+      });
+      vi.stubGlobal("fetch", saas);
+      await expect(prepareEntry()).resolves.toEqual({
+        kind: "console",
+        path: "/j/0123456789abcdef",
+      });
+      expect(isControlPlanePage()).toBe(true);
     } finally {
       vi.unstubAllEnvs();
     }

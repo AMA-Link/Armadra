@@ -220,28 +220,35 @@ async function send<T>(
     options.timeoutMs ?? DEFAULT_TIMEOUT_MS,
   );
   let response: Response;
+  let payload: unknown;
+  // 超时管到正文读完：对端答了头却迟迟不给正文时，`json()` 也要被中止。
   try {
-    response = await (options.fetch ?? globalThis.fetch)(url, {
-      method: init.method ?? (init.body === undefined ? "GET" : "POST"),
-      headers: {
-        Accept: "application/json",
-        ...(init.body === undefined
-          ? {}
-          : { "Content-Type": "application/json" }),
-        ...init.headers,
-      },
-      ...(init.body === undefined ? {} : { body: JSON.stringify(init.body) }),
-      credentials: "omit",
-      cache: "no-store",
-      redirect: "error",
-      signal: controller.signal,
+    try {
+      response = await (options.fetch ?? globalThis.fetch)(url, {
+        method: init.method ?? (init.body === undefined ? "GET" : "POST"),
+        headers: {
+          Accept: "application/json",
+          ...(init.body === undefined
+            ? {}
+            : { "Content-Type": "application/json" }),
+          ...init.headers,
+        },
+        ...(init.body === undefined ? {} : { body: JSON.stringify(init.body) }),
+        credentials: "omit",
+        cache: "no-store",
+        redirect: "error",
+        signal: controller.signal,
+      });
+    } catch (cause) {
+      throw new CloudTransportError(cause);
+    }
+    payload = await response.json().catch((cause: unknown) => {
+      if (controller.signal.aborted) throw new CloudTransportError(cause);
+      return null;
     });
-  } catch (cause) {
-    throw new CloudTransportError(cause);
   } finally {
     clearTimeout(timer);
   }
-  const payload: unknown = await response.json().catch(() => null);
   if (!response.ok) {
     const body = (payload ?? {}) as {
       code?: unknown;
