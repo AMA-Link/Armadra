@@ -286,7 +286,9 @@
     monospace;
   /* 字重三档：正文、标签与按钮、标题；Tailwind 的 font-normal / medium / semibold 映射到这里 */
   --fw-regular: 400;
-  --fw-medium: 510;
+  /* medium 取 500 而不是 510：中文回退到只有整百字重的字体（雅黑 400 / 700、Noto CJK 500 / 700）时，
+     按 CSS 字重匹配 510 会向上落到 700，中文标签变粗；500 在 Inter 里与 510 看不出差别。 */
+  --fw-medium: 500;
   --fw-semibold: 590;
   /* 字距：只收紧两档大标题，其余 0；小标签不放宽（中文会散） */
   --ls-display: -0.015em;

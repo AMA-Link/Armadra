@@ -112,17 +112,17 @@
 | -------------------- | ---- | ---- | --------- | ---------------------------------- | ----------------------------------------------------------- |
 | `--text-display`     | 22px | 28px | 590       | `text-display`                     | 登录页、设置工作台页头、KPI 大数字、手机整页的页标题        |
 | `--text-title`       | 17px | 24px | 590       | `text-title`                       | 对话框标题（**改**：`DialogTitle` 从 15 回到 17）、抽屉标题 |
-| `--text-section`     | 15px | 22px | 510       | `text-section`                     | 卡片标题、表格卡标题、消息流里的分段                        |
-| `--text-body`        | 13px | 19px | 400 / 510 | `text-body`                        | 正文、标签、按钮、输入、菜单项、设置行、表格单元格          |
+| `--text-section`     | 15px | 22px | 500       | `text-section`                     | 卡片标题、表格卡标题、消息流里的分段                        |
+| `--text-body`        | 13px | 19px | 400 / 500 | `text-body`                        | 正文、标签、按钮、输入、菜单项、设置行、表格单元格          |
 | `--text-meta` **新** | 12px | 16px | 400       | `text-meta`                        | 次要行、元信息（时间、路径、字节）、代码块、按钮 xs         |
-| `--text-caption`     | 11px | 16px | 400 / 510 | `text-caption`                     | 胶囊、脚注、连线标签、分组小标题                            |
+| `--text-caption`     | 11px | 16px | 400 / 500 | `text-caption`                     | 胶囊、脚注、连线标签、分组小标题                            |
 | `--text-input-touch` | 16px | —    | —         | （只在 `Input / Textarea` 手机档） | 手机上的输入字号，防 iOS 聚焦缩放                           |
 
 `--text-code`（12px）保留为 `--text-meta` 的别名，代码块行高 1.5。
 
 **13 与 14 的冲突，这样收口**：shadcn 生成件写的是 Tailwind 刻度（`text-sm` = 14、`text-xs` = 12），功能代码写的是 13。本次在 `app.css` 的 `@theme` 里把刻度本身对齐到阶梯：`--text-sm: 13px`（行高 19px）、`--text-xs: 12px`（行高 16px）、`--text-base` 保持 16px（只给手机输入与 `text-base md:text-sm` 这一种写法）。这样 ui/ 里的 `text-sm` 不用逐个改就落到 13；功能代码**只写语义类** `text-body / text-meta / text-caption / text-section / text-title / text-display`，任意值 `text-[13px]` 等由守卫测试禁止（§10），存量用 codemod 一次换掉。
 
-**字重**：三档令牌 `--fw-regular` 400（正文）、`--fw-medium` 510（标签与按钮）、`--fw-semibold` 590（标题）；可变字体取中间值，比 500 / 600 略收。`app.css` 的 `@theme` 把 Tailwind 的 `font-normal / font-medium / font-semibold` 映射到这三档，CSS 与内联样式里写 `var(--fw-*)`，不写数字。不用 700 及以上（`font-bold / extrabold / black` 由守卫规则 `font-heavy` 拦），不用 300 以下。
+**字重**：三档令牌 `--fw-regular` 400（正文）、`--fw-medium` 500（标签与按钮）、`--fw-semibold` 590（标题，比 600 略收）。medium 不取 510：中文回退到只有整百字重的字体（雅黑 400 / 700、Noto CJK 500 / 700）时，CSS 字重匹配会把 510 向上落到 700。`app.css` 的 `@theme` 把 Tailwind 的 `font-normal / font-medium / font-semibold` 映射到这三档，CSS 与内联样式里写 `var(--fw-*)`，不写数字。不用 700 及以上（`font-bold / extrabold / black` 由守卫规则 `font-heavy` 拦），不用 300 以下。
 
 **字距**：只收紧两档大标题——`text-display` 读 `--ls-display`（-0.015em），`text-title` 读 `--ls-title`（-0.01em），写在 `app.css` 的 `@layer base`；其余 0。小标签与胶囊不放宽字距（中文会散）；标题不全大写，分组小标题是 `text-caption` 510 的 `--muted-foreground`，不大写。
 

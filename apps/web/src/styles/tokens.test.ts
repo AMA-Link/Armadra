@@ -129,7 +129,7 @@ const SCALE_ADDITIONS: Record<string, string> = {
 /** 设计系统 §2.6：字重三档与两档标题字距。 */
 const TYPE_TOKENS: Record<string, string> = {
   "--fw-regular": "400",
-  "--fw-medium": "510",
+  "--fw-medium": "500",
   "--fw-semibold": "590",
   "--ls-display": "-0.015em",
   "--ls-title": "-0.01em",
