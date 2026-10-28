@@ -28,7 +28,8 @@ import { useAccess } from "../app/use-access";
 import { useEnabledAgents } from "../app/use-agents";
 import { useCanvasStore, type PanelState } from "../store/canvas-store";
 import { useOfflineBanner } from "../realtime/OfflineBanner";
-import { hostedRelay, type HostedStatus } from "../sources/hosted";
+import type { HostedStatus } from "../sources/hosted";
+import { relayedPage } from "../sources/relayed-page";
 import { useCloudTrust } from "../sources/trust/cloud-trust";
 import { useTrustDialog } from "../sources/trust/trust-store";
 import { useMobileRelayDown } from "../mobile/relay-status";
@@ -350,7 +351,7 @@ const NO_HOSTED = () => () => undefined;
 
 /** 中继托管页面上当前主机的状态；别的页面是 `null`。 */
 function useHostedStatus(): HostedStatus | null {
-  const relay = hostedRelay();
+  const relay = relayedPage();
   return useSyncExternalStore(
     relay === null ? NO_HOSTED : relay.subscribe,
     () => relay?.status ?? null,

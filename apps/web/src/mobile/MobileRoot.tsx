@@ -32,6 +32,7 @@ import { serviceRowOf } from "../services/rows";
 import { usePushRotation } from "./push-rotation";
 
 const ConsoleRoot = React.lazy(() => import("../cloud/ConsoleRoot"));
+const HostRoot = React.lazy(() => import("../cloud/host/HostRoot"));
 
 /**
  * 入口分支（`main.tsx`）：连接页，或者画布本体加两样手机细节——推送权限提示
@@ -48,6 +49,19 @@ export function MobileRoot({ entry: initial }: { entry: Entry }) {
     () => (connected ? undefined : syncDocumentPreferences()),
     [connected],
   );
+  if (entry.kind === "host")
+    return (
+      <React.Suspense fallback={<EntrySkeleton />}>
+        <HostRoot
+          hostId={entry.hostId}
+          {...(entry.workspaceId === undefined
+            ? {}
+            : { workspaceId: entry.workspaceId })}
+        >
+          <ConnectedApp />
+        </HostRoot>
+      </React.Suspense>
+    );
   if (connected) return <ConnectedApp />;
   if (entry.kind === "console")
     return (

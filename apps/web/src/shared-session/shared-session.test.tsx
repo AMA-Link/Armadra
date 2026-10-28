@@ -26,8 +26,8 @@ vi.mock("@/api/events", () => ({
   onWorkspaceEvent: () => () => undefined,
   onWorkspaceConnection: () => () => undefined,
 }));
-vi.mock("@/sources/hosted", () => ({
-  hostedRelay: () => ({ guest: () => calls.guest }),
+vi.mock("@/sources/relayed-page", () => ({
+  relayedPage: () => ({ guest: () => calls.guest }),
 }));
 // xterm 在 jsdom 里画不出来；这里只看页面挑了哪一种视图。
 vi.mock("./ReadOnlyTerminal", () => ({

@@ -17,6 +17,10 @@ import { PersonalPage } from "./personal/PersonalPages";
 import { CreateTeamDialog } from "./team/CreateTeamDialog";
 import { DeletedTeamPage } from "./team/DeletedTeamPage";
 import { TeamPage } from "./team/TeamPage";
+import {
+  announceConsoleSession,
+  signOutHostTabs,
+} from "../sources/cloud-session-channel";
 import { createBrowserEndorser } from "./trust/browser-endorser";
 import {
   EndorserProvider,
@@ -37,6 +41,8 @@ import {
 import { PageState } from "./ui/PageState";
 
 export interface ConsoleSession {
+  /** 云端账号 id（`me.get`）；展示页与测试可以不给。 */
+  readonly accountId?: string;
   readonly user: ConsoleUser;
   readonly teams: readonly ConsoleTeam[];
   /** 有运营会话（独立登录，U8）；没有时 `/ops/*` 整页「找不到」。 */
@@ -207,6 +213,12 @@ function ConsoleData({ onJoined }: { onJoined?: () => void }) {
   // 换了账号（或会话没了）：上一位的端到端通道与主机会话一并放掉，下一位从头开。
   const account = session?.user.email;
   React.useEffect(() => () => endorser?.dispose?.(), [endorser, account]);
+  // 这个标签页看到的账号：告诉 `/h/` 标签页，不是这一位的就登出（设计 saas-host-open §2.2）。
+  const accountId = session?.accountId;
+  React.useEffect(() => {
+    if (accountId !== undefined)
+      announceConsoleSession({ type: "accountChanged", accountId });
+  }, [accountId]);
 
   // 运营会话过期或刷新页面后丢了内存里的 CSRF：账号有运营范围就先静默续，续不上去运营登录；
   // 没有运营范围的账号仍是「找不到」，不暴露这一区（云端控制台 §1.3、§1.4）。
@@ -277,11 +289,15 @@ function ConsoleData({ onJoined }: { onJoined?: () => void }) {
   );
 
   const signOut = () => {
-    void api.signOut().finally(() => {
-      endorser?.dispose?.();
-      client.removeQueries({ queryKey: cloudKeys.all });
-      navigate("/login");
-    });
+    // 先让各 `/h/` 标签页趁通道还在吊销主机侧会话，再登出云端（之后中继断开通道）。
+    void signOutHostTabs()
+      .then(() => api.signOut())
+      .finally(() => {
+        announceConsoleSession({ type: "signedOut" });
+        endorser?.dispose?.();
+        client.removeQueries({ queryKey: cloudKeys.all });
+        navigate("/login");
+      });
   };
   const resend = async () => {
     try {

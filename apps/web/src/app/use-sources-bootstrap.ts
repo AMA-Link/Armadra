@@ -13,7 +13,7 @@ import {
   reloginViaLocalCore,
 } from "../sources/credentials";
 import { followWorkspaceSource } from "../sources/follow-workspace";
-import { hostedRelay } from "../sources/hosted";
+import { relayedPage } from "../sources/relayed-page";
 import { openWhenReady } from "../sources/join-intent";
 import { type SourceRegistry, sourceRegistry } from "../sources/registry";
 import { attachRemoteStreams } from "../sources/remote-stream";
@@ -42,7 +42,7 @@ export function useSourcesBootstrap(): void {
       useCanvasStore.getState().setPanel("settings", true);
     }
     // 背后有本机 core 的页面（桌面壳、服务器壳）才接；设置页中途挂上的源也跟着开。
-    if ((!isDesktop() && !RUNTIME_VIA_SERVER_SHELL) || hostedRelay() !== null)
+    if ((!isDesktop() && !RUNTIME_VIA_SERVER_SHELL) || relayedPage() !== null)
       return stopFollow;
     // 服务器壳页面：记下载入时的 CSP，源表变了据此判断要不要重载；载入时按匿名拿到的
     // CSP 拦了源表里的来源，整页重载一次（契约 §88.1）。

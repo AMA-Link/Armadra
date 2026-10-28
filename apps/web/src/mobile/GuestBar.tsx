@@ -1,7 +1,7 @@
 import * as React from "react";
 
 import { usePreferencesStore, useT } from "../app/preferences-store";
-import { hostedRelay } from "../sources/hosted";
+import { relayedPage } from "../sources/relayed-page";
 import { Button } from "@/ui/button";
 
 /** 装 Armadra 的地方（官网）。 */
@@ -16,7 +16,7 @@ const ROLES = new Set(["viewer", "editor", "operator", "driver"]);
 export function GuestBar() {
   const t = useT();
   const locale = usePreferencesStore((state) => state.locale);
-  const share = hostedRelay()?.guest() ?? null;
+  const share = relayedPage()?.guest() ?? null;
   if (share === null) return null;
   const title = share.ownerName
     ? t("links.bar.of", { owner: share.ownerName, name: share.name })
@@ -53,7 +53,7 @@ export function GuestBar() {
 
 /** 访客页面把画布放进一栏高度固定的列，让出顶栏；其余页面原样。 */
 export function GuestFrame({ children }: { children: React.ReactNode }) {
-  const guest = hostedRelay()?.guest() != null;
+  const guest = relayedPage()?.guest() != null;
   if (!guest) return <>{children}</>;
   return (
     <div className="flex h-dvh flex-col">

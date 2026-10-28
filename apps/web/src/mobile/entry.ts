@@ -52,6 +52,15 @@ export type Entry =
       readonly linkId: string;
     }
   | {
+      /**
+       * 控制台打开一台主机（`/h/<hostId>`，设计 saas-host-open §2.1）：用控制台的 Cookie
+       * 会话把这台主机装成本机源（`sources/console-host.ts`）。`workspaceId` 是 `?ws=`。
+       */
+      readonly kind: "host";
+      readonly hostId: string;
+      readonly workspaceId?: string;
+    }
+  | {
       /** SaaS 控制台（`app.armadra.com` 的其余路径，云端控制台 §1.2）。 */
       readonly kind: "console";
       readonly path: string;
@@ -133,6 +142,8 @@ export function takeLinkFragment(): string | null {
 }
 
 const JOIN_PATH = /^\/j\/([A-Za-z0-9_-]{8,128})\/?$/;
+const HOST_PATH = /^\/h(\/|$)/;
+const HOST_ID_PATH = /^\/h\/([0-9a-f]{32})\/?$/;
 
 /**
  * 这一页是不是远程服务托管的分享链接落地页（`<issuer>/j/<linkId>`）：只在普通
@@ -346,6 +357,26 @@ export async function prepareEntry(): Promise<Entry> {
     if (mayBeConsole() && (await isSaasOrigin()))
       return consoleEntry(globalThis.location.pathname);
     return { kind: "join", linkId: joinLinkId };
+  }
+  // 控制台的 `/h/<hostId>`：只在 SaaS 控制台来源上；路径不合法交给控制台画「找不到」。
+  const pathname = globalThis.location?.pathname ?? "";
+  if (
+    HOST_PATH.test(pathname) &&
+    !isNativeApp() &&
+    !isDesktop() &&
+    mayBeConsole() &&
+    (await isSaasOrigin())
+  ) {
+    const hostId = HOST_ID_PATH.exec(pathname)?.[1];
+    if (hostId === undefined) return consoleEntry(pathname);
+    markControlPlanePage();
+    const workspaceId =
+      new URLSearchParams(globalThis.location.search).get("ws") ?? "";
+    return {
+      kind: "host",
+      hostId,
+      ...(workspaceId === "" ? {} : { workspaceId }),
+    };
   }
   if (isNativeApp()) {
     const origin = savedRuntimeOrigin();

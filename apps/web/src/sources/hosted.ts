@@ -32,6 +32,7 @@ import {
   guestKeys,
 } from "./relay-vault";
 import { type RelayedStatus, createRelayedEntry } from "./relayed-entry";
+import { setRelayedPage } from "./relayed-page";
 import type { createRemoteStream } from "./remote-stream";
 import type { enterRoute } from "./route-entry";
 import { type CredentialProvider, SOURCE_ERROR, SourceError } from "./types";
@@ -568,10 +569,12 @@ export function startHostedRelay(host: RelayHost): HostedRelay {
     issuer: host.issuer,
     e2e: e2eChannels(() => browserDevice().name),
   });
+  setRelayedPage(active);
   return active;
 }
 
 /** 测试换掉页面那一个。 */
 export function resetHostedRelay(next: HostedRelay | null = null): void {
   active = next;
+  setRelayedPage(next);
 }
