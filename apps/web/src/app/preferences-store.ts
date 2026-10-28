@@ -1,3 +1,5 @@
+// 最先：zod 不用 `new Function`（Trusted Types，`lib/zod-config.ts`）；这个模块在入口之前就会求值。
+import "../lib/zod-config";
 import { useMemo } from "react";
 import { create } from "zustand";
 import { PERMISSION_MODES, type PermissionMode } from "@armadra/shared";

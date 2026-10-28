@@ -1,3 +1,5 @@
+// 最先：zod 不用 `new Function`（Trusted Types）。
+import "./lib/zod-config";
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { MotionConfig } from "motion/react";
