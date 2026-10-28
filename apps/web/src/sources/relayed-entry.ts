@@ -1,5 +1,6 @@
 import {
   type HostedSessionStore,
+  resetIdentityCredentials,
   restoreHostedCredentials,
   setHostedSession,
 } from "../api/identity";
@@ -128,6 +129,15 @@ export function relayedDescriptor(
     fingerprint: "",
     orderIndex: 0,
   };
+}
+
+/** 明确的「凭据不对」：401，或源层的 `source_unauthorized`（如核对出主体不符）。 */
+function explicitlyUnauthorized(error: unknown): boolean {
+  const { status, code } = (error ?? {}) as {
+    status?: unknown;
+    code?: unknown;
+  };
+  return status === 401 || code === SOURCE_ERROR.unauthorized;
 }
 
 export function createRelayedEntry(options: RelayedEntryOptions): RelayedEntry {
@@ -348,15 +358,31 @@ export function createRelayedEntry(options: RelayedEntryOptions): RelayedEntry {
         );
         throw error;
       }
-      const verified =
-        (await restoreHostedCredentials()) &&
-        (await (options.verify?.(source) ?? Promise.resolve()).then(
-          () => true,
-          () => false,
-        ));
-      if (!verified) {
+      const restored = await restoreHostedCredentials();
+      let refused: unknown = restored
+        ? null
+        : new SourceError(SOURCE_ERROR.unauthorized);
+      if (restored && options.verify !== undefined) {
+        try {
+          await options.verify(source);
+        } catch (error) {
+          refused = error;
+        }
+      }
+      if (refused !== null) {
         entered?.dispose();
         entered = null;
+        if (!explicitlyUnauthorized(refused)) {
+          // 核对时连不上（网络、通道）：不是凭据的错，令牌留着，下次还能续。
+          const failure = {
+            code: SOURCE_ERROR.unreachable,
+            message: "",
+          };
+          setStatus("offline", failure);
+          throw new SourceError(failure.code, "", { cause: refused });
+        }
+        // 明确被拒：读进身份面的令牌一并丢掉，不留给别处接着用。
+        resetIdentityCredentials();
         setStatus("unauthorized", {
           code: SOURCE_ERROR.unauthorized,
           message: "",
