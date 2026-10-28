@@ -5,7 +5,7 @@ import {
   hydrateSourcesAtStartup,
   takeSettingsReopen,
 } from "../sources/bootstrap";
-import { rememberPagePolicy } from "../api/page-policy";
+import { rememberPagePolicy, watchPolicyViolations } from "../api/page-policy";
 import { RUNTIME_VIA_SERVER_SHELL } from "../api/request";
 import { isDesktop } from "../platform";
 import {
@@ -44,8 +44,22 @@ export function useSourcesBootstrap(): void {
     // 背后有本机 core 的页面（桌面壳、服务器壳）才接；设置页中途挂上的源也跟着开。
     if ((!isDesktop() && !RUNTIME_VIA_SERVER_SHELL) || hostedRelay() !== null)
       return stopFollow;
-    // 服务器壳页面：记下载入时的 CSP，源表变了据此判断要不要重载（契约 §88.1）。
-    if (!isDesktop()) rememberPagePolicy();
+    // 服务器壳页面：记下载入时的 CSP，源表变了据此判断要不要重载；载入时按匿名拿到的
+    // CSP 拦了源表里的来源，整页重载一次（契约 §88.1）。
+    let stopWatch = () => {};
+    if (!isDesktop()) {
+      rememberPagePolicy();
+      stopWatch = watchPolicyViolations({
+        knownOrigins: () =>
+          sourceRegistry()
+            .list()
+            .flatMap(({ descriptor }) => [
+              descriptor.baseUrl,
+              descriptor.relayOrigin,
+              descriptor.cloudIssuer,
+            ]),
+      });
+    }
     const stopStreams = attachRemoteStreams(sourceRegistry(), {
       auth: createDesktopCloudAuth(),
       // 授予或团队角色变了：经本机 core 重登那几台（契约 §88.2）。
@@ -54,6 +68,7 @@ export function useSourcesBootstrap(): void {
     return () => {
       stopFollow();
       stopStreams();
+      stopWatch();
     };
   }, []);
 }
