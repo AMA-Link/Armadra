@@ -49,6 +49,7 @@ const reorder = vi.hoisted(() => vi.fn(async (_ids: readonly string[]) => {}));
 vi.mock("../api/remote-services", () => ({ reorderSources: reorder }));
 
 import { usePreferencesStore } from "../app/preferences-store";
+import { useCanvasStore } from "../store/canvas-store";
 import {
   dropUnscopedQueries,
   useSourceSwitchCacheReset,
@@ -73,6 +74,7 @@ import { WorkspaceGroups, applyOrder } from "./SourceGroups";
 function connection(
   descriptor: SourceDescriptor,
   state: SourceStatus["state"],
+  lastError: SourceStatus["lastError"] = null,
 ): SourceConnection {
   const listeners = new Set<() => void>();
   let status: SourceStatus = {
@@ -98,7 +100,7 @@ function connection(
       throw new Error("unused");
     },
     async connect() {
-      status = { state, via: null, since: 1, lastError: null };
+      status = { state, via: null, since: 1, lastError };
       for (const listener of listeners) listener();
     },
     disconnect() {},
@@ -344,6 +346,55 @@ describe("侧栏三组", () => {
     const a = screen.getByRole("region", { name: "a-label" });
     expect(a.getAttribute("data-state")).toBe("loading");
     expect(within(a).getByText("Cached")).toBeTruthy();
+  });
+});
+
+describe("远程服务的登录失效（契约 §88.1）", () => {
+  const relayed = (sourceId: string, orderIndex: number) =>
+    descriptor(sourceId, orderIndex, {
+      kind: "relayed",
+      baseUrl: "",
+      relayOrigin: "https://relay.test",
+      cloudIssuer: "https://app.saas.test",
+      origin: "shared",
+      ownerName: sourceId,
+    });
+
+  beforeEach(() => {
+    registry.dispose();
+    const failures: Record<string, string> = {
+      out: "source_unauthorized",
+      gone: "source_access_denied",
+    };
+    registry = createSourceRegistry({
+      connect: (d) =>
+        connection(d, "unauthorized", {
+          code: failures[d.sourceId] ?? "source_unauthorized",
+          message: "",
+        }),
+    });
+  });
+
+  it("桌面壳：登录失效的那段给「重新登录」，点了打开远程访问页；被收回的不给", async () => {
+    desktop.on = true;
+    await hydrate([relayed("out", 1), relayed("gone", 2)]);
+    mount();
+    const out = screen.getByRole("region", { name: "out" });
+    const gone = screen.getByRole("region", { name: "gone" });
+    expect(within(gone).queryByRole("button", { name: "Sign in again" })).toBe(
+      null,
+    );
+    fireEvent.click(within(out).getByRole("button", { name: "Sign in again" }));
+    expect(usePreferencesStore.getState().lastSettingsSection).toBe(
+      "remoteAccess",
+    );
+    expect(useCanvasStore.getState().panels.settings).toBe(true);
+  });
+
+  it("浏览器页面（没有本机 core 的远程访问页）：不给", async () => {
+    await hydrate([relayed("out", 1)]);
+    mount();
+    expect(screen.queryByRole("button", { name: "Sign in again" })).toBe(null);
   });
 });
 
