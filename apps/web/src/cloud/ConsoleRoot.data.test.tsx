@@ -8,6 +8,7 @@ import {
 } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import * as cloudSessionChannel from "../sources/cloud-session-channel";
 import { ConsoleRoot } from "./ConsoleRoot";
 import { createMockApi, type MockOptions } from "./mock/create-mock-client";
 
@@ -118,6 +119,27 @@ describe("控制台经客户端取会话", () => {
     fireEvent.click(await screen.findByRole("menuitem", { name: "退出登录" }));
     await waitFor(() => expect(window.location.pathname).toBe("/login"));
     expect(signOut).toHaveBeenCalled();
+  });
+
+  it("通知 /h/ 标签页出错也照样登出云端", async () => {
+    visit("/me");
+    const api = mount();
+    const signOut = vi.spyOn(api, "signOut");
+    const tabs = vi
+      .spyOn(cloudSessionChannel, "signOutHostTabs")
+      .mockRejectedValue(new Error("channel closed"));
+    try {
+      await h1();
+      open(/张三/);
+      fireEvent.click(
+        await screen.findByRole("menuitem", { name: "退出登录" }),
+      );
+      await waitFor(() => expect(window.location.pathname).toBe("/login"));
+      expect(tabs).toHaveBeenCalled();
+      expect(signOut).toHaveBeenCalled();
+    } finally {
+      tabs.mockRestore();
+    }
   });
 });
 

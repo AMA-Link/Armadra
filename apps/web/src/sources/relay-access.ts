@@ -164,7 +164,10 @@ export function createCloudSessions(
 function e2eFailure(error: unknown): never {
   if (error instanceof E2eAccessError) {
     if (error.code === "identity_changed")
-      throw unauthorized(SOURCE_ERROR.identityChanged);
+      // 原因带着对端现在的指纹（`E2eAccessError.fingerprint`），界面拿它给人核对。
+      throw new SourceError(SOURCE_ERROR.identityChanged, error.message, {
+        cause: error,
+      });
     if (error.code === "device_rejected")
       throw unauthorized(SOURCE_ERROR.deviceRejected);
     if (error.code === "unsupported")

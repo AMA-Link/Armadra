@@ -25,7 +25,7 @@ import {
   takeCloudIntent,
 } from "../../../../sources/cloud-intent";
 import { useCurrentSource } from "../../../../sources/context";
-import { hostedRelay } from "../../../../sources/hosted";
+import { relayedPage } from "../../../../sources/relayed-page";
 import {
   onJoinIntent,
   openAfterJoin,
@@ -169,7 +169,7 @@ export function RemoteAccessPage() {
   React.useEffect(() => {
     // 中继托管的页面：这张表是那台主机的，页面的源表是中继目录挂上的
     // （`sources/hosted.ts`），不拿主机的表去覆盖。
-    if (sources && hostedRelay() === null) void applySourceTable(sources);
+    if (sources && relayedPage() === null) void applySourceTable(sources);
   }, [sources]);
 
   const remotes = internet.remotes;

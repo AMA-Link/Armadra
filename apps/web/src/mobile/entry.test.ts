@@ -178,10 +178,56 @@ describe("入口分支", () => {
         kind: "console",
         path: "/t/rd/hosts",
       });
+      // `/h/` 路径不合法：交给控制台画「找不到」。
       history.replaceState(null, "", "/h/abc");
+      await expect(prepareEntry()).resolves.toEqual({
+        kind: "console",
+        path: "/h/abc",
+      });
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
+  it("/h/<hostId> 在 SaaS 来源上 → host（带 ?ws=），页面不再算服务器壳；别的来源、开发构建不认", async () => {
+    const hostId = "0123456789abcdef0123456789abcdef";
+    const platform = (mode: string) =>
+      vi.fn<typeof globalThis.fetch>(
+        async () =>
+          new Response(
+            JSON.stringify({
+              mode,
+              issuer: location.origin,
+              capabilities: [],
+              webApp: location.origin,
+            }),
+          ),
+      );
+    history.replaceState(null, "", `/h/${hostId}?ws=ws-1`);
+    const dev = platform("saas");
+    vi.stubGlobal("fetch", dev);
+    await expect(prepareEntry()).resolves.toEqual({ kind: "app" });
+    expect(dev).not.toHaveBeenCalled();
+    vi.stubEnv("DEV", false);
+    try {
+      await expect(prepareEntry()).resolves.toEqual({
+        kind: "host",
+        hostId,
+        workspaceId: "ws-1",
+      });
+      expect(isControlPlanePage()).toBe(true);
+      setControlPlanePage(false);
+      history.replaceState(null, "", `/h/${hostId}`);
+      await expect(prepareEntry()).resolves.toEqual({ kind: "host", hostId });
+      setControlPlanePage(false);
+      vi.stubGlobal("fetch", platform("personal"));
       await expect(prepareEntry()).resolves.toEqual({ kind: "app" });
-      // 画布路径不问。
-      expect(fetch).toHaveBeenCalledTimes(1);
+      // 原生 App 不认。
+      mocks.app = true;
+      vi.stubGlobal("fetch", platform("saas"));
+      await expect(prepareEntry()).resolves.not.toMatchObject({
+        kind: "host",
+      });
     } finally {
       vi.unstubAllEnvs();
     }
