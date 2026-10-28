@@ -138,9 +138,14 @@ const CONTENT_TYPES = {
 /** WS 握手子协议里的令牌与票、Cookie：写进结果之前打码。 */
 const redact = (text) =>
   String(text)
-    .replace(/armadra-(relay|ticket)\.[^\s",;]+/g, "armadra-$1.<redacted>")
-    .replace(/(__Host-armadra-[a-z]+)=[^\s";]+/g, "$1=<redacted>")
-    .replace(/(Bearer\s+)[^\s",]+/gi, "$1<redacted>");
+    .replace(/armadra-(relay|ticket)\.[^\s",;\\]+/g, "armadra-$1.<redacted>")
+    .replace(/(__Host-armadra-[a-z]+)=[^\s";\\]+/g, "$1=<redacted>")
+    .replace(/(Bearer\s+)[^\s",\\]+/gi, "$1<redacted>")
+    // JSON 里的令牌字段（含日志行里转义过一层的）。
+    .replace(
+      /(\\?"(?:refreshToken|refresh_token|csrfToken|csrf_token|accessToken|access_token|relayToken|assertion)\\?"\s*:\s*\\?")[^"\\]+/g,
+      "$1<redacted>",
+    );
 
 const report = {
   status: "failed",
@@ -1047,7 +1052,8 @@ try {
       await cleanup();
     } catch {}
   }
-  writeResult(output, report);
+  // 整份结果统一打码再写（错误栈、主机日志、页面控制台行里都可能带令牌）。
+  writeResult(output, JSON.parse(redact(JSON.stringify(report))));
   try {
     // 主机的子进程（Agent 适配器）可能还在收尾往临时 HOME 里写：重试几次。
     rmSync(scratch, {
