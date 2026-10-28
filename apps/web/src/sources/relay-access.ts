@@ -179,9 +179,13 @@ function e2eFailure(error: unknown): never {
   throw error;
 }
 
+/** 原样带到源层的云端码（界面按码取文案，不并进「凭据被拒」）。 */
+const PASSED_THROUGH = new Set(["team_suspended", "rate_limited"]);
+
 /** 远程服务与源 core 的拒绝 → 源层的码（界面按码取文案）。 */
 function relayFailure(error: unknown): never {
   if (error instanceof CloudError) {
+    if (PASSED_THROUGH.has(error.code)) throw new SourceError(error.code);
     if (error.code === "source_offline")
       throw unauthorized(SOURCE_ERROR.offline);
     if (error.code === "source_revoked")
@@ -195,7 +199,9 @@ function relayFailure(error: unknown): never {
 
 /**
  * 给一个经中继的源取访问。`force` = 手里那份被拒了，源 core 的会话无论新旧都轮换
- * （或重登）一次。
+ * （或重登）一次。`relogin` = 授予变了（`grantChanged` / 自己的 `memberChanged`）：
+ * 跳过轮换，直接用新断言 `cloud/login` 并带上当前刷新令牌——主机在同一会话上续，
+ * 并按新断言整份同步授予（设计 saas-host-open §2.3）。
  */
 export function createRelayedAccess(
   deps: RelayAccessDeps & { readonly cloudSessions?: CloudSessions },
@@ -205,6 +211,7 @@ export function createRelayedAccess(
     issuer: string,
     sourceId: string,
     force: boolean,
+    relogin?: boolean,
   ): Promise<SourceAccess>;
 } {
   const now = deps.now ?? Date.now;
@@ -217,6 +224,7 @@ export function createRelayedAccess(
     issuer: string,
     sourceId: string,
     force: boolean,
+    relogin = false,
   ): Promise<SourceAccess> => {
     if (issuer === "") throw unauthorized();
     let assertion: CloudAssertion;
@@ -255,9 +263,9 @@ export function createRelayedAccess(
     };
 
     let session = await deps.vault.session(sourceId);
-    if (session === undefined || force || !fresh(session)) {
+    if (session === undefined || force || relogin || !fresh(session)) {
       let next: RelaySession | null = null;
-      if (session !== undefined) {
+      if (session !== undefined && !relogin) {
         try {
           const rotated = await coreRefresh(
             base,
@@ -320,6 +328,8 @@ export function createRelayedAccess(
           if (error instanceof CloudError) {
             if (error.code === "source_offline")
               throw unauthorized(SOURCE_ERROR.offline);
+            if (PASSED_THROUGH.has(error.code))
+              throw new SourceError(error.code);
             throw new SourceError(
               error.code === "cloud_account_unlinked" ||
               error.code === "cloud_not_registered"

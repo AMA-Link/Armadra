@@ -133,4 +133,42 @@ describe("browser-cloud 凭据提供方", () => {
     await provider.getAccess(SOURCE, "relayed");
     expect(sources.assertion).toHaveBeenCalledTimes(2);
   });
+
+  it("relogin：跳过轮换，新断言 cloud/login 带当前刷新令牌", async () => {
+    const { sources, net, provider } = setup();
+    await provider.getAccess(SOURCE, "relayed");
+    await provider.relogin(SOURCE);
+    expect(sources.assertion).toHaveBeenCalledTimes(2);
+    const logins = net.calls.filter((c) => c.key.endsWith("cloud/login"));
+    expect(logins).toHaveLength(2);
+    expect(JSON.parse(String(logins[1]!.init.body))).toMatchObject({
+      refreshToken: "core-r",
+    });
+    expect(net.calls.some((c) => c.key.endsWith("session/refresh"))).toBe(
+      false,
+    );
+  });
+
+  it("会话存处可注入：登录后写进去，下一次从它读", async () => {
+    const stored = new Map<string, unknown>();
+    const sources = { assertion: vi.fn(async () => assertion()) };
+    const net = routedFetch({
+      "POST /api/identity/cloud/login": () => ({
+        body: { session: coreSession("core-a", "core-r") },
+      }),
+    });
+    const provider = createBrowserCloudCredentialProvider({
+      client: { sources },
+      issuer: ISSUER,
+      e2e: plainE2e(net.fetch),
+      cloud: { fetch: net.fetch },
+      now: () => NOW,
+      sessions: {
+        load: async (id) => stored.get(id) as never,
+        save: (id, session) => void stored.set(id, session),
+      },
+    });
+    await provider.getAccess(SOURCE, "relayed");
+    expect(stored.get(SOURCE)).toMatchObject({ refreshToken: "core-r" });
+  });
 });

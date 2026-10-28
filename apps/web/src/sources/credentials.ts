@@ -412,6 +412,16 @@ export interface BrowserCloudDeps {
   /** 源 core 的登录与刷新用（经通道的 `fetch` 由 `e2e` 补上）。 */
   readonly cloud?: CloudOptions;
   readonly now?: () => number;
+  /**
+   * 源 core 会话的保存处（控制台 `/h/`：身份面轮换后写回的那一份，刷新页面要续上）。
+   * 缺省只在内存里，`clear()` 一并清掉。
+   */
+  readonly sessions?: {
+    load(sourceId: string): Promise<RelaySession | undefined>;
+    save(sourceId: string, session: RelaySession): void;
+  };
+  /** 待确认对话框里这台电脑的名字。 */
+  readonly label?: (sourceId: string) => string;
 }
 
 /** 控制台客户端的失败（`status` + `code`）→ 中继登录流程认得的 {@link CloudError}。 */
@@ -434,18 +444,30 @@ function asCloudError(error: unknown): unknown {
  */
 export function createBrowserCloudCredentialProvider(
   deps: BrowserCloudDeps,
-): CredentialProvider & { clear(): void } {
+): CredentialProvider & {
+  clear(): void;
+  /**
+   * 授予变了：跳过轮换，用新断言带当前刷新令牌重登（`relay-access.ts` 的 `relogin`），
+   * 主机在同一会话上续并同步授予。
+   */
+  relogin(sourceId: string): Promise<SourceAccess>;
+} {
   const sessions = new Map<string, RelaySession>();
   const relay = createRelayedAccess({
     vault: {
       cloudRefreshToken: async () => null,
       saveCloudRefreshToken: async () => undefined,
-      session: async (sourceId) => sessions.get(sourceId),
+      session: async (sourceId) =>
+        deps.sessions === undefined
+          ? sessions.get(sourceId)
+          : deps.sessions.load(sourceId),
       async saveSession(sourceId, _issuer, session) {
-        sessions.set(sourceId, session);
+        if (deps.sessions === undefined) sessions.set(sourceId, session);
+        else deps.sessions.save(sourceId, session);
       },
     },
     device: () => browserDevice(),
+    ...(deps.label === undefined ? {} : { label: deps.label }),
     assertion: (sourceId, device) =>
       deps.client.sources
         .assertion({ sourceId, device })
@@ -457,11 +479,17 @@ export function createBrowserCloudCredentialProvider(
     ...(deps.now === undefined ? {} : { now: deps.now }),
   });
   const forced = new Set<string>();
+  const relogins = new Set<string>();
   const used = new Set<string>();
   const cached = createCachedCredentialProvider(async (sourceId, via) => {
     used.add(sourceId);
     if (via !== "relayed") throw new SourceError(SOURCE_ERROR.unreachable);
-    return relay.access(deps.issuer, sourceId, forced.delete(sourceId));
+    return relay.access(
+      deps.issuer,
+      sourceId,
+      forced.delete(sourceId),
+      relogins.delete(sourceId),
+    );
   }, deps.now);
   return {
     getAccess: (sourceId, via) => cached.getAccess(sourceId, via),
@@ -470,9 +498,14 @@ export function createBrowserCloudCredentialProvider(
       return cached.refresh(sourceId, via);
     },
     invalidate: (sourceId) => cached.invalidate(sourceId),
+    relogin(sourceId) {
+      relogins.add(sourceId);
+      return cached.refresh(sourceId, "relayed");
+    },
     clear() {
       sessions.clear();
       forced.clear();
+      relogins.clear();
       for (const sourceId of used) cached.invalidate(sourceId);
       used.clear();
     },
