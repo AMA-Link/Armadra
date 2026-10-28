@@ -305,10 +305,14 @@ export const sourceRouteRefSchema = z.object({
   origin: z.string().min(1).max(2048),
 });
 
-/** `sources.session` 的入参：协议包的形状加可选的 `route`（§55）。 */
+/**
+ * `sources.session` 的入参：协议包的形状加可选的 `route`（§55）与 `relogin`（§88.2：
+ * 跳过刷新，带旧刷新令牌经中继重登）。
+ */
 export const sourcesSessionInputSchema =
   protocolSourcesSessionInputSchema.extend({
     route: sourceRouteRefSchema.optional(),
+    relogin: z.literal(true).optional(),
   });
 
 export const sourceRouteInputSchema = sourceRouteRefSchema.extend({
