@@ -274,6 +274,23 @@ function socketOriginOf(base: string): string {
   }
 }
 
+/** 失败里对端给的 `retryAfterMs`（错误自身、`details` 或原样 body 的 `details`）；没有是 0。 */
+export function retryAfterOf(error: unknown): number {
+  const record = (value: unknown) =>
+    typeof value === "object" && value !== null
+      ? (value as Record<string, unknown>)
+      : {};
+  const outer = record(error);
+  for (const value of [
+    outer.retryAfterMs,
+    record(outer.details).retryAfterMs,
+    record(record(outer.body).details).retryAfterMs,
+  ])
+    if (typeof value === "number" && Number.isFinite(value) && value > 0)
+      return Math.min(value, 10 * 60_000);
+  return 0;
+}
+
 function unauthorizedFailure(error: unknown): boolean {
   return (
     error instanceof RuntimeRequestError &&
@@ -393,9 +410,13 @@ export function createRemoteConnection(
     try {
       const next = await provider.refresh(id, "relayed", ...onRoute());
       if (access === current) adopt(next);
-    } catch {
-      if (access === current && now() < current.expiresAtMs)
-        scheduleRenewal(current, RENEW_AHEAD_RETRY_MS);
+    } catch (error) {
+      // 限流：提前续只会再撞一次，交给到期之后 4401 / 401 那条路。其余按对端给的
+      // `retryAfterMs` 退避（至少 RENEW_AHEAD_RETRY_MS），到期前还来得及才再试。
+      if (access !== current || failureOf(error).code === "rate_limited")
+        return;
+      const delay = Math.max(RENEW_AHEAD_RETRY_MS, retryAfterOf(error));
+      if (now() + delay < current.expiresAtMs) scheduleRenewal(current, delay);
     }
   }
 

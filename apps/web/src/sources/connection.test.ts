@@ -533,6 +533,52 @@ describe("经中继的源（A3-4）", () => {
     }
   });
 
+  it("提前续：按 retryAfterMs 退避；rate_limited 不再提前续，交给到期之后", async () => {
+    vi.useFakeTimers();
+    try {
+      let failWith: Record<string, unknown> | null = null;
+      const make = (): SourceAccess => ({
+        accessToken: "b",
+        expiresAtMs: Date.now() + 60_000,
+        httpBase: RELAY_B,
+        wsBase: RELAY_B.replace(/^https/, "wss"),
+        relayToken: "RT",
+      });
+      const provider: CredentialProvider = {
+        getAccess: vi.fn(async () => make()),
+        refresh: vi.fn(async () => {
+          if (failWith !== null) throw Object.assign(new Error("no"), failWith);
+          return make();
+        }),
+        invalidate: vi.fn(),
+      };
+      const b = createRemoteConnection(
+        { ...relayedB, baseUrl: "" },
+        { ...options(provider), environment: null },
+      );
+      await b.connect();
+      failWith = {
+        code: "source_unreachable",
+        body: { details: { retryAfterMs: 12_000 } },
+      };
+      await vi.advanceTimersByTimeAsync(40_000);
+      expect(provider.refresh).toHaveBeenCalledTimes(1);
+      // 没按 5 秒，按对端说的 12 秒再试。
+      await vi.advanceTimersByTimeAsync(6_000);
+      expect(provider.refresh).toHaveBeenCalledTimes(1);
+      failWith = { code: "rate_limited" };
+      await vi.advanceTimersByTimeAsync(6_000);
+      expect(provider.refresh).toHaveBeenCalledTimes(2);
+      // 限流：到期之前不再提前续。
+      await vi.advanceTimersByTimeAsync(60_000);
+      expect(provider.refresh).toHaveBeenCalledTimes(2);
+      expect(b.status.state).toBe("ready");
+      b.disconnect();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("revoke：关流、丢访问，unauthorized 带原因；再 connect 才重连", async () => {
     const provider = credentials({ [B]: { relayed: RELAY_B } });
     const b = createRemoteConnection(
