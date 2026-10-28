@@ -91,15 +91,14 @@ for (const [path, hint] of [
 
 /**
  * 控制台页面的 CSP 按哪一份测：缺省 `proposed`——把控制面的 CSP 换成云端要上的那一份
- * （armadra-cloud#153：原样加 `img-src` / `media-src` 的 `blob:`、`frame-src` 加 `blob:` 与
+ * （armadra-cloud#153：原样加 `img-src` / `media-src` 的 `blob:` 与
  * Trusted Types），验证这份改动够用；`current` 不动，看控制面现在的 CSP 拦什么。
  */
 const CSP_MODE = process.env.ARMADRA_SAAS_CSP ?? "proposed";
-/** 要改写或追加的指令（同名的覆盖，`frame-src` 在原值后加 `blob:`）。 */
+/** 要改写或追加的指令（同名的覆盖；`frame-src` 照生产不动，不放行 `blob:`）。 */
 const PROPOSED_DIRECTIVES = {
   "img-src": () => "'self' blob: data:",
   "media-src": () => "'self' blob:",
-  "frame-src": (current) => `${current ?? ""} blob:`.trim(),
   "require-trusted-types-for": () => "'script'",
   "trusted-types": () => "armadra armadra-sanitize default dompurify",
 };
@@ -652,7 +651,7 @@ try {
   );
   writeFileSync(
     join(project, "manual.pdf"),
-    // 一份真的 PDF：控制台来源上只给下载，不进框架（`frame-src blob:` 用不上）。
+    // 一份真的 PDF：控制台来源上只给下载，不进框架（生产 CSP 的 `frame-src` 不放行 `blob:`）。
     "%PDF-1.4\n1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj\n2 0 obj<</Type/Pages/Kids[3 0 R]/Count 1>>endobj\n3 0 obj<</Type/Page/Parent 2 0 R/MediaBox[0 0 200 200]>>endobj\ntrailer<</Root 1 0 R>>\n%%EOF\n",
   );
   writeFileSync(

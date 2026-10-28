@@ -275,7 +275,7 @@ ARMADRA_PERSONAL_RELAY_HOME=<armadra-cloud 检出> node tools/probes/relay-web-e
 
 ## 控制台 `/h/` 端到端（SaaS 部署）
 
-设计 saas-host-open §8.1（第一版，E2–E6）：连一个已经在跑的 Armadra 云部署，起一台临时数据目录的服务器壳当 host1（设备码登录 owner、登记到团队即映射主人，跑完撤销这台），无头 Chrome 两个 browser context（owner、member）走 `/h/`：待确认放行、刷新与复制标签页、主机停起与中继节点重建、授予收窄去抖重登、撤销与控制台登出。控制台页面的 CSP 缺省换成云端要上的那一份（armadra-cloud#153：现有的逐条改写，`img-src` / `media-src` 加 `blob:`、`frame-src` 加 `blob:`、`require-trusted-types-for 'script'`、`trusted-types armadra armadra-sanitize default dompurify`；`ARMADRA_SAAS_CSP=current` 不换），全程监听 `securitypolicyviolation`，要求违规为零。
+设计 saas-host-open §8.1（第一版，E2–E6）：连一个已经在跑的 Armadra 云部署，起一台临时数据目录的服务器壳当 host1（设备码登录 owner、登记到团队即映射主人，跑完撤销这台），无头 Chrome 两个 browser context（owner、member）走 `/h/`：待确认放行、刷新与复制标签页、主机停起与中继节点重建、授予收窄去抖重登、撤销与控制台登出。控制台页面的 CSP 缺省换成云端要上的那一份（armadra-cloud#153：现有的逐条改写，`img-src` / `media-src` 加 `blob:`（`frame-src` 照原样、不放行 `blob:`）、`require-trusted-types-for 'script'`、`trusted-types armadra armadra-sanitize default dompurify`；`ARMADRA_SAAS_CSP=current` 不换），全程监听 `securitypolicyviolation`，要求违规为零。
 
 ```sh
 pnpm libs:build && pnpm --filter @armadra/web build && pnpm --filter @armadra/server build
