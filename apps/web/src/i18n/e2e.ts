@@ -14,6 +14,8 @@ export const e2e: MessageModule = {
     "e2e.pending.rejected": "这台电脑拒绝了此设备",
     "e2e.pending.cancel": "取消",
     "e2e.pending.close": "关闭",
+    "e2e.pending.hint.team": "主机主人、团队管理员或你自己已受信的设备可以放行",
+    "e2e.pending.hint.personal": "在主机上放行",
     "e2e.approve.title": "{name} 请求访问",
     "e2e.approve.hint": "输入新设备上显示的校验码",
     "e2e.approve.allow": "允许",
@@ -61,6 +63,9 @@ export const e2e: MessageModule = {
     "e2e.pending.rejected": "That computer declined this device",
     "e2e.pending.cancel": "Cancel",
     "e2e.pending.close": "Close",
+    "e2e.pending.hint.team":
+      "The host owner, a team admin, or one of your trusted devices can approve",
+    "e2e.pending.hint.personal": "Approve it on the host",
     "e2e.approve.title": "{name} wants access",
     "e2e.approve.hint": "Enter the code shown on the new device",
     "e2e.approve.allow": "Allow",

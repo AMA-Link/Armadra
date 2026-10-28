@@ -100,6 +100,18 @@ export function dismissPendingApproval(sourceId: string): void {
   publish(approvals.filter((one) => one.sourceId !== sourceId));
 }
 
+/** 待确认对话框按空间加的一行「谁能放行」（控制台 `/h/` 知道主机在哪个空间时给）。 */
+export type ApprovalHint = "team" | "personal";
+const hints = new Map<string, ApprovalHint>();
+
+export function setApprovalHint(sourceId: string, hint: ApprovalHint): void {
+  hints.set(sourceId, hint);
+}
+
+export function approvalHint(sourceId: string): ApprovalHint | null {
+  return hints.get(sourceId) ?? null;
+}
+
 /** 正在等主人核对的设备（`useSyncExternalStore` 用）。 */
 export const pendingApprovals = {
   subscribe(listener: Listener): () => void {
