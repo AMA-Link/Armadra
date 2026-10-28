@@ -196,6 +196,8 @@ export interface FakeWorld {
   readonly cores: Map<string, FakeCore>;
   /** 直连 hello 不回答（等超时）。 */
   readonly slow: Set<string>;
+  /** 给了就让 `GET /v1/me/sources` 等它（看重登之后的归属纠正在不在锁里）。 */
+  holdSources?: Promise<void>;
   /** 每一个发出去的字符串（请求体与头），扫凭据用。 */
   readonly sentSecrets: string[];
 }
@@ -290,6 +292,8 @@ export function fakeWorld(): FakeWorld {
       }
       // 远程服务。
       if (url.origin === ISSUER && !url.pathname.startsWith("/s/")) {
+        if (url.pathname === "/v1/me/sources" && world.holdSources)
+          await world.holdSources;
         return cloud(world, request, url.pathname);
       }
       // 某台 core（直连或经中继）。

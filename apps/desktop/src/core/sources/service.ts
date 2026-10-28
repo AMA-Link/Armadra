@@ -34,6 +34,7 @@ import { parsePairLink } from "./pair-link";
 import {
   RelayExchanges,
   assertionExplained,
+  attributeAfterLogin,
   pageConnectOrigins,
   relayFingerprint,
   relayOriginOf,
@@ -166,6 +167,7 @@ export class SourcesService {
   private readonly inflight = new Map<string, Promise<unknown>>();
   /** 经中继换票的合并（契约 §88.2）。 */
   private readonly exchanges = new RelayExchanges();
+  private readonly attributing = new Map<string, Promise<void>>();
 
   constructor(private readonly options: SourcesServiceOptions) {
     this.store = options.store;
@@ -680,7 +682,22 @@ export class SourcesService {
     };
     const lock = `source ${row.sourceId} ${route.origin}`;
     const since = this.exchanges.arrival(lock);
-    // 刷新与重登在同一把锁里；排队时别人刚换过的新鲜访问直接共用（契约 §88.2）。
+    const deps = {
+      store: this.store,
+      secrets: this.secrets,
+      peer: this.peer,
+      remote: this.remote,
+    };
+    const input = {
+      sourceId: row.sourceId,
+      key: route.origin,
+      address,
+      assertion,
+      service: remote,
+      endpoint: this.endpoint(remote),
+      access: this.access.get(remote.serviceId),
+    };
+    let logged: NativeCredentials | undefined; // 刷新与重登同一把锁（§88.2）
     const fresh = await this.serial(lock, async () => {
       const shared = this.exchanges.shared(
         lock,
@@ -690,27 +707,16 @@ export class SourcesService {
       );
       if (shared !== undefined) return shared;
       const began = this.exchanges.begin(lock);
-      const got = await renewAtRelay(
-        {
-          store: this.store,
-          secrets: this.secrets,
-          peer: this.peer,
-          remote: this.remote,
-        },
-        {
-          sourceId: row.sourceId,
-          key: route.origin,
-          address,
-          assertion,
-          service: remote,
-          endpoint: this.endpoint(remote),
-          access: this.access.get(remote.serviceId),
-        },
-        relogin,
-      );
-      this.exchanges.record(lock, relogin, began, got);
-      return got;
+      const got = await renewAtRelay(deps, input, relogin);
+      this.exchanges.record(lock, relogin, began, got.credentials);
+      if (got.login) logged = got.credentials;
+      return got.credentials;
     });
+    // 纠正归属要问远程服务目录：锁外、令牌写回之后异步做（目录失败本来就不动归属）。
+    if (logged !== undefined) {
+      const work = attributeAfterLogin(deps, input, logged).catch(() => {});
+      this.attributing.set(row.sourceId, work);
+    }
     this.ok(row, route);
     return {
       accessToken: fresh.accessToken,
@@ -887,6 +893,11 @@ export class SourcesService {
     });
     return () =>
       this.relayed(row, winner.route, winner.remote, winner.assertion, relogin);
+  }
+
+  /** 测试用：等重登之后的归属纠正做完。 */
+  async attributionSettled(): Promise<void> {
+    await Promise.all(this.attributing.values());
   }
 
   /* --------------------------- 远程服务 ---------------------------- */

@@ -98,17 +98,27 @@ export async function loginAtRelay(
   if (logged.share !== undefined) {
     deps.store.setShare(sourceId, shareColumns(logged.share));
   }
-  // 归属与团队随断言变：Armadra 云的主机按自己的云纠正。
-  await refreshMountedAttribution(
+  return logged;
+}
+
+/**
+ * 重登之后按自己的云纠正归属与团队（契约 §86.2）。要问远程服务目录，所以在换票的锁
+ * **外面**、令牌写回之后做，不拖住排在后面的换票。
+ */
+export function attributeAfterLogin(
+  deps: RelayLoginDeps,
+  input: RelayLoginInput,
+  logged: NativeCredentials,
+): Promise<void> {
+  return refreshMountedAttribution(
     deps.remote,
     deps.store,
     input.service,
     input.access,
     input.assertion,
-    { endpoint: input.endpoint, sourceId },
+    { endpoint: input.endpoint, sourceId: input.sourceId },
     logged.share,
   );
-  return logged;
 }
 
 /**
@@ -120,7 +130,7 @@ export async function renewAtRelay(
   deps: RelayLoginDeps,
   input: RelayLoginInput,
   relogin: boolean,
-): Promise<NativeCredentials> {
+): Promise<{ credentials: NativeCredentials; login: boolean }> {
   if (!relogin) {
     const stored = (await deps.secrets.source(input.sourceId)).byOrigin[
       input.key
@@ -135,7 +145,7 @@ export async function renewAtRelay(
           refreshToken: fresh.refreshToken,
           deviceId: fresh.deviceId || stored.deviceId,
         });
-        return fresh;
+        return { credentials: fresh, login: false };
       } catch (error) {
         if (
           !(error instanceof CoreFailure) ||
@@ -145,7 +155,7 @@ export async function renewAtRelay(
       }
     }
   }
-  return loginAtRelay(deps, input);
+  return { credentials: await loginAtRelay(deps, input), login: true };
 }
 
 /**

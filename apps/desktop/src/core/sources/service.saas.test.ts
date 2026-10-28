@@ -176,6 +176,7 @@ describe("契约 §86：Armadra 云挂载的团队与归属", () => {
     world.cloud.assertionTeam = "team-2";
     core.sessions.revokeAll();
     await saas.session(RELAYED_ID, "relayed");
+    await saas.attributionSettled();
     expect(await listed()).toMatchObject({
       origin: "shared",
       teamId: "team-2",
@@ -184,6 +185,7 @@ describe("契约 §86：Armadra 云挂载的团队与归属", () => {
     delete world.cloud.assertionTeam;
     core.sessions.revokeAll();
     await saas.session(RELAYED_ID, "relayed");
+    await saas.attributionSettled();
     expect(await listed()).toMatchObject({
       origin: "shared",
       teamId: "",
@@ -198,6 +200,7 @@ describe("契约 §86：Armadra 云挂载的团队与归属", () => {
     world.cloud.owner = false;
     core.sessions.revokeAll();
     await saas.session(RELAYED_ID, "relayed");
+    await saas.attributionSettled();
     expect(await listed()).toMatchObject({
       origin: "shared",
       teamId: "team-1",
@@ -206,6 +209,7 @@ describe("契约 §86：Armadra 云挂载的团队与归属", () => {
     world.cloud.owner = true;
     core.sessions.revokeAll();
     await saas.session(RELAYED_ID, "relayed");
+    await saas.attributionSettled();
     expect(await listed()).toMatchObject({
       origin: "mine",
       teamId: "",
@@ -376,6 +380,26 @@ describe("契约 §86：Armadra 云挂载的团队与归属", () => {
     // 存着的刷新令牌不动：版本门与收回都不是这把会话的问题。
     expect(await stored()).toBeDefined();
     delete world.cloud.denyAssertion;
+  });
+
+  it("重登之后的归属纠正在锁外：目录卡住时下一次换票照样完成，放开后归属才纠正", async () => {
+    world.cloud.owner = false;
+    world.cloud.assertionTeam = "team-1";
+    await saas.mount({ serviceId, sourceId: RELAYED_ID });
+    let release = () => {};
+    world.holdSources = new Promise<void>((done) => {
+      release = done;
+    });
+    world.cloud.assertionTeam = "team-2";
+    await saas.session(RELAYED_ID, undefined, undefined, true);
+    // 目录还卡着：同一条路的下一次换票不必等它。
+    const next = await saas.session(RELAYED_ID, "relayed");
+    expect(next.via).toBe("relayed");
+    expect(await listed()).toMatchObject({ teamId: "team-1" });
+    release();
+    delete world.holdSources;
+    await saas.attributionSettled();
+    expect(await listed()).toMatchObject({ teamId: "team-2" });
   });
 
   it("relogin：跳过刷新，直接带旧刷新令牌 cloud/login", async () => {
