@@ -382,6 +382,20 @@ describe("控制台 /h/ 进主机", () => {
     expect(ctx.identity.logout).toHaveBeenCalledTimes(1);
   });
 
+  it("登出先丢本地记录、再经通道吊销；吊销卡住也按时收尾", async () => {
+    const bus = channelBus();
+    const ctx = setup({ bus });
+    await ctx.host.open();
+    let recordAtLogout: unknown = "unset";
+    ctx.identity.logout.mockImplementation(() => {
+      recordAtLogout = record(ctx.storage);
+      return new Promise<undefined>(() => undefined);
+    });
+    await ctx.host.signOut();
+    expect(recordAtLogout).toBeNull();
+    expect(ctx.host.view.kind).toBe("signedOut");
+  });
+
   it("换账号的广播：别的账号 → 登出；同一个账号不动", async () => {
     const bus = channelBus();
     const ctx = setup({ bus });

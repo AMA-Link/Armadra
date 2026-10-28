@@ -520,11 +520,14 @@ export function createConsoleHost(options: ConsoleHostOptions): ConsoleHost {
       closed = true;
       generation += 1;
       stopWaiting();
-      if (view.kind === "entered" || view.kind === "expired")
-        await identity.logout().catch(() => undefined);
+      const reachable = view.kind === "entered" || view.kind === "expired";
+      // 先丢本地的记录与缓存的访问：吊销卡住、标签页随后被关掉也不留可续的东西。
       sessions.clear();
       provider.clear();
+      // 再经还装着的路由吊销主机侧会话（身份面内存里的令牌），限时。
+      if (reachable) await logoutWithin(LOGOUT_TIMEOUT_MS);
       entry.signOut();
+      wasEntered = false;
       setView({ kind: "signedOut" });
     })().finally(() => {
       signingOut = null;
