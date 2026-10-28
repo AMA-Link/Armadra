@@ -278,7 +278,13 @@ export function install(
     update: (input) => service.update(input),
     remove: (input) => service.remove(input.sourceId),
     forget: (input) => service.forget(input.sourceId),
-    session: (input) => service.session(input.sourceId, input.via, input.route),
+    session: (input) =>
+      service.session(
+        input.sourceId,
+        input.via,
+        input.route,
+        input.relogin === true,
+      ),
     routePrefer: (input) => service.routePrefer(input),
     routeRemove: (input) => service.routeRemove(input),
     remoteAdd: (input) => service.remoteAdd(input),

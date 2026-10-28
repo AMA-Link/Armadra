@@ -86,6 +86,12 @@ export interface FakeCore {
   readonly requireRelayToken: boolean;
   cloudLogins: number;
   refuseCloudLogin?: string;
+  /** 刷新一律答 401（限寿会话临近到期时主机的做法，#559）；不撤销会话。 */
+  refuseRefresh?: boolean;
+  /** 最近一次 `cloud/login` 带的刷新令牌（续同一会话，§31.3）。 */
+  lastLoginRefresh?: string;
+  /** `cloud/login` 在原会话上续的次数（设备 id 不变）。 */
+  continued?: number;
   /** 最近一次 `cloud/login` 带的邀请令牌。 */
   lastInvitation?: string;
   /** hello 报的「主机名称」（契约 §61）；不给不报。 */
@@ -687,6 +693,9 @@ async function peer(
     return json(200, nativeBody(core, core.sessions.issue(device), device));
   }
   if (path === "/api/identity/session/refresh") {
+    if (core.refuseRefresh === true) {
+      return json(401, { code: "UNAUTHENTICATED", message: "renew" });
+    }
     const rotated = core.sessions.rotate(bearer(request));
     if (typeof rotated === "string") {
       return json(401, { code: "UNAUTHENTICATED", message: "refresh" });
@@ -704,9 +713,24 @@ async function peer(
     if (!String(input.assertion).startsWith(`assertion-${core.hostId}`)) {
       return json(401, { code: "cloud_assertion_invalid", message: "bad" });
     }
-    const device = `cloud-dev-${Math.random().toString(36).slice(2, 8)}`;
+    // 带着当前会话的刷新令牌来：在原会话上续（设备 id 不变，令牌旋转）。
+    let session: { device: string; next: string } | undefined;
+    if (typeof input.refreshToken === "string") {
+      core.lastLoginRefresh = input.refreshToken;
+      const rotated = core.sessions.rotate(input.refreshToken);
+      if (typeof rotated !== "string") {
+        core.continued = (core.continued ?? 0) + 1;
+        session = rotated;
+      }
+    }
+    const device =
+      session?.device ?? `cloud-dev-${Math.random().toString(36).slice(2, 8)}`;
     return json(200, {
-      session: nativeBody(core, core.sessions.issue(device), device),
+      session: nativeBody(
+        core,
+        session?.next ?? core.sessions.issue(device),
+        device,
+      ),
       principal: {
         principalId: "p-owner",
         kind: "owner",

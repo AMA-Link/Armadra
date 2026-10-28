@@ -255,4 +255,96 @@ describe("契约 §86：Armadra 云挂载的团队与归属", () => {
     const listed = await saas.remoteSources(serviceId);
     expect(Array.isArray(listed.sources)).toBe(true);
   });
+  /* -------------------- 契约 §88：远程会话与续期（#582 B1） -------------------- */
+
+  const failure = (promise: Promise<unknown>) =>
+    promise.then(
+      () => "ok",
+      (error: { code?: string }) => error.code ?? "?",
+    );
+  const stored = async () =>
+    (await new SourceSecrets(() => backend).source(RELAYED_ID)).byOrigin[
+      ISSUER
+    ];
+  const relayedCore = () => world.cores.get(`${ISSUER}/s/${RELAYED_ID}`)!;
+
+  it("remoteSession / remoteEndpoint 对 SaaS 开放：访问令牌、能力与签发方", async () => {
+    const session = await saas.remoteSession(serviceId);
+    expect(session.accessToken).not.toBe("");
+    expect(session.issuer).toBe(ISSUER);
+    expect(Array.isArray(session.capabilities)).toBe(true);
+    const endpoint = await saas.remoteEndpoint(serviceId);
+    expect(endpoint).toMatchObject({ issuer: ISSUER });
+    expect(endpoint.accessToken).toBe(session.accessToken);
+  });
+
+  it("没有保存的登录：remoteSession 答 source_unauthorized", async () => {
+    await saas.remoteLogout(serviceId);
+    expect(await failure(saas.remoteSession(serviceId))).toBe(
+      "source_unauthorized",
+    );
+  });
+
+  it("跨寿命续期：刷新 401 → 带旧刷新令牌重登，同一会话、存着的令牌被替换而不是先删", async () => {
+    world.cloud.owner = false;
+    await saas.mount({ serviceId, sourceId: RELAYED_ID });
+    const core = relayedCore();
+    const before = await stored();
+    expect(before).toBeDefined();
+    core.refuseRefresh = true;
+    const session = await saas.session(RELAYED_ID, "relayed");
+    expect(session.via).toBe("relayed");
+    // 刷新被拒之后令牌没删：重登带的正是它，主机在原会话上续。
+    expect(core.lastLoginRefresh).toBe(before!.refreshToken);
+    expect(core.continued).toBe(1);
+    const after = await stored();
+    expect(after?.deviceId).toBe(before!.deviceId);
+    expect(after?.refreshToken).not.toBe(before!.refreshToken);
+    // 下一轮再续：仍是同一会话。
+    await saas.session(RELAYED_ID, "relayed");
+    expect(core.continued).toBe(2);
+    expect((await stored())?.deviceId).toBe(before!.deviceId);
+  });
+
+  it("relogin：跳过刷新，直接带旧刷新令牌 cloud/login", async () => {
+    world.cloud.owner = false;
+    await saas.mount({ serviceId, sourceId: RELAYED_ID });
+    const core = relayedCore();
+    const before = await stored();
+    const refreshes = () =>
+      world.requests.filter((one) =>
+        one.url.endsWith("/api/identity/session/refresh"),
+      ).length;
+    const counted = refreshes();
+    const logins = core.cloudLogins;
+    await saas.session(RELAYED_ID, undefined, undefined, true);
+    expect(refreshes()).toBe(counted);
+    expect(core.cloudLogins).toBe(logins + 1);
+    expect(core.lastLoginRefresh).toBe(before!.refreshToken);
+    expect((await stored())?.deviceId).toBe(before!.deviceId);
+  });
+
+  it("relogin 只经中继：指定直连答 bad_request", async () => {
+    await saas.mount({ serviceId, sourceId: RELAYED_ID });
+    expect(
+      await failure(saas.session(RELAYED_ID, "direct", undefined, true)),
+    ).toBe("bad_request");
+  });
+
+  it("重登被明确拒绝才删存着的令牌；待确认、限流留着", async () => {
+    world.cloud.owner = false;
+    await saas.mount({ serviceId, sourceId: RELAYED_ID });
+    const core = relayedCore();
+    core.refuseRefresh = true;
+    core.refuseCloudLogin = "rate_limited";
+    expect(await failure(saas.session(RELAYED_ID, "relayed"))).toBe(
+      "rate_limited",
+    );
+    expect(await stored()).toBeDefined();
+    core.refuseCloudLogin = "cloud_account_unlinked";
+    expect(await failure(saas.session(RELAYED_ID, "relayed"))).toBe(
+      "cloud_account_unlinked",
+    );
+    expect(await stored()).toBeUndefined();
+  });
 });

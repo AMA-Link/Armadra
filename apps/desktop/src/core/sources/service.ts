@@ -148,6 +148,18 @@ function telling(failures: readonly unknown[], message: string): CoreFailure {
   return useful ?? fail("source_unreachable", message);
 }
 
+/** 重登时这几种失败不删存着的刷新令牌：放行、恢复或稍后还要拿它续同一会话。 */
+const TRANSIENT = new Set([
+  "device_pending",
+  "rate_limited",
+  "source_offline",
+  "source_unreachable",
+]);
+
+function refused(error: unknown): boolean {
+  return error instanceof CoreFailure && !TRANSIENT.has(error.code);
+}
+
 function wsBaseOf(httpBase: string): string {
   return httpBase.replace(/^http/, "ws");
 }
@@ -601,10 +613,15 @@ export class SourcesService {
 
   /* ----------------------------- 换票 ------------------------------ */
 
+  /**
+   * 用存着的刷新令牌换票。`keep`：被拒（401）时不删它——经中继的路要把它交给重登
+   * （`cloud/login` 带旧刷新令牌续同一会话，契约 §88.2），重登也失败才删。
+   */
   private async refreshAt(
     sourceId: string,
     key: string,
     address: SourceAddress,
+    keep = false,
   ): Promise<NativeCredentials> {
     return this.serial(`source ${sourceId} ${key}`, async () => {
       const stored = (await this.secrets.source(sourceId)).byOrigin[key];
@@ -616,6 +633,7 @@ export class SourcesService {
         fresh = await this.peer.refresh(address, stored.refreshToken);
       } catch (error) {
         if (
+          !keep &&
           error instanceof CoreFailure &&
           error.code === "source_unauthorized"
         ) {
@@ -659,12 +677,17 @@ export class SourcesService {
   /**
    * 经中继：先用这条路存着的刷新令牌，401 时用断言重新 `cloud/login`。凭据键是
    * 这条路的来源——每个中继各一份，换一个中继进来不碰另一个的（契约 §55）。
+   *
+   * 重登带上存着的刷新令牌：Armadra 云的限寿会话（#559）由主机在同一会话 id 上续，
+   * 长连接不断（契约 §88.2）。刷新被拒时那把令牌先留着交给重登；重登成功写新的，
+   * 重登也被明确拒绝才删。`relogin`：不先刷新，直接重登（授予变了，按新断言同步）。
    */
   private async relayed(
     row: SourceRow,
     route: RouteRow,
     remote: RemoteRow,
     assertion: SourceAssertion,
+    relogin = false,
   ): Promise<SourceSession> {
     if (!assertion.online) throw fail("source_offline", "这台机器当前不在线");
     const address: SourceAddress = {
@@ -674,39 +697,57 @@ export class SourcesService {
       sourceId: row.sourceId,
     };
     const key = route.origin;
-    let fresh: NativeCredentials;
-    try {
-      fresh = await this.refreshAt(row.sourceId, key, address);
-    } catch (error) {
-      if (
-        !(error instanceof CoreFailure) ||
-        error.code !== "source_unauthorized"
-      ) {
+    let fresh: NativeCredentials | undefined;
+    if (!relogin) {
+      try {
+        fresh = await this.refreshAt(row.sourceId, key, address, true);
+      } catch (error) {
+        if (
+          !(error instanceof CoreFailure) ||
+          error.code !== "source_unauthorized"
+        ) {
+          throw error;
+        }
+      }
+    }
+    fresh ??= await this.serial(`source ${row.sourceId} ${key}`, async () => {
+      const stored = (await this.secrets.source(row.sourceId)).byOrigin[key];
+      let logged: NativeCredentials;
+      try {
+        logged = await this.peer.cloudLogin(
+          address,
+          assertion.assertion,
+          undefined,
+          stored?.refreshToken,
+        );
+      } catch (error) {
+        // 明确的拒绝：这把刷新令牌续不上了，留着只会让下一次再撞一次。待确认、限流、
+        // 不在线、连不上都不算——放行或恢复后还要用它续同一会话。
+        if (stored !== undefined && refused(error)) {
+          await this.secrets.putSource(row.sourceId, key, undefined);
+        }
         throw error;
       }
-      fresh = await this.serial(`source ${row.sourceId} ${key}`, async () => {
-        const logged = await this.peer.cloudLogin(address, assertion.assertion);
-        await this.secrets.putSource(row.sourceId, key, {
-          refreshToken: logged.refreshToken,
-          deviceId: logged.deviceId,
-        });
-        // 分享方可能改了角色或到期（契约 §68）；只改 shared 的行。
-        if (logged.share !== undefined) {
-          this.store.setShare(row.sourceId, shareColumns(logged.share));
-        }
-        // 归属与团队随断言变：Armadra 云的主机按自己的云纠正。
-        await refreshMountedAttribution(
-          this.remote,
-          this.store,
-          remote,
-          this.access.get(remote.serviceId),
-          assertion,
-          { endpoint: this.endpoint(remote), sourceId: row.sourceId },
-          logged.share,
-        );
-        return logged;
+      await this.secrets.putSource(row.sourceId, key, {
+        refreshToken: logged.refreshToken,
+        deviceId: logged.deviceId,
       });
-    }
+      // 分享方可能改了角色或到期（契约 §68）；只改 shared 的行。
+      if (logged.share !== undefined) {
+        this.store.setShare(row.sourceId, shareColumns(logged.share));
+      }
+      // 归属与团队随断言变：Armadra 云的主机按自己的云纠正。
+      await refreshMountedAttribution(
+        this.remote,
+        this.store,
+        remote,
+        this.access.get(remote.serviceId),
+        assertion,
+        { endpoint: this.endpoint(remote), sourceId: row.sourceId },
+        logged.share,
+      );
+      return logged;
+    });
     this.ok(row, route);
     return {
       accessToken: fresh.accessToken,
@@ -769,6 +810,7 @@ export class SourcesService {
     sourceId: string,
     via?: "direct" | "relayed",
     target?: { via: RouteVia; origin: string },
+    relogin = false,
   ): Promise<SourceSession> {
     const row = this.row(sourceId);
     if (row.kind === "local") throw fail("conflict", "本机不需要换票");
@@ -776,6 +818,21 @@ export class SourcesService {
     const credentials = await this.secrets.source(sourceId);
     const directs = routes.filter((one) => one.via === "direct");
     const relays = this.relayCandidates(routes);
+
+    // 重登（契约 §88.2）：只经中继，跳过刷新，带旧刷新令牌按新断言续同一会话。
+    if (relogin) {
+      if (via === "direct" || target?.via === "direct") {
+        throw fail("bad_request", "重登只经中继");
+      }
+      const chosen =
+        target === undefined
+          ? relays
+          : relays.filter((one) => one.route.origin === target.origin);
+      if (chosen.length === 0) {
+        throw fail("source_unreachable", "这个源没有可用的远程服务");
+      }
+      return (await this.pickRelayLater(row, chosen, true))();
+    }
 
     if (target !== undefined) {
       const route = routes.find(
@@ -843,6 +900,7 @@ export class SourcesService {
   private async pickRelayLater(
     row: SourceRow,
     candidates: readonly { route: RouteRow; remote: RemoteRow }[],
+    relogin = false,
   ): Promise<() => Promise<SourceSession>> {
     const racing = candidates.slice(0, RELAY_RACE);
     const winner = await Promise.any(
@@ -863,7 +921,7 @@ export class SourcesService {
         : telling(errors, "几条中继都连不上这个源");
     });
     return () =>
-      this.relayed(row, winner.route, winner.remote, winner.assertion);
+      this.relayed(row, winner.route, winner.remote, winner.assertion, relogin);
   }
 
   /* --------------------------- 远程服务 ---------------------------- */
@@ -1408,8 +1466,6 @@ export class SourcesService {
     issuer: string;
   }> {
     const row = this.remoteRow(serviceId);
-    if (row.kind === "saas")
-      throw fail("not_implemented", "SaaS 远程服务尚未开放");
     const token = await this.remoteAccess(row);
     return {
       endpoint: this.endpoint(row),
@@ -1449,8 +1505,6 @@ export class SourcesService {
     capabilities: string[];
   }> {
     const row = this.remoteRow(serviceId);
-    if (row.kind === "saas")
-      throw fail("not_implemented", "SaaS 远程服务尚未开放");
     const token = await this.remoteAccess(row);
     let capabilities = this.capabilities.get(serviceId);
     if (capabilities === undefined) {
