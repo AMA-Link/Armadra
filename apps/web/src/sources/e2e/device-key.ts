@@ -5,7 +5,9 @@ import {
   ed25519SignerFromSeed,
 } from "@armadra/platform-protocol/e2e";
 import type { DevicePlatform } from "@armadra/shared/e2e";
+import { z } from "zod";
 
+import { json, request } from "../../api/request";
 import { isNativeAppPage } from "../../api/runtime-url";
 import { localSource } from "../../api/source";
 import { nativeBridge } from "../../mobile/native-bridge";
@@ -148,17 +150,22 @@ export async function desktopDeviceKey(
   };
 }
 
-async function defaultDesktopSign(transcript: string) {
-  const response = await localSource.fetch(
-    `${localSource.httpBase}/api/e2e/sign`,
-    {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ transcript }),
-    },
+const signAnswerSchema = z.object({
+  publicKey: z.string().min(1),
+  signature: z.string().min(1),
+});
+
+/**
+ * 经 `request` 发：服务器壳的页面是 Cookie 会话，写请求要带 CSRF（契约 §78.3「回环与
+ * Gateway」）；桌面窗口是 Bearer，照旧。
+ */
+function defaultDesktopSign(transcript: string) {
+  return request(
+    "/api/e2e/sign",
+    signAnswerSchema,
+    { method: "POST", ...json({ transcript }) },
+    localSource,
   );
-  if (!response.ok) throw new Error(`e2e.sign ${response.status}`);
-  return (await response.json()) as { publicKey: string; signature: string };
 }
 
 let cached: Promise<DeviceIdentity> | null = null;

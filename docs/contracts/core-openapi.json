@@ -7910,6 +7910,9 @@
                       }
                     },
                     "required": ["via", "origin"]
+                  },
+                  "relogin": {
+                    "const": true
                   }
                 },
                 "required": ["sourceId"]
@@ -7959,6 +7962,16 @@
                     "wsBase",
                     "via"
                   ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "400",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CoreError"
                 }
               }
             }

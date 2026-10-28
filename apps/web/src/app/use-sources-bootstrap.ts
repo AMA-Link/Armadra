@@ -5,9 +5,13 @@ import {
   hydrateSourcesAtStartup,
   takeSettingsReopen,
 } from "../sources/bootstrap";
+import { rememberPagePolicy, watchPolicyViolations } from "../api/page-policy";
 import { RUNTIME_VIA_SERVER_SHELL } from "../api/request";
 import { isDesktop } from "../platform";
-import { createDesktopCloudAuth } from "../sources/credentials";
+import {
+  createDesktopCloudAuth,
+  reloginViaLocalCore,
+} from "../sources/credentials";
 import { followWorkspaceSource } from "../sources/follow-workspace";
 import { hostedRelay } from "../sources/hosted";
 import { openWhenReady } from "../sources/join-intent";
@@ -22,8 +26,8 @@ import { usePreferencesStore } from "./preferences-store";
  *
  * - 当前源跟着打开的工作空间走（`sources/follow-workspace.ts`，唯一的订阅者）；
  * - 挂过别的源才读本机 core 的源表，接进页面源表（零配置不发请求）；
- * - 经中继挂上的源各远程服务一条 `me.stream`（主机上线叫醒、撤销失权，客户端包
- *   §5）；源表里没有这类源时一条也不开。远程服务会话经本机 core 换。中继托管的
+ * - 经中继挂上的源各远程服务一条 `me.stream`（主机上线叫醒、撤销失权、授予变了
+ *   重登，客户端包 §5、契约 §88）；源表里没有这类源时一条也不开。远程服务会话经本机 core 换。中继托管的
  *   页面自己管它那一条（`sources/hosted.ts`），这里不接；
  * - 桌面壳为放行新来源重载了页面（CSP 只在载入时生效）：回到重载前那一页设置。
  */
@@ -40,12 +44,31 @@ export function useSourcesBootstrap(): void {
     // 背后有本机 core 的页面（桌面壳、服务器壳）才接；设置页中途挂上的源也跟着开。
     if ((!isDesktop() && !RUNTIME_VIA_SERVER_SHELL) || hostedRelay() !== null)
       return stopFollow;
+    // 服务器壳页面：记下载入时的 CSP，源表变了据此判断要不要重载；载入时按匿名拿到的
+    // CSP 拦了源表里的来源，整页重载一次（契约 §88.1）。
+    let stopWatch = () => {};
+    if (!isDesktop()) {
+      rememberPagePolicy();
+      stopWatch = watchPolicyViolations({
+        knownOrigins: () =>
+          sourceRegistry()
+            .list()
+            .flatMap(({ descriptor }) => [
+              descriptor.baseUrl,
+              descriptor.relayOrigin,
+              descriptor.cloudIssuer,
+            ]),
+      });
+    }
     const stopStreams = attachRemoteStreams(sourceRegistry(), {
       auth: createDesktopCloudAuth(),
+      // 授予或团队角色变了：经本机 core 重登那几台（契约 §88.2）。
+      relogin: reloginViaLocalCore,
     });
     return () => {
       stopFollow();
       stopStreams();
+      stopWatch();
     };
   }, []);
 }

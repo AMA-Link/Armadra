@@ -11,7 +11,8 @@ import { z } from "zod";
 
 import type { ShareRole } from "./accounts";
 import { localClient } from "./client";
-import { RuntimeRequestError } from "./request";
+import { pagePolicyGrew } from "./page-policy";
+import { RUNTIME_VIA_SERVER_SHELL, RuntimeRequestError } from "./request";
 
 /**
  * 设置 → 远程服务（客户端包 §3）的调用面。
@@ -599,10 +600,13 @@ export async function revokeShareLink(
 
 /**
  * 源表变了：告诉桌面壳重读（CSP 与证书钉扎）。答 `true` 表示新来源要重载页面
- * 才放行。浏览器里没有壳，答 `false`。
+ * 才放行。服务器壳的页面问一次页面入口的 CSP 有没有多出来源（契约 §88.1）；别的
+ * 浏览器页面答 `false`。
  */
 export async function notifyShellSourcesChanged(): Promise<boolean> {
   const bridge = typeof window === "undefined" ? undefined : window.armadra;
+  if (bridge?.sources === undefined && RUNTIME_VIA_SERVER_SHELL)
+    return pagePolicyGrew();
   try {
     return (await bridge?.sources?.changed())?.reload === true;
   } catch {

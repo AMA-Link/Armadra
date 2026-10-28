@@ -13,6 +13,7 @@
  * 不在任何非回环接口上监听。
  */
 
+import { providePageConnectGrants } from "./csp";
 import { writeFileSync } from "node:fs";
 import { request as httpRequest } from "node:http";
 import { request as httpsRequest } from "node:https";
@@ -940,6 +941,67 @@ describe("安全收尾（G3-8）", () => {
     );
     const anchor = await remote("/ca.crt", { origin: null });
     expect(anchor.headers["strict-transport-security"]).toMatch(/max-age/);
+  });
+
+  it("页面 CSP 按源表追加（契约 §88.1）：匿名只见公开域名，直连地址只给 owner；404 不追加", async () => {
+    providePageConnectGrants((isOwner) =>
+      isOwner
+        ? ["https://direct.example:8443", "https://relay.example"]
+        : ["https://relay.example"],
+    );
+    try {
+      const csp = (answer: { headers: Record<string, unknown> }) =>
+        String(answer.headers["content-security-policy"]);
+      const anonymous = await remote("/", { origin: null });
+      expect(anonymous.status).toBe(200);
+      expect(csp(anonymous)).toContain("https://relay.example");
+      expect(csp(anonymous)).not.toContain("direct.example");
+      const spa = await remote("/some/route", { origin: null });
+      expect(csp(spa)).not.toContain("direct.example");
+      const missing = await remote("/missing.js", { origin: null });
+      expect(missing.status).toBe(404);
+      expect(csp(missing)).not.toContain("relay.example");
+      expect(csp(missing)).not.toContain("direct.example");
+      const mine = await remote("/", { origin: null, person: owner });
+      expect(csp(mine)).toContain("https://direct.example:8443");
+      const theirs = await remote("/", { origin: null, person: member });
+      expect(csp(theirs)).not.toContain("direct.example");
+      // 访问 Cookie 过期（只活 15 分钟）或没带：只读地用刷新 Cookie 认出 owner，不旋转。
+      const only = (person: { cookie: string }, purpose: string) =>
+        person.cookie
+          .split(";")
+          .map((part) => part.trim())
+          .filter((part) => part.includes(`_${purpose}=`))
+          .join("; ");
+      const refreshOnly = only(owner, "refresh");
+      expect(refreshOnly).not.toBe("");
+      const viaRefresh = await remote("/", {
+        origin: null,
+        headers: { cookie: refreshOnly },
+      });
+      expect(csp(viaRefresh)).toContain("https://direct.example:8443");
+      const staleAccess = await remote("/", {
+        origin: null,
+        headers: { cookie: `${refreshOnly}; ${only(member, "access")}` },
+      });
+      expect(csp(staleAccess)).toContain("https://direct.example:8443");
+      const memberRefresh = await remote("/", {
+        origin: null,
+        headers: { cookie: only(member, "refresh") },
+      });
+      expect(csp(memberRefresh)).not.toContain("direct.example");
+      const forged = await remote("/", {
+        origin: null,
+        headers: { cookie: refreshOnly.replace(/=(.*)$/, "=$1x") },
+      });
+      expect(csp(forged)).not.toContain("direct.example");
+      // 没旋转：owner 原来那份会话照常可用。
+      expect((await remote("/api/gateway", { person: owner })).status).toBe(
+        200,
+      );
+    } finally {
+      providePageConnectGrants(null);
+    }
   });
 
   it("对外服务的改动与配对票进审计，票本身不进（安全审查 M5）", async () => {

@@ -829,6 +829,40 @@ export class IdentityService {
   }
 
   /**
+   * 发页面时认人用（契约 §88.1）：访问凭据已过期时，凭刷新凭据判断这是不是本机 owner。
+   * **只读、不旋转**——会话活着、没被撤销、刷新凭据与库里那份一致、设备是 owner 才答真；
+   * 任何一项不符答假。不发新凭据，也不改会话的任何一列。
+   */
+  refreshOwner(request: {
+    readonly refreshToken: string;
+    readonly hostId: string;
+    readonly origin: string;
+  }): boolean {
+    const sessionId = parseToken(request.refreshToken);
+    if (
+      sessionId === undefined ||
+      !this.audience(request.hostId, request.origin)
+    )
+      return false;
+    try {
+      return this.store.transaction((tx) => {
+        const live = this.liveSession(
+          tx,
+          sessionId,
+          request.origin,
+          this.now(),
+        );
+        return (
+          matches("refresh", request.refreshToken, live.session.refreshHash) &&
+          live.device.role === "owner"
+        );
+      });
+    } catch {
+      return false;
+    }
+  }
+
+  /**
    * 长连接的复核（安全审查 L1）：按**会话**而不是某一把访问令牌认——页面刷新过
    * 之后旧令牌不再匹配，而会话还是同一个。会话失效（登出、撤销、停用、过期）或
    * 访问期已过而没有刷新，一律 `unauthenticated`。只给 core 内部用：调用方必须

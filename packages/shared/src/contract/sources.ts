@@ -305,10 +305,14 @@ export const sourceRouteRefSchema = z.object({
   origin: z.string().min(1).max(2048),
 });
 
-/** `sources.session` 的入参：协议包的形状加可选的 `route`（§55）。 */
+/**
+ * `sources.session` 的入参：协议包的形状加可选的 `route`（§55）与 `relogin`（§88.2：
+ * 跳过刷新，带旧刷新令牌经中继重登）。
+ */
 export const sourcesSessionInputSchema =
   protocolSourcesSessionInputSchema.extend({
     route: sourceRouteRefSchema.optional(),
+    relogin: z.literal(true).optional(),
   });
 
 export const sourceRouteInputSchema = sourceRouteRefSchema.extend({
@@ -512,6 +516,9 @@ export const sources = {
         "conflict",
         "source_unauthorized",
         "source_unreachable",
+        // §88.2：`relogin` 指定直连；断言被拒（`details.reason = hostOutdated` 是版本门）。
+        "bad_request",
+        "source_access_denied",
       ),
       // 经端到端通道（契约 §78）：待对端主人核对（`details: { pendingId, sas }`）、被拒、身份变了。
       ...errors.pick("device_pending", "device_rejected", "identity_changed"),

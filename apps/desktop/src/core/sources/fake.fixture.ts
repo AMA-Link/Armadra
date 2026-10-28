@@ -86,6 +86,14 @@ export interface FakeCore {
   readonly requireRelayToken: boolean;
   cloudLogins: number;
   refuseCloudLogin?: string;
+  /** `refuseCloudLogin` 用的状态码；缺省 401。 */
+  refuseCloudLoginStatus?: number;
+  /** 刷新一律答 401（限寿会话临近到期时主机的做法，#559）；不撤销会话。 */
+  refuseRefresh?: boolean;
+  /** 最近一次 `cloud/login` 带的刷新令牌（续同一会话，§31.3）。 */
+  lastLoginRefresh?: string;
+  /** `cloud/login` 在原会话上续的次数（设备 id 不变）。 */
+  continued?: number;
   /** 最近一次 `cloud/login` 带的邀请令牌。 */
   lastInvitation?: string;
   /** hello 报的「主机名称」（契约 §61）；不给不报。 */
@@ -128,7 +136,9 @@ export interface FakeWorld {
     locked: boolean;
     online: boolean;
     assertions: number;
-    sources: { sourceId: string; name: string }[];
+    /** 断言答 403 `source_access_denied`（授予收回或版本门）。 */
+    denyAssertion?: boolean;
+    sources: { sourceId: string; name: string; coreVersion?: string }[];
     links: Map<string, FakeLink>;
     /** `platform.info` 报的能力。 */
     capabilities: string[];
@@ -186,6 +196,8 @@ export interface FakeWorld {
   readonly cores: Map<string, FakeCore>;
   /** 直连 hello 不回答（等超时）。 */
   readonly slow: Set<string>;
+  /** 给了就让 `GET /v1/me/sources` 等它（看重登之后的归属纠正在不在锁里）。 */
+  holdSources?: Promise<void>;
   /** 每一个发出去的字符串（请求体与头），扫凭据用。 */
   readonly sentSecrets: string[];
 }
@@ -280,6 +292,8 @@ export function fakeWorld(): FakeWorld {
       }
       // 远程服务。
       if (url.origin === ISSUER && !url.pathname.startsWith("/s/")) {
+        if (url.pathname === "/v1/me/sources" && world.holdSources)
+          await world.holdSources;
         return cloud(world, request, url.pathname);
       }
       // 某台 core（直连或经中继）。
@@ -527,7 +541,7 @@ async function cloud(
         owner: world.cloud.owner !== false,
         via: "owner",
         relayOrigin: ISSUER,
-        coreVersion: "0.0.0",
+        coreVersion: one.coreVersion ?? "0.0.0",
       })),
     });
   }
@@ -606,6 +620,8 @@ async function cloud(
   const match = /^\/v1\/sources\/([0-9a-f]{32})\/assertion$/.exec(path);
   if (match !== null) {
     world.cloud.assertions += 1;
+    if (world.cloud.denyAssertion === true)
+      return json(403, { code: "source_access_denied", message: "denied" });
     const sourceId = match[1] as string;
     return json(200, {
       assertion:
@@ -687,6 +703,9 @@ async function peer(
     return json(200, nativeBody(core, core.sessions.issue(device), device));
   }
   if (path === "/api/identity/session/refresh") {
+    if (core.refuseRefresh === true) {
+      return json(401, { code: "UNAUTHENTICATED", message: "renew" });
+    }
     const rotated = core.sessions.rotate(bearer(request));
     if (typeof rotated === "string") {
       return json(401, { code: "UNAUTHENTICATED", message: "refresh" });
@@ -696,7 +715,10 @@ async function peer(
   if (path === "/api/identity/cloud/login") {
     core.cloudLogins += 1;
     if (core.refuseCloudLogin !== undefined) {
-      return json(401, { code: core.refuseCloudLogin, message: "refused" });
+      return json(core.refuseCloudLoginStatus ?? 401, {
+        code: core.refuseCloudLogin,
+        message: "refused",
+      });
     }
     if (typeof input.invitationToken === "string") {
       core.lastInvitation = input.invitationToken;
@@ -704,9 +726,24 @@ async function peer(
     if (!String(input.assertion).startsWith(`assertion-${core.hostId}`)) {
       return json(401, { code: "cloud_assertion_invalid", message: "bad" });
     }
-    const device = `cloud-dev-${Math.random().toString(36).slice(2, 8)}`;
+    // 带着当前会话的刷新令牌来：在原会话上续（设备 id 不变，令牌旋转）。
+    let session: { device: string; next: string } | undefined;
+    if (typeof input.refreshToken === "string") {
+      core.lastLoginRefresh = input.refreshToken;
+      const rotated = core.sessions.rotate(input.refreshToken);
+      if (typeof rotated !== "string") {
+        core.continued = (core.continued ?? 0) + 1;
+        session = rotated;
+      }
+    }
+    const device =
+      session?.device ?? `cloud-dev-${Math.random().toString(36).slice(2, 8)}`;
     return json(200, {
-      session: nativeBody(core, core.sessions.issue(device), device),
+      session: nativeBody(
+        core,
+        session?.next ?? core.sessions.issue(device),
+        device,
+      ),
       principal: {
         principalId: "p-owner",
         kind: "owner",

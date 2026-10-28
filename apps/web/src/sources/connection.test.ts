@@ -482,6 +482,103 @@ describe("经中继的源（A3-4）", () => {
     expect(b.status).toMatchObject({ state: "ready", via: "relayed" });
   });
 
+  it("访问到期前 20 秒主动续（契约 §88.2）；续不上不改状态、到期前再试；断开后不再续", async () => {
+    vi.useFakeTimers();
+    try {
+      let issued = 0;
+      let failNext = false;
+      const make = (): SourceAccess => ({
+        accessToken: `b-${(issued += 1)}`,
+        expiresAtMs: Date.now() + 60_000,
+        httpBase: RELAY_B,
+        wsBase: RELAY_B.replace(/^https/, "wss"),
+        relayToken: "RT",
+      });
+      const provider: CredentialProvider = {
+        getAccess: vi.fn(async () => make()),
+        refresh: vi.fn(async () => {
+          if (failNext) {
+            failNext = false;
+            throw Object.assign(new Error("no"), {
+              code: "source_unreachable",
+            });
+          }
+          return make();
+        }),
+        invalidate: vi.fn(),
+      };
+      const b = createRemoteConnection(
+        { ...relayedB, baseUrl: "" },
+        { ...options(provider), environment: null },
+      );
+      await b.connect();
+      expect(b.status.state).toBe("ready");
+      await vi.advanceTimersByTimeAsync(39_000);
+      expect(provider.refresh).not.toHaveBeenCalled();
+      failNext = true;
+      await vi.advanceTimersByTimeAsync(1_000);
+      expect(provider.refresh).toHaveBeenCalledTimes(1);
+      expect(b.status.state).toBe("ready");
+      await vi.advanceTimersByTimeAsync(5_000);
+      expect(provider.refresh).toHaveBeenCalledTimes(2);
+      // 续上的那份 60 秒后到期：再过 40 秒续下一次，带上新令牌。
+      await vi.advanceTimersByTimeAsync(40_000);
+      expect(provider.refresh).toHaveBeenCalledTimes(3);
+      expect(provider.refresh).toHaveBeenLastCalledWith(B, "relayed");
+      b.disconnect();
+      await vi.advanceTimersByTimeAsync(120_000);
+      expect(provider.refresh).toHaveBeenCalledTimes(3);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("提前续：按 retryAfterMs 退避；rate_limited 不再提前续，交给到期之后", async () => {
+    vi.useFakeTimers();
+    try {
+      let failWith: Record<string, unknown> | null = null;
+      const make = (): SourceAccess => ({
+        accessToken: "b",
+        expiresAtMs: Date.now() + 60_000,
+        httpBase: RELAY_B,
+        wsBase: RELAY_B.replace(/^https/, "wss"),
+        relayToken: "RT",
+      });
+      const provider: CredentialProvider = {
+        getAccess: vi.fn(async () => make()),
+        refresh: vi.fn(async () => {
+          if (failWith !== null) throw Object.assign(new Error("no"), failWith);
+          return make();
+        }),
+        invalidate: vi.fn(),
+      };
+      const b = createRemoteConnection(
+        { ...relayedB, baseUrl: "" },
+        { ...options(provider), environment: null },
+      );
+      await b.connect();
+      failWith = {
+        code: "source_unreachable",
+        body: { details: { retryAfterMs: 12_000 } },
+      };
+      await vi.advanceTimersByTimeAsync(40_000);
+      expect(provider.refresh).toHaveBeenCalledTimes(1);
+      // 没按 5 秒，按对端说的 12 秒再试。
+      await vi.advanceTimersByTimeAsync(6_000);
+      expect(provider.refresh).toHaveBeenCalledTimes(1);
+      failWith = { code: "rate_limited" };
+      await vi.advanceTimersByTimeAsync(6_000);
+      expect(provider.refresh).toHaveBeenCalledTimes(2);
+      // 限流：到期之前不再提前续。
+      await vi.advanceTimersByTimeAsync(60_000);
+      expect(provider.refresh).toHaveBeenCalledTimes(2);
+      expect(b.status.state).toBe("ready");
+      b.disconnect();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("revoke：关流、丢访问，unauthorized 带原因；再 connect 才重连", async () => {
     const provider = credentials({ [B]: { relayed: RELAY_B } });
     const b = createRemoteConnection(
@@ -576,5 +673,46 @@ describe("经中继的源（A3-4）", () => {
     for (let i = 0; i < 6; i += 1) await flush();
     expect(socket.state).not.toBe("closed");
     expect(b.status.via).toBe("direct");
+  });
+});
+
+describe("主机版本过旧（契约 §88.2）", () => {
+  const relayedB = descriptor(B, {
+    kind: "relayed",
+    baseUrl: "",
+    relayOrigin: "https://relay.example",
+    cloudIssuer: "https://relay.example",
+  });
+  const outdated = () =>
+    Object.assign(new Error("old"), {
+      code: "source_access_denied",
+      body: {
+        code: "source_access_denied",
+        details: { reason: "hostOutdated", coreVersion: "0.9.0" },
+      },
+    });
+
+  it("source_access_denied 带 hostOutdated：离线并记版本过旧，不是失权；不带的仍是访问收回", async () => {
+    const provider = credentials({ [B]: { relayed: RELAY_B } });
+    provider.getAccess = vi.fn(async () => {
+      throw outdated();
+    });
+    const b = createRemoteConnection(relayedB, {
+      ...options(provider),
+      environment: null,
+    });
+    await b.connect();
+    expect(b.status).toMatchObject({
+      state: "offline",
+      lastError: { code: "source_host_outdated" },
+    });
+    provider.getAccess = vi.fn(async () => {
+      throw Object.assign(new Error("no"), { code: "source_access_denied" });
+    });
+    await b.connect();
+    expect(b.status).toMatchObject({
+      state: "unauthorized",
+      lastError: { code: "source_access_denied" },
+    });
   });
 });

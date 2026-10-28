@@ -112,8 +112,52 @@ export function contentSecurityPolicy(
 /** 摘掉的授权：回环的 http / ws 字面量。 */
 const LOOPBACK = /^(https?|wss?):\/\/(127\.0\.0\.1|localhost)(:\*)?$/;
 
-export function serverContentSecurityPolicy(): string {
-  return contentSecurityPolicy()
+/**
+ * 服务器壳页面按源表追加的连接授权（契约 §88.1）：页面要直接连远程服务（`me.stream`
+ * 的票与流）与挂上的源（中继或直连）。只来自这台 core 自己的源表，由源域装上
+ * （{@link providePageConnectGrants}）；没装是空表，策略与原来逐字相同。
+ *
+ * `owner`：请求带着本机 owner 的有效会话。匿名也看得到的只有公开域名（远程服务签发方、
+ * 中继来源）；直连源的地址是 owner 才看得到的源表拓扑，只给 owner。
+ */
+let pageConnectGrants: (owner: boolean) => readonly string[] = () => [];
+
+export function providePageConnectGrants(
+  provider: ((owner: boolean) => readonly string[]) | null,
+): void {
+  pageConnectGrants = provider ?? (() => []);
+}
+
+/** 这一刻要追加的授权（源表读不出时不追加）。 */
+export function currentPageConnectGrants(owner: boolean): readonly string[] {
+  try {
+    return pageConnectGrants(owner);
+  } catch {
+    return [];
+  }
+}
+
+/** 源表里的来源 → 每个 `https://host[:port]` 一条 `https:` 与一条 `wss:`，按字典序去重。 */
+export function connectGrantsOf(origins: Iterable<string>): string[] {
+  const grants = new Set<string>();
+  for (const value of origins) {
+    let url: URL;
+    try {
+      url = new URL(value);
+    } catch {
+      continue;
+    }
+    if (url.protocol !== "https:") continue;
+    grants.add(`https://${url.host}`);
+    grants.add(`wss://${url.host}`);
+  }
+  return [...grants].sort();
+}
+
+export function serverContentSecurityPolicy(
+  connect: readonly string[] = [],
+): string {
+  return contentSecurityPolicy({ connect })
     .split("; ")
     .map((directive) => {
       const tokens = directive.split(" ");

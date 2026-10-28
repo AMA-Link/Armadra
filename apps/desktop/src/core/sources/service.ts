@@ -31,8 +31,17 @@ import type {
   SourceAssertion,
 } from "./remote-client";
 import { parsePairLink } from "./pair-link";
+import {
+  RelayExchanges,
+  assertionExplained,
+  attributeAfterLogin,
+  pageConnectOrigins,
+  relayFingerprint,
+  relayOriginOf,
+  renewAtRelay,
+} from "./relay-login";
 import { CloudConsole } from "./saas-console";
-import { refreshMountedAttribution, saasMountInfo } from "./saas-mount";
+import { saasMountInfo } from "./saas-mount";
 import { CloudSignIn, type CloudSignInHost } from "./saas-signin";
 
 export { parsePairLink };
@@ -45,7 +54,6 @@ import {
   renameLabel,
   routeJson,
   saveRelayRoute,
-  shareColumns,
 } from "./rows";
 import type { SourceSecrets, StoredCredential } from "./secrets";
 import type {
@@ -119,20 +127,6 @@ interface CachedAccess {
   readonly accessExpiresAtMs: number;
 }
 
-/** 经中继时，中继就是远程服务本身（个人中转）才沿用它的 CA 指纹。 */
-function relayFingerprint(
-  relayBaseUrl: string,
-  remote: Pick<RemoteRow, "issuer" | "fingerprint">,
-): string {
-  try {
-    return new URL(relayBaseUrl).origin === remote.issuer
-      ? remote.fingerprint
-      : "";
-  } catch {
-    return "";
-  }
-}
-
 /**
  * 几个失败里挑最有用的：拒绝比不可达更有用——页面据此提示重新登录，而不是
  * 「连不上」。都不是就答 `source_unreachable`。
@@ -143,6 +137,7 @@ function telling(failures: readonly unknown[], message: string): CoreFailure {
       error instanceof CoreFailure &&
       (error.code === "source_unauthorized" ||
         error.code === "source_offline" ||
+        error.code === "source_access_denied" ||
         error.code === "fingerprint_mismatch"),
   );
   return useful ?? fail("source_unreachable", message);
@@ -150,14 +145,6 @@ function telling(failures: readonly unknown[], message: string): CoreFailure {
 
 function wsBaseOf(httpBase: string): string {
   return httpBase.replace(/^http/, "ws");
-}
-
-/** 一条中继的来源：断言给的 `relayOrigin`，没有就是 `relayBaseUrl` 的来源。 */
-function relayOriginOf(assertion: {
-  relayOrigin?: string;
-  relayBaseUrl: string;
-}): string {
-  return assertion.relayOrigin || new URL(assertion.relayBaseUrl).origin;
 }
 
 export class SourcesService {
@@ -178,6 +165,9 @@ export class SourcesService {
    * 整台设备，并发的两次换票会把自己登出。
    */
   private readonly inflight = new Map<string, Promise<unknown>>();
+  /** 经中继换票的合并（契约 §88.2）。 */
+  private readonly exchanges = new RelayExchanges();
+  private readonly attributing = new Map<string, Promise<void>>();
 
   constructor(private readonly options: SourcesServiceOptions) {
     this.store = options.store;
@@ -295,6 +285,14 @@ export class SourcesService {
       this.store.remotes().map((row) => this.remoteJson(row)),
     );
     return { sources, remotes };
+  }
+
+  /**
+   * 服务器壳页面要直接连的来源（契约 §88.1）：远程服务的签发方（`me.stream`）与挂上的
+   * 源的每条路（中继或直连）。只读 SQLite；Gateway 据此给页面的 CSP 追加授权。
+   */
+  pageConnectOrigins(owner: boolean): string[] {
+    return pageConnectOrigins(this.store, owner);
   }
 
   private row(sourceId: string): SourceRow {
@@ -601,6 +599,10 @@ export class SourcesService {
 
   /* ----------------------------- 换票 ------------------------------ */
 
+  /**
+   * 用存着的刷新令牌换票。`keep`：被拒（401）时不删它——经中继的路要把它交给重登
+   * （`cloud/login` 带旧刷新令牌续同一会话，契约 §88.2），重登也失败才删。
+   */
   private async refreshAt(
     sourceId: string,
     key: string,
@@ -659,12 +661,17 @@ export class SourcesService {
   /**
    * 经中继：先用这条路存着的刷新令牌，401 时用断言重新 `cloud/login`。凭据键是
    * 这条路的来源——每个中继各一份，换一个中继进来不碰另一个的（契约 §55）。
+   *
+   * 重登带上存着的刷新令牌：Armadra 云的限寿会话（#559）由主机在同一会话 id 上续，
+   * 长连接不断（契约 §88.2）。刷新被拒时那把令牌先留着交给重登；重登成功写新的，
+   * 重登也被明确拒绝才删。`relogin`：不先刷新，直接重登（授予变了，按新断言同步）。
    */
   private async relayed(
     row: SourceRow,
     route: RouteRow,
     remote: RemoteRow,
     assertion: SourceAssertion,
+    relogin = false,
   ): Promise<SourceSession> {
     if (!assertion.online) throw fail("source_offline", "这台机器当前不在线");
     const address: SourceAddress = {
@@ -673,39 +680,42 @@ export class SourcesService {
       relayToken: assertion.relayToken,
       sourceId: row.sourceId,
     };
-    const key = route.origin;
-    let fresh: NativeCredentials;
-    try {
-      fresh = await this.refreshAt(row.sourceId, key, address);
-    } catch (error) {
-      if (
-        !(error instanceof CoreFailure) ||
-        error.code !== "source_unauthorized"
-      ) {
-        throw error;
-      }
-      fresh = await this.serial(`source ${row.sourceId} ${key}`, async () => {
-        const logged = await this.peer.cloudLogin(address, assertion.assertion);
-        await this.secrets.putSource(row.sourceId, key, {
-          refreshToken: logged.refreshToken,
-          deviceId: logged.deviceId,
-        });
-        // 分享方可能改了角色或到期（契约 §68）；只改 shared 的行。
-        if (logged.share !== undefined) {
-          this.store.setShare(row.sourceId, shareColumns(logged.share));
-        }
-        // 归属与团队随断言变：Armadra 云的主机按自己的云纠正。
-        await refreshMountedAttribution(
-          this.remote,
-          this.store,
-          remote,
-          this.access.get(remote.serviceId),
-          assertion,
-          { endpoint: this.endpoint(remote), sourceId: row.sourceId },
-          logged.share,
-        );
-        return logged;
-      });
+    const lock = `source ${row.sourceId} ${route.origin}`;
+    const since = this.exchanges.arrival(lock);
+    const deps = {
+      store: this.store,
+      secrets: this.secrets,
+      peer: this.peer,
+      remote: this.remote,
+    };
+    const input = {
+      sourceId: row.sourceId,
+      key: route.origin,
+      address,
+      assertion,
+      service: remote,
+      endpoint: this.endpoint(remote),
+      access: this.access.get(remote.serviceId),
+    };
+    let logged: NativeCredentials | undefined; // 刷新与重登同一把锁（§88.2）
+    const fresh = await this.serial(lock, async () => {
+      const shared = this.exchanges.shared(
+        lock,
+        since,
+        relogin,
+        this.now() + ACCESS_SLACK_MS,
+      );
+      if (shared !== undefined) return shared;
+      const began = this.exchanges.begin(lock);
+      const got = await renewAtRelay(deps, input, relogin);
+      this.exchanges.record(lock, relogin, began, got.credentials);
+      if (got.login) logged = got.credentials;
+      return got.credentials;
+    });
+    // 纠正归属要问远程服务目录：锁外、令牌写回之后异步做（目录失败本来就不动归属）。
+    if (logged !== undefined) {
+      const work = attributeAfterLogin(deps, input, logged).catch(() => {});
+      this.attributing.set(row.sourceId, work);
     }
     this.ok(row, route);
     return {
@@ -724,10 +734,12 @@ export class SourcesService {
     sourceId: string,
   ): Promise<SourceAssertion> {
     const token = await this.remoteAccess(remote);
-    return this.remote.assertion(
+    return assertionExplained(
+      this.remote,
       this.endpoint(remote),
       token.accessToken,
       sourceId,
+      (this.store.get(sourceId)?.teamId ?? "") !== "",
     );
   }
 
@@ -769,6 +781,7 @@ export class SourcesService {
     sourceId: string,
     via?: "direct" | "relayed",
     target?: { via: RouteVia; origin: string },
+    relogin = false,
   ): Promise<SourceSession> {
     const row = this.row(sourceId);
     if (row.kind === "local") throw fail("conflict", "本机不需要换票");
@@ -776,6 +789,21 @@ export class SourcesService {
     const credentials = await this.secrets.source(sourceId);
     const directs = routes.filter((one) => one.via === "direct");
     const relays = this.relayCandidates(routes);
+
+    // 重登（契约 §88.2）：只经中继，跳过刷新，带旧刷新令牌按新断言续同一会话。
+    if (relogin) {
+      if (via === "direct" || target?.via === "direct") {
+        throw fail("bad_request", "重登只经中继");
+      }
+      const chosen =
+        target === undefined
+          ? relays
+          : relays.filter((one) => one.route.origin === target.origin);
+      if (chosen.length === 0) {
+        throw fail("source_unreachable", "这个源没有可用的远程服务");
+      }
+      return (await this.pickRelayLater(row, chosen, true))();
+    }
 
     if (target !== undefined) {
       const route = routes.find(
@@ -843,6 +871,7 @@ export class SourcesService {
   private async pickRelayLater(
     row: SourceRow,
     candidates: readonly { route: RouteRow; remote: RemoteRow }[],
+    relogin = false,
   ): Promise<() => Promise<SourceSession>> {
     const racing = candidates.slice(0, RELAY_RACE);
     const winner = await Promise.any(
@@ -863,7 +892,12 @@ export class SourcesService {
         : telling(errors, "几条中继都连不上这个源");
     });
     return () =>
-      this.relayed(row, winner.route, winner.remote, winner.assertion);
+      this.relayed(row, winner.route, winner.remote, winner.assertion, relogin);
+  }
+
+  /** 测试用：等重登之后的归属纠正做完。 */
+  async attributionSettled(): Promise<void> {
+    await Promise.all(this.attributing.values());
   }
 
   /* --------------------------- 远程服务 ---------------------------- */
@@ -1408,8 +1442,6 @@ export class SourcesService {
     issuer: string;
   }> {
     const row = this.remoteRow(serviceId);
-    if (row.kind === "saas")
-      throw fail("not_implemented", "SaaS 远程服务尚未开放");
     const token = await this.remoteAccess(row);
     return {
       endpoint: this.endpoint(row),
@@ -1449,8 +1481,6 @@ export class SourcesService {
     capabilities: string[];
   }> {
     const row = this.remoteRow(serviceId);
-    if (row.kind === "saas")
-      throw fail("not_implemented", "SaaS 远程服务尚未开放");
     const token = await this.remoteAccess(row);
     let capabilities = this.capabilities.get(serviceId);
     if (capabilities === undefined) {

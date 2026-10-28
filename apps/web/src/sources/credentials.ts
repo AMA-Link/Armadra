@@ -17,6 +17,7 @@ import {
   type CloudDevice,
   type CloudOptions,
   browserDevice,
+  cloudAccountId,
 } from "./cloud-client";
 import { type RelaySession, createRelayedAccess } from "./relay-access";
 import {
@@ -333,7 +334,7 @@ export function createDesktopCloudAuth(
 ): CloudAuth {
   const cache = new Map<string, { accessToken: string; expiresAtMs: number }>();
   const pending = new Map<string, Promise<string>>();
-  return {
+  const auth: CloudAuth = {
     access(issuer) {
       const cached = cache.get(issuer);
       if (cached && cached.expiresAtMs - now() > ACCESS_RENEW_LEAD_MS)
@@ -371,7 +372,25 @@ export function createDesktopCloudAuth(
     invalidate(issuer) {
       cache.delete(issuer);
     },
+    async accountId(issuer) {
+      return cloudAccountId(issuer, await auth.access(issuer));
+    },
   };
+  return auth;
+}
+
+/**
+ * 桌面与服务器壳的页面：请本机 core 经中继重登这个源（契约 §88.2，`relogin: true`）——
+ * 跳过刷新，带旧刷新令牌按新断言同步授予，主机在同一会话上续。答案不用：重登后手里的
+ * 访问由连接自己续一次。对端待确认时不在这里等（授予同步不该弹待确认对话框）。
+ */
+export async function reloginViaLocalCore(sourceId: string): Promise<void> {
+  await request(
+    `/api/sources/${encodeURIComponent(sourceId)}/session`,
+    sessionAnswerSchema,
+    { method: "POST", ...json({ via: "relayed", relogin: true }) },
+    localSource,
+  );
 }
 
 /* --------------------------- 浏览器里的云会话 --------------------------- */

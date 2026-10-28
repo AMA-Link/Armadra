@@ -2,8 +2,11 @@ import { describe, expect, it } from "vitest";
 import {
   GATEWAY_API_HEADERS,
   GATEWAY_RESPONSE_HEADERS,
+  connectGrantsOf,
   contentSecurityPolicy,
+  currentPageConnectGrants,
   nativeAppContentSecurityPolicy,
+  providePageConnectGrants,
   serverContentSecurityPolicy,
 } from "./csp";
 
@@ -41,6 +44,58 @@ describe("服务器壳的 CSP", () => {
     ]) {
       expect(policy).toContain(directive);
     }
+  });
+});
+
+describe("服务器壳页面按源表追加的连接（契约 §88.1）", () => {
+  it("源表里的 https 来源 → https 与 wss 各一条，去重排序；别的协议与坏值丢掉", () => {
+    expect(
+      connectGrantsOf([
+        "https://app.saas.test",
+        "https://abc.src.saas.test/",
+        "https://app.saas.test",
+        "http://plain.test",
+        "not a url",
+      ]),
+    ).toEqual([
+      "https://abc.src.saas.test",
+      "https://app.saas.test",
+      "wss://abc.src.saas.test",
+      "wss://app.saas.test",
+    ]);
+  });
+
+  it("追加的授权进 connect-src 与 img / media；不是 host 形状的值进不了策略", () => {
+    const policy = serverContentSecurityPolicy([
+      "https://app.saas.test",
+      "wss://app.saas.test",
+      "https://evil.test; script-src *",
+    ]);
+    expect(policy).toContain(
+      "connect-src 'self' https://app.saas.test wss://app.saas.test;",
+    );
+    expect(policy).toContain(
+      "img-src 'self' data: blob: https://app.saas.test",
+    );
+    expect(policy).not.toContain("evil");
+    expect(serverContentSecurityPolicy()).toContain("connect-src 'self';");
+  });
+
+  it("授权来自源域装上的提供方，按是否 owner 分；读不出时不追加", () => {
+    try {
+      providePageConnectGrants((owner) =>
+        owner ? ["https://direct.test", "https://a.test"] : ["https://a.test"],
+      );
+      expect(currentPageConnectGrants(false)).toEqual(["https://a.test"]);
+      expect(currentPageConnectGrants(true)).toContain("https://direct.test");
+      providePageConnectGrants(() => {
+        throw new Error("db");
+      });
+      expect(currentPageConnectGrants(true)).toEqual([]);
+    } finally {
+      providePageConnectGrants(null);
+    }
+    expect(currentPageConnectGrants(true)).toEqual([]);
   });
 });
 

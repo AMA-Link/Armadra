@@ -376,7 +376,10 @@ function rejected(status: number, body: unknown, during: string): never {
     case "session_revoked":
     case "unauthenticated":
       throw fail("source_unauthorized", "远程服务的登录已失效");
+    // 原样透传（契约 §88.2）：可能是授予被收回，也可能是主机 core 太旧、控制面不签
+    // 它的断言（cloud-api §30 的版本门），由调用方区分，不能并成「重新登录」。
     case "source_access_denied":
+      throw fail("source_access_denied", "远程服务不签这个源的断言");
     case "source_revoked":
     case "forbidden":
       throw fail("source_unauthorized", "远程服务不再允许访问这个源");

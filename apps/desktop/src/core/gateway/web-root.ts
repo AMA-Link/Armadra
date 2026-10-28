@@ -160,10 +160,16 @@ async function confirm(
   };
 }
 
-/** 每个静态响应都带的那几个头，包括与桌面壳同源的 CSP。 */
-export function staticHeaders(file?: ServedFile): Record<string, string> {
+/**
+ * 每个静态响应都带的那几个头，包括与桌面壳同源的 CSP。`connect` 是按源表追加的连接
+ * 授权（契约 §88.1），只给单页应用的入口；404 / 405 / 500 与别的产物不带。
+ */
+export function staticHeaders(
+  file?: ServedFile,
+  connect: readonly string[] = [],
+): Record<string, string> {
   return {
-    "content-security-policy": serverContentSecurityPolicy(),
+    "content-security-policy": serverContentSecurityPolicy(connect),
     "x-content-type-options": "nosniff",
     "referrer-policy": "no-referrer",
     // 页面只在 TLS 上服务；一年的 HSTS 是这类部署的下限。
@@ -173,13 +179,19 @@ export function staticHeaders(file?: ServedFile): Record<string, string> {
   };
 }
 
+/** 单页应用的入口（直接请求或回退到的 `index.html`）：只有它的 CSP 追加授权。 */
+export function pageEntry(file: ServedFile): boolean {
+  return file.relative === "index.html";
+}
+
 /** 把一份产物写进响应。`HEAD` 只发头。 */
 export function sendFile(
   response: ServerResponse,
   file: ServedFile,
   method: string,
+  connect: readonly string[] = [],
 ): void {
-  response.writeHead(200, staticHeaders(file));
+  response.writeHead(200, staticHeaders(file, connect));
   if (method === "HEAD") {
     response.end();
     return;

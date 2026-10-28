@@ -8,11 +8,30 @@ import {
 } from "./managed-socket";
 import type { SourceRegistry } from "./registry";
 import {
+  type ReloginSchedulerOptions,
+  createReloginScheduler,
+} from "./relogin";
+import {
   type CloudAuth,
   SOURCE_ERROR,
   type SourceFailure,
   type SourceState,
+  failureOf,
 } from "./types";
+
+/**
+ * 重登被这几种失败拒绝才收回这个源的访问（白名单，契约 §88.2）；其余一律按暂时性，
+ * 开着的终端与流不动，等下一次事件或到期续期再试。与 core 删刷新令牌的白名单一致。
+ */
+const RELOGIN_REFUSALS = new Set([
+  "source_unauthorized",
+  "device_rejected",
+  "cloud_account_unlinked",
+  "cloud_not_registered",
+  "source_revoked",
+  "source_access_denied",
+  "source_access_revoked",
+]);
 
 /**
  * 远程服务的事件流（客户端包 §5；cloud 契约 §6）：每个远程服务一条
@@ -25,7 +44,9 @@ import {
  * - 流（重）新打开时，这个签发方下离线或在等的源各 `connect()` 一次：断开期间
  *   错过的 `sourceOnline` 由它补上（中继重启时隧道可能比这条流先回来）；
  * - 客户端每 30 秒发 `{ type: "ping" }`；4401 = 远程服务会话失效，丢掉缓存的
- *   访问令牌、换票重连一次。
+ *   访问令牌、换票重连一次；
+ * - `grantChanged`（源表里同签发方的一行）与自己的 `memberChanged`（同团队的行）
+ *   → 去抖后经调用方重登那些源（契约 §88.2，`relogin.ts`）。
  */
 
 export const ME_STREAM_PATH = "/v1/me/stream";
@@ -37,6 +58,13 @@ const meStreamEventSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("sourceRevoked"), sourceId: z.string().min(1) }),
   z.object({ type: z.literal("accessRevoked"), sourceId: z.string().min(1) }),
   z.object({ type: z.literal("linkUsed") }),
+  // 协议 1.4（cloud-api §32）：只取标识，内容由重登时的新断言带来（契约 §88.2）。
+  z.object({ type: z.literal("grantChanged"), sourceId: z.string().min(1) }),
+  z.object({
+    type: z.literal("memberChanged"),
+    teamId: z.string().min(1),
+    accountId: z.string().optional(),
+  }),
   z.object({ type: z.literal("ping") }),
   z.object({ type: z.literal("pong") }),
 ]);
@@ -191,6 +219,13 @@ export function resyncTargets(targets: Iterable<StreamTarget>): void {
 
 export interface AttachOptions {
   readonly auth: CloudAuth;
+  /**
+   * 重登一个源（契约 §88.2：跳过刷新，带旧刷新令牌按新断言同步授予）。省略 =
+   * 授予与成员事件照旧忽略（手机、中继托管的页面）。
+   */
+  readonly relogin?: (sourceId: string) => Promise<void>;
+  /** 重登去抖（测试注入计时）。 */
+  readonly scheduler?: Omit<ReloginSchedulerOptions, "run">;
   readonly cloud?: CloudOptions;
   readonly socket?: RemoteStreamOptions["socket"];
   readonly setInterval?: RemoteStreamOptions["setInterval"];
@@ -209,6 +244,71 @@ export function attachRemoteStreams(
 ): () => void {
   const streams = new Map<string, RemoteStream>();
   const create = options.createStream ?? createRemoteStream;
+  const relogin = options.relogin;
+  const scheduler =
+    relogin === undefined
+      ? null
+      : createReloginScheduler({
+          ...options.scheduler,
+          run: (sourceId) => reloginSource(sourceId, relogin),
+        });
+  /** 每个签发方自己的账号 id（`me.get`，按签发方缓存；失败下次再问）。 */
+  const accounts = new Map<string, Promise<string>>();
+  const accountOf = (issuer: string): Promise<string> => {
+    const { auth } = options;
+    if (auth.accountId === undefined) return Promise.resolve("");
+    let known = accounts.get(issuer);
+    if (known === undefined) {
+      known = auth.accountId(issuer);
+      known.catch(() => accounts.delete(issuer));
+      accounts.set(issuer, known);
+    }
+    return known;
+  };
+
+  /** 重登成功：手里的访问续一次（新会话令牌）；没连着的连一次。明确被拒：失权。 */
+  async function reloginSource(
+    sourceId: string,
+    run: (sourceId: string) => Promise<void>,
+  ): Promise<void> {
+    try {
+      await run(sourceId);
+    } catch (error) {
+      // 认不出码的（网络错误）当作暂时的：不为一次没发出去的重登收回访问。
+      const failure = failureOf(error, SOURCE_ERROR.unreachable);
+      if (RELOGIN_REFUSALS.has(failure.code))
+        registry.get(sourceId)?.revoke(failure);
+      return;
+    }
+    const target = registry.get(sourceId);
+    if (target === undefined) return;
+    if (target.status.state === "ready")
+      await target.renew().catch(() => undefined);
+    else void target.connect().catch(() => undefined);
+  }
+
+  const onTeamEvent = (
+    issuer: string,
+    event: Extract<MeStreamEvent, { type: "grantChanged" | "memberChanged" }>,
+  ) => {
+    if (scheduler === null) return;
+    if (event.type === "grantChanged") {
+      const target = registry.get(event.sourceId);
+      if (target?.descriptor.cloudIssuer === issuer)
+        scheduler.request(event.sourceId);
+      return;
+    }
+    const { accountId, teamId } = event;
+    if (accountId === undefined) return;
+    void accountOf(issuer)
+      .then((mine) => {
+        if (mine === "" || mine !== accountId) return;
+        for (const target of targetsOf(issuer))
+          if (target.descriptor.teamId === teamId)
+            scheduler.request(target.descriptor.sourceId);
+      })
+      .catch(() => undefined);
+  };
 
   const targetsOf = (issuer: string) =>
     registry
@@ -252,6 +352,8 @@ export function attachRemoteStreams(
             ? {}
             : { clearInterval: options.clearInterval }),
           onEvent(event) {
+            if (event.type === "grantChanged" || event.type === "memberChanged")
+              return onTeamEvent(issuer, event);
             if (!("sourceId" in event)) return;
             const target = registry.get(event.sourceId);
             if (target?.descriptor.cloudIssuer !== issuer) return;
@@ -267,6 +369,7 @@ export function attachRemoteStreams(
   const unsubscribe = registry.subscribe(sync);
   return () => {
     unsubscribe();
+    scheduler?.dispose();
     for (const stream of streams.values()) stream.close();
     streams.clear();
   };

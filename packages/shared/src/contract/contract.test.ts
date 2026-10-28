@@ -383,7 +383,7 @@ describe("§55 在协议包的形状上追加", () => {
     superset(
       slot("sources.session", "inputSchema"),
       protocol.sourcesSessionInputSchema,
-      ["route"],
+      ["route", "relogin"],
     );
   });
 });
