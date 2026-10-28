@@ -64,4 +64,25 @@ describe("hover HTML", () => {
     }
     expect(depth).toBeLessThanOrEqual(MAX_SANITIZE_DEPTH);
   });
+
+  it("解析意外失败：退回转义后的纯文本，不放过标记", () => {
+    const original = globalThis.DOMParser;
+    globalThis.DOMParser = class {
+      parseFromString(): Document {
+        throw new Error("parser exploded");
+      }
+    } as unknown as typeof DOMParser;
+    try {
+      const html = sanitizeHTML(
+        '<img src=x onerror="pwned()">hi <b>there</b> & "q" \'s\'',
+      );
+      expect(html).not.toContain("<");
+      expect(html).not.toContain("onerror");
+      expect(html).toContain("hi");
+      expect(html).toContain("&#38;");
+      expect(html).toContain("&#34;");
+    } finally {
+      globalThis.DOMParser = original;
+    }
+  });
 });
