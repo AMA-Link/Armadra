@@ -10,7 +10,7 @@ import {
   ResponsiveDialogHeader,
   ResponsiveDialogTitle,
 } from "@/panels/ResponsiveDialog";
-import { pendingApprovals } from "./manager";
+import { approvalHint, pendingApprovals } from "./manager";
 
 /** 「482913」→「482 913」：分两组读得清。 */
 export function groupedSas(sas: string): string {
@@ -56,6 +56,11 @@ export function PendingApprovalDialog() {
             aria-live="polite"
           >
             {groupedSas(current.sas)}
+          </p>
+        )}
+        {!rejected && approvalHint(current.sourceId) !== null && (
+          <p className="text-center text-meta text-muted-foreground">
+            {t(`e2e.pending.hint.${approvalHint(current.sourceId)}`)}
           </p>
         )}
         <ResponsiveDialogFooter>
