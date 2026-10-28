@@ -9,8 +9,9 @@ import { Shimmer } from "@/ui/shimmer";
 import { Spinner } from "@/ui/spinner";
 
 /**
- * 按钮（设计系统 §9）。控件高度五档：xs 24 · sm 28 · default 32 · lg 36 · touch 44，
- * 圆角一律 `rounded-control`（6）；同一行里的控件取同一档，功能代码不手写高度。
+ * 按钮（设计系统 §9）。控件高度五档：xs 24 · sm 28 · default 32 · lg 36 · touch 44；
+ * 圆角 default 以上（含同高的图标钮）`rounded-field`（8），xs / sm `rounded-control`（6）。
+ * 同一行里的控件取同一档，功能代码不手写高度。
  * 主按钮是品牌蓝实底（一屏一个）；次要 `outline`，行内 `ghost`，危险确认
  * `destructive-solid`。
  *
@@ -18,7 +19,7 @@ import { Spinner } from "@/ui/spinner";
  * `static` 关掉）；`aria-expanded` 保持 hover 底；`loading` 见下。
  */
 const buttonVariants = cva(
-  "group/button motion-press inline-flex shrink-0 items-center justify-center rounded-control border border-transparent bg-clip-padding text-body font-medium whitespace-nowrap outline-none select-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:pointer-events-none disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-destructive/20 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
+  "group/button motion-press inline-flex shrink-0 items-center justify-center border border-transparent bg-clip-padding text-body font-medium whitespace-nowrap outline-none select-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:pointer-events-none disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-destructive/20 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
   {
     variants: {
       variant: {
@@ -37,17 +38,19 @@ const buttonVariants = cva(
       },
       size: {
         default:
-          "h-8 gap-1.5 px-2.5 has-data-[icon=inline-end]:pr-2 has-data-[icon=inline-start]:pl-2",
-        xs: "h-6 gap-1 px-1.5 text-meta has-data-[icon=inline-end]:pr-1 has-data-[icon=inline-start]:pl-1 [&_svg:not([class*='size-'])]:size-3",
-        sm: "h-7 gap-1 px-2 has-data-[icon=inline-end]:pr-1.5 has-data-[icon=inline-start]:pl-1.5 [&_svg:not([class*='size-'])]:size-3.5",
-        lg: "h-9 gap-1.5 px-3 has-data-[icon=inline-end]:pr-2.5 has-data-[icon=inline-start]:pl-2.5",
+          "h-8 gap-1.5 rounded-field px-2.5 has-data-[icon=inline-end]:pr-2 has-data-[icon=inline-start]:pl-2",
+        xs: "h-6 gap-1 rounded-control px-1.5 text-meta has-data-[icon=inline-end]:pr-1 has-data-[icon=inline-start]:pl-1 [&_svg:not([class*='size-'])]:size-3",
+        sm: "h-7 gap-1 rounded-control px-2 has-data-[icon=inline-end]:pr-1.5 has-data-[icon=inline-start]:pl-1.5 [&_svg:not([class*='size-'])]:size-3.5",
+        lg: "h-9 gap-1.5 rounded-field px-3 has-data-[icon=inline-end]:pr-2.5 has-data-[icon=inline-start]:pl-2.5",
         touch:
-          "h-11 gap-2 px-3 has-data-[icon=inline-end]:pr-2.5 has-data-[icon=inline-start]:pl-2.5",
-        icon: "size-8",
-        "icon-xs": "size-6 [&_svg:not([class*='size-'])]:size-3",
-        "icon-sm": "size-7 [&_svg:not([class*='size-'])]:size-3.5",
-        "icon-lg": "size-9",
-        "icon-touch": "size-11",
+          "h-11 gap-2 rounded-field px-3 has-data-[icon=inline-end]:pr-2.5 has-data-[icon=inline-start]:pl-2.5",
+        icon: "size-8 rounded-field",
+        "icon-xs":
+          "size-6 rounded-control [&_svg:not([class*='size-'])]:size-3",
+        "icon-sm":
+          "size-7 rounded-control [&_svg:not([class*='size-'])]:size-3.5",
+        "icon-lg": "size-9 rounded-field",
+        "icon-touch": "size-11 rounded-field",
       },
     },
     defaultVariants: {

@@ -2,7 +2,8 @@ import * as React from "react";
 import { cn } from "@/lib/cn";
 
 /**
- * 卡片（设计系统 §9）：`--card` 底、1px `--border`、`rounded-card`，**无阴影**。
+ * 卡片（设计系统 §9）：`--card` 底、1px `--border`、`rounded-card`（12）、`shadow-card`
+ * 轻投影（深色带 1px 顶部高光）；标题取 `text-strong`。
  * variant：`default`；`tray`（托盘内卡，`p-3`，`Tray` 的 `TrayCard` 用它）；
  * `table`（表格卡：`p-0`，头行 + `Table`，头行自带 `py-3`）。size：`default`（`p-4`）/ `sm`（`p-3`）。
  * 可选中时加 `--brand` 1.5px 边（`data-selected`）。可点的整卡用 `a` / `button` 包，
@@ -23,7 +24,7 @@ function Card({
       data-size={size}
       data-variant={variant}
       className={cn(
-        "group/card flex flex-col gap-(--card-spacing) overflow-hidden rounded-card border border-border bg-card py-(--card-spacing) text-body text-card-foreground [--card-spacing:--spacing(4)] has-data-[slot=card-footer]:pb-0 has-[>img:first-child]:pt-0 data-[size=sm]:[--card-spacing:--spacing(3)] data-[size=sm]:has-data-[slot=card-footer]:pb-0 data-[variant=tray]:[--card-spacing:--spacing(3)] data-[variant=table]:gap-0 data-[variant=table]:py-0 data-[variant=table]:*:data-[slot=card-header]:py-3 data-[selected=true]:border-brand *:[img:first-child]:rounded-t-card *:[img:last-child]:rounded-b-card",
+        "group/card flex flex-col gap-(--card-spacing) overflow-hidden rounded-card border border-border bg-card py-(--card-spacing) shadow-card text-body text-card-foreground [--card-spacing:--spacing(4)] has-data-[slot=card-footer]:pb-0 has-[>img:first-child]:pt-0 data-[size=sm]:[--card-spacing:--spacing(3)] data-[size=sm]:has-data-[slot=card-footer]:pb-0 data-[variant=tray]:[--card-spacing:--spacing(3)] data-[variant=table]:gap-0 data-[variant=table]:py-0 data-[variant=table]:*:data-[slot=card-header]:py-3 data-[selected=true]:border-brand *:[img:first-child]:rounded-t-card *:[img:last-child]:rounded-b-card",
         className,
       )}
       {...props}
@@ -49,7 +50,7 @@ function CardTitle({ className, ...props }: React.ComponentProps<"div">) {
     <div
       data-slot="card-title"
       className={cn(
-        "font-heading text-section font-medium group-data-[size=sm]/card:text-body",
+        "font-heading text-section font-medium text-strong group-data-[size=sm]/card:text-body",
         className,
       )}
       {...props}

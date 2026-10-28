@@ -41,7 +41,6 @@ import {
   ResponsiveAlertDialogHeader,
   ResponsiveAlertDialogTitle,
 } from "@/panels/ResponsiveDialog";
-import { COMMAND_INPUT_FOCUS } from "@/panels/tabs-focus";
 import { Popover, PopoverContent, PopoverTrigger } from "@/ui/popover";
 import { Separator } from "@/ui/separator";
 import {
@@ -613,10 +612,7 @@ function MemberPicker({
         className="z-[var(--z-dialog)] w-(--radix-popover-trigger-width) p-0"
       >
         <Command>
-          <CommandInput
-            className={COMMAND_INPUT_FOCUS}
-            placeholder={t("share.cloud.member.search")}
-          />
+          <CommandInput placeholder={t("share.cloud.member.search")} />
           <CommandList>
             <CommandEmpty>{t("share.cloud.member.none")}</CommandEmpty>
             <CommandGroup>

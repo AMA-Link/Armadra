@@ -44,7 +44,6 @@ import {
   ResponsiveDialogHeader,
   ResponsiveDialogTitle,
 } from "./ResponsiveDialog";
-import { COMMAND_INPUT_FOCUS } from "./tabs-focus";
 
 /** `git clone --progress` 每 500ms 至少写一行，比这更快地问没有意义。 */
 const POLL_MS = 500;
@@ -333,7 +332,6 @@ export function NewWorkspaceDialog({
                   )}
                   <Command className="rounded-card! border border-border bg-card">
                     <CommandInput
-                      className={COMMAND_INPUT_FOCUS}
                       placeholder={t("newWorkspace.search")}
                       aria-label={t("newWorkspace.search")}
                       disabled={busy}

@@ -54,8 +54,9 @@ function Tabs({
 
 /**
  * 列表样式。`default` 灰底胶囊；`line` 下划线；`segmented`（设计系统 §9）是分段控件：
- * `--surface-raised` 底、`rounded-card`、`p-[3px]`，当前项是一块 `--card` + 1px 边的
- * 指示器，在项之间平移（`--dur-base` `--ease-in-out`）。
+ * 下沉面 `--surface-sunken` 的轨道、`rounded-field`、`p-0.5`，当前项是一块浅一级的面
+ * （`--segment-thumb`）+ `shadow-card` 的 `rounded-control` 指示器，在项之间平移
+ * （`--dur-base` `--ease-in-out`）。当前项文字取 `text-strong`。
  */
 const tabsListVariants = cva(
   "group/tabs-list inline-flex w-fit items-center justify-center text-muted-foreground group-data-vertical/tabs:h-fit group-data-vertical/tabs:flex-col",
@@ -65,7 +66,7 @@ const tabsListVariants = cva(
         default:
           "rounded-control bg-muted p-[3px] group-data-horizontal/tabs:h-8",
         line: "gap-1 rounded-none bg-transparent p-[3px] group-data-horizontal/tabs:h-8",
-        segmented: "gap-0.5 rounded-card bg-raised p-[3px]",
+        segmented: "gap-0.5 rounded-field bg-sunken p-0.5",
       },
       size: {
         default: "",
@@ -120,14 +121,14 @@ function TabsTrigger({
       className={cn(
         "relative isolate inline-flex h-[calc(100%-1px)] flex-1 items-center justify-center gap-1.5 rounded-control border border-transparent px-1.5 py-0.5 text-body font-medium whitespace-nowrap text-foreground/60 transition-[color,background-color,border-color] duration-(--dur-fast) group-data-vertical/tabs:w-full group-data-vertical/tabs:justify-start hover:text-foreground focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-1 focus-visible:outline-ring disabled:pointer-events-none disabled:opacity-50 has-data-[icon=inline-end]:pr-1 has-data-[icon=inline-start]:pl-1 dark:text-muted-foreground dark:hover:text-foreground [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
         "group-data-[variant=line]/tabs-list:bg-transparent group-data-[variant=line]/tabs-list:data-active:bg-transparent dark:group-data-[variant=line]/tabs-list:data-active:border-transparent dark:group-data-[variant=line]/tabs-list:data-active:bg-transparent",
-        "data-active:text-foreground dark:data-active:text-foreground group-data-[variant=default]/tabs-list:data-active:bg-background group-data-[variant=default]/tabs-list:dark:data-active:border-input group-data-[variant=default]/tabs-list:dark:data-active:bg-input/30",
+        "data-active:text-strong dark:data-active:text-strong group-data-[variant=default]/tabs-list:data-active:bg-background group-data-[variant=default]/tabs-list:dark:data-active:border-input group-data-[variant=default]/tabs-list:dark:data-active:bg-input/30",
         "group-data-[variant=segmented]/tabs-list:h-7 group-data-[variant=segmented]/tabs-list:flex-none group-data-[variant=segmented]/tabs-list:px-2.5 group-data-[variant=segmented]/tabs-list:data-active:bg-transparent group-data-[size=sm]/tabs-list:group-data-[variant=segmented]/tabs-list:h-6 group-data-[size=sm]/tabs-list:group-data-[variant=segmented]/tabs-list:px-2 group-data-[size=sm]/tabs-list:group-data-[variant=segmented]/tabs-list:text-meta",
         className,
       )}
       {...props}
     >
       {active && variant === "segmented" && (
-        <Indicator className="inset-0 rounded-control border border-border bg-card" />
+        <Indicator className="inset-0 rounded-control bg-segment-thumb shadow-card" />
       )}
       {active && variant === "line" && (
         <Indicator className="inset-x-0 bottom-[-5px] z-0 h-0.5 bg-foreground group-data-vertical/tabs:inset-x-auto group-data-vertical/tabs:inset-y-0 group-data-vertical/tabs:-right-1 group-data-vertical/tabs:bottom-auto group-data-vertical/tabs:h-auto group-data-vertical/tabs:w-0.5" />

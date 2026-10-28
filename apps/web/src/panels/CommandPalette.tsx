@@ -27,7 +27,6 @@ import {
   CommandShortcut,
 } from "@/ui/command";
 import { Spinner } from "@/ui/spinner";
-import { COMMAND_INPUT_FOCUS } from "./tabs-focus";
 import { readRecent, rememberRecent } from "./palette-recent";
 import { QUICK_PICK_COUNT, quickPickKeyDown } from "./quick-pick";
 
@@ -226,7 +225,6 @@ export function CommandPalette() {
       description={t("palette.description")}
     >
       <CommandInput
-        className={COMMAND_INPUT_FOCUS}
         placeholder={t("palette.placeholder")}
         value={query}
         onValueChange={setQuery}

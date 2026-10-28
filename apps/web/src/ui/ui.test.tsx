@@ -177,11 +177,11 @@ describe("IconButton", () => {
     expect(button.getAttribute("aria-pressed")).toBe("true");
   });
 
-  it("激活态是强调淡底 + 正文色，图标不着强调色", () => {
+  it("激活态是强调淡底 + 标题墨色，图标不着强调色", () => {
     render(<IconButton label="固定侧栏" active />);
     const cls = screen.getByRole("button", { name: "固定侧栏" }).className;
     expect(cls).toContain("data-[active=true]:bg-brand-soft");
-    expect(cls).toContain("data-[active=true]:text-foreground");
+    expect(cls).toContain("data-[active=true]:text-strong");
     expect(cls).not.toContain("text-brand-text");
   });
 });
@@ -200,6 +200,10 @@ describe("其余生成组件的冒烟测试", () => {
       </KbdGroup>,
     );
     expect(screen.getByText("⌘").tagName).toBe("KBD");
+    // 键帽底部一条内线（只认自己的 slot，改了 slot 的命令快捷键不画）
+    expect(screen.getByText("⌘").className).toContain(
+      "data-[slot=kbd]:shadow-kbd",
+    );
   });
 
   it("Switch 可以用键盘切换", () => {
@@ -483,18 +487,22 @@ describe("Button 变体与尺寸（设计系统 §9）", () => {
   });
 
   it.each([
-    ["xs", "h-6"],
-    ["sm", "h-7"],
-    ["default", "h-8"],
-    ["lg", "h-9"],
-    ["touch", "h-11"],
-  ] as const)("size=%s 高度档 %s，圆角统一 rounded-control", (size, height) => {
-    render(<Button size={size}>动作</Button>);
-    const button = screen.getByRole("button");
-    expect(button.dataset.size).toBe(size);
-    expect(button.className).toMatch(new RegExp(`\\b${height}\\b`));
-    expect(button.className).toContain("rounded-control");
-  });
+    ["xs", "h-6", "rounded-control"],
+    ["sm", "h-7", "rounded-control"],
+    ["default", "h-8", "rounded-field"],
+    ["lg", "h-9", "rounded-field"],
+    ["touch", "h-11", "rounded-field"],
+  ] as const)(
+    "size=%s 高度档 %s，圆角 %s（default 以上 8，xs / sm 6）",
+    (size, height, radius) => {
+      render(<Button size={size}>动作</Button>);
+      const button = screen.getByRole("button");
+      expect(button.dataset.size).toBe(size);
+      expect(button.className).toMatch(new RegExp(`\\b${height}\\b`));
+      expect(button.className).toContain(radius);
+      expect(button.className.match(/\brounded-\w+/g)).toEqual([radius]);
+    },
+  );
 
   it("过渡点名属性、按下反馈由 motion-press 给，不用 transition-all", () => {
     render(<Button>动作</Button>);
@@ -705,17 +713,21 @@ describe("Kbd / Spinner / Shimmer", () => {
 
 describe("Input / Textarea / Select / InputGroup 四档高度（设计系统 §2.13）", () => {
   it.each([
-    ["xs", "h-6"],
-    ["sm", "h-7"],
-    ["default", "h-8"],
-    ["touch", "h-11"],
-  ] as const)("Input size=%s → %s，圆角 rounded-control", (size, height) => {
-    render(<Input aria-label="名称" size={size} />);
-    const input = screen.getByRole("textbox");
-    expect(input.dataset.size).toBe(size);
-    expect(input.className).toMatch(new RegExp(`\\b${height}\\b`));
-    expect(input.className).toContain("rounded-control");
-  });
+    ["xs", "h-6", "rounded-control"],
+    ["sm", "h-7", "rounded-control"],
+    ["default", "h-8", "rounded-field"],
+    ["touch", "h-11", "rounded-field"],
+  ] as const)(
+    "Input size=%s → %s，圆角 %s，底是下沉面",
+    (size, height, radius) => {
+      render(<Input aria-label="名称" size={size} />);
+      const input = screen.getByRole("textbox");
+      expect(input.dataset.size).toBe(size);
+      expect(input.className).toMatch(new RegExp(`\\b${height}\\b`));
+      expect(input.className).toContain(radius);
+      expect(input.className).toContain("bg-sunken");
+    },
+  );
 
   it("Input 手机上 16px（text-base），桌面落回正文档；touch 档任何视口都是 16", () => {
     const { rerender } = render(<Input aria-label="名称" />);
@@ -820,15 +832,20 @@ describe("Tabs segmented / line 与共享指示器（设计系统 §9）", () =>
       </Tabs>,
     );
 
-  it("segmented：raised 底、rounded-card、p-[3px]；当前项里有一块指示器，点另一项后移过去", () => {
+  it("segmented：下沉轨道、rounded-field、p-0.5；当前项里有一块浅一级带投影的指示器，点另一项后移过去", () => {
     renderTabs("segmented");
     const list = screen.getByRole("tablist");
     expect(list.dataset.variant).toBe("segmented");
-    expect(list.className).toContain("bg-raised");
-    expect(list.className).toContain("rounded-card");
-    expect(list.className).toContain("p-[3px]");
+    expect(list.className).toContain("bg-sunken");
+    expect(list.className).toContain("rounded-field");
+    expect(list.className).toContain("p-0.5");
     const [first, second] = screen.getAllByRole("tab");
-    expect(first!.querySelector("[data-slot='indicator']")).not.toBeNull();
+    const thumb = first!.querySelector<HTMLElement>("[data-slot='indicator']");
+    expect(thumb).not.toBeNull();
+    expect(thumb!.className).toContain("bg-segment-thumb");
+    expect(thumb!.className).toContain("shadow-card");
+    expect(thumb!.className).toContain("rounded-control");
+    expect(first!.className).toContain("data-active:text-strong");
     expect(second!.querySelector("[data-slot='indicator']")).toBeNull();
     fireEvent.mouseDown(second!, { button: 0 });
     expect(second!.getAttribute("aria-selected")).toBe("true");
@@ -911,13 +928,19 @@ describe("Tabs segmented / line 与共享指示器（设计系统 §9）", () =>
 });
 
 describe("Card 变体（设计系统 §9）", () => {
-  it("default：1px 边、rounded-card、无阴影也无 ring", () => {
-    render(<Card data-testid="card">内容</Card>);
+  it("default：1px 边、rounded-card、轻投影 shadow-card、无 ring；标题取 text-strong", () => {
+    render(
+      <Card data-testid="card">
+        <CardTitle>标题</CardTitle>
+      </Card>,
+    );
     const card = screen.getByTestId("card");
     expect(card.dataset.variant).toBe("default");
     expect(card.className).toContain("rounded-card");
     expect(card.className).toContain("border-border");
-    expect(card.className).not.toMatch(/\bshadow|ring-1/);
+    expect(card.className.match(/\bshadow-[\w-]+/g)).toEqual(["shadow-card"]);
+    expect(card.className).not.toContain("ring-1");
+    expect(screen.getByText("标题").className).toContain("text-strong");
   });
 
   it("tray 与 table 打 data-variant；table 去掉内边距", () => {
@@ -935,7 +958,7 @@ describe("Card 变体（设计系统 §9）", () => {
 });
 
 describe("Table 与空态", () => {
-  it("表头 raised 32 高 text-caption，行 36（sm 28），单元格 px-3", () => {
+  it("表头无底色 32 高 text-meta 次要色 + --border 底线，行 36（sm 28）以 --border-soft 分隔，单元格 px-3", () => {
     const { rerender } = render(
       <Table>
         <TableHeader>
@@ -951,8 +974,17 @@ describe("Table 与空态", () => {
       </Table>,
     );
     expect(screen.getByText("名称").className).toContain("h-8");
-    expect(screen.getByText("名称").className).toContain("bg-raised");
-    expect(screen.getByText("名称").className).toContain("text-caption");
+    expect(screen.getByText("名称").className).not.toMatch(/\bbg-/);
+    expect(screen.getByText("名称").className).toContain("text-meta");
+    expect(screen.getByText("名称").className).toContain(
+      "text-muted-foreground",
+    );
+    expect(document.querySelector("thead")!.className).toContain(
+      "[&_tr]:border-border",
+    );
+    expect(screen.getByText("行").closest("tr")!.className).toContain(
+      "border-border-soft",
+    );
     expect(screen.getByText("行").className).toContain("px-3");
     const row = () => screen.getByText("行").closest("tr")!;
     expect(row().className).toContain("h-9");
