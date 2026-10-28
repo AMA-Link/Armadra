@@ -679,7 +679,7 @@ export class SourcesService {
       sourceId: row.sourceId,
     };
     const lock = `source ${row.sourceId} ${route.origin}`;
-    const since = this.exchanges.generation(lock);
+    const since = this.exchanges.arrival(lock);
     // 刷新与重登在同一把锁里；排队时别人刚换过的新鲜访问直接共用（契约 §88.2）。
     const fresh = await this.serial(lock, async () => {
       const shared = this.exchanges.shared(
@@ -689,6 +689,7 @@ export class SourcesService {
         this.now() + ACCESS_SLACK_MS,
       );
       if (shared !== undefined) return shared;
+      const began = this.exchanges.begin(lock);
       const got = await renewAtRelay(
         {
           store: this.store,
@@ -707,7 +708,7 @@ export class SourcesService {
         },
         relogin,
       );
-      this.exchanges.record(lock, relogin, got);
+      this.exchanges.record(lock, relogin, began, got);
       return got;
     });
     this.ok(row, route);

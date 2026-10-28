@@ -156,34 +156,62 @@ export async function renewAtRelay(
 export class RelayExchanges {
   private readonly last = new Map<
     string,
-    { gen: number; relogin: boolean; credentials: NativeCredentials }
+    {
+      gen: number;
+      relogin: boolean;
+      /** 这次换票开始（进锁）时的序号。 */
+      began: number;
+      credentials: NativeCredentials;
+    }
   >();
+  private readonly started = new Map<string, number>();
 
-  generation(key: string): number {
-    return this.last.get(key)?.gen ?? 0;
+  /** 调用方到来时记下：已完成几次、已开始几次。 */
+  arrival(key: string): { gen: number; began: number } {
+    return {
+      gen: this.last.get(key)?.gen ?? 0,
+      began: this.started.get(key) ?? 0,
+    };
   }
 
+  /** 进锁、真要换票时调：答这次的开始序号。 */
+  begin(key: string): number {
+    const next = (this.started.get(key) ?? 0) + 1;
+    this.started.set(key, next);
+    return next;
+  }
+
+  /**
+   * 能共用的那份：自己到来之后才完成的、访问还新鲜的。要重登的更严：只共用在自己
+   * 到来**之后才开始**的重登——之前就开始的那次用的是更早的断言，授予未必是新的。
+   */
   shared(
     key: string,
-    since: number,
+    since: { gen: number; began: number },
     relogin: boolean,
     freshUntil: number,
   ): NativeCredentials | undefined {
     const last = this.last.get(key);
     if (
       last === undefined ||
-      last.gen === since ||
-      (relogin && !last.relogin) ||
+      last.gen === since.gen ||
+      (relogin && (!last.relogin || last.began <= since.began)) ||
       last.credentials.accessExpiresAtMs <= freshUntil
     )
       return undefined;
     return last.credentials;
   }
 
-  record(key: string, relogin: boolean, credentials: NativeCredentials): void {
+  record(
+    key: string,
+    relogin: boolean,
+    began: number,
+    credentials: NativeCredentials,
+  ): void {
     this.last.set(key, {
-      gen: this.generation(key) + 1,
+      gen: (this.last.get(key)?.gen ?? 0) + 1,
       relogin,
+      began,
       credentials,
     });
   }
