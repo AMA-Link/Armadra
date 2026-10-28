@@ -20,6 +20,7 @@ const twMerge = extendTailwindMerge({
           rounded: [
             "tight",
             "control",
+            "field",
             "card",
             "panel",
             "dialog",
@@ -28,7 +29,11 @@ const twMerge = extendTailwindMerge({
           ],
         },
       ],
-      shadow: [{ shadow: ["node", "overlay", "dialog"] }],
+      shadow: [
+        {
+          shadow: ["card", "node", "node-lift", "overlay", "dialog", "kbd"],
+        },
+      ],
     },
   },
 });

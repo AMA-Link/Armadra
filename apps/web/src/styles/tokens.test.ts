@@ -109,6 +109,13 @@ const AGENT_TEXT_COLORS = Object.keys(AGENT_COLORS).map(
 /** 设计系统 §2.3–§2.10 新增、两套主题都要有的名字。 */
 const THEMED_ADDITIONS = [
   "--on-agent",
+  "--text-strong",
+  "--border-soft",
+  "--segment-thumb",
+  "--shadow-card",
+  "--shadow-overlay",
+  "--shadow-dialog",
+  "--shadow-kbd",
   "--warn-text",
   "--success-text",
   "--working-text",
@@ -152,13 +159,14 @@ const MOTION_TOKENS: Record<string, string> = {
   "--stagger": "40ms",
 };
 
-/** 设计系统 §2.8：七档语义圆角。 */
+/** 设计系统 §2.8：八档语义圆角。 */
 const RADII: Record<string, string> = {
   "--r-tight": "4px",
   "--r-control": "6px",
-  "--r-card": "10px",
+  "--r-field": "8px",
+  "--r-card": "12px",
   "--r-panel": "12px",
-  "--r-dialog": "14px",
+  "--r-dialog": "16px",
   "--r-float": "16px",
   "--r-pill": "999px",
 };
@@ -308,6 +316,69 @@ describe("tokens.css", () => {
     }
   });
 
+  it("五级中性面（§2.1）：面板与下沉同值，deep 并入 sunken，面与墨都是不带色偏的实色", () => {
+    const gray = /^#([0-9a-f]{2})\1\1$/;
+    for (const table of [dark, light]) {
+      expect(table.get("--surface-deep")).toBe("var(--surface-sunken)");
+      expect(table.get("--panel")).toBe(table.get("--surface-sunken"));
+      for (const name of [
+        "--bg",
+        "--panel",
+        "--surface-sunken",
+        "--surface-card",
+        "--surface-overlay",
+        "--surface-raised",
+        "--text-strong",
+        "--text",
+        "--muted-foreground",
+        "--faint",
+      ]) {
+        expect(table.get(name), name).toMatch(gray);
+      }
+    }
+    // 亮度顺序：深色 bg < panel < card < overlay < raised；浅色卡片与浮层比窗口底亮
+    const level = (table: Map<string, string>, name: string) =>
+      Number.parseInt(table.get(name)!.slice(1, 3), 16);
+    const darkOrder = [
+      "--bg",
+      "--panel",
+      "--surface-card",
+      "--surface-overlay",
+      "--surface-raised",
+    ].map((name) => level(dark, name));
+    expect(darkOrder).toEqual([...darkOrder].sort((a, b) => a - b));
+    expect(new Set(darkOrder).size).toBe(darkOrder.length);
+    expect(level(light, "--surface-card")).toBeGreaterThan(
+      level(light, "--bg"),
+    );
+    expect(level(light, "--surface-overlay")).toBeGreaterThan(
+      level(light, "--surface-card"),
+    );
+    expect(level(light, "--panel")).toBeLessThan(level(light, "--bg"));
+    // 分段控件当前项比下沉的轨道浅一级
+    expect(dark.get("--segment-thumb")).toBe("var(--surface-raised)");
+    expect(light.get("--segment-thumb")).toBe("var(--surface-overlay)");
+  });
+
+  it("墨四阶（§2.1）：标题 > 正文 > 次要 > 装饰，两套主题各自递进", () => {
+    const level = (table: Map<string, string>, name: string) =>
+      Number.parseInt(table.get(name)!.slice(1, 3), 16);
+    const ink = ["--text-strong", "--text", "--muted-foreground", "--faint"];
+    const darkInk = ink.map((name) => level(dark, name));
+    const lightInk = ink.map((name) => level(light, name));
+    expect(darkInk).toEqual([...darkInk].sort((a, b) => b - a));
+    expect(lightInk).toEqual([...lightInk].sort((a, b) => a - b));
+    // 线条三档仍从 --tint-rgb 派生（hover / active 也是）
+    for (const table of [dark, light]) {
+      for (const name of ["--border-soft", "--border", "--border-strong"])
+        expect(table.get(name), name).toMatch(
+          /^rgb\(var\(--tint-rgb\) \/ \d+%\)$/,
+        );
+    }
+    expect(appCss).toContain("--color-strong: var(--text-strong);");
+    expect(appCss).toContain("--color-border-soft: var(--border-soft);");
+  });
+
   it("布局常量按 §3.1 取值", () => {
     for (const [name, value] of Object.entries(LAYOUT_CONSTANTS)) {
       expect(dark.get(name)).toBe(value);
@@ -433,13 +504,12 @@ describe("tokens.css", () => {
     }
   });
 
-  it("旧名字 --r-md / --r-lg / --r-sm / --r-xl 与 --shadow-card / --shadow-pill 已全部删除", () => {
+  it("旧名字 --r-md / --r-lg / --r-sm / --r-xl 与 --shadow-pill 已全部删除", () => {
     for (const name of [
       "--r-md",
       "--r-lg",
       "--r-sm",
       "--r-xl",
-      "--shadow-card",
       "--shadow-pill",
     ]) {
       expect(dark.has(name)).toBe(false);
@@ -447,18 +517,52 @@ describe("tokens.css", () => {
     }
   });
 
-  it("三档阴影：节点 / 浮层 / 对话框，浅色各自减半，卡片没有阴影", () => {
+  it("投影逐级加深（§2.9）：卡片 / 浮层 / 对话框；节点与拖动 / 选中是别名；深色带顶部高光，浅色不带", () => {
     for (const name of [
-      "--shadow-node",
+      "--shadow-card",
       "--shadow-overlay",
       "--shadow-dialog",
     ]) {
-      expect(dark.get(name)).toMatch(/^0 /);
-      expect(light.get(name)).toMatch(/^0 /);
-      expect(light.get(name)).not.toBe(dark.get(name));
+      expect(dark.get(name), name).toMatch(
+        /^inset 0 1px 0 0 rgb\(255 255 255 \/ \d+%\), /,
+      );
+      expect(light.get(name), name).toMatch(/^0 /);
+      expect(light.get(name), name).not.toContain("inset");
     }
-    expect(dark.get("--shadow-overlay")).toBe("0 4px 12px rgb(0 0 0 / 28%)");
-    expect(light.get("--shadow-overlay")).toBe("0 4px 12px rgb(0 0 0 / 8%)");
+    expect(dark.get("--shadow-node")).toBe("var(--shadow-card)");
+    expect(dark.get("--shadow-node-lift")).toBe("var(--shadow-overlay)");
+    // 别名只声明一次，浅色改底层值就跟着变
+    expect(light.has("--shadow-node")).toBe(false);
+    expect(light.has("--shadow-node-lift")).toBe(false);
+    // 层数：卡片 1 层投影，浮层与对话框 2 层，模糊半径逐级变大
+    const blurs = (value: string) =>
+      value
+        .split(/,(?![^(]*\))/)
+        .filter((layer) => !layer.includes("inset"))
+        .map((layer) => Number.parseFloat(layer.trim().split(/\s+/)[2]!));
+    for (const table of [dark, light]) {
+      const card = Math.max(...blurs(table.get("--shadow-card")!));
+      const overlay = Math.max(...blurs(table.get("--shadow-overlay")!));
+      const dialog = Math.max(...blurs(table.get("--shadow-dialog")!));
+      expect(card).toBeLessThan(overlay);
+      expect(overlay).toBeLessThan(dialog);
+    }
+    expect(dark.get("--shadow-kbd")).toBe(
+      "inset 0 -1px 0 0 rgb(255 255 255 / 8%)",
+    );
+    expect(light.get("--shadow-kbd")).toBe("inset 0 -1px 0 0 rgb(0 0 0 / 10%)");
+    for (const name of [
+      "card",
+      "node",
+      "node-lift",
+      "overlay",
+      "dialog",
+      "kbd",
+    ]) {
+      expect(appCss).toContain(
+        `@utility shadow-${name} {\n  box-shadow: var(--shadow-${name});`,
+      );
+    }
   });
 
   it("间距层级由内向外递增，区块间距拉得开（§2.7）", () => {

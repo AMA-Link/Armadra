@@ -93,6 +93,8 @@
   --color-muted: var(--muted);
   --color-muted-foreground: var(--muted-foreground);
   --color-faint: var(--faint);
+  /* 墨阶第一档：标题、页头、选中项文字（`text-strong`） */
+  --color-strong: var(--text-strong);
 
   /* ── 表面高度 ────────────────────────────────────────────────────── */
   --color-panel: var(--panel);
@@ -106,10 +108,12 @@
   --color-deep: var(--surface-deep);
   --color-raised: var(--surface-raised);
   --color-overlay: var(--surface-overlay);
+  --color-segment-thumb: var(--segment-thumb);
   --color-hover: var(--hover);
   --color-active: var(--active);
   --color-scrim: var(--scrim);
   --color-border-strong: var(--border-strong);
+  --color-border-soft: var(--border-soft);
   --color-brand: var(--brand);
   --color-brand-text: var(--brand-text);
   --color-brand-soft: var(--brand-soft);
@@ -161,9 +165,10 @@
   --color-member-7: var(--member-7);
   --color-member-8: var(--member-8);
 
-  /* ── 圆角（设计系统 §2.8）：七档语义，shadcn 别名重映射到同一张表 ─── */
+  /* ── 圆角（设计系统 §2.8）：八档语义，shadcn 别名重映射到同一张表 ─── */
   --radius-tight: var(--r-tight);
   --radius-control: var(--r-control);
+  --radius-field: var(--r-field);
   --radius-card: var(--r-card);
   --radius-panel: var(--r-panel);
   --radius-dialog: var(--r-dialog);
@@ -340,17 +345,6 @@
     animation: armadra-fade-in var(--dur-fast) var(--ease-out);
   }
 
-  /* 三档阴影（设计系统 §2.9）：卡片没有阴影，只有 1px 边 */
-  .shadow-node {
-    box-shadow: var(--shadow-node);
-  }
-  .shadow-overlay {
-    box-shadow: var(--shadow-overlay);
-  }
-  .shadow-dialog {
-    box-shadow: var(--shadow-dialog);
-  }
-
   /* 两端渐隐的发丝线（§2.1）：设置工作台分组之间、官网分区之间 */
   .hairline-x {
     height: 1px;
@@ -372,6 +366,29 @@
   .drag-handle:active {
     cursor: grabbing;
   }
+}
+
+/*
+ * 投影（设计系统 §2.9）：卡片与节点轻投影，节点拖动 / 选中、浮层、对话框逐级加深；
+ * 键帽底部一条内线。写成 `@utility` 而不是普通类，`data-[…]:shadow-*` 这类变体才生效。
+ */
+@utility shadow-card {
+  box-shadow: var(--shadow-card);
+}
+@utility shadow-node {
+  box-shadow: var(--shadow-node);
+}
+@utility shadow-node-lift {
+  box-shadow: var(--shadow-node-lift);
+}
+@utility shadow-overlay {
+  box-shadow: var(--shadow-overlay);
+}
+@utility shadow-dialog {
+  box-shadow: var(--shadow-dialog);
+}
+@utility shadow-kbd {
+  box-shadow: var(--shadow-kbd);
 }
 
 /*
