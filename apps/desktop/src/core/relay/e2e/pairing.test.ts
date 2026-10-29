@@ -685,6 +685,22 @@ describe("浏览器不批主人的设备、不签配对秘密（契约 §88.7）
     expect(statusOf(target.pendingId)).toBe("pending");
   });
 
+  it("登记时是桌面的设备钥，这次握手自报 browser：也按浏览器拒", async () => {
+    const desktop = await ownerDevice(90, "desktop");
+    desktop.client.close();
+    const browserNow = await connect(90, undefined, "browser");
+    open.push(browserNow);
+    const logged = await login(browserNow, assertion());
+    expect(logged.status, logged.body.toString()).toBe(200);
+    const target = await pendingDevice(91);
+    const answer = await approveVia(
+      { client: browserNow, token: tokenOf(logged) },
+      target,
+    );
+    expect(answer.status).toBe(403);
+    expect(statusOf(target.pendingId)).toBe("pending");
+  });
+
   it("不走通道的明文中继路径批主人的新设备：403（绕开通道也绕不开）", async () => {
     const token = await plaintextOwner();
     const target = await pendingDevice(79);
