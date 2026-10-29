@@ -22,7 +22,13 @@ import {
   isCloudSessionMessage,
   openCloudSessionChannel,
 } from "./cloud-session-channel";
-import { browserSessionStorage } from "./relay-vault";
+import { type HostedRelay, createHostedRelay } from "./hosted";
+import {
+  type GuestShare,
+  browserLocalStorage,
+  browserSessionStorage,
+  guestLinkFor,
+} from "./relay-vault";
 import type { RelaySession } from "./relay-access";
 import {
   type RelayedEntry,
@@ -52,6 +58,9 @@ import { SOURCE_ERROR, SourceError } from "./types";
  * - **授予同步**：`grantChanged`（这台）与自己的 `memberChanged` 去抖合并后重登（§2.3）。
  * - **失败态与版本门**：断言答 `source_access_denied` 时按 `sources.get` 的 `coreVersion`
  *   分出「版本太旧」与「没有权限」（§2.5）。
+ * - **访客记录**（§2.8）：按分享链接进过这台主机的访客记录（`localStorage`，托管页那一份）——
+ *   没有 Cookie 会话、或 Cookie 账号看不到 / 没权限进这台主机时，用它经托管中继以访客进入；
+ *   两样都没有才去登录。访客的访问被收回 → 「访问已被收回」。
  */
 
 /** 登出经通道吊销主机侧会话最多等多久。 */
@@ -160,8 +169,13 @@ export const HOST_FAILURE = {
   e2eUnsupported: "e2e_unsupported",
   unlinked: "cloud_account_unlinked",
   deviceUnavailable: "e2e_device_unavailable",
+  /** 访客（分享链接）的访问被收回、链接被撤或到期。 */
+  accessRevoked: "access_revoked",
   failed: "failed",
 } as const;
+
+/** 访客离线时多久再试一次（没有 Cookie 会话，等不到控制台的 `sourceOnline`）。 */
+export const GUEST_OFFLINE_RETRY_MS = 15_000;
 
 const KNOWN_FAILURES = new Set<string>(Object.values(HOST_FAILURE));
 
@@ -193,7 +207,15 @@ export interface HostInfo {
   readonly space: "team" | "personal";
   /** 控制台说你是主人。 */
   readonly owner: boolean;
+  /** 以访客（分享链接）进的：没有控制台账号，顶栏是访客栏。 */
+  readonly guest?: boolean;
 }
+
+/** `/h/` 以访客进入用到的托管中继那几样（缺省 `hosted.ts`；测试换掉）。 */
+export type GuestRelay = Pick<
+  HostedRelay,
+  "resumeLink" | "guest" | "status" | "subscribe" | "signOut"
+>;
 
 /** 身份面会话是不是本机 owner（有 `settings:write`）。 */
 export function isLocalOwner(session: IdentitySession | null): boolean {
@@ -232,6 +254,10 @@ export interface ConsoleHostOptions {
     "enter" | "createStream" | "mount" | "wake" | "cloud"
   >;
   readonly now?: () => number;
+  /** 访客记录所在（缺省 `localStorage`；`null` = 不查访客记录）。 */
+  readonly guestStorage?: Storage | null;
+  /** 测试注入：造以访客进入用的托管中继。 */
+  readonly guestRelay?: () => GuestRelay;
 }
 
 export interface ConsoleHost {
@@ -247,7 +273,8 @@ export interface ConsoleHost {
   open(): Promise<void>;
   /** 本页「登出」：经通道 `session/logout`，再删本条记录。 */
   signOut(): Promise<void>;
-  guest(): null;
+  /** 以访客进的：那份分享；账号身份是 `null`。 */
+  guest(): GuestShare | null;
   dispose(): void;
 }
 
@@ -297,6 +324,15 @@ export function createConsoleHost(options: ConsoleHostOptions): ConsoleHost {
   let wasEntered = false;
   /** 登出了（本页或别处）：凭据提供方不再要断言。 */
   let closed = false;
+  const guestStorage =
+    options.guestStorage === undefined
+      ? browserLocalStorage()
+      : options.guestStorage;
+  /** 以访客进入用的托管中继（第一次要用时才建）。 */
+  let guestRelay: GuestRelay | null = null;
+  let stopGuest: (() => void) | null = null;
+  /** 这次是以访客进的（不是控制台账号）。 */
+  let guestMode = false;
   const listeners = new Set<() => void>();
   const publish = () => {
     for (const listener of [...listeners]) {
@@ -570,7 +606,8 @@ export function createConsoleHost(options: ConsoleHostOptions): ConsoleHost {
   };
 
   channel?.addEventListener("message", ({ data }) => {
-    if (disposed || !isCloudSessionMessage(data)) return;
+    // 访客与控制台账号无关：别的标签页登出、换账号、认领都不关它的事。
+    if (disposed || guestMode || !isCloudSessionMessage(data)) return;
     if (data.type === "signingOut") {
       if (view.kind !== "entered" && view.kind !== "expired") return;
       channel.postMessage({ type: "loggingOut", tabId });
@@ -605,6 +642,90 @@ export function createConsoleHost(options: ConsoleHostOptions): ConsoleHost {
       code: KNOWN_FAILURES.has(code) ? code : HOST_FAILURE.failed,
     });
 
+  /* ------------------------------ 访客 ------------------------------- */
+
+  const findGuest = () =>
+    guestStorage === null
+      ? null
+      : guestLinkFor(guestStorage, issuer, hostId, (options.now ?? Date.now)());
+
+  const guestRelayOnce = (): GuestRelay => {
+    if (guestRelay !== null) return guestRelay;
+    const relay = (
+      options.guestRelay ??
+      (() =>
+        createHostedRelay({
+          issuer,
+          e2e,
+          ...(options.entry?.cloud === undefined
+            ? {}
+            : { cloud: options.entry.cloud }),
+        }))
+    )();
+    stopGuest = relay.subscribe(() => {
+      // 进去之后访客的访问被收回（链接被撤、到期）：托管中继已清掉那份记录。
+      if (
+        guestMode &&
+        view.kind === "entered" &&
+        relay.status.state === "unauthorized"
+      ) {
+        setView({ kind: "failed", code: HOST_FAILURE.accessRevoked });
+        return;
+      }
+      publish();
+    });
+    guestRelay = relay;
+    return relay;
+  };
+
+  /** 用这条链接的访客记录经托管中继进这台主机（§2.8）。 */
+  const enterAsGuest = async (
+    linkId: string,
+    stale: () => boolean,
+  ): Promise<void> => {
+    if (wasEntered) {
+      entry.close();
+      wasEntered = false;
+    }
+    const relay = guestRelayOnce();
+    let resumed: Awaited<ReturnType<GuestRelay["resumeLink"]>>;
+    try {
+      resumed = await relay.resumeLink(linkId);
+    } catch {
+      resumed = null;
+    }
+    if (stale()) return;
+    info = {
+      name: relay.guest()?.name || info?.name || "",
+      consoleHref: "/",
+      space: "personal",
+      owner: false,
+      guest: true,
+    };
+    if (resumed?.kind === "entered") {
+      guestMode = true;
+      rateLimited = 0;
+      setView({ kind: "entered" });
+      return;
+    }
+    if (
+      resumed?.kind === "gone" ||
+      (resumed?.kind === "signedIn" && resumed.failure === "revoked")
+    ) {
+      setView({ kind: "failed", code: HOST_FAILURE.accessRevoked });
+      return;
+    }
+    if (resumed?.kind === "signedIn" && resumed.failure === "offline") {
+      setView({ kind: "offline", lastSeenAtMs: null });
+      retryTimer = later(() => {
+        retryTimer = null;
+        if (!stale()) void open();
+      }, GUEST_OFFLINE_RETRY_MS);
+      return;
+    }
+    fail(HOST_FAILURE.failed);
+  };
+
   async function open(): Promise<void> {
     if (disposed) return;
     if (retryTimer !== null) cancel(retryTimer);
@@ -614,13 +735,18 @@ export function createConsoleHost(options: ConsoleHostOptions): ConsoleHost {
     /** 这一次已经过时（又开了一次、登出了、销毁了）：不再改视图、不再写记录。 */
     const stale = () => generation !== mine || closed || disposed;
     setView({ kind: "connecting" });
+    guestMode = false;
+    // 先查这台主机的访客记录：没有 Cookie 会话、或账号进不了这台时用它（§2.8）。
+    const guestLink = findGuest();
     let me: Awaited<ReturnType<CloudClient["me"]["get"]>>;
     try {
       me = await client.me.get({});
     } catch (error) {
       if (stale()) return;
-      if (statusOf(error) === 401) setView({ kind: "login" });
-      else fail(codeOf(error));
+      if (statusOf(error) === 401) {
+        if (guestLink !== null) return enterAsGuest(guestLink, stale);
+        setView({ kind: "login" });
+      } else fail(codeOf(error));
       return;
     }
     if (stale()) return;
@@ -644,8 +770,17 @@ export function createConsoleHost(options: ConsoleHostOptions): ConsoleHost {
       detail = await client.sources.get({ sourceId: hostId });
     } catch (error) {
       if (stale()) return;
+      const code = codeOf(error);
+      // 账号看不到这台（控制台对没权限的主机答 not_found）：有访客记录就以访客进。
+      if (
+        guestLink !== null &&
+        (statusOf(error) === 401 ||
+          code === HOST_FAILURE.notFound ||
+          code === HOST_FAILURE.denied)
+      )
+        return enterAsGuest(guestLink, stale);
       if (statusOf(error) === 401) setView({ kind: "login" });
-      else fail(codeOf(error) || HOST_FAILURE.failed);
+      else fail(code || HOST_FAILURE.failed);
       return;
     }
     if (stale()) return;
@@ -688,6 +823,11 @@ export function createConsoleHost(options: ConsoleHostOptions): ConsoleHost {
       } catch (error) {
         if (stale()) return;
         const code = codeOf(error);
+        // 账号对这台没有权限：有访客记录就退回访客。
+        if (code === HOST_FAILURE.denied && guestLink !== null) {
+          entry.close();
+          return enterAsGuest(guestLink, stale);
+        }
         // 主体不符：记录已丢，重新 cloud/login 一次。
         if (principalChanged && attempt === 0) {
           principalChanged = false;
@@ -741,7 +881,9 @@ export function createConsoleHost(options: ConsoleHostOptions): ConsoleHost {
       return view;
     },
     get status() {
-      return entry.status;
+      return guestMode && guestRelay !== null
+        ? guestRelay.status
+        : entry.status;
     },
     get info() {
       return info;
@@ -759,11 +901,24 @@ export function createConsoleHost(options: ConsoleHostOptions): ConsoleHost {
     },
     open,
     async signOut() {
+      if (guestMode && guestRelay !== null) {
+        // 访客「登出」：丢掉这条链接的访客记录（托管中继清它），不碰控制台账号。
+        closed = true;
+        generation += 1;
+        if (retryTimer !== null) cancel(retryTimer);
+        retryTimer = null;
+        await guestRelay.signOut().catch(() => undefined);
+        guestMode = false;
+        setView({ kind: "signedOut" });
+        return;
+      }
       await signedOut();
     },
-    guest: () => null,
+    guest: () => (guestMode ? (guestRelay?.guest() ?? null) : null),
     dispose() {
       disposed = true;
+      // 访客的托管中继不 dispose：它会清掉 localStorage 里的访客记录，刷新后就续不上了。
+      stopGuest?.();
       stopWaiting();
       if (retryTimer !== null) cancel(retryTimer);
       scheduler.dispose();

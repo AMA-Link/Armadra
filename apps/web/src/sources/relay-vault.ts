@@ -202,6 +202,28 @@ export function guestKeys(
   }
 }
 
+/**
+ * 进过 `sourceId` 这台主机的访客记录是哪条链接的（控制台 `/h/` 刷新时用，设计 saas-host-open §2.8）；
+ * 没有、都到期了答 `null`。有几条时取到期最晚的那条。
+ */
+export function guestLinkFor(
+  storage: Storage | null,
+  issuer: string,
+  sourceId: string,
+  now: number = Date.now(),
+): string | null {
+  const prefix = `${GUEST_KEY_PREFIX}${issuer}|`;
+  let best: { linkId: string; expiresAtMs: number } | null = null;
+  for (const key of guestKeys(storage, issuer, now)) {
+    const record = readResume(storage, issuer, key, now);
+    if (record.entered?.sourceId !== sourceId) continue;
+    const expiresAtMs = record.expiresAtMs ?? Number.POSITIVE_INFINITY;
+    if (best === null || expiresAtMs > best.expiresAtMs)
+      best = { linkId: key.slice(prefix.length), expiresAtMs };
+  }
+  return best?.linkId ?? null;
+}
+
 /** 这条链接是否已经加入过：存储里有它没到期、还带刷新令牌的访客记录。 */
 export function hasGuestRecord(issuer: string, linkId: string): boolean {
   return guestKeys(browserLocalStorage(), issuer).includes(

@@ -49,6 +49,7 @@ export {
   createSessionRelayVault,
   guestKey,
   guestKeys,
+  guestLinkFor,
   hasGuestRecord,
 } from "./relay-vault";
 export { RELAY_DOWN_AFTER_MS } from "./relayed-entry";

@@ -16,11 +16,15 @@ import {
 } from "./cloud-session-channel";
 import {
   type ConsoleHostOptions,
+  type GuestRelay,
   createConsoleHost,
   hostTooOld,
   versionBelow,
 } from "./console-host";
 import type { E2eChannels } from "./e2e/manager";
+import type { LinkResume } from "./hosted";
+import { guestKey, guestLinkFor } from "./relay-vault";
+import type { RelayedStatus } from "./relayed-entry";
 import type { RemoteStreamOptions } from "./remote-stream";
 import { SourceError } from "./types";
 import type { EnterRouteOptions } from "./route-entry";
@@ -155,6 +159,8 @@ function setup(
     timers?: (() => void)[];
     later?: (run: () => void, ms: number) => unknown;
     enter?: typeof fakeEnter;
+    guestStorage?: Storage;
+    guestRelay?: () => GuestRelay;
   } = {},
 ) {
   const storage = over.storage ?? memoryStorage();
@@ -230,6 +236,8 @@ function setup(
       clearTimeout: () => undefined,
     },
     setTimeout: over.later ?? ((run) => setTimeout(run, 0)),
+    guestStorage: over.guestStorage ?? memoryStorage(),
+    ...(over.guestRelay === undefined ? {} : { guestRelay: over.guestRelay }),
     entry: {
       enter: over.enter ?? fakeEnter,
       mount: (() => ({
@@ -845,6 +853,247 @@ describe("控制台 /h/ 进主机", () => {
     const ctx = setup({ detail: async () => detail({ owner: true }) });
     await ctx.host.open();
     expect(ctx.host.ownerMismatch).toBe(true);
+  });
+});
+
+/* ------------------------------ 访客（§2.8） ------------------------------ */
+
+const LINK = "link-1";
+const SHARE = { role: "viewer", name: "host1", ownerName: "", expiresAtMs: 0 };
+
+/** 托管页那份访客记录：进过 `sourceId`，链接 `linkId`。 */
+function guestRecord(
+  storage: Storage,
+  linkId: string,
+  sourceId: string,
+  expiresAtMs?: number,
+) {
+  storage.setItem(
+    guestKey(ISSUER, linkId),
+    JSON.stringify({
+      issuer: ISSUER,
+      cloudRefreshToken: `guest-refresh-${linkId}`,
+      sources: {},
+      entered: { sourceId, name: "host1" },
+      ...(expiresAtMs === undefined ? {} : { expiresAtMs }),
+    }),
+  );
+}
+
+/** 假托管中继：`resumeLink` 按给的答，状态可以由测试改。 */
+function fakeGuest(answer: () => LinkResume) {
+  const listeners = new Set<() => void>();
+  let entered = false;
+  const relay = {
+    status: {
+      state: "ready",
+      lastError: null,
+      relayDown: false,
+    } as RelayedStatus,
+    resumeLink: vi.fn(async (_linkId: string) => {
+      const resumed = answer();
+      entered = resumed?.kind === "entered";
+      return resumed;
+    }),
+    guest: () => (entered ? SHARE : null),
+    subscribe(listener: () => void) {
+      listeners.add(listener);
+      return () => listeners.delete(listener);
+    },
+    signOut: vi.fn(async () => undefined),
+    /** 测试：托管中继的状态变了（如访问被收回）。 */
+    set(status: RelayedStatus) {
+      relay.status = status;
+      for (const listener of listeners) listener();
+    },
+  };
+  return relay;
+}
+
+const unauthenticated = async () => {
+  throw Object.assign(new Error("401"), {
+    status: 401,
+    code: "unauthenticated",
+  });
+};
+
+describe("控制台 /h/ 以访客进入（§2.8）", () => {
+  it("没有 Cookie 会话、有这台主机的访客记录：经托管中继以访客进入，不去登录、不要断言", async () => {
+    const guestStorage = memoryStorage();
+    guestRecord(guestStorage, "link-other", "d".repeat(32));
+    guestRecord(guestStorage, LINK, HOST);
+    const relay = fakeGuest(() => ({ kind: "entered", sourceId: HOST }));
+    const ctx = setup({
+      me: unauthenticated,
+      guestStorage,
+      guestRelay: () => relay,
+    });
+    await ctx.host.open();
+    expect(ctx.host.view).toEqual({ kind: "entered" });
+    expect(relay.resumeLink).toHaveBeenCalledExactlyOnceWith(LINK);
+    expect(ctx.host.guest()).toEqual(SHARE);
+    expect(ctx.host.info).toMatchObject({ name: "host1", guest: true });
+    expect(ctx.host.status).toBe(relay.status);
+    expect(ctx.client.sources.get).not.toHaveBeenCalled();
+    expect(ctx.client.sources.assertion).not.toHaveBeenCalled();
+    expect(ctx.logins()).toBe(0);
+  });
+
+  it("没有 Cookie 会话、访客记录是别的主机的或已到期：照旧去登录", async () => {
+    const guestStorage = memoryStorage();
+    guestRecord(guestStorage, "link-other", "d".repeat(32));
+    guestRecord(guestStorage, "link-old", HOST, Date.now() - 1);
+    const relay = fakeGuest(() => ({ kind: "entered", sourceId: HOST }));
+    const ctx = setup({
+      me: unauthenticated,
+      guestStorage,
+      guestRelay: () => relay,
+    });
+    await ctx.host.open();
+    expect(ctx.host.view).toEqual({ kind: "login" });
+    expect(relay.resumeLink).not.toHaveBeenCalled();
+  });
+
+  it("Cookie 账号看不到这台（not_found）或断言答没有权限：退回访客记录", async () => {
+    const guestStorage = memoryStorage();
+    guestRecord(guestStorage, LINK, HOST);
+    const hidden = fakeGuest(() => ({ kind: "entered", sourceId: HOST }));
+    const notListed = setup({
+      detail: async () => {
+        throw Object.assign(new Error("404"), {
+          status: 404,
+          code: "not_found",
+        });
+      },
+      guestStorage,
+      guestRelay: () => hidden,
+    });
+    await notListed.host.open();
+    expect(notListed.host.view).toEqual({ kind: "entered" });
+    expect(hidden.resumeLink).toHaveBeenCalledExactlyOnceWith(LINK);
+    expect(notListed.client.sources.assertion).not.toHaveBeenCalled();
+
+    const deniedRelay = fakeGuest(() => ({ kind: "entered", sourceId: HOST }));
+    const denied = setup({
+      assertion: async () => {
+        throw Object.assign(new Error("denied"), {
+          status: 403,
+          code: "source_access_denied",
+        });
+      },
+      guestStorage,
+      guestRelay: () => deniedRelay,
+    });
+    await denied.host.open();
+    expect(denied.host.view).toEqual({ kind: "entered" });
+    expect(denied.host.guest()).toEqual(SHARE);
+    expect(denied.client.sources.assertion).toHaveBeenCalledOnce();
+    expect(deniedRelay.resumeLink).toHaveBeenCalledExactlyOnceWith(LINK);
+  });
+
+  it("Cookie 账号能进：有访客记录也用账号，不碰托管中继", async () => {
+    const guestStorage = memoryStorage();
+    guestRecord(guestStorage, LINK, HOST);
+    const relay = fakeGuest(() => ({ kind: "entered", sourceId: HOST }));
+    const ctx = setup({ guestStorage, guestRelay: () => relay });
+    await ctx.host.open();
+    expect(ctx.host.view).toEqual({ kind: "entered" });
+    expect(ctx.host.guest()).toBeNull();
+    expect(relay.resumeLink).not.toHaveBeenCalled();
+  });
+
+  it("链接被撤：打开时记录作废 → 访问已被收回；进去之后被收回 → 同一失败态", async () => {
+    const guestStorage = memoryStorage();
+    guestRecord(guestStorage, LINK, HOST);
+    const gone = fakeGuest(() => ({ kind: "gone" }));
+    const revoked = setup({
+      me: unauthenticated,
+      guestStorage,
+      guestRelay: () => gone,
+    });
+    await revoked.host.open();
+    expect(revoked.host.view).toEqual({
+      kind: "failed",
+      code: "access_revoked",
+    });
+    expect(revoked.host.guest()).toBeNull();
+
+    const relay = fakeGuest(() => ({ kind: "entered", sourceId: HOST }));
+    const live = setup({
+      me: unauthenticated,
+      guestStorage,
+      guestRelay: () => relay,
+    });
+    await live.host.open();
+    expect(live.host.view).toEqual({ kind: "entered" });
+    relay.set({
+      state: "unauthorized",
+      lastError: { code: "source_access_denied", message: "" },
+      relayDown: false,
+    });
+    expect(live.host.view).toEqual({ kind: "failed", code: "access_revoked" });
+  });
+
+  it("访客进不去：连不上是可重试的失败，主机离线是离线态", async () => {
+    const guestStorage = memoryStorage();
+    guestRecord(guestStorage, LINK, HOST);
+    const unreachable = setup({
+      me: unauthenticated,
+      guestStorage,
+      guestRelay: () => fakeGuest(() => null),
+    });
+    await unreachable.host.open();
+    expect(unreachable.host.view).toEqual({ kind: "failed", code: "failed" });
+    const offline = setup({
+      me: unauthenticated,
+      guestStorage,
+      later: () => 0,
+      guestRelay: () =>
+        fakeGuest(() => ({
+          kind: "signedIn",
+          hosts: [],
+          failure: "offline",
+        })),
+    });
+    await offline.host.open();
+    expect(offline.host.view).toMatchObject({ kind: "offline" });
+  });
+
+  it("访客不理控制台的登出广播；访客自己登出只经托管中继", async () => {
+    const guestStorage = memoryStorage();
+    guestRecord(guestStorage, LINK, HOST);
+    const bus = channelBus();
+    const relay = fakeGuest(() => ({ kind: "entered", sourceId: HOST }));
+    const ctx = setup({
+      me: unauthenticated,
+      bus,
+      guestStorage,
+      guestRelay: () => relay,
+    });
+    await ctx.host.open();
+    bus.open().postMessage({ type: "signedOut" });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(ctx.host.view).toEqual({ kind: "entered" });
+    await ctx.host.signOut();
+    expect(relay.signOut).toHaveBeenCalledOnce();
+    expect(ctx.identity.logout).not.toHaveBeenCalled();
+    expect(ctx.host.view).toEqual({ kind: "signedOut" });
+  });
+});
+
+describe("guestLinkFor", () => {
+  it("按进过的主机找访客记录的链接；到期的不算；几条取到期最晚的", () => {
+    const storage = memoryStorage();
+    const now = 1_000;
+    guestRecord(storage, "a", HOST, 2_000);
+    guestRecord(storage, "b", HOST, 5_000);
+    guestRecord(storage, "c", HOST, 500);
+    guestRecord(storage, "d", "d".repeat(32), 9_000);
+    expect(guestLinkFor(storage, ISSUER, HOST, now)).toBe("b");
+    expect(guestLinkFor(storage, ISSUER, "e".repeat(32), now)).toBeNull();
+    expect(
+      guestLinkFor(storage, "https://other.example", HOST, now),
+    ).toBeNull();
   });
 });
 
