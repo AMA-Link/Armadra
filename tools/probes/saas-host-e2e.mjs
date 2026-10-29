@@ -1269,7 +1269,6 @@ try {
     });
 
   /* ----------------------------------- E10 ----------------------------------- */
-  // 放在最后之前：它会让 host1 登出 Armadra 云（只在点名时跑）。
   if (ONLY.has("E10"))
     await runNewLink({
       report,
@@ -1284,12 +1283,7 @@ try {
       local,
       serviceId,
       hostId,
-      sessionCount: () =>
-        Number(
-          rows(
-            hostQuery(hostDir, "select count(*) as n from identity_sessions"),
-          )[0]?.n ?? 0,
-        ),
+      hostQuery: (sql) => hostQuery(hostDir, sql),
     });
 
   /* ------------------------------------ E5 ------------------------------------ */

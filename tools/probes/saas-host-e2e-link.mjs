@@ -35,9 +35,16 @@ export async function runNewLink({
   local,
   serviceId,
   hostId,
-  /** host1 上的会话数（每次普通 `cloud/login` 建一行；probe 不建）。 */
-  sessionCount,
+  /** host1 数据库的只读查询（答 `sqlite3 -json` 的文本）。 */
+  hostQuery,
 }) {
+  /** host1 上的会话数（每次普通 `cloud/login` 建一行；probe 不建）。 */
+  const sessionCount = () =>
+    Number(
+      JSON.parse(
+        hostQuery("select count(*) as n from identity_sessions") || "[]",
+      )[0]?.n ?? 0,
+    );
   const s = scenario(
     report,
     "E10 控制台新建链接：主人拿到整条链接、主机上同一条可复制、member 看不到、主机没登录云时提示",
