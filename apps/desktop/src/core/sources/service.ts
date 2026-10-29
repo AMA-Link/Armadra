@@ -168,7 +168,7 @@ export class SourcesService {
   private readonly inflight = new Map<string, Promise<unknown>>();
   /** 经中继换票的合并（契约 §88.2）。 */
   private readonly exchanges = new RelayExchanges();
-  /** 重登之后的归属纠正（按源排队，契约 §88.2）；测试经它等做完。 */
+  /** @internal 测试用：公开只为测试等归属纠正（按源排队，契约 §88.2）做完。 */
   readonly attribution = new AttributionQueue();
 
   constructor(private readonly options: SourcesServiceOptions) {

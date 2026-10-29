@@ -128,6 +128,22 @@ function open() {
   );
 }
 
+/**
+ * 切到「机器」分区，取「构建机」那一行。不轮询找按钮：`findByRole` 默认只等 1 秒，
+ * 全量并行负载下整张设置页的无障碍树查一次就可能用掉大半，于是偶发找不到。这里
+ * 等设置文档那次读取真正落定，在 `act` 里冲完查询通知（0 毫秒的宏任务）与 React
+ * 的更新，再同步取——只看先后，不看墙钟。
+ */
+async function machineRow(): Promise<HTMLElement> {
+  fireEvent.click(navItem(zh("settings.section.machines")));
+  await act(async () => {
+    await Promise.all(fetchSettings.mock.results.map((result) => result.value));
+    for (let i = 0; i < 5; i += 1)
+      await new Promise((done) => setTimeout(done, 0));
+  });
+  return screen.getByRole("button", { name: /构建机/ });
+}
+
 describe("SettingsDialog", () => {
   beforeEach(() => {
     fetchAgents.mockReset().mockResolvedValue([claude]);
@@ -296,8 +312,7 @@ describe("SettingsDialog", () => {
       .at(-1)!;
     expect(last.getAttribute("aria-current")).toBe("page");
 
-    fireEvent.click(navItem(zh("settings.section.machines")));
-    fireEvent.click(await screen.findByRole("button", { name: /构建机/ }));
+    fireEvent.click(await machineRow());
     expect(crumbs()).toEqual([
       zh("settings.breadcrumb.root"),
       zh("settings.group.host"),
@@ -387,8 +402,7 @@ describe("SettingsDialog", () => {
 
   it("Esc 先退子页，再关弹窗", async () => {
     open();
-    fireEvent.click(navItem(zh("settings.section.machines")));
-    fireEvent.click(await screen.findByRole("button", { name: /构建机/ }));
+    fireEvent.click(await machineRow());
     expect(usePreferencesStore.getState().settingsSubpage).toBe("ssh:box");
     fireEvent.keyDown(screen.getByTestId("settings-dialog"), { key: "Escape" });
     await waitFor(() =>
@@ -514,8 +528,7 @@ describe("SettingsDialog", () => {
 
   it("SSH 主机在同一右栏里推入子页，← 返回列表", async () => {
     open();
-    fireEvent.click(navItem(zh("settings.section.machines")));
-    const row = await screen.findByRole("button", { name: /构建机/ });
+    const row = await machineRow();
 
     fireEvent.click(row);
     // 子页：页头换成「编辑主机」，多了一个返回按钮，表单字段就位。
@@ -539,8 +552,7 @@ describe("SettingsDialog", () => {
 
   it("子页保存后写回整份主机表并弹回列表", async () => {
     open();
-    fireEvent.click(navItem(zh("settings.section.machines")));
-    fireEvent.click(await screen.findByRole("button", { name: /构建机/ }));
+    fireEvent.click(await machineRow());
     fireEvent.change(screen.getByLabelText(zh("ssh.field.name")), {
       target: { value: "生产机" },
     });
@@ -559,8 +571,7 @@ describe("SettingsDialog", () => {
 
   it("换分区会丢掉子页", async () => {
     open();
-    fireEvent.click(navItem(zh("settings.section.machines")));
-    fireEvent.click(await screen.findByRole("button", { name: /构建机/ }));
+    fireEvent.click(await machineRow());
     expect(usePreferencesStore.getState().settingsSubpage).toBe("ssh:box");
 
     fireEvent.click(navItem(zh("settings.section.about")));
