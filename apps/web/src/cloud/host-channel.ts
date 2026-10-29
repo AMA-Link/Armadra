@@ -62,8 +62,33 @@ function allowed(method: string, path: string): boolean {
 }
 
 /** 带 `code` 的失败（形状同信任页认得的 `endorseCode`）；不带任何文字细节。 */
-export function coded(code: string): Error {
-  return Object.assign(new Error(code), { code });
+export function coded(code: string, retryAfterMs?: number): Error {
+  return Object.assign(
+    new Error(code),
+    retryAfterMs === undefined ? { code } : { code, retryAfterMs },
+  );
+}
+
+/**
+ * 主机按账号限流 `cloud/login`（含 `probe`，每分钟 5 次）：保留 `rate_limited` 与对端给的
+ * `retryAfterMs`，让页面说「稍后再试」而不是「连不上」。不是限流答 `undefined`。
+ */
+/**
+ * 限流失败要等的整秒数（至少 1）；不是 `rate_limited` 答 `undefined`，对端没给等待时间答 `0`。
+ */
+export function throttleSeconds(error: unknown): number | undefined {
+  const failure = error as { code?: unknown; retryAfterMs?: unknown } | null;
+  if (failure?.code !== "rate_limited") return undefined;
+  const wait = failure.retryAfterMs;
+  return typeof wait === "number" && wait > 0
+    ? Math.max(1, Math.ceil(wait / 1000))
+    : 0;
+}
+
+function throttled(error: unknown): Error | undefined {
+  return error instanceof CloudError && error.code === "rate_limited"
+    ? coded("rate_limited", Math.max(0, error.retryAfterMs))
+    : undefined;
 }
 
 const unavailable = () => coded("e2e_device_unavailable");
@@ -346,9 +371,9 @@ export function createHostChannel(options: HostChannelOptions): HostChannel {
         opened.assertion.assertion,
         { fetch: opened.fetch },
       );
-    } catch {
-      // 限流、离线、通道断了……都不是确定的「否」：不缓存，调用方稍后重试。
-      throw unavailable();
+    } catch (error) {
+      // 限流、离线、通道断了……都不是确定的「否」：不缓存，调用方稍后重试。限流单独带码与等待时间。
+      throw throttled(error) ?? unavailable();
     }
   }
 
@@ -374,7 +399,7 @@ export function createHostChannel(options: HostChannelOptions): HostChannel {
         (error.code === "device_pending" || error.code === "device_rejected")
       )
         throw coded("device_untrusted");
-      throw unavailable();
+      throw throttled(error) ?? unavailable();
     }
     const session: Session = {
       accessToken: answer.native.accessToken,

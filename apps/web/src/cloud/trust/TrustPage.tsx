@@ -34,6 +34,7 @@ import {
   useRejectTrust,
   useTrustRequests,
 } from "./data";
+import { throttleSeconds } from "../host-channel";
 import { endorseCode, type TrustRequest } from "./endorser";
 
 /** 校验码是 6 位数字。 */
@@ -90,7 +91,15 @@ function TrustDialog({
         });
       } else if (code === "e2e_device_unavailable")
         toast.error(t("trust.unavailable"));
-      else toast.error(describeFailure(failure));
+      else if (code === "rate_limited") {
+        // 主机按账号限流登录（含判定）：说等多久，不说「连不上」。
+        const seconds = throttleSeconds(failure) ?? 0;
+        toast.error(
+          seconds > 0
+            ? t("cloud.host.rateLimitedIn", { seconds })
+            : t("error.rateLimited"),
+        );
+      } else toast.error(describeFailure(failure));
     } finally {
       setBusy(false);
     }

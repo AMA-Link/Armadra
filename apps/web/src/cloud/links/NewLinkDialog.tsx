@@ -30,6 +30,7 @@ import {
 } from "@/ui/select";
 import { toast } from "@/ui/toast";
 import { CloudConsoleError, describeFailure } from "../api/errors";
+import { throttleSeconds } from "../host-channel";
 import { useHostChannel } from "../host-channel-context";
 import { FixCommand } from "../host/FixCommand";
 import { hostCanvasHref } from "../hosts/HostActions";
@@ -46,6 +47,7 @@ type Failure =
   | { kind: "untrusted" }
   | { kind: "signIn" }
   | { kind: "notOwner" }
+  | { kind: "rateLimited"; seconds: number }
   | { kind: "other"; code: string };
 
 function failureOf(error: unknown): Failure {
@@ -54,6 +56,8 @@ function failureOf(error: unknown): Failure {
   if (code === "cloud_not_registered" || code === "source_unauthorized")
     return { kind: "signIn" };
   if (code === "forbidden") return { kind: "notOwner" };
+  const seconds = throttleSeconds(error);
+  if (seconds !== undefined) return { kind: "rateLimited", seconds };
   return { kind: "other", code };
 }
 
@@ -296,11 +300,21 @@ function FailureNotice({
         </div>
       </Alert>
     );
+  if (failure.kind === "rateLimited")
+    return (
+      <Alert variant="destructive" data-slot="new-link-rate-limited">
+        <AlertTitle>
+          {failure.seconds > 0
+            ? t("cloud.host.rateLimitedIn", { seconds: failure.seconds })
+            : t("error.rateLimited")}
+        </AlertTitle>
+      </Alert>
+    );
   return (
     <Alert variant="destructive" data-slot="new-link-failed">
       <AlertTitle>
         {failure.code === "e2e_device_unavailable"
-          ? // 通道池把离线、限流、通道断了都归成这个码：不是「浏览器不支持」，稍后再试。
+          ? // 通道池把离线、通道断了都归成这个码：不是「浏览器不支持」，稍后再试。
             t("cloud.links.unreachable")
           : describeFailure(new CloudConsoleError(failure.code, 0))}
       </AlertTitle>

@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { CloudAssertion } from "../sources/cloud-client";
 import { plainE2e } from "../sources/e2e/testing";
-import { createHostChannel } from "./host-channel";
+import { createHostChannel, throttleSeconds } from "./host-channel";
 
 /**
  * 通道池的 `request`（「新建链接」用它，背书器的 approve 也经它）：白名单之外一个字节都不发、
@@ -29,6 +29,8 @@ type Reply = { status?: number; body?: unknown };
 function setup(
   options: {
     trusted?: boolean;
+    /** probe 答 429 rate_limited（带 retryAfterMs）。 */
+    throttled?: boolean;
     sources?: () => Reply;
     /** 不注入固定的通道管理，而是每代由工厂建一份（生产的形状）。 */
     perGeneration?: boolean;
@@ -60,6 +62,11 @@ function setup(
       if (path === "/api/identity/hello")
         return reply({ body: { capabilities: ["identity.cloud.probe.v1"] } });
       if (path === "/api/identity/cloud/login") {
+        if (body.probe === true && options.throttled === true)
+          return reply({
+            status: 429,
+            body: { code: "rate_limited", details: { retryAfterMs: 7_000 } },
+          });
         if (body.probe === true)
           return reply(
             options.trusted === false
@@ -295,5 +302,25 @@ describe("通道池 · dispose 之后不把旧账号的通道给新账号", () =
     channel.dispose();
     // 不 await：同步已关。
     expect(injected.close).toHaveBeenCalledWith(ISSUER, SOURCE);
+  });
+});
+
+describe("通道池 · 限流", () => {
+  it("probe 被主机限流：request 抛 rate_limited 带等待时间，不登录、不发请求", async () => {
+    const { channel, calls } = setup({ throttled: true });
+    await expect(
+      channel.request(SOURCE, "/api/sources", { method: "GET" }),
+    ).rejects.toMatchObject({ code: "rate_limited", retryAfterMs: 7_000 });
+    expect(calls.some((call) => call.path === "/api/sources")).toBe(false);
+  });
+
+  it("throttleSeconds：向上取整到秒、至少 1；没给等待时间是 0；别的码不是限流", () => {
+    expect(
+      throttleSeconds({ code: "rate_limited", retryAfterMs: 12_400 }),
+    ).toBe(13);
+    expect(throttleSeconds({ code: "rate_limited", retryAfterMs: 10 })).toBe(1);
+    expect(throttleSeconds({ code: "rate_limited" })).toBe(0);
+    expect(throttleSeconds({ code: "forbidden" })).toBeUndefined();
+    expect(throttleSeconds(null)).toBeUndefined();
   });
 });

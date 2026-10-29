@@ -223,15 +223,20 @@ describe("生产背书人 · canEndorse（只用 probe）", () => {
     expect(pendingApprovals.snapshot()).toEqual([]);
   });
 
-  it("probe 被限流等非确定失败：抛 e2e_device_unavailable，不当作「否」", async () => {
+  it("probe 被限流：抛 rate_limited 并带等待时间，不当作「否」", async () => {
     const { endorser } = setup({
       probe: () => ({
         status: 429,
-        body: { code: "rate_limited", message: "" },
+        body: {
+          code: "rate_limited",
+          message: "",
+          details: { retryAfterMs: 12_000 },
+        },
       }),
     });
     await expect(endorser.canEndorse(SOURCE)).rejects.toMatchObject({
-      code: "e2e_device_unavailable",
+      code: "rate_limited",
+      retryAfterMs: 12_000,
     });
   });
 
@@ -352,16 +357,17 @@ describe("生产背书人 · approve", () => {
     }
   });
 
-  it("登录被限流：e2e_device_unavailable，不是 device_untrusted", async () => {
-    const { endorser } = setup({
+  it("登录被限流：rate_limited（不是 device_untrusted），不发 approve", async () => {
+    const { endorser, at } = setup({
       login: () => ({
         status: 429,
         body: { code: "rate_limited", message: "" },
       }),
     });
     await expect(endorser.approve(request(), SAS)).rejects.toMatchObject({
-      code: "e2e_device_unavailable",
+      code: "rate_limited",
     });
+    expect(at("/api/devices/approve")).toHaveLength(0);
   });
 
   it("会话复用：第二次 approve 不再登录", async () => {

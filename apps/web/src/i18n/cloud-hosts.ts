@@ -130,6 +130,7 @@ export const cloudHosts: MessageModule = {
     "cloud.host.connecting": "正在连接 {name}",
     "cloud.host.connectingUnnamed": "正在连接主机",
     "cloud.host.rateLimited": "请求太频繁，稍后自动重试",
+    "cloud.host.rateLimitedIn": "这台主机上的登录太频繁，{seconds} 秒后再试",
     "cloud.host.offline": "{name} 不在线",
     "cloud.host.offlineHint": "主机上线后自动进入",
     "cloud.host.error.not_found": "找不到这台主机",
@@ -291,6 +292,8 @@ export const cloudHosts: MessageModule = {
     "cloud.host.connecting": "Connecting to {name}",
     "cloud.host.connectingUnnamed": "Connecting to the host",
     "cloud.host.rateLimited": "Too many requests, retrying shortly",
+    "cloud.host.rateLimitedIn":
+      "Too many sign-ins to this host. Try again in {seconds}s",
     "cloud.host.offline": "{name} is offline",
     "cloud.host.offlineHint": "Opens automatically when the host comes online",
     "cloud.host.error.not_found": "Host not found",

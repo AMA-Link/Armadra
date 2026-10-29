@@ -47,6 +47,12 @@ const input = {
 } as const;
 
 describe("createHostLink", () => {
+  it("不另 probe：直接经通道池发（池在没有会话时自己判定）", async () => {
+    const { fake } = channel(() => reply(200, { url: URL_OK }));
+    await createHostLink(fake, ISSUER, SOURCE, input);
+    expect(fake.probe).not.toHaveBeenCalled();
+  });
+
   it("可执行的链接不带只读、空备注不带 label；签发方按来源比（尾斜杠不算差）", async () => {
     const { fake, calls } = channel(() => reply(200, { url: URL_OK }));
     expect(await createHostLink(fake, ISSUER, SOURCE, input)).toBe(URL_OK);

@@ -61,7 +61,8 @@ export function consoleRemote(
  * 建一条整台主机的分享链接，答整条链接。失败抛带 `code` 的错：
  * `device_untrusted`（本浏览器不是这台主机的受信设备）、`cloud_not_registered`（主机没有
  * 这个控制台的 SaaS 登录行）、主机原样答的码（`forbidden`、`source_unauthorized`、
- * `team_policy_denied`……）、通道问题 `e2e_device_unavailable`。
+ * `team_policy_denied`……）、主机限流登录 `rate_limited`（带 `retryAfterMs`）、通道问题
+ * `e2e_device_unavailable`。
  */
 export async function createHostLink(
   channel: HostChannel,
@@ -69,8 +70,8 @@ export async function createHostLink(
   sourceId: string,
   input: NewHostLink,
 ): Promise<string> {
-  // 不受信就不登录：登录会在主机上挂起一条待确认。
-  if (!(await channel.probe(sourceId))) throw coded("device_untrusted");
+  // 不先另 probe：通道池没有会话时自己先 probe，不受信抛 `device_untrusted`、不登录（不在主机上挂待确认）；
+  // 有会话就直接用。多一次 probe 只会白扣主机每账号每分钟 5 次的登录额度。
   const listed = await channel.request(sourceId, "/api/sources", {
     method: "GET",
   });
