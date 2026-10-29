@@ -9,7 +9,11 @@ import { createCloudApi } from "./api/client";
 import { describeFailure, isSessionError, toCloudError } from "./api/errors";
 import { cloudKeys } from "./api/keys";
 import { applyMeStreamEvent, resyncCloudQueries } from "./api/stream";
-import { createCloudQueryClient, useConsoleSession } from "./api/queries";
+import {
+  createCloudQueryClient,
+  useConsoleSession,
+  useOperatorOnlySession,
+} from "./api/queries";
 import type { CloudApi } from "./api/session";
 import { PublicPage, hasPublicPage } from "./auth/PublicPage";
 import { OpsPage } from "./ops/OpsPages";
@@ -212,12 +216,19 @@ function ConsoleData({ onJoined }: { onJoined?: () => void }) {
   useHostTrustedBroadcast();
   const [expired, setExpired] = React.useState(false);
   const match = useRoute();
+  const opsArea = match?.area === "ops";
   // 登录、注册、验证、找回、邀请不需要会话：不取，也不因为取不到而跳登录。
   const publicPage = hasPublicPage(match);
   const { session, error, loading, retry } = useConsoleSession({
     enabled: !expired && !publicPage,
   });
-  const lost = !publicPage && (expired || isSessionError(error));
+  const consoleLost = !publicPage && (expired || isSessionError(error));
+  // 运营会话不依附普通会话（§1.3）：在 `/ops` 下普通会话没了，先看运营会话自己续不续得上，
+  // 续不上才回普通登录（与之前一样，不因此暴露运营登录）。
+  const operatorOnly = useOperatorOnlySession({
+    enabled: consoleLost && opsArea,
+  });
+  const lost = consoleLost && (!opsArea || operatorOnly.failed);
 
   // 换了账号（或会话没了）：上一位的端到端通道与主机会话一并放掉，下一位从头开。
   const account = session?.user.email;
@@ -263,6 +274,16 @@ function ConsoleData({ onJoined }: { onJoined?: () => void }) {
     };
   }, [wantsOps, api]);
   const recovering = wantsOps && opsRefresh === "idle";
+
+  // 只有运营会话、它又到期了：回运营登录（普通会话本来就没有）。
+  const operatorExpired = operatorOnly.expired;
+  React.useEffect(() => {
+    if (!operatorExpired) return;
+    const path = window.location.pathname + window.location.search;
+    navigate(`/login?scope=operator&next=${encodeURIComponent(path)}`, {
+      replace: true,
+    });
+  }, [operatorExpired]);
 
   // 会话没了且续不上：回 `/login?next=<当前路径>`（云端控制台 §1.3）。
   React.useEffect(() => {
@@ -344,10 +365,11 @@ function ConsoleData({ onJoined }: { onJoined?: () => void }) {
         <div aria-busy="true" />
       </ConsoleView>
     );
-  if (session)
+  const shown = session ?? operatorOnly.session;
+  if (shown)
     return (
       <ConsoleView
-        session={session}
+        session={shown}
         renderPage={renderPage}
         renderCreateTeam={renderCreateTeam}
         renderMissingTeam={renderMissingTeam}
@@ -357,7 +379,7 @@ function ConsoleData({ onJoined }: { onJoined?: () => void }) {
     );
   return (
     <ConsoleView session={null}>
-      {loading ? (
+      {loading || consoleLost ? (
         <div aria-busy="true" />
       ) : (
         <PageState code={toCloudError(error).code} onRetry={retry} />
