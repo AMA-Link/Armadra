@@ -984,13 +984,34 @@ try {
       )
       .catch((error) => `timeout:${error.message}`);
     report.e8Refresh = resumed;
-    if (resumed === "canvas")
+    if (resumed === "canvas") {
       s.ok(
         report.e8RequiresAccount
           ? "刷新仍在画布（Cookie 账号进不了这台，退回访客记录）"
           : "刷新仍在画布（没有 Cookie 会话，用访客记录）",
       );
-    else {
+      // 访客记录里云端刷新令牌的指纹（只比较是否变了，不把令牌带出页面）。
+      const tokenPrint = `const raw = Object.entries(localStorage).find(([k]) => k.startsWith("armadra.guest."));
+        if (!raw) return null;
+        const token = JSON.parse(raw[1]).cloudRefreshToken ?? "";
+        const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(token));
+        return [...new Uint8Array(digest)].slice(0, 4).join(".");`;
+      const firstPrint = await guestTab.evaluate(tokenPrint);
+      s.check(firstPrint !== null, "刷新后访客记录还在（没被误判作废）");
+      // 再刷新一次：上一次续上时令牌已旋转，用旋转后的再续。
+      await guestTab.reload();
+      await guestTab.until(guestReady, "第二次刷新后仍在画布", {
+        timeout: 90_000,
+      });
+      const secondPrint = await guestTab.evaluate(tokenPrint);
+      s.check(secondPrint !== null, "第二次刷新后访客记录还在");
+      s.check(
+        secondPrint !== firstPrint,
+        "第二次刷新又旋转了云端刷新令牌（用旋转后的续上）",
+      );
+      s.ok("第二次刷新仍在画布，访客栏在");
+      await s.shot(guestTab, "e8-guest-refresh2");
+    } else {
       console.log(`  FAIL  刷新后没回到画布：${resumed}`);
       await s.shot(guestTab, "e8-guest-refresh");
       // 重新经落地页加入（链接还能用），继续验撤销。
