@@ -24,7 +24,10 @@ function useEndorsements(): DeviceEndorsement[] | undefined {
   return useQuery({
     queryKey: ENDORSEMENTS_QUERY_KEY,
     queryFn: devicesApi.endorsements,
-    enabled: !access.member,
+    // 只在确认是 owner 时才问：桌面壳恒为 owner（没有会话）；服务器壳与中继托管页面要会话报的是 owner。
+    enabled:
+      !access.member &&
+      (access.session === undefined || access.session?.device.role === "owner"),
     retry: false,
     refetchInterval: NEEDS_POLL_MS,
   }).data;

@@ -36,8 +36,9 @@ export const UNREAD_LIMIT = 100;
 /** 已读的行留多久（毫秒）：之后在下一次记录时清掉，这张表不只长不缩。 */
 export const READ_RETENTION_MS = 30 * 24 * 60 * 60_000;
 
+/** 按码点截（库里 `length()` 也按字符算）：不把 emoji 截成孤立的代理字符。 */
 function clip(value: unknown, max: number): string {
-  return typeof value === "string" ? value.slice(0, max) : "";
+  return typeof value === "string" ? [...value].slice(0, max).join("") : "";
 }
 
 function toRecord(row: Record<string, unknown>): EndorsementRecord {

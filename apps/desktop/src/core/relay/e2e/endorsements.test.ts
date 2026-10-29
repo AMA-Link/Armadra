@@ -102,6 +102,21 @@ describe("背书通知的记录", () => {
     expect(store().unread()).toEqual([record]);
   });
 
+  it("超长的名字按码点截：emoji 不被截成孤立的代理字符", () => {
+    // 128 个码点、129 个 UTF-16 码元：按码元截会留下半个 emoji。
+    const long = `${"a".repeat(127)}😀`;
+    database
+      .prepare("UPDATE trusted_devices SET label = ? WHERE device_id = ?")
+      .run(long, DEVICE);
+    const record = endorse();
+    expect([...record.deviceLabel]).toHaveLength(128);
+    expect(record.deviceLabel).toBe(`${"a".repeat(127)}😀`);
+    expect(record.deviceLabel).not.toMatch(
+      /[\uD800-\uDBFF](?![\uDC00-\uDFFF])/,
+    );
+    expect(store().unread()[0]!.deviceLabel).toBe(record.deviceLabel);
+  });
+
   it("背书设备查不到：名字是空串，标识照记", () => {
     const record = store().record({
       deviceId: DEVICE,
