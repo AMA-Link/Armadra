@@ -306,6 +306,29 @@ export class PushService {
     return queued;
   }
 
+  /**
+   * 设备背书的通知（契约 §81.1）：只发给本机 owner 主体名下的设备，与工作空间无关、不问
+   * `canvas:read`，也不看设备的种类偏好（这一种关不掉）。载荷只有写死的一句与折叠键，不带设备名、主体或任何标识之外的东西。
+   */
+  notifyEndorsement(recordId: string): number {
+    const draft: Draft = {
+      kind: "deviceEndorsed",
+      workspaceId: "",
+      tag: `endorsed:${recordId}`,
+    };
+    let queued = 0;
+    for (const { device, principalKind } of this.devices.recipients()) {
+      if (principalKind !== "owner") continue;
+      this.outbox.enqueue(
+        device.deviceId,
+        render(draft, device.locale, { workspace: "", agent: () => "" }),
+      );
+      queued += 1;
+    }
+    if (queued > 0) this.dispatcher.kick();
+    return queued;
+  }
+
   handleEvent(workspaceId: string, event: EventFrame): number {
     const draft = this.rules.draft(workspaceId, event);
     return draft === undefined ? 0 : this.enqueue(draft);

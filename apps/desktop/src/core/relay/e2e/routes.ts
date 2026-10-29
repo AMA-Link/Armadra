@@ -25,6 +25,7 @@ import { E2E_IDENTITY_PATH, E2E_WAIT_PATH } from "../../identity/transport";
 import { TunnelDuplex } from "../streams";
 import type { DeviceKey } from "./device-key";
 import { DeviceError, type DeviceRegistry, type DeviceView } from "./devices";
+import type { EndorsementStore } from "./endorsements";
 import type { PairingSecrets } from "./pairing";
 import { channelPeerOf } from "./peer";
 
@@ -77,6 +78,8 @@ export function deviceWire(row: DeviceView): TrustedDevice {
 
 export interface E2eRouteDeps {
   readonly devices: DeviceRegistry;
+  /** 背书通知（契约 §81.1）；不给时列表恒空、标已读什么都不做。 */
+  readonly endorsements?: EndorsementStore;
   /** 本机代连别的电脑时，问对端这台设备的待确认（`sources` 域的那组通道）。 */
   readonly waitSource?: (
     sourceId: string,
@@ -314,6 +317,27 @@ export function e2eOperations(deps: E2eRouteDeps) {
         return rethrow(error);
       }
     },
+    /** 未读的背书通知（契约 §81.1）。 */
+    endorsements: () => ({
+      endorsements: deps.endorsements?.unread() ?? [],
+    }),
+    /**
+     * 标已读（契约 §81.1）。浏览器经中继来的不行：被篡改的页面背书之后能顺手把通知标掉，
+     * 主人就再也看不到——与 §88.7 同一个判定，只在主机本机或主人的原生端标。
+     */
+    endorsementsRead: (input: { ids: unknown }, request?: CoreRequest) => {
+      if (
+        !Array.isArray(input.ids) ||
+        input.ids.length === 0 ||
+        input.ids.length > 100
+      )
+        throw fail("bad_request", "ids 必须是 1–100 个标识");
+      const ids = input.ids.map((id) => text(id, "id", 64));
+      if (relayedWithoutNativeDevice(deps, request))
+        throw fail("forbidden", "背书通知不能在浏览器里标已读");
+      deps.endorsements?.markRead(ids);
+      return { ok: true as const };
+    },
     identity: async () => {
       const { sourceId, publicKey } = await deps.identity();
       return {
@@ -420,6 +444,9 @@ export function installE2eRoutes(server: CoreServer, deps: E2eRouteDeps): void {
     revoke: (input) => run.revoke(input),
     forget: (input) => run.forget(input),
     rename: (input) => run.rename(input),
+    endorsements: () => run.endorsements(),
+    endorsementsRead: (input, call) =>
+      run.endorsementsRead(input, call.request),
   } satisfies DomainHandlers<"devices">);
   // 匿名的两条只经旧路径（RPC 上答 501）。
   const procedures = {

@@ -20,16 +20,19 @@ export const PUSH_KINDS = [
   "resources",
   "comment",
   "workflowGate",
+  "deviceEndorsed",
   "test",
 ] as const;
 export type PushKind = (typeof PUSH_KINDS)[number];
 
 /**
  * 设备能按种类关掉的那些（契约 §27.1）。`test` 不在里面：人点「发一条测试」
- * 就是要看到那一条。
+ * 就是要看到那一条。`deviceEndorsed` 也不在（契约 §81.1）：它是主人发现「别的设备
+ * 替人背书」的手段，不能关。
  */
 export const PREFERENCE_KINDS = PUSH_KINDS.filter(
-  (kind): kind is Exclude<PushKind, "test"> => kind !== "test",
+  (kind): kind is Exclude<PushKind, "test" | "deviceEndorsed"> =>
+    kind !== "test" && kind !== "deviceEndorsed",
 );
 export type PreferenceKind = (typeof PREFERENCE_KINDS)[number];
 

@@ -1,7 +1,9 @@
 package dev.armadra.mobile.core;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
 import java.nio.charset.StandardCharsets;
@@ -57,6 +59,14 @@ public class PushEnvelopeTest {
         assertEquals(32, key.length);
         assertEquals(32, Base64.getUrlDecoder().decode(PushEnvelope.publicKey(key)).length);
         assertNotNull(PushEnvelope.KINDS);
+    }
+
+    /** 设备背书的通知（契约 §81.1）：种类白名单认得它，不认得的照旧不认。 */
+    @Test
+    public void kindsIncludeDeviceEndorsed() {
+        assertTrue(PushEnvelope.KINDS.contains("deviceEndorsed"));
+        assertTrue(PushEnvelope.KINDS.contains("approval"));
+        assertFalse(PushEnvelope.KINDS.contains("shell"));
     }
 
     private interface Opening {

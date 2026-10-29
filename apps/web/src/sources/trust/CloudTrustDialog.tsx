@@ -80,6 +80,16 @@ function TrustBody({ item }: { item: TrustItem }) {
     refetchOnReconnect: false,
   });
   const host = match.data;
+  // 对上的那一行换了（「重试」或全局失效后重查回来的是另一条申请）：已经输入的码是对着
+  // 上一行输的，清掉重输，错误提示一起清。
+  const [shownPendingId, setShownPendingId] = React.useState(host?.pendingId);
+  if (host?.pendingId !== shownPendingId) {
+    setShownPendingId(host?.pendingId);
+    if (shownPendingId !== undefined) {
+      setSas("");
+      setInvalid(false);
+    }
+  }
   // 主机说这台电脑没有背书权限：与放行时被拒同样处理。
   const refused =
     match.error instanceof RuntimeRequestError &&

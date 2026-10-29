@@ -1,7 +1,11 @@
 import { Loadable } from "@/loading/Loadable";
 import * as React from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import type { E2ePairingPayload, TrustedDevice } from "@armadra/shared";
+import type {
+  DeviceEndorsement,
+  E2ePairingPayload,
+  TrustedDevice,
+} from "@armadra/shared";
 import { MoreHorizontal } from "lucide-react";
 import { toast } from "@/ui/toast";
 
@@ -13,6 +17,11 @@ import { usePreferencesStore, useT } from "../../../../app/preferences-store";
 import { useAccess } from "../../../../app/use-access";
 import { notify } from "../../../../platform";
 import { SecuritySectionSkeleton } from "./parts";
+import {
+  endorsementText,
+  markEndorsementsRead,
+} from "../../../../notifications/use-host-needs";
+import { useNeedsStore } from "../../../../notifications/needs-store";
 import { QrImage } from "../gateway/PairingCard";
 import { StatusPill } from "@/ui/status-pill";
 import {
@@ -462,60 +471,55 @@ export function DeviceApprovalPrompt() {
 }
 
 /**
- * 背书的通知（契约 §88.7）：本机收到 `devices.endorsed`，说明哪台受信设备放行了谁的哪台设备。
- * 事件只带标识，名字从 `devices.list` 查（只有主人读得到）；查不到就不弹。窗口不在前台时另发
- * 一条系统通知。
+ * 背书的即时弹窗（契约 §88.7、§81.1）：页面打开之后到来的每一次背书各弹一次，排成队列，
+ * 一条一条看；「知道了」标已读后显示下一条，关掉（Esc）只收起、仍留在铃铛里。页面打开之前
+ * 错过的只进铃铛，不补弹。数据是铃铛的那份清单（`useHostNeedsSync` 写入，只有主人读得到）；
+ * 窗口不在前台时另发一条系统通知。
  */
 export function DeviceEndorsedNotice() {
   const t = useT();
-  const [notice, setNotice] = React.useState<string | null>(null);
-  React.useEffect(
-    () =>
-      onWorkspaceEvent(
-        "devices.endorsed",
-        (event, sourceId) => {
-          if (sourceId !== localSource.sourceId) return;
-          void devicesApi
-            .list()
-            .then((devices) => {
-              const find = (deviceId: string, principalId: string) =>
-                devices.find(
-                  (row) =>
-                    row.deviceId === deviceId &&
-                    row.principalId === principalId,
-                );
-              const target = find(event.deviceId, event.principalId);
-              if (target === undefined) return;
-              const endorser = find(
-                event.endorserDeviceId,
-                event.endorserPrincipalId,
-              );
-              const text = t("e2e.endorsed.title", {
-                endorser: endorser?.label || event.endorserDeviceId.slice(0, 8),
-                principal: target.principalName || target.principalId,
-                device: target.label || "—",
-              });
-              setNotice(text);
-              void notify(text, "");
-            })
-            .catch(() => undefined);
-        },
-        { allSources: true },
-      ),
-    [t],
-  );
-  if (notice === null) return null;
+  const host = useNeedsStore((state) => state.host);
+  const synced = useNeedsStore((state) => state.hostSynced);
+  const seen = React.useRef<Set<string> | null>(null);
+  const [queue, setQueue] = React.useState<DeviceEndorsement[]>([]);
+  React.useEffect(() => {
+    if (!synced) return;
+    if (seen.current === null) {
+      seen.current = new Set(host.map((row) => row.id));
+      return;
+    }
+    const known = seen.current;
+    // 清单新的在前；弹窗按到来的先后排。
+    const fresh = host.filter((row) => !known.has(row.id)).reverse();
+    if (fresh.length === 0) return;
+    for (const row of fresh) {
+      known.add(row.id);
+      void notify(endorsementText(t, row), "");
+    }
+    setQueue((current) => [...current, ...fresh]);
+  }, [host, synced, t]);
+  const current = queue[0];
+  if (current === undefined) return null;
+  const next = () =>
+    setQueue((rows) => rows.filter((row) => row.id !== current.id));
   return (
-    <ResponsiveDialog open onOpenChange={(open) => !open && setNotice(null)}>
+    <ResponsiveDialog open onOpenChange={(open) => !open && next()}>
       <ResponsiveDialogContent
         className="sm:max-w-sm"
         aria-describedby={undefined}
       >
         <ResponsiveDialogHeader>
-          <ResponsiveDialogTitle>{notice}</ResponsiveDialogTitle>
+          <ResponsiveDialogTitle>
+            {endorsementText(t, current)}
+          </ResponsiveDialogTitle>
         </ResponsiveDialogHeader>
         <ResponsiveDialogFooter>
-          <Button onClick={() => setNotice(null)}>
+          <Button
+            onClick={() => {
+              void markEndorsementsRead([current.id]);
+              next();
+            }}
+          >
             {t("e2e.endorsed.dismiss")}
           </Button>
         </ResponsiveDialogFooter>

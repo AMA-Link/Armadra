@@ -35,6 +35,7 @@ export const PUSH_KINDS = [
   "resources",
   "comment",
   "workflowGate",
+  "deviceEndorsed",
   "test",
 ] as const;
 export const pushKindSchema = z.enum(PUSH_KINDS);
@@ -42,10 +43,13 @@ export type PushKind = (typeof PUSH_KINDS)[number];
 
 /**
  * The kinds a device can switch off (§27.1). `test` is not one of them: a
- * person who asks for a test notification wants to see it.
+ * person who asks for a test notification wants to see it. Neither is
+ * `deviceEndorsed` (§81.1): it is how the owner finds out that another device
+ * vouched for a new one, so it cannot be muted.
  */
 export const PUSH_PREFERENCE_KINDS = PUSH_KINDS.filter(
-  (kind): kind is Exclude<PushKind, "test"> => kind !== "test",
+  (kind): kind is Exclude<PushKind, "test" | "deviceEndorsed"> =>
+    kind !== "test" && kind !== "deviceEndorsed",
 );
 export type PushPreferenceKind = (typeof PUSH_PREFERENCE_KINDS)[number];
 export const pushPreferenceKindSchema = z.enum(

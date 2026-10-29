@@ -50,6 +50,29 @@ export const trustedDeviceListSchema = z.object({
   devices: z.array(trustedDeviceSchema),
 });
 
+/**
+ * 一次背书的通知（契约 §81.1）：哪台受信设备（`endorser*`）放行了谁（`principal*`）的哪台
+ * 设备。名字是背书那一刻抄下的，之后改名、删除都不影响这一行。
+ */
+export const deviceEndorsementSchema = z.object({
+  id: z.string(),
+  deviceId: z.string(),
+  principalId: z.string(),
+  principalName: z.string(),
+  deviceLabel: z.string(),
+  devicePlatform: z.string(),
+  endorserDeviceId: z.string(),
+  endorserPrincipalId: z.string(),
+  endorserLabel: z.string(),
+  createdAtMs: z.number().int(),
+});
+
+export type DeviceEndorsement = z.infer<typeof deviceEndorsementSchema>;
+
+export const deviceEndorsementListSchema = z.object({
+  endorsements: z.array(deviceEndorsementSchema),
+});
+
 const deviceKey = {
   deviceId: z.string(),
   principalId: z.string(),
@@ -141,4 +164,18 @@ export const devices = {
         legacy: { method: "POST", path: `${DEVICES_PATH}/rename` },
       }),
     ),
+  /** 未读的背书通知，新的在前，最多 100 条（§81.1）。 */
+  endorsements: oc
+    .input(z.object({}).optional())
+    .output(deviceEndorsementListSchema)
+    .errors(denied)
+    .meta(meta({ since: "1.52", contract: "§81.1", scope: "settings:read" })),
+  /** 把几条背书通知标已读；不认识或已读的略过。浏览器经中继来的答 `forbidden`（§81.1）。 */
+  endorsementsRead: oc
+    .input(
+      z.object({ ids: z.array(z.string().min(1).max(64)).min(1).max(100) }),
+    )
+    .output(ok)
+    .errors({ ...denied, ...errors.pick("bad_request") })
+    .meta(meta({ since: "1.52", contract: "§81.1", scope: "settings:write" })),
 };
