@@ -460,4 +460,35 @@ describe("主机详情 · 链接 · 新建链接", () => {
     expect(channel.probe).not.toHaveBeenCalled();
     expect(channel.request).toHaveBeenCalledTimes(4);
   });
+
+  it("提交途中关掉对话框（组件卸载）：结果回来也不写回、不重取列表，整条链接不出现", async () => {
+    const { channel } = fakeChannel();
+    let finish!: () => void;
+    const held = new Promise<void>((resolve) => (finish = resolve));
+    const original = channel.request.getMockImplementation() as (
+      sourceId: string,
+      path: string,
+      init: HostRequest,
+    ) => Promise<Response>;
+    channel.request.mockImplementation(
+      async (sourceId: string, path: string, init: HostRequest) => {
+        if (path !== "/api/sources") await held;
+        return original(sourceId, path, init);
+      },
+    );
+    const api = mountWith(`/me/hosts/${LAPTOP}?tab=links`, channel);
+    const dialog = await openNewLink();
+    submit(dialog);
+    await waitFor(() => expect(channel.request).toHaveBeenCalledTimes(2));
+    const list = vi.spyOn(api.client.links, "list");
+    fireEvent.click(within(dialog).getByRole("button", { name: "取消" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    finish();
+    await new Promise((done) => setTimeout(done, 50));
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(document.body.innerHTML).not.toContain("s3cr3t");
+    expect(list).not.toHaveBeenCalled();
+    const again = await openNewLink();
+    expect(within(again).queryByLabelText("链接")).toBeNull();
+  });
 });
