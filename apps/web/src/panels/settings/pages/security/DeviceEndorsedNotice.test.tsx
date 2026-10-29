@@ -160,4 +160,49 @@ describe("背书通知（契约 §88.7、§81.1）", () => {
     await waitFor(() => expect(screen.queryByText(title("a"))).toBeNull());
     expect(useNeedsStore.getState().host.map((row) => row.id)).toEqual(["a"]);
   });
+
+  /** 不经查询，直接改铃铛的清单（别处标了已读、重读回来的样子）。 */
+  const setHost = (rows: DeviceEndorsement[]) =>
+    act(() => useNeedsStore.getState().setHost(rows));
+  const bare = () =>
+    render(
+      <TestProviders>
+        <DeviceEndorsedNotice />
+      </TestProviders>,
+    );
+
+  it("排进队列的条目在别处标了已读：不再弹", async () => {
+    bare();
+    setHost([]);
+    setHost([
+      record("b", { createdAtMs: 20 }),
+      record("a", { createdAtMs: 10 }),
+    ]);
+    expect(await screen.findByText(title("a"))).toBeTruthy();
+    // b 在铃铛或另一个窗口里标了已读，清单里没了。
+    setHost([record("a", { createdAtMs: 10 })]);
+    fireEvent.click(screen.getByRole("button", { name: "知道了" }));
+    await waitFor(() => expect(screen.queryByText(title("a"))).toBeNull());
+    await new Promise((done) => setTimeout(done, 20));
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(screen.queryByText(title("b"))).toBeNull();
+  });
+
+  it("未读超过上限时标掉一条露出更早的一条：不当成新到的补弹；之后真来的照弹", async () => {
+    bare();
+    setHost([record("x", { createdAtMs: 50 })]);
+    // x 标了已读，重读回来露出了更早、原本在上限之外的 y。
+    setHost([record("y", { createdAtMs: 10 })]);
+    await new Promise((done) => setTimeout(done, 20));
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(platform.notify).not.toHaveBeenCalled();
+    setHost([
+      record("z", { createdAtMs: 60 }),
+      record("y", { createdAtMs: 10 }),
+    ]);
+    expect(await screen.findByText(title("z"))).toBeTruthy();
+    expect(platform.notify.mock.calls.map(([text]) => text)).toEqual([
+      title("z"),
+    ]);
+  });
 });

@@ -473,7 +473,8 @@ export function DeviceApprovalPrompt() {
 /**
  * 背书的即时弹窗（契约 §88.7、§81.1）：页面打开之后到来的每一次背书各弹一次，排成队列，
  * 一条一条看；「知道了」标已读后显示下一条，关掉（Esc）只收起、仍留在铃铛里。页面打开之前
- * 错过的只进铃铛，不补弹。数据是铃铛的那份清单（`useHostNeedsSync` 写入，只有主人读得到）；
+ * 错过的只进铃铛，不补弹（按主机的时刻判，比第一次读到的都晚才算新到）；别处标了已读的不再弹。
+ * 数据是铃铛的那份清单（`useHostNeedsSync` 写入，只有主人读得到）；
  * 窗口不在前台时另发一条系统通知。
  */
 export function DeviceEndorsedNotice() {
@@ -481,27 +482,40 @@ export function DeviceEndorsedNotice() {
   const host = useNeedsStore((state) => state.host);
   const synced = useNeedsStore((state) => state.hostSynced);
   const seen = React.useRef<Set<string> | null>(null);
+  // 第一次读到的清单里最晚的那一刻（主机的钟）：之后只有比它晚的才算新到。未读超过上限时，
+  // 标掉一条会露出更早的一条，它不是新到的，不补弹。
+  const since = React.useRef(Number.NEGATIVE_INFINITY);
   const [queue, setQueue] = React.useState<DeviceEndorsement[]>([]);
   React.useEffect(() => {
     if (!synced) return;
     if (seen.current === null) {
       seen.current = new Set(host.map((row) => row.id));
+      since.current = Math.max(
+        Number.NEGATIVE_INFINITY,
+        ...host.map((row) => row.createdAtMs),
+      );
       return;
     }
     const known = seen.current;
     // 清单新的在前；弹窗按到来的先后排。
-    const fresh = host.filter((row) => !known.has(row.id)).reverse();
+    const fresh = host
+      .filter((row) => !known.has(row.id) && row.createdAtMs >= since.current)
+      .reverse();
+    for (const row of host) known.add(row.id);
     if (fresh.length === 0) return;
-    for (const row of fresh) {
-      known.add(row.id);
-      void notify(endorsementText(t, row), "");
-    }
+    for (const row of fresh) void notify(endorsementText(t, row), "");
     setQueue((current) => [...current, ...fresh]);
   }, [host, synced, t]);
-  const current = queue[0];
+  // 只弹还在清单里的：在别处（铃铛、另一个窗口、主机本机）标了已读的跳过。
+  const current = queue.find((row) => host.some((item) => item.id === row.id));
   if (current === undefined) return null;
   const next = () =>
-    setQueue((rows) => rows.filter((row) => row.id !== current.id));
+    setQueue((rows) =>
+      rows.filter(
+        (row) =>
+          row.id !== current.id && host.some((item) => item.id === row.id),
+      ),
+    );
   return (
     <ResponsiveDialog open onOpenChange={(open) => !open && next()}>
       <ResponsiveDialogContent
