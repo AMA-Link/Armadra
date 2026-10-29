@@ -23,6 +23,7 @@ export const e2e: MessageModule = {
     "e2e.approve.mismatch": "校验码不一致",
     "e2e.approve.expired": "新设备已断开，请让它重新连接",
     "e2e.endorsed.title": "{endorser} 放行了 {principal} 的 {device}",
+    "e2e.approve.native": "放行后，它能批准主人的新设备",
     "e2e.endorsed.dismiss": "知道了",
     "trust.title": "{name} 的新设备",
     "trust.device": "设备",
@@ -75,6 +76,8 @@ export const e2e: MessageModule = {
     "e2e.approve.mismatch": "The code doesn’t match",
     "e2e.approve.expired": "The new device disconnected. Ask it to reconnect",
     "e2e.endorsed.title": "{endorser} approved {principal}'s {device}",
+    "e2e.approve.native":
+      "Once allowed, it can approve the owner's new devices",
     "e2e.endorsed.dismiss": "Got it",
     "trust.title": "{name}'s new device",
     "trust.device": "Device",

@@ -15,6 +15,7 @@ import { notify } from "../../../../platform";
 import { SecuritySectionSkeleton } from "./parts";
 import { QrImage } from "../gateway/PairingCard";
 import { StatusPill } from "@/ui/status-pill";
+import { Badge } from "@/ui/badge";
 import { Button } from "@/ui/button";
 import { SettingsTableCard } from "../../SettingsTableCard";
 import { IconButton } from "@/ui/icon-button";
@@ -49,6 +50,32 @@ const STATUS_TONE = {
   revoked: "paused",
 } as const;
 
+/** 原生端的平台（契约 §88.7）：放行后这台设备能批准主人的新设备。 */
+const NATIVE_PLATFORMS: ReadonlySet<string> = new Set([
+  "desktop",
+  "ios",
+  "android",
+]);
+const KNOWN_PLATFORMS: ReadonlySet<string> = new Set([
+  ...NATIVE_PLATFORMS,
+  "browser",
+]);
+
+/** 设备自报的平台，做成徽标；认不得的原样显示。 */
+function PlatformBadge({ platform }: { platform: string }) {
+  const t = useT();
+  return (
+    <Badge
+      variant="outline"
+      translate={KNOWN_PLATFORMS.has(platform) ? undefined : "no"}
+    >
+      {KNOWN_PLATFORMS.has(platform)
+        ? t(`e2e.platform.${platform}`)
+        : platform || "—"}
+    </Badge>
+  );
+}
+
 function failureText(t: ReturnType<typeof useT>, error: unknown): string {
   return error instanceof Error ? error.message : t("error.internal");
 }
@@ -82,7 +109,10 @@ function ApproveForm({
   device,
   onDone,
 }: {
-  device: Pick<TrustedDevice, "pendingId" | "label">;
+  device: Pick<TrustedDevice, "pendingId" | "label" | "platform"> & {
+    /** 申请的人是不是主机 owner；不知道时按是（提示宁多勿少）。 */
+    readonly principalKind?: string;
+  };
   onDone?: () => void;
 }) {
   const t = useT();
@@ -147,6 +177,12 @@ function ApproveForm({
           {t("e2e.approve.mismatch")}
         </span>
       )}
+      {NATIVE_PLATFORMS.has(device.platform) &&
+        (device.principalKind ?? "owner") === "owner" && (
+          <span className="basis-full text-meta text-muted-foreground">
+            {t("e2e.approve.native")}
+          </span>
+        )}
     </div>
   );
 }
@@ -220,8 +256,8 @@ export function E2eDevices() {
                     <TableRow>
                       <TableCell className="max-w-[16rem] truncate font-medium">
                         {device.label || device.deviceId.slice(0, 8)}
-                        <span className="ml-2 text-muted-foreground">
-                          {t(`e2e.platform.${device.platform}`)}
+                        <span className="ml-2">
+                          <PlatformBadge platform={device.platform} />
                         </span>
                       </TableCell>
                       <TableCell className="max-w-[10rem] truncate text-muted-foreground">
@@ -395,6 +431,8 @@ export function DeviceApprovalPrompt() {
   const [pending, setPending] = React.useState<{
     pendingId: string;
     label: string;
+    platform: string;
+    principalKind?: string;
   } | null>(null);
   React.useEffect(
     () =>
@@ -402,7 +440,26 @@ export function DeviceApprovalPrompt() {
         "devices.pending",
         (event, sourceId) => {
           if (sourceId !== localSource.sourceId) return;
-          setPending({ pendingId: event.pendingId, label: event.label });
+          setPending({
+            pendingId: event.pendingId,
+            label: event.label,
+            platform: event.platform,
+          });
+          // 申请人是不是 owner 事件里没有：从设备列表补上（查不到按是）。
+          void devicesApi
+            .list()
+            .then((rows) => {
+              const kind = rows.find(
+                (row) => row.pendingId === event.pendingId,
+              )?.principalKind;
+              if (kind !== undefined)
+                setPending((current) =>
+                  current?.pendingId === event.pendingId
+                    ? { ...current, principalKind: kind }
+                    : current,
+                );
+            })
+            .catch(() => undefined);
         },
         { allSources: true },
       ),
@@ -416,11 +473,11 @@ export function DeviceApprovalPrompt() {
           <ResponsiveDialogTitle>
             {t("e2e.approve.title", { name: pending.label || "—" })}
           </ResponsiveDialogTitle>
+          <div>
+            <PlatformBadge platform={pending.platform} />
+          </div>
         </ResponsiveDialogHeader>
-        <ApproveForm
-          device={{ pendingId: pending.pendingId, label: pending.label }}
-          onDone={() => setPending(null)}
-        />
+        <ApproveForm device={pending} onDone={() => setPending(null)} />
       </ResponsiveDialogContent>
     </ResponsiveDialog>
   );

@@ -4761,4 +4761,5 @@ owner（本机会话，或已信任设备经通道的 owner 会话）：`{ sourc
 - **不批主人的设备**：这样的请求 `devices.approve` 一条主机 owner 主体的待确认设备，答 `403 forbidden`，设备仍待确认，不论发起者是不是 owner。主人的新设备只在主机本机、或主人的桌面 / 手机受信设备上批。批成员的设备照旧（§60.4）。
 - **不签配对秘密**：这样的请求调 `e2e.pairingSecret`（旧路径与 RPC 同一处）答 `403 forbidden`，不签秘密（配对秘密不绑主体，§80）。
 - **主机通知**：每次背书（`approved_by = endorse:*`，不论背书设备是什么平台）在 `devices.changed` 之外发工作空间事件 `devices.endorsed { deviceId, principalId, endorserDeviceId, endorserPrincipalId }`，发给每块正被人看着的画布，不进 outbox；只带标识，名字由有 `devices.list` 权限的页面自己查。本机页面据此弹「{背书设备} 放行了 {主体} 的 {设备}」，窗口不在前台时另发一条系统通知；core 同时记一行 `device endorsed` 日志（只有这四个标识）。本机放行（`approved_by = local`）、配对与访客链接不发。错过的从 `devices.list` 的 `approvedBy` 查。
+- **剩余风险**：平台是设备在握手里自报的，第一次申请时写进登记行；一个页面第一次登记就可以自称 `desktop`、名字随便写。这条防线因此依赖放行的人核对平台：本机的放行提示与设备列表都把平台做成徽标，申请人是主机 owner、平台是原生端时另加一句「放行后，它能批准主人的新设备」。
 - 无新过程、无迁移、协议 minor 不变；`devices.approve` 与 `e2e.pairingSecret` 的错误表本来就有 `forbidden`。主机本地「不接受浏览器设备背书」的开关由这条规则覆盖，暂不提供。
