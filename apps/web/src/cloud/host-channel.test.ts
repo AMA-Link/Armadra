@@ -175,4 +175,28 @@ describe("通道池 · request", () => {
     expect(logins).toHaveLength(1);
     channel.dispose();
   });
+
+  it.each(["source_unauthorized", "cloud_not_registered"])(
+    "401 %s 是主机替远程服务答的：不换会话、不再登录，原码交回",
+    async (code) => {
+      const { channel, calls } = setup({
+        sources: () => ({ status: 401, body: { code } }),
+      });
+      const response = await channel.request(SOURCE, "/api/sources", {
+        method: "GET",
+      });
+      expect(response.status).toBe(401);
+      expect(await response.json()).toEqual({ code });
+      expect(calls.filter((call) => call.path === "/api/sources")).toHaveLength(
+        1,
+      );
+      expect(
+        calls.filter(
+          (call) =>
+            call.path === "/api/identity/cloud/login" &&
+            !String(call.init.body).includes('"probe":true'),
+        ),
+      ).toHaveLength(1);
+    },
+  );
 });
