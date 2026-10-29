@@ -26,6 +26,7 @@ import {
   clearAccountGuestRecords,
 } from "../sources/relay-vault";
 import { createBrowserEndorser } from "./trust/browser-endorser";
+import { useHostTrustedBroadcast } from "./trust/data";
 import {
   EndorserProvider,
   useEndorser,
@@ -205,6 +206,7 @@ function ConsoleData({ onJoined }: { onJoined?: () => void }) {
   const api = useCloudApi();
   const client = useQueryClient();
   const endorser = useEndorser();
+  useHostTrustedBroadcast();
   const [expired, setExpired] = React.useState(false);
   const match = useRoute();
   // 登录、注册、验证、找回、邀请不需要会话：不取，也不因为取不到而跳登录。

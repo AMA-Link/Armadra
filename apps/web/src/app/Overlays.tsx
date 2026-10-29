@@ -1,6 +1,9 @@
 import { Suspense } from "react";
 import { OverlaySuspense, type OverlayShape } from "./OverlayFallback";
-import { DeviceApprovalPrompt } from "../panels/settings/pages/security/E2eDevices";
+import {
+  DeviceApprovalPrompt,
+  DeviceEndorsedNotice,
+} from "../panels/settings/pages/security/E2eDevices";
 
 import { useCanvasStore } from "../store/canvas-store";
 import {
@@ -157,6 +160,7 @@ export function Overlays() {
       {/* 事件流驱动的四个：必须先订阅，不能等状态。 */}
       <ControlConfirmDialog />
       <DeviceApprovalPrompt />
+      <DeviceEndorsedNotice />
       <NodeNameDialog />
       <AgentSettingsDialog />
       <SshPromptDialog />

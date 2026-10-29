@@ -1698,6 +1698,11 @@ apps/web/src/cloud/
   - **通道与会话的生命周期**：按需才开，同一个源复用一条；空闲 60 秒先注销会话（`session/logout`）再关通道；同时打开与同时进行的操作都不超过 3，超出时先关最久没用的；`dispose()` 立刻注销并关闭全部，仍在进行的操作完成时发现代数变了，自己收尾并失败，不写回。判定结果在页面里缓存 5 分钟，窗口聚焦不重判；查询键 `cloudKeys.endorse` 不挂在 `trust` 之下，`deviceTrustRequested` / `Resolved` 只让请求列表过期，免得判定与事件互相引发。
   - **协议**：协议包 0.10.0 的 `trustRequest` 没有 `pendingId`；`packages/shared` 的 `cloudTrustRequestSchema` 手写放宽为可选字符串、`identity.cloud.login` 的入参手写放宽 `probe`，都有超集守卫（`contract.test.ts`）；core 的 `trust-requests` 解析原样转交 `pendingId`；控制台的 `TrustRequest` 类型同样带可选 `pendingId`。协议包带上这些字段后改回同一对象。
   - **依赖**：云端 0.11 起下发 `pendingId`（AMA-Link/armadra-cloud#126）。在那之前旧云端的请求都不带，生产页面表现为全部「在已信任的设备上处理」；测试与展示页用 `mock/pending-ids.ts` 模拟补字段后的形状。
+- **控制台浏览器怎样成为受信设备（Refs #583，core 契约 §88.6、§88.7）**：控制台与 `/h/` 同源、共用一把浏览器设备钥。背书人先在控制台里经 `/h/<host>` 打开一次主机，第一次按新设备待确认，在主机上、`armadra-server devices approve` 或另一台已受信设备上放行后，这个浏览器就是那台主机的受信设备，信任页给「信任」。
+  - 信任页对确定答「不是受信设备」的行，在徽标旁给 `ghost` 小按钮「在此浏览器打开主机」（新标签 `/h/<host>`）；判定出错（没有访问权、离线）、请求不带 `pendingId`、主机对这条答过 `forbidden` 的行不给。
+  - `/h/` 进了主机时经 `BroadcastChannel("armadra.e2e.trust")` 发 `{ sourceId }`，控制台对这台主机的判定作废重判（`useHostTrustedBroadcast`，`ConsoleRoot` 挂一次）。
+  - **Q13**（同源 XSS 面）：选同源加固——Trusted Types、预览进 sandbox iframe、CSP 不放宽，验收 CSP 违规为零（B2b、armadra-cloud `ConsoleCSP`）。
+  - **Q14**（运营方下发的页面能用设备钥签名）：主机 core 拒绝经中继却拿不出原生设备钥的请求（浏览器的端到端通道、明文中继路径）批主机 owner 主体的设备、调 `e2e.pairingSecret`，答 `forbidden`；浏览器仍能批成员的设备。任何背书在主机上发 `devices.endorsed`，主机页面弹「{背书设备} 放行了 {主体} 的 {设备}」。主人的浏览器去批自己的新设备时，信任页那一行收到 `forbidden`，改成「在已信任的设备上处理」。
 - 与上文的差异：
   - 链接页没有「新建链接」与「创建人」列、「已冻结」徽标：`links.create` 的 `source_invite` 要 core 邀请 id（只在客户端分享弹层有），`team_join` 属 M2；`linkSummary` 不带创建人与冻结状态。列表只列、改备注、撤销，与 U3 一致。
   - 设备信任页另有「平台」列；拒绝只调 `trust.reject`；校验码只存在于对话框组件状态，经 `HostEndorser.approve` 的参数交出去，不进 `useMutation` 变量、地址、本地存储与日志。`sas_mismatch` / `sas_expired` / `device_untrusted` / `forbidden` / `e2e_device_unavailable` 按 code 取现有文案；`forbidden`（背书人的团队角色、授予或待批的人不满足 core 的条件）只把**那一条请求**按请求号记成不可背书，同一台主机的其他请求不受影响，对话框留着说明原因；`device_untrusted`（本浏览器不是该主机的受信设备）另让这台主机的受信判定作废重判。

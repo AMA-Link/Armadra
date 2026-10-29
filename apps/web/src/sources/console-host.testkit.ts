@@ -194,7 +194,9 @@ export function setup(
   };
   const timers = over.timers ?? [];
   let now = 0;
+  const trusted = vi.fn();
   const options: ConsoleHostOptions = {
+    trusted,
     hostId: HOST,
     issuer: ISSUER,
     client: client as never,
@@ -233,6 +235,7 @@ export function setup(
     client,
     net,
     storage,
+    trusted,
     identity,
     awaitApproval,
     timers,
