@@ -422,7 +422,7 @@ function InvitationsTab({
       {
         id: "expires",
         header: t("cloud.team.expires"),
-        cell: (row) => <RelativeTime ms={row.expiresAtMs} />,
+        cell: (row) => <RelativeTime ms={row.expiresAtMs} future />,
       },
     ],
     [t, names],

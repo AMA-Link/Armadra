@@ -53,6 +53,19 @@ export function formatRelativeTime(
     : t("time.yearMonthDay", { year: date.getFullYear(), month, day });
 }
 
+/**
+ * 已经发生的时刻（最近在线、心跳、审计、加入时间）：服务端时钟比本机略快时时间戳会落在「将来」，
+ * 这类时刻一律夹到现在，显示「刚刚」而不是「马上」。到期之类本来就在将来的用 {@link formatRelativeTime}。
+ */
+export function formatElapsedTime(
+  value: Date | number | string,
+  now: Date | number = Date.now(),
+): string {
+  const then = toMillis(value);
+  const base = toMillis(now);
+  return formatRelativeTime(then > base ? base : then, base);
+}
+
 const BYTE_UNITS = ["B", "KB", "MB", "GB", "TB", "PB"] as const;
 
 /**

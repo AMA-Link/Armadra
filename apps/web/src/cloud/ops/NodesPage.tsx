@@ -1,7 +1,7 @@
 import * as React from "react";
 
 import { useT } from "@/app/preferences-store";
-import { formatRelativeTime } from "@/lib/format";
+import { formatElapsedTime } from "@/lib/format";
 import { Button } from "@/ui/button";
 import { SkeletonTable } from "@/ui/skeletons";
 import { EmptyState } from "@/ui/state";
@@ -65,7 +65,7 @@ export function NodesPage() {
         cell: (row) =>
           row.lastSeenAtMs === null
             ? null
-            : formatRelativeTime(row.lastSeenAtMs),
+            : formatElapsedTime(row.lastSeenAtMs),
       },
     ],
     [t],

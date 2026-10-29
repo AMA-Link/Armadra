@@ -18,5 +18,5 @@ export function Expiry({ ms }: { ms: number }) {
         {tp("cloud.common.expiresIn", Math.max(1, Math.ceil(left / DAY)))}
       </span>
     );
-  return <RelativeTime ms={ms} />;
+  return <RelativeTime ms={ms} future />;
 }
