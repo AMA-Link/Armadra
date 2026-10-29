@@ -101,6 +101,8 @@ describe("控制台 /h/ 以访客进入（§2.8）", () => {
     await ctx.host.open();
     expect(ctx.host.view).toEqual({ kind: "entered" });
     expect(relay.resumeLink).toHaveBeenCalledExactlyOnceWith(LINK, null);
+    // 访客进的是访客设备，不是控制台账号的受信设备：不发受信广播。
+    expect(ctx.trusted).not.toHaveBeenCalled();
     expect(ctx.host.guest()).toEqual(SHARE);
     expect(ctx.host.info).toMatchObject({ name: "host1", guest: true });
     expect(ctx.host.status).toBe(relay.status);
@@ -156,6 +158,7 @@ describe("控制台 /h/ 以访客进入（§2.8）", () => {
     });
     await denied.host.open();
     expect(denied.host.view).toEqual({ kind: "entered" });
+    expect(denied.trusted).not.toHaveBeenCalled();
     expect(denied.host.guest()).toEqual(SHARE);
     expect(denied.client.sources.assertion).toHaveBeenCalledOnce();
     expect(deniedRelay.resumeLink).toHaveBeenCalledExactlyOnceWith(
