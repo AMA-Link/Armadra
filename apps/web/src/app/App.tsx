@@ -32,6 +32,7 @@ import { TooltipProvider } from "@/ui/tooltip";
 import { useCommandDispatch } from "./commands";
 import { useAgentNotifications } from "./notifications";
 import { useHumanNeedsSync } from "../notifications/use-human-needs";
+import { useHostNeedsSync } from "../notifications/use-host-needs";
 import { useThresholdAlerts } from "../panels/resources/threshold-alerts";
 import { syncDocumentPreferences } from "./preferences-store";
 import { installInstantOverlays } from "../keybindings";
@@ -121,6 +122,7 @@ function AppShell() {
   // 节点徽标属于画布，不属于侧栏：镜像在这里补齐，与面板开合无关。
   useAgentStatusHydration(workspace?.id ?? null);
   useHumanNeedsSync();
+  useHostNeedsSync();
   useAgentNotifications();
   useThresholdAlerts();
   const { canvasLoading } = useBoardSync();
