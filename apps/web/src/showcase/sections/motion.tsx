@@ -118,7 +118,7 @@ function IndicatorTabs({
 }) {
   const { hovered, hoverProps } = useIndicatorHover();
   return (
-    <div className="relative flex gap-1 rounded-card border border-border bg-muted p-0.5">
+    <div className="relative flex gap-1 rounded-field bg-sunken p-0.5">
       {INDICATOR_ITEMS.map((item) => (
         <Button
           key={item}
@@ -126,7 +126,7 @@ function IndicatorTabs({
           size="sm"
           static
           data-active={item === active ? "true" : undefined}
-          className="relative isolate text-muted-foreground hover:bg-transparent data-[active=true]:text-foreground"
+          className="relative isolate text-muted-foreground hover:bg-transparent data-[active=true]:text-strong"
           onClick={() => onPick(item)}
           {...hoverProps(item)}
         >
@@ -137,7 +137,7 @@ function IndicatorTabs({
             />
           )}
           {item === active && (
-            <Indicator className="inset-0 rounded-control border border-border bg-background" />
+            <Indicator className="inset-0 rounded-control bg-segment-thumb shadow-card" />
           )}
           {item}
         </Button>

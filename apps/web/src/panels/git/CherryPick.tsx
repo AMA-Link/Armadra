@@ -187,7 +187,7 @@ export function CherryPick({
               <details open>
                 <summary>{t("gitIntegration.pickDiff")}</summary>
                 <pre
-                  className="max-h-80 overflow-auto rounded-tight bg-muted p-2 text-caption"
+                  className="max-h-80 overflow-auto rounded-tight bg-sunken p-2 text-caption"
                   tabIndex={0}
                 >
                   {preview.patch || t("gitIntegration.emptyPreview")}

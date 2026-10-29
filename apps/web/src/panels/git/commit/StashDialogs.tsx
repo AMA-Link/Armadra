@@ -303,7 +303,7 @@ export function UnstashDialog({
               )}
               {reviewed && detail.data && (
                 <pre
-                  className="max-h-64 overflow-auto rounded-tight bg-muted p-2 text-caption"
+                  className="max-h-64 overflow-auto rounded-tight bg-sunken p-2 text-caption"
                   tabIndex={0}
                 >
                   {detail.data.patch || t("gitStash.noPatch")}

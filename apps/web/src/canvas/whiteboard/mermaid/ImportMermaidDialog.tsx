@@ -212,7 +212,7 @@ function Preview({ svg, empty }: { svg: string; empty: string }) {
     return () => URL.revokeObjectURL(made);
   }, [svg]);
   return (
-    <div className="bg-muted/40 flex h-72 items-center justify-center overflow-auto rounded-control border p-2">
+    <div className="bg-sunken flex h-72 items-center justify-center overflow-auto rounded-control border p-2">
       {svg ? (
         url && <img src={url} alt="" className="h-auto max-w-full" />
       ) : (

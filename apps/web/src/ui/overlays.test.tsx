@@ -8,6 +8,7 @@ import {
 } from "@/ui/alert-dialog";
 import {
   Command,
+  CommandInput,
   CommandItem,
   CommandList,
   CommandShortcut,
@@ -172,7 +173,7 @@ describe("Sheet 与拖柄", () => {
 });
 
 describe("发芽式浮层", () => {
-  it("Popover：motion-pop + rounded-panel + shadow-overlay，不再有 shadow-md / ring-1 / tw-animate", () => {
+  it("Popover：motion-pop + rounded-field + shadow-overlay，不再有 shadow-md / ring-1 / tw-animate", () => {
     render(
       <Popover open>
         <PopoverTrigger>触发</PopoverTrigger>
@@ -181,7 +182,7 @@ describe("发芽式浮层", () => {
     );
     const content = document.querySelector("[data-slot='popover-content']")!;
     expect(content.className).toContain("motion-pop");
-    expect(content.className).toContain("rounded-panel");
+    expect(content.className).toContain("rounded-field");
     expect(content.className).toContain("shadow-overlay");
     expect(content.className).toContain("z-(--z-dialog)");
     expect(content.className).not.toMatch(
@@ -190,7 +191,7 @@ describe("发芽式浮层", () => {
     expect(content.getAttribute("data-instant")).toBe("true");
   });
 
-  it("DropdownMenu：菜单容器 rounded-card、项 rounded-control、快捷键是 Kbd", () => {
+  it("DropdownMenu：菜单容器 rounded-field + p-1、项 rounded-tight（8 = 4 + 4）、快捷键是 Kbd", () => {
     render(
       <DropdownMenu open>
         <DropdownMenuTrigger>菜单</DropdownMenuTrigger>
@@ -206,8 +207,9 @@ describe("发芽式浮层", () => {
       "[data-slot='dropdown-menu-content']",
     )!;
     expect(content.className).toContain("motion-pop");
-    expect(content.className).toContain("rounded-card");
-    expect(screen.getByRole("menuitem").className).toContain("rounded-control");
+    expect(content.className).toContain("rounded-field");
+    expect(content.className).toContain("p-1");
+    expect(screen.getByRole("menuitem").className).toContain("rounded-tight");
     const shortcut = screen.getByText("⌘N");
     expect(shortcut.tagName).toBe("KBD");
     expect(shortcut.dataset.slot).toBe("dropdown-menu-shortcut");
@@ -240,6 +242,33 @@ describe("发芽式浮层", () => {
       </Command>,
     );
     expect(screen.getByRole("option").className).toContain("h-7");
-    expect(screen.getByText("⌘N").tagName).toBe("KBD");
+    expect(screen.getByRole("option").className).toContain("rounded-tight");
+    expect(screen.getByRole("option").className).toContain(
+      "data-selected:text-strong",
+    );
+    const shortcut = screen.getByText("⌘N");
+    expect(shortcut.tagName).toBe("KBD");
+    // 命令项里的快捷键没有底，也不画键帽内线（内线只认 data-slot="kbd"）
+    expect(shortcut.dataset.slot).toBe("command-shortcut");
+  });
+
+  it("CommandInput 无框：输入框不画焦点环，聚焦时只把底部分隔线升到 --border-strong", () => {
+    render(
+      <Command>
+        <CommandInput placeholder="搜索" />
+        <CommandList />
+      </Command>,
+    );
+    const input = screen.getByPlaceholderText("搜索");
+    expect(input.className).not.toMatch(/focus-visible:ring-(?:3|ring)/);
+    expect(input.className).toContain("focus-visible:ring-0");
+    const wrapper = input.closest("[data-slot='command-input-wrapper']")!;
+    expect(wrapper.className).toContain("border-b");
+    expect(wrapper.className).toContain(
+      "has-[[data-slot=command-input]:focus-visible]:border-border-strong",
+    );
+    const group = input.closest("[data-slot='input-group']")!;
+    expect(group.className).toContain("border-transparent");
+    expect(group.className).toContain("bg-transparent");
   });
 });

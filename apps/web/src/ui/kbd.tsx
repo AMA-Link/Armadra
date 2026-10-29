@@ -2,7 +2,8 @@ import { cn } from "@/lib/cn";
 
 /**
  * 快捷键提示（设计系统 §3.1）：20 高，按钮与 Tooltip 内收成 16；`rounded-tight`、
- * `--surface-raised` 底、`text-caption` 500 等宽。Tooltip 里反色；实底按钮里
+ * `--surface-raised` 底、底部一条 `shadow-kbd` 内线、`text-caption` 500 等宽（命令项里的
+ * 快捷键改了 slot、没有底，也不画内线）。Tooltip 里反色；实底按钮里
  * 用按钮自己的文字色叠一层半透明——只认外层按钮自己的变体（`group/button`），不会被
  * 带 `data-variant` 的 `Card` 等祖先染色。
  *
@@ -21,7 +22,7 @@ function Kbd({
     <kbd
       data-slot="kbd"
       className={cn(
-        "pointer-events-none inline-flex h-5 w-fit min-w-5 items-center justify-center gap-1 rounded-tight bg-raised px-1 font-mono text-caption font-medium text-muted-foreground select-none",
+        "pointer-events-none inline-flex h-5 w-fit min-w-5 items-center justify-center gap-1 rounded-tight bg-raised px-1 font-mono text-caption font-medium text-muted-foreground select-none data-[slot=kbd]:shadow-kbd",
         "in-data-[slot=button]:h-4 in-data-[slot=button]:min-w-4 in-data-[slot=tooltip-content]:h-4 in-data-[slot=tooltip-content]:min-w-4",
         "in-data-[slot=tooltip-content]:bg-background/20 in-data-[slot=tooltip-content]:text-background",
         "group-data-[variant=default]/button:bg-primary-foreground/20 group-data-[variant=default]/button:text-primary-foreground group-data-[variant=destructive-solid]/button:bg-primary-foreground/20 group-data-[variant=destructive-solid]/button:text-primary-foreground",

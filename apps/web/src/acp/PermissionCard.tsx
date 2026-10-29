@@ -170,7 +170,7 @@ function Details({ permission }: { permission: AcpPermissionView }) {
           ) : null,
         )}
         {input && (
-          <pre className="max-h-60 overflow-auto rounded-control bg-raised px-2 py-1 font-mono text-meta whitespace-pre">
+          <pre className="max-h-60 overflow-auto rounded-control bg-sunken px-2 py-1 font-mono text-meta whitespace-pre">
             {input}
           </pre>
         )}

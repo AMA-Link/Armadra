@@ -622,7 +622,7 @@ function NodeTitle({
       role="textbox"
       tabIndex={0}
       title={node.title}
-      className="node-title min-w-0 flex-1 truncate rounded-tight text-meta font-medium text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      className="node-title min-w-0 flex-1 truncate rounded-tight text-meta font-medium text-strong outline-none focus-visible:ring-2 focus-visible:ring-ring"
       onDoubleClick={(event) => {
         if (event.shiftKey || event.ctrlKey || event.metaKey || event.altKey)
           return;

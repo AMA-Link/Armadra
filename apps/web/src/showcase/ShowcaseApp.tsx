@@ -194,7 +194,7 @@ export function ShowcaseApp({ only }: { only: boolean }) {
             aria-current={id === active ? "page" : undefined}
             className={cn(
               "h-8 w-full justify-start px-2 text-body font-normal text-muted-foreground",
-              "data-[active=true]:bg-raised data-[active=true]:text-foreground",
+              "data-[active=true]:bg-raised data-[active=true]:text-strong",
             )}
             onClick={() => select(id)}
           >

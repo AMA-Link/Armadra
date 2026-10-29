@@ -141,7 +141,6 @@ import {
   SHORTCUT,
   STATUS_TONES,
 } from "../fixtures/components";
-import { COMMAND_INPUT_FOCUS } from "@/panels/tabs-focus";
 import { Sample } from "./sample";
 import { VariantSamples } from "./components-variants";
 import { SettingsDialog } from "@/panels/SettingsDialog";
@@ -766,7 +765,6 @@ function Gallery() {
       <Sample name="command" wide>
         <Command className="h-auto rounded-card border">
           <CommandInput
-            className={COMMAND_INPUT_FOCUS}
             aria-label={t("showcase.sample.search")}
             placeholder={t("showcase.sample.search")}
           />

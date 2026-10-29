@@ -14,7 +14,8 @@ import { ariaKeyShortcuts } from "@/ui/kbd-format";
  *   26 的钮几乎顶满，留不出可读的上下留白。
  *
  * 它只是 shadcn `Button` 的尺寸/底色预设——变体逻辑、焦点环、disabled
- * 行为全部沿用生成的 Button。
+ * 行为全部沿用生成的 Button。圆角按所在容器同心取：工具簇（12 圆角、4 内距）里
+ * `rounded-field`，Dock（12 圆角、6 内距）与节点头部 `rounded-control`。
  *
  * 图标按钮没有可见文字，所以 `label` 是必填的，会写进 `aria-label`。
  * 悬停提示请在外面套 `Tooltip`，避免每个按钮都强绑一个 TooltipProvider。
@@ -43,22 +44,22 @@ export function IconButton({
   ...props
 }: IconButtonProps) {
   const active_ =
-    "data-[active=true]:bg-brand-soft data-[active=true]:text-foreground";
+    "data-[active=true]:bg-brand-soft data-[active=true]:text-strong";
   const preset = {
     cluster: [
-      "size-[28px] text-muted-foreground",
+      "size-[28px] rounded-field text-muted-foreground",
       "hover:bg-hover hover:text-foreground",
       active_,
       "[&_svg:not([class*='size-'])]:size-4",
     ],
     dock: [
-      "size-[32px] text-muted-foreground",
+      "size-[32px] rounded-control text-muted-foreground",
       "hover:bg-hover hover:text-foreground",
       active_,
       "[&_svg:not([class*='size-'])]:size-[18px]",
     ],
     inline: [
-      "size-[24px] text-muted-foreground",
+      "size-[24px] rounded-control text-muted-foreground",
       active_,
       "[&_svg:not([class*='size-'])]:size-3.5",
     ],

@@ -105,7 +105,7 @@ function NavItem({
       aria-describedby={badge ? describedBy : undefined}
       className={cn(
         "relative isolate w-full justify-start gap-2 px-2 font-normal text-muted-foreground hover:bg-transparent",
-        "hover:text-foreground data-[active=true]:text-foreground",
+        "hover:text-foreground data-[active=true]:text-strong",
         narrow && "justify-center px-0",
       )}
       onClick={() => onSelect(section.id)}

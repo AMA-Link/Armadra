@@ -466,7 +466,7 @@ function HostForm({
               </Button>
             </CollapsibleTrigger>
           </div>
-          <CollapsibleContent className="divide-y divide-border/60 border-t border-border/60">
+          <CollapsibleContent className="divide-y divide-border-soft border-t border-border/60">
             {advanced.map(row)}
           </CollapsibleContent>
         </Collapsible>

@@ -621,7 +621,7 @@ export function MountDialog({
             ) : rows.length === 0 ? (
               <EmptyState inline title={t("remote.mount.empty")} />
             ) : (
-              <ul className="flex flex-col divide-y divide-border/60">
+              <ul className="flex flex-col divide-y divide-border-soft">
                 {rows.map((source) => (
                   <li
                     key={source.sourceId}

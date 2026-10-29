@@ -264,7 +264,7 @@ export function CommitDetails({
               )}
               <pre
                 aria-label={t("gitRepo.filePatch")}
-                className="max-h-72 overflow-auto rounded-control bg-muted p-2 font-mono text-caption leading-4"
+                className="max-h-72 overflow-auto rounded-control bg-sunken p-2 font-mono text-caption leading-4"
               >
                 {patch.data.patch}
               </pre>

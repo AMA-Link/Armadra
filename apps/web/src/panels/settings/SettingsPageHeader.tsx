@@ -54,7 +54,7 @@ export function SettingsPageHeader({
       )}
       <h2
         data-testid="settings-heading"
-        className="min-w-0 flex-1 truncate text-display font-semibold"
+        className="min-w-0 flex-1 truncate text-display font-semibold text-strong"
       >
         {heading}
       </h2>

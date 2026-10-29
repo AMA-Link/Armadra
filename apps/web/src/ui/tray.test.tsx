@@ -51,11 +51,12 @@ describe("Tray（KPI 托盘，设计系统 §3.3）", () => {
     expect(screen.getByRole("button", { name: "⋯" })).not.toBeNull();
   });
 
-  it("大数字外包 dl / dt / dd，dt 只给读屏；text-display 等宽", () => {
+  it("大数字外包 dl / dt / dd，dt 只给读屏；text-display 等宽、表格数字", () => {
     render(<TrayValue label="已用" value={82} format={(v) => `${v}%`} />);
     const dd = document.querySelector("dd")!;
     expect(dd.className).toContain("text-display");
     expect(dd.className).toContain("font-mono");
+    expect(dd.className).toContain("tabular-nums");
     const dt = document.querySelector("dt")!;
     expect(dt.textContent).toBe("已用");
     expect(dt.className).toContain("sr-only");

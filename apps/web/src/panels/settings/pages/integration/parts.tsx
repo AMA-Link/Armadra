@@ -242,7 +242,7 @@ export function CleanupButton({
                       className="flex min-w-0 items-start gap-2"
                     >
                       <code
-                        className="line-clamp-2 min-w-0 flex-1 rounded-tight bg-muted px-1.5 py-0.5 font-mono text-caption break-all text-muted-foreground"
+                        className="line-clamp-2 min-w-0 flex-1 rounded-tight bg-sunken px-1.5 py-0.5 font-mono text-caption break-all text-muted-foreground"
                         title={entry.detail}
                       >
                         {shortenHome(entry.detail)}

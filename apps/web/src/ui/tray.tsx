@@ -84,7 +84,7 @@ function TrayCard({
 const EMPTY_VALUE = "—";
 
 /**
- * 大数字：`text-display`（22/600）等宽，数字用 `AnimatedNumber` 滚动。`value` 为字符串
+ * 大数字：`text-display`（22/590）等宽数字（`font-mono tabular-nums`），数字用 `AnimatedNumber` 滚动。`value` 为字符串
  * （版本号、主机名）时原样显示；`null` / `undefined` / `NaN` 显示 `—`，不渲染 `NaN`。
  * 外包 `dl / dt / dd`：`label` 是读屏用的名字（`sr-only` 的 `dt`）。
  */
@@ -110,7 +110,7 @@ function TrayValue({
       <dd
         data-slot="tray-value"
         className={cn(
-          "m-0 truncate font-mono text-display font-semibold",
+          "m-0 truncate font-mono text-display font-semibold tabular-nums",
           className,
         )}
       >

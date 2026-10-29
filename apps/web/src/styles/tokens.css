@@ -4,8 +4,8 @@
  * 规则：
  *  1. 应用里所有颜色只允许通过这些变量取用，切换主题只换变量。
  *  2. 深色为默认（无 `data-theme` 属性时即深色），浅色是中性白灰覆盖层。
- *  3. 表面按“高度”命名（sunken → deep → base → raised → overlay），
- *     不按用途命名，避免 Phase 1 各 agent 各起各的名字。
+ *  3. 表面按层级命名（bg → sunken / panel → card → overlay → raised），
+ *     不按用途命名，避免各处各起各的名字；`deep` 已并入 `sunken`。
  *  4. shadcn 别名段是 `src/ui/*`（shadcn CLI 生成，未改动）的硬契约：
  *     那些组件直接写 `bg-accent` / `bg-muted` / `border-input`，
  *     所以这些名字必须遵守 **shadcn 的语义**，见下面那段说明。
@@ -32,18 +32,20 @@
   color-scheme: dark;
 
   /* ── 着色基准 ────────────────────────────────────────────────────── */
-  /* 边框/文字/hover 全部由这个 RGB 三元组按 alpha 派生，换主题只换它 */
+  /* 线条、hover / active 与菜单高亮底由这个 RGB 三元组按 alpha 派生；
+     文字四阶是实色（见下），不再从它派生。 */
   --tint-rgb: 255 255 255;
 
-  /* ── 表面高度（§24.2「层级用材质与灰度表达」） ─────────────────────
-     三级：窗口底 `--bg` → 面板 `--panel`（+4%）→ 卡片 `--card`（+7%）。
-     线框只作辅助（1px，8% tint），层级主要靠这三档灰度。 */
-  --bg: #1c1c1c;
-  --panel: #262626;
+  /* ── 表面（设计系统 §2.1）：五级中性面，不带色偏 ────────────────────
+     窗口底 `--bg` → 下沉 `--panel` / `--surface-sunken` → 卡片 `--card` →
+     浮层 `--surface-overlay` → 悬浮 `--surface-raised`。层次由面 + 1px 线 +
+     轻投影一起表达（§2.9）。 */
+  --bg: #161616;
+  --panel: #1b1b1b;
   /* 节点头部不再比节点体更深：与卡片同色，靠底部 1px 分隔线区分（§24.3-3） */
   --panel-header: var(--card);
-  --canvas-bg: #191919;
-  --canvas-dot: #3d3d3d;
+  --canvas-bg: #161616;
+  --canvas-dot: #363636;
 
   /* 侧栏材质：网页下是接近不透明的 `--panel`；桌面壳下换成半透明，
      由窗口的 sidebar 材质透上来（§24.2「源列表侧栏」）。 */
@@ -77,13 +79,19 @@
   /* 浏览器节点底色：加载前与页面四周一律黑（2026-09-04 用户要求）。 */
   --browser-bg: #000000;
 
-  --surface-sunken: #151515;
-  --surface-deep: #202020;
+  /* 下沉：代码块、差异、输入框底、引用块等嵌在卡片里的块 */
+  --surface-sunken: #1b1b1b;
+  /* 旧的第二档下沉，已并入 sunken */
+  --surface-deep: var(--surface-sunken);
   --surface-base: var(--panel);
-  /* 卡片/节点：比窗口底亮 7%（`--card` 是它的 shadcn 别名） */
-  --surface-card: #2c2c2c;
-  --surface-raised: #333333;
-  --surface-overlay: #3a3a3a;
+  /* 卡片 / 节点 / 设置分组（`--card` 是它的 shadcn 别名） */
+  --surface-card: #202020;
+  /* 悬浮：hover 底、分段控件当前项、键帽、secondary / muted 底 */
+  --surface-raised: #2d2d2d;
+  /* 浮层：菜单、Popover、对话框（`--popover` 是它的 shadcn 别名） */
+  --surface-overlay: #262626;
+  /* 分段控件当前项：比下沉的轨道浅一级的面（深色取悬浮，浅色取浮层） */
+  --segment-thumb: var(--surface-raised);
 
   --scrim: rgb(0 0 0 / 55%);
   --hover: rgb(var(--tint-rgb) / 7%);
@@ -95,13 +103,17 @@
   --md-code-bg: rgb(var(--tint-rgb) / 10%);
   --md-pre-bg: rgb(var(--tint-rgb) / 8%);
 
-  /* ── 线条（§24.2：深色 .08 / 浅色 .10） ──────────────────────────── */
+  /* ── 线条（§2.1）：三档半透明，行分隔 / 发丝线 / 强边 ──────────────── */
+  --border-soft: rgb(var(--tint-rgb) / 5%);
   --border: rgb(var(--tint-rgb) / 8%);
-  --border-strong: rgb(var(--tint-rgb) / 16%);
+  --border-strong: rgb(var(--tint-rgb) / 13%);
 
-  /* ── 文字 ────────────────────────────────────────────────────────── */
-  --text: rgb(var(--tint-rgb) / 85%);
-  --faint: rgb(var(--tint-rgb) / 38%);
+  /* ── 文字（§2.1）：四阶实色墨 ────────────────────────────────────────
+     标题 `--text-strong` → 正文 `--text` → 次要 `--muted-foreground`（在下面的
+     shadcn 段）→ 装饰 `--faint`（不做可读文字）。 */
+  --text-strong: #f2f2f2;
+  --text: #cdcdcd;
+  --faint: #6a6a6a;
   --on-accent: #ffffff;
 
   /* ── 品牌强调色（计划书 §4.3 里的 `--accent`） ───────────────────── */
@@ -215,9 +227,11 @@
      引用会形成自引用循环。 */
   --r-tight: 4px;
   --r-control: 6px;
-  --r-card: 10px;
+  /* 按钮 / 输入（default 以上）、菜单面板（= 菜单项 4 + 内距 4） */
+  --r-field: 8px;
+  --r-card: 12px;
   --r-panel: 12px;
-  --r-dialog: 14px;
+  --r-dialog: 16px;
   --r-float: 16px;
   /* 头像、圆点、Badge、StatusPill、分段控件指示器 */
   --r-pill: 999px;
@@ -285,12 +299,22 @@
   --pop-scale: 0.96;
   --stagger: 40ms;
 
-  /* ── 阴影（设计系统 §2.9）：三档，卡片没有阴影只有 1px 边 ──────────
-     节点（拖动中加倍）、浮层（菜单 / Popover / Tooltip / Dock / 横幅 / Toast）、
-     对话框。浅色下整体减半。阴影不做动画。 */
-  --shadow-node: 0 1px 2px rgb(0 0 0 / 20%), 0 4px 12px rgb(0 0 0 / 14%);
-  --shadow-overlay: 0 4px 12px rgb(0 0 0 / 28%);
-  --shadow-dialog: 0 2px 8px rgb(0 0 0 / 24%), 0 24px 64px rgb(0 0 0 / 36%);
+  /* ── 投影（设计系统 §2.9）：投影只表达层次，逐级加深 ────────────────
+     卡片与节点轻投影；浮层（菜单 / Popover / Dock / 横幅 / Toast）、对话框逐级
+     加深；节点拖动与选中抬到浮层那一档。深色面带 1px 内侧顶部高光，浅色不带。
+     阴影不做动画。 */
+  --shadow-card:
+    inset 0 1px 0 0 rgb(255 255 255 / 5%), 0 1px 2px 0 rgb(0 0 0 / 30%);
+  --shadow-node: var(--shadow-card);
+  --shadow-overlay:
+    inset 0 1px 0 0 rgb(255 255 255 / 6%), 0 2px 6px -1px rgb(0 0 0 / 50%),
+    0 10px 28px -6px rgb(0 0 0 / 60%);
+  --shadow-node-lift: var(--shadow-overlay);
+  --shadow-dialog:
+    inset 0 1px 0 0 rgb(255 255 255 / 6%), 0 6px 16px -4px rgb(0 0 0 / 55%),
+    0 24px 64px -12px rgb(0 0 0 / 70%);
+  /* 键帽底部 1px 内线 */
+  --shadow-kbd: inset 0 -1px 0 0 rgb(255 255 255 / 8%);
   /* 不表达层次的两类：展示页强制焦点态的 3px 50% 环（与生成组件 `ring-3
      ring-ring/50` 一致），节点状态光晕（2px 实环 + 18px 晕） */
   --shadow-focus-ring: 0 0 0 3px
@@ -425,7 +449,7 @@
   --secondary-foreground: var(--text);
   /* 次要底色 + 次要文字色：注意 `--muted` 是“底”不是“字” */
   --muted: var(--surface-raised);
-  --muted-foreground: rgb(var(--tint-rgb) / 55%);
+  --muted-foreground: #999999;
   /* 菜单/列表项高亮底。刻意用中性色而不是品牌蓝：
      命令面板、下拉菜单、Select 每一行都吃这个色，用蓝底会太吵。 */
   --accent: rgb(var(--tint-rgb) / 9%);
@@ -472,11 +496,11 @@
 
   --tint-rgb: 32 32 32;
 
-  --bg: #f7f7f7;
-  --panel: #f5f5f5;
+  --bg: #f0f0f0;
+  --panel: #e8e8e8;
   --panel-header: var(--card);
-  --canvas-bg: #ffffff;
-  --canvas-dot: #d8d8d8;
+  --canvas-bg: #f0f0f0;
+  --canvas-dot: #d0d0d0;
 
   /* 终端浅色调色板（#501）。底 #fafafa，与画布 / 卡片的白区分得开又不刺眼；
      十六色每个前景对底 ≥ 4.5:1（`terminal-palette.test.ts` 逐条守卫）。
@@ -503,29 +527,35 @@
 
   --sidebar-material: color-mix(in srgb, var(--panel) 94%, transparent);
 
-  --surface-sunken: #e9e9e9;
-  --surface-deep: #ededed;
+  --surface-sunken: #e8e8e8;
+  --surface-deep: var(--surface-sunken);
   --surface-base: var(--panel);
-  --surface-card: #ffffff;
-  --surface-raised: #ebebeb;
-  --surface-overlay: #ffffff;
+  /* 卡片不再纯白：比窗口底亮一级，浮层再亮一级 */
+  --surface-card: #f7f7f7;
+  --surface-raised: #e2e2e2;
+  --surface-overlay: #fafafa;
+  --segment-thumb: var(--surface-overlay);
 
   --scrim: rgb(0 0 0 / 28%);
   --hover: rgb(var(--tint-rgb) / 6%);
   --active: rgb(var(--tint-rgb) / 11%);
 
-  --border: rgb(var(--tint-rgb) / 10%);
-  --border-strong: rgb(var(--tint-rgb) / 20%);
+  --border-soft: rgb(var(--tint-rgb) / 7%);
+  --border: rgb(var(--tint-rgb) / 11%);
+  --border-strong: rgb(var(--tint-rgb) / 17%);
 
-  --text: rgb(var(--tint-rgb) / 90%);
-  --faint: rgb(var(--tint-rgb) / 50%);
+  --text-strong: #1a1a1a;
+  --text: #444444;
+  --faint: #9a9a9a;
   --on-accent: #ffffff;
 
   --brand: #007aff;
-  --brand-text: #0a5fc4;
+  /* 未读胶囊：字叠在品牌 10% 衬底、再落到 `--panel` 上仍 ≥ 4.5 */
+  --brand-text: #095bbd;
   --brand-soft: rgb(0 122 255 / 12%);
   --brand-solid: #0066cc;
-  --focus-ring: #082340;
+  /* 比旧值再压暗一点：50% 叠在最深的浅色面 `--surface-raised` 上仍 ≥ 3 */
+  --focus-ring: #061b33;
 
   --danger: #d70015;
   --danger-soft: rgb(215 0 21 / 10%);
@@ -536,26 +566,27 @@
   --warn: #a35a00;
   --warn-soft: rgb(163 90 0 / 10%);
   --warn-text: #8f4e00;
-  --caution: #7f6000;
-  --caution-text: #7f6000;
-  --caution-soft: rgb(127 96 0 / 10%);
+  /* caution 图形即文字：叠在自身 10% 衬底、再落到 `--panel` 上仍 ≥ 4.5 */
+  --caution: #735700;
+  --caution-text: #735700;
+  --caution-soft: rgb(115 87 0 / 10%);
   --success: #177a2e;
   --success-soft: rgb(23 122 46 / 10%);
-  --success-text: #15702a;
+  --success-text: #146c28;
 
   --agent-working: #b8532f;
   --agent-working-soft: rgb(184 83 47 / 14%);
   --working-text: #9e4526;
 
-  /* Agent 色在白底上原值都不到 3:1：标识与文字合一，统一用压暗值（§2.4）。
-     比设计表再压暗约 5%：表里的值只对白底算到 4.5，侧栏 `--panel` 上差一点。 */
-  --agent-claude: #a85c43;
-  --agent-codex: #0c7f63;
-  --agent-opencode: #7763b3;
-  --agent-pi: #886c3f;
-  --agent-omp: #8a6a4a;
-  --agent-copilot: #835bc6;
-  --agent-ama: #137c8a;
+  /* Agent 色在浅底上原值都不到 3:1：标识与文字合一，统一用压暗值（§2.4），
+     对最深的阅读面 `--panel` 仍 ≥ 4.6。 */
+  --agent-claude: #9a543d;
+  --agent-codex: #0b745b;
+  --agent-opencode: #6d5ba4;
+  --agent-pi: #7d6339;
+  --agent-omp: #7e6144;
+  --agent-copilot: #7853b6;
+  --agent-ama: #11707d;
   --agent-claude-text: var(--agent-claude);
   --agent-codex-text: var(--agent-codex);
   --agent-opencode-text: var(--agent-opencode);
@@ -590,10 +621,14 @@
   /* 上下文线：浅底上压暗，对白色画布仍 ≥ 4.5:1。 */
   --link-context: #c2187a;
 
-  /* 浅色下阴影减半（设计系统 §2.9） */
-  --shadow-node: 0 1px 2px rgb(0 0 0 / 8%), 0 4px 12px rgb(0 0 0 / 6%);
-  --shadow-overlay: 0 4px 12px rgb(0 0 0 / 8%);
-  --shadow-dialog: 0 2px 8px rgb(0 0 0 / 12%), 0 24px 64px rgb(0 0 0 / 18%);
+  /* 浅色投影更淡，且没有顶部高光（设计系统 §2.9）。`--shadow-node` /
+     `--shadow-node-lift` 是别名，跟着这里走。 */
+  --shadow-card: 0 1px 2px -1px rgb(0 0 0 / 6%), 0 2px 4px 0 rgb(0 0 0 / 4%);
+  --shadow-overlay:
+    0 2px 6px -1px rgb(0 0 0 / 8%), 0 10px 28px -6px rgb(0 0 0 / 14%);
+  --shadow-dialog:
+    0 6px 16px -4px rgb(0 0 0 / 10%), 0 24px 64px -12px rgb(0 0 0 / 20%);
+  --shadow-kbd: inset 0 -1px 0 0 rgb(0 0 0 / 10%);
 
   /* shadcn 契约在浅色下重新声明一遍：两套主题各自分叉的余地留着，
      `styles/tokens.test.ts` 也会逐条校验它们都在。 */
@@ -608,7 +643,8 @@
   --secondary: var(--surface-raised);
   --secondary-foreground: var(--text);
   --muted: var(--surface-raised);
-  --muted-foreground: rgb(var(--tint-rgb) / 70%);
+  /* 排队 / 暂停胶囊的字叠在自身 10% 衬底、再落到 `--panel` 上仍 ≥ 4.5 */
+  --muted-foreground: #5e5e5e;
   --accent: rgb(var(--tint-rgb) / 8%);
   --accent-foreground: var(--text);
   --destructive: var(--danger-text);

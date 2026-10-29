@@ -21,7 +21,7 @@ function Command({
     <CommandPrimitive
       data-slot="command"
       className={cn(
-        "flex size-full flex-col overflow-hidden rounded-panel! bg-popover p-1 text-popover-foreground",
+        "flex size-full flex-col overflow-hidden rounded-field! bg-popover p-1 text-popover-foreground",
         className,
       )}
       {...props}
@@ -58,7 +58,7 @@ function CommandDialog({
       </DialogHeader>
       <DialogContent
         className={cn(
-          "top-1/4 max-w-[600px]! translate-y-0 overflow-hidden rounded-panel! p-0 sm:max-w-[600px]",
+          "top-1/4 max-w-[600px]! translate-y-0 overflow-hidden rounded-dialog! p-0 sm:max-w-[600px]",
           className,
         )}
         showCloseButton={showCloseButton}
@@ -75,6 +75,11 @@ function CommandDialog({
   );
 }
 
+/**
+ * 命令面板的搜索框是无框的：键盘焦点由列表高亮表达（cmdk 的当前项），输入框
+ * 自己不画焦点环；聚焦时只把底部分隔线从 `--border` 升到 `--border-strong`，
+ * 作为一条看得见但很轻的指示。
+ */
 function CommandInput({
   className,
   ...props
@@ -82,13 +87,13 @@ function CommandInput({
   return (
     <div
       data-slot="command-input-wrapper"
-      className="border-b border-border px-2 py-1"
+      className="border-b border-border px-2 py-1 has-[[data-slot=command-input]:focus-visible]:border-border-strong"
     >
       <InputGroup className="h-8! rounded-control! border-transparent bg-transparent shadow-none! *:data-[slot=input-group-addon]:pl-2!">
         <CommandPrimitive.Input
           data-slot="command-input"
           className={cn(
-            "w-full text-body outline-hidden disabled:cursor-not-allowed disabled:opacity-50",
+            "w-full text-body outline-hidden focus-visible:ring-0 disabled:cursor-not-allowed disabled:opacity-50",
             className,
           )}
           {...props}
@@ -171,7 +176,7 @@ function CommandItem({
     <CommandPrimitive.Item
       data-slot="command-item"
       className={cn(
-        "group/command-item relative flex h-7 cursor-default items-center gap-2 rounded-control px-2 text-body outline-hidden select-none in-data-[slot=dialog-content]:rounded-control! data-[disabled=true]:pointer-events-none data-[disabled=true]:opacity-50 data-selected:bg-muted data-selected:text-foreground [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4 data-selected:*:[svg]:text-foreground",
+        "group/command-item relative flex h-7 cursor-default items-center gap-2 rounded-tight px-2 text-body outline-hidden select-none data-[disabled=true]:pointer-events-none data-[disabled=true]:opacity-50 data-selected:bg-muted data-selected:text-strong [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4 data-selected:*:[svg]:text-strong",
         className,
       )}
       {...props}
@@ -187,7 +192,7 @@ function CommandShortcut({ className, ...props }: React.ComponentProps<"kbd">) {
     <Kbd
       data-slot="command-shortcut"
       className={cn(
-        "ml-auto h-4 min-w-4 bg-transparent px-0 text-muted-foreground group-data-selected/command-item:text-foreground",
+        "ml-auto h-4 min-w-4 bg-transparent px-0 text-muted-foreground group-data-selected/command-item:text-strong",
         className,
       )}
       {...props}

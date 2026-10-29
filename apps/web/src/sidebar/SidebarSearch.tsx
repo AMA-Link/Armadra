@@ -45,7 +45,6 @@ import {
 import { gotoNode } from "./goto-node";
 import { searchBoards, type SearchBoard, type SearchHit } from "./search-index";
 import { displayName } from "./display-name";
-import { COMMAND_INPUT_FOCUS } from "@/panels/tabs-focus";
 
 export interface SidebarSearchProps {
   open: boolean;
@@ -146,7 +145,6 @@ export function SidebarSearch({ open, onOpenChange }: SidebarSearchProps) {
         </ResponsiveDialogHeader>
         <Command className="p-0" shouldFilter={false}>
           <CommandInput
-            className={COMMAND_INPUT_FOCUS}
             placeholder={t("search.placeholder")}
             value={query}
             onValueChange={setQuery}

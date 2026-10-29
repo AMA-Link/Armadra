@@ -42,9 +42,10 @@ describe("nodes.css 节点壳（设计系统 §4）", () => {
     expect(nodesCss.slice(at, at + 200)).toContain("var(--border-strong)");
   });
 
-  it("拖动中阴影叠两层并给 will-change", () => {
+  it("拖动中阴影抬到 --shadow-node-lift 并给 will-change", () => {
     const dragging = block('[data-dragging="true"] .node-frame {');
-    expect(dragging).toContain("var(--shadow-node), var(--shadow-node)");
+    expect(dragging).toContain("box-shadow: var(--shadow-node-lift)");
+    expect(dragging).not.toContain("var(--shadow-node),");
     expect(dragging).toContain("will-change: transform");
   });
 
@@ -56,12 +57,13 @@ describe("nodes.css 节点壳（设计系统 §4）", () => {
     );
   });
 
-  it("选中是品牌蓝 1.5px：1px 边 + 0.5px 外环", () => {
+  it("选中是品牌蓝 1.5px：1px 边 + 0.5px 外环，阴影同拖动抬一档", () => {
     const selected = block(
       '[data-slot="node-shell"][data-selected="true"] > .node-frame {',
     );
     expect(selected).toContain("border-color: var(--brand)");
     expect(selected).toContain("0 0 0 0.5px var(--brand)");
+    expect(selected).toContain("var(--shadow-node-lift)");
   });
 
   it("不可连接的把手变 --danger 并抖（armadra-handle-shake 240ms）", () => {

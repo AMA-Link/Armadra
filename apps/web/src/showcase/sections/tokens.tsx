@@ -22,13 +22,14 @@ const AGENTS = ["claude", "codex", "opencode", "pi", "omp", "copilot", "ama"];
 const SURFACES = [
   "--bg",
   "--panel",
+  "--surface-sunken",
   "--surface-card",
-  "--surface-raised",
   "--surface-overlay",
+  "--surface-raised",
   "--canvas-bg",
   "--term-bg",
 ];
-const TEXTS = ["--text", "--muted-foreground", "--faint"];
+const TEXTS = ["--text-strong", "--text", "--muted-foreground", "--faint"];
 const BRAND = ["--brand", "--brand-text", "--brand-solid", "--focus-ring"];
 const STATUS: [string, string, string | null][] = [
   ["--danger", "--danger-text", "--danger-soft"],
@@ -46,21 +47,25 @@ const TYPE_SCALE = [
   ["--text-meta", "text-meta"],
   ["--text-caption", "text-caption"],
 ] as const;
-/** 七档语义圆角，类名与令牌一一对应。 */
+/** 八档语义圆角，类名与令牌一一对应。 */
 const RADII = [
   ["--r-tight", "rounded-tight"],
   ["--r-control", "rounded-control"],
+  ["--r-field", "rounded-field"],
   ["--r-card", "rounded-card"],
   ["--r-panel", "rounded-panel"],
   ["--r-dialog", "rounded-dialog"],
   ["--r-float", "rounded-float"],
   ["--r-pill", "rounded-pill"],
 ] as const;
-/** 三档阴影；卡片没有阴影，只有 1px 边。 */
+/** 投影逐级加深：卡片 / 节点、节点抬起、浮层、对话框，外加键帽内线。 */
 const SHADOWS = [
+  ["--shadow-card", "shadow-card"],
   ["--shadow-node", "shadow-node"],
+  ["--shadow-node-lift", "shadow-node-lift"],
   ["--shadow-overlay", "shadow-overlay"],
   ["--shadow-dialog", "shadow-dialog"],
+  ["--shadow-kbd", "shadow-kbd"],
 ] as const;
 const DURATIONS = [
   "--dur-instant",
@@ -312,17 +317,10 @@ export default function TokensSection() {
       </Group>
 
       <Group title={t("showcase.tokens.shadow")}>
-        <div className="flex w-32 flex-col gap-2 p-2">
-          <div
-            className="h-12 rounded-card border border-border bg-card"
-            data-shadow-sample="none"
-          />
-          <TokenName name="card · border" />
-        </div>
         {SHADOWS.map(([token, cls]) => (
           <div key={token} className="flex w-32 flex-col gap-2 p-2">
             <div
-              className={`h-12 rounded-card bg-card ${cls}`}
+              className={`h-12 rounded-card border border-border bg-card ${cls}`}
               data-shadow-sample={cls}
             />
             <TokenName name={`${cls} · ${token}`} />

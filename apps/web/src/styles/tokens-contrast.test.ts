@@ -122,13 +122,35 @@ describe("lib/contrast", () => {
 });
 
 describe.each(THEMES)("%s 主题对比度", (theme) => {
-  it("§2.1 正文与次要文字在阅读表面上 ≥ 4.5", () => {
-    for (const bg of [...READING_SURFACES, "--surface-overlay"]) {
-      expect(ratio(theme, "--text", bg)).toBeGreaterThanOrEqual(TEXT);
-      expect(ratio(theme, "--muted-foreground", bg)).toBeGreaterThanOrEqual(
-        TEXT,
-      );
+  it("§2.1 标题、正文与次要文字在每一级面上 ≥ 4.5（含下沉、浮层与悬浮）", () => {
+    for (const bg of [
+      ...READING_SURFACES,
+      "--surface-sunken",
+      "--surface-overlay",
+      "--surface-raised",
+    ]) {
+      for (const ink of ["--text-strong", "--text", "--muted-foreground"]) {
+        expect(ratio(theme, ink, bg), `${ink} on ${bg}`).toBeGreaterThanOrEqual(
+          TEXT,
+        );
+      }
     }
+  });
+
+  it("§2.1 墨阶拉得开：标题比正文更强，正文比次要更强（对卡片）", () => {
+    const on = (ink: string) => ratio(theme, ink, "--surface-card");
+    expect(on("--text-strong")).toBeGreaterThan(on("--text"));
+    expect(on("--text")).toBeGreaterThan(on("--muted-foreground"));
+    expect(on("--muted-foreground")).toBeGreaterThan(on("--faint"));
+  });
+
+  it("§9 分段控件：当前项文字落在 --segment-thumb 上 ≥ 4.5，未选项次要文字落在下沉轨道上 ≥ 4.5", () => {
+    expect(ratio(theme, "--text", "--segment-thumb")).toBeGreaterThanOrEqual(
+      TEXT,
+    );
+    expect(
+      ratio(theme, "--muted-foreground", "--surface-sunken"),
+    ).toBeGreaterThanOrEqual(TEXT);
   });
 
   it("§2.2 品牌色：图形 ≥ 3，品牌文字 ≥ 4.5（含叠在 --brand-soft 上），实底白字 ≥ 4.5", () => {
@@ -176,8 +198,11 @@ describe.each(THEMES)("%s 主题对比度", (theme) => {
       expect(ratio(theme, graphic, "--surface-card")).toBeGreaterThanOrEqual(
         GRAPHIC,
       );
-      for (const bg of READING_SURFACES) {
-        expect(ratio(theme, text, bg)).toBeGreaterThanOrEqual(TEXT);
+      for (const bg of [...READING_SURFACES, "--surface-overlay"]) {
+        expect(
+          ratio(theme, text, bg),
+          `${text} on ${bg}`,
+        ).toBeGreaterThanOrEqual(TEXT);
       }
       // §2.3 表里深色 working 只验到卡片（5.3），没列「文字叠在衬底上」这一对
       // （按现值算约 4.1）。深色下别把 `--working-text` 叠在 18% 衬底上。
@@ -250,9 +275,10 @@ describe.each(THEMES)("%s 主题对比度", (theme) => {
         ratio(theme, `--agent-${id}`, "--surface-card"),
       ).toBeGreaterThanOrEqual(GRAPHIC);
       for (const bg of READING_SURFACES) {
-        expect(ratio(theme, `--agent-${id}-text`, bg)).toBeGreaterThanOrEqual(
-          TEXT,
-        );
+        expect(
+          ratio(theme, `--agent-${id}-text`, bg),
+          `--agent-${id}-text on ${bg}`,
+        ).toBeGreaterThanOrEqual(TEXT);
       }
       expect(
         contrastOver(

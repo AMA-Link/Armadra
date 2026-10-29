@@ -10,7 +10,6 @@ import {
   ResponsiveDialogHeader,
   ResponsiveDialogTitle,
 } from "@/panels/ResponsiveDialog";
-import { COMMAND_INPUT_FOCUS } from "@/panels/tabs-focus";
 import { Alert, AlertTitle } from "@/ui/alert";
 import { Avatar, AvatarFallback } from "@/ui/avatar";
 import { Button } from "@/ui/button";
@@ -104,10 +103,7 @@ function Choice({
           className="z-[var(--z-dialog)] w-(--radix-popover-trigger-width) p-0"
         >
           <Command>
-            <CommandInput
-              className={COMMAND_INPUT_FOCUS}
-              placeholder={search}
-            />
+            <CommandInput placeholder={search} />
             <CommandList>
               <CommandEmpty>{empty}</CommandEmpty>
               <CommandGroup>

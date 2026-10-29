@@ -4,9 +4,10 @@ import * as React from "react";
 import { cn } from "@/lib/cn";
 
 /**
- * 表格（设计系统 §9）：表头 `--surface-raised` 32 高、`text-caption` 500；行 36（`size="sm"` 28）；
- * 单元格 `px-3`；数字列自己加 `text-end tabular-nums`；长串 `overflow-wrap: anywhere`。
- * 行 hover `--hover`，选中行 `--brand-soft`。放进 `Card variant="table"` 就是表格卡。
+ * 表格（设计系统 §9）：表头没有底色，32 高、`text-meta` 500 次要色 + 一条 `--border` 底线；
+ * 行 36（`size="sm"` 28），行间分隔 `--border-soft`；单元格 `px-3`；数字列自己加
+ * `text-end tabular-nums`；长串 `overflow-wrap: anywhere`。行 hover `--hover`，选中行
+ * `--brand-soft` 底 + `text-strong`。放进 `Card variant="table"` 就是表格卡。
  */
 function Table({
   className,
@@ -32,7 +33,7 @@ function TableHeader({ className, ...props }: React.ComponentProps<"thead">) {
   return (
     <thead
       data-slot="table-header"
-      className={cn("[&_tr]:border-b", className)}
+      className={cn("[&_tr]:border-b [&_tr]:border-border", className)}
       {...props}
     />
   );
@@ -66,7 +67,7 @@ function TableRow({ className, ...props }: React.ComponentProps<"tr">) {
     <tr
       data-slot="table-row"
       className={cn(
-        "h-9 border-b transition-colors duration-(--dur-instant) hover:bg-hover has-aria-expanded:bg-hover group-data-[size=sm]/table:h-7 data-[state=selected]:bg-brand-soft",
+        "h-9 border-b border-border-soft transition-colors duration-(--dur-instant) hover:bg-hover has-aria-expanded:bg-hover group-data-[size=sm]/table:h-7 data-[state=selected]:bg-brand-soft data-[state=selected]:text-strong",
         className,
       )}
       {...props}
@@ -79,7 +80,7 @@ function TableHead({ className, ...props }: React.ComponentProps<"th">) {
     <th
       data-slot="table-head"
       className={cn(
-        "h-8 bg-raised px-3 text-left align-middle text-caption font-medium whitespace-nowrap text-muted-foreground [&:has([role=checkbox])]:pr-0",
+        "h-8 px-3 text-left align-middle text-meta font-medium whitespace-nowrap text-muted-foreground [&:has([role=checkbox])]:pr-0",
         className,
       )}
       {...props}

@@ -26,7 +26,7 @@ export function SettingsGroup({
           {title}
         </h3>
       )}
-      <Card className="settings-group gap-0 py-0 divide-y divide-border/60 overflow-visible">
+      <Card className="settings-group gap-0 py-0 divide-y divide-border-soft overflow-visible">
         {children}
       </Card>
     </section>

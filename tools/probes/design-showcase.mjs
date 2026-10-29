@@ -9,7 +9,8 @@
 //   * 深浅两套主题各执行一次 `window.__showcaseContrast()`——读浏览器算出来的
 //     颜色核算设计系统 §2.1–§2.5 的每一对，低于阈值即失败；
 //   * `components` 分区按 Tab 走一遍：每个可聚焦元素都要被走到、命中
-//     `:focus-visible`、并且看得见焦点环；
+//     `:focus-visible`、并且看得见焦点环（命令面板的无框搜索框以聚焦时升到
+//     `--border-strong` 的底线为准）；
 //   * `prefers-reduced-motion: reduce` 下 `canvas` 分区的动画必须静止
 //     （隔 700ms 的两张截图逐字节相同，且没有在跑的动画）；`status`、`coordinator`、
 //     `motion` 三个分区没有位移 / 缩放 / 无限循环的动画（转圈除外），各存一张
@@ -529,10 +530,24 @@ await h.run(async () => {
           });
         };
         const shell = element.parentElement?.parentElement;
+        // 命令面板的搜索框是无框的：不画环，聚焦时包裹层的底部分隔线升到
+        // --border-strong（ui/command.tsx）。这条线也算看得见的焦点指示。
+        const underline = (wrapper) => {
+          if (!wrapper) return false;
+          const probe = document.createElement("div");
+          probe.style.borderBottom = "1px solid var(--border-strong)";
+          wrapper.appendChild(probe);
+          const strong = getComputedStyle(probe).borderBottomColor;
+          probe.remove();
+          const style = getComputedStyle(wrapper);
+          return parseFloat(style.borderBottomWidth) > 0 && style.borderBottomColor === strong;
+        };
         const ring = [element, element.parentElement, shell,
           ...(shell ? shell.querySelectorAll('[data-active="true"]') : [])]
           .filter(Boolean)
-          .some(ringOf);
+          .some(ringOf) ||
+          (element.getAttribute("data-slot") === "command-input" &&
+            underline(element.closest('[data-slot="command-input-wrapper"]')));
         return {
           index,
           visible: element.matches(":focus-visible"),
