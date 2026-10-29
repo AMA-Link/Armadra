@@ -71,3 +71,41 @@ export function useConsoleSession({ enabled = true } = {}) {
     },
   };
 }
+
+/**
+ * 只有运营会话时的会话（云端控制台 §1.3）：运营 Cookie 独立于普通会话，`me.get` 不认它，
+ * 所以在 `/ops` 下普通会话没了，就用 `auth.refresh { scope: "operator" }` 答复里的账号画外壳
+ * （顺带取回刷新页面后丢掉的运营 CSRF 值）。续不上答 `error`，由调用方回登录。
+ */
+export function useOperatorOnlySession({ enabled }: { enabled: boolean }) {
+  const api = useCloudApi();
+  const operator = useOperatorActive();
+  const account = useQuery({
+    queryKey: cloudKeys.ops("account"),
+    queryFn: async () =>
+      (await api.ops.auth.refresh({ scope: "operator" })).session.account,
+    enabled,
+    staleTime: Infinity,
+    retry: false,
+  });
+  let session: ConsoleSession | null = null;
+  if (enabled && account.data && operator)
+    session = {
+      accountId: account.data.accountId,
+      user: {
+        name: account.data.displayName,
+        email: account.data.email ?? "",
+        emailVerified: account.data.emailVerified,
+      },
+      teams: [],
+      operator: true,
+      operatorScope: true,
+    };
+  return {
+    session,
+    /** 续不上运营会话。 */
+    failed: enabled && account.isError,
+    /** 取到过账号、运营会话后来到期（运营客户端续不上清掉了 CSRF）。 */
+    expired: enabled && account.data !== undefined && !operator,
+  };
+}

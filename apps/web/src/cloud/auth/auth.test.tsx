@@ -288,6 +288,75 @@ describe("运营登录走运营客户端（真实 cloud fetch）", () => {
   });
 });
 
+describe("只有运营会话（真实 cloud fetch，#584）", () => {
+  /** 新浏览器：没有普通会话 Cookie，运营 Cookie 只对 `admin.*` 与运营自己的刷新 / 登出有效。 */
+  function opsOnlyOrigin() {
+    let opsCookie = false;
+    const calls: string[] = [];
+    const unauthenticated = () =>
+      json({ code: "unauthenticated", message: "x" }, 401);
+    const fetcher = (async (input: RequestInfo | URL) => {
+      const request = input as Request;
+      const url = new URL(request.url);
+      const body = await request.clone().text();
+      const operator = body.includes('"scope":"operator"');
+      const key = `${request.method} ${url.pathname}`;
+      calls.push(operator ? `${key} operator` : key);
+      if (key === "POST /v1/auth/login" && operator) {
+        opsCookie = true;
+        return json({ ...SESSION, csrfToken: "ops-csrf" });
+      }
+      if (key === "POST /v1/auth/refresh")
+        return operator && opsCookie
+          ? json({ ...SESSION, csrfToken: "ops-csrf-2" })
+          : unauthenticated();
+      if (key.startsWith("GET /v1/admin/") && opsCookie)
+        return json(
+          (fx(
+            `admin.${url.pathname.endsWith("incident") ? "incident" : "relayNodes"}`,
+          ).output ?? {}) as object,
+        );
+      return unauthenticated();
+    }) as unknown as typeof fetch;
+    return { calls, fetcher, expire: () => (opsCookie = false) };
+  }
+
+  it("运营登录后直接进 /ops，不再被带回普通登录", async () => {
+    visit("/login?scope=operator&next=%2Fops%2Fnodes");
+    const { calls, fetcher, expire } = opsOnlyOrigin();
+    const api = createCloudApi({ origin: "http://app.test", fetch: fetcher });
+    render(<ConsoleRoot api={api} />);
+    await h1();
+    type("邮箱", "ops@example.com");
+    type("口令", "correct horse");
+    fireEvent.submit(screen.getByLabelText("邮箱").closest("form")!);
+    await waitFor(() => expect(here()).toBe("/ops/nodes"));
+    await waitFor(async () => expect((await h1()).textContent).toBe("节点"));
+    expect(here()).toBe("/ops/nodes");
+    expect(api.operator.active()).toBe(true);
+    // 普通会话照常先试过；续不上之后用运营会话自己的账号画外壳。
+    expect(calls).toContain("GET /v1/me");
+    expect(calls).toContain("POST /v1/auth/refresh operator");
+    // 运营会话到期（运营客户端续不上、清掉 CSRF）：回运营登录。
+    expire();
+    await act(() => api.signOut());
+    await waitFor(() =>
+      expect(here()).toBe("/login?scope=operator&next=%2Fops%2Fnodes"),
+    );
+  });
+
+  it("运营会话也续不上：照旧回普通登录，不暴露运营登录", async () => {
+    visit("/ops/nodes");
+    const { fetcher } = opsOnlyOrigin();
+    render(
+      <ConsoleRoot
+        api={createCloudApi({ origin: "http://app.test", fetch: fetcher })}
+      />,
+    );
+    await waitFor(() => expect(here()).toBe("/login?next=%2Fops%2Fnodes"));
+  });
+});
+
 describe("邀请页写操作与预览（真实 cloud fetch）", () => {
   const mountInvite = (routes: Record<string, () => Response>) => {
     visit("/invite/inv1#itok");
