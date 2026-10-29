@@ -76,7 +76,7 @@ export async function runNewLink({
         "创建链接的结果",
         { timeout: 60_000 },
       );
-      if (!outcome.startsWith("limited:") || attempt >= 2) return outcome;
+      if (!outcome.startsWith("limited:") || attempt >= 5) return outcome;
       const seconds = Number(/(\d+) 秒/.exec(outcome)?.[1] ?? "60");
       report.e10Throttled.push(seconds);
       console.log(`  info  主机限流登录，页面说 ${seconds} 秒后再试`);
