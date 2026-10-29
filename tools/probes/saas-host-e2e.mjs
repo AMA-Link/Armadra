@@ -833,6 +833,20 @@ try {
     }
     const approvals = await approve(ownerTab, "owner 进入 host1");
     s.check(approvals === 1, "新浏览器先待确认，主机放行一次", approvals);
+    // #606：登记名是浏览器与系统（`browserDevice()`），不是原生 App 的「Armadra iOS」。
+    const ownerDevices = rows(
+      hostQuery(
+        hostDir,
+        "select d.label, d.platform from trusted_devices d join identity_principals p on p.principal_id = d.principal_id where p.kind = 'owner' and d.status = 'trusted'",
+      ),
+    );
+    s.check(
+      ownerDevices.length === 1 &&
+        ownerDevices[0].platform === "browser" &&
+        /^Armadra Web \([A-Za-z]+, [A-Za-z]+\)$/.test(ownerDevices[0].label),
+      "host1 上 owner 的浏览器按浏览器与系统登记",
+      ownerDevices,
+    );
     await terminalRoundTrip(ownerTab, terminal.id, "saas");
     s.ok("终端收发 42saas");
     const text = await pageText(ownerTab);
@@ -933,6 +947,16 @@ try {
       { timeout: 30_000 },
     );
     s.ok("owner 的 /h/（主机页面）弹出「… 放行了 Member 的 …」");
+    // #606：通知里两头都是浏览器名，没有原生 App 的「Armadra iOS」。
+    const notice = await ownerTab.evaluate(
+      `return [...document.querySelectorAll('[role="dialog"]')].map((d) => d.innerText).find((t) => t.includes("放行了")) ?? "";`,
+    );
+    s.check(
+      !notice.includes("Armadra iOS") &&
+        (notice.match(/Armadra Web \(/g) ?? []).length >= 2,
+      "背书通知里放行者与新设备都是浏览器名",
+      notice,
+    );
     await s.shot(ownerTab, "e7b-endorsed-notice");
     await ownerTab.clickOn(
       `return [...document.querySelectorAll('[role="dialog"] button')].find((b) => b.innerText.trim() === "知道了");`,
