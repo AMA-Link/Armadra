@@ -15,7 +15,9 @@
 //      E2 之前 member 打开 `/h/` 停在待确认，owner 的信任页对这行给「在此浏览器打开主机」；E2 里 owner
 //      的 `/h/` 进了主机，信任页不刷新就改给「信任」（`armadra.e2e.trust` 广播）；owner 在信任页输入
 //      member 屏幕上的码 → member 自动进入，host1 记成 `endorse:`、owner 的 `/h/` 弹背书通知；
-//      owner 另一个浏览器的待确认，owner 的受信浏览器批它答 forbidden；经它「配对新设备」答 forbidden。
+//      owner 另一个浏览器的待确认，owner 的受信浏览器批它答 forbidden；经它「配对新设备」答 forbidden；
+//      E7c（#607）：owner 离开 `/h/` 后连续背书 member 的两个新浏览器，owner 再打开 `/h/` 不补弹、
+//      铃铛的「本机」一组全列出；member 的 `/h/` 不弹、没有这一组。
 //
 // 全程在页面加载前监听 `securitypolicyviolation`（含 Trusted Types），要求违规为零。控制台页面的 CSP
 // 缺省换成 B7 要提的那一份（控制面现有的原样加 `img-src` / `media-src` 的 `blob:` 与设计 Q13 的
@@ -56,6 +58,7 @@ import {
   untilApproved,
 } from "./platform-lib.mjs";
 import { probeSession } from "./probe-session.mjs";
+import { endorsementNotices } from "./saas-host-e2e-notices.mjs";
 import {
   connectBrowser,
   freePort,
@@ -990,15 +993,26 @@ try {
         () => true,
         () => false,
       );
+    // 信任页批不成时有两种答法：主机答 forbidden（对话框改口），或信任页在主机上对不上这条申请
+    // （不放行，提示「还没有这台设备的申请」）。后一种改经 /h/ 的设备页批，那里要答 forbidden。
+    let viaTrustPage = false;
     if (listed) {
       await endorse(accounts.owner.name, ownerSas);
-      await trustTab.until(
-        `return document.querySelector('[role="dialog"]')?.innerText.includes("在已信任的设备上处理") ? true : null;`,
-        "主机答 forbidden，对话框改成「在已信任的设备上处理」",
+      const outcome = await trustTab.until(
+        `if (document.querySelector('[role="dialog"]')?.innerText.includes("在已信任的设备上处理")) return "forbidden";
+         return document.body.innerText.includes("这台主机上还没有这台设备的申请") ? "unmatched" : null;`,
+        "信任页批 owner 自己的新浏览器没有放行",
         { timeout: 30_000 },
       );
-      s.ok("owner 的受信浏览器经信任页批 owner 自己的新浏览器：forbidden");
-      await s.shot(trustTab, "e7b-owner-forbidden");
+      if (outcome === "forbidden") {
+        viaTrustPage = true;
+        s.ok("owner 的受信浏览器经信任页批 owner 自己的新浏览器：forbidden");
+        await s.shot(trustTab, "e7b-owner-forbidden");
+      } else {
+        s.ok(
+          "信任页在主机上对不上 owner 自己的这条申请、不放行，改经 /h/ 的设备页批",
+        );
+      }
       await trustTab.key("Escape");
     } else {
       s.ok(
@@ -1029,7 +1043,7 @@ try {
       `return [...document.querySelectorAll('[role="dialog"] nav button')].find((b) => b.getAttribute("aria-label") === "设备与会话" || b.innerText.trim() === "设备与会话")`,
       "设置导航「设备与会话」",
     );
-    if (!listed) {
+    if (!viaTrustPage) {
       await ownerTab.until(
         `return [...document.querySelectorAll('[role="dialog"] tr')].some((row) => row.innerText.includes("待确认")) ? true : null;`,
         "设备页列出待确认",
@@ -1077,6 +1091,32 @@ try {
     await ownerTab.key("Escape");
     await owner2Tab.close();
     s.entry.status = "passed";
+
+    // E7c（#607，契约 §81.1）：背书进需要人处理，见 saas-host-e2e-notices.mjs。
+    await endorsementNotices({
+      report,
+      output,
+      issuer: ISSUER,
+      team: TEAM,
+      accounts,
+      browser,
+      openTab,
+      consoleSignIn,
+      endorse,
+      hostUrl,
+      trustTab,
+      trustRow,
+      ready: hostReady(terminal.id),
+      ownerTab,
+      memberTab,
+      unread: () =>
+        rows(
+          hostQuery(
+            hostDir,
+            "select id from device_endorsements where read_at_ms = 0",
+          ),
+        ).length,
+    });
   }
 
   /* ------------------------------------ E3 ------------------------------------ */
