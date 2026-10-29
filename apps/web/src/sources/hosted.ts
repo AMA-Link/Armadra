@@ -28,8 +28,10 @@ import {
   browserSessionStorage,
   clearGuestRecords,
   createSessionRelayVault,
+  guestAcceptedBy,
   guestKey,
   guestKeys,
+  usableBy,
 } from "./relay-vault";
 import { type RelayedStatus, createRelayedEntry } from "./relayed-entry";
 import { setRelayedPage } from "./relayed-page";
@@ -50,8 +52,10 @@ export {
   createSessionRelayVault,
   guestKey,
   guestKeys,
+  guestAcceptedBy,
   guestLinkFor,
   hasGuestRecord,
+  usableBy,
 } from "./relay-vault";
 export { RELAY_DOWN_AFTER_MS } from "./relayed-entry";
 /**
@@ -255,7 +259,7 @@ export interface HostedRelay {
    * 也不退回账号记录。没进去时页面一律退回账号身份：记录没有 / 被收回答 `{ kind: "gone" }`
    * （作废那份记录）；连不上中继答 `null`、进主机失败答 `signedIn`，两者记录都留着。
    */
-  resumeLink(linkId: string): Promise<LinkResume>;
+  resumeLink(linkId: string, accountId?: string | null): Promise<LinkResume>;
   /** 这个页面是不是以访客身份（分享链接）进来的；是就给那份分享，否则 `null`。 */
   guest(): GuestShare | null;
   readonly status: HostedStatus;
@@ -561,9 +565,12 @@ export function createHostedRelay(options: HostedRelayOptions): HostedRelay {
       switchToAccount();
       return (await resumeWith()) ?? null;
     },
-    async resumeLink(linkId) {
+    async resumeLink(linkId, accountId) {
       const key = guestKey(issuer, linkId);
-      if (!guestKeys(guestStorage, issuer, now()).includes(key))
+      const by = guestAcceptedBy(guestStorage, issuer, linkId, now());
+      if (by === null) return { kind: "gone" };
+      // 这位不能用这份（别的账号接受的、来源不明）：当作没有，记录不动。
+      if (accountId !== undefined && !usableBy(by, accountId))
         return { kind: "gone" };
       switchToGuest(key);
       const resumed = await resumeWith();

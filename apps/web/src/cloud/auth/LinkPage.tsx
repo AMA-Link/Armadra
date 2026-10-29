@@ -18,6 +18,10 @@ import {
   parseCloudAccept,
 } from "../../sources/cloud-client";
 import { hasGuestRecord, startHostedRelay } from "../../sources/hosted";
+import {
+  browserLocalStorage,
+  guestAcceptedBy,
+} from "../../sources/relay-vault";
 import { openAfterJoin } from "../../sources/join-intent";
 import { useCloudApi } from "../api/context";
 import type { InvitationPreview } from "../api/session";
@@ -76,10 +80,13 @@ export type ResumeOutcome =
   | { readonly kind: "gone" }
   | { readonly kind: "failed" };
 
-const hostedResume = async (link: JoinLink): Promise<ResumeOutcome> => {
+const hostedResume = async (
+  link: JoinLink,
+  accountId: string | null,
+): Promise<ResumeOutcome> => {
   const resumed = await startHostedRelay({
     issuer: link.issuer,
-  }).resumeLink(link.linkId);
+  }).resumeLink(link.linkId, accountId);
   return resumed?.kind === "entered" || resumed?.kind === "gone"
     ? resumed
     : { kind: "failed" };
@@ -120,7 +127,8 @@ export function LinkPage({
   onDone: () => void;
   join?: JoinWithAccept;
   /** 用本机留着的访客记录重新进入；结果见 `ResumeOutcome`（缺省经页面的托管中继；测试换掉）。 */
-  resume?: (link: JoinLink) => Promise<ResumeOutcome>;
+  /** `accountId`：此刻的控制台账号（没有会话 `null`），只续这位能用的记录。 */
+  resume?: (link: JoinLink, accountId: string | null) => Promise<ResumeOutcome>;
 }) {
   const t = useT();
   const api = useCloudApi();
@@ -149,10 +157,33 @@ export function LinkPage({
   const accepted = React.useRef<CloudAccept | null>(null);
   /** 接受时带的是哪个账号（匿名 `""`，核对不出 `undefined`）。 */
   const acceptedBy = React.useRef<string | undefined>("");
-  // 这条链接已经加入过（本机留着访客记录）：主按钮是「打开」，续不上再回到「加入」。
+  // 这条链接已经加入过、且这位能续上（匿名接受的；或此刻的账号自己接受的）：主按钮是「打开」，
+  // 续不上再回到「加入」。别的账号接受的、来源不明的不算（§2.8）。
   const [joinedBefore, setJoinedBefore] = React.useState(
-    () => link !== null && hasGuestRecord(link.issuer, linkId),
+    () => link !== null && hasGuestRecord(link.issuer, linkId, null),
   );
+  /** 用账号接受的记录时，此刻的账号（「打开」只续这位的）。 */
+  const [viewer, setViewer] = React.useState<string | null>(null);
+  React.useEffect(() => {
+    if (link === null) return;
+    const by = guestAcceptedBy(browserLocalStorage(), link.issuer, linkId);
+    if (typeof by !== "string" || by === "") return;
+    let live = true;
+    void (async () => {
+      const account = (await api.ensureCsrf())
+        ? await api.client.me.get({}).then(
+            (me) => me.accountId,
+            () => null,
+          )
+        : null;
+      if (!live || account === null || account !== by) return;
+      setViewer(account);
+      setJoinedBefore(true);
+    })();
+    return () => {
+      live = false;
+    };
+  }, [api, link, linkId]);
 
   React.useEffect(() => {
     if (link === null) return;
@@ -210,7 +241,7 @@ export function LinkPage({
     setBusy(true);
     setError("");
     try {
-      const resumed = await resumeJoined(link);
+      const resumed = await resumeJoined(link, viewer);
       if (resumed.kind === "entered") enterDone(resumed.sourceId);
       else {
         // 记录没有了才回到「加入」；连不上只提示错误，保留「打开」，不引导重新接受（会多耗链接次数）。

@@ -309,6 +309,48 @@ describe("分享链接落地页（SaaS）", () => {
     expect(screen.queryByText(/^加入 .* 的/)).toBeNull();
   });
 
+  it("「打开」按接受者过滤：别的账号接受的、来源不明的、没登录时账号接受的都显示「加入」；自己接受的才「打开」", async () => {
+    const save = (acceptedBy?: string) =>
+      localStorage.setItem(
+        guestKey(window.location.origin, LINK_ID),
+        JSON.stringify({
+          issuer: window.location.origin,
+          cloudRefreshToken: "r",
+          sources: {},
+          entered: null,
+          ...(acceptedBy === undefined ? {} : { acceptedBy }),
+        }),
+      );
+    const probe = createMockApi({});
+    const self = (await probe.client.me.get({})).accountId;
+    for (const [acceptedBy, signedIn] of [
+      ["acct-other", true],
+      [undefined, true],
+      [undefined, false],
+      [self, false],
+    ] as const) {
+      visit(`/j/${LINK_ID}${HASH}`);
+      save(acceptedBy);
+      mount({ signedIn });
+      expect(await join()).toBeTruthy();
+      // 账号那份要等核对完才可能变「打开」：给它时间也不变。
+      await new Promise((resolve) => setTimeout(resolve, 30));
+      expect(screen.queryByRole("button", { name: "打开" })).toBeNull();
+      cleanup();
+      localStorage.clear();
+    }
+    visit(`/j/${LINK_ID}${HASH}`);
+    save(self);
+    hosted.resumeLink.mockResolvedValueOnce({
+      kind: "entered",
+      sourceId: HOST_ID,
+    });
+    const mine = mount({});
+    fireEvent.click(await screen.findByRole("button", { name: "打开" }));
+    await waitFor(() => expect(mine.onJoined).toHaveBeenCalledOnce());
+    expect(hosted.resumeLink).toHaveBeenCalledWith(LINK_ID, self);
+  });
+
   it("已加入过：主按钮是「打开」，经访客记录续上而不再接受；连不上中继保留「打开」，记录没有了才回到「加入」", async () => {
     visit(`/j/${LINK_ID}${HASH}`);
     localStorage.setItem(
@@ -318,6 +360,7 @@ describe("分享链接落地页（SaaS）", () => {
         cloudRefreshToken: "r",
         sources: {},
         entered: null,
+        acceptedBy: "",
       }),
     );
     hosted.resumeLink.mockResolvedValueOnce(null);

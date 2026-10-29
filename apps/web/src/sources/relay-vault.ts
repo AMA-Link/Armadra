@@ -230,10 +230,7 @@ export function guestLinkFor(
   for (const key of guestKeys(storage, issuer, now)) {
     const record = readResume(storage, issuer, key, now);
     if (record.entered?.sourceId !== sourceId) continue;
-    const usable =
-      record.acceptedBy === "" ||
-      (accountId !== null && record.acceptedBy === accountId);
-    if (!usable) continue;
+    if (!usableBy(record.acceptedBy, accountId)) continue;
     const expiresAtMs = record.expiresAtMs ?? Number.POSITIVE_INFINITY;
     if (best === null || expiresAtMs > best.expiresAtMs)
       best = { linkId: key.slice(prefix.length), expiresAtMs };
@@ -241,11 +238,41 @@ export function guestLinkFor(
   return best?.linkId ?? null;
 }
 
-/** 这条链接是否已经加入过：存储里有它没到期、还带刷新令牌的访客记录。 */
-export function hasGuestRecord(issuer: string, linkId: string): boolean {
-  return guestKeys(browserLocalStorage(), issuer).includes(
-    guestKey(issuer, linkId),
-  );
+/**
+ * 访客记录这位能不能用（§2.8）：匿名接受的（`""`）谁都能用；账号接受的只给那个账号；
+ * 没有 `acceptedBy` 的来源不明，谁都不用。`accountId`：当前控制台账号，没有会话是 `null`。
+ */
+export function usableBy(
+  acceptedBy: string | undefined,
+  accountId: string | null,
+): boolean {
+  return acceptedBy === "" || (accountId !== null && acceptedBy === accountId);
+}
+
+/** 这条链接的访客记录（没到期、带刷新令牌）是谁接受的；没有记录答 `null`，来源不明答 `undefined`。 */
+export function guestAcceptedBy(
+  storage: Storage | null,
+  issuer: string,
+  linkId: string,
+  now: number = Date.now(),
+): string | undefined | null {
+  const key = guestKey(issuer, linkId);
+  if (!guestKeys(storage, issuer, now).includes(key)) return null;
+  return readResume(storage, issuer, key, now).acceptedBy;
+}
+
+/**
+ * 这条链接是否已经加入过、且这位能续上：存储里有它没到期、还带刷新令牌的访客记录，并且
+ * {@link usableBy}。`accountId` 缺省（个人中转的落地页）不按接受者过滤。
+ */
+export function hasGuestRecord(
+  issuer: string,
+  linkId: string,
+  accountId?: string | null,
+): boolean {
+  const by = guestAcceptedBy(browserLocalStorage(), issuer, linkId);
+  if (by === null) return false;
+  return accountId === undefined || usableBy(by, accountId);
 }
 
 /** 丢掉这个签发方下全部访客记录（账号登录是明确换身份）。 */

@@ -732,7 +732,7 @@ export function createConsoleHost(options: ConsoleHostOptions): ConsoleHost {
     const relay = guestRelayOnce();
     let resumed: Awaited<ReturnType<GuestRelay["resumeLink"]>>;
     try {
-      resumed = await relay.resumeLink(linkId);
+      resumed = await relay.resumeLink(linkId, viaAccount ? accountId : null);
     } catch {
       resumed = null;
     }

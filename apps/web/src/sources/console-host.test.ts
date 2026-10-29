@@ -933,7 +933,7 @@ describe("控制台 /h/ 以访客进入（§2.8）", () => {
     });
     await ctx.host.open();
     expect(ctx.host.view).toEqual({ kind: "entered" });
-    expect(relay.resumeLink).toHaveBeenCalledExactlyOnceWith(LINK);
+    expect(relay.resumeLink).toHaveBeenCalledExactlyOnceWith(LINK, null);
     expect(ctx.host.guest()).toEqual(SHARE);
     expect(ctx.host.info).toMatchObject({ name: "host1", guest: true });
     expect(ctx.host.status).toBe(relay.status);
@@ -973,7 +973,7 @@ describe("控制台 /h/ 以访客进入（§2.8）", () => {
     });
     await notListed.host.open();
     expect(notListed.host.view).toEqual({ kind: "entered" });
-    expect(hidden.resumeLink).toHaveBeenCalledExactlyOnceWith(LINK);
+    expect(hidden.resumeLink).toHaveBeenCalledExactlyOnceWith(LINK, ACCOUNT);
     expect(notListed.client.sources.assertion).not.toHaveBeenCalled();
 
     const deniedRelay = fakeGuest(() => ({ kind: "entered", sourceId: HOST }));
@@ -991,7 +991,10 @@ describe("控制台 /h/ 以访客进入（§2.8）", () => {
     expect(denied.host.view).toEqual({ kind: "entered" });
     expect(denied.host.guest()).toEqual(SHARE);
     expect(denied.client.sources.assertion).toHaveBeenCalledOnce();
-    expect(deniedRelay.resumeLink).toHaveBeenCalledExactlyOnceWith(LINK);
+    expect(deniedRelay.resumeLink).toHaveBeenCalledExactlyOnceWith(
+      LINK,
+      ACCOUNT,
+    );
   });
 
   it("Cookie 账号能进：有访客记录也用账号，不碰托管中继", async () => {
@@ -1205,7 +1208,7 @@ describe("访客回退的各个入口", () => {
     });
     await ctx.host.open();
     expect(ctx.host.view).toEqual({ kind: "entered" });
-    expect(relay.resumeLink).toHaveBeenCalledExactlyOnceWith(LINK);
+    expect(relay.resumeLink).toHaveBeenCalledExactlyOnceWith(LINK, ACCOUNT);
     expect(ctx.client.sources.assertion).not.toHaveBeenCalled();
   });
 
@@ -1220,7 +1223,7 @@ describe("访客回退的各个入口", () => {
     });
     await ctx.host.open();
     expect(ctx.host.view).toEqual({ kind: "entered" });
-    expect(relay.resumeLink).toHaveBeenCalledExactlyOnceWith(LINK);
+    expect(relay.resumeLink).toHaveBeenCalledExactlyOnceWith(LINK, null);
   });
 
   it("访客记录进主机时答 signedIn + revoked：访问已被收回", async () => {
@@ -1389,7 +1392,7 @@ describe("访客记录与控制台账号隔离（§2.8）", () => {
     });
     await self.host.open();
     expect(self.host.view).toEqual({ kind: "entered" });
-    expect(relay.resumeLink).toHaveBeenCalledExactlyOnceWith(LINK);
+    expect(relay.resumeLink).toHaveBeenCalledExactlyOnceWith(LINK, ACCOUNT);
   });
 
   it("旧记录（没有 acceptedBy）来源不明：没有会话、账号退回时都不用", async () => {

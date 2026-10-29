@@ -307,6 +307,30 @@ describe("访客保管处（localStorage，按 签发方 + 链接）", () => {
     });
   });
 
+  it("resumeLink 按接受者过滤：别的账号、没登录都当没有（记录不动、一个请求也不发），自己的照常续上", async () => {
+    const { net } = guestNet();
+    const stores = fresh();
+    const answer = await (
+      await net.fetch(`${ISSUER}/v1/links/${LINK.linkId}/accept`, {
+        method: "POST",
+        body: "{}",
+      })
+    ).json();
+    await page(net, stores).relay.join(LINK, answer, "acct-a");
+    resetIdentityCredentials();
+    const before = net.calls.length;
+    for (const viewer of ["acct-b", null]) {
+      await expect(
+        page(net, stores).relay.resumeLink(LINK.linkId, viewer),
+      ).resolves.toEqual({ kind: "gone" });
+    }
+    expect(net.calls.length).toBe(before);
+    expect(stores.guest.getItem(KEY)).not.toBeNull();
+    await expect(
+      page(net, stores).relay.resumeLink(LINK.linkId, "acct-a"),
+    ).resolves.toMatchObject({ kind: "entered" });
+  });
+
   it("close：卸下主机、记录留着（与 dispose 清记录不同）", async () => {
     const { net } = guestNet();
     const stores = fresh();
