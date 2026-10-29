@@ -433,27 +433,12 @@ export function installE2eRoutes(server: CoreServer, deps: E2eRouteDeps): void {
     procedures as unknown as DomainHandlers<"e2e">,
   );
 
+  // procedure 登记过的旧路径（列、批、拒、撤、删、改名、签、配对秘密、问对端等候）由 RPC 层
+  // 按契约表接管（`http/rpc.ts` 的 `contractRoutes`，`legacy: true`），走的仍是上面同一份实现；
+  // 这里只装匿名、不登记成 procedure 的两条。
   const { router } = server;
-  router.handle("GET", "/api/devices", () => answer(run.list));
-  router.handle("POST", "/api/devices/approve", (_match, request) =>
-    answer(() => run.approve(body(request) as never, request)),
-  );
-  for (const action of ["reject", "revoke", "forget", "rename"] as const) {
-    router.handle("POST", `/api/devices/${action}`, (_match, request) =>
-      answer(() => run[action](body(request) as never)),
-    );
-  }
   router.handle("GET", E2E_IDENTITY_PATH, () => answer(run.identity));
   router.handle("POST", E2E_WAIT_PATH, (_match, request) =>
     answer(() => run.wait(body(request) as never, request)),
-  );
-  router.handle("POST", "/api/e2e/sign", (_match, request) =>
-    answer(() => run.sign(body(request) as never)),
-  );
-  router.handle("POST", "/api/e2e/pairing-secret", (_match, request) =>
-    answer(() => run.pairingSecret(request)),
-  );
-  router.handle("POST", "/api/e2e/sources/wait", (_match, request) =>
-    answer(() => run.waitSource(body(request) as never)),
   );
 }

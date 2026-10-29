@@ -748,7 +748,8 @@ describe("浏览器不批主人的设备、不签配对秘密（契约 §88.7）
     ).toBe(`endorse:${browser.deviceId}`);
   });
 
-  it("浏览器通道调 e2e.pairingSecret：旧路径与 RPC 都 403，不签秘密", async () => {
+  // 旧地址 `/api/e2e/pairing-secret` 由 RPC 层按契约表接管（`legacy: true`），与 `/api/rpc/…` 走同一个 procedure。
+  it("浏览器通道调 e2e.pairingSecret：旧地址与 /api/rpc 两个入口都 403，不签秘密", async () => {
     const browser = await ownerDevice(83, "browser");
     const issue = vi.spyOn(e2ePairing()!, "issue");
     for (const rpc of [false, true]) {
