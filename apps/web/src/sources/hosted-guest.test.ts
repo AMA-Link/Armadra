@@ -73,7 +73,13 @@ function guestNet() {
   let cloud = 0;
   let core = 0;
   const live = { cloud: "guest-r", core: "core-gr" };
-  const state = { cloudRejected: false };
+  const state = {
+    cloudRejected: false,
+    cloudStatus: 0,
+    sourcesStatus: 0,
+    /** 列目录的答复（缺省是旧形状；云端 #155 起访客只拿到链接指向的那一台）。 */
+    sources: [{ sourceId: SOURCE, name: "studio", online: true }] as unknown[],
+  };
   const net = routedFetch({
     [`POST /v1/links/${LINK.linkId}/accept`]: () => ({
       body: {
@@ -102,6 +108,14 @@ function guestNet() {
       const { refreshToken } = JSON.parse(String(init.body)) as {
         refreshToken: string;
       };
+      if (state.cloudStatus !== 0)
+        return {
+          status: state.cloudStatus,
+          body: {
+            code: state.cloudStatus === 429 ? "rate_limited" : "unavailable",
+            message: "",
+          },
+        };
       if (state.cloudRejected || refreshToken !== live.cloud)
         return { status: 401, body: { code: "session_expired", message: "" } };
       cloud += 1;
@@ -117,9 +131,17 @@ function guestNet() {
         },
       };
     },
-    "GET /v1/me/sources": () => ({
-      body: { sources: [{ sourceId: SOURCE, name: "studio", online: true }] },
-    }),
+    "GET /v1/me/sources": () =>
+      state.sourcesStatus !== 0
+        ? {
+            status: state.sourcesStatus,
+            body: {
+              code:
+                state.sourcesStatus === 401 ? "unauthenticated" : "forbidden",
+              message: "",
+            },
+          }
+        : { body: { sources: state.sources } },
     [`POST /v1/sources/${SOURCE}/assertion`]: () => ({
       body: {
         assertion: "jws",
@@ -196,6 +218,8 @@ describe("访客保管处（localStorage，按 签发方 + 链接）", () => {
       sources: { [SOURCE]: "core-gr" },
       entered: { sourceId: SOURCE },
       expiresAtMs: EXPIRES,
+      // 这里匿名接受：记成 ""。
+      acceptedBy: "",
       share: { role: "viewer", name: "studio", expiresAtMs: EXPIRES },
     });
     expect(relay.guest()).toMatchObject({ role: "viewer", name: "studio" });
@@ -216,7 +240,7 @@ describe("访客保管处（localStorage，按 签发方 + 链接）", () => {
     const before = net.calls.length;
 
     const reloaded = page(net, stores);
-    await expect(reloaded.relay.resume()).resolves.toEqual({
+    await expect(reloaded.relay.resume()).resolves.toMatchObject({
       kind: "entered",
     });
     expect(currentAccessToken()).toBe("core-ga1");
@@ -253,6 +277,193 @@ describe("访客保管处（localStorage，按 签发方 + 链接）", () => {
     const before = net.calls.length;
     await expect(page(net, stores).relay.resume()).resolves.toBeNull();
     expect(net.calls.length).toBe(before);
+  });
+
+  it("刷新答 429 / 503（暂时的）：记录留着，resumeLink 答 unavailable 带原因，不当作收回", async () => {
+    for (const status of [429, 503]) {
+      const { net, state } = guestNet();
+      const stores = fresh();
+      await page(net, stores).relay.join(LINK);
+      resetIdentityCredentials();
+      state.cloudStatus = status;
+      const resumed = await page(net, stores).relay.resumeLink(LINK.linkId);
+      expect(resumed).toMatchObject({ kind: "unavailable" });
+      expect((resumed as { error: { status?: number } }).error.status).toBe(
+        status,
+      );
+      expect(stores.guest.getItem(KEY)).not.toBeNull();
+      // 好了之后照常续上。
+      state.cloudStatus = 0;
+      await expect(
+        page(net, stores).relay.resumeLink(LINK.linkId),
+      ).resolves.toMatchObject({ kind: "entered" });
+    }
+  });
+
+  it("调用方带着账号接受的：记录写上是哪个账号；刷新续上后仍在", async () => {
+    const { net } = guestNet();
+    const stores = fresh();
+    const answer = await (
+      await net.fetch(`${ISSUER}/v1/links/${LINK.linkId}/accept`, {
+        method: "POST",
+        body: "{}",
+      })
+    ).json();
+    await page(net, stores).relay.join(LINK, answer, "acct-a");
+    expect(JSON.parse(stores.guest.getItem(KEY)!)).toMatchObject({
+      acceptedBy: "acct-a",
+    });
+    resetIdentityCredentials();
+    await page(net, stores).relay.resumeLink(LINK.linkId);
+    expect(JSON.parse(stores.guest.getItem(KEY)!)).toMatchObject({
+      acceptedBy: "acct-a",
+      cloudRefreshToken: "guest-r1",
+    });
+  });
+
+  it("resumeLink 按接受者过滤：别的账号、没登录都当没有（记录不动、一个请求也不发），自己的照常续上", async () => {
+    const { net } = guestNet();
+    const stores = fresh();
+    const answer = await (
+      await net.fetch(`${ISSUER}/v1/links/${LINK.linkId}/accept`, {
+        method: "POST",
+        body: "{}",
+      })
+    ).json();
+    await page(net, stores).relay.join(LINK, answer, "acct-a");
+    resetIdentityCredentials();
+    const before = net.calls.length;
+    for (const viewer of ["acct-b", null]) {
+      await expect(
+        page(net, stores).relay.resumeLink(LINK.linkId, viewer),
+      ).resolves.toEqual({ kind: "gone" });
+    }
+    expect(net.calls.length).toBe(before);
+    expect(stores.guest.getItem(KEY)).not.toBeNull();
+    await expect(
+      page(net, stores).relay.resumeLink(LINK.linkId, "acct-a"),
+    ).resolves.toMatchObject({ kind: "entered" });
+  });
+
+  it("访客记录被外部删掉（控制台登出清的）：之后旋转令牌不再写回", async () => {
+    const { net } = guestNet();
+    const stores = fresh();
+    await page(net, stores).relay.join(LINK);
+    resetIdentityCredentials();
+    const reloaded = page(net, stores);
+    // 先续上一次（落过盘），再被外部删掉，之后的旋转不复活它。
+    await reloaded.relay.resumeLink(LINK.linkId);
+    stores.guest.removeItem(KEY);
+    await reloaded.relay.provider.refresh(SOURCE, "relayed").catch(() => null);
+    expect(stores.guest.getItem(KEY)).toBeNull();
+  });
+
+  it("刷新答 401（刷新令牌被拒）：resumeLink 答 gone、记录作废，不是 unavailable", async () => {
+    const { net, state } = guestNet();
+    const stores = fresh();
+    await page(net, stores).relay.join(LINK);
+    resetIdentityCredentials();
+    state.cloudRejected = true;
+    await expect(
+      page(net, stores).relay.resumeLink(LINK.linkId),
+    ).resolves.toEqual({ kind: "gone" });
+    expect(stores.guest.getItem(KEY)).toBeNull();
+  });
+
+  it("列目录答 401：记录作废（gone）；答 403（云端放开访客之前）：只算暂时打不开，记录留着", async () => {
+    for (const [status, kind, kept] of [
+      [401, "gone", false],
+      [403, "unavailable", true],
+    ] as const) {
+      const { net, state } = guestNet();
+      const stores = fresh();
+      await page(net, stores).relay.join(LINK);
+      resetIdentityCredentials();
+      state.sourcesStatus = status;
+      await expect(
+        page(net, stores).relay.resumeLink(LINK.linkId),
+      ).resolves.toMatchObject({ kind });
+      expect(stores.guest.getItem(KEY) !== null).toBe(kept);
+    }
+  });
+
+  it("云端 #155 起访客的 me.sources：只有链接指向的那一台、via=link、owner=false，照样续上", async () => {
+    const { net, state } = guestNet();
+    const stores = fresh();
+    await page(net, stores).relay.join(LINK);
+    resetIdentityCredentials();
+    state.sources = [
+      {
+        sourceId: SOURCE,
+        name: "studio",
+        kind: "server",
+        online: true,
+        lastSeenAtMs: START,
+        owner: false,
+        via: "link",
+        relayOrigin: ISSUER,
+        coreVersion: "0.11.0",
+      },
+    ];
+    const reloaded = page(net, stores);
+    await expect(reloaded.relay.resumeLink(LINK.linkId)).resolves.toEqual({
+      kind: "entered",
+      sourceId: SOURCE,
+    });
+    expect(reloaded.relay.status.state).toBe("ready");
+    expect(reloaded.relay.guest()).toMatchObject({ name: "studio" });
+    // 流重开后对账也用这份目录：这一台还在，不会当成被收回。
+    const listed = net.calls.length;
+    reloaded.stream().onOpen?.();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(net.calls.slice(listed).map((call) => call.key)).toContain(
+      "GET /v1/me/sources",
+    );
+    expect(reloaded.relay.status.state).toBe("ready");
+    expect(stores.guest.getItem(KEY)).not.toBeNull();
+  });
+
+  it("同一条链接已有 acct-b 的旧记录、这次接受者核对不出：新记录是来源不明，不沿用 acct-b；之后旋转也不变", async () => {
+    const { net } = guestNet();
+    const stores = fresh();
+    stores.guest.setItem(
+      KEY,
+      JSON.stringify({
+        issuer: ISSUER,
+        cloudRefreshToken: "old",
+        sources: {},
+        entered: { sourceId: SOURCE, name: "studio" },
+        expiresAtMs: EXPIRES,
+        acceptedBy: "acct-b",
+      }),
+    );
+    const answer = await (
+      await net.fetch(`${ISSUER}/v1/links/${LINK.linkId}/accept`, {
+        method: "POST",
+        body: "{}",
+      })
+    ).json();
+    await page(net, stores).relay.join(LINK, answer, undefined);
+    const written = JSON.parse(stores.guest.getItem(KEY)!);
+    expect(written).not.toHaveProperty("acceptedBy");
+    expect(written.cloudRefreshToken).toBe("guest-r");
+    resetIdentityCredentials();
+    await page(net, stores).relay.resumeLink(LINK.linkId);
+    expect(JSON.parse(stores.guest.getItem(KEY)!)).not.toHaveProperty(
+      "acceptedBy",
+    );
+  });
+
+  it("close：卸下主机、记录留着（与 dispose 清记录不同）", async () => {
+    const { net } = guestNet();
+    const stores = fresh();
+    const { relay } = page(net, stores);
+    await relay.join(LINK);
+    relay.close();
+    expect(relay.status.state).toBe("idle");
+    expect(stores.guest.getItem(KEY)).not.toBeNull();
+    relay.dispose();
+    expect(stores.guest.getItem(KEY)).toBeNull();
   });
 
   it("accessRevoked：当场清掉记录", async () => {

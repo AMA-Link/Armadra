@@ -7,6 +7,8 @@ import {
   relayRefusal,
 } from "@armadra/shared/e2e";
 
+import { isNativeAppPage } from "../../api/runtime-url";
+import { browserDevice, thisDevice } from "../cloud-client";
 import { type DeviceIdentity, deviceIdentity } from "./device-key";
 import { type PairingStore, storagePairings } from "./pairing";
 import { type PinStore, storagePins } from "./pins";
@@ -381,9 +383,18 @@ export class E2eChannels {
 
 let shared: E2eChannels | null = null;
 
+/**
+ * 这一页在主机上登记的设备名：原生 App 按 iOS / Android；其余页面（控制台 `/h/`、
+ * 中继托管的 `/app/`、分享链接页）按浏览器与系统。与设备钥的平台（`deviceIdentity`）
+ * 同一个判断，由页面定，不由哪个调用方先建通道定。
+ */
+export function pageDeviceName(): string {
+  return isNativeAppPage() ? thisDevice().name : browserDevice().name;
+}
+
 /** 这一页的通道管理（一页一份）。 */
-export function e2eChannels(deviceName: () => string): E2eChannels {
-  shared ??= new E2eChannels({ deviceName });
+export function e2eChannels(): E2eChannels {
+  shared ??= new E2eChannels({ deviceName: pageDeviceName });
   return shared;
 }
 

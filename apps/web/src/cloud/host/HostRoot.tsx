@@ -16,6 +16,7 @@ import {
 import { openWhenReady } from "../../sources/join-intent";
 import { createCloudApi } from "../api/client";
 import { AuthLayout } from "../auth/AuthLayout";
+import { FixCommand } from "./FixCommand";
 
 /**
  * 控制台的 `/h/<hostId>`（设计 saas-host-open §2.1）：进主机之前是控制台公开页同款的居中
@@ -38,20 +39,6 @@ function homeOf(host: ConsoleHost, code: string): string {
   return host.info?.space === "team"
     ? host.info.consoleHref.replace(/\/hosts\/.*$/, "/hosts")
     : "/me/hosts";
-}
-
-/** 本机认不了你的账号、或认你作成员：在主机上补登录（§2.6）。 */
-function FixCommand({ issuer }: { issuer: string }) {
-  const t = useT();
-  return (
-    <div className="flex flex-col gap-2 text-meta">
-      <p>{t("cloud.host.fixServer")}</p>
-      <code className="rounded-control bg-muted px-2 py-1 font-mono break-all select-all">
-        {`armadra-server cloud login --issuer ${issuer}`}
-      </code>
-      <p className="text-muted-foreground">{t("cloud.host.fixDesktop")}</p>
-    </div>
-  );
 }
 
 function StateCard({ host, view }: { host: ConsoleHost; view: HostView }) {
@@ -131,15 +118,18 @@ function StateCard({ host, view }: { host: ConsoleHost; view: HostView }) {
             {t("cloud.common.retry")}
           </Button>
         )}
-        <Button variant="ghost" asChild>
-          <a href={home}>
-            {view.code === HOST_FAILURE.teamSuspended
-              ? t("cloud.host.backToOverview")
-              : view.code === HOST_FAILURE.unlinked
-                ? t("cloud.host.backToHost")
-                : t("cloud.host.backToHosts")}
-          </a>
-        </Button>
+        {/* 访客没有控制台账号：没有主机列表可回。 */}
+        {host.info?.guest !== true && (
+          <Button variant="ghost" asChild>
+            <a href={home}>
+              {view.code === HOST_FAILURE.teamSuspended
+                ? t("cloud.host.backToOverview")
+                : view.code === HOST_FAILURE.unlinked
+                  ? t("cloud.host.backToHost")
+                  : t("cloud.host.backToHosts")}
+            </a>
+          </Button>
+        )}
       </div>
     </AuthLayout>
   );
@@ -249,7 +239,8 @@ export function HostRoot({
   const covered = view.kind !== "entered";
   return (
     <div className="relative flex h-dvh flex-col">
-      <HostBar host={host} />
+      {/* 访客的顶栏是画布里的访客栏（`GuestFrame`）。 */}
+      {host.info?.guest !== true && <HostBar host={host} />}
       <div className="min-h-0 flex-1" inert={covered}>
         {children}
       </div>

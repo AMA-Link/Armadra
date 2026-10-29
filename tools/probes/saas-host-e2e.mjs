@@ -1,4 +1,4 @@
-// 控制台 `/h/<hostId>` 对一个已有 SaaS 部署的端到端探针（设计 saas-host-open §8.1，第一版：E2–E6）。
+// 控制台 `/h/<hostId>` 对一个已有 SaaS 部署的端到端探针（设计 saas-host-open §8.1：E2–E6、E8）。
 //
 // 连一个已经在跑的 Armadra 云部署（控制面 + 中继节点），起一台临时数据目录的服务器壳当 host1
 // （设备码登录到 owner 的账号、登记到团队、owner 映射为本机主人），再用新 profile 的无头 Chrome
@@ -15,9 +15,11 @@
 //      E2 之前 member 打开 `/h/` 停在待确认，owner 的信任页对这行给「在此浏览器打开主机」；E2 里 owner
 //      的 `/h/` 进了主机，信任页不刷新就改给「信任」（`armadra.e2e.trust` 广播）；owner 在信任页输入
 //      member 屏幕上的码 → member 自动进入，host1 记成 `endorse:`、owner 的 `/h/` 弹背书通知；
-//      owner 另一个浏览器的待确认，owner 的受信浏览器批它答 forbidden；经它「配对新设备」答 forbidden；
-//      E7c（#607）：owner 离开 `/h/` 后连续背书 member 的两个新浏览器，owner 再打开 `/h/` 不补弹、
-//      铃铛的「本机」一组全列出；member 的 `/h/` 不弹、没有这一组。
+//      owner 另一个浏览器的待确认，owner 的受信浏览器批它答 forbidden；经它「配对新设备」答 forbidden。
+//      E7c（#607）背书进需要人处理，见 saas-host-e2e-notices.mjs。
+//   E10（只在点名时跑；会让 host1 登出 Armadra 云，别与 E5、E6 同跑）控制台「新建链接」，见 saas-host-e2e-link.mjs。
+//   E8 host1 经 SaaS 路线建一条只读链接；没登录的新 browser context 打开：落地页「加入」后地址是
+//      `/h/<host1>`、刷新仍在画布（经访客记录续上，不去登录）；撤销链接后 `/h/` 显示「访问已被收回」。
 //
 // 全程在页面加载前监听 `securitypolicyviolation`（含 Trusted Types），要求违规为零。控制台页面的 CSP
 // 缺省换成 B7 要提的那一份（控制面现有的原样加 `img-src` / `media-src` 的 `blob:` 与设计 Q13 的
@@ -32,7 +34,7 @@
 //   ARMADRA_SAAS_ACCOUNTS=<accounts.json：{ owner, member } 各 { email, password }> \
 //   ARMADRA_SAAS_TEAM=test-team \
 //   [ARMADRA_SAAS_COMPOSE="<compose 包装脚本>"]  # 给了才做 E4 的节点重建
-//   [ARMADRA_SAAS_ONLY=E2,E6] [ARMADRA_SAAS_CSP=current]
+//   [ARMADRA_SAAS_ONLY=E2,E6,E8] [ARMADRA_SAAS_CSP=current]
 //   node tools/probes/saas-host-e2e.mjs [输出目录]
 //
 // 服务器壳与 Chrome 只按自己起的 PID 停；数据目录、HOME、profile 都是 mktemp 出来的，跑完删除。
@@ -58,6 +60,8 @@ import {
   untilApproved,
 } from "./platform-lib.mjs";
 import { probeSession } from "./probe-session.mjs";
+import { runGuestLink } from "./saas-host-e2e-guest.mjs";
+import { runNewLink } from "./saas-host-e2e-link.mjs";
 import { endorsementNotices } from "./saas-host-e2e-notices.mjs";
 import {
   connectBrowser,
@@ -83,7 +87,7 @@ const TEAM = process.env.ARMADRA_SAAS_TEAM ?? "test-team";
 const COMPOSE = process.env.ARMADRA_SAAS_COMPOSE ?? "";
 /** 只跑其中几步（逗号分隔，如 `E2,E6`）；缺省全跑。 */
 const ONLY = new Set(
-  (process.env.ARMADRA_SAAS_ONLY ?? "E2,E3,E4,E5,E6").split(","),
+  (process.env.ARMADRA_SAAS_ONLY ?? "E2,E3,E4,E5,E6,E8").split(","),
 );
 if (!accountsFile || !existsSync(accountsFile)) {
   console.error("要 ARMADRA_SAAS_ACCOUNTS（{ owner, member } 的邮箱与口令）");
@@ -172,6 +176,10 @@ const redact = (text) =>
     .replace(/armadra-(relay|ticket)\.[^\s",;\\]+/g, "armadra-$1.<redacted>")
     .replace(/(__Host-armadra-[a-z]+)=[^\s";\\]+/g, "$1=<redacted>")
     .replace(/(Bearer\s+)[^\s",\\]+/gi, "$1<redacted>")
+    // 服务器壳日志里打印的首个管理员配对链接。
+    .replace(/(#pair=)[^\s"\\]+/g, "$1<redacted>")
+    // 分享链接的片段（秘密与邀请令牌）。
+    .replace(/(\/j\/[^\s#"\\]+)#[^\s"\\]+/g, "$1#<redacted>")
     // JSON 里的令牌字段（含日志行里转义过一层的）。
     .replace(
       /(\\?"(?:refreshToken|refresh_token|csrfToken|csrf_token|accessToken|access_token|relayToken|assertion)\\?"\s*:\s*\\?")[^"\\]+/g,
@@ -810,7 +818,8 @@ try {
   }
 
   /* ------------------------------------ E2 ------------------------------------ */
-  {
+  // owner 先进 host1：E3–E7 都靠它；只跑 E8 时（访客不用 owner 进来）才跳过。
+  if ([...ONLY].some((step) => step !== "E8")) {
     const s = scenario(
       report,
       "E2 owner 打开 /h/：待确认 → 放行 → 画布与终端",
@@ -830,6 +839,20 @@ try {
     }
     const approvals = await approve(ownerTab, "owner 进入 host1");
     s.check(approvals === 1, "新浏览器先待确认，主机放行一次", approvals);
+    // #606：登记名是浏览器与系统（`browserDevice()`），不是原生 App 的「Armadra iOS」。
+    const ownerDevices = rows(
+      hostQuery(
+        hostDir,
+        "select d.label, d.platform from trusted_devices d join identity_principals p on p.principal_id = d.principal_id where p.kind = 'owner' and d.status = 'trusted'",
+      ),
+    );
+    s.check(
+      ownerDevices.length === 1 &&
+        ownerDevices[0].platform === "browser" &&
+        /^Armadra Web \([A-Za-z]+, [A-Za-z]+\)$/.test(ownerDevices[0].label),
+      "host1 上 owner 的浏览器按浏览器与系统登记",
+      ownerDevices,
+    );
     await terminalRoundTrip(ownerTab, terminal.id, "saas");
     s.ok("终端收发 42saas");
     const text = await pageText(ownerTab);
@@ -930,6 +953,16 @@ try {
       { timeout: 30_000 },
     );
     s.ok("owner 的 /h/（主机页面）弹出「… 放行了 Member 的 …」");
+    // #606：通知里两头都是浏览器名，没有原生 App 的「Armadra iOS」。
+    const notice = await ownerTab.evaluate(
+      `return [...document.querySelectorAll('[role="dialog"]')].map((d) => d.innerText).find((t) => t.includes("放行了")) ?? "";`,
+    );
+    s.check(
+      !notice.includes("Armadra iOS") &&
+        (notice.match(/Armadra Web \(/g) ?? []).length >= 2,
+      "背书通知里放行者与新设备都是浏览器名",
+      notice,
+    );
     await s.shot(ownerTab, "e7b-endorsed-notice");
     await ownerTab.clickOn(
       `return [...document.querySelectorAll('[role="dialog"] button')].find((b) => b.innerText.trim() === "知道了");`,
@@ -1109,13 +1142,7 @@ try {
       ready: hostReady(terminal.id),
       ownerTab,
       memberTab,
-      unread: () =>
-        rows(
-          hostQuery(
-            hostDir,
-            "select id from device_endorsements where read_at_ms = 0",
-          ),
-        ).length,
+      hostRows: (sql) => rows(hostQuery(hostDir, sql)),
     });
   }
 
@@ -1223,6 +1250,41 @@ try {
     }
     s.entry.status = "passed";
   }
+
+  /* ------------------------------------ E8 ------------------------------------ */
+  if (ONLY.has("E8"))
+    await runGuestLink({
+      report,
+      output,
+      ISSUER,
+      accounts,
+      browser,
+      openTab,
+      consoleSignIn,
+      local,
+      serviceId,
+      workspace,
+      hostId,
+      terminal,
+    });
+
+  /* ----------------------------------- E10 ----------------------------------- */
+  // 放在最后之前：它会让 host1 登出 Armadra 云（只在点名时跑）。
+  if (ONLY.has("E10"))
+    await runNewLink({
+      report,
+      output,
+      ISSUER,
+      TEAM,
+      accounts,
+      browser,
+      ownerContext,
+      openTab,
+      consoleSignIn,
+      local,
+      serviceId,
+      hostId,
+    });
 
   /* ------------------------------------ E5 ------------------------------------ */
   memberTab ??= await openTab(browser, memberContext, "member");

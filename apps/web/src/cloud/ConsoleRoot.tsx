@@ -21,6 +21,12 @@ import {
   announceConsoleSession,
   signOutHostTabs,
 } from "../sources/cloud-session-channel";
+import {
+  browserLocalStorage,
+  clearAccountGuestRecords,
+} from "../sources/relay-vault";
+import { createHostChannel, type HostChannel } from "./host-channel";
+import { HostChannelProvider, useHostChannel } from "./host-channel-context";
 import { createBrowserEndorser } from "./trust/browser-endorser";
 import { useHostTrustedBroadcast } from "./trust/data";
 import {
@@ -202,6 +208,7 @@ function ConsoleData({ onJoined }: { onJoined?: () => void }) {
   const api = useCloudApi();
   const client = useQueryClient();
   const endorser = useEndorser();
+  const hostChannel = useHostChannel();
   useHostTrustedBroadcast();
   const [expired, setExpired] = React.useState(false);
   const match = useRoute();
@@ -214,7 +221,13 @@ function ConsoleData({ onJoined }: { onJoined?: () => void }) {
 
   // 换了账号（或会话没了）：上一位的端到端通道与主机会话一并放掉，下一位从头开。
   const account = session?.user.email;
-  React.useEffect(() => () => endorser?.dispose?.(), [endorser, account]);
+  React.useEffect(
+    () => () => {
+      endorser?.dispose?.();
+      hostChannel?.dispose();
+    },
+    [endorser, hostChannel, account],
+  );
   // 这个标签页看到的账号：告诉 `/h/` 标签页，不是这一位的就登出（设计 saas-host-open §2.2）。
   const accountId = session?.accountId;
   React.useEffect(() => {
@@ -284,10 +297,11 @@ function ConsoleData({ onJoined }: { onJoined?: () => void }) {
     () =>
       api.onSessionLost(() => {
         endorser?.dispose?.();
+        hostChannel?.dispose();
         client.removeQueries({ queryKey: cloudKeys.all });
         setExpired(true);
       }),
-    [api, client, endorser],
+    [api, client, endorser, hostChannel],
   );
 
   const signOut = () => {
@@ -297,8 +311,11 @@ function ConsoleData({ onJoined }: { onJoined?: () => void }) {
       .catch(() => undefined)
       .then(() => api.signOut())
       .finally(() => {
+        // 这个账号接受的访客记录随登出丢掉：之后谁打开 `/h/` 都不能拿它进主机（§2.8）。
+        clearAccountGuestRecords(browserLocalStorage(), window.location.origin);
         announceConsoleSession({ type: "signedOut" });
         endorser?.dispose?.();
+        hostChannel?.dispose();
         client.removeQueries({ queryKey: cloudKeys.all });
         navigate("/login");
       });
@@ -357,6 +374,7 @@ export function ConsoleRoot({
   session,
   api: given,
   endorser,
+  hostChannel,
   onJoined,
 }: {
   session?: ConsoleSession | null;
@@ -366,30 +384,49 @@ export function ConsoleRoot({
    * 凭据提供方与端到端通道）；显式给 `null` 就一律「在已信任的设备上处理」。
    */
   endorser?: HostEndorser | null;
+  /**
+   * 经端到端通道向主机发请求的通道池（`host-channel.ts`），「新建链接」用它。缺省是生产实现，
+   * 与缺省背书人共用同一个池；显式给 `null` 就不渲染「新建链接」。
+   */
+  hostChannel?: HostChannel | null;
   /** `/j/` 的分享链接加入成功、画布接管（由入口给）。 */
   onJoined?: () => void;
 }) {
   const api = useCloudApiSource(given);
   const [queryClient] = React.useState(createCloudQueryClient);
-  // 缺省的生产背书人跟着客户端走；通道与访问按需才开，卸载时放掉。
+  // 缺省的通道池与生产背书人跟着客户端走，背书人用同一个池；通道与访问按需才开，卸载时放掉。
+  const channel = React.useMemo(
+    () =>
+      hostChannel === undefined && api !== null
+        ? createHostChannel({ client: api.client, issuer: location.origin })
+        : (hostChannel ?? null),
+    [hostChannel, api],
+  );
   const production = React.useMemo(
     () =>
       endorser === undefined && api !== null
-        ? createBrowserEndorser({ client: api.client, issuer: location.origin })
+        ? createBrowserEndorser({
+            client: api.client,
+            issuer: location.origin,
+            ...(channel === null ? {} : { channel }),
+          })
         : null,
-    [endorser, api],
+    [endorser, api, channel],
   );
   React.useEffect(() => () => production?.dispose(), [production]);
+  React.useEffect(() => () => channel?.dispose(), [channel]);
   if (session !== undefined) return <ConsoleView session={session} />;
   if (api === null) return null;
   return (
     <QueryClientProvider client={queryClient}>
       <CloudApiProvider api={api}>
-        <EndorserProvider
-          endorser={endorser === undefined ? production : endorser}
-        >
-          <ConsoleData {...(onJoined ? { onJoined } : {})} />
-        </EndorserProvider>
+        <HostChannelProvider channel={channel}>
+          <EndorserProvider
+            endorser={endorser === undefined ? production : endorser}
+          >
+            <ConsoleData {...(onJoined ? { onJoined } : {})} />
+          </EndorserProvider>
+        </HostChannelProvider>
         <Toaster />
       </CloudApiProvider>
     </QueryClientProvider>

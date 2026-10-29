@@ -22,8 +22,11 @@ export async function endorsementNotices({
   ready,
   ownerTab,
   memberTab,
-  unread,
+  hostRows,
 }) {
+  // 主机库里未读的背书（契约 §81.1）。
+  const unread = () =>
+    hostRows("select id from device_endorsements where read_at_ms = 0").length;
   const c = scenario(
     report,
     "E7c 没开 /h/ 时背书不丢、连续多次都在、只给 owner",

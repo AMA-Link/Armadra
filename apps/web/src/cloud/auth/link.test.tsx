@@ -36,13 +36,14 @@ const INVITE = `${"c".repeat(32)}.${"D".repeat(43)}`;
 const HASH = `#${SECRET}.${INVITE}`;
 const visit = (url: string) => window.history.replaceState(null, "", url);
 const here = () => window.location.pathname + window.location.search;
+const HOST_ID = "a".repeat(32);
 const LOGIN_FOR_LINK = `/login?next=${encodeURIComponent(`/j/${LINK_ID}`)}`;
 
 beforeEach(() => {
   usePreferencesStore.getState().setLocale("zh-CN");
   hosted.resumeLink.mockReset();
   hosted.join.mockReset();
-  hosted.join.mockResolvedValue("a".repeat(32));
+  hosted.join.mockResolvedValue(HOST_ID);
 });
 afterEach(() => {
   cleanup();
@@ -92,7 +93,7 @@ describe("分享链接落地页（SaaS）", () => {
     await screen.findByText("studio");
   });
 
-  it("匿名允许：「加入」不登录就接受，以访客经托管中继进画布，地址换成 /app/", async () => {
+  it("匿名允许：「加入」不登录就接受，以访客经托管中继进画布，地址换成 /h/<主机>", async () => {
     visit(`/j/${LINK_ID}${HASH}`);
     const { api, onJoined } = mount({ signedIn: false });
     const accept = vi.spyOn(api.client.links, "accept");
@@ -111,7 +112,9 @@ describe("分享链接落地页（SaaS）", () => {
       invitationToken: INVITE,
     });
     expect(accepted).toHaveProperty("guestSession");
-    expect(here()).toBe("/app/");
+    // 匿名接受：访客记录记成 ""。
+    expect(hosted.join.mock.calls[0]![2]).toBe("");
+    expect(here()).toBe(`/h/${HOST_ID}`);
   });
 
   it("要求登录且没有会话：主按钮是「登录后加入」，replace 去登录，登录后回来仍带着秘密", async () => {
@@ -136,8 +139,11 @@ describe("分享链接落地页（SaaS）", () => {
     fireEvent.submit(screen.getByLabelText("邮箱").closest("form")!);
     fireEvent.click(await join());
     await waitFor(() => expect(onJoined).toHaveBeenCalledOnce());
-    expect(here()).toBe("/app/");
+    expect(here()).toBe(`/h/${HOST_ID}`);
     expect(hosted.join.mock.calls[0]![0]).toMatchObject({ secret: SECRET });
+    // 带着会话接受：访客记录记成这个账号。
+    expect(hosted.join.mock.calls[0]![2]).toEqual(expect.any(String));
+    expect(hosted.join.mock.calls[0]![2]).not.toBe("");
     push.mockRestore();
   });
 
@@ -148,6 +154,72 @@ describe("分享链接落地页（SaaS）", () => {
     fireEvent.click(await join());
     await waitFor(() => expect(onJoined).toHaveBeenCalledOnce());
     expect(ensure).toHaveBeenCalled();
+  });
+
+  it("带着会话接受：记录写接受前后核对一致的账号；中间换了账号就记成来源不明", async () => {
+    visit(`/j/${LINK_ID}${HASH}`);
+    const first = mount({ linkRequiresAccount: true });
+    const me = await first.api.client.me.get({});
+    fireEvent.click(await join());
+    await waitFor(() => expect(first.onJoined).toHaveBeenCalledOnce());
+    expect(hosted.join.mock.calls[0]![2]).toBe(me.accountId);
+    cleanup();
+    hosted.join.mockClear();
+
+    visit(`/j/${LINK_ID}${HASH}`);
+    const second = mount({ linkRequiresAccount: true }, vi.fn(), (api) => {
+      const get = api.client.me.get.bind(api.client.me);
+      let calls = 0;
+      vi.spyOn(api.client.me, "get").mockImplementation(async (input) => {
+        const answer = await get(input);
+        calls += 1;
+        // 接受之后再问：已经是另一位了（别的标签页换了账号）。
+        return calls >= 2 ? { ...answer, accountId: "acct-other" } : answer;
+      });
+    });
+    fireEvent.click(await join());
+    await waitFor(() => expect(second.onJoined).toHaveBeenCalledOnce());
+    expect(hosted.join.mock.calls[0]![2]).toBeUndefined();
+  });
+
+  it("带着会话、接受前问不到是谁：报错，不接受也不加入", async () => {
+    visit(`/j/${LINK_ID}${HASH}`);
+    const { api, onJoined } = mount({ linkRequiresAccount: true });
+    const button = await join();
+    const accept = vi.spyOn(api.client.links, "accept");
+    vi.spyOn(api.client.me, "get").mockRejectedValue(
+      Object.assign(new Error("503"), { status: 503, code: "unavailable" }),
+    );
+    fireEvent.click(button);
+    await screen.findByRole("alert");
+    expect(accept).not.toHaveBeenCalled();
+    expect(hosted.join).not.toHaveBeenCalled();
+    expect(onJoined).not.toHaveBeenCalled();
+  });
+
+  it("接受后问是谁暂时失败：再问一次，问到了照常记成这个账号；两次都失败才记成来源不明", async () => {
+    for (const failures of [1, 2]) {
+      visit(`/j/${LINK_ID}${HASH}`);
+      const { api, onJoined } = mount({ linkRequiresAccount: true });
+      const self = (await api.client.me.get({})).accountId;
+      const button = await join();
+      const get = api.client.me.get.bind(api.client.me);
+      let calls = 0;
+      vi.spyOn(api.client.me, "get").mockImplementation(async (input) => {
+        calls += 1;
+        // 第 1 次是接受前；之后 `failures` 次失败。
+        if (calls >= 2 && calls < 2 + failures)
+          throw Object.assign(new Error("503"), { status: 503 });
+        return get(input);
+      });
+      fireEvent.click(button);
+      await waitFor(() => expect(onJoined).toHaveBeenCalledOnce());
+      expect(hosted.join.mock.calls[0]![2]).toBe(
+        failures === 1 ? self : undefined,
+      );
+      cleanup();
+      hosted.join.mockClear();
+    }
   });
 
   it("接受时云端答 anonymous_links_disabled：改成「登录后加入」，不出错误文案", async () => {
@@ -249,6 +321,7 @@ describe("分享链接落地页（SaaS）", () => {
     expect(accept).toHaveBeenCalledOnce();
     expect(hosted.join).toHaveBeenCalledTimes(2);
     expect(hosted.join.mock.calls[1]![1]).toBe(hosted.join.mock.calls[0]![1]);
+    expect(here()).toBe(`/h/${HOST_ID}`);
   });
 
   it("link_frozen：整页 PageState，没有「加入」（摘要时与接受时都一样）", async () => {
@@ -276,6 +349,48 @@ describe("分享链接落地页（SaaS）", () => {
     expect(screen.queryByText(/^加入 .* 的/)).toBeNull();
   });
 
+  it("「打开」按接受者过滤：别的账号接受的、来源不明的、没登录时账号接受的都显示「加入」；自己接受的才「打开」", async () => {
+    const save = (acceptedBy?: string) =>
+      localStorage.setItem(
+        guestKey(window.location.origin, LINK_ID),
+        JSON.stringify({
+          issuer: window.location.origin,
+          cloudRefreshToken: "r",
+          sources: {},
+          entered: null,
+          ...(acceptedBy === undefined ? {} : { acceptedBy }),
+        }),
+      );
+    const probe = createMockApi({});
+    const self = (await probe.client.me.get({})).accountId;
+    for (const [acceptedBy, signedIn] of [
+      ["acct-other", true],
+      [undefined, true],
+      [undefined, false],
+      [self, false],
+    ] as const) {
+      visit(`/j/${LINK_ID}${HASH}`);
+      save(acceptedBy);
+      mount({ signedIn });
+      expect(await join()).toBeTruthy();
+      // 账号那份要等核对完才可能变「打开」：给它时间也不变。
+      await new Promise((resolve) => setTimeout(resolve, 30));
+      expect(screen.queryByRole("button", { name: "打开" })).toBeNull();
+      cleanup();
+      localStorage.clear();
+    }
+    visit(`/j/${LINK_ID}${HASH}`);
+    save(self);
+    hosted.resumeLink.mockResolvedValueOnce({
+      kind: "entered",
+      sourceId: HOST_ID,
+    });
+    const mine = mount({});
+    fireEvent.click(await screen.findByRole("button", { name: "打开" }));
+    await waitFor(() => expect(mine.onJoined).toHaveBeenCalledOnce());
+    expect(hosted.resumeLink).toHaveBeenCalledWith(LINK_ID, self);
+  });
+
   it("已加入过：主按钮是「打开」，经访客记录续上而不再接受；连不上中继保留「打开」，记录没有了才回到「加入」", async () => {
     visit(`/j/${LINK_ID}${HASH}`);
     localStorage.setItem(
@@ -285,6 +400,7 @@ describe("分享链接落地页（SaaS）", () => {
         cloudRefreshToken: "r",
         sources: {},
         entered: null,
+        acceptedBy: "",
       }),
     );
     hosted.resumeLink.mockResolvedValueOnce(null);
@@ -306,10 +422,15 @@ describe("分享链接落地页（SaaS）", () => {
     expect(onJoined).not.toHaveBeenCalled();
     cleanup();
     visit(`/j/${LINK_ID}${HASH}`);
-    hosted.resumeLink.mockResolvedValueOnce({ kind: "entered" });
+    const other = "b".repeat(32);
+    hosted.resumeLink.mockResolvedValueOnce({
+      kind: "entered",
+      sourceId: other,
+    });
     const again = mount({ signedIn: false });
     fireEvent.click(await screen.findByRole("button", { name: "打开" }));
     await waitFor(() => expect(again.onJoined).toHaveBeenCalledOnce());
+    expect(here()).toBe(`/h/${other}`);
     expect(accept).not.toHaveBeenCalled();
     expect(hosted.join).not.toHaveBeenCalled();
   });
