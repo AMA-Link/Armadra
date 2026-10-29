@@ -423,6 +423,37 @@ describe("访客保管处（localStorage，按 签发方 + 链接）", () => {
     expect(stores.guest.getItem(KEY)).not.toBeNull();
   });
 
+  it("同一条链接已有 acct-b 的旧记录、这次接受者核对不出：新记录是来源不明，不沿用 acct-b；之后旋转也不变", async () => {
+    const { net } = guestNet();
+    const stores = fresh();
+    stores.guest.setItem(
+      KEY,
+      JSON.stringify({
+        issuer: ISSUER,
+        cloudRefreshToken: "old",
+        sources: {},
+        entered: { sourceId: SOURCE, name: "studio" },
+        expiresAtMs: EXPIRES,
+        acceptedBy: "acct-b",
+      }),
+    );
+    const answer = await (
+      await net.fetch(`${ISSUER}/v1/links/${LINK.linkId}/accept`, {
+        method: "POST",
+        body: "{}",
+      })
+    ).json();
+    await page(net, stores).relay.join(LINK, answer, undefined);
+    const written = JSON.parse(stores.guest.getItem(KEY)!);
+    expect(written).not.toHaveProperty("acceptedBy");
+    expect(written.cloudRefreshToken).toBe("guest-r");
+    resetIdentityCredentials();
+    await page(net, stores).relay.resumeLink(LINK.linkId);
+    expect(JSON.parse(stores.guest.getItem(KEY)!)).not.toHaveProperty(
+      "acceptedBy",
+    );
+  });
+
   it("close：卸下主机、记录留着（与 dispose 清记录不同）", async () => {
     const { net } = guestNet();
     const stores = fresh();

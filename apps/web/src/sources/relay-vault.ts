@@ -333,6 +333,11 @@ export interface SessionVaultOptions {
   readonly expiresAtMs?: number;
   /** 访客记录是谁接受的（账号 id，匿名 `""`）；写时带上。 */
   readonly acceptedBy?: string;
+  /**
+   * 新加入：不读存储里同一个键的旧记录，从空白开始（旧记录的 `acceptedBy` 等不能沿用到新记录上）。
+   * 续上时不给，读回原记录，令牌旋转保留它的 `acceptedBy`。
+   */
+  readonly fresh?: boolean;
   readonly now?: () => number;
 }
 
@@ -367,7 +372,11 @@ export function createSessionRelayVault(
       ? {}
       : { acceptedBy: options.acceptedBy }),
   });
-  let record = stamp(readResume(storage, issuer, key, options.now?.()));
+  let record = stamp(
+    options.fresh === true
+      ? { issuer, cloudRefreshToken: null, sources: {}, entered: null }
+      : readResume(storage, issuer, key, options.now?.()),
+  );
   /** 访客记录（按链接的那份）已经落过盘：之后存储里没了就是被外部删了（控制台登出清的）。 */
   const guestRecord = options.key !== undefined;
   let stored = record.cloudRefreshToken !== null;

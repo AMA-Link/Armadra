@@ -310,10 +310,12 @@ export function createHostedRelay(options: HostedRelayOptions): HostedRelay {
     key: string,
     expiresAtMs?: number,
     acceptedBy?: string,
+    fresh = false,
   ) => {
     backing = createSessionRelayVault(issuer, guestStorage, {
       key,
       now,
+      ...(fresh ? { fresh } : {}),
       ...(expiresAtMs === undefined ? {} : { expiresAtMs }),
       ...(acceptedBy === undefined ? {} : { acceptedBy }),
     });
@@ -470,6 +472,8 @@ export function createHostedRelay(options: HostedRelayOptions): HostedRelay {
         guestKey(issuer, link.linkId),
         expiresAtMs,
         acceptedAlready === undefined ? "" : acceptedBy,
+        // 新加入：同一条链接的旧记录（可能是别的账号接受的）不沿用，接受者核对不出就是来源不明。
+        true,
       );
       try {
         await vault.saveCloudRefreshToken(issuer, guestSession.refreshToken);
