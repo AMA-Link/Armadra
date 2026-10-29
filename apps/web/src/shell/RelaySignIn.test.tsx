@@ -173,7 +173,10 @@ describe("刷新页面之后", () => {
   it("续上了：不出表单，直接进画布", async () => {
     const target = {
       ...relay([host(A, "laptop")]),
-      resume: vi.fn(async () => ({ kind: "entered" as const })),
+      resume: vi.fn(async () => ({
+        kind: "entered" as const,
+        sourceId: "a".repeat(32),
+      })),
     };
     const onEntered = vi.fn();
     render(<RelaySignIn relay={target} onEntered={onEntered} />);

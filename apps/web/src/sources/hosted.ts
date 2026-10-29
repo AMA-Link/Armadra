@@ -109,7 +109,8 @@ export async function detectRelayHost(
 
 /** 刷新之后续的结果：进了主机、登录还在但进不去（给目录与原因）、或要重新登录。 */
 export type HostedResume =
-  | { readonly kind: "entered" }
+  /** 进了 `sourceId` 那台（访客落地页据此把地址换成 `/h/<sourceId>`）。 */
+  | { readonly kind: "entered"; readonly sourceId: string }
   | {
       readonly kind: "signedIn";
       readonly hosts: CloudSource[];
@@ -386,7 +387,7 @@ export function createHostedRelay(options: HostedRelayOptions): HostedRelay {
     }
     try {
       await hosted.enter(row);
-      return { kind: "entered" };
+      return { kind: "entered", sourceId: row.sourceId };
     } catch (error) {
       const failure = hostedFailureOf(error);
       if (guest && failure === "revoked") return undefined;

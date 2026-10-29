@@ -32,8 +32,9 @@ import { AuthLayout } from "./AuthLayout";
 /** 接受链接用的 Turnstile action（与中继的 `armadra-accept` 对应）。 */
 const TURNSTILE_ACCEPT_ACTION = "armadra-accept";
 
-/** 加入之后页面落在哪（托管页的根，与个人中转的 `JoinPage` 相同）。 */
-const APP_PATH = "/app/";
+/** 加入之后页面落在哪：控制台的 `/h/<主机>`，刷新时它先用这台主机的访客记录续上（设计 saas-host-open §2.8）。 */
+export const hostPath = (sourceId: string): string =>
+  `/h/${encodeURIComponent(sourceId)}`;
 
 const ROLES = new Set(["viewer", "editor", "operator", "driver"]);
 
@@ -64,18 +65,19 @@ export type JoinWithAccept = (
 const hostedJoin: JoinWithAccept = (link, accepted) =>
   startHostedRelay({ issuer: link.issuer }).join(link, accepted);
 
-/** 「打开」的结果：进去了 / 这条记录没有了（回到「加入」）/ 连不上或进主机失败（记录还在，保留「打开」）。 */
-export type ResumeOutcome = "entered" | "gone" | "failed";
+/** 「打开」的结果：进了哪台 / 这条记录没有了（回到「加入」）/ 连不上或进主机失败（记录还在，保留「打开」）。 */
+export type ResumeOutcome =
+  | { readonly kind: "entered"; readonly sourceId: string }
+  | { readonly kind: "gone" }
+  | { readonly kind: "failed" };
 
 const hostedResume = async (link: JoinLink): Promise<ResumeOutcome> => {
   const resumed = await startHostedRelay({
     issuer: link.issuer,
   }).resumeLink(link.linkId);
-  return resumed?.kind === "entered"
-    ? "entered"
-    : resumed?.kind === "gone"
-      ? "gone"
-      : "failed";
+  return resumed?.kind === "entered" || resumed?.kind === "gone"
+    ? resumed
+    : { kind: "failed" };
 };
 
 /** 加入失败 → 界面那句：云端的码按控制台文案，中继与 core 那一段按个人中转的文案。 */
@@ -92,7 +94,7 @@ function failureText(failure: unknown, fallback: string): string {
  * 片段由 `PublicPage` 读入内存、从地址栏移除，所以穿过登录再回来也还在；这里只经 POST 交给
  * `links.accept`。团队设置要求登录（`requiresAccount` / `anonymous_links_disabled`）而没有会话，
  * 主按钮是「登录后加入」；其余是「加入」。带着会话接受，云端把使用记到账号上；接受后以访客
- * 经托管中继进画布（`onJoined`）。
+ * 经托管中继进画布（`onJoined`），地址换成 `/h/<主机>`。
  */
 export function LinkPage({
   linkId,
@@ -178,11 +180,11 @@ export function LinkPage({
 
   const needsLogin = needAccount && signedIn !== true;
 
-  const enterDone = () => {
+  const enterDone = (sourceId: string) => {
     openAfterJoin(LOCAL_SOURCE_ID);
     try {
-      // 与个人中转的落地页一致：换成托管页的根，刷新能续上（`/h/<源>` 的 SaaS 入口还没有）。
-      globalThis.history.replaceState(null, "", APP_PATH);
+      // 换成这台主机的 `/h/`：刷新时它先用访客记录续上，不再回到落地页。
+      globalThis.history.replaceState(null, "", hostPath(sourceId));
     } catch {
       /* 地址栏停在 /j/ 也能用，只是刷新会回到落地页。 */
     }
@@ -195,10 +197,10 @@ export function LinkPage({
     setError("");
     try {
       const resumed = await resumeJoined(link);
-      if (resumed === "entered") enterDone();
+      if (resumed.kind === "entered") enterDone(resumed.sourceId);
       else {
         // 记录没有了才回到「加入」；连不上只提示错误，保留「打开」，不引导重新接受（会多耗链接次数）。
-        if (resumed === "gone") setJoinedBefore(false);
+        if (resumed.kind === "gone") setJoinedBefore(false);
         setError(t("links.page.failed"));
       }
     } catch {
@@ -247,8 +249,7 @@ export function LinkPage({
         }
         accepted.current = parseCloudAccept(answer);
       }
-      await joinWithAccept(link, accepted.current);
-      enterDone();
+      enterDone(await joinWithAccept(link, accepted.current));
     } catch (failure) {
       // 挑战令牌一次性：任何一次失败都换新的。
       if (siteKey !== null) {

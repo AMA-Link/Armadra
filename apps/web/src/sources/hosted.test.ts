@@ -741,7 +741,9 @@ describe("刷新页面不丢登录", () => {
     const before = net.calls.length;
 
     const reloaded = tab(storage, net);
-    await expect(reloaded.resume()).resolves.toEqual({ kind: "entered" });
+    await expect(reloaded.resume()).resolves.toMatchObject({
+      kind: "entered",
+    });
     expect(reloaded.status.state).toBe("ready");
     expect(currentAccessToken()).toBe("core-a1");
     const after = net.calls.slice(before).map((call) => call.key);
@@ -910,6 +912,7 @@ describe("只续当前链接的访客记录（resumeLink）", () => {
     });
     await expect(relay.resumeLink("link-b")).resolves.toEqual({
       kind: "entered",
+      sourceId: OTHER,
     });
     expect(entered).toEqual([OTHER]);
     // 没有这条链接的记录：不进任何主机，别的链接的记录原样留着。

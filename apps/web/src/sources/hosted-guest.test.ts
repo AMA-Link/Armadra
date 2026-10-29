@@ -216,7 +216,7 @@ describe("访客保管处（localStorage，按 签发方 + 链接）", () => {
     const before = net.calls.length;
 
     const reloaded = page(net, stores);
-    await expect(reloaded.relay.resume()).resolves.toEqual({
+    await expect(reloaded.relay.resume()).resolves.toMatchObject({
       kind: "entered",
     });
     expect(currentAccessToken()).toBe("core-ga1");

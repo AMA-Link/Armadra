@@ -36,13 +36,14 @@ const INVITE = `${"c".repeat(32)}.${"D".repeat(43)}`;
 const HASH = `#${SECRET}.${INVITE}`;
 const visit = (url: string) => window.history.replaceState(null, "", url);
 const here = () => window.location.pathname + window.location.search;
+const HOST_ID = "a".repeat(32);
 const LOGIN_FOR_LINK = `/login?next=${encodeURIComponent(`/j/${LINK_ID}`)}`;
 
 beforeEach(() => {
   usePreferencesStore.getState().setLocale("zh-CN");
   hosted.resumeLink.mockReset();
   hosted.join.mockReset();
-  hosted.join.mockResolvedValue("a".repeat(32));
+  hosted.join.mockResolvedValue(HOST_ID);
 });
 afterEach(() => {
   cleanup();
@@ -92,7 +93,7 @@ describe("分享链接落地页（SaaS）", () => {
     await screen.findByText("studio");
   });
 
-  it("匿名允许：「加入」不登录就接受，以访客经托管中继进画布，地址换成 /app/", async () => {
+  it("匿名允许：「加入」不登录就接受，以访客经托管中继进画布，地址换成 /h/<主机>", async () => {
     visit(`/j/${LINK_ID}${HASH}`);
     const { api, onJoined } = mount({ signedIn: false });
     const accept = vi.spyOn(api.client.links, "accept");
@@ -111,7 +112,7 @@ describe("分享链接落地页（SaaS）", () => {
       invitationToken: INVITE,
     });
     expect(accepted).toHaveProperty("guestSession");
-    expect(here()).toBe("/app/");
+    expect(here()).toBe(`/h/${HOST_ID}`);
   });
 
   it("要求登录且没有会话：主按钮是「登录后加入」，replace 去登录，登录后回来仍带着秘密", async () => {
@@ -136,7 +137,7 @@ describe("分享链接落地页（SaaS）", () => {
     fireEvent.submit(screen.getByLabelText("邮箱").closest("form")!);
     fireEvent.click(await join());
     await waitFor(() => expect(onJoined).toHaveBeenCalledOnce());
-    expect(here()).toBe("/app/");
+    expect(here()).toBe(`/h/${HOST_ID}`);
     expect(hosted.join.mock.calls[0]![0]).toMatchObject({ secret: SECRET });
     push.mockRestore();
   });
@@ -249,6 +250,7 @@ describe("分享链接落地页（SaaS）", () => {
     expect(accept).toHaveBeenCalledOnce();
     expect(hosted.join).toHaveBeenCalledTimes(2);
     expect(hosted.join.mock.calls[1]![1]).toBe(hosted.join.mock.calls[0]![1]);
+    expect(here()).toBe(`/h/${HOST_ID}`);
   });
 
   it("link_frozen：整页 PageState，没有「加入」（摘要时与接受时都一样）", async () => {
@@ -306,10 +308,15 @@ describe("分享链接落地页（SaaS）", () => {
     expect(onJoined).not.toHaveBeenCalled();
     cleanup();
     visit(`/j/${LINK_ID}${HASH}`);
-    hosted.resumeLink.mockResolvedValueOnce({ kind: "entered" });
+    const other = "b".repeat(32);
+    hosted.resumeLink.mockResolvedValueOnce({
+      kind: "entered",
+      sourceId: other,
+    });
     const again = mount({ signedIn: false });
     fireEvent.click(await screen.findByRole("button", { name: "打开" }));
     await waitFor(() => expect(again.onJoined).toHaveBeenCalledOnce());
+    expect(here()).toBe(`/h/${other}`);
     expect(accept).not.toHaveBeenCalled();
     expect(hosted.join).not.toHaveBeenCalled();
   });
