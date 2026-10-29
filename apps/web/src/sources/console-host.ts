@@ -741,13 +741,16 @@ export function createConsoleHost(options: ConsoleHostOptions): ConsoleHost {
       if (resumed?.kind === "entered") relay.close();
       return;
     }
-    info = {
-      name: relay.guest()?.name || info?.name || "",
-      consoleHref: "/",
-      space: "personal",
-      owner: false,
-      guest: true,
-    };
+    // 访客栏、不给「回到主机列表」只在真以访客进去了、或根本没有控制台账号时；
+    // 从账号退回却没进去的，失败卡照账号那样给回主机列表。
+    if (resumed?.kind === "entered" || !viaAccount)
+      info = {
+        name: relay.guest()?.name || info?.name || "",
+        consoleHref: "/",
+        space: "personal",
+        owner: false,
+        guest: true,
+      };
     if (resumed?.kind === "entered") {
       guestMode = true;
       guestViaAccount = viaAccount;

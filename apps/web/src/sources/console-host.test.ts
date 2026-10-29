@@ -1189,6 +1189,38 @@ describe("控制台 /h/ 以访客进入（§2.8）", () => {
   });
 });
 
+describe("访客失败时的卡片信息", () => {
+  it("从账号退回、访客没进去：info 不标访客（失败卡照样给回主机列表）；匿名没进去才标", async () => {
+    const guestStorage = memoryStorage();
+    guestRecord(guestStorage, LINK, HOST);
+    const gone = () => fakeGuest(() => ({ kind: "gone" }));
+    const account = setup({
+      assertion: async () => {
+        throw Object.assign(new Error("denied"), {
+          status: 403,
+          code: "source_access_denied",
+        });
+      },
+      guestStorage,
+      guestRelay: gone,
+    });
+    await account.host.open();
+    expect(account.host.view).toEqual({
+      kind: "failed",
+      code: "access_revoked",
+    });
+    expect(account.host.info?.guest).not.toBe(true);
+    expect(account.host.info?.consoleHref).toBe(`/t/test-team/hosts/${HOST}`);
+    const anonymous = setup({
+      me: unauthenticated,
+      guestStorage,
+      guestRelay: gone,
+    });
+    await anonymous.host.open();
+    expect(anonymous.host.info?.guest).toBe(true);
+  });
+});
+
 describe("访客路由的卸下", () => {
   it("resumeLink 进去的这一刻已经过时：刚挂上的访客路由卸下；dispose 也卸、不清记录", async () => {
     const guestStorage = memoryStorage();
