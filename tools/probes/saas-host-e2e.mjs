@@ -959,6 +959,26 @@ try {
       "host1 上有一条 owner 的待确认",
       ownerPending(),
     );
+    // 主机页面（owner 的 /h/）的放行提示带上设备自报的平台：防线靠放行的人核对平台。
+    const promptText = await ownerTab.until(
+      `const dialog = [...document.querySelectorAll('[role="dialog"]')].find((one) => one.innerText.includes("请求访问"));
+       return dialog ? dialog.innerText : null;`,
+      "owner 的 /h/ 弹出放行提示",
+      { timeout: 30_000 },
+    );
+    s.check(
+      promptText.includes("浏览器") &&
+        !promptText.includes("放行后，它能批准主人的新设备"),
+      "放行提示显示平台「浏览器」，没有原生端的那句提示",
+      promptText.replace(/\s+/g, " ").slice(0, 120),
+    );
+    await s.shot(ownerTab, "e7b-approval-platform");
+    await ownerTab.key("Escape");
+    await ownerTab.until(
+      `return [...document.querySelectorAll('[role="dialog"]')].some((one) => one.innerText.includes("请求访问")) ? null : true;`,
+      "放行提示关掉",
+      { timeout: 10_000 },
+    );
     await trustTab.reload();
     const listed = await trustTab
       .until(
