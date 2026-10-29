@@ -142,6 +142,27 @@ describe("放行提示显示设备自报的平台（契约 §88.7）", () => {
     ).toBeNull();
   });
 
+  it("查不到申请人（设备列表失败、或里面没有这条待确认）：原生端仍显示提示", async () => {
+    const visibleHint = async () => {
+      const dialog = await screen.findByRole("dialog");
+      await waitFor(() =>
+        expect(
+          within(dialog).getByText(HINT).classList.contains("invisible"),
+        ).toBe(false),
+      );
+    };
+    devices.list.mockRejectedValue(new Error("forbidden"));
+    prompt();
+    pending("ios");
+    await visibleHint();
+    cleanup();
+    devices.list.mockReset();
+    devices.list.mockResolvedValue([row({ pendingId: "someone-else" })]);
+    prompt();
+    pending("desktop");
+    await visibleHint();
+  });
+
   it("设备列表：每行有平台徽标；主人待确认的原生设备行内有提示", async () => {
     devices.list.mockResolvedValue([
       row({}),
