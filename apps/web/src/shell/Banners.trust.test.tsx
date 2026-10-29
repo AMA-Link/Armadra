@@ -433,4 +433,60 @@ describe("待信任设备横幅与对话框", () => {
     expect(host.devices.list).toHaveBeenCalledTimes(1);
     act(() => focusManager.setFocused(undefined));
   });
+
+  it("主机记录读失败时直接提交表单（回车）：也不放行", async () => {
+    host.devices.list.mockRejectedValue(new Error("relay dropped"));
+    await openDialog();
+    expect(
+      await screen.findByText("Couldn't read this request on the host"),
+    ).toBeTruthy();
+    await typeCode("482913");
+    const form = document.getElementById("cloud-trust-form");
+    expect(form).not.toBeNull();
+    fireEvent.submit(form!);
+    await new Promise((done) => setTimeout(done, 20));
+    expect(host.devices.approve).not.toHaveBeenCalled();
+  });
+
+  it("全局失效后对上的换成了另一条申请：已输入的码与错误提示清掉，要重新输入", async () => {
+    host.devices.approve.mockRejectedValueOnce(
+      new RuntimeRequestError(403, "x", "sas_mismatch"),
+    );
+    host.devices.list
+      .mockResolvedValueOnce({ devices: [pending({ platform: "ios" })] })
+      .mockResolvedValue({
+        devices: [pending({ pendingId: "swapped", platform: "android" })],
+      });
+    let client: import("@tanstack/react-query").QueryClient | undefined;
+    const { useQueryClient } = await import("@tanstack/react-query");
+    function Capture() {
+      client = useQueryClient();
+      return null;
+    }
+    render(
+      <TestProviders>
+        <Capture />
+        <Banners />
+        <CloudTrustDialog />
+      </TestProviders>,
+    );
+    fireEvent.click(await screen.findByRole("button", { name: "View" }));
+    const dialog = await screen.findByTestId("cloud-trust-dialog");
+    await waitFor(() => expect(dialog.textContent).toContain("iOS"));
+    await typeCode("111111");
+    fireEvent.click(screen.getByRole("button", { name: "Trust" }));
+    expect(await screen.findByText("The code doesn’t match")).toBeTruthy();
+    await act(async () => {
+      await client!.invalidateQueries();
+    });
+    await waitFor(() => expect(dialog.textContent).toContain("Android"));
+    const input = screen.getByLabelText(
+      "Enter the code shown on the new device",
+    ) as HTMLInputElement;
+    expect(input.value).toBe("");
+    expect(screen.queryByText("The code doesn’t match")).toBeNull();
+    const trust = screen.getByRole("button", { name: "Trust" });
+    expect(trust.hasAttribute("disabled")).toBe(true);
+    expect(host.devices.approve).toHaveBeenCalledTimes(1);
+  });
 });

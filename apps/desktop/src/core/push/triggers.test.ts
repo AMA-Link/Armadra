@@ -537,3 +537,49 @@ describe("四族事件经总线真发到推送", () => {
     ]);
   });
 });
+
+describe("设备背书的推送（契约 §81.1）", () => {
+  it("只发给本机 owner 名下的设备，与工作空间无关；关不掉；载荷没有名字与标识", () => {
+    const { push, ownerDeviceId, viewer, outsider, inbox } = setup();
+    // owner 把偏好收窄到只收审批：背书通知照样到。
+    push.devices.setKinds(ownerDeviceId, ["approval"]);
+    expect(push.notifyEndorsement("a".repeat(32))).toBe(1);
+    expect(inbox(viewer.deviceId)).toEqual([]);
+    expect(inbox(outsider.deviceId)).toEqual([]);
+    expect(inbox(ownerDeviceId)).toEqual([
+      {
+        v: 1,
+        kind: "deviceEndorsed",
+        title: "Armadra",
+        body: "有设备经背书获得了信任",
+        url: "armadra://",
+        tag: `endorsed:${"a".repeat(32)}`,
+      },
+    ]);
+    // 第二次背书是另一条，不顶掉第一条。
+    expect(push.notifyEndorsement("b".repeat(32))).toBe(1);
+    expect(inbox(ownerDeviceId).map((payload) => payload.tag)).toEqual([
+      `endorsed:${"a".repeat(32)}`,
+      `endorsed:${"b".repeat(32)}`,
+    ]);
+  });
+
+  it("背书不是设备能关的种类", async () => {
+    const { PREFERENCE_KINDS, PUSH_KINDS } = await import("./types");
+    expect(PUSH_KINDS).toContain("deviceEndorsed");
+    expect(PREFERENCE_KINDS).not.toContain("deviceEndorsed");
+  });
+
+  it("工作空间事件不会触发背书推送", () => {
+    const { push } = setup();
+    expect(
+      push.handleEvent("w1", {
+        type: "devices.endorsed",
+        deviceId: "d",
+        principalId: "p",
+        endorserDeviceId: "e",
+        endorserPrincipalId: "o",
+      }),
+    ).toBe(0);
+  });
+});

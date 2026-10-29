@@ -11,6 +11,7 @@
  * 树是一个焦点停留点，Tab 进入。
  */
 import { useEffect, useState } from "react";
+import type { DeviceEndorsement } from "@armadra/shared";
 import { MoreHorizontal } from "lucide-react";
 
 import { NEED_TONE } from "../agent/display";
@@ -40,10 +41,16 @@ import { Loadable } from "../loading/Loadable";
 import { StatusPill } from "@/ui/status-pill";
 import type { NeedItem } from "./needs";
 import { useNeedsStore } from "./needs-store";
+import {
+  endorsementText,
+  markEndorsementsRead,
+  openDevicesPage,
+} from "./use-host-needs";
 
 export function NotificationPanel({ onClose }: { onClose: () => void }) {
   const t = useT();
   const groups = useNeedsStore((state) => state.groups);
+  const host = useNeedsStore((state) => state.host);
   const synced = useNeedsStore((state) => state.synced);
   const open = useNeedsStore((state) => state.open);
   const [inspecting, setInspecting] = useState<AgentInspectTarget | null>(null);
@@ -80,12 +87,37 @@ export function NotificationPanel({ onClose }: { onClose: () => void }) {
           }}
         >
           <Loadable
-            loading={!synced && groups.length === 0}
+            loading={!synced && groups.length === 0 && host.length === 0}
             skeleton={<NotificationSkeleton />}
-            empty={groups.length === 0}
+            empty={groups.length === 0 && host.length === 0}
             emptyTitle={t("notifications.empty")}
             inline
           >
+            {host.length > 0 && (
+              <section aria-label={t("notifications.host")}>
+                <h2 className="flex h-(--row-h) min-w-0 items-center gap-1 px-1.5 text-caption font-medium">
+                  <span className="min-w-0 truncate">
+                    {t("notifications.host")}
+                  </span>
+                  <span className="shrink-0 tabular-nums text-muted-foreground">
+                    {host.length}
+                  </span>
+                </h2>
+                <ul className="pl-2">
+                  {host.map((item) => (
+                    <EndorsementRow
+                      key={item.id}
+                      item={item}
+                      onSelect={() => {
+                        onClose();
+                        void markEndorsementsRead([item.id]);
+                        openDevicesPage();
+                      }}
+                    />
+                  ))}
+                </ul>
+              </section>
+            )}
             {groups.map((workspace) => (
               <section
                 key={workspace.workspaceId}
@@ -215,6 +247,50 @@ export function NeedRow({
             </DropdownMenu>
           )}
         </ItemActions>
+      </Item>
+    </li>
+  );
+}
+
+/** 一次设备背书（主机级条目）：点开标已读并打开「设备」页。 */
+export function EndorsementRow({
+  item,
+  onSelect,
+  now,
+}: {
+  item: DeviceEndorsement;
+  onSelect: () => void;
+  now?: number;
+}) {
+  const t = useT();
+  return (
+    <li>
+      <Item
+        size="xs"
+        data-need-row=""
+        className="min-h-(--row-h-table) flex-nowrap gap-1.5 rounded-control px-1.5 py-0.5 hover:bg-hover"
+      >
+        <Button
+          variant="ghost"
+          data-roving-item
+          className="h-auto min-w-0 flex-1 justify-start gap-1.5 self-stretch rounded-tight px-0 py-1 text-left font-normal hover:bg-transparent"
+          onClick={onSelect}
+        >
+          <span className="min-w-0 flex-1 truncate text-body">
+            {endorsementText(t, item)}
+          </span>
+          <StatusPill
+            tone="attention"
+            label={t("notifications.need.endorsed")}
+            className="shrink-0"
+          />
+          <span
+            data-numeric
+            className="shrink-0 font-mono text-caption text-muted-foreground"
+          >
+            {formatRelativeTime(item.createdAtMs, now)}
+          </span>
+        </Button>
       </Item>
     </li>
   );

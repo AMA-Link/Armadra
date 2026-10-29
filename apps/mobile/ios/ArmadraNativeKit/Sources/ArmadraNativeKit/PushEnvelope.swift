@@ -26,7 +26,7 @@ public enum PushEnvelope {
     private static let info = Data("armadra-push-v1".utf8)
     private static let kinds: Set<String> = [
         "approval", "agentDone", "agentError", "agentWaiting", "deliveryFailed", "schedule",
-        "resources", "comment", "workflowGate", "test",
+        "resources", "comment", "workflowGate", "deviceEndorsed", "test",
     ]
 
     /// APNs 的 `enc` 是字典，FCM 的 `data.enc` 是它的 JSON 字符串；两种都收。

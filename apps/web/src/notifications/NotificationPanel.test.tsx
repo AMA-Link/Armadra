@@ -26,7 +26,16 @@ import { useSubagentStore } from "../agent/subagent-store";
 import { scoped } from "../sources/scope";
 import { NotificationPanel } from "./NotificationPanel";
 import { groupNeeds, type NeedItem } from "./needs";
-import { useNeedsStore } from "./needs-store";
+import { selectNeedCount, useNeedsStore } from "./needs-store";
+import { useCanvasStore } from "../store/canvas-store";
+
+const devices = vi.hoisted(() => ({
+  markEndorsementsRead: vi.fn(async () => undefined),
+}));
+vi.mock("../api/devices", () => ({
+  ENDORSEMENTS_QUERY_KEY: ["endorsements"],
+  devicesApi: devices,
+}));
 
 beforeAll(() => {
   if (!globalThis.ResizeObserver) {
@@ -63,6 +72,8 @@ beforeEach(() => {
   usePreferencesStore.setState({ locale: "zh-CN" });
   useSubagentStore.getState().reset();
   publish([]);
+  useNeedsStore.setState({ host: [], hostSynced: false });
+  devices.markEndorsementsRead.mockClear();
 });
 afterEach(cleanup);
 
@@ -237,5 +248,59 @@ describe("NotificationPanel", () => {
     // 没有下级的行不渲染
     expect(rows[1]!.querySelector("[data-slot=agent-tree]")).toBeNull();
     expect(rows[1]!.getAttribute("data-tree")).toBeNull();
+  });
+
+  it("本机的背书在各工作空间之前单列一组，计入铃铛；点开标已读并打开「设备」页", async () => {
+    const endorsement = {
+      id: "e1",
+      deviceId: "dev_new",
+      principalId: "p_member",
+      principalName: "李四",
+      deviceLabel: "iPad",
+      devicePlatform: "ios",
+      endorserDeviceId: "dev_browser",
+      endorserPrincipalId: "p_owner",
+      endorserLabel: "Chrome",
+      createdAtMs: Date.parse(at),
+    };
+    publish([item({ nodeId: "claude", need: "approval" })]);
+    useNeedsStore.getState().setHost([endorsement]);
+    expect(selectNeedCount(useNeedsStore.getState())).toBe(2);
+    const onClose = vi.fn();
+    render(<NotificationPanel onClose={onClose} />);
+    const regions = screen.getAllByRole("region");
+    expect(regions[0]!.getAttribute("aria-label")).toBe("本机");
+    const host = within(regions[0]!);
+    expect(host.getByText("本机").nextSibling?.textContent).toBe("1");
+    expect(host.getByText("设备背书")).toBeTruthy();
+    fireEvent.click(
+      host.getByRole("button", { name: /Chrome 放行了 李四 的 iPad/ }),
+    );
+    expect(onClose).toHaveBeenCalled();
+    expect(devices.markEndorsementsRead).toHaveBeenCalledWith(["e1"]);
+    expect(usePreferencesStore.getState().lastSettingsSection).toBe("devices");
+    expect(useCanvasStore.getState().panels.settings).toBe(true);
+    await act(async () => {});
+    expect(useNeedsStore.getState().host).toEqual([]);
+  });
+
+  it("只有本机条目时不显示空状态", () => {
+    useNeedsStore.getState().setHost([
+      {
+        id: "e2",
+        deviceId: "d",
+        principalId: "p",
+        principalName: "",
+        deviceLabel: "",
+        devicePlatform: "",
+        endorserDeviceId: "abcdef0123",
+        endorserPrincipalId: "",
+        endorserLabel: "",
+        createdAtMs: 1,
+      },
+    ]);
+    render(<NotificationPanel onClose={() => {}} />);
+    expect(screen.queryByText("没有需要处理的事")).toBeNull();
+    expect(screen.getByText("abcdef01 放行了 p 的 —")).toBeTruthy();
   });
 });

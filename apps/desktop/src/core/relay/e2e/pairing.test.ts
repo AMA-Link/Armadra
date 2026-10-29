@@ -3,6 +3,8 @@ import { once } from "node:events";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { WebSocket } from "ws";
 
+import { contract } from "@armadra/shared";
+
 import { signAssertion } from "../../identity/cloud/fake.fixture";
 import { cloudProvider } from "../../identity/cloud/store";
 import { allScopes } from "../../identity/scopes";
@@ -15,6 +17,10 @@ import {
 } from "../core.fixture";
 import type { FakeTunnel } from "../fake-relay.fixture";
 import { E2eTestClient } from "./client.fixture";
+
+// 背书通知的推送（契约 §81.1）：relay 缺省交给推送域，这里换成一个探针。
+const push = vi.hoisted(() => ({ notifyEndorsement: vi.fn() }));
+vi.mock("../../push", () => ({ pushDomain: () => push }));
 import { e2eDevices, e2ePairing, e2eShareLinks } from "./peer";
 
 /**
@@ -843,5 +849,124 @@ describe("浏览器不批主人的设备、不签配对秘密（契约 §88.7）
     );
     expect(endorsed()).toHaveLength(2);
     socket.close();
+  });
+  describe("背书进需要人处理（契约 §81.1）", () => {
+    const rpc = (
+      by: { client: Client; token: string },
+      name: string,
+      body: unknown = {},
+    ) =>
+      by.client.request({
+        method: "POST",
+        path: `/api/rpc/devices/${name}`,
+        headers: {
+          authorization: `Bearer ${by.token}`,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({ json: body }),
+      });
+    const local = async (name: string, body: unknown = {}) => {
+      const answer = await fetch(`${world.base}/api/rpc/devices/${name}`, {
+        method: "POST",
+        headers: {
+          origin: LOOPBACK_ORIGIN,
+          authorization: `Bearer ${world.session(LOOPBACK_ORIGIN)}`,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({ json: body }),
+      });
+      const parsed = (await answer.json()) as {
+        json: { endorsements: { id: string; [key: string]: unknown }[] };
+      };
+      return { status: answer.status, json: parsed.json };
+    };
+    beforeEach(() => push.notifyEndorsement.mockReset());
+
+    it("没人看画布时背书：落一行（带当时的名字），推一次给 owner；连续几次都在，新的在前", async () => {
+      const owner = world.store.transaction((tx) => tx.owner())!;
+      const browser = await ownerDevice(92, "browser");
+      const first = await pendingDevice(93, "acct:member-n1");
+      expect((await approveVia(browser, first)).status).toBe(200);
+      const desktop = await ownerDevice(94, "desktop");
+      const second = await pendingDevice(95);
+      expect((await approveVia(desktop, second)).status).toBe(200);
+
+      const listed = await local("endorsements");
+      expect(listed.status).toBe(200);
+      const rows = listed.json.endorsements;
+      expect(rows).toHaveLength(2);
+      const firstRow = e2eDevices()!
+        .list()
+        .find((row) => row.requestId === first.pendingId)!;
+      expect(rows[1]).toMatchObject({
+        deviceId: firstRow.deviceId,
+        principalId: firstRow.principalId,
+        principalName: firstRow.principalName,
+        deviceLabel: firstRow.label,
+        devicePlatform: firstRow.platform,
+        endorserDeviceId: browser.deviceId,
+        endorserPrincipalId: owner.principalId,
+      });
+      expect(rows[0]).toMatchObject({
+        endorserDeviceId: desktop.deviceId,
+        principalId: owner.principalId,
+      });
+      expect(push.notifyEndorsement.mock.calls.map(([id]) => id)).toEqual([
+        rows[1]!.id,
+        rows[0]!.id,
+      ]);
+      // 本机放行不是背书：不记、不推。
+      const plain = await pendingDevice(96);
+      await fetch(`${world.base}/api/devices/approve`, {
+        method: "POST",
+        headers: {
+          origin: LOOPBACK_ORIGIN,
+          authorization: `Bearer ${world.session(LOOPBACK_ORIGIN)}`,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify(plain),
+      });
+      expect((await local("endorsements")).json.endorsements).toHaveLength(2);
+      expect(push.notifyEndorsement).toHaveBeenCalledTimes(2);
+    });
+
+    it("标已读：浏览器经中继 403、通知还在；桌面受信设备与主机本机照常", async () => {
+      const browser = await ownerDevice(97, "browser");
+      const target = await pendingDevice(98, "acct:member-n2");
+      expect((await approveVia(browser, target)).status).toBe(200);
+      const [row] = (await local("endorsements")).json.endorsements;
+      // 浏览器能看到（主人的会话），但标不掉。
+      const seen = await rpc(browser, "endorsements");
+      expect(seen.status, seen.body.toString()).toBe(200);
+      const refused = await rpc(browser, "endorsementsRead", {
+        ids: [row!.id],
+      });
+      expect(refused.status).toBe(403);
+      expect((await local("endorsements")).json.endorsements).toHaveLength(1);
+
+      const desktop = await ownerDevice(99, "desktop");
+      const done = await rpc(desktop, "endorsementsRead", { ids: [row!.id] });
+      expect(done.status, done.body.toString()).toBe(200);
+      expect((await local("endorsements")).json.endorsements).toHaveLength(0);
+      // 主机本机：不认识的 id 略过，空数组答 bad_request。
+      expect((await local("endorsementsRead", { ids: ["x"] })).status).toBe(
+        200,
+      );
+      expect((await local("endorsementsRead", { ids: [] })).status).toBe(400);
+    });
+
+    it("两条都只给 owner：scope 是全局 settings:*（成员一律 403，由路由门按它判）", () => {
+      expect(contract.devices.endorsements["~orpc"].meta).toMatchObject({
+        scope: "settings:read",
+        contract: "§81.1",
+      });
+      expect(contract.devices.endorsementsRead["~orpc"].meta).toMatchObject({
+        scope: "settings:write",
+        contract: "§81.1",
+      });
+      expect(contract.devices.endorsements["~orpc"].meta).not.toHaveProperty(
+        "workspaceKey",
+      );
+    });
   });
 });
