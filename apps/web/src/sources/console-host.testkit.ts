@@ -1,4 +1,4 @@
-import { vi } from "vitest";
+import { type Mock, vi } from "vitest";
 
 import {
   type IdentitySession,
@@ -194,7 +194,7 @@ export function setup(
   };
   const timers = over.timers ?? [];
   let now = 0;
-  const trusted = vi.fn();
+  const trusted: Mock<(sourceId: string) => void> = vi.fn();
   const options: ConsoleHostOptions = {
     trusted,
     hostId: HOST,
