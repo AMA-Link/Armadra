@@ -112,6 +112,8 @@ describe("分享链接落地页（SaaS）", () => {
       invitationToken: INVITE,
     });
     expect(accepted).toHaveProperty("guestSession");
+    // 匿名接受：访客记录记成 ""。
+    expect(hosted.join.mock.calls[0]![2]).toBe("");
     expect(here()).toBe(`/h/${HOST_ID}`);
   });
 
@@ -139,6 +141,9 @@ describe("分享链接落地页（SaaS）", () => {
     await waitFor(() => expect(onJoined).toHaveBeenCalledOnce());
     expect(here()).toBe(`/h/${HOST_ID}`);
     expect(hosted.join.mock.calls[0]![0]).toMatchObject({ secret: SECRET });
+    // 带着会话接受：访客记录记成这个账号。
+    expect(hosted.join.mock.calls[0]![2]).toEqual(expect.any(String));
+    expect(hosted.join.mock.calls[0]![2]).not.toBe("");
     push.mockRestore();
   });
 

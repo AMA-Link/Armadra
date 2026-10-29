@@ -333,6 +333,11 @@ export function createConsoleHost(options: ConsoleHostOptions): ConsoleHost {
   let stopGuest: (() => void) | null = null;
   /** 这次是以访客进的（不是控制台账号）。 */
   let guestMode = false;
+  /**
+   * 这次访客是从 Cookie 账号退回来的（记录是这位接受的、或匿名的）：控制台登出、换账号时
+   * 也要盖上「已登出」。纯匿名进来的（没有 Cookie 会话）不理控制台的广播。
+   */
+  let guestViaAccount = false;
   const listeners = new Set<() => void>();
   const publish = () => {
     for (const listener of [...listeners]) {
@@ -606,8 +611,25 @@ export function createConsoleHost(options: ConsoleHostOptions): ConsoleHost {
   };
 
   channel?.addEventListener("message", ({ data }) => {
-    // 访客与控制台账号无关：别的标签页登出、换账号、认领都不关它的事。
-    if (disposed || guestMode || !isCloudSessionMessage(data)) return;
+    if (disposed || !isCloudSessionMessage(data)) return;
+    if (guestMode) {
+      // 纯匿名的访客与控制台账号无关；从账号退回来的，账号登出、换了人就一起登出。
+      if (!guestViaAccount) return;
+      if (data.type === "signingOut") {
+        if (view.kind !== "entered") return;
+        channel.postMessage({ type: "loggingOut", tabId });
+        void signOutGuest().finally(() =>
+          channel.postMessage({ type: "loggedOut", tabId }),
+        );
+      } else if (
+        data.type === "signedOut" ||
+        (data.type === "accountChanged" &&
+          accountId !== null &&
+          data.accountId !== accountId)
+      )
+        void signOutGuest();
+      return;
+    }
     if (data.type === "signingOut") {
       if (view.kind !== "entered" && view.kind !== "expired") return;
       channel.postMessage({ type: "loggingOut", tabId });
@@ -644,10 +666,29 @@ export function createConsoleHost(options: ConsoleHostOptions): ConsoleHost {
 
   /* ------------------------------ 访客 ------------------------------- */
 
-  const findGuest = () =>
+  /** 这位（没有 Cookie 会话是 `null`）能用的这台主机的访客记录（§2.8）。 */
+  const findGuest = (account: string | null) =>
     guestStorage === null
       ? null
-      : guestLinkFor(guestStorage, issuer, hostId, (options.now ?? Date.now)());
+      : guestLinkFor(
+          guestStorage,
+          issuer,
+          hostId,
+          account,
+          (options.now ?? Date.now)(),
+        );
+
+  /** 访客「登出」：丢掉这条链接的访客记录（托管中继清它），不碰控制台账号。 */
+  async function signOutGuest(): Promise<void> {
+    closed = true;
+    generation += 1;
+    if (retryTimer !== null) cancel(retryTimer);
+    retryTimer = null;
+    await guestRelay?.signOut().catch(() => undefined);
+    guestMode = false;
+    guestViaAccount = false;
+    setView({ kind: "signedOut" });
+  }
 
   const guestRelayOnce = (): GuestRelay => {
     if (guestRelay !== null) return guestRelay;
@@ -682,6 +723,7 @@ export function createConsoleHost(options: ConsoleHostOptions): ConsoleHost {
   const enterAsGuest = async (
     linkId: string,
     stale: () => boolean,
+    viaAccount: boolean,
   ): Promise<void> => {
     if (wasEntered) {
       entry.close();
@@ -704,6 +746,7 @@ export function createConsoleHost(options: ConsoleHostOptions): ConsoleHost {
     };
     if (resumed?.kind === "entered") {
       guestMode = true;
+      guestViaAccount = viaAccount;
       rateLimited = 0;
       setView({ kind: "entered" });
       return;
@@ -752,19 +795,22 @@ export function createConsoleHost(options: ConsoleHostOptions): ConsoleHost {
     const stale = () => generation !== mine || closed || disposed;
     setView({ kind: "connecting" });
     guestMode = false;
-    // 先查这台主机的访客记录：没有 Cookie 会话、或账号进不了这台时用它（§2.8）。
-    const guestLink = findGuest();
+    guestViaAccount = false;
     let me: Awaited<ReturnType<CloudClient["me"]["get"]>>;
     try {
       me = await client.me.get({});
     } catch (error) {
       if (stale()) return;
       if (statusOf(error) === 401) {
-        if (guestLink !== null) return enterAsGuest(guestLink, stale);
+        // 没有 Cookie 会话：只用匿名接受的访客记录（§2.8）。
+        const anonymous = findGuest(null);
+        if (anonymous !== null) return enterAsGuest(anonymous, stale, false);
         setView({ kind: "login" });
       } else fail(codeOf(error));
       return;
     }
+    // 账号进不了这台时退回的访客记录：匿名的、或这位自己接受的（§2.8）。
+    const guestLink = findGuest(me.accountId);
     if (stale()) return;
     // 同一个标签页里换了账号：上一位的主机侧会话先经还装着的路由吊销（限时），再丢它的记录。
     if (accountId !== null && accountId !== me.accountId) {
@@ -787,16 +833,20 @@ export function createConsoleHost(options: ConsoleHostOptions): ConsoleHost {
     } catch (error) {
       if (stale()) return;
       const code = codeOf(error);
+      // Cookie 会话这时没了：同没有会话，只用匿名接受的访客记录。
+      if (statusOf(error) === 401) {
+        const anonymous = findGuest(null);
+        if (anonymous !== null) return enterAsGuest(anonymous, stale, false);
+        setView({ kind: "login" });
+        return;
+      }
       // 账号看不到这台（控制台对没权限的主机答 not_found）：有访客记录就以访客进。
       if (
         guestLink !== null &&
-        (statusOf(error) === 401 ||
-          code === HOST_FAILURE.notFound ||
-          code === HOST_FAILURE.denied)
+        (code === HOST_FAILURE.notFound || code === HOST_FAILURE.denied)
       )
-        return enterAsGuest(guestLink, stale);
-      if (statusOf(error) === 401) setView({ kind: "login" });
-      else fail(code || HOST_FAILURE.failed);
+        return enterAsGuest(guestLink, stale, true);
+      fail(code || HOST_FAILURE.failed);
       return;
     }
     if (stale()) return;
@@ -842,7 +892,7 @@ export function createConsoleHost(options: ConsoleHostOptions): ConsoleHost {
         // 账号对这台没有权限：有访客记录就退回访客。
         if (code === HOST_FAILURE.denied && guestLink !== null) {
           entry.close();
-          return enterAsGuest(guestLink, stale);
+          return enterAsGuest(guestLink, stale, true);
         }
         // 主体不符：记录已丢，重新 cloud/login 一次。
         if (principalChanged && attempt === 0) {
@@ -918,14 +968,7 @@ export function createConsoleHost(options: ConsoleHostOptions): ConsoleHost {
     open,
     async signOut() {
       if (guestMode && guestRelay !== null) {
-        // 访客「登出」：丢掉这条链接的访客记录（托管中继清它），不碰控制台账号。
-        closed = true;
-        generation += 1;
-        if (retryTimer !== null) cancel(retryTimer);
-        retryTimer = null;
-        await guestRelay.signOut().catch(() => undefined);
-        guestMode = false;
-        setView({ kind: "signedOut" });
+        await signOutGuest();
         return;
       }
       await signedOut();

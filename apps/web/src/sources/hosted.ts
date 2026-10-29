@@ -44,6 +44,7 @@ export {
   type SessionVaultOptions,
   GUEST_KEY_PREFIX,
   HOSTED_RESUME_KEY,
+  clearAccountGuestRecords,
   clearGuestRecords,
   createMemoryRelayVault,
   createSessionRelayVault,
@@ -231,6 +232,7 @@ export interface HostedRelay {
    * {@link enter} 装成本机源。答加入的源。失败抛（远程服务的拒绝是 `CloudError`）。
    * `accepted`：调用方已经（带着云会话）接受过链接，直接用这份结果，不再匿名接受
    * （云端控制台的 SaaS 落地页，`cloud/auth/LinkPage.tsx`）。
+   * `acceptedBy`：带着哪个控制台账号接受的（匿名 `""`），记进访客记录（§2.8）。
    */
   join(
     link: {
@@ -241,6 +243,7 @@ export interface HostedRelay {
       readonly identityFp?: string;
     },
     accepted?: CloudAccept,
+    acceptedBy?: string,
   ): Promise<string>;
   /**
    * 刷新页面之后：用记下的刷新令牌静默续上远程服务，再进上次那台主机。没有
@@ -291,11 +294,16 @@ export function createHostedRelay(options: HostedRelayOptions): HostedRelay {
     share: () => backing.share(),
     clear: () => backing.clear(),
   };
-  const switchToGuest = (key: string, expiresAtMs?: number) => {
+  const switchToGuest = (
+    key: string,
+    expiresAtMs?: number,
+    acceptedBy?: string,
+  ) => {
     backing = createSessionRelayVault(issuer, guestStorage, {
       key,
       now,
       ...(expiresAtMs === undefined ? {} : { expiresAtMs }),
+      ...(acceptedBy === undefined ? {} : { acceptedBy }),
     });
     guest = true;
     return backing;
@@ -418,7 +426,7 @@ export function createHostedRelay(options: HostedRelayOptions): HostedRelay {
   const hosted: HostedRelay = {
     issuer,
     provider,
-    async join(link, acceptedAlready) {
+    async join(link, acceptedAlready, acceptedBy) {
       // 控制台页面自己带会话接受（让云端记到账号上、过「要登录」的设置），接受的结果传进来；
       // 其余（个人中转的落地页）在这里匿名接受。
       const accepted =
@@ -445,7 +453,12 @@ export function createHostedRelay(options: HostedRelayOptions): HostedRelay {
           : guestSession.expiresAtMs > now()
             ? guestSession.expiresAtMs
             : now() + GUEST_FALLBACK_MS;
-      switchToGuest(guestKey(issuer, link.linkId), expiresAtMs);
+      // 谁接受的：这里匿名接受是 `""`；调用方带着会话接受的，由它说是哪个账号。
+      switchToGuest(
+        guestKey(issuer, link.linkId),
+        expiresAtMs,
+        acceptedAlready === undefined ? "" : acceptedBy,
+      );
       try {
         await vault.saveCloudRefreshToken(issuer, guestSession.refreshToken);
         cloudSessions.adopt(

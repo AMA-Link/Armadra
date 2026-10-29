@@ -8,6 +8,7 @@ import {
 } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { guestKey } from "../sources/relay-vault";
 import * as cloudSessionChannel from "../sources/cloud-session-channel";
 import { ConsoleRoot } from "./ConsoleRoot";
 import { createMockApi, type MockOptions } from "./mock/create-mock-client";
@@ -110,15 +111,38 @@ describe("控制台经客户端取会话", () => {
     await waitFor(() => expect(get).toHaveBeenCalledTimes(2));
   });
 
-  it("退出登录：撤销会话、清缓存、回 /login", async () => {
+  it("退出登录：撤销会话、清缓存、回 /login；账号接受的访客记录一起清，匿名的留着", async () => {
     visit("/me");
+    const origin = window.location.origin;
+    const record = (acceptedBy?: string) =>
+      JSON.stringify({
+        issuer: origin,
+        cloudRefreshToken: "r",
+        sources: {},
+        entered: { sourceId: "c".repeat(32), name: "h" },
+        ...(acceptedBy === undefined ? {} : { acceptedBy }),
+      });
+    localStorage.setItem(guestKey(origin, "by-account"), record("acct-a"));
+    localStorage.setItem(guestKey(origin, "legacy"), record());
+    localStorage.setItem(guestKey(origin, "anonymous"), record(""));
     const api = mount();
     const signOut = vi.spyOn(api, "signOut");
-    await h1();
-    open(/张三/);
-    fireEvent.click(await screen.findByRole("menuitem", { name: "退出登录" }));
-    await waitFor(() => expect(window.location.pathname).toBe("/login"));
-    expect(signOut).toHaveBeenCalled();
+    try {
+      await h1();
+      open(/张三/);
+      fireEvent.click(
+        await screen.findByRole("menuitem", { name: "退出登录" }),
+      );
+      await waitFor(() => expect(window.location.pathname).toBe("/login"));
+      expect(signOut).toHaveBeenCalled();
+      expect(localStorage.getItem(guestKey(origin, "by-account"))).toBeNull();
+      expect(localStorage.getItem(guestKey(origin, "legacy"))).toBeNull();
+      expect(
+        localStorage.getItem(guestKey(origin, "anonymous")),
+      ).not.toBeNull();
+    } finally {
+      localStorage.clear();
+    }
   });
 
   it("通知 /h/ 标签页出错也照样登出云端", async () => {

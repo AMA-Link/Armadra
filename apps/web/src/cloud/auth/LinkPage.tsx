@@ -56,14 +56,18 @@ type Stage =
   | { kind: "ready"; info: Info }
   | { kind: "failed"; message: string; code?: string };
 
-/** 以访客加入（缺省经页面的托管中继；测试换掉）。 */
+/**
+ * 以访客加入（缺省经页面的托管中继；测试换掉）。`acceptedBy`：带着哪个控制台账号接受的，
+ * 匿名是 `""`——记进访客记录，`/h/` 只把它给这位用（设计 saas-host-open §2.8）。
+ */
 export type JoinWithAccept = (
   link: JoinLink,
   accepted: CloudAccept,
+  acceptedBy: string,
 ) => Promise<string>;
 
-const hostedJoin: JoinWithAccept = (link, accepted) =>
-  startHostedRelay({ issuer: link.issuer }).join(link, accepted);
+const hostedJoin: JoinWithAccept = (link, accepted, acceptedBy) =>
+  startHostedRelay({ issuer: link.issuer }).join(link, accepted, acceptedBy);
 
 /** 「打开」的结果：进了哪台 / 这条记录没有了（回到「加入」）/ 连不上或进主机失败（记录还在，保留「打开」）。 */
 export type ResumeOutcome =
@@ -142,6 +146,8 @@ export function LinkPage({
   const [busy, setBusy] = React.useState(false);
   // 接受过一次：重试只重跑加入。`links.accept` 会消耗次数，不能因为中继那一步失败就再接受一遍。
   const accepted = React.useRef<CloudAccept | null>(null);
+  /** 接受时带的是哪个账号（匿名 `""`）。 */
+  const acceptedBy = React.useRef("");
   // 这条链接已经加入过（本机留着访客记录）：主按钮是「打开」，续不上再回到「加入」。
   const [joinedBefore, setJoinedBefore] = React.useState(
     () => link !== null && hasGuestRecord(link.issuer, linkId),
@@ -233,6 +239,7 @@ export function LinkPage({
         return;
       }
       if (accepted.current === null) {
+        const by = session ? (await api.client.me.get({})).accountId : "";
         const answer = await api.client.links.accept({
           linkId,
           secret: link.secret,
@@ -248,8 +255,11 @@ export function LinkPage({
           return;
         }
         accepted.current = parseCloudAccept(answer);
+        acceptedBy.current = by;
       }
-      enterDone(await joinWithAccept(link, accepted.current));
+      enterDone(
+        await joinWithAccept(link, accepted.current, acceptedBy.current),
+      );
     } catch (failure) {
       // 挑战令牌一次性：任何一次失败都换新的。
       if (siteKey !== null) {

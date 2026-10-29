@@ -204,6 +204,8 @@ describe("访客保管处（localStorage，按 签发方 + 链接）", () => {
       sources: { [SOURCE]: "core-gr" },
       entered: { sourceId: SOURCE },
       expiresAtMs: EXPIRES,
+      // 这里匿名接受：记成 ""。
+      acceptedBy: "",
       share: { role: "viewer", name: "studio", expiresAtMs: EXPIRES },
     });
     expect(relay.guest()).toMatchObject({ role: "viewer", name: "studio" });
@@ -282,6 +284,27 @@ describe("访客保管处（localStorage，按 签发方 + 链接）", () => {
         page(net, stores).relay.resumeLink(LINK.linkId),
       ).resolves.toMatchObject({ kind: "entered" });
     }
+  });
+
+  it("调用方带着账号接受的：记录写上是哪个账号；刷新续上后仍在", async () => {
+    const { net } = guestNet();
+    const stores = fresh();
+    const answer = await (
+      await net.fetch(`${ISSUER}/v1/links/${LINK.linkId}/accept`, {
+        method: "POST",
+        body: "{}",
+      })
+    ).json();
+    await page(net, stores).relay.join(LINK, answer, "acct-a");
+    expect(JSON.parse(stores.guest.getItem(KEY)!)).toMatchObject({
+      acceptedBy: "acct-a",
+    });
+    resetIdentityCredentials();
+    await page(net, stores).relay.resumeLink(LINK.linkId);
+    expect(JSON.parse(stores.guest.getItem(KEY)!)).toMatchObject({
+      acceptedBy: "acct-a",
+      cloudRefreshToken: "guest-r1",
+    });
   });
 
   it("accessRevoked：当场清掉记录", async () => {

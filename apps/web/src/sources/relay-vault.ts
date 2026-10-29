@@ -57,6 +57,11 @@ interface ResumeRecord {
   readonly entered: { readonly sourceId: string; readonly name: string } | null;
   /** 访客记录的寿命（毫秒时刻，= 链接到期）；账号那份没有。 */
   readonly expiresAtMs?: number;
+  /**
+   * 访客记录是谁接受的链接：控制台账号 id，匿名接受是 `""`。没有这一项是来源不明
+   * （B3 之前写的记录）：控制台 `/h/` 不采用（{@link guestLinkFor}）。
+   */
+  readonly acceptedBy?: string;
   /** 访客看到的分享：权限、主人 / 工作空间名；账号那份没有。 */
   readonly share?: GuestShare;
 }
@@ -113,6 +118,9 @@ function readResume(
       issuer,
       ...(typeof value.expiresAtMs === "number"
         ? { expiresAtMs: value.expiresAtMs }
+        : {}),
+      ...(typeof value.acceptedBy === "string"
+        ? { acceptedBy: value.acceptedBy }
         : {}),
       ...(share && typeof share === "object"
         ? {
@@ -203,13 +211,18 @@ export function guestKeys(
 }
 
 /**
- * 进过 `sourceId` 这台主机的访客记录是哪条链接的（控制台 `/h/` 刷新时用，设计 saas-host-open §2.8）；
+ * 进过 `sourceId` 这台主机、这位可以用的访客记录是哪条链接的（控制台 `/h/` 用，设计 saas-host-open §2.8）；
  * 没有、都到期了答 `null`。有几条时取到期最晚的那条。
+ *
+ * `accountId`：当前控制台账号（没有 Cookie 会话是 `null`）。只采用匿名接受的记录（`acceptedBy` 为
+ * `""`）与这位自己接受的记录：别的账号接受的不能拿来绕过团队「要登录」的设置、也不能串到别的账号上。
+ * 没有 `acceptedBy` 的旧记录来源不明——可能是哪个账号在要求登录的团队里接受的——一律不采用。
  */
 export function guestLinkFor(
   storage: Storage | null,
   issuer: string,
   sourceId: string,
+  accountId: string | null,
   now: number = Date.now(),
 ): string | null {
   const prefix = `${GUEST_KEY_PREFIX}${issuer}|`;
@@ -217,6 +230,10 @@ export function guestLinkFor(
   for (const key of guestKeys(storage, issuer, now)) {
     const record = readResume(storage, issuer, key, now);
     if (record.entered?.sourceId !== sourceId) continue;
+    const usable =
+      record.acceptedBy === "" ||
+      (accountId !== null && record.acceptedBy === accountId);
+    if (!usable) continue;
     const expiresAtMs = record.expiresAtMs ?? Number.POSITIVE_INFINITY;
     if (best === null || expiresAtMs > best.expiresAtMs)
       best = { linkId: key.slice(prefix.length), expiresAtMs };
@@ -250,11 +267,45 @@ export function clearGuestRecords(
   }
 }
 
+/**
+ * 控制台登出：丢掉这个签发方下由账号接受的访客记录（`acceptedBy` 非空）与来源不明的旧记录，
+ * 匿名接受的留着（它们本来就不属于哪个账号）。
+ */
+export function clearAccountGuestRecords(
+  storage: Storage | null,
+  issuer: string,
+): void {
+  if (storage === null) return;
+  try {
+    const prefix = `${GUEST_KEY_PREFIX}${issuer}|`;
+    const keys: string[] = [];
+    for (let at = 0; at < storage.length; at += 1) {
+      const key = storage.key(at);
+      if (key?.startsWith(prefix)) keys.push(key);
+    }
+    for (const key of keys) {
+      let acceptedBy: unknown;
+      try {
+        acceptedBy = (
+          JSON.parse(storage.getItem(key) ?? "{}") as { acceptedBy?: unknown }
+        ).acceptedBy;
+      } catch {
+        acceptedBy = undefined;
+      }
+      if (acceptedBy !== "") storage.removeItem(key);
+    }
+  } catch {
+    /* 清不掉的，`/h/` 也只给接受它的那位用。 */
+  }
+}
+
 export interface SessionVaultOptions {
   /** 存储里的键；缺省是账号那一份 {@link HOSTED_RESUME_KEY}。 */
   readonly key?: string;
   /** 记录的寿命（毫秒时刻）；到期读不出来、写时带上。 */
   readonly expiresAtMs?: number;
+  /** 访客记录是谁接受的（账号 id，匿名 `""`）；写时带上。 */
+  readonly acceptedBy?: string;
   readonly now?: () => number;
 }
 
@@ -280,10 +331,15 @@ export function createSessionRelayVault(
 ): SessionRelayVault {
   const key = options.key ?? HOSTED_RESUME_KEY;
   const memory = createMemoryRelayVault();
-  const stamp = (next: ResumeRecord): ResumeRecord =>
-    options.expiresAtMs === undefined
-      ? next
-      : { ...next, expiresAtMs: options.expiresAtMs };
+  const stamp = (next: ResumeRecord): ResumeRecord => ({
+    ...next,
+    ...(options.expiresAtMs === undefined
+      ? {}
+      : { expiresAtMs: options.expiresAtMs }),
+    ...(options.acceptedBy === undefined
+      ? {}
+      : { acceptedBy: options.acceptedBy }),
+  });
   let record = stamp(readResume(storage, issuer, key, options.now?.()));
   const save = (next: ResumeRecord) => {
     record = stamp(next);

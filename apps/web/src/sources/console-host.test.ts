@@ -861,12 +861,13 @@ describe("控制台 /h/ 进主机", () => {
 const LINK = "link-1";
 const SHARE = { role: "viewer", name: "host1", ownerName: "", expiresAtMs: 0 };
 
-/** 托管页那份访客记录：进过 `sourceId`，链接 `linkId`。 */
+/** 托管页那份访客记录：进过 `sourceId`，链接 `linkId`；`acceptedBy` 缺省匿名，`null` = 旧记录没有这一项。 */
 function guestRecord(
   storage: Storage,
   linkId: string,
   sourceId: string,
   expiresAtMs?: number,
+  acceptedBy: string | null = "",
 ) {
   storage.setItem(
     guestKey(ISSUER, linkId),
@@ -876,6 +877,7 @@ function guestRecord(
       sources: {},
       entered: { sourceId, name: "host1" },
       ...(expiresAtMs === undefined ? {} : { expiresAtMs }),
+      ...(acceptedBy === null ? {} : { acceptedBy }),
     }),
   );
 }
@@ -1131,6 +1133,89 @@ describe("控制台 /h/ 以访客进入（§2.8）", () => {
   });
 });
 
+describe("访客记录与控制台账号隔离（§2.8）", () => {
+  const notFound = async () => {
+    throw Object.assign(new Error("404"), { status: 404, code: "not_found" });
+  };
+
+  it("账号 A 接受的记录：没有 Cookie 会话时不用（去登录），换成账号 B 也不用（找不到）", async () => {
+    const guestStorage = memoryStorage();
+    guestRecord(guestStorage, LINK, HOST, undefined, ACCOUNT);
+    const relay = fakeGuest(() => ({ kind: "entered", sourceId: HOST }));
+    const anonymous = setup({
+      me: unauthenticated,
+      guestStorage,
+      guestRelay: () => relay,
+    });
+    await anonymous.host.open();
+    expect(anonymous.host.view).toEqual({ kind: "login" });
+    const other = setup({
+      me: async () => ({ accountId: "acct-b", teams: [] }),
+      detail: notFound,
+      guestStorage,
+      guestRelay: () => relay,
+    });
+    await other.host.open();
+    expect(other.host.view).toEqual({ kind: "failed", code: "not_found" });
+    expect(relay.resumeLink).not.toHaveBeenCalled();
+    // A 自己：看不到这台时退回自己接受的那条。
+    const self = setup({
+      detail: notFound,
+      guestStorage,
+      guestRelay: () => relay,
+    });
+    await self.host.open();
+    expect(self.host.view).toEqual({ kind: "entered" });
+    expect(relay.resumeLink).toHaveBeenCalledExactlyOnceWith(LINK);
+  });
+
+  it("旧记录（没有 acceptedBy）来源不明：没有会话、账号退回时都不用", async () => {
+    const guestStorage = memoryStorage();
+    guestRecord(guestStorage, LINK, HOST, undefined, null);
+    const relay = fakeGuest(() => ({ kind: "entered", sourceId: HOST }));
+    const anonymous = setup({
+      me: unauthenticated,
+      guestStorage,
+      guestRelay: () => relay,
+    });
+    await anonymous.host.open();
+    expect(anonymous.host.view).toEqual({ kind: "login" });
+    const account = setup({
+      detail: notFound,
+      guestStorage,
+      guestRelay: () => relay,
+    });
+    await account.host.open();
+    expect(account.host.view).toEqual({ kind: "failed", code: "not_found" });
+    expect(relay.resumeLink).not.toHaveBeenCalled();
+  });
+
+  it("从账号退回来的访客：控制台登出、换了账号都盖上「已登出」", async () => {
+    for (const message of [
+      { type: "signedOut" },
+      { type: "accountChanged", accountId: "acct-b" },
+    ]) {
+      const guestStorage = memoryStorage();
+      guestRecord(guestStorage, LINK, HOST, undefined, ACCOUNT);
+      const bus = channelBus();
+      const relay = fakeGuest(() => ({ kind: "entered", sourceId: HOST }));
+      const ctx = setup({
+        detail: notFound,
+        bus,
+        guestStorage,
+        guestRelay: () => relay,
+      });
+      await ctx.host.open();
+      expect(ctx.host.view).toEqual({ kind: "entered" });
+      bus.open().postMessage(message);
+      await vi.waitFor(() =>
+        expect(ctx.host.view).toEqual({ kind: "signedOut" }),
+      );
+      expect(relay.signOut).toHaveBeenCalledOnce();
+    }
+  });
+});
+
 describe("guestLinkFor", () => {
   it("按进过的主机找访客记录的链接；到期的不算；几条取到期最晚的", () => {
     const storage = memoryStorage();
@@ -1139,11 +1224,23 @@ describe("guestLinkFor", () => {
     guestRecord(storage, "b", HOST, 5_000);
     guestRecord(storage, "c", HOST, 500);
     guestRecord(storage, "d", "d".repeat(32), 9_000);
-    expect(guestLinkFor(storage, ISSUER, HOST, now)).toBe("b");
-    expect(guestLinkFor(storage, ISSUER, "e".repeat(32), now)).toBeNull();
+    expect(guestLinkFor(storage, ISSUER, HOST, null, now)).toBe("b");
+    expect(guestLinkFor(storage, ISSUER, "e".repeat(32), null, now)).toBeNull();
     expect(
-      guestLinkFor(storage, "https://other.example", HOST, now),
+      guestLinkFor(storage, "https://other.example", HOST, null, now),
     ).toBeNull();
+  });
+
+  it("只采用匿名接受的与这位自己接受的；旧记录（没有 acceptedBy）来源不明，谁都不用", () => {
+    const storage = memoryStorage();
+    guestRecord(storage, "by-a", HOST, 9_000, ACCOUNT);
+    guestRecord(storage, "legacy", HOST, 9_500, null);
+    expect(guestLinkFor(storage, ISSUER, HOST, null, 1_000)).toBeNull();
+    expect(guestLinkFor(storage, ISSUER, HOST, "acct-b", 1_000)).toBeNull();
+    expect(guestLinkFor(storage, ISSUER, HOST, ACCOUNT, 1_000)).toBe("by-a");
+    guestRecord(storage, "anon", HOST, 5_000, "");
+    expect(guestLinkFor(storage, ISSUER, HOST, null, 1_000)).toBe("anon");
+    expect(guestLinkFor(storage, ISSUER, HOST, "acct-b", 1_000)).toBe("anon");
   });
 });
 
