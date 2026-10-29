@@ -1,3 +1,4 @@
+import * as React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   cleanup,
@@ -278,5 +279,29 @@ describe("添加 Armadra 云", () => {
     await waitFor(() =>
       expect(toasts.success).toHaveBeenCalledWith("Device code copied"),
     );
+  });
+
+  it("步骤回报在提交后同步发生，早于随后的被动副作用（深链不会在换步骤的空当被收下）", async () => {
+    const order: string[] = [];
+    function PassiveProbe() {
+      React.useEffect(() => {
+        order.push("passive");
+      });
+      return null;
+    }
+    render(
+      <>
+        <PassiveProbe />
+        <AddCloudDialog
+          initialIssuer=""
+          onClose={vi.fn()}
+          onChanged={vi.fn()}
+          onStep={(kind) => order.push(`step:${kind}`)}
+        />
+      </>,
+    );
+    // 同一次提交里所有 layout effect 先于被动副作用：回报若走 useEffect，会排在
+    // 前面那个兄弟的 passive 之后。
+    expect(order.slice(0, 2)).toEqual(["step:address", "passive"]);
   });
 });

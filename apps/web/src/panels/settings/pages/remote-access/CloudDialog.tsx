@@ -108,7 +108,9 @@ export function AddCloudDialog({
   const [error, setError] = React.useState("");
   const [busy, setBusy] = React.useState(false);
   const open = initialIssuer !== null;
-  React.useEffect(() => {
+  // 提交后同步回报（layout effect）：被动副作用要等到下一拍，那段时间里页面仍以为
+  // 在填地址，新来的深链会被收下、把正在进行的设备码对话框换成别的云。
+  React.useLayoutEffect(() => {
     onStep?.(step.kind);
   }, [step.kind, onStep]);
   const linkedHost = (() => {
