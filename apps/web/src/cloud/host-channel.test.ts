@@ -31,6 +31,8 @@ function setup(
     trusted?: boolean;
     /** probe 答 429 rate_limited（带 retryAfterMs）。 */
     throttled?: boolean;
+    /** 第一次普通登录答 429 rate_limited。 */
+    loginThrottledOnce?: boolean;
     sources?: () => Reply;
     /** 不注入固定的通道管理，而是每代由工厂建一份（生产的形状）。 */
     perGeneration?: boolean;
@@ -44,6 +46,7 @@ function setup(
 } {
   const calls: { path: string; init: RequestInit; instance: number }[] = [];
   let current = 0;
+  let loginThrottled = false;
   let logins = 0;
   const reply = (r: Reply) =>
     ({
@@ -73,6 +76,13 @@ function setup(
               ? { status: 403, body: { code: "device_untrusted" } }
               : { body: { trusted: true } },
           );
+        if (options.loginThrottledOnce === true && !loginThrottled) {
+          loginThrottled = true;
+          return reply({
+            status: 429,
+            body: { code: "rate_limited", details: { retryAfterMs: 9_000 } },
+          });
+        }
         logins += 1;
         return reply({
           body: {
@@ -322,5 +332,25 @@ describe("通道池 · 限流", () => {
     expect(throttleSeconds({ code: "rate_limited" })).toBe(0);
     expect(throttleSeconds({ code: "forbidden" })).toBeUndefined();
     expect(throttleSeconds(null)).toBeUndefined();
+  });
+
+  it("登录被限流后重试：刚判定过受信就不再 probe，攒回的那一次额度留给登录", async () => {
+    const { channel, calls } = setup({ loginThrottledOnce: true });
+    await expect(
+      channel.request(SOURCE, "/api/sources", { method: "GET" }),
+    ).rejects.toMatchObject({ code: "rate_limited", retryAfterMs: 9_000 });
+    const response = await channel.request(SOURCE, "/api/sources", {
+      method: "GET",
+    });
+    expect(response.ok).toBe(true);
+    const logins = calls.filter(
+      (call) => call.path === "/api/identity/cloud/login",
+    );
+    const probes = logins.filter((call) =>
+      String(call.init.body).includes('"probe":true'),
+    );
+    expect(probes).toHaveLength(1);
+    expect(logins.length - probes.length).toBe(2);
+    channel.dispose();
   });
 });

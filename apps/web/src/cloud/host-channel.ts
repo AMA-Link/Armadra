@@ -38,6 +38,12 @@ export const MAX_OPEN = 3;
 const RENEW_LEAD_MS = 30_000;
 
 /**
+ * 刚 probe 答过「受信」之后这么久里不再 probe（毫秒）。主机每账号每分钟 5 次的额度 probe 与登录
+ * 各扣一次：登录被限流时，等过对端给的时间重试只够一次，若重试又先 probe，就永远轮不到登录。
+ */
+const TRUST_MEMO_MS = 60_000;
+
+/**
  * 经这条通道能发的请求（方法 + 地址）。别的一律不发。可变的一段（远程服务号）只认
  * `[A-Za-z0-9_-]{1,64}`：`..`、百分号编码、反斜杠都进不来。
  */
@@ -153,6 +159,8 @@ interface Slot {
   busy: number;
   timer: ReturnType<typeof setTimeout> | undefined;
   session: Session | undefined;
+  /** 最近一次 probe 答「受信」的时刻（{@link TRUST_MEMO_MS} 内登录前不再 probe）。 */
+  trustedAtMs: number | undefined;
 }
 
 /** 断言 + 已开的通道。 */
@@ -241,7 +249,12 @@ export function createHostChannel(options: HostChannelOptions): HostChannel {
         if (slots.size < maxOpen) break;
         if (one.busy === 0) release(other);
       }
-      slot = { busy: 0, timer: undefined, session: undefined };
+      slot = {
+        busy: 0,
+        timer: undefined,
+        session: undefined,
+        trustedAtMs: undefined,
+      };
     } else {
       slots.delete(sourceId);
     }
@@ -397,8 +410,10 @@ export function createHostChannel(options: HostChannelOptions): HostChannel {
       if (
         error instanceof CloudError &&
         (error.code === "device_pending" || error.code === "device_rejected")
-      )
+      ) {
+        slot.trustedAtMs = undefined;
         throw coded("device_untrusted");
+      }
       throw throttled(error) ?? unavailable();
     }
     const session: Session = {
@@ -458,8 +473,13 @@ export function createHostChannel(options: HostChannelOptions): HostChannel {
           const stale = slot.session;
           slot.session = undefined;
           if (stale !== undefined) void logout(stale);
-          // 没有会话先确认受信：不受信时直接登录会在主机上挂起一条待确认。
-          if (!(await probe(sourceId, live))) throw coded("device_untrusted");
+          // 没有会话先确认受信：不受信时直接登录会在主机上挂起一条待确认。刚确认过的（登录被限流后的
+          // 重试）不再 probe，免得重试又把刚攒回的那一次额度花在 probe 上。
+          const memo = slot.trustedAtMs;
+          if (memo === undefined || now() - memo >= TRUST_MEMO_MS) {
+            if (!(await probe(sourceId, live))) throw coded("device_untrusted");
+            slot.trustedAtMs = now();
+          }
           return login(sourceId, live, slot);
         };
         const response = await send(await session(false));
