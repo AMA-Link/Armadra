@@ -316,7 +316,14 @@ export function HostDetail({
           ) : null}
           {tab === "links" ? (
             <TabsContent value="links">
-              <LinksView space={space} sourceId={data.sourceId} variant="tab" />
+              <LinksView
+                space={space}
+                sourceId={data.sourceId}
+                variant="tab"
+                {...(data.owner
+                  ? { create: { sourceId: data.sourceId, name: data.name } }
+                  : {})}
+              />
             </TabsContent>
           ) : null}
           {tab === "settings" ? (
