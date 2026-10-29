@@ -415,4 +415,22 @@ describe("待信任设备横幅与对话框", () => {
     await new Promise((done) => setTimeout(done, 20));
     expect(dialog.textContent).not.toContain("Browser");
   });
+
+  it("窗口重新聚焦：不重查主机上的那一行，给人看过的不会悄悄换掉", async () => {
+    const dialog = await openDialog();
+    await waitFor(() => expect(dialog.textContent).toContain("iOS"));
+    expect(host.devices.list).toHaveBeenCalledTimes(1);
+    const { focusManager, onlineManager } = await import(
+      "@tanstack/react-query"
+    );
+    act(() => {
+      focusManager.setFocused(false);
+      focusManager.setFocused(true);
+      onlineManager.setOnline(false);
+      onlineManager.setOnline(true);
+    });
+    await new Promise((done) => setTimeout(done, 30));
+    expect(host.devices.list).toHaveBeenCalledTimes(1);
+    act(() => focusManager.setFocused(undefined));
+  });
 });

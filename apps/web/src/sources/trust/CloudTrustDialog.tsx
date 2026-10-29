@@ -75,6 +75,9 @@ function TrustBody({ item }: { item: TrustItem }) {
     queryFn: () => matchOnHost(item),
     retry: false,
     staleTime: 0,
+    // 给人看过的那一行不能悄悄换掉：窗口重新聚焦、重连都不重取，只有人点「重试」才重查。
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
   });
   const host = match.data;
   // 主机说这台电脑没有背书权限：与放行时被拒同样处理。
