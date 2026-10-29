@@ -17,7 +17,12 @@ import { installContract } from "../../http/rpc";
 import { accessCookieName } from "../../gateway/admission";
 import { openGateway } from "../../gateway/listener";
 import { markChannelSocket } from "../../relay/e2e/peer";
-import { bind as bindListener, release } from "../../listen";
+import {
+  type ListenSpec,
+  PIPE_PREFIX,
+  bind as bindListener,
+  release,
+} from "../../listen";
 import { markGatewayRequest, viaGateway } from "../http";
 import { type Fixture, fixture } from "../../workspaces/fixture";
 import { AccountsService } from "../accounts";
@@ -122,6 +127,28 @@ afterEach(async () => {
   await core.server.close();
   core.close();
 });
+
+/**
+ * 本机私有通道：Unix 类平台是目录里的 unix socket，Windows 是命名管道（`--listen pipe:NAME`）。
+ * 两种监听接受的连接都打私有通道标，都该判为本地。`address` 是客户端的 `socketPath`。
+ */
+function privateChannelAt(
+  directory: string,
+  name: string,
+): {
+  spec: ListenSpec;
+  address: string;
+} {
+  if (process.platform === "win32") {
+    const pipe = `armadra-test-${process.pid}-${name}-${Date.now().toString(36)}`;
+    return {
+      spec: { kind: "pipe", name: pipe },
+      address: `${PIPE_PREFIX}${pipe}`,
+    };
+  }
+  const path = join(directory, `${name}.sock`);
+  return { spec: { kind: "unix", path }, address: path };
+}
 
 interface Answer {
   status: number;
@@ -429,7 +456,7 @@ describe("bind 替换自动成员（契约 §88.5）", () => {
     expect(localRequest(raw(channel), "")).toBe(false);
   });
 
-  it("真实连接：回环 TCP 活着算本地、销毁后不算；unix socket 监听接受的算本地", async () => {
+  it("真实连接：回环 TCP 活着算本地、销毁后不算；unix socket / 命名管道监听接受的算本地", async () => {
     const seen: Record<string, boolean> = {};
     const tcp = createServer((request, response) => {
       // 先销毁再判：之前没人读过对端地址，Node 就再也读不到它了。
@@ -448,17 +475,15 @@ describe("bind 替换自动成员（契约 §88.5）", () => {
     }
 
     const directory = mkdtempSync(join(tmpdir(), "armadra-local-"));
-    const unix = createServer((request, response) => {
+    const channel = privateChannelAt(directory, "c");
+    const privateServer = createServer((request, response) => {
       response.end(String(localRequest(request, "")));
     });
-    const spec = await bindListener(unix, {
-      kind: "unix",
-      path: join(directory, "c.sock"),
-    });
+    const spec = await bindListener(privateServer, channel.spec);
     try {
       const text = await new Promise<string>((done, failed) => {
         const client = httpRequest(
-          { socketPath: join(directory, "c.sock"), path: "/" },
+          { socketPath: channel.address, path: "/" },
           (response) => {
             const chunks: Buffer[] = [];
             response.on("data", (chunk: Buffer) => chunks.push(chunk));
@@ -472,13 +497,13 @@ describe("bind 替换自动成员（契约 §88.5）", () => {
       });
       expect(text).toBe("true");
     } finally {
-      await new Promise((done) => unix.close(done));
+      await new Promise((done) => privateServer.close(done));
       release(spec);
       rmSync(directory, { recursive: true, force: true });
     }
   });
 
-  it("桌面壳的私有通道（unix socket）上 RPC 调 bind：替换自动成员", async () => {
+  it("桌面壳的私有通道（unix socket / 命名管道）上 RPC 调 bind：替换自动成员", async () => {
     const first = await login("acct:private", {
       team: { teamId: "team_1", role: "member" },
       role: "operator",
@@ -486,11 +511,9 @@ describe("bind 替换自动成员（契约 §88.5）", () => {
     expect(first.status, first.text).toBe(200);
     const auto = principalOf(first);
     const directory = mkdtempSync(join(tmpdir(), "armadra-bind-"));
-    const path = join(directory, "core.sock");
-    const spec = await bindListener(core.server.createListener(), {
-      kind: "unix",
-      path,
-    });
+    const channel = privateChannelAt(directory, "core");
+    // 监听由 afterEach 的 core.server.close() 一并关掉。
+    const spec = await bindListener(core.server.createListener(), channel.spec);
     try {
       const payload = JSON.stringify({
         json: { assertion: sub("acct:private") },
@@ -498,7 +521,7 @@ describe("bind 替换自动成员（契约 §88.5）", () => {
       const answer = await new Promise<Answer>((done, failed) => {
         const client = httpRequest(
           {
-            socketPath: path,
+            socketPath: channel.address,
             path: "/api/rpc/identity/cloud/bind",
             method: "POST",
             headers: {
