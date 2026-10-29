@@ -12,6 +12,10 @@ import {
   MIN_CORE_VERSION_ROLE_ONLY_ASSERTION,
   MIN_CORE_VERSION_TEAM_ASSERTION,
 } from "@armadra/platform-protocol";
+import {
+  SOURCE_CORE_OUTDATED,
+  sourceCoreOutdatedDetails,
+} from "@armadra/shared";
 
 import { CoreFailure, fail } from "../http/errors";
 import type {
@@ -285,10 +289,16 @@ export function olderThan(a: string, b: string): boolean {
 }
 
 /**
- * 要断言；答 `source_access_denied` 时分清两种（契约 §88.2）：远程服务目录里这台主机登记的
- * `coreVersion` 低于控制面签断言的门槛（团队主机看 `MIN_CORE_VERSION_TEAM_ASSERTION`，
- * 个人空间看 `MIN_CORE_VERSION_ROLE_ONLY_ASSERTION`）就是「主机版本过旧」，`details` 带
- * `{ reason: "hostOutdated", coreVersion, minVersion }`；否则是访问被收回。目录问不到按后者。
+ * 要断言；被版本门拒签时对外一律答 `source_access_denied` 带
+ * `{ reason: "hostOutdated", coreVersion, minVersion }`（契约 §88.2），否则是访问被收回：
+ *
+ * - 远程服务答独立的 `source_core_outdated`（armadra-cloud#152，协议包 0.11 起）：直接用它的
+ *   `details`，不再查目录；`details` 不全时按这类断言的门槛补 `minVersion`。
+ * - 旧服务端仍答 `source_access_denied`（过渡期的兜底）：远程服务目录里这台主机登记的
+ *   `coreVersion` 低于控制面签断言的门槛（团队主机看 `MIN_CORE_VERSION_TEAM_ASSERTION`，
+ *   个人空间看 `MIN_CORE_VERSION_ROLE_ONLY_ASSERTION`）就是版本过旧；目录问不到按收回。
+ *
+ * 两种都不删存着的刷新令牌（不是这把会话的问题，`RELOGIN_REFUSALS` 只管 `cloud/login` 的拒绝）。
  */
 export async function assertionExplained(
   remote: RemoteClient,
@@ -300,11 +310,15 @@ export async function assertionExplained(
   try {
     return await remote.assertion(endpoint, accessToken, sourceId);
   } catch (error) {
-    if (
-      !(error instanceof CoreFailure) ||
-      error.code !== "source_access_denied"
-    )
-      throw error;
+    if (!(error instanceof CoreFailure)) throw error;
+    if (error.code === SOURCE_CORE_OUTDATED) {
+      const details = sourceCoreOutdatedDetails(error.details);
+      throw hostOutdated(
+        details?.coreVersion ?? "",
+        details?.minVersion ?? minVersionFor(team),
+      );
+    }
+    if (error.code !== "source_access_denied") throw error;
     throw await explainAccessDenied(
       remote,
       endpoint,
@@ -313,6 +327,20 @@ export async function assertionExplained(
       team,
     );
   }
+}
+
+function minVersionFor(team: boolean): string {
+  return team
+    ? MIN_CORE_VERSION_TEAM_ASSERTION
+    : MIN_CORE_VERSION_ROLE_ONLY_ASSERTION;
+}
+
+function hostOutdated(coreVersion: string, minVersion: string): CoreFailure {
+  return fail("source_access_denied", "那台主机的 Armadra 版本太旧", {
+    reason: "hostOutdated",
+    coreVersion,
+    minVersion,
+  });
 }
 
 async function explainAccessDenied(
@@ -326,15 +354,9 @@ async function explainAccessDenied(
   const listed = await remote.sources(endpoint, accessToken).catch(() => []);
   const coreVersion =
     listed.find((one) => one.sourceId === sourceId)?.coreVersion ?? "";
-  const minVersion = team
-    ? MIN_CORE_VERSION_TEAM_ASSERTION
-    : MIN_CORE_VERSION_ROLE_ONLY_ASSERTION;
+  const minVersion = minVersionFor(team);
   return olderThan(coreVersion, minVersion)
-    ? fail("source_access_denied", "那台主机的 Armadra 版本太旧", {
-        reason: "hostOutdated",
-        coreVersion,
-        minVersion,
-      })
+    ? hostOutdated(coreVersion, minVersion)
     : denied;
 }
 

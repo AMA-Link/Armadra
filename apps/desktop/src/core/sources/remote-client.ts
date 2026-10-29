@@ -14,7 +14,12 @@
  * 语言，也不该把对端的内部细节带进本机的答案）。
  */
 
-import { fail } from "../http/errors";
+import {
+  SOURCE_CORE_OUTDATED,
+  sourceCoreOutdatedDetails,
+} from "@armadra/shared";
+
+import { CoreFailure, fail } from "../http/errors";
 import type { Transport } from "./http-client";
 import {
   CONSOLE_DURING,
@@ -403,6 +408,20 @@ function rejected(status: number, body: unknown, during: string): never {
       if (during === ASSERTION_DURING)
         throw fail("source_access_denied", "远程服务不签这个源的断言");
       throw fail("source_unauthorized", "远程服务不再允许访问这个源");
+    // 版本门的独立码（armadra-cloud#152，协议包 0.11 起）：主机 core 低于签断言的门槛。码与
+    // `details { coreVersion, minVersion }` 原样带给 `assertionExplained`，由它转成 §88.2 的
+    // `hostOutdated`；同样只在取断言时认，别的远程调用不会答它，落到末尾的 `source_unreachable`。
+    case SOURCE_CORE_OUTDATED: {
+      if (during !== ASSERTION_DURING) break;
+      const outdated = sourceCoreOutdatedDetails(details);
+      // 不进 core 的错误码表（对外仍是 §88.2 的形状），状态在这里给。
+      throw new CoreFailure(
+        403,
+        SOURCE_CORE_OUTDATED,
+        "那台主机的 Armadra 版本太旧",
+        outdated === null ? undefined : { ...outdated },
+      );
+    }
     case "source_revoked":
     case "forbidden":
       throw fail("source_unauthorized", "远程服务不再允许访问这个源");

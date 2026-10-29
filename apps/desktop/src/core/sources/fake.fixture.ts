@@ -138,6 +138,13 @@ export interface FakeWorld {
     assertions: number;
     /** 断言答 403 `source_access_denied`（授予收回或版本门）。 */
     denyAssertion?: boolean;
+    /**
+     * 断言答 403 `source_core_outdated`（新服务端的版本门，armadra-cloud#152），值是线上的
+     * `details`（可以故意给不全的）。
+     */
+    outdatedAssertion?: Record<string, unknown>;
+    /** `me.sources` 答 403 `source_core_outdated`（别的远程调用不认这个码）。 */
+    outdatedSources?: boolean;
     /** `me.sources` 也答 403 `source_access_denied`（看别的远程调用怎么映射）。 */
     denySources?: boolean;
     sources: { sourceId: string; name: string; coreVersion?: string }[];
@@ -537,6 +544,9 @@ async function cloud(
     if (world.cloud.denySources === true) {
       return json(403, { code: "source_access_denied", message: "denied" });
     }
+    if (world.cloud.outdatedSources === true) {
+      return json(403, { code: "source_core_outdated", message: "outdated" });
+    }
     return json(200, {
       sources: world.cloud.sources.map((one) => ({
         ...one,
@@ -627,6 +637,12 @@ async function cloud(
     world.cloud.assertions += 1;
     if (world.cloud.denyAssertion === true)
       return json(403, { code: "source_access_denied", message: "denied" });
+    if (world.cloud.outdatedAssertion !== undefined)
+      return json(403, {
+        code: "source_core_outdated",
+        message: "outdated",
+        details: world.cloud.outdatedAssertion,
+      });
     const sourceId = match[1] as string;
     return json(200, {
       assertion:

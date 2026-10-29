@@ -31,6 +31,8 @@ const SHOWN = [
   "limit_reached",
   "source_revoked",
   "source_access_denied",
+  // 版本门的独立码（armadra-cloud#152，协议包 0.11 起）。
+  "source_core_outdated",
   "link_invalid",
   "link_expired",
   "link_exhausted",
@@ -132,6 +134,15 @@ describe("错误码 → 文案", () => {
     expect(cloudMessage("account_locked")).toBe("尝试次数过多，账号已暂时锁定");
     expect(cloudMessage("invitation_email_mismatch", { email: "a@b.c" })).toBe(
       "用 a@b.c 登录后接受",
+    );
+  });
+
+  it("版本门的独立码与「主机版本太旧」同一句话，不是没有权限", () => {
+    expect(cloudMessage("source_core_outdated")).toBe(
+      "这台主机的 Armadra 版本太旧，升级后再连",
+    );
+    expect(cloudMessage("source_core_outdated")).not.toBe(
+      cloudMessage("source_access_denied"),
     );
   });
 

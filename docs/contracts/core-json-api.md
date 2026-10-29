@@ -4748,6 +4748,7 @@ owner（本机会话，或已信任设备经通道的 owner 会话）：`{ sourc
 - **页面何时重登**：`me.stream` 收到 `grantChanged`（`sourceId` 是源表里同签发方的一行），或 `memberChanged` 的 `accountId` 是自己（自己的账号 id 取同一远程会话的 `me.get`，按签发方缓存；只算 `teamId` 与事件相同的行；事件不带 `accountId` 的不认）。同一个源的重登合并去抖：首个事件后等 2 秒再发（期间来的并入），两次重登至少隔 15 秒，正在重登时来的事件只标记「完后再来一次」。重登成功后页面续一次手里的访问；重登被同一份白名单里的码拒绝时这个源失权，状态 `unauthorized` 带上原因；其余失败（含 `forbidden`、`bad_request`、5xx 与网络错误）按暂时性，开着的终端与流不动。
 
 - **版本门与收回分开**：远程服务的断言答 `403 source_access_denied` 时 core 原样透传这个码（此前并成 `source_unauthorized`），不再让页面提示「重新登录」。它可能是访问被收回，也可能是主机 core 太旧、控制面不签它的断言（cloud-api §30 的 `MIN_CORE_VERSION_*` 版本门，两者云端同码）：core 再问一次远程服务目录，这台主机登记的 `coreVersion` 低于门槛（团队主机 `MIN_CORE_VERSION_TEAM_ASSERTION`，个人空间 `MIN_CORE_VERSION_ROLE_ONLY_ASSERTION`）时 `details` 带 `{ reason: "hostOutdated", coreVersion, minVersion }`。页面据此：`hostOutdated` 画成离线并给「版本过旧」提示，不收回访问、不提示重新登录；不带的才是访问已收回。透传只在取断言这一次外呼：`sources.session` 的错误表因此加上 `source_access_denied` 与 `bad_request`（`relogin` 指定直连），`sources.mount` 加上 `source_access_denied`；其余远程调用遇到这个码仍答 `source_unauthorized`，不往没声明它的 procedure 里漏新码。
+- **版本门的独立码**（armadra-cloud#152，协议包 0.11 起）：新服务端的版本门改答 `403 source_core_outdated`，`details` 是 `{ coreVersion, minVersion }`（`coreVersion` 没上报是空串）。core 收到它时不再问目录，直接答上一条同样的 `source_access_denied` 带 `{ reason: "hostOutdated", coreVersion, minVersion }`（`details` 不全时 `minVersion` 按这类断言的门槛补），页面看到的形状不变；旧服务端仍答 `source_access_denied`，照上一条问目录分辨。只在取断言这一次外呼认这个码，别的远程调用答它落到 `source_unreachable`。版本过旧不是这把会话的问题：不删存着的刷新令牌。
 
 ### 88.3 测试用的会话寿命
 
