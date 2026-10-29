@@ -1573,7 +1573,7 @@ CSV 按 RFC 4180：`\r\n` 换行，首行表头 `id,time,principalId,deviceId,ac
 }
 ```
 
-- `kind`：`approval`、`agentDone`（已退役，§81）、`agentError`、`agentWaiting`（§81）、`deliveryFailed`、`schedule`、`resources`、`comment`、`workflowGate`、`test`。
+- `kind`：`approval`、`agentDone`（已退役，§81）、`agentError`、`agentWaiting`（§81）、`deliveryFailed`、`schedule`、`resources`、`comment`、`workflowGate`、`deviceEndorsed`（§81.1）、`test`。
 - `title` 是工作空间名（≤ 64 字），`body` 是按 `kind` 与设备语言写死的一句（≤ 120 字，只会出现 Agent 注册表里的名字），`url` 是深链（与画布无关的通知是 `armadra://`），`tag` 相同的新通知替换旧的（≤ 128 字）。
 - 深链的 `s` 是签发这条通知的 core 的 `hostId`（URL 编码；手机连接表与中继目录里同一个源标识）。键集合不变（仍是 `strict`），`s` 只在 `url` 里，随载荷一起端到端加密，不进日志。没有 `s` 的旧格式照认（按当前连接打开）；旧版 App 不认带 `s` 的深链，点开只进 App。页面的处理见 §43.4 末条。
 - 不含终端原文、文件内容、命令、提示词、评论正文、拒收码。载荷因此可以落库（`push_outbox.payload_blob`）。
@@ -4541,6 +4541,26 @@ owner（本机会话，或已信任设备经通道的 owner 会话）：`{ sourc
 - `GET /api/workspaces/{id}/sessions` 的每行多一个可省的 `errored`（来自 `agent_status.errored`，没有判决时省略），让页面冷启动或重连后也能算出 `error`；再多一个可省的 `interrupted`（来自 `agent_status.interrupted`），让侧栏的状态点分得出「被打断」和「正常结束」。
 - 推送：`agent.approval` 推 `approval`；`agent.status` 在节点**进入** `input` 时推 `agentWaiting`、进入 `error` 时推 `agentError`（`restored` 行不推，状态没变不重推）。`agentDone` 不再发出；种类留在枚举里，已存的偏好与旧客户端照常认得，设置页不再列它。交接没有事件，不推送——它是人自己在对话框里冻结的。
 - 页面按工作空间 → 画布 → 节点分三层，每层带计数；点一项切到那个工作空间和画布并定位节点。
+
+### 81.1 设备背书：主机级的「需要人处理」
+
+> 状态：实施契约（AMA-Link/Armadra#607，设计见工作区 `docs/armadra/plans/saas-host-open.md` §5.4 Q14、§8 B6b）。迁移 0056 `device_endorsements`；两条新 procedure，协议 1.52；一种新推送种类。§81 的四个分类不变，这是不属于任何工作空间的第五种条目。
+
+- **记录**：每次背书（`approved_by = endorse:*`，§88.7）在主机上落一行：被放行的设备与主体、背书设备与背书人，加上**背书那一刻**的主体显示名、设备名、设备平台与背书设备名（之后改名、删设备，这一行不变）。没人看着画布时即时事件 `devices.endorsed` 会丢，这一行不会。本机放行、扫码配对与访客链接不记。已读的行 30 天后在下一次记录时清掉，未读的不清。
+- **`devices.endorsements`**（`settings:read`，只有 owner）：未读的，新的在前，最多 100 条。每条 `{ id, deviceId, principalId, principalName, deviceLabel, devicePlatform, endorserDeviceId, endorserPrincipalId, endorserLabel, createdAtMs }`。没有装中继（库没过统一迁移、没有身份域）时整组 `devices.*` 答 `501`，页面按「没有」处理。
+- **`devices.endorsementsRead { ids }`**（`settings:write`，只有 owner）：标已读，1–100 个 id，不认识或已读的略过，答 `{ ok: true }`。按 §88.7 的同一个判定算「浏览器」的请求（经中继来、拿不出原生设备钥）答 `403 forbidden`：被篡改的页面背书之后不能顺手把通知标掉。主人在主机本机、或自己的桌面 / 手机受信设备上标；浏览器里只能看。
+- **只给 owner**：`devices.endorsed` 只扇给主机 owner 的订阅（WebSocket 与 `workspaces.events` 一样；没有请求身份的桌面壳本机页面按 owner 算），成员——包括经中继观看的——收不到这一帧（取代 §88.7「事件的接收者」一条）。页面收到它就重读 `devices.endorsements`。
+- **推送**：新种类 `deviceEndorsed`，背书时直接发给本机 owner 主体名下的每台推送设备（与工作空间无关，不问 `canvas:read`，不经事件流，没人看画布也发）。它不在设备可关的种类里（§27.1 的列表不变）：这是主人发现「别的设备替人背书」的手段。载荷按 §19.4：`title` 是 `Armadra`，`body` 是写死的一句（「有设备经背书获得了信任」/ "A device was approved by endorsement"），`url` 是 `armadra://`，`tag` 是 `endorsed:<记录 id>`（每次背书各一条，不互相顶掉）；不带设备名、主体或背书设备。iOS / Android 的信封白名单认这个种类；旧版 App 不认，丢掉这一条。
+- **页面**：铃铛计数与通知面板加一组「本机」条目（在各工作空间之前），每条一次背书：「{背书设备} 放行了 {主体} 的 {设备}」与相对时间；点开标已读并打开设置的「设备」页。本机页面的即时弹窗改成队列：页面打开之后到来的每一次背书各弹一次，「知道了」标已读后显示下一条；页面打开之前错过的只进铃铛，不补弹。
+
+<!-- rpc:begin contract=§81.1 -->
+
+| procedure                  | kind | input               | output                                                                                                                                                                                                                                              | errors                                        | scope            | 自   | 原路径 |
+| -------------------------- | ---- | ------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------- | ---------------- | ---- | ------ |
+| `devices.endorsements`     | call | 可省 `{}`           | `{ endorsements: { id: string, deviceId: string, principalId: string, principalName: string, deviceLabel: string, devicePlatform: string, endorserDeviceId: string, endorserPrincipalId: string, endorserLabel: string, createdAtMs: integer }[] }` | `unauthenticated`、`forbidden`                | `settings:read`  | 1.52 | —      |
+| `devices.endorsementsRead` | call | `{ ids: string[] }` | `{ ok: true }`                                                                                                                                                                                                                                      | `unauthenticated`、`forbidden`、`bad_request` | `settings:write` | 1.52 | —      |
+
+<!-- rpc:end -->
 
 ## 82. 会话时间线 `timeline.*`
 

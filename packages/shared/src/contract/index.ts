@@ -275,10 +275,16 @@ export type {
 export {
   DEVICES_PATH,
   DEVICE_STATUSES,
+  deviceEndorsementListSchema,
+  deviceEndorsementSchema,
   trustedDeviceListSchema,
   trustedDeviceSchema,
 } from "./devices.js";
-export type { DeviceStatus, TrustedDevice } from "./devices.js";
+export type {
+  DeviceEndorsement,
+  DeviceStatus,
+  TrustedDevice,
+} from "./devices.js";
 export {
   E2E_IDENTITY_PATH,
   E2E_PAIRING_SECRET_PATH,
