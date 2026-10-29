@@ -156,6 +156,32 @@ describe("分享链接落地页（SaaS）", () => {
     expect(ensure).toHaveBeenCalled();
   });
 
+  it("带着会话接受：记录写接受前后核对一致的账号；中间换了账号就记成来源不明", async () => {
+    visit(`/j/${LINK_ID}${HASH}`);
+    const first = mount({ linkRequiresAccount: true });
+    const me = await first.api.client.me.get({});
+    fireEvent.click(await join());
+    await waitFor(() => expect(first.onJoined).toHaveBeenCalledOnce());
+    expect(hosted.join.mock.calls[0]![2]).toBe(me.accountId);
+    cleanup();
+    hosted.join.mockClear();
+
+    visit(`/j/${LINK_ID}${HASH}`);
+    const second = mount({ linkRequiresAccount: true }, vi.fn(), (api) => {
+      const get = api.client.me.get.bind(api.client.me);
+      let calls = 0;
+      vi.spyOn(api.client.me, "get").mockImplementation(async (input) => {
+        const answer = await get(input);
+        calls += 1;
+        // 接受之后再问：已经是另一位了（别的标签页换了账号）。
+        return calls >= 2 ? { ...answer, accountId: "acct-other" } : answer;
+      });
+    });
+    fireEvent.click(await join());
+    await waitFor(() => expect(second.onJoined).toHaveBeenCalledOnce());
+    expect(hosted.join.mock.calls[0]![2]).toBeUndefined();
+  });
+
   it("接受时云端答 anonymous_links_disabled：改成「登录后加入」，不出错误文案", async () => {
     visit(`/j/${LINK_ID}${HASH}`);
     mount({

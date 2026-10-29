@@ -58,12 +58,13 @@ type Stage =
 
 /**
  * 以访客加入（缺省经页面的托管中继；测试换掉）。`acceptedBy`：带着哪个控制台账号接受的，
- * 匿名是 `""`——记进访客记录，`/h/` 只把它给这位用（设计 saas-host-open §2.8）。
+ * 匿名是 `""`——记进访客记录，`/h/` 与「打开」只把它给这位用（设计 saas-host-open §2.8）。
+ * `undefined` = 核对不出是谁（接受前后会话变了）：记录来源不明，谁都不用。
  */
 export type JoinWithAccept = (
   link: JoinLink,
   accepted: CloudAccept,
-  acceptedBy: string,
+  acceptedBy: string | undefined,
 ) => Promise<string>;
 
 const hostedJoin: JoinWithAccept = (link, accepted, acceptedBy) =>
@@ -146,8 +147,8 @@ export function LinkPage({
   const [busy, setBusy] = React.useState(false);
   // 接受过一次：重试只重跑加入。`links.accept` 会消耗次数，不能因为中继那一步失败就再接受一遍。
   const accepted = React.useRef<CloudAccept | null>(null);
-  /** 接受时带的是哪个账号（匿名 `""`）。 */
-  const acceptedBy = React.useRef("");
+  /** 接受时带的是哪个账号（匿名 `""`，核对不出 `undefined`）。 */
+  const acceptedBy = React.useRef<string | undefined>("");
   // 这条链接已经加入过（本机留着访客记录）：主按钮是「打开」，续不上再回到「加入」。
   const [joinedBefore, setJoinedBefore] = React.useState(
     () => link !== null && hasGuestRecord(link.issuer, linkId),
@@ -185,6 +186,13 @@ export function LinkPage({
   }, [api, link, linkId]);
 
   const needsLogin = needAccount && signedIn !== true;
+
+  /** 此刻 Cookie 会话的账号；问不到 `undefined`。 */
+  const currentAccount = (): Promise<string | undefined> =>
+    api.client.me.get({}).then(
+      (me) => me.accountId,
+      () => undefined,
+    );
 
   const enterDone = (sourceId: string) => {
     openAfterJoin(LOCAL_SOURCE_ID);
@@ -239,7 +247,7 @@ export function LinkPage({
         return;
       }
       if (accepted.current === null) {
-        const by = session ? (await api.client.me.get({})).accountId : "";
+        const before = session ? await currentAccount() : "";
         const answer = await api.client.links.accept({
           linkId,
           secret: link.secret,
@@ -255,7 +263,11 @@ export function LinkPage({
           return;
         }
         accepted.current = parseCloudAccept(answer);
-        acceptedBy.current = by;
+        // 云端按接受那一刻的 Cookie 记账号，答复里没有是谁：接受后再核对一次，前后不是同一位
+        // （别的标签页这时登录、登出或换了账号）就当来源不明。
+        const after = (await api.ensureCsrf()) ? await currentAccount() : "";
+        acceptedBy.current =
+          before !== undefined && before === after ? before : undefined;
       }
       enterDone(
         await joinWithAccept(link, accepted.current, acceptedBy.current),
