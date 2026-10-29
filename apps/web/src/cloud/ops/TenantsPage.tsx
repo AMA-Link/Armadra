@@ -17,7 +17,7 @@ import { InputGroup, InputGroupAddon, InputGroupInput } from "@/ui/input-group";
 import { SkeletonList } from "@/ui/skeletons";
 import { EmptyState } from "@/ui/state";
 import { toast } from "@/ui/toast";
-import { formatBytes, formatRelativeTime } from "@/lib/format";
+import { formatBytes, formatElapsedTime } from "@/lib/format";
 import { describeFailure } from "../api/errors";
 import { RouteLink } from "../RouteLink";
 import { navigate, type RouteMatch } from "../router";
@@ -322,7 +322,7 @@ function TenantDialog({
                 {"lastSeenAtMs" in query.data &&
                 query.data.lastSeenAtMs !== null ? (
                   <SettingsRow label={t("cloud.ops.lastSeen")}>
-                    {value(formatRelativeTime(query.data.lastSeenAtMs))}
+                    {value(formatElapsedTime(query.data.lastSeenAtMs))}
                   </SettingsRow>
                 ) : null}
                 <SettingsRow label={t("cloud.ops.created")}>
@@ -338,7 +338,7 @@ function TenantDialog({
                       key={event.eventId}
                       label={actionLabel(event.action)}
                     >
-                      {value(formatRelativeTime(event.atMs))}
+                      {value(formatElapsedTime(event.atMs))}
                     </SettingsRow>
                   ))
                 )}

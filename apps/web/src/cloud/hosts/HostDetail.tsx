@@ -2,7 +2,7 @@ import * as React from "react";
 import { ChevronLeft } from "lucide-react";
 
 import { useT } from "@/app/preferences-store";
-import { formatRelativeTime } from "@/lib/format";
+import { formatElapsedTime } from "@/lib/format";
 import { SettingsGroup } from "@/panels/settings/SettingsGroup";
 import { SettingsRow } from "@/panels/settings/SettingsRow";
 import { Badge } from "@/ui/badge";
@@ -227,7 +227,7 @@ export function HostDetail({
     data.lastSeenAtMs === null
       ? null
       : t("cloud.hosts.lastSeen", {
-          time: formatRelativeTime(data.lastSeenAtMs),
+          time: formatElapsedTime(data.lastSeenAtMs),
         }),
     data.coreVersion
       ? t("cloud.hosts.versionValue", { version: data.coreVersion })

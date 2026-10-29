@@ -75,6 +75,18 @@ describe("RelativeTime", () => {
     // 键盘也能聚焦看到绝对时间。
     expect(time.getAttribute("tabindex")).toBe("0");
   });
+
+  it("略超前的已发生时刻写「刚刚」；到期这类给 future 才写将来", () => {
+    const ahead = Date.now() + 20_000;
+    render(
+      <TooltipProvider>
+        <RelativeTime ms={ahead} />
+        <RelativeTime ms={ahead} future />
+      </TooltipProvider>,
+    );
+    expect(screen.getByText("刚刚").tagName).toBe("TIME");
+    expect(screen.getByText("马上").tagName).toBe("TIME");
+  });
 });
 
 describe("InlineError", () => {

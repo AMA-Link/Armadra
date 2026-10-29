@@ -43,6 +43,23 @@ describe("me-stream 就地更新", () => {
     expect(list).not.toHaveBeenCalled();
   });
 
+  it("上线时刻比本机时钟略超前：目录写「刚刚」，不写「马上」", async () => {
+    const api = mount("/me/hosts");
+    await screen.findByText("nas");
+    act(() =>
+      api.emit({
+        type: "sourceOnline",
+        sourceId: NAS,
+        sinceMs: Date.now() + 20_000,
+        relayOrigin: "https://relay.armadra.test",
+      }),
+    );
+    await waitFor(() =>
+      expect(within(rowOf("nas")).getByText("刚刚")).toBeTruthy(),
+    );
+    expect(within(rowOf("nas")).queryByText("马上")).toBeNull();
+  });
+
   it("sourceRevoked 把那台主机从目录去掉", async () => {
     const api = mount("/me/hosts");
     await screen.findByText("laptop");

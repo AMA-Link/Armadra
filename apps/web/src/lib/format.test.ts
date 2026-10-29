@@ -4,6 +4,7 @@ import {
   formatBytes,
   formatClock,
   formatDuration,
+  formatElapsedTime,
   formatRelativeTime,
 } from "./format";
 
@@ -54,6 +55,18 @@ describe("formatRelativeTime", () => {
 
   it("解析不了就给空串，交给调用方决定占位", () => {
     expect(formatRelativeTime("不是时间", NOW)).toBe("");
+  });
+});
+
+describe("formatElapsedTime", () => {
+  it("略超前（服务端时钟快）的已发生时刻是「刚刚」，不是「马上」", () => {
+    expect(formatElapsedTime(NOW + 10 * SECOND, NOW)).toBe("刚刚");
+    expect(formatElapsedTime(NOW + 5 * MINUTE, NOW)).toBe("刚刚");
+  });
+
+  it("过去的时刻与 formatRelativeTime 一致", () => {
+    expect(formatElapsedTime(NOW - 3 * MINUTE, NOW)).toBe("3 分钟前");
+    expect(formatElapsedTime("不是时间", NOW)).toBe("");
   });
 });
 
