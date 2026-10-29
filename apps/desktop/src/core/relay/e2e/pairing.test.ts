@@ -1,10 +1,18 @@
 import { randomBytes } from "node:crypto";
+import { once } from "node:events";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { WebSocket } from "ws";
 
 import { signAssertion } from "../../identity/cloud/fake.fixture";
 import { cloudProvider } from "../../identity/cloud/store";
 import { allScopes } from "../../identity/scopes";
-import { ISSUER, type RelayCore, relayCore, until } from "../core.fixture";
+import {
+  ISSUER,
+  LOOPBACK_ORIGIN,
+  type RelayCore,
+  relayCore,
+  until,
+} from "../core.fixture";
 import type { FakeTunnel } from "../fake-relay.fixture";
 import { E2eTestClient } from "./client.fixture";
 import { e2eDevices, e2ePairing, e2eShareLinks } from "./peer";
@@ -50,13 +58,14 @@ afterEach(async () => {
   await world.close();
 });
 
-function connect(seed: number, proofSecret?: Uint8Array) {
+function connect(seed: number, proofSecret?: Uint8Array, platform?: string) {
   return E2eTestClient.connect(tunnel, {
     sourceId,
     clientOrigin: ISSUER,
     seed: new Uint8Array(32).fill(seed),
     pinned: identityPub,
     ...(proofSecret === undefined ? {} : { proofSecret }),
+    ...(platform === undefined ? {} : { platform }),
   });
 }
 
@@ -200,7 +209,8 @@ describe("访客链接", () => {
 describe("已信任设备背书", () => {
   it("已信任设备经自己的通道代批，记成 endorse:<它的设备 id>", async () => {
     const pairing = e2ePairing()!.issue();
-    const trusted = await connect(31, pairing.secret);
+    // 主人批自己的新设备只在原生端（契约 §88.7）：这台已信任设备是桌面。
+    const trusted = await connect(31, pairing.secret, "desktop");
     const logged = await login(
       trusted,
       signAssertion({ aud: sourceId, nowMs: Date.now() }),
@@ -536,5 +546,285 @@ describe("cloud/login 的只判定模式 probe", () => {
       }),
     });
     expect(answer.status).toBe(400);
+  });
+});
+
+describe("浏览器不批主人的设备、不签配对秘密（契约 §88.7）", () => {
+  type Client = Awaited<ReturnType<typeof connect>>;
+  const open: Client[] = [];
+  // Armadra 云的团队主机：成员经断言免邀请准入（契约 §60.2）。
+  beforeEach(() => {
+    world.core.database
+      .prepare("UPDATE cloud_registrations SET mode = 'saas'")
+      .run();
+  });
+  /** 断言：`sub` 缺省是主人的云账号（团队 owner），给了就是团队成员。 */
+  const assertion = (sub?: string) =>
+    signAssertion({
+      aud: sourceId,
+      nowMs: Date.now(),
+      ...(sub === undefined ? {} : { sub }),
+      extra: {
+        team: {
+          teamId: "team_1",
+          role: sub === undefined ? "owner" : "member",
+        },
+        role: "editor",
+      },
+    });
+  afterEach(() => {
+    for (const client of open.splice(0)) client.close();
+  });
+
+  const tokenOf = (answer: Awaited<ReturnType<typeof login>>) =>
+    answer.json<{ session: { native: { accessToken: string } } }>().session
+      .native.accessToken;
+
+  /** 主人一台已受信的设备（扫码配对）经自己的通道登录；`platform` 是握手自报的平台。 */
+  async function ownerDevice(seed: number, platform: string) {
+    const client = await connect(seed, e2ePairing()!.issue().secret, platform);
+    open.push(client);
+    const logged = await login(client, assertion());
+    expect(logged.status, logged.body.toString()).toBe(200);
+    const deviceId = e2eDevices()!
+      .list()
+      .find(
+        (row) => row.status === "trusted" && row.platform === platform,
+      )!.deviceId;
+    return { client, token: tokenOf(logged), deviceId };
+  }
+
+  /** 一台新设备登录停在待确认；`sub` 缺省是主人的云账号。 */
+  async function pendingDevice(seed: number, sub?: string) {
+    const client = await connect(seed);
+    open.push(client);
+    const pending = await login(client, assertion(sub));
+    expect(pending.json()).toMatchObject({ code: "device_pending" });
+    return {
+      pendingId: pending.json<{ details: { pendingId: string } }>().details
+        .pendingId,
+      sas: client.session.sas,
+    };
+  }
+
+  const approveVia = (
+    by: { client: Client; token: string },
+    target: { pendingId: string; sas: string },
+  ) =>
+    by.client.request({
+      method: "POST",
+      path: "/api/devices/approve",
+      headers: {
+        authorization: `Bearer ${by.token}`,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify(target),
+    });
+
+  const pairingVia = (by: { client: Client; token: string }, rpc = false) =>
+    by.client.request({
+      method: "POST",
+      path: rpc ? "/api/rpc/e2e/pairingSecret" : "/api/e2e/pairing-secret",
+      headers: {
+        authorization: `Bearer ${by.token}`,
+        "content-type": "application/json",
+      },
+      body: rpc ? JSON.stringify({}) : "",
+    });
+
+  /** 不走通道的明文中继路径：主人照样能 `cloud/login` 拿到原生会话。 */
+  async function plaintextOwner() {
+    const logged = await tunnel.request({
+      method: "POST",
+      path: "/api/identity/cloud/login",
+      headers: { origin: ISSUER, "content-type": "application/json" },
+      body: JSON.stringify({ assertion: assertion() }),
+    });
+    expect(logged.status, logged.body.toString()).toBe(200);
+    return tokenOf(logged);
+  }
+
+  const statusOf = (pendingId: string) =>
+    e2eDevices()!
+      .list()
+      .find((row) => row.requestId === pendingId)?.status;
+
+  it("主人已受信的浏览器批主人自己的新设备：403 forbidden，设备仍待确认", async () => {
+    const browser = await ownerDevice(71, "browser");
+    const target = await pendingDevice(72);
+    const answer = await approveVia(browser, target);
+    expect(answer.status).toBe(403);
+    expect(answer.json()).toMatchObject({ code: "forbidden" });
+    expect(statusOf(target.pendingId)).toBe("pending");
+  });
+
+  it("主人的桌面受信设备批主人的新设备照常，记成背书", async () => {
+    const desktop = await ownerDevice(73, "desktop");
+    const target = await pendingDevice(74);
+    const answer = await approveVia(desktop, target);
+    expect(answer.status, answer.body.toString()).toBe(200);
+    expect(
+      answer.json<{ device: { approvedBy: string } }>().device.approvedBy,
+    ).toBe(`endorse:${desktop.deviceId}`);
+  });
+
+  it("登记时是浏览器的设备钥，之后握手改口自称 desktop：仍按浏览器拒", async () => {
+    const browser = await ownerDevice(75, "browser");
+    browser.client.close();
+    // 同一把钥（同一个种子）重新握手，自报平台换成 desktop。
+    const relabeled = await connect(75, undefined, "desktop");
+    open.push(relabeled);
+    const logged = await login(relabeled, assertion());
+    expect(logged.status, logged.body.toString()).toBe(200);
+    const target = await pendingDevice(76);
+    const answer = await approveVia(
+      { client: relabeled, token: tokenOf(logged) },
+      target,
+    );
+    expect(answer.status).toBe(403);
+    expect(statusOf(target.pendingId)).toBe("pending");
+  });
+
+  it("不走通道的明文中继路径批主人的新设备：403（绕开通道也绕不开）", async () => {
+    const token = await plaintextOwner();
+    const target = await pendingDevice(79);
+    const answer = await tunnel.request({
+      method: "POST",
+      path: "/api/devices/approve",
+      headers: {
+        origin: ISSUER,
+        authorization: `Bearer ${token}`,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify(target),
+    });
+    expect(answer.status).toBe(403);
+    expect(answer.json()).toMatchObject({ code: "forbidden" });
+    expect(statusOf(target.pendingId)).toBe("pending");
+  });
+
+  it("主机本机的本地会话批主人的新设备照常（approvedBy = local）", async () => {
+    const target = await pendingDevice(80);
+    const token = world.session(LOOPBACK_ORIGIN);
+    const answer = await fetch(`${world.base}/api/devices/approve`, {
+      method: "POST",
+      headers: {
+        origin: LOOPBACK_ORIGIN,
+        authorization: `Bearer ${token}`,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify(target),
+    });
+    expect(answer.status).toBe(200);
+    expect(
+      ((await answer.json()) as { device: { approvedBy: string } }).device
+        .approvedBy,
+    ).toBe("local");
+  });
+
+  it("主人的浏览器批成员的新设备照常，记成背书", async () => {
+    const browser = await ownerDevice(81, "browser");
+    const target = await pendingDevice(82, "acct:member-b6");
+    const answer = await approveVia(browser, target);
+    expect(answer.status, answer.body.toString()).toBe(200);
+    expect(
+      answer.json<{ device: { approvedBy: string } }>().device.approvedBy,
+    ).toBe(`endorse:${browser.deviceId}`);
+  });
+
+  it("浏览器通道调 e2e.pairingSecret：旧路径与 RPC 都 403，不签秘密", async () => {
+    const browser = await ownerDevice(83, "browser");
+    const issue = vi.spyOn(e2ePairing()!, "issue");
+    for (const rpc of [false, true]) {
+      const answer = await pairingVia(browser, rpc);
+      expect(answer.status, answer.body.toString()).toBe(403);
+      expect(answer.body.toString()).toContain("forbidden");
+      expect(answer.body.toString()).not.toContain("secret");
+    }
+    expect(issue).not.toHaveBeenCalled();
+  });
+
+  it("明文中继路径调 e2e.pairingSecret：403", async () => {
+    const token = await plaintextOwner();
+    const answer = await tunnel.request({
+      method: "POST",
+      path: "/api/e2e/pairing-secret",
+      headers: { origin: ISSUER, authorization: `Bearer ${token}` },
+    });
+    expect(answer.status).toBe(403);
+  });
+
+  it("桌面受信设备经通道调 e2e.pairingSecret 照常", async () => {
+    const desktop = await ownerDevice(84, "desktop");
+    for (const rpc of [false, true]) {
+      const answer = await pairingVia(desktop, rpc);
+      expect(answer.status, answer.body.toString()).toBe(200);
+    }
+  });
+
+  it("每次背书在主机上发 devices.endorsed（背书设备、主体、设备）；本机放行不发", async () => {
+    const port = new URL(world.base).port;
+    const socket = new WebSocket(
+      `ws://127.0.0.1:${port}/api/workspaces/ws-1/events`,
+      { origin: LOOPBACK_ORIGIN },
+    );
+    await once(socket, "open");
+    const frames: Record<string, unknown>[] = [];
+    socket.on("message", (data: Buffer) => {
+      frames.push(JSON.parse(data.toString("utf8")));
+    });
+    const endorsed = () =>
+      frames.filter((frame) => frame.type === "devices.endorsed");
+    const owner = world.store.transaction((tx) => tx.owner())!;
+
+    const browser = await ownerDevice(85, "browser");
+    const member = await pendingDevice(86, "acct:member-b6n");
+    expect((await approveVia(browser, member)).status).toBe(200);
+    await until(() => endorsed().length === 1);
+    const memberRow = e2eDevices()!
+      .list()
+      .find((row) => row.requestId === member.pendingId)!;
+    expect(endorsed()[0]).toEqual({
+      type: "devices.endorsed",
+      deviceId: memberRow.deviceId,
+      principalId: memberRow.principalId,
+      endorserDeviceId: browser.deviceId,
+      endorserPrincipalId: owner.principalId,
+    });
+
+    const desktop = await ownerDevice(87, "desktop");
+    const mine = await pendingDevice(88);
+    expect((await approveVia(desktop, mine)).status).toBe(200);
+    await until(() => endorsed().length === 2);
+    expect(endorsed()[1]).toMatchObject({
+      endorserDeviceId: desktop.deviceId,
+      principalId: owner.principalId,
+    });
+
+    // 本机放行（approvedBy = local）不是背书：不发。
+    const local = await pendingDevice(89);
+    const token = world.session(LOOPBACK_ORIGIN);
+    const answer = await fetch(`${world.base}/api/devices/approve`, {
+      method: "POST",
+      headers: {
+        origin: LOOPBACK_ORIGIN,
+        authorization: `Bearer ${token}`,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify(local),
+    });
+    expect(answer.status).toBe(200);
+    await until(() =>
+      frames.some(
+        (frame) =>
+          frame.type === "devices.changed" &&
+          frame.deviceId ===
+            e2eDevices()!
+              .list()
+              .find((row) => row.requestId === local.pendingId)?.deviceId,
+      ),
+    );
+    expect(endorsed()).toHaveLength(2);
+    socket.close();
   });
 });

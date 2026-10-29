@@ -163,9 +163,19 @@ export function installRelay(
                 label: event.label,
                 platform: event.platform,
               }
-            : { type: "devices.changed", deviceId: event.deviceId },
+            : event.type === "devices.endorsed"
+              ? event
+              : { type: "devices.changed", deviceId: event.deviceId },
       });
     }
+    // 背书在主机上留一行日志（契约 §88.7）：无窗口的服务器壳也有处可查；只有标识。
+    if (event.type === "devices.endorsed")
+      context.log.info("device endorsed", {
+        deviceId: event.deviceId,
+        principalId: event.principalId,
+        endorserDeviceId: event.endorserDeviceId,
+        endorserPrincipalId: event.endorserPrincipalId,
+      });
   };
   const channels = new Map<number, E2eChannel>();
   let nextChannelId = 1;
