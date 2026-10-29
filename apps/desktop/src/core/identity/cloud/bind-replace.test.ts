@@ -1,15 +1,24 @@
-import type { IncomingMessage } from "node:http";
+import { mkdtempSync, rmSync } from "node:fs";
+import {
+  type IncomingMessage,
+  type Server,
+  createServer,
+  request as httpRequest,
+} from "node:http";
 import { request as httpsRequest } from "node:https";
 import { type AddressInfo, Socket } from "node:net";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { TLSSocket } from "node:tls";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { allowOrigins } from "../../http/cors";
 import { installContract } from "../../http/rpc";
 import { accessCookieName } from "../../gateway/admission";
 import { openGateway } from "../../gateway/listener";
 import { markChannelSocket } from "../../relay/e2e/peer";
-import { markGatewayRequest } from "../http";
+import { bind as bindListener, release } from "../../listen";
+import { markGatewayRequest, viaGateway } from "../http";
 import { type Fixture, fixture } from "../../workspaces/fixture";
 import { AccountsService } from "../accounts";
 import { Authorizer } from "../authorize";
@@ -48,6 +57,8 @@ let base: string;
 let owner: { accessToken: string; principalId: string };
 /** 置上之后，回环监听上新来的请求的连接按端到端通道标记（模拟经通道进来）。 */
 let asChannel: boolean;
+/** 置上之后，回环监听上新来的请求按 Gateway 转交标记（明文回环上单独验这个标）。 */
+let asGateway: boolean;
 
 beforeEach(async () => {
   world = fakeRelayWorld();
@@ -76,7 +87,9 @@ beforeEach(async () => {
   });
   const listener = core.server.createListener();
   asChannel = false;
+  asGateway = false;
   listener.on("request", (request: IncomingMessage) => {
+    if (asGateway) markGatewayRequest(request);
     if (!asChannel) return;
     Object.assign(request.socket, {
       tunnel: { channel: { deviceId: "dev_channel" } },
@@ -181,12 +194,16 @@ function gatewayCall(
   });
 }
 
-async function rpc(procedure: string, input: unknown = {}): Promise<Answer> {
+async function rpc(
+  procedure: string,
+  input: unknown = {},
+  headers: Record<string, string> = {},
+): Promise<Answer> {
   const response = await fetch(
     `${base}/api/rpc/${procedure.replaceAll(".", "/")}`,
     {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: { ...headers, "content-type": "application/json" },
       body: JSON.stringify({ json: input }),
     },
   );
@@ -392,8 +409,8 @@ describe("bind 替换自动成员（契约 §88.5）", () => {
     expect(localRequest(raw(socketAt("127.0.0.1")), "")).toBe(true);
     expect(localRequest(raw(socketAt("::ffff:127.0.0.1")), "")).toBe(true);
     expect(localRequest(raw(socketAt("::1")), "")).toBe(true);
-    // unix socket（私有通道）没有对端地址。
-    expect(localRequest(raw(socketAt(undefined)), "")).toBe(true);
+    // 读不到对端地址、又不是私有通道监听接受的（TCP 连接销毁之后就是这样）：非本地。
+    expect(localRequest(raw(socketAt(undefined)), "")).toBe(false);
     expect(localRequest(undefined, "")).toBe(false);
     expect(localRequest(raw(undefined), "")).toBe(false);
     expect(localRequest(raw({}), "")).toBe(false);
@@ -410,6 +427,282 @@ describe("bind 替换自动成员（契约 §88.5）", () => {
     });
     markChannelSocket(channel);
     expect(localRequest(raw(channel), "")).toBe(false);
+  });
+
+  it("真实连接：回环 TCP 活着算本地、销毁后不算；unix socket 监听接受的算本地", async () => {
+    const seen: Record<string, boolean> = {};
+    const tcp = createServer((request, response) => {
+      // 先销毁再判：之前没人读过对端地址，Node 就再也读不到它了。
+      if (request.url === "/destroyed") request.socket.destroy();
+      seen[request.url ?? ""] = localRequest(request, "");
+      response.end();
+    });
+    await new Promise<void>((done) => tcp.listen(0, "127.0.0.1", done));
+    try {
+      const at = `http://127.0.0.1:${(tcp.address() as AddressInfo).port}`;
+      await fetch(`${at}/live`);
+      await fetch(`${at}/destroyed`).catch(() => undefined);
+      expect(seen).toEqual({ "/live": true, "/destroyed": false });
+    } finally {
+      await new Promise((done) => tcp.close(done));
+    }
+
+    const directory = mkdtempSync(join(tmpdir(), "armadra-local-"));
+    const unix = createServer((request, response) => {
+      response.end(String(localRequest(request, "")));
+    });
+    const spec = await bindListener(unix, {
+      kind: "unix",
+      path: join(directory, "c.sock"),
+    });
+    try {
+      const text = await new Promise<string>((done, failed) => {
+        const client = httpRequest(
+          { socketPath: join(directory, "c.sock"), path: "/" },
+          (response) => {
+            const chunks: Buffer[] = [];
+            response.on("data", (chunk: Buffer) => chunks.push(chunk));
+            response.on("end", () =>
+              done(Buffer.concat(chunks).toString("utf8")),
+            );
+          },
+        );
+        client.on("error", failed);
+        client.end();
+      });
+      expect(text).toBe("true");
+    } finally {
+      await new Promise((done) => unix.close(done));
+      release(spec);
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("桌面壳的私有通道（unix socket）上 RPC 调 bind：替换自动成员", async () => {
+    const first = await login("acct:private", {
+      team: { teamId: "team_1", role: "member" },
+      role: "operator",
+    });
+    expect(first.status, first.text).toBe(200);
+    const auto = principalOf(first);
+    const directory = mkdtempSync(join(tmpdir(), "armadra-bind-"));
+    const path = join(directory, "core.sock");
+    const spec = await bindListener(core.server.createListener(), {
+      kind: "unix",
+      path,
+    });
+    try {
+      const payload = JSON.stringify({
+        json: { assertion: sub("acct:private") },
+      });
+      const answer = await new Promise<Answer>((done, failed) => {
+        const client = httpRequest(
+          {
+            socketPath: path,
+            path: "/api/rpc/identity/cloud/bind",
+            method: "POST",
+            headers: {
+              "content-type": "application/json",
+              "content-length": String(Buffer.byteLength(payload)),
+            },
+          },
+          (response) => {
+            const chunks: Buffer[] = [];
+            response.on("data", (chunk: Buffer) => chunks.push(chunk));
+            response.on("end", () => {
+              const text = Buffer.concat(chunks).toString("utf8");
+              done({
+                status: response.statusCode ?? 0,
+                text,
+                body: JSON.parse(text) as Record<string, unknown>,
+              });
+            });
+          },
+        );
+        client.on("error", failed);
+        client.end(payload);
+      });
+      expect(answer.status, answer.text).toBe(200);
+      expect(answer.body).toEqual({ json: { bound: true, replaced: true } });
+    } finally {
+      release(spec);
+      rmSync(directory, { recursive: true, force: true });
+    }
+    const after = store.transaction((tx) => ({
+      mapped: tx.accounts.liveOAuth(cloudProvider(ISSUER), "acct:private")
+        ?.principalId,
+      disabled: (tx.accounts.principal(auto)?.disabledAtMs ?? 0) > 0,
+    }));
+    expect(after).toEqual({ mapped: owner.principalId, disabled: true });
+  });
+
+  it("明文回环上带 Gateway 标的请求：RPC 与 HTTP 路由调 bind 都是 409；去掉标（服务器壳 CLI 的调用形状）就替换", async () => {
+    const first = await login("acct:marked", {
+      team: { teamId: "team_1", role: "owner" },
+      role: "driver",
+    });
+    expect(first.status, first.text).toBe(200);
+    const auto = principalOf(first);
+    asGateway = true;
+    const viaRpc = await rpc("identity.cloud.bind", {
+      assertion: sub("acct:marked"),
+    });
+    expect(viaRpc.status, viaRpc.text).toBe(409);
+    expect(viaRpc.body.code).toBe("conflict");
+    const viaHttp = await call(
+      "POST",
+      "/api/identity/cloud/bind",
+      { assertion: sub("acct:marked") },
+      asOwner(),
+    );
+    expect(viaHttp.status, viaHttp.text).toBe(409);
+    expect(
+      store.transaction((tx) =>
+        tx.accounts.liveOAuth(cloudProvider(ISSUER), "acct:marked"),
+      )?.principalId,
+    ).toBe(auto);
+    // 同一条明文回环、同样的 Bearer 与来源，只是没有 Gateway 标：服务器壳 CLI 就是这样调的。
+    asGateway = false;
+    const plain = await call(
+      "POST",
+      "/api/identity/cloud/bind",
+      { assertion: sub("acct:marked") },
+      asOwner(),
+    );
+    expect(plain.status, plain.text).toBe(200);
+    expect(plain.body).toEqual({ bound: true, replaced: true });
+  });
+
+  it("Gateway 转交的普通请求与 WS 升级都打上 Gateway 标", async () => {
+    const created = vi.spyOn(core.server, "createListener");
+    const gateway = await openGateway(core, {
+      listen: { host: "127.0.0.1", port: 0 },
+      publicOrigins: [],
+      hosts: () => ["127.0.0.1"],
+      tls: { generated: "selfSigned" },
+      deviceName: "test",
+    });
+    try {
+      const delegate = created.mock.results.at(-1)?.value as Server;
+      const seen: { kind: string; marked: boolean }[] = [];
+      delegate.on("request", (request: IncomingMessage) =>
+        seen.push({ kind: "request", marked: viaGateway(request) }),
+      );
+      delegate.on("upgrade", (request: IncomingMessage) =>
+        seen.push({ kind: "upgrade", marked: viaGateway(request) }),
+      );
+      const origin = gateway.origin();
+      const ticket = service.issueBootstrap({
+        hostId: store.hostId(),
+        instanceId: INSTANCE,
+        origin,
+        deviceName: "gateway",
+        scopes: allScopes(),
+      });
+      const session = service.consumeBootstrap({
+        ticket: ticket.ticket,
+        hostId: store.hostId(),
+        instanceId: INSTANCE,
+        origin,
+      });
+      const cookie = `${accessCookieName(store.hostId())}=${session.accessToken}`;
+      await gatewayCall(origin, {
+        origin,
+        cookie,
+        "x-armadra-csrf": session.csrfToken,
+      });
+      const url = new URL("/api/ws", origin);
+      await new Promise<void>((done, failed) => {
+        const client = httpsRequest({
+          host: url.hostname,
+          port: url.port,
+          path: url.pathname,
+          rejectUnauthorized: false,
+          headers: {
+            origin,
+            cookie,
+            connection: "Upgrade",
+            upgrade: "websocket",
+            "sec-websocket-version": "13",
+            "sec-websocket-key": Buffer.alloc(16, 7).toString("base64"),
+          },
+        });
+        client.on("upgrade", (_response, socket) => {
+          socket.destroy();
+          done();
+        });
+        client.on("response", (response) => {
+          response.resume();
+          done();
+        });
+        client.on("error", failed);
+        client.end();
+      });
+      expect(seen).toEqual([
+        { kind: "request", marked: true },
+        { kind: "upgrade", marked: true },
+      ]);
+    } finally {
+      created.mockRestore();
+      await gateway.close();
+    }
+  });
+
+  it("会话绑了通道设备钥、连接是普通回环：经 RPC 调 bind 是 409；不绑的会话就替换", async () => {
+    const first = await login("acct:bound", {
+      team: { teamId: "team_1", role: "owner" },
+      role: "driver",
+    });
+    expect(first.status, first.text).toBe(200);
+    const auto = principalOf(first);
+    const open = (channelDeviceId?: string) =>
+      service.openSession({
+        principalId: owner.principalId,
+        hostId: store.hostId(),
+        origin: ORIGIN,
+        deviceName: "owner",
+        method: "cloud",
+        ...(channelDeviceId === undefined ? {} : { channelDeviceId }),
+      }).principal.sessionId;
+    const sessions: Record<string, string> = {
+      channel: open("0123456789abcdef0123456789abcdef"),
+      plain: open(),
+    };
+    // 代替身份域的回环门：按测试头把这次请求放进对应会话的身份。
+    core.server.admission((request) => {
+      const which = request.headers["x-test-session"];
+      const sessionId = typeof which === "string" ? sessions[which] : undefined;
+      return sessionId === undefined
+        ? {}
+        : {
+            identity: {
+              subject: {
+                principalId: owner.principalId,
+                kind: "owner",
+                scopes: allScopes(),
+              },
+              session: { sessionId, origin: ORIGIN },
+            },
+          };
+    });
+    const bound = await rpc(
+      "identity.cloud.bind",
+      { assertion: sub("acct:bound") },
+      { origin: ORIGIN, "x-test-session": "channel" },
+    );
+    expect(bound.status, bound.text).toBe(409);
+    expect(
+      store.transaction((tx) =>
+        tx.accounts.liveOAuth(cloudProvider(ISSUER), "acct:bound"),
+      )?.principalId,
+    ).toBe(auto);
+    const plain = await rpc(
+      "identity.cloud.bind",
+      { assertion: sub("acct:bound") },
+      { origin: ORIGIN, "x-test-session": "plain" },
+    );
+    expect(plain.status, plain.text).toBe(200);
+    expect(plain.body).toEqual({ json: { bound: true, replaced: true } });
   });
 
   it("经 Gateway 的 owner 会话（Cookie 与原生 App 的 Bearer 模式）调 bind：409，映射不动", async () => {
