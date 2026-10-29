@@ -671,7 +671,11 @@ core 关停与启动中途失败走同一条收尾（`main.ts` 的 `teardown`）
     `armadra.host.<控制台账号>.<主机>` 记在 `sessionStorage`，进入时核对账号与会话主体；控制台登出前经
     `BroadcastChannel("armadra.cloud.session")`（`sources/cloud-session-channel.ts`）让各 `/h/` 标签页趁通道
     还在 `session/logout`，换账号时通知它们登出；`grantChanged` 与自己的 `memberChanged` 去抖后带当前刷新
-    令牌重登同步授予。界面只经 `sources/relayed-page.ts` 问「是不是经中继进的主机页」，不分哪种来源；经端到端
+    令牌重登同步授予。`/h/` 先查这台主机的访客记录（`relay-vault.ts` 的 `guestLinkFor`，记录里记着
+    `acceptedBy`）：没有 Cookie 会话时只用匿名接受的记录，账号看不到 / 没权限进这台时再用匿名的或这位自己
+    接受的，来源不明的旧记录不用；以访客进入走 `hosted.ts` 的托管中继（`resumeLink`，`close` 只卸路由不清
+    记录），记录作废或进去后被收回落到失败码 `access_revoked`，暂时进不去（限流、5xx）记录留着、可重试。
+    控制台登出清掉账号接受的访客记录。界面只经 `sources/relayed-page.ts` 问「是不是经中继进的主机页」，不分哪种来源；经端到端
     通道到达的本机源算经中继，媒体不给浏览器直取的地址。设置页恒指本机（#301）：除「当前工作空间」页跟随打开的工作空间外一律读写本机 core，
     页头写「本机 · <电脑名>」；`panels/settings/remote-access.ts` 只判断页面的本机 core 在不在眼前
     （经中继、直连 Gateway）：在别处时只对眼前设备有意义的分区不列，「在访达中打开」不出，更新页只读报

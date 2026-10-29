@@ -286,6 +286,8 @@ NODE_EXTRA_CA_CERTS=<ca.crt> ARMADRA_SAAS_ISSUER=https://app.<域> ARMADRA_SAAS_
   node tools/probes/saas-host-e2e.mjs [输出目录]
 ```
 
+E8（访客经分享链接落 `/h/`、刷新两次续上、撤销后「访问已被收回」）在 `saas-host-e2e-guest.mjs`，由主脚本调；`ARMADRA_SAAS_ONLY=E8` 只跑它（不让 owner 先进 `/h/`）。
+
 产物默认在 `target/saas-host-e2e/`：`result.json`（含 `violations`）与截图。
 
 ## Mermaid 在强制 Trusted Types 下渲染

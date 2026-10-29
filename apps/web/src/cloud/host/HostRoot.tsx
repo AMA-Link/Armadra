@@ -118,15 +118,18 @@ function StateCard({ host, view }: { host: ConsoleHost; view: HostView }) {
             {t("cloud.common.retry")}
           </Button>
         )}
-        <Button variant="ghost" asChild>
-          <a href={home}>
-            {view.code === HOST_FAILURE.teamSuspended
-              ? t("cloud.host.backToOverview")
-              : view.code === HOST_FAILURE.unlinked
-                ? t("cloud.host.backToHost")
-                : t("cloud.host.backToHosts")}
-          </a>
-        </Button>
+        {/* 访客没有控制台账号：没有主机列表可回。 */}
+        {host.info?.guest !== true && (
+          <Button variant="ghost" asChild>
+            <a href={home}>
+              {view.code === HOST_FAILURE.teamSuspended
+                ? t("cloud.host.backToOverview")
+                : view.code === HOST_FAILURE.unlinked
+                  ? t("cloud.host.backToHost")
+                  : t("cloud.host.backToHosts")}
+            </a>
+          </Button>
+        )}
       </div>
     </AuthLayout>
   );
@@ -236,7 +239,8 @@ export function HostRoot({
   const covered = view.kind !== "entered";
   return (
     <div className="relative flex h-dvh flex-col">
-      <HostBar host={host} />
+      {/* 访客的顶栏是画布里的访客栏（`GuestFrame`）。 */}
+      {host.info?.guest !== true && <HostBar host={host} />}
       <div className="min-h-0 flex-1" inert={covered}>
         {children}
       </div>

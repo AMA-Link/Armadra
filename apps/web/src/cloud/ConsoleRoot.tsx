@@ -21,6 +21,10 @@ import {
   announceConsoleSession,
   signOutHostTabs,
 } from "../sources/cloud-session-channel";
+import {
+  browserLocalStorage,
+  clearAccountGuestRecords,
+} from "../sources/relay-vault";
 import { createHostChannel, type HostChannel } from "./host-channel";
 import { HostChannelProvider, useHostChannel } from "./host-channel-context";
 import { createBrowserEndorser } from "./trust/browser-endorser";
@@ -307,6 +311,8 @@ function ConsoleData({ onJoined }: { onJoined?: () => void }) {
       .catch(() => undefined)
       .then(() => api.signOut())
       .finally(() => {
+        // 这个账号接受的访客记录随登出丢掉：之后谁打开 `/h/` 都不能拿它进主机（§2.8）。
+        clearAccountGuestRecords(browserLocalStorage(), window.location.origin);
         announceConsoleSession({ type: "signedOut" });
         endorser?.dispose?.();
         hostChannel?.dispose();

@@ -1,4 +1,4 @@
-// 控制台 `/h/<hostId>` 对一个已有 SaaS 部署的端到端探针（设计 saas-host-open §8.1，第一版：E2–E6）。
+// 控制台 `/h/<hostId>` 对一个已有 SaaS 部署的端到端探针（设计 saas-host-open §8.1：E2–E6、E8）。
 //
 // 连一个已经在跑的 Armadra 云部署（控制面 + 中继节点），起一台临时数据目录的服务器壳当 host1
 // （设备码登录到 owner 的账号、登记到团队、owner 映射为本机主人），再用新 profile 的无头 Chrome
@@ -16,6 +16,8 @@
 //      的 `/h/` 进了主机，信任页不刷新就改给「信任」（`armadra.e2e.trust` 广播）；owner 在信任页输入
 //      member 屏幕上的码 → member 自动进入，host1 记成 `endorse:`、owner 的 `/h/` 弹背书通知；
 //      owner 另一个浏览器的待确认，owner 的受信浏览器批它答 forbidden；经它「配对新设备」答 forbidden。
+//   E8 host1 经 SaaS 路线建一条只读链接；没登录的新 browser context 打开：落地页「加入」后地址是
+//      `/h/<host1>`、刷新仍在画布（经访客记录续上，不去登录）；撤销链接后 `/h/` 显示「访问已被收回」。
 //
 // 全程在页面加载前监听 `securitypolicyviolation`（含 Trusted Types），要求违规为零。控制台页面的 CSP
 // 缺省换成 B7 要提的那一份（控制面现有的原样加 `img-src` / `media-src` 的 `blob:` 与设计 Q13 的
@@ -30,7 +32,7 @@
 //   ARMADRA_SAAS_ACCOUNTS=<accounts.json：{ owner, member } 各 { email, password }> \
 //   ARMADRA_SAAS_TEAM=test-team \
 //   [ARMADRA_SAAS_COMPOSE="<compose 包装脚本>"]  # 给了才做 E4 的节点重建
-//   [ARMADRA_SAAS_ONLY=E2,E6] [ARMADRA_SAAS_CSP=current]
+//   [ARMADRA_SAAS_ONLY=E2,E6,E8] [ARMADRA_SAAS_CSP=current]
 //   node tools/probes/saas-host-e2e.mjs [输出目录]
 //
 // 服务器壳与 Chrome 只按自己起的 PID 停；数据目录、HOME、profile 都是 mktemp 出来的，跑完删除。
@@ -56,6 +58,7 @@ import {
   untilApproved,
 } from "./platform-lib.mjs";
 import { probeSession } from "./probe-session.mjs";
+import { runGuestLink } from "./saas-host-e2e-guest.mjs";
 import {
   connectBrowser,
   freePort,
@@ -80,7 +83,7 @@ const TEAM = process.env.ARMADRA_SAAS_TEAM ?? "test-team";
 const COMPOSE = process.env.ARMADRA_SAAS_COMPOSE ?? "";
 /** 只跑其中几步（逗号分隔，如 `E2,E6`）；缺省全跑。 */
 const ONLY = new Set(
-  (process.env.ARMADRA_SAAS_ONLY ?? "E2,E3,E4,E5,E6").split(","),
+  (process.env.ARMADRA_SAAS_ONLY ?? "E2,E3,E4,E5,E6,E8").split(","),
 );
 if (!accountsFile || !existsSync(accountsFile)) {
   console.error("要 ARMADRA_SAAS_ACCOUNTS（{ owner, member } 的邮箱与口令）");
@@ -169,6 +172,8 @@ const redact = (text) =>
     .replace(/armadra-(relay|ticket)\.[^\s",;\\]+/g, "armadra-$1.<redacted>")
     .replace(/(__Host-armadra-[a-z]+)=[^\s";\\]+/g, "$1=<redacted>")
     .replace(/(Bearer\s+)[^\s",\\]+/gi, "$1<redacted>")
+    // 分享链接的片段（秘密与邀请令牌）。
+    .replace(/(\/j\/[^\s#"\\]+)#[^\s"\\]+/g, "$1#<redacted>")
     // JSON 里的令牌字段（含日志行里转义过一层的）。
     .replace(
       /(\\?"(?:refreshToken|refresh_token|csrfToken|csrf_token|accessToken|access_token|relayToken|assertion)\\?"\s*:\s*\\?")[^"\\]+/g,
@@ -807,7 +812,8 @@ try {
   }
 
   /* ------------------------------------ E2 ------------------------------------ */
-  {
+  // owner 先进 host1：E3–E7 都靠它；只跑 E8 时（访客不用 owner 进来）才跳过。
+  if ([...ONLY].some((step) => step !== "E8")) {
     const s = scenario(
       report,
       "E2 owner 打开 /h/：待确认 → 放行 → 画布与终端",
@@ -1183,6 +1189,23 @@ try {
     }
     s.entry.status = "passed";
   }
+
+  /* ------------------------------------ E8 ------------------------------------ */
+  if (ONLY.has("E8"))
+    await runGuestLink({
+      report,
+      output,
+      ISSUER,
+      accounts,
+      browser,
+      openTab,
+      consoleSignIn,
+      local,
+      serviceId,
+      workspace,
+      hostId,
+      terminal,
+    });
 
   /* ------------------------------------ E5 ------------------------------------ */
   memberTab ??= await openTab(browser, memberContext, "member");
