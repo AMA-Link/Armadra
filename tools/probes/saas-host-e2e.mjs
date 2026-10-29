@@ -843,7 +843,7 @@ try {
     s.check(
       ownerDevices.length === 1 &&
         ownerDevices[0].platform === "browser" &&
-        /^Armadra Web \(.+ · .+\)$/.test(ownerDevices[0].label),
+        /^Armadra Web \([A-Za-z]+, [A-Za-z]+\)$/.test(ownerDevices[0].label),
       "host1 上 owner 的浏览器按浏览器与系统登记",
       ownerDevices,
     );

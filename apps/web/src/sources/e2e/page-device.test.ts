@@ -63,17 +63,21 @@ describe("browserDevice", () => {
   it("名字是浏览器加系统", () => {
     expect(browserDevice(CHROME_MAC)).toEqual({
       platform: "browser",
-      name: "Armadra Web (Chrome · macOS)",
+      name: "Armadra Web (Chrome, macOS)",
     });
-    expect(browserDevice(SAFARI_IPHONE).name).toBe(
-      "Armadra Web (Safari · iOS)",
-    );
+    expect(browserDevice(SAFARI_IPHONE).name).toBe("Armadra Web (Safari, iOS)");
     expect(
       browserDevice(
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:131.0) Gecko/20100101 Firefox/131.0",
       ).name,
-    ).toBe("Armadra Web (Firefox · Windows)");
+    ).toBe("Armadra Web (Firefox, Windows)");
     expect(browserDevice("").name).toBe("Armadra Web");
+  });
+
+  it("名字里没有任何「点」：云端清洗展示名时会把点连着的两段当成域名删掉", () => {
+    for (const agent of [CHROME_MAC, SAFARI_IPHONE, ANDROID_WEBVIEW, ""]) {
+      expect(browserDevice(agent).name).not.toMatch(/[.·。．｡․﹒]/);
+    }
   });
 });
 
@@ -82,13 +86,13 @@ describe("页面的端到端设备名", () => {
     page("https://console.test/h/host-1", CHROME_MAC);
     // 与 MobileRoot 一样：渲染时先建个人中转的添加流程（缺省依赖里取共享通道）。
     createRelayEnrollment();
-    expect(pageDeviceName()).toBe("Armadra Web (Chrome · macOS)");
-    await expect(openedName()).resolves.toBe("Armadra Web (Chrome · macOS)");
+    expect(pageDeviceName()).toBe("Armadra Web (Chrome, macOS)");
+    await expect(openedName()).resolves.toBe("Armadra Web (Chrome, macOS)");
   });
 
   it("中继托管页 /app/ 按浏览器登记", async () => {
     page("https://relay.test/app/", SAFARI_IPHONE);
-    await expect(openedName()).resolves.toBe("Armadra Web (Safari · iOS)");
+    await expect(openedName()).resolves.toBe("Armadra Web (Safari, iOS)");
   });
 
   it("原生 App 的名字不变：iOS 与 Android", async () => {

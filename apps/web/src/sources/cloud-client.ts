@@ -193,7 +193,7 @@ function browserSystem(userAgent: string): string {
 
 /**
  * 浏览器里打开的页面（控制台、中继托管、分享链接）在远程服务与主机上的登记：
- * 名字是浏览器加系统，比如 `Armadra Web (Chrome · macOS)`。
+ * 名字是浏览器加系统，比如 `Armadra Web (Chrome, macOS)`（分隔符不用中点：云端清洗展示名时把中点当点，会把「Chrome·macOS」当成域名删掉）。
  */
 export function browserDevice(
   userAgent: string = globalThis.navigator?.userAgent ?? "",
@@ -209,7 +209,7 @@ export function browserDevice(
           : "";
   const detail = [browser, browserSystem(userAgent)]
     .filter((part) => part !== "")
-    .join(" · ");
+    .join(", ");
   return {
     platform: "browser",
     name: detail === "" ? "Armadra Web" : `Armadra Web (${detail})`,
