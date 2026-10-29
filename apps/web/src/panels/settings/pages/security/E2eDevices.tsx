@@ -11,6 +11,7 @@ import { RuntimeRequestError } from "../../../../api/request";
 import { localSource } from "../../../../api/source";
 import { usePreferencesStore, useT } from "../../../../app/preferences-store";
 import { useAccess } from "../../../../app/use-access";
+import { notify } from "../../../../platform";
 import { SecuritySectionSkeleton } from "./parts";
 import { QrImage } from "../gateway/PairingCard";
 import { StatusPill } from "@/ui/status-pill";
@@ -420,6 +421,69 @@ export function DeviceApprovalPrompt() {
           device={{ pendingId: pending.pendingId, label: pending.label }}
           onDone={() => setPending(null)}
         />
+      </ResponsiveDialogContent>
+    </ResponsiveDialog>
+  );
+}
+
+/**
+ * 背书的通知（契约 §88.7）：本机收到 `devices.endorsed`，说明哪台受信设备放行了谁的哪台设备。
+ * 事件只带标识，名字从 `devices.list` 查（只有主人读得到）；查不到就不弹。窗口不在前台时另发
+ * 一条系统通知。
+ */
+export function DeviceEndorsedNotice() {
+  const t = useT();
+  const [notice, setNotice] = React.useState<string | null>(null);
+  React.useEffect(
+    () =>
+      onWorkspaceEvent(
+        "devices.endorsed",
+        (event, sourceId) => {
+          if (sourceId !== localSource.sourceId) return;
+          void devicesApi
+            .list()
+            .then((devices) => {
+              const find = (deviceId: string, principalId: string) =>
+                devices.find(
+                  (row) =>
+                    row.deviceId === deviceId &&
+                    row.principalId === principalId,
+                );
+              const target = find(event.deviceId, event.principalId);
+              if (target === undefined) return;
+              const endorser = find(
+                event.endorserDeviceId,
+                event.endorserPrincipalId,
+              );
+              const text = t("e2e.endorsed.title", {
+                endorser: endorser?.label || event.endorserDeviceId.slice(0, 8),
+                principal: target.principalName || target.principalId,
+                device: target.label || "—",
+              });
+              setNotice(text);
+              void notify(text, "");
+            })
+            .catch(() => undefined);
+        },
+        { allSources: true },
+      ),
+    [t],
+  );
+  if (notice === null) return null;
+  return (
+    <ResponsiveDialog open onOpenChange={(open) => !open && setNotice(null)}>
+      <ResponsiveDialogContent
+        className="sm:max-w-sm"
+        aria-describedby={undefined}
+      >
+        <ResponsiveDialogHeader>
+          <ResponsiveDialogTitle>{notice}</ResponsiveDialogTitle>
+        </ResponsiveDialogHeader>
+        <ResponsiveDialogFooter>
+          <Button onClick={() => setNotice(null)}>
+            {t("e2e.endorsed.dismiss")}
+          </Button>
+        </ResponsiveDialogFooter>
       </ResponsiveDialogContent>
     </ResponsiveDialog>
   );
