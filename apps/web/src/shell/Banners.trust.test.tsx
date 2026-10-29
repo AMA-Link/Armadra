@@ -162,6 +162,19 @@ async function typeCode(code: string) {
   fireEvent.change(input, { target: { value: code } });
 }
 
+/** 主机记录没对上：就地说明，「信任」不可点，码不会交出去。 */
+async function expectBlocked(message: string) {
+  const dialog = await openDialog();
+  expect(await screen.findByText(message)).toBeTruthy();
+  await typeCode("482913");
+  const trust = screen.getByRole("button", { name: "Trust" });
+  expect(trust.hasAttribute("disabled")).toBe(true);
+  fireEvent.click(trust);
+  await new Promise((done) => setTimeout(done, 20));
+  expect(host.devices.approve).not.toHaveBeenCalled();
+  return dialog;
+}
+
 describe("待信任设备横幅与对话框", () => {
   it("云端转来请求：横幅点名成员，不显示校验码", async () => {
     mount();
@@ -228,17 +241,11 @@ describe("待信任设备横幅与对话框", () => {
     expect(toasts.error).not.toHaveBeenCalled();
   });
 
-  it("主机上还没有这台设备的申请：说清楚，不报校验码错", async () => {
+  it("主机上还没有这台设备的申请：就地说清楚，「信任」不可点", async () => {
     host.devices.list.mockResolvedValue({ devices: [] });
-    await openDialog();
-    await typeCode("482913");
-    fireEvent.click(screen.getByRole("button", { name: "Trust" }));
-    await waitFor(() =>
-      expect(toasts.error).toHaveBeenCalledWith(
-        "This host has no request from that device yet. Ask it to reconnect",
-      ),
+    await expectBlocked(
+      "This host has no request from that device yet. Ask it to reconnect",
     );
-    expect(host.devices.approve).not.toHaveBeenCalled();
   });
 
   it("同名设备多条申请时优先取成员对得上的那条", async () => {
@@ -291,43 +298,57 @@ describe("待信任设备横幅与对话框", () => {
     host.devices.list.mockResolvedValue({
       devices: [pending({ principalName: "Cy" })],
     });
-    await openDialog();
-    await typeCode("482913");
-    fireEvent.click(screen.getByRole("button", { name: "Trust" }));
-    await waitFor(() =>
-      expect(toasts.error).toHaveBeenCalledWith(
-        "This host has no request from that device yet. Ask it to reconnect",
-      ),
+    await expectBlocked(
+      "This host has no request from that device yet. Ask it to reconnect",
     );
-    expect(host.devices.approve).not.toHaveBeenCalled();
   });
 
   it("同名同成员多条申请：不猜，提示去主机处理", async () => {
     host.devices.list.mockResolvedValue({
       devices: [pending({ pendingId: "a" }), pending({ pendingId: "b" })],
     });
-    await openDialog();
-    await typeCode("482913");
-    fireEvent.click(screen.getByRole("button", { name: "Trust" }));
-    await waitFor(() =>
-      expect(toasts.error).toHaveBeenCalledWith(
-        "The host has several requests with that name. Handle it in the host's device list",
-      ),
+    await expectBlocked(
+      "The host has several requests with that name. Handle it in the host's device list",
     );
-    expect(host.devices.approve).not.toHaveBeenCalled();
   });
 
-  it("明确没有背书权限：不再显示「信任」，只留「拒绝」并说在已信任的设备上处理", async () => {
-    // 对话框先查一次主机上的那一行（显示平台），放行时再查一次：两次都被拒。
+  it("明确没有背书权限：不显示「信任」与云端报的平台，只留「拒绝」并说在已信任的设备上处理", async () => {
+    api.cloudTrustList.mockResolvedValue({
+      requests: [
+        { ...request, device: { name: "Bo's iPhone", platform: "browser" } },
+      ],
+    });
     host.devices.list.mockRejectedValue(
       new RuntimeRequestError(403, "x", "forbidden"),
     );
-    await openDialog();
-    await typeCode("482913");
-    fireEvent.click(screen.getByRole("button", { name: "Trust" }));
+    const dialog = await openDialog();
     expect(await screen.findByText("Use a trusted device")).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Trust" })).toBeNull();
     expect(screen.getByRole("button", { name: "Decline" })).toBeTruthy();
+    expect(dialog.textContent).not.toContain("Browser");
+    expect(host.devices.approve).not.toHaveBeenCalled();
+  });
+
+  it("主机记录第一次读失败、第二次才成功：不显示云端报的平台，「信任」不可点，不放行；重试后按主机显示", async () => {
+    api.cloudTrustList.mockResolvedValue({
+      requests: [
+        { ...request, device: { name: "Bo's iPhone", platform: "browser" } },
+      ],
+    });
+    host.devices.list
+      .mockRejectedValueOnce(new Error("relay dropped"))
+      .mockResolvedValue({
+        devices: [pending({ platform: "desktop", principalKind: "owner" })],
+      });
+    const dialog = await expectBlocked(
+      "Couldn't read this request on the host",
+    );
+    expect(dialog.textContent).not.toContain("Browser");
+    expect(host.devices.list).toHaveBeenCalledTimes(1);
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    await waitFor(() => expect(dialog.textContent).toContain("Desktop"));
+    expect(dialog.textContent).not.toContain("Browser");
+    expect(host.devices.approve).not.toHaveBeenCalled();
   });
 
   it("平台以主机那一行为准：云端报 browser、主机记的是 owner 的 desktop，显示「Desktop」、原生端提示与不一致警示", async () => {

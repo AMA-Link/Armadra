@@ -37,6 +37,7 @@ export const e2e: MessageModule = {
     "trust.banner.many": "{count} 台新设备待信任",
     "trust.banner.view": "查看",
     "trust.platformMismatch": "云端报的平台与主机记录不一致，以主机为准",
+    "trust.hostUnreadable": "读不到主机上的这条申请",
     "e2e.devices.title": "经中转的设备",
     "e2e.devices.name": "设备",
     "e2e.devices.account": "账号",
@@ -93,6 +94,7 @@ export const e2e: MessageModule = {
     "trust.banner": "{name}'s new device needs trust",
     "trust.banner.many": "{count} new devices need trust",
     "trust.banner.view": "View",
+    "trust.hostUnreadable": "Couldn't read this request on the host",
     "trust.platformMismatch":
       "The cloud reports a different platform. Showing the host's record",
     "e2e.devices.title": "Devices via remote access",

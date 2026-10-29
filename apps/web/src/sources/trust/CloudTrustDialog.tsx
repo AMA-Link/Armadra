@@ -77,9 +77,19 @@ function TrustBody({ item }: { item: TrustItem }) {
     staleTime: 0,
   });
   const host = match.data;
+  // 主机说这台电脑没有背书权限：与放行时被拒同样处理。
+  const refused =
+    match.error instanceof RuntimeRequestError &&
+    (match.error.code === "forbidden" ||
+      match.error.code === "device_untrusted");
+  const blocked = notEndorser || refused;
 
   const trust = useMutation({
-    mutationFn: () => approveOnHost(item, sas, host),
+    // 只批给人看过的那一行：没查回来按钮就不可点（见下）。
+    mutationFn: () => {
+      if (host === undefined) throw new HostPendingUnavailable();
+      return approveOnHost(item, sas, host);
+    },
     onSuccess: () => {
       toast.success(t("trust.trusted", { device: item.device.name }));
       void refresh();
@@ -121,7 +131,7 @@ function TrustBody({ item }: { item: TrustItem }) {
         id="cloud-trust-form"
         onSubmit={(event) => {
           event.preventDefault();
-          if (sas.length === 6 && !busy) trust.mutate();
+          if (sas.length === 6 && !busy && match.isSuccess) trust.mutate();
         }}
       >
         <FieldGroup className="gap-4">
@@ -133,12 +143,10 @@ function TrustBody({ item }: { item: TrustItem }) {
             <dd className="min-w-0 truncate">{item.device.name}</dd>
             <dt>{t("trust.platform")}</dt>
             <dd className="min-w-0 truncate">
-              {match.isPending ? (
+              {host === undefined ? (
                 "—"
               ) : (
-                <PlatformBadge
-                  platform={host?.platform ?? item.device.platform}
-                />
+                <PlatformBadge platform={host.platform} />
               )}
             </dd>
             <dt>{t("trust.host")}</dt>
@@ -157,7 +165,29 @@ function TrustBody({ item }: { item: TrustItem }) {
               />
             </div>
           )}
-          {notEndorser ? (
+          {match.isError && !blocked && (
+            <div className="flex items-center gap-2">
+              <span className="text-meta text-destructive" role="status">
+                {t(
+                  match.error instanceof HostPendingAmbiguous
+                    ? "trust.ambiguous"
+                    : match.error instanceof HostPendingUnavailable
+                      ? "trust.unavailable"
+                      : "trust.hostUnreadable",
+                )}
+              </span>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                loading={match.isFetching}
+                onClick={() => void match.refetch()}
+              >
+                {t("state.retry")}
+              </Button>
+            </div>
+          )}
+          {blocked ? (
             <span className="text-body text-destructive" role="status">
               {t("cloud.trust.useTrusted")}
             </span>
@@ -208,11 +238,11 @@ function TrustBody({ item }: { item: TrustItem }) {
         >
           {t("e2e.approve.reject")}
         </Button>
-        {!notEndorser && (
+        {!blocked && (
           <Button
             type="submit"
             form="cloud-trust-form"
-            disabled={sas.length !== 6 || busy}
+            disabled={sas.length !== 6 || busy || !match.isSuccess}
             loading={trust.isPending}
           >
             {t("trust.trust")}

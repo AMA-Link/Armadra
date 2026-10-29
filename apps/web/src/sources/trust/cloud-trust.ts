@@ -77,13 +77,12 @@ export function useCloudTrust(): { items: TrustItem[] } {
 export async function approveOnHost(
   item: TrustItem,
   sas: string,
-  /** 对话框已经查出、给人看过的那一行（{@link matchOnHost}）：就批它，不再重新匹配。 */
-  matched?: Pick<TrustedDevice, "pendingId">,
+  /** 对话框已经查出、给人看过的那一行（{@link matchOnHost}）：只批它，从不重新匹配。 */
+  matched: Pick<TrustedDevice, "pendingId">,
 ): Promise<TrustedDevice> {
   const client = await hostClient(item);
   if (client === undefined) throw new HostPendingUnavailable();
-  const pendingId =
-    matched?.pendingId ?? (await matchIn(item, client)).pendingId;
+  const { pendingId } = matched;
   if (pendingId == null) throw new HostPendingUnavailable();
   return trustedDeviceSchema.parse(
     (await client.devices.approve({ pendingId, sas })).device,
