@@ -6354,6 +6354,33 @@
                                   "type": "object",
                                   "properties": {
                                     "type": {
+                                      "const": "devices.endorsed"
+                                    },
+                                    "deviceId": {
+                                      "type": "string"
+                                    },
+                                    "principalId": {
+                                      "type": "string"
+                                    },
+                                    "endorserDeviceId": {
+                                      "type": "string"
+                                    },
+                                    "endorserPrincipalId": {
+                                      "type": "string"
+                                    }
+                                  },
+                                  "required": [
+                                    "type",
+                                    "deviceId",
+                                    "principalId",
+                                    "endorserDeviceId",
+                                    "endorserPrincipalId"
+                                  ]
+                                },
+                                {
+                                  "type": "object",
+                                  "properties": {
+                                    "type": {
                                       "const": "resources.threshold"
                                     },
                                     "sessionId": {
