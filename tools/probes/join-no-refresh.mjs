@@ -101,6 +101,8 @@ const PERIODIC = [
   // 通知清单（契约 §81）的 20 秒轮询：各工作空间的会话与交接。
   /\/api\/rpc\/terminals\/sessions$/,
   /\/api\/rpc\/agents\/handoffs$/,
+  // 设备背书通知（契约 §81.1）：同一个 20 秒轮询，owner 才发。
+  /\/api\/rpc\/devices\/endorsements$/,
 ];
 
 const report = {
