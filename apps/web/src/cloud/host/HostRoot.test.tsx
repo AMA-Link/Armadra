@@ -127,6 +127,29 @@ describe("控制台 /h/ 页面", () => {
     expect(screen.getByText("已登出")).toBeTruthy();
   });
 
+  it("访客（分享链接）：没有主机顶栏；访问被收回盖一层，没有回主机列表", () => {
+    const { host, set } = fakeHost(
+      { kind: "connecting" },
+      {
+        info: {
+          name: "host1",
+          space: "personal",
+          owner: false,
+          consoleHref: "/",
+          guest: true,
+        },
+      },
+    );
+    page(host);
+    act(() => set({ kind: "entered" }));
+    expect(screen.getByTestId("app")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "登出" })).toBeNull();
+    expect(screen.queryByRole("link", { name: "控制台" })).toBeNull();
+    act(() => set({ kind: "failed", code: "access_revoked" }));
+    expect(screen.getByText("访问已被收回")).toBeTruthy();
+    expect(screen.queryByRole("link", { name: "回到主机列表" })).toBeNull();
+  });
+
   it("是主人却不是本机 owner：顶栏提示与修正办法", () => {
     const { host } = fakeHost({ kind: "entered" }, { ownerMismatch: true });
     page(host);
