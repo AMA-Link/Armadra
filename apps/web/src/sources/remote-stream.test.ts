@@ -24,7 +24,7 @@ import type {
 
 /**
  * 远程服务的事件流（客户端包 §5）：假中继答 4404 → 等待；推 `sourceOnline` →
- * 1 秒内重连；撤销；流重开时补上错过的上线；4401 换会话。
+ * 立刻重连（不等退避）；撤销；流重开时补上错过的上线；4401 换会话。
  */
 
 const ISSUER = "https://relay.example";
@@ -149,6 +149,14 @@ const flush = async (times = 4) => {
     await new Promise((done) => setTimeout(done, 0));
 };
 
+/**
+ * 一轮一轮排空微任务与 0 毫秒的宏任务，直到 `done()` 成立或轮数用完。只按事件
+ * 先后推进，不看墙钟：负载再高也只是慢，不会改变结果。
+ */
+const settle = async (done: () => boolean, rounds = 50) => {
+  for (let i = 0; i < rounds && !done(); i += 1) await flush(1);
+};
+
 const socketOptions = {
   WebSocket: FakeSocket as unknown as typeof WebSocket,
   environment: null,
@@ -252,7 +260,7 @@ describe("一条事件流", () => {
 });
 
 describe("接到源表上", () => {
-  it("假中继答 4404 → waitingForSource；推 sourceOnline → 1 秒内重连", async () => {
+  it("假中继答 4404 → waitingForSource；推 sourceOnline → 立刻重连，不等退避", async () => {
     const registry = createSourceRegistry({
       provider: provider(),
       remote: {
@@ -271,8 +279,13 @@ describe("接到源表上", () => {
     await flush();
     streamSockets()[0]!.open();
 
+    // 手动计时：退避与重连的计时器都进这张表、永远不到点。上线之后不跑任何
+    // 计时器就重连上了，说明是 `sourceOnline` 立刻叫醒的，不是退避等到的。
+    const timers: { ms: number }[] = [];
     const events = connection.socket("/api/workspaces/w/events", {
       environment: null,
+      setTimeout: (_run, ms) => timers.push({ ms }),
+      clearTimeout: () => undefined,
     });
     await flush();
     const first = sourceSockets()[0]!;
@@ -283,20 +296,16 @@ describe("接到源表上", () => {
     expect(events.state).toBe("waiting");
     expect(connection.status.state).toBe("waitingForSource");
 
-    const started = Date.now();
+    const scheduled = timers.length;
     streamSockets()[0]!.push({
       type: "sourceOnline",
       sourceId: SOURCE,
-      sinceMs: started,
+      sinceMs: 1,
       relayOrigin: ISSUER,
     });
-    await vi.waitFor(
-      () => {
-        expect(sourceSockets()).toHaveLength(2);
-      },
-      { timeout: 1_000, interval: 5 },
-    );
-    expect(Date.now() - started).toBeLessThan(1_000);
+    await settle(() => sourceSockets().length === 2);
+    expect(sourceSockets()).toHaveLength(2);
+    expect(timers.length).toBe(scheduled);
     expect(connection.status.state).toBe("ready");
     sourceSockets()[1]!.open();
     expect(events.state).toBe("open");
