@@ -28,10 +28,13 @@ import {
   browserSessionStorage,
   clearGuestRecords,
   createSessionRelayVault,
+  guestAcceptedBy,
   guestKey,
   guestKeys,
+  usableBy,
 } from "./relay-vault";
 import { type RelayedStatus, createRelayedEntry } from "./relayed-entry";
+import { setRelayedPage } from "./relayed-page";
 import type { createRemoteStream } from "./remote-stream";
 import type { enterRoute } from "./route-entry";
 import { type CredentialProvider, SOURCE_ERROR, SourceError } from "./types";
@@ -43,12 +46,16 @@ export {
   type SessionVaultOptions,
   GUEST_KEY_PREFIX,
   HOSTED_RESUME_KEY,
+  clearAccountGuestRecords,
   clearGuestRecords,
   createMemoryRelayVault,
   createSessionRelayVault,
   guestKey,
   guestKeys,
+  guestAcceptedBy,
+  guestLinkFor,
   hasGuestRecord,
+  usableBy,
 } from "./relay-vault";
 export { RELAY_DOWN_AFTER_MS } from "./relayed-entry";
 /**
@@ -108,11 +115,14 @@ export async function detectRelayHost(
 
 /** 刷新之后续的结果：进了主机、登录还在但进不去（给目录与原因）、或要重新登录。 */
 export type HostedResume =
-  | { readonly kind: "entered" }
+  /** 进了 `sourceId` 那台（访客落地页据此把地址换成 `/h/<sourceId>`）。 */
+  | { readonly kind: "entered"; readonly sourceId: string }
   | {
       readonly kind: "signedIn";
       readonly hosts: CloudSource[];
       readonly failure: HostedFailure;
+      /** 原错误（限流时带 Retry-After）。 */
+      readonly error?: unknown;
     }
   | null;
 
@@ -120,7 +130,25 @@ export type HostedResume =
  * 只续一条链接的结果：{@link HostedResume} 之外多一种「这条记录没有了」（没有、过期、被收回）——
  * 与 `null`（连不上中继，记录还留着）分开，落地页据此决定是保留「打开」还是回到「加入」。
  */
-export type LinkResume = HostedResume | { readonly kind: "gone" };
+export type LinkResume =
+  | HostedResume
+  | { readonly kind: "gone" }
+  /** 暂时进不去（连不上、限流、5xx、答复不对）：记录留着，`error` 是原因（限流带 Retry-After）。 */
+  | { readonly kind: "unavailable"; readonly error: unknown };
+
+/**
+ * 远程服务明确拒绝了这份记录（刷新令牌失效、列目录答 401、主机撤销、访问收回）：只有这几种才作废
+ * 记录。列目录答 403 不算——云端放开访客的 `me.sources` 之前访客调它就是 403，只当暂时打不开。
+ */
+function rejectsRecord(error: unknown): boolean {
+  const code = (error as { code?: unknown } | null)?.code;
+  if (error instanceof CloudError && error.status === 401) return true;
+  return (
+    code === SOURCE_ERROR.unauthorized ||
+    code === SOURCE_ERROR.revoked ||
+    code === SOURCE_ERROR.accessRevoked
+  );
+}
 
 /* --------------------------------- 状态 ---------------------------------- */
 
@@ -149,10 +177,11 @@ export function hostedFailureOf(error: unknown): HostedFailure {
   if (error instanceof CloudError) {
     if (code === "credentials_invalid") return "credentials";
     if (code === "account_locked") return "locked";
-    if (code === "rate_limited") return "rateLimited";
     if (code === "challenge_invalid" || code === "challenge_required")
       return "challengeInvalid";
   }
+  // 经中继登录（`relay-access.ts`）把限流原码带成 `SourceError`，远程服务直答的是 `CloudError`。
+  if (code === "rate_limited") return "rateLimited";
   if (code === SOURCE_ERROR.offline) return "offline";
   if (code === "cloud_account_unlinked" || code === "cloud_not_registered")
     return "unlinked";
@@ -213,6 +242,7 @@ export interface HostedRelay {
    * {@link enter} 装成本机源。答加入的源。失败抛（远程服务的拒绝是 `CloudError`）。
    * `accepted`：调用方已经（带着云会话）接受过链接，直接用这份结果，不再匿名接受
    * （云端控制台的 SaaS 落地页，`cloud/auth/LinkPage.tsx`）。
+   * `acceptedBy`：带着哪个控制台账号接受的（匿名 `""`），记进访客记录（§2.8）。
    */
   join(
     link: {
@@ -223,6 +253,7 @@ export interface HostedRelay {
       readonly identityFp?: string;
     },
     accepted?: CloudAccept,
+    acceptedBy?: string,
   ): Promise<string>;
   /**
    * 刷新页面之后：用记下的刷新令牌静默续上远程服务，再进上次那台主机。没有
@@ -234,13 +265,15 @@ export interface HostedRelay {
    * 也不退回账号记录。没进去时页面一律退回账号身份：记录没有 / 被收回答 `{ kind: "gone" }`
    * （作废那份记录）；连不上中继答 `null`、进主机失败答 `signedIn`，两者记录都留着。
    */
-  resumeLink(linkId: string): Promise<LinkResume>;
+  resumeLink(linkId: string, accountId?: string | null): Promise<LinkResume>;
   /** 这个页面是不是以访客身份（分享链接）进来的；是就给那份分享，否则 `null`。 */
   guest(): GuestShare | null;
   readonly status: HostedStatus;
   subscribe(listener: () => void): () => void;
   /** 登出远程服务并丢掉全部凭据（内存与 `sessionStorage`）。 */
   signOut(): Promise<void>;
+  /** 卸下主机（关流、卸路由），记下的会话与访客记录留着（刷新、重进还能续）。 */
+  close(): void;
   dispose(): void;
 }
 
@@ -273,11 +306,18 @@ export function createHostedRelay(options: HostedRelayOptions): HostedRelay {
     share: () => backing.share(),
     clear: () => backing.clear(),
   };
-  const switchToGuest = (key: string, expiresAtMs?: number) => {
+  const switchToGuest = (
+    key: string,
+    expiresAtMs?: number,
+    acceptedBy?: string,
+    fresh = false,
+  ) => {
     backing = createSessionRelayVault(issuer, guestStorage, {
       key,
       now,
+      ...(fresh ? { fresh } : {}),
       ...(expiresAtMs === undefined ? {} : { expiresAtMs }),
+      ...(acceptedBy === undefined ? {} : { acceptedBy }),
     });
     guest = true;
     return backing;
@@ -356,9 +396,11 @@ export function createHostedRelay(options: HostedRelayOptions): HostedRelay {
   /**
    * 用背后保管处记下的东西续上：进了上次那台（或给目录与原因）；这份记录
    * 没用了（没记、令牌被拒、那台不在目录里了）答 `undefined`，由调用方换下一份；
-   * 连不上中继答 `null`（不丢记录，回登录页）。
+   * 暂时进不去（连不上、限流、5xx）答 `null`，原因记在 `unavailable`（不丢记录，回登录页）。
    */
+  let unavailable: unknown = null;
   const resumeWith = async (): Promise<HostedResume | undefined> => {
+    unavailable = null;
     const last = vault.entered();
     if (last === null) return undefined;
     let listed: CloudSource[];
@@ -369,11 +411,14 @@ export function createHostedRelay(options: HostedRelayOptions): HostedRelay {
         options.cloud,
       );
     } catch (error) {
-      const failure = hostedFailureOf(error);
-      // 刷新令牌被拒（已从保管处忘掉）：重新登录。连不上：也只能先登录页。
-      if (failure === "unreachable") return null;
-      vault.clear();
-      return undefined;
+      // 明确被拒（刷新令牌失效已从保管处忘掉、主机撤销、访问收回）：这份记录作废。
+      if (rejectsRecord(error)) {
+        vault.clear();
+        return undefined;
+      }
+      // 其余是暂时的（连不上、限流、5xx、答复不对）：记录留着，回登录页 / 稍后再试。
+      unavailable = error;
+      return null;
     }
     directory = guest ? [] : listed;
     const row = listed.find((item) => item.sourceId === last.sourceId);
@@ -384,18 +429,18 @@ export function createHostedRelay(options: HostedRelayOptions): HostedRelay {
     }
     try {
       await hosted.enter(row);
-      return { kind: "entered" };
+      return { kind: "entered", sourceId: row.sourceId };
     } catch (error) {
       const failure = hostedFailureOf(error);
       if (guest && failure === "revoked") return undefined;
-      return { kind: "signedIn", hosts: listed, failure };
+      return { kind: "signedIn", hosts: listed, failure, error };
     }
   };
 
   const hosted: HostedRelay = {
     issuer,
     provider,
-    async join(link, acceptedAlready) {
+    async join(link, acceptedAlready, acceptedBy) {
       // 控制台页面自己带会话接受（让云端记到账号上、过「要登录」的设置），接受的结果传进来；
       // 其余（个人中转的落地页）在这里匿名接受。
       const accepted =
@@ -422,7 +467,14 @@ export function createHostedRelay(options: HostedRelayOptions): HostedRelay {
           : guestSession.expiresAtMs > now()
             ? guestSession.expiresAtMs
             : now() + GUEST_FALLBACK_MS;
-      switchToGuest(guestKey(issuer, link.linkId), expiresAtMs);
+      // 谁接受的：这里匿名接受是 `""`；调用方带着会话接受的，由它说是哪个账号。
+      switchToGuest(
+        guestKey(issuer, link.linkId),
+        expiresAtMs,
+        acceptedAlready === undefined ? "" : acceptedBy,
+        // 新加入：同一条链接的旧记录（可能是别的账号接受的）不沿用，接受者核对不出就是来源不明。
+        true,
+      );
       try {
         await vault.saveCloudRefreshToken(issuer, guestSession.refreshToken);
         cloudSessions.adopt(
@@ -523,9 +575,12 @@ export function createHostedRelay(options: HostedRelayOptions): HostedRelay {
       switchToAccount();
       return (await resumeWith()) ?? null;
     },
-    async resumeLink(linkId) {
+    async resumeLink(linkId, accountId) {
       const key = guestKey(issuer, linkId);
-      if (!guestKeys(guestStorage, issuer, now()).includes(key))
+      const by = guestAcceptedBy(guestStorage, issuer, linkId, now());
+      if (by === null) return { kind: "gone" };
+      // 这位不能用这份（别的账号接受的、来源不明）：当作没有，记录不动。
+      if (accountId !== undefined && !usableBy(by, accountId))
         return { kind: "gone" };
       switchToGuest(key);
       const resumed = await resumeWith();
@@ -533,7 +588,10 @@ export function createHostedRelay(options: HostedRelayOptions): HostedRelay {
       // 没进去（连不上中继、进主机失败、记录作废）：页面不能停在访客身份上。
       if (resumed === undefined) vault.clear();
       switchToAccount();
-      return resumed === undefined ? { kind: "gone" } : resumed;
+      if (resumed === undefined) return { kind: "gone" };
+      return resumed === null
+        ? { kind: "unavailable", error: unavailable }
+        : resumed;
     },
     guest: () => (guest ? vault.share() : null),
     get status() {
@@ -545,9 +603,13 @@ export function createHostedRelay(options: HostedRelayOptions): HostedRelay {
       if (token !== null) await cloudLogout(issuer, token, options.cloud);
       this.dispose();
     },
+    close() {
+      directory = [];
+      entry.close();
+    },
     dispose() {
       directory = [];
-      entry.dispose();
+      entry.signOut();
     },
   };
   return hosted;
@@ -566,12 +628,14 @@ export function startHostedRelay(host: RelayHost): HostedRelay {
   active?.dispose();
   active = createHostedRelay({
     issuer: host.issuer,
-    e2e: e2eChannels(() => browserDevice().name),
+    e2e: e2eChannels(),
   });
+  setRelayedPage(active);
   return active;
 }
 
 /** 测试换掉页面那一个。 */
 export function resetHostedRelay(next: HostedRelay | null = null): void {
   active = next;
+  setRelayedPage(next);
 }

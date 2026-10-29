@@ -1,6 +1,6 @@
 import {
   cloudBindInputSchema,
-  cloudBindOutputSchema,
+  cloudBindOutputSchema as protocolCloudBindOutputSchema,
   cloudLoginInputSchema,
   cloudLoginOutputSchema as protocolCloudLoginOutputSchema,
   cloudRegisterInputSchema,
@@ -16,6 +16,14 @@ import { z } from "zod";
 
 import { errors } from "./errors.js";
 import { meta, oc } from "./meta.js";
+
+/**
+ * `identity.cloud.bind` 的出参：协议包的形状加可选的 `replaced`（契约 §88.5）——这次绑定
+ * 替换了云端准入自动建的成员时为 `true`。
+ */
+export const cloudBindOutputSchema = protocolCloudBindOutputSchema.extend({
+  replaced: z.literal(true).optional(),
+});
 
 /**
  * `identity.cloud.*`（契约 §31）：本机 core 登记到远程服务（个人中转；SaaS 只留

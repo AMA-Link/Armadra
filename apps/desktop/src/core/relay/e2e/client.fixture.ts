@@ -37,6 +37,8 @@ export interface E2eClientOptions {
   readonly seed?: Uint8Array;
   readonly pinned?: Uint8Array | null;
   readonly name?: string;
+  /** 握手里自报的平台；缺省 `browser`。 */
+  readonly platform?: string;
   readonly proofSecret?: Uint8Array;
   /** 外层流的客户端来源（中继给 OPEN 的那个）。 */
   readonly clientOrigin?: string | null;
@@ -153,7 +155,7 @@ export class E2eTestClient {
       (await ed25519SignerFromSeed(options.seed ?? new Uint8Array(32).fill(7)));
     const { m3, session } = await handshake.finish({
       device,
-      platform: "browser",
+      platform: (options.platform ?? "browser") as "browser",
       name: options.name ?? "Test Browser",
       ...(options.proofSecret === undefined
         ? {}

@@ -6,6 +6,7 @@ import {
   ME_STREAM_PING_MS,
   type RemoteStreamOptions,
   applyMeStreamEvent,
+  type MeStreamEvent,
   attachRemoteStreams,
   createRemoteStream,
   meStreamUrl,
@@ -225,6 +226,29 @@ describe("一条事件流", () => {
     stream.close();
     expect(stream.state).toBe("closed");
   });
+
+  it("注入换票（Cookie 会话）：不碰 Bearer；4401 后直接再换一张", async () => {
+    let issued = 0;
+    const ticket = vi.fn(async () => `cookie-${(issued += 1)}`);
+    const stream = createRemoteStream({
+      issuer: ISSUER,
+      ticket,
+      onEvent: () => undefined,
+      socket: socketOptions,
+      setInterval: () => 0,
+      clearInterval: () => undefined,
+    });
+    await flush();
+    const first = streamSockets()[0]!;
+    expect(first.protocols).toEqual([`${WS_TICKET_PROTOCOL}cookie-1`]);
+    first.open();
+    first.drop(CLOSE_EXPIRED);
+    await flush();
+    expect(streamSockets()[1]!.protocols).toEqual([
+      `${WS_TICKET_PROTOCOL}cookie-2`,
+    ]);
+    stream.close();
+  });
 });
 
 describe("接到源表上", () => {
@@ -363,5 +387,170 @@ describe("接到源表上", () => {
     applyMeStreamEvent({ type: "sourceOnline", sourceId: SOURCE }, ready);
     expect(ready.connect).not.toHaveBeenCalled();
     expect(ready.revoke).not.toHaveBeenCalled();
+  });
+});
+
+describe("授予与成员事件 → 去抖重登（契约 §88.2）", () => {
+  const TEAM = "team-1";
+  const setup = (
+    relogin: (sourceId: string) => Promise<void>,
+    accountId?: string,
+  ) => {
+    // 全部确定：假的 fetch / WebSocket，去抖器用手动计时器，不碰真实时间。
+    const registry = createSourceRegistry({
+      provider: provider(),
+      remote: {
+        fetch: fakeFetch,
+        WebSocket: FakeSocket as unknown as typeof WebSocket,
+        environment: null,
+      },
+    });
+    const timers: (() => void)[] = [];
+    const b = registry.add({ ...relayed(SOURCE), teamId: TEAM });
+    const c = registry.add(relayed(OTHER));
+    const auth = cloudAuth();
+    const lookups = vi.fn(async () => accountId ?? "");
+    const emit: { onEvent?: (event: MeStreamEvent) => void } = {};
+    const detach = attachRemoteStreams(registry, {
+      auth: accountId === undefined ? auth : { ...auth, accountId: lookups },
+      relogin,
+      scheduler: {
+        delayMs: 0,
+        gapMs: 0,
+        setTimeout: (run) => timers.push(run),
+        clearTimeout: () => {},
+      },
+      createStream: (options) => {
+        emit.onEvent = options.onEvent;
+        return { issuer: options.issuer, state: "open", close: () => {} };
+      },
+    });
+    return {
+      registry,
+      b,
+      c,
+      lookups,
+      push: (event: unknown) =>
+        emit.onEvent!(parseMeStreamEvent(JSON.stringify(event))!),
+      /** 排空微任务、跑到点的去抖计时器，直到没有新的事可做。 */
+      async settle() {
+        for (let round = 0; round < 20; round += 1) {
+          for (let i = 0; i < 10; i += 1) await Promise.resolve();
+          const due = timers.splice(0);
+          if (due.length === 0 && round > 2) return;
+          for (const run of due) run();
+        }
+      },
+      dispose() {
+        detach();
+        registry.dispose();
+      },
+    };
+  };
+
+  it("grantChanged：那台去抖后重登，成功后续一次手里的访问；别的签发方不认", async () => {
+    const relogin = vi.fn(async () => undefined);
+    const world = setup(relogin);
+    await world.b.connect();
+    const renew = vi.spyOn(world.b, "renew");
+    for (let i = 0; i < 5; i += 1)
+      world.push({ type: "grantChanged", sourceId: SOURCE, atMs: i });
+    world.push({ type: "grantChanged", sourceId: "d".repeat(32), atMs: 1 });
+    await world.settle();
+    expect(relogin.mock.calls).toEqual([[SOURCE]]);
+    expect(renew).toHaveBeenCalledTimes(1);
+    world.dispose();
+  });
+
+  it("memberChanged：是自己的账号才重登同团队的那几台；别人的、没带账号的不认", async () => {
+    const relogin = vi.fn(async () => undefined);
+    const world = setup(relogin, "acct-me");
+    world.push({
+      type: "memberChanged",
+      teamId: TEAM,
+      accountId: "acct-other",
+      change: "roleChanged",
+      atMs: 1,
+    });
+    world.push({
+      type: "memberChanged",
+      teamId: TEAM,
+      change: "added",
+      atMs: 1,
+    });
+    await world.settle();
+    expect(relogin).not.toHaveBeenCalled();
+    world.push({
+      type: "memberChanged",
+      teamId: TEAM,
+      accountId: "acct-me",
+      change: "roleChanged",
+      atMs: 2,
+    });
+    await world.settle();
+    expect(relogin.mock.calls).toEqual([[SOURCE]]);
+    // 账号 id 按签发方缓存。
+    expect(world.lookups).toHaveBeenCalledTimes(1);
+    world.dispose();
+  });
+
+  it("重登被白名单里的拒绝才失权；限流、500、forbidden、bad_request、网络错误不动", async () => {
+    let code: string | undefined = "rate_limited";
+    const relogin = vi.fn(async () => {
+      // 版本门：core 透传 source_access_denied，details 说明是主机太旧（契约 §88.2）。
+      if (code === "hostOutdated")
+        throw Object.assign(new Error("old"), {
+          code: "source_access_denied",
+          body: { details: { reason: "hostOutdated" } },
+        });
+      throw Object.assign(new Error(code ?? "network"), code ? { code } : {});
+    });
+    const world = setup(relogin);
+    await world.b.connect();
+    const socket = world.b.socket("/api/ws", { environment: null });
+    let at = 0;
+    for (const transient of [
+      "hostOutdated",
+      "rate_limited",
+      "internal",
+      "forbidden",
+      "bad_request",
+      undefined,
+    ]) {
+      code = transient;
+      world.push({ type: "grantChanged", sourceId: SOURCE, atMs: (at += 1) });
+      await world.settle();
+      expect(world.b.status.state, String(transient)).toBe("ready");
+      expect(socket.state).not.toBe("closed");
+    }
+    code = "source_access_denied";
+    world.push({ type: "grantChanged", sourceId: SOURCE, atMs: (at += 1) });
+    await world.settle();
+    expect(world.b.status).toMatchObject({
+      state: "unauthorized",
+      lastError: { code: "source_access_denied" },
+    });
+    world.dispose();
+  });
+
+  it("没给 relogin（手机、托管页）：授予事件照旧忽略", async () => {
+    const registry = createSourceRegistry({
+      provider: provider(),
+      remote: { fetch: fakeFetch, environment: null },
+    });
+    registry.add(relayed(SOURCE));
+    let onEvent: ((event: MeStreamEvent) => void) | undefined;
+    const detach = attachRemoteStreams(registry, {
+      auth: cloudAuth(),
+      createStream: (options) => {
+        onEvent = options.onEvent;
+        return { issuer: options.issuer, state: "open", close: () => {} };
+      },
+    });
+    expect(() =>
+      onEvent!({ type: "grantChanged", sourceId: SOURCE }),
+    ).not.toThrow();
+    detach();
+    registry.dispose();
   });
 });

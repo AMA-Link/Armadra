@@ -1,3 +1,6 @@
+// 最先：zod 不用 `new Function`（Trusted Types）。
+import "./lib/zod-config";
+import { installDefaultTrustedTypesPolicy } from "./lib/trusted-types";
 // 本地打包的两款界面字体（设计系统 §2.6），排在一切样式之前：Inter 开光学尺寸轴，
 // Geist Mono 用默认字重轴。只有 @font-face，woff2 由 Vite 打成本地资源。
 import "@fontsource-variable/inter/opsz.css";
@@ -22,6 +25,9 @@ import { ChallengePage, isChallengePath } from "./challenge/ChallengePage";
  * 中继托管的挑战页（`/app/challenge`，契约 §62.2）：只渲染 Turnstile 组件，令牌
  * 交给嵌它的页面；没有画布、没有开屏，也不连任何 core。
  */
+/** 控制台来源要求 Trusted Types：第三方组件直接写的字符串经 `default` 策略，先于任何渲染。 */
+installDefaultTrustedTypesPolicy();
+
 if (isChallengePath(globalThis.location.pathname)) {
   createRoot(document.getElementById("root")!).render(
     <StrictMode>

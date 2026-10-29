@@ -409,8 +409,13 @@ export function setHostedSession(store: HostedSessionStore | null): void {
   hosted = store;
 }
 
-/** 把保管处里的会话读回内存；读到返回 `true`。 */
-export async function restoreHostedCredentials(): Promise<boolean> {
+/**
+ * 把保管处里的会话读回内存；读到返回 `true`。`notify`：会话是在身份面之外换的（授予
+ * 同步的重登），读回后照「轮换」通知订阅者，权限与入口按新会话重读。
+ */
+export async function restoreHostedCredentials(
+  notify = false,
+): Promise<boolean> {
   const stored = await hosted?.load();
   if (stored === undefined) return false;
   tokens.access = stored.accessToken;
@@ -418,6 +423,7 @@ export async function restoreHostedCredentials(): Promise<boolean> {
   tokens.accessExpiresAt = stored.expiresAtMs;
   if (stored.csrfToken !== undefined && SECRET.test(stored.csrfToken))
     csrf = stored.csrfToken;
+  if (notify) announce("rotated");
   return true;
 }
 

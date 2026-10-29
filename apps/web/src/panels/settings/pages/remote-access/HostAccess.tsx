@@ -70,7 +70,7 @@ function HostAccessBody() {
   }, [running, origin, fingerprint, mint]);
 
   // 为开互联网路线先登录的：账号到了就开。
-  const first = internet.shareable[0];
+  const first = internet.startable[0];
   const { mutate: startRoute } = internet.start;
   React.useEffect(() => {
     if (!wantInternet || first === undefined) return;

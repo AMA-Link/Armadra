@@ -4,6 +4,7 @@ import {
   type SourceAccess,
   type SourceDescriptor,
   SourceError,
+  failureOf,
   type SourceRoute,
   type Via,
 } from "./types";
@@ -214,10 +215,9 @@ export async function pickRoute(
     return await relayed;
   } catch (cause) {
     if (cause instanceof SourceError) throw cause;
+    // 码按 failureOf 认：版本门（§88.2）的 `details` 在这里换成页面的码，不被丢掉。
     throw new SourceError(
-      typeof (cause as { code?: unknown })?.code === "string"
-        ? (cause as { code: string }).code
-        : SOURCE_ERROR.unreachable,
+      failureOf(cause, SOURCE_ERROR.unreachable).code,
       cause instanceof Error ? cause.message : "relay unreachable",
       { cause },
     );

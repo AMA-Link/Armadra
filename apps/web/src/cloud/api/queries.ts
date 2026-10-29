@@ -40,6 +40,7 @@ export function useConsoleSession({ enabled = true } = {}) {
   let session: ConsoleSession | null = null;
   if (me.data && spaces.data) {
     session = {
+      accountId: me.data.accountId,
       user: {
         name: me.data.displayName,
         email: me.data.email ?? "",

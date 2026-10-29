@@ -152,6 +152,11 @@ export interface CloudAuth {
   access(issuer: string): Promise<string>;
   /** 手里那枚被拒了：丢掉缓存。 */
   invalidate(issuer: string): void;
+  /**
+   * 这个签发方上自己的账号 id（`me.get`）：认 `memberChanged` 是不是自己（契约 §88.2）。
+   * 不给 = 不认成员事件。
+   */
+  accountId?(issuer: string): Promise<string>;
 }
 
 /** 源层自己的失败码（界面按码取文案）。 */
@@ -168,6 +173,11 @@ export const SOURCE_ERROR = {
   revoked: "source_revoked",
   /** 这个账号对这个源的访问被收回（`accessRevoked`、断言答 `source_access_denied`）。 */
   accessRevoked: "source_access_denied",
+  /**
+   * 那台主机的 core 太旧，控制面不签它的断言（契约 §88.2：`source_access_denied` 带
+   * `details.reason = hostOutdated`）。页面自己的码：不收回访问、不提示重新登录。
+   */
+  hostOutdated: "source_host_outdated",
   /** 端到端通道里这台电脑的身份公钥与钉住的不同（契约 §78）：要人在设置里「忘记」。 */
   identityChanged: "identity_changed",
   /** 这台电脑的主人拒绝或撤销了这台设备（契约 §77）。 */
@@ -194,7 +204,20 @@ export function failureOf(
   fallback: string = SOURCE_ERROR.unreachable,
 ): SourceFailure {
   if (error && typeof error === "object") {
-    const { code, message } = error as { code?: unknown; message?: unknown };
+    const { code, message, body } = error as {
+      code?: unknown;
+      message?: unknown;
+      body?: unknown;
+    };
+    // 版本门（契约 §88.2）：core 原样透传 `source_access_denied`，`details.reason` 说明是
+    // 主机版本过旧——不是访问被收回，不收回、不提示重新登录。
+    const reason = (body as { details?: { reason?: unknown } } | undefined)
+      ?.details?.reason;
+    if (code === SOURCE_ERROR.accessRevoked && reason === "hostOutdated")
+      return {
+        code: SOURCE_ERROR.hostOutdated,
+        message: typeof message === "string" ? message : "",
+      };
     return {
       code: typeof code === "string" && code !== "" ? code : fallback,
       message: typeof message === "string" ? message : "",

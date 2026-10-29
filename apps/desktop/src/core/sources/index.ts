@@ -14,6 +14,7 @@ import { hostname } from "node:os";
 
 import { contract } from "@armadra/shared";
 
+import { connectGrantsOf, providePageConnectGrants } from "../gateway/csp";
 import { AccountsService } from "../identity/accounts";
 import { cloudDomain, cloudProvider } from "../identity/cloud";
 import { currentSubject, requestIdentity } from "../identity/gate";
@@ -213,6 +214,11 @@ export function install(
   });
   service.ensureLocal();
   assembled = service;
+  // 服务器壳的页面按源表放行要直接连的来源（契约 §88.1）：Gateway 每次发页面时现读。
+  // 直连源的地址只给带 owner 会话的请求。
+  providePageConnectGrants((owner) =>
+    connectGrantsOf(service.pageConnectOrigins(owner)),
+  );
   // 云登录域撤销登记时删中继侧的源记录要远程服务的会话，会话在这一域：挂过去
   // （契约 §31.4）。身份域在 DOMAINS 里排在前面，这里已经装好。
   cloudDomain()?.attachRelayCleaner((issuer, sourceId) =>
@@ -278,7 +284,13 @@ export function install(
     update: (input) => service.update(input),
     remove: (input) => service.remove(input.sourceId),
     forget: (input) => service.forget(input.sourceId),
-    session: (input) => service.session(input.sourceId, input.via, input.route),
+    session: (input) =>
+      service.session(
+        input.sourceId,
+        input.via,
+        input.route,
+        input.relogin === true,
+      ),
     routePrefer: (input) => service.routePrefer(input),
     routeRemove: (input) => service.routeRemove(input),
     remoteAdd: (input) => service.remoteAdd(input),

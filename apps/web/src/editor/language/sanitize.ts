@@ -55,18 +55,73 @@ const ALLOWED_ATTRIBUTES = new Set(["class", "href", "title", "start"]);
 /** 只允许这几种 URL 协议；`javascript:` 与 `data:` 一律去掉。 */
 const SAFE_SCHEME = /^(https?:|mailto:|armadra:|#|\/)/i;
 
-export function sanitizeHTML(html: string): string {
-  if (typeof DOMParser === "undefined") return stripTags(html);
-  const document_ = new DOMParser().parseFromString(
-    `<body>${html}</body>`,
-    "text/html",
-  );
-  clean(document_.body);
-  return document_.body.innerHTML;
+/**
+ * 只给这里的 `DOMParser` 用的 Trusted Types 策略（`armadra-sanitize`）：解析进惰性文档，
+ * 不执行脚本、不发请求，出来的只有白名单里的标签。不导出——别处拿它绕过净化就失去意义。
+ */
+interface InertPolicy {
+  createHTML(input: string): unknown;
+}
+let inert: InertPolicy | null | undefined;
+function inertHTML(html: string): string {
+  if (inert === undefined) {
+    const factory = (
+      globalThis as {
+        trustedTypes?: {
+          createPolicy(
+            name: string,
+            rules: { createHTML: (input: string) => string },
+          ): InertPolicy;
+        };
+      }
+    ).trustedTypes;
+    try {
+      inert =
+        factory?.createPolicy("armadra-sanitize", {
+          createHTML: (input) => input,
+        }) ?? null;
+    } catch {
+      inert = null;
+    }
+  }
+  return (inert === null ? html : inert.createHTML(html)) as string;
 }
 
-function clean(node: Element): void {
+/** 嵌套超过这么深就不再逐层看：整段压成纯文本（不原样放过）。 */
+export const MAX_SANITIZE_DEPTH = 32;
+
+export function sanitizeHTML(html: string): string {
+  if (typeof DOMParser === "undefined") return stripTags(html);
+  try {
+    const document_ = new DOMParser().parseFromString(
+      inertHTML(`<body>${html}</body>`),
+      "text/html",
+    );
+    clean(document_.body, 0);
+    return document_.body.innerHTML;
+  } catch {
+    // 解析或清洗出了意外：退回纯文本，宁可丢掉排版也不放过标记。
+    return escapeText(stripTags(html));
+  }
+}
+
+function escapeText(text: string): string {
+  // 数字字符引用：`& < > " '` 都转成 `&#NN;`。
+  return text.replace(
+    /[&<>\u0022\u0027]/g,
+    (char) => `&#${char.charCodeAt(0)};`,
+  );
+}
+
+function clean(node: Element, depth: number): void {
   for (const child of [...node.children]) {
+    if (depth >= MAX_SANITIZE_DEPTH) {
+      // 太深：这一层以下只留文字（文本节点造不出元素与事件）。
+      child.replaceWith(
+        child.ownerDocument.createTextNode(child.textContent ?? ""),
+      );
+      continue;
+    }
     if (!ALLOWED_TAGS.has(child.tagName)) {
       // 元素本身不要，里面的文字要。`<script>` 是唯一整块丢掉的：它的
       // 「文字」就是代码。
@@ -88,7 +143,7 @@ function clean(node: Element): void {
         child.removeAttribute(attribute.name);
       }
     }
-    clean(child);
+    clean(child, depth + 1);
   }
 }
 

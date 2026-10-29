@@ -4,6 +4,7 @@ import {
   clearJoinOpen,
   onJoinIntent,
   pendingJoinOpen,
+  pendingWorkspaceOpen,
 } from "../sources/join-intent";
 import {
   useSessionShare,
@@ -42,7 +43,13 @@ function OpenJoined({
 }) {
   const workspaces = useWorkspaces();
   const openWorkspace = useOpenWorkspace();
-  const found = workspaces.data.find((one) => one.sourceId === sourceId);
+  const [wanted] = React.useState(pendingWorkspaceOpen);
+  const found =
+    (wanted === null
+      ? undefined
+      : workspaces.data.find(
+          (one) => one.sourceId === sourceId && one.workspace.id === wanted,
+        )) ?? workspaces.data.find((one) => one.sourceId === sourceId);
   const share = useSessionShare(sourceId);
   const openShared = useSharedSessionView((state) => state.open);
   const shared = share?.sessionOnly === true ? share.sessions[0] : undefined;

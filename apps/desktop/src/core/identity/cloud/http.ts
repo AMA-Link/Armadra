@@ -11,7 +11,9 @@
  * 会话发 `HttpOnly` Cookie，体里只有 CSRF。
  */
 
-import type { ServerResponse } from "node:http";
+import type { IncomingMessage, ServerResponse } from "node:http";
+import { Socket, isIP } from "node:net";
+import { TLSSocket } from "node:tls";
 
 import {
   cloudBindInputSchema,
@@ -24,10 +26,12 @@ import { cloudLoginProbeInputSchema } from "@armadra/shared";
 
 import { CoreFailure, fail } from "../../http/errors";
 import { channelPeerOf } from "../../relay/e2e/peer";
+import { TunnelDuplex } from "../../relay/streams";
 import type { CoreRequest } from "../../http/router";
 import type { Authorizer } from "../authorize";
 import { IdentityError, IdentityRefusal } from "../errors";
 import { runAs } from "../gate";
+import { viaGateway } from "../http";
 import {
   credential,
   csrfRequired,
@@ -332,6 +336,9 @@ export class CloudHttp {
         return cloud.bind(
           principal.principalId,
           parse(cloudBindInputSchema, body(request)).assertion,
+          {
+            local: localRequest(request.raw, principal.channelDeviceId ?? ""),
+          },
         );
       }
       let issuer = "";
@@ -360,4 +367,42 @@ export class CloudHttp {
     });
     response.end(bytes);
   }
+}
+
+/**
+ * 本机的本地会话（契约 §88.5）：回环页面、服务器壳 CLI、桌面壳。全部成立才算：
+ *
+ * - 拿得到请求与它的连接（拿不到一律判非本地）；
+ * - 不是 Gateway 转交的（服务器壳网页、局域网设备，见 `markGatewayRequest`）；
+ * - 连接不是 TLS、不是中继隧道流、不是端到端通道；
+ * - 对端是回环地址，或是 unix socket（私有通道）；
+ * - 会话不绑通道设备钥。
+ *
+ * 只看对端地址不够：反代转发到本机也是 127.0.0.1，所以 Gateway 标记与 TLS 先排除。
+ */
+export function localRequest(
+  raw: IncomingMessage | undefined,
+  channelDeviceId: string,
+): boolean {
+  if (raw === undefined || channelDeviceId !== "" || viaGateway(raw)) {
+    return false;
+  }
+  const socket: unknown = raw.socket;
+  if (
+    !(socket instanceof Socket) ||
+    socket instanceof TLSSocket ||
+    socket instanceof TunnelDuplex ||
+    channelPeerOf(socket) !== undefined
+  ) {
+    return false;
+  }
+  const address = socket.remoteAddress;
+  // unix socket 没有对端地址（私有通道）；TCP 只认回环。
+  if (address === undefined) return socket.remoteFamily === undefined;
+  return isIP(address) !== 0 && loopbackAddress(address);
+}
+
+function loopbackAddress(address: string): boolean {
+  const plain = address.startsWith("::ffff:") ? address.slice(7) : address;
+  return plain === "::1" || /^127\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(plain);
 }

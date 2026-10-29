@@ -254,6 +254,7 @@ const BODIES: Record<Locale, Record<BodyKey, string>> = {
     resources: "资源用量超过了阈值",
     comment: "有人在评论里提到了你",
     workflowGate: "工作流在等待确认",
+    deviceEndorsed: "有设备经背书获得了信任",
     test: "推送已连通",
   },
   en: {
@@ -268,6 +269,7 @@ const BODIES: Record<Locale, Record<BodyKey, string>> = {
     resources: "A resource threshold was crossed",
     comment: "You were mentioned in a comment",
     workflowGate: "A workflow is waiting at a gate",
+    deviceEndorsed: "A device was approved by endorsement",
     test: "Push notifications are working",
   },
 };

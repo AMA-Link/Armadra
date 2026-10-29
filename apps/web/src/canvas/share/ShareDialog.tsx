@@ -120,7 +120,7 @@ function ShareBody({
   );
 
   // 为开路线先登录的：账号到了就开。
-  const first = internet.shareable[0];
+  const first = internet.startable[0];
   const { mutate: startRoute } = internet.start;
   const [wantRoute, setWantRoute] = React.useState(false);
   React.useEffect(() => {

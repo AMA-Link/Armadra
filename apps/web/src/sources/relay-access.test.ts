@@ -184,6 +184,75 @@ describe("经中继取访问", () => {
     });
   });
 
+  it("relogin：会话还新也不轮换，直接用新断言 cloud/login 带当前刷新令牌（授予同步）", async () => {
+    const vault = await vaultWithCloud();
+    await vault.saveSession(SOURCE, ISSUER, {
+      accessToken: "fresh",
+      refreshToken: "core-r",
+      expiresAtMs: NOW + 900_000,
+    });
+    const net = routedFetch({
+      "POST /v1/auth/refresh": () => ({
+        body: cloudSession("cloud-a", "cloud-r2"),
+      }),
+      [`POST /v1/sources/${SOURCE}/assertion`]: () => ({
+        body: assertion({ assertion: "jws.regrant" }),
+      }),
+      [`POST /s/${SOURCE}/api/identity/cloud/login`]: () => ({
+        body: coreLogin("core-b", "core-r2", "d".repeat(43)),
+      }),
+    });
+    const relay = createRelayedAccess({
+      vault,
+      device,
+      cloud: { fetch: net.fetch },
+      e2e: plainE2e(net.fetch),
+      now: () => NOW,
+    });
+    // 不重登：手里那份还新，原样用。
+    expect((await relay.access(ISSUER, SOURCE, false)).accessToken).toBe(
+      "fresh",
+    );
+    expect((await relay.access(ISSUER, SOURCE, false, true)).accessToken).toBe(
+      "core-b",
+    );
+    expect(net.calls.some((call) => call.key.endsWith("session/refresh"))).toBe(
+      false,
+    );
+    const login = net.calls.find((call) => call.key.endsWith("cloud/login"))!;
+    expect(JSON.parse(String(login.init.body))).toMatchObject({
+      assertion: "jws.regrant",
+      refreshToken: "core-r",
+    });
+  });
+
+  it("团队停用与限流：原码带到源层，不并进「凭据被拒」", async () => {
+    for (const [route, code, status] of [
+      [`POST /v1/sources/${SOURCE}/assertion`, "team_suspended", 403],
+      [`POST /s/${SOURCE}/api/identity/cloud/login`, "team_suspended", 403],
+      [`POST /s/${SOURCE}/api/identity/cloud/login`, "rate_limited", 429],
+    ] as const) {
+      const vault = await vaultWithCloud();
+      const net = routedFetch({
+        "POST /v1/auth/refresh": () => ({
+          body: cloudSession("cloud-a", "cloud-r2"),
+        }),
+        [`POST /v1/sources/${SOURCE}/assertion`]: () => ({ body: assertion() }),
+        [route]: () => ({ status, body: { code, message: "" } }),
+      });
+      const relay = createRelayedAccess({
+        vault,
+        device,
+        cloud: { fetch: net.fetch },
+        e2e: plainE2e(net.fetch),
+        now: () => NOW,
+      });
+      await expect(relay.access(ISSUER, SOURCE, false)).rejects.toMatchObject({
+        code,
+      });
+    }
+  });
+
   it("刷新遇到限流或 5xx：原样上抛，不拿新断言去登录（#484）", async () => {
     for (const status of [429, 503]) {
       const vault = await vaultWithCloud();

@@ -18,6 +18,10 @@ import {
   parseCloudAccept,
 } from "../../sources/cloud-client";
 import { hasGuestRecord, startHostedRelay } from "../../sources/hosted";
+import {
+  browserLocalStorage,
+  guestAcceptedBy,
+} from "../../sources/relay-vault";
 import { openAfterJoin } from "../../sources/join-intent";
 import { useCloudApi } from "../api/context";
 import type { InvitationPreview } from "../api/session";
@@ -32,8 +36,9 @@ import { AuthLayout } from "./AuthLayout";
 /** 接受链接用的 Turnstile action（与中继的 `armadra-accept` 对应）。 */
 const TURNSTILE_ACCEPT_ACTION = "armadra-accept";
 
-/** 加入之后页面落在哪（托管页的根，与个人中转的 `JoinPage` 相同）。 */
-const APP_PATH = "/app/";
+/** 加入之后页面落在哪：控制台的 `/h/<主机>`，刷新时它先用这台主机的访客记录续上（设计 saas-host-open §2.8）。 */
+export const hostPath = (sourceId: string): string =>
+  `/h/${encodeURIComponent(sourceId)}`;
 
 const ROLES = new Set(["viewer", "editor", "operator", "driver"]);
 
@@ -55,27 +60,36 @@ type Stage =
   | { kind: "ready"; info: Info }
   | { kind: "failed"; message: string; code?: string };
 
-/** 以访客加入（缺省经页面的托管中继；测试换掉）。 */
+/**
+ * 以访客加入（缺省经页面的托管中继；测试换掉）。`acceptedBy`：带着哪个控制台账号接受的，
+ * 匿名是 `""`——记进访客记录，`/h/` 与「打开」只把它给这位用（设计 saas-host-open §2.8）。
+ * `undefined` = 核对不出是谁（接受前后会话变了）：记录来源不明，谁都不用。
+ */
 export type JoinWithAccept = (
   link: JoinLink,
   accepted: CloudAccept,
+  acceptedBy: string | undefined,
 ) => Promise<string>;
 
-const hostedJoin: JoinWithAccept = (link, accepted) =>
-  startHostedRelay({ issuer: link.issuer }).join(link, accepted);
+const hostedJoin: JoinWithAccept = (link, accepted, acceptedBy) =>
+  startHostedRelay({ issuer: link.issuer }).join(link, accepted, acceptedBy);
 
-/** 「打开」的结果：进去了 / 这条记录没有了（回到「加入」）/ 连不上或进主机失败（记录还在，保留「打开」）。 */
-export type ResumeOutcome = "entered" | "gone" | "failed";
+/** 「打开」的结果：进了哪台 / 这条记录没有了（回到「加入」）/ 连不上或进主机失败（记录还在，保留「打开」）。 */
+export type ResumeOutcome =
+  | { readonly kind: "entered"; readonly sourceId: string }
+  | { readonly kind: "gone" }
+  | { readonly kind: "failed" };
 
-const hostedResume = async (link: JoinLink): Promise<ResumeOutcome> => {
+const hostedResume = async (
+  link: JoinLink,
+  accountId: string | null,
+): Promise<ResumeOutcome> => {
   const resumed = await startHostedRelay({
     issuer: link.issuer,
-  }).resumeLink(link.linkId);
-  return resumed?.kind === "entered"
-    ? "entered"
-    : resumed?.kind === "gone"
-      ? "gone"
-      : "failed";
+  }).resumeLink(link.linkId, accountId);
+  return resumed?.kind === "entered" || resumed?.kind === "gone"
+    ? resumed
+    : { kind: "failed" };
 };
 
 /** 加入失败 → 界面那句：云端的码按控制台文案，中继与 core 那一段按个人中转的文案。 */
@@ -92,7 +106,7 @@ function failureText(failure: unknown, fallback: string): string {
  * 片段由 `PublicPage` 读入内存、从地址栏移除，所以穿过登录再回来也还在；这里只经 POST 交给
  * `links.accept`。团队设置要求登录（`requiresAccount` / `anonymous_links_disabled`）而没有会话，
  * 主按钮是「登录后加入」；其余是「加入」。带着会话接受，云端把使用记到账号上；接受后以访客
- * 经托管中继进画布（`onJoined`）。
+ * 经托管中继进画布（`onJoined`），地址换成 `/h/<主机>`。
  */
 export function LinkPage({
   linkId,
@@ -113,7 +127,8 @@ export function LinkPage({
   onDone: () => void;
   join?: JoinWithAccept;
   /** 用本机留着的访客记录重新进入；结果见 `ResumeOutcome`（缺省经页面的托管中继；测试换掉）。 */
-  resume?: (link: JoinLink) => Promise<ResumeOutcome>;
+  /** `accountId`：此刻的控制台账号（没有会话 `null`），只续这位能用的记录。 */
+  resume?: (link: JoinLink, accountId: string | null) => Promise<ResumeOutcome>;
 }) {
   const t = useT();
   const api = useCloudApi();
@@ -140,10 +155,35 @@ export function LinkPage({
   const [busy, setBusy] = React.useState(false);
   // 接受过一次：重试只重跑加入。`links.accept` 会消耗次数，不能因为中继那一步失败就再接受一遍。
   const accepted = React.useRef<CloudAccept | null>(null);
-  // 这条链接已经加入过（本机留着访客记录）：主按钮是「打开」，续不上再回到「加入」。
+  /** 接受时带的是哪个账号（匿名 `""`，核对不出 `undefined`）。 */
+  const acceptedBy = React.useRef<string | undefined>("");
+  // 这条链接已经加入过、且这位能续上（匿名接受的；或此刻的账号自己接受的）：主按钮是「打开」，
+  // 续不上再回到「加入」。别的账号接受的、来源不明的不算（§2.8）。
   const [joinedBefore, setJoinedBefore] = React.useState(
-    () => link !== null && hasGuestRecord(link.issuer, linkId),
+    () => link !== null && hasGuestRecord(link.issuer, linkId, null),
   );
+  /** 用账号接受的记录时，此刻的账号（「打开」只续这位的）。 */
+  const [viewer, setViewer] = React.useState<string | null>(null);
+  React.useEffect(() => {
+    if (link === null) return;
+    const by = guestAcceptedBy(browserLocalStorage(), link.issuer, linkId);
+    if (typeof by !== "string" || by === "") return;
+    let live = true;
+    void (async () => {
+      const account = (await api.ensureCsrf())
+        ? await api.client.me.get({}).then(
+            (me) => me.accountId,
+            () => null,
+          )
+        : null;
+      if (!live || account === null || account !== by) return;
+      setViewer(account);
+      setJoinedBefore(true);
+    })();
+    return () => {
+      live = false;
+    };
+  }, [api, link, linkId]);
 
   React.useEffect(() => {
     if (link === null) return;
@@ -178,11 +218,18 @@ export function LinkPage({
 
   const needsLogin = needAccount && signedIn !== true;
 
-  const enterDone = () => {
+  /** 此刻 Cookie 会话的账号；问不到 `undefined`。 */
+  const currentAccount = (): Promise<string | undefined> =>
+    api.client.me.get({}).then(
+      (me) => me.accountId,
+      () => undefined,
+    );
+
+  const enterDone = (sourceId: string) => {
     openAfterJoin(LOCAL_SOURCE_ID);
     try {
-      // 与个人中转的落地页一致：换成托管页的根，刷新能续上（`/h/<源>` 的 SaaS 入口还没有）。
-      globalThis.history.replaceState(null, "", APP_PATH);
+      // 换成这台主机的 `/h/`：刷新时它先用访客记录续上，不再回到落地页。
+      globalThis.history.replaceState(null, "", hostPath(sourceId));
     } catch {
       /* 地址栏停在 /j/ 也能用，只是刷新会回到落地页。 */
     }
@@ -194,11 +241,11 @@ export function LinkPage({
     setBusy(true);
     setError("");
     try {
-      const resumed = await resumeJoined(link);
-      if (resumed === "entered") enterDone();
+      const resumed = await resumeJoined(link, viewer);
+      if (resumed.kind === "entered") enterDone(resumed.sourceId);
       else {
         // 记录没有了才回到「加入」；连不上只提示错误，保留「打开」，不引导重新接受（会多耗链接次数）。
-        if (resumed === "gone") setJoinedBefore(false);
+        if (resumed.kind === "gone") setJoinedBefore(false);
         setError(t("links.page.failed"));
       }
     } catch {
@@ -231,6 +278,8 @@ export function LinkPage({
         return;
       }
       if (accepted.current === null) {
+        // 接受前取不到是谁：报错、不接受（接受会耗次数，接受了又记不清是谁）。
+        const before = session ? (await api.client.me.get({})).accountId : "";
         const answer = await api.client.links.accept({
           linkId,
           secret: link.secret,
@@ -246,9 +295,17 @@ export function LinkPage({
           return;
         }
         accepted.current = parseCloudAccept(answer);
+        // 云端按接受那一刻的 Cookie 记账号，答复里没有是谁：接受后再核对一次，前后不是同一位
+        // （别的标签页这时登录、登出或换了账号）就当来源不明。
+        // 接受后问不到（暂时的）：再问一次，还问不到才当来源不明。
+        const after = (await api.ensureCsrf())
+          ? ((await currentAccount()) ?? (await currentAccount()))
+          : "";
+        acceptedBy.current = before === after ? before : undefined;
       }
-      await joinWithAccept(link, accepted.current);
-      enterDone();
+      enterDone(
+        await joinWithAccept(link, accepted.current, acceptedBy.current),
+      );
     } catch (failure) {
       // 挑战令牌一次性：任何一次失败都换新的。
       if (siteKey !== null) {

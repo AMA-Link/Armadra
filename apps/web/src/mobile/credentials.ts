@@ -322,7 +322,7 @@ let shared: MobileCredentialProvider | null = null;
 export function mobileCredentialProvider(): MobileCredentialProvider {
   shared ??= createMobileCredentialProvider({
     bridge: nativeBridge(),
-    e2e: e2eChannels(() => thisDevice().name),
+    e2e: e2eChannels(),
     describe: (sourceId) =>
       loadConnections().find((row) => row.sourceId === sourceId),
   });

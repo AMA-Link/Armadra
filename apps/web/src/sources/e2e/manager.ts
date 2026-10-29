@@ -7,6 +7,8 @@ import {
   relayRefusal,
 } from "@armadra/shared/e2e";
 
+import { isNativeAppPage } from "../../api/runtime-url";
+import { browserDevice, thisDevice } from "../cloud-client";
 import { type DeviceIdentity, deviceIdentity } from "./device-key";
 import { type PairingStore, storagePairings } from "./pairing";
 import { type PinStore, storagePins } from "./pins";
@@ -52,6 +54,8 @@ export class E2eAccessError extends Error {
       | "offline"
       | "cancelled",
     message: string = code,
+    /** `identity_changed`：对端现在出示的身份指纹（知道时），界面给人核对前 16 位。 */
+    readonly fingerprint?: string,
   ) {
     super(message);
     this.name = "E2eAccessError";
@@ -98,6 +102,18 @@ export function markApprovalRejected(sourceId: string): void {
 
 export function dismissPendingApproval(sourceId: string): void {
   publish(approvals.filter((one) => one.sourceId !== sourceId));
+}
+
+/** 待确认对话框按空间加的一行「谁能放行」（控制台 `/h/` 知道主机在哪个空间时给）。 */
+export type ApprovalHint = "team" | "personal";
+const hints = new Map<string, ApprovalHint>();
+
+export function setApprovalHint(sourceId: string, hint: ApprovalHint): void {
+  hints.set(sourceId, hint);
+}
+
+export function approvalHint(sourceId: string): ApprovalHint | null {
+  return hints.get(sourceId) ?? null;
 }
 
 /** 正在等主人核对的设备（`useSyncExternalStore` 用）。 */
@@ -248,20 +264,19 @@ export class E2eChannels {
       if (refusal === "offline") throw new E2eAccessError("offline");
       throw new E2eAccessError("unreachable");
     }
+    const presented = await identityFingerprint(channel.coreIdentity);
     if (
       target.fingerprintPrefix !== undefined &&
-      !(await identityFingerprint(channel.coreIdentity)).startsWith(
-        target.fingerprintPrefix,
-      )
+      !presented.startsWith(target.fingerprintPrefix)
     ) {
       channel.close();
-      throw new E2eAccessError("identity_changed");
+      throw new E2eAccessError("identity_changed", undefined, presented);
     }
     if (pinned === null) {
       this.pins.set(target.issuer, target.sourceId, channel.coreIdentity);
     } else if (!same(pinned, channel.coreIdentity)) {
       channel.close();
-      throw new E2eAccessError("identity_changed");
+      throw new E2eAccessError("identity_changed", undefined, presented);
     }
     if (target.identityPub !== undefined || offer !== null)
       this.pins.set(target.issuer, target.sourceId, channel.coreIdentity);
@@ -368,9 +383,18 @@ export class E2eChannels {
 
 let shared: E2eChannels | null = null;
 
+/**
+ * 这一页在主机上登记的设备名：原生 App 按 iOS / Android；其余页面（控制台 `/h/`、
+ * 中继托管的 `/app/`、分享链接页）按浏览器与系统。与设备钥的平台（`deviceIdentity`）
+ * 同一个判断，由页面定，不由哪个调用方先建通道定。
+ */
+export function pageDeviceName(): string {
+  return isNativeAppPage() ? thisDevice().name : browserDevice().name;
+}
+
 /** 这一页的通道管理（一页一份）。 */
-export function e2eChannels(deviceName: () => string): E2eChannels {
-  shared ??= new E2eChannels({ deviceName });
+export function e2eChannels(): E2eChannels {
+  shared ??= new E2eChannels({ deviceName: pageDeviceName });
   return shared;
 }
 

@@ -36,6 +36,7 @@ import type { E2eSigner } from "@armadra/platform-protocol/e2e";
 import { accessChanged } from "../identity/gate";
 import { type SecretBackend, secretsFor } from "../secrets";
 import { outboundChannels } from "../sources";
+import { pushDomain } from "../push";
 import { createTunnelGate } from "./admission";
 import { E2eChannel } from "./e2e/channel";
 import { DeviceKey } from "./e2e/device-key";
@@ -47,6 +48,7 @@ import {
 import { TrustReporter } from "./e2e/trust-report";
 import { PairingSecrets, ShareLinkStore } from "./e2e/pairing";
 import { setE2eDevices, setE2ePairing } from "./e2e/peer";
+import { EndorsementStore } from "./e2e/endorsements";
 import { installE2eRoutes } from "./e2e/routes";
 import type { TunnelDuplex } from "./streams";
 import { TunnelClient, type TunnelState } from "./client";
@@ -88,6 +90,8 @@ export interface RelayDeps {
   readonly secrets?: () => SecretBackend;
   /** 流量统计（契约 §76）；缺省取装好的统计域，没有就不计。 */
   readonly traffic?: TrafficService | null;
+  /** 背书通知的推送（契约 §81.1）；缺省交给装好的推送域，只发给本机 owner。 */
+  readonly notifyEndorsement?: (recordId: string) => void;
 }
 
 /** 统计域交给隧道的计量：流计数器、线上字节、隧道断开时落库。 */
@@ -163,7 +167,50 @@ export function installRelay(
                 label: event.label,
                 platform: event.platform,
               }
-            : { type: "devices.changed", deviceId: event.deviceId },
+            : event.type === "devices.endorsed"
+              ? event
+              : { type: "devices.changed", deviceId: event.deviceId },
+      });
+    }
+    // 背书在主机上留一行日志（契约 §88.7）：无窗口的服务器壳也有处可查；只有标识。
+    if (event.type === "devices.endorsed") {
+      context.log.info("device endorsed", {
+        deviceId: event.deviceId,
+        principalId: event.principalId,
+        endorserDeviceId: event.endorserDeviceId,
+        endorserPrincipalId: event.endorserPrincipalId,
+      });
+      recordEndorsement(event);
+    }
+  };
+  // 背书进「需要人处理」（契约 §81.1）：落一行（没人看画布也不丢），再推给本机 owner 的设备。
+  // 记录或推送出错不能让已经成立的放行跟着失败。
+  const endorsements = new EndorsementStore(context.db.database);
+  const notifyEndorsement =
+    deps.notifyEndorsement ??
+    ((recordId: string) => {
+      pushDomain()?.notifyEndorsement(recordId);
+    });
+  const recordEndorsement = (event: {
+    deviceId: string;
+    principalId: string;
+    endorserDeviceId: string;
+    endorserPrincipalId: string;
+  }) => {
+    let recordId: string;
+    try {
+      recordId = endorsements.record(event).id;
+    } catch (error) {
+      context.log.warn("背书通知没能落库", {
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return;
+    }
+    try {
+      notifyEndorsement(recordId);
+    } catch (error) {
+      context.log.warn("背书通知没能推送", {
+        error: error instanceof Error ? error.message : String(error),
       });
     }
   };
@@ -211,6 +258,7 @@ export function installRelay(
   };
   installE2eRoutes(context.server, {
     devices,
+    endorsements,
     identity: async () => ({
       sourceId: identity.hostId(),
       publicKey: (await identitySigner()).publicKey,

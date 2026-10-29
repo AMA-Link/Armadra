@@ -383,8 +383,22 @@ describe("§55 在协议包的形状上追加", () => {
     superset(
       slot("sources.session", "inputSchema"),
       protocol.sourcesSessionInputSchema,
-      ["route"],
+      ["route", "relogin"],
     );
+  });
+});
+
+describe("identity.cloud.bind 的出参在协议包的形状上追加 replaced（§88.5）", () => {
+  it("协议包的字段逐个保留，只多可选的 replaced", async () => {
+    const protocol = await import("@armadra/platform-protocol/core-api");
+    type Shaped = { shape: Record<string, unknown> };
+    const entry = entries.find((one) => one.name === "identity.cloud.bind")!;
+    const mine = (def(entry).outputSchema as unknown as Shaped).shape;
+    const base = (protocol.cloudBindOutputSchema as unknown as Shaped).shape;
+    for (const key of Object.keys(base)) expect(mine[key], key).toBe(base[key]);
+    expect(Object.keys(mine).filter((key) => !(key in base))).toEqual([
+      "replaced",
+    ]);
   });
 });
 

@@ -1,7 +1,11 @@
 import { Loadable } from "@/loading/Loadable";
 import * as React from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import type { E2ePairingPayload, TrustedDevice } from "@armadra/shared";
+import type {
+  DeviceEndorsement,
+  E2ePairingPayload,
+  TrustedDevice,
+} from "@armadra/shared";
 import { MoreHorizontal } from "lucide-react";
 import { toast } from "@/ui/toast";
 
@@ -11,9 +15,20 @@ import { RuntimeRequestError } from "../../../../api/request";
 import { localSource } from "../../../../api/source";
 import { usePreferencesStore, useT } from "../../../../app/preferences-store";
 import { useAccess } from "../../../../app/use-access";
+import { notify } from "../../../../platform";
 import { SecuritySectionSkeleton } from "./parts";
+import {
+  endorsementText,
+  markEndorsementsRead,
+} from "../../../../notifications/use-host-needs";
+import { useNeedsStore } from "../../../../notifications/needs-store";
 import { QrImage } from "../gateway/PairingCard";
 import { StatusPill } from "@/ui/status-pill";
+import {
+  NativeOwnerHint,
+  PRINCIPAL_LOADING,
+  PlatformBadge,
+} from "./platform-badge";
 import { Button } from "@/ui/button";
 import { SettingsTableCard } from "../../SettingsTableCard";
 import { IconButton } from "@/ui/icon-button";
@@ -81,7 +96,10 @@ function ApproveForm({
   device,
   onDone,
 }: {
-  device: Pick<TrustedDevice, "pendingId" | "label">;
+  device: Pick<TrustedDevice, "pendingId" | "label" | "platform"> & {
+    /** 申请人的主体种类；`undefined` 是查不到（按 owner 提示），`loading` 是还在查。 */
+    readonly principalKind?: string;
+  };
   onDone?: () => void;
 }) {
   const t = useT();
@@ -146,6 +164,10 @@ function ApproveForm({
           {t("e2e.approve.mismatch")}
         </span>
       )}
+      <NativeOwnerHint
+        platform={device.platform}
+        principalKind={device.principalKind}
+      />
     </div>
   );
 }
@@ -219,8 +241,8 @@ export function E2eDevices() {
                     <TableRow>
                       <TableCell className="max-w-[16rem] truncate font-medium">
                         {device.label || device.deviceId.slice(0, 8)}
-                        <span className="ml-2 text-muted-foreground">
-                          {t(`e2e.platform.${device.platform}`)}
+                        <span className="ml-2">
+                          <PlatformBadge platform={device.platform} />
                         </span>
                       </TableCell>
                       <TableCell className="max-w-[10rem] truncate text-muted-foreground">
@@ -394,6 +416,8 @@ export function DeviceApprovalPrompt() {
   const [pending, setPending] = React.useState<{
     pendingId: string;
     label: string;
+    platform: string;
+    principalKind?: string;
   } | null>(null);
   React.useEffect(
     () =>
@@ -401,7 +425,28 @@ export function DeviceApprovalPrompt() {
         "devices.pending",
         (event, sourceId) => {
           if (sourceId !== localSource.sourceId) return;
-          setPending({ pendingId: event.pendingId, label: event.label });
+          setPending({
+            pendingId: event.pendingId,
+            label: event.label,
+            platform: event.platform,
+            principalKind: PRINCIPAL_LOADING,
+          });
+          const settle = (kind: string | undefined) =>
+            setPending((current) =>
+              current?.pendingId === event.pendingId
+                ? { ...current, principalKind: kind }
+                : current,
+            );
+          // 申请人是不是 owner 事件里没有：从设备列表补上；查回来之前提示先占位，查不到按是。
+          void devicesApi
+            .list()
+            .then((rows) =>
+              settle(
+                rows.find((row) => row.pendingId === event.pendingId)
+                  ?.principalKind,
+              ),
+            )
+            .catch(() => settle(undefined));
         },
         { allSources: true },
       ),
@@ -415,11 +460,83 @@ export function DeviceApprovalPrompt() {
           <ResponsiveDialogTitle>
             {t("e2e.approve.title", { name: pending.label || "—" })}
           </ResponsiveDialogTitle>
+          <div>
+            <PlatformBadge platform={pending.platform} />
+          </div>
         </ResponsiveDialogHeader>
-        <ApproveForm
-          device={{ pendingId: pending.pendingId, label: pending.label }}
-          onDone={() => setPending(null)}
-        />
+        <ApproveForm device={pending} onDone={() => setPending(null)} />
+      </ResponsiveDialogContent>
+    </ResponsiveDialog>
+  );
+}
+
+/**
+ * 背书的即时弹窗（契约 §88.7、§81.1）：页面打开之后到来的每一次背书各弹一次，排成队列，
+ * 一条一条看；「知道了」标已读后显示下一条，关掉（Esc）只收起、仍留在铃铛里。页面打开之前
+ * 错过的只进铃铛，不补弹（按主机的时刻判，比第一次读到的都晚才算新到）；别处标了已读的不再弹。
+ * 数据是铃铛的那份清单（`useHostNeedsSync` 写入，只有主人读得到）；
+ * 窗口不在前台时另发一条系统通知。
+ */
+export function DeviceEndorsedNotice() {
+  const t = useT();
+  const host = useNeedsStore((state) => state.host);
+  const synced = useNeedsStore((state) => state.hostSynced);
+  const seen = React.useRef<Set<string> | null>(null);
+  // 第一次读到的清单里最晚的那一刻（主机的钟）：之后只有比它晚的才算新到。未读超过上限时，
+  // 标掉一条会露出更早的一条，它不是新到的，不补弹。
+  const since = React.useRef(Number.NEGATIVE_INFINITY);
+  const [queue, setQueue] = React.useState<DeviceEndorsement[]>([]);
+  React.useEffect(() => {
+    if (!synced) return;
+    if (seen.current === null) {
+      seen.current = new Set(host.map((row) => row.id));
+      since.current = Math.max(
+        Number.NEGATIVE_INFINITY,
+        ...host.map((row) => row.createdAtMs),
+      );
+      return;
+    }
+    const known = seen.current;
+    // 清单新的在前；弹窗按到来的先后排。
+    const fresh = host
+      .filter((row) => !known.has(row.id) && row.createdAtMs >= since.current)
+      .reverse();
+    for (const row of host) known.add(row.id);
+    if (fresh.length === 0) return;
+    for (const row of fresh) void notify(endorsementText(t, row), "");
+    setQueue((current) => [...current, ...fresh]);
+  }, [host, synced, t]);
+  // 只弹还在清单里的：在别处（铃铛、另一个窗口、主机本机）标了已读的跳过。
+  const current = queue.find((row) => host.some((item) => item.id === row.id));
+  if (current === undefined) return null;
+  const next = () =>
+    setQueue((rows) =>
+      rows.filter(
+        (row) =>
+          row.id !== current.id && host.some((item) => item.id === row.id),
+      ),
+    );
+  return (
+    <ResponsiveDialog open onOpenChange={(open) => !open && next()}>
+      <ResponsiveDialogContent
+        className="sm:max-w-sm"
+        aria-describedby={undefined}
+      >
+        <ResponsiveDialogHeader>
+          <ResponsiveDialogTitle>
+            {endorsementText(t, current)}
+          </ResponsiveDialogTitle>
+        </ResponsiveDialogHeader>
+        <ResponsiveDialogFooter>
+          <Button
+            onClick={() => {
+              void markEndorsementsRead([current.id]);
+              next();
+            }}
+          >
+            {t("e2e.endorsed.dismiss")}
+          </Button>
+        </ResponsiveDialogFooter>
       </ResponsiveDialogContent>
     </ResponsiveDialog>
   );

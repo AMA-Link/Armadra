@@ -19,6 +19,7 @@ const api = vi.hoisted(() => ({
   shareStatus: vi.fn(),
   notifyShellSourcesChanged: vi.fn(),
   remotePasswordChangeable: vi.fn(),
+  listShareLinks: vi.fn(),
 }));
 vi.mock("../../../../api/remote-services", async (original) => ({
   ...(await original<typeof import("../../../../api/remote-services")>()),
@@ -93,6 +94,7 @@ beforeEach(() => {
   api.relayPending.mockResolvedValue([]);
   api.remotePasswordChangeable.mockResolvedValue(false);
   api.shareStatus.mockResolvedValue({ sourceId: "h", registrations: [] });
+  api.listShareLinks.mockResolvedValue([]);
 });
 afterEach(() => {
   cleanup();
@@ -254,5 +256,69 @@ describe("armadra://cloud 深链", () => {
       `armadra://cloud?issuer=${encodeURIComponent("https://b.example")}`,
     );
     await waitFor(() => expect(field.value).toBe("https://b.example"));
+  });
+});
+
+describe("互联网路线认 Armadra 云（契约 §88.4，#586）", () => {
+  const registration = (state: string) => ({
+    sourceId: "h",
+    registrations: [
+      {
+        issuer: "https://cloud.test",
+        mode: "saas",
+        label: "this-mac",
+        registeredAtMs: 1,
+        tunnel: { state, node: "a" },
+        relayOrigins: [],
+      },
+    ],
+  });
+  /** 顶部「中继」那一格的文字。 */
+  const relayKpi = () =>
+    screen.getByText("Relay").closest("[data-slot='settings-kpi']")
+      ?.textContent ?? "";
+
+  it("本机登记在 Armadra 云、隧道在线：中继格显示在线，分享链接一组出现", async () => {
+    api.shareStatus.mockResolvedValue(registration("ready"));
+    api.listSources.mockResolvedValue({
+      sources: [local],
+      remotes: [{ ...cloud, registered: true }],
+    });
+    mount();
+    await screen.findByText("cloud.test");
+    await waitFor(() => expect(relayKpi()).toContain("Online"));
+    await waitFor(() =>
+      expect(api.listShareLinks).toHaveBeenCalledWith("cloud"),
+    );
+  });
+
+  it("只用令牌登记（没有登录行）：中继格同样按登记的隧道显示", async () => {
+    api.shareStatus.mockResolvedValue(registration("ready"));
+    api.listSources.mockResolvedValue({ sources: [local], remotes: [] });
+    mount();
+    await screen.findByText("This computer");
+    await waitFor(() => expect(relayKpi()).toContain("Online"));
+    expect(api.listShareLinks).not.toHaveBeenCalled();
+  });
+
+  it("没有任何登记：中继格未开启", async () => {
+    api.listSources.mockResolvedValue({ sources: [local], remotes: [cloud] });
+    mount();
+    await screen.findByText("cloud.test");
+    await waitFor(() => expect(api.shareStatus).toHaveBeenCalled());
+    expect(relayKpi()).toContain("Off");
+  });
+
+  it("登录着但还没登记的 Armadra 云：行菜单「启用互联网路线」打开设备码对话框", async () => {
+    api.listSources.mockResolvedValue({ sources: [local], remotes: [cloud] });
+    mount();
+    await screen.findByText("cloud.test");
+    openMenu("cloud.test");
+    fireEvent.click(
+      await screen.findByRole("menuitem", { name: "Turn on Internet route" }),
+    );
+    const field = (await screen.findByLabelText("Address")) as HTMLInputElement;
+    expect(field.value).toBe("https://cloud.test");
+    expect(api.addCloud).not.toHaveBeenCalled();
   });
 });

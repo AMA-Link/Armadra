@@ -25,6 +25,7 @@ import { API_PREFIX, IdentityHttp, loopbackAnonymousOwner } from "./http";
 import { createLoopbackAdmission } from "./loopback";
 import { HEARTBEAT_MS } from "./protocol";
 import { installCloud } from "./cloud";
+import { testSaasSessionTtl } from "./cloud/test-ttl";
 import { installOAuth } from "./oauth";
 import { installIdentityProcedures } from "./procedures";
 import { ownerDisplayName } from "./grant-sync";
@@ -227,6 +228,8 @@ export function installIdentity(context: CoreContext): void {
 
   // 云登录与登记（契约 §31）：同一份会话、账号与加固；`/api/identity/cloud` 也是
   // 更长的原样前缀，先于下面的整段接管。
+  // 服务器壳的测试寿命（Q9，`ARMADRA_TEST_SAAS_SESSION_TTL_MS`）；没设是一小时。
+  const saasSessionTtlMs = testSaasSessionTtl(context.platform.shell);
   installCloud(context, {
     store,
     service,
@@ -235,6 +238,7 @@ export function installIdentity(context: CoreContext): void {
     security,
     capabilities: () => http.capabilities(),
     coreVersion: VERSION,
+    ...(saasSessionTtlMs === undefined ? {} : { saasSessionTtlMs }),
     // 设置 `cloud.orgDefaultRole`（A3-2）：每次现读，缺省 `null` = 不授予。
     orgDefaultRole: () =>
       completionSettings(settingsDomain()?.settings.snapshot() ?? {}).cloud
