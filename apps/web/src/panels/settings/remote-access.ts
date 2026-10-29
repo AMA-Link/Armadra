@@ -1,7 +1,7 @@
 import { localRuntime } from "../../api/local-runtime";
 import { isNativeAppPage } from "../../api/runtime-url";
 import { isDesktop } from "../../platform";
-import { hostedRelay } from "../../sources/hosted";
+import { relayedPage } from "../../sources/relayed-page";
 import type { Via } from "../../sources/types";
 
 /**
@@ -82,7 +82,7 @@ export function pageAccessFacts(): AccessFacts {
   const local = localRuntime();
   return {
     desktop: isDesktop(),
-    hostedIssuer: hostedRelay()?.issuer ?? null,
+    hostedIssuer: relayedPage()?.issuer ?? null,
     nativeApp: isNativeAppPage(),
     viaServerShell: local.viaServerShell,
     localHttpBase: local.httpBase,

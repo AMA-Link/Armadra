@@ -1,0 +1,1055 @@
+import {
+  MIN_CORE_VERSION_ROLE_ONLY_ASSERTION,
+  MIN_CORE_VERSION_TEAM_ASSERTION,
+} from "@armadra/platform-protocol";
+
+import {
+  type IdentitySession,
+  logoutIdentity,
+  restoreHostedCredentials,
+  resumeIdentity,
+} from "../api/identity";
+import type { CloudClient } from "../cloud/api/client";
+import { retryAfterOf } from "./connection";
+import { createBrowserCloudCredentialProvider } from "./credentials";
+import { type E2eChannels, e2eChannels, setApprovalHint } from "./e2e/manager";
+import {
+  type ChannelLike,
+  HOST_KEY_PREFIX,
+  announceHostTrusted,
+  clearHostSessions,
+  hostSessionKey,
+  isCloudSessionMessage,
+  openCloudSessionChannel,
+} from "./cloud-session-channel";
+import { type HostedRelay, createHostedRelay } from "./hosted";
+import {
+  type GuestShare,
+  browserLocalStorage,
+  browserSessionStorage,
+  guestAcceptedBy,
+  guestLinkFor,
+} from "./relay-vault";
+import type { RelaySession } from "./relay-access";
+import {
+  type RelayedEntry,
+  type RelayedEntryOptions,
+  type RelayedStatus,
+  createRelayedEntry,
+} from "./relayed-entry";
+import { setRelayedPage } from "./relayed-page";
+import {
+  type ReloginSchedulerOptions,
+  createReloginScheduler,
+} from "./relogin";
+import { type MeStreamEvent, createRemoteStream } from "./remote-stream";
+import { SOURCE_ERROR, SourceError } from "./types";
+
+/**
+ * 控制台的 `/h/<hostId>`（设计 saas-host-open §2）：用控制台的 Cookie 会话把一台主机装成
+ * 页面的本机源。与个人中转托管页（`hosted.ts`）共用 `relayed-entry.ts`，这里只给三件事——
+ * 怎样要断言（`sources.assertion`，Cookie）、怎样换 `me.stream` 的票（`me.streamTicket`）、
+ * 怎样列目录（只这一台，`sources.get`）——外加：
+ *
+ * - **会话保存**：访问令牌只在内存；刷新令牌、CSRF 与会话主体记在本标签页 `sessionStorage`，
+ *   键 `armadra.host.<控制台账号>.<主机>`，刷新页面先 `session/refresh`，不必再 `cloud/login`。
+ *   进入时键里的账号必须是当前 `me.get` 的账号，续上的会话主体必须是记下的那位。
+ * - **登出广播**：`BroadcastChannel("armadra.cloud.session")`——控制台登出 / 换账号时各 `/h/`
+ *   标签页尽力 `session/logout`、清自己那份、盖上「已登出」；复制出的标签页用它认领同一份记录。
+ * - **授予同步**：`grantChanged`（这台）与自己的 `memberChanged` 去抖合并后重登（§2.3）。
+ * - **失败态与版本门**：断言答 `source_access_denied` 时按 `sources.get` 的 `coreVersion`
+ *   分出「版本太旧」与「没有权限」（§2.5）。
+ * - **访客记录**（§2.8）：按分享链接进过这台主机的访客记录（`localStorage`，托管页那一份）——
+ *   没有 Cookie 会话、或 Cookie 账号看不到 / 没权限进这台主机时，用它经托管中继以访客进入；
+ *   两样都没有才去登录。访客的访问被收回 → 「访问已被收回」。
+ */
+
+/** 登出经通道吊销主机侧会话最多等多久。 */
+export const LOGOUT_TIMEOUT_MS = 3_000;
+/** 复制出的标签页等多久没人认领就用这份记录。 */
+export const CLAIM_WAIT_MS = 300;
+/** 限流而对端没说等多久：从这么久起翻倍退避，封顶 {@link RATE_LIMIT_MAX_MS}。 */
+export const RATE_LIMIT_BASE_MS = 5_000;
+export const RATE_LIMIT_MAX_MS = 60_000;
+
+/** 限流后等多久：对端给的 Retry-After（错误自身或经中继带上来的原因里）优先，没有按次数退避。 */
+export function rateLimitDelay(error: unknown, attempt: number): number {
+  const given =
+    retryAfterOf(error) || retryAfterOf((error as { cause?: unknown })?.cause);
+  if (given > 0) return given;
+  return Math.min(RATE_LIMIT_BASE_MS * 2 ** attempt, RATE_LIMIT_MAX_MS);
+}
+
+interface HostRecord {
+  readonly refreshToken: string;
+  readonly csrfToken?: string;
+  /** 这份会话的主体（续上后核对）。 */
+  readonly principalId?: string;
+}
+
+function readRecord(
+  storage: Storage | null,
+  key: string,
+): HostRecord | undefined {
+  try {
+    const raw = storage?.getItem(key);
+    if (!raw) return undefined;
+    const value = JSON.parse(raw) as Partial<HostRecord>;
+    if (typeof value.refreshToken !== "string" || value.refreshToken === "")
+      return undefined;
+    return {
+      refreshToken: value.refreshToken,
+      ...(typeof value.csrfToken === "string"
+        ? { csrfToken: value.csrfToken }
+        : {}),
+      ...(typeof value.principalId === "string"
+        ? { principalId: value.principalId }
+        : {}),
+    };
+  } catch {
+    return undefined;
+  }
+}
+
+function writeRecord(
+  storage: Storage | null,
+  key: string,
+  record: HostRecord | null,
+): void {
+  try {
+    if (record === null) storage?.removeItem(key);
+    else storage?.setItem(key, JSON.stringify(record));
+  } catch {
+    /* 存不下只是刷新后要重新登录。 */
+  }
+}
+
+/* ------------------------------- 版本门 ---------------------------------- */
+
+function parseVersion(text: string): number[] | null {
+  const found = /^v?(\d+)\.(\d+)\.(\d+)/.exec(text.trim());
+  return found === null ? null : found.slice(1, 4).map(Number);
+}
+
+/** `a < b`（只比 major.minor.patch）；认不出的版本不算旧。 */
+export function versionBelow(a: string, b: string): boolean {
+  const left = parseVersion(a);
+  const right = parseVersion(b);
+  if (left === null || right === null) return false;
+  for (let at = 0; at < 3; at += 1) {
+    if (left[at]! !== right[at]!) return left[at]! < right[at]!;
+  }
+  return false;
+}
+
+export type HostDetail = Awaited<ReturnType<CloudClient["sources"]["get"]>>;
+
+/**
+ * 控制面版本门对旧主机答的也是 `source_access_denied`（`grants/policy.go` 的 `versionGate`）：
+ * 团队主机按 {@link MIN_CORE_VERSION_TEAM_ASSERTION}，个人空间里别人的主机按
+ * {@link MIN_CORE_VERSION_ROLE_ONLY_ASSERTION}；自己的个人主机没有门。
+ */
+export function hostTooOld(detail: HostDetail): boolean {
+  if (detail.space?.kind === "team")
+    return versionBelow(detail.coreVersion, MIN_CORE_VERSION_TEAM_ASSERTION);
+  if (detail.owner) return false;
+  return versionBelow(detail.coreVersion, MIN_CORE_VERSION_ROLE_ONLY_ASSERTION);
+}
+
+/* --------------------------------- 状态 ---------------------------------- */
+
+/** `/h/` 的失败码（文案键 `cloud.host.error.<码>`）。 */
+export const HOST_FAILURE = {
+  notFound: "not_found",
+  revoked: "source_revoked",
+  tooOld: "source_too_old",
+  denied: "source_access_denied",
+  teamSuspended: "team_suspended",
+  deviceRejected: "device_rejected",
+  identityChanged: "identity_changed",
+  e2eUnsupported: "e2e_unsupported",
+  unlinked: "cloud_account_unlinked",
+  deviceUnavailable: "e2e_device_unavailable",
+  /** 访客（分享链接）的访问被收回、链接被撤或到期。 */
+  accessRevoked: "access_revoked",
+  failed: "failed",
+} as const;
+
+/** 访客离线时多久再试一次（没有 Cookie 会话，等不到控制台的 `sourceOnline`）。 */
+export const GUEST_OFFLINE_RETRY_MS = 15_000;
+/** 访客离线重试的退避上限。 */
+export const GUEST_OFFLINE_RETRY_MAX_MS = 120_000;
+
+const KNOWN_FAILURES = new Set<string>(Object.values(HOST_FAILURE));
+
+export type HostView =
+  | { readonly kind: "connecting"; readonly rateLimited?: boolean }
+  /** 没有控制台会话：去 `/login?next=/h/<host>`。 */
+  | { readonly kind: "login" }
+  | {
+      readonly kind: "offline";
+      readonly lastSeenAtMs: number | null;
+    }
+  | {
+      readonly kind: "failed";
+      readonly code: string;
+      /** `identity_changed`：主机现在的身份指纹前 16 位（知道时）。 */
+      readonly fingerprint?: string;
+    }
+  | { readonly kind: "entered" }
+  /** 进去之后控制台的 Cookie 会话没了：冻结、给「重新登录」，回来后重试。 */
+  | { readonly kind: "expired" }
+  /** 本页或别的标签页登出、换了账号。 */
+  | { readonly kind: "signedOut" };
+
+export interface HostInfo {
+  readonly name: string;
+  /** 控制台里这台主机的页面（`/t/<团队>/hosts/<host>` 或 `/me/hosts/<host>`）。 */
+  readonly consoleHref: string;
+  /** 团队主机还是个人空间。 */
+  readonly space: "team" | "personal";
+  /** 控制台说你是主人。 */
+  readonly owner: boolean;
+  /** 以访客（分享链接）进的：没有控制台账号，顶栏是访客栏。 */
+  readonly guest?: boolean;
+}
+
+/** `/h/` 以访客进入用到的托管中继那几样（缺省 `hosted.ts`；测试换掉）。 */
+export type GuestRelay = Pick<
+  HostedRelay,
+  "resumeLink" | "guest" | "status" | "subscribe" | "signOut" | "close"
+>;
+
+/** 身份面会话是不是本机 owner（有 `settings:write`）。 */
+export function isLocalOwner(session: IdentitySession | null): boolean {
+  if (session === null) return false;
+  if (session.device.role !== "member") return true;
+  return session.scopes.some(
+    (scope) =>
+      scope.permission === "settings:write" && scope.workspaceId === "",
+  );
+}
+
+export interface ConsoleHostOptions {
+  readonly hostId: string;
+  /** 控制台所在来源，也是断言的签发方。 */
+  readonly issuer: string;
+  readonly client: CloudClient;
+  /** 会话记录（缺省 `sessionStorage`）。 */
+  readonly storage?: Storage | null;
+  /** 跨标签页广播（缺省 `BroadcastChannel`）。 */
+  readonly channel?: ChannelLike | null;
+  /** 进了主机时告诉控制台标签页（缺省开一条 `armadra.e2e.trust`，发完即关）。 */
+  readonly trusted?: (sourceId: string) => void;
+  readonly e2e?: E2eChannels;
+  /** 测试注入：身份面（核对主体、登出）。 */
+  readonly identity?: {
+    resume(): Promise<IdentitySession | null>;
+    logout(): Promise<void>;
+    restore(notify: boolean): Promise<boolean>;
+  };
+  /** 测试注入：重登去抖的计时。 */
+  readonly scheduler?: Omit<ReloginSchedulerOptions, "run">;
+  readonly setTimeout?: (run: () => void, ms: number) => unknown;
+  readonly clearTimeout?: (handle: unknown) => void;
+  readonly tabId?: string;
+  /** 透传给 `relayed-entry.ts` 的测试注入。 */
+  readonly entry?: Pick<
+    RelayedEntryOptions,
+    "enter" | "createStream" | "mount" | "wake" | "cloud"
+  >;
+  readonly now?: () => number;
+  /** 访客记录所在（缺省 `localStorage`；`null` = 不查访客记录）。 */
+  readonly guestStorage?: Storage | null;
+  /** 测试注入：造以访客进入用的托管中继。 */
+  readonly guestRelay?: () => GuestRelay;
+}
+
+export interface ConsoleHost {
+  readonly hostId: string;
+  readonly issuer: string;
+  readonly view: HostView;
+  readonly status: RelayedStatus;
+  readonly info: HostInfo | null;
+  /** 控制台说你是主人，但主机侧会话不是本机 owner（§2.6）。 */
+  readonly ownerMismatch: boolean;
+  subscribe(listener: () => void): () => void;
+  /** 走一遍进入流程（失败落在 {@link view}，不抛）。 */
+  open(): Promise<void>;
+  /** 本页「登出」：经通道 `session/logout`，再删本条记录。 */
+  signOut(): Promise<void>;
+  /** 以访客进的：那份分享；账号身份是 `null`。 */
+  guest(): GuestShare | null;
+  dispose(): void;
+}
+
+function codeOf(error: unknown): string {
+  const code = (error as { code?: unknown } | null)?.code;
+  return typeof code === "string" ? code : "";
+}
+
+function statusOf(error: unknown): number {
+  const status = (error as { status?: unknown } | null)?.status;
+  return typeof status === "number" ? status : 0;
+}
+
+export function createConsoleHost(options: ConsoleHostOptions): ConsoleHost {
+  const { hostId, issuer, client } = options;
+  const storage =
+    options.storage === undefined ? browserSessionStorage() : options.storage;
+  const channel =
+    options.channel === undefined ? openCloudSessionChannel() : options.channel;
+  const identity = options.identity ?? {
+    resume: resumeIdentity,
+    logout: logoutIdentity,
+    restore: restoreHostedCredentials,
+  };
+  const later =
+    options.setTimeout ?? ((run, ms) => globalThis.setTimeout(run, ms));
+  const cancel =
+    options.clearTimeout ??
+    ((handle) =>
+      globalThis.clearTimeout(handle as ReturnType<typeof setTimeout>));
+  const tabId =
+    options.tabId ??
+    globalThis.crypto?.randomUUID?.() ??
+    `${Math.random()}`.slice(2);
+
+  let view: HostView = { kind: "connecting" };
+  let info: HostInfo | null = null;
+  let detail: HostDetail | null = null;
+  let accountId: string | null = null;
+  let ownerMismatch = false;
+  /** 续上的会话主体与记下的不符（记录已丢）：本次进入改用 `cloud/login` 再试一次。 */
+  let principalChanged = false;
+  let disposed = false;
+  /** 每次 `open()` 与登出各进一代：进行中的 `open()` 每次醒来先看自己是不是还是这一代。 */
+  let generation = 0;
+  /** 进过主机（路由装着）：再次 `open()` 前要先卸下。 */
+  let wasEntered = false;
+  /** 登出了（本页或别处）：凭据提供方不再要断言。 */
+  let closed = false;
+  const guestStorage =
+    options.guestStorage === undefined
+      ? browserLocalStorage()
+      : options.guestStorage;
+  /** 以访客进入用的托管中继（第一次要用时才建）。 */
+  let guestRelay: GuestRelay | null = null;
+  let stopGuest: (() => void) | null = null;
+  /** 这次是以访客进的（不是控制台账号）。 */
+  let guestMode = false;
+  /**
+   * 这次访客是从 Cookie 账号退回来的（记录是这位接受的、或匿名的）：控制台登出、换账号时
+   * 也要盖上「已登出」。纯匿名进来的（没有 Cookie 会话）不理控制台的广播。
+   */
+  let guestViaAccount = false;
+  /** 这次用的访客记录是谁接受的（匿名 `""`）；没用访客记录是 `null`。 */
+  let guestRecordBy: string | null = null;
+  const listeners = new Set<() => void>();
+  const publish = () => {
+    for (const listener of [...listeners]) {
+      try {
+        listener();
+      } catch {
+        /* 一个订阅者出错不拖垮别的。 */
+      }
+    }
+  };
+  const setView = (next: HostView) => {
+    view = next;
+    publish();
+  };
+
+  /* ----------------------------- 会话记录 ----------------------------- */
+
+  const key = () =>
+    accountId === null ? null : hostSessionKey(accountId, hostId);
+  /** 这一页里最新的会话（访问令牌只在这里）。 */
+  let live: RelaySession | undefined;
+  const sessions = {
+    async load(sourceId: string): Promise<RelaySession | undefined> {
+      if (sourceId !== hostId) return undefined;
+      if (live !== undefined) return live;
+      const at = key();
+      const record = at === null ? undefined : readRecord(storage, at);
+      // 过期的空访问令牌：取用前一定先轮换。
+      return record === undefined
+        ? undefined
+        : {
+            accessToken: "",
+            refreshToken: record.refreshToken,
+            expiresAtMs: 1,
+            ...(record.csrfToken === undefined
+              ? {}
+              : { csrfToken: record.csrfToken }),
+          };
+    },
+    save(sourceId: string, session: RelaySession): void {
+      // 登出之后（或登出中）进行中的换票答回来：不再写回记录。
+      if (sourceId !== hostId || closed) return;
+      live = session;
+      const at = key();
+      if (at === null) return;
+      const before = readRecord(storage, at);
+      writeRecord(storage, at, {
+        refreshToken: session.refreshToken,
+        ...(session.csrfToken === undefined
+          ? {}
+          : { csrfToken: session.csrfToken }),
+        ...(before?.principalId === undefined
+          ? {}
+          : { principalId: before.principalId }),
+      });
+    },
+    clear(): void {
+      live = undefined;
+      const at = key();
+      if (at !== null) writeRecord(storage, at, null);
+    },
+  };
+
+  /* ------------------------------ 凭据 ------------------------------- */
+
+  const e2e = options.e2e ?? e2eChannels();
+  const provider = createBrowserCloudCredentialProvider({
+    client: {
+      sources: {
+        async assertion(input) {
+          // 登出中 / 已登出：不再要断言，画布里还在跑的请求不能借刷新把会话登回来。
+          if (closed) throw new SourceError(SOURCE_ERROR.unauthorized);
+          try {
+            return await client.sources.assertion(input);
+          } catch (error) {
+            // 控制台的 Cookie 会话没了（客户端已经走过刷新锁）：不整页跳走，冻结等重新登录。
+            if (statusOf(error) === 401 && view.kind === "entered")
+              setView({ kind: "expired" });
+            if (
+              codeOf(error) === SOURCE_ERROR.accessRevoked &&
+              detail !== null &&
+              hostTooOld(detail)
+            )
+              throw new SourceError(HOST_FAILURE.tooOld);
+            throw error;
+          }
+        },
+      },
+    },
+    issuer,
+    e2e,
+    sessions,
+    label: () => info?.name ?? "",
+    ...(options.entry?.cloud === undefined
+      ? {}
+      : { cloud: options.entry.cloud }),
+    ...(options.now === undefined ? {} : { now: options.now }),
+  });
+
+  /* ------------------------------ 进入 ------------------------------- */
+
+  /** 续上的会话核对：主体与记下的一致；记下这一位；顺带看是不是本机 owner。 */
+  const verify = async () => {
+    const session = await identity.resume();
+    if (session === null) throw new SourceError(SOURCE_ERROR.unauthorized);
+    const principalId = session.device.principalId;
+    const at = key();
+    const record = at === null ? undefined : readRecord(storage, at);
+    if (
+      record?.principalId !== undefined &&
+      principalId !== "" &&
+      record.principalId !== principalId
+    ) {
+      sessions.clear();
+      provider.clear();
+      principalChanged = true;
+      throw new SourceError(SOURCE_ERROR.unauthorized);
+    }
+    if (at !== null && record !== undefined && principalId !== "")
+      writeRecord(storage, at, { ...record, principalId });
+    ownerMismatch = info?.owner === true && !isLocalOwner(session);
+  };
+
+  /** 重登连着被限流了几次（退避用）；成功归零。 */
+  let reloginLimited = 0;
+  const scheduler = createReloginScheduler({
+    ...options.scheduler,
+    run: async () => {
+      try {
+        await provider.relogin(hostId);
+        await identity.restore(true);
+        reloginLimited = 0;
+      } catch (error) {
+        const code = codeOf(error);
+        if (code === "rate_limited") {
+          // 授予还没同步上：按 Retry-After 再排一次（仍经去抖合并）。
+          later(
+            () => {
+              if (!closed && !disposed) scheduler.request(hostId);
+            },
+            rateLimitDelay(error, reloginLimited),
+          );
+          reloginLimited += 1;
+          return;
+        }
+        if (
+          code === HOST_FAILURE.teamSuspended ||
+          code === SOURCE_ERROR.accessRevoked ||
+          code === SOURCE_ERROR.revoked
+        ) {
+          sessions.clear();
+          setView({ kind: "failed", code });
+        }
+      }
+    },
+  });
+
+  const onStreamEvent = (event: MeStreamEvent) => {
+    if (event.type === "grantChanged" && event.sourceId === hostId)
+      scheduler.request(hostId);
+    if (
+      event.type === "memberChanged" &&
+      event.accountId !== undefined &&
+      event.accountId === accountId &&
+      (detail?.space?.kind !== "team" || detail.space.teamId === event.teamId)
+    )
+      scheduler.request(hostId);
+  };
+
+  const entry: RelayedEntry = createRelayedEntry({
+    issuer,
+    provider,
+    streamTicket: async () => (await client.me.streamTicket({})).ticket,
+    listSources: async () => {
+      try {
+        const row = await client.sources.get({ sourceId: hostId });
+        return [{ ...row, sourceId: hostId }] as never;
+      } catch (error) {
+        if (codeOf(error) === HOST_FAILURE.notFound) return [];
+        throw error;
+      }
+    },
+    sessions: {
+      load: (sourceId) => sessions.load(sourceId),
+      save: (sourceId, session) => sessions.save(sourceId, session),
+      clear: () => sessions.clear(),
+    },
+    verify,
+    onStreamEvent,
+    onRevoked(failure) {
+      sessions.clear();
+      setView({
+        kind: "failed",
+        code:
+          failure.code === SOURCE_ERROR.revoked
+            ? HOST_FAILURE.revoked
+            : HOST_FAILURE.denied,
+      });
+    },
+    ...options.entry,
+  });
+
+  /* ---------------------------- 离线等上线 ---------------------------- */
+
+  let waiting: { close(): void } | null = null;
+  const stopWaiting = () => {
+    waiting?.close();
+    waiting = null;
+  };
+  const waitForOnline = () => {
+    stopWaiting();
+    const create = options.entry?.createStream ?? createRemoteStream;
+    waiting = create({
+      issuer,
+      ticket: async () => (await client.me.streamTicket({})).ticket,
+      onEvent(event) {
+        if (event.type === "sourceOnline" && event.sourceId === hostId) {
+          stopWaiting();
+          if (!closed && !disposed) void open();
+        }
+      },
+    });
+  };
+  let retryTimer: unknown = null;
+  /** 进入连着被限流了几次（退避用）；进去了归零。 */
+  let rateLimited = 0;
+
+  /* ------------------------------ 认领 ------------------------------- */
+
+  let claimedByOther = false;
+  const claim = async (at: string) => {
+    if (channel === null || readRecord(storage, at) === undefined) return;
+    claimedByOther = false;
+    channel.postMessage({ type: "claim", key: at, tabId });
+    await new Promise<void>((resolve) => later(resolve, CLAIM_WAIT_MS));
+    // 别的标签页拿着同一把刷新令牌（复制出来的标签页）：这份让给它，本页重登。
+    if (claimedByOther) writeRecord(storage, at, null);
+  };
+
+  /** 经当前路由 `session/logout`，最多等 `ms`（标签页冻结、通道挂住时不卡住）。 */
+  const logoutWithin = (ms: number): Promise<void> =>
+    Promise.race([
+      identity.logout().catch(() => undefined),
+      new Promise<void>((resolve) => later(resolve, ms)),
+    ]);
+
+  /** 被登出（本页或别处）：尽力吊销主机侧会话，清本条，盖上「已登出」。 */
+  let signingOut: Promise<void> | null = null;
+  const signedOut = (): Promise<void> => {
+    if (view.kind === "signedOut") return Promise.resolve();
+    signingOut ??= (async () => {
+      closed = true;
+      generation += 1;
+      // 限流排下的重试不能在登出之后把会话登回来。
+      if (retryTimer !== null) cancel(retryTimer);
+      retryTimer = null;
+      stopWaiting();
+      const reachable = view.kind === "entered" || view.kind === "expired";
+      // 先丢本地的记录与缓存的访问：吊销卡住、标签页随后被关掉也不留可续的东西。
+      sessions.clear();
+      provider.clear();
+      // 再经还装着的路由吊销主机侧会话（身份面内存里的令牌），限时。
+      if (reachable) await logoutWithin(LOGOUT_TIMEOUT_MS);
+      entry.signOut();
+      wasEntered = false;
+      setView({ kind: "signedOut" });
+    })().finally(() => {
+      signingOut = null;
+    });
+    return signingOut;
+  };
+
+  channel?.addEventListener("message", ({ data }) => {
+    if (disposed || !isCloudSessionMessage(data)) return;
+    if (guestMode) {
+      // 纯匿名的访客与控制台账号无关；从账号退回来的，账号登出、换了人就一起登出。
+      if (!guestViaAccount) return;
+      if (data.type === "signingOut") {
+        if (view.kind !== "entered") return;
+        channel.postMessage({ type: "loggingOut", tabId });
+        void signOutGuest().finally(() =>
+          channel.postMessage({ type: "loggedOut", tabId }),
+        );
+      } else if (
+        data.type === "signedOut" ||
+        (data.type === "accountChanged" &&
+          accountId !== null &&
+          data.accountId !== accountId)
+      )
+        void signOutGuest();
+      return;
+    }
+    if (data.type === "signingOut") {
+      if (view.kind !== "entered" && view.kind !== "expired") return;
+      channel.postMessage({ type: "loggingOut", tabId });
+      void signedOut().finally(() =>
+        channel.postMessage({ type: "loggedOut", tabId }),
+      );
+    } else if (data.type === "signedOut") {
+      void signedOut();
+    } else if (data.type === "loggingOut" || data.type === "loggedOut") {
+      return;
+    } else if (data.type === "accountChanged") {
+      if (accountId !== null && data.accountId !== accountId) void signedOut();
+    } else if (data.type === "claim") {
+      if (
+        data.tabId !== tabId &&
+        data.key === key() &&
+        (view.kind === "entered" || live !== undefined)
+      )
+        channel.postMessage({
+          type: "claimed",
+          key: data.key,
+          tabId: data.tabId,
+        });
+    } else if (data.tabId === tabId && data.key === key()) {
+      claimedByOther = true;
+    }
+  });
+
+  const fail = (code: string) =>
+    setView({
+      kind: "failed",
+      code: KNOWN_FAILURES.has(code) ? code : HOST_FAILURE.failed,
+    });
+
+  /* ------------------------------ 访客 ------------------------------- */
+
+  /** 这位（没有 Cookie 会话是 `null`）能用的这台主机的访客记录（§2.8）。 */
+  const findGuest = (account: string | null) =>
+    guestStorage === null
+      ? null
+      : guestLinkFor(
+          guestStorage,
+          issuer,
+          hostId,
+          account,
+          (options.now ?? Date.now)(),
+        );
+
+  /** 访客「登出」：丢掉这条链接的访客记录（托管中继清它），不碰控制台账号。 */
+  async function signOutGuest(): Promise<void> {
+    closed = true;
+    generation += 1;
+    if (retryTimer !== null) cancel(retryTimer);
+    retryTimer = null;
+    // 匿名接受的记录不属于哪个账号：只卸路由，记录留着、也不在云端登出；账号接受的才登出并清记录。
+    if (guestRecordBy === "") guestRelay?.close();
+    else await guestRelay?.signOut().catch(() => undefined);
+    guestMode = false;
+    guestViaAccount = false;
+    setView({ kind: "signedOut" });
+  }
+
+  const guestRelayOnce = (): GuestRelay => {
+    if (guestRelay !== null) return guestRelay;
+    const relay = (
+      options.guestRelay ??
+      (() =>
+        createHostedRelay({
+          issuer,
+          e2e,
+          ...(options.entry?.cloud === undefined
+            ? {}
+            : { cloud: options.entry.cloud }),
+        }))
+    )();
+    stopGuest = relay.subscribe(() => {
+      // 进去之后访客的访问被收回（链接被撤、到期）：托管中继已清掉那份记录。
+      if (
+        guestMode &&
+        view.kind === "entered" &&
+        relay.status.state === "unauthorized"
+      ) {
+        setView({ kind: "failed", code: HOST_FAILURE.accessRevoked });
+        return;
+      }
+      publish();
+    });
+    guestRelay = relay;
+    return relay;
+  };
+
+  /** 用这条链接的访客记录经托管中继进这台主机（§2.8）。 */
+  /** 托管中继上的续上一次只跑一个（见 {@link enterAsGuest}）。 */
+  let guestQueue: Promise<unknown> = Promise.resolve();
+  /** 访客离线连着重试了几次（退避用）；进去了归零。 */
+  let guestOffline = 0;
+
+  const enterAsGuest = async (
+    linkId: string,
+    stale: () => boolean,
+    viaAccount: boolean,
+  ): Promise<void> => {
+    if (wasEntered) {
+      entry.close();
+      wasEntered = false;
+    }
+    const relay = guestRelayOnce();
+    guestRecordBy =
+      guestStorage === null
+        ? null
+        : (guestAcceptedBy(guestStorage, issuer, linkId) ?? null);
+    // 同一个托管中继上的续上排成一队：上一次的（哪怕已过时）收完尾、该卸的卸了，下一次才开始挂，
+    // 过时的那次卸路由就不会卸到下一次 `open()` 刚挂上的。
+    const viewer = viaAccount ? accountId : null;
+    const run = guestQueue.then(async () => {
+      let answer: Awaited<ReturnType<GuestRelay["resumeLink"]>>;
+      try {
+        answer = await relay.resumeLink(linkId, viewer);
+      } catch {
+        answer = null;
+      }
+      // 进去的这一刻已经过时（又开了一次、登出了、销毁了）：刚挂上的访客路由与事件流卸下。
+      if (stale() && answer?.kind === "entered") relay.close();
+      return answer;
+    });
+    guestQueue = run.catch(() => undefined);
+    const resumed = await run;
+    if (stale()) return;
+    // 访客栏、不给「回到主机列表」只在真以访客进去了、或根本没有控制台账号时；
+    // 从账号退回却没进去的，失败卡照账号那样给回主机列表。
+    if (resumed?.kind === "entered" || !viaAccount)
+      info = {
+        name: relay.guest()?.name || info?.name || "",
+        consoleHref: "/",
+        space: "personal",
+        owner: false,
+        guest: true,
+      };
+    if (resumed?.kind === "entered") {
+      guestMode = true;
+      guestViaAccount = viaAccount;
+      rateLimited = 0;
+      guestOffline = 0;
+      setView({ kind: "entered" });
+      return;
+    }
+    if (
+      resumed?.kind === "gone" ||
+      (resumed?.kind === "signedIn" && resumed.failure === "revoked")
+    ) {
+      setView({ kind: "failed", code: HOST_FAILURE.accessRevoked });
+      return;
+    }
+    if (resumed?.kind === "signedIn" && resumed.failure === "offline") {
+      setView({ kind: "offline", lastSeenAtMs: null });
+      // 等不到控制台的 sourceOnline：从 15 秒起翻倍再试，封顶 2 分钟。
+      retryTimer = later(
+        () => {
+          retryTimer = null;
+          if (!stale()) void open();
+        },
+        Math.min(
+          GUEST_OFFLINE_RETRY_MS * 2 ** guestOffline,
+          GUEST_OFFLINE_RETRY_MAX_MS,
+        ),
+      );
+      guestOffline += 1;
+      return;
+    }
+    // 暂时进不去（记录还在）：限流（续会话时、或进主机时）按 Retry-After 退避后自动再进
+    // （登出、销毁时取消），其余给可重试的失败。
+    const limitedBy =
+      resumed?.kind === "unavailable" &&
+      codeOf(resumed.error) === "rate_limited"
+        ? resumed.error
+        : resumed?.kind === "signedIn" && resumed.failure === "rateLimited"
+          ? (resumed.error ?? null)
+          : undefined;
+    if (limitedBy !== undefined) {
+      setView({ kind: "connecting", rateLimited: true });
+      retryTimer = later(
+        () => {
+          retryTimer = null;
+          if (!stale()) void open();
+        },
+        rateLimitDelay(limitedBy, rateLimited),
+      );
+      rateLimited += 1;
+      return;
+    }
+    fail(HOST_FAILURE.failed);
+  };
+
+  async function open(): Promise<void> {
+    if (disposed) return;
+    if (retryTimer !== null) cancel(retryTimer);
+    retryTimer = null;
+    closed = false;
+    const mine = (generation += 1);
+    /** 这一次已经过时（又开了一次、登出了、销毁了）：不再改视图、不再写记录。 */
+    const stale = () => generation !== mine || closed || disposed;
+    setView({ kind: "connecting" });
+    // 再次进入：上一次以访客挂上的路由先卸下（记录留着）。
+    if (guestMode) guestRelay?.close();
+    guestMode = false;
+    guestViaAccount = false;
+    let me: Awaited<ReturnType<CloudClient["me"]["get"]>>;
+    try {
+      me = await client.me.get({});
+    } catch (error) {
+      if (stale()) return;
+      if (statusOf(error) === 401) {
+        // 没有 Cookie 会话：只用匿名接受的访客记录（§2.8）。
+        const anonymous = findGuest(null);
+        if (anonymous !== null) return enterAsGuest(anonymous, stale, false);
+        setView({ kind: "login" });
+      } else fail(codeOf(error));
+      return;
+    }
+    // 账号进不了这台时退回的访客记录：匿名的、或这位自己接受的（§2.8）。
+    const guestLink = findGuest(me.accountId);
+    if (stale()) return;
+    // 同一个标签页里换了账号：上一位的主机侧会话先经还装着的路由吊销（限时），再丢它的记录。
+    if (accountId !== null && accountId !== me.accountId) {
+      if (wasEntered) await logoutWithin(LOGOUT_TIMEOUT_MS);
+      if (stale()) return;
+      sessions.clear();
+      provider.clear();
+    }
+    // 再次进入：先卸下上一次的路由。
+    if (wasEntered) {
+      entry.close();
+      wasEntered = false;
+    }
+    accountId = me.accountId;
+    clearHostSessions(storage, (stored) =>
+      stored.startsWith(`${HOST_KEY_PREFIX}${me.accountId}.`),
+    );
+    try {
+      detail = await client.sources.get({ sourceId: hostId });
+    } catch (error) {
+      if (stale()) return;
+      const code = codeOf(error);
+      // Cookie 会话这时没了：同没有会话，只用匿名接受的访客记录。
+      if (statusOf(error) === 401) {
+        const anonymous = findGuest(null);
+        if (anonymous !== null) return enterAsGuest(anonymous, stale, false);
+        setView({ kind: "login" });
+        return;
+      }
+      // 账号看不到这台（控制台对没权限的主机答 not_found）：有访客记录就以访客进。
+      if (
+        guestLink !== null &&
+        (code === HOST_FAILURE.notFound || code === HOST_FAILURE.denied)
+      )
+        return enterAsGuest(guestLink, stale, true);
+      fail(code || HOST_FAILURE.failed);
+      return;
+    }
+    if (stale()) return;
+    const space = detail.space;
+    const team =
+      space?.kind === "team"
+        ? me.teams?.find((one) => one.teamId === space.teamId)
+        : undefined;
+    info = {
+      name: detail.name,
+      space: detail.space?.kind === "team" ? "team" : "personal",
+      owner: detail.owner,
+      consoleHref:
+        team === undefined
+          ? `/me/hosts/${encodeURIComponent(hostId)}`
+          : `/t/${encodeURIComponent(team.slug)}/hosts/${encodeURIComponent(hostId)}`,
+    };
+    setApprovalHint(hostId, info.space);
+    if (!detail.online) {
+      setView({ kind: "offline", lastSeenAtMs: detail.lastSeenAtMs });
+      waitForOnline();
+      return;
+    }
+    await claim(key()!);
+    if (stale()) return;
+    principalChanged = false;
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      try {
+        await entry.enter({ sourceId: hostId, name: detail.name });
+        if (stale()) {
+          // 进去的这一刻已经登出了：刚装上的路由也卸下。
+          entry.close();
+          return;
+        }
+        wasEntered = true;
+        rateLimited = 0;
+        stopWaiting();
+        setView({ kind: "entered" });
+        // 进得去就说明这台浏览器对它已是受信设备：控制台的信任页据此重判（设计 §5.2）。
+        (options.trusted ?? announceHostTrusted)(hostId);
+        return;
+      } catch (error) {
+        if (stale()) return;
+        const code = codeOf(error);
+        // 账号对这台没有权限：有访客记录就退回访客。
+        if (code === HOST_FAILURE.denied && guestLink !== null) {
+          entry.close();
+          return enterAsGuest(guestLink, stale, true);
+        }
+        // 主体不符：记录已丢，重新 cloud/login 一次。
+        if (principalChanged && attempt === 0) {
+          principalChanged = false;
+          continue;
+        }
+        if (code === SOURCE_ERROR.offline) {
+          setView({ kind: "offline", lastSeenAtMs: detail.lastSeenAtMs });
+          waitForOnline();
+          return;
+        }
+        if (code === "rate_limited") {
+          setView({ kind: "connecting", rateLimited: true });
+          retryTimer = later(
+            () => {
+              retryTimer = null;
+              if (!stale()) void open();
+            },
+            rateLimitDelay(error, rateLimited),
+          );
+          rateLimited += 1;
+          return;
+        }
+        if (code === SOURCE_ERROR.unauthorized) {
+          sessions.clear();
+          fail(HOST_FAILURE.failed);
+          return;
+        }
+        if (code === HOST_FAILURE.identityChanged) {
+          const presented = (
+            (error as { cause?: { fingerprint?: unknown } })?.cause ?? {}
+          ).fingerprint;
+          setView({
+            kind: "failed",
+            code,
+            ...(typeof presented === "string" && presented !== ""
+              ? { fingerprint: presented.slice(0, 16) }
+              : {}),
+          });
+          return;
+        }
+        fail(code === SOURCE_ERROR.unreachable ? HOST_FAILURE.failed : code);
+        return;
+      }
+    }
+  }
+
+  const host: ConsoleHost = {
+    hostId,
+    issuer,
+    get view() {
+      return view;
+    },
+    get status() {
+      return guestMode && guestRelay !== null
+        ? guestRelay.status
+        : entry.status;
+    },
+    get info() {
+      return info;
+    },
+    get ownerMismatch() {
+      return ownerMismatch;
+    },
+    subscribe(listener) {
+      listeners.add(listener);
+      const stop = entry.subscribe(listener);
+      return () => {
+        listeners.delete(listener);
+        stop();
+      };
+    },
+    open,
+    async signOut() {
+      if (guestMode && guestRelay !== null) {
+        await signOutGuest();
+        return;
+      }
+      await signedOut();
+    },
+    guest: () => (guestMode ? (guestRelay?.guest() ?? null) : null),
+    dispose() {
+      disposed = true;
+      // 访客的托管中继只卸路由、不 dispose：dispose 会清掉 localStorage 里的访客记录，刷新后就续不上了。
+      stopGuest?.();
+      guestRelay?.close();
+      stopWaiting();
+      if (retryTimer !== null) cancel(retryTimer);
+      scheduler.dispose();
+      entry.close();
+      channel?.close?.();
+    },
+  };
+  return host;
+}
+
+/* ------------------------------- 页面那一个 ------------------------------- */
+
+let active: ConsoleHost | null = null;
+
+/** `/h/` 页面上的那一个（入口建，`HostRoot` 读）；别的页面是 `null`。 */
+export function consoleHost(): ConsoleHost | null {
+  return active;
+}
+
+export function startConsoleHost(options: ConsoleHostOptions): ConsoleHost {
+  active?.dispose();
+  active = createConsoleHost(options);
+  setRelayedPage(active);
+  return active;
+}

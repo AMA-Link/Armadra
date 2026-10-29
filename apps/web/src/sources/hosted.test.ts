@@ -17,6 +17,7 @@ import {
   hostedFailureOf,
   underRelayAppPath,
 } from "./hosted";
+import { CloudError } from "./cloud-client";
 import type { SourceConnection } from "./connection";
 import { type SiblingMountOptions, mountSiblingSources } from "./mounts";
 import { createSourceRegistry } from "./registry";
@@ -204,6 +205,13 @@ describe("中继托管页面的源", () => {
     const error = await relay.signIn("dev", "nope").catch((e: unknown) => e);
     expect(hostedFailureOf(error)).toBe("credentials");
     expect(hostedFailureOf(new SourceError("source_offline"))).toBe("offline");
+    // 限流：远程服务直答（CloudError）与经中继登录带上来的（SourceError）一样。
+    expect(hostedFailureOf(new CloudError(429, "rate_limited"))).toBe(
+      "rateLimited",
+    );
+    expect(hostedFailureOf(new SourceError("rate_limited"))).toBe(
+      "rateLimited",
+    );
     expect(hostedFailureOf(new SourceError("cloud_account_unlinked"))).toBe(
       "unlinked",
     );
@@ -733,7 +741,9 @@ describe("刷新页面不丢登录", () => {
     const before = net.calls.length;
 
     const reloaded = tab(storage, net);
-    await expect(reloaded.resume()).resolves.toEqual({ kind: "entered" });
+    await expect(reloaded.resume()).resolves.toMatchObject({
+      kind: "entered",
+    });
     expect(reloaded.status.state).toBe("ready");
     expect(currentAccessToken()).toBe("core-a1");
     const after = net.calls.slice(before).map((call) => call.key);
@@ -902,6 +912,7 @@ describe("只续当前链接的访客记录（resumeLink）", () => {
     });
     await expect(relay.resumeLink("link-b")).resolves.toEqual({
       kind: "entered",
+      sourceId: OTHER,
     });
     expect(entered).toEqual([OTHER]);
     // 没有这条链接的记录：不进任何主机，别的链接的记录原样留着。
@@ -954,11 +965,13 @@ describe("只续当前链接的访客记录（resumeLink）", () => {
     return { relay, guestStorage };
   };
 
-  it("连不上中继：答 null、页面退回账号身份、记录留着（落地页保留「打开」）", async () => {
+  it("连不上中继：答 unavailable（带原因）、页面退回账号身份、记录留着（落地页保留「打开」）", async () => {
     const { relay, guestStorage } = solo((async () => {
       throw new TypeError("offline");
     }) as typeof globalThis.fetch);
-    await expect(relay.resumeLink("link-a")).resolves.toBeNull();
+    await expect(relay.resumeLink("link-a")).resolves.toMatchObject({
+      kind: "unavailable",
+    });
     expect(relay.guest()).toBeNull();
     expect(guestStorage.getItem(guestKey(ISSUER, "link-a"))).not.toBeNull();
     relay.dispose();

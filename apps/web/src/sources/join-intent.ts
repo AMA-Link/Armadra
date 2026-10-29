@@ -12,6 +12,8 @@ import { LOCAL_SOURCE_ID } from "../api/source";
 import { markJoinedByLink } from "./origin";
 
 const OPEN_KEY = "armadra.sources.openAfterJoin";
+/** 要打开的是那个源上的哪一个工作空间（`/h/<host>?ws=`）；没有就开第一个。 */
+const OPEN_WORKSPACE_KEY = "armadra.sources.openWorkspace";
 
 type Listener = () => void;
 const listeners = new Set<Listener>();
@@ -62,10 +64,14 @@ export function openAfterJoin(sourceId: string): void {
   openWhenReady(sourceId);
 }
 
-/** 记下要打开的源（连上、列出工作空间后打开第一个），重载之后也还在。 */
-export function openWhenReady(sourceId: string): void {
+/**
+ * 记下要打开的源（连上、列出工作空间后打开给的那个，没给就第一个），重载之后也还在。
+ */
+export function openWhenReady(sourceId: string, workspaceId?: string): void {
   try {
     session()?.setItem(OPEN_KEY, sourceId);
+    if (workspaceId === undefined) session()?.removeItem(OPEN_WORKSPACE_KEY);
+    else session()?.setItem(OPEN_WORKSPACE_KEY, workspaceId);
   } catch {
     /* 记不下就停在设置页，侧栏里点一下即可。 */
   }
@@ -81,9 +87,19 @@ export function pendingJoinOpen(): string | null {
   }
 }
 
+/** 等着打开的那个工作空间；没指定是 `null`。 */
+export function pendingWorkspaceOpen(): string | null {
+  try {
+    return session()?.getItem(OPEN_WORKSPACE_KEY) ?? null;
+  } catch {
+    return null;
+  }
+}
+
 export function clearJoinOpen(): void {
   try {
     session()?.removeItem(OPEN_KEY);
+    session()?.removeItem(OPEN_WORKSPACE_KEY);
   } catch {
     /* 同上 */
   }

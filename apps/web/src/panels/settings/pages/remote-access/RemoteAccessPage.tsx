@@ -25,7 +25,7 @@ import {
   takeCloudIntent,
 } from "../../../../sources/cloud-intent";
 import { useCurrentSource } from "../../../../sources/context";
-import { hostedRelay } from "../../../../sources/hosted";
+import { relayedPage } from "../../../../sources/relayed-page";
 import {
   onJoinIntent,
   openAfterJoin,
@@ -169,7 +169,7 @@ export function RemoteAccessPage() {
   React.useEffect(() => {
     // 中继托管的页面：这张表是那台主机的，页面的源表是中继目录挂上的
     // （`sources/hosted.ts`），不拿主机的表去覆盖。
-    if (sources && hostedRelay() === null) void applySourceTable(sources);
+    if (sources && relayedPage() === null) void applySourceTable(sources);
   }, [sources]);
 
   const remotes = internet.remotes;
@@ -237,10 +237,7 @@ export function RemoteAccessPage() {
   const advancedRows = gateway.status?.enabled || orphans.length > 0;
 
   const gatewayStatus = gateway.status;
-  const route = internet.registered
-    .map((remote) => internet.tunnelOf(remote.issuer))
-    .find((state) => state !== null);
-  const routePill = route ? tunnelPill(route) : null;
+  const routePill = internet.route ? tunnelPill(internet.route) : null;
 
   return (
     <>
@@ -297,10 +294,14 @@ export function RemoteAccessPage() {
                   pending={pendingOf(remote.issuer)}
                   tunnel={internet.tunnelOf(remote.issuer)}
                   inUse={sameOrigin(remote.issuer, access.relayIssuer)}
-                  {...(canShare(remote)
+                  {...(canShare(remote) ||
+                  (remote.kind === "saas" && !remote.guest)
                     ? {
                         onInternet: (on: boolean) => {
-                          if (on) internet.start.mutate(remote);
+                          // Armadra 云：登记要选空间，打开设备码对话框（登录并开启）。
+                          if (on && remote.kind === "saas")
+                            setAddingCloud(remote.issuer);
+                          else if (on) internet.start.mutate(remote);
                           else internet.stop.mutate([remote.issuer]);
                         },
                       }

@@ -174,7 +174,27 @@ export function thisDevice(
     : { platform: "ios", name: "Armadra iOS" };
 }
 
-/** 浏览器里打开的页面（中继托管）在远程服务里的登记。 */
+/** 浏览器所在的系统（设备名用；认不出时空串）。 */
+function browserSystem(userAgent: string): string {
+  return /iPhone|iPad|iPod/.test(userAgent)
+    ? "iOS"
+    : /Android/.test(userAgent)
+      ? "Android"
+      : /CrOS/.test(userAgent)
+        ? "ChromeOS"
+        : /Mac OS X|Macintosh/.test(userAgent)
+          ? "macOS"
+          : /Windows/.test(userAgent)
+            ? "Windows"
+            : /Linux|X11/.test(userAgent)
+              ? "Linux"
+              : "";
+}
+
+/**
+ * 浏览器里打开的页面（控制台、中继托管、分享链接）在远程服务与主机上的登记：
+ * 名字是浏览器加系统，比如 `Armadra Web (Chrome, macOS)`（分隔符不用中点：云端清洗展示名时把中点当点，会把「Chrome·macOS」当成域名删掉）。
+ */
 export function browserDevice(
   userAgent: string = globalThis.navigator?.userAgent ?? "",
 ): CloudDevice {
@@ -187,9 +207,12 @@ export function browserDevice(
         : /Safari\//.test(userAgent)
           ? "Safari"
           : "";
+  const detail = [browser, browserSystem(userAgent)]
+    .filter((part) => part !== "")
+    .join(", ");
   return {
     platform: "browser",
-    name: browser === "" ? "Armadra Web" : `Armadra Web (${browser})`,
+    name: detail === "" ? "Armadra Web" : `Armadra Web (${detail})`,
   };
 }
 
@@ -389,6 +412,21 @@ export async function cloudStreamTicket(
     options,
   );
   return answer.ticket;
+}
+
+/** `GET /v1/me`：只取账号 id（认 `me.stream` 的成员事件是不是自己，契约 §88.2）。 */
+export async function cloudAccountId(
+  issuer: string,
+  accessToken: string,
+  options: CloudOptions = {},
+): Promise<string> {
+  const answer = await send(
+    `${trimmed(issuer)}/v1/me`,
+    z.object({ accountId: z.string() }),
+    { headers: bearer(accessToken) },
+    options,
+  );
+  return answer.accountId;
 }
 
 /** `GET /v1/me/sources`。 */

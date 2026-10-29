@@ -12,11 +12,22 @@ import {
   accessGate,
   onAccessChanged,
 } from "../identity/gate";
+import { isOwner } from "../identity/authorize";
 import { scope } from "../identity/scopes";
 import { ITERATOR_MAX_FRAMES } from "../http/ws-control";
 import { catchUp, watermark } from "./outbox";
 import type { WorkspaceEventStream } from "./stream";
 import { workspaceExists } from "./workspaces";
+
+/**
+ * 订阅者是不是主机 owner（契约 §81.1 的只给 owner 的帧）。没有请求身份的是桌面壳本机页面，
+ * 按 owner 算；身份按升级时那一份判，降级会经授权复核关掉连接。
+ */
+export function ownerSubscriber(
+  identity: RequestIdentity | undefined,
+): boolean {
+  return identity === undefined || isOwner(identity.subject);
+}
 
 /**
  * `workspaces.events`：控制面上的工作空间事件流（契约 §35.4）。
@@ -139,17 +150,21 @@ async function* run(
   let revoked = false;
   // 监听与读水位在同一拍：此后发布的都进 `pending`，之前的都在 outbox 里。
   let overflowed = false;
-  const off = stream.listen(workspaceId, (frame, seq) => {
-    // 门面拥塞时不来取（`resubscribe`）：实时这一段攒在这里，有界。满了不再
-    // 攒，订阅以 `overflow` 结束，客户端带最后的 id 重订，缺口由 outbox 补。
-    if (pending.length >= ITERATOR_MAX_FRAMES) {
-      overflowed = true;
-    } else {
-      pending.push({ frame, seq });
-    }
-    poke();
-  });
   const identity = call.identity;
+  const off = stream.listen(
+    workspaceId,
+    (frame, seq) => {
+      // 门面拥塞时不来取（`resubscribe`）：实时这一段攒在这里，有界。满了不再
+      // 攒，订阅以 `overflow` 结束，客户端带最后的 id 重订，缺口由 outbox 补。
+      if (pending.length >= ITERATOR_MAX_FRAMES) {
+        overflowed = true;
+      } else {
+        pending.push({ frame, seq });
+      }
+      poke();
+    },
+    { owner: ownerSubscriber(identity) },
+  );
   const offAccess =
     identity === undefined
       ? () => {}

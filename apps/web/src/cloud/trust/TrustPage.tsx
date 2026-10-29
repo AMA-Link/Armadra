@@ -34,6 +34,7 @@ import {
   useRejectTrust,
   useTrustRequests,
 } from "./data";
+import { throttleSeconds } from "../host-channel";
 import { endorseCode, type TrustRequest } from "./endorser";
 
 /** 校验码是 6 位数字。 */
@@ -90,7 +91,15 @@ function TrustDialog({
         });
       } else if (code === "e2e_device_unavailable")
         toast.error(t("trust.unavailable"));
-      else toast.error(describeFailure(failure));
+      else if (code === "rate_limited") {
+        // 主机按账号限流登录（含判定）：说等多久，不说「连不上」。
+        const seconds = throttleSeconds(failure) ?? 0;
+        toast.error(
+          seconds > 0
+            ? t("cloud.host.rateLimitedIn", { seconds })
+            : t("error.rateLimited"),
+        );
+      } else toast.error(describeFailure(failure));
     } finally {
       setBusy(false);
     }
@@ -184,13 +193,29 @@ function TrustActions({
   request: TrustRequest;
 }) {
   const t = useT();
-  const { pending, trusted } = useCanEndorse(space, request);
+  const { pending, trusted, canOpen } = useCanEndorse(space, request);
   const reject = useRejectTrust(space);
   const [dialog, setDialog] = React.useState<"trust" | "reject" | null>(null);
   if (pending) return null;
   // 对话框开着时（刚被主机拒绝）行尾已是徽标，对话框留着把原因说完，由人关掉。
   if (!trusted && dialog !== "trust")
-    return <Badge variant="outline">{t("cloud.trust.useTrusted")}</Badge>;
+    return (
+      <span className="flex items-center gap-2">
+        <Badge variant="outline">{t("cloud.trust.useTrusted")}</Badge>
+        {canOpen ? (
+          // 先在这个浏览器里打开一次主机，放行后它就是受信设备；`/h/` 进去时广播，这一行随之重判。
+          <Button variant="ghost" size="sm" asChild>
+            <a
+              href={`/h/${encodeURIComponent(request.sourceId)}`}
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              {t("cloud.trust.openHost")}
+            </a>
+          </Button>
+        ) : null}
+      </span>
+    );
   return (
     <>
       {trusted ? (

@@ -50,6 +50,8 @@ export const EPHEMERAL_EVENTS: ReadonlySet<string> = new Set([
   // 契约 §77：待确认与设备变化，重连的页面重新读 `devices.list` 就是当前那一份。
   "devices.pending",
   "devices.changed",
+  // 契约 §88.7：背书的通知；错过的从 `devices.list` 的 `approvedBy` 查。
+  "devices.endorsed",
   // 契约 §53：程序自报的状态在内存里，重连从会话列表补；进度一秒几帧，补发
   // 过去的进度只会让节点头倒着跑。
   "terminal.program",
@@ -57,6 +59,15 @@ export const EPHEMERAL_EVENTS: ReadonlySet<string> = new Set([
   // 补发过去的增量只会让重连的页面多吃一遍它已经同步过的帧。
   "timeline.delta",
   "timeline.activity",
+]);
+
+/**
+ * 只扇给主机 owner 的订阅（契约 §81.1）：背书通知说的是「谁的哪台设备被谁放行」，只给主人看；
+ * 成员（含经中继观看的）收不到这一帧。没有请求身份的订阅（桌面壳本机页面、进程内订阅）按
+ * owner 算，与授权复核同一口径。
+ */
+export const OWNER_ONLY_EVENTS: ReadonlySet<string> = new Set([
+  "devices.endorsed",
 ]);
 
 /**
@@ -111,6 +122,8 @@ interface Subscription {
    * 那 21 个契约事件；控制帧只发给明确要求续订的客户端。
    */
   readonly cursored: boolean;
+  /** 订阅者是主机 owner：{@link OWNER_ONLY_EVENTS} 只扇给这样的订阅。 */
+  readonly owner: boolean;
 }
 
 /**
@@ -146,9 +159,14 @@ export function cursorFrame(
  */
 export type EventListener = (frame: string, seq: number) => void;
 
+interface ListenerEntry {
+  readonly listener: EventListener;
+  readonly owner: boolean;
+}
+
 export class WorkspaceEventStream {
   private readonly subscriptions = new Map<string, Set<Subscription>>();
-  private readonly listeners = new Map<string, Set<EventListener>>();
+  private readonly listeners = new Map<string, Set<ListenerEntry>>();
   /** 有库就有 outbox；没有就退回 R1b 的纯内存扇出。 */
   private database: DatabaseSync | undefined;
   /** 每写多少帧裁剪一次，摊掉 `DELETE` 的成本。 */
@@ -208,32 +226,40 @@ export class WorkspaceEventStream {
       (EPHEMERAL_EVENTS.has(event.type)
         ? 0
         : this.record(workspaceId, event, frame));
-    const listeners = this.listeners.get(workspaceId);
-    for (const listener of listeners ?? []) {
+    const ownerOnly = OWNER_ONLY_EVENTS.has(event.type);
+    let delivered = 0;
+    for (const entry of this.listeners.get(workspaceId) ?? []) {
+      if (ownerOnly && !entry.owner) continue;
+      delivered += 1;
       try {
-        listener(frame, seq);
+        entry.listener(frame, seq);
       } catch {
         // 一个订阅出错不该让其余的漏帧。
       }
     }
-    const watchers = this.subscriptions.get(workspaceId);
-    if (watchers === undefined || watchers.size === 0) {
-      return listeners?.size ?? 0;
+    for (const subscription of this.subscriptions.get(workspaceId) ?? []) {
+      if (ownerOnly && !subscription.owner) continue;
+      delivered += 1;
+      this.enqueue(subscription, frame, seq);
     }
-    for (const subscription of watchers) this.enqueue(subscription, frame, seq);
-    return watchers.size + (listeners?.size ?? 0);
+    return delivered;
   }
 
   /**
    * 控制面订阅收帧（契约 §35.4），返回退订函数。和 {@link subscribe} 一样算一个
    * 「在看」的人：资源采样与 Agent 状态按它决定发不发。
    */
-  listen(workspaceId: string, listener: EventListener): () => void {
-    const set = this.listeners.get(workspaceId) ?? new Set<EventListener>();
-    set.add(listener);
+  listen(
+    workspaceId: string,
+    listener: EventListener,
+    options: { readonly owner?: boolean } = {},
+  ): () => void {
+    const set = this.listeners.get(workspaceId) ?? new Set<ListenerEntry>();
+    const entry: ListenerEntry = { listener, owner: options.owner ?? true };
+    set.add(entry);
     this.listeners.set(workspaceId, set);
     return () => {
-      set.delete(listener);
+      set.delete(entry);
       if (set.size === 0 && this.listeners.get(workspaceId) === set) {
         this.listeners.delete(workspaceId);
       }
@@ -273,7 +299,7 @@ export class WorkspaceEventStream {
   subscribe(
     workspaceId: string,
     sink: EventSink,
-    options: { readonly cursored?: boolean } = {},
+    options: { readonly cursored?: boolean; readonly owner?: boolean } = {},
   ): () => void {
     const subscription: Subscription = {
       queue: new SendQueue(
@@ -294,6 +320,7 @@ export class WorkspaceEventStream {
       ),
       closed: false,
       cursored: options.cursored === true,
+      owner: options.owner ?? true,
     };
     const watchers =
       this.subscriptions.get(workspaceId) ?? new Set<Subscription>();
@@ -352,7 +379,10 @@ export class WorkspaceEventStream {
   attachSocket(
     workspaceId: string,
     socket: WebSocket,
-    options: { readonly cursor?: number | "now" } = {},
+    options: {
+      readonly cursor?: number | "now";
+      readonly owner?: boolean;
+    } = {},
   ): () => void {
     const cursored = options.cursor !== undefined;
     if (options.cursor === "now") this.seed(socket);
@@ -361,7 +391,10 @@ export class WorkspaceEventStream {
     // A failed write is a socket on its way out; `close` will arrive and
     // release the subscription. The queue settles the frame either way, so it
     // does not wedge in the meantime.
-    return this.subscribe(workspaceId, wsTarget(socket), { cursored });
+    return this.subscribe(workspaceId, wsTarget(socket), {
+      cursored,
+      ...(options.owner === undefined ? {} : { owner: options.owner }),
+    });
   }
 
   /**

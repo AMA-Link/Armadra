@@ -60,6 +60,17 @@ final class PushEnvelopeTests: XCTestCase {
         XCTAssertThrowsError(try PushEnvelope.payload(unknown))
     }
 
+    /// 设备背书的通知（契约 §81.1）：认得这个种类，`armadra://` 不是认得的深链，点开只进 App。
+    func testPayloadAcceptsDeviceEndorsed() throws {
+        let plain = Data(
+            #"{"v":1,"kind":"deviceEndorsed","title":"Armadra","body":"b","url":"armadra://","tag":"endorsed:x"}"#.utf8
+        )
+        let payload = try PushEnvelope.payload(plain)
+        XCTAssertEqual(payload.kind, "deviceEndorsed")
+        XCTAssertEqual(payload.tag, "endorsed:x")
+        XCTAssertEqual(payload.url, "")
+    }
+
     func testDeviceKeyIsCreatedOnceAndKeptInTheStore() throws {
         let store = MemoryStore()
         let first = try XCTUnwrap(DeviceKey.loadOrCreate(store))

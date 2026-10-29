@@ -217,8 +217,16 @@ ARMADRA_CLOUD_REGISTRATION_TOKEN=… armadra-server cloud register --issuer http
 armadra-server cloud login --issuer https://relay.example.com --account me --fingerprint <指纹> --password-stdin < pw.txt
 armadra-server cloud status            # 登记与隧道状态（--output json）
 armadra-server cloud revoke --issuer https://relay.example.com
-# 生成分享链接：先建邀请，再让中继出链接，打印 https://<中继>/j/<id>#<密>.<令牌>
+# 生成分享链接（与分享弹层同一条：链接整条存进 SecretStore，之后弹层里还能再复制），
+# 打印 https://<中继>/j/<id>#<密>.<令牌>.<身份指纹前 16 位>；--host 整台、--workspace 一块画布
 armadra-server invite --cloud-link --issuer https://relay.example.com --workspace <画布 id> --role editor --max-uses 5 --expires 7d
+```
+
+登记到 Armadra 云（SaaS）用同一组命令：控制台「登记主机」给的注册令牌走 `cloud register --token-stdin`；`cloud login --issuer <控制台地址>` 是设备码登录——终端（标准错误）打印设备码与验证地址，在浏览器里核对后批准。本机还没登记就按 `--space personal|<团队 slug>`（缺省个人空间）登记；已经用令牌登记过的只做「关联」：取一张为本机签的断言，把这个云账号映射为本机主人（令牌登记不知道是哪个账号）。主人先经浏览器以团队成员身份进来过、映射已指向云端自动建的成员时，本机的 `cloud login` 会把映射迁回主人（契约 §88.5），之后浏览器要重新放行一次。分享链接 `invite --cloud-link --issuer <控制台地址> --host`（或 `--workspace`）落在控制台来源上；Armadra 云的链接不支持 `--group`。
+
+```sh
+armadra-server cloud login --issuer https://app.example.com --space rd
+armadra-server invite --cloud-link --issuer https://app.example.com --host --role viewer
 ```
 
 命令都是幂等的（已登记则跳过）。容器里给 `ARMADRA_CLOUD_ISSUER` 与 `ARMADRA_CLOUD_REGISTRATION_TOKEN`（自签证书再加 `ARMADRA_CLOUD_FINGERPRINT`，可选 `ARMADRA_CLOUD_LABEL`），入口在 serve 就绪后自动登记一次，失败只记一行、不阻塞启动。Windows 上服务器壳没有私有通道，这些命令不可用。

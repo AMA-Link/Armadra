@@ -1,5 +1,7 @@
 import {
+  type DeviceEndorsement,
   type E2ePairingPayload,
+  deviceEndorsementListSchema,
   type TrustedDevice,
   e2ePairingPayloadSchema,
   trustedDeviceListSchema,
@@ -40,6 +42,15 @@ export const devicesApi = {
       principalId: device.principalId,
     });
   },
+  /** 未读的背书通知（契约 §81.1），新的在前；只有 owner。 */
+  endorsements: async (): Promise<DeviceEndorsement[]> =>
+    deviceEndorsementListSchema.parse(await local().devices.endorsements())
+      .endorsements,
+  /** 标已读；浏览器经中继来的答 `forbidden`（只能在主机本机或原生端标）。 */
+  markEndorsementsRead: async (ids: readonly string[]): Promise<void> => {
+    if (ids.length === 0) return;
+    await local().devices.endorsementsRead({ ids: [...ids] });
+  },
   rename: async (
     device: Pick<TrustedDevice, "deviceId" | "principalId">,
     label: string,
@@ -53,3 +64,4 @@ export const devicesApi = {
 };
 
 export const DEVICES_QUERY_KEY = ["e2e", "devices"] as const;
+export const ENDORSEMENTS_QUERY_KEY = ["e2e", "endorsements"] as const;

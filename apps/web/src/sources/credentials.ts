@@ -17,6 +17,7 @@ import {
   type CloudDevice,
   type CloudOptions,
   browserDevice,
+  cloudAccountId,
 } from "./cloud-client";
 import { type RelaySession, createRelayedAccess } from "./relay-access";
 import {
@@ -333,7 +334,7 @@ export function createDesktopCloudAuth(
 ): CloudAuth {
   const cache = new Map<string, { accessToken: string; expiresAtMs: number }>();
   const pending = new Map<string, Promise<string>>();
-  return {
+  const auth: CloudAuth = {
     access(issuer) {
       const cached = cache.get(issuer);
       if (cached && cached.expiresAtMs - now() > ACCESS_RENEW_LEAD_MS)
@@ -371,7 +372,25 @@ export function createDesktopCloudAuth(
     invalidate(issuer) {
       cache.delete(issuer);
     },
+    async accountId(issuer) {
+      return cloudAccountId(issuer, await auth.access(issuer));
+    },
   };
+  return auth;
+}
+
+/**
+ * 桌面与服务器壳的页面：请本机 core 经中继重登这个源（契约 §88.2，`relogin: true`）——
+ * 跳过刷新，带旧刷新令牌按新断言同步授予，主机在同一会话上续。答案不用：重登后手里的
+ * 访问由连接自己续一次。对端待确认时不在这里等（授予同步不该弹待确认对话框）。
+ */
+export async function reloginViaLocalCore(sourceId: string): Promise<void> {
+  await request(
+    `/api/sources/${encodeURIComponent(sourceId)}/session`,
+    sessionAnswerSchema,
+    { method: "POST", ...json({ via: "relayed", relogin: true }) },
+    localSource,
+  );
 }
 
 /* --------------------------- 浏览器里的云会话 --------------------------- */
@@ -393,19 +412,42 @@ export interface BrowserCloudDeps {
   /** 源 core 的登录与刷新用（经通道的 `fetch` 由 `e2e` 补上）。 */
   readonly cloud?: CloudOptions;
   readonly now?: () => number;
+  /**
+   * 源 core 会话的保存处（控制台 `/h/`：身份面轮换后写回的那一份，刷新页面要续上）。
+   * 缺省只在内存里，`clear()` 一并清掉。
+   */
+  readonly sessions?: {
+    load(sourceId: string): Promise<RelaySession | undefined>;
+    save(sourceId: string, session: RelaySession): void;
+  };
+  /** 待确认对话框里这台电脑的名字。 */
+  readonly label?: (sourceId: string) => string;
 }
 
 /** 控制台客户端的失败（`status` + `code`）→ 中继登录流程认得的 {@link CloudError}。 */
 function asCloudError(error: unknown): unknown {
   if (error instanceof CloudError) return error;
-  const { status, code, message } = (error ?? {}) as {
+  const { status, code, message, details } = (error ?? {}) as {
     status?: unknown;
     code?: unknown;
     message?: unknown;
+    details?: unknown;
   };
-  return typeof status === "number" && typeof code === "string"
-    ? new CloudError(status, code, typeof message === "string" ? message : code)
-    : error;
+  if (typeof status !== "number" || typeof code !== "string") return error;
+  // `details` 原样带上：限流的 `retryAfterMs`、待确认的 `pendingId` 都在里面。
+  const record =
+    typeof details === "object" && details !== null
+      ? (details as Record<string, unknown>)
+      : {};
+  const retryAfterMs =
+    typeof record.retryAfterMs === "number" ? record.retryAfterMs : 0;
+  return new CloudError(
+    status,
+    code,
+    typeof message === "string" ? message : code,
+    retryAfterMs,
+    record,
+  );
 }
 
 /**
@@ -415,18 +457,30 @@ function asCloudError(error: unknown): unknown {
  */
 export function createBrowserCloudCredentialProvider(
   deps: BrowserCloudDeps,
-): CredentialProvider & { clear(): void } {
+): CredentialProvider & {
+  clear(): void;
+  /**
+   * 授予变了：跳过轮换，用新断言带当前刷新令牌重登（`relay-access.ts` 的 `relogin`），
+   * 主机在同一会话上续并同步授予。
+   */
+  relogin(sourceId: string): Promise<SourceAccess>;
+} {
   const sessions = new Map<string, RelaySession>();
   const relay = createRelayedAccess({
     vault: {
       cloudRefreshToken: async () => null,
       saveCloudRefreshToken: async () => undefined,
-      session: async (sourceId) => sessions.get(sourceId),
+      session: async (sourceId) =>
+        deps.sessions === undefined
+          ? sessions.get(sourceId)
+          : deps.sessions.load(sourceId),
       async saveSession(sourceId, _issuer, session) {
-        sessions.set(sourceId, session);
+        if (deps.sessions === undefined) sessions.set(sourceId, session);
+        else deps.sessions.save(sourceId, session);
       },
     },
     device: () => browserDevice(),
+    ...(deps.label === undefined ? {} : { label: deps.label }),
     assertion: (sourceId, device) =>
       deps.client.sources
         .assertion({ sourceId, device })
@@ -438,11 +492,26 @@ export function createBrowserCloudCredentialProvider(
     ...(deps.now === undefined ? {} : { now: deps.now }),
   });
   const forced = new Set<string>();
+  const relogins = new Set<string>();
   const used = new Set<string>();
+  /** 每个源正在进行的那次换票（不论是否重登）。 */
+  const running = new Map<string, Promise<unknown>>();
   const cached = createCachedCredentialProvider(async (sourceId, via) => {
     used.add(sourceId);
     if (via !== "relayed") throw new SourceError(SOURCE_ERROR.unreachable);
-    return relay.access(deps.issuer, sourceId, forced.delete(sourceId));
+    const exchange: Promise<SourceAccess> = relay
+      .access(
+        deps.issuer,
+        sourceId,
+        forced.delete(sourceId),
+        relogins.delete(sourceId),
+      )
+      .finally(() => {
+        // 先于缓存的收尾：等它的人醒来时这一项已经不在了。
+        if (running.get(sourceId) === exchange) running.delete(sourceId);
+      });
+    running.set(sourceId, exchange);
+    return exchange;
   }, deps.now);
   return {
     getAccess: (sourceId, via) => cached.getAccess(sourceId, via),
@@ -451,9 +520,19 @@ export function createBrowserCloudCredentialProvider(
       return cached.refresh(sourceId, via);
     },
     invalidate: (sourceId) => cached.invalidate(sourceId),
+    async relogin(sourceId) {
+      // 进行中的那次是在授予变化之前开始的：不能拿它的结果顶替重登。等它完，再单独开一次
+      // 带重登标记的（标记与开始换票在同一拍里，别的请求插不进来消费它）。
+      // 进行中时 `getAccess` 答的就是那一次（连同缓存的收尾），不会另开。
+      while (running.has(sourceId))
+        await cached.getAccess(sourceId, "relayed").catch(() => undefined);
+      relogins.add(sourceId);
+      return cached.refresh(sourceId, "relayed");
+    },
     clear() {
       sessions.clear();
       forced.clear();
+      relogins.clear();
       for (const sourceId of used) cached.invalidate(sourceId);
       used.clear();
     },

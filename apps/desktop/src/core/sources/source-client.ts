@@ -295,17 +295,20 @@ export class SourceClient {
 
   /**
    * `POST /api/identity/cloud/login`（§31）：断言换原生会话。按分享链接加入时
-   * 多带邀请令牌（§31.3：没映射过的远程服务账号凭它建成员）。
+   * 多带邀请令牌（§31.3：没映射过的远程服务账号凭它建成员）；重登时带当前会话的
+   * 刷新令牌，限寿会话在同一会话 id 上续（§31.3「续同一会话」，§88.2）。
    */
   async cloudLogin(
     address: SourceAddress,
     assertion: string,
     invitationToken?: string,
+    refreshToken?: string,
   ): Promise<NativeCredentials> {
     const body = record(
       await this.call(address, "POST", "/api/identity/cloud/login", 10_000, {
         assertion,
         ...(invitationToken === undefined ? {} : { invitationToken }),
+        ...(refreshToken === undefined ? {} : { refreshToken }),
       }),
     );
     const credentials = credentialsOf(

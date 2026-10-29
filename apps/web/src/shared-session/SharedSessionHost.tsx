@@ -1,7 +1,7 @@
 import * as React from "react";
 
 import { LOCAL_SOURCE_ID } from "@/api/source";
-import { hostedRelay } from "@/sources/hosted";
+import { relayedPage } from "@/sources/relayed-page";
 import { useCanvasStore } from "@/store/canvas-store";
 import { SharedSessionSkeleton } from "./SharedSessionSkeleton";
 import { useSessionShareQuery, useSharedSessionView } from "./sessions";
@@ -19,7 +19,7 @@ export function SharedSessionHost() {
   const open = useSharedSessionView((state) => state.open);
   const close = useSharedSessionView((state) => state.close);
   const workspace = useCanvasStore((state) => state.workspace);
-  const guest = hostedRelay()?.guest() != null;
+  const guest = relayedPage()?.guest() != null;
   const shareQuery = useSessionShareQuery(
     LOCAL_SOURCE_ID,
     guest && workspace === null,

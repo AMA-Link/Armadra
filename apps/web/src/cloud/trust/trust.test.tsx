@@ -11,6 +11,7 @@ import { installDomPolyfills } from "../../app/test-harness";
 import { MOCK_PERSONAL, MOCK_TEAMS } from "../mock/fixtures";
 import { h1, installConsoleHarness, mount } from "../testkit";
 import { addPendingIds } from "../mock/pending-ids";
+import { announceHostTrusted } from "../../sources/cloud-session-channel";
 import type { HostEndorser } from "./endorser";
 
 installConsoleHarness();
@@ -70,15 +71,53 @@ describe("团队 · 设备信任", () => {
     expect(screen.queryByRole("textbox")).toBeNull();
   });
 
-  it("不是该主机的受信设备：行尾是「在已信任的设备上处理」，不渲染按钮", async () => {
+  it("不是该主机的受信设备：行尾是「在已信任的设备上处理」，旁边给「在此浏览器打开主机」（新标签 /h/<主机>），没有「信任 / 拒绝」", async () => {
     mount("/t/rd/trust", OPTIONS, endorser([]), addPendingIds);
     const list = await rows();
     for (const row of list) {
-      await waitFor(() =>
-        expect(within(row).getByText("在已信任的设备上处理")).toBeTruthy(),
-      );
+      const link = await within(row).findByRole("link", {
+        name: "在此浏览器打开主机",
+      });
+      expect(within(row).getByText("在已信任的设备上处理")).toBeTruthy();
+      expect(link.getAttribute("href")).toMatch(/^\/h\/[0-9a-f]+$/);
+      expect(link.getAttribute("target")).toBe("_blank");
+      expect(link.getAttribute("rel")).toContain("noopener");
       expect(within(row).queryByRole("button")).toBeNull();
     }
+    // 每一行指向自己那台主机。
+    const hrefs = list.map(
+      (row) => within(row).getByRole("link").getAttribute("href") ?? "",
+    );
+    expect(new Set(hrefs).size).toBe(2);
+  });
+
+  it("「在此浏览器打开主机」之后：/h/ 广播这台主机受信了，这一行重判并给出「信任」", async () => {
+    const host = endorser([]);
+    const trustedNow = new Set<string>();
+    const probe = vi.fn(async (sourceId: string) => trustedNow.has(sourceId));
+    host.canEndorse = probe;
+    mount("/t/rd/trust", OPTIONS, host, addPendingIds);
+    const lisi = async () =>
+      (await rows()).find((row) => row.textContent?.includes("李四"))!;
+    const link = await within(await lisi()).findByRole("link", {
+      name: "在此浏览器打开主机",
+    });
+    const sourceId = decodeURIComponent(
+      (link.getAttribute("href") ?? "").slice("/h/".length),
+    );
+    await waitFor(() => expect(probe).toHaveBeenCalledTimes(2));
+    // 别的主机受信了：这一行不动。
+    act(() => announceHostTrusted("other-host"));
+    await new Promise((done) => setTimeout(done, 30));
+    expect(probe).toHaveBeenCalledTimes(2);
+    trustedNow.add(sourceId);
+    act(() => announceHostTrusted(sourceId));
+    await within(await lisi()).findByRole("button", { name: "信任" });
+    expect(probe).toHaveBeenCalledTimes(3);
+    expect(probe).toHaveBeenLastCalledWith(sourceId);
+    expect(
+      within(await lisi()).queryByRole("link", { name: "在此浏览器打开主机" }),
+    ).toBeNull();
   });
 
   it("没有端到端实现时同样不给按钮", async () => {
@@ -86,6 +125,7 @@ describe("团队 · 设备信任", () => {
     const [first] = await rows();
     expect(within(first!).getByText("在已信任的设备上处理")).toBeTruthy();
     expect(within(first!).queryByRole("button")).toBeNull();
+    expect(within(first!).queryByRole("link")).toBeNull();
   });
 
   it("请求不带 core 的 pendingId（现契约）：即使这台浏览器是受信设备也不可背书", async () => {
@@ -93,6 +133,7 @@ describe("团队 · 设备信任", () => {
     const [first] = await rows();
     expect(within(first!).getByText("在已信任的设备上处理")).toBeTruthy();
     expect(within(first!).queryByRole("button")).toBeNull();
+    expect(within(first!).queryByRole("link")).toBeNull();
   });
 
   it("是受信设备：按主机判定，只有那台主机的行有「拒绝 / 信任」", async () => {
@@ -224,6 +265,8 @@ describe("团队 · 设备信任", () => {
     const [refused, sibling] = await lisi();
     expect(within(refused!).getByText("在已信任的设备上处理")).toBeTruthy();
     expect(within(refused!).queryByRole("button")).toBeNull();
+    // 受信却被主机拒了：再打开一次主机也没用，不给「打开主机」。
+    expect(within(refused!).queryByRole("link")).toBeNull();
     await new Promise((done) => setTimeout(done, 30));
     expect(within((await lisi())[0]!).queryByRole("button")).toBeNull();
     expect(probe).toHaveBeenCalledTimes(2);
@@ -234,6 +277,27 @@ describe("团队 · 设备信任", () => {
     fireEvent.click(within(second).getByRole("button", { name: "信任" }));
     await waitFor(() => expect(host.approve).toHaveBeenCalledTimes(2));
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+  });
+
+  it("主机限流登录（rate_limited）：提示等几秒，对话框留着、这条仍可再试", async () => {
+    const host = endorser([], async () => {
+      throw Object.assign(new Error("rate_limited"), {
+        code: "rate_limited",
+        retryAfterMs: 30_000,
+      });
+    });
+    host.canEndorse = vi.fn(async () => true);
+    mount("/t/rd/trust", OPTIONS, host, addPendingIds);
+    const ipad = (await rows()).find((row) =>
+      row.textContent?.includes("李四"),
+    )!;
+    const dialog = await openDialog(ipad);
+    typeCode(dialog, "222222");
+    fireEvent.click(within(dialog).getByRole("button", { name: "信任" }));
+    expect(
+      await screen.findByText("这台主机上的登录太频繁，30 秒后再试"),
+    ).toBeTruthy();
+    expect(within(dialog).getByRole("button", { name: "信任" })).toBeTruthy();
   });
 
   it("主机答 device_untrusted：这台主机的受信判定作废重判，被拒的那条仍不可背书", async () => {
@@ -263,7 +327,7 @@ describe("团队 · 设备信任", () => {
     expect(within(after).queryByRole("button")).toBeNull();
   });
 
-  it("通道一时开不了（判定抛错）：这一行按不可背书画，不渲染按钮", async () => {
+  it("通道一时开不了、没有访问权（判定抛错）：这一行按不可背书画，不渲染按钮，也不给「打开主机」", async () => {
     const host = endorser([]);
     host.canEndorse = vi.fn(async () => {
       throw Object.assign(new Error("e"), { code: "e2e_device_unavailable" });
@@ -274,6 +338,7 @@ describe("团队 · 设备信任", () => {
         expect(within(row).getByText("在已信任的设备上处理")).toBeTruthy(),
       );
       expect(within(row).queryByRole("button")).toBeNull();
+      expect(within(row).queryByRole("link")).toBeNull();
     }
   });
 

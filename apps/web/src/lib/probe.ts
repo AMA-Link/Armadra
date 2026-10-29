@@ -29,6 +29,9 @@ export interface ProbeOptions {
   /** 等待的封顶（毫秒），默认 30 秒。 */
   readonly capMs?: number;
   readonly now?: () => number;
+  /** 计时器（测试注入手动时钟，不依赖真实时间）。 */
+  readonly setTimeout?: (run: () => void, ms: number) => unknown;
+  readonly clearTimeout?: (handle: unknown) => void;
 }
 
 export const PROBE_BASE_MS = 1_000;
@@ -45,10 +48,16 @@ export function createProbe(
   const baseMs = options.baseMs ?? PROBE_BASE_MS;
   const capMs = options.capMs ?? PROBE_CAP_MS;
   const now = options.now ?? (() => Date.now());
+  const later =
+    options.setTimeout ?? ((run, ms) => globalThis.setTimeout(run, ms));
+  const cancel =
+    options.clearTimeout ??
+    ((handle) =>
+      globalThis.clearTimeout(handle as ReturnType<typeof setTimeout>));
   let state: "idle" | "inflight" | "done" = "idle";
   let failures = 0;
   let retryAt = 0;
-  let timer: ReturnType<typeof setTimeout> | null = null;
+  let timer: unknown = null;
   let waitingVisible = false;
 
   const onVisible = () => {
@@ -74,7 +83,7 @@ export function createProbe(
     }
     const wait = retryAt - now();
     if (wait > 0) {
-      timer ??= setTimeout(() => {
+      timer ??= later(() => {
         timer = null;
         ensure();
       }, wait);
@@ -104,7 +113,7 @@ export function createProbe(
   return {
     ensure,
     reset(settled = false) {
-      if (timer !== null) clearTimeout(timer);
+      if (timer !== null) cancel(timer);
       timer = null;
       stopWaitingVisible();
       state = settled ? "done" : "idle";

@@ -14,9 +14,11 @@ import { EventBus, WORKSPACE_EVENT_TYPES, type WorkspaceEvent } from "../bus";
 import {
   EVENT_HIGH_WATER_BYTES,
   MAX_QUEUED_FRAMES,
+  OWNER_ONLY_EVENTS,
   WorkspaceEventStream,
   type EventSink,
 } from "./stream";
+import { ownerSubscriber } from "./procedure";
 
 /** A sink that writes straight through — the fast client. */
 function immediate(): { sink: EventSink; frames: string[] } {
@@ -146,9 +148,9 @@ describe("WorkspaceEventStream", () => {
     expect(changed.mtime).toBeNull();
   });
 
-  it("carries the 21 contractual type strings, plus node.created, terminal.lease, canvas.presence, terminal.hibernation, terminal.program, the four workflow events, the four G5 schedule / resources events, cloud.tunnel and the two device events, and no others", () => {
-    expect(WORKSPACE_EVENT_TYPES).toHaveLength(37);
-    expect(new Set(WORKSPACE_EVENT_TYPES).size).toBe(37);
+  it("carries the 21 contractual type strings, plus node.created, terminal.lease, canvas.presence, terminal.hibernation, terminal.program, the four workflow events, the four G5 schedule / resources events, cloud.tunnel and the three device events, and no others", () => {
+    expect(WORKSPACE_EVENT_TYPES).toHaveLength(38);
+    expect(new Set(WORKSPACE_EVENT_TYPES).size).toBe(38);
     // A rename here is a break in `packages/shared`'s discriminated union and
     // in every front-end reducer that switches on it (contract §5).
     expect([...WORKSPACE_EVENT_TYPES]).toEqual([
@@ -189,7 +191,53 @@ describe("WorkspaceEventStream", () => {
       "cloud.tunnel",
       "devices.pending",
       "devices.changed",
+      "devices.endorsed",
     ]);
+  });
+
+  it("背书通知只扇给 owner 的订阅（契约 §81.1）：成员的 socket 与控制面订阅都收不到", () => {
+    expect([...OWNER_ONLY_EVENTS]).toEqual(["devices.endorsed"]);
+    const stream = new WorkspaceEventStream();
+    const owner = immediate();
+    const member = immediate();
+    const ownerFrames: string[] = [];
+    const memberFrames: string[] = [];
+    stream.subscribe("ws-1", owner.sink);
+    stream.subscribe("ws-1", member.sink, { owner: false });
+    stream.listen("ws-1", (frame) => ownerFrames.push(frame));
+    stream.listen("ws-1", (frame) => memberFrames.push(frame), {
+      owner: false,
+    });
+    const endorsed = {
+      type: "devices.endorsed",
+      deviceId: "d",
+      principalId: "p",
+      endorserDeviceId: "e",
+      endorserPrincipalId: "o",
+    } as WorkspaceEvent;
+    expect(stream.publish("ws-1", endorsed)).toBe(2);
+    expect(owner.frames).toHaveLength(1);
+    expect(ownerFrames).toHaveLength(1);
+    expect(member.frames).toHaveLength(0);
+    expect(memberFrames).toHaveLength(0);
+    // 别的事件照常给所有人。
+    expect(stream.publish("ws-1", board("b"))).toBe(4);
+    expect(member.frames).toHaveLength(1);
+    expect(memberFrames).toHaveLength(1);
+  });
+
+  it("谁算 owner 的订阅：没有请求身份（桌面壳本机）与 owner 主体算，成员不算", () => {
+    expect(ownerSubscriber(undefined)).toBe(true);
+    expect(
+      ownerSubscriber({
+        subject: { principalId: "o", kind: "owner", scopes: [] },
+      }),
+    ).toBe(true);
+    expect(
+      ownerSubscriber({
+        subject: { principalId: "m", kind: "member", scopes: [] },
+      }),
+    ).toBe(false);
   });
 
   it("fans one event out to every watcher of the same workspace", () => {

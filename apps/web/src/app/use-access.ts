@@ -4,7 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import { resumeIdentity, type IdentitySession } from "../api/identity";
 import { RUNTIME_VIA_SERVER_SHELL } from "../api/request";
 import { isNativeAppPage } from "../api/runtime-url";
-import { hostedRelay } from "../sources/hosted";
+import { relayedPage } from "../sources/relayed-page";
 import { runtimeApi } from "../api/client";
 import { backoffCeiling } from "../lib/backoff";
 
@@ -62,7 +62,7 @@ export function accessOf(session: IdentitySession | null | undefined): Access {
  */
 export function identityGated(): boolean {
   return (
-    RUNTIME_VIA_SERVER_SHELL || isNativeAppPage() || hostedRelay() !== null
+    RUNTIME_VIA_SERVER_SHELL || isNativeAppPage() || relayedPage() !== null
   );
 }
 

@@ -125,6 +125,11 @@ const listeners = new Set<() => void>();
 
 /** 站内跳转；`replace` 不留历史（重定向用）。 */
 export function navigate(to: string, options: { replace?: boolean } = {}) {
+  // 主机画布（`/h/`）不在控制台里：整页换过去（登录后 `next=/h/…` 回来）。
+  if (/^\/h\//.test(to)) {
+    window.location[options.replace ? "replace" : "assign"](to);
+    return;
+  }
   window.history[options.replace ? "replaceState" : "pushState"](null, "", to);
   for (const listener of listeners) listener();
 }

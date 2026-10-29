@@ -11,7 +11,7 @@ import { applyHttpTimeouts } from "../http/timeouts";
 import type { CoreContext } from "../main";
 import { identityInstanceId } from "../identity";
 import { type RequestIdentity, runAs } from "../identity/gate";
-import { markBearerTransport } from "../identity/http";
+import { markBearerTransport, markGatewayRequest } from "../identity/http";
 import { IdentityService } from "../identity/service";
 import { sessionIdentity } from "../identity/transport";
 import { IdentityStore } from "../identity/store";
@@ -25,6 +25,7 @@ import {
   WsTickets,
   admit,
   impliedOrigin,
+  ownerPageRequest,
 } from "./admission";
 import { type AcmeTlsResponder, interceptAcmeTls } from "./alpn";
 import {
@@ -35,9 +36,19 @@ import {
   originsFor,
 } from "./network";
 import { type PairingTicket, pairingLinks } from "./pairing";
-import { GATEWAY_API_HEADERS, GATEWAY_RESPONSE_HEADERS } from "./csp";
+import {
+  GATEWAY_API_HEADERS,
+  GATEWAY_RESPONSE_HEADERS,
+  currentPageConnectGrants,
+} from "./csp";
 import { type TlsMaterial, resolveTls } from "./tls";
-import { type WebRoot, resolveFile, sendFile, staticHeaders } from "./web-root";
+import {
+  type WebRoot,
+  pageEntry,
+  resolveFile,
+  sendFile,
+  staticHeaders,
+} from "./web-root";
 
 /**
  * `openGateway`：在**同一个进程**里，给已经装配好的 core 前面放一层 TLS。
@@ -365,6 +376,8 @@ async function handle(
       });
       return;
     }
+    // 经 Gateway 来的不是本机的本地会话（契约 §88.5）：`bind` 不替换映射。
+    markGatewayRequest(request);
     // core 里的路由门与各域的判定按这个身份判（`core/identity/gate.ts`）。
     runAs(requestIdentityOf(admission, state.context), () =>
       state.delegate.emit("request", request, response),
@@ -385,7 +398,17 @@ async function handle(
       response.writeHead(404, staticHeaders()).end();
       return;
     }
-    sendFile(response, file, method);
+    // 单页入口按源表追加连接授权（契约 §88.1）：直连源的地址只给带 owner 会话的请求。
+    sendFile(
+      response,
+      file,
+      method,
+      pageEntry(file)
+        ? currentPageConnectGrants(
+            ownerPageRequest(request.headers, state.context),
+          )
+        : [],
+    );
   } catch (error) {
     state.log.error("静态产物读取失败", {
       path,

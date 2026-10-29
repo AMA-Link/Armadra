@@ -703,7 +703,7 @@ describe("tokens.css", () => {
       expect(appCss).not.toMatch(/letter-spacing:\s*-?\d/);
     });
 
-    it("入口最先引入两款字体的 @font-face（Inter 带光学尺寸轴）", () => {
+    it("入口在一切样式表之前引入两款字体的 @font-face（Inter 带光学尺寸轴）", () => {
       const main = readFileSync(
         fileURLToPath(new URL("../main.tsx", import.meta.url)),
         "utf8",
@@ -711,11 +711,15 @@ describe("tokens.css", () => {
       const imports = [
         ...main.matchAll(/^import\s+(?:.*\s+from\s+)?"([^"]+)";/gm),
       ].map((match) => match[1]);
-      expect(imports.slice(0, 2)).toEqual([
-        "@fontsource-variable/inter/opsz.css",
-        "@fontsource-variable/geist-mono",
-      ]);
-      expect(imports.indexOf("./styles/app.css")).toBeGreaterThan(1);
+      // zod 配置要求排第一（Trusted Types），字体只需早于任何样式表。
+      const inter = imports.indexOf("@fontsource-variable/inter/opsz.css");
+      const mono = imports.indexOf("@fontsource-variable/geist-mono");
+      const firstSheet = imports.findIndex((path) =>
+        path?.startsWith("./styles/"),
+      );
+      expect(inter).toBeGreaterThanOrEqual(0);
+      expect(mono).toBe(inter + 1);
+      expect(firstSheet).toBeGreaterThan(mono);
     });
   });
   /**

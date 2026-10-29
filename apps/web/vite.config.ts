@@ -86,6 +86,14 @@ function isCodeMirrorCore(id: string): boolean {
 
 const vendorGroups = [
   {
+    // zod 与 `src/lib/zod-config.ts` 同一块：块一求值就先关掉 `new Function`（jitless），之后任何
+    // 模块构建 schema 时都已生效——zod 在构建 schema 时就读这个开关、试探 eval，放在入口里会晚于
+    // 入口的依赖（Trusted Types，设计 saas-host-open §5.4）。优先级最高，免得被别的组吸走。
+    name: "zod",
+    priority: 50,
+    test: /([\\/]node_modules[\\/]zod[\\/]|[\\/]src[\\/]lib[\\/]zod-config\.ts$)/,
+  },
+  {
     name: "react-vendor",
     priority: 40,
     test: /[\\/]node_modules[\\/](react|react-dom|scheduler)[\\/]/,

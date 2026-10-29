@@ -5,7 +5,9 @@ import {
   ed25519SignerFromSeed,
 } from "@armadra/platform-protocol/e2e";
 import type { DevicePlatform } from "@armadra/shared/e2e";
+import { z } from "zod";
 
+import { json, request } from "../../api/request";
 import { isNativeAppPage } from "../../api/runtime-url";
 import { localSource } from "../../api/source";
 import { nativeBridge } from "../../mobile/native-bridge";
@@ -60,21 +62,39 @@ async function idbGet(): Promise<StoredKey | undefined> {
   }
 }
 
-async function idbPut(value: StoredKey): Promise<void> {
+/**
+ * 写入新钥，但只在还没有的时候：同一个 `readwrite` 事务里 `add`，键已存在（别的标签页
+ * 先写了）就在同一事务里读回那一把。两个标签页第一次同时取钥时由此只留一把——后写的
+ * 覆盖先写的会让先写那一把已经提交的待确认作废。不依赖 `navigator.locks`。
+ */
+async function idbAddOrGet(value: StoredKey): Promise<StoredKey> {
   const db = await idb();
   try {
-    await new Promise<void>((resolve, reject) => {
+    return await new Promise<StoredKey>((resolve, reject) => {
       const tx = db.transaction(STORE, "readwrite");
-      tx.objectStore(STORE).put(value, KEY);
-      tx.oncomplete = () => resolve();
+      const store = tx.objectStore(STORE);
+      let kept: StoredKey = value;
+      const added = store.add(value, KEY);
+      added.onerror = (event) => {
+        if (added.error?.name !== "ConstraintError") return;
+        // 已经有一把：不让这次失败中止事务，改读那一把。
+        event.preventDefault();
+        event.stopPropagation();
+        const read = store.get(KEY);
+        read.onsuccess = () => {
+          kept = read.result as StoredKey;
+        };
+      };
+      tx.oncomplete = () => resolve(kept);
       tx.onerror = () => reject(tx.error);
+      tx.onabort = () => reject(tx.error);
     });
   } finally {
     db.close();
   }
 }
 
-/** 浏览器：IndexedDB 里不可导出的那把；没有就生成。 */
+/** 浏览器：IndexedDB 里不可导出的那把；没有就生成（并发生成时只留先写入的那把）。 */
 export async function browserDeviceKey(): Promise<E2eSigner> {
   const stored = await idbGet();
   if (stored !== undefined)
@@ -86,8 +106,8 @@ export async function browserDeviceKey(): Promise<E2eSigner> {
   const publicKey = new Uint8Array(
     await crypto.subtle.exportKey("raw", pair.publicKey),
   );
-  await idbPut({ privateKey: pair.privateKey, publicKey });
-  return ed25519Signer(pair.privateKey, publicKey);
+  const kept = await idbAddOrGet({ privateKey: pair.privateKey, publicKey });
+  return ed25519Signer(kept.privateKey, kept.publicKey);
 }
 
 /** 手机：钥匙串里的种子 → 不可导出的私钥。 */
@@ -148,17 +168,22 @@ export async function desktopDeviceKey(
   };
 }
 
-async function defaultDesktopSign(transcript: string) {
-  const response = await localSource.fetch(
-    `${localSource.httpBase}/api/e2e/sign`,
-    {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ transcript }),
-    },
+const signAnswerSchema = z.object({
+  publicKey: z.string().min(1),
+  signature: z.string().min(1),
+});
+
+/**
+ * 经 `request` 发：服务器壳的页面是 Cookie 会话，写请求要带 CSRF（契约 §78.3「回环与
+ * Gateway」）；桌面窗口是 Bearer，照旧。
+ */
+function defaultDesktopSign(transcript: string) {
+  return request(
+    "/api/e2e/sign",
+    signAnswerSchema,
+    { method: "POST", ...json({ transcript }) },
+    localSource,
   );
-  if (!response.ok) throw new Error(`e2e.sign ${response.status}`);
-  return (await response.json()) as { publicKey: string; signature: string };
 }
 
 let cached: Promise<DeviceIdentity> | null = null;

@@ -21,7 +21,8 @@ import { ChevronDown, Folder } from "lucide-react";
 
 import { reorderSources } from "../api/remote-services";
 import { RUNTIME_VIA_SERVER_SHELL } from "../api/request";
-import { useT } from "../app/preferences-store";
+import { usePreferencesStore, useT } from "../app/preferences-store";
+import { useCanvasStore } from "../store/canvas-store";
 import { isDesktop } from "../platform";
 import { useOpenWorkspace } from "../app/workspace-actions";
 import { useWorkspaces } from "../app/workspaces-query";
@@ -32,6 +33,7 @@ import {
   useSources,
 } from "../sources";
 import { originOf, shareRoleOf } from "../sources/origin";
+import { SOURCE_ERROR } from "../sources/types";
 import { SharedSessionRows } from "../shared-session/SharedSessionRows";
 import { cachedWorkspaces } from "../sources/workspace-cache";
 import {
@@ -445,6 +447,38 @@ interface SortableProps {
   readonly dragging: boolean;
 }
 
+/** 设置里「远程访问」那一页（`RemoteAccessPage.REMOTE_SECTION`；懒加载，这里不引它）。 */
+const REMOTE_SECTION = "remoteAccess";
+
+/**
+ * 经远程服务挂上的这台因远程服务的登录失效而连不上（契约 §88.1）：段头给「重新登录」，
+ * 打开远程访问页。只在背后有本机 core 的页面（桌面壳、服务器壳），那里才有这一页。
+ */
+function signedOut(section: SourceSection): boolean {
+  const { descriptor, status } = section.connection;
+  return (
+    (isDesktop() || RUNTIME_VIA_SERVER_SHELL) &&
+    section.state !== "ready" &&
+    descriptor.kind === "relayed" &&
+    descriptor.cloudIssuer !== "" &&
+    status.state === "unauthorized" &&
+    status.lastError?.code === "source_unauthorized"
+  );
+}
+
+/** 主机版本过旧、控制面不签它的断言（契约 §88.2）：段头给版本提示，不给「重新登录」。 */
+function hostOutdated(section: SourceSection): boolean {
+  return (
+    section.state !== "ready" &&
+    section.connection.status.lastError?.code === SOURCE_ERROR.hostOutdated
+  );
+}
+
+function openRemoteAccess(): void {
+  usePreferencesStore.getState().setLastSettingsSection(REMOTE_SECTION);
+  useCanvasStore.getState().setPanel("settings", true);
+}
+
 /** 段的状态 → 状态点与读屏文字（在连用转圈）。 */
 function pillOf(section: SourceSection) {
   const state = section.connection.status.state;
@@ -520,6 +554,26 @@ function SourceBlock({
           <Badge variant="secondary" data-share-role>
             {t(`workspaceGroups.role.${shareRoleOf(connection.descriptor)}`)}
           </Badge>
+        )}
+        {hostOutdated(section) && (
+          <Badge
+            variant="outline"
+            data-source-outdated
+            title={t("remote.error.hostOutdated")}
+          >
+            {t("remote.status.hostOutdated")}
+          </Badge>
+        )}
+        {signedOut(section) && (
+          <Button
+            type="button"
+            variant="ghost"
+            size="xs"
+            data-source-sign-in
+            onClick={openRemoteAccess}
+          >
+            {t("remote.hosted.signInAgain")}
+          </Button>
         )}
         <span className="sr-only">{t(pill.key)}</span>
       </div>

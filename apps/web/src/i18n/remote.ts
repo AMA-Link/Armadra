@@ -95,6 +95,8 @@ export const remote: MessageModule = {
     "remote.status.connecting": "连接中",
     "remote.status.offline": "离线",
     "remote.status.unauthorized": "需要登录",
+    "remote.status.hostOutdated": "版本过旧",
+    "remote.error.hostOutdated": "这台主机的 Armadra 版本太旧，升级后再连",
     "remote.status.waitingForSource": "等待上线",
     "remote.status.idle": "未连接",
     "remote.status.disabled": "未连接",
@@ -257,6 +259,9 @@ export const remote: MessageModule = {
     "remote.status.connecting": "Connecting",
     "remote.status.offline": "Offline",
     "remote.status.unauthorized": "Sign-in required",
+    "remote.status.hostOutdated": "Update needed",
+    "remote.error.hostOutdated":
+      "This computer runs an outdated Armadra. Update it to connect",
     "remote.status.waitingForSource": "Waiting to come online",
     "remote.status.idle": "Not connected",
     "remote.status.disabled": "Not connected",

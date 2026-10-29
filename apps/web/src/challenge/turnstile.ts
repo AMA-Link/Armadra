@@ -1,3 +1,5 @@
+import { trustedScriptURL } from "../lib/trusted-types";
+
 /**
  * Turnstile 的页面端（契约 §62）：显式渲染，脚本由 Cloudflare 提供。
  *
@@ -58,7 +60,8 @@ export function loadTurnstile(
   if (loading !== null) return loading;
   loading = new Promise<TurnstileApi>((resolve, reject) => {
     const script = doc.createElement("script");
-    script.src = src;
+    // 控制台来源要求 Trusted Types：脚本地址经页面策略（只认本源与挑战组件）。
+    script.src = trustedScriptURL(src);
     script.async = true;
     script.onload = () => {
       const api = doc.defaultView?.turnstile;
