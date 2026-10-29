@@ -350,6 +350,17 @@ export const workspaceEventSchema = z.discriminatedUnion("type", [
     type: z.literal("devices.changed"),
     deviceId: z.string(),
   }),
+  /**
+   * 一台设备经别的受信设备背书放行（契约 §88.7）；不进 outbox。只带标识：名字由有
+   * `devices.list` 权限的页面自己查。
+   */
+  z.object({
+    type: z.literal("devices.endorsed"),
+    deviceId: z.string(),
+    principalId: z.string(),
+    endorserDeviceId: z.string(),
+    endorserPrincipalId: z.string(),
+  }),
   /** 一个会话的资源用量越过阈值（契约 §27）；`metric` 今天只有 `memory`（字节）。 */
   z.object({
     type: z.literal("resources.threshold"),

@@ -46,6 +46,48 @@ export function openCloudSessionChannel(): ChannelLike | null {
   }
 }
 
+/**
+ * `/h/` 进了主机（这台浏览器对它已是受信设备）时告诉控制台标签页（设计 saas-host-open §5.2）：
+ * 信任页对这台主机的「是不是受信设备」判定作废重判。消息只有 `{ sourceId }`，不带凭据。
+ */
+export const E2E_TRUST_CHANNEL = "armadra.e2e.trust";
+
+export function openE2eTrustChannel(): ChannelLike | null {
+  try {
+    return typeof BroadcastChannel === "function"
+      ? new BroadcastChannel(E2E_TRUST_CHANNEL)
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+/** `/h/` 这一侧：进了主机就发一条，发完即关。 */
+export function announceHostTrusted(
+  sourceId: string,
+  channel: ChannelLike | null = openE2eTrustChannel(),
+): void {
+  try {
+    channel?.postMessage({ sourceId });
+  } catch {
+    /* 发不出去：信任页的判定 5 分钟后自己过期。 */
+  } finally {
+    channel?.close?.();
+  }
+}
+
+/** 控制台这一侧：别的标签页说某台主机受信了；答退订。只认 `{ sourceId: string }`。 */
+export function onHostTrusted(
+  listener: (sourceId: string) => void,
+  channel: ChannelLike | null = openE2eTrustChannel(),
+): () => void {
+  channel?.addEventListener("message", ({ data }) => {
+    const sourceId = (data as { sourceId?: unknown } | null)?.sourceId;
+    if (typeof sourceId === "string" && sourceId !== "") listener(sourceId);
+  });
+  return () => channel?.close?.();
+}
+
 /** 丢掉 `armadra.host.*` 记录（`keep` 认的留下）。 */
 export function clearHostSessions(
   storage: Storage | null,

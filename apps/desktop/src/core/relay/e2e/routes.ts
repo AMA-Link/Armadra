@@ -22,6 +22,7 @@ import { requestIdentity } from "../../identity/gate";
 import { type TeamRoleRow, cloudProvider } from "../../identity/cloud/store";
 import { type Scope, permits } from "../../identity/scopes";
 import { E2E_IDENTITY_PATH, E2E_WAIT_PATH } from "../../identity/transport";
+import { TunnelDuplex } from "../streams";
 import type { DeviceKey } from "./device-key";
 import { DeviceError, type DeviceRegistry, type DeviceView } from "./devices";
 import type { PairingSecrets } from "./pairing";
@@ -183,6 +184,44 @@ function authorizeEndorsement(
   return peer.deviceId;
 }
 
+/** 原生端的平台（设备钥在桌面或手机 App 里）；别的自报值（`browser`、认不得的）都不算。 */
+const NATIVE_PLATFORMS: ReadonlySet<string> = new Set([
+  "desktop",
+  "ios",
+  "android",
+]);
+
+/**
+ * 这个请求经中继来、却拿不出原生设备钥（契约 §88.7）：浏览器的端到端通道，或干脆不走通道的
+ * 明文中继路径。判定只看 core 自己掌握的东西，不读任何请求头：
+ *
+ * 1. 连接是不是中继隧道流（`TunnelDuplex`）——由中继准入建，页面造不出来；不是就不算（本机回环、
+ *    桌面壳、服务器壳 CLI、Gateway 转交的局域网设备都不受影响）。
+ * 2. 是端到端通道（`channelPeerOf`，只认通道登记过的内层流）时，这把设备钥在 `trusted_devices`
+ *    里对**发起者自己**已受信的那一行登记的平台是原生端，并且这次握手自报的也是原生端。登记行的
+ *    平台是首次申请时自报、由人核对放行时看过的，之后的握手改不了它；页面换一把新钥自称 `desktop`
+ *    要重新待确认。
+ * 3. 明文中继路径（没有通道）拿不出任何设备证明，按浏览器算——否则绕开通道就绕开了这条规则。
+ */
+function relayedWithoutNativeDevice(
+  deps: E2eRouteDeps,
+  request: CoreRequest | undefined,
+): boolean {
+  const socket: unknown = request?.raw.socket;
+  if (!(socket instanceof TunnelDuplex)) return false;
+  const peer = channelPeerOf(socket);
+  if (peer === undefined) return true;
+  const principalId = requestIdentity()?.subject?.principalId;
+  if (principalId === undefined) return true;
+  const row = deps.devices.store.get(peer.deviceId, principalId);
+  return (
+    row === undefined ||
+    row.status !== "trusted" ||
+    !NATIVE_PLATFORMS.has(row.platform) ||
+    !NATIVE_PLATFORMS.has(peer.platform)
+  );
+}
+
 /** 旧路径与 procedure 共用的那一份；拒绝抛 {@link CoreFailure}。 */
 export function e2eOperations(deps: E2eRouteDeps) {
   const { devices } = deps;
@@ -200,6 +239,13 @@ export function e2eOperations(deps: E2eRouteDeps) {
     ) => {
       const pendingId = text(input.pendingId, "pendingId", 64);
       const sas = text(input.sas, "sas", 16);
+      // 主人的新设备只在主机本机、或主人的桌面 / 手机受信设备上批（契约 §88.7）。
+      if (
+        relayedWithoutNativeDevice(deps, request) &&
+        devices.list().find((row) => row.requestId === pendingId)
+          ?.principalKind === "owner"
+      )
+        throw fail("forbidden", "主人的新设备不能在浏览器里放行");
       // 已信任设备经自己的通道代批：记成背书（契约 §80）。
       const subject = requestIdentity()?.subject;
       const endorser =
@@ -213,6 +259,7 @@ export function e2eOperations(deps: E2eRouteDeps) {
           pendingId,
           sas,
           endorser === undefined ? "local" : `endorse:${endorser}`,
+          subject?.principalId,
         );
         const view = find(row.deviceId, row.principalId);
         if (view === undefined) throw fail("not_found", "没有这台设备");
@@ -275,7 +322,10 @@ export function e2eOperations(deps: E2eRouteDeps) {
         fingerprint: keyFingerprint(publicKey),
       };
     },
-    pairingSecret: async () => {
+    pairingSecret: async (request?: CoreRequest) => {
+      // 配对秘密不绑主体，拿到就能让一台新设备直接受信：浏览器不签（契约 §88.7）。
+      if (relayedWithoutNativeDevice(deps, request))
+        throw fail("forbidden", "配对二维码不能在浏览器里生成");
       if (deps.pairing === undefined)
         throw fail("unsupported", "这台电脑没有装中继");
       const { sourceId, publicKey } = await deps.identity();
@@ -375,7 +425,7 @@ export function installE2eRoutes(server: CoreServer, deps: E2eRouteDeps): void {
   const procedures = {
     sign: (input) => run.sign(input),
     waitSource: (input) => run.waitSource(input),
-    pairingSecret: () => run.pairingSecret(),
+    pairingSecret: (_input, call) => run.pairingSecret(call.request),
   } satisfies Omit<DomainHandlers<"e2e">, "identity" | "wait">;
   registerProcedures(
     server,
@@ -383,6 +433,10 @@ export function installE2eRoutes(server: CoreServer, deps: E2eRouteDeps): void {
     procedures as unknown as DomainHandlers<"e2e">,
   );
 
+  // 路由表要求每条「已实现」的旧地址都装着处理函数（`main.test.ts`）。procedure 登记过的那些
+  // （列、批、拒、撤、删、改名、签、配对秘密、问对端等候）实际由 RPC 层按契约表接管
+  // （`http/rpc.ts` 的 `contractRoutes`，`legacy: true`），走的是同一份 `run.*`；下面这几条处理
+  // 函数只在没接管时兜底。匿名的 `identity` 与 `wait` 只有这里。
   const { router } = server;
   router.handle("GET", "/api/devices", () => answer(run.list));
   router.handle("POST", "/api/devices/approve", (_match, request) =>
@@ -400,8 +454,8 @@ export function installE2eRoutes(server: CoreServer, deps: E2eRouteDeps): void {
   router.handle("POST", "/api/e2e/sign", (_match, request) =>
     answer(() => run.sign(body(request) as never)),
   );
-  router.handle("POST", "/api/e2e/pairing-secret", () =>
-    answer(run.pairingSecret),
+  router.handle("POST", "/api/e2e/pairing-secret", (_match, request) =>
+    answer(() => run.pairingSecret(request)),
   );
   router.handle("POST", "/api/e2e/sources/wait", (_match, request) =>
     answer(() => run.waitSource(body(request) as never)),

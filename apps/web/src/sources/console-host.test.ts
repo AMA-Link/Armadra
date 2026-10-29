@@ -13,6 +13,8 @@ import {
   announceConsoleSession,
   hostSessionKey,
   signOutHostTabs,
+  announceHostTrusted,
+  onHostTrusted,
 } from "./cloud-session-channel";
 import {
   type ConsoleHostOptions,
@@ -213,7 +215,9 @@ function setup(
   };
   const timers = over.timers ?? [];
   let now = 0;
+  const trusted = vi.fn();
   const options: ConsoleHostOptions = {
+    trusted,
     hostId: HOST,
     issuer: ISSUER,
     client: client as never,
@@ -250,6 +254,7 @@ function setup(
     client,
     net,
     storage,
+    trusted,
     identity,
     awaitApproval,
     timers,
@@ -309,6 +314,44 @@ describe("控制台 /h/ 进主机", () => {
     // me.stream 用 Cookie 票。
     expect(await ctx.streams[0]!.ticket?.()).toBe("cookie-ticket");
     expect(ctx.streams[0]!.auth).toBeUndefined();
+  });
+
+  it("进了主机才告诉控制台这台浏览器受信了（只带主机号）；离线、待确认被拒都不发", async () => {
+    const ok = setup();
+    await ok.host.open();
+    expect(ok.host.view).toEqual({ kind: "entered" });
+    expect(ok.trusted).toHaveBeenCalledTimes(1);
+    expect(ok.trusted).toHaveBeenCalledWith(HOST);
+
+    const offline = setup({
+      detail: async () => detail({ online: false }),
+    });
+    await offline.host.open();
+    expect(offline.host.view.kind).toBe("offline");
+    expect(offline.trusted).not.toHaveBeenCalled();
+
+    const rejected = setup({
+      login: () => ({
+        status: 403,
+        body: { code: "device_rejected", message: "" },
+      }),
+    });
+    await rejected.host.open();
+    expect(rejected.host.view.kind).toBe("failed");
+    expect(rejected.trusted).not.toHaveBeenCalled();
+  });
+
+  it("受信广播：/h/ 发 { sourceId }，控制台标签页收到；别的形状不认", async () => {
+    const bus = channelBus();
+    const heard: string[] = [];
+    const stop = onHostTrusted((sourceId) => heard.push(sourceId), bus.open());
+    announceHostTrusted(HOST, bus.open());
+    const stray = bus.open();
+    stray.postMessage({ type: "signedOut" });
+    stray.postMessage({ sourceId: 7 });
+    await new Promise((done) => setTimeout(done, 0));
+    expect(heard).toEqual([HOST]);
+    stop();
   });
 
   it("刷新页面：用记下的刷新令牌经通道轮换，不再 cloud/login", async () => {

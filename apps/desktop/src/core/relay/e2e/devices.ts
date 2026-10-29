@@ -280,7 +280,18 @@ export type DeviceEvent =
       /** 待确认到这个时刻过期（校验码的有效期）。 */
       readonly expiresAtMs: number;
     }
-  | { readonly type: "devices.changed"; readonly deviceId: string };
+  | { readonly type: "devices.changed"; readonly deviceId: string }
+  /**
+   * 一台设备经别的受信设备背书放行（`approvedBy = endorse:*`，契约 §88.7）：在主机上通知主人。
+   * 只带标识，名字由有 `devices.list` 权限的页面自己查，不随事件扇给别的观看者。
+   */
+  | {
+      readonly type: "devices.endorsed";
+      readonly deviceId: string;
+      readonly principalId: string;
+      readonly endorserDeviceId: string;
+      readonly endorserPrincipalId: string;
+    };
 
 export class DeviceError extends Error {
   constructor(
@@ -300,7 +311,7 @@ export class DeviceError extends Error {
 export interface DeviceRegistryOptions {
   readonly store: TrustedDeviceStore;
   readonly now?: () => number;
-  /** 事件流（`devices.pending` / `devices.changed`）。 */
+  /** 事件流（`devices.pending` / `devices.changed` / `devices.endorsed`）。 */
   readonly emit?: (event: DeviceEvent) => void;
   /** 撤销或拒绝之后：断开这把钥的通道。 */
   readonly disconnect?: (deviceId: string) => void;
@@ -469,6 +480,8 @@ export class DeviceRegistry {
     requestId: string,
     sas: string,
     approvedBy = "local",
+    /** 背书人（`approvedBy = endorse:*` 时）：通知里认出是谁的哪台设备。 */
+    endorserPrincipalId = "",
   ): TrustedDeviceRow {
     const row = this.pendingRow(requestId);
     const known = this.sas.get(requestId);
@@ -484,6 +497,14 @@ export class DeviceRegistry {
       atMs: this.now(),
     });
     this.changed(row.deviceId);
+    if (approvedBy.startsWith("endorse:"))
+      this.options.emit?.({
+        type: "devices.endorsed",
+        deviceId: row.deviceId,
+        principalId: row.principalId,
+        endorserDeviceId: approvedBy.slice("endorse:".length),
+        endorserPrincipalId,
+      });
     this.wake(requestId, "trusted");
     return { ...this.options.store.get(row.deviceId, row.principalId)! };
   }

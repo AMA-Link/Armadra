@@ -1,5 +1,5 @@
 import * as React from "react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { cloudTrustReject } from "../../api/remote-services";
 import { RuntimeRequestError } from "../../api/request";
@@ -21,9 +21,14 @@ import {
   type TrustItem,
   approveOnHost,
   cloudTrustKey,
+  matchOnHost,
   useCloudTrust,
 } from "./cloud-trust";
 import { useTrustDialog } from "./trust-store";
+import {
+  NativeOwnerHint,
+  PlatformBadge,
+} from "../../panels/settings/pages/security/platform-badge";
 
 /**
  * 待信任的新设备（云端控制台 §3.5.3）：设备名、平台、成员与主机，加一个输入新设备上
@@ -64,9 +69,30 @@ function TrustBody({ item }: { item: TrustItem }) {
   const [notEndorser, setNotEndorser] = React.useState(false);
   const refresh = () =>
     client.invalidateQueries({ queryKey: cloudTrustKey(item.serviceId) });
+  // 平台与申请人以主机上对得上的那一行为准（契约 §88.7）：云端报的可以与主机登记的不同。
+  const match = useQuery({
+    queryKey: ["cloud-trust-match", item.serviceId, item.requestId],
+    queryFn: () => matchOnHost(item),
+    retry: false,
+    staleTime: 0,
+    // 给人看过的那一行不能悄悄换掉：窗口重新聚焦、重连都不重取，只有人点「重试」才重查。
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
+  });
+  const host = match.data;
+  // 主机说这台电脑没有背书权限：与放行时被拒同样处理。
+  const refused =
+    match.error instanceof RuntimeRequestError &&
+    (match.error.code === "forbidden" ||
+      match.error.code === "device_untrusted");
+  const blocked = notEndorser || refused;
 
   const trust = useMutation({
-    mutationFn: () => approveOnHost(item, sas),
+    // 只批给人看过的那一行：没查回来按钮就不可点（见下）。
+    mutationFn: () => {
+      if (host === undefined) throw new HostPendingUnavailable();
+      return approveOnHost(item, sas, host);
+    },
     onSuccess: () => {
       toast.success(t("trust.trusted", { device: item.device.name }));
       void refresh();
@@ -108,7 +134,7 @@ function TrustBody({ item }: { item: TrustItem }) {
         id="cloud-trust-form"
         onSubmit={(event) => {
           event.preventDefault();
-          if (sas.length === 6 && !busy) trust.mutate();
+          if (sas.length === 6 && !busy && match.isSuccess) trust.mutate();
         }}
       >
         <FieldGroup className="gap-4">
@@ -119,11 +145,52 @@ function TrustBody({ item }: { item: TrustItem }) {
             <dt>{t("trust.device")}</dt>
             <dd className="min-w-0 truncate">{item.device.name}</dd>
             <dt>{t("trust.platform")}</dt>
-            <dd className="min-w-0 truncate">{item.device.platform}</dd>
+            <dd className="min-w-0 truncate">
+              {host === undefined ? (
+                "—"
+              ) : (
+                <PlatformBadge platform={host.platform} />
+              )}
+            </dd>
             <dt>{t("trust.host")}</dt>
             <dd className="min-w-0 truncate">{item.sourceName}</dd>
           </dl>
-          {notEndorser ? (
+          {host !== undefined && (
+            <div className="flex flex-col gap-1">
+              {host.platform !== item.device.platform && (
+                <span className="text-meta text-destructive" role="status">
+                  {t("trust.platformMismatch")}
+                </span>
+              )}
+              <NativeOwnerHint
+                platform={host.platform}
+                principalKind={host.principalKind}
+              />
+            </div>
+          )}
+          {match.isError && !blocked && (
+            <div className="flex items-center gap-2">
+              <span className="text-meta text-destructive" role="status">
+                {t(
+                  match.error instanceof HostPendingAmbiguous
+                    ? "trust.ambiguous"
+                    : match.error instanceof HostPendingUnavailable
+                      ? "trust.unavailable"
+                      : "trust.hostUnreadable",
+                )}
+              </span>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                loading={match.isFetching}
+                onClick={() => void match.refetch()}
+              >
+                {t("state.retry")}
+              </Button>
+            </div>
+          )}
+          {blocked ? (
             <span className="text-body text-destructive" role="status">
               {t("cloud.trust.useTrusted")}
             </span>
@@ -174,11 +241,11 @@ function TrustBody({ item }: { item: TrustItem }) {
         >
           {t("e2e.approve.reject")}
         </Button>
-        {!notEndorser && (
+        {!blocked && (
           <Button
             type="submit"
             form="cloud-trust-form"
-            disabled={sas.length !== 6 || busy}
+            disabled={sas.length !== 6 || busy || !match.isSuccess}
             loading={trust.isPending}
           >
             {t("trust.trust")}

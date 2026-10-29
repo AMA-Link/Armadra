@@ -88,7 +88,7 @@ export class TrustReporter {
   handle(event: DeviceEvent): void {
     if (this.closed) return;
     if (event.type === "devices.pending") this.pending(event);
-    else this.settle(event.deviceId);
+    else if (event.type === "devices.changed") this.settle(event.deviceId);
   }
 
   /** 停掉所有定时与重试；还没收尾的不再报（云端到期自己会作废）。 */

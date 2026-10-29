@@ -184,13 +184,29 @@ function TrustActions({
   request: TrustRequest;
 }) {
   const t = useT();
-  const { pending, trusted } = useCanEndorse(space, request);
+  const { pending, trusted, canOpen } = useCanEndorse(space, request);
   const reject = useRejectTrust(space);
   const [dialog, setDialog] = React.useState<"trust" | "reject" | null>(null);
   if (pending) return null;
   // 对话框开着时（刚被主机拒绝）行尾已是徽标，对话框留着把原因说完，由人关掉。
   if (!trusted && dialog !== "trust")
-    return <Badge variant="outline">{t("cloud.trust.useTrusted")}</Badge>;
+    return (
+      <span className="flex items-center gap-2">
+        <Badge variant="outline">{t("cloud.trust.useTrusted")}</Badge>
+        {canOpen ? (
+          // 先在这个浏览器里打开一次主机，放行后它就是受信设备；`/h/` 进去时广播，这一行随之重判。
+          <Button variant="ghost" size="sm" asChild>
+            <a
+              href={`/h/${encodeURIComponent(request.sourceId)}`}
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              {t("cloud.trust.openHost")}
+            </a>
+          </Button>
+        ) : null}
+      </span>
+    );
   return (
     <>
       {trusted ? (
