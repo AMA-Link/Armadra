@@ -10,7 +10,6 @@ import {
   resumeIdentity,
 } from "../api/identity";
 import type { CloudClient } from "../cloud/api/client";
-import { browserDevice } from "./cloud-client";
 import { retryAfterOf } from "./connection";
 import { createBrowserCloudCredentialProvider } from "./credentials";
 import { type E2eChannels, e2eChannels, setApprovalHint } from "./e2e/manager";
@@ -411,7 +410,7 @@ export function createConsoleHost(options: ConsoleHostOptions): ConsoleHost {
 
   /* ------------------------------ 凭据 ------------------------------- */
 
-  const e2e = options.e2e ?? e2eChannels(() => browserDevice().name);
+  const e2e = options.e2e ?? e2eChannels();
   const provider = createBrowserCloudCredentialProvider({
     client: {
       sources: {
