@@ -1,4 +1,6 @@
 import { join } from "node:path";
+
+import { MIN_CORE_VERSION_ROLE_ONLY_ASSERTION } from "@armadra/platform-protocol";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { openFreshDatabase } from "../db/fresh.fixture";
@@ -380,6 +382,56 @@ describe("契约 §86：Armadra 云挂载的团队与归属", () => {
     // 存着的刷新令牌不动：版本门与收回都不是这把会话的问题。
     expect(await stored()).toBeDefined();
     delete world.cloud.denyAssertion;
+  });
+
+  it("断言答 source_core_outdated（新服务端的版本门）：直接带 hostOutdated 与线上的两个版本号，不查目录、不删刷新令牌", async () => {
+    world.cloud.owner = false;
+    await saas.mount({ serviceId, sourceId: RELAYED_ID });
+    // 目录里报的是新版本：答案只能来自断言的 details，不是查目录比出来的。
+    world.cloud.sources = [
+      { sourceId: RELAYED_ID, name: "h", coreVersion: "9.0.0" },
+    ];
+    const listings = () =>
+      world.requests.filter((one) => one.url.endsWith("/v1/me/sources")).length;
+    const before = listings();
+    world.cloud.outdatedAssertion = {
+      coreVersion: "0.9.4",
+      minVersion: "0.10.7",
+    };
+    const answer = (promise: Promise<unknown>) =>
+      promise.then(
+        () => null,
+        (error: { code?: string; details?: unknown }) => error,
+      );
+    expect(await answer(saas.session(RELAYED_ID, "relayed"))).toMatchObject({
+      code: "source_access_denied",
+      details: {
+        reason: "hostOutdated",
+        coreVersion: "0.9.4",
+        minVersion: "0.10.7",
+      },
+    });
+    // 没上报版本（空串）、details 不全：coreVersion 当空串，minVersion 按这类断言的门槛补。
+    world.cloud.outdatedAssertion = { coreVersion: "" };
+    expect(await answer(saas.session(RELAYED_ID, "relayed"))).toMatchObject({
+      code: "source_access_denied",
+      details: {
+        reason: "hostOutdated",
+        coreVersion: "",
+        minVersion: MIN_CORE_VERSION_ROLE_ONLY_ASSERTION,
+      },
+    });
+    expect(listings()).toBe(before);
+    expect(await stored()).toBeDefined();
+    delete world.cloud.outdatedAssertion;
+  });
+
+  it("source_core_outdated 只在取断言时认：别的远程调用答它落到 source_unreachable", async () => {
+    world.cloud.outdatedSources = true;
+    expect(await failure(saas.remoteSources(serviceId))).toBe(
+      "source_unreachable",
+    );
+    delete world.cloud.outdatedSources;
   });
 
   it("重登之后的归属纠正在锁外：目录卡住时下一次换票照样完成，放开后归属才纠正", async () => {
