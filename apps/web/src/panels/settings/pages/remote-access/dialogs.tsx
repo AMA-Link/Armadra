@@ -18,6 +18,7 @@ import { useT } from "../../../../app/preferences-store";
 import { ChallengeSheet } from "../../../../mobile/ChallengeSheet";
 import { groupFingerprint } from "../gateway/PairingCard";
 import { checkAddress } from "../remote-address";
+import { useSourceTable } from "./keys";
 import {
   ResponsiveDialog,
   ResponsiveDialogContent,
@@ -573,7 +574,13 @@ export function MountDialog({
     },
     onError: (error: Error) => toast.error(error.message),
   });
-  const rows = listing.data?.sources ?? [];
+  // 本机也登记在这个账号下：列出来点「连接」只会答「这就是本机」，所以按本机的 hostId 去掉。
+  const self = useSourceTable().data?.sources.find(
+    (source) => source.kind === "local",
+  )?.sourceId;
+  const rows = (listing.data?.sources ?? []).filter(
+    (source) => source.sourceId !== self,
+  );
 
   return (
     <ResponsiveDialog
