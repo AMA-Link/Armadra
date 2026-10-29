@@ -71,7 +71,7 @@ export function TerminalBlock({
                 style={{
                   color: span.fg,
                   backgroundColor: span.bg,
-                  fontWeight: span.bold ? 600 : undefined,
+                  fontWeight: span.bold ? "var(--fw-semibold)" : undefined,
                   opacity: span.dim ? 0.7 : undefined,
                   fontStyle: span.italic ? "italic" : undefined,
                   textDecoration: span.underline ? "underline" : undefined,

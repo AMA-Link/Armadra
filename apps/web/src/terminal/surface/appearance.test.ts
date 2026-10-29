@@ -118,6 +118,23 @@ describe("terminalAppearance / 属性 / 监听", () => {
     );
   });
 
+  it("默认字体读 --font-term（系统等宽），不跟界面的网页等宽字体", () => {
+    const family = terminalAppearance(
+      { ...storedTerminalPreferences(), fontFamily: "" },
+      mount(),
+    ).fontFamily;
+    expect(family).toMatch(/^ui-monospace,/);
+    expect(family).not.toMatch(/Geist|Inter|Variable/);
+  });
+
+  it("偏好里填了字体就用偏好，前后空白去掉", () => {
+    const preferences = {
+      ...storedTerminalPreferences(),
+      fontFamily: "  Menlo  ",
+    };
+    expect(terminalAppearance(preferences, mount()).fontFamily).toBe("Menlo");
+  });
+
   it("terminalSchemeAttribute：始终深色写 dark，跟随主题不写", () => {
     expect(terminalSchemeAttribute("dark")).toBe("dark");
     expect(terminalSchemeAttribute("follow")).toBeUndefined();

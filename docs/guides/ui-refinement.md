@@ -1,6 +1,6 @@
 # 桌面界面与交互规范
 
-桌面工具风格：系统字体、中性灰表面、1px 细边与发丝线、品牌蓝只用于焦点、选中与主操作、低噪声图标。保留 Armadra 的画布与原生终端，不将它改成聊天产品。权威规则是[设计系统](../design/design-system.md)，可见验收面是[设计展示页](../design/design-showcase.md)；基础控件只用 `apps/web/src/ui/` 里的 shadcn / Radix 组件及其变体，不另造组件库。
+桌面工具风格：本地打包的 Inter / Geist Mono（中文与终端用系统字体）、中性灰表面、1px 细边与发丝线、品牌蓝只用于焦点、选中与主操作、低噪声图标。保留 Armadra 的画布与原生终端，不将它改成聊天产品。权威规则是[设计系统](../design/design-system.md)，可见验收面是[设计展示页](../design/design-showcase.md)；基础控件只用 `apps/web/src/ui/` 里的 shadcn / Radix 组件及其变体，不另造组件库。
 
 ## 五处问题与修复
 

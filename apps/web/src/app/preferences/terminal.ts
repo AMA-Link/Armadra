@@ -47,7 +47,7 @@ export type TerminalRepaintThrottle =
  *
  * 单独成型是因为 `TerminalSurface` 要把整块当依赖：任何一项变化都要
  * 重设 xterm options 再 fit 一次，而不是每项各挂一个 effect。
- * `fontFamily` 为空表示「跟随 `--font-code`」。
+ * `fontFamily` 为空表示「跟随 `--font-term`」（系统等宽）。
  */
 export interface TerminalPreferences {
   /** 终端配色；缺省跟随应用主题。 */

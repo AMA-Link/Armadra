@@ -120,6 +120,11 @@ describe("扫描器", () => {
       '"text-sm text-xs md:text-sm text-base text-body text-muted-foreground"',
       4,
     ],
+    [
+      "font-heavy",
+      '"font-bold md:font-extrabold font-black font-[700] font-semibold font-mono"',
+      4,
+    ],
   ] as const)("规则 %s 对 %s 命中 %i 处", (id, source, expected) => {
     expect(countHits(source, ALL_RULES)[id] ?? 0).toBe(expected);
   });

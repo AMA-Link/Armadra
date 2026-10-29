@@ -151,7 +151,7 @@ export const CLASS_RULES: readonly ClassRule[] = [
   },
 ];
 
-/** type-scale：功能代码只写语义字号类。 */
+/** type-scale：功能代码只写语义字号类，字重不超过 semibold。 */
 export const TYPE_RULES: readonly ClassRule[] = [
   {
     id: "text-px",
@@ -167,6 +167,11 @@ export const TYPE_RULES: readonly ClassRule[] = [
     id: "text-scale",
     fix: "text-sm/xs/base/lg...: use the semantic type classes; the phone input pair `text-base md:text-sm` lives in ui/ only",
     token: /^text-(?:xs|sm|base|lg|xl|2xl|3xl|4xl|5xl)$/,
+  },
+  {
+    id: "font-heavy",
+    fix: "font-bold / extrabold / black / font-[700]: the heaviest weight is font-semibold (--fw-semibold); titles use 590, never 700+",
+    token: /^font-(?:bold|extrabold|black|\[(?:[7-9]00|bold|bolder)\])$/,
   },
 ];
 
@@ -197,6 +202,11 @@ export const UI_FORBIDDEN: readonly ClassRule[] = [
     id: "legacy-radius",
     fix: "semantic radius",
     token: /^rounded-(?:2xl|3xl|4xl)$/,
+  },
+  {
+    id: "font-heavy",
+    fix: "font-semibold at most",
+    token: /^font-(?:bold|extrabold|black|\[(?:[7-9]00|bold|bolder)\])$/,
   },
   { id: "duration", fix: "token duration", token: /^duration-(?:\d+|\[.*\])$/ },
   { id: "ease-in", fix: "no ease-in", token: /^ease-in$/ },

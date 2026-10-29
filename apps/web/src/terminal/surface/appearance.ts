@@ -30,10 +30,14 @@ function cssValue(
   return value || fallback;
 }
 
+/**
+ * 默认终端字体读 `--font-term`（系统等宽），不跟界面的 `--font-code`：那是本地打包的
+ * 网页字体，xterm 建实例时就量字宽，字体还没加载完会按回退字体量错整格。
+ */
 function terminalFontFamily(element: HTMLElement): string {
   return cssValue(
     element,
-    "--font-code",
+    "--font-term",
     "ui-monospace, Menlo, Consolas, monospace",
   );
 }
