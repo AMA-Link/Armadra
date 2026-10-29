@@ -77,9 +77,33 @@ export function useCloudTrust(): { items: TrustItem[] } {
 export async function approveOnHost(
   item: TrustItem,
   sas: string,
+  /** 对话框已经查出、给人看过的那一行（{@link matchOnHost}）：就批它，不再重新匹配。 */
+  matched?: Pick<TrustedDevice, "pendingId">,
 ): Promise<TrustedDevice> {
   const client = await hostClient(item);
   if (client === undefined) throw new HostPendingUnavailable();
+  const pendingId =
+    matched?.pendingId ?? (await matchIn(item, client)).pendingId;
+  if (pendingId == null) throw new HostPendingUnavailable();
+  return trustedDeviceSchema.parse(
+    (await client.devices.approve({ pendingId, sas })).device,
+  );
+}
+
+/**
+ * 主机上与这条请求对得上的那一行待确认设备。对话框按它显示平台与申请人：云端报的平台
+ * 不可信（它可以与主机登记的不同），放行前要看主机自己记下的那一份（契约 §88.7）。
+ */
+export async function matchOnHost(item: TrustItem): Promise<TrustedDevice> {
+  const client = await hostClient(item);
+  if (client === undefined) throw new HostPendingUnavailable();
+  return matchIn(item, client);
+}
+
+async function matchIn(
+  item: TrustItem,
+  client: NonNullable<Awaited<ReturnType<typeof hostClient>>>,
+): Promise<TrustedDevice> {
   const listed = trustedDeviceListSchema.parse(await client.devices.list());
   // 只认精确匹配（设备名 + 成员）：云端的请求没有 pendingId，模糊匹配会把校验码交给
   // 别人的申请。同名多条时让人去主机的设备列表里处理。
@@ -94,9 +118,7 @@ export async function approveOnHost(
   if (matches.length > 1) throw new HostPendingAmbiguous();
   const match = matches[0];
   if (match?.pendingId == null) throw new HostPendingUnavailable();
-  return trustedDeviceSchema.parse(
-    (await client.devices.approve({ pendingId: match.pendingId, sas })).device,
-  );
+  return match;
 }
 
 /**

@@ -318,7 +318,8 @@ describe("待信任设备横幅与对话框", () => {
   });
 
   it("明确没有背书权限：不再显示「信任」，只留「拒绝」并说在已信任的设备上处理", async () => {
-    host.devices.list.mockRejectedValueOnce(
+    // 对话框先查一次主机上的那一行（显示平台），放行时再查一次：两次都被拒。
+    host.devices.list.mockRejectedValue(
       new RuntimeRequestError(403, "x", "forbidden"),
     );
     await openDialog();
@@ -327,5 +328,70 @@ describe("待信任设备横幅与对话框", () => {
     expect(await screen.findByText("Use a trusted device")).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Trust" })).toBeNull();
     expect(screen.getByRole("button", { name: "Decline" })).toBeTruthy();
+  });
+
+  it("平台以主机那一行为准：云端报 browser、主机记的是 owner 的 desktop，显示「Desktop」、原生端提示与不一致警示", async () => {
+    api.cloudTrustList.mockResolvedValue({
+      requests: [
+        { ...request, device: { name: "Bo's iPhone", platform: "browser" } },
+      ],
+    });
+    host.devices.list.mockResolvedValue({
+      devices: [pending({ platform: "desktop", principalKind: "owner" })],
+    });
+    const dialog = await openDialog();
+    await waitFor(() => expect(dialog.textContent).toContain("Desktop"));
+    expect(dialog.textContent).not.toContain("Browser");
+    expect(dialog.textContent).toContain(
+      "Once allowed, it can approve the owner's new devices",
+    );
+    expect(dialog.textContent).toContain(
+      "The cloud reports a different platform. Showing the host's record",
+    );
+    // 放行的就是给人看过的那一行。
+    await typeCode("482913");
+    fireEvent.click(screen.getByRole("button", { name: "Trust" }));
+    await waitFor(() =>
+      expect(host.devices.approve).toHaveBeenCalledWith({
+        pendingId: "pend-1",
+        sas: "482913",
+      }),
+    );
+  });
+
+  it("放行的是给人看过的那一行：之后主机上换了一条同名申请，也不改批那一条", async () => {
+    host.devices.list
+      .mockResolvedValueOnce({ devices: [pending({ platform: "ios" })] })
+      .mockResolvedValue({
+        devices: [pending({ pendingId: "swapped", platform: "desktop" })],
+      });
+    const dialog = await openDialog();
+    await waitFor(() => expect(dialog.textContent).toContain("iOS"));
+    await typeCode("482913");
+    fireEvent.click(screen.getByRole("button", { name: "Trust" }));
+    await waitFor(() => expect(host.devices.approve).toHaveBeenCalled());
+    expect(host.devices.approve).toHaveBeenCalledWith({
+      pendingId: "pend-1",
+      sas: "482913",
+    });
+  });
+
+  it("主机与云端一致、申请人是成员：只显示平台，没有提示与警示", async () => {
+    const dialog = await openDialog();
+    await waitFor(() => expect(dialog.textContent).toContain("iOS"));
+    expect(dialog.textContent).not.toContain("Once allowed");
+    expect(dialog.textContent).not.toContain("different platform");
+  });
+
+  it("主机那一行还没查回来：平台先不显示云端报的", async () => {
+    api.cloudTrustList.mockResolvedValue({
+      requests: [
+        { ...request, device: { name: "Bo's iPhone", platform: "browser" } },
+      ],
+    });
+    host.devices.list.mockReturnValue(new Promise(() => undefined));
+    const dialog = await openDialog();
+    await new Promise((done) => setTimeout(done, 20));
+    expect(dialog.textContent).not.toContain("Browser");
   });
 });

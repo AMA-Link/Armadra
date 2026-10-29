@@ -1,5 +1,5 @@
 import * as React from "react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { cloudTrustReject } from "../../api/remote-services";
 import { RuntimeRequestError } from "../../api/request";
@@ -21,9 +21,14 @@ import {
   type TrustItem,
   approveOnHost,
   cloudTrustKey,
+  matchOnHost,
   useCloudTrust,
 } from "./cloud-trust";
 import { useTrustDialog } from "./trust-store";
+import {
+  NativeOwnerHint,
+  PlatformBadge,
+} from "../../panels/settings/pages/security/platform-badge";
 
 /**
  * 待信任的新设备（云端控制台 §3.5.3）：设备名、平台、成员与主机，加一个输入新设备上
@@ -64,9 +69,17 @@ function TrustBody({ item }: { item: TrustItem }) {
   const [notEndorser, setNotEndorser] = React.useState(false);
   const refresh = () =>
     client.invalidateQueries({ queryKey: cloudTrustKey(item.serviceId) });
+  // 平台与申请人以主机上对得上的那一行为准（契约 §88.7）：云端报的可以与主机登记的不同。
+  const match = useQuery({
+    queryKey: ["cloud-trust-match", item.serviceId, item.requestId],
+    queryFn: () => matchOnHost(item),
+    retry: false,
+    staleTime: 0,
+  });
+  const host = match.data;
 
   const trust = useMutation({
-    mutationFn: () => approveOnHost(item, sas),
+    mutationFn: () => approveOnHost(item, sas, host),
     onSuccess: () => {
       toast.success(t("trust.trusted", { device: item.device.name }));
       void refresh();
@@ -119,10 +132,31 @@ function TrustBody({ item }: { item: TrustItem }) {
             <dt>{t("trust.device")}</dt>
             <dd className="min-w-0 truncate">{item.device.name}</dd>
             <dt>{t("trust.platform")}</dt>
-            <dd className="min-w-0 truncate">{item.device.platform}</dd>
+            <dd className="min-w-0 truncate">
+              {match.isPending ? (
+                "—"
+              ) : (
+                <PlatformBadge
+                  platform={host?.platform ?? item.device.platform}
+                />
+              )}
+            </dd>
             <dt>{t("trust.host")}</dt>
             <dd className="min-w-0 truncate">{item.sourceName}</dd>
           </dl>
+          {host !== undefined && (
+            <div className="flex flex-col gap-1">
+              {host.platform !== item.device.platform && (
+                <span className="text-meta text-destructive" role="status">
+                  {t("trust.platformMismatch")}
+                </span>
+              )}
+              <NativeOwnerHint
+                platform={host.platform}
+                principalKind={host.principalKind}
+              />
+            </div>
+          )}
           {notEndorser ? (
             <span className="text-body text-destructive" role="status">
               {t("cloud.trust.useTrusted")}
