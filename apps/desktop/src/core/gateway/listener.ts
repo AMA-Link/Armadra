@@ -221,6 +221,9 @@ export async function openGateway(
       // core 的流门按 Origin 判；原生 App 的来源对它没有意义，换成会话来源。
       request.headers.origin = admission.origin;
     }
+    // 和普通请求一样标上 Gateway（契约 §88.5）：控制面上经 RPC 调 `bind` 时，
+    // 本地会话判定看的就是这条升级请求。
+    markGatewayRequest(request);
     // 升级在这个人的身份下进行：事件流的订阅判定与之后的复核都认它。
     runAs(requestIdentityOf(admission, context), () =>
       delegate.emit("upgrade", request, socket as Duplex, head),

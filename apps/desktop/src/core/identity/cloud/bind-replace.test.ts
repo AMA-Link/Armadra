@@ -10,7 +10,7 @@ import { type AddressInfo, Socket } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { TLSSocket } from "node:tls";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { allowOrigins } from "../../http/cors";
 import { installContract } from "../../http/rpc";
@@ -18,7 +18,7 @@ import { accessCookieName } from "../../gateway/admission";
 import { openGateway } from "../../gateway/listener";
 import { markChannelSocket } from "../../relay/e2e/peer";
 import { bind as bindListener, release } from "../../listen";
-import { markGatewayRequest } from "../http";
+import { markGatewayRequest, viaGateway } from "../http";
 import { type Fixture, fixture } from "../../workspaces/fixture";
 import { AccountsService } from "../accounts";
 import { Authorizer } from "../authorize";
@@ -57,6 +57,8 @@ let base: string;
 let owner: { accessToken: string; principalId: string };
 /** 置上之后，回环监听上新来的请求的连接按端到端通道标记（模拟经通道进来）。 */
 let asChannel: boolean;
+/** 置上之后，回环监听上新来的请求按 Gateway 转交标记（明文回环上单独验这个标）。 */
+let asGateway: boolean;
 
 beforeEach(async () => {
   world = fakeRelayWorld();
@@ -85,7 +87,9 @@ beforeEach(async () => {
   });
   const listener = core.server.createListener();
   asChannel = false;
+  asGateway = false;
   listener.on("request", (request: IncomingMessage) => {
+    if (asGateway) markGatewayRequest(request);
     if (!asChannel) return;
     Object.assign(request.socket, {
       tunnel: { channel: { deviceId: "dev_channel" } },
@@ -526,6 +530,118 @@ describe("bind 替换自动成员（契约 §88.5）", () => {
       disabled: (tx.accounts.principal(auto)?.disabledAtMs ?? 0) > 0,
     }));
     expect(after).toEqual({ mapped: owner.principalId, disabled: true });
+  });
+
+  it("明文回环上带 Gateway 标的请求：RPC 与 HTTP 路由调 bind 都是 409；去掉标（服务器壳 CLI 的调用形状）就替换", async () => {
+    const first = await login("acct:marked", {
+      team: { teamId: "team_1", role: "owner" },
+      role: "driver",
+    });
+    expect(first.status, first.text).toBe(200);
+    const auto = principalOf(first);
+    asGateway = true;
+    const viaRpc = await rpc("identity.cloud.bind", {
+      assertion: sub("acct:marked"),
+    });
+    expect(viaRpc.status, viaRpc.text).toBe(409);
+    expect(viaRpc.body.code).toBe("conflict");
+    const viaHttp = await call(
+      "POST",
+      "/api/identity/cloud/bind",
+      { assertion: sub("acct:marked") },
+      asOwner(),
+    );
+    expect(viaHttp.status, viaHttp.text).toBe(409);
+    expect(
+      store.transaction((tx) =>
+        tx.accounts.liveOAuth(cloudProvider(ISSUER), "acct:marked"),
+      )?.principalId,
+    ).toBe(auto);
+    // 同一条明文回环、同样的 Bearer 与来源，只是没有 Gateway 标：服务器壳 CLI 就是这样调的。
+    asGateway = false;
+    const plain = await call(
+      "POST",
+      "/api/identity/cloud/bind",
+      { assertion: sub("acct:marked") },
+      asOwner(),
+    );
+    expect(plain.status, plain.text).toBe(200);
+    expect(plain.body).toEqual({ bound: true, replaced: true });
+  });
+
+  it("Gateway 转交的普通请求与 WS 升级都打上 Gateway 标", async () => {
+    const created = vi.spyOn(core.server, "createListener");
+    const gateway = await openGateway(core, {
+      listen: { host: "127.0.0.1", port: 0 },
+      publicOrigins: [],
+      hosts: () => ["127.0.0.1"],
+      tls: { generated: "selfSigned" },
+      deviceName: "test",
+    });
+    try {
+      const delegate = created.mock.results.at(-1)?.value as Server;
+      const seen: { kind: string; marked: boolean }[] = [];
+      delegate.on("request", (request: IncomingMessage) =>
+        seen.push({ kind: "request", marked: viaGateway(request) }),
+      );
+      delegate.on("upgrade", (request: IncomingMessage) =>
+        seen.push({ kind: "upgrade", marked: viaGateway(request) }),
+      );
+      const origin = gateway.origin();
+      const ticket = service.issueBootstrap({
+        hostId: store.hostId(),
+        instanceId: INSTANCE,
+        origin,
+        deviceName: "gateway",
+        scopes: allScopes(),
+      });
+      const session = service.consumeBootstrap({
+        ticket: ticket.ticket,
+        hostId: store.hostId(),
+        instanceId: INSTANCE,
+        origin,
+      });
+      const cookie = `${accessCookieName(store.hostId())}=${session.accessToken}`;
+      await gatewayCall(origin, {
+        origin,
+        cookie,
+        "x-armadra-csrf": session.csrfToken,
+      });
+      const url = new URL("/api/ws", origin);
+      await new Promise<void>((done, failed) => {
+        const client = httpsRequest({
+          host: url.hostname,
+          port: url.port,
+          path: url.pathname,
+          rejectUnauthorized: false,
+          headers: {
+            origin,
+            cookie,
+            connection: "Upgrade",
+            upgrade: "websocket",
+            "sec-websocket-version": "13",
+            "sec-websocket-key": Buffer.alloc(16, 7).toString("base64"),
+          },
+        });
+        client.on("upgrade", (_response, socket) => {
+          socket.destroy();
+          done();
+        });
+        client.on("response", (response) => {
+          response.resume();
+          done();
+        });
+        client.on("error", failed);
+        client.end();
+      });
+      expect(seen).toEqual([
+        { kind: "request", marked: true },
+        { kind: "upgrade", marked: true },
+      ]);
+    } finally {
+      created.mockRestore();
+      await gateway.close();
+    }
   });
 
   it("经 Gateway 的 owner 会话（Cookie 与原生 App 的 Bearer 模式）调 bind：409，映射不动", async () => {
