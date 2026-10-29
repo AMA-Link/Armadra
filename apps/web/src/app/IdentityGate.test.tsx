@@ -192,7 +192,8 @@ describe("IdentityGate", () => {
     ).toBeTruthy();
     expect(location.hash).toBe("");
     expect(mocks.open).toHaveBeenCalledWith(token);
-    expect(screen.getByText("同事")).toBeTruthy();
+    // 页头在 loading 阶段就有，展示名要等 openPasswordReset 落定：等它出现。
+    expect(await screen.findByText("同事")).toBeTruthy();
     fireEvent.change(screen.getByLabelText("新口令"), {
       target: { value: "correct horse battery" },
     });
