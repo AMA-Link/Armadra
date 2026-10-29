@@ -16,6 +16,7 @@
 //      的 `/h/` 进了主机，信任页不刷新就改给「信任」（`armadra.e2e.trust` 广播）；owner 在信任页输入
 //      member 屏幕上的码 → member 自动进入，host1 记成 `endorse:`、owner 的 `/h/` 弹背书通知；
 //      owner 另一个浏览器的待确认，owner 的受信浏览器批它答 forbidden；经它「配对新设备」答 forbidden。
+//   E10（只在点名时跑；会让 host1 登出 Armadra 云，别与 E5、E6 同跑）控制台「新建链接」，见 saas-host-e2e-link.mjs。
 //   E8 host1 经 SaaS 路线建一条只读链接；没登录的新 browser context 打开：落地页「加入」后地址是
 //      `/h/<host1>`、刷新仍在画布（经访客记录续上，不去登录）；撤销链接后 `/h/` 显示「访问已被收回」。
 //
@@ -59,6 +60,7 @@ import {
 } from "./platform-lib.mjs";
 import { probeSession } from "./probe-session.mjs";
 import { runGuestLink } from "./saas-host-e2e-guest.mjs";
+import { runNewLink } from "./saas-host-e2e-link.mjs";
 import {
   connectBrowser,
   freePort,
@@ -172,6 +174,8 @@ const redact = (text) =>
     .replace(/armadra-(relay|ticket)\.[^\s",;\\]+/g, "armadra-$1.<redacted>")
     .replace(/(__Host-armadra-[a-z]+)=[^\s";\\]+/g, "$1=<redacted>")
     .replace(/(Bearer\s+)[^\s",\\]+/gi, "$1<redacted>")
+    // 服务器壳日志里打印的首个管理员配对链接。
+    .replace(/(#pair=)[^\s"\\]+/g, "$1<redacted>")
     // 分享链接的片段（秘密与邀请令牌）。
     .replace(/(\/j\/[^\s#"\\]+)#[^\s"\\]+/g, "$1#<redacted>")
     // JSON 里的令牌字段（含日志行里转义过一层的）。
@@ -1229,6 +1233,24 @@ try {
       workspace,
       hostId,
       terminal,
+    });
+
+  /* ----------------------------------- E10 ----------------------------------- */
+  // 放在最后之前：它会让 host1 登出 Armadra 云（只在点名时跑）。
+  if (ONLY.has("E10"))
+    await runNewLink({
+      report,
+      output,
+      ISSUER,
+      TEAM,
+      accounts,
+      browser,
+      ownerContext,
+      openTab,
+      consoleSignIn,
+      local,
+      serviceId,
+      hostId,
     });
 
   /* ------------------------------------ E5 ------------------------------------ */

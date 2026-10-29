@@ -1,5 +1,5 @@
 import * as React from "react";
-import { Ellipsis } from "lucide-react";
+import { Ellipsis, Plus } from "lucide-react";
 
 import { useT } from "@/app/preferences-store";
 import {
@@ -33,6 +33,8 @@ import { DataList, type DataColumn } from "../ui/DataList";
 import { InlineError } from "../ui/InlineError";
 import { PageState } from "../ui/PageState";
 import { Expiry } from "../ui/Expiry";
+import { useHostChannel } from "../host-channel-context";
+import { NewLinkDialog } from "./NewLinkDialog";
 import {
   useLinks,
   useRevokeLink,
@@ -178,13 +180,19 @@ export function LinksView({
   space,
   sourceId,
   variant = "page",
+  create,
 }: {
   space: CloudSpace;
   sourceId?: string;
   /** 页签里的取数失败画成区块内错误，不占整页。 */
   variant?: "page" | "tab";
+  /** 给了就在上方放「新建链接」（只给主人，设计 saas-host-open §4.3）；还要有端到端通道池。 */
+  create?: { readonly sourceId: string; readonly name: string };
 }) {
   const t = useT();
+  const channel = useHostChannel();
+  const [creating, setCreating] = React.useState(false);
+  const canCreate = create !== undefined && channel !== null;
   const links = useLinks(space, sourceId);
   const usage = useUsage();
   const hostNames = useHosts(space, {}, 200, sourceId === undefined);
@@ -274,29 +282,52 @@ export function LinksView({
     [t, usage, names, sourceId, space, rows],
   );
 
-  if (links.isPending)
-    return <SkeletonTable rows={4} columns={5} label={t("cloud.nav.links")} />;
-  if (links.isError)
-    return variant === "tab" ? (
-      <InlineError error={links.error} onRetry={() => void links.refetch()} />
-    ) : (
-      <PageState
-        code={toCloudError(links.error).code}
-        onRetry={() => void links.refetch()}
-        onHome={() => navigate(spaceBase(space))}
+  const body = (() => {
+    if (links.isPending)
+      return (
+        <SkeletonTable rows={4} columns={5} label={t("cloud.nav.links")} />
+      );
+    if (links.isError)
+      return variant === "tab" ? (
+        <InlineError error={links.error} onRetry={() => void links.refetch()} />
+      ) : (
+        <PageState
+          code={toCloudError(links.error).code}
+          onRetry={() => void links.refetch()}
+          onHome={() => navigate(spaceBase(space))}
+        />
+      );
+    if (rows.length === 0) return <EmptyState title={t("cloud.links.empty")} />;
+    return (
+      <DataList
+        caption={t("cloud.nav.links")}
+        rows={rows}
+        columns={columns}
+        rowKey={(row) => row.linkId}
+        actionsHeader={t("cloud.common.actionsFor", {
+          name: t("cloud.nav.links"),
+        })}
+        actions={(row) => <LinkMenu space={space} link={row} />}
       />
     );
-  if (rows.length === 0) return <EmptyState title={t("cloud.links.empty")} />;
+  })();
+  if (!canCreate) return body;
   return (
-    <DataList
-      caption={t("cloud.nav.links")}
-      rows={rows}
-      columns={columns}
-      rowKey={(row) => row.linkId}
-      actionsHeader={t("cloud.common.actionsFor", {
-        name: t("cloud.nav.links"),
-      })}
-      actions={(row) => <LinkMenu space={space} link={row} />}
-    />
+    <div className="flex flex-col gap-3">
+      <div className="flex justify-end">
+        <Button size="sm" onClick={() => setCreating(true)}>
+          <Plus aria-hidden data-icon="inline-start" />
+          {t("cloud.links.new")}
+        </Button>
+      </div>
+      {body}
+      {creating ? (
+        <NewLinkDialog
+          space={space}
+          host={create}
+          onClose={() => setCreating(false)}
+        />
+      ) : null}
+    </div>
   );
 }
