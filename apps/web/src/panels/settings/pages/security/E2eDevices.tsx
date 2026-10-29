@@ -15,7 +15,11 @@ import { notify } from "../../../../platform";
 import { SecuritySectionSkeleton } from "./parts";
 import { QrImage } from "../gateway/PairingCard";
 import { StatusPill } from "@/ui/status-pill";
-import { Badge } from "@/ui/badge";
+import {
+  NativeOwnerHint,
+  PRINCIPAL_LOADING,
+  PlatformBadge,
+} from "./platform-badge";
 import { Button } from "@/ui/button";
 import { SettingsTableCard } from "../../SettingsTableCard";
 import { IconButton } from "@/ui/icon-button";
@@ -49,32 +53,6 @@ const STATUS_TONE = {
   rejected: "paused",
   revoked: "paused",
 } as const;
-
-/** 原生端的平台（契约 §88.7）：放行后这台设备能批准主人的新设备。 */
-const NATIVE_PLATFORMS: ReadonlySet<string> = new Set([
-  "desktop",
-  "ios",
-  "android",
-]);
-const KNOWN_PLATFORMS: ReadonlySet<string> = new Set([
-  ...NATIVE_PLATFORMS,
-  "browser",
-]);
-
-/** 设备自报的平台，做成徽标；认不得的原样显示。 */
-function PlatformBadge({ platform }: { platform: string }) {
-  const t = useT();
-  return (
-    <Badge
-      variant="outline"
-      translate={KNOWN_PLATFORMS.has(platform) ? undefined : "no"}
-    >
-      {KNOWN_PLATFORMS.has(platform)
-        ? t(`e2e.platform.${platform}`)
-        : platform || "—"}
-    </Badge>
-  );
-}
 
 function failureText(t: ReturnType<typeof useT>, error: unknown): string {
   return error instanceof Error ? error.message : t("error.internal");
@@ -110,7 +88,7 @@ function ApproveForm({
   onDone,
 }: {
   device: Pick<TrustedDevice, "pendingId" | "label" | "platform"> & {
-    /** 申请的人是不是主机 owner；不知道时按是（提示宁多勿少）。 */
+    /** 申请人的主体种类；`undefined` 是查不到（按 owner 提示），`loading` 是还在查。 */
     readonly principalKind?: string;
   };
   onDone?: () => void;
@@ -177,12 +155,10 @@ function ApproveForm({
           {t("e2e.approve.mismatch")}
         </span>
       )}
-      {NATIVE_PLATFORMS.has(device.platform) &&
-        (device.principalKind ?? "owner") === "owner" && (
-          <span className="basis-full text-meta text-muted-foreground">
-            {t("e2e.approve.native")}
-          </span>
-        )}
+      <NativeOwnerHint
+        platform={device.platform}
+        principalKind={device.principalKind}
+      />
     </div>
   );
 }
@@ -444,22 +420,24 @@ export function DeviceApprovalPrompt() {
             pendingId: event.pendingId,
             label: event.label,
             platform: event.platform,
+            principalKind: PRINCIPAL_LOADING,
           });
-          // 申请人是不是 owner 事件里没有：从设备列表补上（查不到按是）。
+          const settle = (kind: string | undefined) =>
+            setPending((current) =>
+              current?.pendingId === event.pendingId
+                ? { ...current, principalKind: kind }
+                : current,
+            );
+          // 申请人是不是 owner 事件里没有：从设备列表补上；查回来之前提示先占位，查不到按是。
           void devicesApi
             .list()
-            .then((rows) => {
-              const kind = rows.find(
-                (row) => row.pendingId === event.pendingId,
-              )?.principalKind;
-              if (kind !== undefined)
-                setPending((current) =>
-                  current?.pendingId === event.pendingId
-                    ? { ...current, principalKind: kind }
-                    : current,
-                );
-            })
-            .catch(() => undefined);
+            .then((rows) =>
+              settle(
+                rows.find((row) => row.pendingId === event.pendingId)
+                  ?.principalKind,
+              ),
+            )
+            .catch(() => settle(undefined));
         },
         { allSources: true },
       ),

@@ -100,6 +100,48 @@ describe("放行提示显示设备自报的平台（契约 §88.7）", () => {
     await waitFor(() => expect(within(dialog).queryByText(HINT)).toBeNull());
   });
 
+  it("成员的原生设备申请：申请人查回来之前提示只占位、不可见，查回来是成员就去掉，从不闪现", async () => {
+    let answer: (rows: TrustedDevice[]) => void = () => undefined;
+    devices.list.mockReturnValue(
+      new Promise<TrustedDevice[]>((resolve) => {
+        answer = resolve;
+      }),
+    );
+    prompt();
+    pending("android");
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).getByText("Android")).toBeTruthy();
+    const placeholder = within(dialog).getByText(HINT);
+    expect(placeholder.classList.contains("invisible")).toBe(true);
+    expect(placeholder.getAttribute("aria-hidden")).toBe("true");
+    await act(async () => answer([row({ principalKind: "member" })]));
+    await waitFor(() => expect(within(dialog).queryByText(HINT)).toBeNull());
+  });
+
+  it("主人的原生设备申请：查回来之前占位，查回来后显示", async () => {
+    let answer: (rows: TrustedDevice[]) => void = () => undefined;
+    devices.list.mockReturnValue(
+      new Promise<TrustedDevice[]>((resolve) => {
+        answer = resolve;
+      }),
+    );
+    prompt();
+    pending("desktop");
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).getByText(HINT).classList.contains("invisible")).toBe(
+      true,
+    );
+    await act(async () => answer([row({})]));
+    await waitFor(() =>
+      expect(
+        within(dialog).getByText(HINT).classList.contains("invisible"),
+      ).toBe(false),
+    );
+    expect(
+      within(dialog).getByText(HINT).getAttribute("aria-hidden"),
+    ).toBeNull();
+  });
+
   it("设备列表：每行有平台徽标；主人待确认的原生设备行内有提示", async () => {
     devices.list.mockResolvedValue([
       row({}),
