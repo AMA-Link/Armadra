@@ -307,6 +307,18 @@ describe("访客保管处（localStorage，按 签发方 + 链接）", () => {
     });
   });
 
+  it("close：卸下主机、记录留着（与 dispose 清记录不同）", async () => {
+    const { net } = guestNet();
+    const stores = fresh();
+    const { relay } = page(net, stores);
+    await relay.join(LINK);
+    relay.close();
+    expect(relay.status.state).toBe("idle");
+    expect(stores.guest.getItem(KEY)).not.toBeNull();
+    relay.dispose();
+    expect(stores.guest.getItem(KEY)).toBeNull();
+  });
+
   it("accessRevoked：当场清掉记录", async () => {
     const { net } = guestNet();
     const stores = fresh();

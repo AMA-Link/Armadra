@@ -214,7 +214,7 @@ export interface HostInfo {
 /** `/h/` 以访客进入用到的托管中继那几样（缺省 `hosted.ts`；测试换掉）。 */
 export type GuestRelay = Pick<
   HostedRelay,
-  "resumeLink" | "guest" | "status" | "subscribe" | "signOut"
+  "resumeLink" | "guest" | "status" | "subscribe" | "signOut" | "close"
 >;
 
 /** 身份面会话是不是本机 owner（有 `settings:write`）。 */
@@ -736,7 +736,11 @@ export function createConsoleHost(options: ConsoleHostOptions): ConsoleHost {
     } catch {
       resumed = null;
     }
-    if (stale()) return;
+    if (stale()) {
+      // 进去的这一刻已经过时（又开了一次、登出了、销毁了）：刚挂上的访客路由与事件流卸下。
+      if (resumed?.kind === "entered") relay.close();
+      return;
+    }
     info = {
       name: relay.guest()?.name || info?.name || "",
       consoleHref: "/",
@@ -794,6 +798,8 @@ export function createConsoleHost(options: ConsoleHostOptions): ConsoleHost {
     /** 这一次已经过时（又开了一次、登出了、销毁了）：不再改视图、不再写记录。 */
     const stale = () => generation !== mine || closed || disposed;
     setView({ kind: "connecting" });
+    // 再次进入：上一次以访客挂上的路由先卸下（记录留着）。
+    if (guestMode) guestRelay?.close();
     guestMode = false;
     guestViaAccount = false;
     let me: Awaited<ReturnType<CloudClient["me"]["get"]>>;
@@ -976,8 +982,9 @@ export function createConsoleHost(options: ConsoleHostOptions): ConsoleHost {
     guest: () => (guestMode ? (guestRelay?.guest() ?? null) : null),
     dispose() {
       disposed = true;
-      // 访客的托管中继不 dispose：它会清掉 localStorage 里的访客记录，刷新后就续不上了。
+      // 访客的托管中继只卸路由、不 dispose：dispose 会清掉 localStorage 里的访客记录，刷新后就续不上了。
       stopGuest?.();
+      guestRelay?.close();
       stopWaiting();
       if (retryTimer !== null) cancel(retryTimer);
       scheduler.dispose();

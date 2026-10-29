@@ -262,6 +262,8 @@ export interface HostedRelay {
   subscribe(listener: () => void): () => void;
   /** 登出远程服务并丢掉全部凭据（内存与 `sessionStorage`）。 */
   signOut(): Promise<void>;
+  /** 卸下主机（关流、卸路由），记下的会话与访客记录留着（刷新、重进还能续）。 */
+  close(): void;
   dispose(): void;
 }
 
@@ -583,6 +585,10 @@ export function createHostedRelay(options: HostedRelayOptions): HostedRelay {
       const token = await cloudSessions.access(issuer).catch(() => null);
       if (token !== null) await cloudLogout(issuer, token, options.cloud);
       this.dispose();
+    },
+    close() {
+      directory = [];
+      entry.close();
     },
     dispose() {
       directory = [];

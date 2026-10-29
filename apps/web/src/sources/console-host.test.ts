@@ -903,6 +903,7 @@ function fakeGuest(answer: () => LinkResume) {
       return () => listeners.delete(listener);
     },
     signOut: vi.fn(async () => undefined),
+    close: vi.fn(),
     /** 测试：托管中继的状态变了（如访问被收回）。 */
     set(status: RelayedStatus) {
       relay.status = status;
@@ -1130,6 +1131,48 @@ describe("控制台 /h/ 以访客进入（§2.8）", () => {
     expect(relay.signOut).toHaveBeenCalledOnce();
     expect(ctx.identity.logout).not.toHaveBeenCalled();
     expect(ctx.host.view).toEqual({ kind: "signedOut" });
+  });
+});
+
+describe("访客路由的卸下", () => {
+  it("resumeLink 进去的这一刻已经过时：刚挂上的访客路由卸下；dispose 也卸、不清记录", async () => {
+    const guestStorage = memoryStorage();
+    guestRecord(guestStorage, LINK, HOST);
+    let release: (() => void) | null = null;
+    const relay = fakeGuest(() => ({ kind: "entered", sourceId: HOST }));
+    const resume = relay.resumeLink.getMockImplementation()!;
+    relay.resumeLink.mockImplementationOnce(async (linkId: string) => {
+      await new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      return resume(linkId);
+    });
+    const ctx = setup({
+      me: unauthenticated,
+      guestStorage,
+      guestRelay: () => relay,
+    });
+    const opening = ctx.host.open();
+    await vi.waitFor(() => expect(release).not.toBeNull());
+    ctx.host.dispose();
+    release!();
+    await opening;
+    expect(relay.close).toHaveBeenCalled();
+    expect(ctx.host.view.kind).not.toBe("entered");
+    expect(relay.signOut).not.toHaveBeenCalled();
+
+    const live = fakeGuest(() => ({ kind: "entered", sourceId: HOST }));
+    const entered = setup({
+      me: unauthenticated,
+      guestStorage,
+      guestRelay: () => live,
+    });
+    await entered.host.open();
+    expect(live.close).not.toHaveBeenCalled();
+    entered.host.dispose();
+    expect(live.close).toHaveBeenCalledOnce();
+    expect(live.signOut).not.toHaveBeenCalled();
+    expect(guestStorage.length).toBe(1);
   });
 });
 
