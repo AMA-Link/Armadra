@@ -121,6 +121,8 @@ export type HostedResume =
       readonly kind: "signedIn";
       readonly hosts: CloudSource[];
       readonly failure: HostedFailure;
+      /** 原错误（限流时带 Retry-After）。 */
+      readonly error?: unknown;
     }
   | null;
 
@@ -134,9 +136,13 @@ export type LinkResume =
   /** 暂时进不去（连不上、限流、5xx、答复不对）：记录留着，`error` 是原因（限流带 Retry-After）。 */
   | { readonly kind: "unavailable"; readonly error: unknown };
 
-/** 远程服务明确拒绝了这份记录（刷新令牌失效、主机撤销、访问收回）：只有这几种才作废记录。 */
+/**
+ * 远程服务明确拒绝了这份记录（刷新令牌失效、列目录答 401、主机撤销、访问收回）：只有这几种才作废
+ * 记录。列目录答 403 不算——云端放开访客的 `me.sources` 之前访客调它就是 403，只当暂时打不开。
+ */
 function rejectsRecord(error: unknown): boolean {
   const code = (error as { code?: unknown } | null)?.code;
+  if (error instanceof CloudError && error.status === 401) return true;
   return (
     code === SOURCE_ERROR.unauthorized ||
     code === SOURCE_ERROR.revoked ||
@@ -425,7 +431,7 @@ export function createHostedRelay(options: HostedRelayOptions): HostedRelay {
     } catch (error) {
       const failure = hostedFailureOf(error);
       if (guest && failure === "revoked") return undefined;
-      return { kind: "signedIn", hosts: listed, failure };
+      return { kind: "signedIn", hosts: listed, failure, error };
     }
   };
 

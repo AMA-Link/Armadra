@@ -177,6 +177,8 @@ export const HOST_FAILURE = {
 
 /** 访客离线时多久再试一次（没有 Cookie 会话，等不到控制台的 `sourceOnline`）。 */
 export const GUEST_OFFLINE_RETRY_MS = 15_000;
+/** 访客离线重试的退避上限。 */
+export const GUEST_OFFLINE_RETRY_MAX_MS = 120_000;
 
 const KNOWN_FAILURES = new Set<string>(Object.values(HOST_FAILURE));
 
@@ -725,6 +727,11 @@ export function createConsoleHost(options: ConsoleHostOptions): ConsoleHost {
   };
 
   /** 用这条链接的访客记录经托管中继进这台主机（§2.8）。 */
+  /** 托管中继上的续上一次只跑一个（见 {@link enterAsGuest}）。 */
+  let guestQueue: Promise<unknown> = Promise.resolve();
+  /** 访客离线连着重试了几次（退避用）；进去了归零。 */
+  let guestOffline = 0;
+
   const enterAsGuest = async (
     linkId: string,
     stale: () => boolean,
@@ -739,17 +746,23 @@ export function createConsoleHost(options: ConsoleHostOptions): ConsoleHost {
       guestStorage === null
         ? null
         : (guestAcceptedBy(guestStorage, issuer, linkId) ?? null);
-    let resumed: Awaited<ReturnType<GuestRelay["resumeLink"]>>;
-    try {
-      resumed = await relay.resumeLink(linkId, viaAccount ? accountId : null);
-    } catch {
-      resumed = null;
-    }
-    if (stale()) {
+    // 同一个托管中继上的续上排成一队：上一次的（哪怕已过时）收完尾、该卸的卸了，下一次才开始挂，
+    // 过时的那次卸路由就不会卸到下一次 `open()` 刚挂上的。
+    const viewer = viaAccount ? accountId : null;
+    const run = guestQueue.then(async () => {
+      let answer: Awaited<ReturnType<GuestRelay["resumeLink"]>>;
+      try {
+        answer = await relay.resumeLink(linkId, viewer);
+      } catch {
+        answer = null;
+      }
       // 进去的这一刻已经过时（又开了一次、登出了、销毁了）：刚挂上的访客路由与事件流卸下。
-      if (resumed?.kind === "entered") relay.close();
-      return;
-    }
+      if (stale() && answer?.kind === "entered") relay.close();
+      return answer;
+    });
+    guestQueue = run.catch(() => undefined);
+    const resumed = await run;
+    if (stale()) return;
     // 访客栏、不给「回到主机列表」只在真以访客进去了、或根本没有控制台账号时；
     // 从账号退回却没进去的，失败卡照账号那样给回主机列表。
     if (resumed?.kind === "entered" || !viaAccount)
@@ -764,6 +777,7 @@ export function createConsoleHost(options: ConsoleHostOptions): ConsoleHost {
       guestMode = true;
       guestViaAccount = viaAccount;
       rateLimited = 0;
+      guestOffline = 0;
       setView({ kind: "entered" });
       return;
     }
@@ -776,10 +790,18 @@ export function createConsoleHost(options: ConsoleHostOptions): ConsoleHost {
     }
     if (resumed?.kind === "signedIn" && resumed.failure === "offline") {
       setView({ kind: "offline", lastSeenAtMs: null });
-      retryTimer = later(() => {
-        retryTimer = null;
-        if (!stale()) void open();
-      }, GUEST_OFFLINE_RETRY_MS);
+      // 等不到控制台的 sourceOnline：从 15 秒起翻倍再试，封顶 2 分钟。
+      retryTimer = later(
+        () => {
+          retryTimer = null;
+          if (!stale()) void open();
+        },
+        Math.min(
+          GUEST_OFFLINE_RETRY_MS * 2 ** guestOffline,
+          GUEST_OFFLINE_RETRY_MAX_MS,
+        ),
+      );
+      guestOffline += 1;
       return;
     }
     // 暂时进不去（记录还在）：限流（续会话时、或进主机时）按 Retry-After 退避后自动再进
@@ -789,7 +811,7 @@ export function createConsoleHost(options: ConsoleHostOptions): ConsoleHost {
       codeOf(resumed.error) === "rate_limited"
         ? resumed.error
         : resumed?.kind === "signedIn" && resumed.failure === "rateLimited"
-          ? null
+          ? (resumed.error ?? null)
           : undefined;
     if (limitedBy !== undefined) {
       setView({ kind: "connecting", rateLimited: true });

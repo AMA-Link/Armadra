@@ -1308,6 +1308,152 @@ describe("访客回退的各个入口", () => {
   });
 });
 
+describe("访客的退避与过时", () => {
+  it("进主机被限流且带 Retry-After：按它退避", async () => {
+    const guestStorage = memoryStorage();
+    guestRecord(guestStorage, LINK, HOST);
+    const delays: number[] = [];
+    const ctx = setup({
+      me: unauthenticated,
+      guestStorage,
+      guestRelay: () =>
+        fakeGuest(() => ({
+          kind: "signedIn",
+          hosts: [],
+          failure: "rateLimited",
+          error: Object.assign(new Error("429"), {
+            code: "rate_limited",
+            retryAfterMs: 9_000,
+          }),
+        })),
+      later: (run, ms) => {
+        if (ms >= 1_000) {
+          delays.push(ms);
+          return 1;
+        }
+        return setTimeout(run, 0);
+      },
+    });
+    await ctx.host.open();
+    expect(delays).toEqual([9_000]);
+  });
+
+  it("访客一直离线：15 秒起翻倍，封顶 2 分钟", async () => {
+    const guestStorage = memoryStorage();
+    guestRecord(guestStorage, LINK, HOST);
+    const delays: number[] = [];
+    let retry: (() => void) | null = null;
+    const ctx = setup({
+      me: unauthenticated,
+      guestStorage,
+      guestRelay: () =>
+        fakeGuest(() => ({ kind: "signedIn", hosts: [], failure: "offline" })),
+      later: (run, ms) => {
+        if (ms >= 1_000) {
+          delays.push(ms);
+          retry = run;
+          return 1;
+        }
+        return setTimeout(run, 0);
+      },
+    });
+    await ctx.host.open();
+    for (let round = 0; round < 4; round += 1) {
+      const before = delays.length;
+      retry!();
+      await vi.waitFor(() => expect(delays.length).toBe(before + 1));
+    }
+    expect(delays).toEqual([15_000, 30_000, 60_000, 120_000, 120_000]);
+  });
+
+  /** resumeLink 第一次挂住、等测试放行，之后照常答进去了；记下 close 与 resumeLink 的先后。 */
+  function blockedGuest() {
+    const events: string[] = [];
+    let release: (() => void) | null = null;
+    const relay = fakeGuest(() => ({ kind: "entered", sourceId: HOST }));
+    const resume = relay.resumeLink.getMockImplementation()!;
+    let first = true;
+    relay.resumeLink.mockImplementation(async (linkId: string) => {
+      events.push("resume");
+      if (first) {
+        first = false;
+        await new Promise<void>((resolve) => {
+          release = resolve;
+        });
+      }
+      return resume(linkId);
+    });
+    relay.close.mockImplementation(() => void events.push("close"));
+    return {
+      relay,
+      events,
+      release: () => release!(),
+      started: () => release !== null,
+    };
+  }
+
+  it("再次 open() 使上一次过时：上一次刚挂上的访客路由先卸下，下一次才开始挂，最后在画布", async () => {
+    const guestStorage = memoryStorage();
+    guestRecord(guestStorage, LINK, HOST);
+    const blocked = blockedGuest();
+    const ctx = setup({
+      me: unauthenticated,
+      guestStorage,
+      guestRelay: () => blocked.relay,
+    });
+    const first = ctx.host.open();
+    await vi.waitFor(() => expect(blocked.started()).toBe(true));
+    const second = ctx.host.open();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    // 第二次排在第一次后面：第一次没收尾前不开始。
+    expect(blocked.events).toEqual(["resume"]);
+    blocked.release();
+    await Promise.all([first, second]);
+    expect(blocked.events).toEqual(["resume", "close", "resume"]);
+    expect(ctx.host.view).toEqual({ kind: "entered" });
+  });
+
+  it("登出使进行中的访客进入过时：醒来后卸下刚挂上的访客路由", async () => {
+    const guestStorage = memoryStorage();
+    guestRecord(guestStorage, LINK, HOST);
+    const blocked = blockedGuest();
+    const ctx = setup({
+      me: unauthenticated,
+      guestStorage,
+      guestRelay: () => blocked.relay,
+    });
+    const opening = ctx.host.open();
+    await vi.waitFor(() => expect(blocked.started()).toBe(true));
+    await ctx.host.signOut();
+    blocked.release();
+    await opening;
+    expect(blocked.events).toEqual(["resume", "close"]);
+    expect(ctx.host.view).toEqual({ kind: "signedOut" });
+  });
+
+  it("以访客进去之后再次 open()：先卸下访客路由再进", async () => {
+    const guestStorage = memoryStorage();
+    guestRecord(guestStorage, LINK, HOST);
+    const events: string[] = [];
+    const relay = fakeGuest(() => ({ kind: "entered", sourceId: HOST }));
+    const resume = relay.resumeLink.getMockImplementation()!;
+    relay.resumeLink.mockImplementation(async (linkId: string) => {
+      events.push("resume");
+      return resume(linkId);
+    });
+    relay.close.mockImplementation(() => void events.push("close"));
+    const ctx = setup({
+      me: unauthenticated,
+      guestStorage,
+      guestRelay: () => relay,
+    });
+    await ctx.host.open();
+    await ctx.host.open();
+    expect(events).toEqual(["resume", "close", "resume"]);
+    expect(ctx.host.view).toEqual({ kind: "entered" });
+  });
+});
+
 describe("访客失败时的卡片信息", () => {
   it("从账号退回、访客没进去：info 不标访客（失败卡照样给回主机列表）；匿名没进去才标", async () => {
     const guestStorage = memoryStorage();

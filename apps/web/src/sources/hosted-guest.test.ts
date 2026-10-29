@@ -73,7 +73,13 @@ function guestNet() {
   let cloud = 0;
   let core = 0;
   const live = { cloud: "guest-r", core: "core-gr" };
-  const state = { cloudRejected: false, cloudStatus: 0 };
+  const state = {
+    cloudRejected: false,
+    cloudStatus: 0,
+    sourcesStatus: 0,
+    /** 列目录的答复（缺省是旧形状；云端 #155 起访客只拿到链接指向的那一台）。 */
+    sources: [{ sourceId: SOURCE, name: "studio", online: true }] as unknown[],
+  };
   const net = routedFetch({
     [`POST /v1/links/${LINK.linkId}/accept`]: () => ({
       body: {
@@ -125,9 +131,17 @@ function guestNet() {
         },
       };
     },
-    "GET /v1/me/sources": () => ({
-      body: { sources: [{ sourceId: SOURCE, name: "studio", online: true }] },
-    }),
+    "GET /v1/me/sources": () =>
+      state.sourcesStatus !== 0
+        ? {
+            status: state.sourcesStatus,
+            body: {
+              code:
+                state.sourcesStatus === 401 ? "unauthenticated" : "forbidden",
+              message: "",
+            },
+          }
+        : { body: { sources: state.sources } },
     [`POST /v1/sources/${SOURCE}/assertion`]: () => ({
       body: {
         assertion: "jws",
@@ -342,6 +356,23 @@ describe("访客保管处（localStorage，按 签发方 + 链接）", () => {
     stores.guest.removeItem(KEY);
     await reloaded.relay.provider.refresh(SOURCE, "relayed").catch(() => null);
     expect(stores.guest.getItem(KEY)).toBeNull();
+  });
+
+  it("列目录答 401：记录作废（gone）；答 403（云端放开访客之前）：只算暂时打不开，记录留着", async () => {
+    for (const [status, kind, kept] of [
+      [401, "gone", false],
+      [403, "unavailable", true],
+    ] as const) {
+      const { net, state } = guestNet();
+      const stores = fresh();
+      await page(net, stores).relay.join(LINK);
+      resetIdentityCredentials();
+      state.sourcesStatus = status;
+      await expect(
+        page(net, stores).relay.resumeLink(LINK.linkId),
+      ).resolves.toMatchObject({ kind });
+      expect(stores.guest.getItem(KEY) !== null).toBe(kept);
+    }
   });
 
   it("close：卸下主机、记录留着（与 dispose 清记录不同）", async () => {
