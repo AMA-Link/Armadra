@@ -87,6 +87,8 @@ export interface HostChannelOptions {
   readonly issuer: string;
   /** 通道管理；测试注入，缺省按需建一份。 */
   readonly channels?: E2eChannels;
+  /** 缺省怎样建一份通道管理（测试注入）；每次 `dispose()` 之后换一份新的，旧账号的通道不给新账号用。 */
+  readonly createChannels?: () => E2eChannels;
   readonly idleMs?: number;
   readonly maxOpen?: number;
   readonly now?: () => number;
@@ -141,9 +143,23 @@ export function createHostChannel(options: HostChannelOptions): HostChannel {
   const idleMs = options.idleMs ?? IDLE_MS;
   const maxOpen = options.maxOpen ?? MAX_OPEN;
   const now = options.now ?? Date.now;
-  let channels: E2eChannels | undefined = options.channels;
-  const channelsOf = () =>
-    (channels ??= new E2eChannels({ deviceName: () => browserDevice().name }));
+  const create =
+    options.createChannels ??
+    (() => new E2eChannels({ deviceName: () => browserDevice().name }));
+  /**
+   * 每一代（两次 `dispose()` 之间）一份通道管理：换账号之后新账号的请求不会落到旧账号经中继
+   * 准入开的那条通道上。注入的 `channels` 跨代共用（测试），`dispose()` 时先同步关掉。
+   */
+  const instances = new Map<number, E2eChannels>();
+  const channelsOf = (gen: number): E2eChannels => {
+    if (options.channels !== undefined) return options.channels;
+    let instance = instances.get(gen);
+    if (instance === undefined) {
+      instance = create();
+      instances.set(gen, instance);
+    }
+    return instance;
+  };
 
   /** 每条通道读一次 core 报的能力（按通道对象缓存；通道换了就重读）。 */
   const capable = new WeakMap<object, Promise<boolean>>();
@@ -164,10 +180,22 @@ export function createHostChannel(options: HostChannelOptions): HostChannel {
       session.csrfToken,
     ).catch(() => undefined);
 
-  /** 收尾：注销会话，再关通道（期间同一个源又被用起来了就不关，免得关到新的）。 */
-  const close = (sourceId: string, session: Session | undefined) => {
+  /**
+   * 收尾：注销会话，再关通道。同一代里期间这个源又被用起来了就不关，免得关到新的；
+   * 旧一代的通道管理只属于旧账号，注销完照关。
+   */
+  const close = (
+    sourceId: string,
+    session: Session | undefined,
+    gen: number = generation,
+  ) => {
+    const instance =
+      options.channels ?? (instances.has(gen) ? instances.get(gen) : undefined);
     const done = () => {
-      if (!slots.has(sourceId)) channels?.close(options.issuer, sourceId);
+      // 跨代共用的（注入的）通道管理：新一代已经在用这个源就不关。
+      const shared = gen === generation || options.channels !== undefined;
+      if (shared && slots.has(sourceId)) return;
+      instance?.close(options.issuer, sourceId);
     };
     if (session === undefined) done();
     else void logout(session).finally(done);
@@ -222,7 +250,8 @@ export function createHostChannel(options: HostChannelOptions): HostChannel {
     else next();
   };
 
-  type Live = () => void;
+  /** 这次操作还算数（期间没 `dispose()`）；`gen` 是它开始时的代数。 */
+  type Live = (() => void) & { readonly gen: number };
 
   async function withSlot<T>(
     sourceId: string,
@@ -231,9 +260,12 @@ export function createHostChannel(options: HostChannelOptions): HostChannel {
     await acquire();
     try {
       const mine = generation;
-      const live: Live = () => {
-        if (mine !== generation) throw unavailable();
-      };
+      const live: Live = Object.assign(
+        () => {
+          if (mine !== generation) throw unavailable();
+        },
+        { gen: mine },
+      );
       const slot = enter(sourceId);
       try {
         const result = await run(live, slot);
@@ -245,7 +277,7 @@ export function createHostChannel(options: HostChannelOptions): HostChannel {
           // 这期间 dispose 过：本操作留下的会话与通道自己收掉，不写回。
           const session = slot.session;
           slot.session = undefined;
-          close(sourceId, session);
+          close(sourceId, session, mine);
         }
       }
     } finally {
@@ -267,7 +299,7 @@ export function createHostChannel(options: HostChannelOptions): HostChannel {
     live();
     if (!assertion.online) throw unavailable();
     const base = assertion.relayBaseUrl.replace(/\/+$/, "");
-    const all = channelsOf();
+    const all = channelsOf(live.gen);
     let channel: Awaited<ReturnType<E2eChannels["channel"]>>;
     try {
       channel = await all.channel({
@@ -421,13 +453,18 @@ export function createHostChannel(options: HostChannelOptions): HostChannel {
     },
 
     dispose() {
+      const gen = generation;
       generation += 1;
       for (const [sourceId, slot] of [...slots]) {
         clearTimeout(slot.timer);
         slots.delete(sourceId);
         const session = slot.session;
         slot.session = undefined;
-        close(sourceId, session);
+        // 跨代共用的通道管理：先同步关掉这条通道，新账号不会接着用；注销尽力（多半随通道失败，忽略）。
+        if (options.channels !== undefined) {
+          options.channels.close(options.issuer, sourceId);
+          if (session !== undefined) void logout(session);
+        } else close(sourceId, session, gen);
       }
     },
   };

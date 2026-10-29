@@ -26,12 +26,22 @@ const assertion: CloudAssertion = {
 
 type Reply = { status?: number; body?: unknown };
 
-function setup(options: { trusted?: boolean; sources?: () => Reply } = {}): {
+function setup(
+  options: {
+    trusted?: boolean;
+    sources?: () => Reply;
+    /** 不注入固定的通道管理，而是每代由工厂建一份（生产的形状）。 */
+    perGeneration?: boolean;
+  } = {},
+): {
   channel: ReturnType<typeof createHostChannel>;
-  calls: { path: string; init: RequestInit }[];
+  calls: { path: string; init: RequestInit; instance: number }[];
   sources: { assertion: ReturnType<typeof vi.fn> };
+  instances: { close: ReturnType<typeof vi.fn> }[];
+  injected: ReturnType<typeof plainE2e> & { close: ReturnType<typeof vi.fn> };
 } {
-  const calls: { path: string; init: RequestInit }[] = [];
+  const calls: { path: string; init: RequestInit; instance: number }[] = [];
+  let current = 0;
   let logins = 0;
   const reply = (r: Reply) =>
     ({
@@ -43,7 +53,7 @@ function setup(options: { trusted?: boolean; sources?: () => Reply } = {}): {
   const fetchImpl = vi.fn(
     async (input: RequestInfo | URL, init: RequestInit = {}) => {
       const path = new URL(String(input)).pathname;
-      calls.push({ path, init });
+      calls.push({ path, init, instance: current });
       const body = (
         typeof init.body === "string" ? JSON.parse(init.body) : {}
       ) as Record<string, unknown>;
@@ -77,13 +87,29 @@ function setup(options: { trusted?: boolean; sources?: () => Reply } = {}): {
     },
   );
   const sources = { assertion: vi.fn(async () => assertion) };
+  const instances: { close: ReturnType<typeof vi.fn> }[] = [];
+  /** 每份通道管理各自的 fetch：记下请求走的是第几份。 */
+  const stub = () => {
+    const index = instances.length;
+    const made = plainE2e(((input: RequestInfo | URL, init?: RequestInit) => {
+      current = index;
+      return fetchImpl(input, init);
+    }) as typeof fetch);
+    const close = vi.fn();
+    Object.assign(made, { close });
+    instances.push({ close });
+    return made as typeof made & { close: typeof close };
+  };
+  const injected = stub();
   const channel = createHostChannel({
     client: { sources },
     issuer: ISSUER,
-    channels: plainE2e(fetchImpl as unknown as typeof fetch),
+    ...(options.perGeneration === true
+      ? { createChannels: stub }
+      : { channels: injected }),
     now: () => NOW,
   });
-  return { channel, calls, sources };
+  return { channel, calls, sources, instances, injected };
 }
 
 afterEach(() => {
@@ -226,4 +252,48 @@ describe("通道池 · request", () => {
       ).toHaveLength(1);
     },
   );
+});
+
+describe("通道池 · dispose 之后不把旧账号的通道给新账号", () => {
+  it("每代一份通道管理：dispose 后的请求走新的一份，旧的注销完再关", async () => {
+    const { channel, calls, instances } = setup({ perGeneration: true });
+    // 下标 0 是这种模式下没用上的注入件：按请求实际走的那份取。
+    await channel.request(SOURCE, "/api/sources", { method: "GET" });
+    const first = calls.at(-1)!.instance;
+    channel.dispose();
+    await channel.request(SOURCE, "/api/sources", { method: "GET" });
+    const second = calls.at(-1)!.instance;
+    expect(second).not.toBe(first);
+    // 旧的那份：注销会话（经它自己的通道）之后关掉这个源的通道。
+    await vi.waitFor(() =>
+      expect(instances[first]!.close).toHaveBeenCalledWith(ISSUER, SOURCE),
+    );
+    expect(
+      calls.some(
+        (call) =>
+          call.instance === first &&
+          call.path === "/api/identity/session/logout",
+      ),
+    ).toBe(true);
+    // 新的那份没被关。
+    expect(instances[second]!.close).not.toHaveBeenCalled();
+    // dispose 之后旧的那份只发了注销，没再发业务请求。
+    const afterDispose = calls.slice(
+      calls.findIndex((call) => call.path === "/api/identity/session/logout"),
+    );
+    expect(
+      afterDispose.filter(
+        (call) => call.instance === first && call.path === "/api/sources",
+      ),
+    ).toHaveLength(0);
+    channel.dispose();
+  });
+
+  it("注入的（跨代共用）通道管理：dispose 当场同步关掉通道，不等注销", async () => {
+    const { channel, injected } = setup();
+    await channel.request(SOURCE, "/api/sources", { method: "GET" });
+    channel.dispose();
+    // 不 await：同步已关。
+    expect(injected.close).toHaveBeenCalledWith(ISSUER, SOURCE);
+  });
 });
