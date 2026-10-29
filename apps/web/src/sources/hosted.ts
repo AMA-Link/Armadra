@@ -628,7 +628,7 @@ export function startHostedRelay(host: RelayHost): HostedRelay {
   active?.dispose();
   active = createHostedRelay({
     issuer: host.issuer,
-    e2e: e2eChannels(() => browserDevice().name),
+    e2e: e2eChannels(),
   });
   setRelayedPage(active);
   return active;

@@ -474,7 +474,7 @@ export function createRelayEnrollment(
   deps: RelayDeps = {
     bridge: nativeBridge(),
     reload: () => globalThis.location.reload(),
-    e2e: e2eChannels(() => thisDevice().name),
+    e2e: e2eChannels(),
   },
 ): RelayEnrollment {
   let issuer = "";

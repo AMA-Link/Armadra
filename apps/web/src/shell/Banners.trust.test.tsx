@@ -244,7 +244,7 @@ describe("待信任设备横幅与对话框", () => {
   it("主机上还没有这台设备的申请：就地说清楚，「信任」不可点", async () => {
     host.devices.list.mockResolvedValue({ devices: [] });
     await expectBlocked(
-      "This host has no request from that device yet. Ask it to reconnect",
+      "This host has no matching request from that device. Ask it to reconnect, or handle it in the host's device list",
     );
   });
 
@@ -299,7 +299,7 @@ describe("待信任设备横幅与对话框", () => {
       devices: [pending({ principalName: "Cy" })],
     });
     await expectBlocked(
-      "This host has no request from that device yet. Ask it to reconnect",
+      "This host has no matching request from that device. Ask it to reconnect, or handle it in the host's device list",
     );
   });
 
