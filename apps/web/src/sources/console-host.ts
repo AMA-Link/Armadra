@@ -2,6 +2,7 @@ import {
   MIN_CORE_VERSION_ROLE_ONLY_ASSERTION,
   MIN_CORE_VERSION_TEAM_ASSERTION,
 } from "@armadra/platform-protocol";
+import { SOURCE_CORE_OUTDATED } from "@armadra/shared";
 
 import {
   type IdentitySession,
@@ -57,8 +58,9 @@ import { SOURCE_ERROR, SourceError } from "./types";
  * - **登出广播**：`BroadcastChannel("armadra.cloud.session")`——控制台登出 / 换账号时各 `/h/`
  *   标签页尽力 `session/logout`、清自己那份、盖上「已登出」；复制出的标签页用它认领同一份记录。
  * - **授予同步**：`grantChanged`（这台）与自己的 `memberChanged` 去抖合并后重登（§2.3）。
- * - **失败态与版本门**：断言答 `source_access_denied` 时按 `sources.get` 的 `coreVersion`
- *   分出「版本太旧」与「没有权限」（§2.5）。
+ * - **失败态与版本门**：断言答 `source_core_outdated`（armadra-cloud#152）就是「版本太旧」；
+ *   旧服务端版本门也答 `source_access_denied`，这时按 `sources.get` 的 `coreVersion` 分出
+ *   「版本太旧」与「没有权限」（§2.5，过渡期的兜底）。
  * - **访客记录**（§2.8）：按分享链接进过这台主机的访客记录（`localStorage`，托管页那一份）——
  *   没有 Cookie 会话、或 Cookie 账号看不到 / 没权限进这台主机时，用它经托管中继以访客进入；
  *   两样都没有才去登录。访客的访问被收回 → 「访问已被收回」。
@@ -145,7 +147,8 @@ export function versionBelow(a: string, b: string): boolean {
 export type HostDetail = Awaited<ReturnType<CloudClient["sources"]["get"]>>;
 
 /**
- * 控制面版本门对旧主机答的也是 `source_access_denied`（`grants/policy.go` 的 `versionGate`）：
+ * 旧服务端的版本门对旧主机答的也是 `source_access_denied`（新服务端改答独立的
+ * `source_core_outdated`，armadra-cloud#152；这里留作过渡期对旧服务端的兜底）：
  * 团队主机按 {@link MIN_CORE_VERSION_TEAM_ASSERTION}，个人空间里别人的主机按
  * {@link MIN_CORE_VERSION_ROLE_ONLY_ASSERTION}；自己的个人主机没有门。
  */
@@ -423,6 +426,10 @@ export function createConsoleHost(options: ConsoleHostOptions): ConsoleHost {
             // 控制台的 Cookie 会话没了（客户端已经走过刷新锁）：不整页跳走，冻结等重新登录。
             if (statusOf(error) === 401 && view.kind === "entered")
               setView({ kind: "expired" });
+            // 版本门的独立码：直接是「版本太旧」，不必看目录里的版本。
+            if (codeOf(error) === SOURCE_CORE_OUTDATED)
+              throw new SourceError(HOST_FAILURE.tooOld);
+            // 兜底：旧服务端版本门与访问被收回同答 `source_access_denied`，按目录里的版本分。
             if (
               codeOf(error) === SOURCE_ERROR.accessRevoked &&
               detail !== null &&

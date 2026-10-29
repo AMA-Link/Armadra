@@ -109,6 +109,14 @@ describe("browser-cloud 凭据提供方", () => {
       SOURCE_ERROR.accessRevoked,
     ],
     [new CloudConsoleError("session_expired", 401), SOURCE_ERROR.unauthorized],
+    // 版本门的独立码（armadra-cloud#152）：版本过旧，不是失权。
+    [
+      new CloudConsoleError("source_core_outdated", 403, "outdated", {
+        coreVersion: "0.9.4",
+        minVersion: "0.10.0",
+      }),
+      SOURCE_ERROR.hostOutdated,
+    ],
   ])("控制面拒绝 %s → 源层的码", async (failure, code) => {
     const { provider } = setup(async () => {
       throw failure;

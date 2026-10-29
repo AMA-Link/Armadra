@@ -122,6 +122,8 @@ const MESSAGE_BY_CODE: Readonly<Record<string, string>> = {
   session_revoked: "error.remoteSessionExpired",
   source_access_denied: "error.sourceAccessDenied",
   source_revoked: "error.sourceRevoked",
+  // 版本门的独立码（armadra-cloud#152，协议包 0.11 起）。
+  source_core_outdated: "remote.error.hostOutdated",
   limit_reached: "error.limitReached",
   // Armadra 云的空间、授予、邀请与设备信任（契约 §33.11、§33.12）。
   email_unverified: "error.emailUnverified",

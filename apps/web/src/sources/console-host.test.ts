@@ -540,6 +540,20 @@ describe("控制台 /h/ 进主机", () => {
     });
   });
 
+  it("source_core_outdated（新服务端的版本门）：直接是版本太旧，不看目录里的版本、不清会话", async () => {
+    const outdated = async () => {
+      throw Object.assign(new Error("outdated"), {
+        status: 403,
+        code: "source_core_outdated",
+        details: { coreVersion: "", minVersion: "0.10.0" },
+      });
+    };
+    // 目录里报的是新版本（`detail` 缺省）：只能是新码本身给出的判断。
+    const { host } = setup({ assertion: outdated });
+    await host.open();
+    expect(host.view).toEqual({ kind: "failed", code: "source_too_old" });
+  });
+
   it("没有控制台会话：去登录；主机不存在：找不到；离线：等上线", async () => {
     const signedOut = setup({
       me: async () => {

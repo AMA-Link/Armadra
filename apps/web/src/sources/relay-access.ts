@@ -1,3 +1,5 @@
+import { SOURCE_CORE_OUTDATED } from "@armadra/shared";
+
 import {
   type CloudAssertion,
   type CloudDevice,
@@ -194,6 +196,11 @@ function relayFailure(error: unknown): never {
       throw unauthorized(SOURCE_ERROR.offline);
     if (error.code === "source_revoked")
       throw unauthorized(SOURCE_ERROR.revoked);
+    // 版本门的独立码（armadra-cloud#152）：主机版本过旧，不是失权，不提示重新登录。
+    if (error.code === SOURCE_CORE_OUTDATED)
+      throw new SourceError(SOURCE_ERROR.hostOutdated, undefined, {
+        cause: error,
+      });
     if (error.code === "source_access_denied")
       throw unauthorized(SOURCE_ERROR.accessRevoked);
     if (error.status === 401 || error.status === 403) throw unauthorized();
