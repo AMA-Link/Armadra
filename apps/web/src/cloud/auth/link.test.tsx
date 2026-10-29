@@ -182,6 +182,46 @@ describe("分享链接落地页（SaaS）", () => {
     expect(hosted.join.mock.calls[0]![2]).toBeUndefined();
   });
 
+  it("带着会话、接受前问不到是谁：报错，不接受也不加入", async () => {
+    visit(`/j/${LINK_ID}${HASH}`);
+    const { api, onJoined } = mount({ linkRequiresAccount: true });
+    const button = await join();
+    const accept = vi.spyOn(api.client.links, "accept");
+    vi.spyOn(api.client.me, "get").mockRejectedValue(
+      Object.assign(new Error("503"), { status: 503, code: "unavailable" }),
+    );
+    fireEvent.click(button);
+    await screen.findByRole("alert");
+    expect(accept).not.toHaveBeenCalled();
+    expect(hosted.join).not.toHaveBeenCalled();
+    expect(onJoined).not.toHaveBeenCalled();
+  });
+
+  it("接受后问是谁暂时失败：再问一次，问到了照常记成这个账号；两次都失败才记成来源不明", async () => {
+    for (const failures of [1, 2]) {
+      visit(`/j/${LINK_ID}${HASH}`);
+      const { api, onJoined } = mount({ linkRequiresAccount: true });
+      const self = (await api.client.me.get({})).accountId;
+      const button = await join();
+      const get = api.client.me.get.bind(api.client.me);
+      let calls = 0;
+      vi.spyOn(api.client.me, "get").mockImplementation(async (input) => {
+        calls += 1;
+        // 第 1 次是接受前；之后 `failures` 次失败。
+        if (calls >= 2 && calls < 2 + failures)
+          throw Object.assign(new Error("503"), { status: 503 });
+        return get(input);
+      });
+      fireEvent.click(button);
+      await waitFor(() => expect(onJoined).toHaveBeenCalledOnce());
+      expect(hosted.join.mock.calls[0]![2]).toBe(
+        failures === 1 ? self : undefined,
+      );
+      cleanup();
+      hosted.join.mockClear();
+    }
+  });
+
   it("接受时云端答 anonymous_links_disabled：改成「登录后加入」，不出错误文案", async () => {
     visit(`/j/${LINK_ID}${HASH}`);
     mount({

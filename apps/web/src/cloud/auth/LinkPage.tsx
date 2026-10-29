@@ -278,7 +278,8 @@ export function LinkPage({
         return;
       }
       if (accepted.current === null) {
-        const before = session ? await currentAccount() : "";
+        // 接受前取不到是谁：报错、不接受（接受会耗次数，接受了又记不清是谁）。
+        const before = session ? (await api.client.me.get({})).accountId : "";
         const answer = await api.client.links.accept({
           linkId,
           secret: link.secret,
@@ -296,9 +297,11 @@ export function LinkPage({
         accepted.current = parseCloudAccept(answer);
         // 云端按接受那一刻的 Cookie 记账号，答复里没有是谁：接受后再核对一次，前后不是同一位
         // （别的标签页这时登录、登出或换了账号）就当来源不明。
-        const after = (await api.ensureCsrf()) ? await currentAccount() : "";
-        acceptedBy.current =
-          before !== undefined && before === after ? before : undefined;
+        // 接受后问不到（暂时的）：再问一次，还问不到才当来源不明。
+        const after = (await api.ensureCsrf())
+          ? ((await currentAccount()) ?? (await currentAccount()))
+          : "";
+        acceptedBy.current = before === after ? before : undefined;
       }
       enterDone(
         await joinWithAccept(link, accepted.current, acceptedBy.current),
