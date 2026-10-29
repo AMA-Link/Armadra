@@ -10,6 +10,7 @@ import {
   type CloudAssertion,
 } from "../sources/cloud-client";
 import { E2eChannels } from "../sources/e2e/manager";
+import { isSessionRefusalCode } from "../sources/transport";
 import type { BrowserCloudDeps } from "../sources/credentials";
 
 /**
@@ -407,13 +408,11 @@ export function createHostChannel(options: HostChannelOptions): HostChannel {
         const response = await send(await session(false));
         if (response.status !== 401) return response;
         // 401 不全是访问令牌被拒：`source_unauthorized`、`cloud_not_registered` 是主机替远程服务答的，
-        // 换会话也没用（还白扣一次登录额度）。只有没码或 `unauthenticated` 才换一份会话再发一次。
+        // 换会话也没用（还白扣一次登录额度）。只有没码或 `unauthenticated`（不分大小写，与 `sources/transport.ts` 同一套判定）才换一份会话再发一次。
         const body = (await response.json().catch(() => null)) as {
           code?: unknown;
         } | null;
-        const code = body?.code;
-        if (code === undefined || code === "unauthenticated")
-          return send(await session(true));
+        if (isSessionRefusalCode(body?.code)) return send(await session(true));
         return new Response(JSON.stringify(body), {
           status: 401,
           headers: { "content-type": "application/json" },

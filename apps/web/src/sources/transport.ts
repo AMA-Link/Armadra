@@ -134,12 +134,19 @@ async function sessionRefusal(response: Response): Promise<boolean> {
     .clone()
     .json()
     .catch(() => null)) as { code?: unknown } | null;
-  const code =
-    body !== null && typeof body === "object" ? body.code : undefined;
+  return isSessionRefusalCode(
+    body !== null && typeof body === "object" ? body.code : undefined,
+  );
+}
+
+/**
+ * 401 体里的码是不是「会话不认了」：没有码，或 `unauthenticated`（不分大小写，旧 core 答大写）。
+ * 浏览器经端到端通道发给主机的请求（`cloud/host-channel.ts`）用同一套判定。
+ */
+export function isSessionRefusalCode(code: unknown): boolean {
   return (
     code === undefined ||
-    code === "unauthenticated" ||
-    code === "UNAUTHENTICATED"
+    (typeof code === "string" && code.toLowerCase() === "unauthenticated")
   );
 }
 

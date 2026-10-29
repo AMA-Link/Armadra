@@ -183,6 +183,26 @@ describe("通道池 · request", () => {
     channel.dispose();
   });
 
+  it("401 UNAUTHENTICATED（旧 core 的大写）同样换会话重发", async () => {
+    let first = true;
+    const { channel, calls } = setup({
+      sources: () => {
+        if (first) {
+          first = false;
+          return { status: 401, body: { code: "UNAUTHENTICATED" } };
+        }
+        return { body: { remotes: [] } };
+      },
+    });
+    const response = await channel.request(SOURCE, "/api/sources", {
+      method: "GET",
+    });
+    expect(response.status).toBe(200);
+    expect(calls.filter((call) => call.path === "/api/sources")).toHaveLength(
+      2,
+    );
+  });
+
   it.each(["source_unauthorized", "cloud_not_registered"])(
     "401 %s 是主机替远程服务答的：不换会话、不再登录，原码交回",
     async (code) => {
