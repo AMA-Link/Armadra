@@ -279,6 +279,27 @@ describe("团队 · 设备信任", () => {
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
   });
 
+  it("主机限流登录（rate_limited）：提示等几秒，对话框留着、这条仍可再试", async () => {
+    const host = endorser([], async () => {
+      throw Object.assign(new Error("rate_limited"), {
+        code: "rate_limited",
+        retryAfterMs: 30_000,
+      });
+    });
+    host.canEndorse = vi.fn(async () => true);
+    mount("/t/rd/trust", OPTIONS, host, addPendingIds);
+    const ipad = (await rows()).find((row) =>
+      row.textContent?.includes("李四"),
+    )!;
+    const dialog = await openDialog(ipad);
+    typeCode(dialog, "222222");
+    fireEvent.click(within(dialog).getByRole("button", { name: "信任" }));
+    expect(
+      await screen.findByText("这台主机上的登录太频繁，30 秒后再试"),
+    ).toBeTruthy();
+    expect(within(dialog).getByRole("button", { name: "信任" })).toBeTruthy();
+  });
+
   it("主机答 device_untrusted：这台主机的受信判定作废重判，被拒的那条仍不可背书", async () => {
     const host = endorser([], async () => {
       throw Object.assign(new Error("device_untrusted"), {

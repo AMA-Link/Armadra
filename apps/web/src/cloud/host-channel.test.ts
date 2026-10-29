@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { CloudAssertion } from "../sources/cloud-client";
 import { plainE2e } from "../sources/e2e/testing";
-import { createHostChannel } from "./host-channel";
+import { createHostChannel, throttleSeconds } from "./host-channel";
 
 /**
  * 通道池的 `request`（「新建链接」用它，背书器的 approve 也经它）：白名单之外一个字节都不发、
@@ -26,12 +26,27 @@ const assertion: CloudAssertion = {
 
 type Reply = { status?: number; body?: unknown };
 
-function setup(options: { trusted?: boolean; sources?: () => Reply } = {}): {
+function setup(
+  options: {
+    trusted?: boolean;
+    /** probe 答 429 rate_limited（带 retryAfterMs）。 */
+    throttled?: boolean;
+    /** 第一次普通登录答 429 rate_limited。 */
+    loginThrottledOnce?: boolean;
+    sources?: () => Reply;
+    /** 不注入固定的通道管理，而是每代由工厂建一份（生产的形状）。 */
+    perGeneration?: boolean;
+  } = {},
+): {
   channel: ReturnType<typeof createHostChannel>;
-  calls: { path: string; init: RequestInit }[];
+  calls: { path: string; init: RequestInit; instance: number }[];
   sources: { assertion: ReturnType<typeof vi.fn> };
+  instances: { close: ReturnType<typeof vi.fn> }[];
+  injected: ReturnType<typeof plainE2e> & { close: ReturnType<typeof vi.fn> };
 } {
-  const calls: { path: string; init: RequestInit }[] = [];
+  const calls: { path: string; init: RequestInit; instance: number }[] = [];
+  let current = 0;
+  let loginThrottled = false;
   let logins = 0;
   const reply = (r: Reply) =>
     ({
@@ -43,19 +58,31 @@ function setup(options: { trusted?: boolean; sources?: () => Reply } = {}): {
   const fetchImpl = vi.fn(
     async (input: RequestInfo | URL, init: RequestInit = {}) => {
       const path = new URL(String(input)).pathname;
-      calls.push({ path, init });
+      calls.push({ path, init, instance: current });
       const body = (
         typeof init.body === "string" ? JSON.parse(init.body) : {}
       ) as Record<string, unknown>;
       if (path === "/api/identity/hello")
         return reply({ body: { capabilities: ["identity.cloud.probe.v1"] } });
       if (path === "/api/identity/cloud/login") {
+        if (body.probe === true && options.throttled === true)
+          return reply({
+            status: 429,
+            body: { code: "rate_limited", details: { retryAfterMs: 7_000 } },
+          });
         if (body.probe === true)
           return reply(
             options.trusted === false
               ? { status: 403, body: { code: "device_untrusted" } }
               : { body: { trusted: true } },
           );
+        if (options.loginThrottledOnce === true && !loginThrottled) {
+          loginThrottled = true;
+          return reply({
+            status: 429,
+            body: { code: "rate_limited", details: { retryAfterMs: 9_000 } },
+          });
+        }
         logins += 1;
         return reply({
           body: {
@@ -77,13 +104,29 @@ function setup(options: { trusted?: boolean; sources?: () => Reply } = {}): {
     },
   );
   const sources = { assertion: vi.fn(async () => assertion) };
+  const instances: { close: ReturnType<typeof vi.fn> }[] = [];
+  /** 每份通道管理各自的 fetch：记下请求走的是第几份。 */
+  const stub = () => {
+    const index = instances.length;
+    const made = plainE2e(((input: RequestInfo | URL, init?: RequestInit) => {
+      current = index;
+      return fetchImpl(input, init);
+    }) as typeof fetch);
+    const close = vi.fn();
+    Object.assign(made, { close });
+    instances.push({ close });
+    return made as typeof made & { close: typeof close };
+  };
+  const injected = stub();
   const channel = createHostChannel({
     client: { sources },
     issuer: ISSUER,
-    channels: plainE2e(fetchImpl as unknown as typeof fetch),
+    ...(options.perGeneration === true
+      ? { createChannels: stub }
+      : { channels: injected }),
     now: () => NOW,
   });
-  return { channel, calls, sources };
+  return { channel, calls, sources, instances, injected };
 }
 
 afterEach(() => {
@@ -98,6 +141,13 @@ describe("通道池 · request", () => {
     ["POST", "/api/sources"],
     ["POST", "/api/sources/remotes/svc/links/x/url"],
     ["POST", "/api/identity/cloud/bind"],
+    // 点段、编码的点段、反斜杠：按前缀匹配会放过，解析后落到别的地址。
+    ["POST", "/api/sources/remotes/../../e2e/pairing-secret/links"],
+    ["POST", "/api/sources/remotes/..%2f..%2fe2e%2fpairing-secret/links"],
+    ["POST", "/api/sources/remotes/%2e%2e/links"],
+    ["POST", "/api/sources/remotes/a\\..\\x/links"],
+    ["GET", "/api/sources/./"],
+    ["GET", "/api/sources?x=1"],
   ] as const)(
     "白名单之外（%s %s）答 forbidden，不取断言、不发请求",
     async (method, path) => {
@@ -176,6 +226,26 @@ describe("通道池 · request", () => {
     channel.dispose();
   });
 
+  it("401 UNAUTHENTICATED（旧 core 的大写）同样换会话重发", async () => {
+    let first = true;
+    const { channel, calls } = setup({
+      sources: () => {
+        if (first) {
+          first = false;
+          return { status: 401, body: { code: "UNAUTHENTICATED" } };
+        }
+        return { body: { remotes: [] } };
+      },
+    });
+    const response = await channel.request(SOURCE, "/api/sources", {
+      method: "GET",
+    });
+    expect(response.status).toBe(200);
+    expect(calls.filter((call) => call.path === "/api/sources")).toHaveLength(
+      2,
+    );
+  });
+
   it.each(["source_unauthorized", "cloud_not_registered"])(
     "401 %s 是主机替远程服务答的：不换会话、不再登录，原码交回",
     async (code) => {
@@ -199,4 +269,88 @@ describe("通道池 · request", () => {
       ).toHaveLength(1);
     },
   );
+});
+
+describe("通道池 · dispose 之后不把旧账号的通道给新账号", () => {
+  it("每代一份通道管理：dispose 后的请求走新的一份，旧的注销完再关", async () => {
+    const { channel, calls, instances } = setup({ perGeneration: true });
+    // 下标 0 是这种模式下没用上的注入件：按请求实际走的那份取。
+    await channel.request(SOURCE, "/api/sources", { method: "GET" });
+    const first = calls.at(-1)!.instance;
+    channel.dispose();
+    await channel.request(SOURCE, "/api/sources", { method: "GET" });
+    const second = calls.at(-1)!.instance;
+    expect(second).not.toBe(first);
+    // 旧的那份：注销会话（经它自己的通道）之后关掉这个源的通道。
+    await vi.waitFor(() =>
+      expect(instances[first]!.close).toHaveBeenCalledWith(ISSUER, SOURCE),
+    );
+    expect(
+      calls.some(
+        (call) =>
+          call.instance === first &&
+          call.path === "/api/identity/session/logout",
+      ),
+    ).toBe(true);
+    // 新的那份没被关。
+    expect(instances[second]!.close).not.toHaveBeenCalled();
+    // dispose 之后旧的那份只发了注销，没再发业务请求。
+    const afterDispose = calls.slice(
+      calls.findIndex((call) => call.path === "/api/identity/session/logout"),
+    );
+    expect(
+      afterDispose.filter(
+        (call) => call.instance === first && call.path === "/api/sources",
+      ),
+    ).toHaveLength(0);
+    channel.dispose();
+  });
+
+  it("注入的（跨代共用）通道管理：dispose 当场同步关掉通道，不等注销", async () => {
+    const { channel, injected } = setup();
+    await channel.request(SOURCE, "/api/sources", { method: "GET" });
+    channel.dispose();
+    // 不 await：同步已关。
+    expect(injected.close).toHaveBeenCalledWith(ISSUER, SOURCE);
+  });
+});
+
+describe("通道池 · 限流", () => {
+  it("probe 被主机限流：request 抛 rate_limited 带等待时间，不登录、不发请求", async () => {
+    const { channel, calls } = setup({ throttled: true });
+    await expect(
+      channel.request(SOURCE, "/api/sources", { method: "GET" }),
+    ).rejects.toMatchObject({ code: "rate_limited", retryAfterMs: 7_000 });
+    expect(calls.some((call) => call.path === "/api/sources")).toBe(false);
+  });
+
+  it("throttleSeconds：向上取整到秒、至少 1；没给等待时间是 0；别的码不是限流", () => {
+    expect(
+      throttleSeconds({ code: "rate_limited", retryAfterMs: 12_400 }),
+    ).toBe(13);
+    expect(throttleSeconds({ code: "rate_limited", retryAfterMs: 10 })).toBe(1);
+    expect(throttleSeconds({ code: "rate_limited" })).toBe(0);
+    expect(throttleSeconds({ code: "forbidden" })).toBeUndefined();
+    expect(throttleSeconds(null)).toBeUndefined();
+  });
+
+  it("登录被限流后重试：刚判定过受信就不再 probe，攒回的那一次额度留给登录", async () => {
+    const { channel, calls } = setup({ loginThrottledOnce: true });
+    await expect(
+      channel.request(SOURCE, "/api/sources", { method: "GET" }),
+    ).rejects.toMatchObject({ code: "rate_limited", retryAfterMs: 9_000 });
+    const response = await channel.request(SOURCE, "/api/sources", {
+      method: "GET",
+    });
+    expect(response.ok).toBe(true);
+    const logins = calls.filter(
+      (call) => call.path === "/api/identity/cloud/login",
+    );
+    const probes = logins.filter((call) =>
+      String(call.init.body).includes('"probe":true'),
+    );
+    expect(probes).toHaveLength(1);
+    expect(logins.length - probes.length).toBe(2);
+    channel.dispose();
+  });
 });

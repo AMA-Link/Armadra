@@ -10,6 +10,7 @@ import {
   type CloudAssertion,
 } from "../sources/cloud-client";
 import { E2eChannels } from "../sources/e2e/manager";
+import { isSessionRefusalCode } from "../sources/transport";
 import type { BrowserCloudDeps } from "../sources/credentials";
 
 /**
@@ -36,16 +37,64 @@ export const MAX_OPEN = 3;
 /** 会话离到期不到这么久就当它过期（毫秒）。 */
 const RENEW_LEAD_MS = 30_000;
 
-/** 经这条通道能发的请求（方法 + 地址）。别的一律不发。 */
+/**
+ * 刚 probe 答过「受信」之后这么久里不再 probe（毫秒）。主机每账号每分钟 5 次的额度 probe 与登录
+ * 各扣一次：登录被限流时，等过对端给的时间重试只够一次，若重试又先 probe，就永远轮不到登录。
+ */
+const TRUST_MEMO_MS = 60_000;
+
+/**
+ * 经这条通道能发的请求（方法 + 地址）。别的一律不发。可变的一段（远程服务号）只认
+ * `[A-Za-z0-9_-]{1,64}`：`..`、百分号编码、反斜杠都进不来。
+ */
 const ALLOWED: readonly (readonly [string, RegExp])[] = [
   ["POST", /^\/api\/devices\/approve$/],
   ["GET", /^\/api\/sources$/],
-  ["POST", /^\/api\/sources\/remotes\/[^/?#]+\/links$/],
+  ["POST", /^\/api\/sources\/remotes\/[A-Za-z0-9_-]{1,64}\/links$/],
 ];
 
+/** 方法与地址在白名单里，且地址已是规范形（URL 解析不改写它：没有点段、编码与反斜杠的花样）。 */
+function allowed(method: string, path: string): boolean {
+  let normalized: string;
+  try {
+    normalized = new URL(path, "https://x").pathname;
+  } catch {
+    return false;
+  }
+  return (
+    normalized === path &&
+    ALLOWED.some(([verb, pattern]) => verb === method && pattern.test(path))
+  );
+}
+
 /** 带 `code` 的失败（形状同信任页认得的 `endorseCode`）；不带任何文字细节。 */
-export function coded(code: string): Error {
-  return Object.assign(new Error(code), { code });
+export function coded(code: string, retryAfterMs?: number): Error {
+  return Object.assign(
+    new Error(code),
+    retryAfterMs === undefined ? { code } : { code, retryAfterMs },
+  );
+}
+
+/**
+ * 主机按账号限流 `cloud/login`（含 `probe`，每分钟 5 次）：保留 `rate_limited` 与对端给的
+ * `retryAfterMs`，让页面说「稍后再试」而不是「连不上」。不是限流答 `undefined`。
+ */
+/**
+ * 限流失败要等的整秒数（至少 1）；不是 `rate_limited` 答 `undefined`，对端没给等待时间答 `0`。
+ */
+export function throttleSeconds(error: unknown): number | undefined {
+  const failure = error as { code?: unknown; retryAfterMs?: unknown } | null;
+  if (failure?.code !== "rate_limited") return undefined;
+  const wait = failure.retryAfterMs;
+  return typeof wait === "number" && wait > 0
+    ? Math.max(1, Math.ceil(wait / 1000))
+    : 0;
+}
+
+function throttled(error: unknown): Error | undefined {
+  return error instanceof CloudError && error.code === "rate_limited"
+    ? coded("rate_limited", Math.max(0, error.retryAfterMs))
+    : undefined;
 }
 
 const unavailable = () => coded("e2e_device_unavailable");
@@ -69,6 +118,8 @@ export interface HostChannelOptions {
   readonly issuer: string;
   /** 通道管理；测试注入，缺省按需建一份。 */
   readonly channels?: E2eChannels;
+  /** 缺省怎样建一份通道管理（测试注入）；每次 `dispose()` 之后换一份新的，旧账号的通道不给新账号用。 */
+  readonly createChannels?: () => E2eChannels;
   readonly idleMs?: number;
   readonly maxOpen?: number;
   readonly now?: () => number;
@@ -108,6 +159,8 @@ interface Slot {
   busy: number;
   timer: ReturnType<typeof setTimeout> | undefined;
   session: Session | undefined;
+  /** 最近一次 probe 答「受信」的时刻（{@link TRUST_MEMO_MS} 内登录前不再 probe）。 */
+  trustedAtMs: number | undefined;
 }
 
 /** 断言 + 已开的通道。 */
@@ -123,9 +176,23 @@ export function createHostChannel(options: HostChannelOptions): HostChannel {
   const idleMs = options.idleMs ?? IDLE_MS;
   const maxOpen = options.maxOpen ?? MAX_OPEN;
   const now = options.now ?? Date.now;
-  let channels: E2eChannels | undefined = options.channels;
-  const channelsOf = () =>
-    (channels ??= new E2eChannels({ deviceName: () => browserDevice().name }));
+  const create =
+    options.createChannels ??
+    (() => new E2eChannels({ deviceName: () => browserDevice().name }));
+  /**
+   * 每一代（两次 `dispose()` 之间）一份通道管理：换账号之后新账号的请求不会落到旧账号经中继
+   * 准入开的那条通道上。注入的 `channels` 跨代共用（测试），`dispose()` 时先同步关掉。
+   */
+  const instances = new Map<number, E2eChannels>();
+  const channelsOf = (gen: number): E2eChannels => {
+    if (options.channels !== undefined) return options.channels;
+    let instance = instances.get(gen);
+    if (instance === undefined) {
+      instance = create();
+      instances.set(gen, instance);
+    }
+    return instance;
+  };
 
   /** 每条通道读一次 core 报的能力（按通道对象缓存；通道换了就重读）。 */
   const capable = new WeakMap<object, Promise<boolean>>();
@@ -146,10 +213,22 @@ export function createHostChannel(options: HostChannelOptions): HostChannel {
       session.csrfToken,
     ).catch(() => undefined);
 
-  /** 收尾：注销会话，再关通道（期间同一个源又被用起来了就不关，免得关到新的）。 */
-  const close = (sourceId: string, session: Session | undefined) => {
+  /**
+   * 收尾：注销会话，再关通道。同一代里期间这个源又被用起来了就不关，免得关到新的；
+   * 旧一代的通道管理只属于旧账号，注销完照关。
+   */
+  const close = (
+    sourceId: string,
+    session: Session | undefined,
+    gen: number = generation,
+  ) => {
+    const instance =
+      options.channels ?? (instances.has(gen) ? instances.get(gen) : undefined);
     const done = () => {
-      if (!slots.has(sourceId)) channels?.close(options.issuer, sourceId);
+      // 跨代共用的（注入的）通道管理：新一代已经在用这个源就不关。
+      const shared = gen === generation || options.channels !== undefined;
+      if (shared && slots.has(sourceId)) return;
+      instance?.close(options.issuer, sourceId);
     };
     if (session === undefined) done();
     else void logout(session).finally(done);
@@ -170,7 +249,12 @@ export function createHostChannel(options: HostChannelOptions): HostChannel {
         if (slots.size < maxOpen) break;
         if (one.busy === 0) release(other);
       }
-      slot = { busy: 0, timer: undefined, session: undefined };
+      slot = {
+        busy: 0,
+        timer: undefined,
+        session: undefined,
+        trustedAtMs: undefined,
+      };
     } else {
       slots.delete(sourceId);
     }
@@ -204,7 +288,8 @@ export function createHostChannel(options: HostChannelOptions): HostChannel {
     else next();
   };
 
-  type Live = () => void;
+  /** 这次操作还算数（期间没 `dispose()`）；`gen` 是它开始时的代数。 */
+  type Live = (() => void) & { readonly gen: number };
 
   async function withSlot<T>(
     sourceId: string,
@@ -213,9 +298,12 @@ export function createHostChannel(options: HostChannelOptions): HostChannel {
     await acquire();
     try {
       const mine = generation;
-      const live: Live = () => {
-        if (mine !== generation) throw unavailable();
-      };
+      const live: Live = Object.assign(
+        () => {
+          if (mine !== generation) throw unavailable();
+        },
+        { gen: mine },
+      );
       const slot = enter(sourceId);
       try {
         const result = await run(live, slot);
@@ -227,7 +315,7 @@ export function createHostChannel(options: HostChannelOptions): HostChannel {
           // 这期间 dispose 过：本操作留下的会话与通道自己收掉，不写回。
           const session = slot.session;
           slot.session = undefined;
-          close(sourceId, session);
+          close(sourceId, session, mine);
         }
       }
     } finally {
@@ -249,7 +337,7 @@ export function createHostChannel(options: HostChannelOptions): HostChannel {
     live();
     if (!assertion.online) throw unavailable();
     const base = assertion.relayBaseUrl.replace(/\/+$/, "");
-    const all = channelsOf();
+    const all = channelsOf(live.gen);
     let channel: Awaited<ReturnType<E2eChannels["channel"]>>;
     try {
       channel = await all.channel({
@@ -296,9 +384,9 @@ export function createHostChannel(options: HostChannelOptions): HostChannel {
         opened.assertion.assertion,
         { fetch: opened.fetch },
       );
-    } catch {
-      // 限流、离线、通道断了……都不是确定的「否」：不缓存，调用方稍后重试。
-      throw unavailable();
+    } catch (error) {
+      // 限流、离线、通道断了……都不是确定的「否」：不缓存，调用方稍后重试。限流单独带码与等待时间。
+      throw throttled(error) ?? unavailable();
     }
   }
 
@@ -322,9 +410,11 @@ export function createHostChannel(options: HostChannelOptions): HostChannel {
       if (
         error instanceof CloudError &&
         (error.code === "device_pending" || error.code === "device_rejected")
-      )
+      ) {
+        slot.trustedAtMs = undefined;
         throw coded("device_untrusted");
-      throw unavailable();
+      }
+      throw throttled(error) ?? unavailable();
     }
     const session: Session = {
       accessToken: answer.native.accessToken,
@@ -354,11 +444,7 @@ export function createHostChannel(options: HostChannelOptions): HostChannel {
     },
 
     request(sourceId, path, init) {
-      if (
-        !ALLOWED.some(
-          ([method, pattern]) => method === init.method && pattern.test(path),
-        )
-      )
+      if (!allowed(init.method, path))
         return Promise.reject(coded("forbidden"));
       return withSlot(sourceId, async (live, slot) => {
         const send = async (session: Session) => {
@@ -387,20 +473,23 @@ export function createHostChannel(options: HostChannelOptions): HostChannel {
           const stale = slot.session;
           slot.session = undefined;
           if (stale !== undefined) void logout(stale);
-          // 没有会话先确认受信：不受信时直接登录会在主机上挂起一条待确认。
-          if (!(await probe(sourceId, live))) throw coded("device_untrusted");
+          // 没有会话先确认受信：不受信时直接登录会在主机上挂起一条待确认。刚确认过的（登录被限流后的
+          // 重试）不再 probe，免得重试又把刚攒回的那一次额度花在 probe 上。
+          const memo = slot.trustedAtMs;
+          if (memo === undefined || now() - memo >= TRUST_MEMO_MS) {
+            if (!(await probe(sourceId, live))) throw coded("device_untrusted");
+            slot.trustedAtMs = now();
+          }
           return login(sourceId, live, slot);
         };
         const response = await send(await session(false));
         if (response.status !== 401) return response;
         // 401 不全是访问令牌被拒：`source_unauthorized`、`cloud_not_registered` 是主机替远程服务答的，
-        // 换会话也没用（还白扣一次登录额度）。只有没码或 `unauthenticated` 才换一份会话再发一次。
+        // 换会话也没用（还白扣一次登录额度）。只有没码或 `unauthenticated`（不分大小写，与 `sources/transport.ts` 同一套判定）才换一份会话再发一次。
         const body = (await response.json().catch(() => null)) as {
           code?: unknown;
         } | null;
-        const code = body?.code;
-        if (code === undefined || code === "unauthenticated")
-          return send(await session(true));
+        if (isSessionRefusalCode(body?.code)) return send(await session(true));
         return new Response(JSON.stringify(body), {
           status: 401,
           headers: { "content-type": "application/json" },
@@ -409,13 +498,18 @@ export function createHostChannel(options: HostChannelOptions): HostChannel {
     },
 
     dispose() {
+      const gen = generation;
       generation += 1;
       for (const [sourceId, slot] of [...slots]) {
         clearTimeout(slot.timer);
         slots.delete(sourceId);
         const session = slot.session;
         slot.session = undefined;
-        close(sourceId, session);
+        // 跨代共用的通道管理：先同步关掉这条通道，新账号不会接着用；注销尽力（多半随通道失败，忽略）。
+        if (options.channels !== undefined) {
+          options.channels.close(options.issuer, sourceId);
+          if (session !== undefined) void logout(session);
+        } else close(sourceId, session, gen);
       }
     },
   };

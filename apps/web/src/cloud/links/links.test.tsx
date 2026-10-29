@@ -177,6 +177,7 @@ function fakeChannel(
   } = {},
 ) {
   const calls: { sourceId: string; path: string; init: HostRequest }[] = [];
+  // 形状同通道池：不受信时 `request` 自己 probe 后抛 device_untrusted，一个请求都不发到主机。
   const channel: HostChannel & {
     probe: ReturnType<typeof vi.fn>;
     request: ReturnType<typeof vi.fn>;
@@ -184,6 +185,8 @@ function fakeChannel(
     probe: vi.fn(async () => options.trusted ?? true),
     request: vi.fn(
       async (sourceId: string, path: string, init: HostRequest) => {
+        if (options.trusted === false)
+          throw Object.assign(new Error("x"), { code: "device_untrusted" });
         calls.push({ sourceId, path, init });
         if (path === "/api/sources")
           return reply({
@@ -255,8 +258,8 @@ describe("主机详情 · 链接 · 新建链接", () => {
     expect(screen.queryByRole("button", { name: "新建链接" })).toBeNull();
   });
 
-  it("浏览器不受信：提示先打开一次主机，「打开主机」新标签去 /h/；不登录、不发请求", async () => {
-    const { channel } = fakeChannel({ trusted: false });
+  it("浏览器不受信：提示先打开一次主机，「打开主机」新标签去 /h/；不另 probe、主机上没收到请求", async () => {
+    const { channel, calls } = fakeChannel({ trusted: false });
     mountWith(`/me/hosts/${LAPTOP}?tab=links`, channel);
     const dialog = await openNewLink();
     submit(dialog);
@@ -266,8 +269,9 @@ describe("主机详情 · 链接 · 新建链接", () => {
     const open = within(dialog).getByRole("link", { name: "打开主机" });
     expect(open.getAttribute("href")).toBe(`/h/${LAPTOP}`);
     expect(open.getAttribute("target")).toBe("_blank");
-    expect(channel.probe).toHaveBeenCalledWith(LAPTOP);
-    expect(channel.request).not.toHaveBeenCalled();
+    // 判定交给通道池（没有会话时它自己 probe）：这里不再另调一次 probe 扣额度。
+    expect(channel.probe).not.toHaveBeenCalled();
+    expect(calls).toHaveLength(0);
   });
 
   it("成功：主机建整台的链接（这个控制台的 SaaS 行、缺省只读 7 天），结果只显示一次、可复制", async () => {
@@ -414,9 +418,9 @@ describe("主机详情 · 链接 · 新建链接", () => {
     ).toBeTruthy();
   });
 
-  it("通道问题（离线、限流）：「暂时连不上这台主机」，不说浏览器不支持", async () => {
+  it("通道问题（离线、通道断了）：「暂时连不上这台主机」，不说浏览器不支持", async () => {
     const { channel } = fakeChannel();
-    channel.probe.mockRejectedValue(
+    channel.request.mockRejectedValue(
       Object.assign(new Error("x"), { code: "e2e_device_unavailable" }),
     );
     mountWith(`/me/hosts/${LAPTOP}?tab=links`, channel);
@@ -425,6 +429,66 @@ describe("主机详情 · 链接 · 新建链接", () => {
     expect(
       await within(dialog).findByText("暂时连不上这台主机，稍后再试"),
     ).toBeTruthy();
-    expect(channel.request).not.toHaveBeenCalled();
+  });
+
+  it("主机限流登录：说等几秒，不说连不上", async () => {
+    const { channel } = fakeChannel();
+    channel.request.mockRejectedValue(
+      Object.assign(new Error("x"), {
+        code: "rate_limited",
+        retryAfterMs: 12_400,
+      }),
+    );
+    mountWith(`/me/hosts/${LAPTOP}?tab=links`, channel);
+    const dialog = await openNewLink();
+    submit(dialog);
+    expect(
+      await within(dialog).findByText("这台主机上的登录太频繁，13 秒后再试"),
+    ).toBeTruthy();
+  });
+
+  it("连建两条：页面不另调 probe（判定与会话复用归通道池）", async () => {
+    const { channel } = fakeChannel();
+    mountWith(`/me/hosts/${LAPTOP}?tab=links`, channel);
+    for (let round = 0; round < 2; round += 1) {
+      const dialog = await openNewLink();
+      submit(dialog);
+      const result = await screen.findByRole("dialog", { name: "链接已创建" });
+      fireEvent.click(within(result).getByRole("button", { name: "完成" }));
+      await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    }
+    expect(channel.probe).not.toHaveBeenCalled();
+    expect(channel.request).toHaveBeenCalledTimes(4);
+  });
+
+  it("提交途中关掉对话框（组件卸载）：结果回来也不写回、不重取列表，整条链接不出现", async () => {
+    const { channel } = fakeChannel();
+    let finish!: () => void;
+    const held = new Promise<void>((resolve) => (finish = resolve));
+    const original = channel.request.getMockImplementation() as (
+      sourceId: string,
+      path: string,
+      init: HostRequest,
+    ) => Promise<Response>;
+    channel.request.mockImplementation(
+      async (sourceId: string, path: string, init: HostRequest) => {
+        if (path !== "/api/sources") await held;
+        return original(sourceId, path, init);
+      },
+    );
+    const api = mountWith(`/me/hosts/${LAPTOP}?tab=links`, channel);
+    const dialog = await openNewLink();
+    submit(dialog);
+    await waitFor(() => expect(channel.request).toHaveBeenCalledTimes(2));
+    const list = vi.spyOn(api.client.links, "list");
+    fireEvent.click(within(dialog).getByRole("button", { name: "取消" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    finish();
+    await new Promise((done) => setTimeout(done, 50));
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(document.body.innerHTML).not.toContain("s3cr3t");
+    expect(list).not.toHaveBeenCalled();
+    const again = await openNewLink();
+    expect(within(again).queryByLabelText("链接")).toBeNull();
   });
 });

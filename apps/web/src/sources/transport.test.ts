@@ -5,6 +5,7 @@ import {
   RELAY_TOKEN_HEADER,
   WS_TICKET_PROTOCOL,
   bearerFetch,
+  isSessionRefusalCode,
   ticketedWebSocket,
 } from "./transport";
 
@@ -287,5 +288,18 @@ describe("经中继的源", () => {
     ]);
     inner.open(`${RELAY_PROTOCOL}RT`);
     expect(socket.protocol).toBe("");
+  });
+});
+
+describe("isSessionRefusalCode", () => {
+  it("没有码或 unauthenticated（不分大小写）才算会话不认了；具名的拒绝不算", () => {
+    expect(isSessionRefusalCode(undefined)).toBe(true);
+    expect(isSessionRefusalCode("unauthenticated")).toBe(true);
+    expect(isSessionRefusalCode("UNAUTHENTICATED")).toBe(true);
+    expect(isSessionRefusalCode("Unauthenticated")).toBe(true);
+    expect(isSessionRefusalCode("source_unauthorized")).toBe(false);
+    expect(isSessionRefusalCode("cloud_not_registered")).toBe(false);
+    expect(isSessionRefusalCode("mfa_invalid_code")).toBe(false);
+    expect(isSessionRefusalCode(null)).toBe(false);
   });
 });
