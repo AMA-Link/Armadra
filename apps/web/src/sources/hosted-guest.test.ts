@@ -358,6 +358,18 @@ describe("访客保管处（localStorage，按 签发方 + 链接）", () => {
     expect(stores.guest.getItem(KEY)).toBeNull();
   });
 
+  it("刷新答 401（刷新令牌被拒）：resumeLink 答 gone、记录作废，不是 unavailable", async () => {
+    const { net, state } = guestNet();
+    const stores = fresh();
+    await page(net, stores).relay.join(LINK);
+    resetIdentityCredentials();
+    state.cloudRejected = true;
+    await expect(
+      page(net, stores).relay.resumeLink(LINK.linkId),
+    ).resolves.toEqual({ kind: "gone" });
+    expect(stores.guest.getItem(KEY)).toBeNull();
+  });
+
   it("列目录答 401：记录作废（gone）；答 403（云端放开访客之前）：只算暂时打不开，记录留着", async () => {
     for (const [status, kind, kept] of [
       [401, "gone", false],
