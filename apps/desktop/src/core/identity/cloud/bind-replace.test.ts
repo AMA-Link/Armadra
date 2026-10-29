@@ -194,12 +194,16 @@ function gatewayCall(
   });
 }
 
-async function rpc(procedure: string, input: unknown = {}): Promise<Answer> {
+async function rpc(
+  procedure: string,
+  input: unknown = {},
+  headers: Record<string, string> = {},
+): Promise<Answer> {
   const response = await fetch(
     `${base}/api/rpc/${procedure.replaceAll(".", "/")}`,
     {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: { ...headers, "content-type": "application/json" },
       body: JSON.stringify({ json: input }),
     },
   );
@@ -642,6 +646,63 @@ describe("bind 替换自动成员（契约 §88.5）", () => {
       created.mockRestore();
       await gateway.close();
     }
+  });
+
+  it("会话绑了通道设备钥、连接是普通回环：经 RPC 调 bind 是 409；不绑的会话就替换", async () => {
+    const first = await login("acct:bound", {
+      team: { teamId: "team_1", role: "owner" },
+      role: "driver",
+    });
+    expect(first.status, first.text).toBe(200);
+    const auto = principalOf(first);
+    const open = (channelDeviceId?: string) =>
+      service.openSession({
+        principalId: owner.principalId,
+        hostId: store.hostId(),
+        origin: ORIGIN,
+        deviceName: "owner",
+        method: "cloud",
+        ...(channelDeviceId === undefined ? {} : { channelDeviceId }),
+      }).principal.sessionId;
+    const sessions: Record<string, string> = {
+      channel: open("0123456789abcdef0123456789abcdef"),
+      plain: open(),
+    };
+    // 代替身份域的回环门：按测试头把这次请求放进对应会话的身份。
+    core.server.admission((request) => {
+      const which = request.headers["x-test-session"];
+      const sessionId = typeof which === "string" ? sessions[which] : undefined;
+      return sessionId === undefined
+        ? {}
+        : {
+            identity: {
+              subject: {
+                principalId: owner.principalId,
+                kind: "owner",
+                scopes: allScopes(),
+              },
+              session: { sessionId, origin: ORIGIN },
+            },
+          };
+    });
+    const bound = await rpc(
+      "identity.cloud.bind",
+      { assertion: sub("acct:bound") },
+      { origin: ORIGIN, "x-test-session": "channel" },
+    );
+    expect(bound.status, bound.text).toBe(409);
+    expect(
+      store.transaction((tx) =>
+        tx.accounts.liveOAuth(cloudProvider(ISSUER), "acct:bound"),
+      )?.principalId,
+    ).toBe(auto);
+    const plain = await rpc(
+      "identity.cloud.bind",
+      { assertion: sub("acct:bound") },
+      { origin: ORIGIN, "x-test-session": "plain" },
+    );
+    expect(plain.status, plain.text).toBe(200);
+    expect(plain.body).toEqual({ json: { bound: true, replaced: true } });
   });
 
   it("经 Gateway 的 owner 会话（Cookie 与原生 App 的 Bearer 模式）调 bind：409，映射不动", async () => {
