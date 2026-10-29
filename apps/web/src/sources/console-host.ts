@@ -770,18 +770,23 @@ export function createConsoleHost(options: ConsoleHostOptions): ConsoleHost {
       }, GUEST_OFFLINE_RETRY_MS);
       return;
     }
-    // 暂时进不去（记录还在）：限流按 Retry-After 退避后自动再进，其余给可重试的失败。
-    if (
+    // 暂时进不去（记录还在）：限流（续会话时、或进主机时）按 Retry-After 退避后自动再进
+    // （登出、销毁时取消），其余给可重试的失败。
+    const limitedBy =
       resumed?.kind === "unavailable" &&
       codeOf(resumed.error) === "rate_limited"
-    ) {
+        ? resumed.error
+        : resumed?.kind === "signedIn" && resumed.failure === "rateLimited"
+          ? null
+          : undefined;
+    if (limitedBy !== undefined) {
       setView({ kind: "connecting", rateLimited: true });
       retryTimer = later(
         () => {
           retryTimer = null;
           if (!stale()) void open();
         },
-        rateLimitDelay(resumed.error, rateLimited),
+        rateLimitDelay(limitedBy, rateLimited),
       );
       rateLimited += 1;
       return;

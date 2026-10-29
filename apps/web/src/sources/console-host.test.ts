@@ -1087,6 +1087,61 @@ describe("控制台 /h/ 以访客进入（§2.8）", () => {
     );
   });
 
+  it("访客进主机时被限流（signedIn + rateLimited）：显示限流中，按退避自动再进；登出取消重试", async () => {
+    const guestStorage = memoryStorage();
+    guestRecord(guestStorage, LINK, HOST);
+    const delays: number[] = [];
+    let retry: (() => void) | null = null;
+    let limited = true;
+    const relay = fakeGuest(() =>
+      limited
+        ? { kind: "signedIn", hosts: [], failure: "rateLimited" }
+        : { kind: "entered", sourceId: HOST },
+    );
+    const ctx = setup({
+      me: unauthenticated,
+      guestStorage,
+      guestRelay: () => relay,
+      later: (run, ms) => {
+        if (ms >= 5_000) {
+          delays.push(ms);
+          retry = run;
+          return 1;
+        }
+        return setTimeout(run, 0);
+      },
+    });
+    await ctx.host.open();
+    expect(ctx.host.view).toEqual({ kind: "connecting", rateLimited: true });
+    expect(delays).toEqual([5_000]);
+    limited = false;
+    retry!();
+    await vi.waitFor(() => expect(ctx.host.view).toEqual({ kind: "entered" }));
+    expect(relay.resumeLink).toHaveBeenCalledTimes(2);
+
+    // 登出后到点：不再进。
+    limited = true;
+    const again = setup({
+      me: unauthenticated,
+      guestStorage,
+      guestRelay: () => relay,
+      later: (run, ms) => {
+        if (ms >= 5_000) {
+          retry = run;
+          return 1;
+        }
+        return setTimeout(run, 0);
+      },
+    });
+    await again.host.open();
+    const calls = relay.resumeLink.mock.calls.length;
+    await again.host.signOut();
+    retry!();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(relay.resumeLink).toHaveBeenCalledTimes(calls);
+    expect(again.host.view).toEqual({ kind: "signedOut" });
+  });
+
   it("访客进不去：连不上是可重试的失败，主机离线是离线态", async () => {
     const guestStorage = memoryStorage();
     guestRecord(guestStorage, LINK, HOST);
