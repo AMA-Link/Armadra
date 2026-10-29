@@ -387,6 +387,42 @@ describe("访客保管处（localStorage，按 签发方 + 链接）", () => {
     }
   });
 
+  it("云端 #155 起访客的 me.sources：只有链接指向的那一台、via=link、owner=false，照样续上", async () => {
+    const { net, state } = guestNet();
+    const stores = fresh();
+    await page(net, stores).relay.join(LINK);
+    resetIdentityCredentials();
+    state.sources = [
+      {
+        sourceId: SOURCE,
+        name: "studio",
+        kind: "server",
+        online: true,
+        lastSeenAtMs: START,
+        owner: false,
+        via: "link",
+        relayOrigin: ISSUER,
+        coreVersion: "0.11.0",
+      },
+    ];
+    const reloaded = page(net, stores);
+    await expect(reloaded.relay.resumeLink(LINK.linkId)).resolves.toEqual({
+      kind: "entered",
+      sourceId: SOURCE,
+    });
+    expect(reloaded.relay.status.state).toBe("ready");
+    expect(reloaded.relay.guest()).toMatchObject({ name: "studio" });
+    // 流重开后对账也用这份目录：这一台还在，不会当成被收回。
+    const listed = net.calls.length;
+    reloaded.stream().onOpen?.();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(net.calls.slice(listed).map((call) => call.key)).toContain(
+      "GET /v1/me/sources",
+    );
+    expect(reloaded.relay.status.state).toBe("ready");
+    expect(stores.guest.getItem(KEY)).not.toBeNull();
+  });
+
   it("close：卸下主机、记录留着（与 dispose 清记录不同）", async () => {
     const { net } = guestNet();
     const stores = fresh();
