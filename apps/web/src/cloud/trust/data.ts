@@ -1,4 +1,7 @@
+import * as React from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+
+import { onHostTrusted } from "../../sources/cloud-session-channel";
 
 import { useCloudApi } from "../api/context";
 import { cloudKeys } from "../api/keys";
@@ -56,7 +59,30 @@ export function useCanEndorse(space: CloudSpace, request: TrustRequest) {
   return {
     pending: enabled && probe.isPending,
     trusted: enabled && probe.data === true && refused.data !== true,
+    // 主机确定地答了「不是受信设备」：拿得到断言、通道开得了，所以背书人对这台主机有访问权，
+    // 经 `/h/` 打开一次就能成为受信设备（设计 saas-host-open §5.2）。判定出错不算。
+    canOpen: enabled && probe.data === false,
   };
+}
+
+/**
+ * 别的标签页经 `/h/` 进了某台主机（`armadra.e2e.trust` 广播）：所有空间下对它的受信判定作废重判。
+ * 控制台挂一次；判定缓存 5 分钟，不靠广播就要等它过期。
+ */
+export function useHostTrustedBroadcast() {
+  const client = useQueryClient();
+  React.useEffect(
+    () =>
+      onHostTrusted((sourceId) => {
+        void client.invalidateQueries({
+          predicate: ({ queryKey }) =>
+            queryKey[0] === "cloud" &&
+            queryKey[2] === "endorse" &&
+            queryKey[3] === sourceId,
+        });
+      }),
+    [client],
+  );
 }
 
 /**
