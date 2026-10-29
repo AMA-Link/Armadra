@@ -965,11 +965,13 @@ describe("只续当前链接的访客记录（resumeLink）", () => {
     return { relay, guestStorage };
   };
 
-  it("连不上中继：答 null、页面退回账号身份、记录留着（落地页保留「打开」）", async () => {
+  it("连不上中继：答 unavailable（带原因）、页面退回账号身份、记录留着（落地页保留「打开」）", async () => {
     const { relay, guestStorage } = solo((async () => {
       throw new TypeError("offline");
     }) as typeof globalThis.fetch);
-    await expect(relay.resumeLink("link-a")).resolves.toBeNull();
+    await expect(relay.resumeLink("link-a")).resolves.toMatchObject({
+      kind: "unavailable",
+    });
     expect(relay.guest()).toBeNull();
     expect(guestStorage.getItem(guestKey(ISSUER, "link-a"))).not.toBeNull();
     relay.dispose();

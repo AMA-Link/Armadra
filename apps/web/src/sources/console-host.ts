@@ -723,6 +723,22 @@ export function createConsoleHost(options: ConsoleHostOptions): ConsoleHost {
       }, GUEST_OFFLINE_RETRY_MS);
       return;
     }
+    // 暂时进不去（记录还在）：限流按 Retry-After 退避后自动再进，其余给可重试的失败。
+    if (
+      resumed?.kind === "unavailable" &&
+      codeOf(resumed.error) === "rate_limited"
+    ) {
+      setView({ kind: "connecting", rateLimited: true });
+      retryTimer = later(
+        () => {
+          retryTimer = null;
+          if (!stale()) void open();
+        },
+        rateLimitDelay(resumed.error, rateLimited),
+      );
+      rateLimited += 1;
+      return;
+    }
     fail(HOST_FAILURE.failed);
   };
 

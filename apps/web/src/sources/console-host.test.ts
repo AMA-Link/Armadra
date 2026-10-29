@@ -1034,6 +1034,56 @@ describe("控制台 /h/ 以访客进入（§2.8）", () => {
     expect(live.host.view).toEqual({ kind: "failed", code: "access_revoked" });
   });
 
+  it("访客暂时进不去：5xx 是可重试的失败（不是访问已被收回），限流按 Retry-After 自动再进", async () => {
+    const guestStorage = memoryStorage();
+    guestRecord(guestStorage, LINK, HOST);
+    const unavailable = (status: number, code: string, retryAfterMs = 0) =>
+      ({
+        kind: "unavailable",
+        error: Object.assign(new Error(code), { status, code, retryAfterMs }),
+      }) as const;
+    const down = setup({
+      me: unauthenticated,
+      guestStorage,
+      guestRelay: () => fakeGuest(() => unavailable(503, "unavailable")),
+    });
+    await down.host.open();
+    expect(down.host.view).toEqual({ kind: "failed", code: "failed" });
+
+    const delays: number[] = [];
+    let retry: (() => void) | null = null;
+    let limited = true;
+    const relay = fakeGuest(() =>
+      limited
+        ? unavailable(429, "rate_limited", 7_000)
+        : { kind: "entered", sourceId: HOST },
+    );
+    const throttled = setup({
+      me: unauthenticated,
+      guestStorage,
+      guestRelay: () => relay,
+      later: (run, ms) => {
+        if (ms === 7_000) {
+          delays.push(ms);
+          retry = run;
+          return 1;
+        }
+        return setTimeout(run, 0);
+      },
+    });
+    await throttled.host.open();
+    expect(throttled.host.view).toEqual({
+      kind: "connecting",
+      rateLimited: true,
+    });
+    expect(delays).toEqual([7_000]);
+    limited = false;
+    retry!();
+    await vi.waitFor(() =>
+      expect(throttled.host.view).toEqual({ kind: "entered" }),
+    );
+  });
+
   it("访客进不去：连不上是可重试的失败，主机离线是离线态", async () => {
     const guestStorage = memoryStorage();
     guestRecord(guestStorage, LINK, HOST);

@@ -73,7 +73,7 @@ function guestNet() {
   let cloud = 0;
   let core = 0;
   const live = { cloud: "guest-r", core: "core-gr" };
-  const state = { cloudRejected: false };
+  const state = { cloudRejected: false, cloudStatus: 0 };
   const net = routedFetch({
     [`POST /v1/links/${LINK.linkId}/accept`]: () => ({
       body: {
@@ -102,6 +102,14 @@ function guestNet() {
       const { refreshToken } = JSON.parse(String(init.body)) as {
         refreshToken: string;
       };
+      if (state.cloudStatus !== 0)
+        return {
+          status: state.cloudStatus,
+          body: {
+            code: state.cloudStatus === 429 ? "rate_limited" : "unavailable",
+            message: "",
+          },
+        };
       if (state.cloudRejected || refreshToken !== live.cloud)
         return { status: 401, body: { code: "session_expired", message: "" } };
       cloud += 1;
@@ -253,6 +261,27 @@ describe("访客保管处（localStorage，按 签发方 + 链接）", () => {
     const before = net.calls.length;
     await expect(page(net, stores).relay.resume()).resolves.toBeNull();
     expect(net.calls.length).toBe(before);
+  });
+
+  it("刷新答 429 / 503（暂时的）：记录留着，resumeLink 答 unavailable 带原因，不当作收回", async () => {
+    for (const status of [429, 503]) {
+      const { net, state } = guestNet();
+      const stores = fresh();
+      await page(net, stores).relay.join(LINK);
+      resetIdentityCredentials();
+      state.cloudStatus = status;
+      const resumed = await page(net, stores).relay.resumeLink(LINK.linkId);
+      expect(resumed).toMatchObject({ kind: "unavailable" });
+      expect((resumed as { error: { status?: number } }).error.status).toBe(
+        status,
+      );
+      expect(stores.guest.getItem(KEY)).not.toBeNull();
+      // 好了之后照常续上。
+      state.cloudStatus = 0;
+      await expect(
+        page(net, stores).relay.resumeLink(LINK.linkId),
+      ).resolves.toMatchObject({ kind: "entered" });
+    }
   });
 
   it("accessRevoked：当场清掉记录", async () => {

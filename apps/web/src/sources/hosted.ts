@@ -123,7 +123,21 @@ export type HostedResume =
  * 只续一条链接的结果：{@link HostedResume} 之外多一种「这条记录没有了」（没有、过期、被收回）——
  * 与 `null`（连不上中继，记录还留着）分开，落地页据此决定是保留「打开」还是回到「加入」。
  */
-export type LinkResume = HostedResume | { readonly kind: "gone" };
+export type LinkResume =
+  | HostedResume
+  | { readonly kind: "gone" }
+  /** 暂时进不去（连不上、限流、5xx、答复不对）：记录留着，`error` 是原因（限流带 Retry-After）。 */
+  | { readonly kind: "unavailable"; readonly error: unknown };
+
+/** 远程服务明确拒绝了这份记录（刷新令牌失效、主机撤销、访问收回）：只有这几种才作废记录。 */
+function rejectsRecord(error: unknown): boolean {
+  const code = (error as { code?: unknown } | null)?.code;
+  return (
+    code === SOURCE_ERROR.unauthorized ||
+    code === SOURCE_ERROR.revoked ||
+    code === SOURCE_ERROR.accessRevoked
+  );
+}
 
 /* --------------------------------- 状态 ---------------------------------- */
 
@@ -360,9 +374,11 @@ export function createHostedRelay(options: HostedRelayOptions): HostedRelay {
   /**
    * 用背后保管处记下的东西续上：进了上次那台（或给目录与原因）；这份记录
    * 没用了（没记、令牌被拒、那台不在目录里了）答 `undefined`，由调用方换下一份；
-   * 连不上中继答 `null`（不丢记录，回登录页）。
+   * 暂时进不去（连不上、限流、5xx）答 `null`，原因记在 `unavailable`（不丢记录，回登录页）。
    */
+  let unavailable: unknown = null;
   const resumeWith = async (): Promise<HostedResume | undefined> => {
+    unavailable = null;
     const last = vault.entered();
     if (last === null) return undefined;
     let listed: CloudSource[];
@@ -373,11 +389,14 @@ export function createHostedRelay(options: HostedRelayOptions): HostedRelay {
         options.cloud,
       );
     } catch (error) {
-      const failure = hostedFailureOf(error);
-      // 刷新令牌被拒（已从保管处忘掉）：重新登录。连不上：也只能先登录页。
-      if (failure === "unreachable") return null;
-      vault.clear();
-      return undefined;
+      // 明确被拒（刷新令牌失效已从保管处忘掉、主机撤销、访问收回）：这份记录作废。
+      if (rejectsRecord(error)) {
+        vault.clear();
+        return undefined;
+      }
+      // 其余是暂时的（连不上、限流、5xx、答复不对）：记录留着，回登录页 / 稍后再试。
+      unavailable = error;
+      return null;
     }
     directory = guest ? [] : listed;
     const row = listed.find((item) => item.sourceId === last.sourceId);
@@ -537,7 +556,10 @@ export function createHostedRelay(options: HostedRelayOptions): HostedRelay {
       // 没进去（连不上中继、进主机失败、记录作废）：页面不能停在访客身份上。
       if (resumed === undefined) vault.clear();
       switchToAccount();
-      return resumed === undefined ? { kind: "gone" } : resumed;
+      if (resumed === undefined) return { kind: "gone" };
+      return resumed === null
+        ? { kind: "unavailable", error: unavailable }
+        : resumed;
     },
     guest: () => (guest ? vault.share() : null),
     get status() {
