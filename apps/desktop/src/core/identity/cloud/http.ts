@@ -25,6 +25,7 @@ import {
 import { cloudLoginProbeInputSchema } from "@armadra/shared";
 
 import { CoreFailure, fail } from "../../http/errors";
+import { privateChannel } from "../../listen";
 import { channelPeerOf } from "../../relay/e2e/peer";
 import { TunnelDuplex } from "../../relay/streams";
 import type { CoreRequest } from "../../http/router";
@@ -375,7 +376,8 @@ export class CloudHttp {
  * - 拿得到请求与它的连接（拿不到一律判非本地）；
  * - 不是 Gateway 转交的（服务器壳网页、局域网设备，见 `markGatewayRequest`）；
  * - 连接不是 TLS、不是中继隧道流、不是端到端通道；
- * - 对端是回环地址，或是 unix socket（私有通道）；
+ * - 连接是私有通道（unix socket、命名管道，见 `privateChannel`），或对端是回环
+ *   地址（读不到地址的已断开连接不算）；
  * - 会话不绑通道设备钥。
  *
  * 只看对端地址不够：反代转发到本机也是 127.0.0.1，所以 Gateway 标记与 TLS 先排除。
@@ -396,10 +398,14 @@ export function localRequest(
   ) {
     return false;
   }
+  // 私有通道（unix socket、命名管道）在接受连接时按监听器类型打标，不看对端
+  // 字段：TCP 连接销毁之后 `remoteAddress` 与 `remoteFamily` 也都是 undefined。
+  if (privateChannel(socket)) return true;
+  // TCP 只认回环；读不到对端地址（连接已断开）一律判非本地。
   const address = socket.remoteAddress;
-  // unix socket 没有对端地址（私有通道）；TCP 只认回环。
-  if (address === undefined) return socket.remoteFamily === undefined;
-  return isIP(address) !== 0 && loopbackAddress(address);
+  return (
+    address !== undefined && isIP(address) !== 0 && loopbackAddress(address)
+  );
 }
 
 function loopbackAddress(address: string): boolean {

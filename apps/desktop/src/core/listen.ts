@@ -160,6 +160,25 @@ export function tcpAuthority(spec: ListenSpec): string | undefined {
 }
 
 /**
+ * Connections accepted on a Unix socket or named pipe listener: the private
+ * channel (contract §88.5). Marked at accept time by listener type, because a
+ * socket's own fields cannot tell — a TCP socket that has been destroyed reads
+ * `remoteAddress` and `remoteFamily` as `undefined` too, exactly like a Unix
+ * socket.
+ */
+const privateChannels = new WeakSet<object>();
+
+/** Whether `socket` was accepted on a Unix socket or named pipe listener. */
+export function privateChannel(socket: object): boolean {
+  return privateChannels.has(socket);
+}
+
+/** Registered before `listen`, so the very first connection is marked too. */
+function markPrivateChannel(server: Server): void {
+  server.on("connection", (socket: object) => privateChannels.add(socket));
+}
+
+/**
  * Binds one spec on an already-created server.
  *
  * A TCP address that is already taken is an error and stays one: quietly
@@ -232,6 +251,7 @@ async function bindUnix(server: Server, path: string): Promise<ListenSpec> {
   mkdirSync(directory, { recursive: true });
   hardenDirectory(directory);
   await clearStaleSocket(path);
+  markPrivateChannel(server);
   await listening(server, () => server.listen(path));
   // The socket is a full grant of the core's API; it is nobody else's.
   hardenFile(path);
@@ -285,6 +305,7 @@ async function bindPipe(server: Server, name: string): Promise<ListenSpec> {
   // flag, `reject_remote_clients` and the per-connection client SID check the
   // Rust listener applies have no Node equivalent and need the session-host's
   // native layer; until then a Windows core is development-only.
+  markPrivateChannel(server);
   await listening(server, () => server.listen(`${PIPE_PREFIX}${name}`));
   return { kind: "pipe", name };
 }

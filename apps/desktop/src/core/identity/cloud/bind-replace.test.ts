@@ -1,6 +1,14 @@
-import type { IncomingMessage } from "node:http";
+import { mkdtempSync, rmSync } from "node:fs";
+import {
+  type IncomingMessage,
+  type Server,
+  createServer,
+  request as httpRequest,
+} from "node:http";
 import { request as httpsRequest } from "node:https";
 import { type AddressInfo, Socket } from "node:net";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { TLSSocket } from "node:tls";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
@@ -9,6 +17,7 @@ import { installContract } from "../../http/rpc";
 import { accessCookieName } from "../../gateway/admission";
 import { openGateway } from "../../gateway/listener";
 import { markChannelSocket } from "../../relay/e2e/peer";
+import { bind as bindListener, release } from "../../listen";
 import { markGatewayRequest } from "../http";
 import { type Fixture, fixture } from "../../workspaces/fixture";
 import { AccountsService } from "../accounts";
@@ -392,8 +401,8 @@ describe("bind 替换自动成员（契约 §88.5）", () => {
     expect(localRequest(raw(socketAt("127.0.0.1")), "")).toBe(true);
     expect(localRequest(raw(socketAt("::ffff:127.0.0.1")), "")).toBe(true);
     expect(localRequest(raw(socketAt("::1")), "")).toBe(true);
-    // unix socket（私有通道）没有对端地址。
-    expect(localRequest(raw(socketAt(undefined)), "")).toBe(true);
+    // 读不到对端地址、又不是私有通道监听接受的（TCP 连接销毁之后就是这样）：非本地。
+    expect(localRequest(raw(socketAt(undefined)), "")).toBe(false);
     expect(localRequest(undefined, "")).toBe(false);
     expect(localRequest(raw(undefined), "")).toBe(false);
     expect(localRequest(raw({}), "")).toBe(false);
@@ -410,6 +419,113 @@ describe("bind 替换自动成员（契约 §88.5）", () => {
     });
     markChannelSocket(channel);
     expect(localRequest(raw(channel), "")).toBe(false);
+  });
+
+  it("真实连接：回环 TCP 活着算本地、销毁后不算；unix socket 监听接受的算本地", async () => {
+    const seen: Record<string, boolean> = {};
+    const tcp = createServer((request, response) => {
+      // 先销毁再判：之前没人读过对端地址，Node 就再也读不到它了。
+      if (request.url === "/destroyed") request.socket.destroy();
+      seen[request.url ?? ""] = localRequest(request, "");
+      response.end();
+    });
+    await new Promise<void>((done) => tcp.listen(0, "127.0.0.1", done));
+    try {
+      const at = `http://127.0.0.1:${(tcp.address() as AddressInfo).port}`;
+      await fetch(`${at}/live`);
+      await fetch(`${at}/destroyed`).catch(() => undefined);
+      expect(seen).toEqual({ "/live": true, "/destroyed": false });
+    } finally {
+      await new Promise((done) => tcp.close(done));
+    }
+
+    const directory = mkdtempSync(join(tmpdir(), "armadra-local-"));
+    const unix = createServer((request, response) => {
+      response.end(String(localRequest(request, "")));
+    });
+    const spec = await bindListener(unix, {
+      kind: "unix",
+      path: join(directory, "c.sock"),
+    });
+    try {
+      const text = await new Promise<string>((done, failed) => {
+        const client = httpRequest(
+          { socketPath: join(directory, "c.sock"), path: "/" },
+          (response) => {
+            const chunks: Buffer[] = [];
+            response.on("data", (chunk: Buffer) => chunks.push(chunk));
+            response.on("end", () =>
+              done(Buffer.concat(chunks).toString("utf8")),
+            );
+          },
+        );
+        client.on("error", failed);
+        client.end();
+      });
+      expect(text).toBe("true");
+    } finally {
+      await new Promise((done) => unix.close(done));
+      release(spec);
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("桌面壳的私有通道（unix socket）上 RPC 调 bind：替换自动成员", async () => {
+    const first = await login("acct:private", {
+      team: { teamId: "team_1", role: "member" },
+      role: "operator",
+    });
+    expect(first.status, first.text).toBe(200);
+    const auto = principalOf(first);
+    const directory = mkdtempSync(join(tmpdir(), "armadra-bind-"));
+    const path = join(directory, "core.sock");
+    const spec = await bindListener(core.server.createListener(), {
+      kind: "unix",
+      path,
+    });
+    try {
+      const payload = JSON.stringify({
+        json: { assertion: sub("acct:private") },
+      });
+      const answer = await new Promise<Answer>((done, failed) => {
+        const client = httpRequest(
+          {
+            socketPath: path,
+            path: "/api/rpc/identity/cloud/bind",
+            method: "POST",
+            headers: {
+              "content-type": "application/json",
+              "content-length": String(Buffer.byteLength(payload)),
+            },
+          },
+          (response) => {
+            const chunks: Buffer[] = [];
+            response.on("data", (chunk: Buffer) => chunks.push(chunk));
+            response.on("end", () => {
+              const text = Buffer.concat(chunks).toString("utf8");
+              done({
+                status: response.statusCode ?? 0,
+                text,
+                body: JSON.parse(text) as Record<string, unknown>,
+              });
+            });
+          },
+        );
+        client.on("error", failed);
+        client.end(payload);
+      });
+      expect(answer.status, answer.text).toBe(200);
+      expect(answer.body).toEqual({ json: { bound: true, replaced: true } });
+    } finally {
+      release(spec);
+      rmSync(directory, { recursive: true, force: true });
+    }
+    const after = store.transaction((tx) => ({
+      mapped: tx.accounts.liveOAuth(cloudProvider(ISSUER), "acct:private")
+        ?.principalId,
+      disabled: (tx.accounts.principal(auto)?.disabledAtMs ?? 0) > 0,
+    }));
+    expect(after).toEqual({ mapped: owner.principalId, disabled: true });
   });
 
   it("经 Gateway 的 owner 会话（Cookie 与原生 App 的 Bearer 模式）调 bind：409，映射不动", async () => {
