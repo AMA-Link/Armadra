@@ -11,6 +11,11 @@
 //      member 的重登不超过 2 次；
 //   E6 撤销 member 的授予：member 的 `/h/` 盖上「没有权限」；owner 另一个标签页里控制台登出：
 //      owner 的 `/h/` 显示已登出、host1 上 owner 的会话已吊销。
+//   E7（只在 ARMADRA_SAAS_ONLY 点名时跑，缺省不跑）控制台背书与浏览器背书的限制（设计 §5、Q14）：
+//      E2 之前 member 打开 `/h/` 停在待确认，owner 的信任页对这行给「在此浏览器打开主机」；E2 里 owner
+//      的 `/h/` 进了主机，信任页不刷新就改给「信任」（`armadra.e2e.trust` 广播）；owner 在信任页输入
+//      member 屏幕上的码 → member 自动进入，host1 记成 `endorse:`、owner 的 `/h/` 弹背书通知；
+//      owner 另一个浏览器的待确认，owner 的受信浏览器批它答 forbidden；经它「配对新设备」答 forbidden。
 //
 // 全程在页面加载前监听 `securitypolicyviolation`（含 Trusted Types），要求违规为零。控制台页面的 CSP
 // 缺省换成 B7 要提的那一份（控制面现有的原样加 `img-src` / `media-src` 的 `blob:` 与设计 Q13 的
@@ -44,7 +49,12 @@ import {
 import { tmpdir } from "node:os";
 import { extname, join, resolve } from "node:path";
 
-import { nodeAt, terminalRoundTrip, untilApproved } from "./platform-lib.mjs";
+import {
+  SAS_ON_PAGE,
+  nodeAt,
+  terminalRoundTrip,
+  untilApproved,
+} from "./platform-lib.mjs";
 import { probeSession } from "./probe-session.mjs";
 import {
   connectBrowser,
@@ -719,6 +729,83 @@ try {
       timeout: 90_000,
     });
 
+  /* ----------------------- E7 前半：member 待确认、信任页 ----------------------- */
+  let memberTab;
+  let grantId;
+  /** member 对 host1 的 driver 授予（先清掉旧的）。 */
+  const grantMember = async () => {
+    const existing = await cloud(
+      `/v1/grants?sourceId=${hostId}`,
+      {},
+      ownerToken,
+    );
+    for (const grant of existing.grants)
+      if (
+        grant.subject.kind === "member" &&
+        grant.subject.accountId === member.accountId
+      )
+        await cloud(
+          `/v1/grants/${grant.grantId}`,
+          { method: "DELETE" },
+          ownerToken,
+        );
+    const created = await cloud(
+      "/v1/grants",
+      {
+        method: "POST",
+        body: JSON.stringify({
+          sourceId: hostId,
+          subject: { kind: "member", accountId: member.accountId },
+          role: "driver",
+        }),
+      },
+      ownerToken,
+    );
+    grantId = created.grantId;
+  };
+  /** 信任页上某人的那一行（按成员名找）；找不到答 null。 */
+  const trustRow = (name) =>
+    `[...document.querySelectorAll('table tr')].find((row) => row.innerText.includes(${JSON.stringify(name)}))`;
+  let e7;
+  if (ONLY.has("E7")) {
+    const s = scenario(
+      report,
+      "E7a 信任页：不是受信设备的行给「在此浏览器打开主机」",
+      output,
+    );
+    await grantMember();
+    memberTab = await openTab(browser, memberContext, "member");
+    await consoleSignIn(memberTab, accounts.member);
+    await memberTab.goto(hostUrl);
+    const memberSas = await memberTab.until(
+      SAS_ON_PAGE,
+      "member 停在待确认、显示校验码",
+      {
+        timeout: 60_000,
+      },
+    );
+    s.ok("member 的新浏览器停在待确认");
+    const trustTab = await openTab(browser, ownerContext, "owner-trust");
+    await trustTab.goto(`${ISSUER}/t/${TEAM}/trust`);
+    const href = await trustTab.until(
+      `const row = ${trustRow(accounts.member.name)};
+       const link = row && [...row.querySelectorAll('a')].find((a) => a.innerText.includes("在此浏览器打开主机"));
+       return link ? link.getAttribute("href") : null;`,
+      "member 那一行给「在此浏览器打开主机」",
+      { timeout: 60_000 },
+    );
+    s.check(href === `/h/${hostId}`, "链接指向这台主机的 /h/", href);
+    s.check(
+      !(await trustTab.evaluate(
+        `const row = ${trustRow(accounts.member.name)}; return [...row.querySelectorAll('button')].some((b) => b.innerText.trim() === "信任");`,
+      )),
+      "还不是受信设备：没有「信任」",
+    );
+    await s.shot(trustTab, "e7a-trust-open-host");
+    s.entry.status = "passed";
+    e7 = { memberSas, trustTab };
+  }
+
   /* ------------------------------------ E2 ------------------------------------ */
   {
     const s = scenario(
@@ -782,6 +869,193 @@ try {
       "注入的主机文件内容没有执行",
     );
     await s.shot(ownerTab, "e2-owner-host");
+    s.entry.status = "passed";
+  }
+
+  /* ----------------------- E7 后半：背书、通知与 Q14 ----------------------- */
+  if (e7 !== undefined) {
+    const s = scenario(
+      report,
+      "E7b 控制台背书 member、背书通知、Q14 forbidden",
+      output,
+    );
+    const { trustTab, memberSas } = e7;
+    await trustTab.until(
+      `const row = ${trustRow(accounts.member.name)};
+       return row && [...row.querySelectorAll('button')].some((b) => b.innerText.trim() === "信任") &&
+         ![...row.querySelectorAll('a')].some((a) => a.innerText.includes("在此浏览器打开主机")) ? true : null;`,
+      "/h/ 进了主机后信任页这一行改给「信任」",
+      { timeout: 30_000 },
+    );
+    s.ok("/h/ 进了主机后，信任页不刷新就改给「信任」（受信广播）");
+    /** 在信任页的一行上点「信任」、输入校验码、提交。 */
+    const endorse = async (name, sas) => {
+      await trustTab.clickOn(
+        `const row = ${trustRow(name)}; return row && [...row.querySelectorAll('button')].find((b) => b.innerText.trim() === "信任");`,
+        `${name} 那一行的「信任」`,
+      );
+      await trustTab.clickOn(
+        `return document.querySelector('[role="dialog"] input');`,
+        "校验码输入框",
+      );
+      await trustTab.type(sas);
+      await trustTab.clickOn(
+        `return [...document.querySelectorAll('[role="dialog"] button')].find((b) => b.innerText.trim() === "信任" && !b.disabled);`,
+        "对话框里的「信任」",
+      );
+    };
+    await endorse(accounts.member.name, memberSas);
+    await memberTab.until(hostReady(terminal.id), "member 被背书后自动进入", {
+      timeout: 60_000,
+    });
+    await terminalRoundTrip(memberTab, terminal.id, "endorsed");
+    s.ok("输入 member 屏幕上的码 → member 自动进入，终端可用");
+    const endorsedRows = rows(
+      hostQuery(
+        hostDir,
+        "select platform, approved_by from trusted_devices where approved_by like 'endorse:%'",
+      ),
+    );
+    s.check(
+      endorsedRows.length === 1 && endorsedRows[0].platform === "browser",
+      "host1 上 member 的浏览器记成 endorse:<owner 浏览器>",
+      endorsedRows,
+    );
+    await ownerTab.until(
+      `return [...document.querySelectorAll('[role="dialog"]')].some((d) => d.innerText.includes("放行了") && d.innerText.includes(${JSON.stringify(accounts.member.name)})) ? true : null;`,
+      "owner 的 /h/ 弹出背书通知",
+      { timeout: 30_000 },
+    );
+    s.ok("owner 的 /h/（主机页面）弹出「… 放行了 Member 的 …」");
+    await s.shot(ownerTab, "e7b-endorsed-notice");
+    await ownerTab.clickOn(
+      `return [...document.querySelectorAll('[role="dialog"] button')].find((b) => b.innerText.trim() === "知道了");`,
+      "知道了",
+    );
+    s.check(
+      /device endorsed/.test(host.log()),
+      "host1 日志记了 device endorsed",
+    );
+
+    // Q14：owner 另一个浏览器停在待确认，owner 的受信浏览器批它答 forbidden。
+    const owner2Context = await browser.context();
+    const owner2Tab = await openTab(browser, owner2Context, "owner2");
+    await consoleSignIn(owner2Tab, accounts.owner);
+    await owner2Tab.goto(hostUrl);
+    const ownerSas = await owner2Tab.until(
+      SAS_ON_PAGE,
+      "owner 的第二个浏览器停在待确认",
+      { timeout: 60_000 },
+    );
+    const ownerPending = () =>
+      rows(
+        hostQuery(
+          hostDir,
+          "select d.status from trusted_devices d join identity_principals p on p.principal_id = d.principal_id where p.kind = 'owner' and d.status = 'pending'",
+        ),
+      ).length;
+    s.check(
+      ownerPending() === 1,
+      "host1 上有一条 owner 的待确认",
+      ownerPending(),
+    );
+    await trustTab.reload();
+    const listed = await trustTab
+      .until(
+        `const row = ${trustRow(accounts.owner.name)}; return row && [...row.querySelectorAll('button')].some((b) => b.innerText.trim() === "信任") ? true : null;`,
+        "信任页列出 owner 自己的新浏览器",
+        { timeout: 30_000 },
+      )
+      .then(
+        () => true,
+        () => false,
+      );
+    if (listed) {
+      await endorse(accounts.owner.name, ownerSas);
+      await trustTab.until(
+        `return document.querySelector('[role="dialog"]')?.innerText.includes("在已信任的设备上处理") ? true : null;`,
+        "主机答 forbidden，对话框改成「在已信任的设备上处理」",
+        { timeout: 30_000 },
+      );
+      s.ok("owner 的受信浏览器经信任页批 owner 自己的新浏览器：forbidden");
+      await s.shot(trustTab, "e7b-owner-forbidden");
+      await trustTab.key("Escape");
+    } else {
+      s.ok(
+        "信任页没有列出 owner 自己的新浏览器（云端不列），改经 /h/ 的设备页批",
+      );
+    }
+    // 经 owner 的 /h/（浏览器端到端通道）打开设置 → 设备与会话：批 owner 的待确认、配对新设备。
+    // 通知框关闭的动画结束前点不到侧栏：点到设置框出来为止。
+    await until(
+      async () => {
+        if (
+          await ownerTab.evaluate(
+            `return !!document.querySelector('[role="dialog"] nav');`,
+          )
+        )
+          return true;
+        await ownerTab.clickOn(
+          `return [...document.querySelectorAll("button")].find((b) => b.innerText.trim() === "设置" || b.getAttribute("aria-label") === "设置")`,
+          "设置按钮",
+        );
+        await sleep(800);
+        return null;
+      },
+      "设置框",
+      { timeout: 20_000, every: 200 },
+    );
+    await ownerTab.clickOn(
+      `return [...document.querySelectorAll('[role="dialog"] nav button')].find((b) => b.getAttribute("aria-label") === "设备与会话" || b.innerText.trim() === "设备与会话")`,
+      "设置导航「设备与会话」",
+    );
+    if (!listed) {
+      await ownerTab.until(
+        `return [...document.querySelectorAll('[role="dialog"] tr')].some((row) => row.innerText.includes("待确认")) ? true : null;`,
+        "设备页列出待确认",
+        { timeout: 30_000 },
+      );
+      await ownerTab.clickOn(
+        `return document.querySelector('[role="dialog"] tr input[inputmode="numeric"]');`,
+        "待确认那行的校验码输入框",
+      );
+      await ownerTab.type(ownerSas);
+      await ownerTab.clickOn(
+        `return [...document.querySelectorAll('[role="dialog"] tr button')].find((b) => b.innerText.trim() === "允许" && !b.disabled);`,
+        "「允许」",
+      );
+      await ownerTab.until(
+        `return /没有权限执行这个操作|主人的新设备不能在浏览器里放行/.test(document.body.innerText) ? true : null;`,
+        "设备页提示 forbidden",
+        { timeout: 30_000 },
+      );
+      s.ok("owner 的受信浏览器经设备页批 owner 自己的新浏览器：forbidden");
+    }
+    await sleep(1_000);
+    s.check(ownerPending() === 1, "owner 的新浏览器仍待确认", ownerPending());
+    // 上一步的提示可能还在：按出现次数认这一步新弹出的那条。
+    const refusals =
+      "(document.body.innerText.match(/没有权限执行这个操作|不能在浏览器里/g) ?? []).length";
+    const before = await ownerTab.evaluate(`return ${refusals};`);
+    await ownerTab.clickOn(
+      `return [...document.querySelectorAll('[role="dialog"] button')].find((b) => b.innerText.trim() === "配对新设备")`,
+      "「配对新设备」",
+    );
+    await ownerTab.until(
+      `return ${refusals} > ${before} ? true : null;`,
+      "配对新设备答 forbidden",
+      { timeout: 30_000 },
+    );
+    s.check(
+      !(await ownerTab.evaluate(
+        `return document.body.innerText.includes("用新设备扫码");`,
+      )),
+      "没有出二维码",
+    );
+    s.ok("经 owner 的受信浏览器调 e2e.pairingSecret：forbidden");
+    await s.shot(ownerTab, "e7b-pairing-forbidden");
+    await ownerTab.key("Escape");
+    await owner2Tab.close();
     s.entry.status = "passed";
   }
 
@@ -891,8 +1165,7 @@ try {
   }
 
   /* ------------------------------------ E5 ------------------------------------ */
-  const memberTab = await openTab(browser, memberContext, "member");
-  let grantId;
+  memberTab ??= await openTab(browser, memberContext, "member");
   if (ONLY.has("E5")) {
     const s = scenario(report, "E5 授予收窄：去抖重登、终端变只读", output);
     const existing = await cloud(
