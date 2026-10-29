@@ -1189,6 +1189,99 @@ describe("控制台 /h/ 以访客进入（§2.8）", () => {
   });
 });
 
+describe("访客回退的各个入口", () => {
+  const denied = (status: number, code: string) => async () => {
+    throw Object.assign(new Error(code), { status, code });
+  };
+
+  it("sources.get 答 source_access_denied：退回访客记录", async () => {
+    const guestStorage = memoryStorage();
+    guestRecord(guestStorage, LINK, HOST);
+    const relay = fakeGuest(() => ({ kind: "entered", sourceId: HOST }));
+    const ctx = setup({
+      detail: denied(403, "source_access_denied"),
+      guestStorage,
+      guestRelay: () => relay,
+    });
+    await ctx.host.open();
+    expect(ctx.host.view).toEqual({ kind: "entered" });
+    expect(relay.resumeLink).toHaveBeenCalledExactlyOnceWith(LINK);
+    expect(ctx.client.sources.assertion).not.toHaveBeenCalled();
+  });
+
+  it("sources.get 答 401（Cookie 会话这时没了）：用匿名的访客记录", async () => {
+    const guestStorage = memoryStorage();
+    guestRecord(guestStorage, LINK, HOST);
+    const relay = fakeGuest(() => ({ kind: "entered", sourceId: HOST }));
+    const ctx = setup({
+      detail: denied(401, "unauthenticated"),
+      guestStorage,
+      guestRelay: () => relay,
+    });
+    await ctx.host.open();
+    expect(ctx.host.view).toEqual({ kind: "entered" });
+    expect(relay.resumeLink).toHaveBeenCalledExactlyOnceWith(LINK);
+  });
+
+  it("访客记录进主机时答 signedIn + revoked：访问已被收回", async () => {
+    const guestStorage = memoryStorage();
+    guestRecord(guestStorage, LINK, HOST);
+    const ctx = setup({
+      me: unauthenticated,
+      guestStorage,
+      guestRelay: () =>
+        fakeGuest(() => ({ kind: "signedIn", hosts: [], failure: "revoked" })),
+    });
+    await ctx.host.open();
+    expect(ctx.host.view).toEqual({ kind: "failed", code: "access_revoked" });
+  });
+
+  it("访客离线：15 秒后自动再进", async () => {
+    const guestStorage = memoryStorage();
+    guestRecord(guestStorage, LINK, HOST);
+    let offline = true;
+    let retry: (() => void) | null = null;
+    const delays: number[] = [];
+    const relay = fakeGuest(() =>
+      offline
+        ? { kind: "signedIn", hosts: [], failure: "offline" }
+        : { kind: "entered", sourceId: HOST },
+    );
+    const ctx = setup({
+      me: unauthenticated,
+      guestStorage,
+      guestRelay: () => relay,
+      later: (run, ms) => {
+        if (ms >= 1_000) {
+          delays.push(ms);
+          retry = run;
+          return 1;
+        }
+        return setTimeout(run, 0);
+      },
+    });
+    await ctx.host.open();
+    expect(ctx.host.view).toMatchObject({ kind: "offline" });
+    expect(delays).toEqual([15_000]);
+    offline = false;
+    retry!();
+    await vi.waitFor(() => expect(ctx.host.view).toEqual({ kind: "entered" }));
+  });
+
+  it("断言答没有权限、退回访客之前先卸下账号那一路（状态回到 idle，不留失败的路由）", async () => {
+    const guestStorage = memoryStorage();
+    guestRecord(guestStorage, LINK, HOST);
+    const ctx = setup({
+      assertion: denied(403, "source_access_denied"),
+      guestStorage,
+      guestRelay: () => fakeGuest(() => ({ kind: "gone" })),
+    });
+    await ctx.host.open();
+    expect(ctx.host.view).toEqual({ kind: "failed", code: "access_revoked" });
+    expect(ctx.host.status.state).toBe("idle");
+  });
+});
+
 describe("访客失败时的卡片信息", () => {
   it("从账号退回、访客没进去：info 不标访客（失败卡照样给回主机列表）；匿名没进去才标", async () => {
     const guestStorage = memoryStorage();
