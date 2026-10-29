@@ -32,6 +32,12 @@ export default defineConfig({
     globalSetup: ["src/core/testing/db-template.global.ts"],
     // The Host and Runtime process tests wait on real timeouts.
     testTimeout: 60_000,
+    // 钩子做的是和测试同一类的真活（起 core、开库、关监听、删目录）。默认的
+    // 10 秒在 Windows runner 上不够：两百多个 fork 并行时导入就要几分钟，
+    // `Hook timed out in 10000ms` 随机落在不同文件上（parity-mail、
+    // parity-git-repository、github/http、conversations、resources/service）。
+    // 与测试用同一个上限；真卡死的钩子照样会超时。
+    hookTimeout: 60_000,
     // 工程规范化 §5：覆盖率只出报告、不设门槛。CI 只在 Linux 作业里开
     // （ARMADRA_COVERAGE=1），本机用 `pnpm test:coverage` 或 `vitest run --coverage`。
     coverage: {
