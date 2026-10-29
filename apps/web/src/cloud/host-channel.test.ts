@@ -98,6 +98,13 @@ describe("通道池 · request", () => {
     ["POST", "/api/sources"],
     ["POST", "/api/sources/remotes/svc/links/x/url"],
     ["POST", "/api/identity/cloud/bind"],
+    // 点段、编码的点段、反斜杠：按前缀匹配会放过，解析后落到别的地址。
+    ["POST", "/api/sources/remotes/../../e2e/pairing-secret/links"],
+    ["POST", "/api/sources/remotes/..%2f..%2fe2e%2fpairing-secret/links"],
+    ["POST", "/api/sources/remotes/%2e%2e/links"],
+    ["POST", "/api/sources/remotes/a\\..\\x/links"],
+    ["GET", "/api/sources/./"],
+    ["GET", "/api/sources?x=1"],
   ] as const)(
     "白名单之外（%s %s）答 forbidden，不取断言、不发请求",
     async (method, path) => {

@@ -36,12 +36,29 @@ export const MAX_OPEN = 3;
 /** 会话离到期不到这么久就当它过期（毫秒）。 */
 const RENEW_LEAD_MS = 30_000;
 
-/** 经这条通道能发的请求（方法 + 地址）。别的一律不发。 */
+/**
+ * 经这条通道能发的请求（方法 + 地址）。别的一律不发。可变的一段（远程服务号）只认
+ * `[A-Za-z0-9_-]{1,64}`：`..`、百分号编码、反斜杠都进不来。
+ */
 const ALLOWED: readonly (readonly [string, RegExp])[] = [
   ["POST", /^\/api\/devices\/approve$/],
   ["GET", /^\/api\/sources$/],
-  ["POST", /^\/api\/sources\/remotes\/[^/?#]+\/links$/],
+  ["POST", /^\/api\/sources\/remotes\/[A-Za-z0-9_-]{1,64}\/links$/],
 ];
+
+/** 方法与地址在白名单里，且地址已是规范形（URL 解析不改写它：没有点段、编码与反斜杠的花样）。 */
+function allowed(method: string, path: string): boolean {
+  let normalized: string;
+  try {
+    normalized = new URL(path, "https://x").pathname;
+  } catch {
+    return false;
+  }
+  return (
+    normalized === path &&
+    ALLOWED.some(([verb, pattern]) => verb === method && pattern.test(path))
+  );
+}
 
 /** 带 `code` 的失败（形状同信任页认得的 `endorseCode`）；不带任何文字细节。 */
 export function coded(code: string): Error {
@@ -354,11 +371,7 @@ export function createHostChannel(options: HostChannelOptions): HostChannel {
     },
 
     request(sourceId, path, init) {
-      if (
-        !ALLOWED.some(
-          ([method, pattern]) => method === init.method && pattern.test(path),
-        )
-      )
+      if (!allowed(init.method, path))
         return Promise.reject(coded("forbidden"));
       return withSlot(sourceId, async (live, slot) => {
         const send = async (session: Session) => {
