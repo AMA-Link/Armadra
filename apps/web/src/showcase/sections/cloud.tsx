@@ -21,6 +21,8 @@ import { CreateTeamDialog } from "@/cloud/team/CreateTeamDialog";
 import { DeletedTeamPage } from "@/cloud/team/DeletedTeamPage";
 import { TeamPage } from "@/cloud/team/TeamPage";
 import { EndorserProvider, type HostEndorser } from "@/cloud/trust/endorser";
+import type { HostChannel } from "@/cloud/host-channel";
+import { HostChannelProvider } from "@/cloud/host-channel-context";
 import { ConsoleSidebar, ConsoleShell } from "@/cloud/shell/ConsoleShell";
 import { EmbeddedAuth } from "@/cloud/auth/AuthLayout";
 import { DevicePage } from "@/cloud/auth/DevicePage";
@@ -344,8 +346,36 @@ const SAMPLE_ENDORSER: HostEndorser = {
   approve: async () => undefined,
 };
 
+/**
+ * 展示页的通道池：受信，源表里有一条这个来源的 Armadra 云登录行，建链接答一条样本地址。
+ * 「新建链接」据此在主人的主机链接页签出现，点开能走到结果对话框。
+ */
+const SAMPLE_CHANNEL: HostChannel = {
+  probe: async () => true,
+  request: async (_sourceId, path) =>
+    new Response(
+      JSON.stringify(
+        path === "/api/sources"
+          ? {
+              remotes: [
+                {
+                  serviceId: "svc_sample",
+                  kind: "saas",
+                  issuer: window.location.origin,
+                  registered: true,
+                },
+              ],
+            }
+          : { url: `${window.location.origin}/j/sample#sample.sample.sample` },
+      ),
+      { headers: { "content-type": "application/json" } },
+    ),
+  dispose: () => undefined,
+};
+
 const U6_PATHS = [
   "/t/rd/links",
+  `/t/rd/hosts/${MOCK_HOSTS[0]!.sourceId}?tab=links`,
   "/t/rd/trust",
   "/t/rd/audit",
   "/t/rd/billing",
@@ -353,7 +383,8 @@ const U6_PATHS = [
 
 /** 链接、设备信任、审计、用量与计划（U6）：设备信任有「拒绝 / 信任」与「在已信任的设备上处理」两种行；Lab 团队的用量有已达上限、接近上限与超额提示。 */
 function LinkTrustSamples() {
-  const page = (path: string) => matchRoute(path)!;
+  const page = (path: string) =>
+    matchRoute(...(path.split("?") as [string, string?]))!;
   return (
     <MockConsole
       options={{ emailVerified: true, moreTrust: true }}
@@ -361,23 +392,25 @@ function LinkTrustSamples() {
     >
       {(session) => (
         <EndorserProvider endorser={SAMPLE_ENDORSER}>
-          <div className="flex flex-col gap-4">
-            {U6_PATHS.map((path) => (
-              <div
-                key={path}
-                className="h-[520px] overflow-hidden rounded-card border border-border"
-              >
-                <ConsoleShell
-                  user={session.user}
-                  teams={session.teams}
-                  counts={CLOUD_COUNTS}
-                  match={page(path)}
+          <HostChannelProvider channel={SAMPLE_CHANNEL}>
+            <div className="flex flex-col gap-4">
+              {U6_PATHS.map((path) => (
+                <div
+                  key={path}
+                  className="h-[520px] overflow-hidden rounded-card border border-border"
                 >
-                  <TeamPage match={page(path)} />
-                </ConsoleShell>
-              </div>
-            ))}
-          </div>
+                  <ConsoleShell
+                    user={session.user}
+                    teams={session.teams}
+                    counts={CLOUD_COUNTS}
+                    match={page(path)}
+                  >
+                    <TeamPage match={page(path)} />
+                  </ConsoleShell>
+                </div>
+              ))}
+            </div>
+          </HostChannelProvider>
         </EndorserProvider>
       )}
     </MockConsole>
