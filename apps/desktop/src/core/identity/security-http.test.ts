@@ -379,7 +379,11 @@ describe("锁定（§18.1）", () => {
     }
     const locked = await login(fixture, principalId);
     expect(locked.status).toBe(429);
-    expect(locked.headers.get("retry-after")).toBe("60");
+    // 按真实时钟算锁定剩余秒数：慢的运行器上从锁定到这次登录可能已过 1 秒多。
+    const retryAfter = Number(locked.headers.get("retry-after"));
+    expect(Number.isInteger(retryAfter)).toBe(true);
+    expect(retryAfter).toBeGreaterThanOrEqual(1);
+    expect(retryAfter).toBeLessThanOrEqual(60);
     expect(await code(locked)).toBe("account_locked");
 
     const ghost = "e".repeat(32);
