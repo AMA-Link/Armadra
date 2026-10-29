@@ -1,4 +1,4 @@
-// 控制台 `/h/<hostId>` 对一个已有 SaaS 部署的端到端探针（设计 saas-host-open §8.1，第一版：E2–E6）。
+// 控制台 `/h/<hostId>` 对一个已有 SaaS 部署的端到端探针（设计 saas-host-open §8.1：E2–E6、E8）。
 //
 // 连一个已经在跑的 Armadra 云部署（控制面 + 中继节点），起一台临时数据目录的服务器壳当 host1
 // （设备码登录到 owner 的账号、登记到团队、owner 映射为本机主人），再用新 profile 的无头 Chrome
@@ -11,6 +11,8 @@
 //      member 的重登不超过 2 次；
 //   E6 撤销 member 的授予：member 的 `/h/` 盖上「没有权限」；owner 另一个标签页里控制台登出：
 //      owner 的 `/h/` 显示已登出、host1 上 owner 的会话已吊销。
+//   E8 host1 经 SaaS 路线建一条只读链接；没登录的新 browser context 打开：落地页「加入」后地址是
+//      `/h/<host1>`、刷新仍在画布（经访客记录续上，不去登录）；撤销链接后 `/h/` 显示「访问已被收回」。
 //
 // 全程在页面加载前监听 `securitypolicyviolation`（含 Trusted Types），要求违规为零。控制台页面的 CSP
 // 缺省换成 B7 要提的那一份（控制面现有的原样加 `img-src` / `media-src` 的 `blob:` 与设计 Q13 的
@@ -25,7 +27,7 @@
 //   ARMADRA_SAAS_ACCOUNTS=<accounts.json：{ owner, member } 各 { email, password }> \
 //   ARMADRA_SAAS_TEAM=test-team \
 //   [ARMADRA_SAAS_COMPOSE="<compose 包装脚本>"]  # 给了才做 E4 的节点重建
-//   [ARMADRA_SAAS_ONLY=E2,E6] [ARMADRA_SAAS_CSP=current]
+//   [ARMADRA_SAAS_ONLY=E2,E6,E8] [ARMADRA_SAAS_CSP=current]
 //   node tools/probes/saas-host-e2e.mjs [输出目录]
 //
 // 服务器壳与 Chrome 只按自己起的 PID 停；数据目录、HOME、profile 都是 mktemp 出来的，跑完删除。
@@ -70,7 +72,7 @@ const TEAM = process.env.ARMADRA_SAAS_TEAM ?? "test-team";
 const COMPOSE = process.env.ARMADRA_SAAS_COMPOSE ?? "";
 /** 只跑其中几步（逗号分隔，如 `E2,E6`）；缺省全跑。 */
 const ONLY = new Set(
-  (process.env.ARMADRA_SAAS_ONLY ?? "E2,E3,E4,E5,E6").split(","),
+  (process.env.ARMADRA_SAAS_ONLY ?? "E2,E3,E4,E5,E6,E8").split(","),
 );
 if (!accountsFile || !existsSync(accountsFile)) {
   console.error("要 ARMADRA_SAAS_ACCOUNTS（{ owner, member } 的邮箱与口令）");
@@ -159,6 +161,8 @@ const redact = (text) =>
     .replace(/armadra-(relay|ticket)\.[^\s",;\\]+/g, "armadra-$1.<redacted>")
     .replace(/(__Host-armadra-[a-z]+)=[^\s";\\]+/g, "$1=<redacted>")
     .replace(/(Bearer\s+)[^\s",\\]+/gi, "$1<redacted>")
+    // 分享链接的片段（秘密与邀请令牌）。
+    .replace(/(\/j\/[^\s#"\\]+)#[^\s"\\]+/g, "$1#<redacted>")
     // JSON 里的令牌字段（含日志行里转义过一层的）。
     .replace(
       /(\\?"(?:refreshToken|refresh_token|csrfToken|csrf_token|accessToken|access_token|relayToken|assertion)\\?"\s*:\s*\\?")[^"\\]+/g,
@@ -720,7 +724,7 @@ try {
     });
 
   /* ------------------------------------ E2 ------------------------------------ */
-  {
+  if (ONLY.has("E2")) {
     const s = scenario(
       report,
       "E2 owner 打开 /h/：待确认 → 放行 → 画布与终端",
@@ -887,6 +891,150 @@ try {
       await terminalRoundTrip(ownerTab, terminal.id, "node");
       s.ok("中继节点重建后终端照常");
     }
+    s.entry.status = "passed";
+  }
+
+  /* ------------------------------------ E8 ------------------------------------ */
+  if (ONLY.has("E8")) {
+    const s = scenario(
+      report,
+      "E8 访客经分享链接落 /h/、刷新续上、撤销后收回",
+      output,
+    );
+    const created = await local(`/api/sources/remotes/${serviceId}/links`, {
+      method: "POST",
+      body: JSON.stringify({
+        workspaceId: workspace.id,
+        role: "viewer",
+        readOnly: true,
+        ttlMs: 3_600_000,
+        maxUses: 5,
+        label: "e8",
+      }),
+    });
+    const linkId = created.link.linkId;
+    s.check(
+      created.url.startsWith(`${ISSUER}/j/`),
+      "SaaS 路线的链接落在控制台来源的 /j/",
+    );
+    const guestContext = await browser.context();
+    const guestTab = await openTab(browser, guestContext, "guest");
+    const landingReady = `const buttons = [...document.querySelectorAll("button")];
+       if (buttons.some((one) => one.innerText.trim() === "登录后加入")) return "login";
+       const button = buttons.find((one) => one.innerText.trim() === "加入");
+       return button && !button.disabled ? "join" : null;`;
+    await guestTab.goto(created.url);
+    let landingKind = await guestTab.until(landingReady, "落地页出现「加入」", {
+      timeout: 30_000,
+    });
+    // 团队设置要求登录才能用链接：以 member（对这台没有授予）登录后再开同一条链接。
+    report.e8RequiresAccount = landingKind === "login";
+    if (landingKind === "login") {
+      s.ok("团队要求登录才能用链接：以没有授予的 member 登录后加入");
+      await consoleSignIn(guestTab, accounts.member);
+      await guestTab.goto(created.url);
+      landingKind = await guestTab.until(
+        landingReady,
+        "登录后落地页出现「加入」",
+        {
+          timeout: 30_000,
+        },
+      );
+    }
+    const landing = await guestTab.evaluate(
+      'return document.querySelector("h1")?.parentElement?.innerText ?? "";',
+    );
+    s.ok("落地页", String(landing).replace(/\s+/g, " ").slice(0, 120));
+    s.check(
+      !(await guestTab.evaluate("return location.hash !== '';")),
+      "片段读入内存后从地址栏移除",
+    );
+    await s.shot(guestTab, "e8-landing");
+    await guestTab.evaluate(
+      `[...document.querySelectorAll("button")].find((one) => one.innerText.trim() === "加入").click(); return true;`,
+    );
+    const guestReady = `return location.pathname === "/h/${hostId}" && !!document.querySelector('[data-slot="guest-bar"]') && !!document.querySelector('${nodeAt(terminal.id)}') ? true : null;`;
+    await guestTab.until(guestReady, "加入后进画布、地址是 /h/<host1>", {
+      timeout: 90_000,
+    });
+    s.ok("加入后地址是 /h/<host1>，访客栏与画布在");
+    s.check(
+      !(await guestTab.evaluate(
+        "return !!document.querySelector('[data-slot=\"host-bar\"]');",
+      )),
+      "访客没有主机顶栏",
+    );
+    s.check(
+      (await guestTab.evaluate(
+        "return Object.keys(localStorage).filter((k) => k.startsWith('armadra.guest.')).length;",
+      )) === 1,
+      "留下一份访客记录",
+    );
+    await s.shot(guestTab, "e8-guest-canvas");
+    await guestTab.reload();
+    // 刷新续不上也先记下、接着验撤销（最后再判这一步失败），一次跑完看全。
+    const resumed = await guestTab
+      .until(
+        `${guestReady.replace(/^return /, "if (").replace(/ \? true : null;$/, ")")} return "canvas";
+         const text = document.body.innerText;
+         if (location.pathname !== "/h/${hostId}") return "left:" + location.pathname;
+         return text.includes("访问已被收回") || text.includes("打不开这台主机") || text.includes("没有这台主机") ? "card:" + text.slice(0, 40) : null;`,
+        "刷新后的去向",
+        { timeout: 90_000 },
+      )
+      .catch((error) => `timeout:${error.message}`);
+    report.e8Refresh = resumed;
+    if (resumed === "canvas")
+      s.ok(
+        report.e8RequiresAccount
+          ? "刷新仍在画布（Cookie 账号进不了这台，退回访客记录）"
+          : "刷新仍在画布（没有 Cookie 会话，用访客记录）",
+      );
+    else {
+      console.log(`  FAIL  刷新后没回到画布：${resumed}`);
+      await s.shot(guestTab, "e8-guest-refresh");
+      // 重新经落地页加入（链接还能用），继续验撤销。
+      await guestTab.goto(created.url);
+      await guestTab.until(landingReady, "重新加入的落地页", {
+        timeout: 30_000,
+      });
+      await guestTab.evaluate(
+        `[...document.querySelectorAll("button")].find((one) => ["加入", "打开"].includes(one.innerText.trim())).click(); return true;`,
+      );
+      await guestTab.until(guestReady, "重新加入后进画布", { timeout: 90_000 });
+    }
+    await local(`/api/sources/remotes/${serviceId}/links/${linkId}`, {
+      method: "DELETE",
+    });
+    const revoked =
+      "return document.body.innerText.includes('访问已被收回') ? true : null;";
+    const live = await guestTab
+      .until(revoked, "撤销后页面上显示访问已被收回", { timeout: 30_000 })
+      .then(
+        () => true,
+        () => false,
+      );
+    s.ok(
+      live
+        ? "撤销后开着的 /h/ 盖上「访问已被收回」"
+        : "开着的页面 30 秒内没变，刷新再看",
+    );
+    if (!live) {
+      await guestTab.reload();
+      await guestTab.until(revoked, "刷新后显示访问已被收回", {
+        timeout: 60_000,
+      });
+      s.ok("刷新后 /h/ 显示「访问已被收回」");
+    }
+    s.check(
+      (await guestTab.evaluate(
+        "return Object.keys(localStorage).filter((k) => k.startsWith('armadra.guest.')).length;",
+      )) === 0,
+      "访客记录已清",
+    );
+    await s.shot(guestTab, "e8-guest-revoked");
+    await guestTab.close();
+    s.check(resumed === "canvas", "刷新后经访客记录续上、仍在画布", resumed);
     s.entry.status = "passed";
   }
 
