@@ -19,6 +19,7 @@ import { scope } from "../identity/scopes";
 import type { CoreContext } from "../main";
 import { workspaceExists } from "./workspaces";
 import { catchUp } from "./outbox";
+import { ownerSubscriber } from "./procedure";
 import { WorkspaceEventStream } from "./stream";
 
 export {
@@ -102,20 +103,19 @@ export function install(context: CoreContext): WorkspaceEventStream {
     (socket, params, request) => {
       const workspaceId = params.workspaceId ?? "";
       const cursor = parseCursor(request.query.get("cursor"));
-      const release = stream.attachSocket(
-        workspaceId,
-        socket,
-        cursor === "now"
-          ? { cursor: "now" as const }
-          : typeof cursor === "number"
-            ? { cursor }
-            : {},
-      );
       // 订阅者是谁在升级前就定了（guard 里记下的那一份）。授权一变就复核：
       // 撤销共享、移出组、停用账号、撤销设备之后，这条已经升级的 socket 不会
       // 再经过任何请求级的门，只能在这里关掉——关闭码 4403 让页面分得清「被拒」
       // 和「断线」，重连会在升级前拿到 403。
       const identity = subscribers.get(request.raw);
+      const release = stream.attachSocket(workspaceId, socket, {
+        ...(cursor === "now"
+          ? { cursor: "now" as const }
+          : typeof cursor === "number"
+            ? { cursor }
+            : {}),
+        owner: ownerSubscriber(identity),
+      });
       const stop =
         identity === undefined
           ? () => {}
