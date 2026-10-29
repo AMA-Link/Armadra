@@ -35,14 +35,14 @@ export async function runNewLink({
   local,
   serviceId,
   hostId,
+  /** host1 上的会话数（每次普通 `cloud/login` 建一行；probe 不建）。 */
+  sessionCount,
 }) {
   const s = scenario(
     report,
     "E10 控制台新建链接：主人拿到整条链接、主机上同一条可复制、member 看不到、主机没登录云时提示",
     output,
   );
-  // host1 对每个云账号的 cloud/login（含 probe）每分钟 5 次；E2 刚用过，等桶满再开始。
-  await sleep(61_000);
   const detail = `${ISSUER}/t/${TEAM}/hosts/${hostId}?tab=links`;
   const tab = await openTab(browser, ownerContext, "owner-links");
   await browser.call("Browser.grantPermissions", {
@@ -50,7 +50,32 @@ export async function runNewLink({
     browserContextId: ownerContext,
     permissions: ["clipboardReadWrite", "clipboardSanitizedWrite"],
   });
-  let linkId;
+  /** 这次建的链接（跑完撤掉）。 */
+  const created = [];
+  report.e10Throttled = [];
+  /**
+   * 点「创建链接」等到有结果：整条链接、提示，或主机限流登录（每账号每分钟 5 次，含 probe）。
+   * 限流时按页面给的秒数等过再点一次——这是用户看到「N 秒后再试」时会做的事。
+   */
+  const submitCreate = async () => {
+    for (let attempt = 0; ; attempt += 1) {
+      await tab.evaluate(clickButton("创建链接"));
+      const outcome = await tab.until(
+        `if (document.querySelector("[data-slot=new-link-url] input")?.value) return "url";
+         const limited = document.querySelector("[data-slot=new-link-rate-limited]")?.innerText ?? "";
+         if (limited) return "limited:" + limited;
+         const text = document.querySelector("[role=dialog]")?.innerText ?? "";
+         return text.includes("这台主机还没登录 Armadra 云") || text.includes("把你当作成员") || document.querySelector("[data-slot=new-link-failed]") ? "hint" : null;`,
+        "创建链接的结果",
+        { timeout: 60_000 },
+      );
+      if (!outcome.startsWith("limited:") || attempt >= 2) return outcome;
+      const seconds = Number(/(\d+) 秒/.exec(outcome)?.[1] ?? "60");
+      report.e10Throttled.push(seconds);
+      console.log(`  info  主机限流登录，页面说 ${seconds} 秒后再试`);
+      await sleep(seconds * 1000 + 500);
+    }
+  };
   const openDialog = async () => {
     await tab.until(clickButton("新建链接"), "主人的链接页签有「新建链接」", {
       timeout: 30_000,
@@ -66,12 +91,9 @@ export async function runNewLink({
     await openDialog();
     await tab.until(typeInto("备注", "e10"), "填备注", { timeout: 5_000 });
     await s.shot(tab, "e10-form");
-    await tab.evaluate(clickButton("创建链接"));
-    await tab.until(
-      'return document.querySelector("[data-slot=new-link-url] input")?.value ? true : null;',
-      "结果对话框给出整条链接",
-      { timeout: 60_000 },
-    );
+    const sessionsBefore = sessionCount();
+    s.check((await submitCreate()) === "url", "结果对话框给出整条链接");
+    const sessionsAfterFirst = sessionCount();
     // 整条链接只在探针内存里。
     const url = await tab.evaluate(
       'return document.querySelector("[data-slot=new-link-url] input").value;',
@@ -112,14 +134,14 @@ export async function runNewLink({
     const listed = await local(`/api/sources/remotes/${serviceId}/links`);
     const row = listed.links.find((one) => one.label === "e10");
     s.check(row !== undefined, "host1 的分享链接列表里有这一条");
-    linkId = row.linkId;
+    created.push(row.linkId);
     s.check(
       row.copyable === true && row.target === "host",
       "整台主机、主机上可再复制",
       { copyable: row.copyable, target: row.target, role: row.role },
     );
     const again = await local(
-      `/api/sources/remotes/${serviceId}/links/${linkId}/url`,
+      `/api/sources/remotes/${serviceId}/links/${row.linkId}/url`,
       { method: "POST", body: "{}" },
     );
     s.check(again.url === url, "host1 再取的整条链接与控制台拿到的同一条");
@@ -136,6 +158,27 @@ export async function runNewLink({
       "关掉之后页面上不再有整条链接",
     );
     await s.shot(tab, "e10-after");
+
+    /* 同一页再建一条：通道池复用会话，不再 probe、不再登录（不扣主机的登录额度）。 */
+    await openDialog();
+    await tab.until(typeInto("备注", "e10b"), "填备注", { timeout: 5_000 });
+    s.check((await submitCreate()) === "url", "第二条也拿到整条链接");
+    const sessionsAfterSecond = sessionCount();
+    report.e10Sessions = {
+      first: sessionsAfterFirst - sessionsBefore,
+      second: sessionsAfterSecond - sessionsAfterFirst,
+    };
+    s.check(
+      sessionsAfterFirst - sessionsBefore === 1 &&
+        sessionsAfterSecond === sessionsAfterFirst,
+      "第一条只登录一次，同一页的第二条不再登录",
+      report.e10Sessions,
+    );
+    await tab.evaluate(clickButton("完成"));
+    const second = (
+      await local(`/api/sources/remotes/${serviceId}/links`)
+    ).links.find((one) => one.label === "e10b");
+    if (second !== undefined) created.push(second.linkId);
 
     /* member：团队里别人的主机，没有页签，也没有「新建链接」。 */
     const memberContext = await browser.context();
@@ -161,24 +204,19 @@ export async function runNewLink({
     await memberTab.close();
 
     /* host1 没有可用的 Armadra 云登录行：提示在主机上 cloud login。先撤掉刚建的链接（登出后撤不了）。 */
-    await local(`/api/sources/remotes/${serviceId}/links/${linkId}`, {
-      method: "DELETE",
-    });
-    linkId = undefined;
+    for (const id of created.splice(0))
+      await local(`/api/sources/remotes/${serviceId}/links/${id}`, {
+        method: "DELETE",
+      });
     await local(`/api/sources/remotes/${serviceId}/logout`, {
       method: "POST",
       body: "{}",
     });
-    // 上一次建链接刚用过 probe 与登录：同一账号每分钟 5 次，等桶满再试。
-    await sleep(61_000);
     await tab.goto(detail);
     await openDialog();
-    await tab.evaluate(clickButton("创建链接"));
-    const hint = await tab.until(
-      `const text = document.querySelector("[role=dialog]")?.innerText ?? "";
-       return text.includes("这台主机还没登录 Armadra 云") || text.includes("把你当作成员") || document.querySelector("[data-slot=new-link-failed]") ? text : null;`,
-      "主机没登录云时的提示",
-      { timeout: 60_000 },
+    s.check((await submitCreate()) === "hint", "主机没登录云时给提示");
+    const hint = await tab.evaluate(
+      'return document.querySelector("[role=dialog]")?.innerText ?? "";',
     );
     s.check(
       hint.includes("这台主机还没登录 Armadra 云") &&
@@ -199,16 +237,16 @@ export async function runNewLink({
   } finally {
     // 出错时结果对话框可能还开着：先离开页面，免得入口补截的图里有整条链接。
     await tab.goto("about:blank").catch(() => undefined);
-    // 半路出错时撤掉这次建的链接（还没拿到号就按备注找）。
-    linkId ??= await local(`/api/sources/remotes/${serviceId}/links`)
-      .then(
-        (listed) =>
-          listed.links.find((one) => one.label === "e10" && !one.revokedAtMs)
-            ?.linkId,
+    // 半路出错时撤掉这次建的链接（还没拿到号的按备注找）。
+    const leftover = await local(`/api/sources/remotes/${serviceId}/links`)
+      .then((listed) =>
+        listed.links
+          .filter((one) => one.label.startsWith("e10") && !one.revokedAtMs)
+          .map((one) => one.linkId),
       )
-      .catch(() => undefined);
-    if (linkId !== undefined)
-      await local(`/api/sources/remotes/${serviceId}/links/${linkId}`, {
+      .catch(() => []);
+    for (const id of new Set([...created, ...leftover]))
+      await local(`/api/sources/remotes/${serviceId}/links/${id}`, {
         method: "DELETE",
       }).catch(() => undefined);
   }

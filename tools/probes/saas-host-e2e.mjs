@@ -1251,6 +1251,12 @@ try {
       local,
       serviceId,
       hostId,
+      sessionCount: () =>
+        Number(
+          rows(
+            hostQuery(hostDir, "select count(*) as n from identity_sessions"),
+          )[0]?.n ?? 0,
+        ),
     });
 
   /* ------------------------------------ E5 ------------------------------------ */
