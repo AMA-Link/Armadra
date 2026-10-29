@@ -11,7 +11,7 @@ import {
   ResponsiveDialogHeader,
   ResponsiveDialogTitle,
 } from "@/panels/ResponsiveDialog";
-import { Alert, AlertDescription, AlertTitle } from "@/ui/alert";
+import { Alert, AlertTitle } from "@/ui/alert";
 import { Button } from "@/ui/button";
 import { Field, FieldGroup, FieldLabel } from "@/ui/field";
 import { Input } from "@/ui/input";
@@ -291,15 +291,18 @@ function FailureNotice({
               : "cloud.host.memberNotOwner",
           )}
         </AlertTitle>
-        <AlertDescription className="mt-1 text-foreground">
+        <div className="mt-1 text-foreground">
           <FixCommand issuer={issuer} />
-        </AlertDescription>
+        </div>
       </Alert>
     );
   return (
     <Alert variant="destructive" data-slot="new-link-failed">
       <AlertTitle>
-        {describeFailure(new CloudConsoleError(failure.code, 0))}
+        {failure.code === "e2e_device_unavailable"
+          ? // 通道池把离线、限流、通道断了都归成这个码：不是「浏览器不支持」，稍后再试。
+            t("cloud.links.unreachable")
+          : describeFailure(new CloudConsoleError(failure.code, 0))}
       </AlertTitle>
     </Alert>
   );

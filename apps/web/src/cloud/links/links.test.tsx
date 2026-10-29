@@ -413,4 +413,18 @@ describe("主机详情 · 链接 · 新建链接", () => {
       within(dialog).getByRole("button", { name: "创建链接" }),
     ).toBeTruthy();
   });
+
+  it("通道问题（离线、限流）：「暂时连不上这台主机」，不说浏览器不支持", async () => {
+    const { channel } = fakeChannel();
+    channel.probe.mockRejectedValue(
+      Object.assign(new Error("x"), { code: "e2e_device_unavailable" }),
+    );
+    mountWith(`/me/hosts/${LAPTOP}?tab=links`, channel);
+    const dialog = await openNewLink();
+    submit(dialog);
+    expect(
+      await within(dialog).findByText("暂时连不上这台主机，稍后再试"),
+    ).toBeTruthy();
+    expect(channel.request).not.toHaveBeenCalled();
+  });
 });
