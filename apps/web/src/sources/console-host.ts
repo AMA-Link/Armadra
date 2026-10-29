@@ -17,6 +17,7 @@ import { type E2eChannels, e2eChannels, setApprovalHint } from "./e2e/manager";
 import {
   type ChannelLike,
   HOST_KEY_PREFIX,
+  announceHostTrusted,
   clearHostSessions,
   hostSessionKey,
   isCloudSessionMessage,
@@ -214,6 +215,8 @@ export interface ConsoleHostOptions {
   readonly storage?: Storage | null;
   /** 跨标签页广播（缺省 `BroadcastChannel`）。 */
   readonly channel?: ChannelLike | null;
+  /** 进了主机时告诉控制台标签页（缺省开一条 `armadra.e2e.trust`，发完即关）。 */
+  readonly trusted?: (sourceId: string) => void;
   readonly e2e?: E2eChannels;
   /** 测试注入：身份面（核对主体、登出）。 */
   readonly identity?: {
@@ -684,6 +687,8 @@ export function createConsoleHost(options: ConsoleHostOptions): ConsoleHost {
         rateLimited = 0;
         stopWaiting();
         setView({ kind: "entered" });
+        // 进得去就说明这台浏览器对它已是受信设备：控制台的信任页据此重判（设计 §5.2）。
+        (options.trusted ?? announceHostTrusted)(hostId);
         return;
       } catch (error) {
         if (stale()) return;
