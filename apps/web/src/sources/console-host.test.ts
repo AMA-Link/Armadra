@@ -1170,7 +1170,7 @@ describe("控制台 /h/ 以访客进入（§2.8）", () => {
     expect(offline.host.view).toMatchObject({ kind: "offline" });
   });
 
-  it("访客不理控制台的登出广播；访客自己登出只经托管中继", async () => {
+  it("匿名访客不理控制台的登出广播；自己登出只卸路由，不清记录、不在云端登出", async () => {
     const guestStorage = memoryStorage();
     guestRecord(guestStorage, LINK, HOST);
     const bus = channelBus();
@@ -1186,8 +1186,31 @@ describe("控制台 /h/ 以访客进入（§2.8）", () => {
     await new Promise((resolve) => setTimeout(resolve, 0));
     expect(ctx.host.view).toEqual({ kind: "entered" });
     await ctx.host.signOut();
-    expect(relay.signOut).toHaveBeenCalledOnce();
+    expect(relay.close).toHaveBeenCalled();
+    expect(relay.signOut).not.toHaveBeenCalled();
     expect(ctx.identity.logout).not.toHaveBeenCalled();
+    expect(guestStorage.getItem(guestKey(ISSUER, LINK))).not.toBeNull();
+    expect(ctx.host.view).toEqual({ kind: "signedOut" });
+  });
+
+  it("用的是账号接受的记录：登出经托管中继登出（清记录）", async () => {
+    const guestStorage = memoryStorage();
+    guestRecord(guestStorage, LINK, HOST, undefined, ACCOUNT);
+    const relay = fakeGuest(() => ({ kind: "entered", sourceId: HOST }));
+    const ctx = setup({
+      detail: async () => {
+        throw Object.assign(new Error("404"), {
+          status: 404,
+          code: "not_found",
+        });
+      },
+      guestStorage,
+      guestRelay: () => relay,
+    });
+    await ctx.host.open();
+    expect(ctx.host.view).toEqual({ kind: "entered" });
+    await ctx.host.signOut();
+    expect(relay.signOut).toHaveBeenCalledOnce();
     expect(ctx.host.view).toEqual({ kind: "signedOut" });
   });
 });

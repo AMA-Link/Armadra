@@ -368,11 +368,29 @@ export function createSessionRelayVault(
       : { acceptedBy: options.acceptedBy }),
   });
   let record = stamp(readResume(storage, issuer, key, options.now?.()));
+  /** 访客记录（按链接的那份）已经落过盘：之后存储里没了就是被外部删了（控制台登出清的）。 */
+  const guestRecord = options.key !== undefined;
+  let stored = record.cloudRefreshToken !== null;
   const save = (next: ResumeRecord) => {
+    if (guestRecord && stored) {
+      let present = true;
+      try {
+        present = storage?.getItem(key) != null;
+      } catch {
+        /* 读不了就照常写。 */
+      }
+      // 被外部删掉的访客记录不再写回（否则旋转令牌时又把它复活）；这一页内存里的照用。
+      if (!present) {
+        record = stamp(next);
+        return;
+      }
+    }
     record = stamp(next);
     writeResume(storage, record, key);
+    stored = record.cloudRefreshToken !== null;
   };
   const clear = () => {
+    stored = false;
     memory.clear();
     record = stamp({
       issuer,

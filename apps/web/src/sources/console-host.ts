@@ -27,6 +27,7 @@ import {
   type GuestShare,
   browserLocalStorage,
   browserSessionStorage,
+  guestAcceptedBy,
   guestLinkFor,
 } from "./relay-vault";
 import type { RelaySession } from "./relay-access";
@@ -338,6 +339,8 @@ export function createConsoleHost(options: ConsoleHostOptions): ConsoleHost {
    * 也要盖上「已登出」。纯匿名进来的（没有 Cookie 会话）不理控制台的广播。
    */
   let guestViaAccount = false;
+  /** 这次用的访客记录是谁接受的（匿名 `""`）；没用访客记录是 `null`。 */
+  let guestRecordBy: string | null = null;
   const listeners = new Set<() => void>();
   const publish = () => {
     for (const listener of [...listeners]) {
@@ -684,7 +687,9 @@ export function createConsoleHost(options: ConsoleHostOptions): ConsoleHost {
     generation += 1;
     if (retryTimer !== null) cancel(retryTimer);
     retryTimer = null;
-    await guestRelay?.signOut().catch(() => undefined);
+    // 匿名接受的记录不属于哪个账号：只卸路由，记录留着、也不在云端登出；账号接受的才登出并清记录。
+    if (guestRecordBy === "") guestRelay?.close();
+    else await guestRelay?.signOut().catch(() => undefined);
     guestMode = false;
     guestViaAccount = false;
     setView({ kind: "signedOut" });
@@ -730,6 +735,10 @@ export function createConsoleHost(options: ConsoleHostOptions): ConsoleHost {
       wasEntered = false;
     }
     const relay = guestRelayOnce();
+    guestRecordBy =
+      guestStorage === null
+        ? null
+        : (guestAcceptedBy(guestStorage, issuer, linkId) ?? null);
     let resumed: Awaited<ReturnType<GuestRelay["resumeLink"]>>;
     try {
       resumed = await relay.resumeLink(linkId, viaAccount ? accountId : null);

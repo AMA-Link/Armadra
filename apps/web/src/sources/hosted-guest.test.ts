@@ -331,6 +331,19 @@ describe("访客保管处（localStorage，按 签发方 + 链接）", () => {
     ).resolves.toMatchObject({ kind: "entered" });
   });
 
+  it("访客记录被外部删掉（控制台登出清的）：之后旋转令牌不再写回", async () => {
+    const { net } = guestNet();
+    const stores = fresh();
+    await page(net, stores).relay.join(LINK);
+    resetIdentityCredentials();
+    const reloaded = page(net, stores);
+    // 先续上一次（落过盘），再被外部删掉，之后的旋转不复活它。
+    await reloaded.relay.resumeLink(LINK.linkId);
+    stores.guest.removeItem(KEY);
+    await reloaded.relay.provider.refresh(SOURCE, "relayed").catch(() => null);
+    expect(stores.guest.getItem(KEY)).toBeNull();
+  });
+
   it("close：卸下主机、记录留着（与 dispose 清记录不同）", async () => {
     const { net } = guestNet();
     const stores = fresh();
