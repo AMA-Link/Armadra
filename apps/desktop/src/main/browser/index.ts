@@ -27,6 +27,7 @@ import {
   unregisterGuest,
 } from "./registry";
 import { observeNode, parseObserved, setObservedNodes } from "./observe";
+import { guardGuestPermissions } from "./permissions";
 import { tellRenderer } from "./renderer";
 import {
   clearChooser,
@@ -271,6 +272,11 @@ function wireGuest(contents: WebContents, nodeId: string): void {
   contents.on("context-menu", (_event, params) => {
     showGuestMenu(contents, nodeId, params as unknown as ContextMenuParams);
   });
+
+  // Site permissions. Electron's default with no handler is to GRANT, and a
+  // guest has nowhere to show a prompt; the rule is in
+  // `shell-core/browser/permissions.ts`, installed once per session.
+  guardGuestPermissions(contents.session);
 
   watchDownloads(
     contents.session,
