@@ -5,6 +5,7 @@ import {
   useQuery,
   useQueryClient,
 } from "@tanstack/react-query";
+import { grantRoleSchema } from "@armadra/platform-protocol/cloud-api";
 
 import { useCloudApi } from "../api/context";
 import type { CloudClient } from "../api/client";
@@ -123,9 +124,8 @@ export function useRevokeAccess(space: CloudSpace, sourceId: string) {
   });
 }
 
-/** 有效权限的四档（与授予的 `role` 同一组值，协议包 `sourceSummary.myRole`）。 */
+/** 有效权限的四档（与授予的 `role` 同一组值，协议包 `grantRoleSchema` / `sourceSummary.myRole`）。 */
 type MyRole = NonNullable<HostRow["myRole"]>;
-const MY_ROLES: readonly MyRole[] = ["viewer", "editor", "operator", "driver"];
 
 /**
  * 本人对这台主机的权限（目录第二行「所有者 · 我的权限」，云端控制台 §3.3.4）：
@@ -142,14 +142,15 @@ export type MyAccessSource = Pick<HostRow, "owner" | "myRole">;
 
 /**
  * 读 `sourceSummary.myRole`（armadra-cloud#162；`grantRole | null`，可缺省）。
- * 所有者不看 `myRole`（云端给所有者报 driver）；认不出的值（客户端不校验答复）当没报。
+ * 所有者不看 `myRole`（云端给所有者报 driver）；认不出的值（客户端不校验答复，按协议包的 `grantRoleSchema` 认）当没报。
  */
 export function myAccessOf(host: MyAccessSource): MyAccess | null {
   const { myRole } = host;
   if (myRole === undefined) return null;
   if (host.owner) return { kind: "owner" };
   if (myRole === null) return { kind: "none" };
-  return MY_ROLES.includes(myRole) ? { kind: "role", role: myRole } : null;
+  const role = grantRoleSchema.safeParse(myRole);
+  return role.success ? { kind: "role", role: role.data } : null;
 }
 
 /**

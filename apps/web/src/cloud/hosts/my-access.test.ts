@@ -1,3 +1,4 @@
+import { grantRoleSchema } from "@armadra/platform-protocol/cloud-api";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -28,6 +29,13 @@ describe("myAccessOf：sourceSummary.myRole 的四种取值", () => {
   });
 
   it("四档角色：复用 workspaceGroups.role.* 的文案", () => {
+    // 认得的档位取自协议包的 grantRoleSchema，不在控制台另抄一份。
+    expect(grantRoleSchema.options).toEqual([
+      "viewer",
+      "editor",
+      "operator",
+      "driver",
+    ]);
     for (const role of ["viewer", "editor", "operator", "driver"] as const) {
       expect(myAccessOf(row(false, role))).toEqual({ kind: "role", role });
       expect(myAccessLabel(t, row(false, role), "guest")).toBe(

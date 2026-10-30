@@ -149,7 +149,8 @@ export type HostDetail = Awaited<ReturnType<CloudClient["sources"]["get"]>>;
 
 /**
  * 旧服务端的版本门对旧主机答的也是 `source_access_denied`（新服务端改答独立的
- * `source_core_outdated`，armadra-cloud#152；这里留作过渡期对旧服务端的兜底）：
+ * `source_core_outdated`，armadra-cloud#152/#160，控制面 0.11.0 起；0.11 之前的控制面——自建部署、
+ * 本地 dev-stack 仍是 0.10.0 镜像——还在答旧码，所有环境升到 0.11 前保留这道兜底）：
  * 团队主机按 {@link MIN_CORE_VERSION_TEAM_ASSERTION}，个人空间里别人的主机按
  * {@link MIN_CORE_VERSION_ROLE_ONLY_ASSERTION}；自己的个人主机没有门。
  */
