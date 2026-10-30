@@ -463,6 +463,19 @@ export interface CoreEvents {
     readonly persistedSequence?: number;
   };
   /**
+   * One round of a canvas runner ended: the coordinator `nodeId` reported
+   * `runner_done` for its task `taskId` on `/hook/ama` (contract §15.5).
+   * Core-internal, never sent to a client: `workflow/task-watch.ts` stops
+   * holding the task for that coordinator's `wait` and looks at it at once.
+   */
+  "runner.done": {
+    readonly workspaceId: string;
+    readonly nodeId: string;
+    readonly taskId: string;
+    readonly round: number;
+    readonly status: string;
+  };
+  /**
    * A workspace is about to be removed — its row and everything cascading off
    * it still exist. Core-internal: a domain that keeps something outside the
    * database for the workspace (the forge domain's tokens in the secret store)

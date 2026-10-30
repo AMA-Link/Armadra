@@ -165,7 +165,9 @@ describe("the tool table", () => {
 
 describe("status reports", () => {
   it("subscribes exactly the events the core's ama adapter normalises", () => {
-    expect([...AMA_EVENTS]).toEqual([...AMA_HOOK_EVENTS]);
+    // `runner_done` is not one of ama's events: the runners report it from
+    // `runners.onDone` (runners.ts), so it is the core's table's one extra.
+    expect([...AMA_EVENTS, "runner_done"]).toEqual([...AMA_HOOK_EVENTS]);
   });
 
   it("speaks Pi's payload shape, attributed to ama", () => {

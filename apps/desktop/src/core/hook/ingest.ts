@@ -5,6 +5,7 @@ import { baseAgent, hasCapability } from "./capabilities";
 import type { AgentEvent } from "./normalize";
 import { normalizeAs, serializeEvent } from "./normalize";
 import { type Current, emptyCurrent, reduce } from "./reduce";
+import { isRunnerDone, readRunnerDone } from "./runner-done";
 import type { HookService } from "./service";
 import {
   type AgentStatusRow,
@@ -228,6 +229,21 @@ export function ingest(
 
   const payload = request.payload ?? null;
   if (!hasCapability(agentId, "hooks")) return ACCEPTED;
+
+  // A canvas runner's round ended (contract §15.5): not a state of this node,
+  // so it skips the reducer. Only ama's adapter sends it, with a verified node
+  // token; task-watch checks that this node is the task's coordinator.
+  if (isRunnerDone(payload)) {
+    const done = provider === "ama" ? readRunnerDone(payload) : undefined;
+    if (done !== undefined && verdict === "verified") {
+      context.bus.emit("runner.done", {
+        workspaceId: owner.workspaceId,
+        nodeId,
+        ...done,
+      });
+    }
+    return ACCEPTED;
+  }
 
   const event = normalizeAs(provider, agentId, nodeId, payload);
   if (event === undefined) return ACCEPTED;

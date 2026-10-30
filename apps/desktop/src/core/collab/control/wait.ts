@@ -151,6 +151,18 @@ export function waitedOn(taskId: string, now = Date.now()): boolean {
   return entry.active > 0 || now - entry.lastAt < WAIT_GRACE_MS;
 }
 
+/**
+ * 协调者的 runner 说这一轮完了（`runner_done`，契约 §15.5）：它不会再为这一轮
+ * `wait`，不用再等 {@link WAIT_GRACE_MS}。还有 `wait` 挂着（下一轮已经开始等）
+ * 时不动。答这次有没有放掉。
+ */
+export function releaseWait(taskId: string): boolean {
+  const entry = waiters.get(taskId);
+  if (entry === undefined || entry.active > 0) return false;
+  waiters.delete(taskId);
+  return true;
+}
+
 function markWaiting(taskId: string, delta: 1 | -1): void {
   const entry = waiters.get(taskId) ?? { active: 0, lastAt: 0 };
   entry.active = Math.max(0, entry.active + delta);

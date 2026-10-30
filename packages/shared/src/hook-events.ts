@@ -128,12 +128,14 @@ export const COPILOT_HOOK_EVENTS = [
 /**
  * Armadra's own agent (`ama`) — the host adapter reports in Pi's vocabulary
  * (same extension payload) plus the two approval events its runtime raises
- * (docs/design/coordinator-agent.md §2.1 / §2.3).
+ * (docs/design/coordinator-agent.md §2.1 / §2.3), and `runner_done`, one round
+ * of a canvas runner ended (host-api 1.1 `runners.onDone`, contract §15.5).
  */
 export const AMA_HOOK_EVENTS = [
   ...PI_HOOK_EVENTS,
   "tool_approval_requested",
   "tool_approval_resolved",
+  "runner_done",
 ] as const;
 
 export const HOOK_EVENTS: Readonly<Record<BuiltinAgentId, readonly string[]>> =

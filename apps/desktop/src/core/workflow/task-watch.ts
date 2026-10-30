@@ -5,10 +5,11 @@ import {
   type WaitTrackers,
   observe,
   parseCursor,
+  releaseWait,
   settle,
   waitedOn,
 } from "../collab/control/wait";
-import { publishTask, runningTaskRuns } from "./task-runs";
+import { publishTask, runningTaskRuns, taskRun } from "./task-runs";
 
 /**
  * core 自己盯着还在 `running` 的任务行（契约 §15.7，G5-09）。
@@ -17,8 +18,12 @@ import { publishTask, runningTaskRuns } from "./task-runs";
  * runner 已经拿到过 `failed`、不会再等，这一行就一直是「运行中」。这里用与
  * `wait` 同一份判定（`observe`）在没人等的时候也把它落掉：
  *
+ *   * 协调者的 runner 报 `runner_done`（ama 的 host-api 1.1 `runners.onDone`，
+ *     总线上的 `runner.done`）时，让这个任务「有人在等」的标记立即失效（还有
+ *     `wait` 挂着时不动），马上看一遍——协调者中断 / 停止任务后不必再等
+ *     `WAIT_GRACE_MS`；
  *   * `agent.status` / `agent.delivery` / `terminal.exit` 到达时看一遍（合并成一
- *     次），另外每 {@link TASK_WATCH_MS} 毫秒扫一遍补漏；
+ *     次），另外每 {@link TASK_WATCH_MS} 毫秒扫一遍兜底；
  *   * 结束时只写 `workflow_task_runs` 并推 `workflow.task`，**不**把成员的结果
  *     `post` 标成已收——没人替协调者取走它，收件箱唤醒照旧会提示协调者；
  *   * 有人在 `wait`（或 `WAIT_GRACE_MS` 之内等过）的任务只看不落，结束留给
@@ -28,8 +33,13 @@ import { publishTask, runningTaskRuns } from "./task-runs";
  * 游标（成员的 `post` 读到哪）只在进程里：重启之后从头读，最多多读几条。
  */
 
-/** 补漏扫描的间隔。 */
-export const TASK_WATCH_MS = 5_000;
+/**
+ * 兜底扫描的间隔。落行的主触发是上面那些事件；定时扫描只兜事件到不了的情况：
+ * ama 崩溃或被杀（不发 `runner_done`）、core 重启后游标从头读、分派抽屉「重试」
+ * 之类不经 ama runner 的行、旧版或远程主机上没有 `runners.onDone` 的 ama。
+ * 这些都不在交互的关键路径上，60 秒足够。
+ */
+export const TASK_WATCH_MS = 60_000;
 /** 事件到达后合并多久再看。 */
 const COALESCE_MS = 250;
 
@@ -66,9 +76,16 @@ export class TaskWatch {
   start(): void {
     const bus = this.options.bus;
     if (bus !== undefined) {
-      this.unsubscribe = bus.on("workspace.event", ({ event }) => {
+      const offEvents = bus.on("workspace.event", ({ event }) => {
         if (WATCHED_EVENTS.has(event.type)) this.soon();
       });
+      const offDone = bus.on("runner.done", ({ nodeId, taskId }) => {
+        this.runnerDone(nodeId, taskId);
+      });
+      this.unsubscribe = () => {
+        offEvents();
+        offDone();
+      };
     }
     const every = this.options.everyMs ?? TASK_WATCH_MS;
     if (every !== false) {
@@ -82,6 +99,27 @@ export class TaskWatch {
     if (this.timer !== undefined) clearInterval(this.timer);
     if (this.pending !== undefined) clearTimeout(this.pending);
     this.unsubscribe?.();
+  }
+
+  /**
+   * 协调者 `nodeId` 的 runner 说任务 `taskId` 这一轮完了：只认起这个任务的那个
+   * 协调者（任务 id 不是授权，同 `wait`），放掉等待标记，立即看一遍。答这次
+   * 落了几行。
+   */
+  runnerDone(nodeId: string, taskId: string): number {
+    if (this.stopped) return 0;
+    try {
+      const run = taskRun(this.options.database, taskId);
+      if (run === undefined || run.coordinatorNodeId !== nodeId) return 0;
+      if (run.status !== "running") return 0;
+      releaseWait(taskId);
+      return this.sweep();
+    } catch (error) {
+      this.options.log?.("任务行扫描失败", {
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return 0;
+    }
   }
 
   private soon(): void {

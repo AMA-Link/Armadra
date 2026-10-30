@@ -178,12 +178,15 @@ describe("hook events", () => {
     expect(HOOK_EVENTS.omp).toContain("auto_compaction_end");
     expect(HOOK_EVENTS.pi).not.toContain("auto_compaction_end");
     expect(HOOK_EVENTS.copilot).toContain("agentStop");
-    // ama reports in Pi's vocabulary plus its own two approval events.
+    // ama reports in Pi's vocabulary plus its own two approval events, and
+    // the end of a canvas runner's round (host-api 1.1).
     for (const event of HOOK_EVENTS.pi) {
       expect(HOOK_EVENTS.ama).toContain(event);
     }
     expect(HOOK_EVENTS.ama).toContain("tool_approval_requested");
     expect(HOOK_EVENTS.ama).toContain("tool_approval_resolved");
+    expect(HOOK_EVENTS.ama).toContain("runner_done");
+    expect(HOOK_EVENTS.pi).not.toContain("runner_done");
   });
 
   // Copilot reads a non-zero exit or a crash on `preToolUse` as a denial. A

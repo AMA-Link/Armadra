@@ -16,8 +16,10 @@ import { report } from "./client.js";
 /**
  * Every event the core's ama adapter normalises: Pi's list plus ama's two
  * approval events. Mirrors `AMA_HOOK_EVENTS` in `core/hook/install/events.ts`
- * and `packages/shared` (restated: the adapter may not import the core);
- * `events.test.ts` holds the three together.
+ * and `packages/shared` (restated: the adapter may not import the core), less
+ * `runner_done`, which `runners.ts` reports from `runners.onDone` rather than
+ * from ama's event bus; `adapter.test.ts` and `install/shared.test.ts` hold
+ * the three together.
  */
 export const AMA_EVENTS = [
   "session_start",

@@ -20,6 +20,12 @@
  *     an approval**, a person does, on the canvas or in the member's terminal.
  *   * `send` = `send --to <node>` (queued like any other delivery); `stop` and
  *     an aborted `signal` = `interrupt` — the node stays on the board.
+ *   * On ama ≥ 0.11.0 (host-api 1.1) every round's end comes back through
+ *     `runners.onDone` and is reported to the core as `runner_done` with the
+ *     board's task key, so the core settles the task row at once instead of
+ *     waiting for its fallback sweep (contract §15.5). An older ama — also one
+ *     on a remote host — has no `onDone`; nothing is subscribed and the core
+ *     falls back to its events and sweep as before.
  *
  * The result text is the member's `task:<id>:result` post (the instruction is
  * appended to every prompt), else its `context summary`.
@@ -34,12 +40,18 @@ import { randomUUID } from "node:crypto";
 import type {
   HostApi,
   HostRunner,
+  RunnerDoneEvent,
   RunnerHandle,
   SubagentEvent,
   SubagentRunRequest,
 } from "@armadra/agent/host";
 import type { JsonValue } from "../../hook-client/json.js";
-import { type ControlAnswer, callContext, callControl } from "./client.js";
+import {
+  type ControlAnswer,
+  callContext,
+  callControl,
+  report,
+} from "./client.js";
 
 /** The built-ins a runner is registered for, `ama` included (see the header). */
 export const BUILTIN_RUNNER_IDS = [
@@ -60,6 +72,10 @@ export const MAX_UNREACHABLE = 10;
 const RETRY_MS = 2000;
 /** The status-line key; one per task. */
 const STATUS_KEY = "armadra-task";
+/** The hook event a finished round is reported as (`/hook/ama`). */
+export const RUNNER_DONE_EVENT = "runner_done";
+/** Started handles remembered for `runner_done`; the oldest go first. */
+const MAX_TRACKED = 256;
 
 type PermissionMode = SubagentRunRequest["mode"];
 
@@ -113,6 +129,10 @@ export interface RunnerDeps {
   readonly log: HostApi["log"];
   /** Retry pause after an unanswered call; tests shorten it. */
   readonly retryMs?: number;
+  /** Told the board's task key of every handle `start` answers. */
+  readonly track?: (handleId: string, key: string) => void;
+  /** Sends a `/hook/ama` report; tests replace it. */
+  readonly report?: (payload: Record<string, JsonValue>) => Promise<unknown>;
 }
 
 interface WaitAnswer {
@@ -401,8 +421,27 @@ export function canvasRunner(agentId: string, deps: RunnerDeps): HostRunner {
       if (typeof result?.id !== "string") {
         throw new Error("open-agent answered no node id");
       }
+      deps.track?.(result.id, key);
       return new CanvasTask(result.id, agentId, key, request, deps);
     },
+  };
+}
+
+/** One finished round as the `/hook/ama` payload; no result text. */
+export function runnerDonePayload(
+  event: RunnerDoneEvent,
+  key: string,
+  sessionId: string,
+): Record<string, JsonValue> {
+  return {
+    hookEventName: RUNNER_DONE_EVENT,
+    provider: "ama",
+    sessionId,
+    taskId: key,
+    round: event.round,
+    status: event.status,
+    isError: event.isError,
+    endedAt: event.endedAt,
   };
 }
 
@@ -447,15 +486,55 @@ export function provideRunners(
   };
   const releases: (() => void)[] = [];
   let disposed = false;
+  const provided = new Set<string>();
+  const keys = new Map<string, string>();
+  const runnerDeps: RunnerDeps = {
+    ...deps,
+    track: (handleId, key) => {
+      keys.delete(handleId);
+      keys.set(handleId, key);
+      if (keys.size > MAX_TRACKED) {
+        const oldest = keys.keys().next().value;
+        if (oldest !== undefined) keys.delete(oldest);
+      }
+    },
+  };
   const provide = (id: string): void => {
     if (disposed) return;
     try {
-      releases.push(runners.provide(canvasRunner(id, deps)));
+      releases.push(runners.provide(canvasRunner(id, runnerDeps)));
+      provided.add(id);
     } catch (error) {
       api.log("warn", `could not provide the ${id} runner`, error);
     }
   };
   for (const id of BUILTIN_RUNNER_IDS) provide(id);
+  // host-api 1.1: a round's end as an event. Feature-detected, so an older ama
+  // (local or on a remote host) subscribes nothing and behaves as before.
+  if (typeof runners.onDone === "function") {
+    try {
+      releases.push(
+        runners.onDone((event) => {
+          if (disposed || !provided.has(event.runner)) return;
+          // The handle id is the member's node, recorded at `start`; the
+          // session may have moved on since, so it is only the fallback.
+          const sessionId = deps.sessionId();
+          const key =
+            keys.get(event.sessionId) ??
+            (event.taskId === undefined
+              ? undefined
+              : taskKey(sessionId, event.taskId));
+          if (key === undefined) return;
+          const send = deps.report ?? report;
+          void send(runnerDonePayload(event, key, sessionId)).catch(
+            () => undefined,
+          );
+        }),
+      );
+    } catch (error) {
+      api.log("warn", "could not subscribe to runner completions", error);
+    }
+  }
   void customAgentIds(deps.control)
     .then((ids) => {
       for (const id of ids) provide(id);
