@@ -7,7 +7,8 @@ import { describe, expect, it } from "vitest";
  * 这些字段进了 schema 之后，这里会失败：删掉对应的手写放宽（`LinkPage` 的 `Info`、
  * `DevicePage` 的 `DeviceRequest.ipPrefix`、`ops/data.ts` 的 `DrainInput`、
  * `mock/create-mock-client.ts` 的 `WIDENED_OUTPUT`、`sources/cloud-client.ts` 的
- * `ownerName`、`api/errors.ts` 的 `team_hosts_online`）再删除本测试。
+ * `ownerName`、`api/errors.ts` 的 `team_hosts_online`、`hosts/data.ts` 的 `myAccessOf`
+ * 手读 `myRole` 与 mock 的 `WIDENED_ITEMS`）再删除本测试。
  */
 type Procedure = {
   "~orpc": {
@@ -39,6 +40,16 @@ describe("协议包 0.10.0 尚无的可选字段（升级后删手写放宽）",
     const shape = procedure("admin", "relayNodeDrain").inputSchema?.shape;
     expect(shape).toHaveProperty("node");
     expect(shape).not.toHaveProperty("reason");
+  });
+  it("sources.list 出参项与 sources.get 出参没有 myRole", () => {
+    const list = procedure("sources", "list").outputSchema?.shape?.sources as
+      | { element?: { shape?: Record<string, unknown> } }
+      | undefined;
+    expect(list?.element?.shape).toHaveProperty("ownerName");
+    expect(list?.element?.shape).not.toHaveProperty("myRole");
+    const detail = procedure("sources", "get").outputSchema?.shape;
+    expect(detail).toHaveProperty("ownerName");
+    expect(detail).not.toHaveProperty("myRole");
   });
   it("team_hosts_online 尚不在协议包的错误码里", () => {
     // 先断言一个已有的码：枚举取不到时「没有」不会悄悄通过。
