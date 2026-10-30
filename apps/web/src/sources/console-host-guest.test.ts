@@ -208,6 +208,9 @@ describe("控制台 /h/ 以访客进入（§2.8）", () => {
       relayDown: false,
     });
     expect(live.host.view).toEqual({ kind: "failed", code: "access_revoked" });
+    // 收回之后卸下访客路由与事件流（#634），不在云端登出（记录已由托管中继作废）。
+    expect(relay.close).toHaveBeenCalledOnce();
+    expect(relay.signOut).not.toHaveBeenCalled();
   });
 
   it("访客暂时进不去：5xx 是可重试的失败（不是访问已被收回），限流按 Retry-After 自动再进", async () => {
