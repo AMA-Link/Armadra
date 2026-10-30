@@ -75,7 +75,35 @@ function reply(status: number, body: unknown): Response {
 const unauthenticated = () =>
   reply(401, { code: "unauthenticated", message: "" });
 
-async function serve(
+/**
+ * 服务端还没答完的请求。主动续期那一串（看会话 → 刷新）走真计时器，推进假
+ * 时钟之后要等它们答完再断言，见 {@link settled}。
+ */
+const inflight = new Set<Promise<Response>>();
+
+function serve(
+  input: RequestInfo | URL,
+  init?: RequestInit,
+): Promise<Response> {
+  const answer = respond(input, init);
+  inflight.add(answer);
+  answer.finally(() => inflight.delete(answer)).catch(() => undefined);
+  return answer;
+}
+
+/**
+ * 等到服务端没有在途的请求。每答完一个先让出一个真的宏任务：客户端拿到答复
+ * 后在微任务里发的下一个请求此时已经进了表，表空了才是整串都答完。
+ */
+async function settled(): Promise<void> {
+  for (;;) {
+    await new Promise((resolve) => realSetTimeout(resolve, 0));
+    if (inflight.size === 0) return;
+    await Promise.allSettled([...inflight]);
+  }
+}
+
+async function respond(
   input: RequestInfo | URL,
   init: RequestInit = {},
 ): Promise<Response> {
@@ -289,10 +317,14 @@ describe("到期前主动续期（契约 §3.2）", () => {
     vi.useRealTimers();
   });
 
-  /** 推进假时钟，再给真计时器上的服务端答复留一点时间。 */
+  /**
+   * 推进假时钟，再等到期触发的那一串请求都答完。以前是固定再等 25 ms 真时间：
+   * Windows 上真计时器一跳十几毫秒，看会话、刷新两跳就超过了，断言时刷新还
+   * 没发出去（#630）。
+   */
   async function advance(ms: number): Promise<void> {
     await vi.advanceTimersByTimeAsync(ms);
-    await new Promise((resolve) => realSetTimeout(resolve, 25));
+    await settled();
   }
 
   /** 拿到一份 15 分钟的 Cookie 会话（配对 / 登录之后的样子）。 */
