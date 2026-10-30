@@ -1,4 +1,6 @@
 import { renderHook } from "@testing-library/react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const info = vi.fn();
@@ -41,6 +43,13 @@ const fake: WorkspaceEventTransport = {
   closedWith: () => null,
 };
 const settle = () => new Promise((done) => setTimeout(done, 0));
+const wrapper = ({ children }: { children: ReactNode }) => (
+  <QueryClientProvider
+    client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}
+  >
+    {children}
+  </QueryClientProvider>
+);
 
 beforeEach(() => {
   failures = [];
@@ -59,7 +68,7 @@ describe("useWorkspaceAccessLost", () => {
     useCanvasStore
       .getState()
       .setWorkspace({ id: WORKSPACE, name: "共享项目" } as never);
-    renderHook(() => useWorkspaceAccessLost());
+    renderHook(() => useWorkspaceAccessLost(), { wrapper });
     const release = connectWorkspaceEvents(WORKSPACE);
     await settle();
     failures[0]!({ code: "forbidden" });
@@ -73,7 +82,7 @@ describe("useWorkspaceAccessLost", () => {
     useCanvasStore
       .getState()
       .setWorkspace({ id: WORKSPACE, name: "共享项目" } as never);
-    renderHook(() => useWorkspaceAccessLost());
+    renderHook(() => useWorkspaceAccessLost(), { wrapper });
     const release = connectWorkspaceEvents(WORKSPACE);
     await settle();
     failures[0]!(new Error("connection closed"));
