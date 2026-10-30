@@ -1,7 +1,13 @@
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { COPILOT_HOOK_EVENTS, OMP_HOOK_EVENTS, PI_HOOK_EVENTS } from "./events";
+import { HOOK_EVENTS } from "@armadra/shared";
+import {
+  AMA_HOOK_EVENTS,
+  COPILOT_HOOK_EVENTS,
+  OMP_HOOK_EVENTS,
+  PI_HOOK_EVENTS,
+} from "./events";
 import {
   agentBundle,
   agentLauncherBinary,
@@ -48,6 +54,12 @@ describe("the event tables", () => {
     expect(PI_HOOK_EVENTS).not.toContain("auto_compaction_end");
     expect(COPILOT_HOOK_EVENTS).toContain("agentStop");
     expect(COPILOT_HOOK_EVENTS).not.toContain("preToolUse");
+  });
+
+  it("says the same as packages/shared for ama, runner_done included", () => {
+    expect([...AMA_HOOK_EVENTS]).toEqual([...HOOK_EVENTS.ama]);
+    expect(AMA_HOOK_EVENTS).toContain("runner_done");
+    expect(new Set(AMA_HOOK_EVENTS).size).toBe(AMA_HOOK_EVENTS.length);
   });
 });
 
