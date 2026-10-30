@@ -142,12 +142,14 @@ describe("terminal/*", () => {
       await boot();
       const { rowId } = await start("[term-hang]");
       await until(turnsEnded, (turns) => turns.length > 0);
+      // 等的是文件里有 pid，不是文件存在：子进程写文件是先建空文件再写入，
+      // 两步之间读到 ""，`Number("")` 是 0，`kill(0, 0)` 探的是本进程组，恒为
+      // 真——会话收没收掉子进程都判不出来（#630）。
       const pidFile = join(open!.core.directory, "hang.pid");
-      await until(
-        () => existsSync(pidFile),
-        (ready) => ready,
+      const pid = await until(
+        () => (existsSync(pidFile) ? Number(readFileSync(pidFile, "utf8")) : 0),
+        (value) => Number.isInteger(value) && value > 0,
       );
-      const pid = Number(readFileSync(pidFile, "utf8"));
       expect(alive(pid)).toBe(true);
       // 工具行此刻还在跑：有终端内容，没有退出码。
       expect(items(rowId).find((i) => i.kind === "tool")).toMatchObject({

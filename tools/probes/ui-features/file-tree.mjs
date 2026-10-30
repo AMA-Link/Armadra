@@ -23,6 +23,12 @@ export async function openExplorer(page) {
     `return [...document.querySelectorAll('[role="tab"]')].some((tab) => tab.textContent.trim() === "文件")`,
     "资源管理器抽屉",
   );
+  // 页签一出现抽屉还在滑入：停稳了再按坐标点里面的东西。
+  await page.motionSettled(
+    `const tab = [...document.querySelectorAll('[role="tab"]')].find((tab) => tab.textContent.trim() === "文件");
+     return tab?.closest('[data-slot="sheet-content"], aside') ?? null;`,
+    "资源管理器抽屉停稳",
+  );
 }
 
 async function copyItem(page, name, label) {

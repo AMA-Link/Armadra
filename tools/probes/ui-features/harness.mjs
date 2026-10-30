@@ -667,6 +667,26 @@ async function createPage(
       await sleep(600);
     },
     /**
+     * 等一块浮层（含子树）上会结束的动画都播完；无限循环的（加载转圈）不算。
+     * 抽屉滑入时按坐标点，点到的是动画里那一帧的位置：机器一忙掉帧，就落在
+     * 目标旁边，什么也没点中（#630）。
+     */
+    async motionSettled(finder, what) {
+      await page.until(
+        `const element = (() => { ${finder} })();
+         if (!element) return null;
+         const moving = element
+           .getAnimations({ subtree: true })
+           .some(
+             (animation) =>
+               (animation.playState === "running" || animation.pending) &&
+               animation.effect?.getComputedTiming().endTime !== Infinity,
+           );
+         return moving ? null : true;`,
+        what,
+      );
+    },
+    /**
      * 等对话框（窄屏下是从底部滑上来的抽屉）停稳：连续三次量到同一个位置。
      * 滑动中按坐标点进去，点到的是动画里那一帧的位置，不是按钮。
      */

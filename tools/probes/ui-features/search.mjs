@@ -91,9 +91,13 @@ export default async function search({ stack, output, report, scenario }) {
   await page.goto(stack.boardUrl(workspace.id, board.id));
   await page.settle();
   await openExplorer(page);
-  await page.clickOn(
-    `return [...document.querySelectorAll('[role="tab"]')].find((tab) => tab.textContent.trim() === "搜索");`,
-    "搜索页签",
+  const searchTab = `return [...document.querySelectorAll('[role="tab"]')].find((tab) => tab.textContent.trim() === "搜索");`;
+  await page.clickOn(searchTab, "搜索页签");
+  // 搜索框只在「搜索」页签选中后才挂上：先确认点中了，没点中报的就是页签，
+  // 而不是 15 秒后的「搜索框」。
+  await page.until(
+    `return (() => { ${searchTab} })()?.getAttribute("aria-selected") === "true" ? true : null;`,
+    "搜索页签已选中",
   );
   const input = `return document.querySelector("input[aria-label='在项目中查找']");`;
   await page.clickOn(input, "搜索框");
