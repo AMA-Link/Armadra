@@ -31,7 +31,7 @@ import { existsSync, mkdirSync, readFileSync, rmSync } from "node:fs";
 import { extname, join, resolve } from "node:path";
 
 import { NO_RELAY_HINT, findCloudSource } from "./cloud-source.mjs";
-import { openE2eRoute } from "./e2e-client.mjs";
+import { openE2eRoute, parseShareLink } from "./e2e-client.mjs";
 import {
   buttonByText,
   buttonExists,
@@ -219,9 +219,12 @@ try {
   report.timings["owner-generate"] = Date.now() - ownerStart;
   report.steps.ownerClicks = ownerClicks;
   const url = new URL(link);
-  const [linkSecret, invitation] = url.hash.slice(1).split(".");
+  // 片段是 `<秘密>.<邀请令牌>[.<身份指纹>]`，邀请令牌自己带点：用页面那一份解析拆。
+  const parsed = await parseShareLink(link);
+  if (parsed === null) throw new Error("分享链接的片段认不出来");
+  const linkSecret = parsed.secret;
   secret("链接秘密", linkSecret);
-  secret("邀请令牌", invitation);
+  secret("邀请令牌", parsed.invitationToken);
   run.check(
     url.origin === relay.issuer && /^\/j\/[A-Za-z0-9_-]+$/.test(url.pathname),
     "链接指向中继的 /j/<id>，秘密与邀请令牌在片段里",
@@ -668,9 +671,11 @@ async function sessionShare({
     "会话链接：只读、只分享这一条终端",
     { target: shared.link.target, readOnly: shared.link.readOnly },
   );
-  // 片段是 `<秘密>.<邀请令牌>`，邀请令牌自己也带点。
-  const [linkSecret, ...rest] = new URL(shared.url).hash.slice(1).split(".");
-  const invitation = rest.join(".");
+  // 片段是 `<秘密>.<邀请令牌>.<身份指纹>`（契约 §80），邀请令牌自己也带点：按点拆再拼
+  // 会把指纹接进邀请令牌，cloud/login 就答 invitation_invalid（#638）。用页面那一份解析。
+  const parsedLink = await parseShareLink(shared.url);
+  if (parsedLink === null) throw new Error("会话链接的片段认不出来");
+  const { secret: linkSecret, invitationToken: invitation } = parsedLink;
   secret("会话链接秘密", linkSecret);
   secret("会话链接邀请令牌", invitation);
   const screen = async () =>
