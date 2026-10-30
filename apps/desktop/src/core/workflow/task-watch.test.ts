@@ -1,11 +1,12 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { type AgentFixture, agentFixture, callerFor } from "../agent/fixture";
 import { type ControlOutcome, controlDispatcher } from "../collab/control";
 import { resetWaitTrackers } from "../collab/control/wait";
 import { resetSendLimits } from "../collab/send-limits";
 import { resetInboxWake } from "../collab/wake";
+import { EventBus } from "../bus";
 import { finishTask, reopenTask, taskRun } from "./task-runs";
-import { TaskWatch } from "./task-watch";
+import { TASK_WATCH_MS, TaskWatch } from "./task-watch";
 
 /**
  * core 自己盯着 `running` 的任务行（契约 §15.7，G5-09）：没人 `wait` 时也落
@@ -230,5 +231,103 @@ describe("task watch", () => {
     expect(
       result(await run(lead, "wait", { task: "s1:t7", timeout: "5" })),
     ).toMatchObject({ status: "failed", reason: "turnInterrupted" });
+  });
+
+  it("settles at once on runner_done, without the grace or the sweep", async () => {
+    const bus = new EventBus();
+    const live = new TaskWatch({
+      database: fixture.database,
+      bus,
+      publish: () => fixture.collab.publish,
+      everyMs: false,
+    });
+    live.start();
+    try {
+      const member = await openTask("s1:t9");
+      deliverAll(member);
+      // 协调者等过一次（取基准），随后中断了任务、不再等。
+      result(await run(lead, "wait", { task: "s1:t9", timeout: "0" }));
+      report(member, "working", 1_000);
+      live.sweep();
+      report(member, "done", 2_000);
+      expect(live.sweep()).toBe(0);
+      expect(taskRun(fixture.database, "s1:t9")?.status).toBe("running");
+
+      // 别的节点报的不算：任务 id 不是授权。
+      const other = fixture.agentNode("other", "ama");
+      bus.emit("runner.done", {
+        workspaceId: fixture.workspaceId,
+        nodeId: other,
+        taskId: "s1:t9",
+        round: 1,
+        status: "aborted",
+      });
+      expect(taskRun(fixture.database, "s1:t9")?.status).toBe("running");
+
+      // 协调者自己的 runner 报完：立即落，不等 WAIT_GRACE_MS，也不等定时扫描。
+      bus.emit("runner.done", {
+        workspaceId: fixture.workspaceId,
+        nodeId: lead,
+        taskId: "s1:t9",
+        round: 1,
+        status: "aborted",
+      });
+      expect(taskRun(fixture.database, "s1:t9")?.status).toBe("done");
+      expect(taskFrames().at(-1)).toEqual({ taskId: "s1:t9", status: "done" });
+    } finally {
+      live.stop();
+    }
+  });
+
+  it("leaves a wait that is still in flight alone on runner_done", async () => {
+    const member = await openTask("s1:t10");
+    deliverAll(member);
+    const first = result(
+      await run(lead, "wait", { task: "s1:t10", timeout: "0" }),
+    );
+    report(member, "working", 1_000);
+    const second = result(
+      await run(lead, "wait", {
+        task: "s1:t10",
+        since: first.since,
+        timeout: "0",
+      }),
+    );
+    expect(second.status).toBe("running");
+    // 下一轮的 wait 已经挂上了。
+    const pending = run(lead, "wait", {
+      task: "s1:t10",
+      since: second.since,
+      timeout: "2",
+    });
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(watch.runnerDone(lead, "s1:t10")).toBe(0);
+    report(member, "done", 2_000);
+    expect(watch.runnerDone(lead, "s1:t10")).toBe(0);
+    expect(taskRun(fixture.database, "s1:t10")?.status).toBe("running");
+    expect(result(await pending)).toMatchObject({ status: "done" });
+    expect(taskRun(fixture.database, "s1:t10")?.status).toBe("done");
+  });
+
+  it("keeps the timed sweep as the fallback, at 60 seconds", async () => {
+    expect(TASK_WATCH_MS).toBe(60_000);
+    const timed = new TaskWatch({
+      database: fixture.database,
+      publish: () => fixture.collab.publish,
+      everyMs: 20,
+    });
+    timed.start();
+    try {
+      const member = await openTask("s1:t11");
+      deliverAll(member);
+      report(member, "working", 1_000);
+      await new Promise((resolve) => setTimeout(resolve, 60));
+      report(member, "done", 2_000);
+      await vi.waitFor(() => {
+        expect(taskRun(fixture.database, "s1:t11")?.status).toBe("done");
+      });
+    } finally {
+      timed.stop();
+    }
   });
 });
