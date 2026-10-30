@@ -633,7 +633,7 @@ node tools/probes/update-e2e.mjs [输出目录] [--app <Armadra.app>] [--release
 
 ## 手机壳冒烟（Capacitor，B 档）
 
-`mobile-shell-e2e.mjs` 在模拟器里走原生 App 的「连接 → 配对 → 画布」：起临时 core、在回环上开 Gateway（本地 CA），把配对深链 `armadra://pair?…` 交给 UI 用例——iOS 是 `AppUITests`（XCUITest，链接经 `TEST_RUNNER_ARMADRA_PAIR_LINK`），Android 是 `ConnectFlowTest`（插桩，`adb reverse` 接回环，链接经插桩参数 `armadraPairLink`）。App 先取 `/ca.crt` 按指纹钉住信任锚、再配对，页面进画布（底部导航出现）。要模拟器，所以不进 `tools/ci/e2e.d/` 的清单，由 `nightly.yml` 的 `mobile-ios` / `mobile-android` 作业直接跑。
+`mobile-shell-e2e.mjs` 在模拟器里走原生 App 的「连接 → 配对 → 画布」：起临时 core、在回环上开 Gateway（本地 CA），把配对深链 `armadra://pair?…` 交给 UI 用例——iOS 是 `AppUITests`（XCUITest，用例用到时才经 `TEST_RUNNER_ARMADRA_PAIR_LINK_SOURCE` 这个回环地址向探针现铸，票只有两分钟），Android 是 `ConnectFlowTest`（插桩，`adb reverse` 接回环，链接经插桩参数 `armadraPairLink`）。App 先取 `/ca.crt` 按指纹钉住信任锚、再配对，页面进画布（底部导航出现）。要模拟器，所以不进 `tools/ci/e2e.d/` 的清单，由 `nightly.yml` 的 `mobile-ios` / `mobile-android` 作业直接跑。
 
 ```sh
 pnpm libs:build && pnpm --filter @armadra/web build && pnpm --filter @armadra/desktop build

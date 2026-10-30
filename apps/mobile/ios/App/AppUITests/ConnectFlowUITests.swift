@@ -2,8 +2,8 @@ import XCTest
 
 /// B 档 UI 用例「连接 → 配对 → 画布」（补全计划 G3-1），由
 /// `tools/probes/mobile-shell-e2e.mjs` 驱动：探针起 core、在回环上开 Gateway（模拟器与
-/// 宿主共用回环），把原生深链 `armadra://pair?host=…&ticket=…&fp=…` 经
-/// `TEST_RUNNER_ARMADRA_PAIR_LINK` 交进来，用例经深链交给 App。页面在 WKWebView 里，按无障碍树
+/// 宿主共用回环），在回环上给一个现铸配对票的地址（`TEST_RUNNER_ARMADRA_PAIR_LINK_SOURCE`），
+/// 用例用到时才取原生深链 `armadra://pair?host=…&ticket=…&fp=…`（票只有两分钟），经深链交给 App。页面在 WKWebView 里，按无障碍树
 /// 找输入框与按钮；文案中英都认（模拟器的语言不定）。还没有连接时连接页先列添加方式，
 /// 「配对链接」之后才有输入框。XCTest 按名字排序：配对之后 App 记住了
 /// Gateway，「没有 Gateway」那条必须在前（`test1…`、`test2…`）。连接表非空时启动先落在「选择服务」
@@ -68,13 +68,33 @@ final class ConnectFlowUITests: XCTestCase {
         XCTAssertTrue(button(app, ["连接", "Connect"]).exists)
     }
 
+    /// 向探针现铸一张配对票，返回深链。票只有两分钟，所以在用之前才取，不在用例开头取。
+    private func freshPairLink(from source: URL) throws -> URL {
+        var minted: String?
+        var failure = "no answer"
+        let done = expectation(description: "pairing link minted")
+        URLSession.shared.dataTask(with: source) { data, response, error in
+            let status = (response as? HTTPURLResponse)?.statusCode ?? 0
+            if status == 200, let data {
+                minted = String(data: data, encoding: .utf8)
+            } else {
+                failure = error.map { "\($0)" } ?? "HTTP \(status)"
+            }
+            done.fulfill()
+        }.resume()
+        wait(for: [done], timeout: 30)
+        let link = try XCTUnwrap(minted, "pairing link from \(source): \(failure)")
+        return try XCTUnwrap(URL(string: link.trimmingCharacters(in: .whitespacesAndNewlines)))
+    }
+
     func test2PairsThroughThePinnedGatewayAndOpensTheCanvas() throws {
-        guard let link = ProcessInfo.processInfo.environment["ARMADRA_PAIR_LINK"], !link.isEmpty else {
-            throw XCTSkip("ARMADRA_PAIR_LINK not given (run through tools/probes/mobile-shell-e2e.mjs)")
+        guard let given = ProcessInfo.processInfo.environment["ARMADRA_PAIR_LINK_SOURCE"],
+              let source = URL(string: given) else {
+            throw XCTSkip("ARMADRA_PAIR_LINK_SOURCE not given (run through tools/probes/mobile-shell-e2e.mjs)")
         }
-        let url = try XCTUnwrap(URL(string: link))
         let app = launched()
         XCTAssertTrue(pairingLink(app).waitForExistence(timeout: 60), "connect screen")
+        let url = try freshPairLink(from: source)
         // 链接走深链交给 App（`armadra://pair` → `#link=` 预填、直接落在链接输入框）；连接页由人点
         // 「连接」。两条路都走（#281）：
         //  - 热启动：经系统打开，App 还在跑，场景收到 `openURLContexts`，改写地址重载。
