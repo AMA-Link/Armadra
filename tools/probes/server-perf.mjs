@@ -21,7 +21,9 @@
 // 与基线比对：`--baseline <文件>`（缺省 tools/probes/server-perf-baseline.json）
 // 里按 `<平台>-<架构>` 取一份数字；任何一项比基线差 20% 以上（并且超过该项的
 // 绝对容差）即失败。没有这台平台的基线时只报告不判。`--write-baseline` 把这次
-// 的数字写成这台平台的基线。
+// 的数字写成这台平台的基线。`--confirm`：越线时停掉这一轮的服务器壳，在
+// <输出目录>/confirm 再完整跑一轮，每项取两次较优值再判（托管运行器上单次读数
+// 会漂，#485；真退化两次都越线）。`--attach` 时不复测。
 //
 // 用法（仓库根目录）：
 //   pnpm libs:build
@@ -30,11 +32,11 @@
 //   node tools/probes/server-perf.mjs [输出目录] [--sessions 30] [--subscribers 6]
 //     [--objects 2000] [--rounds 40] [--burst-kib 1024] [--cpu-prof 目录]
 //     [--attach https://host:port/#pair=票] [--baseline 文件 | --no-baseline]
-//     [--write-baseline]
+//     [--write-baseline] [--confirm]
 //
 // 一切都是临时的、回环的：随机端口，mktemp 出来的数据目录、HOME 与工作空间，
 // 跑完全部删除并停掉 tmux 服务器。产物：<输出目录>/result.json、table.md。
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { Agent, request as httpsRequest } from "node:https";
@@ -64,6 +66,7 @@ export function parseArgs(argv) {
     attach: undefined,
     baseline: join(root, "tools/probes/server-perf-baseline.json"),
     writeBaseline: false,
+    confirm: false,
     cpuProf: undefined,
   };
   const numeric = new Set([
@@ -82,6 +85,7 @@ export function parseArgs(argv) {
     const [flag, inline] = arg.slice(2).split("=", 2);
     if (flag === "no-baseline") options.baseline = undefined;
     else if (flag === "write-baseline") options.writeBaseline = true;
+    else if (flag === "confirm") options.confirm = true;
     else if (
       flag === "attach" ||
       flag === "baseline" ||
@@ -153,6 +157,42 @@ export function compare(current, baseline) {
     });
   }
   return rows;
+}
+
+/**
+ * 两次读数每项取较优值（方向按 `METRICS`）；只有一边是数字时取那一边，
+ * 不在 `METRICS` 里的项沿用第一次。
+ */
+export function bestOf(first, second) {
+  const merged = { ...first };
+  for (const [metric, rule] of Object.entries(METRICS)) {
+    const a = first?.[metric];
+    const b = second?.[metric];
+    if (typeof a !== "number" || typeof b !== "number") {
+      merged[metric] = typeof a === "number" ? a : (b ?? null);
+      continue;
+    }
+    merged[metric] = rule.better === "higher" ? Math.max(a, b) : Math.min(a, b);
+  }
+  return merged;
+}
+
+/** 复测用的参数：同一个场景，不再复测、不写基线、不比基线（由第一轮来比）。 */
+export function confirmArgs(options, output) {
+  return [
+    output,
+    "--sessions",
+    String(options.sessions),
+    "--subscribers",
+    String(options.subscribers),
+    "--objects",
+    String(options.objects),
+    "--rounds",
+    String(options.rounds),
+    "--burst-kib",
+    String(options.burstKib),
+    "--no-baseline",
+  ];
 }
 
 export function platformKey() {
@@ -806,7 +846,7 @@ async function main() {
     sample.stop();
 
     /* ---------------------------- 汇总与比对 ------------------------------ */
-    const metrics = {
+    let metrics = {
       sessionCreateP50Ms: round1(percentile(createMs, 50)),
       sessionCreateP95Ms: round1(percentile(createMs, 95)),
       fanoutP50Ms: round1(percentile(fanout, 50)),
@@ -841,13 +881,67 @@ async function main() {
     report.metrics = metrics;
     report.phases = phases;
 
-    const table = renderTable(metrics);
     let comparison = [];
     if (options.baseline && existsSync(options.baseline)) {
       const baselines = JSON.parse(readFileSync(options.baseline, "utf8"));
       const mine = baselines.platforms?.[report.platform];
       if (mine) {
         comparison = compare(metrics, mine.metrics);
+        // `--attach` 不复测：配对票只能用一次，复测接不上同一台服务器。
+        if (
+          options.confirm &&
+          !options.attach &&
+          comparison.some((row) => row.regressed)
+        ) {
+          // 越线才复测：先停掉这一轮的服务器壳与 tmux，免得两轮抢机器。
+          console.error(
+            `越线：${comparison
+              .filter((row) => row.regressed)
+              .map(
+                (row) => `${row.metric} ${row.current}（基线 ${row.baseline}）`,
+              )
+              .join("；")}；复测一次，取两次较优值`,
+          );
+          for (const cleanup of h.cleanups.splice(0).reverse()) {
+            try {
+              await cleanup();
+            } catch {}
+          }
+          const confirmOutput = join(output, "confirm");
+          mkdirSync(confirmOutput, { recursive: true });
+          const second = await new Promise((done) => {
+            const run = spawn(
+              process.execPath,
+              [
+                fileURLToPath(import.meta.url),
+                ...confirmArgs(options, confirmOutput),
+              ],
+              { cwd: root, stdio: "inherit" },
+            );
+            run.once("error", () => done(undefined));
+            run.once("exit", () => {
+              const file = join(confirmOutput, "result.json");
+              done(
+                existsSync(file)
+                  ? JSON.parse(readFileSync(file, "utf8"))
+                  : undefined,
+              );
+            });
+          });
+          if (!second?.metrics || second.error)
+            report.failures.push({
+              name: "复测没跑完",
+              detail: second?.error ?? `没有 ${confirmOutput}/result.json`,
+            });
+          else {
+            report.firstRun = metrics;
+            report.secondRun = second.metrics;
+            metrics = bestOf(metrics, second.metrics);
+            report.metrics = metrics;
+            comparison = compare(metrics, mine.metrics);
+            report.notes = ["越线后复测一次，指标取两次较优值（--confirm）"];
+          }
+        }
         report.comparison = comparison;
         for (const row of comparison.filter((item) => item.regressed))
           report.failures.push({
@@ -856,6 +950,7 @@ async function main() {
           });
       } else report.comparison = `没有 ${report.platform} 的基线，只报告`;
     }
+    const table = renderTable(metrics);
     if (options.writeBaseline && options.baseline) {
       const baselines = existsSync(options.baseline)
         ? JSON.parse(readFileSync(options.baseline, "utf8"))
@@ -890,6 +985,7 @@ async function main() {
         : "";
     writeFileSync(join(output, "table.md"), `${table}${compared}\n`);
     console.log(`\n${table}${compared}\n`);
+    for (const note of report.notes ?? []) console.log(`注：${note}`);
   });
 }
 
