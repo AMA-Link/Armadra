@@ -255,8 +255,8 @@ importers:
   apps/desktop:
     dependencies:
       '@armadra/platform-protocol':
-        specifier: file:../../tools/vendor/armadra-platform-protocol-0.10.0.tgz
-        version: file:tools/vendor/armadra-platform-protocol-0.10.0.tgz(@opentelemetry/api@1.9.1)(zod@4.6.6)
+        specifier: file:../../tools/vendor/armadra-platform-protocol-0.11.0.tgz
+        version: file:tools/vendor/armadra-platform-protocol-0.11.0.tgz(@opentelemetry/api@1.9.1)(zod@4.6.6)
       '@armadra/shared':
         specifier: workspace:*
         version: link:../../packages/shared
@@ -414,8 +414,8 @@ importers:
   apps/web:
     dependencies:
       '@armadra/platform-protocol':
-        specifier: file:../../tools/vendor/armadra-platform-protocol-0.10.0.tgz
-        version: file:tools/vendor/armadra-platform-protocol-0.10.0.tgz(@opentelemetry/api@1.9.1)(zod@4.6.6)
+        specifier: file:../../tools/vendor/armadra-platform-protocol-0.11.0.tgz
+        version: file:tools/vendor/armadra-platform-protocol-0.11.0.tgz(@opentelemetry/api@1.9.1)(zod@4.6.6)
       '@armadra/shared':
         specifier: workspace:*
         version: link:../../packages/shared
@@ -637,8 +637,8 @@ importers:
   packages/shared:
     dependencies:
       '@armadra/platform-protocol':
-        specifier: file:../../tools/vendor/armadra-platform-protocol-0.10.0.tgz
-        version: file:tools/vendor/armadra-platform-protocol-0.10.0.tgz(@opentelemetry/api@1.9.1)(zod@4.6.6)
+        specifier: file:../../tools/vendor/armadra-platform-protocol-0.11.0.tgz
+        version: file:tools/vendor/armadra-platform-protocol-0.11.0.tgz(@opentelemetry/api@1.9.1)(zod@4.6.6)
       '@noble/curves':
         specifier: 2.4.0
         version: 2.4.0
@@ -669,9 +669,9 @@ packages:
     engines: {node: '>=22'}
     hasBin: true
 
-  '@armadra/platform-protocol@file:tools/vendor/armadra-platform-protocol-0.10.0.tgz':
-    resolution: {integrity: sha512-IOSlIYGetsV9WLOrhc7XAXpJ5sAKsp2Sgz6YfWfN3h4S1vDR/heHqMIBp8pG9UHNpVOKtyuwVTQn7oYac3iecA==, tarball: file:tools/vendor/armadra-platform-protocol-0.10.0.tgz}
-    version: 0.10.0
+  '@armadra/platform-protocol@file:tools/vendor/armadra-platform-protocol-0.11.0.tgz':
+    resolution: {integrity: sha512-oYK3EMQpNYBXJUTU2roNdPTieOaFW0cWgY9psGNplogv6LEKJ+/NKIn4tndDcTSFczq947iKhYpk5Puc+PgOQw==, tarball: file:tools/vendor/armadra-platform-protocol-0.11.0.tgz}
+    version: 0.11.0
     peerDependencies:
       zod: '>=4.0.0 <5'
 
@@ -7293,7 +7293,7 @@ snapshots:
 
   '@armadra/agent@0.10.0': {}
 
-  '@armadra/platform-protocol@file:tools/vendor/armadra-platform-protocol-0.10.0.tgz(@opentelemetry/api@1.9.1)(zod@4.6.6)':
+  '@armadra/platform-protocol@file:tools/vendor/armadra-platform-protocol-0.11.0.tgz(@opentelemetry/api@1.9.1)(zod@4.6.6)':
     dependencies:
       '@orpc/contract': 1.15.4(@opentelemetry/api@1.9.1)
       zod: 4.6.6
