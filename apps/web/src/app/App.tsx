@@ -18,6 +18,7 @@ import { useMinimapPreferences } from "./minimap-preferences";
 import { Banners } from "../shell/Banners";
 import { ControlsCluster } from "../shell/ControlsCluster";
 import { EmptyCanvas } from "../canvas/EmptyCanvas";
+import { NoWorkspaceAccess } from "./NoWorkspaceAccess";
 import { Dock } from "../shell/Dock";
 import { LeftSidebar } from "../shell/LeftSidebar";
 import { MobileBottomNav } from "../shell/MobileBottomNav";
@@ -152,6 +153,7 @@ function AppShell() {
         data-minimap-collapsed={minimapCollapsed}
       >
         {workspace && <FlowWorkspace />}
+        {!workspace && <NoWorkspaceAccess />}
         {workspace && (
           <>
             <EmptyCanvas />
