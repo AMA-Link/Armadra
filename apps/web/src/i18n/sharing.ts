@@ -71,6 +71,7 @@ export const sharing: MessageModule = {
     "sharing.redeem.title": "接受邀请",
     "sharing.redeem.join": "加入",
     "sharing.revoked": "「{name}」已不再共享给你",
+    "sharing.noneLeft": "没有可访问的工作空间",
     "sharing.members.actions": "{name} 的操作",
     "sharing.members.resetMfa": "重置两步验证",
     "sharing.members.resetMfaConfirm": "重置「{name}」的两步验证？",
@@ -142,6 +143,7 @@ export const sharing: MessageModule = {
     "sharing.redeem.title": "Accept invitation",
     "sharing.redeem.join": "Join",
     "sharing.revoked": "“{name}” is no longer shared with you",
+    "sharing.noneLeft": "No workspaces you can access",
     "sharing.members.actions": "Actions for {name}",
     "sharing.members.resetMfa": "Reset two-step verification",
     "sharing.members.resetMfaConfirm":

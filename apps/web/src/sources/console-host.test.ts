@@ -11,6 +11,7 @@ import {
   onHostTrusted,
 } from "./cloud-session-channel";
 import { hostTooOld, versionBelow } from "./console-host";
+import { onGrantSynced } from "./grant-synced";
 import { SourceError } from "./types";
 import {
   ACCOUNT,
@@ -264,10 +265,15 @@ describe("控制台 /h/ 进主机", () => {
       },
     });
     await ctx.host.open();
+    const synced = vi.fn();
+    const off = onGrantSynced(synced);
     limited = true;
     ctx.streams[0]!.onEvent({ type: "grantChanged", sourceId: HOST });
     ctx.timers.shift()!();
     await vi.waitFor(() => expect(delays).toEqual([9_000]));
+    // 被限流的那一次授予还没同步：不通知重取。
+    expect(synced).not.toHaveBeenCalled();
+    off();
     limited = false;
     pending.shift()!();
     // 再排的那一次仍经去抖：排上了一个新的重登计时。
@@ -492,6 +498,8 @@ describe("控制台 /h/ 进主机", () => {
   });
 
   it("grantChanged 与自己的 memberChanged：去抖合并，2 秒内 5 个事件只重登一次，带当前刷新令牌", async () => {
+    const synced = vi.fn();
+    const off = onGrantSynced(synced);
     const ctx = setup();
     await ctx.host.open();
     const stream = ctx.streams[0]!;
@@ -517,6 +525,9 @@ describe("控制台 /h/ 进主机", () => {
     });
     expect(ctx.identity.restore).toHaveBeenCalledWith(true);
     expect(ctx.refreshes()).toBe(0);
+    // 重登成功才通知页面重取列表（放宽范围不结束订阅，#632），也只一次。
+    await vi.waitFor(() => expect(synced).toHaveBeenCalledTimes(1));
+    off();
   });
 
   it("source_access_denied 按版本分两种：团队主机低于门槛是版本太旧，否则没有权限", async () => {
