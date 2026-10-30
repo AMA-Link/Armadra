@@ -8,6 +8,8 @@
 
 本地优先 · 一个 core、两种壳 · 桌面、浏览器与手机共用同一份页面
 
+[下载安装包](https://github.com/AMA-Link/Armadra/releases/latest) · [官网与文档 armadra.com](https://armadra.com) · [English](README.en.md)
+
 [产品说明](docs/guides/product-overview.md) · [快速开始](#快速开始) · [能力一览](#能力一览) · [设计](#设计) · [路线图](#路线图) · [文档](docs/README.md)
 
 </div>
@@ -122,18 +124,19 @@ AI Coding 画布覆盖软件开发、算法开发、数据分析与科研编程�
 
 ### 支持的 Agent
 
-| CLI            | 状态通道   | 恢复会话               | 非默认权限模式               |
-| -------------- | ---------- | ---------------------- | ---------------------------- |
-| Claude Code    | 命令 Hook  | `--resume ID`          | auto-edit / full-auto / plan |
-| Codex          | 命令 Hook  | `resume ID`            | auto-edit / full-auto / plan |
-| OpenCode       | 插件       | `--session ID`         | CLI 默认                     |
-| Pi             | 进程内扩展 | `--session PATH_OR_ID` | CLI 默认                     |
-| Oh My Pi       | 进程内扩展 | `--resume ID`          | auto-edit / full-auto        |
-| GitHub Copilot | 命令 Hook  | `--resume ID`          | auto-edit / full-auto / plan |
-| ama            | 宿主适配器 | `--resume ID`          | auto-edit / full-auto / plan |
+每个 CLI 有两种驱动方式：**终端模式**（真实 CLI 跑在终端节点里，状态经 Hook / 扩展 / 插件上报）与 **ACP 会话视图**（经各家 ACP 适配器以对话视图驱动）。「已实测」指在真实 CLI 上跑过端到端场景并留下记录，「未实测」指代码与假 Agent 测过、还没在真实 CLI 上跑过。
 
-六种 CLI 与 ama 都可经 ACP 以会话视图驱动（Copilot 不能接回会话）。自定义 Agent 可借用任一内置 CLI 的形状。完整差异见 [Agent 协作](docs/guides/agent-collaboration.md)，
-逐项现状与依据见 [功能预期总表](docs/status/feature-roadmap.md)。
+| CLI            | 状态通道   | 恢复会话               | 非默认权限模式               | 终端模式                         | ACP 会话视图                        |
+| -------------- | ---------- | ---------------------- | ---------------------------- | -------------------------------- | ----------------------------------- |
+| Claude Code    | 命令 Hook  | `--resume ID`          | auto-edit / full-auto / plan | 已实测                           | 已实测（claude-agent-acp ≥ 0.85.1） |
+| Codex          | 命令 Hook  | `resume ID`            | auto-edit / full-auto / plan | 已实测                           | 未实测（codex-acp）                 |
+| OpenCode       | 插件       | `--session ID`         | CLI 默认                     | 已实测注入与状态；端到端场景未跑 | 未实测                              |
+| Pi             | 进程内扩展 | `--session PATH_OR_ID` | CLI 默认                     | 已实测                           | 已实测（pi-acp ≥ 0.0.34）           |
+| Oh My Pi       | 进程内扩展 | `--resume ID`          | auto-edit / full-auto        | 已实测注入与状态；端到端场景未跑 | 未实测                              |
+| GitHub Copilot | 命令 Hook  | `--resume ID`          | auto-edit / full-auto / plan | 已实测注入与状态；端到端场景未跑 | 未实测；不能接回会话                |
+| ama            | 宿主适配器 | `--resume ID`          | auto-edit / full-auto / plan | 随桌面壳打包                     | 未实测                              |
+
+ACP 一列以 [tools/release/compatibility.json](tools/release/compatibility.json) 为准（`verified` 为 `null` 即未实测，真跑通过后由探针写入）；终端模式一列以[功能预期总表 §4](docs/status/feature-roadmap.md) 为准。自定义 Agent 可借用任一内置 CLI 的形状。完整差异见 [Agent 协作](docs/guides/agent-collaboration.md)。
 
 ## 设计
 
@@ -185,18 +188,9 @@ pnpm --filter @armadra/server build    # 服务器壳 → apps/server/out/main.j
 
 ## 路线图
 
-[后续规划](docs/design/product-roadmap.md)的四个部分（CLI 协作、ACP 会话视图、协调者与工作流、多人协同）与平台线的代码大部分已经合入。剩下的：
+产品方向与目标设计在[后续规划](docs/design/product-roadmap.md)；版本按统一的 `vX.Y.Z` 推进（桌面、服务器与手机同一个号），每版的变化见 [CHANGELOG](CHANGELOG.md) 与 [Releases](https://github.com/AMA-Link/Armadra/releases)。
 
-| 方向                   | 现状                                                            | 缺的条件                                     |
-| ---------------------- | --------------------------------------------------------------- | -------------------------------------------- |
-| 签名发布与自动更新安装 | 签名、公证、更新清单与通道已接，未签名包只走到「暂存」          | 代码签名证书、公证凭据、发布密钥             |
-| Windows 正式支持       | 打包版验收包在 Windows runner 上每晚通过                        | 真机安装与长时间运行                         |
-| 手机原生应用与推送     | 模拟器里配对到画布已通过，推送对假端点走通                      | 开发者账号、推送密钥、真机                   |
-| 另外三家 CLI 与 ACP    | Claude / Codex / Pi 已真跑；ACP 真跑探针已备、只对假 Agent 跑过 | 装好 OpenCode / OMP / Copilot 与适配器的机器 |
-| 多账号 CLI             | Claude / Copilot 的节点凭据已开放，其余种类待实测               | 测试账号与凭据                               |
-| 公网登录               | passkey、OAuth 在本地与假提供方上验证                           | 域名与证书、OAuth 应用                       |
-
-逐项状态以 [功能预期总表](docs/status/feature-roadmap.md) 与 [补全进度](docs/status/completion-progress.md) 为准。
+逐项的实现状态与依据以[功能预期总表](docs/status/feature-roadmap.md)为准；只在探针与 mock 上验证、还缺真机、账号、证书或第三方服务的项，列在[用户待办清单](docs/status/user-action-checklist.md)。
 
 ## 项目结构
 
