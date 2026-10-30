@@ -223,12 +223,16 @@ describe("带当前刷新令牌重登（#484）", () => {
   });
 
   /** 把这条会话的到期时间改成「还剩 remainingMs」，模拟客户端在到期前才来续。 */
-  const nearExpiry = (sessionId: string, remainingMs: number) =>
-    core.database
+  const nearExpiry = (sessionId: string, remainingMs: number) => {
+    // 两列用同一个时刻：分两次取 `Date.now()`，中间跨过一个毫秒（Windows 上
+    // 时钟一跳十几毫秒）访问期就比会话晚，撞上表的 CHECK（#630）。
+    const expiresAtMs = Date.now() + remainingMs;
+    return core.database
       .prepare(
         "UPDATE identity_sessions SET expires_at_ms = ?, access_expires_at_ms = MIN(access_expires_at_ms, ?) WHERE session_id = ?",
       )
-      .run(Date.now() + remainingMs, Date.now() + remainingMs, sessionId);
+      .run(expiresAtMs, expiresAtMs, sessionId);
+  };
 
   it("临近到期（客户端约 60 秒前）的续期不吃 (iss, sub) 每分钟 5 次的限流；新建会话照常扣", async () => {
     await registerSaas();
