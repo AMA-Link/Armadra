@@ -2,7 +2,7 @@
   "id": "server-perf",
   "tier": "b",
   "script": "tools/probes/server-perf.mjs",
-  "args": ["{out}"],
+  "args": ["{out}", "--confirm"],
   "requires": ["tmux"],
   "timeoutMinutes": 15,
   "platforms": ["linux"]

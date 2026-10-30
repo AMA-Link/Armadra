@@ -500,10 +500,10 @@ node tools/probes/server-e2e.mjs [输出目录]
 
 ```sh
 pnpm libs:build && pnpm --filter @armadra/desktop build && pnpm --filter @armadra/server build
-node tools/probes/server-perf.mjs [输出目录] [--cpu-prof 目录] [--no-baseline | --write-baseline]
+node tools/probes/server-perf.mjs [输出目录] [--cpu-prof 目录] [--no-baseline | --write-baseline] [--confirm]
 ```
 
-产物 `result.json` 与 `table.md`。与 `server-perf-baseline.json` 里这台平台的基线比，差 20% 以上且超过该项绝对容差即失败；没有这台平台的基线时只报告。`--cpu-prof` 让服务器壳退出时写 `.cpuprofile`，找热点用。数字与解读见 [服务端性能基线](../../docs/status/server-performance-baseline.md)。
+产物 `result.json` 与 `table.md`。与 `server-perf-baseline.json` 里这台平台的基线比，差 20% 以上且超过该项绝对容差即失败；没有这台平台的基线时只报告。`--confirm`（B 档带着）在越线时停掉这一轮的服务器壳，在 `<输出目录>/confirm` 再完整跑一轮，每项取两次较优值再判（托管运行器单次读数会漂，#485）；`--attach` 时不复测。`--cpu-prof` 让服务器壳退出时写 `.cpuprofile`，找热点用。数字与解读见 [服务端性能基线](../../docs/status/server-performance-baseline.md)。
 
 ## 终端内存基线
 
