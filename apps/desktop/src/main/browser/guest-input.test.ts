@@ -26,7 +26,11 @@ const fakeContents = {
   getType: () => "webview",
   getURL: () => "https://example.test/",
   getTitle: () => "Example",
-  session: { on: () => undefined },
+  session: {
+    on: () => undefined,
+    setPermissionRequestHandler: () => undefined,
+    setPermissionCheckHandler: () => undefined,
+  },
   on: (event: string, listener: Listener) => {
     listeners.set(event, [...(listeners.get(event) ?? []), listener]);
   },

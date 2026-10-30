@@ -2,6 +2,12 @@
 
 每个版本一节，按发布倒序。括号里是合入的 PR 编号（github.com/AMA-Link/Armadra，2026-10-11 前为 Owlbay/Armadra，旧编号照常跳转）。兼容范围以 `tools/release/compatibility.json` 为准，发布说明里的 `armadra-compatibility` 围栏由它渲染。桌面、服务器与手机 / 平板 App 共用一条版本线和一个标签 `vX.Y.Z`（规则见 `docs/guides/ci-release.md`「版本规则」）；有手机端改动的版本，在「手机与平板」小节里写，其余写在「桌面 / 服务器」下。2026-10-10 之前手机端曾单独编号（1.0.0、1.1.0），内容并入对应的 0.2.5、0.2.6。
 
+## 0.11.1（未发布）
+
+### 桌面 / 服务器
+
+- 修复：浏览器节点的 guest session 默认拒绝站点权限请求与权限检查（摄像头、麦克风、定位、通知等），只放行往剪贴板写入；此前 Electron 默认批准且 guest 里无提示（#647）。
+
 ## 0.11.0（2026-10-30）
 
 版本统一：Armadra、armadra-cloud、armadra-agent 同为 0.11.0。随包 `@armadra/agent` 0.11.0 与平台协议包 0.11.0。部署 SaaS 时先上 web 0.11，再打开 armadra-cloud 的 CSP；控制面只给 0.11.0 及以上的 core 签只带 role 的断言。
