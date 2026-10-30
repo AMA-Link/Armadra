@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { DatabaseSync } from "node:sqlite";
 
+import { cloudContract } from "@armadra/platform-protocol/cloud-api";
 import { describe, expect, it } from "vitest";
 
 import type { OutboundRequest } from "../../sources/http-client";
@@ -11,7 +12,13 @@ import {
   type TrustedDeviceRow,
   TrustedDeviceStore,
 } from "./devices";
-import { backoffMs, MAX_ATTEMPTS, TrustReporter } from "./trust-report";
+import {
+  backoffMs,
+  MAX_ATTEMPTS,
+  TrustReporter,
+  trustRequestBody,
+  trustResolveBody,
+} from "./trust-report";
 
 const ISSUER = "https://cloud.test";
 let clock = 1_000_000;
@@ -88,6 +95,64 @@ describe("TrustReporter", () => {
       expiresAtMs: clock + 30 * 60_000,
     });
     expect(JSON.stringify(call.body)).not.toMatch(/sas/i);
+  });
+
+  it("请求体合协议包契约 sources.trustRequest / trustResolve 的入参 schema", async () => {
+    const h = harness([
+      { status: 200, body: { requestId: "r1", status: "pending" } },
+      { status: 200, body: {} },
+    ]);
+    h.reporter.handle(pending());
+    await h.reporter.idle();
+    h.rows.set("p1", "trusted");
+    h.reporter.handle({ type: "devices.changed", deviceId: "local-d1" });
+    await h.reporter.idle();
+    const request = cloudContract.sources.trustRequest["~orpc"].inputSchema!;
+    const resolve = cloudContract.sources.trustResolve["~orpc"].inputSchema!;
+    expect(request.parse(h.calls[0]!.body)).toEqual(h.calls[0]!.body);
+    expect(
+      resolve.parse({ pendingId: "p1", ...(h.calls[1]!.body as object) }),
+    ).toEqual({ pendingId: "p1", result: "trusted" });
+  });
+
+  it("不合 schema 的请求体不发：pendingId 超长、云端设备号超长", async () => {
+    for (const over of [
+      { pendingId: "p".repeat(129) },
+      { issuerDeviceId: "d".repeat(65) },
+    ]) {
+      const h = harness([]);
+      h.rows.set(over.pendingId ?? "p1", "pending");
+      h.reporter.handle(pending(over));
+      await h.reporter.idle();
+      // 没登记过：之后收尾也不发 resolve。
+      h.rows.set(over.pendingId ?? "p1", "trusted");
+      h.reporter.handle({ type: "devices.changed", deviceId: "local-d1" });
+      await h.reporter.idle();
+      expect(h.calls).toHaveLength(0);
+    }
+    expect(
+      trustRequestBody({
+        pendingId: "p1",
+        accountId: "",
+        deviceId: "d",
+        expiresAtMs: 1,
+      }),
+    ).toBeNull();
+    expect(trustResolveBody("", "trusted")).toBeNull();
+    expect(trustResolveBody("p1", "expired")).toEqual({ result: "expired" });
+  });
+
+  it("答复按出参 schema 读：读不出状态时按已登记，照常收尾", async () => {
+    const h = harness([
+      { status: 200, body: { status: "weird" } },
+      { status: 200 },
+    ]);
+    h.reporter.handle(pending());
+    await h.reporter.idle();
+    h.rows.set("p1", "trusted");
+    h.reporter.handle({ type: "devices.changed", deviceId: "local-d1" });
+    await h.reporter.idle();
+    expect(h.calls).toHaveLength(2);
   });
 
   it("到期时间不超过 24 小时", async () => {

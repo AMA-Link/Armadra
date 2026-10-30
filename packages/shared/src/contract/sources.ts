@@ -253,8 +253,9 @@ export const cloudInviteInputSchema = z.object({
 
 /**
  * 待信任的新设备（cloud-api §31 `trust.list`）；没有校验码。`pendingId` 是主机 core 上这条待确认
- * 设备的号（`devices.approve` 的入参，不是 `requestId`）：协议包 0.10.0 的 `trustRequest` 没有它，
- * 云端 0.11 起可选下发（AMA-Link/armadra-cloud#126）；协议包带上它后改回同一对象。
+ * 设备的号（`devices.approve` 的入参，不是 `requestId`），云端 0.11 起可选下发（协议包 0.11.0 的
+ * `trustRequestSchema` 已带上，AMA-Link/armadra-cloud#126）。core 对页面的形状比协议宽：`email` 为空
+ * 时给空串、`device.platform` 不限枚举（`RemoteClient.trustRequests` 逐字段读），所以不直接复用。
  */
 export const cloudTrustRequestSchema = z.object({
   requestId: z.string(),

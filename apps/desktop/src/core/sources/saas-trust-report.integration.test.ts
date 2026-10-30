@@ -1,4 +1,8 @@
 import { join } from "node:path";
+import {
+  cloudContract,
+  trustRequestSchema,
+} from "@armadra/platform-protocol/cloud-api";
 import { describe, expect, it } from "vitest";
 
 import { openFreshDatabase } from "../db/fresh.fixture";
@@ -29,9 +33,11 @@ import { SourcesStore } from "./store";
  * 对着真实的 Armadra 云控制面（Go）验证 core 待信任上报器（契约 §31）发出的请求体被
  * 真实服务端接受：`sources.trustRequest`（含 `pendingId`）与 `sources.trustResolve`
  * （`trusted` / `expired`）。上报器吞掉所有失败，所以这里记下每次答复的状态码逐条核对，
- * 再用批准人的 `trust.list` 看云端的状态。
+ * 再用批准人的 `trust.list` 看云端的状态。发出的请求体、云端的答复与 `trust.list` 的行都按
+ * 协议包 0.11.0 的 schema 核对（Issue #512）。
  *
- * 默认跳过；`tools/probes/saas-device-register.mjs` 起好控制面并设下面的环境变量才跑：
+ * 默认跳过（CI 拉不到私有的 armadra-cloud）；`tools/probes/saas-device-register.mjs` 在找到
+ * armadra-cloud 检出时（见 `tools/probes/cloud-source.mjs`）起好控制面并设下面的环境变量才跑：
  * `SAAS_CLOUD_BASE`、`SAAS_APPROVER_TOKEN`、`SAAS_APPROVER_PASSWORD`、
  * `SAAS_MEMBER_ACCOUNT`、`SAAS_MEMBER_DEVICE`（团队成员 B 的账号与云端设备标识）。
  * 云端要 0.11.0 起才有这两个端点；登记时的 core 版本报 0.11.0。
@@ -62,7 +68,11 @@ async function call(method: string, path: string, body?: unknown) {
 async function listed() {
   const answer = await call("GET", "/v1/trust-requests");
   expect(answer.status).toBe(200);
-  return answer.body.requests as Record<string, unknown>[];
+  const requests = answer.body.requests as Record<string, unknown>[];
+  // 云端的行合协议包的 trustRequestSchema（0.11.0 起带 pendingId）。
+  for (const row of requests)
+    expect(trustRequestSchema.parse(row)).toEqual(row);
+  return requests;
 }
 
 describe.skipIf(base === undefined || memberDevice === "")(
@@ -175,7 +185,12 @@ describe.skipIf(base === undefined || memberDevice === "")(
         expect(await listed()).toEqual([]);
 
         // 上报器接真实传输与真实源 JWS；记下每次的答复状态。
-        const sent: Array<{ path: string; status: number; body: unknown }> = [];
+        const sent: Array<{
+          path: string;
+          status: number;
+          request: unknown;
+          body: unknown;
+        }> = [];
         const rows = new Map<string, DeviceStatus>();
         const reporter = new TrustReporter({
           transport: async (request: OutboundRequest) => {
@@ -183,6 +198,7 @@ describe.skipIf(base === undefined || memberDevice === "")(
             sent.push({
               path: new URL(request.url).pathname,
               status: answer.status,
+              request: request.body,
               body: answer.body,
             });
             return answer;
@@ -257,6 +273,20 @@ describe.skipIf(base === undefined || memberDevice === "")(
         });
         expect(await listed()).toEqual([]);
         expect(sent.every((one) => one.status === 200)).toBe(true);
+        // 每个请求体都合契约的入参，trustRequest 的答复合出参。
+        const procedures = cloudContract.sources;
+        for (const one of sent) {
+          const resolve = /\/trust-requests\/([^/]+)\/resolve$/.exec(one.path);
+          if (resolve === null) {
+            procedures.trustRequest["~orpc"].inputSchema!.parse(one.request);
+            procedures.trustRequest["~orpc"].outputSchema!.parse(one.body);
+          } else {
+            procedures.trustResolve["~orpc"].inputSchema!.parse({
+              pendingId: decodeURIComponent(resolve[1]!),
+              ...(one.request as object),
+            });
+          }
+        }
       } finally {
         for (const cleanup of cleanups) cleanup();
         opened.close();
