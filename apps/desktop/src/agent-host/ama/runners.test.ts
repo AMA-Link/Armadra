@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import type {
   HostApi,
   HostRunner,
+  RunnerDoneEvent,
   SubagentEvent,
   SubagentRunRequest,
 } from "@armadra/agent/host";
@@ -13,6 +14,7 @@ import {
   canvasMode,
   canvasRunner,
   provideRunners,
+  RUNNER_DONE_EVENT,
   resultKeyFor,
   taskKey,
 } from "./runners";
@@ -407,5 +409,137 @@ describe("the canvas runners", () => {
     expect(() =>
       provideRunners({ ...api, runners: undefined } as unknown as HostApi)(),
     ).not.toThrow();
+  });
+});
+
+describe("runner_done (host-api 1.1 runners.onDone)", () => {
+  function doneEvent(
+    overrides: Partial<RunnerDoneEvent> = {},
+  ): RunnerDoneEvent {
+    return {
+      runner: "claude",
+      taskId: "t1",
+      sessionId: "node-1",
+      round: 1,
+      status: "aborted",
+      isError: true,
+      error: "stopped",
+      startedAt: 1_000,
+      endedAt: 3_000,
+      durationMs: 2_000,
+      ...overrides,
+    };
+  }
+
+  function amaWith(onDone: unknown) {
+    const provided: HostRunner[] = [];
+    let session = "sess-1";
+    const api = {
+      env: { ARMADRA_NODE_ID: "lead-node" },
+      runners: {
+        provide: (runner: HostRunner) => {
+          provided.push(runner);
+          return () => undefined;
+        },
+        ...(onDone === undefined ? {} : { onDone }),
+      },
+      session: { id: () => session },
+      ui: { setStatus: vi.fn() },
+      log: vi.fn(),
+    } as unknown as HostApi;
+    return {
+      api,
+      provided,
+      moveSession: (next: string) => {
+        session = next;
+      },
+    };
+  }
+
+  it("subscribes on a new ama and reports each round under the board's task key", async () => {
+    let handler: ((event: RunnerDoneEvent) => void) | undefined;
+    const unsubscribed = vi.fn();
+    const onDone = vi.fn((next: (event: RunnerDoneEvent) => void) => {
+      handler = next;
+      return unsubscribed;
+    });
+    const ama = amaWith(onDone);
+    const reported: Record<string, JsonValue>[] = [];
+    const core = scriptedCore((call) =>
+      call.verb === "open-agent" ? ok({ id: "node-1" }) : ok({}),
+    );
+    const release = provideRunners(ama.api, {
+      control: core.control,
+      report: async (payload) => {
+        reported.push(payload);
+      },
+    });
+    expect(onDone).toHaveBeenCalledTimes(1);
+    const claude = ama.provided.find((runner) => runner.id === "claude");
+    await claude?.start(request());
+    // The session moved on after start: the key is the one start used.
+    ama.moveSession("sess-2");
+    handler?.(doneEvent());
+    expect(reported).toEqual([
+      {
+        hookEventName: RUNNER_DONE_EVENT,
+        provider: "ama",
+        sessionId: "sess-2",
+        taskId: taskKey("sess-1", "t1"),
+        round: 1,
+        status: "aborted",
+        isError: true,
+        endedAt: 3_000,
+      },
+    ]);
+    expect(JSON.stringify(reported)).not.toContain("stopped");
+
+    // A handle it never started: the key falls back to session + task id.
+    handler?.(doneEvent({ sessionId: "node-9", taskId: "t2", round: 2 }));
+    expect(reported.at(-1)).toMatchObject({
+      taskId: taskKey("sess-2", "t2"),
+      round: 2,
+    });
+    // Not one of this adapter's runners, or no way to name the task: nothing.
+    handler?.(doneEvent({ runner: "general" }));
+    handler?.(doneEvent({ sessionId: "node-9", taskId: undefined }));
+    expect(reported).toHaveLength(2);
+
+    release();
+    expect(unsubscribed).toHaveBeenCalledTimes(1);
+    handler?.(doneEvent());
+    expect(reported).toHaveLength(2);
+  });
+
+  it("subscribes nothing on an older ama without onDone", async () => {
+    const ama = amaWith(undefined);
+    const report = vi.fn(async () => undefined);
+    const core = scriptedCore(() => ok({ id: "node-1" }));
+    const release = provideRunners(ama.api, { control: core.control, report });
+    expect(ama.provided.map((runner) => runner.id)).toEqual([
+      ...BUILTIN_RUNNER_IDS,
+    ]);
+    expect("onDone" in (ama.api.runners ?? {})).toBe(false);
+    const claude = ama.provided.find((runner) => runner.id === "claude");
+    const handle = await claude?.start(request());
+    expect(handle?.id).toBe("node-1");
+    expect(() => release()).not.toThrow();
+    expect(report).not.toHaveBeenCalled();
+    expect(ama.api.log).not.toHaveBeenCalled();
+  });
+
+  it("survives an onDone that throws when subscribing", () => {
+    const ama = amaWith(() => {
+      throw new Error("boom");
+    });
+    const core = scriptedCore(() => ok({}));
+    expect(() =>
+      provideRunners(ama.api, { control: core.control })(),
+    ).not.toThrow();
+    expect(ama.api.log).toHaveBeenCalledWith(
+      "warn",
+      "could not subscribe to runner completions",
+      expect.any(Error),
+    );
   });
 });
