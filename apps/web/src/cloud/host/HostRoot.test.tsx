@@ -10,7 +10,7 @@ import { HostRoot } from "./HostRoot";
 
 /**
  * `/h/` 的页面（设计 saas-host-open §2.1、§2.5）：进去之前整页状态卡，进去之后画布加顶栏，
- * 掉线、撤销盖一层，登出整页「已登出」。
+ * 掉线、撤销盖一层，登出整页「已登出」，访客的访问被收回整页「访问已被收回」。
  */
 
 afterEach(cleanup);
@@ -127,7 +127,7 @@ describe("控制台 /h/ 页面", () => {
     expect(screen.getByText("已登出")).toBeTruthy();
   });
 
-  it("访客（分享链接）：没有主机顶栏；访问被收回盖一层，没有回主机列表", () => {
+  it("访客（分享链接）：没有主机顶栏；访问被收回是终态，整页状态卡、卸下画布，没有回主机列表", () => {
     const { host, set } = fakeHost(
       { kind: "connecting" },
       {
@@ -148,6 +148,9 @@ describe("控制台 /h/ 页面", () => {
     act(() => set({ kind: "failed", code: "access_revoked" }));
     expect(screen.getByText("访问已被收回")).toBeTruthy();
     expect(screen.queryByRole("link", { name: "回到主机列表" })).toBeNull();
+    // 不是盖层：画布（与它的「已断开」之类）不再留在页面里。
+    expect(screen.queryByTestId("app")).toBeNull();
+    expect(document.querySelector('[data-slot="host-cover"]')).toBeNull();
   });
 
   it("是主人却不是本机 owner：顶栏提示与修正办法", () => {

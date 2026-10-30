@@ -21,7 +21,8 @@ import { FixCommand } from "./FixCommand";
 /**
  * 控制台的 `/h/<hostId>`（设计 saas-host-open §2.1）：进主机之前是控制台公开页同款的居中
  * 卡片（连接中、离线、失败）；进去之后渲染画布（`children`），顶上一条主机名、「控制台」与
- * 「登出」。进去之后的掉线、登出、Cookie 过期盖一层状态卡，画布不卸载。
+ * 「登出」。进去之后的掉线、Cookie 过期盖一层状态卡，画布不卸载；登出、访问被收回是终态，
+ * 整页状态卡。
  */
 
 function useHost(host: ConsoleHost) {
@@ -233,8 +234,13 @@ export function HostRoot({
     return () => document.removeEventListener("visibilitychange", retry);
   }, [view, host]);
 
-  // 没进去过、或已经登出（会话没了，画布与它的对话框都不该再留着）：整页状态卡。
-  if (!entered || view.kind === "signedOut")
+  // 没进去过、已经登出、或访客的访问被收回（会话没了、记录作废、路由已卸，回不去）：
+  // 整页状态卡，画布与它的对话框都不该再留着。其余掉线可恢复：画布不卸，盖一层。
+  if (
+    !entered ||
+    view.kind === "signedOut" ||
+    (view.kind === "failed" && view.code === HOST_FAILURE.accessRevoked)
+  )
     return <StateCard host={host} view={view} />;
   const covered = view.kind !== "entered";
   return (

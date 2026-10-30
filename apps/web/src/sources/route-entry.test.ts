@@ -306,4 +306,29 @@ describe("经中继装成本机源：端到端通道关了之后", () => {
     expect(world.provider.getAccess).toHaveBeenCalledTimes(2);
     expect(opened).toEqual(["c1", "c3"]);
   });
+
+  it("卸下之后（访问被收回、登出）：流的重连、手动重连、401 都不再取访问或续期", async () => {
+    const world = await setup();
+    await stream();
+    // 中继在收回时关掉隧道，随后这一路被卸下。
+    world.channel.close();
+    world.entered.dispose();
+    world.clock.at += CHANNEL_RETRY_MS;
+    await expect(stream()).resolves.toBe("closed");
+    await expect(reconnectLocalTransport()).resolves.toBe(false);
+    await expect(world.entered.recover()).resolves.toBe(false);
+    await expect(localSource.fetch(`${RELAY_B}/api/x`)).rejects.toThrow();
+    expect(world.provider.getAccess).not.toHaveBeenCalled();
+    expect(world.provider.refresh).not.toHaveBeenCalled();
+  });
+
+  it("卸下时通道还开着：之后 core 答 401 也不再续期", async () => {
+    const world = await setup();
+    world.entered.dispose();
+    refusals = 1;
+    const answer = await localSource.fetch(`${RELAY_B}/api/x`);
+    expect(answer.status).toBe(401);
+    expect(world.provider.refresh).not.toHaveBeenCalled();
+    expect(world.provider.getAccess).not.toHaveBeenCalled();
+  });
 });

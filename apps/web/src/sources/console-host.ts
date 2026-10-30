@@ -720,13 +720,15 @@ export function createConsoleHost(options: ConsoleHostOptions): ConsoleHost {
         }))
     )();
     stopGuest = relay.subscribe(() => {
-      // 进去之后访客的访问被收回（链接被撤、到期）：托管中继已清掉那份记录。
+      // 进去之后访客的访问被收回（链接被撤、到期）：托管中继已清掉那份记录（`onRevoked`）。
+      // 盖上「访问已被收回」，再卸下访客路由与事件流：已撤销的令牌不能再去取断言。
       if (
         guestMode &&
         view.kind === "entered" &&
         relay.status.state === "unauthorized"
       ) {
         setView({ kind: "failed", code: HOST_FAILURE.accessRevoked });
+        relay.close();
         return;
       }
       publish();
