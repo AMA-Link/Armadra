@@ -9,7 +9,14 @@ import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import {
+  afterAll,
+  beforeAll,
+  describe,
+  expect,
+  it,
+  onTestFailed,
+} from "vitest";
 
 import { shellArgs, withWorkspace } from "../args";
 import { render } from "../render";
@@ -169,6 +176,44 @@ afterAll(async () => {
  */
 const LOOKS_ONLY = new Set(["read", "capture"]);
 
+/**
+ * How long each step of the running test took. On Windows CI the whole first
+ * test once ran past its 110 s budget without any single CDP command stalling
+ * (no "did not answer in time", so no wire trace either) — #630. A failed test
+ * prints this list, so the next occurrence says which steps ate the time and
+ * which one was still in flight, instead of only "Test timed out".
+ */
+const steps: Array<{ step: string; started: number; ms?: number }> = [];
+
+function timed<T>(step: string, work: () => Promise<T>): Promise<T> {
+  const entry: { step: string; started: number; ms?: number } = {
+    step,
+    started: Date.now(),
+  };
+  steps.push(entry);
+  return work().finally(() => {
+    entry.ms = Date.now() - entry.started;
+  });
+}
+
+/** Start a fresh step log for this test and print it if the test fails. */
+function logSteps(): void {
+  steps.length = 0;
+  onTestFailed(() => {
+    const now = Date.now();
+    // eslint-disable-next-line no-console
+    console.error(
+      "[live verbs] steps (ms):\n" +
+        steps
+          .map(
+            (entry) =>
+              `  ${entry.step} ${entry.ms ?? `${now - entry.started} (still running)`}`,
+          )
+          .join("\n"),
+    );
+  });
+}
+
 async function run(
   verb: string,
   source: Record<string, unknown> = {},
@@ -176,7 +221,9 @@ async function run(
 ): Promise<string> {
   const payload = withWorkspace(shellArgs(verb, source), workspace);
   try {
-    const result = await backend!.drive("live-verbs", verb, payload);
+    const result = await timed(verb, () =>
+      backend!.drive("live-verbs", verb, payload),
+    );
     return render(verb, source, result);
   } catch (error) {
     if (/did not answer in time/.test(String(error))) {
@@ -217,7 +264,8 @@ describe.skipIf(found.path === undefined)(
   "every verb against a real page",
   () => {
     it("drives the fixture end to end", { timeout: 110_000 }, async () => {
-      await backend!.ensure("live-verbs", `${base}/`);
+      logSteps();
+      await timed("ensure", () => backend!.ensure("live-verbs", `${base}/`));
       await run("navigate", { url: `${base}/` });
 
       // Snapshot: roles, refs, iframes (same-origin and cross-origin), and no
@@ -417,6 +465,7 @@ describe.skipIf(found.path === undefined)(
       "shadow roots, a multiple select, and a stitched full page",
       { timeout: 90_000 },
       async () => {
+        logSteps();
         await run("navigate", { url: `${base}/deep` });
 
         // `>>>` reaches into an open shadow root; a closed one is named as such.
