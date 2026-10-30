@@ -606,7 +606,48 @@ function allowed(
 const WIDENED_OUTPUT: Readonly<Record<string, readonly string[]>> = {
   "links.get": ["ownerName"],
   "auth.deviceGet": ["ipPrefix"],
+  "sources.get": ["myRole"],
+  "sources.update": ["myRole"],
 };
+
+/** 同上，字段在出参的列表项里：`[列表键, 字段]`（升级后删）。 */
+const WIDENED_ITEMS: Readonly<
+  Record<string, readonly [string, readonly string[]]>
+> = {
+  "sources.list": ["sources", ["myRole"]],
+  "me.sources": ["sources", ["myRole"]],
+};
+
+/** 把处理器给的放宽字段补回校验后的出参（校验把它们当未知键剥掉了）。 */
+function widen(key: string, output: unknown, checked: unknown): unknown {
+  if (typeof output !== "object" || output === null) return checked;
+  const pick = (from: object, fields: readonly string[]) => {
+    const extra: Record<string, unknown> = {};
+    for (const field of fields)
+      if (field in from)
+        extra[field] = (from as Record<string, unknown>)[field];
+    return extra;
+  };
+  let result = checked;
+  const added = WIDENED_OUTPUT[key];
+  if (added !== undefined)
+    result = { ...(result as object), ...pick(output, added) };
+  const items = WIDENED_ITEMS[key];
+  if (items !== undefined) {
+    const [list, fields] = items;
+    const raw = (output as Record<string, unknown>)[list];
+    const kept = (result as Record<string, unknown>)[list];
+    if (Array.isArray(raw) && Array.isArray(kept))
+      result = {
+        ...(result as object),
+        [list]: kept.map((item: unknown, index) => ({
+          ...(item as object),
+          ...pick(raw[index] as object, fields),
+        })),
+      };
+  }
+  return result;
+}
 
 async function check(
   schema: unknown,
@@ -722,15 +763,7 @@ export function createMockApi(options: MockOptions = {}): MockApi {
               .rejectNewConnections,
           };
         // 协议包 0.10.0 还没有的可选出参字段（0.11.0 起有）：校验会剥掉，补回处理器给的值。
-        const added = WIDENED_OUTPUT[entry.key];
-        if (added !== undefined && typeof output === "object") {
-          const extra: Record<string, unknown> = {};
-          for (const field of added)
-            if (field in (output as object))
-              extra[field] = (output as Record<string, unknown>)[field];
-          return { ...(checked as object), ...extra };
-        }
-        return checked;
+        return widen(entry.key, output, checked);
       };
     }
     return root as unknown as CloudClient;

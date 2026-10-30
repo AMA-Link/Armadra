@@ -160,7 +160,11 @@ export function OverviewPage({
           ) : rows.length === 0 ? (
             <EmptyState title={t("cloud.hosts.empty")} />
           ) : (
-            <HostTable space={space} rows={rows.slice(0, PREVIEW_ROWS)} />
+            <HostTable
+              space={space}
+              rows={rows.slice(0, PREVIEW_ROWS)}
+              viewerRole={role}
+            />
           )}
         </section>
       ) : null}

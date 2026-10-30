@@ -21,8 +21,14 @@ import { DataList, type DataColumn } from "../ui/DataList";
 import { PageState } from "../ui/PageState";
 import { RelativeTime } from "../ui/RelativeTime";
 import { toCloudError } from "../api/errors";
+import type { TeamRole } from "../shell/model";
 import { HostMenu, HostStatus } from "./HostActions";
-import { useHosts, type HostFilters, type HostRow } from "./data";
+import {
+  myAccessLabel,
+  useHosts,
+  type HostFilters,
+  type HostRow,
+} from "./data";
 
 const SEARCH_MAX = 128;
 const SEARCH_DEBOUNCE_MS = 250;
@@ -64,9 +70,12 @@ export function HostTable({
   rows,
   revoked = false,
   manager = false,
+  viewerRole,
 }: {
   space: CloudSpace;
   rows: readonly HostRow[];
+  /** 本人在团队里的角色：member / guest 的所有者第二行后面跟「我的权限」（§3.3.4）。 */
+  viewerRole?: TeamRole;
   /** 团队 owner / admin：重命名与撤销对全部主机可用，不只是自己登记的。 */
   manager?: boolean;
   /** 这批都是已撤销的（`status=revoked` 的筛选结果）。 */
@@ -96,10 +105,18 @@ export function HostTable({
               id: "owner",
               header: t("cloud.hosts.owner"),
               role: "sub" as const,
-              cell: (row: HostRow) =>
-                row.ownerName ? (
+              // 第二行「所有者 · 我的权限」（§3.3.4），后者只对 member / guest；服务端没报权限时只有所有者。
+              cell: (row: HostRow) => {
+                const access = myAccessLabel(t, row, viewerRole);
+                if (!row.ownerName) return access;
+                return access === null ? (
                   <span translate="no">{row.ownerName}</span>
-                ) : null,
+                ) : (
+                  <span>
+                    <span translate="no">{row.ownerName}</span> · {access}
+                  </span>
+                );
+              },
             },
           ]
         : []),
@@ -136,7 +153,7 @@ export function HostTable({
           ),
       },
     ],
-    [t, base, space.kind, revoked],
+    [t, base, space.kind, revoked, viewerRole],
   );
 
   return (
@@ -171,11 +188,14 @@ export function HostDirectory({
   space,
   match,
   manager = false,
+  viewerRole,
   emptyAction,
 }: {
   space: CloudSpace;
   match: RouteMatch;
   manager?: boolean;
+  /** 本人在团队里的角色（团队空间）；个人空间缺省。 */
+  viewerRole?: TeamRole;
   /** 空目录里的主动作（「登记主机」）。 */
   emptyAction?: React.ReactNode;
 }) {
@@ -242,6 +262,7 @@ export function HostDirectory({
           rows={rows}
           revoked={filters.status === "revoked"}
           manager={manager}
+          viewerRole={viewerRole}
         />
         {hosts.hasNextPage ? (
           <Button
