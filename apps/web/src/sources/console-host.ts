@@ -38,6 +38,7 @@ import {
   type RelayedStatus,
   createRelayedEntry,
 } from "./relayed-entry";
+import { announceGrantSynced } from "./grant-synced";
 import { setRelayedPage } from "./relayed-page";
 import {
   type ReloginSchedulerOptions,
@@ -484,6 +485,8 @@ export function createConsoleHost(options: ConsoleHostOptions): ConsoleHost {
         await provider.relogin(hostId);
         await identity.restore(true);
         reloginLimited = 0;
+        // 授予已按新断言同步：放宽的范围不会结束任何订阅，让页面重取列表。
+        announceGrantSynced();
       } catch (error) {
         const code = codeOf(error);
         if (code === "rate_limited") {
@@ -720,13 +723,15 @@ export function createConsoleHost(options: ConsoleHostOptions): ConsoleHost {
         }))
     )();
     stopGuest = relay.subscribe(() => {
-      // 进去之后访客的访问被收回（链接被撤、到期）：托管中继已清掉那份记录。
+      // 进去之后访客的访问被收回（链接被撤、到期）：托管中继已清掉那份记录（`onRevoked`）。
+      // 盖上「访问已被收回」，再卸下访客路由与事件流：已撤销的令牌不能再去取断言。
       if (
         guestMode &&
         view.kind === "entered" &&
         relay.status.state === "unauthorized"
       ) {
         setView({ kind: "failed", code: HOST_FAILURE.accessRevoked });
+        relay.close();
         return;
       }
       publish();
