@@ -29,7 +29,7 @@
     },
     "linux-x64": {
       "recordedAt": "2026-10-03",
-      "machine": "GitHub Actions ubuntu-22.04 托管运行器（x64），Node 22，夜间 B 档 Linux 作业；取自 main 7ec5992f 的 nightly 37154286321 产物 e2e-tier-b-linux/server-perf（只有这一次，不是三次中位数）；rssPeakMiB / rssSteadyMiB 于 2026-10-07 按 nightly 37391774494、37541900633、37545888094 三次的中位数重录（契约内核与 E3 各域的 zod schema 在启动时全量构建，见 docs/status/server-performance-baseline.md §3.2）；2026-10-12 随 CI 与服务器壳统一到 Node 24 再按 nightly 38164305806、38167859424、38173829181 三次的中位数重录一次（同一份代码在 Node 22 上稳态 266.9，Node 24 上 334–349，见 §3.3）",
+      "machine": "GitHub Actions ubuntu-22.04 托管运行器（x64），Node 22，夜间 B 档 Linux 作业；取自 main 7ec5992f 的 nightly 37154286321 产物 e2e-tier-b-linux/server-perf（只有这一次，不是三次中位数）；rssPeakMiB / rssSteadyMiB 于 2026-10-07 按 nightly 37391774494、37541900633、37545888094 三次的中位数重录（契约内核与 E3 各域的 zod schema 在启动时全量构建，见 docs/status/server-performance-baseline.md §3.2）；2026-10-12 随 CI 与服务器壳统一到 Node 24 再按 nightly 38164305806、38167859424、38173829181 三次的中位数重录一次（同一份代码在 Node 22 上稳态 266.9，Node 24 上 334–349，见 §3.3）；closeStallMaxMs / sessionCreateP95Ms 于 2026-10-30 按定时夜间 40592923326、40780780654、40967998802 三次的中位数重录（见 §3.4）",
       "options": {
         "sessions": 30,
         "subscribers": 6,
@@ -38,12 +38,12 @@
         "burstKib": 1024
       },
       "metrics": {
-        "sessionCreateP95Ms": 35.9,
+        "sessionCreateP95Ms": 46.6,
         "fanoutP50Ms": 2.6,
         "fanoutP95Ms": 4.8,
         "terminalThroughputMiBs": 24.3,
         "terminalBurstP95Ms": 1232.9,
-        "closeStallMaxMs": 163.8,
+        "closeStallMaxMs": 219.9,
         "realtimeBulkMs": 417.2,
         "realtimeColdSyncMs": 145.4,
         "realtimeMaterializeMs": 113.6,
