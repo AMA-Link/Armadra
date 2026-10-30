@@ -5,7 +5,8 @@
 // 深链 `armadra://pair?host=127.0.0.1%3A<端口>&ticket=…&fp=…` 交给模拟器里的 UI 用例：
 //
 //   * iOS：`xcodebuild test` 跑 `AppUITests`（XCUITest），模拟器与宿主共用回环；
-//     链接经 `TEST_RUNNER_ARMADRA_PAIR_LINK` 交进去。
+//     用例要用链接时才经 `TEST_RUNNER_ARMADRA_PAIR_LINK_SOURCE`（回环上的一个地址）
+//     向探针现铸一张——票只有两分钟，而 `xcodebuild` 起到用例点「连接」要一到三分钟。
 //   * Android：`adb reverse` 把模拟器的回环端口接到宿主，`connectedDebugAndroidTest`
 //     跑 `ConnectFlowTest`（插桩），链接经插桩参数 `armadraPairLink` 交进去。
 //
@@ -49,7 +50,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { homedir } from "node:os";
-import { request as httpRequest } from "node:http";
+import { createServer, request as httpRequest } from "node:http";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { isolatedEnv, probeHome } from "./probe-home.mjs";
@@ -301,7 +302,42 @@ function collectCrashReports(since) {
   return copied;
 }
 
-/** 配对票只有两分钟：先把要编译的都编完、跑完「没有 Gateway」那条，再现铸一张。 */
+/**
+ * 用例要用链接时才铸票：回环上的一个地址，每次 GET 现铸一张、正文是深链。
+ * 票只有两分钟，而 `xcodebuild test-without-building` 从启动到用例点「连接」
+ * 慢时超过两分钟（nightly 40780780654：铸票 22:44:51，点「连接」22:47:34，
+ * 页面答「配对链接已失效」）。
+ */
+async function mintOnDemand(mint) {
+  const server = createServer((request, response) => {
+    if (request.method !== "GET" || request.url !== "/pair-link") {
+      response.writeHead(404).end();
+      return;
+    }
+    mint().then(
+      (link) => {
+        response.writeHead(200, { "content-type": "text/plain" }).end(link);
+      },
+      (error) => {
+        response
+          .writeHead(500, { "content-type": "text/plain" })
+          .end(String(error));
+      },
+    );
+  });
+  await new Promise((done) => server.listen(0, "127.0.0.1", done));
+  const { port } = server.address();
+  return {
+    url: `http://127.0.0.1:${port}/pair-link`,
+    close: () =>
+      new Promise((done) => {
+        server.close(() => done());
+        server.closeAllConnections();
+      }),
+  };
+}
+
+/** 先把要编译的都编完、跑完「没有 Gateway」那条，再让用例在用到时现铸配对票。 */
 async function ios(mint) {
   const target = simulator(device);
   step("iOS 模拟器", target);
@@ -335,7 +371,7 @@ async function ios(mint) {
     `-only-testing:${UI_TEST}/test1WithoutAGatewayTheAppOpensOnTheConnectScreen`,
   ]);
   check(first === 0, "XCUITest：没有 Gateway 时是连接页", `exit ${first}`);
-  const link = await mint();
+  const source = await mintOnDemand(mint);
   const second = await run(
     "xcodebuild-test-2",
     "xcodebuild",
@@ -346,8 +382,13 @@ async function ios(mint) {
       join(output, "AppUITests-2.xcresult"),
       `-only-testing:${UI_TEST}/test2PairsThroughThePinnedGatewayAndOpensTheCanvas`,
     ],
-    { env: { ...process.env, TEST_RUNNER_ARMADRA_PAIR_LINK: link } },
-  );
+    {
+      env: {
+        ...process.env,
+        TEST_RUNNER_ARMADRA_PAIR_LINK_SOURCE: source.url,
+      },
+    },
+  ).finally(() => source.close());
   await stopLog();
   // 事后再从设备上取一遍（`--info`：插件的那几行是 info 级）；流断了时还有这一份。
   await run("simulator-log", "xcrun", [
