@@ -140,6 +140,8 @@ export async function enterRoute(
   let renewing: Promise<boolean> | null = null;
   /** 几条并发的 401 只续一次：刷新密钥是一次性的。 */
   const renewActive = (): Promise<boolean> => {
+    // 卸下之后（登出、访问被收回）：装着的传输还会被流的重连叫到，不再续、不再取断言。
+    if (disposed) return Promise.resolve(false);
     renewing ??= provider
       .refresh(
         descriptor.sourceId,
@@ -195,6 +197,7 @@ export async function enterRoute(
    * 冷却里的直接答 `false`（`force` 不看冷却）。手里的通道可用答 `true`。
    */
   const ensureChannel = async (force = false): Promise<boolean> => {
+    if (disposed) return false;
     if (!channelDown) return true;
     if (renewing === null && reopening === null) {
       if (!force && now() - lastChannelTry < CHANNEL_RETRY_MS) return false;
