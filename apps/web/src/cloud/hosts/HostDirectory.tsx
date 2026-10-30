@@ -22,7 +22,12 @@ import { PageState } from "../ui/PageState";
 import { RelativeTime } from "../ui/RelativeTime";
 import { toCloudError } from "../api/errors";
 import { HostMenu, HostStatus } from "./HostActions";
-import { useHosts, type HostFilters, type HostRow } from "./data";
+import {
+  myAccessLabel,
+  useHosts,
+  type HostFilters,
+  type HostRow,
+} from "./data";
 
 const SEARCH_MAX = 128;
 const SEARCH_DEBOUNCE_MS = 250;
@@ -96,10 +101,18 @@ export function HostTable({
               id: "owner",
               header: t("cloud.hosts.owner"),
               role: "sub" as const,
-              cell: (row: HostRow) =>
-                row.ownerName ? (
+              // 第二行「所有者 · 我的权限」（§3.3.4）；服务端没报权限时只有所有者。
+              cell: (row: HostRow) => {
+                const access = myAccessLabel(t, row);
+                if (!row.ownerName) return access;
+                return access === null ? (
                   <span translate="no">{row.ownerName}</span>
-                ) : null,
+                ) : (
+                  <span>
+                    <span translate="no">{row.ownerName}</span> · {access}
+                  </span>
+                );
+              },
             },
           ]
         : []),
