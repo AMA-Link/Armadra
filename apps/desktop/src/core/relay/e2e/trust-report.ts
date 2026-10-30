@@ -7,13 +7,17 @@
  * `sources.heartbeatHint`。
  *
  * - 上报内容只有 `{ pendingId, accountId, deviceId, expiresAtMs }`；校验码留在端到端
- *   通道里，云端看不到，这里也拿不到。
+ *   通道里，云端看不到，这里也拿不到。请求体按协议包契约 `sources.trustRequest` /
+ *   `sources.trustResolve` 的入参 schema 构造并校验，不合 schema 的不发（云端只会答 400）；
+ *   答复按 `trustRequest` 的出参 schema 读。
  * - 只上报 SaaS 登记（`mode = "saas"`）；个人中转不报。
  * - 网络失败与 5xx / 429 用有界退避重试，不阻塞本地流程（全程在后台，永不抛）；
  *   `rejected`（冷却期）、404、409、403、501 都是正常答复，不重试。
  * - 本地待确认条目换了 id（设备重连）、被批准、被拒、被撤销或过期，都收尾成
  *   `trusted` / `expired`；云端先过期或已拒时答 404 / 409，同样当作正常。
  */
+
+import { cloudContract } from "@armadra/platform-protocol/cloud-api";
 
 import type { Transport } from "../../sources/http-client";
 import type { DeviceEvent, DeviceStatus, TrustedDeviceRow } from "./devices";
@@ -62,6 +66,38 @@ interface Entry {
 }
 
 type Outcome = "done" | "retry" | "stop";
+
+/** 协议包契约里这两个过程的入参与出参 schema（§31）。 */
+const trustRequestInput =
+  cloudContract.sources.trustRequest["~orpc"].inputSchema!;
+const trustRequestOutput =
+  cloudContract.sources.trustRequest["~orpc"].outputSchema!;
+const trustResolveInput =
+  cloudContract.sources.trustResolve["~orpc"].inputSchema!;
+
+type Body = Record<string, unknown>;
+
+/** `trustRequest` 的请求体；不合 schema 答 `null`。 */
+export function trustRequestBody(input: {
+  readonly pendingId: string;
+  readonly accountId: string;
+  readonly deviceId: string;
+  readonly expiresAtMs: number;
+}): Body | null {
+  const parsed = trustRequestInput.safeParse(input);
+  return parsed.success ? parsed.data : null;
+}
+
+/** `trustResolve` 的请求体：`pendingId` 在路径里，体里只有 `result`；不合 schema 答 `null`。 */
+export function trustResolveBody(
+  pendingId: string,
+  result: "trusted" | "expired",
+): Body | null {
+  const parsed = trustResolveInput.safeParse({ pendingId, result });
+  if (!parsed.success) return null;
+  const { pendingId: _path, ...body } = parsed.data;
+  return body;
+}
 
 export function backoffMs(attempt: number): number {
   return Math.min(BACKOFF_CAP_MS, BACKOFF_BASE_MS * 2 ** (attempt - 1));
@@ -140,12 +176,12 @@ export class TrustReporter {
       Math.max(0, expiresAtMs - at),
     );
     this.enqueue(entry, () =>
-      this.send(entry, "request", `/v1/sources/me/trust-requests`, {
-        pendingId: entry.pendingId,
-        accountId: entry.accountId,
-        deviceId: entry.deviceId,
-        expiresAtMs: entry.expiresAtMs,
-      }),
+      this.send(
+        entry,
+        "request",
+        `/v1/sources/me/trust-requests`,
+        trustRequestBody(entry),
+      ),
     );
   }
 
@@ -173,7 +209,7 @@ export class TrustReporter {
         entry,
         "resolve",
         `/v1/sources/me/trust-requests/${encodeURIComponent(entry.pendingId)}/resolve`,
-        { result },
+        trustResolveBody(entry.pendingId, result),
       ),
     ).finally(() => {
       if (this.entries.get(entry.pendingId) === entry)
@@ -193,8 +229,16 @@ export class TrustReporter {
     entry: Entry,
     kind: "request" | "resolve",
     path: string,
-    body: Record<string, unknown>,
+    body: Body | null,
   ): Promise<void> {
+    if (body === null) {
+      // 不合协议的请求体云端只会答 400，不发也不重试；没登记过的条目之后也不必收尾。
+      this.options.log?.warn("待信任上报不合协议，未发送", {
+        issuer: entry.issuer,
+        kind,
+      });
+      return;
+    }
     for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt += 1) {
       if (this.closed) return;
       // 旧条目晚到的重试不得在云端顶掉新条目；没登记过的条目也不必收尾（必然 404）。
@@ -219,7 +263,7 @@ export class TrustReporter {
     entry: Entry,
     kind: "request" | "resolve",
     path: string,
-    body: Record<string, unknown>,
+    body: Body,
   ): Promise<Outcome> {
     if (this.options.modeOf(entry.issuer) !== "saas") return "stop";
     let answer: { status: number; body: unknown };
@@ -239,15 +283,14 @@ export class TrustReporter {
     const { status } = answer;
     if (status >= 200 && status < 300) {
       if (kind === "request") {
-        const state =
-          typeof answer.body === "object" && answer.body !== null
-            ? (answer.body as { status?: unknown }).status
-            : undefined;
+        const parsed = trustRequestOutput.safeParse(answer.body);
+        const state = parsed.success ? parsed.data.status : undefined;
         // 冷却期内答 rejected 是正常情况：云端不再通知，不重试，也不必收尾。
+        // 答复不合 schema（读不出状态）时按已登记，到时照常收尾。
         entry.reported = state !== "rejected";
         this.options.log?.info("新设备待信任已上报", {
           issuer: entry.issuer,
-          status: typeof state === "string" ? state : "unknown",
+          status: state ?? "unknown",
         });
       }
       return "done";

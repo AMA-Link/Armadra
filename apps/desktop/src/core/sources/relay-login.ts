@@ -294,7 +294,8 @@ export function olderThan(a: string, b: string): boolean {
  *
  * - 远程服务答独立的 `source_core_outdated`（armadra-cloud#152，协议包 0.11 起）：直接用它的
  *   `details`，不再查目录；`details` 不全时按这类断言的门槛补 `minVersion`。
- * - 旧服务端仍答 `source_access_denied`（过渡期的兜底）：远程服务目录里这台主机登记的
+ * - 0.11.0 之前的控制面（armadra-cloud#160 之前；自建部署、dev-stack 的 0.10.0 镜像）仍答
+ *   `source_access_denied`，所有环境升到 0.11 前保留这道兜底：远程服务目录里这台主机登记的
  *   `coreVersion` 低于控制面签断言的门槛（团队主机看 `MIN_CORE_VERSION_TEAM_ASSERTION`，
  *   个人空间看 `MIN_CORE_VERSION_ROLE_ONLY_ASSERTION`）就是版本过旧；目录问不到按收回。
  *
