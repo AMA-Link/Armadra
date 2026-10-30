@@ -15,7 +15,10 @@ export function NoWorkspaceAccess() {
       data-slot="no-workspace-access"
       className="absolute inset-0 grid place-items-center"
     >
-      <EmptyState title={t("sharing.noneLeft")} className="flex-none" />
+      <EmptyState
+        title={t("sharing.noneLeft")}
+        className="w-auto min-w-64 flex-none"
+      />
     </div>
   );
 }
