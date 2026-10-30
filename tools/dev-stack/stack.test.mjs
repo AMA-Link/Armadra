@@ -203,9 +203,52 @@ test("平台服务的 compose 依赖与服务表一致，密钥只来自 dev.env
   assert.deepEqual(compose.services["armadra-server-nat"].ports ?? [], []);
 });
 
+test("平台 Go 控制面：镜像与 compatibility.json 一致，先迁移再 serve，连库走 TLS", () => {
+  const { platform } = JSON.parse(
+    readFileSync(join(HERE, "..", "release", "compatibility.json"), "utf8"),
+  );
+  for (const name of ["cloud", "migrate"])
+    assert.equal(compose.services[name].image, platform.images.cloud, name);
+  for (const name of ["relay", "relay-personal"])
+    assert.equal(compose.services[name].image, platform.images.relay, name);
+  // distroless 镜像里没有 node / shell，serve 也不自动迁移：一次性 migrate 跑完 cloud 才起。
+  assert.deepEqual(compose.services.cloud.command, ["serve"]);
+  assert.deepEqual(compose.services.migrate.command, ["migrate"]);
+  assert.deepEqual(compose.services.migrate.profiles, ["platform"]);
+  assert.equal(
+    compose.services.cloud.depends_on.migrate.condition,
+    "service_completed_successfully",
+  );
+  for (const name of ["cloud", "migrate"])
+    assert.match(
+      compose.services[name].environment.ARMADRA_CLOUD_DATABASE_URL,
+      /\?sslmode=require$/,
+      name,
+    );
+  assert.ok(compose.services["pg-tls"]);
+  assert.ok(compose.services["platform-postgres"].command.includes("ssl=on"));
+  assert.equal(
+    compose.services["platform-postgres"].depends_on["pg-tls"].condition,
+    "service_completed_successfully",
+  );
+  // relay 逐字比较令牌的 iss（对外的 issuer），容器内走 cloud:8100 取 JWKS。
+  const relayEnv = compose.services.relay.environment;
+  assert.equal(
+    relayEnv.RELAY_CLOUD_ISSUER,
+    compose.services.cloud.environment.ARMADRA_CLOUD_ISSUER,
+  );
+  assert.match(relayEnv.RELAY_JWKS_URL, /^http:\/\/cloud:8100\//);
+  // saas serve 必填本节点的隧道地址，端口是宿主机上发布的那个。
+  const [relayPort] = compose.services.relay.ports.map(parsePort);
+  assert.equal(
+    relayEnv.RELAY_TUNNEL_URL,
+    `ws://localhost:${relayPort.published}/t/v1`,
+  );
+});
+
 test("ARMADRA_DEV_STACK_CLOUD_SRC：本地构建叠加文件与目录解析", () => {
   const overlay = parseYaml(readFileSync(CLOUD_SRC_FILE, "utf8"));
-  for (const name of ["cloud", "relay", "relay-personal"]) {
+  for (const name of ["cloud", "migrate", "relay", "relay-personal"]) {
     assert.ok(compose.services[name], `${name} is in compose`);
     assert.match(
       overlay.services[name].build.context,
@@ -215,21 +258,15 @@ test("ARMADRA_DEV_STACK_CLOUD_SRC：本地构建叠加文件与目录解析", ()
       overlay.services[name].build.dockerfile,
       /^go\/Dockerfile(\.cloud)?$/,
     );
+    // 叠加文件只换镜像来源：命令、环境、依赖都以基础文件为准。
+    assert.deepEqual(
+      Object.keys(overlay.services[name]).sort(),
+      ["build", "image"],
+      name,
+    );
   }
-  // Go 控制面：先迁移再 serve，连库要 TLS（sslmode=require），relay 用 JWKS 地址取钥。
   assert.equal(overlay.services.cloud.build.dockerfile, "go/Dockerfile.cloud");
-  assert.equal(
-    overlay.services.cloud.depends_on.migrate.condition,
-    "service_completed_successfully",
-  );
-  assert.deepEqual(overlay.services.migrate.command, ["migrate"]);
-  assert.match(
-    overlay.services.cloud.environment.ARMADRA_CLOUD_DATABASE_URL,
-    /\?sslmode=require$/,
-  );
-  assert.ok(overlay.services["pg-tls"]);
-  assert.ok(overlay.services["platform-postgres"].command.includes("ssl=on"));
-  assert.match(overlay.services.relay.environment.RELAY_JWKS_URL, /cloud:8100/);
+  assert.equal(overlay.services.migrate.image, overlay.services.cloud.image);
   const fake = mkdtempSync(join(tmpdir(), "cloud-src-"));
   try {
     mkdirSync(join(fake, "go"), { recursive: true });
