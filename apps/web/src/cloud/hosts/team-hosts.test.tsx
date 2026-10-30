@@ -97,32 +97,54 @@ describe("团队 · 主机目录", () => {
     expect(within(table).queryByText(/无权限|只读|可编辑|可接管/)).toBeNull();
   });
 
-  it("第二行「所有者 · 我的权限」：所有者、无权限（null）、合成后的角色", async () => {
-    mount("/t/rd/hosts", { ...OPTIONS, hostMyRole: true });
+  const secondLines = async () => {
     const table = await screen.findByRole("table", { name: "主机" });
-    const rows = within(table).getAllByRole("row").slice(1);
-    // build-01 是本人的（云端报 driver，显示「所有者」）；mac-studio 没授予覆盖本人（admin）→ null；
-    // dev-box 团队全员可编辑。
-    expect(
-      rows.map((row) => within(row).getAllByRole("cell")[0]!.textContent),
-    ).toEqual([
-      "build-01张三 · 所有者",
-      "mac-studio李四 · 无权限",
-      "dev-box王五 · 可编辑",
-    ]);
-  });
+    return within(table)
+      .getAllByRole("row")
+      .slice(1)
+      .map((row) => within(row).getAllByRole("cell")[0]!.textContent);
+  };
 
-  it("member 看到的权限：自己的是所有者，被授予的是合成后的角色", async () => {
+  it.each(["owner", "admin"] as const)(
+    "%s 视角：服务端报了 myRole 也只有所有者名，不显示权限",
+    async (role) => {
+      mount("/t/rd/hosts", {
+        ...OPTIONS,
+        roles: { rd: role },
+        hostMyRole: true,
+      });
+      expect(await secondLines()).toEqual([
+        "build-01张三",
+        "mac-studio李四",
+        "dev-box王五",
+      ]);
+    },
+  );
+
+  it("member 视角：自己的是所有者，被授予的是合成后的角色", async () => {
     mount("/t/rd/hosts", {
       ...OPTIONS,
       roles: { rd: "member" },
       hostMyRole: true,
     });
-    const table = await screen.findByRole("table", { name: "主机" });
-    const rows = within(table).getAllByRole("row").slice(1);
-    expect(
-      rows.map((row) => within(row).getAllByRole("cell")[0]!.textContent),
-    ).toEqual(["build-01张三 · 所有者", "dev-box王五 · 可编辑"]);
+    expect(await secondLines()).toEqual([
+      "build-01张三 · 所有者",
+      "dev-box王五 · 可编辑",
+    ]);
+  });
+
+  it("guest 视角：被授予的权限跟在所有者后面", async () => {
+    mount("/t/rd/hosts", {
+      ...OPTIONS,
+      roles: { rd: "guest" },
+      hostMyRole: true,
+    });
+    // 样本里 build-01 标着本人登记（`owner: true`），其余两台是访客授予的整台只读。
+    expect(await secondLines()).toEqual([
+      "build-01张三 · 所有者",
+      "mac-studio李四 · 只读",
+      "dev-box王五 · 只读",
+    ]);
   });
 
   it("窄屏同一份列定义画成 Item", async () => {
@@ -316,18 +338,46 @@ describe("团队 · 主机详情", () => {
   });
 
   it.each([
-    ["dev-box", MOCK_HOSTS[2]!.sourceId, "王五", "可编辑"],
-    ["mac-studio", STUDIO, "李四", "无权限"],
-    ["build-01", BUILD, "张三", "所有者"],
-  ])("页头的所有者后面跟我的权限：%s", async (name, id, owner, access) => {
-    mount(`/t/rd/hosts/${id}`, { ...OPTIONS, hostMyRole: true });
-    const title = await h1();
-    expect(title.textContent).toBe(name);
-    const header = title.closest("header")!;
-    expect(within(header).getByText(owner).parentElement!.textContent).toMatch(
-      new RegExp(`^${owner}·${access}·最近在线`),
-    );
-  });
+    ["member", "dev-box", MOCK_HOSTS[2]!.sourceId, "王五", "可编辑"],
+    ["member", "build-01", BUILD, "张三", "所有者"],
+    ["guest", "mac-studio", STUDIO, "李四", "只读"],
+  ] as const)(
+    "页头：%s 看 %s，所有者后面跟我的权限",
+    async (role, name, id, owner, access) => {
+      mount(`/t/rd/hosts/${id}`, {
+        ...OPTIONS,
+        roles: { rd: role },
+        hostMyRole: true,
+      });
+      const title = await h1();
+      expect(title.textContent).toBe(name);
+      const header = title.closest("header")!;
+      expect(
+        within(header).getByText(owner).parentElement!.textContent,
+      ).toMatch(new RegExp(`^${owner}·${access}·最近在线`));
+    },
+  );
+
+  it.each([
+    ["admin", STUDIO, "mac-studio", "李四"],
+    ["owner", MOCK_HOSTS[2]!.sourceId, "dev-box", "王五"],
+    ["admin", BUILD, "build-01", "张三"],
+  ] as const)(
+    "页头：%s 视角只有所有者名（%s）",
+    async (role, id, name, owner) => {
+      mount(`/t/rd/hosts/${id}`, {
+        ...OPTIONS,
+        roles: { rd: role },
+        hostMyRole: true,
+      });
+      const title = await h1();
+      expect(title.textContent).toBe(name);
+      const header = title.closest("header")!;
+      expect(
+        within(header).getByText(owner).parentElement!.textContent,
+      ).toMatch(new RegExp(`^${owner}·最近在线`));
+    },
+  );
 
   it("页头：服务端没报 myRole 只有所有者", async () => {
     mount(`/t/rd/hosts/${STUDIO}`, OPTIONS);

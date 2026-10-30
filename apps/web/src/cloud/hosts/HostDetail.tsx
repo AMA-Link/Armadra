@@ -225,7 +225,7 @@ export function HostDetail({
   };
   const meta = [
     data.ownerName ? <span translate="no">{data.ownerName}</span> : null,
-    myAccessLabel(t, data),
+    myAccessLabel(t, data, team?.role),
     data.lastSeenAtMs === null
       ? null
       : t("cloud.hosts.lastSeen", {

@@ -42,6 +42,7 @@ export function TeamHostsPage({
         space={space}
         match={match}
         manager={role === "owner" || role === "admin"}
+        viewerRole={role}
         emptyAction={
           canRegister ? (
             <Button onClick={() => setRegistering(true)}>

@@ -8,6 +8,7 @@ import {
 
 import { useCloudApi } from "../api/context";
 import type { CloudClient } from "../api/client";
+import type { TeamRole } from "../shell/model";
 import { cloudKeys } from "../api/keys";
 import { keyOfSpace, spaceWire, type CloudSpace } from "../space";
 
@@ -153,11 +154,24 @@ export function myAccessOf(host: { readonly owner: boolean }): MyAccess | null {
     : null;
 }
 
-/** {@link MyAccess} 的文案：所有者与四档权限复用现有的「所有者」与 `workspaceGroups.role.*`。 */
+/**
+ * 「我的权限」只对团队里的 member / guest 显示（§3.3.4）；owner / admin / billing 与个人空间
+ * （`viewerRole` 缺省）只有所有者名。
+ */
+export function showsMyAccess(viewerRole: TeamRole | undefined): boolean {
+  return viewerRole === "member" || viewerRole === "guest";
+}
+
+/**
+ * {@link MyAccess} 的文案，`viewerRole` 是本人在主机所属团队的角色（个人空间缺省）：
+ * 所有者与四档权限复用现有的「所有者」与 `workspaceGroups.role.*`。
+ */
 export function myAccessLabel(
   t: (key: string) => string,
   host: { readonly owner: boolean },
+  viewerRole: TeamRole | undefined,
 ): string | null {
+  if (!showsMyAccess(viewerRole)) return null;
   const access = myAccessOf(host);
   if (access === null) return null;
   if (access.kind === "owner") return t("cloud.hosts.owner");
