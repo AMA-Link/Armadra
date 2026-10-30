@@ -54,6 +54,8 @@ export interface GrantsState {
   tokens: number;
   /** 本批被 `revokeAccess` 收窄的账号（测试读：收窄即撤令牌）。 */
   narrowed: { sourceId: string; accountId: string }[];
+  /** 团队主机的摘要带 `myRole`（`GrantsOptions.hostMyRole`）。 */
+  myRole: boolean;
 }
 
 export interface GrantsOptions {
@@ -61,6 +63,11 @@ export interface GrantsOptions {
   readonly noGrants?: boolean;
   /** 另外种一条协议包黄金夹具里的授予（契约一致性测试用）。 */
   readonly grantsGolden?: boolean;
+  /**
+   * 团队主机的摘要带本人的有效权限 `myRole`（armadra-cloud#162，协议包 0.11 起）；缺省 false，
+   * 即旧服务端不报这个字段。
+   */
+  readonly hostMyRole?: boolean;
 }
 
 /** 处理器要的上下文（`create-mock-client.ts` 的 `State` 满足它）。 */
@@ -186,6 +193,7 @@ export function createGrantsState(
     counter: n,
     tokens: 0,
     narrowed: [],
+    myRole: options.hostMyRole ?? false,
   };
 }
 
@@ -707,5 +715,10 @@ export function grantHandlers(
 
 function withTags(ctx: GrantsContext, host: MockHost) {
   const tags = ctx.grants.tags.get(host.sourceId) ?? host.tags;
-  return { ...host, ...(tags ? { tags } : {}) };
+  // 云端只给团队主机报 `myRole`：所有者合成为 driver，看得到而没有有效权限为 null。
+  const myRole =
+    ctx.grants.myRole && host.space?.kind === "team"
+      ? { myRole: compose(ctx, host, SELF).role }
+      : {};
+  return { ...host, ...(tags ? { tags } : {}), ...myRole };
 }
