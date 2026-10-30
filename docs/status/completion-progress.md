@@ -4388,3 +4388,16 @@ nightly 在 `b8353492`（运行 37338174906）之后连续失败。逐个作业�
 实测：探针全矩阵 17 分区 × 2 主题 × 3 视口 = 102 张，`status: ok`（对比度 98 / 99 对、Tab 129/129、减少动效、强制颜色、设置弹窗尺寸全过），截图在 `/tmp/ui-unify-shots/final/`。
 
 没做 / 限制：`apps/desktop` 壳的 `dialog.showErrorBox` 中文硬编码（壳代码，不在本批范围）；真实应用（隔离数据目录）里的设置、画布、ACP 三处核对未做，只核对了展示页。
+
+## 协调者分派事件化：ama 的 runner 完成事件（Closes #643，2026-10-30）
+
+做了什么：
+
+- **宿主适配器**（`agent-host/ama/runners.ts`）：`typeof api.runners?.onDone === "function"` 时订阅（`@armadra/agent` 0.11.0 起，host-api 1.1），只认本适配器注入的 runner；按 `start` 时记下的「句柄 id → 看板任务键」（找不到再用当前会话 id + ama 任务 id）报 `/hook/ama` 的 `runner_done`（任务键、轮次、状态、`isError`、`endedAt`，不带结果正文）。旧 ama 与远程主机上的旧 ama 没有 `onDone`，什么都不订阅。
+- **事件表**：core 与 `packages/shared` 的 `AMA_HOOK_EVENTS` 加 `runner_done`，`install/shared.test.ts` 把两表钉在一起；适配器的 `AMA_EVENTS` 不加（它镜像 ama 事件总线）。
+- **core**：`hook/ingest.ts` 只把 ama 节点、节点令牌验过、载荷成形的 `runner_done` 转成 core 内部总线事件 `runner.done`（不进 WebSocket、不改节点状态）；`workflow/task-watch.ts` 收到后若报告者正是该任务的协调者，立即放掉「30 秒内等过」的标记（`collab/control/wait.ts` 的 `releaseWait`，仍有 `wait` 挂着时不动）并马上扫一遍。
+- **兜底扫描**：`TASK_WATCH_MS` 5 秒 → 60 秒，只兜事件到不了的情况：ama 崩溃或被杀、core 重启后游标从头读、抽屉「重试」等不经 ama runner 的行、旧版或远程 ama。契约 §15.5 同步（只加不改）。
+
+验证：`pnpm check` 通过；全量测试 desktop 6436、web 6520、shared 634、server 112、mobile 32、push-relay 9 全过（web 的 `console-host.test.ts` 一例在全量并发下超时一次，单跑与重跑全过，与本改动无关）。新用例：`hook/runner-done.test.ts`（3）、`task-watch.test.ts` 新增 3、`runners.test.ts` 新增 3。变异检查 14 个（ingest 不验令牌 / 不看 provider / 不发事件、round 不校验、`releaseWait` 不顾挂着的 `wait`、不认协调者、不放标记、不订阅、间隔回到 5 秒、适配器不做特性探测 / 不用 `start` 时的键 / 不过滤 runner / 不注销 / `start` 不记键）全部被抓到。
+
+没做 / 限制：没有对真 ama 与真 CLI 成员跑端到端；`completed` 那一轮行已由 `wait` 落下，事件只对中断、停止、`wait` 放弃等情况起作用。
