@@ -402,10 +402,10 @@ describe("identity.cloud.bind 的出参在协议包的形状上追加 replaced�
   });
 });
 
-describe("设备信任请求在协议包的形状上追加 pendingId", () => {
-  // 协议包 0.10.0 的 `trustRequest` 不带 core 的 `pendingId`（云端 0.11 起可选下发）：协议包的每个字段
-  // 逐个存在，只多这一项；协议包接受的值我们都接受。
-  it("协议包的字段逐个保留，只多可选的 pendingId", async () => {
+describe("设备信任请求与协议包的形状对齐", () => {
+  // 协议包 0.11.0 起 `trustRequest` 自带可选的 `pendingId`：core 的形状逐个保留协议包的字段，
+  // 不再多出任何一项；协议包接受的值我们都接受（core 的若干字段比包里宽，例如 `member.email`）。
+  it("协议包的字段逐个保留，core 不多出字段（pendingId 已在包里）", async () => {
     const protocol = await import("@armadra/platform-protocol/cloud-api");
     type Shaped = { shape: Record<string, unknown> };
     type Parsing = { safeParse: (value: unknown) => { success: boolean } };
@@ -418,9 +418,10 @@ describe("设备信任请求在协议包的形状上追加 pendingId", () => {
     };
     const theirs = listed.element;
     const ours = cloudTrustRequestSchema as unknown as Shaped & Parsing;
+    expect("pendingId" in theirs.shape).toBe(true);
     expect(
       Object.keys(ours.shape).filter((key) => !(key in theirs.shape)),
-    ).toEqual(["pendingId"]);
+    ).toEqual([]);
     for (const key of Object.keys(theirs.shape))
       expect(key in ours.shape, key).toBe(true);
     const sample = {
