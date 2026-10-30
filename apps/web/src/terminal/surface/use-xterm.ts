@@ -44,7 +44,7 @@ export function useXtermInstance(
   refs: SurfaceRefs,
   options: {
     nodeId: string;
-    refit: () => void;
+    refit: () => boolean;
     mounted: boolean;
     generation: number;
   },

@@ -22,6 +22,23 @@ export function helloNeedsResize(
 }
 
 /**
+ * `hello` 之后这一端的尺寸怎么办（#614）：
+ * - 量到了容器（`measured`）且和 core 开的不同：`report`，把本地尺寸报上去；
+ * - 没量到（不在视口里、字体未就绪）：本地还是 xterm 的缺省 80×24，不能当这一端
+ *   的尺寸报——那会把共享窗口撑大、让别的端整屏重绘。先 `adopt` core 开的尺寸，
+ *   之后真量到了由 `refit()` 按差异上报；
+ * - 其余：`none`。
+ */
+export function sizeAfterHello(
+  hello: { readonly cols: number; readonly rows: number },
+  local: { readonly cols: number; readonly rows: number },
+  measured: boolean,
+): "report" | "adopt" | "none" {
+  if (!helloNeedsResize(hello, local)) return "none";
+  return measured ? "report" : "adopt";
+}
+
+/**
  * 传输的生命周期：连接前清屏，`hello` 之后对齐尺寸并决定要不要敲启动行，
  * `stale` / 意外断线按退避重连。节点数据只经 `dataRef` 读最新值，不进依赖数组。
  */
@@ -38,7 +55,7 @@ export function useTerminalTransport(
     generation: number;
     setAttempt: React.Dispatch<React.SetStateAction<number>>;
     patch: (next: Partial<ConnectionStatus>) => void;
-    refit: () => void;
+    refit: () => boolean;
     flushOutput: () => void;
     /** 离屏时把灌写排到共享调度器的下一拍。 */
     scheduleFlush: () => void;
@@ -129,9 +146,12 @@ export function useTerminalTransport(
           // hello 带着 core 给这一端开的尺寸；本地容器不同才发 resize，
           // 之后 `refit()` 只在真的变了才发（§18.2 规则 2）。`refit()` 刚发过
           // 的同一尺寸 core 当作没变，不会再动窗口。
-          refit();
-          if (helloNeedsResize(hello, terminal))
-            transport.resize(terminal.cols, terminal.rows);
+          // 量不到容器（不在视口里、字体未就绪）时终端还是 xterm 的缺省 80×24：
+          // 这不是这一端的尺寸，报上去会把共享窗口撑大、让别的端整屏重绘（#614）。
+          // 等它真的显示出来，`refit()` 量到了再报。
+          const step = sizeAfterHello(hello, terminal, refit());
+          if (step === "report") transport.resize(terminal.cols, terminal.rows);
+          else if (step === "adopt") terminal.resize(hello.cols, hello.rows);
           refs.gridRef.current = { cols: terminal.cols, rows: terminal.rows };
 
           const store = useCanvasStore.getState();
