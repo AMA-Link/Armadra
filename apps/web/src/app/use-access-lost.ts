@@ -9,7 +9,8 @@ import { onWorkspaceAccessLost } from "../api/events";
 import { workspacesApiFor } from "../api/workspaces";
 import { sourceRegistry } from "../sources/registry";
 import { idsInSource } from "./preferences/sources";
-import { srcKey } from "../sources/scope";
+import { onGrantSynced } from "../sources/grant-synced";
+import { activeSourceId, srcKey } from "../sources/scope";
 import { useCanvasStore } from "../store/canvas-store";
 import {
   rememberBoard,
@@ -37,6 +38,9 @@ export const useWorkspaceAccessEmpty = create<{ empty: boolean }>(() => ({
  * 里已打开的顺序，再按列表顺序）。一个都不剩时主区给空态（#632：此前只是清掉
  * 当前工作空间，主区一直空白；侧栏的树只列「已打开」与当前那块，范围收窄到一块
  * 没打开过的工作空间时连侧栏也是空的）。
+ *
+ * 放宽范围不结束任何订阅：授予同步完（`sources/grant-synced.ts`）时让当前源的列表
+ * 重取，新放开的工作空间不必刷新就出现。
  */
 export function useWorkspaceAccessLost(): void {
   const queryClient = useQueryClient();
@@ -54,9 +58,17 @@ export function useWorkspaceAccessLost(): void {
       if (state.workspace !== null && useWorkspaceAccessEmpty.getState().empty)
         useWorkspaceAccessEmpty.setState({ empty: false });
     });
+    // 授予同步完（放宽也一样）：当前源的列表重取，新放开的工作空间直接出现在
+    // 侧栏里；只重取，不自动打开。
+    const offSynced = onGrantSynced(() => {
+      void queryClient.invalidateQueries({
+        queryKey: srcKey(activeSourceId(), "workspaces"),
+      });
+    });
     return () => {
       offLost();
       offOpen();
+      offSynced();
     };
   }, [queryClient]);
 }

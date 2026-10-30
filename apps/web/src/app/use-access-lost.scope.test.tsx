@@ -47,6 +47,7 @@ import {
   setWorkspaceEventTransport,
 } from "../api/events";
 import { LOCAL_SOURCE_ID } from "../api/source";
+import { announceGrantSynced } from "../sources/grant-synced";
 import { scoped } from "../sources/scope";
 import { WorkspaceTree } from "../sidebar/WorkspaceTree";
 import { useCanvasStore } from "../store/canvas-store";
@@ -210,6 +211,35 @@ describe("授予范围收窄（#632）", () => {
     // 之后自己关掉工作空间是平常的空主区，不再说「没有可访问的」。
     expect(useWorkspaceAccessEmpty.getState().empty).toBe(false);
     release();
+  });
+
+  it("放宽范围：授予同步完就重取列表，新放开的直接出现，不刷新、不自动打开", async () => {
+    // 两块都打开过，范围先收窄到只剩 proj-a。
+    listWorkspaces.mockResolvedValue([PROJ_A]);
+    usePreferencesStore.setState({
+      openWorkspaceKeys: [
+        scoped(PROJ_A.id, LOCAL_SOURCE_ID),
+        scoped(PROJ_B.id, LOCAL_SOURCE_ID),
+      ],
+    });
+    useCanvasStore.getState().setWorkspace(PROJ_A as never, LOCAL_SOURCE_ID);
+    render(
+      <TestProviders>
+        <Shell />
+      </TestProviders>,
+    );
+    await screen.findByText("proj-a");
+    expect(screen.queryByText("proj-b")).toBeNull();
+    const calls = listWorkspaces.mock.calls.length;
+
+    // 放宽回整台：不撤令牌、不结束订阅，只有重登成功这一声。
+    listWorkspaces.mockResolvedValue([PROJ_A, PROJ_B]);
+    announceGrantSynced();
+
+    expect(await screen.findByText("proj-b")).toBeTruthy();
+    expect(listWorkspaces.mock.calls.length).toBeGreaterThan(calls);
+    expect(useCanvasStore.getState().workspace?.id).toBe(PROJ_A.id);
+    expect(openWorkspace).not.toHaveBeenCalled();
   });
 
   it("等列表时用户自己打开了别的：不替他换", async () => {

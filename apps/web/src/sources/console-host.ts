@@ -38,6 +38,7 @@ import {
   type RelayedStatus,
   createRelayedEntry,
 } from "./relayed-entry";
+import { announceGrantSynced } from "./grant-synced";
 import { setRelayedPage } from "./relayed-page";
 import {
   type ReloginSchedulerOptions,
@@ -484,6 +485,8 @@ export function createConsoleHost(options: ConsoleHostOptions): ConsoleHost {
         await provider.relogin(hostId);
         await identity.restore(true);
         reloginLimited = 0;
+        // 授予已按新断言同步：放宽的范围不会结束任何订阅，让页面重取列表。
+        announceGrantSynced();
       } catch (error) {
         const code = codeOf(error);
         if (code === "rate_limited") {
