@@ -3,7 +3,7 @@ import type { MeStreamEvent } from "@armadra/platform-protocol/cloud-api";
 import type { CloudClient } from "./client";
 
 export type InvitationPreview = Awaited<
-  ReturnType<CloudClient["invitations"]["get"]>
+  ReturnType<CloudClient["invitations"]["preview"]>
 >;
 
 /**
@@ -53,14 +53,6 @@ export interface CloudApi {
   readonly operator: Pick<CsrfStore, "subscribe"> & { active(): boolean };
   /** 写操作前保证内存里有 CSRF 值：没有就 `auth.refresh`（免 CSRF，答复带 `csrfToken`）。答 `false` = 没有会话。 */
   ensureCsrf(): Promise<boolean>;
-  /**
-   * 邀请摘要：`POST /v1/invitations/{id}/preview`，令牌在请求体里，不进查询（cloud-api §22）。
-   * 协议包 0.10.0 还没有这个过程，这里手写；升到 0.11.0 后改用包里的 `invitations.preview`。
-   */
-  invitationPreview(
-    invitationId: string,
-    token: string,
-  ): Promise<InvitationPreview>;
   /**
    * 订阅 me-stream（`/v1/me/stream`，cloud-api §6、§32）：事件逐个给 `onEvent`；断线重连后
    * 给 `onResync`（断线期间的事件丢了，调用方整体重拉）。返回退订函数。

@@ -514,7 +514,7 @@ export const TEAM_HANDLERS: Readonly<Record<string, Handler>> = {
       ).length;
       throw new CloudConsoleError(
         "team_hosts_online",
-        409,
+        errorStatus("team_hosts_online"),
         "team_hosts_online",
         {
           onlineHosts,

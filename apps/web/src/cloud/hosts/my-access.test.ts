@@ -1,10 +1,16 @@
 import { describe, expect, it } from "vitest";
 
-import { myAccessLabel, myAccessOf, showsMyAccess } from "./data";
+import {
+  myAccessLabel,
+  myAccessOf,
+  showsMyAccess,
+  type HostRow,
+  type MyAccessSource,
+} from "./data";
 
 const t = (key: string) => key;
-/** 协议包 0.10 的类型里没有 `myRole`：按服务端的原样对象传。 */
-const row = (owner: boolean, myRole?: unknown) =>
+/** 行的类型直接用协议包的 `sourceSummary`（`HostRow`），`myRole` 缺省就不带这个键。 */
+const row = (owner: boolean, myRole?: HostRow["myRole"]): MyAccessSource =>
   myRole === undefined ? { owner } : { owner, myRole };
 
 describe("myAccessOf：sourceSummary.myRole 的四种取值", () => {
@@ -22,7 +28,7 @@ describe("myAccessOf：sourceSummary.myRole 的四种取值", () => {
   });
 
   it("四档角色：复用 workspaceGroups.role.* 的文案", () => {
-    for (const role of ["viewer", "editor", "operator", "driver"]) {
+    for (const role of ["viewer", "editor", "operator", "driver"] as const) {
       expect(myAccessOf(row(false, role))).toEqual({ kind: "role", role });
       expect(myAccessLabel(t, row(false, role), "guest")).toBe(
         `workspaceGroups.role.${role}`,
@@ -39,8 +45,11 @@ describe("myAccessOf：sourceSummary.myRole 的四种取值", () => {
   });
 
   it("认不出的值当没报", () => {
-    expect(myAccessOf(row(false, "admin"))).toBeNull();
-    expect(myAccessOf(row(false, 3))).toBeNull();
+    // 客户端不校验答复：服务端给了契约外的值，类型挡不住，运行时当没报。
+    expect(myAccessOf(row(false, "admin" as HostRow["myRole"]))).toBeNull();
+    expect(
+      myAccessOf(row(false, 3 as unknown as HostRow["myRole"])),
+    ).toBeNull();
   });
 });
 

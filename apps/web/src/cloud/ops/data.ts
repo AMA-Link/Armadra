@@ -12,7 +12,6 @@ import { cloudKeys } from "../api/keys";
 /** 运营后台的数据层（云端控制台 §6.2 `["cloud","ops",…]`）：全部走运营客户端 `api.ops`。 */
 
 type Admin = CloudClient["admin"];
-type DrainInput = Parameters<Admin["relayNodeDrain"]>[0] & { reason?: string };
 type Result<K extends keyof Admin> = Awaited<ReturnType<Admin[K]>>;
 
 export type Tenant = Result<"tenants">["tenants"][number];
@@ -21,16 +20,9 @@ export type AdminAccount = Result<"account">;
 export type AdminTeam = Result<"team">;
 export type RelayNode = Result<"relayNodes">["nodes"][number];
 
-/** 第三项事故开关 `rejectNewConnections` 在协议包 0.11.0 才进类型；0.10.0 的包里没有，按 cloud-api §28 手写。升 0.11.0 后删掉这两个类型，直接用包里的。 */
-export type Incident = Result<"incident"> & {
-  readonly rejectNewConnections?: boolean;
-};
-export type IncidentPatch = {
-  readonly pauseAssertions?: boolean;
-  readonly pauseRegistrations?: boolean;
-  readonly rejectNewConnections?: boolean;
-  readonly reason: string;
-};
+/** 事故开关（cloud-api §28）；第三项 `rejectNewConnections` 可缺省，旧控制面不报，按关处理。 */
+export type Incident = Result<"incident">;
+export type IncidentPatch = Parameters<Admin["incidentSet"]>[0];
 
 const NODE_POLL_MS = 15_000;
 
@@ -113,12 +105,8 @@ export function useDrainNode() {
   const client = useQueryClient();
   return useMutation({
     mutationFn: ({ node, reason }: { node: string; reason: string }) =>
-      // 协议包 0.10.0 的排空入参还没有 `reason`（0.11.0 起有，cloud#121）：放宽入参类型后随体发出。
-      api.ops.admin.relayNodeDrain({
-        node,
-        drain: true,
-        reason,
-      } as DrainInput),
+      // 排空理由随体发出，写进审计（cloud#121）。
+      api.ops.admin.relayNodeDrain({ node, drain: true, reason }),
     onSuccess: () =>
       client.invalidateQueries({ queryKey: cloudKeys.ops("nodes") }),
   });
@@ -137,10 +125,7 @@ export function useSetIncident() {
   const client = useQueryClient();
   return useMutation({
     mutationFn: (patch: IncidentPatch): Promise<Incident> =>
-      // 入参类型（0.10.0）没有 rejectNewConnections；线上多出来的字段服务端认。
-      api.ops.admin.incidentSet(
-        patch as Parameters<Admin["incidentSet"]>[0],
-      ) as Promise<Incident>,
+      api.ops.admin.incidentSet(patch),
     onSuccess: (incident) =>
       client.setQueryData(cloudKeys.ops("incident"), incident),
   });

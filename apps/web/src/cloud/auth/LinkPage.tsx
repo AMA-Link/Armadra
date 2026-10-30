@@ -24,7 +24,6 @@ import {
 } from "../../sources/relay-vault";
 import { openAfterJoin } from "../../sources/join-intent";
 import { useCloudApi } from "../api/context";
-import type { InvitationPreview } from "../api/session";
 import {
   CloudConsoleError,
   describeFailure,
@@ -42,10 +41,10 @@ export const hostPath = (sourceId: string): string =>
 
 const ROLES = new Set(["viewer", "editor", "operator", "driver"]);
 
-/** 协议包 0.10.0 的 `links.get` 答复没有 `ownerName`（0.11.0 起有，cloud#60）：放宽后缺了就不显示主人。 */
+/** `links.get` 的答复；`ownerName` 可缺省（旧服务端不报，cloud#60），缺了就不显示主人。 */
 type Info = Awaited<
   ReturnType<ReturnType<typeof useCloudApi>["client"]["links"]["get"]>
-> & { ownerName?: string };
+>;
 
 /** 中继报接受时换来的令牌失效：保留的接受结果不能再用，要重新接受。 */
 const RELAY_CREDENTIAL_CODES: ReadonlySet<string> = new Set([

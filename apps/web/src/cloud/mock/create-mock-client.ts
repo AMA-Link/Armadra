@@ -82,9 +82,9 @@ export interface MockOptions
   readonly deviceNeedsStepUp?: boolean;
   /** 分享链接要求登录（`links.get.requiresAccount`，缺省 false）。 */
   readonly linkRequiresAccount?: boolean;
-  /** 分享链接的主人名（`links.get.ownerName`，协议包 0.11.0 起；缺省不带）。 */
+  /** 分享链接的主人名（`links.get.ownerName`；缺省不带）。 */
   readonly linkOwnerName?: string;
-  /** 设备码请求来源（`auth.deviceGet.ipPrefix`，协议包 0.11.0 起；缺省不带）。 */
+  /** 设备码请求来源（`auth.deviceGet.ipPrefix`；缺省不带）。 */
   readonly deviceIpPrefix?: string;
 }
 
@@ -602,53 +602,6 @@ function allowed(
   });
 }
 
-/** 协议包 0.10.0 的出参 schema 没有、0.11.0 起才有的可选字段（升级后删）。 */
-const WIDENED_OUTPUT: Readonly<Record<string, readonly string[]>> = {
-  "links.get": ["ownerName"],
-  "auth.deviceGet": ["ipPrefix"],
-  "sources.get": ["myRole"],
-  "sources.update": ["myRole"],
-};
-
-/** 同上，字段在出参的列表项里：`[列表键, 字段]`（升级后删）。 */
-const WIDENED_ITEMS: Readonly<
-  Record<string, readonly [string, readonly string[]]>
-> = {
-  "sources.list": ["sources", ["myRole"]],
-  "me.sources": ["sources", ["myRole"]],
-};
-
-/** 把处理器给的放宽字段补回校验后的出参（校验把它们当未知键剥掉了）。 */
-function widen(key: string, output: unknown, checked: unknown): unknown {
-  if (typeof output !== "object" || output === null) return checked;
-  const pick = (from: object, fields: readonly string[]) => {
-    const extra: Record<string, unknown> = {};
-    for (const field of fields)
-      if (field in from)
-        extra[field] = (from as Record<string, unknown>)[field];
-    return extra;
-  };
-  let result = checked;
-  const added = WIDENED_OUTPUT[key];
-  if (added !== undefined)
-    result = { ...(result as object), ...pick(output, added) };
-  const items = WIDENED_ITEMS[key];
-  if (items !== undefined) {
-    const [list, fields] = items;
-    const raw = (output as Record<string, unknown>)[list];
-    const kept = (result as Record<string, unknown>)[list];
-    if (Array.isArray(raw) && Array.isArray(kept))
-      result = {
-        ...(result as object),
-        [list]: kept.map((item: unknown, index) => ({
-          ...(item as object),
-          ...pick(raw[index] as object, fields),
-        })),
-      };
-  }
-  return result;
-}
-
 async function check(
   schema: unknown,
   value: unknown,
@@ -739,31 +692,17 @@ export function createMockApi(options: MockOptions = {}): MockApi {
           );
         }
         const handler = HANDLERS[entry.key];
-        // 0.10.0 的包还没有 `rejectNewConnections` 与排空的 `reason`：校验会把它们当未知键剥掉，
-        // 所以处理器看原始入参，事故开关的答复校验后再补回这一项（升 0.11.0 后删）。
         const output = handler
           ? handler({ ...(raw as Input), ...input }, state, options)
           : golden(entry.key);
         syncOperator();
-        const checked = await check(
-          procedure.outputSchema,
-          output,
-          (issues) => {
-            throw new CloudConsoleError(
-              "internal",
-              500,
-              `mock ${entry.key} violates the contract: ${issues}`,
-            );
-          },
-        );
-        if (entry.key.startsWith("admin.incident"))
-          return {
-            ...(checked as object),
-            rejectNewConnections: (output as { rejectNewConnections?: boolean })
-              .rejectNewConnections,
-          };
-        // 协议包 0.10.0 还没有的可选出参字段（0.11.0 起有）：校验会剥掉，补回处理器给的值。
-        return widen(entry.key, output, checked);
+        return check(procedure.outputSchema, output, (issues) => {
+          throw new CloudConsoleError(
+            "internal",
+            500,
+            `mock ${entry.key} violates the contract: ${issues}`,
+          );
+        });
       };
     }
     return root as unknown as CloudClient;
@@ -784,8 +723,6 @@ export function createMockApi(options: MockOptions = {}): MockApi {
     },
     ops: build(true),
     ensureCsrf: async () => state.signedIn,
-    invitationPreview: (invitationId, token) =>
-      client.invitations.get({ invitationId, token }),
     operator: {
       active: () => state.operatorSession,
       subscribe: operatorChanged.subscribe,

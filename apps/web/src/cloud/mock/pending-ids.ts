@@ -1,8 +1,8 @@
 import type { MockApi } from "./create-mock-client";
 
 /**
- * 给 `trust.list` 的每条请求补上 core 的 `pendingId`（`pending_<requestId>`）。现契约不带它（待云端补字段），
- * 页面又只在带 `pendingId` 时才给「信任」，所以展示页与测试用它模拟「云端补了字段」之后的形状。
+ * 给 `trust.list` 的每条请求补上 core 的 `pendingId`（`pending_<requestId>`）。mock 的请求缺省不带它（同旧云端），
+ * 页面又只在带 `pendingId` 时才给「信任」，所以展示页与测试用它模拟云端下发了它的形状。
  */
 export function addPendingIds(api: MockApi): MockApi {
   const list = api.client.trust.list;

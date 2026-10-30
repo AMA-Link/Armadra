@@ -26,6 +26,7 @@ import {
 } from "@/ui/input-otp";
 import { Skeleton } from "@/ui/skeleton";
 import { EmptyState } from "@/ui/state";
+import type { CloudClient } from "../api/client";
 import { useCloudApi } from "../api/context";
 import { describeFailure, isSessionError, toCloudError } from "../api/errors";
 import { AuthLayout } from "./AuthLayout";
@@ -36,14 +37,14 @@ import {
   normalizeUserCode,
 } from "./device-code";
 
-/** `auth.deviceGet` 的答复里页面用到的部分。 */
-export interface DeviceRequest {
-  readonly platform: string;
-  readonly name: string;
-  readonly requestedAtMs: number;
-  /** 发起请求的 IP（IPv6 截到 /64）；协议包 0.10.0 的答复没有，0.11.0 起有（cloud#88）。 */
-  readonly ipPrefix?: string;
-}
+/**
+ * `auth.deviceGet` 的答复里页面用到的部分。`ipPrefix` 是发起请求的 IP（IPv6 截到 /64），
+ * 可缺省（旧服务端不报，cloud#88）。
+ */
+export type DeviceRequest = Pick<
+  Awaited<ReturnType<CloudClient["auth"]["deviceGet"]>>,
+  "platform" | "name" | "requestedAtMs" | "ipPrefix"
+>;
 
 type Stage =
   | { kind: "enter" }

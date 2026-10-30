@@ -45,7 +45,8 @@ export function InvitePage({
   React.useEffect(() => {
     if (token === "") return;
     let live = true;
-    api.invitationPreview(invitationId, token).then(
+    // 令牌在请求体里，不进查询（cloud-api §22）。
+    api.client.invitations.preview({ invitationId, token }).then(
       (preview) => live && setStage({ kind: "ready", preview }),
       (failure: unknown) =>
         live && setStage({ kind: "failed", message: describeFailure(failure) }),

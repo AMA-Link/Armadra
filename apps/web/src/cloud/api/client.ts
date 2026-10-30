@@ -3,7 +3,7 @@ import type { ContractRouterClient } from "@orpc/contract";
 import { OpenAPILink } from "@orpc/openapi-client/fetch";
 import { cloudContract } from "@armadra/platform-protocol/cloud-api";
 
-import { CloudConsoleError, toCloudError } from "./errors";
+import { toCloudError } from "./errors";
 import { createRefreshCoordinator } from "./refresh-lock";
 import { openMeStream } from "./stream";
 import {
@@ -11,13 +11,12 @@ import {
   createCsrfStore,
   type CloudApi,
   type CloudFetchOptions,
-  type InvitationPreview,
 } from "./session";
 
 /**
  * 控制台的类型化客户端（云端控制台 §6.3）：按协议包的契约 `cloudContract` 生成，
  * `@orpc/*` 在控制台里只许出现在这个文件。线上是 OpenAPI 形态（契约里的路径已带 `/v1`，
- * 所以 `url` 是来源本身）。失败一律抛 {@link CloudConsoleError}（`api/errors.ts`）。
+ * 所以 `url` 是来源本身）。失败一律抛 `CloudConsoleError`（`api/errors.ts`）。
  */
 export type CloudClient = ContractRouterClient<typeof cloudContract>;
 
@@ -158,8 +157,6 @@ export function createCloudApi(options: CreateCloudApiOptions): CloudApi {
         return false;
       }
     },
-    invitationPreview: (invitationId, token) =>
-      previewInvitation(options.origin, consoleFetch, invitationId, token),
     operator: {
       active: () => opsCsrf.get() !== undefined,
       subscribe: opsCsrf.subscribe,
@@ -184,47 +181,4 @@ export function createCloudApi(options: CreateCloudApiOptions): CloudApi {
       opsCsrf.set(undefined);
     },
   };
-}
-
-const previewOutput = cloudContract.invitations.get["~orpc"]
-  .outputSchema as unknown as { parse(value: unknown): InvitationPreview };
-
-/**
- * `invitations.preview` 的手写调用（cloud-api §22，协议包 0.11.0 起才有）：同一个控制台 fetch
- * （同源、Cookie、错误形状一致），答复按 `invitations.get` 的形状解析。升到 0.11.0 后删掉，
- * 改用 `client.invitations.preview`。
- */
-async function previewInvitation(
-  origin: string,
-  send: typeof fetch,
-  invitationId: string,
-  token: string,
-): Promise<InvitationPreview> {
-  let response: Response;
-  try {
-    response = await send(
-      new Request(
-        `${origin}/v1/invitations/${encodeURIComponent(invitationId)}/preview`,
-        {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({ token }),
-        },
-      ),
-    );
-  } catch (error) {
-    throw toCloudError(error);
-  }
-  const body: unknown = await response.json().catch(() => null);
-  if (!response.ok) {
-    const wire = body as { code?: unknown; message?: unknown } | null;
-    throw typeof wire?.code === "string"
-      ? new CloudConsoleError(
-          wire.code,
-          response.status,
-          typeof wire.message === "string" ? wire.message : undefined,
-        )
-      : toCloudError({ status: response.status });
-  }
-  return previewOutput.parse(body);
 }

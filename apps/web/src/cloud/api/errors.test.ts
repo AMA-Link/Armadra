@@ -1,4 +1,8 @@
-import { ERROR_CODES } from "@armadra/platform-protocol/errors";
+import {
+  ERROR_CODES,
+  errorStatus,
+  teamHostsOnlineDetailsSchema,
+} from "@armadra/platform-protocol/errors";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { usePreferencesStore } from "@/app/preferences-store";
@@ -106,6 +110,17 @@ describe("错误码 → 文案", () => {
       if (NO_COPY.includes(code)) expect(text).toBeNull();
       else expect(text, code).toBeTruthy();
     }
+  });
+
+  it("team_hosts_online 是协议包的码：状态与 details 都按包里的定义", () => {
+    expect(ERROR_CODES).toContain("team_hosts_online");
+    expect(errorStatus("team_hosts_online")).toBe(409);
+    expect(
+      teamHostsOnlineDetailsSchema.safeParse({ onlineHosts: 2 }).success,
+    ).toBe(true);
+    expect(CLOUD_MESSAGE_BY_CODE.team_hosts_online).toBe(
+      "error.teamHostsOnline",
+    );
   });
 
   it("映射表里的键两种语言都有", () => {

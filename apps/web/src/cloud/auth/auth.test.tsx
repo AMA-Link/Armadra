@@ -193,11 +193,13 @@ describe("邮件链接", () => {
   it("/invite/:id#令牌：令牌读进内存并立刻离开地址栏；没登录点接受去登录，地址里没有令牌，登录后回邀请页再用同一令牌接受", async () => {
     visit("/invite/inv1#itok");
     const api = createMockApi({ signedIn: false });
-    const preview = vi.spyOn(api, "invitationPreview");
+    const preview = vi.spyOn(api.client.invitations, "preview");
     const accept = vi.spyOn(api.client.invitations, "accept");
     render(<ConsoleRoot api={api} />);
     await screen.findByRole("button", { name: "接受" });
-    expect(preview.mock.calls[0]).toEqual(["inv1", "itok"]);
+    expect(preview.mock.calls[0]).toEqual([
+      { invitationId: "inv1", token: "itok" },
+    ]);
     expect(window.location.hash).toBe("");
     const before = window.history.length;
     act(() => screen.getByRole("button", { name: "接受" }).click());

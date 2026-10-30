@@ -123,9 +123,9 @@ export function useRevokeAccess(space: CloudSpace, sourceId: string) {
   });
 }
 
-/** 有效权限的四档（与授予的 `role` 同一组值）。 */
-const MY_ROLES = ["viewer", "editor", "operator", "driver"] as const;
-type MyRole = (typeof MY_ROLES)[number];
+/** 有效权限的四档（与授予的 `role` 同一组值，协议包 `sourceSummary.myRole`）。 */
+type MyRole = NonNullable<HostRow["myRole"]>;
+const MY_ROLES: readonly MyRole[] = ["viewer", "editor", "operator", "driver"];
 
 /**
  * 本人对这台主机的权限（目录第二行「所有者 · 我的权限」，云端控制台 §3.3.4）：
@@ -137,21 +137,19 @@ export type MyAccess =
   | { readonly kind: "none" }
   | { readonly kind: "role"; readonly role: MyRole };
 
+/** {@link myAccessOf} 读的那两项：`sources.list` / `sources.get` / `sources.update` / `me.sources` 的行都有。 */
+export type MyAccessSource = Pick<HostRow, "owner" | "myRole">;
+
 /**
- * 读 `sourceSummary.myRole`（armadra-cloud#162；`sources.list` / `sources.get` /
- * `sources.update` / `me.sources` 都带，`grantRole | null`，可缺省）。依赖里的协议包
- * （`tools/vendor/armadra-platform-protocol-0.10.0.tgz`）还没有这个字段，这里按可选字段手读：
- * 随协议包 0.11 发布后改为从包里取（`HostRow["myRole"]`），删掉手读与 mock 的放宽。
- * 所有者不看 `myRole`（云端给所有者报 driver）；认不出的值当没报。
+ * 读 `sourceSummary.myRole`（armadra-cloud#162；`grantRole | null`，可缺省）。
+ * 所有者不看 `myRole`（云端给所有者报 driver）；认不出的值（客户端不校验答复）当没报。
  */
-export function myAccessOf(host: { readonly owner: boolean }): MyAccess | null {
-  const myRole = (host as { readonly myRole?: unknown }).myRole;
+export function myAccessOf(host: MyAccessSource): MyAccess | null {
+  const { myRole } = host;
   if (myRole === undefined) return null;
   if (host.owner) return { kind: "owner" };
   if (myRole === null) return { kind: "none" };
-  return MY_ROLES.some((role) => role === myRole)
-    ? { kind: "role", role: myRole as MyRole }
-    : null;
+  return MY_ROLES.includes(myRole) ? { kind: "role", role: myRole } : null;
 }
 
 /**
@@ -168,7 +166,7 @@ export function showsMyAccess(viewerRole: TeamRole | undefined): boolean {
  */
 export function myAccessLabel(
   t: (key: string) => string,
-  host: { readonly owner: boolean },
+  host: MyAccessSource,
   viewerRole: TeamRole | undefined,
 ): string | null {
   if (!showsMyAccess(viewerRole)) return null;
