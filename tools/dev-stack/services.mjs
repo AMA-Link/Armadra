@@ -283,8 +283,13 @@ export function profilesOf(service) {
  */
 export const SCOPED_PROFILES = ["platform", "personal"];
 
-/** Compose services that exist only to back another one. */
-export const SUPPORT_SERVICES = ["glitchtip-postgres", "glitchtip-redis"];
+/** Compose services that exist only to back another one (incl. one-shot ones like migrate / pg-tls). */
+export const SUPPORT_SERVICES = [
+  "glitchtip-postgres",
+  "glitchtip-redis",
+  "migrate",
+  "pg-tls",
+];
 
 /** dev-stack 的 compose 项目名（与 docker-compose.yml 的 `name:` 一致）。 */
 export const PROJECT = "armadra-dev";
