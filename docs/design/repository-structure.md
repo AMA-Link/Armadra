@@ -154,7 +154,7 @@ CI（`.github/workflows/ci.yml`）在 Rust Runtime / Go Host 阶段是一个三�
 | 矩阵行           | 内容                                                  |
 | ---------------- | ----------------------------------------------------- |
 | `ubuntu-latest`  | 下列全部，外加 Host 对另外三个 GOOS/GOARCH 的交叉编译 |
-| `macos-14`       | 下列全部                                              |
+| `macos-15`       | 下列全部                                              |
 | `windows-latest` | 下列全部，Go 不开 `-race`（需要 cgo）                 |
 
 每行（旧实现）：`pnpm check`、`pnpm repo:test` / `release:test`、`pnpm -r test` /
