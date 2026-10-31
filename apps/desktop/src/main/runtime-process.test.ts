@@ -12,6 +12,9 @@ import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
+  type HealthResponse,
+  READY_CEILING_MS,
+  READY_TIMEOUT_MS,
   type RuntimeRecord,
   listenArgument,
 } from "../shell-core/runtime/identity";
@@ -24,7 +27,9 @@ import {
   coreEnvironment,
   externalRuntimeBase,
   localEndpoint,
+  notReadyMessage,
   ownedRuntimeAddress,
+  probeOwnedRuntime,
   runtimePipeName,
   processCommandLine,
   isPackagedShell,
@@ -352,5 +357,112 @@ describe("壳启动的 core", () => {
 
   it("孤儿清扫认的是 core 的那段命令行", () => {
     expect(CORE_PROCESS_MARKER).toBe("core/main.js");
+  });
+});
+
+/**
+ * 等自己起的 core 就绪（#656）：慢但一直在输出启动日志的 core 要等到它应答，
+ * 只有连续 READY_TIMEOUT_MS 既不应答也不输出才判卡死，另有总上限兜底。
+ * 假时钟：每次 sleep 推进时钟，「core」在给定时刻输出、应答或退出。
+ */
+describe("waiting for the shell's own core", () => {
+  const address = { kind: "tcp", authority: "127.0.0.1:1" } as const;
+  const ok = (instanceId: string): HealthResponse => ({
+    status: "ok",
+    version: "0.0.0",
+    instanceId,
+  });
+
+  function fakeCore(script: {
+    /** Clock times (ms since start) at which the core prints a line. */
+    outputs?: number[];
+    /** Clock time from which `/health` answers as this core. */
+    healthyAt?: number;
+    /** Clock time at which the child exits. */
+    exitsAt?: number;
+    /** Something else answering `/health` from the start. */
+    foreign?: HealthResponse;
+  }) {
+    let clock = 0;
+    const printed = () =>
+      (script.outputs ?? []).filter((at) => at <= clock).at(-1);
+    return {
+      runtime: {
+        announcedInstance: () =>
+          (script.outputs ?? []).some((at) => at <= clock) ? "ours" : undefined,
+        exitedEarly: () =>
+          script.exitsAt !== undefined && clock >= script.exitsAt,
+        lastOutputAt: printed,
+      },
+      deps: {
+        now: () => clock,
+        health: async () =>
+          script.foreign ??
+          (script.healthyAt !== undefined && clock >= script.healthyAt
+            ? ok("ours")
+            : undefined),
+        sleep: async (ms: number) => {
+          clock += ms;
+        },
+      },
+      elapsed: () => clock,
+    };
+  }
+
+  it("一个启动慢、但一直在输出的 core 等到它应答为止", async () => {
+    // 失败那晚的形态：6 秒才第一行，11 秒才监听，比固定 10 秒的旧期限晚。
+    const core = fakeCore({
+      outputs: [6_000, 6_500, 9_000, 11_000],
+      healthyAt: 11_500,
+    });
+    const probe = await probeOwnedRuntime(core.runtime, address, core.deps);
+    expect(probe).toEqual({ kind: "ours" });
+    expect(core.elapsed()).toBeGreaterThan(READY_TIMEOUT_MS);
+  });
+
+  it("一个一声不吭的 core 静默满 READY_TIMEOUT_MS 判卡死", async () => {
+    const core = fakeCore({});
+    const probe = await probeOwnedRuntime(core.runtime, address, core.deps);
+    expect(probe).toEqual({ kind: "timedOut", reason: "silent" });
+    expect(core.elapsed()).toBe(READY_TIMEOUT_MS);
+  });
+
+  it("输出之后再静默，从最后一行起算", async () => {
+    const core = fakeCore({ outputs: [3_000, 8_000] });
+    const probe = await probeOwnedRuntime(core.runtime, address, core.deps);
+    expect(probe).toEqual({ kind: "timedOut", reason: "silent" });
+    expect(core.elapsed()).toBe(8_000 + READY_TIMEOUT_MS);
+  });
+
+  it("一直输出却始终不应答，到总上限为止", async () => {
+    const outputs = Array.from({ length: 200 }, (_, i) => (i + 1) * 1_000);
+    const core = fakeCore({ outputs });
+    const probe = await probeOwnedRuntime(core.runtime, address, core.deps);
+    expect(probe).toEqual({ kind: "timedOut", reason: "ceiling" });
+    expect(core.elapsed()).toBe(READY_CEILING_MS);
+  });
+
+  it("子进程退出就不再等", async () => {
+    const core = fakeCore({ outputs: [1_000], exitsAt: 2_000 });
+    const probe = await probeOwnedRuntime(core.runtime, address, core.deps);
+    expect(probe).toEqual({ kind: "childExited" });
+    expect(core.elapsed()).toBe(2_000);
+  });
+
+  it("别的 Runtime 占着地址，自己的 core 一报 id 就判 foreign", async () => {
+    const other = ok("someone-else");
+    const core = fakeCore({ outputs: [1_000], foreign: other });
+    const probe = await probeOwnedRuntime(core.runtime, address, core.deps);
+    expect(probe).toEqual({ kind: "foreign", health: other });
+    expect(core.elapsed()).toBe(1_000);
+  });
+
+  it("两种超时给出不同的说明", () => {
+    expect(notReadyMessage({ kind: "timedOut", reason: "silent" })).toMatch(
+      /no answer and no output for 10 seconds/,
+    );
+    expect(notReadyMessage({ kind: "timedOut", reason: "ceiling" })).toMatch(
+      /within 60 seconds/,
+    );
   });
 });

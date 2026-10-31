@@ -12,6 +12,7 @@ import { attachTicketChannel } from "./core-ticket";
 import {
   type HealthResponse,
   PROBE_INTERVAL_MS,
+  READY_CEILING_MS,
   READY_TIMEOUT_MS,
   RELEASE_TIMEOUT_MS,
   type RuntimeAddress,
@@ -136,6 +137,8 @@ export class RuntimeProcess {
   /** Remembered so a replacement can be started on the same address. */
   private address: RuntimeAddress | null = null;
   private exited = false;
+  /** When the child last printed a line, on either pipe; its sign of life. */
+  private lastOutput: number | undefined;
 
   /** True when this shell started the Runtime, and so may stop it. */
   owns(): boolean {
@@ -148,6 +151,11 @@ export class RuntimeProcess {
 
   exitedEarly(): boolean {
     return this.exited;
+  }
+
+  /** `Date.now()` of the child's latest output line, if it printed any. */
+  lastOutputAt(): number | undefined {
+    return this.lastOutput;
   }
 
   start(address: RuntimeAddress): void {
@@ -170,6 +178,7 @@ export class RuntimeProcess {
     }
     this.child = null;
     this.announced = undefined;
+    this.lastOutput = undefined;
     this.exited = false;
     this.spawn(address);
   }
@@ -247,6 +256,7 @@ export class RuntimeProcess {
   private watchOutput(stdout: NodeJS.ReadableStream): void {
     const lines = createInterface({ input: stdout });
     lines.on("line", (line) => {
+      this.lastOutput = Date.now();
       const id = parseAnnouncement(line);
       if (id !== undefined && this.announced === undefined) this.announced = id;
       process.stderr.write(`core: ${line}\n`);
@@ -406,17 +416,50 @@ export type OwnedProbe =
   | { kind: "foreign"; health: HealthResponse }
   /** Our child is gone and nothing answered. */
   | { kind: "childExited" }
-  /** Nothing answered within the timeout. */
-  | { kind: "timedOut" };
+  /**
+   * Nothing answered: `silent` when the child went READY_TIMEOUT_MS without
+   * answering or printing anything, `ceiling` when it kept printing but still
+   * had not answered after READY_CEILING_MS.
+   */
+  | { kind: "timedOut"; reason: "silent" | "ceiling" };
 
+/** What the probe reads from the child it waits for. */
+export type ProbedRuntime = Pick<
+  RuntimeProcess,
+  "announcedInstance" | "exitedEarly" | "lastOutputAt"
+>;
+
+export interface ProbeDeps {
+  readonly now?: () => number;
+  readonly health?: (
+    address: RuntimeAddress,
+  ) => Promise<HealthResponse | undefined>;
+  readonly sleep?: (ms: number) => Promise<void>;
+}
+
+/**
+ * Waits until the Runtime this shell started is in a state that decides
+ * something: it answers (`ours`), something else answers (`foreign`), it
+ * exited, or it stopped showing signs of life.
+ *
+ * A child that is alive and still logging its start-up is not timed out on a
+ * fixed clock: on a slow or busy machine (a CI runner scanning a freshly
+ * installed binary) the same start can take ten times longer and still be
+ * healthy (#656). What decides "hung" is READY_TIMEOUT_MS of silence — no
+ * answer and no output line — with READY_CEILING_MS as the backstop for a
+ * child that logs forever without answering.
+ */
 export async function probeOwnedRuntime(
-  runtime: RuntimeProcess,
+  runtime: ProbedRuntime,
   address: RuntimeAddress,
-  now: () => number = Date.now,
+  deps: ProbeDeps = {},
 ): Promise<OwnedProbe> {
-  const deadline = now() + READY_TIMEOUT_MS;
+  const now = deps.now ?? Date.now;
+  const check = deps.health ?? socketHealth;
+  const pause = deps.sleep ?? sleep;
+  const started = now();
   for (;;) {
-    const health = await socketHealth(address);
+    const health = await check(address);
     const expected = runtime.announcedInstance();
     if (health !== undefined) {
       if (isOurRuntime(expected, health)) return { kind: "ours" };
@@ -427,18 +470,28 @@ export async function probeOwnedRuntime(
     } else if (runtime.exitedEarly()) {
       // The child is gone. Whatever holds the address now — including
       // nothing — is not ours.
-      const late = await socketHealth(address);
+      const late = await check(address);
       return late === undefined
         ? { kind: "childExited" }
         : { kind: "foreign", health: late };
     }
-    if (now() >= deadline) {
-      const late = await socketHealth(address);
-      return late !== undefined && !isOurRuntime(expected, late)
+    const at = now();
+    const lastSign = Math.max(started, runtime.lastOutputAt() ?? started);
+    const reason =
+      at - started >= READY_CEILING_MS
+        ? "ceiling"
+        : at - lastSign >= READY_TIMEOUT_MS
+          ? "silent"
+          : undefined;
+    if (reason !== undefined) {
+      const late = await check(address);
+      if (late !== undefined && isOurRuntime(expected, late))
+        return { kind: "ours" };
+      return late !== undefined
         ? { kind: "foreign", health: late }
-        : { kind: "timedOut" };
+        : { kind: "timedOut", reason };
     }
-    await sleep(PROBE_INTERVAL_MS);
+    await pause(PROBE_INTERVAL_MS);
   }
 }
 
@@ -458,9 +511,7 @@ export async function waitForRuntime(
   if (first.kind === "ours") return;
   if (first.kind === "childExited")
     throw new Error("Runtime process exited before becoming ready");
-  if (first.kind === "timedOut") {
-    throw new Error("Runtime did not become healthy within 10 seconds");
-  }
+  if (first.kind === "timedOut") throw new Error(notReadyMessage(first));
   process.stderr.write(
     `Another Armadra Runtime holds this data directory's address; stopping it and starting ours\n`,
   );
@@ -488,9 +539,15 @@ export async function waitForRuntime(
       "Runtime process exited before becoming ready after a restart",
     );
   }
-  throw new Error(
-    "Runtime did not become healthy within 10 seconds after a restart",
-  );
+  throw new Error(`${notReadyMessage(second)} after a restart`);
+}
+
+export function notReadyMessage(
+  probe: Extract<OwnedProbe, { kind: "timedOut" }>,
+): string {
+  return probe.reason === "silent"
+    ? `Runtime did not become healthy: no answer and no output for ${READY_TIMEOUT_MS / 1000} seconds`
+    : `Runtime did not become healthy within ${READY_CEILING_MS / 1000} seconds`;
 }
 
 export async function takeOverAddress(address: RuntimeAddress): Promise<void> {
