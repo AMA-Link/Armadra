@@ -87,7 +87,7 @@ jobs:
         include:
           - runner: ubuntu-latest
             label: linux-x86_64
-          - runner: macos-14
+          - runner: macos-15
             label: macos-aarch64
           - runner: windows-latest
             label: windows-x86_64

@@ -35,7 +35,7 @@ test("the parser reads the shapes a workflow actually uses", () => {
   assert.equal(document.jobs.check.steps[0].uses, "actions/checkout@v4");
   assert.deepEqual(
     document.jobs.check.strategy.matrix.include.map((entry) => entry.runner),
-    ["ubuntu-latest", "macos-14", "windows-latest"],
+    ["ubuntu-latest", "macos-15", "windows-latest"],
   );
   // A block scalar with several lines, read back whole.
   const identity = document.jobs.check.steps.find(
@@ -416,7 +416,7 @@ test("tier A runs as ci.yml's e2e job on ubuntu, tier B on a nightly schedule", 
   ]);
 
   const ciElsewhere = structuredClone(documents["ci.yml"]);
-  ciElsewhere.jobs.e2e["runs-on"] = "macos-14";
+  ciElsewhere.jobs.e2e["runs-on"] = "macos-15";
   ciElsewhere.jobs.e2e.steps = [{ run: "node tools/ci/e2e.mjs --tier b" }];
   assert.deepEqual(checkE2eTiers({ ...documents, "ci.yml": ciElsewhere }), [
     "ci.yml: job e2e does not run node tools/ci/e2e.mjs --tier a",

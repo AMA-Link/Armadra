@@ -192,7 +192,7 @@ jobs:
     needs: gate
     if: ${{ needs.gate.outputs.run == 'true' }}
     name: macOS 打包与 B 档
-    runs-on: macos-14
+    runs-on: macos-15
     timeout-minutes: 120
     outputs:
       failed: ${{ steps.tier.outputs.failed }}
