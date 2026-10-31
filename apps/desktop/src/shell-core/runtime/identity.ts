@@ -25,8 +25,15 @@
  */
 export const ANNOUNCE_PREFIX = "armadra-runtime instance ";
 
-/** How long the shell waits for its own Runtime to answer before giving up. */
+/**
+ * How long the shell's own Runtime may go without answering `/health` AND
+ * without printing anything before the shell calls it hung. A slow start that
+ * keeps logging is still progressing and is waited for; silence is the state
+ * that decides (#656).
+ */
 export const READY_TIMEOUT_MS = 10_000;
+/** The backstop for a Runtime that keeps logging but never answers. */
+export const READY_CEILING_MS = 60_000;
 export const PROBE_INTERVAL_MS = 250;
 
 /**
