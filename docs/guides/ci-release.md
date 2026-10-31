@@ -17,7 +17,7 @@
 | runner           | 标签           |
 | ---------------- | -------------- |
 | `ubuntu-latest`  | linux-x86_64   |
-| `macos-14`       | macos-aarch64  |
+| `macos-15`       | macos-aarch64  |
 | `windows-latest` | windows-x86_64 |
 
 三行跑同一串步骤（另有一个只在 ubuntu 上跑的 `e2e` 作业，见 §1.1）：
@@ -109,7 +109,7 @@ node tools/ci/e2e.mjs --tier b --list     # 只列出清单
     `pnpm dev-stack up`。
   - `linux-arm64`（ubuntu-22.04-arm）：打 arm64 包、断言 glibc 基线，只跑 `deb-install`
     （`--only deb-install`；其余 B 档条目与架构无关）。
-  - `macos`（macos-14）：同样打包，跑 `packaged-smoke --no-real-cli`。
+  - `macos`（macos-15）：同样打包，跑 `packaged-smoke --no-real-cli`。
   - `report`：前两条任一失败、且在 main 上时，用默认的 `GITHUB_TOKEN`（作业级
     `issues: write`）开一个「夜间 B 档失败」issue，已有开着的同名 issue 就追加评论；
     正文是运行链接与每条作业失败的条目（`e2e.mjs` 在 `GITHUB_OUTPUT` 里写
@@ -155,7 +155,7 @@ node tools/ci/e2e.mjs --tier b --list     # 只列出清单
 
 | runner             | target          |
 | ------------------ | --------------- |
-| `macos-14`         | darwin-aarch64  |
+| `macos-15`         | darwin-aarch64  |
 | `macos-15-intel`   | darwin-x86_64   |
 | `ubuntu-22.04`     | linux-x86_64    |
 | `ubuntu-22.04-arm` | linux-aarch64   |

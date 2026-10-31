@@ -38,7 +38,6 @@ export const RUNNERS = new Set([
   "ubuntu-22.04-arm",
   "macos-latest",
   "macos-15",
-  "macos-14",
   "macos-15-intel",
   "windows-latest",
   "windows-2025",

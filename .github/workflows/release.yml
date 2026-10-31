@@ -164,7 +164,7 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - runner: macos-14
+          - runner: macos-15
             target: darwin-aarch64
           - runner: macos-15-intel
             target: darwin-x86_64
@@ -835,7 +835,7 @@ jobs:
   # 顺带断言 after-pack 放回 Contents/Resources/ 的两份 Electron 声明与第三方声明。
   channels-macos:
     needs: [verify, channels]
-    runs-on: macos-14
+    runs-on: macos-15
     timeout-minutes: 30
     steps:
       - uses: actions/download-artifact@v4
