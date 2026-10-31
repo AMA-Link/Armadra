@@ -370,13 +370,16 @@ pnpm dev-stack down gitea              # 只停并删这几个
 ## 本地平台环境
 
 平台（云控制面、中继、单人中转）的本地替身也在 dev-stack 里，用两个自成一体的 profile：起 `platform` /
-`personal` 只会起各自的服务，不连带默认那组。云仓（`armadra-cloud`）的镜像缺省取 GHCR 的钉版本；
-设了 `ARMADRA_DEV_STACK_CLOUD_SRC=<armadra-cloud 克隆>`（或克隆就在本仓库旁边的 `../armadra-cloud`）时
-改为本地构建（Go 控制面镜像，`go/Dockerfile.cloud`；compose 叠加一次性 `migrate` 服务与 postgres 的自签 TLS），并打印一行说明。GHCR 的 0.10.0 控制面仍是 TS 版，拉镜像时沿用 `exec ... migrate`，下一版发布后统一。
+`personal` 只会起各自的服务，不连带默认那组。云仓（`armadra-cloud`）的镜像缺省取 GHCR 的钉版本
+（与 `tools/release/compatibility.json` 的 `platform.images` 一致，`stack.test.mjs` 守住）。控制面是 Go 的
+distroless 镜像，`serve` 不自动迁移：一次性的 `migrate` 服务先跑完 cloud 才起；`pg-tls` 给 `platform-postgres`
+生成自签证书，连库带 `sslmode=require`。设了 `ARMADRA_DEV_STACK_CLOUD_SRC=<armadra-cloud 克隆>`（或克隆就在
+本仓库旁边的 `../armadra-cloud`）时叠加 `docker-compose.cloud-src.yml`，只把镜像改为从克隆构建，并打印一行说明。
+`armadra-cloud` 的 GHCR 镜像包目前是私有的，拉之前要先 `docker login ghcr.io`。
 
 ```sh
 pnpm platform:personal   # 个人中转：relay-personal + armadra-server-nat-personal（自动登记，隧道 ready 才算健康）
-pnpm platform:up         # 平台：postgres + redis + cloud + relay + armadra-server-nat，并跑 cloud 迁移
+pnpm platform:up         # 平台：postgres + redis + cloud + relay + armadra-server-nat（cloud 先等 migrate 跑完）
 pnpm platform:health     # 只跑 platform 的健康检查
 pnpm platform:down       # 只停 platform 的服务（不影响默认那组与别的 worktree）
 pnpm platform:e2e        # 跨仓端到端：A 档 personal-roundtrip / multi-source / link-join，B 档 nat-core-offline；relay-roundtrip 预留（等 SaaS 服务端）

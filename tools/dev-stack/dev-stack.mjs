@@ -53,7 +53,7 @@ const ALL_PROFILES = [...new Set(SERVICES.flatMap(profilesOf))];
 
 /**
  * 云仓本地克隆的位置：`ARMADRA_DEV_STACK_CLOUD_SRC`，没设就看本仓库旁边有没有
- * `../armadra-cloud`（GHCR 镜像发布前这是缺省）。返回绝对路径或 null；`note` 收一行说明。
+ * `../armadra-cloud`（有就优先用它，不拉 GHCR）。返回绝对路径或 null；`note` 收一行说明。
  */
 export function resolveCloudSrc(
   env = process.env,
@@ -225,23 +225,6 @@ function printResults(results) {
       `${mark} ${result.service.padEnd(15)} 127.0.0.1:${ports.padEnd(12)} ${result.ok ? `${result.ms}ms` : result.error}`,
     );
   }
-}
-
-/**
- * 拉 GHCR 镜像（0.10.0 仍是 TS 版）时，cloud 起来后在容器里跑一次迁移（命令幂等）。
- * 本地源码构建的 Go 镜像不走这里：serve 不自动迁移，由 compose 叠加文件里的一次性
- * `migrate` 服务先跑完，cloud 依赖它（见 docker-compose.cloud-src.yml）。
- */
-function migrateCloud() {
-  const result = compose(
-    ["exec", "-T", "cloud", "node", "/app/out/main.js", "migrate"],
-    {
-      profiles: ["platform"],
-    },
-  );
-  if (result.status !== 0)
-    console.warn("cloud 迁移没有成功；`pnpm dev-stack logs cloud` 查看原因。");
-  return result.status ?? 1;
 }
 
 /** 对 relay-personal 的 HTTPS 调用；`ca` 给了就按它校验（只信这一张），没给时只取 CA 本身。 */
@@ -488,10 +471,6 @@ export async function main(argv) {
       },
     );
     if (natUp.status !== 0) return natUp.status ?? 1;
-  }
-  if (services.some((s) => s.name === "cloud") && !resolveCloudSrc()) {
-    const migrated = migrateCloud();
-    if (migrated !== 0) return migrated;
   }
   console.log(`等待健康检查（最多 ${options.timeout}s）…`);
   const results = await waitHealthy(services, {
