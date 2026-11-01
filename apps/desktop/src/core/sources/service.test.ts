@@ -1,4 +1,6 @@
 import { join } from "node:path";
+
+import { ARMADRA_CLOUD_ISSUER } from "@armadra/shared";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { openFreshDatabase } from "../db/fresh.fixture";
@@ -1138,6 +1140,28 @@ describe("Armadra 云：设备码登录与登记到空间（契约 §33.11）", 
     const again = await start();
     expect(again.remote.serviceId).toBe(added.remote.serviceId);
     expect((await saas.list()).remotes).toHaveLength(1);
+  });
+
+  it("页面发来默认地址：本机环境覆盖了就换成覆盖值", async () => {
+    const withOverride = new SourcesService({
+      store: new SourcesStore(opened.database),
+      secrets: new SourceSecrets(() => backend),
+      remote: new RemoteClient(world.transport, {
+        platform: "desktop",
+        name: "test",
+      }),
+      peer: new SourceClient(world.transport, plainSealed(world.transport)),
+      hostId: () => HOST_ID,
+      hostLabel: () => "this-mac",
+      log: { info: () => undefined, warn: () => undefined },
+      now: () => clock,
+      cloudIssuer: () => ISSUER,
+    });
+    const added = await withOverride.remoteAdd({
+      kind: "saas",
+      issuer: ARMADRA_CLOUD_ISSUER,
+    });
+    expect(added.remote.issuer).toBe(ISSUER);
   });
 
   it("设备码的 verificationUrl 必须与 issuer 同源且是 https：否则拒绝，不留设备码", async () => {
