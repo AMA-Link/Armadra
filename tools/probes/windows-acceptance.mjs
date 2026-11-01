@@ -68,6 +68,7 @@ import {
   readText,
   httpsProbe,
   logFindings,
+  consoleListAgentFailures,
   newestUninstaller,
   diffSnapshots,
   launchLine,
@@ -1236,10 +1237,15 @@ async function runFull(options, result, record, out) {
     ) {
       await record.check("app.logs", async () => {
         const found = logFindings(dataDir);
+        const consoleListAgent = consoleListAgentFailures(found.findings);
         return {
-          ok: true,
+          ok: consoleListAgent.length === 0,
           warn: found.findings.length > 0,
-          detail: { ...found, findings: found.findings.slice(0, 30) },
+          detail: {
+            ...found,
+            findings: found.findings.slice(0, 30),
+            consoleListAgent: consoleListAgent.length,
+          },
         };
       });
     }

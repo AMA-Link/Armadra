@@ -103,4 +103,10 @@ patchedDependencies:
   # 1.2.0-beta.13) and 1.2.0-beta.18's guard against closing one pseudoconsole
   # twice (a second kill before the exit thread forgot it freed it again); the
   # macOS and Linux sources are untouched. Remove once a stable 1.2.0 ships.
+  # It also patches the Windows-only lib/ files around kill()'s console list
+  # agent (#670): the agent catches AttachConsole failing (as in
+  # 1.2.0-beta.18) instead of crashing into the session host's log, and when
+  # it has no answer the list is empty rather than the shell's PID, which
+  # node-pty used to kill 5 s later by bare PID after the closed
+  # pseudoconsole had already ended that process.
   node-pty@1.1.0: patches/node-pty@1.1.0.patch

@@ -202,7 +202,7 @@ overrides:
 
 patchedDependencies:
   acme-client@5.4.0: 81656416973a885c6f191b75702d2d99d185d06fa3d0724c6a246f18e8cc9ca9
-  node-pty@1.1.0: d5cc870ef5688e349c27d75c29248a54a38d45d0b647ba75e30b1aa1d63483ba
+  node-pty@1.1.0: 8898f929e8dec5f69b6e6b1f69a88cb510b9fb8a779fc7e0fe7a7a0baf0123a9
 
 importers:
 
@@ -285,7 +285,7 @@ importers:
         version: 0.2.119
       node-pty:
         specifier: 1.1.0
-        version: 1.1.0(patch_hash=d5cc870ef5688e349c27d75c29248a54a38d45d0b647ba75e30b1aa1d63483ba)
+        version: 1.1.0(patch_hash=8898f929e8dec5f69b6e6b1f69a88cb510b9fb8a779fc7e0fe7a7a0baf0123a9)
       nodemailer:
         specifier: 10.1.4
         version: 10.1.4
@@ -13121,7 +13121,7 @@ snapshots:
 
   node-int64@0.4.0: {}
 
-  node-pty@1.1.0(patch_hash=d5cc870ef5688e349c27d75c29248a54a38d45d0b647ba75e30b1aa1d63483ba):
+  node-pty@1.1.0(patch_hash=8898f929e8dec5f69b6e6b1f69a88cb510b9fb8a779fc7e0fe7a7a0baf0123a9):
     dependencies:
       node-addon-api: 7.1.1
 
