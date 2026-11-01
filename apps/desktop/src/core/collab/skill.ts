@@ -261,6 +261,23 @@ armadra-hook canvas handoff-read --id <交接 id>             # 读一份冻结�
 - 别轮询信箱。需要的时候读一次，处理完再 \`ack\`。
 - 你空下来而信箱里还有未读时，画布会在你的终端里投一行提示（或直接投最早那条的正文）。那一行的信封署名是 \`Armadra 收件箱\`，它提醒你去读，不替你 \`ack\`。
 
+## 工作项与报告 / Work items and reports
+
+协调者派给你的任务（\`task\`、\`team\`、\`open-agent --task-id\`）在它的账本里是一个**工作项**。用 \`report\` 说明这一项现在的状态，而不是给协调者 \`post\` 进度：
+
+\`\`\`sh
+armadra-hook canvas report --state progress --summary '改完了 src/x，正在跑测试'
+armadra-hook canvas report --state ready --summary '已改好，PR #12；验证：pnpm check 通过'
+armadra-hook canvas report --state blocked --summary '构建缺密钥' --human-action '要不要先跳过签名步骤？'
+armadra-hook canvas report --state progress --summary '已按回答继续' --clear-action
+armadra-hook canvas handback --reason '这不在前端范围内'
+\`\`\`
+
+- \`--state\`：\`progress\`（在做）、\`waiting\`（在等构建或别的节点）、\`ready\`（做好了，请人验收）、\`blocked\`、\`failed\`。只有 \`ready\` / \`blocked\` / \`failed\` 和带问题的报告会在协调者收件箱里留一行；进度只记账，不打扰它。
+- \`--human-action\` 放**一个**具体、能直接回答的问题，会替换你上一个没答的问题；问题答了或不需要了就 \`--clear-action\`。不给这两个参数时，原来的问题保留。
+- 事情不该由你做，用 \`handback\` 交回协调者重新决定，同一项只能交回一次。
+- 名下只有一项时不用写 \`--item\`；你的名下没有工作项（不是协调者派的）时 \`report\` 会被拒绝，那时照常 \`post\`。
+
 ## 改画布 / Change the board
 
 \`\`\`sh

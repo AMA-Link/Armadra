@@ -67,10 +67,10 @@ afterEach(() => {
 });
 
 describe("the dispatcher", () => {
-  it("publishes exactly the twenty verbs plus help, and derives help from them", async () => {
+  it("publishes exactly the twenty-three verbs plus help, and derives help from them", async () => {
     const dispatcher = controlDispatcher();
     expect(dispatcher?.verbs).toEqual([...VERBS]);
-    expect(VERBS).toHaveLength(21);
+    expect(VERBS).toHaveLength(24);
     const body = ok(await run(me, "help"));
     expect(body.result).toMatchObject({ protocol: "armadra.mailbox.v1" });
     // Derived, not restated: a verb added without a help line would be

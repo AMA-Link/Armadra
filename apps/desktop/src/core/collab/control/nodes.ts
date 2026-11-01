@@ -59,6 +59,7 @@ import {
 } from "./worktree";
 import { newNodeView } from "./agent-driver";
 import { addLink } from "./edits";
+import { ledgerEntry } from "./items";
 import { type Outcome, result } from "./outcome";
 import { checkBody, refuse as sendRefusal } from "./send";
 import { launchRoleNode } from "../../workflow/dispatch";
@@ -444,6 +445,13 @@ export async function openAgent(
         nodeId: node.id,
         now: nowMs,
         task,
+        ...ledgerEntry(caller, {
+          kind: "coordinator",
+          title,
+          origin: args.text("origin"),
+          task,
+          now: nowMs,
+        }),
       });
     }
     publishTask(context.database, context.publish, taskKey);
@@ -1038,6 +1046,30 @@ export async function team(
             })),
           }),
     };
+  });
+
+  // 每个成员一项工作项（#682），派发抽屉与 `canvas items` 都看得到；任务 id
+  // 由成员节点定，重复写入是同一行。
+  const nowMs = nowDate(context).getTime();
+  created.forEach((node, index) => {
+    const role = roster[index] as TeamRole;
+    const taskId = `team:${node.id}`;
+    recordTaskStart(context.database, {
+      taskId,
+      coordinatorNodeId: caller.node.id,
+      runnerId: role.agentId,
+      nodeId: node.id,
+      now: nowMs,
+      task: role.task,
+      ...ledgerEntry(caller, {
+        kind: "team",
+        title: role.title,
+        origin: args.text("origin"),
+        task: role.task,
+        now: nowMs,
+      }),
+    });
+    publishTask(context.database, context.publish, taskId);
   });
 
   const starting = rows.filter((row) => row.after.length === 0).length;
