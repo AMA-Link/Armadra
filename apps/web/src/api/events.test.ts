@@ -215,7 +215,23 @@ describe("workspace events", () => {
     await settle();
     feeds[0]!.fail({ code: "forbidden" });
     await settle();
-    expect(lost).toHaveBeenCalledWith(WORKSPACE, "local");
+    expect(lost).toHaveBeenCalledWith(WORKSPACE, "local", "revoked");
+    await vi.advanceTimersByTimeAsync(30_000);
+    expect(feeds).toHaveLength(1);
+    off();
+    release();
+  });
+
+  it("订着的工作空间被删除或归档（not_found）：告知订阅者，不再订（契约 §89）", async () => {
+    const lost = vi.fn();
+    const off = onWorkspaceAccessLost(lost);
+    const release = connectWorkspaceEvents(WORKSPACE);
+    await settle();
+    feeds[0]!.push(cursor(5));
+    await settle();
+    feeds[0]!.fail({ code: "not_found" });
+    await settle();
+    expect(lost).toHaveBeenCalledWith(WORKSPACE, "local", "gone");
     await vi.advanceTimersByTimeAsync(30_000);
     expect(feeds).toHaveLength(1);
     off();
@@ -230,7 +246,7 @@ describe("workspace events", () => {
     closedWith = 4403;
     feeds[0]!.fail(new Error("WebSocket is not open"));
     await settle();
-    expect(lost).toHaveBeenCalledWith(WORKSPACE, "local");
+    expect(lost).toHaveBeenCalledWith(WORKSPACE, "local", "revoked");
     off();
     release();
   });
