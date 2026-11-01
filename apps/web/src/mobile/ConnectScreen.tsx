@@ -61,7 +61,10 @@ export type ConnectFailure =
   | "address"
   | "codeMismatch"
   | "anchorChanged"
-  | "codeUpgrade";
+  | "codeUpgrade"
+  | "denied"
+  | "deviceExpired"
+  | "notCloud";
 
 /** 原生 App 里「添加连接」的几个视图（多连接）。 */
 export type ConnectView =
