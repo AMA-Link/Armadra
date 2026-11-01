@@ -60,4 +60,20 @@ public class DeepLinkTest {
         assertTrue(pair.endsWith("location.reload();"));
         assertEquals("\"a\\u2028\\\"\"", DeepLink.literal("a" + (char) 0x2028 + "\""));
     }
+
+    @Test
+    public void deviceApprovedOnlyNotifiesThePage() {
+        DeepLink link = DeepLink.parse("armadra://cloud/device-approved");
+        assertEquals(DeepLink.Kind.CLOUD_DEVICE_APPROVED, link.kind);
+        assertTrue(link.notifiesOnly());
+        // 不写 #link=、不重载：没有脚本。
+        assertNull(link.script());
+        assertEquals(DeepLink.Kind.CLOUD_DEVICE_APPROVED, DeepLink.parse("armadra://cloud/device-approved/").kind);
+        // 不带任何参数或秘密；别的路径与查询串一律不认。
+        assertNull(DeepLink.parse("armadra://cloud/device-approved?code=ABCD-EFGH"));
+        assertNull(DeepLink.parse("armadra://cloud/device-approved/x"));
+        assertNull(DeepLink.parse("armadra://cloud/other"));
+        assertNull(DeepLink.parse("armadra://cloud"));
+        assertTrue(!DeepLink.parse("armadra://w/ws_1").notifiesOnly());
+    }
 }

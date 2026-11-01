@@ -54,6 +54,23 @@ final class DeepLinkTests: XCTestCase {
         XCTAssertNil(DeepLink("armadra://oauth?state=a'+alert(1)+'"))
         XCTAssertNil(DeepLink("armadra://oauthx?state=a"))
     }
+
+    func testDeviceApprovedOnlyNotifiesThePage() {
+        let link = "armadra://cloud/device-approved"
+        XCTAssertEqual(DeepLink(link), .cloudDeviceApproved(link))
+        XCTAssertEqual(DeepLink(link + "/")?.link, link + "/")
+        XCTAssertTrue(DeepLink(link)!.notifiesOnly)
+        XCTAssertFalse(DeepLink("armadra://w/ws_1")!.notifiesOnly)
+        // 不写 #link=、不重载、冷启动也不进第一个文档。
+        XCTAssertFalse(DeepLink(link)!.reloadsPage)
+        XCTAssertEqual(DeepLink(link)!.script, "")
+        XCTAssertNil(DeepLink(link)!.launchScript(token: "x"))
+        // 不带任何参数或秘密；别的路径与查询串一律不认。
+        XCTAssertNil(DeepLink(link + "?code=ABCD-EFGH"))
+        XCTAssertNil(DeepLink(link + "/x"))
+        XCTAssertNil(DeepLink("armadra://cloud/other"))
+        XCTAssertNil(DeepLink("armadra://cloud"))
+    }
 }
 
 /// 冷启动的深链写进第一个文档，不再载完重载（#281）。

@@ -34,7 +34,10 @@ import { isNativeAppPage } from "../api/runtime-url";
  * | `e2eDeviceSeed()`                     | `{ seed }`（端到端通道的设备钥种子，32 字节 base64url，没有就生成，只在钥匙串 / Keystore；契约 §78） |
  *
  * 事件（`addListener`）：`pushTokenRotated`——App 开着时令牌换了（Android
- * `onNewToken`、UnifiedPush 新端点、iOS 启动时 APNs 给了新令牌）。
+ * `onNewToken`、UnifiedPush 新端点、iOS 启动时 APNs 给了新令牌）；
+ * `cloudDeviceApproved`——控制台批准页在系统浏览器里批准了设备码登录，经深链
+ * `armadra://cloud/device-approved` 把人带回 App（#666）。事件不带数据，页面不重载，
+ * 只是该立即问一次批准结果了。
  */
 
 /** 一份会话走的路：直连 Gateway，或经中继。 */
@@ -146,6 +149,8 @@ export interface NativeBridge {
   ackPushRotation(): Promise<void>;
   /** App 开着时令牌换了；返回取消订阅。 */
   onPushRotated(listener: () => void): () => void;
+  /** 设备码在浏览器里批准后深链回到 App；返回取消订阅。不在原生 App 里是空操作。 */
+  onCloudDeviceApproved(listener: () => void): () => void;
   /** 用系统浏览器打开；打不开（没有插件方法、地址不对）是 `false`。 */
   openExternal(url: string): Promise<boolean>;
   /** App 的版本与构建号；不在原生 App 里、或旧安装包没有这个方法是 `null`。 */
@@ -440,6 +445,7 @@ const WEB_BRIDGE: NativeBridge = {
   pushRotated: () => Promise.resolve(false),
   ackPushRotation: () => Promise.resolve(),
   onPushRotated: () => () => undefined,
+  onCloudDeviceApproved: () => () => undefined,
   openExternal: () => Promise.resolve(false),
   appInfo: () => Promise.resolve(null),
   installApk: () => Promise.resolve({ status: "failed" }),
@@ -480,6 +486,21 @@ export function nativeBridge(): NativeBridge {
     } catch {
       return fallback;
     }
+  };
+  const subscribe = (event: string, listener: () => void): (() => void) => {
+    if (typeof native.addListener !== "function") return () => undefined;
+    let handle: PluginListenerHandle | null = null;
+    let removed = false;
+    void Promise.resolve(native.addListener(event, listener))
+      .then((found) => {
+        handle = found;
+        if (removed) void handle.remove();
+      })
+      .catch(() => undefined);
+    return () => {
+      removed = true;
+      if (handle) void handle.remove();
+    };
   };
   return {
     available: true,
@@ -560,21 +581,9 @@ export function nativeBridge(): NativeBridge {
         () => undefined,
         undefined,
       ),
-    onPushRotated(listener) {
-      if (typeof native.addListener !== "function") return () => undefined;
-      let handle: PluginListenerHandle | null = null;
-      let removed = false;
-      void Promise.resolve(native.addListener("pushTokenRotated", listener))
-        .then((found) => {
-          handle = found;
-          if (removed) void handle.remove();
-        })
-        .catch(() => undefined);
-      return () => {
-        removed = true;
-        if (handle) void handle.remove();
-      };
-    },
+    onPushRotated: (listener) => subscribe("pushTokenRotated", listener),
+    onCloudDeviceApproved: (listener) =>
+      subscribe("cloudDeviceApproved", listener),
     openExternal: (url) =>
       externalUrl(url)
         ? quiet(

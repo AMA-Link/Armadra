@@ -19,10 +19,12 @@ import { fileURLToPath } from "node:url";
 import {
   CHECKS,
   Recorder,
+  consoleListAgentFailures,
   diffSnapshots,
   idleHostVerdict,
   isSessionHost,
   launchLine,
+  logFindings,
   markerLine,
   newResult,
   PAGE_HELPERS,
@@ -455,6 +457,37 @@ test("the query program is valid JavaScript and the page helpers carry the watch
   for (const name of ["watchOpen", "watchRead", "watchSend", "watchClose"])
     assert.ok(lib.PAGE_HELPERS.includes(name), name);
   assert.ok(lib.PAGE_HELPERS.includes("replies=1"));
+});
+
+test("node-pty console list agent 的堆栈单独挑出来，app.logs 据此判失败（#670）", () => {
+  const dir = mkdtempSync(join(tmpdir(), "armadra-acceptance-logs-"));
+  try {
+    writeFileSync(
+      join(dir, "session-host.log"),
+      [
+        "2026-11-01T08:05:34.892Z session host listening on \\\\.\\pipe\\armadra-session",
+        "C:\\install\\resources\\app.asar.unpacked\\node_modules\\node-pty\\lib\\conpty_console_list_agent.js:13",
+        "var consoleProcessList = getConsoleProcessList(shellPid);",
+        "Error: AttachConsole failed",
+        "2026-11-01T08:06:14.173Z conout pipe error: read ECONNRESET",
+      ].join("\n"),
+    );
+    const found = logFindings(dir);
+    assert.equal(found.findings.length, 2);
+    assert.deepEqual(consoleListAgentFailures(found.findings), [
+      "session-host.log: Error: AttachConsole failed",
+    ]);
+    assert.deepEqual(
+      consoleListAgentFailures(["core.log: Error: FreeConsole failed"]),
+      ["core.log: Error: FreeConsole failed"],
+    );
+    assert.deepEqual(
+      consoleListAgentFailures(["core.log: error: spawn failed"]),
+      [],
+    );
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });
 
 test("会话宿主的日志拷进产物：有几份拷几份，没有就不拷（#659）", () => {

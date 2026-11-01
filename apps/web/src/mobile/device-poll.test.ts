@@ -214,4 +214,100 @@ describe("设备码轮询状态机", () => {
     await time.advance(60_000);
     expect(poll).toHaveBeenCalledTimes(1);
   });
+
+  it("在途状态：开始问 true、答复回来 false，界面据此显示「正在确认」", async () => {
+    const time = clock();
+    const busy: boolean[] = [];
+    let release: (step: DevicePollStep<string>) => void = () => undefined;
+    const poller = new DevicePoller<string>({
+      poll: () => new Promise((resolve) => (release = resolve)),
+      intervalMs: 5_000,
+      onSettled: vi.fn(),
+      onError: vi.fn(),
+      onBusyChange: (value) => busy.push(value),
+      now: time.now,
+      setTimer: time.setTimer,
+      clearTimer: time.clearTimer,
+    });
+    poller.start();
+    expect(poller.busy).toBe(false);
+    await time.advance(5_000);
+    expect(poller.busy).toBe(true);
+    expect(busy).toEqual([true]);
+    release({ kind: "pending" });
+    await time.advance(0);
+    expect(poller.busy).toBe(false);
+    expect(busy).toEqual([true, false]);
+  });
+
+  it("在途状态：抛出意外与终结答案同样先落回 false", async () => {
+    const busy: boolean[] = [];
+    const time = clock();
+    const poller = new DevicePoller<string>({
+      poll: async () => {
+        throw new Error("boom");
+      },
+      intervalMs: 5_000,
+      onSettled: vi.fn(),
+      onError: vi.fn(),
+      onBusyChange: (value) => busy.push(value),
+      now: time.now,
+      setTimer: time.setTimer,
+      clearTimer: time.clearTimer,
+    });
+    poller.start();
+    await time.advance(5_000);
+    expect(busy).toEqual([true, false]);
+  });
+
+  it("urgent：不受最小间隔限制；在途时那一次答 pending 后立刻再问，答 settled 就不再问", async () => {
+    const time = clock();
+    const releases: Array<(step: DevicePollStep<string>) => void> = [];
+    const poll = vi.fn(
+      () => new Promise<DevicePollStep<string>>((r) => releases.push(r)),
+    );
+    const onSettled = vi.fn();
+    const poller = new DevicePoller<string>({
+      poll,
+      intervalMs: 5_000,
+      onSettled,
+      onError: vi.fn(),
+      now: time.now,
+      setTimer: time.setTimer,
+      clearTimer: time.clearTimer,
+    });
+    poller.start();
+    await time.advance(5_000);
+    expect(poll).toHaveBeenCalledTimes(1);
+    // 普通补一次在途时被忽略；urgent 记下，等这一次答完再问。
+    poller.pollNow();
+    await time.advance(0);
+    expect(poll).toHaveBeenCalledTimes(1);
+    poller.pollNow(true);
+    releases[0]!({ kind: "pending" });
+    await time.advance(0);
+    expect(poll).toHaveBeenCalledTimes(2);
+    // 刚发出（MIN_GAP 内）也照样 urgent。
+    poller.pollNow(true);
+    releases[1]!({ kind: "settled", value: "ok" });
+    await time.advance(0);
+    expect(onSettled).toHaveBeenCalledWith("ok");
+    expect(poll).toHaveBeenCalledTimes(2);
+  });
+
+  it("urgent 空闲时直接问，且不受刚发出一次的最小间隔限制", async () => {
+    const { time, poll, poller } = setup([
+      { kind: "pending" },
+      { kind: "pending" },
+    ]);
+    poller.start();
+    await time.advance(5_000);
+    expect(poll).toHaveBeenCalledTimes(1);
+    await time.advance(MIN_GAP_MS - 1);
+    poller.pollNow();
+    expect(poll).toHaveBeenCalledTimes(1);
+    poller.pollNow(true);
+    await time.advance(0);
+    expect(poll).toHaveBeenCalledTimes(2);
+  });
 });

@@ -70,7 +70,8 @@ import org.unifiedpush.android.connector.UnifiedPush;
  *       {@code { status: "started" | "permissionRequired" | "checksumMismatch" | "failed", message? }}，从不 reject。
  * </ul>
  *
- * 深链（{@code armadra://…}，含点通知与 OAuth 回调）改写页面的地址片段（{@link DeepLink#script()}）。
+ * 深链（{@code armadra://…}，含点通知与 OAuth 回调）改写页面的地址片段（{@link DeepLink#script()}）；
+ * 例外是设备码批准后的回跳 {@code armadra://cloud/device-approved}：只发 {@code cloudDeviceApproved} 事件，不改地址、不重载。
  */
 @CapacitorPlugin(
         name = "ArmadraNative",
@@ -105,7 +106,8 @@ public class ArmadraNativePlugin extends Plugin {
         if (launchLink != null && handledLaunch.get() != launch) {
             handledLaunch = new WeakReference<>(launch);
             Log.i(TAG, "deep link at launch: " + launchLink.kind);
-            deliver(launchLink.script());
+            // 批准后的回跳只通知在等的页面；冷启动时没有页面在等（设备码在内存里已经没了），当普通启动。
+            if (!launchLink.notifiesOnly()) deliver(launchLink.script());
         }
         getBridge().addWebViewListener(new WebViewListener() {
             @Override
@@ -689,6 +691,12 @@ public class ArmadraNativePlugin extends Plugin {
         if (data == null) return;
         DeepLink link = DeepLink.parse(data.toString());
         if (link == null) return;
+        if (link.notifiesOnly()) {
+            // 设备码批准后的回跳（#666）：App 已经被系统带到前台，只告诉页面立刻问一次；不写片段、不重载。
+            Log.i(TAG, "deep link notifies the page: " + link.kind);
+            notifyListeners("cloudDeviceApproved", new JSObject());
+            return;
+        }
         deliver(link.script());
     }
 

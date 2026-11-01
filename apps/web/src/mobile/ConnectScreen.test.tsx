@@ -1,3 +1,4 @@
+import type * as React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   act,
@@ -697,8 +698,13 @@ describe("连接页 · Armadra 云（设备码）", () => {
     onScan: vi.fn(async () => null),
   };
   /** 到「等待批准」那一页。 */
-  const waiting = async (relay: ReturnType<typeof setup>) => {
-    render(<ConnectScreen {...base} relay={relay} initialView="cloud" />);
+  const waiting = async (
+    relay: ReturnType<typeof setup>,
+    extra: Partial<React.ComponentProps<typeof ConnectScreen>> = {},
+  ) => {
+    render(
+      <ConnectScreen {...base} {...extra} relay={relay} initialView="cloud" />,
+    );
     fireEvent.click(screen.getByRole("button", { name: "登录" }));
     await tick(0);
     expect(screen.getByText("BCDF-GHJK")).toBeTruthy();
@@ -785,6 +791,95 @@ describe("连接页 · Armadra 云（设备码）", () => {
     });
     await tick(0);
     expect(relay.pollDevice).toHaveBeenCalledTimes(2);
+  });
+
+  it("浏览器里批准后深链回到 App：收到事件立即问一次，不等间隔；离开等待页即取消订阅", async () => {
+    const relay = setup();
+    let notify: () => void = () => undefined;
+    const unsubscribe = vi.fn();
+    const onDeviceApproved = vi.fn((listener: () => void) => {
+      notify = listener;
+      return unsubscribe;
+    });
+    await waiting(relay, { onDeviceApproved });
+    expect(onDeviceApproved).toHaveBeenCalledTimes(1);
+    expect(relay.pollDevice).not.toHaveBeenCalled();
+    act(() => notify());
+    await tick(0);
+    expect(relay.pollDevice).toHaveBeenCalledTimes(1);
+    // 事件不重载页面：设备码还在。
+    expect(screen.getByText("BCDF-GHJK")).toBeTruthy();
+    expect(relay.cancelDevice).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "取消" }));
+    expect(unsubscribe).toHaveBeenCalledTimes(1);
+  });
+
+  it("事件到时正有一次在途：那一次答完 pending 后马上再问，批准的结果不被错过", async () => {
+    const relay = setup();
+    let notify: () => void = () => undefined;
+    await waiting(relay, {
+      onDeviceApproved: (listener) => {
+        notify = listener;
+        return () => undefined;
+      },
+    });
+    let release: (answer: unknown) => void = () => undefined;
+    relay.pollDevice.mockImplementationOnce(
+      () => new Promise((resolve) => (release = resolve)),
+    );
+    await tick(5_000);
+    expect(relay.pollDevice).toHaveBeenCalledTimes(1);
+    act(() => notify());
+    await tick(0);
+    expect(relay.pollDevice).toHaveBeenCalledTimes(1);
+    relay.pollDevice.mockResolvedValue({
+      kind: "sources",
+      sources: [{ sourceId: "s1", name: "MacBook", online: true }],
+    });
+    release({ kind: "pending" });
+    await tick(0);
+    expect(relay.pollDevice).toHaveBeenCalledTimes(2);
+    expect(screen.getByRole("checkbox", { name: /MacBook/ })).toBeTruthy();
+  });
+
+  it("轮询在途：显示「正在确认」，取消被禁用，不会作废当前设备码；答复回来后恢复", async () => {
+    const relay = setup();
+    await waiting(relay);
+    let release: (answer: unknown) => void = () => undefined;
+    relay.pollDevice.mockImplementationOnce(
+      () => new Promise((resolve) => (release = resolve)),
+    );
+    await tick(5_000);
+    expect(screen.getByText("正在确认")).toBeTruthy();
+    expect(screen.queryByText("等待在浏览器中批准")).toBeNull();
+    const cancel = screen.getByRole("button", { name: "取消" });
+    expect(cancel.hasAttribute("disabled")).toBe(true);
+    fireEvent.click(cancel);
+    expect(relay.cancelDevice).not.toHaveBeenCalled();
+    expect(screen.getByText("BCDF-GHJK")).toBeTruthy();
+
+    release({ kind: "pending" });
+    await tick(0);
+    expect(screen.getByText("等待在浏览器中批准")).toBeTruthy();
+    expect(
+      screen.getByRole("button", { name: "取消" }).hasAttribute("disabled"),
+    ).toBe(false);
+  });
+
+  it("在途的一次答出终结（拒绝）：「新设备码」不再被「正在确认」锁住", async () => {
+    const relay = setup();
+    await waiting(relay);
+    let release: (answer: unknown) => void = () => undefined;
+    relay.pollDevice.mockImplementationOnce(
+      () => new Promise((resolve) => (release = resolve)),
+    );
+    await tick(5_000);
+    release({ kind: "failure", failure: "denied" });
+    await tick(0);
+    expect(screen.queryByText("正在确认")).toBeNull();
+    expect(
+      screen.getByRole("button", { name: "新设备码" }).hasAttribute("disabled"),
+    ).toBe(false);
   });
 
   it("被拒绝：显示原因并停止轮询，「新设备码」重新发起", async () => {

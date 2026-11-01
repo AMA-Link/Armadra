@@ -163,6 +163,11 @@ export interface ConnectScreenProps {
     readonly account?: string;
     readonly password?: string;
   };
+  /**
+   * 订阅「浏览器里批准后深链回到 App」（原生桥的 `onCloudDeviceApproved`）；返回取消订阅。
+   * 等设备码时收到就立即问一次。不给就只靠间隔与回前台。
+   */
+  readonly onDeviceApproved?: (listener: () => void) => () => void;
   /** 展示页用：钉住设备码那一步显示的用户码。 */
   readonly initialDevice?: {
     readonly userCode: string;
@@ -245,6 +250,7 @@ export function ConnectScreen({
   initialSources = [],
   initialRelay,
   initialDevice,
+  onDeviceApproved,
 }: ConnectScreenProps) {
   const t = useT();
   const multi = mode === "native" && relay !== undefined;
@@ -274,6 +280,8 @@ export function ConnectScreen({
     readonly userCode: string;
     readonly intervalMs: number;
   } | null>(initialDevice ?? null);
+  // 设备码的一次轮询正在途中：显示「正在确认」，并不让人作废当前设备码（#666）。
+  const [confirming, setConfirming] = React.useState(false);
   // 设备码登录的目标：缺省是 Armadra 云的默认地址，选择页上登录失效的云连接用它自己的签发方。
   const lastCloudIssuer = React.useRef("");
   const cloudTarget = () => lastCloudIssuer.current || cloudIssuer();
@@ -409,6 +417,8 @@ export function ConnectScreen({
     shownFailure === null;
   React.useEffect(() => {
     if (!waitingForDevice || relay === undefined || device === null) return;
+    // 这个效果被换掉（取消、新设备码）之后，旧轮询器迟到的回调不再动界面。
+    let live = true;
     const poller = new DevicePoller<
       Extract<RelayOutcome, { kind: "sources" | "failure" }>
     >({
@@ -420,8 +430,15 @@ export function ConnectScreen({
           return { kind: "retry", afterMs: answer.afterMs };
         return { kind: "settled", value: answer };
       },
-      onSettled: (outcome) => apply(outcome),
-      onError: () => setFailure("failed"),
+      onBusyChange: (busy) => {
+        if (live) setConfirming(busy);
+      },
+      onSettled: (outcome) => {
+        if (live) apply(outcome);
+      },
+      onError: () => {
+        if (live) setFailure("failed");
+      },
     });
     poller.start();
     const resume = () => {
@@ -429,7 +446,12 @@ export function ConnectScreen({
     };
     document.addEventListener("visibilitychange", resume);
     window.addEventListener("focus", resume);
+    // 浏览器里批准后深链回到 App（#666）：不等间隔，立刻问；在途的一次答完也再问一次。
+    const unsubscribe = onDeviceApproved?.(() => poller.pollNow(true));
     return () => {
+      live = false;
+      setConfirming(false);
+      unsubscribe?.();
       poller.stop();
       document.removeEventListener("visibilitychange", resume);
       window.removeEventListener("focus", resume);
@@ -798,6 +820,7 @@ export function ConnectScreen({
               host={relayHost}
               userCode={device.userCode}
               waiting={shownFailure === null}
+              confirming={confirming}
               busy={shownBusy}
               message={message}
               errorId={errorId}

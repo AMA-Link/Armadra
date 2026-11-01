@@ -1093,6 +1093,19 @@ export function logFindings(dataDir) {
   return { files: files.map((file) => basename(file)), bytes, findings };
 }
 
+/**
+ * {@link logFindings} 里 node-pty 关终端时 fork 的 conpty_console_list_agent 留下的
+ * 堆栈。补丁让它在 AttachConsole / FreeConsole 失败时回空列表（#670），再出现就是
+ * 补丁没打进包里，`app.logs` 据此判失败而不只是告警。
+ */
+export function consoleListAgentFailures(findings) {
+  return findings.filter((line) =>
+    /conpty_console_list_agent|\b(AttachConsole|FreeConsole) failed\b/.test(
+      line,
+    ),
+  );
+}
+
 /** 对一个 https 来源发一次请求：握得上 TLS、拿到状态码就算到了（证书不在这里验）。 */
 export function httpsProbe(origin) {
   return new Promise((done) => {

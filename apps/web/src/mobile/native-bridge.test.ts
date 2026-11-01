@@ -342,6 +342,33 @@ describe("推送轮换、UnifiedPush 与系统浏览器（G5-22）", () => {
     );
   });
 
+  it("设备码批准后的回跳：订阅 cloudDeviceApproved，取消即移除；网页里与旧插件是空操作", async () => {
+    const remove = vi.fn();
+    let fire: () => void = () => undefined;
+    const plugin = {
+      addListener: vi.fn(async (_event: string, listener: () => void) => {
+        fire = listener;
+        return { remove };
+      }),
+    };
+    inApp(plugin);
+    const heard = vi.fn();
+    const stop = nativeBridge().onCloudDeviceApproved(heard);
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(plugin.addListener).toHaveBeenCalledWith(
+      "cloudDeviceApproved",
+      heard,
+    );
+    fire();
+    expect(heard).toHaveBeenCalledTimes(1);
+    stop();
+    expect(remove).toHaveBeenCalledTimes(1);
+
+    inApp({});
+    expect(nativeBridge().onCloudDeviceApproved(heard)()).toBeUndefined();
+  });
+
   it("系统浏览器只开 https 与回环 http", async () => {
     const openExternal = vi.fn(async () => undefined);
     inApp({ openExternal });

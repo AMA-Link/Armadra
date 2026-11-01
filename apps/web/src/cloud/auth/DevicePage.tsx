@@ -30,6 +30,7 @@ import type { CloudClient } from "../api/client";
 import { useCloudApi } from "../api/context";
 import { describeFailure, isSessionError, toCloudError } from "../api/errors";
 import { AuthLayout } from "./AuthLayout";
+import { APP_RETURN_URL, isMobilePlatform, returnToApp } from "./app-return";
 import {
   USER_CODE_ALPHABET,
   USER_CODE_LENGTH,
@@ -51,7 +52,7 @@ type Stage =
   | { kind: "loading" }
   | { kind: "ready"; userCode: string; request: DeviceRequest }
   | { kind: "stepUp"; userCode: string; request: DeviceRequest }
-  | { kind: "done"; approved: boolean; name: string };
+  | { kind: "done"; approved: boolean; name: string; mobile: boolean };
 
 const PLATFORM_ICON = {
   ios: Smartphone,
@@ -167,6 +168,12 @@ export function DevicePage({
     };
   }, [code, lookup]);
 
+  // 手机 App 发起的设备码被批准：自动回到 App（被系统拦掉时用页面上的按钮）。
+  const returning = stage.kind === "done" && stage.mobile;
+  React.useEffect(() => {
+    if (returning) returnToApp();
+  }, [returning]);
+
   // 第一个错误落在输入框上：焦点回到设备码。
   React.useEffect(() => {
     if (error !== "" && stage.kind === "enter") codeInput.current?.focus();
@@ -191,7 +198,13 @@ export function DevicePage({
       if (approve)
         await api.client.auth.deviceApprove({ userCode, approve: true });
       else await api.client.auth.deviceDeny({ userCode });
-      setStage({ kind: "done", approved: approve, name: request.name });
+      setStage({
+        kind: "done",
+        approved: approve,
+        name: request.name,
+        // 只有批准才把手机 App 带回去；拒绝不跳。
+        mobile: approve && isMobilePlatform(request.platform),
+      });
       return "";
     } catch (failure) {
       const { code: failed } = toCloudError(failure);
@@ -249,7 +262,18 @@ export function DevicePage({
           }
           headingLevel={2}
         />
-        <Button size="lg" className="w-full" autoFocus onClick={onDone}>
+        {stage.mobile && (
+          <Button size="lg" className="w-full" autoFocus asChild>
+            <a href={APP_RETURN_URL}>{t("cloud.auth.deviceReturn")}</a>
+          </Button>
+        )}
+        <Button
+          size="lg"
+          variant={stage.mobile ? "ghost" : "default"}
+          className="w-full"
+          autoFocus={!stage.mobile}
+          onClick={onDone}
+        >
           {t("cloud.auth.continue")}
         </Button>
       </AuthLayout>

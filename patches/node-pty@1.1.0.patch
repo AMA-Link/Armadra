@@ -1,3 +1,77 @@
+diff --git a/lib/conpty_console_list_agent.js b/lib/conpty_console_list_agent.js
+index 8c4fca9022a6d6f015bca87f61625cde2278f428..31b69026d9fb04ed4c0d3d15af363101e0bc8b01 100644
+--- a/lib/conpty_console_list_agent.js
++++ b/lib/conpty_console_list_agent.js
+@@ -10,7 +10,18 @@ Object.defineProperty(exports, "__esModule", { value: true });
+ var utils_1 = require("./utils");
+ var getConsoleProcessList = utils_1.loadNativeModule('conpty_console_list').module.getConsoleProcessList;
+ var shellPid = parseInt(process.argv[2], 10);
+-var consoleProcessList = getConsoleProcessList(shellPid);
++// armadra: as in 1.2.0-beta.18. kill() forks this agent and then closes the
++// pseudoconsole, so by the time it attaches the shell is usually gone and
++// AttachConsole throws; uncaught, that stack landed in the host's log (#670).
++var consoleProcessList = [];
++if (shellPid > 0) {
++    try {
++        consoleProcessList = getConsoleProcessList(shellPid);
++    }
++    catch (_a) {
++        consoleProcessList = [];
++    }
++}
+ process.send({ consoleProcessList: consoleProcessList });
+ process.exit(0);
+ //# sourceMappingURL=conpty_console_list_agent.js.map
+\ No newline at end of file
+diff --git a/lib/windowsPtyAgent.js b/lib/windowsPtyAgent.js
+index a358ffb177357e177661033c1b092f9c9d0e5f5a..17636f1acd2bcea586e51f905a65bc3acb32fde3 100644
+--- a/lib/windowsPtyAgent.js
++++ b/lib/windowsPtyAgent.js
+@@ -180,16 +180,38 @@ var WindowsPtyAgent = /** @class */ (function () {
+     };
+     WindowsPtyAgent.prototype._getConsoleProcessList = function () {
+         var _this = this;
++        // armadra: an empty list whenever the agent has no answer. The shell PID
++        // this used to fall back to belongs to a process the closed
++        // pseudoconsole already ended, and killing it 5 s later by bare PID
++        // could hit whatever reused that PID (#670). The pseudoconsole close
++        // ends the shell; the session host waits for its exit.
++        if (!(this._innerPid > 0)) {
++            return Promise.resolve([]);
++        }
+         return new Promise(function (resolve) {
+-            var agent = child_process_1.fork(path.join(__dirname, 'conpty_console_list_agent'), [_this._innerPid.toString()]);
+-            agent.on('message', function (message) {
++            var timeout;
++            var settle = function (list) {
+                 clearTimeout(timeout);
+-                resolve(message.consoleProcessList);
++                resolve(Array.isArray(list) ? list : []);
++            };
++            var agent;
++            try {
++                agent = child_process_1.fork(path.join(__dirname, 'conpty_console_list_agent'), [_this._innerPid.toString()]);
++            }
++            catch (_a) {
++                settle([]);
++                return;
++            }
++            agent.on('message', function (message) {
++                settle(message && message.consoleProcessList);
+             });
+-            var timeout = setTimeout(function () {
+-                // Something went wrong, just send back the shell PID
++            // 'close', not 'exit': it waits for the IPC channel, so a list the
++            // agent sent just before exiting is still read first.
++            agent.on('error', function () { settle([]); });
++            agent.on('close', function () { settle([]); });
++            timeout = setTimeout(function () {
+                 agent.kill();
+-                resolve([_this._innerPid]);
++                settle([]);
+             }, 5000);
+         });
+     };
 diff --git a/src/unix/pty.cc b/src/unix/pty.cc
 index 7b4b9e1f990fbf95b51528bb56dc9717f5b87532..7e08eaa37b1e9730dc81f9085c584da8f4c97ac8 100644
 --- a/src/unix/pty.cc

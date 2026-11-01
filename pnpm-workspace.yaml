@@ -101,7 +101,7 @@ patchedDependencies:
   # own @electron/rebuild, which takes none of node-pty's prebuilds. Each
   # checks the result first (apps/desktop/scripts/verify-node-pty.mjs pins the
   # version and the patched files' SHA-256; regenerate with `pnpm patch` /
-  # `pnpm patch-commit` and move those pins together). Two files:
+  # `pnpm patch-commit` and move those pins together). Three parts:
   #
   # src/unix/pty.cc (macOS): pty_posix_spawn leaks a /dev/ptmx and the
   # parent's slave on every spawn, and master/slave on every early failure,
@@ -116,5 +116,14 @@ patchedDependencies:
   # backports only the mutex of the upstream fix (#922, first in
   # 1.2.0-beta.13) and 1.2.0-beta.18's guard against closing one
   # pseudoconsole twice (a second kill before the exit thread forgot it freed
-  # it again); drop this half once a stable 1.2.0 ships.
+  # it again).
+  #
+  # lib/conpty_console_list_agent.js, lib/windowsPtyAgent.js (Windows only,
+  # around kill()'s console list agent, #670): the agent catches
+  # AttachConsole failing (as in 1.2.0-beta.18) instead of crashing into the
+  # session host's log, and when it has no answer the list is empty rather
+  # than the shell's PID, which node-pty used to kill 5 s later by bare PID
+  # after the closed pseudoconsole had already ended that process.
+  #
+  # Drop the Windows parts once a stable 1.2.0 ships.
   node-pty@1.1.0: patches/node-pty@1.1.0.patch

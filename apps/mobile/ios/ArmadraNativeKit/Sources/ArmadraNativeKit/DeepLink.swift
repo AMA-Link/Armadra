@@ -10,6 +10,9 @@ import Foundation
 ///    写进 `#push=`，页面 `mobile/push-open.ts` 认 `hashchange`，不用重载；连着别的主机时页面自己切。
 ///  - `armadra://oauth?state=…&code=…`（或 `error=`）：原生 OAuth 的回调（R-56）。与配对一样
 ///    写进 `#link=` 再重载，入口在挂载前收尾。
+///  - `armadra://cloud/device-approved`：控制台批准页批准了手机的设备码登录后带人回来（#666）。
+///    只让 App 回前台并经插件事件 `cloudDeviceApproved` 通知页面，不写 `#link=`、不重载（重载会丢掉
+///    只在内存里的设备码）；冷启动带着它当普通启动。不带任何参数或秘密。
 ///
 /// 其余一律不认。链接按 JSON 字符串字面量嵌进脚本，不拼接原文。
 public enum DeepLink: Equatable {
@@ -17,11 +20,13 @@ public enum DeepLink: Equatable {
     case join(String)
     case node(String)
     case oauth(String)
+    case cloudDeviceApproved(String)
 
     private static let maxLength = 2048
     private static let pairPattern = "^armadra://pair\\?[A-Za-z0-9._~%&=:+-]+$"
     private static let joinPattern = "^armadra://join\\?[A-Za-z0-9._~%&=:+-]+$"
     private static let oauthPattern = "^armadra://oauth\\?[A-Za-z0-9._~%&=:+*-]+$"
+    private static let cloudDeviceApprovedPattern = "^armadra://cloud/device-approved/?$"
     private static let nodePattern = "^armadra://w/[A-Za-z0-9._~%-]+(/n/[A-Za-z0-9._~%-]+)?/?(\\?s=[A-Za-z0-9._~%-]+)?$"
 
     public init?(_ link: String) {
@@ -34,6 +39,8 @@ public enum DeepLink: Equatable {
             self = .node(link)
         } else if link.range(of: Self.oauthPattern, options: .regularExpression) != nil {
             self = .oauth(link)
+        } else if link.range(of: Self.cloudDeviceApprovedPattern, options: .regularExpression) != nil {
+            self = .cloudDeviceApproved(link)
         } else {
             return nil
         }
@@ -41,14 +48,23 @@ public enum DeepLink: Equatable {
 
     public var link: String {
         switch self {
-        case let .pair(link), let .join(link), let .node(link), let .oauth(link): return link
+        case let .pair(link), let .join(link), let .node(link), let .oauth(link), let .cloudDeviceApproved(link): return link
         }
     }
 
-    /// 写进 `#link=` 再重载才生效的三种（配对、分享链接、OAuth 回调）；通知点开只改 `#push=`，不重载。
+    /// 写进 `#link=` 再重载才生效的三种（配对、分享链接、OAuth 回调）；通知点开只改 `#push=`，不重载；
+    /// 设备码批准后的回跳只发插件事件。
     public var reloadsPage: Bool {
-        if case .node = self { return false }
-        return true
+        switch self {
+        case .node, .cloudDeviceApproved: return false
+        default: return true
+        }
+    }
+
+    /// 只通知页面（插件事件），没有要在页面里执行的脚本：`script` 对它答空串，调用方不该执行。
+    public var notifiesOnly: Bool {
+        if case .cloudDeviceApproved = self { return true }
+        return false
     }
 
     /// 冷启动时在第一个文档开头执行的那一段（`WKUserScript`，`atDocumentStart`）：入口还没跑，
@@ -70,6 +86,8 @@ public enum DeepLink: Equatable {
             return "history.replaceState(null,'',location.pathname+'#link='+encodeURIComponent(\(literal)));location.reload();"
         case .node:
             return "location.hash='#push='+encodeURIComponent(\(literal));"
+        case .cloudDeviceApproved:
+            return ""
         }
     }
 
