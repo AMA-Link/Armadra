@@ -19,7 +19,7 @@ import {
   shareNatively,
 } from "@/panels/settings/RemoteShare";
 import { QrImage } from "@/panels/settings/pages/gateway/PairingCard";
-import { AddRelayDialog } from "@/panels/settings/pages/remote-access/dialogs";
+import { AddCloudDialog } from "@/panels/settings/pages/remote-access/CloudDialog";
 import { useInternetRoute } from "@/panels/settings/pages/remote-access/hooks";
 import {
   REMOTE_SECTION,
@@ -52,11 +52,20 @@ export const SHARE_DIALOG_DAYS = [7, 1, 30] as const;
 
 type Scope = "workspace" | "session";
 
+/** 没有互联网路线时按钮上的字，按 `planRoute` 的结果。 */
+const ROUTE_LABEL = {
+  ready: "remote.internet.start",
+  start: "remote.internet.start",
+  register: "remote.cloud.register",
+  signIn: "remote.cloud.signIn",
+} as const;
+
 /**
  * 画布 / 工作空间的分享弹层（#301 B5）：范围（此工作空间 / 仅此会话）、权限
  * （只读缺省 / 可编辑 / 可执行）、有效期（7 天缺省 / 1 天 / 30 天）。建好就给
  * 二维码与整条链接；链接的列表、改名、撤销都在设置 → 远程访问。互联网路线
- * 没开时先在这里开（没有中转账号就先登录）。
+ * 没开时先在这里开，与远程访问页同一套（`planRoute`，#677）：以 Armadra 云为
+ * 缺省，没登录先设备码登录、没登记先选空间登记；只有个人中转账号的一键开。
  */
 export function ShareDialog() {
   const request = useShareStore((state) => state.request);
@@ -103,7 +112,12 @@ function ShareBody({
   const [role, setRole] = React.useState<DialogRole>("viewer");
   const [days, setDays] = React.useState<number>(7);
   const [created, setCreated] = React.useState<string | null>(null);
-  const [signingIn, setSigningIn] = React.useState(false);
+  // 打开着的 Armadra 云对话框：`null` 关着，空串是新登录；`resume` 是登录着的账号，
+  // 直接落到选空间那一步。
+  const [cloudDialog, setCloudDialog] = React.useState<{
+    readonly issuer: string;
+    readonly resume: boolean;
+  } | null>(null);
 
   const sessions = useQuery({
     ...sessionsQuery(workspaceId),
@@ -118,16 +132,6 @@ function ShareBody({
     (remote) =>
       remote.kind === "saas" && remote.registered && remote.hasCredentials,
   );
-
-  // 为开路线先登录的：账号到了就开。
-  const first = internet.startable[0];
-  const { mutate: startRoute } = internet.start;
-  const [wantRoute, setWantRoute] = React.useState(false);
-  React.useEffect(() => {
-    if (!wantRoute || first === undefined) return;
-    setWantRoute(false);
-    if (!internet.on) startRoute(first);
-  }, [wantRoute, first, internet.on, startRoute]);
 
   const create = useMutation({
     mutationFn: () => {
@@ -157,12 +161,17 @@ function ShareBody({
     onError: (error: Error) => toast.error(error.message),
   });
 
+  // 没有互联网路线时的入口，按 `planRoute` 走。
   function turnOnRoute() {
-    if (first !== undefined) internet.start.mutate(first);
-    else {
-      setWantRoute(true);
-      setSigningIn(true);
-    }
+    const plan = internet.plan;
+    if (plan.kind === "start") internet.start.mutate(plan.remote);
+    else if (plan.kind === "ready") internet.refresh();
+    else
+      setCloudDialog(
+        plan.kind === "register"
+          ? { issuer: plan.remote.issuer, resume: true }
+          : { issuer: plan.issuer, resume: false },
+      );
   }
 
   function manage() {
@@ -239,11 +248,7 @@ function ShareBody({
                   loading={internet.busy}
                   onClick={turnOnRoute}
                 >
-                  {t(
-                    first === undefined
-                      ? "share.signIn"
-                      : "remote.internet.start",
-                  )}
+                  {t(ROUTE_LABEL[internet.plan.kind])}
                 </Button>
               </Field>
             )}
@@ -313,16 +318,12 @@ function ShareBody({
           </Button>
         )}
       </ResponsiveDialogFooter>
-      <AddRelayDialog
-        draft={signingIn ? { issuer: "", account: "", fingerprint: "" } : null}
-        onClose={() => {
-          setSigningIn(false);
-          setWantRoute(false);
-        }}
-        onDone={() => {
-          setSigningIn(false);
-          void changed();
-        }}
+      <AddCloudDialog
+        initialIssuer={cloudDialog?.issuer ?? null}
+        autoStart={cloudDialog?.resume ?? false}
+        knownIssuers={internet.remotes.map((remote) => remote.issuer)}
+        onClose={() => setCloudDialog(null)}
+        onChanged={() => void changed()}
       />
     </>
   );
