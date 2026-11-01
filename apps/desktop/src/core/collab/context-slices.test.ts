@@ -2,6 +2,7 @@ import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { type AgentFixture, agentFixture, callerFor } from "../agent/fixture";
+import { createComment } from "../realtime/comments-store";
 import { rfc3339, uuidV7 } from "../workspaces/support";
 import { noteRead } from "./context-reads";
 import { DEFAULT_CONTENT_BYTES, runContextLink } from "./context-link";
@@ -155,13 +156,50 @@ describe("文件一段一段地给", () => {
     expect(reply).toContain("第 3–6 字节");
   });
 
-  it("剩余额度比一段少时只给剩下的，并照实说预算", async () => {
+  it("剩余额度比一段少时整次回复落在额度里，并照实说预算", async () => {
     const id = editor("Tight", "tight.txt", "b".repeat(100 * 1024));
     spendAllBut(id, 10 * 1024);
     const reply = await read("transcript", { node: "Tight" });
-    expect(reply).toContain("读取预算只剩约 10 KB");
-    expect(fileBody(reply).length).toBe(10 * 1024);
-    expect(reply).toContain("--offset 10240");
+    expect(reply).toMatch(/读取预算只剩约 \d+ KB/);
+    expect(Buffer.byteLength(reply, "utf8")).toBeLessThanOrEqual(10 * 1024);
+    // 下一段正好接在这一段末尾。
+    expect(nextOffset(reply)).toBe(fileBody(reply).length);
+  });
+
+  it("每一段都验 UTF-8：GBK 文件第二段起也拒绝，不吐乱码", async () => {
+    // 前 40 KB 是 ASCII，之后是 GBK 编码的「汉字」（0xBA 0xBA 0xD7 0xD6）。
+    const gbk = Buffer.concat([
+      Buffer.from("a".repeat(40 * 1024)),
+      Buffer.from([0xba, 0xba, 0xd7, 0xd6]).subarray(0, 4),
+      Buffer.from("\n".repeat(16)),
+    ]);
+    editor("Gbk", "gbk.txt", gbk);
+    const first = await read("transcript", { node: "Gbk" });
+    const offset = nextOffset(first);
+    expect(offset).toBeDefined();
+    fixture.database.prepare("DELETE FROM context_reads").run();
+    let refused: unknown;
+    try {
+      await read("transcript", { node: "Gbk", offset });
+    } catch (error) {
+      refused = error;
+    }
+    expect(refused).toBeInstanceOf(Refusal);
+    expect((refused as Refusal).message).toContain("不是 UTF-8");
+  });
+
+  it("评论附录也算进额度：整次回复连评论一起不超过剩余额度", async () => {
+    const id = editor("Noted", "noted.txt", "d".repeat(100 * 1024));
+    createComment(fixture.database, {
+      boardId: fixture.boardId,
+      anchor: { kind: "node", id },
+      body: "注".repeat(1_000),
+      authorPrincipalId: "",
+    });
+    spendAllBut(id, 12 * 1024);
+    const reply = await read("transcript", { node: "Noted" });
+    expect(reply).toContain("注注注");
+    expect(Buffer.byteLength(reply, "utf8")).toBeLessThanOrEqual(12 * 1024);
   });
 
   it("剩下不到 2 KB 就照旧回 RATE_LIMITED", async () => {
@@ -217,6 +255,33 @@ describe("转录往前翻页", () => {
     const reply = await read("transcript", { node: "Peer" });
     expect(reply).not.toContain("更早还有");
     expect(reply).not.toContain("--before");
+  });
+
+  it("一条就比剩余额度大时截到额度里，不整条越过去", async () => {
+    const peer = fixture.agentNode("Peer");
+    fixture.link(me, peer);
+    const path = join(fixture.directory, "long.jsonl");
+    writeFileSync(
+      path,
+      JSON.stringify({
+        type: "assistant",
+        message: { role: "assistant", content: "长".repeat(30_000) },
+      }) + "\n",
+    );
+    fixture.database
+      .prepare(
+        "INSERT INTO agent_status (node_id, workspace_id, agent_id, state, unread, verified, restored, updated_at, transcript_path) " +
+          "VALUES (?, ?, 'claude', 'idle', 0, 1, 0, ?, ?)",
+      )
+      .run(peer, fixture.workspaceId, rfc3339(), path);
+    spendAllBut(peer, 4 * 1024);
+    const reply = await read("transcript", {
+      node: "Peer",
+      full: true,
+      "max-kb": 64,
+    });
+    expect(reply).toContain("后面截掉了");
+    expect(Buffer.byteLength(reply, "utf8")).toBeLessThanOrEqual(4 * 1024);
   });
 
   it("--since 与 --before 不能一起用", async () => {

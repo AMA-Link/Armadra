@@ -96,7 +96,8 @@ export function checkReadBudget(
 /**
  * 判一次，不过就抛 `RATE_LIMITED`（§3.5，HTTP 429）；过了就答这一次最多还能交
  * 出去多少字节，读的那一方按它收口（#668：先给装得下的一段，而不是读完了才发
- * 现把一分钟的额度一次用光）。剩下不到 {@link MIN_READ_SLICE_BYTES} 也算不过。
+ * 现把一分钟的额度一次用光）。剩下不到 `minimum`（缺省 {@link MIN_READ_SLICE_BYTES}；
+ * 调用方会把一定要附上的评论算进去）也算不过。
  *
  * 拒绝的那句话必须说出**出路**，否则模型只会退避之后原样重试一遍同样大的读
  * 取：`summary` 是常数大小的，`--since` 只给新的，两条都不撞这堵墙。
@@ -107,9 +108,10 @@ export function requireReadBudget(
   target: string,
   title: string,
   nowMs: number,
+  minimum: number = MIN_READ_SLICE_BYTES,
 ): number {
   const checked = checkReadBudget(database, reader, target, nowMs);
-  if (checked.allowed && checked.remaining >= MIN_READ_SLICE_BYTES) {
+  if (checked.allowed && checked.remaining >= minimum) {
     return checked.remaining;
   }
   const verdict = checked.allowed
