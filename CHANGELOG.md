@@ -10,6 +10,7 @@
 - 云端控制台第三方登录：登录与注册页按能力位 `auth.oauth.github` / `auth.oauth.google` 显示「使用 GitHub / Google 继续」，新路由 `/login/oauth/:provider` 回跳完成登录（`next` 含设备码批准页，两步验证复用第二步）；服务端不报 `auth.password` 时隐藏口令表单、找回与注册入口，不报 `auth.password-change` 时账号页收起「更改口令」；运营登录不变；`/h/<主机>` 未登录跳 `/login?next=/h/<主机>`（#661，配合 armadra-cloud#184）。
 - 修复：浏览器节点的 guest session 默认拒绝站点权限请求与权限检查（摄像头、麦克风、定位、通知等），只放行往剪贴板写入；此前 Electron 默认批准且 guest 里无提示（#647）。
 - 修复：Windows 上同时关闭多个终端（或关一个终端的同时操作另一个）可能让其它所有终端会话一起断开。原因是 node-pty 1.1.0 的 ConPTY 句柄表没有加锁，会话宿主会在原生代码里崩溃；现在补上上游的锁（node-pty#922）。会话宿主的日志写进数据目录的 `session-host.log`，控制台管道断开时宿主也不会再跟着退出（#659）。
+- 修复：macOS 发布包每开关一个终端泄漏一个 pty 设备（`/dev/ptmx` 与父进程那份 slave），累计到系统上限（默认 511）后整机都开不出新终端。node-pty 的这段补丁原先只在 `pnpm dev` 前打上，打包不经过它；现在和 Windows 那段一起由 pnpm 在安装时打上，开发与打包编的是同一份源码，编译前校验版本与补丁后文件的哈希（#671）。
 
 ### 手机与平板
 
