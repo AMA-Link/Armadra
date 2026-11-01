@@ -27,6 +27,7 @@ import {
   Item,
   ItemActions,
   ItemContent,
+  ItemDescription,
   ItemGroup,
   ItemMedia,
   ItemTitle,
@@ -271,6 +272,14 @@ function MemberRow({
           }
           spinning={member.status.tone === "working"}
         />
+        {member.attention !== null ? (
+          <ItemDescription
+            className="line-clamp-2"
+            data-slot="dispatch-attention"
+          >
+            {member.attention}
+          </ItemDescription>
+        ) : null}
       </ItemContent>
       {failed && member.taskId !== null && member.retryable ? (
         <ItemActions>

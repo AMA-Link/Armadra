@@ -66,6 +66,7 @@ import { canUseAcp, driverOf, switchDriver } from "@/acp/driver";
 // 副作用：注册 Agent 专属的右键菜单项（重启 / 权限模式 / 回收）
 import "./terminal-menu";
 import { WorkflowStepBadge } from "@/workflow/node-steps";
+import { WorkItemStageBadge } from "@/coordinator/stage-badge";
 import { MembersChip } from "@/coordinator/MembersChip";
 import { SessionSkeleton } from "@/acp/SessionSkeleton";
 import { sessionsQuery } from "@/agent/sessions";
@@ -666,6 +667,8 @@ export function TerminalNode({ id, node, selected, collapsed }: NodeBodyProps) {
               {agent?.id === "ama" ? <MembersChip nodeId={id} /> : null}
               {/* 工作流运行中的步号，紧挨状态胶囊（设计系统 §4）。 */}
               <WorkflowStepBadge nodeId={id} />
+              {/* 协调者派给它的那一项在等人时：待回答、待验收…（#682）。 */}
+              <WorkItemStageBadge nodeId={id} />
               {awaitingDriver}
               {questionButton}
             </>

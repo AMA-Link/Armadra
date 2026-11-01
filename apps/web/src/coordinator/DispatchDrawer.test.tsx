@@ -138,6 +138,9 @@ function task(
     startedAt: "2026-10-04T08:00:00.000Z",
     endedAt: null,
     reason: null,
+    title: null,
+    report: null,
+    attention: null,
     retryable: false,
     ...patch,
   };
@@ -237,6 +240,75 @@ describe("buildDispatch", () => {
     expect(model.members.every((member) => member.elapsedMs === null)).toBe(
       true,
     );
+  });
+});
+
+describe("工作项阶段（#682）", () => {
+  const staged = () =>
+    buildDispatch({
+      coordinatorId: ID.lead,
+      nodes: NODES,
+      edges: EDGES,
+      tasks: [
+        task(ID.claude, "claude", { stage: "working" }),
+        task(ID.codex, "codex", {
+          startedAt: "2026-10-04T08:01:00.000Z",
+          stage: "person/review",
+        }),
+        task(ID.pi, "pi", {
+          startedAt: "2026-10-04T08:02:00.000Z",
+          stage: "person/answer",
+          attention: "用主色还是强调色？",
+        }),
+      ],
+      states: {},
+      now: NOW,
+    });
+
+  it("按阶段说状态，要人处理的排在前面、同组保持分派先后", () => {
+    const model = staged();
+    expect(model.members.map((member) => member.nodeId)).toEqual([
+      ID.codex,
+      ID.pi,
+      ID.claude,
+    ]);
+    expect(model.members.map((member) => member.status.label)).toEqual([
+      "coordinator.stage.review",
+      "coordinator.stage.answer",
+      "coordinator.status.working",
+    ]);
+    expect(model.members[1]?.attention).toBe("用主色还是强调色？");
+  });
+
+  it("成员行下面写出待决问题", () => {
+    const { container } = render(
+      <TestProviders>
+        <DispatchView model={staged()} />
+      </TestProviders>,
+    );
+    const questions = container.querySelectorAll(
+      '[data-slot="dispatch-attention"]',
+    );
+    expect(questions).toHaveLength(1);
+    expect(questions[0]?.textContent).toBe("用主色还是强调色？");
+    expect(screen.getByText("待验收")).toBeTruthy();
+  });
+
+  it("旧 core 不答阶段时照旧按任务状态说", () => {
+    const model = buildDispatch({
+      coordinatorId: ID.lead,
+      nodes: NODES,
+      edges: EDGES,
+      tasks: TASKS,
+      states: {},
+      now: NOW,
+    });
+    expect(model.members.every((member) => member.stage === null)).toBe(true);
+    expect(model.members.map((member) => member.status.tone)).toEqual([
+      "done",
+      "working",
+      "failed",
+    ]);
   });
 });
 

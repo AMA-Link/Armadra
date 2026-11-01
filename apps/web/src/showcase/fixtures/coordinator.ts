@@ -122,6 +122,9 @@ function task(
     startedAt: AT,
     endedAt: null,
     reason: null,
+    title: null,
+    report: null,
+    attention: null,
     retryable: false,
     ...patch,
   };

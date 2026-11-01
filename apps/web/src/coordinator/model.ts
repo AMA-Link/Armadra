@@ -1,4 +1,9 @@
-import type { AgentState, CanvasEdge, CanvasNode } from "@armadra/shared";
+import type {
+  AgentState,
+  CanvasEdge,
+  CanvasNode,
+  WorkItemStage,
+} from "@armadra/shared";
 
 import type { StatusTone } from "@/ui/status-pill";
 import type { DispatchTask } from "./api";
@@ -31,6 +36,10 @@ export interface DispatchMember {
   readonly elapsedMs: number | null;
   readonly taskId: string | null;
   readonly retryable: boolean;
+  /** 工作项阶段（#682）；没有任务行、或旧 core 不答时为 `null`。 */
+  readonly stage: WorkItemStage | null;
+  /** 成员在等人回答的那个问题。 */
+  readonly attention: string | null;
 }
 
 export interface DispatchSummary {
@@ -65,7 +74,48 @@ const STATUS = {
   failed: { tone: "failed", label: "coordinator.status.failed" },
   stopped: { tone: "paused", label: "coordinator.status.stopped" },
   idle: { tone: "idle", label: "coordinator.status.idle" },
+  delivery: { tone: "failed", label: "coordinator.stage.delivery" },
+  answer: { tone: "attention", label: "coordinator.stage.answer" },
+  review: { tone: "attention", label: "coordinator.stage.review" },
+  blocked: { tone: "attention", label: "coordinator.stage.blocked" },
+  queued: { tone: "idle", label: "coordinator.stage.queued" },
 } as const satisfies Record<string, DispatchStatus>;
+
+/** 有阶段（#682）时按阶段说；`working` 里再看一眼成员是不是停在审批上。 */
+function stageStatus(
+  stage: WorkItemStage,
+  state: AgentState | undefined,
+): DispatchStatus {
+  switch (stage) {
+    case "person/delivery":
+      return STATUS.delivery;
+    case "person/answer":
+      return STATUS.answer;
+    case "person/review":
+      return STATUS.review;
+    case "person/blocked":
+      return STATUS.blocked;
+    case "person/failed":
+      return STATUS.failed;
+    case "working/queued":
+      return STATUS.queued;
+    case "idle":
+      return STATUS.idle;
+    case "done":
+      return STATUS.done;
+    case "stopped":
+      return STATUS.stopped;
+    default:
+      return state === "blocked" || state === "waiting"
+        ? STATUS.attention
+        : STATUS.working;
+  }
+}
+
+/** 要人处理的阶段排在前面；其余保持分派先后。 */
+function needsPerson(member: DispatchMember): boolean {
+  return member.stage?.startsWith("person/") === true;
+}
 
 function agentOf(node: CanvasNode): string {
   return node.data.kind === "terminal" ? (node.data.agent?.id ?? "") : "";
@@ -143,10 +193,15 @@ export function buildDispatch(input: DispatchInput): DispatchModel {
       nodeId: node.id,
       title: node.title,
       agentId: agentOf(node) || task.runnerId,
-      status: taskStatus(task, states[node.id]),
+      status:
+        task.stage === undefined
+          ? taskStatus(task, states[node.id])
+          : stageStatus(task.stage, states[node.id]),
       elapsedMs: elapsed(task, now),
       taskId: task.taskId,
       retryable: task.retryable && task.status !== "running",
+      stage: task.stage ?? null,
+      attention: task.attention,
     });
   }
   for (const edge of edges) {
@@ -163,8 +218,12 @@ export function buildDispatch(input: DispatchInput): DispatchModel {
       elapsedMs: null,
       taskId: null,
       retryable: false,
+      stage: null,
+      attention: null,
     });
   }
+  // 稳定排序：`Array.prototype.sort` 是稳定的，同组内仍是分派先后。
+  members.sort((a, b) => Number(needsPerson(b)) - Number(needsPerson(a)));
 
   const linked = new Set<string>();
   for (const edge of edges) {
