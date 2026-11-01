@@ -18,8 +18,7 @@ import { fileURLToPath } from "node:url";
 
 import {
   CHECKS,
-  closeOut,
-  collectHostLogs,
+  Recorder,
   diffSnapshots,
   idleHostVerdict,
   isSessionHost,
@@ -36,6 +35,12 @@ import {
   validateResult,
   waitForTerminalRoute,
 } from "./windows-acceptance-lib.mjs";
+import {
+  CLOSE_MANY,
+  closeManyAtOnce,
+  closeOut,
+  collectHostLogs,
+} from "./windows-acceptance-host.mjs";
 
 const probe = join(
   dirname(fileURLToPath(import.meta.url)),
@@ -499,4 +504,70 @@ test("收尾：产物里有应用输出与宿主日志，临时目录按 keep �
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
+});
+
+/** 假的应用：建终端给新 pid，终止后那个 pid 就不在了；宿主活不活由 `hostDies` 定。 */
+function closeManyFixture({ hostDies }) {
+  const gone = new Set();
+  const terminated = [];
+  let next = 100;
+  const app = {
+    async api(method, path) {
+      if (method === "POST" && path === "/api/terminals") {
+        next += 1;
+        return { status: 201, body: { id: `t${next}`, pid: next } };
+      }
+      const match = /^\/api\/terminals\/t(\d+)\/terminate$/.exec(path);
+      if (match) {
+        terminated.push(Number(match[1]));
+        gone.add(Number(match[1]));
+        if (hostDies) gone.add(1);
+        return { status: 200, body: {} };
+      }
+      return { status: 404, body: null };
+    },
+    async terminal() {
+      return gone.has(1) ? { ok: false, reason: "timeout" } : { ok: true };
+    },
+  };
+  const result = newResult(parseArgs(["--app", "x.exe"]));
+  const record = new Recorder(result, () => {});
+  const options = {
+    workspaceId: "w",
+    wsDir: "C:\\w",
+    shell: "cmd.exe",
+    sessions: [{ id: "s1", pid: 11, dialect: "cmd" }],
+    hostPid: 1,
+    alive: (pid) => !gone.has(pid),
+    settleMs: 0,
+  };
+  return { app, record, options, terminated };
+}
+
+test("同时关闭多个终端：宿主还在、其它终端还答才算过，宿主没了就失败（#659）", async () => {
+  const fine = closeManyFixture({ hostDies: false });
+  assert.equal(
+    await closeManyAtOnce(fine.record, fine.app, fine.options),
+    true,
+  );
+  assert.equal(fine.terminated.length, CLOSE_MANY);
+  const entry = fine.record.entry("sessionHost.closeMany");
+  assert.equal(entry.status, "pass");
+  assert.equal(entry.detail.hostAlive, true);
+
+  const dead = closeManyFixture({ hostDies: true });
+  assert.equal(
+    await closeManyAtOnce(dead.record, dead.app, dead.options),
+    false,
+  );
+  const failed = dead.record.entry("sessionHost.closeMany");
+  assert.equal(failed.status, "fail");
+  assert.equal(failed.detail.hostAlive, false);
+  assert.equal(failed.detail.after.cmd.echoed, false);
+});
+
+test("没有会话宿主或没有 cmd 时跳过，不算失败", async () => {
+  const { app, record, options } = closeManyFixture({ hostDies: false });
+  await closeManyAtOnce(record, app, { ...options, hostPid: undefined });
+  assert.equal(record.entry("sessionHost.closeMany").status, "skip");
 });

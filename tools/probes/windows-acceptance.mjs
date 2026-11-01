@@ -67,7 +67,6 @@ import {
   isSessionHost,
   readText,
   httpsProbe,
-  closeOut,
   logFindings,
   newestUninstaller,
   diffSnapshots,
@@ -88,6 +87,11 @@ import {
   waitForTerminalRoute,
   waitFor,
 } from "./windows-acceptance-lib.mjs";
+import {
+  closeManyAtOnce,
+  closeOut,
+  conptyClose,
+} from "./windows-acceptance-host.mjs";
 import { isolatedEnv, probeHome } from "./probe-home.mjs";
 
 export * from "./windows-acceptance-lib.mjs";
@@ -1147,58 +1151,13 @@ async function runFull(options, result, record, out) {
         };
       });
 
+    say("同时关闭多个终端");
+    const shell = result.machine.shells.cmd;
+    const host = { workspaceId, wsDir, shell, sessions, hostPid, alive };
+    await closeManyAtOnce(record, app, host);
+
     say("ConPTY 关闭");
-    if (sessions.length === 0) record.skip("conpty.close", "没有起来的终端");
-    else
-      await record.check("conpty.close", async () => {
-        const consolesBefore = hostPid ? consolesOf(hostPid) : [];
-        const detail = {
-          consoleBaseline: consoleBaseline ?? null,
-          consolesBefore: consolesBefore.length,
-          sessions: {},
-        };
-        for (const session of sessions) {
-          const answer = await app.api(
-            "POST",
-            `/api/terminals/${session.id}/terminate`,
-            {
-              mode: "session",
-            },
-          );
-          let gone = false;
-          try {
-            await waitFor(
-              `${session.dialect} 的 shell 退出`,
-              () => !alive(session.pid),
-              {
-                timeout: 20_000,
-              },
-            );
-            gone = true;
-          } catch {
-            gone = false;
-          }
-          detail.sessions[session.dialect] = {
-            status: answer.status,
-            shellGone: gone,
-          };
-        }
-        await sleep(2_000);
-        const consolesAfter =
-          hostPid && alive(hostPid) ? consolesOf(hostPid) : [];
-        detail.consolesAfter = consolesAfter.length;
-        const consolesReleased =
-          consoleBaseline === undefined
-            ? consolesAfter.length < consolesBefore.length ||
-              consolesAfter.length === 0
-            : consolesAfter.length <= consoleBaseline;
-        return {
-          ok:
-            Object.values(detail.sessions).every((entry) => entry.shellGone) &&
-            consolesReleased,
-          detail,
-        };
-      });
+    await conptyClose(record, app, { ...host, consoleBaseline, consolesOf });
   };
 
   const teardown = async () => {
