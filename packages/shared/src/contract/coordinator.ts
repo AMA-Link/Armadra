@@ -1,6 +1,10 @@
 import { z } from "zod";
 
-import { WORKFLOW_TASK_RUN_STATUSES } from "../api/workflows.js";
+import {
+  WORKFLOW_TASK_RUN_STATUSES,
+  WORK_ITEM_STAGES,
+  WORK_REPORT_STATES,
+} from "../api/workflows.js";
 import { errors } from "./errors.js";
 import { meta, oc } from "./meta.js";
 
@@ -26,6 +30,21 @@ const taskRowWire = z.object({
   endedAt: z.string().nullable(),
   reason: z.string().nullable(),
   retryable: z.boolean(),
+  /**
+   * 工作项账本（#682，1.x 起）：标题、阶段、最近一次报告与待决问题。旧的 core 不答这几个
+   * 字段，所以都是可选的。报告与问题是成员写给人看的文字，不是终端原文。
+   */
+  title: z.string().nullable().optional(),
+  stage: z.enum(WORK_ITEM_STAGES).optional(),
+  report: z
+    .object({
+      state: z.enum(WORK_REPORT_STATES),
+      summary: z.string(),
+      at: z.string(),
+    })
+    .nullable()
+    .optional(),
+  attention: z.string().nullable().optional(),
 });
 
 export const coordinator = {

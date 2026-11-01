@@ -308,6 +308,36 @@ export const WORKFLOW_TASK_RUN_STATUSES = [
   "stopped",
 ] as const;
 
+/**
+ * 工作项的阶段（#682，契约 §15.7）：由事实推出，不由 Agent 设置。按「要人处理
+ * 的在前」排好序，列表照这个顺序排。
+ */
+export const WORK_ITEM_STAGES = [
+  "person/delivery",
+  "person/answer",
+  "person/review",
+  "person/blocked",
+  "person/failed",
+  "working",
+  "working/queued",
+  "idle",
+  "done",
+  "stopped",
+] as const;
+
+export type WorkItemStage = (typeof WORK_ITEM_STAGES)[number];
+
+/** 成员 `canvas report --state` 的取值（#682）。 */
+export const WORK_REPORT_STATES = [
+  "progress",
+  "waiting",
+  "ready",
+  "blocked",
+  "failed",
+] as const;
+
+export type WorkReportState = (typeof WORK_REPORT_STATES)[number];
+
 export const workflowTaskRunSchema = z.object({
   taskId: z.string(),
   coordinatorNodeId: z.string(),
