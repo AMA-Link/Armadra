@@ -195,7 +195,7 @@ function mount({ advanced = true }: { advanced?: boolean } = {}) {
 }
 
 describe("远程访问页", () => {
-  it("零配置：A 这台电脑 / B 他人分享，一个开关，没有 SaaS 入口", async () => {
+  it("零配置：A 这台电脑 / B 他人分享，一个开关，添加入口是登录 Armadra 云", async () => {
     api.listSources.mockResolvedValue({ sources: [local], remotes: [] });
     mount({ advanced: false });
     expect(await screen.findByText("This computer")).toBeTruthy();
@@ -219,8 +219,7 @@ describe("远程访问页", () => {
     expect(screen.getByRole("button", { name: "Join with link" })).toBeTruthy();
     // 没有切换服务，也没有「加入他人」之外的入口。
     expect(screen.queryByText(/switch service/i)).toBeNull();
-    expect(screen.queryByText(/saas|cloud/i)).toBeNull();
-    // 没登录任何中转账号时没有「从中转添加」；添加中转账号收在「高级」里。
+    // 什么账号都没有：「我的其他电脑」里是登录 Armadra 云（#677），没有「从中转添加」；添加中转账号收在「高级」里。
     expect(
       screen.queryByRole("button", { name: "Add from account" }),
     ).toBeNull();
