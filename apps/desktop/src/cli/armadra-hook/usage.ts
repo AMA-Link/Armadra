@@ -112,8 +112,11 @@ CONTEXT OPTIONS:
   --node <name|id|title>    which linked node to read (defaults to the only link)
   -n, --lines <N>           entries for transcript (20), lines for terminal (40, max 200)
   --since                   transcript: only what is new since your last read
-  --full --max-kb <N>       transcript: lift the 32 KB cap, up to 128 KB
-  Every link has a read budget: 64 KB/minute and 1 MB/hour, then RATE_LIMITED.
+  --before <POS>            transcript: page back to the entries before POS
+  --offset <BYTES>          file node: continue from this byte
+  --full --max-kb <N>       lift the 32 KB cap, up to 64 KB
+  Every link has a read budget: 64 KB/minute and 1 MB/hour. A read gives what
+  still fits; under 2 KB left it is RATE_LIMITED.
 
 ${CANVAS_USAGE}
 TEXT FROM STDIN OR A FILE (canvas and browser verbs):

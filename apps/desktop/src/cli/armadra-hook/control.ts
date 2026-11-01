@@ -33,7 +33,7 @@ export async function runContext(args: string[]): Promise<number> {
   const verb = args[0];
   if (verb === undefined) {
     return fail(
-      "usage: armadra-hook context <list|summary|transcript|terminal> [--node <id|title>] [-n N] [--since] [--full --max-kb N]",
+      "usage: armadra-hook context <list|summary|transcript|terminal> [--node <id|title>] [-n N] [--since | --before POS] [--offset BYTES] [--full --max-kb N]",
     );
   }
   if (!(CONTEXT_VERBS as readonly string[]).includes(verb)) {
@@ -48,6 +48,9 @@ export async function runContext(args: string[]): Promise<number> {
   let since = false;
   let full = false;
   let maxKb: number | undefined;
+  // #668 的两个续读位置：转录往前翻、文件接着读。
+  let before: number | undefined;
+  let offset: number | undefined;
   let index = 1;
   while (index < args.length) {
     const arg = args[index]!;
@@ -85,6 +88,16 @@ export async function runContext(args: string[]): Promise<number> {
       if (parsed === undefined)
         return fail(`--max-kb needs a number, got \`${value}\``);
       maxKb = parsed;
+    } else if (flag === "--before" || flag === "--offset") {
+      const cursor = { index };
+      const value = takeValue(args, cursor, inline);
+      index = cursor.index;
+      if (value === undefined) return fail(`${flag} needs a position`);
+      const parsed = parseInteger(value);
+      if (parsed === undefined || parsed < 0)
+        return fail(`${flag} needs a position, got \`${value}\``);
+      if (flag === "--before") before = parsed;
+      else offset = parsed;
     } else {
       return fail(`unknown option \`${flag}\` for \`context ${verb}\``);
     }
@@ -97,6 +110,8 @@ export async function runContext(args: string[]): Promise<number> {
   if (since) map["since"] = true;
   if (full) map["full"] = true;
   if (maxKb !== undefined) map["max-kb"] = maxKb;
+  if (before !== undefined) map["before"] = before;
+  if (offset !== undefined) map["offset"] = offset;
   return request(`/context-link/${percentEncodeSegment(verb)}`, map);
 }
 
