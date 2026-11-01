@@ -85,6 +85,42 @@ describe("设置 → 通知（§2.2 映射）", () => {
   });
 });
 
+describe("进展看门狗阈值（契约 §91）", () => {
+  it("两个主机项读设置里的分钟数，缺省 10 / 15，改一项只发那一项", () => {
+    render(<NotificationsPage />);
+    const stalled = screen.getByRole("combobox", {
+      name: zh("settings.watchdog.stalled"),
+    });
+    const needsHuman = screen.getByRole("combobox", {
+      name: zh("settings.watchdog.needsHuman"),
+    });
+    expect(stalled.textContent).toContain("10");
+    expect(needsHuman.textContent).toContain("15");
+  });
+
+  it("成员与远端主机不画这两项", () => {
+    access.member = true;
+    render(<NotificationsPage />);
+    expect(
+      screen.queryByRole("combobox", { name: zh("settings.watchdog.stalled") }),
+    ).toBeNull();
+  });
+
+  it("设置里是 0 时显示「关闭」", () => {
+    const original = settings.data;
+    settings.data = {
+      updates: { notify: true },
+      watchdog: { stalledMinutes: 0 },
+    };
+    render(<NotificationsPage />);
+    expect(
+      screen.getByRole("combobox", { name: zh("settings.watchdog.stalled") })
+        .textContent,
+    ).toContain(zh("settings.watchdog.off"));
+    settings.data = original;
+  });
+});
+
 describe("设置未到时的占位", () => {
   beforeEach(() => vi.useFakeTimers());
   afterEach(() => vi.useRealTimers());
@@ -99,7 +135,7 @@ describe("设置未到时的占位", () => {
     act(() => void vi.advanceTimersByTime(200));
     expect(
       container.querySelectorAll("[data-slot=skeleton-settings-row]").length,
-    ).toBe(1);
+    ).toBe(3);
     act(() => void vi.advanceTimersByTime(300));
     Object.assign(settings, original, { isLoading: false });
     rerender(<NotificationsPage />);

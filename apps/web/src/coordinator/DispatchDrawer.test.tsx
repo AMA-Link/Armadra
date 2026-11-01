@@ -23,6 +23,7 @@ import { usePreferencesStore } from "@/app/preferences-store";
 import { useAgentStatusStore } from "@/agent/status-store";
 import { useCanvasStore } from "@/store/canvas-store";
 import { agentTreeOf } from "@/agent/agent-tree-model";
+import { scoped } from "@/sources/scope";
 import type { MirroredStatus } from "@/agent/status-store";
 import type { DispatchTask } from "./api";
 
@@ -314,6 +315,89 @@ describe("工作项阶段（契约 §90）", () => {
     const rows = document.querySelectorAll("[data-slot='dispatch-member']");
     expect(rows[0]?.textContent).toContain("待验收");
     expect(rows[1]?.textContent).toContain("待回答");
+  });
+});
+
+describe("看门狗的标记（契约 §91）", () => {
+  it("只挂在还在做的成员行上：运行中的行带标记，已完成与失败的行不带", () => {
+    const model = buildDispatch({
+      coordinatorId: ID.lead,
+      nodes: NODES,
+      edges: EDGES,
+      tasks: TASKS,
+      states: {},
+      stalled: {
+        [ID.claude]: "stalled",
+        [ID.codex]: "idleWaiting",
+        [ID.pi]: "needsHuman",
+      },
+      now: NOW,
+    });
+    expect(model.members.map((member) => member.stalled)).toEqual([
+      undefined,
+      "idleWaiting",
+      undefined,
+    ]);
+    const { container } = render(
+      <TestProviders>
+        <DispatchView model={model} />
+      </TestProviders>,
+    );
+    const marks = container.querySelectorAll('[data-slot="dispatch-stalled"]');
+    expect(marks).toHaveLength(1);
+    expect(marks[0]!.textContent).toBe("空等");
+    expect(marks[0]!.getAttribute("data-stalled")).toBe("idleWaiting");
+  });
+
+  it("没有标记就不画任何东西", () => {
+    const { container } = render(
+      <TestProviders>
+        <DispatchView
+          model={buildDispatch({
+            coordinatorId: ID.lead,
+            nodes: NODES,
+            edges: EDGES,
+            tasks: TASKS,
+            states: {},
+            now: NOW,
+          })}
+        />
+      </TestProviders>,
+    );
+    expect(
+      container.querySelector('[data-slot="dispatch-stalled"]'),
+    ).toBeNull();
+  });
+
+  it("真抽屉从状态镜像里读标记，帧上的标记消失就跟着消失", async () => {
+    api.tasks.mockResolvedValue(TASKS);
+    useAgentStatusStore.setState({
+      statuses: {
+        [scoped(ID.codex)]: mirrored("working", { stalled: "stalled" }),
+      },
+    });
+    openDispatchDrawer(ID.lead);
+    const { container } = render(
+      <TestProviders>
+        <DispatchDrawer />
+      </TestProviders>,
+    );
+    await waitFor(() =>
+      expect(
+        container.ownerDocument.querySelector('[data-slot="dispatch-stalled"]')
+          ?.textContent,
+      ).toBe("停滞"),
+    );
+    act(() => {
+      useAgentStatusStore.setState({
+        statuses: { [scoped(ID.codex)]: mirrored("working") },
+      });
+    });
+    await waitFor(() =>
+      expect(
+        container.ownerDocument.querySelector('[data-slot="dispatch-stalled"]'),
+      ).toBeNull(),
+    );
   });
 });
 

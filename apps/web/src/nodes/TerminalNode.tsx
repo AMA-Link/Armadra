@@ -49,6 +49,7 @@ import { ContextReadsBadge } from "./ContextReadsBadge";
 import { DeliveryQueueBadge } from "./DeliveryQueueBadge";
 import { DependencyWaitBadge } from "./DependencyWaitBadge";
 import { DriveBadge } from "./DriveBadge";
+import { StalledBadge } from "./StalledBadge";
 import { MemoryBadge, MemoryMenuLabel } from "@/panels/resources/MemoryBadge";
 import { openHandoff } from "@/agent/handoff/handoff-targets";
 import { useSshHosts } from "@/panels/settings/ssh-hosts";
@@ -395,6 +396,8 @@ export function TerminalNode({ id, node, selected, collapsed }: NodeBodyProps) {
     <>
       {agent && <AccountBindingBadge agent={agent} nodeId={id} />}
       {agent && <HandoffBadge nodeId={id} />}
+      {/* 看门狗的标记（契约 §91）；没有标记不画。 */}
+      {agent && !exited && !hibernated && <StalledBadge nodeId={id} />}
       {/*
         启动前在等谁（Agent 自动化设计 §6）。等待与启动都归 core，这里读的是
         依赖表，不是节点数据里的 `pendingLaunch`；没有等待就不画。

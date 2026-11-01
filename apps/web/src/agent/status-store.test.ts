@@ -285,6 +285,56 @@ describe("agent status mirror", () => {
     expect(store().statuses[scoped(NODE)]!.stateSource).toBeUndefined();
   });
 
+  // 看门狗的标记（契约 §91）随会话列表重建，也随断线期间的变化补上。
+  it("restores the watchdog mark and follows it when the list says it changed", () => {
+    const session = (stalled?: "stalled") => ({
+      nodeId: NODE,
+      boardId: "board",
+      sessionId: "s1",
+      kind: "terminal" as const,
+      title: "claude",
+      cwd: "/repo",
+      agentId: "claude" as const,
+      state: "working" as const,
+      unread: false,
+      updatedAt: at(0),
+      alive: true,
+      ...(stalled === undefined ? {} : { stalled }),
+    });
+    store().hydrate([session("stalled")], WORKSPACE);
+    expect(store().statuses[scoped(NODE)]!.stalled).toBe("stalled");
+    // 同一份状态、标记没了：只补这一项。
+    store().hydrate([session()], WORKSPACE);
+    expect(store().statuses[scoped(NODE)]!.stalled).toBeUndefined();
+    expect(store().statuses[scoped(NODE)]!.state).toBe("working");
+  });
+
+  it("drops the mark when the node's next frame comes without it", () => {
+    store().upsert({
+      nodeId: NODE,
+      workspaceId: WORKSPACE,
+      agentId: "claude",
+      state: "working",
+      unread: false,
+      verified: true,
+      restored: false,
+      stalled: "idleWaiting",
+      updatedAt: at(0),
+    });
+    expect(store().statuses[scoped(NODE)]!.stalled).toBe("idleWaiting");
+    store().upsert({
+      nodeId: NODE,
+      workspaceId: WORKSPACE,
+      agentId: "claude",
+      state: "working",
+      unread: false,
+      verified: true,
+      restored: false,
+      updatedAt: at(1),
+    });
+    expect(store().statuses[scoped(NODE)]!.stalled).toBeUndefined();
+  });
+
   it("skips sessions without an agent", () => {
     store().hydrate(
       [

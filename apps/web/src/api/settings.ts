@@ -102,6 +102,16 @@ export const runtimeSettingsSchema = z.looseObject({
   /** Hook 直答（§5.5）：权限请求直接由 Runtime 回，不弹节点头部按钮。 */
   hooks: z.looseObject({ replyApprovals: z.boolean().optional() }).optional(),
   /**
+   * 进展看门狗的阈值（契约 §91）：分钟，`0` = 关掉对应的判定。缺省
+   * 10 / 15，由 core 归一化后下发。
+   */
+  watchdog: z
+    .looseObject({
+      stalledMinutes: z.number().int().nonnegative().optional(),
+      needsHumanMinutes: z.number().int().nonnegative().optional(),
+    })
+    .optional(),
+  /**
    * `usage.*`（§19 + §4.2）。`enabled` 关掉后 Runtime 不再向任何 provider
    * 取用量；`providers` 是逐个开关，`refreshMinutes` 的 `0` 表示只手动刷新，
    * `cost.enabled` 控制本地转录扫描。
@@ -257,6 +267,7 @@ export interface RuntimeSettingsPatch {
   /** `defaultDriver`：新建 Agent 节点缺省走会话视图还是终端（ACP 设计 §8）。 */
   agents?: { custom?: CustomAgent[]; defaultDriver?: AgentDriver };
   hooks?: { replyApprovals?: boolean };
+  watchdog?: { stalledMinutes?: number; needsHumanMinutes?: number };
   /** 派发树往哪个方向长（契约 §50）；整理与 core 的放置都按它。 */
   canvas?: { layoutDirection?: "vertical" | "horizontal" };
   usage?: {

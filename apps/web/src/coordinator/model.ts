@@ -1,4 +1,5 @@
 import type {
+  AgentStallKind,
   AgentState,
   CanvasEdge,
   CanvasNode,
@@ -38,6 +39,8 @@ export interface DispatchMember {
   readonly retryable: boolean;
   /** 由事实推出的阶段（契约 §90）；没有任务行时为 `null`。 */
   readonly stage: WorkItemStage | null;
+  /** 进展看门狗的标记（契约 §91）；没有标记省略。 */
+  readonly stalled?: AgentStallKind;
 }
 
 export interface DispatchSummary {
@@ -62,6 +65,8 @@ export interface DispatchInput {
   readonly edges: readonly CanvasEdge[];
   readonly tasks: readonly DispatchTask[];
   readonly states: Readonly<Record<string, AgentState | undefined>>;
+  /** 看门狗的标记，按节点 id；没有的节点省略。 */
+  readonly stalled?: Readonly<Record<string, AgentStallKind | undefined>>;
   readonly now: number;
 }
 
@@ -162,6 +167,17 @@ function stickyTitle(node: CanvasNode): string {
 
 export function buildDispatch(input: DispatchInput): DispatchModel {
   const { coordinatorId, nodes, edges, tasks, states, now } = input;
+  const marks = input.stalled ?? {};
+  /** 只在还在做的行上画标记：结束的任务行不再说「停滞」。 */
+  const markOf = (nodeId: string, status: DispatchStatus) => {
+    const stalled = marks[nodeId];
+    return stalled === undefined ||
+      status.tone === "done" ||
+      status.tone === "failed" ||
+      status.tone === "paused"
+      ? {}
+      : { stalled };
+  };
   const byId = new Map(nodes.map((node) => [node.id, node]));
   const leadNode = coordinatorId ? byId.get(coordinatorId) : undefined;
   if (!coordinatorId || !leadNode) {
@@ -184,15 +200,17 @@ export function buildDispatch(input: DispatchInput): DispatchModel {
   for (const task of latest) {
     const node = byId.get(task.nodeId);
     if (!node) continue;
+    const status = memberStatus(task, states[node.id]);
     members.push({
       nodeId: node.id,
       title: node.title,
       agentId: agentOf(node) || task.runnerId,
-      status: memberStatus(task, states[node.id]),
+      status,
       elapsedMs: elapsed(task, now),
       taskId: task.taskId,
       retryable: task.retryable && task.status !== "running",
       stage: task.stage,
+      ...markOf(node.id, status),
     });
   }
   for (const edge of edges) {
@@ -201,15 +219,17 @@ export function buildDispatch(input: DispatchInput): DispatchModel {
     const node = byId.get(edge.target);
     if (!node || node.type !== "terminal") continue;
     seen.add(node.id);
+    const status = liveStatus(states[node.id]);
     members.push({
       nodeId: node.id,
       title: node.title,
       agentId: agentOf(node),
-      status: liveStatus(states[node.id]),
+      status,
       elapsedMs: null,
       taskId: null,
       retryable: false,
       stage: null,
+      ...markOf(node.id, status),
     });
   }
 

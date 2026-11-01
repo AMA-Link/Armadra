@@ -28,6 +28,11 @@ const zh = {
   /* 启动闸门（契约 §52）：自动重试一次之后仍没起来。 */
   "agent.launch.failed": "启动失败",
   "agent.launch.retry": "重试",
+
+  /* 进展看门狗的标记（契约 §91）。 */
+  "agent.stall.stalled": "停滞",
+  "agent.stall.idleWaiting": "空等",
+  "agent.stall.needsHuman": "久未处理",
 } as const;
 
 const en: Record<keyof typeof zh, string> = {
@@ -53,6 +58,10 @@ const en: Record<keyof typeof zh, string> = {
   "agent.program.progress": "{percent}%",
   "agent.launch.failed": "Launch failed",
   "agent.launch.retry": "Retry",
+
+  "agent.stall.stalled": "Stalled",
+  "agent.stall.idleWaiting": "Idle, no result",
+  "agent.stall.needsHuman": "Waiting too long",
 };
 
 export const agent: MessageModule = { "zh-CN": zh, en };

@@ -3,6 +3,7 @@ import { playStatusSound } from "../../../app/notifications";
 import { useAccess } from "../../../app/use-access";
 import { useRemoteAccess } from "../remote-access";
 import { ScopeBadge } from "../scope-badge";
+import { CONTROL_WIDTH } from "./GeneralPage";
 import { PushDevices } from "./PushDevices";
 import { SettingsGroup } from "../SettingsGroup";
 import { SettingsPageHeader } from "../SettingsPageHeader";
@@ -10,6 +11,13 @@ import { SettingsLoadable } from "../SettingsLoadable";
 import { SettingsRow } from "../SettingsRow";
 import { useRuntimeSettings } from "../use-runtime-settings";
 import { Button } from "@/ui/button";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/ui/select";
 import { Slider } from "@/ui/slider";
 import { Switch } from "@/ui/switch";
 
@@ -62,6 +70,7 @@ export function NotificationsPage() {
         </SettingsRow>
 
         {member || remote ? null : <UpdateNotifyRow />}
+        {member || remote ? null : <WatchdogRows />}
       </SettingsGroup>
 
       <SettingsGroup>
@@ -109,6 +118,65 @@ function UpdateNotifyRow() {
           onCheckedChange={(next) => save.mutate({ updates: { notify: next } })}
         />
       </SettingsRow>
+    </SettingsLoadable>
+  );
+}
+
+/** 进展看门狗的阈值（契约 §91）：分钟，`0` = 关。 */
+const STALLED_CHOICES = [0, 5, 10, 20] as const;
+const NEEDS_HUMAN_CHOICES = [0, 5, 15, 30, 60] as const;
+
+function WatchdogRows() {
+  const t = useT();
+  const { settings, save } = useRuntimeSettings({ scope: "local" });
+  const watchdog = settings.data?.watchdog;
+  const rows = [
+    {
+      key: "stalledMinutes",
+      label: t("settings.watchdog.stalled"),
+      value: watchdog?.stalledMinutes ?? 10,
+      choices: STALLED_CHOICES,
+    },
+    {
+      key: "needsHumanMinutes",
+      label: t("settings.watchdog.needsHuman"),
+      value: watchdog?.needsHumanMinutes ?? 15,
+      choices: NEEDS_HUMAN_CHOICES,
+    },
+  ] as const;
+  return (
+    <SettingsLoadable loading={settings.isLoading} rows={2} control="select">
+      {rows.map((row) => (
+        <SettingsRow key={row.key} label={row.label}>
+          <ScopeBadge scope="host" />
+          <Select
+            value={String(row.value)}
+            disabled={!settings.data}
+            onValueChange={(next) =>
+              save.mutate({ watchdog: { [row.key]: Number(next) } })
+            }
+          >
+            <SelectTrigger
+              aria-label={row.label}
+              size="sm"
+              className={CONTROL_WIDTH}
+            >
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {[...new Set([...row.choices, row.value])]
+                .sort((a, b) => a - b)
+                .map((minutes) => (
+                  <SelectItem key={minutes} value={String(minutes)}>
+                    {minutes === 0
+                      ? t("settings.watchdog.off")
+                      : t("settings.watchdog.minutes", { count: minutes })}
+                  </SelectItem>
+                ))}
+            </SelectContent>
+          </Select>
+        </SettingsRow>
+      ))}
     </SettingsLoadable>
   );
 }

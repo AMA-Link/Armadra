@@ -272,6 +272,16 @@ function MemberRow({
           spinning={member.status.tone === "working"}
         />
       </ItemContent>
+      {member.stalled !== undefined ? (
+        <Badge
+          variant="outline"
+          size="sm"
+          data-slot="dispatch-stalled"
+          data-stalled={member.stalled}
+        >
+          {t(`agent.stall.${member.stalled}`)}
+        </Badge>
+      ) : null}
       {failed && member.taskId !== null && member.retryable ? (
         <ItemActions>
           {canRetry ? (
@@ -369,11 +379,15 @@ export function DispatchDrawer() {
   const now = Math.max(tick, tasks.dataUpdatedAt || 0) || Date.now();
   const model = React.useMemo(() => {
     const states: Record<string, (typeof statuses)[string]["state"]> = {};
+    const stalled: Record<string, (typeof statuses)[string]["stalled"]> = {};
     // 只取当前源的那些，键还原成节点 id。
     const here = activeSourceId();
     for (const [key, status] of Object.entries(statuses)) {
       const { sourceId, id } = unscoped(key);
-      if (sourceId === here) states[id] = status.state;
+      if (sourceId === here) {
+        states[id] = status.state;
+        stalled[id] = status.stalled;
+      }
     }
     return buildDispatch({
       coordinatorId,
@@ -381,6 +395,7 @@ export function DispatchDrawer() {
       edges: document?.edges ?? [],
       tasks: tasks.data ?? [],
       states,
+      stalled,
       now,
     });
   }, [coordinatorId, document, tasks.data, statuses, now]);

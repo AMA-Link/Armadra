@@ -109,6 +109,10 @@ export const modals: MessageModule = {
     "settings.diagnostics.dsnInvalid": "DSN 无效",
 
     "settings.notifyNeedsYou": "需要你时通知",
+    "settings.watchdog.stalled": "停滞提醒",
+    "settings.watchdog.needsHuman": "久未处理提醒",
+    "settings.watchdog.off": "关闭",
+    "settings.watchdog.minutes": "{count} 分钟",
     "settings.sound": "提示音",
     "settings.soundVolume": "音量",
     "settings.preview": "播放",
@@ -401,6 +405,10 @@ export const modals: MessageModule = {
     "settings.diagnostics.dsnInvalid": "Invalid DSN",
 
     "settings.notifyNeedsYou": "Notify when input is needed",
+    "settings.watchdog.stalled": "Stalled alert",
+    "settings.watchdog.needsHuman": "Waiting-too-long alert",
+    "settings.watchdog.off": "Off",
+    "settings.watchdog.minutes": "{count} min",
     "settings.sound": "Sound",
     "settings.soundVolume": "Volume",
     "settings.preview": "Play",
