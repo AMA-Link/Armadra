@@ -263,6 +263,7 @@ export type {
   IdentitySessionWire,
 } from "./identity.js";
 export {
+  archivedWorkspaceWireSchema,
   workspaceEventsCursorSchema,
   workspaceEventsItemSchema,
   workspaceSummaryWireSchema,

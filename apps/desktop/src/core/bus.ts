@@ -484,10 +484,17 @@ export interface CoreEvents {
    */
   "workspace.removing": { readonly workspaceId: string };
   /**
-   * A workspace's grants changed, or the workspace is gone (`permissions:
-   * null`). Core-internal, never sent to a client: it is how a domain that
-   * started something under the old grants — a language server needs `execute`
-   * — hears that it has to stop now rather than at the next idle sweep.
+   * A workspace was archived (契约 §89): its row and records stay, but nothing
+   * should keep running for it — the terminal domain ends its live sessions.
+   * `workspace.grants` with `permissions: null` follows, as for a removal.
+   */
+  "workspace.archived": { readonly workspaceId: string };
+  /**
+   * A workspace's grants changed, or the workspace is gone — removed or
+   * archived (`permissions: null`). Core-internal, never sent to a client: it
+   * is how a domain that started something under the old grants — a language
+   * server needs `execute` — hears that it has to stop now rather than at the
+   * next idle sweep.
    */
   "workspace.grants": {
     readonly workspaceId: string;

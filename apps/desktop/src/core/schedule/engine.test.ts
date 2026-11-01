@@ -159,6 +159,22 @@ describe("物化与投递", () => {
     expect(h.dispatcher.dispatched).toHaveLength(1);
   });
 
+  it("已归档的工作空间不物化运行，恢复后照常（契约 §89）", async () => {
+    const h = harness();
+    await activated(h, "p1");
+    h.database
+      .prepare("INSERT INTO workspaces (id, archived_at) VALUES (?, ?)")
+      .run("ws", "2026-11-01T00:00:00Z");
+    await h.engine.tick();
+    expect(h.engine.getPlan("ws", "p1").plan.activeRunId).toBe("");
+    expect(h.dispatcher.dispatched).toHaveLength(0);
+    h.database
+      .prepare("UPDATE workspaces SET archived_at = NULL WHERE id = ?")
+      .run("ws");
+    await h.engine.tick();
+    expect(h.dispatcher.dispatched).toHaveLength(1);
+  });
+
   it("同一个槽位只物化一次运行", async () => {
     const h = harness();
     await activated(

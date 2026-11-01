@@ -26,15 +26,22 @@ import { useWorkspaceAccessLost } from "./use-access-lost";
 
 const WORKSPACE = "019ff7d1-0d12-7421-833d-2c5e8d64ed22";
 
-/** 订阅：要么一直等，要么按测试给的错误结束。 */
+/** 订阅：要么一直等，要么按测试给的错误结束；`cursors` 交出一帧位置帧。 */
 let failures: ((error: unknown) => void)[] = [];
+let cursors: (() => void)[] = [];
 const fake: WorkspaceEventTransport = {
   async subscribe() {
     return {
       [Symbol.asyncIterator]: () => ({
         next: () =>
-          new Promise<IteratorResult<unknown>>((_resolve, reject) => {
+          new Promise<IteratorResult<unknown>>((resolve, reject) => {
             failures.push(reject);
+            cursors.push(() =>
+              resolve({
+                done: false,
+                value: { type: "cursor", cursor: 1, floor: 0, watermark: 1 },
+              }),
+            );
           }),
       }),
     };
@@ -53,6 +60,7 @@ const wrapper = ({ children }: { children: ReactNode }) => (
 
 beforeEach(() => {
   failures = [];
+  cursors = [];
   setWorkspaceEventTransport(fake);
   usePreferencesStore.setState({ locale: "zh-CN" });
   info.mockReset();
@@ -75,6 +83,26 @@ describe("useWorkspaceAccessLost", () => {
     await settle();
     expect(useCanvasStore.getState().workspace).toBeNull();
     expect(info).toHaveBeenCalledWith("「共享项目」已不再共享给你");
+    release();
+  });
+
+  it("订着的工作空间被删除或归档：离开它、关掉它的标签，提示已不可用（契约 §89）", async () => {
+    useCanvasStore
+      .getState()
+      .setWorkspace({ id: WORKSPACE, name: "共享项目" } as never);
+    usePreferencesStore.getState().openWorkspaceTab(WORKSPACE);
+    renderHook(() => useWorkspaceAccessLost(), { wrapper });
+    const release = connectWorkspaceEvents(WORKSPACE);
+    await settle();
+    cursors[0]!();
+    await settle();
+    failures.at(-1)!({ code: "not_found" });
+    await settle();
+    expect(useCanvasStore.getState().workspace).toBeNull();
+    expect(info).toHaveBeenCalledWith("「共享项目」已不可用");
+    expect(usePreferencesStore.getState().openWorkspaceKeys).not.toContainEqual(
+      expect.stringContaining(WORKSPACE),
+    );
     release();
   });
 

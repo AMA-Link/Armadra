@@ -66,13 +66,20 @@ export function onWorkspaceConnection(handler: ConnectionHandler): () => void {
  * 整条以它关闭时，与这块工作空间的订阅以 `forbidden` 结束同样对待。
  */
 export const ACCESS_REVOKED_CLOSE = CLOSE_REVOKED;
-const accessLostHandlers = new Set<
-  (workspaceId: string, sourceId: string) => void
->();
-/** 这块工作空间的读授权被收回（订阅以 `forbidden` 结束，或控制面以 4403 关）。 */
-export function onWorkspaceAccessLost(
-  handler: (workspaceId: string, sourceId: string) => void,
-): () => void {
+/**
+ * 为什么看不了了：`revoked` 是读授权被收回（订阅以 `forbidden` 结束，或控制面
+ * 以 4403 关）；`gone` 是这块工作空间被删除或归档了（订阅以 `not_found` 结束，
+ * 契约 §89）。
+ */
+export type AccessLostReason = "revoked" | "gone";
+type AccessLostHandler = (
+  workspaceId: string,
+  sourceId: string,
+  reason: AccessLostReason,
+) => void;
+const accessLostHandlers = new Set<AccessLostHandler>();
+/** 这块工作空间看不了了：授权收回，或它被删除 / 归档。 */
+export function onWorkspaceAccessLost(handler: AccessLostHandler): () => void {
   accessLostHandlers.add(handler);
   return () => {
     accessLostHandlers.delete(handler);
@@ -223,7 +230,7 @@ function announce(connection: Connection, connected: boolean): void {
     handler(connection.workspaceId, connected, connection.source.sourceId);
 }
 
-function lose(connection: Connection): void {
+function lose(connection: Connection, reason: AccessLostReason): void {
   connection.stopped = true;
   // 下一次订阅同一块工作空间（重新共享之后）要开一条新的，而不是复用这条。
   forget(connection);
@@ -231,13 +238,16 @@ function lose(connection: Connection): void {
   connection.offDrop();
   announce(connection, false);
   for (const handler of [...accessLostHandlers])
-    handler(connection.workspaceId, connection.source.sourceId);
+    handler(connection.workspaceId, connection.source.sourceId, reason);
 }
 
 /** 一轮订阅：一直读，直到被拒、被取消，或连接停下。 */
 async function pump(connection: Connection): Promise<void> {
   const { source } = connection;
   while (!connection.stopped) {
+    // 这一轮订上过（收到过位置帧）：之后的 `not_found` 是 core 因删除或归档结束了
+    // 它，而不是订早了（工作空间还没建好）。
+    let subscribed = false;
     try {
       const items = await transport.subscribe(
         source,
@@ -247,6 +257,7 @@ async function pump(connection: Connection): Promise<void> {
       for await (const item of items) {
         if (connection.stopped) return;
         if ((item as { type?: unknown } | null)?.type === "cursor") {
+          subscribed = true;
           announce(connection, true);
           continue;
         }
@@ -261,7 +272,12 @@ async function pump(connection: Connection): Promise<void> {
         code === "forbidden" ||
         transport.closedWith(source) === CLOSE_REVOKED
       ) {
-        lose(connection);
+        lose(connection, "revoked");
+        return;
+      }
+      // 订着的工作空间被删除或归档（契约 §89）：再订也只会是 `not_found`。
+      if (code === "not_found" && subscribed) {
+        lose(connection, "gone");
         return;
       }
       if (transport.closedWith(source) !== null) {
@@ -271,7 +287,7 @@ async function pump(connection: Connection): Promise<void> {
         return;
       }
       // `snapshot_required` / `cursor_ahead`：从现在重订，订阅者在上升沿上重读。
-      // 其余（没装事件域、工作空间刚被删）同样缓一下再试。
+      // 其余（没装事件域）同样缓一下再试。
       announce(connection, false);
       await new Promise((resolve) => setTimeout(resolve, RESUBSCRIBE_DELAY_MS));
       continue;

@@ -131,7 +131,7 @@ export function openWorkspaceEvents(
       throw fail("cursor_ahead", "这个位置比这台 core 的水位还新");
     }
   }
-  return run(stream, workspaceId, start, call);
+  return run(stream, workspaceId, start, call, database);
 }
 
 async function* run(
@@ -139,6 +139,7 @@ async function* run(
   workspaceId: string,
   start: number | "now",
   call: EventsCall,
+  workspaces: DatabaseSync,
 ): AsyncGenerator<Item, void, void> {
   const pending: { frame: string; seq: number }[] = [];
   let wake: (() => void) | undefined;
@@ -148,6 +149,8 @@ async function* run(
     resolve?.();
   };
   let revoked = false;
+  // 工作空间被删除或归档（契约 §89）：同一次复核里看出来，以 `not_found` 结束。
+  let gone = false;
   // 监听与读水位在同一拍：此后发布的都进 `pending`，之前的都在 outbox 里。
   let overflowed = false;
   const identity = call.identity;
@@ -165,15 +168,15 @@ async function* run(
     },
     { owner: ownerSubscriber(identity) },
   );
-  const offAccess =
-    identity === undefined
-      ? () => {}
-      : onAccessChanged(() => {
-          if (!stillAllowed(identity, workspaceId)) {
-            revoked = true;
-            poke();
-          }
-        });
+  const offAccess = onAccessChanged(() => {
+    if (!workspaceExists(workspaces, workspaceId)) {
+      gone = true;
+      poke();
+    } else if (identity !== undefined && !stillAllowed(identity, workspaceId)) {
+      revoked = true;
+      poke();
+    }
+  });
   const signal = call.signal;
   signal?.addEventListener("abort", poke);
   const database = stream.durable;
@@ -210,6 +213,7 @@ async function* run(
       String(ceiling),
     );
     while (signal?.aborted !== true) {
+      if (gone) throw fail("not_found", `没有这个工作空间：${workspaceId}`);
       if (revoked) throw fail("forbidden", "没有这块工作空间的读授权了");
       const next = pending.shift();
       if (next === undefined && overflowed) {

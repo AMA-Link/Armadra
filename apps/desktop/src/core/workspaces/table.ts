@@ -64,6 +64,9 @@ export type WorkspaceSummary = Workspace & {
   readonly boards: readonly BoardBrief[];
 };
 
+/** 归档里的一行（契约 §89）：工作空间本身加归档时刻。 */
+export type ArchivedWorkspace = Workspace & { readonly archivedAt: string };
+
 interface WorkspaceRow {
   id: string;
   name: string;
@@ -74,11 +77,12 @@ interface WorkspaceRow {
   last_opened_at: string;
   created_at: string;
   updated_at: string;
+  archived_at: string | null;
 }
 
 const SELECT_WORKSPACE =
   "SELECT id, name, root_path, color, permissions_json, execution_host_id, " +
-  "COALESCE(last_opened_at, updated_at) AS last_opened_at, created_at, updated_at " +
+  "COALESCE(last_opened_at, updated_at) AS last_opened_at, created_at, updated_at, archived_at " +
   "FROM workspaces";
 
 /**
@@ -195,7 +199,13 @@ export function createWorkspace(
         now,
       );
     if (inserted.changes === 0) {
-      database.exec("ROLLBACK");
+      // 再次添加一个已归档的目录就是把它恢复：否则答回去的是一块列表里看不见的工作空间。
+      database
+        .prepare(
+          "UPDATE workspaces SET archived_at = NULL, last_opened_at = ? WHERE root_path = ? AND archived_at IS NOT NULL",
+        )
+        .run(now, input.rootPath);
+      database.exec("COMMIT");
       return getWorkspaceByRoot(database, input.rootPath);
     }
     insertDefaultBoard(database, boardId, id, now);
@@ -264,7 +274,9 @@ export function createRemoteWorkspace(
       database.exec("ROLLBACK");
       const existing = getWorkspaceByRoot(database, input.rootPath);
       if ((existing.executionHostId ?? "") === input.executionHostId) {
-        return existing;
+        return isArchived(database, existing.id)
+          ? restoreWorkspace(database, existing.id)
+          : existing;
       }
       throw conflict(
         "Another workspace already uses this path on a different execution host",
@@ -341,13 +353,16 @@ export function ensureDefaultWorkspace(
   });
 }
 
-/** Every workspace, most recently opened first, each with its board briefs. */
+/**
+ * Every workspace that is not archived, most recently opened first, each with
+ * its board briefs.
+ */
 export function listWorkspaces(
   database: DatabaseSync,
 ): readonly WorkspaceSummary[] {
   const rows = database
     .prepare(
-      `${SELECT_WORKSPACE} ORDER BY COALESCE(last_opened_at, updated_at) DESC, created_at DESC`,
+      `${SELECT_WORKSPACE} WHERE archived_at IS NULL ORDER BY COALESCE(last_opened_at, updated_at) DESC, created_at DESC`,
     )
     .all() as unknown as WorkspaceRow[];
   const briefs = database
@@ -378,6 +393,60 @@ export function listWorkspaces(
   }));
 }
 
+/** 已归档的工作空间，最近归档的在前（契约 §89）。 */
+export function listArchivedWorkspaces(
+  database: DatabaseSync,
+): readonly ArchivedWorkspace[] {
+  const rows = database
+    .prepare(
+      `${SELECT_WORKSPACE} WHERE archived_at IS NOT NULL ORDER BY archived_at DESC, created_at DESC`,
+    )
+    .all() as unknown as WorkspaceRow[];
+  return rows.map((row) => ({
+    ...fromRow(row),
+    archivedAt: row.archived_at ?? "",
+  }));
+}
+
+/** 这一行在不在、是不是已归档；不在答 `false`。 */
+export function isArchived(database: DatabaseSync, id: string): boolean {
+  const row = database
+    .prepare("SELECT archived_at FROM workspaces WHERE id = ?")
+    .get(id) as { archived_at: string | null } | undefined;
+  return row !== undefined && row.archived_at !== null;
+}
+
+/**
+ * 归档：只记下时刻，行与它级联的一切原样留着。已归档的再归档不改时刻。
+ * 不在答 `not_found`。
+ */
+export function archiveWorkspace(database: DatabaseSync, id: string): void {
+  getWorkspace(database, id);
+  database
+    .prepare(
+      "UPDATE workspaces SET archived_at = ? WHERE id = ? AND archived_at IS NULL",
+    )
+    .run(rfc3339(), id);
+}
+
+/** 恢复：清掉归档时刻，并记一次打开，让它回到列表最前。没归档的原样返回。 */
+export function restoreWorkspace(
+  database: DatabaseSync,
+  id: string,
+): Workspace {
+  getWorkspace(database, id);
+  database
+    .prepare(
+      "UPDATE workspaces SET archived_at = NULL, last_opened_at = ? WHERE id = ? AND archived_at IS NOT NULL",
+    )
+    .run(rfc3339(), id);
+  return getWorkspace(database, id);
+}
+
+/**
+ * A row, archived or not: the domains that start from a workspace still find
+ * one that is archived, so restoring and deleting it work.
+ */
 export function getWorkspace(database: DatabaseSync, id: string): Workspace {
   const row = database.prepare(`${SELECT_WORKSPACE} WHERE id = ?`).get(id) as
     | WorkspaceRow
@@ -462,14 +531,19 @@ export function deleteWorkspace(database: DatabaseSync, id: string): void {
   if (result.changes === 0) throw notFound("Workspace was not found");
 }
 
-/** `POST …/open` — stamp `last_opened_at` and hand the row back. */
+/**
+ * `POST …/open` — stamp `last_opened_at` and hand the row back. An archived
+ * workspace is not there to open (契约 §89): a stale tab must not bring it back.
+ */
 export function touchWorkspaceOpened(
   database: DatabaseSync,
   id: string,
 ): Workspace {
   const now = rfc3339();
   const result = database
-    .prepare("UPDATE workspaces SET last_opened_at = ? WHERE id = ?")
+    .prepare(
+      "UPDATE workspaces SET last_opened_at = ? WHERE id = ? AND archived_at IS NULL",
+    )
     .run(now, id);
   if (result.changes === 0) throw notFound("Workspace was not found");
   return getWorkspace(database, id);

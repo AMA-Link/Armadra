@@ -1,18 +1,16 @@
 import type { MessageModule } from "./index";
 
 /**
- * 工作空间的添加 / 移除（§20 →§27，契约 §65）：侧栏「添加项目」对话框的三种
- * 来源（仓库、本地、地址）与工作空间行菜单的移除确认。
+ * 工作空间的添加 / 归档（§20 →§27，契约 §65、§89）：侧栏「添加项目」对话框的
+ * 三种来源（仓库、本地、地址）与工作空间行菜单的归档及其撤销提示。
  *
  * 模块名保留 `launcher` 以免键名整体搬家。
  */
 export const launcher: MessageModule = {
   "zh-CN": {
-    "launcher.remove": "从列表移除",
-    "launcher.removeTitle": "移除工作空间？",
-    "launcher.removeNote": "不会删除磁盘文件",
-    "launcher.removeConfirm": "移除",
-    "launcher.cancel": "取消",
+    "launcher.archive": "归档",
+    "launcher.archived": "已归档「{name}」",
+    "launcher.undo": "撤销",
 
     "folder.parent": "父目录",
     "folder.choose": "选择",
@@ -32,11 +30,9 @@ export const launcher: MessageModule = {
     "newWorkspace.open": "打开",
   },
   en: {
-    "launcher.remove": "Remove from list",
-    "launcher.removeTitle": "Remove workspace?",
-    "launcher.removeNote": "Files on disk are not deleted",
-    "launcher.removeConfirm": "Remove",
-    "launcher.cancel": "Cancel",
+    "launcher.archive": "Archive",
+    "launcher.archived": "Archived “{name}”",
+    "launcher.undo": "Undo",
 
     "folder.parent": "Parent folder",
     "folder.choose": "Choose",

@@ -1,4 +1,5 @@
 import {
+  archivedWorkspaceListSchema,
   createWorkspaceRequestSchema,
   openRemoteWorkspaceRequestSchema,
   updateWorkspaceRequestSchema,
@@ -41,6 +42,15 @@ export const workspacesApiFor = (rpc: () => ArmadraClient) => ({
     await rpc().workspaces.delete({ workspaceId });
     return undefined;
   },
+  /** 归档（契约 §89）：从列表收起，行与记录都留着，可以恢复。 */
+  archiveWorkspace: async (workspaceId: string): Promise<undefined> => {
+    await rpc().workspaces.archive({ workspaceId });
+    return undefined;
+  },
+  restoreWorkspace: async (workspaceId: string) =>
+    workspaceSchema.parse(await rpc().workspaces.restore({ workspaceId })),
+  listArchivedWorkspaces: async () =>
+    archivedWorkspaceListSchema.parse(await rpc().workspaces.archived({})),
 
   /**
    * Open a project that lives on an SSH execution host (H02). The path is a

@@ -33,6 +33,7 @@ describe("设置导航（界面第二波 §2.1）", () => {
       "credentials",
       "usage",
       "workspace",
+      "archive",
       "service",
       "machines",
       "forge",

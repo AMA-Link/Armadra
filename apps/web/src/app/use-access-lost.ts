@@ -30,7 +30,8 @@ export const useWorkspaceAccessEmpty = create<{ empty: boolean }>(() => ({
 /**
  * 这块工作空间的读授权被收回了（服务器壳上撤销共享、停用账号、控制台改了授予
  * 的工作空间范围）：core 以 `forbidden` 结束这块的订阅，或以 4403 关掉事件流
- * （`api/events.ts`）。
+ * （`api/events.ts`）。被删除或归档了（契约 §89）同样处理，订阅以 `not_found`
+ * 结束，提示换成「已不可用」。
  *
  * 留在原处的话，侧栏会一直把它当「当前工作空间」列着，画布停在一份再也读
  * 不到、存不进的旧文档上，之后的每个请求都是 403 却没人说为什么。所以离开它，
@@ -45,12 +46,19 @@ export const useWorkspaceAccessEmpty = create<{ empty: boolean }>(() => ({
 export function useWorkspaceAccessLost(): void {
   const queryClient = useQueryClient();
   useEffect(() => {
-    const offLost = onWorkspaceAccessLost((lost, from) => {
+    const offLost = onWorkspaceAccessLost((lost, from, reason) => {
+      // 删除或归档了的（契约 §89）连标签也不留：再点开也只是 `not_found`。
+      if (reason === "gone")
+        usePreferencesStore.getState().closeWorkspaceTab(lost, from);
       const state = useCanvasStore.getState();
       if (state.workspace?.id !== lost || state.sourceId !== from) return;
       const name = state.workspace.name;
       state.setWorkspace(null);
-      toast.info(t("sharing.revoked", { name }));
+      toast.info(
+        t(reason === "gone" ? "sharing.unavailable" : "sharing.revoked", {
+          name,
+        }),
+      );
       void fallBack(queryClient, lost, from);
     });
     // 打开了任何工作空间（回落、或用户自己点开）就不再是「一个都不剩」。

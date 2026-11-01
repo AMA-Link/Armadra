@@ -3,6 +3,7 @@ import type { ReactElement } from "react";
 import { AboutPage } from "./AboutPage";
 import { AccountsSharingPage } from "./AccountsSharingPage";
 import { AgentsPage } from "./AgentsPage";
+import { ArchivePage } from "./ArchivePage";
 import { BrowserPage } from "./BrowserPage";
 import { CredentialsPage } from "./CredentialsPage";
 import { CustomAgentsPage } from "./CustomAgentsPage";
@@ -39,6 +40,7 @@ export const SECTION_PAGES: Readonly<Record<string, Page>> = {
   credentials: CredentialsPage,
   usage: UsagePage,
   workspace: WorkspacePage,
+  archive: ArchivePage,
   service: ServicePage,
   machines: MachinesPage,
   forge: ForgePage,

@@ -4790,3 +4790,28 @@ owner（本机会话，或已信任设备经通道的 owner 会话）：`{ sourc
 - **剩余风险**：平台是设备在握手里自报的，第一次申请时写进登记行；一个页面第一次登记就可以自称 `desktop`、名字随便写。这条防线因此依赖放行的人核对平台：本机的放行提示与设备列表都把平台做成徽标，申请人是主机 owner、平台是原生端时另加一句「放行后，它能批准主人的新设备」。桌面的云端待信任对话框（U7b）也一样：平台与申请人取主机上与请求对得上的那一行（不用云端 `trust.list` 报的），两者不同时以主机为准并加一句警示，放行的就是给人看过的那一行。
 - 无新过程、无迁移、协议 minor 不变；`devices.approve` 与 `e2e.pairingSecret` 的错误表本来就有 `forbidden`。主机本地「不接受浏览器设备背书」的开关由这条规则覆盖，暂不提供。
 - 之后：背书进了「需要人处理」（§81.1），`devices.endorsed` 改为只扇给主机 owner 的订阅，取代上面「事件的接收者」一条。
+
+## 89. 工作空间归档
+
+> 状态：实施契约（AMA-Link/Armadra#678）。迁移 0057 `workspaces.archived_at`；三条新 procedure，协议 1.53。
+
+### 89.1 归档、恢复与归档列表
+
+<!-- rpc:begin contract=§89.1 -->
+
+| procedure             | kind | input                     | output                                                                                                                                                                                                                                        | errors                         | scope             | 自   | 原路径 |
+| --------------------- | ---- | ------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------ | ----------------- | ---- | ------ |
+| `workspaces.archive`  | call | `{ workspaceId: string }` | 无                                                                                                                                                                                                                                            | `forbidden`、`not_found`       | `workspace:share` | 1.53 | —      |
+| `workspaces.restore`  | call | `{ workspaceId: string }` | `{ id: string, name: string, rootPath: string, color: string, permissions: { read: boolean, write: boolean, execute: boolean }, executionHostId?: string, lastOpenedAt: string, createdAt: string, updatedAt: string }`                       | `forbidden`、`not_found`       | `workspace:share` | 1.53 | —      |
+| `workspaces.archived` | call | 可省 `{}`                 | `{ id: string, name: string, rootPath: string, color: string, permissions: { read: boolean, write: boolean, execute: boolean }, executionHostId?: string, lastOpenedAt: string, createdAt: string, updatedAt: string, archivedAt: string }[]` | `unauthenticated`、`forbidden` | `workspace:share` | 1.53 | —      |
+
+<!-- rpc:end -->
+
+- **归档**（`workspaces.archive`）：记下归档时刻，行与它级联的画布、节点、会话记录原样留着，磁盘上的目录不动。core 随即结束这块工作空间的活终端与 Agent 会话（行标 `terminated`，恢复后节点照常显示已退出、可重开）、停下按它起的语言服务；定时计划在归档期间不物化运行。已归档的再归档什么也不做，归档时刻不变。
+- **已归档的不在**：`workspaces.list`（含成员按授予过滤后的那份）不列；`workspaces.open` 答 `404 not_found`；`workspaces.events` 与旧事件流的订阅答 `404 not_found`。
+- **正在看的订阅**：归档或删除（`workspaces.delete`）的那一刻，core 以 `not_found` 结束这块工作空间所有还开着的 `workspaces.events` 订阅（成员、访客、同一个人的另一台设备都是），不必等它们自己重订。页面据此离开这块工作空间、提示不可用，回落到还看得见的下一块（与授权收回 §35.4 同一条回落）。
+- **恢复**（`workspaces.restore`）：清掉归档时刻并记一次打开，回到列表最前；答恢复后的工作空间。没归档的原样返回。
+- **再次添加同一个目录**（`workspaces.create`、`workspaces.openDirectory`、`workspaces.openRemote`）：根目录相同的那一行已归档时直接恢复它并答回去。
+- **删除**：形状不变；已归档的同样能删。删除之前 core 先结束这块工作空间的全部终端会话（含 tmux 这类活得比 core 久的会话），再删行。
+- **授予与分享链接不动**：授予本来就比工作空间活得久（迁移 0019），归档期间成员与访客看不到它，兑换指向它的链接得到的是一块看不见的工作空间（页面给空态）；恢复后原样可见。删除后授予仍不级联撤销。
+- 只有 owner（`workspace:share`）。
