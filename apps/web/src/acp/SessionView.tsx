@@ -43,6 +43,8 @@ import {
   ElicitationItemCard,
   ToolLookupProvider,
 } from "./TimelineCards";
+import { visibleUsage } from "./pickers";
+import { useAcpPickers } from "./use-pickers";
 import { useSessionFeed } from "./use-session-feed";
 
 /**
@@ -653,57 +655,17 @@ export function SessionView({
     if (sessionId) void acpApi.cancel(sessionId).catch(() => undefined);
   }, [sessionId]);
 
-  // 模式与模型：头部值来自时间线（core 重启后也在）；选了之后先本地改一下，
-  // 回执（头部值更新）到了再以它为准。
-  const [modeChoice, setModeChoice] = React.useState<string | null>(null);
-  const [modelChoice, setModelChoice] = React.useState<string | null>(null);
-  const headModes = feed.head.modes ?? null;
-  const headModels = feed.head.models ?? null;
-  React.useEffect(() => setModeChoice(null), [headModes?.currentModeId]);
-  React.useEffect(() => setModelChoice(null), [headModels?.currentModelId]);
-  const modes =
-    headModes && modeChoice
-      ? { ...headModes, currentModeId: modeChoice }
-      : headModes;
-  const models =
-    headModels && modelChoice
-      ? { ...headModels, currentModelId: modelChoice }
-      : headModels;
-
-  const selectMode = React.useCallback(
-    (modeId: string) => {
-      if (!sessionId) return;
-      setModeChoice(modeId);
-      void acpApi.setMode(sessionId, modeId).catch(() => undefined);
-    },
-    [sessionId],
-  );
-
-  const currentModel = headModels?.currentModelId ?? null;
-  const selectModel = React.useCallback(
-    (modelId: string) => {
-      if (!sessionId) return;
-      setModelChoice(modelId);
-      acpApi
-        .setModel(sessionId, modelId)
-        .then(() => {
-          // 节点数据的 `agent.model` 由页面写回（契约 §26.2）：下次起会话
-          // 落上同一个模型。与会话 id 一样不是画布编辑，不进撤销栈。
-          const canvas = useCanvasStore.getState();
-          const node = canvas.document?.nodes.find((n) => n.id === nodeId);
-          if (node?.data.kind !== "terminal" || !node.data.agent) return;
-          canvas.updateNodeData(
-            nodeId,
-            { agent: { ...node.data.agent, model: modelId } },
-            { history: "ignore" },
-          );
-        })
-        .catch(() => {
-          setModelChoice(currentModel);
-          toast.error(t("acp.prompt.modelFailed"));
-        });
-    },
-    [sessionId, nodeId, t, currentModel],
+  // 模式与模型：Agent 报回的来自时间线头部；还没报时用候选，新建后就有得选（#685）。
+  const { modes, models, selectMode, selectModel } = useAcpPickers({
+    nodeId,
+    sessionId,
+    agent: data.agent,
+    head: feed.head,
+  });
+  // 上下文余量等首条消息成功发出之后才显示。
+  const usage = React.useMemo(
+    () => visibleUsage(feed.head.usage, feed.items),
+    [feed.head.usage, feed.items],
   );
 
   const services = React.useMemo<TimelineViewServices>(
@@ -921,7 +883,7 @@ export function SessionView({
             onMode={selectMode}
             onModel={selectModel}
             commands={feed.head.commands ?? []}
-            usage={feed.head.usage ?? null}
+            usage={usage}
             prefill={prefill}
           />
         )}
