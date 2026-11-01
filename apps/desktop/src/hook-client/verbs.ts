@@ -134,6 +134,9 @@ interface Row {
 
 /** The agent-launch options `open-agent` and `team` share. */
 const LAUNCH_OPTIONS: Record<string, JsonSchema> = {
+  origin: str(
+    "the person's original request, verbatim; recorded with the work item (defaults to the task)",
+  ),
   "permission-mode": str(
     "permission mode for the new CLI; only modes that CLI supports are accepted",
   ),
@@ -355,6 +358,40 @@ const CANVAS: Record<ControlVerb, Row> = {
       timeout: int(`seconds to wait for news, 0–60 (default 30)`, 0),
     },
     required: ["task"],
+  },
+  report: {
+    description:
+      "Report how your assigned work item stands: progress, waiting, ready (for review), blocked or failed. Put one concrete question for a person in human-action; progress is recorded without waking the coordinator.",
+    properties: {
+      state: str("progress, waiting, ready, blocked or failed"),
+      summary: str("what stands now, 1–300 characters"),
+      "human-action": str(
+        "one concrete question a person must answer (replaces the open one)",
+      ),
+      "clear-action": bool("the open question is answered or no longer needed"),
+      item: str("the work item id (optional when you have only one)"),
+    },
+    required: ["state", "summary"],
+  },
+  handback: {
+    description:
+      "Hand a work item back to the coordinator to decide again (once per item).",
+    properties: {
+      reason: str("why, 1–100 characters"),
+      item: str("the work item id (optional when you have only one)"),
+    },
+    required: ["reason"],
+  },
+  items: {
+    description:
+      "Read the work-item ledger: the items you dispatched, people-facing stages first; --item for one item's detail and report history.",
+    properties: {
+      item: str("one item's id for its detail"),
+      full: bool("with item: the whole original request"),
+      stage: str("only items at this stage, e.g. person/review"),
+      limit: int("how many, 1–50 (default 20)", 1),
+      offset: int("skip this many (paging)", 0),
+    },
   },
 };
 

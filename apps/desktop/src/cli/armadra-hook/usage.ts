@@ -51,7 +51,7 @@ export const CANVAS_USAGE = `CANVAS:
                                       [--model M] [--after ID]
                                       [--after-turn current|next] [--ttl MIN]
                                       [--worktree NAME_OR_PATH] [--cwd DIR]
-                                      [--resume SESSION_ID]
+                                      [--resume SESSION_ID] [--origin TEXT]
                                       open an agent
                                       node, link it, and give it a first task
                                       once it reports idle; --worktree puts it
@@ -82,6 +82,16 @@ export const CANVAS_USAGE = `CANVAS:
   send --to ID --body TEXT --interrupt  stop the current turn first, then send
   outbox [--to ID] [--limit 20]        your deliveries still waiting to be sent
   cancel --id QUEUED-ID                drop one of them
+  report --state progress|waiting|ready|blocked|failed --summary TEXT
+         [--human-action QUESTION | --clear-action] [--item ID]
+                                      report your assigned work item; ready
+                                      means "please review", human-action is
+                                      one question a person must answer
+  handback --reason TEXT [--item ID]  hand a work item back to the
+                                      coordinator (once per item)
+  items [--stage S] [--limit N] [--offset N] | --item ID [--full]
+                                      the work items you dispatched, the
+                                      ones waiting on a person first
   armadra-hook canvas <verb> [--flag value | --flag=value | --flag]...
   Repeated flags become arrays; a bare flag is \`true\`. \`--dry-run\` is passed
   through to the runtime, which then validates without mutating the board.
