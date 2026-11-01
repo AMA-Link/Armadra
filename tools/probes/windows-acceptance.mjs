@@ -1153,8 +1153,7 @@ async function runFull(options, result, record, out) {
       });
 
     say("同时关闭多个终端");
-    const shell = result.machine.shells.cmd;
-    const host = { workspaceId, wsDir, shell, sessions, hostPid, alive };
+    const host = { workspaceId, wsDir, shells, sessions, hostPid, alive };
     await closeManyAtOnce(record, app, host);
 
     say("ConPTY 关闭");

@@ -11,20 +11,22 @@ import { setTimeout as sleep } from "node:timers/promises";
 import { markerLine, waitFor } from "./windows-acceptance-lib.mjs";
 
 /** 一次同时终止的终端数：比验收里原有的三个多，确保几条退出线程撞在一起。 */
-export const CLOSE_MANY = 4;
+export const CLOSE_MANY = 6;
 
 /**
- * `sessionHost.closeMany`：node-pty 1.1.0 的退出线程不加锁地从 ConPTY 句柄表里
- * 删条目，主线程同时在表里查（resize / kill）或追加（spawn），原生崩溃把宿主和
- * 它手里所有 shell 一起带走，什么日志也不留。这里起 {@link CLOSE_MANY} 个 cmd，
- * 一口气全部终止，同一时刻往原有的每个终端敲一行（附着会让宿主 resize，就是查
- * 表）；之后宿主必须还是原来那个 pid，原有终端再敲一行仍要回显。
+ * `sessionHost.closeMany`：node-pty 1.1.0 在 Windows 上有两处原生崩溃会把宿主和
+ * 它手里所有 shell 一起带走、什么日志也不留——退出线程不加锁地删 ConPTY 句柄表、
+ * 主线程同时在表里查或追加；以及 shell 退出前第二次 kill 关掉已经释放的伪控制台
+ * （core 结束会话是先 `kill` 再 `destroy`，pwsh 这种退出慢的 shell 必中）。这里
+ * 在 `shells` 里轮流起 {@link CLOSE_MANY} 个终端，一口气全部终止，同一时刻往原有
+ * 的每个终端敲一行（附着会让宿主 resize，就是查表）；之后宿主必须还是原来那个
+ * pid，原有终端再敲一行仍要回显。
  *
  * `app` 要有 `api` 与 `terminal`；`alive(pid)` 由调用方给（它走 PowerShell）。
  */
 export async function closeManyAtOnce(record, app, options) {
   const id = "sessionHost.closeMany";
-  if (!options.shell) return record.skip(id, "没有 cmd.exe");
+  if (options.shells.length === 0) return record.skip(id, "没有可用的 shell");
   if (options.sessions.length === 0 || options.hostPid === undefined) {
     return record.skip(id, "没有起来的终端或会话宿主");
   }
@@ -36,7 +38,7 @@ async function runCloseMany(
   {
     workspaceId,
     wsDir,
-    shell,
+    shells,
     sessions,
     hostPid,
     alive,
@@ -57,20 +59,17 @@ async function runCloseMany(
 
   const extra = [];
   for (let index = 0; index < count; index += 1) {
+    const [dialect, shell] = shells[index % shells.length];
     const response = await app.api("POST", "/api/terminals", {
       workspaceId,
       cwd: wsDir,
       shell,
     });
-    const session = { id: response.body?.id, pid: response.body?.pid };
+    const session = { id: response.body?.id, pid: response.body?.pid, dialect };
     if (typeof session.id !== "string") {
       return { ok: false, detail: { started: extra.length, response } };
     }
-    const typed = await echo(
-      { ...session, dialect: "cmd" },
-      `many${index}`,
-      60_000,
-    );
+    const typed = await echo(session, `many${index}`, 120_000);
     extra.push({ ...session, ready: typed.ok });
   }
 
@@ -114,6 +113,7 @@ async function runCloseMany(
       Object.values(after).every((entry) => entry.echoed),
     detail: {
       count,
+      shells: extra.map((session) => session.dialect),
       ready: extra.filter((session) => session.ready).length,
       terminated: answers.map((answer) => answer.status),
       extrasGone,

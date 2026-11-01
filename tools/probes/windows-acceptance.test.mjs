@@ -545,7 +545,10 @@ function closeManyFixture({ hostDies }) {
   const options = {
     workspaceId: "w",
     wsDir: "C:\\w",
-    shell: "cmd.exe",
+    shells: [
+      ["cmd", "cmd.exe"],
+      ["pwsh", "pwsh.exe"],
+    ],
     sessions: [{ id: "s1", pid: 11, dialect: "cmd" }],
     hostPid: 1,
     alive: (pid) => !gone.has(pid),
@@ -564,6 +567,15 @@ test("同时关闭多个终端：宿主还在、其它终端还答才算过，�
   const entry = fine.record.entry("sessionHost.closeMany");
   assert.equal(entry.status, "pass");
   assert.equal(entry.detail.hostAlive, true);
+  // 退出慢的 shell 也在里面：第二次 kill 的崩溃要它才触发。
+  assert.deepEqual(entry.detail.shells, [
+    "cmd",
+    "pwsh",
+    "cmd",
+    "pwsh",
+    "cmd",
+    "pwsh",
+  ]);
 
   const dead = closeManyFixture({ hostDies: true });
   assert.equal(
@@ -580,6 +592,12 @@ test("没有会话宿主或没有 cmd 时跳过，不算失败", async () => {
   const { app, record, options } = closeManyFixture({ hostDies: false });
   await closeManyAtOnce(record, app, { ...options, hostPid: undefined });
   assert.equal(record.entry("sessionHost.closeMany").status, "skip");
+  const other = closeManyFixture({ hostDies: false });
+  await closeManyAtOnce(other.record, other.app, {
+    ...other.options,
+    shells: [],
+  });
+  assert.equal(other.record.entry("sessionHost.closeMany").status, "skip");
 });
 
 test("崩溃记录：只查这次运行以来的 Application Error / WER，读不到时记原因", () => {
