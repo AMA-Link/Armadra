@@ -241,6 +241,16 @@ describe("ThoughtRow", () => {
     expect(screen.getByText(/deep/)).toBeTruthy();
   });
 
+  it("shows non-text thought blocks next to the text", () => {
+    const item = {
+      ...as(thoughtItem(1, ""), "thought"),
+      parts: [{ type: "audio" as const, blobId: "a", mimeType: "audio/wav" }],
+    };
+    withServices(<ThoughtRow item={item} />);
+    fireEvent.click(screen.getByRole("button"));
+    expect(document.querySelector("[data-slot=timeline-audio]")).toBeTruthy();
+  });
+
   it("shimmers the label and counts up while streaming", () => {
     const item = {
       ...as(thoughtItem(1, "partial", 0, true), "thought"),
@@ -293,6 +303,29 @@ describe("ToolRow", () => {
     const pill = document.querySelector("[data-slot=status-pill]");
     expect(pill?.getAttribute("data-tone")).toBe("done");
     expect(pill?.textContent).toBe("已完成");
+  });
+
+  it("expands the locations hidden behind +N in the body", () => {
+    render(
+      <ToolRow
+        item={row({
+          locations: [
+            { path: "/repo/a.ts" },
+            { path: "/repo/b.ts" },
+            { path: "/repo/c.ts", line: 7 },
+            { path: "/repo/d.ts" },
+          ],
+        })}
+      />,
+    );
+    expect(
+      document.querySelector("[data-slot=timeline-tool-locations]"),
+    ).toBeNull();
+    fireEvent.click(screen.getAllByRole("button")[0]!);
+    const list = document.querySelector("[data-slot=timeline-tool-locations]");
+    expect(
+      [...list!.querySelectorAll("li")].map((li) => li.textContent),
+    ).toEqual(["/repo/c.ts:7", "/repo/d.ts"]);
   });
 
   it("maps every status to a tone", () => {
@@ -450,6 +483,18 @@ describe("ToolRow", () => {
     expect(screen.getByText("y.txt")).toBeTruthy();
   });
 
+  it("renders audio content from a tool", () => {
+    withServices(
+      <ToolRow
+        item={row({
+          content: [{ type: "audio", blobId: "a", mimeType: "audio/wav" }],
+        })}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: /Read file/ }));
+    expect(document.querySelector("[data-slot=timeline-audio]")).toBeTruthy();
+  });
+
   it("nests subagent calls under the row and keeps the approval card inline", () => {
     const approval = {
       id: "ap:1",
@@ -568,6 +613,39 @@ describe("PlanBar", () => {
     ).toEqual(["done", "working", "queued"]);
   });
 
+  it("marks entry priority in the list", async () => {
+    render(
+      <PlanBar
+        plan={{
+          ...plan,
+          entries: [
+            { content: "A", status: "pending", priority: "high" },
+            { content: "B", status: "pending", priority: "low" },
+            { content: "C", status: "pending", priority: "other" },
+            { content: "D", status: "pending" },
+          ],
+        }}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "计划" }));
+    await waitFor(() =>
+      expect(
+        document.querySelector("[data-slot=timeline-plan-list]"),
+      ).toBeTruthy(),
+    );
+    expect(
+      [...document.querySelectorAll("[data-slot=timeline-plan-priority]")].map(
+        (mark) => [
+          mark.getAttribute("data-priority"),
+          mark.getAttribute("aria-label"),
+        ],
+      ),
+    ).toEqual([
+      ["high", "高优先级"],
+      ["low", "低优先级"],
+    ]);
+  });
+
   it("draws progress as a 20-cell tick bar", () => {
     render(<PlanBar plan={plan} />);
     const bar = document.querySelector("[data-slot=progress]")!;
@@ -603,6 +681,25 @@ describe("NoticeRow and TurnFooter", () => {
   it("draws a centered line with the detail", () => {
     render(<NoticeRow item={notice("mode_changed", { name: "plan" })} />);
     expect(screen.getByText("模式已切换 · plan")).toBeTruthy();
+  });
+
+  it("maps an error code to text and falls back to the raw code", () => {
+    const { unmount } = render(
+      <NoticeRow item={notice("error", { code: "acp_auth_required" })} />,
+    );
+    expect(screen.getByText("出错 · 需要登录")).toBeTruthy();
+    unmount();
+    render(<NoticeRow item={notice("error", { code: "weird_code" })} />);
+    expect(screen.getByText("出错 · weird_code")).toBeTruthy();
+  });
+
+  it("folds a compaction summary until opened", () => {
+    render(
+      <NoticeRow item={notice("compacted", { summary: "kept: the plan" })} />,
+    );
+    expect(screen.queryByText("kept: the plan")).toBeNull();
+    fireEvent.click(screen.getByRole("button"));
+    expect(screen.getByText("kept: the plan")).toBeTruthy();
   });
 
   it("covers error, refusal, cancelled and limit; end_turn draws nothing", () => {

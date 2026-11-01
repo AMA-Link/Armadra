@@ -1,4 +1,4 @@
-import { ChevronDown } from "lucide-react";
+import { ArrowDown, ArrowUp, ChevronDown, Minus } from "lucide-react";
 import type { TimelinePlanEntry, TimelinePlanItem } from "@armadra/shared";
 
 import { useT } from "@/app/preferences-store";
@@ -30,6 +30,34 @@ export function toneOfEntry(status: string | undefined): StatusTone {
 function EntryDot({ status }: { status: string | undefined }) {
   const tone = toneOfEntry(status);
   return <StatusDot tone={tone} size={6} pulse={false} />;
+}
+
+const PRIORITY_ICONS = {
+  high: ArrowUp,
+  medium: Minus,
+  low: ArrowDown,
+} as const;
+
+/** 步骤优先级的小标记；协议之外的取值不画。 */
+export function PriorityMark({ priority }: { priority: string | undefined }) {
+  const t = useT();
+  if (priority !== "high" && priority !== "medium" && priority !== "low") {
+    return null;
+  }
+  const Icon = PRIORITY_ICONS[priority];
+  return (
+    <Icon
+      role="img"
+      data-slot="timeline-plan-priority"
+      data-priority={priority}
+      aria-label={t(`timeline.plan.priority.${priority}`)}
+      className={
+        priority === "high"
+          ? "mt-[3px] size-3 shrink-0 text-warn-text"
+          : "mt-[3px] size-3 shrink-0 text-muted-foreground"
+      }
+    />
+  );
 }
 
 /** 会话顶部的计划条：当前项与进度（x / n），点开是清单。 */
@@ -84,12 +112,13 @@ export function PlanBar({
               <span
                 className={
                   entry.status === "completed"
-                    ? "text-muted-foreground line-through"
-                    : undefined
+                    ? "min-w-0 flex-1 text-muted-foreground line-through"
+                    : "min-w-0 flex-1"
                 }
               >
                 {entry.content}
               </span>
+              <PriorityMark priority={entry.priority} />
             </li>
           ))}
         </ul>

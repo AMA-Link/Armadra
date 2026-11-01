@@ -1,6 +1,7 @@
 import type { TimelineToolContent } from "@armadra/shared";
 
 import { useT } from "@/app/preferences-store";
+import { AudioPart } from "./AudioPart";
 import { DiffBlock, DiffCounts } from "@/acp/DiffBlock";
 import { formatBytes } from "@/lib/format";
 import { useTimelineServices } from "../services";
@@ -80,6 +81,15 @@ export function ToolContentView({
         <ImagePart
           blobId={content.blobId}
           mimeType={content.mimeType}
+          dropped={content.dropped}
+        />
+      );
+    case "audio":
+      return (
+        <AudioPart
+          blobId={content.blobId}
+          mimeType={content.mimeType}
+          bytes={content.bytes}
           dropped={content.dropped}
         />
       );

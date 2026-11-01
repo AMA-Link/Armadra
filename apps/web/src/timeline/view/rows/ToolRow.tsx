@@ -150,7 +150,8 @@ function ToolRowImpl({ item, nested, approval, renderApproval }: ToolRowProps) {
   const running = item.status === "in_progress" || item.status === "pending";
   const stat = React.useMemo(() => toolDiffStat(item.content), [item.content]);
   const shown = item.locations.slice(0, MAX_LOCATIONS);
-  const rest = item.locations.length - shown.length;
+  const hidden = item.locations.slice(MAX_LOCATIONS);
+  const rest = hidden.length;
   const duration =
     item.endedAt !== undefined
       ? formatDuration(item.endedAt - item.startedAt)
@@ -167,7 +168,10 @@ function ToolRowImpl({ item, nested, approval, renderApproval }: ToolRowProps) {
       ? { ...item.input, command: undefined }
       : item.input;
   const hasBody =
-    input !== undefined || item.content.length > 0 || (nested?.length ?? 0) > 0;
+    input !== undefined ||
+    item.content.length > 0 ||
+    (nested?.length ?? 0) > 0 ||
+    rest > 0;
   return (
     <div
       data-slot="timeline-tool"
@@ -209,7 +213,12 @@ function ToolRowImpl({ item, nested, approval, renderApproval }: ToolRowProps) {
               </Badge>
             ))}
             {rest > 0 && (
-              <Badge variant="outline" size="sm" className="shrink-0">
+              <Badge
+                variant="outline"
+                size="sm"
+                title={hidden.map((location) => location.path).join("\n")}
+                className="shrink-0"
+              >
                 {t("timeline.tool.more", { count: rest })}
               </Badge>
             )}
@@ -237,6 +246,19 @@ function ToolRowImpl({ item, nested, approval, renderApproval }: ToolRowProps) {
         </CollapsibleTrigger>
         {hasBody && (
           <CollapsibleContent className="flex flex-col gap-1.5 py-1 pr-1 pl-7">
+            {rest > 0 && (
+              <ul
+                data-slot="timeline-tool-locations"
+                className="flex flex-col gap-0.5 font-mono text-caption text-muted-foreground"
+              >
+                {hidden.map((location, index) => (
+                  <li key={index} className="min-w-0 truncate">
+                    {location.path}
+                    {location.line ? `:${location.line}` : ""}
+                  </li>
+                ))}
+              </ul>
+            )}
             {input !== undefined && <ToolInput input={input} />}
             {item.content.map((content, index) => (
               <ToolContentView
