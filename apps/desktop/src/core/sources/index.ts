@@ -12,7 +12,7 @@
 
 import { hostname } from "node:os";
 
-import { contract, resolveCloudIssuer } from "@armadra/shared";
+import { contract } from "@armadra/shared";
 
 import { connectGrantsOf, providePageConnectGrants } from "../gateway/csp";
 import { AccountsService } from "../identity/accounts";
@@ -62,8 +62,6 @@ export interface SourcesInstallOptions {
   readonly channels?: OutboundChannels;
   /** 测试的假对端：经中继的请求交给它（代替真的端到端通道）。 */
   readonly sealed?: ChannelRequest;
-  /** 进程环境（读 `ARMADRA_CLOUD_ISSUER`）；缺省 `process.env`。 */
-  readonly env?: NodeJS.ProcessEnv;
 }
 
 let assembled: SourcesService | undefined;
@@ -187,9 +185,6 @@ export function install(
           : (address, request) => channels.request(address, request)),
     ),
     hostId: () => identity.hostId(),
-    // Armadra 云的默认地址：开发与测试可用进程环境覆盖（只收 https，回环另收 http）。
-    cloudIssuer: () =>
-      resolveCloudIssuer((options.env ?? process.env).ARMADRA_CLOUD_ISSUER),
     // 本机行的缺省名跟着「主机名称」（契约 §61）。
     hostLabel: currentHostName,
     log: context.log,

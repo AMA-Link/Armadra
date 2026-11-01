@@ -6,7 +6,12 @@
  * 不进答案、日志与库；注册令牌同样只在一次 `register` 调用里转一圈。
  */
 
-import { ARMADRA_CLOUD_ISSUER, type RemoteService } from "@armadra/shared";
+import {
+  ARMADRA_CLOUD_ISSUER,
+  ARMADRA_CLOUD_ISSUER_ENV,
+  type RemoteService,
+  resolveCloudIssuer,
+} from "@armadra/shared";
 
 import { CoreFailure, fail } from "../http/errors";
 import { normalizeOrigin } from "./http-client";
@@ -44,11 +49,6 @@ export interface CloudSignInHost {
     warn(message: string, fields?: Record<string, unknown>): void;
   };
   readonly cloud?: (() => CloudRegistrations | undefined) | undefined;
-  /**
-   * 这台机器上 Armadra 云默认地址的实际值（进程环境 `ARMADRA_CLOUD_ISSUER` 覆盖，开发与
-   * 测试用）；不给就是 {@link ARMADRA_CLOUD_ISSUER}。
-   */
-  readonly cloudIssuer?: (() => string) | undefined;
   now(): number;
   newId(): string;
   remoteRow(serviceId: string): RemoteRow;
@@ -72,11 +72,14 @@ export class CloudSignIn {
    */
   async start(input: { issuer: string; label?: string | undefined }) {
     const { host } = this;
-    // 页面（手机、桌面界面）不让人填地址，发来的是默认地址：在这里换成本机环境覆盖的值。
+    // 页面（手机、桌面界面）不让人填地址，发来的是默认地址：在这里换成本机进程环境
+    // `ARMADRA_CLOUD_ISSUER` 覆盖的值（开发与测试用，只收 https，回环另收 http）。
     const requested = normalizeOrigin(input.issuer);
     const issuer =
-      requested === ARMADRA_CLOUD_ISSUER && host.cloudIssuer !== undefined
-        ? normalizeOrigin(host.cloudIssuer())
+      requested === ARMADRA_CLOUD_ISSUER
+        ? normalizeOrigin(
+            resolveCloudIssuer(process.env[ARMADRA_CLOUD_ISSUER_ENV]),
+          )
         : requested;
     const label = checkLabel(input.label);
     const existing = host.store.remoteByIssuer(issuer);

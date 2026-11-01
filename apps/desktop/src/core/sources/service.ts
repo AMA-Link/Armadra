@@ -114,8 +114,6 @@ export interface SourcesServiceOptions {
   readonly log: SourcesLog;
   /** 云登录域（A2-3）；装好之后 `registered` 与删远程服务前的撤销经它。 */
   readonly cloud?: () => CloudRegistrations | undefined;
-  /** Armadra 云默认地址的实际值（进程环境覆盖）；不给就是共享常量。 */
-  readonly cloudIssuer?: () => string;
   /**
    * 首次添加、没给指纹且系统不信任对端证书时，问出对端的信任锚指纹给人核对
    * （`http-client.ts` 的 `presentedAnchor`）。不给就不探（测试的假对端）。
@@ -186,7 +184,6 @@ export class SourcesService {
       remote: this.remote,
       log: options.log,
       cloud: options.cloud,
-      cloudIssuer: options.cloudIssuer,
       now: () => this.now(),
       newId: () => this.newId(),
       remoteRow: (id) => this.remoteRow(id),
