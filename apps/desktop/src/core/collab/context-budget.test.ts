@@ -160,7 +160,11 @@ describe("原文读取", () => {
     const body = await read(me, "transcript", { node: "Peer" });
     expect(body).toContain("最近的 20 条");
     expect(body).toContain("第49条");
-    expect(body).not.toContain("第29条");
+    // 更早的只在页脚的概要里露首行（#668），正文里没有。
+    expect(body).not.toContain("\n[用户] 第29条");
+    expect(body).not.toContain("第24条");
+    expect(body).toContain("更早还有 30 条");
+    expect(body).toContain("  - [用户] 第29条");
   });
 
   it("tool_result 只留工具名、字节数与首行", async () => {
@@ -206,7 +210,7 @@ describe("原文读取", () => {
     expect(body).toContain("到上限就停了");
   });
 
-  it("--full --max-kb 能抬高上限，但抬不过 128 KB", async () => {
+  it("--full --max-kb 能抬高上限，但抬不过 64 KB", async () => {
     peerWithTranscript(
       Array.from({ length: 60 }, () => say("assistant", "b".repeat(4_000))),
     );
@@ -217,8 +221,9 @@ describe("原文读取", () => {
       n: 60,
     });
     expect(body).toContain("--full");
-    expect(Buffer.byteLength(body, "utf8")).toBeGreaterThan(64 * 1024);
-    expect(Buffer.byteLength(body, "utf8")).toBeLessThanOrEqual(130 * 1024);
+    expect(Buffer.byteLength(body, "utf8")).toBeGreaterThan(48 * 1024);
+    // 一次读取落在这条连线一分钟的预算之内（#668）。
+    expect(Buffer.byteLength(body, "utf8")).toBeLessThanOrEqual(64 * 1024);
   });
 
   it("头部报出这次约值多少 token", async () => {
