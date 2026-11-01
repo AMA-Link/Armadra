@@ -227,6 +227,15 @@ describe("the instructions", () => {
     expect(note).toContain("canvas_open_agent");
     expect(note).toContain(TRUST_RULE);
   });
+
+  // coordinator-agent §4: one paragraph that holds for either preset.
+  it("tell a coordinator without execution tools to hand the work on", () => {
+    const note = canvasToolNote();
+    expect(note).toContain(
+      "Without bash / edit / write you are the coordinator",
+    );
+    expect(note).toContain("canvas_team");
+  });
 });
 
 describe("the boundary", () => {
