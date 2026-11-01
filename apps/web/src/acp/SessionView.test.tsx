@@ -27,6 +27,7 @@ const api = vi.hoisted(() => ({
   switchDriver: vi.fn(),
   answer: vi.fn(),
   drive: vi.fn(),
+  authenticate: vi.fn(),
 }));
 vi.mock("./api", () => ({ acpApi: api }));
 
@@ -954,6 +955,70 @@ describe("SessionView", () => {
     };
     render(<SessionView nodeId="n1" data={fresh} />);
     expect(await screen.findByText(text)).toBeTruthy();
+  });
+
+  describe("signing in after acp_auth_required", () => {
+    const fresh: TerminalNodeData = {
+      kind: "terminal",
+      agent: { id: "claude", driver: "acp" },
+    };
+    const refused = (methods: unknown[]) =>
+      new RuntimeRequestError(409, "needs sign-in", "acp_auth_required", {
+        code: "acp_auth_required",
+        message: "needs sign-in",
+        details: { authMethods: methods },
+      });
+
+    it("lists the methods core can run and retries the start once one is done", async () => {
+      api.createSession.mockRejectedValueOnce(
+        refused([
+          { id: "key", name: "API key", type: "agent", supported: true },
+          { id: "web", name: "Browser", type: "terminal", supported: true },
+          { id: "old", name: "Legacy", type: "agent", supported: false },
+        ]),
+      );
+      api.authenticate.mockResolvedValue(undefined);
+      // 重试起的那次一直没答：只数它发出去了。
+      api.createSession.mockReturnValue(new Promise(() => undefined));
+      render(<SessionView nodeId="n1" data={fresh} />);
+      expect(await screen.findByText("请先在终端里用该 CLI 登录")).toBeTruthy();
+      expect(screen.queryByRole("button", { name: "Legacy" })).toBeNull();
+      expect(screen.getByRole("button", { name: "API key" })).toBeTruthy();
+      const callsBefore = api.createSession.mock.calls.length;
+      fireEvent.click(screen.getByRole("button", { name: "Browser" }));
+      await waitFor(() =>
+        expect(api.authenticate).toHaveBeenCalledWith("w1", "claude", "web"),
+      );
+      await waitFor(() =>
+        expect(api.createSession.mock.calls.length).toBe(callsBefore + 1),
+      );
+    });
+
+    it("keeps the buttons and says so when the sign-in does not finish", async () => {
+      api.createSession.mockRejectedValueOnce(
+        refused([
+          { id: "web", name: "Browser", type: "terminal", supported: true },
+        ]),
+      );
+      api.authenticate.mockRejectedValue(new Error("x"));
+      render(<SessionView nodeId="n1" data={fresh} />);
+      fireEvent.click(await screen.findByRole("button", { name: "Browser" }));
+      await waitFor(() => expect(api.authenticate).toHaveBeenCalled());
+      expect(screen.getByRole("button", { name: "Browser" })).toBeTruthy();
+      expect(api.createSession).toHaveBeenCalledTimes(1);
+    });
+
+    it("shows no buttons when core cannot run any method (older client)", async () => {
+      api.createSession.mockRejectedValueOnce(
+        refused([
+          { id: "web", name: "Browser", type: "terminal", supported: false },
+        ]),
+      );
+      render(<SessionView nodeId="n1" data={fresh} />);
+      expect(await screen.findByText("请先在终端里用该 CLI 登录")).toBeTruthy();
+      expect(screen.queryByRole("button", { name: "Browser" })).toBeNull();
+      expect(screen.getByRole("button", { name: "重试" })).toBeTruthy();
+    });
   });
 
   it("draws an elicitation from the timeline, answers it and folds it away", async () => {

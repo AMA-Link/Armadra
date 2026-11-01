@@ -45,7 +45,8 @@ import {
 } from "./TimelineCards";
 import { visibleUsage } from "./pickers";
 import { useAcpPickers } from "./use-pickers";
-import { startFailureKey } from "./start-failure";
+import { SignInMethods } from "./SignInMethods";
+import { authMethodsOf, startFailureKey } from "./start-failure";
 import { useSessionFeed } from "./use-session-feed";
 
 /**
@@ -78,6 +79,9 @@ function useAcpSession(
   const [starting, setStarting] = React.useState(false);
   const [failed, setFailed] = React.useState(false);
   const [failure, setFailure] = React.useState<string | null>(null);
+  const [authMethods, setAuthMethods] = React.useState<
+    ReturnType<typeof authMethodsOf>
+  >([]);
   const [phase, setPhase] = React.useState<AcpStartPhase | null>(null);
   const [cold, setCold] = React.useState(false);
   const [attempt, setAttempt] = React.useState(0);
@@ -108,6 +112,7 @@ function useAcpSession(
     setStarting(true);
     setFailed(false);
     setFailure(null);
+    setAuthMethods([]);
     setPhase(null);
     const first = queued.current;
     const prompt = first !== null && first.via === null ? first.text : null;
@@ -146,6 +151,7 @@ function useAcpSession(
         setFailure(
           error instanceof RuntimeRequestError ? (error.code ?? null) : null,
         );
+        setAuthMethods(authMethodsOf(error));
         setFailed(true);
         setStarting(false);
         setPhase(null);
@@ -163,6 +169,7 @@ function useAcpSession(
     starting,
     failed,
     failure,
+    authMethods,
     phase,
     cold,
     retry: () => setAttempt((value) => value + 1),
@@ -700,6 +707,13 @@ export function SessionView({
     body = (
       <Alert variant="destructive">
         <AlertTitle>{t(startFailureKey(session.failure))}</AlertTitle>
+        {session.authMethods.length > 0 && data.agent && (
+          <SignInMethods
+            agentId={data.agent.id}
+            methods={session.authMethods}
+            onDone={session.retry}
+          />
+        )}
         <AlertAction>
           <Button size="xs" variant="outline" onClick={session.retry}>
             {t("acp.error.retry")}

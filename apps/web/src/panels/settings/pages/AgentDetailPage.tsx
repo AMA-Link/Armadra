@@ -12,6 +12,7 @@ import {
   InstallFailure,
   useInstallJob,
 } from "@/acp/adapter-install";
+import { SignOutButton, canSignOut } from "@/acp/SignOutButton";
 import { ScopeBadge } from "../scope-badge";
 import { SettingsGroup } from "../SettingsGroup";
 import { SettingsPageHeader } from "../SettingsPageHeader";
@@ -167,6 +168,11 @@ export function AgentDetailPage({ agent }: { agent: AgentInfo }) {
             {acp && !native && (
               <InstallButton install={adapter} installed={acp.installed} />
             )}
+          </SettingsRow>
+        )}
+        {canSignOut(agent) && (
+          <SettingsRow label={t("agents.row.account")}>
+            <SignOutButton agent={agent} />
           </SettingsRow>
         )}
         <InstallFailure agent={agent} jobs={[cli, adapter]} />

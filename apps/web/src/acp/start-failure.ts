@@ -5,6 +5,13 @@
  * 通用的「会话没有启动」。映射只写在这一个函数里，页面与测试都问它。
  */
 
+import {
+  acpAuthRequiredDetailsSchema,
+  type AcpAuthMethodInfo,
+} from "@armadra/shared";
+
+import { RuntimeRequestError } from "@/api/request";
+
 const START_FAILURE_KEYS: Readonly<Record<string, string>> = {
   acp_auth_required: "acp.error.authRequired",
   acp_not_installed: "acp.error.notInstalled",
@@ -18,4 +25,24 @@ const START_FAILURE_KEYS: Readonly<Record<string, string>> = {
 export function startFailureKey(code: string | null | undefined): string {
   if (code === null || code === undefined) return "acp.error.start";
   return START_FAILURE_KEYS[code] ?? "acp.error.start";
+}
+
+/**
+ * `acp_auth_required` 带出的登录方式（错误体的 `details.authMethods`）。只留 core
+ * 跑得了的（`supported` 为真）：旧 core 或旧客户端不给 `supported`，此时没有
+ * 可点的方法，页面只说「请先在终端里用该 CLI 登录」。
+ */
+export function authMethodsOf(error: unknown): AcpAuthMethodInfo[] {
+  if (
+    !(error instanceof RuntimeRequestError) ||
+    error.code !== "acp_auth_required"
+  ) {
+    return [];
+  }
+  const details = (error.body as { details?: unknown } | null | undefined)
+    ?.details;
+  const parsed = acpAuthRequiredDetailsSchema.safeParse(details);
+  return parsed.success
+    ? parsed.data.authMethods.filter((method) => method.supported === true)
+    : [];
 }

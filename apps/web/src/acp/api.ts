@@ -10,7 +10,11 @@
  */
 import * as React from "react";
 import {
+  acpAgentSessionsRequestSchema,
+  acpAgentSessionsResponseSchema,
+  acpAuthenticateRequestSchema,
   acpDriverRequestSchema,
+  acpLogoutRequestSchema,
   acpPrestartRequestSchema,
   acpDriverResponseSchema,
   acpElicitationAnswerRequestSchema,
@@ -158,6 +162,43 @@ export const acpApi = {
     request("/api/acp/prestart", noContentSchema, {
       method: "POST",
       ...json(acpPrestartRequestSchema.parse({ workspaceId, agentId })),
+    }),
+  /**
+   * 完成 Agent 声明的一种登录方式（`acp_auth_required` 带出的列表里的一项）；答 204。
+   * core 的客户端旧时答 `acp_auth_unsupported`。
+   */
+  authenticate: (workspaceId: string, agentId: string, methodId: string) =>
+    request("/api/acp/auth/authenticate", noContentSchema, {
+      method: "POST",
+      ...json(
+        acpAuthenticateRequestSchema.parse({ workspaceId, agentId, methodId }),
+      ),
+    }),
+  /** 退出这家 CLI 的登录（Agent 声明了 `logout` 才有）；答 204。 */
+  logout: (workspaceId: string, agentId: string) =>
+    request("/api/acp/auth/logout", noContentSchema, {
+      method: "POST",
+      ...json(acpLogoutRequestSchema.parse({ workspaceId, agentId })),
+    }),
+  /**
+   * Agent 自己历史里的会话（`session/list`），给「接管已有会话」选。`cursor` 翻页；
+   * Agent 没声明这个能力时 core 答 `acp_list_unsupported`。
+   */
+  listAgentSessions: (
+    workspaceId: string,
+    agentId: string,
+    options: { cwd?: string; cursor?: string } = {},
+  ) =>
+    request("/api/acp/agent-sessions", acpAgentSessionsResponseSchema, {
+      method: "POST",
+      ...json(
+        acpAgentSessionsRequestSchema.parse({
+          workspaceId,
+          agentId,
+          ...(options.cwd ? { cwd: options.cwd } : {}),
+          ...(options.cursor ? { cursor: options.cursor } : {}),
+        }),
+      ),
     }),
 };
 

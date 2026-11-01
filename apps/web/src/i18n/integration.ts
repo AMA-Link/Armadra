@@ -26,6 +26,7 @@ export const integration: MessageModule = {
     "agents.group.install": "安装",
     "agents.group.injection": "画布注入",
     "agents.row.mode": "启用",
+    "agents.row.account": "账号",
     "agents.row.artifacts": "Hook 与技能", // i18n-exempt
     "agents.sessions.indexed": "已索引会话",
     "agents.showcase.detail": "子页：注入待更新，带本产品旧版本残留",
@@ -113,6 +114,7 @@ export const integration: MessageModule = {
     "agents.group.install": "Install",
     "agents.group.injection": "Canvas injection",
     "agents.row.mode": "Availability",
+    "agents.row.account": "Account",
     "agents.row.artifacts": "Hooks & skill",
     "agents.sessions.indexed": "Indexed sessions",
     "agents.showcase.detail": "Detail: injection out of date, old entries left",
