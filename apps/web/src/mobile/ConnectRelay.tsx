@@ -130,72 +130,43 @@ export function RelayForm({
   );
 }
 
-export interface CloudFormProps {
+export interface CloudStepProps {
+  /** 要登录的 Armadra 云的主机（默认地址或选择页上那个连接的签发方）。 */
+  readonly host: string;
   readonly busy: boolean;
   readonly message: string | null;
   readonly errorId: string;
-  /** 预填的地址（选择页上「登录」某个远程服务）。 */
-  readonly initialIssuer?: string;
-  readonly onSubmit: (input: { issuer: string }) => void;
-  readonly onEdit: () => void;
+  readonly onSignIn: () => void;
 }
 
-/** Armadra 云：只要地址；账号在浏览器里登录并批准，这里没有口令。 */
-export function CloudForm({
+/** Armadra 云：没有地址与口令可填，只有「登录」；账号在浏览器里登录并批准。 */
+export function CloudStep({
+  host,
   busy,
   message,
   errorId,
-  initialIssuer = "",
-  onSubmit,
-  onEdit,
-}: CloudFormProps) {
+  onSignIn,
+}: CloudStepProps) {
   const t = useT();
-  const id = React.useId();
-  const [issuer, setIssuer] = React.useState(initialIssuer);
-  const ready = issuer.trim() !== "";
-  const invalid = message !== null || undefined;
   return (
-    <form
-      className="flex flex-col gap-(--space-block)"
-      onSubmit={(event) => {
-        event.preventDefault();
-        if (ready && !busy) onSubmit({ issuer });
-      }}
-    >
-      <Field data-invalid={invalid}>
-        <FieldLabel htmlFor={`${id}-issuer`}>
-          {t("mobileConnect.relay.address")}
-        </FieldLabel>
-        <Input
-          id={`${id}-issuer`}
-          value={issuer}
-          inputMode="url"
-          autoCapitalize="off"
-          autoCorrect="off"
-          autoComplete="url"
-          spellCheck={false}
-          placeholder="cloud.example.com"
-          disabled={busy}
-          aria-invalid={invalid}
-          aria-describedby={message ? errorId : undefined}
-          size="touch"
-          onChange={(event) => {
-            setIssuer(event.target.value);
-            onEdit();
-          }}
-        />
+    <div className="flex flex-col gap-(--space-block)">
+      <div className="flex flex-col items-center gap-2">
+        <p className="font-mono text-body text-muted-foreground tabular-nums">
+          {host}
+        </p>
         {message && <FieldError id={errorId}>{message}</FieldError>}
-      </Field>
+      </div>
       <Button
         loading={busy}
-        type="submit"
+        type="button"
         size="touch"
         className="w-full"
-        disabled={busy || !ready}
+        disabled={busy}
+        onClick={onSignIn}
       >
         {t("mobileConnect.relay.signIn")}
       </Button>
-    </form>
+    </div>
   );
 }
 

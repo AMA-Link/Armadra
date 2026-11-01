@@ -30,13 +30,14 @@ import type {
 } from "./connect";
 import { ChallengeSheet } from "./ChallengeSheet";
 import {
-  CloudForm,
+  CloudStep,
   DeviceStep,
   FingerprintStep,
   RelayForm,
   SourcesStep,
 } from "./ConnectRelay";
 import { DevicePoller } from "./device-poll";
+import { cloudIssuer } from "../sources/cloud-issuer";
 import type { ServiceStatus } from "../services/probe";
 import type { ServiceRow } from "../services/rows";
 import { ServicePicker } from "../services/ServicePicker";
@@ -273,7 +274,9 @@ export function ConnectScreen({
     readonly userCode: string;
     readonly intervalMs: number;
   } | null>(initialDevice ?? null);
+  // 设备码登录的目标：缺省是 Armadra 云的默认地址，选择页上登录失效的云连接用它自己的签发方。
   const lastCloudIssuer = React.useRef("");
+  const cloudTarget = () => lastCloudIssuer.current || cloudIssuer();
   /** 正在看哪个源的流量（设计 §6.4）；`null` 是列表。 */
   const [trafficId, setTrafficId] = React.useState<string | null>(null);
   const monthTraffic = useMonthTraffic();
@@ -525,13 +528,19 @@ export function ConnectScreen({
   const rootClass =
     "flex min-h-[100dvh] w-full flex-col items-center overflow-y-auto bg-background pt-[max(var(--safe-top),15vh)] pr-[calc(1.5rem+var(--safe-right))] pb-[max(var(--safe-bottom),24px)] pl-[calc(1.5rem+var(--safe-left))]";
 
-  /** 选择页上的「登录」：中转表单预填那个远程服务。 */
+  /** 开始 Armadra 云的设备码登录（地址不让人填）。 */
+  const signInCloud = (issuer: string) => {
+    lastCloudIssuer.current = issuer;
+    setRelayHost(hostOf(issuer) ?? "");
+    return step(() => relay!.beginDevice({ issuer }));
+  };
+
+  /** 选择页上的「登录」：Armadra 云直达设备码，其余中转表单预填那个远程服务。 */
   const signInTo = (issuer: string) => {
     relay?.reset();
     setDevice(null);
     setFailure(null);
     setRelayIssuer(issuer);
-    // Armadra 云没有口令登录：认出来就进设备码那一页，其余仍是中转账号表单。
     setBusy(true);
     void (async () => {
       let cloud = false;
@@ -540,8 +549,14 @@ export function ConnectScreen({
       } catch {
         cloud = false;
       }
-      setView(cloud ? "cloud" : "relay");
       setBusy(false);
+      if (!cloud) {
+        setView("relay");
+        return;
+      }
+      // 失败时留在带「登录」的云页上，可以直接再点。
+      setView("cloud");
+      await signInCloud(issuer);
     })();
   };
   const failedRow =
@@ -716,7 +731,8 @@ export function ConnectScreen({
                 disabled={shownBusy}
                 onClick={() => {
                   setFailure(null);
-                  setRelayIssuer(null);
+                  lastCloudIssuer.current = "";
+                  setRelayHost(hostOf(cloudIssuer()) ?? "");
                   setView("cloud");
                 }}
               >
@@ -754,20 +770,12 @@ export function ConnectScreen({
           )}
           {view === "cloud" && (
             <>
-              <CloudForm
-                key={relayIssuer ?? ""}
+              <CloudStep
+                host={hostOf(cloudTarget()) ?? ""}
                 busy={shownBusy}
                 message={message}
                 errorId={errorId}
-                {...(relayIssuer !== null
-                  ? { initialIssuer: relayIssuer }
-                  : {})}
-                onEdit={() => setFailure(null)}
-                onSubmit={(input) => {
-                  setRelayHost(hostOf(input.issuer) ?? "");
-                  lastCloudIssuer.current = input.issuer;
-                  void step(() => relay.beginDevice(input));
-                }}
+                onSignIn={() => void signInCloud(cloudTarget())}
               />
               <Button
                 type="button"
@@ -795,9 +803,7 @@ export function ConnectScreen({
               errorId={errorId}
               onOpen={() => void relay.openVerification()}
               onRestart={() =>
-                void step(() =>
-                  relay.beginDevice({ issuer: lastCloudIssuer.current }),
-                )
+                void step(() => relay.beginDevice({ issuer: cloudTarget() }))
               }
               onCancel={() => {
                 relay.cancelDevice();

@@ -603,9 +603,15 @@ describe("连接页 · 多连接（添加连接）", () => {
     expect(screen.getByLabelText("口令")).toBeTruthy();
   });
 
-  it("登录失效的是 Armadra 云：进设备码那一页，只有地址、没有账号口令", async () => {
+  it("登录失效的是 Armadra 云：点「登录」直达设备码，用那个连接自己的签发方，没有地址与口令", async () => {
     const relay = outcomes();
     relay.isCloud.mockResolvedValue(true);
+    relay.beginDevice.mockResolvedValue({
+      kind: "device",
+      userCode: "BCDF-GHJK",
+      expiresAtMs: Date.now() + 600_000,
+      intervalMs: 5_000,
+    });
     render(
       <ConnectScreen
         {...base}
@@ -618,11 +624,13 @@ describe("连接页 · 多连接（添加连接）", () => {
     );
     fireEvent.click(screen.getByRole("button", { name: "登录" }));
     await waitFor(() =>
-      expect((screen.getByLabelText("地址") as HTMLInputElement).value).toBe(
-        "https://relay.example.com",
-      ),
+      expect(relay.beginDevice).toHaveBeenCalledWith({
+        issuer: "https://relay.example.com",
+      }),
     );
     expect(relay.isCloud).toHaveBeenCalledWith("https://relay.example.com");
+    await screen.findByText("BCDF-GHJK");
+    expect(screen.queryByLabelText("地址")).toBeNull();
     expect(screen.queryByLabelText("账号")).toBeNull();
     expect(screen.queryByLabelText("口令")).toBeNull();
   });
@@ -691,9 +699,6 @@ describe("连接页 · Armadra 云（设备码）", () => {
   /** 到「等待批准」那一页。 */
   const waiting = async (relay: ReturnType<typeof setup>) => {
     render(<ConnectScreen {...base} relay={relay} initialView="cloud" />);
-    fireEvent.change(screen.getByLabelText("地址"), {
-      target: { value: "cloud.example.com" },
-    });
     fireEvent.click(screen.getByRole("button", { name: "登录" }));
     await tick(0);
     expect(screen.getByText("BCDF-GHJK")).toBeTruthy();
@@ -704,20 +709,37 @@ describe("连接页 · Armadra 云（设备码）", () => {
   beforeEach(() => vi.useFakeTimers());
   afterEach(() => vi.useRealTimers());
 
-  it("添加连接里有「Armadra 云」：只有地址，没有账号与口令", () => {
+  it("添加连接里有「Armadra 云」：只剩「登录」，没有地址、账号与口令输入", () => {
     render(<ConnectScreen {...base} relay={setup()} />);
     fireEvent.click(screen.getByRole("button", { name: "Armadra 云" }));
-    expect(screen.getByLabelText("地址")).toBeTruthy();
-    expect(screen.queryByLabelText("账号")).toBeNull();
-    expect(screen.queryByLabelText("口令")).toBeNull();
     expect(screen.getByRole("button", { name: "登录" })).toBeTruthy();
+    expect(document.querySelector("input")).toBeNull();
+    // 显示的是默认地址的主机。
+    expect(screen.getByText("app.armadra.com")).toBeTruthy();
+  });
+
+  it("构建时覆盖了云地址：登录用覆盖值，界面仍没有地址输入", async () => {
+    vi.stubEnv("VITE_ARMADRA_CLOUD_ISSUER", "https://cloud.example.test");
+    try {
+      const relay = setup();
+      render(<ConnectScreen {...base} relay={relay} />);
+      fireEvent.click(screen.getByRole("button", { name: "Armadra 云" }));
+      expect(screen.getByText("cloud.example.test")).toBeTruthy();
+      fireEvent.click(screen.getByRole("button", { name: "登录" }));
+      await tick(0);
+      expect(relay.beginDevice).toHaveBeenCalledWith({
+        issuer: "https://cloud.example.test",
+      });
+    } finally {
+      vi.unstubAllEnvs();
+    }
   });
 
   it("点「登录」发起设备码，显示用户码与等待批准；按间隔轮询，批准后进选主机", async () => {
     const relay = setup();
     await waiting(relay);
     expect(relay.beginDevice).toHaveBeenCalledWith({
-      issuer: "cloud.example.com",
+      issuer: "https://app.armadra.com",
     });
     expect(screen.getByText("等待在浏览器中批准")).toBeTruthy();
     expect(screen.getByRole("button", { name: "在浏览器中打开" })).toBeTruthy();
@@ -778,7 +800,7 @@ describe("连接页 · Armadra 云（设备码）", () => {
     await tick(0);
     expect(relay.beginDevice).toHaveBeenCalledTimes(2);
     expect(relay.beginDevice).toHaveBeenLastCalledWith({
-      issuer: "cloud.example.com",
+      issuer: "https://app.armadra.com",
     });
     expect(screen.getByText("等待在浏览器中批准")).toBeTruthy();
   });
@@ -814,21 +836,18 @@ describe("连接页 · Armadra 云（设备码）", () => {
     await waiting(relay);
     fireEvent.click(screen.getByRole("button", { name: "取消" }));
     expect(relay.cancelDevice).toHaveBeenCalledTimes(1);
-    expect(screen.getByLabelText("地址")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "登录" })).toBeTruthy();
     await tick(60_000);
     expect(relay.pollDevice).not.toHaveBeenCalled();
   });
 
-  it("发起失败（不是 Armadra 云）：原因在地址框下面，不进等待页", async () => {
+  it("发起失败：原因显示在「登录」上方，可再点，不进等待页", async () => {
     const relay = setup();
     relay.beginDevice.mockResolvedValue({
       kind: "failure",
       failure: "notCloud",
     } as never);
     render(<ConnectScreen {...base} relay={relay} initialView="cloud" />);
-    fireEvent.change(screen.getByLabelText("地址"), {
-      target: { value: "relay.example.com" },
-    });
     fireEvent.click(screen.getByRole("button", { name: "登录" }));
     await tick(0);
     expect(screen.getByText("这个地址不是 Armadra 云")).toBeTruthy();
