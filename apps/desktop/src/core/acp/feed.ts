@@ -116,11 +116,17 @@ export class AcpFeed {
   catalog(next: {
     readonly modes: TimelineHead["modes"];
     readonly models: TimelineHead["models"];
+    readonly configOptions?: TimelineHead["configOptions"];
     readonly promptCapabilities: TimelineHead["promptCapabilities"];
   }): void {
     const head = this.writer.state(this.id.rowId)?.head ?? {};
     const patch: Record<string, unknown> = {};
-    for (const key of ["modes", "models", "promptCapabilities"] as const) {
+    for (const key of [
+      "modes",
+      "models",
+      "configOptions",
+      "promptCapabilities",
+    ] as const) {
       const value = next[key] ?? null;
       const current = head[key] ?? null;
       if (JSON.stringify(value) !== JSON.stringify(current)) {

@@ -75,6 +75,7 @@ export type AcpErrorCode =
   // 按模型选择（契约 §26.2）。
   | "acp_model_unsupported"
   | "acp_model_unavailable"
+  | "acp_config_unavailable"
   | "acp_not_installed"
   // prompt 的附件（契约 §56）。
   | "acp_image_unsupported"
@@ -166,7 +167,7 @@ interface ConfigCapableClient {
   setConfigOption(
     sessionId: string,
     configId: string,
-    value: string,
+    value: string | boolean,
   ): Promise<{ configOptions?: AcpSessionConfigOption[] | null } | null>;
 }
 
@@ -454,7 +455,7 @@ export class AcpProcess {
   async setConfigOption(
     sessionId: string,
     configId: string,
-    value: string,
+    value: string | boolean,
   ): Promise<AcpSessionConfigOption[] | undefined> {
     if (!acpClientFeatures().configOptions) {
       throw new AcpError(

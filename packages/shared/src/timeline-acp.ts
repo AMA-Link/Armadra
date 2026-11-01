@@ -1134,12 +1134,116 @@ export function modelCatalogOf(configOptions: unknown): {
   };
 }
 
+/** 头部最多留这么多个配置项：只为不让一个适配器把头部撑大。 */
+const CONFIG_OPTION_LIMIT = 64;
+const CONFIG_CHOICE_LIMIT = 500;
+
+/**
+ * 会话的配置项（`session/new` 答复或 `config_option_update`）→ 头部那一份：
+ * 只留 `select`（分组摊平、去重）与 `boolean`，字段截到头部 schema 的上限，认不出
+ * 的项跳过。不是数组答 `null`。
+ */
+export function configOptionsViewOf(
+  configOptions: unknown,
+): NonNullable<TimelineHead["configOptions"]> | null {
+  if (!Array.isArray(configOptions)) return null;
+  const out: NonNullable<TimelineHead["configOptions"]> = [];
+  for (const entry of configOptions) {
+    if (out.length >= CONFIG_OPTION_LIMIT) break;
+    const o = obj(entry);
+    const id = str(o?.id);
+    if (o === null || id === undefined || id === "" || id.length > 200) {
+      continue;
+    }
+    const name = (str(o.name) ?? id).slice(0, 500);
+    const description = str(o.description);
+    const category = str(o.category);
+    const meta = {
+      id,
+      name,
+      ...(description ? { description: description.slice(0, 2_000) } : {}),
+      ...(category ? { category: category.slice(0, 100) } : {}),
+    };
+    if (o.type === "boolean") {
+      if (typeof o.currentValue !== "boolean") continue;
+      out.push({
+        ...meta,
+        type: "boolean",
+        currentValue: o.currentValue,
+        options: [],
+      });
+      continue;
+    }
+    if (
+      (o.type !== undefined && o.type !== "select") ||
+      !Array.isArray(o.options)
+    ) {
+      continue;
+    }
+    const current = str(o.currentValue);
+    if (current === undefined || current.length > 200) continue;
+    const choices: { value: string; name: string; description?: string }[] = [];
+    const walk = (list: readonly unknown[]): void => {
+      for (const item of list) {
+        const c = obj(item);
+        if (c === null) continue;
+        if (Array.isArray(c.options)) {
+          walk(c.options);
+          continue;
+        }
+        const value = str(c.value);
+        if (
+          value === undefined ||
+          value.length > 200 ||
+          choices.length >= CONFIG_CHOICE_LIMIT ||
+          choices.some((x) => x.value === value)
+        ) {
+          continue;
+        }
+        const text = str(c.description);
+        choices.push({
+          value,
+          name: (str(c.name) ?? value).slice(0, 500),
+          ...(text ? { description: text.slice(0, 2_000) } : {}),
+        });
+      }
+    };
+    walk(o.options);
+    if (choices.length === 0) continue;
+    out.push({
+      ...meta,
+      type: "select",
+      currentValue: current,
+      options: choices,
+    });
+  }
+  return out;
+}
+
 function configUpdate(
   state: TimelineState,
   body: Json,
   ctx: AcpOpsContext,
   out: Emitter,
 ): void {
+  // 已经有配置项时才跟：客户端没有 `configOptions` 能力就没有改的路，也就不画。
+  const options = state.head.configOptions;
+  if (options) {
+    const next = configOptionsViewOf(body.configOptions);
+    if (next !== null && JSON.stringify(next) !== JSON.stringify(options)) {
+      out.head({ configOptions: next });
+      // 模式以配置项给出（`category: "mode"`）时，模式选择器跟着它。
+      const mode = next.find((o) => o.category === "mode");
+      const modes = state.head.modes;
+      if (
+        mode !== undefined &&
+        typeof mode.currentValue === "string" &&
+        modes?.availableModes.some((m) => m.id === mode.currentValue)
+      ) {
+        modeUpdate(state, { currentModeId: mode.currentValue }, ctx, out);
+      }
+    }
+  }
   // 已经有目录时才跟：没有改模型的路，就不画选择器。
   const previous = state.head.models;
   if (!previous) return;
@@ -1177,6 +1281,12 @@ function usageUpdate(state: TimelineState, body: Json, out: Emitter): void {
   out.head({ usage });
 }
 
+/** 命令的 `input.hint`（有才带，截到头部 schema 的上限）。 */
+function hintOf(input: unknown): { hint?: string } {
+  const hint = str(obj(input)?.hint);
+  return hint ? { hint: hint.slice(0, 500) } : {};
+}
+
 function commandsUpdate(state: TimelineState, body: Json, out: Emitter): void {
   if (!Array.isArray(body.availableCommands)) return;
   const commands = body.availableCommands.flatMap((entry) => {
@@ -1184,7 +1294,13 @@ function commandsUpdate(state: TimelineState, body: Json, out: Emitter): void {
     const name = str(o?.name);
     return o === null || name === undefined || name === ""
       ? []
-      : [{ name, description: str(o.description) ?? "" }];
+      : [
+          {
+            name,
+            description: str(o.description) ?? "",
+            ...hintOf(o.input),
+          },
+        ];
   });
   if (JSON.stringify(commands) === JSON.stringify(state.head.commands)) return;
   out.head({ commands });

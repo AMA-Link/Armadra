@@ -140,6 +140,7 @@ function acpStatus(code: string): number {
     case "acp_attachment_unsupported":
     case "acp_mode_unavailable":
     case "acp_model_unavailable":
+    case "acp_config_unavailable":
     case "acp_model_unsupported":
     case "acp_auth_required":
     case "acp_session":
@@ -571,6 +572,26 @@ export function installRoutes(context: CoreContext, deps: AcpRouteDeps): void {
     await session.setModel(modelId);
   });
 
+  // 任意一个会话配置项（推理强度、其他 select 与 boolean）；不在 Agent 给的列表里
+  // 或值不合时 409。
+  const setConfigOption = guarded(
+    async (sessionId: string, configId: unknown, value: unknown) => {
+      const wiring = await need();
+      if (typeof configId !== "string" || configId === "") {
+        throw badRequest("configId is required");
+      }
+      if (typeof value !== "string" && typeof value !== "boolean") {
+        throw badRequest("value must be a string or a boolean");
+      }
+      const row = await live(wiring, sessionId);
+      const session = wiring.backend.sessionByRow(row.id);
+      if (session === undefined) {
+        throw domain(409, "acp_exited", "The ACP session has ended");
+      }
+      await session.setConfigOption(configId, value);
+    },
+  );
+
   /* ------------------------------- 驱动切换 ------------------------------- */
 
   const changeDriver = guarded(async (nodeId: string, value: unknown) => {
@@ -664,6 +685,15 @@ export function installRoutes(context: CoreContext, deps: AcpRouteDeps): void {
       sessionId: string;
       modelId?: unknown;
     }) => setModel(sessionId, modelId),
+    setConfigOption: ({
+      sessionId,
+      configId,
+      value,
+    }: {
+      sessionId: string;
+      configId?: unknown;
+      value?: unknown;
+    }) => setConfigOption(sessionId, configId, value),
     switchDriver: ({ nodeId, driver }: { nodeId: string; driver?: unknown }) =>
       changeDriver(nodeId, driver),
   };
@@ -713,6 +743,19 @@ export function installRoutes(context: CoreContext, deps: AcpRouteDeps): void {
       await setModel(
         param(match, "sessionId"),
         jsonObject(request.body).modelId,
+      );
+      return { status: 204 };
+    },
+  );
+  route(
+    "PUT",
+    "/api/acp/sessions/{sessionId}/config",
+    async (match, request) => {
+      const body = jsonObject(request.body);
+      await setConfigOption(
+        param(match, "sessionId"),
+        body.configId,
+        body.value,
       );
       return { status: 204 };
     },

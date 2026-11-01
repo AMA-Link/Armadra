@@ -798,6 +798,13 @@ export const ROUTES: readonly RouteEntry[] = [
     surface: "runtime",
     implemented: true,
   },
+  // 任意会话配置项（P2-4）。
+  {
+    path: "/api/acp/sessions/{sessionId}/config",
+    methods: ["PUT"],
+    surface: "runtime",
+    implemented: true,
+  },
   {
     path: "/api/acp/nodes/{nodeId}/driver",
     methods: ["POST"],

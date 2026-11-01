@@ -9,10 +9,16 @@
  * 纯函数，不起进程、不碰客户端。
  */
 
+import {
+  configOptionsViewOf,
+  type TimelineConfigOption,
+} from "@armadra/shared";
+
 import type {
   AcpConfigSelectGroup,
   AcpConfigSelectOption,
   AcpSessionConfigOption,
+  AcpSessionModeState,
 } from "./types";
 
 export interface AcpModel {
@@ -123,4 +129,73 @@ export function configOptionsOf(value: unknown): unknown {
   return typeof value === "object" && value !== null
     ? (value as { configOptions?: unknown }).configOptions
     : undefined;
+}
+
+/**
+ * 配置项的清洗视图（`head.configOptions`，P2-4）：select 与 boolean，分组摊平。
+ * 没有可用的配置项（含不是数组）答空表。
+ */
+export function configViewOf(configOptions: unknown): TimelineConfigOption[] {
+  return configOptionsViewOf(configOptions) ?? [];
+}
+
+/**
+ * 模式以配置项给出（`category: "mode"` 的 select）时的模式表。Agent 同时给了
+ * `modes` 时以 `modes` 为准，这里只在没有时顶上。
+ */
+export function modeStateOfConfig(
+  view: readonly TimelineConfigOption[],
+): { configId: string; state: AcpSessionModeState } | null {
+  const option = view.find(
+    (entry) => entry.category === "mode" && entry.type === "select",
+  );
+  if (option === undefined || typeof option.currentValue !== "string") {
+    return null;
+  }
+  return {
+    configId: option.id,
+    state: {
+      currentModeId: option.currentValue,
+      availableModes: option.options.map((choice) => ({
+        id: choice.value,
+        name: choice.name,
+        ...(choice.description === undefined
+          ? {}
+          : { description: choice.description }),
+      })),
+    },
+  };
+}
+
+/** 改了一个配置项之后答复里没有新列表时，本地把那一项的现值改上。 */
+export function withConfigValue(
+  view: readonly TimelineConfigOption[],
+  configId: string,
+  value: string | boolean,
+): TimelineConfigOption[] {
+  return view.map((entry) =>
+    entry.id === configId ? { ...entry, currentValue: value } : entry,
+  );
+}
+
+/**
+ * 页面要改的 `configId` / `value` 合不合这份配置：项在表里、类型对得上、select 的值
+ * 是它给的可选值之一。合则答 `null`，不合答原因。
+ */
+export function configValueProblem(
+  view: readonly TimelineConfigOption[],
+  configId: string,
+  value: unknown,
+): string | null {
+  const option = view.find((entry) => entry.id === configId);
+  if (option === undefined) return `the agent has no config option ${configId}`;
+  if (option.type === "boolean") {
+    return typeof value === "boolean"
+      ? null
+      : `config option ${configId} takes true or false`;
+  }
+  return typeof value === "string" &&
+    option.options.some((choice) => choice.value === value)
+    ? null
+    : `config option ${configId} has no value ${String(value)}`;
 }

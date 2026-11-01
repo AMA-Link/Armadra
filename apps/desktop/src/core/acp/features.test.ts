@@ -325,6 +325,24 @@ describe("the routes with the features (§26)", () => {
     expect(missing.status).toBe(400);
   });
 
+  it("lists every config option in the head and sets one with PUT …/config", async () => {
+    core = await withTimeline({ configOptions: true, configOnly: true });
+    const { rowId } = await started(core!);
+    timeline!.writer.flush();
+    expect(
+      timeline!.store.snapshot(rowId, 3)?.head.configOptions?.map((o) => o.id),
+    ).toEqual(["mode", "model"]);
+    const put = (body: unknown) =>
+      core!.core.call("PUT", `/api/acp/sessions/${rowId}/config`, body);
+    expect((await put({ configId: "model", value: "large" })).status).toBe(204);
+    const unknown = await put({ configId: "nope", value: "x" });
+    expect(unknown.status).toBe(409);
+    expect(unknown.body).toMatchObject({ code: "acp_config_unavailable" });
+    expect((await put({ configId: "model", value: "huge" })).status).toBe(409);
+    expect((await put({ value: "x" })).status).toBe(400);
+    expect((await put({ configId: "model", value: 3 })).status).toBe(400);
+  });
+
   it("records an elicitation as an approval, checks the answer and never stores the content", async () => {
     core = await withTimeline({ configOptions: true });
     const seen = events(core);

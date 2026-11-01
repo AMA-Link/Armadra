@@ -439,6 +439,26 @@ export type TimelineItemRecord = z.infer<typeof timelineItemRecordSchema>;
 
 /* ------------------------------- 头部值 ------------------------------- */
 
+/** 配置项里的一个可选值（分组已摊平）。 */
+export const timelineConfigChoiceSchema = z.object({
+  value: z.string().max(200),
+  name: z.string().max(500),
+  description: z.string().max(2_000).optional(),
+});
+
+/** 一个会话配置项：`select`（有 `options`）或 `boolean`。 */
+export const timelineConfigOptionSchema = z.object({
+  id: z.string().max(200),
+  name: z.string().max(500),
+  description: z.string().max(2_000).optional(),
+  /** `mode` / `model` / `thought_level`，或 Agent 自己的。 */
+  category: z.string().max(100).optional(),
+  type: z.enum(["select", "boolean"]),
+  currentValue: z.union([z.string().max(200), z.boolean()]),
+  options: z.array(timelineConfigChoiceSchema).max(500),
+});
+export type TimelineConfigOption = z.infer<typeof timelineConfigOptionSchema>;
+
 /**
  * 会话级的值，不是条目：用量、斜杠命令、模式、模型目录、标题。与条目共用
  * `seq`，所以随增量下发，也随快照恢复，core 重启后不再丢。
@@ -459,6 +479,8 @@ export const timelineHeadSchema = z.object({
       z.object({
         name: z.string().max(200),
         description: z.string().max(2_000),
+        /** `input.hint`：命令后面该输入什么（斜杠命令列表里当占位）。 */
+        hint: z.string().max(500).optional(),
       }),
     )
     .optional(),
@@ -488,6 +510,11 @@ export const timelineHeadSchema = z.object({
     })
     .nullable()
     .optional(),
+  /**
+   * 会话的完整配置项（模型、模式、推理强度、其他 select / boolean），已清洗；
+   * `config_option_update` 整份替换。模型与模式另有 `models` / `modes`。
+   */
+  configOptions: z.array(timelineConfigOptionSchema).nullable().optional(),
   /** 适配器在 `initialize` 里声明的提示能力（会话开好时写，之后不变）。 */
   promptCapabilities: z
     .object({ image: z.boolean(), embeddedContext: z.boolean() })

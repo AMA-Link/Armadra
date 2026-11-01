@@ -403,6 +403,19 @@ describe("回合、镜像、模式与模型", () => {
         ["POST", `${SESSIONS}/${id}/prompt`, "acp.prompt", { text: "  " }],
         ["POST", `${SESSIONS}/${id}/mode`, "acp.setMode", {}],
         ["PUT", `${SESSIONS}/${id}/model`, "acp.setModel", {}],
+        ["PUT", `${SESSIONS}/${id}/config`, "acp.setConfigOption", {}],
+        [
+          "PUT",
+          `${SESSIONS}/${id}/config`,
+          "acp.setConfigOption",
+          { configId: "x", value: 3 },
+        ],
+        [
+          "PUT",
+          `${SESSIONS}/${UNKNOWN}/config`,
+          "acp.setConfigOption",
+          { configId: "x", value: "y" },
+        ],
       ];
     for (const [method, path, name, body] of cases) {
       const input = { sessionId: path.split("/")[4], ...body };
@@ -623,6 +636,7 @@ describe("投递门：成员经旧路径与 procedure 被同一道路由门拦�
         ["POST", "cancel", "acp.cancel", {}],
         ["POST", "mode", "acp.setMode", { modeId: "x" }],
         ["PUT", "model", "acp.setModel", { modelId: "x" }],
+        ["PUT", "config", "acp.setConfigOption", { configId: "x", value: "y" }],
       ];
     for (const as of ["viewer", "editor", "operator", "outsider", "stranger"]) {
       for (const [method, tail, name, body] of writes) {
@@ -742,12 +756,13 @@ describe("契约与 core 的两张表（acp）", () => {
     entry.name.startsWith("acp."),
   );
 
-  it("6 条都在契约里，每条都有旧路径", () => {
+  it("7 条都在契约里，每条都有旧路径", () => {
     expect(entries.map((entry) => entry.name).sort()).toEqual(
       [
         "cancel",
         "createSession",
         "prompt",
+        "setConfigOption",
         "setMode",
         "setModel",
         "switchDriver",

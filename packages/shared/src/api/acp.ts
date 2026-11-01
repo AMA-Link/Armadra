@@ -318,6 +318,8 @@ export const acpUsageSchema = z.looseObject({
 export const acpAvailableCommandSchema = z.looseObject({
   name: z.string(),
   description: z.string().default(""),
+  /** `input.hint`: what to type after the command. */
+  hint: z.string().optional(),
 });
 
 export type AcpUsage = z.infer<typeof acpUsageSchema>;
@@ -519,6 +521,12 @@ export const acpModelStateSchema = z.looseObject({
 
 /** `PUT /api/acp/sessions/{id}/model`. */
 export const acpModelRequestSchema = z.object({ modelId: z.string().min(1) });
+
+/** `PUT /api/acp/sessions/{id}/config`: set one session config option (select value or boolean). */
+export const acpConfigOptionRequestSchema = z.object({
+  configId: z.string().min(1),
+  value: z.union([z.string(), z.boolean()]),
+});
 
 /** §56: what the agent said it accepts in a prompt (`initialize`). */
 export const acpPromptCapabilitiesSchema = z.looseObject({

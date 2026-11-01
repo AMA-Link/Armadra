@@ -24,6 +24,8 @@
  *     与 `setModel` 更新它。
  */
 
+import type { TimelineConfigOption } from "@armadra/shared";
+
 import type { WorkspaceEvent } from "../bus";
 import type { AttachmentBlocks, PromptCapabilities } from "./attachments";
 import { AcpError } from "./client";
@@ -40,8 +42,11 @@ import {
   type AcpModelCatalog,
   type AcpModelState,
   configOptionsOf,
+  configValueProblem,
+  configViewOf,
   modelCatalogOf,
   modelStateOf,
+  withConfigValue,
 } from "./models";
 import type { AcpFeed } from "./feed";
 import type { AcpHostSession, AcpUpdateMeta } from "./host";
@@ -169,6 +174,8 @@ export interface AcpSessionSnapshot {
   readonly availableCommands: readonly {
     readonly name: string;
     readonly description: string;
+    /** `input.hint`（有才带）。 */
+    readonly hint?: string;
   }[];
   readonly title: string | null;
 }
@@ -220,6 +227,11 @@ export class AcpSession implements AcpSessionIdentity {
   private closed = false;
   private modeState: AcpSessionModeState | null = null;
   private modelCatalog: AcpModelCatalog | null = null;
+  /** 完整配置项（清洗过）与「模式以配置项给出」时的那一项 id（P2-4）。 */
+  private configView: TimelineConfigOption[] = [];
+  private modeConfigId: string | undefined;
+  /** 这一回合里有没有收到 `usage_update`（没有才用 prompt 响应的 usage 补，P3-8）。 */
+  private usageSeen = false;
   private plan: Record<string, unknown>[] = [];
   private usage: AcpSessionSnapshot["usage"] = null;
   private commands: AcpSessionSnapshot["availableCommands"] = [];
@@ -293,6 +305,8 @@ export class AcpSession implements AcpSessionIdentity {
     this.host = host;
     this.modeState = host.modes;
     this.modelCatalog = host.models;
+    this.configView = [...(host.configOptions ?? [])];
+    this.modeConfigId = host.modeConfigId;
     const mirror = this.options.mirrorFor(host.sessionId);
     this.sink.signal({
       signal: "opened",
@@ -319,6 +333,7 @@ export class AcpSession implements AcpSessionIdentity {
         currentModelId: models.currentModelId,
         availableModels: [...models.availableModels],
       },
+      configOptions: this.configView.length > 0 ? this.configView : null,
       promptCapabilities: this.promptCapabilities,
     });
   }
@@ -435,6 +450,7 @@ export class AcpSession implements AcpSessionIdentity {
           return;
         }
         const cost = body.cost as { amount?: unknown; currency?: unknown };
+        this.usageSeen = true;
         this.usage = {
           used: body.used,
           size: body.size,
@@ -449,7 +465,12 @@ export class AcpSession implements AcpSessionIdentity {
         if (Array.isArray(body.availableCommands)) {
           this.commands = body.availableCommands
             .flatMap((item: unknown) => {
-              const command = item as { name?: unknown; description?: unknown };
+              const command = item as {
+                name?: unknown;
+                description?: unknown;
+                input?: { hint?: unknown } | null;
+              };
+              const hint = command?.input?.hint;
               return typeof command?.name === "string" && command.name !== ""
                 ? [
                     {
@@ -458,6 +479,9 @@ export class AcpSession implements AcpSessionIdentity {
                         typeof command.description === "string"
                           ? command.description
                           : "",
+                      ...(typeof hint === "string" && hint !== ""
+                        ? { hint: hint.slice(0, 500) }
+                        : {}),
                     },
                   ]
                 : [];
@@ -563,12 +587,14 @@ export class AcpSession implements AcpSessionIdentity {
     });
     this.workingSignalled = true;
     this.lastExecuteTitle = undefined;
+    this.usageSeen = false;
     this.sink.signal({ signal: "prompt", text });
     try {
       const result = await host.process.prompt(host.sessionId, [
         ...(text === "" ? [] : [{ type: "text" as const, text }]),
         ...(attachments?.blocks ?? []),
       ]);
+      this.fillUsage(result);
       this.endTurn(turnId, { stopReason: result.stopReason });
     } catch (error) {
       const gone = !host.process.alive;
@@ -580,6 +606,37 @@ export class AcpSession implements AcpSessionIdentity {
     } finally {
       this.running = undefined;
     }
+  }
+
+  /**
+   * `session/prompt` 响应里的 `usage`（unstable）：这一回合没有 `usage_update`、
+   * 又已经知道窗口大小时，用它补头部的用量；窗口大小不明就什么都不做。
+   */
+  private fillUsage(result: unknown): void {
+    const size = this.usage?.size;
+    if (this.usageSeen || size === undefined || size <= 0) return;
+    const raw = (result as { usage?: unknown } | null)?.usage;
+    if (typeof raw !== "object" || raw === null) return;
+    const usage = raw as Record<string, unknown>;
+    const count = (value: unknown): number | undefined =>
+      typeof value === "number" && Number.isFinite(value) && value >= 0
+        ? Math.trunc(value)
+        : undefined;
+    const total =
+      count(usage.totalTokens) ??
+      (count(usage.inputTokens) === undefined &&
+      count(usage.outputTokens) === undefined
+        ? undefined
+        : (count(usage.inputTokens) ?? 0) + (count(usage.outputTokens) ?? 0));
+    if (total === undefined) return;
+    const update = {
+      sessionUpdate: "usage_update",
+      used: Math.min(total, size),
+      size,
+      ...(this.usage?.cost ? { cost: this.usage.cost } : {}),
+    } as unknown as AcpSessionUpdate;
+    this.remember(update);
+    this.feed?.update(update, false);
   }
 
   private endTurn(
@@ -638,7 +695,21 @@ export class AcpSession implements AcpSessionIdentity {
         `the agent has no mode ${modeId}`,
       );
     }
-    await host.process.setMode(host.sessionId, modeId);
+    if (this.modeConfigId === undefined) {
+      await host.process.setMode(host.sessionId, modeId);
+    } else {
+      // 模式以配置项给出：走 `session/set_config_option`。
+      await host.process.setConfigOption(
+        host.sessionId,
+        this.modeConfigId,
+        modeId,
+      );
+      this.configView = withConfigValue(
+        this.configView,
+        this.modeConfigId,
+        modeId,
+      );
+    }
     this.modeState = { ...modes, currentModeId: modeId };
     this.publishCatalog();
   }
@@ -671,7 +742,81 @@ export class AcpSession implements AcpSessionIdentity {
       ...catalog,
       currentModelId: modelId,
     };
+    this.configView = Array.isArray(answer)
+      ? configViewOf(answer)
+      : withConfigValue(this.configView, catalog.configId, modelId);
+    this.syncModeFromConfig();
     this.publishCatalog();
+  }
+
+  /**
+   * 落任意一个会话配置项（`session/set_config_option`：推理强度、其他 select 与
+   * boolean）。项不在列表里、类型或值不合答 `acp_config_unavailable`；客户端没有
+   * 这个能力答 `acp_model_unsupported`。答复带新列表就整份换上。
+   */
+  async setConfigOption(
+    configId: string,
+    value: string | boolean,
+  ): Promise<void> {
+    const host = this.host;
+    if (host === undefined || !this.alive) {
+      throw new AcpError("acp_exited", "the ACP agent is not running");
+    }
+    const problem = configValueProblem(this.configView, configId, value);
+    if (problem !== null) throw new AcpError("acp_config_unavailable", problem);
+    const answer = await host.process.setConfigOption(
+      host.sessionId,
+      configId,
+      value,
+    );
+    this.adoptConfig(Array.isArray(answer) ? answer : undefined, {
+      configId,
+      value,
+    });
+  }
+
+  /**
+   * 配置项变了（改完的答复或 `config_option_update`）：整份换上，模型目录与以
+   * 配置项给出的模式跟着；没有新列表时只改那一项的现值。
+   */
+  private adoptConfig(
+    raw: unknown,
+    changed?: { readonly configId: string; readonly value: string | boolean },
+  ): void {
+    const view = Array.isArray(raw) ? configViewOf(raw) : null;
+    this.configView =
+      view ??
+      (changed
+        ? withConfigValue(this.configView, changed.configId, changed.value)
+        : this.configView);
+    if (this.modelCatalog !== null) {
+      const next = modelCatalogOf(raw);
+      if (next !== null) this.modelCatalog = next;
+      else if (changed?.configId === this.modelCatalog.configId) {
+        this.modelCatalog = {
+          ...this.modelCatalog,
+          currentModelId: String(changed.value),
+        };
+      }
+    }
+    this.syncModeFromConfig();
+    this.publishCatalog();
+  }
+
+  /** 模式以配置项给出时，模式现值跟配置项现值。 */
+  private syncModeFromConfig(): void {
+    if (this.modeConfigId === undefined || this.modeState === null) return;
+    const option = this.configView.find(
+      (entry) => entry.id === this.modeConfigId,
+    );
+    const modeId = option?.currentValue;
+    if (
+      typeof modeId === "string" &&
+      modeId !== this.modeState.currentModeId &&
+      this.modeState.availableModes.some((mode) => mode.id === modeId)
+    ) {
+      this.modeState = { ...this.modeState, currentModeId: modeId };
+    }
   }
 
   /**
@@ -744,16 +889,31 @@ export class AcpSession implements AcpSessionIdentity {
       const modeId = (update as { currentModeId?: unknown }).currentModeId;
       if (typeof modeId === "string" && this.modeState !== null) {
         this.modeState = { ...this.modeState, currentModeId: modeId };
+        if (this.modeConfigId !== undefined) {
+          this.configView = withConfigValue(
+            this.configView,
+            this.modeConfigId,
+            modeId,
+          );
+        }
       }
     }
     if (
       (update.sessionUpdate as string) === "config_option_update" &&
-      this.modelCatalog !== null
+      (this.modelCatalog !== null || this.configView.length > 0)
     ) {
-      // 只在已经有目录时跟：没有 `configOptions` 能力就没有改模型的路，跟了
+      // 只在已经有目录 / 配置项时跟：没有 `configOptions` 能力就没有改的路，跟了
       // 也只是画一个改不了的 Select。
-      const next = modelCatalogOf(configOptionsOf(update));
-      if (next !== null) this.modelCatalog = next;
+      const raw = configOptionsOf(update);
+      if (Array.isArray(raw)) {
+        this.configView = configViewOf(raw);
+        const next = modelCatalogOf(raw);
+        if (next !== null && this.modelCatalog !== null) {
+          this.modelCatalog = next;
+        }
+        // 头部由随后的帧经 reducer 更新（模型变更提示也在那里写），这里不重发。
+        this.syncModeFromConfig();
+      }
     }
     // 时间线拿到的是补了终端输出的那一份。
     this.feed?.update(this.terminalLink?.decorate(update) ?? update, false);

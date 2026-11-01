@@ -74,6 +74,8 @@ export async function acpCore(
     minimal?: boolean;
     /** 假 Agent 开会话答模型配置项（契约 §26.2 的用例：`--config-options`）。 */
     configOptions?: boolean;
+    /** 假 Agent 不答 `modes`，模式改在 `category: "mode"` 的配置项里（`--config-only`）。 */
+    configOnly?: boolean;
     /** 换掉假 Agent 的脚本（缺省 `@armadra/agent/acp` 的那个）。 */
     script?: string;
     /** 自定义条目的基础 CLI；缺省 `opencode`。 */
@@ -114,6 +116,7 @@ export async function acpCore(
             options.script ?? fakeAcpAgentPath(),
             ...(options.minimal ? ["--minimal"] : []),
             ...(options.configOptions ? ["--config-options"] : []),
+            ...(options.configOnly ? ["--config-only"] : []),
           ],
           baseAgent: options.baseAgent ?? "opencode",
         },

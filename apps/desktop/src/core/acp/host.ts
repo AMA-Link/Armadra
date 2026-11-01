@@ -23,7 +23,7 @@
  */
 
 import { RPC_ERRORS, RpcError } from "@armadra/agent/acp";
-import type { AgentRole } from "@armadra/shared";
+import type { AgentRole, TimelineConfigOption } from "@armadra/shared";
 
 import type { PermissionMode } from "../agent/launch";
 import { launchTargetOf, resolveCommand } from "../agent/registry";
@@ -49,7 +49,10 @@ import {
 import {
   type AcpModelCatalog,
   configOptionsOf,
+  configViewOf,
+  modeStateOfConfig,
   modelCatalogOf,
+  withConfigValue,
 } from "./models";
 import type {
   AcpInitializeResult,
@@ -270,6 +273,10 @@ export interface AcpHostSession {
   readonly modeApplied?: boolean;
   /** 模型目录（§26.2）；客户端或 Agent 不给时为 `null`。 */
   readonly models: AcpModelCatalog | null;
+  /** 完整的配置项（清洗过，推理强度与其他 select / boolean 都在，P2-4）；没有为空表。 */
+  readonly configOptions?: readonly TimelineConfigOption[];
+  /** 模式由配置项给出（没有 `modes`）时，改模式用的配置项 id。 */
+  readonly modeConfigId?: string;
   /** 要求了模型：落上了没有。没要求时缺席。 */
   readonly modelApplied?: boolean;
   /**
@@ -485,9 +492,29 @@ export async function startAcp(
     }
 
     clock.phase("configure");
+    const configured = acpClientFeatures().configOptions;
+    const rawConfig = Array.isArray(config)
+      ? config
+      : configOptionsOf(initialized);
+    let configView = configured ? configViewOf(rawConfig) : [];
+    // 模式以配置项给出（没有 `modes`）：模式选择器顶上，改它走 set_config_option。
+    let modeConfigId: string | undefined;
+    if (modes === null && configured) {
+      const fromConfig = modeStateOfConfig(configView);
+      if (fromConfig !== null) {
+        modes = fromConfig.state;
+        modeConfigId = fromConfig.configId;
+      }
+    }
     let modeApplied: boolean | undefined;
     if (options.modeId !== undefined) {
-      modeApplied = await applyMode(process_, sessionId, modes, options.modeId);
+      modeApplied = await applyMode(
+        process_,
+        sessionId,
+        modes,
+        options.modeId,
+        modeConfigId,
+      );
       if (!modeApplied && options.requireMode === true) {
         throw new AcpError(
           "acp_mode_unavailable",
@@ -496,10 +523,17 @@ export async function startAcp(
       }
       if (modeApplied && modes !== null) {
         modes = { ...modes, currentModeId: options.modeId };
+        if (modeConfigId !== undefined) {
+          configView = withConfigValue(
+            configView,
+            modeConfigId,
+            options.modeId,
+          );
+        }
       }
     }
 
-    let models: AcpModelCatalog | null = acpClientFeatures().configOptions
+    let models: AcpModelCatalog | null = configured
       ? (modelCatalogOf(config) ?? modelCatalogOf(configOptionsOf(initialized)))
       : null;
     let modelApplied: boolean | undefined;
@@ -512,6 +546,11 @@ export async function startAcp(
       );
       modelApplied = applied.applied;
       models = applied.models;
+      if (applied.applied && models !== null) {
+        configView = applied.options
+          ? configViewOf(applied.options)
+          : withConfigValue(configView, models.configId, models.currentModelId);
+      }
     }
 
     clock.done();
@@ -525,6 +564,8 @@ export async function startAcp(
       modes,
       ...(modeApplied === undefined ? {} : { modeApplied }),
       models,
+      configOptions: configView,
+      ...(modeConfigId === undefined ? {} : { modeConfigId }),
       ...(modelApplied === undefined ? {} : { modelApplied }),
       ...((options.mcpServers?.length ?? 0) === 0
         ? {}
@@ -711,12 +752,14 @@ async function applyMode(
   sessionId: string,
   modes: AcpSessionModeState | null,
   modeId: string,
+  modeConfigId?: string,
 ): Promise<boolean> {
   if (modes === null) return false;
   if (!modes.availableModes.some((mode) => mode.id === modeId)) return false;
   if (modes.currentModeId === modeId) return true;
   try {
-    await process_.setMode(sessionId, modeId);
+    if (modeConfigId === undefined) await process_.setMode(sessionId, modeId);
+    else await process_.setConfigOption(sessionId, modeConfigId, modeId);
     return true;
   } catch (error) {
     if (await gone(process_, error)) throw exitedError(process_);
@@ -733,7 +776,12 @@ async function applyModel(
   sessionId: string,
   models: AcpModelCatalog | null,
   modelId: string,
-): Promise<{ applied: boolean; models: AcpModelCatalog | null }> {
+): Promise<{
+  applied: boolean;
+  models: AcpModelCatalog | null;
+  /** Agent 答复里的完整配置项（有才带）。 */
+  options?: readonly unknown[];
+}> {
   if (models === null) return { applied: false, models };
   if (!models.availableModels.some((model) => model.modelId === modelId)) {
     return { applied: false, models };
@@ -748,6 +796,7 @@ async function applyModel(
     return {
       applied: true,
       models: modelCatalogOf(answer) ?? { ...models, currentModelId: modelId },
+      ...(Array.isArray(answer) ? { options: answer } : {}),
     };
   } catch (error) {
     if (await gone(process_, error)) throw exitedError(process_);

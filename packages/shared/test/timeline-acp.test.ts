@@ -12,6 +12,7 @@ import {
   applyTimelineFrame,
   applyTimelineOps,
   clipTail,
+  configOptionsViewOf,
   emptyTimelineState,
   modelCatalogOf,
   reduceAcpUpdate,
@@ -827,6 +828,114 @@ describe("头部值与提示", () => {
     });
     expect(modelCatalogOf("x")).toBeNull();
     expect(modelCatalogOf([{ id: "other", options: [] }])).toBeNull();
+  });
+
+  it("配置项：清洗 select / boolean，有列表才整份跟，模式项带动模式", () => {
+    const effort = (value: string) => ({
+      id: "effort",
+      name: "Effort",
+      category: "thought_level",
+      type: "select",
+      currentValue: value,
+      options: [
+        { value: "low", name: "Low" },
+        { group: "g", name: "G", options: [{ value: "high", name: "High" }] },
+      ],
+    });
+    const mode = (value: string) => ({
+      id: "mode",
+      name: "Mode",
+      category: "mode",
+      type: "select",
+      currentValue: value,
+      options: [
+        { value: "plan", name: "Plan" },
+        { value: "code", name: "Code" },
+      ],
+    });
+    const think = {
+      id: "think",
+      name: "T",
+      type: "boolean",
+      currentValue: true,
+    };
+    expect(configOptionsViewOf([effort("low"), think, { id: 1 }])).toEqual([
+      {
+        id: "effort",
+        name: "Effort",
+        category: "thought_level",
+        type: "select",
+        currentValue: "low",
+        options: [
+          { value: "low", name: "Low" },
+          { value: "high", name: "High" },
+        ],
+      },
+      {
+        id: "think",
+        name: "T",
+        type: "boolean",
+        currentValue: true,
+        options: [],
+      },
+    ]);
+    expect(configOptionsViewOf(null)).toBeNull();
+    const update = (...options: unknown[]) => ({
+      sessionUpdate: "config_option_update",
+      configOptions: options,
+    });
+    // 头部还没有配置项：不跟。
+    expect(
+      acpUpdateToOps(emptyTimelineState(), update(effort("high")), ctx()),
+    ).toEqual([]);
+    let state = applyTimelineOps(emptyTimelineState(), [
+      {
+        seq: 1,
+        op: "head",
+        head: {
+          configOptions: configOptionsViewOf([effort("low"), mode("plan")]),
+          modes: {
+            currentModeId: "plan",
+            availableModes: [
+              { id: "plan", name: "Plan" },
+              { id: "code", name: "Code" },
+            ],
+          },
+        },
+      },
+    ]).state;
+    state = feed([update(effort("high"), think, mode("code"))], state);
+    expect(state.head.configOptions?.map((o) => o.id)).toEqual([
+      "effort",
+      "think",
+      "mode",
+    ]);
+    expect(state.head.configOptions?.[0]?.currentValue).toBe("high");
+    expect(state.head.modes?.currentModeId).toBe("code");
+    expect(items(state).find((i) => i.kind === "notice")).toMatchObject({
+      code: "mode_changed",
+      params: { modeId: "code" },
+    });
+    // 同样的列表再来一次：什么都不写。
+    expect(
+      acpUpdateToOps(state, update(effort("high"), think, mode("code")), ctx()),
+    ).toEqual([]);
+  });
+
+  it("斜杠命令的 input.hint 进头部", () => {
+    const state = feed([
+      {
+        sessionUpdate: "available_commands_update",
+        availableCommands: [
+          { name: "web", description: "d", input: { hint: "query" } },
+          { name: "plain", description: "p", input: null },
+        ],
+      },
+    ]);
+    expect(state.head.commands).toEqual([
+      { name: "web", description: "d", hint: "query" },
+      { name: "plain", description: "p" },
+    ]);
   });
 
   it("timelineNoticeOps：n:<turn>:<code>:<seq>", () => {

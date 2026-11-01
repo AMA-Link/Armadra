@@ -139,6 +139,32 @@ export const acp = {
       }),
     ),
   /**
+   * 落任意一个会话配置项（`session/set_config_option`，推理强度、其他 select 与
+   * boolean）；配置项或值不在 Agent 给的列表里时 409；答 204。
+   */
+  setConfigOption: oc
+    .input(
+      sessionRef.extend({
+        configId: z.string().optional(),
+        /** 字符串（select）或布尔（boolean）；类型由域判，拒绝的码与旧路径一样。 */
+        value: jsonValueSchema.optional(),
+      }),
+    )
+    .output(z.void())
+    .errors(errors.pick("bad_request", "forbidden", "not_found", "conflict"))
+    .meta(
+      meta({
+        ...base,
+        since: "1.53",
+        scope: "terminal:create",
+        legacy: {
+          method: "PUT",
+          path: `${SESSION}/config`,
+          successStatus: 204,
+        },
+      }),
+    ),
+  /**
    * 切换驱动（`acp` ↔ `terminal`）：审批挂着就拒；在同一行上以另一种驱动起下一代，
    * 用 CLI 自己的会话 id 接回，接不回就新开并如实答 `resumed: false`。
    */
