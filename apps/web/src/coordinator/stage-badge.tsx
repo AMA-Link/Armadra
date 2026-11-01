@@ -4,6 +4,7 @@ import type { WorkItemStage } from "@armadra/shared";
 import { create } from "zustand";
 
 import { useT } from "@/app/preferences-store";
+import { useAccess } from "@/app/use-access";
 import { useCanvasStore } from "@/store/canvas-store";
 import { Badge } from "@/ui/badge";
 import { type DispatchTask, coordinatorApi, coordinatorKeys } from "./api";
@@ -52,10 +53,12 @@ export function useWorkItemStageSync(): void {
           node.data.kind === "terminal" && node.data.agent?.id === "ama",
       ) === true,
   );
+  // 工作流路由对成员一律 403（契约 §15）：成员不取。
+  const member = useAccess().member;
   const tasks = useQuery({
     queryKey: coordinatorKeys.tasks(boardId ?? ""),
     queryFn: () => coordinatorApi.tasks(boardId as string),
-    enabled: Boolean(boardId) && hasCoordinator,
+    enabled: Boolean(boardId) && hasCoordinator && !member,
     retry: false,
   });
   const data = tasks.data;

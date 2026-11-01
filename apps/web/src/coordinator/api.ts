@@ -24,7 +24,8 @@ export const dispatchTaskSchema = z.object({
   retryable: z.boolean().default(false),
   // 工作项账本（#682，§15.8）：旧 core 不答，缺省为空。
   title: z.string().nullable().default(null),
-  stage: z.enum(WORK_ITEM_STAGES).optional(),
+  // 将来的 core 多一个阶段值时，旧页面当作没有阶段，而不是整张列表解析失败。
+  stage: z.enum(WORK_ITEM_STAGES).optional().catch(undefined),
   report: z
     .object({
       state: z.enum(WORK_REPORT_STATES),
