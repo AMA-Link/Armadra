@@ -33,7 +33,7 @@ export function NativeMfa({
     <QueryClientProvider client={client}>
       <main
         data-slot="native-mfa"
-        className="flex min-h-[100dvh] w-full flex-col items-center overflow-y-auto bg-background pt-[max(var(--safe-top),15vh)] pr-[calc(1.5rem+var(--safe-right))] pb-[max(var(--safe-bottom),24px)] pl-[calc(1.5rem+var(--safe-left))]"
+        className="flex min-h-[100dvh] w-full flex-col items-center overflow-y-auto bg-background pt-[max(var(--safe-top),15vh)] short:pt-[max(var(--safe-top),16px)] pr-[calc(1.5rem+var(--safe-right))] pb-[max(var(--safe-bottom),24px)] pl-[calc(1.5rem+var(--safe-left))]"
       >
         <div className="flex w-full max-w-sm flex-col gap-2">
           <SignIn

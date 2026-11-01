@@ -165,7 +165,7 @@ export const TYPE_RULES: readonly ClassRule[] = [
   },
   {
     id: "text-scale",
-    fix: "text-sm/xs/base/lg...: use the semantic type classes; the phone input pair `text-base md:text-sm` lives in ui/ only",
+    fix: "text-sm/xs/base/lg...: use the semantic type classes; the phone input pair `text-base desktop:text-sm` lives in ui/ only",
     token: /^text-(?:xs|sm|base|lg|xl|2xl|3xl|4xl|5xl)$/,
   },
   {

@@ -122,7 +122,7 @@ export function MobileBottomNav() {
             aria-current={current ? "page" : undefined}
             disabled={needsWorkspace && destination.panel !== "settings"}
             className={cn(
-              "h-auto min-h-[var(--mobile-nav-h)] min-w-0 flex-1 flex-col gap-1 rounded-none px-1",
+              "h-auto min-h-[var(--mobile-nav-h)] min-w-0 flex-1 flex-col gap-1 rounded-none px-1 short:flex-row short:gap-2",
               "text-caption leading-4 font-normal transition-colors disabled:opacity-40",
               "hover:bg-transparent",
               current

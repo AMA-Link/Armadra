@@ -18,7 +18,7 @@ export function AppSkeleton({ hidden = false }: { hidden?: boolean }) {
         hidden && "invisible",
       )}
     >
-      <aside className="material-sidebar hidden h-full w-[var(--sidebar-w)] shrink-0 flex-col gap-2 border-r border-border p-2 md:flex">
+      <aside className="material-sidebar flex h-full w-[var(--sidebar-w)] shrink-0 flex-col gap-2 border-r border-border p-2 compact:hidden">
         <div className="flex h-8 items-center px-2">
           <Skeleton className="h-4 w-28" />
         </div>

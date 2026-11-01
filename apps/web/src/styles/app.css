@@ -45,6 +45,32 @@
 }
 
 /*
+ * 手机布局变体：判据与 `platform/layout.ts` 的 `COMPACT_QUERY` 同一条（竖屏手机
+ * 与矮的触屏横屏），不要再用 `md:` / `max-md:` 表达「手机还是电脑」；`desktop:` 是它的补集。
+ * `platform/layout.test.ts` 核对两处一致。
+ */
+@custom-variant compact {
+  @media (max-width: 767px),
+    (pointer: coarse) and (max-height: 500px) and (max-width: 1023px) {
+    @slot;
+  }
+}
+/*
+ * 矮屏变体：高度 ≤ 500px（手机横屏）。只管竖向的紧凑（导航、页头、按键条的
+ * 高度与内距），不判断布局形态；形态仍由 `compact:` / `desktop:` 决定。
+ */
+@custom-variant short {
+  @media (max-height: 500px) {
+    @slot;
+  }
+}
+@custom-variant desktop {
+  @media (min-width: 768px) and (not ((pointer: coarse) and (max-height: 500px) and (max-width: 1023px))) {
+    @slot;
+  }
+}
+
+/*
  * 字号刻度对齐到设计系统阶梯（§2.6）：shadcn 生成件写的是 Tailwind 刻度，
  * `text-sm` 原本是 14、`text-xs` 是 12。这里把刻度本身改成 13 / 12，ui/ 里的
  * `text-sm` 不用逐个改就落到正文档；`--text-base` 保持 16（只给手机输入）。
@@ -451,7 +477,8 @@
     height: 100dvh;
   }
 }
-@media (max-width: 767px) {
+@media (max-width: 767px),
+  (pointer: coarse) and (max-height: 500px) and (max-width: 1023px) {
   [data-slot="sheet-content"][data-side="right"] {
     max-width: 100vw;
   }

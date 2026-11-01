@@ -9,9 +9,9 @@ const textareaVariants = cva(
   {
     variants: {
       size: {
-        xs: "rounded-control px-1.5 py-1 md:text-meta",
-        sm: "rounded-control px-2 py-1.5 md:text-body",
-        default: "rounded-field px-2.5 py-2 md:text-body",
+        xs: "rounded-control px-1.5 py-1 desktop:text-meta",
+        sm: "rounded-control px-2 py-1.5 desktop:text-body",
+        default: "rounded-field px-2.5 py-2 desktop:text-body",
         touch: "rounded-field px-3 py-2.5",
       },
     },

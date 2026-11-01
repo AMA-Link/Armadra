@@ -733,10 +733,10 @@ describe("Input / Textarea / Select / InputGroup 四档高度（设计系统 §2
     const { rerender } = render(<Input aria-label="名称" />);
     const cls = () => screen.getByRole("textbox").className;
     expect(cls()).toContain("text-base");
-    expect(cls()).toContain("md:text-body");
+    expect(cls()).toContain("desktop:text-body");
     rerender(<Input aria-label="名称" size="touch" />);
     expect(cls()).toContain("text-base");
-    expect(cls()).not.toContain("md:text-body");
+    expect(cls()).not.toContain("desktop:text-body");
   });
 
   it("Input 不再把 size 当成原生数字属性，过渡点名属性", () => {

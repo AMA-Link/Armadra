@@ -14,9 +14,9 @@ const inputVariants = cva(
   {
     variants: {
       size: {
-        xs: "h-6 rounded-control px-1.5 py-0 md:text-meta",
-        sm: "h-7 rounded-control px-2 py-0.5 md:text-body",
-        default: "h-8 rounded-field px-2.5 py-1 md:text-body",
+        xs: "h-6 rounded-control px-1.5 py-0 desktop:text-meta",
+        sm: "h-7 rounded-control px-2 py-0.5 desktop:text-body",
+        default: "h-8 rounded-field px-2.5 py-1 desktop:text-body",
         touch: "h-11 rounded-field px-3 py-2",
       },
     },
