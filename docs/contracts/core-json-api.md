@@ -4770,7 +4770,7 @@ owner（本机会话，或已信任设备经通道的 owner 会话）：`{ sourc
 - 自动成员的判定依赖它登记时的审计行 `identity.principal.register`（`createdVia: "cloud"`、不带 `invitationId`）。这一行找不到（例如审计被清理过）时按「不是自动成员」处理，答 `409 conflict`——判定失败时拒绝替换，不放宽。
 - 这时一笔事务里把映射迁到 owner：作废那条映射、给 owner 建新的映射；吊销那个成员的全部会话、停用它、撤掉它经本签发方同步来的授予与团队角色（`cloud_team_roles`）。它名下已受信的设备钥不迁（按主体审批，主人的浏览器要重新放行）。审计 `cloud.bind.replace`，`detail` 为 `{ iss, sub, from }`（`from` 是被替换的主体）。答案是 `{ bound: true, replaced: true }`：出参只加可选的 `replaced`，普通绑定与幂等重绑仍是 `{ bound: true }`。
 - 经端到端通道来的会话（含 owner 自己的浏览器）、成员会话、经邀请或本机建的成员：一律 `409 conflict`，与原行为相同。
-- 服务器壳 `armadra-server cloud login --issuer <控制台来源>`：对 Armadra 云走设备码登录（`sources.remoteAdd { kind: "saas" }` + `remoteDevicePoll`，码只打到终端）；本机未登记时按 `--space` 登记（`sources.remoteRegister`），已登记（例如先 `cloud register --token`）时只绑定——经 `sources.remoteSession` 取访问令牌、向远程服务要一张为本机签的断言、交给本机 `bind`，不再调 `remoteRegister`。输出带账号提示（远程服务行的 `accountHint`）；`bind` 答 `replaced` 时说明已停用那个自动成员。
+- 服务器壳 `armadra-server cloud login [--issuer <控制台来源>]`（缺省是共享常量 `ARMADRA_CLOUD_ISSUER`，环境变量同名覆盖；core 收到 `kind: "saas"` 且 `issuer` 为这个默认地址时，换成本机进程环境里的覆盖值）：对 Armadra 云走设备码登录（`sources.remoteAdd { kind: "saas" }` + `remoteDevicePoll`，码只打到终端）；本机未登记时按 `--space` 登记（`sources.remoteRegister`），已登记（例如先 `cloud register --token`）时只绑定——经 `sources.remoteSession` 取访问令牌、向远程服务要一张为本机签的断言、交给本机 `bind`，不再调 `remoteRegister`。输出带账号提示（远程服务行的 `accountHint`）；`bind` 答 `replaced` 时说明已停用那个自动成员。
 
 ### 88.6 网页控制台作为受信设备与背书人
 
