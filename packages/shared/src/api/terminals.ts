@@ -2,6 +2,7 @@ import { z } from "zod";
 
 import {
   agentIdSchema,
+  agentStallKindSchema,
   agentStateSchema,
   agentStateSourceSchema,
   permissionModeSchema,
@@ -211,6 +212,8 @@ export const sessionSummarySchema = z.object({
    * sidebar can tell a paused turn from a clean one after a reload.
    */
   interrupted: z.boolean().optional(),
+  /** The progress watchdog's mark (contract §91); absent means no mark. */
+  stalled: agentStallKindSchema.optional(),
   updatedAt: z.string().datetime({ offset: true }),
   /** The PTY is still running in this runtime instance. */
   alive: z.boolean(),

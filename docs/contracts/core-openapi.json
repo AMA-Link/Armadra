@@ -1602,6 +1602,14 @@
                                         "interrupted": {
                                           "type": "boolean"
                                         },
+                                        "stalled": {
+                                          "enum": [
+                                            "stalled",
+                                            "idleWaiting",
+                                            "needsHuman"
+                                          ],
+                                          "type": "string"
+                                        },
                                         "updatedAt": {
                                           "type": "string",
                                           "format": "date-time"
@@ -17411,6 +17419,10 @@
                       },
                       "interrupted": {
                         "type": "boolean"
+                      },
+                      "stalled": {
+                        "enum": ["stalled", "idleWaiting", "needsHuman"],
+                        "type": "string"
                       },
                       "updatedAt": {
                         "type": "string",
@@ -74216,6 +74228,7 @@
                                 "agentDone",
                                 "agentError",
                                 "agentWaiting",
+                                "stalled",
                                 "deliveryFailed",
                                 "schedule",
                                 "resources",
@@ -74426,6 +74439,7 @@
                               "agentDone",
                               "agentError",
                               "agentWaiting",
+                              "stalled",
                               "deliveryFailed",
                               "schedule",
                               "resources",
@@ -74585,6 +74599,7 @@
                               "agentDone",
                               "agentError",
                               "agentWaiting",
+                              "stalled",
                               "deliveryFailed",
                               "schedule",
                               "resources",

@@ -3,6 +3,7 @@ import { answerConfirm } from "../collab/control";
 import { cancelQueued, listDeliveries, listQueued } from "../collab/deliveries";
 import { nowSeconds, type CollabContext } from "../collab/service";
 import { getAgentStatus, markAgentStatusRead } from "./status";
+import { withStalled } from "./stalled";
 import {
   MAX_TAIL_BYTES,
   MAX_RENDERED_BYTES,
@@ -463,7 +464,10 @@ function agentOperations(collab: CollabContext) {
       if (receipt.cleared) {
         collab.publish(receipt.status.workspaceId, {
           type: "agent.status",
-          status: receipt.status as unknown as Record<string, unknown>,
+          status: withStalled(receipt.status) as unknown as Record<
+            string,
+            unknown
+          >,
         });
       }
       return receipt.status;

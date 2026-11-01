@@ -2,6 +2,7 @@ import type { DatabaseSync } from "node:sqlite";
 import { allocateSourceRevision, recordTrustedReport } from "../runs/reports";
 import type { EventBus } from "../bus";
 import { baseAgent, hasCapability } from "./capabilities";
+import { withStalled } from "../agent/stalled";
 import type { AgentEvent } from "./normalize";
 import { normalizeAs, serializeEvent } from "./normalize";
 import { type Current, emptyCurrent, reduce } from "./reduce";
@@ -419,7 +420,9 @@ export function apply(
     workspaceId,
     event: {
       type: "agent.status",
-      status: published as unknown as Readonly<Record<string, unknown>>,
+      status: withStalled(published) as unknown as Readonly<
+        Record<string, unknown>
+      >,
     },
   });
   return published;

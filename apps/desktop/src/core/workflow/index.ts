@@ -15,8 +15,18 @@
  */
 
 import { collab } from "../agent";
+import { setStallSource } from "../agent/stalled";
+import { loadSession } from "../collab/nodes";
+import { queueWatchWake } from "../collab/wake";
 import type { CoreContext } from "../main";
+import { settingsDomain } from "../settings";
+import { timelineDomainOf } from "../timeline";
 import { WorkflowEngine } from "./engine";
+import {
+  DEFAULT_NEEDS_HUMAN_MINUTES,
+  DEFAULT_STALLED_MINUTES,
+  ProgressWatchdog,
+} from "./progress-watchdog";
 import { installWorkflowRoutes } from "./routes";
 import { type WorkflowDomain, setWorkflowDomain } from "./registry";
 import { WorkflowService } from "./service";
@@ -57,11 +67,45 @@ export function install(context: CoreContext): WorkflowDomain | undefined {
   installWorkflowRoutes(context.server, service);
   engine.start();
   // 协调者分派出去的任务：没人 `wait` 时也落结束（契约 §15.7）。
+  // 进展看门狗（契约 §91）搭任务行兜底扫描的便车，不另开定时器。
+  const watchdog = new ProgressWatchdog({
+    database,
+    publish: () => collab()?.publish,
+    thresholds: () => ({
+      stalledMs: minutesSetting(
+        "watchdog.stalledMinutes",
+        DEFAULT_STALLED_MINUTES,
+      ),
+      needsHumanMs: minutesSetting(
+        "watchdog.needsHumanMinutes",
+        DEFAULT_NEEDS_HUMAN_MINUTES,
+      ),
+    }),
+    lastOutputAt: (nodeId) => {
+      const session = loadSession(database, nodeId);
+      if (session === undefined) return undefined;
+      const output = collab()?.terminals?.observed?.(
+        session.sessionId,
+      )?.lastOutputAt;
+      const timeline = timelineDomainOf(context.server)?.store.get(
+        session.sessionId,
+      )?.updatedAtMs;
+      return Math.max(output ?? 0, timeline ?? 0) || undefined;
+    },
+    running: (nodeId) => loadSession(database, nodeId)?.status === "running",
+    wake: (wake) => {
+      const ctx = collab();
+      if (ctx !== undefined) queueWatchWake(ctx, wake);
+    },
+    log: (message, fields) => context.log.info(message, fields),
+  });
+  setStallSource(watchdog);
   const tasks = new TaskWatch({
     database,
     bus: context.bus,
     publish: () => collab()?.publish,
     log: (message, fields) => context.log.info(message, fields),
+    onTick: () => watchdog.scan(),
   });
   tasks.start();
   const domain: WorkflowDomain = {
@@ -69,6 +113,8 @@ export function install(context: CoreContext): WorkflowDomain | undefined {
     service,
     stop: async () => {
       tasks.stop();
+      setStallSource(undefined);
+      watchdog.reset();
       await engine.stop();
       setWorkflowDomain(undefined);
     },
@@ -77,6 +123,16 @@ export function install(context: CoreContext): WorkflowDomain | undefined {
   context.onStop?.(() => domain.stop());
   context.log.info("工作流域已装配");
   return domain;
+}
+
+/** 设置里的分钟数 → 毫秒；读不出来用默认，`0` 原样（关）。 */
+function minutesSetting(path: string, fallback: number): number {
+  const value = settingsDomain()?.settings.get(path);
+  const minutes =
+    typeof value === "number" && Number.isFinite(value) && value >= 0
+      ? value
+      : fallback;
+  return minutes * 60_000;
 }
 
 function tablesReady(context: CoreContext): boolean {
