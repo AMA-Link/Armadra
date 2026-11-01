@@ -8,7 +8,8 @@ import { clampZoom } from "./zoom";
  * 两条规则，手动新建、Agent 新建与「导出到画布」共用：
  *
  *  1. **占比**：节点在视口里占「主方向」的 1/φ ≈ 61.8%（宽比与高比里更紧的那
- *     一个），居中。桌面、手机竖屏、手机横屏同一条规则。
+ *     一个），居中；缩放夹在 [1, 1.25]，小节点不会为了占比被放大。桌面、手机
+ *     竖屏、手机横屏同一条规则。
  *  2. **字号下限**：屏幕上的实际字号（字号 × 缩放）不低于 `--text-meta`
  *     （12px）。字号档本身不动，达不到时抬缩放；手机上抬完缩放装不下，就把
  *     新节点的尺寸按黄金比例缩小到装得下（{@link fitNewNodeSize}）。
@@ -51,14 +52,27 @@ export function fractionZoom(
   return fit * FIRST_DISPLAY_FRACTION;
 }
 
-/** 首次显示的缩放：占比缩放，但不低于字号下限。 */
+/**
+ * 首次显示的缩放上限：小节点（便签）只是居中放在温和的缩放上，不放大到占满
+ * 屏幕——句柄与文字放大到 280% 和旁边的节点放在一起不协调。
+ */
+export const FIRST_DISPLAY_MAX_ZOOM = 1.25;
+
+/**
+ * 首次显示的缩放：占比缩放夹在 [字号下限, {@link FIRST_DISPLAY_MAX_ZOOM}]。
+ * 下限（字号 × 缩放 ≥ 12px）优先于上限：终端字号偏好小到 10px 时下限是 1.2。
+ */
 export function firstDisplayZoom(input: {
   node: Size;
   container: { width: number; height: number };
   fontPx?: number;
 }): number {
   const floor = fontFloorZoom(input.fontPx);
-  return clampZoom(Math.max(floor, fractionZoom(input.node, input.container)));
+  const fit = Math.min(
+    fractionZoom(input.node, input.container),
+    FIRST_DISPLAY_MAX_ZOOM,
+  );
+  return clampZoom(Math.max(floor, fit));
 }
 
 /**

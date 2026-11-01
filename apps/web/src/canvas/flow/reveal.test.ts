@@ -6,7 +6,7 @@ import { cameraForNewNode } from "./reveal";
 
 /**
  * 新建节点之后相机去哪（#684）。手动新建与 `node.created` 共用这套规则：
- * 每次都居中，缩放让节点占视口主方向的 1/φ，但字号 × 缩放不低于 12px。
+ * 每次都居中，缩放让节点占视口主方向的 1/φ，夹在 [100%（字号 × 缩放 ≥ 12px）, 125%]。
  */
 
 const CONTAINER = { width: 1700, height: 1000 };
@@ -55,12 +55,12 @@ describe("cameraForNewNode", () => {
     ).toEqual({ x: 1480, y: 696.5, zoom: 1 });
   });
 
-  it("小便签不会被放大过头：缩放封顶在 3 倍", () => {
+  it("小便签不会被放大过头：缩放封顶在 1.25", () => {
     const target = cameraForNewNode({
       node: { x: 0, y: 0, width: 280, height: 173 },
       container: CONTAINER,
     });
-    expect(target!.zoom).toBe(3);
+    expect(target!.zoom).toBe(1.25);
   });
 
   it("还没量过的节点（宽高为 0）一律不动相机", () => {

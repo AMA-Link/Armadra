@@ -69,14 +69,14 @@ describe("revealNewNode", () => {
     expect(options.zoom).toBe(1);
   });
 
-  it("节点已经在眼前时也居中，并按 1/φ 取缩放", () => {
+  it("节点已经在眼前时也居中，缩放封顶在 1.25", () => {
     const setCenter = mountFlow(1);
     setFlowContainer(fakeContainer(4000, 3000));
     revealNewNode("n1");
     expect(setCenter).toHaveBeenCalledTimes(1);
     const options = setCenter.mock.calls[0]![2];
-    // min(4000/1280, 3000/800) / φ
-    expect(options.zoom).toBeCloseTo(3.125 / ((1 + Math.sqrt(5)) / 2), 9);
+    // min(4000/1280, 3000/800) / φ = 1.93，夹到 1.25
+    expect(options.zoom).toBe(1.25);
   });
 
   /**

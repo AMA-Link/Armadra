@@ -15,6 +15,7 @@ import {
 
 import {
   FIRST_DISPLAY_FRACTION,
+  FIRST_DISPLAY_MAX_ZOOM,
   FONT_FLOOR_PX,
   NODE_TEXT_PX,
   PHONE_NODE_MARGIN,
@@ -23,7 +24,6 @@ import {
   fontFloorZoom,
   fractionZoom,
 } from "./first-display";
-import { MAX_ZOOM } from "./zoom";
 
 /**
  * 新建节点第一次出现在屏幕上的大小（#684）：占主方向 1/φ、居中；屏幕上的
@@ -78,12 +78,12 @@ describe.each(Object.entries(VIEWPORTS))("%s", (_name, viewport) => {
   });
 
   it.each(NODE_TYPES)(
-    "%s：占主方向 1/φ（被字号下限或缩放上限顶住时除外）",
+    "%s：占主方向 1/φ（被字号下限或 1.25 的缩放上限顶住时除外）",
     (type) => {
       const node = created(type, viewport);
       const zoom = firstDisplayZoom({ node, container: viewport });
       const wanted = fractionZoom(node, viewport);
-      if (wanted >= fontFloorZoom() && wanted <= MAX_ZOOM) {
+      if (wanted >= fontFloorZoom() && wanted <= FIRST_DISPLAY_MAX_ZOOM) {
         const fraction = Math.max(
           (node.width * zoom) / viewport.width,
           (node.height * zoom) / viewport.height,
@@ -91,7 +91,7 @@ describe.each(Object.entries(VIEWPORTS))("%s", (_name, viewport) => {
         expect(fraction).toBeCloseTo(FIRST_DISPLAY_FRACTION, 9);
       } else {
         expect(zoom).toBe(
-          Math.min(MAX_ZOOM, Math.max(wanted, fontFloorZoom())),
+          Math.max(fontFloorZoom(), Math.min(wanted, FIRST_DISPLAY_MAX_ZOOM)),
         );
       }
     },
@@ -123,9 +123,8 @@ describe("桌面上新建的终端、便签、编辑器", () => {
       const zoom = firstDisplayZoom({ node: size, container: desktop });
       expect(zoom).toBeGreaterThanOrEqual(1);
     }
-    // 1440×900 的画布里终端在 100% 就已占 2/3，被字号下限顶住；更宽的画布才
-    // 轮到 1/φ 起作用。
-    const wide = { width: 1700, height: 1000 };
+    // 画布太小时缩放被字号下限顶住、太大时被 1.25 的上限顶住，中间才是严格的 1/φ。
+    const wide = { width: 1300, height: 800 };
     const terminal = defaultNodeSizeOf("terminal");
     const zoom = firstDisplayZoom({ node: terminal, container: wide });
     expect(zoom).toBeGreaterThan(1);
@@ -135,6 +134,41 @@ describe("桌面上新建的终端、便签、编辑器", () => {
         (terminal.height * zoom) / wide.height,
       ),
     ).toBeCloseTo(1 / GOLDEN_RATIO, 9);
+  });
+});
+
+describe("小节点只居中、不放大", () => {
+  it("大桌面上新建的便签缩放不超过 1.25，终端与其余节点仍不低于 1", () => {
+    const wide = { width: 2400, height: 1400 };
+    for (const type of NODE_TYPES) {
+      const zoom = firstDisplayZoom({
+        node: defaultNodeSizeOf(type),
+        container: wide,
+      });
+      expect(zoom).toBeGreaterThanOrEqual(1);
+      expect(zoom).toBeLessThanOrEqual(FIRST_DISPLAY_MAX_ZOOM);
+    }
+    const sticky = firstDisplayZoom({
+      node: defaultNodeSizeOf("sticky"),
+      container: wide,
+    });
+    expect(sticky).toBe(FIRST_DISPLAY_MAX_ZOOM);
+    expect(
+      firstDisplayZoom({
+        node: defaultNodeSizeOf("terminal"),
+        container: wide,
+      }),
+    ).toBeGreaterThanOrEqual(1);
+  });
+
+  it("字号偏好小到 10px 时下限（1.2）仍优先", () => {
+    expect(
+      firstDisplayZoom({
+        node: defaultNodeSizeOf("terminal"),
+        container: { width: 800, height: 600 },
+        fontPx: 10,
+      }),
+    ).toBeCloseTo(1.2);
   });
 });
 
