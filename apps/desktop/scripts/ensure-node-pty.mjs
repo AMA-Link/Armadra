@@ -10,16 +10,20 @@
  *     fails every spawn with `posix_spawnp failed.`, a message that names
  *     neither the file nor the permission. `--prebuilt` restores the bit and
  *     stops there: no compiler, no network, milliseconds.
- *   * `pnpm dev` / `dist` (Electron) need the patched source compiled for
- *     Electron's ABI and this machine's architecture: `--rebuild` runs
- *     `patch-node-pty.mjs` and `electron-rebuild --arch`, then checks the
- *     produced binaries with `file(1)`.
+ *   * `pnpm dev` (Electron) needs the patched source compiled for
+ *     Electron's ABI and this machine's architecture: `--rebuild` checks the
+ *     source with `verify-node-pty.mjs` (pnpm patched it at install time),
+ *     runs `electron-rebuild --arch`, then checks the produced binaries with
+ *     `file(1)`. `dist` compiles through electron-builder instead and runs
+ *     the same check first (`dist.mjs`).
  */
 import { spawnSync } from "node:child_process";
 import { chmodSync, existsSync, readdirSync, statSync } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+
+import { verifyNodePtySource } from "./verify-node-pty.mjs";
 
 // `fileURLToPath`，不是 `URL.pathname`：Windows 上后者是 `/D:/a/...`，带着
 // 开头的斜杠，`require.resolve` 从这个目录起找 node-pty 一定找不到
@@ -109,24 +113,19 @@ export function ensureNodeAbiBuild(root = nodePtyDir()) {
 }
 
 /**
- * Patch and rebuild for this Electron's ABI. Both halves, in this order: the
- * patch must land before anything is compiled, because what ships is the
- * compiled artefact; the rebuild is needed because the prebuild is for Node's
- * ABI and Electron's differs.
+ * Rebuild the patched source for this Electron's ABI. The check comes first,
+ * because what ships is the compiled artefact and nothing after compiling can
+ * tell a patched `pty.node` from an unpatched one; the rebuild is needed
+ * because the prebuild is for Node's ABI and Electron's differs.
  */
 export function ensureNodePtyForElectron() {
-  const patch = spawnSync(
-    process.execPath,
-    [join(here, "patch-node-pty.mjs")],
-    {
-      stdio: "inherit",
-    },
-  );
-  if (patch.status !== 0) {
+  try {
+    verifyNodePtySource(nodePtyDir());
+  } catch (error) {
     process.stderr.write(
-      "node-pty could not be patched; refusing to build it\n",
+      `${error.message}\nnode-pty is not the patched source; refusing to build it\n`,
     );
-    process.exit(patch.status ?? 1);
+    process.exit(1);
   }
   const rebuild = spawnSync(
     "npx",

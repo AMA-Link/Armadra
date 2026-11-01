@@ -32,6 +32,7 @@ import {
   configOverride,
   signingPlan,
 } from "./signing-electron.mjs";
+import { verifyNodePtySource } from "./verify-node-pty.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const app = resolve(here, "..");
@@ -210,6 +211,12 @@ export async function dist({
     delete env[name];
     delete process.env[name];
   }
+
+  // electron-builder compiles node-pty from `node_modules` (its own
+  // @electron/rebuild accepts none of the shipped prebuilds), and a packaged
+  // `pty.node` cannot be told apart from an unpatched one afterwards — so the
+  // source is checked here, before anything is built (#671).
+  verifyNodePtySource();
 
   // The installer carries the server shell too (`Armadra serve`); its
   // `out/main.js` is placed by after-pack.mjs, so it is built first.

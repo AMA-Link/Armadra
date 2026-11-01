@@ -1,21 +1,32 @@
 #!/usr/bin/env node
 /**
- * Patches `node-pty` before it is compiled.
+ * Refuses to compile a `node-pty` whose source is not the patched one.
  *
  * node-pty is the only mature PTY binding for Node, and the TypeScript core's
  * terminal domain has no second option (design `typescript-core.md` §3, PTY
- * row). What it ships with are two defects that this repository cannot live
- * with, so the dependency is patched in place, from source, every time it is
- * built. The patch is:
+ * row). What it ships with are defects this repository cannot live with, so
+ * the source is patched: `patches/node-pty@1.1.0.patch`, which pnpm applies
+ * at install time through `patchedDependencies` (`pnpm-workspace.yaml`).
+ * Install time is the only point both builds share: `pnpm dev` rebuilds the
+ * module with `electron-rebuild`, and `dist` lets electron-builder's own
+ * @electron/rebuild compile it — node-pty has no prebuild either of them
+ * accepts, so both compile whatever is in `node_modules`. A patch applied by a
+ * script on one of those paths only (as this file used to do, before `dev`
+ * alone) ships an unpatched `pty.node` from the other (#671).
  *
- *   * **pinned** — it refuses to run against any version but the one whose
- *     source was read line by line, and additionally checks the SHA-256 of the
- *     file it edits, because a patch release can change a file without changing
- *     the semver;
- *   * **anchor-based** — every edit is an exact-string replacement of text that
- *     was read out of the shipped source, and a missing anchor is a non-zero
- *     exit rather than a silent no-op;
- *   * **idempotent** — a second run sees its own marker and stops.
+ * What this file keeps is the check, run before either build compiles:
+ *
+ *   * **pinned** — it refuses any version but the one whose source was read
+ *     line by line;
+ *   * **hashed** — the SHA-256 of every patched file must be the one the
+ *     reviewed patch produces, because a patch release can change a file
+ *     without changing the semver, and pnpm can be told to skip patches;
+ *   * **specific** — a missing marker says "the patch is not applied" rather
+ *     than only "the hash differs".
+ *
+ * Moving to another version or editing the patch means re-reading the source,
+ * re-generating the patch (`pnpm patch node-pty@<version>`, edit,
+ * `pnpm patch-commit`), and moving the pins here — never widening them.
  *
  * ## Defect 1 (macOS): every `PtyFork` leaks ptmx devices
  *
@@ -46,7 +57,8 @@
  * The same function also never closes `slave` in the parent. The child gets it
  * through `posix_spawn_file_actions_adddup2`/`addclose`, so the parent's copy
  * has no reader and no writer — it only keeps the pty pair allocated for the
- * lifetime of the process. That is the **second** device per spawn.
+ * lifetime of the process (once the child exits, `lsof` lists it as
+ * `(revoked)`). That is the **second** device per spawn.
  *
  * And every early `return` between `*master = posix_openpt(O_RDWR)` and the
  * `posix_spawn` — `grantpt`/`unlockpt`, `TIOCPTYGNAME`, `open(slave)`,
@@ -61,282 +73,101 @@
  * once the cap is hit *every* spawn on the machine fails, including ones that
  * have nothing to do with this application, until the process exits.
  *
- * The fix replaces the whole tail of `pty_posix_spawn` with one `fail:` label
- * that closes `*master` and `slave`, and a cleanup that closes
+ * The patch replaces the whole tail of `pty_posix_spawn` with one `fail:`
+ * label that closes `*master` and `slave`, and a cleanup that closes
  * `low_fds[0 … count]` inclusive, guarded against both the `-1` of a failed
- * `posix_openpt` and the out-of-range index.
+ * `posix_openpt` and the out-of-range index. C++ forbids a `goto` over an
+ * initialised declaration still in scope at the label, so `slave` and `res`
+ * are hoisted to the top of the function.
  *
- * ## Defect 2 (Windows): the ConPTY release race
+ * ## Defect 2 (Windows): the ConPTY handle list
  *
- * `src/win/conpty.cc` frees the baton from the native exit thread before the
- * HPCON is closed, so a process tree killed from outside (`taskkill /T`) can
- * leave a `conhost.exe` alive until the whole daemon exits. It is not patched
- * here: this batch is macOS/Linux only (tmux), nothing in it ever reaches the
- * Windows backend, and a patch nobody can run is a patch nobody can verify.
- * TODO(R6): fix it together with the Windows session host, which is the first
- * code that actually opens a ConPTY, and which is also the first chance anyone
- * has to run it on real hardware.
+ * `src/win/conpty.cc` erases from its global handle list on every exit thread
+ * while the JS thread searches or appends to it, and a second kill closes an
+ * already freed pseudoconsole — native crashes of the session host that no
+ * JavaScript can catch (#659). The same patch backports the upstream mutex and
+ * the close-once guard; `pnpm-workspace.yaml` keeps the reason beside the
+ * entry.
  *
- * The same file's unsynchronised handle list (exit threads erasing while the
- * JS thread searches it, a native crash of the session host, #659) is fixed
- * by `patches/node-pty@1.1.0.patch` instead, which pnpm applies at install
- * time — so the `dist` build, which compiles this source without running this
- * script, gets it too.
+ * Not patched: the same file frees the baton from the native exit thread
+ * before the HPCON is closed, so a process tree killed from outside
+ * (`taskkill /T`) can leave a `conhost.exe` alive until the whole daemon
+ * exits. TODO(R6): fix it with the Windows session host, on real hardware.
  *
  * ## Linux
  *
  * The Linux path is `forkpty(3)` (`#else` branch of `PtyFork`) and does not go
- * through `pty_posix_spawn` at all, so neither edit applies to it. The patch is
- * a no-op there by construction — the anchors live inside `#if
- * defined(__APPLE__)`.
+ * through `pty_posix_spawn` at all, so neither edit applies to it — the macOS
+ * hunks live inside `#if defined(__APPLE__)`.
  */
 import { createHash } from "node:crypto";
-import { readFileSync, writeFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
+import { createRequire } from "node:module";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const here = dirname(fileURLToPath(import.meta.url));
-const moduleDir = resolve(here, "../node_modules/node-pty");
+const app = resolve(here, "..");
 
-/** The only version whose source this patch was written against. */
+/** The only version whose source the patch was written against. */
 export const PINNED_VERSION = "1.1.0";
 
 /**
- * SHA-256 of the pristine `src/unix/pty.cc` of that version. A semver-equal
- * file with a different hash is a file this patch has not read.
+ * Per patched file: a line only the patch writes, and the SHA-256 of the file
+ * as `patches/node-pty@1.1.0.patch` leaves it.
  */
-export const PINNED_UNIX_SHA256 =
-  "5e1005d6bdcfbe97b486ee415419fe7adae99035047f07340fbad36419e0bae6";
-
-/** Present in a patched file; its absence is what makes a re-run do work. */
-export const MARKER = "/* armadra: pty device leak fix */";
-
-/**
- * The tail of `pty_posix_spawn`, verbatim from node-pty 1.1.0. Anchored on the
- * `posix_spawn` retry loop so the replacement covers `done:` and the broken
- * close loop in one edit.
- */
-const UNIX_ANCHOR = `  do
-    *err = posix_spawn(pid, argv[0], &acts, &attrs, argv, env);
-  while (*err == EINTR);
-done:
-  posix_spawn_file_actions_destroy(&acts);
-  posix_spawnattr_destroy(&attrs);
-
-  for (; count > 0; count--) {
-    close(low_fds[count]);
-  }
-}`;
-
-const UNIX_REPLACEMENT = `  do
-    *err = posix_spawn(pid, argv[0], &acts, &attrs, argv, env);
-  while (*err == EINTR);
-done:
-  posix_spawn_file_actions_destroy(&acts);
-  posix_spawnattr_destroy(&attrs);
-  ${MARKER}
-  // The child has its own dup'd copies of the slave and never sees the
-  // master. The parent's slave fd keeps the pair allocated for nothing, so it
-  // goes here, on the success path as well as on every failure below.
-  if (slave != -1) {
-    close(slave);
-    slave = -1;
-  }
-  if (*err != 0 && *master != -1) {
-    close(*master);
-    *master = -1;
-  }
-  goto cleanup;
-
-fail:
-  // Everything between posix_openpt() and posix_spawn() used to return
-  // straight out of the function with these two still open.
-  if (slave != -1) {
-    close(slave);
-    slave = -1;
-  }
-  if (*master != -1) {
-    close(*master);
-    *master = -1;
-  }
-
-cleanup:
-  // low_fds[0 .. count] INCLUSIVE: the producing loop breaks without
-  // incrementing, so entry 0 always holds a device and entry \`count\` only
-  // exists when that loop broke. The original ran from \`count\` down to 1,
-  // which skipped entry 0 on every call and read one past the array when the
-  // loop had run to completion.
-  for (size_t index = 0; index <= count && index < 3; index++) {
-    if (low_fds[index] != -1) {
-      close(low_fds[index]);
-    }
-  }
-}`;
-
-/**
- * The early returns, each replaced by a jump to the new `fail:` label.
- *
- * C++ forbids a `goto` that jumps over the initialisation of a variable still
- * in scope at the label, so `slave` and `res` — the only two declarations
- * between the first jump site and the end of the function that carry an
- * initialiser — are hoisted to the top in their own edits. `slave_pty_name`,
- * `acts`, `attrs` and `signal_set` have no initialiser and may be crossed.
- */
-const UNIX_EDITS = [
-  // `slave` and `res` must exist, and hold a known value, at every `goto fail`.
-  {
-    name: "hoist the fds and the result code above every jump site",
-    from: `  int low_fds[3];
-  size_t count = 0;
-
-  for (; count < 3; count++) {
-    low_fds[count] = posix_openpt(O_RDWR);
-    if (low_fds[count] >= STDERR_FILENO)
-      break;
-  }`,
-    to: `  int low_fds[3] = { -1, -1, -1 };
-  size_t count = 0;
-  int slave = -1;
-  int res = -1;
-
-  for (; count < 3; count++) {
-    low_fds[count] = posix_openpt(O_RDWR);
-    if (low_fds[count] >= STDERR_FILENO)
-      break;
-  }`,
+export const PATCHED_FILES = {
+  "src/unix/pty.cc": {
+    marker: "/* armadra: pty device leak fix */",
+    sha256: "1f806a4a27d8cc7ddaf4a0d1b670bac01d8549067a1a73cf6f87517dc65226d6",
   },
-  {
-    name: "posix_openpt failure closes the low fds",
-    from: `  *master = posix_openpt(O_RDWR);
-  if (*master == -1) {
-    return;
-  }`,
-    to: `  *master = posix_openpt(O_RDWR);
-  if (*master == -1) {
-    goto fail;
-  }`,
+  "src/win/conpty.cc": {
+    marker: "static std::mutex g_ptyHandlesMutex;",
+    sha256: "27ac472b88765696eaf55597a441697d0c7e28ffb8a4f727058bce6fbd0d0639",
   },
-  {
-    name: "grantpt / unlockpt failure closes the master",
-    from: `  int res = grantpt(*master) || unlockpt(*master);
-  if (res == -1) {
-    return;
-  }`,
-    to: `  res = grantpt(*master) || unlockpt(*master);
-  if (res == -1) {
-    goto fail;
-  }`,
-  },
-  {
-    name: "TIOCPTYGNAME failure closes the master",
-    from: `  int slave;
-  char slave_pty_name[128];
-  res = ioctl(*master, TIOCPTYGNAME, slave_pty_name);
-  if (res == -1) {
-    return;
-  }`,
-    to: `  char slave_pty_name[128];
-  res = ioctl(*master, TIOCPTYGNAME, slave_pty_name);
-  if (res == -1) {
-    goto fail;
-  }`,
-  },
-  {
-    name: "open(slave) failure closes the master",
-    from: `  slave = open(slave_pty_name, O_RDWR | O_NOCTTY);
-  if (slave == -1) {
-    return;
-  }`,
-    to: `  slave = open(slave_pty_name, O_RDWR | O_NOCTTY);
-  if (slave == -1) {
-    goto fail;
-  }`,
-  },
-  {
-    name: "tcsetattr failure closes both ends",
-    from: `    res = tcsetattr(slave, TCSANOW, termp);
-    if (res == -1) {
-      return;
-    };`,
-    to: `    res = tcsetattr(slave, TCSANOW, termp);
-    if (res == -1) {
-      goto fail;
-    };`,
-  },
-  {
-    name: "TIOCSWINSZ failure closes both ends",
-    from: `    res = ioctl(slave, TIOCSWINSZ, winp);
-    if (res == -1) {
-      return;
-    }`,
-    to: `    res = ioctl(slave, TIOCSWINSZ, winp);
-    if (res == -1) {
-      goto fail;
-    }`,
-  },
-  {
-    name: "close the parent's fds on every exit from pty_posix_spawn",
-    from: UNIX_ANCHOR,
-    to: UNIX_REPLACEMENT,
-  },
-];
+};
 
 export function sha256(text) {
   return createHash("sha256").update(text).digest("hex");
 }
 
+/** The node-pty this app resolves, as installed. */
+export function installedNodePtyDir() {
+  const require = createRequire(join(app, "package.json"));
+  return dirname(require.resolve("node-pty/package.json"));
+}
+
 /**
- * Applies every edit to `source`, refusing on the first anchor that is not
- * present exactly once. Returns the patched text.
+ * Throws, naming the first thing wrong, unless `root` holds node-pty
+ * `PINNED_VERSION` with every file in `files` exactly as the patch leaves it.
  */
-export function patchUnixSource(source, edits = UNIX_EDITS) {
-  let text = source;
-  for (const edit of edits) {
-    const occurrences = text.split(edit.from).length - 1;
-    if (occurrences !== 1) {
-      throw new Error(
-        `anchor "${edit.name}" matched ${occurrences} times, expected exactly 1`,
-      );
-    }
-    text = text.replace(edit.from, edit.to);
-  }
-  return text;
-}
-
-export function alreadyPatched(source) {
-  return source.includes(MARKER);
-}
-
-export function run({
-  root = moduleDir,
-  log = (line) => process.stdout.write(`${line}\n`),
-} = {}) {
+export function verifyNodePtySource(
+  root = installedNodePtyDir(),
+  files = PATCHED_FILES,
+) {
   const manifest = JSON.parse(readFileSync(join(root, "package.json"), "utf8"));
   if (manifest.version !== PINNED_VERSION) {
     throw new Error(
-      `node-pty ${manifest.version} is installed, but this patch was written against ${PINNED_VERSION}. ` +
-        `Read the new source, re-derive the anchors, and move the pin — do not widen it.`,
+      `node-pty ${manifest.version} is installed, but its patch was written against ${PINNED_VERSION}. ` +
+        `Read the new source, re-derive the patch, and move the pin — do not widen it.`,
     );
   }
-
-  const file = join(root, "src/unix/pty.cc");
-  const source = readFileSync(file, "utf8");
-  if (alreadyPatched(source)) {
-    log("node-pty is already patched");
-    return { changed: false };
+  for (const [file, { marker, sha256: expected }] of Object.entries(files)) {
+    const source = readFileSync(join(root, file), "utf8");
+    if (!source.includes(marker)) {
+      throw new Error(
+        `${file} is not patched: patches/node-pty@${PINNED_VERSION}.patch was not applied. ` +
+          `Reinstall with pnpm (patchedDependencies) before building.`,
+      );
+    }
+    const digest = sha256(source);
+    if (digest !== expected) {
+      throw new Error(
+        `${file} hashes ${digest}, expected ${expected}. ` +
+          `The source or the patch changed; re-read it and move the pin.`,
+      );
+    }
   }
-
-  const digest = sha256(source);
-  if (digest !== PINNED_UNIX_SHA256) {
-    throw new Error(
-      `src/unix/pty.cc hashes ${digest}, expected ${PINNED_UNIX_SHA256}. ` +
-        `The file changed without the version changing; re-read it before patching.`,
-    );
-  }
-
-  writeFileSync(file, patchUnixSource(source), "utf8");
-  log("patched node-pty: pty device leaks in pty_posix_spawn (macOS)");
-  return { changed: true };
 }
 
 const invokedDirectly =
@@ -345,9 +176,12 @@ const invokedDirectly =
 
 if (invokedDirectly) {
   try {
-    run();
+    verifyNodePtySource();
+    process.stdout.write(
+      `node-pty ${PINNED_VERSION}: patched source verified\n`,
+    );
   } catch (error) {
-    process.stderr.write(`patch-node-pty: ${error.message}\n`);
+    process.stderr.write(`verify-node-pty: ${error.message}\n`);
     process.exit(1);
   }
 }
