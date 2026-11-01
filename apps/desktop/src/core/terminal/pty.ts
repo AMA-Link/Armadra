@@ -14,11 +14,12 @@ import { internal } from "./backend";
  * ## Why there is a preflight at all
  *
  * A spawn that fails inside node-pty leaks pty devices on macOS
- * (`apps/desktop/scripts/patch-node-pty.mjs` documents the measurement: one
+ * (`apps/desktop/scripts/verify-node-pty.mjs` documents the measurement: one
  * `/dev/ptmx` per attempt, successful or not, against a `kern.tty.ptmx_max` of
- * 511). The patch closes that hole, but the patch only ships where the patch
- * ran, and "spawn it and see" is the wrong shape for a question — does this
- * program exist and may this user execute it — that `stat` answers for free.
+ * 511). The patch closes that hole, but the patch only ships where pnpm
+ * applied it, and "spawn it and see" is the wrong shape for a question — does
+ * this program exist and may this user execute it — that `stat` answers for
+ * free.
  * So: resolve and check first, and turn a bad command into a 500 with a
  * readable message instead of `posix_spawnp failed.`.
  */

@@ -15,11 +15,12 @@ allowBuilds:
   # Squirrel), so its postinstall script does not need to run.
   electron-winstaller: false
   # Deliberately false. node-pty's own install script compiles against the
-  # *Node* ABI, and what this repository needs is a patched source compiled
-  # against *Electron's* — so `apps/desktop/scripts/ensure-electron.mjs` runs
-  # `patch-node-pty.mjs` and then `electron-rebuild` instead. Letting pnpm
-  # build it here would produce an artefact that is both unpatched and, in the
-  # shell, unloadable.
+  # *Node* ABI, and what the shell needs is the patched source (see
+  # patchedDependencies below) compiled against *Electron's* — so `pnpm dev`
+  # runs `electron-rebuild` (`apps/desktop/scripts/ensure-electron.mjs`) and
+  # `dist` lets electron-builder rebuild it, both after
+  # `verify-node-pty.mjs` has checked the source. Letting pnpm build it here
+  # would produce an artefact that is, in the shell, unloadable.
   node-pty: false
 
 minimumReleaseAgeExclude:
@@ -95,18 +96,34 @@ overrides:
 # Each patch keeps its reason next to the override it pairs with above.
 patchedDependencies:
   acme-client@5.4.0: patches/acme-client@5.4.0.patch
-  # microsoft/node-pty#921: in 1.1.0 every exit thread erases from the global
-  # ConPTY handle list while the JS thread searches or appends to it, a native
-  # crash no JavaScript can catch. On Windows that took down the session host
-  # and every terminal it held (#659). The patch backports to
-  # src/win/conpty.cc only the mutex of the upstream fix (#922, first in
-  # 1.2.0-beta.13) and 1.2.0-beta.18's guard against closing one pseudoconsole
-  # twice (a second kill before the exit thread forgot it freed it again); the
-  # macOS and Linux sources are untouched. Remove once a stable 1.2.0 ships.
-  # It also patches the Windows-only lib/ files around kill()'s console list
-  # agent (#670): the agent catches AttachConsole failing (as in
-  # 1.2.0-beta.18) instead of crashing into the session host's log, and when
-  # it has no answer the list is empty rather than the shell's PID, which
-  # node-pty used to kill 5 s later by bare PID after the closed
-  # pseudoconsole had already ended that process.
+  # Applied here, at install time, because both builds compile this source:
+  # `pnpm dev` through electron-rebuild and `dist` through electron-builder's
+  # own @electron/rebuild, which takes none of node-pty's prebuilds. Each
+  # checks the result first (apps/desktop/scripts/verify-node-pty.mjs pins the
+  # version and the patched files' SHA-256; regenerate with `pnpm patch` /
+  # `pnpm patch-commit` and move those pins together). Three parts:
+  #
+  # src/unix/pty.cc (macOS): pty_posix_spawn leaks a /dev/ptmx and the
+  # parent's slave on every spawn, and master/slave on every early failure,
+  # until kern.tty.ptmx_max (511) stops every spawn on the machine. Released
+  # mac builds shipped without this fix while it was applied before `dev`
+  # only (#671). Upstream 1.1.0 is unchanged here; re-check on any upgrade.
+  #
+  # src/win/conpty.cc (microsoft/node-pty#921): in 1.1.0 every exit thread
+  # erases from the global ConPTY handle list while the JS thread searches or
+  # appends to it, a native crash no JavaScript can catch. On Windows that
+  # took down the session host and every terminal it held (#659). The patch
+  # backports only the mutex of the upstream fix (#922, first in
+  # 1.2.0-beta.13) and 1.2.0-beta.18's guard against closing one
+  # pseudoconsole twice (a second kill before the exit thread forgot it freed
+  # it again).
+  #
+  # lib/conpty_console_list_agent.js, lib/windowsPtyAgent.js (Windows only,
+  # around kill()'s console list agent, #670): the agent catches
+  # AttachConsole failing (as in 1.2.0-beta.18) instead of crashing into the
+  # session host's log, and when it has no answer the list is empty rather
+  # than the shell's PID, which node-pty used to kill 5 s later by bare PID
+  # after the closed pseudoconsole had already ended that process.
+  #
+  # Drop the Windows parts once a stable 1.2.0 ships.
   node-pty@1.1.0: patches/node-pty@1.1.0.patch
