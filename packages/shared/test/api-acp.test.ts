@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   acpPermissionRequestSchema,
+  agentAcpInfoSchema,
   acpToolCallSchema,
   answerApprovalRequestSchema,
   answerApprovalResponseSchema,
@@ -95,5 +96,44 @@ describe("ACP session shapes (contract §14.2–§14.4)", () => {
         backend: "acp",
       }).backend,
     ).toBe("acp");
+  });
+});
+
+describe("acp info of an agents row (contract §14.1)", () => {
+  const base = {
+    support: "official",
+    program: "codex-acp",
+    installed: true,
+    resume: "load",
+  };
+
+  it("stays valid without the capabilities of the last initialize", () => {
+    expect(agentAcpInfoSchema.parse(base).capabilities).toBeUndefined();
+  });
+
+  it("carries the capabilities and the auth methods without terminal args", () => {
+    const parsed = agentAcpInfoSchema.parse({
+      ...base,
+      capabilities: {
+        load: true,
+        resume: true,
+        list: true,
+        close: false,
+        logout: false,
+        image: true,
+        audio: false,
+        embeddedContext: true,
+        mcpHttp: false,
+        mcpSse: false,
+        authMethods: [
+          { id: "login", name: "Log in", type: "terminal", supported: true },
+        ],
+      },
+    });
+    expect(parsed.capabilities?.list).toBe(true);
+    expect(parsed.capabilities?.authMethods[0]).toMatchObject({
+      id: "login",
+      type: "terminal",
+    });
   });
 });

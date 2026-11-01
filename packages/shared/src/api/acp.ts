@@ -25,6 +25,40 @@ export const acpSupportSchema = z.enum(ACP_SUPPORT);
 export const ACP_RESUME = ["load", "resume", "none"] as const;
 export const acpResumeSchema = z.enum(ACP_RESUME);
 
+/**
+ * An authentication method the agent declared in `initialize`. A `terminal`
+ * method is run by the host (the adapter command with the method's own
+ * arguments); its `args` / `env` never leave the core.
+ */
+export const acpAuthMethodInfoSchema = z.looseObject({
+  id: z.string(),
+  name: z.string(),
+  description: z.string().optional(),
+  type: z.enum(["agent", "terminal"]),
+  /** Whether this core can run the method (false on an older client). */
+  supported: z.boolean().optional(),
+});
+
+/**
+ * What the agent said in its last `initialize` (contract §14.1). Only present
+ * after the adapter has been started or probed once; the list never starts one.
+ */
+export const agentAcpCapabilitiesSchema = z.looseObject({
+  load: z.boolean(),
+  resume: z.boolean(),
+  /** `session/list`: the agent can list its own sessions. */
+  list: z.boolean(),
+  /** `session/close`. */
+  close: z.boolean(),
+  logout: z.boolean(),
+  image: z.boolean(),
+  audio: z.boolean(),
+  embeddedContext: z.boolean(),
+  mcpHttp: z.boolean(),
+  mcpSse: z.boolean(),
+  authMethods: z.array(acpAuthMethodInfoSchema),
+});
+
 /** The `acp` field of a `GET /api/agents` row (contract §14.1). */
 export const agentAcpInfoSchema = z.looseObject({
   support: acpSupportSchema,
@@ -33,6 +67,7 @@ export const agentAcpInfoSchema = z.looseObject({
   installed: z.boolean(),
   version: z.string().optional(),
   resume: acpResumeSchema,
+  capabilities: agentAcpCapabilitiesSchema.optional(),
 });
 
 /* ----------------------- 适配器与 CLI 的安装（§39.7、§47） ----------------------- */
@@ -605,6 +640,8 @@ export const acpPrestartRequestSchema = z.object({
 export type AcpSupport = (typeof ACP_SUPPORT)[number];
 export type AcpResume = (typeof ACP_RESUME)[number];
 export type AgentAcpInfo = z.infer<typeof agentAcpInfoSchema>;
+export type AcpAuthMethodInfo = z.infer<typeof acpAuthMethodInfoSchema>;
+export type AgentAcpCapabilities = z.infer<typeof agentAcpCapabilitiesSchema>;
 export type AcpContentBlock = z.infer<typeof acpContentBlockSchema>;
 export type AcpToolKind = (typeof ACP_TOOL_KINDS)[number];
 export type AcpToolCallStatus = (typeof ACP_TOOL_CALL_STATUSES)[number];
