@@ -136,6 +136,7 @@ export {
   type AcpHostSession,
   type AcpStartOptions,
   probeAcp,
+  rememberedAcpCapabilities,
   rememberedAcpVersion,
   startAcp,
   startAdapter,

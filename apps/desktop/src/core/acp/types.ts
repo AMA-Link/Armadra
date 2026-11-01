@@ -6,9 +6,11 @@
  */
 export type {
   AcpAgentCapabilities,
+  AcpAuthMethod,
   AcpContentBlock,
   AcpImplementationInfo,
   AcpInitializeResult,
+  AcpListSessionsResult,
   AcpLoadSessionResult,
   AcpMcpServer,
   AcpNewSessionResult,

@@ -55,6 +55,7 @@ import {
   withConfigValue,
 } from "./models";
 import type {
+  AcpAuthMethod,
   AcpInitializeResult,
   AcpMcpServer,
   AcpSessionModeState,
@@ -170,8 +171,101 @@ export interface AcpCapabilities {
   readonly close: boolean;
   readonly images: boolean;
   readonly embeddedContext: boolean;
-  /** 声明了鉴权方法：没登录时 `session/new` 会答 auth_required。 */
-  readonly authMethods: readonly string[];
+  /** 声明了 `promptCapabilities.audio`（只读能力，没有音频附件入口）。 */
+  readonly audio: boolean;
+  /** `mcpCapabilities`：Agent 能连的 MCP 传输（stdio 总是支持）。只记录，暂不发 http / sse。 */
+  readonly mcp: { readonly http: boolean; readonly sse: boolean };
+  /** 声明了 `auth.logout`（客户端的 `supportsLogout()` 也可以补充）。 */
+  readonly logout: boolean;
+  /**
+   * 声明了的鉴权方法，原样保留（id、名称、说明、类型，terminal 型还有 `args` /
+   * `env`）：没登录时 `session/new` 会答 auth_required。
+   */
+  readonly authMethods: readonly AcpAuthMethodInfo[];
+  /** {@link authMethods} 的 id 列表。 */
+  readonly authMethodIds: readonly string[];
+}
+
+/** 一条鉴权方法。terminal 型带宿主要跑的 `args` 与 `env`（不上线，只在 core 内用）。 */
+export interface AcpAuthMethodInfo {
+  readonly id: string;
+  readonly name: string;
+  readonly description?: string;
+  readonly type: "agent" | "terminal";
+  readonly args?: readonly string[];
+  readonly env?: Readonly<Record<string, string>>;
+}
+
+/** `GET /api/agents` 行里 `acp.capabilities` 的形状（契约 §14.1）：不含 terminal 型的 `args` / `env`。 */
+export interface AcpCapabilitiesWire {
+  readonly load: boolean;
+  readonly resume: boolean;
+  readonly list: boolean;
+  readonly close: boolean;
+  readonly logout: boolean;
+  readonly image: boolean;
+  readonly audio: boolean;
+  readonly embeddedContext: boolean;
+  readonly mcpHttp: boolean;
+  readonly mcpSse: boolean;
+  readonly authMethods: readonly {
+    readonly id: string;
+    readonly name: string;
+    readonly description?: string;
+    readonly type: "agent" | "terminal";
+    /** 这个构建的客户端跑得了它。 */
+    readonly supported: boolean;
+  }[];
+}
+
+export function capabilitiesWire(
+  capabilities: AcpCapabilities,
+  authSupported: boolean = acpClientFeatures().auth,
+): AcpCapabilitiesWire {
+  return {
+    load: capabilities.load,
+    resume: capabilities.resume,
+    list: capabilities.list,
+    close: capabilities.close,
+    logout: capabilities.logout && authSupported,
+    image: capabilities.images,
+    audio: capabilities.audio,
+    embeddedContext: capabilities.embeddedContext,
+    mcpHttp: capabilities.mcp.http,
+    mcpSse: capabilities.mcp.sse,
+    authMethods: capabilities.authMethods.map((method) => ({
+      id: method.id,
+      name: method.name,
+      ...(method.description === undefined
+        ? {}
+        : { description: method.description }),
+      type: method.type,
+      supported: authSupported,
+    })),
+  };
+}
+
+export function authMethodOf(method: AcpAuthMethod): AcpAuthMethodInfo {
+  const description =
+    typeof method.description === "string" && method.description !== ""
+      ? method.description
+      : undefined;
+  const base = {
+    id: method.id,
+    name: method.name,
+    ...(description === undefined ? {} : { description }),
+  };
+  if (method.type !== "terminal") return { ...base, type: "agent" };
+  return {
+    ...base,
+    type: "terminal",
+    ...(Array.isArray(method.args) ? { args: method.args.map(String) } : {}),
+    ...(method.env !== undefined &&
+    method.env !== null &&
+    typeof method.env === "object"
+      ? { env: { ...method.env } }
+      : {}),
+  };
 }
 
 export type AcpOpenMethod = "new" | "load" | "resume";
@@ -289,6 +383,23 @@ export interface AcpHostSession {
 /* -------------------------------- 版本缓存 -------------------------------- */
 
 const versions = new Map<string, string>();
+const noted = new Map<string, AcpCapabilities>();
+
+/** 记下这家最近一次 `initialize` 报的版本与能力（列表只读缓存）。 */
+function remember(agentId: string | undefined, capabilities: AcpCapabilities) {
+  if (agentId === undefined) return;
+  if (capabilities.agent !== undefined) {
+    versions.set(agentId, capabilities.agent.version);
+  }
+  noted.set(agentId, capabilities);
+}
+
+/** 这家最近一次 `initialize` 报的能力；没起过就缺席。列表从不为它起进程。 */
+export function rememberedAcpCapabilities(
+  agentId: string,
+): AcpCapabilities | undefined {
+  return noted.get(agentId);
+}
 
 /** 这家最近一次 `initialize` 报的 `agentInfo.version`；列表只读缓存、不起进程。 */
 export function rememberedAcpVersion(agentId: string): string | undefined {
@@ -298,11 +409,13 @@ export function rememberedAcpVersion(agentId: string): string | undefined {
 /** 这家的适配器换过了（重装）：旧版本号不再作数，下次起会话时重新记。 */
 export function forgetAcpVersion(agentId: string): void {
   versions.delete(agentId);
+  noted.delete(agentId);
 }
 
 /** 测试用。 */
 export function forgetAcpVersions(): void {
   versions.clear();
+  noted.clear();
 }
 
 /* --------------------------------- 协商 ---------------------------------- */
@@ -310,6 +423,7 @@ export function forgetAcpVersions(): void {
 export function capabilitiesOf(result: AcpInitializeResult): AcpCapabilities {
   const agent = result.agentCapabilities ?? {};
   const info = result.agentInfo;
+  const authMethods = (result.authMethods ?? []).map(authMethodOf);
   return {
     protocolVersion: result.protocolVersion,
     ...(info === undefined
@@ -321,7 +435,14 @@ export function capabilitiesOf(result: AcpInitializeResult): AcpCapabilities {
     close: agent.sessionCapabilities?.close != null,
     images: agent.promptCapabilities?.image === true,
     embeddedContext: agent.promptCapabilities?.embeddedContext === true,
-    authMethods: (result.authMethods ?? []).map((method) => method.id),
+    audio: agent.promptCapabilities?.audio === true,
+    mcp: {
+      http: agent.mcpCapabilities?.http === true,
+      sse: agent.mcpCapabilities?.sse === true,
+    },
+    logout: agent.auth?.logout != null,
+    authMethods,
+    authMethodIds: authMethods.map((method) => method.id),
   };
 }
 
@@ -407,9 +528,7 @@ export async function startAcp(
       clock.phase("initialize");
       ({ capabilities, initialized } = await negotiate(process_, options));
     }
-    if (options.agentId !== undefined && capabilities.agent !== undefined) {
-      versions.set(options.agentId, capabilities.agent.version);
-    }
+    remember(options.agentId, capabilities);
 
     clock.phase("session");
     const opener = sessionOpener(process_.client, options.mcpServers ?? []);
@@ -979,9 +1098,7 @@ export async function probeAcp(
   });
   try {
     const { capabilities } = await negotiate(process_, options);
-    if (options.agentId !== undefined && capabilities.agent !== undefined) {
-      versions.set(options.agentId, capabilities.agent.version);
-    }
+    remember(options.agentId, capabilities);
     return capabilities;
   } finally {
     await process_.terminate();

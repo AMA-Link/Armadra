@@ -122,6 +122,11 @@ export interface AcpClientFeatures {
   readonly configOptions: boolean;
   /** 接 `terminal/*`：构造参数里的 `onTerminal`，给了它才声明 `terminal: true`。 */
   readonly terminal: boolean;
+  /**
+   * 认证：实例有 `authenticate(methodId)`，构造参数 `authTerminal` 声明宿主能跑
+   * terminal 型方法。按原型上有没有这个方法判（上游没有登记特性名）。
+   */
+  readonly auth: boolean;
 }
 
 /** 这一版客户端的可选能力；`client` 只给测试换。 */
@@ -134,11 +139,15 @@ export function acpClientFeatures(
     typeof client.features === "object" && client.features !== null
       ? (client.features as Record<string, unknown>)
       : {};
+  const prototype = (client as { prototype?: Record<string, unknown> })
+    .prototype;
   return {
     mcpServers: features.mcpServers === true,
     elicitation: features.elicitation === true,
     configOptions: features.configOptions === true,
     terminal: features.terminal === true,
+    auth:
+      features.auth === true || typeof prototype?.authenticate === "function",
   };
 }
 

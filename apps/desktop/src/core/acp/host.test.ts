@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { fakeAcpAgentPath } from "@armadra/agent/acp";
+import type { AcpInitializeResult } from "@armadra/agent/acp";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { type AcpAdapter, acpAdapter } from "./adapters";
@@ -15,6 +16,8 @@ import {
   type AcpStartTimings,
   type AcpUpdateMeta,
   adapterStartOptions,
+  capabilitiesOf,
+  capabilitiesWire,
   forgetAcpVersions,
   probeAcp,
   rememberedAcpVersion,
@@ -270,6 +273,93 @@ describe("startAcp", () => {
       initializeTimeoutMs: 200,
     });
     expect(error.code).toBe("acp_initialize_timeout");
+  });
+});
+
+describe("capabilitiesOf", () => {
+  const initialized = (
+    extra: Partial<AcpInitializeResult>,
+  ): AcpInitializeResult => ({ protocolVersion: 1, ...extra });
+
+  it("keeps the full auth methods and a derived id list (P3-10)", () => {
+    const capabilities = capabilitiesOf(
+      initialized({
+        authMethods: [
+          { id: "key", name: "API key", description: "paste a key" },
+          {
+            type: "terminal",
+            id: "login",
+            name: "Log in",
+            args: ["--login"],
+            env: { A: "1" },
+          },
+        ],
+      }),
+    );
+    expect(capabilities.authMethodIds).toEqual(["key", "login"]);
+    expect(capabilities.authMethods).toEqual([
+      { id: "key", name: "API key", description: "paste a key", type: "agent" },
+      {
+        id: "login",
+        name: "Log in",
+        type: "terminal",
+        args: ["--login"],
+        env: { A: "1" },
+      },
+    ]);
+  });
+
+  it("reads promptCapabilities.audio, mcpCapabilities and auth.logout (P3-6, P3-9)", () => {
+    expect(capabilitiesOf(initialized({}))).toMatchObject({
+      audio: false,
+      mcp: { http: false, sse: false },
+      logout: false,
+    });
+    const capabilities = capabilitiesOf(
+      initialized({
+        agentCapabilities: {
+          promptCapabilities: { audio: true, image: true },
+          mcpCapabilities: { http: true, sse: false },
+          auth: { logout: {} },
+        },
+      }),
+    );
+    expect(capabilities).toMatchObject({
+      audio: true,
+      images: true,
+      mcp: { http: true, sse: false },
+      logout: true,
+    });
+  });
+
+  it("puts the capabilities on the wire without terminal args or env", () => {
+    const capabilities = capabilitiesOf(
+      initialized({
+        agentCapabilities: {
+          promptCapabilities: { audio: true },
+          mcpCapabilities: { sse: true },
+          auth: { logout: {} },
+        },
+        authMethods: [
+          { type: "terminal", id: "login", name: "Log in", args: ["--x"] },
+        ],
+      }),
+    );
+    const wire = capabilitiesWire(capabilities, true);
+    expect(wire).toMatchObject({
+      audio: true,
+      mcpSse: true,
+      mcpHttp: false,
+      logout: true,
+      authMethods: [
+        { id: "login", name: "Log in", type: "terminal", supported: true },
+      ],
+    });
+    expect(JSON.stringify(wire)).not.toContain("--x");
+    // 旧客户端跑不了认证：方法照列，但标记不可用，登出收起。
+    const old = capabilitiesWire(capabilities, false);
+    expect(old.logout).toBe(false);
+    expect(old.authMethods[0]?.supported).toBe(false);
   });
 });
 

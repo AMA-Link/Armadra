@@ -317,6 +317,21 @@ describe("listAgents 的 acp", () => {
     expect(
       installed.find((row) => row.id === "claude")?.acp?.version,
     ).toBeUndefined();
+    // 同一次 initialize 报的能力一并带出：fake agent 声明了 list / close。
+    expect(
+      installed.find((row) => row.id === "codex")?.acp?.capabilities,
+    ).toMatchObject({
+      load: true,
+      list: true,
+      close: true,
+      audio: false,
+      mcpHttp: false,
+      mcpSse: false,
+      authMethods: [],
+    });
+    expect(
+      installed.find((row) => row.id === "claude")?.acp,
+    ).not.toHaveProperty("capabilities");
     const gone = rowsWith({ ...isolated(), PATH: join(home, "empty") });
     expect(gone.find((row) => row.id === "codex")?.acp).toMatchObject({
       installed: false,
