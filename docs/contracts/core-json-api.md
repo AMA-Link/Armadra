@@ -4826,16 +4826,16 @@ owner（本机会话，或已信任设备经通道的 owner 会话）：`{ sourc
 
 所有新列可空（旧行不动），时刻一律 RFC 3339 字符串：
 
-| 列               | 内容                                                                                                                                                          |
-| ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `title`          | 一行标题，不超过 80 字。派发时给出：`open-agent --item-title`（runner 给的，任务正文的第一行）优先，其次 `--title`，再次任务正文第一行；`team` 成员取成员标题 |
-| `origin_json`    | 来源 `{ kind: "human" \| "inbox" \| "schedule" \| "external", ref, text? }`。本期派发一律是 `{ kind: "human", ref: <协调者节点 id>, text: <任务正文> }`       |
-| `mandate_json`   | 授权 `{ by, basis: "asked" \| "rule", scope, at }`，派发时写入，之后没有任何语句改它。本期是 `{ by: <协调者节点 id>, basis: "asked", scope: "dispatch", at }` |
-| `report_json`    | 最近一次报告 `{ state, summary, at }`                                                                                                                         |
-| `reports_json`   | 报告历史（含最近一次，最早的在前，最多 20 条），供 `items --item` 读；不进 `coordinator.tasks`                                                                |
-| `attention_json` | 待人决定的问题，**单槽** `{ question, raisedAt }`                                                                                                             |
-| `handback_json`  | 交回记录 `{ reason, at }`，每个工作项只能有一条                                                                                                               |
-| `stage`          | §90.2 函数结果的缓存，只供查询与排序；读到与函数不一致时以函数为准，并顺手更新                                                                                |
+| 列               | 内容                                                                                                                                                                                                                                           |
+| ---------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `title`          | 一行标题，不超过 80 字。派发时给出：`open-agent --item-title`（runner 给的，任务正文的第一行）优先，其次 `--title`，再次任务正文第一行；`team` 成员取成员标题                                                                                  |
+| `origin_json`    | 来源 `{ kind: "human" \| "inbox" \| "schedule" \| "external", ref, text? }`。派发是 `{ kind: "human", ref: <协调者节点 id>, text }`：`text` 取 `open-agent` / `team` 的 `--origin`（人的原话原样，去控制字符、截到 8000 字），没给就是任务正文 |
+| `mandate_json`   | 授权 `{ by, basis: "asked" \| "rule", scope, at }`，派发时写入，之后没有任何语句改它。本期是 `{ by: <协调者节点 id>, basis: "asked", scope: "dispatch", at }`                                                                                  |
+| `report_json`    | 最近一次报告 `{ state, summary, at }`                                                                                                                                                                                                          |
+| `reports_json`   | 报告历史（含最近一次，最早的在前，最多 20 条），供 `items --item` 读；不进 `coordinator.tasks`                                                                                                                                                 |
+| `attention_json` | 待人决定的问题，**单槽** `{ question, raisedAt }`                                                                                                                                                                                              |
+| `handback_json`  | 交回记录 `{ reason, at }`，每个工作项只能有一条                                                                                                                                                                                                |
+| `stage`          | §90.2 函数结果的缓存，只供查询与排序；读到与函数不一致时以函数为准，并顺手更新                                                                                                                                                                 |
 
 任务重试（§15.7 的「重试」与换绑）会清空 `report_json` 与 `attention_json`（重新开始一次），保留历史、来源与授权。
 
@@ -4861,15 +4861,16 @@ owner（本机会话，或已信任设备经通道的 owner 会话）：`{ sourc
 - **`report`** `--state progress|waiting|ready|blocked|failed --summary <≤300 字> [--human-action <问题> | --clear-action] [--item <id>]`
   - `--item` 缺省取本节点名下唯一一个 `running` 的工作项。节点名下没有工作项：`404 no_work_item`；有几个：`409 ambiguous_item`；没有进行中的：`409 no_running_item`；`--item` 不是本节点名下的（含不存在）：`404 item_not_found`。
   - `--human-action`（≤300 字）写进单槽：给出就替换（`raisedAt` 记现在），省略就保持，`--clear-action` 清除；两者同给 `400 bad_request`；`--human-action` 不带值 `400 bad_request`。
-  - 超长不截断，直接 `400 bad_request`。成功后推 §15.4 的 `workflow.task`，答 `result: { item, state, stage, attention }`。
-- **`handback`** `--item <id> --reason <≤100 字>`：把一条跟进交回协调者。每个工作项只能交回一次，再交 `409 already_handed_back`；不是本节点名下的 `404 item_not_found`。本期只落记录（`handback_json`）并推 `workflow.task`，自动路由在 R2。
+  - 超长不截断，直接 `400 bad_request`。阶段变了、或报告要紧（下一条）、或清了待决问题时推 §15.4 的 `workflow.task`；阶段没变的进度报告不推，免得每块画板为每一步进度重读一次。答 `result: { item, state, stage, attention, notified }`。
+  - **告诉协调者**：`ready` / `blocked` / `failed`，或带了 `--human-action` 的报告，在协调者收件箱里留一行（`post`，键 `report:<id>:<序号>:<时刻>`，幂等），由已有的空闲唤醒提醒它；`progress` / `waiting` 只记账。协调者节点不在、线断了或收件箱满了就不留（`notified: false`），报告照样记进账本。
+- **`handback`** `--item <id> --reason <≤100 字>`：把一条跟进交回协调者。每个工作项只能交回一次，再交 `409 already_handed_back`；不是本节点名下的 `404 item_not_found`。本期落记录（`handback_json`）、推 `workflow.task`，并在协调者收件箱里留一行（键 `handback:<id>`，留不下时 `notified: false`）；自动路由在 R2。
 - **`items`** `[--stage <阶段>] [--item <id>] [--limit N] [--offset N]`：调用者看得到的行是它自己派发的（协调者）与派给它的（成员自己的），别的都看不到。
   - 列表：`person/*` 在前，同一阶段内新的在前；`--limit` 1–50（缺省 20），`--offset` 是跳过的行数；`message` 每项一行（id · 标题 · 节点 · 阶段 · 最近报告首行 · `? 待决问题`），末尾写明接着读的参数；`result: { items: [{ id, title, nodeId, nodeTitle, stage, status, report, attention }], total, offset, next }`，`next` 为 `null` 表示读完。`--stage` 不是 §90.2 的取值 `400 bad_request`。
   - 单项（`--item`）：在列表字段之外多 `mandate`、`handback`、`reports`（报告历史）与 `origin: { kind, ref, text, from, to, size, next }`。来源原文按 #674 的续读约定一段一段给：每段最多 2048 字节，起点与终点都对齐到字符边界，`--offset` 是字节位置，`next` 非空就用 `--offset <next>` 接着读，拼起来就是原文。没有这个工作项 `404 item_not_found`。
 
 ### 90.4 分派抽屉与节点头
 
-`coordinator.tasks` / `coordinator.retry`（§15.7、§43.3）的任务行多四个字段：`title: string | null`、`stage`（§90.2 的取值）、`report: { state, summary, at } | null`、`attention: { question, raisedAt } | null`。仍不带任务正文与成员的结果正文。页面在抽屉的成员行与成员节点头显示阶段，`person/*` 的成员排在前面；报告与交回各推一帧 `workflow.task`。
+`coordinator.tasks` / `coordinator.retry`（§15.7、§43.3）的任务行多四个字段：`title: string | null`、`stage`（§90.2 的取值）、`report: { state, summary, at } | null`、`attention: { question, raisedAt } | null`。仍不带任务正文与成员的结果正文。页面在抽屉的成员行与成员节点头显示阶段，`person/*` 的成员排在前面；推帧的时机见 §90.3。页面遇到不认识的阶段值（更新的 core）时这一行当作没有阶段，不让整张列表解析失败。
 
 ### 90.5 协调者不等待
 
