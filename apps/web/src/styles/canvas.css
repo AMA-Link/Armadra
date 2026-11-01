@@ -252,7 +252,17 @@
   .canvas-dock-row {
     --dock-bottom: calc(var(--mobile-nav-h) + var(--safe-bottom) + 10px);
     /* 手机上 Dock 要用整个宽度，缩略图改到它上方（下面那条规则）。 */
-    grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+    grid-template-columns: minmax(0, 1fr) minmax(0, auto) minmax(0, 1fr);
+  }
+  /* 放不下的宽度（竖屏 402 宽时 Dock 约 450px）让 Dock 自己横向滚动，
+     不再把最右的缩放钮顶出屏幕。 */
+  .canvas-dock {
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    scrollbar-width: none;
+  }
+  .canvas-dock::-webkit-scrollbar {
+    display: none;
   }
   .canvas-stage .react-flow__minimap {
     --navigation-bottom: calc(
