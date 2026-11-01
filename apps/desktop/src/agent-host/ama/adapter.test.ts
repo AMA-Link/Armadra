@@ -11,7 +11,9 @@ import { canvasToolNote } from "./instructions";
 import { ADAPTER_ID, create, hostApi } from "./main";
 import {
   AMA_SCHEMA_KEYWORDS,
+  MODEL_WAIT_SECONDS,
   canvasTools,
+  modelInput,
   permissionOf,
   toolDefinition,
 } from "./tools";
@@ -228,6 +230,13 @@ describe("the instructions", () => {
     expect(note).toContain(TRUST_RULE);
   });
 
+  // #682: forward rather than rewrite; the ledger, not memory.
+  it("tell the coordinator to forward verbatim and read the ledger", () => {
+    const note = canvasToolNote();
+    expect(note).toContain("forward rather than rewrite");
+    expect(note).toContain("canvas_items");
+  });
+
   // coordinator-agent §4: one paragraph that holds for either preset.
   it("tell a coordinator without execution tools to hand the work on", () => {
     const note = canvasToolNote();
@@ -235,6 +244,29 @@ describe("the instructions", () => {
       "Without bash / edit / write you are the coordinator",
     );
     expect(note).toContain("canvas_team");
+  });
+});
+
+describe("the model-facing wait", () => {
+  const wait = VERB_TOOLS.find((tool) => tool.name === "canvas_wait")!;
+  const post = VERB_TOOLS.find((tool) => tool.name === "canvas_post")!;
+
+  // #682: the coordinator is woken with news; it must not block on one member.
+  it("caps canvas_wait at five seconds and leaves other tools alone", () => {
+    expect(modelInput(wait, { task: "t1", timeout: 60 })).toEqual({
+      task: "t1",
+      timeout: MODEL_WAIT_SECONDS,
+    });
+    expect(modelInput(wait, { task: "t1" })).toEqual({
+      task: "t1",
+      timeout: MODEL_WAIT_SECONDS,
+    });
+    expect(modelInput(wait, { task: "t1", timeout: 2 })).toEqual({
+      task: "t1",
+      timeout: 2,
+    });
+    const input = { to: "x", key: "k", body: "b", timeout: 60 };
+    expect(modelInput(post, input)).toBe(input);
   });
 });
 

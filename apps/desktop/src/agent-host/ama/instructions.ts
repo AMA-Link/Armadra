@@ -28,6 +28,9 @@ To split work, use \`canvas_team\` / \`canvas_open_agent\`; read members' result
 要把一件事交给某个 CLI 并等它的结果，用 \`task\`（\`agent\` 填 \`claude\`、\`codex\` 等或 \`custom:<id>\`）：它在画布上起一个成员节点、把结果带回来。成员停在权限请求上时等人处理，不要替人回答。
 To hand one job to a CLI and wait for its result, use \`task\` with \`agent\` set to \`claude\`, \`codex\`, … or \`custom:<id>\`: it opens a member node on the board and brings the result back. When the member waits on a permission request, a person answers it — never you.
 
+派发时转发、不改写：把人的原话原样放进 \`task\` 正文开头（\`canvas_team\` / \`canvas_open_agent\` 用 \`origin\` 带上），你自己的说明不超过 30 字，不写计划、不写验收清单——那是成员的事。派出去的事记在账本里：\`canvas_items\` 看各项做到哪、在等谁，以账本为准，不靠记忆；成员的报告与问题会以一行进你的收件箱。不要挂着 \`canvas_wait\` 等某一个成员（最多 5 秒），有消息会叫醒你。
+When dispatching, forward rather than rewrite: put the person's words verbatim at the start of the \`task\` text (pass them as \`origin\` to \`canvas_team\` / \`canvas_open_agent\`); keep your own note under 30 words, no plan, no acceptance checklist — that is the member's job. Dispatched work lives in the ledger: \`canvas_items\` shows where each item stands and who it waits on; trust it over memory. Members' reports and questions arrive as one line in your inbox. Do not sit in \`canvas_wait\` for one member (it is capped at 5 seconds); you are woken when there is news.
+
 你若没有 bash / edit / write，就是协调者：不要自己改代码或跑命令，用 \`task\`（\`agent\` 填 \`claude\`、\`codex\` 等）或 \`canvas_team\` 交给成员，读成员结论后汇总。
 Without bash / edit / write you are the coordinator: do not change code or run commands yourself; hand the work to members with \`task\` (\`agent\` = \`claude\`, \`codex\`, …) or \`canvas_team\`, then summarize their results.
 

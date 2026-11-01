@@ -26,7 +26,7 @@ import { type CallOutcome, callVerb } from "./client.js";
 
 /** Verbs that only read. Anything not listed in either table is `write`. */
 const READ: Readonly<Record<string, readonly string[]>> = {
-  canvas: ["help", "list", "inbox", "outbox", "handoff-read"],
+  canvas: ["help", "list", "inbox", "outbox", "handoff-read", "items"],
   // Every context verb reads a linked node; the budget is the core's.
   context: ["list", "summary", "transcript", "terminal"],
   browser: ["read", "wait", "capture", "pdf"],
@@ -101,6 +101,27 @@ export function amaSchema(schema: JsonSchema): ToolDefinition["parameters"] {
   return out as ToolDefinition["parameters"];
 }
 
+/**
+ * 模型直接调 `canvas_wait` 时最多挂这么多秒（#682）：协调者的输入靠唤醒推进
+ * 来，它不该阻塞在某一个成员身上。runner 自己的长轮询不经这里（`runners.ts`
+ * 直接调动词），不受影响。
+ */
+export const MODEL_WAIT_SECONDS = 5;
+
+/** 模型给的参数在交给动词之前收一道：现在只有 `wait` 的超时。 */
+export function modelInput(tool: VerbTool, input: unknown): unknown {
+  if (tool.name !== "canvas_wait") return input;
+  if (input === null || typeof input !== "object" || Array.isArray(input)) {
+    return input;
+  }
+  const record = input as Record<string, unknown>;
+  const asked = Number(record.timeout ?? MODEL_WAIT_SECONDS);
+  const timeout = Number.isFinite(asked)
+    ? Math.min(Math.max(0, Math.trunc(asked)), MODEL_WAIT_SECONDS)
+    : MODEL_WAIT_SECONDS;
+  return { ...record, timeout };
+}
+
 /** One verb as an ama tool definition. */
 export function toolDefinition(
   tool: VerbTool,
@@ -120,7 +141,7 @@ export function toolDefinition(
     },
     async execute(input: unknown): Promise<ToolResult> {
       try {
-        const outcome = await call(tool, input);
+        const outcome = await call(tool, modelInput(tool, input));
         return "ok" in outcome
           ? { content: outcome.ok === "" ? "ok" : outcome.ok }
           : { content: outcome.error, isError: true };
