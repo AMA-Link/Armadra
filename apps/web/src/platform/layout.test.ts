@@ -4,6 +4,19 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
 import { COMPACT_QUERY } from "./layout";
+import {
+  DESKTOP,
+  DESKTOP_NARROW,
+  DESKTOP_SHORT,
+  PHONE_LANDSCAPE,
+  PHONE_MAX_LANDSCAPE,
+  PHONE_PORTRAIT,
+  TABLET_LANDSCAPE,
+  TABLET_LANDSCAPE_KEYBOARD,
+  TABLET_PORTRAIT,
+  evaluate,
+  type Viewport,
+} from "./layout.testkit";
 
 /**
  * 手机布局判据（#683）：竖屏手机、横屏手机、平板、电脑窗口四种尺寸下的取值，
@@ -12,68 +25,6 @@ import { COMPACT_QUERY } from "./layout";
  * Node 里没有 `matchMedia`，这里用一个只认本判据用到的几个特性的小解释器
  * （`max-width`、`min-width`、`max-height`、`pointer`、`and`、逗号）求值。
  */
-interface Viewport {
-  readonly width: number;
-  readonly height: number;
-  readonly pointer: "coarse" | "fine";
-}
-
-function feature(name: string, value: string, viewport: Viewport): boolean {
-  const px = Number.parseFloat(value);
-  switch (name) {
-    case "max-width":
-      return viewport.width <= px;
-    case "min-width":
-      return viewport.width >= px;
-    case "max-height":
-      return viewport.height <= px;
-    case "pointer":
-      return viewport.pointer === value;
-    default:
-      throw new Error(`unsupported media feature: ${name}`);
-  }
-}
-
-function evaluate(query: string, viewport: Viewport): boolean {
-  return query.split(",").some((part) =>
-    part.split(/\band\b/).every((clause) => {
-      const found = /\(\s*([a-z-]+)\s*:\s*([^)]+?)\s*\)/.exec(clause);
-      if (!found) throw new Error(`cannot parse: ${clause}`);
-      return feature(found[1]!, found[2]!, viewport);
-    }),
-  );
-}
-
-const PHONE_PORTRAIT: Viewport = { width: 393, height: 852, pointer: "coarse" };
-const PHONE_LANDSCAPE: Viewport = {
-  width: 852,
-  height: 393,
-  pointer: "coarse",
-};
-const PHONE_MAX_LANDSCAPE: Viewport = {
-  width: 956,
-  height: 440,
-  pointer: "coarse",
-};
-const TABLET_PORTRAIT: Viewport = {
-  width: 820,
-  height: 1180,
-  pointer: "coarse",
-};
-const TABLET_LANDSCAPE: Viewport = {
-  width: 1180,
-  height: 820,
-  pointer: "coarse",
-};
-const TABLET_LANDSCAPE_KEYBOARD: Viewport = {
-  width: 1280,
-  height: 430,
-  pointer: "coarse",
-};
-const DESKTOP: Viewport = { width: 1440, height: 900, pointer: "fine" };
-const DESKTOP_SHORT: Viewport = { width: 1100, height: 420, pointer: "fine" };
-const DESKTOP_NARROW: Viewport = { width: 700, height: 900, pointer: "fine" };
-
 describe("COMPACT_QUERY", () => {
   it("竖屏手机是手机布局", () => {
     expect(evaluate(COMPACT_QUERY, PHONE_PORTRAIT)).toBe(true);
@@ -145,4 +96,13 @@ describe("样式表抄写的判据", () => {
       expect(read(file)).toContain(`@media ${COMPACT_QUERY} {`);
     },
   );
+
+  it("short 变体与 --mobile-nav-h 的矮屏取值按高度 ≤ 500px", () => {
+    expect(APP).toContain(
+      "@custom-variant short { @media (max-height: 500px) {",
+    );
+    expect(read("tokens.css")).toMatch(
+      /@media \(max-height: 500px\) \{ :root \{ --mobile-nav-h: 44px;/,
+    );
+  });
 });

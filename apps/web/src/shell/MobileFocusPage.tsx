@@ -91,7 +91,7 @@ export function MobileFocusPage() {
       style={visible ? { height: visible.height, top: visible.top } : undefined}
     >
       {/* 「返回」在左上角：iPadOS 窗口化时让开窗口控件。 */}
-      <div className="flex min-h-12 shrink-0 items-center gap-2 border-b border-border pr-2 pl-[calc(0.5rem+var(--window-controls-left))]">
+      <div className="flex min-h-12 short:min-h-(--tabbar-h) shrink-0 items-center gap-2 border-b border-border pr-2 pl-[calc(0.5rem+var(--window-controls-left))]">
         <Button
           type="button"
           size="touch"
@@ -176,7 +176,7 @@ export function TerminalKeyBar({ nodeId }: { nodeId: string }) {
       className="shrink-0 border-t border-border bg-panel pb-[var(--safe-bottom)]"
     >
       {controls && (
-        <div className="flex gap-1 overflow-x-auto px-2 pt-2">
+        <div className="flex gap-1 overflow-x-auto px-2 pt-2 short:pt-1">
           {MOBILE_CONTROL_KEYS.map((key) => (
             <KeyButton
               key={key.labelKey}
@@ -189,7 +189,7 @@ export function TerminalKeyBar({ nodeId }: { nodeId: string }) {
           ))}
         </div>
       )}
-      <div className="flex gap-1 overflow-x-auto p-2">
+      <div className="flex gap-1 overflow-x-auto p-2 short:py-1">
         {MOBILE_KEYS.map((key) => (
           <KeyButton
             key={key.labelKey}

@@ -55,6 +55,15 @@
     @slot;
   }
 }
+/*
+ * 矮屏变体：高度 ≤ 500px（手机横屏）。只管竖向的紧凑（导航、页头、按键条的
+ * 高度与内距），不判断布局形态；形态仍由 `compact:` / `desktop:` 决定。
+ */
+@custom-variant short {
+  @media (max-height: 500px) {
+    @slot;
+  }
+}
 @custom-variant desktop {
   @media (min-width: 768px) and (not ((pointer: coarse) and (max-height: 500px) and (max-width: 1023px))) {
     @slot;
