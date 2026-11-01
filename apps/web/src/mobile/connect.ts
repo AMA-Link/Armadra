@@ -535,6 +535,8 @@ export interface RelayEnrollment {
    * 发起设备码登录（`device` 结果），并在系统浏览器里打开批准页。
    */
   beginDevice(input: { readonly issuer: string }): Promise<RelayOutcome>;
+  /** 这个地址是不是 Armadra 云（匿名平台信息）；问不到当作不是。 */
+  isCloud(address: string): Promise<boolean>;
   /** 问一次批准了没有；批准后列出能挂的源，接着 `mount`。没有进行中的设备码是 `expired`。 */
   pollDevice(): Promise<DevicePollResult>;
   /** 再打开一次批准页（浏览器里弹窗被拦、或人关掉了）；打不开是 `false`。 */
@@ -756,6 +758,14 @@ export function createRelayEnrollment(
       const origin = issuerOrigin(input.issuer);
       if (origin === null) return failed("address");
       return gate(origin, startDevice);
+    },
+    async isCloud(address) {
+      const origin = issuerOrigin(address);
+      if (origin === null) return false;
+      const info = await cloudPlatformInfo(origin, deps.cloud).catch(
+        () => null,
+      );
+      return info?.mode === "saas";
     },
     async pollDevice() {
       const current = device;

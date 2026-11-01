@@ -450,6 +450,60 @@ describe("手机连接 Armadra 云 · 设备码", () => {
   });
 });
 
+describe("批准页的打开方式", () => {
+  const make = (available: boolean, native: boolean) => {
+    const net = routedFetch(baseRoutes);
+    const { bridge } = fakeBridge({
+      available,
+      openExternal: vi.fn(async () => native),
+      peek: { fingerprint: "ab".repeat(32), trusted: true, pinned: false },
+    });
+    const enroll = createRelayEnrollment({
+      bridge,
+      cloud: { fetch: net.fetch },
+      e2e: plainE2e(net.fetch),
+      reload: vi.fn(),
+    });
+    return { enroll, bridge };
+  };
+
+  it("原生 App：交给系统浏览器，不开页面内窗口", async () => {
+    const opener = vi.fn(() => ({}));
+    vi.stubGlobal("open", opener);
+    const { enroll, bridge } = make(true, true);
+    await enroll.beginDevice({ issuer: ISSUER });
+    expect(bridge.openExternal).toHaveBeenCalledWith(
+      `${ISSUER}/device?code=BCDF-GHJK`,
+    );
+    expect(opener).not.toHaveBeenCalled();
+  });
+
+  it("浏览器里跑的手机布局（没有原生插件）：window.open 打开，不带 opener", async () => {
+    const opener = vi.fn(() => ({}));
+    vi.stubGlobal("open", opener);
+    const { enroll, bridge } = make(false, false);
+    await enroll.beginDevice({ issuer: ISSUER });
+    expect(bridge.openExternal).not.toHaveBeenCalled();
+    expect(opener).toHaveBeenCalledWith(
+      `${ISSUER}/device?code=BCDF-GHJK`,
+      "_blank",
+      "noopener,noreferrer",
+    );
+  });
+
+  it("弹窗被拦：返回 false，点「在浏览器中打开」再试", async () => {
+    vi.stubGlobal(
+      "open",
+      vi.fn(() => null),
+    );
+    const { enroll } = make(false, false);
+    await expect(enroll.beginDevice({ issuer: ISSUER })).resolves.toMatchObject(
+      { kind: "device" },
+    );
+    await expect(enroll.openVerification()).resolves.toBe(false);
+  });
+});
+
 describe("verificationLink", () => {
   it("同源 https 才打开；没有 code 的补上，已有的不重复；回环允许 http", () => {
     expect(verificationLink(`${ISSUER}/device`, "BCDF-GHJK", ISSUER)).toBe(
