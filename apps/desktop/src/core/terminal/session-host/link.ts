@@ -1,5 +1,5 @@
 import { execFileSync, spawn } from "node:child_process";
-import { existsSync } from "node:fs";
+import { closeSync, existsSync, openSync, renameSync, statSync } from "node:fs";
 import { connect, type Socket } from "node:net";
 import { dirname, join, win32 } from "node:path";
 import {
@@ -423,7 +423,22 @@ export interface HostLaunch {
   readonly command: string;
   readonly args: readonly string[];
   readonly env: NodeJS.ProcessEnv;
+  /** Where the host's stderr goes (`HOST_LOG` in the data directory). */
+  readonly logFile: string;
 }
+
+/**
+ * The host's log, in the data directory it serves.
+ *
+ * The host is started without a console, so its stderr is the only place it
+ * can say why it left — a host that vanished with every shell it held and
+ * left nothing behind is what #659 was. What it writes is its own lifecycle
+ * (listening, connections, why it is leaving), never a session's output.
+ */
+export const HOST_LOG = "session-host.log";
+
+/** Past this size the log is moved to `HOST_LOG.1` before a host starts. */
+export const HOST_LOG_LIMIT = 1024 * 1024;
 
 /**
  * What to execute to bring a host up.
@@ -447,7 +462,29 @@ export function hostLaunch(
     command: runner !== undefined && runner !== "" ? runner : process.execPath,
     args: [resolveHostBundle(ambient), dataDir],
     env: { ...ambient, ELECTRON_RUN_AS_NODE: "1" },
+    logFile: join(dataDir, HOST_LOG),
   };
+}
+
+/**
+ * Opens the host's log for appending, keeping one previous file once it
+ * passes {@link HOST_LOG_LIMIT}. `undefined` when it cannot be opened: a log
+ * is not a reason for the host not to start.
+ */
+export function openHostLog(
+  file: string,
+  limit: number = HOST_LOG_LIMIT,
+): number | undefined {
+  try {
+    if (statSync(file).size > limit) renameSync(file, `${file}.1`);
+  } catch {
+    // No log yet, or it could not be moved; appending is still right.
+  }
+  try {
+    return openSync(file, "a");
+  } catch {
+    return undefined;
+  }
 }
 
 /**
@@ -458,14 +495,21 @@ export function hostLaunch(
  * process owning the consoles must not be tied to one that exits.
  */
 export function startHost(launch: HostLaunch): void {
-  // CREATE_NEW_PROCESS_GROUP | DETACHED_PROCESS | CREATE_NO_WINDOW
-  const child = spawn(launch.command, [...launch.args], {
-    detached: true,
-    stdio: "ignore",
-    windowsHide: true,
-    env: launch.env,
-  });
-  child.unref();
+  const log = openHostLog(launch.logFile);
+  try {
+    // CREATE_NEW_PROCESS_GROUP | DETACHED_PROCESS | CREATE_NO_WINDOW
+    const child = spawn(launch.command, [...launch.args], {
+      detached: true,
+      stdio: ["ignore", "ignore", log ?? "ignore"],
+      windowsHide: true,
+      env: launch.env,
+    });
+    child.unref();
+  } finally {
+    // The child has its own handle; this one would only keep the file open
+    // for as long as the core runs.
+    if (log !== undefined) closeSync(log);
+  }
 }
 
 /** Connects, retrying with backoff until `within` elapses. */
