@@ -131,6 +131,7 @@ export const timelineToolContentSchema = z.discriminatedUnion("type", [
     ...clippedShape,
   }),
   z.object({ type: z.literal("image"), ...blobRefShape }),
+  z.object({ type: z.literal("audio"), ...blobRefShape }),
   z.object({
     type: z.literal("resource"),
     uri: z.string().max(4_000),
@@ -191,6 +192,8 @@ export const timelineUserItemSchema = z.object({
   attachments: z.array(timelineAttachmentSchema).optional(),
   author: z.string().max(200).optional(),
   clientTurnId: z.string().max(128).optional(),
+  /** 适配器给的消息 id（chunk 的 `messageId`）；换了就是另一条消息。 */
+  messageId: z.string().max(200).optional(),
 });
 
 export const timelineAssistantItemSchema = z.object({
@@ -198,6 +201,7 @@ export const timelineAssistantItemSchema = z.object({
   kind: z.literal("assistant"),
   parts: z.array(timelinePartSchema),
   streaming: z.boolean(),
+  messageId: z.string().max(200).optional(),
 });
 
 export const timelineThoughtItemSchema = z.object({
@@ -206,6 +210,9 @@ export const timelineThoughtItemSchema = z.object({
   text: z.string(),
   streaming: z.boolean(),
   durationMs: countSchema.optional(),
+  /** 思考里的非文本块（图片、音频、资源）；纯文本思考没有这个字段。 */
+  parts: z.array(timelinePartSchema).optional(),
+  messageId: z.string().max(200).optional(),
 });
 
 /** 审批的结局记在工具上：关联审批的 `pendingId` 与答复。 */
@@ -262,12 +269,45 @@ export const TIMELINE_PENDING_STATES = [
 export const timelinePendingStateSchema = z.enum(TIMELINE_PENDING_STATES);
 export type TimelinePendingState = (typeof TIMELINE_PENDING_STATES)[number];
 
+/**
+ * 审批请求里 `toolCall` 的摘要：对应的 `tool` 条目不在手边（还没到、被截断、换了行）
+ * 时，卡片靠它说清「要做什么」。只记标题、种类、路径与行数、命令 / 路径 / 查询 /
+ * URL，不记差异正文、输出与其余入参；各字段都有上限。
+ */
+export const timelineApprovalCallSchema = z.object({
+  title: z.string().max(2_000).optional(),
+  toolKind: timelineToolKindSchema.optional(),
+  locations: z.array(timelineToolLocationSchema).max(20).optional(),
+  /** 差异按文件折成 `+N −M`，不带正文。 */
+  changes: z
+    .array(
+      z.object({
+        path: z.string().max(4_000),
+        addedLines: countSchema,
+        removedLines: countSchema,
+      }),
+    )
+    .max(20)
+    .optional(),
+  input: z
+    .object({
+      command: z.string().max(2_000).optional(),
+      path: z.string().max(4_000).optional(),
+      line: z.number().int().optional(),
+      query: z.string().max(500).optional(),
+      url: z.string().max(1_000).optional(),
+    })
+    .optional(),
+});
+export type TimelineApprovalCall = z.infer<typeof timelineApprovalCallSchema>;
+
 export const timelineApprovalItemSchema = z.object({
   ...itemBase,
   kind: z.literal("approval"),
   pendingId: z.string().max(200),
   protocol: z.string().max(40),
   toolCallId: z.string().max(200).optional(),
+  toolCall: timelineApprovalCallSchema.optional(),
   options: z.array(timelineApprovalOptionSchema),
   state: timelinePendingStateSchema,
   answer: z.object({ optionId: z.string().max(200).optional() }).optional(),
@@ -304,6 +344,7 @@ export const TIMELINE_NOTICE_CODES = [
   "woke",
   "exited",
   "error",
+  "info",
 ] as const;
 export const timelineNoticeCodeSchema = z.enum(TIMELINE_NOTICE_CODES);
 export type TimelineNoticeCode = (typeof TIMELINE_NOTICE_CODES)[number];
@@ -398,6 +439,26 @@ export type TimelineItemRecord = z.infer<typeof timelineItemRecordSchema>;
 
 /* ------------------------------- 头部值 ------------------------------- */
 
+/** 配置项里的一个可选值（分组已摊平）。 */
+export const timelineConfigChoiceSchema = z.object({
+  value: z.string().max(200),
+  name: z.string().max(500),
+  description: z.string().max(2_000).optional(),
+});
+
+/** 一个会话配置项：`select`（有 `options`）或 `boolean`。 */
+export const timelineConfigOptionSchema = z.object({
+  id: z.string().max(200),
+  name: z.string().max(500),
+  description: z.string().max(2_000).optional(),
+  /** `mode` / `model` / `thought_level`，或 Agent 自己的。 */
+  category: z.string().max(100).optional(),
+  type: z.enum(["select", "boolean"]),
+  currentValue: z.union([z.string().max(200), z.boolean()]),
+  options: z.array(timelineConfigChoiceSchema).max(500),
+});
+export type TimelineConfigOption = z.infer<typeof timelineConfigOptionSchema>;
+
 /**
  * 会话级的值，不是条目：用量、斜杠命令、模式、模型目录、标题。与条目共用
  * `seq`，所以随增量下发，也随快照恢复，core 重启后不再丢。
@@ -418,6 +479,8 @@ export const timelineHeadSchema = z.object({
       z.object({
         name: z.string().max(200),
         description: z.string().max(2_000),
+        /** `input.hint`：命令后面该输入什么（斜杠命令列表里当占位）。 */
+        hint: z.string().max(500).optional(),
       }),
     )
     .optional(),
@@ -447,6 +510,11 @@ export const timelineHeadSchema = z.object({
     })
     .nullable()
     .optional(),
+  /**
+   * 会话的完整配置项（模型、模式、推理强度、其他 select / boolean），已清洗；
+   * `config_option_update` 整份替换。模型与模式另有 `models` / `modes`。
+   */
+  configOptions: z.array(timelineConfigOptionSchema).nullable().optional(),
   /** 适配器在 `initialize` 里声明的提示能力（会话开好时写，之后不变）。 */
   promptCapabilities: z
     .object({ image: z.boolean(), embeddedContext: z.boolean() })

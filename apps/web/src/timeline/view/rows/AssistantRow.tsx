@@ -18,7 +18,7 @@ export interface AssistantRowProps {
   onRegenerate?: ((text: string) => void) | undefined;
 }
 
-function PartView({ part }: { part: TimelinePart }) {
+export function PartView({ part }: { part: TimelinePart }) {
   switch (part.type) {
     case "text":
       return part.text.trim() === "" ? null : (

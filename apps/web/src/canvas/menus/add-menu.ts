@@ -10,6 +10,7 @@ import {
   FolderTree,
   Frame,
   Globe,
+  History,
   LayoutGrid,
   Maximize,
   Network,
@@ -44,6 +45,7 @@ import { openAutomationPanel } from "../../panels/automation/open";
 import { openWorkflowPanel } from "../../workflow/store";
 import { isDesktop } from "../../platform";
 import { preferredView } from "../../acp/driver";
+import { attachable, openAttachSession } from "../../acp/attach-session";
 import { newNodeRole } from "../../agent/launch";
 import { defaultNodeSize } from "../../store/defaults";
 import { beginCoalesce, endCoalesce } from "../../store/canvas/history";
@@ -177,6 +179,49 @@ function itemVisible(item: AddMenuItem): boolean {
 }
 
 /**
+ * 选了一家 Agent：建一个终端节点（权限模式按偏好，不支持就提示）。`attach` 给了
+ * 就是「接管已有会话」：节点以 ACP 驱动建出，`agent.sessionId` 记着 Agent 自己
+ * 的会话 id，起会话时走已有的接回路径；会话在工作空间里的目录一并带上。
+ */
+export function createAgentNode(
+  context: AddMenuContext,
+  agent: AgentInfo,
+  t: Translate,
+  attach?: { sessionId: string; cwd?: string },
+): void {
+  const permissionMode = usePreferencesStore.getState().defaultPermissionMode;
+  if (
+    !supportedPermissionModes(agent.baseAgent ?? agent.id).includes(
+      permissionMode,
+    )
+  ) {
+    toast.error(t("settings.permissionUnsupported"));
+    return;
+  }
+  const role = newNodeRole(agent.id);
+  create(context, "terminal", {
+    position: nodeDropPosition("terminal", { anchor: context.position }),
+    title: agent.label,
+    data: {
+      kind: "terminal",
+      ...(attach?.cwd === undefined ? {} : { cwd: attach.cwd }),
+      agent: {
+        id: agent.id,
+        ...(permissionMode !== "default" ? { permissionMode } : {}),
+        // 用户亲手建的 ama 是协调者（coordinator-agent §4）；从别的节点派生
+        // 出来的成员不带角色。
+        ...(role === undefined ? {} : { role }),
+        // 缺省驱动与节点体（ACP 设计 §8 第 2 条、#462）：跟随默认视图偏好；
+        // 接管的会话只能在 ACP 下接回。
+        ...(attach === undefined
+          ? preferredView(agent)
+          : { driver: "acp" as const, sessionId: attach.sessionId }),
+      },
+    },
+  });
+}
+
+/**
  * 菜单项按 §3.2 的顺序：新建终端 → 各 Agent → 便签 → 文件管理器 → 打开文件…
  * → 浏览器 → ─ → 全选 / 适应视图 / 整理画布。选哪家就直接建哪家，没有向导
  * （ui-wave2 §6.1）。
@@ -193,38 +238,24 @@ export function buildAddMenu(
     icon: Bot,
     group: "agent",
     color: agent.color,
-    run: (context) => {
-      const permissionMode =
-        usePreferencesStore.getState().defaultPermissionMode;
-      if (
-        !supportedPermissionModes(agent.baseAgent ?? agent.id).includes(
-          permissionMode,
-        )
-      ) {
-        toast.error(t("settings.permissionUnsupported"));
-        return;
-      }
-      const role = newNodeRole(agent.id);
-      create(context, "terminal", {
-        position: nodeDropPosition("terminal", { anchor: context.position }),
-        title: agent.label,
-        data: {
-          kind: "terminal",
-          agent: {
-            id: agent.id,
-            ...(permissionMode !== "default" ? { permissionMode } : {}),
-            // 用户亲手建的 ama 是协调者（coordinator-agent §4）；从别的节点派生
-            // 出来的成员不带角色。
-            ...(role === undefined ? {} : { role }),
-            // 缺省驱动与节点体（ACP 设计 §8 第 2 条、#462）：跟随默认视图偏好。
-            ...preferredView(agent),
-          },
-        },
-      });
-    },
+    run: (context) => createAgentNode(context, agent, t),
     // 探测不到可执行文件时不隐藏、只禁用：用户需要知道这个 CLI 存在。
     disabledReason: () => (agent.resolvedPath ? null : t("add.notInstalled")),
   }));
+
+  // 「接管已有会话」：只给报了 `session/list` 能力的 Agent（core 起过一次适配器
+  // 之后才知道），选了在对话框里列出它自己历史里的会话。
+  const attachItems: AddMenuItem[] = agents
+    .filter((agent) => attachable(agent))
+    .map((agent) => ({
+      id: `add.attach.${agent.id}`,
+      label: t("add.attachSession", { name: agent.label }),
+      icon: History,
+      group: "agent" as const,
+      color: agent.color,
+      run: (context) => openAttachSession(context, agent),
+      disabledReason: () => (agent.resolvedPath ? null : t("add.notInstalled")),
+    }));
 
   const items: AddMenuItem[] = [
     {
@@ -240,6 +271,7 @@ export function buildAddMenu(
       },
     },
     ...agentItems,
+    ...attachItems,
     ...sshMenuItems(hosts, t),
     {
       id: "add.sticky",

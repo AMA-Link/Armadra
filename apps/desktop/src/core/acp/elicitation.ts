@@ -4,9 +4,11 @@
  *
  * 不 import 别的域：审批（`agent/approvals.ts`）与会话层都用它。
  *
- * 表单只认规范允许的扁平原始类型（字符串、数、整数、布尔，字符串可带 `enum`）。
- * Agent 给了别的形状（嵌套对象、数组）时请求照样进审批行，但只能拒绝或取消：
- * 一个页面画不出来的字段，人也就答不了它。
+ * 表单只认规范允许的扁平类型：字符串（可带 `enum` 或带标题的 `oneOf`）、数、
+ * 整数、布尔，以及字符串数组的多选（`items.enum`，或 `items.anyOf` / `oneOf` 的
+ * `const` + `title`）。带标题的写法收成 `enum` + `enumNames` 一种，页面与校验只认
+ * 这一种。Agent 给了别的形状（嵌套对象、数字数组）时请求照样进审批行，但只能拒绝
+ * 或取消：一个页面画不出来的字段，人也就答不了它。
  */
 
 import type {
@@ -47,6 +49,26 @@ function finite(value: unknown): number | undefined {
     : undefined;
 }
 
+/**
+ * 带标题的选项（`oneOf` / `anyOf` 里的 `{ const, title }`）收成 `enum` + `enumNames`。
+ * 有一项认不出（没有字符串 `const`）就整个答 `undefined`。
+ */
+function titledOptions(
+  raw: unknown,
+): { values: string[]; names: string[] } | undefined {
+  if (!Array.isArray(raw) || raw.length === 0) return undefined;
+  const values: string[] = [];
+  const names: string[] = [];
+  for (const item of raw.slice(0, ENUM_LIMIT)) {
+    if (typeof item !== "object" || item === null) return undefined;
+    const option = item as Record<string, unknown>;
+    if (typeof option.const !== "string") return undefined;
+    values.push(clip(option.const, TEXT_LIMIT));
+    names.push(clip(textOf(option.title) ?? option.const, TEXT_LIMIT));
+  }
+  return { values, names };
+}
+
 /** 一个字段收成规范的子集；认不出的答 `undefined`（整张表单就答不了）。 */
 function fieldOf(raw: unknown): AcpElicitationField | undefined {
   if (typeof raw !== "object" || raw === null) return undefined;
@@ -61,29 +83,31 @@ function fieldOf(raw: unknown): AcpElicitationField | undefined {
   };
   switch (field.type) {
     case "string": {
-      const values = Array.isArray(field.enum)
-        ? field.enum.filter((item): item is string => typeof item === "string")
-        : undefined;
-      const names = Array.isArray(field.enumNames)
-        ? field.enumNames.filter(
-            (item): item is string => typeof item === "string",
-          )
-        : undefined;
+      const titled =
+        field.oneOf === undefined ? undefined : titledOptions(field.oneOf);
+      // 写了 `oneOf` 却认不出：这个字段画不出来，不能当成自由文本放过去。
+      if (field.oneOf !== undefined && titled === undefined) return undefined;
+      const values =
+        titled?.values ??
+        (Array.isArray(field.enum)
+          ? field.enum
+              .filter((item): item is string => typeof item === "string")
+              .slice(0, ENUM_LIMIT)
+              .map((v) => clip(v, TEXT_LIMIT))
+          : undefined);
+      const names =
+        titled?.names ??
+        (Array.isArray(field.enumNames)
+          ? field.enumNames
+              .filter((item): item is string => typeof item === "string")
+              .slice(0, ENUM_LIMIT)
+              .map((v) => clip(v, TEXT_LIMIT))
+          : undefined);
       return {
         type: "string",
         ...common,
-        ...(values === undefined
-          ? {}
-          : {
-              enum: values.slice(0, ENUM_LIMIT).map((v) => clip(v, TEXT_LIMIT)),
-            }),
-        ...(names === undefined
-          ? {}
-          : {
-              enumNames: names
-                .slice(0, ENUM_LIMIT)
-                .map((v) => clip(v, TEXT_LIMIT)),
-            }),
+        ...(values === undefined ? {} : { enum: values }),
+        ...(names === undefined ? {} : { enumNames: names }),
         ...(textOf(field.format, 40) === undefined
           ? {}
           : { format: textOf(field.format, 40) }),
@@ -121,6 +145,46 @@ function fieldOf(raw: unknown): AcpElicitationField | undefined {
           ? { default: field.default }
           : {}),
       } as AcpElicitationField;
+    case "array": {
+      const items =
+        typeof field.items === "object" && field.items !== null
+          ? (field.items as Record<string, unknown>)
+          : undefined;
+      if (items === undefined || (items.type ?? "string") !== "string") {
+        return undefined;
+      }
+      const titled = titledOptions(items.anyOf ?? items.oneOf);
+      const plain = Array.isArray(items.enum)
+        ? items.enum
+            .filter((item): item is string => typeof item === "string")
+            .slice(0, ENUM_LIMIT)
+            .map((v) => clip(v, TEXT_LIMIT))
+        : undefined;
+      const values = titled?.values ?? plain;
+      // 没有选项的数组是自由输入的列表：页面画不出来。
+      if (values === undefined || values.length === 0) return undefined;
+      const defaults = Array.isArray(field.default)
+        ? field.default.filter(
+            (item): item is string =>
+              typeof item === "string" && values.includes(item),
+          )
+        : undefined;
+      return {
+        type: "array",
+        ...common,
+        items: {
+          enum: values,
+          ...(titled === undefined ? {} : { enumNames: titled.names }),
+        },
+        ...(finite(field.minItems) === undefined
+          ? {}
+          : { minItems: finite(field.minItems) }),
+        ...(finite(field.maxItems) === undefined
+          ? {}
+          : { maxItems: finite(field.maxItems) }),
+        ...(defaults === undefined ? {} : { default: defaults }),
+      } as AcpElicitationField;
+    }
     default:
       return undefined;
   }
@@ -227,6 +291,21 @@ function valueFits(
     }
     case "boolean":
       return typeof value === "boolean";
+    case "array": {
+      if (!Array.isArray(value) || value.length > ENUM_LIMIT) return false;
+      if (value.some((item) => typeof item !== "string")) return false;
+      if (value.some((item) => !field.items.enum.includes(item as string))) {
+        return false;
+      }
+      if (new Set(value).size !== value.length) return false;
+      if (field.minItems !== undefined && value.length < field.minItems) {
+        return false;
+      }
+      if (field.maxItems !== undefined && value.length > field.maxItems) {
+        return false;
+      }
+      return true;
+    }
     default:
       return false;
   }

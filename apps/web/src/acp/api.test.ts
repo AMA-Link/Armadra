@@ -32,7 +32,7 @@ vi.mock("@/api/source", async (importOriginal) => {
 });
 
 import { usePreferencesStore } from "@/app/preferences-store";
-import { usePrestartOnOpen } from "./api";
+import { acpApi, usePrestartOnOpen } from "./api";
 import { setDefaultDriverForTest } from "./driver";
 
 function agent(id: string, installed: boolean): AgentInfo {
@@ -98,5 +98,45 @@ describe("usePrestartOnOpen", () => {
     renderHook(() => usePrestartOnOpen([agent("claude", true)]));
     await Promise.resolve();
     expect(request).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("login and sessions of the agent", () => {
+  it("authenticate posts the method for the workspace's agent", async () => {
+    await acpApi.authenticate("w1", "claude", "login");
+    const [path, , init] = request.mock.calls[0] as [
+      string,
+      unknown,
+      RequestInit,
+    ];
+    expect(path).toBe("/api/acp/auth/authenticate");
+    expect(init.method).toBe("POST");
+    expect(JSON.parse(String(init.body))).toEqual({
+      workspaceId: "w1",
+      agentId: "claude",
+      methodId: "login",
+    });
+  });
+
+  it("logout and the session list use their own paths", async () => {
+    request.mockResolvedValue({ sessions: [] });
+    await acpApi.logout("w1", "claude");
+    expect(request.mock.calls[0]?.[0]).toBe("/api/acp/auth/logout");
+    await acpApi.listAgentSessions("w1", "claude", {
+      cwd: "/repo",
+      cursor: "c",
+    });
+    const [path, , init] = request.mock.calls[1] as [
+      string,
+      unknown,
+      RequestInit,
+    ];
+    expect(path).toBe("/api/acp/agent-sessions");
+    expect(JSON.parse(String(init.body))).toEqual({
+      workspaceId: "w1",
+      agentId: "claude",
+      cwd: "/repo",
+      cursor: "c",
+    });
   });
 });

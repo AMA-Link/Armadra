@@ -28,10 +28,11 @@ import {
   CollapsibleTrigger,
 } from "@/ui/collapsible";
 import { Tabs, TabsList, TabsTrigger } from "@/ui/tabs";
+import { toast } from "@/ui/toast";
 import { acpApi } from "./api";
 import { DiffBlock, DiffCounts, patchStat } from "./DiffBlock";
 import { useAnsweredStore } from "./answered";
-import type { AcpPermissionView } from "./approval-views";
+import type { AcpPermissionChange, AcpPermissionView } from "./approval-views";
 
 /** 详情里的入参最多先显示这么多行。 */
 export const PERMISSION_INPUT_LINES = 20;
@@ -65,11 +66,7 @@ function inputPreview(value: unknown): string {
     : text;
 }
 
-interface Change {
-  readonly path: string;
-  readonly line?: number | null | undefined;
-  readonly stat?: { additions: number; deletions: number } | undefined;
-}
+type Change = AcpPermissionChange;
 
 /**
  * 「将发生」的条目：差异按文件算 `+N −M`，没有差异的涉及文件（`locations`）只列名字。
@@ -95,9 +92,9 @@ export function changesOf(call: AcpToolCall): Change[] {
 }
 
 /** 「将发生」行：文件胶囊（等宽，带 `+N −M`），最多 3 枚，其余 `+N`。 */
-function WillHappen({ call }: { call: AcpToolCall }) {
+function WillHappen({ permission }: { permission: AcpPermissionView }) {
   const t = useT();
-  const changes = changesOf(call);
+  const changes = permission.changes ?? changesOf(permission.toolCall);
   if (changes.length === 0) return null;
   const shown = changes.slice(0, PERMISSION_CHANGES_SHOWN);
   const rest = changes.length - shown.length;
@@ -239,20 +236,41 @@ export function pairOf(
 /**
  * 答一次：先收起（会话视图的卡片与头部的允许 / 拒绝一起），再发请求——与
  * 头部直答同一个做法，下一条事件未必立刻到，不能让人对着答过的请求再点。
+ * 没答上就把卡片与头部按钮放回去（回合还卡在这条审批上），回 `false`。
  */
-export function answerPermission(
+export async function answerPermission(
   permission: AcpPermissionView,
   option: AcpPermissionOption,
-): Promise<unknown> {
+): Promise<boolean> {
   useAnsweredStore.getState().mark(permission.pendingId);
-  useAgentStatusStore.getState().resolveApproval(permission.pendingId);
-  return acpApi
-    .answer(
+  const status = useAgentStatusStore.getState();
+  const statusKey = status.resolveApproval(permission.pendingId);
+  try {
+    await acpApi.answer(
       permission.pendingId,
       isAllowOption(option) ? "allow" : "deny",
       option.optionId,
-    )
-    .catch(() => undefined);
+    );
+    return true;
+  } catch {
+    useAnsweredStore.getState().unmark(permission.pendingId);
+    if (statusKey !== undefined) {
+      useAgentStatusStore
+        .getState()
+        .reopenApproval(statusKey, permission.pendingId);
+    }
+    return false;
+  }
+}
+
+/**
+ * 同一种 kind 的选项不止一个：折成「本次 ｜ 始终」加两枚按钮会吞掉其余的，
+ * 这时把每个选项都列出来，按钮上写 Agent 给的名字。
+ */
+export function hasDuplicateKinds(
+  options: readonly AcpPermissionOption[],
+): boolean {
+  return new Set(options.map((option) => option.kind)).size < options.length;
 }
 
 /** 标题里要读的那段命令：`execute` 类（或入参里有 `command`）按命令画。 */
@@ -298,7 +316,9 @@ export function PermissionCard({
   const size = useApprovalSize();
   const titleId = React.useId();
   const options = sortedOptions(permission.options);
+  const listed = hasDuplicateKinds(options);
   const segmented =
+    !listed &&
     options.some((option) => option.kind === "allow_once") &&
     options.some((option) => option.kind === "allow_always");
   const [scope, setScope] = React.useState<PermissionScope>(
@@ -308,6 +328,15 @@ export function PermissionCard({
       : "always",
   );
   const { allow, reject } = pairOf(options, segmented ? scope : "once");
+  const optionLabel = (option: AcpPermissionOption) =>
+    option.name ||
+    t(
+      option.kind === "allow_always"
+        ? "acp.permission.allowAlways"
+        : isAllowOption(option)
+          ? "acp.permission.allow"
+          : "acp.permission.reject",
+    );
   const cardRef = React.useRef<HTMLDivElement>(null);
   const allowRef = React.useRef<HTMLButtonElement>(null);
   // 钉住时焦点落到「允许」——但人正在输入框里打字时不抢：那一下 Enter
@@ -326,7 +355,9 @@ export function PermissionCard({
 
   const answer = (option: AcpPermissionOption) => {
     const hadFocus = cardRef.current?.contains(document.activeElement) ?? false;
-    void answerPermission(permission, option);
+    void answerPermission(permission, option).then((ok) => {
+      if (!ok) toast.error(t("acp.permission.failed"));
+    });
     if (hadFocus) onAnswered?.();
   };
   const onKeyDown = (event: React.KeyboardEvent) => {
@@ -381,9 +412,43 @@ export function PermissionCard({
           <ApprovalText>{permission.toolCall.title}</ApprovalText>
         )}
       </ApprovalTitle>
-      <WillHappen call={permission.toolCall} />
+      <WillHappen permission={permission} />
       <Details permission={permission} />
-      {canAnswer ? (
+      {canAnswer && listed ? (
+        <ApprovalActions
+          leading={options.filter(isAllowOption).map((option) => (
+            <Button
+              key={option.optionId}
+              ref={option === allow ? allowRef : undefined}
+              size={size}
+              variant={option === allow ? "default" : "outline"}
+              {...(option === allow ? { shortcut: "↵" } : {})}
+              data-option={option.kind}
+              data-option-id={option.optionId}
+              onClick={() => answer(option)}
+            >
+              {optionLabel(option)}
+            </Button>
+          ))}
+          trailing={options
+            .filter((option) => !isAllowOption(option))
+            .map((option) => (
+              <Button
+                key={option.optionId}
+                size={size}
+                variant={
+                  option.kind === "reject_always" ? "destructive" : "outline"
+                }
+                {...(option === reject ? { shortcut: "Esc" } : {})}
+                data-option={option.kind}
+                data-option-id={option.optionId}
+                onClick={() => answer(option)}
+              >
+                {optionLabel(option)}
+              </Button>
+            ))}
+        />
+      ) : canAnswer ? (
         <ApprovalActions
           leading={
             segmented ? (
@@ -411,6 +476,7 @@ export function PermissionCard({
                     reject.kind === "reject_always" ? "destructive" : "outline"
                   }
                   shortcut="Esc"
+                  title={reject.name}
                   data-option={reject.kind}
                   onClick={() => answer(reject)}
                 >
@@ -422,6 +488,7 @@ export function PermissionCard({
                   ref={allowRef}
                   size={size}
                   shortcut="↵"
+                  title={allow.name}
                   data-option={allow.kind}
                   onClick={() => answer(allow)}
                 >

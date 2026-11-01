@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  acpElicitationAnswerSchema,
+  acpElicitationFormSchema,
   acpPermissionRequestSchema,
+  agentAcpInfoSchema,
   acpToolCallSchema,
   answerApprovalRequestSchema,
   answerApprovalResponseSchema,
@@ -95,5 +98,76 @@ describe("ACP session shapes (contract §14.2–§14.4)", () => {
         backend: "acp",
       }).backend,
     ).toBe("acp");
+  });
+});
+
+describe("acp info of an agents row (contract §14.1)", () => {
+  const base = {
+    support: "official",
+    program: "codex-acp",
+    installed: true,
+    resume: "load",
+  };
+
+  it("stays valid without the capabilities of the last initialize", () => {
+    expect(agentAcpInfoSchema.parse(base).capabilities).toBeUndefined();
+  });
+
+  it("carries the capabilities and the auth methods without terminal args", () => {
+    const parsed = agentAcpInfoSchema.parse({
+      ...base,
+      capabilities: {
+        load: true,
+        resume: true,
+        list: true,
+        close: false,
+        logout: false,
+        image: true,
+        audio: false,
+        embeddedContext: true,
+        mcpHttp: false,
+        mcpSse: false,
+        authMethods: [
+          { id: "login", name: "Log in", type: "terminal", supported: true },
+        ],
+      },
+    });
+    expect(parsed.capabilities?.list).toBe(true);
+    expect(parsed.capabilities?.authMethods[0]).toMatchObject({
+      id: "login",
+      type: "terminal",
+    });
+  });
+});
+
+describe("elicitation forms (contract §26.1)", () => {
+  it("draws a multi-select field and accepts its array answer", () => {
+    const form = acpElicitationFormSchema.parse({
+      type: "object",
+      properties: {
+        tags: {
+          type: "array",
+          items: { enum: ["a", "b"], enumNames: ["A", "B"] },
+          minItems: 1,
+          default: ["a"],
+        },
+      },
+    });
+    expect(form.properties.tags?.type).toBe("array");
+    expect(
+      acpElicitationAnswerSchema.parse({
+        action: "accept",
+        content: { tags: ["a"], name: "x", n: 2, ok: true },
+      }).content,
+    ).toEqual({ tags: ["a"], name: "x", n: 2, ok: true });
+  });
+
+  it("still refuses an array that is not a list of strings", () => {
+    expect(
+      acpElicitationAnswerSchema.safeParse({
+        action: "accept",
+        content: { tags: [1] },
+      }).success,
+    ).toBe(false);
   });
 });

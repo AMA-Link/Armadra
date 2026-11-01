@@ -7,6 +7,7 @@ import {
 
 import { useCanvasStore } from "../store/canvas-store";
 import {
+  AttachSessionDialog,
   AutomationDrawer,
   CommandPalette,
   ControlConfirmDialog,
@@ -34,6 +35,7 @@ import {
 import { DraftLayer } from "@/workflow/DraftCard";
 import { AgentSettingsDialog } from "@/nodes/AgentSettingsDialog";
 import { NodeNameDialog } from "@/nodes/NodeNameDialog";
+import { useAttachSessionStore } from "@/acp/attach-session";
 import { JoinedSourceOpener } from "./joined-source";
 import { useMountedOnce, useOverlayRequested } from "./overlay-gates";
 import { useLinkFragments } from "./use-link-fragments";
@@ -82,6 +84,7 @@ export function Overlays() {
   const merge = useOverlayRequested("merge");
   const share = useShareStore((state) => state.request !== null);
   const trust = useTrustDialog((state) => state.open);
+  const attach = useAttachSessionStore((state) => state.request !== null);
   useLinkFragments();
   useSourcesBootstrap();
 
@@ -138,6 +141,9 @@ export function Overlays() {
       </Gate>
       <Gate open={trust} shape="dialog">
         <CloudTrustDialog />
+      </Gate>
+      <Gate open={attach} shape="dialog">
+        <AttachSessionDialog />
       </Gate>
       <Gate open={panels.palette} shape="dialog">
         <CommandPalette />

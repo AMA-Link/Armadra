@@ -1,5 +1,10 @@
 import { type AcpResume, type AcpSupport, adapterFor } from "../acp/adapters";
-import { rememberedAcpVersion } from "../acp/host";
+import {
+  type AcpCapabilitiesWire,
+  capabilitiesWire,
+  rememberedAcpCapabilities,
+  rememberedAcpVersion,
+} from "../acp/host";
 import {
   type HistoryAvailability,
   availabilityOf,
@@ -80,6 +85,11 @@ export interface AgentAcpInfo {
   readonly installed: boolean;
   readonly version?: string;
   readonly resume: AcpResume;
+  /**
+   * 最近一次 `initialize` 报的能力（`session/list`、音频、MCP 传输、认证方法
+   * 等）；起过一次或探测过才有，列表从不为它起进程。
+   */
+  readonly capabilities?: AcpCapabilitiesWire;
 }
 
 export function listAgents(options: ListAgentsOptions): AgentListRow[] {
@@ -112,12 +122,14 @@ function acpOf(
   const installed =
     resolveCommand(adapter.program, options.env ?? process.env) !== undefined;
   const version = installed ? rememberedAcpVersion(provider) : undefined;
+  const noted = installed ? rememberedAcpCapabilities(provider) : undefined;
   return {
     support: adapter.support,
     program: adapter.program,
     installed,
     ...(version === undefined ? {} : { version }),
     resume: adapter.resume,
+    ...(noted === undefined ? {} : { capabilities: capabilitiesWire(noted) }),
   };
 }
 

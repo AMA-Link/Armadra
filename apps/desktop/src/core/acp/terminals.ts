@@ -207,7 +207,8 @@ function launchOf(
   return { program: command, args: [...args] };
 }
 
-function signalTree(pid: number, signal: NodeJS.Signals): void {
+/** 整个进程组（Windows 上整棵树）发信号；已经没了就算了。 */
+export function signalTree(pid: number, signal: NodeJS.Signals): void {
   if (process.platform === "win32") {
     spawnSync("taskkill", ["/pid", String(pid), "/T", "/F"], {
       windowsHide: true,

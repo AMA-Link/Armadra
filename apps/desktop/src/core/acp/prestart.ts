@@ -173,6 +173,14 @@ export class AcpPrestartPool {
     return prestarted;
   }
 
+  /** 这家的登录状态变了（登录、登出）：池里这家预启动的进程协商时还是旧状态，收掉。 */
+  dropAgent(agentId: string): void {
+    const prefix = `${agentId}\u0000`;
+    for (const [key, entry] of [...this.entries.entries()]) {
+      if (key.startsWith(prefix)) this.drop(key, entry);
+    }
+  }
+
   has(key: string): boolean {
     return this.entries.has(key);
   }

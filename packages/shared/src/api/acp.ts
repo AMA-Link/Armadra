@@ -25,6 +25,40 @@ export const acpSupportSchema = z.enum(ACP_SUPPORT);
 export const ACP_RESUME = ["load", "resume", "none"] as const;
 export const acpResumeSchema = z.enum(ACP_RESUME);
 
+/**
+ * An authentication method the agent declared in `initialize`. A `terminal`
+ * method is run by the host (the adapter command with the method's own
+ * arguments); its `args` / `env` never leave the core.
+ */
+export const acpAuthMethodInfoSchema = z.looseObject({
+  id: z.string(),
+  name: z.string(),
+  description: z.string().optional(),
+  type: z.enum(["agent", "terminal"]),
+  /** Whether this core can run the method (false on an older client). */
+  supported: z.boolean().optional(),
+});
+
+/**
+ * What the agent said in its last `initialize` (contract §14.1). Only present
+ * after the adapter has been started or probed once; the list never starts one.
+ */
+export const agentAcpCapabilitiesSchema = z.looseObject({
+  load: z.boolean(),
+  resume: z.boolean(),
+  /** `session/list`: the agent can list its own sessions. */
+  list: z.boolean(),
+  /** `session/close`. */
+  close: z.boolean(),
+  logout: z.boolean(),
+  image: z.boolean(),
+  audio: z.boolean(),
+  embeddedContext: z.boolean(),
+  mcpHttp: z.boolean(),
+  mcpSse: z.boolean(),
+  authMethods: z.array(acpAuthMethodInfoSchema),
+});
+
 /** The `acp` field of a `GET /api/agents` row (contract §14.1). */
 export const agentAcpInfoSchema = z.looseObject({
   support: acpSupportSchema,
@@ -33,6 +67,7 @@ export const agentAcpInfoSchema = z.looseObject({
   installed: z.boolean(),
   version: z.string().optional(),
   resume: acpResumeSchema,
+  capabilities: agentAcpCapabilitiesSchema.optional(),
 });
 
 /* ----------------------- 适配器与 CLI 的安装（§39.7、§47） ----------------------- */
@@ -318,6 +353,8 @@ export const acpUsageSchema = z.looseObject({
 export const acpAvailableCommandSchema = z.looseObject({
   name: z.string(),
   description: z.string().default(""),
+  /** `input.hint`: what to type after the command. */
+  hint: z.string().optional(),
 });
 
 export type AcpUsage = z.infer<typeof acpUsageSchema>;
@@ -451,6 +488,22 @@ export const acpElicitationFieldSchema = z.union([
     description: z.string().optional(),
     default: z.boolean().optional(),
   }),
+  /**
+   * Multi-select: an array of the strings in `items.enum` (titles in
+   * `items.enumNames`, the core folds `anyOf` / `oneOf` into this form).
+   */
+  z.looseObject({
+    type: z.literal("array"),
+    title: z.string().optional(),
+    description: z.string().optional(),
+    items: z.looseObject({
+      enum: z.array(z.string()),
+      enumNames: z.array(z.string()).optional(),
+    }),
+    minItems: z.number().optional(),
+    maxItems: z.number().optional(),
+    default: z.array(z.string()).optional(),
+  }),
 ]);
 
 export const acpElicitationFormSchema = z.looseObject({
@@ -492,7 +545,10 @@ export const acpElicitationActionSchema = z.enum(ACP_ELICITATION_ACTIONS);
 export const acpElicitationAnswerSchema = z.object({
   action: acpElicitationActionSchema,
   content: z
-    .record(z.string(), z.union([z.string(), z.number(), z.boolean()]))
+    .record(
+      z.string(),
+      z.union([z.string(), z.number(), z.boolean(), z.array(z.string())]),
+    )
     .optional(),
 });
 
@@ -519,6 +575,12 @@ export const acpModelStateSchema = z.looseObject({
 
 /** `PUT /api/acp/sessions/{id}/model`. */
 export const acpModelRequestSchema = z.object({ modelId: z.string().min(1) });
+
+/** `PUT /api/acp/sessions/{id}/config`: set one session config option (select value or boolean). */
+export const acpConfigOptionRequestSchema = z.object({
+  configId: z.string().min(1),
+  value: z.union([z.string(), z.boolean()]),
+});
 
 /** §56: what the agent said it accepts in a prompt (`initialize`). */
 export const acpPromptCapabilitiesSchema = z.looseObject({
@@ -591,12 +653,73 @@ export const acpPrestartRequestSchema = z.object({
   nodeId: z.string().min(1).optional(),
 });
 
+/**
+ * `acp_auth_required` carries the agent's sign-in methods in the error's
+ * `details` (additive; the `{ code, message }` shape is unchanged).
+ */
+export const acpAuthRequiredDetailsSchema = z.looseObject({
+  authMethods: z.array(acpAuthMethodInfoSchema),
+});
+
+/**
+ * `POST /api/acp/auth/authenticate`: complete one of the agent's sign-in
+ * methods (answers 204). Needs a newer ACP client than the pinned one; an older
+ * core answers `acp_auth_unsupported` (409) and lists every method with
+ * `supported: false`.
+ */
+export const acpAuthenticateRequestSchema = z.object({
+  workspaceId: z.string().min(1),
+  agentId: agentIdSchema,
+  methodId: z.string().min(1),
+  /** A node of that workspace; an SSH node is refused (the CLI lives elsewhere). */
+  nodeId: z.string().min(1).optional(),
+});
+
+/** `POST /api/acp/auth/logout` (answers 204; `acp_auth_unsupported` when the agent or client cannot). */
+export const acpLogoutRequestSchema = z.object({
+  workspaceId: z.string().min(1),
+  agentId: agentIdSchema,
+  nodeId: z.string().min(1).optional(),
+});
+
+/** One session of the agent's own history (`session/list`). */
+export const acpAgentSessionSchema = z.looseObject({
+  sessionId: z.string(),
+  cwd: z.string(),
+  title: z.string().optional(),
+  updatedAt: z.string().optional(),
+});
+
+/**
+ * `POST /api/acp/agent-sessions`: the agent's own sessions, for attaching one.
+ * `cursor` pages; without it the core returns everything it can (at most 200).
+ * `acp_list_unsupported` (409) when the agent does not declare `session/list`.
+ */
+export const acpAgentSessionsRequestSchema = z.object({
+  workspaceId: z.string().min(1),
+  agentId: agentIdSchema,
+  cwd: z.string().min(1).optional(),
+  cursor: z.string().min(1).optional(),
+  nodeId: z.string().min(1).optional(),
+});
+
+export const acpAgentSessionsResponseSchema = z.looseObject({
+  sessions: z.array(acpAgentSessionSchema),
+  nextCursor: z.string().optional(),
+});
+
 /* §14.4: the answer is `answerApprovalRequestSchema` (`agents.ts`) with its
  * optional `optionId`. */
 
 export type AcpSupport = (typeof ACP_SUPPORT)[number];
 export type AcpResume = (typeof ACP_RESUME)[number];
 export type AgentAcpInfo = z.infer<typeof agentAcpInfoSchema>;
+export type AcpAuthMethodInfo = z.infer<typeof acpAuthMethodInfoSchema>;
+export type AcpAgentSession = z.infer<typeof acpAgentSessionSchema>;
+export type AcpAgentSessionsResponse = z.infer<
+  typeof acpAgentSessionsResponseSchema
+>;
+export type AgentAcpCapabilities = z.infer<typeof agentAcpCapabilitiesSchema>;
 export type AcpContentBlock = z.infer<typeof acpContentBlockSchema>;
 export type AcpToolKind = (typeof ACP_TOOL_KINDS)[number];
 export type AcpToolCallStatus = (typeof ACP_TOOL_CALL_STATUSES)[number];

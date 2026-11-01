@@ -45,6 +45,8 @@ import {
 } from "./TimelineCards";
 import { visibleUsage } from "./pickers";
 import { useAcpPickers } from "./use-pickers";
+import { SignInMethods } from "./SignInMethods";
+import { authMethodsOf, startFailureKey } from "./start-failure";
 import { useSessionFeed } from "./use-session-feed";
 
 /**
@@ -77,6 +79,9 @@ function useAcpSession(
   const [starting, setStarting] = React.useState(false);
   const [failed, setFailed] = React.useState(false);
   const [failure, setFailure] = React.useState<string | null>(null);
+  const [authMethods, setAuthMethods] = React.useState<
+    ReturnType<typeof authMethodsOf>
+  >([]);
   const [phase, setPhase] = React.useState<AcpStartPhase | null>(null);
   const [cold, setCold] = React.useState(false);
   const [attempt, setAttempt] = React.useState(0);
@@ -107,6 +112,7 @@ function useAcpSession(
     setStarting(true);
     setFailed(false);
     setFailure(null);
+    setAuthMethods([]);
     setPhase(null);
     const first = queued.current;
     const prompt = first !== null && first.via === null ? first.text : null;
@@ -145,6 +151,7 @@ function useAcpSession(
         setFailure(
           error instanceof RuntimeRequestError ? (error.code ?? null) : null,
         );
+        setAuthMethods(authMethodsOf(error));
         setFailed(true);
         setStarting(false);
         setPhase(null);
@@ -162,6 +169,7 @@ function useAcpSession(
     starting,
     failed,
     failure,
+    authMethods,
     phase,
     cold,
     retry: () => setAttempt((value) => value + 1),
@@ -656,7 +664,14 @@ export function SessionView({
   }, [sessionId]);
 
   // 模式与模型：Agent 报回的来自时间线头部；还没报时用候选，新建后就有得选（#685）。
-  const { modes, models, selectMode, selectModel } = useAcpPickers({
+  const {
+    modes,
+    models,
+    configOptions,
+    selectMode,
+    selectModel,
+    selectConfig,
+  } = useAcpPickers({
     nodeId,
     sessionId,
     agent: data.agent,
@@ -691,13 +706,14 @@ export function SessionView({
   if (session.failed) {
     body = (
       <Alert variant="destructive">
-        <AlertTitle>
-          {t(
-            session.failure === "acp_session_timeout"
-              ? "acp.error.timeout"
-              : "acp.error.start",
-          )}
-        </AlertTitle>
+        <AlertTitle>{t(startFailureKey(session.failure))}</AlertTitle>
+        {session.authMethods.length > 0 && data.agent && (
+          <SignInMethods
+            agentId={data.agent.id}
+            methods={session.authMethods}
+            onDone={session.retry}
+          />
+        )}
         <AlertAction>
           <Button size="xs" variant="outline" onClick={session.retry}>
             {t("acp.error.retry")}
@@ -877,11 +893,13 @@ export function SessionView({
             streaming={streaming}
             modes={modes}
             models={models}
+            configOptions={configOptions}
             onSubmit={submit}
             attachments={attachments}
             onCancel={cancel}
             onMode={selectMode}
             onModel={selectModel}
+            onConfig={selectConfig}
             commands={feed.head.commands ?? []}
             usage={usage}
             prefill={prefill}

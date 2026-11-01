@@ -23,7 +23,7 @@
  */
 
 import { RPC_ERRORS, RpcError } from "@armadra/agent/acp";
-import type { AgentRole } from "@armadra/shared";
+import type { AgentRole, TimelineConfigOption } from "@armadra/shared";
 
 import type { PermissionMode } from "../agent/launch";
 import { launchTargetOf, resolveCommand } from "../agent/registry";
@@ -49,9 +49,13 @@ import {
 import {
   type AcpModelCatalog,
   configOptionsOf,
+  configViewOf,
+  modeStateOfConfig,
   modelCatalogOf,
+  withConfigValue,
 } from "./models";
 import type {
+  AcpAuthMethod,
   AcpInitializeResult,
   AcpMcpServer,
   AcpSessionModeState,
@@ -167,8 +171,101 @@ export interface AcpCapabilities {
   readonly close: boolean;
   readonly images: boolean;
   readonly embeddedContext: boolean;
-  /** 声明了鉴权方法：没登录时 `session/new` 会答 auth_required。 */
-  readonly authMethods: readonly string[];
+  /** 声明了 `promptCapabilities.audio`（只读能力，没有音频附件入口）。 */
+  readonly audio: boolean;
+  /** `mcpCapabilities`：Agent 能连的 MCP 传输（stdio 总是支持）。只记录，暂不发 http / sse。 */
+  readonly mcp: { readonly http: boolean; readonly sse: boolean };
+  /** 声明了 `auth.logout`（客户端的 `supportsLogout()` 也可以补充）。 */
+  readonly logout: boolean;
+  /**
+   * 声明了的鉴权方法，原样保留（id、名称、说明、类型，terminal 型还有 `args` /
+   * `env`）：没登录时 `session/new` 会答 auth_required。
+   */
+  readonly authMethods: readonly AcpAuthMethodInfo[];
+  /** {@link authMethods} 的 id 列表。 */
+  readonly authMethodIds: readonly string[];
+}
+
+/** 一条鉴权方法。terminal 型带宿主要跑的 `args` 与 `env`（不上线，只在 core 内用）。 */
+export interface AcpAuthMethodInfo {
+  readonly id: string;
+  readonly name: string;
+  readonly description?: string;
+  readonly type: "agent" | "terminal";
+  readonly args?: readonly string[];
+  readonly env?: Readonly<Record<string, string>>;
+}
+
+/** `GET /api/agents` 行里 `acp.capabilities` 的形状（契约 §14.1）：不含 terminal 型的 `args` / `env`。 */
+export interface AcpCapabilitiesWire {
+  readonly load: boolean;
+  readonly resume: boolean;
+  readonly list: boolean;
+  readonly close: boolean;
+  readonly logout: boolean;
+  readonly image: boolean;
+  readonly audio: boolean;
+  readonly embeddedContext: boolean;
+  readonly mcpHttp: boolean;
+  readonly mcpSse: boolean;
+  readonly authMethods: readonly {
+    readonly id: string;
+    readonly name: string;
+    readonly description?: string;
+    readonly type: "agent" | "terminal";
+    /** 这个构建的客户端跑得了它。 */
+    readonly supported: boolean;
+  }[];
+}
+
+export function capabilitiesWire(
+  capabilities: AcpCapabilities,
+  authSupported: boolean = acpClientFeatures().auth,
+): AcpCapabilitiesWire {
+  return {
+    load: capabilities.load,
+    resume: capabilities.resume,
+    list: capabilities.list,
+    close: capabilities.close,
+    logout: capabilities.logout && authSupported,
+    image: capabilities.images,
+    audio: capabilities.audio,
+    embeddedContext: capabilities.embeddedContext,
+    mcpHttp: capabilities.mcp.http,
+    mcpSse: capabilities.mcp.sse,
+    authMethods: capabilities.authMethods.map((method) => ({
+      id: method.id,
+      name: method.name,
+      ...(method.description === undefined
+        ? {}
+        : { description: method.description }),
+      type: method.type,
+      supported: authSupported,
+    })),
+  };
+}
+
+export function authMethodOf(method: AcpAuthMethod): AcpAuthMethodInfo {
+  const description =
+    typeof method.description === "string" && method.description !== ""
+      ? method.description
+      : undefined;
+  const base = {
+    id: method.id,
+    name: method.name,
+    ...(description === undefined ? {} : { description }),
+  };
+  if (method.type !== "terminal") return { ...base, type: "agent" };
+  return {
+    ...base,
+    type: "terminal",
+    ...(Array.isArray(method.args) ? { args: method.args.map(String) } : {}),
+    ...(method.env !== undefined &&
+    method.env !== null &&
+    typeof method.env === "object"
+      ? { env: { ...method.env } }
+      : {}),
+  };
 }
 
 export type AcpOpenMethod = "new" | "load" | "resume";
@@ -270,6 +367,10 @@ export interface AcpHostSession {
   readonly modeApplied?: boolean;
   /** 模型目录（§26.2）；客户端或 Agent 不给时为 `null`。 */
   readonly models: AcpModelCatalog | null;
+  /** 完整的配置项（清洗过，推理强度与其他 select / boolean 都在，P2-4）；没有为空表。 */
+  readonly configOptions?: readonly TimelineConfigOption[];
+  /** 模式由配置项给出（没有 `modes`）时，改模式用的配置项 id。 */
+  readonly modeConfigId?: string;
   /** 要求了模型：落上了没有。没要求时缺席。 */
   readonly modelApplied?: boolean;
   /**
@@ -282,6 +383,23 @@ export interface AcpHostSession {
 /* -------------------------------- 版本缓存 -------------------------------- */
 
 const versions = new Map<string, string>();
+const noted = new Map<string, AcpCapabilities>();
+
+/** 记下这家最近一次 `initialize` 报的版本与能力（列表只读缓存）。 */
+function remember(agentId: string | undefined, capabilities: AcpCapabilities) {
+  if (agentId === undefined) return;
+  if (capabilities.agent !== undefined) {
+    versions.set(agentId, capabilities.agent.version);
+  }
+  noted.set(agentId, capabilities);
+}
+
+/** 这家最近一次 `initialize` 报的能力；没起过就缺席。列表从不为它起进程。 */
+export function rememberedAcpCapabilities(
+  agentId: string,
+): AcpCapabilities | undefined {
+  return noted.get(agentId);
+}
 
 /** 这家最近一次 `initialize` 报的 `agentInfo.version`；列表只读缓存、不起进程。 */
 export function rememberedAcpVersion(agentId: string): string | undefined {
@@ -291,11 +409,13 @@ export function rememberedAcpVersion(agentId: string): string | undefined {
 /** 这家的适配器换过了（重装）：旧版本号不再作数，下次起会话时重新记。 */
 export function forgetAcpVersion(agentId: string): void {
   versions.delete(agentId);
+  noted.delete(agentId);
 }
 
 /** 测试用。 */
 export function forgetAcpVersions(): void {
   versions.clear();
+  noted.clear();
 }
 
 /* --------------------------------- 协商 ---------------------------------- */
@@ -303,6 +423,7 @@ export function forgetAcpVersions(): void {
 export function capabilitiesOf(result: AcpInitializeResult): AcpCapabilities {
   const agent = result.agentCapabilities ?? {};
   const info = result.agentInfo;
+  const authMethods = (result.authMethods ?? []).map(authMethodOf);
   return {
     protocolVersion: result.protocolVersion,
     ...(info === undefined
@@ -314,7 +435,14 @@ export function capabilitiesOf(result: AcpInitializeResult): AcpCapabilities {
     close: agent.sessionCapabilities?.close != null,
     images: agent.promptCapabilities?.image === true,
     embeddedContext: agent.promptCapabilities?.embeddedContext === true,
-    authMethods: (result.authMethods ?? []).map((method) => method.id),
+    audio: agent.promptCapabilities?.audio === true,
+    mcp: {
+      http: agent.mcpCapabilities?.http === true,
+      sse: agent.mcpCapabilities?.sse === true,
+    },
+    logout: agent.auth?.logout != null,
+    authMethods,
+    authMethodIds: authMethods.map((method) => method.id),
   };
 }
 
@@ -400,9 +528,7 @@ export async function startAcp(
       clock.phase("initialize");
       ({ capabilities, initialized } = await negotiate(process_, options));
     }
-    if (options.agentId !== undefined && capabilities.agent !== undefined) {
-      versions.set(options.agentId, capabilities.agent.version);
-    }
+    remember(options.agentId, capabilities);
 
     clock.phase("session");
     const opener = sessionOpener(process_.client, options.mcpServers ?? []);
@@ -475,9 +601,11 @@ export async function startAcp(
         if (error instanceof AcpError) throw error;
         if (await gone(process_, error)) throw exitedError(process_);
         if (rpcCode(error) === -32000) {
+          // 把 Agent 声明的登录方式一并交给页面（不含 terminal 型的 argv / env）。
           throw new AcpError(
             "acp_auth_required",
             "the agent is not signed in; sign in with the CLI itself first",
+            { authMethods: capabilitiesWire(capabilities).authMethods },
           );
         }
         throw new AcpError("acp_session_failed", messageOf(error));
@@ -485,9 +613,29 @@ export async function startAcp(
     }
 
     clock.phase("configure");
+    const configured = acpClientFeatures().configOptions;
+    const rawConfig = Array.isArray(config)
+      ? config
+      : configOptionsOf(initialized);
+    let configView = configured ? configViewOf(rawConfig) : [];
+    // 模式以配置项给出（没有 `modes`）：模式选择器顶上，改它走 set_config_option。
+    let modeConfigId: string | undefined;
+    if (modes === null && configured) {
+      const fromConfig = modeStateOfConfig(configView);
+      if (fromConfig !== null) {
+        modes = fromConfig.state;
+        modeConfigId = fromConfig.configId;
+      }
+    }
     let modeApplied: boolean | undefined;
     if (options.modeId !== undefined) {
-      modeApplied = await applyMode(process_, sessionId, modes, options.modeId);
+      modeApplied = await applyMode(
+        process_,
+        sessionId,
+        modes,
+        options.modeId,
+        modeConfigId,
+      );
       if (!modeApplied && options.requireMode === true) {
         throw new AcpError(
           "acp_mode_unavailable",
@@ -496,10 +644,17 @@ export async function startAcp(
       }
       if (modeApplied && modes !== null) {
         modes = { ...modes, currentModeId: options.modeId };
+        if (modeConfigId !== undefined) {
+          configView = withConfigValue(
+            configView,
+            modeConfigId,
+            options.modeId,
+          );
+        }
       }
     }
 
-    let models: AcpModelCatalog | null = acpClientFeatures().configOptions
+    let models: AcpModelCatalog | null = configured
       ? (modelCatalogOf(config) ?? modelCatalogOf(configOptionsOf(initialized)))
       : null;
     let modelApplied: boolean | undefined;
@@ -512,6 +667,11 @@ export async function startAcp(
       );
       modelApplied = applied.applied;
       models = applied.models;
+      if (applied.applied && models !== null) {
+        configView = applied.options
+          ? configViewOf(applied.options)
+          : withConfigValue(configView, models.configId, models.currentModelId);
+      }
     }
 
     clock.done();
@@ -525,6 +685,8 @@ export async function startAcp(
       modes,
       ...(modeApplied === undefined ? {} : { modeApplied }),
       models,
+      configOptions: configView,
+      ...(modeConfigId === undefined ? {} : { modeConfigId }),
       ...(modelApplied === undefined ? {} : { modelApplied }),
       ...((options.mcpServers?.length ?? 0) === 0
         ? {}
@@ -711,12 +873,14 @@ async function applyMode(
   sessionId: string,
   modes: AcpSessionModeState | null,
   modeId: string,
+  modeConfigId?: string,
 ): Promise<boolean> {
   if (modes === null) return false;
   if (!modes.availableModes.some((mode) => mode.id === modeId)) return false;
   if (modes.currentModeId === modeId) return true;
   try {
-    await process_.setMode(sessionId, modeId);
+    if (modeConfigId === undefined) await process_.setMode(sessionId, modeId);
+    else await process_.setConfigOption(sessionId, modeConfigId, modeId);
     return true;
   } catch (error) {
     if (await gone(process_, error)) throw exitedError(process_);
@@ -733,7 +897,12 @@ async function applyModel(
   sessionId: string,
   models: AcpModelCatalog | null,
   modelId: string,
-): Promise<{ applied: boolean; models: AcpModelCatalog | null }> {
+): Promise<{
+  applied: boolean;
+  models: AcpModelCatalog | null;
+  /** Agent 答复里的完整配置项（有才带）。 */
+  options?: readonly unknown[];
+}> {
   if (models === null) return { applied: false, models };
   if (!models.availableModels.some((model) => model.modelId === modelId)) {
     return { applied: false, models };
@@ -748,6 +917,7 @@ async function applyModel(
     return {
       applied: true,
       models: modelCatalogOf(answer) ?? { ...models, currentModelId: modelId },
+      ...(Array.isArray(answer) ? { options: answer } : {}),
     };
   } catch (error) {
     if (await gone(process_, error)) throw exitedError(process_);
@@ -906,6 +1076,65 @@ export function adapterStartOptions(
 }
 
 /**
+ * 起一个短命的适配器进程、`initialize`，在它上面做一件事，再收掉。能力探测、
+ * 登录 / 登出、列出 Agent 自己的会话都是这一个形状。`prestarted` 给了就用它
+ * （菜单打开时预启动的那个，省掉启动与协商），否则按 `options` 起。
+ */
+/** {@link withAdapterProcess} 交给回调的那一份。 */
+export interface AdapterProcessContext {
+  readonly process: AcpProcess;
+  readonly capabilities: AcpCapabilities;
+  /** 实际起适配器的那一份（含 transport 改写后的）。 */
+  readonly launch: {
+    readonly program: string;
+    readonly args: readonly string[];
+    readonly cwd: string;
+    readonly env?: NodeJS.ProcessEnv;
+  };
+}
+
+export async function withAdapterProcess<T>(
+  options: Pick<
+    AcpStartOptions,
+    | "agentId"
+    | "program"
+    | "args"
+    | "cwd"
+    | "env"
+    | "initializeTimeoutMs"
+    | "transport"
+    | "prestarted"
+  >,
+  work: (context: AdapterProcessContext) => Promise<T>,
+): Promise<T> {
+  const launch = launchOf(options);
+  const reused = options.prestarted;
+  const process_ =
+    reused?.process ??
+    AcpProcess.spawn({
+      program: launch.program,
+      args: launch.args,
+      cwd: launch.cwd,
+      ...(launch.env === undefined ? {} : { env: launch.env }),
+      clientInfo: ACP_CLIENT_INFO,
+    });
+  try {
+    const capabilities =
+      reused === undefined
+        ? (await negotiate(process_, options)).capabilities
+        : capabilitiesOf(reused.initialized);
+    remember(options.agentId, capabilities);
+    return await work({
+      process: process_,
+      capabilities,
+      launch,
+    });
+  } finally {
+    await process_.terminate();
+  }
+}
+
+/**
  * 能力探测：起一次、`initialize`、收掉。集成页「检查」与兼容区间核对用；
  * 列表从不调它（一次列表绝不等一个子进程）。
  */
@@ -930,9 +1159,7 @@ export async function probeAcp(
   });
   try {
     const { capabilities } = await negotiate(process_, options);
-    if (options.agentId !== undefined && capabilities.agent !== undefined) {
-      versions.set(options.agentId, capabilities.agent.version);
-    }
+    remember(options.agentId, capabilities);
     return capabilities;
   } finally {
     await process_.terminate();

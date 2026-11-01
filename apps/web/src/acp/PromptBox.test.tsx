@@ -274,6 +274,100 @@ describe("PromptBox", () => {
     expect(onSubmit).not.toHaveBeenCalled();
   });
 
+  it("shows a command's input hint in the list and as the placeholder after choosing it", () => {
+    Element.prototype.scrollIntoView ??= () => undefined;
+    renderBox({
+      commands: [
+        { name: "web", description: "search", hint: "query to search" },
+        { name: "init", description: "" },
+      ],
+    });
+    const input = screen.getByLabelText("消息") as HTMLTextAreaElement;
+    fireEvent.change(input, { target: { value: "/w" } });
+    expect(
+      document.querySelector("[data-slot=acp-command-hint]")?.textContent,
+    ).toBe("query to search");
+    expect(input.placeholder).toBe("");
+    fireEvent.keyDown(input, { key: "Tab" });
+    expect(input.value).toBe("/web ");
+    expect(input.placeholder).toBe("query to search");
+    fireEvent.change(input, { target: { value: "/web cats" } });
+    expect(input.placeholder).toBe("");
+  });
+
+  describe("config options beyond model and mode", () => {
+    const EFFORT = {
+      id: "effort",
+      name: "Effort",
+      category: "thought_level",
+      type: "select" as const,
+      currentValue: "low",
+      options: [
+        { value: "low", name: "Low" },
+        { value: "high", name: "High" },
+      ],
+    };
+    const THINK = {
+      id: "think",
+      name: "Think",
+      type: "boolean" as const,
+      currentValue: false,
+      options: [],
+    };
+    const onConfig = vi.fn();
+    beforeEach(() => onConfig.mockReset());
+    const openMore = async () =>
+      fireEvent.pointerDown(
+        await screen.findByRole("button", { name: "更多" }),
+        {
+          button: 0,
+          pointerType: "mouse",
+        },
+      );
+
+    it("lists a select as radio items and a boolean as a checkbox in the more menu (wide)", async () => {
+      renderBox({ configOptions: [EFFORT, THINK], onConfig });
+      await openMore();
+      const low = await screen.findByRole("menuitemradio", { name: "Low" });
+      expect(low.getAttribute("aria-checked")).toBe("true");
+      fireEvent.click(screen.getByRole("menuitemradio", { name: "High" }));
+      expect(onConfig).toHaveBeenCalledWith("effort", "high");
+      await openMore();
+      const think = await screen.findByRole("menuitemcheckbox", {
+        name: "Think",
+      });
+      expect(think.getAttribute("aria-checked")).toBe("false");
+      fireEvent.click(think);
+      expect(onConfig).toHaveBeenCalledWith("think", true);
+    });
+
+    it("sits in the same more menu as mode and model on a narrow screen", async () => {
+      const restore = narrowViewport();
+      try {
+        renderBox({
+          modes: MODES,
+          models: MODELS,
+          onModel,
+          configOptions: [EFFORT],
+          onConfig,
+        });
+        await openMore();
+        expect(
+          await screen.findByRole("menuitemradio", { name: "Plan" }),
+        ).toBeTruthy();
+        fireEvent.click(screen.getByRole("menuitemradio", { name: "High" }));
+        expect(onConfig).toHaveBeenCalledWith("effort", "high");
+      } finally {
+        restore();
+      }
+    });
+
+    it("draws nothing extra without config options", () => {
+      renderBox({ onConfig });
+      expect(screen.queryByRole("button", { name: "更多" })).toBeNull();
+    });
+  });
+
   it("draws the context as a 20-cell tick bar whose tone follows 80% and 95%", () => {
     const cells = () =>
       document.querySelectorAll(

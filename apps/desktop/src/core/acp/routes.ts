@@ -23,7 +23,7 @@ import { getAgentStatus } from "../agent/status";
 import { loadNode, loadSession, workspaceRoot } from "../collab/nodes";
 import { humanActor } from "../drive/lease";
 import { resolveUpload } from "../files/uploads";
-import { CoreFailure } from "../http/errors";
+import { CoreFailure, failureResult } from "../http/errors";
 import type { CoreRequest, HandlerResult, RouteMatch } from "../http/router";
 import { type DomainHandlers, registerProcedures } from "../http/rpc";
 import type { CoreContext } from "../main";
@@ -42,6 +42,7 @@ import { type AttachmentBlocks, attachmentBlocks } from "./attachments";
 import { AcpError } from "./client";
 import { AcpFeed } from "./feed";
 import type { AcpStartPlan, AcpTerminalWiring } from "./index";
+import type { SessionListing } from "./session-list";
 import { sshHostOf } from "./ssh";
 
 export interface AcpRouteDeps {
@@ -62,6 +63,20 @@ export interface AcpRouteDeps {
     agentId: string,
     cwd: string,
   ) => void;
+  /** 登录（P1-3）；缺席 = 没装配，路由答 `acp_unsupported`。 */
+  readonly authenticate?: (
+    agentId: string,
+    methodId: string,
+    cwd: string,
+  ) => Promise<void>;
+  readonly logout?: (agentId: string, cwd: string) => Promise<void>;
+  /** 列 Agent 自己的会话（P2-7）。 */
+  readonly listSessions?: (
+    workspaceId: string,
+    agentId: string,
+    cwd: string,
+    params: { readonly cwd?: string; readonly cursor?: string },
+  ) => Promise<SessionListing>;
 }
 
 /** 正在切换驱动或接回的节点：这段时间里投递把「没有会话」当「还早」。 */
@@ -114,11 +129,18 @@ function promptLocked<T>(rowId: string, job: () => Promise<T>): Promise<T> {
 function failure(error: unknown): HandlerResult {
   // `DomainError` 与 `TerminalError` 都是 `CoreFailure`。
   if (error instanceof CoreFailure) {
-    const { status, body } = error.response();
+    // 带细节的拒绝（`acp_auth_required` 的登录方式）与 RPC 门面同一个形状。
+    const { status, body } = failureResult(error);
     return { status, body };
   }
   if (error instanceof AcpError) {
-    return { status: acpStatus(error.code), body: error.toJSON() };
+    return {
+      status: acpStatus(error.code),
+      body:
+        error.details === undefined
+          ? error.toJSON()
+          : { ...error.toJSON(), details: error.details },
+    };
   }
   if (error instanceof SyntaxError) {
     return {
@@ -138,8 +160,11 @@ function acpStatus(code: string): number {
       return 400;
     case "acp_image_unsupported":
     case "acp_attachment_unsupported":
+    case "acp_auth_unsupported":
+    case "acp_list_unsupported":
     case "acp_mode_unavailable":
     case "acp_model_unavailable":
+    case "acp_config_unavailable":
     case "acp_model_unsupported":
     case "acp_auth_required":
     case "acp_session":
@@ -256,6 +281,7 @@ export function installRoutes(context: CoreContext, deps: AcpRouteDeps): void {
             acpStatus(error.code),
             error.code,
             error.message,
+            error.details,
           );
         }
         throw error;
@@ -428,6 +454,96 @@ export function installRoutes(context: CoreContext, deps: AcpRouteDeps): void {
     deps.prestart?.(workspaceId, agentId, deps.cwdOf(cwd));
   });
 
+  /* --------------------- 登录、登出与 Agent 自己的会话 --------------------- */
+
+  /**
+   * 这几条都对着「这块画布所在机器上的 CLI」：按体里的工作空间取根目录作适配器
+   * 的工作目录。SSH 节点的 CLI 在执行主机上，本机登录 / 列会话没有意义，直接
+   * 拒绝；节点缺省不带。
+   */
+  const hostScope = (
+    body: Record<string, unknown>,
+    unsupported: "acp_auth_unsupported" | "acp_list_unsupported",
+  ): { workspaceId: string; agentId: string; cwd: string } => {
+    const workspaceId = optionalString(body, "workspaceId");
+    const agentId = optionalString(body, "agentId");
+    if (!workspaceId || !agentId) {
+      throw badRequest("workspaceId and agentId are required");
+    }
+    const root = workspaceRoot(database, workspaceId);
+    if (root === undefined) {
+      throw domain(404, "not_found", "Workspace not found");
+    }
+    const nodeId = optionalString(body, "nodeId");
+    if (nodeId !== undefined && nodeId !== "") {
+      const node = loadNode(database, nodeId);
+      if (node === undefined || node.workspaceId !== workspaceId) {
+        throw domain(404, "not_found", "Node not found");
+      }
+      if (sshHostOf(node.data) !== undefined) {
+        throw new AcpError(
+          unsupported,
+          "this agent runs on another host; do it there",
+        );
+      }
+    }
+    return { workspaceId, agentId, cwd: deps.cwdOf(root) };
+  };
+
+  /** 同一家的登录 / 登出一次一个。 */
+  const authBusy = new Set<string>();
+  const authExclusive = async (
+    agentId: string,
+    job: () => Promise<void>,
+  ): Promise<void> => {
+    if (authBusy.has(agentId)) {
+      throw domain(409, "conflict", "A sign-in is already running");
+    }
+    authBusy.add(agentId);
+    try {
+      await job();
+    } finally {
+      authBusy.delete(agentId);
+    }
+  };
+
+  const authenticate = guarded(async (body: Record<string, unknown>) => {
+    const scope = hostScope(body, "acp_auth_unsupported");
+    const methodId = optionalString(body, "methodId");
+    if (!methodId) throw badRequest("methodId is required");
+    if (deps.authenticate === undefined) {
+      throw new AcpError("acp_unsupported", "ACP is not assembled");
+    }
+    const run = deps.authenticate;
+    await authExclusive(scope.agentId, () =>
+      run(scope.agentId, methodId, scope.cwd),
+    );
+  });
+
+  const logout = guarded(async (body: Record<string, unknown>) => {
+    const scope = hostScope(body, "acp_auth_unsupported");
+    if (deps.logout === undefined) {
+      throw new AcpError("acp_unsupported", "ACP is not assembled");
+    }
+    const run = deps.logout;
+    await authExclusive(scope.agentId, () => run(scope.agentId, scope.cwd));
+  });
+
+  const agentSessions = guarded(
+    async (body: Record<string, unknown>): Promise<SessionListing> => {
+      const scope = hostScope(body, "acp_list_unsupported");
+      if (deps.listSessions === undefined) {
+        throw new AcpError("acp_unsupported", "ACP is not assembled");
+      }
+      const cwd = optionalString(body, "cwd");
+      const cursor = optionalString(body, "cursor");
+      return deps.listSessions(scope.workspaceId, scope.agentId, scope.cwd, {
+        ...(cwd === undefined || cwd === "" ? {} : { cwd }),
+        ...(cursor === undefined || cursor === "" ? {} : { cursor }),
+      });
+    },
+  );
+
   /* --------------------------------- 回合 --------------------------------- */
 
   /** 契约 §56：上传 id → 这一轮的内容块。上传按会话所在的工作空间找。 */
@@ -571,6 +687,26 @@ export function installRoutes(context: CoreContext, deps: AcpRouteDeps): void {
     await session.setModel(modelId);
   });
 
+  // 任意一个会话配置项（推理强度、其他 select 与 boolean）；不在 Agent 给的列表里
+  // 或值不合时 409。
+  const setConfigOption = guarded(
+    async (sessionId: string, configId: unknown, value: unknown) => {
+      const wiring = await need();
+      if (typeof configId !== "string" || configId === "") {
+        throw badRequest("configId is required");
+      }
+      if (typeof value !== "string" && typeof value !== "boolean") {
+        throw badRequest("value must be a string or a boolean");
+      }
+      const row = await live(wiring, sessionId);
+      const session = wiring.backend.sessionByRow(row.id);
+      if (session === undefined) {
+        throw domain(409, "acp_exited", "The ACP session has ended");
+      }
+      await session.setConfigOption(configId, value);
+    },
+  );
+
   /* ------------------------------- 驱动切换 ------------------------------- */
 
   const changeDriver = guarded(async (nodeId: string, value: unknown) => {
@@ -664,6 +800,15 @@ export function installRoutes(context: CoreContext, deps: AcpRouteDeps): void {
       sessionId: string;
       modelId?: unknown;
     }) => setModel(sessionId, modelId),
+    setConfigOption: ({
+      sessionId,
+      configId,
+      value,
+    }: {
+      sessionId: string;
+      configId?: unknown;
+      value?: unknown;
+    }) => setConfigOption(sessionId, configId, value),
     switchDriver: ({ nodeId, driver }: { nodeId: string; driver?: unknown }) =>
       changeDriver(nodeId, driver),
   };
@@ -677,6 +822,18 @@ export function installRoutes(context: CoreContext, deps: AcpRouteDeps): void {
     await prestart(jsonObject(request.body));
     return { status: 204 };
   });
+  route("POST", "/api/acp/auth/authenticate", async (_match, request) => {
+    await authenticate(jsonObject(request.body));
+    return { status: 204 };
+  });
+  route("POST", "/api/acp/auth/logout", async (_match, request) => {
+    await logout(jsonObject(request.body));
+    return { status: 204 };
+  });
+  route("POST", "/api/acp/agent-sessions", async (_match, request) => ({
+    status: 200,
+    body: await agentSessions(jsonObject(request.body)),
+  }));
   route("POST", "/api/acp/sessions", async (_match, request) => ({
     status: 200,
     body: await createSession(jsonObject(request.body)),
@@ -713,6 +870,19 @@ export function installRoutes(context: CoreContext, deps: AcpRouteDeps): void {
       await setModel(
         param(match, "sessionId"),
         jsonObject(request.body).modelId,
+      );
+      return { status: 204 };
+    },
+  );
+  route(
+    "PUT",
+    "/api/acp/sessions/{sessionId}/config",
+    async (match, request) => {
+      const body = jsonObject(request.body);
+      await setConfigOption(
+        param(match, "sessionId"),
+        body.configId,
+        body.value,
       );
       return { status: 204 };
     },

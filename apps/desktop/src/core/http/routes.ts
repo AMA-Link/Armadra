@@ -818,6 +818,22 @@ export const ROUTES: readonly RouteEntry[] = [
     surface: "runtime",
     implemented: true,
   },
+  // 任意会话配置项（P2-4）、Agent 的登录与登出、列出 Agent 自己历史里的会话（#687）。
+  ...(
+    [
+      ["/api/acp/sessions/{sessionId}/config", "PUT"],
+      ["/api/acp/auth/authenticate", "POST"],
+      ["/api/acp/auth/logout", "POST"],
+      ["/api/acp/agent-sessions", "POST"],
+    ] as const
+  ).map(
+    ([path, method]): RouteEntry => ({
+      path,
+      methods: [method],
+      surface: "runtime",
+      implemented: true,
+    }),
+  ),
   // 工作流与协调者任务（契约 §15、§43.2–§43.3）：路由在 `core/workflow/routes.ts`，
   // 与 `workflows.*` / `coordinator.*` procedure 同一份操作。
   ...WORKFLOW_ROUTES,

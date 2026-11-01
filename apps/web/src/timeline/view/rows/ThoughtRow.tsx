@@ -14,6 +14,7 @@ import { TextSwap } from "@/ui/text-swap";
 import { formatDuration } from "../format";
 import { StreamingMarkdown } from "../parts/StreamingMarkdown";
 import { memoRow } from "../row-memo";
+import { PartView } from "./AssistantRow";
 
 export interface ThoughtRowProps {
   item: TimelineThoughtItem;
@@ -78,7 +79,12 @@ function ThoughtRowImpl({ item, now }: ThoughtRowProps) {
         </Button>
       </CollapsibleTrigger>
       <CollapsibleContent className="px-2 pt-0.5 pl-7 text-muted-foreground">
-        <StreamingMarkdown text={item.text} className="text-meta" />
+        {item.text !== "" && (
+          <StreamingMarkdown text={item.text} className="text-meta" />
+        )}
+        {item.parts?.map((part, index) => (
+          <PartView key={index} part={part} />
+        ))}
       </CollapsibleContent>
     </Collapsible>
   );

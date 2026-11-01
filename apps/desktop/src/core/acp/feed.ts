@@ -21,6 +21,7 @@ import type {
   TimelineNoticeCode,
   TimelineToolItem,
 } from "@armadra/shared";
+import { approvalCallSummary } from "@armadra/shared";
 
 import { renderEntries } from "../collab/transcript";
 import { entriesFromTimeline } from "../history/acp-mirror";
@@ -115,11 +116,17 @@ export class AcpFeed {
   catalog(next: {
     readonly modes: TimelineHead["modes"];
     readonly models: TimelineHead["models"];
+    readonly configOptions?: TimelineHead["configOptions"];
     readonly promptCapabilities: TimelineHead["promptCapabilities"];
   }): void {
     const head = this.writer.state(this.id.rowId)?.head ?? {};
     const patch: Record<string, unknown> = {};
-    for (const key of ["modes", "models", "promptCapabilities"] as const) {
+    for (const key of [
+      "modes",
+      "models",
+      "configOptions",
+      "promptCapabilities",
+    ] as const) {
       const value = next[key] ?? null;
       const current = head[key] ?? null;
       if (JSON.stringify(value) !== JSON.stringify(current)) {
@@ -336,6 +343,7 @@ export class AcpFeed {
   permission(pendingId: string, pending: AcpPendingPermission): void {
     this.waits.set(pendingId, Date.now());
     const toolCallId = pending.toolCall.toolCallId;
+    const summary = approvalCallSummary(pending.toolCall);
     this.putPending((ctx, ord) => ({
       id: `ap:${pendingId}`,
       turn: ctx.turn,
@@ -348,6 +356,7 @@ export class AcpFeed {
       pendingId,
       protocol: "acp",
       ...(toolCallId ? { toolCallId } : {}),
+      ...(summary === undefined ? {} : { toolCall: summary }),
       options: pending.options.map((option) => ({
         optionId: option.optionId,
         name: option.name,

@@ -268,6 +268,12 @@ export const ROUTE_SCOPE_RULES: readonly RouteScopeRule[] = [
     read: "terminal:read",
     write: "terminal:drive",
   },
+  // 登录与登出改的是这台机器上 CLI 的账号状态，与设置同一档（owner）。
+  {
+    pattern: /^\/api\/acp\/auth\//,
+    read: "settings:read",
+    write: "settings:write",
+  },
   {
     pattern: /^\/api\/acp\//,
     read: "terminal:read",

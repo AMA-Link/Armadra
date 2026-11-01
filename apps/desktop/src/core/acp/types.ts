@@ -6,9 +6,11 @@
  */
 export type {
   AcpAgentCapabilities,
+  AcpAuthMethod,
   AcpContentBlock,
   AcpImplementationInfo,
   AcpInitializeResult,
+  AcpListSessionsResult,
   AcpLoadSessionResult,
   AcpMcpServer,
   AcpNewSessionResult,
@@ -62,6 +64,19 @@ export type AcpElicitationField =
       readonly title?: string;
       readonly description?: string;
       readonly default?: boolean;
+    }
+  | {
+      /** 多选：字符串数组，选项在 `items.enum`（`items.anyOf` / `oneOf` 的 `const` + `title` 收成同一种）。 */
+      readonly type: "array";
+      readonly title?: string;
+      readonly description?: string;
+      readonly items: {
+        readonly enum: readonly string[];
+        readonly enumNames?: readonly string[];
+      };
+      readonly minItems?: number;
+      readonly maxItems?: number;
+      readonly default?: readonly string[];
     };
 
 export interface AcpElicitationSchema {
@@ -84,7 +99,7 @@ export interface AcpElicitationParams {
 export const ACP_ELICITATION_ACTIONS = ["accept", "decline", "cancel"] as const;
 export type AcpElicitationAction = (typeof ACP_ELICITATION_ACTIONS)[number];
 
-export type AcpElicitationValue = string | number | boolean;
+export type AcpElicitationValue = string | number | boolean | readonly string[];
 
 export interface AcpElicitationResult {
   readonly action: AcpElicitationAction;

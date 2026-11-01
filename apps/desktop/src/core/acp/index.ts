@@ -78,13 +78,16 @@ import {
 } from "./adapters";
 import { AcpBackend } from "./bridge";
 import { AcpError } from "./client";
+import { authenticateAdapter, logoutAdapter } from "./auth";
 import {
   type AcpAdapterStart,
   type AcpStartPhase,
   type AcpStartTimings,
   adapterStartOptions,
   startAdapter,
+  withAdapterProcess,
 } from "./host";
+import { type SessionListing, listSessionsOn } from "./session-list";
 import {
   AcpPrestartPool,
   AcpWarmer,
@@ -136,6 +139,7 @@ export {
   type AcpHostSession,
   type AcpStartOptions,
   probeAcp,
+  rememberedAcpCapabilities,
   rememberedAcpVersion,
   startAcp,
   startAdapter,
@@ -340,6 +344,79 @@ class AcpRuntime {
     if (this.warmer.stale(target)) {
       void this.warmer.warm("changed", target.agentId);
     }
+  }
+
+  /**
+   * 登录 / 登出 / 列会话用的短命适配器：本机，缺省模式，不带节点身份与注入
+   * 产物。不是 ACP 入口的 `acp_unsupported`，没装的 `acp_not_installed`。
+   */
+  private shortLived(agentId: string, cwd: string) {
+    const launch = this.localLaunch(agentId, { inject: false });
+    if (launch === undefined) {
+      throw new AcpError(
+        "acp_unsupported",
+        `${agentId} has no ACP entry point`,
+      );
+    }
+    const plan = this.prestartPlan(launch, cwd);
+    if (plan instanceof AcpError) throw plan;
+    return plan;
+  }
+
+  /** 完成一次登录（P1-3）。成功后这家预启动的进程作废。 */
+  async authenticate(
+    agentId: string,
+    methodId: string,
+    cwd: string,
+  ): Promise<void> {
+    const plan = this.shortLived(agentId, cwd);
+    try {
+      await authenticateAdapter(plan, { methodId });
+    } finally {
+      this.pool.dropAgent(agentId);
+    }
+  }
+
+  async logout(agentId: string, cwd: string): Promise<void> {
+    const plan = this.shortLived(agentId, cwd);
+    try {
+      await logoutAdapter(plan);
+    } finally {
+      this.pool.dropAgent(agentId);
+    }
+  }
+
+  /**
+   * Agent 自己历史里的会话（P2-7）。菜单打开时预启动的那个进程同家同工作空间
+   * 时直接领来用（省掉启动与协商），否则起一个短命的。
+   */
+  async listSessions(
+    workspaceId: string,
+    agentId: string,
+    cwd: string,
+    params: { readonly cwd?: string; readonly cursor?: string },
+  ): Promise<SessionListing> {
+    const launch = this.localLaunch(agentId);
+    if (launch === undefined) {
+      throw new AcpError(
+        "acp_unsupported",
+        `${agentId} has no ACP entry point`,
+      );
+    }
+    const reference = this.prestartPlan(launch, cwd);
+    if (reference instanceof AcpError) throw reference;
+    const claimed = prestartable(launch)
+      ? await this.pool.claim(
+          AcpPrestartPool.key(agentId, workspaceId),
+          reference,
+        )
+      : undefined;
+    const plan =
+      claimed === undefined ? this.shortLived(agentId, cwd) : reference;
+    return withAdapterProcess(
+      { ...plan, ...(claimed === undefined ? {} : { prestarted: claimed }) },
+      (context) => listSessionsOn(context, params),
+    );
   }
 
   /** 已装的内置适配器：预热的对象。 */
@@ -1012,5 +1089,23 @@ export function install(context: CoreContext): void {
     cwdOf: (path) => resolve(path),
     prestart: (workspaceId, agentId, cwd) =>
       runtime?.prestart(workspaceId, agentId, cwd),
+    authenticate: (agentId, methodId, cwd) =>
+      runtime === undefined
+        ? Promise.reject(
+            new AcpError("acp_unsupported", "ACP is not assembled"),
+          )
+        : runtime.authenticate(agentId, methodId, cwd),
+    logout: (agentId, cwd) =>
+      runtime === undefined
+        ? Promise.reject(
+            new AcpError("acp_unsupported", "ACP is not assembled"),
+          )
+        : runtime.logout(agentId, cwd),
+    listSessions: (workspaceId, agentId, cwd, params) =>
+      runtime === undefined
+        ? Promise.reject(
+            new AcpError("acp_unsupported", "ACP is not assembled"),
+          )
+        : runtime.listSessions(workspaceId, agentId, cwd, params),
   });
 }

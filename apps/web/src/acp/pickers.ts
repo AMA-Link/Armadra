@@ -13,6 +13,7 @@ import {
   type AcpModeState,
   type AcpModelState,
   type PermissionMode,
+  type TimelineConfigOption,
   type TimelineItem,
 } from "@armadra/shared";
 
@@ -80,6 +81,35 @@ export function pickModels(
     base.availableModels.some((m) => m.modelId === choice)
     ? { ...base, currentModelId: choice }
     : base;
+}
+
+/**
+ * 提示框里除模型与模式之外要画的配置项（推理强度、其他 select、boolean）。模型与
+ * 模式另有各自的选择器，按 `category`（模型项没有分类时按 id `model`）认出来排除。
+ * `choices` 是还没等到回执的选择（乐观更新）；值不合项的类型或可选值就不采用。
+ */
+export function extraConfigOptions(
+  options: readonly TimelineConfigOption[] | null | undefined,
+  choices: Readonly<Record<string, string | boolean>> = {},
+): TimelineConfigOption[] {
+  return (options ?? [])
+    .filter(
+      (option) =>
+        option.category !== "model" &&
+        option.category !== "mode" &&
+        !(option.category === undefined && option.id === "model") &&
+        (option.type === "boolean" || option.options.length > 0),
+    )
+    .map((option) => {
+      const choice = choices[option.id];
+      const valid =
+        choice !== undefined &&
+        (option.type === "boolean"
+          ? typeof choice === "boolean"
+          : typeof choice === "string" &&
+            option.options.some((entry) => entry.value === choice));
+      return valid ? { ...option, currentValue: choice } : option;
+    });
 }
 
 /**

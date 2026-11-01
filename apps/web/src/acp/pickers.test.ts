@@ -6,6 +6,7 @@ import {
   DEFAULT_MODEL_ID,
   candidateModels,
   candidateModes,
+  extraConfigOptions,
   firstMessageSent,
   pickModels,
   pickModes,
@@ -165,5 +166,50 @@ describe("context meter", () => {
         turn(2),
       ]),
     ).toBe(usage);
+  });
+});
+
+describe("extraConfigOptions", () => {
+  const effort = {
+    id: "effort",
+    name: "Effort",
+    category: "thought_level",
+    type: "select" as const,
+    currentValue: "low",
+    options: [
+      { value: "low", name: "Low" },
+      { value: "high", name: "High" },
+    ],
+  };
+  const think = {
+    id: "think",
+    name: "Think",
+    type: "boolean" as const,
+    currentValue: false,
+    options: [],
+  };
+  const model = { ...effort, id: "model", category: "model" };
+  const modelNoCategory = { ...effort, id: "model", category: undefined };
+  const mode = { ...effort, id: "mode", category: "mode" };
+
+  it("leaves out the model and mode options, which have their own pickers", () => {
+    expect(
+      extraConfigOptions([model, mode, effort, think]).map((o) => o.id),
+    ).toEqual(["effort", "think"]);
+    expect(extraConfigOptions([modelNoCategory])).toEqual([]);
+    expect(extraConfigOptions(undefined)).toEqual([]);
+  });
+
+  it("overlays a pending choice only when it fits the option", () => {
+    const shown = extraConfigOptions([effort, think], {
+      effort: "high",
+      think: true,
+    });
+    expect(shown.map((o) => o.currentValue)).toEqual(["high", true]);
+    const bad = extraConfigOptions([effort, think], {
+      effort: "nope",
+      think: "yes",
+    });
+    expect(bad.map((o) => o.currentValue)).toEqual(["low", false]);
   });
 });

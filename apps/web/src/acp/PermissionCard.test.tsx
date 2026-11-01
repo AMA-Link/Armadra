@@ -1,11 +1,23 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 
 const api = vi.hoisted(() => ({ answer: vi.fn() }));
 vi.mock("./api", () => ({ acpApi: api }));
+const toastMock = vi.hoisted(() => ({ error: vi.fn() }));
+vi.mock("@/ui/toast", () => ({ toast: toastMock }));
 
 import { useAgentStatusStore } from "@/agent/status-store";
-import { PermissionCard } from "./PermissionCard";
+import {
+  PermissionCard,
+  answerPermission,
+  hasDuplicateKinds,
+} from "./PermissionCard";
 import { useAnsweredStore } from "./answered";
 import type { AcpPermissionView } from "./approval-views";
 
@@ -31,6 +43,7 @@ const pickScope = (name: "本次" | "始终") =>
 
 beforeEach(() => {
   api.answer.mockReset().mockResolvedValue({});
+  toastMock.error.mockReset();
   useAnsweredStore.getState().reset();
 });
 
@@ -376,5 +389,103 @@ describe("PermissionCard", () => {
     render(<PermissionCard permission={permission} canAnswer pinned />);
     expect(document.activeElement).toBe(field);
     field.remove();
+  });
+  it("shows the option name the agent sent as a tooltip on the simple buttons", () => {
+    render(<PermissionCard permission={permission} canAnswer />);
+    expect(actionButtons().map((button) => button.title)).toEqual([
+      "No",
+      "Once",
+    ]);
+  });
+
+  describe("several options of one kind", () => {
+    const many: AcpPermissionView = {
+      ...permission,
+      options: [
+        { optionId: "p1", name: "Allow in /repo", kind: "allow_always" },
+        { optionId: "o1", name: "Allow this once", kind: "allow_once" },
+        { optionId: "o2", name: "Allow and edit", kind: "allow_once" },
+        { optionId: "no", name: "No", kind: "reject_once" },
+        { optionId: "never", name: "Never", kind: "reject_always" },
+      ],
+    };
+
+    it("detects duplicates", () => {
+      expect(hasDuplicateKinds(permission.options)).toBe(false);
+      expect(hasDuplicateKinds(many.options)).toBe(true);
+    });
+
+    it("lists every option by name, one-time before always, without a segment", () => {
+      render(<PermissionCard permission={many} canAnswer pinned />);
+      expect(screen.queryByRole("tab")).toBeNull();
+      expect(
+        actionButtons().map((button) => [
+          button.dataset.optionId,
+          button.textContent,
+        ]),
+      ).toEqual([
+        ["o1", "Allow this once↵"],
+        ["o2", "Allow and edit"],
+        ["p1", "Allow in /repo"],
+        ["no", "NoEsc"],
+        ["never", "Never"],
+      ]);
+      // 焦点落在第一枚一次性允许上，Enter 不会变成永久授权。
+      expect(document.activeElement?.getAttribute("data-option-id")).toBe("o1");
+    });
+
+    it("answers with the clicked option, not the first of its kind", () => {
+      render(<PermissionCard permission={many} canAnswer />);
+      fireEvent.click(screen.getByRole("button", { name: "Allow and edit" }));
+      expect(api.answer).toHaveBeenLastCalledWith("n1-1-acp-t1", "allow", "o2");
+      cleanup();
+      render(<PermissionCard permission={many} canAnswer />);
+      fireEvent.keyDown(screen.getByRole("button", { name: "Never" }), {
+        key: "Escape",
+      });
+      expect(api.answer).toHaveBeenLastCalledWith("n1-1-acp-t1", "deny", "no");
+    });
+  });
+
+  describe("when the answer is not delivered", () => {
+    const statusKey = "local:n1";
+    beforeEach(() => {
+      useAgentStatusStore.setState({
+        statuses: {
+          [statusKey]: { pendingId: "n1-1-acp-t1" },
+        } as never,
+      });
+      api.answer.mockRejectedValue(new Error("down"));
+    });
+
+    it("puts the card and the header buttons back and says so", async () => {
+      render(<PermissionCard permission={permission} canAnswer />);
+      fireEvent.click(screen.getByRole("button", { name: /^允许/ }));
+      await waitFor(() =>
+        expect(toastMock.error).toHaveBeenCalledWith("没有答上"),
+      );
+      expect(useAnsweredStore.getState().ids.has("n1-1-acp-t1")).toBe(false);
+      expect(
+        useAgentStatusStore.getState().statuses[statusKey]?.pendingId,
+      ).toBe("n1-1-acp-t1");
+    });
+
+    it("answerPermission resolves false after rolling back", async () => {
+      await expect(
+        answerPermission(permission, permission.options[1]!),
+      ).resolves.toBe(false);
+      expect(useAnsweredStore.getState().ids.size).toBe(0);
+    });
+
+    it("keeps everything collapsed when the answer goes through", async () => {
+      api.answer.mockResolvedValue({});
+      await expect(
+        answerPermission(permission, permission.options[1]!),
+      ).resolves.toBe(true);
+      expect(useAnsweredStore.getState().ids.has("n1-1-acp-t1")).toBe(true);
+      expect(
+        useAgentStatusStore.getState().statuses[statusKey]?.pendingId,
+      ).toBeUndefined();
+    });
   });
 });

@@ -127,6 +127,8 @@ const CONTEXT_READS = /^\/api\/nodes\/([^/]+)\/context-reads$/;
 const APPROVAL = /^\/api\/approvals\/([^/]+)\/answer$/;
 /** ACP 会话（契约 §14.2）：会话行就是终端行，按会话行查画布。 */
 const ACP_SESSION = /^\/api\/acp\/sessions\/([^/]+)\/[^/]+$/;
+/** 登录与登出：体里带工作空间。 */
+const ACP_HOST_AUTH = /^\/api\/acp\/auth\/(authenticate|logout)$/;
 /** 会话时间线的 blob（契约 §82.1）：时间线以会话行 id 为键，按会话行查画布。 */
 const TIMELINE_BLOB = /^\/api\/timelines\/([^/]+)\/blobs\/[^/]+$/;
 /** `timeline.*` procedure（没有旧路径，门面用 `rpc:<名字>` 来问）。 */
@@ -411,6 +413,18 @@ export function createRouteGuard(options: RouteAccessOptions): RouteGuard {
       const workspaceId = bodyWorkspace(request);
       if (workspaceId === "") return DENY;
       return onWorkspace(subject, "terminal:drive", workspaceId);
+    }
+    // 登录、登出（改这台机器上 CLI 的账号状态）与列出 Agent 自己的会话：路径里
+    // 没有工作空间，按体里的判。登录与登出同设置一档，列会话同开会话一档。
+    if (method === "POST" && ACP_HOST_AUTH.test(path)) {
+      const workspaceId = bodyWorkspace(request);
+      if (workspaceId === "") return DENY;
+      return onWorkspace(subject, "settings:write", workspaceId);
+    }
+    if (path === "/api/acp/agent-sessions" && method === "POST") {
+      const workspaceId = bodyWorkspace(request);
+      if (workspaceId === "") return DENY;
+      return onWorkspace(subject, "terminal:create", workspaceId);
     }
     const acpSession = ACP_SESSION.exec(path);
     if (acpSession !== null) {

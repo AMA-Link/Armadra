@@ -62,7 +62,9 @@ export interface AgentStatusState {
     options?: { remote?: boolean; sourceId?: string },
   ) => void;
   /** 权限已答复：丢掉 `pendingId`，头部按钮随之消失。过期由 core 清（S9）。 */
-  resolveApproval: (pendingId: string) => void;
+  resolveApproval: (pendingId: string) => string | undefined;
+  /** 答复没发出去：把 `resolveApproval` 丢掉的 `pendingId` 放回原来的状态上。 */
+  reopenApproval: (key: string, pendingId: string) => void;
   /** 一个节点的活动（细粒度阶段）；比现有的旧就丢。 */
   setActivity: (
     nodeId: string,
@@ -203,15 +205,24 @@ export const useAgentStatusStore = create<AgentStatusState>((set, get) => ({
     void postAgentRead(nodeId).catch(() => undefined);
   },
 
-  resolveApproval: (pendingId) =>
+  resolveApproval: (pendingId) => {
+    const entry = Object.entries(get().statuses).find(
+      ([, status]) => status.pendingId === pendingId,
+    );
+    if (!entry) return undefined;
+    const [key, status] = entry;
+    const { pendingId: _dropped, ...rest } = status;
+    set((current) => ({ statuses: { ...current.statuses, [key]: rest } }));
+    return key;
+  },
+
+  reopenApproval: (key, pendingId) =>
     set((current) => {
-      const entry = Object.entries(current.statuses).find(
-        ([, status]) => status.pendingId === pendingId,
-      );
-      if (!entry) return current;
-      const [key, status] = entry;
-      const { pendingId: _dropped, ...rest } = status;
-      return { statuses: { ...current.statuses, [key]: rest } };
+      const status = current.statuses[key];
+      if (!status || status.pendingId !== undefined) return current;
+      return {
+        statuses: { ...current.statuses, [key]: { ...status, pendingId } },
+      };
     }),
 
   setActivity: (nodeId, activity, sourceId) =>

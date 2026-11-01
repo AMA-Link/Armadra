@@ -10,10 +10,22 @@ import {
   type AcpToolCall,
 } from "@armadra/shared";
 
+/** 「将发生」的一条：一个文件，可带行号与 `+N −M`。 */
+export interface AcpPermissionChange {
+  readonly path: string;
+  readonly line?: number | null | undefined;
+  readonly stat?: { additions: number; deletions: number } | undefined;
+}
+
 export interface AcpPermissionView {
   readonly pendingId: string;
   readonly toolCall: AcpToolCall;
   readonly options: readonly AcpPermissionOption[];
+  /**
+   * 已经算好的「将发生」条目（条目里存的摘要，没有差异正文可算时用）；
+   * 没有就由 `toolCall` 现算。
+   */
+  readonly changes?: readonly AcpPermissionChange[];
 }
 
 /** 一条挂起的 `elicitation/create`（契约 §26.1）。 */
