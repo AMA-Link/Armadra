@@ -79,6 +79,15 @@ export const AGENT_CAPABILITIES = [
 ] as const;
 export type AgentCapability = (typeof AGENT_CAPABILITIES)[number];
 
+/**
+ * A node's role on the canvas (docs/design/coordinator-agent.md §4). Only
+ * `coordinator` exists: the node dispatches work to members and runs nothing
+ * itself. Absent means a regular member with the CLI's own tool set.
+ */
+export const AGENT_ROLES = ["coordinator"] as const;
+
+export type AgentRole = (typeof AGENT_ROLES)[number];
+
 export interface AgentDefinition {
   readonly id: BuiltinAgentId;
   readonly label: string;
@@ -92,6 +101,17 @@ export interface AgentDefinition {
   /** Permission mode → extra argv. An empty list means "CLI default". */
   readonly permissionFlag: Readonly<Record<PermissionMode, readonly string[]>>;
   readonly modelFlag?: string;
+  /**
+   * Role → extra argv. A role this CLI has no entry for is ignored: the role
+   * shapes what the agent may do, and only a CLI that can enforce it says so.
+   */
+  readonly roleFlag?: Readonly<Partial<Record<AgentRole, readonly string[]>>>;
+  /**
+   * The role a node of this CLI gets when the user creates it from the add
+   * menu. Members opened by another agent (`open-agent`, team, runners) never
+   * get one.
+   */
+  readonly defaultRole?: AgentRole;
   /** Set when we may pre-mint the session id instead of learning it from a hook. */
   readonly sessionIdFlag?: string;
   /**
@@ -298,6 +318,11 @@ export const AGENT_REGISTRY: Readonly<Record<BuiltinAgentId, AgentDefinition>> =
         plan: ["--permission-mode", "plan"],
       },
       modelFlag: "--model",
+      // ama's own preset for the canvas coordinator: read plus the host's
+      // canvas tools, no bash / edit / write, and codemode cannot reach past
+      // it (`@armadra/agent` src/tools/presets.ts).
+      roleFlag: { coordinator: ["--tools-preset", "coordinator"] },
+      defaultRole: "coordinator",
       sessionIdFlag: "--session-id",
       resume: { style: "flag", flag: "--resume" },
       exitCommand: "/exit",
@@ -350,6 +375,20 @@ export function supportedPermissionModes(
     (mode) =>
       mode === "default" || (definition?.permissionFlag[mode].length ?? 0) > 0,
   );
+}
+
+/** The argv a role adds for this built-in; none when the CLI has no such role. */
+export function roleFlags(
+  agentId: string,
+  role: AgentRole | undefined,
+): readonly string[] {
+  if (role === undefined) return [];
+  return agentDefinition(agentId)?.roleFlag?.[role] ?? [];
+}
+
+/** The role a new node of this built-in starts with (the add menu's). */
+export function defaultAgentRole(agentId: string): AgentRole | undefined {
+  return agentDefinition(agentId)?.defaultRole;
 }
 
 /**
@@ -415,6 +454,8 @@ export interface AssembleLaunchCommandInput {
   prompt?: string;
   permissionMode?: PermissionMode;
   model?: string;
+  /** The node's role; argv only for a CLI with a `roleFlag` for it. */
+  role?: AgentRole;
   sessionId?: string;
   /**
    * Continue an existing session instead of starting a new one — the id comes
@@ -494,7 +535,7 @@ export interface LaunchArgv {
 
 /**
  * Build the launch argv for an agent node. Order: program → permission mode →
- * model → pre-minted session id → extra args → prompt (plan §5.1).
+ * model → role → pre-minted session id → extra args → prompt (plan §5.1).
  */
 export function assembleLaunchArgv(
   input: AssembleLaunchCommandInput,
@@ -547,6 +588,8 @@ export function assembleLaunchArgv(
   if (input.model && base.modelFlag) {
     args.push(base.modelFlag, input.model);
   }
+
+  args.push(...roleFlags(base.id, input.role));
 
   // `--session-id` mints a new session; asking for both is a contradiction and
   // claude rejects the pair outright, so resume silently wins.

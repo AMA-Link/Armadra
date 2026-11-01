@@ -11,10 +11,13 @@ import {
   assembleLaunchCommand,
   collapsePrompt,
   customAgentSchema,
+  defaultAgentRole,
   hookEventsFor,
   inheritedAgentCapabilities,
   isAgentId,
+  roleFlags,
   shellQuote,
+  terminalAgentSchema,
 } from "../src/index.js";
 
 describe("agent registry", () => {
@@ -123,6 +126,52 @@ describe("agent registry", () => {
         prompt: "hi",
       }),
     ).toEqual({ command: "ama --permission-mode plan hi" });
+  });
+
+  // docs/design/coordinator-agent.md §4: a coordinator dispatches and runs
+  // nothing itself — ama's own preset enforces it.
+  it("starts an ama coordinator with ama's coordinator preset", () => {
+    expect(defaultAgentRole("ama")).toBe("coordinator");
+    expect(roleFlags("ama", "coordinator")).toEqual([
+      "--tools-preset",
+      "coordinator",
+    ]);
+    expect(
+      assembleLaunchCommand({
+        agentId: "ama",
+        permissionMode: "auto-edit",
+        model: "m",
+        role: "coordinator",
+        prompt: "hi",
+      }),
+    ).toEqual({
+      command:
+        "ama --permission-mode auto-edit --model m --tools-preset coordinator hi",
+    });
+    expect(
+      assembleLaunchArgv({ agentId: "ama", resume: "s1", role: "coordinator" })
+        .args,
+    ).toEqual(["--resume", "s1", "--tools-preset", "coordinator"]);
+  });
+
+  it("gives other CLIs no role and no role argv", () => {
+    for (const id of AGENT_IDS.filter((one) => one !== "ama")) {
+      expect(defaultAgentRole(id)).toBeUndefined();
+      expect(roleFlags(id, "coordinator")).toEqual([]);
+      expect(
+        assembleLaunchArgv({ agentId: id, role: "coordinator" }).args,
+      ).toEqual(assembleLaunchArgv({ agentId: id }).args);
+    }
+    expect(roleFlags("ama", undefined)).toEqual([]);
+  });
+
+  it("keeps the role on the node only as a known value", () => {
+    expect(
+      terminalAgentSchema.parse({ id: "ama", role: "coordinator" }).role,
+    ).toBe("coordinator");
+    expect(
+      terminalAgentSchema.safeParse({ id: "ama", role: "worker" }).success,
+    ).toBe(false);
   });
 
   it("recognises built-in ids only", () => {
