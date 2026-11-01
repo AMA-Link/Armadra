@@ -150,6 +150,19 @@ MVP 闭环（场景 11 也按此验收）：
 
 不在 MVP：协调者自己运行工作流、审批在画布上直答、RPC 子进程形态。
 
+### §4.1 协调者只分派（2026-11，#664）
+
+协调者是一个**结构上的角色**，不是一句提示词：它分派、汇总，自己不执行。
+
+- 节点数据：`data.agent.role`，取值只有 `"coordinator"`，缺席表示普通成员。它和连线角色（`main` / `sub`，由上下文连线决定）是两回事。注册表里，只有给了 `roleFlag` 的 CLI 才会按这个字段行事，今天只有 ama：`roleFlag.coordinator = ["--tools-preset", "coordinator"]`，`defaultRole = "coordinator"`。
+- 谁会有这个角色：
+  - 用户从新建菜单建的 ama 节点，写入 `role: "coordinator"`；
+  - 由 `open-agent`、`team`、runner（`task(agent="ama")`）起的成员节点，以及从对话记录恢复出来的节点，都不写。
+- 启动行：角色旗标排在模型旗标之后，终端（`planLaunch` / 页面的 `assembleLaunchArgv`）、ACP（`acpLaunchPlan`，排在 profile 之后）、执行主机三条路径一致。续接（`--resume`）时同样带上：ama 每次启动都按配置加命令行重新算预设，不会沿用会话里记下的旧预设。ACP 预启动按新建节点的缺省角色起，这样新建协调者时能领走预启动好的进程。
+- 工具集：ama 的 `coordinator` 预设只给 `read` 和宿主工具，codemode 也越不过这个活动集。profile 的 `tools.default` 加了 `+grep`、`+glob`，协调者因此能找代码，而且不弹审批；`default` 预设本来就有这两个工具，加了不变。ama 进程内的子 Agent 沿用父会话的活动集，所以要真正动手，只能交给画布成员。
+- 提示：`agent-host/ama/instructions.ts` 的工具说明里有一段话，对两种角色都成立（"没有 bash / edit / write 就是协调者……"），所以适配器不需要知道当前用的是哪个预设。
+- 界面：节点的 Agent 设置里有"协调者"开关，只对能当协调者的 CLI 显示。预设在启动时就定下了，所以节点运行中这个开关置灰。
+
 ## §5 `core/workflow/` 与协调者的分工
 
 ### §5.1 分工
