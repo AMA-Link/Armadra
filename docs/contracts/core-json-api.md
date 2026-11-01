@@ -1035,12 +1035,40 @@ G5-25 追加：`GET /api/usage` 与 `POST /api/usage/refresh` 里 Claude 那一�
 | `GET /api/workflows/tasks?boardId=`        | 协调者节点在这块画板上的任务行，新的在前，最多 200 行 → `{ tasks }`；缺 `boardId` 回 `400 bad_request` |
 | `POST /api/workflows/tasks/{taskId}/retry` | 把起任务时的正文从协调者节点再投给同一个成员节点 → `{ task }`（行回到 `running`、重新计时）            |
 
-任务行：`{ taskId, coordinatorNodeId, runnerId, nodeId, status, startedAt, endedAt, reason, retryable }`。`status` 同 §15.5（`running` / `done` / `failed` / `stopped`）；`reason` 是失败时记下的理由（`turnFailed` 等），否则 `null`；`retryable` = 失败或停止、且库里记着任务正文。任务正文与成员的结果正文都不进答复。
+任务行：`{ taskId, coordinatorNodeId, runnerId, nodeId, status, startedAt, endedAt, reason, retryable, title?, stage?, report?, attention? }`（后四个是 §15.8 的工作项账本，旧 core 不答）。`status` 同 §15.5（`running` / `done` / `failed` / `stopped`）；`reason` 是失败时记下的理由（`turnFailed` 等），否则 `null`；`retryable` = 失败或停止、且库里记着任务正文。任务正文与成员的结果正文都不进答复。
 
 - 重试走投递队列（`origin: "first-task"`，发起方是协调者节点），门链、租约与回执与 `canvas send` 相同，不替人回答任何提示。拒绝：没有这个任务 `404 not_found`；不是 `failed` / `stopped` `409 task_not_failed`；没记正文（不带 `--task` 起的）`409 task_prompt_missing`；成员节点已不在协调者那块画板上 `409 task_node_missing`；目标队伍满了 `409 queue_full`。
 - 权限：列表是 `canvas:read`（按 `boardId` 查画布），重试是 `agent:launch`（按任务的协调者节点查画布）；服务器壳的路由门在 `identity/route-access.ts`。
 - 事件：任务行每次换状态推 §15.4 的 `workflow.task`，抽屉据此重读（G5-09 起不再每 5 秒轮询；断线重连后重读一次）。重试之后协调者不再 `wait` 时，行由 core 自己落结束（§15.5）。
 - 汇总便签由页面在画布文档里认：来源是这个协调者（`data.source.nodeId`）或与它连着线的便签。`canvas sticky` 写的便签自 G5-09 起带 `data.source = { nodeId: <写它的节点>, sessionId: "" }`。
+
+### 15.8 工作项账本：`report` / `handback` / `items`（#682）
+
+`workflow_task_runs` 的每一行就是协调者的一个**工作项**（迁移 0058 只加列）。`open-agent --task-id` 和 `team` 的每个成员都会写一行，`team` 成员的任务 id 是 `team:<成员节点 id>`。派发时写入标题、来源 `origin`（`{ kind: "coordinator" | "team", ref: <协调者节点>, text? }`，`text` 取 `--origin`，没给就用任务正文，最多 8000 字）和授权 `mandate`（`{ by: { nodeId, title }, basis: "asked", scope: <标题>, at }`），之后不再改。`open-agent` 和 `team` 因此多一个可选参数 `origin`：人的原话，原样记下。
+
+三个 hook 面控制动词（`/control/<verb>`，需要节点令牌）：
+
+| 动词       | 调用方                                 | 参数                                                                                                                                            | 说明                                                                                                                                                                                                                                                                                                                                                                          |
+| ---------- | -------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `report`   | 成员                                   | `state`（`progress` / `waiting` / `ready` / `blocked` / `failed`）、`summary`（1–300 字）、`human-action`（1–500 字）或 `clear-action`、`item?` | 写一条报告：进历史表 `workflow_task_reports`，并替换「最近一次报告」。`human-action` 写进待决问题的单槽：给出就替换，省略就保持，`clear-action` 清空，两者同时给回 `400`。只有 `ready` / `blocked` / `failed`，或带了问题的报告，才在协调者收件箱留一行（`post`，键 `report:<id>:<seq>`）；`progress` / `waiting` 只记账。`result: { item, seq, stage, attention, notified }` |
+| `handback` | 成员                                   | `reason`（1–100 字）、`item?`                                                                                                                   | 把这一项交回协调者重新决定。同一项只能交回一次，第二次回 `409 conflict`。记进历史，并在协调者收件箱留一行（键 `handback:<id>`）。不动最近一次报告和待决问题                                                                                                                                                                                                                   |
+| `items`    | 协调者（单项详情成员也能看自己那一项） | `item?`、`full?`、`stage?`、`limit`（1–50，缺省 20）、`offset`                                                                                  | 列表：自己名下的项，按阶段排序，同阶段里新的在前；`result: { items, total, nextOffset? }`。单项详情：授权、来源原文（缺省前 2000 字，`full` 给全文）、最近 10 条历史                                                                                                                                                                                                          |
+
+- `item` 缺省时：取调用方名下唯一一个 `running` 的项；有多个 `running` 时回 `400`，要求写明 `--item`；一个都没有时取最近的那一项；名下完全没有工作项时回 `404 not_found`。看别人名下的项与看不存在的项，都回同一个 `404`。
+- **阶段**（`stage`，在读的时候推出来，不存）。按顺序取第一个命中的：
+  1. `person/delivery`：任务还在跑，最近一次报告之后有发给成员的投递过期没投成；
+  2. `person/answer`：有待决问题；
+  3. `person/review`：最近一次报告是 `ready`；
+  4. `person/blocked` / `person/failed`：最近一次报告是 `blocked` / `failed`，或任务本身 `failed`；
+  5. `done` / `stopped`：任务已结束，又不在前四种里；
+  6. `working/queued`：成员没有活着的终端会话，或还在依赖后面排队；
+  7. `idle`：最近一次报告是 `waiting`，或节点空闲且收件箱没有未读；
+  8. `working`。
+
+  取值与排序都在 `@armadra/shared` 的 `WORK_ITEM_STAGES`。
+
+- 重试（§15.7 换绑或重开）会清空最近一次报告和待决问题，历史保留。
+- ama 的适配器把模型直接调用的 `canvas_wait` 封顶在 5 秒（runner 自己的长轮询不受影响）；ama 自己的 `coordinator` 预设下，`task_ctl wait` 也封顶 5 秒（armadra-agent#244）。
 
 ## 16. 实时协同：`…/boards/{boardId}/sync` 与评论
 
@@ -3419,10 +3447,10 @@ core 校验远程服务地址与指纹的写法时用具名码（状态均 400�
 
 <!-- rpc:begin contract=§43.3 -->
 
-| procedure           | kind     | input                  | output                                                                                                                                                                                                                                         | errors                               | scope          | 自   | 原路径                                     |
-| ------------------- | -------- | ---------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------ | -------------- | ---- | ------------------------------------------ |
-| `coordinator.tasks` | query    | `{ boardId?: string }` | `{ tasks: ({ taskId: string, coordinatorNodeId: string, runnerId: string, nodeId: string, status: "running" \| "done" \| "failed" \| "stopped", startedAt: string, endedAt: string \| null, reason: string \| null, retryable: boolean })[] }` | `forbidden`                          | `canvas:read`  | 1.12 | `GET /api/workflows/tasks`                 |
-| `coordinator.retry` | mutation | `{ taskId: string }`   | `{ task: { taskId: string, coordinatorNodeId: string, runnerId: string, nodeId: string, status: "running" \| "done" \| "failed" \| "stopped", startedAt: string, endedAt: string \| null, reason: string \| null, retryable: boolean } }`      | `forbidden`、`not_found`、`conflict` | `agent:launch` | 1.12 | `POST /api/workflows/tasks/{taskId}/retry` |
+| procedure           | kind     | input                  | output                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             | errors                               | scope          | 自   | 原路径                                     |
+| ------------------- | -------- | ---------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------ | -------------- | ---- | ------------------------------------------ |
+| `coordinator.tasks` | query    | `{ boardId?: string }` | `{ tasks: ({ taskId: string, coordinatorNodeId: string, runnerId: string, nodeId: string, status: "running" \| "done" \| "failed" \| "stopped", startedAt: string, endedAt: string \| null, reason: string \| null, retryable: boolean, title?: string \| null, stage?: "person/delivery" \| "person/answer" \| "person/review" \| "person/blocked" \| "person/failed" \| "working" \| "working/queued" \| "idle" \| "done" \| "stopped", report?: {…} \| null, attention?: string \| null })[] }` | `forbidden`                          | `canvas:read`  | 1.12 | `GET /api/workflows/tasks`                 |
+| `coordinator.retry` | mutation | `{ taskId: string }`   | `{ task: { taskId: string, coordinatorNodeId: string, runnerId: string, nodeId: string, status: "running" \| "done" \| "failed" \| "stopped", startedAt: string, endedAt: string \| null, reason: string \| null, retryable: boolean, title?: string \| null, stage?: "person/delivery" \| "person/answer" \| "person/review" \| "person/blocked" \| "person/failed" \| "working" \| "working/queued" \| "idle" \| "done" \| "stopped", report?: {…} \| null, attention?: string \| null } }`      | `forbidden`、`not_found`、`conflict` | `agent:launch` | 1.12 | `POST /api/workflows/tasks/{taskId}/retry` |
 
 <!-- rpc:end -->
 
