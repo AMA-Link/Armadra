@@ -1,4 +1,11 @@
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import * as React from "react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { ConsoleRoot } from "../ConsoleRoot";
@@ -7,6 +14,7 @@ import {
   MOCK_CAPABILITIES,
   type MockOptions,
 } from "../mock/create-mock-client";
+import { matchRoute } from "../router";
 import { external, recalledOAuthNext } from "./redirect";
 
 const visit = (url: string) => window.history.replaceState(null, "", url);
@@ -27,6 +35,7 @@ const ONLY_OAUTH = [
 afterEach(() => {
   cleanup();
   vi.restoreAllMocks();
+  vi.unstubAllGlobals();
   localStorage.clear();
   sessionStorage.clear();
   visit("/");
@@ -219,5 +228,196 @@ describe("注册页的第三方登录按钮", () => {
     );
     await vi.waitFor(() => expect(go).toHaveBeenCalled());
     expect(recalledOAuthNext()).toBe("/j/lnk1");
+  });
+});
+
+describe("回跳页 /login/oauth/:provider", () => {
+  const here = () => window.location.pathname + window.location.search;
+  const NEXT_KEY = "armadra.cloud.oauthNext";
+  const callback = (
+    options: MockOptions = {},
+    query = "code=c1&state=s1",
+    provider = "github",
+  ) => {
+    const api = mount(`/login/oauth/${provider}?${query}`, {
+      capabilities: BOTH,
+      ...options,
+    });
+    return { api, finish: vi.spyOn(api.client.auth, "oauthFinish") };
+  };
+
+  it("是公开路由，不取会话", () => {
+    expect(matchRoute("/login/oauth/github")).toMatchObject({
+      id: "oauth",
+      area: "public",
+      params: { provider: "github" },
+    });
+  });
+
+  it("成功：带 code、state、设备调 oauthFinish，进存下的 next，清掉存值和地址栏参数", async () => {
+    sessionStorage.setItem(NEXT_KEY, "/t/rd/hosts?status=online");
+    visit("/");
+    const api = createMockApi({ signedIn: false, capabilities: BOTH });
+    const finish = vi.spyOn(api.client.auth, "oauthFinish");
+    const me = vi.spyOn(api.client.me, "get");
+    visit("/login/oauth/github?code=c1&state=s1");
+    render(<ConsoleRoot api={api} />);
+    await waitFor(() => expect(here()).toBe("/t/rd/hosts?status=online"));
+    expect(finish).toHaveBeenCalledTimes(1);
+    expect(finish.mock.calls[0]![0]).toMatchObject({
+      provider: "github",
+      state: "s1",
+      code: "c1",
+      device: { platform: "browser" },
+    });
+    expect(sessionStorage.getItem(NEXT_KEY)).toBeNull();
+    // 回跳页本身不取会话：登录完成才开始取。
+    expect(me.mock.invocationCallOrder[0]).toBeGreaterThan(
+      finish.mock.invocationCallOrder[0]!,
+    );
+  });
+
+  it("没有存下的 next 回 /me；存的不是站内路径也回 /me", async () => {
+    callback();
+    await waitFor(() => expect(here()).toBe("/me"));
+    cleanup();
+    sessionStorage.setItem(NEXT_KEY, "//evil.com");
+    callback();
+    await waitFor(() => expect(here()).toBe("/me"));
+  });
+
+  it("设备码批准页的落点：登录后回到 /device?code=…", async () => {
+    sessionStorage.setItem(NEXT_KEY, "/device?code=ABCD-EFGH");
+    callback();
+    await waitFor(() => expect(here()).toBe("/device?code=ABCD-EFGH"));
+    expect(sessionStorage.getItem(NEXT_KEY)).toBeNull();
+  });
+
+  it("主机画布的落点 /h/<主机> 整页跳过去", async () => {
+    sessionStorage.setItem(NEXT_KEY, "/h/host1");
+    const replace = vi.fn();
+    visit("/login/oauth/github?code=c1&state=s1");
+    vi.stubGlobal("location", { ...window.location, replace, assign: replace });
+    const api = createMockApi({ signedIn: false, capabilities: BOTH });
+    render(<ConsoleRoot api={api} />);
+    await waitFor(() => expect(replace).toHaveBeenCalledWith("/h/host1"));
+  });
+
+  it("严格模式下只发一次 oauthFinish（state 一次性）", async () => {
+    visit("/login/oauth/google?code=c1&state=s1");
+    const api = createMockApi({ signedIn: false, capabilities: BOTH });
+    const finish = vi.spyOn(api.client.auth, "oauthFinish");
+    render(
+      <React.StrictMode>
+        <ConsoleRoot api={api} />
+      </React.StrictMode>,
+    );
+    await waitFor(() => expect(here()).toBe("/me"));
+    expect(finish).toHaveBeenCalledTimes(1);
+  });
+
+  it("两步验证挑战：进第二步，验证后进 next", async () => {
+    sessionStorage.setItem(NEXT_KEY, "/t/rd/hosts");
+    const { api } = callback({ oauthFinish: "mfa" });
+    const verify = vi.spyOn(api.client.auth, "mfaVerify");
+    await screen.findByLabelText("验证码");
+    fireEvent.change(screen.getByLabelText("验证码"), {
+      target: { value: "123456" },
+    });
+    fireEvent.submit(screen.getByLabelText("验证码").closest("form")!);
+    await waitFor(() => expect(here()).toBe("/t/rd/hosts"));
+    expect(verify.mock.calls[0]![0]).toMatchObject({
+      challengeId: "mock-mfa",
+      code: "123456",
+    });
+    expect(sessionStorage.getItem(NEXT_KEY)).toBeNull();
+  });
+
+  it("两步验证码不对：留在第二步显示文案", async () => {
+    const { api } = callback({ oauthFinish: "mfa" });
+    vi.spyOn(api.client.auth, "mfaVerify").mockRejectedValue(
+      Object.assign(new Error("x"), { status: 401, code: "mfa_invalid" }),
+    );
+    fireEvent.change(await screen.findByLabelText("验证码"), {
+      target: { value: "000000" },
+    });
+    fireEvent.submit(screen.getByLabelText("验证码").closest("form")!);
+    await waitFor(() =>
+      expect(screen.getByLabelText("验证码").getAttribute("aria-invalid")).toBe(
+        "true",
+      ),
+    );
+    expect(here().startsWith("/login/oauth/")).toBe(true);
+  });
+
+  it.each([
+    [
+      "邮箱已有口令账号",
+      { error: "conflict", details: { reason: "account_exists" } },
+      "该邮箱已有账号，请用原方式登录",
+    ],
+    [
+      "state 过期或不符",
+      { error: "credentials_invalid" },
+      "登录已过期，请重新登录",
+    ],
+    ["登录方式未开放", { error: "not_found" }, "该登录方式未开放"],
+    ["提供方邮箱未验证", { error: "email_unverified" }, "先验证邮箱再继续"],
+    ["账号已停用", { error: "account_disabled" }, "账号已停用，联系支持"],
+    ["暂停注册", { error: "registrations_paused" }, "暂停注册"],
+  ])(
+    "失败（%s）：按码出文案，保留 next 的「返回登录」",
+    async (_name, error, text) => {
+      sessionStorage.setItem(NEXT_KEY, "/device?code=ABCD-EFGH");
+      callback({ oauthFinish: error });
+      expect(await screen.findByText(text)).toBeTruthy();
+      expect(here()).toBe("/login/oauth/github");
+      const back = screen.getByRole("link", { name: "返回登录" });
+      expect(back.getAttribute("href")).toBe(
+        `/login?next=${encodeURIComponent("/device?code=ABCD-EFGH")}`,
+      );
+      fireEvent.click(back);
+      await waitFor(() => expect(here()).toContain("/login?next="));
+      expect((await h1()).textContent).toBe("登录");
+    },
+  );
+
+  it("没有 next 的失败：返回登录是 /login", async () => {
+    callback({ oauthFinish: { error: "credentials_invalid" } });
+    await screen.findByText("登录已过期，请重新登录");
+    expect(
+      screen.getByRole("link", { name: "返回登录" }).getAttribute("href"),
+    ).toBe("/login");
+  });
+
+  it("提供方回传 error=access_denied（用户取消）：提示已取消，不调 oauthFinish", async () => {
+    const { finish } = callback({}, "error=access_denied&state=s1");
+    await screen.findByText("已取消登录");
+    expect(finish).not.toHaveBeenCalled();
+    expect(screen.getByRole("link", { name: "返回登录" })).toBeTruthy();
+  });
+
+  it("提供方的其他 error：通用文案", async () => {
+    const { finish } = callback({}, "error=server_error&state=s1");
+    await screen.findByText("核心处理这个请求时失败");
+    expect(finish).not.toHaveBeenCalled();
+  });
+
+  it("缺 code 或 state：当作过期，不调 oauthFinish", async () => {
+    const { finish } = callback({}, "code=c1");
+    await screen.findByText("登录已过期，请重新登录");
+    expect(finish).not.toHaveBeenCalled();
+  });
+
+  it("不认识的提供方：未开放，不调 oauthFinish", async () => {
+    const { finish } = callback({}, "code=c1&state=s1", "gitlab");
+    await screen.findByText("该登录方式未开放");
+    expect(finish).not.toHaveBeenCalled();
+  });
+
+  it("code、state 读出来就从地址栏拿掉", async () => {
+    callback({ oauthFinish: { error: "credentials_invalid" } });
+    await screen.findByText("登录已过期，请重新登录");
+    expect(window.location.search).toBe("");
   });
 });

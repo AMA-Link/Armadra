@@ -13,6 +13,7 @@ import { describeFailure } from "../api/errors";
 import { usePlatformInfo } from "../api/queries";
 import { RouteLink } from "../RouteLink";
 import { AuthLayout } from "./AuthLayout";
+import { MfaStep } from "./MfaStep";
 import { OAuthButtons } from "./OAuthButtons";
 import { useSignInOptions } from "./sign-in-options";
 
@@ -40,8 +41,6 @@ export function LoginPage({
   const [stage, setStage] = React.useState<Stage>({ kind: "credentials" });
   const [account, setAccount] = React.useState("");
   const [password, setPassword] = React.useState("");
-  const [code, setCode] = React.useState("");
-  const [recovery, setRecovery] = React.useState(false);
   const [error, setError] = React.useState("");
   const [busy, setBusy] = React.useState(false);
   const [challenge, setChallenge] = React.useState("");
@@ -96,76 +95,19 @@ export function LoginPage({
       onSignedIn();
     });
 
-  const verify = (challengeId: string) =>
-    guarded(async () => {
-      await (operator ? api.ops : api.client).auth.mfaVerify({
-        challengeId,
-        code: code.trim(),
-      });
-      onSignedIn();
-    });
-
   const query = new URLSearchParams();
   if (next !== null) query.set("next", next);
   const suffix = query.size === 0 ? "" : `?${query}`;
 
-  if (stage.kind === "mfa") {
-    const canRecover = stage.methods.includes("recovery");
-    const canTotp = stage.methods.includes("totp");
+  if (stage.kind === "mfa")
     return (
-      <AuthLayout title={t("auth.mfa.title")}>
-        <form
-          className="flex flex-col gap-3"
-          onSubmit={(event) => {
-            event.preventDefault();
-            if (code.trim() !== "") void verify(stage.challengeId);
-          }}
-        >
-          <Field data-invalid={error !== "" || undefined}>
-            <FieldLabel htmlFor={`${id}-code`}>
-              {recovery ? t("auth.mfa.recovery") : t("auth.mfa.code")}
-            </FieldLabel>
-            <Input
-              id={`${id}-code`}
-              autoFocus
-              autoComplete="one-time-code"
-              inputMode={recovery ? "text" : "numeric"}
-              value={code}
-              disabled={busy}
-              aria-invalid={error !== "" || undefined}
-              onChange={(event) => {
-                setCode(event.target.value);
-                setError("");
-              }}
-            />
-            <FieldError>{error}</FieldError>
-          </Field>
-          <Button
-            type="submit"
-            size="lg"
-            className="w-full"
-            disabled={code.trim() === ""}
-            loading={busy}
-          >
-            {t("auth.verify")}
-          </Button>
-          {canRecover && canTotp && (
-            <Button
-              type="button"
-              variant="ghost"
-              onClick={() => {
-                setRecovery(!recovery);
-                setCode("");
-                setError("");
-              }}
-            >
-              {recovery ? t("auth.mfa.useTotp") : t("auth.mfa.useRecovery")}
-            </Button>
-          )}
-        </form>
-      </AuthLayout>
+      <MfaStep
+        operator={operator}
+        challengeId={stage.challengeId}
+        methods={stage.methods}
+        onSignedIn={onSignedIn}
+      />
     );
-  }
 
   const waiting = !operator && options.loading;
   return (
