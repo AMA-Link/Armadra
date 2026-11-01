@@ -49,6 +49,9 @@
 //   7. 起 Vite + 无头 Chrome 打开这块画布，点协调者节点头部的「N 成员」→ 右侧
 //      抽屉里列出这三次 `task` 的成员行（与 `workflow_task_runs` 同样是 done）
 //      与协调者写的汇总便签。只在脚本化模型时跑。
+//   8. 工作项账本（契约 §90，#682）：其中一个成员以自己的身份 `report ready`
+//      → 协调者的 `items` 读到这一项且阶段是 `person/review` → 抽屉里这一行
+//      换成「待验收」（`data-tone="attention"`），排到最前面。
 //
 // 真模型（`--real-model`，C 档，`ARMADRA_E2E_REAL=1`）：同一条闭环交给真模型走。
 // 供应商与 key 从环境变量读（`ARMADRA_E2E_AMA_PROVIDER`，缺省 deepseek；
@@ -854,6 +857,19 @@ export default async function run() {
       members: members.found.map((node) => node.title),
       edges: edges.length,
     });
+    // 工作项账本（#682）：canvas_team 的每个成员在 workflow_task_runs 里有一行。
+    const teamRows = database
+      .prepare(
+        "SELECT node_id, title, stage FROM workflow_task_runs WHERE task_id LIKE 'team-%'",
+      )
+      .all();
+    s.check(
+      "canvas_team 的每个成员在账本里有一行，带标题与阶段",
+      members.found.every((node) =>
+        teamRows.some((row) => row.node_id === node.id && row.title !== null),
+      ),
+      teamRows,
+    );
 
     // 这一轮结束：模型回了一句话，ama 报 agent_settled → 空闲。
     await waitFor(
@@ -1023,7 +1039,7 @@ export default async function run() {
     );
     const runs = database
       .prepare(
-        "SELECT task_id, coordinator_node_id, runner_id, node_id, status, result_json FROM workflow_task_runs",
+        "SELECT task_id, coordinator_node_id, runner_id, node_id, status, result_json FROM workflow_task_runs WHERE task_id NOT LIKE 'team-%'",
       )
       .all();
     s.check(
@@ -1298,7 +1314,7 @@ export default async function run() {
     if (!real) {
       const taskRows = database
         .prepare(
-          "SELECT node_id, status FROM workflow_task_runs WHERE coordinator_node_id = ?",
+          "SELECT node_id, status FROM workflow_task_runs WHERE coordinator_node_id = ? AND task_id NOT LIKE 'team-%'",
         )
         .all(lead.id);
       const stack = await startPageStack(context.environment);
@@ -1350,6 +1366,56 @@ export default async function run() {
         drawer.summaries,
       );
       await page.capture("11-dispatch-drawer");
+
+      /* ---------------- 8. 工作项账本：report ready（#682） ---------------- */
+
+      const member = database
+        .prepare(
+          "SELECT task_id, node_id FROM workflow_task_runs WHERE coordinator_node_id = ? " +
+            "AND task_id NOT LIKE 'team-%' ORDER BY started_at DESC LIMIT 1",
+        )
+        .get(lead.id);
+      const reported = await controlAs(data, member.node_id, "report", {
+        state: "ready",
+        summary: "src/z 检查完，等你验收",
+        item: member.task_id,
+      });
+      s.check(
+        "成员 report ready 被收下，阶段是 person/review",
+        reported?.result?.stage === "person/review",
+        reported,
+      );
+      const ledger = await controlAs(data, lead.id, "items", {});
+      const listed = (ledger?.result?.items ?? []).find(
+        (item) => item.id === member.task_id,
+      );
+      s.check(
+        "协调者的 canvas items 读到这一项，阶段 person/review，排在最前",
+        listed?.stage === "person/review" &&
+          listed?.report?.state === "ready" &&
+          ledger.result.items[0]?.id === member.task_id,
+        ledger?.result,
+      );
+      await page
+        .waitFor(
+          `const row = document.querySelector('[data-slot="dispatch-member"][data-node-id="${member.node_id}"]');
+           return !!row && row.dataset.tone === "attention" && row.innerText.includes("待验收");`,
+          { what: "分派抽屉里这一行显示「待验收」", timeout: 30_000 },
+        )
+        .catch(async (error) => {
+          await page
+            .capture("11-dispatch-drawer-review-failed")
+            .catch(() => {});
+          throw error;
+        });
+      const first = await page.evaluate(
+        `return document.querySelector('[data-slot="dispatch-member"]')?.dataset.nodeId ?? null;`,
+      );
+      s.check("抽屉里「待验收」的成员排在最前面", first === member.node_id, {
+        first,
+        expected: member.node_id,
+      });
+      await page.capture("11-dispatch-drawer-review");
     }
 
     /* -------------------- 4. 画布外对照：同一 profile -------------------- */

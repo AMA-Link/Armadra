@@ -376,6 +376,17 @@ function droppable(
   return name !== undefined && name in present ? name : undefined;
 }
 
+/** `{ "item-title": … }` from the first line of a prompt, or nothing. */
+function itemTitle(prompt: string): Record<string, JsonValue> {
+  const line = prompt
+    .split("\n")
+    .map((part) => part.trim())
+    .find((part) => part !== "");
+  return line === undefined
+    ? {}
+    : { "item-title": [...line].slice(0, 80).join("") };
+}
+
 /** The runner for one agent id. */
 export function canvasRunner(agentId: string, deps: RunnerDeps): HostRunner {
   return {
@@ -392,6 +403,8 @@ export function canvasRunner(agentId: string, deps: RunnerDeps): HostRunner {
         agent: agentId,
         task: prompt,
         "task-id": key,
+        // The ledger's one-line title: the first line of the dispatch text.
+        ...itemTitle(request.prompt),
         name: `${agentId.replace(/^custom:/, "")} · ${shortId}`.slice(0, 80),
         ...(request.model === undefined ? {} : { model: request.model }),
       };

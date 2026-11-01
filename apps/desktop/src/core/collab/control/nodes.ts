@@ -444,6 +444,13 @@ export async function openAgent(
         nodeId: node.id,
         now: nowMs,
         task,
+        // 账本的标题：`--item-title`（runner 给的，任务正文的第一行），否则
+        // `--title`，再否则任务正文的第一行，最后是节点标题。
+        title:
+          args.text("item-title") ??
+          args.text("title") ??
+          (task === undefined ? undefined : task.split("\n", 1)[0]) ??
+          title,
       });
     }
     publishTask(context.database, context.publish, taskKey);
@@ -995,6 +1002,18 @@ export async function team(
       role.task === undefined || dependencies !== undefined
         ? undefined
         : queueFirstTask(context, caller, node, role.task);
+    // 成员也是账本里的一行（契约 §90.1），成员的 `canvas report` 才有处可落。
+    const itemId = `team-${node.id}`;
+    recordTaskStart(context.database, {
+      taskId: itemId,
+      coordinatorNodeId: caller.node.id,
+      runnerId: role.agentId,
+      nodeId: node.id,
+      now: nowDate(context).getTime(),
+      task: role.task,
+      title: role.title,
+    });
+    publishTask(context.database, context.publish, itemId);
     // 带 `resume=` 的成员由 core 起：页面敲的是新开的行，接不回那段会话。
     // 有依赖时依赖服务本来就会起它。
     const resume = resumes[index];
@@ -1028,6 +1047,7 @@ export async function team(
             },
           }),
       ...(taskId === undefined ? {} : { taskId }),
+      item: itemId,
       ...(dependencies === undefined
         ? {}
         : {

@@ -86,7 +86,7 @@ describe("task runs", () => {
     );
     let run = taskRun(fixture.database, "t2")!;
     expect(run.result).toEqual({ reason: "turnFailed", task: "审查 src/x" });
-    expect(taskRowJson(run)).toMatchObject({
+    expect(taskRowJson(run, "working")).toMatchObject({
       status: "failed",
       reason: "turnFailed",
       retryable: true,
@@ -105,9 +105,11 @@ describe("task runs", () => {
     expect(taskRun(fixture.database, "t2")!.result).toEqual({
       task: "审查 src/x",
     });
-    expect(taskRowJson(taskRun(fixture.database, "t2")!)).toMatchObject({
-      retryable: false,
-      reason: null,
-    });
+    expect(taskRowJson(taskRun(fixture.database, "t2")!, "idle")).toMatchObject(
+      {
+        retryable: false,
+        reason: null,
+      },
+    );
   });
 });

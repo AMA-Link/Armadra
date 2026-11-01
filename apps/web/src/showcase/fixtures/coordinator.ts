@@ -123,6 +123,10 @@ function task(
     endedAt: null,
     reason: null,
     retryable: false,
+    title: null,
+    stage: null,
+    report: null,
+    attention: null,
     ...patch,
   };
 }

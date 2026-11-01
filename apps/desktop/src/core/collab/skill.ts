@@ -310,6 +310,25 @@ armadra-hook canvas cancel --id <待投 id>                            # 撤掉�
 
 ${browserSection()}
 
+## 工作项与报告 / Work items and reports
+
+协调者派给你的每件事是账本里的一个**工作项**。进度、验收和要人拍板的问题用 \`report\` 写，不要用 \`post\` 给协调者发进度。
+Each job the coordinator hands you is a work item in a ledger. Report progress, review and questions for a person with \`report\`; do not \`post\` progress to the coordinator.
+
+\`\`\`sh
+armadra-hook canvas report --state progress --summary '登录接口写完，开始补测试'
+armadra-hook canvas report --state ready --summary '改动在 src/auth，测试通过，等验收'
+armadra-hook canvas report --state waiting --summary '缺少测试账号' --human-action '用哪个测试账号？'
+armadra-hook canvas report --state progress --summary '已拿到账号' --clear-action
+armadra-hook canvas handback --item <工作项 id> --reason '这条跟进不属于这件事'
+armadra-hook canvas items                                    # 只读：你名下的工作项
+\`\`\`
+
+- \`--state\`：\`progress\` 在做、\`waiting\` 在等别的东西、\`ready\` 做完等人验收、\`blocked\` 卡住、\`failed\` 没做成。\`--summary\` 不超过 300 字。
+- \`--human-action\` 只放**一个具体、可以直接回答的问题**；给出就替换上一个，省略就保持，\`--clear-action\` 清除。
+- 名下没有工作项时 \`report\` 会被拒绝（不是协调者派的活不用报）；同时有几个进行中的，用 \`--item\` 指明。
+- 阶段（待回答、待验收、阻塞……）由画布从事实推出，不是你设置的；\`handback\` 每个工作项只能交回一次，理由不超过 100 字。
+
 ## 长文本与特殊字符 / Text from stdin or a file
 
 任何带值的参数都可以不写在命令行上：\`--body -\` 从标准输入读（一次调用只能有一个），\`--body-file <路径>\` 从文件读；\`--task-file\`、\`--member-file\`、\`--content-file\`、\`--text-file\`、\`--field-file\` 同理。文件按 UTF-8 读（带 BOM 的 UTF-16 也行），CRLF 变成 LF，末尾一个换行去掉。

@@ -73736,6 +73736,77 @@
                           },
                           "retryable": {
                             "type": "boolean"
+                          },
+                          "title": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "stage": {
+                            "enum": [
+                              "person/delivery",
+                              "person/answer",
+                              "person/review",
+                              "person/blocked",
+                              "person/failed",
+                              "working/queued",
+                              "idle",
+                              "working"
+                            ],
+                            "type": "string"
+                          },
+                          "report": {
+                            "anyOf": [
+                              {
+                                "type": "object",
+                                "properties": {
+                                  "state": {
+                                    "enum": [
+                                      "progress",
+                                      "waiting",
+                                      "ready",
+                                      "blocked",
+                                      "failed"
+                                    ],
+                                    "type": "string"
+                                  },
+                                  "summary": {
+                                    "type": "string"
+                                  },
+                                  "at": {
+                                    "type": "string"
+                                  }
+                                },
+                                "required": ["state", "summary", "at"]
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "attention": {
+                            "anyOf": [
+                              {
+                                "type": "object",
+                                "properties": {
+                                  "question": {
+                                    "type": "string"
+                                  },
+                                  "raisedAt": {
+                                    "type": "string"
+                                  }
+                                },
+                                "required": ["question", "raisedAt"]
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
                           }
                         },
                         "required": [
@@ -73747,7 +73818,11 @@
                           "startedAt",
                           "endedAt",
                           "reason",
-                          "retryable"
+                          "retryable",
+                          "title",
+                          "stage",
+                          "report",
+                          "attention"
                         ]
                       }
                     }
@@ -73851,6 +73926,77 @@
                         },
                         "retryable": {
                           "type": "boolean"
+                        },
+                        "title": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "stage": {
+                          "enum": [
+                            "person/delivery",
+                            "person/answer",
+                            "person/review",
+                            "person/blocked",
+                            "person/failed",
+                            "working/queued",
+                            "idle",
+                            "working"
+                          ],
+                          "type": "string"
+                        },
+                        "report": {
+                          "anyOf": [
+                            {
+                              "type": "object",
+                              "properties": {
+                                "state": {
+                                  "enum": [
+                                    "progress",
+                                    "waiting",
+                                    "ready",
+                                    "blocked",
+                                    "failed"
+                                  ],
+                                  "type": "string"
+                                },
+                                "summary": {
+                                  "type": "string"
+                                },
+                                "at": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": ["state", "summary", "at"]
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "attention": {
+                          "anyOf": [
+                            {
+                              "type": "object",
+                              "properties": {
+                                "question": {
+                                  "type": "string"
+                                },
+                                "raisedAt": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": ["question", "raisedAt"]
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
                         }
                       },
                       "required": [
@@ -73862,7 +74008,11 @@
                         "startedAt",
                         "endedAt",
                         "reason",
-                        "retryable"
+                        "retryable",
+                        "title",
+                        "stage",
+                        "report",
+                        "attention"
                       ]
                     }
                   },

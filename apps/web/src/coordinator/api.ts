@@ -1,5 +1,10 @@
 import { activeSource, srcPrefix } from "../sources/scope";
 import { z } from "zod";
+import {
+  WORK_ITEM_STAGES,
+  workItemAttentionSchema,
+  workItemReportSchema,
+} from "@armadra/shared";
 
 import { clientFor } from "@/api/client";
 
@@ -21,6 +26,11 @@ export const dispatchTaskSchema = z.object({
   endedAt: z.string().nullable(),
   reason: z.string().nullable().default(null),
   retryable: z.boolean().default(false),
+  // 工作项账本（契约 §90）：旧 core 没有这些字段。
+  title: z.string().nullable().default(null),
+  stage: z.enum(WORK_ITEM_STAGES).nullable().default(null),
+  report: workItemReportSchema.nullable().default(null),
+  attention: workItemAttentionSchema.nullable().default(null),
 });
 
 export type DispatchTask = z.infer<typeof dispatchTaskSchema>;

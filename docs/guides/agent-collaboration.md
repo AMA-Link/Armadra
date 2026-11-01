@@ -206,6 +206,8 @@ ACP 是同一个 Agent 节点的另一种驱动方式，不是第二条 Agent �
 
 `ama` 在画布里经宿主适配器（`apps/desktop/src/agent-host/ama/`）直接调用画布动词，不走技能文本。它的子任务工具 `task` 由 runners 落成画布节点：内置六家、`ama` 自己与每个 `custom:*` 各注册一个 runner，`start` 是 `open-agent --task-id <会话:任务>`（同一任务 id 幂等，节点删了就新建并换绑），`wait()` 循环控制动词 `wait`（长轮询，`running / done / failed / blocked / needsInput`），成员在任务末尾按 `task:<id>:result` 键 `post` 回报（成员技能里有这一句）。`blocked` 只报告、不替人答审批；ama 自己的审批先在画布上等答复，等不到让给终端对话框。
 
+协调者分派出去的每件事是 `workflow_task_runs` 里的一个**工作项**（契约 §90）：成员用 `canvas report`（`progress / waiting / ready / blocked / failed`，可带一个待人回答的问题）写结构化报告，用 `canvas handback` 把一条跟进交回协调者；协调者用 `canvas items` 读账本，而不是翻聊天历史。阶段（`person/delivery`、`person/answer`、`person/review`、`person/blocked`、`person/failed`、`working/queued`、`idle`、`working`）由 core 从事实推出，Agent 不能设置；节点头与分派抽屉显示它，`person/*` 排在前面。协调者预设下 `canvas_wait` 在适配器里封顶 5 秒，协调者的工具说明要求派发时原样引用原始请求、自己的说明不超过 30 字。
+
 工作流把一次协作沉淀成模板：协调者经 `workflow-propose` 交草案，人在工作面板「工作流」页确认成模板、填参数起跑，或在自动化里定时运行；每次运行在画布上建一个 Frame 与各角色节点，关卡停下等人答复，运行记录可回看与对比（契约 §15）。
 
 模型密钥只在密钥后端（`armadra-ama-<供应商>`），启动器凭节点 token 经 hook 通道兑换、只设给 ama 进程；Windows 上由 `armadra-launch.exe` 兑换；SSH 执行主机不兑换。runner 把 `task` 的 `cwd` / `resume` 映射成 `open-agent --cwd` / `--resume`（`--cwd` 只认工作区内的目录；工作区在远端执行主机上时成员也起在那台主机上，目录由那边的 Worker 判定；`team` 有整队的 `--cwd`，成员末尾可加 `cwd=` / `resume=`），core 拒绝时去掉那一项重起一次；ama 节点头部的「N 成员」打开分派抽屉，列出各成员任务的状态与汇总便签，失败的任务可重试（契约 §15.5、§15.7）。

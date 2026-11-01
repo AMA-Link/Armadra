@@ -124,6 +124,8 @@ describe("the canvas runners", () => {
       agent: "claude",
       "task-id": "sess-1:t1",
       "permission-mode": "full-auto",
+      // The work item's title is the first line of the dispatch text.
+      "item-title": "review src/x",
     });
     // The member is told exactly which key the coordinator waits for.
     expect(String(open[0]!.args.task)).toContain("review src/x");

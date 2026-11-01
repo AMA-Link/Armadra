@@ -14,6 +14,7 @@ import { GATE_SCOPE } from "./routes";
 import { workflowDispatcher } from "./test-dispatch";
 import { WorkflowService } from "./service";
 import { finishTask, recordTaskStart } from "./task-runs";
+import { recordReport } from "./work-items";
 
 /**
  * `/api/workflows/*` 与 `workflow-propose`（契约 §15.1–§15.3）：草案从动词进来、
@@ -388,6 +389,10 @@ describe("协调者任务（契约 §15.7）", () => {
         endedAt: new Date(5_000).toISOString(),
         reason: "turnFailed",
         retryable: true,
+        title: null,
+        stage: "person/failed",
+        report: null,
+        attention: null,
       },
     ]);
     expect(JSON.stringify(listed.body)).not.toContain("审查 src/x");
@@ -398,6 +403,35 @@ describe("协调者任务（契约 §15.7）", () => {
       status: 400,
       body: { code: "bad_request" },
     });
+  });
+
+  it("carries the ledger fields: title, stage, last report and open question", async () => {
+    const { taskId } = seed("审查 src/x");
+    recordReport(fixture.database, taskId, {
+      state: "waiting",
+      summary: "卡在登录",
+      attention: "用哪个账号？",
+      nowMs: 2_000,
+    });
+    const listed = await call(
+      "GET",
+      `/api/workflows/tasks?boardId=${fixture.boardId}`,
+    );
+    expect(listed.body.tasks).toMatchObject([
+      {
+        stage: "person/answer",
+        report: {
+          state: "waiting",
+          summary: "卡在登录",
+          at: new Date(2_000).toISOString(),
+        },
+        attention: {
+          question: "用哪个账号？",
+          raisedAt: new Date(2_000).toISOString(),
+        },
+      },
+    ]);
+    expect(JSON.stringify(listed.body)).not.toContain("审查 src/x");
   });
 
   it("retry re-queues the task text from the coordinator and reopens the row", async () => {

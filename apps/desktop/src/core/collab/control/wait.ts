@@ -212,7 +212,7 @@ function postsAfter(
 }
 
 /** 协调者投给成员的最近一条（第一条任务或之后的 `send`）。 */
-function latestDelivery(
+export function latestDelivery(
   database: DatabaseSync,
   sourceNodeId: string,
   targetNodeId: string,

@@ -8,6 +8,7 @@ import { cancel } from "./cancel";
 import { close } from "./close";
 import { color, link, rename } from "./edits";
 import { interrupt } from "./interrupt";
+import { handback, items, report } from "./items";
 import { list, openAgent, openTerminal, sticky, team } from "./nodes";
 import { outbox } from "./outbox";
 import { resolveTarget, send } from "./send";
@@ -71,6 +72,10 @@ export const VERBS = [
   "workflow-propose",
   // 协调者的 runner 等一个成员把任务做完（补全架构 §5.3，契约 §15.5）。
   "wait",
+  // 工作项账本（契约 §90，#682）：成员的结构化报告与交回，协调者读账本。
+  "report",
+  "handback",
+  "items",
 ] as const;
 
 export type ControlVerb = (typeof VERBS)[number];
@@ -236,6 +241,12 @@ export async function run(
       return workflowPropose(context, caller, args);
     case "wait":
       return wait(context, caller, args);
+    case "report":
+      return report(context, caller, args);
+    case "handback":
+      return handback(context, caller, args);
+    case "items":
+      return items(context, caller, args);
     default:
       throw Refusal.badRequest(`未知的画布动词 \`${verb}\`。`);
   }

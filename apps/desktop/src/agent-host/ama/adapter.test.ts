@@ -11,8 +11,12 @@ import { canvasToolNote } from "./instructions";
 import { ADAPTER_ID, create, hostApi } from "./main";
 import {
   AMA_SCHEMA_KEYWORDS,
+  COORDINATOR_WAIT_CAP_SECONDS,
   canvasTools,
+  capWaitInput,
+  isCoordinator,
   permissionOf,
+  registerTools,
   toolDefinition,
 } from "./tools";
 
@@ -129,6 +133,9 @@ describe("the tool table", () => {
     const permission = (name: string) =>
       permissionOf(byName.get(name) as (typeof VERB_TOOLS)[number]);
     expect(permission("canvas_list")).toBe("read");
+    expect(permission("canvas_items")).toBe("read");
+    expect(permission("canvas_report")).toBe("write");
+    expect(permission("canvas_handback")).toBe("write");
     expect(permission("canvas_inbox")).toBe("read");
     expect(permission("context_summary")).toBe("read");
     expect(permission("context_transcript")).toBe("read");
@@ -159,6 +166,67 @@ describe("the tool table", () => {
     expect(await refused.execute({}, {} as never)).toEqual({
       content: "not linked (403)",
       isError: true,
+    });
+  });
+});
+
+describe("the coordinator's wait", () => {
+  const tools = (names: string[]) => ({ tools: { list: () => names } });
+  const CODER = ["read", "edit", "write", "bash", "grep"];
+  const COORDINATOR = ["read", "canvas_wait"];
+
+  it("recognises the coordinator preset by its tool set", () => {
+    expect(isCoordinator(tools(COORDINATOR) as never)).toBe(true);
+    expect(isCoordinator(tools(CODER) as never)).toBe(false);
+    // 工具表还没就绪（没有 read）不当协调者。
+    expect(isCoordinator(tools([]) as never)).toBe(false);
+  });
+
+  it("caps the timeout, and an absent one means the cap", () => {
+    const cap = COORDINATOR_WAIT_CAP_SECONDS;
+    expect(cap).toBe(5);
+    expect(capWaitInput({ task: "t" })).toEqual({ task: "t", timeout: cap });
+    expect(capWaitInput({ task: "t", timeout: 60 })).toEqual({
+      task: "t",
+      timeout: cap,
+    });
+    expect(capWaitInput({ task: "t", timeout: "30" })).toEqual({
+      task: "t",
+      timeout: cap,
+    });
+    expect(capWaitInput({ task: "t", timeout: 2 })).toEqual({
+      task: "t",
+      timeout: 2,
+    });
+    expect(capWaitInput({ task: "t", timeout: 0 })).toEqual({
+      task: "t",
+      timeout: 0,
+    });
+    expect(capWaitInput("x")).toBe("x");
+  });
+
+  async function waitCall(names: string[], input: unknown) {
+    const calls: unknown[] = [];
+    const api = { tools: { list: () => names, register: vi.fn() } };
+    registerTools(api as never, async (_tool, sent) => {
+      calls.push(sent);
+      return { ok: "ok" };
+    });
+    const register = api.tools.register.mock.calls
+      .map((call) => call[0] as ToolDefinition)
+      .find((tool) => tool.name === "canvas_wait") as ToolDefinition;
+    await register.execute(input, {} as never);
+    return calls[0];
+  }
+
+  it("applies only under the coordinator preset", async () => {
+    expect(await waitCall(COORDINATOR, { task: "t", timeout: 60 })).toEqual({
+      task: "t",
+      timeout: 5,
+    });
+    expect(await waitCall(CODER, { task: "t", timeout: 60 })).toEqual({
+      task: "t",
+      timeout: 60,
     });
   });
 });
@@ -235,6 +303,15 @@ describe("the instructions", () => {
       "Without bash / edit / write you are the coordinator",
     );
     expect(note).toContain("canvas_team");
+  });
+
+  it("carry the two dispatch rules and name the ledger verbs", () => {
+    const note = canvasToolNote();
+    expect(note).toContain("原样引用原始请求");
+    expect(note).toContain("30 字");
+    expect(note).toContain("canvas_items");
+    expect(note).toContain("canvas_report");
+    expect(note).toContain("canvas_handback");
   });
 });
 

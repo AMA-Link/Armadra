@@ -1,6 +1,11 @@
 import { z } from "zod";
 
-import { WORKFLOW_TASK_RUN_STATUSES } from "../api/workflows.js";
+import {
+  WORKFLOW_TASK_RUN_STATUSES,
+  WORK_ITEM_STAGES,
+  workItemAttentionSchema,
+  workItemReportSchema,
+} from "../api/workflows.js";
 import { errors } from "./errors.js";
 import { meta, oc } from "./meta.js";
 
@@ -26,6 +31,11 @@ const taskRowWire = z.object({
   endedAt: z.string().nullable(),
   reason: z.string().nullable(),
   retryable: z.boolean(),
+  /** 工作项账本（§90）：一行标题、由事实推出的阶段、最近报告、待决问题。 */
+  title: z.string().nullable(),
+  stage: z.enum(WORK_ITEM_STAGES),
+  report: workItemReportSchema.nullable(),
+  attention: workItemAttentionSchema.nullable(),
 });
 
 export const coordinator = {

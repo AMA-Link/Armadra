@@ -139,6 +139,10 @@ function task(
     endedAt: null,
     reason: null,
     retryable: false,
+    title: null,
+    stage: null,
+    report: null,
+    attention: null,
     ...patch,
   };
 }
@@ -237,6 +241,79 @@ describe("buildDispatch", () => {
     expect(model.members.every((member) => member.elapsedMs === null)).toBe(
       true,
     );
+  });
+});
+
+describe("工作项阶段（契约 §90）", () => {
+  const model = (tasks: DispatchTask[]) =>
+    buildDispatch({
+      coordinatorId: ID.lead,
+      nodes: NODES,
+      edges: EDGES,
+      tasks,
+      states: {},
+      now: NOW,
+    });
+
+  it("要人处理的阶段排在前面，标签取自阶段", () => {
+    const built = model([
+      task(ID.claude, "claude", { stage: "working" }),
+      task(ID.codex, "codex", {
+        startedAt: "2026-10-04T08:01:00.000Z",
+        stage: "person/review",
+      }),
+      task(ID.pi, "pi", {
+        startedAt: "2026-10-04T08:02:00.000Z",
+        stage: "person/answer",
+      }),
+    ]);
+    expect(
+      built.members.map((member) => [member.title, member.status.label]),
+    ).toEqual([
+      ["src/y", "coordinator.stage.review"],
+      ["文档", "coordinator.stage.answer"],
+      ["src/x", "coordinator.status.working"],
+    ]);
+  });
+
+  it("运行中的行按阶段细分，已结束的行只让位给 person/*", () => {
+    const built = model([
+      task(ID.claude, "claude", { stage: "working/queued" }),
+      task(ID.codex, "codex", {
+        startedAt: "2026-10-04T08:01:00.000Z",
+        stage: "idle",
+      }),
+      task(ID.pi, "pi", {
+        status: "done",
+        startedAt: "2026-10-04T08:02:00.000Z",
+        endedAt: "2026-10-04T08:03:00.000Z",
+        stage: "idle",
+      }),
+    ]);
+    expect(built.members.map((member) => member.status.label)).toEqual([
+      "coordinator.stage.queued",
+      "coordinator.status.idle",
+      "coordinator.status.done",
+    ]);
+  });
+
+  it("抽屉里显示阶段文案", () => {
+    render(
+      <TestProviders>
+        <DispatchView
+          model={model([
+            task(ID.codex, "codex", { stage: "person/review" }),
+            task(ID.pi, "pi", {
+              startedAt: "2026-10-04T08:02:00.000Z",
+              stage: "person/answer",
+            }),
+          ])}
+        />
+      </TestProviders>,
+    );
+    const rows = document.querySelectorAll("[data-slot='dispatch-member']");
+    expect(rows[0]?.textContent).toContain("待验收");
+    expect(rows[1]?.textContent).toContain("待回答");
   });
 });
 

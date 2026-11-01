@@ -65,6 +65,7 @@ import {
 import { canUseAcp, driverOf, switchDriver } from "@/acp/driver";
 // 副作用：注册 Agent 专属的右键菜单项（重启 / 权限模式 / 回收）
 import "./terminal-menu";
+import { ItemStageBadge } from "@/coordinator/stage";
 import { WorkflowStepBadge } from "@/workflow/node-steps";
 import { MembersChip } from "@/coordinator/MembersChip";
 import { SessionSkeleton } from "@/acp/SessionSkeleton";
@@ -666,6 +667,8 @@ export function TerminalNode({ id, node, selected, collapsed }: NodeBodyProps) {
               {agent?.id === "ama" ? <MembersChip nodeId={id} /> : null}
               {/* 工作流运行中的步号，紧挨状态胶囊（设计系统 §4）。 */}
               <WorkflowStepBadge nodeId={id} />
+              {/* 工作项的阶段：要人处理或排队时（契约 §90.4）。 */}
+              <ItemStageBadge nodeId={id} />
               {awaitingDriver}
               {questionButton}
             </>

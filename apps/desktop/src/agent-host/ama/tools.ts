@@ -26,7 +26,7 @@ import { type CallOutcome, callVerb } from "./client.js";
 
 /** Verbs that only read. Anything not listed in either table is `write`. */
 const READ: Readonly<Record<string, readonly string[]>> = {
-  canvas: ["help", "list", "inbox", "outbox", "handoff-read"],
+  canvas: ["help", "list", "inbox", "outbox", "handoff-read", "items"],
   // Every context verb reads a linked node; the budget is the core's.
   context: ["list", "summary", "transcript", "terminal"],
   browser: ["read", "wait", "capture", "pdf"],
@@ -139,13 +139,58 @@ export function canvasTools(call: Caller = callVerb): ToolDefinition[] {
   return VERB_TOOLS.map((tool) => toolDefinition(tool, call));
 }
 
+/**
+ * The longest a coordinator's `canvas_wait` may hold the call (seconds).
+ * Its input arrives by wake-ups, so it must not block on one member; ama's
+ * own `task_ctl wait` is capped to the same 5 s in the coordinator preset.
+ */
+export const COORDINATOR_WAIT_CAP_SECONDS = 5;
+
+/** Built-in tools whose absence makes a node the coordinator (preset `coordinator`: `read` only). */
+const WRITING_TOOLS = ["bash", "edit", "write"] as const;
+
+/**
+ * Whether ama runs the coordinator preset: it has `read` and none of bash /
+ * edit / write. Asked at call time, not at `create`, so the answer reflects
+ * the tool set the session really settled on.
+ */
+export function isCoordinator(api: Pick<HostApi, "tools">): boolean {
+  const names = api.tools.list();
+  return (
+    names.includes("read") &&
+    WRITING_TOOLS.every((name) => !names.includes(name))
+  );
+}
+
+/** `canvas_wait`'s arguments with `timeout` held to the cap (absent means the cap). */
+export function capWaitInput(input: unknown): unknown {
+  if (input === null || typeof input !== "object" || Array.isArray(input)) {
+    return input;
+  }
+  const given = (input as Record<string, unknown>).timeout;
+  const seconds =
+    typeof given === "number"
+      ? given
+      : typeof given === "string" && /^\d{1,4}$/.test(given.trim())
+        ? Number(given.trim())
+        : Number.NaN;
+  const timeout = Number.isFinite(seconds)
+    ? Math.min(Math.max(0, Math.trunc(seconds)), COORDINATOR_WAIT_CAP_SECONDS)
+    : COORDINATOR_WAIT_CAP_SECONDS;
+  return { ...(input as Record<string, unknown>), timeout };
+}
+
 /** Registers every tool; answers the names. */
 export function registerTools(
   api: Pick<HostApi, "tools">,
   call: Caller = callVerb,
 ): string[] {
+  const capped: Caller = (tool, input) =>
+    tool.group === "canvas" && tool.verb === "wait" && isCoordinator(api)
+      ? call(tool, capWaitInput(input))
+      : call(tool, input);
   const names: string[] = [];
-  for (const tool of canvasTools(call)) {
+  for (const tool of canvasTools(capped)) {
     api.tools.register(tool);
     names.push(tool.name);
   }

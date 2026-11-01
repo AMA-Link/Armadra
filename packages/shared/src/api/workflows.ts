@@ -308,6 +308,42 @@ export const WORKFLOW_TASK_RUN_STATUSES = [
   "stopped",
 ] as const;
 
+/**
+ * 工作项账本（契约 §90，#682）：成员 `canvas report` 的五种状态，与由事实推出
+ * 的阶段。阶段按「需要人」优先排好：`person/*` 在前。
+ */
+export const WORK_ITEM_REPORT_STATES = [
+  "progress",
+  "waiting",
+  "ready",
+  "blocked",
+  "failed",
+] as const;
+export type WorkItemReportState = (typeof WORK_ITEM_REPORT_STATES)[number];
+
+export const WORK_ITEM_STAGES = [
+  "person/delivery",
+  "person/answer",
+  "person/review",
+  "person/blocked",
+  "person/failed",
+  "working/queued",
+  "idle",
+  "working",
+] as const;
+export type WorkItemStage = (typeof WORK_ITEM_STAGES)[number];
+
+export const workItemReportSchema = z.object({
+  state: z.enum(WORK_ITEM_REPORT_STATES),
+  summary: z.string(),
+  at: z.string(),
+});
+
+export const workItemAttentionSchema = z.object({
+  question: z.string(),
+  raisedAt: z.string(),
+});
+
 export const workflowTaskRunSchema = z.object({
   taskId: z.string(),
   coordinatorNodeId: z.string(),

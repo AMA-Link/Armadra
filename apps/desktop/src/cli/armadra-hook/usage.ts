@@ -47,7 +47,7 @@ export const CANVAS_USAGE = `CANVAS:
   post --to NAME --key KEY --body TEXT store a handoff for a linked agent
   inbox --limit 10 --after 0           read your pending messages without acknowledgement
   ack --id ID                         acknowledge one received message
-  open-agent --agent ID [--task TEXT] [--title T] [--permission-mode M]
+  open-agent --agent ID [--task TEXT] [--title T] [--item-title T] [--permission-mode M]
                                       [--model M] [--after ID]
                                       [--after-turn current|next] [--ttl MIN]
                                       [--worktree NAME_OR_PATH] [--cwd DIR]
@@ -82,6 +82,21 @@ export const CANVAS_USAGE = `CANVAS:
   send --to ID --body TEXT --interrupt  stop the current turn first, then send
   outbox [--to ID] [--limit 20]        your deliveries still waiting to be sent
   cancel --id QUEUED-ID                drop one of them
+  report --state progress|waiting|ready|blocked|failed --summary TEXT
+         [--human-action QUESTION | --clear-action] [--item ID]
+                                      report on your work item (summary <= 300
+                                      chars); ready means awaiting review;
+                                      --human-action holds the one question a
+                                      person must answer (omit keeps it,
+                                      --clear-action removes it); --item
+                                      defaults to your only item in progress
+  handback --item ID --reason TEXT      hand a follow-up back to the coordinator
+                                      (reason <= 100 chars, once per item)
+  items [--stage STAGE] [--item ID] [--limit N] [--offset N]
+                                      read the work-item ledger: one line per
+                                      item, person/* stages first; --item gives
+                                      one item with its history and origin text
+                                      (continue with --offset BYTES)
   armadra-hook canvas <verb> [--flag value | --flag=value | --flag]...
   Repeated flags become arrays; a bare flag is \`true\`. \`--dry-run\` is passed
   through to the runtime, which then validates without mutating the board.
