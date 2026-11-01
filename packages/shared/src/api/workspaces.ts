@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import {
+  archivedWorkspaceSchema,
   workspacePermissionsSchema,
   workspaceSummarySchema,
 } from "../domain/index.js";
@@ -24,6 +25,7 @@ export const updateWorkspaceRequestSchema = z.object({
 });
 
 export const workspaceListSchema = z.array(workspaceSummarySchema);
+export const archivedWorkspaceListSchema = z.array(archivedWorkspaceSchema);
 
 export type CreateWorkspaceRequest = z.infer<
   typeof createWorkspaceRequestSchema

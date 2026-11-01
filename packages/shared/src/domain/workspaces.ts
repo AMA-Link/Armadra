@@ -55,6 +55,12 @@ export const workspaceSummarySchema = workspaceSchema.extend({
   boards: z.array(boardSummarySchema).default([]),
 });
 
+/** 归档里的一行（契约 §89）。 */
+export const archivedWorkspaceSchema = workspaceSchema.extend({
+  archivedAt: timestampSchema,
+});
+
+export type ArchivedWorkspace = z.infer<typeof archivedWorkspaceSchema>;
 export type BoardSummary = z.infer<typeof boardSummarySchema>;
 export type Workspace = z.infer<typeof workspaceSchema>;
 export type WorkspacePermissions = z.infer<typeof workspacePermissionsSchema>;

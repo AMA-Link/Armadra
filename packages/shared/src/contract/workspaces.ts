@@ -47,6 +47,11 @@ export const workspaceSummaryWireSchema = workspaceWireSchema.extend({
 
 const workspaceRef = z.object({ workspaceId: z.string().min(1) });
 
+/** 归档里的一行（契约 §89）：工作空间本身加归档时刻。 */
+export const archivedWorkspaceWireSchema = workspaceWireSchema.extend({
+  archivedAt: z.string(),
+});
+
 /**
  * 订阅里的位置帧（契约 §35.4）：每次（重新）订上、补发完之后发一帧，`id` 是
  * 这时的 outbox 位置。它不是第 22 个工作空间事件——页面拿它当「订上了」的上升
@@ -177,6 +182,47 @@ export const workspaces = {
           path: "/api/workspaces/{workspaceId}",
           successStatus: 204,
         },
+      }),
+    ),
+  /**
+   * 归档（契约 §89）：从列表收起，终端与 Agent 会话结束；行与记录都留着。已归档
+   * 的再归档什么也不做。
+   */
+  archive: oc
+    .input(workspaceRef)
+    .output(z.void())
+    .errors(errors.pick("forbidden", "not_found"))
+    .meta(
+      meta({
+        scope: "workspace:share",
+        workspaceKey: "workspaceId",
+        since: "1.53",
+        contract: "§89.1",
+      }),
+    ),
+  /** 恢复一块已归档的工作空间，回到列表最前。没归档的原样返回。 */
+  restore: oc
+    .input(workspaceRef)
+    .output(workspaceWireSchema)
+    .errors(errors.pick("forbidden", "not_found"))
+    .meta(
+      meta({
+        scope: "workspace:share",
+        workspaceKey: "workspaceId",
+        since: "1.53",
+        contract: "§89.1",
+      }),
+    ),
+  /** 已归档的工作空间，最近归档的在前。只有 owner。 */
+  archived: oc
+    .input(z.object({}).optional())
+    .output(z.array(archivedWorkspaceWireSchema))
+    .errors(errors.pick("unauthenticated", "forbidden"))
+    .meta(
+      meta({
+        scope: "workspace:share",
+        since: "1.53",
+        contract: "§89.1",
       }),
     ),
   open: oc

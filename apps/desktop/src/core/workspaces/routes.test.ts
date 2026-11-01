@@ -9,7 +9,7 @@ import { basename, join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { install as installCanvas } from "../canvas/routes";
 import { type Fixture, fixture } from "./fixture";
-import { install } from "./routes";
+import { install, workspaceOperations } from "./routes";
 
 /**
  * The workspace routes, ported from the pre-merge implementation.
@@ -281,6 +281,99 @@ describe("the workspace routes", () => {
     // An unknown id announces nothing.
     await core.call("DELETE", `/api/workspaces/${id}`);
     expect(seen).toHaveLength(2);
+  });
+
+  it("archives a workspace out of the list, keeps its rows, and restores it (§89)", async () => {
+    const root = join(core.directory, "shelf");
+    mkdirSync(root);
+    writeFileSync(join(root, "a.txt"), "kept");
+    const opened = await core.call("POST", "/api/workspaces/open-directory", {
+      name: "shelf",
+      rootPath: root,
+    });
+    const id = (opened.body as { id: string }).id;
+    const seen: string[] = [];
+    core.bus.on("workspace.archived", ({ workspaceId }) => {
+      seen.push(`archived:${workspaceId}`);
+    });
+    core.bus.on("workspace.grants", ({ workspaceId, permissions }) => {
+      seen.push(
+        `grants:${workspaceId}:${permissions === null ? "none" : "set"}`,
+      );
+    });
+    const operations = workspaceOperations(core);
+
+    operations.archive(id);
+    expect(seen).toEqual([`archived:${id}`, `grants:${id}:none`]);
+    // Archiving twice announces nothing and keeps the first time.
+    const first = operations.archived()[0]?.archivedAt;
+    operations.archive(id);
+    expect(seen).toHaveLength(2);
+    expect(operations.archived()).toMatchObject([
+      { id, name: "shelf", archivedAt: first },
+    ]);
+
+    const listed = await core.call("GET", "/api/workspaces");
+    expect(
+      (listed.body as { id: string }[]).map((one) => one.id),
+    ).not.toContain(id);
+    // The rows hang on, and nothing on disk moved.
+    expect(
+      core.database
+        .prepare("SELECT COUNT(*) AS n FROM boards WHERE workspace_id = ?")
+        .get(id),
+    ).toEqual({ n: 1 });
+    expect(readFileSync(join(root, "a.txt"), "utf8")).toBe("kept");
+    // A stale tab cannot open it back.
+    expect((await core.call("POST", `/api/workspaces/${id}/open`)).status).toBe(
+      404,
+    );
+
+    expect(operations.restore(id)).toMatchObject({ id, name: "shelf" });
+    expect(operations.archived()).toEqual([]);
+    const back = await core.call("GET", "/api/workspaces");
+    expect((back.body as { id: string }[])[0]?.id).toBe(id);
+    expect(() => operations.archive("missing")).toThrow();
+  });
+
+  it("restores an archived workspace when its folder is added again (§89)", async () => {
+    const root = join(core.directory, "again");
+    mkdirSync(root);
+    const opened = await core.call("POST", "/api/workspaces/open-directory", {
+      name: "again",
+      rootPath: root,
+    });
+    const id = (opened.body as { id: string }).id;
+    workspaceOperations(core).archive(id);
+    const reopened = await core.call("POST", "/api/workspaces/open-directory", {
+      name: "again",
+      rootPath: root,
+    });
+    expect((reopened.body as { id: string }).id).toBe(id);
+    expect(workspaceOperations(core).archived()).toEqual([]);
+    const listed = await core.call("GET", "/api/workspaces");
+    expect((listed.body as { id: string }[]).map((one) => one.id)).toContain(
+      id,
+    );
+  });
+
+  it("deletes an archived workspace for good (§89)", async () => {
+    const root = join(core.directory, "drop");
+    mkdirSync(root);
+    const opened = await core.call("POST", "/api/workspaces/open-directory", {
+      name: "drop",
+      rootPath: root,
+    });
+    const id = (opened.body as { id: string }).id;
+    const operations = workspaceOperations(core);
+    operations.archive(id);
+    expect((await core.call("DELETE", `/api/workspaces/${id}`)).status).toBe(
+      204,
+    );
+    expect(operations.archived()).toEqual([]);
+    expect(
+      core.database.prepare("SELECT 1 FROM workspaces WHERE id = ?").get(id),
+    ).toBeUndefined();
   });
 
   it("refuses a remote workspace when no remote execution is assembled, rather than falling back to this machine", async () => {

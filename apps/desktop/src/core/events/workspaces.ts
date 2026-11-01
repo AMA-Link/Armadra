@@ -1,5 +1,7 @@
 /**
- * Does this workspace exist?
+ * Does this workspace exist — and is it not archived (契约 §89)? An archived
+ * workspace is not there to watch: its subscriptions answer `not_found` like a
+ * removed one, and restoring it is what brings them back.
  *
  * The event stream's only question about another domain's data, asked before
  * the upgrade because that is where the pre-merge implementation asks it:
@@ -25,7 +27,7 @@ export function workspaceExists(
   if (workspaceId.length === 0) return false;
   try {
     const row = database
-      .prepare("SELECT 1 FROM workspaces WHERE id = ?")
+      .prepare("SELECT 1 FROM workspaces WHERE id = ? AND archived_at IS NULL")
       .get(workspaceId);
     return row !== undefined;
   } catch {

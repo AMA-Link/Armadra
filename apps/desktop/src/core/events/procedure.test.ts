@@ -204,6 +204,65 @@ describe("workspaces.events", () => {
     expect(missing.status).toBe(404);
   });
 
+  it("归档或删除时正在看的订阅立刻以 not_found 结束，恢复后能重订（契约 §89）", async () => {
+    const { base } = await start();
+    const viewer = await peer(base);
+    const owner = await peer(base);
+    const watching = viewer.call("workspaces.events", {
+      workspaceId: WORKSPACE,
+    });
+    await viewer.until(watching.id, (list) => list.length >= 1);
+
+    expect(
+      (
+        await owner.call("workspaces.archive", { workspaceId: WORKSPACE })
+          .response
+      ).status,
+    ).toBe(200);
+    const ended = await viewer.until(watching.id, (list) =>
+      list.some((item) => item.event === "error"),
+    );
+    expect(ended.at(-1)?.data).toMatchObject({ code: "not_found" });
+
+    const listed = await owner.call("workspaces.list", {}).response;
+    expect(
+      (listed.body as { id: string }[]).map((one) => one.id),
+    ).not.toContain(WORKSPACE);
+    const archived = await owner.call("workspaces.archived", {}).response;
+    expect(archived.body).toMatchObject([
+      { id: WORKSPACE, archivedAt: expect.any(String) },
+    ]);
+    const refused = await viewer.call("workspaces.events", {
+      workspaceId: WORKSPACE,
+    }).response;
+    expect(refused.status).toBe(404);
+    expect(
+      (await owner.call("workspaces.open", { workspaceId: WORKSPACE }).response)
+        .status,
+    ).toBe(404);
+
+    const restored = await owner.call("workspaces.restore", {
+      workspaceId: WORKSPACE,
+    }).response;
+    expect(restored.body).toMatchObject({ id: WORKSPACE });
+    expect((await owner.call("workspaces.archived", {}).response).body).toEqual(
+      [],
+    );
+    const again = viewer.call("workspaces.events", { workspaceId: WORKSPACE });
+    await viewer.until(again.id, (list) => list.length >= 1);
+
+    expect(
+      (
+        await owner.call("workspaces.delete", { workspaceId: WORKSPACE })
+          .response
+      ).status,
+    ).toBe(200);
+    const gone = await viewer.until(again.id, (list) =>
+      list.some((item) => item.event === "error"),
+    );
+    expect(gone.at(-1)?.data).toMatchObject({ code: "not_found" });
+  });
+
   it("慢客户端：队列满了以 overflow 结束订阅，重订之后一帧不少", async () => {
     const { core, base } = await start();
     const client = await peer(base);

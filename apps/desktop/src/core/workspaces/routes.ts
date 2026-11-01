@@ -4,6 +4,7 @@ import type { CoreRequest, HandlerResult, RouteMatch } from "../http/router";
 import { eventStream } from "../events";
 import { openWorkspaceEvents } from "../events/procedure";
 import { fail } from "../http/errors";
+import { accessChanged } from "../identity/gate";
 import { registerProcedures } from "../http/rpc";
 import { createRootDirectory, directorySource } from "./directory";
 import {
@@ -21,11 +22,15 @@ import {
 } from "./support";
 import {
   type WorkspacePermissions,
+  archiveWorkspace,
   createWorkspace,
   deleteWorkspace,
   ensureDefaultWorkspace,
   getWorkspace,
+  isArchived,
+  listArchivedWorkspaces,
   listWorkspaces,
+  restoreWorkspace,
   touchWorkspaceOpened,
   updateWorkspace,
   validWorkspaceName,
@@ -175,19 +180,35 @@ export function workspaceOperations(context: CoreContext) {
       return updated;
     },
     delete(id: string): void {
-      // 404 before anything is torn down, so an unknown id is a no-op. The
-      // terminal teardown the Rust handler did first belongs to R2; when it
-      // lands it goes here, before the row and its cascades go.
+      // 404 before anything is torn down, so an unknown id is a no-op.
       getWorkspace(database, id);
-      // 行与它级联的配置还在：库外有东西挂在这个工作空间上的域（托管令牌）
-      // 趁现在记下要清什么，等下面的 `permissions: null` 再清。
+      // 行与它级联的配置还在：库外有东西挂在这个工作空间上的域（托管令牌、
+      // 终端进程）趁现在记下要清什么，等下面的 `permissions: null` 再清。
       context.bus.emit("workspace.removing", { workspaceId: id });
       deleteWorkspace(database, id);
       context.bus.emit("workspace.grants", {
         workspaceId: id,
         permissions: null,
       });
+      // 正看着它的订阅（成员、另一台设备）立刻以 `not_found` 结束（契约 §89）。
+      accessChanged();
     },
+    /**
+     * 归档（契约 §89）：从列表收起，终端与 Agent 会话结束、语言服务停下，行与
+     * 记录都留着。已归档的再归档什么也不做。
+     */
+    archive(id: string): void {
+      if (isArchived(database, id)) return;
+      archiveWorkspace(database, id);
+      context.bus.emit("workspace.archived", { workspaceId: id });
+      context.bus.emit("workspace.grants", {
+        workspaceId: id,
+        permissions: null,
+      });
+      accessChanged();
+    },
+    restore: (id: string) => restoreWorkspace(database, id),
+    archived: () => listArchivedWorkspaces(database),
     open: (id: string) => touchWorkspaceOpened(database, id),
     // Both execution-host routes prove the root on the machine that will hold
     // it — through that host's Worker, or this process for an empty id —
@@ -264,6 +285,9 @@ export function install(context: CoreContext): void {
         permissions: patch.permissions ?? undefined,
       }),
     delete: ({ workspaceId: id }) => operations.delete(id),
+    archive: ({ workspaceId: id }) => operations.archive(id),
+    restore: ({ workspaceId: id }) => operations.restore(id),
+    archived: () => [...operations.archived()],
     open: ({ workspaceId: id }) => operations.open(id),
     // 契约 §35.4：事件流的扇出与 outbox 是事件域的（`events/procedure.ts`）。
     events: (input, call) => {
