@@ -26,7 +26,8 @@ import Security
 ///
 /// 令牌换过的那一刻还发 `pushTokenRotated` 事件。
 /// 另外两件页面不调用的事：深链（`armadra://…`，含 OAuth 回调）与点通知，都改写页面的地址片段
-/// （`DeepLink.script`）。
+/// （`DeepLink.script`）。例外是设备码批准后的回跳 `armadra://cloud/device-approved`：只发
+/// `cloudDeviceApproved` 事件（不带数据），不改地址、不重载。
 @objc(ArmadraNativePlugin)
 public class ArmadraNativePlugin: CAPPlugin, CAPBridgedPlugin, NotificationHandlerProtocol {
     public let identifier = "ArmadraNativePlugin"
@@ -457,6 +458,13 @@ public class ArmadraNativePlugin: CAPPlugin, CAPBridgedPlugin, NotificationHandl
     private func open(_ link: String) {
         guard let deepLink = DeepLink(link) else {
             Self.log.info("deep link not recognized")
+            return
+        }
+        // 设备码批准后的回跳（#666）：App 已被系统带到前台，只告诉页面立刻问一次；不改地址、不重载。
+        // 冷启动时页面还没订阅（设备码也已经不在内存里），事件落空，等于普通启动。
+        if deepLink.notifiesOnly {
+            Self.log.info("deep link notifies the page")
+            notifyListeners("cloudDeviceApproved", data: [:])
             return
         }
         // 冷启动的那一条已经写进第一个文档（`LaunchLink`），Capacitor 补发时不再改写重载。
