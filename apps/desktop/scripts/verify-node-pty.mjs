@@ -86,11 +86,20 @@
  * while the JS thread searches or appends to it, and a second kill closes an
  * already freed pseudoconsole — native crashes of the session host that no
  * JavaScript can catch (#659). The same patch backports the upstream mutex and
- * the close-once guard; `pnpm-workspace.yaml` keeps the reason beside the
- * entry.
+ * the close-once guard.
  *
- * Not patched: the same file frees the baton from the native exit thread
- * before the HPCON is closed, so a process tree killed from outside
+ * ## Defect 3 (Windows): kill()'s console list agent
+ *
+ * `lib/conpty_console_list_agent.js` lets AttachConsole's failure escape as a
+ * stack in the session host's log, and `lib/windowsPtyAgent.js`, when the
+ * agent has no answer, falls back to the shell's PID and kills it by bare PID
+ * 5 s later — a process the closed pseudoconsole already ended, whose PID may
+ * have been reused (#670). The patch catches the failure and answers with an
+ * empty list instead. `pnpm-workspace.yaml` keeps the reasons for all three
+ * beside the entry.
+ *
+ * Not patched: `src/win/conpty.cc` also frees the baton from the native exit
+ * thread before the HPCON is closed, so a process tree killed from outside
  * (`taskkill /T`) can leave a `conhost.exe` alive until the whole daemon
  * exits. TODO(R6): fix it with the Windows session host, on real hardware.
  *
@@ -124,6 +133,14 @@ export const PATCHED_FILES = {
   "src/win/conpty.cc": {
     marker: "static std::mutex g_ptyHandlesMutex;",
     sha256: "27ac472b88765696eaf55597a441697d0c7e28ffb8a4f727058bce6fbd0d0639",
+  },
+  "lib/conpty_console_list_agent.js": {
+    marker: "// armadra: as in 1.2.0-beta.18.",
+    sha256: "d07fc8cae25ed2eac1034903540499a722f67a106e4d637b3fd6cda5ff58672c",
+  },
+  "lib/windowsPtyAgent.js": {
+    marker: "// armadra: an empty list whenever the agent has no answer.",
+    sha256: "7e2d11e47855fe636b0b19c45412ce63dc017b8dc2254e0c2eeac9d1c00e03ff",
   },
 };
 

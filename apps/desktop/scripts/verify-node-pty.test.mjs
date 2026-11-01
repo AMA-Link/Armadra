@@ -29,7 +29,7 @@ const read = (file) => readFileSync(join(installedNodePtyDir(), file), "utf8");
 // dev（electron-rebuild）与 dist（electron-builder 的 @electron/rebuild）都从
 // node_modules 里这份源码编 pty.node / conpty.node，所以补丁必须在安装时就在：
 // pnpm 的 patchedDependencies 打上 patches/node-pty@1.1.0.patch（#671）。
-test("装出来的 node-pty 源码就是打过补丁的那份：版本与两份文件的哈希都对得上", () => {
+test("装出来的 node-pty 源码就是打过补丁的那份：版本与每份补丁文件的哈希都对得上", () => {
   verifyNodePtySource();
   const result = spawnSync(process.execPath, [script], { encoding: "utf8" });
   assert.equal(result.status, 0, result.stderr);
