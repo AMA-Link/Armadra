@@ -327,12 +327,12 @@ export function AddCloudDialog({
             </Alert>
           )}
           {step.kind === "address" && (
-            <p
+            <span
               data-slot="cloud-issuer"
               className="font-mono text-body break-all text-muted-foreground"
             >
               {issuerHost(issuer)}
-            </p>
+            </span>
           )}
           {step.kind === "code" && (
             <div className="flex min-w-0 flex-col gap-3">
