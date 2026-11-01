@@ -75,7 +75,7 @@
 
 - 六家都能以 **stdio NDJSON** 被 core 直接起；没有一家需要 PTY。原生三家（OpenCode、OMP、Copilot）与 Codex 的适配器都保留各自的账户与配置目录；Claude 的适配器用 SDK，登录沿用，但终端模式的 `--settings` / `--plugin-dir` / `--append-system-prompt-file` 三条注入在 ACP 下没有对应参数（D6 的由来）。
 - **跨进程 resume** 五家可、一家不可。能 resume 的前提是 ACP sessionId 与 CLI 自己的会话 id 的对应关系：OpenCode、OMP 直接相等；Claude、Codex 大概率相等（测）；Pi 要读 `pi-acp` 的映射文件。Copilot 只能在同一进程里 `session/load`，所以它的 ACP 会话必须靠进程常驻，不能休眠（§5.3）。
-- **权限模式**没有统一词汇：每家一张 `PermissionMode → modeId / 启动旗标` 的表，放 `core/acp/adapters.ts`（§5.2），与 `packages/shared/src/agents.ts::permissionFlag` 并排，由一条测试守两边覆盖的模式集合相同。
+- **权限模式**没有统一词汇：每家一张 `PermissionMode → modeId / 启动旗标` 的表，放 `packages/shared/src/acp-modes.ts`（`ACP_MODE_TABLE`，core 的 `core/acp/adapters.ts` 与页面共用；页面在 Agent 还没报回 `modes` 时用它给候选，#685）（§5.2），与 `packages/shared/src/agents.ts::permissionFlag` 并排，由一条测试守两边覆盖的模式集合相同。
 
 ### §3.2 本机可跑的核实（只读）
 

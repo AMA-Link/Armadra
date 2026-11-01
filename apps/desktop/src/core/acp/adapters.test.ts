@@ -3,6 +3,8 @@ import { join } from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
+import { ACP_MODE_TABLE, acpModeCandidates } from "@armadra/shared";
+
 import { PERMISSION_MODES, launchProfile } from "../agent/launch";
 import { AGENT_IDS } from "../agent/registry";
 import { tempDir } from "../testing/temp-dir";
@@ -40,6 +42,24 @@ describe("ACP_ADAPTERS", () => {
         expect(modes, adapter.agentId).toEqual(
           Object.keys(profile.permissionFlag).sort(),
         );
+      }
+    }
+  });
+
+  it("takes its modes from the shared compatibility table", () => {
+    for (const adapter of ACP_ADAPTERS) {
+      expect(adapter.modes, adapter.agentId).toBe(
+        ACP_MODE_TABLE[adapter.agentId as keyof typeof ACP_MODE_TABLE],
+      );
+      // 页面在 Agent 报回之前给的候选，都是这家 ACP 下真有落点的模式。
+      const offered = acpPermissionModes(adapter);
+      for (const candidate of acpModeCandidates(adapter.agentId)) {
+        expect(offered, adapter.agentId).toContain(candidate.permissionMode);
+        expect(
+          acpLaunchPlan(adapter, { mode: candidate.permissionMode }),
+        ).toMatchObject({
+          modeId: candidate.modeId,
+        });
       }
     }
   });
