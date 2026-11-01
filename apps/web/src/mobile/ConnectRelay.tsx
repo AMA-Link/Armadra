@@ -1,4 +1,5 @@
 import * as React from "react";
+import { ChevronLeft } from "lucide-react";
 
 import { useT } from "../app/preferences-store";
 import { Badge } from "@/ui/badge";
@@ -352,6 +353,8 @@ export interface SourcesStepProps {
   readonly message: string | null;
   readonly errorId: string;
   readonly onMount: (sourceIds: string[]) => void;
+  /** 返回登录那一步。 */
+  readonly onBack: () => void;
 }
 
 /** 登录之后勾选要连接的源：在线的默认全选，离线的不能选。 */
@@ -361,6 +364,7 @@ export function SourcesStep({
   message,
   errorId,
   onMount,
+  onBack,
 }: SourcesStepProps) {
   const t = useT();
   const id = React.useId();
@@ -418,6 +422,17 @@ export function SourcesStep({
         onClick={() => onMount([...picked])}
       >
         {t("mobileConnect.sources.add")}
+      </Button>
+      <Button
+        type="button"
+        size="touch"
+        variant="ghost"
+        className="w-full"
+        disabled={busy}
+        onClick={onBack}
+      >
+        <ChevronLeft data-icon="inline-start" />
+        {t("mobileConnect.back")}
       </Button>
     </div>
   );

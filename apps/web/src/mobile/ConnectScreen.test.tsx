@@ -351,6 +351,40 @@ describe("连接页 · 多连接（添加连接）", () => {
     await waitFor(() => expect(relay.mount).toHaveBeenCalledWith(["s1"]));
   });
 
+  it("选择主机：添加失败时提示后面附原始原因；「返回」放弃这次登录，回到登录那一步（#680）", async () => {
+    const relay = outcomes();
+    relay.begin.mockResolvedValue({
+      kind: "sources",
+      sources: [{ sourceId: "s1", name: "MacBook", online: true }],
+    });
+    relay.mount.mockResolvedValue({
+      kind: "failure",
+      failure: "failed",
+      detail: "not_found · HTTP 404",
+    });
+    render(<ConnectScreen {...base} relay={relay} initialView="relay" />);
+    fireEvent.change(screen.getByLabelText("地址"), {
+      target: { value: "relay.example.com" },
+    });
+    fireEvent.change(screen.getByLabelText("账号"), {
+      target: { value: "owner" },
+    });
+    fireEvent.change(screen.getByLabelText("口令"), {
+      target: { value: "pw" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "登录" }));
+    await waitFor(() => expect(screen.getByText("选择主机")).toBeTruthy());
+    fireEvent.click(screen.getByRole("button", { name: "添加" }));
+    await waitFor(() =>
+      expect(screen.getByText(/not_found · HTTP 404/)).toBeTruthy(),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "返回" }));
+    expect(relay.reset).toHaveBeenCalled();
+    expect(screen.queryByText("选择主机")).toBeNull();
+    expect(screen.getByLabelText("口令")).toBeTruthy();
+    expect(screen.queryByText(/not_found/)).toBeNull();
+  });
+
   it("要人机验证：升起挑战面板，令牌到了带着刚填的账号口令再登录一次", async () => {
     const relay = outcomes();
     relay.begin

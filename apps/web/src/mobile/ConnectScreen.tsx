@@ -23,10 +23,11 @@ import {
   InputOTPSeparator,
   InputOTPSlot,
 } from "@/ui/input-otp";
-import type {
-  RelayEnrollment,
-  RelayOutcome,
-  RelaySourceChoice,
+import {
+  failureDetail,
+  type RelayEnrollment,
+  type RelayOutcome,
+  type RelaySourceChoice,
 } from "./connect";
 import { ChallengeSheet } from "./ChallengeSheet";
 import {
@@ -292,8 +293,18 @@ export function ConnectScreen({
   const [failure, setFailure] = React.useState<ConnectFailure | null>(
     initialFailure ?? null,
   );
+  /** 失败的原始原因（错误码、HTTP 状态），附在提示后面；只跟着它所属的那次失败。 */
+  const [failureInfo, setFailureInfo] = React.useState<{
+    readonly failure: ConnectFailure;
+    readonly detail: string;
+  } | null>(null);
+  React.useEffect(() => {
+    if (failure === null) setFailureInfo(null);
+  }, [failure]);
   const shownBusy = pinnedBusy ?? busy;
   const shownFailure = pinnedFailure ?? failure;
+  /** 选择主机是从哪一步登录进来的：「返回」回到那一步。 */
+  const signInView = React.useRef<"cloud" | "relay">("cloud");
   const fieldId = React.useId();
   const codeId = `${fieldId}-code`;
   const addressId = `${fieldId}-address`;
@@ -383,11 +394,17 @@ export function ConnectScreen({
         setView("fingerprint");
         break;
       case "sources":
+        signInView.current = view === "relay" ? "relay" : "cloud";
         setSources(outcome.sources);
         setView("sources");
         break;
       case "failure":
         setFailure(outcome.failure);
+        setFailureInfo(
+          outcome.detail
+            ? { failure: outcome.failure, detail: outcome.detail }
+            : null,
+        );
         break;
       case "done":
         break;
@@ -401,8 +418,10 @@ export function ConnectScreen({
     setFailure(null);
     try {
       apply(await run());
-    } catch {
+    } catch (error) {
       setFailure("failed");
+      const detail = failureDetail(error);
+      setFailureInfo(detail ? { failure: "failed", detail } : null);
     } finally {
       setBusy(false);
     }
@@ -501,7 +520,19 @@ export function ConnectScreen({
     setView(connections.length > 0 ? "list" : "add");
   };
 
-  const message =
+  /** 选择主机页的「返回」：放弃这次登录，回到登录那一步。 */
+  const backToSignIn = () => {
+    relay?.reset();
+    setDevice(null);
+    setFailure(null);
+    setView(signInView.current);
+  };
+
+  const shownDetail =
+    shownFailure !== null && failureInfo?.failure === shownFailure
+      ? failureInfo.detail
+      : null;
+  const failureText =
     shownFailure === null
       ? null
       : t(
@@ -516,6 +547,15 @@ export function ConnectScreen({
                   : "",
           },
         );
+  const message =
+    failureText === null
+      ? null
+      : shownDetail === null
+        ? failureText
+        : t("mobileConnect.error.withDetail", {
+            message: failureText,
+            detail: shownDetail,
+          });
   const host = origin ? new URL(origin).host : null;
   const titleKey =
     multi && view === "list"
@@ -906,6 +946,7 @@ export function ConnectScreen({
               message={message}
               errorId={errorId}
               onMount={(ids) => void step(() => relay.mount(ids))}
+              onBack={backToSignIn}
             />
           )}
         </div>
