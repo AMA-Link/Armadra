@@ -1,8 +1,9 @@
-import type {
-  CanvasNode,
-  FrameBinding,
-  GitBranchRecord,
-  Position,
+import {
+  WORKTREE_FRAME_SIZE,
+  type CanvasNode,
+  type FrameBinding,
+  type GitBranchRecord,
+  type Position,
 } from "@armadra/shared";
 
 import {
@@ -24,8 +25,8 @@ import { localBranch } from "../worktree";
  * 画布只经 `canvas-store` 的动作改；这里不直接碰 document。
  */
 
-/** 绑定 Frame 的默认尺寸：装得下一个默认终端还留出边距。 */
-export const WORKTREE_FRAME_SIZE = { width: 1040, height: 720 };
+/** 绑定 Frame 的默认尺寸（黄金比例，装得下一个默认终端还留出边距）；core 同源。 */
+export { WORKTREE_FRAME_SIZE };
 
 /** 初始化终端在 Frame 里的落点（相对 Frame 左上角，让开徽章）。 */
 export const INIT_TERMINAL_POSITION = { x: 24, y: 72 };
@@ -106,7 +107,7 @@ export function openWorktreeFrame(
   if (existing) return existing.id;
   return store.addNode("group", {
     title: input.branch,
-    size: WORKTREE_FRAME_SIZE,
+    size: { ...WORKTREE_FRAME_SIZE },
     ...(input.position ? { position: input.position } : {}),
     data: {
       kind: "group",
@@ -239,7 +240,7 @@ export function fulfilWorktreeIntent(
   );
   const frameId = store.addNode("group", {
     title: intent.branch,
-    size: WORKTREE_FRAME_SIZE,
+    size: { ...WORKTREE_FRAME_SIZE },
     ...(options.position ? { position: options.position } : {}),
     data: { kind: "group", binding },
   });

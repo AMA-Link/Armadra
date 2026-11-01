@@ -77,6 +77,7 @@ import {
   hasWorkspaceFileDrag,
   readWorkspaceFileDrag,
 } from "../files/workspace-drag";
+import { revealCreatedNode } from "@/canvas/created-node";
 
 /**
  * 从不值得浏览的目录，Runtime 也已经隐藏了一部分。
@@ -369,11 +370,12 @@ function Row({
       setOpen((value) => !value);
       return;
     }
-    addNode("editor", {
+    const id = addNode("editor", {
       title: entry.name,
       position: nodeDropPosition("editor"),
       data: { kind: "editor", path: entry.path, readonly: entry.readonly },
     });
+    if (id) revealCreatedNode(id);
   };
 
   /**

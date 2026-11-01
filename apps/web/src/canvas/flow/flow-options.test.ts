@@ -14,7 +14,7 @@ import { flowOptions } from "./flow-options";
 const preferences: WhiteboardPreferences = {
   background: "theme",
   grid: true,
-  gridSize: 24,
+  gridSize: 13,
   snap: false,
   dynamicSize: false,
   animation: true,
@@ -178,9 +178,9 @@ describe("锁定视图", () => {
 
 describe("偏好映射", () => {
   it("吸附跟着 `snap`，网格间距直接当 `snapGrid`", () => {
-    expect(options({ snap: true, gridSize: 48 })).toMatchObject({
+    expect(options({ snap: true, gridSize: 34 })).toMatchObject({
       snapToGrid: true,
-      snapGrid: [48, 48],
+      snapGrid: [34, 34],
     });
     expect(options({ snap: false }).snapToGrid).toBe(false);
   });

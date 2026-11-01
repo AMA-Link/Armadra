@@ -1,5 +1,6 @@
 import {
   DEFAULT_LAYOUT_DIRECTION,
+  defaultNodeSizeOf,
   dispatchPlacement,
   type LayoutDirection,
   type PlacementBox,
@@ -53,9 +54,10 @@ export const PLACEMENT_GAP = 60;
  * How far down to step when the spot picked for a new node is already taken.
  *
  * Deliberately **not** a per-type size table. The one table of default node
- * geometry lives in the front end (`apps/web/src/nodes/registry.ts`), because
- * that is where a default size means something — it is the size the node is
- * drawn at. A second table here is what made an agent-created terminal come
+ * geometry is the golden-ratio one in `@armadra/shared`
+ * (`domain/golden-ratio.ts`), applied by the front end
+ * (`apps/web/src/nodes/registry.ts`), because that is where a default size
+ * means something — it is the size the node is drawn at. A second table here is what made an agent-created terminal come
  * out 640×440 while the one a person adds from the menu is 960×600, so the
  * control verbs no longer write a size at all: they leave `size` absent and
  * the page fills it in from that single table when it projects the document
@@ -64,8 +66,8 @@ export const PLACEMENT_GAP = 60;
  */
 export const PLACEMENT_STEP = 640;
 
-/** Width assumed for an anchor node that has never been resized. */
-export const ANCHOR_FALLBACK_WIDTH = 960;
+/** Width assumed for an anchor node that has never been resized (the terminal default). */
+export const ANCHOR_FALLBACK_WIDTH = defaultNodeSizeOf("terminal").width;
 
 export function load(context: CollabContext, caller: Caller): BoardDocument {
   try {
@@ -174,7 +176,7 @@ export function newNode(
 }
 
 /** Height assumed for a node that has never been resized (the terminal default). */
-export const NODE_FALLBACK_HEIGHT = 600;
+export const NODE_FALLBACK_HEIGHT = defaultNodeSizeOf("terminal").height;
 
 /**
  * `canvas.layoutDirection`（契约 §50）。读不到设置（测试里没装设置域）按缺省

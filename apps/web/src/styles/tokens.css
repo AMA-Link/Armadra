@@ -369,8 +369,14 @@
   /* 非控件的行高（设计系统 §2.7）：列表 / 树 / 工具条行 28，表格 / 通知 / 横幅行 36；类写 `h-(--row-h)`。 */
   --row-h: 28px;
   --row-h-table: 36px;
-  --sidebar-w: 240px;
-  --dock-h: 44px;
+  /*
+   * 主要分区的比例取 φ（#684）：窗口宽 = 左侧栏 × (1 + φ³)，所以侧栏与其余部分
+   * （画布）之比是 1 : φ³；右侧工作面板与画布之比是 1 : φ²。1 + φ³ ≈ 5.236，
+   * 1 + φ² ≈ 3.618；下限是旧宽度，上限防止超宽屏上长得太大。
+   * Dock 高 = 节点折叠高度（32）× φ ≈ 52。`golden-chrome.test.ts` 校对这三个数。
+   */
+  --sidebar-w: clamp(240px, calc(100vw / 5.236), 320px);
+  --dock-h: 52px;
   /* 手机底部导航（`shell/MobileBottomNav`）的高度，不含安全区。 */
   --mobile-nav-h: 56px;
   /* 窄节点（容器 ≤ 360）头部收紧后的间隙与左右内距 */
@@ -400,7 +406,7 @@
    * `ui/safe-area.ts` 按同一规则量成像素。
    */
   --overlay-inset-top: max(var(--safe-top), var(--window-controls-top));
-  --drawer-w: 360px;
+  --drawer-w: clamp(360px, calc(100vw / 3.618), 520px);
   --scm-w: 460px;
   /*
    * 设置工作台（设计系统 §2.7 / §5.17）：视口四周各留 48px（减 96px），上限 1280 × 860；

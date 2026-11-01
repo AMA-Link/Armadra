@@ -106,7 +106,7 @@ describe("GroupNode", () => {
     expect(
       picked.container.querySelectorAll(".react-flow__resize-control").length,
     ).toBeGreaterThan(0);
-    expect(NODE_META.group.minSize).toEqual({ width: 200, height: 140 });
+    expect(NODE_META.group.minSize).toEqual({ width: 169, height: 104 });
   });
 
   it("GitHub 关联徽标挂在 Frame 上（旧引擎里它在派生层）", () => {

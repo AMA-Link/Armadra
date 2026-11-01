@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { NODE_TYPES, DEFAULT_NODE_COLOR } from "@armadra/shared";
+import {
+  NODE_TYPES,
+  DEFAULT_NODE_COLOR,
+  GOLDEN_RATIO,
+  GRID_UNIT,
+} from "@armadra/shared";
 
 import { t } from "@/app/preferences-store";
 import {
@@ -13,17 +18,17 @@ import {
 import { HEADER_HEIGHT, NODE_BORDER_WIDTH, TERMINAL_PADDING } from "./geometry";
 import { COLLAPSED_HEIGHT as STORED_COLLAPSED_HEIGHT } from "../store/defaults";
 
-/** 计划书 §3.4 的尺寸表，逐字抄一遍作为回归基线。 */
+/** 计划书 §3.4 的尺寸表（黄金比例，#684），逐字抄一遍作为回归基线。 */
 const EXPECTED = {
-  terminal: { default: [960, 600], min: [320, 200] },
-  sticky: { default: [280, 220], min: [160, 120] },
-  group: { default: [800, 560], min: [200, 140] },
-  editor: { default: [960, 640], min: [320, 200] },
-  diff: { default: [1200, 700], min: [420, 220] },
-  files: { default: [360, 640], min: [220, 160] },
-  browser: { default: [1280, 800], min: [480, 320] },
-  automation: { default: [360, 260], min: [260, 180] },
-  agentActivity: { default: [340, 240], min: [240, 160] },
+  terminal: { default: [715, 442], min: [273, 169] },
+  sticky: { default: [273, 169], min: [169, 104] },
+  group: { default: [884, 546], min: [169, 104] },
+  editor: { default: [715, 442], min: [273, 169] },
+  diff: { default: [1157, 715], min: [442, 273] },
+  files: { default: [273, 442], min: [169, 273] },
+  browser: { default: [1157, 715], min: [442, 273] },
+  automation: { default: [442, 273], min: [273, 169] },
+  agentActivity: { default: [442, 273], min: [273, 169] },
 } as const;
 
 describe("node registry", () => {
@@ -40,8 +45,33 @@ describe("node registry", () => {
     }
   });
 
-  it("gives the browser node a standard 1280×800 viewport (§3.4)", () => {
-    expect(NODE_META.browser.defaultSize).toEqual({ width: 1280, height: 800 });
+  it("gives the browser node an 89×55-cell golden-ratio viewport (§3.4)", () => {
+    expect(NODE_META.browser.defaultSize).toEqual({ width: 1157, height: 715 });
+  });
+
+  it("keeps every default and minimum size a whole number of grid cells", () => {
+    for (const type of NODE_TYPES) {
+      for (const size of [
+        NODE_META[type].defaultSize,
+        NODE_META[type].minSize,
+      ]) {
+        expect(size.width % GRID_UNIT).toBe(0);
+        expect(size.height % GRID_UNIT).toBe(0);
+      }
+    }
+  });
+
+  it("keeps every default and minimum size at the golden ratio within 1px", () => {
+    for (const type of NODE_TYPES) {
+      const { defaultSize, minSize } = NODE_META[type];
+      for (const size of [defaultSize, minSize]) {
+        const long = Math.max(size.width, size.height);
+        const short = Math.min(size.width, size.height);
+        expect(Math.abs(long - short * GOLDEN_RATIO)).toBeLessThanOrEqual(1);
+        // 文件列表竖长（1:φ），其余横向（φ:1）。
+        expect(size.width > size.height).toBe(type !== "files");
+      }
+    }
   });
 
   it("matches the §3.4 size table", () => {
@@ -91,10 +121,10 @@ describe("node registry", () => {
   });
 
   /**
-   * 外壳吃掉的像素（契约 §3.4，2026-09-19）。一个默认终端 960×600 里，
+   * 外壳吃掉的像素（契约 §3.4，2026-09-19）。一个默认终端 715×442 里，
    * 头部 + 边框 + 内边距横向只拿走 10px、纵向 40px，剩下的全是 xterm 的。
    */
-  it("leaves a 960×600 terminal 950×560 of content", () => {
+  it("leaves a 715×442 terminal 705×402 of content", () => {
     const { width, height } = NODE_META.terminal.defaultSize;
     expect(TERMINAL_PADDING).toBe(4);
     const content = {
@@ -102,7 +132,7 @@ describe("node registry", () => {
       height:
         height - NODE_BORDER_WIDTH * 2 - HEADER_HEIGHT - TERMINAL_PADDING * 2,
     };
-    expect(content).toEqual({ width: 950, height: 560 });
+    expect(content).toEqual({ width: 705, height: 402 });
   });
 
   it("has a translatable label key and an icon for every type", () => {

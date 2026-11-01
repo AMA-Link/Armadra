@@ -1,3 +1,5 @@
+import { GRID_SPACINGS, GRID_UNIT } from "@armadra/shared";
+
 import { readStored, storedBoolean, storedEnum } from "./storage";
 
 const WB_BACKGROUND_KEY = "armadra.whiteboard.background";
@@ -31,8 +33,14 @@ export const WHITEBOARD_BACKGROUNDS = [
 ] as const;
 export type WhiteboardBackground = (typeof WHITEBOARD_BACKGROUNDS)[number];
 
-/** 点阵间距（px）。`<Background gap>` 直接吃这个值，不再有换算。 */
-export const WHITEBOARD_GRID_SIZES = [12, 24, 48] as const;
+/**
+ * 点阵间距（px）。`<Background gap>` 直接吃这个值，不再有换算。
+ *
+ * 取 φ 阶梯上的斐波那契数 13 / 21 / 34（`@armadra/shared` 的 `GRID_SPACINGS`），
+ * 默认是第一档 = 基准单位 `GRID_UNIT`：节点的默认与最小尺寸都是它的整数倍，
+ * 缩放时点阵与节点的比例不变（#684）。
+ */
+export const WHITEBOARD_GRID_SIZES = GRID_SPACINGS;
 export type WhiteboardGridSize = (typeof WHITEBOARD_GRID_SIZES)[number];
 
 /** 白板的 13 个颜色名，顺序即色板顺序；十六进制表在 `whiteboard/palette.ts`。 */
@@ -138,7 +146,7 @@ function storedWhiteboardGridSize(): WhiteboardGridSize {
   const value = Number(raw);
   return (WHITEBOARD_GRID_SIZES as readonly number[]).includes(value)
     ? (value as WhiteboardGridSize)
-    : 24;
+    : GRID_UNIT;
 }
 
 export function storedWhiteboardPreferences(): WhiteboardPreferences {

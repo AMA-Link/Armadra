@@ -17,6 +17,7 @@ import { FileTypeIcon } from "./files/file-icons";
 import { FilesBreadcrumb } from "./files/FilesBreadcrumb";
 import { breadcrumbs, rootLabelFor, tailSizeFor } from "./files/breadcrumb";
 import { isSystemFile } from "./files/system-files";
+import { revealCreatedNode } from "@/canvas/created-node";
 
 /** 新开的编辑器节点放在文件节点右边这么远。 */
 const SPAWN_GAP = 24;
@@ -104,7 +105,7 @@ export function FilesNode({ id, node, selected }: NodeBodyProps) {
   function openEditor(entry: FileEntry) {
     const store = useCanvasStore.getState();
     const size = node.size ?? NODE_META.files.defaultSize;
-    store.addNode("editor", {
+    const created = store.addNode("editor", {
       title: entry.name,
       data: { path: entry.path },
       position: {
@@ -112,6 +113,7 @@ export function FilesNode({ id, node, selected }: NodeBodyProps) {
         y: node.position.y,
       },
     });
+    if (created) revealCreatedNode(created);
   }
 
   const visible = React.useMemo(() => {

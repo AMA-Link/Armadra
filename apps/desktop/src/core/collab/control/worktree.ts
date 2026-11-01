@@ -1,5 +1,7 @@
 import { isAbsolute, join, relative } from "node:path";
 
+import { WORKTREE_FRAME_SIZE } from "@armadra/shared";
+
 import type { BoardDocument, CanvasNode } from "../../canvas/document-types";
 import { invalidate } from "../../git/discovery";
 import { gitService } from "../../git/index";
@@ -34,8 +36,6 @@ import { newNode, placement } from "./board";
 /** 新建检出时名字对应的目录。 */
 export const WORKTREE_DIR = ".worktrees";
 
-/** 与页面上新建绑定 Frame 的尺寸一致（`worktree-frame.ts`）。 */
-const FRAME_SIZE = { width: 1040, height: 720 };
 /** Frame 里第一个成员的落点（相对 Frame 左上角，让开徽章）。 */
 const INSIDE = { x: 24, y: 72 };
 const STEP = 36;
@@ -254,7 +254,7 @@ export function frameFor(
         },
       },
     ),
-    size: FRAME_SIZE,
+    size: { ...WORKTREE_FRAME_SIZE },
   };
   return { frame, created: true, children: 0 };
 }

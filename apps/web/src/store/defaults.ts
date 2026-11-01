@@ -1,6 +1,9 @@
 import type { CanvasNodeData, CanvasNodeType, Size } from "@armadra/shared";
-import { t } from "../app/preferences-store";
+import { t, usePreferencesStore } from "../app/preferences-store";
+import { NODE_TEXT_PX, fitNewNodeSize } from "../canvas/first-display";
+import { containerSize } from "../canvas/flow/flow-context";
 import { nodeMeta } from "../nodes/registry";
+import { isCompactLayout } from "../platform/layout";
 
 /**
  * 新建节点时的默认值 —— docs/contracts/v3-agent-terminal-plan.md §3.4。
@@ -36,6 +39,32 @@ export function defaultNodeSize(type: CanvasNodeType): Size {
 
 export function minNodeSize(type: CanvasNodeType): Size {
   return { ...nodeMeta(type).minSize };
+}
+
+/**
+ * 这种节点里最小正文的字号（px）：都是 `--text-meta`，终端跟着自己的字号偏
+ * 好（可调到 10）。字号下限（字号 × 缩放 ≥ 12px）按它算。
+ */
+export function nodeFontPx(type: CanvasNodeType): number {
+  return type === "terminal"
+    ? Math.min(NODE_TEXT_PX, usePreferencesStore.getState().terminal.fontSize)
+    : NODE_TEXT_PX;
+}
+
+/**
+ * **新建**时的尺寸（#684）：默认的黄金比例尺寸；手机（紧凑布局，横竖屏）上
+ * 在字号下限的缩放下装不进视口时，等比缩小到装得下。已保存节点的尺寸不经过
+ * 这里。
+ */
+export function newNodeSize(type: CanvasNodeType): Size {
+  const size = defaultNodeSize(type);
+  if (!isCompactLayout()) return size;
+  return fitNewNodeSize({
+    size,
+    min: minNodeSize(type),
+    container: containerSize(),
+    fontPx: nodeFontPx(type),
+  });
 }
 
 export function defaultNodeColor(type: CanvasNodeType): string {

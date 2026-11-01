@@ -1,5 +1,5 @@
 import type { LucideIcon } from "lucide-react";
-import { supportedPermissionModes } from "@armadra/shared";
+import { WORKTREE_FRAME_SIZE, supportedPermissionModes } from "@armadra/shared";
 import { toast } from "@/ui/toast";
 import { usePreferencesStore } from "../../app/preferences-store";
 import {
@@ -112,10 +112,10 @@ function create(
 }
 
 /**
- * 新建分组的默认尺寸；装得下一个默认终端（960×600）还留出边距，
- * 与 `panels/git/log/worktree-frame.ts` 的绑定 Frame 同一口径。
+ * 新建「画框」的尺寸；装得下一个默认会话（715×442）还留出边距，
+ * 与绑定 Frame（`panels/git/log/worktree-frame.ts`）、core 的 `worktree` 动词同源。
  */
-const FRAME_SIZE = { width: 1040, height: 720 };
+const FRAME_SIZE = { ...WORKTREE_FRAME_SIZE };
 
 /**
  * 「文字」= 一条 `whiteboard.items`（`wb.text`，不进 `nodes` 表）。

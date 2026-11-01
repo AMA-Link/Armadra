@@ -1,34 +1,17 @@
-import type { Viewport } from "@armadra/shared";
-
 import type { Box } from "../geometry";
-import { clampZoom } from "../zoom";
+import { firstDisplayZoom } from "../first-display";
 
 /**
- * 「新建了一个节点，相机要不要动、动到哪」——只有数学，没有 React。
+ * 「新建了一个节点，相机动到哪」——只有数学，没有 React。
  *
- * 两条规则，手动新建与 Agent 新建共用同一条（契约 §3.4，2026-09-19 那条
- * 「抬到 100%」是其中第一条）：
+ * 新建的节点每次都被送到眼前（#684，契约 §3.4）：居中，缩放让它占视口主方向
+ * 的 1/φ，但屏幕上的字号（字号 × 缩放）不低于 `--text-meta`。占比与字号下限
+ * 的算法在 `canvas/first-display.ts`，手动新建与 Agent 新建共用这一处，所以两
+ * 边不会再分叉。
  *
- *  1. **缩放太小就抬到 100% 并居中**。默认尺寸是按 100% 设计的，用户停在
- *     27% 这样的总览上新建，拿到的是一张读不了的缩略图。
- *  2. **看不全就居中，缩放不动**。手动新建落在鼠标或视口中心，多半本来就
- *     在眼前，这一条不会触发；Agent 建的节点摆在**发起它的那个节点右边**，
- *     常常整块都在屏幕外——那正是「只出现在角落」的样子。
- *
- * 其余情况一动不动：用户正看着某块区域，抢他的相机是更坏的事。
+ * 谁该跟过去由 `canvas/created-node.ts` 的闸门判断（别的板、后台页面、手势或
+ * 输入进行中都不抢相机）；到了这里就一定动。
  */
-
-/** 低于这个缩放就抬到 100%。 */
-export const REVEAL_ZOOM_THRESHOLD = 0.5;
-export const REVEAL_ZOOM = 1;
-
-/**
- * 判「看得全」时四周留的余量（画布坐标）。
- *
- * 贴着视口边缘算「看得见」会让新节点正好卡在边上还不居中，而那和看不见
- * 差不多；留出一点边距，节点至少要整块落在这圈之内才算数。
- */
-export const REVEAL_MARGIN = 24;
 
 export interface CameraTarget {
   /** 居中到这个画布坐标。 */
@@ -37,44 +20,19 @@ export interface CameraTarget {
   zoom: number;
 }
 
-/** 视口变换 + 容器像素尺寸 → 画布坐标下的可见矩形。 */
-export function visibleBox(
-  viewport: Viewport,
-  container: { width: number; height: number },
-): Box | null {
-  const { zoom } = viewport;
-  if (!Number.isFinite(zoom) || zoom <= 0) return null;
-  if (container.width <= 0 || container.height <= 0) return null;
-  return {
-    x: -viewport.x / zoom,
-    y: -viewport.y / zoom,
-    width: container.width / zoom,
-    height: container.height / zoom,
-  };
-}
-
-/** `node` 是否整块落在 `visible` 里（带 {@link REVEAL_MARGIN} 余量）。 */
-export function fullyVisible(node: Box, visible: Box): boolean {
-  return (
-    node.x >= visible.x + REVEAL_MARGIN &&
-    node.y >= visible.y + REVEAL_MARGIN &&
-    node.x + node.width <= visible.x + visible.width - REVEAL_MARGIN &&
-    node.y + node.height <= visible.y + visible.height - REVEAL_MARGIN
-  );
-}
-
 /**
- * 新建节点之后的相机目标；`null` = 不动相机。
+ * 新建节点之后的相机目标；`null` = 不动（节点还没量过，宽高为 0）。
  *
- * `container` 量不出来（画布没挂载、单测里没有 DOM）时只剩第一条规则：
- * 缩放太小照样抬，看得全不全无从判断，就不判。
+ * `container` 量不出来（画布没挂载、单测里没有 DOM）时只剩字号下限：居中并
+ * 把缩放抬到下限。
  */
 export function cameraForNewNode(input: {
   node: Box;
-  viewport: Viewport;
   container: { width: number; height: number };
+  /** 节点里最小正文的字号；终端按它自己的偏好，缺省 12px。 */
+  fontPx?: number;
 }): CameraTarget | null {
-  const { node, viewport, container } = input;
+  const { node, container } = input;
   if (
     !Number.isFinite(node.width) ||
     !Number.isFinite(node.height) ||
@@ -83,15 +41,13 @@ export function cameraForNewNode(input: {
   ) {
     return null;
   }
-  const center = {
+  return {
     x: node.x + node.width / 2,
     y: node.y + node.height / 2,
+    zoom: firstDisplayZoom({
+      node,
+      container,
+      ...(input.fontPx === undefined ? {} : { fontPx: input.fontPx }),
+    }),
   };
-  if (viewport.zoom < REVEAL_ZOOM_THRESHOLD) {
-    return { ...center, zoom: clampZoom(REVEAL_ZOOM) };
-  }
-  const visible = visibleBox(viewport, container);
-  if (!visible) return null;
-  if (fullyVisible(node, visible)) return null;
-  return { ...center, zoom: clampZoom(viewport.zoom) };
 }

@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   LAYER_GAP,
   SIBLING_GAP,
+  defaultNodeSizeOf,
   type AgentInfo,
   type BoardDocument,
   type CanvasNode,
@@ -140,7 +141,10 @@ describe("spawnSubordinate", () => {
         .position;
     expect(at(second).y).toBe(at(first).y);
     // 兄弟之间隔一个兄弟间距（#319），连线有通道可走。
-    expect(at(second).x).toBe(at(first).x + 960 + SIBLING_GAP);
+    // 新建的从是默认会话尺寸，不是父的 960。
+    expect(at(second).x).toBe(
+      at(first).x + defaultNodeSizeOf("terminal").width + SIBLING_GAP,
+    );
 
     setLayoutDirectionForTest("horizontal");
     load([parent]);

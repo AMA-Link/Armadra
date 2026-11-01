@@ -1,20 +1,21 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import { makeNode, testUuid } from "../test-support";
+import { useCanvasStore } from "@/store/canvas-store";
 import { setFlow, setFlowContainer, type FlowHandle } from "./flow-context";
 import { useRealtimeStore } from "@/realtime/session";
 import {
   REVEAL_RETRY_DELAYS,
-  REVEAL_ZOOM_THRESHOLD,
   revealNewNode,
   zoomByStep,
   zoomToLevel,
 } from "./use-flow-viewport";
 
 /**
- * 新建节点之后的相机（契约 §3.4，2026-09-19）。
+ * 新建节点之后的相机（契约 §3.4，#684）。
  *
- * 节点默认尺寸按 100% 设计，所以在总览缩放下新建必须把相机抬回 100%，
- * 否则用户拿到的是一张读不了的缩略图；但已经在 50% 以上时不许抢相机。
+ * 新建的节点每次都被送到眼前：居中，缩放让它占视口主方向的 1/φ，字号 ×
+ * 缩放不低于 12px——总览缩放下新建也不会拿到一张读不了的缩略图。
  */
 
 const NODE = {
@@ -68,19 +69,21 @@ describe("revealNewNode", () => {
     expect(options.zoom).toBe(1);
   });
 
-  it("缩放已经够大、节点又在眼前时不碰相机", () => {
-    const setCenter = mountFlow(REVEAL_ZOOM_THRESHOLD);
+  it("节点已经在眼前时也居中，缩放封顶在 1.25", () => {
+    const setCenter = mountFlow(1);
     setFlowContainer(fakeContainer(4000, 3000));
     revealNewNode("n1");
-    expect(setCenter).not.toHaveBeenCalled();
+    expect(setCenter).toHaveBeenCalledTimes(1);
+    const options = setCenter.mock.calls[0]![2];
+    // min(4000/1280, 3000/800) / φ = 1.93，夹到 1.25
+    expect(options.zoom).toBe(1.25);
   });
 
   /**
    * Agent 用控制动词建的节点摆在发起它的那个节点右边，常常整块在屏幕外，
-   * 而缩放本来就是 100%——「只在缩放太小时抬相机」那一条在这里不够用，
-   * 所以看不全就按当前缩放居中。
+   * 而缩放本来就是 100%，所以每次都居中，缩放由首次显示规则决定。
    */
-  it("缩放够大但节点在屏幕外时按当前缩放居中", () => {
+  it("画布放不下时缩放顶在字号下限 100%，节点在屏幕外也居中", () => {
     const setCenter = mountFlow(1);
     setFlowContainer(fakeContainer(800, 600));
     revealNewNode("n1");
@@ -121,6 +124,115 @@ describe("revealNewNode", () => {
   it("画布没挂载时什么都不做", () => {
     setFlow(null);
     expect(() => revealNewNode("n1")).not.toThrow();
+  });
+});
+
+describe("手机上新建的节点（#684）", () => {
+  const BOARD = testUuid(1);
+  const ID = testUuid(7);
+
+  function compact(matches: boolean) {
+    vi.stubGlobal("matchMedia", (query: string) => ({
+      matches: matches && query.includes("max-width"),
+      addEventListener: () => undefined,
+      removeEventListener: () => undefined,
+    }));
+  }
+
+  function load(size: { width: number; height: number } | undefined) {
+    const node = makeNode("terminal", {
+      id: ID,
+      boardId: BOARD,
+      position: { x: 1000, y: 400 },
+      ...(size ? { size } : {}),
+    });
+    if (!size) delete (node as { size?: unknown }).size;
+    useCanvasStore.getState().setDocument({
+      board: {
+        id: BOARD,
+        workspaceId: testUuid(3),
+        name: "Board",
+        sortOrder: 0,
+        viewport: { x: 0, y: 0, zoom: 1 },
+        whiteboard: "",
+        createdAt: "2026-09-20T00:00:00.000Z",
+        updatedAt: "2026-09-20T00:00:00.000Z",
+      },
+      nodes: [node],
+      edges: [],
+    } as never);
+  }
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("没写 size 的终端先缩到装得下（中心不动），量到新尺寸后再居中", () => {
+    vi.useFakeTimers();
+    compact(true);
+    load(undefined);
+    setFlowContainer(fakeContainer(390, 700));
+    const measured = { width: 715, height: 442 };
+    const setCenter = vi.fn<SetCenter>(() => Promise.resolve(true));
+    setFlow({
+      getViewport: () => ({ x: 0, y: 0, zoom: 1 }),
+      getNode: () => {
+        const doc = useCanvasStore
+          .getState()
+          .document!.nodes.find((item) => item.id === ID)!;
+        return {
+          id: ID,
+          position: doc.position,
+          measured: { ...measured },
+          width: measured.width,
+          height: measured.height,
+          data: {},
+        };
+      },
+      setCenter,
+    } as unknown as FlowHandle);
+
+    revealNewNode(ID);
+
+    const resized = useCanvasStore
+      .getState()
+      .document!.nodes.find((item) => item.id === ID)!;
+    expect(resized.size).toEqual({ width: 273, height: 169 });
+    // 中心 (1000 + 715/2, 400 + 442/2) 保持不变，取整到像素。
+    expect(
+      Math.abs(resized.position.x + 273 / 2 - (1000 + 715 / 2)),
+    ).toBeLessThanOrEqual(0.5);
+    expect(
+      Math.abs(resized.position.y + 169 / 2 - (400 + 442 / 2)),
+    ).toBeLessThanOrEqual(0.5);
+    // React Flow 量到的还是缩小之前的矩形：不对着旧尺寸动相机。
+    expect(setCenter).not.toHaveBeenCalled();
+
+    measured.width = 273;
+    measured.height = 169;
+    vi.advanceTimersByTime(REVEAL_RETRY_DELAYS.at(-1)! + 1);
+    expect(setCenter).toHaveBeenCalledTimes(1);
+    const zoom = setCenter.mock.calls[0]![2].zoom;
+    expect(12 * zoom).toBeGreaterThanOrEqual(12);
+    // 新尺寸在手机竖屏里占主方向 1/φ（宽 390 对应 ≥ 100% 的字号下限）。
+    expect((273 * zoom) / 390).toBeLessThanOrEqual(1);
+  });
+
+  it("调用方指定过别的尺寸、或不是手机时不缩", () => {
+    compact(true);
+    load({ width: 500, height: 309 });
+    setFlowContainer(fakeContainer(390, 700));
+    mountFlow(1);
+    revealNewNode(ID);
+    expect(useCanvasStore.getState().document!.nodes[0]!.size).toEqual({
+      width: 500,
+      height: 309,
+    });
+
+    compact(false);
+    load(undefined);
+    revealNewNode(ID);
+    expect(useCanvasStore.getState().document!.nodes[0]!.size).toBeUndefined();
   });
 });
 
