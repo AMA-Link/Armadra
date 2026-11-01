@@ -482,7 +482,9 @@ async function fromThePage(base, origin) {
     { what: "允许其他设备访问开着、点开「手机扫码连接」" },
   );
   const qr = await page.waitFor(
-    `return document.querySelector('[role="dialog"] svg[data-qr-text]')?.getAttribute("data-qr-text");`,
+    `return [...document.querySelectorAll('[role="dialog"]')]
+       .map((node) => node.querySelector("svg[data-qr-text]"))
+       .find(Boolean)?.getAttribute("data-qr-text");`,
     { what: "扫码对话框里的二维码" },
   );
   check(
@@ -501,14 +503,23 @@ async function fromThePage(base, origin) {
   );
   await page.capture("gateway-page-on");
 
-  // 关掉扫码对话框再去点开关。
-  await page.evaluate(
-    `document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })); return true;`,
+  // 关掉扫码对话框再去点开关。设置页本身也是对话框（还带着「手机扫码连接」按钮），所以按里面有二维码认这一个。
+  const scanDialog = `[...document.querySelectorAll('[role="dialog"]')]
+     .find((node) => node.querySelector("svg[data-qr-text]"))`;
+  await page.waitFor(
+    `const close = ${scanDialog}?.querySelector('[data-slot="dialog-close"]');
+     if (!close) return false;
+     close.click();
+     return true;`,
+    { what: "点扫码对话框的关闭" },
   );
-  await page.waitFor(`return document.querySelector('[role="dialog"]') === null;`, {
+  await page.waitFor(`return ${scanDialog} === undefined;`, {
     what: "扫码对话框关上",
   });
-  await page.click('[role="switch"][aria-label="允许其他设备访问这台电脑"]');
+  // 对话框淡出时遮罩还在，坐标点击会落在遮罩上：直接点开关元素。
+  await page.evaluate(
+    `document.querySelector('[role="switch"][aria-label="允许其他设备访问这台电脑"]').click(); return true;`,
+  );
   let after = null;
   for (let attempt = 0; attempt < 50; attempt += 1) {
     after = JSON.parse((await local(base, "GET", "/api/gateway")).body);
