@@ -284,6 +284,87 @@ describe("report", () => {
   });
 });
 
+describe("telling the coordinator", () => {
+  /** 协调者收件箱里的正文。 */
+  function leadInbox(): string[] {
+    const rows = fixture.database
+      .prepare(
+        "SELECT body FROM agent_mailbox WHERE target_node_id = ? ORDER BY sequence",
+      )
+      .all(lead) as { body: string }[];
+    return rows.map((row) => row.body);
+  }
+
+  it("leaves one line for ready / blocked / failed and questions, none for progress", async () => {
+    const member = await dispatch("s1:t1");
+    result(await run(member, "report", { state: "progress", summary: "step" }));
+    result(await run(member, "report", { state: "waiting", summary: "build" }));
+    expect(leadInbox()).toEqual([]);
+    const ready = result(
+      await run(member, "report", { state: "ready", summary: "done" }),
+    );
+    expect(ready.notified).toBe(true);
+    result(
+      await run(member, "report", {
+        state: "progress",
+        summary: "asking",
+        "human-action": "which colour?",
+      }),
+    );
+    const inbox = leadInbox();
+    expect(inbox).toHaveLength(2);
+    expect(inbox[0]).toContain("[工作项 s1:t1] ready：done");
+    expect(inbox[0]).toContain("canvas items --item s1:t1");
+    expect(inbox[1]).toContain("待决问题：which colour?");
+  });
+
+  it("leaves one line for a handback", async () => {
+    const member = await dispatch("s1:t1");
+    const back = result(
+      await run(member, "handback", { item: "s1:t1", reason: "not mine" }),
+    );
+    expect(back.notified).toBe(true);
+    expect(leadInbox().some((body) => body.includes("交回：not mine"))).toBe(
+      true,
+    );
+  });
+
+  it("does not push a frame for progress that keeps the stage", async () => {
+    const member = await dispatch("s1:t1");
+    fixture.session(member, "codex");
+    const frames = () =>
+      fixture.events.filter((entry) => entry.event.type === "workflow.task")
+        .length;
+    result(await run(member, "report", { state: "progress", summary: "one" }));
+    const settled = frames();
+    result(await run(member, "report", { state: "progress", summary: "two" }));
+    expect(frames()).toBe(settled);
+    result(await run(member, "report", { state: "ready", summary: "done" }));
+    expect(frames()).toBe(settled + 1);
+  });
+
+  it("records --origin verbatim for open-agent and team", async () => {
+    await dispatch("s1:t1", { origin: "make the login button blue" });
+    expect(taskRun(fixture.database, "s1:t1")!.origin).toMatchObject({
+      kind: "human",
+      ref: lead,
+      text: "make the login button blue",
+    });
+    await dispatch("s1:t2");
+    expect(taskRun(fixture.database, "s1:t2")!.origin?.text).toBe("do s1:t2");
+    const team = result(
+      await run(lead, "team", {
+        member: ["codex|A|do A"],
+        origin: "do A and nothing else",
+      }),
+    );
+    const id = (team.members as { id: string }[])[0]!.id;
+    expect(taskRun(fixture.database, `team-${id}`)!.origin?.text).toBe(
+      "do A and nothing else",
+    );
+  });
+});
+
 describe("handback", () => {
   it("is allowed once per item", async () => {
     const member = await dispatch("s1:t1");

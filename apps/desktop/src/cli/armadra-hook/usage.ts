@@ -51,7 +51,7 @@ export const CANVAS_USAGE = `CANVAS:
                                       [--model M] [--after ID]
                                       [--after-turn current|next] [--ttl MIN]
                                       [--worktree NAME_OR_PATH] [--cwd DIR]
-                                      [--resume SESSION_ID]
+                                      [--resume SESSION_ID] [--origin TEXT]
                                       open an agent
                                       node, link it, and give it a first task
                                       once it reports idle; --worktree puts it

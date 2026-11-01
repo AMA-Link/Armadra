@@ -24,7 +24,13 @@ import { roleLabel } from "../context-link";
 import { rfc3339, uuidV7 } from "../../workspaces/support";
 import { nodeOwnerPrincipal, recordNodeCreator } from "../../identity/creators";
 import { type Caller, loadNode } from "../nodes";
-import { type Args, Refusal, Refused, collapseNewlines } from "../refusals";
+import {
+  type Args,
+  Refusal,
+  Refused,
+  collapseNewlines,
+  stripControl,
+} from "../refusals";
 import { MAX_HOPS, sendLimits } from "../send-limits";
 import { enqueue } from "../send-queue";
 import { type CollabContext, nowDate, nowSeconds } from "../service";
@@ -64,6 +70,7 @@ import { checkBody, refuse as sendRefusal } from "./send";
 import { launchRoleNode } from "../../workflow/dispatch";
 import {
   type TaskRun,
+  type WorkItemOrigin,
   publishTask,
   rebindTask,
   recordTaskStart,
@@ -451,6 +458,7 @@ export async function openAgent(
           args.text("title") ??
           (task === undefined ? undefined : task.split("\n", 1)[0]) ??
           title,
+        ...originOf(caller, args),
       });
     }
     publishTask(context.database, context.publish, taskKey);
@@ -520,6 +528,26 @@ export async function openAgent(
       : {}),
     ...(taskKey === undefined ? {} : { taskRunId: taskKey, reused: false }),
   });
+}
+
+/** `--origin` 最多记这么多字。 */
+const MAX_ORIGIN_CHARS = 8_000;
+
+/**
+ * 账本的来源（契约 §90.1）：`--origin` 是协调者原样带上的人的原话；没给就是缺省
+ * （任务正文）。去控制字符，截到 {@link MAX_ORIGIN_CHARS} 字。
+ */
+function originOf(caller: Caller, args: Args): { origin?: WorkItemOrigin } {
+  const raw = args.text("origin");
+  const text = raw === undefined ? "" : stripControl(raw).trim();
+  if (text === "") return {};
+  return {
+    origin: {
+      kind: "human",
+      ref: caller.node.id,
+      text: [...text].slice(0, MAX_ORIGIN_CHARS).join(""),
+    },
+  };
 }
 
 /** `--task-id`：形状不对当场拒绝。 */
@@ -1012,6 +1040,7 @@ export async function team(
       now: nowDate(context).getTime(),
       task: role.task,
       title: role.title,
+      ...originOf(caller, args),
     });
     publishTask(context.database, context.publish, itemId);
     // 带 `resume=` 的成员由 core 起：页面敲的是新开的行，接不回那段会话。
