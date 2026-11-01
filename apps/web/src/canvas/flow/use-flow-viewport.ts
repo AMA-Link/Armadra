@@ -5,12 +5,15 @@ import {
   useOnViewportChange,
   type Viewport as FlowViewport,
 } from "@xyflow/react";
-import type { BoardDocument } from "@armadra/shared";
+import type { BoardDocument, Size } from "@armadra/shared";
 
 import { useCanvasStore } from "@/store/canvas-store";
+import { defaultNodeSize, minNodeSize, nodeFontPx } from "@/store/defaults";
+import { isCompactLayout } from "@/platform/layout";
 import { usePreferencesStore } from "@/app/preferences-store";
 import { stopFollowing } from "@/realtime/session";
 import type { Box } from "../geometry";
+import { fitNewNodeSize } from "../first-display";
 import { initialViewportFor, isDefaultViewport } from "../viewport";
 import {
   MAX_ZOOM,
@@ -20,7 +23,7 @@ import {
   clampZoom,
 } from "../zoom";
 import { containerSize, getFlow } from "./flow-context";
-import { REVEAL_ZOOM, REVEAL_ZOOM_THRESHOLD, cameraForNewNode } from "./reveal";
+import { cameraForNewNode } from "./reveal";
 
 /**
  * 视口（React Flow 计划 §1.2 F10 / §2.9，归属 canvas）。
@@ -115,11 +118,12 @@ export function centerOnNode(nodeId: string): void {
 /* ---------------------------- 新建节点后的相机 ---------------------------- */
 
 /**
- * 新建节点之后的相机（契约 §3.4，2026-09-19）。
+ * 新建节点之后的相机（契约 §3.4，#684）。
  *
- * 动不动、动到哪由 `flow/reveal.ts` 的纯函数决定，这里只负责量与动：
- * 缩放太低就抬到 100% 并居中，节点整块不在眼前就按当前缩放居中，其余
- * 一动不动。手动新建与 Agent 新建走的是同一个函数，所以两边不会再分叉。
+ * 新建的节点每次都被送到眼前：居中，缩放让它占视口主方向的 1/φ，屏幕上的
+ * 字号不低于 `--text-meta`。数学在 `flow/reveal.ts` 与 `canvas/first-display.ts`，
+ * 这里只负责量与动。手动新建与 Agent 新建走的是同一个函数，所以两边不会再
+ * 分叉。
  *
  * 只在 React Flow **已经量过**这个节点时才动（`getNodesBounds` 给出有效
  * 矩形）。刚 `addNode` 完那一帧投影还没落地，所以按一张很短的时间表重试；
@@ -140,18 +144,59 @@ function measuredNodeBounds(nodeId: string): Box | null {
   return { x: rect.x, y: rect.y, width: rect.width, height: rect.height };
 }
 
+/**
+ * 手机上、文档里还是默认尺寸（或根本没写 `size`，core 的控制动词就这样建）
+ * 的新节点：装不进视口就等比缩小，保持中心不动。手动新建在 `addNode` 里就
+ * 已经是装得下的尺寸，调用方指定过别的尺寸的也不碰。返回是否改了。
+ */
+function fitNodeToPhone(nodeId: string): boolean {
+  if (!isCompactLayout()) return false;
+  const state = useCanvasStore.getState();
+  const node = state.document?.nodes.find((item) => item.id === nodeId);
+  if (!node) return false;
+  const standard = defaultNodeSize(node.type);
+  const current = node.size ?? standard;
+  if (current.width !== standard.width || current.height !== standard.height) {
+    return false;
+  }
+  const next = fitNewNodeSize({
+    size: current,
+    min: minNodeSize(node.type),
+    container: containerSize(),
+    fontPx: nodeFontPx(node.type),
+  });
+  if (next.width === current.width && next.height === current.height) {
+    return false;
+  }
+  state.resizeNode(nodeId, next, {
+    x: Math.round(node.position.x + (current.width - next.width) / 2),
+    y: Math.round(node.position.y + (current.height - next.height) / 2),
+  });
+  return true;
+}
+
 /** 量到了就按规则动一次相机；量不到返回 false，让调用方再试一次。 */
-function centreOnMeasured(nodeId: string): boolean {
+function centreOnMeasured(nodeId: string, expected: Size | null): boolean {
   const flow = getFlow();
   const rect = measuredNodeBounds(nodeId);
   if (!flow || !rect) return false;
+  // 刚缩小过：量到的还是缩小之前的矩形就再等一拍，免得对着旧尺寸算缩放。
+  if (
+    expected &&
+    (Math.abs(rect.width - expected.width) > 1 ||
+      Math.abs(rect.height - expected.height) > 1)
+  ) {
+    return false;
+  }
+  const type = useCanvasStore
+    .getState()
+    .document?.nodes.find((item) => item.id === nodeId)?.type;
   const target = cameraForNewNode({
     node: rect,
-    viewport: flow.getViewport(),
     container: containerSize(),
+    ...(type ? { fontPx: nodeFontPx(type) } : {}),
   });
-  // 量到了就算数：规则说不用动相机时也不再重试。
-  if (!target) return true;
+  if (!target) return false;
   void flow.setCenter(target.x, target.y, {
     zoom: target.zoom,
     duration: duration(FIT_DURATION),
@@ -163,9 +208,16 @@ export function revealNewNode(nodeId: string): void {
   const flow = getFlow();
   if (!flow) return;
   let done = false;
+  let expected: Size | null = null;
   const attempt = () => {
     if (done) return;
-    done = centreOnMeasured(nodeId);
+    if (expected === null && fitNodeToPhone(nodeId)) {
+      expected =
+        useCanvasStore
+          .getState()
+          .document?.nodes.find((item) => item.id === nodeId)?.size ?? null;
+    }
+    done = centreOnMeasured(nodeId, expected);
   };
   for (const delay of REVEAL_RETRY_DELAYS) {
     if (delay === 0) attempt();
@@ -239,4 +291,3 @@ export function useViewportSync(): void {
 }
 
 export { MAX_ZOOM, MIN_ZOOM };
-export { REVEAL_ZOOM, REVEAL_ZOOM_THRESHOLD };

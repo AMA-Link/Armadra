@@ -13,6 +13,8 @@ import {
 } from "lucide-react";
 import {
   DEFAULT_NODE_COLOR,
+  defaultNodeSizeOf,
+  minNodeSizeOf,
   type CanvasNode,
   type CanvasNodeType,
   type Size,
@@ -89,37 +91,37 @@ const STICKY_COLOR = "#ffd60a";
 const GroupNodeBody: ComponentType<NodeBodyProps> = () => null;
 
 /**
- * 尺寸表逐字来自计划书 §3.4。改这里之前先改文档——
- * `registry.test.ts` 会逐条比对。
+ * 尺寸由 `@armadra/shared` 的黄金比例生成函数给出（#684）：横向节点宽:高 =
+ * φ:1，文件列表竖长取 1:φ，core 与页面共用同一张表。数字见计划书 §3.4，
+ * `registry.test.ts` 逐条比对；改长边之前先改文档。
  *
- * 2026-09-19 上调了一轮默认尺寸。旧表是按「画布上的一张卡片」定的，于是
- * 浏览器只有 900×620、终端只有 640×440——两者装下的内容都比一个真窗口少
- * 一截。现在按**内容自己的标准尺寸**定：浏览器等于一块标准视口 1280×800，
- * 终端 960×600 在 12px 字号下排得下约 120×36，其余按同一口径跟上。
- * 最小尺寸跟着抬，是为了让节点缩到最小时仍是「一块能用的内容区」。
+ * 长边沿用 2026-09-19 那一轮定下的「内容自己的标准尺寸」（浏览器 1280、终端
+ * 960，在 12px 字号下排得下约 120 列），只是短边按比例取。最小尺寸的长边取到
+ * 每一条边都不比上一版的最小尺寸大（文件列表竖长，只能是高变大），所以已有
+ * 画布里缩小过的节点不会因此低于新的下限。已保存节点的尺寸从不按这张表改写。
  */
 export const NODE_META: Record<CanvasNodeType, NodeMeta> = {
   terminal: {
     labelKey: "node.terminal",
     icon: Terminal,
-    defaultSize: { width: 960, height: 600 },
-    minSize: { width: 320, height: 200 },
+    defaultSize: defaultNodeSizeOf("terminal"),
+    minSize: minNodeSizeOf("terminal"),
     defaultColor: DEFAULT_NODE_COLOR,
     hasBridgeHandles: true,
   },
   sticky: {
     labelKey: "node.sticky",
     icon: StickyNote,
-    defaultSize: { width: 280, height: 220 },
-    minSize: { width: 160, height: 120 },
+    defaultSize: defaultNodeSizeOf("sticky"),
+    minSize: minNodeSizeOf("sticky"),
     defaultColor: STICKY_COLOR,
     hasBridgeHandles: true,
   },
   group: {
     labelKey: "node.group",
     icon: Group,
-    defaultSize: { width: 800, height: 560 },
-    minSize: { width: 200, height: 140 },
+    defaultSize: defaultNodeSizeOf("group"),
+    minSize: minNodeSizeOf("group"),
     defaultColor: DEFAULT_NODE_COLOR,
     // frame 自己有标签与裁剪，把手在它身上没有意义。
     hasBridgeHandles: false,
@@ -127,32 +129,32 @@ export const NODE_META: Record<CanvasNodeType, NodeMeta> = {
   editor: {
     labelKey: "node.editor",
     icon: FileCode2,
-    defaultSize: { width: 960, height: 640 },
-    minSize: { width: 320, height: 200 },
+    defaultSize: defaultNodeSizeOf("editor"),
+    minSize: minNodeSizeOf("editor"),
     defaultColor: DEFAULT_NODE_COLOR,
     hasBridgeHandles: true,
   },
   diff: {
     labelKey: "node.diff",
     icon: GitCompare,
-    defaultSize: { width: 1200, height: 700 },
-    minSize: { width: 420, height: 220 },
+    defaultSize: defaultNodeSizeOf("diff"),
+    minSize: minNodeSizeOf("diff"),
     defaultColor: DEFAULT_NODE_COLOR,
     hasBridgeHandles: true,
   },
   files: {
     labelKey: "node.files",
     icon: FolderTree,
-    defaultSize: { width: 360, height: 640 },
-    minSize: { width: 220, height: 160 },
+    defaultSize: defaultNodeSizeOf("files"),
+    minSize: minNodeSizeOf("files"),
     defaultColor: DEFAULT_NODE_COLOR,
     hasBridgeHandles: true,
   },
   browser: {
     labelKey: "node.browser",
     icon: Globe,
-    defaultSize: { width: 1280, height: 800 },
-    minSize: { width: 480, height: 320 },
+    defaultSize: defaultNodeSizeOf("browser"),
+    minSize: minNodeSizeOf("browser"),
     defaultColor: DEFAULT_NODE_COLOR,
     hasBridgeHandles: true,
   },
@@ -160,16 +162,16 @@ export const NODE_META: Record<CanvasNodeType, NodeMeta> = {
   automation: {
     labelKey: "node.automation",
     icon: CalendarClock,
-    defaultSize: { width: 360, height: 260 },
-    minSize: { width: 260, height: 180 },
+    defaultSize: defaultNodeSizeOf("automation"),
+    minSize: minNodeSizeOf("automation"),
     defaultColor: DEFAULT_NODE_COLOR,
     hasBridgeHandles: false,
   },
   agentActivity: {
     labelKey: "node.agentActivity",
     icon: Activity,
-    defaultSize: { width: 340, height: 240 },
-    minSize: { width: 240, height: 160 },
+    defaultSize: defaultNodeSizeOf("agentActivity"),
+    minSize: minNodeSizeOf("agentActivity"),
     defaultColor: DEFAULT_NODE_COLOR,
     hasBridgeHandles: false,
   },

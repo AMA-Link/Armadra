@@ -2,8 +2,8 @@ import { type CanvasNode } from "@armadra/shared";
 import {
   defaultNodeColor,
   defaultNodeData,
-  defaultNodeSize,
   defaultNodeTitle,
+  newNodeSize,
 } from "../defaults";
 import {
   boundFrameFor,
@@ -69,7 +69,7 @@ export function createNodesSlice(
           x: 80 + index * 24,
           y: 80 + index * 24,
         },
-        size: options.size ?? defaultNodeSize(type),
+        size: options.size ?? newNodeSize(type),
         ...(options.parentId ? { parentId: options.parentId } : {}),
         labels: [],
         note: "",

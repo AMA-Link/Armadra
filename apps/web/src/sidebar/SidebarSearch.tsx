@@ -45,6 +45,7 @@ import {
 import { gotoNode } from "./goto-node";
 import { searchBoards, type SearchBoard, type SearchHit } from "./search-index";
 import { displayName } from "./display-name";
+import { revealCreatedNode } from "@/canvas/created-node";
 
 export interface SidebarSearchProps {
   open: boolean;
@@ -118,7 +119,7 @@ export function SidebarSearch({ open, onOpenChange }: SidebarSearchProps) {
     );
     if (!command) return;
     close();
-    addNode("terminal", {
+    const id = addNode("terminal", {
       position: nodeDropPosition("terminal"),
       title: conversation.title,
       data: {
@@ -131,6 +132,7 @@ export function SidebarSearch({ open, onOpenChange }: SidebarSearchProps) {
         },
       },
     });
+    if (id) revealCreatedNode(id);
   };
 
   return (

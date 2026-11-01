@@ -29,6 +29,7 @@ import {
 import { Spinner } from "@/ui/spinner";
 import { readRecent, rememberRecent } from "./palette-recent";
 import { QUICK_PICK_COUNT, quickPickKeyDown } from "./quick-pick";
+import { revealCreatedNode } from "@/canvas/created-node";
 
 /** 一次最多列这么多个跳转目标，超过靠输入过滤。 */
 const MAX_NODE_RESULTS = 50;
@@ -199,7 +200,7 @@ export function CommandPalette() {
     );
     if (!command) return;
     close();
-    addNode("terminal", {
+    const id = addNode("terminal", {
       position: nodeDropPosition("terminal"),
       title: conversation.title,
       data: {
@@ -214,6 +215,7 @@ export function CommandPalette() {
         },
       },
     });
+    if (id) revealCreatedNode(id);
   }
 
   return (

@@ -321,7 +321,7 @@ const EDITOR_THEME_SPEC = {
     height: "100%",
     backgroundColor: "var(--surface-sunken)",
     color: "var(--text)",
-    fontSize: "12.5px",
+    fontSize: "var(--text-code)",
   },
   ".cm-content": { fontFamily: "var(--font-code)" },
   ".cm-gutters": {
