@@ -798,13 +798,6 @@ export const ROUTES: readonly RouteEntry[] = [
     surface: "runtime",
     implemented: true,
   },
-  // 任意会话配置项（P2-4）。
-  {
-    path: "/api/acp/sessions/{sessionId}/config",
-    methods: ["PUT"],
-    surface: "runtime",
-    implemented: true,
-  },
   {
     path: "/api/acp/nodes/{nodeId}/driver",
     methods: ["POST"],
@@ -825,15 +818,18 @@ export const ROUTES: readonly RouteEntry[] = [
     surface: "runtime",
     implemented: true,
   },
-  // Agent 的登录与登出、列出 Agent 自己历史里的会话（ACP 缺口 #687）。
-  ...[
-    "/api/acp/auth/authenticate",
-    "/api/acp/auth/logout",
-    "/api/acp/agent-sessions",
-  ].map(
-    (path): RouteEntry => ({
+  // 任意会话配置项（P2-4）、Agent 的登录与登出、列出 Agent 自己历史里的会话（#687）。
+  ...(
+    [
+      ["/api/acp/sessions/{sessionId}/config", "PUT"],
+      ["/api/acp/auth/authenticate", "POST"],
+      ["/api/acp/auth/logout", "POST"],
+      ["/api/acp/agent-sessions", "POST"],
+    ] as const
+  ).map(
+    ([path, method]): RouteEntry => ({
       path,
-      methods: ["POST"],
+      methods: [method],
       surface: "runtime",
       implemented: true,
     }),

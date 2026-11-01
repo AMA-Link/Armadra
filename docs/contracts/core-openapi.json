@@ -3782,6 +3782,10 @@
                                                         "description": {
                                                           "type": "string",
                                                           "maxLength": 2000
+                                                        },
+                                                        "hint": {
+                                                          "type": "string",
+                                                          "maxLength": 500
                                                         }
                                                       },
                                                       "required": [
@@ -3886,6 +3890,74 @@
                                                           "currentModelId",
                                                           "availableModels"
                                                         ]
+                                                      },
+                                                      {
+                                                        "type": "null"
+                                                      }
+                                                    ]
+                                                  },
+                                                  "configOptions": {
+                                                    "anyOf": [
+                                                      {
+                                                        "type": "array",
+                                                        "items": {
+                                                          "type": "object",
+                                                          "properties": {
+                                                            "id": {
+                                                              "type": "string",
+                                                              "maxLength": 200
+                                                            },
+                                                            "name": {
+                                                              "type": "string",
+                                                              "maxLength": 500
+                                                            },
+                                                            "description": {
+                                                              "type": "string",
+                                                              "maxLength": 2000
+                                                            },
+                                                            "category": {
+                                                              "type": "string",
+                                                              "maxLength": 100
+                                                            },
+                                                            "type": {
+                                                              "enum": [
+                                                                "select",
+                                                                "boolean"
+                                                              ],
+                                                              "type": "string"
+                                                            },
+                                                            "currentValue": {
+                                                              "anyOf": [
+                                                                {
+                                                                  "type": "string",
+                                                                  "maxLength": 200
+                                                                },
+                                                                {
+                                                                  "type": "boolean"
+                                                                }
+                                                              ]
+                                                            },
+                                                            "options": {
+                                                              "type": "array",
+                                                              "maxItems": 500,
+                                                              "items": {
+                                                                "type": "object",
+                                                                "properties": {
+                                                                  "value": {},
+                                                                  "name": {},
+                                                                  "description": {}
+                                                                }
+                                                              }
+                                                            }
+                                                          },
+                                                          "required": [
+                                                            "id",
+                                                            "name",
+                                                            "type",
+                                                            "currentValue",
+                                                            "options"
+                                                          ]
+                                                        }
                                                       },
                                                       {
                                                         "type": "null"
@@ -69586,6 +69658,179 @@
         }
       }
     },
+    "/api/rpc/acp/setConfigOption": {
+      "post": {
+        "operationId": "acp.setConfigOption",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "sessionId": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "configId": {
+                    "type": "string"
+                  },
+                  "value": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "boolean"
+                      },
+                      {
+                        "type": "null"
+                      },
+                      {
+                        "type": "array",
+                        "items": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "number"
+                            },
+                            {
+                              "type": "boolean"
+                            },
+                            {
+                              "type": "null"
+                            },
+                            {
+                              "type": "array",
+                              "items": {}
+                            },
+                            {
+                              "type": "object",
+                              "propertyNames": {
+                                "type": "string"
+                              },
+                              "additionalProperties": {}
+                            }
+                          ]
+                        }
+                      },
+                      {
+                        "type": "object",
+                        "propertyNames": {
+                          "type": "string"
+                        },
+                        "additionalProperties": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "number"
+                            },
+                            {
+                              "type": "boolean"
+                            },
+                            {
+                              "type": "null"
+                            },
+                            {
+                              "type": "array",
+                              "items": {}
+                            },
+                            {
+                              "type": "object",
+                              "propertyNames": {
+                                "type": "string"
+                              },
+                              "additionalProperties": {}
+                            }
+                          ]
+                        }
+                      }
+                    ]
+                  }
+                },
+                "required": ["sessionId"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "not": {}
+                    },
+                    {
+                      "not": {}
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "400",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CoreError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "403",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CoreError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "404",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CoreError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "409",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CoreError"
+                }
+              }
+            }
+          }
+        },
+        "x-armadra": {
+          "contract": "§43.1",
+          "scope": "terminal:create",
+          "since": "1.53",
+          "legacy": {
+            "method": "PUT",
+            "path": "/api/acp/sessions/{sessionId}/config",
+            "successStatus": 204
+          }
+        }
+      }
+    },
     "/api/rpc/acp/switchDriver": {
       "post": {
         "operationId": "acp.switchDriver",
@@ -79424,6 +79669,10 @@
                               "description": {
                                 "type": "string",
                                 "maxLength": 2000
+                              },
+                              "hint": {
+                                "type": "string",
+                                "maxLength": 500
                               }
                             },
                             "required": ["name", "description"]
@@ -79513,6 +79762,81 @@
                                 }
                               },
                               "required": ["currentModelId", "availableModels"]
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "configOptions": {
+                          "anyOf": [
+                            {
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "properties": {
+                                  "id": {
+                                    "type": "string",
+                                    "maxLength": 200
+                                  },
+                                  "name": {
+                                    "type": "string",
+                                    "maxLength": 500
+                                  },
+                                  "description": {
+                                    "type": "string",
+                                    "maxLength": 2000
+                                  },
+                                  "category": {
+                                    "type": "string",
+                                    "maxLength": 100
+                                  },
+                                  "type": {
+                                    "enum": ["select", "boolean"],
+                                    "type": "string"
+                                  },
+                                  "currentValue": {
+                                    "anyOf": [
+                                      {
+                                        "type": "string",
+                                        "maxLength": 200
+                                      },
+                                      {
+                                        "type": "boolean"
+                                      }
+                                    ]
+                                  },
+                                  "options": {
+                                    "type": "array",
+                                    "maxItems": 500,
+                                    "items": {
+                                      "type": "object",
+                                      "properties": {
+                                        "value": {
+                                          "type": "string",
+                                          "maxLength": 200
+                                        },
+                                        "name": {
+                                          "type": "string",
+                                          "maxLength": 500
+                                        },
+                                        "description": {
+                                          "type": "string",
+                                          "maxLength": 2000
+                                        }
+                                      },
+                                      "required": ["value", "name"]
+                                    }
+                                  }
+                                },
+                                "required": [
+                                  "id",
+                                  "name",
+                                  "type",
+                                  "currentValue",
+                                  "options"
+                                ]
+                              }
                             },
                             {
                               "type": "null"
@@ -81398,6 +81722,10 @@
                               "description": {
                                 "type": "string",
                                 "maxLength": 2000
+                              },
+                              "hint": {
+                                "type": "string",
+                                "maxLength": 500
                               }
                             },
                             "required": ["name", "description"]
@@ -81487,6 +81815,81 @@
                                 }
                               },
                               "required": ["currentModelId", "availableModels"]
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "configOptions": {
+                          "anyOf": [
+                            {
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "properties": {
+                                  "id": {
+                                    "type": "string",
+                                    "maxLength": 200
+                                  },
+                                  "name": {
+                                    "type": "string",
+                                    "maxLength": 500
+                                  },
+                                  "description": {
+                                    "type": "string",
+                                    "maxLength": 2000
+                                  },
+                                  "category": {
+                                    "type": "string",
+                                    "maxLength": 100
+                                  },
+                                  "type": {
+                                    "enum": ["select", "boolean"],
+                                    "type": "string"
+                                  },
+                                  "currentValue": {
+                                    "anyOf": [
+                                      {
+                                        "type": "string",
+                                        "maxLength": 200
+                                      },
+                                      {
+                                        "type": "boolean"
+                                      }
+                                    ]
+                                  },
+                                  "options": {
+                                    "type": "array",
+                                    "maxItems": 500,
+                                    "items": {
+                                      "type": "object",
+                                      "properties": {
+                                        "value": {
+                                          "type": "string",
+                                          "maxLength": 200
+                                        },
+                                        "name": {
+                                          "type": "string",
+                                          "maxLength": 500
+                                        },
+                                        "description": {
+                                          "type": "string",
+                                          "maxLength": 2000
+                                        }
+                                      },
+                                      "required": ["value", "name"]
+                                    }
+                                  }
+                                },
+                                "required": [
+                                  "id",
+                                  "name",
+                                  "type",
+                                  "currentValue",
+                                  "options"
+                                ]
+                              }
                             },
                             {
                               "type": "null"
