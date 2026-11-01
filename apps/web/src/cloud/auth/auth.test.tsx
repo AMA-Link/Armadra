@@ -73,6 +73,7 @@ describe("登录页", () => {
     const api = mount();
     const login = vi.spyOn(api.client.auth, "login");
     await h1();
+    await screen.findByLabelText("邮箱");
     type("邮箱", "zed@example.com");
     type("口令", "correct horse");
     fireEvent.submit(screen.getByLabelText("邮箱").closest("form")!);
@@ -85,6 +86,7 @@ describe("登录页", () => {
     visit("/login?next=//evil.com");
     mount();
     await h1();
+    await screen.findByLabelText("邮箱");
     type("邮箱", "zed@example.com");
     type("口令", "x");
     fireEvent.submit(screen.getByLabelText("邮箱").closest("form")!);
@@ -95,6 +97,7 @@ describe("登录页", () => {
     visit("/login");
     mount({ signedIn: false, fail: { "auth.login": "credentials_invalid" } });
     await h1();
+    await screen.findByLabelText("邮箱");
     type("邮箱", "zed@example.com");
     type("口令", "bad");
     fireEvent.submit(screen.getByLabelText("邮箱").closest("form")!);
@@ -116,6 +119,7 @@ describe("注册页", () => {
     const api = mount();
     const register = vi.spyOn(api.client.auth, "register");
     await h1();
+    await screen.findByLabelText("邮箱");
     type("邮箱", "new@example.com");
     type("名称", "New");
     type("口令", "a long passphrase");
@@ -163,6 +167,7 @@ describe("邮件链接", () => {
     const api = mount();
     const start = vi.spyOn(api.client.auth, "passwordResetStart");
     await h1();
+    await screen.findByLabelText("邮箱");
     type("邮箱", "zed@example.com");
     fireEvent.submit(screen.getByLabelText("邮箱").closest("form")!);
     await screen.findByText("重置邮件已发送");
@@ -210,6 +215,7 @@ describe("邮件链接", () => {
     expect(window.history.length).toBe(before);
     expect(accept).not.toHaveBeenCalled();
     await h1();
+    await screen.findByLabelText("邮箱");
     type("邮箱", "zed@example.com");
     type("口令", "correct horse");
     fireEvent.submit(screen.getByLabelText("邮箱").closest("form")!);
@@ -275,6 +281,7 @@ describe("运营登录走运营客户端（真实 cloud fetch）", () => {
     expect(api.operator.active()).toBe(false);
     render(<ConsoleRoot api={api} />);
     await h1();
+    await screen.findByLabelText("邮箱");
     type("邮箱", "ops@example.com");
     type("口令", "correct horse");
     fireEvent.submit(screen.getByLabelText("邮箱").closest("form")!);
@@ -329,6 +336,7 @@ describe("只有运营会话（真实 cloud fetch，#584）", () => {
     const api = createCloudApi({ origin: "http://app.test", fetch: fetcher });
     render(<ConsoleRoot api={api} />);
     await h1();
+    await screen.findByLabelText("邮箱");
     type("邮箱", "ops@example.com");
     type("口令", "correct horse");
     fireEvent.submit(screen.getByLabelText("邮箱").closest("form")!);
@@ -444,11 +452,13 @@ describe("挑战令牌", () => {
     });
     vi.spyOn(api.client.platform, "info").mockResolvedValue({
       ...(fx("platform.info").output as object),
+      capabilities: ["auth.password"],
       challenge: { provider: "turnstile", siteKey: "k", scope: ["auth.login"] },
     } as never);
     const login = vi.spyOn(api.client.auth, "login");
     render(<ConsoleRoot api={api} />);
     await h1();
+    await screen.findByLabelText("邮箱");
     type("邮箱", "zed@example.com");
     type("口令", "x");
     const submit = () =>
