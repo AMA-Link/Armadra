@@ -159,7 +159,7 @@ describe("手机连接 Armadra 云 · 设备码", () => {
     });
     await expect(
       personal.enroll.beginDevice({ issuer: ISSUER }),
-    ).resolves.toEqual({ kind: "failure", failure: "notCloud" });
+    ).resolves.toMatchObject({ kind: "failure", failure: "notCloud" });
     expect(personal.net.calls.map((call) => call.key)).not.toContain(
       "POST /v1/auth/device/start",
     );
@@ -172,18 +172,20 @@ describe("手机连接 Armadra 云 · 设备码", () => {
     });
     await expect(
       hostile.enroll.beginDevice({ issuer: ISSUER }),
-    ).resolves.toEqual({ kind: "failure", failure: "failed" });
+    ).resolves.toMatchObject({ kind: "failure", failure: "failed" });
     expect(hostile.open).not.toHaveBeenCalled();
-    await expect(hostile.enroll.pollDevice()).resolves.toEqual({
+    await expect(hostile.enroll.pollDevice()).resolves.toMatchObject({
       kind: "failure",
       failure: "deviceExpired",
     });
 
     const bad = enrollment(baseRoutes);
-    await expect(bad.enroll.beginDevice({ issuer: "" })).resolves.toEqual({
-      kind: "failure",
-      failure: "address",
-    });
+    await expect(bad.enroll.beginDevice({ issuer: "" })).resolves.toMatchObject(
+      {
+        kind: "failure",
+        failure: "address",
+      },
+    );
   });
 
   it("轮询：pending 继续等，请求只带 deviceCode", async () => {
@@ -252,12 +254,12 @@ describe("手机连接 Armadra 云 · 设备码", () => {
         "POST /v1/auth/device/poll": () => ({ body: { status } }),
       });
       await enroll.beginDevice({ issuer: ISSUER });
-      await expect(enroll.pollDevice()).resolves.toEqual({
+      await expect(enroll.pollDevice()).resolves.toMatchObject({
         kind: "failure",
         failure,
       });
       const before = net.calls.length;
-      await expect(enroll.pollDevice()).resolves.toEqual({
+      await expect(enroll.pollDevice()).resolves.toMatchObject({
         kind: "failure",
         failure: "deviceExpired",
       });
@@ -278,7 +280,7 @@ describe("手机连接 Armadra 云 · 设备码", () => {
     );
     await enroll.beginDevice({ issuer: ISSUER });
     at += 601_000;
-    await expect(enroll.pollDevice()).resolves.toEqual({
+    await expect(enroll.pollDevice()).resolves.toMatchObject({
       kind: "failure",
       failure: "deviceExpired",
     });
@@ -332,7 +334,7 @@ describe("手机连接 Armadra 云 · 设备码", () => {
         kind: "retry",
         afterMs: 0,
       });
-    await expect(enroll.pollDevice()).resolves.toEqual({
+    await expect(enroll.pollDevice()).resolves.toMatchObject({
       kind: "failure",
       failure: "unreachable",
     });
@@ -347,12 +349,12 @@ describe("手机连接 Armadra 云 · 设备码", () => {
     await enroll.beginDevice({ issuer: ISSUER });
     enroll.cancelDevice();
     const before = net.calls.length;
-    await expect(enroll.pollDevice()).resolves.toEqual({
+    await expect(enroll.pollDevice()).resolves.toMatchObject({
       kind: "failure",
       failure: "deviceExpired",
     });
     expect(net.calls).toHaveLength(before);
-    await expect(enroll.mount([HOST])).resolves.toEqual({
+    await expect(enroll.mount([HOST])).resolves.toMatchObject({
       kind: "failure",
       failure: "failed",
     });
@@ -379,7 +381,7 @@ describe("手机连接 Armadra 云 · 设备码", () => {
     const inFlight = raced.enroll.pollDevice();
     raced.enroll.cancelDevice();
     release();
-    await expect(inFlight).resolves.toEqual({
+    await expect(inFlight).resolves.toMatchObject({
       kind: "failure",
       failure: "failed",
     });
@@ -393,7 +395,7 @@ describe("手机连接 Armadra 云 · 设备码", () => {
       "GET /v1/me/sources": () => ({ body: { sources: [] } }),
     });
     await enroll.beginDevice({ issuer: ISSUER });
-    await expect(enroll.pollDevice()).resolves.toEqual({
+    await expect(enroll.pollDevice()).resolves.toMatchObject({
       kind: "failure",
       failure: "noSources",
     });

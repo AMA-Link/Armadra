@@ -442,7 +442,7 @@ describe("添加连接 · 个人中转", () => {
           body: { code: "credentials_invalid", message: "" },
         }),
       }).begin(input),
-    ).resolves.toEqual({ kind: "failure", failure: "credentials" });
+    ).resolves.toMatchObject({ kind: "failure", failure: "credentials" });
     await expect(
       make({
         "POST /v1/auth/login": () => ({
@@ -454,23 +454,23 @@ describe("添加连接 · 个人中转", () => {
           },
         }),
       }).begin(input),
-    ).resolves.toEqual({ kind: "failure", failure: "locked" });
+    ).resolves.toMatchObject({ kind: "failure", failure: "locked" });
     await expect(
       make({
         "POST /v1/auth/login": login,
         "GET /v1/me/sources": () => ({ body: { sources: [] } }),
       }).begin(input),
-    ).resolves.toEqual({ kind: "failure", failure: "noSources" });
+    ).resolves.toMatchObject({ kind: "failure", failure: "noSources" });
     await expect(
       make({}).begin({ ...input, issuer: "https://relay.example.com/app" }),
-    ).resolves.toEqual({ kind: "failure", failure: "address" });
+    ).resolves.toMatchObject({ kind: "failure", failure: "address" });
     const down = fakeBridge({ peek: null });
     await expect(
       createRelayEnrollment({
         bridge: down.bridge,
         reload: vi.fn(),
       }).begin(input),
-    ).resolves.toEqual({ kind: "failure", failure: "unreachable" });
+    ).resolves.toMatchObject({ kind: "failure", failure: "unreachable" });
   });
 
   it("远程服务要求人机验证：先给 siteKey，带令牌重试才登录；令牌无效有自己的原因（契约 §62）", async () => {
@@ -522,7 +522,7 @@ describe("添加连接 · 个人中转", () => {
     });
     await expect(
       enroll.begin({ ...input, challengeToken: "stale" }),
-    ).resolves.toEqual({ kind: "failure", failure: "challengeInvalid" });
+    ).resolves.toMatchObject({ kind: "failure", failure: "challengeInvalid" });
     const done = await enroll.begin({ ...input, challengeToken: "tk-ok" });
     expect(done.kind).toBe("sources");
   });
@@ -547,7 +547,7 @@ describe("添加连接 · 个人中转", () => {
         e2e: plainE2e(net.fetch),
         reload: vi.fn(),
       }).begin({ issuer: ISSUER, account: "o", password: "p" }),
-    ).resolves.toEqual({ kind: "failure", failure: "challengeInvalid" });
+    ).resolves.toMatchObject({ kind: "failure", failure: "challengeInvalid" });
   });
 
   it("钉扎失败不往下登录", async () => {
@@ -563,7 +563,7 @@ describe("添加连接 · 个人中转", () => {
       reload: vi.fn(),
     });
     await enroll.begin({ issuer: ISSUER, account: "a", password: "b" });
-    await expect(enroll.trust()).resolves.toEqual({
+    await expect(enroll.trust()).resolves.toMatchObject({
       kind: "failure",
       failure: "fingerprint",
     });
@@ -728,16 +728,16 @@ describe("添加连接 · 分享链接 / 二维码", () => {
       kind: "fingerprint",
       fingerprint: RELAY_FP,
     });
-    await expect(enroll.trust()).resolves.toEqual({
+    await expect(enroll.trust()).resolves.toMatchObject({
       kind: "failure",
       failure: "linkExpired",
     });
-    await expect(enroll.join("https://relay.example.com/j/x")).resolves.toEqual(
-      {
-        kind: "failure",
-        failure: "invalid",
-      },
-    );
+    await expect(
+      enroll.join("https://relay.example.com/j/x"),
+    ).resolves.toMatchObject({
+      kind: "failure",
+      failure: "invalid",
+    });
   });
 
   it("同一个源先局域网、后经个人中转：连接表仍是一行，两条路都在", async () => {

@@ -6,6 +6,8 @@ import {
   takePairingTicket,
 } from "../api/identity";
 import {
+  type ChannelTarget,
+  E2eAccessError,
   type E2eChannels,
   e2eChannels,
   fingerprintPrefix,
@@ -413,6 +415,11 @@ export function cloudFailureOf(error: unknown): ConnectFailure {
   }
   if (error instanceof SourceError && error.code === "source_offline")
     return "offline";
+  if (error instanceof E2eAccessError) {
+    if (error.code === "offline") return "offline";
+    if (error.code === "unreachable") return "unreachable";
+    return "failed";
+  }
   return failureOf(error);
 }
 
@@ -443,12 +450,76 @@ export type RelayOutcome =
    * （入参加 `challengeToken`）。
    */
   | { readonly kind: "challenge"; readonly siteKey: string }
-  | { readonly kind: "failure"; readonly failure: ConnectFailure };
+  | {
+      readonly kind: "failure";
+      readonly failure: ConnectFailure;
+      /** 对端或网络给的原始原因（错误码、HTTP 状态）：界面附在提示后面，好排查。 */
+      readonly detail?: string;
+    };
 
-const failed = (failure: ConnectFailure): RelayOutcome => ({
+const failed = (failure: ConnectFailure, detail?: string): RelayOutcome => ({
   kind: "failure",
   failure,
+  ...(detail ? { detail } : {}),
 });
+
+/** 失败的原始原因，给人排查用：远程服务的码与状态、通道的码、网络层的报错。 */
+export function failureDetail(error: unknown): string | undefined {
+  if (error instanceof CloudError)
+    return error.status > 0
+      ? `${error.code} · HTTP ${error.status}`
+      : error.code;
+  if (error instanceof E2eAccessError) return `e2e ${error.code}`;
+  if (error instanceof CloudTransportError) {
+    const cause = error.cause;
+    return cause instanceof Error && cause.message
+      ? `network · ${cause.message}`
+      : "network";
+  }
+  if (error instanceof SourceError) return error.code;
+  if (error instanceof Error && error.message) return error.message;
+  return undefined;
+}
+
+/** 远程服务那几步的失败 → 带原始原因的失败结果。 */
+const cloudFailed = (error: unknown): RelayOutcome =>
+  failed(cloudFailureOf(error), failureDetail(error));
+
+/**
+ * 主人挂自己的源：云中转只走端到端通道（契约 §78），源地址上的明文 HTTP 一律 404。
+ * 先开通道，core 登录走通道；新设备等主人在那台电脑上核对后再登录一次（契约 §77）。
+ */
+async function ownerCoreLogin(
+  e2e: E2eChannels | undefined,
+  cloud: CloudOptions | undefined,
+  target: ChannelTarget,
+  assertion: string,
+) {
+  if (e2e === undefined) throw new E2eAccessError("device_unavailable");
+  const channel = await e2e.channel(target);
+  const options: CloudOptions = {
+    ...cloud,
+    fetch: e2e.fetchFor(channel, target.base),
+  };
+  const send = () =>
+    coreCloudLogin(
+      target.base,
+      target.relayToken,
+      assertion,
+      undefined,
+      options,
+    );
+  return send().catch(async (error: unknown) => {
+    if (
+      !(error instanceof CloudError) ||
+      error.code !== "device_pending" ||
+      typeof error.details.pendingId !== "string"
+    )
+      throw error;
+    await e2e.awaitApproval(target, channel, error.details.pendingId);
+    return send();
+  });
+}
 
 /** 设备码轮询一次的结果：还在等 / 稍后再问（限流、暂时连不上）/ 批准后的下一步或终结。 */
 export type DevicePollResult =
@@ -651,7 +722,7 @@ export function createRelayEnrollment(
         intervalMs: started.intervalMs,
       };
     } catch (error) {
-      return failed(cloudFailureOf(error));
+      return cloudFailed(error);
     }
   };
 
@@ -705,7 +776,7 @@ export function createRelayEnrollment(
       session = null;
       if (error instanceof CloudChallengeRequired)
         return { kind: "challenge", siteKey: error.challenge.siteKey };
-      return failed(cloudFailureOf(error));
+      return cloudFailed(error);
     }
   };
 
@@ -788,7 +859,11 @@ export function createRelayEnrollment(
         )
           return { kind: "retry", afterMs: 0 };
         device = null;
-        return { kind: "failure", failure: cloudFailureOf(error) };
+        return {
+          kind: "failure",
+          failure: cloudFailureOf(error),
+          ...(failureDetail(error) ? { detail: failureDetail(error)! } : {}),
+        };
       }
       // 等回答期间被取消（或换了新的设备码）：丢弃这次的答案，不存会话。
       if (device !== current) return { kind: "failure", failure: "failed" };
@@ -807,7 +882,11 @@ export function createRelayEnrollment(
           : { kind: "failure", failure: "failed" };
       } catch (error) {
         session = null;
-        return { kind: "failure", failure: cloudFailureOf(error) };
+        return {
+          kind: "failure",
+          failure: cloudFailureOf(error),
+          ...(failureDetail(error) ? { detail: failureDetail(error)! } : {}),
+        };
       }
     },
     openVerification,
@@ -900,7 +979,7 @@ export function createRelayEnrollment(
             openAfterJoin(accepted.sourceId);
           }
         } catch (error) {
-          return failed(cloudFailureOf(error));
+          return cloudFailed(error);
         }
         reset();
         deps.reload();
@@ -928,6 +1007,7 @@ export function createRelayEnrollment(
       const slot = serviceIdOf(issuer, current.account?.accountId || "owner");
       let mounted: string | null = null;
       let failure: ConnectFailure = "offline";
+      let detail: string | undefined;
       for (const sourceId of sourceIds) {
         const choice = choices.find((item) => item.sourceId === sourceId);
         if (choice === undefined) continue;
@@ -939,13 +1019,22 @@ export function createRelayEnrollment(
             deviceInfo,
             deps.cloud,
           );
-          if (!assertion.online) continue;
-          const login = await coreCloudLogin(
-            assertion.relayBaseUrl,
-            assertion.relayToken,
-            assertion.assertion,
-            undefined,
+          if (!assertion.online) {
+            failure = "offline";
+            detail = "source_offline";
+            continue;
+          }
+          const login = await ownerCoreLogin(
+            deps.e2e,
             deps.cloud,
+            {
+              issuer,
+              sourceId,
+              base: assertion.relayBaseUrl.replace(/\/+$/, ""),
+              relayToken: assertion.relayToken,
+              label: choice.name,
+            },
+            assertion.assertion,
           );
           await deps.bridge.setSession({
             sourceId,
@@ -959,13 +1048,14 @@ export function createRelayEnrollment(
           mounted ??= sourceId;
         } catch (error) {
           failure = cloudFailureOf(error);
+          detail = failureDetail(error);
         }
       }
-      if (mounted === null) return failed(failure);
+      if (mounted === null) return failed(failure, detail);
       try {
         await remember(current.refreshToken, slot);
       } catch (error) {
-        return failed(cloudFailureOf(error));
+        return cloudFailed(error);
       }
       enterNext(mounted);
       reset();
