@@ -29,7 +29,7 @@ import { useProjectFolderImport } from "../app/use-project-folder-import";
 import { isDesktop } from "../platform";
 import { useWorkspacesQuery } from "../app/workspaces-query";
 import {
-  RemoveWorkspaceDialog,
+  useArchiveWorkspace,
   useRemoveWorkspace,
 } from "../app/remove-workspace";
 import { NewWorkspaceDialog } from "../panels/NewWorkspaceDialog";
@@ -463,6 +463,7 @@ function WorkspaceRow({
   const boardId = useCanvasStore((state) => state.boardId);
   const selectBoard = useCanvasStore((state) => state.selectBoard);
   const removeWorkspace = useRemoveWorkspace();
+  const archiveWorkspace = useArchiveWorkspace();
   const { remove, rename } = useBoardMutations(summary.id);
   const renameWorkspace = useWorkspaceRename(summary.id);
   const [editing, setEditing] = useState(false);
@@ -471,7 +472,6 @@ function WorkspaceRow({
   const local = useCurrentSource().descriptor.kind === "local";
   const canShare = !member && local;
 
-  const [confirmRemove, setConfirmRemove] = useState(false);
   const [expandedAll, setExpandedAll] = useState(false);
 
   // 当前工作空间的画布列表还没到：展开区先放两行占位，别等到了再一次插入。
@@ -538,7 +538,19 @@ function WorkspaceRow({
             <DropdownMenuItem onSelect={() => onTogglePinWorkspace(!pinned)}>
               {pinned ? t("sidebar.unpin") : t("sidebar.pin")}
             </DropdownMenuItem>
-            <DropdownMenuItem onSelect={() => setConfirmRemove(true)}>
+            <DropdownMenuItem
+              onSelect={() =>
+                archiveWorkspace.mutate({
+                  id: summary.id,
+                  name: displayName(summary.name, t),
+                })
+              }
+            >
+              {t("launcher.archive")}
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              onSelect={() => removeWorkspace.mutate(summary.id)}
+            >
               {t("tree.delete")}
             </DropdownMenuItem>
           </DropdownMenuContent>
@@ -583,18 +595,6 @@ function WorkspaceRow({
           )}
         </ul>
       )}
-
-      <RemoveWorkspaceDialog
-        open={confirmRemove}
-        pending={removeWorkspace.isPending}
-        onOpenChange={setConfirmRemove}
-        onConfirm={() => {
-          setConfirmRemove(false);
-          // `useRemoveWorkspace` 里已经带了关闭：这一行如果正开着，
-          // 移除之后也一并关掉。
-          removeWorkspace.mutate(summary.id);
-        }}
-      />
     </li>
   );
 }

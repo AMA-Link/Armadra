@@ -15,7 +15,10 @@ const updateBoard = vi.fn();
 const deleteBoard = vi.fn();
 const updateWorkspace = vi.fn();
 const deleteWorkspace = vi.fn();
+const archiveWorkspace = vi.fn();
+const restoreWorkspace = vi.fn();
 const sessions = vi.fn();
+const toastSuccess = vi.fn();
 
 // 会话列表按源发（`sources/source-api`）：与上面的 `runtimeApi` 共用同一个替身。
 vi.mock("../sources/source-api", () => ({
@@ -31,6 +34,8 @@ vi.mock("../api/client", () => ({
     deleteBoard: (...args: unknown[]) => deleteBoard(...args),
     updateWorkspace: (...args: unknown[]) => updateWorkspace(...args),
     deleteWorkspace: (...args: unknown[]) => deleteWorkspace(...args),
+    archiveWorkspace: (...args: unknown[]) => archiveWorkspace(...args),
+    restoreWorkspace: (...args: unknown[]) => restoreWorkspace(...args),
     sessions: (...args: unknown[]) => sessions(...args),
     openWorkspace: vi.fn().mockResolvedValue(undefined),
     createWorkspace: vi.fn(),
@@ -38,6 +43,16 @@ vi.mock("../api/client", () => ({
     cloneDefaults: vi.fn().mockResolvedValue({ parent: "/home/me/Projects" }),
   },
 }));
+
+vi.mock("@/ui/toast", async (importOriginal) => {
+  const real = await importOriginal<typeof import("@/ui/toast")>();
+  return {
+    ...real,
+    toast: Object.assign(real.toast, {
+      success: (...args: unknown[]) => toastSuccess(...args),
+    }),
+  };
+});
 
 vi.mock("../api/forge", () => ({
   forgeAccounts: vi.fn().mockResolvedValue([]),
@@ -117,6 +132,9 @@ beforeEach(() => {
   deleteBoard.mockReset();
   updateWorkspace.mockReset();
   deleteWorkspace.mockReset();
+  archiveWorkspace.mockReset();
+  restoreWorkspace.mockReset();
+  toastSuccess.mockReset();
   sessions.mockReset().mockResolvedValue([]);
   usePreferencesStore.setState({
     openWorkspaceKeys: [scoped(workspace.id)],
@@ -340,7 +358,7 @@ describe("WorkspaceTree", () => {
     await waitFor(() => expect(useCanvasStore.getState().boardId).toBe(third));
   });
 
-  it("行菜单里的移除经确认后调接口并关掉这个工作空间", async () => {
+  it("行菜单里的删除不确认，直接调接口并关掉这个工作空间", async () => {
     deleteWorkspace.mockResolvedValue(undefined);
     renderTree();
 
@@ -348,15 +366,47 @@ describe("WorkspaceTree", () => {
     openMenu(screen.getByLabelText("工作空间菜单"));
     fireEvent.click(await screen.findByRole("menuitem", { name: "删除" }));
 
-    expect(deleteWorkspace).not.toHaveBeenCalled();
-    expect(await screen.findByText("不会删除磁盘文件")).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "移除" }));
-
+    expect(screen.queryByRole("alertdialog")).toBeNull();
     await waitFor(() =>
       expect(deleteWorkspace).toHaveBeenCalledWith(workspace.id),
     );
     await waitFor(() =>
       expect(usePreferencesStore.getState().openWorkspaceKeys).toEqual([]),
+    );
+  });
+
+  it("行菜单里的归档不确认，关掉它并给一条可撤销的提示（契约 §89）", async () => {
+    archiveWorkspace.mockResolvedValue(undefined);
+    restoreWorkspace.mockResolvedValue(workspace);
+    renderTree();
+
+    await screen.findByText("repo");
+    openMenu(screen.getByLabelText("工作空间菜单"));
+    fireEvent.click(await screen.findByRole("menuitem", { name: "归档" }));
+
+    expect(screen.queryByRole("alertdialog")).toBeNull();
+    await waitFor(() =>
+      expect(archiveWorkspace).toHaveBeenCalledWith(workspace.id),
+    );
+    await waitFor(() =>
+      expect(usePreferencesStore.getState().openWorkspaceKeys).toEqual([]),
+    );
+    expect(deleteWorkspace).not.toHaveBeenCalled();
+    expect(toastSuccess).toHaveBeenCalledWith(
+      "已归档「repo」",
+      expect.objectContaining({
+        action: expect.objectContaining({ label: "撤销" }),
+      }),
+    );
+    const options = toastSuccess.mock.calls[0]?.[1] as {
+      action: { onClick: () => void };
+    };
+    options.action.onClick();
+    await waitFor(() =>
+      expect(restoreWorkspace).toHaveBeenCalledWith(workspace.id),
+    );
+    await waitFor(() =>
+      expect(useCanvasStore.getState().workspace?.id).toBe(workspace.id),
     );
   });
 

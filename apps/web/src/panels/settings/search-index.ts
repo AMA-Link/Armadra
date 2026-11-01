@@ -103,6 +103,7 @@ export const SETTINGS_SEARCH: Readonly<Record<string, readonly string[]>> = {
     "executionHosts.runsOn",
     "settings.workspaceDefaultAgent",
   ],
+  archive: ["settings.archive.empty"],
   service: [
     "host.row.status",
     "host.name",

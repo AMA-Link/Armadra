@@ -1,4 +1,5 @@
 import {
+  Archive,
   Bell,
   Blocks,
   Bot,
@@ -85,8 +86,8 @@ export interface SettingsSection {
    */
   pinnedLocal?: boolean;
   /**
-   * 跟随打开的工作空间所在的那台 core（只有「当前工作空间」页）；其余设置页
-   * 恒指本机（#301）。
+   * 跟随打开的工作空间所在的那台 core（「当前工作空间」与「归档」页）；其余
+   * 设置页恒指本机（#301）。
    */
   followsWorkspace?: boolean;
   /** 所属功能；开关关着时整页不列（#295，`packages/shared/src/feature-flags.ts`）。 */
@@ -195,6 +196,16 @@ export const SETTINGS_SECTIONS: readonly SettingsSection[] = [
     groupKey: "settings.group.space",
     labelKey: "settings.section.workspace",
     icon: LayoutGrid,
+    scope: "host",
+    ownerOnly: true,
+    followsWorkspace: true,
+  },
+  {
+    // 已归档的工作空间（契约 §89）：列的是当前这台的，与侧栏同一个源。
+    id: "archive",
+    groupKey: "settings.group.space",
+    labelKey: "settings.section.archive",
+    icon: Archive,
     scope: "host",
     ownerOnly: true,
     followsWorkspace: true,

@@ -36,6 +36,7 @@ export const modals: MessageModule = {
     "settings.section.credentials": "凭据与密钥",
     "settings.section.usage": "用量与额度",
     "settings.section.workspace": "工作空间",
+    "settings.section.archive": "归档",
     "settings.section.service": "本机服务",
     "settings.section.machines": "SSH", // i18n-exempt
     "settings.section.forge": "代码托管",
@@ -198,6 +199,9 @@ export const modals: MessageModule = {
     "settings.workspaceDefaultAgent": "默认 Agent 覆盖", // i18n-exempt
     "settings.defaultAgent.inherit": "跟随全局",
     "settings.noWorkspace": "未打开工作空间",
+    "settings.archive.empty": "没有已归档的工作空间",
+    "settings.archive.restore": "恢复",
+    "settings.archive.delete": "删除",
 
     "settings.dataDir": "数据目录",
     "settings.reveal": "在访达中打开",
@@ -320,6 +324,7 @@ export const modals: MessageModule = {
     "settings.section.credentials": "Credentials & keys",
     "settings.section.usage": "Usage & quotas",
     "settings.section.workspace": "Workspace",
+    "settings.section.archive": "Archive",
     "settings.section.service": "Local service",
     "settings.section.machines": "SSH",
     "settings.section.forge": "Code hosting",
@@ -487,6 +492,9 @@ export const modals: MessageModule = {
     "settings.workspaceDefaultAgent": "Default agent override",
     "settings.defaultAgent.inherit": "Follow global",
     "settings.noWorkspace": "No workspace open",
+    "settings.archive.empty": "No archived workspaces",
+    "settings.archive.restore": "Restore",
+    "settings.archive.delete": "Delete",
 
     "settings.dataDir": "Data folder",
     "settings.reveal": "Reveal in Finder",
