@@ -140,6 +140,34 @@ describe("添加 Armadra 云", () => {
     });
   });
 
+  it("autoStart：登录着的账号打开就落到选空间，不用再点「登录」；没登录的仍停在登录", async () => {
+    api.addCloud.mockResolvedValue({
+      remote: { ...remote, hasCredentials: true },
+      next: "ready",
+    });
+    render(
+      <AddCloudDialog
+        initialIssuer="https://cloud.test"
+        autoStart
+        onClose={vi.fn()}
+        onChanged={vi.fn()}
+      />,
+    );
+    expect(
+      await screen.findByRole("button", { name: "Register this computer" }),
+    ).toBeTruthy();
+    expect(api.addCloud).toHaveBeenCalledTimes(1);
+    expect(api.addCloud).toHaveBeenCalledWith("https://cloud.test");
+    cleanup();
+    api.addCloud.mockClear();
+    render(
+      <AddCloudDialog initialIssuer="" onClose={vi.fn()} onChanged={vi.fn()} />,
+    );
+    await new Promise((done) => setTimeout(done, 20));
+    expect(api.addCloud).not.toHaveBeenCalled();
+    expect(screen.getByRole("button", { name: "Sign in" })).toBeTruthy();
+  });
+
   it("被拒绝：停止轮询，给重新获取", async () => {
     api.pollCloudDevice.mockResolvedValue({ status: "denied" });
     mount();

@@ -95,6 +95,7 @@ function clock(ms: number): string {
 export function AddCloudDialog({
   initialIssuer,
   fromLink = false,
+  autoStart = false,
   knownIssuers = [],
   onStep,
   onClose,
@@ -104,6 +105,11 @@ export function AddCloudDialog({
   initialIssuer: string | null;
   /** 地址是深链带来的：不是已有的账号时，在地址步骤醒目显示目标域名。 */
   fromLink?: boolean;
+  /**
+   * 打开就接着登录：已登录的账号直接落到选空间，不用再点「登录」（「局域网 + 互联网」
+   * 找到登录着、没登记的 Armadra 云时用，#675）。
+   */
+  autoStart?: boolean;
   knownIssuers?: readonly string[];
   /** 回报当前在哪一步（页面据此决定要不要接受新的深链）。 */
   onStep?: (kind: Step["kind"]) => void;
@@ -154,18 +160,25 @@ export function AddCloudDialog({
     return failure instanceof Error ? failure.message : String(failure);
   }
 
+  const begin = React.useRef<(address: string) => Promise<void>>(
+    async () => {},
+  );
   React.useEffect(() => {
     if (initialIssuer === null) return;
-    setIssuer(initialIssuer === "" ? cloudIssuer() : initialIssuer);
+    const address = initialIssuer === "" ? cloudIssuer() : initialIssuer;
+    setIssuer(address);
     setStep({ kind: "address" });
     setChosen(PERSONAL);
     setError("");
     setBusy(false);
+    if (autoStart) void begin.current(address);
+    // 只在打开（地址变化）时接着登录一次。
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialIssuer]);
 
-  async function start() {
+  async function start(address: string = issuer) {
     if (busy) return;
-    const checked = checkAddress(issuer);
+    const checked = checkAddress(address);
     if (!checked.ok) {
       setError(t(checked.error));
       return;
@@ -195,6 +208,8 @@ export function AddCloudDialog({
       setBusy(false);
     }
   }
+
+  begin.current = start;
 
   async function toSpaces(remote: RemoteService) {
     // 这台电脑已经登记到它：重新登录就绪后不再登记。

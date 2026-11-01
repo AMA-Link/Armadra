@@ -20,19 +20,18 @@ import { SettingsLoadable } from "../../SettingsLoadable";
 import { SettingsGroup } from "../../SettingsGroup";
 import { sameOrigin, useRemoteAccess } from "../../remote-access";
 import { GatewayPanel, type Reach } from "../gateway/GatewayPanel";
-import { AddRelayDialog, type RelayDraft } from "./dialogs";
+import { AddCloudDialog } from "./CloudDialog";
 import { useGateway, useInternetRoute } from "./hooks";
 import { useSourceTableChanged } from "./keys";
-
-const BLANK: RelayDraft = { issuer: "", account: "", fingerprint: "" };
 
 /** 关掉之前要确认的：整个关掉，或退回仅局域网。 */
 type Confirming = "off" | "lan" | null;
 
 /**
  * 远程访问页 A「这台电脑」的开关一块（#301）：允许其他设备访问这台电脑、可达
- * 范围、配对二维码与配对码；互联网路线开着时下面是分享链接。没有中转账号时选
- * 「局域网 + 互联网」先登录，登录好了再开路线。
+ * 范围、配对二维码与配对码；互联网路线开着时下面是分享链接。「局域网 + 互联网」以
+ * Armadra 云为缺省（#675）：登记过就是开着；登录着、没登记的接着选空间登记；没登录
+ * 的先走设备码登录再登记；只有个人中转账号的一键开。取消任何一步都停在仅局域网。
  */
 export function HostAccess() {
   const { member } = useAccess();
@@ -46,8 +45,12 @@ function HostAccessBody() {
   const internet = useInternetRoute();
   const access = useRemoteAccess();
   const status = gateway.status;
-  const [signingIn, setSigningIn] = React.useState<RelayDraft | null>(null);
-  const [wantInternet, setWantInternet] = React.useState(false);
+  // 打开着的 Armadra 云对话框：`null` 关着，空串是新登录；`resume` 是登录着的账号，
+  // 直接落到选空间那一步。
+  const [cloud, setCloud] = React.useState<{
+    readonly issuer: string;
+    readonly resume: boolean;
+  } | null>(null);
   const [confirming, setConfirming] = React.useState<Confirming>(null);
 
   const [pairing, setPairing] = React.useState<GatewayPairingPayload | null>(
@@ -69,15 +72,6 @@ function HostAccessBody() {
     if (running) mint(undefined);
   }, [running, origin, fingerprint, mint]);
 
-  // 为开互联网路线先登录的：账号到了就开。
-  const first = internet.startable[0];
-  const { mutate: startRoute } = internet.start;
-  React.useEffect(() => {
-    if (!wantInternet || first === undefined) return;
-    setWantInternet(false);
-    if (!internet.on) startRoute(first);
-  }, [wantInternet, first, internet.on, startRoute]);
-
   const shellManaged = status?.managedBy === "shell";
   const lanEditable = status !== null && !shellManaged;
   // 页面正经中转到达这台电脑：退回仅局域网就是自断。
@@ -93,10 +87,19 @@ function HostAccessBody() {
       return;
     }
     if (internet.on) return;
-    if (first === undefined) {
-      setWantInternet(true);
-      window.setTimeout(() => setSigningIn(BLANK), 0);
-    } else internet.start.mutate(first);
+    const plan = internet.plan;
+    if (plan.kind === "start") internet.start.mutate(plan.remote);
+    else if (plan.kind === "ready") internet.refresh();
+    else
+      window.setTimeout(
+        () =>
+          setCloud(
+            plan.kind === "register"
+              ? { issuer: plan.remote.issuer, resume: true }
+              : { issuer: plan.issuer, resume: false },
+          ),
+        0,
+      );
   }
 
   function toggle(on: boolean) {
@@ -151,16 +154,12 @@ function HostAccessBody() {
           </SettingsGroup>
         ))}
       </SettingsLoadable>
-      <AddRelayDialog
-        draft={signingIn}
-        onClose={() => {
-          setSigningIn(null);
-          setWantInternet(false);
-        }}
-        onDone={() => {
-          setSigningIn(null);
-          void changed();
-        }}
+      <AddCloudDialog
+        initialIssuer={cloud?.issuer ?? null}
+        autoStart={cloud?.resume ?? false}
+        knownIssuers={internet.remotes.map((remote) => remote.issuer)}
+        onClose={() => setCloud(null)}
+        onChanged={() => void changed()}
       />
       <ResponsiveAlertDialog
         open={confirming !== null}

@@ -627,12 +627,10 @@ describe("一个开关、两档可达范围（#301）", () => {
     fireEvent.click(screen.getByRole("option", { name: option }));
   };
 
-  it("打开 = 局域网（无需账号）；选局域网 + 互联网且没有账号：先登录，登录好了开路线", async () => {
+  it("打开 = 局域网（无需账号）；选局域网 + 互联网且没有任何账号：打开 Armadra 云登录，不是中转账号表单；取消退回仅局域网", async () => {
     gateway.status.mockResolvedValue(off);
     gateway.configure.mockResolvedValue({ ...off, enabled: true });
     api.listSources.mockResolvedValue({ sources: [local], remotes: [] });
-    api.addPersonalRelay.mockResolvedValue({ kind: "done", value: {} });
-    api.shareThisMachine.mockResolvedValue({ sourceId: local.sourceId });
     mount();
     fireEvent.click(await screen.findByRole("switch", { name: ALLOW }));
     await waitFor(() =>
@@ -643,17 +641,25 @@ describe("一个开关、两档可达范围（#301）", () => {
     ).toContain("Local network only");
     choose("Reach", "Local network + Internet");
     const dialog = await screen.findByRole("dialog");
-    fireEvent.change(within(dialog).getByLabelText("Address"), {
-      target: { value: ISSUER },
-    });
-    fireEvent.change(within(dialog).getByLabelText("Account"), {
-      target: { value: "dev" },
-    });
-    fireEvent.change(within(dialog).getByLabelText("Password"), {
-      target: { value: "pw" },
-    });
+    expect(within(dialog).getByText("app.armadra.com")).toBeTruthy();
+    expect(within(dialog).queryByLabelText("Address")).toBeNull();
+    expect(within(dialog).queryByLabelText("Password")).toBeNull();
+    fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(
+      screen.getByRole("combobox", { name: "Reach" }).textContent,
+    ).toContain("Local network only");
+    expect(api.shareThisMachine).not.toHaveBeenCalled();
+  });
+
+  it("只有个人中转账号：选局域网 + 互联网一键开路线，行为不变", async () => {
+    gateway.status.mockResolvedValue({ ...off, enabled: true });
     api.listSources.mockResolvedValue({ sources: [local], remotes: [relay] });
-    fireEvent.click(within(dialog).getByRole("button", { name: "Sign in" }));
+    api.shareThisMachine.mockResolvedValue({ sourceId: local.sourceId });
+    mount();
+    await screen.findByRole("combobox", { name: "Reach" });
+    await screen.findByText(relay.label);
+    choose("Reach", "Local network + Internet");
     await waitFor(() =>
       expect(api.shareThisMachine).toHaveBeenCalledWith({
         serviceId: "svc",
@@ -661,6 +667,7 @@ describe("一个开关、两档可达范围（#301）", () => {
         label: "this-mac",
       }),
     );
+    expect(screen.queryByRole("dialog")).toBeNull();
   });
 
   it("退回仅局域网：确认后停用互联网路线，局域网照开", async () => {
