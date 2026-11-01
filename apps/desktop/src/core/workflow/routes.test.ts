@@ -388,6 +388,11 @@ describe("协调者任务（契约 §15.7）", () => {
         endedAt: new Date(5_000).toISOString(),
         reason: "turnFailed",
         retryable: true,
+        // 工作项账本（#682，§15.8）：直接写的行没有标题与报告；任务失败即 person/failed。
+        title: null,
+        stage: "person/failed",
+        report: null,
+        attention: null,
       },
     ]);
     expect(JSON.stringify(listed.body)).not.toContain("审查 src/x");

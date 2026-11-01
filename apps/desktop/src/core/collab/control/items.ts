@@ -183,16 +183,21 @@ export async function report(
         : { kind: "keep" };
   const run = memberItem(context, caller, args);
   const nowMs = nowDate(context).getTime();
+  const before = stageOf(context.database, run, nowSeconds(context));
   const recorded = recordReport(
     context.database,
     run.taskId,
     { state: state as ReportState, summary, attention },
     nowMs,
   );
-  publishTask(context.database, context.publish, run.taskId);
-
+  const stage = stageOf(context.database, recorded.run, nowSeconds(context));
   const loud =
     NOTIFY_STATES.has(state as ReportState) || attention.kind === "set";
+  // 页面靠 `workflow.task` 帧重读任务行：只有阶段变了、或者是要紧的报告才推，
+  // 成员每一步进度都推一帧会让每块画板反复重读（#682 复核）。
+  if (loud || stage !== before || attention.kind === "clear") {
+    publishTask(context.database, context.publish, run.taskId);
+  }
   const told = loud
     ? await tellCoordinator(
         context,
@@ -204,7 +209,6 @@ export async function report(
           `\n详情：canvas items --item ${run.taskId}`,
       )
     : false;
-  const stage = stageOf(context.database, recorded.run, nowSeconds(context));
   return result(
     `已记下工作项 ${run.taskId} 的报告（${state}）。` +
       (told
