@@ -162,6 +162,24 @@ describe("console session", () => {
     }
   });
 
+  /**
+   * The core ends a session with `kill` and then `destroy`. node-pty 1.1.0
+   * closes the pseudo console on every kill, and a second close of the same
+   * console while the shell is still exiting crashed the host and every
+   * session in it (#659): the close waits for the kill it follows instead.
+   */
+  it("does not kill again when a close follows a kill that has not exited yet", async () => {
+    const { pty, console: built } = session({ exitsOnKill: false });
+    built.kill();
+    built.kill();
+    expect(pty.killed).toBe(1);
+    const closing = built.close();
+    expect(pty.killed).toBe(1);
+    pty.exit(130);
+    await expect(closing).resolves.toEqual({ kind: "exited", exitCode: 130 });
+    expect(pty.killed).toBe(1);
+  });
+
   it("closes a console that had already ended without waiting for anything", async () => {
     const { pty, console: built } = session();
     pty.exit(0);

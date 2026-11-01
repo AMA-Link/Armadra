@@ -177,6 +177,19 @@ export class ConsoleSession {
   private closingNow = false;
   private code: number | undefined;
   private pausedNow = false;
+  /**
+   * node-pty has been told to kill and the exit has not been observed yet.
+   *
+   * A second kill in that window is not a harder kill, it is a crash: node-pty
+   * 1.1.0's `PtyKill` closes the pseudo console every time it is called, and
+   * its exit thread only forgets the console once the shell is gone, so a
+   * second call closes an HPCON that is already freed. The core ends a session
+   * with `kill` and then `destroy`, which used to be exactly that, and a shell
+   * as slow to exit as pwsh took the whole host down with it (#659). Cleared
+   * when a close times out, so the retry that {@link close} promises still
+   * signals again.
+   */
+  private signalled = false;
   private readonly exitWaiters: ((code: number | undefined) => void)[] = [];
 
   constructor(
@@ -260,7 +273,7 @@ export class ConsoleSession {
    * by the caller if it wanted to be polite, and this is the hard stop.
    */
   kill(): void {
-    if (this.state !== "running") return;
+    if (this.state !== "running" || this.signalled) return;
     this.hardStop();
   }
 
@@ -277,6 +290,7 @@ export class ConsoleSession {
     // teardown until the read side is flowing again — a paused pty that is
     // killed leaks both the handle and the reader. Resume first, always.
     this.setPaused(false);
+    this.signalled = true;
     try {
       this.pty.kill();
     } catch {
@@ -310,7 +324,9 @@ export class ConsoleSession {
     // `kill()` must still be observed.
     const proof = this.awaitExit();
     this.closingNow = true;
-    this.hardStop();
+    // Already killed (the core's `kill` before its `destroy`): wait for that
+    // exit rather than signalling the same console a second time.
+    if (!this.signalled) this.hardStop();
     const exitCode = await proof;
     this.state = "closed";
     return { kind: "exited", exitCode };
@@ -325,6 +341,8 @@ export class ConsoleSession {
       const timer = setTimeout(() => {
         const index = this.exitWaiters.indexOf(settle);
         if (index !== -1) this.exitWaiters.splice(index, 1);
+        // The kill did not lead to an exit; a retry is a new attempt.
+        this.signalled = false;
         // `closingNow` stays set and `state` stays `running`: this console is
         // not known to have been released, and a second `close` is a
         // legitimate second attempt rather than a no-op.
