@@ -21,6 +21,7 @@ import type {
   TimelineNoticeCode,
   TimelineToolItem,
 } from "@armadra/shared";
+import { approvalCallSummary } from "@armadra/shared";
 
 import { renderEntries } from "../collab/transcript";
 import { entriesFromTimeline } from "../history/acp-mirror";
@@ -336,6 +337,7 @@ export class AcpFeed {
   permission(pendingId: string, pending: AcpPendingPermission): void {
     this.waits.set(pendingId, Date.now());
     const toolCallId = pending.toolCall.toolCallId;
+    const summary = approvalCallSummary(pending.toolCall);
     this.putPending((ctx, ord) => ({
       id: `ap:${pendingId}`,
       turn: ctx.turn,
@@ -348,6 +350,7 @@ export class AcpFeed {
       pendingId,
       protocol: "acp",
       ...(toolCallId ? { toolCallId } : {}),
+      ...(summary === undefined ? {} : { toolCall: summary }),
       options: pending.options.map((option) => ({
         optionId: option.optionId,
         name: option.name,

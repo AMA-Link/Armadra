@@ -3103,6 +3103,80 @@
                                                         "type": "string",
                                                         "maxLength": 200
                                                       },
+                                                      "toolCall": {
+                                                        "type": "object",
+                                                        "properties": {
+                                                          "title": {
+                                                            "type": "string",
+                                                            "maxLength": 2000
+                                                          },
+                                                          "toolKind": {
+                                                            "enum": [
+                                                              "read",
+                                                              "edit",
+                                                              "delete",
+                                                              "move",
+                                                              "search",
+                                                              "execute",
+                                                              "think",
+                                                              "fetch",
+                                                              "switch_mode",
+                                                              "other",
+                                                              "subagent"
+                                                            ],
+                                                            "type": "string"
+                                                          },
+                                                          "locations": {
+                                                            "type": "array",
+                                                            "maxItems": 20,
+                                                            "items": {
+                                                              "type": "object",
+                                                              "properties": {
+                                                                "path": {},
+                                                                "line": {}
+                                                              }
+                                                            }
+                                                          },
+                                                          "changes": {
+                                                            "type": "array",
+                                                            "maxItems": 20,
+                                                            "items": {
+                                                              "type": "object",
+                                                              "properties": {
+                                                                "path": {},
+                                                                "addedLines": {},
+                                                                "removedLines": {}
+                                                              }
+                                                            }
+                                                          },
+                                                          "input": {
+                                                            "type": "object",
+                                                            "properties": {
+                                                              "command": {
+                                                                "type": "string",
+                                                                "maxLength": 2000
+                                                              },
+                                                              "path": {
+                                                                "type": "string",
+                                                                "maxLength": 4000
+                                                              },
+                                                              "line": {
+                                                                "type": "integer",
+                                                                "minimum": -9007199254740991,
+                                                                "maximum": 9007199254740991
+                                                              },
+                                                              "query": {
+                                                                "type": "string",
+                                                                "maxLength": 500
+                                                              },
+                                                              "url": {
+                                                                "type": "string",
+                                                                "maxLength": 1000
+                                                              }
+                                                            }
+                                                          }
+                                                        }
+                                                      },
                                                       "options": {
                                                         "type": "array",
                                                         "items": {
@@ -80367,6 +80441,111 @@
                                 "type": "string",
                                 "maxLength": 200
                               },
+                              "toolCall": {
+                                "type": "object",
+                                "properties": {
+                                  "title": {
+                                    "type": "string",
+                                    "maxLength": 2000
+                                  },
+                                  "toolKind": {
+                                    "enum": [
+                                      "read",
+                                      "edit",
+                                      "delete",
+                                      "move",
+                                      "search",
+                                      "execute",
+                                      "think",
+                                      "fetch",
+                                      "switch_mode",
+                                      "other",
+                                      "subagent"
+                                    ],
+                                    "type": "string"
+                                  },
+                                  "locations": {
+                                    "type": "array",
+                                    "maxItems": 20,
+                                    "items": {
+                                      "type": "object",
+                                      "properties": {
+                                        "path": {
+                                          "type": "string",
+                                          "maxLength": 4000
+                                        },
+                                        "line": {
+                                          "anyOf": [
+                                            {
+                                              "type": "integer",
+                                              "minimum": -9007199254740991,
+                                              "maximum": 9007199254740991
+                                            },
+                                            {
+                                              "type": "null"
+                                            }
+                                          ]
+                                        }
+                                      },
+                                      "required": ["path"]
+                                    }
+                                  },
+                                  "changes": {
+                                    "type": "array",
+                                    "maxItems": 20,
+                                    "items": {
+                                      "type": "object",
+                                      "properties": {
+                                        "path": {
+                                          "type": "string",
+                                          "maxLength": 4000
+                                        },
+                                        "addedLines": {
+                                          "type": "integer",
+                                          "minimum": 0,
+                                          "maximum": 9007199254740991
+                                        },
+                                        "removedLines": {
+                                          "type": "integer",
+                                          "minimum": 0,
+                                          "maximum": 9007199254740991
+                                        }
+                                      },
+                                      "required": [
+                                        "path",
+                                        "addedLines",
+                                        "removedLines"
+                                      ]
+                                    }
+                                  },
+                                  "input": {
+                                    "type": "object",
+                                    "properties": {
+                                      "command": {
+                                        "type": "string",
+                                        "maxLength": 2000
+                                      },
+                                      "path": {
+                                        "type": "string",
+                                        "maxLength": 4000
+                                      },
+                                      "line": {
+                                        "type": "integer",
+                                        "minimum": -9007199254740991,
+                                        "maximum": 9007199254740991
+                                      },
+                                      "query": {
+                                        "type": "string",
+                                        "maxLength": 500
+                                      },
+                                      "url": {
+                                        "type": "string",
+                                        "maxLength": 1000
+                                      }
+                                    }
+                                  }
+                                }
+                              },
                               "options": {
                                 "type": "array",
                                 "items": {
@@ -82016,6 +82195,111 @@
                                     "type": "string",
                                     "maxLength": 200
                                   },
+                                  "toolCall": {
+                                    "type": "object",
+                                    "properties": {
+                                      "title": {
+                                        "type": "string",
+                                        "maxLength": 2000
+                                      },
+                                      "toolKind": {
+                                        "enum": [
+                                          "read",
+                                          "edit",
+                                          "delete",
+                                          "move",
+                                          "search",
+                                          "execute",
+                                          "think",
+                                          "fetch",
+                                          "switch_mode",
+                                          "other",
+                                          "subagent"
+                                        ],
+                                        "type": "string"
+                                      },
+                                      "locations": {
+                                        "type": "array",
+                                        "maxItems": 20,
+                                        "items": {
+                                          "type": "object",
+                                          "properties": {
+                                            "path": {
+                                              "type": "string",
+                                              "maxLength": 4000
+                                            },
+                                            "line": {
+                                              "anyOf": [
+                                                {
+                                                  "type": "integer",
+                                                  "minimum": -9007199254740991,
+                                                  "maximum": 9007199254740991
+                                                },
+                                                {
+                                                  "type": "null"
+                                                }
+                                              ]
+                                            }
+                                          },
+                                          "required": ["path"]
+                                        }
+                                      },
+                                      "changes": {
+                                        "type": "array",
+                                        "maxItems": 20,
+                                        "items": {
+                                          "type": "object",
+                                          "properties": {
+                                            "path": {
+                                              "type": "string",
+                                              "maxLength": 4000
+                                            },
+                                            "addedLines": {
+                                              "type": "integer",
+                                              "minimum": 0,
+                                              "maximum": 9007199254740991
+                                            },
+                                            "removedLines": {
+                                              "type": "integer",
+                                              "minimum": 0,
+                                              "maximum": 9007199254740991
+                                            }
+                                          },
+                                          "required": [
+                                            "path",
+                                            "addedLines",
+                                            "removedLines"
+                                          ]
+                                        }
+                                      },
+                                      "input": {
+                                        "type": "object",
+                                        "properties": {
+                                          "command": {
+                                            "type": "string",
+                                            "maxLength": 2000
+                                          },
+                                          "path": {
+                                            "type": "string",
+                                            "maxLength": 4000
+                                          },
+                                          "line": {
+                                            "type": "integer",
+                                            "minimum": -9007199254740991,
+                                            "maximum": 9007199254740991
+                                          },
+                                          "query": {
+                                            "type": "string",
+                                            "maxLength": 500
+                                          },
+                                          "url": {
+                                            "type": "string",
+                                            "maxLength": 1000
+                                          }
+                                        }
+                                      }
+                                    }
+                                  },
                                   "options": {
                                     "type": "array",
                                     "items": {
@@ -83386,6 +83670,111 @@
                               "toolCallId": {
                                 "type": "string",
                                 "maxLength": 200
+                              },
+                              "toolCall": {
+                                "type": "object",
+                                "properties": {
+                                  "title": {
+                                    "type": "string",
+                                    "maxLength": 2000
+                                  },
+                                  "toolKind": {
+                                    "enum": [
+                                      "read",
+                                      "edit",
+                                      "delete",
+                                      "move",
+                                      "search",
+                                      "execute",
+                                      "think",
+                                      "fetch",
+                                      "switch_mode",
+                                      "other",
+                                      "subagent"
+                                    ],
+                                    "type": "string"
+                                  },
+                                  "locations": {
+                                    "type": "array",
+                                    "maxItems": 20,
+                                    "items": {
+                                      "type": "object",
+                                      "properties": {
+                                        "path": {
+                                          "type": "string",
+                                          "maxLength": 4000
+                                        },
+                                        "line": {
+                                          "anyOf": [
+                                            {
+                                              "type": "integer",
+                                              "minimum": -9007199254740991,
+                                              "maximum": 9007199254740991
+                                            },
+                                            {
+                                              "type": "null"
+                                            }
+                                          ]
+                                        }
+                                      },
+                                      "required": ["path"]
+                                    }
+                                  },
+                                  "changes": {
+                                    "type": "array",
+                                    "maxItems": 20,
+                                    "items": {
+                                      "type": "object",
+                                      "properties": {
+                                        "path": {
+                                          "type": "string",
+                                          "maxLength": 4000
+                                        },
+                                        "addedLines": {
+                                          "type": "integer",
+                                          "minimum": 0,
+                                          "maximum": 9007199254740991
+                                        },
+                                        "removedLines": {
+                                          "type": "integer",
+                                          "minimum": 0,
+                                          "maximum": 9007199254740991
+                                        }
+                                      },
+                                      "required": [
+                                        "path",
+                                        "addedLines",
+                                        "removedLines"
+                                      ]
+                                    }
+                                  },
+                                  "input": {
+                                    "type": "object",
+                                    "properties": {
+                                      "command": {
+                                        "type": "string",
+                                        "maxLength": 2000
+                                      },
+                                      "path": {
+                                        "type": "string",
+                                        "maxLength": 4000
+                                      },
+                                      "line": {
+                                        "type": "integer",
+                                        "minimum": -9007199254740991,
+                                        "maximum": 9007199254740991
+                                      },
+                                      "query": {
+                                        "type": "string",
+                                        "maxLength": 500
+                                      },
+                                      "url": {
+                                        "type": "string",
+                                        "maxLength": 1000
+                                      }
+                                    }
+                                  }
+                                }
                               },
                               "options": {
                                 "type": "array",

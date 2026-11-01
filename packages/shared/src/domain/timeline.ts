@@ -262,12 +262,45 @@ export const TIMELINE_PENDING_STATES = [
 export const timelinePendingStateSchema = z.enum(TIMELINE_PENDING_STATES);
 export type TimelinePendingState = (typeof TIMELINE_PENDING_STATES)[number];
 
+/**
+ * 审批请求里 `toolCall` 的摘要：对应的 `tool` 条目不在手边（还没到、被截断、换了行）
+ * 时，卡片靠它说清「要做什么」。只记标题、种类、路径与行数、命令 / 路径 / 查询 /
+ * URL，不记差异正文、输出与其余入参；各字段都有上限。
+ */
+export const timelineApprovalCallSchema = z.object({
+  title: z.string().max(2_000).optional(),
+  toolKind: timelineToolKindSchema.optional(),
+  locations: z.array(timelineToolLocationSchema).max(20).optional(),
+  /** 差异按文件折成 `+N −M`，不带正文。 */
+  changes: z
+    .array(
+      z.object({
+        path: z.string().max(4_000),
+        addedLines: countSchema,
+        removedLines: countSchema,
+      }),
+    )
+    .max(20)
+    .optional(),
+  input: z
+    .object({
+      command: z.string().max(2_000).optional(),
+      path: z.string().max(4_000).optional(),
+      line: z.number().int().optional(),
+      query: z.string().max(500).optional(),
+      url: z.string().max(1_000).optional(),
+    })
+    .optional(),
+});
+export type TimelineApprovalCall = z.infer<typeof timelineApprovalCallSchema>;
+
 export const timelineApprovalItemSchema = z.object({
   ...itemBase,
   kind: z.literal("approval"),
   pendingId: z.string().max(200),
   protocol: z.string().max(40),
   toolCallId: z.string().max(200).optional(),
+  toolCall: timelineApprovalCallSchema.optional(),
   options: z.array(timelineApprovalOptionSchema),
   state: timelinePendingStateSchema,
   answer: z.object({ optionId: z.string().max(200).optional() }).optional(),

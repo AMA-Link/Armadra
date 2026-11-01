@@ -213,6 +213,47 @@ describe("脚本化的 session/update（AcpFeed）", () => {
     return { feed, rowId };
   }
 
+  it("审批条目带 toolCall 摘要：标题、种类、路径与行数、命令，不带差异正文与其余入参", async () => {
+    await boot();
+    const { feed, rowId } = feedOf();
+    feed.beginTurn("1-1", { text: "go" });
+    feed.permission("p1", {
+      id: "p1",
+      sessionId: "s",
+      createdAt: 1,
+      options: [{ optionId: "o", name: "Allow", kind: "allow_once" }],
+      toolCall: {
+        toolCallId: "t9",
+        title: "Edit a.ts",
+        kind: "edit",
+        locations: [{ path: "/repo/a.ts", line: 3 }],
+        content: [
+          {
+            type: "diff",
+            path: "/repo/a.ts",
+            oldText: "keep\nold\n",
+            newText: "keep\nnew1\nnew2\n",
+          },
+        ],
+        rawInput: { command: "sed -i s/old/new/", token: "sk-secret" },
+      },
+    } as never);
+    const approval = items(rowId).find((i) => i.kind === "approval");
+    expect(approval).toMatchObject({
+      toolCallId: "t9",
+      toolCall: {
+        title: "Edit a.ts",
+        toolKind: "edit",
+        locations: [{ path: "/repo/a.ts", line: 3 }],
+        changes: [{ path: "/repo/a.ts", addedLines: 2, removedLines: 1 }],
+        input: { command: "sed -i s/old/new/" },
+      },
+    });
+    const json = JSON.stringify(approval);
+    expect(json).not.toContain("new1");
+    expect(json).not.toContain("sk-secret");
+  });
+
   it("图片落成 blob，条目里没有 base64；工具中间状态与 diff 按 toolCallId 合并", async () => {
     await boot();
     const { feed, rowId } = feedOf();
