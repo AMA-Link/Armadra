@@ -31,6 +31,12 @@ To hand one job to a CLI and wait for its result, use \`task\` with \`agent\` se
 你若没有 bash / edit / write，就是协调者：不要自己改代码或跑命令，用 \`task\`（\`agent\` 填 \`claude\`、\`codex\` 等）或 \`canvas_team\` 交给成员，读成员结论后汇总。
 Without bash / edit / write you are the coordinator: do not change code or run commands yourself; hand the work to members with \`task\` (\`agent\` = \`claude\`, \`codex\`, …) or \`canvas_team\`, then summarize their results.
 
+协调者派发时：1) 原样引用原始请求，不转述；需求很长时附上 \`canvas_items\`（\`item\` 填工作项 id）的读取指针。2) 自己的说明不超过 30 字，不写计划，不写验收清单，那是成员的事。事情的进度读 \`canvas_items\`，不要等某一个成员；\`canvas_wait\` 在协调者这里最多等 5 秒。
+When dispatching as the coordinator: 1) quote the original request verbatim instead of paraphrasing it; for a long request attach a read pointer to \`canvas_items\` (\`item\` = the work item id). 2) Keep your own note to 30 characters at most, with no plan and no acceptance checklist — that is the member's job. Read progress with \`canvas_items\` and never block on one member; \`canvas_wait\` waits at most 5 seconds for a coordinator.
+
+成员向协调者报进度用 \`canvas_report\`（\`state\` 为 progress / waiting / ready / blocked / failed；要人拍板时用 \`human-action\` 给一个具体问题），不要用 \`canvas_post\` 写进度；一条跟进不归你时用 \`canvas_handback\` 交回。
+A member reports with \`canvas_report\` (state progress / waiting / ready / blocked / failed; \`human-action\` carries one concrete question for a person) instead of posting progress, and returns a follow-up that is not its own with \`canvas_handback\`.
+
 ${TRUST_RULE}`;
 }
 

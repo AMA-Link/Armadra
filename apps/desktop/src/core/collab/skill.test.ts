@@ -116,7 +116,7 @@ describe("the collaboration skill", () => {
     const text = developerInstructions("/x/SKILL.md");
     const [first, zh, en] = text.split("\n");
     expect(first).toBe(`[Armadra canvas rules r${SKILLS_REVISION}]`);
-    expect(SKILLS_REVISION).toBe(20);
+    expect(SKILLS_REVISION).toBe(21);
     expect(zh).toContain("ARMADRA_NODE_ID");
     expect(en).toContain("only when ARMADRA_NODE_ID is set");
     expect(text.indexOf(canvasRules())).toBeGreaterThan(first?.length ?? 0);
@@ -128,6 +128,19 @@ describe("the collaboration skill", () => {
     release = installCollaborationSkill();
     expect(skillContent()).toBe(collaborationSkill);
     expect(collaborationSkill.skill()).toBe(skillBody());
+  });
+
+  it("tells members when to report, with the question slot and handback", () => {
+    const body = skillBody();
+    for (const text of [
+      "canvas report --state ready",
+      "--human-action",
+      "--clear-action",
+      "canvas handback --item",
+      "canvas items",
+    ]) {
+      expect(body).toContain(text);
+    }
   });
 
   it("names only verbs the control dispatcher answers", async () => {
