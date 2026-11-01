@@ -4904,3 +4904,45 @@ owner（本机会话，或已信任设备经通道的 owner 会话）：`{ sourc
 1. **页面**：分派抽屉的成员行与节点头读 `stalled` 画一枚标记。
 2. **推送**：新增触发 `stalled`（`kind` 取值多一个 `stalled`，设备的种类偏好 §27.1 同样可开关；没存过偏好的设备缺省收）。规则与 `approval` / `deliveryFailed` 相同：只发给对这块工作空间有 `canvas:read` 的 principal 名下的设备，标题是工作空间名，正文按判定写死一句（停滞 / 空等 / 等人太久），深链指向节点，**不带终端原文**。推送规则只读帧上 `stalled` 的枚举值，从进入某个判定的那一帧推一次。
 3. **协调者唤醒**：节点是某个 `running` 任务的成员时，给该任务的协调者节点排一条短唤醒——走收件箱唤醒（§15 的 `agent_send_queue`，`origin = mailbox-wake`）同一条队列、同一道串行门与整条门链：协调者忙就排着，空下来才投；五分钟的队列期限过了就过期，看门狗不补发。署名是应用；正文只有成员节点名、时长与任务 id，不带终端原文；`needsHuman` 一条明确让协调者上报给人、不要替人回答。幂等键 `watch:<taskId>:<判定>:<指纹>`。节点不是任何任务的成员时只有页面标记与推送，没有唤醒。
+
+## 92. ACP 补齐
+
+> 状态：实施契约（AMA-Link/Armadra#687）。只加字段、路由与一个 procedure，不改已有节号；协议版本不变。依赖较新 `@armadra/agent` 客户端的几项（登录、`elicitation/complete`、`listAllSessions`）在运行时对客户端实例做特性检测，当前钉住的 0.11.0 上保持隐藏，升版后自动生效。
+
+### 92.1 登录与登出（客户端特性检测）
+
+- **`acp_auth_required` 带登录方式**：错误体仍是 `{ code, message }`，另在 `details` 里多一个 `authMethods: [{ id, name, description?, type: "agent" | "terminal", supported? }]`（`acp.createSession` 的 oRPC 错误与旧路由一致）。`terminal` 型方法的 `args` / `env` 不出 core。`supported` 为 `false` 表示本机装的客户端无法完成这条方法，页面不显示按钮。起会话遇到它时的 HTTP 状态统一为 409（原来经 `bridge.ts` 走 502，与 §14.2 的描述不符，现更正）。
+- **`POST /api/acp/auth/authenticate`** `{ workspaceId, agentId, methodId, nodeId? }` → `204`。`agent` 型方法经客户端的 `authenticate(methodId)`；`terminal` 型由 core 在本机执行适配器命令（适配器程序 + 启动 argv + 方法自带的 `args`，环境叠上方法的 `env`），退出码 0 即成功，无 TTY、输出丢弃、10 分钟上限。成功后该 Agent 的预启动池项被丢弃，下一次起会话重新看登录状态。同一个 Agent 同时只能有一次登录，第二次答 409 `conflict`；方法 id 不认识答 502 `acp_auth_failed`；SSH 节点答 409 `acp_auth_unsupported`。权限 `settings:write`。
+- **`POST /api/acp/auth/logout`** `{ workspaceId, agentId, nodeId? }` → `204`。仅当 Agent 声明 `auth.logout` 且客户端有 `logout` 时可用，否则 409 `acp_auth_unsupported`。权限 `settings:write`。
+- 新错误码：`acp_auth_unsupported`（409，客户端或 Agent 不能做）、`acp_auth_failed`（502，登录没有完成）。
+
+### 92.2 能力与认证方法（`GET /api/agents`）
+
+- `acp` 多一个可选字段 `capabilities`：`{ load, resume, list, close, logout, image, audio, embeddedContext, mcpHttp, mcpSse, authMethods: [{ id, name, description?, type, supported }] }`，取自这家最近一次 `initialize`；从未启动或探测过时缺席，列表本身从不为此起进程。`audio` 与 `mcpHttp` / `mcpSse` 只记录：没有音频附件入口，http / sse 的 MCP 服务器也还不透传。
+- core 内 `AcpCapabilities.authMethods` 保留完整对象（名称、说明、类型、终端型的 `args` / `env`），原先只留 id 的形状由派生字段 `authMethodIds` 取代。
+
+### 92.3 Agent 自己的会话（`session/list`、`session/close`）
+
+- **`POST /api/acp/agent-sessions`** `{ workspaceId, agentId, cwd?, cursor? , nodeId? }` → `{ sessions: [{ sessionId, cwd, title?, updatedAt? }], nextCursor? }`，每次最多 200 条。用预启动好的适配器，没有就起一个短命的。客户端有 `listAllSessions` 且没给 `cursor` 时用它，否则按 `cursor` 翻页的 `listSessions`。Agent 没声明 `session/list` 答 409 `acp_list_unsupported`；SSH 节点同码。权限 `terminal:create`。页面据此在新建菜单里为声明了 `list` 的 Agent 提供「接管会话」：选中后建一个 `driver: "acp"`、`agent.sessionId` 为所选 id 的节点，走既有接回路径。
+- 结束会话（`terminate()`）时若 Agent 声明 `session/close`，先发它再收进程，尽力而为、1.5 秒上限。
+
+### 92.4 elicitation：多选、带标题枚举与 `elicitation/complete`
+
+- 表单字段多两类：`type: "array"`（`items.enum`，或 `items.anyOf` / `oneOf` 的 `const` + `title`；`minItems` / `maxItems` / `default`）与字符串的 `oneOf` 带标题枚举。core 把带标题的写法折成 `enum` + `enumNames`，页面与校验只看到一种形状。
+- 答复 `content` 的值多一种 `string[]`（多选），即 §26.1 的答复体 `{ elicitation: { action, content? } }` 的 `content: Record<string, string | number | boolean | string[]>`。
+- `elicitation/complete`：客户端提供且自报 `AcpClient.features.elicitationComplete` 时，Agent 通知外部流程已完成，core 以 `accept` 收掉对应的 url 型卡片（时间线上记为已答）。无该能力的客户端上行为不变。
+
+### 92.5 配置项、命令提示与用量
+
+- **`acp.setConfigOption`**（procedure，旧路径 `PUT /api/acp/sessions/{sessionId}/config`，权限 `terminal:create`，204）：`{ sessionId, configId, value: string | boolean }`，经 `session/set_config_option` 改任意一项会话配置项；`setModel` 照旧。配置项或值不在 Agent 给的列表里 → 409 新码 `acp_config_unavailable`；缺 `configId` 或 `value` 类型不对 → 400 `bad_request`；会话已结束 409 `acp_exited`；客户端没有该能力 409 `acp_model_unsupported`。
+- 时间线头部（§82）多 `configOptions?: [{ id, name, description?, category?, type: "select" | "boolean", currentValue: string | boolean, options: [{ value, name, description? }] }] | null`：清洗过的完整列表（分组摊平、去重、最多 64 项，每项最多 500 个可选值）；`config_option_update` 整份替换；带 `category: "mode"` 的项变动时 `head.modes` 的当前模式与「模式已切换」提示同步。Agent 没给 `modes` 只给 `category: "mode"` 的 select 时，core 合成 `head.modes`，此时 `setMode` 与开会话时落模式都改走 `session/set_config_option`。0.11.0 客户端只声明 select，boolean 项只在 Agent 列表里出现时才显示。
+- `head.commands[].hint?: string`（≤500 字符）：斜杠命令的 `input.hint`。
+- 一回合没收到 `usage_update`、而之前已知窗口大小时，用 `session/prompt` 响应里的 `usage`（`totalTokens`，缺则输入加输出）补头部用量，`used` 不超过窗口；窗口未知则不补。
+
+### 92.6 时间线条目的新增字段（§82，均可选，旧客户端忽略）
+
+- 审批条目 `toolCall?: { title?, toolKind?, locations?: [{ path, line? }] (≤20), changes?: [{ path, addedLines, removedLines }] (≤20), input?: { command?, path?, line?, query?, url? } }`：请求里工具调用的摘要，页面优先读同 `toolCallId` 的工具条目、缺席时用它。只存标题、种类、路径与计数，不存 diff 正文、输出或其余入参；行数是近似值（按行集合比较）。
+- 工具内容多一种 `audio`（与 `image` 同形：`blobId`、`mimeType`、`bytes`、`dropped`）。
+- 思考条目多 `parts?` 与 `messageId?`；助手与用户条目多 `messageId?`（≤200 字符）：chunk 带的 `messageId` 变了就另起一条。
+- 提示码多 `info`。参数约定：压缩摘要 `params.summary`（≤20000 字符）、`info` 提示的 `message` 与 `level`、压缩失败的 `error` 提示 `code: "compaction_failed"`。`notice`、`compaction_update`、`compaction_summary_chunk` 三类 `session/update` 进归约；`compacted` 提示因此能出现。
+- 子代理归属除 `_meta.claudeCode` 外也读 `_meta.ama.parentToolCallId`。
