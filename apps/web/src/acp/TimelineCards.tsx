@@ -21,7 +21,11 @@ import { useT } from "@/app/preferences-store";
 import { Badge } from "@/ui/badge";
 import { StatusPill } from "@/ui/status-pill";
 import { useAnsweredStore } from "./answered";
-import type { AcpElicitationView, AcpPermissionView } from "./approval-views";
+import type {
+  AcpElicitationView,
+  AcpPermissionChange,
+  AcpPermissionView,
+} from "./approval-views";
 import { ElicitationCard } from "./ElicitationCard";
 import { isAllowOption, PermissionCard } from "./PermissionCard";
 
@@ -40,42 +44,81 @@ function toolOf(
   return item?.kind === "tool" ? item : undefined;
 }
 
-/** 审批条目 → 卡片要的视图。 */
+/**
+ * 审批条目 → 卡片要的视图。标题、差异预览优先读活的工具条目；它不在手边时
+ * （还没到、被截断）退到审批条目上存的 `toolCall` 摘要。
+ */
 export function permissionViewOf(
   approval: TimelineApprovalItem,
   tool: TimelineToolItem | undefined,
 ): AcpPermissionView {
+  const options = approval.options as readonly AcpPermissionOption[];
+  const toolCallId = approval.toolCallId ?? approval.pendingId;
+  if (tool === undefined) {
+    const summary = approval.toolCall;
+    if (summary === undefined) {
+      return {
+        pendingId: approval.pendingId,
+        toolCall: { toolCallId, title: "" },
+        options,
+      };
+    }
+    const locations = (summary.locations ?? []).map((location) => ({
+      path: location.path,
+      ...(location.line == null ? {} : { line: location.line }),
+    }));
+    const changes: AcpPermissionChange[] = (summary.changes ?? []).map(
+      (change) => ({
+        path: change.path,
+        stat: { additions: change.addedLines, deletions: change.removedLines },
+      }),
+    );
+    for (const location of locations) {
+      if (changes.some((change) => change.path === location.path)) continue;
+      changes.push(location);
+    }
+    return {
+      pendingId: approval.pendingId,
+      toolCall: {
+        toolCallId,
+        title: summary.title ?? "",
+        ...(acpToolKindSchema.safeParse(summary.toolKind).success
+          ? { kind: summary.toolKind as AcpToolKind }
+          : {}),
+        locations,
+        ...(summary.input === undefined ? {} : { rawInput: summary.input }),
+      },
+      options,
+      changes,
+    };
+  }
   return {
     pendingId: approval.pendingId,
     toolCall: {
-      toolCallId: approval.toolCallId ?? approval.pendingId,
-      title: tool?.title ?? "",
-      ...(tool === undefined
-        ? {}
-        : {
-            ...(acpToolKindSchema.safeParse(tool.toolKind).success
-              ? { kind: tool.toolKind as AcpToolKind }
-              : {}),
-            locations: tool.locations.map((location) => ({
-              path: location.path,
-              ...(location.line === undefined ? {} : { line: location.line }),
-            })),
-            content: tool.content.flatMap((content) =>
-              content.type === "diff" && content.newText !== undefined
-                ? [
-                    {
-                      type: "diff" as const,
-                      path: content.path,
-                      oldText: content.oldText ?? null,
-                      newText: content.newText,
-                    },
-                  ]
-                : [],
-            ),
-            ...(tool.input === undefined ? {} : { rawInput: tool.input }),
-          }),
+      toolCallId,
+      title: tool.title || approval.toolCall?.title || "",
+      ...(acpToolKindSchema.safeParse(tool.toolKind).success
+        ? { kind: tool.toolKind as AcpToolKind }
+        : {}),
+      locations: tool.locations.map((location) => ({
+        path: location.path,
+        ...(location.line === undefined ? {} : { line: location.line }),
+      })),
+      content: tool.content.flatMap((content) =>
+        content.type === "diff" && content.newText !== undefined
+          ? [
+              {
+                type: "diff" as const,
+                path: content.path,
+                oldText: content.oldText ?? null,
+                newText: content.newText,
+              },
+            ]
+          : [],
+      ),
+      ...(tool.input === undefined ? {} : { rawInput: tool.input }),
     },
-    options: approval.options as readonly AcpPermissionOption[],
+    options,
   };
 }
 
