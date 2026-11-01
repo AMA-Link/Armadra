@@ -50,7 +50,35 @@ export function privateAddress(address: string): boolean {
 type Interfaces = ReturnType<typeof networkInterfaces>;
 
 /**
- * 本机当前的私网地址，排好序（叶证书的 SAN 与「地址变没变」都按它比）。
+ * 一个地址做二维码缺省的优先级，越小越先：RFC 1918（192.168、10、172.16–31）手机在
+ * 同一个 Wi-Fi 上就连得上；CGNAT（Tailscale 一类）要手机也在那个组网里，其次；
+ * IPv6 ULA 再次；公网与其他地址最后。
+ */
+export function addressPriority(address: string): number {
+  const literal = address.startsWith("::ffff:") ? address.slice(7) : address;
+  if (isIPv4(literal)) {
+    const [a, b] = literal.split(".").map(Number) as [number, number];
+    if (a === 192 && b === 168) return 0;
+    if (a === 10) return 1;
+    if (a === 172 && b >= 16 && b <= 31) return 2;
+    if (a === 100 && b >= 64 && b <= 127) return 3;
+    return 5;
+  }
+  return isIPv6(literal) && /^f[cd]/i.test(literal) ? 4 : 5;
+}
+
+/** 按 `addressPriority` 排，同级按字面量排（结果只取决于集合，与网卡枚举顺序无关）。 */
+export function prioritizeAddresses(addresses: readonly string[]): string[] {
+  return [...addresses].sort(
+    (left, right) =>
+      addressPriority(left) - addressPriority(right) ||
+      (left < right ? -1 : left > right ? 1 : 0),
+  );
+}
+
+/**
+ * 本机当前的私网地址，按字符串排好序：这是**集合**（叶证书的 SAN 与「地址变没变」都按
+ * 它比，也是 `private` 档筛连接的名单），不是优先顺序；优先顺序见 `gatewayHosts`。
  * 链路本地（169.254/16、fe80::/10）不算：别的设备没法稳定地叫到它。
  */
 export function privateAddresses(
@@ -86,8 +114,8 @@ export function interfaceAddresses(
 }
 
 /**
- * 这一档「自己」的主机，按二维码优先用谁排：私网地址在前（手机最容易连上），
- * 然后是主机名，最后是回环。`localhost` 永远不在里面——`https://localhost`
+ * 这一档「自己」的主机，按二维码与地址下拉优先用谁排：私网地址在前（RFC 1918 →
+ * CGNAT → IPv6 ULA，见 `addressPriority`），然后是主机名，最后是回环。`localhost` 永远不在里面——`https://localhost`
  * 是 Android 版 App 的来源，不能同时是 Gateway 自己的。
  */
 export function gatewayHosts(
@@ -97,7 +125,13 @@ export function gatewayHosts(
 ): string[] {
   if (mode === "loopback") return ["127.0.0.1"];
   const own = mode === "private" ? addresses.privates : addresses.all;
-  return [...new Set([...own, ...(machine ? [machine] : []), "127.0.0.1"])];
+  return [
+    ...new Set([
+      ...prioritizeAddresses(own),
+      ...(machine ? [machine] : []),
+      "127.0.0.1",
+    ]),
+  ];
 }
 
 /** 这一档绑哪个地址。 */
