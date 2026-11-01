@@ -86,7 +86,29 @@ export interface MockOptions
   readonly linkOwnerName?: string;
   /** 设备码请求来源（`auth.deviceGet.ipPrefix`；缺省不带）。 */
   readonly deviceIpPrefix?: string;
+  /**
+   * `platform.info.capabilities`（缺省口令登录加改口令，不带第三方登录）。控制台按它显示
+   * 第三方登录按钮（`auth.oauth.github` / `auth.oauth.google`）、口令表单（`auth.password`）
+   * 与「更改口令」（`auth.password-change`）。
+   */
+  readonly capabilities?: readonly string[];
+  /** `auth.oauthFinish` 的结果（缺省直接登录）：两步验证挑战，或指定的失败码与错误细节。 */
+  readonly oauthFinish?:
+    | "session"
+    | "mfa"
+    | { readonly error: string; readonly details?: unknown };
 }
+
+/** mock 缺省的能力位：口令登录与改口令、设备码、实时流。 */
+export const MOCK_CAPABILITIES = [
+  "auth.password",
+  "auth.password-change",
+  "auth.device-code",
+  "me.stream",
+] as const;
+
+/** `auth.oauthStart` 发出的 state。 */
+export const MOCK_OAUTH_STATE = "mock-oauth-state";
 
 /** 协议包的黄金夹具：开发服务器与测试里都能 glob，生产构建不会 import 到这里。 */
 const GOLDEN = import.meta.glob<{
@@ -402,11 +424,39 @@ const TEAM_HANDLERS_AS_STATE: Readonly<Record<string, Handler>> =
 /** 带状态的处理器；没有的过程答黄金夹具。 */
 const HANDLERS: Readonly<Record<string, Handler>> = {
   ...ADMIN_HANDLERS,
-  "platform.info": () => ({
+  "platform.info": (_input, _state, options) => ({
     ...(golden("platform.info") as object),
     mode: "saas",
     registrationsOpen: true,
+    capabilities: [...(options.capabilities ?? MOCK_CAPABILITIES)],
   }),
+  "auth.oauthStart": (input, _state, options) => {
+    const provider = String(input.provider);
+    if (!(options.capabilities ?? []).includes(`auth.oauth.${provider}`))
+      throw new CloudConsoleError("not_found", 404);
+    const redirect = encodeURIComponent(String(input.redirectUri));
+    return {
+      authorizationUrl: `https://${provider}.test/login/oauth/authorize?state=${MOCK_OAUTH_STATE}&redirect_uri=${redirect}`,
+      state: MOCK_OAUTH_STATE,
+      expiresAtMs: Date.now() + 600_000,
+    };
+  },
+  "auth.oauthFinish": (input, state, options) => {
+    const outcome = options.oauthFinish ?? "session";
+    if (typeof outcome === "object")
+      throw new CloudConsoleError(
+        outcome.error,
+        isErrorCode(outcome.error) ? errorStatus(outcome.error) : 400,
+        outcome.error,
+        outcome.details,
+      );
+    if (outcome === "mfa")
+      return {
+        mfa: { challengeId: "mock-mfa", methods: ["totp", "recovery"] },
+      };
+    state.signedIn = true;
+    return sessionOf(state);
+  },
   "auth.login": (input, state, options) => {
     if (input.scope === "operator") {
       if (options.operatorAccount !== true)
@@ -755,5 +805,24 @@ export function mockOptionsFromSearch(search: string): MockOptions {
     ...(params.has("mockOperator") ? { operatorAccount: true } : {}),
     ...(params.has("mockStepUp") ? { deviceNeedsStepUp: true } : {}),
     ...(params.has("mockLinkAccount") ? { linkRequiresAccount: true } : {}),
+    ...(params.has("mockOauth")
+      ? {
+          capabilities: [
+            ...MOCK_CAPABILITIES,
+            "auth.oauth.github",
+            "auth.oauth.google",
+          ],
+        }
+      : {}),
+    ...(params.has("mockOauthOnly")
+      ? {
+          capabilities: [
+            "auth.oauth.github",
+            "auth.oauth.google",
+            "auth.device-code",
+            "me.stream",
+          ],
+        }
+      : {}),
   };
 }

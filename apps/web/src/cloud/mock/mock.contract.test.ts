@@ -8,6 +8,7 @@ import { CloudConsoleError } from "../api/errors";
 import {
   createMockApi,
   goldenFixture,
+  MOCK_CAPABILITIES,
   mockOptionsFromSearch,
 } from "./create-mock-client";
 import { MOCK_HOSTS, MOCK_TEAMS } from "./fixtures";
@@ -31,6 +32,11 @@ function optionsFor(key: string) {
     operatorSession: true,
     emailVerified: true,
     golden: true,
+    capabilities: [
+      ...MOCK_CAPABILITIES,
+      "auth.oauth.github",
+      "auth.oauth.google",
+    ],
   } as const;
   if (key === "teams.create") return { ...base, golden: false, noTeams: true };
   // 授予的黄金入参指向一条已有的授予（更新、撤销、撤销某人的访问都命中它）。
@@ -152,6 +158,74 @@ describe("mock 与协议包契约一致", () => {
     await expect(api.ops.admin.tenants({})).resolves.toBeTruthy();
     await api.signOut();
     expect(api.operator.active()).toBe(false);
+  });
+
+  it("第三方登录：提供方没开放答 not_found；开放后 start 给授权地址，finish 按设定答会话、两步验证或失败", async () => {
+    const input = {
+      provider: "github",
+      redirectUri: "https://x.test/cb",
+    } as const;
+    const closed = createMockApi({ signedIn: false });
+    await expect(closed.client.auth.oauthStart(input)).rejects.toMatchObject({
+      code: "not_found",
+      status: 404,
+    });
+    const capabilities = [...MOCK_CAPABILITIES, "auth.oauth.github"];
+    const open = createMockApi({ signedIn: false, capabilities });
+    await expect(open.client.auth.oauthStart(input)).resolves.toMatchObject({
+      authorizationUrl: expect.stringContaining("github.test"),
+    });
+    await expect(
+      open.client.auth.oauthStart({ ...input, provider: "google" }),
+    ).rejects.toMatchObject({ code: "not_found" });
+    const finish = {
+      provider: "github",
+      state: "s",
+      code: "c",
+      device: { platform: "browser", name: "Web" },
+    } as const;
+    await expect(open.client.me.get({})).rejects.toMatchObject({
+      code: "session_expired",
+    });
+    await expect(open.client.auth.oauthFinish(finish)).resolves.toHaveProperty(
+      "session",
+    );
+    await expect(open.client.me.get({})).resolves.toBeTruthy();
+    const mfa = createMockApi({
+      signedIn: false,
+      capabilities,
+      oauthFinish: "mfa",
+    });
+    await expect(mfa.client.auth.oauthFinish(finish)).resolves.toHaveProperty(
+      "mfa",
+    );
+    const conflict = createMockApi({
+      capabilities,
+      oauthFinish: { error: "conflict", details: { reason: "account_exists" } },
+    });
+    await expect(
+      conflict.client.auth.oauthFinish(finish),
+    ).rejects.toMatchObject({
+      code: "conflict",
+      status: 409,
+      details: { reason: "account_exists" },
+    });
+  });
+
+  it("platform.info 的能力位可注入，缺省不带第三方登录", async () => {
+    expect(
+      (await createMockApi().client.platform.info({})).capabilities,
+    ).toEqual([...MOCK_CAPABILITIES]);
+    const api = createMockApi({ capabilities: ["auth.oauth.google"] });
+    expect((await api.client.platform.info({})).capabilities).toEqual([
+      "auth.oauth.google",
+    ]);
+    expect(mockOptionsFromSearch("?mockOauth").capabilities).toContain(
+      "auth.oauth.github",
+    );
+    expect(mockOptionsFromSearch("?mockOauthOnly").capabilities).not.toContain(
+      "auth.password",
+    );
   });
 
   it("角色表：团队范围的过程按角色答 forbidden", async () => {

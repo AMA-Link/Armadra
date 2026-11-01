@@ -14,6 +14,8 @@ type Filters = Readonly<Record<string, unknown>> | undefined;
 export const cloudKeys = {
   all: ["cloud"] as const,
   me: ["cloud", "me"] as const,
+  /** `platform.info`：能力位、挑战要求；公开页与账号页共用。 */
+  platformInfo: ["cloud", "platform", "info"] as const,
   spaces: ["cloud", "spaces"] as const,
   devices: ["cloud", "devices"] as const,
   securityLog: (cursor?: string) =>
