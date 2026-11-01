@@ -7,6 +7,7 @@ import { Checkbox } from "@/ui/checkbox";
 import { Field, FieldError, FieldLabel } from "@/ui/field";
 import { Input } from "@/ui/input";
 import { Item, ItemGroup, ItemTitle } from "@/ui/item";
+import { Spinner } from "@/ui/spinner";
 
 import type { RelaySourceChoice } from "./connect";
 
@@ -126,6 +127,165 @@ export function RelayForm({
         {t("mobileConnect.relay.signIn")}
       </Button>
     </form>
+  );
+}
+
+export interface CloudFormProps {
+  readonly busy: boolean;
+  readonly message: string | null;
+  readonly errorId: string;
+  /** 预填的地址（选择页上「登录」某个远程服务）。 */
+  readonly initialIssuer?: string;
+  readonly onSubmit: (input: { issuer: string }) => void;
+  readonly onEdit: () => void;
+}
+
+/** Armadra 云：只要地址；账号在浏览器里登录并批准，这里没有口令。 */
+export function CloudForm({
+  busy,
+  message,
+  errorId,
+  initialIssuer = "",
+  onSubmit,
+  onEdit,
+}: CloudFormProps) {
+  const t = useT();
+  const id = React.useId();
+  const [issuer, setIssuer] = React.useState(initialIssuer);
+  const ready = issuer.trim() !== "";
+  const invalid = message !== null || undefined;
+  return (
+    <form
+      className="flex flex-col gap-(--space-block)"
+      onSubmit={(event) => {
+        event.preventDefault();
+        if (ready && !busy) onSubmit({ issuer });
+      }}
+    >
+      <Field data-invalid={invalid}>
+        <FieldLabel htmlFor={`${id}-issuer`}>
+          {t("mobileConnect.relay.address")}
+        </FieldLabel>
+        <Input
+          id={`${id}-issuer`}
+          value={issuer}
+          inputMode="url"
+          autoCapitalize="off"
+          autoCorrect="off"
+          autoComplete="url"
+          spellCheck={false}
+          placeholder="cloud.example.com"
+          disabled={busy}
+          aria-invalid={invalid}
+          aria-describedby={message ? errorId : undefined}
+          size="touch"
+          onChange={(event) => {
+            setIssuer(event.target.value);
+            onEdit();
+          }}
+        />
+        {message && <FieldError id={errorId}>{message}</FieldError>}
+      </Field>
+      <Button
+        loading={busy}
+        type="submit"
+        size="touch"
+        className="w-full"
+        disabled={busy || !ready}
+      >
+        {t("mobileConnect.relay.signIn")}
+      </Button>
+    </form>
+  );
+}
+
+export interface DeviceStepProps {
+  readonly host: string;
+  readonly userCode: string;
+  /** 等批准中；批准被拒、过期等终结后为 `false`，显示 `message` 并换成「新设备码」。 */
+  readonly waiting: boolean;
+  readonly busy: boolean;
+  readonly message: string | null;
+  readonly errorId: string;
+  readonly onOpen: () => void;
+  readonly onRestart: () => void;
+  readonly onCancel: () => void;
+}
+
+/** 设备码登录：显示用户码，人在系统浏览器里批准，这边在后台轮询。 */
+export function DeviceStep({
+  host,
+  userCode,
+  waiting,
+  busy,
+  message,
+  errorId,
+  onOpen,
+  onRestart,
+  onCancel,
+}: DeviceStepProps) {
+  const t = useT();
+  return (
+    <div className="flex flex-col gap-(--space-block)">
+      <div className="flex flex-col items-center gap-2">
+        <p className="font-mono text-body text-muted-foreground tabular-nums">
+          {host}
+        </p>
+        <Item variant="muted" className="w-full justify-center">
+          <p
+            data-slot="user-code"
+            aria-label={t("mobileConnect.device.code")}
+            className="font-mono text-title tabular-nums select-text"
+          >
+            {userCode}
+          </p>
+        </Item>
+        {waiting ? (
+          <p
+            role="status"
+            className="flex items-center gap-2 text-body text-muted-foreground"
+          >
+            <Spinner data-icon="inline-start" aria-hidden />
+            {t("mobileConnect.device.waiting")}
+          </p>
+        ) : (
+          message && <FieldError id={errorId}>{message}</FieldError>
+        )}
+      </div>
+      <div className="flex flex-col gap-2">
+        {waiting ? (
+          <Button
+            type="button"
+            size="touch"
+            className="w-full"
+            onClick={onOpen}
+          >
+            {t("mobileConnect.device.open")}
+          </Button>
+        ) : (
+          <Button
+            loading={busy}
+            type="button"
+            size="touch"
+            className="w-full"
+            disabled={busy}
+            onClick={onRestart}
+          >
+            {t("mobileConnect.device.restart")}
+          </Button>
+        )}
+        <Button
+          type="button"
+          size="touch"
+          variant="ghost"
+          className="w-full"
+          disabled={busy}
+          onClick={onCancel}
+        >
+          {t("mobileConnect.cancel")}
+        </Button>
+      </div>
+    </div>
   );
 }
 
