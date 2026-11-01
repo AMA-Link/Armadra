@@ -173,7 +173,7 @@ MVP 闭环（场景 11 也按此验收）：
 - **协调者的规矩**：
   - 派发时只转发、不改写：人的原话原样放进任务开头，或用 `origin` 带上；自己的说明不超过 30 字，不写计划、不写验收清单。
   - 以 `canvas items` 读到的账本为准，不靠记忆。
-  - 不挂着等某一个成员：模型直接调用 `canvas_wait` 时最多等 5 秒；ama 的 `coordinator` 预设下 `task_ctl wait` 也最多等 5 秒（armadra-agent#244）。
+  - 不挂着等某一个成员：模型直接调用 `canvas_wait` 时最多等 5 秒；ama 的 `coordinator` 预设下 `task_ctl wait` 也最多等 5 秒（armadra-agent#242）。
 
 ## §5 `core/workflow/` 与协调者的分工
 

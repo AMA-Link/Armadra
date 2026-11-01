@@ -1068,7 +1068,7 @@ G5-25 追加：`GET /api/usage` 与 `POST /api/usage/refresh` 里 Claude 那一�
   取值与排序都在 `@armadra/shared` 的 `WORK_ITEM_STAGES`。
 
 - 重试（§15.7 换绑或重开）会清空最近一次报告和待决问题，历史保留。
-- ama 的适配器把模型直接调用的 `canvas_wait` 封顶在 5 秒（runner 自己的长轮询不受影响）；ama 自己的 `coordinator` 预设下，`task_ctl wait` 也封顶 5 秒（armadra-agent#244）。
+- ama 的适配器把模型直接调用的 `canvas_wait` 封顶在 5 秒（runner 自己的长轮询不受影响）；ama 自己的 `coordinator` 预设下，`task_ctl wait` 也封顶 5 秒（armadra-agent#242）。
 
 ## 16. 实时协同：`…/boards/{boardId}/sync` 与评论
 
