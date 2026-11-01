@@ -73,13 +73,14 @@ Armadra 使用同一套 React 页面。桌面端通过 Electron 壳提供本机�
 
 ### 多连接与个人中转（A1-5）
 
-一部手机可以同时记住多个连接，每个连接是电脑上的一个 core（源）。连接页（`mobile/ConnectScreen.tsx`）列出已有的连接，「添加连接」有三种方式：
+一部手机可以同时记住多个连接，每个连接是电脑上的一个 core（源）。连接页（`mobile/ConnectScreen.tsx`）列出已有的连接，「添加连接」有四种方式：
 
 1. **扫码 / 配对链接 / 配对码**：局域网 Gateway，现有流程。配对成功后以 core 的 `hostId` 记成一个连接。
-2. **个人中转**：地址、账号、口令。先让原生不带凭据取一次中转的信任锚指纹（`peek`），自签的中转要人核对指纹并确认，才钉住（`pin`），再 `POST /v1/auth/login`；登录后按 `me.sources` 勾选要连的在线主机，每台：`sources.assertion` → 经中继向源 core `cloud/login` → 会话进钥匙串。系统本来就信任的证书（ACME）与已经钉过同一枚的跳过核对。
-3. **分享链接 / 二维码**（`<issuer>/j/<id>#<秘密>.<邀请令牌>` 或 `armadra://join?link=&issuer=&s=`）：App 内扫码或系统相机扫到深链都直接挂载（`links.accept` → `cloud/login` 带邀请令牌）。
+2. **Armadra 云**：只填地址，不填口令（云端只留 GitHub / Google 登录）。设备码登录：`platform.info` 确认对端 `mode = saas`，`auth.deviceStart` 取设备码，用系统浏览器（原生 `openExternal`，浏览器里的手机布局用 `window.open`）打开批准页 `verificationUrl?code=<用户码>`（必须与签发方同源 https，回环才允许 http）；页面显示 8 位用户码与「等待在浏览器中批准」，按服务端给的间隔 `auth.devicePoll`（`mobile/device-poll.ts`：`rate_limited` 翻倍退避、封顶 30 秒、不早于对端的 `retryAfterMs`，App 回到前台立即补一次，取消即丢弃）。`approved` 后与个人中转一样按 `me.sources` 勾选主机并挂载；`deviceCode` 只留在 `createRelayEnrollment` 的闭包里，`denied` / `expired` 终结这一次，可「新设备码」重来。钥匙串里这份远程服务登录记 `kind = saas`、无指纹。「中转账号」表单里填了云的地址也改走设备码，口令不会发出。
+3. **个人中转**：地址、账号、口令。先让原生不带凭据取一次中转的信任锚指纹（`peek`），自签的中转要人核对指纹并确认，才钉住（`pin`），再 `POST /v1/auth/login`；登录后按 `me.sources` 勾选要连的在线主机，每台：`sources.assertion` → 经中继向源 core `cloud/login` → 会话进钥匙串。系统本来就信任的证书（ACME）与已经钉过同一枚的跳过核对。
+4. **分享链接 / 二维码**（`<issuer>/j/<id>#<秘密>.<邀请令牌>` 或 `armadra://join?link=&issuer=&s=`）：App 内扫码或系统相机扫到深链都直接挂载（`links.accept` → `cloud/login` 带邀请令牌）。
 
-SaaS 的添加方式没有入口，类型与分支留着。同一个源从两条路到达（局域网配对、个人中转）合并成连接表里的一行，选路时直连优先、探不通退回中继。
+同一个源从两条路到达（局域网配对、个人中转）合并成连接表里的一行，选路时直连优先、探不通退回中继。
 
 存放：连接表（`armadra.sources`，无凭据）在页面的本地存储；凭据只在钥匙串 / Keystore 里。`mobile/credentials.ts` 是手机的 `CredentialProvider`：直连用钥匙串里的刷新令牌向 Gateway 轮换，经中继先用远程服务的刷新令牌取云会话、要断言与中继令牌，再轮换源会话，被拒才用断言重新登录；轮换后的新令牌每次写回钥匙串，钥匙串是刷新令牌唯一的真相（身份面轮换后同样写回）。页面其余部分只认「当前连接」：入口（`mobile/entry.ts`）选路后把这一路的地址与凭据装给本机源，经中继时每个请求带 `armadra-relay-token`、每条流带 `armadra-relay.<令牌>` 子协议，令牌到期前与回到前台时提前续。连接页分「我的电脑 / 他人分享」两组；链接加入的主机作为同伴挂上，不顶替主连接；换到已挂着的连接只切当前源、不重载，没挂着的才记下进入意图重载一次。设置首页的「管理连接」是回连接页的唯一入口（地址改成 `#connections` 再重载）。
 
