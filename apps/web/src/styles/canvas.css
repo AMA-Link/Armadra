@@ -247,7 +247,8 @@
  * 写成媒体查询而不是容器查询：导航是窗口级的固定条，跟画布容器有多宽无关；
  * 放在容器查询之后，同权重下由它接管 `--dock-bottom`。
  */
-@media (max-width: 767px) {
+@media (max-width: 767px),
+  (pointer: coarse) and (max-height: 500px) and (max-width: 1023px) {
   .canvas-dock-row {
     --dock-bottom: calc(var(--mobile-nav-h) + var(--safe-bottom) + 10px);
     /* 手机上 Dock 要用整个宽度，缩略图改到它上方（下面那条规则）。 */

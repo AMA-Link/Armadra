@@ -49,6 +49,7 @@ import { usePreferencesStore } from "../app/preferences-store";
 import { useCanvasStore } from "../store/canvas-store";
 import { useNeedsStore } from "../notifications/needs-store";
 import { LeftSidebar } from "./LeftSidebar";
+import { COMPACT_QUERY } from "../platform/layout";
 
 installDomPolyfills();
 const initialMatchMedia = window.matchMedia;
@@ -95,7 +96,7 @@ function responsiveWidth(initial: number) {
   let width = initial;
   const listeners = new Set<EventListenerOrEventListenerObject>();
   vi.spyOn(window, "matchMedia").mockImplementation((query) => {
-    if (query !== "(max-width: 767px)") return initialMatchMedia(query);
+    if (query !== COMPACT_QUERY) return initialMatchMedia(query);
     return {
       ...initialMatchMedia(query),
       matches: width <= 767,
@@ -289,7 +290,7 @@ describe("LeftSidebar", () => {
     const original = window.matchMedia;
     vi.spyOn(window, "matchMedia").mockImplementation((query) => ({
       ...original(query),
-      matches: query === "(max-width: 767px)",
+      matches: query === COMPACT_QUERY,
     }));
     useCanvasStore.getState().setPanel("sidebar", "collapsed");
     renderSidebar();
@@ -307,7 +308,7 @@ describe("LeftSidebar", () => {
     const original = window.matchMedia;
     vi.spyOn(window, "matchMedia").mockImplementation((query) => ({
       ...original(query),
-      matches: query === "(max-width: 767px)",
+      matches: query === COMPACT_QUERY,
     }));
     renderSidebar();
     const drawer = await screen.findByRole("dialog", { name: "侧栏" });

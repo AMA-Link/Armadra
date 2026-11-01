@@ -50,7 +50,8 @@
   padding: var(--space-inset);
 }
 
-@media (max-width: 767px) {
+@media (max-width: 767px),
+  (pointer: coarse) and (max-height: 500px) and (max-width: 1023px) {
   .settings-row-controls > * {
     min-width: 0;
     max-width: 100%;

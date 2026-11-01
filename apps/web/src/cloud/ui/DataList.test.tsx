@@ -7,6 +7,7 @@ import {
 } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 
+import { COMPACT_QUERY } from "../../platform/layout";
 import { DataList, type DataColumn } from "./DataList";
 
 afterEach(cleanup);
@@ -148,7 +149,7 @@ describe("DataList", () => {
     const original = window.matchMedia;
     window.matchMedia = ((query: string) =>
       ({
-        matches: query === "(max-width: 767px)",
+        matches: query === COMPACT_QUERY,
         media: query,
         addEventListener: () => undefined,
         removeEventListener: () => undefined,
