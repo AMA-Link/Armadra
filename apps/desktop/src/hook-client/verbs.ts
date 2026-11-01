@@ -216,6 +216,9 @@ const CANVAS: Record<ControlVerb, Row> = {
       agent: str("agent id, e.g. claude, codex, or custom:<id>"),
       task: str("the first task, sent when the node is idle"),
       title: str("node title"),
+      "item-title": str(
+        "one-line title for the work item, at most 80 characters (default: --title)",
+      ),
       model: str("model alias, 1–120 characters"),
       worktree: str(
         "a worktree name or path; the node goes in that checkout's Frame (created if missing)",

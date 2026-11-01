@@ -444,9 +444,10 @@ export async function openAgent(
         nodeId: node.id,
         now: nowMs,
         task,
-        // 账本的标题：显式 `--title`，否则任务正文的第一行（runner 只给一个
-        // `--name`），再否则节点标题。
+        // 账本的标题：`--item-title`（runner 给的，任务正文的第一行），否则
+        // `--title`，再否则任务正文的第一行，最后是节点标题。
         title:
+          args.text("item-title") ??
           args.text("title") ??
           (task === undefined ? undefined : task.split("\n", 1)[0]) ??
           title,

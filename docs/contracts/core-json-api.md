@@ -4828,7 +4828,7 @@ owner（本机会话，或已信任设备经通道的 owner 会话）：`{ sourc
 
 | 列               | 内容                                                                                                                                                          |
 | ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `title`          | 一行标题，不超过 80 字。派发时给出：`--title`；runner 只给 `--name`，则取任务正文第一行；`team` 成员取成员标题                                                |
+| `title`          | 一行标题，不超过 80 字。派发时给出：`open-agent --item-title`（runner 给的，任务正文的第一行）优先，其次 `--title`，再次任务正文第一行；`team` 成员取成员标题 |
 | `origin_json`    | 来源 `{ kind: "human" \| "inbox" \| "schedule" \| "external", ref, text? }`。本期派发一律是 `{ kind: "human", ref: <协调者节点 id>, text: <任务正文> }`       |
 | `mandate_json`   | 授权 `{ by, basis: "asked" \| "rule", scope, at }`，派发时写入，之后没有任何语句改它。本期是 `{ by: <协调者节点 id>, basis: "asked", scope: "dispatch", at }` |
 | `report_json`    | 最近一次报告 `{ state, summary, at }`                                                                                                                         |

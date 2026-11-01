@@ -47,7 +47,7 @@ export const CANVAS_USAGE = `CANVAS:
   post --to NAME --key KEY --body TEXT store a handoff for a linked agent
   inbox --limit 10 --after 0           read your pending messages without acknowledgement
   ack --id ID                         acknowledge one received message
-  open-agent --agent ID [--task TEXT] [--title T] [--permission-mode M]
+  open-agent --agent ID [--task TEXT] [--title T] [--item-title T] [--permission-mode M]
                                       [--model M] [--after ID]
                                       [--after-turn current|next] [--ttl MIN]
                                       [--worktree NAME_OR_PATH] [--cwd DIR]

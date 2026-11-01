@@ -90,6 +90,14 @@ describe("the ledger row", () => {
     expect(taskRun(fixture.database, "s1:t1")!.mandate).toEqual(mandate);
   });
 
+  it("takes --item-title over the node name", async () => {
+    await dispatch("s1:t9", {
+      "item-title": "审查登录",
+      task: "审查登录接口\n\nWhen done, report",
+    });
+    expect(taskRun(fixture.database, "s1:t9")!.title).toBe("审查登录");
+  });
+
   it("caps the title at 80 characters", async () => {
     await dispatch("s1:long", { title: "题".repeat(120) });
     expect([
