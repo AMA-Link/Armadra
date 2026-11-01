@@ -36,7 +36,10 @@ import {
   cloudAcceptLink,
   cloudAssertion,
   cloudLinkInfo,
+  cloudDevicePoll,
+  cloudDeviceStart,
   cloudLogin,
+  cloudPlatformInfo,
   cloudSources,
   coreCloudLogin,
   thisDevice,
@@ -426,6 +429,16 @@ export type RelayOutcome =
   | { readonly kind: "sources"; readonly sources: readonly RelaySourceChoice[] }
   | { readonly kind: "done" }
   /**
+   * Armadra 云的设备码登录已发起：界面显示 `userCode`，人在系统浏览器里批准，同时按
+   * `intervalMs` 调 `pollDevice`。`deviceCode`（秘密）只留在登记流程里，不出来。
+   */
+  | {
+      readonly kind: "device";
+      readonly userCode: string;
+      readonly expiresAtMs: number;
+      readonly intervalMs: number;
+    }
+  /**
    * 远程服务要求人机验证（契约 §62）：界面升起挑战面板，拿到令牌再 `begin` 一次
    * （入参加 `challengeToken`）。
    */
@@ -437,6 +450,47 @@ const failed = (failure: ConnectFailure): RelayOutcome => ({
   failure,
 });
 
+/** 设备码轮询一次的结果：还在等 / 稍后再问（限流、暂时连不上）/ 批准后的下一步或终结。 */
+export type DevicePollResult =
+  | { readonly kind: "pending" }
+  | { readonly kind: "retry"; readonly afterMs: number }
+  | Extract<RelayOutcome, { kind: "sources" | "failure" }>;
+
+/** 连续连不上这么多次才放弃（每次间隔一个轮询间隔，容得下地铁里的几十秒断网）。 */
+const MAX_POLL_TRANSPORT_FAILURES = 6;
+
+const LOOPBACK_HOSTS = new Set(["localhost", "127.0.0.1", "[::1]"]);
+
+/**
+ * 批准页要让人在浏览器里打开：必须是签发方同源的 https（回环才允许 http），否则被
+ * 攻陷或配错的远程服务能把人带去别的站点。没带 `code` 的补上，人不必再手输。
+ */
+export function verificationLink(
+  verificationUrl: string,
+  userCode: string,
+  issuer: string,
+): string | null {
+  try {
+    const target = new URL(verificationUrl);
+    const origin = new URL(issuer);
+    const scheme =
+      target.protocol === "https:" ||
+      (target.protocol === "http:" && LOOPBACK_HOSTS.has(target.hostname));
+    if (
+      !scheme ||
+      target.origin !== origin.origin ||
+      target.username !== "" ||
+      target.password !== ""
+    )
+      return null;
+    if (!target.searchParams.has("code"))
+      target.searchParams.set("code", userCode);
+    return target.toString();
+  } catch {
+    return null;
+  }
+}
+
 export interface RelayDeps {
   readonly bridge: NativeBridge;
   readonly cloud?: CloudOptions;
@@ -444,6 +498,26 @@ export interface RelayDeps {
   readonly e2e?: E2eChannels;
   /** 挂好之后重新加载：本机源的地址在一次加载里只算一次。 */
   readonly reload: () => void;
+  /**
+   * 打开批准页；打不开是 `false`。缺省：原生 App 交给系统浏览器，其余（浏览器里跑的
+   * 手机布局）`window.open`。
+   */
+  readonly open?: (url: string) => Promise<boolean>;
+  /** 时钟（设备码到期）；缺省 `Date.now`。 */
+  readonly now?: () => number;
+}
+
+/** 缺省的打开方式：原生插件优先，没有就开新标签页。 */
+async function openVerificationPage(
+  bridge: NativeBridge,
+  url: string,
+): Promise<boolean> {
+  if (bridge.available && (await bridge.openExternal(url))) return true;
+  try {
+    return globalThis.open?.(url, "_blank", "noopener,noreferrer") != null;
+  } catch {
+    return false;
+  }
 }
 
 /** 个人中转的添加：地址 + 账号 + 口令，或一枚分享链接。 */
@@ -456,6 +530,19 @@ export interface RelayEnrollment {
     /** 挑战面板交回的一次性令牌（契约 §62）。 */
     readonly challengeToken?: string;
   }): Promise<RelayOutcome>;
+  /**
+   * Armadra 云：只要地址，不要口令。先核对信任锚（需要时），确认对端是 Armadra 云，
+   * 发起设备码登录（`device` 结果），并在系统浏览器里打开批准页。
+   */
+  beginDevice(input: { readonly issuer: string }): Promise<RelayOutcome>;
+  /** 这个地址是不是 Armadra 云（匿名平台信息）；问不到当作不是。 */
+  isCloud(address: string): Promise<boolean>;
+  /** 问一次批准了没有；批准后列出能挂的源，接着 `mount`。没有进行中的设备码是 `expired`。 */
+  pollDevice(): Promise<DevicePollResult>;
+  /** 再打开一次批准页（浏览器里弹窗被拦、或人关掉了）；打不开是 `false`。 */
+  openVerification(): Promise<boolean>;
+  /** 放弃这一次设备码登录（不影响已存的连接）。 */
+  cancelDevice(): void;
   /** 分享链接 / 二维码：直接挂载（指纹见过的不再问）。 */
   join(link: string): Promise<RelayOutcome>;
   /** 人确认了指纹：钉住，接着刚才的步骤。 */
@@ -482,6 +569,17 @@ export function createRelayEnrollment(
   let resume: (() => Promise<RelayOutcome>) | null = null;
   let session: CloudSession | null = null;
   let choices: readonly CloudSource[] = [];
+  /** 这次登录的是 Armadra 云（设备码）而不是个人中转：钥匙串里记 `saas`、不带指纹。 */
+  let saas = false;
+  /** 进行中的设备码登录；`deviceCode` 是秘密，只在这里。 */
+  let device: {
+    readonly deviceCode: string;
+    readonly userCode: string;
+    readonly openUrl: string;
+    readonly expiresAtMs: number;
+    transportFailures: number;
+  } | null = null;
+  const now = deps.now ?? Date.now;
 
   const reset = () => {
     issuer = "";
@@ -489,6 +587,72 @@ export function createRelayEnrollment(
     resume = null;
     session = null;
     choices = [];
+    saas = false;
+    device = null;
+  };
+
+  const listSources = async (current: CloudSession): Promise<RelayOutcome> => {
+    choices = await cloudSources(issuer, current.accessToken, deps.cloud);
+    if (choices.length === 0) return failed("noSources");
+    return {
+      kind: "sources",
+      sources: choices.map(({ sourceId, name, online }) => ({
+        sourceId,
+        name,
+        online,
+      })),
+    };
+  };
+
+  const openVerification = async (): Promise<boolean> => {
+    const current = device;
+    if (current === null) return false;
+    const open =
+      deps.open ?? ((url: string) => openVerificationPage(deps.bridge, url));
+    try {
+      return await open(current.openUrl);
+    } catch {
+      return false;
+    }
+  };
+
+  /** 确认对端是 Armadra 云，取设备码，打开批准页。 */
+  const startDevice = async (): Promise<RelayOutcome> => {
+    session = null;
+    choices = [];
+    device = null;
+    saas = true;
+    try {
+      const info = await cloudPlatformInfo(issuer, deps.cloud);
+      if (info.mode !== "saas") {
+        saas = false;
+        return failed("notCloud");
+      }
+      const started = await cloudDeviceStart(issuer, thisDevice(), deps.cloud);
+      const openUrl = verificationLink(
+        started.verificationUrl,
+        started.userCode,
+        issuer,
+      );
+      if (openUrl === null) return failed("failed");
+      device = {
+        deviceCode: started.deviceCode,
+        userCode: started.userCode,
+        openUrl,
+        expiresAtMs: started.expiresAtMs,
+        transportFailures: 0,
+      };
+      // 打不开不算失败：界面一直有「在浏览器中打开」。
+      await openVerification();
+      return {
+        kind: "device",
+        userCode: started.userCode,
+        expiresAtMs: started.expiresAtMs,
+        intervalMs: started.intervalMs,
+      };
+    } catch (error) {
+      return failed(cloudFailureOf(error));
+    }
   };
 
   /**
@@ -518,6 +682,15 @@ export function createRelayEnrollment(
     password: string,
     challengeToken?: string,
   ): Promise<RelayOutcome> => {
+    // Armadra 云没有口令登录：地址填进了账号口令表单也改走设备码，口令不会发出去。
+    if (challengeToken === undefined) {
+      const info = await cloudPlatformInfo(issuer, deps.cloud).catch(
+        () => null,
+      );
+      if (info?.mode === "saas") return startDevice();
+    }
+    saas = false;
+    device = null;
     try {
       session = await cloudLogin(
         issuer,
@@ -527,22 +700,13 @@ export function createRelayEnrollment(
         deps.cloud,
         challengeToken,
       );
-      choices = await cloudSources(issuer, session.accessToken, deps.cloud);
+      return await listSources(session);
     } catch (error) {
       session = null;
       if (error instanceof CloudChallengeRequired)
         return { kind: "challenge", siteKey: error.challenge.siteKey };
       return failed(cloudFailureOf(error));
     }
-    if (choices.length === 0) return failed("noSources");
-    return {
-      kind: "sources",
-      sources: choices.map(({ sourceId, name, online }) => ({
-        sourceId,
-        name,
-        online,
-      })),
-    };
   };
 
   /**
@@ -557,9 +721,10 @@ export function createRelayEnrollment(
     await deps.bridge.setRemote({
       serviceId,
       issuer,
-      kind: "personal",
+      kind: saas ? "saas" : "personal",
       refreshToken,
-      fingerprint,
+      // Armadra 云用系统信任的证书，没有可钉的锚。
+      fingerprint: saas ? "" : fingerprint,
     });
   };
 
@@ -589,6 +754,68 @@ export function createRelayEnrollment(
 
   return {
     reset,
+    async beginDevice(input) {
+      const origin = issuerOrigin(input.issuer);
+      if (origin === null) return failed("address");
+      return gate(origin, startDevice);
+    },
+    async isCloud(address) {
+      const origin = issuerOrigin(address);
+      if (origin === null) return false;
+      const info = await cloudPlatformInfo(origin, deps.cloud).catch(
+        () => null,
+      );
+      return info?.mode === "saas";
+    },
+    async pollDevice() {
+      const current = device;
+      if (current === null)
+        return { kind: "failure", failure: "deviceExpired" };
+      if (now() >= current.expiresAtMs) {
+        device = null;
+        return { kind: "failure", failure: "deviceExpired" };
+      }
+      let answer: Awaited<ReturnType<typeof cloudDevicePoll>>;
+      try {
+        answer = await cloudDevicePoll(issuer, current.deviceCode, deps.cloud);
+      } catch (error) {
+        if (device !== current) return { kind: "failure", failure: "failed" };
+        if (error instanceof CloudError && error.code === "rate_limited")
+          return { kind: "retry", afterMs: error.retryAfterMs };
+        if (
+          error instanceof CloudTransportError &&
+          ++current.transportFailures < MAX_POLL_TRANSPORT_FAILURES
+        )
+          return { kind: "retry", afterMs: 0 };
+        device = null;
+        return { kind: "failure", failure: cloudFailureOf(error) };
+      }
+      // 等回答期间被取消（或换了新的设备码）：丢弃这次的答案，不存会话。
+      if (device !== current) return { kind: "failure", failure: "failed" };
+      current.transportFailures = 0;
+      if (answer.status === "pending") return { kind: "pending" };
+      device = null;
+      if (answer.status === "denied")
+        return { kind: "failure", failure: "denied" };
+      if (answer.status === "expired")
+        return { kind: "failure", failure: "deviceExpired" };
+      try {
+        session = answer.session;
+        const listed = await listSources(answer.session);
+        return listed.kind === "sources" || listed.kind === "failure"
+          ? listed
+          : { kind: "failure", failure: "failed" };
+      } catch (error) {
+        session = null;
+        return { kind: "failure", failure: cloudFailureOf(error) };
+      }
+    },
+    openVerification,
+    cancelDevice() {
+      device = null;
+      session = null;
+      choices = [];
+    },
     async begin(input) {
       const origin = issuerOrigin(input.issuer);
       if (origin === null) return failed("address");
@@ -600,7 +827,7 @@ export function createRelayEnrollment(
       if (parsed === null) return failed("invalid");
       return gate(parsed.issuer, async () => {
         try {
-          const device = thisDevice();
+          const deviceInfo = thisDevice();
           // 权限与到期只为连接页上那一行的标注：取不到不影响加入。
           const info = await cloudLinkInfo(
             issuer,
@@ -611,7 +838,7 @@ export function createRelayEnrollment(
             issuer,
             parsed.linkId,
             parsed.secret,
-            device,
+            deviceInfo,
             deps.cloud,
           );
           const login = await coreCloudLogin(
@@ -696,7 +923,7 @@ export function createRelayEnrollment(
     async mount(sourceIds) {
       const current = session;
       if (current === null) return failed("failed");
-      const device = thisDevice();
+      const deviceInfo = thisDevice();
       // 主人这一槽按账号；远程服务没答账号时用固定的 `owner`（仍与访客分开）。
       const slot = serviceIdOf(issuer, current.account?.accountId || "owner");
       let mounted: string | null = null;
@@ -709,7 +936,7 @@ export function createRelayEnrollment(
             issuer,
             current.accessToken,
             sourceId,
-            device,
+            deviceInfo,
             deps.cloud,
           );
           if (!assertion.online) continue;

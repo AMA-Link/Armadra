@@ -222,7 +222,7 @@ armadra-server cloud revoke --issuer https://relay.example.com
 armadra-server invite --cloud-link --issuer https://relay.example.com --workspace <画布 id> --role editor --max-uses 5 --expires 7d
 ```
 
-登记到 Armadra 云（SaaS）用同一组命令：控制台「登记主机」给的注册令牌走 `cloud register --token-stdin`；`cloud login --issuer <控制台地址>` 是设备码登录——终端（标准错误）打印设备码与验证地址，在浏览器里核对后批准。本机还没登记就按 `--space personal|<团队 slug>`（缺省个人空间）登记；已经用令牌登记过的只做「关联」：取一张为本机签的断言，把这个云账号映射为本机主人（令牌登记不知道是哪个账号）。主人先经浏览器以团队成员身份进来过、映射已指向云端自动建的成员时，本机的 `cloud login` 会把映射迁回主人（契约 §88.5），之后浏览器要重新放行一次。分享链接 `invite --cloud-link --issuer <控制台地址> --host`（或 `--workspace`）落在控制台来源上；Armadra 云的链接不支持 `--group`。
+登记到 Armadra 云（SaaS）用同一组命令：控制台「登记主机」给的注册令牌走 `cloud register --token-stdin`；`cloud login` 是设备码登录，`--issuer` 缺省是 Armadra 云的默认地址 `https://app.armadra.com`（环境变量 `ARMADRA_CLOUD_ISSUER` 可覆盖，只收 https，回环另收 http；自建或测试部署显式给 `--issuer <控制台地址>`；个人中转的 `cloud login` 仍要显式 `--issuer`）——终端（标准错误）打印设备码与验证地址，在浏览器里核对后批准。本机还没登记就按 `--space personal|<团队 slug>`（缺省个人空间）登记；已经用令牌登记过的只做「关联」：取一张为本机签的断言，把这个云账号映射为本机主人（令牌登记不知道是哪个账号）。主人先经浏览器以团队成员身份进来过、映射已指向云端自动建的成员时，本机的 `cloud login` 会把映射迁回主人（契约 §88.5），之后浏览器要重新放行一次。分享链接 `invite --cloud-link --issuer <控制台地址> --host`（或 `--workspace`）落在控制台来源上；Armadra 云的链接不支持 `--group`。
 
 ```sh
 armadra-server cloud login --issuer https://app.example.com --space rd

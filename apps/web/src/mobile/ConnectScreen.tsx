@@ -2,6 +2,7 @@ import * as React from "react";
 import { parsePairingUri, storagePairings } from "../sources/e2e/pairing";
 import {
   ChevronLeft,
+  Cloud,
   KeyRound,
   Link2,
   LogIn,
@@ -28,7 +29,15 @@ import type {
   RelaySourceChoice,
 } from "./connect";
 import { ChallengeSheet } from "./ChallengeSheet";
-import { FingerprintStep, RelayForm, SourcesStep } from "./ConnectRelay";
+import {
+  CloudStep,
+  DeviceStep,
+  FingerprintStep,
+  RelayForm,
+  SourcesStep,
+} from "./ConnectRelay";
+import { DevicePoller } from "./device-poll";
+import { cloudIssuer } from "../sources/cloud-issuer";
 import type { ServiceStatus } from "../services/probe";
 import type { ServiceRow } from "../services/rows";
 import { ServicePicker } from "../services/ServicePicker";
@@ -61,7 +70,10 @@ export type ConnectFailure =
   | "address"
   | "codeMismatch"
   | "anchorChanged"
-  | "codeUpgrade";
+  | "codeUpgrade"
+  | "denied"
+  | "deviceExpired"
+  | "notCloud";
 
 /** 原生 App 里「添加连接」的几个视图（多连接）。 */
 export type ConnectView =
@@ -70,6 +82,8 @@ export type ConnectView =
   | "link"
   | "code"
   | "relay"
+  | "cloud"
+  | "device"
   | "fingerprint"
   | "sources";
 
@@ -149,6 +163,11 @@ export interface ConnectScreenProps {
     readonly account?: string;
     readonly password?: string;
   };
+  /** 展示页用：钉住设备码那一步显示的用户码。 */
+  readonly initialDevice?: {
+    readonly userCode: string;
+    readonly intervalMs: number;
+  };
 }
 
 /**
@@ -225,6 +244,7 @@ export function ConnectScreen({
   initialFingerprint = "",
   initialSources = [],
   initialRelay,
+  initialDevice,
 }: ConnectScreenProps) {
   const t = useT();
   const multi = mode === "native" && relay !== undefined;
@@ -249,6 +269,14 @@ export function ConnectScreen({
   // 选择页上「登录」那个远程服务：中转表单预填它的地址。
   const [relayIssuer, setRelayIssuer] = React.useState<string | null>(null);
   const [opening, setOpening] = React.useState<string | null>(null);
+  // Armadra 云的设备码登录：用户码给人看，批准在系统浏览器里；`null` 是没有进行中的。
+  const [device, setDevice] = React.useState<{
+    readonly userCode: string;
+    readonly intervalMs: number;
+  } | null>(initialDevice ?? null);
+  // 设备码登录的目标：缺省是 Armadra 云的默认地址，选择页上登录失效的云连接用它自己的签发方。
+  const lastCloudIssuer = React.useRef("");
+  const cloudTarget = () => lastCloudIssuer.current || cloudIssuer();
   /** 正在看哪个源的流量（设计 §6.4）；`null` 是列表。 */
   const [trafficId, setTrafficId] = React.useState<string | null>(null);
   const monthTraffic = useMonthTraffic();
@@ -335,6 +363,13 @@ export function ConnectScreen({
         });
         break;
       }
+      case "device":
+        setDevice({
+          userCode: outcome.userCode,
+          intervalMs: outcome.intervalMs,
+        });
+        setView("device");
+        break;
       case "fingerprint":
         setFingerprint(outcome.fingerprint);
         setView("fingerprint");
@@ -364,6 +399,44 @@ export function ConnectScreen({
       setBusy(false);
     }
   };
+
+  // 等设备码批准：按服务端给的间隔轮询，App 回到前台立即补一次；终结（批准、拒绝、过期）
+  // 就停。设备码的秘密在 `relay` 里，这里只有给人看的用户码。
+  const waitingForDevice =
+    relay !== undefined &&
+    view === "device" &&
+    device !== null &&
+    shownFailure === null;
+  React.useEffect(() => {
+    if (!waitingForDevice || relay === undefined || device === null) return;
+    const poller = new DevicePoller<
+      Extract<RelayOutcome, { kind: "sources" | "failure" }>
+    >({
+      intervalMs: device.intervalMs,
+      poll: async () => {
+        const answer = await relay.pollDevice();
+        if (answer.kind === "pending") return { kind: "pending" };
+        if (answer.kind === "retry")
+          return { kind: "retry", afterMs: answer.afterMs };
+        return { kind: "settled", value: answer };
+      },
+      onSettled: (outcome) => apply(outcome),
+      onError: () => setFailure("failed"),
+    });
+    poller.start();
+    const resume = () => {
+      if (document.visibilityState === "visible") poller.pollNow();
+    };
+    document.addEventListener("visibilitychange", resume);
+    window.addEventListener("focus", resume);
+    return () => {
+      poller.stop();
+      document.removeEventListener("visibilitychange", resume);
+      window.removeEventListener("focus", resume);
+    };
+    // 只在开始等一个新的设备码时建立；`apply` 只用稳定的 setter。
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [waitingForDevice, device?.userCode, relay]);
 
   /** 链接 / 二维码：个人中转的分享链接直接挂载，其余按配对链接处理。 */
   const submitLink = async (value: string) => {
@@ -401,6 +474,7 @@ export function ConnectScreen({
 
   const back = () => {
     relay?.reset();
+    setDevice(null);
     setFailure(null);
     setView(connections.length > 0 ? "list" : "add");
   };
@@ -426,13 +500,15 @@ export function ConnectScreen({
       ? "services.title"
       : view === "relay"
         ? "mobileConnect.method.relay"
-        : view === "fingerprint"
-          ? "mobileConnect.fingerprint.title"
-          : view === "sources"
-            ? "mobileConnect.sources.title"
-            : multi && view === "add" && connections.length > 0
-              ? "mobileConnect.add"
-              : "mobileConnect.title";
+        : view === "cloud" || view === "device"
+          ? "mobileConnect.method.cloud"
+          : view === "fingerprint"
+            ? "mobileConnect.fingerprint.title"
+            : view === "sources"
+              ? "mobileConnect.sources.title"
+              : multi && view === "add" && connections.length > 0
+                ? "mobileConnect.add"
+                : "mobileConnect.title";
   const panel = multi && view !== "link" && view !== "code";
 
   const header = (
@@ -452,12 +528,36 @@ export function ConnectScreen({
   const rootClass =
     "flex min-h-[100dvh] w-full flex-col items-center overflow-y-auto bg-background pt-[max(var(--safe-top),15vh)] pr-[calc(1.5rem+var(--safe-right))] pb-[max(var(--safe-bottom),24px)] pl-[calc(1.5rem+var(--safe-left))]";
 
-  /** 选择页上的「登录」：中转表单预填那个远程服务。 */
+  /** 开始 Armadra 云的设备码登录（地址不让人填）。 */
+  const signInCloud = (issuer: string) => {
+    lastCloudIssuer.current = issuer;
+    setRelayHost(hostOf(issuer) ?? "");
+    return step(() => relay!.beginDevice({ issuer }));
+  };
+
+  /** 选择页上的「登录」：Armadra 云直达设备码，其余中转表单预填那个远程服务。 */
   const signInTo = (issuer: string) => {
     relay?.reset();
+    setDevice(null);
     setFailure(null);
     setRelayIssuer(issuer);
-    setView("relay");
+    setBusy(true);
+    void (async () => {
+      let cloud = false;
+      try {
+        cloud = (await relay?.isCloud(issuer)) === true;
+      } catch {
+        cloud = false;
+      }
+      setBusy(false);
+      if (!cloud) {
+        setView("relay");
+        return;
+      }
+      // 失败时留在带「登录」的云页上，可以直接再点。
+      setView("cloud");
+      await signInCloud(issuer);
+    })();
   };
   const failedRow =
     failedId === undefined || shownFailure === null
@@ -631,6 +731,22 @@ export function ConnectScreen({
                 disabled={shownBusy}
                 onClick={() => {
                   setFailure(null);
+                  lastCloudIssuer.current = "";
+                  setRelayHost(hostOf(cloudIssuer()) ?? "");
+                  setView("cloud");
+                }}
+              >
+                <Cloud data-icon="inline-start" />
+                {t("mobileConnect.method.cloud")}
+              </Button>
+              <Button
+                type="button"
+                size="touch"
+                variant="outline"
+                className="w-full"
+                disabled={shownBusy}
+                onClick={() => {
+                  setFailure(null);
                   setView("relay");
                 }}
               >
@@ -652,6 +768,51 @@ export function ConnectScreen({
               )}
             </div>
           )}
+          {view === "cloud" && (
+            <>
+              <CloudStep
+                host={hostOf(cloudTarget()) ?? ""}
+                busy={shownBusy}
+                message={message}
+                errorId={errorId}
+                onSignIn={() => void signInCloud(cloudTarget())}
+              />
+              <Button
+                type="button"
+                size="touch"
+                variant="ghost"
+                className="w-full"
+                disabled={shownBusy}
+                onClick={() => {
+                  setFailure(null);
+                  setView("add");
+                }}
+              >
+                <ChevronLeft data-icon="inline-start" />
+                {t("mobileConnect.back")}
+              </Button>
+            </>
+          )}
+          {view === "device" && device !== null && (
+            <DeviceStep
+              host={relayHost}
+              userCode={device.userCode}
+              waiting={shownFailure === null}
+              busy={shownBusy}
+              message={message}
+              errorId={errorId}
+              onOpen={() => void relay.openVerification()}
+              onRestart={() =>
+                void step(() => relay.beginDevice({ issuer: cloudTarget() }))
+              }
+              onCancel={() => {
+                relay.cancelDevice();
+                setDevice(null);
+                setFailure(null);
+                setView("cloud");
+              }}
+            />
+          )}
           {view === "relay" && (
             <>
               <RelayForm
@@ -668,6 +829,8 @@ export function ConnectScreen({
                 onSubmit={(input) => {
                   setRelayHost(hostOf(input.issuer) ?? "");
                   lastRelayInput.current = input;
+                  // 地址若是 Armadra 云，`begin` 会改走设备码；「新设备码」从这个地址重来。
+                  lastCloudIssuer.current = input.issuer;
                   void step(() => relay.begin(input));
                 }}
               />

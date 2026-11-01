@@ -24,7 +24,9 @@ import {
 } from "../fixtures/acp";
 import {
   MOBILE_CA_HREF,
+  MOBILE_CLOUD_HOST,
   MOBILE_CODE,
+  MOBILE_DEVICE_CODE,
   MOBILE_CONNECTIONS,
   MOBILE_CONNECTION_STATUSES,
   MOBILE_LINK,
@@ -43,6 +45,11 @@ const noop = () => undefined;
 const pendingOutcome = () => new Promise<RelayOutcome>(() => undefined);
 const relayStub: RelayEnrollment = {
   begin: pendingOutcome,
+  beginDevice: pendingOutcome,
+  pollDevice: () => new Promise<never>(() => undefined),
+  openVerification: async () => true,
+  cancelDevice: noop,
+  isCloud: async () => true,
   join: pendingOutcome,
   trust: pendingOutcome,
   mount: pendingOutcome,
@@ -186,6 +193,31 @@ function Screen({
             relay={relayStub}
             initialView="relay"
             initialRelay={{ issuer: MOBILE_RELAY_HOST, account: "owner" }}
+            onConnect={never}
+            onScan={never}
+          />
+        );
+      case "cloud":
+        return (
+          <ConnectScreen
+            mode="native"
+            canScan
+            relay={relayStub}
+            initialView="cloud"
+            initialRelay={{ issuer: MOBILE_CLOUD_HOST }}
+            onConnect={never}
+            onScan={never}
+          />
+        );
+      case "device":
+        return (
+          <ConnectScreen
+            mode="native"
+            canScan
+            relay={relayStub}
+            initialView="device"
+            initialRelay={{ issuer: MOBILE_CLOUD_HOST }}
+            initialDevice={{ userCode: MOBILE_DEVICE_CODE, intervalMs: 5_000 }}
             onConnect={never}
             onScan={never}
           />

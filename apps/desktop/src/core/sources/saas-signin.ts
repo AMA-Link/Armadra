@@ -6,7 +6,12 @@
  * 不进答案、日志与库；注册令牌同样只在一次 `register` 调用里转一圈。
  */
 
-import type { RemoteService } from "@armadra/shared";
+import {
+  ARMADRA_CLOUD_ISSUER,
+  ARMADRA_CLOUD_ISSUER_ENV,
+  type RemoteService,
+  resolveCloudIssuer,
+} from "@armadra/shared";
 
 import { CoreFailure, fail } from "../http/errors";
 import { normalizeOrigin } from "./http-client";
@@ -67,7 +72,15 @@ export class CloudSignIn {
    */
   async start(input: { issuer: string; label?: string | undefined }) {
     const { host } = this;
-    const issuer = normalizeOrigin(input.issuer);
+    // 页面（手机、桌面界面）不让人填地址，发来的是默认地址：在这里换成本机进程环境
+    // `ARMADRA_CLOUD_ISSUER` 覆盖的值（开发与测试用，只收 https，回环另收 http）。
+    const requested = normalizeOrigin(input.issuer);
+    const issuer =
+      requested === ARMADRA_CLOUD_ISSUER
+        ? normalizeOrigin(
+            resolveCloudIssuer(process.env[ARMADRA_CLOUD_ISSUER_ENV]),
+          )
+        : requested;
     const label = checkLabel(input.label);
     const existing = host.store.remoteByIssuer(issuer);
     if (existing !== undefined && existing.kind !== "saas") {

@@ -6,8 +6,13 @@
 
 ### 桌面 / 服务器
 
+- Armadra 云默认地址与直接登录：共享常量 `ARMADRA_CLOUD_ISSUER`（`https://app.armadra.com`），开发与测试可用环境变量覆盖（桌面 core / 服务器壳读进程环境，网页读构建时 `VITE_ARMADRA_CLOUD_ISSUER`，只收 https，回环另收 http）；桌面「远程访问 → 添加 Armadra 云」去掉地址输入，只留「登录」；`armadra-server cloud login` 的 `--issuer` 缺省取这个地址，自建或测试部署仍可显式给；个人中转的连接方式不变（#661）。
 - 云端控制台第三方登录：登录与注册页按能力位 `auth.oauth.github` / `auth.oauth.google` 显示「使用 GitHub / Google 继续」，新路由 `/login/oauth/:provider` 回跳完成登录（`next` 含设备码批准页，两步验证复用第二步）；服务端不报 `auth.password` 时隐藏口令表单、找回与注册入口，不报 `auth.password-change` 时账号页收起「更改口令」；运营登录不变；`/h/<主机>` 未登录跳 `/login?next=/h/<主机>`（#661，配合 armadra-cloud#184）。
 - 修复：浏览器节点的 guest session 默认拒绝站点权限请求与权限检查（摄像头、麦克风、定位、通知等），只放行往剪贴板写入；此前 Electron 默认批准且 guest 里无提示（#647）。
+
+### 手机与平板
+
+- 连接 Armadra 云改用设备码登录：「添加连接 → Armadra 云」只有「登录」，没有地址与口令输入，用系统浏览器打开批准页（在那里用 GitHub / Google 登录），按服务端间隔轮询，限流退避，回到前台立即补一次；批准后选主机挂载；登录失效的云连接点「登录」直达；个人中转的账号口令登录不变（#661）。
 
 ## 0.11.0（2026-10-30）
 

@@ -20,16 +20,17 @@ import {
 } from "@/panels/ResponsiveDialog";
 import { Alert } from "@/ui/alert";
 import { Button } from "@/ui/button";
-import { Field, FieldError, FieldGroup, FieldLabel } from "@/ui/field";
-import { Input } from "@/ui/input";
+import { Field, FieldError, FieldLabel } from "@/ui/field";
 import { RadioGroup, RadioGroupItem } from "@/ui/radio-group";
 import { Spinner } from "@/ui/spinner";
 import { toast } from "@/ui/toast";
+import { cloudIssuer } from "../../../../sources/cloud-issuer";
 import { checkAddress } from "../remote-address";
 
 /*
- * 添加 Armadra 云（契约 §33.11）：地址 → 设备码（在浏览器里批准）→ 选空间登记这台电脑。
- * 设备码的秘密部分留在 core，这里只有给人看的 8 位码。
+ * 添加 Armadra 云（契约 §33.11）：登录 → 设备码（在浏览器里批准）→ 选空间登记这台电脑。
+ * 地址不让人填：取 Armadra 云的默认地址（`ARMADRA_CLOUD_ISSUER`），重新登录时用那一行
+ * 自己的地址。设备码的秘密部分留在 core，这里只有给人看的 8 位码。
  */
 
 type Space = Awaited<ReturnType<typeof cloudSpaces>>["spaces"][number];
@@ -62,6 +63,15 @@ function blocked(space: Space): boolean {
 
 function spaceValue(space: Space): string {
   return space.kind === "personal" ? PERSONAL : `team:${space.teamId}`;
+}
+
+/** 地址里的主机（带端口）；认不出时原样显示。 */
+function issuerHost(address: string): string {
+  try {
+    return new URL(address).host;
+  } catch {
+    return address;
+  }
 }
 
 /** 距离 `expiresAtMs` 还剩几毫秒，每秒刷新；不倒计时（`null`）恒为 `null`。 */
@@ -117,7 +127,9 @@ export function AddCloudDialog({
     if (!fromLink || issuer === "") return null;
     try {
       const url = new URL(issuer);
-      return knownIssuers.some((one) => new URL(one).origin === url.origin)
+      return [...knownIssuers, cloudIssuer()].some(
+        (one) => new URL(one).origin === url.origin,
+      )
         ? null
         : url.host;
     } catch {
@@ -144,7 +156,7 @@ export function AddCloudDialog({
 
   React.useEffect(() => {
     if (initialIssuer === null) return;
-    setIssuer(initialIssuer);
+    setIssuer(initialIssuer === "" ? cloudIssuer() : initialIssuer);
     setStep({ kind: "address" });
     setChosen(PERSONAL);
     setError("");
@@ -315,23 +327,12 @@ export function AddCloudDialog({
             </Alert>
           )}
           {step.kind === "address" && (
-            <FieldGroup className="gap-3">
-              <Field className="gap-1.5" data-invalid={error !== ""}>
-                <FieldLabel htmlFor="cloud-issuer">
-                  {t("remote.field.issuer")}
-                </FieldLabel>
-                <Input
-                  id="cloud-issuer"
-                  inputMode="url"
-                  autoComplete="url"
-                  spellCheck={false}
-                  placeholder="https://cloud.example.com"
-                  aria-invalid={error !== ""}
-                  value={issuer}
-                  onChange={(event) => setIssuer(event.target.value)}
-                />
-              </Field>
-            </FieldGroup>
+            <span
+              data-slot="cloud-issuer"
+              className="font-mono text-body break-all text-muted-foreground"
+            >
+              {issuerHost(issuer)}
+            </span>
           )}
           {step.kind === "code" && (
             <div className="flex min-w-0 flex-col gap-3">
@@ -419,7 +420,7 @@ export function AddCloudDialog({
             {step.kind === "address" && (
               <Button type="submit" disabled={busy || issuer.trim() === ""}>
                 {busy && <Spinner data-icon="inline-start" aria-hidden />}
-                {t("remote.cloud.start")}
+                {t("remote.cloud.login")}
               </Button>
             )}
             {step.kind === "code" && step.outcome === "waiting" && (

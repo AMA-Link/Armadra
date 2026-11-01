@@ -1,4 +1,6 @@
 import { join } from "node:path";
+
+import { ARMADRA_CLOUD_ISSUER } from "@armadra/shared";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { openFreshDatabase } from "../db/fresh.fixture";
@@ -1138,6 +1140,35 @@ describe("Armadra 云：设备码登录与登记到空间（契约 §33.11）", 
     const again = await start();
     expect(again.remote.serviceId).toBe(added.remote.serviceId);
     expect((await saas.list()).remotes).toHaveLength(1);
+  });
+
+  it("页面发来默认地址：本机进程环境覆盖了就换成覆盖值，不合规的覆盖忽略", async () => {
+    const saved = process.env.ARMADRA_CLOUD_ISSUER;
+    try {
+      process.env.ARMADRA_CLOUD_ISSUER = ISSUER;
+      const added = await saas.remoteAdd({
+        kind: "saas",
+        issuer: ARMADRA_CLOUD_ISSUER,
+      });
+      expect(added.remote.issuer).toBe(ISSUER);
+      // 显式的别的地址不被换。
+      process.env.ARMADRA_CLOUD_ISSUER = "https://other.example.test";
+      const again = await saas.remoteAdd({ kind: "saas", issuer: ISSUER });
+      expect(again.remote.issuer).toBe(ISSUER);
+      // 不合规（非回环 http）：忽略，用默认地址。
+      process.env.ARMADRA_CLOUD_ISSUER = "http://relay.test";
+      expect(
+        await code(
+          saas.remoteAdd({ kind: "saas", issuer: ARMADRA_CLOUD_ISSUER }),
+        ),
+      ).not.toBe("resolved");
+      expect((await saas.list()).remotes.map((row) => row.issuer)).toEqual([
+        ISSUER,
+      ]);
+    } finally {
+      if (saved === undefined) delete process.env.ARMADRA_CLOUD_ISSUER;
+      else process.env.ARMADRA_CLOUD_ISSUER = saved;
+    }
   });
 
   it("设备码的 verificationUrl 必须与 issuer 同源且是 https：否则拒绝，不留设备码", async () => {

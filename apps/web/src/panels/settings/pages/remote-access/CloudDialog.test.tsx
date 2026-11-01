@@ -86,21 +86,44 @@ function mount() {
   render(
     <AddCloudDialog initialIssuer="" onClose={onClose} onChanged={onChanged} />,
   );
-  fireEvent.change(screen.getByLabelText("Address"), {
-    target: { value: "https://cloud.test" },
-  });
-  fireEvent.click(screen.getByRole("button", { name: "Get device code" }));
+  fireEvent.click(screen.getByRole("button", { name: "Sign in" }));
   return { onClose, onChanged };
 }
 
 describe("添加 Armadra 云", () => {
+  it("没有地址输入，只有「登录」；登录用默认地址，重新登录用那一行自己的地址", async () => {
+    const { unmount } = render(
+      <AddCloudDialog initialIssuer="" onClose={vi.fn()} onChanged={vi.fn()} />,
+    );
+    expect(screen.queryByLabelText("Address")).toBeNull();
+    expect(screen.getByText("app.armadra.com")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Sign in" }));
+    await waitFor(() =>
+      expect(api.addCloud).toHaveBeenCalledWith("https://app.armadra.com"),
+    );
+    unmount();
+    cleanup();
+    render(
+      <AddCloudDialog
+        initialIssuer="https://cloud.test"
+        onClose={vi.fn()}
+        onChanged={vi.fn()}
+      />,
+    );
+    expect(screen.getByText("cloud.test")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Sign in" }));
+    await waitFor(() =>
+      expect(api.addCloud).toHaveBeenLastCalledWith("https://cloud.test"),
+    );
+  });
+
   it("显示设备码，批准后选空间登记，完成关闭", async () => {
     api.pollCloudDevice
       .mockResolvedValueOnce({ status: "pending" })
       .mockResolvedValue({ status: "ready" });
     const { onClose } = mount();
     expect(await screen.findByText("ABCD-EFGH")).toBeTruthy();
-    expect(api.addCloud).toHaveBeenCalledWith("https://cloud.test");
+    expect(api.addCloud).toHaveBeenCalledWith("https://app.armadra.com");
     fireEvent.click(screen.getByRole("button", { name: "Open in browser" }));
     expect(platform.openExternal).toHaveBeenCalledWith(
       "https://cloud.test/device",

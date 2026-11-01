@@ -722,6 +722,54 @@ describe("cloud login（Armadra 云，设计 §4.4）", () => {
     for (const secret of [ACCESS, ASSERTION]) expect(all).not.toContain(secret);
   });
 
+  it("不给 --issuer：登录默认的 Armadra 云（https://app.armadra.com）；帮助里写明缺省与覆盖方式", async () => {
+    const { core, calls } = fakeCore({ kind: "saas" });
+    const { io, err } = harness(core, { mode: "saas" });
+    expect(await main(["cloud", "login"], io)).toBe(0);
+    expect(
+      calls.find((call) => call.path === "/api/sources/remotes")?.body,
+    ).toMatchObject({ kind: "saas", issuer: "https://app.armadra.com" });
+    expect(err.join("")).toContain("BCDF-GHJK");
+  });
+
+  it("环境变量 ARMADRA_CLOUD_ISSUER 覆盖缺省（https / 回环 http），不合规忽略；显式 --issuer 优先", async () => {
+    const issuerSent = async (
+      env: NodeJS.ProcessEnv,
+      args: string[] = ["cloud", "login"],
+    ) => {
+      const { core, calls } = fakeCore({ kind: "saas" });
+      const { io } = harness(core, { mode: "saas", env });
+      await main(args, io);
+      return (
+        calls.find((call) => call.path === "/api/sources/remotes")?.body as {
+          issuer: string;
+        }
+      ).issuer;
+    };
+    expect(
+      await issuerSent({ ARMADRA_CLOUD_ISSUER: "https://cloud.example.test" }),
+    ).toBe("https://cloud.example.test");
+    expect(
+      await issuerSent({ ARMADRA_CLOUD_ISSUER: "http://127.0.0.1:8787" }),
+    ).toBe("http://127.0.0.1:8787");
+    expect(
+      await issuerSent({ ARMADRA_CLOUD_ISSUER: "http://cloud.example.test" }),
+    ).toBe("https://app.armadra.com");
+    expect(
+      await issuerSent({ ARMADRA_CLOUD_ISSUER: "https://cloud.example.test" }, [
+        ...login,
+      ]),
+    ).toBe(ISSUER);
+  });
+
+  it("个人中转（给了 --account）仍要显式 --issuer：不给时用法错误（2），不连任何东西", async () => {
+    const { core, calls } = fakeCore({});
+    const { io, err } = harness(core);
+    expect(await main(["cloud", "login", "--account", "dev"], io)).toBe(2);
+    expect(err.join("")).toContain("个人中转需要 --issuer");
+    expect(calls).toEqual([]);
+  });
+
   it("已用 --token 登记：只绑定——不再登记，取断言交给 core bind", async () => {
     const { core, calls } = fakeCore({ kind: "saas", registered: true });
     const { io, out } = harness(core, { mode: "saas" });

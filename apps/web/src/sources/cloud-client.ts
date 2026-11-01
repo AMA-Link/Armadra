@@ -76,11 +76,7 @@ const sessionSchema = z.object({
 });
 export type CloudSession = z.infer<typeof sessionSchema>;
 
-const loginAnswer = z.object({ session: sessionSchema }).or(
-  z.object({
-    mfa: z.object({ challengeId: z.string() }),
-  }),
-);
+const loginAnswer = z.object({ session: sessionSchema });
 
 export const cloudSourceSchema = z.object({
   sourceId: z.string().min(1),
@@ -223,6 +219,9 @@ export interface CloudOptions {
 
 const DEFAULT_TIMEOUT_MS = 15_000;
 
+/** 设备码轮询的缺省间隔（对端没给时；设计 §11.5 是 5 秒，太快答 `rate_limited`）。 */
+export const DEVICE_POLL_DEFAULT_MS = 5_000;
+
 function trimmed(base: string): string {
   return base.replace(/\/+$/, "");
 }
@@ -297,7 +296,8 @@ async function send<T>(
 const bearer = (token: string) => ({ Authorization: `Bearer ${token}` });
 
 /**
- * `POST /v1/auth/login`；个人中转没有第二因素，答了 `mfa` 就当不支持。
+ * `POST /v1/auth/login`（个人中转的账号口令）；个人中转没有第二因素，答案里没有会话
+ * 一律当 `bad_response`。Armadra 云不走这里，走设备码（{@link cloudDeviceStart}）。
  * `challengeToken` 是挑战组件交回的一次性令牌（契约 §62）；没带而对端要求时抛
  * {@link CloudChallengeRequired}（带着 siteKey），不是笼统的 `challenge_required`。
  */
@@ -336,8 +336,60 @@ export async function cloudLogin(
     if (info?.challenge === undefined) throw error;
     throw new CloudChallengeRequired(info.challenge);
   }
-  if (!("session" in answer)) throw new CloudError(501, "mfa_unsupported");
   return answer.session;
+}
+
+const deviceStartSchema = z.object({
+  deviceCode: z.string().min(1),
+  userCode: z.string().min(1),
+  verificationUrl: z.string().min(1),
+  expiresAtMs: z.number(),
+  intervalMs: z.number().default(DEVICE_POLL_DEFAULT_MS),
+});
+export type CloudDeviceStart = z.infer<typeof deviceStartSchema>;
+
+const devicePollSchema = z.discriminatedUnion("status", [
+  z.object({ status: z.literal("pending") }),
+  z.object({ status: z.literal("approved"), session: sessionSchema }),
+  z.object({ status: z.literal("denied") }),
+  z.object({ status: z.literal("expired") }),
+]);
+export type CloudDevicePoll = z.infer<typeof devicePollSchema>;
+
+/**
+ * `POST /v1/auth/device/start`（匿名，cloud 设计 §11.5）：取设备码。`deviceCode` 是只给
+ * 发起设备的秘密，调用方不得写日志、不得交给页面；`userCode` 与 `verificationUrl` 给人
+ * 看、在浏览器里批准。
+ */
+export function cloudDeviceStart(
+  issuer: string,
+  device: CloudDevice,
+  options: CloudOptions = {},
+): Promise<CloudDeviceStart> {
+  return send(
+    `${trimmed(issuer)}/v1/auth/device/start`,
+    deviceStartSchema,
+    { body: { device } },
+    options,
+  );
+}
+
+/**
+ * `POST /v1/auth/device/poll`（匿名）：`pending` 继续等，`approved` 带会话（发起设备恒为
+ * Bearer，带刷新令牌），`denied` / `expired` 终结。问得太快对端答 429 `rate_limited`
+ * （{@link CloudError}，`retryAfterMs` 可能为 0）。
+ */
+export function cloudDevicePoll(
+  issuer: string,
+  deviceCode: string,
+  options: CloudOptions = {},
+): Promise<CloudDevicePoll> {
+  return send(
+    `${trimmed(issuer)}/v1/auth/device/poll`,
+    devicePollSchema,
+    { body: { deviceCode } },
+    options,
+  );
 }
 
 /** `POST /v1/auth/refresh`：刷新令牌每次旋转，调用方必须存下答案里的新令牌。 */

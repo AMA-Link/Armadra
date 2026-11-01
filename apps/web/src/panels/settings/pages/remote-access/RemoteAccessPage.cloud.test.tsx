@@ -165,6 +165,16 @@ describe("行菜单「打开控制台」", () => {
   });
 });
 
+/** 对话框里显示的云地址（只读文字，没有输入框）。 */
+const issuerLine = async () =>
+  (
+    await waitFor(() => {
+      const found = document.querySelector('[data-slot="cloud-issuer"]');
+      if (found === null) throw new Error("no issuer line");
+      return found;
+    })
+  ).textContent;
+
 describe("armadra://cloud 深链", () => {
   it("深链交来：打开「添加 Armadra 云」，地址预填，不自动取设备码", async () => {
     api.listSources.mockResolvedValue({ sources: [local], remotes: [] });
@@ -173,22 +183,21 @@ describe("armadra://cloud 深链", () => {
     offerCloudLink(
       `armadra://cloud?issuer=${encodeURIComponent("https://cloud.test")}`,
     );
-    const field = (await screen.findByLabelText("Address")) as HTMLInputElement;
-    expect(field.value).toBe("https://cloud.test");
-    expect(
-      screen.getByRole("button", { name: "Get device code" }),
-    ).toBeTruthy();
+    expect(await issuerLine()).toBe("cloud.test");
+    // 没有地址输入，只有「登录」。
+    expect(screen.queryByLabelText("Address")).toBeNull();
+    expect(screen.getByRole("button", { name: "Sign in" })).toBeTruthy();
     await new Promise((done) => setTimeout(done, 30));
     expect(api.addCloud).not.toHaveBeenCalled();
   });
 
-  it("没有 issuer 的深链：对话框打开，地址为空", async () => {
+  it("没有 issuer 的深链：对话框打开，用 Armadra 云的默认地址", async () => {
     api.listSources.mockResolvedValue({ sources: [local], remotes: [] });
     mount();
     await screen.findByText("This computer");
     offerCloudLink("armadra://cloud");
-    const field = (await screen.findByLabelText("Address")) as HTMLInputElement;
-    expect(field.value).toBe("");
+    expect(await issuerLine()).toBe("app.armadra.com");
+    expect(screen.queryByLabelText("Address")).toBeNull();
     expect(api.addCloud).not.toHaveBeenCalled();
   });
 
@@ -200,14 +209,16 @@ describe("armadra://cloud 深链", () => {
       `armadra://cloud?issuer=${encodeURIComponent("https://other.example")}`,
     );
     expect(await screen.findByText("This link connects to")).toBeTruthy();
-    expect(screen.getByText("other.example")).toBeTruthy();
+    expect(
+      document.querySelector('[data-slot="cloud-link-target"]')?.textContent,
+    ).toContain("other.example");
     cleanup();
     mount();
     await screen.findByText("cloud.test");
     offerCloudLink(
       `armadra://cloud?issuer=${encodeURIComponent("https://cloud.test")}`,
     );
-    await screen.findByLabelText("Address");
+    await issuerLine();
     expect(screen.queryByText("This link connects to")).toBeNull();
   });
 
@@ -230,9 +241,7 @@ describe("armadra://cloud 深链", () => {
     offerCloudLink(
       `armadra://cloud?issuer=${encodeURIComponent("https://cloud.test")}`,
     );
-    fireEvent.click(
-      await screen.findByRole("button", { name: "Get device code" }),
-    );
+    fireEvent.click(await screen.findByRole("button", { name: "Sign in" }));
     expect(await screen.findByText("ABCD-EFGH")).toBeTruthy();
     offerCloudLink(
       `armadra://cloud?issuer=${encodeURIComponent("https://evil.example")}`,
@@ -250,12 +259,11 @@ describe("armadra://cloud 深链", () => {
     offerCloudLink(
       `armadra://cloud?issuer=${encodeURIComponent("https://a.example")}`,
     );
-    const field = (await screen.findByLabelText("Address")) as HTMLInputElement;
-    expect(field.value).toBe("https://a.example");
+    expect(await issuerLine()).toBe("a.example");
     offerCloudLink(
       `armadra://cloud?issuer=${encodeURIComponent("https://b.example")}`,
     );
-    await waitFor(() => expect(field.value).toBe("https://b.example"));
+    await waitFor(async () => expect(await issuerLine()).toBe("b.example"));
   });
 });
 
@@ -317,8 +325,7 @@ describe("互联网路线认 Armadra 云（契约 §88.4，#586）", () => {
     fireEvent.click(
       await screen.findByRole("menuitem", { name: "Turn on Internet route" }),
     );
-    const field = (await screen.findByLabelText("Address")) as HTMLInputElement;
-    expect(field.value).toBe("https://cloud.test");
+    expect(await issuerLine()).toBe("cloud.test");
     expect(api.addCloud).not.toHaveBeenCalled();
   });
 });
