@@ -12,7 +12,11 @@ import type { DatabaseSync } from "node:sqlite";
 
 import { MAX_ACP_ATTACHMENTS } from "@armadra/shared";
 
-import { canvasLaunchLine, nodeDialect } from "../agent/canvas-launch";
+import {
+  agentRoleOf,
+  canvasLaunchLine,
+  nodeDialect,
+} from "../agent/canvas-launch";
 import { PERMISSION_MODES, canResume } from "../agent/launch";
 import type { AgentSettings } from "../agent/registry";
 import { getAgentStatus } from "../agent/status";
@@ -881,6 +885,7 @@ export function installRoutes(context: CoreContext, deps: AcpRouteDeps): void {
       // 本机解析到的程序路径在执行主机上不存在：SSH 节点只敲程序名。
       const program = ssh ? undefined : wiring.program(agentId).path;
       const dialect = nodeDialect(text(node.data.shell), ssh);
+      const role = agentRoleOf(agent);
       const line = resumable
         ? resumeLine(settings, agentId, node.data, provider, {
             ...(program === undefined ? {} : { path: program }),
@@ -902,6 +907,7 @@ export function installRoutes(context: CoreContext, deps: AcpRouteDeps): void {
             ...(text(agent.model) === undefined
               ? {}
               : { model: text(agent.model) as string }),
+            ...(role === undefined ? {} : { role }),
           });
       void wiring
         .typeLaunchLine(row.id, row.generation, line)

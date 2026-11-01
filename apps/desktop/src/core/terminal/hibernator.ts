@@ -1,7 +1,11 @@
 import type { DatabaseSync } from "node:sqlite";
 
 import { acpAdapter } from "../acp/adapters";
-import { canvasLaunchLine, nodeDialect } from "../agent/canvas-launch";
+import {
+  agentRoleOf,
+  canvasLaunchLine,
+  nodeDialect,
+} from "../agent/canvas-launch";
 import type { ShellDialect } from "./shell";
 import {
   canResume,
@@ -668,6 +672,7 @@ export function resumeLine(
       : {};
   const permissionMode = text(agent.permissionMode);
   const model = text(agent.model);
+  const role = agentRoleOf(agent);
   return canvasLaunchLine({
     settings,
     agentId,
@@ -679,6 +684,7 @@ export function resumeLine(
     ...(program?.dialect === undefined ? {} : { dialect: program.dialect }),
     ...(permissionMode === undefined ? {} : { permissionMode }),
     ...(model === undefined ? {} : { model }),
+    ...(role === undefined ? {} : { role }),
   });
 }
 

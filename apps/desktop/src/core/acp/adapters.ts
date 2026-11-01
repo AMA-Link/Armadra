@@ -1,6 +1,8 @@
 import { readFileSync, statSync } from "node:fs";
 import { basename, isAbsolute, join } from "node:path";
 
+import { type AgentRole, roleFlags } from "@armadra/shared";
+
 import { type PermissionMode, PERMISSION_MODES } from "../agent/launch";
 import {
   type AgentId,
@@ -251,6 +253,8 @@ export interface AcpLaunchOptions {
   readonly profilePath?: string;
   /** 终端注入复用的 argv（`reuse` 含 `args` 时才用）。 */
   readonly injectionArgs?: readonly string[];
+  /** 节点的角色（`agent.role`）：只有注册表给它配了旗标的 CLI 才加。 */
+  readonly role?: AgentRole;
 }
 
 export interface AcpLaunchPlan {
@@ -266,7 +270,7 @@ export type AcpLaunchError = {
 };
 
 /**
- * 一次启动的 argv 与模式 id。顺序：固定 argv → profile → 模式 argv → 注入
+ * 一次启动的 argv 与模式 id。顺序：固定 argv → profile → 角色 → 模式 argv → 注入
  * （`passthrough` 的放最后，前面隔 `--`）。没有落点的模式答错误而不是悄悄
  * 用缺省：一个说了 `plan` 却以可写模式起来的会话比起不来更糟。
  */
@@ -286,6 +290,7 @@ export function acpLaunchPlan(
   if (adapter.profileFlag !== undefined && options.profilePath !== undefined) {
     args.push(adapter.profileFlag, options.profilePath);
   }
+  args.push(...roleFlags(adapter.agentId, options.role));
   args.push(...(mapping.args ?? []));
   const injection = adapter.injection.reuse.includes("args")
     ? (options.injectionArgs ?? [])

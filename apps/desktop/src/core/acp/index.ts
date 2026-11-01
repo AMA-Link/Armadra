@@ -26,6 +26,8 @@
 import { existsSync } from "node:fs";
 import { resolve } from "node:path";
 
+import { type AgentRole, defaultAgentRole } from "@armadra/shared";
+
 import { collab } from "../agent";
 import { amaCredentials } from "../agent/ama-credentials";
 import {
@@ -47,7 +49,7 @@ import {
   customAgent,
   resolveCommand,
 } from "../agent/registry";
-import { acpInjection } from "../agent/canvas-launch";
+import { acpInjection, agentRoleOf } from "../agent/canvas-launch";
 import { getAgentStatus } from "../agent/status";
 import { nodeRole } from "../canvas/context-links";
 import { handleForNode } from "../canvas/handles";
@@ -299,11 +301,20 @@ class AcpRuntime {
     };
   }
 
-  /** 预启动与领走比的那一份计划（缺省模式、没有节点身份）。 */
-  private prestartPlan(launch: LocalLaunch, cwd: string) {
+  /**
+   * 预启动与领走比的那一份计划（缺省模式、没有节点身份）。角色取新建节点的
+   * 缺省（ama 是协调者）：预启动等的就是菜单里新建的那个节点，按别的角色起，
+   * 领的时候签名对不上，只能白起一个。
+   */
+  private prestartPlan(
+    launch: LocalLaunch,
+    cwd: string,
+    role: AgentRole | undefined = defaultAgentRole(launch.baseAgentId),
+  ) {
     const options: AcpAdapterStart = {
       cwd,
       env: launch.baseEnv,
+      ...(role === undefined ? {} : { role }),
       ...(launch.injection.profilePath === undefined
         ? {}
         : { profilePath: launch.injection.profilePath }),
@@ -614,9 +625,17 @@ class AcpRuntime {
         feed,
         ...(terminal === undefined ? {} : { terminal }),
       });
+      // 角色读节点现在的设置（与权限模式同理）：协调者以 ama 的 coordinator
+      // 预设起（coordinator-agent §4）。
+      const role = agentRoleOf(
+        nodeData?.agent !== null && typeof nodeData?.agent === "object"
+          ? (nodeData.agent as Record<string, unknown>)
+          : {},
+      );
       const common = {
         cwd: spec.cwd,
         ...(mode === undefined ? {} : { mode }),
+        ...(role === undefined ? {} : { role }),
         ...(plan.model === undefined ? {} : { modelId: plan.model }),
         ...(resume === undefined ? {} : { resumeSessionId: resume }),
         needReplay: feed === undefined || !feed.hadHistory,
@@ -678,7 +697,7 @@ class AcpRuntime {
         // 启动签名相同才领。
         const reference =
           secrets.length === 0 && prestartable(launch)
-            ? this.prestartPlan(launch, spec.cwd)
+            ? this.prestartPlan(launch, spec.cwd, role)
             : undefined;
         const prestarted =
           reference === undefined || reference instanceof AcpError

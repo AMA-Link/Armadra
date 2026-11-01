@@ -713,7 +713,7 @@ describe("ama's injection (coordinator-agent §2.4)", () => {
       version: 1,
       permission: { mode: "default" },
       compaction: { enabled: true },
-      tools: { default: ["+task"] },
+      tools: { default: ["+task", "+grep", "+glob"] },
     });
     expect(existsSync(layout.skill)).toBe(true);
     expect(readFileSync(layout.instructions as string, "utf8")).not.toBe("");

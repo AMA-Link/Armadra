@@ -1,4 +1,8 @@
-import { canvasLaunchLine, nodeDialect } from "../agent/canvas-launch";
+import {
+  agentRoleOf,
+  canvasLaunchLine,
+  nodeDialect,
+} from "../agent/canvas-launch";
 import {
   LaunchRefused,
   expectedProcesses,
@@ -325,6 +329,7 @@ export function launchLine(
       : {};
   const permissionMode = stringField(agent, "permissionMode");
   const model = stringField(agent, "model");
+  const role = agentRoleOf(agent);
   // `open-agent --resume`（契约 §15.5）：接回 CLI 自己的那段会话。
   const resume = stringField(agent, "resume");
   let row: ReturnType<typeof listAgents>[number] | undefined;
@@ -347,6 +352,7 @@ export function launchLine(
     ssh,
     ...(permissionMode === undefined ? {} : { permissionMode }),
     ...(model === undefined ? {} : { model }),
+    ...(role === undefined ? {} : { role }),
     ...(resume === undefined ? {} : { resume }),
     // 版本管理器的垫片已经穿透过（契约 §52）：起垫片背后那一份。Windows 包装
     // 的前置词由 `canvasLaunch` 自己再读一遍，那时仍给包装本身。
