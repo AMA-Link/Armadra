@@ -86,8 +86,11 @@ cloud:
   login                  登录并把账号关联为本机主人；本机还没登记就顺带登记
     个人中转：--issuer URL --account A [--fingerprint FP] [--label L]
       --password-stdin       从标准输入读口令；不给时读 ARMADRA_CLOUD_PASSWORD，终端里则提示输入
-    Armadra 云：--issuer URL [--space personal|<团队 slug>] [--label L]
-      设备码登录：终端打印设备码与验证地址，在浏览器里批准；已用令牌登记的只做关联
+    Armadra 云：[--issuer URL] [--space personal|<团队 slug>] [--label L]
+      --issuer 缺省是 https://app.armadra.com（环境变量 ARMADRA_CLOUD_ISSUER 可覆盖，
+      只收 https，回环另收 http）；自建或测试部署显式给 --issuer
+      设备码登录：终端打印设备码与验证地址，在浏览器里批准（GitHub / Google 登录）；
+      已用令牌登记的只做关联
 
 invite:
   --cloud-link           必须；生成 https://<远程服务>/j/<id>#<密>.<令牌>.<指纹>

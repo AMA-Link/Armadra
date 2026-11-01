@@ -28,6 +28,10 @@ import {
   normalizeFingerprint,
   normalizeOrigin,
 } from "../../desktop/src/core/sources/http-client";
+import {
+  ARMADRA_CLOUD_ISSUER_ENV,
+  resolveCloudIssuer,
+} from "../../../packages/shared/src/cloud-issuer";
 import { single, switched } from "./cli";
 
 type Values = ReadonlyMap<string, readonly string[]>;
@@ -231,8 +235,8 @@ function usage(message: string): never {
   throw new CloudCliError("usage", message, true);
 }
 
-function issuerOf(values: Values): string {
-  const given = single(values, "--issuer");
+function issuerOf(values: Values, fallback?: string): string {
+  const given = single(values, "--issuer") ?? fallback;
   if (given === undefined)
     usage("需要 --issuer（个人中转或 Armadra 云的地址）");
   try {
@@ -633,11 +637,17 @@ export async function runCloud(
     );
     return;
   }
-  // login：按远程服务的模式分流。参数先于连接取齐。
-  const issuer = issuerOf(values);
-  const fingerprint = fingerprintOf(values);
+  // login：按远程服务的模式分流。参数先于连接取齐。没给 --issuer 就是 Armadra 云的默认
+  // 地址（环境变量 ARMADRA_CLOUD_ISSUER 可覆盖，只收 https / 回环 http）；个人中转要显式给。
   const label = single(values, "--label");
   const account = single(values, "--account");
+  if (account !== undefined && single(values, "--issuer") === undefined)
+    usage("个人中转需要 --issuer；不给 --issuer 登录的是 Armadra 云（设备码）");
+  const issuer = issuerOf(
+    values,
+    resolveCloudIssuer(deps.env[ARMADRA_CLOUD_ISSUER_ENV]),
+  );
+  const fingerprint = fingerprintOf(values);
   const space = single(values, "--space");
   const mode = await platformMode(deps, issuer, fingerprint);
   if (mode === "saas") {
