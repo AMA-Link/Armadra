@@ -111,7 +111,7 @@ node tools/probes/core-terminal-packaged.mjs            # 打包版 + ARMADRA_CO
 
 ## 4. node-pty 的两个已知缺陷
 
-补丁是 `patches/node-pty@1.1.0.patch`，由 pnpm 的 `patchedDependencies` 在安装时打上：`pnpm dev`（`electron-rebuild`）和 `dist`（electron-builder 自带的 @electron/rebuild，node-pty 没有它认的预编译件）都从 `node_modules` 里这份源码编译。编译之前两条路径都跑 `apps/desktop/scripts/verify-node-pty.mjs`：钉住版本 **1.1.0**，并校验打完补丁的 `src/unix/pty.cc`、`src/win/conpty.cc` 的 SHA-256，对不上就拒绝编译。
+补丁是 `patches/node-pty@1.1.0.patch`，由 pnpm 的 `patchedDependencies` 在安装时打上：`pnpm dev`（`electron-rebuild`）和 `dist`（electron-builder 自带的 @electron/rebuild，node-pty 没有它认的预编译件）都从 `node_modules` 里这份源码编译。编译之前两条路径都跑 `apps/desktop/scripts/verify-node-pty.mjs`：钉住版本 **1.1.0**，并校验打完补丁的 `src/unix/pty.cc`、`src/win/conpty.cc`、`lib/conpty_console_list_agent.js`、`lib/windowsPtyAgent.js` 的 SHA-256，对不上就拒绝编译。
 
 这段 macOS 补丁原先由脚本在 `pnpm dev` 之前就地改源码，`dist` 不经过它，所以 0.11.0 及以前的 mac 发布包里的 `pty.node` 是用原版源码编的，下面的泄漏都在（#671）。
 
