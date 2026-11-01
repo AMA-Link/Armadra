@@ -656,7 +656,14 @@ export function SessionView({
   }, [sessionId]);
 
   // 模式与模型：Agent 报回的来自时间线头部；还没报时用候选，新建后就有得选（#685）。
-  const { modes, models, selectMode, selectModel } = useAcpPickers({
+  const {
+    modes,
+    models,
+    configOptions,
+    selectMode,
+    selectModel,
+    selectConfig,
+  } = useAcpPickers({
     nodeId,
     sessionId,
     agent: data.agent,
@@ -877,11 +884,13 @@ export function SessionView({
             streaming={streaming}
             modes={modes}
             models={models}
+            configOptions={configOptions}
             onSubmit={submit}
             attachments={attachments}
             onCancel={cancel}
             onMode={selectMode}
             onModel={selectModel}
+            onConfig={selectConfig}
             commands={feed.head.commands ?? []}
             usage={usage}
             prefill={prefill}

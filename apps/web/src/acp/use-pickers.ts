@@ -4,6 +4,7 @@ import {
   type AcpModeState,
   type AcpModelState,
   type TerminalAgent,
+  type TimelineConfigOption,
   type TimelineHead,
 } from "@armadra/shared";
 
@@ -16,6 +17,7 @@ import {
   DEFAULT_MODEL_ID,
   candidateModels,
   candidateModes,
+  extraConfigOptions,
   pickModels,
   pickModes,
 } from "./pickers";
@@ -41,8 +43,11 @@ export function useAcpPickers({
 }): {
   modes: AcpModeState | null;
   models: AcpModelState;
+  /** 模型与模式之外的配置项（头部有才有）。 */
+  configOptions: TimelineConfigOption[];
   selectMode: (modeId: string) => void;
   selectModel: (modelId: string) => void;
+  selectConfig: (configId: string, value: string | boolean) => void;
 } {
   const t = useT();
   const baseAgent = agent
@@ -70,6 +75,32 @@ export function useAcpPickers({
   // 必须排在下面两个落上选择的 effect 之前：同一次提交里先清再落。
   React.useEffect(() => setModeChoice(null), [reportedModes?.currentModeId]);
   React.useEffect(() => setModelChoice(null), [reportedModels?.currentModelId]);
+
+  // 其他配置项：选择先显示（回执到之前），失败回滚；头部里那一项变了就以头部为准。
+  const [configChoices, setConfigChoices] = React.useState<
+    Record<string, string | boolean>
+  >({});
+  const reportedConfig = head.configOptions ?? null;
+  const reportedValues = React.useRef<Record<string, string | boolean>>({});
+  React.useEffect(() => {
+    const next: Record<string, string | boolean> = {};
+    for (const option of reportedConfig ?? []) {
+      next[option.id] = option.currentValue;
+    }
+    const changed = Object.keys(next).filter(
+      (id) => reportedValues.current[id] !== next[id],
+    );
+    reportedValues.current = next;
+    if (changed.length === 0) return;
+    setConfigChoices((choices) => {
+      const kept = Object.fromEntries(
+        Object.entries(choices).filter(([id]) => !changed.includes(id)),
+      );
+      return Object.keys(kept).length === Object.keys(choices).length
+        ? choices
+        : kept;
+    });
+  }, [reportedConfig]);
 
   const writeBack = React.useCallback(
     (patch: Partial<TerminalAgent>) => {
@@ -114,6 +145,21 @@ export function useAcpPickers({
         });
     },
     [writeBack, t],
+  );
+
+  const selectConfig = React.useCallback(
+    (configId: string, value: string | boolean) => {
+      if (sessionId === null) return;
+      setConfigChoices((choices) => ({ ...choices, [configId]: value }));
+      acpApi.setConfigOption(sessionId, configId, value).catch(() => {
+        setConfigChoices((choices) => {
+          const { [configId]: _dropped, ...rest } = choices;
+          return rest;
+        });
+        toast.error(t("acp.prompt.configFailed"));
+      });
+    },
+    [sessionId, t],
   );
 
   React.useEffect(() => {
@@ -175,10 +221,17 @@ export function useAcpPickers({
     [sessionId, reportedModels, applyModel],
   );
 
+  const configOptions = React.useMemo(
+    () => extraConfigOptions(reportedConfig, configChoices),
+    [reportedConfig, configChoices],
+  );
+
   return {
     modes: pickModes(reportedModes, candidateMode, modeChoice),
     models: pickModels(reportedModels, candidateModel, modelChoice),
+    configOptions,
     selectMode,
     selectModel,
+    selectConfig,
   };
 }

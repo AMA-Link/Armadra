@@ -4,6 +4,7 @@ import type {
   AcpAvailableCommand,
   AcpModeState,
   AcpModelState,
+  TimelineConfigOption,
 } from "@armadra/shared";
 
 import { usePreferencesStore, useT } from "@/app/preferences-store";
@@ -14,6 +15,7 @@ import { Button } from "@/ui/button";
 import { Command, CommandEmpty, CommandItem, CommandList } from "@/ui/command";
 import {
   DropdownMenu,
+  DropdownMenuCheckboxItem,
   DropdownMenuContent,
   DropdownMenuLabel,
   DropdownMenuRadioGroup,
@@ -69,6 +71,56 @@ export function matchCommands(
       c.name.toLowerCase().includes(query),
   );
   return [...starts, ...rest];
+}
+
+/**
+ * 模型与模式之外的配置项（推理强度、其他 select、boolean）：select 是一组单选项，
+ * boolean 是一个勾选项；项目之间隔一条线。
+ */
+function ConfigItems({
+  options,
+  onConfig,
+  leading,
+}: {
+  options: readonly TimelineConfigOption[];
+  onConfig: (configId: string, value: string | boolean) => void;
+  /** 前面还有别的项：先画一条分隔线。 */
+  leading: boolean;
+}) {
+  return (
+    <>
+      {options.map((option, index) => (
+        <React.Fragment key={option.id}>
+          {(leading || index > 0) && <DropdownMenuSeparator />}
+          {option.type === "boolean" ? (
+            <DropdownMenuCheckboxItem
+              checked={option.currentValue === true}
+              onCheckedChange={(checked) => onConfig(option.id, checked)}
+            >
+              {option.name}
+            </DropdownMenuCheckboxItem>
+          ) : (
+            <>
+              <DropdownMenuLabel>{option.name}</DropdownMenuLabel>
+              <DropdownMenuRadioGroup
+                value={String(option.currentValue)}
+                onValueChange={(value) => onConfig(option.id, value)}
+              >
+                {option.options.map((choice) => (
+                  <DropdownMenuRadioItem
+                    key={choice.value}
+                    value={choice.value}
+                  >
+                    {choice.name}
+                  </DropdownMenuRadioItem>
+                ))}
+              </DropdownMenuRadioGroup>
+            </>
+          )}
+        </React.Fragment>
+      ))}
+    </>
+  );
 }
 
 /** 上下文用量：已用 / 总量；花费有就放进弹层。 */
@@ -239,10 +291,12 @@ export function PromptBox({
   streaming,
   modes,
   models = null,
+  configOptions = [],
   onSubmit,
   onCancel,
   onMode,
   onModel,
+  onConfig,
   inputRef,
   compact: forceCompact,
   commands = [],
@@ -255,6 +309,8 @@ export function PromptBox({
   streaming: boolean;
   modes: AcpModeState | null;
   models?: AcpModelState | null;
+  /** 模型与模式之外的配置项（头部 `configOptions`）；没有就不画。 */
+  configOptions?: readonly TimelineConfigOption[];
   /** 返回 `false` 时保留输入框里的字与附件。 */
   onSubmit: (
     text: string,
@@ -263,6 +319,7 @@ export function PromptBox({
   onCancel: () => void;
   onMode: (modeId: string) => void;
   onModel?: (modelId: string) => void;
+  onConfig?: (configId: string, value: string | boolean) => void;
   inputRef?: React.Ref<HTMLTextAreaElement>;
   /** 展示页用：不看视口，直接画窄屏那一版。 */
   compact?: boolean;
@@ -368,6 +425,10 @@ export function PromptBox({
   // 只有一个模型也画：让人看得见在用哪个（契约 §26.2 只在目录非空时给）。
   const modelChoice =
     models && onModel && models.availableModels.length > 0 ? models : null;
+  const configChoice =
+    onConfig && configOptions.length > 0 ? configOptions : null;
+  // 斜杠命令后面该输入什么（`input.hint`）：刚选中命令、还没输入参数时当占位。
+  const hint = commands.find((command) => text === `/${command.name} `)?.hint;
 
   return (
     <div className="relative border-t border-border">
@@ -397,6 +458,14 @@ export function PromptBox({
                 <span className="min-w-0 truncate text-caption text-muted-foreground">
                   {command.description}
                 </span>
+                {command.hint && (
+                  <span
+                    data-slot="acp-command-hint"
+                    className="ml-auto max-w-[40%] shrink-0 truncate font-mono text-caption text-muted-foreground"
+                  >
+                    {command.hint}
+                  </span>
+                )}
               </CommandItem>
             ))}
           </CommandList>
@@ -437,6 +506,7 @@ export function PromptBox({
           aria-label={t("acp.prompt.label")}
           rows={1}
           value={text}
+          placeholder={hint}
           disabled={disabled}
           className="max-h-[calc(6lh+1rem)] min-h-8 flex-1 resize-none overflow-y-auto py-[5px]"
           onChange={(event) => setText(event.target.value)}
@@ -489,7 +559,7 @@ export function PromptBox({
           }}
         />
         {compact ? (
-          (modeChoice || modelChoice) && (
+          (modeChoice || modelChoice || configChoice) && (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button
@@ -542,6 +612,13 @@ export function PromptBox({
                       ))}
                     </DropdownMenuRadioGroup>
                   </>
+                )}
+                {configChoice && onConfig && (
+                  <ConfigItems
+                    options={configChoice}
+                    onConfig={onConfig}
+                    leading={Boolean(modeChoice || modelChoice)}
+                  />
                 )}
               </DropdownMenuContent>
             </DropdownMenu>
@@ -610,6 +687,30 @@ export function PromptBox({
                   </SelectContent>
                 </Select>
               ))}
+            {configChoice && onConfig && (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    aria-label={t("acp.prompt.more")}
+                    disabled={disabled}
+                  >
+                    <Ellipsis />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent
+                  align="end"
+                  className="max-h-[60dvh] min-w-44 overflow-y-auto"
+                >
+                  <ConfigItems
+                    options={configChoice}
+                    onConfig={onConfig}
+                    leading={false}
+                  />
+                </DropdownMenuContent>
+              </DropdownMenu>
+            )}
           </>
         )}
         {usage && usage.size > 0 && (

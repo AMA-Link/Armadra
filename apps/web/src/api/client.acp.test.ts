@@ -99,6 +99,8 @@ describe("acp：会话经 procedure", () => {
     await acpApi.cancel(sessionId);
     await acpApi.setMode(sessionId, "plan");
     await acpApi.setModel(sessionId, "m1");
+    await acpApi.setConfigOption(sessionId, "effort", "high");
+    await acpApi.setConfigOption(sessionId, "think", true);
     ok({ sessionId, resumed: false });
     await expect(acpApi.switchDriver(nodeId, "terminal")).resolves.toEqual({
       sessionId,
@@ -109,12 +111,20 @@ describe("acp：会话经 procedure", () => {
       "acp/cancel",
       "acp/setMode",
       "acp/setModel",
+      "acp/setConfigOption",
+      "acp/setConfigOption",
       "acp/switchDriver",
     ]);
     expect(sent(0)).toEqual({ json: { sessionId, text: "ping" } });
     expect(sent(2)).toEqual({ json: { sessionId, modeId: "plan" } });
     expect(sent(3)).toEqual({ json: { sessionId, modelId: "m1" } });
-    expect(sent(4)).toEqual({ json: { nodeId, driver: "terminal" } });
+    expect(sent(4)).toEqual({
+      json: { sessionId, configId: "effort", value: "high" },
+    });
+    expect(sent(5)).toEqual({
+      json: { sessionId, configId: "think", value: true },
+    });
+    expect(sent(6)).toEqual({ json: { nodeId, driver: "terminal" } });
   });
 
   it("空提示在页面这一层就拦下，不发请求", async () => {

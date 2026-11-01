@@ -15,6 +15,7 @@ import {
   acpDriverResponseSchema,
   acpElicitationAnswerRequestSchema,
   acpModeRequestSchema,
+  acpConfigOptionRequestSchema,
   acpModelRequestSchema,
   acpPromptRequestSchema,
   acpPromptResponseSchema,
@@ -82,6 +83,17 @@ export const acpApi = {
     await currentClient().acp.setModel({
       sessionId,
       ...acpModelRequestSchema.parse({ modelId }),
+    });
+  },
+  /** 任意一个会话配置项（推理强度、其他 select 与 boolean）。 */
+  setConfigOption: async (
+    sessionId: string,
+    configId: string,
+    value: string | boolean,
+  ) => {
+    await currentClient().acp.setConfigOption({
+      sessionId,
+      ...acpConfigOptionRequestSchema.parse({ configId, value }),
     });
   },
   switchDriver: async (nodeId: string, driver: AgentDriver) =>
