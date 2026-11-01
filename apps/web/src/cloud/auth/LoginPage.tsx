@@ -2,15 +2,20 @@ import * as React from "react";
 
 import { useT } from "@/app/preferences-store";
 import { Button } from "@/ui/button";
-import { Field, FieldError, FieldLabel } from "@/ui/field";
+import { Field, FieldError, FieldLabel, FieldSeparator } from "@/ui/field";
 import { Input } from "@/ui/input";
+import { Spinner } from "@/ui/spinner";
 import { browserDevice } from "../../sources/cloud-client";
 import { TurnstileWidget } from "../../challenge/TurnstileWidget";
 import { TURNSTILE_LOGIN_ACTION } from "../../challenge/turnstile";
 import { useCloudApi } from "../api/context";
 import { describeFailure } from "../api/errors";
+import { usePlatformInfo } from "../api/queries";
 import { RouteLink } from "../RouteLink";
 import { AuthLayout } from "./AuthLayout";
+import { MfaStep } from "./MfaStep";
+import { OAuthButtons } from "./OAuthButtons";
+import { useSignInOptions } from "./sign-in-options";
 
 type Stage =
   | { kind: "credentials" }
@@ -36,27 +41,18 @@ export function LoginPage({
   const [stage, setStage] = React.useState<Stage>({ kind: "credentials" });
   const [account, setAccount] = React.useState("");
   const [password, setPassword] = React.useState("");
-  const [code, setCode] = React.useState("");
-  const [recovery, setRecovery] = React.useState(false);
   const [error, setError] = React.useState("");
   const [busy, setBusy] = React.useState(false);
-  const [siteKey, setSiteKey] = React.useState<string | null>(null);
   const [challenge, setChallenge] = React.useState("");
   const [widget, setWidget] = React.useState(0);
-
-  React.useEffect(() => {
-    let live = true;
-    api.client.platform.info({}).then(
-      (info) => {
-        if (live && info.challenge?.scope.includes("auth.login"))
-          setSiteKey(info.challenge.siteKey);
-      },
-      () => undefined,
-    );
-    return () => {
-      live = false;
-    };
-  }, [api]);
+  const info = usePlatformInfo();
+  const options = useSignInOptions();
+  const siteKey = info.data?.challenge?.scope.includes("auth.login")
+    ? info.data.challenge.siteKey
+    : null;
+  // 运营登录始终是口令 + 两步验证，不看能力位，也没有第三方登录。
+  const showPassword = operator || options.password;
+  const providers = operator ? [] : options.providers;
 
   const guarded = async (run: () => Promise<void>) => {
     if (busy) return;
@@ -99,149 +95,104 @@ export function LoginPage({
       onSignedIn();
     });
 
-  const verify = (challengeId: string) =>
-    guarded(async () => {
-      await (operator ? api.ops : api.client).auth.mfaVerify({
-        challengeId,
-        code: code.trim(),
-      });
-      onSignedIn();
-    });
-
   const query = new URLSearchParams();
   if (next !== null) query.set("next", next);
   const suffix = query.size === 0 ? "" : `?${query}`;
 
-  if (stage.kind === "mfa") {
-    const canRecover = stage.methods.includes("recovery");
-    const canTotp = stage.methods.includes("totp");
+  if (stage.kind === "mfa")
     return (
-      <AuthLayout title={t("auth.mfa.title")}>
+      <MfaStep
+        operator={operator}
+        challengeId={stage.challengeId}
+        methods={stage.methods}
+        onSignedIn={onSignedIn}
+      />
+    );
+
+  const waiting = !operator && options.loading;
+  return (
+    <AuthLayout
+      title={operator ? t("cloud.auth.operatorTitle") : t("auth.title")}
+    >
+      {waiting && (
+        <div className="flex justify-center" aria-busy="true">
+          <Spinner />
+        </div>
+      )}
+      {!waiting && showPassword && (
         <form
           className="flex flex-col gap-3"
           onSubmit={(event) => {
             event.preventDefault();
-            if (code.trim() !== "") void verify(stage.challengeId);
+            if (account.trim() !== "" && password !== "") void signIn();
           }}
         >
           <Field data-invalid={error !== "" || undefined}>
-            <FieldLabel htmlFor={`${id}-code`}>
-              {recovery ? t("auth.mfa.recovery") : t("auth.mfa.code")}
+            <FieldLabel htmlFor={`${id}-account`}>
+              {t("cloud.auth.email")}
             </FieldLabel>
             <Input
-              id={`${id}-code`}
+              id={`${id}-account`}
+              type="email"
+              name="email"
               autoFocus
-              autoComplete="one-time-code"
-              inputMode={recovery ? "text" : "numeric"}
-              value={code}
+              autoComplete="username"
+              value={account}
+              disabled={busy}
+              onChange={(event) => {
+                setAccount(event.target.value);
+                setError("");
+              }}
+            />
+          </Field>
+          <Field data-invalid={error !== "" || undefined}>
+            <FieldLabel htmlFor={`${id}-password`}>
+              {t("auth.password")}
+            </FieldLabel>
+            <Input
+              id={`${id}-password`}
+              type="password"
+              name="password"
+              autoComplete="current-password"
+              value={password}
               disabled={busy}
               aria-invalid={error !== "" || undefined}
               onChange={(event) => {
-                setCode(event.target.value);
+                setPassword(event.target.value);
                 setError("");
               }}
             />
             <FieldError>{error}</FieldError>
           </Field>
+          {siteKey !== null && (
+            <TurnstileWidget
+              key={widget}
+              siteKey={siteKey}
+              action={TURNSTILE_LOGIN_ACTION}
+              onToken={setChallenge}
+              onError={() => setError(t("cloud.auth.challengeFailed"))}
+            />
+          )}
           <Button
             type="submit"
             size="lg"
             className="w-full"
-            disabled={code.trim() === ""}
+            disabled={
+              account.trim() === "" ||
+              password === "" ||
+              (siteKey !== null && challenge === "")
+            }
             loading={busy}
           >
-            {t("auth.verify")}
+            {t("auth.signIn")}
           </Button>
-          {canRecover && canTotp && (
-            <Button
-              type="button"
-              variant="ghost"
-              onClick={() => {
-                setRecovery(!recovery);
-                setCode("");
-                setError("");
-              }}
-            >
-              {recovery ? t("auth.mfa.useTotp") : t("auth.mfa.useRecovery")}
-            </Button>
-          )}
         </form>
-      </AuthLayout>
-    );
-  }
-
-  return (
-    <AuthLayout
-      title={operator ? t("cloud.auth.operatorTitle") : t("auth.title")}
-    >
-      <form
-        className="flex flex-col gap-3"
-        onSubmit={(event) => {
-          event.preventDefault();
-          if (account.trim() !== "" && password !== "") void signIn();
-        }}
-      >
-        <Field data-invalid={error !== "" || undefined}>
-          <FieldLabel htmlFor={`${id}-account`}>
-            {t("cloud.auth.email")}
-          </FieldLabel>
-          <Input
-            id={`${id}-account`}
-            type="email"
-            name="email"
-            autoFocus
-            autoComplete="username"
-            value={account}
-            disabled={busy}
-            onChange={(event) => {
-              setAccount(event.target.value);
-              setError("");
-            }}
-          />
-        </Field>
-        <Field data-invalid={error !== "" || undefined}>
-          <FieldLabel htmlFor={`${id}-password`}>
-            {t("auth.password")}
-          </FieldLabel>
-          <Input
-            id={`${id}-password`}
-            type="password"
-            name="password"
-            autoComplete="current-password"
-            value={password}
-            disabled={busy}
-            aria-invalid={error !== "" || undefined}
-            onChange={(event) => {
-              setPassword(event.target.value);
-              setError("");
-            }}
-          />
-          <FieldError>{error}</FieldError>
-        </Field>
-        {siteKey !== null && (
-          <TurnstileWidget
-            key={widget}
-            siteKey={siteKey}
-            action={TURNSTILE_LOGIN_ACTION}
-            onToken={setChallenge}
-            onError={() => setError(t("cloud.auth.challengeFailed"))}
-          />
-        )}
-        <Button
-          type="submit"
-          size="lg"
-          className="w-full"
-          disabled={
-            account.trim() === "" ||
-            password === "" ||
-            (siteKey !== null && challenge === "")
-          }
-          loading={busy}
-        >
-          {t("auth.signIn")}
-        </Button>
-      </form>
-      {!operator && (
+      )}
+      {!waiting && showPassword && providers.length > 0 && (
+        <FieldSeparator>{t("auth.or")}</FieldSeparator>
+      )}
+      {!waiting && <OAuthButtons providers={providers} next={next} />}
+      {!operator && !waiting && options.password && (
         <div className="flex flex-col items-center gap-1">
           <Button asChild variant="link">
             <RouteLink href="/reset">{t("cloud.auth.forgot")}</RouteLink>

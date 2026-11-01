@@ -13,7 +13,10 @@ import { HostRoot } from "./HostRoot";
  * 掉线、撤销盖一层，登出整页「已登出」，访客的访问被收回整页「访问已被收回」。
  */
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  vi.unstubAllGlobals();
+});
 
 const HOST = "a".repeat(32);
 
@@ -62,6 +65,21 @@ const page = (host: ConsoleHost) =>
   );
 
 describe("控制台 /h/ 页面", () => {
+  it("没有控制台会话：不出任何登录表单，整页换到 /login?next=/h/<主机>（同源，Cookie 会话共享）", () => {
+    const replace = vi.fn();
+    vi.stubGlobal("location", { ...window.location, replace });
+    const { host } = fakeHost({ kind: "login" });
+    page(host);
+    expect(replace).toHaveBeenCalledTimes(1);
+    expect(replace).toHaveBeenCalledWith(
+      `/login?next=${encodeURIComponent(`/h/${HOST}`)}`,
+    );
+    expect(screen.queryByLabelText("口令")).toBeNull();
+    expect(screen.queryByLabelText("邮箱")).toBeNull();
+    expect(screen.queryByRole("textbox")).toBeNull();
+    expect(screen.queryByTestId("app")).toBeNull();
+  });
+
   it("进去之前：失败按码给文案与回到主机列表", () => {
     const { host } = fakeHost({ kind: "failed", code: "source_too_old" });
     page(host);

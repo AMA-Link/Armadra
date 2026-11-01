@@ -80,6 +80,26 @@ describe("账号 · 资料", () => {
 });
 
 describe("账号 · 安全", () => {
+  it("服务端不报 auth.password-change：没有「安全」页签和「更改口令」，?tab=security 落回资料", async () => {
+    mount("/me/account?tab=security", {
+      capabilities: ["auth.oauth.github", "auth.device-code", "me.stream"],
+    });
+    await screen.findByRole("textbox", { name: "名字" });
+    await waitFor(() =>
+      expect(screen.queryByRole("tab", { name: "安全" })).toBeNull(),
+    );
+    expect(screen.queryByRole("button", { name: "更改口令" })).toBeNull();
+    expect(screen.getByRole("tab", { name: "设备" })).toBeTruthy();
+  });
+
+  it("报了 auth.password-change：「更改口令」照常在", async () => {
+    mount("/me/account?tab=security");
+    expect(
+      await screen.findByRole("button", { name: "更改口令" }),
+    ).toBeTruthy();
+    expect(screen.getByRole("tab", { name: "安全" })).toBeTruthy();
+  });
+
   it("改口令：当前口令不对贴在当前口令下，新口令太短贴在新口令下，成功后关闭并提示", async () => {
     mount("/me/account?tab=security");
     fireEvent.click(await screen.findByRole("button", { name: "更改口令" }));

@@ -59,6 +59,7 @@
 | 路径                                     | 页面                                           |             期             |  登录  | 角色门槛（团队）                       |
 | ---------------------------------------- | ---------------------------------------------- | :------------------------: | :----: | -------------------------------------- |
 | `/login`、`/login?scope=operator`        | 登录（后者给运营后台）                         |             M1             |   否   | —                                      |
+| `/login/oauth/:provider`                 | 第三方登录回跳（GitHub / Google）              |             M1             |   否   | —                                      |
 | `/register`                              | 注册                                           |             M1             |   否   | —                                      |
 | `/verify?token=`                         | 验证邮箱                                       |             M1             |   否   | —                                      |
 | `/reset`、`/reset?token=`                | 找回口令 / 设新口令                            |             M1             |   否   | —                                      |
@@ -223,10 +224,10 @@
             └───────────────────────────┘
                                 忘记口令      link 按钮，右对齐
             [            登录            ]    default 全宽
-            ──────────── 或 ────────────      M2
+            ──────────── 或 ────────────      有口令表单且有第三方时才画
             [     使用通行密钥           ]    outline 全宽（M2）
-            [     使用 GitHub 登录       ]    outline 全宽（M2）
-            [     使用 Google 登录       ]    outline 全宽（M2）
+            [     使用 GitHub 继续       ]    outline 全宽，能力位 auth.oauth.github
+            [     使用 Google 继续       ]    outline 全宽，能力位 auth.oauth.google
 
                      创建账号                 link
 ```
@@ -235,13 +236,20 @@
 
 | 项   | 内容                                                                                                                                                                                                                                                                                                                                                                           |
 | ---- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| 目的 | 用邮箱口令（M2 通行密钥、GitHub、Google）登录控制台                                                                                                                                                                                                                                                                                                                            |
+| 目的 | 用邮箱口令、GitHub、Google（M2 通行密钥）登录控制台                                                                                                                                                                                                                                                                                                                            |
 | 组件 | `BrandMark`、`Field`、`Input`、`Button`（default / outline / link）、`Separator`、`InputOTP`（两步验证，6 位）、`Alert`、`Spinner`                                                                                                                                                                                                                                             |
 | 字段 | 邮箱、口令；两步验证：6 位码，「使用恢复码」切成 `Input`                                                                                                                                                                                                                                                                                                                       |
-| 动作 | 主：登录；次：忘记口令、创建账号；M2：使用通行密钥 / GitHub / Google                                                                                                                                                                                                                                                                                                           |
+| 动作 | 主：登录；次：忘记口令、创建账号；使用 GitHub / Google 继续；M2：使用通行密钥                                                                                                                                                                                                                                                                                                  |
 | 状态 | `credentials_invalid` → 口令 `Field` 下；`account_locked` → `Alert destructive` + 倒计时，按钮禁用；`account_disabled` → `Alert destructive`；`mfa_required` → 切到验证码步；`mfa_invalid` → 验证码下；`challenge_required` → 复用 `mobile/ChallengeSheet.tsx` 与 `i18n/challenge.ts` 的挑战面板，过了再重试；`account_disabled` 带「联系支持」；离线 → 顶部 `Alert`，按钮禁用 |
 | 权限 | 已登录访问 → 直接去 `next` 或 `/`                                                                                                                                                                                                                                                                                                                                              |
-| 过程 | `platform.info`、`auth.login`、`auth.mfaVerify`、`auth.passkeyLoginOptions` / `passkeyLogin`（M2）、`auth.oauthStart` / `oauthFinish`（M2）                                                                                                                                                                                                                                    |
+| 过程 | `platform.info`、`auth.login`、`auth.mfaVerify`、`auth.oauthStart` / `oauthFinish`、`auth.passkeyLoginOptions` / `passkeyLogin`（M2）                                                                                                                                                                                                                                          |
+
+第三方登录（armadra-cloud#184，Armadra#661）：
+
+- **能力位**：`platform.info.capabilities` 有 `auth.oauth.github` / `auth.oauth.google` 才画对应按钮；没有 `auth.password` 时隐藏口令表单、找回口令与「创建账号」入口（登录与注册页只剩第三方按钮）；取不到平台信息按旧服务端处理（只有口令）。能力位还没取回来时只画 `Spinner`，不闪口令表单。运营登录（`?scope=operator`）始终是口令 + 两步验证，不看能力位，也不画第三方按钮。
+- **发起**：点击先把 `next`（含 `/device?code=…`）存 `sessionStorage`（没有就清掉旧值），`auth.oauthStart { provider, redirectUri = <origin>/login/oauth/<provider> }`，整页跳到答复里的 `authorizationUrl`（只跟 http / https）。失败在按钮下 `Alert`。
+- **回跳** `/login/oauth/:provider`：读 `code`、`state`（提供方的 `error` 也读），读完立刻从地址栏拿掉；`auth.oauthFinish` 只发一次（`state` 一次性）。成功进存下的 `next`（缺省 `/me`）并清掉存值；两步验证挑战进登录同款第二步；失败整页 `Alert` + 「返回登录」（带着存下的 `next`）。文案按码：`conflict` 且 `details.reason = account_exists` → 「该邮箱已有账号，请用原方式登录」，`credentials_invalid`（state 过期或不符）→ 「登录已过期，请重新登录」，`not_found` → 「该登录方式未开放」，`email_unverified`、`account_disabled`、`registrations_paused` 用通用文案，提供方回传 `access_denied` → 「已取消登录」。
+- **`/h/<主机>`**：没有控制台会话不画任何登录表单，整页换到同源的 `/login?next=/h/<主机>`，登录后回来（Cookie 会话共享）。个人中转托管页（非 SaaS）不变。
 
 #### 3.1.2 注册 `/register`（M1）
 
@@ -371,14 +379,14 @@
 
 `Tabs`（手机横向可滚）：资料 · 安全 · 设备 · 安全日志 · 通知（M2）· 数据（M2）。`?tab=` 进地址。
 
-| 标签     |   期    | 内容（`SettingsGroup` + `SettingsRow`）                                                                                                                                                                                                                                                           | 状态 / 错误                                                                                                                                           | 过程                                                                                                                                |
-| -------- | :-----: | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
-| 资料     |   M1    | 头像（`Avatar` 32 +「更换头像」outline）、名字（`Input` 失焦保存）、邮箱（值 +「更改邮箱」→ 对话框：新邮箱 + 当前口令；待验证时值后 `Badge outline`「待验证：{email}」）、邮件语言（`Select` 简体中文 / English）                                                                                 | 保存成功 sonner「已保存」；`email_taken` 字段下                                                                                                       | `me.get`、`me.update`、`me.emailChange`                                                                                             |
-| 安全     | M1 / M2 | 口令（「更改口令」→ 对话框：当前口令、新口令）；两步验证（M2，复用 `panels/settings/pages/security/MfaSetup` 的形态与 `security.mfa.*` 文案）；通行密钥（M2，复用 `panels/settings/pages/security/PasskeyList` 形态）；第三方账号（M2，复用 `panels/settings/pages/security/OAuthBindings` 形态） | `credentials_invalid` / `password_*` 字段下；团队强制两步验证而未开 → 本页顶 `Alert`「{team} 要求两步验证」+「现在设置」（复用 `security.mfa.setUp`） | `auth.changePassword`、`auth.totp*`、`auth.passkey*`、`auth.recoveryCodesRotate`、`auth.oauthStart` / `oauthFinish` / `oauthUnlink` |
-| 设备     |   M1    | `Table`：设备（平台图标 + 名称）· 最近使用 · IP 前缀 · [退出]；当前设备行 `Badge secondary`「当前」且无退出；表下「退出其他全部」destructive outline                                                                                                                                              | 空：只有当前一行；撤销中行内 `Spinner`；失败 sonner                                                                                                   | `me.devices`、`me.deviceRevoke`                                                                                                     |
-| 安全日志 |   M1    | `Table`：时间 · 事件 · 设备 · IP 前缀；「加载更多」                                                                                                                                                                                                                                               | 空：「没有记录」                                                                                                                                      | `me.securityLog`                                                                                                                    |
-| 通知     |   M2    | 每类一行 `Switch`：邀请、访问申请、主机上下线；「安全」一行 `Switch` 恒开且 `disabled`                                                                                                                                                                                                            | 失败回滚 + sonner                                                                                                                                     | `me.notificationPrefs`、`me.notificationPrefsUpdate`                                                                                |
-| 数据     |   M2    | 「导出数据」→ 生成后行内出现文件名 + 「下载」，生成中 `StatusPill queued`「排队中」；「注销账号」destructive → 输入邮箱确认的 `ResponsiveAlertDialog`；冷静期内本页顶 `Alert`「账号将于 {date} 注销」+「取消注销」                                                                                | `team_owner_required` → `ResponsiveAlertDialog` 内一行 + 名下团队的链接列表                                                                           | `me.export`、`me.delete`、`me.deleteCancel`                                                                                         |
+| 标签     |   期    | 内容（`SettingsGroup` + `SettingsRow`）                                                                                                                                                                                                                                                                                                                     | 状态 / 错误                                                                                                                                           | 过程                                                                                                                                |
+| -------- | :-----: | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| 资料     |   M1    | 头像（`Avatar` 32 +「更换头像」outline）、名字（`Input` 失焦保存）、邮箱（值 +「更改邮箱」→ 对话框：新邮箱 + 当前口令；待验证时值后 `Badge outline`「待验证：{email}」）、邮件语言（`Select` 简体中文 / English）                                                                                                                                           | 保存成功 sonner「已保存」；`email_taken` 字段下                                                                                                       | `me.get`、`me.update`、`me.emailChange`                                                                                             |
+| 安全     | M1 / M2 | 口令（「更改口令」→ 对话框：当前口令、新口令；服务端不报 `auth.password-change` 时整个「安全」页签收起）；两步验证（M2，复用 `panels/settings/pages/security/MfaSetup` 的形态与 `security.mfa.*` 文案）；通行密钥（M2，复用 `panels/settings/pages/security/PasskeyList` 形态）；第三方账号（M2，复用 `panels/settings/pages/security/OAuthBindings` 形态） | `credentials_invalid` / `password_*` 字段下；团队强制两步验证而未开 → 本页顶 `Alert`「{team} 要求两步验证」+「现在设置」（复用 `security.mfa.setUp`） | `auth.changePassword`、`auth.totp*`、`auth.passkey*`、`auth.recoveryCodesRotate`、`auth.oauthStart` / `oauthFinish` / `oauthUnlink` |
+| 设备     |   M1    | `Table`：设备（平台图标 + 名称）· 最近使用 · IP 前缀 · [退出]；当前设备行 `Badge secondary`「当前」且无退出；表下「退出其他全部」destructive outline                                                                                                                                                                                                        | 空：只有当前一行；撤销中行内 `Spinner`；失败 sonner                                                                                                   | `me.devices`、`me.deviceRevoke`                                                                                                     |
+| 安全日志 |   M1    | `Table`：时间 · 事件 · 设备 · IP 前缀；「加载更多」                                                                                                                                                                                                                                                                                                         | 空：「没有记录」                                                                                                                                      | `me.securityLog`                                                                                                                    |
+| 通知     |   M2    | 每类一行 `Switch`：邀请、访问申请、主机上下线；「安全」一行 `Switch` 恒开且 `disabled`                                                                                                                                                                                                                                                                      | 失败回滚 + sonner                                                                                                                                     | `me.notificationPrefs`、`me.notificationPrefsUpdate`                                                                                |
+| 数据     |   M2    | 「导出数据」→ 生成后行内出现文件名 + 「下载」，生成中 `StatusPill queued`「排队中」；「注销账号」destructive → 输入邮箱确认的 `ResponsiveAlertDialog`；冷静期内本页顶 `Alert`「账号将于 {date} 注销」+「取消注销」                                                                                                                                          | `team_owner_required` → `ResponsiveAlertDialog` 内一行 + 名下团队的链接列表                                                                           | `me.export`、`me.delete`、`me.deleteCancel`                                                                                         |
 
 #### 3.2.6 API 令牌 `/me/tokens`、`/t/:team/tokens`（M2）
 
@@ -1019,57 +1027,62 @@
 
 #### cloud-auth
 
-| 键                               | zh-CN                              | en                                            |
-| -------------------------------- | ---------------------------------- | --------------------------------------------- |
-| `cloud.auth.signIn`              | 登录                               | Sign in                                       |
-| `cloud.auth.email`               | 邮箱                               | Email                                         |
-| `cloud.auth.password`            | 口令                               | Password                                      |
-| `cloud.auth.forgot`              | 忘记口令                           | Forgot password                               |
-| `cloud.auth.or`                  | 或                                 | or                                            |
-| `cloud.auth.passkey`             | 使用通行密钥                       | Use passkey                                   |
-| `cloud.auth.github`              | 使用 GitHub 登录                   | Continue with GitHub                          |
-| `cloud.auth.google`              | 使用 Google 登录                   | Continue with Google                          |
-| `cloud.auth.createAccount`       | 创建账号                           | Create account                                |
-| `cloud.auth.name`                | 名字                               | Name                                          |
-| `cloud.auth.locked`              | 尝试次数过多，{minutes} 分钟后再试 | Too many attempts. Try again in {minutes} min |
-| `cloud.auth.mfa`                 | 两步验证                           | Two-step verification                         |
-| `cloud.auth.mfaCode`             | 验证码                             | Code                                          |
-| `cloud.auth.useRecovery`         | 使用恢复码                         | Use a recovery code                           |
-| `cloud.auth.recoveryCode`        | 恢复码                             | Recovery code                                 |
-| `cloud.auth.verifyTitle`         | 验证邮箱                           | Verify your email                             |
-| `cloud.auth.verifySent`          | 验证邮件已发到 {email}             | Verification email sent to {email}            |
-| `cloud.auth.verifyResend`        | 重新发送                           | Resend                                        |
-| `cloud.auth.verified`            | 邮箱已验证                         | Email verified                                |
-| `cloud.auth.goConsole`           | 进入控制台                         | Go to console                                 |
-| `cloud.auth.resetTitle`          | 找回口令                           | Reset password                                |
-| `cloud.auth.resetSend`           | 发送重置链接                       | Send reset link                               |
-| `cloud.auth.resetSent`           | 重置链接已发到 {email}             | Reset link sent to {email}                    |
-| `cloud.auth.resetNewTitle`       | 设置新口令                         | Set a new password                            |
-| `cloud.auth.newPassword`         | 新口令                             | New password                                  |
-| `cloud.auth.resetSave`           | 保存口令                           | Save password                                 |
-| `cloud.auth.resetDone`           | 口令已更新，所有设备已退出         | Password updated. All devices signed out      |
-| `cloud.auth.resetAgain`          | 重新获取                           | Request a new link                            |
-| `cloud.auth.deviceTitle`         | 授权设备                           | Authorize a device                            |
-| `cloud.auth.deviceCode`          | 设备码                             | Device code                                   |
-| `cloud.auth.deviceRequest`       | {name} 请求登录                    | {name} wants to sign in                       |
-| `cloud.auth.deviceApprove`       | 授权                               | Authorize                                     |
-| `cloud.auth.deviceDeny`          | 拒绝                               | Decline                                       |
-| `cloud.auth.deviceApproved`      | 已授权，可以回到 {name}            | Authorized. Return to {name}                  |
-| `cloud.auth.deviceCodeWrong`     | 设备码不正确                       | Incorrect device code                         |
-| `cloud.auth.joinTitle`           | 加入 {owner} 的 {target}           | Join {owner}'s {target}                       |
-| `cloud.auth.join`                | 加入                               | Join                                          |
-| `cloud.auth.joinSignIn`          | 登录后加入                         | Sign in to join                               |
-| `cloud.auth.inviteTeam`          | 加入团队 {team}                    | Join {team}                                   |
-| `cloud.auth.inviteHost`          | 访问 {host}                        | Access {host}                                 |
-| `cloud.auth.inviteFrom`          | 来自 {name}                        | From {name}                                   |
-| `cloud.auth.inviteAccept`        | 接受邀请                           | Accept invitation                             |
-| `cloud.auth.inviteDecline`       | 拒绝                               | Decline                                       |
-| `cloud.auth.inviteAccepted`      | 已加入                             | Joined                                        |
-| `cloud.auth.inviteDeclined`      | 已拒绝                             | Declined                                      |
-| `cloud.auth.switchAccount`       | 换个账号                           | Use another account                           |
-| `cloud.auth.openTeam`            | 打开团队                           | Open team                                     |
-| `cloud.auth.registrationsClosed` | 暂停注册                           | Sign-ups are paused                           |
-| `cloud.auth.operatorSignIn`      | 登录运营后台                       | Sign in to operations                         |
+| 键                               | zh-CN                              | en                                                                |
+| -------------------------------- | ---------------------------------- | ----------------------------------------------------------------- |
+| `cloud.auth.signIn`              | 登录                               | Sign in                                                           |
+| `cloud.auth.email`               | 邮箱                               | Email                                                             |
+| `cloud.auth.password`            | 口令                               | Password                                                          |
+| `cloud.auth.forgot`              | 忘记口令                           | Forgot password                                                   |
+| `cloud.auth.or`                  | 或                                 | or                                                                |
+| `cloud.auth.passkey`             | 使用通行密钥                       | Use passkey                                                       |
+| `cloud.auth.github`              | 使用 GitHub 继续                   | Continue with GitHub                                              |
+| `cloud.auth.google`              | 使用 Google 继续                   | Continue with Google                                              |
+| `cloud.auth.toLogin`             | 返回登录                           | Back to sign in                                                   |
+| `cloud.auth.oauthExpired`        | 登录已过期，请重新登录             | Sign-in expired. Sign in again                                    |
+| `cloud.auth.oauthCancelled`      | 已取消登录                         | Sign-in cancelled                                                 |
+| `cloud.auth.oauthUnavailable`    | 该登录方式未开放                   | This sign-in method isn't available                               |
+| `cloud.auth.oauthAccountExists`  | 该邮箱已有账号，请用原方式登录     | This email already has an account. Sign in the way you did before |
+| `cloud.auth.createAccount`       | 创建账号                           | Create account                                                    |
+| `cloud.auth.name`                | 名字                               | Name                                                              |
+| `cloud.auth.locked`              | 尝试次数过多，{minutes} 分钟后再试 | Too many attempts. Try again in {minutes} min                     |
+| `cloud.auth.mfa`                 | 两步验证                           | Two-step verification                                             |
+| `cloud.auth.mfaCode`             | 验证码                             | Code                                                              |
+| `cloud.auth.useRecovery`         | 使用恢复码                         | Use a recovery code                                               |
+| `cloud.auth.recoveryCode`        | 恢复码                             | Recovery code                                                     |
+| `cloud.auth.verifyTitle`         | 验证邮箱                           | Verify your email                                                 |
+| `cloud.auth.verifySent`          | 验证邮件已发到 {email}             | Verification email sent to {email}                                |
+| `cloud.auth.verifyResend`        | 重新发送                           | Resend                                                            |
+| `cloud.auth.verified`            | 邮箱已验证                         | Email verified                                                    |
+| `cloud.auth.goConsole`           | 进入控制台                         | Go to console                                                     |
+| `cloud.auth.resetTitle`          | 找回口令                           | Reset password                                                    |
+| `cloud.auth.resetSend`           | 发送重置链接                       | Send reset link                                                   |
+| `cloud.auth.resetSent`           | 重置链接已发到 {email}             | Reset link sent to {email}                                        |
+| `cloud.auth.resetNewTitle`       | 设置新口令                         | Set a new password                                                |
+| `cloud.auth.newPassword`         | 新口令                             | New password                                                      |
+| `cloud.auth.resetSave`           | 保存口令                           | Save password                                                     |
+| `cloud.auth.resetDone`           | 口令已更新，所有设备已退出         | Password updated. All devices signed out                          |
+| `cloud.auth.resetAgain`          | 重新获取                           | Request a new link                                                |
+| `cloud.auth.deviceTitle`         | 授权设备                           | Authorize a device                                                |
+| `cloud.auth.deviceCode`          | 设备码                             | Device code                                                       |
+| `cloud.auth.deviceRequest`       | {name} 请求登录                    | {name} wants to sign in                                           |
+| `cloud.auth.deviceApprove`       | 授权                               | Authorize                                                         |
+| `cloud.auth.deviceDeny`          | 拒绝                               | Decline                                                           |
+| `cloud.auth.deviceApproved`      | 已授权，可以回到 {name}            | Authorized. Return to {name}                                      |
+| `cloud.auth.deviceCodeWrong`     | 设备码不正确                       | Incorrect device code                                             |
+| `cloud.auth.joinTitle`           | 加入 {owner} 的 {target}           | Join {owner}'s {target}                                           |
+| `cloud.auth.join`                | 加入                               | Join                                                              |
+| `cloud.auth.joinSignIn`          | 登录后加入                         | Sign in to join                                                   |
+| `cloud.auth.inviteTeam`          | 加入团队 {team}                    | Join {team}                                                       |
+| `cloud.auth.inviteHost`          | 访问 {host}                        | Access {host}                                                     |
+| `cloud.auth.inviteFrom`          | 来自 {name}                        | From {name}                                                       |
+| `cloud.auth.inviteAccept`        | 接受邀请                           | Accept invitation                                                 |
+| `cloud.auth.inviteDecline`       | 拒绝                               | Decline                                                           |
+| `cloud.auth.inviteAccepted`      | 已加入                             | Joined                                                            |
+| `cloud.auth.inviteDeclined`      | 已拒绝                             | Declined                                                          |
+| `cloud.auth.switchAccount`       | 换个账号                           | Use another account                                               |
+| `cloud.auth.openTeam`            | 打开团队                           | Open team                                                         |
+| `cloud.auth.registrationsClosed` | 暂停注册                           | Sign-ups are paused                                               |
+| `cloud.auth.operatorSignIn`      | 登录运营后台                       | Sign in to operations                                             |
 
 #### cloud-account
 
