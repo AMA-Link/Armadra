@@ -3,8 +3,11 @@ import {
   agentDefinition,
   assembleLaunchArgv,
   assembleLaunchCommand,
+  defaultAgentRole,
+  roleFlags,
   type AgentAcpInfo,
   type AgentInfo,
+  type AgentRole,
   type CreateTerminalAgent,
   type CustomAgent,
   type LaunchArgv,
@@ -108,6 +111,21 @@ export function agentTextColorVar(id: string | undefined): string {
  * `env` 不在这里：它由 Runtime 在建终端时并进 PTY 环境，不上启动行
  * （否则会进用户的 shell 历史）。
  */
+/**
+ * 这个节点的 CLI 能不能当协调者（coordinator-agent §4）：内置的看自己，
+ * `custom:` 条目看它借用的那家。只有注册表给了旗标的才有这个开关。
+ */
+export function agentSupportsCoordinator(id: string): boolean {
+  const base = id.startsWith("custom:") ? registryEntry(id)?.baseAgent : id;
+  return base !== undefined && roleFlags(base, "coordinator").length > 0;
+}
+
+/** 新建这家 CLI 的节点时带的角色（ama 是协调者；成员节点不经这里）。 */
+export function newNodeRole(id: string): AgentRole | undefined {
+  const base = id.startsWith("custom:") ? registryEntry(id)?.baseAgent : id;
+  return base === undefined ? undefined : defaultAgentRole(base);
+}
+
 export function customAgentFor(id: string): CustomAgent | undefined {
   const info = registryEntry(id);
   if (!info || !info.baseAgent) return undefined;
@@ -220,6 +238,7 @@ export function buildAgentLaunchArgv(agent: TerminalAgent): LaunchArgv {
     ...(custom ? { custom } : {}),
     ...(agent.permissionMode ? { permissionMode: agent.permissionMode } : {}),
     ...(agent.model ? { model: agent.model } : {}),
+    ...(agent.role ? { role: agent.role } : {}),
   });
 }
 
@@ -266,6 +285,7 @@ function launchInput(agent: TerminalAgent, prompt?: string, remote = false) {
     ...launch,
     ...(agent.permissionMode ? { permissionMode: agent.permissionMode } : {}),
     ...(agent.model ? { model: agent.model } : {}),
+    ...(agent.role ? { role: agent.role } : {}),
     ...(agent.sessionId ? { sessionId: agent.sessionId } : {}),
     ...(prompt ? { prompt } : {}),
   };

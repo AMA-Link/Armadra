@@ -73,6 +73,7 @@ const zh = {
   "agentSettings.inboxWake.deliver": "直接投递",
   "agentSettings.acceptSubDelivery": "允许从向我投递",
   "agentSettings.contextShare": "允许相连 Agent 读取转录",
+  "agentSettings.coordinator": "协调者",
 
   /* 关闭确认（§5.8） */
   "confirm.allow": "允许",
@@ -141,6 +142,7 @@ const en: Record<keyof typeof zh, string> = {
   "agentSettings.inboxWake.deliver": "Deliver",
   "agentSettings.acceptSubDelivery": "Let subs type into my terminal",
   "agentSettings.contextShare": "Let linked agents read my transcript",
+  "agentSettings.coordinator": "Coordinator",
   "confirm.allow": "Allow",
   "confirm.deny": "Deny",
   "confirm.expired": "This request has expired.",

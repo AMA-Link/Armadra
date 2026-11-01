@@ -44,6 +44,7 @@ import { openAutomationPanel } from "../../panels/automation/open";
 import { openWorkflowPanel } from "../../workflow/store";
 import { isDesktop } from "../../platform";
 import { preferredView } from "../../acp/driver";
+import { newNodeRole } from "../../agent/launch";
 import { defaultNodeSize } from "../../store/defaults";
 import { beginCoalesce, endCoalesce } from "../../store/canvas/history";
 import { layoutDirection } from "../layout-direction";
@@ -203,6 +204,7 @@ export function buildAddMenu(
         toast.error(t("settings.permissionUnsupported"));
         return;
       }
+      const role = newNodeRole(agent.id);
       create(context, "terminal", {
         position: nodeDropPosition("terminal", { anchor: context.position }),
         title: agent.label,
@@ -211,6 +213,9 @@ export function buildAddMenu(
           agent: {
             id: agent.id,
             ...(permissionMode !== "default" ? { permissionMode } : {}),
+            // 用户亲手建的 ama 是协调者（coordinator-agent §4）；从别的节点派生
+            // 出来的成员不带角色。
+            ...(role === undefined ? {} : { role }),
             // 缺省驱动与节点体（ACP 设计 §8 第 2 条、#462）：跟随默认视图偏好。
             ...preferredView(agent),
           },

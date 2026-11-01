@@ -123,6 +123,24 @@ describe("Agent 设置", () => {
     expect(written()).toEqual({ id: "codex", contextShare: "full" });
   });
 
+  // coordinator-agent §4：只有能当协调者的 CLI 才有这个开关。
+  it("ama 节点有协调者开关，关掉删角色、再开写回", () => {
+    open({ id: "ama", role: "coordinator" });
+    const toggle = screen.getByRole("switch", { name: "协调者" });
+    expect(toggle.getAttribute("data-state")).toBe("checked");
+    fireEvent.click(toggle);
+    expect(written()).toEqual({ id: "ama", role: undefined });
+    cleanup();
+    open({ id: "ama" });
+    fireEvent.click(screen.getByRole("switch", { name: "协调者" }));
+    expect(written()).toEqual({ id: "ama", role: "coordinator" });
+  });
+
+  it("别家 CLI 没有协调者开关", () => {
+    open({ id: "codex" });
+    expect(screen.queryByRole("switch", { name: "协调者" })).toBeNull();
+  });
+
   it("没有 agent 的裸终端不开这个对话框", () => {
     open(undefined);
     expect(screen.queryByText("Agent 设置")).toBeNull();
