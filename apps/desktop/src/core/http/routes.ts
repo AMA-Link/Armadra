@@ -825,6 +825,25 @@ export const ROUTES: readonly RouteEntry[] = [
     surface: "runtime",
     implemented: true,
   },
+  // Agent 的登录与登出、列出 Agent 自己历史里的会话（ACP 缺口 #687）。
+  {
+    path: "/api/acp/auth/authenticate",
+    methods: ["POST"],
+    surface: "runtime",
+    implemented: true,
+  },
+  {
+    path: "/api/acp/auth/logout",
+    methods: ["POST"],
+    surface: "runtime",
+    implemented: true,
+  },
+  {
+    path: "/api/acp/agent-sessions",
+    methods: ["POST"],
+    surface: "runtime",
+    implemented: true,
+  },
   // 工作流与协调者任务（契约 §15、§43.2–§43.3）：路由在 `core/workflow/routes.ts`，
   // 与 `workflows.*` / `coordinator.*` procedure 同一份操作。
   ...WORKFLOW_ROUTES,

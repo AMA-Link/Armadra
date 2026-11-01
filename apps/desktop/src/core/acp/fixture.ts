@@ -76,6 +76,8 @@ export async function acpCore(
     configOptions?: boolean;
     /** 假 Agent 不答 `modes`，模式改在 `category: "mode"` 的配置项里（`--config-only`）。 */
     configOnly?: boolean;
+    /** 假 Agent 声明一条 terminal 型认证方法，开会话回 -32000（`--auth-required`）。 */
+    authRequired?: boolean;
     /** 换掉假 Agent 的脚本（缺省 `@armadra/agent/acp` 的那个）。 */
     script?: string;
     /** 自定义条目的基础 CLI；缺省 `opencode`。 */
@@ -117,6 +119,7 @@ export async function acpCore(
             ...(options.minimal ? ["--minimal"] : []),
             ...(options.configOptions ? ["--config-options"] : []),
             ...(options.configOnly ? ["--config-only"] : []),
+            ...(options.authRequired ? ["--auth-required"] : []),
           ],
           baseAgent: options.baseAgent ?? "opencode",
         },

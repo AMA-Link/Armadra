@@ -234,8 +234,13 @@ export type BackendNotice = {
  * reconnecting, and an exited session is a 404, and neither is a 500.
  */
 export class TerminalError extends CoreFailure {
-  constructor(status: number, code: string, message: string) {
-    super(status, code, message);
+  constructor(
+    status: number,
+    code: string,
+    message: string,
+    details?: Readonly<Record<string, unknown>>,
+  ) {
+    super(status, code, message, details);
     this.name = "TerminalError";
   }
 }

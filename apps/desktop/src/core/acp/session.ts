@@ -860,6 +860,8 @@ export class AcpSession implements AcpSessionIdentity {
     if (this.running !== undefined) {
       await host.process.cancel(host.sessionId).catch(() => undefined);
     }
+    // Agent 声明了 `session/close` 就先让它自己收尾（尽力而为，有短时限）。
+    await host.process.closeSession(host.sessionId).catch(() => undefined);
     await host.process.terminate();
     await this.terminals?.dispose();
   }

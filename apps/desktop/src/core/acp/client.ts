@@ -49,6 +49,11 @@ export class AcpError extends Error {
   constructor(
     readonly code: AcpErrorCode,
     message: string,
+    /**
+     * 随错误一起交给页面的细节（RPC 门面的 `details`），只放页面要用的结构化
+     * 信息，不放输出正文。例如 `acp_auth_required` 带 `authMethods`。
+     */
+    readonly details?: Readonly<Record<string, unknown>>,
   ) {
     super(message);
     this.name = "AcpError";
@@ -66,6 +71,11 @@ export type AcpErrorCode =
   | "acp_initialize_timeout"
   | "acp_protocol_version"
   | "acp_auth_required"
+  // 认证流程（P1-3）：客户端不支持、方法认不出、登录没成功。
+  | "acp_auth_unsupported"
+  | "acp_auth_failed"
+  // `session/list`（P2-7）：Agent 没有这个能力。
+  | "acp_list_unsupported"
   | "acp_session_failed"
   // `session/new` 到点没答（契约 §51）。
   | "acp_session_timeout"
@@ -167,6 +177,11 @@ interface ElicitationHandler {
   ): Promise<AcpElicitationResult>;
 }
 
+/** 有 `auth` 能力的客户端多收的那个构造参数：声明宿主能跑 terminal 型认证方法。 */
+interface AuthTerminalOption {
+  authTerminal?: boolean;
+}
+
 /** 有 `elicitationComplete` 能力的客户端多收的那个回调。 */
 interface ElicitationCompleteOption {
   onElicitationComplete?(params: { elicitationId: string }): void;
@@ -191,6 +206,12 @@ interface ConfigCapableClient {
     configId: string,
     value: string | boolean,
   ): Promise<{ configOptions?: AcpSessionConfigOption[] | null } | null>;
+}
+
+/** `session/close`：0.11 的客户端有 `supportsClose` / `closeSession(sessionId)`，新版多一个 `signal`。 */
+interface CloseCapableClient {
+  supportsClose?(): boolean;
+  closeSession?(sessionId: string, signal?: AbortSignal): Promise<unknown>;
 }
 
 /** 一条挂起审批是怎么结束的。 */
@@ -315,6 +336,7 @@ export class AcpProcess {
     const clientOptions: AcpClientOptions &
       ElicitationHandler &
       ElicitationCompleteOption &
+      AuthTerminalOption &
       TerminalHandlerOption = {
       input: child.stdout,
       output: child.stdin,
@@ -339,6 +361,8 @@ export class AcpProcess {
               )) as unknown as AcpClientOptions["onElicitation"],
           }
         : {}),
+      // 新版客户端才认；host 起的登录进程用它声明能跑 terminal 型认证方法。
+      ...(acpClientFeatures().auth ? { authTerminal: true } : {}),
       // 同理：旧版客户端没有这个回调，Agent 的 `elicitation/complete` 通知被忽略。
       ...(acpClientFeatures().elicitationComplete
         ? {
@@ -527,6 +551,44 @@ export class AcpProcess {
     return Array.isArray(answer?.configOptions)
       ? answer.configOptions
       : undefined;
+  }
+
+  /**
+   * 优雅关闭：Agent 声明了 `session/close` 且客户端有这个方法时，先让它自己收尾
+   * （尽力而为，最多等 `timeoutMs`；失败、超时都不拦后面的 {@link terminate}）。
+   * 答「发出去并得到答复」了没有。
+   */
+  async closeSession(sessionId: string, timeoutMs = 1_500): Promise<boolean> {
+    if (!this.alive) return false;
+    const client = this.client as unknown as CloseCapableClient;
+    if (
+      typeof client.supportsClose !== "function" ||
+      typeof client.closeSession !== "function" ||
+      !client.supportsClose()
+    ) {
+      return false;
+    }
+    const controller = new AbortController();
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const late = new Promise<never>((_resolve, reject) => {
+      timer = setTimeout(() => {
+        controller.abort();
+        reject(new Error("session/close timed out"));
+      }, timeoutMs);
+      timer.unref?.();
+    });
+    try {
+      await Promise.race([
+        // 新版客户端的第二个参数是 `signal`；旧版忽略它。
+        client.closeSession(sessionId, controller.signal),
+        late,
+      ]);
+      return true;
+    } catch {
+      return false;
+    } finally {
+      if (timer !== undefined) clearTimeout(timer);
+    }
   }
 
   prompt(sessionId: string, prompt: AcpContentBlock[], signal?: AbortSignal) {

@@ -601,9 +601,11 @@ export async function startAcp(
         if (error instanceof AcpError) throw error;
         if (await gone(process_, error)) throw exitedError(process_);
         if (rpcCode(error) === -32000) {
+          // 把 Agent 声明的登录方式一并交给页面（不含 terminal 型的 argv / env）。
           throw new AcpError(
             "acp_auth_required",
             "the agent is not signed in; sign in with the CLI itself first",
+            { authMethods: capabilitiesWire(capabilities).authMethods },
           );
         }
         throw new AcpError("acp_session_failed", messageOf(error));
@@ -1071,6 +1073,65 @@ export function adapterStartOptions(
           },
         }),
   };
+}
+
+/**
+ * 起一个短命的适配器进程、`initialize`，在它上面做一件事，再收掉。能力探测、
+ * 登录 / 登出、列出 Agent 自己的会话都是这一个形状。`prestarted` 给了就用它
+ * （菜单打开时预启动的那个，省掉启动与协商），否则按 `options` 起。
+ */
+/** {@link withAdapterProcess} 交给回调的那一份。 */
+export interface AdapterProcessContext {
+  readonly process: AcpProcess;
+  readonly capabilities: AcpCapabilities;
+  /** 实际起适配器的那一份（含 transport 改写后的）。 */
+  readonly launch: {
+    readonly program: string;
+    readonly args: readonly string[];
+    readonly cwd: string;
+    readonly env?: NodeJS.ProcessEnv;
+  };
+}
+
+export async function withAdapterProcess<T>(
+  options: Pick<
+    AcpStartOptions,
+    | "agentId"
+    | "program"
+    | "args"
+    | "cwd"
+    | "env"
+    | "initializeTimeoutMs"
+    | "transport"
+    | "prestarted"
+  >,
+  work: (context: AdapterProcessContext) => Promise<T>,
+): Promise<T> {
+  const launch = launchOf(options);
+  const reused = options.prestarted;
+  const process_ =
+    reused?.process ??
+    AcpProcess.spawn({
+      program: launch.program,
+      args: launch.args,
+      cwd: launch.cwd,
+      ...(launch.env === undefined ? {} : { env: launch.env }),
+      clientInfo: ACP_CLIENT_INFO,
+    });
+  try {
+    const capabilities =
+      reused === undefined
+        ? (await negotiate(process_, options)).capabilities
+        : capabilitiesOf(reused.initialized);
+    remember(options.agentId, capabilities);
+    return await work({
+      process: process_,
+      capabilities,
+      launch,
+    });
+  } finally {
+    await process_.terminate();
+  }
 }
 
 /**
