@@ -267,7 +267,8 @@ node windows-acceptance.mjs --dry-run                                           
 
 **结果**：命令最后打印每一项的 ✓ / ✗ / ! / - 与 `result.json` 的路径（仓库里跑在
 `target/windows-acceptance/<时间>/`，拷出去跑在当前目录的 `windows-acceptance-<时间>/`）。把 `result.json`
-整个贴回来即可；同目录的 `app-output.log` 是应用的标准输出，失败时一并附上。
+整个贴回来即可；同目录的 `app-output.log` 是应用的标准输出，`session-host.log` 是会话宿主自己的日志
+（core 起宿主时把它的 stderr 接到数据目录里的这个文件，超过 1 MiB 时上一份留在 `.1`），失败时一并附上。
 
 `result.json` 的形状（`schema: "armadra-windows-acceptance/1"`）：
 
