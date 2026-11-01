@@ -56,6 +56,7 @@
     "0054_source_teams.sql": "d347a5df4ee3d597571b295a70834dec9569105c949bb311fcc73d30fd69d264",
     "0055_session_lifetime_class.sql": "c640154594ff2628165ecf2dbbc22ad931bb116555e20a83db70702beb7c0710",
     "0056_device_endorsements.sql": "95dbfa4946bf5bd7d26096ae956384ba79069ab87051040768b623e977c3ee5f",
-    "0057_workspace_archive.sql": "6869de1eb4ca09dd4c5b760e3ed652eba63b431621a2b220707f7c6e476f143e"
+    "0057_workspace_archive.sql": "6869de1eb4ca09dd4c5b760e3ed652eba63b431621a2b220707f7c6e476f143e",
+    "0058_work_items.sql": "11768709d56450703f84393ce319615deafaa04a88c022fe971c395b00e1c480"
   }
 }

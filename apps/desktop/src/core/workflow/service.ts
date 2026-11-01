@@ -1,7 +1,9 @@
 import type { DatabaseSync } from "node:sqlite";
 import { validAgentId } from "../agent/registry";
 import type { CollabContext } from "../collab/service";
+import type { WorkItemStage } from "@armadra/shared";
 import { DomainError, uuidV7 } from "../workspaces/support";
+import { stageOf } from "./work-items";
 import { DeliveryRefused, deliverPrompt } from "./dispatch";
 import { parseDraft } from "./draft";
 import type { WorkflowEngine } from "./engine";
@@ -293,6 +295,11 @@ export class WorkflowService {
   /* ------------------------------ 协调者任务 ------------------------------ */
 
   /** 一块画板上协调者分派出去的任务（契约 §15.7）。 */
+  /** 一个工作项现在的阶段（#682）。 */
+  stage(run: TaskRun): WorkItemStage {
+    return stageOf(this.database, run, Math.floor(Date.now() / 1000));
+  }
+
   tasks(boardId: unknown): TaskRun[] {
     if (typeof boardId !== "string" || boardId === "") {
       throw new DomainError(400, "bad_request", "boardId 不能缺。");

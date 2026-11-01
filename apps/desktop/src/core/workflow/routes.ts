@@ -191,10 +191,14 @@ export function workflowOperations(service: WorkflowService) {
 
     /* ------------------------------ 协调者任务 ------------------------------ */
     tasks: (boardId: unknown) => ({
-      tasks: service.tasks(optional(boardId)).map(taskRowJson),
+      tasks: service
+        .tasks(optional(boardId))
+        .map((run) => taskRowJson(run, service.stage(run))),
     }),
     retryTask: (taskId: string) => ({
-      task: taskRowJson(service.retryTask(taskId)),
+      task: ((run) => taskRowJson(run, service.stage(run)))(
+        service.retryTask(taskId),
+      ),
     }),
   };
 }
