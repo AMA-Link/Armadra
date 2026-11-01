@@ -45,6 +45,7 @@ import {
 } from "./TimelineCards";
 import { visibleUsage } from "./pickers";
 import { useAcpPickers } from "./use-pickers";
+import { startFailureKey } from "./start-failure";
 import { useSessionFeed } from "./use-session-feed";
 
 /**
@@ -698,13 +699,7 @@ export function SessionView({
   if (session.failed) {
     body = (
       <Alert variant="destructive">
-        <AlertTitle>
-          {t(
-            session.failure === "acp_session_timeout"
-              ? "acp.error.timeout"
-              : "acp.error.start",
-          )}
-        </AlertTitle>
+        <AlertTitle>{t(startFailureKey(session.failure))}</AlertTitle>
         <AlertAction>
           <Button size="xs" variant="outline" onClick={session.retry}>
             {t("acp.error.retry")}

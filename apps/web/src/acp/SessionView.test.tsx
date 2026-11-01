@@ -938,6 +938,24 @@ describe("SessionView", () => {
     expect(screen.getByRole("button", { name: "重试" })).toBeTruthy();
   });
 
+  it.each([
+    ["acp_auth_required", "请先在终端里用该 CLI 登录"],
+    ["acp_not_installed", "适配器没有安装"],
+    ["acp_mode_unavailable", "该 Agent 没有这个权限模式"],
+    ["acp_protocol_version", "协议版本不兼容"],
+    ["acp_session_failed", "会话没有启动"],
+  ])("says why the session did not start: %s", async (code, text) => {
+    api.createSession.mockRejectedValueOnce(
+      new RuntimeRequestError(409, "x", code),
+    );
+    const fresh: TerminalNodeData = {
+      kind: "terminal",
+      agent: { id: "claude", driver: "acp" },
+    };
+    render(<SessionView nodeId="n1" data={fresh} />);
+    expect(await screen.findByText(text)).toBeTruthy();
+  });
+
   it("draws an elicitation from the timeline, answers it and folds it away", async () => {
     render(<SessionView nodeId="n1" data={data} />);
     await screen.findByText(emptyHint);
