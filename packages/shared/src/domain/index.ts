@@ -18,3 +18,4 @@ export * from "./agent-status.js";
 export * from "./placement.js";
 export * from "./timeline.js";
 export * from "./timeline-reduce.js";
+export * from "./golden-ratio.js";
