@@ -253,3 +253,129 @@ describe("ElicitationCard", () => {
     expect(screen.getByText("等待接管")).toBeTruthy();
   });
 });
+
+describe("multi-select fields", () => {
+  const multi: AcpElicitationForm = {
+    type: "object",
+    properties: {
+      tags: {
+        type: "array",
+        title: "Tags",
+        items: { enum: ["a", "b", "c"], enumNames: ["Alpha", "Beta", "Gamma"] },
+        minItems: 1,
+        maxItems: 2,
+        default: ["a"],
+      },
+      extra: {
+        type: "array",
+        title: "Extra",
+        items: { enum: ["x", "y"] },
+      },
+    },
+    required: ["tags"],
+  };
+
+  it("starts from the default and answers with an array in option order", () => {
+    const values = initialValues(multi);
+    expect(values).toEqual({ tags: ["a"], extra: [] });
+    expect(contentOf(multi, values)).toEqual({ tags: ["a"] });
+    expect(contentOf(multi, { ...values, tags: ["b", "a"] })).toEqual({
+      tags: ["b", "a"],
+    });
+    expect(contentOf(multi, { ...values, extra: ["y"] })).toEqual({
+      tags: ["a"],
+      extra: ["y"],
+    });
+  });
+
+  it("rejects too few, too many and unknown options", () => {
+    const values = initialValues(multi);
+    expect(contentOf(multi, { ...values, tags: [] })).toBeNull();
+    expect(contentOf(multi, { ...values, tags: ["a", "b", "c"] })).toBeNull();
+    expect(contentOf(multi, { ...values, tags: ["z"] })).toBeNull();
+  });
+
+  it("draws one titled checkbox per option and submits the picked ones", async () => {
+    render(
+      <ElicitationCard
+        view={{
+          pendingId: "m1",
+          elicitation: {
+            message: "Pick",
+            mode: "form",
+            requestedSchema: multi,
+          },
+        }}
+        canAnswer
+      />,
+    );
+    const alpha = screen.getByRole("checkbox", { name: "Alpha" });
+    const beta = screen.getByRole("checkbox", { name: "Beta" });
+    expect(alpha.getAttribute("aria-checked")).toBe("true");
+    expect(beta.getAttribute("aria-checked")).toBe("false");
+    fireEvent.click(beta);
+    expect(beta.getAttribute("aria-checked")).toBe("true");
+    fireEvent.click(alpha);
+    fireEvent.click(screen.getByRole("button", { name: /^提交/ }));
+    await waitFor(() =>
+      expect(api.answerElicitation).toHaveBeenCalledWith("m1", {
+        action: "accept",
+        content: { tags: ["b"] },
+      }),
+    );
+  });
+
+  it("keeps submit disabled while the required pick is empty", () => {
+    render(
+      <ElicitationCard
+        view={{
+          pendingId: "m2",
+          elicitation: {
+            message: "Pick",
+            mode: "form",
+            requestedSchema: multi,
+          },
+        }}
+        canAnswer
+      />,
+    );
+    const submit = screen.getByRole("button", {
+      name: /^提交/,
+    }) as HTMLButtonElement;
+    expect(submit.disabled).toBe(false);
+    fireEvent.click(screen.getByRole("checkbox", { name: "Alpha" }));
+    expect(submit.disabled).toBe(true);
+  });
+});
+
+describe("titled enums", () => {
+  it("shows the title and answers with the value (core folds oneOf into enumNames)", () => {
+    const titled: AcpElicitationForm = {
+      type: "object",
+      properties: {
+        size: {
+          type: "string",
+          title: "Size",
+          enum: ["s", "l"],
+          enumNames: ["Small", "Large"],
+          default: "l",
+        },
+      },
+    };
+    render(
+      <ElicitationCard
+        view={{
+          pendingId: "t1",
+          elicitation: {
+            message: "Size?",
+            mode: "form",
+            requestedSchema: titled,
+          },
+        }}
+        canAnswer
+      />,
+    );
+    expect(screen.getByRole("combobox").textContent).toContain("Large");
+    expect(contentOf(titled, initialValues(titled))).toEqual({ size: "l" });
+  });
+});

@@ -17,7 +17,14 @@ import {
   useApprovalSize,
 } from "@/approval/ApprovalShell";
 import { Button } from "@/ui/button";
-import { Field, FieldGroup, FieldLabel } from "@/ui/field";
+import { Checkbox } from "@/ui/checkbox";
+import {
+  Field,
+  FieldGroup,
+  FieldLabel,
+  FieldLegend,
+  FieldSet,
+} from "@/ui/field";
 import { Input } from "@/ui/input";
 import {
   Select,
@@ -32,14 +39,16 @@ import { acpApi } from "./api";
 import { useAnsweredStore } from "./answered";
 import type { AcpElicitationView } from "./approval-views";
 
-type Value = string | boolean;
+type Value = string | boolean | readonly string[];
 type Values = Readonly<Record<string, Value>>;
+type Content = Record<string, string | number | boolean | string[]>;
 
-/** 表单的起始值：有 `default` 用它，布尔缺省 `false`，其余空串。 */
+/** 表单的起始值：有 `default` 用它，布尔缺省 `false`、多选缺省空，其余空串。 */
 export function initialValues(form: AcpElicitationForm | undefined): Values {
   const out: Record<string, Value> = {};
   for (const [name, field] of Object.entries(form?.properties ?? {})) {
     if (field.type === "boolean") out[name] = field.default ?? false;
+    else if (field.type === "array") out[name] = field.default ?? [];
     else if (field.default !== undefined) out[name] = String(field.default);
     else out[name] = "";
   }
@@ -48,6 +57,14 @@ export function initialValues(form: AcpElicitationForm | undefined): Values {
 
 function fieldValid(field: AcpElicitationField, raw: Value): boolean {
   if (field.type === "boolean") return typeof raw === "boolean";
+  if (field.type === "array") {
+    if (!Array.isArray(raw)) return false;
+    if (raw.some((item) => !field.items.enum.includes(item))) return false;
+    if (field.maxItems !== undefined && raw.length > field.maxItems) {
+      return false;
+    }
+    return field.minItems === undefined || raw.length >= field.minItems;
+  }
   const text = typeof raw === "string" ? raw : "";
   if (text === "") return true;
   if (field.type === "string") {
@@ -74,14 +91,25 @@ function fieldValid(field: AcpElicitationField, raw: Value): boolean {
 export function contentOf(
   form: AcpElicitationForm,
   values: Values,
-): Record<string, string | number | boolean> | null {
+): Content | null {
   const required = new Set(form.required ?? []);
-  const out: Record<string, string | number | boolean> = {};
+  const out: Content = {};
   for (const [name, field] of Object.entries(form.properties)) {
-    const raw = values[name] ?? (field.type === "boolean" ? false : "");
+    const raw =
+      values[name] ??
+      (field.type === "boolean" ? false : field.type === "array" ? [] : "");
     if (!fieldValid(field, raw)) return null;
     if (field.type === "boolean") {
       out[name] = raw as boolean;
+      continue;
+    }
+    if (field.type === "array") {
+      const picked = [...(raw as readonly string[])];
+      if (picked.length === 0) {
+        if (required.has(name)) return null;
+        continue;
+      }
+      out[name] = picked;
       continue;
     }
     if (raw === "") {
@@ -147,6 +175,43 @@ function FormField({
   const description = field.description ? (
     <span className="text-meta text-muted-foreground">{field.description}</span>
   ) : null;
+
+  if (field.type === "array") {
+    const picked = Array.isArray(value) ? (value as readonly string[]) : [];
+    const names = field.items.enumNames;
+    return (
+      <FieldSet className="gap-1">
+        <FieldLegend variant="label" className="mb-0 font-normal">
+          {label}
+          {required && <span aria-hidden>*</span>}
+        </FieldLegend>
+        {field.items.enum.map((option, index) => {
+          const optionId = `${id}-${index}`;
+          return (
+            <Field key={option} orientation="horizontal" className="gap-2">
+              <Checkbox
+                id={optionId}
+                checked={picked.includes(option)}
+                onCheckedChange={(checked) =>
+                  onChange(
+                    checked === true
+                      ? field.items.enum.filter(
+                          (item) => item === option || picked.includes(item),
+                        )
+                      : picked.filter((item) => item !== option),
+                  )
+                }
+              />
+              <FieldLabel htmlFor={optionId} className="text-body font-normal">
+                {names?.[index] ?? option}
+              </FieldLabel>
+            </Field>
+          );
+        })}
+        {description}
+      </FieldSet>
+    );
+  }
 
   if (field.type === "boolean") {
     return (
