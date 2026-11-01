@@ -99,7 +99,7 @@ describe("消息与思考", () => {
     expect(state.items["a:1:2"]).toMatchObject({ streaming: true });
   });
 
-  it("思考：独立条目 th:1:1，收尾时记时长，非文本块忽略", () => {
+  it("思考：独立条目 th:1:1，收尾时记时长，非文本块进 parts 不进文本", () => {
     const state = feed([
       think("hm"),
       {
@@ -119,6 +119,65 @@ describe("消息与思考", () => {
       0,
     );
     expect(state.items["a:1:1"]).toMatchObject({ kind: "assistant" });
+    expect(state.items["th:1:1"]).toMatchObject({
+      parts: [{ type: "image", mimeType: "image/png", dropped: true }],
+    });
+  });
+
+  it("思考以非文本块开头：条目文本为空，后续文本接着并", () => {
+    const state = feed([
+      {
+        sessionUpdate: "agent_thought_chunk",
+        content: { type: "audio", data: "x", mimeType: "audio/wav" },
+      },
+      think("after"),
+    ]);
+    expect(state.items["th:1:1"]).toMatchObject({
+      kind: "thought",
+      text: "after",
+      parts: [{ type: "audio", mimeType: "audio/wav" }],
+    });
+  });
+
+  it("chunk 的 messageId 变了就另开一条（助手与思考），没变或缺省照常合并", () => {
+    const m = (text: string, messageId?: string) => ({
+      ...msg(text),
+      ...(messageId !== undefined ? { messageId } : {}),
+    });
+    const state = feed([m("a", "m1"), m("b", "m1"), m("c", "m2"), m("d")]);
+    expect(items(state).map((i) => i.id)).toEqual(["a:1:1", "a:1:2"]);
+    expect(state.items["a:1:1"]).toMatchObject({
+      messageId: "m1",
+      streaming: false,
+      parts: [{ type: "text", text: "ab" }],
+    });
+    expect(state.items["a:1:2"]).toMatchObject({
+      messageId: "m2",
+      streaming: true,
+      parts: [{ type: "text", text: "cd" }],
+    });
+    const thoughts = feed([
+      { ...think("x"), messageId: "t1" },
+      { ...think("y"), messageId: "t2" },
+    ]);
+    expect(items(thoughts).map((i) => i.id)).toEqual(["th:1:1", "th:1:2"]);
+  });
+
+  it("用户消息的 messageId 变了另开 u:t1:2，同 id 的分块并回原条", () => {
+    const u = (text: string, messageId: string) => ({
+      sessionUpdate: "user_message_chunk",
+      messageId,
+      content: { type: "text", text },
+    });
+    const state = feed([u("one ", "m1"), u("two", "m2"), u("more", "m1")]);
+    expect(state.items["u:t1"]).toMatchObject({
+      text: "one more",
+      messageId: "m1",
+    });
+    expect(state.items["u:t1:2"]).toMatchObject({
+      text: "two",
+      messageId: "m2",
+    });
   });
 
   it("适配器重发整段或快照式分块不会重复", () => {
@@ -428,6 +487,7 @@ describe("工具调用", () => {
       { type: "resource", uri: "file:///r", name: "r" },
       { type: "resource", uri: "file:///e", text: "body" },
       { type: "text", text: "plain" },
+      { type: "audio", mimeType: "audio/wav", blobId: "bb", bytes: 3 },
     ]);
   });
 
@@ -552,6 +612,88 @@ describe("工具调用", () => {
     expect(state.items["plan:1"]).toMatchObject({
       entries: [{ status: "completed" }],
     });
+  });
+});
+
+describe("子代理归属", () => {
+  it("ama 的 _meta.ama.parentToolCallId 与 claude 的一样记到 parentToolCallId", () => {
+    const state = feed([
+      toolCall("inner", { _meta: { ama: { parentToolCallId: "outer" } } }),
+      toolCall("inner2", {
+        _meta: { claudeCode: { parentToolUseId: "outer2" } },
+      }),
+      toolCall("plain"),
+    ]);
+    expect(toolOf(state, "inner").parentToolCallId).toBe("outer");
+    expect(toolOf(state, "inner2").parentToolCallId).toBe("outer2");
+    expect(toolOf(state, "plain").parentToolCallId).toBeUndefined();
+  });
+});
+
+describe("notice 与上下文压缩", () => {
+  const noticesOf = (state: TimelineState) =>
+    items(state).flatMap((i) => (i.kind === "notice" ? [i] : []));
+
+  it("notice 更新记提示行：error 级别记 error，其余 info；重复一条不再记", () => {
+    const state = feed([
+      { sessionUpdate: "notice", message: "heads up", level: "warning" },
+      { sessionUpdate: "notice", message: "heads up", level: "warning" },
+      { sessionUpdate: "notice", text: "broken", severity: "ERROR" },
+      { sessionUpdate: "notice" },
+    ]);
+    expect(noticesOf(state).map((n) => [n.code, n.params])).toEqual([
+      ["info", { message: "heads up", level: "warning" }],
+      ["error", { message: "broken", level: "error" }],
+    ]);
+  });
+
+  it("compaction_update：进行中不画，结束记 compacted；失败记 error", () => {
+    const started = feed([
+      { sessionUpdate: "compaction_update", status: "started" },
+    ]);
+    expect(noticesOf(started)).toEqual([]);
+    const done = feed([
+      { sessionUpdate: "compaction_update", status: "started" },
+      { sessionUpdate: "compaction_update", status: "completed" },
+    ]);
+    expect(noticesOf(done).map((n) => n.code)).toEqual(["compacted"]);
+    const failed = feed([
+      { sessionUpdate: "compaction_update", status: "failed" },
+    ]);
+    expect(noticesOf(failed)[0]).toMatchObject({
+      code: "error",
+      params: { code: "compaction_failed" },
+    });
+  });
+
+  it("摘要分块并进 compacted 提示的 params.summary，先后顺序都只留一条", () => {
+    const chunk = (text: string) => ({
+      sessionUpdate: "compaction_summary_chunk",
+      content: { type: "text", text },
+    });
+    const after = feed([
+      { sessionUpdate: "compaction_update", status: "completed" },
+      chunk("Sum"),
+      chunk("mary"),
+    ]);
+    expect(noticesOf(after)).toHaveLength(1);
+    expect(noticesOf(after)[0]).toMatchObject({
+      code: "compacted",
+      params: { summary: "Summary" },
+    });
+    const before = feed([
+      chunk("Sum"),
+      chunk("mary"),
+      { sessionUpdate: "compaction_update", status: "completed" },
+    ]);
+    expect(noticesOf(before)).toHaveLength(1);
+    expect(noticesOf(before)[0]?.params).toEqual({ summary: "Summary" });
+    // 更新里直接带 summary 也认；字符串形式的分块同样认。
+    const inline = feed([
+      { sessionUpdate: "compaction_update", summary: "S" },
+      { sessionUpdate: "compaction_summary_chunk", content: "!" },
+    ]);
+    expect(noticesOf(inline)[0]?.params).toEqual({ summary: "S!" });
   });
 });
 

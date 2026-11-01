@@ -131,6 +131,7 @@ export const timelineToolContentSchema = z.discriminatedUnion("type", [
     ...clippedShape,
   }),
   z.object({ type: z.literal("image"), ...blobRefShape }),
+  z.object({ type: z.literal("audio"), ...blobRefShape }),
   z.object({
     type: z.literal("resource"),
     uri: z.string().max(4_000),
@@ -191,6 +192,8 @@ export const timelineUserItemSchema = z.object({
   attachments: z.array(timelineAttachmentSchema).optional(),
   author: z.string().max(200).optional(),
   clientTurnId: z.string().max(128).optional(),
+  /** 适配器给的消息 id（chunk 的 `messageId`）；换了就是另一条消息。 */
+  messageId: z.string().max(200).optional(),
 });
 
 export const timelineAssistantItemSchema = z.object({
@@ -198,6 +201,7 @@ export const timelineAssistantItemSchema = z.object({
   kind: z.literal("assistant"),
   parts: z.array(timelinePartSchema),
   streaming: z.boolean(),
+  messageId: z.string().max(200).optional(),
 });
 
 export const timelineThoughtItemSchema = z.object({
@@ -206,6 +210,9 @@ export const timelineThoughtItemSchema = z.object({
   text: z.string(),
   streaming: z.boolean(),
   durationMs: countSchema.optional(),
+  /** 思考里的非文本块（图片、音频、资源）；纯文本思考没有这个字段。 */
+  parts: z.array(timelinePartSchema).optional(),
+  messageId: z.string().max(200).optional(),
 });
 
 /** 审批的结局记在工具上：关联审批的 `pendingId` 与答复。 */
@@ -337,6 +344,7 @@ export const TIMELINE_NOTICE_CODES = [
   "woke",
   "exited",
   "error",
+  "info",
 ] as const;
 export const timelineNoticeCodeSchema = z.enum(TIMELINE_NOTICE_CODES);
 export type TimelineNoticeCode = (typeof TIMELINE_NOTICE_CODES)[number];

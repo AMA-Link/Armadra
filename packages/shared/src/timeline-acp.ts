@@ -3,6 +3,7 @@ import {
   type TimelineHead,
   type TimelineItem,
   type TimelineNoticeCode,
+  type TimelineNoticeItem,
   type TimelineOp,
   type TimelinePart,
   type TimelineSource,
@@ -78,6 +79,10 @@ function obj(value: unknown): Json | null {
 
 function str(value: unknown): string | undefined {
   return typeof value === "string" ? value : undefined;
+}
+
+function nonEmpty(value: unknown): string | undefined {
+  return typeof value === "string" && value !== "" ? value : undefined;
 }
 
 const encoder = new TextEncoder();
@@ -281,6 +286,7 @@ export function toolContentOf(
       case "text":
         return { type: "text", ...clipTail(part.text) };
       case "image":
+      case "audio":
         return part;
       case "resource_link":
         return {
@@ -525,6 +531,15 @@ export function acpUpdateToOps(
     case "session_info_update":
       titleUpdate(state, body, out);
       break;
+    case "notice":
+      agentNoticeUpdate(state, body, ctx, out);
+      break;
+    case "compaction_update":
+      compactionUpdate(state, body, ctx, out);
+      break;
+    case "compaction_summary_chunk":
+      compactionSummaryChunk(state, body, ctx, out);
+      break;
     default:
       break;
   }
@@ -549,15 +564,39 @@ function userChunk(
 ): void {
   const part = partOfBlock(body.content, ctx);
   if (part === null) return;
-  const id = `u:${ctx.turnId}`;
-  const existing = state.items[id];
+  const messageId = nonEmpty(body.messageId);
+  let id = `u:${ctx.turnId}`;
+  let existing = state.items[id];
   if (existing !== undefined && existing.kind !== "user") return;
+  if (
+    existing?.kind === "user" &&
+    messageId !== undefined &&
+    existing.messageId !== undefined &&
+    existing.messageId !== messageId
+  ) {
+    // 换了一条用户消息：已有同 id 的接着并，没有就另开一条。
+    const siblings = turnItems(state, ctx.turn).filter(
+      (item): item is TimelineUserItem => item.kind === "user",
+    );
+    const same = siblings.find((item) => item.messageId === messageId);
+    if (same !== undefined) {
+      id = same.id;
+      existing = same;
+    } else {
+      let n = siblings.length + 1;
+      while (state.items[`u:${ctx.turnId}:${n}`] !== undefined) n++;
+      id = `u:${ctx.turnId}:${n}`;
+      existing = undefined;
+    }
+  }
+  const idTag = messageId !== undefined ? { messageId } : {};
   if (part.type === "text") {
     if (existing === undefined) {
       out.put({
         ...base(ctx, id, nextOrd(turnItems(state, ctx.turn))),
         kind: "user",
         text: part.text,
+        ...idTag,
       });
       return;
     }
@@ -603,6 +642,7 @@ function userChunk(
           ...base(ctx, id, nextOrd(turnItems(state, ctx.turn))),
           kind: "user",
           text: "",
+          ...idTag,
         };
   out.put({ ...user, attachments: [...(user.attachments ?? []), attachment] });
 }
@@ -616,10 +656,21 @@ function streamChunk(
 ): void {
   const part = partOfBlock(body.content, ctx);
   if (part === null) return;
-  if (kind === "thought" && part.type !== "text") return;
+  const messageId = nonEmpty(body.messageId);
   const items = turnItems(state, ctx.turn);
   const tail = lastItem(items);
-  const open = isStreaming(tail) && tail.kind === kind ? tail : undefined;
+  // 两边都带 `messageId` 且不同：是另一条消息，不并进上一条。
+  const open =
+    isStreaming(tail) &&
+    tail.kind === kind &&
+    !(
+      messageId !== undefined &&
+      tail.messageId !== undefined &&
+      tail.messageId !== messageId
+    )
+      ? tail
+      : undefined;
+  const idTag = messageId !== undefined ? { messageId } : {};
 
   if (open === undefined) {
     if (isStreaming(tail)) closeStreaming(tail, ctx.at, out);
@@ -628,12 +679,14 @@ function streamChunk(
     while (state.items[`${prefix}:${ctx.turn}:${n}`] !== undefined) n++;
     const id = `${prefix}:${ctx.turn}:${n}`;
     const ord = nextOrd(items);
-    if (kind === "thought" && part.type === "text") {
+    if (kind === "thought") {
       out.put({
         ...base(ctx, id, ord),
         kind: "thought",
-        text: part.text,
+        text: part.type === "text" ? part.text : "",
+        ...(part.type === "text" ? {} : { parts: [part] }),
         streaming: true,
+        ...idTag,
       });
     } else {
       out.put({
@@ -641,13 +694,17 @@ function streamChunk(
         kind: "assistant",
         parts: [part],
         streaming: true,
+        ...idTag,
       });
     }
     return;
   }
 
   if (open.kind === "thought") {
-    if (part.type !== "text") return;
+    if (part.type !== "text") {
+      out.put({ ...open, parts: [...(open.parts ?? []), part] });
+      return;
+    }
     const merged = mergeStreamChunk(open.text, part.text);
     if (merged.mode === "append") out.append(open.id, part.text);
     else if (merged.mode === "snapshot")
@@ -679,10 +736,12 @@ function subagentInfo(body: Json): {
 } {
   const meta = obj(body._meta);
   const claude = obj(meta?.claudeCode);
+  const ama = obj(meta?.ama);
   const name = str(claude?.toolName);
   return {
     isSubagent: name === "Task" || name === "Agent",
-    parent: str(claude?.parentToolUseId),
+    parent:
+      nonEmpty(claude?.parentToolUseId) ?? nonEmpty(ama?.parentToolCallId),
   };
 }
 
@@ -838,6 +897,173 @@ export function timelineNoticeOps(
   const out = new Emitter(state);
   notice(state, ctx, out, code, params);
   return out.ops;
+}
+
+/* ------------------------ notice 与上下文压缩 ------------------------ */
+
+/** 压缩摘要最多留这么多字符。 */
+export const COMPACTION_SUMMARY_MAX_CHARS = 20_000;
+
+/** 一个字符串，或一个 ACP 内容块里的文本。 */
+function textOf(value: unknown): string | undefined {
+  if (typeof value === "string") return value;
+  const o = obj(value);
+  return o !== null && (o.type === undefined || o.type === "text")
+    ? str(o.text)
+    : undefined;
+}
+
+function firstText(body: Json, keys: readonly string[]): string | undefined {
+  for (const key of keys) {
+    const text = textOf(body[key]);
+    if (text !== undefined && text !== "") return text;
+  }
+  return undefined;
+}
+
+const NOTICE_ERROR_LEVELS: ReadonlySet<string> = new Set([
+  "error",
+  "fatal",
+  "critical",
+]);
+
+/**
+ * Agent 自己发的 `notice`：形状在协议文档之外，所以字段名宽松地认
+ * （`message` / `text` / `content`，级别 `level` / `severity`）。error 级别记
+ * `error` 提示，其余记 `info`。
+ */
+function agentNoticeUpdate(
+  state: TimelineState,
+  body: Json,
+  ctx: AcpOpsContext,
+  out: Emitter,
+): void {
+  const message = firstText(body, ["message", "text", "content"]);
+  if (message === undefined) return;
+  const level = (nonEmpty(body.level) ?? nonEmpty(body.severity))
+    ?.toLowerCase()
+    .slice(0, 40);
+  const code: TimelineNoticeCode =
+    level !== undefined && NOTICE_ERROR_LEVELS.has(level) ? "error" : "info";
+  const params = {
+    message: message.slice(0, 2_000),
+    ...(level !== undefined ? { level } : {}),
+  };
+  const tail = lastItem(turnItems(state, ctx.turn));
+  if (
+    tail?.kind === "notice" &&
+    tail.code === code &&
+    JSON.stringify(tail.params) === JSON.stringify(params)
+  ) {
+    return;
+  }
+  notice(state, ctx, out, code, params);
+}
+
+const COMPACTION_RUNNING: ReadonlySet<string> = new Set([
+  "started",
+  "start",
+  "running",
+  "in_progress",
+  "pending",
+  "compacting",
+]);
+const COMPACTION_FAILED: ReadonlySet<string> = new Set([
+  "failed",
+  "error",
+  "cancelled",
+]);
+
+/** 回合里最后一条条目若是同来源的 `compacted` 提示，就是这次压缩的那一条。 */
+function openCompaction(
+  state: TimelineState,
+  ctx: AcpOpsContext,
+): TimelineNoticeItem | undefined {
+  const tail = lastItem(turnItems(state, ctx.turn));
+  return tail?.kind === "notice" &&
+    tail.code === "compacted" &&
+    tail.source === (ctx.source ?? "acp")
+    ? tail
+    : undefined;
+}
+
+function withSummary(
+  item: TimelineNoticeItem,
+  summary: string,
+): TimelineNoticeItem {
+  return {
+    ...item,
+    params: {
+      ...item.params,
+      summary: summary.slice(0, COMPACTION_SUMMARY_MAX_CHARS),
+    },
+  };
+}
+
+/**
+ * `compaction_update`：开始 / 进行中的状态不画；结束（或没写状态）记一条
+ * `compacted` 提示，带 `summary` 时折叠显示；失败记 `error`（`code =
+ * compaction_failed`）。摘要块先到时那一条已经在了，不重复记。
+ */
+function compactionUpdate(
+  state: TimelineState,
+  body: Json,
+  ctx: AcpOpsContext,
+  out: Emitter,
+): void {
+  const status = (
+    nonEmpty(body.status) ??
+    nonEmpty(body.state) ??
+    nonEmpty(body.phase)
+  )?.toLowerCase();
+  if (status !== undefined && COMPACTION_RUNNING.has(status)) return;
+  if (status !== undefined && COMPACTION_FAILED.has(status)) {
+    const message = firstText(body, ["message", "error", "reason"]);
+    notice(state, ctx, out, "error", {
+      code: "compaction_failed",
+      ...(message !== undefined ? { message: message.slice(0, 2_000) } : {}),
+    });
+    return;
+  }
+  const summary = firstText(body, ["summary"]);
+  const open = openCompaction(state, ctx);
+  if (open !== undefined) {
+    if (summary !== undefined && open.params.summary === undefined) {
+      out.put(withSummary(open, summary));
+    }
+    return;
+  }
+  notice(
+    state,
+    ctx,
+    out,
+    "compacted",
+    summary !== undefined
+      ? { summary: summary.slice(0, COMPACTION_SUMMARY_MAX_CHARS) }
+      : {},
+  );
+}
+
+/** `compaction_summary_chunk`：摘要文本逐块并进最近那条 `compacted` 提示；还没有就先开一条。 */
+function compactionSummaryChunk(
+  state: TimelineState,
+  body: Json,
+  ctx: AcpOpsContext,
+  out: Emitter,
+): void {
+  const text = firstText(body, ["content", "text", "delta", "summary"]);
+  if (text === undefined) return;
+  const open = openCompaction(state, ctx);
+  if (open === undefined) {
+    notice(state, ctx, out, "compacted", {
+      summary: text.slice(0, COMPACTION_SUMMARY_MAX_CHARS),
+    });
+    return;
+  }
+  const before =
+    typeof open.params.summary === "string" ? open.params.summary : "";
+  if (before.length >= COMPACTION_SUMMARY_MAX_CHARS) return;
+  out.put(withSummary(open, before + text));
 }
 
 function modeUpdate(
