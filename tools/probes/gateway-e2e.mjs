@@ -470,11 +470,20 @@ async function fromThePage(base, origin) {
 
   // 开关与配对码在「远程访问 → 允许其他设备访问这台电脑」（#301）。
   await page.click('nav button[aria-label="远程访问"]');
+  // 二维码收进「手机扫码连接」对话框（#675）：开关开着之后点开它。
+  await page.waitFor(
+    `const on = document.querySelector('[role="switch"][aria-label="允许其他设备访问这台电脑"]')
+       ?.getAttribute("aria-checked") === "true";
+     const open = [...document.querySelectorAll("button")]
+       .find((node) => node.textContent.trim() === "手机扫码连接");
+     if (!on || !open) return false;
+     open.click();
+     return true;`,
+    { what: "允许其他设备访问开着、点开「手机扫码连接」" },
+  );
   const qr = await page.waitFor(
-    `return document.querySelector('[role="switch"][aria-label="允许其他设备访问这台电脑"]')
-       ?.getAttribute("aria-checked") === "true"
-       && document.querySelector("svg[data-qr-text]")?.getAttribute("data-qr-text");`,
-    { what: "允许其他设备访问开着、二维码出来" },
+    `return document.querySelector('[role="dialog"] svg[data-qr-text]')?.getAttribute("data-qr-text");`,
+    { what: "扫码对话框里的二维码" },
   );
   check(
     typeof qr === "string" && qr.startsWith(`${origin}/#pair=`),
@@ -492,6 +501,13 @@ async function fromThePage(base, origin) {
   );
   await page.capture("gateway-page-on");
 
+  // 关掉扫码对话框再去点开关。
+  await page.evaluate(
+    `document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })); return true;`,
+  );
+  await page.waitFor(`return document.querySelector('[role="dialog"]') === null;`, {
+    what: "扫码对话框关上",
+  });
   await page.click('[role="switch"][aria-label="允许其他设备访问这台电脑"]');
   let after = null;
   for (let attempt = 0; attempt < 50; attempt += 1) {
