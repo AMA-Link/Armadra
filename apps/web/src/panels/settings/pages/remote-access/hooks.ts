@@ -9,6 +9,7 @@ import {
 } from "../../../../api/gateway";
 import {
   type RemoteService,
+  registeredSpace,
   shareStatus,
   shareThisMachine,
   stopSharing,
@@ -65,9 +66,38 @@ export function canShare(remote: RemoteService): boolean {
   return remote.kind === "personal" && remote.accountHint !== "";
 }
 
-/** 能由这一页一键开路线的账号：只有个人中转（Armadra 云要选空间，走设备码对话框）。 */
+/** 能由这一页一键开路线的账号：只有个人中转（Armadra 云的路线就是登记，见 `planRoute`）。 */
 export function canStartRoute(remote: RemoteService): boolean {
   return canShare(remote) && remote.kind === "personal";
+}
+
+/**
+ * 「局域网 + 互联网」该怎么开（#675）。以 Armadra 云为缺省：
+ *
+ * - `ready`：本机已登记到 Armadra 云，登记就是路线，没有别的要做；
+ * - `register`：登录着 Armadra 云、本机没登记：打开「登记到空间」那一步；
+ * - `start`：没有可用的云、有个人中转账号：一键开（只有中转账号的人行为不变）；
+ * - `signIn`：都没有：打开 Armadra 云设备码登录，`issuer` 是登出了的那一行的地址，
+ *   没有这一行是空串（用缺省地址）。
+ *
+ * 云与个人中转都能用时取云。
+ */
+export type RoutePlan =
+  | { readonly kind: "ready" }
+  | { readonly kind: "register"; readonly remote: RemoteService }
+  | { readonly kind: "start"; readonly remote: RemoteService }
+  | { readonly kind: "signIn"; readonly issuer: string };
+
+export function planRoute(remotes: readonly RemoteService[]): RoutePlan {
+  const clouds = remotes.filter(
+    (remote) => remote.kind === "saas" && !remote.guest,
+  );
+  if (clouds.some(canShare)) return { kind: "ready" };
+  const signedIn = clouds.find((remote) => remote.hasCredentials);
+  if (signedIn !== undefined) return { kind: "register", remote: signedIn };
+  const personal = remotes.find(canStartRoute);
+  if (personal !== undefined) return { kind: "start", remote: personal };
+  return { kind: "signIn", issuer: clouds[0]?.issuer ?? "" };
 }
 
 /**
@@ -126,6 +156,7 @@ export function useInternetRoute() {
     remotes,
     shareable,
     startable: shareable.filter(canStartRoute),
+    plan: planRoute(remotes),
     registered: shareable.filter((remote) => tunnelOf(remote.issuer) !== null),
     on: registrations.length > 0,
     /**
@@ -138,8 +169,30 @@ export function useInternetRoute() {
       null,
     issuers: registrations.map((one) => one.issuer),
     tunnelOf,
+    refresh,
     start,
     stop,
     busy: start.isPending || stop.isPending,
   };
+}
+
+/**
+ * 本机登记在这个 Armadra 云的哪个空间（`remote` 为 `undefined` 或没登记时不查）。
+ * 读不到（云不可达、旧版云不报空间）是 `null`，界面只写云的名字。
+ */
+export function useRegisteredSpace(remote: RemoteService | undefined) {
+  const status = useQuery({
+    queryKey: SHARE_STATUS_KEY,
+    queryFn: shareStatus,
+    retry: false,
+  });
+  const sourceId = status.data?.sourceId ?? "";
+  const serviceId = remote?.serviceId ?? "";
+  const query = useQuery({
+    queryKey: ["cloud", "space", serviceId, sourceId],
+    queryFn: () => registeredSpace(serviceId, sourceId),
+    enabled: remote !== undefined && remote.registered && sourceId !== "",
+    retry: false,
+  });
+  return query.data ?? null;
 }

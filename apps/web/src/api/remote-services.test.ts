@@ -4,6 +4,7 @@ const rpc = vi.hoisted(() => ({
   sources: {
     remoteAdd: vi.fn(),
     remoteSession: vi.fn(),
+    remoteSpaces: vi.fn(),
     remotePasswordChange: vi.fn(),
     addDirect: vi.fn(),
     shareLinks: vi.fn(),
@@ -49,6 +50,7 @@ import {
   createShareLink,
   dismissRelayCleanup,
   renameShareLink,
+  registeredSpace,
   reorderSources,
   shareViaShell,
   shellCanShare,
@@ -324,6 +326,55 @@ describe("分享本机", () => {
     await expect(
       shareThisMachine({ serviceId: "svc", issuer: ISSUER, label: "" }),
     ).resolves.toEqual({ sourceId: "s" });
+  });
+});
+
+describe("本机登记在哪个空间", () => {
+  const SOURCE = "a".repeat(32);
+  it("个人空间；团队带名字（取自 me.spaces）；云里没有这一行是 null", async () => {
+    fetch.mockResolvedValue(
+      json(200, {
+        sources: [
+          { sourceId: "b".repeat(32), space: { kind: "team", teamId: "x" } },
+          { sourceId: SOURCE, space: { kind: "personal" } },
+        ],
+      }),
+    );
+    await expect(registeredSpace("svc", SOURCE)).resolves.toEqual({
+      kind: "personal",
+    });
+    expect(String(fetch.mock.calls[0]![0])).toBe(`${ISSUER}/v1/me/sources`);
+    expect(rpc.sources.remoteSpaces).not.toHaveBeenCalled();
+
+    fetch.mockResolvedValue(
+      json(200, {
+        sources: [{ sourceId: SOURCE, space: { kind: "team", teamId: "t1" } }],
+      }),
+    );
+    rpc.sources.remoteSpaces.mockResolvedValue({
+      spaces: [
+        { kind: "personal", plan: "free" },
+        {
+          kind: "team",
+          teamId: "t1",
+          slug: "acme",
+          name: "Acme",
+          role: "admin",
+          plan: "team",
+        },
+      ],
+    });
+    await expect(registeredSpace("svc", SOURCE)).resolves.toEqual({
+      kind: "team",
+      teamId: "t1",
+      name: "Acme",
+    });
+
+    fetch.mockResolvedValue(json(200, { sources: [] }));
+    await expect(registeredSpace("svc", SOURCE)).resolves.toBeNull();
+    // 旧版云不报空间。
+    fetch.mockResolvedValue(json(200, { sources: [{ sourceId: SOURCE }] }));
+    await expect(registeredSpace("svc", SOURCE)).resolves.toBeNull();
   });
 });
 

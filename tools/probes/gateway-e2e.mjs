@@ -470,11 +470,22 @@ async function fromThePage(base, origin) {
 
   // 开关与配对码在「远程访问 → 允许其他设备访问这台电脑」（#301）。
   await page.click('nav button[aria-label="远程访问"]');
+  // 二维码收进「手机扫码连接」对话框（#675）：开关开着之后点开它。
+  await page.waitFor(
+    `const on = document.querySelector('[role="switch"][aria-label="允许其他设备访问这台电脑"]')
+       ?.getAttribute("aria-checked") === "true";
+     const open = [...document.querySelectorAll("button")]
+       .find((node) => node.textContent.trim() === "手机扫码连接");
+     if (!on || !open) return false;
+     open.click();
+     return true;`,
+    { what: "允许其他设备访问开着、点开「手机扫码连接」" },
+  );
   const qr = await page.waitFor(
-    `return document.querySelector('[role="switch"][aria-label="允许其他设备访问这台电脑"]')
-       ?.getAttribute("aria-checked") === "true"
-       && document.querySelector("svg[data-qr-text]")?.getAttribute("data-qr-text");`,
-    { what: "允许其他设备访问开着、二维码出来" },
+    `return [...document.querySelectorAll('[role="dialog"]')]
+       .map((node) => node.querySelector("svg[data-qr-text]"))
+       .find(Boolean)?.getAttribute("data-qr-text");`,
+    { what: "扫码对话框里的二维码" },
   );
   check(
     typeof qr === "string" && qr.startsWith(`${origin}/#pair=`),
@@ -492,7 +503,23 @@ async function fromThePage(base, origin) {
   );
   await page.capture("gateway-page-on");
 
-  await page.click('[role="switch"][aria-label="允许其他设备访问这台电脑"]');
+  // 关掉扫码对话框再去点开关。设置页本身也是对话框（还带着「手机扫码连接」按钮），所以按里面有二维码认这一个。
+  const scanDialog = `[...document.querySelectorAll('[role="dialog"]')]
+     .find((node) => node.querySelector("svg[data-qr-text]"))`;
+  await page.waitFor(
+    `const close = ${scanDialog}?.querySelector('[data-slot="dialog-close"]');
+     if (!close) return false;
+     close.click();
+     return true;`,
+    { what: "点扫码对话框的关闭" },
+  );
+  await page.waitFor(`return ${scanDialog} === undefined;`, {
+    what: "扫码对话框关上",
+  });
+  // 对话框淡出时遮罩还在，坐标点击会落在遮罩上：直接点开关元素。
+  await page.evaluate(
+    `document.querySelector('[role="switch"][aria-label="允许其他设备访问这台电脑"]').click(); return true;`,
+  );
   let after = null;
   for (let attempt = 0; attempt < 50; attempt += 1) {
     after = JSON.parse((await local(base, "GET", "/api/gateway")).body);

@@ -265,7 +265,9 @@ export async function openGateway(
       if (closed) return false;
       const next = [...options.hosts()];
       const nextOrigins = originsFor(next, bound.port, options.publicOrigins);
-      const sameHosts = next.join("\n") === hosts.join("\n");
+      // 地址变没变按集合比：优先顺序（二维码缺省）不算变化。
+      const sameHosts =
+        [...next].sort().join("\n") === [...hosts].sort().join("\n");
       const material = resolve(next);
       const sameCert = material.cert === tls.cert;
       if (sameHosts && sameCert) return false;

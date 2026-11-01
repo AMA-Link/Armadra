@@ -164,9 +164,13 @@ afterEach(() => {
 
 const ALLOW = "Allow other devices to access this computer";
 
-/** 「高级」默认收起：添加中转账号、待清理都在里面。 */
+/**
+ * 「高级」默认收起：中转账号列表、添加中转账号、待清理、分享链接、流量都在里面。
+ * 展开过就不再点（再点会收起）。
+ */
 async function openAdvanced() {
-  fireEvent.click(await screen.findByRole("button", { name: "Advanced" }));
+  const button = await screen.findByRole("button", { name: "Advanced" });
+  if (button.getAttribute("aria-expanded") !== "true") fireEvent.click(button);
 }
 
 async function openAddRelay() {
@@ -176,7 +180,7 @@ async function openAddRelay() {
   );
 }
 
-function mount() {
+function mount({ advanced = true }: { advanced?: boolean } = {}) {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   });
@@ -185,25 +189,28 @@ function mount() {
       <RemoteAccessPage />
     </QueryClientProvider>,
   );
+  // 账号行、分享链接在「高级」里：缺省展开，要看收起时的样子传 `advanced: false`。
+  if (advanced)
+    fireEvent.click(screen.getByRole("button", { name: "Advanced" }));
 }
 
 describe("远程访问页", () => {
   it("零配置：A 这台电脑 / B 他人分享，一个开关，没有 SaaS 入口", async () => {
     api.listSources.mockResolvedValue({ sources: [local], remotes: [] });
-    mount();
+    mount({ advanced: false });
     expect(await screen.findByText("This computer")).toBeTruthy();
-    // 页头没有副标题；托盘三张：对外服务、中继、我的其他电脑（计数）。
+    // 页头没有副标题，也没有顶部的三张托盘（对外服务、中继、我的其他电脑）。
     expect(screen.getByTestId("settings-heading")).toBeTruthy();
-    expect(screen.getAllByText("Access service").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("Relay").length).toBeGreaterThan(0);
+    expect(screen.queryByText("Access service")).toBeNull();
+    expect(screen.queryByText("Relay")).toBeNull();
     expect(
       document.querySelectorAll('[data-slot="settings-kpi"]'),
-    ).toHaveLength(3);
+    ).toHaveLength(0);
     expect(screen.getByText("Shared with me")).toBeTruthy();
     const toggle = await screen.findByRole("switch", { name: ALLOW });
     expect(toggle.getAttribute("aria-checked")).toBe("false");
-    // 关着时没有可达范围；没有中转账号时不单列一张空的账号卡。
-    expect(screen.queryByRole("combobox", { name: "Reach" })).toBeNull();
+    // 关着时没有互联网访问；没有中转账号时不单列一张空的账号卡。
+    expect(screen.queryByText("Internet access")).toBeNull();
     expect(screen.queryByText("Remote access accounts")).toBeNull();
     expect(screen.getAllByText("My other computers").length).toBeGreaterThan(0);
     expect(
@@ -213,9 +220,12 @@ describe("远程访问页", () => {
     // 没有切换服务，也没有「加入他人」之外的入口。
     expect(screen.queryByText(/switch service/i)).toBeNull();
     expect(screen.queryByText(/saas|cloud/i)).toBeNull();
-    // 没登录任何中转账号时没有「从中转添加」。
+    // 没登录任何中转账号时没有「从中转添加」；添加中转账号收在「高级」里。
     expect(
       screen.queryByRole("button", { name: "Add from account" }),
+    ).toBeNull();
+    expect(
+      screen.queryByRole("button", { name: "Add remote access account" }),
     ).toBeNull();
     await openAdvanced();
     expect(
@@ -459,7 +469,7 @@ describe("远程访问页", () => {
     );
   });
 
-  it("开关打开、选局域网 + 互联网：经账号开路线 → 新建可多次使用的链接 → 二维码 → 列表里再复制、撤销要确认", async () => {
+  it("个人中转账号开着互联网路线： 新建可多次使用的链接 → 二维码 → 列表里再复制、撤销要确认", async () => {
     api.listSources.mockResolvedValue({ sources: [local], remotes: [relay] });
     const registered = {
       sourceId: local.sourceId,
@@ -591,114 +601,6 @@ describe("远程访问页", () => {
     await waitFor(() =>
       expect(api.revokeShareLink).toHaveBeenCalledWith("svc", "L"),
     );
-  });
-});
-
-describe("一个开关、两档可达范围（#301）", () => {
-  const off = {
-    enabled: false,
-    running: false,
-    managedBy: "settings",
-    listen: "private",
-    port: 0,
-    publicOrigin: "",
-    address: null,
-    origin: null,
-    origins: [],
-    tls: {
-      source: "localCa",
-      certFile: "",
-      keyFile: "",
-      acmeEmail: "",
-      fingerprint: null,
-      subject: null,
-      names: [],
-      notAfter: null,
-      caAvailable: false,
-    },
-    error: null,
-  };
-  const choose = (trigger: string, option: string) => {
-    fireEvent.pointerDown(screen.getByRole("combobox", { name: trigger }), {
-      button: 0,
-      ctrlKey: false,
-      pointerType: "mouse",
-    });
-    fireEvent.click(screen.getByRole("option", { name: option }));
-  };
-
-  it("打开 = 局域网（无需账号）；选局域网 + 互联网且没有账号：先登录，登录好了开路线", async () => {
-    gateway.status.mockResolvedValue(off);
-    gateway.configure.mockResolvedValue({ ...off, enabled: true });
-    api.listSources.mockResolvedValue({ sources: [local], remotes: [] });
-    api.addPersonalRelay.mockResolvedValue({ kind: "done", value: {} });
-    api.shareThisMachine.mockResolvedValue({ sourceId: local.sourceId });
-    mount();
-    fireEvent.click(await screen.findByRole("switch", { name: ALLOW }));
-    await waitFor(() =>
-      expect(gateway.configure).toHaveBeenCalledWith({ enabled: true }),
-    );
-    expect(
-      (await screen.findByRole("combobox", { name: "Reach" })).textContent,
-    ).toContain("Local network only");
-    choose("Reach", "Local network + Internet");
-    const dialog = await screen.findByRole("dialog");
-    fireEvent.change(within(dialog).getByLabelText("Address"), {
-      target: { value: ISSUER },
-    });
-    fireEvent.change(within(dialog).getByLabelText("Account"), {
-      target: { value: "dev" },
-    });
-    fireEvent.change(within(dialog).getByLabelText("Password"), {
-      target: { value: "pw" },
-    });
-    api.listSources.mockResolvedValue({ sources: [local], remotes: [relay] });
-    fireEvent.click(within(dialog).getByRole("button", { name: "Sign in" }));
-    await waitFor(() =>
-      expect(api.shareThisMachine).toHaveBeenCalledWith({
-        serviceId: "svc",
-        issuer: ISSUER,
-        label: "this-mac",
-      }),
-    );
-  });
-
-  it("退回仅局域网：确认后停用互联网路线，局域网照开", async () => {
-    gateway.status.mockResolvedValue({ ...off, enabled: true });
-    api.listSources.mockResolvedValue({ sources: [local], remotes: [relay] });
-    api.shareStatus.mockResolvedValue({
-      sourceId: local.sourceId,
-      registrations: [
-        {
-          issuer: ISSUER,
-          mode: "personal",
-          tunnel: {
-            state: "ready",
-            node: null,
-            since: null,
-            streams: 0,
-            lastError: null,
-          },
-        },
-      ],
-    });
-    api.stopSharing.mockResolvedValue(null);
-    mount();
-    await waitFor(() =>
-      expect(
-        screen.getByRole("combobox", { name: "Reach" }).textContent,
-      ).toContain("Local network + Internet"),
-    );
-    choose("Reach", "Local network only");
-    const confirm = await screen.findByRole("alertdialog");
-    expect(
-      within(confirm).getByText("Turn off the Internet route?"),
-    ).toBeTruthy();
-    fireEvent.click(
-      within(confirm).getByRole("button", { name: "Turn off Internet route" }),
-    );
-    await waitFor(() => expect(api.stopSharing).toHaveBeenCalledWith(ISSUER));
-    expect(gateway.configure).not.toHaveBeenCalled();
   });
 });
 
@@ -1296,9 +1198,16 @@ describe("经远端访问时不自断", () => {
       expect(toggle.getAttribute("aria-checked")).toBe("true"),
     );
     expect(toggle.hasAttribute("disabled")).toBe(true);
+    // 停用互联网路线也会自断：不给。
+    openMenu("Internet access");
     expect(
-      screen.getByRole("combobox", { name: "Reach" }).hasAttribute("disabled"),
-    ).toBe(true);
+      (
+        await screen.findByRole("menuitem", { name: "Turn off Internet route" })
+      ).getAttribute("aria-disabled"),
+    ).toBe("true");
+    fireEvent.keyDown(document.activeElement ?? document.body, {
+      key: "Escape",
+    });
     openMenu(relay.label);
     const signOut = await screen.findByRole("menuitem", { name: "Sign out" });
     const remove = screen.getByRole("menuitem", { name: "Remove" });

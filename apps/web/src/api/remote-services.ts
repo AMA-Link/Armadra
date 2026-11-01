@@ -437,6 +437,51 @@ export function shareStatus() {
   return localClient().identity.cloud.status({});
 }
 
+const meSourcesSchema = z.object({
+  sources: z.array(
+    z.object({
+      sourceId: z.string(),
+      space: z
+        .object({ kind: z.string(), teamId: z.string().optional() })
+        .optional(),
+    }),
+  ),
+});
+
+/** 本机登记在 Armadra 云的哪个空间（团队带名字，名字取自 `me.spaces`）。 */
+export type HostSpace =
+  | { readonly kind: "personal" }
+  | { readonly kind: "team"; readonly teamId: string; readonly name: string };
+
+/**
+ * 本机（`sourceId`）登记在 Armadra 云的哪个空间：`GET /v1/me/sources` 里本机那一行的
+ * `space`。云里没有这一行（或旧版云不报空间）是 `null`。
+ */
+export async function registeredSpace(
+  serviceId: string,
+  sourceId: string,
+): Promise<HostSpace | null> {
+  const access = await remoteAccess(serviceId);
+  const { sources } = await remoteFetch(
+    access,
+    "/v1/me/sources",
+    meSourcesSchema,
+  );
+  const space = sources.find((one) => one.sourceId === sourceId)?.space;
+  if (space === undefined) return null;
+  if (space.kind !== "team" || space.teamId === undefined)
+    return { kind: "personal" };
+  const { spaces } = await cloudSpaces(serviceId);
+  const team = spaces.find(
+    (one) => one.kind === "team" && one.teamId === space.teamId,
+  );
+  return {
+    kind: "team",
+    teamId: space.teamId,
+    name: team?.kind === "team" ? team.name : "",
+  };
+}
+
 /**
  * 分享本机：用远程服务会话取注册令牌 → 本机登记（`issuer` 用远程服务行里那
  * 一份：`registered` 才会亮，登记按它的指纹钉扎）→ 用同一会话为本机签一张断言

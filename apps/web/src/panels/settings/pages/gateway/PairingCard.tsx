@@ -6,7 +6,6 @@ import type { GatewayPairingPayload } from "@armadra/shared";
 import { useT } from "../../../../app/preferences-store";
 import { encodeQr, pairingQrText, qrPath } from "../../../../host/qr";
 import { Button } from "@/ui/button";
-import { Card, CardContent } from "@/ui/card";
 import { Kbd } from "@/ui/kbd";
 import {
   Select,
@@ -83,7 +82,7 @@ export interface PairingCardProps {
 }
 
 /**
- * 配对卡：二维码 · 地址 · 复制链接 / 新配对码 · 配对码与倒计时 · 指纹与 CA
+ * 配对内容（在「手机扫码连接」对话框里，{@link PairingDialog}）：二维码 · 地址 · 复制链接 / 新配对码 · 配对码与倒计时 · 指纹与 CA
  * 下载（设计系统 §5.12）。
  *
  * 票两分钟一次性（契约 §17.3）；私网档位上同时有一枚 8 位配对码（§24），与票
@@ -124,129 +123,125 @@ export function PairingCard({
   }
 
   return (
-    <Card className="py-4">
-      <CardContent className="flex flex-col gap-4 px-4 sm:flex-row sm:items-start">
-        <div className="flex size-[200px] shrink-0 items-center justify-center self-center sm:self-start">
-          {pairing ? (
-            <QrImage
-              text={pairingQrText(pairing)}
-              label={t("gateway.pair.qr")}
-              dimmed={expired}
-            />
-          ) : busy ? (
-            <Spinner aria-label={t("gateway.pairCode.new")} />
-          ) : null}
+    <div className="flex flex-col gap-4 sm:flex-row sm:items-start">
+      <div className="flex size-[200px] shrink-0 items-center justify-center self-center sm:self-start">
+        {pairing ? (
+          <QrImage
+            text={pairingQrText(pairing)}
+            label={t("gateway.pair.qr")}
+            dimmed={expired}
+          />
+        ) : busy ? (
+          <Spinner aria-label={t("gateway.pairCode.new")} />
+        ) : null}
+      </div>
+      <div className="flex min-w-0 flex-1 flex-col gap-3">
+        {origins.length > 1 ? (
+          <Select
+            value={pairing?.origin ?? origins[0]}
+            disabled={busy}
+            onValueChange={(origin) => onNewPairing(origin)}
+          >
+            <SelectTrigger
+              size="sm"
+              aria-label={t("gateway.pair.origin")}
+              className="w-full max-w-full font-mono text-meta"
+            >
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent className="z-[var(--z-dialog)]">
+              {origins.map((origin) => (
+                <SelectItem
+                  key={origin}
+                  value={origin}
+                  className="font-mono text-meta"
+                >
+                  {origin}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        ) : (
+          <p className="break-all font-mono text-body select-text">
+            {pairing?.origin ?? origins[0]}
+          </p>
+        )}
+        <div className="flex flex-wrap gap-2">
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            disabled={!pairing || expired}
+            onClick={() => void copy()}
+          >
+            <Copy data-icon="inline-start" />
+            {copied ? t("gateway.pair.copied") : t("gateway.pair.copy")}
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            variant={expired || !pairing ? "default" : "outline"}
+            disabled={busy}
+            onClick={() => onNewPairing(pairing?.origin)}
+          >
+            <RefreshCw data-icon="inline-start" />
+            {t("gateway.pairCode.new")}
+          </Button>
         </div>
-        <div className="flex min-w-0 flex-1 flex-col gap-3">
-          {origins.length > 1 ? (
-            <Select
-              value={pairing?.origin ?? origins[0]}
-              disabled={busy}
-              onValueChange={(origin) => onNewPairing(origin)}
-            >
-              <SelectTrigger
-                size="sm"
-                aria-label={t("gateway.pair.origin")}
-                className="w-full max-w-full font-mono text-meta"
-              >
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent className="z-[var(--z-dialog)]">
-                {origins.map((origin) => (
-                  <SelectItem
-                    key={origin}
-                    value={origin}
-                    className="font-mono text-meta"
-                  >
-                    {origin}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          ) : (
-            <p className="break-all font-mono text-body select-text">
-              {pairing?.origin ?? origins[0]}
-            </p>
-          )}
-          <div className="flex flex-wrap gap-2">
-            <Button
-              type="button"
-              size="sm"
-              variant="outline"
-              disabled={!pairing || expired}
-              onClick={() => void copy()}
-            >
-              <Copy data-icon="inline-start" />
-              {copied ? t("gateway.pair.copied") : t("gateway.pair.copy")}
-            </Button>
-            <Button
-              type="button"
-              size="sm"
-              variant={expired || !pairing ? "default" : "outline"}
-              disabled={busy}
-              onClick={() => onNewPairing(pairing?.origin)}
-            >
-              <RefreshCw data-icon="inline-start" />
-              {t("gateway.pairCode.new")}
-            </Button>
-          </div>
-          {pairing && (
-            <div
-              className="flex flex-wrap items-center gap-2 text-meta tabular-nums"
-              aria-live="off"
-            >
-              {pairing.code && !expired && (
-                <>
-                  <span className="text-muted-foreground">
-                    {t("gateway.pairCode.label")}
-                  </span>
-                  <Kbd
-                    persistent
-                    data-pairing-code
-                    className="h-5 px-1.5 font-mono text-body tracking-[0.12em] text-foreground select-text"
-                  >
-                    {pairing.code}
-                  </Kbd>
-                </>
-              )}
-              <span
-                className={
-                  expired ? "text-destructive" : "text-muted-foreground"
-                }
-              >
-                {expired
-                  ? t("gateway.pair.expired")
-                  : pairing.code
-                    ? countdown(remaining)
-                    : t("gateway.pair.expiresIn", {
-                        time: countdown(remaining),
-                      })}
-              </span>
-            </div>
-          )}
-          {fingerprint && (
-            <div className="mt-auto flex min-w-0 flex-col gap-2 border-t border-border/60 pt-3">
-              <div className="min-w-0 text-meta">
+        {pairing && (
+          <div
+            className="flex flex-wrap items-center gap-2 text-meta tabular-nums"
+            aria-live="off"
+          >
+            {pairing.code && !expired && (
+              <>
                 <span className="text-muted-foreground">
-                  {t("gateway.fingerprint")}
+                  {t("gateway.pairCode.label")}
                 </span>
-                <p className="mt-1 break-all font-mono text-caption leading-4 select-text">
-                  {groupFingerprint(fingerprint)}
-                </p>
-              </div>
-              {caHref && (
-                <Button asChild size="sm" variant="ghost" className="w-fit">
-                  <a href={caHref} download="armadra-ca.crt">
-                    <Download data-icon="inline-start" />
-                    {t("gateway.ca.download")}
-                  </a>
-                </Button>
-              )}
+                <Kbd
+                  persistent
+                  data-pairing-code
+                  className="h-5 px-1.5 font-mono text-body tracking-[0.12em] text-foreground select-text"
+                >
+                  {pairing.code}
+                </Kbd>
+              </>
+            )}
+            <span
+              className={expired ? "text-destructive" : "text-muted-foreground"}
+            >
+              {expired
+                ? t("gateway.pair.expired")
+                : pairing.code
+                  ? countdown(remaining)
+                  : t("gateway.pair.expiresIn", {
+                      time: countdown(remaining),
+                    })}
+            </span>
+          </div>
+        )}
+        {fingerprint && (
+          <div className="mt-auto flex min-w-0 flex-col gap-2 border-t border-border/60 pt-3">
+            <div className="min-w-0 text-meta">
+              <span className="text-muted-foreground">
+                {t("gateway.fingerprint")}
+              </span>
+              <p className="mt-1 break-all font-mono text-caption leading-4 select-text">
+                {groupFingerprint(fingerprint)}
+              </p>
             </div>
-          )}
-        </div>
-      </CardContent>
-    </Card>
+            {caHref && (
+              <Button asChild size="sm" variant="ghost" className="w-fit">
+                <a href={caHref} download="armadra-ca.crt">
+                  <Download data-icon="inline-start" />
+                  {t("gateway.ca.download")}
+                </a>
+              </Button>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
   );
 }
 

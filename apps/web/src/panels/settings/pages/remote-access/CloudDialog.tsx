@@ -7,6 +7,7 @@ import {
   pollCloudDevice,
   registerToSpace,
   retryAfterMs,
+  stopSharing,
 } from "../../../../api/remote-services";
 import { useT } from "../../../../app/preferences-store";
 import { RuntimeRequestError } from "../../../../api/request";
@@ -95,6 +96,8 @@ function clock(ms: number): string {
 export function AddCloudDialog({
   initialIssuer,
   fromLink = false,
+  autoStart = false,
+  current,
   knownIssuers = [],
   onStep,
   onClose,
@@ -104,6 +107,16 @@ export function AddCloudDialog({
   initialIssuer: string | null;
   /** 地址是深链带来的：不是已有的账号时，在地址步骤醒目显示目标域名。 */
   fromLink?: boolean;
+  /**
+   * 打开就接着登录：已登录的账号直接落到选空间，不用再点「登录」（「局域网 + 互联网」
+   * 找到登录着、没登记的 Armadra 云时用，#675）。
+   */
+  autoStart?: boolean;
+  /**
+   * 更换空间（#675）：本机现在登记在这个空间（`personal` 或 `team:<id>`）。选好新空间后先
+   * 在原空间撤销登记，再登记到新空间；要和 `autoStart` 一起用，直接落到选空间。
+   */
+  current?: string;
   knownIssuers?: readonly string[];
   /** 回报当前在哪一步（页面据此决定要不要接受新的深链）。 */
   onStep?: (kind: Step["kind"]) => void;
@@ -117,6 +130,8 @@ export function AddCloudDialog({
   const [chosen, setChosen] = React.useState(PERSONAL);
   const [error, setError] = React.useState("");
   const [busy, setBusy] = React.useState(false);
+  // 更换空间：原空间的登记已撤销、新空间还没登记上（重试只补登记，不再撤销）。
+  const [revoked, setRevoked] = React.useState(false);
   const open = initialIssuer !== null;
   // 提交后同步回报（layout effect）：被动副作用要等到下一拍，那段时间里页面仍以为
   // 在填地址，新来的深链会被收下、把正在进行的设备码对话框换成别的云。
@@ -154,18 +169,26 @@ export function AddCloudDialog({
     return failure instanceof Error ? failure.message : String(failure);
   }
 
+  const begin = React.useRef<(address: string) => Promise<void>>(
+    async () => {},
+  );
   React.useEffect(() => {
     if (initialIssuer === null) return;
-    setIssuer(initialIssuer === "" ? cloudIssuer() : initialIssuer);
+    const address = initialIssuer === "" ? cloudIssuer() : initialIssuer;
+    setIssuer(address);
     setStep({ kind: "address" });
     setChosen(PERSONAL);
     setError("");
     setBusy(false);
+    setRevoked(false);
+    if (autoStart) void begin.current(address);
+    // 只在打开（地址变化）时接着登录一次。
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialIssuer]);
 
-  async function start() {
+  async function start(address: string = issuer) {
     if (busy) return;
-    const checked = checkAddress(issuer);
+    const checked = checkAddress(address);
     if (!checked.ok) {
       setError(t(checked.error));
       return;
@@ -196,16 +219,20 @@ export function AddCloudDialog({
     }
   }
 
+  begin.current = start;
+
   async function toSpaces(remote: RemoteService) {
     // 这台电脑已经登记到它：重新登录就绪后不再登记。
-    if (remote.registered) {
+    if (remote.registered && current === undefined) {
       onChanged();
       onClose();
       return;
     }
     try {
       const { spaces } = await cloudSpaces(remote.serviceId);
-      const first = spaces.find((one) => !blocked(one));
+      const first = spaces.find(
+        (one) => !blocked(one) && spaceValue(one) !== current,
+      );
       setChosen(first === undefined ? PERSONAL : spaceValue(first));
       setError("");
       setStep({ kind: "space", remote, spaces });
@@ -269,6 +296,11 @@ export function AddCloudDialog({
     setError("");
     try {
       const picked = step.spaces.find((one) => spaceValue(one) === chosen);
+      // 撤销失败就停在这里：原空间的登记还在，什么都没动。
+      if (current !== undefined && !revoked) {
+        await stopSharing(step.remote.issuer);
+        setRevoked(true);
+      }
       await registerToSpace({
         serviceId: step.remote.serviceId,
         space:
@@ -307,7 +339,11 @@ export function AddCloudDialog({
       <ResponsiveDialogContent className="z-[var(--z-dialog)] sm:max-w-[420px]">
         <ResponsiveDialogHeader>
           <ResponsiveDialogTitle>
-            {t("remote.cloud.signIn")}
+            {t(
+              current === undefined
+                ? "remote.cloud.signIn"
+                : "remote.cloud.changeSpace",
+            )}
           </ResponsiveDialogTitle>
         </ResponsiveDialogHeader>
         <form
@@ -387,18 +423,26 @@ export function AddCloudDialog({
                     <Field
                       key={spaceValue(space)}
                       orientation="horizontal"
-                      data-disabled={blocked(space)}
+                      data-disabled={
+                        blocked(space) || spaceValue(space) === current
+                      }
                     >
                       <RadioGroupItem
                         id={`cloud-space-${spaceValue(space)}`}
                         value={spaceValue(space)}
-                        disabled={blocked(space)}
+                        disabled={
+                          blocked(space) || spaceValue(space) === current
+                        }
                       />
                       <FieldLabel htmlFor={`cloud-space-${spaceValue(space)}`}>
                         {spaceLabel(space)}
-                        {blocked(space) && (
+                        {(blocked(space) || spaceValue(space) === current) && (
                           <span className="text-muted-foreground">
-                            {` · ${t("remote.cloud.space.blocked")}`}
+                            {` · ${t(
+                              spaceValue(space) === current
+                                ? "remote.cloud.space.current"
+                                : "remote.cloud.space.blocked",
+                            )}`}
                           </span>
                         )}
                       </FieldLabel>
@@ -407,6 +451,9 @@ export function AddCloudDialog({
                 </RadioGroup>
               </Field>
             ))}
+          {step.kind === "space" && current !== undefined && (
+            <Alert variant="destructive">{t("remote.cloud.changeWarn")}</Alert>
+          )}
           {step.kind === "space" && chosen.startsWith("team:") && (
             <Alert>{t("remote.cloud.teamShell")}</Alert>
           )}
@@ -462,12 +509,19 @@ export function AddCloudDialog({
                 disabled={
                   busy ||
                   !step.spaces.some(
-                    (one) => spaceValue(one) === chosen && !blocked(one),
+                    (one) =>
+                      spaceValue(one) === chosen &&
+                      !blocked(one) &&
+                      spaceValue(one) !== current,
                   )
                 }
               >
                 {busy && <Spinner data-icon="inline-start" aria-hidden />}
-                {t("remote.cloud.register")}
+                {t(
+                  current === undefined
+                    ? "remote.cloud.register"
+                    : "remote.cloud.change",
+                )}
               </Button>
             )}
           </ResponsiveDialogFooter>

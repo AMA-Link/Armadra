@@ -1,6 +1,6 @@
 import * as React from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { ChevronRight, Globe, Laptop, Waypoints } from "lucide-react";
+import { ChevronRight } from "lucide-react";
 import { toast } from "@/ui/toast";
 
 import {
@@ -43,7 +43,6 @@ import {
 } from "@/panels/ResponsiveDialog";
 import { Button } from "@/ui/button";
 import { StatusPill } from "@/ui/status-pill";
-import { Tray, TrayCard, TrayHeader } from "@/ui/tray";
 import {
   Collapsible,
   CollapsibleContent,
@@ -52,11 +51,11 @@ import {
 import { DropdownMenuItem } from "@/ui/dropdown-menu";
 import {
   RELAY_PENDING_KEY,
+  RemoteShareSection,
   relayPendingReason,
   useTunnelEvents,
 } from "../../RemoteShare";
 import { SettingsGroup } from "../../SettingsGroup";
-import { SettingsKpi, SettingsKpiGrid } from "../../SettingsKpi";
 import { SettingsPageHeader } from "../../SettingsPageHeader";
 import { SettingsRow } from "../../SettingsRow";
 import { sameOrigin, useRemoteAccess } from "../../remote-access";
@@ -82,17 +81,16 @@ import { HostAccess } from "./HostAccess";
 import { canShare, useGateway, useInternetRoute } from "./hooks";
 import { hostOf, useSourceTable, useSourceTableChanged } from "./keys";
 import { MineRow, RemoteRow, RowMenu, SharedRow } from "./rows";
-import { tunnelPill } from "../../RemoteShare";
 
 const HEADING = "px-0.5 text-section font-medium text-foreground";
 
 /**
- * 设置 → 远程访问（#301）。固定操作本机 core，两块：
+ * 设置 → 远程访问（#301、#675）。固定操作本机 core，两块：
  *
- * - **A 这台电脑**：允许其他设备访问这台电脑（仅局域网 / 局域网 + 互联网）、
- *   配对二维码与配对码、互联网路线上的分享链接（分享唯一的管理处）、中转账号、
- *   流量统计、我的其他电脑（配对另一台、从中转添加）；高级里是监听、端口、证书、另一个中转
- *   账号与中继侧待清理。
+ * - **A 这台电脑**：「允许其他设备访问」开关、「互联网访问」（Armadra 云与空间，可更换）、
+ *   「手机扫码连接」；我的其他电脑（配对另一台、从中转添加）；高级里是监听、端口、证书、
+ *   中转账号（添加、路线状态、改口令、登出、移除）、流量统计、互联网路线上的分享链接
+ *   （分享唯一的管理处）与中继侧待清理。
  * - **B 他人分享**：别人分享给我的电脑（主人、权限、到期、退出）与「用链接加入」。
  *
  * 中转出错只落在那一行或那一次操作上；错误按 `code` 取文案。
@@ -236,47 +234,9 @@ export function RemoteAccessPage() {
 
   const advancedRows = gateway.status?.enabled || orphans.length > 0;
 
-  const gatewayStatus = gateway.status;
-  const routePill = internet.route ? tunnelPill(internet.route) : null;
-
   return (
     <>
       <SettingsPageHeader />
-      <SettingsKpiGrid>
-        <SettingsKpi
-          icon={<Laptop />}
-          label={t("remote.kpi.gateway")}
-          value={
-            gatewayStatus?.enabled && gatewayStatus.running
-              ? (gatewayStatus.origin ?? "").replace(/^https?:\/\//, "")
-              : gatewayStatus?.enabled
-                ? "—"
-                : t("remote.kpi.off")
-          }
-          meta={
-            gatewayStatus?.enabled
-              ? t(`gateway.listen.${gatewayStatus.listen}`)
-              : undefined
-          }
-        />
-        <Tray data-slot="settings-kpi">
-          <TrayHeader icon={<Waypoints />} label={t("remote.kpi.relay")} />
-          <TrayCard>
-            <div className="flex h-(--row-h) items-center">
-              <StatusPill
-                size="md"
-                tone={routePill?.tone ?? "paused"}
-                label={routePill ? t(routePill.key) : t("remote.kpi.off")}
-              />
-            </div>
-          </TrayCard>
-        </Tray>
-        <SettingsKpi
-          icon={<Globe />}
-          label={t("remote.mine")}
-          value={mine.length}
-        />
-      </SettingsKpiGrid>
       <section
         data-remote-block="host"
         className="flex min-w-0 flex-col gap-(--space-group)"
@@ -284,71 +244,6 @@ export function RemoteAccessPage() {
         <h3 className={HEADING}>{t("remote.host")}</h3>
         <div className="flex min-w-0 flex-col gap-(--space-block)">
           <HostAccess />
-
-          {remotes.length > 0 && (
-            <SettingsGroup title={t("remote.services")}>
-              {remotes.map((remote) => (
-                <RemoteRow
-                  key={remote.serviceId}
-                  remote={remote}
-                  pending={pendingOf(remote.issuer)}
-                  tunnel={internet.tunnelOf(remote.issuer)}
-                  inUse={sameOrigin(remote.issuer, access.relayIssuer)}
-                  {...(canShare(remote) ||
-                  (remote.kind === "saas" && !remote.guest)
-                    ? {
-                        onInternet: (on: boolean) => {
-                          // Armadra 云：登记要选空间，打开设备码对话框（登录并开启）。
-                          if (on && remote.kind === "saas")
-                            setAddingCloud(remote.issuer);
-                          else if (on) internet.start.mutate(remote);
-                          else internet.stop.mutate([remote.issuer]);
-                        },
-                      }
-                    : {})}
-                  {...(remote.kind === "saas"
-                    ? { onOpenConsole: () => void openConsole(remote.issuer) }
-                    : {})}
-                  onSignIn={() =>
-                    remote.kind === "saas"
-                      ? setAddingCloud(remote.issuer)
-                      : setAdding({
-                          issuer: remote.issuer,
-                          account: remote.accountHint,
-                          fingerprint: remote.fingerprint,
-                        })
-                  }
-                  onSignOut={() => logout.mutate(remote.serviceId)}
-                  onRetryCleanup={() => cleanup.mutate(remote.issuer)}
-                  onChangePassword={() =>
-                    setChangingPassword({
-                      serviceId: remote.serviceId,
-                      issuer: remote.issuer,
-                    })
-                  }
-                  onRename={() =>
-                    setRenaming({
-                      kind: "remote",
-                      id: remote.serviceId,
-                      name: remote.label,
-                      defaultName: remote.defaultLabel || remote.label,
-                    })
-                  }
-                  onRemove={() =>
-                    setRemoving({
-                      kind: "remote",
-                      id: remote.serviceId,
-                      name: remote.label,
-                      issuer: remote.issuer,
-                    })
-                  }
-                />
-              ))}
-            </SettingsGroup>
-          )}
-
-          {/* 经中继收发的流量（契约 §76）：有远程服务时才可能有。 */}
-          {remotes.length > 0 && <HostTraffic />}
 
           <SettingsGroup title={t("remote.mine")}>
             {mine.map((source) => (
@@ -408,7 +303,7 @@ export function RemoteAccessPage() {
                 {t("remote.advanced")}
               </Button>
             </CollapsibleTrigger>
-            <CollapsibleContent>
+            <CollapsibleContent className="flex flex-col gap-(--space-block)">
               <SettingsGroup>
                 {gateway.status && (
                   <GatewayAdvanced
@@ -465,6 +360,83 @@ export function RemoteAccessPage() {
                   </Button>
                 </SettingsRow>
               </SettingsGroup>
+              {remotes.length > 0 && (
+                <SettingsGroup title={t("remote.services")}>
+                  {remotes.map((remote) => (
+                    <RemoteRow
+                      key={remote.serviceId}
+                      remote={remote}
+                      pending={pendingOf(remote.issuer)}
+                      tunnel={internet.tunnelOf(remote.issuer)}
+                      inUse={sameOrigin(remote.issuer, access.relayIssuer)}
+                      {...(canShare(remote) ||
+                      (remote.kind === "saas" && !remote.guest)
+                        ? {
+                            onInternet: (on: boolean) => {
+                              // Armadra 云：登记要选空间，打开设备码对话框（登录并开启）。
+                              if (on && remote.kind === "saas")
+                                setAddingCloud(remote.issuer);
+                              else if (on) internet.start.mutate(remote);
+                              else internet.stop.mutate([remote.issuer]);
+                            },
+                          }
+                        : {})}
+                      {...(remote.kind === "saas"
+                        ? {
+                            onOpenConsole: () =>
+                              void openConsole(remote.issuer),
+                          }
+                        : {})}
+                      onSignIn={() =>
+                        remote.kind === "saas"
+                          ? setAddingCloud(remote.issuer)
+                          : setAdding({
+                              issuer: remote.issuer,
+                              account: remote.accountHint,
+                              fingerprint: remote.fingerprint,
+                            })
+                      }
+                      onSignOut={() => logout.mutate(remote.serviceId)}
+                      onRetryCleanup={() => cleanup.mutate(remote.issuer)}
+                      onChangePassword={() =>
+                        setChangingPassword({
+                          serviceId: remote.serviceId,
+                          issuer: remote.issuer,
+                        })
+                      }
+                      onRename={() =>
+                        setRenaming({
+                          kind: "remote",
+                          id: remote.serviceId,
+                          name: remote.label,
+                          defaultName: remote.defaultLabel || remote.label,
+                        })
+                      }
+                      onRemove={() =>
+                        setRemoving({
+                          kind: "remote",
+                          id: remote.serviceId,
+                          name: remote.label,
+                          issuer: remote.issuer,
+                        })
+                      }
+                    />
+                  ))}
+                </SettingsGroup>
+              )}
+
+              {/* 经中继收发的流量（契约 §76）：有远程服务时才可能有。 */}
+              {remotes.length > 0 && <HostTraffic />}
+              {internet.registered.map((remote) => (
+                <SettingsGroup
+                  key={remote.serviceId}
+                  {...(internet.registered.length > 1
+                    ? { title: remote.label }
+                    : {})}
+                >
+                  <RemoteShareSection remote={remote} />
+                </SettingsGroup>
+              ))}
             </CollapsibleContent>
           </Collapsible>
         </div>

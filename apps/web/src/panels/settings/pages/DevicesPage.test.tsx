@@ -365,18 +365,28 @@ describe("允许其他设备访问与已配对设备", () => {
     ).toBeNull();
   });
 
-  it("off shows only the switch; turning it on PUTs /api/gateway and shows a pairing QR", async () => {
+  it("off shows only the switch; turning it on PUTs /api/gateway, the QR only shows once 手机扫码连接 is opened", async () => {
     const calls = fakeCore({});
     render(<HostPage />);
     const toggle = await screen.findByRole("switch", {
       name: "允许其他设备访问这台电脑",
     });
     expect(toggle.getAttribute("aria-checked")).toBe("false");
-    expect(screen.queryByRole("combobox", { name: "可达范围" })).toBeNull();
+    expect(screen.queryByText("互联网访问")).toBeNull();
+    expect(screen.queryByRole("button", { name: "手机扫码连接" })).toBeNull();
     expect(screen.queryByRole("img", { name: "配对二维码" })).toBeNull();
 
     fireEvent.click(toggle);
-    const qr = await screen.findByRole("img", { name: "配对二维码" });
+    const scan = await screen.findByRole("button", { name: "手机扫码连接" });
+    // 三行：开关、互联网访问、手机扫码连接；点开对话框之前不铸配对码。
+    expect(screen.getByText("互联网访问")).toBeTruthy();
+    expect(screen.queryByRole("img", { name: "配对二维码" })).toBeNull();
+    expect(calls.some((call) => call.path === "/api/gateway/pairing")).toBe(
+      false,
+    );
+    fireEvent.click(scan);
+    const dialog = await screen.findByRole("dialog");
+    const qr = await within(dialog).findByRole("img", { name: "配对二维码" });
     const put = calls.find((call) => call.method === "PUT");
     expect(put).toEqual({
       method: "PUT",
@@ -392,11 +402,19 @@ describe("允许其他设备访问与已配对设备", () => {
       ticket: TICKET,
       fingerprint: FP,
     });
-    expect(screen.getByRole("combobox", { name: "可达范围" })).toBeTruthy();
-    expect(screen.getByText(/2:00|1:59/)).toBeTruthy();
+    expect(within(dialog).getByText(/2:00|1:59/)).toBeTruthy();
     expect(
-      screen.getByRole("link", { name: "下载 CA" }).getAttribute("href"),
+      within(dialog)
+        .getByRole("link", { name: "下载 CA" })
+        .getAttribute("href"),
     ).toBe("https://192.168.1.20:8443/ca.crt");
+    // 关掉对话框：二维码收起。
+    fireEvent.keyDown(document.activeElement ?? document.body, {
+      key: "Escape",
+    });
+    await waitFor(() =>
+      expect(screen.queryByRole("img", { name: "配对二维码" })).toBeNull(),
+    );
   });
 
   it("keeps the paired devices listed after the switch is turned off", async () => {
@@ -405,14 +423,14 @@ describe("允许其他设备访问与已配对设备", () => {
       devices: [{ deviceId: "d-phone", name: "iPhone", role: "owner" }],
     });
     render(<HostPage />);
-    await screen.findByRole("img", { name: "配对二维码" });
+    await screen.findByRole("button", { name: "手机扫码连接" });
     expect(await screen.findByText("iPhone")).toBeTruthy();
 
     fireEvent.click(
       screen.getByRole("switch", { name: "允许其他设备访问这台电脑" }),
     );
     await waitFor(() =>
-      expect(screen.queryByRole("img", { name: "配对二维码" })).toBeNull(),
+      expect(screen.queryByRole("button", { name: "手机扫码连接" })).toBeNull(),
     );
     expect(calls.filter((call) => call.method === "PUT").at(-1)?.body).toEqual({
       enabled: false,
@@ -439,7 +457,7 @@ describe("允许其他设备访问与已配对设备", () => {
   it("a shell-managed gateway is read-only but still pairs", async () => {
     fakeCore({ status: { ...runningStatus(), managedBy: "shell" } });
     render(<HostPage />);
-    await screen.findByRole("img", { name: "配对二维码" });
+    const scan = await screen.findByRole("button", { name: "手机扫码连接" });
     expect(
       (
         screen.getByRole("switch", {
@@ -447,6 +465,8 @@ describe("允许其他设备访问与已配对设备", () => {
         }) as HTMLButtonElement
       ).disabled,
     ).toBe(true);
+    fireEvent.click(scan);
+    await screen.findByRole("img", { name: "配对二维码" });
   });
 
   it("lists paired devices once, marks this device and revokes the displayed revision", async () => {

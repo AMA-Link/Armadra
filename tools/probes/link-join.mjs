@@ -3,7 +3,7 @@
 // owner 在桌面页面（真 Electron）里生成链接，第二个浏览器上下文（另一台「设备」：独立
 // profile、Cookie 不共享）打开 `/j/<id>#…`，加入后看见画布。量步数与耗时。
 //
-//   owner（桌面页面）：设置 → 远程访问 → 打开「允许其他设备访问」、选「局域网 + 互联网」 → 新建链接 → 选
+//   owner（桌面页面）：设置 → 远程访问 → 打开「允许其他设备访问」、点「启用互联网路线」 → 新建链接 → 选
 //                      工作空间 → 新建，从二维码对话框读出地址；每一次点击都计数；
 //                      之后在列表里再复制、再开二维码（契约 §33.9：整条链接存在本机）；
 //   访客（浏览器）：    打开链接（一次导航）→ 落地页点「加入」→ 进画布、看见节点；
@@ -176,23 +176,19 @@ try {
     "远程访问",
     "button, a, [role=tab], [role=link]",
   );
-  // 远程访问页「这台电脑」（#301）：打开「允许其他设备访问这台电脑」，可达范围选
-  // 「局域网 + 互联网」——经已登录的中转账号开互联网路线，分享链接随之出现。
+  // 远程访问页「这台电脑」（#301、#675）：打开「允许其他设备访问这台电脑」，「互联网访问」
+  // 一行点「启用互联网路线」——只有个人中转账号时一键开，分享链接收在「高级」里。
   await ownerClick(
     ["允许其他设备访问这台电脑", "Allow other devices to access this computer"],
     "允许其他设备访问",
     'button[role="switch"]',
   );
   await ownerClick(
-    ["可达范围", "Reach"],
-    "可达范围",
-    'button[role="combobox"]',
+    ["启用互联网路线", "Turn on Internet route"],
+    "启用互联网路线",
+    "button",
   );
-  await ownerClick(
-    ["局域网 + 互联网", "Local network + Internet"],
-    "局域网 + 互联网",
-    '[role="option"]',
-  );
+  await ownerClick(["高级", "Advanced"], "高级", "button");
   await win.until(
     `return document.querySelector('[data-slot="remote-share"]') ? true : null;`,
     "互联网路线已开",
