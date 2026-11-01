@@ -107,7 +107,7 @@ export const CANVAS_TOOLS: readonly CanvasToolSpec[] = [
  *
  * 手指画不出能用的墨迹，几何形与文字都要跟着一个样式面板，390×844 里
  * 摆不下——所以只留平移与选择这两件在触屏上真的好用的事。桌面窗口缩到
- * 767px 以下也走这一条（同一个断点，`platform/layout.isCompactLayout`）。
+ * 手机布局（`platform/layout.isCompactLayout`，含矮的触屏横屏）也走这一条。
  */
 export const PHONE_TOOL_IDS: readonly CanvasToolId[] = ["select", "hand"];
 

@@ -61,7 +61,7 @@ import { useMenuTooltip } from "./menu-tooltip";
  * 按钮显示当前成员、下拉换另一种。记忆在 `tool-store` 的
  * `useToolGroupChoice`，所以快捷键切过去之后图标也跟着变。
  *
- * 手机（`isCompactLayout()`，≤ 767px）上只留选择与手（F32）：手指画不出
+ * 手机（`isCompactLayout()`，竖屏手机与矮的触屏横屏）上只留选择与手（F32）：手指画不出
  * 能用的墨迹，而每多一个按钮，390px 宽的 Dock 就少一分能按得中的余量。
  * 引入按钮同样收起——它开的是系统文件选择器，手机上那条路不通。
  */
