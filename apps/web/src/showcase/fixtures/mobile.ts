@@ -10,6 +10,9 @@ export const MOBILE_LINK = `${MOBILE_ORIGIN}/#pair=k7f3.Qm9yZXN0LWdyZWVu&fp=${"3
 export const MOBILE_CODE = "3F7K9Q";
 /** 多连接样本：个人中转的地址与它的信任锚指纹（64 位十六进制）。 */
 export const MOBILE_RELAY_HOST = "relay.example.com";
+export const MOBILE_CLOUD_HOST = "cloud.example.com";
+/** 设备码样本里的用户码（8 位，去掉易混字符的字母表）。 */
+export const MOBILE_DEVICE_CODE = "BCDF-GHJK";
 export const MOBILE_RELAY_FINGERPRINT =
   "9b3e7c1a04d85f62e1a7b90c3d4f5e6a7b8c9d0e1f2a3b4c5d6e7f8091a2b3c4";
 /** 连接列表与「选择主机」的样本（名字是用户数据，不进 i18n）。 */
@@ -110,6 +113,8 @@ export const MOBILE_SAMPLES = [
   "teams",
   "add",
   "relay",
+  "cloud",
+  "device",
   "fingerprint",
   "sources",
   "push",

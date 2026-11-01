@@ -162,6 +162,11 @@ export interface ConnectScreenProps {
     readonly account?: string;
     readonly password?: string;
   };
+  /** 展示页用：钉住设备码那一步显示的用户码。 */
+  readonly initialDevice?: {
+    readonly userCode: string;
+    readonly intervalMs: number;
+  };
 }
 
 /**
@@ -238,6 +243,7 @@ export function ConnectScreen({
   initialFingerprint = "",
   initialSources = [],
   initialRelay,
+  initialDevice,
 }: ConnectScreenProps) {
   const t = useT();
   const multi = mode === "native" && relay !== undefined;
@@ -266,7 +272,7 @@ export function ConnectScreen({
   const [device, setDevice] = React.useState<{
     readonly userCode: string;
     readonly intervalMs: number;
-  } | null>(null);
+  } | null>(initialDevice ?? null);
   const lastCloudIssuer = React.useRef("");
   /** 正在看哪个源的流量（设计 §6.4）；`null` 是列表。 */
   const [trafficId, setTrafficId] = React.useState<string | null>(null);
