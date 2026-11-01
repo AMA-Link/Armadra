@@ -1000,7 +1000,8 @@ export class AcpSession implements AcpSessionIdentity {
     this.byProcessId.delete(pending.id);
     this.elicitations.delete(pendingId);
     this.feed?.elicitationSettled(pendingId, settlement);
-    if (settlement.by === "cancelled") this.sink.cancelled(pendingId);
+    // 没有人答的（取消、带外完成）审批行由这里收掉；人答的由审批层记。
+    if (settlement.by !== "answer") this.sink.cancelled(pendingId);
     if (this.running !== undefined && this.host?.process.alive === true) {
       this.workingSignalled = true;
       this.sink.signal({ signal: "permissionSettled" });

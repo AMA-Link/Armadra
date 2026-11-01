@@ -134,12 +134,17 @@ describe("the client's optional features", () => {
       elicitation: true,
       configOptions: true,
       terminal: true,
+      // 0.11.0 的客户端还没有认证与 elicitation/complete。
+      auth: false,
+      elicitationComplete: false,
     });
     expect(acpClientFeatures({})).toEqual({
       mcpServers: false,
       elicitation: false,
       configOptions: false,
       terminal: false,
+      auth: false,
+      elicitationComplete: false,
     });
   });
 });

@@ -109,6 +109,11 @@ export interface AcpPendingElicitation {
 /** 一条挂起的 elicitation 是怎么结束的。 */
 export type AcpElicitationSettlement =
   | { readonly by: "answer"; readonly result: AcpElicitationResult }
+  /**
+   * Agent 发来 `elicitation/complete`（URL 模式的流程在带外做完了）：卡片收起，
+   * 请求按 `accept` 回给 Agent，没有人答。
+   */
+  | { readonly by: "completed"; readonly result: { action: "accept" } }
   /** 回合被取消、连接关闭或进程退出：一律 `cancel`，没有人答。 */
   | { readonly by: "cancelled"; readonly result: { action: "cancel" } };
 
@@ -127,6 +132,8 @@ export interface AcpClientFeatures {
    * terminal 型方法。按原型上有没有这个方法判（上游没有登记特性名）。
    */
   readonly auth: boolean;
+  /** 接 `elicitation/complete`：构造参数里的 `onElicitationComplete({ elicitationId })`。 */
+  readonly elicitationComplete: boolean;
 }
 
 /** 这一版客户端的可选能力；`client` 只给测试换。 */
@@ -148,6 +155,7 @@ export function acpClientFeatures(
     terminal: features.terminal === true,
     auth:
       features.auth === true || typeof prototype?.authenticate === "function",
+    elicitationComplete: features.elicitationComplete === true,
   };
 }
 
@@ -157,6 +165,11 @@ interface ElicitationHandler {
     params: AcpElicitationParams,
     signal: AbortSignal,
   ): Promise<AcpElicitationResult>;
+}
+
+/** 有 `elicitationComplete` 能力的客户端多收的那个回调。 */
+interface ElicitationCompleteOption {
+  onElicitationComplete?(params: { elicitationId: string }): void;
 }
 
 /** `terminal/*` 的处理器（上游 0.9.1 起的形状）：返回值即答复，抛 `RpcError` 回错误。 */
@@ -301,6 +314,7 @@ export class AcpProcess {
     }
     const clientOptions: AcpClientOptions &
       ElicitationHandler &
+      ElicitationCompleteOption &
       TerminalHandlerOption = {
       input: child.stdout,
       output: child.stdin,
@@ -313,10 +327,26 @@ export class AcpProcess {
       // 旧版客户端不认这个键、也不声明这个能力：不传，线路与之前逐字节相同。
       ...(acpClientFeatures().elicitation
         ? {
-            onElicitation: (
+            // 多选的答案是字符串数组：core 的 `AcpElicitationResult` 比上游 0.11
+            // 的类型宽，线路上都是 JSON。
+            onElicitation: ((
               params: AcpElicitationParams,
               signal: AbortSignal,
-            ) => this.holdElicitation(params, signal),
+            ) =>
+              this.holdElicitation(
+                params,
+                signal,
+              )) as unknown as AcpClientOptions["onElicitation"],
+          }
+        : {}),
+      // 同理：旧版客户端没有这个回调，Agent 的 `elicitation/complete` 通知被忽略。
+      ...(acpClientFeatures().elicitationComplete
+        ? {
+            onElicitationComplete: ({
+              elicitationId,
+            }: {
+              elicitationId: string;
+            }) => this.completeElicitation(elicitationId),
           }
         : {}),
       ...(acpClientFeatures().terminal && options.onTerminal !== undefined
@@ -443,6 +473,25 @@ export class AcpProcess {
       result: answer,
     });
     return true;
+  }
+
+  /**
+   * `elicitation/complete`：按 Agent 给的 `elicitationId`（URL 模式请求里的同名
+   * 字段）收掉对应的挂起请求。不认识的 id（已答、已取消、表单模式）什么也不做。
+   */
+  completeElicitation(elicitationId: string): boolean {
+    for (const [id, entry] of this.elicitations) {
+      if (entry.pending.request.elicitationId !== elicitationId) continue;
+      this.elicitations.delete(id);
+      const answer: AcpElicitationResult = { action: "accept" };
+      entry.resolve(answer);
+      this.options.onElicitationSettled?.(entry.pending, {
+        by: "completed",
+        result: { action: "accept" },
+      });
+      return true;
+    }
+    return false;
   }
 
   /**
