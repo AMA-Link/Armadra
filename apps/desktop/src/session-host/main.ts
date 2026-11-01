@@ -5,6 +5,7 @@ import {
   registryDir,
   unregisterHost,
 } from "../core/terminal/session-host/registry";
+import { guardConsolePipes } from "./broken-pipe";
 import { claimLock, releaseLock } from "./lock";
 import { AlreadyServing, SessionHost } from "./server";
 
@@ -168,7 +169,14 @@ export async function run(options: RunOptions = {}): Promise<number> {
   if (unregistered !== null) {
     log(`could not record this host for the installer: ${unregistered}`);
   }
-  await served(host, dataDir, log);
+  // Only once serving: before this the process holds no console, and a throw
+  // is a start-up failure the caller should see as one.
+  const unguard = guardConsolePipes(log);
+  try {
+    await served(host, dataDir, log);
+  } finally {
+    unguard();
+  }
   unregisterHost(endpoint, registry);
   return 0;
 }
