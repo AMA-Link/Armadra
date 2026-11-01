@@ -1,0 +1,100 @@
+diff --git a/src/win/conpty.cc b/src/win/conpty.cc
+index 7b286d3d644c26141df516929703aa6e129df4b2..2ebbb823c5460168431e6a42e35864b11e0ce186 100644
+--- a/src/win/conpty.cc
++++ b/src/win/conpty.cc
+@@ -14,6 +14,7 @@
+ #include <node_api.h>
+ #include <assert.h>
+ #include <Shlwapi.h> // PathCombine, PathIsRelative
++#include <mutex>
+ #include <sstream>
+ #include <iostream>
+ #include <string>
+@@ -50,6 +51,11 @@ struct pty_baton {
+ };
+ 
+ static std::vector<std::unique_ptr<pty_baton>> ptyHandles;
++// armadra: backport of microsoft/node-pty#922 (1.2.0-beta.13). Every exit
++// thread erased from ptyHandles while the JS thread searched or appended to
++// it; the moved-from unique_ptr it read crashed the process (0xC0000005).
++// Held around every access to ptyHandles and every use of a baton from it.
++static std::mutex g_ptyHandlesMutex;
+ static volatile LONG ptyCounter;
+ 
+ static pty_baton* get_pty_baton(int id) {
+@@ -99,11 +105,15 @@ void SetupExitCallback(Napi::Env env, Napi::Function cb, pty_baton* baton) {
+     ExitEvent *exit_event = new ExitEvent;
+     // Wait for process to complete.
+     WaitForSingleObject(baton->hShell, INFINITE);
+-    // Get process exit code.
+-    GetExitCodeProcess(baton->hShell, (LPDWORD)(&exit_event->exit_code));
+-    // Clean up handles
+-    CloseHandle(baton->hShell);
+-    assert(remove_pty_baton(baton->id));
++    {
++      std::lock_guard<std::mutex> lock(g_ptyHandlesMutex);
++      // Get process exit code.
++      GetExitCodeProcess(baton->hShell, (LPDWORD)(&exit_event->exit_code));
++      // Clean up handles
++      CloseHandle(baton->hShell);
++      // Not inside assert(): the removal must happen in every build.
++      remove_pty_baton(baton->id);
++    }
+ 
+     auto status = tsfn.BlockingCall(exit_event, callback); // In main thread
+     switch (status) {
+@@ -301,8 +311,11 @@ static Napi::Value PtyStartProcess(const Napi::CallbackInfo& info) {
+     // We were able to instantiate a conpty
+     const int ptyId = InterlockedIncrement(&ptyCounter);
+     marshal.Set("pty", Napi::Number::New(env, ptyId));
+-    ptyHandles.emplace_back(
+-        std::make_unique<pty_baton>(ptyId, hIn, hOut, hpc));
++    {
++      std::lock_guard<std::mutex> lock(g_ptyHandlesMutex);
++      ptyHandles.emplace_back(
++          std::make_unique<pty_baton>(ptyId, hIn, hOut, hpc));
++    }
+   } else {
+     throw Napi::Error::New(env, "Cannot launch conpty");
+   }
+@@ -350,8 +363,14 @@ static Napi::Value PtyConnect(const Napi::CallbackInfo& info) {
+   const bool useConptyDll = info[4].As<Napi::Boolean>().Value();
+   Napi::Function exitCallback = info[5].As<Napi::Function>();
+ 
+-  // Fetch pty handle from ID and start process
+-  pty_baton* handle = get_pty_baton(id);
++  // Fetch pty handle from ID and start process. The baton itself stays put
++  // while others are erased (only the unique_ptrs move), and its own exit
++  // thread does not exist until SetupExitCallback below.
++  pty_baton* handle;
++  {
++    std::lock_guard<std::mutex> lock(g_ptyHandlesMutex);
++    handle = get_pty_baton(id);
++  }
+   if (!handle) {
+     throw Napi::Error::New(env, "Invalid pty handle");
+   }
+@@ -472,6 +491,7 @@ static Napi::Value PtyResize(const Napi::CallbackInfo& info) {
+   SHORT rows = static_cast<SHORT>(info[2].As<Napi::Number>().Uint32Value());
+   const bool useConptyDll = info[3].As<Napi::Boolean>().Value();
+ 
++  std::lock_guard<std::mutex> lock(g_ptyHandlesMutex);
+   const pty_baton* handle = get_pty_baton(id);
+ 
+   if (handle != nullptr) {
+@@ -513,6 +533,7 @@ static Napi::Value PtyClear(const Napi::CallbackInfo& info) {
+     return env.Undefined();
+   }
+ 
++  std::lock_guard<std::mutex> lock(g_ptyHandlesMutex);
+   const pty_baton* handle = get_pty_baton(id);
+ 
+   if (handle != nullptr) {
+@@ -544,6 +565,7 @@ static Napi::Value PtyKill(const Napi::CallbackInfo& info) {
+   int id = info[0].As<Napi::Number>().Int32Value();
+   const bool useConptyDll = info[1].As<Napi::Boolean>().Value();
+ 
++  std::lock_guard<std::mutex> lock(g_ptyHandlesMutex);
+   const pty_baton* handle = get_pty_baton(id);
+ 
+   if (handle != nullptr) {

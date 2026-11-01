@@ -77,6 +77,12 @@
  * code that actually opens a ConPTY, and which is also the first chance anyone
  * has to run it on real hardware.
  *
+ * The same file's unsynchronised handle list (exit threads erasing while the
+ * JS thread searches it, a native crash of the session host, #659) is fixed
+ * by `patches/node-pty@1.1.0.patch` instead, which pnpm applies at install
+ * time — so the `dist` build, which compiles this source without running this
+ * script, gets it too.
+ *
  * ## Linux
  *
  * The Linux path is `forkpty(3)` (`#else` branch of `PtyFork`) and does not go
