@@ -86,6 +86,8 @@ export interface MockOptions
   readonly linkOwnerName?: string;
   /** 设备码请求来源（`auth.deviceGet.ipPrefix`；缺省不带）。 */
   readonly deviceIpPrefix?: string;
+  /** 发起设备码登录的平台（`auth.deviceGet.platform`，缺省 `desktop`）。 */
+  readonly devicePlatform?: string;
   /**
    * `platform.info.capabilities`（缺省口令登录加改口令，不带第三方登录）。控制台按它显示
    * 第三方登录按钮（`auth.oauth.github` / `auth.oauth.google`）、口令表单（`auth.password`）
@@ -503,7 +505,7 @@ const HANDLERS: Readonly<Record<string, Handler>> = {
       ...(options.deviceIpPrefix === undefined
         ? {}
         : { ipPrefix: options.deviceIpPrefix }),
-      platform: "desktop",
+      platform: options.devicePlatform ?? "desktop",
       name: MOCK_DEVICE_REQUEST.name,
       requestedAtMs: Date.now() - 20_000,
       expiresAtMs: Date.now() + 600_000,
