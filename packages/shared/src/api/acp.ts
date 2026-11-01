@@ -653,6 +653,61 @@ export const acpPrestartRequestSchema = z.object({
   nodeId: z.string().min(1).optional(),
 });
 
+/**
+ * `acp_auth_required` carries the agent's sign-in methods in the error's
+ * `details` (additive; the `{ code, message }` shape is unchanged).
+ */
+export const acpAuthRequiredDetailsSchema = z.looseObject({
+  authMethods: z.array(acpAuthMethodInfoSchema),
+});
+
+/**
+ * `POST /api/acp/auth/authenticate`: complete one of the agent's sign-in
+ * methods (answers 204). Needs a newer ACP client than the pinned one; an older
+ * core answers `acp_auth_unsupported` (409) and lists every method with
+ * `supported: false`.
+ */
+export const acpAuthenticateRequestSchema = z.object({
+  workspaceId: z.string().min(1),
+  agentId: agentIdSchema,
+  methodId: z.string().min(1),
+  /** A node of that workspace; an SSH node is refused (the CLI lives elsewhere). */
+  nodeId: z.string().min(1).optional(),
+});
+
+/** `POST /api/acp/auth/logout` (answers 204; `acp_auth_unsupported` when the agent or client cannot). */
+export const acpLogoutRequestSchema = z.object({
+  workspaceId: z.string().min(1),
+  agentId: agentIdSchema,
+  nodeId: z.string().min(1).optional(),
+});
+
+/** One session of the agent's own history (`session/list`). */
+export const acpAgentSessionSchema = z.looseObject({
+  sessionId: z.string(),
+  cwd: z.string(),
+  title: z.string().optional(),
+  updatedAt: z.string().optional(),
+});
+
+/**
+ * `POST /api/acp/agent-sessions`: the agent's own sessions, for attaching one.
+ * `cursor` pages; without it the core returns everything it can (at most 200).
+ * `acp_list_unsupported` (409) when the agent does not declare `session/list`.
+ */
+export const acpAgentSessionsRequestSchema = z.object({
+  workspaceId: z.string().min(1),
+  agentId: agentIdSchema,
+  cwd: z.string().min(1).optional(),
+  cursor: z.string().min(1).optional(),
+  nodeId: z.string().min(1).optional(),
+});
+
+export const acpAgentSessionsResponseSchema = z.looseObject({
+  sessions: z.array(acpAgentSessionSchema),
+  nextCursor: z.string().optional(),
+});
+
 /* §14.4: the answer is `answerApprovalRequestSchema` (`agents.ts`) with its
  * optional `optionId`. */
 
@@ -660,6 +715,10 @@ export type AcpSupport = (typeof ACP_SUPPORT)[number];
 export type AcpResume = (typeof ACP_RESUME)[number];
 export type AgentAcpInfo = z.infer<typeof agentAcpInfoSchema>;
 export type AcpAuthMethodInfo = z.infer<typeof acpAuthMethodInfoSchema>;
+export type AcpAgentSession = z.infer<typeof acpAgentSessionSchema>;
+export type AcpAgentSessionsResponse = z.infer<
+  typeof acpAgentSessionsResponseSchema
+>;
 export type AgentAcpCapabilities = z.infer<typeof agentAcpCapabilitiesSchema>;
 export type AcpContentBlock = z.infer<typeof acpContentBlockSchema>;
 export type AcpToolKind = (typeof ACP_TOOL_KINDS)[number];
