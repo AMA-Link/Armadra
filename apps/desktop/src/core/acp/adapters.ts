@@ -1,7 +1,12 @@
 import { readFileSync, statSync } from "node:fs";
 import { basename, isAbsolute, join } from "node:path";
 
-import { type AgentRole, roleFlags } from "@armadra/shared";
+import {
+  ACP_MODE_TABLE,
+  type AcpModeMapping,
+  type AgentRole,
+  roleFlags,
+} from "@armadra/shared";
 
 import { type PermissionMode, PERMISSION_MODES } from "../agent/launch";
 import {
@@ -39,11 +44,8 @@ export type AcpResume = (typeof ACP_RESUME)[number];
 export const ACP_SESSION_ID = ["same", "mapFile", "opaque"] as const;
 export type AcpSessionIdRule = (typeof ACP_SESSION_ID)[number];
 
-/** 一个权限模式在 ACP 下的落点：`session/set_mode` 的 id、启动 argv，或两者。 */
-export interface AcpModeMapping {
-  readonly modeId?: string;
-  readonly args?: readonly string[];
-}
+/** 落点的形状与各家的表在 `@armadra/shared` 的 `ACP_MODE_TABLE`（页面与 core 共用）。 */
+export type { AcpModeMapping };
 
 export interface AcpAdapter {
   /** 内置 id；`ama` 在 core 的注册表补上之前单列（G1-7）。 */
@@ -100,8 +102,6 @@ export interface AcpAdapter {
 export const ACP_CANVAS_TOOLS = ["mcp", "runners", "none"] as const;
 export type AcpCanvasTools = (typeof ACP_CANVAS_TOOLS)[number];
 
-const NONE: AcpModeMapping = {};
-
 export const ACP_ADAPTERS: readonly AcpAdapter[] = [
   {
     agentId: "claude",
@@ -110,12 +110,7 @@ export const ACP_ADAPTERS: readonly AcpAdapter[] = [
     args: [],
     sessionId: "same",
     resume: "load",
-    modes: {
-      default: { modeId: "default" },
-      "auto-edit": { modeId: "acceptEdits" },
-      "full-auto": { modeId: "bypassPermissions" },
-      plan: { modeId: "plan" },
-    },
+    modes: ACP_MODE_TABLE.claude,
     // `--settings` / `--plugin-dir` / `--append-system-prompt-file` 在 ACP
     // 下没有对应参数（D6）：画布工具走 MCP；mod 经 SDK 宿主认的
     // `CLAUDE_CODE_PLUGIN_DIRS` 挂（只挂 mod，不挂技能插件），只带斜杠命令与
@@ -131,12 +126,7 @@ export const ACP_ADAPTERS: readonly AcpAdapter[] = [
     args: [],
     sessionId: "same",
     resume: "load",
-    modes: {
-      default: { modeId: "workspace-write" },
-      "auto-edit": { modeId: "agent" },
-      "full-auto": { modeId: "agent-full-access" },
-      plan: { modeId: "read-only" },
-    },
+    modes: ACP_MODE_TABLE.codex,
     injection: { mcp: true, reuse: ["env"] },
     expectedProcess: ["codex-acp"],
     canvasTools: "mcp",
@@ -148,12 +138,7 @@ export const ACP_ADAPTERS: readonly AcpAdapter[] = [
     args: ["acp"],
     sessionId: "same",
     resume: "load",
-    modes: {
-      default: { modeId: "build" },
-      "auto-edit": null,
-      "full-auto": null,
-      plan: { modeId: "plan" },
-    },
+    modes: ACP_MODE_TABLE.opencode,
     injection: { mcp: true, reuse: ["env"] },
     expectedProcess: ["opencode"],
     canvasTools: "mcp",
@@ -167,12 +152,7 @@ export const ACP_ADAPTERS: readonly AcpAdapter[] = [
     // `~/.pi/acp/sessions.json`：`{ "<ACP 会话 id>": { "sessionFile": "<Pi 会话文件>" } }`。
     sessionMap: [".pi", "acp", "sessions.json"],
     resume: "load",
-    modes: {
-      default: NONE,
-      "auto-edit": null,
-      "full-auto": null,
-      plan: null,
-    },
+    modes: ACP_MODE_TABLE.pi,
     // pi-acp 收下 `mcpServers` 却不接通：不带，少起一个 MCP 子进程（§48）。
     injection: { mcp: false, reuse: ["args"], passthrough: "--" },
     expectedProcess: ["pi-acp"],
@@ -185,12 +165,7 @@ export const ACP_ADAPTERS: readonly AcpAdapter[] = [
     args: ["acp"],
     sessionId: "same",
     resume: "load",
-    modes: {
-      default: { modeId: "default" },
-      "auto-edit": { args: ["--approval-mode", "write"] },
-      "full-auto": { args: ["--approval-mode", "yolo"] },
-      plan: { modeId: "plan" },
-    },
+    modes: ACP_MODE_TABLE.omp,
     injection: { mcp: true, reuse: ["args"] },
     expectedProcess: ["omp"],
     canvasTools: "mcp",
@@ -203,12 +178,7 @@ export const ACP_ADAPTERS: readonly AcpAdapter[] = [
     sessionId: "opaque",
     resume: "none",
     // 三条旗标在 `--acp` 下是否生效待真跑核实（G3-7）。
-    modes: {
-      default: NONE,
-      "auto-edit": { args: ["--allow-tool=write"] },
-      "full-auto": { args: ["--allow-all-tools"] },
-      plan: { args: ["--plan"] },
-    },
+    modes: ACP_MODE_TABLE.copilot,
     injection: { mcp: true, reuse: ["args", "env"] },
     expectedProcess: ["copilot"],
     canvasTools: "mcp",
@@ -222,12 +192,7 @@ export const ACP_ADAPTERS: readonly AcpAdapter[] = [
     sessionId: "same",
     resume: "resume",
     // 模式 id 就是 ama 的权限模式（`@armadra/agent` docs/acp.md）。
-    modes: {
-      default: { modeId: "default" },
-      "auto-edit": { modeId: "auto-edit" },
-      "full-auto": { modeId: "full-auto" },
-      plan: { modeId: "plan" },
-    },
+    modes: ACP_MODE_TABLE.ama,
     injection: { mcp: false, reuse: [] },
     expectedProcess: ["ama", "ama.cjs"],
     canvasTools: "runners",

@@ -8,6 +8,7 @@ export * from "./git-hunks.js";
 export * from "./git-message.js";
 export * from "./git-integration.js";
 export * from "./agent-capabilities.js";
+export * from "./acp-modes.js";
 export * from "./handoff.js";
 export * from "./contract/errors.js";
 export * from "./contract/index.js";
