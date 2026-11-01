@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { AGENT_IDS } from "../agents.js";
+import { AGENT_IDS, AGENT_ROLES } from "../agents.js";
 import { permissionModeSchema } from "./primitives.js";
 
 /**
@@ -119,6 +119,14 @@ export const terminalAgentSchema = z.object({
   account: accountRefSchema.optional(),
   permissionMode: permissionModeSchema.optional(),
   model: z.string().max(120).optional(),
+  /**
+   * The node's role on the canvas (docs/design/coordinator-agent.md §4):
+   * `coordinator` dispatches and runs nothing itself. Absent is a regular
+   * member. Only a CLI with a `roleFlag` for it acts on it (ama today); it
+   * takes effect when the CLI next starts. Not the link role (`main` / `sub`),
+   * which the context links decide.
+   */
+  role: z.enum(AGENT_ROLES).optional(),
   /** Session id reported by the CLI (via hooks) or pre-minted by us. */
   sessionId: z.string().max(200).optional(),
   /**

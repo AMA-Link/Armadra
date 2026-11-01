@@ -1,5 +1,7 @@
 import { delimiter } from "node:path";
 
+import { AGENT_ROLES, type AgentRole } from "@armadra/shared";
+
 import {
   type ShellDialect,
   shellCommandLine,
@@ -60,6 +62,8 @@ export interface CanvasLaunchRequest {
   readonly nodeId?: string;
   readonly permissionMode?: string;
   readonly model?: string;
+  /** The node's `agent.role` ({@link agentRoleOf}). */
+  readonly role?: AgentRole;
   /** Continue this provider session. */
   readonly resume?: string;
   /**
@@ -140,6 +144,7 @@ export function canvasLaunch(request: CanvasLaunchRequest): CanvasLaunch {
       ? {}
       : { permissionMode: request.permissionMode }),
     ...(request.model === undefined ? {} : { model: request.model }),
+    ...(request.role === undefined ? {} : { role: request.role }),
   });
   const ssh = request.ssh === true;
   const flags = request.frozenArgs ?? plan.args;
@@ -174,6 +179,20 @@ export function canvasLaunch(request: CanvasLaunchRequest): CanvasLaunch {
     ...(launcher === undefined ? {} : { launcher }),
     line: shellCommandLine(program, args, dialect),
   };
+}
+
+/**
+ * A node's `data.agent.role` when it is one we know; anything else is no role
+ * — a value this core does not know must not start the CLI some other way.
+ */
+export function agentRoleOf(
+  agent: Readonly<Record<string, unknown>>,
+): AgentRole | undefined {
+  const role = agent.role;
+  return typeof role === "string" &&
+    (AGENT_ROLES as readonly string[]).includes(role)
+    ? (role as AgentRole)
+    : undefined;
 }
 
 /** The same launch as one line of shell text, each word quoted only if needed. */

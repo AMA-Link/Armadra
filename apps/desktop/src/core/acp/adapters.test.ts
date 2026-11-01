@@ -155,6 +155,28 @@ describe("acpLaunchPlan", () => {
       modeId: "plan",
     });
     expect(
+      acpLaunchPlan(acpAdapter("ama")!, {
+        profilePath: "/data/ama/profile.json",
+        role: "coordinator",
+      }),
+    ).toEqual({
+      args: [
+        "--mode",
+        "acp",
+        "--profile",
+        "/data/ama/profile.json",
+        "--tools-preset",
+        "coordinator",
+      ],
+      modeId: "default",
+    });
+    expect(
+      acpLaunchPlan(acpAdapter("codex")!, { role: "coordinator" }),
+    ).toEqual({
+      args: [],
+      modeId: "workspace-write",
+    });
+    expect(
       acpLaunchPlan(acpAdapter("pi")!, {
         injectionArgs: ["--extension", "/x/armadra.ts"],
       }),

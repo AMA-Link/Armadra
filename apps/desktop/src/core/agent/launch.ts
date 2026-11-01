@@ -1,3 +1,4 @@
+import { type AgentRole, roleFlags } from "@armadra/shared";
 import {
   type AgentSettings,
   baseAgent,
@@ -226,6 +227,8 @@ export interface LaunchRequest {
   readonly agentId: string;
   readonly permissionMode?: string;
   readonly model?: string;
+  /** The node's role; argv only for a CLI that has one for it. */
+  readonly role?: AgentRole;
   /** Continue this provider session; wins over {@link sessionId}. */
   readonly resume?: string;
   /** Pre-mint the provider session id, for a CLI that takes one. */
@@ -301,6 +304,8 @@ export function planLaunch(
       omitted.push("modelSelectionUnavailable");
     }
   }
+
+  args.push(...roleFlags(base.id, request.role));
 
   const sessionId = request.sessionId?.trim();
   if (

@@ -253,6 +253,28 @@ describe("buildAddMenu", () => {
     });
   });
 
+  // coordinator-agent §4：亲手建的 ama 是协调者，别家不带角色。
+  it("新建的 ama 节点是协调者，别家不带角色", () => {
+    const ama = {
+      ...claude,
+      id: "ama",
+      label: "Armadra Agent",
+      launchCmd: "ama",
+      resolvedPath: "/usr/local/bin/ama",
+    } as AgentInfo;
+    itemById("add.agent.ama", [ama]).run({ ...ctx, agents: [ama] });
+    expect(
+      (addNode.mock.calls.at(-1) as unknown[] | undefined)?.[1],
+    ).toMatchObject({ data: { agent: { id: "ama", role: "coordinator" } } });
+    itemById("add.agent.claude").run(ctx);
+    const agent = (
+      (addNode.mock.calls.at(-1) as unknown[])[1] as {
+        data: { agent: Record<string, unknown> };
+      }
+    ).data.agent;
+    expect(agent).not.toHaveProperty("role");
+  });
+
   it("探测不到可执行文件的 Agent 禁用而不隐藏", () => {
     const missing = { ...claude, resolvedPath: "", installed: false };
     const item = itemById("add.agent.claude", [missing]);

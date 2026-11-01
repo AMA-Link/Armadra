@@ -1,7 +1,7 @@
 /**
  * 终端节点的 Agent 设置（设计 `agent-delivery.md` §10「节点设置」那一行）。
  *
- * 三件事，都是「别人对我这个节点能做什么」：
+ * 前三件事都是「别人对我这个节点能做什么」：
  *
  *   * **收件箱唤醒**（§5）：空闲时有未读，什么都不做 / 推一行提示 / 直接投进来。
  *     缺省是提示——`post` 今天的失效方式不是提示太吵，是没有人来读。
@@ -9,6 +9,10 @@
  *     写进来的理由。
  *   * **允许相连 Agent 读取转录**（阶段 C+）：默认开；关掉之后对方只拿得到
  *     一份 ≤2 KB 的摘要。
+ *
+ * 第四件只给能当协调者的 CLI（今天是 ama，coordinator-agent §4）：**协调者**
+ * 只分派、不执行。工具预设在 CLI 启动时定下，所以节点还在跑时开关置灰，改了
+ * 要下一次启动才生效。
  *
  * 写入一律走 canvas-store 的 `updateNodeData`：节点数据只有一个写口，改完跟
  * 着画布文档一起保存、一起同步到别的窗口。
@@ -20,6 +24,8 @@ import {
   type InboxWake,
 } from "@armadra/shared";
 
+import { agentSupportsCoordinator } from "@/agent/launch";
+import { useAgentStatus } from "@/agent/status-store";
 import { useT } from "@/app/preferences-store";
 import {
   ResponsiveDialog,
@@ -57,6 +63,10 @@ export function AgentSettingsDialog() {
   };
 
   const wake = agent?.inboxWake ?? DEFAULT_INBOX_WAKE;
+  const coordinator = agent !== undefined && agentSupportsCoordinator(agent.id);
+  // 进程活着就有状态行（`terminal.exit` 时删掉）：这时改角色不会生效。
+  const status = useAgentStatus(nodeId ?? "");
+  const running = status !== undefined && status.alive !== false;
 
   return (
     <ResponsiveDialog
@@ -94,6 +104,20 @@ export function AgentSettingsDialog() {
               ))}
             </ToggleGroup>
           </div>
+
+          {coordinator && (
+            <label className="flex items-center justify-between gap-3 text-body">
+              {t("agentSettings.coordinator")}
+              <Switch
+                checked={agent?.role === "coordinator"}
+                disabled={running}
+                aria-label={t("agentSettings.coordinator")}
+                onCheckedChange={(next) =>
+                  patch({ role: next ? "coordinator" : undefined })
+                }
+              />
+            </label>
+          )}
 
           <label className="flex items-center justify-between gap-3 text-body">
             {t("agentSettings.acceptSubDelivery")}

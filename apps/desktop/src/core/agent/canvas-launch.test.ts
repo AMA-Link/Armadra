@@ -26,6 +26,7 @@ import {
   ACP_MOD_PROFILE,
   acpInjection,
   acpModEnvironment,
+  agentRoleOf,
   canvasEnvironment,
   canvasLaunch,
   canvasLaunchLine,
@@ -249,6 +250,23 @@ describe.runIf(POSIX)("canvas launch lines", () => {
     expect(line).toBe(
       `${quoteShellWord(launcherPath(dataDir, "claude"), "posix")} claude --resume session-1`,
     );
+  });
+
+  it("starts an ama coordinator node with the preset on every line", () => {
+    const data = { agent: { id: "ama", role: "coordinator" } };
+    expect(agentRoleOf(data.agent)).toBe("coordinator");
+    expect(agentRoleOf({ role: "worker" })).toBeUndefined();
+    expect(
+      canvasLaunch({ settings, agentId: "ama", role: "coordinator" }).args,
+    ).toEqual(["--tools-preset", "coordinator"]);
+    expect(resumeLine(settings, "ama", data, "s-1", { dialect: "posix" })).toBe(
+      "ama --resume s-1 --tools-preset coordinator",
+    );
+    expect(
+      resumeLine(settings, "ama", { agent: { id: "ama" } }, "s-1", {
+        dialect: "posix",
+      }),
+    ).toBe("ama --resume s-1");
   });
 
   it("leaves an SSH node's line bare: the host's shims inject", () => {

@@ -6,7 +6,9 @@
  * same words every CLI gets. They name `armadra-hook canvas …` commands; in
  * ama those verbs are tools, so this says which tool is which — and repeats
  * the trust rule, from the one text the core uses too
- * (docs/design/coordinator-agent.md §3, §6).
+ * (docs/design/coordinator-agent.md §3, §6). The coordinator paragraph holds
+ * for both roles, so the adapter never needs to know which preset ama runs
+ * (§4: a coordinator node starts with `--tools-preset coordinator`).
  */
 
 import type { HostApi } from "@armadra/agent/host";
@@ -25,6 +27,9 @@ To split work, use \`canvas_team\` / \`canvas_open_agent\`; read members' result
 
 要把一件事交给某个 CLI 并等它的结果，用 \`task\`（\`agent\` 填 \`claude\`、\`codex\` 等或 \`custom:<id>\`）：它在画布上起一个成员节点、把结果带回来。成员停在权限请求上时等人处理，不要替人回答。
 To hand one job to a CLI and wait for its result, use \`task\` with \`agent\` set to \`claude\`, \`codex\`, … or \`custom:<id>\`: it opens a member node on the board and brings the result back. When the member waits on a permission request, a person answers it — never you.
+
+你若没有 bash / edit / write，就是协调者：不要自己改代码或跑命令，用 \`task\`（\`agent\` 填 \`claude\`、\`codex\` 等）或 \`canvas_team\` 交给成员，读成员结论后汇总。
+Without bash / edit / write you are the coordinator: do not change code or run commands yourself; hand the work to members with \`task\` (\`agent\` = \`claude\`, \`codex\`, …) or \`canvas_team\`, then summarize their results.
 
 ${TRUST_RULE}`;
 }

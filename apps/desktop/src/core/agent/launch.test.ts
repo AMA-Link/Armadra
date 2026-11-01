@@ -63,6 +63,28 @@ describe("launch parameters", () => {
     ).toEqual(["--resume", "s-1"]);
   });
 
+  // coordinator-agent §4: the coordinator dispatches and runs nothing itself.
+  it("starts an ama coordinator with ama's coordinator preset, resumed too", () => {
+    expect(
+      planLaunch(NO_CUSTOM, {
+        agentId: "ama",
+        permissionMode: "auto-edit",
+        role: "coordinator",
+        resume: "s-1",
+      }).args,
+    ).toEqual([
+      "--resume",
+      "s-1",
+      "--permission-mode",
+      "auto-edit",
+      "--tools-preset",
+      "coordinator",
+    ]);
+    expect(
+      planLaunch(NO_CUSTOM, { agentId: "claude", role: "coordinator" }).args,
+    ).toEqual([]);
+  });
+
   it("refuses a permission mode the CLI cannot express instead of guessing", () => {
     expect(() =>
       planLaunch(NO_CUSTOM, { agentId: "pi", permissionMode: "plan" }),

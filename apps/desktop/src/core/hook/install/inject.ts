@@ -333,8 +333,10 @@ export const AMA_CONFIG = {
   compaction: { enabled: true },
   // `task` 不在 ama 的缺省预设里（只在 codemode 脚本里，而 codemode 只在
   // Node ≥ 25 开）。画布上它由适配器的 runner 接到画布节点（契约 §15.5），
-  // 协调者得直接看得到它。
-  tools: { default: ["+task"] },
+  // 协调者得直接看得到它。grep / glob 是给 `coordinator` 预设的（协调者节点
+  // 带 `--tools-preset coordinator`，coordinator-agent §4）：只读、不弹审批，
+  // 没有它们协调者连代码在哪都找不到；`default` 预设本来就有，加了不变。
+  tools: { default: ["+task", "+grep", "+glob"] },
 } as const;
 
 /**

@@ -23,6 +23,7 @@
  */
 
 import { RPC_ERRORS, RpcError } from "@armadra/agent/acp";
+import type { AgentRole } from "@armadra/shared";
 
 import type { PermissionMode } from "../agent/launch";
 import { launchTargetOf, resolveCommand } from "../agent/registry";
@@ -803,6 +804,8 @@ export interface AcpAdapterStart
   readonly mode?: PermissionMode;
   readonly profilePath?: string;
   readonly injectionArgs?: readonly string[];
+  /** 节点的角色（`agent.role`），见 {@link acpLaunchPlan}。 */
+  readonly role?: AgentRole;
   /** 接回这个 CLI 会话 id；方法按适配器表。 */
   readonly resumeSessionId?: string;
   /**
@@ -853,6 +856,7 @@ export function adapterStartOptions(
     ...(options.injectionArgs === undefined
       ? {}
       : { injectionArgs: options.injectionArgs }),
+    ...(options.role === undefined ? {} : { role: options.role }),
   });
   if ("code" in plan) return new AcpError(plan.code, plan.message);
   const target =
