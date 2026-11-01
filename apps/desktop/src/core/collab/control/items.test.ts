@@ -181,6 +181,21 @@ describe("report", () => {
     expect(leadInbox()[0]).toContain("canvas items --item t1");
   });
 
+  it("只有阶段变了或要紧的报告才推 workflow.task 帧", async () => {
+    const member = await dispatch("t1");
+    // 节点还没起来时是 working/queued；造一个活着的会话，进度报告前后都是 working。
+    fixture.session(member, "codex");
+    const frames = () =>
+      fixture.events.filter((entry) => entry.event.type === "workflow.task")
+        .length;
+    ok(await run(member, "report", { state: "progress", summary: "第一步" }));
+    const settled = frames();
+    ok(await run(member, "report", { state: "progress", summary: "第二步" }));
+    expect(frames()).toBe(settled);
+    ok(await run(member, "report", { state: "ready", summary: "好了" }));
+    expect(frames()).toBe(settled + 1);
+  });
+
   it("名下有两项时要 --item；名下一项都没有就拒绝", async () => {
     const member = await dispatch("t1");
     // 同一个节点再挂一项（重试换节点的反方向：直接造一行）。
