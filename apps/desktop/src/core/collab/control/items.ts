@@ -13,8 +13,9 @@ import {
   stageOf,
   stageRank,
 } from "../../workflow/work-items";
-import type { Caller } from "../nodes";
-import { type Args, Refused, stripControl } from "../refusals";
+import { runMailbox } from "../mailbox";
+import { type Caller, loadNode } from "../nodes";
+import { Args, Refused, stripControl } from "../refusals";
 import { type CollabContext, nowDate, nowSeconds } from "../service";
 import { type Outcome, result } from "./outcome";
 
@@ -35,6 +36,52 @@ export const DEFAULT_ITEMS = 20;
 export const MAX_ITEMS = 50;
 /** 单项详情里来源原文一段多少字节（沿用 #674 的 `--offset` 续读约定）。 */
 export const ORIGIN_SEGMENT_BYTES = 2048;
+
+/**
+ * 这几种报告值得协调者醒一次（#682 定稿）：做完待验收、卡住、没做成。带了待决
+ * 问题的报告与交回同样要。`progress` / `waiting` 只记账，协调者不必为每一步进度
+ * 醒一次。
+ */
+const LOUD_STATES: ReadonlySet<WorkItemReportState> = new Set([
+  "ready",
+  "blocked",
+  "failed",
+]);
+/** 收件箱那一行里摘要最多这么多字。 */
+const NOTICE_CHARS = 120;
+
+function clip(text: string, max: number): string {
+  const chars = [...text];
+  return chars.length > max ? `${chars.slice(0, max).join("")}…` : text;
+}
+
+/**
+ * 在协调者收件箱里留一行，由已有的空闲唤醒提醒它（键幂等，重试不会多一行）。
+ * 协调者节点不在、线断了或收件箱满了就不留：报告已经记进账本，协调者下次
+ * `items` 照样看得到。答有没有留下。
+ */
+async function tellCoordinator(
+  context: CollabContext,
+  caller: Caller,
+  run: TaskRun,
+  key: string,
+  body: string,
+): Promise<boolean> {
+  if (loadNode(context.database, run.coordinatorNodeId) === undefined) {
+    return false;
+  }
+  try {
+    await runMailbox(
+      context,
+      caller,
+      "post",
+      new Args({ to: run.coordinatorNodeId, key, body }),
+    );
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 function bad(message: string): Refused {
   return new Refused(400, "bad_request", message);
@@ -94,11 +141,11 @@ function defaultItem(database: DatabaseSync, caller: Caller): TaskRun {
 }
 
 /** `canvas report` */
-export function report(
+export async function report(
   context: CollabContext,
   caller: Caller,
   args: Args,
-): Outcome {
+): Promise<Outcome> {
   const state = args.text("state");
   if (
     state === undefined ||
@@ -122,6 +169,7 @@ export function report(
       : ownItem(context.database, caller, wanted);
   // 单槽：给出就替换，省略就保持，`--clear-action` 清除。
   const attention = clear ? null : action;
+  const before = stageOf(context.database, item, nowSeconds(context));
   const updated = recordReport(context.database, item.taskId, {
     state: state as WorkItemReportState,
     summary,
@@ -129,24 +177,51 @@ export function report(
     nowMs: nowDate(context).getTime(),
   });
   const stage = stageOf(context.database, updated, nowSeconds(context));
-  publishTask(context.database, context.publish, item.taskId);
+  const loud =
+    LOUD_STATES.has(state as WorkItemReportState) || action !== undefined;
+  // 页面靠 `workflow.task` 帧重读整块画板的任务行：阶段没变的进度报告不推，
+  // 否则成员每报一步，每块画板都要重读一次。
+  if (loud || clear || stage !== before) {
+    publishTask(context.database, context.publish, item.taskId);
+  }
+  const seq = updated.reports.length;
+  const notified = loud
+    ? await tellCoordinator(
+        context,
+        caller,
+        updated,
+        `report:${item.taskId}:${seq}:${updated.report?.at ?? ""}`.slice(
+          0,
+          128,
+        ),
+        `[工作项 ${item.taskId}] ${state}：${clip(summary, NOTICE_CHARS)}` +
+          (action === undefined ? "" : `\n待决问题：${action}`) +
+          `\n详情：canvas items --item ${item.taskId}`,
+      )
+    : false;
   return result(
-    `已记下工作项 ${item.taskId} 的报告（${state}），阶段 ${stage}。`,
+    `已记下工作项 ${item.taskId} 的报告（${state}），阶段 ${stage}。` +
+      (loud
+        ? notified
+          ? "已在协调者收件箱里留了一行。"
+          : "协调者节点不在或没连着，只记进了账本。"
+        : ""),
     {
       item: item.taskId,
       state,
       stage,
       attention: updated.attention,
+      notified,
     },
   );
 }
 
 /** `canvas handback` */
-export function handback(
+export async function handback(
   context: CollabContext,
   caller: Caller,
   args: Args,
-): Outcome {
+): Promise<Outcome> {
   const id = args.text("item");
   if (id === undefined) throw bad("--item 不能缺。");
   const reason = limited(args, "reason", MAX_REASON_CHARS, true) as string;
@@ -166,10 +241,18 @@ export function handback(
     );
   }
   publishTask(context.database, context.publish, item.taskId);
-  return result(`已把工作项 ${item.taskId} 交回协调者。`, {
-    item: item.taskId,
-    reason,
-  });
+  const notified = await tellCoordinator(
+    context,
+    caller,
+    item,
+    `handback:${item.taskId}`.slice(0, 128),
+    `[工作项 ${item.taskId}] 交回：${reason}\n详情：canvas items --item ${item.taskId}`,
+  );
+  return result(
+    `已把工作项 ${item.taskId} 交回协调者。` +
+      (notified ? "" : "协调者节点不在或没连着，只记进了账本。"),
+    { item: item.taskId, reason, notified },
+  );
 }
 
 interface Row {
