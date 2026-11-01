@@ -1,4 +1,5 @@
 import type { DatabaseSync } from "node:sqlite";
+import type { WorkItemStage } from "@armadra/shared";
 import { validAgentId } from "../agent/registry";
 import type { CollabContext } from "../collab/service";
 import { DomainError, uuidV7 } from "../workspaces/support";
@@ -37,6 +38,7 @@ import {
   type GateDecision,
   type WorkflowDraft,
 } from "./types";
+import { stageOf } from "./work-items";
 
 /**
  * 工作流的服务层：草案存取与确认、模板 CRUD、运行的起停与关卡（契约 §15.2–
@@ -291,6 +293,11 @@ export class WorkflowService {
   }
 
   /* ------------------------------ 协调者任务 ------------------------------ */
+
+  /** 一行此刻的阶段（契约 §90.2）：由事实推出。 */
+  stageOf(run: TaskRun): WorkItemStage {
+    return stageOf(this.database, run, Math.floor(this.clock() / 1000));
+  }
 
   /** 一块画板上协调者分派出去的任务（契约 §15.7）。 */
   tasks(boardId: unknown): TaskRun[] {

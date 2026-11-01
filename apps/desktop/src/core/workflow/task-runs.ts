@@ -1,4 +1,5 @@
 import type { DatabaseSync } from "node:sqlite";
+import type { WorkItemReportState, WorkItemStage } from "@armadra/shared";
 import type { WorkspaceEvent } from "../bus";
 
 /**
@@ -18,6 +19,48 @@ export const TASK_RUN_STATUSES = [
 ] as const;
 export type TaskRunStatus = (typeof TASK_RUN_STATUSES)[number];
 
+/** 来源（契约 §90.1）：`human` 是人在协调者终端里说的那一回合。 */
+export const ITEM_ORIGIN_KINDS = [
+  "human",
+  "inbox",
+  "schedule",
+  "external",
+] as const;
+export interface WorkItemOrigin {
+  readonly kind: (typeof ITEM_ORIGIN_KINDS)[number];
+  readonly ref: string;
+  readonly text?: string;
+}
+
+/** 授权：派发时写入，之后不可改。 */
+export interface WorkItemMandate {
+  readonly by: string;
+  readonly basis: "asked" | "rule";
+  readonly scope: string;
+  readonly at: string;
+}
+
+export interface WorkItemReport {
+  readonly state: WorkItemReportState;
+  readonly summary: string;
+  readonly at: string;
+}
+
+export interface WorkItemAttention {
+  readonly question: string;
+  readonly raisedAt: string;
+}
+
+export interface WorkItemHandback {
+  readonly reason: string;
+  readonly at: string;
+}
+
+/** 报告历史最多留多少条（含最近一次）。 */
+export const MAX_REPORT_HISTORY = 20;
+/** 标题上限（字）。 */
+export const MAX_TITLE_CHARS = 80;
+
 export interface TaskRun {
   readonly taskId: string;
   readonly coordinatorNodeId: string;
@@ -27,6 +70,16 @@ export interface TaskRun {
   readonly startedAt: number;
   readonly endedAt: number | null;
   readonly result: unknown;
+  /** 工作项账本（迁移 0058）。旧行这些列是空的。 */
+  readonly title: string | null;
+  readonly origin: WorkItemOrigin | null;
+  readonly mandate: WorkItemMandate | null;
+  readonly report: WorkItemReport | null;
+  readonly reports: readonly WorkItemReport[];
+  readonly attention: WorkItemAttention | null;
+  readonly handback: WorkItemHandback | null;
+  /** 阶段函数结果的缓存；以 `itemStage()` 为准。 */
+  readonly stage: string | null;
 }
 
 interface TaskRunRecord {
@@ -38,10 +91,29 @@ interface TaskRunRecord {
   started_at: number;
   ended_at: number | null;
   result_json: string | null;
+  title: string | null;
+  origin_json: string | null;
+  mandate_json: string | null;
+  report_json: string | null;
+  reports_json: string | null;
+  attention_json: string | null;
+  handback_json: string | null;
+  stage: string | null;
 }
 
 const COLUMNS =
-  "task_id, coordinator_node_id, runner_id, node_id, status, started_at, ended_at, result_json";
+  "task_id, coordinator_node_id, runner_id, node_id, status, started_at, ended_at, result_json, " +
+  "title, origin_json, mandate_json, report_json, reports_json, attention_json, handback_json, stage";
+
+function parsed<T>(text: string | null): T | null {
+  if (text === null) return null;
+  try {
+    const value = JSON.parse(text) as unknown;
+    return value !== null && typeof value === "object" ? (value as T) : null;
+  } catch {
+    return null;
+  }
+}
 
 function taskRunOf(row: TaskRunRecord): TaskRun {
   let result: unknown = null;
@@ -61,6 +133,22 @@ function taskRunOf(row: TaskRunRecord): TaskRun {
     startedAt: Number(row.started_at),
     endedAt: row.ended_at === null ? null : Number(row.ended_at),
     result,
+    title: row.title,
+    origin: parsed<WorkItemOrigin>(row.origin_json),
+    mandate: parsed<WorkItemMandate>(row.mandate_json),
+    report: parsed<WorkItemReport>(row.report_json),
+    reports: (() => {
+      if (row.reports_json === null) return [];
+      try {
+        const list = JSON.parse(row.reports_json) as unknown;
+        return Array.isArray(list) ? (list as WorkItemReport[]) : [];
+      } catch {
+        return [];
+      }
+    })(),
+    attention: parsed<WorkItemAttention>(row.attention_json),
+    handback: parsed<WorkItemHandback>(row.handback_json),
+    stage: row.stage,
   };
 }
 
@@ -81,11 +169,30 @@ export function recordTaskStart(
      * 要把它再投一次（G5-09）；结束时写进的 `text` / `reason` 与它并存。
      */
     readonly task?: string | undefined;
+    /** 标题（派发时给出，截到 {@link MAX_TITLE_CHARS} 字）。 */
+    readonly title?: string | undefined;
+    /** 来源；缺省是人在协调者终端里说的那一回合，原文是任务正文。 */
+    readonly origin?: WorkItemOrigin | undefined;
   },
 ): { readonly inserted: boolean; readonly run: TaskRun } {
+  const title = oneLine(task.title);
+  const origin: WorkItemOrigin = task.origin ?? {
+    kind: "human",
+    ref: task.coordinatorNodeId,
+    ...(task.task === undefined ? {} : { text: task.task }),
+  };
+  // 授权派发时写入，之后没有任何一条语句改它。
+  const mandate: WorkItemMandate = {
+    by: task.coordinatorNodeId,
+    basis: "asked",
+    scope: "dispatch",
+    at: new Date(task.now).toISOString(),
+  };
   const changes = database
     .prepare(
-      `INSERT OR IGNORE INTO workflow_task_runs (${COLUMNS}) VALUES (?, ?, ?, ?, 'running', ?, NULL, ?)`,
+      "INSERT OR IGNORE INTO workflow_task_runs (task_id, coordinator_node_id, runner_id, node_id, " +
+        "status, started_at, ended_at, result_json, title, origin_json, mandate_json) " +
+        "VALUES (?, ?, ?, ?, 'running', ?, NULL, ?, ?, ?, ?)",
     )
     .run(
       task.taskId,
@@ -94,11 +201,25 @@ export function recordTaskStart(
       task.nodeId,
       task.now,
       task.task === undefined ? null : JSON.stringify({ task: task.task }),
+      title ?? null,
+      JSON.stringify(origin),
+      JSON.stringify(mandate),
     );
   return {
     inserted: Number(changes.changes) > 0,
     run: taskRun(database, task.taskId) as TaskRun,
   };
+}
+
+/** 一行标题：折掉换行与多余空白，截到上限；空的当没有。 */
+export function oneLine(
+  text: string | undefined,
+  limit = MAX_TITLE_CHARS,
+): string | undefined {
+  if (text === undefined) return undefined;
+  const folded = text.replace(/\s+/g, " ").trim();
+  if (folded === "") return undefined;
+  return [...folded].slice(0, limit).join("");
 }
 
 export function taskRun(
@@ -125,7 +246,10 @@ function promptOnly(run: TaskRun | undefined): string | null {
   return task === undefined ? null : JSON.stringify({ task });
 }
 
-/** 重试时节点已经不在了：换成新起的那个节点，状态回到 `running`。 */
+/**
+ * 重试时节点已经不在了：换成新起的那个节点，状态回到 `running`。重新开始一次，
+ * 上一次的最近报告与待决问题作废（报告历史、授权、来源留着）。
+ */
 export function rebindTask(
   database: DatabaseSync,
   taskId: string,
@@ -135,7 +259,8 @@ export function rebindTask(
   database
     .prepare(
       "UPDATE workflow_task_runs SET node_id = ?, status = 'running', started_at = ?, " +
-        "ended_at = NULL, result_json = ? WHERE task_id = ?",
+        "ended_at = NULL, result_json = ?, report_json = NULL, attention_json = NULL " +
+        "WHERE task_id = ?",
     )
     .run(nodeId, now, promptOnly(taskRun(database, taskId)), taskId);
 }
@@ -152,7 +277,8 @@ export function reopenTask(
   const changes = database
     .prepare(
       "UPDATE workflow_task_runs SET status = 'running', started_at = ?, ended_at = NULL, " +
-        "result_json = ? WHERE task_id = ? AND status IN ('failed','stopped')",
+        "result_json = ?, report_json = NULL, attention_json = NULL " +
+        "WHERE task_id = ? AND status IN ('failed','stopped')",
     )
     .run(now, promptOnly(taskRun(database, taskId)), taskId);
   return Number(changes.changes) > 0;
@@ -223,7 +349,10 @@ export function taskRunsForBoard(
  * 页面看到的一行（契约 §15.7）。不带任务正文与成员的结果正文：抽屉只要状态、
  * 时刻与「能不能重试」，正文留在库里。
  */
-export function taskRowJson(run: TaskRun): Record<string, unknown> {
+export function taskRowJson(
+  run: TaskRun,
+  stage: WorkItemStage,
+): Record<string, unknown> {
   const result = run.result as { reason?: unknown } | null;
   const reason =
     result !== null &&
@@ -243,6 +372,10 @@ export function taskRowJson(run: TaskRun): Record<string, unknown> {
     retryable:
       (run.status === "failed" || run.status === "stopped") &&
       taskPrompt(run) !== undefined,
+    title: run.title,
+    stage,
+    report: run.report,
+    attention: run.attention,
   };
 }
 

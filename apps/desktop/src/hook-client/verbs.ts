@@ -111,6 +111,19 @@ export const ENUMS = {
   edgeRoles: ["peer", "supervises"],
   /** `dependencies/store.ts::DEPENDENCY_CONDITIONS` */
   afterTurn: ["current", "next"],
+  /** `@armadra/shared` `WORK_ITEM_REPORT_STATES` */
+  reportStates: ["progress", "waiting", "ready", "blocked", "failed"],
+  /** `@armadra/shared` `WORK_ITEM_STAGES` */
+  itemStages: [
+    "person/delivery",
+    "person/answer",
+    "person/review",
+    "person/blocked",
+    "person/failed",
+    "working/queued",
+    "idle",
+    "working",
+  ],
   /** `collab/wake.ts::INBOX_WAKE_MODES` */
   inboxWake: ["off", "notify", "deliver"],
   /** `collab/control/board.ts::NODE_PALETTE` */
@@ -355,6 +368,44 @@ const CANVAS: Record<ControlVerb, Row> = {
       timeout: int(`seconds to wait for news, 0–60 (default 30)`, 0),
     },
     required: ["task"],
+  },
+  report: {
+    description:
+      "Report on your work item: state progress, waiting, ready (awaiting review), blocked or failed. human-action sets the one question a person must answer (omit to keep it, clear-action to remove it). Not for progress chatter to the coordinator.",
+    properties: {
+      state: oneOf(ENUMS.reportStates, "where the work stands"),
+      summary: str("what happened, at most 300 characters"),
+      "human-action": str(
+        "one concrete question for a person; replaces the open one",
+      ),
+      "clear-action": bool("drop the open question"),
+      item: str(
+        "the work item id (default: the only one in progress under this node)",
+      ),
+    },
+    required: ["state", "summary"],
+  },
+  handback: {
+    description:
+      "Hand a follow-up on your work item back to the coordinator; once per item.",
+    properties: {
+      item: str("the work item id"),
+      reason: str("why, at most 100 characters"),
+    },
+    required: ["item", "reason"],
+  },
+  items: {
+    description:
+      "Read the work-item ledger: one line per item (id, title, node, stage, last report, open question), person/* stages first. --item gives one item with its report history and the origin text in segments.",
+    properties: {
+      stage: oneOf(ENUMS.itemStages, "only items in this stage"),
+      item: str("one item's detail"),
+      limit: int("rows per page, 1–50 (default 20)", 1),
+      offset: int(
+        "list: rows to skip; with item: byte position to continue the origin text from",
+        0,
+      ),
+    },
   },
 };
 
