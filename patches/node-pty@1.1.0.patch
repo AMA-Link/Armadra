@@ -1,3 +1,111 @@
+diff --git a/src/unix/pty.cc b/src/unix/pty.cc
+index 7b4b9e1f990fbf95b51528bb56dc9717f5b87532..7e08eaa37b1e9730dc81f9085c584da8f4c97ac8 100644
+--- a/src/unix/pty.cc
++++ b/src/unix/pty.cc
+@@ -691,8 +691,10 @@ pty_posix_spawn(char** argv, char** env,
+                 int* master,
+                 pid_t* pid,
+                 int* err) {
+-  int low_fds[3];
++  int low_fds[3] = { -1, -1, -1 };
+   size_t count = 0;
++  int slave = -1;
++  int res = -1;
+ 
+   for (; count < 3; count++) {
+     low_fds[count] = posix_openpt(O_RDWR);
+@@ -706,38 +708,37 @@ pty_posix_spawn(char** argv, char** env,
+               POSIX_SPAWN_SETSID;
+   *master = posix_openpt(O_RDWR);
+   if (*master == -1) {
+-    return;
++    goto fail;
+   }
+ 
+-  int res = grantpt(*master) || unlockpt(*master);
++  res = grantpt(*master) || unlockpt(*master);
+   if (res == -1) {
+-    return;
++    goto fail;
+   }
+ 
+   // Use TIOCPTYGNAME instead of ptsname() to avoid threading problems.
+-  int slave;
+   char slave_pty_name[128];
+   res = ioctl(*master, TIOCPTYGNAME, slave_pty_name);
+   if (res == -1) {
+-    return;
++    goto fail;
+   }
+ 
+   slave = open(slave_pty_name, O_RDWR | O_NOCTTY);
+   if (slave == -1) {
+-    return;
++    goto fail;
+   }
+ 
+   if (termp) {
+     res = tcsetattr(slave, TCSANOW, termp);
+     if (res == -1) {
+-      return;
++      goto fail;
+     };
+   }
+ 
+   if (winp) {
+     res = ioctl(slave, TIOCSWINSZ, winp);
+     if (res == -1) {
+-      return;
++      goto fail;
+     }
+   }
+ 
+@@ -777,9 +778,42 @@ pty_posix_spawn(char** argv, char** env,
+ done:
+   posix_spawn_file_actions_destroy(&acts);
+   posix_spawnattr_destroy(&attrs);
+-
+-  for (; count > 0; count--) {
+-    close(low_fds[count]);
++  /* armadra: pty device leak fix */
++  // The child has its own dup'd copies of the slave and never sees the
++  // master. The parent's slave fd keeps the pair allocated for nothing, so it
++  // goes here, on the success path as well as on every failure below.
++  if (slave != -1) {
++    close(slave);
++    slave = -1;
++  }
++  if (*err != 0 && *master != -1) {
++    close(*master);
++    *master = -1;
++  }
++  goto cleanup;
++
++fail:
++  // Everything between posix_openpt() and posix_spawn() used to return
++  // straight out of the function with these two still open.
++  if (slave != -1) {
++    close(slave);
++    slave = -1;
++  }
++  if (*master != -1) {
++    close(*master);
++    *master = -1;
++  }
++
++cleanup:
++  // low_fds[0 .. count] INCLUSIVE: the producing loop breaks without
++  // incrementing, so entry 0 always holds a device and entry `count` only
++  // exists when that loop broke. The original ran from `count` down to 1,
++  // which skipped entry 0 on every call and read one past the array when the
++  // loop had run to completion.
++  for (size_t index = 0; index <= count && index < 3; index++) {
++    if (low_fds[index] != -1) {
++      close(low_fds[index]);
++    }
+   }
+ }
+ #endif
 diff --git a/src/win/conpty.cc b/src/win/conpty.cc
 index 7b286d3d644c26141df516929703aa6e129df4b2..3286546f15aa91e0db80d85e71564d792b600d52 100644
 --- a/src/win/conpty.cc
