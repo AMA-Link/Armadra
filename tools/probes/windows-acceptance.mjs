@@ -91,6 +91,7 @@ import {
   closeManyAtOnce,
   closeOut,
   conptyClose,
+  crashEvents,
 } from "./windows-acceptance-host.mjs";
 import { isolatedEnv, probeHome } from "./probe-home.mjs";
 
@@ -1381,7 +1382,10 @@ async function runFull(options, result, record, out) {
     record.skipRest("前面的步骤中止");
     const failed = result.checks.some((check) => check.status === "fail");
     const keep = options.keep && failed;
-    const leftover = closeOut({ out, work, dataDir, appOutput, keep });
+    const crashes = isWindows
+      ? crashEvents(powershellJson, result.startedAt)
+      : undefined;
+    const leftover = closeOut({ out, work, dataDir, appOutput, crashes, keep });
     if (leftover !== undefined) result.leftover = leftover;
   }
 }

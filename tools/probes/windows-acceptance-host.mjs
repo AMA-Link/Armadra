@@ -167,6 +167,9 @@ export async function conptyClose(
       detail.sessions[session.dialect] = {
         status: answer.status,
         shellGone: gone,
+        // 逐个记：宿主若在这一步没了，是哪一个终端的关闭带走的它。
+        at: new Date().toISOString(),
+        hostAlive: hostPid !== undefined && alive(hostPid),
       };
     }
     await sleep(2_000);
@@ -209,11 +212,48 @@ export function collectHostLogs(dataDir, out) {
 }
 
 /**
- * 收尾：应用输出与会话宿主日志写进产物目录，再删临时目录（`keep` 时留着）。
+ * 这次运行以来 Windows 应用日志里与 Armadra.exe 有关的崩溃记录（Application Error
+ * 1000、Windows Error Reporting 1001）。会话宿主无声退出时，异常码与出错的模块
+ * 只记在这里。
+ */
+export function crashEventsCommand(since) {
+  return (
+    `Get-WinEvent -FilterHashtable @{ LogName = 'Application'; Id = 1000, 1001; ` +
+    `StartTime = [datetime]::Parse('${since}') } -ErrorAction SilentlyContinue | ` +
+    `Where-Object { $_.Message -match 'Armadra' } | Select-Object ` +
+    `@{ n = 'time'; e = { $_.TimeCreated.ToString('o') } }, Id, ProviderName, ` +
+    `@{ n = 'message'; e = { $_.Message.Substring(0, [Math]::Min(1500, $_.Message.Length)) } }`
+  );
+}
+
+/** 读崩溃记录；读不到时记下原因，不影响结论。 */
+export function crashEvents(powershellJson, since) {
+  try {
+    return powershellJson(crashEventsCommand(since));
+  } catch (error) {
+    return [{ error: error instanceof Error ? error.message : String(error) }];
+  }
+}
+
+/**
+ * 收尾：应用输出、会话宿主日志与崩溃记录写进产物目录，再删临时目录（`keep` 时留着）。
  * 返回留下来的临时目录（留着或删不掉），删掉了返回 `undefined`。
  */
-export function closeOut({ out, work, dataDir, appOutput, keep = false }) {
+export function closeOut({
+  out,
+  work,
+  dataDir,
+  appOutput,
+  crashes,
+  keep = false,
+}) {
   if (dataDir !== undefined) collectHostLogs(dataDir, out);
+  if (crashes !== undefined) {
+    writeFileSync(
+      join(out, "crash-events.json"),
+      `${JSON.stringify(crashes, null, 2)}\n`,
+    );
+  }
   writeFileSync(join(out, "app-output.log"), appOutput);
   if (keep) return work;
   try {

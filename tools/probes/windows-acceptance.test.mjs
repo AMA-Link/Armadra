@@ -40,6 +40,8 @@ import {
   closeManyAtOnce,
   closeOut,
   collectHostLogs,
+  crashEvents,
+  crashEventsCommand,
 } from "./windows-acceptance-host.mjs";
 
 const probe = join(
@@ -494,12 +496,20 @@ test("收尾：产物里有应用输出与宿主日志，临时目录按 keep �
     );
     assert.deepEqual(readdirSync(kept.dataDir), ["session-host.log"]);
     const gone = fresh();
-    assert.equal(closeOut({ out, ...gone, appOutput: "app\n" }), undefined);
+    assert.equal(
+      closeOut({ out, ...gone, appOutput: "app\n", crashes: [{ Id: 1000 }] }),
+      undefined,
+    );
     assert.throws(() => readdirSync(gone.work));
     assert.deepEqual(readdirSync(out).sort(), [
       "app-output.log",
+      "crash-events.json",
       "session-host.log",
     ]);
+    assert.deepEqual(
+      JSON.parse(readFileSync(join(out, "crash-events.json"), "utf8")),
+      [{ Id: 1000 }],
+    );
     assert.equal(readFileSync(join(out, "app-output.log"), "utf8"), "app\n");
   } finally {
     rmSync(dir, { recursive: true, force: true });
@@ -570,4 +580,21 @@ test("没有会话宿主或没有 cmd 时跳过，不算失败", async () => {
   const { app, record, options } = closeManyFixture({ hostDies: false });
   await closeManyAtOnce(record, app, { ...options, hostPid: undefined });
   assert.equal(record.entry("sessionHost.closeMany").status, "skip");
+});
+
+test("崩溃记录：只查这次运行以来的 Application Error / WER，读不到时记原因", () => {
+  const command = crashEventsCommand("2026-11-01T07:00:00.000Z");
+  assert.match(command, /Id = 1000, 1001/);
+  assert.match(command, /\[datetime\]::Parse\('2026-11-01T07:00:00\.000Z'\)/);
+  assert.match(command, /-match 'Armadra'/);
+  assert.deepEqual(
+    crashEvents(() => [{ Id: 1000 }], "x"),
+    [{ Id: 1000 }],
+  );
+  assert.deepEqual(
+    crashEvents(() => {
+      throw new Error("powershell 失败");
+    }, "x"),
+    [{ error: "powershell 失败" }],
+  );
 });
