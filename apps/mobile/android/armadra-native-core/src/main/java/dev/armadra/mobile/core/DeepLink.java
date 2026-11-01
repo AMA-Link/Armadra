@@ -12,18 +12,22 @@ import java.util.regex.Pattern;
  *   <li>{@code armadra://w/<工作空间>[/n/<节点>][?s=<源>]}：写进 {@code #push=}，页面认 {@code hashchange}
  *       （{@code s} 是签发通知的主机，契约 §19.4，连着别的主机时页面自己切）；
  *   <li>{@code armadra://oauth?state=…&code=…}（或 {@code error=}）：原生 OAuth 的回调（R-56），与配对一样
- *       写进 {@code #link=} 再重载，入口在挂载前收尾。
+ *       写进 {@code #link=} 再重载，入口在挂载前收尾；
+ *   <li>{@code armadra://cloud/device-approved}：控制台批准页在浏览器里批准了手机的设备码登录后带人回来
+ *       （#666）。只让 App 回前台并通知页面（插件事件 {@code cloudDeviceApproved}），不写 {@code #link=}、不重载——
+ *       重载会丢掉只在内存里的设备码；冷启动带着它当普通启动。不带任何参数或秘密。
  * </ul>
  *
  * 其余一律不认；链接按 JSON 字符串字面量嵌进脚本。
  */
 public final class DeepLink {
-    public enum Kind { PAIR, JOIN, NODE, OAUTH }
+    public enum Kind { PAIR, JOIN, NODE, OAUTH, CLOUD_DEVICE_APPROVED }
 
     private static final int MAX_LENGTH = 2048;
     private static final Pattern PAIR = Pattern.compile("^armadra://pair\\?[A-Za-z0-9._~%&=:+-]+$");
     private static final Pattern JOIN = Pattern.compile("^armadra://join\\?[A-Za-z0-9._~%&=:+-]+$");
     private static final Pattern OAUTH = Pattern.compile("^armadra://oauth\\?[A-Za-z0-9._~%&=:+*-]+$");
+    private static final Pattern CLOUD_DEVICE_APPROVED = Pattern.compile("^armadra://cloud/device-approved/?$");
     private static final Pattern NODE =
             Pattern.compile("^armadra://w/[A-Za-z0-9._~%-]+(/n/[A-Za-z0-9._~%-]+)?/?(\\?s=[A-Za-z0-9._~%-]+)?$");
 
@@ -42,10 +46,18 @@ public final class DeepLink {
         if (JOIN.matcher(link).matches()) return new DeepLink(Kind.JOIN, link);
         if (NODE.matcher(link).matches()) return new DeepLink(Kind.NODE, link);
         if (OAUTH.matcher(link).matches()) return new DeepLink(Kind.OAUTH, link);
+        if (CLOUD_DEVICE_APPROVED.matcher(link).matches()) return new DeepLink(Kind.CLOUD_DEVICE_APPROVED, link);
         return null;
     }
 
+    /** 只通知页面（插件事件），没有要在页面里执行的脚本：{@link #script()} 对它答 {@code null}。 */
+    public boolean notifiesOnly() {
+        return kind == Kind.CLOUD_DEVICE_APPROVED;
+    }
+
+    /** 在页面里执行的那一行；{@link #notifiesOnly()} 的那种没有，是 {@code null}。 */
     public String script() {
+        if (notifiesOnly()) return null;
         String literal = literal(link);
         if (kind == Kind.PAIR || kind == Kind.JOIN || kind == Kind.OAUTH) {
             return "history.replaceState(null,'',location.pathname+'#link='+encodeURIComponent("

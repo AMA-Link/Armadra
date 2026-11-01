@@ -14,6 +14,13 @@ import { matchRoute } from "../router";
 import { cleanUserCode, normalizeUserCode } from "./device-code";
 import { requestedAgo } from "./DevicePage";
 
+// 自动跳转要整页导航到 `armadra://`，jsdom 做不了：换成可观察的桩。
+const returned = vi.hoisted(() => vi.fn());
+vi.mock("./app-return", async (original) => ({
+  ...(await original<typeof import("./app-return")>()),
+  returnToApp: returned,
+}));
+
 const visit = (url: string) => window.history.replaceState(null, "", url);
 const here = () => window.location.pathname + window.location.search;
 const h1 = () => screen.findByRole("heading", { level: 1 });
@@ -21,6 +28,7 @@ const CODE = MOCK_DEVICE_CODES.pending;
 const LOGIN_FOR_CODE = `/login?next=${encodeURIComponent(`/device?code=${CODE}`)}`;
 
 afterEach(() => {
+  returned.mockClear();
   cleanup();
   visit("/");
 });
@@ -301,5 +309,59 @@ describe("设备授权页", () => {
     mount();
     await screen.findByText("build-01 请求登录");
     expect(screen.queryByText(/请求来自/)).toBeNull();
+  });
+
+  it.each(["ios", "android"])(
+    "%s 发起的设备码批准后：自动回到 App，并给「返回 Armadra」按钮（同一个链接，不带参数）",
+    async (devicePlatform) => {
+      visit(`/device?code=${CODE}`);
+      mount({ devicePlatform });
+      await screen.findByText("build-01 请求登录");
+      confirmCode();
+      fireEvent.click(screen.getByRole("button", { name: "授权" }));
+      await screen.findByText("已授权，可以回到 build-01");
+      expect(returned).toHaveBeenCalledTimes(1);
+      const back = screen.getByRole("link", { name: "返回 Armadra" });
+      expect(back.getAttribute("href")).toBe("armadra://cloud/device-approved");
+      expect(screen.getByRole("button", { name: "继续" })).toBeTruthy();
+    },
+  );
+
+  it.each(["desktop", "browser", "server"])(
+    "%s 发起的设备码批准后：保持原有「已授权」界面，不跳 App",
+    async (devicePlatform) => {
+      visit(`/device?code=${CODE}`);
+      mount({ devicePlatform });
+      await screen.findByText("build-01 请求登录");
+      confirmCode();
+      fireEvent.click(screen.getByRole("button", { name: "授权" }));
+      await screen.findByText("已授权，可以回到 build-01");
+      expect(returned).not.toHaveBeenCalled();
+      expect(screen.queryByRole("link", { name: "返回 Armadra" })).toBeNull();
+    },
+  );
+
+  it("手机发起的设备码被拒绝：不跳 App，也没有「返回 Armadra」", async () => {
+    visit(`/device?code=${CODE}`);
+    mount({ devicePlatform: "ios" });
+    await screen.findByText("build-01 请求登录");
+    fireEvent.click(screen.getByRole("button", { name: "拒绝" }));
+    await screen.findByText("已拒绝这次登录");
+    expect(returned).not.toHaveBeenCalled();
+    expect(screen.queryByRole("link", { name: "返回 Armadra" })).toBeNull();
+  });
+
+  it("批准在提权之后才成功：成功时才跳，提权页上不跳", async () => {
+    visit(`/device?code=${CODE}`);
+    mount({ devicePlatform: "android", deviceNeedsStepUp: true });
+    await screen.findByText("build-01 请求登录");
+    confirmCode();
+    fireEvent.click(screen.getByRole("button", { name: "授权" }));
+    const secret = (await screen.findByLabelText("口令")) as HTMLInputElement;
+    expect(returned).not.toHaveBeenCalled();
+    fireEvent.change(secret, { target: { value: "right" } });
+    fireEvent.submit(secret.closest("form")!);
+    await screen.findByText("已授权，可以回到 build-01");
+    expect(returned).toHaveBeenCalledTimes(1);
   });
 });

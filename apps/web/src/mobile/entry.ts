@@ -114,7 +114,8 @@ const LINK_FRAGMENT = /^#link=(.+)$/;
 /**
  * 原生 App 收到 `armadra://pair?…`（配对）或 `armadra://oauth?…`（原生 OAuth 的
  * 回调，R-56）深链时把它写进 `#link=` 再重载（入口在挂载前就定了）。取走即从
- * 地址栏抹掉；认不出是 `null`。
+ * 地址栏抹掉；认不出是 `null`。`armadra://cloud/device-approved`（设备码批准后的回跳，#666）
+ * 原生不会写进来（它只发插件事件、不重载），万一出现也不是任何一种链接，一律忽略。
  */
 export function takeLinkFragment(): string | null {
   const location = globalThis.location;
