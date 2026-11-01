@@ -98,7 +98,9 @@ patchedDependencies:
   # microsoft/node-pty#921: in 1.1.0 every exit thread erases from the global
   # ConPTY handle list while the JS thread searches or appends to it, a native
   # crash no JavaScript can catch. On Windows that took down the session host
-  # and every terminal it held (#659). The patch backports only the mutex of
-  # the upstream fix (#922, first in 1.2.0-beta.13) to src/win/conpty.cc; the
+  # and every terminal it held (#659). The patch backports to
+  # src/win/conpty.cc only the mutex of the upstream fix (#922, first in
+  # 1.2.0-beta.13) and 1.2.0-beta.18's guard against closing one pseudoconsole
+  # twice (a second kill before the exit thread forgot it freed it again); the
   # macOS and Linux sources are untouched. Remove once a stable 1.2.0 ships.
   node-pty@1.1.0: patches/node-pty@1.1.0.patch

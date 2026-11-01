@@ -94,4 +94,10 @@ test("装出来的 node-pty 源码带着 ptyHandles 的锁（#659）", () => {
     6,
   );
   assert.doesNotMatch(source, /assert\(remove_pty_baton/);
+  // 同一个伪控制台不关两次：kill 关过之后置空，resize / clear / kill 都先看它。
+  assert.match(
+    source,
+    /pfnClosePseudoConsole\(handle->hpc\);\s+handle->hpc = nullptr;/,
+  );
+  assert.equal(source.match(/handle->hpc != nullptr/g)?.length, 3);
 });

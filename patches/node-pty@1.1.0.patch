@@ -1,5 +1,5 @@
 diff --git a/src/win/conpty.cc b/src/win/conpty.cc
-index 7b286d3d644c26141df516929703aa6e129df4b2..2ebbb823c5460168431e6a42e35864b11e0ce186 100644
+index 7b286d3d644c26141df516929703aa6e129df4b2..3286546f15aa91e0db80d85e71564d792b600d52 100644
 --- a/src/win/conpty.cc
 +++ b/src/win/conpty.cc
 @@ -14,6 +14,7 @@
@@ -74,27 +74,52 @@ index 7b286d3d644c26141df516929703aa6e129df4b2..2ebbb823c5460168431e6a42e35864b1
    if (!handle) {
      throw Napi::Error::New(env, "Invalid pty handle");
    }
-@@ -472,6 +491,7 @@ static Napi::Value PtyResize(const Napi::CallbackInfo& info) {
+@@ -472,9 +491,10 @@ static Napi::Value PtyResize(const Napi::CallbackInfo& info) {
    SHORT rows = static_cast<SHORT>(info[2].As<Napi::Number>().Uint32Value());
    const bool useConptyDll = info[3].As<Napi::Boolean>().Value();
  
 +  std::lock_guard<std::mutex> lock(g_ptyHandlesMutex);
    const pty_baton* handle = get_pty_baton(id);
  
-   if (handle != nullptr) {
-@@ -513,6 +533,7 @@ static Napi::Value PtyClear(const Napi::CallbackInfo& info) {
+-  if (handle != nullptr) {
++  if (handle != nullptr && handle->hpc != nullptr) {
+     HANDLE hLibrary = LoadConptyDll(info, useConptyDll);
+     bool fLoadedDll = hLibrary != nullptr;
+     if (fLoadedDll)
+@@ -513,9 +533,10 @@ static Napi::Value PtyClear(const Napi::CallbackInfo& info) {
      return env.Undefined();
    }
  
 +  std::lock_guard<std::mutex> lock(g_ptyHandlesMutex);
    const pty_baton* handle = get_pty_baton(id);
  
-   if (handle != nullptr) {
-@@ -544,6 +565,7 @@ static Napi::Value PtyKill(const Napi::CallbackInfo& info) {
+-  if (handle != nullptr) {
++  if (handle != nullptr && handle->hpc != nullptr) {
+     HANDLE hLibrary = LoadConptyDll(info, useConptyDll);
+     bool fLoadedDll = hLibrary != nullptr;
+     if (fLoadedDll)
+@@ -544,7 +565,8 @@ static Napi::Value PtyKill(const Napi::CallbackInfo& info) {
    int id = info[0].As<Napi::Number>().Int32Value();
    const bool useConptyDll = info[1].As<Napi::Boolean>().Value();
  
+-  const pty_baton* handle = get_pty_baton(id);
 +  std::lock_guard<std::mutex> lock(g_ptyHandlesMutex);
-   const pty_baton* handle = get_pty_baton(id);
++  pty_baton* handle = get_pty_baton(id);
  
    if (handle != nullptr) {
+     HANDLE hLibrary = LoadConptyDll(info, useConptyDll);
+@@ -554,9 +576,13 @@ static Napi::Value PtyKill(const Napi::CallbackInfo& info) {
+       PFNCLOSEPSEUDOCONSOLE const pfnClosePseudoConsole = (PFNCLOSEPSEUDOCONSOLE)GetProcAddress(
+         (HMODULE)hLibrary,
+         useConptyDll ? "ConptyClosePseudoConsole" : "ClosePseudoConsole");
+-      if (pfnClosePseudoConsole)
++      // armadra: as in 1.2.0-beta.18. Closing frees the pseudoconsole while
++      // the baton lives until the exit thread erases it, so a second kill in
++      // between closed a freed HPCON and crashed the process (#659).
++      if (pfnClosePseudoConsole && handle->hpc != nullptr)
+       {
+         pfnClosePseudoConsole(handle->hpc);
++        handle->hpc = nullptr;
+       }
+     }
+     if (useConptyDll) {
