@@ -175,6 +175,11 @@ export interface DeviceStepProps {
   readonly userCode: string;
   /** 等批准中；批准被拒、过期等终结后为 `false`，显示 `message` 并换成「新设备码」。 */
   readonly waiting: boolean;
+  /**
+   * 一次轮询正在途中：显示「正在确认」，并禁用「新设备码」「取消」——这时作废设备码会丢掉
+   * 刚批准的结果。
+   */
+  readonly confirming?: boolean;
   readonly busy: boolean;
   readonly message: string | null;
   readonly errorId: string;
@@ -188,6 +193,7 @@ export function DeviceStep({
   host,
   userCode,
   waiting,
+  confirming = false,
   busy,
   message,
   errorId,
@@ -196,6 +202,7 @@ export function DeviceStep({
   onCancel,
 }: DeviceStepProps) {
   const t = useT();
+  const locked = busy || confirming;
   return (
     <div className="flex flex-col gap-(--space-block)">
       <div className="flex flex-col items-center gap-2">
@@ -217,7 +224,11 @@ export function DeviceStep({
             className="flex items-center gap-2 text-body text-muted-foreground"
           >
             <Spinner data-icon="inline-start" aria-hidden />
-            {t("mobileConnect.device.waiting")}
+            {t(
+              confirming
+                ? "mobileConnect.device.confirming"
+                : "mobileConnect.device.waiting",
+            )}
           </p>
         ) : (
           message && <FieldError id={errorId}>{message}</FieldError>
@@ -239,7 +250,7 @@ export function DeviceStep({
             type="button"
             size="touch"
             className="w-full"
-            disabled={busy}
+            disabled={locked}
             onClick={onRestart}
           >
             {t("mobileConnect.device.restart")}
@@ -250,7 +261,7 @@ export function DeviceStep({
           size="touch"
           variant="ghost"
           className="w-full"
-          disabled={busy}
+          disabled={locked}
           onClick={onCancel}
         >
           {t("mobileConnect.cancel")}

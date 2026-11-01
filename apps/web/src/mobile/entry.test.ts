@@ -80,7 +80,7 @@ import { hostedRelay, resetHostedRelay } from "../sources/hosted";
 import { resetSourceRegistry, sourceRegistry } from "../sources/registry";
 import { SourceError } from "../sources/types";
 import { setActiveConnection, upsertConnection } from "./connections";
-import { prepareEntry, ticketWithRefresh } from "./entry";
+import { prepareEntry, takeLinkFragment, ticketWithRefresh } from "./entry";
 import { mobileRelayRoute } from "./relay-status";
 import { memoryStorage } from "./testing";
 import { usePreferencesStore } from "../app/preferences-store";
@@ -431,6 +431,21 @@ describe("入口分支", () => {
       null,
       "",
       `/#link=${encodeURIComponent("https://evil.example/#pair=x")}`,
+    );
+    await expect(prepareEntry()).resolves.toEqual({ kind: "app" });
+
+    // 设备码批准后的回跳只是一个插件事件（#666）：万一写进了片段，也不是配对、分享或 OAuth 链接。
+    history.replaceState(
+      null,
+      "",
+      `/#link=${encodeURIComponent("armadra://cloud/device-approved")}`,
+    );
+    expect(takeLinkFragment()).toBeNull();
+    expect(location.hash).toBe("");
+    history.replaceState(
+      null,
+      "",
+      `/#link=${encodeURIComponent("armadra://cloud/device-approved")}`,
     );
     await expect(prepareEntry()).resolves.toEqual({ kind: "app" });
   });
