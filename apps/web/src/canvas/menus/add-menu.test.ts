@@ -253,6 +253,71 @@ describe("buildAddMenu", () => {
     });
   });
 
+  describe("接管已有会话（session/list）", () => {
+    const withList = (list: boolean, installed = true): AgentInfo =>
+      ({
+        ...claude,
+        acp: {
+          support: "official",
+          program: "claude-agent-acp",
+          installed,
+          resume: "load",
+          capabilities: { list },
+        },
+      }) as unknown as AgentInfo;
+
+    it("只给报了 list 能力、适配器也装了的 Agent 一项", () => {
+      const ids = (agent: AgentInfo) =>
+        buildAddMenu([agent], t).map((item) => item.id);
+      expect(ids(withList(true))).toContain("add.attach.claude");
+      expect(ids(withList(false))).not.toContain("add.attach.claude");
+      expect(ids(withList(true, false))).not.toContain("add.attach.claude");
+      expect(ids(claude)).not.toContain("add.attach.claude");
+    });
+
+    it("紧跟在各 Agent 项之后，同属 Agent 组，选了打开选择器而不是直接建", async () => {
+      const agent = withList(true);
+      const menu = buildAddMenu([agent], t);
+      const attach = menu.find((item) => item.id === "add.attach.claude");
+      expect(attach?.group).toBe("agent");
+      expect(menu.indexOf(attach!)).toBe(
+        menu.findIndex((item) => item.id === "add.agent.claude") + 1,
+      );
+      attach!.run({ ...ctx, agents: [agent] });
+      expect(addNode).not.toHaveBeenCalled();
+      const { useAttachSessionStore } = await import(
+        "../../acp/attach-session"
+      );
+      expect(useAttachSessionStore.getState().request?.agent.id).toBe("claude");
+      useAttachSessionStore.getState().close();
+    });
+
+    it("createAgentNode 带 attach 时以 ACP 驱动建出并记下会话 id 与目录", async () => {
+      const { createAgentNode } = await import("./add-menu");
+      createAgentNode(ctx, claude, t, {
+        sessionId: "sess-9",
+        cwd: "/tmp/alpha/pkg",
+      });
+      expect(
+        (addNode.mock.calls.at(-1) as unknown[] | undefined)?.[1],
+      ).toMatchObject({
+        data: {
+          kind: "terminal",
+          cwd: "/tmp/alpha/pkg",
+          agent: { id: "claude", driver: "acp", sessionId: "sess-9" },
+        },
+      });
+      createAgentNode(ctx, claude, t, { sessionId: "sess-9" });
+      const data = (
+        addNode.mock.calls.at(-1) as unknown as [
+          string,
+          { data: Record<string, unknown> },
+        ]
+      )[1].data;
+      expect(data).not.toHaveProperty("cwd");
+    });
+  });
+
   // coordinator-agent §4：亲手建的 ama 是协调者，别家不带角色。
   it("新建的 ama 节点是协调者，别家不带角色", () => {
     const ama = {

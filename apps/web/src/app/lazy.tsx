@@ -17,6 +17,12 @@ export const ShareDialog = lazy(() =>
   })),
 );
 
+export const AttachSessionDialog = lazy(() =>
+  import("@/acp/AttachSessionDialog").then((module) => ({
+    default: module.AttachSessionDialog,
+  })),
+);
+
 export const CloudTrustDialog = lazy(() =>
   import("@/sources/trust/CloudTrustDialog").then((module) => ({
     default: module.CloudTrustDialog,
