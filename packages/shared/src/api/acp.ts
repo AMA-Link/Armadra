@@ -488,6 +488,22 @@ export const acpElicitationFieldSchema = z.union([
     description: z.string().optional(),
     default: z.boolean().optional(),
   }),
+  /**
+   * Multi-select: an array of the strings in `items.enum` (titles in
+   * `items.enumNames`, the core folds `anyOf` / `oneOf` into this form).
+   */
+  z.looseObject({
+    type: z.literal("array"),
+    title: z.string().optional(),
+    description: z.string().optional(),
+    items: z.looseObject({
+      enum: z.array(z.string()),
+      enumNames: z.array(z.string()).optional(),
+    }),
+    minItems: z.number().optional(),
+    maxItems: z.number().optional(),
+    default: z.array(z.string()).optional(),
+  }),
 ]);
 
 export const acpElicitationFormSchema = z.looseObject({
@@ -529,7 +545,10 @@ export const acpElicitationActionSchema = z.enum(ACP_ELICITATION_ACTIONS);
 export const acpElicitationAnswerSchema = z.object({
   action: acpElicitationActionSchema,
   content: z
-    .record(z.string(), z.union([z.string(), z.number(), z.boolean()]))
+    .record(
+      z.string(),
+      z.union([z.string(), z.number(), z.boolean(), z.array(z.string())]),
+    )
     .optional(),
 });
 

@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  acpElicitationAnswerSchema,
+  acpElicitationFormSchema,
   acpPermissionRequestSchema,
   agentAcpInfoSchema,
   acpToolCallSchema,
@@ -135,5 +137,37 @@ describe("acp info of an agents row (contract §14.1)", () => {
       id: "login",
       type: "terminal",
     });
+  });
+});
+
+describe("elicitation forms (contract §26.1)", () => {
+  it("draws a multi-select field and accepts its array answer", () => {
+    const form = acpElicitationFormSchema.parse({
+      type: "object",
+      properties: {
+        tags: {
+          type: "array",
+          items: { enum: ["a", "b"], enumNames: ["A", "B"] },
+          minItems: 1,
+          default: ["a"],
+        },
+      },
+    });
+    expect(form.properties.tags?.type).toBe("array");
+    expect(
+      acpElicitationAnswerSchema.parse({
+        action: "accept",
+        content: { tags: ["a"], name: "x", n: 2, ok: true },
+      }).content,
+    ).toEqual({ tags: ["a"], name: "x", n: 2, ok: true });
+  });
+
+  it("still refuses an array that is not a list of strings", () => {
+    expect(
+      acpElicitationAnswerSchema.safeParse({
+        action: "accept",
+        content: { tags: [1] },
+      }).success,
+    ).toBe(false);
   });
 });
