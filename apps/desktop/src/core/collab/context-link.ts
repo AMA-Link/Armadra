@@ -30,7 +30,11 @@ import {
   readCursor,
   writeCursor,
 } from "./context-reads";
-import { requireReadBudget } from "./read-budget";
+import {
+  MIN_READ_SLICE_BYTES,
+  READ_BUDGET_MINUTE_BYTES,
+  requireReadBudget,
+} from "./read-budget";
 import { redact } from "./redact";
 import { type Args, Refusal, truncate } from "./refusals";
 import { type CollabContext, nowDate } from "./service";
@@ -84,8 +88,11 @@ const MAX_ENTRY_CHARS = 2_000;
 /** 一次 `transcript` 的散文上限。 */
 export const MAX_TRANSCRIPT_BYTES = 32 * 1024;
 
-/** `--full --max-kb` 能把上限抬到的最大值。 */
-export const MAX_FULL_KB = 128;
+/**
+ * `--full --max-kb` 能把上限抬到的最大值：这条连线一分钟的预算（#668 前是
+ * 128，而一次 128 KB 的读取本来就过不了一分钟 64 KB 那道闸）。
+ */
+export const MAX_FULL_KB = READ_BUDGET_MINUTE_BYTES / 1024;
 
 /**
  * token 估算的系数：这么多个字符约等于一个 token。
@@ -97,11 +104,22 @@ export const MAX_FULL_KB = 128;
 export const CHARS_PER_TOKEN = 3.5;
 
 /**
- * Byte budget for a file or a diff. Everything above it is cut at a character
- * boundary and the reply says so, because a silently halved patch is worse
- * than a short one.
+ * Byte budget for a whiteboard reference's text. Everything above it is cut at
+ * a character boundary and the reply says so, because a silently halved text
+ * is worse than a short one.
  */
 export const MAX_CONTENT_BYTES = 200 * 1024;
+
+/**
+ * 文件节点一次给这么多（#668）：与转录同一个数。原先一次 200 KB，是这条连线
+ * 一分钟预算的三倍——读一次就得等，而读进来的大半用不上。要更多：
+ * `--full --max-kb`（上限 {@link MAX_FULL_KB}），或 `--offset` 接着读。
+ */
+export const DEFAULT_CONTENT_BYTES = 32 * 1024;
+
+/** 截断时列出紧挨着被省略的这么多条（#668），每条只给首行这么多字。 */
+const GLIMPSE_ENTRIES = 5;
+const GLIMPSE_CHARS = 50;
 
 /** How many directory entries a `files` node lists. */
 export const MAX_DIRECTORY_ENTRIES = 500;
@@ -160,15 +178,25 @@ export async function runContextLink(
 
   const nowMs = nowDate(context).getTime();
   // 读别人要花别人的额度，也要留下一条记录——两件事都在真的读之前问，因为一
-  // 次被拒绝的读取不该占掉额度（与 `send-limits.ts::rate` 同一条规矩）。
-  requireReadBudget(
+  // 次被拒绝的读取不该占掉额度（与 `send-limits.ts::rate` 同一条规矩）。答的
+  // 是这一次还能交出去多少（#668），每个动词按它收口。
+  //
+  // 节点上的评论随每次读取一起交出（见 {@link finish}），所以先算好它占多少，
+  // 余下的才是正文能用的（#668 复核：评论附录也算进这条连线的额度）。
+  const appendix = commentAppendix(context, target);
+  const appendixBytes = Buffer.byteLength(appendix, "utf8");
+  const allowance = requireReadBudget(
     context.database,
     caller.node.id,
     target.id,
     target.title,
     nowMs,
+    appendixBytes + MIN_READ_SLICE_BYTES,
   );
+  const room = allowance - appendixBytes;
   const share = contextShare(target);
+  // 续读提示里写的那个 `--node`：有句柄用句柄（短、稳定），没有就用 id。
+  const address = handles.get(target.id) ?? target.id;
 
   // A content node reads the same whatever the verb: there is no transcript
   // and no terminal screen behind a file, a folder or a web page, so
@@ -177,10 +205,18 @@ export async function runContextLink(
     // 只开放摘要的节点，连它指着的那个文件都不给：`contextShare` 说的是「这个
     // 节点对外只交出一句话」，而一个编辑器节点的全部内容就是那份文件。
     if (share === "summary") throw summaryOnly(target, "文件内容");
-    const content = readContent(context, target);
-    if (content !== undefined) {
-      return finish(context, caller, target, "content", content, nowMs);
-    }
+    const content = await fitWithin(room, (cap) => ({
+      text: readContent(context, target, { args, allowance: cap, address }),
+    }));
+    return finish(
+      context,
+      caller,
+      target,
+      "content",
+      content.text,
+      nowMs,
+      appendix,
+    );
   }
 
   switch (verb) {
@@ -191,17 +227,53 @@ export async function runContextLink(
         1,
         MAX_LINES,
       );
-      const body = await readTerminal(context, target, lines);
-      return finish(context, caller, target, "terminal", body, nowMs);
+      const body = await fitWithin(room, async (cap) => ({
+        text: await readTerminal(context, target, lines, cap),
+      }));
+      return finish(
+        context,
+        caller,
+        target,
+        "terminal",
+        body.text,
+        nowMs,
+        appendix,
+      );
     }
     case "summary": {
-      const body = readSummary(context, target, handles);
-      return finish(context, caller, target, "summary", body, nowMs);
+      const body = await fitWithin(room, () => ({
+        text: readSummary(context, target, handles),
+      }));
+      return finish(
+        context,
+        caller,
+        target,
+        "summary",
+        body.text,
+        nowMs,
+        appendix,
+      );
     }
     default: {
       if (share === "summary") throw summaryOnly(target, "转录原文");
-      const body = readTranscript(context, caller, target, args, nowMs);
-      return finish(context, caller, target, "transcript", body, nowMs);
+      // 游标只在最后定下来的那一版上写：`--since` 的每一次重排都从同一个游标
+      // 起读，提前写会让下一次重排跳过条目。
+      const body = await fitWithin(room, (cap) =>
+        readTranscript(context, caller, target, args, nowMs, {
+          allowance: cap,
+          address,
+        }),
+      );
+      body.commit?.();
+      return finish(
+        context,
+        caller,
+        target,
+        "transcript",
+        body.text,
+        nowMs,
+        appendix,
+      );
     }
   }
 }
@@ -219,10 +291,11 @@ function finish(
   verb: ReadVerb,
   body: string,
   nowMs: number,
+  appendix: string,
 ): string {
   // 节点上的评论是附加资料：随同一次读取交出、同样脱敏、同样记进字节数
   // ——读者上下文里多出来的每一个字都该算进这条连线的预算。
-  const clean = redact(body + commentAppendix(context, target));
+  const clean = redact(body + appendix);
   noteRead(
     context.database,
     {
@@ -464,15 +537,22 @@ function renderList(links: readonly ContextLink[], handles: Handles): string {
  * `shape` is deliberately absent: a whiteboard shape has no node row, so it
  * never reaches this function.
  */
+/** 一次读取的收口：剩余额度（#668）与续读提示里的节点写法。 */
+interface Slice {
+  readonly allowance: number;
+  readonly address: string;
+}
+
 function readContent(
   context: CollabContext,
   target: NodeRef,
-): string | undefined {
+  slice: Slice & { readonly args: Args },
+): string {
   switch (target.nodeType) {
     case "sticky":
       return sticky(target);
     case "editor":
-      return readFile(context, target);
+      return readFile(context, target, slice.args, slice);
     case "files":
       return readDirectory(context, target);
     case "browser":
@@ -485,7 +565,8 @@ function readContent(
         `「${target.title}」的差异需要 Git 域，本构建还没有装配它。`,
       );
     default:
-      return undefined;
+      // {@link isContentNode} 与这里列的是同一组类型。
+      throw new Error(`no content reader for ${target.nodeType}`);
   }
 }
 
@@ -508,7 +589,19 @@ function rootOf(context: CollabContext, target: NodeRef): string {
   return root;
 }
 
-function readFile(context: CollabContext, target: NodeRef): string {
+/**
+ * 一个编辑器节点指着的文件，一段一段地给（#668）。
+ *
+ * 缺省 {@link DEFAULT_CONTENT_BYTES}，`--full --max-kb` 抬到 {@link MAX_FULL_KB}，
+ * 再被这条连线的剩余额度压一道；`--offset` 从那个字节接着读。起点与截断点都对
+ * 齐到 UTF-8 字符边界，所以按提示一段段接下去，拼回来就是原文件。
+ */
+function readFile(
+  context: CollabContext,
+  target: NodeRef,
+  args: Args,
+  slice: Slice,
+): string {
   const requested = dataText(target, "path");
   if (requested === undefined) {
     throw Refusal.badRequest(`编辑器节点「${target.title}」没有指向任何文件。`);
@@ -533,15 +626,27 @@ function readFile(context: CollabContext, target: NodeRef): string {
     if (error instanceof Refusal) throw error;
     throw failed(target, error);
   }
-  // Read one byte past the budget: that extra byte is how we know the file was
-  // longer without pulling a gigabyte into memory.
-  const wanted = Math.min(size, MAX_CONTENT_BYTES + 1);
+  const cap = args.flag("full")
+    ? clamp(args.count(["max-kb", "maxKb"]) ?? MAX_FULL_KB, 1, MAX_FULL_KB) *
+      1024
+    : DEFAULT_CONTENT_BYTES;
+  const limit = Math.min(cap, slice.allowance);
+  const from = clamp(args.count(["offset"]) ?? 0, 0, size);
+  // 多读四个字节：一个字符最长四字节，够判断截断点落在字符中间时该退到哪，也
+  // 够知道文件还有没有后文——不必把一个 GB 读进内存。
+  const wanted = Math.min(size - from, limit + 4);
   const buffer = Buffer.alloc(wanted);
   const handle = openSync(path, "r");
   let filled = 0;
   try {
     while (filled < wanted) {
-      const read = readSync(handle, buffer, filled, wanted - filled, filled);
+      const read = readSync(
+        handle,
+        buffer,
+        filled,
+        wanted - filled,
+        from + filled,
+      );
       if (read === 0) break;
       filled += read;
     }
@@ -551,23 +656,63 @@ function readFile(context: CollabContext, target: NodeRef): string {
     closeSync(handle);
   }
   const bytes = buffer.subarray(0, filled);
-  if (bytes.subarray(0, 8_192).includes(0)) {
+  // 起点落在字符中间（手写的 `--offset`）就往后挪到下一个字符；截断点落在字
+  // 符中间就往前退到这个字符开头，退下来的那几个字节留给下一段。
+  let head = 0;
+  while (head < bytes.length && head < 3 && isContinuation(bytes[head])) {
+    head += 1;
+  }
+  let tail = Math.min(bytes.length, head + limit);
+  const cut = from + tail < size;
+  if (cut) {
+    while (tail > head && isContinuation(bytes[tail])) tail -= 1;
+  }
+  const kept = bytes.subarray(head, tail);
+  // 每一段都验（#668 复核）：一段一段给之后，只验第一段会让一个 GBK 文件从第
+  // 二段起悄悄变成乱码。段的两头已经对齐到字符边界，严格解码不会冤枉它。
+  if (kept.includes(0)) {
     throw Refusal.badRequest(
       `「${target.title}」是二进制文件，读不成文本；它的路径是 ${path}。`,
     );
   }
-  const cut = bytes.byteLength > MAX_CONTENT_BYTES;
-  const kept = cut ? bytes.subarray(0, MAX_CONTENT_BYTES) : bytes;
-  const text = kept.toString("utf8");
-  // A cut lands mid-character often enough that refusing would be silly; an
-  // intact file that is not UTF-8 is a different story.
-  if (!cut && text.includes("�") && !kept.includes(0xef)) {
+  let text: string;
+  try {
+    text = STRICT_UTF8.decode(kept);
+  } catch {
     throw Refusal.badRequest(`「${target.title}」不是 UTF-8 文本，读不出来。`);
   }
-  const note = cut
-    ? `（只给出前 ${Math.floor(MAX_CONTENT_BYTES / 1024)} KB，文件更长）`
+  const start = from + head;
+  const stop = from + tail;
+  let note = "";
+  if (cut || start > 0) {
+    note = `（第 ${start}–${stop} 字节，文件共 ${size} 字节）`;
+  }
+  let footer = "";
+  if (cut) {
+    footer =
+      `\n${budgetNote(limit, cap)}` +
+      `接着读：\`context transcript --node ${slice.address} --offset ${stop}\`` +
+      (args.flag("full") ? "" : "；一次要更多：加 `--full --max-kb 64`") +
+      "。\n";
+  }
+  return `文件「${target.title}」  路径 ${path}${note}：\n\n${text.trimEnd()}\n${footer}`;
+}
+
+const STRICT_UTF8 = new TextDecoder("utf-8", { fatal: true });
+
+/** UTF-8 的后续字节（10xxxxxx）：一个字符的中间，不是开头。 */
+function isContinuation(byte: number | undefined): boolean {
+  return byte !== undefined && (byte & 0xc0) === 0x80;
+}
+
+/**
+ * 被剩余额度（而不是动词自己的上限）截住时说一句（#668）：读者据此知道「再
+ * 要」得等，而不是换个参数就有。
+ */
+function budgetNote(limit: number, cap: number): string {
+  return limit < cap
+    ? `（这条连线的读取预算只剩约 ${Math.max(1, Math.floor(limit / 1024))} KB，这次只给到这里。）`
     : "";
-  return `文件「${target.title}」  路径 ${path}${note}：\n\n${text.trimEnd()}\n`;
 }
 
 function readDirectory(context: CollabContext, target: NodeRef): string {
@@ -738,6 +883,7 @@ async function readTerminal(
   context: CollabContext,
   target: NodeRef,
   lines: number,
+  allowance: number,
 ): Promise<string> {
   const session = loadSession(context.database, target.id);
   if (session === undefined) {
@@ -757,8 +903,26 @@ async function readTerminal(
     // 画面里还会剩下转义序列：`capture(…, false)` 关掉的是 SGR，光标定位
     // （CSI）与窗口标题（OSC）照旧写在里面，而它们在模型眼里是噪声——一屏
     // Codex 的界面里有几百个 `[2K[G`。
-    const screen = stripAnsi(capture.data).trimEnd();
-    return `「${target.title}」终端最近 ${capture.lines} 行：\n\n${screen}\n`;
+    const whole = stripAnsi(capture.data).trimEnd().split("\n");
+    // 剩余额度装不下整屏时（#668）从上往下丢：终端画面要回答的是「它现在停
+    // 在哪」，最下面那几行最要紧。
+    const kept: string[] = [];
+    let bytes = 0;
+    for (let index = whole.length - 1; index >= 0; index -= 1) {
+      const line = whole[index] ?? "";
+      const size = Buffer.byteLength(line, "utf8") + 1;
+      if (bytes + size > allowance && kept.length > 0) break;
+      // 最下面那一行自己就装不下：截到额度里，而不是整行越过去。
+      kept.unshift(size > allowance ? clipUtf8(line, allowance - 1) : line);
+      bytes += size;
+    }
+    const screen = kept.join("\n");
+    const note =
+      kept.length < whole.length
+        ? `\n（这条连线的读取预算只剩约 ${Math.max(1, Math.floor(allowance / 1024))} KB，只给了最后 ${kept.length} 行。）\n`
+        : "";
+    const count = kept.length < whole.length ? kept.length : capture.lines;
+    return `「${target.title}」终端最近 ${count} 行：\n\n${screen}\n${note}`;
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     throw Refusal.notFound(`无法读取「${target.title}」的终端画面：${message}`);
@@ -859,14 +1023,24 @@ function readTranscript(
   target: NodeRef,
   args: Args,
   nowMs: number,
-): string {
+  slice: Slice,
+): Rendered {
   const found = locateTranscript(context, target);
   const full = args.flag("full");
-  const maxBytes = full
+  const cap = full
     ? clamp(args.count(["max-kb", "maxKb"]) ?? MAX_FULL_KB, 1, MAX_FULL_KB) *
       1024
     : MAX_TRANSCRIPT_BYTES;
+  // 剩余额度压一道（#668）；头部与页脚超出的那部分由 {@link fitWithin} 再收。
+  const maxBytes = Math.min(cap, slice.allowance);
   const since = args.flag("since");
+  // `--before`：往前翻页（#668），单位与 `--since` 的游标相同。
+  const before = args.count(["before"]);
+  if (since && before !== undefined) {
+    throw Refusal.badRequest(
+      "`--since` 往后取新的，`--before` 往前翻旧的，一次只能用一个。",
+    );
+  }
 
   // 游标表的 `transcript_path` 存的是 `Located.key`：文件来源就是路径。
   const key = found.located.key;
@@ -876,17 +1050,34 @@ function readTranscript(
     : undefined;
   const range = readEntries(found, target, cursor?.byteOffset ?? 0);
 
-  const records = renderEntries(range.entries, {
+  const rendered = renderEntries(range.entries, {
     // `--full` 松的是这两档，不是总量：总量永远有一个数，只是那个数可以被显式
     // 抬高。
     ...(full ? {} : { maxLineChars: MAX_ENTRY_CHARS, briefToolResults: true }),
   });
+  const records =
+    before === undefined
+      ? rendered
+      : rendered.filter(
+          (record) => range.startOffset + record.endOffset <= before,
+        );
+  if (before !== undefined && records.length === 0) {
+    return {
+      text:
+        `「${target.title}」在位置 ${before} 之前没有可读的条目了` +
+        (range.startOffset > 0 && before <= range.startOffset
+          ? `（只读得到转录最后 ${Math.floor(MAX_TAIL_BYTES / 1024 / 1024)} MB）`
+          : "") +
+        `（来源：${origin}）。\n`,
+    };
+  }
   if (records.length === 0) {
     if (since && cursor !== undefined) {
-      return (
-        `「${target.title}」自上次读取之后没有新条目（来源：${origin}）。\n` +
-        `游标：${describeHistoryCursor(found.agentId, found.located, range.endOffset)}。\n`
-      );
+      return {
+        text:
+          `「${target.title}」自上次读取之后没有新条目（来源：${origin}）。\n` +
+          `游标：${describeHistoryCursor(found.agentId, found.located, range.endOffset)}。\n`,
+      };
     }
     throw Refusal.notFound(
       `「${target.title}」的转录里没有可读的对话（${origin}）。`,
@@ -901,7 +1092,11 @@ function readTranscript(
 
   let header =
     `「${target.title}」` +
-    (since ? "自上次读取之后的" : "最近的") +
+    (since
+      ? "自上次读取之后的"
+      : before === undefined
+        ? "最近的"
+        : `位置 ${before} 之前最近的`) +
     ` ${picked.lines.length} 条` +
     (since ? "" : `（这一段里共 ${records.length} 条）`) +
     `，来源：${origin}\n` +
@@ -909,30 +1104,44 @@ function readTranscript(
     (full ? "（--full）" : "") +
     "\n";
   if (picked.truncated) {
+    header += budgetNote(maxBytes, cap);
     header += full
       ? `（到 ${Math.floor(maxBytes / 1024)} KB 就停了，还有更多。）\n`
       : "（到上限就停了。要更多：`--full --max-kb 64`，或者 `--since` 只取新的。）\n";
   }
+  const earlier = since
+    ? ""
+    : earlierNote(records, picked.firstIndex, range.startOffset, slice.address);
 
-  // 游标记的是**真的交出去了的**那一段，不是文件尾：没给出去的条目下次还要给。
-  writeCursor(
-    context.database,
-    caller.node.id,
-    target.id,
-    {
-      transcriptPath: key,
-      byteOffset: range.startOffset + picked.endOffset,
-    },
-    nowMs,
-  );
-  return (
-    `${header}\n${body}\n\n` +
-    `游标：${describeHistoryCursor(found.agentId, found.located, range.startOffset + picked.endOffset)}。下次加 \`--since\` 只取新的。\n`
-  );
+  if (before !== undefined) {
+    // 往前翻不动 `--since` 的游标：它记的是读者已经看到的最新位置，翻旧页
+    // 不改变这件事。
+    return { text: `${header}\n${body}\n${earlier}` };
+  }
+
+  return {
+    text:
+      `${header}\n${body}\n${earlier}\n` +
+      `游标：${describeHistoryCursor(found.agentId, found.located, range.startOffset + picked.endOffset)}。下次加 \`--since\` 只取新的。\n`,
+    // 游标记的是**真的交出去了的**那一段，不是文件尾：没给出去的条目下次还要给。
+    commit: () =>
+      writeCursor(
+        context.database,
+        caller.node.id,
+        target.id,
+        {
+          transcriptPath: key,
+          byteOffset: range.startOffset + picked.endOffset,
+        },
+        nowMs,
+      ),
+  };
 }
 
 interface Picked {
   readonly lines: readonly string[];
+  /** 交出去的第一条在 `records` 里的下标：它前面的就是被省略的更早条目。 */
+  readonly firstIndex: number;
   /** 交出去的最后一条在这段文本里结束于第几个字节。 */
   readonly endOffset: number;
   readonly truncated: boolean;
@@ -958,20 +1167,21 @@ function pick(
     for (const record of records) {
       const size = Buffer.byteLength(record.line, "utf8") + 1;
       if (bytes + size > maxBytes && lines.length > 0) {
-        return { lines, endOffset, truncated: true };
+        return { lines, firstIndex: 0, endOffset, truncated: true };
       }
-      lines.push(record.line);
+      lines.push(fitLine(record.line, size, maxBytes));
       bytes += size;
       endOffset = record.endOffset;
       if (entries !== undefined && lines.length >= entries) {
         return {
           lines,
+          firstIndex: 0,
           endOffset,
           truncated: records[records.length - 1]?.endOffset !== endOffset,
         };
       }
     }
-    return { lines, endOffset, truncated: false };
+    return { lines, firstIndex: 0, endOffset, truncated: false };
   }
 
   const wanted = clamp(
@@ -983,6 +1193,7 @@ function pick(
   const lines: string[] = [];
   let bytes = 0;
   let dropped = tail.length < records.length;
+  let firstIndex = records.length;
   // 从尾往前塞，超预算就丢掉更旧的那些。
   for (let index = tail.length - 1; index >= 0; index -= 1) {
     const line = tail[index]?.line ?? "";
@@ -991,14 +1202,91 @@ function pick(
       dropped = true;
       break;
     }
-    lines.unshift(line);
+    lines.unshift(fitLine(line, size, maxBytes));
     bytes += size;
+    firstIndex = records.length - tail.length + index;
   }
   return {
     lines,
+    firstIndex,
     endOffset: tail[tail.length - 1]?.endOffset ?? 0,
     truncated: dropped,
   };
+}
+
+/** 一次读取渲染出来的回复，以及只该在定稿之后做的那件事（写游标）。 */
+interface Rendered {
+  readonly text: string;
+  readonly commit?: () => void;
+}
+
+/**
+ * 让整次回复落在 `limit` 字节之内（#668 复核）：正文上限之外还有头部、页脚，
+ * 它们的长短又随正文变（省略的多了就有概要），所以量出来超了多少就把正文上限
+ * 再收多少，重排一次。几次之后还超（目录列表、便签这类不分段的内容）就整段截
+ * 断，并说一句。
+ */
+async function fitWithin(
+  limit: number,
+  render: (cap: number) => Rendered | Promise<Rendered>,
+): Promise<Rendered> {
+  let cap = limit;
+  let out: Rendered = { text: "" };
+  for (let attempt = 0; attempt < 4; attempt += 1) {
+    out = await render(cap);
+    const over = Buffer.byteLength(out.text, "utf8") - limit;
+    if (over <= 0) return out;
+    cap = Math.max(MIN_BODY_BYTES, cap - over);
+  }
+  return { ...out, text: clipUtf8(out.text, limit) };
+}
+
+/** 正文上限收到这么小就不再收了：再小就只剩头部，读了等于没读。 */
+const MIN_BODY_BYTES = 256;
+
+const CLIPPED = "\n（超出这条连线剩余的读取额度，后面截掉了。）\n";
+
+/** 截到 `max` 字节以内、落在字符边界上，并标明截过。 */
+function clipUtf8(text: string, max: number): string {
+  const bytes = Buffer.from(text, "utf8");
+  if (bytes.byteLength <= max) return text;
+  let end = Math.max(0, max - Buffer.byteLength(CLIPPED, "utf8"));
+  while (end > 0 && isContinuation(bytes[end])) end -= 1;
+  return bytes.subarray(0, end).toString("utf8") + CLIPPED;
+}
+
+/**
+ * 「至少给一条」的那一条自己就比上限大：截到上限里（#668 复核），而不是整条
+ * 越过去。`size` 含换行。
+ */
+function fitLine(line: string, size: number, maxBytes: number): string {
+  return size > maxBytes ? clipUtf8(line, maxBytes - 1) : line;
+}
+
+/**
+ * 交出去的那段前面还有条目时（#668）：说还有几条、列出紧挨着的几条的首行，
+ * 给出往前翻的那个 `--before`。概要按条目在原文里的顺序列，最近的在最后，
+ * 与正文接得上。
+ */
+function earlierNote(
+  records: readonly TranscriptRecord[],
+  firstIndex: number,
+  startOffset: number,
+  address: string,
+): string {
+  if (firstIndex <= 0) return "";
+  const glimpses = records
+    .slice(Math.max(0, firstIndex - GLIMPSE_ENTRIES), firstIndex)
+    .map((record) => {
+      const first = record.line.split("\n", 1)[0] ?? "";
+      const chars = [...first];
+      return `  - ${chars.length > GLIMPSE_CHARS ? `${chars.slice(0, GLIMPSE_CHARS).join("")}…` : first}`;
+    });
+  const position = startOffset + (records[firstIndex - 1]?.endOffset ?? 0);
+  return (
+    `\n更早还有 ${firstIndex} 条，紧挨着的几条：\n${glimpses.join("\n")}\n` +
+    `往前翻：\`context transcript --node ${address} --before ${position}\`。\n`
+  );
 }
 
 /**

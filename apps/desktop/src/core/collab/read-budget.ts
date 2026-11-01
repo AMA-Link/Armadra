@@ -23,6 +23,12 @@ export const READ_BUDGET_MINUTE_BYTES = 64 * 1024;
 /** 一条连线每小时最多读走这么多字节。 */
 export const READ_BUDGET_HOUR_BYTES = 1024 * 1024;
 
+/**
+ * 剩下不到这么多就不读了（#668）。一次只装得下几行的读取不是「少给一点」，
+ * 是逼读者再来一次——那还不如照实说要等多久、换什么读法。
+ */
+export const MIN_READ_SLICE_BYTES = 2 * 1024;
+
 const MINUTE_MS = 60_000;
 const HOUR_MS = 3_600_000;
 
@@ -35,6 +41,11 @@ export interface BudgetVerdict {
   readonly window?: "minute" | "hour";
   /** 这个窗口里已经读走多少字节。 */
   readonly spent: number;
+  /**
+   * 两个窗口里还剩得少的那个（#668）：这一次最多还能交出去这么多字节。被拒时
+   * 是 0。
+   */
+  readonly remaining: number;
 }
 
 /**
@@ -57,6 +68,7 @@ export function checkReadBudget(
       allowed: false,
       window: "minute",
       spent: minute.bytes,
+      remaining: 0,
       retryAfterMs: retryAfter(minute.oldestAtMs, nowMs, MINUTE_MS),
     };
   }
@@ -66,14 +78,26 @@ export function checkReadBudget(
       allowed: false,
       window: "hour",
       spent: hour.bytes,
+      remaining: 0,
       retryAfterMs: retryAfter(hour.oldestAtMs, nowMs, HOUR_MS),
     };
   }
-  return { allowed: true, retryAfterMs: 0, spent: minute.bytes };
+  return {
+    allowed: true,
+    retryAfterMs: 0,
+    spent: minute.bytes,
+    remaining: Math.min(
+      READ_BUDGET_MINUTE_BYTES - minute.bytes,
+      READ_BUDGET_HOUR_BYTES - hour.bytes,
+    ),
+  };
 }
 
 /**
- * 判一次，不过就抛 `RATE_LIMITED`（§3.5，HTTP 429）。
+ * 判一次，不过就抛 `RATE_LIMITED`（§3.5，HTTP 429）；过了就答这一次最多还能交
+ * 出去多少字节，读的那一方按它收口（#668：先给装得下的一段，而不是读完了才发
+ * 现把一分钟的额度一次用光）。剩下不到 `minimum`（缺省 {@link MIN_READ_SLICE_BYTES}；
+ * 调用方会把一定要附上的评论算进去）也算不过。
  *
  * 拒绝的那句话必须说出**出路**，否则模型只会退避之后原样重试一遍同样大的读
  * 取：`summary` 是常数大小的，`--since` 只给新的，两条都不撞这堵墙。
@@ -84,9 +108,15 @@ export function requireReadBudget(
   target: string,
   title: string,
   nowMs: number,
-): void {
-  const verdict = checkReadBudget(database, reader, target, nowMs);
-  if (verdict.allowed) return;
+  minimum: number = MIN_READ_SLICE_BYTES,
+): number {
+  const checked = checkReadBudget(database, reader, target, nowMs);
+  if (checked.allowed && checked.remaining >= minimum) {
+    return checked.remaining;
+  }
+  const verdict = checked.allowed
+    ? nearlySpent(database, reader, target, nowMs)
+    : checked;
   const limit =
     verdict.window === "minute"
       ? `${READ_BUDGET_MINUTE_BYTES / 1024} KB/分钟`
@@ -99,6 +129,36 @@ export function requireReadBudget(
       "与 `context transcript --since`（只给上次之后的新条目）。",
     { retryable: true, retryAfterMs: verdict.retryAfterMs },
   );
+}
+
+/**
+ * 还没撞墙、但剩的装不下一段：哪个窗口剩得少就说哪个，等它滑出去一点。
+ */
+function nearlySpent(
+  database: DatabaseSync,
+  reader: string,
+  target: string,
+  nowMs: number,
+): BudgetVerdict {
+  const minute = window(database, reader, target, nowMs, MINUTE_MS);
+  const hour = window(database, reader, target, nowMs, HOUR_MS);
+  const minuteLeft = READ_BUDGET_MINUTE_BYTES - minute.bytes;
+  const hourLeft = READ_BUDGET_HOUR_BYTES - hour.bytes;
+  return minuteLeft <= hourLeft
+    ? {
+        allowed: false,
+        window: "minute",
+        spent: minute.bytes,
+        remaining: 0,
+        retryAfterMs: retryAfter(minute.oldestAtMs, nowMs, MINUTE_MS),
+      }
+    : {
+        allowed: false,
+        window: "hour",
+        spent: hour.bytes,
+        remaining: 0,
+        retryAfterMs: retryAfter(hour.oldestAtMs, nowMs, HOUR_MS),
+      };
 }
 
 interface Window {

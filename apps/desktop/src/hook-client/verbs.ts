@@ -378,8 +378,10 @@ const CONTEXT: Record<ContextVerb, Row> = {
       node: NODE,
       n: int("how many entries", 1),
       since: bool("only what is new since your last read"),
+      before: int("page back: the entries before this position", 0),
+      offset: int("file node: continue from this byte", 0),
       full: bool("lift the 32 KB cap, up to max-kb"),
-      "max-kb": int("with full: the cap in KB, at most 128", 1),
+      "max-kb": int("with full: the cap in KB, at most 64", 1),
     },
   },
   terminal: {

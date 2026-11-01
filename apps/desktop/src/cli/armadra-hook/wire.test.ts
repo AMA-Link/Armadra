@@ -445,6 +445,47 @@ describe("control", () => {
     server.close();
   });
 
+  // #668：往前翻的位置与文件续读的字节都原样带过去。
+  it("passes --before and --offset through as numbers", async () => {
+    const directory = tempdir();
+    const server = await serve(
+      "HTTP/1.1 200 OK\r\nContent-Type: text/plain; charset=utf-8\r\nContent-Length: 6\r\n\r\nprose\n",
+    );
+    const endpoint = writeEndpointFile(directory, server.port);
+
+    const output = await run(
+      [
+        "context",
+        "transcript",
+        "--node",
+        "api",
+        "--before",
+        "4096",
+        "--offset=12",
+      ],
+      { ARMADRA_NODE_ID: "node-7", ARMADRA_ENDPOINT_FILE: endpoint },
+      "",
+    );
+    expect(output.code).toBe(0);
+    const captured = await server.request();
+    expect(JSON.parse(captured.body).args).toEqual({
+      node: "api",
+      before: 4096,
+      offset: 12,
+    });
+    server.close();
+  });
+
+  it("refuses a position that is not a whole number", async () => {
+    const output = await run(
+      ["context", "transcript", "--before", "-3"],
+      { ARMADRA_NODE_ID: "node-7" },
+      "",
+    );
+    expect(output.code).toBe(1);
+    expect(output.stderr).toContain("--before needs a position");
+  });
+
   it("exits 1 with a stderr message on failure", async () => {
     const directory = tempdir();
     const server = await serve(
