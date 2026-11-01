@@ -578,8 +578,15 @@ export function MountDialog({
   const self = useSourceTable().data?.sources.find(
     (source) => source.kind === "local",
   )?.sourceId;
+  // Armadra 云的目录还含别人分享来的、团队里的：这里只列自己的其他电脑。
+  const own = chosen?.kind === "saas";
   const rows = (listing.data?.sources ?? []).filter(
-    (source) => source.sourceId !== self,
+    (source) => source.sourceId !== self && (!own || source.via === "owner"),
+  );
+  const title = t(
+    remotes.every((remote) => remote.kind === "saas")
+      ? "remote.mount.cloud"
+      : "remote.mount",
   );
 
   return (
@@ -591,7 +598,7 @@ export function MountDialog({
     >
       <ResponsiveDialogContent className="z-[var(--z-dialog)] sm:max-w-[440px]">
         <ResponsiveDialogHeader>
-          <ResponsiveDialogTitle>{t("remote.mount")}</ResponsiveDialogTitle>
+          <ResponsiveDialogTitle>{title}</ResponsiveDialogTitle>
         </ResponsiveDialogHeader>
         <div className="flex min-w-0 flex-col gap-3">
           {remotes.length > 1 && (

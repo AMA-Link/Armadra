@@ -101,6 +101,32 @@ export function planRoute(remotes: readonly RemoteService[]): RoutePlan {
 }
 
 /**
+ * 「我的其他电脑」的添加入口（#677），以 Armadra 云为缺省：
+ *
+ * - `cloud`：有登录着的 Armadra 云：从它名下列出自己的其他电脑并连接；
+ * - `relay`：只有登录着的个人中转：原来的「从中转账号添加」；
+ * - `signIn`：都没有：登录 Armadra 云，`issuer` 是登出了的那一行的地址，没有这一行是空串。
+ *
+ * 云与个人中转都登录着时取云。
+ */
+export type MountEntry =
+  | { readonly kind: "cloud"; readonly remotes: readonly RemoteService[] }
+  | { readonly kind: "relay"; readonly remotes: readonly RemoteService[] }
+  | { readonly kind: "signIn"; readonly issuer: string };
+
+export function mountEntry(remotes: readonly RemoteService[]): MountEntry {
+  const usable = remotes.filter((remote) => !remote.guest);
+  const clouds = usable.filter((remote) => remote.kind === "saas");
+  const signedClouds = clouds.filter((remote) => remote.hasCredentials);
+  if (signedClouds.length > 0) return { kind: "cloud", remotes: signedClouds };
+  const relays = usable.filter(
+    (remote) => remote.kind !== "saas" && remote.hasCredentials,
+  );
+  if (relays.length > 0) return { kind: "relay", remotes: relays };
+  return { kind: "signIn", issuer: clouds[0]?.issuer ?? "" };
+}
+
+/**
  * 互联网路线：经中转账号或 Armadra 云把这台电脑登记出去（「分享本机」）。任一登记
  * 都算开着；状态跟着 `cloud.tunnel` 事件走（`useTunnelEvents`，挂在页上）。
  */

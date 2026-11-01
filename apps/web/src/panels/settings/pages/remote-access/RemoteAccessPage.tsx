@@ -78,7 +78,7 @@ import {
   type SourceTrafficTarget,
 } from "../../../../traffic/SourceTrafficDialog";
 import { HostAccess } from "./HostAccess";
-import { canShare, useGateway, useInternetRoute } from "./hooks";
+import { canShare, mountEntry, useGateway, useInternetRoute } from "./hooks";
 import { hostOf, useSourceTable, useSourceTableChanged } from "./keys";
 import { MineRow, RemoteRow, RowMenu, SharedRow } from "./rows";
 
@@ -88,7 +88,7 @@ const HEADING = "px-0.5 text-section font-medium text-foreground";
  * 设置 → 远程访问（#301、#675）。固定操作本机 core，两块：
  *
  * - **A 这台电脑**：「允许其他设备访问」开关、「互联网访问」（Armadra 云与空间，可更换）、
- *   「手机扫码连接」；我的其他电脑（配对另一台、从中转添加）；高级里是监听、端口、证书、
+ *   「手机扫码连接」；我的其他电脑（配对另一台；添加入口按账号情况：从 Armadra 云添加 / 从中转账号添加 / 登录 Armadra 云，#677）；高级里是监听、端口、证书、
  *   中转账号（添加、路线状态、改口令、登出、移除）、流量统计、互联网路线上的分享链接
  *   （分享唯一的管理处）与中继侧待清理。
  * - **B 他人分享**：别人分享给我的电脑（主人、权限、到期、退出）与「用链接加入」。
@@ -174,7 +174,7 @@ export function RemoteAccessPage() {
   const others = (sources ?? []).filter((source) => source.kind !== "local");
   const mine = others.filter((source) => source.origin !== "shared");
   const shared = others.filter((source) => source.origin === "shared");
-  const signedIn = remotes.filter((remote) => remote.hasCredentials);
+  const entry = mountEntry(remotes);
   const pendingList = pending.data ?? [];
   const pendingOf = (issuer: string) => pendingCode(pendingList, issuer);
   // 账号行已经删了、中继侧还欠着的：放在高级里，登录回来再重试，或放弃清理。
@@ -279,15 +279,23 @@ export function RemoteAccessPage() {
               >
                 {t("remote.pairMine")}
               </Button>
-              {signedIn.length > 0 && (
-                <Button
-                  size="sm"
-                  variant="secondary"
-                  onClick={() => setMounting(true)}
-                >
-                  {t("remote.mount")}
-                </Button>
-              )}
+              <Button
+                size="sm"
+                variant="secondary"
+                onClick={() =>
+                  entry.kind === "signIn"
+                    ? setAddingCloud(entry.issuer)
+                    : setMounting(true)
+                }
+              >
+                {t(
+                  entry.kind === "cloud"
+                    ? "remote.mount.cloud"
+                    : entry.kind === "relay"
+                      ? "remote.mount"
+                      : "remote.cloud.signIn",
+                )}
+              </Button>
             </SettingsRow>
           </SettingsGroup>
 
@@ -523,7 +531,7 @@ export function RemoteAccessPage() {
       />
       <MountDialog
         open={mounting}
-        remotes={signedIn}
+        remotes={entry.kind === "signIn" ? [] : entry.remotes}
         onClose={() => setMounting(false)}
         onMounted={() => void changed()}
       />

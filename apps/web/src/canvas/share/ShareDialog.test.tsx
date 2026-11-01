@@ -20,6 +20,10 @@ const api = vi.hoisted(() => ({
   shareThisMachine: vi.fn(),
   stopSharing: vi.fn(),
   createShareLink: vi.fn(),
+  addCloud: vi.fn(),
+  pollCloudDevice: vi.fn(),
+  cloudSpaces: vi.fn(),
+  registerToSpace: vi.fn(),
   notifyShellSourcesChanged: vi.fn(),
 }));
 vi.mock("@/api/remote-services", async (original) => ({
@@ -68,6 +72,36 @@ const relay = {
   registered: true,
   hasCredentials: true,
   guest: false,
+};
+const CLOUD_ISSUER = "https://cloud.test";
+const cloud = {
+  serviceId: "cloud",
+  kind: "saas",
+  issuer: CLOUD_ISSUER,
+  label: "cloud.test",
+  accountHint: "ada@example.test",
+  fingerprint: "",
+  addedAtMs: 1,
+  lastOkAtMs: 1,
+  registered: false,
+  hasCredentials: true,
+  guest: false,
+};
+const cloudRegistered = {
+  sourceId: local.sourceId,
+  registrations: [
+    {
+      issuer: CLOUD_ISSUER,
+      mode: "personal",
+      tunnel: {
+        state: "ready",
+        node: null,
+        since: null,
+        streams: 0,
+        lastError: null,
+      },
+    },
+  ],
 };
 const registered = {
   sourceId: local.sourceId,
@@ -211,7 +245,7 @@ describe("画布分享弹层（#301 B5）", () => {
     );
   });
 
-  it("互联网路线没开：建不了；有账号一键开，没有账号先登录", async () => {
+  it("互联网路线没开：建不了；只有个人中转账号时一键开，不弹登录", async () => {
     api.listSources.mockResolvedValue({ sources: [local], remotes: [relay] });
     api.shareStatus.mockResolvedValue({
       sourceId: local.sourceId,
@@ -235,14 +269,129 @@ describe("画布分享弹层（#301 B5）", () => {
         label: "this-mac",
       }),
     );
+    expect(api.addCloud).not.toHaveBeenCalled();
+  });
 
-    cleanup();
-    api.listSources.mockResolvedValue({ sources: [local], remotes: [] });
+  it("没有任何账号：登录 Armadra 云（设备码）→ 选空间登记 → 再签分享链接（#677）", async () => {
+    let signedIn = false;
+    api.listSources.mockImplementation(async () => ({
+      sources: [local],
+      remotes: signedIn ? [{ ...cloud, registered: true }] : [],
+    }));
+    api.shareStatus.mockImplementation(async () =>
+      signedIn
+        ? cloudRegistered
+        : { sourceId: local.sourceId, registrations: [] },
+    );
+    const device = {
+      userCode: "ABCD-EFGH",
+      verificationUrl: `${CLOUD_ISSUER}/device`,
+      expiresAtMs: Date.now() + 600_000,
+      intervalMs: 10,
+    };
+    api.addCloud.mockResolvedValue({
+      remote: { ...cloud, hasCredentials: false },
+      next: { deviceCode: device },
+    });
+    api.pollCloudDevice.mockResolvedValue({ status: "ready" });
+    api.cloudSpaces.mockResolvedValue({
+      spaces: [{ kind: "personal", plan: "free" }],
+    });
+    api.registerToSpace.mockImplementation(async () => {
+      signedIn = true;
+      return { remote: cloud, sourceId: local.sourceId };
+    });
+    mount();
+    const dialog = await screen.findByTestId("share-dialog");
+    // 没有路线：按钮是「登录 Armadra 云」，不是旧的中转账号表单。
+    expect(
+      within(dialog)
+        .getByRole("button", { name: "Create link" })
+        .hasAttribute("disabled"),
+    ).toBe(true);
+    fireEvent.click(
+      await within(dialog).findByRole("button", {
+        name: "Sign in to Armadra Cloud",
+      }),
+    );
+    const cloudDialog = await screen.findByText("Sign in", {
+      selector: "button",
+    });
+    expect(screen.queryByLabelText("Password")).toBeNull();
+    expect(api.addCloud).not.toHaveBeenCalled();
+    fireEvent.click(cloudDialog);
+    await waitFor(() =>
+      expect(api.addCloud).toHaveBeenCalledWith("https://app.armadra.com"),
+    );
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Register this computer" }),
+    );
+    await waitFor(() =>
+      expect(api.registerToSpace).toHaveBeenCalledWith({
+        serviceId: "cloud",
+        space: { kind: "personal" },
+      }),
+    );
+    // 登记完，弹层里的路线行消失，可以建链接。
+    await waitFor(() =>
+      expect(screen.queryByText("Internet route")).toBeNull(),
+    );
+    const create = screen.getByRole("button", { name: "Create link" });
+    await waitFor(() => expect(create.hasAttribute("disabled")).toBe(false));
+    fireEvent.click(create);
+    await waitFor(() =>
+      expect(api.createShareLink).toHaveBeenCalledWith(
+        expect.objectContaining({ serviceId: "cloud", target: "workspace" }),
+      ),
+    );
+  });
+
+  it("登录着 Armadra 云、本机没登记：直接选空间登记，不再登录（#677）", async () => {
+    api.listSources.mockResolvedValue({ sources: [local], remotes: [cloud] });
+    api.shareStatus.mockResolvedValue({
+      sourceId: local.sourceId,
+      registrations: [],
+    });
+    api.addCloud.mockResolvedValue({ remote: cloud, next: "ready" });
+    api.cloudSpaces.mockResolvedValue({
+      spaces: [{ kind: "personal", plan: "free" }],
+    });
     mount();
     fireEvent.click(
-      await screen.findByRole("button", { name: "Sign in and turn on" }),
+      await screen.findByRole("button", { name: "Register this computer" }),
     );
-    expect(await screen.findByLabelText("Password")).toBeTruthy();
+    await waitFor(() =>
+      expect(api.addCloud).toHaveBeenCalledWith(CLOUD_ISSUER),
+    );
+    expect(
+      await screen.findByText("Register to", { selector: "label" }),
+    ).toBeTruthy();
+    expect(api.pollCloudDevice).not.toHaveBeenCalled();
+    expect(api.shareThisMachine).not.toHaveBeenCalled();
+  });
+
+  it("Armadra 云登出了：登录那一行的地址（#677）", async () => {
+    api.listSources.mockResolvedValue({
+      sources: [local],
+      remotes: [{ ...cloud, hasCredentials: false }],
+    });
+    api.shareStatus.mockResolvedValue({
+      sourceId: local.sourceId,
+      registrations: [],
+    });
+    mount();
+    const signIn = await screen.findByRole("button", {
+      name: "Sign in to Armadra Cloud",
+    });
+    // 账号表读到之前按钮已经在了：等表到，才知道登出的那一行的地址。
+    await waitFor(() => expect(api.listSources).toHaveBeenCalled());
+    await new Promise((done) => setTimeout(done, 30));
+    fireEvent.click(signIn);
+    await waitFor(() =>
+      expect(
+        document.querySelector('[data-slot="cloud-issuer"]')?.textContent,
+      ).toBe("cloud.test"),
+    );
   });
 
   it("「管理链接」关掉弹层，去设置 → 远程访问", async () => {

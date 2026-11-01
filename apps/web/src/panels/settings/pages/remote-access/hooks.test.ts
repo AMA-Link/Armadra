@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { RemoteService } from "../../../../api/remote-services";
-import { canShare, canStartRoute, planRoute } from "./hooks";
+import { canShare, canStartRoute, mountEntry, planRoute } from "./hooks";
 
 const base: RemoteService = {
   serviceId: "svc",
@@ -104,6 +104,58 @@ describe("planRoute：「局域网 + 互联网」以 Armadra 云为缺省（#675
   for (const [name, remotes, expected] of cases) {
     it(name, () => {
       expect(planRoute(remotes)).toEqual(expected);
+    });
+  }
+});
+
+describe("mountEntry：「我的其他电脑」的添加入口以 Armadra 云为缺省（#677）", () => {
+  const cloud: RemoteService = {
+    ...base,
+    serviceId: "cloud",
+    kind: "saas",
+    issuer: "https://cloud.test",
+    label: "cloud.test",
+    accountHint: "",
+  };
+  const cases: Array<[string, RemoteService[], unknown]> = [
+    [
+      "什么账号都没有：登录 Armadra 云（缺省地址）",
+      [],
+      { kind: "signIn", issuer: "" },
+    ],
+    [
+      "登出了的云：登录那一行的地址",
+      [{ ...cloud, hasCredentials: false }],
+      { kind: "signIn", issuer: "https://cloud.test" },
+    ],
+    [
+      "登录着的云（登没登记都行）：从云添加",
+      [cloud],
+      { kind: "cloud", remotes: [cloud] },
+    ],
+    [
+      "云与个人中转都登录着：只取云",
+      [base, cloud],
+      { kind: "cloud", remotes: [cloud] },
+    ],
+    ["只有个人中转：原入口", [base], { kind: "relay", remotes: [base] }],
+    [
+      "云登出了、个人中转登录着：原入口",
+      [base, { ...cloud, hasCredentials: false }],
+      { kind: "relay", remotes: [base] },
+    ],
+    [
+      "访客行不算",
+      [
+        { ...cloud, guest: true },
+        { ...base, guest: true },
+      ],
+      { kind: "signIn", issuer: "" },
+    ],
+  ];
+  for (const [name, remotes, expected] of cases) {
+    it(name, () => {
+      expect(mountEntry(remotes)).toEqual(expected);
     });
   }
 });
