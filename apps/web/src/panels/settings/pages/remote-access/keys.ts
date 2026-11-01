@@ -84,6 +84,7 @@ export function useSourceTableChanged() {
     await client.invalidateQueries({ queryKey: SOURCES_QUERY_KEY });
     void client.invalidateQueries({ queryKey: SHARE_STATUS_KEY });
     void client.invalidateQueries({ queryKey: RELAY_PENDING_KEY });
+    void client.invalidateQueries({ queryKey: ["cloud", "space"] });
     if (await notifyShellSourcesChanged()) reloadIntoSettings(REMOTE_SECTION);
   }, [client]);
 }

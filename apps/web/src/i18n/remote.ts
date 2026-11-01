@@ -58,6 +58,10 @@ export const remote: MessageModule = {
     "remote.cloud.retry": "重试",
     "remote.cloud.teamShell": "能进终端的成员可以用这台电脑的系统账号执行命令",
     "remote.cloud.space.blocked": "不能登记主机",
+    "remote.cloud.space.current": "当前",
+    "remote.cloud.changeSpace": "更换空间",
+    "remote.cloud.change": "更换",
+    "remote.cloud.changeWarn": "原空间里的授予与分享链接会失效",
     "remote.cloud.hostsLimit": "这个空间的主机数已到上限，升级或撤销一台主机",
     "remote.cloud.limitReached": "远程服务的上限已到",
     "remote.kind.direct": "局域网",
@@ -218,6 +222,11 @@ export const remote: MessageModule = {
     "remote.cloud.teamShell":
       "Members who can open a terminal can run commands as this computer's system account",
     "remote.cloud.space.blocked": "Cannot register hosts",
+    "remote.cloud.space.current": "Current",
+    "remote.cloud.changeSpace": "Change space",
+    "remote.cloud.change": "Change",
+    "remote.cloud.changeWarn":
+      "Grants and share links in the current space will stop working",
     "remote.cloud.hostsLimit":
       "This space has reached its host limit. Upgrade or revoke a host",
     "remote.cloud.limitReached": "The remote service limit is reached",

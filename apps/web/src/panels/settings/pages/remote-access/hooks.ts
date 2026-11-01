@@ -9,6 +9,7 @@ import {
 } from "../../../../api/gateway";
 import {
   type RemoteService,
+  registeredSpace,
   shareStatus,
   shareThisMachine,
   stopSharing,
@@ -173,4 +174,25 @@ export function useInternetRoute() {
     stop,
     busy: start.isPending || stop.isPending,
   };
+}
+
+/**
+ * 本机登记在这个 Armadra 云的哪个空间（`remote` 为 `undefined` 或没登记时不查）。
+ * 读不到（云不可达、旧版云不报空间）是 `null`，界面只写云的名字。
+ */
+export function useRegisteredSpace(remote: RemoteService | undefined) {
+  const status = useQuery({
+    queryKey: SHARE_STATUS_KEY,
+    queryFn: shareStatus,
+    retry: false,
+  });
+  const sourceId = status.data?.sourceId ?? "";
+  const serviceId = remote?.serviceId ?? "";
+  const query = useQuery({
+    queryKey: ["cloud", "space", serviceId, sourceId],
+    queryFn: () => registeredSpace(serviceId, sourceId),
+    enabled: remote !== undefined && remote.registered && sourceId !== "",
+    retry: false,
+  });
+  return query.data ?? null;
 }
