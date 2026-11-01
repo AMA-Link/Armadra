@@ -137,7 +137,8 @@ export const SETTINGS_SEARCH: Readonly<Record<string, readonly string[]>> = {
   ],
   remoteAccess: [
     "remote.allow",
-    "remote.reach",
+    "remote.internet",
+    "remote.scan",
     "gateway.listen",
     "gateway.port",
     "gateway.publicOrigin",

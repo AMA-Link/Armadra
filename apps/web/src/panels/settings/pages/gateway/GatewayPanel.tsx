@@ -3,7 +3,6 @@ import {
   GATEWAY_LISTEN_CHOICES,
   GATEWAY_TLS_SOURCES,
   type GatewayConfigPatch,
-  type GatewayPairingPayload,
   type GatewayStatus,
 } from "@armadra/shared";
 
@@ -12,6 +11,7 @@ import { CONTROL_WIDTH } from "../GeneralPage";
 import { SettingsGroup } from "../../SettingsGroup";
 import { SettingsRow } from "../../SettingsRow";
 import { Alert, AlertTitle } from "@/ui/alert";
+import { Button } from "@/ui/button";
 import { Input } from "@/ui/input";
 import {
   Select,
@@ -22,7 +22,6 @@ import {
 } from "@/ui/select";
 import { Spinner } from "@/ui/spinner";
 import { Switch } from "@/ui/switch";
-import { PairingCard } from "./PairingCard";
 
 const KNOWN_ERRORS = new Set([
   "acme_misconfigured",
@@ -71,13 +70,10 @@ function CommitInput({
   );
 }
 
-/** 可达范围：仅局域网，或局域网 + 互联网（经中转账号的互联网路线）。 */
-export type Reach = "lan" | "internet";
-
 export interface GatewayPanelProps {
   /** 局域网那一半（对外服务）；读不到（成员、旧版 core）是 `null`。 */
   status: GatewayStatus | null;
-  /** 互联网路线开着（任一中转账号登记了这台电脑）。 */
+  /** 互联网路线开着（Armadra 云或任一中转账号登记了这台电脑）。 */
   internet: boolean;
   /** 正在写配置或开关路线。 */
   busy: boolean;
@@ -86,38 +82,30 @@ export interface GatewayPanelProps {
    * 页面照样能关（关掉后它自己断开，与以前的局域网开关一致）。
    */
   inUse?: boolean;
-  /** 页面正经互联网路线到达：不给退回仅局域网。 */
-  internetInUse?: boolean;
   onToggle(on: boolean): void;
-  onReach(reach: Reach): void;
-  pairing: GatewayPairingPayload | null;
-  pairingBusy: boolean;
-  onNewPairing(origin?: string): void;
-  /** 展示页用：钉住时钟。 */
-  now?: number;
+  /** 「手机扫码连接」：打开配对对话框（二维码、地址、配对码）。 */
+  onScan(): void;
+  /** 「互联网访问」那一行；开关开着才画。 */
+  children?: React.ReactNode;
 }
 
 /**
- * 设置 → 远程访问 → 这台电脑（#301，设计系统 §5.12）：局域网与中转合一。
+ * 设置 → 远程访问 → 这台电脑（#301、#675，设计系统 §5.12）：只有三行。
  *
- * 一个开关「允许其他设备访问这台电脑」，开着时选可达范围：仅局域网（对外服务
- * 监听局域网，无需账号）/ 局域网 + 互联网（再经中转账号开互联网路线）。开着且
- * 对外服务在跑时下面是配对二维码与配对码。端口、证书、监听所有网络在「高级」
- * （{@link GatewayAdvanced}）。服务器壳托管时（`managedBy: shell`）局域网那一半
- * 只读，配对照常。
+ * 「允许其他设备访问这台电脑」开关；开着时「互联网访问」一行（{@link children}，
+ * 登记到 Armadra 云即互联网可达）；对外服务在跑时「手机扫码连接」，二维码、地址、
+ * 配对码、指纹与 CA 下载都在它打开的对话框里（{@link PairingDialog}）。端口、证书、
+ * 监听所有网络在「高级」（{@link GatewayAdvanced}）。服务器壳托管时（`managedBy: shell`）
+ * 局域网那一半只读，配对照常。
  */
 export function GatewayPanel({
   status,
   internet,
   busy,
   inUse = false,
-  internetInUse = false,
   onToggle,
-  onReach,
-  pairing,
-  pairingBusy,
-  onNewPairing,
-  now,
+  onScan,
+  children,
 }: GatewayPanelProps) {
   const t = useT();
   const locale = usePreferencesStore((state) => state.locale);
@@ -146,27 +134,12 @@ export function GatewayPanel({
             />
           </div>
         </SettingsRow>
-        {on && (
-          <SettingsRow label={t("remote.reach")}>
-            <Select
-              value={internet ? "internet" : "lan"}
-              disabled={busy || (internet && internetInUse)}
-              onValueChange={(reach) => onReach(reach as Reach)}
-            >
-              <SelectTrigger
-                size="sm"
-                aria-label={t("remote.reach")}
-                className="w-[200px] max-w-full"
-              >
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent className="z-[var(--z-dialog)]">
-                <SelectItem value="lan">{t("remote.reach.lan")}</SelectItem>
-                <SelectItem value="internet">
-                  {t("remote.reach.internet")}
-                </SelectItem>
-              </SelectContent>
-            </Select>
+        {on && children}
+        {status !== null && lan && status.running && (
+          <SettingsRow label={null}>
+            <Button size="sm" variant="secondary" onClick={onScan}>
+              {t("remote.scan")}
+            </Button>
           </SettingsRow>
         )}
       </SettingsGroup>
@@ -198,21 +171,6 @@ export function GatewayPanel({
           <Spinner aria-hidden />
           <AlertTitle>{t("gateway.starting")}</AlertTitle>
         </Alert>
-      )}
-      {status !== null && lan && status.running && (
-        <PairingCard
-          pairing={pairing}
-          busy={pairingBusy}
-          origins={status.origins}
-          fingerprint={status.tls.fingerprint}
-          caHref={
-            status.tls.caAvailable && status.origin
-              ? `${status.origin}/ca.crt`
-              : null
-          }
-          onNewPairing={onNewPairing}
-          now={now}
-        />
       )}
     </div>
   );

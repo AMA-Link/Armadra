@@ -1,8 +1,8 @@
 import type { MessageModule } from "./index";
 
 /**
- * 设置 → 远程访问（#301）：「这台电脑」（允许其他设备访问、可达范围、配对、
- * 中转账号与互联网路线、分享链接、我的其他电脑）与「他人分享」。
+ * 设置 → 远程访问（#301、#675）：「这台电脑」（允许其他设备访问、互联网访问、手机扫码
+ * 连接；中转账号、分享链接、流量在「高级」里）、我的其他电脑与「他人分享」。
  *
  * 术语：界面上说「中转账号」「互联网路线」「局域网」「这台电脑」「我的其他电脑」；
  * 英文用 Remote access / Internet route。代码里的 relay / source / mount 只留在
@@ -12,16 +12,12 @@ import type { MessageModule } from "./index";
 export const remote: MessageModule = {
   "zh-CN": {
     "remote.host": "这台电脑",
-    "remote.kpi.gateway": "对外服务",
-    "remote.kpi.relay": "中继",
-    "remote.kpi.off": "未开启",
     "remote.joined": "他人分享",
     "remote.allow": "允许其他设备访问这台电脑",
+    "remote.internet": "互联网访问",
+    "remote.scan": "手机扫码连接",
     "remote.allow.off": "关闭",
     "remote.allow.offConfirm": "关闭对这台电脑的访问？",
-    "remote.reach": "可达范围",
-    "remote.reach.lan": "仅局域网",
-    "remote.reach.internet": "局域网 + 互联网",
     "remote.internet.start": "启用互联网路线",
     "remote.internet.stop": "停用互联网路线",
     "remote.internet.stopConfirm": "停用互联网路线？",
@@ -36,6 +32,7 @@ export const remote: MessageModule = {
     "remote.sources.reorder": "拖动以排序「{name}」",
     "remote.add": "添加中转账号",
     "remote.cloud.add": "添加 Armadra 云",
+    "remote.cloud.name": "Armadra 云",
     "remote.cloud.signIn": "登录 Armadra 云",
     "remote.cloud.login": "登录",
     "remote.cloud.code": "设备码",
@@ -175,16 +172,12 @@ export const remote: MessageModule = {
   },
   en: {
     "remote.host": "This computer",
-    "remote.kpi.gateway": "Access service",
-    "remote.kpi.relay": "Relay",
-    "remote.kpi.off": "Off",
     "remote.joined": "Shared with me",
     "remote.allow": "Allow other devices to access this computer",
+    "remote.internet": "Internet access",
+    "remote.scan": "Connect a phone",
     "remote.allow.off": "Turn off",
     "remote.allow.offConfirm": "Turn off access to this computer?",
-    "remote.reach": "Reach",
-    "remote.reach.lan": "Local network only",
-    "remote.reach.internet": "Local network + Internet",
     "remote.internet.start": "Turn on Internet route",
     "remote.internet.stop": "Turn off Internet route",
     "remote.internet.stopConfirm": "Turn off the Internet route?",
@@ -199,6 +192,7 @@ export const remote: MessageModule = {
     "remote.sources.reorder": "Drag to reorder {name}",
     "remote.add": "Add remote access account",
     "remote.cloud.add": "Add Armadra Cloud",
+    "remote.cloud.name": "Armadra Cloud",
     "remote.cloud.signIn": "Sign in to Armadra Cloud",
     "remote.cloud.login": "Sign in",
     "remote.cloud.code": "Device code",

@@ -115,6 +115,8 @@ function mount() {
       <RemoteAccessPage />
     </QueryClientProvider>,
   );
+  // 账号行、分享链接在「高级」里。
+  fireEvent.click(screen.getByRole("button", { name: "Advanced" }));
 }
 
 function openMenu(name: string) {
@@ -281,12 +283,12 @@ describe("互联网路线认 Armadra 云（契约 §88.4，#586）", () => {
       },
     ],
   });
-  /** 顶部「中继」那一格的文字。 */
-  const relayKpi = () =>
-    screen.getByText("Relay").closest("[data-slot='settings-kpi']")
-      ?.textContent ?? "";
+  /** 「这台电脑」里「互联网访问」那一行的文字。 */
+  const internetRow = () =>
+    screen.getByText("Internet access").closest(".settings-row")?.textContent ??
+    "";
 
-  it("本机登记在 Armadra 云、隧道在线：中继格显示在线，分享链接一组出现", async () => {
+  it("本机登记在 Armadra 云、隧道在线：互联网访问一行写 Armadra Cloud 与在线，分享链接一组出现", async () => {
     api.shareStatus.mockResolvedValue(registration("ready"));
     api.listSources.mockResolvedValue({
       sources: [local],
@@ -294,27 +296,29 @@ describe("互联网路线认 Armadra 云（契约 §88.4，#586）", () => {
     });
     mount();
     await screen.findByText("cloud.test");
-    await waitFor(() => expect(relayKpi()).toContain("Online"));
+    await waitFor(() => expect(internetRow()).toContain("Online"));
+    expect(internetRow()).toContain("Armadra Cloud");
     await waitFor(() =>
       expect(api.listShareLinks).toHaveBeenCalledWith("cloud"),
     );
   });
 
-  it("只用令牌登记（没有登录行）：中继格同样按登记的隧道显示", async () => {
+  it("只用令牌登记（没有登录行）：互联网访问一行同样按登记的隧道显示", async () => {
     api.shareStatus.mockResolvedValue(registration("ready"));
     api.listSources.mockResolvedValue({ sources: [local], remotes: [] });
     mount();
     await screen.findByText("This computer");
-    await waitFor(() => expect(relayKpi()).toContain("Online"));
+    await waitFor(() => expect(internetRow()).toContain("Online"));
+    expect(internetRow()).toContain("cloud.test");
     expect(api.listShareLinks).not.toHaveBeenCalled();
   });
 
-  it("没有任何登记：中继格未开启", async () => {
+  it("没有任何登记：互联网访问不显示在线", async () => {
     api.listSources.mockResolvedValue({ sources: [local], remotes: [cloud] });
     mount();
     await screen.findByText("cloud.test");
     await waitFor(() => expect(api.shareStatus).toHaveBeenCalled());
-    expect(relayKpi()).toContain("Off");
+    expect(screen.queryByText("Online")).toBeNull();
   });
 
   it("登录着但还没登记的 Armadra 云：行菜单「启用互联网路线」打开设备码对话框", async () => {
