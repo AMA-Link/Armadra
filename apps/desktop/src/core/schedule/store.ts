@@ -260,11 +260,25 @@ export class ScheduleStore {
     };
   }
 
-  /** 这台机器上所有工作空间的计划，一次 tick 要走一遍。 */
+  /** 这台机器上所有工作空间的计划。 */
   everyPlanRef(): { workspaceId: string; planId: string }[] {
     return this.database
       .prepare(
         "SELECT workspace_id AS workspaceId, plan_id AS planId FROM automation_plans " +
+          "ORDER BY workspace_id, plan_id",
+      )
+      .all() as { workspaceId: string; planId: string }[];
+  }
+
+  /**
+   * 一次 tick 要走的计划：已归档的工作空间（契约 §89）不在其中，收起来的那块
+   * 不该在背后起会话。
+   */
+  activePlanRefs(): { workspaceId: string; planId: string }[] {
+    return this.database
+      .prepare(
+        "SELECT workspace_id AS workspaceId, plan_id AS planId FROM automation_plans " +
+          "WHERE workspace_id NOT IN (SELECT id FROM workspaces WHERE archived_at IS NOT NULL) " +
           "ORDER BY workspace_id, plan_id",
       )
       .all() as { workspaceId: string; planId: string }[];

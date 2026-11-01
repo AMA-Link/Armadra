@@ -1053,11 +1053,47 @@ export function install(
     return { sessionId: session.id, generation: session.generation };
   });
 
+  // 工作空间删除：行随外键删掉之前把它的会话杀干净（tmux 会话本来活得比我们
+  // 久，没了行就没人再指着它）。不等启动对账：`destroyWorkspace` 在第一个
+  // await 之前就读完了行，紧接着的删除才不会让它漏掉谁。
+  // 归档（契约 §89）：行留着，活会话结束，恢复后节点照常显示已退出、可重开。
+  const offRemoving = context.bus.on(
+    "workspace.removing",
+    ({ workspaceId }) => {
+      void manager.destroyWorkspace(workspaceId).catch((failure: unknown) => {
+        context.log.warn("移除工作空间时结束终端失败", {
+          error: describe(failure),
+        });
+      });
+    },
+  );
+  const offArchived = context.bus.on(
+    "workspace.archived",
+    ({ workspaceId }) => {
+      void ready
+        .then(() =>
+          Promise.allSettled(
+            manager
+              .liveRecords()
+              .filter((record) => record.workspaceId === workspaceId)
+              .map((record) => manager.terminate(record.id, "session")),
+          ),
+        )
+        .catch((failure: unknown) => {
+          context.log.warn("归档工作空间时结束终端失败", {
+            error: describe(failure),
+          });
+        });
+    },
+  );
+
   const domain: TerminalDomain = {
     manager,
     backends,
     hibernator,
     stop: async (reason?: StopReason) => {
+      offRemoving();
+      offArchived();
       // Withdrawn before the panes go: a verb that reached a bridge over a
       // manager that is shutting down would be told a session is missing
       // rather than that there is nothing to talk to.

@@ -62,6 +62,10 @@ export function openStore(): { database: DatabaseSync; store: ScheduleStore } {
   for (const migration of migrations) {
     database.exec(readFileSync(migration, "utf8"));
   }
+  // tick 只走没归档的工作空间（契约 §89）：只要这两列。
+  database.exec(
+    "CREATE TABLE workspaces (id TEXT PRIMARY KEY, archived_at TEXT)",
+  );
   return { database, store: new ScheduleStore(database) };
 }
 

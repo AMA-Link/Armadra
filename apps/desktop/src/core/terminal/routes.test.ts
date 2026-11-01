@@ -1,11 +1,14 @@
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { delimiter, join } from "node:path";
 import { afterEach, describe, expect, it, onTestFinished } from "vitest";
 import type { CoreContext } from "../main";
 import { fixture, type Fixture } from "../workspaces/fixture";
-import { install as installWorkspaces } from "../workspaces/routes";
+import {
+  install as installWorkspaces,
+  workspaceOperations,
+} from "../workspaces/routes";
 import { install as installCanvas } from "../canvas/routes";
 import { install as installSettings } from "../settings";
 import { install as installRemote } from "../remote";
@@ -201,6 +204,65 @@ describeUnix("the terminal routes", () => {
     const ended = await core_.call("POST", `/api/terminals/${id}/terminate`);
     expect(ended.status).toBe(200);
     expect((ended.body as { status: string }).status).toBe("terminated");
+  });
+
+  it("ends a workspace's live sessions when it is archived, and keeps the row (§89)", async () => {
+    const { fixture: core_, workspaceId } = await core();
+    const created = await core_.call("POST", "/api/terminals", {
+      workspaceId,
+      cwd: core_.directory,
+      command: "/bin/sh",
+      args: ["-c", "sleep 30"],
+    });
+    const id = String((created.body as { id: string }).id);
+    workspaceOperations(core_).archive(workspaceId);
+    const ended = await until(
+      async () =>
+        (await core_.call("GET", `/api/terminals/${id}`)).body as {
+          status: string;
+        },
+      (body) => body.status !== "running",
+    );
+    expect(ended.status).toBe("terminated");
+  });
+
+  it("kills a workspace's live sessions when it is deleted", async () => {
+    const { fixture: core_, workspaceId } = await core();
+    const created = await core_.call("POST", "/api/terminals", {
+      workspaceId,
+      cwd: core_.directory,
+      command: "/bin/sh",
+      args: ["-c", "echo $$ > pid; sleep 30"],
+    });
+    const pidFile = join(core_.directory, "pid");
+    const pid = await until(
+      async () => {
+        try {
+          return Number(readFileSync(pidFile, "utf8").trim());
+        } catch {
+          return 0;
+        }
+      },
+      (value) => value > 0,
+    );
+    expect(created.status).toBe(200);
+    expect(
+      (await core_.call("DELETE", `/api/workspaces/${workspaceId}`)).status,
+    ).toBe(204);
+    const alive = () => {
+      try {
+        process.kill(pid, 0);
+        return true;
+      } catch {
+        return false;
+      }
+    };
+    expect(
+      await until(
+        async () => alive(),
+        (value) => !value,
+      ),
+    ).toBe(false);
   });
 
   /**

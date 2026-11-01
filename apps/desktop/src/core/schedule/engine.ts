@@ -533,7 +533,7 @@ export class ScheduleEngine {
     if (this.ticking) return;
     this.ticking = true;
     try {
-      for (const ref of this.store.everyPlanRef()) {
+      for (const ref of this.store.activePlanRefs()) {
         try {
           await this.tickPlan(ref.workspaceId, ref.planId);
         } catch (error) {
