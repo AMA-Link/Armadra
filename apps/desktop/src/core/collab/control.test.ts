@@ -2,7 +2,12 @@ import { execFileSync } from "node:child_process";
 import { existsSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { LAYER_GAP, SIBLING_GAP, boxesTooClose } from "@armadra/shared";
+import {
+  LAYER_GAP,
+  SIBLING_GAP,
+  boxesTooClose,
+  defaultNodeSizeOf,
+} from "@armadra/shared";
 import { type AgentFixture, agentFixture, callerFor } from "../agent/fixture";
 import { loadBoard } from "../canvas/documents";
 import { placement } from "./control/board";
@@ -188,14 +193,16 @@ describe("the verbs that add a node", () => {
     const b = document.nodes.find((entry) => entry.id === second)!;
     // 同一行依次排开（纵向布局），包围盒不相交。
     expect(a.position.y).toBe(b.position.y);
-    expect(Math.abs(b.position.x - a.position.x)).toBeGreaterThanOrEqual(960);
+    expect(Math.abs(b.position.x - a.position.x)).toBeGreaterThanOrEqual(
+      defaultNodeSizeOf("terminal").width,
+    );
   });
 
   /**
    * The default size of a node is the size it is drawn at, and the one table
    * of those lives in the front end (`apps/web/src/nodes/registry.ts`). A
    * second table here is what made a verb-created terminal come out 640×440
-   * beside a 960×600 one from the add menu, so a verb writes no size at all
+   * beside a larger one from the add menu, so a verb writes no size at all
    * and the page fills it in when it projects the document.
    */
   it("leaves the size out, so the page gives it the same default a person gets", async () => {
@@ -440,14 +447,14 @@ describe("team", () => {
     expect(at(review).x).toBeGreaterThan(at(build).x);
     expect(at(summary).y).toBeGreaterThan(at(build).y);
     expect(at(summary).x).toBe((at(build).x + at(review).x) / 2);
-    // #319：调用者、成员、汇总两两之间至少隔一个兄弟间距（尺寸按 960×600 算），
+    // #319：调用者、成员、汇总两两之间至少隔一个兄弟间距（尺寸按默认终端算），
     // 主到成员那一层隔层距，派发线和标签有地方走。
     const boxOf = (id: string) => {
       const node = document.nodes.find((entry) => entry.id === id)!;
       return {
         ...node.position,
-        width: node.size?.width ?? 960,
-        height: node.size?.height ?? 600,
+        width: node.size?.width ?? defaultNodeSizeOf("terminal").width,
+        height: node.size?.height ?? defaultNodeSizeOf("terminal").height,
       };
     };
     const all = [me, build, review, summary];
