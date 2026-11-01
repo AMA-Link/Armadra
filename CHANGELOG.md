@@ -6,6 +6,7 @@
 
 ### 桌面 / 服务器
 
+- 云端控制台第三方登录：登录与注册页按能力位 `auth.oauth.github` / `auth.oauth.google` 显示「使用 GitHub / Google 继续」，新路由 `/login/oauth/:provider` 回跳完成登录（`next` 含设备码批准页，两步验证复用第二步）；服务端不报 `auth.password` 时隐藏口令表单、找回与注册入口，不报 `auth.password-change` 时账号页收起「更改口令」；运营登录不变；`/h/<主机>` 未登录跳 `/login?next=/h/<主机>`（#661，配合 armadra-cloud#184）。
 - 修复：浏览器节点的 guest session 默认拒绝站点权限请求与权限检查（摄像头、麦克风、定位、通知等），只放行往剪贴板写入；此前 Electron 默认批准且 guest 里无提示（#647）。
 
 ## 0.11.0（2026-10-30）

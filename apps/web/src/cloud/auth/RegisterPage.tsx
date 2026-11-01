@@ -2,13 +2,17 @@ import * as React from "react";
 
 import { useT } from "@/app/preferences-store";
 import { Button } from "@/ui/button";
-import { Field, FieldError, FieldLabel } from "@/ui/field";
+import { Field, FieldError, FieldLabel, FieldSeparator } from "@/ui/field";
 import { Input } from "@/ui/input";
+import { Spinner } from "@/ui/spinner";
 import { browserDevice } from "../../sources/cloud-client";
 import { useCloudApi } from "../api/context";
 import { describeFailure } from "../api/errors";
+import { usePlatformInfo } from "../api/queries";
 import { RouteLink } from "../RouteLink";
 import { AuthLayout } from "./AuthLayout";
+import { OAuthButtons } from "./OAuthButtons";
+import { useSignInOptions } from "./sign-in-options";
 
 /** `/register`：邮箱、名称、口令；暂停注册（`platform.info.registrationsOpen = false`）时只给登录入口。 */
 export function RegisterPage({
@@ -26,20 +30,9 @@ export function RegisterPage({
   const [password, setPassword] = React.useState("");
   const [error, setError] = React.useState("");
   const [busy, setBusy] = React.useState(false);
-  const [open, setOpen] = React.useState(true);
-
-  React.useEffect(() => {
-    let live = true;
-    api.client.platform.info({}).then(
-      (info) => {
-        if (live && info.registrationsOpen === false) setOpen(false);
-      },
-      () => undefined,
-    );
-    return () => {
-      live = false;
-    };
-  }, [api]);
+  const info = usePlatformInfo();
+  const options = useSignInOptions();
+  const open = info.data?.registrationsOpen !== false;
 
   const query = next === null ? "" : `?next=${encodeURIComponent(next)}`;
   const signInLink = (
@@ -78,6 +71,7 @@ export function RegisterPage({
     }
   };
 
+  const waiting = options.loading;
   const ready = email.trim() !== "" && name.trim() !== "" && password !== "";
   const field = (
     key: string,
@@ -106,42 +100,57 @@ export function RegisterPage({
 
   return (
     <AuthLayout title={t("cloud.auth.registerTitle")}>
-      <form
-        className="flex flex-col gap-3"
-        onSubmit={(event) => {
-          event.preventDefault();
-          if (ready) void submit();
-        }}
-      >
-        {field("email", t("cloud.auth.email"), email, setEmail, {
-          type: "email",
-          name: "email",
-          autoFocus: true,
-          autoComplete: "username",
-        })}
-        {field("name", t("cloud.auth.name"), name, setName, {
-          name: "name",
-          autoComplete: "name",
-          maxLength: 128,
-        })}
-        {field(
-          "password",
-          t("auth.password"),
-          password,
-          setPassword,
-          { type: "password", name: "password", autoComplete: "new-password" },
-          error,
-        )}
-        <Button
-          type="submit"
-          size="lg"
-          className="w-full"
-          disabled={!ready}
-          loading={busy}
+      {waiting && (
+        <div className="flex justify-center" aria-busy="true">
+          <Spinner />
+        </div>
+      )}
+      {!waiting && options.password && (
+        <form
+          className="flex flex-col gap-3"
+          onSubmit={(event) => {
+            event.preventDefault();
+            if (ready) void submit();
+          }}
         >
-          {t("cloud.auth.register")}
-        </Button>
-      </form>
+          {field("email", t("cloud.auth.email"), email, setEmail, {
+            type: "email",
+            name: "email",
+            autoFocus: true,
+            autoComplete: "username",
+          })}
+          {field("name", t("cloud.auth.name"), name, setName, {
+            name: "name",
+            autoComplete: "name",
+            maxLength: 128,
+          })}
+          {field(
+            "password",
+            t("auth.password"),
+            password,
+            setPassword,
+            {
+              type: "password",
+              name: "password",
+              autoComplete: "new-password",
+            },
+            error,
+          )}
+          <Button
+            type="submit"
+            size="lg"
+            className="w-full"
+            disabled={!ready}
+            loading={busy}
+          >
+            {t("cloud.auth.register")}
+          </Button>
+        </form>
+      )}
+      {!waiting && options.password && options.providers.length > 0 && (
+        <FieldSeparator>{t("auth.or")}</FieldSeparator>
+      )}
+      {!waiting && <OAuthButtons providers={options.providers} next={next} />}
       {signInLink}
     </AuthLayout>
   );

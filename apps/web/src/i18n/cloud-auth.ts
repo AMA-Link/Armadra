@@ -4,6 +4,13 @@ import type { MessageModule } from "./index";
 export const cloudAuth: MessageModule = {
   "zh-CN": {
     "cloud.auth.email": "邮箱",
+    "cloud.auth.github": "使用 GitHub 继续",
+    "cloud.auth.google": "使用 Google 继续",
+    "cloud.auth.toLogin": "返回登录",
+    "cloud.auth.oauthExpired": "登录已过期，请重新登录",
+    "cloud.auth.oauthCancelled": "已取消登录",
+    "cloud.auth.oauthUnavailable": "该登录方式未开放",
+    "cloud.auth.oauthAccountExists": "该邮箱已有账号，请用原方式登录",
     "cloud.auth.name": "名称",
     "cloud.auth.operatorTitle": "运营登录",
     "cloud.auth.registerTitle": "创建账号",
@@ -61,6 +68,14 @@ export const cloudAuth: MessageModule = {
   },
   en: {
     "cloud.auth.email": "Email",
+    "cloud.auth.github": "Continue with GitHub",
+    "cloud.auth.google": "Continue with Google",
+    "cloud.auth.toLogin": "Back to sign in",
+    "cloud.auth.oauthExpired": "Sign-in expired. Sign in again",
+    "cloud.auth.oauthCancelled": "Sign-in cancelled",
+    "cloud.auth.oauthUnavailable": "This sign-in method isn't available",
+    "cloud.auth.oauthAccountExists":
+      "This email already has an account. Sign in the way you did before",
     "cloud.auth.name": "Name",
     "cloud.auth.operatorTitle": "Operator sign-in",
     "cloud.auth.registerTitle": "Create account",

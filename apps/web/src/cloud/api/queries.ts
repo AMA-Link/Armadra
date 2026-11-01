@@ -24,6 +24,20 @@ export const meQuery = (api: CloudApi) => ({
   queryFn: () => api.client.me.get({}),
 });
 
+/**
+ * 服务端的平台信息（能力位、挑战要求）。取不到不重试：调用方按「口令登录、没有第三方」回退，
+ * 不让登录页卡在重试里。
+ */
+export const platformInfoQuery = (api: CloudApi) => ({
+  queryKey: cloudKeys.platformInfo,
+  queryFn: () => api.client.platform.info({}),
+  retry: false,
+});
+
+export function usePlatformInfo() {
+  return useQuery(platformInfoQuery(useCloudApi()));
+}
+
 export const spacesQuery = (api: CloudApi) => ({
   queryKey: cloudKeys.spaces,
   queryFn: () => api.client.me.spaces({}),

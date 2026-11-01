@@ -31,3 +31,36 @@ export function stripFragment(): void {
     window.location.pathname + window.location.search,
   );
 }
+
+const OAUTH_NEXT_KEY = "armadra.cloud.oauthNext";
+
+/**
+ * 第三方登录要整页跳走再跳回来：登录前的落点（`next`，含 `/device?code=…`）先存 `sessionStorage`，
+ * 回跳页取用。没有落点就清掉上一次留下的，免得串到别的登录里。
+ */
+export function rememberOAuthNext(next: string | null): void {
+  try {
+    if (next === null) sessionStorage.removeItem(OAUTH_NEXT_KEY);
+    else sessionStorage.setItem(OAUTH_NEXT_KEY, next);
+  } catch {
+    // 存储不可用（隐私模式）：回跳后走缺省落点。
+  }
+}
+
+/** 存着的落点（再过一遍 {@link safeNext}）；没有是 `null`。 */
+export function recalledOAuthNext(): string | null {
+  try {
+    return safeNext(sessionStorage.getItem(OAUTH_NEXT_KEY));
+  } catch {
+    return null;
+  }
+}
+
+export const forgetOAuthNext = () => rememberOAuthNext(null);
+
+/** 整页跳到站外（提供方的授权页）；单独成对象，测试里可以替换。 */
+export const external = {
+  go(url: string): void {
+    window.location.assign(url);
+  },
+};

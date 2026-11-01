@@ -6,6 +6,7 @@ import { DevicePage } from "./DevicePage";
 import { InvitePage } from "./InvitePage";
 import { LinkPage } from "./LinkPage";
 import { LoginPage } from "./LoginPage";
+import { OAuthCallbackPage } from "./OAuthCallbackPage";
 import { RegisterPage } from "./RegisterPage";
 import { ResetPage } from "./ResetPage";
 import { VerifyPage } from "./VerifyPage";
@@ -14,6 +15,7 @@ import { fragmentToken, safeNext, stripFragment } from "./redirect";
 /** 有页面的公开路由：这些路由不取会话，未登录也能打开。 */
 const PUBLIC_PAGES: ReadonlySet<RouteId> = new Set([
   "login",
+  "oauth",
   "register",
   "verify",
   "reset",
@@ -58,6 +60,14 @@ export function PublicPage({
           operator={match.query.get("scope") === "operator"}
           next={next}
           onSignedIn={() => finish(landing(match))}
+        />
+      );
+    case "oauth":
+      return (
+        <OAuthCallbackPage
+          provider={match.params.provider ?? ""}
+          search={match.query}
+          onSignedIn={finish}
         />
       );
     case "register":

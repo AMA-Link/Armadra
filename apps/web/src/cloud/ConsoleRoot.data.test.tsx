@@ -85,7 +85,7 @@ describe("控制台经客户端取会话", () => {
     expect(window.location.pathname + window.location.search).toBe(
       `/login?next=${encodeURIComponent("/t/rd/hosts?status=online")}`,
     );
-    expect(screen.getByLabelText("邮箱")).toBeTruthy();
+    expect(await screen.findByLabelText("邮箱")).toBeTruthy();
   });
 
   it("使用中会话失效且续不上：清掉缓存，回 /login", async () => {

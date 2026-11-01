@@ -12,6 +12,7 @@ import { EmptyState } from "@/ui/state";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/ui/tabs";
 import { toast } from "@/ui/toast";
 import { describeFailure, toCloudError } from "../api/errors";
+import { useSignInOptions } from "../auth/sign-in-options";
 import { navigate, type RouteMatch } from "../router";
 import { PageHeader } from "../shell/PageHeader";
 import { ConfirmAction } from "../ui/ConfirmAction";
@@ -353,8 +354,14 @@ export function AccountPage({ match }: { match: RouteMatch }) {
   const t = useT();
   const me = useMe();
   const [pendingEmail, setPendingEmail] = React.useState<string | null>(null);
+  const options = useSignInOptions();
+  // 服务端不报 `auth.password-change`（只用第三方登录）：安全页只有「更改口令」，整页签收起。
+  const tabs = TABS.filter(
+    (entry) =>
+      entry !== "security" || options.loading || options.passwordChange,
+  );
   const requested = match.query.get("tab");
-  const tab: Tab = TABS.find((entry) => entry === requested) ?? "profile";
+  const tab: Tab = tabs.find((entry) => entry === requested) ?? "profile";
 
   // 页签里的取数失败各自画区块内错误；连账号都取不到才是整页。
   if (me.isError && !me.data)
@@ -381,7 +388,7 @@ export function AccountPage({ match }: { match: RouteMatch }) {
       >
         <div className="mb-4 overflow-x-auto [scrollbar-width:none]">
           <TabsList variant="line">
-            {TABS.map((entry) => (
+            {tabs.map((entry) => (
               <TabsTrigger key={entry} value={entry}>
                 {t(TAB_KEY[entry])}
               </TabsTrigger>
@@ -391,9 +398,11 @@ export function AccountPage({ match }: { match: RouteMatch }) {
         <TabsContent value="profile">
           <ProfileTab pendingEmail={pendingEmail} onPending={setPendingEmail} />
         </TabsContent>
-        <TabsContent value="security">
-          <SecurityTab />
-        </TabsContent>
+        {tabs.includes("security") && (
+          <TabsContent value="security">
+            <SecurityTab />
+          </TabsContent>
+        )}
         <TabsContent value="devices">
           <DevicesTab />
         </TabsContent>

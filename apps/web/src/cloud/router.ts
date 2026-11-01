@@ -9,6 +9,7 @@ export type RouteArea = "public" | "home" | "personal" | "team" | "ops";
 
 const ROUTE_TABLE = [
   { id: "login", pattern: "/login", area: "public" },
+  { id: "oauth", pattern: "/login/oauth/:provider", area: "public" },
   { id: "register", pattern: "/register", area: "public" },
   { id: "verify", pattern: "/verify", area: "public" },
   { id: "reset", pattern: "/reset", area: "public" },
