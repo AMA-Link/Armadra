@@ -41,7 +41,6 @@ import {
   closeSync,
   readFileSync,
   readdirSync,
-  rmSync,
   writeFileSync,
 } from "node:fs";
 import os from "node:os";
@@ -68,6 +67,7 @@ import {
   isSessionHost,
   readText,
   httpsProbe,
+  closeOut,
   logFindings,
   newestUninstaller,
   diffSnapshots,
@@ -1421,16 +1421,9 @@ async function runFull(options, result, record, out) {
     });
     record.skipRest("前面的步骤中止");
     const failed = result.checks.some((check) => check.status === "fail");
-    if (!(options.keep && failed)) {
-      try {
-        rmSync(work, { recursive: true, force: true, maxRetries: 10 });
-      } catch {
-        result.leftover = work;
-      }
-    } else {
-      result.leftover = work;
-    }
-    writeFileSync(join(out, "app-output.log"), appOutput);
+    const keep = options.keep && failed;
+    const leftover = closeOut({ out, work, dataDir, appOutput, keep });
+    if (leftover !== undefined) result.leftover = leftover;
   }
 }
 

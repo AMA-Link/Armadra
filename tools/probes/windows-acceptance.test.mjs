@@ -3,7 +3,14 @@
 // 在夜间作业与用户的真机上做。
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import {
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { test } from "node:test";
@@ -11,6 +18,8 @@ import { fileURLToPath } from "node:url";
 
 import {
   CHECKS,
+  closeOut,
+  collectHostLogs,
   diffSnapshots,
   idleHostVerdict,
   isSessionHost,
@@ -439,4 +448,55 @@ test("the query program is valid JavaScript and the page helpers carry the watch
   for (const name of ["watchOpen", "watchRead", "watchSend", "watchClose"])
     assert.ok(lib.PAGE_HELPERS.includes(name), name);
   assert.ok(lib.PAGE_HELPERS.includes("replies=1"));
+});
+
+test("会话宿主的日志拷进产物：有几份拷几份，没有就不拷（#659）", () => {
+  const dir = mkdtempSync(join(tmpdir(), "armadra-host-logs-"));
+  try {
+    const data = join(dir, "data");
+    const out = join(dir, "out");
+    for (const path of [data, out]) mkdirSync(path);
+    assert.deepEqual(collectHostLogs(data, out), []);
+    writeFileSync(join(data, "session-host.log"), "listening\n");
+    writeFileSync(join(data, "canvas.db"), "");
+    assert.deepEqual(collectHostLogs(data, out), ["session-host.log"]);
+    assert.deepEqual(readdirSync(out), ["session-host.log"]);
+    assert.equal(
+      readFileSync(join(out, "session-host.log"), "utf8"),
+      "listening\n",
+    );
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("收尾：产物里有应用输出与宿主日志，临时目录按 keep 删或留", () => {
+  const dir = mkdtempSync(join(tmpdir(), "armadra-close-out-"));
+  try {
+    const out = join(dir, "out");
+    mkdirSync(out);
+    const fresh = () => {
+      const work = mkdtempSync(join(dir, "work-"));
+      const dataDir = join(work, "data");
+      mkdirSync(dataDir);
+      writeFileSync(join(dataDir, "session-host.log"), "leaving\n");
+      return { work, dataDir };
+    };
+    const kept = fresh();
+    assert.equal(
+      closeOut({ out, ...kept, appOutput: "app\n", keep: true }),
+      kept.work,
+    );
+    assert.deepEqual(readdirSync(kept.dataDir), ["session-host.log"]);
+    const gone = fresh();
+    assert.equal(closeOut({ out, ...gone, appOutput: "app\n" }), undefined);
+    assert.throws(() => readdirSync(gone.work));
+    assert.deepEqual(readdirSync(out).sort(), [
+      "app-output.log",
+      "session-host.log",
+    ]);
+    assert.equal(readFileSync(join(out, "app-output.log"), "utf8"), "app\n");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });

@@ -4,6 +4,8 @@
 // 与探针共用它。
 import { createHash } from "node:crypto";
 import {
+  copyFileSync,
+  existsSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
@@ -1054,6 +1056,42 @@ export function findFile(root, name, depth = 6) {
     if (found) return found;
   }
   return undefined;
+}
+
+/**
+ * 会话宿主的日志（core 起宿主时把它的 stderr 接到数据目录的 `session-host.log`，
+ * 超过上限时上一份在 `.1`）拷进产物目录：宿主没有控制台，它为什么走只写在这里
+ * （#659）。返回拷出来的文件名。
+ */
+export function collectHostLogs(dataDir, out) {
+  const copied = [];
+  for (const name of ["session-host.log", "session-host.log.1"]) {
+    const from = join(dataDir, name);
+    if (!existsSync(from)) continue;
+    try {
+      copyFileSync(from, join(out, name));
+      copied.push(name);
+    } catch {
+      // 拷不出来不影响结论。
+    }
+  }
+  return copied;
+}
+
+/**
+ * 收尾：应用输出与会话宿主日志写进产物目录，再删临时目录（`keep` 时留着）。
+ * 返回留下来的临时目录（留着或删不掉），删掉了返回 `undefined`。
+ */
+export function closeOut({ out, work, dataDir, appOutput, keep = false }) {
+  if (dataDir !== undefined) collectHostLogs(dataDir, out);
+  writeFileSync(join(out, "app-output.log"), appOutput);
+  if (keep) return work;
+  try {
+    rmSync(work, { recursive: true, force: true, maxRetries: 10 });
+    return undefined;
+  } catch {
+    return work;
+  }
 }
 
 export function logFindings(dataDir) {
