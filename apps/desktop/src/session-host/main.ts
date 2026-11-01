@@ -5,6 +5,7 @@ import {
   registryDir,
   unregisterHost,
 } from "../core/terminal/session-host/registry";
+import { guardConsolePipes } from "./broken-pipe";
 import { claimLock, releaseLock } from "./lock";
 import { AlreadyServing, SessionHost } from "./server";
 
@@ -100,8 +101,12 @@ export function orphanExitFromEnv(env: NodeJS.ProcessEnv): number | undefined {
 export async function run(options: RunOptions = {}): Promise<number> {
   const argv = options.argv ?? process.argv.slice(2);
   const platform = options.platform ?? process.platform;
+  // Timestamped: the log is a file the host appends to across restarts, read
+  // beside the probe's and the core's own timelines.
   const log =
-    options.log ?? ((line: string) => process.stderr.write(`${line}\n`));
+    options.log ??
+    ((line: string) =>
+      process.stderr.write(`${new Date().toISOString()} ${line}\n`));
 
   if (platform !== "win32") {
     log(
@@ -168,7 +173,21 @@ export async function run(options: RunOptions = {}): Promise<number> {
   if (unregistered !== null) {
     log(`could not record this host for the installer: ${unregistered}`);
   }
-  await served(host, dataDir, log);
+  // Only once serving: before this the process holds no console, and a throw
+  // is a start-up failure the caller should see as one.
+  const unguard = guardConsolePipes(log);
+  // Every way out that runs JavaScript passes here, so a host that vanished
+  // without this line was killed or crashed natively (#659).
+  const onExit = (code: number): void => {
+    log(`session host exiting with code ${code} while serving`);
+  };
+  process.on("exit", onExit);
+  try {
+    await served(host, dataDir, log);
+  } finally {
+    process.off("exit", onExit);
+    unguard();
+  }
   unregisterHost(endpoint, registry);
   return 0;
 }

@@ -246,7 +246,7 @@ Rust↔Go 的归档互通，以及需要受管二进制路径的 `agent:smoke` /
 Windows 特有的部分（ConPTY、会话宿主与命名管道、`armadra-launch.exe` 在 cmd / pwsh 7 / Windows
 PowerShell 5.1 里的读法、DPAPI、NSIS 安装与卸载）由 `tools/probes/windows-acceptance.mjs` 一键走完，
 写出一份 `result.json`。它只用 Node 22 自带的东西，可以只把 `tools/probes/` 下的 `windows-acceptance.mjs`、
-`windows-acceptance-lib.mjs` 与 `probe-home.mjs` 三个文件拷到 Windows 机器上（数据目录、HOME 与凭据变量的隔离同其他探针）。
+`windows-acceptance-lib.mjs`、`windows-acceptance-host.mjs` 与 `probe-home.mjs` 四个文件拷到 Windows 机器上（数据目录、HOME 与凭据变量的隔离同其他探针）。
 
 **要准备的**：一台 Windows 10 22H2 / 11（x64 或 arm64）、Node 22+、要验的安装包
 （`pnpm --filter @armadra/desktop dist` 在 Windows 上打出的 `Armadra-Setup-<版本>-<架构>.exe`，或 Release
@@ -267,7 +267,8 @@ node windows-acceptance.mjs --dry-run                                           
 
 **结果**：命令最后打印每一项的 ✓ / ✗ / ! / - 与 `result.json` 的路径（仓库里跑在
 `target/windows-acceptance/<时间>/`，拷出去跑在当前目录的 `windows-acceptance-<时间>/`）。把 `result.json`
-整个贴回来即可；同目录的 `app-output.log` 是应用的标准输出，失败时一并附上。
+整个贴回来即可；同目录的 `app-output.log` 是应用的标准输出，`session-host.log` 是会话宿主自己的日志
+（core 起宿主时把它的 stderr 接到数据目录里的这个文件，超过 1 MiB 时上一份留在 `.1`），失败时一并附上。
 
 `result.json` 的形状（`schema: "armadra-windows-acceptance/1"`）：
 

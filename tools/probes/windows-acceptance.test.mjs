@@ -3,7 +3,14 @@
 // 在夜间作业与用户的真机上做。
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import {
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { test } from "node:test";
@@ -11,6 +18,7 @@ import { fileURLToPath } from "node:url";
 
 import {
   CHECKS,
+  Recorder,
   diffSnapshots,
   idleHostVerdict,
   isSessionHost,
@@ -27,6 +35,14 @@ import {
   validateResult,
   waitForTerminalRoute,
 } from "./windows-acceptance-lib.mjs";
+import {
+  CLOSE_MANY,
+  closeManyAtOnce,
+  closeOut,
+  collectHostLogs,
+  crashEvents,
+  crashEventsCommand,
+} from "./windows-acceptance-host.mjs";
 
 const probe = join(
   dirname(fileURLToPath(import.meta.url)),
@@ -439,4 +455,164 @@ test("the query program is valid JavaScript and the page helpers carry the watch
   for (const name of ["watchOpen", "watchRead", "watchSend", "watchClose"])
     assert.ok(lib.PAGE_HELPERS.includes(name), name);
   assert.ok(lib.PAGE_HELPERS.includes("replies=1"));
+});
+
+test("会话宿主的日志拷进产物：有几份拷几份，没有就不拷（#659）", () => {
+  const dir = mkdtempSync(join(tmpdir(), "armadra-host-logs-"));
+  try {
+    const data = join(dir, "data");
+    const out = join(dir, "out");
+    for (const path of [data, out]) mkdirSync(path);
+    assert.deepEqual(collectHostLogs(data, out), []);
+    writeFileSync(join(data, "session-host.log"), "listening\n");
+    writeFileSync(join(data, "canvas.db"), "");
+    assert.deepEqual(collectHostLogs(data, out), ["session-host.log"]);
+    assert.deepEqual(readdirSync(out), ["session-host.log"]);
+    assert.equal(
+      readFileSync(join(out, "session-host.log"), "utf8"),
+      "listening\n",
+    );
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("收尾：产物里有应用输出与宿主日志，临时目录按 keep 删或留", () => {
+  const dir = mkdtempSync(join(tmpdir(), "armadra-close-out-"));
+  try {
+    const out = join(dir, "out");
+    mkdirSync(out);
+    const fresh = () => {
+      const work = mkdtempSync(join(dir, "work-"));
+      const dataDir = join(work, "data");
+      mkdirSync(dataDir);
+      writeFileSync(join(dataDir, "session-host.log"), "leaving\n");
+      return { work, dataDir };
+    };
+    const kept = fresh();
+    assert.equal(
+      closeOut({ out, ...kept, appOutput: "app\n", keep: true }),
+      kept.work,
+    );
+    assert.deepEqual(readdirSync(kept.dataDir), ["session-host.log"]);
+    const gone = fresh();
+    assert.equal(
+      closeOut({ out, ...gone, appOutput: "app\n", crashes: [{ Id: 1000 }] }),
+      undefined,
+    );
+    assert.throws(() => readdirSync(gone.work));
+    assert.deepEqual(readdirSync(out).sort(), [
+      "app-output.log",
+      "crash-events.json",
+      "session-host.log",
+    ]);
+    assert.deepEqual(
+      JSON.parse(readFileSync(join(out, "crash-events.json"), "utf8")),
+      [{ Id: 1000 }],
+    );
+    assert.equal(readFileSync(join(out, "app-output.log"), "utf8"), "app\n");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+/** 假的应用：建终端给新 pid，终止后那个 pid 就不在了；宿主活不活由 `hostDies` 定。 */
+function closeManyFixture({ hostDies }) {
+  const gone = new Set();
+  const terminated = [];
+  let next = 100;
+  const app = {
+    async api(method, path) {
+      if (method === "POST" && path === "/api/terminals") {
+        next += 1;
+        return { status: 201, body: { id: `t${next}`, pid: next } };
+      }
+      const match = /^\/api\/terminals\/t(\d+)\/terminate$/.exec(path);
+      if (match) {
+        terminated.push(Number(match[1]));
+        gone.add(Number(match[1]));
+        if (hostDies) gone.add(1);
+        return { status: 200, body: {} };
+      }
+      return { status: 404, body: null };
+    },
+    async terminal() {
+      return gone.has(1) ? { ok: false, reason: "timeout" } : { ok: true };
+    },
+  };
+  const result = newResult(parseArgs(["--app", "x.exe"]));
+  const record = new Recorder(result, () => {});
+  const options = {
+    workspaceId: "w",
+    wsDir: "C:\\w",
+    shells: [
+      ["cmd", "cmd.exe"],
+      ["pwsh", "pwsh.exe"],
+    ],
+    sessions: [{ id: "s1", pid: 11, dialect: "cmd" }],
+    hostPid: 1,
+    alive: (pid) => !gone.has(pid),
+    settleMs: 0,
+  };
+  return { app, record, options, terminated };
+}
+
+test("同时关闭多个终端：宿主还在、其它终端还答才算过，宿主没了就失败（#659）", async () => {
+  const fine = closeManyFixture({ hostDies: false });
+  assert.equal(
+    await closeManyAtOnce(fine.record, fine.app, fine.options),
+    true,
+  );
+  assert.equal(fine.terminated.length, CLOSE_MANY);
+  const entry = fine.record.entry("sessionHost.closeMany");
+  assert.equal(entry.status, "pass");
+  assert.equal(entry.detail.hostAlive, true);
+  // 退出慢的 shell 也在里面：第二次 kill 的崩溃要它才触发。
+  assert.deepEqual(entry.detail.shells, [
+    "cmd",
+    "pwsh",
+    "cmd",
+    "pwsh",
+    "cmd",
+    "pwsh",
+  ]);
+
+  const dead = closeManyFixture({ hostDies: true });
+  assert.equal(
+    await closeManyAtOnce(dead.record, dead.app, dead.options),
+    false,
+  );
+  const failed = dead.record.entry("sessionHost.closeMany");
+  assert.equal(failed.status, "fail");
+  assert.equal(failed.detail.hostAlive, false);
+  assert.equal(failed.detail.after.cmd.echoed, false);
+});
+
+test("没有会话宿主或没有 cmd 时跳过，不算失败", async () => {
+  const { app, record, options } = closeManyFixture({ hostDies: false });
+  await closeManyAtOnce(record, app, { ...options, hostPid: undefined });
+  assert.equal(record.entry("sessionHost.closeMany").status, "skip");
+  const other = closeManyFixture({ hostDies: false });
+  await closeManyAtOnce(other.record, other.app, {
+    ...other.options,
+    shells: [],
+  });
+  assert.equal(other.record.entry("sessionHost.closeMany").status, "skip");
+});
+
+test("崩溃记录：只查这次运行以来的 Application Error / WER，读不到时记原因", () => {
+  const command = crashEventsCommand("2026-11-01T07:00:00.000Z");
+  assert.match(command, /Id = 1000, 1001/);
+  assert.match(command, /\[datetime\]::Parse\('2026-11-01T07:00:00\.000Z'\)/);
+  assert.match(command, /-match 'Armadra'/);
+  assert.deepEqual(
+    crashEvents(() => [{ Id: 1000 }], "x"),
+    [{ Id: 1000 }],
+  );
+  assert.deepEqual(
+    crashEvents(() => {
+      throw new Error("powershell 失败");
+    }, "x"),
+    [{ error: "powershell 失败" }],
+  );
 });

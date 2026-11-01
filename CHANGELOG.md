@@ -9,6 +9,7 @@
 - Armadra 云默认地址与直接登录：共享常量 `ARMADRA_CLOUD_ISSUER`（`https://app.armadra.com`），开发与测试可用环境变量覆盖（桌面 core / 服务器壳读进程环境，网页读构建时 `VITE_ARMADRA_CLOUD_ISSUER`，只收 https，回环另收 http）；桌面「远程访问 → 添加 Armadra 云」去掉地址输入，只留「登录」；`armadra-server cloud login` 的 `--issuer` 缺省取这个地址，自建或测试部署仍可显式给；个人中转的连接方式不变（#661）。
 - 云端控制台第三方登录：登录与注册页按能力位 `auth.oauth.github` / `auth.oauth.google` 显示「使用 GitHub / Google 继续」，新路由 `/login/oauth/:provider` 回跳完成登录（`next` 含设备码批准页，两步验证复用第二步）；服务端不报 `auth.password` 时隐藏口令表单、找回与注册入口，不报 `auth.password-change` 时账号页收起「更改口令」；运营登录不变；`/h/<主机>` 未登录跳 `/login?next=/h/<主机>`（#661，配合 armadra-cloud#184）。
 - 修复：浏览器节点的 guest session 默认拒绝站点权限请求与权限检查（摄像头、麦克风、定位、通知等），只放行往剪贴板写入；此前 Electron 默认批准且 guest 里无提示（#647）。
+- 修复：Windows 上同时关闭多个终端（或关一个终端的同时操作另一个）可能让其它所有终端会话一起断开。原因是 node-pty 1.1.0 的 ConPTY 句柄表没有加锁，会话宿主会在原生代码里崩溃；现在补上上游的锁（node-pty#922）。会话宿主的日志写进数据目录的 `session-host.log`，控制台管道断开时宿主也不会再跟着退出（#659）。
 
 ### 手机与平板
 

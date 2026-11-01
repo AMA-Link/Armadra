@@ -62,7 +62,14 @@ export const CHECKS = [
     "restart.survives",
     "应用主进程被杀后会话宿主与 shell 都在，重启后接回同一会话",
   ],
-  ["conpty.close", "终止会话后 shell 进程与它的控制台宿主都退出"],
+  [
+    "sessionHost.closeMany",
+    "同时终止多个终端、同时往其它终端输入：会话宿主还是原来那个进程，其它终端照常应答（#659）",
+  ],
+  [
+    "conpty.close",
+    "终止会话后 shell 进程与它的控制台宿主都退出，会话宿主还是原来那个进程",
+  ],
   [
     "sessionHost.leaves",
     "应用退出后会话宿主没有会话、没有 core 连着，自己退出（不用结束进程）",

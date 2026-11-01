@@ -4,6 +4,7 @@ import {
   chmodSync,
   mkdirSync,
   mkdtempSync,
+  readFileSync,
   rmSync,
   statSync,
   writeFileSync,
@@ -13,7 +14,7 @@ import { dirname, join } from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 
-import { ensurePrebuiltExecutable } from "./ensure-node-pty.mjs";
+import { ensurePrebuiltExecutable, nodePtyDir } from "./ensure-node-pty.mjs";
 
 const script = join(
   dirname(fileURLToPath(import.meta.url)),
@@ -78,4 +79,25 @@ test("--executable-only 可重复执行，退出 0（安装后与 libs:build 都
     });
     assert.equal(result.status, 0, result.stderr);
   }
+});
+
+// 打包从这份源码编 conpty.node（electron-builder 的 @electron/rebuild），所以
+// 补丁必须在安装时就在：pnpm 的 patchedDependencies 打上 patches/node-pty@1.1.0.patch。
+// 没打上时 Windows 会话宿主在同时关闭多个终端时会崩（#659，上游 node-pty#922）。
+test("装出来的 node-pty 源码带着 ptyHandles 的锁（#659）", () => {
+  const source = readFileSync(join(nodePtyDir(), "src/win/conpty.cc"), "utf8");
+  assert.match(source, /static std::mutex g_ptyHandlesMutex;/);
+  // 退出线程的删除、spawn 的追加、connect / resize / clear / kill 的查找都在锁里。
+  assert.equal(
+    source.match(/std::lock_guard<std::mutex> lock\(g_ptyHandlesMutex\);/g)
+      ?.length,
+    6,
+  );
+  assert.doesNotMatch(source, /assert\(remove_pty_baton/);
+  // 同一个伪控制台不关两次：kill 关过之后置空，resize / clear / kill 都先看它。
+  assert.match(
+    source,
+    /pfnClosePseudoConsole\(handle->hpc\);\s+handle->hpc = nullptr;/,
+  );
+  assert.equal(source.match(/handle->hpc != nullptr/g)?.length, 3);
 });

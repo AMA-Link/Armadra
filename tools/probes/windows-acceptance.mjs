@@ -41,7 +41,6 @@ import {
   closeSync,
   readFileSync,
   readdirSync,
-  rmSync,
   writeFileSync,
 } from "node:fs";
 import os from "node:os";
@@ -88,6 +87,12 @@ import {
   waitForTerminalRoute,
   waitFor,
 } from "./windows-acceptance-lib.mjs";
+import {
+  closeManyAtOnce,
+  closeOut,
+  conptyClose,
+  crashEvents,
+} from "./windows-acceptance-host.mjs";
 import { isolatedEnv, probeHome } from "./probe-home.mjs";
 
 export * from "./windows-acceptance-lib.mjs";
@@ -1147,58 +1152,12 @@ async function runFull(options, result, record, out) {
         };
       });
 
+    say("同时关闭多个终端");
+    const host = { workspaceId, wsDir, shells, sessions, hostPid, alive };
+    await closeManyAtOnce(record, app, host);
+
     say("ConPTY 关闭");
-    if (sessions.length === 0) record.skip("conpty.close", "没有起来的终端");
-    else
-      await record.check("conpty.close", async () => {
-        const consolesBefore = hostPid ? consolesOf(hostPid) : [];
-        const detail = {
-          consoleBaseline: consoleBaseline ?? null,
-          consolesBefore: consolesBefore.length,
-          sessions: {},
-        };
-        for (const session of sessions) {
-          const answer = await app.api(
-            "POST",
-            `/api/terminals/${session.id}/terminate`,
-            {
-              mode: "session",
-            },
-          );
-          let gone = false;
-          try {
-            await waitFor(
-              `${session.dialect} 的 shell 退出`,
-              () => !alive(session.pid),
-              {
-                timeout: 20_000,
-              },
-            );
-            gone = true;
-          } catch {
-            gone = false;
-          }
-          detail.sessions[session.dialect] = {
-            status: answer.status,
-            shellGone: gone,
-          };
-        }
-        await sleep(2_000);
-        const consolesAfter =
-          hostPid && alive(hostPid) ? consolesOf(hostPid) : [];
-        detail.consolesAfter = consolesAfter.length;
-        const consolesReleased =
-          consoleBaseline === undefined
-            ? consolesAfter.length < consolesBefore.length ||
-              consolesAfter.length === 0
-            : consolesAfter.length <= consoleBaseline;
-        return {
-          ok:
-            Object.values(detail.sessions).every((entry) => entry.shellGone) &&
-            consolesReleased,
-          detail,
-        };
-      });
+    await conptyClose(record, app, { ...host, consoleBaseline, consolesOf });
   };
 
   const teardown = async () => {
@@ -1421,16 +1380,12 @@ async function runFull(options, result, record, out) {
     });
     record.skipRest("前面的步骤中止");
     const failed = result.checks.some((check) => check.status === "fail");
-    if (!(options.keep && failed)) {
-      try {
-        rmSync(work, { recursive: true, force: true, maxRetries: 10 });
-      } catch {
-        result.leftover = work;
-      }
-    } else {
-      result.leftover = work;
-    }
-    writeFileSync(join(out, "app-output.log"), appOutput);
+    const keep = options.keep && failed;
+    const crashes = isWindows
+      ? crashEvents(powershellJson, result.startedAt)
+      : undefined;
+    const leftover = closeOut({ out, work, dataDir, appOutput, crashes, keep });
+    if (leftover !== undefined) result.leftover = leftover;
   }
 }
 
