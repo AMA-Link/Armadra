@@ -200,6 +200,7 @@ export function normalize(raw: JsonValue): JsonObject {
   const document: JsonObject = isJsonObject(raw) ? clone(raw) : {};
 
   normalizeTerminal(document);
+  normalizeWatchdog(document);
   normalizeUsage(document);
   normalizeLogs(document);
   normalizeTraffic(document);
@@ -604,6 +605,38 @@ export interface OAuthProvider {
   readonly allowSignup: boolean;
   readonly allowedDomains: readonly string[];
   readonly enabled: boolean;
+}
+
+/**
+ * `watchdog.stalledMinutes` / `watchdog.needsHumanMinutes`——进展看门狗的阈值
+ * （契约 §91）。分钟；`0` = 关掉对应的判定，所以 `0` 保留、不夹到范围里。
+ * 范围与默认值和 `core/workflow/progress-watchdog.ts` 一致。
+ */
+const DEFAULT_WATCHDOG_STALLED_MINUTES = 10;
+const DEFAULT_WATCHDOG_NEEDS_HUMAN_MINUTES = 15;
+const MAX_WATCHDOG_MINUTES = 1_440;
+
+function watchdogMinutes(
+  value: JsonValue | undefined,
+  fallback: number,
+): number {
+  const minutes = asUnsigned(value);
+  return minutes !== undefined && minutes <= MAX_WATCHDOG_MINUTES
+    ? minutes
+    : fallback;
+}
+
+function normalizeWatchdog(document: JsonObject): void {
+  const watchdog = section(document, "watchdog");
+  watchdog.stalledMinutes = watchdogMinutes(
+    watchdog.stalledMinutes,
+    DEFAULT_WATCHDOG_STALLED_MINUTES,
+  );
+  watchdog.needsHumanMinutes = watchdogMinutes(
+    watchdog.needsHumanMinutes,
+    DEFAULT_WATCHDOG_NEEDS_HUMAN_MINUTES,
+  );
+  document.watchdog = watchdog;
 }
 
 function normalizeTerminal(document: JsonObject): void {

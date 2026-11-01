@@ -1,3 +1,4 @@
+import { withStalled } from "../agent/stalled";
 import { type IngestContext, apply } from "./ingest";
 import { STALE_WORKING_MINUTES, staleEvent, terminalGoneEvent } from "./reduce";
 import {
@@ -127,7 +128,9 @@ export function expireApprovalsOnce(context: IngestContext): number {
         workspaceId: agent.workspaceId,
         event: {
           type: "agent.status",
-          status: status as unknown as Readonly<Record<string, unknown>>,
+          status: withStalled(status) as unknown as Readonly<
+            Record<string, unknown>
+          >,
         },
       });
       expired += 1;

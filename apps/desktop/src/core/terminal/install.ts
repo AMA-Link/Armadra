@@ -36,6 +36,7 @@ import { acpSwitching } from "../acp/routes";
 import { rowLiveness, timelineDomainOf } from "../timeline";
 import { loadNode } from "../collab/nodes";
 import { canvasEnvironment } from "../agent/canvas-launch";
+import { type StallKind, stalledOf } from "../agent/stalled";
 import {
   CredentialError,
   CredentialsDomain,
@@ -1254,6 +1255,8 @@ export interface SessionSummary {
   readonly errored?: boolean;
   /** 最近一个回合被人打断（与 `errored` 一起决定状态点的色调）。 */
   readonly interrupted?: boolean;
+  /** 进展看门狗的标记（契约 §91）；没有标记省略。 */
+  readonly stalled?: StallKind;
   readonly updatedAt: string;
   readonly alive: boolean;
   /** 契约 §53：程序此刻自报的状态，只在会话活在这个进程里时有。 */
@@ -1306,7 +1309,8 @@ export function listSessions(
               st.state_source AS state_source, st.unread AS unread,
               st.pending_id AS pending_id, st.session_phase AS session_phase,
               st.errored AS errored, st.interrupted AS interrupted,
-              st.updated_at AS status_updated_at
+              st.updated_at AS status_updated_at,
+              st.last_event_at AS last_event_at
          FROM terminal_sessions s
          JOIN nodes n ON n.id = s.owner_node_id
          JOIN boards b ON b.id = n.board_id AND b.workspace_id = s.workspace_id
@@ -1340,6 +1344,13 @@ export function listSessions(
     const sessionPhase = row.session_phase as string | null;
     const programStatus = program(sessionId);
     const timelineSummary = timeline(sessionId);
+    const stalled = stalledOf({
+      nodeId: String(row.node_id),
+      ...(state === null ? {} : { state }),
+      ...(row.last_event_at == null
+        ? {}
+        : { lastEventAt: String(row.last_event_at) }),
+    });
     return {
       nodeId: String(row.node_id),
       boardId: String(row.board_id),
@@ -1361,6 +1372,7 @@ export function listSessions(
       ...(row.interrupted === null || row.interrupted === undefined
         ? {}
         : { interrupted: Number(row.interrupted) !== 0 }),
+      ...(stalled === undefined ? {} : { stalled }),
       updatedAt: String(
         (row.status_updated_at as string | null) ?? row.created_at,
       ),

@@ -178,6 +178,7 @@ describe("提示条", () => {
       "agentDone",
       "agentError",
       "agentWaiting",
+      "stalled",
       "deliveryFailed",
       "schedule",
       "resources",

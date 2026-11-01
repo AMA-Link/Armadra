@@ -130,6 +130,75 @@ export function wakeInbox(
   return { queued: true };
 }
 
+/** 看门狗叫醒协调者的理由（契约 §91）。 */
+export type WatchReason = "stalled" | "idleWaiting" | "needsHuman";
+
+export interface WatchWake {
+  readonly coordinatorNodeId: string;
+  readonly memberNodeId: string;
+  readonly taskId: string;
+  readonly reason: WatchReason;
+  /** 已经多久（分钟，向下取整）。 */
+  readonly minutes: number;
+  /** 判定的状态指纹：同一个判定在五分钟的幂等窗口里只排一条。 */
+  readonly basis: string;
+}
+
+/**
+ * 进展看门狗给协调者的一条短唤醒（契约 §91）。
+ *
+ * 与收件箱唤醒走同一条队列、同一道串行门与整条门链（`origin` 同为
+ * `mailbox-wake`，署名是应用，不冒充任何节点说话）：协调者忙就排着，空下来才
+ * 投进去；过期就过期，看门狗不补发。正文只有成员的节点名（用户给的标题）、
+ * 任务 id 与时长，**不带终端原文**；也不替人回答任何东西——「等人」一条只让
+ * 协调者上报，不让它代答。
+ */
+export function queueWatchWake(
+  context: CollabContext,
+  wake: WatchWake,
+): WakeOutcome {
+  const coordinator = loadNode(context.database, wake.coordinatorNodeId);
+  if (coordinator === undefined || coordinator.nodeType !== "terminal") {
+    return { queued: false, reason: "gone" };
+  }
+  const member = loadNode(context.database, wake.memberNodeId);
+  const name = (member?.title ?? "").replace(/\s+/g, " ").trim().slice(0, 40);
+  const inserted = enqueue(context.database, {
+    id: uuidV7(),
+    workspaceId: coordinator.workspaceId,
+    sourceNodeId: wake.coordinatorNodeId,
+    targetNodeId: wake.coordinatorNodeId,
+    origin: "mailbox-wake",
+    // 幂等键只许 ASCII 字母数字与 `-_.:`；指纹里的 `|` 一并换掉。
+    messageKey: `watch:${wake.taskId}:${wake.reason}:${wake.basis}`
+      .replace(/[^A-Za-z0-9._:-]/g, "_")
+      .slice(0, 128),
+    body: watchBody(wake, name),
+    hops: 0,
+    trail: [],
+    now: nowSeconds(context),
+    state: "queued",
+  });
+  if (inserted.kind === "full") return { queued: false, reason: "queue-full" };
+  if (inserted.kind === "inserted") context.nudge?.(wake.coordinatorNodeId);
+  return { queued: inserted.kind === "inserted" };
+}
+
+function watchBody(wake: WatchWake, name: string): string {
+  const who = name === "" ? "一个成员" : `成员「${name}」`;
+  const head =
+    wake.reason === "stalled"
+      ? `${who}已 ${wake.minutes} 分钟没有进展`
+      : wake.reason === "idleWaiting"
+        ? `${who}已空闲 ${wake.minutes} 分钟，任务还没有结论`
+        : `${who}已等人处理 ${wake.minutes} 分钟`;
+  const tail =
+    wake.reason === "needsHuman"
+      ? "请上报给人，不要替人回答。"
+      : "请决定是重试、追问，还是上报给人。";
+  return `${head}（任务 ${wake.taskId}）。${tail}`;
+}
+
 function notifyBody(digest: UnreadDigest): string {
   return (
     `收件箱有 ${digest.count} 条新消息，运行 \`armadra-hook canvas inbox\` 查看。` +

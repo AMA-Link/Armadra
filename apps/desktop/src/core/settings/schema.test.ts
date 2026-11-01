@@ -91,6 +91,22 @@ describe("normalize", () => {
     ).toBe(60);
   });
 
+  it("defaults the progress watchdog, keeps 0 as off and snaps bad values back", () => {
+    const defaults = normalize({});
+    expect(at(defaults, "watchdog.stalledMinutes")).toBe(10);
+    expect(at(defaults, "watchdog.needsHumanMinutes")).toBe(15);
+    const custom = normalize({
+      watchdog: { stalledMinutes: 0, needsHumanMinutes: 30 },
+    });
+    expect(at(custom, "watchdog.stalledMinutes")).toBe(0);
+    expect(at(custom, "watchdog.needsHumanMinutes")).toBe(30);
+    const broken = normalize({
+      watchdog: { stalledMinutes: -5, needsHumanMinutes: 999_999 },
+    });
+    expect(at(broken, "watchdog.stalledMinutes")).toBe(10);
+    expect(at(broken, "watchdog.needsHumanMinutes")).toBe(15);
+  });
+
   it("defaults update preferences to checking but not downloading", () => {
     const document = normalize({});
     expect(at(document, "updates.channel")).toBe("stable");

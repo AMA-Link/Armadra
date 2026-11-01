@@ -25,7 +25,7 @@ public enum PushEnvelope {
     public static let algorithm = "x25519-hkdf-sha256-a256gcm"
     private static let info = Data("armadra-push-v1".utf8)
     private static let kinds: Set<String> = [
-        "approval", "agentDone", "agentError", "agentWaiting", "deliveryFailed", "schedule",
+        "approval", "agentDone", "agentError", "agentWaiting", "stalled", "deliveryFailed", "schedule",
         "resources", "comment", "workflowGate", "deviceEndorsed", "test",
     ]
 

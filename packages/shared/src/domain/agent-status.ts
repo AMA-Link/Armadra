@@ -4,6 +4,20 @@ import { timestampSchema } from "./internal.js";
 import { agentIdSchema } from "./node-data.js";
 import { agentStateSchema, agentStateSourceSchema } from "./primitives.js";
 
+/**
+ * The progress watchdog's verdict on a node (contract §91), rule-based and
+ * advisory only: `stalled` = working but silent (no hook event, no output),
+ * `idleWaiting` = idle with a dispatched task that has no conclusion yet,
+ * `needsHuman` = waiting for a person for too long.
+ */
+export const AGENT_STALL_KINDS = [
+  "stalled",
+  "idleWaiting",
+  "needsHuman",
+] as const;
+export const agentStallKindSchema = z.enum(AGENT_STALL_KINDS);
+export type AgentStallKind = (typeof AGENT_STALL_KINDS)[number];
+
 export const agentStatusSchema = z.object({
   nodeId: z.string().uuid(),
   workspaceId: z.string().uuid(),
@@ -42,6 +56,11 @@ export const agentStatusSchema = z.object({
    */
   errored: z.boolean().optional(),
   interrupted: z.boolean().optional(),
+  /**
+   * The watchdog's mark on this node (contract §91). Absent means no mark;
+   * any later report from the node drops it again.
+   */
+  stalled: agentStallKindSchema.optional(),
   updatedAt: timestampSchema,
 });
 

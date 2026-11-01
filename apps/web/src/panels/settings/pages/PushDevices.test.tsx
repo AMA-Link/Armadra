@@ -35,6 +35,7 @@ const ALL = [
   "agentDone",
   "agentError",
   "agentWaiting",
+  "stalled",
   "deliveryFailed",
   "schedule",
   "resources",

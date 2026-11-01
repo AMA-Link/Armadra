@@ -241,8 +241,23 @@ export const useAgentStatusStore = create<AgentStatusState>((set, get) => ({
         if (!session.agentId) continue;
         const key = scoped(session.nodeId, sourceId);
         const previous = statuses[key];
-        if (previous && millis(session.updatedAt) <= millis(previous.updatedAt))
+        if (
+          previous &&
+          millis(session.updatedAt) <= millis(previous.updatedAt)
+        ) {
+          // 状态没变，但看门狗的标记可能在断线期间变了（契约 §91）：只补这一项。
+          if (previous.stalled !== session.stalled) {
+            const { stalled: _dropped, ...rest } = previous;
+            statuses[key] = {
+              ...rest,
+              ...(session.stalled === undefined
+                ? {}
+                : { stalled: session.stalled }),
+            };
+            changed = true;
+          }
           continue;
+        }
         statuses[key] = {
           nodeId: session.nodeId,
           workspaceId: workspaceId ?? previous?.workspaceId ?? "",
@@ -263,6 +278,9 @@ export const useAgentStatusStore = create<AgentStatusState>((set, get) => ({
           restored: true,
           alive: session.alive,
           ...(session.activity ? { activity: session.activity } : {}),
+          ...(session.stalled === undefined
+            ? {}
+            : { stalled: session.stalled }),
           updatedAt: session.updatedAt,
           ...(session.interrupted === undefined
             ? {}

@@ -30,6 +30,7 @@ export const PUSH_KINDS = [
   "agentDone",
   "agentError",
   "agentWaiting",
+  "stalled",
   "deliveryFailed",
   "schedule",
   "resources",

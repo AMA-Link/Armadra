@@ -61,6 +61,11 @@ export interface TaskWatchOptions {
   /** 为 `false` 时不武装定时扫描（用例手动调 {@link TaskWatch.sweep}）。 */
   readonly everyMs?: number | false;
   readonly log?: (message: string, fields?: Record<string, unknown>) => void;
+  /**
+   * 搭这条 60 秒兜底扫描的便车（进展看门狗，契约 §91）：定时器每响一次，扫完
+   * 任务行就调它一次。事件触发的扫描不调它；不另开定时器。
+   */
+  readonly onTick?: () => void;
 }
 
 export class TaskWatch {
@@ -89,7 +94,10 @@ export class TaskWatch {
     }
     const every = this.options.everyMs ?? TASK_WATCH_MS;
     if (every !== false) {
-      this.timer = setInterval(() => this.safeSweep(), every);
+      this.timer = setInterval(() => {
+        this.safeSweep();
+        this.safeTick();
+      }, every);
       this.timer.unref?.();
     }
   }
@@ -129,6 +137,23 @@ export class TaskWatch {
       this.safeSweep();
     }, COALESCE_MS);
     this.pending.unref?.();
+  }
+
+  /** 手动跑一次定时器上的全部工作（用例用）。 */
+  tick(): void {
+    this.safeSweep();
+    this.safeTick();
+  }
+
+  private safeTick(): void {
+    if (this.stopped) return;
+    try {
+      this.options.onTick?.();
+    } catch (error) {
+      this.options.log?.("进展看门狗扫描失败", {
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
   }
 
   private safeSweep(): void {

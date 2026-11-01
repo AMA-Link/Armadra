@@ -31,7 +31,7 @@ export interface Draft {
    * 同一种类里换一句正文（契约 §27.3）：调度的「失败」「要人处理」与「到点」
    * 同属 `schedule`，设备偏好按种类开关，正文按这个分。
    */
-  readonly variant?: "failed" | "attention";
+  readonly variant?: "failed" | "attention" | "idleWaiting" | "needsHuman";
   /** 只发给这些 principal（评论提及）；不给就是全部有权限的人。 */
   readonly principals?: readonly string[];
 }
@@ -56,6 +56,13 @@ const DELIVERY_FAILURES = new Set([
   "cancelled",
 ]);
 
+type StallKind = "stalled" | "idleWaiting" | "needsHuman";
+const STALL_VARIANTS: ReadonlySet<string> = new Set([
+  "stalled",
+  "idleWaiting",
+  "needsHuman",
+]);
+
 /** 状态帧上的「需要人处理」→ 通知种类；审批不在其中（见 `agent.approval`）。 */
 const AGENT_NEED_KIND: Readonly<Record<string, PushKind | undefined>> = {
   input: "agentWaiting",
@@ -70,6 +77,8 @@ const AGENT_NEED_KIND: Readonly<Record<string, PushKind | undefined>> = {
  */
 export class TriggerRules {
   private readonly lastNeed = new Map<string, HumanNeed | null>();
+  /** 看门狗上一次在这个节点上的判定（契约 §91）；只在**进入**时推。 */
+  private readonly lastStalled = new Map<string, string | null>();
   /** 终端退出的时刻（毫秒）；此后没有活的上报，节点就当进程已死（S8）。 */
   private readonly exitedAt = new Map<string, number>();
 
@@ -115,6 +124,24 @@ export class TriggerRules {
         });
         const previous = this.lastNeed.get(nodeId) ?? null;
         this.lastNeed.set(nodeId, need);
+        // 看门狗的判定随状态帧来（契约 §91）：同一个判定只在进入时推一次，
+        // 帧上的标记消失（节点有了新进展）后再进入才会再推。只读判定的枚举值，
+        // 不读帧上的其它文本。
+        const stalled = STALL_VARIANTS.has(str(status.stalled) ?? "")
+          ? (str(status.stalled) as StallKind)
+          : null;
+        const previousStalled = this.lastStalled.get(nodeId) ?? null;
+        this.lastStalled.set(nodeId, stalled);
+        if (stalled !== null && stalled !== previousStalled) {
+          return {
+            kind: "stalled",
+            workspaceId,
+            nodeId,
+            agentId: str(status.agentId),
+            ...(stalled === "stalled" ? {} : { variant: stalled }),
+            tag: `stalled:${nodeId}`,
+          };
+        }
         // 重启后恢复出来的行不是一次新的请求。
         if (status.restored === true || previous === need) return undefined;
         const kind = AGENT_NEED_KIND[need ?? ""];
@@ -231,6 +258,7 @@ export class TriggerRules {
   /** 节点删了、工作空间没了：状态记录跟着丢，不让这张表只长不缩。 */
   forget(nodeId: string): void {
     this.lastNeed.delete(nodeId);
+    this.lastStalled.delete(nodeId);
     this.exitedAt.delete(nodeId);
   }
 }
@@ -239,13 +267,21 @@ export class TriggerRules {
 
 type Locale = "zh-CN" | "en";
 
-type BodyKey = PushKind | "scheduleFailed" | "scheduleAttention";
+type BodyKey =
+  | PushKind
+  | "scheduleFailed"
+  | "scheduleAttention"
+  | "stalledIdleWaiting"
+  | "stalledNeedsHuman";
 
 const BODIES: Record<Locale, Record<BodyKey, string>> = {
   "zh-CN": {
     approval: "{agent} 等待审批",
     agentDone: "{agent} 已完成",
     agentWaiting: "{agent} 在等你回答",
+    stalled: "{agent} 很久没有进展",
+    stalledIdleWaiting: "{agent} 已空闲，任务还没有结论",
+    stalledNeedsHuman: "{agent} 等你处理已经很久",
     agentError: "{agent} 出错了",
     deliveryFailed: "有一条投递没有送达",
     schedule: "定时任务到点了",
@@ -261,6 +297,9 @@ const BODIES: Record<Locale, Record<BodyKey, string>> = {
     approval: "{agent} is waiting for approval",
     agentDone: "{agent} finished",
     agentWaiting: "{agent} is waiting for your answer",
+    stalled: "{agent} has made no progress for a while",
+    stalledIdleWaiting: "{agent} is idle and its task has no conclusion",
+    stalledNeedsHuman: "{agent} has been waiting for you for a while",
     agentError: "{agent} hit an error",
     deliveryFailed: "A delivery was not accepted",
     schedule: "A scheduled task is due",
@@ -319,7 +358,11 @@ export function render(
       ? "scheduleFailed"
       : draft.kind === "schedule" && draft.variant === "attention"
         ? "scheduleAttention"
-        : draft.kind;
+        : draft.kind === "stalled" && draft.variant === "idleWaiting"
+          ? "stalledIdleWaiting"
+          : draft.kind === "stalled" && draft.variant === "needsHuman"
+            ? "stalledNeedsHuman"
+            : draft.kind;
   const body = BODIES[language][key].replace("{agent}", names.agent(draft));
   return {
     v: 1,

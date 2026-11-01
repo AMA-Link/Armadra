@@ -76,6 +76,21 @@ const EVENTS: readonly [string, EventFrame, string][] = [
     "agentWaiting",
   ],
   [
+    "看门狗：停滞",
+    {
+      type: "agent.status",
+      status: {
+        nodeId: "n7",
+        agentId: "codex",
+        state: "working",
+        stalled: "stalled",
+        restored: true,
+        lastMessage: "TERMINAL-OUTPUT-SECRET",
+      },
+    },
+    "stalled",
+  ],
+  [
     "Agent 出错",
     {
       type: "agent.status",
@@ -288,6 +303,59 @@ describe("同一套「需要人处理」规则（契约 §81）", () => {
     expect(rules.draft("w1", status({ state: "waiting" }))?.kind).toBe(
       "agentWaiting",
     );
+  });
+});
+
+describe("看门狗的判定（契约 §91）", () => {
+  const status = (fields: Record<string, unknown>) => ({
+    type: "agent.status",
+    status: { nodeId: "n1", agentId: "codex", ...fields },
+  });
+
+  it("进入某个判定时推一次，标记还挂着的后续帧不再推；标记消失后再进入再推", () => {
+    const rules = new TriggerRules();
+    expect(rules.draft("w1", status({ state: "working" }))).toBeUndefined();
+    const first = rules.draft(
+      "w1",
+      status({ state: "working", stalled: "stalled" }),
+    );
+    expect(first).toMatchObject({ kind: "stalled", nodeId: "n1" });
+    expect(first?.variant).toBeUndefined();
+    expect(
+      rules.draft("w1", status({ state: "working", stalled: "stalled" })),
+    ).toBeUndefined();
+    expect(rules.draft("w1", status({ state: "working" }))).toBeUndefined();
+    expect(
+      rules.draft("w1", status({ state: "working", stalled: "stalled" })),
+    ).toMatchObject({ kind: "stalled" });
+  });
+
+  it("换了一种判定算新的一条，正文按判定分，不带终端原文", () => {
+    const rules = new TriggerRules();
+    rules.draft("w1", status({ state: "working", stalled: "stalled" }));
+    const draft = rules.draft(
+      "w1",
+      status({ state: "done", stalled: "idleWaiting", lastMessage: "SECRET" }),
+    );
+    expect(draft).toMatchObject({ kind: "stalled", variant: "idleWaiting" });
+    const names = { workspace: "支付服务", agent: () => "Codex" };
+    const zh = render(draft as NonNullable<typeof draft>, "zh-CN", names);
+    expect(zh.body).toBe("Codex 已空闲，任务还没有结论");
+    expect(JSON.stringify(zh)).not.toContain("SECRET");
+    const human = rules.draft(
+      "w1",
+      status({ state: "blocked", stalled: "needsHuman" }),
+    );
+    expect(render(human as NonNullable<typeof human>, "en", names).body).toBe(
+      "Codex has been waiting for you for a while",
+    );
+  });
+
+  it("不认识的标记值不推", () => {
+    const rules = new TriggerRules();
+    expect(
+      rules.draft("w1", status({ state: "working", stalled: "weird" })),
+    ).toBeUndefined();
   });
 });
 
