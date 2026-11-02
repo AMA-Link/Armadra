@@ -54,6 +54,7 @@ import { createServer, request as httpRequest } from "node:http";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { isolatedEnv, probeHome } from "./probe-home.mjs";
+import { TIMED_OUT, boundedRun } from "./bounded-run.mjs";
 import { harness } from "./shell-e2e-lib.mjs";
 
 const root = fileURLToPath(new URL("../../", import.meta.url));
@@ -178,26 +179,28 @@ async function startCore(dataDir) {
   return `http://${address}`;
 }
 
-/** 跑一个命令，输出落进 <输出目录>/<name>.log，返回退出码。 */
+/** 单条命令的默认上限；慢的（Gradle 构建）与快的（adb）各自传 `timeoutMs`。 */
+const DEFAULT_TIMEOUT_MS = 20 * 60_000;
+
+/**
+ * 跑一个命令，输出边收边落进 <输出目录>/<name>.log，控制台每分钟一行心跳，返回退出码。
+ * 超过 `timeoutMs` 先调 `onTimeout` 抓现场、再杀掉整个进程组，返回 TIMED_OUT（#746：以前这里
+ * 没有上限，卡住的 Gradle 把作业拖到 90 分钟被取消，既没有现场也没有失败报告）。
+ */
 function run(name, command, commandArgs, options = {}) {
-  return new Promise((done) => {
-    const log = join(output, `${name}.log`);
-    const chunks = [];
-    const child = spawn(command, commandArgs, {
-      ...options,
-      stdio: ["ignore", "pipe", "pipe"],
-    });
-    child.stdout.on("data", (chunk) => chunks.push(chunk));
-    child.stderr.on("data", (chunk) => chunks.push(chunk));
-    child.on("error", (error) => {
-      chunks.push(Buffer.from(String(error)));
-      writeFileSync(log, Buffer.concat(chunks));
-      done(-1);
-    });
-    child.on("exit", (code) => {
-      writeFileSync(log, Buffer.concat(chunks));
-      done(code ?? -1);
-    });
+  const {
+    timeoutMs = DEFAULT_TIMEOUT_MS,
+    onTimeout,
+    ...spawnOptions
+  } = options;
+  return boundedRun({
+    name,
+    command,
+    args: commandArgs,
+    log: join(output, `${name}.log`),
+    timeoutMs,
+    onTimeout,
+    options: spawnOptions,
   });
 }
 
@@ -436,12 +439,91 @@ async function settleGms() {
   }
 }
 
+/** adb 与宿主命令的现场抓取各自的上限；现场抓不到也不能把探针再卡住。 */
+const SNAPSHOT_STEP_MS = 30_000;
+
+/**
+ * 插桩用例超时时抓的现场（#746）：设备在不在、前台是谁（系统弹的「无响应」对话框会盖住被测
+ * 应用）、被测进程还在不在、整段 logcat 与一张截图，以及宿主上 Gradle 各 JVM 的线程栈
+ * （看是客户端在等设备，还是守护进程里的哪个线程）。每一项独立，任何一项失败只记一行。
+ */
+function snapshotAndroid(tag) {
+  const save = (file, text) =>
+    writeFileSync(join(output, `${tag}-${file}`), text ?? "");
+  const text = (command, commandArgs) => {
+    const done = spawnSync(command, commandArgs, {
+      encoding: "utf8",
+      timeout: SNAPSHOT_STEP_MS,
+      maxBuffer: 64 * 1024 * 1024,
+    });
+    return `$ ${command} ${commandArgs.join(" ")}\n${done.stdout ?? ""}${done.stderr ?? ""}${done.error ? `\n（${done.error.message}）` : ""}\n`;
+  };
+  const device = (shell) => text("adb", ["shell", shell]);
+  try {
+    save(
+      "device.log",
+      [
+        text("adb", ["devices", "-l"]),
+        device("getprop sys.boot_completed; getprop ro.build.fingerprint"),
+        device(
+          "dumpsys window | grep -E 'mCurrentFocus|mFocusedApp|isKeyguardShowing'",
+        ),
+        device(
+          "dumpsys activity activities | grep -E 'ResumedActivity|topResumedActivity'",
+        ),
+        device("ps -A | grep -E 'armadra|instrument|gms|systemui'"),
+        device("dumpsys meminfo | head -n 30"),
+        device(
+          "dumpsys activity processes | grep -E 'ANR|not responding' | head -n 20",
+        ),
+      ].join("\n"),
+    );
+    save(
+      "logcat-full.log",
+      text("adb", ["logcat", "-d", "-t", "4000", "-v", "threadtime"]),
+    );
+    const shot = spawnSync("adb", ["exec-out", "screencap", "-p"], {
+      timeout: SNAPSHOT_STEP_MS,
+      maxBuffer: 64 * 1024 * 1024,
+    });
+    if (shot.status === 0 && shot.stdout?.length)
+      writeFileSync(join(output, `${tag}-screen.png`), shot.stdout);
+    const host = [text("ps", ["-eo", "pid,etime,args"])];
+    const jps = spawnSync("jps", ["-l"], {
+      encoding: "utf8",
+      timeout: SNAPSHOT_STEP_MS,
+    });
+    host.push(`$ jps -l\n${jps.stdout ?? ""}`);
+    for (const line of (jps.stdout ?? "").split("\n")) {
+      const pid = line.split(" ")[0];
+      if (/^\d+$/.test(pid) && /gradle/i.test(line))
+        host.push(text("jstack", [pid]));
+    }
+    save("host.log", host.join("\n"));
+    step(
+      "超时现场",
+      `${tag}-device.log、${tag}-logcat-full.log、${tag}-screen.png、${tag}-host.log`,
+    );
+  } catch (error) {
+    console.error(`  FAIL  抓现场出错：${error}`);
+  }
+}
+
+/** 一次 Gradle 插桩（或构建）跑的最长时间；正常 1 到 3 分钟，留足冷启动余量。 */
+const GRADLE_BUILD_TIMEOUT_MS = 15 * 60_000;
+const GRADLE_CONNECTED_TIMEOUT_MS = 12 * 60_000;
+/** 插桩里单条用例的上限（AndroidJUnitRunner 的 timeout_msec）：卡在某个等待点的用例到点就报错，不拖着整次运行。 */
+const TEST_TIMEOUT_MS = 4 * 60_000;
+
+const timedOutNote = (code) => (code === TIMED_OUT ? "，超时被杀" : "");
+
 async function android(mint, port, assetUrl) {
-  const reversed = await run("adb-reverse", "adb", [
-    "reverse",
-    `tcp:${port}`,
-    `tcp:${port}`,
-  ]);
+  const reversed = await run(
+    "adb-reverse",
+    "adb",
+    ["reverse", `tcp:${port}`, `tcp:${port}`],
+    { timeoutMs: 60_000 },
+  );
   check(reversed === 0, "adb reverse 把模拟器回环接到宿主", `tcp:${port}`);
   const gradlew = join(root, "apps/mobile/android/gradlew");
   const cwd = join(root, "apps/mobile/android");
@@ -449,9 +531,13 @@ async function android(mint, port, assetUrl) {
     "gradle-build",
     gradlew,
     [":app:assembleDebug", ":app:assembleDebugAndroidTest", "--stacktrace"],
-    { cwd },
+    { cwd, timeoutMs: GRADLE_BUILD_TIMEOUT_MS },
   );
-  check(built === 0, "debug APK 与插桩 APK", `gradle exit ${built}`);
+  check(
+    built === 0,
+    "debug APK 与插桩 APK",
+    `gradle exit ${built}${timedOutNote(built)}`,
+  );
   if (built !== 0) return;
   // 模拟器刚启动时 Google Play 服务常在自更新、重启（logcat：“forcing restart due to module”），
   // 连带杀掉同时起着的被测进程，插桩只报 “Process crashed”。先等它的进程号稳住，崩了再来一次（夜间 #372）。
@@ -468,11 +554,17 @@ async function android(mint, port, assetUrl) {
         ":app:connectedDebugAndroidTest",
         `-Pandroid.testInstrumentationRunnerArguments.armadraPairLink=${link}`,
         `-Pandroid.testInstrumentationRunnerArguments.armadraAssetUrl=${assetUrl}`,
+        `-Pandroid.testInstrumentationRunnerArguments.timeout_msec=${TEST_TIMEOUT_MS}`,
         "--stacktrace",
       ],
-      { cwd },
+      {
+        cwd,
+        timeoutMs: GRADLE_CONNECTED_TIMEOUT_MS,
+        onTimeout: () => snapshotAndroid(name),
+      },
     );
-    if (code === 0) break;
+    // 超时是卡住，不是进程被杀：重跑只会再卡一轮，直接带着现场失败。
+    if (code === 0 || code === TIMED_OUT) break;
     const crashed = readFileSync(join(output, `${name}.log`), "utf8").includes(
       "Process crashed",
     );
@@ -481,21 +573,26 @@ async function android(mint, port, assetUrl) {
     await settleGms();
   }
   // 失败时最有用的是 WebView 控制台与插件自己的几行（不含任何密钥）。
-  await run("logcat", "adb", [
+  await run(
     "logcat",
-    "-d",
-    "-s",
-    "ArmadraNative:*",
-    "chromium:*",
-    // 进程崩了时插桩只说「Process crashed」：栈在 AndroidRuntime 里。
-    "AndroidRuntime:E",
-    // 页面里的 console（只有错误与提示，不含密钥）。
-    "Capacitor/Console:*",
-  ]);
+    "adb",
+    [
+      "logcat",
+      "-d",
+      "-s",
+      "ArmadraNative:*",
+      "chromium:*",
+      // 进程崩了时插桩只说「Process crashed」：栈在 AndroidRuntime 里。
+      "AndroidRuntime:E",
+      // 页面里的 console（只有错误与提示，不含密钥）。
+      "Capacitor/Console:*",
+    ],
+    { timeoutMs: 2 * 60_000 },
+  );
   check(
     code === 0,
     "插桩用例：连接页 → 钉扎 → 配对 → 画布 → 两个连接重开落在选择服务 → 选它进画布 → 切换服务回选择页；图片带 Bearer；原生 OAuth 深链收尾",
-    `gradle exit ${code}`,
+    `gradle exit ${code}${timedOutNote(code)}`,
   );
 }
 
