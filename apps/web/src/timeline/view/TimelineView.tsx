@@ -139,7 +139,7 @@ export const TurnSection = React.memo(function TurnSection({
     <section
       data-slot="timeline-turn-section"
       data-turn={block.turn}
-      className="flex min-w-0 flex-col gap-1.5 px-3 pb-3"
+      className="flex min-w-0 flex-col gap-2 px-3 pb-4"
     >
       {view.entries.map((entry) => {
         if (entry.type === "group") {

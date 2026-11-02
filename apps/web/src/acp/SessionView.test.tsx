@@ -526,12 +526,16 @@ describe("SessionView", () => {
       item: toolItem(1, "t1", "pnpm test", "in_progress"),
     } as never);
     expect(await screen.findByText("pnpm test")).toBeTruthy();
-    expect(await screen.findByText("运行中")).toBeTruthy();
+    const toolStatus = () =>
+      document
+        .querySelector("[data-slot=timeline-tool]")
+        ?.getAttribute("data-status");
+    await waitFor(() => expect(toolStatus()).toBe("in_progress"));
     push({
       op: "put",
       item: toolItem(1, "t1", "pnpm test", "completed"),
     } as never);
-    expect(await screen.findByText("已完成")).toBeTruthy();
+    await waitFor(() => expect(toolStatus()).toBe("completed"));
 
     push(
       { op: "put", item: toolItem(1, "t2", "rm -rf dist", "pending") } as never,

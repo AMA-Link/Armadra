@@ -280,7 +280,7 @@ describe("ToolRow", () => {
   const row = (patch: Partial<TimelineToolItem> = {}) =>
     toolItem(1, "t1", patch);
 
-  it("draws kind icon, title, at most two location pills with +N, status and duration", () => {
+  it("draws kind icon, title, at most two file names with +N and duration, no pill when completed", () => {
     render(
       <ToolRow
         item={row({
@@ -300,9 +300,23 @@ describe("ToolRow", () => {
     expect(screen.queryByText("c.ts")).toBeNull();
     expect(screen.getByText("+2")).toBeTruthy();
     expect(screen.getByText("1.2 s")).toBeTruthy();
-    const pill = document.querySelector("[data-slot=status-pill]");
-    expect(pill?.getAttribute("data-tone")).toBe("done");
-    expect(pill?.textContent).toBe("已完成");
+    // 完成了就不挂状态字，图标位已经说明了。
+    expect(document.querySelector("[data-slot=status-pill]")).toBeNull();
+  });
+
+  it("does not repeat a file name the title already shows", () => {
+    render(
+      <ToolRow
+        item={row({
+          title: "Write note.txt",
+          locations: [{ path: "/repo/note.txt" }, { path: "/repo/other.ts" }],
+        })}
+      />,
+    );
+    const names = [
+      ...document.querySelectorAll("[data-slot=timeline-tool-location]"),
+    ].map((node) => node.textContent);
+    expect(names).toEqual(["other.ts"]);
   });
 
   it("expands the locations hidden behind +N in the body", () => {
@@ -328,11 +342,11 @@ describe("ToolRow", () => {
     ).toEqual(["/repo/c.ts:7", "/repo/d.ts"]);
   });
 
-  it("maps every status to a tone", () => {
+  it("spells out only the statuses the icon cannot: waiting, failed, cancelled", () => {
     const tones = {
       pending: "queued",
-      in_progress: "working",
-      completed: "done",
+      in_progress: null,
+      completed: null,
       failed: "failed",
       cancelled: "paused",
     } as const;
@@ -345,10 +359,43 @@ describe("ToolRow", () => {
       expect(
         document
           .querySelector("[data-slot=status-pill]")
-          ?.getAttribute("data-tone"),
+          ?.getAttribute("data-tone") ?? null,
       ).toBe(tone);
       unmount();
     }
+  });
+
+  it("leaves the failure to the approval outcome when a person rejected the call", () => {
+    const approval = (optionId: string) => ({
+      id: "ap1",
+      kind: "approval" as const,
+      turn: 1,
+      ord: 1,
+      rev: 1,
+      source: "acp" as const,
+      at: 1,
+      gen: 1,
+      pendingId: "p1",
+      protocol: "acp",
+      toolCallId: "t1",
+      options: [
+        { optionId: "ok", name: "Allow", kind: "allow_once" as const },
+        { optionId: "no", name: "Reject", kind: "reject_once" as const },
+      ],
+      state: "answered" as const,
+      answer: { optionId },
+    });
+    const pill = () => document.querySelector("[data-slot=status-pill]");
+    const { unmount } = render(
+      <ToolRow item={row({ status: "failed" })} approval={approval("no")} />,
+    );
+    expect(pill()).toBeNull();
+    unmount();
+    // 允许了还失败：照样标「失败」。
+    render(
+      <ToolRow item={row({ status: "failed" })} approval={approval("ok")} />,
+    );
+    expect(pill()?.getAttribute("data-tone")).toBe("failed");
   });
 
   it("renders structured input, not raw JSON", () => {
@@ -751,13 +798,29 @@ describe("ToolRow 界面（设计系统 §5.1）", () => {
   const row = (patch: Partial<TimelineToolItem> = {}) =>
     toolItem(1, "t1", patch);
 
-  it("is a 28px row with a monospace tool name", () => {
-    render(<ToolRow item={row({ title: "pnpm test" })} />);
+  it("is a 28px row; only commands get the monospace name", () => {
+    const { unmount } = render(
+      <ToolRow item={row({ title: "pnpm test", toolKind: "execute" })} />,
+    );
     const button = screen.getByRole("button");
     expect(button.getAttribute("data-size")).toBe("sm");
     const name = screen.getByText("pnpm test");
     expect(name.className).toContain("font-mono");
     expect(name.className).toContain("text-meta");
+    unmount();
+    render(<ToolRow item={row({ title: "Read config", toolKind: "read" })} />);
+    expect(screen.getByText("Read config").className).not.toContain(
+      "font-mono",
+    );
+  });
+
+  it("puts the expanded body behind a guide line", () => {
+    render(
+      <ToolRow item={row({ input: { command: "ls" }, toolKind: "execute" })} />,
+    );
+    fireEvent.click(screen.getByRole("button"));
+    const body = document.querySelector("[data-slot=timeline-tool-body]");
+    expect(body?.className).toContain("border-l");
   });
 
   it("shimmers the name and spins only while running", () => {

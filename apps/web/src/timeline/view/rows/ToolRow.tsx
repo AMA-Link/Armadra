@@ -3,7 +3,6 @@ import {
   ArrowLeftRight,
   Bot,
   Brain,
-  ChevronDown,
   ChevronRight,
   FileText,
   Globe,
@@ -26,7 +25,7 @@ import { TOOL_STATUS_TONES } from "@/agent/display";
 import { useT } from "@/app/preferences-store";
 import { DiffCounts, diffStat } from "@/acp/DiffBlock";
 import { basename } from "@/files/file-operations";
-import { Badge } from "@/ui/badge";
+import { cn } from "@/lib/cn";
 import { Button } from "@/ui/button";
 import {
   Collapsible,
@@ -126,6 +125,7 @@ function LeadIcon({
         className={flash === "done" ? "text-success-text" : "text-danger-text"}
       />
     );
+  if (status === "failed") return <Icon className="text-danger-text" />;
   return <Icon className="text-muted-foreground" />;
 }
 
@@ -172,6 +172,24 @@ function ToolRowImpl({ item, nested, approval, renderApproval }: ToolRowProps) {
     item.content.length > 0 ||
     (nested?.length ?? 0) > 0 ||
     rest > 0;
+  // 已完成、进行中不挂状态字：图标位已经说明了；只有等待、失败、取消要读得出来。
+  // 被人拒了的调用：审批的结局行已经写了「已拒绝」，工具行不再叠一枚「失败」。
+  const rejected =
+    approval !== undefined &&
+    approval.state === "answered" &&
+    approval.options
+      .find((option) => option.optionId === approval.answer?.optionId)
+      ?.kind.startsWith("reject") === true;
+  const statusText =
+    item.status === "pending" ||
+    (item.status === "failed" && !rejected) ||
+    item.status === "cancelled";
+  // 标题里已经有文件名的，不再重复一枚。
+  const title = item.title;
+  const shownNames = shown.filter((location) => {
+    const name = basename(location.path) || location.path;
+    return !title.includes(name);
+  });
   return (
     <div
       data-slot="timeline-tool"
@@ -184,43 +202,40 @@ function ToolRowImpl({ item, nested, approval, renderApproval }: ToolRowProps) {
             variant="ghost"
             size="sm"
             disabled={!hasBody}
-            className="w-full min-w-0 justify-start gap-1.5 px-2 font-normal disabled:opacity-100"
-          >
-            {open ? (
-              <ChevronDown className="text-muted-foreground" />
-            ) : (
-              <ChevronRight className="text-muted-foreground" />
+            className={cn(
+              "group/tool w-full min-w-0 justify-start gap-1.5 px-2 font-normal aria-expanded:bg-transparent aria-expanded:hover:bg-hover disabled:opacity-100",
+              item.status === "completed" &&
+                "text-muted-foreground hover:text-foreground",
             )}
+          >
             <LeadIcon Icon={Icon} status={item.status} />
             <Shimmer
               active={item.status === "in_progress"}
-              className="min-w-0 truncate font-mono text-meta"
+              className={cn(
+                "min-w-0 truncate text-meta",
+                item.toolKind === "execute" && "font-mono",
+              )}
             >
-              {item.title}
+              {title}
             </Shimmer>
-            {shown.map((location, index) => (
-              <Badge
+            {shownNames.map((location, index) => (
+              <span
                 key={index}
-                variant="outline"
-                size="sm"
                 title={location.path}
-                className="max-w-28 min-w-0 shrink font-mono"
+                data-slot="timeline-tool-location"
+                className="max-w-32 min-w-0 shrink truncate font-mono text-caption text-muted-foreground"
               >
-                <span className="truncate">
-                  {basename(location.path) || location.path}
-                  {location.line ? `:${location.line}` : ""}
-                </span>
-              </Badge>
+                {basename(location.path) || location.path}
+                {location.line ? `:${location.line}` : ""}
+              </span>
             ))}
             {rest > 0 && (
-              <Badge
-                variant="outline"
-                size="sm"
+              <span
                 title={hidden.map((location) => location.path).join("\n")}
-                className="shrink-0"
+                className="shrink-0 font-mono text-caption text-muted-foreground"
               >
                 {t("timeline.tool.more", { count: rest })}
-              </Badge>
+              </span>
             )}
             {stat !== null && (
               <DiffCounts
@@ -237,15 +252,27 @@ function ToolRowImpl({ item, nested, approval, renderApproval }: ToolRowProps) {
                   {duration}
                 </span>
               )}
-              <StatusPill
-                tone={TOOL_STATUS_TONES[item.status]}
-                label={t(`timeline.tool.status.${item.status}`)}
-              />
+              {statusText && (
+                <StatusPill
+                  tone={TOOL_STATUS_TONES[item.status]}
+                  label={t(`timeline.tool.status.${item.status}`)}
+                />
+              )}
+              {hasBody && (
+                <ChevronRight
+                  aria-hidden
+                  data-open={open || undefined}
+                  className="text-muted-foreground opacity-0 transition-[opacity,rotate] duration-(--dur-fast) group-hover/tool:opacity-100 group-focus-visible/tool:opacity-100 data-open:rotate-90 data-open:opacity-100"
+                />
+              )}
             </span>
           </Button>
         </CollapsibleTrigger>
         {hasBody && (
-          <CollapsibleContent className="flex flex-col gap-1.5 py-1 pr-1 pl-7">
+          <CollapsibleContent
+            data-slot="timeline-tool-body"
+            className="ml-3.5 flex flex-col gap-1.5 border-l border-border py-1.5 pr-1 pl-3"
+          >
             {rest > 0 && (
               <ul
                 data-slot="timeline-tool-locations"
