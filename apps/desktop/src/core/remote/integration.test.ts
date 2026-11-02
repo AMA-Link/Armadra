@@ -340,7 +340,10 @@ process.stdout.write(JSON.stringify({
       // 之后经同一个 socket 的请求照样到达控制端。
       remote.close();
       let answered: number | undefined;
-      const deadline = Date.now() + 15_000;
+      // 轮询的是「重连完成」这件事，没有可订阅的事件；上界只在挂住时才用到。每次
+      // 探测自己带超时：中继半开时（接受了连接却不应答）一次探测可能永远不返回，
+      // 没有这个上界，一次挂住的探测就吃掉整条用例的预算。
+      const deadline = Date.now() + 40_000;
       while (answered !== 204 && Date.now() < deadline) {
         answered = await new Promise<number | undefined>((resolve) => {
           const probe = httpRequest(
@@ -350,6 +353,10 @@ process.stdout.write(JSON.stringify({
               resolve(response.statusCode);
             },
           );
+          probe.setTimeout(3_000, () => {
+            probe.destroy();
+            resolve(undefined);
+          });
           probe.on("error", () => resolve(undefined));
           probe.end();
         });
