@@ -34,6 +34,7 @@ export const shell: MessageModule = {
     "notify.error.body": "回合以错误结束。",
 
     "tab.close": "关闭",
+    "toast.close": "关闭提示",
 
     "tree.menu": "工作空间菜单",
     "tree.delete": "删除",
@@ -147,6 +148,7 @@ export const shell: MessageModule = {
     "notify.error.body": "The turn ended with an error.",
 
     "tab.close": "Close",
+    "toast.close": "Dismiss notification",
 
     "tree.menu": "Workspace menu",
     "tree.delete": "Delete",
