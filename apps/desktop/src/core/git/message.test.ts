@@ -28,6 +28,14 @@ import {
 
 afterAll(cleanupFixtures);
 
+/**
+ * The deadline handed to the stand-in CLI below. It is a kill switch for a
+ * hung child, not an expectation: the script answers and exits at once, so a
+ * generous value costs nothing when it works. A tight one (5-10 s) is what a
+ * loaded machine, whose `sh` start-up alone can take seconds, would trip over.
+ */
+const STAND_IN_CLI_DEADLINE_MS = 60_000;
+
 /** A CLI that answers `--help` with the flags the provider check requires. */
 function fakeClaude(name: string, result: string): string {
   const directory = temporaryDirectory(name);
@@ -186,7 +194,7 @@ describe("the provider", () => {
         binary,
         key: undefined,
         endpointSupported: true,
-        timeoutMs: 5_000,
+        timeoutMs: STAND_IN_CLI_DEADLINE_MS,
       });
       expect(noKey?.reason).toBe("missingCredentials");
 
@@ -194,7 +202,7 @@ describe("the provider", () => {
         binary,
         key: "private-key",
         endpointSupported: false,
-        timeoutMs: 5_000,
+        timeoutMs: STAND_IN_CLI_DEADLINE_MS,
       });
       expect(redirected?.reason).toBe("unsupportedEndpoint");
 
@@ -202,7 +210,7 @@ describe("the provider", () => {
         binary,
         key: "private-key",
         endpointSupported: true,
-        timeoutMs: 5_000,
+        timeoutMs: STAND_IN_CLI_DEADLINE_MS,
       });
       expect(ready?.available).toBe(true);
       expect(ready?.reason).toBeNull();
@@ -296,7 +304,7 @@ describe("the provider", () => {
           binary,
           key: "private-key",
           endpointSupported: true,
-          timeoutMs: 10_000,
+          timeoutMs: STAND_IN_CLI_DEADLINE_MS,
         },
       );
       expect(draft.message).toBe("feat: add one");

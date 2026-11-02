@@ -1,4 +1,4 @@
-import { spawnSync } from "node:child_process";
+import { spawnSync, type SpawnSyncReturns } from "node:child_process";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -49,19 +49,45 @@ export function temporaryDirectory(name: string): string {
 
 export function cleanupFixtures(): void {
   for (const root of roots.splice(0)) {
-    rmSync(root, { recursive: true, force: true });
+    rmSync(root, {
+      recursive: true,
+      force: true,
+      maxRetries: 10,
+      retryDelay: 100,
+    });
   }
 }
 
+/**
+ * A `git` that did not even get to run, or lost a race with the machine: the
+ * spawn itself failed, or Windows reported a file in the fresh directory busy
+ * (an indexer or antivirus holding it for a moment). Those are retried; a git
+ * that ran and said no is not.
+ */
+function transient(result: SpawnSyncReturns<string>): boolean {
+  if (result.error !== undefined)
+    return (result.error as NodeJS.ErrnoException).code !== "ENOENT";
+  if (result.status === 0) return false;
+  return /Permission denied|could not lock|Unable to create|Device or resource busy|being used by another process/i.test(
+    result.stderr ?? "",
+  );
+}
+
 export function run(cwd: string, ...args: string[]): string {
-  const result = spawnSync("git", args, {
-    cwd,
-    env: { ...process.env, ...ENVIRONMENT },
-    encoding: "utf8",
-  });
+  let result: SpawnSyncReturns<string>;
+  for (let attempt = 1; ; attempt += 1) {
+    result = spawnSync("git", args, {
+      cwd,
+      env: { ...process.env, ...ENVIRONMENT },
+      encoding: "utf8",
+    });
+    if (!transient(result) || attempt >= 3) break;
+    // Synchronous on purpose: the fixtures are synchronous too.
+    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 200 * attempt);
+  }
   if (result.status !== 0) {
     throw new Error(
-      `git ${args.join(" ")} failed in ${cwd}: ${result.stderr}${result.stdout}`,
+      `git ${args.join(" ")} failed in ${cwd}: ${result.error?.message ?? ""}${result.stderr}${result.stdout}`,
     );
   }
   return result.stdout;
