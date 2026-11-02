@@ -44,7 +44,9 @@ async function start() {
 
 describe("elicitation/complete", () => {
   it("is only wired when the client says it can take the callback", () => {
-    expect(acpClientFeatures().elicitationComplete).toBe(false);
+    // 随包 `@armadra/agent` 0.12.0 的真客户端自报了这个能力；旧客户端没有。
+    expect(acpClientFeatures().elicitationComplete).toBe(true);
+    expect(acpClientFeatures({ features: {} }).elicitationComplete).toBe(false);
     expect(
       acpClientFeatures({ features: { elicitationComplete: true } })
         .elicitationComplete,
