@@ -9,7 +9,11 @@ import { executionHostLabel } from "./MachinesPage";
 import { WorkspaceExecution } from "./WorkspaceExecution";
 import { LanguageServicePanel } from "./LanguageServicePanel";
 import { useAgentsQuery } from "../../../app/use-agents";
-import { useT } from "../../../app/preferences-store";
+import {
+  agentChoices,
+  usePreferencesStore,
+  useT,
+} from "../../../app/preferences-store";
 import { useCanvasStore } from "../../../store/canvas-store";
 import { SettingsGroup } from "../SettingsGroup";
 import { SettingsPageHeader } from "../SettingsPageHeader";
@@ -54,6 +58,8 @@ export function WorkspacePage() {
     ? settings.data?.workspaces?.[workspaceId]
     : undefined;
   const defaultAgent = section?.defaultAgent ?? INHERIT;
+  const modes = usePreferencesStore((state) => state.agentModes);
+  const choices = agentChoices(agents.data ?? [], modes, section?.defaultAgent);
 
   if (!workspace || !workspaceId) {
     return (
@@ -124,7 +130,7 @@ export function WorkspacePage() {
           <SettingsRow label={t("settings.workspaceDefaultAgent")}>
             <Select
               value={defaultAgent}
-              disabled={!settings.data}
+              disabled={!settings.data || !agents.data}
               onValueChange={(value) =>
                 save.mutate({
                   workspaces: {
@@ -147,9 +153,11 @@ export function WorkspacePage() {
                 <SelectItem value={INHERIT}>
                   {t("settings.defaultAgent.inherit")}
                 </SelectItem>
-                {(agents.data ?? []).map((agent) => (
+                {choices.map((agent) => (
                   <SelectItem key={agent.id} value={agent.id}>
-                    {agent.label}
+                    {agent.off
+                      ? t("settings.defaultAgent.off", { name: agent.label })
+                      : agent.label}
                   </SelectItem>
                 ))}
               </SelectContent>

@@ -189,6 +189,31 @@ export function agentIsEnabled(
   return installed;
 }
 
+/** 默认 Agent 下拉里的一项。`off`：这家已被关闭，只因它是当前值才保留。 */
+export interface AgentChoice {
+  id: string;
+  label: string;
+  off: boolean;
+}
+
+/**
+ * 默认 Agent 下拉该列哪些家：只列启用的（与新建菜单同一规则）；当前值即使被关掉也
+ * 留一项并标 `off`，否则下拉会空白、看不出现在存的是谁。
+ */
+export function agentChoices(
+  agents: readonly { id: string; label: string; installed: boolean }[],
+  modes: Readonly<Record<string, AgentMode>>,
+  currentId: string | null | undefined,
+): AgentChoice[] {
+  const choices: AgentChoice[] = [];
+  for (const agent of agents) {
+    const on = agentIsEnabled(modes[agent.id], agent.installed);
+    if (on || agent.id === currentId)
+      choices.push({ id: agent.id, label: agent.label, off: !on });
+  }
+  return choices;
+}
+
 /**
  * 开关拨到 `enabled` 时该写哪一态：装了的写回 `default`（继续跟随本机检测，将来卸载
  * 了菜单里会跟着消失），没装的写 `enabled`（配合自定义启动命令留在菜单里）；拨到

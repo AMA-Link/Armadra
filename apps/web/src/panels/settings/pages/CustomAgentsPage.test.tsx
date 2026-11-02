@@ -5,7 +5,7 @@ import { usePreferencesStore } from "../../../app/preferences-store";
 
 const runtime = vi.hoisted(() => ({
   custom: [] as unknown[],
-  detected: [] as unknown[],
+  detected: [] as unknown[] | undefined,
   mutate: vi.fn(),
 }));
 vi.mock("../../../api/client", () => ({ runtimeApi: {} }));
@@ -114,6 +114,24 @@ describe("设置 → 自定义 Agent", () => {
     });
     // 只改偏好：不写 Runtime 设置，自定义配置原样保留。
     expect(runtime.mutate).not.toHaveBeenCalled();
+  });
+
+  it("探测结果没到时开关不可点，点了也不写偏好（#734）", () => {
+    runtime.custom = [
+      {
+        id: "custom:abc",
+        label: "我的 Agent",
+        launchCmd: "my-agent",
+        args: [],
+        baseAgent: "claude",
+      },
+    ];
+    runtime.detected = undefined;
+    draw();
+    const toggle = screen.getByRole("switch", { name: "我的 Agent 启用" });
+    expect(toggle.hasAttribute("disabled")).toBe(true);
+    fireEvent.click(toggle);
+    expect(usePreferencesStore.getState().agentModes).toEqual({});
   });
 
   it("一条一行，点一行进编辑子页，删除放在子页页尾", () => {

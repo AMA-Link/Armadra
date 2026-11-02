@@ -1,5 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+} from "@testing-library/react";
 
 const access = vi.hoisted(() => ({ member: false, remote: false }));
 const settings = vi.hoisted(() => ({
@@ -7,6 +13,19 @@ const settings = vi.hoisted(() => ({
 }));
 const save = vi.hoisted(() => ({ mutate: vi.fn() }));
 const runtimeSettings = vi.hoisted(() => ({ calls: 0 }));
+const agentList = vi.hoisted(() => ({
+  data: undefined as unknown[] | undefined,
+}));
+const AGENTS = [
+  { id: "claude", label: "Claude Code", installed: true },
+  { id: "codex", label: "Codex", installed: true },
+  {
+    id: "custom:abc",
+    label: "My Claude",
+    installed: true,
+    baseAgent: "claude",
+  },
+];
 
 vi.mock("../../../app/use-access", () => ({
   useAccess: () => ({ member: access.member }),
@@ -22,10 +41,8 @@ vi.mock("../../../sources/context", () => ({
 }));
 vi.mock("../../../app/use-agents", () => ({
   useAgentsQuery: () => ({
-    data: [
-      { id: "claude", label: "Claude Code" },
-      { id: "codex", label: "Codex" },
-    ],
+    data: agentList.data,
+    isLoading: agentList.data === undefined,
   }),
 }));
 vi.mock("../use-runtime-settings", () => ({
@@ -36,6 +53,7 @@ vi.mock("../use-runtime-settings", () => ({
 }));
 
 import { installDomPolyfills, optionLabels } from "../../../app/test-harness";
+import { supportedPermissionModes } from "@armadra/shared";
 import { usePreferencesStore } from "../../../app/preferences-store";
 import { translate } from "../../../i18n";
 import { DefaultsPage } from "./DefaultsPage";
@@ -46,7 +64,13 @@ const zh = (key: string, values?: Record<string, string>) =>
   translate("zh-CN", key, values);
 
 beforeEach(() => {
-  usePreferencesStore.setState({ locale: "zh-CN" });
+  usePreferencesStore.setState({
+    locale: "zh-CN",
+    agentModes: {},
+    defaultAgentId: null,
+    defaultPermissionMode: "default",
+  });
+  agentList.data = AGENTS.slice(0, 2);
   access.member = false;
   access.remote = false;
   runtimeSettings.calls = 0;
@@ -153,5 +177,77 @@ describe("设置 → 默认：背景色板（#474）", () => {
     expect(
       screen.queryByRole("switch", { name: zh("settings.translucentWindow") }),
     ).toBeNull();
+  });
+});
+
+describe("设置 → 默认：默认 Agent 与权限模式（#734）", () => {
+  const nonDefaultMode = supportedPermissionModes("claude").find(
+    (mode) => mode !== "default",
+  )!;
+
+  function draw() {
+    return render(
+      <TooltipProvider>
+        <DefaultsPage />
+      </TooltipProvider>,
+    );
+  }
+
+  it("默认 Agent 是自定义 Agent：列表延迟返回，存着的权限模式不被重置", () => {
+    usePreferencesStore.setState({
+      defaultAgentId: "custom:abc",
+      defaultPermissionMode: nonDefaultMode,
+    });
+    agentList.data = undefined;
+    const view = draw();
+    expect(usePreferencesStore.getState().defaultPermissionMode).toBe(
+      nonDefaultMode,
+    );
+    // 列表到了：自定义 Agent 认得出基础 Agent，仍然不变。
+    agentList.data = AGENTS;
+    act(() =>
+      view.rerender(
+        <TooltipProvider>
+          <DefaultsPage />
+        </TooltipProvider>,
+      ),
+    );
+    expect(usePreferencesStore.getState().defaultPermissionMode).toBe(
+      nonDefaultMode,
+    );
+  });
+
+  it("没有列表时两个下拉不可点", () => {
+    agentList.data = undefined;
+    draw();
+    for (const key of ["settings.defaultAgent", "settings.defaultPermission"]) {
+      const trigger = document.querySelector(`[aria-label="${zh(key)}"]`);
+      // 加载中画骨架，没有下拉；列表失败时下拉在但不可点。
+      if (trigger) expect(trigger.hasAttribute("disabled")).toBe(true);
+    }
+  });
+
+  it("关掉的 Agent 不出现在默认 Agent 下拉里", async () => {
+    usePreferencesStore.setState({ agentModes: { codex: "disabled" } });
+    draw();
+    const labels = await optionLabels(
+      screen.getByRole("combobox", { name: zh("settings.defaultAgent") }),
+    );
+    expect(labels).toEqual(["Claude Code"]);
+  });
+
+  it("当前默认值被关掉：保留一项并标注已关闭", async () => {
+    usePreferencesStore.setState({
+      agentModes: { codex: "disabled" },
+      defaultAgentId: "codex",
+    });
+    draw();
+    const labels = await optionLabels(
+      screen.getByRole("combobox", { name: zh("settings.defaultAgent") }),
+    );
+    expect(labels).toEqual([
+      "Claude Code",
+      zh("settings.defaultAgent.off", { name: "Codex" }),
+    ]);
   });
 });
