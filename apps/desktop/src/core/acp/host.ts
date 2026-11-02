@@ -23,7 +23,11 @@
  */
 
 import { RPC_ERRORS, RpcError } from "@armadra/agent/acp";
-import type { AgentRole, TimelineConfigOption } from "@armadra/shared";
+import {
+  type AgentRole,
+  type TimelineConfigOption,
+  acpReportsPermissionModes,
+} from "@armadra/shared";
 
 import type { PermissionMode } from "../agent/launch";
 import { launchTargetOf, resolveCommand } from "../agent/registry";
@@ -33,6 +37,7 @@ import {
   hookDirectoryOf,
 } from "../terminal/environment";
 import { type AcpAdapter, type AcpResume, acpLaunchPlan } from "./adapters";
+import { checkCliFloor } from "./cli-floor";
 import { type CanvasMcpInput, acpMcpServers, sessionOpener } from "./mcp";
 import {
   type AcpElicitationSettlement,
@@ -566,12 +571,12 @@ export async function startAcp(
                 touchReplay = touch;
               },
             );
-            modes = result.modes ?? null;
+            modes = reportedModes(options.agentId, result.modes);
             config = configOptionsOf(result);
             opened = "load";
           } else {
             const result = await opener.resumeSession(id, options.cwd);
-            modes = result.modes ?? null;
+            modes = reportedModes(options.agentId, result.modes);
             config = configOptionsOf(result);
             opened = "resume";
           }
@@ -595,7 +600,7 @@ export async function startAcp(
           options.sessionTimeoutMs ?? SESSION_NEW_TIMEOUT_MS,
         );
         sessionId = result.sessionId;
-        modes = result.modes ?? null;
+        modes = reportedModes(options.agentId, result.modes);
         config = configOptionsOf(result);
       } catch (error) {
         if (error instanceof AcpError) throw error;
@@ -959,6 +964,18 @@ function exitedError(process_: AcpProcess): AcpError {
   return new AcpError("acp_exited", `the ACP agent ${how} during start`);
 }
 
+/**
+ * `session/new|load|resume` 答复里的 `modes`：这家报的不是权限模式时（pi 把推理强度
+ * 放在里面，另以 `thought_level` 配置项给出）丢掉，免得模式选择器把它当权限模式画。
+ */
+function reportedModes(
+  agentId: string | undefined,
+  modes: AcpSessionModeState | null | undefined,
+): AcpSessionModeState | null {
+  if (agentId !== undefined && !acpReportsPermissionModes(agentId)) return null;
+  return modes ?? null;
+}
+
 function rpcCode(error: unknown): number | undefined {
   const code = (error as { code?: unknown } | null)?.code;
   return typeof code === "number" ? code : undefined;
@@ -989,12 +1006,22 @@ export interface AcpAdapterStart
  * 按适配器表起：在补齐过的 PATH 上找程序（与 `GET /api/agents` 同一条规则），
  * Windows 的 npm 包装（`.cmd`）换成它背后的 `node <cli.js>`，再 {@link startAcp}。
  */
-export function startAdapter(
+export async function startAdapter(
   adapter: AcpAdapter,
   options: AcpAdapterStart,
 ): Promise<AcpHostSession> {
   const plan = adapterStartOptions(adapter, options);
-  return plan instanceof AcpError ? Promise.reject(plan) : startAcp(plan);
+  if (plan instanceof AcpError) throw plan;
+  // CLI 本体低于适配器要求的版本：适配器会挂在 `session/new` 里到超时，不如起进程前
+  // 就说清楚。SSH 的 CLI 在别的机器上，预启动的进程已经起了，都不在本机核对。
+  if (options.transport === undefined && options.prestarted === undefined) {
+    const outdated = await checkCliFloor(
+      adapter.agentId,
+      options.env ?? process.env,
+    );
+    if (outdated !== undefined) throw outdated;
+  }
+  return startAcp(plan);
 }
 
 /**
