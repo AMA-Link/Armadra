@@ -16,7 +16,6 @@ import {
   countAgentStates,
   type AgentsTableRowData,
 } from "@/panels/settings/pages/AgentsPage";
-import { AgentModeSelect } from "@/panels/settings/pages/AgentDetailPage";
 import { ServiceKpis } from "@/panels/settings/pages/ServiceKpis";
 import { UsageKpis } from "@/panels/settings/pages/UsageKpis";
 import { SOURCES_QUERY_KEY } from "@/panels/settings/pages/remote-access/keys";
@@ -209,9 +208,7 @@ function AgentsSample() {
           <Button variant="secondary" size="xs">
             {t("agents.action.update")}
           </Button>
-        ) : (
-          <AgentModeSelect agent={agent} size="xs" />
-        ),
+        ) : null,
     };
   });
   const counts = countAgentStates(rows.map((row) => row.state));

@@ -15,7 +15,7 @@ import { SettingsKpi, SettingsKpiGrid } from "../SettingsKpi";
 import { SettingsPageHeader } from "../SettingsPageHeader";
 import { SettingsTableCard } from "../SettingsTableCard";
 import { parseSubpage, useSubpage } from "../subpage";
-import { AgentDetailPage, AgentModeSelect } from "./AgentDetailPage";
+import { AgentDetailPage, AgentEnabledSwitch } from "./AgentDetailPage";
 import type { AgentIntegration } from "./integration/types";
 import {
   integrationKey,
@@ -130,11 +130,12 @@ export function AgentsKpis({
 
 /** 表格一行（纯展示）：动作位是调用方给的节点（安装 / 更新 / 三态选择）。 */
 export interface AgentsTableRowData {
-  agent: Pick<AgentInfo, "id" | "label">;
+  agent: Pick<AgentInfo, "id" | "label" | "installed">;
   state: AgentState;
   /** 画布视图的文字；没有写 `—`。 */
   views: string;
-  action: React.ReactNode;
+  /** 安装 / 更新按钮；没有可做的动作时为空。启用开关由行自己画。 */
+  action?: React.ReactNode;
   onOpen?: () => void;
 }
 
@@ -169,6 +170,11 @@ export function AgentTableRow({ row }: { row: AgentsTableRowData }) {
       <TableCell>
         <div className="flex justify-end">{row.action}</div>
       </TableCell>
+      <TableCell>
+        <div className="flex justify-end">
+          <AgentEnabledSwitch agent={row.agent} />
+        </div>
+      </TableCell>
     </TableRow>
   );
 }
@@ -189,7 +195,7 @@ export function AgentsTableCard({
     <SettingsTableCard
       title={t("settings.group.agent")}
       loading={loading}
-      skeleton={{ rows: 4, columns: 4 }}
+      skeleton={{ rows: 4, columns: 5 }}
       empty={rows.length === 0 ? { title: t("integration.empty") } : null}
     >
       <Table>
@@ -202,6 +208,9 @@ export function AgentsTableCard({
             </TableHead>
             <TableHead>
               <span className="sr-only">{t("agents.col.action")}</span>
+            </TableHead>
+            <TableHead className="w-12">
+              <span className="sr-only">{t("agents.row.mode")}</span>
             </TableHead>
           </TableRow>
         </TableHeader>
@@ -226,7 +235,7 @@ export function agentViews(
     : t(`integration.canvasAgents.${spawn}`);
 }
 
-/** 动作位：没装且能代装 → 安装；注入待更新 → 更新；其余是启用 / 默认 / 禁用三态选择。 */
+/** 动作位：没装且能代装 → 安装；注入待更新 → 更新；其余没有动作。 */
 export function AgentActionCell({
   agent,
   state,
@@ -253,7 +262,7 @@ export function AgentActionCell({
         {t("agents.action.update")}
       </Button>
     );
-  return <AgentModeSelect agent={agent} size="xs" />;
+  return null;
 }
 
 /** 一家一行，读缓存里的集成状态（展示页用假数据填缓存后渲染它；放进 `Table` 的 `TableBody`）。 */

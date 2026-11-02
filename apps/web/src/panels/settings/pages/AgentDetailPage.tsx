@@ -1,10 +1,9 @@
 import type { AgentInfo } from "@armadra/shared";
 
 import {
-  AGENT_MODES,
+  agentIsEnabled,
   usePreferencesStore,
   useT,
-  type AgentMode,
 } from "../../../app/preferences-store";
 import {
   CopyCommandButton,
@@ -32,47 +31,31 @@ import {
 import { Badge } from "@/ui/badge";
 import { Button } from "@/ui/button";
 import { Input } from "@/ui/input";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/ui/select";
+import { Switch } from "@/ui/switch";
 
-/** 默认 / 启用 / 禁用（本设备，`agentModes`）。主表与子页同一个控件。 */
-export function AgentModeSelect({
+/**
+ * 启用开关（本设备，`agentModes`）：开 = 出现在画布右键等新建入口，关 = 不出现。
+ * 主表、子页与自定义 Agent 表格同一个控件；关掉不删配置，也不动已有节点。
+ */
+export function AgentEnabledSwitch({
   agent,
-  size = "sm",
 }: {
-  agent: AgentInfo;
-  size?: "xs" | "sm";
+  agent: Pick<AgentInfo, "id" | "label" | "installed">;
 }) {
   const t = useT();
-  const mode = usePreferencesStore(
-    (state) => state.agentModes[agent.id] ?? "default",
+  const enabled = usePreferencesStore((state) =>
+    agentIsEnabled(state.agentModes[agent.id], agent.installed),
   );
-  const setAgentMode = usePreferencesStore((state) => state.setAgentMode);
+  const setAgentEnabled = usePreferencesStore((state) => state.setAgentEnabled);
   return (
-    <Select
-      value={mode}
-      onValueChange={(value) => setAgentMode(agent.id, value as AgentMode)}
-    >
-      <SelectTrigger
-        aria-label={`${agent.label} ${t("agents.row.mode")}`}
-        size={size}
-        className="w-24"
-      >
-        <SelectValue />
-      </SelectTrigger>
-      <SelectContent>
-        {AGENT_MODES.map((choice) => (
-          <SelectItem key={choice} value={choice}>
-            {t(`settings.agentMode.${choice}`)}
-          </SelectItem>
-        ))}
-      </SelectContent>
-    </Select>
+    <Switch
+      size="sm"
+      checked={enabled}
+      aria-label={`${agent.label} ${t("agents.row.mode")}`}
+      onCheckedChange={(checked) =>
+        setAgentEnabled(agent.id, checked, agent.installed)
+      }
+    />
   );
 }
 
@@ -131,7 +114,7 @@ export function AgentDetailPage({ agent }: { agent: AgentInfo }) {
       <SettingsGroup title={t("agents.group.launch")}>
         <SettingsRow label={t("agents.row.mode")}>
           <ScopeBadge scope="device" />
-          <AgentModeSelect agent={agent} />
+          <AgentEnabledSwitch agent={agent} />
         </SettingsRow>
         <SettingsRow label={t("settings.launchCommand")}>
           <ScopeBadge scope="device" />
