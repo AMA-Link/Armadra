@@ -144,7 +144,24 @@ export class IdentityTransportError extends Error {
   }
 }
 
+/**
+ * 一次在途的请求回来时，凭据已经被重置（登出、换会话）：它的结果作废，不写回
+ * 任何凭据，也不通知订阅者。不是 core 的拒绝，也不是网络故障。
+ */
+export class IdentitySupersededError extends Error {
+  readonly name = "IdentitySupersededError";
+  constructor() {
+    super("The identity session ended while this request was in flight.");
+  }
+}
+
 /* ------------------------------ 内存里的凭据 ------------------------------ */
+
+/**
+ * 重置代数。每次 {@link resetIdentityCredentials} 加一；在途的刷新与换票发出时
+ * 记下当时的代数，回来时不符就丢弃，免得登出之后又把令牌写回、又「登录」回来。
+ */
+let generation = 0;
 
 /** `core/identity/http.ts` 用同一个形状校验：32 字节 base64url。 */
 const SECRET = /^[A-Za-z0-9_-]{43}$/;
@@ -324,6 +341,8 @@ export function currentCsrf(): string {
 
 /** 测试与登出后重置：丢掉全部内存凭据。 */
 export function resetIdentityCredentials(): void {
+  generation += 1;
+  clearPreviousSession();
   csrf = "";
   owner = null;
   forgotten = false;
@@ -372,8 +391,9 @@ export async function ensureCsrf(): Promise<string> {
 
 /**
  * 走 Bearer 传输的三种环境：桌面壳（票换会话）、原生 App（钥匙串里的会话）与
- * 中继托管的页面（断言换来的会话）。都不用 Cookie；写请求不带 CSRF 头，只有
- * 刷新与登出带上会话的 CSRF 密钥（core 在 Bearer 模式下也校验它，契约 §17.4）。
+ * 中继托管的页面（断言换来的会话）。都不用 Cookie；写请求不带 CSRF 头。刷新
+ * 与登出在 Bearer 模式下 core 不核 CSRF（契约 §17.4），所以桌面壳不带；其余
+ * 环境有就带上，兼容仍然核它的旧版 core。
  */
 function bearerTransport(): boolean {
   return isNativeShell() || isNativeApp() || hosted !== null;
@@ -459,6 +479,38 @@ function nativeSourceId(): string | null {
   return nativeConnection.sourceId ?? lastHostId;
 }
 
+/* ------------------------- 桌面壳：上一条会话的 id ------------------------- */
+
+/**
+ * 桌面壳里这个窗口当前会话的 id（不是密钥）。凭据只在内存，整页重载后页面
+ * 不记得自己上一条会话，只能再配一条新的，旧的要 30 天才过期（#719 的已知
+ * 限制）。所以把 id 记在 `sessionStorage`（每个窗口一份，重载保留、关窗即丢，
+ * 新窗口不继承）：重载后配上新会话，凭它撤掉上一条（#737）。
+ */
+export const PREVIOUS_SESSION_KEY = "armadra.identity.session-id";
+
+function readPreviousSession(): string {
+  try {
+    return globalThis.sessionStorage?.getItem(PREVIOUS_SESSION_KEY) ?? "";
+  } catch {
+    return "";
+  }
+}
+
+function writePreviousSession(sessionId: string): void {
+  try {
+    if (sessionId === "")
+      globalThis.sessionStorage?.removeItem(PREVIOUS_SESSION_KEY);
+    else globalThis.sessionStorage?.setItem(PREVIOUS_SESSION_KEY, sessionId);
+  } catch {
+    /* 存不下只是少一次清理，不影响会话。 */
+  }
+}
+
+function clearPreviousSession(): void {
+  writePreviousSession("");
+}
+
 function remember(
   session: IdentitySession,
   origin: string = localSource.httpBase,
@@ -467,6 +519,7 @@ function remember(
     tokens.access = session.native.accessToken;
     tokens.refresh = session.native.refreshToken;
     tokens.accessExpiresAt = session.expiresAtUnixMs;
+    if (isNativeShell()) writePreviousSession(sessionIdOf(tokens.refresh));
     scheduleShellRefresh();
     if (session.hostId !== "") lastHostId = session.hostId;
     const sourceId = nativeConnection.sourceId ?? session.hostId;
@@ -664,7 +717,7 @@ export async function pairIdentity(ticket: string): Promise<IdentitySession> {
  */
 export async function resumeIdentity(): Promise<IdentitySession | null> {
   if (isNativeShell() && !tokens.access)
-    return pairIdentity(await fetchNativeTicket());
+    return pairShell(readPreviousSession());
   if (isNativeApp() && !tokens.access && !(await restoreNativeCredentials()))
     return null;
   if (hosted !== null && !tokens.access && !(await restoreHostedCredentials()))
@@ -717,17 +770,25 @@ export async function resumeIdentity(): Promise<IdentitySession | null> {
         // 到期时，向壳再要一张票重新配对，而不是让面板停在「已断开」等人
         // 重载页面。放弃的那条（同一台设备、同一来源）随后撤掉，不留在会话
         // 列表里等 30 天过期（#706）。
-        const abandoned = sessionIdOf(tokens.refresh);
+        const abandoned = sessionIdOf(tokens.refresh) || readPreviousSession();
         resetIdentityCredentials();
-        const paired = await pairIdentity(await fetchNativeTicket());
-        if (abandoned !== "" && abandoned !== sessionIdOf(tokens.refresh))
-          void revokeAbandoned(abandoned);
-        return paired;
+        return pairShell(abandoned);
       }
       return null;
     }
     throw error;
   }
+}
+
+/**
+ * 向壳要票配一条新会话；`abandoned` 是页面不再持有的上一条会话 id（会话里的
+ * 刷新密钥被拒，或整页重载后留在 `sessionStorage` 的那条）：新会话配上后撤掉它。
+ */
+async function pairShell(abandoned: string): Promise<IdentitySession> {
+  const paired = await pairIdentity(await fetchNativeTicket());
+  if (abandoned !== "" && abandoned !== sessionIdOf(tokens.refresh))
+    void revokeAbandoned(abandoned);
+  return paired;
 }
 
 /** 正在途中的那次轮转；同一页面里几处同时要只发一次。 */
@@ -740,15 +801,23 @@ let refreshing: Promise<IdentitySession> | null = null;
  * 配对、多出一条会话（#706）。所以同一页面里只有一次在途，别处要就等它。
  */
 export function refreshIdentity(): Promise<IdentitySession> {
-  refreshing ??= call("session/refresh", identitySessionSchema, {
-    method: "POST",
-    refreshBearer: true,
-  })
-    .then((answer) => remember(answer))
+  if (refreshing !== null) return refreshing;
+  const issued = generation;
+  const flight: Promise<IdentitySession> = call(
+    "session/refresh",
+    identitySessionSchema,
+    { method: "POST", refreshBearer: true },
+  )
+    .then((answer) => {
+      // 在途时登出（或换了会话）：这份答案属于已经结束的会话，丢掉。
+      if (issued !== generation) throw new IdentitySupersededError();
+      return remember(answer);
+    })
     .finally(() => {
-      refreshing = null;
+      if (refreshing === flight) refreshing = null;
     });
-  return refreshing;
+  refreshing = flight;
+  return flight;
 }
 
 /** 令牌前缀里的会话 id（`<sessionId>.<密钥>`，契约 §3）；认不出是空串。 */
@@ -773,11 +842,13 @@ async function revokeAbandoned(sessionId: string): Promise<void> {
 
 /** 只换一枚 CSRF 令牌（刷新页面之后内存是空的，但 refresh Cookie 还在）。 */
 export async function renewCsrf(): Promise<string> {
+  const issued = generation;
   const answer = await call(
     "session/csrf",
     z.object({ csrfToken: z.string() }),
     { method: "POST", refreshBearer: true },
   );
+  if (issued !== generation) throw new IdentitySupersededError();
   rememberCsrf(answer.csrfToken);
   return currentCsrf();
 }
@@ -1074,7 +1145,12 @@ function scheduleShellRefresh(): void {
 function rotateShellBearer(): Promise<string> {
   shellRenewal ??= refreshIdentity()
     .then(() => tokens.access)
-    .catch(() => resumeShell().then(() => tokens.access))
+    .catch((error: unknown) =>
+      // 登出了：别马上又向壳要票把它「登」回来。
+      error instanceof IdentitySupersededError
+        ? tokens.access
+        : resumeShell().then(() => tokens.access),
+    )
     .finally(() => {
       shellRenewal = null;
     });
