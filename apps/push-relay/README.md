@@ -55,7 +55,7 @@ node apps/push-relay/out/main.js
 | `ARMADRA_RELAY_FCM_CREDENTIALS_FILE` / `_PROJECT_ID`              | 发布方的 Firebase 服务账号 JSON；项目 id 缺省取账号里的  |
 | `ARMADRA_RELAY_APNS_ENDPOINT` / `ARMADRA_RELAY_FCM_ENDPOINT`      | 只给测试：指向 dev-stack 的 `push-sink`                  |
 
-密钥一律只给文件路径。APNs 与 FCM 至少配一个，否则进程拒绝启动。
+密钥一律只给文件路径。APNs 与 FCM 都是可选的：一个都不配也能启动，`/health` 的 `platforms` 为空，`/v1/register` 与 `/v1/push` 答 `platformUnavailable`；只配 `ARMADRA_RELAY_SECRET_FILE` 是最小配置。
 
 ## 本地验证
 

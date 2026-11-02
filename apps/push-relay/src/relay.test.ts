@@ -260,6 +260,30 @@ describe("中继令牌与限流", () => {
     expect(sent).toHaveLength(3);
   });
 
+  it("APNs 与 FCM 都没配也能启动，健康检查报空列表，登记答 platformUnavailable", async () => {
+    const dir = tempDir("armadra-relay-bare");
+    const secret = join(dir, "relay.secret");
+    writeFileSync(secret, randomBytes(32));
+    const bare = await startRelay({
+      ARMADRA_RELAY_PORT: "0",
+      ARMADRA_RELAY_SECRET_FILE: secret,
+    });
+    try {
+      const health = await fetch(`${bare.url}/health`);
+      expect(await health.json()).toEqual({ ok: true, platforms: [] });
+      const register = await fetch(`${bare.url}/v1/register`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ platform: "ios", token: "t" }),
+      });
+      expect(register.status).toBe(400);
+      const answer = (await register.json()) as { code: string };
+      expect(answer.code).toBe("platformUnavailable");
+    } finally {
+      await bare.close();
+    }
+  });
+
   it("没配的平台不登记", async () => {
     const relayHandler = createRelay({ secret: randomBytes(32) });
     const answer = await relayHandler.handle("POST", "/v1/register", {
