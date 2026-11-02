@@ -6,6 +6,7 @@ import { setFlow, setFlowContainer, type FlowHandle } from "./flow-context";
 import { useRealtimeStore } from "@/realtime/session";
 import {
   REVEAL_RETRY_DELAYS,
+  applyBoardViewport,
   revealNewNode,
   zoomByStep,
   zoomToLevel,
@@ -267,5 +268,70 @@ describe("缩放取消跟随（#327）", () => {
     useRealtimeStore.setState({ following: 7 });
     zoomByStep(-1);
     expect(useRealtimeStore.getState().following).toBe(7);
+  });
+});
+
+describe("手机上打开画布（#715）", () => {
+  const BOARD = testUuid(1);
+
+  function screen(phone: boolean) {
+    vi.stubGlobal("matchMedia", (query: string) => ({
+      matches: phone && query.includes("max-width"),
+      addEventListener: () => undefined,
+      removeEventListener: () => undefined,
+    }));
+  }
+
+  function document(viewport: { x: number; y: number; zoom: number }) {
+    return {
+      board: {
+        id: BOARD,
+        workspaceId: testUuid(3),
+        name: "Board",
+        sortOrder: 0,
+        viewport,
+        whiteboard: "",
+        createdAt: "2026-09-20T00:00:00.000Z",
+        updatedAt: "2026-09-20T00:00:00.000Z",
+      },
+      nodes: [
+        makeNode("sticky", {
+          id: testUuid(7),
+          boardId: BOARD,
+          position: { x: 1400, y: 2400 },
+          size: { width: 260, height: 160 },
+        }),
+      ],
+      edges: [],
+    } as never;
+  }
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("桌面上存的 10% 到手机上改成看得清的缩放，节点居中", () => {
+    screen(true);
+    setFlowContainer(fakeContainer(402, 700));
+    const doc = document({ x: 50, y: 100, zoom: 0.1 });
+    useCanvasStore.getState().setDocument(doc);
+    applyBoardViewport(doc);
+    const viewport = useCanvasStore.getState().document!.board.viewport;
+    expect(viewport.zoom).toBe(1);
+    expect(viewport.x + 1530).toBeCloseTo(201, 5);
+    expect(viewport.y + 2480).toBeCloseTo(350, 5);
+  });
+
+  it("桌面上照原样恢复", () => {
+    screen(false);
+    setFlowContainer(fakeContainer(1280, 800));
+    const doc = document({ x: 50, y: 100, zoom: 0.1 });
+    useCanvasStore.getState().setDocument(doc);
+    applyBoardViewport(doc);
+    expect(useCanvasStore.getState().document!.board.viewport).toEqual({
+      x: 50,
+      y: 100,
+      zoom: 0.1,
+    });
   });
 });

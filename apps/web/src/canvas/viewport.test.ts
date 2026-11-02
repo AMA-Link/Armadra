@@ -4,6 +4,7 @@ import {
   INITIAL_VIEWPORT_MARGIN,
   initialViewportFor,
   isDefaultViewport,
+  phoneOpeningViewport,
 } from "./viewport";
 
 describe("initialViewportFor", () => {
@@ -70,5 +71,104 @@ describe("isDefaultViewport", () => {
   it("存过的视口原样保留", () => {
     expect(isDefaultViewport({ x: 0, y: 0, zoom: 0.7 })).toBe(false);
     expect(isDefaultViewport({ x: -120, y: 40, zoom: 1 })).toBe(false);
+  });
+});
+
+describe("phoneOpeningViewport（#715）", () => {
+  const phone = { width: 402, height: 700 };
+  const sticky = (x: number, y: number) => ({
+    x,
+    y,
+    width: 260,
+    height: 160,
+  });
+  // 桌面上存的 10% 全局视图：画布原点在屏幕 (50, 100)。
+  const zoomedOut = { x: 50, y: 100, zoom: 0.1 };
+
+  it("存的缩放低于字号下限：原视口中心最近的节点按首次显示的规则居中", () => {
+    const near = sticky(1400, 2400); // 中心 (1530, 2480)，离原视口中心最近
+    const far = sticky(0, 0);
+    const next = phoneOpeningViewport({
+      persisted: zoomedOut,
+      nodes: [far, near],
+      container: phone,
+    })!;
+    // 便签占主方向 1/φ 要 0.96，抬到字号下限 100%。
+    expect(next.zoom).toBe(1);
+    // 节点中心落在容器中心。
+    expect(next.x + 1530 * next.zoom).toBeCloseTo(phone.width / 2, 5);
+    expect(next.y + 2480 * next.zoom).toBeCloseTo(phone.height / 2, 5);
+  });
+
+  it("小节点不为了占比放大到 1.25 以上", () => {
+    const next = phoneOpeningViewport({
+      persisted: zoomedOut,
+      nodes: [{ x: 1480, y: 2470, width: 100, height: 60 }],
+      container: phone,
+    })!;
+    expect(next.zoom).toBeCloseTo(1.25, 5);
+    expect(next.x + 1530 * next.zoom).toBeCloseTo(phone.width / 2, 5);
+  });
+
+  it("屏幕字号不低于 12px：大节点的缩放停在字号下限 100%", () => {
+    const terminal = { x: 0, y: 0, width: 960, height: 594, fontPx: 12 };
+    const next = phoneOpeningViewport({
+      persisted: zoomedOut,
+      nodes: [terminal],
+      container: phone,
+    })!;
+    expect(next.zoom).toBe(1);
+    expect(12 * next.zoom).toBeGreaterThanOrEqual(12);
+  });
+
+  it("终端字号偏好调小时下限跟着抬", () => {
+    const terminal = { x: 0, y: 0, width: 960, height: 594, fontPx: 10 };
+    const next = phoneOpeningViewport({
+      persisted: zoomedOut,
+      nodes: [terminal],
+      container: phone,
+    })!;
+    expect(next.zoom).toBeCloseTo(1.2, 5);
+  });
+
+  it("存的缩放已经看得清时照旧恢复", () => {
+    expect(
+      phoneOpeningViewport({
+        persisted: { x: -300, y: -120, zoom: 1 },
+        nodes: [sticky(0, 0)],
+        container: phone,
+      }),
+    ).toBeNull();
+  });
+
+  it("从没存过视口、画布空着、组员或容器没量到时不接管", () => {
+    expect(
+      phoneOpeningViewport({
+        persisted: { x: 0, y: 0, zoom: 1 },
+        nodes: [sticky(0, 0)],
+        container: phone,
+      }),
+    ).toBeNull();
+    expect(
+      phoneOpeningViewport({
+        persisted: zoomedOut,
+        nodes: [],
+        container: phone,
+      }),
+    ).toBeNull();
+    expect(
+      phoneOpeningViewport({
+        persisted: zoomedOut,
+        nodes: [{ ...sticky(0, 0), parentId: "group-1" }],
+        container: phone,
+      }),
+    ).toBeNull();
+    expect(
+      phoneOpeningViewport({
+        persisted: zoomedOut,
+        nodes: [sticky(0, 0)],
+        container: { width: 0, height: 0 },
+      }),
+    ).toBeNull();
   });
 });
