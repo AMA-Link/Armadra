@@ -501,3 +501,124 @@
 .sticky-markdown input[type="checkbox"] {
   margin-right: 0.35em;
 }
+
+/* ------------------------ 会话时间线里的 Markdown ------------------------- */
+
+/*
+ * 助手消息与思考的正文排版：比便签宽松的段落节奏、标题阶梯、列表间距、引用块、
+ * 分隔线与带表头的表格。字号、颜色、圆角全部取 token，不写字面值。
+ */
+.timeline-prose > :first-child {
+  margin-top: 0;
+}
+
+.timeline-prose > :last-child {
+  margin-bottom: 0;
+}
+
+.timeline-prose
+  :where(p, ul, ol, blockquote, table, [data-slot="timeline-code"]) {
+  margin: 0.6em 0;
+}
+
+.timeline-prose :where(h1, h2, h3, h4, h5, h6) {
+  margin: 1.1em 0 0.4em;
+  color: var(--text-strong);
+  font-weight: var(--fw-semibold);
+}
+
+.timeline-prose :where(h1, h2) {
+  font-size: var(--text-section);
+  line-height: var(--leading-section);
+}
+
+.timeline-prose :where(h3, h4, h5, h6) {
+  font-size: var(--text-body);
+  line-height: var(--leading-body);
+}
+
+.timeline-prose :where(ul, ol) {
+  padding-left: 1.4em;
+}
+
+.timeline-prose ul {
+  list-style: disc;
+}
+
+.timeline-prose ol {
+  list-style: decimal;
+}
+
+.timeline-prose li + li {
+  margin-top: 0.25em;
+}
+
+.timeline-prose li > :where(ul, ol) {
+  margin: 0.25em 0;
+}
+
+.timeline-prose li::marker {
+  color: var(--muted-foreground);
+}
+
+.timeline-prose strong {
+  color: var(--text-strong);
+  font-weight: var(--fw-semibold);
+}
+
+.timeline-prose a {
+  color: var(--brand-text);
+  text-decoration: underline;
+  text-decoration-color: var(--border-strong);
+  text-underline-offset: 0.2em;
+}
+
+.timeline-prose a:hover {
+  text-decoration-color: currentColor;
+}
+
+.timeline-prose :not(pre) > code {
+  padding: 0.1em 0.35em;
+  border-radius: var(--r-tight);
+  background: var(--md-code-bg);
+  font-family: var(--font-code);
+  font-size: 0.9em;
+}
+
+.timeline-prose blockquote {
+  padding-left: 0.9em;
+  border-left: 2px solid var(--border-strong);
+  color: var(--muted-foreground);
+}
+
+.timeline-prose hr {
+  margin: 1em 0;
+  border: 0;
+  border-top: 1px solid var(--border);
+}
+
+.timeline-prose table {
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  border-collapse: collapse;
+  font-size: var(--text-meta);
+  line-height: var(--leading-meta);
+}
+
+.timeline-prose :where(th, td) {
+  padding: 0.35em 0.75em;
+  border: 1px solid var(--border);
+  text-align: left;
+}
+
+.timeline-prose th {
+  background: var(--surface-raised);
+  color: var(--text-strong);
+  font-weight: var(--fw-medium);
+}
+
+.timeline-prose input[type="checkbox"] {
+  margin-right: 0.4em;
+  vertical-align: -0.1em;
+}
