@@ -20,6 +20,7 @@ import { useCanAnswer } from "@/app/use-access";
 import { useCanvasStore } from "@/store/canvas-store";
 import { putLocalBlob } from "@/timeline/blobs";
 import type { TimelineViewServices } from "@/timeline/view/services";
+import { latestPlan, PlanBar } from "@/timeline/view/PlanBar";
 import { TimelineView } from "@/timeline/view/TimelineView";
 import { Alert, AlertAction, AlertDescription, AlertTitle } from "@/ui/alert";
 import { Button } from "@/ui/button";
@@ -401,6 +402,7 @@ export function SessionView({
     () => (overlay === null ? feed.items : [...feed.items, overlay]),
     [feed.items, overlay],
   );
+  const plan = React.useMemo(() => latestPlan(items), [items]);
 
   // 回合在进行：活动层说了算（core 算）；活动还没来时看
   // 最后一个回合条目有没有结束。页面先画上的提问也算（还没送达 / 被拒的不算）。
@@ -422,8 +424,9 @@ export function SessionView({
       ? SUBMITTING(overlay.at)
       : feed.activity;
 
-  // 一条挂起的审批 / 提问钉在输入框上方（出现时焦点落到第一枚允许钮）；多条随
-  // 时间线内联。
+  // 审批挂在对应的工具行下面（同一回合里有同一个 `toolCallId` 的工具行）；没有工具行
+  // 可挂的审批与提问，只有一条时钉在输入框上方（出现时焦点落到第一枚允许钮），多条
+  // 随时间线内联。
   const pendingCards = React.useMemo(() => {
     const out: (TimelineApprovalItem | TimelineElicitationItem)[] = [];
     for (const item of feed.items) {
@@ -436,34 +439,64 @@ export function SessionView({
     }
     return out;
   }, [feed.items]);
+  const toolRowKeys = React.useMemo(() => {
+    const keys = new Set<string>();
+    for (const item of feed.items) {
+      if (item.kind === "tool") keys.add(`${item.turn}:${item.toolCallId}`);
+    }
+    return keys;
+  }, [feed.items]);
+  const orphans = React.useMemo(
+    () =>
+      pendingCards.filter(
+        (card) =>
+          card.kind === "elicitation" ||
+          card.toolCallId === undefined ||
+          !toolRowKeys.has(`${card.turn}:${card.toolCallId}`),
+      ),
+    [pendingCards, toolRowKeys],
+  );
   const pinned =
-    !readOnly && pendingCards.length === 1 ? pendingCards[0] : undefined;
+    !readOnly && orphans.length === 1
+      ? (orphans[0] as TimelineApprovalItem | TimelineElicitationItem)
+      : undefined;
   const pinnedId = pinned?.pendingId;
+  // 只有一条待答时，不论钉在上方还是挂在工具行下，都读出来并把焦点交给它。
+  const sole =
+    !readOnly && pendingCards.length === 1
+      ? (pendingCards[0] as TimelineApprovalItem | TimelineElicitationItem)
+      : undefined;
   const focusInput = React.useCallback(
     () => inputRef.current?.focus({ preventScroll: true }),
     [],
   );
-  // 钉住的那张卡出现时读一次（焦点不一定能落过去：人可能正在输入框里打字）。
+  // 待答的那张卡出现时读一次（焦点不一定能落过去：人可能正在输入框里打字）。
   const needAnnouncement = React.useMemo(() => {
-    if (pinned === undefined) return "";
-    if (pinned.kind === "elicitation")
+    if (sole === undefined) return "";
+    if (sole.kind === "elicitation")
       return t("acp.elicitation.announce", {
-        title: pinned.message.slice(0, ANNOUNCE_CHARS),
+        title: sole.message.slice(0, ANNOUNCE_CHARS),
       });
     const tool = feed.items.find(
-      (item) => item.kind === "tool" && item.toolCallId === pinned.toolCallId,
+      (item) => item.kind === "tool" && item.toolCallId === sole.toolCallId,
     );
     return t("acp.permission.announce", {
       title: (tool?.kind === "tool" ? tool.title : "").slice(0, ANNOUNCE_CHARS),
     });
-  }, [pinned, feed.items, t]);
+  }, [sole, feed.items, t]);
 
+  const soleId = sole?.pendingId;
   const renderApproval = React.useCallback(
     (approval: TimelineApprovalItem) =>
       approval.pendingId === pinnedId ? null : (
-        <ApprovalCard approval={approval} canAnswer={canAnswer} />
+        <ApprovalCard
+          approval={approval}
+          canAnswer={canAnswer}
+          pinned={approval.pendingId === soleId}
+          onAnswered={focusInput}
+        />
       ),
-    [canAnswer, pinnedId],
+    [canAnswer, pinnedId, soleId, focusInput],
   );
   const renderElicitation = React.useCallback(
     (item: TimelineElicitationItem) =>
@@ -882,6 +915,7 @@ export function SessionView({
         <div aria-live="polite" className="sr-only">
           {needAnnouncement}
         </div>
+        <PlanBar plan={plan} className="mb-1" />
         {pinned?.kind === "approval" && (
           <ApprovalCard
             key={pinned.pendingId}

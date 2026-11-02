@@ -20,7 +20,7 @@ vi.mock("@/store/canvas-store", () => {
 vi.mock("@/files/open-editor", () => ({ openFileInEditor: vi.fn() }));
 
 import { ActivityGroup, summaryLabel } from "./ActivityGroup";
-import { PlanBar } from "./PlanBar";
+import { latestPlan, PlanBar } from "./PlanBar";
 import {
   assistantItem,
   thoughtItem,
@@ -31,7 +31,7 @@ import {
 import { AssistantRow } from "./rows/AssistantRow";
 import { NoticeRow } from "./rows/NoticeRow";
 import { ThoughtRow } from "./rows/ThoughtRow";
-import { DONE_FLASH_MS, ToolRow } from "./rows/ToolRow";
+import { DONE_FLASH_MS, titleMentionsPath, ToolRow } from "./rows/ToolRow";
 import { TurnFooter } from "./rows/TurnFooter";
 import { UserRow } from "./rows/UserRow";
 import {
@@ -317,6 +317,109 @@ describe("ToolRow", () => {
       ...document.querySelectorAll("[data-slot=timeline-tool-location]"),
     ].map((node) => node.textContent);
     expect(names).toEqual(["other.ts"]);
+  });
+
+  it("keeps the location chip when the title only contains the name as a fragment", () => {
+    render(
+      <ToolRow
+        item={row({
+          title: "Read ts files",
+          locations: [{ path: "/repo/a.ts", line: 5 }, { path: "/repo/a" }],
+        })}
+      />,
+    );
+    expect(
+      [...document.querySelectorAll("[data-slot=timeline-tool-location]")].map(
+        (node) => node.textContent,
+      ),
+    ).toEqual(["a.ts:5", "a"]);
+  });
+
+  it("keeps the line number when the title already names the file", () => {
+    render(
+      <ToolRow
+        item={row({
+          title: "Read src/config.ts",
+          locations: [{ path: "/repo/src/config.ts", line: 12 }],
+        })}
+      />,
+    );
+    const chips = [
+      ...document.querySelectorAll("[data-slot=timeline-tool-location]"),
+    ];
+    // 文件名不重复，行号还在；悬停提示是完整路径。
+    expect(chips.map((node) => node.textContent)).toEqual([":12"]);
+    expect(chips[0]?.getAttribute("title")).toBe("/repo/src/config.ts");
+  });
+
+  it("matches the title by whole words on directory boundaries", () => {
+    expect(titleMentionsPath("Write note.txt", "/repo/note.txt")).toBe(true);
+    expect(titleMentionsPath("读取 src/config.ts", "/repo/src/config.ts")).toBe(
+      true,
+    );
+    expect(titleMentionsPath("Edit `a/b.ts:12:3`", "/r/a/b.ts")).toBe(true);
+    expect(titleMentionsPath("Read /repo/x.ts", "/repo/x.ts")).toBe(true);
+    expect(titleMentionsPath("Read C:\\repo\\x.ts", "C:\\repo\\x.ts")).toBe(
+      true,
+    );
+    // 片段、跨目录边界、单字符都不算。
+    expect(titleMentionsPath("Read ts files", "/repo/a.ts")).toBe(false);
+    expect(titleMentionsPath("Read config.ts", "/repo/myconfig.ts")).toBe(
+      false,
+    );
+    expect(titleMentionsPath("Read a file", "/repo/a")).toBe(false);
+    expect(titleMentionsPath("", "/repo/a.ts")).toBe(false);
+  });
+
+  it("hangs approvals of nested calls under their own rows and opens the row for a pending one", () => {
+    const approval = (state: "pending" | "answered") => ({
+      id: "ap:2",
+      kind: "approval" as const,
+      turn: 1,
+      ord: 2,
+      rev: 1,
+      source: "acp" as const,
+      at: 1,
+      gen: 1,
+      pendingId: "p2",
+      protocol: "acp",
+      toolCallId: "t2",
+      options: [],
+      state,
+    });
+    const child = toolItem(1, "t2", {
+      title: "inner call",
+      parentToolCallId: "t1",
+    });
+    const renderApproval = (a: { pendingId: string }) => (
+      <div data-testid="approval">{a.pendingId}</div>
+    );
+    const { rerender } = render(
+      <ToolRow
+        item={row({ toolKind: "subagent", title: "Subagent" })}
+        nested={[child]}
+        approvals={new Map([["t2", approval("pending")]])}
+        renderApproval={renderApproval}
+      />,
+    );
+    // 内部调用在等人答复：子代理那一行自己展开，卡片就在内部那一行下面。
+    expect(screen.getByText("inner call")).toBeTruthy();
+    expect(
+      screen
+        .getByTestId("approval")
+        .closest("[data-slot=timeline-tool-approval]")
+        ?.parentElement?.querySelector("[data-slot=timeline-tool-body]"),
+    ).toBeNull();
+    // 没有待答的审批时仍然折着。
+    rerender(
+      <ToolRow
+        item={row({ toolKind: "subagent", title: "Subagent" })}
+        nested={[child]}
+        approvals={new Map([["t2", approval("answered")]])}
+        renderApproval={renderApproval}
+      />,
+    );
+    expect(screen.queryByText("inner call")).toBeNull();
   });
 
   it("expands the locations hidden behind +N in the body", () => {
@@ -620,6 +723,52 @@ describe("ActivityGroup", () => {
   });
 });
 
+describe("ActivityGroup approvals", () => {
+  it("opens a finished group while one of its rows waits for an answer", () => {
+    const [entry] = activityGroups([
+      toolItem(1, "a", { toolKind: "read", title: "Read a" }),
+      toolItem(1, "b", { toolKind: "search", title: "Search b" }),
+    ]);
+    if (entry?.type !== "group") throw new Error("expected a group");
+    const approval = (state: "pending" | "answered") => ({
+      id: "ap:1",
+      kind: "approval" as const,
+      turn: 1,
+      ord: 3,
+      rev: 1,
+      source: "acp" as const,
+      at: 1,
+      gen: 1,
+      pendingId: "p1",
+      protocol: "acp",
+      toolCallId: "b",
+      options: [],
+      state,
+    });
+    const renderApproval = () => <div data-testid="approval" />;
+    const { rerender } = render(
+      <ActivityGroup
+        entry={entry}
+        approvals={new Map([["b", approval("answered")]])}
+        renderApproval={renderApproval}
+      />,
+    );
+    expect(screen.queryByText("Read a")).toBeNull();
+    rerender(
+      <ActivityGroup
+        entry={entry}
+        approvals={new Map([["b", approval("pending")]])}
+        renderApproval={renderApproval}
+      />,
+    );
+    expect(screen.getByText("Read a")).toBeTruthy();
+    expect(screen.getByTestId("approval")).toBeTruthy();
+    // 用户手动收起之后以用户为准。
+    fireEvent.click(screen.getByRole("button", { name: /读了 1 个文件/ }));
+    expect(screen.queryByText("Read a")).toBeNull();
+  });
+});
+
 describe("PlanBar", () => {
   const plan = {
     id: "plan:1",
@@ -702,6 +851,44 @@ describe("PlanBar", () => {
     expect(
       bar.querySelectorAll("[data-slot=progress-tick][data-filled=true]"),
     ).toHaveLength(7);
+  });
+
+  it("opens the list upward because it sits above the input", async () => {
+    render(<PlanBar plan={plan} className="mb-1" />);
+    const trigger = screen.getByRole("button", { name: "计划" });
+    expect(trigger.className).toContain("mb-1");
+    fireEvent.click(trigger);
+    await waitFor(() =>
+      expect(
+        document.querySelector("[data-slot=popover-content]"),
+      ).toBeTruthy(),
+    );
+    expect(
+      document
+        .querySelector("[data-slot=popover-content]")
+        ?.getAttribute("data-side"),
+    ).toBe("top");
+  });
+
+  it("picks the latest plan of the timeline", () => {
+    const first = { ...plan, id: "plan:1", turn: 1 };
+    const second = {
+      ...plan,
+      id: "plan:2",
+      turn: 2,
+      entries: [{ content: "Newer", status: "pending" }],
+    };
+    expect(
+      latestPlan([
+        userItem(1, "a"),
+        first,
+        userItem(2, "b"),
+        second,
+        turnItem(2),
+      ])?.id,
+    ).toBe("plan:2");
+    expect(latestPlan([userItem(1, "a")])).toBeNull();
+    expect(latestPlan([])).toBeNull();
   });
 
   it("renders nothing without a plan", () => {

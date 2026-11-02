@@ -60,6 +60,29 @@ export const MAX_LOCATIONS = 2;
 /** 完成（或失败）那一下的对勾在图标位上停留多久，之后换回按 kind 的图标。 */
 export const DONE_FLASH_MS = 800;
 
+/**
+ * 标题里是不是已经写了这个文件：标题里有一个以空白、引号、括号隔开的词，等于这个
+ * 路径，或是它在目录边界上的后缀（`note.txt`、`src/config.ts`）。只比整词，
+ * 所以「读取 ts 文件」不会因为含有 `ts` 就吞掉 `a.ts` 的位置标签；至少两个字符，
+ * 「读 a 文件」里的 `a` 也不算。词尾的 `:12` / `:12:3` 行号先剥掉。
+ */
+export function titleMentionsPath(title: string, path: string): boolean {
+  const full = path.replaceAll("\\", "/");
+  for (const raw of title.split(/[\s\x22\x27\x60()[\]{}<>,;]+/)) {
+    const word = raw
+      .replaceAll("\\", "/")
+      .replace(/:\d+(?::\d+)?$/, "")
+      .replace(/^\.\//, "");
+    if (word.length < 2) continue;
+    if (full === word || full.endsWith(`/${word}`)) return true;
+  }
+  return false;
+}
+
+function lineSuffix(line: number | null | undefined): string {
+  return line ? `:${line}` : "";
+}
+
 /** 超过这个长度的差异不在渲染时现算行数（大文件整份替换时拖慢列表）。 */
 const STAT_MAX_CHARS = 400_000;
 
@@ -135,17 +158,35 @@ export interface ToolRowProps {
   nested?: readonly TimelineToolItem[] | undefined;
   /** 关联这个工具的审批；有它才会调 `renderApproval`。 */
   approval?: TimelineApprovalItem | undefined;
+  /**
+   * `toolCallId` → 关联的审批，给 `nested` 里的内部调用用（它们的审批也挂在各自
+   * 那一行下面）。有内部调用时才传，免得普通行因为它换了引用而重渲染。
+   */
+  approvals?: ReadonlyMap<string, TimelineApprovalItem> | undefined;
   /** 审批卡的渲染（B7 接 `PermissionCard`）。要稳定的引用。 */
   renderApproval?:
     | ((approval: TimelineApprovalItem) => React.ReactNode)
     | undefined;
 }
 
-function ToolRowImpl({ item, nested, approval, renderApproval }: ToolRowProps) {
+function ToolRowImpl({
+  item,
+  nested,
+  approvals,
+  approval,
+  renderApproval,
+}: ToolRowProps) {
   const t = useT();
   const pendingApproval =
     approval !== undefined && approval.state === "pending";
-  const [open, setOpen] = React.useState(false);
+  // 内部调用在等人答复时展开：卡片在它们下面，折着就看不到。用户手动开合之后以用户为准。
+  const nestedPending =
+    nested?.some(
+      (child) => approvals?.get(child.toolCallId)?.state === "pending",
+    ) === true;
+  const [manual, setManual] = React.useState<boolean | null>(null);
+  const open = manual ?? nestedPending;
+  const setOpen = setManual;
   const Icon = KIND_ICONS[item.toolKind];
   const running = item.status === "in_progress" || item.status === "pending";
   const stat = React.useMemo(() => toolDiffStat(item.content), [item.content]);
@@ -184,11 +225,15 @@ function ToolRowImpl({ item, nested, approval, renderApproval }: ToolRowProps) {
     item.status === "pending" ||
     (item.status === "failed" && !rejected) ||
     item.status === "cancelled";
-  // 标题里已经有文件名的，不再重复一枚。
+  // 标题里已经写了文件的，不再重复文件名；有行号的仍留一枚「:行号」，行号不在标题里。
   const title = item.title;
-  const shownNames = shown.filter((location) => {
+  const chips = shown.flatMap((location) => {
     const name = basename(location.path) || location.path;
-    return !title.includes(name);
+    if (!titleMentionsPath(title, location.path))
+      return [{ location, label: `${name}${lineSuffix(location.line)}` }];
+    return location.line
+      ? [{ location, label: lineSuffix(location.line) }]
+      : [];
   });
   return (
     <div
@@ -218,15 +263,14 @@ function ToolRowImpl({ item, nested, approval, renderApproval }: ToolRowProps) {
             >
               {title}
             </Shimmer>
-            {shownNames.map((location, index) => (
+            {chips.map(({ location, label }, index) => (
               <span
                 key={index}
                 title={location.path}
                 data-slot="timeline-tool-location"
                 className="max-w-32 min-w-0 shrink truncate font-mono text-caption text-muted-foreground"
               >
-                {basename(location.path) || location.path}
-                {location.line ? `:${location.line}` : ""}
+                {label}
               </span>
             ))}
             {rest > 0 && (
@@ -295,7 +339,12 @@ function ToolRowImpl({ item, nested, approval, renderApproval }: ToolRowProps) {
               />
             ))}
             {nested?.map((child) => (
-              <ToolRow key={child.id} item={child} />
+              <ToolRow
+                key={child.id}
+                item={child}
+                approval={approvals?.get(child.toolCallId)}
+                renderApproval={renderApproval}
+              />
             ))}
           </CollapsibleContent>
         )}

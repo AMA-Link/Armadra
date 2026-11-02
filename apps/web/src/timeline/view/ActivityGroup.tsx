@@ -47,8 +47,8 @@ export interface ActivityGroupProps {
 }
 
 /**
- * 连续的工具与思考折成一行摘要（设计 §3.1）。进行中保持展开；结束后收起，
- * 点开看明细。用户手动开合之后以用户为准。
+ * 连续的只读类工具（读、搜、取网页）与思考折成一行摘要（设计 §3.1）。进行中或有审批
+ * 在等答复时保持展开；结束后收起，点开看明细。用户手动开合之后以用户为准。
  */
 export const ActivityGroup = React.memo(function ActivityGroup({
   entry,
@@ -57,7 +57,15 @@ export const ActivityGroup = React.memo(function ActivityGroup({
 }: ActivityGroupProps) {
   const t = useT();
   const [manual, setManual] = React.useState<boolean | null>(null);
-  const open = manual ?? entry.running;
+  // 组里有等人答复的审批时展开：卡片在工具行下面，折着就看不到。
+  const needsAnswer =
+    approvals !== undefined &&
+    entry.items.some(
+      (member) =>
+        member.kind === "tool" &&
+        approvals.get(member.toolCallId)?.state === "pending",
+    );
+  const open = manual ?? (entry.running || needsAnswer);
   return (
     <Collapsible
       open={open}
