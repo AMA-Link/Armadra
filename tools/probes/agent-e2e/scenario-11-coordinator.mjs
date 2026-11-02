@@ -53,6 +53,10 @@
 //      → 协调者的 `items` 读到这一项且阶段是 `person/review` → 抽屉里这一行
 //      换成「待验收」（`data-tone="attention"`），排到最前面。
 //
+//   9. 统一事件队列（契约 §93，#696）：协调者忙时两个成员 `report ready`，只投一
+//      张卡片；`canvas ack --event` 之后下一张卡片里没有这两条。见
+//      scenario-11-router.mjs。
+//
 // 真模型（`--real-model`，C 档，`ARMADRA_E2E_REAL=1`）：同一条闭环交给真模型走。
 // 供应商与 key 从环境变量读（`ARMADRA_E2E_AMA_PROVIDER`，缺省 deepseek；
 // `ARMADRA_E2E_AMA_MODEL`，缺省 deepseek-chat；`ARMADRA_E2E_AMA_KEY` 必填；可选
@@ -83,6 +87,7 @@ import { DatabaseSync } from "node:sqlite";
 
 import { CREDENTIAL_VARIABLES, probeHome } from "../probe-home.mjs";
 import { mockModelServer } from "./mock-model.mjs";
+import { BUSY_MS, cardReply, routerEventsStep } from "./scenario-11-router.mjs";
 import {
   blockRealClis,
   canvasAsIn,
@@ -281,7 +286,7 @@ function inboxIds(messages) {
  * 协调者的「模型」：只看对话走到哪一步。最后一条是用户的话时，开场那句起团队，
  * 其后（唤醒提示）去读收件箱；最后一条是工具结果时按上一个工具接下一步。
  */
-function coordinatorScript(body) {
+async function coordinatorScript(body) {
   const messages = body.messages ?? [];
   const last = messages[messages.length - 1];
   // 第二个 ama（成员）：任务在它的用户消息里，按末尾的键 post 回去。
@@ -301,6 +306,8 @@ function coordinatorScript(body) {
       ],
     };
   }
+  const card = cardReply(messages, textOf, lastToolCall);
+  if (card !== undefined) return card;
   if (last?.role === "user") {
     if (textOf(last).includes("审查"))
       return {
@@ -324,6 +331,8 @@ function coordinatorScript(body) {
     case "canvas_inbox": {
       const ids = inboxIds(messages);
       if (ids.length === 0) return { text: "收件箱是空的。" };
+      // 占住协调者：读到「慢速」就拖一会儿再 ack（步骤 9 要它在忙）。
+      if (inboxText(messages).includes("慢速")) await sleep(BUSY_MS);
       // 交给另一个 ama 的那条：宿主注入的 `ama` runner 在画布上起一个 ama 节点。
       if (inboxText(messages).includes("交给 ama"))
         return {
@@ -1416,6 +1425,13 @@ export default async function run() {
         expected: member.node_id,
       });
       await page.capture("11-dispatch-drawer-review");
+    }
+
+    /* ------------- 9. 统一事件队列：忙时合并成一张卡片（#696） ------------- */
+
+    if (!real) {
+      const steps = { s, mock, context, data, database, one };
+      await routerEventsStep({ ...steps, lead, dispatcher, controlAs, textOf });
     }
 
     /* -------------------- 4. 画布外对照：同一 profile -------------------- */
