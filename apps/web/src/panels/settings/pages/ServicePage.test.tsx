@@ -119,6 +119,30 @@ describe("设置 → 本机服务", () => {
     expect(screen.getByText("identity.native-session.v1")).toBeTruthy();
   });
 
+  it("检查连接不挪动版面：状态行始终预留两行，按钮进入 loading 而不是 disabled / 变宽", async () => {
+    draw();
+    const settled = await screen.findByText("已确认服务响应");
+    expect(settled.className).toContain("min-h-[2lh]");
+    let release: (value: typeof hello) => void = () => undefined;
+    probe.mockReturnValue(
+      new Promise<typeof hello>((resolve) => {
+        release = resolve;
+      }),
+    );
+    const button = screen.getByRole("button", { name: "检查连接" });
+    await act(async () => {
+      fireEvent.click(button);
+    });
+    const status = screen.getByRole("status");
+    expect(status.textContent).toBe("正在检查连接…");
+    expect(status.className).toContain("min-h-[2lh]");
+    expect(button.getAttribute("aria-busy")).toBe("true");
+    expect((button as HTMLButtonElement).disabled).toBe(false);
+    expect(button.querySelector("[data-slot='spinner']")).toBeNull();
+    await act(async () => release(hello));
+    expect(screen.getByRole("status").className).toContain("min-h-[2lh]");
+  });
+
   it("拒绝按本地文案说，不打印服务端原话；再查一次只发一次请求", async () => {
     probe.mockRejectedValue(
       new IdentityRequestError(403, "PERMISSION_DENIED", "raw remote detail"),

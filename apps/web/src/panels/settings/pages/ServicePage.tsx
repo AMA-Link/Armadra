@@ -208,8 +208,8 @@ export function ConnectionGroup() {
           aria-atomic="true"
           className={
             state.status === "error"
-              ? "max-w-80 text-body break-words text-danger-text"
-              : "max-w-80 text-body break-words text-muted-foreground"
+              ? "inline-flex min-h-[2lh] max-w-80 items-center text-body break-words text-danger-text"
+              : "inline-flex min-h-[2lh] max-w-80 items-center text-body break-words text-muted-foreground"
           }
         >
           {t(message)}
