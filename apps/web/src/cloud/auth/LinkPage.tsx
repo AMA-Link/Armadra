@@ -3,6 +3,7 @@ import * as React from "react";
 import { type JoinLink, parseJoinLink } from "@armadra/shared";
 
 import { usePreferencesStore, useT } from "@/app/preferences-store";
+import { formatDate } from "@/lib/format";
 import { Alert, AlertTitle } from "@/ui/alert";
 import { Avatar, AvatarFallback } from "@/ui/avatar";
 import { Badge } from "@/ui/badge";
@@ -389,10 +390,11 @@ export function LinkPage({
   const until =
     info.expiresAtMs > 0
       ? t("remote.invite.until", {
-          time: new Intl.DateTimeFormat(locale, {
-            dateStyle: "medium",
-            timeStyle: "short",
-          }).format(info.expiresAtMs),
+          time: formatDate(
+            info.expiresAtMs,
+            { dateStyle: "medium", timeStyle: "short" },
+            locale,
+          ),
         })
       : "";
   const closed = info.exhausted ? localizedFailure("link_exhausted", "") : "";

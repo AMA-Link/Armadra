@@ -15,6 +15,7 @@ import { RuntimeRequestError } from "../../../../api/request";
 import { localSource } from "../../../../api/source";
 import { usePreferencesStore, useT } from "../../../../app/preferences-store";
 import { useAccess } from "../../../../app/use-access";
+import { formatDate } from "@/lib/format";
 import { useCompactLayout } from "@/platform/layout";
 import { notify } from "../../../../platform";
 import { SecuritySectionSkeleton } from "./parts";
@@ -202,11 +203,10 @@ export function E2eDevices() {
   const [renaming, setRenaming] = React.useState<TrustedDevice | null>(null);
   const [label, setLabel] = React.useState("");
   const dateTime = React.useMemo(
-    () =>
-      new Intl.DateTimeFormat(locale, {
-        dateStyle: "medium",
-        timeStyle: "short",
-      }),
+    () => ({
+      format: (ms: number) =>
+        formatDate(ms, { dateStyle: "medium", timeStyle: "short" }, locale),
+    }),
     [locale],
   );
   const act = async (work: () => Promise<unknown>) => {

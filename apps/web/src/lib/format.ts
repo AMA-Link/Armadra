@@ -8,7 +8,7 @@
  * 三个函数都刻意做成纯函数并允许注入 `now`，因为会话侧栏、便签底栏和
  * 子代理卡片都会在测试里断言具体文案。
  */
-import { t } from "../app/preferences-store";
+import { t, usePreferencesStore } from "../app/preferences-store";
 
 const MINUTE = 60_000;
 const HOUR = 60 * MINUTE;
@@ -64,6 +64,41 @@ export function formatElapsedTime(
   const then = toMillis(value);
   const base = toMillis(now);
   return formatRelativeTime(then > base ? base : then, base);
+}
+
+/**
+ * 中文里数字与汉字之间的空格（「2025 年 10 月 9 日」「3 小时前」）。`Intl` 给的是
+ * 紧贴的「2025年10月9日」，与 `time.*` 模板的写法不一致；这条规则只在这里定一次，
+ * 所有绝对日期与时间都过 {@link formatDate}。
+ */
+export function spaceCjkDigits(text: string): string {
+  return text
+    .replace(/(\d)(\p{Script=Han})/gu, "$1 $2")
+    .replace(/(\p{Script=Han})(\d)/gu, "$1 $2");
+}
+
+const DATE_FORMATS = new Map<string, Intl.DateTimeFormat>();
+
+/**
+ * 绝对日期 / 时间，随界面语言。缺省 `dateStyle: "medium"`（`2025 年 10 月 9 日` /
+ * `Oct 9, 2025`）；要带时间传 `{ dateStyle: "medium", timeStyle: "short" }`。
+ * 无法解析时返回空串，与 {@link formatRelativeTime} 一致。
+ */
+export function formatDate(
+  value: Date | number | string,
+  options: Intl.DateTimeFormatOptions = { dateStyle: "medium" },
+  locale: string = usePreferencesStore.getState().locale,
+): string {
+  const ms = toMillis(value);
+  if (Number.isNaN(ms)) return "";
+  const key = `${locale}|${JSON.stringify(options)}`;
+  let format = DATE_FORMATS.get(key);
+  if (!format) {
+    format = new Intl.DateTimeFormat(locale, options);
+    DATE_FORMATS.set(key, format);
+  }
+  const text = format.format(ms);
+  return locale.toLowerCase().startsWith("zh") ? spaceCjkDigits(text) : text;
 }
 
 const BYTE_UNITS = ["B", "KB", "MB", "GB", "TB", "PB"] as const;

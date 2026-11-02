@@ -2,7 +2,7 @@ import * as React from "react";
 import { Bar, BarChart, XAxis } from "recharts";
 
 import { usePreferencesStore, useT } from "@/app/preferences-store";
-import { formatBytes } from "@/lib/format";
+import { formatBytes, formatDate } from "@/lib/format";
 import { SettingsGroup } from "@/panels/settings/SettingsGroup";
 import { SettingsRow } from "@/panels/settings/SettingsRow";
 import { Alert, AlertTitle } from "@/ui/alert";
@@ -40,11 +40,8 @@ import {
 function useDate() {
   const locale = usePreferencesStore((state) => state.locale);
   return React.useMemo(() => {
-    const format = new Intl.DateTimeFormat(locale, {
-      month: "long",
-      day: "numeric",
-    });
-    return (ms: number) => format.format(ms);
+    return (ms: number) =>
+      formatDate(ms, { month: "long", day: "numeric" }, locale);
   }, [locale]);
 }
 

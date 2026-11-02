@@ -1,15 +1,15 @@
 import * as React from "react";
 
 import { usePreferencesStore, useT } from "@/app/preferences-store";
+import { formatDate } from "@/lib/format";
 import { ErrorState } from "@/ui/state";
 import { describeFailure } from "../api/errors";
 
-/** `2025年10月9日` / `Oct 9, 2025`，随界面语言。 */
+/** `2025 年 10 月 9 日` / `Oct 9, 2025`，随界面语言。 */
 export function useFormatDate(): (ms: number) => string {
   const locale = usePreferencesStore((state) => state.locale);
   return React.useMemo(() => {
-    const format = new Intl.DateTimeFormat(locale, { dateStyle: "medium" });
-    return (ms) => format.format(ms);
+    return (ms) => formatDate(ms, { dateStyle: "medium" }, locale);
   }, [locale]);
 }
 

@@ -11,7 +11,8 @@ import {
 } from "lucide-react";
 import type { WorkflowRunJson, WorkflowTemplateJson } from "@armadra/shared";
 
-import { usePreferencesStore, useT } from "@/app/preferences-store";
+import { useT } from "@/app/preferences-store";
+import { formatRelativeTime } from "@/lib/format";
 import { scheduleWorkflow } from "@/panels/automation/open";
 import {
   ResponsiveAlertDialog,
@@ -57,26 +58,6 @@ import {
 } from "./model";
 import { useWorkflowView, workflowKeys } from "./store";
 
-/** 「2 天前」——按当前语言。 */
-export function relativeTime(
-  iso: string,
-  locale: string,
-  now = Date.now(),
-): string {
-  const seconds = Math.round((Date.parse(iso) - now) / 1000);
-  const format = new Intl.RelativeTimeFormat(locale, { numeric: "auto" });
-  const units: [Intl.RelativeTimeFormatUnit, number][] = [
-    ["day", 86_400],
-    ["hour", 3_600],
-    ["minute", 60],
-  ];
-  for (const [unit, size] of units) {
-    if (Math.abs(seconds) >= size)
-      return format.format(Math.round(seconds / size), unit);
-  }
-  return format.format(seconds, "second");
-}
-
 export interface TemplateLibraryProps {
   templates: readonly WorkflowTemplateJson[];
   runs: readonly WorkflowRunJson[];
@@ -97,7 +78,6 @@ export function TemplateLibrary({
   now,
 }: TemplateLibraryProps) {
   const t = useT();
-  const locale = usePreferencesStore((state) => state.locale);
   const start = useWorkflowView((state) => state.start);
   const edit = useWorkflowView((state) => state.edit);
   const [deleting, setDeleting] = React.useState<WorkflowTemplateJson | null>(
@@ -153,7 +133,7 @@ export function TemplateLibrary({
                   ·{" "}
                   {stats.lastRunAt
                     ? t("workflow.library.lastRun", {
-                        when: relativeTime(stats.lastRunAt, locale, now),
+                        when: formatRelativeTime(stats.lastRunAt, now),
                       })
                     : t("workflow.library.never")}
                 </p>

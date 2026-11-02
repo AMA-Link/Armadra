@@ -232,7 +232,11 @@ describe("模板库与起跑", () => {
       const starting = useWorkflowView((state) => state.starting);
       return (
         <>
-          <TemplateLibrary templates={[TEMPLATE]} runs={[run()]} />
+          <TemplateLibrary
+            templates={[TEMPLATE]}
+            runs={[run()]}
+            now={Date.parse("2026-10-02T08:12:00.000Z")}
+          />
           <StartRunDialog
             template={starting ? TEMPLATE : null}
             onClose={() => useWorkflowView.getState().start(null)}
@@ -245,7 +249,8 @@ describe("模板库与起跑", () => {
         <Harness />
       </TestProviders>,
     );
-    expect(screen.getByText(/2 角色 · 2 步 · 上次/)).toBeTruthy();
+    // 相对时间走 lib/format：「上次运行 12 分钟前」，不再是「上次 12分钟前」。
+    expect(screen.getByText("2 角色 · 2 步 · 上次运行 12 分钟前")).toBeTruthy();
     fireEvent.click(screen.getByText("运行"));
     expect(await screen.findByText("运行「双人审查」")).toBeTruthy();
     // 「范围」没有缺省值也没填：不发。

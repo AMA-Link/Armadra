@@ -1,6 +1,7 @@
 import { Trash2 } from "lucide-react";
 
 import { usePreferencesStore, useT } from "@/app/preferences-store";
+import { formatDate } from "@/lib/format";
 import { Button } from "@/ui/button";
 import { EmptyState } from "@/ui/state";
 import { toast } from "@/ui/toast";
@@ -32,8 +33,10 @@ export function DeletedTeamPage({ slug }: { slug: string }) {
   const team = deleted.data.find((row) => row.slug === slug);
   if (!team) return <PageState kind="notFound" onHome={home} />;
 
-  const date = new Intl.DateTimeFormat(locale, { dateStyle: "long" }).format(
-    team.purgeAtMs ?? undefined,
+  const date = formatDate(
+    team.purgeAtMs ?? Date.now(),
+    { dateStyle: "long" },
+    locale,
   );
   const run = async () => {
     try {

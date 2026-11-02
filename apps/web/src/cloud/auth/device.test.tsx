@@ -73,10 +73,8 @@ describe("设备码规整", () => {
 
   it("请求时间：一分钟内是刚刚，其余是相对时间", () => {
     const now = 1_000_000_000;
-    expect(requestedAgo(now - 20_000, now, "zh-CN", "刚刚")).toBe("刚刚");
-    expect(requestedAgo(now - 3 * 60_000, now, "zh-CN", "刚刚")).toBe(
-      "3分钟前",
-    );
+    expect(requestedAgo(now - 20_000, now)).toBe("刚刚");
+    expect(requestedAgo(now - 3 * 60_000, now)).toBe("3 分钟前");
   });
 });
 

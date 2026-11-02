@@ -3,9 +3,11 @@ import { cn } from "./cn";
 import {
   formatBytes,
   formatClock,
+  formatDate,
   formatDuration,
   formatElapsedTime,
   formatRelativeTime,
+  spaceCjkDigits,
 } from "./format";
 
 const NOW = new Date("2026-09-04T12:00:00.000Z").getTime();
@@ -106,5 +108,33 @@ describe("formatDuration / formatClock", () => {
     expect(formatClock(7_000)).toBe("0:07");
     expect(formatClock(760_000)).toBe("12:40");
     expect(formatClock(3_723_000)).toBe("1:02:03");
+  });
+});
+
+describe("formatDate", () => {
+  const day = new Date(2025, 9, 9, 20, 30);
+
+  it("中文数字与汉字之间留空格，与 formatRelativeTime 的日期写法一致", () => {
+    expect(formatDate(day, undefined, "zh-CN")).toBe("2025 年 10 月 9 日");
+    expect(
+      formatDate(day, { dateStyle: "medium", timeStyle: "short" }, "zh-CN"),
+    ).toBe("2025 年 10 月 9 日 20:30");
+    expect(formatRelativeTime(new Date(2024, 2, 2, 12), NOW)).toBe(
+      "2024 年 3 月 2 日",
+    );
+  });
+
+  it("英文保持 Intl 的写法", () => {
+    expect(formatDate(day, undefined, "en")).toBe("Oct 9, 2025");
+  });
+
+  it("解析不了给空串", () => {
+    expect(formatDate("不是时间", undefined, "zh-CN")).toBe("");
+  });
+
+  it("spaceCjkDigits 只在数字与汉字相邻处加空格", () => {
+    expect(spaceCjkDigits("2026年12月1日")).toBe("2026 年 12 月 1 日");
+    expect(spaceCjkDigits("3 小时前")).toBe("3 小时前");
+    expect(spaceCjkDigits("build-01")).toBe("build-01");
   });
 });
