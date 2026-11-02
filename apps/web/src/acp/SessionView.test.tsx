@@ -269,30 +269,18 @@ async function pickModel(name: string) {
   })) as typeof window.matchMedia;
   try {
     render(<SessionView nodeId="n1" data={data} />);
-    const more = await screen.findByRole("button", { name: "更多" });
-    fireEvent.pointerDown(more, { button: 0, pointerType: "mouse" });
+    // 窄屏也没有「⋯」：模型就在操作行上。
+    const trigger = await screen.findByLabelText("模型");
+    fireEvent.pointerDown(trigger, { button: 0, pointerType: "mouse" });
     fireEvent.click(await screen.findByRole("menuitemradio", { name }));
   } finally {
     window.matchMedia = original;
   }
 }
 
-/** 当前选中的模型名：宽屏读选择器，窄屏打开「⋯」菜单读选中的那一项。 */
+/** 当前选中的模型名：读操作行上「模型 · 思考强度」的触发器。 */
 async function checkedModel(): Promise<string | null> {
-  const select = screen.queryByLabelText("模型");
-  if (select) return select.textContent;
-  const more = await screen.findByRole("button", { name: "更多" });
-  fireEvent.pointerDown(more, { button: 0, pointerType: "mouse" });
-  const items = await screen.findAllByRole("menuitemradio");
-  const checked = items.find(
-    (item) =>
-      item.getAttribute("aria-checked") === "true" &&
-      /Small|Large/.test(item.textContent ?? ""),
-  );
-  fireEvent.keyDown(document.activeElement ?? document.body, {
-    key: "Escape",
-  });
-  return checked?.textContent ?? null;
+  return (await screen.findByLabelText("模型")).textContent;
 }
 
 afterEach(() => {
