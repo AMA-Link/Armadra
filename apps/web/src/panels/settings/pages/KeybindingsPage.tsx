@@ -78,6 +78,7 @@ import {
 } from "@/ui/dropdown-menu";
 import { IconButton } from "@/ui/icon-button";
 import { Input } from "@/ui/input";
+import { Item, ItemActions, ItemContent, ItemGroup } from "@/ui/item";
 import { Kbd } from "@/ui/kbd";
 import {
   Select,
@@ -87,14 +88,6 @@ import {
   SelectValue,
 } from "@/ui/select";
 import { Switch } from "@/ui/switch";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/ui/table";
 import { Textarea } from "@/ui/textarea";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/ui/tooltip";
 import { isDesktop } from "@/platform";
@@ -576,37 +569,18 @@ export function KeybindingsPage() {
             ],
           }}
         >
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>{t("settings.shortcut.col.command")}</TableHead>
-                <TableHead>{t("settings.shortcut.col.keys")}</TableHead>
-                <TableHead className="hidden sm:table-cell">
-                  {t("settings.shortcut.col.source")}
-                </TableHead>
-                <TableHead className="hidden md:table-cell">
-                  {t("settings.shortcut.when")}
-                </TableHead>
-                <TableHead>
-                  <span className="sr-only">
-                    {t("settings.shortcut.col.actions")}
-                  </span>
-                </TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {entries
-                .filter((entry) => entry.rows.length > 0)
-                .map((entry) => (
-                  <React.Fragment key={entry.scope}>
-                    <TableRow className="hover:bg-transparent">
-                      <TableCell
-                        colSpan={5}
-                        className="text-caption font-medium text-muted-foreground"
-                      >
-                        {t(`settings.scope.${entry.scope}`)}
-                      </TableCell>
-                    </TableRow>
+          <div className="flex flex-col pb-2">
+            {entries
+              .filter((entry) => entry.rows.length > 0)
+              .map((entry) => (
+                <section
+                  key={entry.scope}
+                  aria-label={t(`settings.scope.${entry.scope}`)}
+                >
+                  <h3 className="px-3 pt-3 pb-1 text-caption font-medium text-muted-foreground">
+                    {t(`settings.scope.${entry.scope}`)}
+                  </h3>
+                  <ItemGroup className="gap-0">
                     {entry.rows.map(({ command, source, chords }) => {
                       const below =
                         source === "default" || source === "profile"
@@ -619,187 +593,194 @@ export function KeybindingsPage() {
                               preset,
                             );
                       const when = commandWhen(command.id, keymap);
+                      // 条件只在被改过时写出来：内置的条件由分组本身说明，
+                      // 每行都复述一遍只是噪声。
+                      const whenChanged =
+                        when !== null &&
+                        keymapSource(command.id, "when", global, device) !==
+                          "default";
                       const active =
                         recording?.id === command.id ? recording.mode : null;
                       return (
-                        <TableRow key={command.id} data-command={command.id}>
-                          <TableCell>
-                            <span className="inline-flex flex-wrap items-center gap-1.5">
+                        <Item
+                          key={command.id}
+                          role="listitem"
+                          size="xs"
+                          data-command={command.id}
+                          className="flex-nowrap rounded-none border-0 border-t border-border-soft px-3 py-0.5 first:border-t-0 transition-colors duration-(--dur-instant) hover:bg-hover has-aria-expanded:bg-hover"
+                        >
+                          <ItemContent className="min-w-0 flex-row flex-wrap items-center gap-x-1.5 gap-y-0.5">
+                            <span className="text-body">
                               {t(command.labelKey)}
-                              {conflicts.has(command.id) && (
-                                <Badge variant="destructive" size="sm">
-                                  {t("settings.shortcut.conflict")}
-                                </Badge>
-                              )}
-                              {/*
-                               * 被别的程序占住的组合键在这里说明白。设置里写着一个键、
-                               * 按下去却什么也不发生，是这一组最容易出现的问题。
-                               */}
-                              {(registered[command.id] === "taken" ||
-                                registered[command.id] === "invalid") && (
-                                <Badge variant="destructive" size="sm">
-                                  {t(
-                                    `settings.shortcut.global.${registered[command.id]}`,
-                                  )}
-                                </Badge>
-                              )}
                             </span>
-                          </TableCell>
-                          <TableCell>
-                            <Button
-                              variant="ghost"
-                              size="xs"
-                              data-roving-item
-                              data-recording={active !== null}
-                              aria-label={t(command.labelKey)}
-                              disabled={preview}
-                              className="-ml-1.5 gap-1 data-[recording=true]:bg-muted"
-                              onClick={() =>
-                                setRecording((current) =>
-                                  current?.id === command.id
-                                    ? null
-                                    : { id: command.id, mode: "replace" },
-                                )
-                              }
-                            >
-                              {active === "replace" ? (
-                                <span className="text-caption text-muted-foreground">
-                                  {t("settings.shortcut.recording")}
-                                </span>
-                              ) : chords.length === 0 ? (
-                                <Kbd persistent>
-                                  {t("settings.shortcut.unbound")}
-                                </Kbd>
-                              ) : (
-                                chords.map((chord, position) => (
-                                  <Kbd persistent key={`${position}:${chord}`}>
-                                    {formatKeys(chord, { mac })}
-                                  </Kbd>
-                                ))
-                              )}
-                              {active === "append" && (
-                                <span className="text-caption text-muted-foreground">
-                                  {t("settings.shortcut.recording")}
-                                </span>
-                              )}
-                            </Button>
-                          </TableCell>
-                          <TableCell className="hidden sm:table-cell">
-                            <Badge variant="outline" size="sm">
-                              {t(`settings.shortcut.source.${source}`)}
-                            </Badge>
-                          </TableCell>
-                          <TableCell className="hidden md:table-cell">
-                            {when && (
+                            {source !== "default" && (
+                              <Badge variant="outline" size="sm">
+                                {t(`settings.shortcut.source.${source}`)}
+                              </Badge>
+                            )}
+                            {conflicts.has(command.id) && (
+                              <Badge variant="destructive" size="sm">
+                                {t("settings.shortcut.conflict")}
+                              </Badge>
+                            )}
+                            {/*
+                             * 被别的程序占住的组合键在这里说明白。设置里写着一个键、
+                             * 按下去却什么也不发生，是这一组最容易出现的问题。
+                             */}
+                            {(registered[command.id] === "taken" ||
+                              registered[command.id] === "invalid") && (
+                              <Badge variant="destructive" size="sm">
+                                {t(
+                                  `settings.shortcut.global.${registered[command.id]}`,
+                                )}
+                              </Badge>
+                            )}
+                            {whenChanged && (
                               <code
                                 title={when}
-                                className="block max-w-48 truncate font-mono text-caption text-muted-foreground"
+                                className="max-w-full basis-full truncate font-mono text-caption text-muted-foreground"
                               >
                                 {when}
                               </code>
                             )}
-                          </TableCell>
-                          <TableCell>
-                            <div className="flex items-center justify-end gap-1">
-                              {!preview && (
-                                <DropdownMenu>
-                                  <Tooltip>
-                                    <TooltipTrigger asChild>
-                                      <DropdownMenuTrigger asChild>
-                                        <IconButton
-                                          size="inline"
-                                          label={t("settings.shortcut.more", {
-                                            command: t(command.labelKey),
-                                          })}
-                                        >
-                                          <Ellipsis />
-                                        </IconButton>
-                                      </DropdownMenuTrigger>
-                                    </TooltipTrigger>
-                                    <TooltipContent>
-                                      {t("settings.shortcut.more", {
-                                        command: t(command.labelKey),
-                                      })}
-                                    </TooltipContent>
-                                  </Tooltip>
-                                  <DropdownMenuContent align="end">
-                                    <DropdownMenuItem
-                                      onSelect={() =>
-                                        setRecording({
-                                          id: command.id,
-                                          mode: "append",
-                                        })
-                                      }
-                                    >
-                                      {t("settings.shortcut.add")}
-                                    </DropdownMenuItem>
-                                    {chords.length > 1 &&
-                                      chords.map((chord, position) => (
-                                        <DropdownMenuItem
-                                          key={`${position}:${chord}`}
-                                          onSelect={() =>
-                                            write(
-                                              command.id,
-                                              removeChord(
-                                                keysHere(command.id),
-                                                position,
-                                              ),
-                                            )
-                                          }
-                                        >
-                                          {t("settings.shortcut.removeOne", {
-                                            keys: formatKeys(chord, { mac }),
-                                          })}
-                                        </DropdownMenuItem>
-                                      ))}
-                                    {chords.length > 0 && (
-                                      <DropdownMenuItem
-                                        onSelect={() => write(command.id, "")}
-                                      >
-                                        {t("settings.shortcut.clear")}
-                                      </DropdownMenuItem>
-                                    )}
-                                    <DropdownMenuSeparator />
-                                    <DropdownMenuItem
-                                      onSelect={() =>
-                                        setEditingWhen({
-                                          id: command.id,
-                                          text: when ?? "",
-                                        })
-                                      }
-                                    >
-                                      {t("settings.shortcut.when.edit")}
-                                    </DropdownMenuItem>
-                                  </DropdownMenuContent>
-                                </DropdownMenu>
-                              )}
-                              {source !== "default" &&
-                                source !== "profile" &&
-                                !preview && (
-                                  <Tooltip>
-                                    <TooltipTrigger asChild>
+                          </ItemContent>
+                          <Button
+                            variant="ghost"
+                            size="xs"
+                            data-roving-item
+                            data-recording={active !== null}
+                            aria-label={t(command.labelKey)}
+                            disabled={preview}
+                            className="shrink-0 gap-1 data-[recording=true]:bg-muted"
+                            onClick={() =>
+                              setRecording((current) =>
+                                current?.id === command.id
+                                  ? null
+                                  : { id: command.id, mode: "replace" },
+                              )
+                            }
+                          >
+                            {active === "replace" ? (
+                              <span className="text-caption text-muted-foreground">
+                                {t("settings.shortcut.recording")}
+                              </span>
+                            ) : chords.length === 0 ? (
+                              <Kbd persistent>
+                                {t("settings.shortcut.unbound")}
+                              </Kbd>
+                            ) : (
+                              chords.map((chord, position) => (
+                                <Kbd persistent key={`${position}:${chord}`}>
+                                  {formatKeys(chord, { mac })}
+                                </Kbd>
+                              ))
+                            )}
+                            {active === "append" && (
+                              <span className="text-caption text-muted-foreground">
+                                {t("settings.shortcut.recording")}
+                              </span>
+                            )}
+                          </Button>
+                          {/* 固定宽度的动作位：键帽这一列才能在各行之间对齐。 */}
+                          <ItemActions className="w-14 shrink-0 justify-end gap-0">
+                            {!preview && (
+                              <DropdownMenu>
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <DropdownMenuTrigger asChild>
                                       <IconButton
                                         size="inline"
-                                        label={resetLabel(command, below, mac)}
-                                        onClick={() => resetOne(command.id)}
+                                        label={t("settings.shortcut.more", {
+                                          command: t(command.labelKey),
+                                        })}
                                       >
-                                        <RotateCcw />
+                                        <Ellipsis />
                                       </IconButton>
-                                    </TooltipTrigger>
-                                    <TooltipContent>
-                                      {resetLabel(command, below, mac)}
-                                    </TooltipContent>
-                                  </Tooltip>
-                                )}
-                            </div>
-                          </TableCell>
-                        </TableRow>
+                                    </DropdownMenuTrigger>
+                                  </TooltipTrigger>
+                                  <TooltipContent>
+                                    {t("settings.shortcut.more", {
+                                      command: t(command.labelKey),
+                                    })}
+                                  </TooltipContent>
+                                </Tooltip>
+                                <DropdownMenuContent align="end">
+                                  <DropdownMenuItem
+                                    onSelect={() =>
+                                      setRecording({
+                                        id: command.id,
+                                        mode: "append",
+                                      })
+                                    }
+                                  >
+                                    {t("settings.shortcut.add")}
+                                  </DropdownMenuItem>
+                                  {chords.length > 1 &&
+                                    chords.map((chord, position) => (
+                                      <DropdownMenuItem
+                                        key={`${position}:${chord}`}
+                                        onSelect={() =>
+                                          write(
+                                            command.id,
+                                            removeChord(
+                                              keysHere(command.id),
+                                              position,
+                                            ),
+                                          )
+                                        }
+                                      >
+                                        {t("settings.shortcut.removeOne", {
+                                          keys: formatKeys(chord, { mac }),
+                                        })}
+                                      </DropdownMenuItem>
+                                    ))}
+                                  {chords.length > 0 && (
+                                    <DropdownMenuItem
+                                      onSelect={() => write(command.id, "")}
+                                    >
+                                      {t("settings.shortcut.clear")}
+                                    </DropdownMenuItem>
+                                  )}
+                                  <DropdownMenuSeparator />
+                                  <DropdownMenuItem
+                                    onSelect={() =>
+                                      setEditingWhen({
+                                        id: command.id,
+                                        text: when ?? "",
+                                      })
+                                    }
+                                  >
+                                    {t("settings.shortcut.when.edit")}
+                                  </DropdownMenuItem>
+                                </DropdownMenuContent>
+                              </DropdownMenu>
+                            )}
+                            {source !== "default" &&
+                              source !== "profile" &&
+                              !preview && (
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <IconButton
+                                      size="inline"
+                                      label={resetLabel(command, below, mac)}
+                                      onClick={() => resetOne(command.id)}
+                                    >
+                                      <RotateCcw />
+                                    </IconButton>
+                                  </TooltipTrigger>
+                                  <TooltipContent>
+                                    {resetLabel(command, below, mac)}
+                                  </TooltipContent>
+                                </Tooltip>
+                              )}
+                          </ItemActions>
+                        </Item>
                       );
                     })}
-                  </React.Fragment>
-                ))}
-            </TableBody>
-          </Table>
+                  </ItemGroup>
+                </section>
+              ))}
+          </div>
         </SettingsTableCard>
       </SettingsLoadable>
 
