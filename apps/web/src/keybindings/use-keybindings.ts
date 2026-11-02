@@ -7,6 +7,9 @@
  *     对待」，这两条比按键本身更早决定放不放行；
  *  3. `when` —— 「只在编辑器里」「只在 mac 上」这类条件（见 `when.ts`）。
  *
+ * 此外，弹窗 / 弹出层 / 菜单开着或焦点在其中时，`canvas` 组整体挂起（见
+ * `context.ts` 的 `isOverlayOpen` / `isOverlayTarget`），在三道闸门之前判定。
+ *
  * 第 3 道是后加的，故意排在最后：`when` 能表达前两道的一部分，但前两道是
  * 每条命令都必须回答的问题，写成条件表达式反而会让每一行都重复一遍。
  */
@@ -26,7 +29,7 @@ import {
   shortcutsEnabled,
   type ActiveKeymap,
 } from "./active";
-import { keybindingContext } from "./context";
+import { isOverlayOpen, isOverlayTarget, keybindingContext } from "./context";
 import { evaluateWhen } from "./when";
 
 let keybindingSuspensions = 0;
@@ -100,6 +103,11 @@ export function useKeybindings(
         mac,
       });
       const inTerminal = context.terminalFocus === true;
+      // 弹层开着（或焦点在弹层里）：画布命令一律挂起，弹窗背后的画布不该被
+      // Delete / ⌘A / ⌘Z 等键动到；app 级命令（⌘K、设置）照常。
+      const overlay =
+        !inTerminal &&
+        (isOverlayTarget(keyboardEvent.target) || isOverlayOpen());
       const typing = context.editing === true;
       // 终端里的控制键（Ctrl+K、Alt+B……）不论绑给了谁都归 shell。
       if (inTerminal && isTerminalControlEvent(keyboardEvent)) return;
@@ -109,6 +117,7 @@ export function useKeybindings(
         const handler = handlersRef.current[command.id];
         if (!handler) continue;
         if (scopes && !scopes.includes(command.scope)) continue;
+        if (overlay && command.scope === "canvas") continue;
         // 终端优先：终端里的 textarea 也算 typing，但只看 allowInTerminal
         if (inTerminal && !command.allowInTerminal) continue;
         if (typing && !command.allowWhileTyping) continue;
