@@ -510,7 +510,7 @@ jobs:
   # 任一作业失败、超时或被取消就开一个 issue；已经有一个开着的同名 issue 时改成在下面追加评论，
   # 免得每晚一个。只在 main 上报（手动在分支上触发的失败看运行页即可）。
   # 条件不能只写 failure()：作业撞上 timeout-minutes 的结果是 cancelled，failure() 为假，report 会被
-  # 跳过，夜间失败就此无声（#746，10-26 起的 Android 挂起有五晚没人知道）。cancelled() 管整次运行被
+  # 跳过，夜间失败就此无声（#746，10-24 起的 Android 挂起没人发现）。cancelled() 管整次运行被
   # 人取消，needs 里有 cancelled 的结果管作业超时；always() 让这两种情况下它不被一并跳过。
   report:
     name: 失败开 issue
