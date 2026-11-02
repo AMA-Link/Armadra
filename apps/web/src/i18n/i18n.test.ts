@@ -266,15 +266,29 @@ const REFERENCED_ELSEWHERE = new Set(["desktop", "mod-commands"]);
 const UNREFERENCED: readonly string[] = [];
 
 describe("消息键的引用", () => {
-  // 扫全量源码语料，整套并行跑时 5 秒默认预算偏紧。
-  it("每个键都至少被一个非 i18n 的源文件用到", { timeout: 60_000 }, () => {
+  // 原先对 12 MB 语料逐键 `includes`（约 3500 个键），整套并行跑时要几十秒，负载下
+  // 还会超时。键只含 `[\w.?:-]`，出现在语料里就一定整个落在某个「键字符」连续段内：
+  // 把这些连续段去重后再查，语料缩到原来的一小部分，判定结果与全文查找完全相同。
+  // 单跑约 0.9 秒（要扫 12 MB 语料，固有开销），负载下给 15 秒。
+  it("每个键都至少被一个非 i18n 的源文件用到", { timeout: 15_000 }, () => {
     const corpus = Object.entries(sources)
       .filter(([path]) => !path.startsWith("/src/i18n/"))
       .map(([, source]) => source)
       .join("\n");
     const prefixes = [...dynamicPrefixes(corpus)];
+    const allKeys = Object.values(MODULES).flatMap((module) =>
+      Object.keys(module["zh-CN"]),
+    );
+    // 连续段的前提：新键若带了别的字符，这里先报错，而不是悄悄漏查。
+    expect(
+      allKeys.filter((key) => !/^[\w.?:-]+$/.test(key)),
+      "键只许含字母数字下划线与 . ? : -",
+    ).toEqual([]);
+    const runs = new Set(corpus.match(/[\w.?:-]+/g));
+    const keyText = [...runs].join("\n");
     const used = (key: string) =>
-      corpus.includes(key) || prefixes.some((prefix) => key.startsWith(prefix));
+      keyText.includes(key) ||
+      prefixes.some((prefix) => key.startsWith(prefix));
 
     const dead = Object.entries(MODULES)
       .filter(([name]) => !REFERENCED_ELSEWHERE.has(name))
