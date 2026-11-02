@@ -125,7 +125,19 @@ export function useFileSave(
         if (refs.identityRef.current === identity) setSaving(false);
       }
     }
-  }, [path, identity, workspaceId, writable, beforeSave, afterSave]);
+  }, [
+    path,
+    identity,
+    refs,
+    setDirty,
+    setExternal,
+    setSaving,
+    t,
+    workspaceId,
+    writable,
+    beforeSave,
+    afterSave,
+  ]);
 
   return { save };
 }

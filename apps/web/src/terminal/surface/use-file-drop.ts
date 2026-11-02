@@ -134,7 +134,7 @@ export function useFileDropPaste(
           toast.error(translate(fileDragMessage(error)));
         });
     },
-    [nodeId],
+    [nodeId, refs],
   );
 
   React.useEffect(() => {
@@ -156,7 +156,7 @@ export function useFileDropPaste(
     };
     body.addEventListener(WORKSPACE_FILE_DROP_EVENT, dropped);
     return () => body.removeEventListener(WORKSPACE_FILE_DROP_EVENT, dropped);
-  }, [pasteDroppedFiles]);
+  }, [pasteDroppedFiles, refs]);
 
   return pasteDroppedFiles;
 }
@@ -279,7 +279,7 @@ export function useExternalFilePaste(
           toast.error(externalFileMessage(error));
         });
     },
-    [nodeId],
+    [nodeId, refs],
   );
 }
 

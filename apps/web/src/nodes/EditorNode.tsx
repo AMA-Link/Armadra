@@ -254,7 +254,7 @@ export function EditorNode({ id, node, selected }: NodeBodyProps) {
       controller.abort();
       if (mediaUrl) URL.revokeObjectURL(mediaUrl);
     };
-  }, [path, workspaceId, attempt]);
+  }, [path, workspaceId, attempt, identity, refs]);
 
   /* ------------------------------ CodeMirror ------------------------------ */
 
@@ -331,7 +331,7 @@ export function EditorNode({ id, node, selected }: NodeBodyProps) {
       const reveal = takePendingReveal(path);
       if (reveal) revealLine(view, reveal.line, reveal.column);
     });
-  }, [identity, path]);
+  }, [identity, path, refs]);
 
   React.useEffect(() => {
     let cancelled = false;
@@ -352,7 +352,7 @@ export function EditorNode({ id, node, selected }: NodeBodyProps) {
     return () => {
       cancelled = true;
     };
-  }, [writable, identity]);
+  }, [writable, identity, refs]);
 
   /* ------------------------------ 外部改动监听 ----------------------------- */
 

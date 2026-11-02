@@ -162,7 +162,7 @@ export function LogPage({ workspaceId }: LogPageProps) {
     getNextPageParam: (page) => page.nextCursor,
     retry: false,
   });
-  const pages = log.data?.pages ?? [];
+  const pages = useMemo(() => log.data?.pages ?? [], [log.data?.pages]);
   const commits = useMemo(() => pages.flatMap((page) => page.commits), [pages]);
   /** 颜色序号由服务端定；翻页不会重排，所以取第一页那份就够。 */
   const colors = useMemo(

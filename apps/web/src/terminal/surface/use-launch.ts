@@ -218,7 +218,7 @@ export function useLaunchSequence(
     if (refs.launchPhaseRef.current !== "armed") return;
     if (refs.launchTimerRef.current) clearTimeout(refs.launchTimerRef.current);
     refs.launchTimerRef.current = setTimeout(fireLaunch, LAUNCH_QUIET_MS);
-  }, [fireLaunch]);
+  }, [fireLaunch, refs]);
 
   return { clearLaunchTimers, armLaunch, noteOutput };
 }

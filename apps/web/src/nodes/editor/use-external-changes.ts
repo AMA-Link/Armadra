@@ -79,7 +79,16 @@ export function useExternalChanges(
     setExternal(null);
     setDiskContent(null);
     onReloaded?.();
-  }, [identity, onReloaded, path, workspaceId]);
+  }, [
+    identity,
+    onReloaded,
+    path,
+    refs,
+    setDirty,
+    setDiskContent,
+    setExternal,
+    workspaceId,
+  ]);
 
   /** 一次外部改动：没有草稿就直接重载并提示，有草稿交给用户决定。 */
   const applyExternal = React.useCallback(
@@ -96,7 +105,7 @@ export function useExternalChanges(
         () => setExternal(change),
       );
     },
-    [reload, t],
+    [refs, reload, setExternal, t],
   );
 
   React.useEffect(() => {
@@ -131,7 +140,17 @@ export function useExternalChanges(
       off();
       void runtimeApi.unwatchFile(workspaceId, path, id).catch(() => undefined);
     };
-  }, [applyExternal, id, path, watching, workspaceId]);
+  }, [
+    applyExternal,
+    id,
+    path,
+    refs,
+    setDegraded,
+    setWatchMode,
+    setWatchReason,
+    watching,
+    workspaceId,
+  ]);
 
   // 监听不可用时的退化路径：窗口重新获得焦点才问一次版本，不做轮询。
   React.useEffect(() => {
@@ -158,7 +177,7 @@ export function useExternalChanges(
       window.removeEventListener("focus", check);
       document.removeEventListener("visibilitychange", check);
     };
-  }, [applyExternal, degraded, identity, path, watching, workspaceId]);
+  }, [applyExternal, degraded, identity, path, refs, watching, workspaceId]);
 
   const compare = React.useCallback(() => {
     if (!workspaceId || !path) return;
@@ -171,7 +190,7 @@ export function useExternalChanges(
       .catch(() => {
         if (refs.identityRef.current === identity) setDiskContent("");
       });
-  }, [identity, path, workspaceId]);
+  }, [identity, path, refs, setDiskContent, workspaceId]);
 
   /**
    * 保留草稿：把最新的磁盘版本当作保存令牌，下一次保存就覆盖这次外部改动；
@@ -188,7 +207,7 @@ export function useExternalChanges(
     }
     setExternal(null);
     setDiskContent(null);
-  }, [external]);
+  }, [external, refs, setDiskContent, setExternal]);
 
   return { reload, compare, keepDraft };
 }

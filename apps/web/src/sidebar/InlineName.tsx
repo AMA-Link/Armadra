@@ -41,6 +41,8 @@ export function InlineName({
       input.current?.select();
     });
     return () => cancelAnimationFrame(frame);
+    // 只在进入编辑时用当时的名字重置草稿；编辑中名字再变，不该冲掉正在输入的内容。
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editing]);
 
   const finish = (restoreFocus: boolean) => {

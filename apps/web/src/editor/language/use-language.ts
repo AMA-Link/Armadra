@@ -123,7 +123,16 @@ export function useLanguageService(
           : "",
     });
     return () => unregisterOpenFile(nodeId);
-  }, [nodeId, path, identity, eligible, dirty, sha256]);
+  }, [
+    nodeId,
+    path,
+    identity,
+    eligible,
+    dirty,
+    sha256,
+    viewIdentityRef,
+    viewRef,
+  ]);
 
   /* -------------------------------- 会话 --------------------------------- */
 
@@ -196,11 +205,23 @@ export function useLanguageService(
       cancelled = true;
       offOwnership?.();
       // 视图还活着才撤：卸载路径上视图已经 destroy 了，dispatch 会抛。
+      // 这里要读清理时的 `viewRef.current`，看视图有没有被换掉，不能提前复制。
+      // eslint-disable-next-line react-hooks/exhaustive-deps
       if (viewRef.current === view && alive(view)) {
         view.dispatch({ effects: compartment.reconfigure([]) });
       }
     };
-  }, [workspaceId, languageId, identity, path, state, viewGeneration]);
+  }, [
+    workspaceId,
+    languageId,
+    identity,
+    path,
+    state,
+    viewGeneration,
+    viewIdentityRef,
+    viewRef,
+    serviceRef,
+  ]);
 
   /* -------------------------------- 保存 --------------------------------- */
 
@@ -217,7 +238,7 @@ export function useLanguageService(
         // 格式化失败不该挡住保存。
         .catch(() => undefined)
     );
-  }, [identity]);
+  }, [identity, viewIdentityRef, viewRef]);
 
   const afterSave = React.useCallback(() => {
     const client = clientRef.current;
