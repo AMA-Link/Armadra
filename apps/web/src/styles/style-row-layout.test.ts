@@ -139,3 +139,13 @@ describe("样式条坐在 Dock 之上", () => {
     ).toContain("var(--dock-h)");
   });
 });
+
+describe("宽不到 768 的矮屏手机（#732）", () => {
+  it("Dock 合成一行，样式条与缩略图按一行的高度让到 Dock 之上", () => {
+    const short = declarations(
+      blocks("(max-width: 767px) and (max-height: 500px)"),
+      ".workspace-surface",
+    );
+    expect(short.get("--dock-stack-h")).toBe("var(--dock-h)");
+  });
+});

@@ -305,6 +305,17 @@
 }
 
 /*
+ * 宽不到 768 的矮屏（667×375 的横屏手机）仍是手机布局，但两行 Dock 加 44px 的
+ * 底部导航只剩 220px 画布：`shell/Dock` 在矮屏（高度 ≤ 500px）合成一行（#732），
+ * 缩略图与样式条按一行的高度让到 Dock 之上。
+ */
+@media (max-width: 767px) and (max-height: 500px) {
+  .workspace-surface {
+    --dock-stack-h: var(--dock-h);
+  }
+}
+
+/*
  * 手机横屏（`platform/layout.PHONE_LANDSCAPE_QUERY`）是电脑布局（#715）：整排
  * Dock、右上工具簇、右下缩略图都与桌面一致，只按矮屏收紧。画布容器在 1000px
  * 以下时工具组本该折进弹层（上面那条容器查询），横屏手机上不折——缩略图默认收

@@ -14,7 +14,12 @@ import { usePreferencesStore } from "@/app/preferences-store";
 import { stopFollowing } from "@/realtime/session";
 import type { Box } from "../geometry";
 import { fitNewNodeSize } from "../first-display";
-import { initialViewportFor, isDefaultViewport } from "../viewport";
+import {
+  FIT_PADDING,
+  initialViewportFor,
+  isDefaultViewport,
+  phoneFitViewport,
+} from "../viewport";
 import { readableOpeningViewport } from "../opening-viewport";
 import {
   MAX_ZOOM,
@@ -38,8 +43,6 @@ import { cameraForNewNode } from "./reveal";
 
 export const CAMERA_THROTTLE_MS = 300;
 
-/** 适应视图时四周留的比例边距。 */
-const FIT_PADDING = 0.05;
 const FIT_DURATION = 200;
 
 /** 「居中到那个节点」时至少放大到这个比例，否则等于定位到一个点。 */
@@ -73,6 +76,18 @@ export function fitView(): void {
   if (!flow || !bounds) return;
   const { width, height } = containerSize();
   if (width <= 0 || height <= 0) return;
+  // 手机上整块内容放不下又要看得清（#693）时，对准选中 / 最近的节点，不缩到 10%。
+  if (isPhoneScreen()) {
+    const focused = phoneFitViewport({
+      boxes: phoneFitBoxes(flow),
+      current: flow.getViewport(),
+      container: { width, height },
+    });
+    if (focused) {
+      void flow.setViewport(focused, { duration: duration(FIT_DURATION) });
+      return;
+    }
+  }
   const target = getViewportForBounds(
     { x: bounds.x, y: bounds.y, width: bounds.width, height: bounds.height },
     width,
@@ -85,6 +100,29 @@ export function fitView(): void {
     { ...target, zoom: clampZoom(Math.min(target.zoom, 1)) },
     { duration: duration(FIT_DURATION) },
   );
+}
+
+/** 手机「适应」要的盒子：绝对位置与量到的尺寸，选中状态与正文字号带上。 */
+function phoneFitBoxes(flow: NonNullable<ReturnType<typeof getFlow>>) {
+  const types = new Map(
+    (useCanvasStore.getState().document?.nodes ?? []).map((node) => [
+      node.id,
+      node.type,
+    ]),
+  );
+  return flow.getNodes().map((node) => {
+    const rect = getNodesBounds([node]);
+    const type = types.get(node.id);
+    return {
+      x: rect.x,
+      y: rect.y,
+      width: rect.width,
+      height: rect.height,
+      parentId: node.parentId ?? null,
+      selected: node.selected === true,
+      ...(type ? { fontPx: nodeFontPx(type) } : {}),
+    };
+  });
 }
 
 /** 缩放到某一档，锚点是容器中心。Dock 按钮与快捷键都走这里，是人动的视口，取消跟随（#327）。 */
@@ -235,11 +273,19 @@ export function revealNewNode(nodeId: string): void {
  * `opening-viewport.readableOpeningViewport`。
  */
 export function applyBoardViewport(document: BoardDocument): void {
+  openingCamera = null;
   const persisted = document.board.viewport;
   if (!isDefaultViewport(persisted)) {
-    useCanvasStore
-      .getState()
-      .setViewport(readableOpeningViewport(persisted, document));
+    const adapted = readableOpeningViewport(persisted, document);
+    if (adapted === persisted) {
+      useCanvasStore.getState().setViewport(persisted);
+      return;
+    }
+    // 手机上换成看得清的那份只动相机：文档里存的仍是桌面的视口，用户真的
+    // 动了画布才写回（#730）。
+    openingCamera = adapted;
+    const flow = getFlow();
+    if (flow) void flow.setViewport(adapted);
     return;
   }
   useCanvasStore.getState().setViewport(
@@ -253,6 +299,27 @@ export function applyBoardViewport(document: BoardDocument): void {
   );
 }
 
+/**
+ * 打开时只给相机的那份视口（见 {@link applyBoardViewport}）。相机停在它上面
+ * 的回调不是人动的，不该写进文档。
+ */
+let openingCamera: FlowViewport | null = null;
+
+function isOpeningCamera(viewport: FlowViewport): boolean {
+  const camera = openingCamera;
+  if (!camera) return false;
+  if (
+    Math.abs(camera.x - viewport.x) < 0.5 &&
+    Math.abs(camera.y - viewport.y) < 0.5 &&
+    Math.abs(camera.zoom - viewport.zoom) < 0.001
+  ) {
+    return true;
+  }
+  // 相机离开了打开时的位置：从这里起都是人动的。
+  openingCamera = null;
+  return false;
+}
+
 /** 相机 → 文档，节流 300ms。必须在 `<ReactFlow>` 的 provider 之下调用。 */
 export function useViewportSync(): void {
   const timer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -262,6 +329,7 @@ export function useViewportSync(): void {
     timer.current = null;
     const latest = pending.current;
     if (!latest) return;
+    if (isOpeningCamera(latest)) return;
     useCanvasStore.getState().setViewport({
       x: latest.x,
       y: latest.y,

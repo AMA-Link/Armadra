@@ -1,6 +1,10 @@
 import { DEFAULT_VIEWPORT, type Viewport } from "@armadra/shared";
 
-import { firstDisplayZoom, fontFloorZoom } from "./first-display";
+import {
+  PHONE_NODE_MARGIN,
+  firstDisplayZoom,
+  fontFloorZoom,
+} from "./first-display";
 
 /**
  * 打开画布时的视口（§20「打开比例」）。
@@ -127,9 +131,116 @@ export function phoneOpeningViewport(input: {
     container,
     ...(anchor.fontPx === undefined ? {} : { fontPx: anchor.fontPx }),
   });
-  return {
-    x: container.width / 2 - (anchor.x + anchor.width / 2) * next,
-    y: container.height / 2 - (anchor.y + anchor.height / 2) * next,
-    zoom: next,
+  return cameraOnBox(anchor, next, container);
+}
+
+/**
+ * 在 `zoom` 下把一块矩形摆进容器（#730）：放得下的方向居中；比容器还大的方向
+ * 把近端（左 / 上）对齐到 {@link PHONE_NODE_MARGIN}，近端一定看得见，另一头
+ * 可以平移过去——以前一律居中，宽节点两头都出屏、左缘再也看不到。
+ */
+export function cameraOnBox(
+  box: { x: number; y: number; width: number; height: number },
+  zoom: number,
+  container: { width: number; height: number },
+): Viewport {
+  const place = (start: number, size: number, room: number) => {
+    const span = size * zoom;
+    return span <= room - PHONE_NODE_MARGIN * 2
+      ? room / 2 - (start + size / 2) * zoom
+      : PHONE_NODE_MARGIN - start * zoom;
   };
+  return {
+    x: place(box.x, box.width, container.width),
+    y: place(box.y, box.height, container.height),
+    zoom,
+  };
+}
+
+/** 适应视图四周留的比例边距。 */
+export const FIT_PADDING = 0.05;
+
+/** 手机「适应」要的盒子：位置、尺寸、正文字号与是否选中；组员不参与。 */
+export interface FitBox extends OpeningNode {
+  selected?: boolean;
+}
+
+/**
+ * 手机上的「适应」（#730）。
+ *
+ * 整块内容放进屏幕后字号仍不低于下限（#693）就返回 `null`，调用方走普通的
+ * 适应；放不下时不再缩到 10%，而是把**选中的节点**（没选中就是离当前视口中心
+ * 最近的那个）放到可读的缩放下对准——一屏看全和看得清二选一，手机上选看得清。
+ * 对准用 {@link cameraOnBox}，比屏幕宽的节点左缘可见。
+ */
+export function phoneFitViewport(input: {
+  boxes: readonly FitBox[];
+  current: Viewport;
+  container: { width: number; height: number };
+}): Viewport | null {
+  const { container, current } = input;
+  if (container.width <= 0 || container.height <= 0) return null;
+  const roots = input.boxes.filter(
+    (box) =>
+      !box.parentId &&
+      [box.x, box.y, box.width, box.height].every(Number.isFinite) &&
+      box.width > 0 &&
+      box.height > 0,
+  );
+  if (roots.length === 0) return null;
+
+  const floor = Math.max(...roots.map((box) => fontFloorZoom(box.fontPx)));
+  const all = boundsOf(roots);
+  if (fitZoom(all, container) >= floor) return null;
+
+  const selected = roots.filter((box) => box.selected);
+  let focus: readonly FitBox[];
+  if (selected.length > 0) {
+    focus = selected;
+  } else {
+    const zoom = current.zoom > 0 ? current.zoom : 1;
+    const centre = {
+      x: (container.width / 2 - current.x) / zoom,
+      y: (container.height / 2 - current.y) / zoom,
+    };
+    const distance = (box: FitBox) =>
+      Math.hypot(
+        box.x + box.width / 2 - centre.x,
+        box.y + box.height / 2 - centre.y,
+      );
+    focus = [roots.reduce((a, b) => (distance(b) < distance(a) ? b : a))];
+  }
+  const box = boundsOf(focus);
+  const focusFloor = Math.max(
+    ...focus.map((item) => fontFloorZoom(item.fontPx)),
+  );
+  // 只缩小不放大（与普通适应一致）；字号下限优先于「放得下」。
+  const zoom = Math.max(focusFloor, Math.min(fitZoom(box, container), 1));
+  return cameraOnBox(box, zoom, container);
+}
+
+function boundsOf(boxes: readonly OpeningNode[]) {
+  let minX = Number.POSITIVE_INFINITY;
+  let minY = Number.POSITIVE_INFINITY;
+  let maxX = Number.NEGATIVE_INFINITY;
+  let maxY = Number.NEGATIVE_INFINITY;
+  for (const box of boxes) {
+    minX = Math.min(minX, box.x);
+    minY = Math.min(minY, box.y);
+    maxX = Math.max(maxX, box.x + box.width);
+    maxY = Math.max(maxY, box.y + box.height);
+  }
+  return { x: minX, y: minY, width: maxX - minX, height: maxY - minY };
+}
+
+/** 把盒子（含 {@link FIT_PADDING} 边距）放进容器的缩放，不夹范围。 */
+function fitZoom(
+  box: { width: number; height: number },
+  container: { width: number; height: number },
+): number {
+  const pad = 1 + FIT_PADDING * 2;
+  return Math.min(
+    container.width / (box.width * pad),
+    container.height / (box.height * pad),
+  );
 }

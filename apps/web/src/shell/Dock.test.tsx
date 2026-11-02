@@ -370,6 +370,53 @@ describe("手机竖屏的两行 Dock（#715）", () => {
     expect(screen.queryByLabelText("白板工具")).toBeNull();
   });
 
+  it("画布还没挂载、没有打开的板时不渲染第二行（#732）", () => {
+    const { container } = render(
+      <TestProviders>
+        <Dock />
+      </TestProviders>,
+    );
+    const dock = container.querySelector("[data-slot='dock']")!;
+    expect(dock.getAttribute("data-rows")).toBe("2");
+    expect(dock.querySelectorAll("[data-slot='dock-row']")).toHaveLength(1);
+  });
+
+  it("行撑到内容宽、不够宽才居中，320 宽的第一行左端能滚到（#732）", () => {
+    setFlow({} as ReactFlowInstance);
+    const { container } = render(
+      <TestProviders>
+        <Dock />
+      </TestProviders>,
+    );
+    for (const row of container.querySelectorAll("[data-slot='dock-row']")) {
+      expect(row.classList.contains("w-max")).toBe(true);
+      expect(row.classList.contains("min-w-full")).toBe(true);
+    }
+  });
+
+  it("宽 667 的矮横屏仍是手机布局，但 Dock 合成一行（#732）", () => {
+    vi.restoreAllMocks();
+    const original = window.matchMedia;
+    vi.spyOn(window, "matchMedia").mockImplementation((query) => ({
+      ...original(query),
+      matches: query === COMPACT_QUERY || query === "(max-height: 500px)",
+    }));
+    setFlow({} as ReactFlowInstance);
+    useCanvasStore.setState({ boardId: "board-1" });
+    const { container } = render(
+      <TestProviders>
+        <Dock />
+      </TestProviders>,
+    );
+    const dock = container.querySelector("[data-slot='dock']")!;
+    expect(dock.getAttribute("data-rows")).toBeNull();
+    expect(dock.querySelector("[data-slot='dock-row']")).toBeNull();
+    // 一个钮都没丢：锁定、新建、缩放、评论都在这一行里。
+    for (const label of ["锁定视图", "新建", "缩小", "适应", "放大", "评论"]) {
+      expect(screen.getByLabelText(label)).toBeTruthy();
+    }
+  });
+
   it("桌面仍是一行", () => {
     vi.restoreAllMocks();
     setFlow({} as ReactFlowInstance);

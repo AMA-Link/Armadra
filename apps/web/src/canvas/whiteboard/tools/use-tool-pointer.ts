@@ -18,6 +18,9 @@ import { commitDraft, extendDraft, startDraft, type Draft } from "./draft";
 import { createTextAt } from "./create-text";
 import { snapToGrid } from "./grid";
 
+/** 手指按下到抬起移动不超过这么多像素才算「点一下」。 */
+const TAP_SLOP_PX = 10;
+
 /**
  * 白板工具的指针通道（React Flow 计划 §2.4 / F21–F25，归属 whiteboard）。
  *
@@ -69,6 +72,8 @@ export function useToolPointer(): ToolPointerState {
     let pointerId: number | null = null;
     let current: Draft | null = null;
     let swallowClick = false;
+    /** 触屏上文字工具等手指抬起才建（点一下才算），见 {@link onPointerDown}。 */
+    let tap: { id: number; at: Position; x: number; y: number } | null = null;
 
     /**
      * 吞掉这一笔松手之后紧跟着的那一下 `click`。
@@ -93,7 +98,8 @@ export function useToolPointer(): ToolPointerState {
         latest.current.preferences.snap,
       );
 
-    const finish = () => {
+    /** 收起进行中的一笔；`commit` 为 false 时丢弃，不进文档也不进撤销栈。 */
+    const finish = (commit = true) => {
       const drawn = current;
       current = null;
       pointerId = null;
@@ -101,7 +107,7 @@ export function useToolPointer(): ToolPointerState {
       window.removeEventListener("pointermove", onMove);
       window.removeEventListener("pointerup", onUp);
       window.removeEventListener("pointercancel", onUp);
-      if (!drawn) return;
+      if (!drawn || !commit) return;
       const item = commitDraft(drawn, createItemId());
       if (item) {
         addItems([item]);
@@ -109,6 +115,34 @@ export function useToolPointer(): ToolPointerState {
       }
       // 工具不自己退回选择：画完一笔、放完一个形状，下一下还是同一个工具，
       // 直到用户自己换（Dock、快捷键、命令面板、Esc）。
+    };
+
+    const endTap = () => {
+      tap = null;
+      window.removeEventListener("pointermove", onTapMove);
+      window.removeEventListener("pointerup", onTapUp);
+      window.removeEventListener("pointercancel", onTapCancel);
+    };
+
+    const onTapMove = (event: PointerEvent) => {
+      if (!tap || event.pointerId !== tap.id) return;
+      // 手指拖走了：是平移或别的手势，不是点一下。
+      if (
+        Math.hypot(event.clientX - tap.x, event.clientY - tap.y) > TAP_SLOP_PX
+      ) {
+        endTap();
+      }
+    };
+
+    const onTapUp = (event: PointerEvent) => {
+      if (!tap || event.pointerId !== tap.id) return;
+      const at = tap.at;
+      endTap();
+      createTextAt(at);
+    };
+
+    const onTapCancel = (event: PointerEvent) => {
+      if (tap && event.pointerId === tap.id) endTap();
     };
 
     const onMove = (event: PointerEvent) => {
@@ -119,6 +153,12 @@ export function useToolPointer(): ToolPointerState {
 
     const onUp = (event: PointerEvent) => {
       if (event.pointerId !== pointerId) return;
+      // 触屏被浏览器接走（捏合、系统手势）发的是 `pointercancel`：那一笔不是
+      // 用户画完的，丢掉（#731）。
+      if (event.type === "pointercancel" && event.pointerType === "touch") {
+        finish(false);
+        return;
+      }
       if (current)
         current = extendDraft(current, pageOf(event), pressureOf(event));
       finish();
@@ -126,6 +166,17 @@ export function useToolPointer(): ToolPointerState {
 
     const onPointerDown = (event: PointerEvent) => {
       swallowClick = false;
+      // 触屏第二根手指（捏合、两指平移）：丢掉第一根手指已经开始的一笔或待建的
+      // 文字，这一下也不归工具（#731）。`isPrimary` 在同一种指针里只有最先按下
+      // 的那一个为真，所以三指、四指同理，不用自己数。
+      if (event.pointerType === "touch" && !event.isPrimary) {
+        finish(false);
+        endTap();
+        return;
+      }
+      // 已经有一笔在画（笔 / 鼠标在画时手指又落下）：不开第二笔，免得覆盖
+      // `current` 与 `pointerId`。
+      if (current) return;
       if (event.button !== 0) return;
       // 样式面板、锁按钮、节点体里的输入框不归工具管。
       if (
@@ -143,6 +194,15 @@ export function useToolPointer(): ToolPointerState {
       rememberPointer({ x: event.clientX, y: event.clientY });
 
       if (active.tool === "text") {
+        // 手指按下时还不知道是点一下还是捏合的第一根：等抬起再建。
+        if (event.pointerType === "touch") {
+          endTap();
+          tap = { id: event.pointerId, at, x: event.clientX, y: event.clientY };
+          window.addEventListener("pointermove", onTapMove);
+          window.addEventListener("pointerup", onTapUp);
+          window.addEventListener("pointercancel", onTapCancel);
+          return;
+        }
         createTextAt(at);
         return;
       }
@@ -165,6 +225,7 @@ export function useToolPointer(): ToolPointerState {
       window.removeEventListener("pointermove", onMove);
       window.removeEventListener("pointerup", onUp);
       window.removeEventListener("pointercancel", onUp);
+      endTap();
     };
   }, [flow, store, tool]);
 

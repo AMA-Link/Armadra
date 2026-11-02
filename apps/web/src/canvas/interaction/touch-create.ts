@@ -24,7 +24,9 @@ import { isDrawingTool, getTool } from "./tool-store";
  *    二下。之后那次由触屏合成的 `dblclick` 被拦下，不再另外新建一条文字。
  *
  * 长按落在节点、白板对象或连线上时同样等于右键，出它们自己的菜单（打字与选字的
- * 地方除外）。第二根手指按下（捏合）、手指移动、绘图工具都不触发。Android 会在长按时自己
+ * 地方除外，只读的 Markdown 与时间线也算选字的地方）。长按打开菜单后，松手带出的
+ * 那一下 `click` 被吞掉（{@link TouchCreateRecognizer.consumeClick}，#731），节点
+ * 里的按钮只出菜单、不被点。第二根手指按下（捏合）、手指移动、绘图工具都不触发。Android 会在长按时自己
  * 发 `contextmenu`：等待中的长按让给它；刚由这里打开过菜单时再来的那一次被拦下，
  * 不重复弹。只认 `pointerType` 为 touch / pen，鼠标与触控板的路径一点不变。
  */
@@ -75,6 +77,11 @@ export interface TouchCreateRecognizer {
   nativeContextMenu: () => boolean;
   /** 触屏合成的 `dblclick` 来了；返回 true 表示刚由双击开过菜单，调用方要拦下。 */
   nativeDoubleClick: () => boolean;
+  /**
+   * 松手后的 `click` 来了；返回 true 表示这一下是长按出菜单的那只手指抬起时
+   * 带出来的，调用方要拦下，免得菜单弹出的同时底下的按钮也被点了（#731）。一次性。
+   */
+  consumeClick: () => boolean;
   dispose: () => void;
 }
 
@@ -112,6 +119,8 @@ export function createTouchCreateRecognizer(
   let timer: unknown = null;
   let lastTap: { at: number; point: Point } | null = null;
   let openedAt = Number.NEGATIVE_INFINITY;
+  /** 长按已经打开了菜单，等着吞掉松手后的那一下 `click`。 */
+  let swallowClick = false;
 
   const stopTimer = () => {
     if (timer !== null) clearTimer(timer);
@@ -130,6 +139,7 @@ export function createTouchCreateRecognizer(
       if (!isTouch(event)) return;
       active.add(event.pointerId);
       stopTimer();
+      swallowClick = false;
       if (active.size > 1) {
         // 第二根手指：捏合或两指平移，这一下不是新建。
         press = null;
@@ -153,6 +163,7 @@ export function createTouchCreateRecognizer(
         timer = null;
         if (press !== current || current.moved) return;
         current.fired = true;
+        swallowClick = true;
         fire(current.target, current.start);
       }, LONG_PRESS_MS);
     },
@@ -203,6 +214,7 @@ export function createTouchCreateRecognizer(
       active.delete(event.pointerId);
       if (press?.id === event.pointerId) press = null;
       lastTap = null;
+      swallowClick = false;
       stopTimer();
     },
 
@@ -220,9 +232,16 @@ export function createTouchCreateRecognizer(
       return now() - openedAt <= ECHO_WINDOW_MS;
     },
 
+    consumeClick() {
+      const swallow = swallowClick;
+      swallowClick = false;
+      return swallow;
+    },
+
     dispose() {
       stopTimer();
       active.clear();
+      swallowClick = false;
       press = null;
       lastTap = null;
     },
@@ -243,7 +262,7 @@ export function canOpenCreateMenu(target: EventTarget | null): boolean {
 
 /** 手指下在打字或选字的地方：长按留给系统的光标与选字，不弹菜单。 */
 const TEXT_SURFACE =
-  'input, textarea, select, [contenteditable="true"], .xterm, .cm-editor, iframe';
+  'input, textarea, select, [contenteditable="true"], .xterm, .cm-editor, iframe, .sticky-markdown, [data-slot="timeline-view"]';
 
 /**
  * 长按：空白处同 {@link canOpenCreateMenu}；节点、白板对象与连线上也等于在那
@@ -303,7 +322,11 @@ export function installTouchCreate(
   const onDoubleClick = (event: MouseEvent) => {
     if (recognizer.nativeDoubleClick()) swallow(event);
   };
+  const onClick = (event: MouseEvent) => {
+    if (recognizer.consumeClick()) swallow(event);
+  };
   const capture = { capture: true } as const;
+  container.addEventListener("click", onClick, capture);
   container.addEventListener("pointerdown", onDown, capture);
   container.addEventListener("pointermove", onMove, capture);
   container.addEventListener("pointerup", onUp, capture);
@@ -312,6 +335,7 @@ export function installTouchCreate(
   container.addEventListener("dblclick", onDoubleClick, capture);
   return () => {
     recognizer.dispose();
+    container.removeEventListener("click", onClick, capture);
     container.removeEventListener("pointerdown", onDown, capture);
     container.removeEventListener("pointermove", onMove, capture);
     container.removeEventListener("pointerup", onUp, capture);
