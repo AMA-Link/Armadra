@@ -138,14 +138,16 @@ const session = (
   lastSeen: number,
   remoteIp: string,
   current = false,
+  deviceId = `dev-${id}`,
 ): IdentitySessionRow => ({
   sessionId: id,
   principalId,
-  deviceId: `dev-${id}`,
+  deviceId,
   deviceName,
   createdAtMs: NOW - 5 * DAY,
   lastSeenAtMs: NOW - lastSeen,
-  expiresAtMs: NOW + 25 * DAY,
+  // 列表按真实时钟藏起已过期的会话（#706）：展示数据不随日期过期。
+  expiresAtMs: Date.UTC(2100, 0, 1),
   remoteIp,
   userAgent,
   current,
@@ -155,6 +157,17 @@ export const SESSIONS: IdentitySessionRow[] = [
   session("s1", ME, "Armadra · Chrome", "Macintosh", 0, "192.168.1.20", true),
   session("s2", ME, "Armadra · Safari", "iPhone", 3 * 60 * MIN, "10.0.0.7"),
   session("s3", ME, "Armadra · Edge", "Windows NT", 2 * DAY, "203.0.113.4"),
+  // 同一台设备上的第二条会话（重新配对过）：列表里归进 s1 那一行。
+  session(
+    "s5",
+    ME,
+    "Armadra · Chrome",
+    "Macintosh",
+    6 * 60 * MIN,
+    "192.168.1.20",
+    false,
+    "dev-s1",
+  ),
 ];
 
 export const ALL_SESSIONS: IdentitySessionRow[] = [

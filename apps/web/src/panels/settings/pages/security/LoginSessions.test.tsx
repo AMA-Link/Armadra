@@ -50,7 +50,7 @@ vi.mock("../../../../api/security", async (original) => {
         deviceName: "这台",
         createdAtMs: 1,
         lastSeenAtMs: 2,
-        expiresAtMs: 3,
+        expiresAtMs: Date.now() + 3_600_000,
         remoteIp: "127.0.0.1",
         userAgent: "",
         current: true,

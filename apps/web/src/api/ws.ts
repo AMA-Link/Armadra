@@ -110,6 +110,7 @@ export class ControlChannel extends EventTarget {
         this.connected = true;
         this.startHeartbeat();
         this.dispatchEvent(new Event("open"));
+        for (const listener of [...openListeners]) listener();
       },
       onMessage: (event) => {
         this.dispatchEvent(new MessageEvent("message", { data: event.data }));
@@ -249,6 +250,15 @@ export class ControlChannel extends EventTarget {
 
 type FatalListener = (code: number) => void;
 const fatalListeners = new Set<FatalListener>();
+const openListeners = new Set<() => void>();
+
+/** 控制面（重新）连上了：页面据此收起之前那条「已断开」的提示。 */
+export function onControlOpened(listener: () => void): () => void {
+  openListeners.add(listener);
+  return () => {
+    openListeners.delete(listener);
+  };
+}
 
 /** 控制面因 4403 / 4409 / 4429 停下（页面据此提示）。 */
 export function onControlClosed(listener: FatalListener): () => void {

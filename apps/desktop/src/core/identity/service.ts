@@ -247,14 +247,18 @@ export const LAST_SEEN_RESOLUTION_MS = 60 * 1000;
 
 export class IdentityService {
   private readonly clock: () => number;
+  /** 访问密钥寿命；缺省 {@link ACCESS_TTL_MS}，只有测试经 `ARMADRA_TEST_ACCESS_TTL_MS` 调短。 */
+  private readonly accessTtlMs: number;
 
   constructor(
     private readonly store: IdentityStore,
     private readonly instanceId: string,
     clock: () => number = () => Date.now(),
+    options: { readonly accessTtlMs?: number } = {},
   ) {
     if (!ID_PATTERN.test(instanceId)) throw new IdentityError("invalid");
     this.clock = clock;
+    this.accessTtlMs = options.accessTtlMs ?? ACCESS_TTL_MS;
   }
 
   hostId(): string {
@@ -431,7 +435,7 @@ export class IdentityService {
         revokedAtMs: 0,
       };
       if (device.deviceId === deviceId) tx.createDevice(device);
-      const accessExpiresAtMs = now + ACCESS_TTL_MS;
+      const accessExpiresAtMs = now + this.accessTtlMs;
       const expiresAtMs = now + SESSION_TTL_MS;
       const session: IdentitySession = {
         sessionId,
@@ -623,7 +627,7 @@ export class IdentityService {
       if (reused === undefined) tx.createDevice(device);
       const expiresAtMs = now + (request.bounded?.ttlMs ?? SESSION_TTL_MS);
       // 限寿会话可能短于访问期（寿命下限 5 分钟），访问期截到会话到期。
-      const accessExpiresAtMs = Math.min(now + ACCESS_TTL_MS, expiresAtMs);
+      const accessExpiresAtMs = Math.min(now + this.accessTtlMs, expiresAtMs);
       const session: IdentitySession = {
         sessionId,
         deviceId: device.deviceId,
@@ -702,7 +706,7 @@ export class IdentityService {
         )
           return undefined;
         const expiresAtMs = now + request.ttlMs;
-        const accessExpiresAtMs = Math.min(now + ACCESS_TTL_MS, expiresAtMs);
+        const accessExpiresAtMs = Math.min(now + this.accessTtlMs, expiresAtMs);
         tx.extendSession(
           sessionId,
           live.session.rotation,
@@ -924,7 +928,7 @@ export class IdentityService {
         throw new IdentityError("unauthenticated");
       }
       const accessExpiresAtMs = Math.min(
-        now + ACCESS_TTL_MS,
+        now + this.accessTtlMs,
         live.session.expiresAtMs,
       );
       tx.rotateSession(

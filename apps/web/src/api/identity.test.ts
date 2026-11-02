@@ -4,6 +4,11 @@ import { z } from "zod";
 const mocks = vi.hoisted(() => ({
   nativeShell: false,
   ticket: vi.fn(async () => "shell-ticket"),
+  revokeSession: vi.fn(async (_sessionId: string) => undefined),
+}));
+
+vi.mock("./security", () => ({
+  revokeSession: (sessionId: string) => mocks.revokeSession(sessionId),
 }));
 
 vi.mock("../host/native-session", async (original) => {
@@ -33,6 +38,7 @@ import {
   replaceRejectedCsrf,
   resetIdentityCredentials,
   resumeIdentity,
+  shellBearer,
   takePairingTicket,
 } from "./identity";
 
@@ -88,6 +94,7 @@ beforeEach(() => {
   answer = defaultAnswer;
   mocks.nativeShell = false;
   mocks.ticket.mockReset().mockResolvedValue("shell-ticket");
+  mocks.revokeSession.mockReset().mockResolvedValue(undefined);
   resetIdentityCredentials();
   vi.stubGlobal("fetch", fetchStub());
 });
@@ -379,6 +386,194 @@ describe("the desktop shell transport", () => {
       "session/refresh",
       "pair",
     ]);
+  });
+});
+
+/**
+ * 桌面壳里一份像真 core 那样的会话（#706）：配对与刷新都答 CSRF 密钥，令牌带
+ * `<sessionId>.` 前缀，访问期 15 分钟。`rotation` 是第几次轮转。
+ */
+function shellSession(sessionId: string, rotation: number, now: number) {
+  return {
+    ...session,
+    csrfToken: SECRET,
+    expiresAtUnixMs: now + 15 * 60 * 1000,
+    native: {
+      accessToken: `${sessionId}.access-${rotation}`,
+      refreshToken: `${sessionId}.refresh-${rotation}`,
+    },
+  };
+}
+
+function paths(): string[] {
+  return calls.map((c) => c.url.split("/api/identity/")[1] ?? c.url);
+}
+
+describe("the desktop shell keeps one session (#706)", () => {
+  let rotation = 0;
+  let live = "";
+  let expires = 0;
+
+  beforeEach(() => {
+    mocks.nativeShell = true;
+    vi.useFakeTimers();
+    vi.setSystemTime(1_800_000_000_000);
+    rotation = 0;
+    live = "";
+    expires = 0;
+    // 一个小 core：刷新只认手里最新的那把刷新密钥，用过的再来就是重放。
+    answer = (call) => {
+      const path = call.url.split("/api/identity/")[1];
+      const headers = call.init.headers as Record<string, string>;
+      const bearer = headers.Authorization?.slice("Bearer ".length) ?? "";
+      if (path === "pair") {
+        live = live === "" ? "s1" : `s${Number(live.slice(1)) + 1}`;
+        rotation = 1;
+        expires = Date.now() + 15 * 60 * 1000;
+        return { body: shellSession(live, rotation, Date.now()) };
+      }
+      if (path === "session/refresh") {
+        if (bearer !== `${live}.refresh-${rotation}`)
+          return { status: 401, body: { code: "UNAUTHENTICATED" } };
+        rotation += 1;
+        expires = Date.now() + 15 * 60 * 1000;
+        return { body: shellSession(live, rotation, Date.now()) };
+      }
+      if (path === "session") {
+        return bearer === `${live}.access-${rotation}` && Date.now() < expires
+          ? { body: shellSession(live, rotation, Date.now()) }
+          : { status: 401, body: { code: "UNAUTHENTICATED" } };
+      }
+      return defaultAnswer(call);
+    };
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("rotates ahead of every expiry on the session it paired, without the CSRF header", async () => {
+    await resumeIdentity();
+    for (let period = 0; period < 3; period += 1) {
+      await vi.advanceTimersByTimeAsync(13 * 60 * 1000);
+    }
+    expect(mocks.ticket).toHaveBeenCalledTimes(1);
+    expect(paths()).toEqual([
+      "pair",
+      "session/refresh",
+      "session/refresh",
+      "session/refresh",
+    ]);
+    // 页面与 core 不同端口：多一个非安全名单的头就多一道预检，旧 core 不放行它。
+    for (const call of calls.slice(1)) {
+      const headers = call.init.headers as Record<string, string>;
+      expect(headers["X-Armadra-CSRF"]).toBeUndefined();
+      expect(headers.Authorization).toMatch(/^Bearer s1\.refresh-/);
+    }
+    expect(live).toBe("s1");
+  });
+
+  it("refreshes rather than pairs when the timer fires after the access period (sleep)", async () => {
+    await resumeIdentity();
+    // 合盖睡过了访问期：计时器没跑，墙钟已经越过到期时刻。
+    vi.setSystemTime(Date.now() + 40 * 60 * 1000);
+    const access = await shellBearer();
+    expect(access).toBe("s1.access-2");
+    expect(paths()).toEqual(["pair", "session/refresh"]);
+    expect(mocks.ticket).toHaveBeenCalledTimes(1);
+  });
+
+  it("shares one refresh between panels that find the access key expired at once", async () => {
+    await resumeIdentity();
+    vi.setSystemTime(Date.now() + 16 * 60 * 1000);
+    const [a, b, c] = await Promise.all([
+      resumeIdentity(),
+      resumeIdentity(),
+      resumeIdentity(),
+    ]);
+    expect([a, b, c].every((each) => each?.hostId === "h1")).toBe(true);
+    expect(paths().filter((path) => path === "session/refresh")).toHaveLength(
+      1,
+    );
+    expect(paths().filter((path) => path === "pair")).toHaveLength(1);
+    expect(mocks.ticket).toHaveBeenCalledTimes(1);
+  });
+
+  it("asks again with the new key when a rotation lands while the check was in flight", async () => {
+    await resumeIdentity();
+    // 先一次刷新换掉密钥；再让一次带着旧密钥的复核落地。
+    let release: () => void = () => undefined;
+    const gate = new Promise<void>((done) => (release = done));
+    const original = answer;
+    let first = true;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string, init: RequestInit) => {
+        const call = { url, init };
+        calls.push(call);
+        if (first && url.endsWith("/api/identity/session")) {
+          first = false;
+          const reply = original(call);
+          await gate;
+          return {
+            ok: false,
+            status: 401,
+            json: async () => ({ code: "UNAUTHENTICATED", reply }),
+          } as unknown as Response;
+        }
+        const { status = 200, body } = original(call);
+        return {
+          ok: status >= 200 && status < 300,
+          status,
+          json: async () => body,
+        } as unknown as Response;
+      }),
+    );
+    const checking = resumeIdentity();
+    await refreshIdentity();
+    release();
+    expect((await checking)?.hostId).toBe("h1");
+    expect(paths()).toEqual(["pair", "session", "session/refresh", "session"]);
+    expect(mocks.ticket).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps the session through a refresh that never reached the core", async () => {
+    await resumeIdentity();
+    vi.setSystemTime(Date.now() + 16 * 60 * 1000);
+    const original = answer;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string, init: RequestInit) => {
+        calls.push({ url, init });
+        if (url.includes("session/refresh")) throw new TypeError("offline");
+        const { status = 200, body } = original({ url, init });
+        return {
+          ok: status >= 200 && status < 300,
+          status,
+          json: async () => body,
+        } as unknown as Response;
+      }),
+    );
+    await expect(resumeIdentity()).rejects.toBeInstanceOf(
+      IdentityTransportError,
+    );
+    expect(mocks.ticket).toHaveBeenCalledTimes(1);
+    expect(paths().filter((path) => path === "pair")).toHaveLength(1);
+  });
+
+  it("revokes the session it abandons when it has to pair again", async () => {
+    await resumeIdentity();
+    // 刷新密钥被拒（别处把会话撤了，或换来的新密钥半路丢了）。
+    rotation = 99;
+    vi.setSystemTime(Date.now() + 16 * 60 * 1000);
+    const resumed = await resumeIdentity();
+    expect(resumed?.hostId).toBe("h1");
+    expect(mocks.ticket).toHaveBeenCalledTimes(2);
+    expect(live).toBe("s2");
+    await vi.waitFor(() =>
+      expect(mocks.revokeSession).toHaveBeenCalledWith("s1"),
+    );
+    expect(mocks.revokeSession).toHaveBeenCalledTimes(1);
   });
 });
 

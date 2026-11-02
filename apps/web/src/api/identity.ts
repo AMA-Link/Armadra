@@ -329,6 +329,7 @@ export function resetIdentityCredentials(): void {
   forgotten = false;
   tokens.clear();
   renewing = null;
+  refreshing = null;
   clearCsrfBackoff();
   cookieRenewal = null;
   shellFailure = null;
@@ -530,7 +531,11 @@ async function call<T>(
     headers.Authorization = `Bearer ${bearer}`;
   if (!native && method !== "GET" && csrf) headers["X-Armadra-CSRF"] = csrf;
   // Bearer 模式的刷新与登出：契约 §17.4 不核 CSRF；有就带上，旧版 core 还核它。
-  if (native && options.refreshBearer && csrf) headers["X-Armadra-CSRF"] = csrf;
+  // 桌面壳不带（#706）：页面与 core 不同端口，这个头要过预检，而壳里的 core 就是
+  // 同一版本、早就不核它了。0.10.0–0.12.0 的回环 CORS 不放行它，每次刷新都被
+  // 预检拦下，页面每个访问期重新配对一次，多出一条会话。
+  if (native && options.refreshBearer && csrf && !isNativeShell())
+    headers["X-Armadra-CSRF"] = csrf;
 
   let response: Response;
   try {
@@ -664,6 +669,7 @@ export async function resumeIdentity(): Promise<IdentitySession | null> {
     return null;
   if (hosted !== null && !tokens.access && !(await restoreHostedCredentials()))
     return null;
+  const used = tokens.access;
   try {
     const current = await call("session", identitySessionSchema);
     // 刷新页面后接上仍有效的 Cookie 会话：到期前的续期从这里排起。
@@ -674,8 +680,19 @@ export async function resumeIdentity(): Promise<IdentitySession | null> {
       error instanceof IdentityRequestError &&
       (error.status === 401 || error.status === 403)
     ) {
-      // 会话过期时刷新密钥可能还在：换一份再说「没登录」。
-      const refreshed = await refreshIdentity().catch(() => null);
+      // 发出去之后别处已经轮转过（到期前的那次、另一个面板的复核）：被拒的是旧
+      // 密钥，拿新的再问一次，不拿已经换掉的刷新密钥去撞。
+      if (used !== "" && tokens.access !== "" && tokens.access !== used)
+        return call("session", identitySessionSchema);
+      // 会话过期时刷新密钥可能还在：换一份再说「没登录」。只有刷新被明确拒绝才
+      // 往下走（重新配对、清掉钥匙串）；连不上、5xx、429 原样抛出，下一次再试——
+      // 一次断网不该换掉一条好好的会话（#706）。
+      let refreshed: IdentitySession | null = null;
+      try {
+        refreshed = await refreshIdentity();
+      } catch (refusal) {
+        if (!sessionRejected(refusal)) throw refusal;
+      }
       if (refreshed) return refreshed;
       if (hosted !== null) {
         // 中继托管的页面：经远程服务重取断言再登一次；还不行就是没有会话。
@@ -698,9 +715,14 @@ export async function resumeIdentity(): Promise<IdentitySession | null> {
       if (isNativeShell()) {
         // 桌面壳里「登录」是进程内的事实：访问密钥过了 15 分钟、刷新密钥也
         // 到期时，向壳再要一张票重新配对，而不是让面板停在「已断开」等人
-        // 重载页面。
+        // 重载页面。放弃的那条（同一台设备、同一来源）随后撤掉，不留在会话
+        // 列表里等 30 天过期（#706）。
+        const abandoned = sessionIdOf(tokens.refresh);
         resetIdentityCredentials();
-        return pairIdentity(await fetchNativeTicket());
+        const paired = await pairIdentity(await fetchNativeTicket());
+        if (abandoned !== "" && abandoned !== sessionIdOf(tokens.refresh))
+          void revokeAbandoned(abandoned);
+        return paired;
       }
       return null;
     }
@@ -708,14 +730,45 @@ export async function resumeIdentity(): Promise<IdentitySession | null> {
   }
 }
 
-/** 轮转访问密钥。 */
-export async function refreshIdentity(): Promise<IdentitySession> {
-  return remember(
-    await call("session/refresh", identitySessionSchema, {
-      method: "POST",
-      refreshBearer: true,
-    }),
-  );
+/** 正在途中的那次轮转；同一页面里几处同时要只发一次。 */
+let refreshing: Promise<IdentitySession> | null = null;
+
+/**
+ * 轮转访问密钥。
+ *
+ * 刷新密钥一次性：两处各拿同一把去换，后到的那次被当成重放拒掉，接着就是重新
+ * 配对、多出一条会话（#706）。所以同一页面里只有一次在途，别处要就等它。
+ */
+export function refreshIdentity(): Promise<IdentitySession> {
+  refreshing ??= call("session/refresh", identitySessionSchema, {
+    method: "POST",
+    refreshBearer: true,
+  })
+    .then((answer) => remember(answer))
+    .finally(() => {
+      refreshing = null;
+    });
+  return refreshing;
+}
+
+/** 令牌前缀里的会话 id（`<sessionId>.<密钥>`，契约 §3）；认不出是空串。 */
+function sessionIdOf(token: string): string {
+  const dot = token.indexOf(".");
+  return dot > 0 ? token.slice(0, dot) : "";
+}
+
+/**
+ * 撤掉页面刚放弃的那条会话（重新配对之后，用新会话的凭据）。只撤自己手里那
+ * 条的 id：它和新会话是同一台本机设备、同一来源。已经过期或撤销的 core 不再
+ * 理会；撤不掉也不影响新会话，它最晚 30 天后过期。
+ */
+async function revokeAbandoned(sessionId: string): Promise<void> {
+  try {
+    const { revokeSession } = await import("./security");
+    await revokeSession(sessionId);
+  } catch {
+    /* 撤不掉不影响新会话。 */
+  }
 }
 
 /** 只换一枚 CSRF 令牌（刷新页面之后内存是空的，但 refresh Cookie 还在）。 */

@@ -33,7 +33,10 @@ afterEach(() => {
   }
 });
 
-function fixture(start = 1_700_000_000_000) {
+function fixture(
+  start = 1_700_000_000_000,
+  options: { accessTtlMs?: number } = {},
+) {
   const directory = tempDir("armadra-identity-");
   const opened = openDatabase({
     file: join(directory, "canvas.db"),
@@ -42,7 +45,7 @@ function fixture(start = 1_700_000_000_000) {
   closing.push(opened.close);
   let now = start;
   const store = new IdentityStore(opened.database);
-  const service = new IdentityService(store, INSTANCE, () => now);
+  const service = new IdentityService(store, INSTANCE, () => now, options);
   const hostId = store.hostId();
   return {
     service,
@@ -353,6 +356,31 @@ describe("rotating a session", () => {
     expect(rotated.csrfToken).not.toBe(credentials.csrfToken);
     expect(rotated.expiresAtMs).toBe(credentials.expiresAtMs);
     expect(rotated.accessExpiresAtMs).toBe(fix.at() + ACCESS_TTL_MS);
+  });
+
+  it("keeps rotating one session across shortened access periods (#706)", () => {
+    const ttl = 60_000;
+    const fix = fixture(undefined, { accessTtlMs: ttl });
+    const { credentials } = pair(fix);
+    expect(credentials.accessExpiresAtMs).toBe(fix.at() + ttl);
+    let refreshToken = credentials.refreshToken;
+    for (let period = 0; period < 3; period += 1) {
+      // 计时器晚到（睡眠、后台节流）：访问期已经过了，刷新密钥照样换得出。
+      fix.advance(ttl + 5_000);
+      const rotated = fix.service.refresh({
+        refreshToken,
+        csrfToken: "",
+        requireCsrf: false,
+        hostId: fix.hostId,
+        origin: ORIGIN,
+      });
+      expect(rotated.accessExpiresAtMs).toBe(fix.at() + ttl);
+      refreshToken = rotated.refreshToken;
+    }
+    const rows = fix.database
+      .prepare("SELECT COUNT(*) AS n FROM identity_sessions")
+      .get() as { n: number };
+    expect(rows.n).toBe(1);
   });
 
   it("refuses a spent refresh token rather than retrying it", () => {

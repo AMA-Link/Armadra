@@ -9,6 +9,7 @@ import {
   PING_TIMEOUT_MS,
   closeMessageKey,
   onControlClosed,
+  onControlOpened,
 } from "./ws";
 
 /** 一条假的内层 socket：测试替 core 开、关、发帧。 */
@@ -107,6 +108,23 @@ afterEach(() => {
 });
 
 describe("ControlChannel", () => {
+  it("每次（重新）连上都告诉页面，好收起之前的断开提示（#706）", async () => {
+    const opened = vi.fn();
+    const off = onControlOpened(opened);
+    await open();
+    latest().open();
+    expect(opened).toHaveBeenCalledTimes(1);
+    latest().drop(1006);
+    await vi.advanceTimersByTimeAsync(60_000);
+    latest().open();
+    expect(opened).toHaveBeenCalledTimes(2);
+    off();
+    latest().drop(1006);
+    await vi.advanceTimersByTimeAsync(60_000);
+    latest().open();
+    expect(opened).toHaveBeenCalledTimes(2);
+  });
+
   it("经源的托管流连 /api/ws，子协议 armadra-rpc.v1；帧原样转出", async () => {
     const control = await open();
     const socket = latest();

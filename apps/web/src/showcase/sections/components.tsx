@@ -102,6 +102,16 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/ui/select";
+import {
+  Pagination,
+  PaginationContent,
+  PaginationEllipsis,
+  PaginationItem,
+  PaginationLink,
+  PaginationNext,
+  PaginationPrevious,
+  paginationRange,
+} from "@/ui/pagination";
 import { ScrollArea } from "@/ui/scroll-area";
 import { Separator } from "@/ui/separator";
 import {
@@ -391,6 +401,7 @@ function Gallery() {
   const t = useT();
   const [open, setOpen] = React.useState(true);
   const [code, setCode] = React.useState("204");
+  const [page, setPage] = React.useState(4);
   return (
     <div className="flex flex-wrap gap-x-8 gap-y-(--space-block)">
       <Sample name="badge">
@@ -604,6 +615,42 @@ function Gallery() {
             ))}
           </TableBody>
         </Table>
+      </Sample>
+      <Sample name="pagination" wide>
+        <Pagination>
+          <PaginationContent>
+            <PaginationItem>
+              <PaginationPrevious
+                text={t("showcase.sample.previous")}
+                disabled={page === 0}
+                onClick={() => setPage(page - 1)}
+              />
+            </PaginationItem>
+            {paginationRange(page, 12).map((index, position) =>
+              index === "gap" ? (
+                <PaginationItem key={`gap-${position}`}>
+                  <PaginationEllipsis />
+                </PaginationItem>
+              ) : (
+                <PaginationItem key={index}>
+                  <PaginationLink
+                    isActive={index === page}
+                    onClick={() => setPage(index)}
+                  >
+                    {index + 1}
+                  </PaginationLink>
+                </PaginationItem>
+              ),
+            )}
+            <PaginationItem>
+              <PaginationNext
+                text={t("showcase.sample.next")}
+                disabled={page === 11}
+                onClick={() => setPage(page + 1)}
+              />
+            </PaginationItem>
+          </PaginationContent>
+        </Pagination>
       </Sample>
       <Sample name="accordion · collapsible" wide>
         <Accordion type="single" collapsible defaultValue="read">
