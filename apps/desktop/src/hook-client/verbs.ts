@@ -147,6 +147,9 @@ interface Row {
 
 /** The agent-launch options `open-agent` and `team` share. */
 const LAUNCH_OPTIONS: Record<string, JsonSchema> = {
+  origin: str(
+    "the person's original request, verbatim; recorded as the work item's origin (defaults to the task)",
+  ),
   "permission-mode": str(
     "permission mode for the new CLI; only modes that CLI supports are accepted",
   ),

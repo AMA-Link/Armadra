@@ -28,7 +28,8 @@ export const dispatchTaskSchema = z.object({
   retryable: z.boolean().default(false),
   // 工作项账本（契约 §90）：旧 core 没有这些字段。
   title: z.string().nullable().default(null),
-  stage: z.enum(WORK_ITEM_STAGES).nullable().default(null),
+  // 将来的 core 多一个阶段值时，旧页面当作没有阶段，而不是整张列表解析失败。
+  stage: z.enum(WORK_ITEM_STAGES).nullable().default(null).catch(null),
   report: workItemReportSchema.nullable().default(null),
   attention: workItemAttentionSchema.nullable().default(null),
 });
