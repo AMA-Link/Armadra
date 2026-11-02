@@ -21,7 +21,7 @@ export const gateway: MessageModule = {
     "gateway.ca.download": "下载 CA",
     "gateway.starting": "正在生成证书",
     "gateway.acme.renewFailed": "证书续期失败",
-    "gateway.acme.retryAt": "{time} 重试",
+    "gateway.acme.renewRetry": "证书续期失败，将于 {time} 重试",
     "gateway.error.acme_misconfigured": "ACME 需要邮箱与对外域名",
     "gateway.error.acme_port_unavailable": "ACME 验证端口不可用",
     "gateway.error.acme_failed": "ACME 证书签发失败",
@@ -89,7 +89,7 @@ export const gateway: MessageModule = {
     "gateway.ca.download": "Download CA",
     "gateway.starting": "Generating certificate",
     "gateway.acme.renewFailed": "Certificate renewal failed",
-    "gateway.acme.retryAt": "Retrying {time}",
+    "gateway.acme.renewRetry": "Certificate renewal failed. Next retry: {time}",
     "gateway.error.acme_misconfigured":
       "ACME needs an email and a public domain",
     "gateway.error.acme_port_unavailable": "ACME challenge port unavailable",

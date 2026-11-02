@@ -8,11 +8,8 @@ import {
   Smartphone,
 } from "lucide-react";
 
-import {
-  usePreferencesStore,
-  useT,
-  t as translate,
-} from "@/app/preferences-store";
+import { useT, t as translate } from "@/app/preferences-store";
+import { formatElapsedTime } from "@/lib/format";
 import { Button } from "@/ui/button";
 import { Card, CardContent } from "@/ui/card";
 import { Checkbox } from "@/ui/checkbox";
@@ -65,19 +62,9 @@ const PLATFORM_ICON = {
 type Platform = keyof typeof PLATFORM_ICON;
 const isPlatform = (value: string): value is Platform => value in PLATFORM_ICON;
 
-/** 请求发出的时间：一分钟内是「刚刚」，其余按本地化的相对时间。 */
-export function requestedAgo(
-  requestedAtMs: number,
-  now: number,
-  locale: string,
-  justNow: string,
-): string {
-  const minutes = Math.floor((now - requestedAtMs) / 60_000);
-  if (minutes < 1) return justNow;
-  return new Intl.RelativeTimeFormat(locale, { numeric: "auto" }).format(
-    -minutes,
-    "minute",
-  );
+/** 请求发出的时间：与其它相对时间同一写法（`lib/format`，「刚刚」「3 分钟前」）。 */
+export function requestedAgo(requestedAtMs: number, now: number): string {
+  return formatElapsedTime(requestedAtMs, now);
 }
 
 /** 失败 → 设备码输入框下那句话（查无此码按页面自己的文案，其余按错误码）。 */
@@ -112,7 +99,6 @@ export function DevicePage({
 }) {
   const t = useT();
   const api = useCloudApi();
-  const locale = usePreferencesStore((state) => state.locale);
   const id = React.useId();
   const codeInput = React.useRef<HTMLInputElement>(null);
   // 上层每次渲染都给新的回调：放进 ref，免得它进依赖后每次渲染都重新查一遍码。
@@ -319,12 +305,7 @@ export function DevicePage({
               <p className="text-meta text-muted-foreground tabular-nums">
                 {t("cloud.auth.deviceRequested", {
                   platform,
-                  time: requestedAgo(
-                    request.requestedAtMs,
-                    Date.now(),
-                    locale,
-                    t("cloud.auth.deviceNow"),
-                  ),
+                  time: requestedAgo(request.requestedAtMs, Date.now()),
                 })}
               </p>
               {request.ipPrefix !== undefined && request.ipPrefix !== "" && (

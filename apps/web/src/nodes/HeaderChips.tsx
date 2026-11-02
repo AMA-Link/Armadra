@@ -18,12 +18,28 @@ import { Badge } from "@/ui/badge";
 /** 头部最多平铺这么多枚，多出来的折成一枚计数。 */
 export const MAX_VISIBLE_CHIPS = 3;
 
+/**
+ * 节点宽度能平铺几枚：头部还要留给标题、状态与动作，窄节点只平铺一两枚，
+ * 其余折进计数（宽度未知按默认）。
+ */
+export function visibleChipsFor(width: number | undefined): number {
+  if (width === undefined || width >= 640) return MAX_VISIBLE_CHIPS;
+  return width >= 520 ? 2 : 1;
+}
+
 /** 折起来的那几枚有几枚。`0` 表示不折。 */
 export function overflowCount(total: number, max = MAX_VISIBLE_CHIPS): number {
   return total > max ? total - max : 0;
 }
 
-export function HeaderChips({ children }: { children?: React.ReactNode }) {
+export function HeaderChips({
+  children,
+  max = MAX_VISIBLE_CHIPS,
+}: {
+  children?: React.ReactNode;
+  /** 最多平铺几枚（1–3），缺省 {@link MAX_VISIBLE_CHIPS}。 */
+  max?: number;
+}) {
   const t = useT();
   const ref = React.useRef<HTMLSpanElement>(null);
   const [total, setTotal] = React.useState(0);
@@ -40,14 +56,16 @@ export function HeaderChips({ children }: { children?: React.ReactNode }) {
     return () => observer.disconnect();
   }, [children]);
 
-  const hidden = overflowCount(total);
+  const limit = Math.min(Math.max(Math.trunc(max), 1), MAX_VISIBLE_CHIPS);
+  const hidden = overflowCount(total, limit);
   return (
     <span className="node-header-chips flex min-w-0 items-center gap-1">
       <span
         ref={ref}
         data-slot="header-chips"
         data-overflow={hidden > 0 ? "true" : undefined}
-        className="flex min-w-0 items-center gap-1 [&[data-overflow]>*:nth-child(n+4)]:hidden"
+        data-max={limit}
+        className="flex min-w-0 items-center gap-1 [&[data-overflow][data-max='1']>*:nth-child(n+2)]:hidden [&[data-overflow][data-max='2']>*:nth-child(n+3)]:hidden [&[data-overflow][data-max='3']>*:nth-child(n+4)]:hidden"
       >
         {children}
       </span>

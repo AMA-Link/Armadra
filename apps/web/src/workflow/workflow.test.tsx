@@ -13,6 +13,7 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from "@testing-library/react";
 import type {
   WorkflowDraft,
@@ -231,7 +232,11 @@ describe("模板库与起跑", () => {
       const starting = useWorkflowView((state) => state.starting);
       return (
         <>
-          <TemplateLibrary templates={[TEMPLATE]} runs={[run()]} />
+          <TemplateLibrary
+            templates={[TEMPLATE]}
+            runs={[run()]}
+            now={Date.parse("2026-10-02T08:12:00.000Z")}
+          />
           <StartRunDialog
             template={starting ? TEMPLATE : null}
             onClose={() => useWorkflowView.getState().start(null)}
@@ -244,7 +249,8 @@ describe("模板库与起跑", () => {
         <Harness />
       </TestProviders>,
     );
-    expect(screen.getByText(/2 角色 · 2 步 · 上次/)).toBeTruthy();
+    // 相对时间走 lib/format：「上次运行 12 分钟前」，不再是「上次 12分钟前」。
+    expect(screen.getByText("2 角色 · 2 步 · 上次运行 12 分钟前")).toBeTruthy();
     fireEvent.click(screen.getByText("运行"));
     expect(await screen.findByText("运行「双人审查」")).toBeTruthy();
     // 「范围」没有缺省值也没填：不发。
@@ -482,6 +488,17 @@ describe("模板编辑器：增删与角色", () => {
     });
     // lead 删了，连着它的协作连线也去掉。
     expect(input.template.links).toEqual([]);
+  });
+
+  it("角色行窄屏换行，角色 id 截断时悬停给全名", () => {
+    open();
+    const row = document.querySelector(
+      '[data-slot="workflow-editor-role"][data-role-id="reviewer"]',
+    ) as HTMLElement;
+    expect(row.className).toContain("flex-wrap");
+    const id = within(row).getByText("reviewer");
+    expect(id.getAttribute("title")).toBe("reviewer");
+    expect(id.className).toContain("w-24");
   });
 
   it("依赖里会成环的那一项不让勾", async () => {

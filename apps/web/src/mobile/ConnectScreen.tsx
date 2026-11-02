@@ -1010,7 +1010,8 @@ export function ConnectScreen({
               value={code}
               disabled={shownBusy}
               aria-describedby={message ? errorId : undefined}
-              containerClassName="justify-center gap-2"
+              // 容器宽度由手机屏幕决定：8 格与分隔按容器伸缩，不用定宽（390px 时首尾两格不再被裁）。
+              containerClassName="w-full justify-center gap-2"
               onChange={(value: string) => {
                 setCode(codeOf(value));
                 setFailure(null);
@@ -1020,13 +1021,13 @@ export function ConnectScreen({
               {[0, 4].map((offset) => (
                 <React.Fragment key={offset}>
                   {offset > 0 && <InputOTPSeparator />}
-                  <InputOTPGroup>
+                  <InputOTPGroup className="max-w-40 min-w-0 flex-1">
                     {[0, 1, 2, 3].map((index) => (
                       <InputOTPSlot
                         key={index}
                         index={offset + index}
-                        // 触屏命中区与 16px 输入（设计系统 §2.3、§5.13）。
-                        className="size-10 font-mono [font-size:var(--text-input-touch)]"
+                        // 触屏命中区最大 40 见方、宽随容器收缩（高跟宽）；16px 输入（设计系统 §2.3、§5.13）。
+                        className="aspect-square min-w-0 flex-1 font-mono [font-size:var(--text-input-touch)]"
                         aria-invalid={shownFailure !== null || undefined}
                       />
                     ))}

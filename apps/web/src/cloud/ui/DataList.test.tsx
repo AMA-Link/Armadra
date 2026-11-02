@@ -5,10 +5,14 @@ import {
   screen,
   within,
 } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { COMPACT_QUERY } from "../../platform/layout";
-import { DataList, type DataColumn } from "./DataList";
+import {
+  DATA_LIST_TABLE_MIN_WIDTH,
+  DataList,
+  type DataColumn,
+} from "./DataList";
 
 afterEach(cleanup);
 
@@ -161,6 +165,27 @@ describe("DataList", () => {
     window.matchMedia = original;
     const wide = render(<DataList {...props} />);
     expect(wide.getByRole("table")).toBeTruthy();
+  });
+
+  it("缺省按容器：视口是桌面宽度，容器窄于阈值也画列表，宽了回表格", () => {
+    // 控制台的主区被侧栏挤窄时视口仍是桌面宽度，表格右侧会被裁。
+    let width = DATA_LIST_TABLE_MIN_WIDTH - 100;
+    const rect = vi
+      .spyOn(HTMLElement.prototype, "getBoundingClientRect")
+      .mockImplementation(() => ({ width }) as DOMRect);
+    const narrow = render(<DataList {...props} />);
+    expect(narrow.queryByRole("table")).toBeNull();
+    expect(narrow.getByRole("list")).toBeTruthy();
+    narrow.unmount();
+    width = DATA_LIST_TABLE_MIN_WIDTH + 100;
+    const wide = render(<DataList {...props} />);
+    expect(wide.getByRole("table")).toBeTruthy();
+    wide.unmount();
+    // 点名的 layout 不看容器。
+    width = 200;
+    const forced = render(<DataList {...props} layout="table" />);
+    expect(forced.getByRole("table")).toBeTruthy();
+    rect.mockRestore();
   });
 
   it("没有行什么也不画", () => {

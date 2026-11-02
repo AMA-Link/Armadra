@@ -1,7 +1,11 @@
 import * as React from "react";
 
 import { usePreferencesStore } from "@/app/preferences-store";
-import { formatElapsedTime, formatRelativeTime } from "@/lib/format";
+import {
+  formatDate,
+  formatElapsedTime,
+  formatRelativeTime,
+} from "@/lib/format";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/ui/tooltip";
 
 /**
@@ -17,11 +21,7 @@ export function RelativeTime({
 }) {
   const locale = usePreferencesStore((state) => state.locale);
   const absolute = React.useMemo(
-    () =>
-      new Intl.DateTimeFormat(locale, {
-        dateStyle: "medium",
-        timeStyle: "short",
-      }).format(ms),
+    () => formatDate(ms, { dateStyle: "medium", timeStyle: "short" }, locale),
     [locale, ms],
   );
   return (

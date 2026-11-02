@@ -7,6 +7,7 @@ import {
 } from "@armadra/shared";
 
 import { usePreferencesStore, useT } from "../../../../app/preferences-store";
+import { formatDate } from "@/lib/format";
 import { CONTROL_WIDTH } from "../GeneralPage";
 import { SettingsGroup } from "../../SettingsGroup";
 import { SettingsRow } from "../../SettingsRow";
@@ -152,17 +153,16 @@ export function GatewayPanel({
       {renewFailed && (
         <Alert variant="destructive" data-slot="gateway-acme-renew-failed">
           <AlertTitle>
-            {t("gateway.acme.renewFailed")}
-            {retryAt && (
-              <span className="ml-2 font-normal tabular-nums">
-                {t("gateway.acme.retryAt", {
-                  time: retryAt.toLocaleString(locale, {
-                    dateStyle: "medium",
-                    timeStyle: "short",
-                  }),
-                })}
-              </span>
-            )}
+            {/* 重试时间是下一次，不是失败发生的时间：整句写「…，将于 … 重试」。 */}
+            {retryAt
+              ? t("gateway.acme.renewRetry", {
+                  time: formatDate(
+                    retryAt,
+                    { dateStyle: "medium", timeStyle: "short" },
+                    locale,
+                  ),
+                })
+              : t("gateway.acme.renewFailed")}
           </AlertTitle>
         </Alert>
       )}

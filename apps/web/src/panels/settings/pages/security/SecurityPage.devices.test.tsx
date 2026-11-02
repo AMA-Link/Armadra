@@ -557,8 +557,11 @@ describe("允许其他设备访问与已配对设备", () => {
       },
     });
     render(<HostPage />);
-    const alert = await screen.findByText("证书续期失败");
-    expect(alert.closest("[role=alert]")?.textContent).toMatch(/重试/);
+    const alert = await screen.findByText(/^证书续期失败/);
+    // 时间是下一次重试，不是失败发生的时间。
+    expect(alert.closest("[role=alert]")?.textContent).toMatch(
+      /^证书续期失败，将于 2026 年 10 月 5 日 \d{2}:\d{2} 重试$/,
+    );
     expect(document.body.textContent).not.toContain("raw CA detail");
   });
 });

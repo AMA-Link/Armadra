@@ -60,7 +60,12 @@ describe("MfaSetup", () => {
         .getByRole("img", { name: "验证器二维码" })
         .getAttribute("data-qr-text"),
     ).toContain("otpauth://totp/");
-    expect(screen.getByText("JBSW Y3DP EHPK 3PXP")).toBeTruthy();
+    const secret = screen.getByText("JBSW", { selector: "span" });
+    expect(secret.closest("code")?.textContent).toBe("JBSW Y3DP EHPK 3PXP");
+    // 四个字符一组不拆开：窄屏只在组与组之间换行。
+    for (const group of secret.closest("code")!.querySelectorAll("span"))
+      expect(group.className).toContain("whitespace-nowrap");
+    expect(secret.closest("code")?.className).not.toContain("break-all");
     fireEvent.change(screen.getByLabelText("验证码"), {
       target: { value: "123456" },
     });

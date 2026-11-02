@@ -138,8 +138,16 @@ export function MfaSetup({
             <Field>
               <FieldLabel>{t("security.mfa.secret")}</FieldLabel>
               <div className="flex items-center gap-2">
-                <code className="min-w-0 flex-1 rounded-control bg-sunken px-2 py-1 font-mono text-meta break-all select-all">
-                  {groupSecret(stage.enrollment.secret)}
+                {/* 按组换行：每组四个字符不拆开，复制与朗读仍是带空格的整串。 */}
+                <code className="min-w-0 flex-1 rounded-control bg-sunken px-2 py-1 font-mono text-meta select-all">
+                  {groupSecret(stage.enrollment.secret)
+                    .split(" ")
+                    .map((group, index) => (
+                      <React.Fragment key={index}>
+                        {index > 0 && " "}
+                        <span className="whitespace-nowrap">{group}</span>
+                      </React.Fragment>
+                    ))}
                 </code>
                 <CopyButton text={stage.enrollment.secret} />
               </div>
