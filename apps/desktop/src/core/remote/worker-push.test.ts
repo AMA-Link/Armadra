@@ -95,9 +95,13 @@ function worker(
   });
 }
 
+/**
+ * 轮询到有值为止。上界只在挂住时才用到（读到就立刻返回），所以给得宽：用例本身
+ * 的预算是 60 秒，机器忙的时候 15 秒不够一轮 worker 往返。
+ */
 async function until<T>(
   read: () => T | undefined | Promise<T | undefined>,
-  timeoutMs = 15_000,
+  timeoutMs = 40_000,
 ): Promise<T> {
   const deadline = Date.now() + timeoutMs;
   for (;;) {
@@ -434,7 +438,8 @@ describe("remote resources", () => {
         const net = require("node:net");
         const { spawn } = require("node:child_process");
         const server = net.createServer(() => {
-          spawn("sleep", ["30"], { stdio: "ignore" });
+          const child = spawn("sleep", ["30"], { stdio: "ignore" });
+          child.once("spawn", () => process.stdout.write("child\\n"));
         });
         server.listen(0, "127.0.0.1", () => {
           process.stdout.write(String(server.address().port) + "\\n");
@@ -443,16 +448,33 @@ describe("remote resources", () => {
       sshd = spawn(process.execPath, ["-e", script], {
         stdio: ["ignore", "pipe", "inherit"],
       });
-      const port = await new Promise<number>((resolve) => {
-        sshd?.stdout?.once("data", (chunk: Buffer) =>
-          resolve(Number(chunk.toString("utf8").trim())),
-        );
+      // 替身按行报告：第一行是端口，之后每派生出一个子进程报一行 `child`。
+      const reported: string[] = [];
+      const listeners = new Set<() => void>();
+      let buffered = "";
+      sshd.stdout?.on("data", (chunk: Buffer) => {
+        buffered += chunk.toString("utf8");
+        const lines = buffered.split("\n");
+        buffered = lines.pop() ?? "";
+        reported.push(...lines);
+        for (const listener of listeners) listener();
       });
+      const line = (index: number) =>
+        new Promise<string>((resolve) => {
+          const check = () => {
+            if (reported[index] === undefined) return;
+            listeners.delete(check);
+            resolve(reported[index]);
+          };
+          listeners.add(check);
+          check();
+        });
+      const port = Number(await line(0));
       client = connect(port, "127.0.0.1");
       await new Promise((resolve) => client?.once("connect", resolve));
       const clientPort = client.localPort as number;
-      // 让替身把子进程派生出来。
-      await new Promise((resolve) => setTimeout(resolve, 300));
+      // 等替身真的把子进程派生出来，不靠睡一会儿。
+      expect(await line(1)).toBe("child");
 
       const read = async () =>
         (await remote.request(
@@ -487,8 +509,16 @@ describe("remote resources", () => {
         expect(row?.unknownReason).toBe("remote");
       }
 
-      await new Promise((resolve) => setTimeout(resolve, 300));
-      const second = await read();
+      // CPU 占比要有两次采样之间的间隔才算得出：读到有值为止，不睡固定的一觉。
+      const second = await until(async () => {
+        const next = await read();
+        const row = next.sessions.find(
+          (entry) => entry.sessionId === "matched",
+        );
+        return next.host.cpuPercent !== null && row?.cpuPercent != null
+          ? next
+          : undefined;
+      });
       expect(second.host.cpuPercent).not.toBeNull();
       expect(
         second.sessions.find((entry) => entry.sessionId === "matched")

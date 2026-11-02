@@ -766,7 +766,10 @@ describe("realSecurityTool", () => {
         // 远大于管道缓冲，工具退出后写端必然撞上 EPIPE。
         const result = await realSecurityTool(["-i"], "x".repeat(4 << 20));
         expect(result.code).toBe(36);
-        await new Promise((done) => setTimeout(done, 50));
+        // 工具的回调要等标准输入关闭之后才来，EPIPE 若会抛，此时已经抛了；再让出
+        // 几轮事件循环，让未处理的错误有机会被 vitest 抓到，不靠墙钟。
+        for (let turn = 0; turn < 3; turn += 1)
+          await new Promise((done) => setImmediate(done));
       } finally {
         process.env.PATH = before;
       }

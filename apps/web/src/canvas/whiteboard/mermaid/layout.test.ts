@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it } from "vitest";
 
 import { FLOWCHART_LR, FLOWCHART_TD } from "./fixtures";
 import {
@@ -26,6 +26,15 @@ async function graphOf(text: string): Promise<MermaidGraph> {
   if (parsed.kind !== "graph") throw new Error("expected a flowchart");
   return parsed.graph;
 }
+
+/**
+ * mermaid 本体是 `parseMermaid` 里第一次调用时才 `import("mermaid")` 的（约 1 秒的
+ * 冷加载）。放进 beforeAll 预热，这点固有的加载成本就不会算进第一条用例的 5 秒里；
+ * 钩子预算单独给 30 秒，因为加载的是整个 mermaid 包。
+ */
+beforeAll(async () => {
+  await parseMermaid("flowchart LR\n  A --> B");
+}, 30_000);
 
 describe("measureLabel", () => {
   it("短标签也不小于最小尺寸", () => {

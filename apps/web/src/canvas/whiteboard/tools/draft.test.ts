@@ -110,12 +110,21 @@ describe("commitDraft", () => {
   });
 
   it("墨迹的点数压到上限以内", () => {
-    let draft = startDraft("draw", at(0, 0), 0.5)!;
-    for (let index = 1; index <= 6_000; index += 1) {
-      draft = extendDraft(draft, at(index, (index % 2) * 30), 0.5);
-    }
+    // 直接造出超限的草稿，不是 6000 次 `extendDraft`（每次复制整个点数组，O(n²)）。
+    // 折线的振幅各不相同：等幅的锯齿让简化时每次都在端点处切分，退化成 O(n²)，
+    // 负载下会吃掉整个用例预算；振幅不同则切分点落在中间，是 O(n log n)。
+    // 每个点都离弦远大于容差，简化后一个不少，所以一定走到等距抽稀这一步。
+    const start = startDraft("draw", at(0, 0), 0.5) as InkDraft;
+    const draft: InkDraft = {
+      ...start,
+      points: Array.from({ length: MAX_INK_POINTS + 500 }, (_, index) => [
+        index,
+        (index % 2) * (20 + ((index * 7919) % 23)),
+        0.5,
+      ]) as InkDraft["points"],
+    };
     const item = commitDraft(draft, "ink-2")! as { points: unknown[] };
-    expect(item.points.length).toBeLessThanOrEqual(MAX_INK_POINTS);
+    expect(item.points.length).toBe(MAX_INK_POINTS);
   });
 
   it("原地点一下的墨迹（0 宽 0 高）不落成", () => {

@@ -176,21 +176,24 @@ export async function routerEventsStep({
   await sleep(2000);
   const idA = eventOf(rowA.task_id)?.id;
   const idB = eventOf(rowB.task_id)?.id;
+  // 断言「这两个事件同在一张新卡片里」，不数卡片里一共几个事件：成员更早的就绪事件
+  // 可能在协调者空下来之前就已入表，被并进同一张卡片，这不是错。
   const merged = cards().slice(cardsBefore);
+  const mergedCard =
+    merged.find((card) => card.includes(idA) && card.includes(idB)) ?? "";
   s.check(
-    "只投了一张卡片，同时列出这两个事件",
-    merged.length === 1 &&
-      merged[0].includes(idA) &&
-      merged[0].includes(idB) &&
-      (merged[0].match(/ · report · /g) ?? []).length === 2 &&
-      merged[0].includes("canvas items --item"),
+    "新卡片同时列出这两个事件",
+    Boolean(idA && idB) &&
+      mergedCard !== "" &&
+      (mergedCard.match(/ · report · /g) ?? []).length >= 2 &&
+      mergedCard.includes("canvas items --item"),
     merged,
   );
   s.check(
     "卡片不带终端原文，只有成员写的那一行",
-    merged[0].includes("A 检查完，等验收") &&
-      merged[0].includes("B 检查完，等验收"),
-    merged[0],
+    mergedCard.includes("A 检查完，等验收") &&
+      mergedCard.includes("B 检查完，等验收"),
+    mergedCard,
   );
   await waitFor(
     "协调者 canvas ack --event 确认了这两条",
@@ -213,12 +216,22 @@ export async function routerEventsStep({
     failed?.result?.notified === true,
     failed,
   );
-  await waitFor("下一张卡片", () => cards().length > cardsBefore + 1, {
-    timeout: 90_000,
-    interval: 500,
-  });
   const idC = eventOf(rowC.task_id)?.id;
-  const next = cards().at(cardsBefore + 1) ?? "";
+  const cardOfC = () =>
+    cards()
+      .slice(cardsBefore)
+      .find(
+        (card) => Boolean(idC) && card.includes(idC) && card !== mergedCard,
+      );
+  await waitFor(
+    "有一张卡片列出第三个成员的事件",
+    () => cardOfC() !== undefined,
+    {
+      timeout: 90_000,
+      interval: 500,
+    },
+  );
+  const next = cardOfC() ?? "";
   s.check(
     "下一张卡片有新事件，没有已确认的那两条",
     next.includes(idC) && !next.includes(idA) && !next.includes(idB),

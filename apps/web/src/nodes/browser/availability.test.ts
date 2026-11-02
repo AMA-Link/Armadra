@@ -52,11 +52,11 @@ describe("browser availability", () => {
     vi.useFakeTimers();
     try {
       health.mockRejectedValue(new Error("404"));
-      for (let tick = 0; tick < 300; tick += 1) {
+      for (let tick = 0; tick < 60; tick += 1) {
         const hooks = [0, 1, 2].map(() =>
           renderHook(() => useHeadlessBrowser()),
         );
-        await act(() => vi.advanceTimersByTimeAsync(100));
+        await act(() => vi.advanceTimersByTimeAsync(500));
         for (const hook of hooks) hook.unmount();
       }
       // 30 秒里不断重挂：1+2+4+8+16 秒的退避，最多 5～6 次；不退避是上千次。

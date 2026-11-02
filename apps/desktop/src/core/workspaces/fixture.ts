@@ -122,7 +122,14 @@ export function fixture(
     close: () => {
       opened.close();
       killTmuxServer(directory);
-      rmSync(directory, { recursive: true, force: true });
+      // Windows: SQLite and child processes can hold files for a moment after
+      // close (EPERM/EBUSY); `rmSync` retries those itself.
+      rmSync(directory, {
+        recursive: true,
+        force: true,
+        maxRetries: 10,
+        retryDelay: 100,
+      });
     },
   };
 }

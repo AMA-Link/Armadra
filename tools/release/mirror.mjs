@@ -263,18 +263,30 @@ function sha256Hex(bytes) {
   return createHash("sha256").update(bytes).digest("hex");
 }
 
+/** 镜像上单个文件的读取上限（含读完正文）；超时当作该条不可达。 */
+export const FETCH_TIMEOUT_MS = 30_000;
+
 /**
  * 像客户端那样读镜像：`<base>/releases/latest/download/latest.json` 与它的签名，
  * 每个平台的 feed（地址、sha256 与 latest.json 一致、在 SHA256SUMS 里），feed 指的包
  * （sha512、大小、SHA256SUMS、minisign 签名）；所有地址都得在 `base` 之下——
- * 指回 GitHub 的镜像只镜像了检查。返回 `{ problems, checked, version }`。
+ * 指回 GitHub 的镜像只镜像了检查，这样的条目只报问题、不再去取镜像外的地址。
+ * 每次读取都带 `AbortSignal.timeout`；`fetchImpl(url, { signal })` 可注入。
+ * 返回 `{ problems, checked, version }`。
  */
-export async function verifyMirror({ base, publicKeyText, fetchImpl = fetch }) {
+export async function verifyMirror({
+  base,
+  publicKeyText,
+  fetchImpl = fetch,
+  timeoutMs = FETCH_TIMEOUT_MS,
+}) {
   const root = String(base).replace(/\/+$/, "");
   const problems = [];
   const checked = [];
   const bytesOf = async (url) => {
-    const response = await fetchImpl(url);
+    const response = await fetchImpl(url, {
+      signal: AbortSignal.timeout(timeoutMs),
+    });
     if (!response.ok) throw new Error(`${url} answered ${response.status}`);
     return Buffer.from(await response.arrayBuffer());
   };
@@ -312,9 +324,13 @@ export async function verifyMirror({ base, publicKeyText, fetchImpl = fetch }) {
   if (platforms.length === 0) problems.push("latest.json offers no platform");
   for (const [platform, entry] of platforms) {
     const before = problems.length;
+    let offMirror = false;
     for (const url of [entry.url, entry.feed?.url])
-      if (!String(url ?? "").startsWith(`${root}/`))
+      if (!String(url ?? "").startsWith(`${root}/`)) {
         problems.push(`${platform}: ${url} is not on the mirror`);
+        offMirror = true;
+      }
+    if (offMirror) continue;
     if (!entry.feed) {
       problems.push(`${platform}: latest.json names no feed`);
       continue;
