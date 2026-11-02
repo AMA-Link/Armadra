@@ -17,7 +17,7 @@
  * 在 CLI 自己的目录里，页面重试起会话就能用。
  */
 
-import { spawn } from "node:child_process";
+import { type ChildProcess, spawn } from "node:child_process";
 
 import { AcpError, messageOf } from "./client";
 import {
@@ -93,46 +93,94 @@ export type AuthTerminalRunner = (
 /** 一次终端登录最多等多久（人要在浏览器里点完）。 */
 export const AUTH_TERMINAL_TIMEOUT_MS = 10 * 60_000;
 
-/** 缺省的跑法：不经 shell 起子进程（自成进程组），输出丢掉，取消 / 超时整组收掉。 */
-export const runAuthTerminal: AuthTerminalRunner = (command, signal) =>
-  new Promise((resolve, reject) => {
-    if (signal.aborted) return resolve({ exitCode: null });
-    let child;
-    try {
-      child = spawn(command.program, [...command.args], {
-        cwd: command.cwd,
-        env: command.env,
-        stdio: ["ignore", "ignore", "ignore"],
-        detached: process.platform !== "win32",
-        windowsHide: true,
-        shell: false,
+/** 取消 / 超时后，SIGTERM 之后等多久再 SIGKILL。 */
+export const AUTH_KILL_GRACE_MS = 3000;
+
+/** SIGKILL 之后再等多久：到点不管 `exit` 来没来都落定，登录不会永远占着。 */
+const AUTH_SETTLE_MS = 1000;
+
+/**
+ * 不经 shell 起子进程（自成进程组），输出丢掉。取消 / 超时先对整组发 SIGTERM，
+ * 宽限期后升级为 SIGKILL，再等一小会儿就落定——登录程序不理 SIGTERM 或卡在
+ * 等浏览器，也不会让这家 Agent 一直记为「登录中」。
+ */
+export function authTerminalRunner(
+  options: { readonly killGraceMs?: number } = {},
+): AuthTerminalRunner {
+  const grace = options.killGraceMs ?? AUTH_KILL_GRACE_MS;
+  return (command, signal) =>
+    new Promise((resolve, reject) => {
+      if (signal.aborted) return resolve({ exitCode: null });
+      let child: ChildProcess;
+      try {
+        child = spawn(command.program, [...command.args], {
+          cwd: command.cwd,
+          env: command.env,
+          stdio: ["ignore", "ignore", "ignore"],
+          detached: process.platform !== "win32",
+          windowsHide: true,
+          shell: false,
+        });
+      } catch (error) {
+        return reject(
+          new AcpError(
+            "acp_auth_failed",
+            `cannot start ${command.program}: ${messageOf(error)}`,
+          ),
+        );
+      }
+      let exited = false;
+      let settled = false;
+      // 是我们动手收的：此后的非零退出码（Windows 上强杀是 1，POSIX 上是信号）
+      // 都算「没有完成」，各平台答 `null`。
+      let killed = false;
+      const timers: NodeJS.Timeout[] = [];
+      const finish = (exitCode: number | null) => {
+        if (settled) return;
+        settled = true;
+        signal.removeEventListener("abort", stop);
+        for (const timer of timers) clearTimeout(timer);
+        resolve({ exitCode });
+      };
+      const later = (job: () => void, ms: number) => {
+        const timer = setTimeout(job, ms);
+        timer.unref?.();
+        timers.push(timer);
+      };
+      function stop() {
+        if (exited || child.pid === undefined) return;
+        const pid = child.pid;
+        killed = true;
+        // Windows 没有信号和进程组：`signalTree` 在那里是 `taskkill /T /F`，
+        // 第一下就是整棵树强杀；POSIX 先礼后兵，宽限期后再 SIGKILL。
+        signalTree(pid, "SIGTERM");
+        later(() => {
+          if (exited) return;
+          signalTree(pid, "SIGKILL");
+          later(() => finish(null), AUTH_SETTLE_MS);
+        }, grace);
+      }
+      signal.addEventListener("abort", stop, { once: true });
+      child.once("error", (error) => {
+        if (settled) return;
+        settled = true;
+        signal.removeEventListener("abort", stop);
+        for (const timer of timers) clearTimeout(timer);
+        reject(
+          new AcpError(
+            "acp_auth_failed",
+            `cannot start ${command.program}: ${messageOf(error)}`,
+          ),
+        );
       });
-    } catch (error) {
-      return reject(
-        new AcpError(
-          "acp_auth_failed",
-          `cannot start ${command.program}: ${messageOf(error)}`,
-        ),
-      );
-    }
-    const stop = () => {
-      if (child.pid !== undefined) signalTree(child.pid, "SIGTERM");
-    };
-    signal.addEventListener("abort", stop, { once: true });
-    child.once("error", (error) => {
-      signal.removeEventListener("abort", stop);
-      reject(
-        new AcpError(
-          "acp_auth_failed",
-          `cannot start ${command.program}: ${messageOf(error)}`,
-        ),
-      );
+      child.once("exit", (code) => {
+        exited = true;
+        finish(killed && code !== 0 ? null : code);
+      });
     });
-    child.once("exit", (code) => {
-      signal.removeEventListener("abort", stop);
-      resolve({ exitCode: code });
-    });
-  });
+}
+
+export const runAuthTerminal: AuthTerminalRunner = authTerminalRunner();
 
 export interface AuthenticateOptions {
   readonly methodId: string;

@@ -2,12 +2,13 @@
  * 列出 Agent 自己历史里的会话（`session/list`，P2-7）：新建 Agent 时的「接管已有
  * 会话」用。
  *
- * 只在 Agent 声明了 `sessionCapabilities.list` 时才发。新版客户端有
- * `listAllSessions(cwd, signal)`（把分页收完）和带 `signal` 的
- * `listSessions(cwd, cursor, signal)`；0.11 只有不带 `signal` 的
- * `listSessions(cwd, cursor)`。有哪个用哪个：不给游标时优先 `listAllSessions`，
- * 否则按页取。
+ * 只在 Agent 声明了 `sessionCapabilities.list` 时才发。按页取（`listSessions(cwd,
+ * cursor, signal)`；0.11 的客户端不带 `signal`）：自己翻页，收满
+ * {@link MAX_LISTED_SESSIONS} 条就停并把下一页的游标交回去，不再整段收完再截断。
+ * 给了 `root` 时，不管 Agent 有没有按 `cwd` 过滤，只留在根目录之下的会话。
  */
+
+import { isAbsolute, relative, resolve } from "node:path";
 
 import { AcpError } from "./client";
 import type { AdapterProcessContext } from "./host";
@@ -26,8 +27,24 @@ export interface SessionListing {
   readonly nextCursor?: string;
 }
 
-/** 一次最多答这么多条：Agent 的历史可能很长，页面只是个选择器。 */
+/**
+ * 一次大约答这么多条：Agent 的历史可能很长，页面只是个选择器。收满就停并给游标，
+ * 其余的由翻页取（按整页收，所以可能略多）。
+ */
 export const MAX_LISTED_SESSIONS = 200;
+
+/** 单页最多收这么多条，防对端一页塞下整个历史。 */
+export const MAX_PAGE_SESSIONS = 1000;
+
+/** 一次最多翻这么多页（过滤掉大半时也不会无限翻）。 */
+const MAX_LIST_PAGES = 50;
+
+/** `candidate` 就是 `root`，或在它之下（按路径段比较，`/w-x` 不在 `/w` 里）。 */
+export function withinRoot(root: string, candidate: string): boolean {
+  if (candidate === "") return false;
+  const path = relative(resolve(root), resolve(candidate));
+  return path === "" || (!path.startsWith("..") && !isAbsolute(path));
+}
 
 interface ListCapableClient {
   supportsList?(): boolean;
@@ -36,10 +53,6 @@ interface ListCapableClient {
     cursor?: string,
     signal?: AbortSignal,
   ): Promise<AcpListSessionsResult>;
-  listAllSessions?(
-    cwd?: string,
-    signal?: AbortSignal,
-  ): Promise<AcpListSessionsResult | AcpListSessionsResult["sessions"]>;
 }
 
 function clip(value: unknown, limit: number): string | undefined {
@@ -49,7 +62,10 @@ function clip(value: unknown, limit: number): string | undefined {
 }
 
 /** Agent 答的会话列表收成线上形状：丢掉没有 id 的，字段截断，条数封顶。 */
-export function listedSessions(raw: unknown): ListedSession[] {
+export function listedSessions(
+  raw: unknown,
+  limit: number = MAX_LISTED_SESSIONS,
+): ListedSession[] {
   if (!Array.isArray(raw)) return [];
   const out: ListedSession[] = [];
   for (const item of raw) {
@@ -65,7 +81,7 @@ export function listedSessions(raw: unknown): ListedSession[] {
       ...(title === undefined ? {} : { title }),
       ...(updatedAt === undefined ? {} : { updatedAt }),
     });
-    if (out.length >= MAX_LISTED_SESSIONS) break;
+    if (out.length >= limit) break;
   }
   return out;
 }
@@ -78,6 +94,8 @@ export async function listSessionsOn(
   params: {
     readonly cwd?: string | undefined;
     readonly cursor?: string | undefined;
+    /** 工作空间根：只答在它之下的会话，不管 Agent 报了什么（空 = 不限，仅内部用）。 */
+    readonly root?: string | undefined;
     readonly signal?: AbortSignal | undefined;
   } = {},
 ): Promise<SessionListing> {
@@ -93,22 +111,28 @@ export async function listSessionsOn(
     );
   }
   try {
-    if (
-      params.cursor === undefined &&
-      typeof client.listAllSessions === "function"
-    ) {
-      const all = await client.listAllSessions(params.cwd, params.signal);
-      const list = Array.isArray(all) ? all : all.sessions;
-      return { sessions: listedSessions(list) };
+    const { root } = params;
+    const collected: ListedSession[] = [];
+    let cursor = params.cursor;
+    let next: string | undefined;
+    for (let pages = 0; pages < MAX_LIST_PAGES; pages++) {
+      const page = await client.listSessions(params.cwd, cursor, params.signal);
+      const entries = listedSessions(page?.sessions, MAX_PAGE_SESSIONS);
+      for (const entry of entries) {
+        if (root === undefined || withinRoot(root, entry.cwd)) {
+          collected.push(entry);
+        }
+      }
+      next = clip(page?.nextCursor, 1024);
+      // 对端把游标原样回来会翻不完：当作到头。
+      if (next === cursor) next = undefined;
+      if (next === undefined) break;
+      // 按整页收：收满就停，游标留给下一次，一条也不丢。
+      if (collected.length >= MAX_LISTED_SESSIONS) break;
+      cursor = next;
     }
-    const page = await client.listSessions(
-      params.cwd,
-      params.cursor,
-      params.signal,
-    );
-    const next = clip(page?.nextCursor, 1024);
     return {
-      sessions: listedSessions(page?.sessions),
+      sessions: collected,
       ...(next === undefined ? {} : { nextCursor: next }),
     };
   } catch (error) {

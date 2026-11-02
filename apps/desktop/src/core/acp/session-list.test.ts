@@ -1,5 +1,7 @@
 import { rmSync } from "node:fs";
 import { tmpdir } from "node:os";
+import { dirname, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 
 import { fakeAcpAgentPath } from "@armadra/agent/acp";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -11,6 +13,7 @@ import { AcpSession, type AcpSessionSink } from "./session";
 import {
   MAX_LISTED_SESSIONS,
   listSessionsOn,
+  type SessionListing,
   listedSessions,
 } from "./session-list";
 import { tempDir } from "../testing/temp-dir";
@@ -45,40 +48,103 @@ describe("listedSessions", () => {
 
 describe("listSessionsOn", () => {
   it("pages with listSessions on the 0.11 client and hands the cursor on", async () => {
-    const listSessions = vi.fn().mockResolvedValue({
-      sessions: [{ sessionId: "a", cwd: "/w" }],
-      nextCursor: "c2",
-    });
+    const listSessions = vi
+      .fn()
+      .mockResolvedValueOnce({
+        sessions: [{ sessionId: "a", cwd: "/w" }],
+        nextCursor: "c2",
+      })
+      .mockResolvedValueOnce({ sessions: [{ sessionId: "b", cwd: "/w" }] });
     const result = await listSessionsOn(
       { ...caps(true), process: { client: { listSessions } } },
       { cwd: "/w", cursor: "c1" },
     );
-    expect(listSessions).toHaveBeenCalledWith("/w", "c1", undefined);
+    expect(listSessions).toHaveBeenNthCalledWith(1, "/w", "c1", undefined);
+    expect(listSessions).toHaveBeenNthCalledWith(2, "/w", "c2", undefined);
     expect(result).toEqual({
-      sessions: [{ sessionId: "a", cwd: "/w" }],
-      nextCursor: "c2",
+      sessions: [
+        { sessionId: "a", cwd: "/w" },
+        { sessionId: "b", cwd: "/w" },
+      ],
     });
   });
 
-  it("prefers listAllSessions when the client has it and no cursor is given", async () => {
-    const listAllSessions = vi
-      .fn()
-      .mockResolvedValue([{ sessionId: "a", cwd: "/w" }]);
-    const listSessions = vi.fn();
+  /** 300 条会话，每页 `size` 条，游标是下一页的起点。 */
+  function history(size: number, total = 300) {
+    const all = Array.from({ length: total }, (_, i) => ({
+      sessionId: `s${i}`,
+      cwd: "/w",
+    }));
+    return vi.fn(async (_cwd?: string, cursor?: string) => {
+      const from = cursor === undefined ? 0 : Number(cursor);
+      const to = from + size;
+      return {
+        sessions: all.slice(from, to),
+        ...(to < total ? { nextCursor: String(to) } : {}),
+      };
+    });
+  }
+
+  it("stops at the cap with a cursor, so 300 sessions page out in full", async () => {
+    const listSessions = history(100);
+    const client = { ...caps(true), process: { client: { listSessions } } };
+    const first = await listSessionsOn(client, { cwd: "/w" });
+    expect(first.sessions).toHaveLength(MAX_LISTED_SESSIONS);
+    expect(first.nextCursor).toBe("200");
+    const second = await listSessionsOn(client, {
+      cwd: "/w",
+      cursor: first.nextCursor,
+    });
+    expect(second.sessions).toHaveLength(100);
+    expect(second.nextCursor).toBeUndefined();
+    const ids = [...first.sessions, ...second.sessions].map(
+      (item) => item.sessionId,
+    );
+    expect(new Set(ids).size).toBe(300);
+  });
+
+  it("keeps every session of a page larger than the cap and its cursor", async () => {
+    const listSessions = history(250);
     const result = await listSessionsOn(
-      { ...caps(true), process: { client: { listSessions, listAllSessions } } },
+      { ...caps(true), process: { client: { listSessions } } },
       { cwd: "/w" },
     );
-    expect(listAllSessions).toHaveBeenCalledWith("/w", undefined);
-    expect(listSessions).not.toHaveBeenCalled();
-    expect(result).toEqual({ sessions: [{ sessionId: "a", cwd: "/w" }] });
-    // 带游标就按页取。
-    listSessions.mockResolvedValue({ sessions: [] });
-    await listSessionsOn(
-      { ...caps(true), process: { client: { listSessions, listAllSessions } } },
-      { cursor: "c" },
+    expect(result.sessions).toHaveLength(250);
+    expect(result.nextCursor).toBe("250");
+  });
+
+  it("treats a cursor the agent echoes back as the end", async () => {
+    const listSessions = vi.fn().mockResolvedValue({
+      sessions: [{ sessionId: "a", cwd: "/w" }],
+      nextCursor: "same",
+    });
+    const result = await listSessionsOn(
+      { ...caps(true), process: { client: { listSessions } } },
+      { cursor: "same" },
     );
     expect(listSessions).toHaveBeenCalledTimes(1);
+    expect(result.nextCursor).toBeUndefined();
+  });
+
+  it("answers only sessions inside the root, whatever the agent reports", async () => {
+    const listSessions = vi.fn().mockResolvedValue({
+      sessions: [
+        { sessionId: "in", cwd: "/w" },
+        { sessionId: "sub", cwd: "/w/sub" },
+        { sessionId: "dotdot", cwd: "/w/../x" },
+        { sessionId: "sibling", cwd: "/w-x" },
+        { sessionId: "other", cwd: "/other" },
+        { sessionId: "none", cwd: "" },
+      ],
+    });
+    const result = await listSessionsOn(
+      { ...caps(true), process: { client: { listSessions } } },
+      { root: "/w" },
+    );
+    expect(result.sessions.map((item) => item.sessionId)).toEqual([
+      "in",
+      "sub",
+    ]);
   });
 
   it("supportsList() on the client wins over the declared capability", async () => {
@@ -117,6 +183,63 @@ describe("POST /api/acp/agent-sessions", () => {
     });
     expect(answer.status, JSON.stringify(answer.body)).toBe(200);
     expect(answer.body).toEqual({ sessions: [] });
+  });
+
+  describe("scoped to the workspace root", () => {
+    const listAgent = fileURLToPath(
+      new URL("./list-agent.fixture.mjs", import.meta.url),
+    );
+
+    async function rootOf(core: AcpCore): Promise<string> {
+      const workspaces = (await core.core.call("GET", "/api/workspaces"))
+        .body as { id: string; rootPath: string }[];
+      const found = workspaces.find((item) => item.id === core.workspaceId);
+      return resolve((found as { rootPath: string }).rootPath);
+    }
+
+    const idsOf = (body: unknown): string[] =>
+      (body as SessionListing).sessions.map((item) => item.sessionId);
+
+    it("keeps only sessions inside the root when the request has no cwd", async () => {
+      open = await acpCore({ script: listAgent });
+      const answer = await open.core.call("POST", "/api/acp/agent-sessions", {
+        workspaceId: open.workspaceId,
+        agentId: FAKE_AGENT,
+      });
+      expect(answer.status, JSON.stringify(answer.body)).toBe(200);
+      expect(idsOf(answer.body).sort()).toEqual(["in-root", "in-sub"]);
+    });
+
+    it("keeps the root filter when the request names a cwd inside the root", async () => {
+      open = await acpCore({ script: listAgent });
+      const root = await rootOf(open);
+      const answer = await open.core.call("POST", "/api/acp/agent-sessions", {
+        workspaceId: open.workspaceId,
+        agentId: FAKE_AGENT,
+        cwd: root,
+      });
+      expect(answer.status, JSON.stringify(answer.body)).toBe(200);
+      expect(idsOf(answer.body).sort()).toEqual(["in-root", "in-sub"]);
+    });
+
+    it("refuses a cwd outside the workspace root", async () => {
+      open = await acpCore({ script: listAgent });
+      const root = await rootOf(open);
+      for (const cwd of [
+        "/somewhere/else",
+        dirname(root),
+        `${root}-sibling`,
+        join(root, "..", "elsewhere"),
+      ]) {
+        const answer = await open.core.call("POST", "/api/acp/agent-sessions", {
+          workspaceId: open.workspaceId,
+          agentId: FAKE_AGENT,
+          cwd,
+        });
+        expect(answer.status, cwd).toBe(400);
+        expect(answer.body, cwd).not.toHaveProperty("sessions");
+      }
+    });
   });
 
   it("is refused when the agent does not declare session/list", async () => {

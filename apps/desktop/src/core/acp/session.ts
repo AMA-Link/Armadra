@@ -611,6 +611,10 @@ export class AcpSession implements AcpSessionIdentity {
   /**
    * `session/prompt` 响应里的 `usage`（unstable）：这一回合没有 `usage_update`、
    * 又已经知道窗口大小时，用它补头部的用量；窗口大小不明就什么都不做。
+   *
+   * 头部的「用量」是上下文占用。响应里常见的 `totalTokens` / `inputTokens` /
+   * `outputTokens` 是**本回合**的消耗（一回合里多次调用模型会叠加），不是占用，
+   * 一概不采信；只认明确给出累计或上下文的字段（`contextTokens`、`cumulativeTokens`）。
    */
   private fillUsage(result: unknown): void {
     const size = this.usage?.size;
@@ -622,12 +626,7 @@ export class AcpSession implements AcpSessionIdentity {
       typeof value === "number" && Number.isFinite(value) && value >= 0
         ? Math.trunc(value)
         : undefined;
-    const total =
-      count(usage.totalTokens) ??
-      (count(usage.inputTokens) === undefined &&
-      count(usage.outputTokens) === undefined
-        ? undefined
-        : (count(usage.inputTokens) ?? 0) + (count(usage.outputTokens) ?? 0));
+    const total = count(usage.contextTokens) ?? count(usage.cumulativeTokens);
     if (total === undefined) return;
     const update = {
       sessionUpdate: "usage_update",
@@ -979,6 +978,8 @@ export class AcpSession implements AcpSessionIdentity {
       this.host !== undefined &&
       pending.sessionId !== this.host.sessionId
     ) {
+      // 不是这个会话的：不展示，但也不能让 Agent 一直等，答 `cancel`。
+      this.host.process.answerElicitation(pending.id, { action: "cancel" });
       return;
     }
     const pendingId = pendingIdFor(this.nodeId);

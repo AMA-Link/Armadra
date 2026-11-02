@@ -2,9 +2,11 @@ import { chmodSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
+import { acpAdapter } from "./adapters";
 import { checkCliFloor, forgetCliVersions } from "./cli-floor";
+import { startAdapter } from "./host";
 
 /** 起会话前的 CLI 版本核对（#710）。 */
 
@@ -116,5 +118,74 @@ describe.skipIf(process.platform === "win32")("checkCliFloor", () => {
     expect(await checkCliFloor("pi", env, run)).toMatchObject({
       code: "acp_cli_outdated",
     });
+  });
+
+  it("does not remember an outdated verdict: an upgrade behind the same shim is noticed", async () => {
+    const env = installed("pi");
+    let calls = 0;
+    // 版本管理器的 shim：路径、修改时间、大小都不变，背后的版本升了。
+    const run = async () => {
+      calls += 1;
+      return calls === 1 ? "pi 0.80.10" : "pi 0.82.1";
+    };
+    expect(await checkCliFloor("pi", env, run)).toMatchObject({
+      code: "acp_cli_outdated",
+      details: { installed: "0.80.10" },
+    });
+    expect(await checkCliFloor("pi", env, run)).toBeUndefined();
+    expect(calls).toBe(2);
+    // 够新的照旧只问一次。
+    await checkCliFloor("pi", env, run);
+    expect(calls).toBe(2);
+  });
+
+  it("reads a pre-release of the floor as below it, and a pre-release of a newer version as fine", async () => {
+    const error = await checkCliFloor(
+      "pi",
+      installed("pi"),
+      async () => "pi 0.81.0-beta.2\n",
+    );
+    expect(error).toMatchObject({
+      code: "acp_cli_outdated",
+      details: { installed: "0.81.0-beta.2", minimum: "0.81.0" },
+    });
+    forgetCliVersions();
+    expect(
+      await checkCliFloor("pi", installed("pi"), async () => "0.82.0-rc.1"),
+    ).toBeUndefined();
+    forgetCliVersions();
+    expect(
+      await checkCliFloor("pi", installed("pi"), async () => "0.81.0"),
+    ).toBeUndefined();
+  });
+
+  it("startAdapter checks a prestarted adapter too and ends the process it was handed", async () => {
+    const bin = mkdtempSync(join(tmpdir(), "armadra-cli-floor-start-"));
+    dirs.push(bin);
+    for (const [name, body] of [
+      ["pi", "echo 0.80.10"],
+      ["pi-acp", "exit 0"],
+    ] as const) {
+      writeFileSync(join(bin, name), `#!/bin/sh\n${body}\n`, "utf8");
+      chmodSync(join(bin, name), 0o755);
+    }
+    const terminate = vi.fn(async () => ({}));
+    const attach = vi.fn();
+    await expect(
+      startAdapter(
+        acpAdapter("pi") as NonNullable<ReturnType<typeof acpAdapter>>,
+        {
+          cwd: tmpdir(),
+          env: { PATH: bin, HOME: bin },
+          prestarted: {
+            process: { terminate } as never,
+            initialized: {} as never,
+            attach,
+          },
+        },
+      ),
+    ).rejects.toMatchObject({ code: "acp_cli_outdated" });
+    expect(terminate).toHaveBeenCalledTimes(1);
+    expect(attach).not.toHaveBeenCalled();
   });
 });

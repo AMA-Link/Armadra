@@ -415,7 +415,7 @@ class AcpRuntime {
       claimed === undefined ? this.shortLived(agentId, cwd) : reference;
     return withAdapterProcess(
       { ...plan, ...(claimed === undefined ? {} : { prestarted: claimed }) },
-      (context) => listSessionsOn(context, params),
+      (context) => listSessionsOn(context, { ...params, root: cwd }),
     );
   }
 

@@ -4998,3 +4998,22 @@ owner（本机会话，或已信任设备经通道的 owner 会话）：`{ sourc
 - `ProcessSample`（`SessionResources.children[]`、平台组件的 `process` / `children[]`）多一个可选字段 `origin: "armadra"`：这个进程是**本次安装**自己的程序。缺省 = 无结论，旧页面忽略它。
 - 判定只看可执行路径，不按名字猜（别的 Electron 应用也有 `Foo Helper`）：macOS 是路径落在运行中 core 所在的 `.app` 包（`X.app/Contents/…`）之下；其他平台是安装目录里与主程序同名的二进制，且主程序不是 `node`（服务器壳跑在系统 `node` 上，认它会把用户自己的 node 进程都认成 Armadra 的）。读不到路径的进程不认。远端主机（SSH）上读到的树不带这个字段。
 - 会话行没有新字段：标题、Agent 与画板名取自 `GET /api/workspaces/{id}/sessions`（§5.1 的会话行），那份读模型覆盖工作空间的所有画板。面板的会话组标题就是节点标题，不再退到 `cwd` 的末级目录。
+
+## 95. ACP 健壮性补丁（审计批次 B3）
+
+### 95.1 「接管会话」列表限定在工作空间根（§92.3）
+
+- `POST /api/acp/agent-sessions` 的 `cwd` 只能是该工作空间根目录或它之下的目录：缺省或空串 = 工作空间根；其他路径（含 `..` 越出、与根同前缀的兄弟目录）答 `400`，错误体 `{ code, message }`。权限仍是该工作空间的 `terminal:create`，所以这条约束是跨项目看会话的唯一屏障。
+- core 不信 Agent 按 `cwd` 过滤：答复里的会话再按工作空间根筛一遍，只留 `cwd` 在根之下的，没有 `cwd` 的也丢掉。
+
+### 95.2 会话列表翻页、登录进程、征询与用量（`#740`）
+
+- `POST /api/acp/agent-sessions`：core 自己按页向 Agent 取（不再用客户端的 `listAllSessions` 整段收完再截断，此条取代 §92.3 里关于 `listAllSessions` 的说法）。每次约收 200 条（按整页收，所以可能略多）：收满就停并给 `nextCursor`，更早的会话由游标翻页取全；单页超过 200 条时整页保留，游标照给。请求与答复形状不变。
+- `terminal` 型登录（§92.1）取消或超时：先对进程组发 SIGTERM，约 3 秒后升级为 SIGKILL，再等 1 秒无论如何落定为 `acp_auth_failed`；这家 Agent 的「登录中」随之解除，不会再一直答 409 `conflict`。
+- 会话 id 与本会话不符的 `elicitation/create` 不展示，core 答 `cancel`，Agent 不再空等。
+- `session/prompt` 响应的 `usage` 只在带 `contextTokens` 或 `cumulativeTokens`（上下文占用 / 累计）时才补头部用量（仍不超过窗口）；`totalTokens`、`inputTokens`、`outputTokens` 是本回合消耗，不再采信，取代 §92.5 里关于 `totalTokens` 补用量的说法。
+
+### 95.3 Pi 的 CLI 安装与版本核对（`#741`）
+
+- `agents.installAdapter` 装 `target: "cli"` 且这一家的 CLI 包改过名（目前只有 `pi`）时，开始前先用同一个 npm 查旧包（`npm ls --global`）：装着就先 `npm rm --global <旧包>`，再装现行包，避免旧包占着同名可执行文件使 npm 因 bin 冲突失败。卸旧包的输出进任务的 `output` 尾部；卸不掉就不装，任务 `failed`，`failure.code` 为 `adapter_install_failed`，`failure.message` 带一条可复制的 `npm rm --global <旧包>`。`target: "adapter"` 与回滚不受影响，请求与答复形状不变。
+- 起会话前的 CLI 版本核对（`acp_cli_outdated`，§92 前的 #710）：不再记「过旧」的结论，每次都重问版本，所以 mise / asdf / volta 的 shim 升级后下一次会话即通过，不必重启 core；「够新」的结论照旧按文件路径、修改时间与大小记着。预发布版本（`x.y.z-beta.n`）排在同号正式版之前：恰为下限的预发布也答 `acp_cli_outdated`（`details.installed` 带完整版本串）。预启动的适配器进程也核对，不合格时收掉它再答错。

@@ -298,7 +298,13 @@ describe("slash command hint (P3-2)", () => {
 });
 
 describe("prompt response usage (P3-8)", () => {
-  it("fills the head usage when no usage_update arrived and the window size is known", async () => {
+  const fill = (session: unknown, usage: unknown) =>
+    (session as { fillUsage(result: unknown): void }).fillUsage({
+      stopReason: "end_turn",
+      usage,
+    });
+
+  it("does not take the per-turn token counts for the context usage", async () => {
     const { session, sink } = await open([]);
     const done = (n: number) =>
       until(
@@ -308,11 +314,36 @@ describe("prompt response usage (P3-8)", () => {
     session.prompt("hi");
     await done(1);
     expect(head()?.usage).toMatchObject({ used: 15, size: 1000 });
-    // 拒绝的回合没有 usage_update，只有响应里的 usage（第二回合 25 个）。
+    // 拒绝的回合没有 usage_update，响应里只有本回合的 token 数（25 个）：
+    // 那不是上下文占用，头部保持上一次 `usage_update` 的值。
     session.prompt("[refuse]");
     await done(2);
-    expect(head()?.usage).toMatchObject({ used: 25, size: 1000 });
-    expect(session.snapshot().usage).toMatchObject({ used: 25, size: 1000 });
+    expect(head()?.usage).toMatchObject({ used: 15, size: 1000 });
+    expect(session.snapshot().usage).toMatchObject({ used: 15, size: 1000 });
+  });
+
+  it("takes only the cumulative or context fields, capped at the window", async () => {
+    const { session, sink } = await open([]);
+    session.prompt("hi");
+    await until(
+      () => sink.events.filter((e) => e.type === "acp.turn").length,
+      (count) => count === 1,
+    );
+    // 这一回合没有 usage_update，响应里的 usage 才会被看。
+    session.prompt("[refuse]");
+    await until(
+      () => sink.events.filter((e) => e.type === "acp.turn").length,
+      (count) => count === 2,
+    );
+    // 每轮字段一概不采信。
+    fill(session, { totalTokens: 900, inputTokens: 800, outputTokens: 100 });
+    expect(session.snapshot().usage).toMatchObject({ used: 15, size: 1000 });
+    // 上下文 / 累计字段采信，并封顶在窗口内。
+    fill(session, { contextTokens: 400, totalTokens: 900 });
+    expect(session.snapshot().usage).toMatchObject({ used: 400, size: 1000 });
+    (session as unknown as { usageSeen: boolean }).usageSeen = false;
+    fill(session, { cumulativeTokens: 5000 });
+    expect(session.snapshot().usage).toMatchObject({ used: 1000, size: 1000 });
   });
 
   it("does nothing when the window size is unknown", async () => {
@@ -322,6 +353,7 @@ describe("prompt response usage (P3-8)", () => {
       () => sink.events.filter((e) => e.type === "acp.turn").length,
       (count) => count === 1,
     );
+    fill(session, { contextTokens: 400 });
     expect(head()?.usage ?? null).toBeNull();
     expect(session.snapshot().usage).toBeNull();
   });

@@ -413,6 +413,110 @@ describe("CLI 与回滚（§47）", () => {
   });
 });
 
+describe("改过名的 CLI 包", () => {
+  const LEGACY = "@mariozechner/pi-coding-agent";
+  const CURRENT = "@earendil-works/pi-coding-agent";
+
+  /** 记命令的 npm 替身：`rm` 的退出码可调，别的都成功。 */
+  function npm(options: { rmExit?: number } = {}) {
+    const commands: InstallCommand[] = [];
+    const runner: InstallRunner = (command, onOutput) => {
+      commands.push(command);
+      const rm = command.args.includes("rm");
+      return {
+        done: Promise.resolve().then(() => {
+          onOutput(rm ? "npm error rm failed\n" : "added 1 package\n");
+          return { exitCode: rm ? (options.rmExit ?? 0) : 0 };
+        }),
+        kill: () => undefined,
+      };
+    };
+    return { commands, runner };
+  }
+
+  it("装 CLI 前先卸掉占着同名可执行文件的旧包，再装现行包", async () => {
+    const fake = npm();
+    const asked: string[] = [];
+    const installer = new AdapterInstaller({
+      runner: fake.runner,
+      probe: () => true,
+      locate: () => NPM,
+      installedVersion: async (name) => {
+        asked.push(name);
+        return name === LEGACY ? "0.70.0" : undefined;
+      },
+    });
+    installer.start("pi", { target: "cli", reinstall: true });
+    const done = await installer.settled("pi", "cli");
+    expect(asked).toContain(LEGACY);
+    expect(fake.commands.map((command) => command.args)).toEqual([
+      ["rm", "--global", LEGACY],
+      ["install", "--global", CURRENT],
+    ]);
+    expect(done).toMatchObject({ state: "succeeded", package: CURRENT });
+  });
+
+  it("旧包没装就不卸", async () => {
+    const fake = npm();
+    const installer = new AdapterInstaller({
+      runner: fake.runner,
+      probe: (() => {
+        let calls = 0;
+        return () => calls++ > 0;
+      })(),
+      locate: () => NPM,
+      installedVersion: async () => undefined,
+    });
+    installer.start("pi", { target: "cli", reinstall: true });
+    await installer.settled("pi", "cli");
+    expect(fake.commands.map((command) => command.args)).toEqual([
+      ["install", "--global", CURRENT],
+    ]);
+  });
+
+  it("卸不掉就停下，失败信息带回 npm 的输出和可复制的命令，不再装", async () => {
+    const fake = npm({ rmExit: 1 });
+    const installer = new AdapterInstaller({
+      runner: fake.runner,
+      probe: () => true,
+      locate: () => NPM,
+      installedVersion: async (name) =>
+        name === LEGACY ? "0.70.0" : undefined,
+    });
+    installer.start("pi", { target: "cli", reinstall: true });
+    const done = await installer.settled("pi", "cli");
+    expect(fake.commands).toHaveLength(1);
+    expect(done).toMatchObject({
+      state: "failed",
+      failure: { code: "adapter_install_failed" },
+    });
+    expect(done.failure?.message).toContain(`npm rm --global ${LEGACY}`);
+    expect(done.output).toContain("npm error rm failed");
+  });
+
+  it("适配器、别的家和回滚都不碰旧包", async () => {
+    const fake = npm();
+    const asked: string[] = [];
+    const installer = new AdapterInstaller({
+      runner: fake.runner,
+      probe: () => false,
+      locate: () => NPM,
+      installedVersion: async (name) => {
+        asked.push(name);
+        return name === LEGACY ? "0.70.0" : "1.0.0";
+      },
+    });
+    installer.start("pi", { target: "adapter" });
+    await installer.settled("pi", "adapter");
+    installer.start("codex", { target: "cli" });
+    await installer.settled("codex", "cli");
+    expect(asked).not.toContain(LEGACY);
+    expect(fake.commands.some((command) => command.args.includes("rm"))).toBe(
+      false,
+    );
+  });
+});
+
 describe("输出", () => {
   it("脱敏：npm 令牌、.npmrc 的 _authToken、URL 里的口令、常见凭据", async () => {
     const secrets = [
