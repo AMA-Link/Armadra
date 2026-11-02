@@ -312,10 +312,8 @@ await h.run(async () => {
   /** 整页截图：视口宽 × 内容高。`file` 为空时只取字节、不落盘。 */
   const capture = async (file, width) => {
     const metrics = await page.call("Page.getLayoutMetrics");
-    const height = Math.min(
-      Math.ceil(metrics.cssContentSize.height),
-      MAX_HEIGHT,
-    );
+    const contentHeight = Math.ceil(metrics.cssContentSize.height);
+    const height = Math.min(contentHeight, MAX_HEIGHT);
     const shot = await page.call("Page.captureScreenshot", {
       format: "png",
       captureBeyondViewport: true,
@@ -324,7 +322,7 @@ await h.run(async () => {
     const bytes = Buffer.from(shot.data, "base64");
     const path = file ? join(output, `${file}.png`) : null;
     if (path) writeFileSync(path, bytes);
-    return { path, bytes, height };
+    return { path, bytes, height, contentHeight };
   };
   /**
    * 换一个新页面（新渲染进程），旧页面导航到 about:blank 释放内存。整张矩阵连着
@@ -404,6 +402,21 @@ await h.run(async () => {
           `截图 ${name}`,
           errors.length ? errors : shot.path,
         );
+        // 内容高度超过上限时下半截截不到，之前只是悄悄截断：现在算失败，提醒拆分区。
+        check(
+          shot.contentHeight <= MAX_HEIGHT,
+          `${name} 整页高度未超截图上限`,
+          `${shot.contentHeight}px，上限 ${MAX_HEIGHT}px`,
+        );
+        // 不换行的行会把布局视口撑宽（移动仿真下尤其明显：弹窗、抽屉都跟着变宽）。
+        const layout = await page.evaluate(
+          `return { inner: window.innerWidth, scroll: document.documentElement.scrollWidth };`,
+        );
+        check(
+          layout.inner === viewport.width && layout.scroll <= viewport.width,
+          `${name} 布局视口 = 视口宽、无横向溢出`,
+          `innerWidth ${layout.inner}，scrollWidth ${layout.scroll}，视口 ${viewport.width}`,
+        );
       }
     }
   }
@@ -445,9 +458,18 @@ await h.run(async () => {
         const file = join(output, `${name}.png`);
         writeFileSync(file, Buffer.from(shot.data, "base64"));
         page.drain();
-        report.settingsDialog.push({ ...size, expected, file });
+        report.settingsDialog.push({
+          ...size,
+          expected: viewport.width < 1024 ? viewport.width : expected,
+          file,
+        });
         if (viewport.width < 1024) {
-          step(`设置弹窗 ${name}`, file);
+          // 更窄时是底部 Sheet：宽 = 视口（布局视口被撑宽时会大于它，控件随之被裁）。
+          check(
+            Math.abs(size.width - viewport.width) <= 1,
+            `设置弹窗 ${name}`,
+            `${Math.round(size.width)}px（应为 ${viewport.width}）`,
+          );
           continue;
         }
         check(
