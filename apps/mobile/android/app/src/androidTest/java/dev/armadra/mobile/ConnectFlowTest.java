@@ -164,13 +164,15 @@ public class ConnectFlowTest {
                     + "state:'e2e-state',nativeState:'e2e-native',expiresAtMs:Date.now()+600000}));true");
         }
         // 深链冷启动 App（在系统浏览器里走授权时 App 被回收的那种）：插件在页面加载后交出深链，页面重载、
-        // 入口带着 nativeState 去 core 收尾（state 不认识，答 oauth_state_invalid），结果打开「安全」页。
+        // 入口带着 nativeState 去 core 收尾（state 不认识，答 oauth_state_invalid），结果打开「账号与设备」页。
         Intent link = new Intent(Intent.ACTION_VIEW, Uri.parse("armadra://oauth?state=e2e-state&code=e2e-code"),
                 InstrumentationRegistry.getInstrumentation().getTargetContext(), MainActivity.class);
         try (ActivityScenario<MainActivity> scenario = ActivityScenario.launch(link)) {
             waitFor(scenario, "localStorage.getItem('armadra.oauth.native')===null", "the oauth link completed");
-            waitFor(scenario, "document.querySelector('[data-slot=\"security-page\"]') && location.hash===''",
-                    "security page after the oauth link");
+            // 「账号与设备」页（#708 把原「安全」页并进来，页上不再有 data-slot=security-page）：
+            // 冷启动只有收尾后才会打开设置，所以分区名出现在页面上就是它打开了。
+            waitFor(scenario, "/账号与设备|Account & devices/.test(document.body.innerText) && location.hash===''",
+                    "account and devices page after the oauth link");
         }
     }
 }

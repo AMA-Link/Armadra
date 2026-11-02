@@ -253,7 +253,9 @@ function jobRuns(job) {
  *
  * For tier B that means: every system a tier B entry names in `platforms` has a
  * nightly job on that system running `--tier b`; a failure opens an issue (a
- * job gated on `failure()` that needs every tier B job and may write issues);
+ * job gated on `failure()` and `cancelled()` that needs every tier B job and may
+ * write issues; a job that hits its timeout ends `cancelled`, which `failure()`
+ * alone does not see);
  * and the workflow reads no secret but the default GITHUB_TOKEN, because a
  * scheduled run on a fork or a broken probe must not be able to spend one.
  */
@@ -316,6 +318,17 @@ export function checkE2eTiers(documents, entries = loadManifest().entries) {
         );
       else {
         const [name, job] = reporter;
+        // A job that runs into timeout-minutes ends `cancelled`, and failure()
+        // is false for it: a reporter gated on failure() alone stays skipped and
+        // the night passes unreported (#746).
+        if (!/\bcancelled\(\)/.test(String(job.if)))
+          problems.push(
+            `nightly.yml: job ${name} is not gated on cancelled(), so cancelled or timed-out nightlies open no issue`,
+          );
+        if (!/\balways\(\)/.test(String(job.if)))
+          problems.push(
+            `nightly.yml: job ${name} is not gated on always(), so it is skipped together with a cancelled run`,
+          );
         const needs = [job.needs ?? []].flat();
         const unwatched = tierB
           .map(([jobName]) => jobName)

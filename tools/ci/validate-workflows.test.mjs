@@ -477,6 +477,15 @@ test("tier B runs on every system its entries name, reports failures as issues a
     "nightly.yml: job report opens issues without permissions: issues: write",
   ]);
 
+  // failure() alone leaves a timed-out (cancelled) job unreported.
+  const failureOnly = structuredClone(nightly);
+  failureOnly.jobs.report.if =
+    "${{ failure() && github.ref == 'refs/heads/main' }}";
+  assert.deepEqual(check(failureOnly), [
+    "nightly.yml: job report is not gated on cancelled(), so cancelled or timed-out nightlies open no issue",
+    "nightly.yml: job report is not gated on always(), so it is skipped together with a cancelled run",
+  ]);
+
   const spending = structuredClone(nightly);
   spending.jobs.linux.steps[0].env = {
     TOKEN: "${{ secrets.RELEASE_TOKEN }}",

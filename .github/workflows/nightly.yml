@@ -308,10 +308,11 @@ jobs:
     if: ${{ needs.gate.outputs.run == 'true' }}
     name: mobile (android emulator)
     runs-on: ubuntu-latest
-    timeout-minutes: 90
+    timeout-minutes: 60
     steps:
       # 构建号是提交数（apps/mobile/scripts/app-version.mjs），浅克隆数不出来。
       - uses: actions/checkout@v4
+        timeout-minutes: 5
         with:
           fetch-depth: 0
       - uses: pnpm/action-setup@v4
@@ -326,7 +327,9 @@ jobs:
           distribution: temurin
           java-version: "21"
       - run: pnpm install --frozen-lockfile
+        timeout-minutes: 10
       - name: 构建页面、core 与手机壳的 www
+        timeout-minutes: 15
         shell: bash
         run: |
           set -euo pipefail
@@ -336,6 +339,7 @@ jobs:
           node apps/desktop/scripts/ensure-node-pty.mjs
           pnpm --filter @armadra/mobile sync
       - name: armadra-native-core 单测（钉扎判定、推送解密、深链）与 debug APK
+        timeout-minutes: 20
         shell: bash
         working-directory: apps/mobile/android
         run: |
@@ -347,6 +351,7 @@ jobs:
           cp app/build/outputs/apk/debug/app-debug.apk "../../../target/mobile/$name"
       # 模拟器要 KVM：在一次性的 runner 上放开 /dev/kvm。
       - name: 放开 KVM
+        timeout-minutes: 2
         shell: bash
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
@@ -355,6 +360,7 @@ jobs:
       # 系统镜像偶尔下载到半截（sdkmanager 只警告 “Error on ZipFile unknown archive”，之后模拟器起不来）：
       # 先自己装，没装好就删了重来；runner 动作随后发现已装就跳过。
       - name: 预装系统镜像（重试）
+        timeout-minutes: 15
         shell: bash
         run: |
           set -uo pipefail
@@ -373,7 +379,12 @@ jobs:
           done
           echo "::error::系统镜像三次都没装好"
           exit 1
+      # 步级上限（#746）：这一步曾经在配对之后无声地挂到作业 90 分钟被取消，既没有现场也不开 issue。
+      # 探针自己给每条 Gradle / adb 命令设了上限并在超时时抓 logcat、截图与线程栈（bounded-run.mjs），
+      # 这里的 30 分钟是兜底（模拟器起不来、探针自己卡住）：到点步骤失败而不是作业被取消，
+      # 后面的「上传产物」与 report 照常运行。
       - name: 连接 → 配对 → 画布（插桩用例）
+        timeout-minutes: 30
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 34
@@ -383,6 +394,7 @@ jobs:
           script: node tools/probes/mobile-shell-e2e.mjs --platform android target/mobile-shell-e2e/android
       - name: 上传产物
         if: ${{ !cancelled() }}
+        timeout-minutes: 10
         uses: actions/upload-artifact@v4
         with:
           name: mobile-android
@@ -495,8 +507,11 @@ jobs:
       - name: 生产依赖漏洞（high 及以上）
         run: pnpm audit --prod --audit-level=high
 
-  # 任一作业失败就开一个 issue；已经有一个开着的同名 issue 时改成在下面追加评论，
+  # 任一作业失败、超时或被取消就开一个 issue；已经有一个开着的同名 issue 时改成在下面追加评论，
   # 免得每晚一个。只在 main 上报（手动在分支上触发的失败看运行页即可）。
+  # 条件不能只写 failure()：作业撞上 timeout-minutes 的结果是 cancelled，failure() 为假，report 会被
+  # 跳过，夜间失败就此无声（#746，10-24 起的 Android 挂起没人发现）。cancelled() 管整次运行被
+  # 人取消，needs 里有 cancelled 的结果管作业超时；always() 让这两种情况下它不被一并跳过。
   report:
     name: 失败开 issue
     needs:
@@ -507,7 +522,7 @@ jobs:
       - mobile-android
       - windows-acceptance
       - hygiene
-    if: ${{ failure() && github.ref == 'refs/heads/main' }}
+    if: ${{ always() && github.ref == 'refs/heads/main' && (failure() || cancelled() || contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled')) }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
@@ -532,7 +547,7 @@ jobs:
         run: |
           set -euo pipefail
           title="夜间 B 档失败"
-          body="$(printf '运行：%s\n\n| 作业 | 结果 | 失败的条目 |\n| --- | --- | --- |\n| linux | %s | %s |\n| linux-arm64 | %s | %s |\n| macos | %s | %s |\n| mobile-ios | %s | mobile-shell-e2e |\n| mobile-android | %s | mobile-shell-e2e |\n| windows-acceptance | %s | 见产物 windows-acceptance/result.json |\n| hygiene | %s | pnpm audit --prod 有 high 及以上漏洞 |\n\n条目为空而结果是 failure 时，失败在打包或 glibc 校验，看运行日志。\n' \
+          body="$(printf '运行：%s\n\n| 作业 | 结果 | 失败的条目 |\n| --- | --- | --- |\n| linux | %s | %s |\n| linux-arm64 | %s | %s |\n| macos | %s | %s |\n| mobile-ios | %s | mobile-shell-e2e |\n| mobile-android | %s | mobile-shell-e2e |\n| windows-acceptance | %s | 见产物 windows-acceptance/result.json |\n| hygiene | %s | pnpm audit --prod 有 high 及以上漏洞 |\n\n条目为空而结果是 failure 时，失败在打包或 glibc 校验，看运行日志；结果是 cancelled 是作业超时或整次运行被取消。\n' \
             "$RUN_URL" "$LINUX_RESULT" "${LINUX_FAILED:--}" "$LINUX_ARM64_RESULT" "${LINUX_ARM64_FAILED:--}" "$MACOS_RESULT" "${MACOS_FAILED:--}" "$MOBILE_IOS_RESULT" "$MOBILE_ANDROID_RESULT" "$WINDOWS_RESULT" "$HYGIENE_RESULT")"
           existing="$(gh issue list --state open --search "\"$title\" in:title" --json number,title \
             --jq ".[] | select(.title == \"$title\") | .number" | head -n 1)"
