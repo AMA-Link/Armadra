@@ -1,5 +1,5 @@
 import * as React from "react";
-import { ArrowUp, Ellipsis, Paperclip, Square } from "lucide-react";
+import { ArrowUp, Paperclip, Square } from "lucide-react";
 import type {
   AcpAvailableCommand,
   AcpModeState,
@@ -13,29 +13,17 @@ import { useCompactLayout } from "@/platform/layout";
 import { Badge } from "@/ui/badge";
 import { Button } from "@/ui/button";
 import { Command, CommandEmpty, CommandItem, CommandList } from "@/ui/command";
-import {
-  DropdownMenu,
-  DropdownMenuCheckboxItem,
-  DropdownMenuContent,
-  DropdownMenuLabel,
-  DropdownMenuRadioGroup,
-  DropdownMenuRadioItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/ui/dropdown-menu";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/ui/select";
 import { Popover, PopoverContent, PopoverTrigger } from "@/ui/popover";
 import { Progress, progressToneFor } from "@/ui/progress";
-import { Tabs, TabsList, TabsTrigger } from "@/ui/tabs";
 import { Textarea } from "@/ui/textarea";
 import { filesOf } from "@/terminal/file-paste";
 import { acpApi } from "./api";
+import {
+  ConfigControl,
+  ModelEffortPicker,
+  ModePicker,
+} from "./ComposerPickers";
+import { splitConfigOptions } from "./pickers";
 import {
   AttachmentTray,
   type PromptAttachment,
@@ -45,10 +33,6 @@ import {
 
 /** 上下文用量到这个比例换琥珀色（≥ 95% 换红色，见 `progressToneFor`）。 */
 export const USAGE_WARN_RATIO = 0.8;
-
-/** 模式不超过这么多个、名字不超过这么多字，才画成分段控件。 */
-export const SEGMENTED_MODES_MAX = 3;
-export const SEGMENTED_NAME_MAX = 10;
 
 /** 一次回填：`seq` 变了才填，同一句可以填第二次。 */
 export interface PromptPrefill {
@@ -73,56 +57,6 @@ export function matchCommands(
   return [...starts, ...rest];
 }
 
-/**
- * 模型与模式之外的配置项（推理强度、其他 select、boolean）：select 是一组单选项，
- * boolean 是一个勾选项；项目之间隔一条线。
- */
-function ConfigItems({
-  options,
-  onConfig,
-  leading,
-}: {
-  options: readonly TimelineConfigOption[];
-  onConfig: (configId: string, value: string | boolean) => void;
-  /** 前面还有别的项：先画一条分隔线。 */
-  leading: boolean;
-}) {
-  return (
-    <>
-      {options.map((option, index) => (
-        <React.Fragment key={option.id}>
-          {(leading || index > 0) && <DropdownMenuSeparator />}
-          {option.type === "boolean" ? (
-            <DropdownMenuCheckboxItem
-              checked={option.currentValue === true}
-              onCheckedChange={(checked) => onConfig(option.id, checked)}
-            >
-              {option.name}
-            </DropdownMenuCheckboxItem>
-          ) : (
-            <>
-              <DropdownMenuLabel>{option.name}</DropdownMenuLabel>
-              <DropdownMenuRadioGroup
-                value={String(option.currentValue)}
-                onValueChange={(value) => onConfig(option.id, value)}
-              >
-                {option.options.map((choice) => (
-                  <DropdownMenuRadioItem
-                    key={choice.value}
-                    value={choice.value}
-                  >
-                    {choice.name}
-                  </DropdownMenuRadioItem>
-                ))}
-              </DropdownMenuRadioGroup>
-            </>
-          )}
-        </React.Fragment>
-      ))}
-    </>
-  );
-}
-
 /** 上下文用量：已用 / 总量；花费有就放进弹层。 */
 export interface AcpUsageView {
   readonly used: number;
@@ -144,12 +78,15 @@ function Usage({
   canCompact,
   busy,
   onCompact,
+  compact: narrow,
 }: {
   usage: AcpUsageView;
   canCompact: boolean;
   /** 回合进行中或离线：「压缩」不可点。 */
   busy: boolean;
   onCompact: () => void;
+  /** 窄屏：触发器只剩百分比。 */
+  compact: boolean;
 }) {
   const t = useT();
   const locale = usePreferencesStore((state) => state.locale);
@@ -191,22 +128,31 @@ function Usage({
       <PopoverTrigger asChild>
         <Button
           variant="ghost"
+          size="sm"
           data-slot="acp-usage"
           data-warn={warn || undefined}
           data-tone={tone}
           aria-label={label}
           className={cn("shrink-0 gap-2 px-1.5 font-normal", toneText)}
         >
-          <Progress
-            variant="ticks"
-            tone={tone}
-            value={percent}
-            aria-hidden
-            className="w-16"
-          />
-          <span data-numeric className="font-mono text-caption">
-            {t("acp.usage", values)}
-          </span>
+          {narrow ? (
+            <span data-numeric className="font-mono text-caption">
+              {percent}%
+            </span>
+          ) : (
+            <>
+              <Progress
+                variant="ticks"
+                tone={tone}
+                value={percent}
+                aria-hidden
+                className="w-12"
+              />
+              <span data-numeric className="font-mono text-caption">
+                {t("acp.usage", values)}
+              </span>
+            </>
+          )}
         </Button>
       </PopoverTrigger>
       <PopoverContent
@@ -281,9 +227,10 @@ function Usage({
  * 提交交还（`release`），Agent 的 `send` 在这段时间排队——与终端模式同一条
  * 规矩，租约本身归 core。
  *
- * 模式与模型（契约 §26.2）只在有得选时出现：模式不超过三个且名字短时是分段控件，
- * 否则与模型一样是 Select；窄屏（≤ 767，含手机焦点页）两个收进一个「⋯」菜单，
- * 不挤占输入框。所有控件取 32 这一档，同一基线。
+ * 布局是一个输入面上下两行：上面是占满宽度的输入框，下面是操作行（附件、模式、
+ * 模型 · 思考强度、其余配置项，右侧是用量与发送 / 停止）。没有「⋯」菜单：窄屏
+ * （≤ 767，含手机焦点页）时选择器那一段横向滚动，模式换成下拉、发送只留图标。
+ * 模式与模型（契约 §26.2）只在有得选时出现；思考强度与模型是同一个控件。
  */
 export function PromptBox({
   sessionId,
@@ -415,23 +362,18 @@ export function PromptBox({
   const canSend = Boolean(text.trim()) || attachments.items.length > 0;
 
   const modeChoice = modes && modes.availableModes.length > 1 ? modes : null;
-  // 模式少而名字短才画分段控件，否则窄节点里挤不下：回落到 Select。
-  const segmentedModes =
-    modeChoice !== null &&
-    modeChoice.availableModes.length <= SEGMENTED_MODES_MAX &&
-    modeChoice.availableModes.every(
-      (mode) => mode.name.length <= SEGMENTED_NAME_MAX,
-    );
   // 只有一个模型也画：让人看得见在用哪个（契约 §26.2 只在目录非空时给）。
   const modelChoice =
     models && onModel && models.availableModels.length > 0 ? models : null;
-  const configChoice =
-    onConfig && configOptions.length > 0 ? configOptions : null;
+  // 思考强度与模型合进同一个控件；其余配置项直接摆在操作行上。
+  const { effort, rest } = onConfig
+    ? splitConfigOptions(configOptions)
+    : { effort: null, rest: [] };
   // 斜杠命令后面该输入什么（`input.hint`）：刚选中命令、还没输入参数时当占位。
   const hint = commands.find((command) => text === `/${command.name} `)?.hint;
 
   return (
-    <div className="relative border-t border-border">
+    <div className="relative border-t border-border p-1.5">
       {listOpen && (
         <Command
           shouldFilter={false}
@@ -471,36 +413,16 @@ export function PromptBox({
           </CommandList>
         </Command>
       )}
-      <AttachmentTray
-        items={attachments.items}
-        onRemove={attachments.remove}
-        disabled={disabled}
-      />
-      <div className="flex items-end gap-1.5 p-1.5">
-        {attachable && (
-          <>
-            <input
-              ref={pickerRef}
-              type="file"
-              multiple
-              hidden
-              tabIndex={-1}
-              onChange={(event) => {
-                attachments.add(Array.from(event.target.files ?? []));
-                event.target.value = "";
-              }}
-            />
-            <Button
-              size="icon"
-              variant="ghost"
-              aria-label={t("acp.attach")}
-              disabled={disabled}
-              onClick={() => pickerRef.current?.click()}
-            >
-              <Paperclip />
-            </Button>
-          </>
-        )}
+      <div
+        data-slot="acp-composer"
+        data-disabled={disabled || undefined}
+        className="flex flex-col rounded-card border border-input bg-sunken transition-[border-color] duration-(--dur-fast) focus-within:border-ring data-disabled:opacity-60"
+      >
+        <AttachmentTray
+          items={attachments.items}
+          onRemove={attachments.remove}
+          disabled={disabled}
+        />
         <Textarea
           ref={setRefs}
           aria-label={t("acp.prompt.label")}
@@ -508,7 +430,7 @@ export function PromptBox({
           value={text}
           placeholder={hint}
           disabled={disabled}
-          className="max-h-[calc(6lh+1rem)] min-h-8 flex-1 resize-none overflow-y-auto py-[5px]"
+          className="max-h-[calc(8lh+1rem)] min-h-0 resize-none overflow-y-auto border-0 bg-transparent pt-2 pb-1 focus-visible:ring-0 disabled:bg-transparent"
           onChange={(event) => setText(event.target.value)}
           onPaste={(event) => {
             const files = filesOf(event.clipboardData);
@@ -558,193 +480,101 @@ export function PromptBox({
             void submit();
           }}
         />
-        {compact ? (
-          (modeChoice || modelChoice || configChoice) && (
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button
-                  size="icon"
-                  variant="ghost"
-                  aria-label={t("acp.prompt.more")}
-                  disabled={disabled}
-                >
-                  <Ellipsis />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent
-                align="end"
-                className="max-h-[60dvh] min-w-44 overflow-y-auto"
-              >
-                {modeChoice && (
-                  <>
-                    <DropdownMenuLabel>
-                      {t("acp.prompt.mode")}
-                    </DropdownMenuLabel>
-                    <DropdownMenuRadioGroup
-                      value={modeChoice.currentModeId}
-                      onValueChange={onMode}
-                    >
-                      {modeChoice.availableModes.map((mode) => (
-                        <DropdownMenuRadioItem key={mode.id} value={mode.id}>
-                          {mode.name}
-                        </DropdownMenuRadioItem>
-                      ))}
-                    </DropdownMenuRadioGroup>
-                  </>
-                )}
-                {modeChoice && modelChoice && <DropdownMenuSeparator />}
-                {modelChoice && (
-                  <>
-                    <DropdownMenuLabel>
-                      {t("acp.prompt.model")}
-                    </DropdownMenuLabel>
-                    <DropdownMenuRadioGroup
-                      value={modelChoice.currentModelId}
-                      onValueChange={(id) => onModel?.(id)}
-                    >
-                      {modelChoice.availableModels.map((model) => (
-                        <DropdownMenuRadioItem
-                          key={model.modelId}
-                          value={model.modelId}
-                        >
-                          {model.name}
-                        </DropdownMenuRadioItem>
-                      ))}
-                    </DropdownMenuRadioGroup>
-                  </>
-                )}
-                {configChoice && onConfig && (
-                  <ConfigItems
-                    options={configChoice}
-                    onConfig={onConfig}
-                    leading={Boolean(modeChoice || modelChoice)}
-                  />
-                )}
-              </DropdownMenuContent>
-            </DropdownMenu>
-          )
-        ) : (
-          <>
-            {modelChoice && (
-              <Select
-                value={modelChoice.currentModelId}
+        <div
+          data-slot="acp-composer-actions"
+          className="flex min-w-0 items-center gap-1 px-1 pb-1"
+        >
+          {attachable && (
+            <>
+              <input
+                ref={pickerRef}
+                type="file"
+                multiple
+                hidden
+                tabIndex={-1}
+                onChange={(event) => {
+                  attachments.add(Array.from(event.target.files ?? []));
+                  event.target.value = "";
+                }}
+              />
+              <Button
+                size="icon-sm"
+                variant="ghost"
+                aria-label={t("acp.attach")}
                 disabled={disabled}
-                onValueChange={(id) => onModel?.(id)}
+                className="text-muted-foreground"
+                onClick={() => pickerRef.current?.click()}
               >
-                <SelectTrigger
-                  aria-label={t("acp.prompt.model")}
-                  className="max-w-36"
-                >
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {modelChoice.availableModels.map((model) => (
-                    <SelectItem key={model.modelId} value={model.modelId}>
-                      {model.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+                <Paperclip />
+              </Button>
+            </>
+          )}
+          {/* 选择器一行摆开；放不下时这一段横向滚动，用量与发送始终在右侧。 */}
+          <div
+            data-slot="acp-composer-pickers"
+            className="flex min-w-0 flex-1 items-center gap-0.5 overflow-x-auto [scrollbar-width:none]"
+          >
+            {modeChoice && (
+              <ModePicker
+                modes={modeChoice}
+                onMode={onMode}
+                disabled={disabled}
+                compact={compact}
+              />
             )}
-            {modeChoice &&
-              (segmentedModes ? (
-                <Tabs value={modeChoice.currentModeId} onValueChange={onMode}>
-                  <TabsList
-                    variant="segmented"
-                    size="sm"
-                    aria-label={t("acp.prompt.mode")}
-                    className="h-8"
-                  >
-                    {modeChoice.availableModes.map((mode) => (
-                      <TabsTrigger
-                        key={mode.id}
-                        value={mode.id}
-                        disabled={disabled}
-                      >
-                        {mode.name}
-                      </TabsTrigger>
-                    ))}
-                  </TabsList>
-                </Tabs>
-              ) : (
-                <Select
-                  value={modeChoice.currentModeId}
+            <ModelEffortPicker
+              models={modelChoice}
+              onModel={onModel}
+              effort={effort}
+              onConfig={onConfig}
+              disabled={disabled}
+              compact={compact}
+            />
+            {onConfig &&
+              rest.map((option) => (
+                <ConfigControl
+                  key={option.id}
+                  option={option}
+                  onConfig={onConfig}
                   disabled={disabled}
-                  onValueChange={onMode}
-                >
-                  <SelectTrigger
-                    aria-label={t("acp.prompt.mode")}
-                    className="max-w-32"
-                  >
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {modeChoice.availableModes.map((mode) => (
-                      <SelectItem key={mode.id} value={mode.id}>
-                        {mode.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                  compact={compact}
+                />
               ))}
-            {configChoice && onConfig && (
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button
-                    size="icon"
-                    variant="ghost"
-                    aria-label={t("acp.prompt.more")}
-                    disabled={disabled}
-                  >
-                    <Ellipsis />
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent
-                  align="end"
-                  className="max-h-[60dvh] min-w-44 overflow-y-auto"
-                >
-                  <ConfigItems
-                    options={configChoice}
-                    onConfig={onConfig}
-                    leading={false}
-                  />
-                </DropdownMenuContent>
-              </DropdownMenu>
-            )}
-          </>
-        )}
-        {usage && usage.size > 0 && (
-          <Usage
-            usage={usage}
-            canCompact={commands.some(
-              (command) => command.name === COMPACT_COMMAND,
-            )}
-            busy={disabled || streaming}
-            onCompact={() => void onSubmit(`/${COMPACT_COMMAND}`)}
-          />
-        )}
-        {streaming ? (
-          <Button
-            size={compact ? "icon" : "default"}
-            variant="outline"
-            aria-label={t("acp.prompt.stop")}
-            disabled={disabled}
-            {...(compact ? {} : { shortcut: "Esc" })}
-            onClick={onCancel}
-          >
-            {compact ? <Square /> : t("acp.prompt.stop")}
-          </Button>
-        ) : (
-          <Button
-            size={compact ? "icon" : "default"}
-            aria-label={t("acp.prompt.send")}
-            disabled={disabled || !canSend}
-            {...(compact ? {} : { shortcut: "↵" })}
-            onClick={() => void submit()}
-          >
-            {compact ? <ArrowUp /> : t("acp.prompt.send")}
-          </Button>
-        )}
+          </div>
+          {usage && usage.size > 0 && (
+            <Usage
+              usage={usage}
+              canCompact={commands.some(
+                (command) => command.name === COMPACT_COMMAND,
+              )}
+              busy={disabled || streaming}
+              onCompact={() => void onSubmit(`/${COMPACT_COMMAND}`)}
+              compact={compact}
+            />
+          )}
+          {streaming ? (
+            <Button
+              size={compact ? "icon-sm" : "sm"}
+              variant="outline"
+              aria-label={t("acp.prompt.stop")}
+              disabled={disabled}
+              {...(compact ? {} : { shortcut: "Esc" })}
+              onClick={onCancel}
+            >
+              {compact ? <Square /> : t("acp.prompt.stop")}
+            </Button>
+          ) : (
+            <Button
+              size={compact ? "icon-sm" : "sm"}
+              aria-label={t("acp.prompt.send")}
+              disabled={disabled || !canSend}
+              {...(compact ? {} : { shortcut: "↵" })}
+              onClick={() => void submit()}
+            >
+              {compact ? <ArrowUp /> : t("acp.prompt.send")}
+            </Button>
+          )}
+        </div>
       </div>
     </div>
   );

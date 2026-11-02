@@ -38,7 +38,7 @@ export const StreamingMarkdown = React.memo(function StreamingMarkdown({
     <div
       data-slot="timeline-markdown"
       className={cn(
-        "sticky-markdown text-body leading-relaxed [overflow-wrap:anywhere]",
+        "timeline-prose text-body leading-relaxed [overflow-wrap:anywhere]",
         className,
       )}
     >

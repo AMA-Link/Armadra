@@ -7,6 +7,7 @@ import type {
   AcpAvailableCommand,
   AcpModeState,
   AcpModelState,
+  TimelineConfigOption,
   TimelineItem,
 } from "@armadra/shared";
 
@@ -84,7 +85,7 @@ function buildItems(): TimelineItem[] {
     {
       ...assistantItem(
         1,
-        '空文件现在返回 `{}`，BOM 那条用例还没过。\n\n```ts\nexport function parseConfig(text: string) {\n  if (text.trim() === "") return {};\n  return JSON.parse(text);\n}\n```\n\n```mermaid\ngraph LR\n  A[读取文件] --> B{为空?}\n  B -- 是 --> C[返回默认]\n  B -- 否 --> D[JSON.parse]\n```',
+        '空文件现在返回 `{}`，BOM 那条用例还没过。\n\n### 改动\n\n- `parseConfig` 先判空，空串直接返回 `{}`\n- 补了两条用例：空文件、只有空白\n\n| 用例 | 结果 |\n| --- | --- |\n| 空文件 | 通过 |\n| BOM | 失败 |\n\n> BOM 要在 `JSON.parse` 之前剥掉，下一步处理。\n\n```ts\nexport function parseConfig(text: string) {\n  if (text.trim() === "") return {};\n  return JSON.parse(text);\n}\n```\n\n```mermaid\ngraph LR\n  A[读取文件] --> B{为空?}\n  B -- 是 --> C[返回默认]\n  B -- 否 --> D[JSON.parse]\n```',
       ),
     } as TimelineItem,
     {
@@ -311,6 +312,29 @@ export const ACP_MODELS: AcpModelState = {
     { modelId: "haiku", name: "Haiku" },
   ],
 };
+
+/** 思考强度（与模型合在一个控件里）和一个开关型配置项。 */
+export const ACP_CONFIG: TimelineConfigOption[] = [
+  {
+    id: "effort",
+    name: "Effort",
+    category: "thought_level",
+    type: "select",
+    currentValue: "high",
+    options: [
+      { value: "low", name: "Low" },
+      { value: "medium", name: "Medium" },
+      { value: "high", name: "High" },
+    ],
+  },
+  {
+    id: "fast",
+    name: "Fast",
+    type: "boolean",
+    currentValue: false,
+    options: [],
+  },
+];
 
 export const ACP_ELICITATION: AcpElicitationView = {
   pendingId: "e1",

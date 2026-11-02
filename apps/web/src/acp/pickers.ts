@@ -131,3 +131,33 @@ export function visibleUsage<T>(
 ): T | null {
   return usage != null && firstMessageSent(items) ? usage : null;
 }
+
+/** 没有 `category` 时，按 id 认作思考强度的那几种常见写法。 */
+const EFFORT_IDS = new Set([
+  "thought_level",
+  "reasoning_effort",
+  "reasoning",
+  "effort",
+  "thinking",
+]);
+
+/** 这一项是不是思考强度：`category: "thought_level"`，没有分类时按常见 id 认。 */
+export function isEffortOption(option: TimelineConfigOption): boolean {
+  if (option.category !== undefined) return option.category === "thought_level";
+  return EFFORT_IDS.has(option.id.toLowerCase());
+}
+
+/**
+ * 提示框里的配置项分两类：思考强度（与模型放在同一个控件里，取第一项）与其余
+ * （直接画在操作行上）。输入是 {@link extraConfigOptions} 的结果。
+ */
+export function splitConfigOptions(options: readonly TimelineConfigOption[]): {
+  effort: TimelineConfigOption | null;
+  rest: TimelineConfigOption[];
+} {
+  const effort = options.find(isEffortOption) ?? null;
+  return {
+    effort,
+    rest: options.filter((option) => option !== effort),
+  };
+}

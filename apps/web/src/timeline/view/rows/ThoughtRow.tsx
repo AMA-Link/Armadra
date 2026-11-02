@@ -1,5 +1,5 @@
 import * as React from "react";
-import { ChevronDown, ChevronRight } from "lucide-react";
+import { Brain, ChevronRight } from "lucide-react";
 import type { TimelineThoughtItem } from "@armadra/shared";
 
 import { useT } from "@/app/preferences-store";
@@ -65,9 +65,9 @@ function ThoughtRowImpl({ item, now }: ThoughtRowProps) {
         <Button
           variant="ghost"
           size="sm"
-          className="gap-1.5 px-2 font-normal text-muted-foreground"
+          className="gap-1.5 px-2 font-normal aria-expanded:bg-transparent aria-expanded:hover:bg-hover text-muted-foreground hover:text-foreground"
         >
-          {open ? <ChevronDown /> : <ChevronRight />}
+          <Brain aria-hidden />
           <Shimmer active={item.streaming} className="text-meta">
             <TextSwap>{label}</TextSwap>
           </Shimmer>
@@ -76,9 +76,17 @@ function ThoughtRowImpl({ item, now }: ThoughtRowProps) {
               {elapsed}
             </span>
           )}
+          <ChevronRight
+            aria-hidden
+            data-open={open || undefined}
+            className="transition-[rotate] duration-(--dur-fast) data-open:rotate-90"
+          />
         </Button>
       </CollapsibleTrigger>
-      <CollapsibleContent className="px-2 pt-0.5 pl-7 text-muted-foreground">
+      <CollapsibleContent
+        data-slot="timeline-thought-body"
+        className="ml-3.5 max-h-64 overflow-y-auto border-l border-border py-0.5 pr-1 pl-3 text-muted-foreground"
+      >
         {item.text !== "" && (
           <StreamingMarkdown text={item.text} className="text-meta" />
         )}

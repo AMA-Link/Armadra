@@ -11,6 +11,7 @@ import { Alert, AlertAction, AlertTitle } from "@/ui/alert";
 import { Button } from "@/ui/button";
 import {
   ACP_COMMANDS,
+  ACP_CONFIG,
   ACP_ELICITATION,
   ACP_ELICITATION_URL,
   ACP_EXPORT_ID,
@@ -34,7 +35,7 @@ import {
 /**
  * `acp` 分区（设计展示页 §2.1，设计系统 §5.1–§5.2）：会话视图的真组件喂
  * 假数据。消息流（用户 / 思考 / 三种状态的工具调用 / 差异 / 助手）、流式
- * 尾部、权限卡与错误行、PromptBox 三态（带模式与模型）、窄屏「⋯」、
+ * 尾部、权限卡与错误行、PromptBox 三态（两行输入面：模式、模型 · 思考强度、开关型配置项）、窄屏版、
  * elicitation 表单与链接两种卡片、输出到画板菜单展开；计划卡、图片与资源
  * 链接、模式切换行、四种停止原因、斜杠命令列表与用量（ACP 会话视图 §5）。
  * 消息工具条平时悬停才出现，展示页把它们常显出来好截图。
@@ -72,7 +73,7 @@ export default function AcpSection() {
     <div className="grid gap-4 lg:grid-cols-2">
       <div className="flex min-w-0 flex-col gap-4">
         <Frame>
-          <div className={`flex h-[520px] flex-col ${SHOW_ACTIONS}`}>
+          <div className={`flex h-[760px] flex-col ${SHOW_ACTIONS}`}>
             <TimelineView items={ACP_ITEMS} services={SERVICES} />
           </div>
         </Frame>
@@ -97,7 +98,7 @@ export default function AcpSection() {
 
       <div className="flex min-w-0 flex-col gap-4">
         <Frame className="flex-row items-start gap-2 p-2.5 pb-44">
-          <div className="sticky-markdown min-w-0 flex-1 text-body leading-relaxed">
+          <div className="timeline-prose min-w-0 flex-1 text-body leading-relaxed">
             <Markdown>{ACP_EXPORT_TEXT.split("\n\n")[0] ?? ""}</Markdown>
           </div>
           <ExportMenu
@@ -157,10 +158,12 @@ export default function AcpSection() {
             streaming={false}
             modes={ACP_MODES}
             models={ACP_MODELS}
+            configOptions={ACP_CONFIG}
             onSubmit={sent}
             onCancel={noop}
             onMode={noop}
             onModel={noop}
+            onConfig={noop}
           />
         </Frame>
 
@@ -183,6 +186,8 @@ export default function AcpSection() {
             onCancel={noop}
             onMode={noop}
             onModel={noop}
+            configOptions={ACP_CONFIG}
+            onConfig={noop}
             compact
           />
         </Frame>

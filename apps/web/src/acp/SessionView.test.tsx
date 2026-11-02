@@ -269,30 +269,18 @@ async function pickModel(name: string) {
   })) as typeof window.matchMedia;
   try {
     render(<SessionView nodeId="n1" data={data} />);
-    const more = await screen.findByRole("button", { name: "更多" });
-    fireEvent.pointerDown(more, { button: 0, pointerType: "mouse" });
+    // 窄屏也没有「⋯」：模型就在操作行上。
+    const trigger = await screen.findByLabelText("模型");
+    fireEvent.pointerDown(trigger, { button: 0, pointerType: "mouse" });
     fireEvent.click(await screen.findByRole("menuitemradio", { name }));
   } finally {
     window.matchMedia = original;
   }
 }
 
-/** 当前选中的模型名：宽屏读选择器，窄屏打开「⋯」菜单读选中的那一项。 */
+/** 当前选中的模型名：读操作行上「模型 · 思考强度」的触发器。 */
 async function checkedModel(): Promise<string | null> {
-  const select = screen.queryByLabelText("模型");
-  if (select) return select.textContent;
-  const more = await screen.findByRole("button", { name: "更多" });
-  fireEvent.pointerDown(more, { button: 0, pointerType: "mouse" });
-  const items = await screen.findAllByRole("menuitemradio");
-  const checked = items.find(
-    (item) =>
-      item.getAttribute("aria-checked") === "true" &&
-      /Small|Large/.test(item.textContent ?? ""),
-  );
-  fireEvent.keyDown(document.activeElement ?? document.body, {
-    key: "Escape",
-  });
-  return checked?.textContent ?? null;
+  return (await screen.findByLabelText("模型")).textContent;
 }
 
 afterEach(() => {
@@ -526,12 +514,16 @@ describe("SessionView", () => {
       item: toolItem(1, "t1", "pnpm test", "in_progress"),
     } as never);
     expect(await screen.findByText("pnpm test")).toBeTruthy();
-    expect(await screen.findByText("运行中")).toBeTruthy();
+    const toolStatus = () =>
+      document
+        .querySelector("[data-slot=timeline-tool]")
+        ?.getAttribute("data-status");
+    await waitFor(() => expect(toolStatus()).toBe("in_progress"));
     push({
       op: "put",
       item: toolItem(1, "t1", "pnpm test", "completed"),
     } as never);
-    expect(await screen.findByText("已完成")).toBeTruthy();
+    await waitFor(() => expect(toolStatus()).toBe("completed"));
 
     push(
       { op: "put", item: toolItem(1, "t2", "rm -rf dist", "pending") } as never,

@@ -7,6 +7,8 @@ import {
   candidateModels,
   candidateModes,
   extraConfigOptions,
+  isEffortOption,
+  splitConfigOptions,
   firstMessageSent,
   pickModels,
   pickModes,
@@ -211,5 +213,38 @@ describe("extraConfigOptions", () => {
       think: "yes",
     });
     expect(bad.map((o) => o.currentValue)).toEqual(["low", false]);
+  });
+});
+
+describe("splitConfigOptions", () => {
+  const select = (id: string, category?: string) => ({
+    id,
+    name: id,
+    ...(category === undefined ? {} : { category }),
+    type: "select" as const,
+    currentValue: "a",
+    options: [{ value: "a", name: "A" }],
+  });
+
+  it("recognises the thinking level by category, or by a common id without one", () => {
+    expect(isEffortOption(select("x", "thought_level"))).toBe(true);
+    expect(isEffortOption(select("reasoning_effort"))).toBe(true);
+    expect(isEffortOption(select("Effort"))).toBe(true);
+    // 分类说了不是，就不按 id 猜。
+    expect(isEffortOption(select("effort", "_custom"))).toBe(false);
+    expect(isEffortOption(select("style"))).toBe(false);
+  });
+
+  it("takes the first level for the model picker and leaves the rest inline", () => {
+    const level = select("effort", "thought_level");
+    const other = select("thinking");
+    const style = select("style");
+    const { effort, rest } = splitConfigOptions([style, level, other]);
+    expect(effort).toBe(level);
+    expect(rest).toEqual([style, other]);
+    expect(splitConfigOptions([style])).toEqual({
+      effort: null,
+      rest: [style],
+    });
   });
 });

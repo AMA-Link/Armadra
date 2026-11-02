@@ -1,5 +1,5 @@
 import * as React from "react";
-import { ChevronDown, ChevronRight } from "lucide-react";
+import { ChevronRight } from "lucide-react";
 import type {
   ActivityEntry,
   ActivitySummary,
@@ -70,16 +70,26 @@ export const ActivityGroup = React.memo(function ActivityGroup({
         <Button
           variant="ghost"
           size="sm"
-          className="w-full min-w-0 justify-start gap-1.5 px-2 font-normal text-muted-foreground"
+          className="w-full min-w-0 justify-start gap-1.5 px-2 font-normal aria-expanded:bg-transparent aria-expanded:hover:bg-hover text-muted-foreground hover:text-foreground"
         >
-          {open ? <ChevronDown /> : <ChevronRight />}
+          {entry.running ? (
+            <Spinner size={12} />
+          ) : (
+            <ChevronRight
+              aria-hidden
+              data-open={open || undefined}
+              className="transition-[rotate] duration-(--dur-fast) data-open:rotate-90"
+            />
+          )}
           <span className="min-w-0 truncate text-meta">
             {summaryLabel(entry.summary, t)}
           </span>
-          {entry.running && <Spinner size={12} />}
         </Button>
       </CollapsibleTrigger>
-      <CollapsibleContent className="flex flex-col gap-0.5">
+      <CollapsibleContent
+        data-slot="timeline-group-body"
+        className="ml-3.5 flex flex-col gap-0.5 border-l border-border pl-1"
+      >
         {entry.items.map((member) =>
           member.kind === "thought" ? (
             <ThoughtRow key={member.id} item={member} />

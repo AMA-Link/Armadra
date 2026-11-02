@@ -40,6 +40,7 @@ vi.mock("@/store/canvas-store", () => {
 });
 
 import { RuntimeRequestError } from "@/api/client";
+import { chooseOption, optionLabels } from "@/app/test-harness";
 import { resetBlobs } from "@/timeline/blobs";
 import { setTimelineTransportFactory } from "@/timeline/api";
 import { resetTimelines } from "@/timeline/sync";
@@ -88,7 +89,7 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-/** 窄屏：两个选择收进「⋯」菜单，好用菜单项点。 */
+/** 窄屏：模式总是下拉（不是分段控件），好按选项点。 */
 function narrow(): () => void {
   const original = window.matchMedia;
   window.matchMedia = ((query: string) => ({
@@ -100,9 +101,9 @@ function narrow(): () => void {
   };
 }
 
-async function openMore() {
-  const more = await screen.findByRole("button", { name: "更多" });
-  fireEvent.pointerDown(more, { button: 0, pointerType: "mouse" });
+/** 模式下拉里点一项。 */
+async function pickMode(name: string) {
+  await chooseOption(await screen.findByLabelText("模式"), name);
 }
 
 const REPORTED_MODES = {
@@ -128,10 +129,11 @@ describe("model and mode pickers right after creation", () => {
     const restore = narrow();
     try {
       render(<SessionView nodeId="n1" data={existing} />);
-      await openMore();
+      // 窄屏也直接摆在操作行上，没有「⋯」菜单。
+      expect(screen.queryByRole("button", { name: "更多" })).toBeNull();
       expect(
-        await screen.findByRole("menuitemradio", { name: "全自动" }),
-      ).toBeTruthy();
+        await optionLabels(await screen.findByLabelText("模式")),
+      ).toContain("全自动");
     } finally {
       restore();
     }
@@ -191,10 +193,7 @@ describe("model and mode pickers right after creation", () => {
         agent: { id: "codex", driver: "acp" },
       };
       const view = render(<SessionView nodeId="n1" data={fresh} />);
-      await openMore();
-      fireEvent.click(
-        await screen.findByRole("menuitemradio", { name: "计划" }),
-      );
+      await pickMode("计划");
       expect(api.setMode).not.toHaveBeenCalled();
 
       await act(async () => open({ id: SESSION }));
@@ -223,11 +222,8 @@ describe("model and mode pickers right after creation", () => {
     const restore = narrow();
     try {
       render(<SessionView nodeId="n1" data={existing} />);
-      await openMore();
       // claude 的候选里有「全自动」，Agent 报回的没有。
-      fireEvent.click(
-        await screen.findByRole("menuitemradio", { name: "全自动" }),
-      );
+      await pickMode("全自动");
       push({
         op: "head",
         head: {
@@ -241,14 +237,12 @@ describe("model and mode pickers right after creation", () => {
         },
       } as never);
       await waitFor(() =>
-        expect(
-          screen.queryByRole("menuitemradio", { name: "全自动" }),
-        ).toBeNull(),
+        expect(screen.getByLabelText("模式").textContent).toContain("Ask"),
       );
       expect(api.setMode).not.toHaveBeenCalled();
-      await openMore();
-      const checked = await screen.findByRole("menuitemradio", { name: "Ask" });
-      expect(checked.getAttribute("aria-checked")).toBe("true");
+      expect(await optionLabels(screen.getByLabelText("模式"))).not.toContain(
+        "全自动",
+      );
     } finally {
       restore();
     }
@@ -264,10 +258,7 @@ describe("model and mode pickers right after creation", () => {
           data={{ ...existing, agent: { id: "codex", driver: "acp" } }}
         />,
       );
-      await openMore();
-      fireEvent.click(
-        await screen.findByRole("menuitemradio", { name: "Agent" }),
-      );
+      await pickMode("Agent");
       await waitFor(() =>
         expect(api.setMode).toHaveBeenCalledWith(SESSION, "agent"),
       );
@@ -287,19 +278,13 @@ describe("model and mode pickers right after creation", () => {
           data={{ ...existing, agent: { id: "codex", driver: "acp" } }}
         />,
       );
-      await openMore();
-      fireEvent.click(
-        await screen.findByRole("menuitemradio", { name: "Agent" }),
-      );
+      await pickMode("Agent");
       await waitFor(() => expect(api.setMode).toHaveBeenCalled());
       expect(store.updateNodeData).not.toHaveBeenCalled();
-      await openMore();
-      await waitFor(async () =>
-        expect(
-          (
-            await screen.findByRole("menuitemradio", { name: "Workspace" })
-          ).getAttribute("aria-checked"),
-        ).toBe("true"),
+      await waitFor(() =>
+        expect(screen.getByLabelText("模式").textContent).toContain(
+          "Workspace",
+        ),
       );
     } finally {
       restore();

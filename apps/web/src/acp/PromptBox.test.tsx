@@ -10,6 +10,7 @@ import {
 const api = vi.hoisted(() => ({ drive: vi.fn() }));
 vi.mock("./api", () => ({ acpApi: api }));
 
+import { chooseOption } from "@/app/test-harness";
 import { PromptBox } from "./PromptBox";
 
 const onSubmit = vi.fn<(text: string) => Promise<boolean>>();
@@ -191,33 +192,45 @@ describe("PromptBox", () => {
     expect(trigger.textContent).toContain("Small");
   });
 
-  it("folds mode and model into one menu on a narrow screen", async () => {
+  it("keeps mode and model on the action row on a narrow screen, with no more menu", async () => {
     const restore = narrowViewport();
     try {
       renderBox({ modes: MODES, models: MODELS, onModel });
-      expect(screen.queryByLabelText("模式")).toBeNull();
-      expect(screen.queryByLabelText("模型")).toBeNull();
-      const more = screen.getByRole("button", { name: "更多" });
-      fireEvent.pointerDown(more, { button: 0, pointerType: "mouse" });
-      const large = await screen.findByRole("menuitemradio", {
-        name: "Large",
-      });
-      expect(screen.getByRole("menuitemradio", { name: "Plan" })).toBeTruthy();
-      fireEvent.click(large);
+      expect(screen.queryByRole("button", { name: "更多" })).toBeNull();
+      // 窄屏模式换成下拉，不是分段控件。
+      expect(screen.getByLabelText("模式").getAttribute("data-slot")).toBe(
+        "select-trigger",
+      );
+      const model = screen.getByLabelText("模型");
+      fireEvent.pointerDown(model, { button: 0, pointerType: "mouse" });
+      fireEvent.click(
+        await screen.findByRole("menuitemradio", { name: "Large" }),
+      );
       expect(onModel).toHaveBeenCalledWith("large");
+      // 发送只剩图标。
+      expect(
+        screen.getByRole("button", { name: "发送" }).getAttribute("data-size"),
+      ).toBe("icon-sm");
     } finally {
       restore();
     }
   });
 
-  it("shows no menu on a narrow screen when there is nothing to choose", () => {
-    const restore = narrowViewport();
-    try {
-      renderBox({ modes: null, models: null, onModel });
-      expect(screen.queryByRole("button", { name: "更多" })).toBeNull();
-    } finally {
-      restore();
-    }
+  it("lays the composer out as two rows: the input above, the actions below", () => {
+    renderBox({ modes: MODES, models: MODELS, onModel });
+    const composer = document.querySelector("[data-slot=acp-composer]")!;
+    const input = screen.getByLabelText("消息");
+    const actions = composer.querySelector("[data-slot=acp-composer-actions]")!;
+    expect(input.parentElement).toBe(composer);
+    expect(actions.parentElement).toBe(composer);
+    expect(
+      input.compareDocumentPosition(actions) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(actions.contains(screen.getByLabelText("模式"))).toBe(true);
+    expect(actions.contains(screen.getByLabelText("模型"))).toBe(true);
+    expect(actions.contains(screen.getByRole("button", { name: "发送" }))).toBe(
+      true,
+    );
   });
 
   it("fills the box from an edit-and-resend without sending, cursor at the end", async () => {
@@ -316,47 +329,100 @@ describe("PromptBox", () => {
     };
     const onConfig = vi.fn();
     beforeEach(() => onConfig.mockReset());
-    const openMore = async () =>
-      fireEvent.pointerDown(
-        await screen.findByRole("button", { name: "更多" }),
-        {
-          button: 0,
-          pointerType: "mouse",
-        },
-      );
-
-    it("lists a select as radio items and a boolean as a checkbox in the more menu (wide)", async () => {
-      renderBox({ configOptions: [EFFORT, THINK], onConfig });
-      await openMore();
-      const low = await screen.findByRole("menuitemradio", { name: "Low" });
-      expect(low.getAttribute("aria-checked")).toBe("true");
-      fireEvent.click(screen.getByRole("menuitemradio", { name: "High" }));
-      expect(onConfig).toHaveBeenCalledWith("effort", "high");
-      await openMore();
-      const think = await screen.findByRole("menuitemcheckbox", {
-        name: "Think",
+    const openModel = () =>
+      fireEvent.pointerDown(screen.getByLabelText("模型"), {
+        button: 0,
+        pointerType: "mouse",
       });
-      expect(think.getAttribute("aria-checked")).toBe("false");
-      fireEvent.click(think);
-      expect(onConfig).toHaveBeenCalledWith("think", true);
+
+    it("folds the thinking level into the model picker as one control", async () => {
+      renderBox({ models: MODELS, onModel, configOptions: [EFFORT], onConfig });
+      const trigger = screen.getByLabelText("模型");
+      expect(trigger.textContent).toContain("Small");
+      expect(trigger.textContent).toContain("Low");
+      // 没有单独的强度控件。
+      expect(screen.queryByLabelText("Effort")).toBeNull();
+      openModel();
+      const high = await screen.findByRole("menuitemradio", { name: "High" });
+      expect(
+        screen
+          .getByRole("menuitemradio", { name: "Low" })
+          .getAttribute("aria-checked"),
+      ).toBe("true");
+      fireEvent.click(high);
+      expect(onConfig).toHaveBeenCalledWith("effort", "high");
     });
 
-    it("sits in the same more menu as mode and model on a narrow screen", async () => {
+    it("keeps the menu open after picking a model so its level can follow", async () => {
+      renderBox({ models: MODELS, onModel, configOptions: [EFFORT], onConfig });
+      openModel();
+      fireEvent.click(
+        await screen.findByRole("menuitemradio", { name: "Large" }),
+      );
+      expect(onModel).toHaveBeenCalledWith("large");
+      expect(screen.getByRole("menu")).toBeTruthy();
+      expect(screen.getByRole("menuitemradio", { name: "High" })).toBeTruthy();
+    });
+
+    it("shows the level alone when there is no model catalog", async () => {
+      renderBox({ configOptions: [EFFORT], onConfig });
+      expect(screen.queryByLabelText("模型")).toBeNull();
+      const trigger = screen.getByLabelText("思考强度");
+      expect(trigger.textContent).toContain("Low");
+      fireEvent.pointerDown(trigger, { button: 0, pointerType: "mouse" });
+      fireEvent.click(
+        await screen.findByRole("menuitemradio", { name: "High" }),
+      );
+      expect(onConfig).toHaveBeenCalledWith("effort", "high");
+    });
+
+    it("recognises a level by its id when the agent gives no category", () => {
+      renderBox({
+        models: MODELS,
+        onModel,
+        configOptions: [
+          { ...EFFORT, id: "reasoning_effort", category: undefined },
+        ],
+        onConfig,
+      });
+      expect(screen.getByLabelText("模型").textContent).toContain("Low");
+    });
+
+    it("puts other options straight on the action row: a select and a toggle", async () => {
+      const STYLE = {
+        id: "style",
+        name: "Style",
+        type: "select" as const,
+        currentValue: "brief",
+        options: [
+          { value: "brief", name: "Brief" },
+          { value: "full", name: "Full" },
+        ],
+      };
+      renderBox({ configOptions: [STYLE, THINK], onConfig });
+      const think = screen.getByRole("button", { name: "Think" });
+      expect(think.getAttribute("aria-pressed")).toBe("false");
+      fireEvent.click(think);
+      expect(onConfig).toHaveBeenCalledWith("think", true);
+      await chooseOption(screen.getByLabelText("Style"), "Full");
+      expect(onConfig).toHaveBeenCalledWith("style", "full");
+      expect(screen.queryByRole("button", { name: "更多" })).toBeNull();
+    });
+
+    it("keeps everything on the action row on a narrow screen too", () => {
       const restore = narrowViewport();
       try {
         renderBox({
           modes: MODES,
           models: MODELS,
           onModel,
-          configOptions: [EFFORT],
+          configOptions: [EFFORT, THINK],
           onConfig,
         });
-        await openMore();
-        expect(
-          await screen.findByRole("menuitemradio", { name: "Plan" }),
-        ).toBeTruthy();
-        fireEvent.click(screen.getByRole("menuitemradio", { name: "High" }));
-        expect(onConfig).toHaveBeenCalledWith("effort", "high");
+        expect(screen.queryByRole("button", { name: "更多" })).toBeNull();
+        expect(screen.getByLabelText("模型").textContent).toContain("Low");
+        expect(screen.getByRole("button", { name: "Think" })).toBeTruthy();
+        expect(screen.getByLabelText("模式")).toBeTruthy();
       } finally {
         restore();
       }
@@ -364,7 +430,11 @@ describe("PromptBox", () => {
 
     it("draws nothing extra without config options", () => {
       renderBox({ onConfig });
-      expect(screen.queryByRole("button", { name: "更多" })).toBeNull();
+      expect(
+        document.querySelector(
+          "[data-slot=acp-config-select], [data-slot=acp-config-toggle], [data-slot=acp-model-effort]",
+        ),
+      ).toBeNull();
     });
   });
 
@@ -456,18 +526,16 @@ describe("PromptBox", () => {
     expect(compact.disabled).toBe(true);
   });
 
-  it("puts every control on the 32px tier with the Enter / Esc hints on the send button", () => {
+  it("puts every control on the 28px tier of the action row with the Enter / Esc hints on the send button", () => {
     renderBox({
       modes: MODES,
       models: MODELS,
       onModel,
       usage: { used: 1, size: 2 },
     });
-    expect(screen.getByLabelText("模型").getAttribute("data-size")).toBe(
-      "default",
-    );
+    expect(screen.getByLabelText("模型").getAttribute("data-size")).toBe("sm");
     const send = screen.getByRole("button", { name: "发送" });
-    expect(send.getAttribute("data-size")).toBe("default");
+    expect(send.getAttribute("data-size")).toBe("sm");
     expect(send.querySelector("[data-slot=kbd]")?.textContent).toBe("↵");
     expect(send.getAttribute("aria-keyshortcuts")).toBe("Enter");
     cleanup();

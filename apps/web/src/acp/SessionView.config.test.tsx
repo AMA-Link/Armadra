@@ -118,28 +118,37 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-async function openMore() {
-  // fireEvent.click 不触发 Radix 选中后的关闭：菜单已开着就不再开。
+/** 打开「模型 · 思考强度」菜单（已开着就不再开：fireEvent.click 不触发 Radix 的关闭）。 */
+async function openModel() {
   if (screen.queryByRole("menu")) return;
-  const more = await screen.findByRole("button", { name: "更多" });
-  fireEvent.pointerDown(more, { button: 0, pointerType: "mouse" });
+  const trigger = await screen.findByLabelText("模型");
+  fireEvent.pointerDown(trigger, { button: 0, pointerType: "mouse" });
 }
+
+/** 操作行上的配置项控件（不含模型 · 强度）。 */
+const inlineConfig = () =>
+  document.querySelectorAll(
+    "[data-slot=acp-config-select], [data-slot=acp-config-toggle]",
+  );
 
 describe("config options in the prompt box", () => {
   it("shows nothing extra while the head has no config options", async () => {
     core.emit({ op: "head", head: {} } as never);
     render(<SessionView nodeId="n1" data={existing} />);
     await screen.findByLabelText("消息");
-    expect(screen.queryByRole("button", { name: "更多" })).toBeNull();
+    expect(inlineConfig()).toHaveLength(0);
+    expect(document.querySelector("[data-slot=acp-effort-value]")).toBeNull();
   });
 
-  it("sets a select option, shows it at once and follows the head afterwards", async () => {
+  it("puts the thinking level in the model picker, shows it at once and follows the head", async () => {
     core.emit({
       op: "head",
       head: { configOptions: [EFFORT, THINK] },
     } as never);
     render(<SessionView nodeId="n1" data={existing} />);
-    await openMore();
+    const trigger = await screen.findByLabelText("模型");
+    await waitFor(() => expect(trigger.textContent).toContain("Low"));
+    await openModel();
     fireEvent.click(await screen.findByRole("menuitemradio", { name: "High" }));
     await waitFor(() =>
       expect(api.setConfigOption).toHaveBeenCalledWith(
@@ -148,17 +157,12 @@ describe("config options in the prompt box", () => {
         "high",
       ),
     );
-    await openMore();
-    expect(
-      (await screen.findByRole("menuitemradio", { name: "High" })).getAttribute(
-        "aria-checked",
-      ),
-    ).toBe("true");
+    expect(screen.getByLabelText("模型").textContent).toContain("High");
     push({
       op: "head",
       head: { configOptions: [{ ...EFFORT, currentValue: "high" }, THINK] },
     } as never);
-    await openMore();
+    await openModel();
     expect(
       (await screen.findByRole("menuitemradio", { name: "High" })).getAttribute(
         "aria-checked",
@@ -166,16 +170,15 @@ describe("config options in the prompt box", () => {
     ).toBe("true");
   });
 
-  it("sets a boolean option with the checkbox", async () => {
+  it("sets a boolean option with a toggle on the action row", async () => {
     core.emit({
       op: "head",
       head: { configOptions: [EFFORT, THINK] },
     } as never);
     render(<SessionView nodeId="n1" data={existing} />);
-    await openMore();
-    fireEvent.click(
-      await screen.findByRole("menuitemcheckbox", { name: "Think" }),
-    );
+    const toggle = await screen.findByRole("button", { name: "Think" });
+    expect(toggle.getAttribute("aria-pressed")).toBe("false");
+    fireEvent.click(toggle);
     await waitFor(() =>
       expect(api.setConfigOption).toHaveBeenCalledWith(
         TIMELINE_ID,
@@ -183,23 +186,21 @@ describe("config options in the prompt box", () => {
         true,
       ),
     );
+    expect(toggle.getAttribute("aria-pressed")).toBe("true");
   });
 
   it("rolls the choice back and says so when the agent refuses it", async () => {
     api.setConfigOption.mockRejectedValue(new Error("acp_config_unavailable"));
     core.emit({ op: "head", head: { configOptions: [EFFORT] } } as never);
     render(<SessionView nodeId="n1" data={existing} />);
-    await openMore();
+    await openModel();
     fireEvent.click(await screen.findByRole("menuitemradio", { name: "High" }));
     await waitFor(() =>
       expect(toasts.error).toHaveBeenCalledWith("设置没有生效"),
     );
-    await openMore();
-    expect(
-      (await screen.findByRole("menuitemradio", { name: "Low" })).getAttribute(
-        "aria-checked",
-      ),
-    ).toBe("true");
+    await waitFor(() =>
+      expect(screen.getByLabelText("模型").textContent).toContain("Low"),
+    );
   });
 
   it("leaves model and mode options to their own pickers", async () => {
@@ -223,6 +224,7 @@ describe("config options in the prompt box", () => {
     await waitFor(() =>
       expect(screen.getByLabelText("模式").textContent).toContain("Plan"),
     );
-    expect(screen.queryByRole("button", { name: "更多" })).toBeNull();
+    expect(inlineConfig()).toHaveLength(0);
+    expect(document.querySelector("[data-slot=acp-effort-value]")).toBeNull();
   });
 });
