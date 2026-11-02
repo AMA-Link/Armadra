@@ -1,6 +1,6 @@
 import * as React from "react";
 import type { IdentitySessionRow, Lockout } from "@armadra/shared";
-import { Globe, Laptop, Smartphone } from "lucide-react";
+import { ChevronRight, Globe, Laptop, Smartphone } from "lucide-react";
 
 import { useT } from "../../../../app/preferences-store";
 import {
@@ -9,9 +9,20 @@ import {
   SecuritySectionSkeleton,
   useDateTime,
 } from "./parts";
+import { cn } from "@/lib/cn";
 import { Badge } from "@/ui/badge";
 import { Card } from "@/ui/card";
 import { Button } from "@/ui/button";
+import {
+  Pagination,
+  PaginationContent,
+  PaginationEllipsis,
+  PaginationItem,
+  PaginationLink,
+  PaginationNext,
+  PaginationPrevious,
+  paginationRange,
+} from "@/ui/pagination";
 import { Spinner } from "@/ui/spinner";
 import { Switch } from "@/ui/switch";
 import {
@@ -23,9 +34,60 @@ import {
   TableRow,
 } from "@/ui/table";
 
+/** 一页放几台设备。 */
+export const SESSION_PAGE_SIZE = 8;
+
+/** 同一台设备（`deviceId`）的会话，归成列表里的一行。 */
+export interface SessionGroup {
+  readonly deviceId: string;
+  /** 当前的排第一，其余按最近活动从近到远。 */
+  readonly sessions: readonly IdentitySessionRow[];
+  /** 这一组里有没有发这个请求的那一个。 */
+  readonly current: boolean;
+  /** 组里最晚的活动。 */
+  readonly lastActiveMs: number;
+}
+
 /**
- * 会话与设备（设计系统 §5.10，契约 §18.4）：设备 · 最近活动 · IP · [退出]，
- * 当前这一个带「当前」；底部「退出其他全部」。owner 可以切到所有人的会话。
+ * 按设备归并（#706）：桌面壳的页面与托盘、同一部手机重新配对过几次，都是同一台
+ * 设备的几条会话。已经过期的不出现。当前设备排第一，其余按最近活动排。
+ */
+export function groupSessions(
+  sessions: readonly IdentitySessionRow[],
+  now: number = Date.now(),
+): SessionGroup[] {
+  const byDevice = new Map<string, IdentitySessionRow[]>();
+  for (const session of sessions) {
+    if (session.expiresAtMs <= now) continue;
+    const list = byDevice.get(session.deviceId);
+    if (list) list.push(session);
+    else byDevice.set(session.deviceId, [session]);
+  }
+  return [...byDevice.entries()]
+    .map(([deviceId, list]) => {
+      const ordered = [...list].sort(
+        (a, b) =>
+          Number(b.current) - Number(a.current) ||
+          lastActive(b) - lastActive(a),
+      );
+      return {
+        deviceId,
+        sessions: ordered,
+        current: ordered.some((session) => session.current),
+        lastActiveMs: Math.max(...ordered.map(lastActive)),
+      };
+    })
+    .sort(
+      (a, b) =>
+        Number(b.current) - Number(a.current) ||
+        b.lastActiveMs - a.lastActiveMs,
+    );
+}
+
+/**
+ * 会话与设备（设计系统 §5.10，契约 §18.4）：一台设备一行 · 最近活动 · IP · [退出]；
+ * 有几条会话的设备可展开，逐条退出。当前这一个带「当前」；底部「退出其他全部」
+ * 与分页。owner 可以切到所有人的会话。
  */
 export function SessionList({
   sessions,
@@ -56,15 +118,54 @@ export function SessionList({
   const [confirm, setConfirm] = React.useState<
     IdentitySessionRow | "others" | null
   >(null);
+  const [page, setPage] = React.useState(0);
+  const [expanded, setExpanded] = React.useState<ReadonlySet<string>>(
+    () => new Set(),
+  );
+  const groups = React.useMemo(
+    () => (sessions === undefined ? [] : groupSessions(sessions)),
+    [sessions],
+  );
   if (sessions === undefined)
     return loading ? (
       <SecuritySectionSkeleton title={t("security.sessions")} />
     ) : null;
-  const others = sessions.some((session) => !session.current && !everyone);
-  const ordered = [...sessions].sort(
-    (a, b) =>
-      Number(b.current) - Number(a.current) || lastActive(b) - lastActive(a),
+  const others =
+    !everyone && groups.some((group) => group.sessions.some((s) => !s.current));
+  const pageCount = Math.max(1, Math.ceil(groups.length / SESSION_PAGE_SIZE));
+  // 退出几台之后页数变少：停在最后一页，而不是一页空表。
+  const shownPage = Math.min(page, pageCount - 1);
+  const visible = groups.slice(
+    shownPage * SESSION_PAGE_SIZE,
+    (shownPage + 1) * SESSION_PAGE_SIZE,
   );
+  const columns = everyone ? 5 : 4;
+  const toggle = (deviceId: string) =>
+    setExpanded((open) => {
+      const next = new Set(open);
+      if (!next.delete(deviceId)) next.add(deviceId);
+      return next;
+    });
+
+  const revokeButton = (session: IdentitySessionRow, name: string) =>
+    busy === session.sessionId ? (
+      <Spinner
+        className="ml-auto"
+        aria-label={t("security.sessions.signOut")}
+      />
+    ) : session.current ? null : (
+      <Button
+        type="button"
+        size="sm"
+        variant="ghost"
+        className="text-destructive"
+        disabled={busy !== null}
+        aria-label={t("security.sessions.signOutNamed", { name })}
+        onClick={() => setConfirm(session)}
+      >
+        {t("security.sessions.signOut")}
+      </Button>
+    );
 
   return (
     <SecuritySection
@@ -100,85 +201,195 @@ export function SessionList({
             </TableRow>
           </TableHeader>
           <TableBody>
-            {ordered.map((session) => {
-              const Icon = platformIcon(session.userAgent);
-              const name = session.deviceName || session.deviceId.slice(0, 8);
+            {visible.map((group) => {
+              const lead = group.sessions[0] as IdentitySessionRow;
+              const Icon = platformIcon(lead.userAgent);
+              const name = lead.deviceName || lead.deviceId.slice(0, 8);
+              const many = group.sessions.length > 1;
+              const open = many && expanded.has(group.deviceId);
               return (
-                <TableRow key={session.sessionId}>
-                  <TableCell className="max-w-[16rem]">
-                    <span className="flex min-w-0 items-center gap-2">
-                      <Icon
-                        aria-hidden="true"
-                        className="size-3.5 shrink-0 text-muted-foreground"
-                      />
-                      <span
-                        className="truncate font-medium"
-                        title={session.userAgent}
-                      >
-                        {name}
+                <React.Fragment key={group.deviceId}>
+                  <TableRow data-slot="session-group">
+                    <TableCell className="max-w-[18rem]">
+                      <span className="flex min-w-0 items-center gap-2">
+                        {many ? (
+                          <Button
+                            type="button"
+                            size="icon-xs"
+                            variant="ghost"
+                            aria-expanded={open}
+                            aria-label={t("security.sessions.expand", {
+                              name,
+                            })}
+                            onClick={() => toggle(group.deviceId)}
+                          >
+                            <ChevronRight
+                              aria-hidden="true"
+                              className={cn(
+                                "transition-transform",
+                                open && "rotate-90",
+                              )}
+                            />
+                          </Button>
+                        ) : (
+                          <Icon
+                            aria-hidden="true"
+                            className="size-3.5 shrink-0 text-muted-foreground"
+                          />
+                        )}
+                        <span
+                          className="truncate font-medium"
+                          title={lead.userAgent}
+                        >
+                          {name}
+                        </span>
+                        {group.current && (
+                          <Badge variant="secondary" size="sm">
+                            {t("security.sessions.current")}
+                          </Badge>
+                        )}
+                        {many && (
+                          <Badge variant="outline" size="sm">
+                            {t("security.sessions.count", {
+                              count: group.sessions.length,
+                            })}
+                          </Badge>
+                        )}
                       </span>
-                      {session.current && (
-                        <Badge variant="secondary" size="sm">
-                          {t("security.sessions.current")}
-                        </Badge>
-                      )}
-                    </span>
-                  </TableCell>
-                  {everyone && (
-                    <TableCell className="max-w-[10rem] truncate">
-                      {names?.get(session.principalId) ||
-                        session.principalId.slice(0, 8)}
                     </TableCell>
-                  )}
-                  <TableCell className="text-muted-foreground tabular-nums">
-                    {when(lastActive(session))}
-                  </TableCell>
-                  <TableCell className="font-mono text-meta text-muted-foreground">
-                    {session.remoteIp || "—"}
-                  </TableCell>
-                  <TableCell className="text-right">
-                    {busy === session.sessionId ? (
-                      <Spinner
-                        className="ml-auto"
-                        aria-label={t("security.sessions.signOut")}
-                      />
-                    ) : session.current ? null : (
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant="ghost"
-                        className="text-destructive"
-                        disabled={busy !== null}
-                        aria-label={t("security.sessions.signOutNamed", {
-                          name,
-                        })}
-                        onClick={() => setConfirm(session)}
-                      >
-                        {t("security.sessions.signOut")}
-                      </Button>
+                    {everyone && (
+                      <TableCell className="max-w-[10rem] truncate">
+                        {names?.get(lead.principalId) ||
+                          lead.principalId.slice(0, 8)}
+                      </TableCell>
                     )}
-                  </TableCell>
-                </TableRow>
+                    <TableCell className="text-muted-foreground tabular-nums">
+                      {when(group.lastActiveMs)}
+                    </TableCell>
+                    <TableCell className="font-mono text-meta text-muted-foreground">
+                      {lead.remoteIp || "—"}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      {many ? null : revokeButton(lead, name)}
+                    </TableCell>
+                  </TableRow>
+                  {open &&
+                    group.sessions.map((session) => {
+                      const SessionIcon = platformIcon(session.userAgent);
+                      return (
+                        <TableRow
+                          key={session.sessionId}
+                          data-slot="session-row"
+                        >
+                          <TableCell className="max-w-[18rem]">
+                            <span className="flex min-w-0 items-center gap-2 pl-8">
+                              <SessionIcon
+                                aria-hidden="true"
+                                className="size-3.5 shrink-0 text-muted-foreground"
+                              />
+                              <span
+                                className="truncate text-muted-foreground"
+                                title={session.userAgent}
+                              >
+                                {name}
+                              </span>
+                              {session.current && (
+                                <Badge variant="secondary" size="sm">
+                                  {t("security.sessions.current")}
+                                </Badge>
+                              )}
+                            </span>
+                          </TableCell>
+                          {everyone && <TableCell />}
+                          <TableCell className="text-muted-foreground tabular-nums">
+                            {when(lastActive(session))}
+                          </TableCell>
+                          <TableCell className="font-mono text-meta text-muted-foreground">
+                            {session.remoteIp || "—"}
+                          </TableCell>
+                          <TableCell className="text-right">
+                            {revokeButton(session, name)}
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
+                </React.Fragment>
               );
             })}
+            {visible.length === 0 && (
+              <TableRow>
+                <TableCell
+                  colSpan={columns}
+                  className="text-center text-muted-foreground"
+                >
+                  —
+                </TableCell>
+              </TableRow>
+            )}
           </TableBody>
         </Table>
       </Card>
-      {others && (
-        <div>
-          <Button
-            type="button"
-            size="sm"
-            variant="outline"
-            className="text-destructive"
-            disabled={busy !== null}
-            onClick={() => setConfirm("others")}
-          >
-            {busy === "others" && (
-              <Spinner aria-label={t("security.sessions.signOutOthers")} />
-            )}
-            {t("security.sessions.signOutOthers")}
-          </Button>
+      {(others || pageCount > 1) && (
+        <div className="flex items-center justify-between gap-2">
+          {others ? (
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              className="text-destructive"
+              disabled={busy !== null}
+              onClick={() => setConfirm("others")}
+            >
+              {busy === "others" && (
+                <Spinner aria-label={t("security.sessions.signOutOthers")} />
+              )}
+              {t("security.sessions.signOutOthers")}
+            </Button>
+          ) : (
+            <span />
+          )}
+          {pageCount > 1 && (
+            <Pagination
+              aria-label={t("security.sessions.pages")}
+              className="mx-0 w-auto justify-end"
+            >
+              <PaginationContent>
+                <PaginationItem>
+                  <PaginationPrevious
+                    text={t("security.sessions.previous")}
+                    disabled={shownPage === 0}
+                    onClick={() => setPage(shownPage - 1)}
+                  />
+                </PaginationItem>
+                {paginationRange(shownPage, pageCount).map((index, position) =>
+                  index === "gap" ? (
+                    <PaginationItem key={`gap-${position}`}>
+                      <PaginationEllipsis />
+                    </PaginationItem>
+                  ) : (
+                    <PaginationItem key={index}>
+                      <PaginationLink
+                        isActive={index === shownPage}
+                        aria-label={t("security.sessions.page", {
+                          page: index + 1,
+                        })}
+                        onClick={() => setPage(index)}
+                      >
+                        {index + 1}
+                      </PaginationLink>
+                    </PaginationItem>
+                  ),
+                )}
+                <PaginationItem>
+                  <PaginationNext
+                    text={t("security.sessions.next")}
+                    disabled={shownPage >= pageCount - 1}
+                    onClick={() => setPage(shownPage + 1)}
+                  />
+                </PaginationItem>
+              </PaginationContent>
+            </Pagination>
+          )}
         </div>
       )}
       <ConfirmRemove
