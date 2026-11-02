@@ -1924,7 +1924,7 @@ CSV 按 RFC 4180：`\r\n` 换行，首行表头 `id,time,principalId,deviceId,ac
 
 ### 26.3 `pi-acp` 的映射文件
 
-- 适配器表 `sessionId: "mapFile"` 的那一行（`pi`）写死映射文件 `~/.pi/acp/sessions.json`，形状 `{ "<ACP 会话 id>": { "sessionFile": "<Pi 会话文件绝对路径>" } }`（值也可以直接是路径）。会话文件名里的 uuid 是 Pi 的会话 id。读不到、过大（> 4 MiB）、不是这个形状、或路径不是绝对路径时退回 `opaque`。
+- 适配器表 `sessionId: "mapFile"` 的那一行（`pi`）写死映射文件 `~/.pi/pi-acp/session-map.json`，形状 `{ "version": 1, "sessions": { "<ACP 会话 id>": { "sessionFile": "<Pi 会话文件绝对路径>" } } }`（也认没有 `sessions` 外壳的扁平对象，值也可以直接是路径）。会话文件名里的 uuid 是 Pi 的会话 id。读不到、过大（> 4 MiB）、不是这个形状、或路径不是绝对路径时退回 `opaque`。
 - 会话开好时 `transcriptPath` 是映射到的 Pi 会话文件（存在时），否则是镜像。
 - 接回 ACP：手里的 id 是映射里的 ACP 会话 id 就用它，是 Pi 的会话 id 或会话文件就反查成 ACP 会话 id，查不到原样交给 `session/load`（接不回就新开）。切回终端：ACP 会话 id 映射回 Pi 的会话 id（文件名认不出时用文件路径）敲恢复行；映射里没有就敲普通启动行，`resumed: false`。
 

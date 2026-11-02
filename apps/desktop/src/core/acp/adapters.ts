@@ -149,8 +149,9 @@ export const ACP_ADAPTERS: readonly AcpAdapter[] = [
     program: "pi-acp",
     args: [],
     sessionId: "mapFile",
-    // `~/.pi/acp/sessions.json`：`{ "<ACP 会话 id>": { "sessionFile": "<Pi 会话文件>" } }`。
-    sessionMap: [".pi", "acp", "sessions.json"],
+    // `~/.pi/pi-acp/session-map.json`：
+    // `{ "version": 1, "sessions": { "<ACP 会话 id>": { "sessionFile": "<Pi 会话文件>" } } }`。
+    sessionMap: [".pi", "pi-acp", "session-map.json"],
     resume: "load",
     modes: ACP_MODE_TABLE.pi,
     // pi-acp 收下 `mcpServers` 却不接通：不带，少起一个 MCP 子进程（§48）。
@@ -314,8 +315,8 @@ export interface MappedSession {
 }
 
 /**
- * 读适配器的映射文件：`{ "<ACP 会话 id>": { "sessionFile": "<路径>" } }`（值
- * 也可以直接是路径字符串）。不是 `mapFile` 的适配器、没有家目录、文件不在、
+ * 读适配器的映射文件：`{ "version": 1, "sessions": { "<ACP 会话 id>": { "sessionFile":
+ * "<路径>" } } }`；没有 `sessions` 外壳的扁平对象也认（值也可以直接是路径字符串）。不是 `mapFile` 的适配器、没有家目录、文件不在、
  * 过大或不是这个形状都答 `undefined`——调用方退回 `opaque` 的做法。只认绝对
  * 路径：相对路径不知道相对谁。
  */
@@ -340,7 +341,12 @@ export function readSessionMap(
     return undefined;
   }
   const map = new Map<string, string>();
-  for (const [acpSessionId, value] of Object.entries(parsed)) {
+  const wrapped = (parsed as { sessions?: unknown }).sessions;
+  const entries =
+    typeof wrapped === "object" && wrapped !== null && !Array.isArray(wrapped)
+      ? wrapped
+      : parsed;
+  for (const [acpSessionId, value] of Object.entries(entries)) {
     const file =
       typeof value === "string"
         ? value

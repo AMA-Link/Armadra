@@ -221,15 +221,18 @@ describe("pi-acp's session map (§26.3)", () => {
     const directory = tempDir("armadra-acp-home-");
     homes.push(directory);
     if (content !== undefined) {
-      mkdirSync(join(directory, ".pi", "acp"), { recursive: true });
-      writeFileSync(join(directory, ".pi", "acp", "sessions.json"), content);
+      mkdirSync(join(directory, ".pi", "pi-acp"), { recursive: true });
+      writeFileSync(
+        join(directory, ".pi", "pi-acp", "session-map.json"),
+        content,
+      );
     }
     return { HOME: directory, USERPROFILE: directory };
   }
 
-  it("is pi's only, at ~/.pi/acp/sessions.json", () => {
+  it("is pi's only, at ~/.pi/pi-acp/session-map.json", () => {
     expect(pi.sessionId).toBe("mapFile");
-    expect(pi.sessionMap).toEqual([".pi", "acp", "sessions.json"]);
+    expect(pi.sessionMap).toEqual([".pi", "pi-acp", "session-map.json"]);
     for (const adapter of ACP_ADAPTERS) {
       if (adapter.agentId === "pi") continue;
       expect(adapter.sessionMap, adapter.agentId).toBeUndefined();
@@ -268,6 +271,37 @@ describe("pi-acp's session map (§26.3)", () => {
     expect(acpResumeId(pi, file, env)).toBe("acp-1");
     expect(acpResumeId(pi, "acp-1", env)).toBe("acp-1");
     expect(acpResumeId(pi, "unknown", env)).toBe("unknown");
+  });
+
+  it("reads the adapter's own file shape, entries wrapped in `sessions`", () => {
+    const file = `/sessions/--work--/2026-10-04T08-00-00-000Z_${UUID}.jsonl`;
+    const env = home(
+      JSON.stringify({
+        version: 1,
+        sessions: {
+          "acp-1": { sessionId: "acp-1", cwd: "/work", sessionFile: file },
+          "acp-2": {
+            sessionId: "acp-2",
+            cwd: "/work",
+            sessionFile: "rel.jsonl",
+          },
+        },
+      }),
+    );
+    expect(mappedSession(pi, "acp-1", env)).toEqual({
+      acpSessionId: "acp-1",
+      sessionFile: file,
+      cliSessionId: UUID,
+    });
+    expect(mappedSession(pi, "acp-2", env)).toBeUndefined();
+    expect(cliResumeId(pi, "acp-1", env)).toBe(UUID);
+    expect(acpResumeId(pi, UUID, env)).toBe("acp-1");
+    // 外壳之外的键（version）不当会话。
+    expect(readSessionMap(pi, env)?.has("version")).toBe(false);
+    // 空外壳：没有会话，退回原样。
+    const empty = home(JSON.stringify({ version: 1, sessions: {} }));
+    expect(readSessionMap(pi, empty)?.size).toBe(0);
+    expect(acpResumeId(pi, "acp-1", empty)).toBe("acp-1");
   });
 
   it("falls back to opaque when the map is missing or not a map", () => {
