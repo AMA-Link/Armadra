@@ -74,6 +74,28 @@ describe("设置搜索索引", () => {
     expect(upper.every((hit) => hit.sectionId === "machines")).toBe(true);
   });
 
+  it("原「设备与会话」的条目落在「账号与设备」，「新配对码」落在远程访问（#708）", () => {
+    expect(SETTINGS_SEARCH.devices).toBeUndefined();
+    for (const key of [
+      "security.sessions.signOutOthers",
+      "gateway.devices",
+      "security.passkeys.add",
+    ])
+      expect(find(zh(key))).toContainEqual({
+        sectionId: "security",
+        rowKey: key,
+      });
+    expect(find(zh("gateway.pairCode.new"))).toContainEqual({
+      sectionId: "remoteAccess",
+      rowKey: "gateway.pairCode.new",
+    });
+    // 页名命中合并后的页名。
+    expect(find(zh("settings.section.security"))).toContainEqual({
+      sectionId: "security",
+      rowKey: null,
+    });
+  });
+
   it("结果有上限", () => {
     expect(find("a").length).toBeLessThanOrEqual(SEARCH_LIMIT);
     expect(find("设").length).toBeLessThanOrEqual(SEARCH_LIMIT);

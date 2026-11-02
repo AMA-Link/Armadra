@@ -73,7 +73,7 @@
   animation: settings-push var(--dur-page) var(--ease-drawer);
 }
 
-/* 搜索命中的行：`--brand-soft` 底闪一次后淡出 */
+/* 搜索命中的行或表：`--brand-soft` 底闪一次后淡出 */
 @keyframes settings-highlight {
   from {
     background-color: var(--brand-soft);
@@ -82,7 +82,7 @@
     background-color: transparent;
   }
 }
-.settings-row[data-highlight="true"] {
+[data-settings-label][data-highlight="true"] {
   animation: settings-highlight var(--dur-page) var(--ease-out) 1;
 }
 
