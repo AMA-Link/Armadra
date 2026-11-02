@@ -47,6 +47,8 @@ export const CANVAS_USAGE = `CANVAS:
   post --to NAME --key KEY --body TEXT store a handoff for a linked agent
   inbox --limit 10 --after 0           read your pending messages without acknowledgement
   ack --id ID                         acknowledge one received message
+  ack --event EVENT-ID                acknowledge one coordinator event (handled,
+                                      not just seen)
   open-agent --agent ID [--task TEXT] [--title T] [--item-title T] [--permission-mode M]
                                       [--model M] [--after ID]
                                       [--after-turn current|next] [--ttl MIN]
@@ -92,6 +94,8 @@ export const CANVAS_USAGE = `CANVAS:
                                       defaults to your only item in progress
   handback --item ID --reason TEXT      hand a follow-up back to the coordinator
                                       (reason <= 100 chars, once per item)
+  events [--limit N]                   read the coordinator's unacknowledged events
+                                      (oldest first, default 20, max 50)
   items [--stage STAGE] [--item ID] [--limit N] [--offset N]
                                       read the work-item ledger: one line per
                                       item, person/* stages first; --item gives

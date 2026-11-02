@@ -193,9 +193,12 @@ const CANVAS: Record<ControlVerb, Row> = {
     },
   },
   ack: {
-    description: "Acknowledge one received message.",
-    properties: { id: str("the message id from `inbox`") },
-    required: ["id"],
+    description:
+      "Acknowledge one received message (id), or, as the coordinator, one event from `events` (event): acknowledging means you handled it, not that you saw it.",
+    properties: {
+      id: str("the message id from `inbox`"),
+      event: str("the coordinator event id from `events`; use instead of id"),
+    },
     binding: "session",
   },
   "handoff-read": {
@@ -412,6 +415,11 @@ const CANVAS: Record<ControlVerb, Row> = {
         0,
       ),
     },
+  },
+  events: {
+    description:
+      "Read the unacknowledged coordinator events (reports, handbacks, stalls, finished tasks, follow-ups, inbox notes), oldest first. Acknowledge each handled one with ack --event; an unacknowledged event shows up on the next card.",
+    properties: { limit: int("how many, 1–50 (default 20)", 1) },
   },
 };
 

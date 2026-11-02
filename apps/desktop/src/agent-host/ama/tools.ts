@@ -26,7 +26,15 @@ import { type CallOutcome, callVerb } from "./client.js";
 
 /** Verbs that only read. Anything not listed in either table is `write`. */
 const READ: Readonly<Record<string, readonly string[]>> = {
-  canvas: ["help", "list", "inbox", "outbox", "handoff-read", "items"],
+  canvas: [
+    "help",
+    "list",
+    "inbox",
+    "outbox",
+    "handoff-read",
+    "items",
+    "events",
+  ],
   // Every context verb reads a linked node; the budget is the core's.
   context: ["list", "summary", "transcript", "terminal"],
   browser: ["read", "wait", "capture", "pdf"],
