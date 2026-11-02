@@ -33,6 +33,7 @@ import {
   type SessionSort,
 } from "./resources/metrics";
 import { useResources } from "./resources/use-resources";
+import { useSessions } from "../agent/sessions";
 import { useSshHosts } from "./settings/ssh-hosts";
 
 export function ResourceDrawer() {
@@ -49,6 +50,8 @@ export function ResourceDrawer() {
 
   const open = mode === "drawer";
   const { snapshot, error, loading, refresh } = useResources(workspaceId, open);
+  // 标题、Agent 与画板取自会话读模型：它覆盖工作空间的所有画板，而不只是当前这块。
+  const { sessions: sessionRows } = useSessions(open ? workspaceId : null);
 
   return (
     <WorkPanelSheet
@@ -127,6 +130,7 @@ export function ResourceDrawer() {
                   </h3>
                   <SessionTable
                     sessions={snapshot.sessions}
+                    sessionRows={sessionRows}
                     sort={sort}
                     onSorted={setSort}
                     host={host}

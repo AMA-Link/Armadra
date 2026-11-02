@@ -3,6 +3,7 @@ import type {
   CanvasNode,
   HostResources,
   PlatformComponent,
+  ProcessSample,
   SessionResources,
 } from "@armadra/shared";
 
@@ -22,6 +23,8 @@ import {
   hostOverviews,
   liveSessions,
   memoryUsedPercent,
+  orderProcessTree,
+  sessionIdentity,
   sessionsOnHost,
   sortSessions,
   unknownReasonKey,
@@ -361,5 +364,131 @@ describe("执行主机", () => {
       sessionsOnHost(rows, null, nodes, "").map((row) => row.sessionId),
     ).toEqual(["orphan"]);
     expect(sessionsOnHost(rows, "all", nodes, "")).toHaveLength(3);
+  });
+});
+
+describe("会话标题的来源与进程树排序", () => {
+  const entry = (patch: Partial<SessionResources>): SessionResources => ({
+    sessionId: "s-1",
+    sessionKey: "s-1",
+    workspaceId: "w",
+    nodeId: null,
+    generation: 1,
+    backend: "tmux",
+    location: "local",
+    executionHostId: "local",
+    cwd: "/data/workspaces/default",
+    pid: 100,
+    alive: true,
+    cpuPercent: null,
+    memoryBytes: null,
+    memoryEstimated: true,
+    childCount: 0,
+    state: null,
+    startTimeUnixMs: null,
+    children: [],
+    unknownReason: null,
+    ...patch,
+  });
+  const proc = (
+    pid: number,
+    parentPid: number | null,
+    memoryBytes: number,
+    origin?: "armadra",
+  ): ProcessSample => ({
+    pid,
+    parentPid,
+    memoryBytes,
+    name: `p${pid}`,
+    startTimeUnixMs: 1,
+    cpuPercent: null,
+    ...(origin ? { origin } : {}),
+  });
+
+  it("节点 id 对不上时按会话 id 找，找不到标题是 null 而不是目录名", () => {
+    const rows = [
+      { nodeId: "n", boardId: "b", sessionId: "s-1", title: "登录修复" },
+    ] as never;
+    expect(
+      sessionIdentity(entry({}), rows, undefined, [], undefined).title,
+    ).toBe("登录修复");
+    expect(
+      sessionIdentity(entry({ sessionId: "x" }), rows, undefined, [], undefined)
+        .title,
+    ).toBeNull();
+  });
+
+  it("读模型没有时退到当前画板的节点，并带上节点的 Agent", () => {
+    const node = {
+      id: "n-1",
+      boardId: "b",
+      title: "接口重构",
+      data: { kind: "terminal", agent: { id: "claude" } },
+    } as unknown as CanvasNode;
+    const identity = sessionIdentity(
+      entry({ nodeId: "n-1" }),
+      undefined,
+      [node],
+      [],
+      "b",
+    );
+    expect(identity).toMatchObject({ title: "接口重构", agentId: "claude" });
+  });
+
+  it("画板名只在别的画板且有多块画板时给", () => {
+    const rows = [
+      { nodeId: "n", boardId: "b2", sessionId: "s-1", title: "t" },
+    ] as never;
+    const boards = [
+      { id: "b1", name: "一" },
+      { id: "b2", name: "二" },
+    ];
+    expect(
+      sessionIdentity(entry({ nodeId: "n" }), rows, [], boards, "b1").boardName,
+    ).toBe("二");
+    expect(
+      sessionIdentity(entry({ nodeId: "n" }), rows, [], boards, "b2").boardName,
+    ).toBeUndefined();
+    expect(
+      sessionIdentity(entry({ nodeId: "n" }), rows, [], boards.slice(1), "b1")
+        .boardName,
+    ).toBeUndefined();
+  });
+
+  it("并列的行按名字再按会话 id 排，不随采样互换", () => {
+    const left = entry({ sessionId: "b" });
+    const right = entry({ sessionId: "a" });
+    const sameTitle = () => "同名";
+    expect(
+      sortSessions([left, right], "cpu", sameTitle).map((r) => r.sessionId),
+    ).toEqual(["a", "b"]);
+    expect(
+      sortSessions([right, left], "memory", sameTitle).map((r) => r.sessionId),
+    ).toEqual(["a", "b"]);
+  });
+
+  it("进程树按父子排，同级里 Armadra 自己的排最后，父进程被截掉的挂在最上层", () => {
+    const rows = orderProcessTree(
+      [
+        proc(5, 2, 10, "armadra"),
+        proc(4, 2, 50),
+        proc(2, 100, 500),
+        proc(9, 77, 5), // 父进程不在列表里
+        proc(3, 100, 20, "armadra"),
+      ],
+      100,
+    );
+    expect(rows.map((row) => [row.process.pid, row.depth])).toEqual([
+      [2, 0],
+      [4, 1],
+      [5, 1],
+      [9, 0],
+      [3, 0],
+    ]);
+  });
+
+  it("父子成环也不丢进程、不死循环", () => {
+    const rows = orderProcessTree([proc(1, 2, 1), proc(2, 1, 1)], 100);
+    expect(rows.map((row) => row.process.pid).sort()).toEqual([1, 2]);
   });
 });

@@ -13,9 +13,11 @@ import type {
   CanvasNode,
   HostResources,
   PlatformComponent,
+  ProcessSample,
   ResourceUnknownReason,
   SessionResources,
 } from "@armadra/shared";
+import type { SessionRow } from "@/agent/sessions";
 
 /** 测不出来时显示的东西。整个面板只有这一个占位符。 */
 export const UNKNOWN = "—";
@@ -90,28 +92,122 @@ export function diskUsedPercent(host: HostResources): number | null {
 /** 会话表格默认按 CPU 从高到低；测不出来的排在最后，而不是当 0 混进来。 */
 export type SessionSort = "cpu" | "memory" | "name";
 
+/**
+ * 排序只换看的顺序。并列（尤其是都测不出来的）按名字、再按会话 id 定先后：
+ * 没有这一步，每一拍采样都可能让并列的几行互换位置，列表看起来在抖。
+ */
 export function sortSessions(
   sessions: readonly SessionResources[],
   sort: SessionSort,
   titleOf: (session: SessionResources) => string,
 ): SessionResources[] {
   const rows = [...sessions];
-  if (sort === "name") {
-    return rows.sort((left, right) =>
-      titleOf(left).localeCompare(titleOf(right)),
-    );
-  }
+  const byName = (left: SessionResources, right: SessionResources) =>
+    titleOf(left).localeCompare(titleOf(right)) ||
+    left.sessionId.localeCompare(right.sessionId);
+  if (sort === "name") return rows.sort(byName);
   const key = sort === "cpu" ? "cpuPercent" : "memoryBytes";
   return rows.sort((left, right) => {
     const a = left[key];
     const b = right[key];
     const aKnown = typeof a === "number";
     const bKnown = typeof b === "number";
-    if (aKnown && bKnown) return b - a;
-    if (aKnown) return -1;
-    if (bKnown) return 1;
-    return 0;
+    if (aKnown && bKnown && a !== b) return b - a;
+    if (aKnown !== bKnown) return aKnown ? -1 : 1;
+    return byName(left, right);
   });
+}
+
+/** 一个会话在列表里怎么称呼：节点标题为主，Agent 与画板是副标注。 */
+export interface SessionIdentity {
+  /** 节点标题；查不到时是 `null`，由界面写一个中性的占位，而不是退到目录名。 */
+  readonly title: string | null;
+  readonly agentId: string | undefined;
+  /** 只在会话不在当前画板、且工作空间有多块画板时才有。 */
+  readonly boardName: string | undefined;
+  readonly boardId: string | undefined;
+  readonly nodeId: string | null;
+}
+
+/**
+ * 会话 → 标题 / Agent / 画板。
+ *
+ * 来源按可靠程度：工作空间的会话读模型（覆盖**所有画板**，标题是节点当前的名字），
+ * 然后是当前画板的节点。**不**退到 `cwd` 的末级目录：一块工作空间里的终端几乎都
+ * 开在同一个根目录，那样每一组都叫同一个名字（默认工作空间的根就叫 `default`）。
+ */
+export function sessionIdentity(
+  session: SessionResources,
+  rows: readonly SessionRow[] | undefined,
+  nodes: readonly CanvasNode[] | undefined,
+  boards: readonly { id: string; name: string }[],
+  activeBoardId: string | undefined,
+): SessionIdentity {
+  const row =
+    (session.nodeId === null
+      ? undefined
+      : rows?.find((entry) => entry.nodeId === session.nodeId)) ??
+    rows?.find((entry) => entry.sessionId === session.sessionId);
+  const nodeId = session.nodeId ?? row?.nodeId ?? null;
+  const node =
+    nodeId === null ? undefined : nodes?.find((entry) => entry.id === nodeId);
+  const title = row?.title ?? node?.title ?? null;
+  const agentId =
+    row?.agentId ??
+    (node?.data.kind === "terminal" ? node.data.agent?.id : undefined);
+  const boardId = row?.boardId ?? node?.boardId;
+  const boardName =
+    boards.length > 1 && boardId !== undefined && boardId !== activeBoardId
+      ? boards.find((entry) => entry.id === boardId)?.name
+      : undefined;
+  return { title, agentId, boardName, boardId, nodeId };
+}
+
+export interface TreeRow {
+  readonly process: ProcessSample;
+  readonly depth: number;
+}
+
+/**
+ * 把平铺的子进程按父子关系排成一棵树：同级里 Armadra 自己的进程（钩子、画布
+ * 工具 MCP）排在最后，其余按内存从高到低。父进程不在列表里（被截掉、或者已经
+ * 退出）的挂在最上层，所以截断不会让谁凭空消失。
+ */
+export function orderProcessTree(
+  processes: readonly ProcessSample[],
+  leaderPid: number | null,
+): TreeRow[] {
+  const known = new Set(processes.map((entry) => entry.pid));
+  const rank = (left: ProcessSample, right: ProcessSample) =>
+    Number(left.origin === "armadra") - Number(right.origin === "armadra") ||
+    (right.memoryBytes ?? 0) - (left.memoryBytes ?? 0) ||
+    left.pid - right.pid;
+  const byParent = new Map<number, ProcessSample[]>();
+  const top: ProcessSample[] = [];
+  for (const entry of processes) {
+    const parent = entry.parentPid;
+    if (parent === null || parent === leaderPid || !known.has(parent)) {
+      top.push(entry);
+      continue;
+    }
+    const siblings = byParent.get(parent);
+    if (siblings === undefined) byParent.set(parent, [entry]);
+    else siblings.push(entry);
+  }
+  const rows: TreeRow[] = [];
+  const seen = new Set<number>();
+  const visit = (entry: ProcessSample, depth: number) => {
+    if (seen.has(entry.pid)) return;
+    seen.add(entry.pid);
+    rows.push({ process: entry, depth });
+    for (const child of (byParent.get(entry.pid) ?? []).sort(rank)) {
+      visit(child, depth + 1);
+    }
+  };
+  for (const entry of top.sort(rank)) visit(entry, 0);
+  // 父子成环（一张在遍历中变过的表）时，没走到的挂在最上层。
+  for (const entry of processes) visit(entry, 0);
+  return rows;
 }
 
 /** `unknownReason` → i18n 键；`null`（有数字）时不显示任何徽标。 */

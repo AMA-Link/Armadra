@@ -9,6 +9,8 @@ vi.mock("@/sessions/SessionRow", () => ({ centerNode: vi.fn() }));
 
 import { SessionTable } from "./SessionTable";
 import { usePreferencesStore } from "@/app/preferences-store";
+import { useCanvasStore } from "@/store/canvas-store";
+import type { SessionRow } from "@/agent/sessions";
 
 /**
  * 会话表的一条验收：**进程不在了就不占一行**。
@@ -41,15 +43,43 @@ const session = (patch: Partial<SessionResources> = {}): SessionResources => ({
   ...patch,
 });
 
+/** 读模型里的一行：标题照旧取 `cwd` 的末级目录，只给不关心命名的老用例用。 */
+const rowFor = (
+  entry: SessionResources,
+  patch: Partial<SessionRow> = {},
+): SessionRow =>
+  ({
+    nodeId: `node-${entry.sessionId}`,
+    boardId: "board-a",
+    sessionId: entry.sessionId,
+    title: entry.cwd.split("/").pop() ?? "",
+    cwd: entry.cwd,
+    unread: false,
+    updatedAt: "2026-11-02T00:00:00Z",
+    alive: true,
+    sinceMs: 0,
+    ...patch,
+  }) as SessionRow;
+
+function Table(props: Parameters<typeof SessionTable>[0]) {
+  return (
+    <SessionTable
+      sessionRows={props.sessions.map((entry) => rowFor(entry))}
+      {...props}
+    />
+  );
+}
+
 beforeEach(() => {
   usePreferencesStore.setState({ locale: "zh-CN" });
+  useCanvasStore.setState({ boards: [], document: null });
 });
 afterEach(() => cleanup());
 
 describe("会话表", () => {
   it("退出的会话和进程找不到的会话都不出现在列表里", () => {
     render(
-      <SessionTable
+      <Table
         sessions={[
           session({ sessionId: "live", cwd: "/tmp/live" }),
           session({
@@ -81,7 +111,7 @@ describe("会话表", () => {
 
   it("说明只在悬停提示里，行内只有名字与数字", () => {
     render(
-      <SessionTable
+      <Table
         sessions={[
           session({
             sessionId: "long",
@@ -109,7 +139,7 @@ describe("会话表", () => {
 
   it("一个会话都不剩时什么都不画，而不是一列死行", () => {
     const { container } = render(
-      <SessionTable
+      <Table
         sessions={[session({ alive: false, unknownReason: "exited" })]}
         sort="cpu"
         onSorted={() => {}}
@@ -120,7 +150,7 @@ describe("会话表", () => {
 
   it("空闲的行默认折起来，点开才列出", () => {
     render(
-      <SessionTable
+      <Table
         sessions={[
           session({ sessionId: "busy", cwd: "/tmp/busy", cpuPercent: 40 }),
           session({ sessionId: "idle", cwd: "/tmp/idle", cpuPercent: 0 }),
@@ -153,7 +183,7 @@ describe("会话表", () => {
     // 实测）。
     const onHost = vi.fn();
     render(
-      <SessionTable
+      <Table
         sessions={[]}
         sort="cpu"
         onSorted={() => {}}
@@ -170,7 +200,7 @@ describe("会话表", () => {
 
   it("远端会话测不到指标，但仍然留在列表里", () => {
     render(
-      <SessionTable
+      <Table
         sessions={[
           session({
             sessionId: "ssh",
@@ -187,5 +217,189 @@ describe("会话表", () => {
     );
     expect(screen.getByText("ssh")).toBeTruthy();
     expect(screen.getByTitle("在远程主机上运行，本机测不到指标")).toBeTruthy();
+  });
+});
+
+describe("会话组的标题", () => {
+  const boards = [
+    { id: "board-a", name: "画板 A", nodeCount: 2, sortOrder: 0 },
+    { id: "board-b", name: "登录改造", nodeCount: 2, sortOrder: 0 },
+  ];
+
+  it("标题是节点标题，不退到工作空间根目录名 default", () => {
+    // 默认工作空间的根目录就叫 default，所有终端的 cwd 末级都是它。
+    const first = session({
+      sessionId: "s-1",
+      cwd: "/data/workspaces/default",
+    });
+    const second = session({
+      sessionId: "s-2",
+      cwd: "/data/workspaces/default",
+    });
+    render(
+      <SessionTable
+        sessions={[first, second]}
+        sessionRows={[
+          rowFor(first, { title: "接口重构" }),
+          rowFor(second, { title: "登录修复" }),
+        ]}
+        sort="name"
+        onSorted={() => {}}
+      />,
+    );
+    expect(screen.getByText("接口重构")).toBeTruthy();
+    expect(screen.getByText("登录修复")).toBeTruthy();
+    expect(screen.queryByText("default")).toBeNull();
+  });
+
+  it("查不到节点时写中性占位，而不是目录名", () => {
+    render(
+      <SessionTable
+        sessions={[
+          session({ sessionId: "abcdef123", cwd: "/data/workspaces/default" }),
+        ]}
+        sort="cpu"
+        onSorted={() => {}}
+      />,
+    );
+    expect(screen.getByText("终端 abcdef")).toBeTruthy();
+    expect(screen.queryByText("default")).toBeNull();
+  });
+
+  it("按节点 id 对上读模型，别的画板上的会话也有标题、Agent 与画板名", () => {
+    useCanvasStore.setState({
+      boards,
+      document: { board: { id: "board-a" }, nodes: [] } as never,
+    });
+    const here = session({ sessionId: "s-1", nodeId: "n-1" });
+    const there = session({ sessionId: "s-2", nodeId: "n-2" });
+    render(
+      <SessionTable
+        sessions={[here, there]}
+        sessionRows={[
+          rowFor(here, { nodeId: "n-1", title: "接口重构", agentId: "claude" }),
+          rowFor(there, {
+            nodeId: "n-2",
+            boardId: "board-b",
+            title: "登录修复",
+            agentId: "codex",
+          }),
+        ]}
+        sort="name"
+        onSorted={() => {}}
+      />,
+    );
+    expect(screen.getByText("登录修复")).toBeTruthy();
+    // 当前画板上的会话不重复写画板名；别的画板上的写。
+    expect(screen.getAllByText("登录改造")).toHaveLength(1);
+    expect(screen.getByText("Claude Code")).toBeTruthy();
+    expect(screen.getByText("Codex")).toBeTruthy();
+  });
+
+  it("只有一块画板时不写画板名", () => {
+    useCanvasStore.setState({
+      boards: [boards[0]!],
+      document: { board: { id: "board-a" }, nodes: [] } as never,
+    });
+    const only = session({ sessionId: "s-1" });
+    render(
+      <SessionTable
+        sessions={[only]}
+        sessionRows={[rowFor(only, { title: "接口重构", boardId: "board-b" })]}
+        sort="name"
+        onSorted={() => {}}
+      />,
+    );
+    expect(screen.queryByText("登录改造")).toBeNull();
+  });
+
+  it("排序按钮暴露选中状态，并列的行按名字稳定排列", () => {
+    const a = session({
+      sessionId: "s-b",
+      cpuPercent: null,
+      memoryBytes: null,
+    });
+    const b = session({
+      sessionId: "s-a",
+      cpuPercent: null,
+      memoryBytes: null,
+    });
+    render(
+      <SessionTable
+        sessions={[a, b]}
+        sessionRows={[rowFor(a, { title: "乙" }), rowFor(b, { title: "甲" })]}
+        sort="cpu"
+        onSorted={() => {}}
+        host="all"
+      />,
+    );
+    expect(
+      screen
+        .getByRole("button", { name: "按 CPU" })
+        .getAttribute("aria-pressed"),
+    ).toBe("true");
+    expect(
+      screen
+        .getByRole("button", { name: "按内存" })
+        .getAttribute("aria-pressed"),
+    ).toBe("false");
+  });
+
+  it("进程树默认收起；展开后 Armadra 自己的进程有标记并排在同级最后", async () => {
+    const withTree = session({
+      sessionId: "s-1",
+      pid: 100,
+      childCount: 3,
+      children: [
+        {
+          pid: 103,
+          startTimeUnixMs: 1,
+          name: "Armadra Helper",
+          parentPid: 101,
+          memoryBytes: 9000,
+          cpuPercent: 0,
+          origin: "armadra",
+        },
+        {
+          pid: 102,
+          startTimeUnixMs: 1,
+          name: "node_repl",
+          parentPid: 101,
+          memoryBytes: 100,
+          cpuPercent: 0,
+        },
+        {
+          pid: 101,
+          startTimeUnixMs: 1,
+          name: "codex",
+          parentPid: 100,
+          memoryBytes: 5000,
+          cpuPercent: 1,
+        },
+      ],
+    });
+    render(
+      <SessionTable
+        sessions={[withTree]}
+        sessionRows={[rowFor(withTree, { title: "测试补全" })]}
+        sort="cpu"
+        onSorted={() => {}}
+      />,
+    );
+    expect(screen.queryByText("codex")).toBeNull();
+    screen.getByRole("button", { name: "展开进程树" }).click();
+    await waitFor(() => expect(screen.getByText("codex")).toBeTruthy());
+    const names = [...document.querySelectorAll("[data-depth]")].map((li) => [
+      li.getAttribute("data-depth"),
+      li.querySelector("span.truncate")?.textContent,
+    ]);
+    expect(names).toEqual([
+      ["0", "codex"],
+      ["1", "node_repl"],
+      ["1", "Armadra Helper"],
+    ]);
+    expect(
+      document.querySelectorAll("[data-slot=process-armadra]"),
+    ).toHaveLength(1);
   });
 });
