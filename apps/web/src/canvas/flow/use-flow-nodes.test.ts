@@ -9,6 +9,7 @@ import type {
 
 import { useCanvasStore } from "@/store/canvas-store";
 import { onNodeNamesRequest } from "@/nodes/node-names";
+import { clearAllDrafts, getDrafts } from "./drafts";
 import { useFlowNodes } from "./use-flow-nodes";
 
 const now = "2026-01-01T00:00:00.000Z";
@@ -64,7 +65,10 @@ beforeEach(() => {
   useCanvasStore.getState().setWorkspace({ id: "ws" } as Workspace);
   useCanvasStore.getState().setDocument(document);
 });
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  clearAllDrafts();
+});
 
 describe("useFlowNodes", () => {
   /**
@@ -172,5 +176,99 @@ describe("useFlowNodes", () => {
     expect(edge).toBeDefined();
     expect("sourceHandle" in edge).toBe(false);
     expect("targetHandle" in edge).toBe(false);
+  });
+
+  /**
+   * 多选拖动（#713）：React Flow 把整组被拖动的节点放在第三个参数里——拖其中
+   * 一个节点时 `node` 是指针下那个，拖框选之后的虚线选区框时 `node` 是组里
+   * 第一个。画布是受控的，节点画在哪只看投影（文档 + 草稿），所以整组都得
+   * 进草稿，否则只有一个节点跟着指针走。
+   */
+  describe("多选拖动", () => {
+    /** 文档节点 id 是 UUID（`isDocumentNodeId`），白板对象才是 `wb:`。 */
+    const id = (letter: string) =>
+      `00000000-0000-4000-8000-00000000000${letter}`;
+    const [A, B, C] = ["a", "b", "c"].map(id) as [string, string, string];
+    const three = () => {
+      const base = document.nodes[0]!;
+      useCanvasStore.getState().setDocument({
+        ...document,
+        nodes: [A, B, C].map((nodeId, index) => ({
+          ...base,
+          id: nodeId,
+          title: nodeId,
+          position: { x: index * 300, y: 0 },
+        })),
+        edges: [],
+      });
+      useCanvasStore.getState().setSelection({ nodes: [A, B, C] });
+    };
+    const dragged = (
+      nodes: { id: string; position: { x: number; y: number } }[],
+      dy: number,
+    ) =>
+      nodes.map((item) => ({
+        ...item,
+        position: { x: item.position.x, y: item.position.y + dy },
+      }));
+
+    for (const [label, grabbed] of [
+      ["b", () => B],
+      ["组里第一个，即拖虚线选区框", () => A],
+    ] as const) {
+      it(`拖动中整组都跟着走（指针下是 ${label}）`, () => {
+        three();
+        const { result } = renderHook(() => useFlowNodes());
+        const selected = result.current.nodes.filter((item) => item.selected);
+        expect(selected.map((item) => item.id)).toEqual([A, B, C]);
+        const moving = dragged(selected, 120) as typeof selected;
+        const node = moving.find((item) => item.id === grabbed())!;
+
+        act(() => result.current.onNodeDrag({}, node, moving));
+
+        expect([...getDrafts().keys()].sort()).toEqual([A, B, C]);
+        const projected = new Map(
+          result.current.nodes.map((item) => [item.id, item.position]),
+        );
+        expect(projected.get(A)).toEqual({ x: 0, y: 120 });
+        expect(projected.get(B)).toEqual({ x: 300, y: 120 });
+        expect(projected.get(C)).toEqual({ x: 600, y: 120 });
+        // 文档在松手之前一点不动：一次手势一条历史。
+        expect(
+          useCanvasStore
+            .getState()
+            .document!.nodes.map((item) => item.position),
+        ).toEqual([
+          { x: 0, y: 0 },
+          { x: 300, y: 0 },
+          { x: 600, y: 0 },
+        ]);
+
+        act(() => result.current.onNodeDragStop({}, node, moving));
+        expect(getDrafts().size).toBe(0);
+        expect(
+          useCanvasStore
+            .getState()
+            .document!.nodes.map((item) => item.position),
+        ).toEqual([
+          { x: 0, y: 120 },
+          { x: 300, y: 120 },
+          { x: 600, y: 120 },
+        ]);
+      });
+    }
+
+    it("没有第三个参数时退回只写指针下那一个", () => {
+      three();
+      const { result } = renderHook(() => useFlowNodes());
+      const [first] = dragged(result.current.nodes.slice(0, 1), 50);
+      act(() =>
+        result.current.onNodeDrag(
+          {},
+          first as (typeof result.current.nodes)[number],
+        ),
+      );
+      expect([...getDrafts().keys()]).toEqual([A]);
+    });
   });
 });

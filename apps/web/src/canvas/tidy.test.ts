@@ -20,7 +20,7 @@ import {
   LAYER_GAP,
   SIBLING_GAP,
 } from "@armadra/shared";
-import { tidy, tidyPositions } from "./tidy";
+import { chooseGrid, readingRows, tidy, tidyPositions } from "./tidy";
 import { COLLAPSED_HEIGHT } from "../store/defaults";
 
 /** 无主从边的分量沿连线方向分列，列距是横向层距。 */
@@ -134,14 +134,23 @@ describe("tidy", () => {
   });
 
   it("行放不下就换行，行高取行内最高的分量", () => {
-    // 6 个 200×100 的孤立节点，宽高比 1 → 行宽上限 ≈ sqrt(60000)×1.15 ≈ 282
-    // → 一行只放得下 1 个（第二个要到 x=260，右边 460 > 282）。
+    // 三个分量 a→b、c→d、e→f，各宽 200 + COLUMN + 200、高 100，宽高比 1 →
+    // 行宽上限 ≈ sqrt(3 × 569 × 100)×1.15 ≈ 475 → 一行只放得下 1 个分量。
+    // （全是孤立节点时不裹行，改排网格，见下面的「网格」一组。）
     const boxes = ["a", "b", "c", "d", "e", "f"].map((id) => box(id));
-    const positions = raw(boxes, [], { aspect: 1 });
+    const positions = raw(
+      boxes,
+      [
+        { source: "a", target: "b" },
+        { source: "c", target: "d" },
+        { source: "e", target: "f" },
+      ],
+      { aspect: 1 },
+    );
     const rows = new Set(boxes.map((item) => positions[item.id]!.y));
-    expect(rows.size).toBeGreaterThan(1);
+    expect(rows.size).toBe(3);
     // 行距 = 上一行的行高 + CLUSTER_GAP
-    expect(positions.b).toEqual({ x: 0, y: 100 + CLUSTER_GAP });
+    expect(positions.c).toEqual({ x: 0, y: 100 + CLUSTER_GAP });
     expect(overlaps(boxes, positions)).toEqual([]);
   });
 
@@ -571,5 +580,264 @@ describe("tidy · §6.4", () => {
     // a→b 让 b 进了第 1 列，d 也在第 1 列；c 在第 2 列。
     expect(at.b!.x).toBe(at.d!.x);
     expect(overlaps(boxes, at)).toEqual([]);
+  });
+});
+
+/* ---------------------------------- 网格（#713） ---------------------------------- */
+
+/** 黄金比例的会话节点默认尺寸（55 × 34 格）。 */
+const SESSION = { width: 55 * GRID_UNIT, height: 34 * GRID_UNIT };
+
+const shape = (columns: number, rows: number) => ({ columns, rows });
+
+describe("chooseGrid", () => {
+  const landscape = [16 / 9, 16 / 10, 1288 / 900, 4 / 3];
+  const portrait = [9 / 16, 10 / 16, 3 / 4, 900 / 1288];
+  const expected: Record<number, [number, number]> = {
+    1: [1, 1],
+    2: [2, 1],
+    3: [3, 1],
+    4: [2, 2],
+    5: [3, 2],
+    6: [3, 2],
+    7: [4, 2],
+    8: [4, 2],
+    9: [3, 3],
+  };
+
+  for (const aspect of landscape) {
+    it(`横屏（${aspect.toFixed(2)}）：1–9 个按个数取列 ≥ 行`, () => {
+      for (let count = 1; count <= 9; count += 1) {
+        const [columns, rows] = expected[count]!;
+        expect(
+          chooseGrid(count, aspect, SESSION, CLUSTER_GAP),
+          `${count}`,
+        ).toEqual(shape(columns, rows));
+      }
+    });
+  }
+
+  for (const aspect of portrait) {
+    it(`竖屏（${aspect.toFixed(2)}）：1–9 个是横屏的转置，行 ≥ 列`, () => {
+      for (let count = 1; count <= 9; count += 1) {
+        const [columns, rows] = expected[count]!;
+        expect(
+          chooseGrid(count, aspect, SESSION, CLUSTER_GAP),
+          `${count}`,
+        ).toEqual(shape(rows, columns));
+      }
+    });
+  }
+
+  it("格子总数够放、最多空一行不到", () => {
+    for (const aspect of [...landscape, ...portrait, 1]) {
+      for (let count = 1; count <= 40; count += 1) {
+        const { columns, rows } = chooseGrid(count, aspect, SESSION, 104);
+        expect(columns * rows).toBeGreaterThanOrEqual(count);
+        expect(columns * (rows - 1)).toBeLessThan(count);
+        expect((columns - 1) * rows).toBeLessThan(count);
+      }
+    }
+  });
+
+  it("正方视口两种朝向都试，取像素宽高比更接近的", () => {
+    // 6 个黄金比例节点：3×2 太扁（≈2.4），2×3 接近正方（≈1.0）。
+    expect(chooseGrid(6, 1, SESSION, CLUSTER_GAP)).toEqual(shape(2, 3));
+    // 竖长的节点反过来。
+    expect(
+      chooseGrid(
+        6,
+        1,
+        { width: SESSION.height, height: SESSION.width },
+        CLUSTER_GAP,
+      ),
+    ).toEqual(shape(3, 2));
+  });
+
+  it("没有个数或宽高比不合法时有确定的结果", () => {
+    expect(chooseGrid(0, 16 / 9)).toEqual(shape(0, 0));
+    expect(chooseGrid(4, Number.NaN)).toEqual(shape(2, 2));
+    expect(chooseGrid(6, 0)).toEqual(shape(3, 2));
+  });
+});
+
+describe("readingRows", () => {
+  const at = (id: string, x: number, y: number, width = 100, height = 60) => ({
+    id,
+    x,
+    y,
+    width,
+    height,
+  });
+
+  it("行优先：先按行、行内按 x，与输入顺序和编号无关", () => {
+    const rows = readingRows([
+      at("6", 400, 210),
+      at("1", 0, 0),
+      at("4", 0, 200),
+      at("3", 400, 30),
+      at("5", 200, 190),
+      at("2", 200, 10),
+    ]);
+    expect(rows.map((row) => row.map((unit) => unit.id))).toEqual([
+      ["1", "2", "3"],
+      ["4", "5", "6"],
+    ]);
+  });
+
+  it("同一行上下错开超过 48px 也不拆行，只要中心还压着行首", () => {
+    // 旧的阅读顺序按 48px 量化：b 比 a 低 120px 就会被排到 a 后面的一行。
+    const rows = readingRows([
+      at("a", 500, 0, 715, 442),
+      at("b", 0, 120, 715, 442),
+    ]);
+    expect(rows.map((row) => row.map((unit) => unit.id))).toEqual([["b", "a"]]);
+  });
+
+  it("中心落到行首下面就开新行", () => {
+    const rows = readingRows([at("a", 500, 0), at("b", 0, 40)]);
+    expect(rows.map((row) => row.map((unit) => unit.id))).toEqual([
+      ["a"],
+      ["b"],
+    ]);
+  });
+});
+
+describe("tidy：全是单个单元时排网格", () => {
+  /** n 个会话，随手摆在一条斜线上（编号顺序 ≠ 画面顺序）。 */
+  const sessions = (count: number) =>
+    Array.from({ length: count }, (_, index) =>
+      placed(
+        `s${index + 1}`,
+        ((index * 7) % count) * 300,
+        index * 37,
+        "agent",
+        SESSION.width,
+        SESSION.height,
+      ),
+    );
+  const pitchX = SESSION.width + CLUSTER_GAP;
+  const pitchY = SESSION.height + CLUSTER_GAP;
+
+  function grid(positions: Record<string, { x: number; y: number }>) {
+    const xs = [...new Set(Object.values(positions).map((p) => p.x))];
+    const ys = [...new Set(Object.values(positions).map((p) => p.y))];
+    return { columns: xs.length, rows: ys.length };
+  }
+
+  for (const [count, columns, rows] of [
+    [4, 2, 2],
+    [6, 3, 2],
+    [8, 4, 2],
+  ] as const) {
+    it(`横屏 ${count} 个 → ${columns}×${rows}，竖屏 → ${rows}×${columns}`, () => {
+      const boxes = sessions(count);
+      const wide = tidy(boxes, [], { aspect: 16 / 9 });
+      expect(grid(wide)).toEqual({ columns, rows });
+      const tall = tidy(boxes, [], { aspect: 9 / 16 });
+      expect(grid(tall)).toEqual({ columns: rows, rows: columns });
+      for (const positions of [wide, tall]) {
+        expect(overlaps(boxes, positions)).toEqual([]);
+        for (const point of Object.values(positions)) {
+          expect(point.x % pitchX).toBe(0);
+          expect(point.y % pitchY).toBe(0);
+        }
+      }
+    });
+  }
+
+  it("格子等大、间距是点阵单位的整数倍", () => {
+    expect(pitchX % GRID_UNIT).toBe(0);
+    expect(pitchY % GRID_UNIT).toBe(0);
+    const positions = tidy(sessions(6), [], { aspect: 16 / 9 });
+    expect(positions).toMatchObject({
+      s1: { x: 0, y: 0 },
+    });
+    const xs = [...new Set(Object.values(positions).map((p) => p.x))].sort(
+      (a, b) => a - b,
+    );
+    expect(xs).toEqual([0, pitchX, 2 * pitchX]);
+  });
+
+  it("按画面上的阅读顺序填格子，不按编号", () => {
+    // 画面上：第一行 c、a，第二行 d、b（编号顺序是 a b c d）。
+    const boxes = [
+      placed("a", 900, 20, "agent", SESSION.width, SESSION.height),
+      placed("b", 950, 700, "agent", SESSION.width, SESSION.height),
+      placed("c", 0, 90, "agent", SESSION.width, SESSION.height),
+      placed("d", 10, 640, "agent", SESSION.width, SESSION.height),
+    ];
+    const positions = tidy(boxes, [], { aspect: 16 / 9 });
+    expect(positions).toEqual({
+      c: { x: 0, y: 0 },
+      a: { x: pitchX, y: 0 },
+      d: { x: 0, y: pitchY },
+      b: { x: pitchX, y: pitchY },
+    });
+  });
+
+  for (const [count, columns] of [
+    [5, 3],
+    [7, 4],
+  ] as const) {
+    it(`${count} 个：不满的最后一行整体居中`, () => {
+      const positions = tidy(sessions(count), [], { aspect: 16 / 9 });
+      const rows = new Map<number, number[]>();
+      for (const point of Object.values(positions)) {
+        rows.set(point.y, [...(rows.get(point.y) ?? []), point.x]);
+      }
+      const last = [...rows.entries()].sort((a, b) => b[0] - a[0])[0]![1];
+      const full = columns * SESSION.width + (columns - 1) * CLUSTER_GAP;
+      const used =
+        last.length * SESSION.width + (last.length - 1) * CLUSTER_GAP;
+      const left = Math.min(...last);
+      const right = full - (Math.max(...last) + SESSION.width);
+      // 左右留白相等（取整到点阵，差不超过一格）。
+      expect(Math.abs(left - right)).toBeLessThanOrEqual(GRID_UNIT);
+      expect(left).toBe(Math.floor((full - used) / 2 / GRID_UNIT) * GRID_UNIT);
+    });
+  }
+
+  it("幂等：整理两次，第二次位移为 0", () => {
+    for (const count of [2, 3, 4, 5, 6, 7, 8, 9, 13]) {
+      const boxes = sessions(count);
+      for (const aspect of [16 / 9, 9 / 16, 1]) {
+        const first = tidy(boxes, [], { aspect });
+        expect(again(boxes, [], first, { aspect }), `${count}`).toEqual(first);
+      }
+    }
+  });
+
+  it("尺寸不一时每列取最宽、每行取最高，不重叠、幂等", () => {
+    const boxes = [
+      placed("big", 0, 0, "node", 900, 600),
+      placed("note", 1000, 0, "node", 260, 160),
+      placed("w", 0, 800, "wb", 120, 40),
+      placed("term", 1000, 800, "agent", SESSION.width, SESSION.height),
+    ];
+    const first = tidy(boxes, [], { aspect: 16 / 9 });
+    expect(overlaps(boxes, first)).toEqual([]);
+    expect(first.big).toEqual({ x: 0, y: 0 });
+    // 列宽、行高向上取整到点阵：900 → 910，600 → 611。
+    const up = (value: number) => Math.ceil(value / GRID_UNIT) * GRID_UNIT;
+    expect(first.note).toEqual({ x: up(900) + CLUSTER_GAP, y: 0 });
+    expect(first.w).toEqual({ x: 0, y: up(600) + CLUSTER_GAP });
+    expect(first.term).toEqual({
+      x: up(900) + CLUSTER_GAP,
+      y: up(600) + CLUSTER_GAP,
+    });
+    expect(again(boxes, [], first, { aspect: 16 / 9 })).toEqual(first);
+  });
+
+  it("有连线时不走网格", () => {
+    const boxes = sessions(4);
+    const positions = tidy(boxes, [{ source: "s1", target: "s2" }], {
+      aspect: 16 / 9,
+    });
+    // s1 → s2 拓扑分列：s2 在 s1 右侧一个横向层距之外，同一行。
+    expect(positions.s2!.y).toBe(positions.s1!.y);
+    expect(positions.s2!.x - positions.s1!.x).toBe(
+      Math.ceil((SESSION.width + COLUMN) / GRID_UNIT) * GRID_UNIT,
+    );
   });
 });

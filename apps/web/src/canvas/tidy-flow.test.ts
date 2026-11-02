@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
+  CLUSTER_GAP,
   GRID_UNIT,
   SIBLING_GAP,
   boxesTooClose,
@@ -570,6 +571,102 @@ describe("不重叠（#319）", () => {
             before.get(node.id),
           );
         }
+      }
+    }
+  });
+});
+
+describe("网格（#713）", () => {
+  /** 黄金比例的会话节点默认尺寸（55 × 34 格）。 */
+  const SESSION = { width: 55 * GRID_UNIT, height: 34 * GRID_UNIT };
+  const session = (x: number, y: number) =>
+    makeNode("terminal", {
+      position: { x, y },
+      size: SESSION,
+      data: { kind: "terminal", agent: { id: "claude" } } as CanvasNode["data"],
+    });
+
+  it("横屏 6 个会话一键整理成 3×2，竖屏成 2×3，一次撤销全回", () => {
+    // 随手摆成两列三行（旧版整理在 16:9 下也正是排成这样）。
+    const nodes = [0, 1, 2, 3, 4, 5].map((index) =>
+      session((index % 2) * 900 + index * 11, Math.floor(index / 2) * 600),
+    );
+    for (const [aspect, columns, rows] of [
+      [16 / 9, 3, 2],
+      [9 / 16, 2, 3],
+    ] as const) {
+      resetHistory();
+      load(nodes);
+      const applied = arrangeCanvas({ aspect });
+      const xs = new Set(Object.values(applied).map((point) => point.x));
+      const ys = new Set(Object.values(applied).map((point) => point.y));
+      expect(xs.size, `${aspect}`).toBe(columns);
+      expect(ys.size, `${aspect}`).toBe(rows);
+      expect(crowded(CLUSTER_GAP)).toEqual([]);
+
+      resetHistory();
+      arrangeCanvas({ aspect });
+      expect(canUndo(), "已经整齐时不再提交").toBe(false);
+
+      resetHistory();
+      load(nodes);
+      arrangeCanvas({ aspect });
+      undo();
+      for (const node of nodes) {
+        expect(positionOf(node.id)).toEqual(node.position);
+      }
+    }
+  });
+
+  it("随机画布（无连线：会话、便签、组、白板对象）：排完不挤、组员不动、再整理不动", () => {
+    for (let seed = 1; seed <= 40; seed += 1) {
+      const random = seeded(seed);
+      const nodes: CanvasNode[] = [];
+      const items: Item[] = [];
+      const count = 2 + Math.floor(random() * 10);
+      for (let index = 0; index < count; index += 1) {
+        const at = {
+          x: Math.round(random() * 2400),
+          y: Math.round(random() * 1600),
+        };
+        const roll = random();
+        if (roll < 0.15) {
+          const frame = makeNode("group", {
+            position: at,
+            size: { width: 500, height: 400 },
+          });
+          nodes.push(
+            frame,
+            makeNode("sticky", {
+              parentId: frame.id,
+              position: { x: 40, y: 60 },
+              size: { width: 640, height: 440 },
+            }),
+          );
+        } else if (roll < 0.3) {
+          items.push(makeItem("shape", { ...at, w: 160, h: 90 }));
+        } else if (roll < 0.45) {
+          nodes.push(
+            makeNode("sticky", {
+              position: at,
+              size: { width: 273, height: 169 },
+            }),
+          );
+        } else {
+          nodes.push(session(at.x, at.y));
+        }
+      }
+      for (const aspect of [16 / 9, 9 / 16]) {
+        resetHistory();
+        load(nodes, { items });
+        arrangeCanvas({ aspect });
+        expect(crowded(SIBLING_GAP), `seed ${seed}`).toEqual([]);
+        for (const node of nodes.filter((entry) => entry.parentId)) {
+          expect(positionOf(node.id), `seed ${seed}`).toEqual(node.position);
+        }
+        resetHistory();
+        arrangeCanvas({ aspect });
+        expect(canUndo(), `seed ${seed} ${aspect}`).toBe(false);
       }
     }
   });

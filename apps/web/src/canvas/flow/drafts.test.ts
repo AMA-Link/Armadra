@@ -1,6 +1,13 @@
 import { afterEach, describe, expect, it } from "vitest";
 
-import { clearAllDrafts, clearDrafts, getDrafts, setDraft } from "./drafts";
+import {
+  clearAllDrafts,
+  clearDrafts,
+  getDrafts,
+  setDraft,
+  setDrafts,
+  subscribeDrafts,
+} from "./drafts";
 
 /**
  * 手势草稿（React Flow 计划 §2.1 规则 2）。
@@ -33,6 +40,49 @@ describe("setDraft", () => {
     const first = getDrafts();
     setDraft("a", { position: { x: 9, y: 2 } });
     expect(getDrafts()).not.toBe(first);
+  });
+});
+
+describe("setDrafts", () => {
+  it("多条一次写进去，只发布一次（多选拖动的每一帧）", () => {
+    let published = 0;
+    const release = subscribeDrafts(() => {
+      published += 1;
+    });
+    try {
+      setDrafts([
+        ["a", { position: { x: 1, y: 2 } }],
+        ["b", { position: { x: 3, y: 4 } }],
+        ["c", { position: { x: 5, y: 6 } }],
+      ]);
+      expect(published).toBe(1);
+      expect([...getDrafts().keys()]).toEqual(["a", "b", "c"]);
+      expect(getDrafts().get("b")).toEqual({ position: { x: 3, y: 4 } });
+    } finally {
+      release();
+    }
+  });
+
+  it("与已有草稿合并，值都没变时不换 Map、不发布", () => {
+    setDraft("a", { size: { width: 30, height: 40 } });
+    setDrafts([["a", { position: { x: 1, y: 2 } }]]);
+    expect(getDrafts().get("a")).toEqual({
+      position: { x: 1, y: 2 },
+      size: { width: 30, height: 40 },
+    });
+    const first = getDrafts();
+    let published = 0;
+    const release = subscribeDrafts(() => {
+      published += 1;
+    });
+    try {
+      setDrafts([["a", { position: { x: 1, y: 2 } }]]);
+      setDrafts([]);
+      expect(getDrafts()).toBe(first);
+      expect(published).toBe(0);
+    } finally {
+      release();
+    }
   });
 });
 

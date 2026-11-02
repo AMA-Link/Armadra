@@ -53,6 +53,32 @@ export function setDraft(id: string, draft: Draft): void {
   publish(next);
 }
 
+/**
+ * 一次写多条，只发布一次：多选拖动每一帧都要挪好几个节点，逐条 `setDraft`
+ * 会让投影在同一帧里重跑 N 次。没有任何一条变化时什么都不发布。
+ */
+export function setDrafts(
+  entries: readonly (readonly [string, Draft])[],
+): void {
+  let next: Map<string, Draft> | null = null;
+  for (const [id, draft] of entries) {
+    const previous = (next ?? drafts).get(id);
+    const merged: Draft = { ...previous, ...draft };
+    if (
+      previous &&
+      previous.position?.x === merged.position?.x &&
+      previous.position?.y === merged.position?.y &&
+      previous.size?.width === merged.size?.width &&
+      previous.size?.height === merged.size?.height
+    ) {
+      continue;
+    }
+    next ??= new Map(drafts);
+    next.set(id, merged);
+  }
+  if (next) publish(next);
+}
+
 export function clearDrafts(ids: readonly string[]): void {
   if (drafts.size === 0) return;
   const next = new Map(drafts);
