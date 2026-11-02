@@ -27,6 +27,11 @@ export interface HostIdentityPanelProps {
    * 那一块（`GatewayDevices`）；它靠这个知道哪一行是「当前」、能不能撤销。
    */
   onSession?(session: IdentitySession | null): void;
+  /**
+   * 没有会话时是否给手填配对票的表单（缺省给）。同一页另有登录表单时不给，免得两张
+   * 表单并排；地址栏里的配对票照样自动取走。
+   */
+  ticketForm?: boolean;
 }
 
 /** 身份面用不上的原因；`null` 表示可以用。 */
@@ -55,6 +60,7 @@ function failureKey(error: unknown): string {
 export function HostIdentityPanel({
   hello,
   onSession,
+  ticketForm = true,
 }: HostIdentityPanelProps) {
   const t = useT();
   const locale = usePreferencesStore((state) => state.locale);
@@ -201,59 +207,61 @@ export function HostIdentityPanel({
             )}
           </div>
           {!session ? (
-            <form
-              className="flex min-w-0 flex-col gap-3 px-4 py-3"
-              onSubmit={(event) => {
-                event.preventDefault();
-                if (busy || !ticket.trim()) return;
-                const material = ticket;
-                setTicket("");
-                void run(async (mark) =>
-                  accept(mark, await pairIdentity(material)),
-                );
-              }}
-            >
-              <label
-                htmlFor={`${id}-ticket`}
-                className="block text-body font-medium"
+            ticketForm && (
+              <form
+                className="flex min-w-0 flex-col gap-3 px-4 py-3"
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  if (busy || !ticket.trim()) return;
+                  const material = ticket;
+                  setTicket("");
+                  void run(async (mark) =>
+                    accept(mark, await pairIdentity(material)),
+                  );
+                }}
               >
-                {t("hostIdentity.ticket")}
-              </label>
-              <Textarea
-                id={`${id}-ticket`}
-                rows={3}
-                maxLength={8192}
-                autoComplete="off"
-                autoCapitalize="none"
-                spellCheck={false}
-                value={ticket}
-                disabled={busy}
-                onChange={(event) => setTicket(event.target.value)}
-                className="min-w-0 resize-y text-meta"
-              />
-              <div className="flex flex-wrap gap-2">
-                <Button
-                  type="submit"
-                  size="sm"
-                  disabled={busy || !ticket.trim()}
+                <label
+                  htmlFor={`${id}-ticket`}
+                  className="block text-body font-medium"
                 >
-                  {t("hostIdentity.pair")}
-                </Button>
-                <Button
-                  type="button"
-                  variant="secondary"
-                  size="sm"
+                  {t("hostIdentity.ticket")}
+                </label>
+                <Textarea
+                  id={`${id}-ticket`}
+                  rows={3}
+                  maxLength={8192}
+                  autoComplete="off"
+                  autoCapitalize="none"
+                  spellCheck={false}
+                  value={ticket}
                   disabled={busy}
-                  onClick={() =>
-                    void run(async (mark) =>
-                      accept(mark, await resumeIdentity()),
-                    )
-                  }
-                >
-                  {t("hostIdentity.restore")}
-                </Button>
-              </div>
-            </form>
+                  onChange={(event) => setTicket(event.target.value)}
+                  className="min-w-0 resize-y text-meta"
+                />
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    type="submit"
+                    size="sm"
+                    disabled={busy || !ticket.trim()}
+                  >
+                    {t("hostIdentity.pair")}
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    size="sm"
+                    disabled={busy}
+                    onClick={() =>
+                      void run(async (mark) =>
+                        accept(mark, await resumeIdentity()),
+                      )
+                    }
+                  >
+                    {t("hostIdentity.restore")}
+                  </Button>
+                </div>
+              </form>
+            )
           ) : (
             <>
               <SettingsRow

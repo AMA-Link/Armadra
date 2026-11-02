@@ -241,6 +241,19 @@ describe("HostIdentityPanel", () => {
     expect((await screen.findAllByText(/My browser/))[0]).toBeTruthy();
   });
 
+  it("同一页另有登录表单时不给配对票表单，地址栏的票照样取走", async () => {
+    mocks.takeTicket.mockReturnValue("ticket-from-fragment");
+    mocks.pair.mockRejectedValue(new Error("expired"));
+    render(<HostIdentityPanel hello={hello} ticketForm={false} />);
+    await waitFor(() =>
+      expect(mocks.pair).toHaveBeenCalledWith("ticket-from-fragment"),
+    );
+    expect(
+      screen.queryByLabelText(hostIdentity["zh-CN"]["hostIdentity.ticket"]!),
+    ).toBeNull();
+    expect(document.querySelector("form")).toBeNull();
+  });
+
   it("does not request the device list without the read grant", async () => {
     mocks.resume.mockResolvedValue({
       ...session,
