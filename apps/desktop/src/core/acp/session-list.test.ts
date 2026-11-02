@@ -1,5 +1,7 @@
 import { rmSync } from "node:fs";
 import { tmpdir } from "node:os";
+import { dirname, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 
 import { fakeAcpAgentPath } from "@armadra/agent/acp";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -11,6 +13,7 @@ import { AcpSession, type AcpSessionSink } from "./session";
 import {
   MAX_LISTED_SESSIONS,
   listSessionsOn,
+  type SessionListing,
   listedSessions,
 } from "./session-list";
 import { tempDir } from "../testing/temp-dir";
@@ -81,6 +84,27 @@ describe("listSessionsOn", () => {
     expect(listSessions).toHaveBeenCalledTimes(1);
   });
 
+  it("answers only sessions inside the root, whatever the agent reports", async () => {
+    const listSessions = vi.fn().mockResolvedValue({
+      sessions: [
+        { sessionId: "in", cwd: "/w" },
+        { sessionId: "sub", cwd: "/w/sub" },
+        { sessionId: "dotdot", cwd: "/w/../x" },
+        { sessionId: "sibling", cwd: "/w-x" },
+        { sessionId: "other", cwd: "/other" },
+        { sessionId: "none", cwd: "" },
+      ],
+    });
+    const result = await listSessionsOn(
+      { ...caps(true), process: { client: { listSessions } } },
+      { root: "/w" },
+    );
+    expect(result.sessions.map((item) => item.sessionId)).toEqual([
+      "in",
+      "sub",
+    ]);
+  });
+
   it("supportsList() on the client wins over the declared capability", async () => {
     const listSessions = vi.fn().mockResolvedValue({ sessions: [] });
     await expect(
@@ -117,6 +141,63 @@ describe("POST /api/acp/agent-sessions", () => {
     });
     expect(answer.status, JSON.stringify(answer.body)).toBe(200);
     expect(answer.body).toEqual({ sessions: [] });
+  });
+
+  describe("scoped to the workspace root", () => {
+    const listAgent = fileURLToPath(
+      new URL("./list-agent.fixture.mjs", import.meta.url),
+    );
+
+    async function rootOf(core: AcpCore): Promise<string> {
+      const workspaces = (await core.core.call("GET", "/api/workspaces"))
+        .body as { id: string; rootPath: string }[];
+      const found = workspaces.find((item) => item.id === core.workspaceId);
+      return resolve((found as { rootPath: string }).rootPath);
+    }
+
+    const idsOf = (body: unknown): string[] =>
+      (body as SessionListing).sessions.map((item) => item.sessionId);
+
+    it("keeps only sessions inside the root when the request has no cwd", async () => {
+      open = await acpCore({ script: listAgent });
+      const answer = await open.core.call("POST", "/api/acp/agent-sessions", {
+        workspaceId: open.workspaceId,
+        agentId: FAKE_AGENT,
+      });
+      expect(answer.status, JSON.stringify(answer.body)).toBe(200);
+      expect(idsOf(answer.body).sort()).toEqual(["in-root", "in-sub"]);
+    });
+
+    it("keeps the root filter when the request names a cwd inside the root", async () => {
+      open = await acpCore({ script: listAgent });
+      const root = await rootOf(open);
+      const answer = await open.core.call("POST", "/api/acp/agent-sessions", {
+        workspaceId: open.workspaceId,
+        agentId: FAKE_AGENT,
+        cwd: root,
+      });
+      expect(answer.status, JSON.stringify(answer.body)).toBe(200);
+      expect(idsOf(answer.body).sort()).toEqual(["in-root", "in-sub"]);
+    });
+
+    it("refuses a cwd outside the workspace root", async () => {
+      open = await acpCore({ script: listAgent });
+      const root = await rootOf(open);
+      for (const cwd of [
+        "/somewhere/else",
+        dirname(root),
+        `${root}-sibling`,
+        join(root, "..", "elsewhere"),
+      ]) {
+        const answer = await open.core.call("POST", "/api/acp/agent-sessions", {
+          workspaceId: open.workspaceId,
+          agentId: FAKE_AGENT,
+          cwd,
+        });
+        expect(answer.status, cwd).toBe(400);
+        expect(answer.body, cwd).not.toHaveProperty("sessions");
+      }
+    });
   });
 
   it("is refused when the agent does not declare session/list", async () => {

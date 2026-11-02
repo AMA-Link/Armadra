@@ -4998,3 +4998,10 @@ owner（本机会话，或已信任设备经通道的 owner 会话）：`{ sourc
 - `ProcessSample`（`SessionResources.children[]`、平台组件的 `process` / `children[]`）多一个可选字段 `origin: "armadra"`：这个进程是**本次安装**自己的程序。缺省 = 无结论，旧页面忽略它。
 - 判定只看可执行路径，不按名字猜（别的 Electron 应用也有 `Foo Helper`）：macOS 是路径落在运行中 core 所在的 `.app` 包（`X.app/Contents/…`）之下；其他平台是安装目录里与主程序同名的二进制，且主程序不是 `node`（服务器壳跑在系统 `node` 上，认它会把用户自己的 node 进程都认成 Armadra 的）。读不到路径的进程不认。远端主机（SSH）上读到的树不带这个字段。
 - 会话行没有新字段：标题、Agent 与画板名取自 `GET /api/workspaces/{id}/sessions`（§5.1 的会话行），那份读模型覆盖工作空间的所有画板。面板的会话组标题就是节点标题，不再退到 `cwd` 的末级目录。
+
+## 95. ACP 健壮性补丁（审计批次 B3）
+
+### 95.1 「接管会话」列表限定在工作空间根（§92.3）
+
+- `POST /api/acp/agent-sessions` 的 `cwd` 只能是该工作空间根目录或它之下的目录：缺省或空串 = 工作空间根；其他路径（含 `..` 越出、与根同前缀的兄弟目录）答 `400`，错误体 `{ code, message }`。权限仍是该工作空间的 `terminal:create`，所以这条约束是跨项目看会话的唯一屏障。
+- core 不信 Agent 按 `cwd` 过滤：答复里的会话再按工作空间根筛一遍，只留 `cwd` 在根之下的，没有 `cwd` 的也丢掉。

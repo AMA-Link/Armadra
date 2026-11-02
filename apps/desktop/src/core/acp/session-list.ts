@@ -9,6 +9,8 @@
  * 否则按页取。
  */
 
+import { isAbsolute, relative, resolve } from "node:path";
+
 import { AcpError } from "./client";
 import type { AdapterProcessContext } from "./host";
 import type { AcpListSessionsResult } from "./types";
@@ -28,6 +30,13 @@ export interface SessionListing {
 
 /** 一次最多答这么多条：Agent 的历史可能很长，页面只是个选择器。 */
 export const MAX_LISTED_SESSIONS = 200;
+
+/** `candidate` 就是 `root`，或在它之下（按路径段比较，`/w-x` 不在 `/w` 里）。 */
+export function withinRoot(root: string, candidate: string): boolean {
+  if (candidate === "") return false;
+  const path = relative(resolve(root), resolve(candidate));
+  return path === "" || (!path.startsWith("..") && !isAbsolute(path));
+}
 
 interface ListCapableClient {
   supportsList?(): boolean;
@@ -49,7 +58,7 @@ function clip(value: unknown, limit: number): string | undefined {
 }
 
 /** Agent 答的会话列表收成线上形状：丢掉没有 id 的，字段截断，条数封顶。 */
-export function listedSessions(raw: unknown): ListedSession[] {
+export function listedSessions(raw: unknown, root?: string): ListedSession[] {
   if (!Array.isArray(raw)) return [];
   const out: ListedSession[] = [];
   for (const item of raw) {
@@ -57,6 +66,10 @@ export function listedSessions(raw: unknown): ListedSession[] {
     const entry = item as Record<string, unknown>;
     const sessionId = clip(entry.sessionId, 512);
     if (sessionId === undefined) continue;
+    // 不信 Agent 按 `cwd` 过滤：不在工作空间根之下的（含没有 `cwd` 的）一条也不答。
+    if (root !== undefined && !withinRoot(root, clip(entry.cwd, 4096) ?? "")) {
+      continue;
+    }
     const title = clip(entry.title, 200);
     const updatedAt = clip(entry.updatedAt, 64);
     out.push({
@@ -78,6 +91,8 @@ export async function listSessionsOn(
   params: {
     readonly cwd?: string | undefined;
     readonly cursor?: string | undefined;
+    /** 工作空间根：只答在它之下的会话（缺省 = 不限，仅内部用）。 */
+    readonly root?: string | undefined;
     readonly signal?: AbortSignal | undefined;
   } = {},
 ): Promise<SessionListing> {
@@ -99,7 +114,7 @@ export async function listSessionsOn(
     ) {
       const all = await client.listAllSessions(params.cwd, params.signal);
       const list = Array.isArray(all) ? all : all.sessions;
-      return { sessions: listedSessions(list) };
+      return { sessions: listedSessions(list, params.root) };
     }
     const page = await client.listSessions(
       params.cwd,
@@ -108,7 +123,7 @@ export async function listSessionsOn(
     );
     const next = clip(page?.nextCursor, 1024);
     return {
-      sessions: listedSessions(page?.sessions),
+      sessions: listedSessions(page?.sessions, params.root),
       ...(next === undefined ? {} : { nextCursor: next }),
     };
   } catch (error) {

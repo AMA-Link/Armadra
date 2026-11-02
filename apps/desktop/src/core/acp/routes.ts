@@ -42,7 +42,7 @@ import { type AttachmentBlocks, attachmentBlocks } from "./attachments";
 import { AcpError } from "./client";
 import { AcpFeed } from "./feed";
 import type { AcpStartPlan, AcpTerminalWiring } from "./index";
-import type { SessionListing } from "./session-list";
+import { type SessionListing, withinRoot } from "./session-list";
 import { sshHostOf } from "./ssh";
 
 export interface AcpRouteDeps {
@@ -536,10 +536,17 @@ export function installRoutes(context: CoreContext, deps: AcpRouteDeps): void {
       if (deps.listSessions === undefined) {
         throw new AcpError("acp_unsupported", "ACP is not assembled");
       }
-      const cwd = optionalString(body, "cwd");
+      const asked = optionalString(body, "cwd");
       const cursor = optionalString(body, "cursor");
+      // 目录只能是工作空间根或它之下：空 = 根；根以外的一律拒绝，免得拿这条路
+      // 去看这台主机上别的项目的会话（权限只核对了这个工作空间）。
+      const cwd =
+        asked === undefined || asked === "" ? scope.cwd : deps.cwdOf(asked);
+      if (!withinRoot(scope.cwd, cwd)) {
+        throw badRequest("cwd must be inside the workspace root");
+      }
       return deps.listSessions(scope.workspaceId, scope.agentId, scope.cwd, {
-        ...(cwd === undefined || cwd === "" ? {} : { cwd }),
+        cwd,
         ...(cursor === undefined || cursor === "" ? {} : { cursor }),
       });
     },
