@@ -27,7 +27,7 @@ import {
   type CanvasFlowEdge,
   type CanvasFlowNode,
 } from "../sync/project";
-import { clearDrafts, setDraft, useDrafts } from "./drafts";
+import { clearDrafts, setDrafts, useDrafts } from "./drafts";
 import { applyWebviewPool } from "@/nodes/browser/pool";
 import { requestNodeNames } from "@/nodes/node-names";
 
@@ -44,7 +44,11 @@ export interface FlowBindings {
   edges: CanvasFlowEdge[];
   onNodesChange: (changes: NodeChange<CanvasFlowNode>[]) => void;
   onEdgesChange: (changes: EdgeChange<CanvasFlowEdge>[]) => void;
-  onNodeDrag: (event: unknown, node: CanvasFlowNode) => void;
+  onNodeDrag: (
+    event: unknown,
+    node: CanvasFlowNode,
+    nodes?: CanvasFlowNode[],
+  ) => void;
   onNodeDragStop: (
     event: unknown,
     node: CanvasFlowNode,
@@ -58,11 +62,30 @@ export interface FlowBindings {
   isValidConnection: IsValidConnection<CanvasFlowEdge>;
 }
 
-/** 拖动中的位置只进草稿；一次手势结束才提交一条历史（§2.1 规则 2）。 */
-function draftMoves(nodes: readonly CanvasFlowNode[]): void {
-  for (const node of nodes) {
-    setDraft(node.id, { position: { x: node.position.x, y: node.position.y } });
-  }
+/**
+ * 拖动中的位置只进草稿；一次手势结束才提交一条历史（§2.1 规则 2）。
+ *
+ * **写这一帧被拖动的全部节点**，不只是指针下那一个。画布是受控的，React
+ * Flow 报来的位置变更 `onNodesChange` 一概不收，节点画在哪里只看投影——投影
+ * 只读文档与这张草稿表。多选拖动（或拖框选之后那块虚线选区框）时 React Flow
+ * 把整组节点放在第三个参数里，以前这里只写了第一个参数，结果只有一个节点
+ * 跟着指针走，其余的原地不动，松手时才一起跳到落点（#713）。
+ *
+ * 白板对象（`wb:`）不走草稿，由 `whiteboard/tools/use-item-drag.ts` 的中间件
+ * 每帧直接写白板文档。
+ */
+export function draftMoves(nodes: readonly CanvasFlowNode[]): void {
+  setDrafts(
+    nodes
+      .filter((node) => isDocumentNodeId(node.id))
+      .map(
+        (node) =>
+          [
+            node.id,
+            { position: { x: node.position.x, y: node.position.y } },
+          ] as const,
+      ),
+  );
 }
 
 /**
@@ -242,7 +265,8 @@ export function useFlowNodes(): FlowBindings {
   );
 
   const onNodeDrag = React.useCallback(
-    (_event: unknown, node: CanvasFlowNode) => draftMoves([node]),
+    (_event: unknown, node: CanvasFlowNode, dragged?: CanvasFlowNode[]) =>
+      draftMoves(dragged && dragged.length > 0 ? dragged : [node]),
     [],
   );
 
