@@ -51,28 +51,69 @@ export interface DataListProps<T> {
   readonly onRowOpen?: (row: T) => void;
   /** 动作列的读屏列头。 */
   readonly actionsHeader?: string;
-  /** 强制一种渲染；缺省 ≥768 表格、≤767 列表。 */
+  /** 强制一种渲染；缺省视口 ≤767 或容器窄于 {@link DATA_LIST_TABLE_MIN_WIDTH} 画列表，其余表格。 */
   readonly layout?: "table" | "list";
   /** 行下方展开的内容（有效权限的各条来源之类）：只对 `expanded` 里的行渲染，两种渲染同一份。 */
   readonly detail?: (row: T) => React.ReactNode;
   readonly expanded?: ReadonlySet<string>;
 }
 
-export function DataList<T>({
+/** 容器窄于这个宽度就画列表：表格的几列加动作列放不下，右侧会被裁。 */
+export const DATA_LIST_TABLE_MIN_WIDTH = 520;
+
+/**
+ * 容器自己的宽度（量不出来是 0，如 jsdom）。控制台的主区被侧栏、抽屉挤窄时，
+ * 视口还是桌面宽度，所以紧凑与否看容器，不看视口。
+ */
+function useContainerWidth(
+  ref: React.RefObject<HTMLElement | null>,
+  /** 容器没挂上（没有行）时不量。 */
+  absent: boolean,
+): number {
+  const [width, setWidth] = React.useState(0);
+  React.useLayoutEffect(() => {
+    const element = ref.current;
+    if (absent || !element) return;
+    setWidth(element.getBoundingClientRect().width);
+    if (typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver((entries) => {
+      const entry = entries[entries.length - 1];
+      if (entry) setWidth(entry.contentRect.width);
+    });
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [ref, absent]);
+  return width;
+}
+
+export function DataList<T>(props: DataListProps<T>) {
+  const ref = React.useRef<HTMLDivElement>(null);
+  const empty = props.rows.length === 0;
+  const width = useContainerWidth(ref, empty);
+  const compact = useCompactLayout();
+  if (empty) return null;
+  const narrow = width > 0 && width < DATA_LIST_TABLE_MIN_WIDTH;
+  const list =
+    (props.layout ?? (compact || narrow ? "list" : "table")) === "list";
+  return (
+    <div ref={ref} data-slot="data-list" className="w-full min-w-0">
+      <DataListBody {...props} list={list} />
+    </div>
+  );
+}
+
+function DataListBody<T>({
+  list,
   caption,
   rows,
   columns,
   rowKey,
   actions,
   actionsHeader,
-  layout,
   onRowOpen,
   detail,
   expanded,
-}: DataListProps<T>) {
-  const compact = useCompactLayout();
-  const list = (layout ?? (compact ? "list" : "table")) === "list";
-  if (rows.length === 0) return null;
+}: DataListProps<T> & { list: boolean }) {
   const subs = columns.filter((column) => column.role === "sub");
   const cells = columns.filter((column) => column.role !== "sub");
   const present = (node: React.ReactNode) =>

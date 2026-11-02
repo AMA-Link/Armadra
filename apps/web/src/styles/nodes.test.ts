@@ -15,6 +15,12 @@ describe("nodes.css 节点头（设计系统 §4）", () => {
     expect(nodesCss).not.toMatch(/node-header[^{]*\{[^}]*opacity:\s*0/);
   });
 
+  it("胶囊不收缩：收缩的胶囊两侧被切（「6.6 MB」），窄了由 HeaderChips 折进计数", () => {
+    expect(
+      block('.node-header-chips > [data-slot="header-chips"] > * {'),
+    ).toContain("flex-shrink: 0");
+  });
+
   it("胶囊簇最多占头部 40%", () => {
     expect(nodesCss).toMatch(/\.node-header-chips\s*\{\s*max-width:\s*40%;/);
   });

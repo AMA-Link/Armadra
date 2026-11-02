@@ -533,9 +533,13 @@ export function TemplateEditor({
                       key={role.id}
                       data-slot="workflow-editor-role"
                       data-role-id={role.id}
-                      className="flex min-w-0 items-center gap-2"
+                      // 窄屏换行：标题输入框不被挤成半个字，下拉与删除落到第二行。
+                      className="flex min-w-0 flex-wrap items-center gap-2"
                     >
-                      <span className="w-16 shrink-0 truncate font-mono text-meta">
+                      <span
+                        title={role.id}
+                        className="w-24 shrink-0 truncate font-mono text-meta"
+                      >
                         {role.id}
                       </span>
                       <Input
@@ -543,7 +547,7 @@ export function TemplateEditor({
                           id: role.id,
                         })}
                         placeholder={role.id}
-                        className="min-w-0 flex-1"
+                        className="min-w-36 flex-1"
                         maxLength={160}
                         value={role.title ?? ""}
                         onChange={(event) =>

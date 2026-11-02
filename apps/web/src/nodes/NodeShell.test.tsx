@@ -90,12 +90,7 @@ function openMenu(
 ) {
   return render(
     <DropdownMenu open>
-      <NodeMenuContent
-        node={makeNode()}
-        collapsed={false}
-        maximized={false}
-        {...props}
-      />
+      <NodeMenuContent node={makeNode()} {...props} />
     </DropdownMenu>,
   );
 }
@@ -333,7 +328,7 @@ describe("NodeShell", () => {
     const asked: string[][] = [];
     const release = onNodeNamesRequest((ids) => asked.push([...ids]));
     try {
-      openMenu({ onRename: vi.fn() });
+      openMenu();
       fireEvent.click(screen.getByRole("menuitem", { name: "名字…" }));
       expect(asked).toEqual([["n1"]]);
     } finally {
@@ -343,9 +338,7 @@ describe("NodeShell", () => {
 
   it("draws the name badge only when the node has one, and opens it on click", () => {
     const plain = makeNode();
-    const { unmount } = render(
-      <NodeHeader node={plain} collapsed={false} maximized={false} />,
-    );
+    const { unmount } = render(<NodeHeader node={plain} />);
     expect(screen.queryByLabelText("名字…")).toBeNull();
     unmount();
 
@@ -355,7 +348,7 @@ describe("NodeShell", () => {
     const asked: string[][] = [];
     const release = onNodeNamesRequest((ids) => asked.push([...ids]));
     try {
-      render(<NodeHeader node={named} collapsed={false} maximized={false} />);
+      render(<NodeHeader node={named} />);
       fireEvent.click(screen.getByLabelText("名字…"));
       expect(screen.getByText("@reviewer")).toBeTruthy();
       expect(asked).toEqual([["n1"]]);
@@ -367,7 +360,7 @@ describe("NodeShell", () => {
   /** 菜单里那一项翻的是同一个开关：标题当场变成输入框。 */
   it("enters rename when the header is told to", () => {
     const node = makeNode();
-    render(<NodeHeader node={node} collapsed={false} maximized={false} />);
+    render(<NodeHeader node={node} />);
     expect(screen.queryByLabelText("标题")).toBeNull();
     fireEvent.doubleClick(screen.getByText("便签 1"));
     const input = screen.getByLabelText("标题");

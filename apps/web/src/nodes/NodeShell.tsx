@@ -1,16 +1,6 @@
 import * as React from "react";
 import type { CanvasNode } from "@armadra/shared";
-import {
-  AtSign,
-  ChevronDown,
-  ChevronRight,
-  Expand,
-  Maximize2,
-  Minimize2,
-  MoreHorizontal,
-  PencilLine,
-  X,
-} from "lucide-react";
+import { AtSign, Expand, MoreHorizontal, X } from "lucide-react";
 
 import { HeaderApproval } from "@/approval/ApprovalShell";
 import { cn } from "@/lib/cn";
@@ -39,8 +29,8 @@ import {
   isZoomWheel,
   zoomCanvasByWheel,
 } from "@/canvas/interaction/wheel-zoom";
-import { NodeAnnotationHost, NodeMetaMenuItems } from "@/meta/NodeMeta";
-import { HeaderChips } from "./HeaderChips";
+import { NodeAnnotationHost } from "@/meta/NodeMeta";
+import { HeaderChips, visibleChipsFor } from "./HeaderChips";
 import { NodeNameBadge } from "./NodeNameBadge";
 import { SupervisionBadge } from "./SupervisionBadge";
 import { requestNodeNames } from "./node-names";
@@ -226,9 +216,6 @@ export function NodeShell({
 }: NodeShellProps) {
   const meta = nodeMeta(node.type);
   const collapsed = node.collapsed === true;
-  const maximized = useCanvasStore((state) =>
-    Boolean(state.maximized?.[node.id]),
-  );
   const bodyRef = React.useRef<HTMLDivElement>(null);
   useNodeBodyGuards(bodyRef);
   // 节点自己的状态光晕优先；没有时才亮「刚落成」那一次（`canvas/node-flash`）。
@@ -259,8 +246,6 @@ export function NodeShell({
       >
         <NodeHeader
           node={node}
-          collapsed={collapsed}
-          maximized={maximized}
           status={status}
           headerMark={headerMark}
           headerChips={headerChips}
@@ -306,8 +291,6 @@ export function NodeShell({
  */
 export function NodeHeader({
   node,
-  collapsed,
-  maximized,
   status,
   headerMark,
   headerChips,
@@ -317,8 +300,6 @@ export function NodeHeader({
   statusPopover,
 }: {
   node: CanvasNode;
-  collapsed: boolean;
-  maximized: boolean;
   status?: NodeShellProps["status"];
   headerMark?: React.ReactNode;
   headerChips?: React.ReactNode;
@@ -360,7 +341,9 @@ export function NodeHeader({
         <SupervisionBadge node={node} />
       </span>
 
-      <HeaderChips>{headerChips}</HeaderChips>
+      <HeaderChips max={visibleChipsFor(node.size?.width)}>
+        {headerChips}
+      </HeaderChips>
 
       {status && (
         <NodeStatus
@@ -378,13 +361,7 @@ export function NodeHeader({
       >
         {headerActions}
 
-        <NodeMenu
-          node={node}
-          collapsed={collapsed}
-          maximized={maximized}
-          items={menuItems}
-          onRename={() => setRenaming(true)}
-        />
+        <NodeMenu node={node} items={menuItems} />
 
         <IconButton
           className="hover:text-danger-text"
@@ -450,13 +427,7 @@ function NodeStatus({
  * 在最上面（终端的搜索 / 打断 / 模型…），然后是折叠与最大化，最后是 AI 命名
  * 与备注。所有节点类型走的都是这一个组件，所以菜单结构天然一致。
  */
-function NodeMenu(props: {
-  node: CanvasNode;
-  collapsed: boolean;
-  maximized: boolean;
-  items?: React.ReactNode;
-  onRename?: () => void;
-}) {
+function NodeMenu(props: { node: CanvasNode; items?: React.ReactNode }) {
   const t = useT();
   return (
     <DropdownMenu>
@@ -473,16 +444,10 @@ function NodeMenu(props: {
 /** 菜单正文单独导出：它是这些动作唯一的入口，测试要够得到它。 */
 export function NodeMenuContent({
   node,
-  collapsed,
-  maximized,
   items,
-  onRename,
 }: {
   node: CanvasNode;
-  collapsed: boolean;
-  maximized: boolean;
   items?: React.ReactNode;
-  onRename?: () => void;
 }) {
   const t = useT();
   const compact = useCompactLayout();

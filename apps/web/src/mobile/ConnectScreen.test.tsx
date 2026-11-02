@@ -157,6 +157,19 @@ describe("连接页 · 配对码", () => {
     expect(
       document.querySelectorAll("[data-slot=input-otp-group]"),
     ).toHaveLength(2);
+    // 窄屏（390px 容器 342px）放不下 8 个定宽 40px 的格子：格子与两组都要能收缩。
+    for (const slot of document.querySelectorAll(
+      "[data-slot=input-otp-slot]",
+    )) {
+      expect(slot.className).toContain("min-w-0");
+      expect(slot.className).toContain("flex-1");
+      expect(slot.className).toContain("aspect-square");
+      expect(slot.className).not.toMatch(/\bsize-10\b/);
+    }
+    for (const group of document.querySelectorAll(
+      "[data-slot=input-otp-group]",
+    ))
+      expect(group.className).toContain("min-w-0");
     // 没有「改用配对链接」：这一页没有票。
     expect(screen.queryByRole("button", { name: "改用配对链接" })).toBeNull();
     typeCode("3f7k9q2m");

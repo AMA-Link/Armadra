@@ -15,6 +15,7 @@ import { RuntimeRequestError } from "../../../../api/request";
 import { localSource } from "../../../../api/source";
 import { usePreferencesStore, useT } from "../../../../app/preferences-store";
 import { useAccess } from "../../../../app/use-access";
+import { useCompactLayout } from "@/platform/layout";
 import { notify } from "../../../../platform";
 import { SecuritySectionSkeleton } from "./parts";
 import {
@@ -46,6 +47,14 @@ import {
   DropdownMenuTrigger,
 } from "@/ui/dropdown-menu";
 import { Input } from "@/ui/input";
+import {
+  Item,
+  ItemActions,
+  ItemContent,
+  ItemGroup,
+  ItemSeparator,
+  ItemTitle,
+} from "@/ui/item";
 import { InputOTP, InputOTPGroup, InputOTPSlot } from "@/ui/input-otp";
 import {
   Table,
@@ -182,6 +191,7 @@ export function E2eDevices() {
   const locale = usePreferencesStore((state) => state.locale);
   // 设备钥只有 owner 管（契约 §77，与设置同一档）：成员不取，免得 403。
   const owner = !useAccess().member;
+  const compact = useCompactLayout();
   useDeviceEvents();
   const devices = useQuery({
     queryKey: DEVICES_QUERY_KEY,
@@ -207,6 +217,41 @@ export function E2eDevices() {
       toast.error(failureText(t, error));
     }
   };
+  const rowMenu = (device: TrustedDevice) => (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <IconButton label={t("e2e.devices.actions")}>
+          <MoreHorizontal />
+        </IconButton>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end">
+        <DropdownMenuItem
+          onSelect={() => {
+            setLabel(device.label);
+            setRenaming(device);
+          }}
+        >
+          {t("e2e.devices.rename")}
+        </DropdownMenuItem>
+        {device.status === "trusted" && (
+          <DropdownMenuItem
+            variant="destructive"
+            onSelect={() => void act(() => devicesApi.revoke(device))}
+          >
+            {t("e2e.devices.revoke")}
+          </DropdownMenuItem>
+        )}
+        {device.status !== "pending" && (
+          <DropdownMenuItem
+            variant="destructive"
+            onSelect={() => void act(() => devicesApi.forget(device))}
+          >
+            {t("e2e.devices.forget")}
+          </DropdownMenuItem>
+        )}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
   // 没有权限（成员）或这台没装中继时整块不出现。
   if (!owner || (devices.data === undefined && !devices.isLoading)) return null;
   const rows = devices.data ?? [];
@@ -220,7 +265,52 @@ export function E2eDevices() {
           title={t("e2e.devices.title")}
           actions={<PairDeviceButton />}
         >
-          {rows.length > 0 && (
+          {rows.length > 0 && compact && (
+            <ItemGroup className="gap-0" data-slot="e2e-devices-list">
+              {rows.map((device, index) => (
+                <React.Fragment
+                  key={`${device.deviceId}:${device.principalId}`}
+                >
+                  {index > 0 && <ItemSeparator className="my-0" />}
+                  <Item className="flex-nowrap">
+                    <ItemContent className="min-w-0">
+                      <ItemTitle className="w-full min-w-0">
+                        <span className="min-w-0 truncate">
+                          {device.label || device.deviceId.slice(0, 8)}
+                        </span>
+                        <PlatformBadge platform={device.platform} />
+                      </ItemTitle>
+                      <span className="flex min-w-0 flex-wrap gap-x-1 text-caption text-muted-foreground tabular-nums">
+                        {device.principalName && (
+                          <span className="min-w-0 truncate">
+                            {device.principalName}
+                          </span>
+                        )}
+                        {device.principalName && device.lastSeenAtMs > 0 && (
+                          <span aria-hidden>·</span>
+                        )}
+                        {device.lastSeenAtMs > 0 && (
+                          <span>{dateTime.format(device.lastSeenAtMs)}</span>
+                        )}
+                      </span>
+                      {device.status === "pending" &&
+                        device.pendingId !== null && (
+                          <ApproveForm device={device} />
+                        )}
+                    </ItemContent>
+                    <ItemActions>
+                      <StatusPill
+                        tone={STATUS_TONE[device.status]}
+                        label={t(`e2e.devices.status.${device.status}`)}
+                      />
+                      {rowMenu(device)}
+                    </ItemActions>
+                  </Item>
+                </React.Fragment>
+              ))}
+            </ItemGroup>
+          )}
+          {rows.length > 0 && !compact && (
             <Table>
               <TableHeader>
                 <TableRow>
@@ -260,43 +350,7 @@ export function E2eDevices() {
                           : "—"}
                       </TableCell>
                       <TableCell className="text-right">
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <IconButton label={t("e2e.devices.actions")}>
-                              <MoreHorizontal />
-                            </IconButton>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end">
-                            <DropdownMenuItem
-                              onSelect={() => {
-                                setLabel(device.label);
-                                setRenaming(device);
-                              }}
-                            >
-                              {t("e2e.devices.rename")}
-                            </DropdownMenuItem>
-                            {device.status === "trusted" && (
-                              <DropdownMenuItem
-                                variant="destructive"
-                                onSelect={() =>
-                                  void act(() => devicesApi.revoke(device))
-                                }
-                              >
-                                {t("e2e.devices.revoke")}
-                              </DropdownMenuItem>
-                            )}
-                            {device.status !== "pending" && (
-                              <DropdownMenuItem
-                                variant="destructive"
-                                onSelect={() =>
-                                  void act(() => devicesApi.forget(device))
-                                }
-                              >
-                                {t("e2e.devices.forget")}
-                              </DropdownMenuItem>
-                            )}
-                          </DropdownMenuContent>
-                        </DropdownMenu>
+                        {rowMenu(device)}
                       </TableCell>
                     </TableRow>
                     {device.status === "pending" &&

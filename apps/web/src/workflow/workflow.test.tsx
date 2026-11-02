@@ -13,6 +13,7 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from "@testing-library/react";
 import type {
   WorkflowDraft,
@@ -482,6 +483,17 @@ describe("模板编辑器：增删与角色", () => {
     });
     // lead 删了，连着它的协作连线也去掉。
     expect(input.template.links).toEqual([]);
+  });
+
+  it("角色行窄屏换行，角色 id 截断时悬停给全名", () => {
+    open();
+    const row = document.querySelector(
+      '[data-slot="workflow-editor-role"][data-role-id="reviewer"]',
+    ) as HTMLElement;
+    expect(row.className).toContain("flex-wrap");
+    const id = within(row).getByText("reviewer");
+    expect(id.getAttribute("title")).toBe("reviewer");
+    expect(id.className).toContain("w-24");
   });
 
   it("依赖里会成环的那一项不让勾", async () => {

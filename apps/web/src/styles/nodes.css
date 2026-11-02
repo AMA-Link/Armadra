@@ -200,11 +200,16 @@
   text-overflow: ellipsis;
 }
 
-/* When the cluster is squeezed the chips give way one by one instead of
-   spilling over the overflow counter beside them. */
+/* Chips never shrink: a shrunk chip clips its text on both sides ("6.6 MB"
+   cut to "6 MB"). When the cluster is squeezed, HeaderChips folds more of them
+   into the counter (by node width), and anything still too wide is cut off at
+   the cluster's trailing edge instead. */
+.node-header-chips > [data-slot="header-chips"] {
+  overflow: hidden;
+}
+
 .node-header-chips > [data-slot="header-chips"] > * {
-  flex-shrink: 1;
-  min-width: 0;
+  flex-shrink: 0;
 }
 
 @container canvas-node (max-width: 440px) {
