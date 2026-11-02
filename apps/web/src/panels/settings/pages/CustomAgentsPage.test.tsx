@@ -5,6 +5,7 @@ import { usePreferencesStore } from "../../../app/preferences-store";
 
 const runtime = vi.hoisted(() => ({
   custom: [] as unknown[],
+  detected: [] as unknown[],
   mutate: vi.fn(),
 }));
 vi.mock("../../../api/client", () => ({ runtimeApi: {} }));
@@ -15,7 +16,7 @@ vi.mock("../use-runtime-settings", () => ({
   }),
 }));
 vi.mock("../../../app/use-agents", () => ({
-  useAgentsQuery: () => ({ data: [] }),
+  useAgentsQuery: () => ({ data: runtime.detected }),
 }));
 
 import { TestProviders, installDomPolyfills } from "../../../app/test-harness";
@@ -34,7 +35,10 @@ function draw() {
 beforeEach(() => {
   usePreferencesStore.setState({ locale: "zh-CN", settingsSubpage: null });
   runtime.custom = [];
+  runtime.detected = [];
   runtime.mutate.mockReset();
+  usePreferencesStore.setState({ agentModes: {} });
+  window.localStorage.clear();
 });
 afterEach(cleanup);
 
@@ -71,8 +75,45 @@ describe("设置 → 自定义 Agent", () => {
     expect(card?.getAttribute("data-variant")).toBe("table");
     expect(
       [...(card?.querySelectorAll("th") ?? [])].map((cell) => cell.textContent),
-    ).toEqual(["名称", "基础 Agent", "命令", "编辑自定义 Agent"]);
+    ).toEqual(["名称", "基础 Agent", "命令", "编辑自定义 Agent", "启用"]);
     expect(card?.querySelectorAll("tbody tr")).toHaveLength(1);
+  });
+
+  it("每条一个启用开关：探测到的默认开，关掉写进偏好，不改自定义配置", () => {
+    runtime.custom = [
+      {
+        id: "custom:abc",
+        label: "我的 Agent",
+        launchCmd: "my-agent",
+        args: [],
+        baseAgent: "claude",
+      },
+      {
+        id: "custom:def",
+        label: "没装的",
+        launchCmd: "nope",
+        args: [],
+        baseAgent: "codex",
+      },
+    ];
+    runtime.detected = [
+      { id: "custom:abc", installed: true },
+      { id: "custom:def", installed: false },
+    ];
+    draw();
+    const first = screen.getByRole("switch", { name: "我的 Agent 启用" });
+    const second = screen.getByRole("switch", { name: "没装的 启用" });
+    expect(first.getAttribute("aria-checked")).toBe("true");
+    expect(second.getAttribute("aria-checked")).toBe("false");
+
+    fireEvent.click(first);
+    fireEvent.click(second);
+    expect(usePreferencesStore.getState().agentModes).toEqual({
+      "custom:abc": "disabled",
+      "custom:def": "enabled",
+    });
+    // 只改偏好：不写 Runtime 设置，自定义配置原样保留。
+    expect(runtime.mutate).not.toHaveBeenCalled();
   });
 
   it("一条一行，点一行进编辑子页，删除放在子页页尾", () => {
