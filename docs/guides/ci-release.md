@@ -110,7 +110,8 @@ node tools/ci/e2e.mjs --tier b --list     # 只列出清单
   - `linux-arm64`（ubuntu-22.04-arm）：打 arm64 包、断言 glibc 基线，只跑 `deb-install`
     （`--only deb-install`；其余 B 档条目与架构无关）。
   - `macos`（macos-15）：同样打包，跑 `packaged-smoke --no-real-cli`。
-  - `report`：前两条任一失败、且在 main 上时，用默认的 `GITHUB_TOKEN`（作业级
+  - `mobile-ios` / `mobile-android`：模拟器里跑 `mobile-shell-e2e.mjs`。Android 这一路的每条 Gradle / adb 命令都有上限（`tools/probes/bounded-run.mjs`：输出边收边写、每分钟一行心跳；插桩超时先抓 logcat、截图、窗口焦点与 Gradle 各 JVM 的线程栈再杀进程组），插桩步骤另有 30 分钟的步级兜底、作业 60 分钟，所以卡住时是步骤失败并带着现场，不再等到作业被取消。
+  - `report`：任一作业失败、超时（结果 `cancelled`）或整次运行被取消、且在 main 上时，用默认的 `GITHUB_TOKEN`（作业级
     `issues: write`）开一个「夜间 B 档失败」issue，已有开着的同名 issue 就追加评论；
     正文是运行链接与每条作业失败的条目（`e2e.mjs` 在 `GITHUB_OUTPUT` 里写
     `failed=<id,…>`）。夜间工作流不读任何 secret。
@@ -121,7 +122,7 @@ node tools/ci/e2e.mjs --tier b --list     # 只列出清单
 - `pnpm ci:workflows` 断言 `ci.yml` 有跑 `--tier a` 的 `e2e` 作业且在 ubuntu 上，
   `nightly.yml` 有 `schedule` 与 `workflow_dispatch` 并跑 `--tier b`；B 档条目
   `platforms` 里的每个系统都有一条在该系统 runner 上跑 `--tier b` 的作业；有一条
-  `failure()` 门控、`needs` 全部 B 档作业、带 `issues: write` 的开 issue 作业；
+  `always()`、`failure()` 与 `cancelled()` 门控（作业撞上 `timeout-minutes` 的结果是 `cancelled`，只写 `failure()` 会跳过报告）、`needs` 全部 B 档作业、带 `issues: write` 的开 issue 作业；
   除 `GITHUB_TOKEN` 外不引用 secret。
 
 ## 2. release.yml
