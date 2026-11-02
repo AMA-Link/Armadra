@@ -662,6 +662,18 @@ export const acpAuthRequiredDetailsSchema = z.looseObject({
 });
 
 /**
+ * `acp_cli_outdated` (409) carries the installed and the minimum CLI version and
+ * the package to install in the error's `details`; core answers it before it
+ * starts the adapter, instead of waiting for `session/new` to time out.
+ */
+export const acpCliOutdatedDetailsSchema = z.looseObject({
+  agentId: z.string(),
+  installed: z.string(),
+  minimum: z.string(),
+  package: z.string(),
+});
+
+/**
  * `POST /api/acp/auth/authenticate`: complete one of the agent's sign-in
  * methods (answers 204). Needs a newer ACP client than the pinned one; an older
  * core answers `acp_auth_unsupported` (409) and lists every method with
