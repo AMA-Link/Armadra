@@ -9,12 +9,13 @@ import type { BoardDocument, Size } from "@armadra/shared";
 
 import { useCanvasStore } from "@/store/canvas-store";
 import { defaultNodeSize, minNodeSize, nodeFontPx } from "@/store/defaults";
-import { isCompactLayout } from "@/platform/layout";
+import { isPhoneScreen } from "@/platform/layout";
 import { usePreferencesStore } from "@/app/preferences-store";
 import { stopFollowing } from "@/realtime/session";
 import type { Box } from "../geometry";
 import { fitNewNodeSize } from "../first-display";
 import { initialViewportFor, isDefaultViewport } from "../viewport";
+import { readableOpeningViewport } from "../opening-viewport";
 import {
   MAX_ZOOM,
   MIN_ZOOM,
@@ -150,7 +151,7 @@ function measuredNodeBounds(nodeId: string): Box | null {
  * 已经是装得下的尺寸，调用方指定过别的尺寸的也不碰。返回是否改了。
  */
 function fitNodeToPhone(nodeId: string): boolean {
-  if (!isCompactLayout()) return false;
+  if (!isPhoneScreen()) return false;
   const state = useCanvasStore.getState();
   const node = state.document?.nodes.find((item) => item.id === nodeId);
   if (!node) return false;
@@ -228,11 +229,17 @@ export function revealNewNode(nodeId: string): void {
 /**
  * 首次打开一块画布：从没存过视口（或还是默认的 `{0,0,1}`）就按 100% 对齐
  * 内容左上角；存过的视口原样恢复，用户上次停在哪就还在哪。
+ *
+ * 手机上（横竖屏）例外一条（#715）：存的缩放低于字号下限时（多半是桌面上存的
+ * 全局视图），把原视口中心最近的节点按首次显示的规则居中，见
+ * `opening-viewport.readableOpeningViewport`。
  */
 export function applyBoardViewport(document: BoardDocument): void {
   const persisted = document.board.viewport;
   if (!isDefaultViewport(persisted)) {
-    useCanvasStore.getState().setViewport(persisted);
+    useCanvasStore
+      .getState()
+      .setViewport(readableOpeningViewport(persisted, document));
     return;
   }
   useCanvasStore.getState().setViewport(

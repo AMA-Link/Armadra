@@ -40,6 +40,7 @@ import {
 import { registerCanvasCommands, type CanvasCommandId } from "./commands";
 import { useCreatedNodeReveal } from "./created-node";
 import { registerEscapeToSelect } from "./escape-to-select";
+import { installTouchCreate } from "./interaction/touch-create";
 import { usePublishContextLinks } from "./context-links";
 import { useOsDrop, usePasteToCanvas } from "./dnd/os-drop";
 import { flowOptions } from "./flow/flow-options";
@@ -237,8 +238,13 @@ function FlowWorkspaceInner() {
     const offEscape = container.current
       ? registerEscapeToSelect({ container: container.current })
       : () => {};
+    // 触屏上空白处长按 / 双击 = 在那一点右键，出同一个新建菜单（#715）。
+    const offTouchCreate = container.current
+      ? installTouchCreate(container.current)
+      : () => {};
     return () => {
       offEscape();
+      offTouchCreate();
       setFlow(null);
       setFlowContainer(null);
       clearAllDrafts();

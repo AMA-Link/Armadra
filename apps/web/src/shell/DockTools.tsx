@@ -14,7 +14,6 @@ import { Separator } from "@/ui/separator";
 import { Tooltip, TooltipTrigger } from "@/ui/tooltip";
 import { useT } from "@/app/preferences-store";
 import { useCanvasLocked } from "@/canvas/canvas-lock";
-import { useCompactLayout } from "@/platform/layout";
 import { runCanvasCommand } from "@/canvas/commands";
 import { pickFilesForCanvas } from "@/canvas/dnd/external-content";
 import { useFlowHandle } from "@/canvas/flow/flow-context";
@@ -30,7 +29,6 @@ import {
   DOCK_TOOL_ITEMS,
   GEO_OPTIONS,
   IMPORT_TOOL,
-  PHONE_DOCK_TOOL_ITEMS,
   TOOL_BY_ID,
   geoIcon,
   isToolDisabledWhenLocked,
@@ -61,25 +59,24 @@ import { useMenuTooltip } from "./menu-tooltip";
  * 按钮显示当前成员、下拉换另一种。记忆在 `tool-store` 的
  * `useToolGroupChoice`，所以快捷键切过去之后图标也跟着变。
  *
- * 手机（`isCompactLayout()`，竖屏手机与矮的触屏横屏）上只留选择与手（F32）：手指画不出
- * 能用的墨迹，而每多一个按钮，390px 宽的 Dock 就少一分能按得中的余量。
- * 引入按钮同样收起——它开的是系统文件选择器，手机上那条路不通。
+ * 手机竖屏（`isCompactLayout()`）上工具一个不少（#715，推翻 F32 的「只留选择与手」）：
+ * Dock 拆成两行，这一组整排放在第二行（`inline`），不画前面的分隔线，也不折进
+ * 弹层——竖屏 402px 宽放得下七格，藏起来的按钮等于没有。引入开的是 `<input
+ * type=file>`，手机上弹系统的照片 / 文件选择。
  */
-export function DockTools() {
+export function DockTools({ inline = false }: { inline?: boolean }) {
   const t = useT();
   const flow = useFlowHandle();
   const locked = useCanvasLocked();
   const currentTool = useTool();
-  const phone = useCompactLayout();
 
   if (!flow) return null;
 
   const disabled = (id: string) => locked && isToolDisabledWhenLocked(id);
-  const items = phone ? PHONE_DOCK_TOOL_ITEMS : DOCK_TOOL_ITEMS;
 
   const buttons = (group: string) => (
     <IndicatorGroup id={group}>
-      {items.map((item) => (
+      {DOCK_TOOL_ITEMS.map((item) => (
         <DockToolSlot
           key={item.kind === "group" ? item.group : item.tool.id}
           item={item}
@@ -87,9 +84,17 @@ export function DockTools() {
           disabled={disabled}
         />
       ))}
-      {phone ? null : <ImportToolButton disabled={locked} />}
+      <ImportToolButton disabled={locked} />
     </IndicatorGroup>
   );
+
+  if (inline) {
+    return (
+      <div data-slot="dock-tools" className="flex items-center gap-1">
+        {buttons("dock-tools")}
+      </div>
+    );
+  }
 
   return (
     <>

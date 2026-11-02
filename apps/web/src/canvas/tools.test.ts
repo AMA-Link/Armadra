@@ -13,8 +13,6 @@ import {
   DOCK_TOOL_ITEMS,
   GEO_IDS,
   GEO_OPTIONS,
-  PHONE_DOCK_TOOL_ITEMS,
-  PHONE_TOOL_IDS,
   geoIcon,
   isToolDisabledWhenLocked,
   shouldShowStylePanel,
@@ -130,18 +128,6 @@ describe("工具键表", () => {
       pen: [...TOOL_GROUPS.pen],
       line: [...TOOL_GROUPS.line],
     });
-  });
-
-  it("手机那一份不变：只有选择与手，没有任何下拉", () => {
-    expect(PHONE_DOCK_TOOL_ITEMS.map((item) => item.kind)).toEqual([
-      "tool",
-      "tool",
-    ]);
-    expect(
-      PHONE_DOCK_TOOL_ITEMS.map((item) =>
-        item.kind === "group" ? item.group : item.tool.id,
-      ),
-    ).toEqual([...PHONE_TOOL_IDS]);
   });
 
   it("锁定时只剩选择可用", () => {

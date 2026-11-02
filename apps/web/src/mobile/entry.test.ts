@@ -48,6 +48,8 @@ vi.mock("./native-oauth", async (original) => ({
 }));
 vi.mock("../platform/layout", () => ({
   isCompactLayout: () => mocks.compact,
+  isPhoneLandscape: () => false,
+  isPhoneScreen: () => mocks.compact,
 }));
 vi.mock("../api/runtime-url", async (original) => ({
   ...(await original<typeof import("../api/runtime-url")>()),

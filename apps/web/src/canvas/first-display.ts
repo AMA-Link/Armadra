@@ -76,7 +76,7 @@ export function firstDisplayZoom(input: {
 }
 
 /**
- * 手机（紧凑布局，横竖屏）上新建的节点装不进视口时的尺寸。
+ * 手机（`platform/layout.isPhoneScreen`，横竖屏）上新建的节点装不进视口时的尺寸。
  *
  * 在字号下限给出的缩放下，节点既要不超过视口的 1/φ，也不能小于该种类的最小
  * 尺寸，更不能超出视口（留 {@link PHONE_NODE_MARGIN}）——三者冲突时以「不超出

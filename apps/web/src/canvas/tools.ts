@@ -103,15 +103,6 @@ export const CANVAS_TOOLS: readonly CanvasToolSpec[] = [
 ];
 
 /**
- * 手机上开放的工具（F32 / §6.6）。
- *
- * 手指画不出能用的墨迹，几何形与文字都要跟着一个样式面板，390×844 里
- * 摆不下——所以只留平移与选择这两件在触屏上真的好用的事。桌面窗口缩到
- * 手机布局（`platform/layout.isCompactLayout`，含矮的触屏横屏）也走这一条。
- */
-export const PHONE_TOOL_IDS: readonly CanvasToolId[] = ["select", "hand"];
-
-/**
  * 引入：不是工具，所以它没有命令、没有键位。
  * Dock 上那个按钮自己开文件选择（不限类型），把文件交给外部内容处理器。
  */
@@ -147,7 +138,10 @@ const groupItem = (group: ToolGroupId): DockToolItem => ({
   members: TOOL_GROUPS[group].map((id) => TOOL_BY_ID[id]),
 });
 
-/** Dock 上从左到右的顺序。 */
+/**
+ * Dock 上从左到右的顺序。手机与桌面是同一份（#715）：竖屏 Dock 拆成两行，这一
+ * 组整排放在第二行，不再只留选择与手（F32 的旧规则），也不折进弹层。
+ */
 export const DOCK_TOOL_ITEMS: readonly DockToolItem[] = [
   { kind: "tool", tool: TOOL_BY_ID.select },
   { kind: "tool", tool: TOOL_BY_ID.hand },
@@ -156,12 +150,6 @@ export const DOCK_TOOL_ITEMS: readonly DockToolItem[] = [
   groupItem("line"),
   { kind: "tool", tool: TOOL_BY_ID.text },
 ];
-
-/** 手机上那一份：只留 `PHONE_TOOL_IDS` 里的单工具格（F32）。 */
-export const PHONE_DOCK_TOOL_ITEMS: readonly DockToolItem[] =
-  DOCK_TOOL_ITEMS.filter(
-    (item) => item.kind === "tool" && PHONE_TOOL_IDS.includes(item.tool.id),
-  );
 
 /* ------------------------------ 形状下拉 --------------------------------- */
 

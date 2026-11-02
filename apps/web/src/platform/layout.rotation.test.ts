@@ -1,7 +1,7 @@
 import { act, renderHook } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { useCompactLayout } from "./layout";
+import { isPhoneLandscape, useCompactLayout } from "./layout";
 import {
   DESKTOP_NARROW,
   PHONE_LANDSCAPE,
@@ -13,9 +13,10 @@ import {
 } from "./layout.testkit";
 
 /**
- * 转屏：手机横竖屏都在手机布局里，所以 `useCompactLayout` 在转屏前后都是真，
- * 订阅方（连接页、画布、焦点页、底部导航、工作面板）不会因此卸载重挂；
- * 平板与电脑窗口跨过判据时才切换。
+ * 转屏（#715）：手机竖屏是手机布局、横屏是电脑布局，所以 `useCompactLayout` 跟着
+ * 转屏切换，订阅方（画布浮层、焦点页、底部导航、工作面板）各自换形态；画布本身
+ * 不随它卸载（`app/App` 里 `FlowWorkspace` 两种布局共用）。平板与电脑窗口跨过
+ * 767px 才切换。
  */
 describe("useCompactLayout 转屏", () => {
   const original = window.matchMedia;
@@ -42,20 +43,17 @@ describe("useCompactLayout 转屏", () => {
     };
   }
 
-  it("手机竖屏转横屏：始终是手机布局", () => {
+  it("手机竖屏转横屏：手机布局换成电脑布局，转回来再换回", () => {
     const rotate = install(PHONE_PORTRAIT);
-    let renders = 0;
-    const { result } = renderHook(() => {
-      renders += 1;
-      return useCompactLayout();
-    });
-    expect(result.current).toBe(true);
+    const { result } = renderHook(() => ({
+      compact: useCompactLayout(),
+      landscape: isPhoneLandscape(),
+    }));
+    expect(result.current).toEqual({ compact: true, landscape: false });
     act(() => rotate(PHONE_LANDSCAPE));
-    expect(result.current).toBe(true);
+    expect(result.current).toEqual({ compact: false, landscape: true });
     act(() => rotate(PHONE_PORTRAIT));
-    expect(result.current).toBe(true);
-    // 值没变，订阅方不会重渲染。
-    expect(renders).toBe(1);
+    expect(result.current).toEqual({ compact: true, landscape: false });
   });
 
   it("平板转屏不换布局；窗口压窄到 767 以下才换", () => {

@@ -3,7 +3,7 @@ import { t, usePreferencesStore } from "../app/preferences-store";
 import { NODE_TEXT_PX, fitNewNodeSize } from "../canvas/first-display";
 import { containerSize } from "../canvas/flow/flow-context";
 import { nodeMeta } from "../nodes/registry";
-import { isCompactLayout } from "../platform/layout";
+import { isPhoneScreen } from "../platform/layout";
 
 /**
  * 新建节点时的默认值 —— docs/contracts/v3-agent-terminal-plan.md §3.4。
@@ -52,13 +52,13 @@ export function nodeFontPx(type: CanvasNodeType): number {
 }
 
 /**
- * **新建**时的尺寸（#684）：默认的黄金比例尺寸；手机（紧凑布局，横竖屏）上
+ * **新建**时的尺寸（#684）：默认的黄金比例尺寸；手机（`isPhoneScreen`，横竖屏）上
  * 在字号下限的缩放下装不进视口时，等比缩小到装得下。已保存节点的尺寸不经过
  * 这里。
  */
 export function newNodeSize(type: CanvasNodeType): Size {
   const size = defaultNodeSize(type);
-  if (!isCompactLayout()) return size;
+  if (!isPhoneScreen()) return size;
   return fitNewNodeSize({
     size,
     min: minNodeSize(type),

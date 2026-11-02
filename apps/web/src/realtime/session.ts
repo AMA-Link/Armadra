@@ -6,6 +6,7 @@ import { boardSyncUrl } from "../api/client";
 import { currentSource, type Source } from "../api/source";
 import { sourceApi } from "../sources/source-api";
 import { containerSize, getFlow } from "../canvas/flow/flow-context";
+import { readableOpeningViewport } from "../canvas/opening-viewport";
 import { useCanvasStore } from "../store/canvas-store";
 import { presenceClientId, presenceDeviceName } from "../store/canvas/presence";
 import {
@@ -172,8 +173,12 @@ export function startRealtime(options: StartOptions): () => void {
 
   useCanvasStore.getState().setRealtime({ boardId, writable: false });
   // 视口不在文档里：换成本机上次停的地方（没记过就留着打开时算的那份）。
+  // 手机上存的缩放低于字号下限时换成看得清的那份（#715）。
   const savedViewport = loadBoardViewport(boardId);
-  if (savedViewport) useCanvasStore.getState().setViewport(savedViewport);
+  if (savedViewport) {
+    const store = useCanvasStore.getState();
+    store.setViewport(readableOpeningViewport(savedViewport, store.document));
+  }
   useRealtimeStore.setState({
     ...IDLE,
     boardId,

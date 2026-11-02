@@ -101,6 +101,101 @@ export function Dock() {
 
   if (!workspace) return null;
 
+  const lock = (
+    <Tooltip delayDuration={500}>
+      <TooltipTrigger asChild>
+        <IconButton
+          size="dock"
+          data-slot="canvas-lock"
+          label={locked ? t("canvas.unlock") : t("canvas.lock")}
+          aria-pressed={locked}
+          active={locked}
+          onClick={() => setCanvasLocked(!locked)}
+        >
+          {locked ? <Lock /> : <LockOpen />}
+        </IconButton>
+      </TooltipTrigger>
+      <CommandTip label={locked ? t("canvas.unlock") : t("canvas.lock")} />
+    </Tooltip>
+  );
+
+  const edit = (
+    <>
+      <DropdownMenu {...addMenu.menuProps}>
+        <Tooltip delayDuration={500}>
+          <TooltipTrigger asChild {...addMenu.tooltipTriggerProps}>
+            <DropdownMenuTrigger asChild>
+              <IconButton
+                size="dock"
+                label={t("dock.add")}
+                active={addMenu.menuOpen}
+              >
+                <Plus />
+              </IconButton>
+            </DropdownMenuTrigger>
+          </TooltipTrigger>
+          {/* 菜单展开时不再挂提示：它会压在第一条菜单项上。 */}
+          {addMenu.menuOpen ? null : <CommandTip label={t("dock.add")} />}
+        </Tooltip>
+        <DropdownMenuContent
+          align="center"
+          side="top"
+          className={cn("z-[var(--z-menu)]", ADD_MENU_CONTENT_CLASS)}
+        >
+          {/* 落点在**展开这一刻**算：菜单开着时相机还能动。 */}
+          {addMenu.menuOpen && (
+            <AddMenuContent
+              kind="dropdown"
+              ctx={{
+                addNode,
+                position: currentViewportCenter(),
+                workspace,
+                agents,
+              }}
+            />
+          )}
+        </DropdownMenuContent>
+      </DropdownMenu>
+
+      <Tooltip delayDuration={500}>
+        <TooltipTrigger asChild>
+          <IconButton
+            size="dock"
+            label={t("dock.undo")}
+            disabled={!canUndo}
+            onClick={() => undo()}
+          >
+            <Undo2 />
+          </IconButton>
+        </TooltipTrigger>
+        <CommandTip label={t("dock.undo")} command="canvas.undo" />
+      </Tooltip>
+
+      <Tooltip delayDuration={500}>
+        <TooltipTrigger asChild>
+          <IconButton
+            size="dock"
+            label={t("dock.redo")}
+            disabled={!canRedo}
+            onClick={() => redo()}
+          >
+            <Redo2 />
+          </IconButton>
+        </TooltipTrigger>
+        <CommandTip label={t("dock.redo")} command="canvas.redo" />
+      </Tooltip>
+
+      <TidyButton label={tidyLabel} />
+    </>
+  );
+
+  const status = (
+    <>
+      <SaveDot />
+      <ZoomControls zoom={zoom} />
+    </>
+  );
+
   return (
     // 外层是一条贯穿画布底部的网格行（`styles/canvas.css`）：中间那格装
     // Dock，两侧留白相等时 Dock 就在画布正中；右侧留白有下限（缩略图的
@@ -112,101 +207,48 @@ export function Dock() {
     >
       <div
         data-slot="dock"
-        className="canvas-dock z-[var(--z-dock)] flex h-[var(--dock-h)] items-center gap-1 rounded-panel border border-border-strong bg-panel/90 px-1.5 shadow-overlay backdrop-blur-[12px]"
+        data-rows={compact ? 2 : undefined}
+        className={cn(
+          "canvas-dock z-[var(--z-dock)] rounded-panel border border-border-strong bg-panel/90 px-1.5 shadow-overlay backdrop-blur-[12px]",
+          compact
+            ? "flex flex-col items-stretch gap-0.5 py-1"
+            : "flex h-[var(--dock-h)] items-center gap-1",
+        )}
       >
-        <Tooltip delayDuration={500}>
-          <TooltipTrigger asChild>
-            <IconButton
-              size="dock"
-              data-slot="canvas-lock"
-              label={locked ? t("canvas.unlock") : t("canvas.lock")}
-              aria-pressed={locked}
-              active={locked}
-              onClick={() => setCanvasLocked(!locked)}
+        {compact ? (
+          <>
+            {/* 竖屏两行（#715）：第一行是对画布的动作与缩放，第二行是白板工具与
+                评论。与桌面那一行相比一个不少，也没有折进弹层的。 */}
+            <div
+              data-slot="dock-row"
+              className="flex items-center justify-center gap-1"
             >
-              {locked ? <Lock /> : <LockOpen />}
-            </IconButton>
-          </TooltipTrigger>
-          <CommandTip label={locked ? t("canvas.unlock") : t("canvas.lock")} />
-        </Tooltip>
-
-        <Separator orientation="vertical" className="mx-1 h-5" />
-
-        <DropdownMenu {...addMenu.menuProps}>
-          <Tooltip delayDuration={500}>
-            <TooltipTrigger asChild {...addMenu.tooltipTriggerProps}>
-              <DropdownMenuTrigger asChild>
-                <IconButton
-                  size="dock"
-                  label={t("dock.add")}
-                  active={addMenu.menuOpen}
-                >
-                  <Plus />
-                </IconButton>
-              </DropdownMenuTrigger>
-            </TooltipTrigger>
-            {/* 菜单展开时不再挂提示：它会压在第一条菜单项上。 */}
-            {addMenu.menuOpen ? null : <CommandTip label={t("dock.add")} />}
-          </Tooltip>
-          <DropdownMenuContent
-            align="center"
-            side="top"
-            className={cn("z-[var(--z-menu)]", ADD_MENU_CONTENT_CLASS)}
-          >
-            {/* 落点在**展开这一刻**算：菜单开着时相机还能动。 */}
-            {addMenu.menuOpen && (
-              <AddMenuContent
-                kind="dropdown"
-                ctx={{
-                  addNode,
-                  position: currentViewportCenter(),
-                  workspace,
-                  agents,
-                }}
-              />
-            )}
-          </DropdownMenuContent>
-        </DropdownMenu>
-
-        <Tooltip delayDuration={500}>
-          <TooltipTrigger asChild>
-            <IconButton
-              size="dock"
-              label={t("dock.undo")}
-              disabled={!canUndo}
-              onClick={() => undo()}
+              {lock}
+              <Separator orientation="vertical" className="mx-1 h-5" />
+              {edit}
+              <Separator orientation="vertical" className="mx-1 h-5" />
+              {status}
+            </div>
+            <div
+              data-slot="dock-row"
+              className="flex items-center justify-center gap-1"
             >
-              <Undo2 />
-            </IconButton>
-          </TooltipTrigger>
-          <CommandTip label={t("dock.undo")} command="canvas.undo" />
-        </Tooltip>
-
-        <Tooltip delayDuration={500}>
-          <TooltipTrigger asChild>
-            <IconButton
-              size="dock"
-              label={t("dock.redo")}
-              disabled={!canRedo}
-              onClick={() => redo()}
-            >
-              <Redo2 />
-            </IconButton>
-          </TooltipTrigger>
-          <CommandTip label={t("dock.redo")} command="canvas.redo" />
-        </Tooltip>
-
-        <TidyButton label={tidyLabel} />
-
-        {/* 白板工具组（§5）；画布没挂载时整组连同分隔线一起不渲染。 */}
-        <DockTools />
-        <CommentModeButton />
-
-        <Separator orientation="vertical" className="mx-1 h-5" />
-
-        <SaveDot />
-
-        <ZoomControls zoom={zoom} />
+              <DockTools inline />
+              <CommentModeButton />
+            </div>
+          </>
+        ) : (
+          <>
+            {lock}
+            <Separator orientation="vertical" className="mx-1 h-5" />
+            {edit}
+            {/* 白板工具组（§5）；画布没挂载时整组连同分隔线一起不渲染。 */}
+            <DockTools />
+            <CommentModeButton />
+            <Separator orientation="vertical" className="mx-1 h-5" />
+            {status}
+          </>
+        )}
       </div>
     </div>
   );

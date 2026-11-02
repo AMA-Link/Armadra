@@ -240,22 +240,37 @@
 }
 
 /*
- * 手机（≤767px，与 `platform/layout.isCompactLayout` 同一个断点）：底部有一条
+ * 触屏在空白处长按出新建菜单（`interaction/touch-create`，#715）：长按不能先被
+ * 系统接走——iOS 的放大镜、选字与链接预览都关掉。
+ */
+.canvas-stage .react-flow__pane {
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+/*
+ * 手机竖屏（≤767px，与 `platform/layout.isCompactLayout` 同一个断点）：底部有一条
  * 导航（`shell/MobileBottomNav`，56px 再加安全区）。Dock 必须坐在它**上面**
  * ——上面那条容器查询给的 38px 会被导航盖掉一截，工具按钮按不到。
+ *
+ * Dock 在这里是两行（`shell/Dock` 写 `data-rows="2"`，#715）：第一行画布动作与
+ * 缩放，第二行白板工具与评论，一个按钮都不藏。两行高 92px（2 × 40 + 行距 2 +
+ * 上下内距 8 + 边框 2），缩略图与收起钮按这个高度让到 Dock 之上。
  *
  * 写成媒体查询而不是容器查询：导航是窗口级的固定条，跟画布容器有多宽无关；
  * 放在容器查询之后，同权重下由它接管 `--dock-bottom`。
  */
-@media (max-width: 767px),
-  (pointer: coarse) and (max-height: 500px) and (max-width: 1023px) {
+@media (max-width: 767px) {
   .canvas-dock-row {
     --dock-bottom: calc(var(--mobile-nav-h) + var(--safe-bottom) + 10px);
+    left: 10px;
+    right: 10px;
     /* 手机上 Dock 要用整个宽度，缩略图改到它上方（下面那条规则）。 */
     grid-template-columns: minmax(0, 1fr) minmax(0, auto) minmax(0, 1fr);
   }
-  /* 放不下的宽度（竖屏 402 宽时 Dock 约 450px）让 Dock 自己横向滚动，
-     不再把最右的缩放钮顶出屏幕。 */
+  /* 两行在 360 宽的机型上也排得下：格间距 2px，分隔线两侧各 2px。仍放不下的
+     宽度（320）让 Dock 自己横向滚动，不把最右的缩放钮顶出屏幕。 */
   .canvas-dock {
     overflow-x: auto;
     overscroll-behavior-x: contain;
@@ -264,16 +279,66 @@
   .canvas-dock::-webkit-scrollbar {
     display: none;
   }
+  .canvas-dock[data-rows="2"] [data-slot="dock-row"] {
+    height: 40px;
+  }
+  .canvas-dock[data-rows="2"] [data-slot="dock-row"],
+  .canvas-dock[data-rows="2"] [data-slot="dock-tools"] {
+    gap: 2px;
+  }
+  .canvas-dock[data-rows="2"] [data-slot="separator"] {
+    margin-inline: 2px;
+  }
   /*
    * 缩略图和它的收起钮（`MinimapToggle` 的 Panel 与 `.react-flow__minimap` 是兄
    * 弟，收起后缩略图本身不渲染）共用 `--navigation-bottom`，所以变量写在两者的
    * 共同祖先上：收起钮也坐在底部导航与 Dock 之上，不再压在导航条上。
-   * `--mobile-nav-h` 矮屏（手机横屏）自己缩到 44px，这里不用再分情况。
+   * `--mobile-nav-h` 矮屏自己缩到 44px，这里不用再分情况。
    */
   .workspace-surface {
+    --dock-stack-h: 92px;
     --navigation-bottom: calc(
-      var(--mobile-nav-h) + var(--safe-bottom) + 10px + var(--dock-h) + 12px
+      var(--mobile-nav-h) + var(--safe-bottom) + 10px + var(--dock-stack-h) +
+        12px
     );
+  }
+}
+
+/*
+ * 手机横屏（`platform/layout.PHONE_LANDSCAPE_QUERY`）是电脑布局（#715）：整排
+ * Dock、右上工具簇、右下缩略图都与桌面一致，只按矮屏收紧。画布容器在 1000px
+ * 以下时工具组本该折进弹层（上面那条容器查询），横屏手机上不折——缩略图默认收
+ * 起（`app/minimap-preferences`），侧栏默认收起（`store/canvas/internal`），
+ * 800 宽上下的画布放得下整排 Dock；真放不下时 Dock 自己横向滚动。
+ */
+@media (pointer: coarse) and (min-width: 768px) and (max-width: 1023px) and (max-height: 500px) {
+  .dock-tools-expanded {
+    display: flex;
+  }
+  .dock-tools-compact {
+    display: none;
+  }
+  .canvas-dock-row {
+    --dock-bottom: calc(8px + var(--safe-bottom));
+    grid-template-columns: minmax(0, 1fr) minmax(0, auto) minmax(
+        calc(var(--minimap-w) + 14px),
+        1fr
+      );
+  }
+  .canvas-dock {
+    gap: 2px;
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    scrollbar-width: none;
+  }
+  .canvas-dock::-webkit-scrollbar {
+    display: none;
+  }
+  .canvas-dock [data-slot="separator"] {
+    margin-inline: 2px;
+  }
+  .workspace-surface {
+    --navigation-bottom: calc(8px + var(--safe-bottom));
   }
 }
 
@@ -321,10 +386,20 @@
 .canvas-style-row > * {
   pointer-events: auto;
 }
-@media (max-width: 767px),
-  (pointer: coarse) and (max-height: 500px) and (max-width: 1023px) {
+/*
+ * 手机竖屏：Dock 是两行（`--dock-stack-h`，写在 `.workspace-surface` 上，#715），
+ * 样式条让到两行之上；基线同 Dock，坐在底部导航上面。
+ */
+@media (max-width: 767px) {
   .canvas-style-row {
     --style-row-bottom: calc(var(--mobile-nav-h) + var(--safe-bottom) + 10px);
+    bottom: calc(var(--style-row-bottom) + var(--dock-stack-h) + 8px);
+  }
+}
+/* 手机横屏是电脑布局，一行 Dock；基线跟着横屏 Dock 收紧的底边走。 */
+@media (pointer: coarse) and (min-width: 768px) and (max-width: 1023px) and (max-height: 500px) {
+  .canvas-style-row {
+    --style-row-bottom: calc(8px + var(--safe-bottom));
   }
 }
 

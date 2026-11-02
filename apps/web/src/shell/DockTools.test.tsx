@@ -150,4 +150,29 @@ describe("DockTools", () => {
     ).toBeTruthy();
     expect(button("选择").querySelector("[data-slot='indicator']")).toBeNull();
   });
+
+  it("手机竖屏那一份（inline）：七格一个不少，不折进弹层，也不画分隔线", () => {
+    render(
+      <TestProviders>
+        <DockTools inline />
+      </TestProviders>,
+    );
+    const row = document.querySelector("[data-slot='dock-tools']")!;
+    const labels = Array.from(row.querySelectorAll("[aria-label]")).map(
+      (element) => element.getAttribute("aria-label"),
+    );
+    expect(labels).toEqual([
+      "选择",
+      "手形",
+      "画笔",
+      "形状",
+      "直线",
+      "文字",
+      "引入…",
+    ]);
+    expect(document.querySelector(".dock-tools-compact")).toBeNull();
+    expect(document.querySelector(".dock-tools-expanded")).toBeNull();
+    expect(screen.queryByLabelText("白板工具")).toBeNull();
+    expect(document.querySelector("[data-slot='separator']")).toBeNull();
+  });
 });

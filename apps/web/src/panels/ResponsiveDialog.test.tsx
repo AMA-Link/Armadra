@@ -5,6 +5,8 @@ let compact = false;
 vi.mock("@/platform/layout", () => ({
   useCompactLayout: () => compact,
   isCompactLayout: () => compact,
+  isPhoneLandscape: () => false,
+  isPhoneScreen: () => compact,
 }));
 
 import { installDomPolyfills } from "../app/test-harness";
