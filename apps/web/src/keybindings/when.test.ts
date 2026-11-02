@@ -196,6 +196,28 @@ describe("焦点上下文", () => {
     expect(input.canvasFocus).toBe(false);
   });
 
+  it("模态层、弹层、菜单里不是画布", () => {
+    for (const html of [
+      `<div role="dialog"><button id="b"></button></div>`,
+      `<div role="alertdialog"><button id="b"></button></div>`,
+      `<div aria-modal="true"><button id="b"></button></div>`,
+      `<div data-radix-popper-content-wrapper><button id="b"></button></div>`,
+      `<div role="menu"><div role="menuitem" id="b"></div></div>`,
+    ]) {
+      const context = contextFor(html, "#b");
+      expect(context.canvasFocus, html).toBe(false);
+      expect(context.terminalFocus, html).toBe(false);
+    }
+  });
+
+  it("只读的时间线文字不是画布", () => {
+    const context = contextFor(
+      `<div data-slot="timeline-view"><p id="p"></p></div>`,
+      "#p",
+    );
+    expect(context.canvasFocus).toBe(false);
+  });
+
   it("平台名跟着 mac 判定走", () => {
     expect(contextFor(`<div id="c"></div>`, "#c", true).platform).toBe("mac");
     expect(contextFor(`<div id="c"></div>`, "#c", false).platform).toBe(

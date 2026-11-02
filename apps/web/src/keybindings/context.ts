@@ -41,6 +41,62 @@ export function isTypingTarget(target: EventTarget | null): boolean {
   );
 }
 
+/**
+ * 目标在这些元素里面，就是在弹层里：Radix 的 Dialog / AlertDialog / Sheet /
+ * Popover / Select / 菜单都会落到其中一个。弹层经 portal 挂在 body 下，
+ * 不在画布的 DOM 子树里，所以必须从目标往上问，而不能指望画布自己知道。
+ */
+const OVERLAY_LAYER_SELECTOR = [
+  '[role="dialog"]',
+  '[role="alertdialog"]',
+  '[role="menu"]',
+  '[role="listbox"]',
+  '[aria-modal="true"]',
+  "[data-radix-popper-content-wrapper]",
+].join(",");
+
+/**
+ * 「弹层开着」的判据：模态弹窗与菜单。故意不含 `data-radix-popper-content-wrapper`：
+ * tooltip 也挂在它下面，鼠标悬停时按 Delete 删选中节点是正常操作。
+ * 退场动画期间 Radix 把 `data-state` 改成 `closed` 但元素还在，不算开着。
+ */
+const OPEN_OVERLAY_SELECTOR = [
+  '[role="dialog"]',
+  '[role="alertdialog"]',
+  '[role="menu"]',
+  '[role="listbox"]',
+  '[aria-modal="true"]',
+]
+  .map((selector) => `${selector}:not([data-state="closed"])`)
+  .join(",");
+
+/**
+ * 只读但可选的内容区（ACP 时间线）。⌘A 在这里该选文字、方便复制转录，
+ * 而不是选中全部节点。
+ */
+const NATIVE_SELECTION_SELECTOR = '[data-slot="timeline-view"]';
+
+/** 事件目标是否在弹窗、弹出层或菜单里。 */
+export function isOverlayTarget(target: EventTarget | null): boolean {
+  const element = target instanceof Element ? target : null;
+  return Boolean(element?.closest(OVERLAY_LAYER_SELECTOR));
+}
+
+/** 当前文档里是否有开着的模态弹窗或菜单（不论焦点在哪）。 */
+export function isOverlayOpen(
+  doc: Document | undefined = typeof document === "undefined"
+    ? undefined
+    : document,
+): boolean {
+  return Boolean(doc?.querySelector(OPEN_OVERLAY_SELECTOR));
+}
+
+/** 事件目标是否在只读的可选文字区里。 */
+export function isNativeSelectionTarget(target: EventTarget | null): boolean {
+  const element = target instanceof Element ? target : null;
+  return Boolean(element?.closest(NATIVE_SELECTION_SELECTOR));
+}
+
 /** 事件目标落在哪个节点内部的作用域里；都不在时是 `null`。 */
 export function nodeScopeOf(target: EventTarget | null): NodeScope | null {
   const element = target instanceof Element ? target : null;
@@ -61,6 +117,8 @@ export interface ContextInput {
  *
  * 五个焦点键互斥，与 `whenContexts()` 穷举时的假设一致：焦点同一时刻只有
  * 一处，而 `canvasFocus` 的定义就是「不在上面四处、也不在任何输入控件里」。
+ * 弹层（对话框、弹出层、菜单）与只读可选文字区也不是画布：焦点停在弹窗的
+ * 按钮上时，Delete / ⌘A 不能落到弹窗背后的画布。
  * 判定顺序是终端 → 编辑器 / 浏览器 → 其它，因为终端里那个 textarea 同时满足
  * 「在终端里」与「正在打字」，而终端优先是这套快捷键的第一条规则。
  */
@@ -72,13 +130,15 @@ export function keybindingContext({
   const terminal = isTerminalTarget(target);
   const scope = terminal ? null : nodeScopeOf(target);
   const typing = !terminal && isTypingTarget(target);
+  const overlay = !terminal && isOverlayTarget(target);
+  const text = !terminal && isNativeSelectionTarget(target);
   return {
     platform: platform ?? (mac ? "mac" : "windows"),
     terminalFocus: terminal,
     editorFocus: scope === "editor",
     browserFocus: scope === "browser",
     scmFocus: scope === "scm",
-    canvasFocus: !terminal && scope === null && !typing,
+    canvasFocus: !terminal && scope === null && !typing && !overlay && !text,
     editing: typing,
   };
 }

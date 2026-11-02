@@ -3,6 +3,12 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, render } from "@testing-library/react";
 import { t } from "../app/preferences-store";
 import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogTitle,
+} from "../ui/dialog";
+import {
   COMMANDS,
   COMMAND_BY_ID,
   commandKeys,
@@ -408,6 +414,119 @@ describe("useKeybindings", () => {
       } finally {
         setActiveKeymap({});
       }
+    });
+  });
+
+  describe("模态层与浮层", () => {
+    const LAYERS: Array<[string, string]> = [
+      ["dialog", `<div role="dialog" data-state="open">%</div>`],
+      ["alertdialog", `<div role="alertdialog" data-state="open">%</div>`],
+      ["aria-modal", `<div aria-modal="true">%</div>`],
+      ["popover", `<div data-radix-popper-content-wrapper>%</div>`],
+      ["menu", `<div role="menu" data-state="open">%</div>`],
+    ];
+
+    function mountCanvasHandlers() {
+      const handlers = {
+        "canvas.delete": vi.fn(),
+        "canvas.selectAll": vi.fn(),
+        "canvas.undo": vi.fn(),
+        "app.commandPalette": vi.fn(),
+      };
+      mount(handlers);
+      return handlers;
+    }
+
+    it.each(LAYERS)("%s 里的按钮上，画布命令一个都不触发", (_name, html) => {
+      const handlers = mountCanvasHandlers();
+      document.body.innerHTML = html.replace(
+        "%",
+        `<button id="b">确定</button>`,
+      );
+      const button = document.getElementById("b")!;
+      const del = fire({ key: "Delete" }, button);
+      const back = fire({ key: "Backspace" }, button);
+      const all = fire({ key: "a", metaKey: true }, button);
+      fire({ key: "z", metaKey: true }, button);
+      expect(handlers["canvas.delete"]).not.toHaveBeenCalled();
+      expect(handlers["canvas.selectAll"]).not.toHaveBeenCalled();
+      expect(handlers["canvas.undo"]).not.toHaveBeenCalled();
+      // 原生行为留给弹窗：Delete / ⌘A 都没被拦
+      expect(del.defaultPrevented).toBe(false);
+      expect(back.defaultPrevented).toBe(false);
+      expect(all.defaultPrevented).toBe(false);
+    });
+
+    it("弹窗打开着、焦点落回 body 或画布时也不触发画布命令", () => {
+      const handlers = mountCanvasHandlers();
+      document.body.innerHTML = `<div role="dialog" data-state="open"></div><div id="canvas"></div>`;
+      fire({ key: "Delete" });
+      fire({ key: "a", metaKey: true }, document.getElementById("canvas")!);
+      expect(handlers["canvas.delete"]).not.toHaveBeenCalled();
+      expect(handlers["canvas.selectAll"]).not.toHaveBeenCalled();
+    });
+
+    it("弹窗里 app 级命令（⌘K）照常触发", () => {
+      const handlers = mountCanvasHandlers();
+      document.body.innerHTML = `<div role="dialog" data-state="open"><button id="b"></button></div>`;
+      fire({ key: "k", metaKey: true }, document.getElementById("b")!);
+      expect(handlers["app.commandPalette"]).toHaveBeenCalledTimes(1);
+    });
+
+    it("弹窗关闭（data-state=closed，退场动画中）后画布命令恢复", () => {
+      const handlers = mountCanvasHandlers();
+      document.body.innerHTML = `<div role="dialog" data-state="closed"></div>`;
+      fire({ key: "Delete" });
+      fire({ key: "a", metaKey: true });
+      expect(handlers["canvas.delete"]).toHaveBeenCalledTimes(1);
+      expect(handlers["canvas.selectAll"]).toHaveBeenCalledTimes(1);
+    });
+
+    it("只是悬浮的 tooltip 不算浮层：节点选中时 Delete 照常", () => {
+      const handlers = mountCanvasHandlers();
+      document.body.innerHTML = `<div data-radix-popper-content-wrapper><div role="tooltip">提示</div></div><div id="canvas"></div>`;
+      fire({ key: "Delete" }, document.getElementById("canvas")!);
+      expect(handlers["canvas.delete"]).toHaveBeenCalledTimes(1);
+    });
+
+    it("真实的 Radix Dialog 打开、焦点在按钮上：Delete 与 ⌘A 都不动画布", () => {
+      const handlers = {
+        "canvas.delete": vi.fn(),
+        "canvas.selectAll": vi.fn(),
+      };
+      mount(handlers);
+      render(
+        createElement(
+          Dialog,
+          { open: true },
+          createElement(
+            DialogContent,
+            null,
+            createElement(DialogTitle, null, "设置"),
+            createElement(DialogDescription, null, "说明"),
+            createElement("button", { id: "ok" }, "确定"),
+          ),
+        ),
+      );
+      const button = document.getElementById("ok")!;
+      button.focus();
+      expect(document.activeElement).toBe(button);
+      fire({ key: "Delete" }, button);
+      fire({ key: "Backspace" }, button);
+      fire({ key: "a", metaKey: true }, button);
+      expect(handlers["canvas.delete"]).not.toHaveBeenCalled();
+      expect(handlers["canvas.selectAll"]).not.toHaveBeenCalled();
+    });
+
+    it("ACP 时间线里 ⌘A 交给浏览器选文字，不选节点", () => {
+      const handlers = mountCanvasHandlers();
+      document.body.innerHTML = `<div data-slot="timeline-view"><p id="p">转录</p></div>`;
+      const event = fire(
+        { key: "a", metaKey: true },
+        document.getElementById("p")!,
+      );
+      expect(handlers["canvas.selectAll"]).not.toHaveBeenCalled();
+      expect(event.defaultPrevented).toBe(false);
     });
   });
 
