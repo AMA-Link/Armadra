@@ -25,7 +25,7 @@ import {
   type CanvasToolId,
   type ToolGroupId,
 } from "./interaction/tool-store";
-import { GEOS, isItemId, type Geo } from "./whiteboard/model";
+import { GEOS, isItemId, type Geo, type Item } from "./whiteboard/model";
 
 /**
  * 白板工具表（React Flow 计划 F21）。
@@ -216,13 +216,26 @@ export function isToolDisabledWhenLocked(id: string): boolean {
  * 判据以前写的是「不是选择工具」，于是手形也弹出一整块颜色 / 粗细 / 线型 /
  * 填充（2026-09-21 用户反馈）——手形只平移视口，画不出任何东西，那块面板
  * 只是挡住左上角。选中的全是节点时同样隐藏：节点的颜色走自己的右键菜单。
+ *
+ * 第三个参数是选中的白板对象本身：选中的**只有**还没写内容的文字时一律
+ * 隐藏（#714）。那是双击空白 / 文字工具刚建出来、正在等人打字的一条，
+ * 空着走开就会被丢弃，给一条马上消失的对象弹样式面板只是添乱。
  */
 export function shouldShowStylePanel(
   toolId: string,
   selectedIds: readonly string[],
+  selectedItems: readonly Item[] = [],
 ): boolean {
+  if (selectedItems.length > 0 && selectedItems.every(isEmptyText)) {
+    return false;
+  }
   if (isCanvasToolId(toolId) && isDrawingTool(toolId)) return true;
   return selectedIds.some(isItemId);
+}
+
+/** 还没有内容的文字对象（空串或只有空白）。 */
+export function isEmptyText(item: Item): boolean {
+  return item.kind === "text" && item.text.trim() === "";
 }
 
 /* -------------------------------- 删除 ----------------------------------- */

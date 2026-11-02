@@ -301,6 +301,33 @@
   }
 }
 
+/*
+ * 样式条（`whiteboard/StylePanel.tsx`，#714）：Dock 正上方居中，与 Dock 同一
+ * 个底边基线加上 Dock 高度与 8px 间隙。整行不接指针，只有条本身接。
+ * 手机上 Dock 抬到底部导航之上，这一行用同一个基线（`--dock-bottom` 只写在
+ * `.canvas-dock-row` 自己身上，兄弟拿不到，所以在下面的断点里重写一遍）。
+ */
+.canvas-style-row {
+  --style-row-bottom: calc(14px + var(--safe-bottom));
+  position: absolute;
+  bottom: calc(var(--style-row-bottom) + var(--dock-h) + 8px);
+  left: 14px;
+  right: 14px;
+  z-index: var(--z-dock);
+  display: flex;
+  justify-content: center;
+  pointer-events: none;
+}
+.canvas-style-row > * {
+  pointer-events: auto;
+}
+@media (max-width: 767px),
+  (pointer: coarse) and (max-height: 500px) and (max-width: 1023px) {
+  .canvas-style-row {
+    --style-row-bottom: calc(var(--mobile-nav-h) + var(--safe-bottom) + 10px);
+  }
+}
+
 .workspace-surface[data-minimap-collapsed="true"],
 .workspace-surface[data-minimap-collapsed="true"] .react-flow__minimap {
   --minimap-w: 36px;
