@@ -1,6 +1,6 @@
 # 设计展示页
 
-> 状态：已实施（2026-10-04，[补全进度](../status/completion-progress.md) G1-14 与各界面包）；2026-10-23 界面统一批次 1–3 收尾（Issue #494）。当前 17 个分区（矩阵 102 张图）；`resizable`、`chart`、`sonner`、`context-menu` 的样本 2026-10-04 随 G5 补进 `components` 分区，2026-10-12 加了渲染用例（`showcase/sections/components.test.tsx`，#332）；`settings`、`status`、`motion` 三个分区由批次 2 填充，批次 3 把设置导航宽度预期、减少动效检查并入探针。[设计系统](design-system.md)的可见验收面：一个只在开发构建里存在的页面，把每个 token、每个组件的变体与状态、每种界面模式用假数据渲染出来，深浅主题 × 三种宽度各截一张图。
+> 状态：已实施（2026-10-04，[补全进度](../status/completion-progress.md) G1-14 与各界面包）；2026-10-23 界面统一批次 1–3 收尾（Issue #494）。当前 18 个分区（矩阵 102 张图）；`resizable`、`chart`、`sonner`、`context-menu` 的样本 2026-10-04 随 G5 补进 `components` 分区，2026-10-12 加了渲染用例（`showcase/sections/components.test.tsx`，#332）；`settings`、`status`、`motion` 三个分区由批次 2 填充，批次 3 把设置导航宽度预期、减少动效检查并入探针。[设计系统](design-system.md)的可见验收面：一个只在开发构建里存在的页面，把每个 token、每个组件的变体与状态、每种界面模式用假数据渲染出来，深浅主题 × 三种宽度各截一张图。
 
 ## §1 结论
 
@@ -43,6 +43,7 @@
 | `motion`      | 动效配方一格一个：按下、发芽、指示器平移、文字替换、数字滚动、列表错落、图标切换、shake、shimmer、对勾画出；每格右上重放，会动的配方旁放一帧强制起始 / 按下态；`reduced-motion` 下无位移 / 缩放 / 循环（探针逐格核验）                                                                                                                                                                                                                                                                                                                                               | `motion.ts`       |
 | `states`      | 通用五态并排：Empty / Skeleton / Alert / 权限 Badge / 离线 Alert；其下一组骨架样本（列表行、头像行、卡片、表格、表单、设置行、节点体、时间线回合）与统一的错误 / 空状态（整块与行内）                                                                                                                                                                                                                                                                                                                                                                                | —                 |
 | `cloud`       | 云端控制台：侧栏 + 页头 + `DataList` 主机表（状态、标签、配额、行菜单）、`TypedConfirm` 删除团队、空 / 加载 / 错误 `PageState`；768 是侧栏收进抽屉的那一档                                                                                                                                                                                                                                                                                                                                                                                                           | `cloud.ts`        |
+| `cloud-flows` | 云端控制台后半截：团队空间、主机与授予、链接与设备信任、用量、公开页二（整页超过探针 16000px 的截图上限，从 `cloud` 拆出）。                                                                                                                                                                                                                                                                                                                                                                                                                                         | `cloud.ts`        |
 
 ### §2.2 文件
 
@@ -72,10 +73,11 @@ node tools/probes/design-showcase.mjs [输出目录] [--only=tokens,acp] [--them
 ```
 
 - 起一个随机端口的 Vite（`vite --port 0 --strictPort false`，读 `apps/web`），新 profile 无头 Chrome；不起 core，不读写操作员数据目录，跑完删除临时目录。
-- 矩阵：17 个分区 × 2 主题 × 3 视口（1440×900 / 1024×768 / 390×844）= 102 张；`--only / --theme / --width` 收窄。
+- 矩阵：18 个分区 × 2 主题 × 3 视口（1440×900 / 1024×768 / 390×844）= 108 张；`--only / --theme / --width` 收窄。
 - 每张图：导航到 `showcase.html?theme=…&only=1#<id>`，等 `document.fonts.ready` 与 `[data-showcase-ready="true"]`，整页截图（`captureBeyondViewport`），文件名 `<id>-<theme>-<width>.png`。
 - 控制台：`console.error` 与未捕获异常算失败（与 `ui-features-e2e.mjs` 同规）。
 - 对比度：探针在页面里执行 `window.__showcaseContrast()`（展示页暴露，读真实计算样式而不是源文件），把每对的实测值写进 `result.json`，低于阈值即失败。对子与 `styles/tokens-contrast.test.ts` 同一张表：墨三阶落在五级面（含下沉、浮层、悬浮）上、分段控件当前项文字落在 `--segment-thumb` 上、状态文字落在阅读面与浮层上、各种衬底上的文字、焦点环 50%、Agent 文字与标识、成员色。
+- 整页高度超过 16000px 或布局视口 / 横向滚动宽度大于视口宽（不换行的行撑宽）都算失败；设置弹窗在 1024 以下是底部 Sheet，宽必须等于视口。
 - 设置弹窗：`components` 分区在每个桌面宽度上打开真弹窗，宽 = 视口 −48（上限 1600），左导航 = `clamp(200px, 18%, 256px)`（±2px）。
 - 产物：`target/design-showcase/*.png` + `result.json`（分区、主题、视口、耗时、对比度表、控制台）。
 - `--diff=<上一次目录>`：逐像素比较同名 PNG，差异超过 0.5% 的列进 `result.json` 的 `changed`，用于审阅改动前后。
@@ -84,7 +86,7 @@ node tools/probes/design-showcase.mjs [输出目录] [--only=tokens,acp] [--them
 
 1. `pnpm --filter @armadra/web build` 的 `dist/` 里没有 `showcase.html` 与 `src/showcase` 的任何 chunk。
 2. `tokens-contrast.test.ts` 通过：设计系统 §2.1–§2.5 列出的每一对都 ≥ 阈值（文字 4.5、图形 3.0）。
-3. 探针 102 张图全部生成，`result.json.status === "ok"`，控制台无错误。
+3. 探针 108 张图全部生成，`result.json.status === "ok"`，控制台无错误。
 4. 展示页里每个按钮、输入、开关都可 Tab 到达，焦点环可见（探针对 `components` 分区按 Tab 走一遍并数 `:focus-visible` 命中数 = 可聚焦元素数）。
 5. `prefers-reduced-motion: reduce` 下（探针用 `Emulation.setEmulatedMedia`）`canvas` 分区的光晕与流光静止（隔 700ms 的两张图逐字节相同）；`status`、`coordinator`、`motion` 三个分区没有位移 / 缩放 / 无限循环的动画（转圈除外），各存一张 `<分区>-<主题>-1440-reduced-motion.png`；`motion` 分区另跑十种配方的基线对照与指示器 / 数字当拍落位。
 6. `forced-colors: active` 下 `components` 分区焦点环仍可见（一张额外截图）。

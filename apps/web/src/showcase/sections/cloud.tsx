@@ -170,8 +170,29 @@ function FromSession({
 }
 
 /**
- * `cloud` 分区（云端控制台 §7 U1a、U1b、U2b、U3、U5、U6、U8）：外壳（带未验证提示与计数）、两种侧栏、整页
- * 四态、设备授权与分享链接落地的公开页、`DataList` 的表格与列表两种渲染、`Progress` 三档、输入确认。外壳随视口宽度
+ * `cloud-flows` 分区：`cloud` 分区放不下的后半截（团队空间、主机与授予、链接与设备信任、用量、公开页二）。
+ * 整页高度超过探针 16000px 的截图上限时月流量图与末尾的设备页就截不到，所以拆成两个分区；
+ * 每个样本自带 mock 客户端，这里的外层只给公开页提供取数的上下文。
+ */
+export function CloudFlowsSection() {
+  return (
+    <MockConsole>
+      {() => (
+        <div className="flex flex-col gap-6">
+          <TeamSamples />
+          <HostSamples />
+          <LinkTrustSamples />
+          <UsageSamples />
+          <PublicSamples />
+        </div>
+      )}
+    </MockConsole>
+  );
+}
+
+/**
+ * `cloud` 分区（云端控制台 §7 U1a、U1b、U3、U8）：外壳（带未验证提示与计数）、个人与运维页、两种侧栏、整页
+ * 四态、`DataList` 的表格与列表两种渲染、`Progress` 三档、输入确认；团队空间与公开页在 `cloud-flows`。外壳随视口宽度
  * 在固定侧栏与顶栏加抽屉之间切换，探针 390 / 768 / 1440 各截一张。
  */
 export default function CloudSection() {
@@ -231,7 +252,7 @@ function TeamSamples() {
           {(session) => shell(session, "/t/rd")}
         </MockConsole>
       </div>
-      <div className="h-[320px] overflow-hidden rounded-card border border-border">
+      <div className="overflow-hidden rounded-card border border-border">
         <MockConsole options={{ roles: { lab: "owner" }, deleted: ["lab"] }}>
           {() => <DeletedTeamPage slug="lab" />}
         </MockConsole>
@@ -648,16 +669,6 @@ function CloudSamples({ session }: { session: ConsoleSession }) {
           />
         </div>
       </div>
-
-      <TeamSamples />
-
-      <HostSamples />
-
-      <LinkTrustSamples />
-
-      <UsageSamples />
-
-      <PublicSamples />
 
       <div className="flex max-w-sm flex-col gap-4">
         {CLOUD_QUOTAS.map(({ tone, value }) => (

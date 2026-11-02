@@ -9,18 +9,23 @@ import { COMPARED, EXPANDED, NOW, RUNS, TEMPLATES } from "../fixtures/workflow";
 
 const noop = () => undefined;
 
+/** 样本的说明只在内容自己没有标题时才写：组件里已有同名标题的，别再重复一遍。 */
 function Sample({
   caption,
+  label,
   children,
 }: {
-  caption: string;
+  caption?: string;
+  label?: string;
   children: ReactNode;
 }) {
   return (
-    <figure className="flex min-w-0 flex-col gap-2">
-      <figcaption className="text-meta text-muted-foreground">
-        {caption}
-      </figcaption>
+    <figure aria-label={label} className="flex min-w-0 flex-col gap-2">
+      {caption ? (
+        <figcaption className="text-meta text-muted-foreground">
+          {caption}
+        </figcaption>
+      ) : null}
       {children}
     </figure>
   );
@@ -40,17 +45,15 @@ export default function WorkflowSection() {
   });
   return (
     <div className="flex min-w-0 flex-col gap-6">
-      <div className="grid gap-6 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
-        <Sample caption={t("workflow.tab.templates")}>
+      <Sample caption={t("workflow.tab.templates")}>
+        <div className="grid gap-6 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
           <TemplateLibrary templates={TEMPLATES} runs={RUNS} now={NOW} />
-        </Sample>
-        <Sample caption={t("workflow.library.empty")}>
           <div className="rounded-panel border border-dashed border-border">
             <TemplateLibrary templates={[]} runs={[]} now={NOW} />
           </div>
-        </Sample>
-      </div>
-      <Sample caption={t("workflow.editor.steps")}>
+        </div>
+      </Sample>
+      <Sample label={t("workflow.editor.steps")}>
         <TemplateEditor
           inline
           template={TEMPLATES[0]!}
