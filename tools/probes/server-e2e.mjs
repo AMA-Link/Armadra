@@ -5,7 +5,7 @@
 // Cookie 的浏览器上下文，一个是管理员，一个是持邀请注册的成员。
 //
 //   1. 管理员打开启动日志里的配对链接，页面自己完成配对；
-//   2. 管理员在「账号与共享」生成邀请，成员在另一个上下文打开 `#invite=` 链接注册；
+//   2. 管理员在「成员与共享」生成邀请，成员在另一个上下文打开 `#invite=` 链接注册；
 //   3. 只读共享：成员看得见、写被拒（403 与界面反应）；改成可写后能写；撤销
 //      之后成员已开的事件订阅（控制面 `/api/ws`）以 forbidden 结束，下一次请求 403；
 //   4. 成员打开页面不撞任何全局 403（§56 的权限表：无害的全局读放行，本机管理
@@ -353,14 +353,14 @@ await h.run(async () => {
     await admin.settle();
     const paired = await admin
       .waitFor(`return document.body.innerText.includes("服务所有者");`, {
-        what: "配对完成（设备与会话页出现「服务所有者」）",
+        what: "配对完成（账号与设备页出现「服务所有者」）",
         timeout: 30_000,
       })
       .then(
         () => true,
         async (error) => {
           // 留下页面、接口应答与服务器输出，看得出是没连上、配对被拒，还是
-          // 页面没走到设备与会话页。
+          // 页面没走到账号与设备页。
           await admin
             .capture(`01-admin-pairing-failed-${attempt}`)
             .catch(() => undefined);
@@ -397,7 +397,7 @@ await h.run(async () => {
     if (paired) break;
     console.error(`  RETRY 配对第 ${attempt} 次没等到，换一张新票再试`);
     // 现场同时写进日志（R-89）：报告文件只在产物里，偶发时先看日志就能分出
-    // 是没连上、配对被拒，还是页面没走到设备与会话页。
+    // 是没连上、配对被拒，还是页面没走到账号与设备页。
     const failure = report.pairingFailures.at(-1);
     console.error(
       "  现场 " +
@@ -507,7 +507,7 @@ await h.run(async () => {
 
   await admin.navigate(`${origin}/`);
   await admin.settle();
-  await openSettings(admin, "账号与共享");
+  await openSettings(admin, "成员与共享");
   await admin.click('[role="dialog"] button', "生成邀请");
   await choose(admin, "工作空间", "共享项目");
   await choose(admin, "角色", "查看");
@@ -831,7 +831,7 @@ await h.run(async () => {
     );
   await admin.navigate(`${origin}/`);
   await admin.settle();
-  await openSettings(admin, "账号与共享");
+  await openSettings(admin, "成员与共享");
   // 共享一节的工作空间选择器（邀请对话框已关，页面上只剩这一个）。
   await choose(admin, "工作空间", "共享项目");
   await admin.waitFor(

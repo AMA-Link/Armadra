@@ -9,7 +9,7 @@
 //   3. 第三个上下文（同样只信 CA、Cookie 不共享）兑换邀请注册成员，读得到被
 //      共享的画布、写被拒、`/api/gateway` 403；
 //   4. 「从页面开关」（G2-7）：无头 Chrome 打开网页配对链接，页面自己配对成
-//      owner；设备与会话页里有 CA 安装引导与已配对设备，远程访问页里「允许其他设备访问」开着、二维码里是同一个来源、
+//      owner；账号与设备页里有 CA 安装引导与已配对设备，远程访问页里「允许其他设备访问」开着、二维码里是同一个来源、
 //      已配对设备表里有这台；在页面上点开关关掉 Gateway，回环上读到已关，
 //      再从回环打开继续后面的步骤；
 //   4b. 「手机页输入配对码」（契约 §24）：设置页的配对卡上有 8 位配对码；独立
@@ -455,7 +455,7 @@ async function fromThePage(base, origin) {
     guide,
   );
 
-  // 配对链接打开到「设备与会话」：这台设备的登录与已配对设备在这一页。
+  // 配对链接打开到「账号与设备」：这台设备的登录与已配对设备在这一页。
   await page.waitFor(
     `return [...document.querySelectorAll("table td")]
        .some((cell) => cell.innerText.includes("Gateway 配对"));`,
@@ -749,13 +749,14 @@ async function passkeyFromThePage(base, owner, workspaceId) {
     await page.waitFor(
       `return !!document.querySelector('[role="dialog"] nav');`,
     );
-    await page.click('[role="dialog"] nav button', "账号与安全");
+    await page.click('[role="dialog"] nav button', "账号与设备");
     await sleep(600);
   };
   await openSecurity();
   await page.click('[role="dialog"] button', "添加通行密钥");
   await page.waitFor(
-    `return [...document.querySelectorAll('[role="dialog"] table td')]
+    // 同一页还有设备与会话表（#708）：只看通行密钥那一块。
+    `return [...document.querySelectorAll('[role="dialog"] [data-settings-label="通行密钥"] table td')]
        .some((cell) => cell.innerText.includes("Chrome"));`,
     { what: "通行密钥表里出现新登记的一行", timeout: 30_000 },
   );

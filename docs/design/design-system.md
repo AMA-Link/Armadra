@@ -420,7 +420,7 @@ ui/ 生成件：`Button / Input / SelectTrigger / Textarea / InputGroup` 的 def
 
 ### §5.10 会话与设备管理
 
-设置 → 设备与会话：`Table`（设备 · 平台 · 最近活动 tabular · [退出]），当前设备行 `Badge secondary sm`「当前」；通行密钥列表同页；见 §5.17 的页面块。
+设置 → 账号与设备：`Table`（设备 · 平台 · 最近活动 tabular · [退出]），当前设备行 `Badge secondary sm`「当前」；通行密钥列表同页；见 §5.17 的页面块。
 
 ### §5.11 审计日志
 
