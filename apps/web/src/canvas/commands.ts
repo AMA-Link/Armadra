@@ -15,7 +15,6 @@ import type { CommandId } from "../keybindings";
  * 与 `CommandId` 合成一个联合，这样 shell 传 `CommandId` 也能直接调。
  */
 export const EXTRA_CANVAS_COMMANDS = [
-  "canvas.selectAll",
   "canvas.group",
   "canvas.restore",
   "canvas.duplicate",

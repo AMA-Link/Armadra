@@ -83,6 +83,7 @@ import {
 } from "./tools";
 import { MAX_ZOOM, MIN_ZOOM } from "./zoom";
 import { tidySelection } from "./tidy-flow";
+import { selectAllCanvas } from "./select-all";
 import { layoutDirection, useLayoutDirectionSync } from "./layout-direction";
 import { useConnectEndSpawn } from "./flow/use-connect-end";
 import { isZoomWheel, zoomCanvasByWheel } from "./interaction/wheel-zoom";
@@ -370,18 +371,7 @@ function FlowWorkspaceInner() {
       "canvas.zoomIn": () => zoomByStep(1),
       "canvas.zoomOut": () => zoomByStep(-1),
       "canvas.zoom100": () => zoomToLevel(1),
-      "canvas.selectAll": () => {
-        const state = store();
-        state.setSelection({
-          nodes: (state.document?.nodes ?? []).map((node) => node.id),
-          items: state.whiteboard.items.map((item) => `wb:${item.id}`),
-          edges: [
-            ...(state.document?.edges ?? []).map((edge) => edge.id),
-            // 引用边与连线在选区里共用一格，全选自然也该把它们框进来。
-            ...state.whiteboard.references.map((reference) => reference.id),
-          ],
-        });
-      },
+      "canvas.selectAll": () => selectAllCanvas(store()),
       "canvas.delete": () => {
         const state = store();
         const split = splitSelectionForDelete(

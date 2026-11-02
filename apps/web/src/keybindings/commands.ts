@@ -347,6 +347,20 @@ export const COMMANDS = [
     allowWhileTyping: false,
   },
 
+  // 全选：选中画布上的全部节点、白板对象与连线（`FlowWorkspace` 注册的
+  // `canvas.selectAll`，右键菜单同一条）。输入框、终端、编辑器里的 ⌘A 是
+  // 各自的「全选文字」，所以不放行；`canvasFocus` 再把节点内部（编辑器、
+  // 浏览器、提交页）挡在外面。
+  {
+    id: "canvas.selectAll",
+    labelKey: "cmd.canvas.selectAll",
+    scope: "canvas",
+    defaultKeys: both("Mod+A"),
+    allowInTerminal: false,
+    allowWhileTyping: false,
+    when: "canvasFocus",
+  },
+
   // ── canvas：剪贴板（React Flow 计划 F19） ────────────────────────
   //
   // 三条都不在终端与输入框里生效：⌘C / ⌘X / ⌘V 在那两处是系统行为，

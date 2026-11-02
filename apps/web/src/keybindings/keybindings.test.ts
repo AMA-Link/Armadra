@@ -336,6 +336,81 @@ describe("useKeybindings", () => {
     expect(canvas.defaultPrevented).toBe(false);
   });
 
+  describe("全选 canvas.selectAll", () => {
+    it("登记在命令表里：两个平台都是 Mod+A，终端与输入框里不放行", () => {
+      const spec = COMMAND_BY_ID["canvas.selectAll"];
+      expect(spec.scope).toBe("canvas");
+      expect(commandKeys("canvas.selectAll", MAC)).toBe("Mod+A");
+      expect(commandKeys("canvas.selectAll", PC)).toBe("Mod+A");
+      expect(formatKeys("Mod+A", MAC)).toBe("⌘A");
+      expect(spec.allowInTerminal).toBe(false);
+      expect(spec.allowWhileTyping).toBe(false);
+      expect(t(spec.labelKey)).toBe("全选");
+    });
+
+    it("画布上 ⌘A 触发并拦下浏览器的文档全选", () => {
+      const onSelectAll = vi.fn();
+      mount({ "canvas.selectAll": onSelectAll });
+      const event = fire({ key: "a", metaKey: true });
+      expect(onSelectAll).toHaveBeenCalledTimes(1);
+      expect(event.defaultPrevented).toBe(true);
+    });
+
+    it("输入框、文本域、可编辑区、终端里都保留原生全选", () => {
+      const onSelectAll = vi.fn();
+      mount({ "canvas.selectAll": onSelectAll });
+
+      const input = document.createElement("input");
+      const textarea = document.createElement("textarea");
+      const editable = document.createElement("div");
+      editable.setAttribute("contenteditable", "true");
+      const terminal = document.createElement("div");
+      terminal.className = "xterm";
+      const helper = document.createElement("textarea");
+      terminal.append(helper);
+      document.body.append(input, textarea, editable, terminal);
+
+      for (const target of [input, textarea, editable, helper]) {
+        const event = fire({ key: "a", metaKey: true }, target);
+        expect(event.defaultPrevented).toBe(false);
+      }
+      expect(onSelectAll).not.toHaveBeenCalled();
+    });
+
+    it("编辑器、浏览器节点里也不接管", () => {
+      const onSelectAll = vi.fn();
+      mount({ "canvas.selectAll": onSelectAll });
+      for (const scope of ["editor", "browser"]) {
+        const host = document.createElement("div");
+        host.setAttribute(SCOPE_ATTRIBUTE, scope);
+        const inner = document.createElement("button");
+        host.append(inner);
+        document.body.append(host);
+        fire({ key: "a", metaKey: true }, inner);
+      }
+      expect(onSelectAll).not.toHaveBeenCalled();
+    });
+
+    it("非 Mac 上是 Ctrl+A，改键后新键生效、旧键失效", () => {
+      const onSelectAll = vi.fn();
+      mount({ "canvas.selectAll": onSelectAll }, { mac: false });
+      fire({ key: "a", ctrlKey: true });
+      expect(onSelectAll).toHaveBeenCalledTimes(1);
+
+      setActiveKeymap({
+        "canvas.selectAll": { mac: "Mod+Shift+A", other: "Mod+Shift+A" },
+      });
+      try {
+        fire({ key: "a", ctrlKey: true });
+        expect(onSelectAll).toHaveBeenCalledTimes(1);
+        fire({ key: "A", ctrlKey: true, shiftKey: true });
+        expect(onSelectAll).toHaveBeenCalledTimes(2);
+      } finally {
+        setActiveKeymap({});
+      }
+    });
+  });
+
   it("画布上（非输入、非终端）的 ⌘Z 正常触发", () => {
     const onUndo = vi.fn();
     mount({ "canvas.undo": onUndo });

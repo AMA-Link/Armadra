@@ -415,6 +415,7 @@ export function buildAddMenu(
       label: t("canvas.selectAll"),
       icon: SquareDashedMousePointer,
       group: "canvas",
+      shortcut: "canvas.selectAll",
       run: command("canvas.selectAll"),
     },
     {
