@@ -4990,3 +4990,11 @@ owner（本机会话，或已信任设备经通道的 owner 会话）：`{ sourc
 - 人在**成员节点**里说的话本来就归那个成员，不变。
 - 人对**协调者**说的话里点名了工作项——提示词里的 `#<工作项 id>`（只认这位协调者名下确实存在的 id，句读容许；前面不能紧贴字母数字），或在画布上评论了那个成员节点（`board.comment` 新建，锚点是节点）——core 记一个 `followup` 事件，并把**原话直接投给那个成员**：走投递队列与整条门链（`origin = mailbox-wake`，署名是应用，不替人回答任何提示），正文末尾附 `report` / `handback` 的用法。协调者的卡片里只多一行「已转给「X」」，不带原话；转不出去（成员节点不在、队列满）时写「没能转给「X」……」。协调者只能决定停掉这一项，不能再派一份。成员处理完 `report`，处理不了 `handback`（回到协调者的卡片）。
 - 来自 core 自己投的信封（卡片、唤醒、别的节点的 `send`，以 `--- ARMADRA MESSAGE` 开头）的提示词不算人说的话。没有点名的就是新请求，由协调者决定接新项还是挂到已有项；挂到已有项需要明确的引用，话题相近的应当开新项。
+
+## 94. 资源采样里 Armadra 自己的进程：`ProcessSample.origin`
+
+资源面板的会话组里，Agent 的进程树里会出现 Armadra 自己的程序：Armadra 给 CLI 注入的钩子与画布工具 MCP（`armadra-hook`）以 `ELECTRON_RUN_AS_NODE` 重入本机安装的 Electron 二进制，进程名是 `Armadra Helper`。它们确实是这个会话的后代，所以仍在树里、仍计入会话的 CPU 与内存合计（§27.4 的阈值口径不变）；本节只让它们能被认出来。本节只加字段，不改已有形状。实现在 `core/resources/sample.ts`（`isArmadraProcess`），形状在共享层 `api/resources.ts`。
+
+- `ProcessSample`（`SessionResources.children[]`、平台组件的 `process` / `children[]`）多一个可选字段 `origin: "armadra"`：这个进程是**本次安装**自己的程序。缺省 = 无结论，旧页面忽略它。
+- 判定只看可执行路径，不按名字猜（别的 Electron 应用也有 `Foo Helper`）：macOS 是路径落在运行中 core 所在的 `.app` 包（`X.app/Contents/…`）之下；其他平台是安装目录里与主程序同名的二进制，且主程序不是 `node`（服务器壳跑在系统 `node` 上，认它会把用户自己的 node 进程都认成 Armadra 的）。读不到路径的进程不认。远端主机（SSH）上读到的树不带这个字段。
+- 会话行没有新字段：标题、Agent 与画板名取自 `GET /api/workspaces/{id}/sessions`（§5.1 的会话行），那份读模型覆盖工作空间的所有画板。面板的会话组标题就是节点标题，不再退到 `cwd` 的末级目录。
