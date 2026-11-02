@@ -233,7 +233,9 @@ it("does not offer the editor for a range that contains a merge commit", async (
     ),
   });
   await screen.findByText("gitRepo.rebaseTodoMerges");
-  const run = screen.getByRole("button", {
+  // 按钮要等「提交列表 → entries」那次副作用之后才出现，和警告不在同一次提交里：
+  // 等按钮本身，不假定它与警告同时到。
+  const run = await screen.findByRole("button", {
     name: "gitRepo.startInteractiveRebase",
   });
   expect((run as HTMLButtonElement).disabled).toBe(true);
