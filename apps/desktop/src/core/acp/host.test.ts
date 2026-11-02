@@ -1,10 +1,16 @@
-import { chmodSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import {
+  chmodSync,
+  existsSync,
+  mkdtempSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { fakeAcpAgentPath } from "@armadra/agent/acp";
 import type { AcpInitializeResult } from "@armadra/agent/acp";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { type AcpAdapter, acpAdapter } from "./adapters";
 import { setHookClient } from "../terminal/environment";
@@ -101,20 +107,33 @@ describe("resumeMethod without replay", () => {
 });
 
 describe("withSilence", () => {
+  // 假定时钟：窗口与节拍都由测试推进，机器再忙也不会把「一直有动静」饿成超时。
   it("rejects after the silence window and each touch restarts it", async () => {
-    let touch: () => void = () => undefined;
-    const never = new Promise<never>(() => undefined);
-    const started = Date.now();
-    // 窗口与节拍都放宽：机器高负载时 40 ms 的定时器会被饿过 80 ms 的窗口，
-    // 「一直有动静」就成了误判超时。窗口里留 6 拍的余量。
-    const pending = withSilence(never, 300, (fn) => {
-      touch = fn;
-    });
-    const ticker = setInterval(touch, 50);
-    setTimeout(() => clearInterval(ticker), 600);
-    await expect(pending).rejects.toMatchObject({ code: "acp_resume_timeout" });
-    // 一直有动静的 600 ms 里不会超时，停了之后再等一个窗口才拒。
-    expect(Date.now() - started).toBeGreaterThanOrEqual(850);
+    vi.useFakeTimers();
+    try {
+      let touch: () => void = () => undefined;
+      const never = new Promise<never>(() => undefined);
+      let outcome: unknown = "pending";
+      const pending = withSilence(never, 300, (fn) => {
+        touch = fn;
+      }).catch((error: unknown) => {
+        outcome = error;
+      });
+      // 一直有动静的 600 ms（每 50 ms 一拍，窗口 300 ms）里不会超时。
+      for (let beat = 0; beat < 12; beat += 1) {
+        await vi.advanceTimersByTimeAsync(50);
+        touch();
+      }
+      expect(outcome).toBe("pending");
+      // 停了之后，窗口差 1 ms 还不拒，满窗口才拒。
+      await vi.advanceTimersByTimeAsync(299);
+      expect(outcome).toBe("pending");
+      await vi.advanceTimersByTimeAsync(1);
+      await pending;
+      expect(outcome).toMatchObject({ code: "acp_resume_timeout" });
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("passes the result through when the work finishes first", async () => {
@@ -478,10 +497,17 @@ describe.skipIf(process.platform === "win32")("startAdapter", () => {
     }
 
     it("fails at once with the versions and the package to install", async () => {
-      const started = Date.now();
+      // 适配器程序一旦被起来就会留下这个标记：版本过旧要在起进程之前拒掉。
+      const env = withPi("0.73.1");
+      const marker = join(env.PATH as string, "adapter-started");
+      writeFileSync(
+        join(env.PATH as string, "pi-acp"),
+        `#!/bin/sh\ntouch "${marker}"\nexec "${process.execPath}" "${fakeAcpAgentPath()}" "$@"\n`,
+        "utf8",
+      );
       const error = await startAdapter(pi, {
         cwd: tmpdir(),
-        env: withPi("0.73.1"),
+        env,
       }).catch((e: unknown) => e);
       expect(error).toBeInstanceOf(AcpError);
       expect(error).toMatchObject({
@@ -493,8 +519,8 @@ describe.skipIf(process.platform === "win32")("startAdapter", () => {
           package: "@earendil-works/pi-coding-agent",
         },
       });
-      // 没有起适配器进程挂到超时。
-      expect(Date.now() - started).toBeLessThan(5_000);
+      // 没有起适配器进程挂到超时：不比墙钟，看进程根本没被起过。
+      expect(existsSync(marker)).toBe(false);
       expect(rememberedAcpVersion("pi")).toBeUndefined();
     });
 

@@ -50,11 +50,14 @@ export interface AcpCore {
   stop(): Promise<void>;
 }
 
-/** 轮询直到成立（机器快慢不一，不睡固定时长）。 */
+/**
+ * 轮询直到成立（机器快慢不一，不睡固定时长）。`seconds` 只是挂住时的上界，成立就
+ * 立刻返回；整套并行时起一个 core 加几个假 Agent 进程就可能超过 10 秒。
+ */
 export async function until<T>(
   read: () => T | Promise<T>,
   ready: (value: T) => boolean,
-  seconds = 10,
+  seconds = 30,
 ): Promise<T> {
   const deadline = Date.now() + seconds * 1000;
   for (;;) {
