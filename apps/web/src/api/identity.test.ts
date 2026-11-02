@@ -28,7 +28,10 @@ import {
   identityRequest,
   identitySessionSchema,
   IdentityRequestError,
+  IdentitySupersededError,
   IdentityTransportError,
+  PREVIOUS_SESSION_KEY,
+  currentAccessToken,
   logoutIdentity,
   onIdentitySessionChange,
   pairIdentity,
@@ -574,6 +577,103 @@ describe("the desktop shell keeps one session (#706)", () => {
       expect(mocks.revokeSession).toHaveBeenCalledWith("s1"),
     );
     expect(mocks.revokeSession).toHaveBeenCalledTimes(1);
+  });
+
+  /** 整页重载：内存里的凭据没了，`sessionStorage`（同一标签页）还在。 */
+  function reloadPage(): void {
+    const kept = sessionStorage.getItem(PREVIOUS_SESSION_KEY);
+    resetIdentityCredentials();
+    if (kept !== null) sessionStorage.setItem(PREVIOUS_SESSION_KEY, kept);
+  }
+
+  it("revokes the previous page's session after a full reload (#737)", async () => {
+    await resumeIdentity();
+    expect(live).toBe("s1");
+    reloadPage();
+    await resumeIdentity();
+    expect(live).toBe("s2");
+    await vi.waitFor(() =>
+      expect(mocks.revokeSession).toHaveBeenCalledWith("s1"),
+    );
+    expect(mocks.revokeSession).toHaveBeenCalledTimes(1);
+  });
+
+  it("leaves one live session after three reloads (#737)", async () => {
+    await resumeIdentity();
+    for (let reload = 0; reload < 3; reload += 1) {
+      reloadPage();
+      await resumeIdentity();
+    }
+    expect(live).toBe("s4");
+    await vi.waitFor(() =>
+      expect(mocks.revokeSession).toHaveBeenCalledTimes(3),
+    );
+    expect(mocks.revokeSession.mock.calls.map(([id]) => id)).toEqual([
+      "s1",
+      "s2",
+      "s3",
+    ]);
+  });
+
+  it("revokes nothing on a first load, or after the page logged out", async () => {
+    await resumeIdentity();
+    expect(mocks.revokeSession).not.toHaveBeenCalled();
+    await logoutIdentity();
+    expect(sessionStorage.getItem(PREVIOUS_SESSION_KEY)).toBeNull();
+    reloadPage();
+    await resumeIdentity();
+    await vi.advanceTimersByTimeAsync(10);
+    expect(mocks.revokeSession).not.toHaveBeenCalled();
+  });
+
+  it("keeps only the session id in sessionStorage, never a key", async () => {
+    await resumeIdentity();
+    expect(sessionStorage.getItem(PREVIOUS_SESSION_KEY)).toBe("s1");
+    expect(JSON.stringify({ ...sessionStorage })).not.toContain("refresh-");
+  });
+});
+
+describe("logging out while a refresh is in flight (#737)", () => {
+  it("drops the refresh that lands after the logout", async () => {
+    mocks.nativeShell = true;
+    const pairedAnswer = {
+      ...session,
+      native: { accessToken: "s1.access-1", refreshToken: "s1.refresh-1" },
+    };
+    let release: () => void = () => undefined;
+    const gate = new Promise<void>((done) => (release = done));
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string, init: RequestInit) => {
+        calls.push({ url, init });
+        const refresh = url.includes("session/refresh");
+        if (refresh) await gate;
+        const body = url.includes("session/logout")
+          ? { closed: true }
+          : {
+              ...pairedAnswer,
+              native: refresh
+                ? { accessToken: "s1.access-2", refreshToken: "s1.refresh-2" }
+                : pairedAnswer.native,
+            };
+        return { ok: true, status: 200, json: async () => body } as Response;
+      }),
+    );
+    await pairIdentity("t");
+    const changes: string[] = [];
+    onIdentitySessionChange((change) => changes.push(change));
+
+    const refreshing = refreshIdentity();
+    const settled = refreshing.then(
+      () => "resolved",
+      (error: unknown) => error,
+    );
+    await logoutIdentity();
+    release();
+
+    expect(await settled).toBeInstanceOf(IdentitySupersededError);
+    expect(currentAccessToken()).toBe("");
+    expect(changes).toEqual(["gone"]);
   });
 });
 
