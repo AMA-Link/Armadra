@@ -19,7 +19,6 @@ import {
 } from "@/ui/accordion";
 import { Badge } from "@/ui/badge";
 import { Button } from "@/ui/button";
-import { Spinner } from "@/ui/spinner";
 
 /** 发布历史的查询键：关于页里几处共用一份答案。 */
 export const RELEASES_QUERY_KEY = ["update-releases"] as const;
@@ -145,10 +144,10 @@ export function ReleaseHistory({
               <Button
                 size="sm"
                 variant="outline"
-                disabled={refreshing || coolingDown}
+                disabled={coolingDown && !refreshing}
+                loading={refreshing}
                 onClick={onRefresh}
               >
-                {refreshing && <Spinner aria-hidden />}
                 {t("updates.history.refresh")}
               </Button>
             )}

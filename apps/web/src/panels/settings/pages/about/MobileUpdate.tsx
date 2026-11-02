@@ -11,7 +11,6 @@ import { SettingsGroup } from "../../SettingsGroup";
 import { SettingsRow } from "../../SettingsRow";
 import { Alert, AlertTitle } from "@/ui/alert";
 import { Button } from "@/ui/button";
-import { Spinner } from "@/ui/spinner";
 
 /**
  * Android：有更新的签名 APK 时「下载并安装」，交给原生 `installApk`（#288 §4）。
@@ -50,8 +49,7 @@ export function AndroidUpdateGroup({
             ? { footnote: t(`updates.android.${status}`) }
             : {})}
         >
-          <Button size="sm" disabled={busy} onClick={() => void run()}>
-            {busy && <Spinner aria-hidden />}
+          <Button size="sm" loading={busy} onClick={() => void run()}>
             {t(
               status === null || status === "started"
                 ? "updates.android.install"

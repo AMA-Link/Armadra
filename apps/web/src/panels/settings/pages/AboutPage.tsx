@@ -1,6 +1,5 @@
 import { Loadable } from "@/loading/Loadable";
 import { Skeleton } from "@/ui/skeleton";
-import { Spinner } from "@/ui/spinner";
 import * as React from "react";
 import { useQuery } from "@tanstack/react-query";
 
@@ -505,11 +504,11 @@ function LocalUpdates() {
             <Button
               size="sm"
               variant="outline"
-              disabled={busy || !installed}
+              disabled={!installed}
+              loading={busy}
               onClick={() => perform("check")}
             >
-              {busy && <Spinner aria-hidden />}
-              {t(busy ? "updates.checking" : "updates.check")}
+              {t("updates.check")}
             </Button>
           ) : undefined
         }
@@ -724,18 +723,16 @@ export function UpdateStatusRows({
                 size="sm"
                 variant={index === 0 ? "default" : "secondary"}
                 disabled={
-                  (busy && action !== "cancel") ||
+                  (busy && action !== "cancel" && action !== "check") ||
                   (action === "check" && !installed) ||
                   (action === "notes" && !notesUrl)
                 }
+                loading={action === "check" && busy}
                 onClick={() => onAction(action)}
               >
-                {action === "check" && busy && <Spinner aria-hidden />}
                 {t(
                   action === "check"
-                    ? busy
-                      ? "updates.checking"
-                      : "updates.check"
+                    ? "updates.check"
                     : action === "openHostSettings"
                       ? "updates.blocked.action"
                       : `updates.action.${action}`,

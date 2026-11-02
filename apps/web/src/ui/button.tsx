@@ -63,24 +63,25 @@ const buttonVariants = cva(
 
 type ButtonSize = NonNullable<VariantProps<typeof buttonVariants>["size"]>;
 
-/** 转圈的两档：xs / sm / 图标小钮用 12，其余 16。 */
-function spinnerSizeOf(size: ButtonSize): 12 | 16 {
-  return size === "xs" ||
-    size === "sm" ||
-    size === "icon-xs" ||
-    size === "icon-sm"
-    ? 12
-    : 16;
+/**
+ * 转圈取被它顶替的图标的尺寸（按钮各档给图标的 `size-*`），顶替前后宽度相同：
+ * xs 12、sm 14、其余 16。`Spinner` 只有 12 / 16 两档，14 用 `size-3.5` 盖过。
+ */
+function spinnerOf(size: ButtonSize): { size: 12 | 16; className?: string } {
+  if (size === "xs" || size === "icon-xs") return { size: 12 };
+  if (size === "sm" || size === "icon-sm")
+    return { size: 12, className: "size-3.5" };
+  return { size: 16 };
 }
+
+const isLeadingIcon = (child: React.ReactNode): boolean =>
+  React.isValidElement<{ "data-icon"?: string }>(child) &&
+  child.props["data-icon"] === "inline-start";
 
 /** 去掉带 `data-icon="inline-start"` 的前导图标，loading 时由 `Spinner` 顶替。 */
 function withoutLeadingIcon(children: React.ReactNode): React.ReactNode {
   return React.Children.toArray(children).filter(
-    (child) =>
-      !(
-        React.isValidElement<{ "data-icon"?: string }>(child) &&
-        child.props["data-icon"] === "inline-start"
-      ),
+    (child) => !isLeadingIcon(child),
   );
 }
 
@@ -89,9 +90,10 @@ export interface ButtonProps
     VariantProps<typeof buttonVariants> {
   asChild?: boolean;
   /**
-   * 进行中：前导图标换成 `Spinner`（图标要标 `data-icon="inline-start"`，没标就在最前面
-   * 补一枚），标签叠 `Shimmer`，宽度不变。写 `aria-busy` 而不是 `disabled`——仍可聚焦，
-   * 点击被吞掉。`asChild` 下只写属性。
+   * 进行中：宽高不变，点一下不挤开同行内容。前导图标（标 `data-icon="inline-start"`）
+   * 换成同尺寸的 `Spinner`；纯图标钮整个换成 `Spinner`；没有前导图标的文字钮不插入转圈，
+   * 只给标签叠 `Shimmer`。写 `aria-busy` 而不是 `disabled`（不闪灰）——仍可聚焦，点击被
+   * 吞掉。`asChild` 下只写属性。
    */
   loading?: boolean;
   /** 关掉按下反馈（行内大面积可点区域、已经有自己动画的钮）。 */
@@ -120,19 +122,23 @@ function Button({
 
   let inner: React.ReactNode = children;
   if (!asChild && (loading || shortcut !== undefined)) {
+    const spinner = spinnerOf(resolvedSize);
+    const iconOnly = resolvedSize.startsWith("icon");
+    const leading = React.Children.toArray(children).some(isLeadingIcon);
     inner = (
       <>
-        {loading && (
+        {loading && (iconOnly || leading) && (
           <Spinner
-            size={spinnerSizeOf(resolvedSize)}
+            size={spinner.size}
+            className={spinner.className}
             data-icon="inline-start"
           />
         )}
-        {loading ? (
+        {loading && !iconOnly ? (
           <Shimmer className="inline-flex items-center gap-[inherit]">
             {withoutLeadingIcon(children)}
           </Shimmer>
-        ) : (
+        ) : loading ? null : (
           children
         )}
         {shortcut !== undefined && <Kbd>{shortcut}</Kbd>}
