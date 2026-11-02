@@ -59,8 +59,7 @@ import {
   mergeReports,
   reconcile,
 } from "./gc";
-import { type Actor, type Lease, freeLease } from "../drive/lease";
-import { loadSession } from "../collab/nodes";
+import { type Actor, type Lease } from "../drive/lease";
 import {
   DRIVE_SWEEP_INTERVAL_MS,
   TerminalDriveBook,

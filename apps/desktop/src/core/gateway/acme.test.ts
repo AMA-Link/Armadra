@@ -415,6 +415,7 @@ describe("ACME 管理器", () => {
     const time = clock(new Date("2026-10-01T00:00:00Z"));
     const issuer = fakeIssuer(dataDir, time.now);
     let seen: { status: number; body: string } | undefined;
+    // eslint-disable-next-line prefer-const -- 前向声明：签发回调先于管理器创建，且在创建前要读到 undefined
     let manager: AcmeManager | undefined;
     const wrapped: AcmeIssuer = async (request) => {
       // 监听在签发之前就开好了：CA 回连时令牌已经在表里。
@@ -459,6 +460,7 @@ describe("tls-alpn-01", () => {
         }
       | undefined;
     let request: IssueRequest | undefined;
+    // eslint-disable-next-line prefer-const -- 前向声明：签发回调先于管理器创建，且在创建前要读到 undefined
     let manager: AcmeManager | undefined;
     const wrapped: AcmeIssuer = async (issued) => {
       request = issued;

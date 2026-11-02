@@ -224,6 +224,7 @@ describe(`${CLIENT_ERROR_ROUTE}`, () => {
       const run = () => router.dispatch(method, CLIENT_ERROR_ROUTE, request);
       return (await (who === undefined ? run() : runAs(who, run))) as {
         status: number;
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- 测试里按需探查 JSON 响应体与夹具，不逐个声明类型
         body: any;
         headers?: Record<string, string>;
       };

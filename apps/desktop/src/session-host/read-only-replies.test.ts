@@ -4,10 +4,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { ensureKey } from "../core/terminal/session-host/auth";
-import {
-  SessionHostBackend,
-  sessionHostEnvironment,
-} from "../core/terminal/session-host/backend";
+import { SessionHostBackend } from "../core/terminal/session-host/backend";
 import { PIPE_PREFIX } from "../core/terminal/session-host/protocol";
 import { sessionKey } from "../core/terminal/backend";
 import { type FakePty, fakeSpawner } from "./fake-pty";

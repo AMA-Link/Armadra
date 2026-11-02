@@ -208,6 +208,7 @@ export async function serveTerminalSocket(
   const cols = options.cols ?? DEFAULT_COLS;
   const rows = options.rows ?? DEFAULT_ROWS;
   // Set once the attachment exists; until then there is nothing to pause.
+  // eslint-disable-next-line prefer-const -- 前向声明：回调先于 attachment 创建，之前要读到 undefined（const 会落入暂时性死区）
   let flow: { pause?(): void; resume?(): void } | undefined;
   const queue = new SendQueue(wsTarget(connection, { binary: false }), {
     policy: "pause",

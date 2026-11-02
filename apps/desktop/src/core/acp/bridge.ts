@@ -159,6 +159,7 @@ export class AcpBackend implements TerminalBackend {
     let opened: Awaited<ReturnType<AcpOpener>>;
     // 退出回调认的是**这一个**会话：切换驱动之后同一个 key 上的新行也从第 1 代
     // 起，只比代次会把新会话当成旧的收掉。
+    // eslint-disable-next-line prefer-const -- 前向声明：退出回调先于赋值创建，且在赋值前要读到 undefined
     let mine: AcpSession | undefined;
     try {
       opened = await this.opener(spec, (exit) => {

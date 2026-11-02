@@ -2,7 +2,7 @@ import type { DatabaseSync } from "node:sqlite";
 import { channelPeerOf } from "../relay/e2e/peer";
 import { teamRoleOf } from "./cloud/store";
 import type { CoreRequest } from "../http/router";
-import { type RouteScopeRequirement, selfGuarded } from "../http/route-scopes";
+import { selfGuarded } from "../http/route-scopes";
 import { type AuthorizationSubject, isOwner } from "./authorize";
 import {
   latestNodeSession,

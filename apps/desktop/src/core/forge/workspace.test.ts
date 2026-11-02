@@ -40,6 +40,7 @@ interface Harness {
     path: string,
     body?: unknown,
     query?: Record<string, string>,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- 测试里按需探查 JSON 响应体与夹具，不逐个声明类型
   ): Promise<{ status: number; body: any }>;
 }
 
@@ -101,6 +102,7 @@ async function harness(): Promise<Harness> {
     };
     return (await router.dispatch(method, path, request)) as {
       status: number;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- 测试里按需探查 JSON 响应体与夹具，不逐个声明类型
       body: any;
     };
   };
@@ -117,6 +119,7 @@ async function machineWithoutToken(h: Harness): Promise<void> {
 }
 
 /** 工作空间 WS：同一主机用能连上的 Gitea 与令牌。 */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- 测试里按需探查 JSON 响应体与夹具，不逐个声明类型
 async function workspaceWithToken(h: Harness): Promise<any> {
   const answer = await h.call("PUT", "/api/forge/configs/127.0.0.1", {
     workspaceId: WS,
@@ -244,6 +247,7 @@ describe("按工作空间的配置（§75）", () => {
       workspaceId: WS,
     });
     expect(scoped.status).toBe(200);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- 测试里按需探查 JSON 响应体与夹具，不逐个声明类型
     expect(scoped.body.items.map((item: any) => item.number)).toEqual([1]);
     expect(h.gitea.requests.at(-1)?.authorization).toBe(
       `token ${FAKE_GITEA.token}`,
@@ -261,6 +265,7 @@ describe("按工作空间的配置（§75）", () => {
       workspaceId: WS,
     });
     expect(
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- 测试里按需探查 JSON 响应体与夹具，不逐个声明类型
       answer.body.accounts.filter((a: any) => a.forge !== "github"),
     ).toEqual([
       { host: "127.0.0.1", forge: "gitea", accountLogin: FAKE_GITEA.login },

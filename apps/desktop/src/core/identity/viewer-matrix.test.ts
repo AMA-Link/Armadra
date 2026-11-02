@@ -164,7 +164,7 @@ function passes(
     .join(",");
 }
 
-function writes(method: string, path: string): boolean {
+function writes(method: string): boolean {
   // 附着到终端的 socket 对查看者是只读附着（裁决带 readOnly，输入在流里丢掉，
   // 契约 §60），不算写；能驱动的人附着照旧可写。
   return method !== "GET" && method !== "HEAD";
@@ -199,7 +199,7 @@ describe("只读分享的全量矩阵：路由表的每一条", () => {
         const key = `${method} ${entry.path}`;
         const allowed = passes(method, path);
         if (allowed === "") continue;
-        if (writes(method, path)) {
+        if (writes(method)) {
           if (INTENDED_WRITES.has(key)) continue;
           found[key] = allowed;
           continue;
@@ -312,7 +312,7 @@ describe("只读分享的全量矩阵：契约的每一条 procedure", () => {
             ? !/^(create|update|delete|remove|set|put|write|send|start|stop|kill|answer|prompt|launch|run|cancel)/i.test(
                 entry.path[entry.path.length - 1] ?? "",
               )
-            : !writes(legacy.method, path);
+            : !writes(legacy.method);
         if (reading) continue;
       }
       found[entry.name] = allowed;

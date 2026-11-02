@@ -283,6 +283,7 @@ export function installRelay(
     // 通道的线上字节（契约 §76 `transport`）记到对端设备那一行；握手完成之前还不
     // 知道是谁，先攒着，握手失败就记到隧道那一行。
     const pending = { bytesIn: 0, bytesOut: 0 };
+    // eslint-disable-next-line prefer-const -- 前向声明：流量回调先于通道创建，构造期间调用时要读到 undefined（const 会落入暂时性死区）
     let channel: E2eChannel | undefined;
     const wire = (bytesIn: number, bytesOut: number) => {
       if (traffic === undefined) return;

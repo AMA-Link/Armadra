@@ -302,7 +302,7 @@ function encodedSize(bundle: HandoffBundle): number {
   // The length is itself a field of the thing being measured, so the encoding
   // is iterated to a fixed point rather than computed once. Six passes is
   // enough for any decimal width the limit allows.
-  let working = bundle as Mutable<HandoffBundle>;
+  const working = bundle as Mutable<HandoffBundle>;
   for (let attempt = 0; attempt < 6; attempt += 1) {
     const size = Buffer.byteLength(JSON.stringify(working), "utf8");
     if (size === working.budget.usedBytes) return size;

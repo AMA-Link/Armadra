@@ -172,6 +172,7 @@ export const LANGUAGE_OPERATIONS: Readonly<Record<string, Operation>> = {
    */
   "language.open": op(false, async (owned, root, args, session) => {
     const workspaceId = text(args, "workspaceId");
+    // eslint-disable-next-line prefer-const -- 前向声明：回调先于会话编号返回，之前要读到 undefined（const 会落入暂时性死区）
     let sessionId: string | undefined;
     const early: string[] = [];
     const push = (body: string): void =>

@@ -1,3 +1,4 @@
+// eslint-disable-next-line @typescript-eslint/triple-slash-reference -- 服务器壳的 tsconfig 不含 core 的 .d.ts，需要这条引用带上 ?raw 的模块声明
 /// <reference path="./raw-text.d.ts" />
 import { createHash } from "node:crypto";
 import commonPasswordsText from "./common-passwords.txt?raw";

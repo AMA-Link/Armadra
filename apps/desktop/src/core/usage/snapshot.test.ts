@@ -8,37 +8,7 @@
 
 import { describe, expect, it } from "vitest";
 
-import {
-  emptySnapshot,
-  type ProviderUsage,
-  type UsageWindow,
-} from "./snapshot";
-
-function ok(
-  id: "claude" | "codex" | "copilot",
-  windows: UsageWindow[],
-  fetchedAt: string | null = "2026-09-05T10:00:00Z",
-): ProviderUsage {
-  return {
-    id,
-    status: "ok",
-    credentialSource: "keychain",
-    windows,
-    fetchedAt,
-  };
-}
-
-const window = (
-  label: string,
-  usedPercent: number,
-  extra: Partial<UsageWindow> = {},
-): UsageWindow => ({
-  key: label,
-  label,
-  usedPercent,
-  resetsAt: null,
-  ...extra,
-});
+import { emptySnapshot } from "./snapshot";
 
 describe("the empty snapshot", () => {
   /**

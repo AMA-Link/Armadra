@@ -1,8 +1,4 @@
-import {
-  ControllerGraphSchema,
-  CONTROLLER_LIMITS,
-  type ControllerGraph,
-} from "@armadra/shared";
+import { ControllerGraphSchema, CONTROLLER_LIMITS } from "@armadra/shared";
 import type { DatabaseSync } from "node:sqlite";
 import { loadBoard, saveBoardInTransaction } from "../canvas/documents";
 import { validateDocument } from "../canvas/validation";
@@ -11,7 +7,7 @@ import {
   putContextLinks,
   type ContextLink,
 } from "../canvas/context-links";
-import type { BoardDocument, CanvasNode } from "../canvas/document-types";
+import type { CanvasNode } from "../canvas/document-types";
 import { newNode, placement } from "../collab/control/board";
 import { getWorkspace } from "../workspaces/table";
 import { rfc3339, uuidV7 } from "../workspaces/support";

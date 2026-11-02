@@ -1,13 +1,5 @@
 import type { Refusal } from "../collab/refusals";
-import {
-  DriveLease,
-  type IdleWindows,
-  LEASE_GENERATION,
-  LEASE_HELD_BY_AGENT,
-  LEASE_HELD_BY_HUMAN,
-  LEASE_REVOKED,
-  leaseRefusalFor,
-} from "../drive/lease";
+import { DriveLease, type IdleWindows, leaseRefusalFor } from "../drive/lease";
 import type { Lease } from "./model";
 import { freeLease } from "./model";
 

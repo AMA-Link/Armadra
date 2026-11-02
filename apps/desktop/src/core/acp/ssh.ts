@@ -113,6 +113,7 @@ export function sshHostOf(
 /* ------------------------------- 远端命令 ------------------------------- */
 
 /** 单引号里对 sh、fish、csh 都是字面量的值。 */
+// eslint-disable-next-line no-control-regex -- 有意匹配控制字符以拒绝或剥离它们
 const LITERAL = /^[^'\\!\u0000-\u001f\u007f]*$/u;
 
 function quoted(value: string, what: string): string {

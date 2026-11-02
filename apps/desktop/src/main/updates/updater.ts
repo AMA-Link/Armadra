@@ -43,7 +43,6 @@ import {
   type UpdateState,
 } from "../../shell-core/updates/machine";
 import {
-  STAGED_EVENT,
   type Locale,
   localeFromEnvironment,
   notificationBody,

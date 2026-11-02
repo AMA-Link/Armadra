@@ -11,6 +11,7 @@ export function scopedPath(
   if (
     !requested ||
     requested.length > 4096 ||
+    // eslint-disable-next-line no-control-regex -- 有意匹配控制字符以拒绝或剥离它们
     /[\u0000-\u001f]/.test(requested) ||
     requested.includes("\\") ||
     isAbsolute(requested) ||

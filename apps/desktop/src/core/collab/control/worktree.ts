@@ -66,6 +66,7 @@ export function checkWorktreeSpec(raw: string, flag: string): string {
   if (
     value === "" ||
     value.length > 1_024 ||
+    // eslint-disable-next-line no-control-regex -- 有意匹配控制字符以拒绝或剥离它们
     /[\u0000-\u001f\u007f]/.test(value) ||
     value.split(/[/\\]/).includes("..")
   ) {

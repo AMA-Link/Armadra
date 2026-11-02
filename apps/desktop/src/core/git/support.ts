@@ -238,4 +238,5 @@ export function hasControlCharacter(value: string): boolean {
   return CONTROL_CHARACTER.test(value);
 }
 
+// eslint-disable-next-line no-control-regex -- 有意匹配控制字符以拒绝或剥离它们
 const CONTROL_CHARACTER = /[\u0000-\u001f\u007f]/;

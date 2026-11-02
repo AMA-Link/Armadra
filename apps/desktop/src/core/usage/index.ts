@@ -12,7 +12,6 @@
 
 import type { CoreContext } from "../main";
 import { settingsDomain } from "../settings";
-import type { UsageSnapshot } from "./snapshot";
 import { UsageService } from "./service";
 import { StatusService, statusSources } from "./status";
 import { catalogPrices, modelsDomain } from "../models";

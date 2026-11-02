@@ -512,10 +512,13 @@ export const shellQuote = posixQuote;
  * newlines and other control characters collapse to spaces.
  */
 export function collapsePrompt(prompt: string): string {
-  return prompt
-    .replace(/[\u0000-\u001f\u007f]+/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
+  return (
+    prompt
+      // eslint-disable-next-line no-control-regex -- 有意匹配控制字符以拒绝或剥离它们
+      .replace(/[\u0000-\u001f\u007f]+/g, " ")
+      .replace(/\s+/g, " ")
+      .trim()
+  );
 }
 
 /**

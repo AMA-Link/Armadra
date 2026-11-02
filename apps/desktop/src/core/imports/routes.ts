@@ -75,14 +75,13 @@ export function install(context: CoreContext): void {
       const parent = join(context.dataDir, "imported-workspaces");
       mkdirSync(parent, { recursive: true });
       const batch = ImportBatch.workspace(parent);
-      let created: Workspace;
       try {
         receiveFiles(fields, batch, manifest);
       } catch (error) {
         batch.discard();
         throw error;
       }
-      created = batch.commitWorkspace((path) =>
+      const created = batch.commitWorkspace((path) =>
         createWorkspace(database, {
           name,
           rootPath: path,

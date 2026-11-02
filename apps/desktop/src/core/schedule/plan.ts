@@ -2,14 +2,12 @@ import {
   AutomationColdStartPolicy,
   AutomationConcurrencyPolicy,
   AutomationMisfirePolicy,
-  AutomationPlanConfigSchema,
   AutomationPlanState,
   AutomationRunState,
   AutomationTargetKind,
   type AutomationPlan,
   type AutomationPlanConfig,
   type AutomationTarget,
-  create,
 } from "./types";
 import { createHash } from "node:crypto";
 
@@ -281,7 +279,7 @@ function normalizeTarget(target: AutomationTarget): void {
   }
 }
 
-const MAX_INT64 = 9_223_372_036_854_775_807n;
+export const MAX_INT64 = 9_223_372_036_854_775_807n;
 
 export function normalize(input: AutomationPlanConfig): AutomationPlanConfig {
   // 走一遍 JSON 就是最诚实的深拷贝，而且顺带证明这份配置真的编得出来——一份

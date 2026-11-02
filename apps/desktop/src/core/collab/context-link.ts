@@ -1300,10 +1300,13 @@ export function stripAnsi(text: string): string {
   return (
     text
       // OSC：`ESC ] … BEL` 或 `ESC ] … ESC \`（窗口标题、超链接）。
+      // eslint-disable-next-line no-control-regex -- 匹配 ANSI 转义序列，必须写出控制字符
       .replace(/\u001b\][^\u0007\u001b]*(?:\u0007|\u001b\\)/g, "")
       // CSI：`ESC [ … 终结字符`（光标定位、清行、滚动区）。
+      // eslint-disable-next-line no-control-regex -- 匹配 ANSI 转义序列，必须写出控制字符
       .replace(/\u001b\[[0-?]*[ -/]*[@-~]/g, "")
       // 剩下的两字节转义（`ESC M`、`ESC =` 这些）。
+      // eslint-disable-next-line no-control-regex -- 匹配 ANSI 转义序列，必须写出控制字符
       .replace(/\u001b[@-Z\\-_]/g, "")
   );
 }

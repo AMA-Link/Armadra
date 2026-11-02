@@ -56,7 +56,6 @@ import { TerminalFeedLink } from "./terminal-feed";
 import { AcpTerminals } from "./terminals";
 import type { AcpSignal } from "./normalize";
 import type {
-  AcpContentBlock,
   AcpElicitationResult,
   AcpPermissionOption,
   AcpSessionModeState,

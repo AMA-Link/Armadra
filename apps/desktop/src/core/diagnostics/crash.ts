@@ -61,6 +61,7 @@ export const MAX_TEXT = 300;
 
 // eslint-disable-next-line no-control-regex
 const ANSI =
+  // eslint-disable-next-line no-control-regex -- 匹配 ANSI 转义序列，必须写出控制字符
   /\u001b\[[0-?]*[ -/]*[@-~]|\u001b\][^\u0007\u001b]*(?:\u0007|\u001b\\)|\u001b[@-Z\\-_]/g;
 // eslint-disable-next-line no-control-regex
 const CONTROL = /[\u0000-\u0008\u000b-\u001f\u007f]/g;

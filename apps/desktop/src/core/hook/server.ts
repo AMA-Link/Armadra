@@ -32,7 +32,6 @@ import {
 } from "./ingest";
 import { receiveModHello } from "./mod-hello";
 import { answerOverlay } from "./overlay-route";
-import type { HookService } from "./service";
 
 /**
  * The loopback hook service — contract §5.2.

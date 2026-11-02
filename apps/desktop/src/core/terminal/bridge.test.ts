@@ -112,7 +112,7 @@ describeUnix("the terminal bridge", () => {
     // Escapes off is what both callers ask for: a screen on its way to a model
     // or to a title wants the characters, not the SGR around them.
     const plain = await bridge.capture(session.id, 40, false);
-    expect(plain.data).not.toMatch(/\[/);
+    expect(plain.data).not.toContain("\u001b[");
     expect(plain.lines).toBeGreaterThan(0);
 
     const foreground = await bridge.foreground(session.id);

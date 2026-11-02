@@ -31,6 +31,7 @@ const call = (
       ...(key ? { idempotencyKey: key } : {}),
     },
     credential,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- 测试里按需探查 JSON 响应体与夹具，不逐个声明类型
   ) as Promise<any>;
 beforeEach(async () => {
   core = fixture([]);

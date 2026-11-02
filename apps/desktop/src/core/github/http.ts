@@ -62,7 +62,6 @@ import {
 import { fromJson, toJson, type MessageDesc } from "../contract/message";
 
 import {
-  bearerCredential,
   anonymousLoopbackOwner,
   credential,
   csrfRequired,

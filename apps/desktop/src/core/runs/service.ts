@@ -1,7 +1,7 @@
 import { recoverRun } from "./recovery";
 import { runSnapshot, eventPage, artifactPage } from "./queries";
 import { EventEmitter } from "node:events";
-import { CONTROLLER_LIMITS, type ControllerCommand } from "@armadra/shared";
+import { type ControllerCommand } from "@armadra/shared";
 import type { CoreContext } from "../main";
 import type { CollabContext } from "../collab/service";
 import { loadNode, loadSession, type NodeRef } from "../collab/nodes";

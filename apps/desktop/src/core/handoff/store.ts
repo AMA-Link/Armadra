@@ -30,7 +30,6 @@ import {
   type Sections,
   TRUST,
   digest,
-  fingerprintFiles,
   fitBudget,
   sanitize,
 } from "./bundle";

@@ -35,12 +35,15 @@ it("an owner explicitly submits a manual task through core, without credentials 
   core.database
     .prepare("INSERT INTO controller_objects VALUES(?,?,?)")
     .run(node.id, profile.controllerId, ws.id);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- 测试里按需探查 JSON 响应体与夹具，不逐个声明类型
   const calls: any[] = [];
   installRunUi(core, {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- 测试里按需探查 JSON 响应体与夹具，不逐个声明类型
     start: (...args: any[]) => {
       calls.push(args);
       return { runId: "run", state: "queued" };
     },
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- 测试里按需探查 JSON 响应体与夹具，不逐个声明类型
   } as any);
   const path = `/api/workspaces/${ws.id}/boards/${board.id}/nodes/${node.id}/run`;
   const body = {
