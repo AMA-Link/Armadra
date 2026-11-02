@@ -14,13 +14,8 @@ import {
 import { rememberPointer } from "../../interaction/pointer";
 import { scaledSize } from "../palette";
 import { addItems, createItemId, select } from "../store";
-import {
-  commitDraft,
-  extendDraft,
-  startDraft,
-  textItemAt,
-  type Draft,
-} from "./draft";
+import { commitDraft, extendDraft, startDraft, type Draft } from "./draft";
+import { createTextAt } from "./create-text";
 import { snapToGrid } from "./grid";
 
 /**
@@ -148,9 +143,7 @@ export function useToolPointer(): ToolPointerState {
       rememberPointer({ x: event.clientX, y: event.clientY });
 
       if (active.tool === "text") {
-        const item = textItemAt(at, createItemId());
-        addItems([item]);
-        select([item.id]);
+        createTextAt(at);
         return;
       }
 

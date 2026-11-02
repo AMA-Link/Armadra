@@ -6,11 +6,11 @@ import { usePreferencesStore } from "@/app/preferences-store";
 import { isCanvasLocked } from "../../canvas-lock";
 import { getTool } from "../../interaction/tool-store";
 import { snapToGrid } from "./grid";
-import { addItems, createItemId, select } from "../store";
-import { textItemAt } from "./draft";
+import { createTextAt } from "./create-text";
 
 /**
  * 空白处双击 = 新建一条文字对象并直接进编辑（2026-09-06 用户反馈）。
+ * 空着提交（失焦 / Esc）就丢弃，不留空对象（#714）。
  *
  * 双击那一下本来归 React Flow 的 `zoomOnDoubleClick`；`flow/flow-options.ts`
  * 把它关掉之后这一下就空着，而「双击空白开始打字」是白板上最常用的一条
@@ -49,10 +49,7 @@ export function useDoubleClickText(): void {
         active.preferences.gridSize,
         active.preferences.snap,
       );
-      const item = textItemAt(at, createItemId());
-      addItems([item]);
-      // 选中 + 空文本 = `TextNode` 的 `autoEdit`，光标直接落在里面。
-      select([item.id]);
+      createTextAt(at);
     };
 
     dom.addEventListener("dblclick", onDoubleClick);
