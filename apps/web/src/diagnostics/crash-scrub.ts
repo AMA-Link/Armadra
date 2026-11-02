@@ -17,6 +17,7 @@ const MAX_STACK = 4_000;
 // 正则里的引号写成 `\x22\x27\x60`：`i18n.test` 的注释剥离不认正则字面量。
 // eslint-disable-next-line no-control-regex
 const ANSI =
+  // eslint-disable-next-line no-control-regex -- 匹配 ANSI 转义序列，必须写出控制字符
   /\u001b\[[0-?]*[ -/]*[@-~]|\u001b\][^\u0007\u001b]*(?:\u0007|\u001b\\)|\u001b[@-Z\\-_]/g;
 // eslint-disable-next-line no-control-regex
 const CONTROL = /[\u0000-\u0008\u000b-\u001f\u007f]/g;

@@ -44,7 +44,6 @@ vi.mock("./whiteboard/scheme", () => ({ canvasScheme: () => "light" }));
 const { runtimeApi } = await import("@/api/client");
 const { useCanvasStore } = await import("@/store/canvas-store");
 const { emptyWhiteboard } = await import("./whiteboard/model");
-const { itemSchema } = await import("./whiteboard/model");
 const {
   blobToDataUrl,
   clampText,
@@ -65,7 +64,9 @@ const {
 } = await import("./content-links");
 const { frameSource } = await import("./frame-reference");
 
-type Item = import("zod").infer<typeof itemSchema>;
+type Item = import("zod").infer<
+  (typeof import("./whiteboard/model"))["itemSchema"]
+>;
 
 const stamp = "2026-09-06T00:00:00.000Z";
 const label = (key: string) => key;

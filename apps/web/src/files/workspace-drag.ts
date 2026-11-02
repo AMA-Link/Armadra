@@ -8,6 +8,7 @@ export interface WorkspaceFileDropDetail {
   point: { x: number; y: number };
 }
 const MAX_DRAG_PAYLOAD = 65_536;
+// eslint-disable-next-line no-control-regex -- 有意匹配控制字符以拒绝或剥离它们
 const CONTROLS = /[\u0000-\u001f\u007f]/;
 
 export class FileDragError extends Error {

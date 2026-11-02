@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { Board, BoardDocument, CanvasNode } from "@armadra/shared";
 
 /**
@@ -48,10 +48,6 @@ const board: Board = {
   createdAt: STAMP,
   updatedAt: STAMP,
 };
-
-let counter = 0;
-const uuid = () =>
-  `019ff7d1-0000-7000-8000-${String((counter += 1)).padStart(12, "0")}`;
 
 function node(id: string, x: number): CanvasNode {
   return {
@@ -169,10 +165,6 @@ const ONE = "019ff7d1-1111-7000-8000-000000000001";
 const TWO = "019ff7d1-1111-7000-8000-000000000002";
 
 describe("两个窗口同开一块板", () => {
-  beforeEach(() => {
-    counter = 0;
-  });
-
   it("A 拖一个节点，B 立刻看到新位置", async () => {
     const server = makeServer({ board, nodes: [node(ONE, 0)], edges: [] });
     const a = await openWindow(server);

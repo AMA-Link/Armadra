@@ -9,6 +9,7 @@
 export type PathRules = "posix" | "windows";
 
 /** 控制字符与 NUL 在哪种规则下都不该出现在一条路径里。 */
+// eslint-disable-next-line no-control-regex -- 有意匹配控制字符以拒绝或剥离它们
 const CONTROL = /[\u0000-\u001f\u007f]/;
 /** Windows 路径里不允许的字符（`:` 只许出现在盘符里，下面单独判）。 */
 const WINDOWS_FORBIDDEN = /[\x22<>|?*]/;

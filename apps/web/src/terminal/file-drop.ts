@@ -81,7 +81,7 @@ export function quoteTerminalPath(path: string, shell: string): string {
     case "cmd":
       // cmd expands %variables% and delayed !variables! even inside quotes.
       // Reject those names instead of promising a quoting scheme that is unsafe.
-      if (/[%!\"]/.test(path))
+      if (/[%!"]/.test(path))
         throw new FileDragError("fileDrag.cmdPathUnsupported");
       return `"${path.replace(/\\+$/, (slashes) => slashes + slashes)}"`;
     default:

@@ -72,6 +72,7 @@ describe("safe terminal path text", () => {
     const api = services();
     await pasteWorkspaceFilePaths(drag(), target, api, () => true, paste);
     expect(paste).toHaveBeenCalledWith("'/repo/a file'\\''s.txt' ");
+    // eslint-disable-next-line no-control-regex -- 断言粘贴内容不含回车、换行与 ESC
     expect(paste.mock.calls[0]?.[0]).not.toMatch(/[\r\n\u001b]/);
     expect(api.getTerminal).toHaveBeenCalledWith(SESSION);
   });

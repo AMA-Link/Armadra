@@ -795,6 +795,7 @@ describe("SessionView", () => {
       agent: { id: "codex", driver: "acp" },
     };
     // 真画布里写回节点数据会同步重渲染这个节点：在写回的那一刻就换上新 id。
+    // eslint-disable-next-line prefer-const -- 前向声明：写回时的回调先于 render 返回，之前要读到 undefined（const 会落入暂时性死区）
     let view: ReturnType<typeof render>;
     store.updateNodeData.mockImplementationOnce(() => {
       view?.rerender(
@@ -830,6 +831,7 @@ describe("SessionView", () => {
       kind: "terminal",
       agent: { id: "claude", driver: "acp" },
     };
+    // eslint-disable-next-line prefer-const -- 前向声明：写回时的回调先于 render 返回，之前要读到 undefined（const 会落入暂时性死区）
     let view: ReturnType<typeof render>;
     store.updateNodeData.mockImplementationOnce(() => {
       view?.rerender(
@@ -874,6 +876,7 @@ describe("SessionView", () => {
       kind: "terminal",
       agent: { id: "claude", driver: "acp" },
     };
+    // eslint-disable-next-line prefer-const -- 前向声明：写回时的回调先于 render 返回，之前要读到 undefined（const 会落入暂时性死区）
     let view: ReturnType<typeof render>;
     store.updateNodeData.mockImplementationOnce(() => {
       view?.rerender(

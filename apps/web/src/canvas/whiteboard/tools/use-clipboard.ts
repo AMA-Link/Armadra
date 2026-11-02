@@ -7,7 +7,7 @@ import { useCanvasStore } from "@/store/canvas-store";
 import { isCanvasLocked } from "../../canvas-lock";
 import { registerCanvasCommands } from "../../commands";
 import { pastePoint } from "../../interaction/pointer";
-import { addBrowserFiles, routeFile } from "../../dnd/external-content";
+import { addBrowserFiles } from "../../dnd/external-content";
 import {
   buildClipboard,
   parseClipboard,

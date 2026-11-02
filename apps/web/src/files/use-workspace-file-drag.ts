@@ -146,8 +146,9 @@ export function useWorkspaceFileDrag(
           ghost = document.createElement("div");
           ghost.dataset.fileDragPreview = "true";
           ghost.setAttribute("aria-hidden", "true");
+          // 预览要盖住抽屉与对话框，所以取 toast 这一层（开屏之下）。
           ghost.className =
-            "pointer-events-none fixed z-[9999] max-w-60 truncate rounded-control border border-border bg-popover px-2 py-1 text-meta text-foreground shadow-overlay";
+            "pointer-events-none fixed z-[var(--z-toast)] max-w-60 truncate rounded-control border border-border bg-popover px-2 py-1 text-meta text-foreground shadow-overlay";
           ghost.textContent = entry.name;
           document.body.append(ghost);
         }
