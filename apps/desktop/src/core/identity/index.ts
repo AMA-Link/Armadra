@@ -26,6 +26,7 @@ import { createLoopbackAdmission } from "./loopback";
 import { HEARTBEAT_MS } from "./protocol";
 import { installCloud } from "./cloud";
 import { testSaasSessionTtl } from "./cloud/test-ttl";
+import { testAccessTtl } from "./test-access-ttl";
 import { installOAuth } from "./oauth";
 import { installIdentityProcedures } from "./procedures";
 import { ownerDisplayName } from "./grant-sync";
@@ -103,7 +104,14 @@ export function installIdentity(context: CoreContext): void {
   }
   const runInstance = identityInstanceId();
   const store = new IdentityStore(context.db.database);
-  const service = new IdentityService(store, runInstance);
+  // 测试寿命（#706，`ARMADRA_TEST_ACCESS_TTL_MS`）；没设是 15 分钟。
+  const accessTtlMs = testAccessTtl();
+  const service = new IdentityService(
+    store,
+    runInstance,
+    undefined,
+    accessTtlMs === undefined ? {} : { accessTtlMs },
+  );
   // Hello 报的能力名里多出的那些来自各域自己的注册表（`core/schedule/capabilities`）。
   // 身份域不该知道有哪些域存在，所以这里只转发；自动化面板认的
   // `automation.plans.v1` 就是这样传到页面的。

@@ -52,6 +52,7 @@ describe("which origins a loopback core answers", () => {
     expect(CORS_HEADERS.split(",").map((name) => name.trim())).toEqual([
       "content-type",
       "authorization",
+      "x-armadra-csrf",
     ]);
   });
 
