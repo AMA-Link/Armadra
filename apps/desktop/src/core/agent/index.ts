@@ -7,6 +7,11 @@ import {
 import { runContextLink } from "../collab/context-link";
 import { SendPump } from "../collab/send-pump";
 import { installCollaborationSkill } from "../collab/skill";
+import {
+  followupFromComment,
+  followupsFromPrompt,
+} from "../collab/router-followup";
+import { setPromptSink } from "../collab/prompt-sink";
 import { prepareAtStartup } from "../hook/install/integration";
 import type { Caller } from "../collab/nodes";
 import { Args } from "../collab/refusals";
@@ -209,6 +214,37 @@ export function install(context: CoreContext): CollabContext {
       pump.noteStatus(nodeId, state);
       return;
     }
+    // 人在画布上评论了一个成员节点：对它那件工作项的跟进，原话转给成员
+    // （契约 §93.4）。评论路由只发 `board.comment`，这里读正文。
+    if (event.type === "board.comment") {
+      const comment = event.comment as {
+        id?: unknown;
+        anchorKind?: unknown;
+        anchorId?: unknown;
+      };
+      if (
+        event.action === "created" &&
+        comment.anchorKind === "node" &&
+        typeof comment.anchorId === "string" &&
+        typeof comment.id === "string" &&
+        typeof event.boardId === "string" &&
+        assembled !== undefined
+      ) {
+        try {
+          followupFromComment(
+            assembled,
+            event.boardId,
+            comment.id,
+            comment.anchorId,
+          );
+        } catch (error) {
+          context.log.warn("评论跟进没有转出去", {
+            error: error instanceof Error ? error.message : String(error),
+          });
+        }
+      }
+      return;
+    }
     // 租约放开也是一次「现在可以投了」。人抢占之后停手十秒，租约自己过期并广播
     // 一帧 `free`——而目标那一侧此时什么状态都不会再报（它本来就空闲着）。没有
     // 这一条，「停手十秒后自动投进去」就会等一个永远不来的状态事件。
@@ -217,6 +253,17 @@ export function install(context: CoreContext): CollabContext {
     if (lease.state !== "free") return;
     if (typeof event.nodeId !== "string") return;
     pump.noteFree(event.nodeId);
+  });
+  // 人对协调者说的话里点名了工作项（`#<id>`）：原话直接转给成员（契约 §93.4）。
+  setPromptSink((nodeId, text) => {
+    if (assembled === undefined) return;
+    try {
+      followupsFromPrompt(assembled, nodeId, text);
+    } catch (error) {
+      context.log.warn("提示词跟进没有转出去", {
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
   });
   pump.start();
 

@@ -31,9 +31,9 @@ import { stageOf } from "./work-items";
  *   1. 标记挂上 `agent.status` 帧（`stalled` 字段，分派抽屉与节点头读它）；
  *   2. 帧经推送规则变成一条 `stalled` 通知（只发给有 `canvas:read` 的人，
  *      正文不带终端原文，`push/triggers.ts`）；
- *   3. 节点是某个运行中任务的成员时，给协调者排一条短唤醒（走收件箱唤醒同一条
- *      队列与串行门，`collab/wake.ts::queueWatchWake`），由协调者决定重试、追问
- *      还是上报给人。
+ *   3. 节点是某个运行中任务的成员时，给协调者写一条 `stalled` 事件（统一事件
+ *      队列，契约 §93，`collab/router-sources.ts::recordStalled`），由 core 在
+ *      协调者空闲时合并进卡片；协调者决定重试、追问还是上报给人。
  * 不打断、不重启、不替人回答任何东西。
  *
  * 去重：同一个节点处在同一个判定（种类 + 状态指纹）时只提示一次；状态指纹是
@@ -76,7 +76,7 @@ export interface ProgressWatchdogOptions {
   readonly lastOutputAt: (nodeId: string) => number | undefined;
   /** 这个节点此刻是不是有一个在跑的会话（没有会话的节点不判）。 */
   readonly running: (nodeId: string) => boolean;
-  /** 给协调者排一条唤醒；没排进去也不重试。 */
+  /** 给协调者写一条 `stalled` 事件；事件 id 确定，同一个判定只写一次。 */
   readonly wake: (wake: WatchdogWake) => void;
   /** 毫秒。 */
   readonly clock?: () => number;

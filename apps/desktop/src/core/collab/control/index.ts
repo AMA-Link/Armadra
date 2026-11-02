@@ -8,6 +8,7 @@ import { cancel } from "./cancel";
 import { close } from "./close";
 import { color, link, rename } from "./edits";
 import { interrupt } from "./interrupt";
+import { ackEventVerb, events } from "./events";
 import { handback, items, report } from "./items";
 import { list, openAgent, openTerminal, sticky, team } from "./nodes";
 import { outbox } from "./outbox";
@@ -76,6 +77,8 @@ export const VERBS = [
   "report",
   "handback",
   "items",
+  // 协调者的统一事件队列（契约 §93，#696）：读未确认的事件；确认用 `ack --event`。
+  "events",
 ] as const;
 
 export type ControlVerb = (typeof VERBS)[number];
@@ -205,6 +208,10 @@ export async function run(
     case "post":
     case "inbox":
     case "ack": {
+      // `ack --event` 确认协调者事件（契约 §93）；没有它是收件箱消息的确认。
+      if (verb === "ack" && args.value("event") !== undefined) {
+        return ackEventVerb(context, caller, args);
+      }
       const body = await runMailbox(context, caller, verb, args);
       return raw(body, String(body.message ?? verb));
     }
@@ -247,6 +254,8 @@ export async function run(
       return handback(context, caller, args);
     case "items":
       return items(context, caller, args);
+    case "events":
+      return events(context, caller, args);
     default:
       throw Refusal.badRequest(`未知的画布动词 \`${verb}\`。`);
   }

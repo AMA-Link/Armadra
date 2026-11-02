@@ -13,8 +13,13 @@ import {
   stageOf,
   stageRank,
 } from "../../workflow/work-items";
-import { runMailbox } from "../mailbox";
 import { type Caller, loadNode } from "../nodes";
+import {
+  nodeName,
+  oneLine,
+  recordRouterEvent,
+  versionOf,
+} from "../router-events";
 import { Args, Refused, stripControl } from "../refusals";
 import { type CollabContext, nowDate, nowSeconds } from "../service";
 import { type Outcome, result } from "./outcome";
@@ -47,7 +52,7 @@ const LOUD_STATES: ReadonlySet<WorkItemReportState> = new Set([
   "blocked",
   "failed",
 ]);
-/** 收件箱那一行里摘要最多这么多字。 */
+/** 事件那一行里摘要最多这么多字。 */
 const NOTICE_CHARS = 120;
 
 function clip(text: string, max: number): string {
@@ -56,31 +61,29 @@ function clip(text: string, max: number): string {
 }
 
 /**
- * 在协调者收件箱里留一行，由已有的空闲唤醒提醒它（键幂等，重试不会多一行）。
- * 协调者节点不在、线断了或收件箱满了就不留：报告已经记进账本，协调者下次
- * `items` 照样看得到。答有没有留下。
+ * 告诉协调者：往它的事件队列写一行（契约 §93），由 core 在它空闲时合并成卡片
+ * 投递。事件 id 确定，重试不会多一行。协调者节点不在就不写：报告已经记进账本，
+ * 协调者下次 `items` 照样看得到。答有没有写（或早已写过）。
  */
-async function tellCoordinator(
+function tellCoordinator(
   context: CollabContext,
-  caller: Caller,
   run: TaskRun,
-  key: string,
-  body: string,
-): Promise<boolean> {
+  kind: "report" | "attention" | "handback",
+  version: string,
+  summary: string,
+): boolean {
   if (loadNode(context.database, run.coordinatorNodeId) === undefined) {
     return false;
   }
-  try {
-    await runMailbox(
-      context,
-      caller,
-      "post",
-      new Args({ to: run.coordinatorNodeId, key, body }),
-    );
-    return true;
-  } catch {
-    return false;
-  }
+  recordRouterEvent(context, {
+    id: `${kind}:${run.taskId}:${version}`,
+    coordinatorNodeId: run.coordinatorNodeId,
+    kind,
+    itemId: run.taskId,
+    sourceNodeId: run.nodeId,
+    summary: `${nodeName(context.database, run.nodeId)} ${summary}`,
+  });
+  return true;
 }
 
 function bad(message: string): Refused {
@@ -141,11 +144,11 @@ function defaultItem(database: DatabaseSync, caller: Caller): TaskRun {
 }
 
 /** `canvas report` */
-export async function report(
+export function report(
   context: CollabContext,
   caller: Caller,
   args: Args,
-): Promise<Outcome> {
+): Outcome {
   const state = args.text("state");
   if (
     state === undefined ||
@@ -184,26 +187,21 @@ export async function report(
   if (loud || clear || stage !== before) {
     publishTask(context.database, context.publish, item.taskId);
   }
-  const seq = updated.reports.length;
   const notified = loud
-    ? await tellCoordinator(
+    ? tellCoordinator(
         context,
-        caller,
         updated,
-        `report:${item.taskId}:${seq}:${updated.report?.at ?? ""}`.slice(
-          0,
-          128,
-        ),
-        `[工作项 ${item.taskId}] ${state}：${clip(summary, NOTICE_CHARS)}` +
-          (action === undefined ? "" : `\n待决问题：${action}`) +
-          `\n详情：canvas items --item ${item.taskId}`,
+        action === undefined ? "report" : "attention",
+        versionOf(Date.parse(updated.report?.at ?? "") || 0),
+        `${state}：${clip(oneLine(summary), NOTICE_CHARS)}` +
+          (action === undefined ? "" : ` ? ${oneLine(action)}`),
       )
     : false;
   return result(
     `已记下工作项 ${item.taskId} 的报告（${state}），阶段 ${stage}。` +
       (loud
         ? notified
-          ? "已在协调者收件箱里留了一行。"
+          ? "已记进协调者的事件队列。"
           : "协调者节点不在或没连着，只记进了账本。"
         : ""),
     {
@@ -217,11 +215,11 @@ export async function report(
 }
 
 /** `canvas handback` */
-export async function handback(
+export function handback(
   context: CollabContext,
   caller: Caller,
   args: Args,
-): Promise<Outcome> {
+): Outcome {
   const id = args.text("item");
   if (id === undefined) throw bad("--item 不能缺。");
   const reason = limited(args, "reason", MAX_REASON_CHARS, true) as string;
@@ -241,12 +239,12 @@ export async function handback(
     );
   }
   publishTask(context.database, context.publish, item.taskId);
-  const notified = await tellCoordinator(
+  const notified = tellCoordinator(
     context,
-    caller,
     item,
-    `handback:${item.taskId}`.slice(0, 128),
-    `[工作项 ${item.taskId}] 交回：${reason}\n详情：canvas items --item ${item.taskId}`,
+    "handback",
+    "1",
+    `交回：${oneLine(reason)}`,
   );
   return result(
     `已把工作项 ${item.taskId} 交回协调者。` +

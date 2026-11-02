@@ -9,7 +9,12 @@ import {
   settle,
   waitedOn,
 } from "../collab/control/wait";
-import { publishTask, runningTaskRuns, taskRun } from "./task-runs";
+import {
+  type TaskRun,
+  publishTask,
+  runningTaskRuns,
+  taskRun,
+} from "./task-runs";
 
 /**
  * core 自己盯着还在 `running` 的任务行（契约 §15.7，G5-09）。
@@ -66,6 +71,11 @@ export interface TaskWatchOptions {
    * 任务行就调它一次。事件触发的扫描不调它；不另开定时器。
    */
   readonly onTick?: () => void;
+  /**
+   * 这里（没有人在 `wait`）把一行落成了结束：统一事件队列据此给协调者记一条
+   * `task-done`（契约 §93）。`wait` 自己落的结束不走这里——协调者已经拿到了答案。
+   */
+  readonly onSettled?: (run: TaskRun, status: "done" | "failed") => void;
 }
 
 export class TaskWatch {
@@ -195,6 +205,13 @@ export class TaskWatch {
         this.cursors.delete(run.taskId);
         publishTask(database, this.options.publish(), run.taskId);
         settled += 1;
+        try {
+          this.options.onSettled?.(run, answer.status as "done" | "failed");
+        } catch (error) {
+          this.options.log?.("任务结束事件没有写成", {
+            error: error instanceof Error ? error.message : String(error),
+          });
+        }
       }
     }
     return settled;

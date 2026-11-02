@@ -329,6 +329,19 @@ armadra-hook canvas items                                    # 只读：你名�
 - 名下没有工作项时 \`report\` 会被拒绝（不是协调者派的活不用报）；同时有几个进行中的，用 \`--item\` 指明。
 - 阶段（待回答、待验收、阻塞……）由画布从事实推出，不是你设置的；\`handback\` 每个工作项只能交回一次，理由不超过 100 字。
 
+## 协调者的事件 / Coordinator events
+
+你若是协调者（派过工作项），成员的报告、交回、停滞、任务结束、人的追问和别的节点的留言会被合并成一张**事件卡片**在你空闲时投进来；没处理完的事件会再出现在下一张卡片里。
+If you are a coordinator, members' reports, handbacks, stalls, finished tasks, a person's follow-ups and notes from other nodes arrive merged on one **event card** when you are idle; unhandled events show up again on the next card.
+
+\`\`\`sh
+armadra-hook canvas events [--limit N]        # 只读：未确认的事件，最早的在前
+armadra-hook canvas ack --event <事件 id>     # 处理完一条就确认
+\`\`\`
+
+- 卡片每行是「事件 id · 工作项 id · 种类 · 一行内容」，详情读 \`canvas items --item <工作项 id>\`；确认的意思是「我处理了」，不是「我看到了」。
+- 种类为 \`followup\` 的行是人对某个工作项的追问：画布已经把原话直接转给了成员，你只能决定停掉那一项，不要再派一份；没点名工作项的话是新请求，由你决定接新项还是挂到已有项（需要明确的引用，话题相近不算）。
+
 ## 长文本与特殊字符 / Text from stdin or a file
 
 任何带值的参数都可以不写在命令行上：\`--body -\` 从标准输入读（一次调用只能有一个），\`--body-file <路径>\` 从文件读；\`--task-file\`、\`--member-file\`、\`--content-file\`、\`--text-file\`、\`--field-file\` 同理。文件按 UTF-8 读（带 BOM 的 UTF-16 也行），CRLF 变成 LF，末尾一个换行去掉。

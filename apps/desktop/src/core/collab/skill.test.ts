@@ -116,7 +116,7 @@ describe("the collaboration skill", () => {
     const text = developerInstructions("/x/SKILL.md");
     const [first, zh, en] = text.split("\n");
     expect(first).toBe(`[Armadra canvas rules r${SKILLS_REVISION}]`);
-    expect(SKILLS_REVISION).toBe(21);
+    expect(SKILLS_REVISION).toBe(22);
     expect(zh).toContain("ARMADRA_NODE_ID");
     expect(en).toContain("only when ARMADRA_NODE_ID is set");
     expect(text.indexOf(canvasRules())).toBeGreaterThan(first?.length ?? 0);
@@ -139,6 +139,13 @@ describe("the collaboration skill", () => {
       "canvas handback --item",
       "canvas items",
     ]) {
+      expect(body).toContain(text);
+    }
+  });
+
+  it("tells a coordinator to read events and acknowledge each handled one", () => {
+    const body = skillBody();
+    for (const text of ["canvas events", "canvas ack --event", "followup"]) {
       expect(body).toContain(text);
     }
   });

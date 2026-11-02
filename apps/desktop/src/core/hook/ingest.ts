@@ -19,6 +19,7 @@ import {
 } from "./store";
 import { validAgentId } from "../settings/custom-agents";
 import { validNodeId } from "./auth";
+import { notePrompt } from "../collab/prompt-sink";
 
 /**
  * `POST /hook/{agentId}` — the one route every CLI's hooks reach.
@@ -268,6 +269,19 @@ export function ingest(
   }
 
   apply(context, owner.workspaceId, agentId, event, payload);
+  // A new turn's prompt: the coordinator's follow-up routing reads it for
+  // work-item references (contract §93.4). Never throws into the request.
+  if (
+    verdict === "verified" &&
+    event.newTurn === true &&
+    event.lastMessage !== undefined
+  ) {
+    try {
+      notePrompt(nodeId, event.lastMessage);
+    } catch (error) {
+      context.log.debug("prompt follow-up failed", { nodeId, error });
+    }
+  }
   try {
     context.onHook?.(nodeId, event);
   } catch (error) {

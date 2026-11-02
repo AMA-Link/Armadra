@@ -8,7 +8,9 @@ import { type ControlOutcome, controlDispatcher } from "../collab/control";
 import { resetWaitTrackers } from "../collab/control/wait";
 import { resetSendLimits } from "../collab/send-limits";
 import { pendingFor } from "../collab/send-queue";
-import { queueWatchWake, resetInboxWake } from "../collab/wake";
+import { openEvents } from "../collab/router-events";
+import { recordStalled } from "../collab/router-sources";
+import { resetInboxWake } from "../collab/wake";
 import {
   ProgressWatchdog,
   type WatchdogThresholds,
@@ -83,7 +85,15 @@ function statusFrames(nodeId: string): { stalled?: string }[] {
   return frames.filter((status) => status.nodeId === nodeId);
 }
 
-function wakeQueue(): ReturnType<typeof pendingFor> {
+/** 看门狗写进统一事件队列（契约 §93）的 `stalled` 事件。 */
+function wakeQueue(): ReturnType<typeof openEvents> {
+  return openEvents(fixture.database, lead, 50).filter(
+    (event) => event.kind === "stalled",
+  );
+}
+
+/** 看门狗不再往投递队列排唤醒。 */
+function directWakes(): ReturnType<typeof pendingFor> {
   return pendingFor(fixture.database, lead, 0).filter(
     (item) => item.origin === "mailbox-wake",
   );
@@ -107,7 +117,7 @@ beforeEach(() => {
     running: () => true,
     wake: (wake) => {
       wakes.push(wake);
-      queueWatchWake(fixture.collab, wake);
+      recordStalled(fixture.collab, wake);
     },
     clock: () => clock,
   });
@@ -140,9 +150,11 @@ describe("stalled", () => {
     });
     const queued = wakeQueue();
     expect(queued).toHaveLength(1);
-    expect(queued[0]?.targetNodeId).toBe(lead);
-    expect(queued[0]?.body).toContain("11 分钟");
-    expect(queued[0]?.body).not.toContain("SECRET");
+    expect(queued[0]?.coordinatorNodeId).toBe(lead);
+    expect(queued[0]?.itemId).toBe("s:t1");
+    expect(queued[0]?.summary).toContain("11 分钟");
+    expect(queued[0]?.summary).not.toContain("SECRET");
+    expect(directWakes()).toHaveLength(0);
     expect(fixture.nudged).toContain(lead);
 
     // 同一个判定不重复提示：没有新帧、没有新唤醒。
@@ -360,7 +372,7 @@ describe("needs a human", () => {
     const member = await dispatch("s:t7");
     report(member, "waiting", 20);
     expect(dog.scan()).toBe(1);
-    const body = wakeQueue()[0]?.body ?? "";
+    const body = wakeQueue()[0]?.summary ?? "";
     expect(body).toContain("等人处理");
     expect(body).toContain("不要替人回答");
   });

@@ -4819,7 +4819,7 @@ owner（本机会话，或已信任设备经通道的 owner 会话）：`{ sourc
 
 ## 90. 工作项账本与结构化报告
 
-> 状态：实施契约（AMA-Link/Armadra#682，R1）。迁移 0058 给 `workflow_task_runs` 只加列；`canvas` 多三个动词 `report` / `handback` / `items`；`coordinator.tasks` 的任务行多四个字段（协议版本不变，只加字段）。跟进归属的自动路由、统一事件队列在后续批次（R2），本节不涉及。
+> 状态：实施契约（AMA-Link/Armadra#682，R1）。迁移 0058 给 `workflow_task_runs` 只加列；`canvas` 多三个动词 `report` / `handback` / `items`；`coordinator.tasks` 的任务行多四个字段（协议版本不变，只加字段）。跟进归属与统一事件队列见 §93（R2）。
 
 协调者（ama）分派出去的每件事是 `workflow_task_runs`（§15.5）的一行，这一行就是**工作项**。runner 起的任务（`open-agent --task-id`）与 `canvas team` 的每个成员（含汇总节点，行 id 是 `team-<节点 id>`）都对应一行；不带 `--task-id` 的单个 `open-agent` 不建行。
 
@@ -4863,8 +4863,8 @@ owner（本机会话，或已信任设备经通道的 owner 会话）：`{ sourc
   - `--item` 缺省取本节点名下唯一一个 `running` 的工作项。节点名下没有工作项：`404 no_work_item`；有几个：`409 ambiguous_item`；没有进行中的：`409 no_running_item`；`--item` 不是本节点名下的（含不存在）：`404 item_not_found`。
   - `--human-action`（≤300 字）写进单槽：给出就替换（`raisedAt` 记现在），省略就保持，`--clear-action` 清除；两者同给 `400 bad_request`；`--human-action` 不带值 `400 bad_request`。
   - 超长不截断，直接 `400 bad_request`。阶段变了、或报告要紧（下一条）、或清了待决问题时推 §15.4 的 `workflow.task`；阶段没变的进度报告不推，免得每块画板为每一步进度重读一次。答 `result: { item, state, stage, attention, notified }`。
-  - **告诉协调者**：`ready` / `blocked` / `failed`，或带了 `--human-action` 的报告，在协调者收件箱里留一行（`post`，键 `report:<id>:<序号>:<时刻>`，幂等），由已有的空闲唤醒提醒它；`progress` / `waiting` 只记账。协调者节点不在、线断了或收件箱满了就不留（`notified: false`），报告照样记进账本。
-- **`handback`** `--item <id> --reason <≤100 字>`：把一条跟进交回协调者。每个工作项只能交回一次，再交 `409 already_handed_back`；不是本节点名下的 `404 item_not_found`。本期落记录（`handback_json`）、推 `workflow.task`，并在协调者收件箱里留一行（键 `handback:<id>`，留不下时 `notified: false`）；自动路由在 R2。
+  - **告诉协调者**：`ready` / `blocked` / `failed`，或带了 `--human-action` 的报告，给协调者写一个事件（§93：种类 `report`，带 `--human-action` 的是 `attention`；id `<种类>:<工作项 id>:<报告时刻>`，幂等），由 core 在它空闲时合并进事件卡片；`progress` / `waiting` 只记账。协调者节点不在就不写（`notified: false`），报告照样记进账本。**不再**往协调者收件箱 `post` 一行。
+- **`handback`** `--item <id> --reason <≤100 字>`：把一条跟进交回协调者。每个工作项只能交回一次，再交 `409 already_handed_back`；不是本节点名下的 `404 item_not_found`。落记录（`handback_json`）、推 `workflow.task`，并给协调者写一个 `handback` 事件（§93，id `handback:<工作项 id>:1`，协调者节点不在时 `notified: false`）；事件回到协调者的卡片里，由它决定接手或上报给人。
 - **`items`** `[--stage <阶段>] [--item <id>] [--limit N] [--offset N]`：调用者看得到的行是它自己派发的（协调者）与派给它的（成员自己的），别的都看不到。
   - 列表：`person/*` 在前，同一阶段内新的在前；`--limit` 1–50（缺省 20），`--offset` 是跳过的行数；`message` 每项一行（id · 标题 · 节点 · 阶段 · 最近报告首行 · `? 待决问题`），末尾写明接着读的参数；`result: { items: [{ id, title, nodeId, nodeTitle, stage, status, report, attention }], total, offset, next }`，`next` 为 `null` 表示读完。`--stage` 不是 §90.2 的取值 `400 bad_request`。
   - 单项（`--item`）：在列表字段之外多 `mandate`、`handback`、`reports`（报告历史）与 `origin: { kind, ref, text, from, to, size, next }`。来源原文按 #674 的续读约定一段一段给：每段最多 2048 字节，起点与终点都对齐到字符边界，`--offset` 是字节位置，`next` 非空就用 `--offset <next>` 接着读，拼起来就是原文。没有这个工作项 `404 item_not_found`。
@@ -4904,7 +4904,7 @@ owner（本机会话，或已信任设备经通道的 owner 会话）：`{ sourc
 
 1. **页面**：分派抽屉的成员行与节点头读 `stalled` 画一枚标记。
 2. **推送**：新增触发 `stalled`（`kind` 取值多一个 `stalled`，设备的种类偏好 §27.1 同样可开关；没存过偏好的设备缺省收）。规则与 `approval` / `deliveryFailed` 相同：只发给对这块工作空间有 `canvas:read` 的 principal 名下的设备，标题是工作空间名，正文按判定写死一句（停滞 / 空等 / 等人太久），深链指向节点，**不带终端原文**。推送规则只读帧上 `stalled` 的枚举值，从进入某个判定的那一帧推一次。
-3. **协调者唤醒**：节点是某个 `running` 任务的成员时，给该任务的协调者节点排一条短唤醒——走收件箱唤醒（§15 的 `agent_send_queue`，`origin = mailbox-wake`）同一条队列、同一道串行门与整条门链：协调者忙就排着，空下来才投；五分钟的队列期限过了就过期，看门狗不补发。署名是应用；正文只有成员节点名、时长与任务 id，不带终端原文；`needsHuman` 一条明确让协调者上报给人、不要替人回答。幂等键 `watch:<taskId>:<判定>:<指纹>`。节点不是任何任务的成员时只有页面标记与推送，没有唤醒。
+3. **协调者事件**：节点是某个 `running` 任务的成员时，给该任务的协调者写一个 `stalled` 事件（§93.1）。**不再**直接往投递队列排一条五分钟就过期的唤醒：事件留在表里，由 core 在协调者空闲时合并进事件卡片（§93.2），投不进去按退避重试，没确认前不会丢。正文只有成员节点名、时长与任务 id，不带终端原文；`needsHuman` 一条明确让协调者上报给人、不要替人回答。事件 id `stalled:<taskId>:<判定>:<指纹的短哈希>`，同一个判定只写一次。节点不是任何任务的成员时只有页面标记与推送，没有事件。
 
 ## 92. ACP 补齐
 
@@ -4947,3 +4947,46 @@ owner（本机会话，或已信任设备经通道的 owner 会话）：`{ sourc
 - 思考条目多 `parts?` 与 `messageId?`；助手与用户条目多 `messageId?`（≤200 字符）：chunk 带的 `messageId` 变了就另起一条。
 - 提示码多 `info`。参数约定：压缩摘要 `params.summary`（≤20000 字符）、`info` 提示的 `message` 与 `level`、压缩失败的 `error` 提示 `code: "compaction_failed"`。`notice`、`compaction_update`、`compaction_summary_chunk` 三类 `session/update` 进归约；`compacted` 提示因此能出现。
 - 子代理归属除 `_meta.claudeCode` 外也读 `_meta.ama.parentToolCallId`。
+
+## 93. 协调者的统一事件队列与跟进归属
+
+> 状态：实施契约（AMA-Link/Armadra#696，R2）。迁移 0059 新增 `router_events`；`canvas` 多一个动词 `events`，`ack` 多一个参数 `--event`；协议版本不变。回复闸门、重启恢复、协调者记忆在 R3，外部来源在 R4，本节不涉及。
+
+「有事要协调者知道」原先走三条互不相干的路（收件箱一行、五分钟就过期的看门狗唤醒、`wait` 长轮询）。现在所有来源都只做一件事：往 `router_events` 写一行；**投递**是另一件事，由 core 在协调者空闲时把未确认的事件合并成一张卡片。
+
+### 93.1 事件表（迁移 0059）与来源
+
+`router_events(id, coordinator_node_id, workspace_id, kind, item_id, source_node_id, summary, created_at, carded_at, acked_at)`：按协调者节点归属（节点删了跟着删）；时刻为毫秒；`item_id` 是相关工作项（§90）；`source_node_id` 不设外键（成员节点删了，这一行仍然留着）；`carded_at` 是最近一次进卡片的时刻，空表示还没提醒过；`acked_at` 是协调者确认的时刻，确认过 7 天后清掉。
+
+事件 **id 确定**（种类 + 来源 id + 版本），同一个 id 重复写入什么也不做：
+
+| `kind`      | 来源                                                                                                                         | id                                            |
+| ----------- | ---------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------- |
+| `report`    | `report` 带 `ready` / `blocked` / `failed`（§90.3）                                                                          | `report:<工作项>:<报告时刻的 36 进制毫秒>`    |
+| `attention` | `report` 带 `--human-action`                                                                                                 | `attention:<工作项>:<报告时刻的 36 进制毫秒>` |
+| `handback`  | `handback`                                                                                                                   | `handback:<工作项>:1`                         |
+| `task-done` | core 自己盯着落的任务结束（`runner_done` 与 §15.7 的兜底扫描，`team` 成员也算）；`wait` 自己落的结束不写，协调者已经拿到答案 | `task-done:<工作项>:<done\|failed>`           |
+| `stalled`   | 进展看门狗的三种判定（§91.1）                                                                                                | `stalled:<工作项>:<判定>:<指纹的短哈希>`      |
+| `followup`  | 人对某个工作项的追问（§93.4）                                                                                                | `followup:<工作项>:<版本>`                    |
+| `inbox`     | 别的节点 `post` 给协调者的普通留言（收件人派过工作项；键以 `task:` / `handoff:` 开头的另有去处，不写）                       | `inbox:<收件箱消息 id>`                       |
+
+`summary` 是一行内容（去控制字符、折叠空白、至多 160 字）：只有节点名、工作项 id、种类和成员自己写的那一行，**不带终端原文**。协调者收件箱里的消息照旧在；协调者用 `canvas ack --id` 确认那条消息时，对应的 `inbox` 事件一并确认。
+
+### 93.2 批卡片与持久投递
+
+- **何时投**：协调者空闲（终端桥的 `driveTarget` 为 `idle`）、投递队列里没有别的排队项、且有**还没提醒过**的未确认事件（`carded_at` 为空）。触发点：写入事件时、`agent.status` 到达时（与出队同一处）、每 60 秒的清扫（兜底，重启之后也靠它）。忙时事件留在表里，下次空闲合并成**一张**卡片。
+- **卡片**：走收件箱唤醒同一道串行门与整条门链（§15 的 `agent_send_queue`，`origin = mailbox-wake`），署名是应用。正文：一行总数，**最多 20 行**事件（没提醒过的优先，其余补提醒过但没确认的；按时间顺序），每行 `事件 id · 工作项 id（没有写 -） · 种类 · 一行内容`；超过 20 条时写明还有几条、用 `canvas events` 读；末尾是 `canvas items --item <工作项 id>` 的读取指针与 `canvas ack --event <事件 id>` 的用法；有 `followup` 行时多一句「只能决定停掉那一项，不要再派一份」。
+- **持久，不用 5 分钟期限**：事件先落库；卡片不是排进队列等着过期的一条，而是每次尝试现编、当场投（不排队）。投不进去（门链拒绝、写入失败）按 5、10、20 …… 封顶 300 秒的指数退避重试，没有放弃的那一步；只要事件没确认，它就会出现在之后的卡片里。投成功后这批事件记 `carded_at`，不会因为同一批再投一张。退避状态在内存里，重启后由 60 秒清扫重新触发。
+
+### 93.3 动词 `events` 与 `ack --event`
+
+经 `POST /control/<verb>`（与 §90.3 同一道门）；`armadra-hook canvas`、MCP、ama 的 `canvas_events` / `canvas_ack` 同一份实现（`hook-client/verbs.ts`）。
+
+- **`events`** `[--limit N]`：调用者名下未确认的事件，最早的在前；`--limit` 1–50（缺省 20）。`message` 每条一行（同卡片）；`result: { events: [{ id, item, kind, source, summary, at }], total }`。读不确认。
+- **`ack --event <id>`**：确认「我处理了」（不是「我看到了」）。只认自己名下的事件，不存在或是别人的 `404 event_not_found`（不泄露它在不在）；已经确认过的什么也不动、答 `acked: false`；`--event` 不带值，或与 `--id` 同给，`400 bad_request`。没有 `--event` 时 `ack` 仍是确认收件箱消息（`--id`）。`result: { event, acked }`。
+
+### 93.4 跟进归属
+
+- 人在**成员节点**里说的话本来就归那个成员，不变。
+- 人对**协调者**说的话里点名了工作项——提示词里的 `#<工作项 id>`（只认这位协调者名下确实存在的 id，句读容许；前面不能紧贴字母数字），或在画布上评论了那个成员节点（`board.comment` 新建，锚点是节点）——core 记一个 `followup` 事件，并把**原话直接投给那个成员**：走投递队列与整条门链（`origin = mailbox-wake`，署名是应用，不替人回答任何提示），正文末尾附 `report` / `handback` 的用法。协调者的卡片里只多一行「已转给「X」」，不带原话；转不出去（成员节点不在、队列满）时写「没能转给「X」……」。协调者只能决定停掉这一项，不能再派一份。成员处理完 `report`，处理不了 `handback`（回到协调者的卡片）。
+- 来自 core 自己投的信封（卡片、唤醒、别的节点的 `send`，以 `--- ARMADRA MESSAGE` 开头）的提示词不算人说的话。没有点名的就是新请求，由协调者决定接新项还是挂到已有项；挂到已有项需要明确的引用，话题相近的应当开新项。

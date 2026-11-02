@@ -9,6 +9,8 @@ import {
 } from "./addressing";
 import { type Caller, type NodeRef, loadNode, requireVerified } from "./nodes";
 import { type Args, Refused, stripControl } from "./refusals";
+import { ackInboxEvent } from "./router-events";
+import { noteInboxPost } from "./router-sources";
 import { type CollabContext, nowSeconds } from "./service";
 
 /**
@@ -256,7 +258,17 @@ function post(
   }
   // 目标空着的话，这条消息就该现在被它知道（§5）。`post` 的语义一个字没变：
   // 这里推的是出队泵，泵再按目标自己的设置决定提示、直投还是什么都不做。
-  if (Number(inserted.changes) > 0) context.nudge?.(target.id);
+  if (Number(inserted.changes) > 0) {
+    // 收件人是协调者时同时记一条 `inbox` 事件（契约 §93）。
+    noteInboxPost(context, {
+      messageId: row.id,
+      key,
+      body,
+      sourceNodeId: caller.node.id,
+      targetNodeId: target.id,
+    });
+    context.nudge?.(target.id);
+  }
   return {
     ok: true,
     protocol: PROTOCOL,
@@ -423,6 +435,7 @@ async function ack(
   // polls for this: the record settles in the same request that acked it, and
   // only for a message this caller was allowed to ack.
   if (handoffId !== undefined) context.handoff?.noteAcknowledged(id);
+  ackInboxEvent(context.database, caller.node.id, id, now * 1000);
   return {
     ok: true,
     protocol: PROTOCOL,

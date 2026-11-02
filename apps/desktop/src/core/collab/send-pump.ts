@@ -7,6 +7,7 @@ import { writeReceipts } from "./receipts";
 import { sendLimits } from "./send-limits";
 import { expireQueue, pendingFor, targetsWithPending } from "./send-queue";
 import { type CollabContext, nowSeconds } from "./service";
+import { RouterCards } from "./router-cards";
 import { wakeInbox } from "./wake";
 
 /**
@@ -44,6 +45,10 @@ export class SendPump {
   private timer: NodeJS.Timeout | undefined;
   private probeTimer: NodeJS.Timeout | undefined;
   private readonly running = new Set<string>();
+  /** 协调者的批卡片（契约 §93）；退避到点时回到 {@link drain}。 */
+  readonly cards = new RouterCards((nodeId) => {
+    void this.drain(nodeId);
+  });
 
   /**
    * 上下文现取。`setTerminalBridge` 之后协作上下文整个是一个新对象，取一次存
@@ -64,6 +69,8 @@ export class SendPump {
   noteStatus(nodeId: string, state: string | undefined): void {
     if (nodeId === "") return;
     sendLimits().noteSourceState(nodeId, state);
+    // 一轮结束：协调者卡片的退避清零，马上再试（契约 §93.2）。
+    if (state !== undefined && state !== "working") this.cards.reset(nodeId);
     // 这条事件若是一个刚接回来的 CLI 的开场，这一代往往还不够老，试一次会排
     // 回去；此后不会再有事件，快探得接着转，否则要等一分钟一次的清扫。
     void this.drain(nodeId).then(() => this.probeIfSilent(nodeId));
@@ -134,9 +141,15 @@ export class SendPump {
     const now = nowSeconds(context);
     const queued = pendingFor(context.database, targetNodeId, now);
     const next = queued.find((item) => item.state === "queued");
-    if (next === undefined) return;
+    if (next === undefined && queued.length > 0) return;
     this.running.add(targetNodeId);
     try {
+      // 队里没有别的：协调者的批卡片（契约 §93）。排在收件箱唤醒与排队项之后，
+      // 同一个空闲窗口里只投一样。
+      if (next === undefined) {
+        await this.cards.deliver(context, targetNodeId);
+        return;
+      }
       // 排队项不带参数：`--no-queue` 是一次性的，一条已经排进去的投递按定义
       // 就是愿意等的那种。`--interrupt` 同理——打断是投的那一刻的决定，不是
       // 五分钟后替调用者再做一次。
@@ -162,9 +175,11 @@ export class SendPump {
     try {
       const now = nowSeconds(context);
       // 标完过期、删之前写回执：删的时候只删回执已经写过的（§4）。
-      return expireQueue(context.database, now, () =>
+      const expired = expireQueue(context.database, now, () =>
         writeReceipts(context, now),
       );
+      for (const id of this.cards.due(context)) void this.drain(id);
+      return expired;
     } catch (error) {
       this.onError(error);
       return 0;
@@ -255,6 +270,7 @@ export class SendPump {
   }
 
   stop(): void {
+    this.cards.stop();
     if (this.probeTimer !== undefined) {
       clearTimeout(this.probeTimer);
       this.probeTimer = undefined;
