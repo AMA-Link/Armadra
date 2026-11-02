@@ -479,6 +479,7 @@ export function TerminalNode({ id, node, selected, collapsed }: NodeBodyProps) {
         </PopoverAnchor>
         <PopoverContent align="end" className="w-[220px] p-1.5">
           <Input
+            // eslint-disable-next-line jsx-a11y/no-autofocus -- 设计要求：表单或对话框打开时焦点落到首个输入
             autoFocus
             aria-label={t("terminal.find")}
             size="sm"

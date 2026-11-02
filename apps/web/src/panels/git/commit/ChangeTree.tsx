@@ -191,6 +191,7 @@ function DirectoryRow({
   const Chevron = collapsed ? ChevronRight : ChevronDown;
   return (
     <div
+      // eslint-disable-next-line jsx-a11y/role-has-required-aria-props -- 目录行没有选中语义；ARIA 1.2 里 treeitem 的 aria-selected 不是必需属性
       role="treeitem"
       aria-expanded={!collapsed}
       tabIndex={0}

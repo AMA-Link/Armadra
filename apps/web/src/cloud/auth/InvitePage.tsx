@@ -109,6 +109,7 @@ export function InvitePage({
             : t("cloud.auth.inviteDeclined")
         }
       >
+        {/* eslint-disable-next-line jsx-a11y/no-autofocus -- 设计要求：表单或对话框打开时焦点落到首个输入 */}
         <Button size="lg" className="w-full" autoFocus onClick={onDone}>
           {t("cloud.auth.continue")}
         </Button>

@@ -1,3 +1,4 @@
+/* eslint-disable jsx-a11y/no-autofocus -- 展示页每处都传 autoFocus={false}：关掉自动聚焦，免得抢走整页焦点；规则把这个 false 也当成开启 */
 import type { ReactNode } from "react";
 
 import { useT } from "@/app/preferences-store";

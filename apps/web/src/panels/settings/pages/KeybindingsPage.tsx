@@ -40,7 +40,6 @@ import {
   type PlatformName,
 } from "../keymap";
 import {
-  BUILTIN_PROFILE_IDS,
   DEFAULT_PROFILE_ID,
   PROFILE_ID_PATTERN,
   activeProfileId,
@@ -802,6 +801,7 @@ export function KeybindingsPage() {
             aria-invalid={whenCheck !== null}
             className="font-mono text-meta"
             spellCheck={false}
+            // eslint-disable-next-line jsx-a11y/no-autofocus -- 设计要求：表单或对话框打开时焦点落到首个输入
             autoFocus
             value={editingWhen?.text ?? ""}
             onChange={(event) => {
@@ -865,6 +865,7 @@ export function KeybindingsPage() {
           <Input
             aria-label={t("settings.shortcut.profile.create")}
             value={naming ?? ""}
+            // eslint-disable-next-line jsx-a11y/no-autofocus -- 设计要求：表单或对话框打开时焦点落到首个输入
             autoFocus
             onChange={(event) => setNaming(event.target.value)}
             onKeyDown={(event) => {

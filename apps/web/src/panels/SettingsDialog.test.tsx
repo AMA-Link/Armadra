@@ -122,14 +122,6 @@ function page() {
   return screen.getByTestId("settings-page");
 }
 
-/** 一张设置卡片：小标题旁边那个 `settings-group` 容器。 */
-function settingsGroup(title: string | HTMLElement) {
-  const heading = typeof title === "string" ? screen.getByText(title) : title;
-  const group = heading.parentElement?.querySelector(".settings-group");
-  if (!group) throw new Error("no settings group for the given title");
-  return group as HTMLElement;
-}
-
 function open() {
   return render(
     <TestProviders>

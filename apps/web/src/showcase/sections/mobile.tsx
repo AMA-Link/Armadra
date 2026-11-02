@@ -74,14 +74,8 @@ export default function MobileSection() {
   );
 }
 
-/** 一屏。`inline` 时在文档流里（真手机上的分区页），否则铺满 iframe。 */
-function Screen({
-  id,
-  inline = false,
-}: {
-  id: MobileSampleId;
-  inline?: boolean;
-}) {
+/** 一屏，铺满 iframe。 */
+function Screen({ id }: { id: MobileSampleId }) {
   const t = useT();
   const body = (() => {
     switch (id) {

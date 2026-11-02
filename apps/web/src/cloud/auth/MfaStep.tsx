@@ -65,6 +65,7 @@ export function MfaStep({
           </FieldLabel>
           <Input
             id={`${id}-code`}
+            // eslint-disable-next-line jsx-a11y/no-autofocus -- 设计要求：表单或对话框打开时焦点落到首个输入
             autoFocus
             autoComplete="one-time-code"
             inputMode={recovery ? "text" : "numeric"}

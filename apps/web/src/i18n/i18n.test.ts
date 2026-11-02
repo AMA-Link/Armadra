@@ -147,7 +147,7 @@ function stripComments(source: string): string {
 }
 
 /** CJK 汉字、假名与全角标点。 */
-const CJK = /[　-〿぀-ヿ㐀-䶿一-鿿＀-￯]/;
+const CJK = /[\u3000-\u303f぀-ヿ㐀-䶿一-鿿＀-￯]/;
 
 /** 品牌名之类确实要保留原文的行，加这个标记单独放行。 */
 const EXEMPT = "i18n-exempt";

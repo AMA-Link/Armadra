@@ -12,7 +12,6 @@ import { agentLabel, agentTextColorVar } from "../agent/launch";
 import { basename, type SessionRow as SessionRowData } from "../agent/sessions";
 import { displayOfRow } from "../agent/display";
 import { useAgentStatusStore } from "../agent/status-store";
-import { runtimeApi } from "../api/client";
 import { sessionGateway } from "../session";
 import {
   CENTER_NODE_EVENT,
@@ -116,6 +115,7 @@ export function SessionRow({ row }: { row: SessionRowData }) {
         <Input
           ref={input}
           value={draft}
+          // eslint-disable-next-line jsx-a11y/no-autofocus -- 设计要求：表单或对话框打开时焦点落到首个输入
           autoFocus
           size="sm"
           className="flex-1"

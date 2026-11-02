@@ -157,6 +157,7 @@ export function NodeNameDialog() {
               </label>
               <Input
                 id={`node-name-${entry.node.id}`}
+                // eslint-disable-next-line jsx-a11y/no-autofocus -- 设计要求：表单或对话框打开时焦点落到首个输入
                 autoFocus={index === 0}
                 value={draft[entry.node.id] ?? ""}
                 placeholder={t("node.name.placeholder")}

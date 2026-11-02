@@ -67,6 +67,7 @@ export function NotificationPanel({ onClose }: { onClose: () => void }) {
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
       <ScrollArea className="min-h-0 flex-1">
+        {/* eslint-disable-next-line jsx-a11y/no-static-element-interactions -- 委托容器：焦点在行内时 ↑↓ 从这一行出发，键盘处理的是行里的控件 */}
         <div
           className="px-2 pb-2"
           ref={roving.ref}

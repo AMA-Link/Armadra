@@ -11,7 +11,6 @@ import {
   isClick,
   startDraft,
   textItemAt,
-  type Draft,
   type InkDraft,
 } from "./draft";
 

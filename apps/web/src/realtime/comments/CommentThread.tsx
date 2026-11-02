@@ -227,6 +227,7 @@ function CommentEntry({
           placeholder={t("comments.placeholder")}
           submitLabel={t("comments.save")}
           disabled={offline}
+          // eslint-disable-next-line jsx-a11y/no-autofocus -- 设计要求：表单或对话框打开时焦点落到首个输入
           autoFocus
           onCancel={() => setEditing(false)}
           onSubmit={async (body) => {

@@ -146,6 +146,7 @@ function NoteEditor({
   return (
     <>
       <Textarea
+        // eslint-disable-next-line jsx-a11y/no-autofocus -- 设计要求：表单或对话框打开时焦点落到首个输入
         autoFocus
         aria-label={t("meta.note")}
         placeholder={t("meta.notePlaceholder")}
@@ -185,6 +186,7 @@ function LabelEditor({
     <>
       <NodeLabelChips node={node} removable />
       <Input
+        // eslint-disable-next-line jsx-a11y/no-autofocus -- 设计要求：表单或对话框打开时焦点落到首个输入
         autoFocus
         aria-label={t("meta.labelAdd")}
         placeholder={t("meta.labelPlaceholder")}

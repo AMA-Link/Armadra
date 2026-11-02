@@ -76,6 +76,7 @@ export function MarkdownPreview({
               />
             ),
             a: ({ href, children }) => (
+              // eslint-disable-next-line jsx-a11y/anchor-is-valid -- 不是 http(s) 或页内锚点的链接有意不给 href，渲染成不可点的文字
               <a
                 href={
                   typeof href === "string" && /^(https?:|#)/i.test(href)

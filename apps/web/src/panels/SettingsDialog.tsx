@@ -266,6 +266,7 @@ function SettingsBody({
   );
 
   return (
+    // eslint-disable-next-line jsx-a11y/no-static-element-interactions -- 委托容器：⌘F / Ctrl+F 聚焦搜索，不让浏览器的页内查找抢走
     <div
       ref={layoutRef}
       data-narrow={isNarrow ? "true" : undefined}

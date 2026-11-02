@@ -73,6 +73,7 @@ export function SettingsSearch({
         </InputGroupAddon>
       </InputGroup>
       {open && (
+        // eslint-disable-next-line jsx-a11y/no-static-element-interactions -- 只拦鼠标按下以保持输入框焦点；键盘操作走下面的 CommandItem
         <div
           data-slot="settings-search-results"
           // 保持输入框的焦点：鼠标按下结果行时不让它先失焦、把列表收掉

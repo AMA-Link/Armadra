@@ -40,7 +40,7 @@ import { ReleaseHistory, useReleases } from "./about/ReleaseHistory";
 import { ServerUpgradeNotice } from "./about/ServerUpgradeNotice";
 import { AndroidUpdateGroup, MobileReleaseNotice } from "./about/MobileUpdate";
 import { SettingsGroup } from "../SettingsGroup";
-import { SettingsLoadable, ValueLoadable } from "../SettingsLoadable";
+import { SettingsLoadable } from "../SettingsLoadable";
 import { SettingsRow } from "../SettingsRow";
 import { SettingsKpi, SettingsKpiGrid } from "../SettingsKpi";
 import { SettingsPageHeader } from "../SettingsPageHeader";
