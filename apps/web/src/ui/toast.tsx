@@ -1,10 +1,13 @@
 "use client";
 
 import * as React from "react";
+import { X } from "lucide-react";
 import { toast as sonner } from "sonner";
 
+import { useT } from "@/app/preferences-store";
 import { cn } from "@/lib/cn";
 import { Button } from "@/ui/button";
+import { IconButton } from "@/ui/icon-button";
 import { Spinner } from "@/ui/spinner";
 import { StatusDot, type StatusTone } from "@/ui/status-pill";
 
@@ -24,8 +27,9 @@ import { StatusDot, type StatusTone } from "@/ui/status-pill";
  * ```
  *
  * 规则：失败与可撤销的动作才弹；成功默认不弹，用文字替换式反馈（`TextSwap`）。
- * 带动作或错误的不自动消失（`duration: Infinity`）。堆叠、悬停展开、滑动关闭、
- * 标签页隐藏时暂停计时都由 `Toaster` 配置负责。
+ * 带动作或错误的不自动消失（`duration: Infinity`），这类壳右侧多一个关闭按钮（`IconButton`
+ * + `X`，可 Tab 到，回车 / 空格关闭；焦点在壳内按 Esc 也关）；自动消失的外观不变，不加按钮。
+ * 堆叠、悬停展开、滑动关闭、标签页隐藏时暂停计时都由 `Toaster` 配置负责。
  */
 export type ToastKind = "success" | "error" | "info" | "warning" | "loading";
 
@@ -74,14 +78,26 @@ function ToastShell({
   message,
   description,
   action,
+  persistent,
   id,
 }: {
   kind: ToastKind;
   message: React.ReactNode;
   description?: React.ReactNode;
   action?: ToastAction;
+  /** 不自动消失（`duration` 为 `Infinity`）：显示关闭按钮。 */
+  persistent: boolean;
   id: string | number;
 }) {
+  const t = useT();
+  // 焦点在壳内的按钮上按 Esc 关闭这一条（壳本身不是交互元素，不挂键盘事件）
+  const dismissOnEscape = persistent
+    ? (event: React.KeyboardEvent) => {
+        if (event.key !== "Escape") return;
+        event.stopPropagation();
+        sonner.dismiss(id);
+      }
+    : undefined;
   return (
     <div
       role="status"
@@ -109,6 +125,7 @@ function ToastShell({
           variant="outline"
           size="xs"
           className={cn("shrink-0")}
+          onKeyDown={dismissOnEscape}
           {...(action.shortcut === undefined
             ? {}
             : { shortcut: action.shortcut })}
@@ -120,6 +137,18 @@ function ToastShell({
           {action.label}
         </Button>
       )}
+      {persistent && (
+        <IconButton
+          label={t("toast.close")}
+          size="inline"
+          // 与首行文字同高（19px 行）对齐；不撑高壳
+          className="-my-0.5 -mr-1 shrink-0"
+          onClick={() => sonner.dismiss(id)}
+          onKeyDown={dismissOnEscape}
+        >
+          <X />
+        </IconButton>
+      )}
     </div>
   );
 }
@@ -130,18 +159,20 @@ function show(
   options: ToastOptions = {},
 ): string | number {
   const { id, onDismiss, onAutoClose, description, action } = options;
+  const duration = toastDuration(kind, options);
   return sonner.custom(
     (toastId) => (
       <ToastShell
         kind={kind}
         message={message}
         id={toastId}
+        persistent={!Number.isFinite(duration)}
         {...(description === undefined ? {} : { description })}
         {...(action === undefined ? {} : { action })}
       />
     ),
     {
-      duration: toastDuration(kind, options),
+      duration,
       ...(id === undefined ? {} : { id }),
       ...(onDismiss === undefined ? {} : { onDismiss }),
       ...(onAutoClose === undefined ? {} : { onAutoClose }),

@@ -5,10 +5,12 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from "@testing-library/react";
 import { toast as sonner } from "sonner";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 
+import { usePreferencesStore } from "@/app/preferences-store";
 import { Toaster } from "@/ui/sonner";
 import { TOAST_DURATION_MS, toast, toastDuration } from "@/ui/toast";
 
@@ -150,6 +152,116 @@ describe("ui/toast 的五种调用（设计系统 §3.3）", () => {
     await screen.findByText("保存失败");
     expect(screen.getByText("坏了")).not.toBeNull();
     expect(screen.getByRole("status").dataset.kind).toBe("error");
+  });
+});
+
+describe("关闭按钮（常驻提示）", () => {
+  const closeName = "关闭提示";
+
+  it.each([
+    ["错误", () => toast.error("保存失败")],
+    [
+      "带动作",
+      () =>
+        toast.info("已归档", {
+          action: { label: "撤销", onClick: () => undefined },
+        }),
+    ],
+    ["加载中", () => toast.loading("正在导出")],
+  ] as const)(
+    "%s的提示有关闭按钮，是 IconButton，可 Tab 到",
+    async (_name, open) => {
+      render(<Toaster />);
+      act(() => {
+        open();
+      });
+      const shell = await screen.findByRole("status");
+      const close = within(shell).getByRole("button", { name: closeName });
+      expect(close.dataset.slot).toBe("icon-button");
+      expect(close.tabIndex).toBeGreaterThanOrEqual(0);
+      close.focus();
+      expect(document.activeElement).toBe(close);
+    },
+  );
+
+  it("点击关闭按钮：这一条消失，并触发 onDismiss", async () => {
+    render(<Toaster />);
+    const onDismiss = vi.fn();
+    act(() => {
+      toast.error("保存失败", { onDismiss });
+    });
+    fireEvent.click(await screen.findByRole("button", { name: closeName }));
+    await waitFor(() => expect(screen.queryByText("保存失败")).toBeNull());
+    expect(onDismiss).toHaveBeenCalledTimes(1);
+  });
+
+  it("焦点在壳内按 Esc 关闭", async () => {
+    render(<Toaster />);
+    act(() => {
+      toast.error("保存失败");
+    });
+    const close = await screen.findByRole("button", { name: closeName });
+    close.focus();
+    fireEvent.keyDown(close, { key: "Escape" });
+    await waitFor(() => expect(screen.queryByText("保存失败")).toBeNull());
+  });
+
+  it("带动作时，动作按钮与关闭按钮并存，动作仍可用", async () => {
+    render(<Toaster />);
+    const undo = vi.fn();
+    act(() => {
+      toast.error("已删除", { action: { label: "撤销", onClick: undo } });
+    });
+    const shell = await screen.findByRole("status");
+    expect(within(shell).getAllByRole("button")).toHaveLength(2);
+    fireEvent.click(within(shell).getByRole("button", { name: "撤销" }));
+    expect(undo).toHaveBeenCalledTimes(1);
+  });
+
+  it("自动消失的提示不加关闭按钮，外观不变", async () => {
+    render(<Toaster />);
+    act(() => {
+      toast.success("已保存");
+      toast.info("已更新", { duration: 2000 });
+    });
+    await screen.findByText("已更新");
+    expect(screen.queryByRole("button", { name: closeName })).toBeNull();
+  });
+
+  it("promise 失败变成常驻提示后出现关闭按钮；成功（2 秒）没有", async () => {
+    render(<Toaster />);
+    const ok = toast.promise(Promise.resolve(1), {
+      loading: "保存中",
+      success: "已保存",
+      error: "失败",
+    });
+    await ok.result;
+    await screen.findByText("已保存");
+    expect(screen.queryByRole("button", { name: closeName })).toBeNull();
+    act(() => {
+      sonner.dismiss();
+    });
+    const bad = toast.promise(Promise.reject(new Error("x")), {
+      loading: "保存中",
+      success: "已保存",
+      error: "保存失败",
+    });
+    await expect(bad.result).rejects.toThrow("x");
+    await screen.findByText("保存失败");
+    expect(screen.getByRole("button", { name: closeName })).not.toBeNull();
+  });
+
+  it("英文界面的名称是 Dismiss notification", async () => {
+    usePreferencesStore.setState({ locale: "en" });
+    try {
+      render(<Toaster />);
+      act(() => {
+        toast.error("Save failed");
+      });
+      await screen.findByRole("button", { name: "Dismiss notification" });
+    } finally {
+      usePreferencesStore.setState({ locale: "zh-CN" });
+    }
   });
 });
 
