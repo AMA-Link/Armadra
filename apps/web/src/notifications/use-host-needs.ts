@@ -70,9 +70,9 @@ export async function markEndorsementsRead(
   store.setHost(store.host.filter((row) => !ids.includes(row.id)));
 }
 
-/** 打开设置的「设备」页。 */
+/** 打开设置的「账号与设备」页（设备表在那里）。 */
 export function openDevicesPage(): void {
-  usePreferencesStore.getState().setLastSettingsSection("devices");
+  usePreferencesStore.getState().setLastSettingsSection("security");
   useCanvasStore.getState().setPanel("settings", true);
 }
 

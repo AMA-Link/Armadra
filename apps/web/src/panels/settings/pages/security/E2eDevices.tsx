@@ -173,7 +173,7 @@ function ApproveForm({
 }
 
 /**
- * 设置 → 设备与会话 → 经中转的设备（契约 §77）：设备钥的列表，待确认的行内核对，
+ * 设置 → 账号与设备 → 经中转的设备（契约 §77）：设备钥的列表，待确认的行内核对，
  * 其余可重命名、撤销、移除。没有任何一台时整块不出现。
  */
 export function E2eDevices() {
@@ -409,7 +409,7 @@ function PairDeviceButton() {
 
 /**
  * 不在设置页时也要能放行（契约 §77）：本机收到 `devices.pending` 就弹一个核对框。
- * 关掉不拒绝——申请留在设置 → 设备与会话里。
+ * 关掉不拒绝——申请留在设置 → 账号与设备里。
  */
 export function DeviceApprovalPrompt() {
   const t = useT();

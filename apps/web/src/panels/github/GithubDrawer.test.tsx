@@ -171,7 +171,7 @@ describe("可用性", () => {
     expect(screen.queryByText("解析仓库")).toBeNull();
     fireEvent.click(screen.getByText("前往设置"));
     expect(store.setPanel).toHaveBeenCalledWith("settings", true);
-    expect(usePreferencesStore.getState().lastSettingsSection).toBe("devices");
+    expect(usePreferencesStore.getState().lastSettingsSection).toBe("security");
   });
 
   it("没有 GitHub 凭据不挡整页：GitHub 仓库说没有令牌并指去代码托管设置", async () => {

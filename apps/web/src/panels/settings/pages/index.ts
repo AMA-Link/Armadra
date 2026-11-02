@@ -8,7 +8,6 @@ import { BrowserPage } from "./BrowserPage";
 import { CredentialsPage } from "./CredentialsPage";
 import { CustomAgentsPage } from "./CustomAgentsPage";
 import { DefaultsPage } from "./DefaultsPage";
-import { DevicesPage } from "./DevicesPage";
 import { ForgePage } from "./ForgePage";
 import { GeneralPage } from "./GeneralPage";
 import { KeybindingsPage } from "./KeybindingsPage";
@@ -45,7 +44,6 @@ export const SECTION_PAGES: Readonly<Record<string, Page>> = {
   machines: MachinesPage,
   forge: ForgePage,
   remoteAccess: RemoteAccessPage,
-  devices: DevicesPage,
   security: SecurityPage,
   accounts: AccountsSharingPage,
   about: AboutPage,

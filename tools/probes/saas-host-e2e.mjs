@@ -1052,7 +1052,7 @@ try {
         "信任页没有列出 owner 自己的新浏览器（云端不列），改经 /h/ 的设备页批",
       );
     }
-    // 经 owner 的 /h/（浏览器端到端通道）打开设置 → 设备与会话：批 owner 的待确认、配对新设备。
+    // 经 owner 的 /h/（浏览器端到端通道）打开设置 → 账号与设备：批 owner 的待确认、配对新设备。
     // 通知框关闭的动画结束前点不到侧栏：点到设置框出来为止。
     await until(
       async () => {
@@ -1073,8 +1073,8 @@ try {
       { timeout: 20_000, every: 200 },
     );
     await ownerTab.clickOn(
-      `return [...document.querySelectorAll('[role="dialog"] nav button')].find((b) => b.getAttribute("aria-label") === "设备与会话" || b.innerText.trim() === "设备与会话")`,
-      "设置导航「设备与会话」",
+      `return [...document.querySelectorAll('[role="dialog"] nav button')].find((b) => b.getAttribute("aria-label") === "账号与设备" || b.innerText.trim() === "账号与设备")`,
+      "设置导航「账号与设备」",
     );
     if (!viaTrustPage) {
       await ownerTab.until(

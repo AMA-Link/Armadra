@@ -3,6 +3,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "@/ui/toast";
 
 import {
+  onIdentitySessionChange,
   permits,
   renewCsrf,
   resumeIdentity,
@@ -33,6 +34,7 @@ import {
   type OAuthOutcome,
 } from "../../../../api/security";
 import { RUNTIME_VIA_SERVER_SHELL } from "../../../../api/request";
+import { isNativeApp } from "../../../../mobile/native-bridge";
 import { useT } from "../../../../app/preferences-store";
 import { SignIn } from "../../../../session/SignIn";
 import { securityFailure } from "../../../../session/sign-in-errors";
@@ -41,7 +43,15 @@ import {
   webauthnAvailable,
   webauthnCancelled,
 } from "../../../../session/webauthn";
+import { PageCaGuide } from "../gateway/CaInstallGuide";
+import {
+  GatewayDevicesSection,
+  type GatewayIdentity,
+} from "../gateway/GatewaySection";
 import { AuditLog } from "./AuditLog";
+import { DeviceSignIn } from "./DeviceSignIn";
+import { E2eDevices } from "./E2eDevices";
+import { LoginSessions } from "./LoginSessions";
 import { MfaSetup, type MfaStage } from "./MfaSetup";
 import { OAuthBindings, OAuthProviders } from "./OAuthBindings";
 import { PasskeyList } from "./PasskeyList";
@@ -52,16 +62,17 @@ import { SettingsPageHeader } from "../../SettingsPageHeader";
 const KEY = ["identity", "security"] as const;
 
 /**
- * 设置 → 账号与安全（补全架构 §8.3，设计系统 §5.9–§5.11）。
+ * 设置 → 账号与设备（#708：原「设备与会话」与「账号与安全」两页合成这一页）。
  *
- * 所有角色都进得来（`ownerOnly: false`）：每个人都管自己的登录方式。
- * 顺序：两步验证（策略要求而没开时排第一）· 通行密钥 · 第三方账号；owner
- * 另有登录提供方、锁定的账号与审计。登录会话在「设备与会话」页。服务器壳上
- * 还没登录时这一页就是登录。
+ * 所有角色都进得来（作用范围 account）：每个人都管自己的登录与设备。自上而下：
+ * 设备登录（这台设备的身份会话、配对）· 两步验证（策略要求而没开时排第一）· 通行密钥 ·
+ * 第三方账号 · 已配对设备 · 经中转的设备 · 登录会话；owner 另有登录提供方、锁定的账号
+ * 与审计。还没登录时登录方式那几块换成登录表单。
  *
  * OAuth 回调（`#oauth=`，契约 §18.5）由 `use-link-fragments` 打开到这一页，
  * 这里取走片段：登录成功换会话，`mfa` 接第二步，`bound` 提示已绑定，`error`
- * 显示原因。
+ * 显示原因。配对链接（`#pair=`）由「设备登录」取走；配对、登出之后会话变了，
+ * 这一页跟着重新取一次。
  */
 export function SecurityPage() {
   const t = useT();
@@ -72,6 +83,22 @@ export function SecurityPage() {
   const [outcome] = React.useState<OAuthOutcome | null>(() =>
     takeOAuthFragment(),
   );
+  // 设备表只有一份；「设备登录」报上这台设备是谁、能不能管理。撤销了自己就
+  // 让「设备登录」重新取一次会话（得到的是已退出）。
+  const [identity, setIdentity] = React.useState<GatewayIdentity | null>(null);
+  const [identityEpoch, setIdentityEpoch] = React.useState(0);
+  const onDeviceSession = React.useCallback((value: IdentitySession | null) => {
+    setIdentity(
+      value
+        ? {
+            deviceId: value.device.deviceId,
+            canManage: value.scopes.some(
+              (scope) => scope.permission === "identity:manage",
+            ),
+          }
+        : null,
+    );
+  }, []);
 
   React.useEffect(() => {
     let live = true;
@@ -98,43 +125,81 @@ export function SecurityPage() {
         if (live) setSession(null);
       },
     );
+    // 配对、登出、换人之后重取；续期（`rotated`）还是同一条会话。
+    const off = onIdentitySessionChange((change) => {
+      if (change === "rotated") return;
+      void resumeIdentity().then(
+        (value) => {
+          if (live) setSession(value);
+        },
+        () => {
+          if (live) setSession(null);
+        },
+      );
+    });
     return () => {
       live = false;
+      off();
     };
     // 片段只在挂载时读一次。
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  if (session === undefined) {
-    return (
-      <div className="flex flex-col gap-3" data-slot="security-page">
-        <SettingsPageHeader />
-        <Skeleton className="h-8 w-full" />
-        <Skeleton className="h-24 w-full" />
-      </div>
-    );
-  }
-  if (session === null) {
-    return (
-      <div data-slot="security-page" className="flex flex-col gap-6">
-        <SettingsPageHeader />
-        <SignIn
-          initial={
-            outcome?.result === "mfa" && outcome.challengeId
-              ? { challengeId: outcome.challengeId }
-              : outcome?.result === "error"
-                ? { error: oauthError(outcome.code, t) }
-                : undefined
-          }
-          onSignedIn={(next) => {
-            setSession(next);
-            void client.invalidateQueries();
-          }}
-        />
-      </div>
-    );
-  }
-  return <SecuritySettings session={session} />;
+  // 没有会话时用哪一种登录：服务器壳、原生 App 与 OAuth 回调走登录表单（「设备登录」
+  // 只留状态，地址栏的配对票照样取走）；其余只有「设备登录」。一页只有一张表单。
+  const signInForm =
+    session === null &&
+    (outcome !== null || RUNTIME_VIA_SERVER_SHELL || isNativeApp());
+
+  const devices = (
+    <>
+      <GatewayDevicesSection
+        identity={identity}
+        onCurrentRevoked={() => setIdentityEpoch((epoch) => epoch + 1)}
+      />
+      <E2eDevices />
+      <LoginSessions />
+    </>
+  );
+
+  return (
+    <>
+      <SettingsPageHeader />
+      <PageCaGuide />
+      <DeviceSignIn
+        epoch={identityEpoch}
+        onSession={onDeviceSession}
+        ticketForm={!signInForm}
+      />
+      {session === undefined ? (
+        <div className="flex flex-col gap-3">
+          <Skeleton className="h-8 w-full" />
+          <Skeleton className="h-24 w-full" />
+        </div>
+      ) : session === null ? (
+        <>
+          {signInForm && (
+            <SignIn
+              initial={
+                outcome?.result === "mfa" && outcome.challengeId
+                  ? { challengeId: outcome.challengeId }
+                  : outcome?.result === "error"
+                    ? { error: oauthError(outcome.code, t) }
+                    : undefined
+              }
+              onSignedIn={(next) => {
+                setSession(next);
+                void client.invalidateQueries();
+              }}
+            />
+          )}
+          {devices}
+        </>
+      ) : (
+        <SecuritySettings session={session}>{devices}</SecuritySettings>
+      )}
+    </>
+  );
 }
 
 function oauthError(code: string, t: ReturnType<typeof useT>): string {
@@ -143,7 +208,17 @@ function oauthError(code: string, t: ReturnType<typeof useT>): string {
   return text === key ? t("auth.error.failed") : text;
 }
 
-function SecuritySettings({ session }: { session: IdentitySession }) {
+/**
+ * 登录方式（两步验证、通行密钥、第三方账号）· `children`（设备与会话）· owner 的
+ * 登录提供方、锁定与审计。
+ */
+function SecuritySettings({
+  session,
+  children,
+}: {
+  session: IdentitySession;
+  children: React.ReactNode;
+}) {
   const t = useT();
   const client = useQueryClient();
   const manage = permits(session, "identity:manage");
@@ -288,8 +363,7 @@ function SecuritySettings({ session }: { session: IdentitySession }) {
   );
 
   return (
-    <div data-slot="security-page" className="flex flex-col gap-6">
-      <SettingsPageHeader />
+    <>
       {mfaFirst && mfaBlock}
       <PasskeyList
         list={passkeys.data}
@@ -347,6 +421,7 @@ function SecuritySettings({ session }: { session: IdentitySession }) {
           )
         }
       />
+      {children}
       {manage && (
         <OAuthProviders
           providers={providers.data?.providers ?? []}
@@ -392,6 +467,6 @@ function SecuritySettings({ session }: { session: IdentitySession }) {
           }))}
         />
       )}
-    </div>
+    </>
   );
 }

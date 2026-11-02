@@ -1,7 +1,7 @@
 import type { MessageModule } from "./index";
 
 /**
- * 登录（设计系统 §5.9）与设置 → 安全：通行密钥、两步验证、会话与设备、第三方
+ * 登录（设计系统 §5.9）与设置 → 账号与设备：通行密钥、两步验证、登录会话、第三方
  * 账号、锁定、审计（§5.10–§5.11，补全计划 G2-8）。
  */
 export const security: MessageModule = {
@@ -94,7 +94,7 @@ export const security: MessageModule = {
     "security.providers.replaceSecret": "更换密钥",
     "security.providers.clearSecret": "清除",
     "security.providers.save": "保存",
-    "security.sessions": "会话与设备",
+    "security.sessions": "登录会话",
     "security.sessions.device": "设备",
     "security.sessions.member": "成员",
     "security.sessions.lastActive": "最近活动",
@@ -316,7 +316,7 @@ export const security: MessageModule = {
     "security.providers.replaceSecret": "Replace secret",
     "security.providers.clearSecret": "Clear",
     "security.providers.save": "Save",
-    "security.sessions": "Sessions and devices",
+    "security.sessions": "Sign-in sessions",
     "security.sessions.device": "Device",
     "security.sessions.member": "Member",
     "security.sessions.lastActive": "Last active",

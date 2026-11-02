@@ -116,7 +116,7 @@ export async function endorsementNotices({
     "打开设置的设备页",
     { timeout: 30_000 },
   );
-  c.ok("点一条背书打开设置的「设备与会话」");
+  c.ok("点一条背书打开设置的「账号与设备」");
   await sleep(1_500);
   c.check(
     unread() === unreadBeforeClick,

@@ -21,19 +21,9 @@ import { SessionList } from "./SessionList";
 
 const KEY = ["identity", "security"] as const;
 
-/** 本人的登录会话数（与会话表同一份查询）；读不到时是 `null`。 */
-export function useLoginSessionCount(): number | null {
-  const sessions = useQuery({
-    queryKey: [...KEY, "sessions", false],
-    queryFn: () => listSessions(false),
-    retry: false,
-  });
-  return sessions.data ? sessions.data.length : null;
-}
-
 /**
- * 设备与会话 → 登录会话（§2.1）。要一条身份会话；没有时（还没配对或登录）
- * 整块不出现，登录在「账号与安全」页。配对、登出之后跟着重新取一次。
+ * 账号与设备 → 登录会话（§2.1、#708）。要一条身份会话；没有时（还没配对或登录）
+ * 整块不出现。配对、登出之后跟着重新取一次。
  */
 export function LoginSessions() {
   const [session, setSession] = React.useState<IdentitySession | null>(null);

@@ -23,7 +23,10 @@ export function SecuritySection({
   children?: React.ReactNode;
 }) {
   return (
-    <section className="flex min-w-0 flex-col gap-2">
+    <section
+      data-settings-label={title}
+      className="flex min-w-0 flex-col gap-2"
+    >
       <div className="flex min-h-8 items-center justify-between gap-2 px-0.5">
         <h3 className="text-body font-medium">{title}</h3>
         {action}

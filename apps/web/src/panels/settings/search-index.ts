@@ -140,6 +140,7 @@ export const SETTINGS_SEARCH: Readonly<Record<string, readonly string[]>> = {
     "remote.allow",
     "remote.internet",
     "remote.scan",
+    "gateway.pairCode.new",
     "gateway.listen",
     "gateway.port",
     "gateway.publicOrigin",
@@ -147,12 +148,17 @@ export const SETTINGS_SEARCH: Readonly<Record<string, readonly string[]>> = {
     "gateway.tls.acmeEmail",
     "remote.services",
   ],
-  devices: ["gateway.pairCode.new", "security.sessions.signOutOthers"],
+  // 原「设备与会话」的条目并在这里（#708）。
   security: [
+    "hostIdentity.current",
     "security.mfa.enable",
     "security.passkeys.add",
-    "security.audit.export",
     "security.oauth.link",
+    "gateway.devices",
+    "e2e.devices.title",
+    "security.sessions",
+    "security.sessions.signOutOthers",
+    "security.audit.export",
     "security.lockouts.unlock",
   ],
   accounts: [

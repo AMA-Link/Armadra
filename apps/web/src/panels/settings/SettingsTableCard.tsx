@@ -50,7 +50,13 @@ export function SettingsTableCard<V extends string = string>({
   const t = useT();
   const roving = useRoving<HTMLDivElement>();
   return (
-    <Card variant="table" data-slot="settings-table-card" {...rest}>
+    <Card
+      variant="table"
+      data-slot="settings-table-card"
+      // 设置搜索按标题定位到这张表（`search-index.ts`）。
+      data-settings-label={title}
+      {...rest}
+    >
       <CardHeader className="flex items-center gap-2">
         <CardTitle className="min-w-0 flex-1 truncate">{title}</CardTitle>
         {filter && (

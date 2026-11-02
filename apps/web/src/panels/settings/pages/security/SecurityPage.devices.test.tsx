@@ -12,17 +12,17 @@ import type { ReactElement } from "react";
 import type { GatewayStatus } from "@armadra/shared";
 
 const probe = vi.fn();
-vi.mock("../../../host/connection", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("../../../host/connection")>()),
+vi.mock("../../../../host/connection", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../../../host/connection")>()),
   probeHost: (...args: unknown[]) => probe(...args),
 }));
 let member = false;
-vi.mock("../../../app/use-access", () => ({
+vi.mock("../../../../app/use-access", () => ({
   useAccess: () => ({ member, can: () => !member, session: undefined }),
 }));
 // 「设备登录」只报一条会话上来：设备表只有一份，在对外服务那一块（G3-11）。
 let identitySession: IdentitySession | null = null;
-vi.mock("./HostIdentityPanel", async () => {
+vi.mock("../HostIdentityPanel", async () => {
   const { useEffect } = await import("react");
   return {
     HostIdentityPanel: ({
@@ -36,29 +36,34 @@ vi.mock("./HostIdentityPanel", async () => {
   };
 });
 
-vi.mock("./security/LoginSessions", () => ({
+vi.mock("./LoginSessions", () => ({
   LoginSessions: () => null,
-  useLoginSessionCount: () => null,
 }));
+// 账号那几块不在这份用例里：没有账号会话、登录表单不画（见 SecurityPage.test）。
+vi.mock("../../../../api/identity", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../../../api/identity")>()),
+  resumeIdentity: async () => null,
+}));
+vi.mock("../../../../session/SignIn", () => ({ SignIn: () => null }));
 
-import { DevicesPage } from "./DevicesPage";
-import { HostAccess } from "./remote-access/HostAccess";
-import { usePreferencesStore } from "../../../app/preferences-store";
+import { SecurityPage } from "./SecurityPage";
+import { HostAccess } from "../remote-access/HostAccess";
+import { usePreferencesStore } from "../../../../app/preferences-store";
 import {
   IdentityRequestError,
   IdentityTransportError,
   type IdentityHello,
   type IdentitySession,
-} from "../../../api/identity";
-import { TestProviders } from "../../../app/test-harness";
-import { parsePairingQr } from "../../../host/qr";
+} from "../../../../api/identity";
+import { TestProviders } from "../../../../app/test-harness";
+import { parsePairingQr } from "../../../../host/qr";
 
-/** 远程访问页的开关一块与设备与会话页放在一起：配置与设备表各一份。 */
+/** 远程访问页的开关一块与账号与设备页放在一起：配置与设备表各一份。 */
 function HostPage() {
   return (
     <>
       <HostAccess />
-      <DevicesPage />
+      <SecurityPage />
     </>
   );
 }
@@ -261,31 +266,28 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-describe("DevicesPage", () => {
+describe("账号与设备：设备登录与设备表", () => {
   it("opens with one connection check, so device sign-in can confirm the service", async () => {
     probe.mockResolvedValue(hello);
-    render(<DevicesPage />);
+    render(<SecurityPage />);
     await act(async () => {
       await Promise.resolve();
     });
     expect(probe).toHaveBeenCalledTimes(1);
   });
 
-  it("页头没有副标题，托盘两张：已配对设备与登录会话", async () => {
+  it("页头没有副标题，也没有与设备表重复的计数卡片", async () => {
     probe.mockResolvedValue(hello);
-    render(<DevicesPage />);
+    render(<SecurityPage />);
     expect(screen.getByTestId("settings-heading")).toBeTruthy();
-    expect(
-      document.querySelectorAll('[data-slot="settings-kpi"]'),
-    ).toHaveLength(2);
-    expect(screen.getAllByText("已配对设备").length).toBeGreaterThan(0);
+    expect(document.querySelector('[data-slot="settings-kpi"]')).toBeNull();
   });
 
   it("checks when a pairing link lands in a page that is already open", async () => {
     probe.mockResolvedValue(hello);
     const original = window.location.hash;
     try {
-      render(<DevicesPage />);
+      render(<SecurityPage />);
       await waitFor(() => expect(probe).toHaveBeenCalledTimes(1));
       await act(async () => {
         window.history.replaceState(null, "", "#pair=abc.def");
@@ -307,7 +309,7 @@ describe("DevicesPage", () => {
     const original = window.location.hash;
     window.history.replaceState(null, "", "#pair=abc.def");
     try {
-      render(<DevicesPage />);
+      render(<SecurityPage />);
       await waitFor(() => expect(probe).toHaveBeenCalledTimes(3), {
         timeout: 4_000,
       });
@@ -326,7 +328,7 @@ describe("DevicesPage", () => {
     probe.mockRejectedValue(
       new IdentityRequestError(403, "PERMISSION_DENIED", "raw remote detail"),
     );
-    render(<DevicesPage />);
+    render(<SecurityPage />);
     const status = await screen.findByRole("status");
     expect(status.textContent).toContain("拒绝访问");
     expect(status.textContent).not.toContain("raw remote detail");

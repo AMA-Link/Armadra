@@ -41,7 +41,7 @@ describe("SessionList", () => {
       onRevokeOthers: vi.fn(),
     };
     const { container, rerender } = render(<SessionList {...props} loading />);
-    expect(screen.getByText("会话与设备")).toBeTruthy();
+    expect(screen.getByText("登录会话")).toBeTruthy();
     expect(
       container.querySelector('[data-slot="security-loading"]'),
     ).toBeTruthy();

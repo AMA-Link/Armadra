@@ -97,7 +97,7 @@ export function GithubDrawer() {
   const found = detection.data;
   const ready = found && found.forge !== null && found.credential;
 
-  const toSettings = (section: "forge" | "service" | "devices") => {
+  const toSettings = (section: "forge" | "service" | "security") => {
     setPanel("github", "closed");
     usePreferencesStore.getState().setLastSettingsSection(section);
     setPanel("settings", true);
@@ -156,7 +156,7 @@ export function GithubDrawer() {
                 blocked === "signedOut" ||
                   blocked === "noPermission" ||
                   blocked === "nativeSession"
-                  ? "devices"
+                  ? "security"
                   : "service",
               )
             }

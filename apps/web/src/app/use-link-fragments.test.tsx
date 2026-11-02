@@ -26,21 +26,21 @@ afterEach(() => {
 });
 
 describe("useLinkFragments", () => {
-  it("邀请链接打开到「账号与共享」", () => {
+  it("邀请链接打开到「成员与共享」", () => {
     window.history.replaceState(null, "", "#invite=tok.en");
     renderHook(() => useLinkFragments(true));
     expect(useCanvasStore.getState().panels.settings).toBe(true);
     expect(usePreferencesStore.getState().lastSettingsSection).toBe("accounts");
   });
 
-  it("配对链接打开到「设备与会话」", () => {
+  it("配对链接打开到「账号与设备」", () => {
     window.history.replaceState(null, "", "#pair=abc.def");
     renderHook(() => useLinkFragments(true));
     expect(useCanvasStore.getState().panels.settings).toBe(true);
-    expect(usePreferencesStore.getState().lastSettingsSection).toBe("devices");
+    expect(usePreferencesStore.getState().lastSettingsSection).toBe("security");
   });
 
-  it("OAuth 回调打开到「安全」", () => {
+  it("OAuth 回调打开到「账号与设备」", () => {
     window.history.replaceState(null, "", "#oauth=mfa&challengeId=c1");
     renderHook(() => useLinkFragments(true));
     expect(useCanvasStore.getState().panels.settings).toBe(true);

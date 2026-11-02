@@ -27,7 +27,7 @@ export interface GatewayIdentity {
   canManage: boolean;
 }
 
-/** 已配对设备的分页查询；设备与会话页的托盘与设备表读同一份。 */
+/** 已配对设备的分页查询。 */
 function useGatewayDeviceQuery() {
   return useInfiniteQuery({
     queryKey: DEVICES_QUERY_KEY,
@@ -41,15 +41,8 @@ function useGatewayDeviceQuery() {
   });
 }
 
-/** 已配对（未撤销）的设备数；还没取到、读不到时是 `null`。 */
-export function useGatewayDeviceCount(): number | null {
-  const devices = useGatewayDeviceQuery();
-  const list = devices.data?.pages.flatMap((page) => page.devices);
-  return list ? list.filter((device) => device.revokedAtMs === 0).length : null;
-}
-
 /**
- * 已配对设备（设备与会话页）。设备列表要一条身份会话；没有会话时（还没配对的
+ * 已配对设备（账号与设备页）。设备列表要一条身份会话；没有会话时（还没配对的
  * 浏览器）整块不出现。配对成功那一刻会话换了，还在路上的那一次带的是旧凭据，
  * 先取消再重取。
  */
