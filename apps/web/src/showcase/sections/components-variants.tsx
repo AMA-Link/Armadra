@@ -208,7 +208,7 @@ export function VariantSamples() {
   return (
     <div className="flex flex-wrap gap-x-8 gap-y-(--space-block)">
       <Sample name="button · sizes" wide>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           {BUTTON_SIZES.map((size) => (
             <Button key={size} size={size}>
               {SIZE_ICON}
@@ -216,7 +216,7 @@ export function VariantSamples() {
             </Button>
           ))}
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           {FIELD_SIZES.map((size) => (
             <Input
               key={size}
@@ -227,7 +227,7 @@ export function VariantSamples() {
             />
           ))}
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           {FIELD_SIZES.map((size) => (
             <Select key={size} defaultValue="1">
               <SelectTrigger
