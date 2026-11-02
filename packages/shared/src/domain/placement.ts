@@ -1,4 +1,5 @@
 import type { LAYOUT_DIRECTION_CHOICES } from "../completion-settings.js";
+import { GRID_UNIT } from "./golden-ratio.js";
 import type { Position, Size } from "./nodes.js";
 
 /**
@@ -23,17 +24,20 @@ export type LayoutDirection = (typeof LAYOUT_DIRECTION_CHOICES)[number];
 export const DEFAULT_LAYOUT_DIRECTION: LayoutDirection = "vertical";
 
 /**
+ * 以下间距都是 {@link GRID_UNIT} 的斐波那契倍数（5 / 8 / 13 格），所以落点边缘
+ * 在背景点阵上；相邻两档之比逼近 φ。
+ *
  * 层距：沿连线方向（主 → 从）相邻两层之间的空白。扇出的派发线要在这里弯折、
  * 还要放得下连线标签，所以比兄弟间距大；横向的标签是横着排的，再宽一些。
  */
 export const LAYER_GAP: Readonly<Record<LayoutDirection, number>> = {
-  vertical: 128,
-  horizontal: 160,
+  vertical: 8 * GRID_UNIT,
+  horizontal: 13 * GRID_UNIT,
 };
 /** 兄弟间距：同一层相邻两个节点之间的通道，连线能从中间穿过去。 */
-export const SIBLING_GAP = 80;
+export const SIBLING_GAP = 5 * GRID_UNIT;
 /** 互不相连的两簇之间的空白。 */
-export const CLUSTER_GAP = 96;
+export const CLUSTER_GAP = 8 * GRID_UNIT;
 /** 沿行 / 列最多让几格。 */
 export const PLACEMENT_ATTEMPTS = 64;
 
@@ -62,8 +66,19 @@ export function boxesTooClose(
   );
 }
 
+/** 向右 / 向下取整到点阵：只会离开已有的盒子，不会让间距变小。 */
+function onGrid(value: number): number {
+  // `|| 0` 把 -0 归成 0。
+  return Math.ceil(value / GRID_UNIT - 1e-9) * GRID_UNIT || 0;
+}
+
+function snapToGrid(at: Position): Position {
+  return { x: onGrid(at.x), y: onGrid(at.y) };
+}
+
 /**
- * 新从的左上角。`childIds` 是主已有的从（`role: "supervises"` 边的另一端）；
+ * 新从的左上角（落在 {@link GRID_UNIT} 的整数倍上：主在点阵上时左对齐 / 顶对齐
+ * 保持不变，不在时向右 / 向下靠到下一个点）。`childIds` 是主已有的从（`role: "supervises"` 边的另一端）；
  * 主不在 `boxes` 里时返回 `null`，由调用方退回自己的缺省落点。
  */
 export function dispatchPlacement(
@@ -82,23 +97,25 @@ export function dispatchPlacement(
   const vertical = direction === "vertical";
   const layer = LAYER_GAP[direction];
 
-  let at: Position = vertical
-    ? {
-        x:
-          children.length > 0
-            ? Math.max(...children.map((box) => box.x + box.width)) +
-              SIBLING_GAP
-            : parent.x,
-        y: parent.y + parent.height + layer,
-      }
-    : {
-        x: parent.x + parent.width + layer,
-        y:
-          children.length > 0
-            ? Math.max(...children.map((box) => box.y + box.height)) +
-              SIBLING_GAP
-            : parent.y,
-      };
+  let at: Position = snapToGrid(
+    vertical
+      ? {
+          x:
+            children.length > 0
+              ? Math.max(...children.map((box) => box.x + box.width)) +
+                SIBLING_GAP
+              : parent.x,
+          y: parent.y + parent.height + layer,
+        }
+      : {
+          x: parent.x + parent.width + layer,
+          y:
+            children.length > 0
+              ? Math.max(...children.map((box) => box.y + box.height)) +
+                SIBLING_GAP
+              : parent.y,
+        },
+  );
 
   const blockers = () =>
     boxes.filter((box) => boxesTooClose(box, { ...at, ...size }, SIBLING_GAP));
@@ -106,26 +123,30 @@ export function dispatchPlacement(
     const hit = blockers();
     if (hit.length === 0) break;
     // 跳过挡路的盒子：落点一步到它们的另一侧，不在原地一格一格地挪。
-    at = vertical
-      ? {
-          x: Math.max(...hit.map((box) => box.x + box.width)) + SIBLING_GAP,
-          y: at.y,
-        }
-      : {
-          x: at.x,
-          y: Math.max(...hit.map((box) => box.y + box.height)) + SIBLING_GAP,
-        };
+    at = snapToGrid(
+      vertical
+        ? {
+            x: Math.max(...hit.map((box) => box.x + box.width)) + SIBLING_GAP,
+            y: at.y,
+          }
+        : {
+            x: at.x,
+            y: Math.max(...hit.map((box) => box.y + box.height)) + SIBLING_GAP,
+          },
+    );
   }
   if (blockers().length > 0) {
-    at = vertical
-      ? {
-          x: parent.x,
-          y: Math.max(...boxes.map((box) => box.y + box.height)) + layer,
-        }
-      : {
-          x: Math.max(...boxes.map((box) => box.x + box.width)) + layer,
-          y: parent.y,
-        };
+    at = snapToGrid(
+      vertical
+        ? {
+            x: parent.x,
+            y: Math.max(...boxes.map((box) => box.y + box.height)) + layer,
+          }
+        : {
+            x: Math.max(...boxes.map((box) => box.x + box.width)) + layer,
+            y: parent.y,
+          },
+    );
   }
   if (!Number.isFinite(at.x) || !Number.isFinite(at.y)) return null;
   return at;

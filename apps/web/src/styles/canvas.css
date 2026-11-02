@@ -264,7 +264,13 @@
   .canvas-dock::-webkit-scrollbar {
     display: none;
   }
-  .canvas-stage .react-flow__minimap {
+  /*
+   * 缩略图和它的收起钮（`MinimapToggle` 的 Panel 与 `.react-flow__minimap` 是兄
+   * 弟，收起后缩略图本身不渲染）共用 `--navigation-bottom`，所以变量写在两者的
+   * 共同祖先上：收起钮也坐在底部导航与 Dock 之上，不再压在导航条上。
+   * `--mobile-nav-h` 矮屏（手机横屏）自己缩到 44px，这里不用再分情况。
+   */
+  .workspace-surface {
     --navigation-bottom: calc(
       var(--mobile-nav-h) + var(--safe-bottom) + 10px + var(--dock-h) + 12px
     );
