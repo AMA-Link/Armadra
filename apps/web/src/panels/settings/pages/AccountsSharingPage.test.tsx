@@ -196,7 +196,7 @@ afterEach(() => {
   vi.clearAllMocks();
 });
 
-describe("设置 → 账号与共享", () => {
+describe("设置 → 成员与共享", () => {
   it("只在服务器壳托管的页面上出现", () => {
     const ids = (server: boolean) =>
       visibleSettingsSections(server).map((section) => section.id);
@@ -230,7 +230,6 @@ describe("设置 → 账号与共享", () => {
         "whiteboard",
         "terminalLook",
         "keybindings",
-        "devices",
         "security",
         "accounts",
         "about",

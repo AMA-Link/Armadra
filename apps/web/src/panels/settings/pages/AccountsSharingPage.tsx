@@ -100,7 +100,7 @@ import {
 } from "@/ui/select";
 
 /**
- * 设置 → 账号与共享（服务器账号 R8，设计 `server-accounts-and-sharing.md`）。
+ * 设置 → 成员与共享（服务器账号 R8，设计 `server-accounts-and-sharing.md`）。
  *
  * 只在服务器壳托管的页面上出现（`nav.ts` 的 `serverOnly`）。四块：自己的账号、
  * 成员、组、邀请与工作空间共享；后三块只给管理员（会话里有

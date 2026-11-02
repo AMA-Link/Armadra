@@ -279,6 +279,20 @@ describe("SettingsDialog", () => {
     expect(scope()).toBeNull();
   });
 
+  it("存着旧分区「设备与会话」（devices）时打开到「账号与设备」（#708）", async () => {
+    usePreferencesStore.setState({ lastSettingsSection: "devices" });
+    open();
+    await waitFor(() =>
+      expect(screen.getByTestId("settings-page").dataset.section).toBe(
+        "security",
+      ),
+    );
+    expect(screen.getByTestId("settings-heading").textContent).toBe(
+      zh("settings.section.security"),
+    );
+    expect(navItem(zh("settings.section.security"))).toBeTruthy();
+  });
+
   it("顶栏带 settings-topbar 样式钩子，左缘与面板里页标题对齐", async () => {
     open();
     await screen.findByText(zh("settings.theme"));

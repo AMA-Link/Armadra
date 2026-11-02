@@ -11,7 +11,6 @@ import {
   KeyRound,
   Keyboard,
   LayoutGrid,
-  MonitorSmartphone,
   Presentation,
   Server,
   ServerCog,
@@ -63,7 +62,7 @@ export interface SettingsSection {
    */
   desktopOnly?: boolean;
   /**
-   * 只在服务器壳托管的页面上出现：账号与共享只对「一台服务器、好几个人」
+   * 只在服务器壳托管的页面上出现：成员与共享只对「一台服务器、好几个人」
    * 有意义。
    */
   serverOnly?: boolean;
@@ -235,8 +234,9 @@ export const SETTINGS_SECTIONS: readonly SettingsSection[] = [
     ownerOnly: true,
   },
   {
+    // 这台电脑能不能被连到、我连到哪些电脑（#708）：与本机服务同属「主机」。
     id: "remoteAccess",
-    groupKey: "settings.group.remote",
+    groupKey: "settings.group.host",
     labelKey: "settings.section.remoteAccess",
     icon: Waypoints,
     scope: "host",
@@ -244,14 +244,8 @@ export const SETTINGS_SECTIONS: readonly SettingsSection[] = [
     pinnedLocal: true,
   },
   {
-    // 登录方式、设备与会话说的是「我」，不是这台机器，所以成员也进得来。
-    id: "devices",
-    groupKey: "settings.group.remote",
-    labelKey: "settings.section.devices",
-    icon: MonitorSmartphone,
-    scope: "account",
-  },
-  {
+    // 谁能登录这里（#708，原「设备与会话」并入）：登录方式、设备与会话说的是
+    // 「我」，不是这台机器，所以成员也进得来。
     id: "security",
     groupKey: "settings.group.account",
     labelKey: "settings.section.security",
@@ -295,6 +289,8 @@ export const LEGACY_SECTION_IDS: Readonly<Record<string, string>> = {
   data: "service",
   account: "usage",
   updates: "about",
+  // 「设备与会话」并进「账号与设备」（#708）。
+  devices: "security",
 };
 
 /** 旧 id 映射成新 id；不认识的原样返回（交给 `isSettingsSectionId` 判断）。 */

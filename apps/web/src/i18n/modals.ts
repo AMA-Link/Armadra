@@ -19,7 +19,6 @@ export const modals: MessageModule = {
     "settings.group.agent": "Agent", // i18n-exempt
     "settings.group.space": "工作空间",
     "settings.group.host": "主机",
-    "settings.group.remote": "远程访问",
     "settings.group.account": "账号",
     "settings.group.about": "关于",
 
@@ -41,9 +40,8 @@ export const modals: MessageModule = {
     "settings.section.machines": "SSH", // i18n-exempt
     "settings.section.forge": "代码托管",
     "settings.section.remoteAccess": "远程访问",
-    "settings.section.devices": "设备与会话",
-    "settings.section.security": "账号与安全",
-    "settings.section.accounts": "账号与共享",
+    "settings.section.security": "账号与设备",
+    "settings.section.accounts": "成员与共享",
     "settings.section.about": "关于",
 
     "settings.scope.device": "本设备",
@@ -303,7 +301,6 @@ export const modals: MessageModule = {
     "settings.group.agent": "Agent",
     "settings.group.space": "Workspace",
     "settings.group.host": "Host",
-    "settings.group.remote": "Remote access",
     "settings.group.account": "Account",
     "settings.group.about": "About",
 
@@ -325,9 +322,8 @@ export const modals: MessageModule = {
     "settings.section.machines": "SSH",
     "settings.section.forge": "Code hosting",
     "settings.section.remoteAccess": "Remote access",
-    "settings.section.devices": "Devices & sessions",
-    "settings.section.security": "Account & security",
-    "settings.section.accounts": "Accounts & sharing",
+    "settings.section.security": "Account & devices",
+    "settings.section.accounts": "Members & sharing",
     "settings.section.about": "About",
 
     "settings.scope.device": "This device",

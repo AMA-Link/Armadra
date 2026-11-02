@@ -18,7 +18,7 @@ const ids = (sections: readonly { id: string }[]) =>
   sections.map((section) => section.id);
 
 describe("设置导航（界面第二波 §2.1）", () => {
-  it("八组、注册表顺序即导航顺序，「默认」置顶", () => {
+  it("七组、注册表顺序即导航顺序，「默认」置顶", () => {
     expect(ids(SETTINGS_SECTIONS)).toEqual([
       "defaults",
       "general",
@@ -38,7 +38,6 @@ describe("设置导航（界面第二波 §2.1）", () => {
       "machines",
       "forge",
       "remoteAccess",
-      "devices",
       "security",
       "accounts",
       "about",
@@ -55,10 +54,24 @@ describe("设置导航（界面第二波 §2.1）", () => {
       "settings.group.agent",
       "settings.group.space",
       "settings.group.host",
-      "settings.group.remote",
       "settings.group.account",
       "settings.group.about",
     ]);
+  });
+
+  it("远程访问在「主机」组；账号与设备、成员与共享在「账号」组（#708）", () => {
+    platform.desktop = true;
+    const groups = groupSections(visibleSettingsSections(true));
+    const of = (key: string) =>
+      ids(groups.find((group) => group.groupKey === key)?.sections ?? []);
+    expect(of("settings.group.host")).toEqual([
+      "service",
+      "machines",
+      "forge",
+      "remoteAccess",
+    ]);
+    expect(of("settings.group.account")).toEqual(["security", "accounts"]);
+    expect(SECTION_PAGES.devices).toBeUndefined();
   });
 
   it("每页都有作用范围；ownerOnly 只出现在主机页上", () => {
@@ -89,9 +102,9 @@ describe("设置导航（界面第二波 §2.1）", () => {
     const visible = ids(visibleSettingsSections(true, true, false));
     for (const section of SETTINGS_SECTIONS.filter((entry) => entry.ownerOnly))
       expect(visible).not.toContain(section.id);
-    // 成员仍进得来：本机服务（只见连接状态）、设备与会话、账号与安全、关于。
+    // 成员仍进得来：本机服务（只见连接状态）、账号与设备、关于。
     expect(visible).toEqual(
-      expect.arrayContaining(["service", "devices", "security", "about"]),
+      expect.arrayContaining(["service", "security", "about"]),
     );
   });
 
@@ -110,6 +123,7 @@ describe("设置导航（界面第二波 §2.1）", () => {
         "data",
         "account",
         "updates",
+        "devices",
       ].sort(),
     );
     for (const [legacy, next] of Object.entries(LEGACY_SECTION_IDS)) {
@@ -124,6 +138,9 @@ describe("设置导航（界面第二波 §2.1）", () => {
     expect(activeSectionId("integration")).toBe("agents");
     expect(activeSectionId("updates")).toBe("about");
     expect(activeSectionId("ssh")).toBe("machines");
+    // 「设备与会话」并进了「账号与设备」（#708）：成员也落在那一页。
+    expect(activeSectionId("devices")).toBe("security");
+    expect(activeSectionId("devices", true, true)).toBe("security");
     // 成员看不到映射后的那一页：回到第一页。
     expect(activeSectionId("github", true)).toBe(DEFAULT_SETTINGS_SECTION);
     expect(activeSectionId("nope")).toBe(DEFAULT_SETTINGS_SECTION);
