@@ -55,7 +55,18 @@ node apps/push-relay/out/main.js
 | `ARMADRA_RELAY_FCM_CREDENTIALS_FILE` / `_PROJECT_ID`              | 发布方的 Firebase 服务账号 JSON；项目 id 缺省取账号里的  |
 | `ARMADRA_RELAY_APNS_ENDPOINT` / `ARMADRA_RELAY_FCM_ENDPOINT`      | 只给测试：指向 dev-stack 的 `push-sink`                  |
 
-密钥一律只给文件路径。APNs 与 FCM 至少配一个，否则进程拒绝启动。
+密钥一律只给文件路径。APNs 与 FCM 都是可选的：一个都不配也能启动，`/health` 的 `platforms` 为空，`/v1/register` 与 `/v1/push` 答 `platformUnavailable`；只配 `ARMADRA_RELAY_SECRET_FILE` 是最小配置。
+
+## 容器
+
+标签发布时推 `ghcr.io/ama-link/armadra-push-relay:<版本>`（与桌面、服务器同号，amd64 + arm64）。镜像非 root（uid 10001）、不写任何文件，根文件系统可只读；监听 `0.0.0.0:8095`，自带 `/health` 健康检查，密钥文件只读挂进来并让 uid 10001 读得到。自己构建：
+
+```sh
+docker build -f apps/push-relay/docker/Dockerfile -t armadra-push-relay .
+docker run --rm --read-only --cap-drop ALL -p 127.0.0.1:8095:8095 \
+  -v "$PWD/relay.secret:/run/secrets/relay_secret:ro" \
+  -e ARMADRA_RELAY_SECRET_FILE=/run/secrets/relay_secret armadra-push-relay
+```
 
 ## 本地验证
 

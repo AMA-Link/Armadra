@@ -550,7 +550,7 @@ dmg）、Scoop（`armadra.json`，便携 zip，`checkver: github`，`autoupdate`
 官方 `homebrew/cask` 与 Scoop `Extras` 有知名度门槛，达到后再提；`brew audit --new` 要求仓库
 公开可查，私有期间只跑 `--strict`。Linux 的结论（外部服务 §4.3）：AUR 只附 `PKGBUILD` 模板、
 不自己维护；apt / rpm 仓库是可选的 W-LINUX-REPO；Flathub 与 Snap 延后——终端、PTY 与任意
-CLI 需要的宽沙箱权限过不了审核。服务器壳镜像推 GHCR 由 `server-image.yml` 负责（G3-5）。
+CLI 需要的宽沙箱权限过不了审核。服务器壳镜像推 GHCR 由 `server-image.yml` 负责（G3-5）；推送中继镜像由 `push-relay-image.yml` 负责，同样只在 `v*` 标签上推 `ghcr.io/ama-link/armadra-push-relay:<版本>`（标签方案与服务器壳镜像一致，#658）。
 
 第三方声明：`node tools/notices.mjs` 用 `pnpm licenses list --prod --json` 生成根目录的
 `THIRD_PARTY_NOTICES.md`（每个包带许可证原文），`pnpm check` 里的 `notices:check` 防漂移——

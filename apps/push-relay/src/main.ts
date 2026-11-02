@@ -68,9 +68,9 @@ export async function startRelay(
           ...(fcmProject === "" ? {} : { projectId: fcmProject }),
           ...(fcmEndpoint === "" ? {} : { endpoint: fcmEndpoint }),
         });
-  if (ios === undefined && android === undefined) {
-    throw new Error("APNs 与 FCM 至少配一个");
-  }
+  // 两个平台都没配也照常启动：/health 报空列表，登记与推送答
+  // platformUnavailable。凭据后到的部署（先把服务带起来，再补 .p8 / 服务账号）
+  // 不必为它改启动流程。
   const relay = createRelay({
     secret: readSecret(secretFile),
     ...(ios === undefined ? {} : { ios }),
