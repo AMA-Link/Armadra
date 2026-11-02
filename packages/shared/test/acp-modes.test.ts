@@ -2,10 +2,12 @@ import { describe, expect, it } from "vitest";
 
 import {
   ACP_MODE_TABLE,
+  ACP_REPORTED_MODES,
   AGENT_IDS,
   PERMISSION_MODES,
   acpModeCandidates,
   acpModeIdOf,
+  acpReportsPermissionModes,
   agentDefinition,
   permissionModeOfAcpMode,
 } from "../src/index";
@@ -92,5 +94,19 @@ describe("ACP_MODE_TABLE", () => {
     expect(permissionModeOfAcpMode("claude", "nope")).toBeUndefined();
     expect(acpModeIdOf("custom:x", "default")).toBeUndefined();
     expect(acpModeCandidates("custom:x")).toEqual([]);
+  });
+});
+
+describe("ACP_REPORTED_MODES", () => {
+  it("has one row per built-in agent and only pi ignores what it reports", () => {
+    expect(Object.keys(ACP_REPORTED_MODES).sort()).toEqual(
+      [...AGENT_IDS].sort(),
+    );
+    const ignored = AGENT_IDS.filter((id) => !acpReportsPermissionModes(id));
+    expect(ignored).toEqual(["pi"]);
+  });
+
+  it("treats an unknown or custom agent as reporting permission modes", () => {
+    expect(acpReportsPermissionModes("custom:x")).toBe(true);
   });
 });

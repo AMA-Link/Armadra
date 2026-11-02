@@ -3619,7 +3619,7 @@ human initiator。页面不接收任何 controller 凭据；body owner/controlle
 自协议 1.22 起扩展 §39.7（§39.7 原文仍是 1.15 的行为；procedure 名与 `since` 不变，表在 §39.7 的生成块里）。实现在 `core/agent/adapter-install.ts`。
 
 - `agents.installAdapter` 入参多 `target?: "adapter" | "cli"`（缺省 `adapter`，与 1.15 相同）与 `rollback?: boolean`；`agents.adapterInstall` 入参多 `target?`。
-- 两张白名单（`@armadra/shared`）：`adapter` 只认 `ACP_ADAPTER_PACKAGES`（`claude` / `codex` / `pi` 三家适配器，不变）；`cli` 只认 `AGENT_CLI_PACKAGES`：`claude` → `@anthropic-ai/claude-code`、`codex` → `@openai/codex`、`opencode` → `opencode-ai`、`pi` → `@mariozechner/pi-coding-agent`、`omp` → `@oh-my-pi/pi-coding-agent`、`copilot` → `@github/copilot`、`ama` → `@armadra/agent`。表外（含 `custom:` 条目）答 400 `adapter_not_installable`，不起进程。命令仍固定是 `npm install --global <包>`，npm 的选取与子进程 PATH 同 §39.7。
+- 两张白名单（`@armadra/shared`）：`adapter` 只认 `ACP_ADAPTER_PACKAGES`（`claude` / `codex` / `pi` 三家适配器，不变）；`cli` 只认 `AGENT_CLI_PACKAGES`：`claude` → `@anthropic-ai/claude-code`、`codex` → `@openai/codex`、`opencode` → `opencode-ai`、`pi` → `@earendil-works/pi-coding-agent`、`omp` → `@oh-my-pi/pi-coding-agent`、`copilot` → `@github/copilot`、`ama` → `@armadra/agent`。表外（含 `custom:` 条目）答 400 `adapter_not_installable`，不起进程。命令仍固定是 `npm install --global <包>`，npm 的选取与子进程 PATH 同 §39.7。
 - 探测：`adapter` 找适配器程序，`cli` 找注册表的 `launchCmd`；没带 `reinstall` 而已在 PATH 上答 409 `adapter_already_installed`。原生 ACP 的几家（opencode / omp / copilot / ama）装 CLI 即装 ACP。
 - 任务键是 `${agentId}:${target}`：同一家同一样在装时答那一个任务；同一家另一样在装答 409 `adapter_install_busy`，不起第二个 npm。
 - 上一版本：开始前用同一个 npm 跑 `npm ls --global --depth=0 --json <包>`，读 `dependencies.<包>.version` 记为任务的 `previousVersion`；拿不到就缺席。`rollback: true` 装回 `<包>@<previousVersion>`（这一家这一样最近一个任务的值，隐含 `reinstall`）；没有 `previousVersion` 答 409 `adapter_rollback_unavailable`。

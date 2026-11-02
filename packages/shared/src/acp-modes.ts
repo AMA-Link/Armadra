@@ -18,7 +18,8 @@ import { PERMISSION_MODES, type PermissionMode } from "./domain/primitives.js";
  *   * opencode：agent 名 `build` / `plan`，没有 auto-edit / full-auto；
  *   * omp：`default` / `plan`，`write` / `yolo` 只能走启动旗标；
  *   * copilot：不报，三个模式都只能走启动旗标；
- *   * pi：不报，没有任何模式；
+ *   * pi：适配器报的 `modes` 是推理强度（同时以 `thought_level` 配置项给出），不是权限
+ *     模式，按 {@link ACP_REPORTED_MODES} 忽略；Pi 本身没有权限模型，没有任何模式；
  *   * ama：`default` / `auto-edit` / `full-auto` / `plan`，id 就是 Armadra 的名字。
  * 各家都可能晚报或不报；Agent 报了以它为准，这张表只在报回之前顶上。
  */
@@ -81,6 +82,31 @@ export const ACP_MODE_TABLE: Readonly<Record<BuiltinAgentId, AcpModeTable>> = {
     plan: { modeId: "plan" },
   },
 };
+
+/**
+ * 这家在 `session/new` 答复里报的 `modes` 是不是权限模式：`permission` 照常当模式
+ * 用；`ignore` 是这家把别的东西（pi：推理强度）塞在 `modes` 里，core 丢掉它，
+ * 页面不画模式选择器，那一项只以配置项出现。
+ */
+export const ACP_REPORTED_MODES: Readonly<
+  Record<BuiltinAgentId, "permission" | "ignore">
+> = {
+  claude: "permission",
+  codex: "permission",
+  opencode: "permission",
+  pi: "ignore",
+  omp: "permission",
+  copilot: "permission",
+  ama: "permission",
+};
+
+/** 这家报的 `modes` 要不要当权限模式；不认识的 Agent 按权限模式。 */
+export function acpReportsPermissionModes(agentId: string): boolean {
+  return (
+    !(AGENT_IDS as readonly string[]).includes(agentId) ||
+    ACP_REPORTED_MODES[agentId as BuiltinAgentId] === "permission"
+  );
+}
 
 function tableOf(agentId: string): AcpModeTable | undefined {
   return (AGENT_IDS as readonly string[]).includes(agentId)

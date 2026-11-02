@@ -296,7 +296,7 @@ describe("CLI 与回滚（§47）", () => {
     ).toBe("adapter_not_installable");
     for (const [agentId, name] of [
       ["omp", "@oh-my-pi/pi-coding-agent"],
-      ["pi", "@mariozechner/pi-coding-agent"],
+      ["pi", "@earendil-works/pi-coding-agent"],
       ["claude", "@anthropic-ai/claude-code"],
       ["codex", "@openai/codex"],
       ["opencode", "opencode-ai"],

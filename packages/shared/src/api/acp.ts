@@ -91,7 +91,7 @@ export const AGENT_CLI_PACKAGES = {
   claude: "@anthropic-ai/claude-code",
   codex: "@openai/codex",
   opencode: "opencode-ai",
-  pi: "@mariozechner/pi-coding-agent",
+  pi: "@earendil-works/pi-coding-agent",
   omp: "@oh-my-pi/pi-coding-agent",
   copilot: "@github/copilot",
   ama: "@armadra/agent",
