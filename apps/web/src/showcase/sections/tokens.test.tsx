@@ -69,11 +69,12 @@ describe("tokens 分区（设计系统 §2）", () => {
     ]);
   });
 
-  it("动效：六档时长、四条曲线、按下 / 发芽缩放、六格错落", () => {
+  it("动效：六档时长、四条曲线、按下不透明度 / 发芽缩放、六格错落", () => {
     const { container } = renderTokens();
     expect(container.querySelectorAll("[data-motion-sample]")).toHaveLength(6);
     expect(container.querySelectorAll("[data-curve-sample]")).toHaveLength(4);
-    expect(container.querySelectorAll("[data-scale-sample]")).toHaveLength(2);
+    expect(container.querySelectorAll("[data-scale-sample]")).toHaveLength(1);
+    expect(container.querySelectorAll("[data-opacity-sample]")).toHaveLength(1);
     expect(container.querySelectorAll("[data-stagger-sample]")).toHaveLength(6);
     expect(container.querySelector("[data-hairline-sample]")).not.toBeNull();
   });

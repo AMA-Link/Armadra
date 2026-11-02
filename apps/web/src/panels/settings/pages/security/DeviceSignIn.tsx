@@ -36,6 +36,10 @@ export function DeviceSignIn({
   const t = useT();
   const { state, check } = useHostConnection();
   const autoRetries = useRef(0);
+  // 重试时告警原位留着（按钮转 loading），不换成更高的骨架再换回来：点一下页面不抖
+  const lastError = useRef<string | null>(null);
+  if (state.status === "error") lastError.current = state.messageKey;
+  else if (state.status === "connected") lastError.current = null;
   useEffect(() => {
     void check();
     const onLink = () => {
@@ -65,18 +69,27 @@ export function DeviceSignIn({
         ticketForm={ticketForm}
       />
     );
-  if (state.status === "error")
+  const retrying = state.status === "checking" && lastError.current !== null;
+  if (state.status === "error" || retrying) {
+    const messageKey =
+      state.status === "error" ? state.messageKey : lastError.current;
     return (
       <Alert variant="destructive" role="status" aria-live="polite">
         <AlertTitle className="font-normal break-words">
-          {t(state.messageKey)}
+          {messageKey === null ? null : t(messageKey)}
         </AlertTitle>
         <AlertAction>
-          <Button size="sm" variant="secondary" onClick={() => void check()}>
+          <Button
+            size="sm"
+            variant="secondary"
+            loading={retrying}
+            onClick={() => void check()}
+          >
             {t("host.check")}
           </Button>
         </AlertAction>
       </Alert>
     );
+  }
   return <Skeleton className="h-24 w-full" />;
 }

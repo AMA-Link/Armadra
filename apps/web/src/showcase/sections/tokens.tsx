@@ -376,19 +376,24 @@ export default function TokensSection() {
           <TokenName name={t("showcase.tokens.scale")} />
           <div className="flex flex-wrap items-center gap-6 text-meta">
             <span className="font-mono text-muted-foreground">
-              --press-scale · --pop-scale · --stagger
+              --press-opacity · --pop-scale · --stagger
             </span>
-            {(["--press-scale", "--pop-scale"] as const).map((token) => (
-              <div
-                key={token}
-                data-scale-sample={token}
-                className="h-8 w-20 rounded-control border border-border-strong bg-card"
-                style={{
-                  transform: played ? `scale(var(${token}))` : "none",
-                  transition: "transform var(--dur-base) var(--ease-out)",
-                }}
-              />
-            ))}
+            <div
+              data-opacity-sample="--press-opacity"
+              className="h-8 w-20 rounded-control border border-border-strong bg-card"
+              style={{
+                opacity: played ? "var(--press-opacity)" : 1,
+                transition: "opacity var(--dur-instant) var(--ease-color)",
+              }}
+            />
+            <div
+              data-scale-sample="--pop-scale"
+              className="h-8 w-20 rounded-control border border-border-strong bg-card"
+              style={{
+                transform: played ? "scale(var(--pop-scale))" : "none",
+                transition: "transform var(--dur-base) var(--ease-out)",
+              }}
+            />
             {[0, 1, 2, 3, 4, 5].map((index) => (
               <span
                 key={index}

@@ -421,7 +421,7 @@ function UncommittedRow({
       aria-pressed={selected}
       onClick={onSelect}
       style={{ height, paddingLeft: gutter }}
-      className="h-auto justify-start rounded-none border-0 font-normal active:not-aria-[haspopup]:translate-y-0 w-full min-w-0 gap-2 pr-3 text-left text-meta italic text-muted-foreground hover:bg-muted aria-pressed:bg-muted"
+      className="h-auto justify-start rounded-none border-0 font-normal w-full min-w-0 gap-2 pr-3 text-left text-meta italic text-muted-foreground hover:bg-muted aria-pressed:bg-muted"
     >
       <span className="min-w-0 flex-1 truncate">
         {t("gitLog.table.uncommitted")}
@@ -463,7 +463,7 @@ function CommitRow({
       onClick={onSelect}
       style={{ height, paddingLeft: gutter }}
       className={cn(
-        "h-auto justify-start rounded-none border-0 font-normal active:not-aria-[haspopup]:translate-y-0 relative w-full min-w-0 gap-2 pr-3 text-left text-meta hover:bg-muted aria-pressed:bg-muted",
+        "h-auto justify-start rounded-none border-0 font-normal relative w-full min-w-0 gap-2 pr-3 text-left text-meta hover:bg-muted aria-pressed:bg-muted",
         mine && "font-medium text-foreground",
       )}
     >

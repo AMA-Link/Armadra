@@ -219,10 +219,9 @@ export function GatewayDevices({
           size="sm"
           variant="outline"
           className="self-start"
-          disabled={loadingMore}
+          loading={loadingMore}
           onClick={onMore}
         >
-          {loadingMore && <Spinner role="presentation" aria-hidden />}
           {t("gateway.devices.more")}
         </Button>
       )}

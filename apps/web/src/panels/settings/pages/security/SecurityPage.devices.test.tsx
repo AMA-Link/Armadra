@@ -324,6 +324,28 @@ describe("账号与设备：设备登录与设备表", () => {
     }
   });
 
+  it("checking again keeps the failure alert in place, only the button goes loading (no taller skeleton in between)", async () => {
+    probe.mockRejectedValue(new IdentityTransportError());
+    render(<SecurityPage />);
+    const alert = await screen.findByRole("status");
+    expect(alert.textContent).toContain("无法连接");
+    let release: (value: typeof hello) => void = () => undefined;
+    probe.mockReturnValue(
+      new Promise<typeof hello>((resolve) => {
+        release = resolve;
+      }),
+    );
+    const button = within(alert).getByRole("button", { name: "检查连接" });
+    await act(async () => {
+      fireEvent.click(button);
+    });
+    expect(screen.getByRole("status")).toBe(alert);
+    expect(alert.textContent).toContain("无法连接");
+    expect(button.getAttribute("aria-busy")).toBe("true");
+    await act(async () => release(hello));
+    await waitFor(() => expect(alert.isConnected).toBe(false));
+  });
+
   it("a failed check says why and offers to check again, without remote text", async () => {
     probe.mockRejectedValue(
       new IdentityRequestError(403, "PERMISSION_DENIED", "raw remote detail"),

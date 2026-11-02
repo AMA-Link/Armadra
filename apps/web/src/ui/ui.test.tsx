@@ -511,7 +511,7 @@ describe("Button 变体与尺寸（设计系统 §9）", () => {
     expect(cls).not.toContain("transition-all");
   });
 
-  it("static 关掉按下缩放（data-static）", () => {
+  it("static 关掉按下反馈（data-static）", () => {
     render(<Button static>动作</Button>);
     expect(screen.getByRole("button").dataset.static).toBe("true");
   });
@@ -555,6 +555,56 @@ describe("Button 变体与尺寸（设计系统 §9）", () => {
     expect(screen.getByTestId("icon")).not.toBeNull();
     fireEvent.click(button);
     expect(onClick).toHaveBeenCalledTimes(1);
+  });
+
+  it("loading 不改变按钮的内容宽度：没有前导图标的文字钮不插入转圈，只有微光", () => {
+    const { rerender } = render(<Button size="sm">立即备份</Button>);
+    const button = screen.getByRole("button");
+    expect(button.querySelector("[data-slot='spinner']")).toBeNull();
+    rerender(
+      <Button size="sm" loading>
+        立即备份
+      </Button>,
+    );
+    expect(button.querySelector("[data-slot='spinner']")).toBeNull();
+    expect(button.querySelector("[data-slot='shimmer']")?.textContent).toBe(
+      "立即备份",
+    );
+    expect(button.textContent).toBe("立即备份");
+    expect(button.getAttribute("aria-busy")).toBe("true");
+    expect((button as HTMLButtonElement).disabled).toBe(false);
+  });
+
+  it.each([
+    ["xs", "size-3"],
+    ["sm", "size-3.5"],
+    ["default", "size-4"],
+    ["lg", "size-4"],
+  ] as const)("loading：%s 档的转圈与被顶替的图标同尺寸（%s）", (size, cls) => {
+    render(
+      <Button size={size} loading>
+        <Check data-icon="inline-start" />
+        保存
+      </Button>,
+    );
+    const spinner = screen
+      .getByRole("button")
+      .querySelector("[data-slot='spinner']");
+    expect(spinner?.getAttribute("class")).toMatch(
+      new RegExp(`(^|\\s)${cls.replace(".", "\\.")}(\\s|$)`),
+    );
+  });
+
+  it("loading：纯图标钮整个换成转圈，不叠两枚图标", () => {
+    render(
+      <Button size="icon" aria-label="刷新" loading>
+        <Check />
+      </Button>,
+    );
+    const button = screen.getByRole("button", { name: "刷新" });
+    expect(button.querySelectorAll("svg")).toHaveLength(1);
+    expect(button.querySelector("[data-slot='spinner']")).not.toBeNull();
+    expect(button.querySelector("[data-slot='shimmer']")).toBeNull();
   });
 
   it("shortcut：尾部 Kbd 与 aria-keyshortcuts", () => {

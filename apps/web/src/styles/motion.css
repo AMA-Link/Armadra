@@ -9,6 +9,7 @@
  *  - 退场永远比入场短。
  *  - 键盘触发的面板不播动画：调用方给 `data-instant`，Tooltip 与菜单在
  *    `data-state="instant-open"` 下直接渲染终态。
+ *  - 按下只降不透明度（`--press-opacity`），不位移不缩放；减少动效下照常。
  *  - `prefers-reduced-motion`：位移与缩放换成淡入，循环停掉，`Spinner` 保留转圈。
  */
 
@@ -267,11 +268,11 @@
   }
 
   /* ── 按下 / 悬停 ──────────────────────────────────────────────────── */
-  /* 按下 0.97，`:hover:active` 才生效（触屏的 :hover 会跟着 :active 一起来）；
+  /* 按下只把不透明度降到 `--press-opacity`：没有位移也没有缩放，点一下按钮与
+     页面都不动。`:hover:active` 才生效（触屏的 :hover 会跟着 :active 一起来）；
      `static` 与禁用态不反馈 */
   .motion-press {
     transition:
-      transform var(--dur-instant) var(--ease-out),
       color var(--dur-instant) var(--ease-color),
       background-color var(--dur-instant) var(--ease-color),
       border-color var(--dur-instant) var(--ease-color),
@@ -283,7 +284,7 @@
       [data-static="true"],
       [aria-haspopup]
     ):hover:active {
-    transform: scale(var(--press-scale));
+    opacity: var(--press-opacity);
   }
 
   /* ── 进场 ─────────────────────────────────────────────────────────── */
@@ -406,14 +407,6 @@
   ) {
     animation-name: armadra-fade-out !important;
     animation-duration: var(--dur-fast) !important;
-  }
-  .motion-press:not(
-      :disabled,
-      [aria-disabled="true"],
-      [data-static="true"],
-      [aria-haspopup]
-    ):hover:active {
-    transform: none;
   }
   .anim-spin {
     animation-duration: var(--dur-loop-spin) !important;
