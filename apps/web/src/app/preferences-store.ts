@@ -189,6 +189,19 @@ export function agentIsEnabled(
   return installed;
 }
 
+/**
+ * 开关拨到 `enabled` 时该写哪一态：装了的写回 `default`（继续跟随本机检测，将来卸载
+ * 了菜单里会跟着消失），没装的写 `enabled`（配合自定义启动命令留在菜单里）；拨到
+ * 关一律写 `disabled`。
+ */
+export function agentSwitchMode(
+  enabled: boolean,
+  installed: boolean,
+): AgentMode {
+  if (!enabled) return "disabled";
+  return installed ? "default" : "enabled";
+}
+
 /** v2 只存「关掉了哪些」；第一次读到时把它翻成三态。 */
 function storedAgentModes(): Record<string, AgentMode> {
   const raw = readStored(AGENT_MODES_KEY);
@@ -315,6 +328,12 @@ export interface PreferencesState {
     sourceId?: string,
   ) => void;
   setAgentMode: (agentId: string, mode: AgentMode) => void;
+  /** 设置页的启用开关：只改新建入口里出不出现，不动启动命令等配置，也不动已有节点。 */
+  setAgentEnabled: (
+    agentId: string,
+    enabled: boolean,
+    installed: boolean,
+  ) => void;
   setLaunchOverride: (agentId: string, program: string) => void;
   setDefaultAgentId: (agentId: string | null) => void;
   setDefaultPermissionMode: (mode: PermissionMode) => void;
@@ -501,6 +520,9 @@ export const usePreferencesStore = create<PreferencesState>((set, get) => ({
       writeStored(AGENT_MODES_KEY, JSON.stringify(agentModes));
       return { agentModes };
     });
+  },
+  setAgentEnabled(agentId, enabled, installed) {
+    get().setAgentMode(agentId, agentSwitchMode(enabled, installed));
   },
   setLaunchOverride(agentId, program) {
     set((state) => {
