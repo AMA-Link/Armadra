@@ -14,13 +14,14 @@ import { useSyncExternalStore } from "react";
 export const COMPACT_QUERY = "(max-width: 767px)";
 
 /**
- * 手机横屏：主指针是手指、高度 ≤ 500px、宽度 < 1024px。宽度上限挡住键盘弹起
- * 后变矮的平板。它不改布局形态（那是 {@link COMPACT_QUERY} 的事），只决定电脑
+ * 手机横屏：主指针是手指、宽 768–1023px、高度 ≤ 500px。宽度上限挡住键盘弹起
+ * 后变矮的平板；下限让它与 {@link COMPACT_QUERY} 互斥——宽度不到 768 的横屏
+ * （iPhone SE 一类）是手机布局，不吃这里的电脑布局默认值。它不改布局形态（那是 {@link COMPACT_QUERY} 的事），只决定电脑
  * 布局在手机横屏上的几处默认值：侧栏与缩略图默认收起、Dock 工具组不折叠、
  * 输入框保持 16px（`desktop:` 变体，防 iOS 聚焦缩放）。
  */
 export const PHONE_LANDSCAPE_QUERY =
-  "(pointer: coarse) and (max-height: 500px) and (max-width: 1023px)";
+  "(pointer: coarse) and (min-width: 768px) and (max-width: 1023px) and (max-height: 500px)";
 
 function matches(query: string): boolean {
   return (

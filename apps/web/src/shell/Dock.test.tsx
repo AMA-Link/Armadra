@@ -21,6 +21,7 @@ import { useCanvasStore } from "../store/canvas-store";
 import { initialPanels } from "../store/canvas/internal";
 import { MAX_ZOOM, MIN_ZOOM } from "../canvas/zoom";
 import { setFlow } from "../canvas/flow/flow-context";
+import { COMPACT_QUERY } from "../platform/layout";
 import { Dock, TidyButton, ZoomControls } from "./Dock";
 
 installDomPolyfills();
@@ -307,6 +308,79 @@ describe("工具组与缩放百分比", () => {
       "80%",
     );
     expect(fit.classList.contains("tabular-nums")).toBe(true);
+  });
+});
+
+describe("手机竖屏的两行 Dock（#715）", () => {
+  beforeEach(() => {
+    fetchAgents.mockReset().mockResolvedValue([claude]);
+    useCanvasStore.setState({ workspace, saveState: "saved" });
+    const original = window.matchMedia;
+    vi.spyOn(window, "matchMedia").mockImplementation((query) => ({
+      ...original(query),
+      matches: query === COMPACT_QUERY,
+    }));
+  });
+  afterEach(() => {
+    vi.restoreAllMocks();
+    setFlow(null);
+    useCanvasStore.setState({ boardId: null });
+  });
+
+  function rowLabels(row: Element): (string | null)[] {
+    return Array.from(row.querySelectorAll("button[aria-label]")).map(
+      (element) => element.getAttribute("aria-label"),
+    );
+  }
+
+  it("第一行画布动作与缩放，第二行白板工具与评论，一个不藏", () => {
+    setFlow({} as ReactFlowInstance);
+    // 评论钮只在有画板时出现。
+    useCanvasStore.setState({ boardId: "board-1" });
+    const { container } = render(
+      <TestProviders>
+        <Dock />
+      </TestProviders>,
+    );
+    const dock = container.querySelector("[data-slot='dock']")!;
+    expect(dock.getAttribute("data-rows")).toBe("2");
+    const rows = dock.querySelectorAll("[data-slot='dock-row']");
+    expect(rows).toHaveLength(2);
+    expect(rowLabels(rows[0]!)).toEqual([
+      "锁定视图",
+      "新建",
+      "撤销",
+      "重做",
+      "一键整理",
+      "缩小",
+      "适应",
+      "放大",
+    ]);
+    expect(rowLabels(rows[1]!)).toEqual([
+      "选择",
+      "手形",
+      "画笔",
+      "形状",
+      "直线",
+      "文字",
+      "引入…",
+      "评论",
+    ]);
+    expect(rows[0]!.querySelector("[data-slot='save-dot']")).toBeTruthy();
+    expect(screen.queryByLabelText("白板工具")).toBeNull();
+  });
+
+  it("桌面仍是一行", () => {
+    vi.restoreAllMocks();
+    setFlow({} as ReactFlowInstance);
+    const { container } = render(
+      <TestProviders>
+        <Dock />
+      </TestProviders>,
+    );
+    const dock = container.querySelector("[data-slot='dock']")!;
+    expect(dock.getAttribute("data-rows")).toBeNull();
+    expect(dock.querySelector("[data-slot='dock-row']")).toBeNull();
   });
 });
 

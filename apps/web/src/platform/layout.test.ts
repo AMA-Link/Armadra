@@ -64,6 +64,18 @@ describe("COMPACT_QUERY", () => {
 });
 
 describe("PHONE_LANDSCAPE_QUERY", () => {
+  it("与 COMPACT_QUERY 互斥：任何尺寸都不会两个同时成立", () => {
+    for (const width of [320, 667, 767, 768, 874, 1023, 1024, 1440])
+      for (const height of [320, 375, 500, 501, 900])
+        for (const pointer of ["coarse", "fine"] as const) {
+          const viewport = { width, height, pointer };
+          expect(
+            evaluate(COMPACT_QUERY, viewport) &&
+              evaluate(PHONE_LANDSCAPE_QUERY, viewport),
+          ).toBe(false);
+        }
+  });
+
   it("只认横过来的手机", () => {
     expect(evaluate(PHONE_LANDSCAPE_QUERY, PHONE_LANDSCAPE)).toBe(true);
     expect(evaluate(PHONE_LANDSCAPE_QUERY, PHONE_MAX_LANDSCAPE)).toBe(true);
@@ -78,13 +90,15 @@ describe("PHONE_LANDSCAPE_QUERY", () => {
     expect(evaluate(PHONE_LANDSCAPE_QUERY, DESKTOP_SHORT)).toBe(false);
   });
 
-  it("边界：1023 宽、500 高算，1024 / 501 不算", () => {
+  it("边界：768–1023 宽、500 高算，767 / 1024 / 501 不算", () => {
     const coarse = (width: number, height: number): Viewport => ({
       width,
       height,
       pointer: "coarse",
     });
+    expect(evaluate(PHONE_LANDSCAPE_QUERY, coarse(768, 375))).toBe(true);
     expect(evaluate(PHONE_LANDSCAPE_QUERY, coarse(1023, 500))).toBe(true);
+    expect(evaluate(PHONE_LANDSCAPE_QUERY, coarse(767, 375))).toBe(false);
     expect(evaluate(PHONE_LANDSCAPE_QUERY, coarse(1023, 501))).toBe(false);
     expect(evaluate(PHONE_LANDSCAPE_QUERY, coarse(1024, 500))).toBe(false);
   });
