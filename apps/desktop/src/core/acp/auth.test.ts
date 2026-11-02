@@ -11,6 +11,7 @@ import {
   authenticateOn,
   canAuthenticate,
   canLogout,
+  authTerminalRunner,
   logoutOn,
   terminalAuthCommand,
 } from "./auth";
@@ -170,6 +171,78 @@ describe("authenticateOn", () => {
         methodId: "nope",
       }),
     ).rejects.toMatchObject({ code: "acp_auth_failed" });
+  });
+});
+
+describe("the default terminal runner", () => {
+  /** 把 SIGTERM 忽略掉、不自己退出的假登录程序（等浏览器等不到）。 */
+  const stubborn = {
+    program: process.execPath,
+    args: [
+      "-e",
+      "process.on('SIGTERM',()=>{});setInterval(()=>{},1000);console.log('up')",
+    ],
+    env: process.env,
+    cwd: tmpdir(),
+  };
+
+  it("escalates to SIGKILL after the grace so a child that ignores SIGTERM cannot hold the sign-in", async () => {
+    const run = authTerminalRunner({ killGraceMs: 150 });
+    const controller = new AbortController();
+    const started = Date.now();
+    const finished = run(stubborn, controller.signal);
+    setTimeout(() => controller.abort(), 300);
+    const outcome = await Promise.race([
+      finished,
+      new Promise<"stuck">((resolve) =>
+        setTimeout(() => resolve("stuck"), 8000),
+      ),
+    ]);
+    // 平台无关的断言：落定了（没有一直占着登录），而且不算成功。POSIX 上被信号
+    // 收掉，退出码是 `null`；Windows 没有信号，不依赖强杀的退出码长什么样。
+    expect(outcome).not.toBe("stuck");
+    const { exitCode } = outcome as { exitCode: number | null };
+    expect(exitCode).not.toBe(0);
+    if (process.platform !== "win32") expect(exitCode).toBeNull();
+    expect(Date.now() - started).toBeLessThan(6000);
+  }, 20_000);
+
+  it("authenticateOn gives up on the timeout and fails even when the child ignores SIGTERM", async () => {
+    const stubbornContext: AuthContext = {
+      process: { client: { authenticate: async () => ({}) } },
+      capabilities: capabilities({
+        authMethods: [
+          {
+            id: "login",
+            name: "Log in",
+            type: "terminal",
+            args: [stubborn.args[0]!, stubborn.args[1]!],
+          },
+        ],
+      }),
+      launch: {
+        program: process.execPath,
+        args: [],
+        cwd: tmpdir(),
+        env: process.env,
+      },
+    };
+    await expect(
+      authenticateOn(stubbornContext, {
+        methodId: "login",
+        timeoutMs: 200,
+        runTerminal: authTerminalRunner({ killGraceMs: 100 }),
+      }),
+    ).rejects.toMatchObject({ code: "acp_auth_failed" });
+  }, 20_000);
+
+  it("a child that exits on its own settles with its code", async () => {
+    const run = authTerminalRunner({ killGraceMs: 150 });
+    const outcome = await run(
+      { ...stubborn, args: ["-e", "process.exit(3)"] },
+      new AbortController().signal,
+    );
+    expect(outcome).toEqual({ exitCode: 3 });
   });
 });
 

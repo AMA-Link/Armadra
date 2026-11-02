@@ -5005,3 +5005,10 @@ owner（本机会话，或已信任设备经通道的 owner 会话）：`{ sourc
 
 - `POST /api/acp/agent-sessions` 的 `cwd` 只能是该工作空间根目录或它之下的目录：缺省或空串 = 工作空间根；其他路径（含 `..` 越出、与根同前缀的兄弟目录）答 `400`，错误体 `{ code, message }`。权限仍是该工作空间的 `terminal:create`，所以这条约束是跨项目看会话的唯一屏障。
 - core 不信 Agent 按 `cwd` 过滤：答复里的会话再按工作空间根筛一遍，只留 `cwd` 在根之下的，没有 `cwd` 的也丢掉。
+
+### 95.2 会话列表翻页、登录进程、征询与用量（`#740`）
+
+- `POST /api/acp/agent-sessions`：core 自己按页向 Agent 取（不再用客户端的 `listAllSessions` 整段收完再截断，此条取代 §92.3 里关于 `listAllSessions` 的说法）。每次约收 200 条（按整页收，所以可能略多）：收满就停并给 `nextCursor`，更早的会话由游标翻页取全；单页超过 200 条时整页保留，游标照给。请求与答复形状不变。
+- `terminal` 型登录（§92.1）取消或超时：先对进程组发 SIGTERM，约 3 秒后升级为 SIGKILL，再等 1 秒无论如何落定为 `acp_auth_failed`；这家 Agent 的「登录中」随之解除，不会再一直答 409 `conflict`。
+- 会话 id 与本会话不符的 `elicitation/create` 不展示，core 答 `cancel`，Agent 不再空等。
+- `session/prompt` 响应的 `usage` 只在带 `contextTokens` 或 `cumulativeTokens`（上下文占用 / 累计）时才补头部用量（仍不超过窗口）；`totalTokens`、`inputTokens`、`outputTokens` 是本回合消耗，不再采信，取代 §92.5 里关于 `totalTokens` 补用量的说法。

@@ -48,40 +48,82 @@ describe("listedSessions", () => {
 
 describe("listSessionsOn", () => {
   it("pages with listSessions on the 0.11 client and hands the cursor on", async () => {
-    const listSessions = vi.fn().mockResolvedValue({
-      sessions: [{ sessionId: "a", cwd: "/w" }],
-      nextCursor: "c2",
-    });
+    const listSessions = vi
+      .fn()
+      .mockResolvedValueOnce({
+        sessions: [{ sessionId: "a", cwd: "/w" }],
+        nextCursor: "c2",
+      })
+      .mockResolvedValueOnce({ sessions: [{ sessionId: "b", cwd: "/w" }] });
     const result = await listSessionsOn(
       { ...caps(true), process: { client: { listSessions } } },
       { cwd: "/w", cursor: "c1" },
     );
-    expect(listSessions).toHaveBeenCalledWith("/w", "c1", undefined);
+    expect(listSessions).toHaveBeenNthCalledWith(1, "/w", "c1", undefined);
+    expect(listSessions).toHaveBeenNthCalledWith(2, "/w", "c2", undefined);
     expect(result).toEqual({
-      sessions: [{ sessionId: "a", cwd: "/w" }],
-      nextCursor: "c2",
+      sessions: [
+        { sessionId: "a", cwd: "/w" },
+        { sessionId: "b", cwd: "/w" },
+      ],
     });
   });
 
-  it("prefers listAllSessions when the client has it and no cursor is given", async () => {
-    const listAllSessions = vi
-      .fn()
-      .mockResolvedValue([{ sessionId: "a", cwd: "/w" }]);
-    const listSessions = vi.fn();
+  /** 300 条会话，每页 `size` 条，游标是下一页的起点。 */
+  function history(size: number, total = 300) {
+    const all = Array.from({ length: total }, (_, i) => ({
+      sessionId: `s${i}`,
+      cwd: "/w",
+    }));
+    return vi.fn(async (_cwd?: string, cursor?: string) => {
+      const from = cursor === undefined ? 0 : Number(cursor);
+      const to = from + size;
+      return {
+        sessions: all.slice(from, to),
+        ...(to < total ? { nextCursor: String(to) } : {}),
+      };
+    });
+  }
+
+  it("stops at the cap with a cursor, so 300 sessions page out in full", async () => {
+    const listSessions = history(100);
+    const client = { ...caps(true), process: { client: { listSessions } } };
+    const first = await listSessionsOn(client, { cwd: "/w" });
+    expect(first.sessions).toHaveLength(MAX_LISTED_SESSIONS);
+    expect(first.nextCursor).toBe("200");
+    const second = await listSessionsOn(client, {
+      cwd: "/w",
+      cursor: first.nextCursor,
+    });
+    expect(second.sessions).toHaveLength(100);
+    expect(second.nextCursor).toBeUndefined();
+    const ids = [...first.sessions, ...second.sessions].map(
+      (item) => item.sessionId,
+    );
+    expect(new Set(ids).size).toBe(300);
+  });
+
+  it("keeps every session of a page larger than the cap and its cursor", async () => {
+    const listSessions = history(250);
     const result = await listSessionsOn(
-      { ...caps(true), process: { client: { listSessions, listAllSessions } } },
+      { ...caps(true), process: { client: { listSessions } } },
       { cwd: "/w" },
     );
-    expect(listAllSessions).toHaveBeenCalledWith("/w", undefined);
-    expect(listSessions).not.toHaveBeenCalled();
-    expect(result).toEqual({ sessions: [{ sessionId: "a", cwd: "/w" }] });
-    // 带游标就按页取。
-    listSessions.mockResolvedValue({ sessions: [] });
-    await listSessionsOn(
-      { ...caps(true), process: { client: { listSessions, listAllSessions } } },
-      { cursor: "c" },
+    expect(result.sessions).toHaveLength(250);
+    expect(result.nextCursor).toBe("250");
+  });
+
+  it("treats a cursor the agent echoes back as the end", async () => {
+    const listSessions = vi.fn().mockResolvedValue({
+      sessions: [{ sessionId: "a", cwd: "/w" }],
+      nextCursor: "same",
+    });
+    const result = await listSessionsOn(
+      { ...caps(true), process: { client: { listSessions } } },
+      { cursor: "same" },
     );
     expect(listSessions).toHaveBeenCalledTimes(1);
+    expect(result.nextCursor).toBeUndefined();
   });
 
   it("answers only sessions inside the root, whatever the agent reports", async () => {

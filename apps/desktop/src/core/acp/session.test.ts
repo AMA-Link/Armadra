@@ -2,7 +2,7 @@ import { existsSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 
 import { fakeAcpAgentPath } from "@armadra/agent/acp";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { WorkspaceEvent } from "../bus";
 import { tempDir } from "../testing/temp-dir";
@@ -229,5 +229,24 @@ describe("an ACP session", () => {
     expect(existsSync(mirrorPath(dataDir, NODE, "fake-7"))).toBe(false);
     await first.session.terminate();
     expect(new AcpMirror(mirrorPath(dataDir, NODE, "fake-7")).empty).toBe(true);
+  });
+});
+
+describe("an elicitation for another session", () => {
+  it("is answered with cancel instead of being dropped, and never shown", async () => {
+    const { session, sink } = await open();
+    const host = (session as unknown as { host: AcpHostSession }).host;
+    const answer = vi
+      .spyOn(host.process, "answerElicitation")
+      .mockReturnValue(true);
+    const before = sink.signals.length;
+    session.callbacks().onElicitation?.({
+      id: "el-other",
+      sessionId: `${host.sessionId}-other`,
+      request: { mode: "form", message: "?" },
+    } as never);
+    expect(answer).toHaveBeenCalledWith("el-other", { action: "cancel" });
+    expect(sink.signals).toHaveLength(before);
+    expect(session.owns("el-other")).toBe(false);
   });
 });
