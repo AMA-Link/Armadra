@@ -34,6 +34,10 @@ import { COLLAPSED_HEIGHT, defaultNodeSize } from "../store/defaults";
  *      的平均 y（重心法）排。
  *   5. **裹行**：簇按阅读顺序塞进当前行，行宽超过
  *      `sqrt(总面积 × 视口宽高比) × 1.15` 就换行。
+ *      **全是单个单元**（没有连线、没有主从）时不裹行，改排网格（#713，
+ *      `gridLayout`）：列数行数由个数与视口横竖定（`chooseGrid`），按当前
+ *      位置的阅读顺序（`readingRows`）逐行填，每列取最宽、每行取最高，
+ *      单元贴格子左上角，不满的最后一行整体居中。
  *   6. **网格**：每个单元左上角吸到点阵（`GRID_UNIT` = 13px）。
  *   7. 原点 (0,0)：调用方负责平移回原来那块内容的左上角。
  *
@@ -563,6 +567,157 @@ function layoutComponent(
   };
 }
 
+/* --------------------------------- 网格 ----------------------------------- */
+
+export interface GridShape {
+  columns: number;
+  rows: number;
+}
+
+/**
+ * 网格的列数与行数（#713）。
+ *
+ * 候选只取接近正方的：短边 ⌊√n⌋ 或 ⌈√n⌉，长边 ⌈n / 短边⌉（长边不能比短边
+ * 短）。视口横（宽高比 > 1）时长边是列，竖（< 1）时长边是行，正好正方时两种
+ * 都试——「横竖关系」由视口决定，不由编号或输入顺序决定。候选里先比空格数
+ * （越少越好），再比整块网格的像素宽高比与视口宽高比的对数距离，最后列多的
+ * 在前（结果确定）。
+ *
+ * 横屏：1 → 1×1，2 → 2×1，3 → 3×1，4 → 2×2，5 / 6 → 3×2，7 / 8 → 4×2，
+ * 9 → 3×3；竖屏是它的转置。
+ *
+ * `cell` 与 `gap` 只用来算像素宽高比（比距离时用），缺省按正方格子、零间距。
+ */
+export function chooseGrid(
+  count: number,
+  aspect: number = DEFAULT_ASPECT,
+  cell: { width: number; height: number } = { width: 1, height: 1 },
+  gap = 0,
+): GridShape {
+  if (!Number.isFinite(count) || count <= 0) return { columns: 0, rows: 0 };
+  const n = Math.floor(count);
+  const view = Number.isFinite(aspect) && aspect > 0 ? aspect : DEFAULT_ASPECT;
+  const width = Math.max(1, cell.width);
+  const height = Math.max(1, cell.height);
+  const pixelAspect = ({ columns, rows }: GridShape) =>
+    (columns * width + (columns - 1) * gap) /
+    (rows * height + (rows - 1) * gap);
+
+  const candidates: GridShape[] = [];
+  const root = Math.sqrt(n);
+  for (const short of new Set([Math.floor(root), Math.ceil(root)])) {
+    if (short < 1) continue;
+    const long = Math.ceil(n / short);
+    if (long < short) continue;
+    if (view >= 1) candidates.push({ columns: long, rows: short });
+    // 正方视口两种都试；长短相等时两种是同一个，不重复放。
+    if (view < 1 || (view === 1 && long !== short)) {
+      candidates.push({ columns: short, rows: long });
+    }
+  }
+  const scored = candidates.map((shape) => ({
+    shape,
+    empty: shape.columns * shape.rows - n,
+    distance: Math.abs(Math.log(pixelAspect(shape) / view)),
+  }));
+  scored.sort(
+    (a, b) =>
+      a.empty - b.empty ||
+      a.distance - b.distance ||
+      b.shape.columns - a.shape.columns,
+  );
+  return scored[0]!.shape;
+}
+
+interface Placeable {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+/**
+ * 阅读顺序（行优先），网格用（#713）。
+ *
+ * 按上边排序，第一个没归行的单元开一行（行首）；竖直中心落在行首上下跨度
+ * 内的都算这一行，行内按 `x`。和第 2 步按 48px 量化不同：手摆的「同一行」
+ * 上下差得再多，只要竖直中心还在行首的跨度里就不会被拆成两行；排完的网格
+ * 同一行顶边对齐、行与行之间隔着间距，所以整理两次顺序不变。
+ */
+export function readingRows<T extends Placeable>(units: readonly T[]): T[][] {
+  const sorted = [...units].sort((a, b) => a.y - b.y || a.x - b.x);
+  const rows: T[][] = [];
+  let anchor: T | null = null;
+  for (const unit of sorted) {
+    const centre = unit.y + unit.height / 2;
+    if (anchor === null || centre > anchor.y + anchor.height) {
+      anchor = unit;
+      rows.push([unit]);
+    } else {
+      rows.at(-1)!.push(unit);
+    }
+  }
+  for (const row of rows) row.sort((a, b) => a.x - b.x || a.y - b.y);
+  return rows;
+}
+
+/**
+ * 全是单个单元时的网格（#713）。返回单元 id → 左上角（原点 (0,0)）。
+ *
+ * 列宽取这一列最宽的单元、行高取这一行最高的（等大的会话节点就是等大的格子），
+ * 都向上取整到点阵；格间距 `CLUSTER_GAP`。单元贴格子左上角，同一行顶边对齐、
+ * 同一列左边对齐；不满的最后一行整体居中（位移向下取整到点阵）。
+ */
+function gridLayout(
+  units: readonly Unit[],
+  aspect: number,
+  up: Step,
+): Map<string, Position> {
+  const gap = CLUSTER_GAP;
+  const order = readingRows(units).flat();
+  const cellWidth = up(Math.max(...units.map((unit) => unit.width)));
+  const cellHeight = up(Math.max(...units.map((unit) => unit.height)));
+  const { columns, rows } = chooseGrid(
+    order.length,
+    aspect,
+    { width: cellWidth, height: cellHeight },
+    gap,
+  );
+
+  const widths = new Array<number>(columns).fill(0);
+  const heights = new Array<number>(rows).fill(0);
+  order.forEach((unit, index) => {
+    const column = index % columns;
+    const row = Math.floor(index / columns);
+    widths[column] = Math.max(widths[column]!, up(unit.width));
+    heights[row] = Math.max(heights[row]!, up(unit.height));
+  });
+  const starts = (sizes: readonly number[]) => {
+    const result: number[] = [];
+    let cursor = 0;
+    for (const size of sizes) {
+      result.push(cursor);
+      cursor = up(cursor + size + gap);
+    }
+    return result;
+  };
+  const left = starts(widths);
+  const top = starts(heights);
+  const span = (count: number) =>
+    count === 0 ? 0 : left[count - 1]! + widths[count - 1]!;
+  const fullWidth = span(columns);
+
+  const offsets = new Map<string, Position>();
+  order.forEach((unit, index) => {
+    const column = index % columns;
+    const row = Math.floor(index / columns);
+    const inRow = Math.min(columns, order.length - row * columns);
+    const shift = up.down((fullWidth - span(inRow)) / 2);
+    offsets.set(unit.id, { x: shift + left[column]!, y: top[row]! });
+  });
+  return offsets;
+}
+
 /* --------------------------------- 入口 ----------------------------------- */
 
 function snap(value: number, grid: number): number {
@@ -636,18 +791,32 @@ export function tidy(
   }
   clusters.sort((a, b) => a.rank - b.rank);
 
+  const aspect =
+    options.aspect && Number.isFinite(options.aspect) && options.aspect > 0
+      ? options.aspect
+      : DEFAULT_ASPECT;
+  const positions: Record<string, Position> = {};
+
+  // 第 5 步（网格）：全是单个单元时排成方正的网格（#713）。
+  if (clusters.length > 1 && used.size === 0 && restLinks.length === 0) {
+    for (const [id, offset] of gridLayout(units, aspect, up)) {
+      const unit = byId.get(id)!;
+      const left = snap(offset.x, grid);
+      const top = snap(offset.y, grid);
+      for (const member of unit.members) {
+        positions[member.id] = { x: left + member.dx, y: top + member.dy };
+      }
+    }
+    return positions;
+  }
+
   // 第 5 步：裹行。
   const totalArea = clusters.reduce(
     (sum, cluster) => sum + cluster.width * cluster.height,
     0,
   );
-  const aspect =
-    options.aspect && Number.isFinite(options.aspect) && options.aspect > 0
-      ? options.aspect
-      : DEFAULT_ASPECT;
   const rowLimit = Math.sqrt(totalArea * aspect) * ROW_WIDTH_SLACK;
 
-  const positions: Record<string, Position> = {};
   let x = 0;
   let y = 0;
   let rowHeight = 0;
