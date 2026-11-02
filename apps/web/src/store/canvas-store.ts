@@ -28,6 +28,7 @@ export {
   endCoalesce,
   forgetCreation,
   isCreationOnTop,
+  removeForgettingCreation,
   resetHistory,
   setHistoryDelegate,
   type CommitOptions,

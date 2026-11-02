@@ -52,7 +52,7 @@ export const NODE_FIELDS = [
 type NodeField = (typeof NODE_FIELDS)[number];
 
 const CONTENT = "content";
-const ENVELOPE = "whiteboardEnvelope";
+export const WHITEBOARD_ENVELOPE = "whiteboardEnvelope";
 
 export function nodesOf(doc: Y.Doc): Y.Map<Y.Map<unknown>> {
   return doc.getMap("nodes");
@@ -354,7 +354,7 @@ function writeWhiteboard(
     wrote;
   const envelope = envelopeOf(after);
   const meta = metaOf(doc);
-  const current = meta.get(ENVELOPE);
+  const current = meta.get(WHITEBOARD_ENVELOPE);
   const parsed = typeof current === "string" ? parseJson(current) : undefined;
   if (stableJson(parsed) !== stableJson(envelope)) {
     // 只在外壳真的变了（或文档还没有外壳而这边有白板内容）时写。
@@ -363,7 +363,7 @@ function writeWhiteboard(
       (parsed === undefined &&
         (after.items.length > 0 || after.references.length > 0))
     ) {
-      meta.set(ENVELOPE, JSON.stringify(envelope));
+      meta.set(WHITEBOARD_ENVELOPE, JSON.stringify(envelope));
       wrote = true;
     }
   }
@@ -528,7 +528,7 @@ function readWhiteboard(doc: Y.Doc, local: WhiteboardDoc): WhiteboardDoc {
     ),
     (a, b) => compare(a.id, b.id),
   );
-  const envelope = metaOf(doc).get(ENVELOPE);
+  const envelope = metaOf(doc).get(WHITEBOARD_ENVELOPE);
   const parsed = typeof envelope === "string" ? parseJson(envelope) : undefined;
   const legacy = isRecord(parsed)
     ? whiteboardLegacySchema.safeParse(parsed.legacy)

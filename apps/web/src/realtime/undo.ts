@@ -4,7 +4,7 @@ import {
   setHistoryDelegate,
   type HistoryDelegate,
 } from "../store/canvas-store";
-import { rootsOf } from "./doc";
+import { WHITEBOARD_ENVELOPE, itemsOf, metaOf, rootsOf } from "./doc";
 
 /**
  * 实时板的撤销（补全架构 §6.4）：一个 `Y.UndoManager` 管节点、连线、白板
@@ -25,6 +25,39 @@ export interface RealtimeUndo {
 }
 
 /**
+ * 这一步是不是「只新建了白板对象 `itemId`」：没有删除；插入的只有 `itemsOf`
+ * 里这条记录，外加第一次写白板时顺带落下的外壳（`meta.whiteboardEnvelope`）。
+ */
+function isCreationOnly(
+  doc: Y.Doc,
+  entry: Y.UndoManager["undoStack"][number] | undefined,
+  itemId: string,
+): boolean {
+  if (!entry || entry.deletions.clients.size !== 0) return false;
+  const items = itemsOf(doc);
+  const live = items._map.get(itemId);
+  if (!live || live.deleted) return false;
+  const meta = metaOf(doc);
+  let found = false;
+  for (const [client, ranges] of entry.insertions.clients) {
+    for (const { clock, len } of ranges) {
+      for (let at = clock; at < clock + len; at++) {
+        const struct = Y.getItem(doc.store, Y.createID(client, at));
+        if (struct.parent === items && struct.parentSub === itemId) {
+          found = true;
+        } else if (
+          struct.parent !== meta ||
+          struct.parentSub !== WHITEBOARD_ENVELOPE
+        ) {
+          return false;
+        }
+      }
+    }
+  }
+  return found;
+}
+
+/**
  * 每次提交一条历史（`captureTimeout: 0`）：store 一个动作就是一次事务，与非
  * 实时板「一次手势一条历史」相同；合并会话（文字编辑）期间临时放开合并。
  */
@@ -34,6 +67,7 @@ export function installUndo(doc: Y.Doc, origin: object): RealtimeUndo {
     captureTimeout: 0,
   });
   let coalescing = false;
+  const watchers = new Set<() => void>();
   const delegate: HistoryDelegate = {
     undo: () => {
       manager.stopCapturing();
@@ -55,7 +89,21 @@ export function installUndo(doc: Y.Doc, origin: object): RealtimeUndo {
       manager.captureTimeout = 0;
       manager.stopCapturing();
     },
+    removeForgettingCreation: (itemId, remove) => {
+      manager.stopCapturing();
+      const depth = manager.undoStack.length;
+      const fresh = isCreationOnly(doc, manager.undoStack[depth - 1], itemId);
+      remove();
+      manager.stopCapturing();
+      // 删除自己是栈上新增的一步；只有恰好多出这一步才弹，远端事务不进栈，
+      // 但别的本地来源若插了一步，宁可留着也不误弹。
+      if (!fresh || manager.undoStack.length !== depth + 1) return false;
+      manager.undoStack.splice(depth - 1, 2);
+      for (const notify of watchers) notify();
+      return true;
+    },
     subscribe: (notify) => {
+      watchers.add(notify);
       const events = [
         "stack-item-added",
         "stack-item-popped",
@@ -63,6 +111,7 @@ export function installUndo(doc: Y.Doc, origin: object): RealtimeUndo {
       ] as const;
       for (const event of events) manager.on(event, notify);
       return () => {
+        watchers.delete(notify);
         for (const event of events) manager.off(event, notify);
       };
     },

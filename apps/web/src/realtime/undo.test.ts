@@ -1,10 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import * as Y from "yjs";
 
+import { addItems, discardItem } from "../canvas/whiteboard/store";
 import { useCanvasStore } from "../store/canvas-store";
 import { canRedo, canUndo, record } from "../store/canvas/history";
 import { bindStore, type Binding } from "./binding";
-import { nodesOf, writeLocal } from "./doc";
+import { itemsOf, nodesOf, writeLocal } from "./doc";
 import { BOARD, ONE, TWO, boardDocument, terminal } from "./realtime.fixture";
 import { installUndo, type RealtimeUndo } from "./undo";
 
@@ -143,5 +144,72 @@ describe("实时板的撤销", () => {
     store().setRealtime({ boardId: BOARD.id, writable: false });
     store().undo();
     expect(positionOf(ONE)).toEqual({ x: 5, y: 5 });
+  });
+
+  describe("丢弃空文字（#733）", () => {
+    const emptyText = (id: string) => ({
+      id,
+      kind: "text" as const,
+      x: 0,
+      y: 0,
+      w: 120,
+      h: 24,
+      z: 0,
+      parentId: null,
+      style: {
+        color: "black" as const,
+        size: "m" as const,
+        align: "start" as const,
+      },
+      text: "",
+    });
+    const wbItems = () => store().whiteboard.items.map((item) => item.id);
+
+    it("刚建出来就丢弃：文档里没有、撤销栈里也没有，⌘Z 撤的是上一步真实操作", () => {
+      store().moveNodes([{ id: ONE, position: { x: 50, y: 50 } }]);
+      addItems([emptyText("t1")]);
+      expect(wbItems()).toEqual(["t1"]);
+
+      discardItem("wb:t1");
+      expect(wbItems()).toEqual([]);
+      expect(itemsOf(doc).has("t1")).toBe(false);
+      expect(undo.manager.undoStack).toHaveLength(1);
+
+      store().undo();
+      expect(positionOf(ONE)).toEqual({ x: 0, y: 0 });
+      expect(wbItems()).toEqual([]);
+      expect(canUndo()).toBe(false);
+    });
+
+    it("栈里什么都没有时，丢弃之后也不可撤销", () => {
+      addItems([emptyText("t1")]);
+      discardItem("t1");
+      expect(canUndo()).toBe(false);
+      store().undo();
+      expect(wbItems()).toEqual([]);
+    });
+
+    it("已有文字被清空：仍是一步普通删除，撤销找得回来", () => {
+      addItems([{ ...emptyText("t1"), text: "你好" }]);
+      store().moveNodes([{ id: ONE, position: { x: 50, y: 50 } }]);
+      discardItem("t1");
+      expect(wbItems()).toEqual([]);
+
+      store().undo();
+      expect(store().whiteboard.items[0]).toMatchObject({
+        id: "t1",
+        text: "你好",
+      });
+    });
+
+    it("栈顶不是这条的新建：不乱弹，删除照常可撤", () => {
+      addItems([emptyText("t1")]);
+      addItems([emptyText("t2")]);
+      discardItem("t1");
+      expect(wbItems()).toEqual(["t2"]);
+
+      store().undo();
+      expect(wbItems().sort()).toEqual(["t1", "t2"]);
+    });
   });
 });
