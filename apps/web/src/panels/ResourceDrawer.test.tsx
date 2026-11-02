@@ -36,6 +36,24 @@ vi.mock("./settings/ssh-hosts", () => ({
   useSshHosts: () => [{ id: "far", name: "构建机", host: "far.example" }],
 }));
 
+// 会话标题来自会话读模型（走查询客户端）；这里直接给两行。
+vi.mock("../agent/sessions", async (original) => ({
+  ...(await original<typeof import("../agent/sessions")>()),
+  useSessions: () => ({
+    sessions: [
+      { nodeId: "n-busy", boardId: "b", sessionId: "s-busy", title: "busy" },
+      {
+        nodeId: "n-remote",
+        boardId: "b",
+        sessionId: "s-remote",
+        title: "remote",
+      },
+    ],
+    isPending: false,
+    refresh: () => {},
+  }),
+}));
+
 import { ResourceDrawer } from "./ResourceDrawer";
 import { resetSampling } from "./resources/sampling";
 import { usePreferencesStore } from "../app/preferences-store";

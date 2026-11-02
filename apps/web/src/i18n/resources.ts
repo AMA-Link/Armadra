@@ -53,6 +53,12 @@ export const resources: MessageModule = {
     "resources.session.treeCollapse": "收起进程树",
     "resources.session.treeTruncated": "只列出占用最高的 {count} 个",
     "resources.session.high": "占用超过阈值",
+    "resources.session.untitled": "终端 {id}",
+    "resources.session.estimate":
+      "估计值：进程树内存之和，共享页重复计入，不是独占内存",
+    "resources.process.armadra": "Armadra",
+    "resources.process.armadraHint": "Armadra 自带的钩子与画布工具，随会话启动",
+    "resources.sort.label": "排序",
 
     "resources.components": "平台组件",
     "resources.component.runtime": "Runtime",
@@ -151,6 +157,13 @@ export const resources: MessageModule = {
     "resources.session.treeCollapse": "Hide the process tree",
     "resources.session.treeTruncated": "Only the {count} heaviest are listed",
     "resources.session.high": "Above the threshold",
+    "resources.session.untitled": "Terminal {id}",
+    "resources.session.estimate":
+      "Estimate: the tree's memory summed; shared pages are counted per process, not exclusive memory",
+    "resources.process.armadra": "Armadra",
+    "resources.process.armadraHint":
+      "Armadra's own hook and canvas tools, started with the session",
+    "resources.sort.label": "Sort",
 
     "resources.components": "Armadra's own processes",
     "resources.component.runtime": "Runtime",

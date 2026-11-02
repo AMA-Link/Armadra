@@ -11,9 +11,12 @@ import { useState } from "react";
 import { ChevronDown, ChevronRight, Crosshair, X } from "lucide-react";
 import type { SessionResources } from "@armadra/shared";
 
+import { agentColorVar, agentLabel, agentTextColorVar } from "@/agent/launch";
+import type { SessionRow } from "@/agent/sessions";
 import { sessionGateway } from "@/session";
 import { useT } from "@/app/preferences-store";
 import { centerNode } from "@/sessions/SessionRow";
+import { gotoNode } from "@/sidebar/goto-node";
 import { useCanvasStore } from "@/store/canvas-store";
 import { toast } from "@/ui/toast";
 import {
@@ -38,6 +41,7 @@ import {
   formatPercent,
   isIdleSession,
   liveSessions,
+  sessionIdentity,
   sessionsOnHost,
   sortSessions,
   unknownReasonKey,
@@ -48,6 +52,7 @@ import { cn } from "@/lib/cn";
 
 export function SessionTable({
   sessions,
+  sessionRows,
   sort,
   onSorted,
   host: controlledHost,
@@ -56,6 +61,8 @@ export function SessionTable({
   hostName = (id) => id,
 }: {
   sessions: readonly SessionResources[];
+  /** 工作空间的会话读模型（所有画板）；标题、Agent 与画板从这里来。 */
+  sessionRows?: readonly SessionRow[];
   sort: SessionSort;
   onSorted: (sort: SessionSort) => void;
   /** 由抽屉持有时，主机总览与会话表跟着同一个筛选走。 */
@@ -67,6 +74,8 @@ export function SessionTable({
 }) {
   const t = useT();
   const nodes = useCanvasStore((state) => state.document?.nodes);
+  const boards = useCanvasStore((state) => state.boards);
+  const activeBoardId = useCanvasStore((state) => state.document?.board.id);
   const workspaceHostId = useCanvasStore(
     (state) => state.workspace?.executionHostId,
   );
@@ -85,10 +94,13 @@ export function SessionTable({
     (state) => state.sessionMemoryWarnBytes,
   );
 
+  const identityOf = (session: SessionResources) =>
+    sessionIdentity(session, sessionRows, nodes, boards, activeBoardId);
+  // 查不到节点时写一个中性占位，不退到 `cwd` 的目录名：同一工作空间里的终端几乎
+  // 都开在同一个根目录下，那样每一组都叫同一个名字。
   const titleOf = (session: SessionResources) =>
-    nodes?.find((node) => node.id === session.nodeId)?.title ??
-    session.cwd.split("/").pop() ??
-    session.sessionId.slice(0, 8);
+    identityOf(session).title ??
+    t("resources.session.untitled", { id: session.sessionId.slice(0, 6) });
 
   // 结束了的会话不留占位行：进程不在了就从列表消失（`liveSessions`）。
   const live = liveSessions(sessions);
@@ -156,7 +168,11 @@ export function SessionTable({
     <>
       {filter}
 
-      <div className="flex items-center gap-1 pb-1">
+      <div
+        role="group"
+        aria-label={t("resources.sort.label")}
+        className="flex items-center gap-1 pb-1"
+      >
         {/* 排序只换看的顺序，测不出来的一律排在最后，不当 0 混进来。 */}
         {(["cpu", "memory", "name"] as const).map((key) => (
           <Button
@@ -165,6 +181,7 @@ export function SessionTable({
             key={key}
             type="button"
             onClick={() => onSorted(key)}
+            aria-pressed={sort === key}
             data-active={sort === key ? "true" : undefined}
             className="h-auto rounded-control px-1.5 py-0.5 text-caption font-normal text-muted-foreground hover:bg-accent data-[active=true]:bg-accent data-[active=true]:text-strong"
           >
@@ -176,6 +193,8 @@ export function SessionTable({
       <ul className="flex flex-col gap-0.5">
         {visibleRows.map((session) => {
           const reasonKey = unknownReasonKey(session.unknownReason);
+          const identity = identityOf(session);
+          const title = titleOf(session);
           // 高占用只是高亮：面板不会自动结束任何会话（设计 §8）。
           const high = crossedThreshold(session.memoryBytes, threshold);
           const open = expanded.has(session.sessionId);
@@ -230,9 +249,9 @@ export function SessionTable({
                 )}
                 <div
                   className="flex min-w-0 flex-1 items-center gap-1.5"
-                  title={titleOf(session)}
+                  title={title}
                 >
-                  <span className="truncate text-meta">{titleOf(session)}</span>
+                  <span className="truncate text-meta">{title}</span>
                   {session.location === "remote" && (
                     <Badge variant="outline" className="text-caption">
                       {t("resources.location.remote")}
@@ -252,8 +271,13 @@ export function SessionTable({
                     <IconButton
                       label={t("resources.session.locate")}
                       onClick={() => {
-                        selectNodes([session.nodeId!]);
-                        centerNode(session.nodeId!);
+                        const nodeId = session.nodeId!;
+                        if (identity.boardId !== undefined) {
+                          gotoNode(identity.boardId, nodeId);
+                          return;
+                        }
+                        selectNodes([nodeId]);
+                        centerNode(nodeId);
                       }}
                     >
                       <Crosshair />
@@ -272,7 +296,29 @@ export function SessionTable({
                 </div>
               </div>
               <div className="flex w-full items-center gap-2 pl-8">
-                <span className="flex-1" />
+                <span
+                  data-slot="resource-session-meta"
+                  className="flex min-w-0 flex-1 items-center gap-1.5 text-caption text-muted-foreground"
+                >
+                  {identity.agentId && (
+                    <span
+                      className="flex min-w-0 items-center gap-1"
+                      style={{ color: agentTextColorVar(identity.agentId) }}
+                    >
+                      <span
+                        aria-hidden="true"
+                        className="size-1.5 shrink-0 rounded-full"
+                        style={{ background: agentColorVar(identity.agentId) }}
+                      />
+                      <span className="truncate">
+                        {agentLabel(identity.agentId)}
+                      </span>
+                    </span>
+                  )}
+                  {identity.boardName && (
+                    <span className="truncate">{identity.boardName}</span>
+                  )}
+                </span>
                 <span className="w-14 shrink-0 text-right text-meta tabular-nums">
                   {formatPercent(session.cpuPercent)}
                 </span>
@@ -284,7 +330,12 @@ export function SessionTable({
                 >
                   {formatMetricBytes(session.memoryBytes)}
                   {session.memoryEstimated && session.memoryBytes !== null ? (
-                    <span className="ml-0.5 text-muted-foreground">≈</span>
+                    <span
+                      className="ml-0.5 text-muted-foreground"
+                      title={t("resources.session.estimate")}
+                    >
+                      ≈
+                    </span>
                   ) : null}
                 </span>
               </div>
@@ -292,6 +343,7 @@ export function SessionTable({
                 <ProcessTree
                   processes={session.children}
                   total={session.childCount}
+                  leaderPid={session.pid}
                 />
               )}
             </li>

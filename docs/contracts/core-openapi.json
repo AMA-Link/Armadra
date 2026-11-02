@@ -5134,6 +5134,10 @@
                                                           "type": "null"
                                                         }
                                                       ]
+                                                    },
+                                                    "origin": {
+                                                      "enum": ["armadra"],
+                                                      "type": "string"
                                                     }
                                                   },
                                                   "required": [
@@ -5273,6 +5277,10 @@
                                                         "type": "null"
                                                       }
                                                     ]
+                                                  },
+                                                  "origin": {
+                                                    "enum": ["armadra"],
+                                                    "type": "string"
                                                   }
                                                 },
                                                 "required": [
@@ -5358,6 +5366,10 @@
                                                           "type": "null"
                                                         }
                                                       ]
+                                                    },
+                                                    "origin": {
+                                                      "enum": ["armadra"],
+                                                      "type": "string"
                                                     }
                                                   },
                                                   "required": [
