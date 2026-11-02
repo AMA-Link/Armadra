@@ -1,3 +1,4 @@
+import * as React from "react";
 import { useViewport } from "@xyflow/react";
 import {
   LayoutGrid,
@@ -16,6 +17,7 @@ import { DockTools } from "./DockTools";
 import { useCanCreateBrowser } from "@/nodes/browser/availability";
 import { CommentModeButton } from "@/realtime/comments/CommentLayer";
 import { setCanvasLocked, useCanvasLocked } from "../canvas/canvas-lock";
+import { useFlowHandle } from "../canvas/flow/flow-context";
 import { useMenuTooltip } from "./menu-tooltip";
 import { currentViewportCenter } from "../canvas/placement";
 import {
@@ -33,8 +35,6 @@ import { useCompactLayout } from "../platform/layout";
 import {
   DropdownMenu,
   DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/ui/dropdown-menu";
 import {
@@ -58,6 +58,39 @@ import { CommandTip } from "./command-tip";
 /** 缩放档位（右键菜单）+ 适应。以视口中心为锚点。 */
 export const ZOOM_STEPS = [0.25, 0.5, 0.75, 1, 1.5, 2] as const;
 
+/**
+ * 矮屏：与 `styles/tokens.css` 的 `--mobile-nav-h` 矮屏取值、Tailwind 的 `short`
+ * 变体同一条（高度 ≤ 500px）。手机横屏宽不到 768 时（667×375 一类）仍是手机
+ * 布局，但两行 Dock 加底部导航会只剩 220px 画布，所以矮屏合成一行（#732）。
+ */
+const SHORT_QUERY = "(max-height: 500px)";
+
+function subscribeShort(callback: () => void): () => void {
+  if (typeof window.matchMedia !== "function") return () => undefined;
+  const media = window.matchMedia(SHORT_QUERY);
+  media.addEventListener("change", callback);
+  return () => media.removeEventListener("change", callback);
+}
+
+function isShort(): boolean {
+  return (
+    typeof window.matchMedia === "function" &&
+    window.matchMedia(SHORT_QUERY).matches
+  );
+}
+
+function useShortScreen(): boolean {
+  return React.useSyncExternalStore(subscribeShort, isShort, () => false);
+}
+
+/**
+ * 两行 Dock 的一行：内容比 Dock 窄时居中，比 Dock 宽（320 宽屏上第一行约 324px）
+ * 时行自己撑到内容宽，Dock 的横向滚动从最左端开始。以前行被拉成 Dock 的宽度，
+ * `justify-center` 把溢出平分到两侧，左半边落到负方向，滚不到（#732）。
+ */
+const DOCK_ROW_CLASS =
+  "flex w-max min-w-full items-center justify-center gap-1";
+
 /** 视口缩放是浮点，夹到边界时差一点点也算到了。 */
 const ZOOM_EPSILON = 0.001;
 
@@ -78,9 +111,17 @@ export function Dock() {
   const workspace = useCanvasStore((state) => state.workspace);
   // 右侧抽屉是窗口级的固定层，盖在这一行的右端上（§58）。这一行让开它，Dock
   // 就在剩下那块看得见的画布里居中；手机上抽屉铺满整屏，没有可让的。
-  const compact = useCompactLayout();
+  const phone = useCompactLayout();
+  const short = useShortScreen();
+  // 手机布局且矮屏（横屏手机）时 Dock 合成一行，同桌面的一行；见 {@link SHORT_QUERY}。
+  const compact = phone && !short;
+  // 第二行只装白板工具与评论钮：两者都还不存在（画布没挂载、没有打开的板）时
+  // 不画那一行，免得留下一条 40px 的空条。判据与 `DockTools`、
+  // `CommentModeButton` 各自返回 null 的条件一致。
+  const hasTools = useFlowHandle() !== null;
+  const hasBoard = useCanvasStore((state) => state.boardId !== null);
   const inset = useCanvasStore((state) =>
-    compact ? null : rightPanelInset(state.panels),
+    phone ? null : rightPanelInset(state.panels),
   );
   const addNode = useCanvasStore((state) => state.addNode);
   const undo = useCanvasStore((state) => state.undo);
@@ -219,23 +260,19 @@ export function Dock() {
           <>
             {/* 竖屏两行（#715）：第一行是对画布的动作与缩放，第二行是白板工具与
                 评论。与桌面那一行相比一个不少，也没有折进弹层的。 */}
-            <div
-              data-slot="dock-row"
-              className="flex items-center justify-center gap-1"
-            >
+            <div data-slot="dock-row" className={DOCK_ROW_CLASS}>
               {lock}
               <Separator orientation="vertical" className="mx-1 h-5" />
               {edit}
               <Separator orientation="vertical" className="mx-1 h-5" />
               {status}
             </div>
-            <div
-              data-slot="dock-row"
-              className="flex items-center justify-center gap-1"
-            >
-              <DockTools inline />
-              <CommentModeButton />
-            </div>
+            {hasTools || hasBoard ? (
+              <div data-slot="dock-row" className={DOCK_ROW_CLASS}>
+                <DockTools inline />
+                <CommentModeButton />
+              </div>
+            ) : null}
           </>
         ) : (
           <>
