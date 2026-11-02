@@ -171,6 +171,7 @@ export function ResetPassword({
               id={`${id}-password`}
               type="password"
               autoComplete="new-password"
+              // eslint-disable-next-line jsx-a11y/no-autofocus -- 设计要求：表单或对话框打开时焦点落到首个输入
               autoFocus={focus}
               value={password}
               disabled={busy}
@@ -224,6 +225,7 @@ export function ResetPassword({
             type="button"
             size="lg"
             className="w-full"
+            // eslint-disable-next-line jsx-a11y/no-autofocus -- 设计要求：表单或对话框打开时焦点落到首个输入
             autoFocus={focus}
             onClick={() => onSignIn(stage.principalId)}
           >

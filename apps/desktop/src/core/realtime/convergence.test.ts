@@ -17,7 +17,6 @@ import {
   nodesOf,
   normalizeWhiteboard,
   projectDoc,
-  replaceText,
   whiteboardOf,
 } from "./doc";
 import {

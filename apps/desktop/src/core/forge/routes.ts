@@ -130,6 +130,7 @@ function workspaceOf(args: Args): string {
     typeof value !== "string" ||
     value.length > 256 ||
     value.trim() !== value ||
+    // eslint-disable-next-line no-control-regex -- 有意匹配控制字符以拒绝或剥离它们
     /[\x00-\x1f\x7f]/.test(value)
   ) {
     return bad("workspaceId 不对");

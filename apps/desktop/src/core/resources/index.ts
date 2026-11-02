@@ -16,7 +16,6 @@ import { join } from "node:path";
 import { terminateTree } from "../terminal/process";
 import { badRequest, coreError } from "../http/errors";
 import type { ErrorResponse } from "../http/errors";
-import type { HandlerResult } from "../http/router";
 import type { CoreContext } from "../main";
 import { settingsDomain } from "../settings";
 import { scheduleDomain } from "../schedule";

@@ -258,6 +258,7 @@ function harness(options: { sender?: MailSender; configured?: boolean } = {}) {
       : runAs(identity, run));
     return answer as {
       status: number;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- 测试里按需探查 JSON 响应体与夹具，不逐个声明类型
       body: any;
       headers?: Record<string, string>;
     };

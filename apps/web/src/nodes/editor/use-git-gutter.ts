@@ -90,5 +90,14 @@ export function useGitGutter(
     return () => {
       cancelled = true;
     };
-  }, [active, diskRevision, identity, path, tick, viewGeneration, workspaceId]);
+  }, [
+    active,
+    diskRevision,
+    identity,
+    path,
+    refs,
+    tick,
+    viewGeneration,
+    workspaceId,
+  ]);
 }

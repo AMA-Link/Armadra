@@ -235,6 +235,7 @@ function apiKeyOf(value: unknown): string {
   if (
     key === "" ||
     key.length > MAX_KEY_LENGTH ||
+    // eslint-disable-next-line no-control-regex -- 有意匹配控制字符以拒绝或剥离它们
     /[\u0000-\u001f\u007f]/.test(key)
   ) {
     throw badRequest("apiKey must be one non-empty line");

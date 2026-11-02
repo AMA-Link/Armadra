@@ -167,7 +167,9 @@ export function prepareCliHomes(scratch, { dirs = {}, only } = {}) {
         encoding: "utf8",
         stdio: ["ignore", "pipe", "ignore"],
       }).trim();
-    } catch {}
+    } catch {
+      // 读不到就按没有处理
+    }
   }
   if (which("copilot") && token) {
     const h = home("copilot");
@@ -180,7 +182,9 @@ export function prepareCliHomes(scratch, { dirs = {}, only } = {}) {
         join(homedir(), ".copilot/config.json"),
         join(copilotHome, "config.json"),
       );
-    } catch {}
+    } catch {
+      // 读不到就按没有处理
+    }
     clis.copilot = {
       program: which("copilot"),
       home: h,

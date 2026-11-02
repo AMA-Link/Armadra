@@ -282,10 +282,12 @@ export function WorkPanelSheet({
         )}
       >
         {bottom && onHeightChange && !maximized && (
+          // eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions -- 可聚焦的分隔条：拖动调高，也能用 ↑↓ 微调
           <div
             role="separator"
             aria-orientation="horizontal"
             aria-label={resizeLabel}
+            // eslint-disable-next-line jsx-a11y/no-noninteractive-tabindex -- 可聚焦的分隔条：拖动调高，也能用 ↑↓ 微调
             tabIndex={0}
             data-slot="work-panel-resize"
             onPointerDown={startDrag}

@@ -370,6 +370,7 @@ test("the quiet wait ignores the snapshot and restarts on every output frame", a
   let socket;
   class FakeSocket {
     constructor() {
+      // eslint-disable-next-line @typescript-eslint/no-this-alias -- 要拿到被测代码自己 new 出来的这个实例
       socket = this;
       this.sent = [];
     }

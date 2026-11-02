@@ -292,7 +292,9 @@ export function realPlan(scratch, shims, project) {
         auth = JSON.parse(
           readFileSync(join(homedir(), ".codex/auth.json"), "utf8"),
         );
-      } catch {}
+      } catch {
+        // 读不到或解析不了就当没有
+      }
     const refreshed = Date.parse(auth?.last_refresh ?? "");
     if (!CHOSEN.has("codex")) skip("codex", "ARMADRA_E2E_ACP_ONLY 没选这家");
     else if (!acp.installed) skip("codex", "没有 codex-acp（npm i -g）");

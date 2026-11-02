@@ -199,6 +199,7 @@ export function remoteShellCommand(
     if (!/^[A-Z_][A-Z0-9_]*$/u.test(key)) {
       throw new Error(`Cannot forward ${key} to the remote shell`);
     }
+    // eslint-disable-next-line no-control-regex -- 有意匹配控制字符以拒绝或剥离它们
     if (!/^[^'\\!\u0000-\u001f\u007f]*$/u.test(value)) {
       throw new Error(`Cannot forward the value of ${key} to the remote shell`);
     }

@@ -1,4 +1,4 @@
-import { createHash, randomBytes } from "node:crypto";
+import { randomBytes } from "node:crypto";
 import {
   AutomationActivationSchema,
   AutomationConcurrencyPolicy,
@@ -22,6 +22,7 @@ import {
   agentTarget,
   big,
   configHash,
+  MAX_INT64,
   firstDue,
   generationPinned,
   hashText,
@@ -35,7 +36,6 @@ import {
   window as dueWindow,
 } from "./plan";
 import {
-  ATTENTION_THRESHOLD,
   activationDigest,
   dispatchHash,
   equalBytes,
@@ -53,7 +53,7 @@ import type {
   ScheduleEvent,
   TargetStatus,
 } from "./contracts";
-import { type Snapshot, ScheduleStore, conflict } from "./store";
+import { ScheduleStore, conflict } from "./store";
 import { failedOutcome, targetNode } from "./events";
 
 /**
@@ -72,7 +72,6 @@ import { failedOutcome, targetNode } from "./events";
 const DEFAULT_LEASE_MS = 30_000;
 const DEFAULT_DISPATCH_TIMEOUT_MS = 10_000;
 const DEFAULT_POLL_MS = 1_000;
-const MAX_INT64_NUMBER = 9_223_372_036_854_775_807;
 
 interface IntervalClock {
   readonly version: number;
@@ -213,7 +212,7 @@ export class ScheduleEngine {
             "只有创建它的人能改这个计划",
           );
         }
-        if (num(plan.configVersion) >= MAX_INT64_NUMBER) {
+        if (big(plan.configVersion) >= MAX_INT64) {
           throw invalid("配置版本用尽");
         }
         cancellations.push(
@@ -705,8 +704,7 @@ export class ScheduleEngine {
         run.reasonCode = "CONCURRENCY_LIMIT";
       }
       if (run.state === AutomationRunState.DUE) {
-        if (num(plan.runCount) >= MAX_INT64_NUMBER)
-          throw invalid("运行次数用尽");
+        if (big(plan.runCount) >= MAX_INT64) throw invalid("运行次数用尽");
         plan.runCount = big(num(plan.runCount) + 1);
         plan.pendingRunId = runId;
       } else {

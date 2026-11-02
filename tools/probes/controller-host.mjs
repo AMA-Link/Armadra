@@ -87,7 +87,9 @@ try {
     try {
       if (JSON.parse(readFileSync(join(dataDir, "endpoints.json"))).controller)
         break;
-    } catch {}
+    } catch {
+      // 端点文件还没写好，下一轮再读
+    }
     await new Promise((done) => setTimeout(done, 50));
   }
   const listed = spawnSync(
@@ -302,7 +304,9 @@ try {
             body: JSON.stringify({ mode: "session" }),
           });
     }
-  } catch {}
+  } catch {
+    // 清理尽力而为：对象可能已经退出或不在了
+  }
   if (core.exitCode === null) {
     core.kill("SIGTERM");
     await new Promise((done) => core.once("exit", done));

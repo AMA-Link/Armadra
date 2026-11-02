@@ -10,12 +10,10 @@ import {
 
 export default async function run(ctx) {
   const {
-    data,
     api,
     documentPath,
     codexA,
     claudeA,
-    one,
     liveSession,
     status,
     screen,

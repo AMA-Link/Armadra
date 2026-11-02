@@ -302,6 +302,7 @@ function AgentTreeSm({
         <span
           role="img"
           aria-label={summary}
+          // eslint-disable-next-line jsx-a11y/no-noninteractive-tabindex -- 缩略图要能被键盘聚焦，tooltip 才读得到摘要
           tabIndex={0}
           data-slot="agent-tree"
           data-size="sm"
@@ -551,6 +552,7 @@ function AgentTreeMd({
         {summary}
       </div>
       <TooltipProvider delayDuration={300}>
+        {/* eslint-disable-next-line jsx-a11y/interactive-supports-focus -- 焦点由 roving 管理：落在各个 treeitem 上，树容器本身不接焦点 */}
         <div
           role="tree"
           aria-label={summary}
@@ -566,6 +568,7 @@ function AgentTreeMd({
               <Tooltip key={row.node.id}>
                 <TooltipTrigger asChild>
                   <div
+                    // eslint-disable-next-line jsx-a11y/role-has-required-aria-props -- 这棵树没有选中语义；ARIA 1.2 里 treeitem 的 aria-selected 不是必需属性
                     role="treeitem"
                     aria-level={row.depth + 1}
                     aria-label={text}

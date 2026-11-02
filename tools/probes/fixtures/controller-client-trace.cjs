@@ -10,7 +10,9 @@ if (
   if (fileIndex >= 0 && args[fileIndex + 1] !== "-") {
     try {
       inputFileBytes = statSync(args[fileIndex + 1]).size;
-    } catch {}
+    } catch {
+      // 读不到就按没有处理
+    }
   }
   let outputBytes = 0;
   const write = process.stdout.write;

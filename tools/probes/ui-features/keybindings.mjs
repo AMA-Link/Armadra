@@ -61,13 +61,6 @@ async function rowMenu(page, command, item) {
   );
 }
 
-/** 一行的键位：命令按钮里那几个 Kbd。 */
-const chordsOf = (page, command) =>
-  page.evaluate(`
-    const button = [...document.querySelectorAll('[role="dialog"] button')].find((b) => b.getAttribute("aria-label") === ${JSON.stringify(command)} && b.querySelector("kbd, [data-slot=kbd]"));
-    return button ? [...button.querySelectorAll("kbd, [data-slot=kbd]")].map((k) => k.textContent.trim()) : null;
-  `);
-
 async function editWhen(page, command, text) {
   await rowMenu(page, command, "编辑条件");
   const input = `return document.querySelector("input[aria-label='条件']");`;

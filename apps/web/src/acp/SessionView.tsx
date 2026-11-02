@@ -841,6 +841,7 @@ export function SessionView({
 
   return (
     <ToolLookupProvider value={feed.byId}>
+      {/* eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions -- 整块拖放目标：文件从系统拖进来，键盘用户走输入框里的附件按钮 */}
       <div
         data-slot="acp-session-view"
         data-read-only={readOnly || undefined}

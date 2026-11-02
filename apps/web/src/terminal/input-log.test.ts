@@ -91,7 +91,7 @@ describe("the terminal input log", () => {
 
 describe("a terminal transport that keeps an input log", () => {
   it("acknowledges, and after a drop resends only what never landed", () => {
-    let now = 5_000;
+    const now = 5_000;
     const log = new TerminalInputLog("writer-1", () => now);
     const first = new FakeSocket();
     const transport = createTerminalTransport("ws://x", {}, () => first, log);

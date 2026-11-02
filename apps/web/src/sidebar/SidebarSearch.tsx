@@ -77,6 +77,8 @@ export function SidebarSearch({ open, onOpenChange }: SidebarSearchProps) {
     })),
   });
 
+  // `documents` 每次渲染都是新数组，用各块板数据的更新时间做依赖足够稳。
+  const documentStamp = documents.map((item) => item.dataUpdatedAt).join();
   const indexed = useMemo<SearchBoard[]>(
     () =>
       boards.map((board, index) => ({
@@ -88,15 +90,9 @@ export function SidebarSearch({ open, onOpenChange }: SidebarSearchProps) {
             ? document.nodes
             : (documents[index]?.data?.nodes ?? []),
       })),
-    // `documents` 每次渲染都是新数组，用它的数据长度做依赖足够稳。
+    // 依赖 `documentStamp` 而不是 `documents` 本身，见上。
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [
-      boardId,
-      boards,
-      document,
-      documents.map((item) => item.dataUpdatedAt).join(),
-      t,
-    ],
+    [boardId, boards, document, documentStamp, t],
   );
 
   const hits = useMemo(() => searchBoards(indexed, query), [indexed, query]);

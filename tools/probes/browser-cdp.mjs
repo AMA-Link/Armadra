@@ -63,7 +63,9 @@ async function browserPath() {
     try {
       await access(candidate);
       return candidate;
-    } catch {}
+    } catch {
+      // 读不到就按没有处理
+    }
   }
   throw new Error(
     "Chrome not found. Set CHROME_PATH to an installed supported browser executable. No download was attempted.",
@@ -136,9 +138,8 @@ try {
       if (!item) return;
       pending.delete(message.id);
       clearTimeout(item.timer);
-      message.error
-        ? item.reject(new Error(JSON.stringify(message.error)))
-        : item.resolve(message.result);
+      if (message.error) item.reject(new Error(JSON.stringify(message.error)));
+      else item.resolve(message.result);
     } else if (message.method === "Page.screencastFrame") {
       frames.push(message.params);
       // ACK promptly so frame delivery is not gated by an unacknowledged frame.
@@ -270,10 +271,11 @@ try {
   pending.clear();
   if (chrome?.pid && chrome.exitCode === null && chrome.signalCode === null) {
     try {
-      process.platform === "win32"
-        ? chrome.kill()
-        : process.kill(-chrome.pid, "SIGTERM");
-    } catch {}
+      if (process.platform === "win32") chrome.kill();
+      else process.kill(-chrome.pid, "SIGTERM");
+    } catch {
+      // 清理尽力而为：对象可能已经退出或不在了
+    }
     for (
       let n = 0;
       n < 20 && chrome.exitCode === null && chrome.signalCode === null;
@@ -282,10 +284,11 @@ try {
       await delay(100);
     if (chrome.exitCode === null && chrome.signalCode === null) {
       try {
-        process.platform === "win32"
-          ? chrome.kill("SIGKILL")
-          : process.kill(-chrome.pid, "SIGKILL");
-      } catch {}
+        if (process.platform === "win32") chrome.kill("SIGKILL");
+        else process.kill(-chrome.pid, "SIGKILL");
+      } catch {
+        // 清理尽力而为：对象可能已经退出或不在了
+      }
       await delay(200);
     }
   }

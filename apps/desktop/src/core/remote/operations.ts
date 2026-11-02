@@ -83,7 +83,6 @@ import { unwatchFiles, watchFiles } from "./watch-worker";
 import { writePngExport, writeTextExport } from "../assets/exports";
 import {
   assetExtension,
-  decodeAssetDataUrl,
   importAssetAt,
   readAsset,
   storeAsset,

@@ -256,7 +256,6 @@ function ask(
 /* --------------------------------- 夹具 --------------------------------- */
 
 const W = "/api/workflows";
-const UNKNOWN = "00000000-0000-4000-8000-000000000000";
 
 async function propose(draft: unknown = DRAFT): Promise<string> {
   const dispatcher = controlDispatcher();

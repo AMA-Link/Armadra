@@ -49,6 +49,7 @@ async function admin(
   path: string,
   body?: unknown,
   auth = `Basic ${Buffer.from(`${ADMIN}:${adminPassword()}`).toString("base64")}`,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- 测试里按需探查 JSON 响应体与夹具，不逐个声明类型
 ): Promise<any> {
   const response = await fetch(`${root}/api/v1${path}`, {
     method,
@@ -78,6 +79,7 @@ describe.skipIf(!enabled)("dev-stack：gitea（§29）", () => {
     path: string,
     body?: unknown,
     query?: Record<string, string>,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- 测试里按需探查 JSON 响应体与夹具，不逐个声明类型
   ) => Promise<{ status: number; body: any }>;
 
   beforeAll(async () => {
@@ -160,6 +162,7 @@ describe.skipIf(!enabled)("dev-stack：gitea（§29）", () => {
         query: new URLSearchParams(query),
         body: encoded,
         json: <T>() => JSON.parse(encoded.toString("utf8")) as T,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- 测试里按需探查 JSON 响应体与夹具，不逐个声明类型
       })) as { status: number; body: any };
     };
   }, 60_000);
@@ -199,6 +202,7 @@ describe.skipIf(!enabled)("dev-stack：gitea（§29）", () => {
     const repo = `/api/forge/repos/${host}/${ADMIN}/${repoName}`;
     const issues = await call("GET", `${repo}/issues`);
     expect(issues.status).toBe(200);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- 测试里按需探查 JSON 响应体与夹具，不逐个声明类型
     expect(issues.body.items.map((issue: any) => issue.number)).toContain(
       issueNumber,
     );
@@ -272,6 +276,7 @@ describe.skipIf(!enabled)("dev-stack：gitea（§29）", () => {
       state: "closed",
     });
     expect(
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- 测试里按需探查 JSON 响应体与夹具，不逐个声明类型
       closed.body.items.map((pull: any) => [pull.number, pull.state]),
     ).toContainEqual([number, "merged"]);
   }, 60_000);

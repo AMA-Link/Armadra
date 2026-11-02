@@ -236,7 +236,7 @@ async function stitchedCapture(
         if (canvas === undefined) {
           // 截图按设备像素给：高分屏上一个 CSS 像素是 2×2。
           scale = piece.width / viewWidth;
-          let width = Math.round(pageWidth * scale);
+          const width = Math.round(pageWidth * scale);
           let height = Math.round(pageHeight * scale);
           if (width * height > MAX_STITCH_PIXELS) {
             height = Math.max(1, Math.floor(MAX_STITCH_PIXELS / width));

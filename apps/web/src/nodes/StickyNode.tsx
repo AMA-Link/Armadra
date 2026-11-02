@@ -86,6 +86,7 @@ export function StickyNode({ id, node }: NodeBodyProps) {
       />
       {editing ? (
         <Textarea
+          // eslint-disable-next-line jsx-a11y/no-autofocus -- 设计要求：表单或对话框打开时焦点落到首个输入
           autoFocus
           aria-label={t("node.sticky")}
           placeholder={t("sticky.placeholder")}
@@ -101,6 +102,7 @@ export function StickyNode({ id, node }: NodeBodyProps) {
           }}
         />
       ) : (
+        // eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions -- 点击进入编辑只是鼠标捷径；键盘走下面的「编辑」按钮
         <div
           data-slot="sticky-markdown"
           className="sticky-markdown min-h-0 flex-1 cursor-text overflow-auto px-2 py-1.5 text-body leading-relaxed"

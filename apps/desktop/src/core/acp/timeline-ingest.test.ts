@@ -47,10 +47,6 @@ function items(rowId: string): TimelineItem[] {
   return domain.store.snapshot(rowId, 20)?.items ?? [];
 }
 
-function kinds(rowId: string): string[] {
-  return items(rowId).map((item) => item.kind);
-}
-
 const turnsEnded = () => seen.filter((event) => event.type === "acp.turn");
 
 const activities = (rowId: string): SessionActivity[] =>

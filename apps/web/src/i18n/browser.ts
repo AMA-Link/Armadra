@@ -27,6 +27,7 @@ const zh = {
     "这个浏览器节点同时只接受一个观看者，关掉另一处再回来。",
   "browser.stream.unavailableHint":
     "服务端没有找到可用的 Chromium。装一个，或用 ARMADRA_BROWSER_PATH 指定路径。",
+  "browser.stream.failedHint": "浏览器没有启动成功，稍后再试。",
 
   /* 控制租约（§2.6）与活动徽标（§2.8） */
   "browser.lease.free": "无人控制",
@@ -110,6 +111,7 @@ const en: Record<keyof typeof zh, string> = {
     "A browser node takes one viewer at a time; close the other one and come back.",
   "browser.stream.unavailableHint":
     "The server found no Chromium to run. Install one, or point ARMADRA_BROWSER_PATH at it.",
+  "browser.stream.failedHint": "The browser did not start. Try again later.",
 
   "browser.lease.free": "Nobody is driving",
   "browser.lease.you": "You are driving",

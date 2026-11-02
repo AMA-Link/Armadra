@@ -1,11 +1,5 @@
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import {
-  cleanup,
-  fireEvent,
-  render,
-  screen,
-  waitFor,
-} from "@testing-library/react";
+import { cleanup, fireEvent, screen, waitFor } from "@testing-library/react";
 import { renderFlow } from "@/canvas/test-support";
 import type { CanvasNode } from "@armadra/shared";
 

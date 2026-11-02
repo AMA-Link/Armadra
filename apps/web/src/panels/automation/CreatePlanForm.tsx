@@ -632,6 +632,7 @@ export function CreatePlanForm({
               </Select>,
               problem("session"),
             )}
+            {/* eslint-disable-next-line jsx-a11y/label-has-associated-control -- label 里包着 Checkbox（Radix 按钮），规则认不出自定义组件 */}
             <label className="flex min-w-0 items-start gap-2 text-meta">
               <Checkbox
                 className="mt-0.5"

@@ -189,6 +189,7 @@ export function CommentComposer({
                 ref={area}
                 value={text}
                 rows={2}
+                // eslint-disable-next-line jsx-a11y/no-autofocus -- 设计要求：表单或对话框打开时焦点落到首个输入
                 autoFocus={autoFocus}
                 placeholder={placeholder}
                 aria-label={placeholder}

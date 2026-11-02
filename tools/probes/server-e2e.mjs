@@ -124,7 +124,9 @@ async function startCaddy({ upstream, port }) {
   h.cleanups.push(() => {
     try {
       execFileSync("docker", ["rm", "-f", name], { stdio: "ignore" });
-    } catch {}
+    } catch {
+      // 清理尽力而为：对象可能已经退出或不在了
+    }
   });
   const linux = process.platform === "linux";
   const caddy = child(h, "docker", [
@@ -303,7 +305,9 @@ await h.run(async () => {
           ["exec", name, "sh", "-c", "rm -rf /projects/* /projects/.[!.]*"],
           { stdio: "ignore" },
         );
-      } catch {}
+      } catch {
+        // 清理尽力而为：对象可能已经退出或不在了
+      }
       execFileSync("docker", ["rm", "-f", "-v", name], { stdio: "ignore" });
     });
     server = child(h, "docker", [

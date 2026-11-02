@@ -1,7 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { type AgentFixture, agentFixture, callerFor } from "../agent/fixture";
 import { freeLease } from "../drive/lease";
-import { recordReport } from "../workflow/work-items";
 import { ProgressWatchdog } from "../workflow/progress-watchdog";
 import { setStallSource } from "../agent/stalled";
 import { TaskWatch } from "../workflow/task-watch";

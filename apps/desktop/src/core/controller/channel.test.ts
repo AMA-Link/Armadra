@@ -29,6 +29,7 @@ async function fixture() {
 
 function ask(socketPath: string, input: unknown, headers = {}) {
   const label = `${JSON.stringify(input)?.length ?? 0}B ${JSON.stringify(headers)}`;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- 测试里按需探查 JSON 响应体与夹具，不逐个声明类型
   return new Promise<{ status: number; body: any }>((resolve, reject) => {
     const call = request(
       {

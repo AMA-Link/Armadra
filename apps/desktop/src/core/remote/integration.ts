@@ -94,6 +94,7 @@ const NOT_FORWARDED = new Set([
  * 单引号里没有 `'`、`\`、`!` 与控制字符就都是字面量。放不进去的变量不转
  * （目前只可能是节点名），而不是冒险让远端 shell 解释它。
  */
+// eslint-disable-next-line no-control-regex -- 有意匹配控制字符以拒绝或剥离它们
 const FORWARDABLE = /^[^'\\!\u0000-\u001f\u007f]*$/u;
 
 /** 远端 Hook 客户端的总时限：中继多一趟 ssh 往返，本机的 1.5 秒不够。 */

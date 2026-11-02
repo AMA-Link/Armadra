@@ -188,6 +188,7 @@ export function CherryPick({
                 <summary>{t("gitIntegration.pickDiff")}</summary>
                 <pre
                   className="max-h-80 overflow-auto rounded-tight bg-sunken p-2 text-caption"
+                  // eslint-disable-next-line jsx-a11y/no-noninteractive-tabindex -- 可滚动的补丁预览要能用键盘滚动
                   tabIndex={0}
                 >
                   {preview.patch || t("gitIntegration.emptyPreview")}

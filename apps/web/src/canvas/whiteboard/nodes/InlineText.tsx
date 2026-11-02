@@ -119,6 +119,7 @@ export function InlineText({
 
   return (
     // ui-exempt: 画布行内编辑——字号、颜色跟随画布对象的样式，不用 ui/textarea 的表单外观
+    // eslint-disable-next-line no-restricted-syntax -- 同上：行内编辑的外观跟画布对象走，不是表单控件
     <textarea
       ref={textarea}
       aria-label={t("tool.text")}

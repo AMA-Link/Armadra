@@ -221,7 +221,7 @@ export function RemoteAccessPage() {
         ? null
         : pendingCode(await relayPending(), target.issuer);
     },
-    onSuccess: (code, target) => {
+    onSuccess: (code) => {
       void changed();
       if (code !== null) {
         toast.warning(t("remote.relayPending"), {

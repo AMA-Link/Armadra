@@ -363,7 +363,9 @@ try {
   for (const cleanup of cleanups.reverse()) {
     try {
       cleanup();
-    } catch {}
+    } catch {
+      // 清理尽力而为：对象可能已经退出或不在了
+    }
   }
 }
 process.exit(failures.length === 0 ? 0 : 1);

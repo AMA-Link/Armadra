@@ -529,7 +529,8 @@ export async function oidcIdentity(input: {
   readonly claims: IdTokenClaims;
   readonly accessToken: string | undefined;
 }): Promise<ExternalIdentity> {
-  let { email, emailVerified, name, preferredUsername } = input.claims;
+  const { preferredUsername } = input.claims;
+  let { email, emailVerified, name } = input.claims;
   if (
     email === undefined &&
     input.metadata.userinfoEndpoint !== undefined &&

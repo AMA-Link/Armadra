@@ -104,6 +104,7 @@ export function RelocateDialog({
             </label>
             <Input
               id="editor-relocate-path"
+              // eslint-disable-next-line jsx-a11y/no-autofocus -- 设计要求：表单或对话框打开时焦点落到首个输入
               autoFocus
               value={path}
               disabled={confirming}

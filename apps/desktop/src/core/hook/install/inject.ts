@@ -50,7 +50,6 @@ import {
 } from "./shared";
 import { SKILLS_ROOT, SKILL_NAME, skillContent } from "./skills";
 import {
-  findLaunchExe,
   shimTargetFor,
   windowsLauncherFiles,
   configuredLaunchExe,

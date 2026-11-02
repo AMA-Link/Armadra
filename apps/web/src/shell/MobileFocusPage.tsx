@@ -76,6 +76,7 @@ export function MobileFocusPage() {
 
   return (
     <div
+      // eslint-disable-next-line no-restricted-syntax -- 整页焦点页自己管 z 轴、安全区与可视视口，不是 Radix 对话框；套 ResponsiveDialog 会换掉这些，键盘上下文（keybindings/context.ts）靠这个 role 认它
       role="dialog"
       aria-modal="true"
       aria-label={t("mobile.focus.label")}

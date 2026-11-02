@@ -350,6 +350,7 @@ export function WebviewSurface({ id, node, selected }: NodeBodyProps) {
 
   return (
     <NodeShell node={node} selected={selected} headerActions={headerActions}>
+      {/* eslint-disable-next-line jsx-a11y/no-static-element-interactions -- 委托容器：Esc 停止加载只在这棵子树上、加载中才吃掉 */}
       <div
         ref={(element) => {
           keyboardRootRef.current = element;

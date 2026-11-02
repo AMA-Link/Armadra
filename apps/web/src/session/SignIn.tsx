@@ -240,6 +240,7 @@ export function SignIn({
             <Input
               id={`${id}-account`}
               autoComplete="username webauthn"
+              // eslint-disable-next-line jsx-a11y/no-autofocus -- 设计要求：表单或对话框打开时焦点落到首个输入
               autoFocus={focus}
               value={account}
               disabled={disabled}
@@ -320,6 +321,7 @@ export function SignIn({
               id={`${id}-password`}
               type="password"
               autoComplete="current-password"
+              // eslint-disable-next-line jsx-a11y/no-autofocus -- 设计要求：表单或对话框打开时焦点落到首个输入
               autoFocus={focus}
               value={password}
               disabled={disabled}
@@ -394,6 +396,7 @@ export function SignIn({
               inputMode="numeric"
               pattern="^[0-9]*$"
               autoComplete="one-time-code"
+              // eslint-disable-next-line jsx-a11y/no-autofocus -- 设计要求：表单或对话框打开时焦点落到首个输入
               autoFocus={focus}
               value={code}
               disabled={disabled}
@@ -447,6 +450,7 @@ export function SignIn({
             <Input
               id={`${id}-recovery`}
               autoComplete="one-time-code"
+              // eslint-disable-next-line jsx-a11y/no-autofocus -- 设计要求：表单或对话框打开时焦点落到首个输入
               autoFocus={focus}
               spellCheck={false}
               className="font-mono"

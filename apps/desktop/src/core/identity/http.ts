@@ -717,9 +717,3 @@ function countHeader(request: CoreRequest, name: string): number {
   if (value === undefined) return 0;
   return Array.isArray(value) ? value.length : 1;
 }
-
-function headerList(request: CoreRequest, name: string): string[] {
-  const value = request.headers[name];
-  if (value === undefined) return [];
-  return Array.isArray(value) ? value : [value];
-}

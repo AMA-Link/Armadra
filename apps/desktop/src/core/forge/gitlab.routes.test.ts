@@ -67,6 +67,7 @@ interface Harness {
     path: string,
     body?: unknown,
     query?: Record<string, string>,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- 测试里按需探查 JSON 响应体与夹具，不逐个声明类型
   ): Promise<{ status: number; body: any }>;
 }
 
@@ -120,6 +121,7 @@ async function harness(pick: string[] = []): Promise<Harness> {
     };
     return (await router.dispatch(method, path, request)) as {
       status: number;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- 测试里按需探查 JSON 响应体与夹具，不逐个声明类型
       body: any;
     };
   };
@@ -237,6 +239,7 @@ describe("多级子组", () => {
     );
     const pulls = await h.call("GET", `${base}/pulls`);
     expect(pulls.status).toBe(200);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- 测试里按需探查 JSON 响应体与夹具，不逐个声明类型
     expect(pulls.body.items.map((pull: any) => pull.number)).toEqual([31]);
     expect(h.tape.requests.at(-1)?.path).toBe(
       "/projects/platform%2Fweb%2Fapp/merge_requests",
@@ -342,6 +345,7 @@ describe("读写", () => {
       limit: "2",
       cursor: "2",
     });
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- 测试里按需探查 JSON 响应体与夹具，不逐个声明类型
     expect(next.body.items.map((issue: any) => issue.number)).toEqual([2]);
     const closed = await h.call("PATCH", `${REPO_PATH}/issues/7`, {
       state: "closed",
@@ -350,6 +354,7 @@ describe("读写", () => {
 
     const pulls = await h.call("GET", `${REPO_PATH}/pulls`);
     expect(pulls.status).toBe(200);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- 测试里按需探查 JSON 响应体与夹具，不逐个声明类型
     expect(pulls.body.items.map((pull: any) => pull.number)).toEqual([12, 11]);
     expect(pulls.body.items[0].body).toBe("");
 

@@ -18,7 +18,7 @@ import { remoteDomain } from "../remote";
 import { DirectBackend } from "./direct";
 import { nodeRole } from "../canvas/context-links";
 import { handleForNode } from "../canvas/handles";
-import { type EnvPairs, agentEnvironment, setHookClient } from "./environment";
+import { agentEnvironment, setHookClient } from "./environment";
 import {
   agentLauncherBinary,
   launcherClientBinary,

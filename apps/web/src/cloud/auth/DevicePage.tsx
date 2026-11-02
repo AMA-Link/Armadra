@@ -249,6 +249,7 @@ export function DevicePage({
           headingLevel={2}
         />
         {stage.mobile && (
+          // eslint-disable-next-line jsx-a11y/no-autofocus -- 设计要求：表单或对话框打开时焦点落到首个输入
           <Button size="lg" className="w-full" autoFocus asChild>
             <a href={APP_RETURN_URL}>{t("cloud.auth.deviceReturn")}</a>
           </Button>
@@ -257,6 +258,7 @@ export function DevicePage({
           size="lg"
           variant={stage.mobile ? "ghost" : "default"}
           className="w-full"
+          // eslint-disable-next-line jsx-a11y/no-autofocus -- 设计要求：表单或对话框打开时焦点落到首个输入
           autoFocus={!stage.mobile}
           onClick={onDone}
         >
@@ -393,6 +395,7 @@ export function DevicePage({
             id={`${id}-code`}
             maxLength={USER_CODE_LENGTH}
             value={typed}
+            // eslint-disable-next-line jsx-a11y/no-autofocus -- 设计要求：表单或对话框打开时焦点落到首个输入
             autoFocus
             autoComplete="one-time-code"
             autoCapitalize="characters"
@@ -502,6 +505,7 @@ function StepUp({
             id={`${id}-secret`}
             type={useCode ? "text" : "password"}
             name={useCode ? "totp" : "password"}
+            // eslint-disable-next-line jsx-a11y/no-autofocus -- 设计要求：表单或对话框打开时焦点落到首个输入
             autoFocus
             autoComplete={useCode ? "one-time-code" : "current-password"}
             inputMode={useCode ? "numeric" : undefined}

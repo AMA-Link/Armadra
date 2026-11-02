@@ -1,7 +1,7 @@
 import { AutomationPlanState } from "../api/automations";
 import * as React from "react";
 import { useQuery } from "@tanstack/react-query";
-import { CalendarClock, ListOrdered, Pause, Play } from "lucide-react";
+import { ListOrdered, Pause, Play } from "lucide-react";
 
 import { Badge } from "@/ui/badge";
 import { IconButton } from "@/ui/icon-button";

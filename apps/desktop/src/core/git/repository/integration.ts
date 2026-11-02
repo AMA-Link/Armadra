@@ -26,7 +26,7 @@ import {
   type RepositoryContext,
   repositoryId,
 } from "./service";
-import { protectLocalPaths, sameHead, stashSnapshot } from "./stash";
+import { sameHead, stashSnapshot } from "./stash";
 import type {
   ConflictFile,
   ConflictSide,

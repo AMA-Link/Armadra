@@ -46,6 +46,7 @@ export const STAGING_MAX_AGE_MS = 24 * 60 * 60 * 1000;
 export function userDownloadName(raw: unknown): string {
   if (typeof raw !== "string") return "download";
   const cleaned = basename(raw.replace(/[\\/]+/g, "/"))
+    // eslint-disable-next-line no-control-regex -- 有意匹配控制字符以拒绝或剥离它们
     .replace(/[\u0000-\u001f\u007f]/g, "")
     .replace(/^\.+/, "")
     .trim();

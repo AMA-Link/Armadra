@@ -264,3 +264,20 @@ test("jsx-a11y：img 无 alt 被报告为 warn", async () => {
   );
   assert.equal(hits(messages, "jsx-a11y/alt-text")[0]?.severity, 1);
 });
+
+test("未用变量与丢精度的数字字面量是 error", async () => {
+  const messages = await lint(
+    "apps/web/src/app/probe.ts",
+    [
+      `const unused = 1;`,
+      `export const big = 9_223_372_036_854_775_807;`,
+      `export const kept = 2;`,
+      `export const _ignored = 3;`,
+    ].join("\n"),
+  );
+  assert.equal(
+    hits(messages, "@typescript-eslint/no-unused-vars")[0]?.severity,
+    2,
+  );
+  assert.equal(hits(messages, "no-loss-of-precision")[0]?.severity, 2);
+});

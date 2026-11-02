@@ -18,7 +18,8 @@ const DAY = 24 * HOUR;
 
 describe("cn", () => {
   it("合并条件 class", () => {
-    expect(cn("a", false && "b", ["c"])).toBe("a c");
+    const hidden = false as boolean;
+    expect(cn("a", hidden && "b", ["c"])).toBe("a c");
   });
 
   it("后写的 Tailwind 冲突类胜出", () => {

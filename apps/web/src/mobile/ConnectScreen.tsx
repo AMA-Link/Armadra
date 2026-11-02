@@ -1006,6 +1006,7 @@ export function ConnectScreen({
               autoCorrect="off"
               autoComplete="one-time-code"
               // 展示页钉住了字时不抢焦点。
+              // eslint-disable-next-line jsx-a11y/no-autofocus -- 设计要求：表单或对话框打开时焦点落到首个输入
               autoFocus={initialCode === "" && !(codeAddress && address === "")}
               value={code}
               disabled={shownBusy}

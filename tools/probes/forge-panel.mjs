@@ -623,7 +623,9 @@ try {
   for (const cleanup of cleanups.reverse()) {
     try {
       await cleanup();
-    } catch {}
+    } catch {
+      // 清理尽力而为：对象可能已经退出或不在了
+    }
   }
   writeFileSync(
     join(output, "result.json"),

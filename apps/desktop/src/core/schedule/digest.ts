@@ -1,7 +1,6 @@
 import { createHash } from "node:crypto";
 import {
   AutomationOutcome,
-  AutomationPlanState,
   AutomationRunSchema,
   AutomationRunState,
   type AutomationActivation,

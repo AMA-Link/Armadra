@@ -232,7 +232,9 @@ function killTree(child, signal) {
   try {
     if (process.platform === "win32") child.kill(signal);
     else process.kill(-child.pid, signal);
-  } catch {}
+  } catch {
+    // 清理尽力而为：对象可能已经退出或不在了
+  }
 }
 
 function runEntry(entry, { root, out, env, log }) {

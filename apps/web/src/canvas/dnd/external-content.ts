@@ -1,7 +1,6 @@
 import { toast } from "@/ui/toast";
 import {
   ASSET_MIME_TYPES,
-  MAX_ASSET_BYTES,
   MAX_IMPORT_FILES,
   MAX_IMPORT_FILE_BYTES,
   MAX_IMPORT_BATCH_BYTES,

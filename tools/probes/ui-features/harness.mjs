@@ -52,7 +52,9 @@ export async function freePort() {
 export function removeTree(path) {
   try {
     rmSync(path, { recursive: true, force: true, maxRetries: 20 });
-  } catch {}
+  } catch {
+    // 清理尽力而为：对象可能已经退出或不在了
+  }
 }
 
 export function run(command, args, options = {}) {
@@ -114,7 +116,9 @@ export async function startStack(options = {}) {
       execFileSync("tmux", ["-S", join(data, "tmux.sock"), "kill-server"], {
         stdio: "ignore",
       });
-    } catch {}
+    } catch {
+      // 清理尽力而为：对象可能已经退出或不在了
+    }
   });
   const environment = {
     ...process.env,
@@ -333,7 +337,9 @@ export async function startStack(options = {}) {
       for (const cleanup of cleanups.reverse()) {
         try {
           await cleanup();
-        } catch {}
+        } catch {
+          // 清理尽力而为：对象可能已经退出或不在了
+        }
       }
       cleanups.length = 0;
     },
@@ -711,7 +717,9 @@ async function createPage(
       off();
       try {
         await browser.call("Target.closeTarget", { targetId });
-      } catch {}
+      } catch {
+        // 清理尽力而为：对象可能已经退出或不在了
+      }
     },
   };
   await page.viewport(width, height);

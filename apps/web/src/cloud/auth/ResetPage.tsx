@@ -68,6 +68,7 @@ function RequestReset() {
               id={`${id}-email`}
               type="email"
               name="email"
+              // eslint-disable-next-line jsx-a11y/no-autofocus -- 设计要求：表单或对话框打开时焦点落到首个输入
               autoFocus
               autoComplete="username"
               value={email}
@@ -155,6 +156,7 @@ function FinishReset({
             <RouteLink href="/reset">{t("cloud.auth.resetTitle")}</RouteLink>
           </Button>
         )}
+        {/* eslint-disable-next-line jsx-a11y/no-autofocus -- 设计要求：表单或对话框打开时焦点落到首个输入 */}
         <Button size="lg" className="w-full" autoFocus onClick={onSignIn}>
           {t("reset.signIn")}
         </Button>
@@ -178,6 +180,7 @@ function FinishReset({
             id={`${id}-password`}
             type="password"
             autoComplete="new-password"
+            // eslint-disable-next-line jsx-a11y/no-autofocus -- 设计要求：表单或对话框打开时焦点落到首个输入
             autoFocus
             value={password}
             disabled={busy}

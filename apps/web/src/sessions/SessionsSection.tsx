@@ -64,6 +64,7 @@ export function SessionsSection({ boardId }: { boardId: string }) {
   if (!workspace) return null;
 
   return (
+    // eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions -- 委托容器：键盘导航交给行内的 roving 焦点，过滤框与改名框自己处理按键
     <section
       aria-label={t("sessions.agents")}
       className="pl-1"

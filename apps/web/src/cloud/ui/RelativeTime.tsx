@@ -29,6 +29,7 @@ export function RelativeTime({
       <TooltipTrigger asChild>
         <time
           dateTime={new Date(ms).toISOString()}
+          // eslint-disable-next-line jsx-a11y/no-noninteractive-tabindex -- tooltip 触发器：键盘聚焦时才能读到绝对时间
           tabIndex={0}
           className="tabular-nums"
         >

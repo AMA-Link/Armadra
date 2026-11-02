@@ -115,14 +115,14 @@ export function useDraftProtection(
           }
         : {}),
     });
-  }, [identity, path, workspaceId]);
+  }, [identity, path, refs, workspaceId]);
 
   const noteChange = React.useCallback(() => {
     if (refs.viewIdentityRef.current === identity)
       pendingViewRef.current = refs.viewRef.current;
     clearTimeout(timerRef.current);
     timerRef.current = setTimeout(persistNow, PERSIST_DEBOUNCE_MS);
-  }, [identity, persistNow]);
+  }, [identity, persistNow, refs]);
 
   // 关页面、切走标签页、节点卸载：还没落盘的那一截立刻写掉。
   React.useEffect(() => {
@@ -147,7 +147,7 @@ export function useDraftProtection(
         changes: { from: 0, to: view.state.doc.length, insert: content },
       });
     },
-    [identity],
+    [identity, refs],
   );
 
   /** 打开合并视图；`theirs` 是磁盘上的正文，`theirsVersion` 是它的内容版本。 */
@@ -176,7 +176,17 @@ export function useDraftProtection(
         },
       });
     },
-    [identity, onDiskSynced, path, persistNow, replaceDoc],
+    [
+      identity,
+      onDiskSynced,
+      path,
+      persistNow,
+      refs,
+      replaceDoc,
+      setDirty,
+      setDiskContent,
+      setExternal,
+    ],
   );
 
   const mergeWithDisk = React.useCallback(() => {
@@ -188,7 +198,7 @@ export function useDraftProtection(
         openMerge(file.content, file.sha256);
       })
       .catch(() => toast.error(t("editor.failed")));
-  }, [identity, openMerge, path, t, workspaceId]);
+  }, [identity, openMerge, path, refs, t, workspaceId]);
 
   // 视图建好后问一次本机副本。
   React.useEffect(() => {
@@ -243,7 +253,18 @@ export function useDraftProtection(
     setDirty(stored.draft !== stored.base);
     setExternal({ kind: "modified", sha256: state.sha256 });
     toast(t("editor.draft.restoredStale"));
-  }, [identity, path, state, viewGeneration, workspaceId]);
+  }, [
+    identity,
+    path,
+    refs,
+    replaceDoc,
+    setDirty,
+    setExternal,
+    state,
+    t,
+    viewGeneration,
+    workspaceId,
+  ]);
 
   return { noteChange, persistNow, mergeWithDisk };
 }

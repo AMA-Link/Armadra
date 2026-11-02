@@ -770,6 +770,7 @@ export function receivedInputs(text) {
  */
 export function answerSources(hex) {
   const text = Buffer.from(hex, "hex").toString("latin1");
+  // eslint-disable-next-line no-control-regex -- 匹配 ANSI 转义序列，必须写出控制字符
   const found = [...text.matchAll(/\u001b\[\?[0-9;]*c/g)].map(([answer]) =>
     answer === PROBE_DA1 ? "probe" : answer === HOST_DA1 ? "host" : "console",
   );

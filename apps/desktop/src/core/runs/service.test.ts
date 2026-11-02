@@ -43,6 +43,7 @@ const call = (
       ...(key ? { idempotencyKey: key } : {}),
     },
     token,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- 测试里按需探查 JSON 响应体与夹具，不逐个声明类型
   ) as Promise<any>;
 const input = (keys = ["implement", "review"]) => ({
   schemaVersion: 1,
@@ -75,6 +76,7 @@ beforeEach(async () => {
   terminal.bridge.generation = (sessionId) => {
     const row = core.database
       .prepare("SELECT generation, status FROM terminal_sessions WHERE id = ?")
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- 测试里按需探查 JSON 响应体与夹具，不逐个声明类型
       .get(sessionId) as any;
     return row?.status === "running" ? row.generation : undefined;
   };
@@ -101,6 +103,7 @@ beforeEach(async () => {
     command: (
       core.database
         .prepare("SELECT agent_id FROM terminal_sessions WHERE id = ?")
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- 测试里按需探查 JSON 响应体与夹具，不逐个声明类型
         .get(sessionId) as any
     )?.agent_id,
   });
@@ -219,6 +222,7 @@ function report(
       verified: true,
       sessionId: `provider-${key}`,
       ...event,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- 测试里按需探查 JSON 响应体与夹具，不逐个声明类型
     } as any,
     prompt ? { prompt } : {},
     core.bus,

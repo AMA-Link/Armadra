@@ -2,6 +2,7 @@
 //
 // 渐进策略（§5）：第 1 步除下面列明的边界规则外一律 warn，只报不阻断；
 // `pnpm lint` 只在出现 error 时失败。warn 基线记在 docs/status/completion-progress.md。
+// 存量清完后，`no-unused-vars` 与 `no-loss-of-precision` 已升为 error（#748）。
 // 格式交给 Prettier：eslint-config-prettier 放在最后，关掉一切与格式冲突的规则。
 import js from "@eslint/js";
 import prettier from "eslint-config-prettier";
@@ -169,6 +170,14 @@ const LITERAL_COLOR_ALLOWED = [
   `${WEB}canvas/whiteboard/palette.ts`,
   `${WEB}terminal/surface/appearance.ts`,
   `${WEB}lib/contrast.ts`,
+  // 用户可选的画板底色、导出图底色、便签与 Agent 的品牌色回退值、提交图泳道色环
+  // （同 styles/no-literal-color.test.ts 的 DATA_FILES）。
+  `${WEB}app/use-canvas-preferences.ts`,
+  `${WEB}canvas/content-links.ts`,
+  `${WEB}nodes/registry.ts`,
+  `${WEB}agent/launch.ts`,
+  `${WEB}panels/git/CommitGraph.tsx`,
+  `${WEB}panels/git/log/graph.ts`,
   `${WEB}showcase/**`,
   `${WEB}canvas/test-support/**`,
   `${WEB}**/*.fixture.{ts,tsx}`,
@@ -250,14 +259,16 @@ export default tseslint.config(
       globals: { ...globals.node },
     },
     rules: {
+      // 清完存量之后升为 error（#748）：未用代码与会丢精度的数字字面量不再带进主干。
       "@typescript-eslint/no-unused-vars": [
-        "warn",
+        "error",
         {
           argsIgnorePattern: "^_",
           varsIgnorePattern: "^_",
           caughtErrors: "none",
         },
       ],
+      "no-loss-of-precision": "error",
       ...restrictImports(orpcPattern),
     },
   },

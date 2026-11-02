@@ -120,6 +120,7 @@ async function answer(line: string, call?: ToolCaller): Promise<McpResponse> {
   return response;
 }
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- 测试里按需探查 JSON 响应体与夹具，不逐个声明类型
 async function result(line: string, call?: ToolCaller): Promise<any> {
   const response = await answer(line, call);
   if (!("result" in response)) throw new Error(JSON.stringify(response));

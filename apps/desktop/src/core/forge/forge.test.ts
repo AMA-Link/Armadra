@@ -58,6 +58,7 @@ interface Harness {
     path: string,
     body?: unknown,
     query?: Record<string, string>,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- 测试里按需探查 JSON 响应体与夹具，不逐个声明类型
   ): Promise<{ status: number; body: any }>;
 }
 
@@ -97,6 +98,7 @@ async function harness(
     };
     return (await router.dispatch(method, path, request)) as {
       status: number;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- 测试里按需探查 JSON 响应体与夹具，不逐个声明类型
       body: any;
     };
   };
@@ -104,6 +106,7 @@ async function harness(
 }
 
 /** 把假 Gitea 配成 `127.0.0.1` 这台主机的平台。 */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- 测试里按需探查 JSON 响应体与夹具，不逐个声明类型
 async function configureHost(h: Harness): Promise<any> {
   const answer = await h.call("PUT", "/api/forge/configs/127.0.0.1", {
     forge: "gitea",
@@ -582,6 +585,7 @@ describe("/api/forge/repos/…（§29.4）", () => {
       state: "closed",
     });
     expect(
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- 测试里按需探查 JSON 响应体与夹具，不逐个声明类型
       pulls.body.items.map((item: any) => [item.number, item.state, item.body]),
     ).toEqual([[3, "merged", ""]]);
     // 令牌只发到配置的那个根。

@@ -55,6 +55,7 @@ export function repositoryLimit(limit: number): number {
 /** ssh 克隆地址：`ssh://…` 或 scp 写法 `user@host:path`；别的丢掉。 */
 export function sshUrl(value: unknown): string {
   if (typeof value !== "string" || value.length > 2048) return "";
+  // eslint-disable-next-line no-control-regex -- 有意匹配控制字符以拒绝或剥离它们
   if (/[\s\x00-\x1f\x7f]/.test(value)) return "";
   if (/^ssh:\/\/[A-Za-z0-9]\S*$/i.test(value)) return value;
   return /^[A-Za-z0-9._-]+@[A-Za-z0-9.-]+:[A-Za-z0-9~/]\S*$/.test(value)

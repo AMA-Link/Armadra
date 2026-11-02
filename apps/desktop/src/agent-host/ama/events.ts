@@ -44,6 +44,7 @@ function shortText(value: unknown): string | undefined {
   if (typeof value !== "string") return undefined;
   const trimmed = value.trim();
   if (trimmed === "" || trimmed.length > 200) return undefined;
+  // eslint-disable-next-line no-control-regex -- 有意匹配控制字符以拒绝或剥离它们
   return /[\u0000-\u001f\u007f]/.test(trimmed) ? undefined : trimmed;
 }
 

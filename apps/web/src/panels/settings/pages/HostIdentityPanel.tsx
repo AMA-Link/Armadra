@@ -108,7 +108,6 @@ export function HostIdentityPanel({
 
   useEffect(() => {
     generation.current += 1;
-    const mark = generation.current;
     working.current = false;
     setSession(null);
     report.current?.(null);

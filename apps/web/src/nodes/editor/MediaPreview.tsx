@@ -31,6 +31,7 @@ export function MediaPreview({
   if (media === "video")
     return (
       <div className="flex h-full w-full items-center justify-center bg-sunken">
+        {/* eslint-disable-next-line jsx-a11y/media-has-caption -- 用户自己的音视频文件，没有字幕轨可挂 */}
         <video
           src={src}
           controls
@@ -46,6 +47,7 @@ export function MediaPreview({
         <p className="max-w-full truncate text-body" title={title}>
           {title}
         </p>
+        {/* eslint-disable-next-line jsx-a11y/media-has-caption -- 用户自己的音视频文件，没有字幕轨可挂 */}
         <audio
           src={src}
           controls

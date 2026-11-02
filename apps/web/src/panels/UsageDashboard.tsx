@@ -15,7 +15,6 @@ import { useCost } from "../app/use-cost";
 import { useUsage } from "../app/use-usage";
 import { useRuntimeSettings } from "./settings/use-runtime-settings";
 import { useCanvasStore } from "../store/canvas-store";
-import { formatRelativeTime } from "../lib/format";
 import { ProviderCard } from "./usage/ProviderCard";
 import { UsagePanel } from "./usage/UsagePanel";
 import { Loadable } from "../loading/Loadable";

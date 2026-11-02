@@ -126,7 +126,9 @@ function pickFreeModel(scratch, cli) {
       .split("\n")
       .map((line) => line.trim())
       .filter((line) => line.startsWith("opencode/"));
-  } catch {}
+  } catch {
+    // 读不到就按没有处理
+  }
   return (
     listed.find((name) => name.endsWith("-free")) ?? listed[0] ?? cli.model
   );
@@ -138,7 +140,9 @@ function under(text, root) {
   const candidates = [root];
   try {
     candidates.push(realpathSync(root));
-  } catch {}
+  } catch {
+    // 读不到就按没有处理
+  }
   return candidates.some((candidate) => text.includes(`${candidate}/`));
 }
 
@@ -158,7 +162,9 @@ async function recordScreen(id, phase, text) {
     const dir = join(output, "screens");
     mkdirSync(dir, { recursive: true });
     writeFileSync(join(dir, `${id}-${phase}.txt`), text ?? "");
-  } catch {}
+  } catch {
+    // 存屏幕只是留证据，写不进去不该让场景失败
+  }
 }
 
 export default async function run10(ctx) {
@@ -742,7 +748,9 @@ export default async function run10(ctx) {
                       const cwd = JSON.parse(line || "{}").cwd;
                       if (cwd) return cwd;
                     }
-                  } catch {}
+                  } catch {
+                    // 读不到或解析不了就当没有
+                  }
                   return null;
                 })(),
               },

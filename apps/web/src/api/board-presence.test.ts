@@ -68,6 +68,7 @@ describe("watchBoardPresence", () => {
     presence.mockImplementationOnce(
       async (_input: unknown, options: { signal: AbortSignal }) => {
         signal = options.signal;
+        // eslint-disable-next-line require-yield -- 有意不产出任何一条：流挂起到被中止
         return (async function* () {
           await new Promise((resolve) =>
             options.signal.addEventListener("abort", resolve),

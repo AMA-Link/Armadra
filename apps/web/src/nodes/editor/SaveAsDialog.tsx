@@ -81,6 +81,7 @@ export function SaveAsDialog({
             </label>
             <Input
               id="editor-save-as-path"
+              // eslint-disable-next-line jsx-a11y/no-autofocus -- 设计要求：表单或对话框打开时焦点落到首个输入
               autoFocus
               value={path}
               onChange={(event) => setPath(event.target.value)}

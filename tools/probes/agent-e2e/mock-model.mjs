@@ -36,7 +36,9 @@ export async function mockModelServer(script) {
       let body = {};
       try {
         body = JSON.parse(Buffer.concat(chunks).toString("utf8"));
-      } catch {}
+      } catch {
+        // 解析不了就当没有这一条
+      }
       const index = calls;
       calls += 1;
       requests.push(body);

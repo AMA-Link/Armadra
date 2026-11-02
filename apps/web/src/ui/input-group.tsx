@@ -65,6 +65,7 @@ function InputGroupAddon({
   ...props
 }: React.ComponentProps<"div"> & VariantProps<typeof inputGroupAddonVariants>) {
   return (
+    // eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-noninteractive-element-interactions -- 点附加区只是把焦点交给输入框的鼠标捷径，键盘本来就能聚焦输入框
     <div
       role="group"
       data-slot="input-group-addon"

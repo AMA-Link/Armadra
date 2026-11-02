@@ -45,7 +45,9 @@ export async function startIsolatedCore({ data, environment, logName }) {
       execFileSync("tmux", ["-S", join(data, "tmux.sock"), "kill-server"], {
         stdio: "ignore",
       });
-    } catch {}
+    } catch {
+      // 清理尽力而为：对象可能已经退出或不在了
+    }
   });
   core.stdout.pipe(log);
   core.stderr.pipe(log);
@@ -173,12 +175,16 @@ export async function watchWorkspaceEvents(origin, workspaceId, onEvent) {
     try {
       const frame = JSON.parse(String(data));
       onEvent(frame?.event ?? frame);
-    } catch {}
+    } catch {
+      // 解析不了就当没有这一条
+    }
   });
   const close = () => {
     try {
       socket.terminate();
-    } catch {}
+    } catch {
+      // 清理尽力而为：对象可能已经退出或不在了
+    }
   };
   cleanups.push(close);
   return { close };

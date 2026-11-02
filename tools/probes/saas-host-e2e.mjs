@@ -1465,7 +1465,9 @@ try {
       report[`console-${page.label}`] = page.consoleLines.slice(-40);
       report[`problems-${page.label}`] = page.problems.slice(-20);
       report[`network-${page.label}`] = page.failures.slice(-40);
-    } catch {}
+    } catch {
+      // 失败时的截图与现场尽力而为，取不到不该盖掉原来的失败
+    }
   }
   console.error(error);
   const running = report.scenarios.at(-1);
@@ -1474,9 +1476,8 @@ try {
   report.violationCount = report.violations.length;
   if (host) report.hostLogTail = host.log().slice(-4_000);
   for (const cleanup of cleanups.reverse()) {
-    try {
-      await cleanup();
-    } catch {}
+    // 清理尽力而为：对象可能已经退出或不在了
+    await new Promise((done) => done(cleanup())).catch(() => undefined);
   }
   // 整份结果统一打码再写（错误栈、主机日志、页面控制台行里都可能带令牌）。
   writeResult(output, JSON.parse(redact(JSON.stringify(report))));

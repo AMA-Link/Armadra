@@ -22,7 +22,6 @@ import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { build } from "vite";
 
 const here = import.meta.dirname;
-const desktop = path.resolve(here, "../../..");
 
 let bundle = "";
 const temporaries: string[] = [];

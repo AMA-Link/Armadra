@@ -91,6 +91,7 @@ export function NamePromptDialog({
         {fields.name && (
           <Input
             value={value.name}
+            // eslint-disable-next-line jsx-a11y/no-autofocus -- 设计要求：表单或对话框打开时焦点落到首个输入
             autoFocus
             aria-label={t(promptLabelKey(prompt?.kind ?? "branch"))}
             onChange={(event) =>
@@ -110,6 +111,7 @@ export function NamePromptDialog({
           <>
             <Input
               value={value.url}
+              // eslint-disable-next-line jsx-a11y/no-autofocus -- 设计要求：表单或对话框打开时焦点落到首个输入
               autoFocus={!fields.name}
               autoComplete="off"
               aria-label={t(
@@ -213,6 +215,7 @@ export function StashDiffDialog({
           <section key={section.key} className="min-w-0 space-y-1">
             <h3 className="text-meta font-medium">{t(section.key)}</h3>
             <pre
+              // eslint-disable-next-line jsx-a11y/no-noninteractive-tabindex -- 可滚动的补丁预览要能用键盘滚动
               tabIndex={0}
               className="max-h-72 overflow-auto rounded-tight bg-sunken p-2 text-caption"
             >

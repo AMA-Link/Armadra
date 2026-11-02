@@ -21,7 +21,6 @@ import {
   cloudLinkOfData,
   joinLinkOfData,
 } from "../shell-core/single-instance";
-import { DEFAULT_DEV_RENDERER_URL } from "../shell-core/window-rules";
 import {
   APP_NAME,
   iconPath,

@@ -51,6 +51,7 @@ function setup(options: Parameters<typeof pushFixture>[0] = {}) {
     };
     const run = () => router.dispatch(method, path, request);
     const answer = await (who === undefined ? run() : runAs(who, run));
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- 测试里按需探查 JSON 响应体与夹具，不逐个声明类型
     return answer as { status: number; body: any };
   };
   const ownerIdentity: RequestIdentity = {

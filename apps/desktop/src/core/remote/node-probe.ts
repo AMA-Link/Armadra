@@ -176,6 +176,7 @@ export function probeAgents(
   for (const program of requested.slice(0, MAX_PROGRAMS)) {
     if (isAbsolute(program)) {
       programs[program] =
+        // eslint-disable-next-line no-control-regex -- 有意匹配控制字符以拒绝或剥离它们
         !/[\u0000-\u001f\u007f]/u.test(program) && executable(program)
           ? program
           : null;

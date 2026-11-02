@@ -134,6 +134,7 @@ export function WorktreeCreateDialog({
             <Field label={t("gitRepo.worktreePath")}>
               <Input
                 value={value.path}
+                // eslint-disable-next-line jsx-a11y/no-autofocus -- 设计要求：表单或对话框打开时焦点落到首个输入
                 autoFocus
                 required
                 onChange={(event) => patch({ path: event.target.value })}

@@ -304,6 +304,7 @@ export function UnstashDialog({
               {reviewed && detail.data && (
                 <pre
                   className="max-h-64 overflow-auto rounded-tight bg-sunken p-2 text-caption"
+                  // eslint-disable-next-line jsx-a11y/no-noninteractive-tabindex -- 可滚动的补丁预览要能用键盘滚动
                   tabIndex={0}
                 >
                   {detail.data.patch || t("gitStash.noPatch")}
