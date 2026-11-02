@@ -37,6 +37,7 @@ vi.mock("@/agent/launch", () => ({
 const acp = vi.hoisted(() => ({ switchDriver: vi.fn() }));
 vi.mock("@/acp/api", () => ({ acpApi: acp }));
 
+import { usePreferencesStore } from "@/app/preferences-store";
 import "./terminal-menu";
 
 function permissions(id: string) {
@@ -143,6 +144,39 @@ describe("spawn", () => {
     );
     expect(spawn?.disabled).toBe(true);
     expect(spawn?.children).toEqual([]);
+  });
+
+  it("设置里关掉的 Agent 不进「派生」，全关时整项置灰", () => {
+    registry.agents = [
+      {
+        id: "claude",
+        label: "Claude Code",
+        installed: true,
+        resolvedPath: "/bin/claude",
+      },
+      {
+        id: "codex",
+        label: "Codex",
+        installed: true,
+        resolvedPath: "/bin/codex",
+      },
+    ];
+    const children = () =>
+      entries({ kind: "terminal", agent: { id: "codex" } }).find(
+        (item) => item.id === "agent.spawn",
+      );
+    try {
+      usePreferencesStore.setState({ agentModes: { claude: "disabled" } });
+      expect(children()?.children?.map((item) => item.id)).toEqual([
+        "spawn.agent.codex",
+      ]);
+      usePreferencesStore.setState({
+        agentModes: { claude: "disabled", codex: "disabled" },
+      });
+      expect(children()?.disabled).toBe(true);
+    } finally {
+      usePreferencesStore.setState({ agentModes: {} });
+    }
   });
 
   it("is not on a plain terminal", () => {

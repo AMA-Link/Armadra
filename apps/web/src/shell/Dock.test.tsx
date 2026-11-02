@@ -80,6 +80,29 @@ describe("Dock", () => {
     expect(await screen.findByText("新建终端")).toBeTruthy();
   });
 
+  it("设置里关掉的 Agent 不出现在新建菜单，打开后回来", async () => {
+    usePreferencesStore.setState({ agentModes: { claude: "disabled" } });
+    const { unmount } = render(
+      <TestProviders>
+        <Dock />
+      </TestProviders>,
+    );
+    fireEvent.keyDown(screen.getByLabelText("新建"), { key: "Enter" });
+    expect(await screen.findByText("新建终端")).toBeTruthy();
+    expect(screen.queryByText("Claude Code")).toBeNull();
+    unmount();
+    cleanup();
+
+    usePreferencesStore.setState({ agentModes: {} });
+    render(
+      <TestProviders>
+        <Dock />
+      </TestProviders>,
+    );
+    fireEvent.keyDown(screen.getByLabelText("新建"), { key: "Enter" });
+    expect(await screen.findByText("Claude Code")).toBeTruthy();
+  });
+
   it("选区有 ≥ 2 个顶层单元时「整理」改叫「整理选中」", () => {
     useCanvasStore.setState({ selectedNodeIds: ["a"], selectedItemIds: [] });
     const { rerender } = render(
