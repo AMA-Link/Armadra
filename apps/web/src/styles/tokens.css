@@ -295,7 +295,8 @@
   --ease-drawer: cubic-bezier(0.32, 0.72, 0, 1);
   /* 悬停与颜色变化 */
   --ease-color: ease;
-  --press-scale: 0.97;
+  /* 按下只降不透明度，不位移、不缩放（点一下页面不该“跳”） */
+  --press-opacity: 0.85;
   --pop-scale: 0.96;
   --stagger: 40ms;
 

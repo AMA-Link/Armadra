@@ -57,12 +57,13 @@ describe("motion 分区（设计系统 §8）", () => {
     }
   });
 
-  it("按下：活的按钮 + 一帧强制的按下态（scale 取令牌）", () => {
+  it("按下：活的按钮 + 一帧强制的按下态（只降不透明度，取令牌，没有 transform）", () => {
     renderMotion();
     const forced = cell("press").querySelector(
       '[data-forced="pressed"]',
     ) as HTMLElement;
-    expect(forced.style.transform).toBe("scale(var(--press-scale))");
+    expect(forced.style.opacity).toBe("var(--press-opacity)");
+    expect(forced.style.transform).toBe("");
   });
 
   it("发芽：菜单类与 Tooltip 用 motion-pop / motion-tip 工具类，旁边有起始帧", () => {

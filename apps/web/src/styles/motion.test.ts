@@ -1,5 +1,6 @@
 // @vitest-environment node
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync, statSync } from "node:fs";
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
@@ -62,12 +63,29 @@ describe("motion.css", () => {
     expect(css).toMatch(/min\(var\(--i, 0\), 6\) \* var\(--stagger\)/);
   });
 
-  it("按下缩放 0.97 只在 :hover:active，static / 禁用 / 弹出触发钮不生效", () => {
-    expect(css).toMatch(
-      /:hover:active\s*\{\s*transform: scale\(var\(--press-scale\)\)/,
-    );
+  it("按下只降不透明度，只在 :hover:active，static / 禁用 / 弹出触发钮不生效", () => {
+    expect(css).toMatch(/:hover:active\s*\{\s*opacity: var\(--press-opacity\)/);
     expect(css).toContain('[data-static="true"]');
     expect(css).toContain(":disabled");
+  });
+
+  it("按下没有位移也没有缩放：motion-press 的块里不出现 transform / scale / translate", () => {
+    const start = source.indexOf("/* ── 按下 / 悬停");
+    const end = source.indexOf("/* ── 进场");
+    expect(start).toBeGreaterThan(0);
+    expect(end).toBeGreaterThan(start);
+    const block = source.slice(start, end).replace(/\/\*[\s\S]*?\*\//g, "");
+    expect(block).toContain(".motion-press");
+    expect(block).not.toMatch(/\btransform\b|scale\(|translate/);
+    expect(css).not.toContain("--press-scale");
+  });
+
+  it("按下的过渡只列颜色与不透明度，不含 transform", () => {
+    const rule = /\.motion-press\s*\{\s*transition:([^}]*)\}/.exec(css);
+    expect(rule).not.toBeNull();
+    const props = rule?.[1] ?? "";
+    expect(props).toContain("opacity");
+    expect(props).not.toContain("transform");
   });
 
   it("校验失败的输入类控件抖两次（240ms 匀速）", () => {
@@ -87,5 +105,37 @@ describe("motion.css", () => {
     expect(css).toMatch(
       /@media \(hover: none\)\s*\{\s*\[data-slot="tooltip-content"\]\s*\{\s*display: none/,
     );
+  });
+});
+
+/**
+ * 点一下不该“跳”：功能代码里不写按下位移 / 缩放（`active:scale-*`、`active:translate-*`）
+ * 与 `motion` 的点按手势（`whileTap` / `whileHover`）。按下反馈统一走 `motion-press`
+ * （只降不透明度，设计系统 §8.4）。
+ */
+describe("按下反馈守卫", () => {
+  const SRC = fileURLToPath(new URL("..", import.meta.url));
+  const files: string[] = [];
+  const walk = (dir: string) => {
+    for (const name of readdirSync(dir)) {
+      const path = join(dir, name);
+      if (statSync(path).isDirectory()) walk(path);
+      else if (/\.(tsx?|css)$/.test(name) && !/\.test\.tsx?$/.test(name))
+        files.push(path);
+    }
+  };
+  walk(SRC);
+
+  it("扫到了足够多的源文件", () => {
+    expect(files.length).toBeGreaterThan(200);
+  });
+
+  it("没有 active:scale-* / active:translate-* / whileTap / whileHover", () => {
+    const offenders = files.filter((file) =>
+      /active:[^\s"'`]*(?:scale|translate)|\bwhile(?:Tap|Hover|Focus)\b/.test(
+        readFileSync(file, "utf8"),
+      ),
+    );
+    expect(offenders.map((file) => file.slice(SRC.length))).toEqual([]);
   });
 });

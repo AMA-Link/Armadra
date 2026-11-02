@@ -154,7 +154,7 @@ const MOTION_TOKENS: Record<string, string> = {
   "--ease-in-out": "cubic-bezier(0.77, 0, 0.175, 1)",
   "--ease-drawer": "cubic-bezier(0.32, 0.72, 0, 1)",
   "--ease-color": "ease",
-  "--press-scale": "0.97",
+  "--press-opacity": "0.85",
   "--pop-scale": "0.96",
   "--stagger": "40ms",
 };

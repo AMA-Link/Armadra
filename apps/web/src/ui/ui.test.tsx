@@ -511,7 +511,7 @@ describe("Button 变体与尺寸（设计系统 §9）", () => {
     expect(cls).not.toContain("transition-all");
   });
 
-  it("static 关掉按下缩放（data-static）", () => {
+  it("static 关掉按下反馈（data-static）", () => {
     render(<Button static>动作</Button>);
     expect(screen.getByRole("button").dataset.static).toBe("true");
   });

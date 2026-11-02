@@ -66,7 +66,7 @@ function Cell({
   );
 }
 
-/** 按下：活的按钮 + 一帧强制的 `scale(var(--press-scale))`。 */
+/** 按下：活的按钮 + 一帧强制的 `opacity: var(--press-opacity)`（只降不透明度，不位移不缩放）。 */
 function Press() {
   return (
     <Sample name="press">
@@ -77,7 +77,7 @@ function Press() {
         variant="outline"
         size="sm"
         data-forced="pressed"
-        style={{ transform: "scale(var(--press-scale))" }}
+        style={{ opacity: "var(--press-opacity)" }}
       >
         Run
       </Button>

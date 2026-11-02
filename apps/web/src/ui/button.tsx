@@ -15,8 +15,9 @@ import { Spinner } from "@/ui/spinner";
  * 主按钮是品牌蓝实底（一屏一个）；次要 `outline`，行内 `ghost`，危险确认
  * `destructive-solid`。
  *
- * 状态：悬停 `--dur-instant`（只在有悬停的设备上）；按下 `scale(0.97)`（`motion-press`，
- * `static` 关掉）；`aria-expanded` 保持 hover 底；`loading` 见下。
+ * 状态：悬停 `--dur-instant`（只在有悬停的设备上）；按下只降不透明度到
+ * `--press-opacity`（`motion-press`，没有位移也没有缩放，`static` 关掉）；
+ * `aria-expanded` 保持 hover 底；`loading` 见下。
  */
 const buttonVariants = cva(
   "group/button motion-press inline-flex shrink-0 items-center justify-center border border-transparent bg-clip-padding text-body font-medium whitespace-nowrap outline-none select-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:pointer-events-none disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-destructive/20 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
@@ -93,7 +94,7 @@ export interface ButtonProps
    * 点击被吞掉。`asChild` 下只写属性。
    */
   loading?: boolean;
-  /** 关掉按下缩放（行内大面积可点区域、已经有自己动画的钮）。 */
+  /** 关掉按下反馈（行内大面积可点区域、已经有自己动画的钮）。 */
   static?: boolean;
   /**
    * 尾部的快捷键提示（`Kbd` 16 高），如 `↵`、`⌘K`；同时写 `aria-keyshortcuts`。
