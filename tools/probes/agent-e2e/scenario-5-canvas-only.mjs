@@ -73,7 +73,9 @@ function claudeInit(stdout) {
       const message = JSON.parse(line);
       if (message.type === "system" && message.subtype === "init")
         return message;
-    } catch {}
+    } catch {
+      // 解析不了就当没有这一条
+    }
   }
   return undefined;
 }

@@ -18,10 +18,13 @@ const NO_TEXT = "No, exit";
 const CURSOR = /^\s*[❯>›]/;
 
 function tailOf(text) {
-  return String(text ?? "")
-    .replace(/\x1b\[[0-9;?]*[ -/]*[@-~]/g, "")
-    .split("\n")
-    .slice(-40);
+  return (
+    String(text ?? "")
+      // eslint-disable-next-line no-control-regex -- 匹配 ANSI 转义序列，必须写出控制字符
+      .replace(/\x1b\[[0-9;?]*[ -/]*[@-~]/g, "")
+      .split("\n")
+      .slice(-40)
+  );
 }
 
 /**

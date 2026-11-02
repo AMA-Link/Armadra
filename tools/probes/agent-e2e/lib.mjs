@@ -616,7 +616,9 @@ export async function setup(clis) {
           let json;
           try {
             json = JSON.parse(stdout);
-          } catch {}
+          } catch {
+            // 解析不了就当没有这一条
+          }
           const answer = {
             code: error ? (error.code ?? 1) : 0,
             stdout: stdout.trim(),
@@ -1262,7 +1264,9 @@ export function finalize() {
   for (const cleanup of cleanups.reverse()) {
     try {
       cleanup();
-    } catch {}
+    } catch {
+      // 清理尽力而为：对象可能已经退出或不在了
+    }
   }
   const after = fingerprint();
   // CLI 自己升级也算改了操作员的机器。只在开场记过版本（真跑了 CLI）时复核：
@@ -1275,7 +1279,9 @@ export function finalize() {
           execFileSync(id, ["--version"], { encoding: "utf8" }).trim(),
         ]),
       );
-    } catch {}
+    } catch {
+      // 读不到就按没有处理
+    }
   }
   const versionsKept =
     report.versions === undefined ||
@@ -1295,7 +1301,9 @@ export function finalize() {
         readFileSync(file, "utf8").includes(state.scratchRoot.split("/").pop())
       )
         report.safety.blamed.push(file);
-    } catch {}
+    } catch {
+      // 读不到就按没有处理
+    }
   }
   const claudeState = report.safety.claudeState;
   if (claudeState !== undefined) {

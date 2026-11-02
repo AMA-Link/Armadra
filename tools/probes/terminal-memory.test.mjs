@@ -595,7 +595,7 @@ test("B 档清单：terminal-memory 在 darwin / linux 上跑，参数是设计 
   );
   assert.match(
     listed,
-    /^terminal-memory \[darwin, linux\]  tools\/probes\/terminal-memory\.mjs$/m,
+    /^terminal-memory \[darwin, linux\] {2}tools\/probes\/terminal-memory\.mjs$/m,
   );
 });
 

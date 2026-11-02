@@ -157,7 +157,9 @@ await h.run(async () => {
   h.cleanups.push(() => {
     try {
       execFileSync("pkill", ["-f", base], { stdio: "ignore" });
-    } catch {}
+    } catch {
+      // 清理尽力而为：对象可能已经退出或不在了
+    }
   });
   const bin = join(base, "bin");
   mkdirSync(bin);
@@ -592,10 +594,6 @@ async function scenario(ctx) {
       await page.click('button[aria-label="资源管理器"]');
     await page.click("*", name, { exact: true });
   };
-  const nodeText = (name) =>
-    page.evaluate(
-      `return [...document.querySelectorAll(".react-flow__node")].find((node) => node.innerText.startsWith(${JSON.stringify(name)}))?.innerText ?? "";`,
-    );
 
   await attempt(ctx, "04-language", async () => {
     await page.click('button[aria-label="源码控制"]');

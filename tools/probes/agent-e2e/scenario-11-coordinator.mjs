@@ -437,7 +437,9 @@ function filesContaining(root, needle, skip) {
       else if (entry.isFile()) {
         try {
           if (readFileSync(path).includes(needle)) found.push(path);
-        } catch {}
+        } catch {
+          // 读不到就按没有处理
+        }
       }
     }
   };

@@ -312,10 +312,6 @@ await h.run(async () => {
   await page.navigate(`${web}/?workspace=${workspace.id}&board=${board.id}`);
   await page.settle();
   const node = (id) => `.react-flow__node[data-id="${id}"]`;
-  const nodeText = (id) =>
-    page.evaluate(
-      `return document.querySelector(${JSON.stringify(node(id))})?.innerText ?? "";`,
-    );
   const sessionRow = (nodeId) =>
     query(
       "SELECT id, backend_kind, generation, status, termination_intent FROM terminal_sessions WHERE owner_node_id = ? ORDER BY (status = 'running') DESC, generation DESC LIMIT 1",

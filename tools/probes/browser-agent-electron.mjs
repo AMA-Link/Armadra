@@ -71,7 +71,9 @@ export async function runElectron(ctx) {
           /^(https?:\/\/(127\.0\.0\.1|localhost)|file:)/.test(each.url ?? "") &&
           each.webSocketDebuggerUrl,
       );
-    } catch {}
+    } catch {
+      // 调试端口还没起来，下一轮再问
+    }
     if (target === undefined) await sleep(500);
   }
   if (target === undefined) throw new Error(`Electron 渲染页没有出现：${log}`);

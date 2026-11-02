@@ -219,9 +219,8 @@ try {
         }, 15000);
       pending.set(id, (message) => {
         clearTimeout(timer);
-        message.error
-          ? fail(new Error(message.error.message))
-          : done(message.result);
+        if (message.error) fail(new Error(message.error.message));
+        else done(message.result);
       });
       socket.send(JSON.stringify({ id, method, params }));
     });
@@ -409,20 +408,26 @@ try {
   if (runId) {
     try {
       cli(["run", "cancel", "--run", runId, "--key", "cleanup"]);
-    } catch {}
+    } catch {
+      // 清理尽力而为：运行可能已经结束
+    }
   }
   for (const socket of sockets) socket.close();
   for (const child of children.toReversed()) {
     // Only groups created by this probe. pnpm/Vite can outlive its wrapper.
     try {
       process.kill(-child.pid, "SIGTERM");
-    } catch {}
+    } catch {
+      // 清理尽力而为：对象可能已经退出或不在了
+    }
     if (child.exitCode === null && child.signalCode === null) {
       await Promise.race([once(child, "exit"), sleep(3000)]);
       if (child.exitCode === null && child.signalCode === null)
         try {
           process.kill(-child.pid, "SIGKILL");
-        } catch {}
+        } catch {
+          // 清理尽力而为：对象可能已经退出或不在了
+        }
     }
     child.stdout.destroy();
     child.stderr.destroy();

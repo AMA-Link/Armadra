@@ -50,7 +50,6 @@ import { fileURLToPath } from "node:url";
 
 import {
   claudeTranscriptLines,
-  parseChunkMarker,
   turnLabel,
   writeJsonl,
 } from "./fixtures/acp-session-gen.mjs";

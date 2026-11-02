@@ -412,10 +412,15 @@ function hookGet(dataDir, path, headers = {}) {
 
 /** What a terminal drew, its escape sequences taken out. */
 function plain(screen) {
-  return screen
-    .replace(/\x1b\[[0-9;?]*[ -\/]*[@-~]/g, "")
-    .replace(/\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)/g, "")
-    .replace(/\x1b[@-_]/g, "");
+  return (
+    screen
+      // eslint-disable-next-line no-control-regex -- 匹配 ANSI 转义序列，必须写出控制字符
+      .replace(/\x1b\[[0-9;?]*[ -/]*[@-~]/g, "")
+      // eslint-disable-next-line no-control-regex -- 匹配 ANSI 转义序列，必须写出控制字符
+      .replace(/\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)/g, "")
+      // eslint-disable-next-line no-control-regex -- 匹配 ANSI 转义序列，必须写出控制字符
+      .replace(/\x1b[@-_]/g, "")
+  );
 }
 
 function readRows(dataDir, sql, ...params) {

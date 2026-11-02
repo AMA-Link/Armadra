@@ -249,7 +249,9 @@ try {
           readFileSync(submissionsPath, "utf8").trim().split("\n").length === 2
         )
           break;
-      } catch {}
+      } catch {
+        // 还没就绪，下一轮再试
+      }
       await new Promise((done) => setTimeout(done, 100));
     }
     assert.equal(
@@ -363,7 +365,9 @@ try {
             ?.instanceId !== oldInstance
         )
           break;
-      } catch {}
+      } catch {
+        // 端点文件还没写好，下一轮再读
+      }
       await new Promise((done) => setTimeout(done, 50));
     }
     await new Promise((done) => setTimeout(done, 1500));
@@ -397,7 +401,9 @@ try {
       )
         .trim()
         .split("\n").length;
-    } catch {}
+    } catch {
+      // 读不到就按没有处理
+    }
     assert.ok(launchCount <= 1, "startup was replayed");
     console.log(
       JSON.stringify({

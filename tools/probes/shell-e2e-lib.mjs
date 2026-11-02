@@ -51,7 +51,9 @@ export function harness(output) {
       for (const cleanup of cleanups.reverse()) {
         try {
           await cleanup();
-        } catch {}
+        } catch {
+          // 清理尽力而为：对象可能已经退出或不在了
+        }
       }
       writeFileSync(
         join(output, "result.json"),
@@ -82,7 +84,9 @@ export function killTmux(dataDir) {
     execFileSync("tmux", ["-S", join(dataDir, "tmux.sock"), "kill-server"], {
       stdio: "ignore",
     });
-  } catch {}
+  } catch {
+    // 清理尽力而为：tmux 服务可能已经退出
+  }
 }
 
 /** 起一个子进程，保留 stdout / stderr 的尾巴，退出时 SIGKILL。 */

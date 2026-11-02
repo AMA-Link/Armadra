@@ -380,7 +380,9 @@ async function run(options) {
     for (const cleanup of cleanups.reverse()) {
       try {
         await cleanup();
-      } catch {}
+      } catch {
+        // 清理尽力而为：对象可能已经退出或不在了
+      }
     }
     process.exit(1);
   };
@@ -466,7 +468,9 @@ async function run(options) {
       for (const cleanup of cleanups.splice(0).reverse()) {
         try {
           await cleanup();
-        } catch {}
+        } catch {
+          // 清理尽力而为：对象可能已经退出或不在了
+        }
       }
       const second = newReport();
       const confirmOutput = join(output, "confirm");
@@ -503,7 +507,9 @@ async function run(options) {
       for (const cleanup of cleanups.reverse()) {
         try {
           await cleanup();
-        } catch {}
+        } catch {
+          // 清理尽力而为：对象可能已经退出或不在了
+        }
       }
   }
   return report.status === "ok" ? 0 : 1;
@@ -600,7 +606,9 @@ async function scenario(options, output, report, cleanups, save) {
         execFileSync("tmux", ["-S", socket, "kill-server"], {
           stdio: "ignore",
         });
-      } catch {}
+      } catch {
+        // 清理尽力而为：对象可能已经退出或不在了
+      }
     // 被结束的 shell 会异步写回历史文件，等它写完再删临时 HOME。
     await sleep(2000);
   });
@@ -836,7 +844,9 @@ async function scenario(options, output, report, cleanups, save) {
         .split("\n")
         .filter(Boolean)
         .map((line) => JSON.parse(line));
-    } catch {}
+    } catch {
+      // 读不到或解析不了就当没有
+    }
     const fresh = lines.slice(eldCursor);
     eldCursor = lines.length;
     return summarizePreload(fresh);
@@ -1119,7 +1129,9 @@ async function scenario(options, output, report, cleanups, save) {
     for (const row of emitters)
       try {
         process.kill(row.pid, "SIGTERM");
-      } catch {}
+      } catch {
+        // 清理尽力而为：对象可能已经退出或不在了
+      }
     await sleep(1000);
     const tmuxPanes = () => {
       if (options.backend !== "tmux") return [];

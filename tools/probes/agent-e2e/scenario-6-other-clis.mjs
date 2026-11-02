@@ -130,7 +130,9 @@ function pickFreeModel(cli, wrapper, prefix, env, cwd) {
       timeout: 120_000,
       stdio: "ignore",
     });
-  } catch {}
+  } catch {
+    // 读不到就按没有处理
+  }
   const listed = read(`${prefix}.out`)
     .split("\n")
     .map((line) => line.trim())
@@ -154,7 +156,9 @@ function opencodeDebug(wrapper, launcher, prefix, env, cwd) {
         timeout: 60_000,
         stdio: "ignore",
       });
-    } catch {}
+    } catch {
+      // 读不到就按没有处理
+    }
     answer[what] = read(`${prefix}-${what}.out`);
   }
   return answer;

@@ -9,7 +9,7 @@
 const argv = process.argv.join(" ");
 if (!argv.includes("core/main.js") || !process.env.BENCH_ELD_FILE) return;
 
-const { monitorEventLoopDelay, performance } = require("node:perf_hooks");
+const { monitorEventLoopDelay } = require("node:perf_hooks");
 const childProcess = require("node:child_process");
 const { appendFileSync } = require("node:fs");
 

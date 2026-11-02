@@ -129,7 +129,9 @@ try {
               await page.capture(join(output, `failure-${name}-${index}.png`)),
             );
             entry.problems.push(...page.unexpected());
-          } catch {}
+          } catch {
+            // 失败时的截图与现场尽力而为，取不到不该盖掉原来的失败
+          }
         }
       } else {
         report.scenarios.push({ name, status: "failed", error: message });

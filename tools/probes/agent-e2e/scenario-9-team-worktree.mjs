@@ -99,7 +99,9 @@ async function setupFake() {
       execFileSync("tmux", ["-S", join(data, "tmux.sock"), "kill-server"], {
         stdio: "ignore",
       });
-    } catch {}
+    } catch {
+      // 清理尽力而为：对象可能已经退出或不在了
+    }
   });
   core.stdout.pipe(log);
   core.stderr.pipe(log);
@@ -204,7 +206,9 @@ async function setupFake() {
           let json;
           try {
             json = JSON.parse(stdout);
-          } catch {}
+          } catch {
+            // 解析不了就当没有这一条
+          }
           const answer = {
             code: error ? (error.code ?? 1) : 0,
             stdout: stdout.trim(),

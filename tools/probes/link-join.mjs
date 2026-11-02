@@ -635,7 +635,6 @@ try {
  */
 async function sessionShare({
   run,
-  win,
   core,
   relay,
   serviceId,

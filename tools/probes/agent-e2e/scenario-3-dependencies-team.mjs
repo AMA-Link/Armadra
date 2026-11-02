@@ -3,7 +3,6 @@ import { note, scenario, sleep, waitFor } from "./lib.mjs";
 
 export default async function run(ctx) {
   const {
-    shell,
     codexA,
     one,
     liveSession,

@@ -220,7 +220,9 @@ export function processStats(pid) {
       const [rss, time] = out.split(/\s+/);
       return { rssMiB: Number(rss) / 1024, cpuSeconds: cpuTime(time) };
     }
-  } catch {}
+  } catch {
+    // 读不到就按没有处理
+  }
   return null;
 }
 
@@ -308,7 +310,9 @@ function client(origin) {
             let json = null;
             try {
               json = text ? JSON.parse(text) : null;
-            } catch {}
+            } catch {
+              // 解析不了就当没有这一条
+            }
             done({
               status: response.statusCode ?? 0,
               headers: response.headers,
@@ -905,7 +909,9 @@ async function main() {
           for (const cleanup of h.cleanups.splice(0).reverse()) {
             try {
               await cleanup();
-            } catch {}
+            } catch {
+              // 清理尽力而为：对象可能已经退出或不在了
+            }
           }
           const confirmOutput = join(output, "confirm");
           mkdirSync(confirmOutput, { recursive: true });
