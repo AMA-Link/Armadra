@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it } from "vitest";
 
 import { BROKEN, FLOWCHART_LR, FLOWCHART_TD, SEQUENCE } from "./fixtures";
 import {
@@ -18,6 +18,15 @@ import {
  * 都不需要度量 DOM，所以这一层可以钉死在真实行为上。需要真 DOM 的只有
  * `mermaid.render`，那条路在 `render.ts`，测试里一律 mock（设计 §7）。
  */
+
+/**
+ * mermaid 本体是 `parseMermaid` 里第一次调用时才 `import("mermaid")` 的（约 1 秒的
+ * 冷加载）。放进 beforeAll 预热，这点固有的加载成本就不会算进第一条用例的 5 秒里；
+ * 钩子预算单独给 30 秒，因为加载的是整个 mermaid 包。
+ */
+beforeAll(async () => {
+  await parseMermaid("flowchart LR\n  A --> B");
+}, 30_000);
 
 describe("parseMermaid：含 subgraph 与边标签的 LR 流程图", () => {
   it("方向、节点、边与子图都解得出来", async () => {
