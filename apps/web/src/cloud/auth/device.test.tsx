@@ -1,4 +1,5 @@
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -20,6 +21,21 @@ vi.mock("./app-return", async (original) => ({
   ...(await original<typeof import("./app-return")>()),
   returnToApp: returned,
 }));
+
+/**
+ * `returnToApp` 在「已授权」那一帧提交之后的 `useEffect` 里调用：文案出现时它可能
+ * 还没跑（`findByText` 看到 DOM 就返回），所以断言前先等调用发生、再冲一次副作用
+ * 确认没有第二次；不跳的那几条用 {@link flushEffects} 冲完再断言，否则漏跳也能过。
+ */
+const flushEffects = () =>
+  act(async () => {
+    await Promise.resolve();
+  });
+const returnedOnce = async () => {
+  await waitFor(() => expect(returned).toHaveBeenCalled());
+  await flushEffects();
+  expect(returned).toHaveBeenCalledTimes(1);
+};
 
 const visit = (url: string) => window.history.replaceState(null, "", url);
 const here = () => window.location.pathname + window.location.search;
@@ -318,7 +334,7 @@ describe("设备授权页", () => {
       confirmCode();
       fireEvent.click(screen.getByRole("button", { name: "授权" }));
       await screen.findByText("已授权，可以回到 build-01");
-      expect(returned).toHaveBeenCalledTimes(1);
+      await returnedOnce();
       const back = screen.getByRole("link", { name: "返回 Armadra" });
       expect(back.getAttribute("href")).toBe("armadra://cloud/device-approved");
       expect(screen.getByRole("button", { name: "继续" })).toBeTruthy();
@@ -334,6 +350,7 @@ describe("设备授权页", () => {
       confirmCode();
       fireEvent.click(screen.getByRole("button", { name: "授权" }));
       await screen.findByText("已授权，可以回到 build-01");
+      await flushEffects();
       expect(returned).not.toHaveBeenCalled();
       expect(screen.queryByRole("link", { name: "返回 Armadra" })).toBeNull();
     },
@@ -345,6 +362,7 @@ describe("设备授权页", () => {
     await screen.findByText("build-01 请求登录");
     fireEvent.click(screen.getByRole("button", { name: "拒绝" }));
     await screen.findByText("已拒绝这次登录");
+    await flushEffects();
     expect(returned).not.toHaveBeenCalled();
     expect(screen.queryByRole("link", { name: "返回 Armadra" })).toBeNull();
   });
@@ -360,6 +378,6 @@ describe("设备授权页", () => {
     fireEvent.change(secret, { target: { value: "right" } });
     fireEvent.submit(secret.closest("form")!);
     await screen.findByText("已授权，可以回到 build-01");
-    expect(returned).toHaveBeenCalledTimes(1);
+    await returnedOnce();
   });
 });

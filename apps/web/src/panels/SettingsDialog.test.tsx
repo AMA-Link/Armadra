@@ -7,6 +7,7 @@ import {
   screen,
   waitFor,
   within,
+  configure,
 } from "@testing-library/react";
 import type { AgentInfo } from "@armadra/shared";
 
@@ -65,6 +66,15 @@ import { SETTINGS_SHEET_CLASS, SettingsDialog } from "./SettingsDialog";
 import { visibleSettingsSections } from "./settings/nav";
 
 installDomPolyfills();
+/**
+ * 整页对话框 / 抽屉在 jsdom 里首渲染就要几百毫秒（本机单跑最慢一条约 0.8 秒），
+ * 整套并行或 CI 共享核时放大到 5 倍以上，默认 5 秒的预算会误杀。这是固有的渲染
+ * 开销而不是在等什么：用例通过时不会因此变慢，只是挂住时晚几秒才失败。`waitFor` /
+ * `findBy*` 同理——它们一成立就返回，默认 1 秒的上界在负载下先到，放宽到 10 秒。
+ */
+vi.setConfig({ testTimeout: 15_000 });
+configure({ asyncUtilTimeout: 10_000 });
+
 afterEach(cleanup);
 
 const claude: AgentInfo = {
@@ -702,7 +712,8 @@ describe("SettingsDialog", () => {
     open();
     fireEvent.click(navItem(zh("settings.section.service")));
     expect(await screen.findByText("/tmp/armadra")).toBeTruthy();
-    expect(screen.getByText("2 KB")).toBeTruthy();
+    // 目录与大小来自同一份数据，但不是同一次提交：两个都等，不假定先后。
+    expect(await screen.findByText("2 KB")).toBeTruthy();
     fireEvent.click(navItem(zh("settings.section.sessions")));
     // 已索引会话是一张托盘：大数字就是条数
     await waitFor(() =>

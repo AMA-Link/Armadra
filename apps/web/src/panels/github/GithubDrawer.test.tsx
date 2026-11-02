@@ -5,6 +5,7 @@ import {
   render,
   screen,
   waitFor,
+  configure,
 } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { GithubReferenceKind, githubExternalReference } from "../../api/github";
@@ -143,6 +144,15 @@ async function resolveRemote(url: string) {
 function selectTab(label: string) {
   fireEvent.mouseDown(screen.getByText(label), { button: 0 });
 }
+
+/**
+ * 整页对话框 / 抽屉在 jsdom 里首渲染就要几百毫秒（本机单跑最慢一条约 0.8 秒），
+ * 整套并行或 CI 共享核时放大到 5 倍以上，默认 5 秒的预算会误杀。这是固有的渲染
+ * 开销而不是在等什么：用例通过时不会因此变慢，只是挂住时晚几秒才失败。`waitFor` /
+ * `findBy*` 同理——它们一成立就返回，默认 1 秒的上界在负载下先到，放宽到 10 秒。
+ */
+vi.setConfig({ testTimeout: 15_000 });
+configure({ asyncUtilTimeout: 10_000 });
 
 beforeEach(() => {
   usePreferencesStore.setState({ locale: "zh-CN" });
