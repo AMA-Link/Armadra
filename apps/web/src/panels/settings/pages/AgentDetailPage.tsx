@@ -1,3 +1,4 @@
+import { useQueryClient } from "@tanstack/react-query";
 import type { AgentInfo } from "@armadra/shared";
 
 import {
@@ -36,25 +37,38 @@ import { Switch } from "@/ui/switch";
 /**
  * 启用开关（本设备，`agentModes`）：开 = 出现在画布右键等新建入口，关 = 不出现。
  * 主表、子页与自定义 Agent 表格同一个控件；关掉不删配置，也不动已有节点。
+ *
+ * `installed` 是本机检测；`undefined` = 检测结果还没到，此时开关不可点（按「没装」
+ * 写会把本该是 `default` 的写成 `enabled`）。菜单按**当前来源**的检测过滤，所以从
+ * 关到开时若当前来源（比如远端工作空间）报告没装，写 `enabled` 才进得了它的菜单。
  */
 export function AgentEnabledSwitch({
   agent,
 }: {
-  agent: Pick<AgentInfo, "id" | "label" | "installed">;
+  agent: Pick<AgentInfo, "id" | "label"> & { installed: boolean | undefined };
 }) {
   const t = useT();
+  const client = useQueryClient();
+  const detected = agent.installed !== undefined;
   const enabled = usePreferencesStore((state) =>
-    agentIsEnabled(state.agentModes[agent.id], agent.installed),
+    agentIsEnabled(state.agentModes[agent.id], agent.installed ?? false),
   );
   const setAgentEnabled = usePreferencesStore((state) => state.setAgentEnabled);
   return (
     <Switch
       size="sm"
       checked={enabled}
+      disabled={!detected}
       aria-label={`${agent.label} ${t("agents.row.mode")}`}
-      onCheckedChange={(checked) =>
-        setAgentEnabled(agent.id, checked, agent.installed)
-      }
+      onCheckedChange={(checked) => {
+        // 当前来源的清单（与 `useAgentsQuery()` 同一个键）；没取到就只信本机检测。
+        const here = client
+          .getQueryData<readonly AgentInfo[]>(["agents"])
+          ?.find((entry) => entry.id === agent.id);
+        const installed =
+          (agent.installed ?? false) && here?.installed !== false;
+        setAgentEnabled(agent.id, checked, installed);
+      }}
     />
   );
 }

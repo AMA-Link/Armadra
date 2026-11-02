@@ -29,7 +29,7 @@ export function SettingsRow({
   className?: string;
 }) {
   const text = (
-    <span className="flex min-w-0 flex-col gap-0.5 text-left">
+    <span className="flex min-w-[5rem] flex-col gap-0.5 text-left">
       <span className="break-words text-body text-foreground">{label}</span>
       {footnote && (
         <span className="text-caption text-muted-foreground">{footnote}</span>

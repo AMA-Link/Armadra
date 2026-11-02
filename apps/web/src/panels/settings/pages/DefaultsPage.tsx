@@ -12,6 +12,7 @@ import { useAccess } from "../../../app/use-access";
 import { useAgentsQuery } from "../../../app/use-agents";
 import {
   THEME_PREFERENCES,
+  agentChoices,
   usePreferencesStore,
   useT,
   type ThemePreference,
@@ -113,15 +114,20 @@ function AgentDefaultRows() {
   const simpleMode = useSimpleModeStore((state) => state.simpleMode);
   const setSimpleMode = useSimpleModeStore((state) => state.setSimpleMode);
 
-  const list = agents.data ?? [];
-  const selectedAgentId = defaultAgentId ?? list[0]?.id ?? "claude";
-  const selectedBase =
-    list.find((agent) => agent.id === selectedAgentId)?.baseAgent ??
-    selectedAgentId;
-  const permissionModes = supportedPermissionModes(selectedBase);
-  const effectivePermission = permissionModes.includes(permissionMode)
-    ? permissionMode
-    : "default";
+  // 列表没到（加载中或查询失败）时什么都不判断：自定义 Agent 此时认不出基础
+  // Agent，会被当成只支持「默认」，把存着的权限模式冲掉。
+  const list = agents.data;
+  const modes = usePreferencesStore((state) => state.agentModes);
+  const choices = agentChoices(list ?? [], modes, defaultAgentId);
+  const selectedAgentId =
+    defaultAgentId ?? choices[0]?.id ?? list?.[0]?.id ?? "claude";
+  const baseOf = (id: string) =>
+    list?.find((agent) => agent.id === id)?.baseAgent ?? id;
+  const permissionModes = supportedPermissionModes(baseOf(selectedAgentId));
+  const effectivePermission =
+    !list || permissionModes.includes(permissionMode)
+      ? permissionMode
+      : "default";
 
   // 换了一家不支持当前权限模式的 Agent：落回「默认」，不留一个点不中的值。
   React.useEffect(() => {
@@ -135,10 +141,11 @@ function AgentDefaultRows() {
         <SettingsRow label={t("settings.defaultAgent")}>
           <Select
             value={selectedAgentId}
+            disabled={!list}
             onValueChange={(id) => {
-              const base =
-                list.find((agent) => agent.id === id)?.baseAgent ?? id;
-              if (!supportedPermissionModes(base).includes(permissionMode))
+              if (
+                !supportedPermissionModes(baseOf(id)).includes(permissionMode)
+              )
                 setPermissionMode("default");
               setDefaultAgentId(id);
             }}
@@ -151,9 +158,11 @@ function AgentDefaultRows() {
               <SelectValue />
             </SelectTrigger>
             <SelectContent className="z-[var(--z-dialog)]">
-              {list.map((agent) => (
+              {choices.map((agent) => (
                 <SelectItem key={agent.id} value={agent.id}>
-                  {agent.label}
+                  {agent.off
+                    ? t("settings.defaultAgent.off", { name: agent.label })
+                    : agent.label}
                 </SelectItem>
               ))}
             </SelectContent>
@@ -163,6 +172,7 @@ function AgentDefaultRows() {
         <SettingsRow label={t("settings.defaultPermission")}>
           <Select
             value={effectivePermission}
+            disabled={!list}
             onValueChange={(value) =>
               setPermissionMode(value as PermissionMode)
             }

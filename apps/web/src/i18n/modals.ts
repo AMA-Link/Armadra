@@ -196,6 +196,7 @@ export const modals: MessageModule = {
 
     "settings.workspaceDefaultAgent": "默认 Agent 覆盖", // i18n-exempt
     "settings.defaultAgent.inherit": "跟随全局",
+    "settings.defaultAgent.off": "{name}（已关闭）",
     "settings.noWorkspace": "未打开工作空间",
     "settings.archive.empty": "没有已归档的工作空间",
     "settings.archive.restore": "恢复",
@@ -483,6 +484,7 @@ export const modals: MessageModule = {
 
     "settings.workspaceDefaultAgent": "Default agent override",
     "settings.defaultAgent.inherit": "Follow global",
+    "settings.defaultAgent.off": "{name} (off)",
     "settings.noWorkspace": "No workspace open",
     "settings.archive.empty": "No archived workspaces",
     "settings.archive.restore": "Restore",

@@ -51,6 +51,14 @@
 }
 
 @media (max-width: 767px) {
+  /* 手机宽度：控件放不下时换到标签下一行，标签不被挤成一字一行 */
+  .settings-row {
+    flex-wrap: wrap;
+  }
+  .settings-row-controls {
+    margin-left: auto;
+    flex-wrap: wrap;
+  }
   .settings-row-controls > * {
     min-width: 0;
     max-width: 100%;

@@ -10,6 +10,7 @@ import {
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 
 import { usePreferencesStore } from "@/app/preferences-store";
+import { optionLabels, installDomPolyfills } from "@/app/test-harness";
 import { useCanvasStore } from "@/store/canvas-store";
 
 const api = vi.hoisted(() => ({
@@ -17,6 +18,9 @@ const api = vi.hoisted(() => ({
   switchExecutionHost: vi.fn(),
 }));
 const refusal = vi.hoisted(() => vi.fn());
+const agentList = vi.hoisted(() => ({
+  data: [] as Array<{ id: string; label: string; installed: boolean }>,
+}));
 const toasts = vi.hoisted(() => ({
   success: vi.fn(),
   error: vi.fn(),
@@ -38,7 +42,7 @@ vi.mock("../use-runtime-settings", () => ({
   }),
 }));
 vi.mock("../../../app/use-agents", () => ({
-  useAgentsQuery: () => ({ data: [] }),
+  useAgentsQuery: () => ({ data: agentList.data }),
 }));
 // 这几块各有自己的测试；这里只看它们挂在这一页上。
 vi.mock("./WorkspaceExecution", () => ({
@@ -106,7 +110,11 @@ async function click(element: Element) {
   });
 }
 
-beforeEach(() => api.executionHosts.mockResolvedValue([local, box]));
+beforeEach(() => {
+  api.executionHosts.mockResolvedValue([local, box]);
+  agentList.data = [];
+  usePreferencesStore.setState({ agentModes: {} });
+});
 afterEach(() => {
   cleanup();
   for (const spy of Object.values(api)) spy.mockReset();
@@ -122,6 +130,23 @@ describe("设置 → 工作空间", () => {
     expect(screen.getByText("This computer")).toBeTruthy();
     expect(screen.getByTestId("language")).toBeTruthy();
     expect(screen.getByTestId("realtime")).toBeTruthy();
+  });
+
+  it("默认 Agent 下拉不列已关闭的 Agent（#734）", async () => {
+    installDomPolyfills();
+    agentList.data = [
+      { id: "claude", label: "Claude Code", installed: true },
+      { id: "codex", label: "Codex", installed: true },
+    ];
+    usePreferencesStore.setState({ agentModes: { codex: "disabled" } });
+    mount();
+    const trigger = await screen.findByRole("combobox", {
+      name: "Default agent override",
+    });
+    expect(await optionLabels(trigger)).toEqual([
+      "Follow global",
+      "Claude Code",
+    ]);
   });
 
   it("只有本机时不给「运行主机」这一行", async () => {

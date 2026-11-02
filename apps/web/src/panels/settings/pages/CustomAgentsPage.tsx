@@ -173,9 +173,11 @@ export function CustomAgentsPage() {
                       agent={{
                         id: agent.id,
                         label: agent.label,
-                        installed:
-                          detected?.find((entry) => entry.id === agent.id)
-                            ?.installed ?? false,
+                        // 检测没到时不画成「没装」，开关等结果。
+                        installed: detected
+                          ? (detected.find((entry) => entry.id === agent.id)
+                              ?.installed ?? false)
+                          : undefined,
                       }}
                     />
                   </TableCell>
