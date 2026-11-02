@@ -190,7 +190,7 @@ export function ConnectionGroup() {
   const { state, check } = useHostConnection();
   const run = useCallback(() => void check(), [check]);
   useEffect(() => {
-    // 配对链接由「设备与会话」那一页接住；这里只看连不连得上。
+    // 配对链接由「账号与设备」那一页接住；这里只看连不连得上。
     if (!hasPairingFragment()) run();
   }, [run]);
   const message =

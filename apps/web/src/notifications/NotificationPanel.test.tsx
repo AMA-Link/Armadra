@@ -250,7 +250,7 @@ describe("NotificationPanel", () => {
     expect(rows[1]!.getAttribute("data-tree")).toBeNull();
   });
 
-  it("本机的背书在各工作空间之前单列一组，计入铃铛；点开标已读并打开「设备」页", async () => {
+  it("本机的背书在各工作空间之前单列一组，计入铃铛；点开标已读并打开「账号与设备」页", async () => {
     const endorsement = {
       id: "e1",
       deviceId: "dev_new",
@@ -278,7 +278,7 @@ describe("NotificationPanel", () => {
     );
     expect(onClose).toHaveBeenCalled();
     expect(devices.markEndorsementsRead).toHaveBeenCalledWith(["e1"]);
-    expect(usePreferencesStore.getState().lastSettingsSection).toBe("devices");
+    expect(usePreferencesStore.getState().lastSettingsSection).toBe("security");
     expect(useCanvasStore.getState().panels.settings).toBe(true);
     await act(async () => {});
     expect(useNeedsStore.getState().host).toEqual([]);

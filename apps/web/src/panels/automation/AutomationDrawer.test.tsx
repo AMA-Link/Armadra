@@ -184,8 +184,8 @@ describe("automation page availability", () => {
     expect(screen.queryByText("启用")).toBeNull();
     fireEvent.click(screen.getByText("前往设置"));
     expect(store.setPanel).toHaveBeenCalledWith("settings", true);
-    // 没配对：去「设备与会话」，那里是这台设备的登录。
-    expect(usePreferencesStore.getState().lastSettingsSection).toBe("devices");
+    // 没配对：去「账号与设备」，那里是这台设备的登录。
+    expect(usePreferencesStore.getState().lastSettingsSection).toBe("security");
   });
 
   it("says a Host without a Worker cannot run plans", async () => {
