@@ -86,7 +86,7 @@ function dialogOf(control: HTMLElement) {
 
 /** 那一行里显示的来源（默认 / 全局 / 本设备）。 */
 function paletteSource() {
-  return paletteChip().closest("tr")!.textContent ?? "";
+  return paletteChip().closest("[data-command]")!.textContent ?? "";
 }
 
 const runPalette = vi.fn();
@@ -123,6 +123,61 @@ describe("KeybindingsPage", { timeout: 15_000 }, () => {
       .mockImplementation((patch: { keymap: Record<string, unknown> }) =>
         Promise.resolve(documentWith(patch.keymap)),
       );
+  });
+
+  it("按区域分组成紧凑的行：左边命令名，右边键帽，没有表格也没有空分组", async () => {
+    const { container } = view();
+    const chip = await screen.findByLabelText(zh("cmd.canvas.selectAll"), {
+      selector: "button",
+    });
+    expect(container.querySelector("table")).toBeNull();
+
+    const row = chip.closest<HTMLElement>("[data-command]")!;
+    expect(row.getAttribute("data-command")).toBe("canvas.selectAll");
+    expect(row.textContent).toContain(zh("cmd.canvas.selectAll"));
+    expect(chip.textContent).toBe(formatKeys("Mod+A", { mac: here === "mac" }));
+    // 命令名在前、键帽在后，行里不再有「默认」徽标。
+    expect(row.textContent).not.toContain(
+      zh("settings.shortcut.source.default"),
+    );
+    // 行落在「画布」分组下。
+    expect(row.closest("section")?.getAttribute("aria-label")).toBe(
+      zh("settings.scope.canvas"),
+    );
+    // 每个分组标题下面至少有一行：没有空标题行。
+    for (const section of container.querySelectorAll(
+      '[data-slot="settings-table-card"] section',
+    ))
+      expect(section.querySelectorAll("[data-command]").length).toBeGreaterThan(
+        0,
+      );
+  });
+
+  it("全选可以改键，改后写进当前档；清成无显示「未绑定」", async () => {
+    view();
+    fireEvent.click(
+      await screen.findByLabelText(zh("cmd.canvas.selectAll"), {
+        selector: "button",
+      }),
+    );
+    fireEvent.keyDown(window, { key: "j", code: "KeyJ", ...mod() });
+    await waitFor(() =>
+      expect(patchSettings).toHaveBeenCalledWith({
+        keymap: { [here]: { "canvas.selectAll": "Mod+J" } },
+      }),
+    );
+
+    fetchSettings.mockResolvedValue(
+      documentWith({ [here]: { "canvas.selectAll": "" } }),
+    );
+    cleanup();
+    view();
+    const unbound = await screen.findByLabelText(zh("cmd.canvas.selectAll"), {
+      selector: "button",
+    });
+    await waitFor(() =>
+      expect(unbound.textContent).toBe(zh("settings.shortcut.unbound")),
+    );
   });
 
   it("录制只写当前平台那一格，另一个平台保持原样", async () => {
@@ -286,7 +341,9 @@ describe("KeybindingsPage", { timeout: 15_000 }, () => {
     );
     view();
     await waitFor(() =>
-      expect(paletteSource()).toContain(zh("settings.shortcut.source.default")),
+      expect(paletteSource()).not.toContain(
+        zh("settings.shortcut.source.global"),
+      ),
     );
     fireEvent.click(screen.getByText(zh(`settings.shortcut.platform.${here}`)));
     fireEvent.click(
@@ -447,8 +504,10 @@ describe("KeybindingsPage", { timeout: 15_000 }, () => {
     // 默认档里改的那条在这个档里不生效。
     const tidy = screen
       .getByLabelText(zh("cmd.canvas.tidy"), { selector: "button" })
-      .closest("tr")!.textContent;
-    expect(tidy).toContain(zh("settings.shortcut.source.default"));
+      .closest("[data-command]")!.textContent;
+    // 默认来源不写徽标：整页每行都写「默认」只是噪声。
+    expect(tidy).not.toContain(zh("settings.shortcut.source.profile"));
+    expect(tidy).not.toContain(zh("settings.shortcut.source.global"));
   });
 
   it("预设那一行没有重置按钮：它不是谁的覆盖", async () => {
