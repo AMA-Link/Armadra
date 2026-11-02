@@ -14,7 +14,12 @@ vi.mock("../nodes/registry", () => ({
 }));
 
 import type { CanvasEdge, CanvasNode } from "@armadra/shared";
-import { CLUSTER_GAP, LAYER_GAP, SIBLING_GAP } from "@armadra/shared";
+import {
+  CLUSTER_GAP,
+  GRID_UNIT,
+  LAYER_GAP,
+  SIBLING_GAP,
+} from "@armadra/shared";
 import { tidy, tidyPositions } from "./tidy";
 import { COLLAPSED_HEIGHT } from "../store/defaults";
 
@@ -316,7 +321,9 @@ describe("tidy · §6.4", () => {
     expect(at.s2!.y).toBeGreaterThan(at.s1!.y);
     // 主的中线对齐子块的中线（差不超过一格网格）。
     const blockMid = (at.s1!.y + at.s3!.y + 100) / 2;
-    expect(Math.abs(at.main!.y + 100 - blockMid)).toBeLessThanOrEqual(8);
+    expect(Math.abs(at.main!.y + 100 - blockMid)).toBeLessThanOrEqual(
+      GRID_UNIT,
+    );
   });
 
   it("(a') 纵向一主三从：从在下一行、等距、y 相同，主 x 居中于子块", () => {
@@ -337,7 +344,9 @@ describe("tidy · §6.4", () => {
     expect(at.s2!.x - at.s1!.x).toBe(at.s3!.x - at.s2!.x);
     expect(at.s2!.x).toBeGreaterThan(at.s1!.x);
     const blockMid = (at.s1!.x + at.s3!.x + 200) / 2;
-    expect(Math.abs(at.main!.x + 150 - blockMid)).toBeLessThanOrEqual(8);
+    expect(Math.abs(at.main!.x + 150 - blockMid)).toBeLessThanOrEqual(
+      GRID_UNIT,
+    );
   });
 
   it("缺省方向是纵向", () => {
@@ -362,9 +371,9 @@ describe("tidy · §6.4", () => {
     expect(at.g1!.y).toBe(at.g2!.y);
     expect(at.g1!.y).toBe((100 + LAYER_GAP.vertical) * 2);
     expect(at.g2!.x).toBe(200 + SIBLING_GAP);
-    // 子块宽 480，子与根都居中于它。
-    expect(at.c!.x).toBe(140);
-    expect(at.r!.x).toBe(140);
+    // 子块宽 200 + 兄弟间距 + 200，子与根（宽 200）都居中于它。
+    expect(at.c!.x).toBe((200 + SIBLING_GAP) / 2);
+    expect(at.r!.x).toBe((200 + SIBLING_GAP) / 2);
     expect(overlaps(boxes, at)).toEqual([]);
   });
 
@@ -502,7 +511,7 @@ describe("tidy · §6.4", () => {
     expect(at.middle!.y).toBeLessThan(at.bottom!.y);
   });
 
-  it("(g) 网格：单元左上角都是 8 的倍数", () => {
+  it("(g) 网格：单元左上角都是点阵单位（13px）的倍数", () => {
     const boxes = [
       placed("a", 13, 7, "node", 203, 97),
       placed("b", 500, 3, "node", 177, 131),
@@ -511,8 +520,8 @@ describe("tidy · §6.4", () => {
     ];
     const at = tidy(boxes, [supervises("c", "d")], { aspect: 1.6 });
     for (const point of Object.values(at)) {
-      expect(point.x % 8).toBe(0);
-      expect(point.y % 8).toBe(0);
+      expect(point.x % GRID_UNIT).toBe(0);
+      expect(point.y % GRID_UNIT).toBe(0);
     }
   });
 

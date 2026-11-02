@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
+  GRID_UNIT,
   SIBLING_GAP,
   boxesTooClose,
   type BoardDocument,
@@ -150,9 +151,13 @@ describe("参与排布的对象", () => {
     const applied = arrangeCanvas({ aspect: 16 / 9 });
     const xs = Object.values(applied).map((point) => point.x);
     const ys = Object.values(applied).map((point) => point.y);
-    // 左上角吸到 8px 网格：400 本来就在格上，250 落到 248。
-    expect(Math.min(...xs)).toBe(400);
-    expect(Math.min(...ys)).toBe(248);
+    // 左上角吸到 13px 点阵：400 落到 403，250 落到 247；整理后每个节点都在点上。
+    expect(Math.min(...xs)).toBe(403);
+    expect(Math.min(...ys)).toBe(247);
+    for (const point of Object.values(applied)) {
+      expect(point.x % GRID_UNIT).toBe(0);
+      expect(point.y % GRID_UNIT).toBe(0);
+    }
   });
 });
 
@@ -292,8 +297,8 @@ describe("§6.4 / §6.5", () => {
     // 原点取选区包围盒左上角（吸网格）。
     const xs = Object.values(applied).map((point) => point.x);
     const ys = Object.values(applied).map((point) => point.y);
-    expect(Math.min(...xs)).toBe(40);
-    expect(Math.min(...ys)).toBe(40);
+    expect(Math.min(...xs)).toBe(39);
+    expect(Math.min(...ys)).toBe(39);
 
     undo();
     expect(canUndo()).toBe(false);

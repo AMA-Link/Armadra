@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   CLUSTER_GAP,
+  GRID_UNIT,
   LAYER_GAP,
   SIBLING_GAP,
   boxesTooClose,
@@ -232,19 +233,27 @@ describe("tidy · 不重叠（#319）", () => {
     // 三个 Agent 同一层、等距、相邻之间隔兄弟间距。
     expect(a1!.y).toBe(a2!.y);
     expect(a2!.y).toBe(a3!.y);
-    expect(a2!.x - a1!.x).toBe(960 + SIBLING_GAP);
-    expect(a3!.x - a2!.x).toBe(960 + SIBLING_GAP);
+    const step = Math.ceil((960 + SIBLING_GAP) / GRID_UNIT) * GRID_UNIT;
+    expect(a2!.x - a1!.x).toBe(step);
+    expect(a3!.x - a2!.x).toBe(step);
     // 协调者在上一层，中间留出一个层距给扇出的弯折与标签。
-    expect(a1!.y - (lead.y + 600)).toBe(LAYER_GAP.vertical);
+    // 600 不在点阵上，层距向上取整到下一个点。
+    const layer = a1!.y - (lead.y + 600);
+    expect(layer).toBeGreaterThanOrEqual(LAYER_GAP.vertical);
+    expect(layer).toBeLessThan(LAYER_GAP.vertical + GRID_UNIT);
     // 协调者水平居中于三个 Agent。
     const middle = (a1!.x + a3!.x + 960) / 2;
-    expect(Math.abs(lead.x + 480 - middle)).toBeLessThanOrEqual(8);
+    expect(Math.abs(lead.x + 480 - middle)).toBeLessThanOrEqual(GRID_UNIT);
     expect(lead.x).toBe(a2!.x);
 
     // 横向：协调者在左、Agent 在右一列。
     const across = tidy(boxes, links, { direction: "horizontal" });
-    expect(across.a1!.x - (across.lead!.x + 960)).toBe(LAYER_GAP.horizontal);
-    expect(across.a2!.y - (across.a1!.y + 600)).toBe(SIBLING_GAP);
+    const wide = across.a1!.x - (across.lead!.x + 960);
+    expect(wide).toBeGreaterThanOrEqual(LAYER_GAP.horizontal);
+    expect(wide).toBeLessThan(LAYER_GAP.horizontal + GRID_UNIT);
+    const gap = across.a2!.y - (across.a1!.y + 600);
+    expect(gap).toBeGreaterThanOrEqual(SIBLING_GAP);
+    expect(gap).toBeLessThan(SIBLING_GAP + GRID_UNIT);
   });
 
   it("主从链超过深度上限：每个单元都有落点，互不重叠", () => {
@@ -310,8 +319,8 @@ describe("clearOffset", () => {
       const blockRects = Array.from({ length: 1 + (seed % 4) }, shape);
       const obstacles = Array.from({ length: 1 + (seed % 9) }, shape);
       const shift = clearOffset(blockRects, obstacles);
-      expect(shift.x % 8).toBe(0);
-      expect(shift.y % 8).toBe(0);
+      expect(shift.x % GRID_UNIT).toBe(0);
+      expect(shift.y % GRID_UNIT).toBe(0);
       for (const rect of blockRects) {
         const moved = { ...rect, x: rect.x + shift.x, y: rect.y + shift.y };
         for (const obstacle of obstacles) {

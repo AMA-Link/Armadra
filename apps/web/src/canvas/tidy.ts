@@ -1,6 +1,7 @@
 import {
   CLUSTER_GAP,
   DEFAULT_LAYOUT_DIRECTION,
+  GRID_UNIT,
   LAYER_GAP,
   SIBLING_GAP,
   boxesTooClose,
@@ -33,7 +34,7 @@ import { COLLAPSED_HEIGHT, defaultNodeSize } from "../store/defaults";
  *      的平均 y（重心法）排。
  *   5. **裹行**：簇按阅读顺序塞进当前行，行宽超过
  *      `sqrt(总面积 × 视口宽高比) × 1.15` 就换行。
- *   6. **网格**：每个单元左上角吸到 8px。
+ *   6. **网格**：每个单元左上角吸到点阵（`GRID_UNIT` = 13px）。
  *   7. 原点 (0,0)：调用方负责平移回原来那块内容的左上角。
  *
  * **不重叠**（#319）：间距与派发放置共用（`@armadra/shared` 的 `LAYER_GAP` /
@@ -69,7 +70,7 @@ export interface TidyLink {
 export interface TidyOptions {
   /** 目标区域宽高比，默认按视口给；拿不到视口时退回 16:9。 */
   aspect?: number;
-  /** 网格边长，默认 8。 */
+  /** 网格边长，默认 `GRID_UNIT`（13）。 */
   grid?: number;
   /**
    * 主从树往哪个方向长（契约 §50 `canvas.layoutDirection`），缺省纵向。
@@ -82,7 +83,7 @@ export interface TidyOptions {
 export const READING_ROW = 48;
 export const MAX_DEPTH = 50;
 export const DEFAULT_ASPECT = 16 / 9;
-export const GRID = 8;
+export const GRID = GRID_UNIT;
 /** 白板对象之间相距这么近就算同一个孤岛。 */
 export const ISLAND_GAP = 24;
 /** 行宽上限的宽容系数：宁可略宽，也不要为了 1px 把一整列挤到下一行。 */
@@ -103,8 +104,11 @@ interface Unit {
   rank: number;
 }
 
-/** 前进一步：把坐标向上取整到网格（网格为 0 时原样）。 */
-type Step = (value: number) => number;
+/**
+ * 前进一步：把坐标向上取整到网格（网格为 0 时原样）。`down` 向下取整：居中用它，
+ * 块始终落在自己的跨度里，不会因为取整蹭进相邻兄弟的间距。
+ */
+type Step = ((value: number) => number) & { down: (value: number) => number };
 
 /** 一个簇排完之后的相对布局：单元 id → 相对簇左上角的位置。 */
 interface Cluster {
@@ -436,7 +440,7 @@ function layoutTree(
   const place = (id: string, start: number) => {
     const total = span.get(id)!;
     const main = layerStart[depth.get(id)!]!;
-    let cross = start + up((total - blockCross.get(id)!) / 2);
+    let cross = start + up.down((total - blockCross.get(id)!) / 2);
     for (const [index, member] of blockOf(id).entries()) {
       const unit = units.get(member)!;
       if (index > 0) cross = up(cross + crossGap);
@@ -444,7 +448,7 @@ function layoutTree(
       rank = Math.min(rank, unit.rank);
       cross += crossOf(unit);
     }
-    let cursor = start + up((total - kidsSpan.get(id)!) / 2);
+    let cursor = start + up.down((total - kidsSpan.get(id)!) / 2);
     for (const [index, child] of kidsOf(id).entries()) {
       if (index > 0) cursor = up(cursor + crossGap);
       place(child, cursor);
@@ -598,8 +602,14 @@ export function tidy(
   const used = new Set<string>();
   // 每一步前进量都向上取整到网格：等高的兄弟仍然等距，吸网格不会把间距
   // 吃掉一格。
-  const up: Step = (value) =>
-    grid > 0 ? Math.ceil(value / grid - 1e-9) * grid : value;
+  const up: Step = Object.assign(
+    (value: number) =>
+      grid > 0 ? Math.ceil(value / grid - 1e-9) * grid : value,
+    {
+      down: (value: number) =>
+        grid > 0 ? Math.floor(value / grid + 1e-9) * grid : value,
+    },
+  );
   const clusters = treeClusters(
     byId,
     unitLinks,
