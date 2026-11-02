@@ -23,8 +23,11 @@ export type {
 } from "./canvas/types";
 export { absolutePosition } from "./canvas/internal";
 export {
+  amendCreation,
   beginCoalesce,
   endCoalesce,
+  forgetCreation,
+  isCreationOnTop,
   resetHistory,
   setHistoryDelegate,
   type CommitOptions,

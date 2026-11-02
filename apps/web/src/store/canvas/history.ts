@@ -257,6 +257,61 @@ export function endCoalesce(): void {
   notify();
 }
 
+/**
+ * 栈顶正好是「只新建了这一条白板对象」的记录就返回它，否则 `null`。
+ *
+ * 空文字（双击空白、文字工具点一下）先落盘、再等用户输入，所以它的「新建」
+ * 与「第一次写内容」之间不该是两步历史：`forgetCreation` 在丢弃时抹掉它，
+ * `amendCreation` 在第一次写入内容时把内容并进它。实时板（有代理）的栈
+ * 不在这里，一律 `null`。
+ */
+function creationOnTop(itemId: string): HistoryEntry | null {
+  if (delegate || coalescing) return null;
+  const last = past[past.length - 1];
+  if (!last) return null;
+  const { before, after } = last;
+  if (
+    before.nodes.size + before.edges.size + before.references.size !== 0 ||
+    after.nodes.size + after.edges.size + after.references.size !== 0 ||
+    before.items.size !== 1 ||
+    before.items.get(itemId) !== null ||
+    after.items.get(itemId) == null
+  ) {
+    return null;
+  }
+  return last;
+}
+
+/** 栈顶是不是这条对象的「新建」。 */
+export function isCreationOnTop(itemId: string): boolean {
+  return creationOnTop(itemId) !== null;
+}
+
+/**
+ * 撤掉「刚建出来、又被丢弃」的那条对象的新建记录。丢弃之后栈里若还留着
+ * 那条「新建」，⌘Z 会把空文字复活出来，或者白白多一步看不出变化的撤销。
+ * 栈顶正好是它时弹掉并返回 `true`（调用方据此用 `history: "ignore"` 去删，
+ * 两头抵消）；不是就返回 `false`，删除照常入栈、可撤销。
+ */
+export function forgetCreation(itemId: string): boolean {
+  if (!creationOnTop(itemId)) return false;
+  past.pop();
+  notify();
+  return true;
+}
+
+/**
+ * 把这条对象写入内容之后的样子并进栈顶的「新建」记录：撤销一步就是整条
+ * 对象不见了，而不是退回一条空文字。栈顶不是它的「新建」时返回 `false`。
+ */
+export function amendCreation(itemId: string, item: Item): boolean {
+  const entry = creationOnTop(itemId);
+  if (!entry) return false;
+  entry.after.items.set(itemId, item);
+  notify();
+  return true;
+}
+
 /* -------------------------------- 回放 ------------------------------------ */
 
 /**

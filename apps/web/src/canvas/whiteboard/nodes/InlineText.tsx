@@ -1,13 +1,19 @@
 import * as React from "react";
 
 import { useT } from "@/app/preferences-store";
-import { beginGesture, endGesture, updateItem } from "../store";
+import {
+  beginGesture,
+  commitItemText,
+  discardItem,
+  endGesture,
+  updateItem,
+} from "../store";
 
 /**
  * 就地文字编辑（React Flow 计划 F23 / F24，归属 whiteboard）。
  *
  * 文字对象的正文与几何形的标签是同一件事，所以共用这一个组件：双击进入
- * 编辑，Esc 或失焦提交。
+ * 编辑，Esc 或失焦提交；文字对象提交时是空的就整条丢弃。
  *
  * 三条必须成立的规则：
  *
@@ -66,7 +72,16 @@ export function InlineText({
 
   const commit = React.useCallback(() => {
     setEditing(false);
-    if (draft !== text) updateItem(itemId, { [field]: draft } as never);
+    // 文字对象空着提交 = 不要这条对象（#714）：双击空白 / 文字工具先建后填，
+    // 没填就走，画布上不该留下一条看不见的空文字。几何形的标签为空是常态，
+    // 形状本身要留着，所以只管 `text` 字段。
+    if (field === "text" && draft.trim() === "") {
+      discardItem(itemId);
+      return;
+    }
+    if (draft === text) return;
+    if (field === "text") commitItemText(itemId, { text: draft } as never);
+    else updateItem(itemId, { [field]: draft } as never);
   }, [draft, field, itemId, text]);
 
   const style: React.CSSProperties = {

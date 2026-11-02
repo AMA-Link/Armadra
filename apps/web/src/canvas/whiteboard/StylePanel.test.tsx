@@ -30,6 +30,8 @@ const { resetToolStore, setTool } = await import("../interaction/tool-store");
 installDomPolyfills();
 
 beforeEach(() => {
+  canvasState.selectedItemIds = [];
+  canvasState.whiteboard.items = [];
   resetToolStore();
   act(() => setTool("draw"));
 });
@@ -65,8 +67,54 @@ describe("白板样式面板", () => {
         <CanvasStylePanel />
       </TooltipProvider>,
     );
-    const large = screen.getByRole("radio", { name: "L" });
+    const large = screen.getByRole("radio", { name: /\bL$/ });
     fireEvent.click(large);
     expect(large.getAttribute("aria-checked")).toBe("true");
+  });
+
+  it("单行条：锚在 Dock 上方那一行里，是 toolbar，没有可见的分组标题", () => {
+    render(
+      <TooltipProvider>
+        <CanvasStylePanel />
+      </TooltipProvider>,
+    );
+    const panel = document.querySelector(".canvas-style-panel")!;
+    expect(panel.parentElement?.className).toBe("canvas-style-row");
+    expect(panel.getAttribute("role")).toBe("toolbar");
+    // 标题只在 aria-label 与提示里，条里没有文字节点。
+    expect(panel.textContent).toBe("");
+    // 颜色是一个按钮（色板在 Popover 里，没点开就不渲染），不再平铺一整片。
+    expect(screen.queryByRole("radiogroup", { name: "颜色" })).toBeNull();
+    expect(screen.getByRole("button", { name: "颜色" })).toBeTruthy();
+  });
+
+  it("选中的是文字：有对齐，没有线型与填充", () => {
+    canvasState.selectedItemIds = ["wb:t"];
+    canvasState.whiteboard.items = [
+      { id: "t", kind: "text", text: "你好", style: { align: "middle" } },
+    ];
+    render(
+      <TooltipProvider>
+        <CanvasStylePanel />
+      </TooltipProvider>,
+    );
+    expect(
+      screen.getByRole("radio", { name: "居中" }).getAttribute("aria-checked"),
+    ).toBe("true");
+    expect(screen.queryByRole("radio", { name: "实线" })).toBeNull();
+    expect(screen.queryByRole("radio", { name: "无填充" })).toBeNull();
+  });
+
+  it("选中的只有空文字（双击空白刚建出来）：不显示", () => {
+    canvasState.selectedItemIds = ["wb:t"];
+    canvasState.whiteboard.items = [
+      { id: "t", kind: "text", text: "", style: {} },
+    ];
+    render(
+      <TooltipProvider>
+        <CanvasStylePanel />
+      </TooltipProvider>,
+    );
+    expect(document.querySelector(".canvas-style-panel")).toBeNull();
   });
 });

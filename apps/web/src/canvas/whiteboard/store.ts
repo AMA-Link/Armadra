@@ -1,8 +1,11 @@
 import type { Position } from "@armadra/shared";
 
 import {
+  amendCreation,
   beginCoalesce,
   endCoalesce,
+  forgetCreation,
+  isCreationOnTop,
   useCanvasStore,
   type CommitOptions,
 } from "@/store/canvas-store";
@@ -253,6 +256,38 @@ export function removeItems(
   if (remaining.length !== state.selectedItemIds.length) {
     state.setSelection({ items: remaining });
   }
+}
+
+/**
+ * 文字编辑提交（`InlineText`）。
+ *
+ * 对象刚建出来、栈顶就是它的「新建」时，把第一次写入的内容并进那条记录：
+ * 双击空白 → 打字 → 失焦是**一步**历史，撤销之后画布回到什么都没有，而不是
+ * 退回一条没有内容的空文字。其余情况照常记一步。
+ */
+export function commitItemText(id: string, patch: Partial<Item>): void {
+  endCoalesce();
+  const bare = fromItemId(id);
+  if (!isCreationOnTop(bare)) {
+    updateItem(id, patch);
+    return;
+  }
+  updateItem(id, patch, { history: "ignore" });
+  const next = itemById(id);
+  if (next) amendCreation(bare, next);
+}
+
+/**
+ * 丢弃一条「没有内容」的对象（空文字提交时调用）。
+ *
+ * 刚建出来、还没写过任何东西的那条：连同撤销栈里的「新建」一起抹掉，
+ * 画布上、文档里、历史里都像从没发生过。已有内容被清空的那条：普通删除，
+ * 可以撤销回来。先结束手势再判断——手势没关时栈顶还不是那条「新建」。
+ */
+export function discardItem(id: string): void {
+  endCoalesce();
+  const fresh = forgetCreation(fromItemId(id));
+  removeItems([id], fresh ? { history: "ignore" } : {});
 }
 
 /** 置顶 / 置底（`z` 就是 React Flow 的 `zIndex`）。 */

@@ -19,9 +19,11 @@ import {
 import { Button } from "@/ui/button";
 import { ColorDot } from "@/ui/color-dot";
 import { IconButton } from "@/ui/icon-button";
+import { Popover, PopoverContent, PopoverTrigger } from "@/ui/popover";
 import { Separator } from "@/ui/separator";
 import { ToggleGroup, ToggleGroupItem } from "@/ui/toggle-group";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/ui/tooltip";
+import { cn } from "@/lib/cn";
 import { useCanvasStore } from "@/store/canvas-store";
 import { setNextStyle, useNextStyle, useTool } from "../interaction/tool-store";
 import { shouldShowStylePanel } from "../tools";
@@ -38,15 +40,21 @@ import { useCanvasScheme } from "./scheme";
 import { updateItems } from "./store";
 
 /**
- * 样式面板（React Flow 计划 F28，归属 whiteboard）。
+ * 样式条（React Flow 计划 F28，归属 whiteboard）。
  *
- * 一个面板两种作用对象：**没选中东西时**改「下一个画出来的对象」
+ * 一个条两种作用对象：**没选中东西时**改「下一个画出来的对象」
  * （`tool-store.nextStyle`），**选中了白板对象时**改选中的那些
  * （`whiteboard.updateItems`）。显隐规则是 `tools.shouldShowStylePanel`，
  * 纯函数且已有单测。
  *
+ * 位置固定在底部 Dock 正上方居中（`styles/canvas.css` 的 `.canvas-style-row`），
+ * 与 Dock 同一套面材与圆角；以前悬在左侧垂直居中、184px 宽的一整块，颜色
+ * 网格与带标题的分组把画布盖掉一大片（#714）。现在是单行：颜色收进一个色点
+ * 触发的 Popover，其余都是不带可见标题的 `ToggleGroup`（名称在 `aria-label`
+ * 与提示里），组间一条竖线。
+ *
  * 只有当前选区真的用得上的那几组会显示：选中一条墨迹时不该出现「填充」，
- * 选中一条直线时不该出现「对齐」。面板越短，判断「我在改什么」越快。
+ * 选中一条直线时不该出现「对齐」。条越短，判断「我在改什么」越快。
  */
 
 const SIZE_LABELS: Record<WhiteboardSize, string> = {
@@ -54,6 +62,14 @@ const SIZE_LABELS: Record<WhiteboardSize, string> = {
   m: "M",
   l: "L",
   xl: "XL",
+};
+
+/** 粗细档的预览线宽（画在 16px 的图标里）；类名要写全，Tailwind 才扫得到。 */
+const SIZE_STROKES: Record<WhiteboardSize, string> = {
+  s: "stroke-[1.5px]",
+  m: "stroke-[2.5px]",
+  l: "stroke-[3.5px]",
+  xl: "stroke-[5px]",
 };
 
 const DASH_LABEL_KEYS: Record<Dash, string> = {
@@ -101,7 +117,7 @@ export function CanvasStylePanel() {
     return allItems.filter((item) => wanted.has(item.id));
   }, [allItems, selectedIds]);
 
-  if (focusMode || !shouldShowStylePanel(tool, selectedIds)) return null;
+  if (focusMode || !shouldShowStylePanel(tool, selectedIds, items)) return null;
 
   const sections = sectionsFor(items);
   const current = items[0]?.style;
@@ -139,128 +155,190 @@ export function CanvasStylePanel() {
     );
   };
 
-  // 左侧竖直居中：左上角是侧栏开关，左下角是锁按钮，中间这一段整块空着。
-  return (
-    <div
-      className="canvas-style-panel absolute left-3 top-1/2 z-[var(--z-dock)] flex w-[184px] -translate-y-1/2 flex-col gap-2 rounded-panel border border-border bg-panel/90 p-2 backdrop-blur-[12px]"
-      aria-label={t("style.panel")}
-    >
-      <div
-        role="radiogroup"
-        aria-label={t("style.color")}
-        className="flex flex-wrap gap-0.5"
-      >
-        {WHITEBOARD_COLORS.map((option) => (
-          <ColorButton
-            key={option}
-            color={option}
-            hex={colorHex(option, scheme)}
-            selected={color === option}
-            onSelect={() => applyStyle({ color: option })}
-          />
-        ))}
-      </div>
+  const groups: React.ReactNode[] = [
+    <ColorPicker
+      key="color"
+      color={color}
+      scheme={scheme}
+      onChange={(value) => applyStyle({ color: value })}
+    />,
+    <StyleGroup
+      key="size"
+      label={t("style.size")}
+      value={size}
+      onChange={(value) => applyStyle({ size: value as WhiteboardSize })}
+      options={WHITEBOARD_SIZES.map((option) => ({
+        value: option,
+        label: <SizePreview stroke={SIZE_STROKES[option]} />,
+        title: `${t("style.size")} ${SIZE_LABELS[option]}`,
+      }))}
+    />,
+  ];
 
-      <Separator />
-
+  if (sections.dash) {
+    groups.push(
       <StyleGroup
-        label={t("style.size")}
-        value={size}
-        onChange={(value) => applyStyle({ size: value as WhiteboardSize })}
-        options={WHITEBOARD_SIZES.map((option) => ({
+        key="dash"
+        label={t("style.dash")}
+        value={dash}
+        onChange={(value) => applyStyle({ dash: value as Dash })}
+        options={DASHES.map((option) => ({
           value: option,
-          label: SIZE_LABELS[option],
-          title: SIZE_LABELS[option],
+          label: <DashPreview dash={option} />,
+          title: t(DASH_LABEL_KEYS[option]),
         }))}
-      />
+      />,
+    );
+  }
+  if (sections.fill) {
+    groups.push(
+      <StyleGroup
+        key="fill"
+        label={t("style.fill")}
+        value={fill}
+        onChange={(value) => applyStyle({ fill: value as Fill })}
+        options={FILLS.map((option) => ({
+          value: option,
+          label: <FillPreview fill={option} />,
+          title: t(FILL_LABEL_KEYS[option]),
+        }))}
+      />,
+    );
+  }
+  if (sections.align) {
+    groups.push(
+      <StyleGroup
+        key="align"
+        label={t("style.align")}
+        value={align}
+        onChange={(value) => applyStyle({ align: value })}
+        options={[
+          {
+            value: "start",
+            label: <AlignLeft />,
+            title: t("style.align.start"),
+          },
+          {
+            value: "middle",
+            label: <AlignCenter />,
+            title: t("style.align.middle"),
+          },
+          {
+            value: "end",
+            label: <AlignRight />,
+            title: t("style.align.end"),
+          },
+        ]}
+      />,
+    );
+  }
+  if (sections.arrow) {
+    groups.push(
+      <StyleGroup
+        key="arrow"
+        multiple
+        label={t("style.arrow")}
+        value={[arrowStart ? "start" : "", arrowEnd ? "end" : ""].filter(
+          Boolean,
+        )}
+        onChange={(value) =>
+          applyArrow({
+            arrowStart: value.includes("start"),
+            arrowEnd: value.includes("end"),
+          })
+        }
+        options={[
+          {
+            value: "start",
+            label: <ArrowLeft />,
+            title: t("style.arrow.start"),
+          },
+          { value: "end", label: <ArrowRight />, title: t("style.arrow.end") },
+        ]}
+      />,
+    );
+  }
 
-      {sections.dash ? (
-        <StyleGroup
-          label={t("style.dash")}
-          value={dash}
-          onChange={(value) => applyStyle({ dash: value as Dash })}
-          options={DASHES.map((option) => ({
-            value: option,
-            label: <DashPreview dash={option} />,
-            title: t(DASH_LABEL_KEYS[option]),
-          }))}
-        />
-      ) : null}
-
-      {sections.fill ? (
-        <StyleGroup
-          label={t("style.fill")}
-          value={fill}
-          onChange={(value) => applyStyle({ fill: value as Fill })}
-          options={FILLS.map((option) => ({
-            value: option,
-            label: <FillPreview fill={option} />,
-            title: t(FILL_LABEL_KEYS[option]),
-          }))}
-        />
-      ) : null}
-
-      {sections.align ? (
-        <StyleGroup
-          label={t("style.align")}
-          value={align}
-          onChange={(value) => applyStyle({ align: value })}
-          options={[
-            {
-              value: "start",
-              label: <AlignLeft />,
-              title: t("style.align.start"),
-            },
-            {
-              value: "middle",
-              label: <AlignCenter />,
-              title: t("style.align.middle"),
-            },
-            {
-              value: "end",
-              label: <AlignRight />,
-              title: t("style.align.end"),
-            },
-          ]}
-        />
-      ) : null}
-
-      {sections.arrow ? (
-        <div className="flex flex-col gap-1">
-          <span className="text-caption text-muted-foreground">
-            {t("style.arrow")}
-          </span>
-          <div className="flex items-center gap-1">
-            <Tooltip delayDuration={500}>
-              <TooltipTrigger asChild>
-                <IconButton
-                  size="cluster"
-                  label={t("style.arrow.start")}
-                  active={arrowStart}
-                  onClick={() => applyArrow({ arrowStart: !arrowStart })}
-                >
-                  <ArrowLeft />
-                </IconButton>
-              </TooltipTrigger>
-              <TooltipContent>{t("style.arrow.start")}</TooltipContent>
-            </Tooltip>
-            <Tooltip delayDuration={500}>
-              <TooltipTrigger asChild>
-                <IconButton
-                  size="cluster"
-                  label={t("style.arrow.end")}
-                  active={arrowEnd}
-                  onClick={() => applyArrow({ arrowEnd: !arrowEnd })}
-                >
-                  <ArrowRight />
-                </IconButton>
-              </TooltipTrigger>
-              <TooltipContent>{t("style.arrow.end")}</TooltipContent>
-            </Tooltip>
-          </div>
-        </div>
-      ) : null}
+  // 位置在 `.canvas-style-row`：Dock 正上方居中。整行不接指针，只有条本身接。
+  return (
+    <div className="canvas-style-row">
+      <div
+        role="toolbar"
+        data-slot="style-panel"
+        aria-label={t("style.panel")}
+        className="canvas-style-panel flex max-w-full items-center gap-1 overflow-x-auto rounded-panel border border-border-strong bg-panel/90 px-1.5 py-1 shadow-overlay backdrop-blur-[12px]"
+      >
+        {groups.flatMap((group, index) =>
+          index === 0
+            ? [group]
+            : [
+                <Separator
+                  key={`separator-${index}`}
+                  orientation="vertical"
+                  className="mx-0.5 h-4"
+                />,
+                group,
+              ],
+        )}
+      </div>
     </div>
+  );
+}
+
+/** 当前颜色的色点；点开是一块色板，选一个就关。 */
+function ColorPicker({
+  color,
+  scheme,
+  onChange,
+}: {
+  color: WhiteboardColor;
+  scheme: ReturnType<typeof useCanvasScheme>;
+  onChange: (color: WhiteboardColor) => void;
+}) {
+  const t = useT();
+  const [open, setOpen] = React.useState(false);
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <Tooltip delayDuration={500}>
+        <TooltipTrigger asChild>
+          <PopoverTrigger asChild>
+            <IconButton size="cluster" label={t("style.color")} active={open}>
+              <ColorDot
+                color={colorHex(color, scheme)}
+                size={14}
+                className="border border-border-strong"
+              />
+            </IconButton>
+          </PopoverTrigger>
+        </TooltipTrigger>
+        <TooltipContent>{t("style.color")}</TooltipContent>
+      </Tooltip>
+      <PopoverContent
+        side="top"
+        align="start"
+        sideOffset={8}
+        className="w-auto max-w-none gap-0 p-1.5"
+      >
+        <div
+          role="radiogroup"
+          aria-label={t("style.color")}
+          className="grid grid-cols-7 gap-0.5"
+        >
+          {WHITEBOARD_COLORS.map((option) => (
+            <ColorButton
+              key={option}
+              color={option}
+              hex={colorHex(option, scheme)}
+              selected={color === option}
+              onSelect={() => {
+                onChange(option);
+                setOpen(false);
+              }}
+            />
+          ))}
+        </div>
+      </PopoverContent>
+    </Popover>
   );
 }
 
@@ -301,43 +379,101 @@ function ColorButton({
   );
 }
 
-interface StyleGroupProps {
-  label: string;
+interface StyleGroupOption {
   value: string;
-  onChange: (value: string) => void;
-  options: { value: string; label: React.ReactNode; title: string }[];
+  label: React.ReactNode;
+  title: string;
 }
 
+type StyleGroupProps = {
+  label: string;
+  options: StyleGroupOption[];
+} & (
+  | {
+      multiple?: false;
+      value: string;
+      onChange: (value: string) => void;
+    }
+  | {
+      multiple: true;
+      value: string[];
+      onChange: (value: string[]) => void;
+    }
+);
+
 /**
- * 标签放在控件上面而不是左边：四档粗细横着排就已经占满一行，再挤一个
- * 标签进去中文会被截掉一半。
+ * 选中项与 `IconButton active` 同一套：`--brand-soft` 底 + 标题墨色。
+ *
+ * 认 `aria-checked`（单选）与 `aria-pressed`（多选），不认 `data-state`：
+ * 外面套着 `TooltipTrigger asChild`，它会把同一个元素的 `data-state` 改写成
+ * `closed` / `delayed-open`，Radix 写的 `on` 到不了 DOM。
  */
-function StyleGroup({ label, value, onChange, options }: StyleGroupProps) {
-  return (
-    <div className="flex flex-col gap-1">
-      <span className="text-caption text-muted-foreground">{label}</span>
+const ITEM_CLASS =
+  "w-7 px-0 text-muted-foreground aria-checked:bg-brand-soft aria-checked:text-strong aria-pressed:bg-brand-soft aria-pressed:text-strong";
+
+/**
+ * 没有可见标题：名称在组的 `aria-label` 与每一项的提示里。四档粗细、三档
+ * 线型都用图形而不是字母，中英文界面长得一样。
+ */
+function StyleGroup(props: StyleGroupProps) {
+  const { label, options } = props;
+  const items = options.map((option) => (
+    <Tooltip key={option.value} delayDuration={500}>
+      <TooltipTrigger asChild>
+        <ToggleGroupItem
+          value={option.value}
+          aria-label={option.title}
+          className={cn(ITEM_CLASS)}
+        >
+          {option.label}
+        </ToggleGroupItem>
+      </TooltipTrigger>
+      <TooltipContent>{option.title}</TooltipContent>
+    </Tooltip>
+  ));
+  if (props.multiple) {
+    return (
       <ToggleGroup
-        type="single"
+        type="multiple"
         size="sm"
-        value={value}
+        spacing={0.5}
+        value={props.value}
         aria-label={label}
-        onValueChange={(next) => {
-          if (next) onChange(next);
-        }}
-        className="w-full"
+        onValueChange={props.onChange}
       >
-        {options.map((option) => (
-          <Tooltip key={option.value} delayDuration={500}>
-            <TooltipTrigger asChild>
-              <ToggleGroupItem value={option.value} aria-label={option.title}>
-                {option.label}
-              </ToggleGroupItem>
-            </TooltipTrigger>
-            <TooltipContent>{option.title}</TooltipContent>
-          </Tooltip>
-        ))}
+        {items}
       </ToggleGroup>
-    </div>
+    );
+  }
+  return (
+    <ToggleGroup
+      type="single"
+      size="sm"
+      spacing={0.5}
+      value={props.value}
+      aria-label={label}
+      onValueChange={(next) => {
+        if (next) props.onChange(next);
+      }}
+    >
+      {items}
+    </ToggleGroup>
+  );
+}
+
+function SizePreview({ stroke }: { stroke: string }) {
+  return (
+    <svg width={16} height={16} viewBox="0 0 16 16" aria-hidden>
+      <line
+        x1={2.5}
+        y1={8}
+        x2={13.5}
+        y2={8}
+        stroke="currentColor"
+        className={stroke}
+        strokeLinecap="round"
+      />
+    </svg>
   );
 }
 

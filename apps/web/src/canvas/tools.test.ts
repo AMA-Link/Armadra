@@ -179,6 +179,27 @@ describe("shouldShowStylePanel", () => {
     expect(shouldShowStylePanel("select", [NODE, OTHER_NODE])).toBe(false);
   });
 
+  it("选中的只有空文字 → 隐藏：它是刚建出来等人打字的，空着走开就丢弃（#714）", () => {
+    const empty = { id: "abc", kind: "text", text: "" } as never;
+    const blank = { id: "abd", kind: "text", text: "  \n" } as never;
+    expect(shouldShowStylePanel("select", ["wb:abc"], [empty])).toBe(false);
+    expect(
+      shouldShowStylePanel("select", ["wb:abc", "wb:abd"], [empty, blank]),
+    ).toBe(false);
+    // 文字工具下也一样：面板改的是那条马上会消失的对象。
+    expect(shouldShowStylePanel("text", ["wb:abc"], [empty])).toBe(false);
+  });
+
+  it("空文字混在别的对象里、或文字已有内容 → 照常显示", () => {
+    const empty = { id: "abc", kind: "text", text: "" } as never;
+    const filled = { id: "abd", kind: "text", text: "你好" } as never;
+    const shape = { id: "abe", kind: "shape" } as never;
+    expect(
+      shouldShowStylePanel("select", ["wb:abc", "wb:abe"], [empty, shape]),
+    ).toBe(true);
+    expect(shouldShowStylePanel("select", ["wb:abd"], [filled])).toBe(true);
+  });
+
   it("选中项里有白板对象 → 显示，混合多选也显示", () => {
     expect(shouldShowStylePanel("select", ["wb:abc"])).toBe(true);
     expect(shouldShowStylePanel("select", [NODE, "wb:abc"])).toBe(true);
