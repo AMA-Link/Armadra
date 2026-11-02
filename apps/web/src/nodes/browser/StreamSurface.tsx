@@ -35,7 +35,6 @@ type Phase = "connecting" | "live" | "occupied" | "unavailable" | "closed";
 export function StreamSurface({ id, node, selected }: NodeBodyProps) {
   const t = useT();
   const workspaceId = useCanvasStore((state) => state.workspace?.id);
-  const url = node.data.kind === "browser" ? node.data.url : "";
 
   const canvasRef = React.useRef<HTMLCanvasElement | null>(null);
   const boxRef = React.useRef<HTMLDivElement | null>(null);
@@ -192,9 +191,11 @@ export function StreamSurface({ id, node, selected }: NodeBodyProps) {
         label,
       }}
     >
+      {/* eslint-disable-next-line jsx-a11y/no-static-element-interactions -- 远程画面整块接收指针与按键并转发给服务端的浏览器，没有对应的原生控件 */}
       <div
         ref={boxRef}
         className="relative h-full w-full overflow-hidden bg-muted/30 outline-none"
+        // eslint-disable-next-line jsx-a11y/no-noninteractive-tabindex -- 要先拿到焦点才能把按键转发给远程页面
         tabIndex={0}
         onPointerMove={(event) => pointer("move", event)}
         onPointerDown={(event) => {
@@ -234,7 +235,9 @@ export function StreamSurface({ id, node, selected }: NodeBodyProps) {
               <p className="max-w-[36ch] text-center text-meta text-muted-foreground">
                 {phase === "occupied"
                   ? t("browser.stream.occupiedHint")
-                  : t("browser.stream.unavailableHint")}
+                  : reason === "" || reason === "browser_unavailable"
+                    ? t("browser.stream.unavailableHint")
+                    : t("browser.stream.failedHint")}
               </p>
             ) : (
               <StreamPending label={t("state.loading")} />
