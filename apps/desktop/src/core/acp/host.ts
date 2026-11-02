@@ -1013,13 +1013,17 @@ export async function startAdapter(
   const plan = adapterStartOptions(adapter, options);
   if (plan instanceof AcpError) throw plan;
   // CLI 本体低于适配器要求的版本：适配器会挂在 `session/new` 里到超时，不如起进程前
-  // 就说清楚。SSH 的 CLI 在别的机器上，预启动的进程已经起了，都不在本机核对。
-  if (options.transport === undefined && options.prestarted === undefined) {
+  // 就说清楚。SSH 的 CLI 在别的机器上，不在本机核对；预启动的进程同样要核对，
+  // 不合格就把领来的进程收掉再报。
+  if (options.transport === undefined) {
     const outdated = await checkCliFloor(
       adapter.agentId,
       options.env ?? process.env,
     );
-    if (outdated !== undefined) throw outdated;
+    if (outdated !== undefined) {
+      await options.prestarted?.process.terminate().catch(() => undefined);
+      throw outdated;
+    }
   }
   return startAcp(plan);
 }

@@ -5012,3 +5012,8 @@ owner（本机会话，或已信任设备经通道的 owner 会话）：`{ sourc
 - `terminal` 型登录（§92.1）取消或超时：先对进程组发 SIGTERM，约 3 秒后升级为 SIGKILL，再等 1 秒无论如何落定为 `acp_auth_failed`；这家 Agent 的「登录中」随之解除，不会再一直答 409 `conflict`。
 - 会话 id 与本会话不符的 `elicitation/create` 不展示，core 答 `cancel`，Agent 不再空等。
 - `session/prompt` 响应的 `usage` 只在带 `contextTokens` 或 `cumulativeTokens`（上下文占用 / 累计）时才补头部用量（仍不超过窗口）；`totalTokens`、`inputTokens`、`outputTokens` 是本回合消耗，不再采信，取代 §92.5 里关于 `totalTokens` 补用量的说法。
+
+### 95.3 Pi 的 CLI 安装与版本核对（`#741`）
+
+- `agents.installAdapter` 装 `target: "cli"` 且这一家的 CLI 包改过名（目前只有 `pi`）时，开始前先用同一个 npm 查旧包（`npm ls --global`）：装着就先 `npm rm --global <旧包>`，再装现行包，避免旧包占着同名可执行文件使 npm 因 bin 冲突失败。卸旧包的输出进任务的 `output` 尾部；卸不掉就不装，任务 `failed`，`failure.code` 为 `adapter_install_failed`，`failure.message` 带一条可复制的 `npm rm --global <旧包>`。`target: "adapter"` 与回滚不受影响，请求与答复形状不变。
+- 起会话前的 CLI 版本核对（`acp_cli_outdated`，§92 前的 #710）：不再记「过旧」的结论，每次都重问版本，所以 mise / asdf / volta 的 shim 升级后下一次会话即通过，不必重启 core；「够新」的结论照旧按文件路径、修改时间与大小记着。预发布版本（`x.y.z-beta.n`）排在同号正式版之前：恰为下限的预发布也答 `acp_cli_outdated`（`details.installed` 带完整版本串）。预启动的适配器进程也核对，不合格时收掉它再答错。

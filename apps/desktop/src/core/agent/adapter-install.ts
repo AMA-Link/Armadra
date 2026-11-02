@@ -32,6 +32,11 @@ import { definition, resolveCommand } from "./registry";
  * 两张表里的包，跑固定的 `npm install --global <包>`。不收别的参数，不写 CLI 的
  * 配置；npm 读用户自己的 `.npmrc`（镜像、代理），那是用户的设置，这里不改。
  *
+ * CLI 包改过名的家（{@link LEGACY_CLI_PACKAGES}）：旧包还占着同名可执行文件，直接装
+ * 现行包会因 bin 冲突（EEXIST）失败。装 CLI 前先 `npm ls --global` 看旧包在不在，
+ * 在就 `npm rm --global <旧包>`；卸不掉就停在那里，把 npm 的输出和一条可复制的命令
+ * 带回界面，不装。
+ *
  * 开始前用同一个 npm 读一次已装版本（`npm ls --global`），记作 `previousVersion`；
  * 新装的坏了，`rollback` 装回 `<包>@<previousVersion>`。
  *
@@ -50,6 +55,16 @@ import { definition, resolveCommand } from "./registry";
  * 连，但这是 core 替用户起的联网，不算用户自己的程序。
  */
 export const ADAPTER_INSTALL_OUTBOUND = OUTBOUND.npmRegistry;
+
+/**
+ * 改过名的 CLI 包（按 agentId）：旧包与现行包提供同名可执行文件，旧包还装着时
+ * 装现行包会失败，装之前要先卸。
+ */
+export const LEGACY_CLI_PACKAGES: Readonly<Record<string, readonly string[]>> =
+  { pi: ["@mariozechner/pi-coding-agent"] };
+
+/** 卸旧包最多等多久。 */
+const REMOVE_TIMEOUT_MS = 2 * 60 * 1000;
 
 /** 输出尾部留几行。 */
 export const TAIL_LINES = 40;
@@ -525,8 +540,61 @@ export class AdapterInstaller {
             },
             () => undefined,
           );
-    job.finished = before.then(() => this.run(job, command));
+    job.finished = before
+      .then(() =>
+        lookup === undefined || target !== "cli"
+          ? true
+          : this.removeLegacy(job, lookup, command, npm.prefix),
+      )
+      .then((ready) => (ready ? this.run(job, command) : undefined));
     return view(job);
+  }
+
+  /**
+   * 装 CLI 前卸掉改名前的旧包。卸干净（或本来没装）答 `true`；卸不掉就把任务标成
+   * 失败并答 `false`。
+   */
+  private async removeLegacy(
+    job: Job,
+    lookup: InstalledVersion,
+    install: InstallCommand,
+    prefix: readonly string[],
+  ): Promise<boolean> {
+    for (const legacy of LEGACY_CLI_PACKAGES[job.agentId] ?? []) {
+      const version = await lookup(legacy, {
+        program: install.program,
+        prefix,
+        cwd: install.cwd,
+        env: install.env,
+      }).catch(() => undefined);
+      if (version === undefined) continue;
+      const args = [...prefix, "rm", "--global", legacy];
+      job.tail.push(`npm rm --global ${legacy}\n`);
+      const run = (this.options.runner ?? spawnRunner)(
+        { ...install, args },
+        (chunk) => job.tail.push(chunk),
+      );
+      job.process = run;
+      const timer = setTimeout(() => run.kill(), REMOVE_TIMEOUT_MS);
+      timer.unref?.();
+      const { exitCode, error } = await run.done;
+      clearTimeout(timer);
+      job.process = undefined;
+      if (exitCode === 0 && error === undefined) continue;
+      job.exitCode = exitCode;
+      job.installed = this.probe(job.agentId, job.target);
+      job.endedAt = this.now();
+      job.state = "failed";
+      job.failure = {
+        code: "adapter_install_failed",
+        message: `卸载旧包失败，请在终端执行：npm rm --global ${legacy}${
+          error === undefined ? "" : `（${cleanLine(error)}）`
+        }`,
+      };
+      this.conclude(job, exitCode);
+      return false;
+    }
+    return true;
   }
 
   /** 跑安装那一步，结束后重新探测并写好结果。 */
@@ -574,19 +642,24 @@ export class AdapterInstaller {
         // 装好或升级之后的第一次创建是冷启动：先把它跑一遍（契约 §51）。
         warmAfterInstall(job.agentId);
       }
-      audit({
-        action: "agent.adapter.install.finish",
-        target: job.agentId,
-        detail: {
-          package: job.package,
-          kind: job.target,
-          state: job.state,
-          exitCode,
-          ...(job.failure === undefined ? {} : { failure: job.failure.code }),
-        },
-      });
-      this.options.onFinished?.(view(job));
+      this.conclude(job, exitCode);
     });
+  }
+
+  /** 任务结束（成功或失败）：记审计，通知装配点。 */
+  private conclude(job: Job, exitCode: number | null | undefined): void {
+    audit({
+      action: "agent.adapter.install.finish",
+      target: job.agentId,
+      detail: {
+        package: job.package,
+        kind: job.target,
+        state: job.state,
+        exitCode,
+        ...(job.failure === undefined ? {} : { failure: job.failure.code }),
+      },
+    });
+    this.options.onFinished?.(view(job));
   }
 
   /** 用例等任务结束。 */
