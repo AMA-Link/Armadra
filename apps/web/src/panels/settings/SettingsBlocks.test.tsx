@@ -249,4 +249,14 @@ describe("SettingsGroup / SettingsRow", () => {
     expect(rows[0]!.textContent).toBe("甲值");
     expect(rows[1]!.textContent).toContain("校验失败");
   });
+
+  it("标签有最小宽度：控件再宽也不把窄屏标签挤成一字一行（#736）", () => {
+    view(
+      <SettingsRow label="互联网访问">
+        <span>控件</span>
+      </SettingsRow>,
+    );
+    const label = document.querySelector(".settings-row > span");
+    expect(label?.className).toContain("min-w-[5rem]");
+  });
 });

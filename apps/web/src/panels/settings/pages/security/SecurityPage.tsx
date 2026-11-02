@@ -169,7 +169,8 @@ export function SecurityPage() {
       <DeviceSignIn
         epoch={identityEpoch}
         onSession={onDeviceSession}
-        ticketForm={!signInForm}
+        // 会话还在加载时不给配对票表单：结果回来后可能是登录表单，先闪一下再换很扎眼。
+        ticketForm={session !== undefined && !signInForm}
       />
       {session === undefined ? (
         <div className="flex flex-col gap-3">

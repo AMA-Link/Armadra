@@ -180,6 +180,26 @@ describe("SecurityPage", () => {
     expect(mocks.ticketForm).toHaveBeenLastCalledWith(false);
   });
 
+  it("会话还在加载时「设备登录」不给配对票表单，结果回来后才给", async () => {
+    let resolve: (value: ReturnType<typeof session> | null) => void = () => {};
+    mocks.resume.mockReturnValue(
+      new Promise((done) => {
+        resolve = done;
+      }),
+    );
+    mount();
+    await waitFor(() => expect(mocks.ticketForm).toHaveBeenCalled());
+    expect(mocks.ticketForm.mock.calls.every(([form]) => form === false)).toBe(
+      true,
+    );
+    await act(async () => {
+      resolve(null);
+    });
+    await waitFor(() =>
+      expect(mocks.ticketForm).toHaveBeenLastCalledWith(true),
+    );
+  });
+
   it("owner 看得到审计", async () => {
     mocks.resume.mockResolvedValue(session(["identity:manage"]));
     mount();

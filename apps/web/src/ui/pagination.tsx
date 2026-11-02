@@ -122,7 +122,7 @@ function PaginationEllipsis({
 
 /**
  * 要画出来的页码（从 0 数）：首末两页、当前页和它两边各一页，中间断开处是
- * `"gap"`。页数不多（≤ 7）时全列。
+ * `"gap"`（只在隐藏至少两页时出现）。页数不多（≤ 7）时全列。
  */
 function paginationRange(page: number, count: number): (number | "gap")[] {
   if (count <= 7) return Array.from({ length: count }, (_, index) => index);
@@ -135,7 +135,11 @@ function paginationRange(page: number, count: number): (number | "gap")[] {
   const range: (number | "gap")[] = [];
   for (const [position, index] of sorted.entries()) {
     const previous = sorted[position - 1];
-    if (previous !== undefined && index - previous > 1) range.push("gap");
+    if (previous !== undefined) {
+      // 省略号至少要吞掉两页：只差一页时那一页直接画出来。
+      if (index - previous === 2) range.push(previous + 1);
+      else if (index - previous > 2) range.push("gap");
+    }
     range.push(index);
   }
   return range;
