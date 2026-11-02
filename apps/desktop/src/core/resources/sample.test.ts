@@ -3,10 +3,12 @@ import { describe, expect, it } from "vitest";
 import {
   MAX_LISTED_CHILDREN,
   Sampler,
+  armadraInstall,
   childrenByParent,
   collectTree,
   cpuPercent,
   executableName,
+  isArmadraProcess,
   isGone,
   isRemoteExecutable,
   parseCpuTime,
@@ -326,5 +328,168 @@ describe("一个会话的一行", () => {
     );
     expect(result.cpuPercent).toBe(50);
     expect(result.unknownReason).toBeNull();
+  });
+});
+
+describe("Armadra 自己的进程在 Agent 进程树里的标记", () => {
+  const mac = armadraInstall(
+    "/Applications/Armadra.app/Contents/MacOS/Armadra",
+  );
+  const helper = row({
+    pid: 7019,
+    name: "Armadra Helper",
+    path: "/Applications/Armadra.app/Contents/Frameworks/Armadra Helper.app/Contents/MacOS/Armadra Helper",
+  });
+
+  it("macOS：应用包里的主程序与所有 Helper 是，别的 Electron 应用的 Helper 不是", () => {
+    expect(isArmadraProcess(helper, mac)).toBe(true);
+    expect(
+      isArmadraProcess(
+        row({
+          pid: 1,
+          name: "Armadra",
+          path: "/Applications/Armadra.app/Contents/MacOS/Armadra",
+        }),
+        mac,
+      ),
+    ).toBe(true);
+    expect(
+      isArmadraProcess(
+        row({
+          pid: 2,
+          name: "Armadra Helper",
+          path: "/Applications/Armadra.app.evil/Contents/MacOS/Armadra Helper",
+        }),
+        mac,
+      ),
+    ).toBe(false);
+    expect(
+      isArmadraProcess(
+        row({
+          pid: 3,
+          name: "Claude Helper",
+          path: "/Applications/Claude.app/Contents/Frameworks/Claude Helper.app/Contents/MacOS/Claude Helper",
+        }),
+        mac,
+      ),
+    ).toBe(false);
+  });
+
+  it("读不到路径的不认；node、codex 这类 Agent 自己的进程不认", () => {
+    expect(isArmadraProcess(row({ pid: 4, name: "x", path: "" }), mac)).toBe(
+      false,
+    );
+    expect(
+      isArmadraProcess(
+        row({ pid: 5, name: "node", path: "/opt/homebrew/bin/node" }),
+        mac,
+      ),
+    ).toBe(false);
+    expect(isArmadraProcess(helper, null)).toBe(false);
+  });
+
+  it("非 macOS：安装目录里与主程序同名的二进制；服务器壳的 node 不算", () => {
+    const linux = armadraInstall("/opt/Armadra/armadra");
+    expect(
+      isArmadraProcess(
+        row({ pid: 6, name: "armadra", path: "/opt/Armadra/armadra" }),
+        linux,
+      ),
+    ).toBe(true);
+    expect(
+      isArmadraProcess(
+        row({ pid: 7, name: "other", path: "/opt/Armadra/other" }),
+        linux,
+      ),
+    ).toBe(false);
+    const server = armadraInstall("/usr/local/bin/node");
+    expect(
+      isArmadraProcess(
+        row({ pid: 8, name: "node", path: "/usr/local/bin/node" }),
+        server,
+      ),
+    ).toBe(false);
+  });
+
+  it("Windows：反斜杠路径、盘符大小写不同也认；别的目录与 node.exe 不认", () => {
+    const windows = armadraInstall("C:\\Program Files\\Armadra\\Armadra.exe");
+    expect(
+      isArmadraProcess(
+        row({
+          pid: 10,
+          name: "Armadra",
+          path: "c:\\program files\\armadra\\Armadra.exe",
+        }),
+        windows,
+      ),
+    ).toBe(true);
+    expect(
+      isArmadraProcess(
+        row({
+          pid: 11,
+          name: "Armadra",
+          path: "C:\\Other\\Armadra.exe",
+        }),
+        windows,
+      ),
+    ).toBe(false);
+    expect(
+      isArmadraProcess(
+        row({
+          pid: 12,
+          name: "node",
+          path: "C:\\Program Files\\nodejs\\node.exe",
+        }),
+        armadraInstall("C:\\Program Files\\nodejs\\node.exe"),
+      ),
+    ).toBe(false);
+  });
+
+  it("会话的子进程里只有 Armadra 自己的带 origin，树归属与合计不变", () => {
+    const now = table(
+      row({ pid: 100, name: "zsh", path: "/bin/zsh" }),
+      row({
+        pid: 7016,
+        parent: 100,
+        name: "codex",
+        path: "/opt/homebrew/bin/codex",
+      }),
+      row({ ...helper, parent: 7016, rssBytes: 4096 }),
+      row({
+        pid: 7020,
+        parent: 7016,
+        name: "node_repl",
+        path: "/opt/x/node_repl",
+      }),
+    );
+    const result = sessionResources(
+      {
+        sessionId: "s",
+        sessionKey: "s",
+        workspaceId: "w",
+        nodeId: "n",
+        generation: 1,
+        backend: "tmux",
+        cwd: "/tmp",
+        pid: 100,
+        exited: false,
+        remote: false,
+      },
+      { table: now, atMs: 2_000, previousTable: undefined, elapsedMs: 0 },
+      undefined,
+      0,
+      childrenByParent(now),
+      mac,
+    );
+    const origins = Object.fromEntries(
+      result.children.map((child) => [child.name, child.origin]),
+    );
+    expect(origins).toEqual({
+      codex: undefined,
+      "Armadra Helper": "armadra",
+      node_repl: undefined,
+    });
+    expect(result.childCount).toBe(3);
+    expect(result.memoryBytes).toBe(1024 + 1024 + 4096 + 1024);
   });
 });

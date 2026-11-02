@@ -121,6 +121,13 @@ export interface ProcessSample {
   readonly parentPid: number | null;
   readonly memoryBytes: number | null;
   readonly cpuPercent: number | null;
+  /**
+   * `"armadra"`：这是本次安装自己的程序（Electron 主程序与它的 Helper）。它们出现
+   * 在 Agent 的进程树里，是因为 Armadra 给 CLI 注入的钩子与画布工具 MCP
+   * （`armadra-hook`）以 `ELECTRON_RUN_AS_NODE` 重入同一个二进制。树归属没错，
+   * 但它们不是 Agent 自己的工作，面板据此标出来。缺省 = 无结论。
+   */
+  readonly origin?: "armadra";
 }
 
 /**
@@ -588,10 +595,75 @@ export function collectTree(
   return tree;
 }
 
+/**
+ * 本次安装的程序在磁盘上的位置，用来认「这个进程是不是 Armadra 自己的」。
+ *
+ * 只看可执行路径，不按名字猜——别的 Electron 应用也叫 `Foo Helper`：
+ *  - macOS：`.app` 包。主程序与所有 Helper 都在 `X.app/Contents/` 之下，
+ *    `bundleRoot` 是 `…/X.app`；
+ *  - 其他平台：安装目录里与主程序同名的二进制。`node` 不算——服务器壳跑在系统
+ *    的 `node` 上，认它就会把用户自己的 node 进程都认成 Armadra 的。
+ */
+export interface ArmadraInstall {
+  readonly bundleRoot: string | null;
+  readonly directory: string;
+  readonly binary: string;
+}
+
+/**
+ * 路径比较与平台无关：两种分隔符都认，Windows 形状的路径（带反斜杠）不分大小写。
+ * 不用 `node:path`——它按**运行平台**的规矩切，在 Windows 上会读不懂 macOS 形状的
+ * 路径，反过来也一样；而 `ps` 读回来的路径与 `process.execPath` 总是同一个平台的。
+ */
+function normalizePath(path: string): string {
+  const slashed = path.replace(/\\/g, "/");
+  return path.includes("\\") ? slashed.toLowerCase() : slashed;
+}
+
+function directoryOf(path: string): string {
+  const slashed = normalizePath(path);
+  const at = slashed.lastIndexOf("/");
+  return at < 0 ? "" : slashed.slice(0, at);
+}
+
+export function armadraInstall(
+  execPath: string = process.execPath,
+): ArmadraInstall {
+  const normalized = normalizePath(execPath);
+  const marker = ".app/Contents/";
+  const at = normalized.indexOf(marker);
+  return {
+    bundleRoot: at < 0 ? null : normalized.slice(0, at + ".app".length),
+    directory: directoryOf(execPath),
+    binary: executableName(execPath),
+  };
+}
+
+const DEFAULT_INSTALL = armadraInstall();
+
+/** 这个进程是不是本次安装自己的程序。读不到路径的不认：来源不明就不是我们的。 */
+export function isArmadraProcess(
+  row: ProcessRow,
+  install: ArmadraInstall | null = DEFAULT_INSTALL,
+): boolean {
+  if (install === null || row.path === "") return false;
+  if (install.bundleRoot !== null) {
+    return normalizePath(row.path).startsWith(`${install.bundleRoot}/`);
+  }
+  const binary = install.binary.toLowerCase();
+  return (
+    binary !== "" &&
+    binary !== "node" &&
+    directoryOf(row.path) === install.directory &&
+    row.name.toLowerCase() === binary
+  );
+}
+
 export function processSample(
   row: ProcessRow,
   previous: Map<number, ProcessRow> | undefined,
   elapsedMs: number,
+  install: ArmadraInstall | null = null,
 ): ProcessSample {
   return {
     pid: row.pid,
@@ -600,6 +672,7 @@ export function processSample(
     parentPid: row.parent,
     memoryBytes: row.rssBytes,
     cpuPercent: cpuPercent(row, previous, elapsedMs),
+    ...(isArmadraProcess(row, install) ? { origin: "armadra" as const } : {}),
   };
 }
 
@@ -687,6 +760,7 @@ export function sessionResources(
   previous: Map<number, ProcessRow> | undefined,
   elapsedMs: number,
   children: ReadonlyMap<number, number[]>,
+  install: ArmadraInstall | null = DEFAULT_INSTALL,
 ): SessionResources {
   const unknown = (reason: string): SessionResources => ({
     sessionId: target.sessionId,
@@ -750,7 +824,7 @@ export function sessionResources(
       cpuKnown = true;
     }
     if (pid !== target.pid) {
-      listed.push(processSample(row, previous, elapsedMs));
+      listed.push(processSample(row, previous, elapsedMs, install));
     }
   }
   // 最重的在前，被截掉的尾巴是没人在找的那部分。并列时保持 pid 顺序，样本不抖。

@@ -98,6 +98,14 @@ export const processSampleSchema = z.object({
   parentPid: z.number().int().nullable(),
   memoryBytes: z.number().int().nonnegative().nullable(),
   cpuPercent: z.number().nonnegative().nullable(),
+  /**
+   * `armadra`: one of this install's own programs (the Electron main binary or
+   * a Helper), e.g. the `armadra-hook` MCP server Armadra injects into an
+   * agent CLI. It is a genuine descendant of the session, so it stays in the
+   * tree and in the totals; the field only lets the panel mark it. Absent =
+   * no finding.
+   */
+  origin: z.enum(["armadra"]).optional(),
 });
 
 export const sessionResourcesSchema = z.object({

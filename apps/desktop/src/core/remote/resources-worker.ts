@@ -213,6 +213,8 @@ export function readRemoteResources(
       refresh.previousTable,
       refresh.elapsedMs,
       children,
+      // 远端的进程不是本机这份安装的。
+      null,
     );
     return {
       sessionId: query.sessionId,
