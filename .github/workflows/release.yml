@@ -855,6 +855,8 @@ jobs:
         run: |
           set -euo pipefail
           brew tap-new --no-git armadra-release/local
+          # 新版 Homebrew 不加载未信任 tap 里的 cask；旧版没有 trust 命令时跳过。
+          if brew commands --quiet | grep -qx trust; then brew trust armadra-release/local; fi
           tap="$(brew --repository armadra-release/local)"
           mkdir -p "$tap/Casks"
           cp rendered/channels/homebrew/Casks/armadra.rb "$tap/Casks/"
