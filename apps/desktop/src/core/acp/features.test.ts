@@ -134,9 +134,9 @@ describe("the client's optional features", () => {
       elicitation: true,
       configOptions: true,
       terminal: true,
-      // 0.11.0 的客户端还没有认证与 elicitation/complete。
-      auth: false,
-      elicitationComplete: false,
+      // 随包 `@armadra/agent` 0.12.0 起真客户端自带认证与 elicitation/complete。
+      auth: true,
+      elicitationComplete: true,
     });
     expect(acpClientFeatures({})).toEqual({
       mcpServers: false,

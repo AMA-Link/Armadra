@@ -2,10 +2,28 @@
 
 每个版本一节，按发布倒序。括号里是合入的 PR 编号（github.com/AMA-Link/Armadra，2026-10-11 前为 Owlbay/Armadra，旧编号照常跳转）。兼容范围以 `tools/release/compatibility.json` 为准，发布说明里的 `armadra-compatibility` 围栏由它渲染。桌面、服务器与手机 / 平板 App 共用一条版本线和一个标签 `vX.Y.Z`（规则见 `docs/guides/ci-release.md`「版本规则」）；有手机端改动的版本，在「手机与平板」小节里写，其余写在「桌面 / 服务器」下。2026-10-10 之前手机端曾单独编号（1.0.0、1.1.0），内容并入对应的 0.2.5、0.2.6。
 
-## 0.11.1（未发布）
+## 0.12.0（2026-11-02）
+
+版本统一：Armadra、armadra-cloud、armadra-agent 同为 0.12.0。随包 `@armadra/agent` 0.12.0 与平台协议包 0.12.0（协议仍是 1.4，只加了 OAuth 能力位与字段）；配套镜像 `armadra-cloud` / `armadra-relay` 0.12.0，新增 `armadra-push-relay` 镜像。本版主题：手机端补齐（云主机挂载走端到端通道、横屏手机布局）、画布节点按黄金比例与点阵创建、ACP 补齐（模型与权限模式选择、登录流程、`elicitation/complete`、会话列表与接管）、协调者的工作项账本、统一事件队列与进展看门狗、远程访问以 Armadra 云为缺省、工作空间归档、推送中继镜像。
+
+Version aligned with armadra-cloud and armadra-agent (all three ship 0.12.0), with `@armadra/agent` 0.12.0 and platform protocol 0.12.0 (still protocol 1.4, additive OAuth capability bits and fields). Themes: phone fixes (cloud host mount over the end-to-end channel, landscape phone layout), golden-ratio node sizes on the dot grid, ACP gap filling (mode and model pickers, sign-in flow, `elicitation/complete`, session list and attach), the coordinator's work-item ledger, unified event queue and progress watchdog, cloud-first remote access, workspace archive, and the push-relay image.
 
 ### 桌面 / 服务器
 
+- 画布节点尺寸：默认与最小尺寸取黄金比例（横向 φ:1，文件列表 1:φ），宽高都是 13px 点阵的整数倍（格数取相邻斐波那契数）；点阵间距按 13 / 21 / 34 三档；会话默认从 960×600 缩到 715×442，已保存节点不动。新建节点后相机居中并缩放到占视口主方向的 1/φ（夹在 100% 到 125%，字号不低于 12px），手机上装不下就按黄金比例缩小；侧栏 : 画布 = 1 : φ³，工作面板 : 画布 = 1 : φ²（#693）。整理与派发的间距改为 13px 的斐波那契倍数并对齐点阵，整理的吸附网格改为 13px，主从树居中改为向下取整，不再蹭进相邻兄弟的间距（#699）。
+- ACP 会话：新建后提示框立即给模式与模型选择，Agent 报回的优先，没报时用节点与 CLI 的候选，选择先记着，目录到达后再下发；各家权限模式兼容表收进 `packages/shared/src/acp-modes.ts`，页面与 core 共用；上下文余量等首条消息发出后才显示（#689）。
+- ACP 补齐（契约 §91，只加字段、路由与一个 procedure）：起不来时按失败码给具体文案；审批按钮显示 Agent 给的选项名，条目自带工具调用摘要，答复失败会撤销已答标记；推理强度等 select 与 boolean 配置项可改；`notice` 与压缩更新进时间线；内层工具调用分层；命令 `input.hint`、`messageId`、音频与非文本块；读 `audio`、`mcpCapabilities`、`logout` 能力，认证方法保留完整对象。随包 `@armadra/agent` 0.12.0 起以下四项生效：Agent 登录与登出（`acp_auth_required` 带登录方式，terminal 型方法由 core 执行适配器命令）、`elicitation/complete` 收掉 URL 型卡片（多选与带标题枚举的表单）、列出 Agent 自己的会话并「接管会话」、关闭时先 `session/close`（#694）。
+- 协调者只分派：画布上的 ama 协调者以 `coordinator` 工具预设启动（`read`、只读 `grep` / `glob`、`task` 与画布工具，没有 bash / edit / write），Agent 设置里可开关；分派改由 ama 的 runner 完成事件触发，定时扫描降为 60 秒兜底；协调者的等待封顶 5 秒，不再自己阻塞（#665 #646）。
+- 协调者的工作项账本（迁移 0058，契约 §90）：成员用 `canvas report` / `canvas handback` 结构化汇报，协调者用 `canvas items` 读账本，阶段由事实推出，节点头与分派抽屉显示，`person/*` 排前；阶段没变的进度不再推帧，页面容忍未知阶段，`open-agent` 与 `team` 新增 `--origin` 原样带上人的原话（#691 #695）。
+- 协调者的统一事件队列（迁移 0059 `router_events`，契约 §93）：成员的报告与交回、看门狗判定、任务结束、人对某个工作项的追问、别的节点的留言都只往事件表写一行（id 确定，重复写入幂等），协调者空闲时 core 把未确认的事件合并成一张卡片投进去（最多 20 行，末尾附 `canvas items` 读取指针；忙时留在表里，投不进去按 5 秒到 300 秒退避重试，没确认前一直出现在之后的卡片里，正文不带终端原文）；新动词 `canvas events` 与 `canvas ack --event <id>`；人在对协调者说的话里点名工作项（`#<工作项 id>`）或在画布上评论成员节点，原话直接转给成员，协调者的卡片里只多一行「已转给 X」（#700）。
+- Agent 进展看门狗（规则版，只提示不处置）：`stalled`（运行中却久无上报与输出）、`idleWaiting`（分派出去的任务久无结论）、`needsHuman`（等待权限或输入过久）；`agent.status` 帧、分派抽屉、节点头带标记，推送新增 `stalled`（只发给有 `canvas:read` 的人，不带终端原文），判定进协调者的事件队列（见下一条）；阈值在设置 → 通知（`watchdog.stalledMinutes` / `watchdog.needsHumanMinutes`，`0` 为关），无迁移（#690）。
+- 跨连线读取先给一段并附续读位置：文件 `--offset`、转录 `--before`，单次读取不再超出连线的剩余额度（#674）。
+- 远程访问以 Armadra 云为缺省：「这台电脑」精简为三行（允许访问、互联网访问、手机扫码连接），已登记即开，未登录走设备码登录，可更换空间；配对二维码缺省选内网地址；「我的其他电脑」与画布分享弹层的旧中转账号入口改为云优先，只有个人中转账号时保持一键开（#676 #686）。
+- 工作空间归档（迁移 0057，契约 §89）：新增 `workspaces.archive` / `restore` / `archived`（仅 owner），归档与删除都不弹确认框，归档后可撤销；设置新增「归档」页可恢复或删除；归档时结束其终端与 Agent 会话、停掉语言服务，正看着它的订阅以 `not_found` 结束，授予与分享链接保留（#679）。
+- Armadra 云登录：控制台与 `/h/` 支持 GitHub / Google 登录（按服务端能力位显示，口令入口随之隐藏）（#662）。
+- 修复：壳等自己起的 core 时按输出判断进展，静默 10 秒才算卡死，总上限 60 秒（#657）。
+- 依赖与 CI：`follow-redirects` 覆盖到 1.16.2，清掉 `pnpm audit --prod` 的 high（#655）；macOS 作业迁到 macos-15（#653 #654）；dev-stack 的 GHCR 镜像升到 0.11.0（#640）；探针：夜间 B 档 Windows 验收与 iOS 配对票过期（#637）、server-perf 越线复测一次（#642）、link-join 按共享解析拆链接片段（#644）；协议包 0.11.0 的兼容收尾（#645）；README 补下载、官网与英文入口（#649）。
+- 协议包 0.12.0 与 `@armadra/agent` 0.12.0：协议仍是 1.4，包里多了 OAuth 能力位与字段；`@armadra/agent` 0.12.0 新增 ACP 登录与登出、`elicitation/complete`、会话列表与关闭的 `signal`，`coordinator` 预设下 `task` 默认后台、`task_ctl wait` 封顶 5 秒；`AcpClientOptions` 自带 `onElicitation` / `onElicitationComplete` / `onTerminal` / `authTerminal`，core 去掉了本地补的那几个交叉类型，能力开关（`acpClientFeatures`）保留给假客户端与测试。
 - Armadra 云默认地址与直接登录：共享常量 `ARMADRA_CLOUD_ISSUER`（`https://app.armadra.com`），开发与测试可用环境变量覆盖（桌面 core / 服务器壳读进程环境，网页读构建时 `VITE_ARMADRA_CLOUD_ISSUER`，只收 https，回环另收 http）；桌面「远程访问 → 添加 Armadra 云」去掉地址输入，只留「登录」；`armadra-server cloud login` 的 `--issuer` 缺省取这个地址，自建或测试部署仍可显式给；个人中转的连接方式不变（#661）。
 - 云端控制台第三方登录：登录与注册页按能力位 `auth.oauth.github` / `auth.oauth.google` 显示「使用 GitHub / Google 继续」，新路由 `/login/oauth/:provider` 回跳完成登录（`next` 含设备码批准页，两步验证复用第二步）；服务端不报 `auth.password` 时隐藏口令表单、找回与注册入口，不报 `auth.password-change` 时账号页收起「更改口令」；运营登录不变；`/h/<主机>` 未登录跳 `/login?next=/h/<主机>`（#661，配合 armadra-cloud#184）。
 - 推送中继镜像：新增 `apps/push-relay/docker/Dockerfile`（node 运行时、非 root uid 10001、根文件系统可只读、`/health` 健康检查），标签发布时 `push-relay-image.yml` 推 `ghcr.io/ama-link/armadra-push-relay:<版本>`（amd64 + arm64，与服务器壳镜像同号）；APNs 与 FCM 凭据改为可选，只配 `ARMADRA_RELAY_SECRET_FILE` 也能启动，没配的平台登记与推送答 `platformUnavailable`（#658）。
@@ -16,7 +34,16 @@
 
 ### 手机与平板
 
+- 手机挂载云主机走端到端通道：「选择主机」点「添加」时 core 登录改走端到端通道，与网页、分享链接一致，不再向源地址发明文 HTTP（云中转对它答 404）；失败带原始原因（远程服务错误码与 HTTP 状态、通道码、网络报错）；选择主机页加「返回」（#681）。
+- 设备码批准后回到 App 并立即确认，在途时不丢结果（#667）。
+- 横屏仍用手机布局：判据 `COMPACT_QUERY` 是唯一一处（宽度上限挡住键盘弹起后变矮的横屏平板），样式同一判据；矮屏（高 ≤ 500px）收紧底部导航、焦点页页头与按键条；手机 Dock 放不下时行内横向滚动（#688）。收起的小地图按钮让开底部导航与安全区（#699）。
 - 连接 Armadra 云改用设备码登录：「添加连接 → Armadra 云」只有「登录」，没有地址与口令输入，用系统浏览器打开批准页（在那里用 GitHub / Google 登录），按服务端间隔轮询，限流退避，回到前台立即补一次；批准后选主机挂载；登录失效的云连接点「登录」直达；个人中转的账号口令登录不变（#661）。
+
+### 部署说明
+
+- 数据库迁移 0057（`workspaces.archived_at`）、0058（`workflow_task_runs` 加列）与 0059（新表 `router_events`）：只加列与新表，首次启动自动应用；回滚到 0.11.x 前请先备份数据库，旧版会拒绝带更高迁移号的库。
+- 推送中继镜像 `ghcr.io/ama-link/armadra-push-relay:0.12.0`（amd64 + arm64，与服务器壳镜像同号）：非 root（uid 10001），根文件系统可只读，`/health` 健康检查；APNs 与 FCM 凭据可选，只配 `ARMADRA_RELAY_SECRET_FILE` 也能启动，没配的平台答 `platformUnavailable`。
+- 配套镜像 `ghcr.io/ama-link/armadra-cloud:0.12.0`、`ghcr.io/ama-link/armadra-relay:0.12.0` 与协议包 0.12.0 同号；发版顺序沿用 0.11.0：先打 Armadra `v0.12.0`，再打 armadra-cloud `v0.12.0`。
 
 ## 0.11.0（2026-10-30）
 

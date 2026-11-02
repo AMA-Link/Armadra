@@ -193,11 +193,28 @@ describe("logoutOn", () => {
 /* ------------------------- 真 core、假 Agent（旧客户端） ------------------------- */
 
 let open: AcpCore | undefined;
+// 随包 `@armadra/agent` 0.12.0 起真客户端自带 authenticate / logout；旧客户端那条路
+// 靠临时摘掉它们来模拟，用例结束一律还原。
+const clientPrototype = AcpClient.prototype as unknown as Record<
+  string,
+  unknown
+>;
+const CLIENT_AUTH_METHODS = ["authenticate", "logout"] as const;
+const originalAuthMethods = Object.fromEntries(
+  CLIENT_AUTH_METHODS.map((name) => [name, clientPrototype[name]]),
+);
+
+function withOldClient(): void {
+  for (const name of CLIENT_AUTH_METHODS) delete clientPrototype[name];
+}
+
 afterEach(async () => {
   await open?.stop();
   open = undefined;
-  delete (AcpClient.prototype as unknown as Record<string, unknown>)
-    .authenticate;
+  for (const name of CLIENT_AUTH_METHODS) {
+    if (originalAuthMethods[name] === undefined) delete clientPrototype[name];
+    else clientPrototype[name] = originalAuthMethods[name];
+  }
 });
 
 async function createFailing(core: AcpCore) {
@@ -210,8 +227,8 @@ async function createFailing(core: AcpCore) {
   });
 }
 
-describe("the start failure and the auth routes (0.11 client)", () => {
-  it("answers acp_auth_required with the declared methods, unsupported on this client", async () => {
+describe("the start failure and the auth routes", () => {
+  it("answers acp_auth_required with the declared methods, supported on this client", async () => {
     open = await acpCore({ authRequired: true });
     const created = await createFailing(open);
     expect(created.status, JSON.stringify(created.body)).toBe(409);
@@ -223,7 +240,7 @@ describe("the start failure and the auth routes (0.11 client)", () => {
             id: "login",
             name: "Log in",
             type: "terminal",
-            supported: false,
+            supported: true,
           },
         ],
       },
@@ -233,6 +250,7 @@ describe("the start failure and the auth routes (0.11 client)", () => {
   });
 
   it("the auth routes answer acp_auth_unsupported while the client lacks the functions", async () => {
+    withOldClient();
     open = await acpCore({ authRequired: true });
     const body = {
       workspaceId: open.workspaceId,
@@ -265,7 +283,7 @@ describe("the start failure and the auth routes (0.11 client)", () => {
   });
 
   it("with an authenticate-capable client the terminal method runs on the host and a retry then works", async () => {
-    // 模拟新版客户端：原型上有 authenticate（特性检测按它判）。
+    // 真客户端的 authenticate 换成立即成功的桩，只看 core 这一半。
     (AcpClient.prototype as unknown as AcpAuthClient).authenticate =
       async () => ({});
     expect(acpClientFeatures().auth).toBe(true);

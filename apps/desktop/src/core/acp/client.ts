@@ -169,35 +169,12 @@ export function acpClientFeatures(
   };
 }
 
-/** 有 `elicitation` 能力的客户端多收的那个回调（上游 0.6.8 起的形状）。 */
-interface ElicitationHandler {
-  onElicitation?(
-    params: AcpElicitationParams,
-    signal: AbortSignal,
-  ): Promise<AcpElicitationResult>;
-}
-
-/** 有 `auth` 能力的客户端多收的那个构造参数：声明宿主能跑 terminal 型认证方法。 */
-interface AuthTerminalOption {
-  authTerminal?: boolean;
-}
-
-/** 有 `elicitationComplete` 能力的客户端多收的那个回调。 */
-interface ElicitationCompleteOption {
-  onElicitationComplete?(params: { elicitationId: string }): void;
-}
-
 /** `terminal/*` 的处理器（上游 0.9.1 起的形状）：返回值即答复，抛 `RpcError` 回错误。 */
 export type AcpTerminalHandler = (
   method: string,
   params: unknown,
   signal: AbortSignal,
 ) => Promise<unknown>;
-
-/** 有 `terminal` 能力的客户端多收的那个回调。 */
-interface TerminalHandlerOption {
-  onTerminal?: AcpTerminalHandler;
-}
 
 /** 有 `configOptions` 能力的客户端多的那个方法。 */
 interface ConfigCapableClient {
@@ -333,11 +310,7 @@ export class AcpProcess {
     if (child.stdin === null || child.stdout === null) {
       throw new AcpError("acp_spawn_failed", "ACP agent has no stdio pipes");
     }
-    const clientOptions: AcpClientOptions &
-      ElicitationHandler &
-      ElicitationCompleteOption &
-      AuthTerminalOption &
-      TerminalHandlerOption = {
+    const clientOptions: AcpClientOptions = {
       input: child.stdout,
       output: child.stdin,
       ...(options.clientInfo === undefined
@@ -349,8 +322,8 @@ export class AcpProcess {
       // 旧版客户端不认这个键、也不声明这个能力：不传，线路与之前逐字节相同。
       ...(acpClientFeatures().elicitation
         ? {
-            // 多选的答案是字符串数组：core 的 `AcpElicitationResult` 比上游 0.11
-            // 的类型宽，线路上都是 JSON。
+            // core 的 `AcpElicitationParams` / `AcpElicitationResult` 是只读形状，
+            // 上游 0.12 的类型是可变的；线路上都是 JSON，这里只做类型转换。
             onElicitation: ((
               params: AcpElicitationParams,
               signal: AbortSignal,
