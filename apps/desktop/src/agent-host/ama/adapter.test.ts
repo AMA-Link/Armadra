@@ -134,6 +134,7 @@ describe("the tool table", () => {
       permissionOf(byName.get(name) as (typeof VERB_TOOLS)[number]);
     expect(permission("canvas_list")).toBe("read");
     expect(permission("canvas_items")).toBe("read");
+    expect(permission("canvas_events")).toBe("read");
     expect(permission("canvas_report")).toBe("write");
     expect(permission("canvas_handback")).toBe("write");
     expect(permission("canvas_inbox")).toBe("read");
@@ -312,6 +313,13 @@ describe("the instructions", () => {
     expect(note).toContain("canvas_items");
     expect(note).toContain("canvas_report");
     expect(note).toContain("canvas_handback");
+  });
+
+  it("tell the coordinator to read and acknowledge the event card", () => {
+    const note = canvasToolNote();
+    expect(note).toContain("canvas_events");
+    expect(note).toContain("canvas_ack");
+    expect(note).toContain("followup");
   });
 });
 

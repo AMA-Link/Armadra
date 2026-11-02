@@ -6,6 +6,7 @@ import {
 } from "../../agent/fixture";
 import { taskRun } from "../../workflow/task-runs";
 import { type ControlOutcome, controlDispatcher } from ".";
+import { openEvents } from "../router-events";
 import { resetSendLimits } from "../send-limits";
 import { resetInboxWake } from "../wake";
 import { resetWaitTrackers } from "./wait";
@@ -285,21 +286,26 @@ describe("report", () => {
 });
 
 describe("telling the coordinator", () => {
-  /** 协调者收件箱里的正文。 */
-  function leadInbox(): string[] {
-    const rows = fixture.database
-      .prepare(
-        "SELECT body FROM agent_mailbox WHERE target_node_id = ? ORDER BY sequence",
-      )
-      .all(lead) as { body: string }[];
-    return rows.map((row) => row.body);
+  /** 协调者的事件队列里的行（契约 §93）；报告不再留收件箱。 */
+  function leadEvents(): { kind: string; summary: string; id: string }[] {
+    return openEvents(fixture.database, lead, 50);
   }
 
-  it("leaves one line for ready / blocked / failed and questions, none for progress", async () => {
+  function leadInbox(): number {
+    return (
+      fixture.database
+        .prepare(
+          "SELECT COUNT(*) AS total FROM agent_mailbox WHERE target_node_id = ?",
+        )
+        .get(lead) as { total: number }
+    ).total;
+  }
+
+  it("writes one event for ready / blocked / failed and questions, none for progress", async () => {
     const member = await dispatch("s1:t1");
     result(await run(member, "report", { state: "progress", summary: "step" }));
     result(await run(member, "report", { state: "waiting", summary: "build" }));
-    expect(leadInbox()).toEqual([]);
+    expect(leadEvents()).toEqual([]);
     const ready = result(
       await run(member, "report", { state: "ready", summary: "done" }),
     );
@@ -311,22 +317,30 @@ describe("telling the coordinator", () => {
         "human-action": "which colour?",
       }),
     );
-    const inbox = leadInbox();
-    expect(inbox).toHaveLength(2);
-    expect(inbox[0]).toContain("[工作项 s1:t1] ready：done");
-    expect(inbox[0]).toContain("canvas items --item s1:t1");
-    expect(inbox[1]).toContain("待决问题：which colour?");
+    const events = leadEvents();
+    expect(events).toHaveLength(2);
+    expect(events[0]).toMatchObject({ kind: "report" });
+    expect(events[0]?.summary).toContain("ready：done");
+    expect(events[1]).toMatchObject({ kind: "attention" });
+    expect(events[1]?.summary).toContain("which colour?");
+    // 不再留收件箱一行。
+    expect(leadInbox()).toBe(0);
   });
 
-  it("leaves one line for a handback", async () => {
+  it("writes one event for a handback", async () => {
     const member = await dispatch("s1:t1");
     const back = result(
       await run(member, "handback", { item: "s1:t1", reason: "not mine" }),
     );
     expect(back.notified).toBe(true);
-    expect(leadInbox().some((body) => body.includes("交回：not mine"))).toBe(
-      true,
-    );
+    const events = leadEvents();
+    expect(events).toHaveLength(1);
+    expect(events[0]).toMatchObject({
+      kind: "handback",
+      id: "handback:s1:t1:1",
+    });
+    expect(events[0]?.summary).toContain("交回：not mine");
+    expect(leadInbox()).toBe(0);
   });
 
   it("does not push a frame for progress that keeps the stage", async () => {

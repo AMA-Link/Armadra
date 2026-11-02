@@ -17,7 +17,7 @@
 import { collab } from "../agent";
 import { setStallSource } from "../agent/stalled";
 import { loadSession } from "../collab/nodes";
-import { queueWatchWake } from "../collab/wake";
+import { recordStalled, recordTaskDone } from "../collab/router-sources";
 import type { CoreContext } from "../main";
 import { settingsDomain } from "../settings";
 import { timelineDomainOf } from "../timeline";
@@ -95,7 +95,7 @@ export function install(context: CoreContext): WorkflowDomain | undefined {
     running: (nodeId) => loadSession(database, nodeId)?.status === "running",
     wake: (wake) => {
       const ctx = collab();
-      if (ctx !== undefined) queueWatchWake(ctx, wake);
+      if (ctx !== undefined) recordStalled(ctx, wake);
     },
     log: (message, fields) => context.log.info(message, fields),
   });
@@ -106,6 +106,10 @@ export function install(context: CoreContext): WorkflowDomain | undefined {
     publish: () => collab()?.publish,
     log: (message, fields) => context.log.info(message, fields),
     onTick: () => watchdog.scan(),
+    onSettled: (run, status) => {
+      const ctx = collab();
+      if (ctx !== undefined) recordTaskDone(ctx, run, status);
+    },
   });
   tasks.start();
   const domain: WorkflowDomain = {
