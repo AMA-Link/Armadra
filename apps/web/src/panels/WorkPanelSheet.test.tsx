@@ -5,6 +5,8 @@ const compact = vi.hoisted(() => ({ value: false }));
 vi.mock("../platform/layout", () => ({
   useCompactLayout: () => compact.value,
   isCompactLayout: () => compact.value,
+  isPhoneLandscape: () => false,
+  isPhoneScreen: () => compact.value,
 }));
 
 import { initialPanels } from "../store/canvas/internal";

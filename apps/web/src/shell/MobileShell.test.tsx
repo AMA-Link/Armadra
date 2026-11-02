@@ -25,6 +25,8 @@ const compact = vi.hoisted(() => ({ value: true }));
 vi.mock("../platform/layout", () => ({
   useCompactLayout: () => compact.value,
   isCompactLayout: () => compact.value,
+  isPhoneLandscape: () => false,
+  isPhoneScreen: () => compact.value,
 }));
 
 const sendKeys = vi.hoisted(() => vi.fn());

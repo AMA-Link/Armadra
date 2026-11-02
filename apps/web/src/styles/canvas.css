@@ -240,15 +240,14 @@
 }
 
 /*
- * 手机（≤767px，与 `platform/layout.isCompactLayout` 同一个断点）：底部有一条
+ * 手机竖屏（≤767px，与 `platform/layout.isCompactLayout` 同一个断点）：底部有一条
  * 导航（`shell/MobileBottomNav`，56px 再加安全区）。Dock 必须坐在它**上面**
  * ——上面那条容器查询给的 38px 会被导航盖掉一截，工具按钮按不到。
  *
  * 写成媒体查询而不是容器查询：导航是窗口级的固定条，跟画布容器有多宽无关；
  * 放在容器查询之后，同权重下由它接管 `--dock-bottom`。
  */
-@media (max-width: 767px),
-  (pointer: coarse) and (max-height: 500px) and (max-width: 1023px) {
+@media (max-width: 767px) {
   .canvas-dock-row {
     --dock-bottom: calc(var(--mobile-nav-h) + var(--safe-bottom) + 10px);
     /* 手机上 Dock 要用整个宽度，缩略图改到它上方（下面那条规则）。 */
@@ -268,12 +267,50 @@
    * 缩略图和它的收起钮（`MinimapToggle` 的 Panel 与 `.react-flow__minimap` 是兄
    * 弟，收起后缩略图本身不渲染）共用 `--navigation-bottom`，所以变量写在两者的
    * 共同祖先上：收起钮也坐在底部导航与 Dock 之上，不再压在导航条上。
-   * `--mobile-nav-h` 矮屏（手机横屏）自己缩到 44px，这里不用再分情况。
+   * `--mobile-nav-h` 矮屏自己缩到 44px，这里不用再分情况。
    */
   .workspace-surface {
     --navigation-bottom: calc(
       var(--mobile-nav-h) + var(--safe-bottom) + 10px + var(--dock-h) + 12px
     );
+  }
+}
+
+/*
+ * 手机横屏（`platform/layout.PHONE_LANDSCAPE_QUERY`）是电脑布局（#715）：整排
+ * Dock、右上工具簇、右下缩略图都与桌面一致，只按矮屏收紧。画布容器在 1000px
+ * 以下时工具组本该折进弹层（上面那条容器查询），横屏手机上不折——缩略图默认收
+ * 起（`app/minimap-preferences`），侧栏默认收起（`store/canvas/internal`），
+ * 800 宽上下的画布放得下整排 Dock；真放不下时 Dock 自己横向滚动。
+ */
+@media (pointer: coarse) and (max-height: 500px) and (max-width: 1023px) {
+  .dock-tools-expanded {
+    display: flex;
+  }
+  .dock-tools-compact {
+    display: none;
+  }
+  .canvas-dock-row {
+    --dock-bottom: calc(8px + var(--safe-bottom));
+    grid-template-columns: minmax(0, 1fr) minmax(0, auto) minmax(
+        calc(var(--minimap-w) + 14px),
+        1fr
+      );
+  }
+  .canvas-dock {
+    gap: 2px;
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    scrollbar-width: none;
+  }
+  .canvas-dock::-webkit-scrollbar {
+    display: none;
+  }
+  .canvas-dock [data-slot="separator"] {
+    margin-inline: 2px;
+  }
+  .workspace-surface {
+    --navigation-bottom: calc(8px + var(--safe-bottom));
   }
 }
 
@@ -321,8 +358,7 @@
 .canvas-style-row > * {
   pointer-events: auto;
 }
-@media (max-width: 767px),
-  (pointer: coarse) and (max-height: 500px) and (max-width: 1023px) {
+@media (max-width: 767px) {
   .canvas-style-row {
     --style-row-bottom: calc(var(--mobile-nav-h) + var(--safe-bottom) + 10px);
   }

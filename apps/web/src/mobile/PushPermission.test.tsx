@@ -20,6 +20,8 @@ const mocks = vi.hoisted(() => ({
 vi.mock("../platform/layout", () => ({
   useCompactLayout: () => mocks.compact,
   isCompactLayout: () => mocks.compact,
+  isPhoneLandscape: () => false,
+  isPhoneScreen: () => mocks.compact,
 }));
 vi.mock("../api/push", () => ({
   pushApi: {

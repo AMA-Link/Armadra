@@ -45,25 +45,29 @@
 }
 
 /*
- * 手机布局变体：判据与 `platform/layout.ts` 的 `COMPACT_QUERY` 同一条（竖屏手机
- * 与矮的触屏横屏），不要再用 `md:` / `max-md:` 表达「手机还是电脑」；`desktop:` 是它的补集。
+ * 手机布局变体：判据与 `platform/layout.ts` 的 `COMPACT_QUERY` 同一条（宽 ≤767px；
+ * 手机横屏是电脑布局，#715），不要再用 `md:` / `max-md:` 表达「手机还是电脑」。
  * `platform/layout.test.ts` 核对两处一致。
  */
 @custom-variant compact {
-  @media (max-width: 767px),
-    (pointer: coarse) and (max-height: 500px) and (max-width: 1023px) {
+  @media (max-width: 767px) {
     @slot;
   }
 }
 /*
- * 矮屏变体：高度 ≤ 500px（手机横屏）。只管竖向的紧凑（导航、页头、按键条的
- * 高度与内距），不判断布局形态；形态仍由 `compact:` / `desktop:` 决定。
+ * 矮屏变体：高度 ≤ 500px（手机横屏、竖屏弹起键盘）。只管竖向的紧凑（导航、页头、
+ * 按键条的高度与内距），不判断布局形态；形态仍由 `compact:` 决定。
  */
 @custom-variant short {
   @media (max-height: 500px) {
     @slot;
   }
 }
+/*
+ * 非手机：宽 ≥768px 且不是手机横屏（`PHONE_LANDSCAPE_QUERY`）。只给输入框的字号
+ * 用（`ui/input`、`ui/textarea`）：手机横屏虽然是电脑布局，输入仍要 16px，iOS
+ * 才不会在聚焦时缩放页面。
+ */
 @custom-variant desktop {
   @media (min-width: 768px) and (not ((pointer: coarse) and (max-height: 500px) and (max-width: 1023px))) {
     @slot;
@@ -477,8 +481,7 @@
     height: 100dvh;
   }
 }
-@media (max-width: 767px),
-  (pointer: coarse) and (max-height: 500px) and (max-width: 1023px) {
+@media (max-width: 767px) {
   [data-slot="sheet-content"][data-side="right"] {
     max-width: 100vw;
   }

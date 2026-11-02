@@ -5,7 +5,7 @@ import {
 } from "@armadra/shared";
 import { usePreferencesStore } from "../../app/preferences-store";
 import { emptyWhiteboard } from "../../canvas/whiteboard/model";
-import { isCompactLayout } from "../../platform/layout";
+import { isCompactLayout, isPhoneLandscape } from "../../platform/layout";
 import { diffSnapshots, record, type CommitOptions } from "./history";
 import { markPatch } from "./pending";
 import { isReadOnly } from "./presence";
@@ -29,8 +29,12 @@ export const emptyBoardState = {
 };
 
 export const initialPanels: PanelState = {
+  // 手机横屏是电脑布局（#715），但 280px 的侧栏在 800 宽上下的屏幕里要占掉三分
+  // 之一：默认收起，折叠钮照常在左上角。
   sidebar:
-    !isCompactLayout() && usePreferencesStore.getState().sidebarOpen
+    !isCompactLayout() &&
+    !isPhoneLandscape() &&
+    usePreferencesStore.getState().sidebarOpen
       ? "open"
       : "collapsed",
   explorer: "closed",

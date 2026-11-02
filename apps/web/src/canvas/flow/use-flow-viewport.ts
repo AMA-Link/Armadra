@@ -9,7 +9,7 @@ import type { BoardDocument, Size } from "@armadra/shared";
 
 import { useCanvasStore } from "@/store/canvas-store";
 import { defaultNodeSize, minNodeSize, nodeFontPx } from "@/store/defaults";
-import { isCompactLayout } from "@/platform/layout";
+import { isPhoneScreen } from "@/platform/layout";
 import { usePreferencesStore } from "@/app/preferences-store";
 import { stopFollowing } from "@/realtime/session";
 import type { Box } from "../geometry";
@@ -150,7 +150,7 @@ function measuredNodeBounds(nodeId: string): Box | null {
  * 已经是装得下的尺寸，调用方指定过别的尺寸的也不碰。返回是否改了。
  */
 function fitNodeToPhone(nodeId: string): boolean {
-  if (!isCompactLayout()) return false;
+  if (!isPhoneScreen()) return false;
   const state = useCanvasStore.getState();
   const node = state.document?.nodes.find((item) => item.id === nodeId);
   if (!node) return false;
