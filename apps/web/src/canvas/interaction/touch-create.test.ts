@@ -240,6 +240,47 @@ describe("挂到画布容器上", () => {
     off();
   });
 
+  it("长按节点里的按钮只出菜单，松手带出的 click 被吞掉；下一次点按照常触发（#731）", () => {
+    vi.useFakeTimers();
+    const { stage, menus } = mount();
+    const node = document.createElement("div");
+    node.className = "react-flow__node";
+    const button = document.createElement("button");
+    node.append(button);
+    stage.append(node);
+    const clicks = vi.fn();
+    button.addEventListener("click", clicks);
+    const off = installTouchCreate(stage);
+    pointer("pointerdown", button, 40, 60);
+    vi.advanceTimersByTime(LONG_PRESS_MS);
+    pointer("pointerup", button, 40, 60);
+    button.click();
+    expect(menus).toHaveLength(1);
+    expect(clicks).not.toHaveBeenCalled();
+    // 下一次点按：按下清掉标记，click 照常。
+    pointer("pointerdown", button, 40, 60);
+    pointer("pointerup", button, 40, 60);
+    button.click();
+    expect(clicks).toHaveBeenCalledTimes(1);
+    off();
+  });
+
+  it("没长按到出菜单的点按，click 不受影响", () => {
+    vi.useFakeTimers();
+    const { stage } = mount();
+    const button = document.createElement("button");
+    stage.append(button);
+    const clicks = vi.fn();
+    button.addEventListener("click", clicks);
+    const off = installTouchCreate(stage);
+    pointer("pointerdown", button, 40, 60);
+    vi.advanceTimersByTime(100);
+    pointer("pointerup", button, 40, 60);
+    button.click();
+    expect(clicks).toHaveBeenCalledTimes(1);
+    off();
+  });
+
   it("双击空白处之后那次 dblclick 不再往下传（不另建文字）", () => {
     vi.useFakeTimers();
     const { stage, pane, menus } = mount();
@@ -278,6 +319,18 @@ describe("挂到画布容器上", () => {
     expect(canLongPress(edge)).toBe(true);
     expect(canLongPress(editor)).toBe(false);
     expect(canLongPress(screen)).toBe(false);
+    // 只读的 Markdown 与时间线是选字的地方（#731）。
+    const markdown = document.createElement("div");
+    markdown.className = "sticky-markdown";
+    const paragraph = document.createElement("p");
+    markdown.append(paragraph);
+    const timeline = document.createElement("div");
+    timeline.dataset.slot = "timeline-view";
+    const row = document.createElement("span");
+    timeline.append(row);
+    node.append(markdown, timeline);
+    expect(canLongPress(paragraph)).toBe(false);
+    expect(canLongPress(row)).toBe(false);
     expect(canLongPress(document.body)).toBe(false);
     // 双击只认空白处。
     expect(canOpenCreateMenu(header)).toBe(false);
