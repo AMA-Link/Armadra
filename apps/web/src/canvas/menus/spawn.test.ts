@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
+  GRID_UNIT,
   LAYER_GAP,
   SIBLING_GAP,
   defaultNodeSizeOf,
@@ -58,8 +59,9 @@ function load(nodes: CanvasNode[]): void {
 
 const main = () =>
   makeNode("terminal", {
-    position: { x: 100, y: 100 },
-    size: { width: 960, height: 600 },
+    // 位置与尺寸都在 13px 点阵上：派发出来的从与主左对齐、整格间距。
+    position: { x: 104, y: 104 },
+    size: { width: 962, height: 598 },
     data: {
       kind: "terminal",
       agent: { id: "claude", permissionMode: "plan" },
@@ -87,9 +89,11 @@ describe("spawnSubordinate", () => {
     expect(document.nodes).toHaveLength(2);
     const child = document.nodes.find((node) => node.id === id)!;
     expect(child.position).toEqual({
-      x: 100,
-      y: 100 + 600 + LAYER_GAP.vertical,
+      x: 104,
+      y: 104 + 598 + LAYER_GAP.vertical,
     });
+    expect(child.position.x % GRID_UNIT).toBe(0);
+    expect(child.position.y % GRID_UNIT).toBe(0);
     expect(child.data).toMatchObject({
       kind: "terminal",
       agent: { id: "codex" },
@@ -113,10 +117,10 @@ describe("spawnSubordinate", () => {
     load([parent]);
     // 一个框正好压在默认落点上（主下面一层、左对齐）。
     const shape = makeItem("shape", {
-      x: 200,
-      y: 100 + 600 + LAYER_GAP.vertical + 100,
-      w: 300,
-      h: 200,
+      x: 208,
+      y: 104 + 598 + LAYER_GAP.vertical + 104,
+      w: 312,
+      h: 208,
     });
     useCanvasStore.setState({
       whiteboard: { ...emptyWhiteboard(), items: [shape] },
@@ -126,8 +130,8 @@ describe("spawnSubordinate", () => {
       .getState()
       .document!.nodes.find((node) => node.id === id)!;
     expect(child.position).toEqual({
-      x: 200 + 300 + SIBLING_GAP,
-      y: 100 + 600 + LAYER_GAP.vertical,
+      x: 208 + 312 + SIBLING_GAP,
+      y: 104 + 598 + LAYER_GAP.vertical,
     });
   });
 
@@ -149,7 +153,7 @@ describe("spawnSubordinate", () => {
     setLayoutDirectionForTest("horizontal");
     load([parent]);
     const across = spawnSubordinate(agent("codex"), parent.id)!;
-    expect(at(across)).toEqual({ x: 100 + 960 + LAYER_GAP.horizontal, y: 100 });
+    expect(at(across)).toEqual({ x: 104 + 962 + LAYER_GAP.horizontal, y: 104 });
   });
 
   it("给了落点就以它为中心；父的权限模式这家支持就继承", () => {

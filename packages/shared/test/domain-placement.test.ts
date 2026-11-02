@@ -1,11 +1,16 @@
 import { describe, expect, it } from "vitest";
 import {
+  CLUSTER_GAP,
+  GRID_UNIT,
   LAYER_GAP,
   SIBLING_GAP,
   boxesTooClose,
   dispatchPlacement,
   type PlacementBox,
 } from "../src/index.js";
+
+/** 向右 / 向下取整到点阵，和实现一致。 */
+const g = (value: number) => Math.ceil(value / GRID_UNIT) * GRID_UNIT;
 
 /** 派发落点（契约 §50，#319）：两个方向各三条，含间距内的冲突回避。 */
 const SIZE = { width: 400, height: 300 };
@@ -35,21 +40,21 @@ describe("boxesTooClose", () => {
 describe("dispatchPlacement · vertical", () => {
   it("没有从：主正下方一层、左对齐", () => {
     expect(dispatchPlacement([main], "main", SIZE, "vertical")).toEqual({
-      x: 100,
-      y: 400 + LAYER_GAP.vertical,
+      x: g(100),
+      y: g(400 + LAYER_GAP.vertical),
     });
   });
 
   it("已有从：接在最右那个的右边", () => {
-    const y = 400 + LAYER_GAP.vertical;
+    const y = g(400 + LAYER_GAP.vertical);
     const child = { id: "c1", x: 100, y, width: 400, height: 300 };
     expect(
       dispatchPlacement([main, child], "main", SIZE, "vertical", ["c1"]),
-    ).toEqual({ x: 500 + SIBLING_GAP, y });
+    ).toEqual({ x: g(500 + SIBLING_GAP), y });
   });
 
   it("落点离别的盒子不足兄弟间距就跳到挡路盒子的右边", () => {
-    const y = 400 + LAYER_GAP.vertical;
+    const y = g(400 + LAYER_GAP.vertical);
     const blocker = { id: "b", x: 50, y: y + 50, width: 200, height: 100 };
     // 下沿离落点底边恰好一个间距：不算挡路。
     const far = {
@@ -65,36 +70,36 @@ describe("dispatchPlacement · vertical", () => {
       SIZE,
       "vertical",
     );
-    expect(at).toEqual({ x: 250 + SIBLING_GAP, y });
+    expect(at).toEqual({ x: g(250 + SIBLING_GAP), y });
   });
 });
 
 describe("dispatchPlacement · horizontal", () => {
   it("没有从：主右侧一层、顶对齐", () => {
     expect(dispatchPlacement([main], "main", SIZE, "horizontal")).toEqual({
-      x: 500 + LAYER_GAP.horizontal,
-      y: 100,
+      x: g(500 + LAYER_GAP.horizontal),
+      y: g(100),
     });
   });
 
   it("已有从：接在最下那个的下面", () => {
-    const x = 500 + LAYER_GAP.horizontal;
+    const x = g(500 + LAYER_GAP.horizontal);
     const child = { id: "c1", x, y: 100, width: 400, height: 300 };
     expect(
       dispatchPlacement([main, child], "main", SIZE, "horizontal", ["c1"]),
-    ).toEqual({ x, y: 400 + SIBLING_GAP });
+    ).toEqual({ x, y: g(400 + SIBLING_GAP) });
   });
 
   it("冲突时沿这一列往下让；让满 64 次就放到所有盒子右边", () => {
-    const x = 500 + LAYER_GAP.horizontal;
+    const x = g(500 + LAYER_GAP.horizontal);
     const blocker = { id: "b", x: x + 40, y: 150, width: 100, height: 100 };
     expect(
       dispatchPlacement([main, blocker], "main", SIZE, "horizontal"),
-    ).toEqual({ x, y: 250 + SIBLING_GAP });
+    ).toEqual({ x, y: g(250 + SIBLING_GAP) });
     // 一堵很高的墙：一步跳到它下面，不一格一格地挪。
     const wall = { id: "w", x: x + 10, y: 0, width: 10, height: 1_000_000 };
     expect(dispatchPlacement([main, wall], "main", SIZE, "horizontal")).toEqual(
-      { x, y: 1_000_000 + SIBLING_GAP },
+      { x, y: g(1_000_000 + SIBLING_GAP) },
     );
     // 70 个间隔不够放下新节点的小盒子：跳满 64 次还被挡就放到所有盒子右边。
     const stack = Array.from({ length: 70 }, (_, index) => ({
@@ -106,7 +111,7 @@ describe("dispatchPlacement · horizontal", () => {
     }));
     expect(
       dispatchPlacement([main, ...stack], "main", SIZE, "horizontal"),
-    ).toEqual({ x: x + 20 + LAYER_GAP.horizontal, y: 100 });
+    ).toEqual({ x: g(x + 20 + LAYER_GAP.horizontal), y: g(100) });
   });
 });
 
@@ -115,7 +120,7 @@ it("任意已有盒子都与落点保持兄弟间距", () => {
   const row: PlacementBox[] = [0, 1, 2].map((index) => ({
     id: `t${index}`,
     x: 100 + index * 1000,
-    y: 400 + LAYER_GAP.vertical,
+    y: g(400 + LAYER_GAP.vertical),
     width: 960,
     height: 600,
   }));
@@ -128,4 +133,71 @@ it("任意已有盒子都与落点保持兄弟间距", () => {
 
 it("主不在盒子里时返回 null", () => {
   expect(dispatchPlacement([], "main", SIZE, "vertical")).toBeNull();
+});
+
+describe("落点在 13px 点阵上", () => {
+  const sizes = [
+    { width: 715, height: 442 },
+    { width: 400, height: 300 },
+    { width: 97, height: 61 },
+  ];
+  const parents = [
+    { x: 0, y: 0 },
+    { x: 104, y: 169 },
+    { x: 100, y: 100 },
+    { x: -37, y: 211.5 },
+  ];
+
+  it("两个方向、有无已有的从、被挡与兜底，坐标都是 13 的倍数", () => {
+    for (const parent of parents) {
+      const box: PlacementBox = { id: "main", ...parent, ...SIZE };
+      for (const size of sizes) {
+        for (const direction of ["vertical", "horizontal"] as const) {
+          const first = dispatchPlacement([box], "main", size, direction)!;
+          const child: PlacementBox = { id: "c1", ...first, ...size };
+          const second = dispatchPlacement(
+            [box, child],
+            "main",
+            size,
+            direction,
+            ["c1"],
+          )!;
+          const wall: PlacementBox = {
+            id: "w",
+            x: first.x - 5,
+            y: first.y - 5,
+            width: 2000,
+            height: 2000,
+          };
+          const third = dispatchPlacement(
+            [box, wall],
+            "main",
+            size,
+            direction,
+          )!;
+          for (const at of [first, second, third]) {
+            expect(Math.abs(at.x) % GRID_UNIT).toBe(0);
+            expect(Math.abs(at.y) % GRID_UNIT).toBe(0);
+          }
+        }
+      }
+    }
+  });
+
+  it("间距常量都是点阵单位的整数倍", () => {
+    for (const gap of [
+      SIBLING_GAP,
+      CLUSTER_GAP,
+      LAYER_GAP.vertical,
+      LAYER_GAP.horizontal,
+    ]) {
+      expect(gap % GRID_UNIT).toBe(0);
+    }
+  });
+
+  it("取整不会让落点贴近别的盒子", () => {
+    const box: PlacementBox = { id: "main", x: 7, y: 5, ...SIZE };
+    const at = dispatchPlacement([box], "main", SIZE, "vertical")!;
+    expect(boxesTooClose(box, { ...at, ...SIZE }, SIBLING_GAP)).toBe(false);
+  });
 });
