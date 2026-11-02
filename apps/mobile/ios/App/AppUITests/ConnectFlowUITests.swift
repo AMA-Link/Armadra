@@ -145,11 +145,11 @@ final class ConnectFlowUITests: XCTestCase {
         XCTAssertTrue(button(app, ["画布", "Canvas"]).waitForExistence(timeout: 60), "canvas after picking the service")
         XCTAssertFalse(button(app, ["连接", "Connect"]).exists)
         // 原生 OAuth 的深链（R-56）：App 写进 `#link=` 重载，入口收尾（本机没有挂起的流程，答失败、
-        // 不发请求），结果打开「账号与安全」页（#205 设置重组后的分区名）；会话不受影响，不回连接页。
+        // 不发请求），结果打开「账号与设备」页（#708 设置重组后的分区名）；会话不受影响，不回连接页。
         // 浏览器授权完回到的是还在跑的 App：经系统打开（热启动）。
         XCUIDevice.shared.system.open(try XCTUnwrap(URL(string: "armadra://oauth?state=e2e-state&code=e2e-code")))
         confirmOpenIfAsked()
-        let security = app.webViews.descendants(matching: .any).matching(NSPredicate(format: "label IN %@", ["账号与安全", "Account & security"])).firstMatch
+        let security = app.webViews.descendants(matching: .any).matching(NSPredicate(format: "label IN %@", ["账号与设备", "Account & devices"])).firstMatch
         XCTAssertTrue(security.waitForExistence(timeout: 60), "security page after the oauth link")
         XCTAssertFalse(button(app, ["连接", "Connect"]).exists)
     }
