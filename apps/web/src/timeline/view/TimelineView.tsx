@@ -2,6 +2,7 @@ import * as React from "react";
 import { ListChecks } from "lucide-react";
 import {
   activityGroups,
+  isReadOnlyActivity,
   type SessionActivity,
   type TimelineApprovalItem,
   type TimelineElicitationItem,
@@ -18,7 +19,7 @@ import { DeferredSkeleton } from "@/loading/DeferredSkeleton";
 import { SkeletonTurns } from "@/ui/skeletons";
 import { ActivityGroup } from "./ActivityGroup";
 import { ActivityLine } from "./ActivityLine";
-import { planProgress, PlanBar } from "./PlanBar";
+import { planProgress } from "./PlanBar";
 import { AssistantRow } from "./rows/AssistantRow";
 import { NoticeRow } from "./rows/NoticeRow";
 import { ThoughtRow } from "./rows/ThoughtRow";
@@ -47,7 +48,7 @@ export interface TurnActions {
   onRegenerate?: ((text: string) => void) | undefined;
 }
 
-/** 回合内第一次出现计划时插的一行（顶部计划条显示的是最新的一份）。 */
+/** 回合内第一次出现计划时插的一行（输入框上方的计划条显示的是最新的一份）。 */
 function PlanLine({ plan }: { plan: TimelinePlanItem }) {
   const { done, total, current } = planProgress(plan.entries);
   return (
@@ -100,7 +101,8 @@ export const TurnSection = React.memo(function TurnSection({
         flow.push(item);
       }
     }
-    const entries = activityGroups(flow);
+    // 只有只读类（读、搜、取网页、思考）折成组；命令与编辑各占一行，带着输出与审批。
+    const entries = activityGroups(flow, { groupable: isReadOnlyActivity });
     let prompt: string | undefined;
     for (const item of block.items) {
       if (item.kind === "user") {
@@ -130,6 +132,7 @@ export const TurnSection = React.memo(function TurnSection({
       key={item.id}
       item={item}
       nested={nested}
+      approvals={nested === undefined ? undefined : view.approvals}
       approval={view.approvals.get(item.toolCallId)}
       renderApproval={renderApproval}
     />
@@ -219,16 +222,9 @@ export interface TimelineViewProps extends TurnActions {
   className?: string | undefined;
 }
 
-function latestPlan(items: readonly TimelineItem[]): TimelinePlanItem | null {
-  for (let i = items.length - 1; i >= 0; i--) {
-    const item = items[i] as TimelineItem;
-    if (item.kind === "plan") return item;
-  }
-  return null;
-}
-
 /**
- * 会话时间线视图（设计 §3、§7）：顶部计划条，中间按回合虚拟化的列表，底部活动行。
+ * 会话时间线视图（设计 §3、§7）：按回合虚拟化的列表，底部活动行。计划条不在这里：它坐在
+ * 输入框上方，由会话视图用 `latestPlan` 取最新一份、自己摆（`PlanBar`）。
  * 全部数据从 props 进，不碰 store 与网络；回调与 `services` 请保持稳定引用，
  * 行组件才能按 `rev` 跳过重渲染。
  */
@@ -255,7 +251,6 @@ export function TimelineView({
     blocks.current = groupTurns(items, blocks.current);
     return blocks.current;
   }, [items]);
-  const plan = React.useMemo(() => latestPlan(items), [items]);
   const lastTurn = turns.at(-1)?.turn;
   const renderTurn = React.useCallback(
     (block: TurnBlock) => (
@@ -287,7 +282,6 @@ export function TimelineView({
         data-slot="timeline-view"
         className={cn("flex min-h-0 min-w-0 flex-1 flex-col", className)}
       >
-        <PlanBar plan={plan} />
         {empty && loading ? (
           <div data-slot="timeline-skeleton" className="flex-1">
             <DeferredSkeleton>

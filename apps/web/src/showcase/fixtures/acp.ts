@@ -9,6 +9,7 @@ import type {
   AcpModelState,
   TimelineConfigOption,
   TimelineItem,
+  TimelinePlanItem,
 } from "@armadra/shared";
 
 import type { AcpUsageView } from "@/acp/PromptBox";
@@ -157,6 +158,96 @@ export const ACP_EXPORT_TEXT =
   )[0] ?? "";
 export const ACP_EXPORT_ID =
   ACP_ITEMS.find((item) => item.kind === "assistant")?.id ?? "a";
+
+/**
+ * 一轮活动：连续的读与搜折成一组、命令与编辑各占一行、一条编辑在等人批准，批准卡
+ * 挂在它的工具行下面；计划在输入框上方（`ACP_FLOW_PLAN`）。
+ */
+export const ACP_FLOW_ITEMS: TimelineItem[] = (() => {
+  resetFixtureCounter();
+  const diff = {
+    type: "diff" as const,
+    path: "/repo/app/src/config.test.ts",
+    oldText: "it(1)\n",
+    newText: "it(1)\nit(BOM)\n",
+  };
+  const pending = toolItem(2, "w1", {
+    title: "编辑 src/config.test.ts",
+    toolKind: "edit",
+    status: "pending",
+    endedAt: undefined,
+    locations: [{ path: "/repo/app/src/config.test.ts", line: 8 }],
+    content: [diff],
+  });
+  return [
+    userItem(2, "把 BOM 的用例补上，先看看现有的测试怎么写"),
+    thoughtItem(2, "先读测试文件，再搜一下其他地方有没有处理 BOM。"),
+    toolItem(2, "f1", {
+      title: "读取 src/config.test.ts",
+      toolKind: "read",
+      locations: [{ path: "/repo/app/src/config.test.ts", line: 1 }],
+    }),
+    toolItem(2, "f2", {
+      title: "读取 src/load.ts",
+      toolKind: "read",
+      locations: [{ path: "/repo/app/src/load.ts" }],
+    }),
+    toolItem(2, "f3", {
+      title: "搜索 BOM",
+      toolKind: "search",
+      input: { query: "BOM" },
+    }),
+    toolItem(2, "f4", {
+      title: "读取 README.md",
+      toolKind: "read",
+      locations: [{ path: "/repo/app/README.md" }],
+    }),
+    toolItem(2, "f5", {
+      title: "运行 pnpm test config",
+      toolKind: "execute",
+      input: { command: "pnpm test config" },
+      content: [{ type: "text", text: "1 failed: parseConfig > rejects BOM" }],
+    }),
+    pending,
+    {
+      id: "ap:flow",
+      kind: "approval",
+      turn: 2,
+      ord: 900,
+      rev: 900,
+      source: "acp",
+      at: 1_760_000_100_000,
+      gen: 1,
+      pendingId: "p-flow",
+      protocol: "acp",
+      toolCallId: "w1",
+      options: [
+        { optionId: "allow", name: "Allow", kind: "allow_once" },
+        { optionId: "always", name: "Always", kind: "allow_always" },
+        { optionId: "reject", name: "Reject", kind: "reject_once" },
+      ],
+      state: "pending",
+    },
+  ];
+})();
+
+/** 输入框上方的计划条。 */
+export const ACP_FLOW_PLAN: TimelinePlanItem = {
+  id: "plan:2",
+  kind: "plan",
+  turn: 2,
+  ord: 901,
+  rev: 901,
+  source: "acp",
+  at: 1_760_000_100_000,
+  gen: 1,
+  entries: [
+    { content: "读现有测试", status: "completed" },
+    { content: "补 BOM 的用例", status: "in_progress", priority: "high" },
+    { content: "剥掉 BOM 再解析", status: "pending" },
+    { content: "跑全量测试", status: "pending" },
+  ],
+};
 
 /** 四种要画一行的停止原因，各一回合（`end_turn` 不画）。 */
 export const ACP_STOP_ITEMS: TimelineItem[] = (() => {

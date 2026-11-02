@@ -305,8 +305,8 @@ export function PermissionCard({
   canAnswer: boolean;
   className?: string;
   /**
-   * 钉在输入框上方的那一张：出现时焦点落到「允许」（ACP 会话视图 §5.7）。
-   * Esc 拒绝（只在焦点落在卡片里时）。
+   * 唯一待答的那一张（钉在输入框上方，或内联在工具行下）：出现时焦点落到「允许」
+   * （ACP 会话视图 §5.7）。Esc 拒绝（只在焦点落在卡片里时）。
    */
   pinned?: boolean;
   /** 答完之后（焦点还在卡片里时）调用：把焦点交还输入框，别让它掉到 body。 */

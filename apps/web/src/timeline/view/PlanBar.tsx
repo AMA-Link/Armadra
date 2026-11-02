@@ -1,11 +1,27 @@
 import { ArrowDown, ArrowUp, ChevronDown, Minus } from "lucide-react";
-import type { TimelinePlanEntry, TimelinePlanItem } from "@armadra/shared";
+import type {
+  TimelineItem,
+  TimelinePlanEntry,
+  TimelinePlanItem,
+} from "@armadra/shared";
 
 import { useT } from "@/app/preferences-store";
+import { cn } from "@/lib/cn";
 import { Button } from "@/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/ui/popover";
 import { Progress } from "@/ui/progress";
 import { StatusDot, type StatusTone } from "@/ui/status-pill";
+
+/** 条目里最新的一份计划（计划整份替换，取最后一条）；没有返回 `null`。 */
+export function latestPlan(
+  items: readonly TimelineItem[],
+): TimelinePlanItem | null {
+  for (let i = items.length - 1; i >= 0; i--) {
+    const item = items[i] as TimelineItem;
+    if (item.kind === "plan") return item;
+  }
+  return null;
+}
 
 export function planProgress(entries: readonly TimelinePlanEntry[]): {
   done: number;
@@ -60,11 +76,16 @@ export function PriorityMark({ priority }: { priority: string | undefined }) {
   );
 }
 
-/** 会话顶部的计划条：当前项与进度（x / n），点开是清单。 */
+/**
+ * 输入框上方的计划条：折着是一行（当前项、进度刻度、x / n），点开是向上弹出的清单。
+ * 坐在输入框上方而不是时间线顶部，长会话里一直看得到当前做到哪。
+ */
 export function PlanBar({
   plan,
+  className,
 }: {
   plan: TimelinePlanItem | null | undefined;
+  className?: string | undefined;
 }) {
   const t = useT();
   if (plan === null || plan === undefined || plan.entries.length === 0)
@@ -78,7 +99,10 @@ export function PlanBar({
           size="sm"
           data-slot="timeline-plan-bar"
           aria-label={t("timeline.plan")}
-          className="w-full min-w-0 justify-start gap-2 px-2 font-normal"
+          className={cn(
+            "w-full min-w-0 justify-start gap-2 px-2 font-normal",
+            className,
+          )}
         >
           <EntryDot status={current?.status} />
           <span className="min-w-0 flex-1 truncate text-left text-meta">
@@ -100,7 +124,11 @@ export function PlanBar({
           <ChevronDown className="text-muted-foreground" />
         </Button>
       </PopoverTrigger>
-      <PopoverContent align="start" className="w-80 gap-1 p-2">
+      <PopoverContent
+        side="top"
+        align="start"
+        className="max-h-64 w-80 gap-1 p-2"
+      >
         <ul data-slot="timeline-plan-list" className="flex flex-col gap-1">
           {plan.entries.map((entry, index) => (
             <li

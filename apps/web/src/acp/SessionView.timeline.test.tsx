@@ -208,7 +208,7 @@ describe("SessionView on the timeline", () => {
     expect(screen.getByLabelText("发送")).toBeTruthy();
   });
 
-  it("pins a single pending approval above the input, answers it and folds it away", async () => {
+  it("hangs a single pending approval under its tool row, answers it and folds it away", async () => {
     core.emit(
       {
         op: "put",
@@ -253,10 +253,23 @@ describe("SessionView on the timeline", () => {
       } as never,
     );
     await ready();
-    // 钉在输入框上方的那一张，标题从工具条目来；行内不再画第二张。
+    // 有对应工具行的审批挂在那一行下面，标题从工具条目来；输入框上方不再钉第二张。
     const cards = document.querySelectorAll("[data-slot=acp-permission]");
     expect(cards).toHaveLength(1);
     expect(cards[0]?.textContent).toContain("rm -rf dist");
+    expect(
+      cards[0]
+        ?.closest("[data-slot=timeline-tool-approval]")
+        ?.parentElement?.getAttribute("data-slot"),
+    ).toBe("timeline-tool");
+    expect(cards[0]?.closest("[data-slot=timeline-view]")).toBeTruthy();
+    // 唯一一张待答：读出来，焦点落到「允许」。
+    expect(document.querySelector("[aria-live=polite]")?.textContent).toContain(
+      "rm -rf dist",
+    );
+    await waitFor(() =>
+      expect(document.activeElement?.textContent).toMatch(/^允许/),
+    );
     fireEvent.click(screen.getByRole("button", { name: /^允许/ }));
     expect(api.answer).toHaveBeenCalledWith("p1", "allow", "ok");
     expect(document.querySelector("[data-slot=acp-permission]")).toBeNull();
@@ -283,6 +296,81 @@ describe("SessionView on the timeline", () => {
     } as never);
     expect(await screen.findByText("已允许")).toBeTruthy();
     expect(screen.getByText("alice")).toBeTruthy();
+  });
+
+  it("pins a pending approval that has no tool row above the input", async () => {
+    core.emit({
+      op: "put",
+      item: {
+        id: "ap:p9",
+        kind: "approval",
+        turn: 1,
+        ord: 6,
+        rev: 0,
+        source: "acp",
+        at: 2,
+        gen: 1,
+        pendingId: "p9",
+        protocol: "acp",
+        toolCallId: "gone",
+        toolCall: { toolCallId: "gone", title: "orphan call", kind: "execute" },
+        options: [
+          { optionId: "ok", name: "Allow", kind: "allow_once" },
+          { optionId: "no", name: "Reject", kind: "reject_once" },
+        ],
+        state: "pending",
+      },
+    } as never);
+    await ready();
+    const cards = document.querySelectorAll("[data-slot=acp-permission]");
+    expect(cards).toHaveLength(1);
+    // 没有工具行可挂：独立的一张，在时间线之外、输入框之前。
+    expect(cards[0]?.closest("[data-slot=timeline-view]")).toBeNull();
+    const input = screen.getByLabelText("消息");
+    expect(
+      (cards[0] as Element).compareDocumentPosition(input) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+  });
+
+  it("keeps the latest plan in a bar above the input, not at the top of the timeline", async () => {
+    core.emit({
+      op: "put",
+      item: {
+        id: "plan:1",
+        kind: "plan",
+        turn: 1,
+        ord: 7,
+        rev: 0,
+        source: "acp",
+        at: 3,
+        gen: 1,
+        entries: [
+          { content: "Write tests", status: "completed" },
+          { content: "Fix the bug", status: "in_progress" },
+        ],
+      },
+    } as never);
+    await ready();
+    const bar = document.querySelector("[data-slot=timeline-plan-bar]");
+    expect(bar?.textContent).toContain("Fix the bug");
+    expect(bar?.textContent).toContain("1 / 2");
+    // 在时间线之外，且在输入框之前。
+    expect(bar?.closest("[data-slot=timeline-view]")).toBeNull();
+    const input = screen.getByLabelText("消息");
+    expect(
+      (bar as Element).compareDocumentPosition(input) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    // 只读查看没有输入框，计划条照样在。
+    cleanup();
+    render(
+      <SessionView nodeId="n1" data={data} readOnly sessionId={SESSION} />,
+    );
+    await screen.findByText("first answer");
+    expect(
+      document.querySelector("[data-slot=timeline-plan-bar]"),
+    ).toBeTruthy();
   });
 
   it("shows who it waits for instead of approval buttons to someone who cannot answer", async () => {

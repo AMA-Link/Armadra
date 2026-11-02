@@ -1,11 +1,14 @@
 import * as React from "react";
+import type { TimelineApprovalItem } from "@armadra/shared";
 import Markdown from "react-markdown";
 
 import { useT } from "@/app/preferences-store";
 import { ElicitationCard } from "@/acp/ElicitationCard";
 import { ExportMenu } from "@/acp/ExportMenu";
 import { PermissionCard } from "@/acp/PermissionCard";
+import { ApprovalCard, ToolLookupProvider } from "@/acp/TimelineCards";
 import { PromptBox } from "@/acp/PromptBox";
+import { PlanBar } from "@/timeline/view/PlanBar";
 import { TimelineView } from "@/timeline/view/TimelineView";
 import { Alert, AlertAction, AlertTitle } from "@/ui/alert";
 import { Button } from "@/ui/button";
@@ -16,6 +19,8 @@ import {
   ACP_ELICITATION_URL,
   ACP_EXPORT_ID,
   ACP_EXPORT_TEXT,
+  ACP_FLOW_ITEMS,
+  ACP_FLOW_PLAN,
   ACP_ITEMS,
   ACP_MODELS,
   ACP_MODES,
@@ -38,6 +43,8 @@ import {
  * 尾部、权限卡与错误行、PromptBox 三态（两行输入面：模式、模型 · 思考强度、开关型配置项）、窄屏版、
  * elicitation 表单与链接两种卡片、输出到画板菜单展开；计划卡、图片与资源
  * 链接、模式切换行、四种停止原因、斜杠命令列表与用量（ACP 会话视图 §5）。
+ * 一轮活动那一帧：读与搜折成一组、命令与编辑各占一行、待批准的编辑把批准卡挂在
+ * 自己的工具行下面，计划条坐在输入框上方。
  * 消息工具条平时悬停才出现，展示页把它们常显出来好截图。
  */
 
@@ -62,6 +69,13 @@ function Frame({
 const noop = () => undefined;
 const sent = async () => true;
 
+const FLOW_BY_ID = Object.fromEntries(
+  ACP_FLOW_ITEMS.map((item) => [item.id, item]),
+);
+const renderFlowApproval = (approval: TimelineApprovalItem) => (
+  <ApprovalCard approval={approval} canAnswer />
+);
+
 const SERVICES = { loadBlob: acpShowcaseBlob, source: SOURCE };
 
 /** 展示页：消息工具条常显。 */
@@ -76,6 +90,30 @@ export default function AcpSection() {
           <div className={`flex h-[760px] flex-col ${SHOW_ACTIONS}`}>
             <TimelineView items={ACP_ITEMS} services={SERVICES} />
           </div>
+        </Frame>
+        <Frame>
+          <ToolLookupProvider value={FLOW_BY_ID}>
+            <div className="flex h-[420px] flex-col">
+              <TimelineView
+                items={ACP_FLOW_ITEMS}
+                renderApproval={renderFlowApproval}
+              />
+            </div>
+          </ToolLookupProvider>
+          <PlanBar plan={ACP_FLOW_PLAN} className="mb-1" />
+          <PromptBox
+            sessionId={null}
+            disabled={false}
+            streaming
+            modes={ACP_MODES}
+            models={ACP_MODELS}
+            configOptions={ACP_CONFIG}
+            onSubmit={sent}
+            onCancel={noop}
+            onMode={noop}
+            onModel={noop}
+            onConfig={noop}
+          />
         </Frame>
         <Frame>
           <div className="flex h-[260px] flex-col">

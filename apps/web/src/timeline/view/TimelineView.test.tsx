@@ -160,7 +160,7 @@ describe("TimelineView", () => {
     ).toBeTruthy();
   });
 
-  it("puts the latest plan in the bar and only the first plan of a turn in the flow", () => {
+  it("draws only the first plan of a turn in the flow and no plan bar of its own", () => {
     const plan = (turn: number, n: number, rev: number): TimelineItem => ({
       id: `plan:${turn}`,
       kind: "plan",
@@ -182,12 +182,85 @@ describe("TimelineView", () => {
       turnItem(1),
     ];
     render(<TimelineView items={items} initialRect={RECT} />);
-    expect(
-      document.querySelector("[data-slot=timeline-plan-bar]")?.textContent,
-    ).toContain("step 3");
+    // 计划条坐在输入框上方，由会话视图摆；时间线里只留回合内的一行。
+    expect(document.querySelector("[data-slot=timeline-plan-bar]")).toBeNull();
     expect(
       document.querySelectorAll("[data-slot=timeline-plan-line]"),
     ).toHaveLength(1);
+  });
+
+  it("folds only consecutive read-only calls into groups; commands and edits stay on their own row", () => {
+    const items: TimelineItem[] = [
+      userItem(1, "go"),
+      toolItem(1, "r1", { toolKind: "read", title: "Read one" }),
+      toolItem(1, "s1", { toolKind: "search", title: "Search two" }),
+      toolItem(1, "x1", { toolKind: "execute", title: "pnpm test" }),
+      toolItem(1, "r2", { toolKind: "read", title: "Read three" }),
+      toolItem(1, "e1", { toolKind: "edit", title: "Edit four" }),
+      toolItem(1, "r3", { toolKind: "read", title: "Read five" }),
+      toolItem(1, "f1", { toolKind: "fetch", title: "Fetch six" }),
+      turnItem(1),
+    ];
+    render(<TimelineView items={items} initialRect={RECT} />);
+    const groups = [...document.querySelectorAll("[data-slot=timeline-group]")];
+    // 读 + 搜一组、读 + 抓取一组；中间的命令、单独的读与编辑不进组。
+    expect(groups).toHaveLength(2);
+    expect(groups.map((group) => group.textContent)).toEqual([
+      "读了 1 个文件 · 搜索 1 次",
+      "读了 1 个文件 · 抓取 1 次",
+    ]);
+    const solo = [
+      ...document.querySelectorAll("[data-slot=timeline-tool]"),
+    ].filter((node) => node.closest("[data-slot=timeline-group]") === null);
+    expect(solo.map((node) => node.textContent)).toEqual([
+      expect.stringContaining("pnpm test"),
+      expect.stringContaining("Read three"),
+      expect.stringContaining("Edit four"),
+    ]);
+  });
+
+  it("opens a read group that holds a pending approval and renders the card under its row", () => {
+    const approval = {
+      id: "ap:1",
+      kind: "approval" as const,
+      turn: 1,
+      ord: 9,
+      rev: 9,
+      source: "acp" as const,
+      at: 1,
+      gen: 1,
+      pendingId: "p1",
+      protocol: "acp",
+      toolCallId: "r2",
+      options: [],
+      state: "pending" as const,
+    };
+    const items: TimelineItem[] = [
+      userItem(1, "go"),
+      toolItem(1, "r1", { toolKind: "read", title: "Read one" }),
+      toolItem(1, "r2", {
+        toolKind: "read",
+        title: "Read outside",
+        status: "pending",
+        endedAt: undefined,
+      }),
+      approval,
+    ];
+    render(
+      <TimelineView
+        items={items}
+        initialRect={RECT}
+        renderApproval={(a) => <div data-testid="approval">{a.pendingId}</div>}
+      />,
+    );
+    const group = document.querySelector("[data-slot=timeline-group]");
+    expect(
+      group?.querySelector("[data-slot=timeline-group-body]"),
+    ).toBeTruthy();
+    const row = screen
+      .getByText("Read outside")
+      .closest("[data-slot=timeline-tool]");
+    expect(row?.querySelector("[data-testid=approval]")).toBeTruthy();
   });
 
   it("renders approvals inline under their tool and elicitations in the flow", () => {

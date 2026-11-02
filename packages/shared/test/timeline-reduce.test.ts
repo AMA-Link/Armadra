@@ -9,6 +9,7 @@ import {
   applyTimelineSync,
   compactTimelineOps,
   emptyTimelineState,
+  isReadOnlyActivity,
   mergeStreamChunk,
   mergeToolCall,
   sortedTimelineItems,
@@ -574,6 +575,45 @@ describe("activityGroups", () => {
     ).toEqual(["group"]);
     const across = activityGroups([tool("a", 1, 9), tool("b", 2, 1)]);
     expect(across.map((e) => e.type)).toEqual(["item", "item"]);
+  });
+
+  it("只读类过滤：命令与编辑各占一行并隔开前后的读搜，子代理保留它的内部调用", () => {
+    const items: TimelineItem[] = [
+      thought("th", 1, 1, "x", false),
+      tool("r1", 1, 2, { toolKind: "read", status: "completed" }),
+      tool("s1", 1, 3, { toolKind: "search", status: "completed" }),
+      tool("x1", 1, 4, { toolKind: "execute", status: "completed" }),
+      tool("r2", 1, 5, { toolKind: "read", status: "completed" }),
+      tool("f1", 1, 6, { toolKind: "fetch", status: "completed" }),
+      tool("e1", 1, 7, { toolKind: "edit", status: "completed" }),
+      tool("r3", 1, 8, { toolKind: "read", status: "completed" }),
+      tool("sub", 1, 9, { toolKind: "subagent", status: "in_progress" }),
+      tool("c1", 1, 10, { parentToolCallId: "sub" }),
+    ];
+    const entries = activityGroups(items, { groupable: isReadOnlyActivity });
+    expect(
+      entries.map((e) =>
+        e.type === "group" ? e.items.map((member) => member.id) : [e.item.id],
+      ),
+    ).toEqual([
+      ["th", "tool:r1", "tool:s1"],
+      ["tool:x1"],
+      ["tool:r2", "tool:f1"],
+      ["tool:e1"],
+      ["tool:r3"],
+      ["tool:sub"],
+    ]);
+    const sub = entries.at(-1);
+    expect(sub?.type === "item" && sub.children?.map((c) => c.id)).toEqual([
+      "tool:c1",
+    ]);
+    const first = entries[0];
+    expect(first?.type === "group" && first.summary).toMatchObject({
+      reads: 1,
+      searches: 1,
+      thoughts: 1,
+      commands: 0,
+    });
   });
 
   it("子代理内部的调用挂在它下面，不进顶层", () => {
