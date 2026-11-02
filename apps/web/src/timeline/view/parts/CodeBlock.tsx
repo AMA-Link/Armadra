@@ -23,26 +23,29 @@ export function CodeBlock({
   const lines = typeof children === "string" ? children.split("\n") : null;
   const folded = lines !== null && !all && lines.length > CODE_BLOCK_LINES;
   return (
-    <div className="group/act relative" data-slot="timeline-code">
-      <pre
-        ref={ref}
-        className={cn(
-          "overflow-x-auto rounded-field bg-sunken px-2.5 py-2 font-mono text-meta",
-          className,
-        )}
-        {...props}
-      >
-        {folded ? lines.slice(0, CODE_BLOCK_LINES).join("\n") : children}
-      </pre>
-      <ActionBar className="absolute top-1 right-1 rounded-control bg-raised">
-        <CopyAction
-          text={() =>
-            typeof children === "string"
-              ? children
-              : (ref.current?.textContent ?? "")
-          }
-        />
-      </ActionBar>
+    <div className="group/act" data-slot="timeline-code">
+      {/* 复制钮在代码右侧自己的一列里，不压在代码上：长行滚动时也不会钻到钮底下。 */}
+      <div className="flex items-start rounded-field bg-sunken">
+        <pre
+          ref={ref}
+          className={cn(
+            "min-w-0 flex-1 overflow-x-auto py-2 pr-1 pl-2.5 font-mono text-meta",
+            className,
+          )}
+          {...props}
+        >
+          {folded ? lines.slice(0, CODE_BLOCK_LINES).join("\n") : children}
+        </pre>
+        <ActionBar className="m-1 shrink-0 rounded-control bg-raised">
+          <CopyAction
+            text={() =>
+              typeof children === "string"
+                ? children
+                : (ref.current?.textContent ?? "")
+            }
+          />
+        </ActionBar>
+      </div>
       {folded && (
         <Button
           variant="ghost"
