@@ -13,12 +13,14 @@ import {
   MAX_CARD_ROWS,
   cardEvents,
   countOpen,
+  insertEvent,
   openEvents,
   recordRouterEvent,
 } from "./router-events";
 import { recordStalled, recordTaskDone } from "./router-sources";
 import { resetSendLimits } from "./send-limits";
 import { pendingFor } from "./send-queue";
+import { putContextLinks } from "../canvas/context-links";
 import { SendPump } from "./send-pump";
 import { resetInboxWake } from "./wake";
 
@@ -294,7 +296,12 @@ describe("durable delivery", () => {
       kind: "inbox",
       summary: "will retry",
     });
-    fixture.terminal.submitError = new Error("pty gone");
+    // 门链拒绝（会话没了）：失败、退避。写到一半失败是 unknown，另有用例。
+    fixture.database
+      .prepare(
+        "UPDATE terminal_sessions SET status = 'exited' WHERE owner_node_id = ?",
+      )
+      .run(lead);
     expect(await pump.cards.deliver(context(), lead)).toBe("failed");
     // 退避中：不再试。
     expect(await pump.cards.deliver(context(), lead)).toBe("waiting");
@@ -314,7 +321,11 @@ describe("durable delivery", () => {
     ).toHaveLength(0);
 
     // 终端好了：一天之后照样投出去，投完不再退避。
-    fixture.terminal.submitError = undefined;
+    fixture.database
+      .prepare(
+        "UPDATE terminal_sessions SET status = 'running' WHERE owner_node_id = ?",
+      )
+      .run(lead);
     expect(await pump.cards.deliver(context(), lead)).toBe("delivered");
     expect(cardsDelivered()).toHaveLength(1);
     expect(cardsDelivered()[0]).toContain("will retry");
@@ -339,6 +350,25 @@ describe("durable delivery", () => {
     await new Promise((done) => setTimeout(done, 100));
     expect(cardsDelivered()).toHaveLength(1);
     expect(cardsDelivered()[0]).toContain("while starting");
+  });
+
+  it("treats a half-written card (unknown outcome) as delivered and never pastes it twice", async () => {
+    recordRouterEvent(fixture.collab, {
+      id: "inbox:u1",
+      coordinatorNodeId: lead,
+      kind: "inbox",
+      summary: "maybe twice",
+    });
+    fixture.terminal.submitError = new Error("pty went away mid-write");
+    expect(await pump.cards.deliver(context(), lead)).toBe("delivered");
+    fixture.terminal.submitError = undefined;
+    // 提醒过了，不退避、不重发。
+    expect(pump.cards.waiting()).toBe(0);
+    expect(await pump.cards.deliver(context(), lead)).toBe("none");
+    expect(cardsDelivered()).toHaveLength(0);
+    expect(
+      cardEvents(fixture.database, lead).map((event) => event.cardedAt),
+    ).not.toContain(null);
   });
 
   it("is retried by the sweep after a restart (backoff state is in memory)", async () => {
@@ -601,10 +631,12 @@ describe("follow-up ownership", () => {
     const events = openEvents(fixture.database, lead, 50);
     expect(events).toHaveLength(1);
     expect(events[0]).toMatchObject({ kind: "followup", itemId: "s1:t1" });
-    expect(events[0]?.summary).toBe("已转给「painter」");
+    // 入队不等于转到：此刻只能说排上了。
+    expect(events[0]?.summary).toContain("「painter」");
+    expect(events[0]?.summary).not.toContain("已转给");
     await pump.drain(lead);
     const card = cardsDelivered()[0] ?? "";
-    expect(card).toContain("已转给「painter」");
+    expect(card).toContain("「painter」");
     expect(card).not.toContain("蓝色");
     expect(card).toContain("不要再派一份");
   });
@@ -648,13 +680,198 @@ describe("follow-up ownership", () => {
     expect(toMember.some((item) => item.body.includes("颜色再深一点"))).toBe(
       true,
     );
-    expect(openEvents(fixture.database, lead, 50)[0]?.summary).toBe(
-      "已转给「painter」",
+    expect(openEvents(fixture.database, lead, 50)[0]?.summary).toContain(
+      "「painter」",
     );
     // 不是任何工作项成员的节点：什么也不做。
     const loner = fixture.agentNode("loner", "codex");
     expect(followupFromComment(context(), fixture.boardId, "c1", loner)).toBe(
       false,
     );
+  });
+});
+
+describe("follow-up honesty and routing", () => {
+  function comment(
+    id: string,
+    nodeId: string,
+    body: string,
+    parentId: string | null = null,
+  ): void {
+    fixture.database
+      .prepare(
+        "INSERT INTO board_comments (id, board_id, anchor_kind, anchor_id, body, author_principal_id, parent_id, created_at_ms, updated_at_ms) " +
+          "VALUES (?, ?, 'node', ?, ?, 'owner', ?, 1, 1)",
+      )
+      .run(id, fixture.boardId, nodeId, body, parentId);
+  }
+
+  function failedEvents() {
+    return openEvents(fixture.database, lead, 50).filter((event) =>
+      event.summary.includes("没能转给"),
+    );
+  }
+
+  it("tells the coordinator when the member link is removed before delivery", async () => {
+    fixture.link(lead, await dispatch("s1:t1", "painter"));
+    const member = fixture.database
+      .prepare("SELECT target_node_id AS id FROM edges LIMIT 1")
+      .get() as { id: string };
+    expect(followupsFromPrompt(context(), lead, "#s1:t1 改成蓝色")).toBe(1);
+    // 连线在排队期间被删掉：出队时门链以 NOT_LINKED 拒绝。
+    putContextLinks(fixture.database, fixture.workspaceId, lead, []);
+    putContextLinks(fixture.database, fixture.workspaceId, member.id, []);
+    await pump.drain(member.id);
+    await pump.drain(lead);
+    const failed = failedEvents();
+    expect(failed).toHaveLength(1);
+    expect(failed[0]).toMatchObject({ kind: "followup", itemId: "s1:t1" });
+    expect(failed[0]?.summary).toContain("「painter」");
+    expect(cardsDelivered().join("\n")).toContain("没能转给「painter」");
+    // 原话不进卡片。
+    expect(cardsDelivered().join("\n")).not.toContain("蓝色");
+  });
+
+  it("tells the coordinator when the queued follow-up expires unseen", async () => {
+    const member = await dispatch("s1:t1", "painter");
+    expect(followupsFromPrompt(context(), lead, "#s1:t1 改成蓝色")).toBe(1);
+    leadState("busy");
+    clock += 301_000;
+    pump.sweep();
+    leadState("idle");
+    await pump.drain(lead);
+    expect(failedEvents()).toHaveLength(1);
+    expect(
+      pendingFor(fixture.database, member, Math.floor(clock / 1000)),
+    ).toHaveLength(0);
+    // 再扫几遍也只报一次。
+    pump.sweep();
+    pump.sweep();
+    expect(failedEvents()).toHaveLength(1);
+  });
+
+  it("does not report a failure for a follow-up that was delivered", async () => {
+    const member = await dispatch("s1:t1", "painter");
+    followupsFromPrompt(context(), lead, "#s1:t1 改成蓝色");
+    fixture.database
+      .prepare(
+        "UPDATE agent_send_queue SET state = 'done' WHERE target_node_id = ?",
+      )
+      .run(member);
+    clock += 301_000;
+    pump.sweep();
+    expect(failedEvents()).toHaveLength(0);
+  });
+
+  it("ignores comments on a member whose item already finished", async () => {
+    const member = await dispatch("s1:t1", "painter");
+    fixture.database
+      .prepare(
+        "UPDATE workflow_task_runs SET status = 'done' WHERE task_id = ?",
+      )
+      .run("s1:t1");
+    comment("c1", member, "颜色再深一点");
+    expect(followupFromComment(context(), fixture.boardId, "c1", member)).toBe(
+      false,
+    );
+    expect(openEvents(fixture.database, lead, 50)).toHaveLength(0);
+    expect(
+      pendingFor(fixture.database, member, Math.floor(clock / 1000)),
+    ).toHaveLength(0);
+  });
+
+  it("picks the running item over a newer finished one, and skips replies", async () => {
+    const member = await dispatch("s1:old", "painter");
+    await dispatch("s1:newer", "painter2");
+    fixture.database
+      .prepare(
+        "UPDATE workflow_task_runs SET node_id = ?, started_at = started_at + 100 WHERE task_id = 's1:newer'",
+      )
+      .run(member);
+    fixture.database
+      .prepare(
+        "UPDATE workflow_task_runs SET status = 'done' WHERE task_id = 's1:newer'",
+      )
+      .run();
+    comment("c1", member, "top level");
+    comment("c2", member, "a reply", "c1");
+    expect(followupFromComment(context(), fixture.boardId, "c2", member)).toBe(
+      false,
+    );
+    expect(followupFromComment(context(), fixture.boardId, "c1", member)).toBe(
+      true,
+    );
+    expect(openEvents(fixture.database, lead, 50)[0]).toMatchObject({
+      itemId: "s1:old",
+    });
+  });
+
+  it("forwards each member only the part of the prompt that names its item", async () => {
+    const alpha = await dispatch("s1:a", "alpha");
+    const beta = await dispatch("s1:b", "beta");
+    expect(
+      followupsFromPrompt(
+        context(),
+        lead,
+        "#s1:a 标题改成蓝色。\n#s1:b 把按钮删掉。",
+      ),
+    ).toBe(2);
+    const now = Math.floor(clock / 1000);
+    const toAlpha = pendingFor(fixture.database, alpha, now)
+      .map((item) => item.body)
+      .join("\n");
+    const toBeta = pendingFor(fixture.database, beta, now)
+      .map((item) => item.body)
+      .join("\n");
+    expect(toAlpha).toContain("标题改成蓝色");
+    expect(toAlpha).not.toContain("按钮删掉");
+    expect(toBeta).toContain("按钮删掉");
+    expect(toBeta).not.toContain("标题改成蓝色");
+  });
+
+  it("keeps the whole prompt for a member when a line names several items", async () => {
+    const alpha = await dispatch("s1:a", "alpha");
+    await dispatch("s1:b", "beta");
+    followupsFromPrompt(context(), lead, "#s1:a #s1:b 都改成蓝色");
+    expect(
+      pendingFor(fixture.database, alpha, Math.floor(clock / 1000))
+        .map((item) => item.body)
+        .join("\n"),
+    ).toContain("都改成蓝色");
+  });
+});
+
+describe("event retention", () => {
+  it("caps unacknowledged events per coordinator and trims very old ones", () => {
+    const nowMs = clock;
+    for (let index = 0; index < 560; index += 1) {
+      insertEvent(
+        fixture.database,
+        {
+          id: `inbox:cap${index}`,
+          coordinatorNodeId: lead,
+          kind: "inbox",
+          summary: `n${index}`,
+        },
+        nowMs - 1_000_000 + index,
+      );
+    }
+    insertEvent(
+      fixture.database,
+      {
+        id: "inbox:ancient",
+        coordinatorNodeId: lead,
+        kind: "inbox",
+        summary: "ancient",
+      },
+      nowMs - 40 * 24 * 3_600_000,
+    );
+    pump.cards.due(context());
+    const open = openEvents(fixture.database, lead, 1000);
+    expect(open.length).toBeLessThanOrEqual(500);
+    expect(open.some((event) => event.id === "inbox:ancient")).toBe(false);
+    // 留下的是最新的。
+    expect(open.some((event) => event.id === "inbox:cap559")).toBe(true);
+    expect(open.some((event) => event.id === "inbox:cap0")).toBe(false);
   });
 });

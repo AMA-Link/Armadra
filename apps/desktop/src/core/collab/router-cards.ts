@@ -8,7 +8,9 @@ import {
   countOpen,
   markCarded,
   pruneAcked,
+  pruneOpen,
 } from "./router-events";
+import { reportFailedFollowups } from "./router-followup";
 import { byId, enqueue, pendingFor, settle } from "./send-queue";
 import { type CollabContext, nowDate, nowSeconds } from "./service";
 import { uuidV7 } from "../workspaces/support";
@@ -26,6 +28,7 @@ import { uuidV7 } from "../workspaces/support";
  *     而是每次尝试现编、当场投（`queue: false`）。投不进去（门链拒绝、写失败）
  *     按 5 秒到 300 秒的指数退避重试，没有放弃的那一步；只要事件还没确认就还会
  *     出现在下一张卡片里；
+ *   * `unknown`（PTY 写到一半失败）当作已投：与发送路径一致，不重发；
  *   * 退避状态在内存里：重启后第一次扫描（60 秒一次）会把仍有未提醒事件的协调
  *     者再投一遍。
  */
@@ -78,6 +81,13 @@ export class RouterCards {
     coordinatorNodeId: string,
   ): Promise<CardResult> {
     const database = context.database;
+    // 排队转给成员的原话没投成（连线删了、过期了）：先补一行「没能转给」，下面
+    // 的 `countFresh` 才数得到它。
+    try {
+      reportFailedFollowups(context, coordinatorNodeId);
+    } catch {
+      // 通知写不成不该让卡片投不出去。
+    }
     if (countFresh(database, coordinatorNodeId) === 0) {
       this.forget(coordinatorNodeId);
       return "none";
@@ -122,7 +132,10 @@ export class RouterCards {
     let delivered = false;
     try {
       const outcome = await attempt(context, item, { queue: false });
-      delivered = outcome.raw?.outcome === "delivered";
+      // `unknown`（PTY 写到一半失败）与发送路径一致：不知道对面收到了多少，就当
+      // 投过了，不重发——重发可能让协调者看到两张卡片。
+      const result = outcome.raw?.outcome;
+      delivered = result === "delivered" || result === "unknown";
     } catch {
       delivered = false;
     }
@@ -147,7 +160,14 @@ export class RouterCards {
    * 出队（那里有同一目标不并发的保护）。
    */
   due(context: CollabContext): string[] {
-    pruneAcked(context.database, nowDate(context).getTime());
+    const nowMs = nowDate(context).getTime();
+    pruneAcked(context.database, nowMs);
+    pruneOpen(context.database, nowMs);
+    try {
+      reportFailedFollowups(context);
+    } catch {
+      // 同 `deliver`：通知写不成不挡清扫。
+    }
     return coordinatorsWithFresh(context.database);
   }
 

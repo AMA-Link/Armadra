@@ -39,6 +39,12 @@ export const MAX_EVENTS = 50;
 export const MAX_SUMMARY_CHARS = 160;
 /** 确认过的事件留多久（毫秒），之后清掉。 */
 export const ACKED_KEEP_MS = 7 * 24 * 3_600_000;
+/** 没确认的事件最多留多久（毫秒）：协调者不确认，表也不随节点寿命增长。 */
+export const OPEN_KEEP_MS = 30 * 24 * 3_600_000;
+/** 每个协调者最多留这么多条没确认的事件，超出的丢最旧的。 */
+export const MAX_OPEN_EVENTS = 500;
+/** 「没能转给」事件的 id 前缀：卡片据此换掉「不要再派一份」的提示。 */
+export const FOLLOWUP_FAILED_PREFIX = "followup-failed:";
 
 export interface RouterEvent {
   readonly id: string;
@@ -293,6 +299,28 @@ export function pruneAcked(database: DatabaseSync, nowMs: number): number {
   return Number(changes.changes);
 }
 
+/**
+ * 协调者一直不确认的事件也要有尽头：超过 {@link OPEN_KEEP_MS} 的丢掉，每个协调者
+ * 超过 {@link MAX_OPEN_EVENTS} 条时丢最旧的。卡片一张只列 {@link MAX_CARD_ROWS}
+ * 行，所以丢掉的都是早就排不进卡片的那些。答丢了几行。
+ */
+export function pruneOpen(database: DatabaseSync, nowMs: number): number {
+  const old = database
+    .prepare(
+      "DELETE FROM router_events WHERE acked_at IS NULL AND created_at <= ?",
+    )
+    .run(nowMs - OPEN_KEEP_MS);
+  const over = database
+    .prepare(
+      "DELETE FROM router_events WHERE rowid IN (" +
+        "SELECT rowid FROM (SELECT rowid, ROW_NUMBER() OVER (" +
+        "PARTITION BY coordinator_node_id ORDER BY created_at DESC, rowid DESC) AS place " +
+        "FROM router_events WHERE acked_at IS NULL) WHERE place > ?)",
+    )
+    .run(MAX_OPEN_EVENTS);
+  return Number(old.changes) + Number(over.changes);
+}
+
 /* --------------------------------- 文字 ---------------------------------- */
 
 /** 「事件 id · 工作项 id · 种类 · 一行内容」。 */
@@ -329,9 +357,15 @@ export function composeCard(
   lines.push(
     "工作项详情读 `canvas items --item <工作项 id>`；处理完一条用 `canvas ack --event <事件 id>` 确认（确认是「我处理了」，不是「我看到了」）。",
   );
-  if (events.some((event) => event.kind === "followup")) {
+  if (
+    events.some(
+      (event) =>
+        event.kind === "followup" &&
+        !event.id.startsWith(FOLLOWUP_FAILED_PREFIX),
+    )
+  ) {
     lines.push(
-      "followup 的行已经原话转给成员：你只能决定停掉那一项，不要再派一份。",
+      "followup 的行是人的原话已排队转给成员（没投进去会另有一行「没能转给」）：你只能决定停掉那一项，不要再派一份。",
     );
   }
   return lines.join("\n");
