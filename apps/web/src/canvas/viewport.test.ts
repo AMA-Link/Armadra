@@ -4,6 +4,8 @@ import {
   INITIAL_VIEWPORT_MARGIN,
   initialViewportFor,
   isDefaultViewport,
+  cameraOnBox,
+  phoneFitViewport,
   phoneOpeningViewport,
 } from "./viewport";
 
@@ -167,6 +169,95 @@ describe("phoneOpeningViewport（#715）", () => {
       phoneOpeningViewport({
         persisted: zoomedOut,
         nodes: [sticky(0, 0)],
+        container: { width: 0, height: 0 },
+      }),
+    ).toBeNull();
+  });
+});
+
+describe("宽节点（#730）", () => {
+  const phone = { width: 390, height: 844 };
+
+  it("cameraOnBox：放得下的方向居中", () => {
+    const cam = cameraOnBox(
+      { x: 100, y: 100, width: 200, height: 100 },
+      1,
+      phone,
+    );
+    expect(cam.x + 200).toBeCloseTo(195, 5);
+    expect(cam.y + 150).toBeCloseTo(422, 5);
+  });
+
+  it("cameraOnBox：比屏幕宽的方向把左缘对齐到边距，左缘可见", () => {
+    const cam = cameraOnBox(
+      { x: 500, y: 0, width: 960, height: 594 },
+      1,
+      phone,
+    );
+    expect(cam.x + 500).toBeCloseTo(24, 5);
+    // 纵向放得下，仍居中。
+    expect(cam.y + 297).toBeCloseTo(422, 5);
+  });
+
+  it("手机打开：比屏幕宽的节点左缘在屏内", () => {
+    const next = phoneOpeningViewport({
+      persisted: { x: 50, y: 100, zoom: 0.1 },
+      nodes: [{ x: 0, y: 0, width: 960, height: 594, fontPx: 12 }],
+      container: phone,
+    })!;
+    expect(next.zoom).toBe(1);
+    const left = next.x + 0 * next.zoom;
+    expect(left).toBeGreaterThanOrEqual(0);
+    expect(left).toBeLessThan(phone.width);
+  });
+});
+
+describe("phoneFitViewport（#730）", () => {
+  const phone = { width: 390, height: 844 };
+  const box = (x: number, selected = false) => ({
+    x,
+    y: 0,
+    width: 260,
+    height: 160,
+    fontPx: 12,
+    selected,
+  });
+  const here = { x: 0, y: 0, zoom: 1 };
+
+  it("整块内容以可读缩放放得下：交还给普通适应", () => {
+    expect(
+      phoneFitViewport({ boxes: [box(0)], current: here, container: phone }),
+    ).toBeNull();
+  });
+
+  it("放不下：缩放不低于字号下限，对准选中的节点", () => {
+    const next = phoneFitViewport({
+      boxes: [box(0), box(5000, true), box(10000)],
+      current: here,
+      container: phone,
+    })!;
+    expect(next.zoom).toBeGreaterThanOrEqual(1);
+    expect(next.x + 5130 * next.zoom).toBeCloseTo(195, 5);
+  });
+
+  it("没选中：对准离当前视口中心最近的节点", () => {
+    const next = phoneFitViewport({
+      boxes: [box(0), box(5000), box(10000)],
+      current: { x: -10000, y: 0, zoom: 1 },
+      container: phone,
+    })!;
+    // 视口中心在画布 x=10195，最近的是 x=10000 那个。
+    expect(next.x + 10130 * next.zoom).toBeCloseTo(195, 5);
+  });
+
+  it("组员不参与，空画布或容器没量到返回 null", () => {
+    expect(
+      phoneFitViewport({ boxes: [], current: here, container: phone }),
+    ).toBeNull();
+    expect(
+      phoneFitViewport({
+        boxes: [box(0), { ...box(5000), parentId: "g" }],
+        current: here,
         container: { width: 0, height: 0 },
       }),
     ).toBeNull();

@@ -7,6 +7,7 @@ import { useRealtimeStore } from "@/realtime/session";
 import {
   REVEAL_RETRY_DELAYS,
   applyBoardViewport,
+  fitView,
   revealNewNode,
   zoomByStep,
   zoomToLevel,
@@ -310,16 +311,32 @@ describe("手机上打开画布（#715）", () => {
     vi.unstubAllGlobals();
   });
 
-  it("桌面上存的 10% 到手机上改成看得清的缩放，节点居中", () => {
+  it("桌面上存的 10% 到手机上只改相机成看得清的缩放，文档里的视口不动", () => {
     screen(true);
     setFlowContainer(fakeContainer(402, 700));
+    const setViewport = vi.fn(() => Promise.resolve(true));
+    setFlow({
+      getViewport: () => ({ x: 0, y: 0, zoom: 1 }),
+      setViewport,
+    } as unknown as FlowHandle);
     const doc = document({ x: 50, y: 100, zoom: 0.1 });
     useCanvasStore.getState().setDocument(doc);
     applyBoardViewport(doc);
-    const viewport = useCanvasStore.getState().document!.board.viewport;
-    expect(viewport.zoom).toBe(1);
-    expect(viewport.x + 1530).toBeCloseTo(201, 5);
-    expect(viewport.y + 2480).toBeCloseTo(350, 5);
+    // 存储（会被自动保存 PUT 回去）里还是桌面的那份。
+    expect(useCanvasStore.getState().document!.board.viewport).toEqual({
+      x: 50,
+      y: 100,
+      zoom: 0.1,
+    });
+    expect(setViewport).toHaveBeenCalledTimes(1);
+    const camera = (
+      setViewport.mock.calls[0] as unknown as [
+        { x: number; y: number; zoom: number },
+      ]
+    )[0];
+    expect(camera.zoom).toBe(1);
+    expect(camera.x + 1530).toBeCloseTo(201, 5);
+    expect(camera.y + 2480).toBeCloseTo(350, 5);
   });
 
   it("桌面上照原样恢复", () => {
@@ -333,5 +350,80 @@ describe("手机上打开画布（#715）", () => {
       y: 100,
       zoom: 0.1,
     });
+  });
+});
+
+describe("手机上的「适应」（#730）", () => {
+  function screen(phone: boolean) {
+    vi.stubGlobal("matchMedia", (query: string) => ({
+      matches: phone && query.includes("max-width"),
+      addEventListener: () => undefined,
+      removeEventListener: () => undefined,
+    }));
+  }
+
+  function sticky(id: string, x: number, selected = false) {
+    return {
+      id,
+      position: { x, y: 0 },
+      measured: { width: 260, height: 160 },
+      width: 260,
+      height: 160,
+      selected,
+      data: {},
+    };
+  }
+
+  function mount(nodes: ReturnType<typeof sticky>[]) {
+    const setViewport = vi.fn(() => Promise.resolve(true));
+    setFlow({
+      getNodes: () => nodes,
+      getViewport: () => ({ x: 0, y: 0, zoom: 1 }),
+      setViewport,
+    } as unknown as FlowHandle);
+    return setViewport;
+  }
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("390×844：内容散到 10% 才放得下时不缩小，对准选中的节点并保持可读缩放", () => {
+    screen(true);
+    setFlowContainer(fakeContainer(390, 844));
+    const setViewport = mount([
+      sticky("a", 0),
+      sticky("b", 6000, true),
+      sticky("c", 12000),
+    ]);
+    fitView();
+    const [target] = setViewport.mock.calls[0] as unknown as [
+      { x: number; y: number; zoom: number },
+    ];
+    expect(target.zoom).toBeGreaterThanOrEqual(1);
+    // 选中的 b 的中心落在屏幕中心。
+    expect(target.x + (6000 + 130) * target.zoom).toBeCloseTo(195, 5);
+  });
+
+  it("手机上内容能以可读缩放放下时走普通适应", () => {
+    screen(true);
+    setFlowContainer(fakeContainer(390, 844));
+    const setViewport = mount([sticky("a", 0)]);
+    fitView();
+    const [target] = setViewport.mock.calls[0] as unknown as [
+      { x: number; y: number; zoom: number },
+    ];
+    expect(target.zoom).toBe(1);
+  });
+
+  it("桌面上仍然缩小到放得下", () => {
+    screen(false);
+    setFlowContainer(fakeContainer(1280, 800));
+    const setViewport = mount([sticky("a", 0), sticky("b", 12000)]);
+    fitView();
+    const [target] = setViewport.mock.calls[0] as unknown as [
+      { x: number; y: number; zoom: number },
+    ];
+    expect(target.zoom).toBeLessThan(0.2);
   });
 });
