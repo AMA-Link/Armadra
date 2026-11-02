@@ -66,12 +66,16 @@ export function parseCliVersion(output: string): string | null {
 }
 
 /** 跑 `<program> --version`，stdin 关掉、有截止时间。输出读不到就是 undefined。 */
-export function runVersion(program: string): Promise<string | undefined> {
+export function runVersion(
+  program: string,
+  env?: NodeJS.ProcessEnv,
+): Promise<string | undefined> {
   return new Promise((resolve) => {
     let child;
     try {
       child = spawn(program, ["--version"], {
         stdio: ["ignore", "pipe", "pipe"],
+        ...(env === undefined ? {} : { env }),
       });
     } catch {
       resolve(undefined);

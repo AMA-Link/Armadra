@@ -167,6 +167,7 @@ function acpStatus(code: string): number {
     case "acp_config_unavailable":
     case "acp_model_unsupported":
     case "acp_auth_required":
+    case "acp_cli_outdated":
     case "acp_session":
     case "awaiting_approval":
       return 409;

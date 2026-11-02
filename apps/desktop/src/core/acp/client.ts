@@ -87,6 +87,8 @@ export type AcpErrorCode =
   | "acp_model_unavailable"
   | "acp_config_unavailable"
   | "acp_not_installed"
+  // CLI 本体低于适配器要求的最低版本（`@armadra/shared` 的 `ACP_CLI_FLOOR`）。
+  | "acp_cli_outdated"
   // prompt 的附件（契约 §56）。
   | "acp_image_unsupported"
   | "acp_attachment_unsupported"

@@ -26,6 +26,7 @@ import {
   startAdapter,
   withSilence,
 } from "./host";
+import { forgetCliVersions } from "./cli-floor";
 import { spawnPrestarted } from "./prestart";
 import type { AcpSessionNotification } from "./types";
 
@@ -42,6 +43,7 @@ afterEach(async () => {
   for (const dir of cleanup.splice(0))
     rmSync(dir, { recursive: true, force: true });
   forgetAcpVersions();
+  forgetCliVersions();
 });
 
 function fakeLaunch(minimal = false) {
@@ -144,6 +146,20 @@ describe("startAcp", () => {
       { type: "text", text: "hi" },
     ]);
     expect(result.stopReason).toBe("end_turn");
+  });
+
+  it("drops the modes of an agent whose `modes` are not permission modes", async () => {
+    // pi 的适配器把推理强度放进 `modes`（同时以 thought_level 配置项给出）。
+    const pi = await start({ agentId: "pi" });
+    expect(pi.modes).toBeNull();
+    const other = await start({ agentId: "opencode" });
+    expect(other.modes).not.toBeNull();
+    // 接回时同样丢掉。
+    const resumed = await start({
+      agentId: "pi",
+      resume: { sessionId: "fake-3", method: "load" },
+    });
+    expect(resumed.modes).toBeNull();
   });
 
   it("resumes with session/resume when the table prefers it: no replay", async () => {
@@ -446,6 +462,59 @@ describe.skipIf(process.platform === "win32")("startAdapter", () => {
         { cwd: tmpdir(), env: { PATH: empty, HOME: empty } },
       ),
     ).rejects.toMatchObject({ code: "acp_not_installed" });
+  });
+
+  describe("a CLI older than the adapter needs (#710)", () => {
+    const pi = acpAdapter("pi") as AcpAdapter;
+
+    /** PATH 上有假的 `pi-acp`（假 Agent）和一个只打印版本的假 `pi`。 */
+    function withPi(banner: string): NodeJS.ProcessEnv {
+      const env = onPath("pi-acp");
+      const bin = env.PATH as string;
+      const script = join(bin, "pi");
+      writeFileSync(script, `#!/bin/sh\necho "${banner}"\n`, "utf8");
+      chmodSync(script, 0o755);
+      return env;
+    }
+
+    it("fails at once with the versions and the package to install", async () => {
+      const started = Date.now();
+      const error = await startAdapter(pi, {
+        cwd: tmpdir(),
+        env: withPi("0.73.1"),
+      }).catch((e: unknown) => e);
+      expect(error).toBeInstanceOf(AcpError);
+      expect(error).toMatchObject({
+        code: "acp_cli_outdated",
+        details: {
+          agentId: "pi",
+          installed: "0.73.1",
+          minimum: "0.81.0",
+          package: "@earendil-works/pi-coding-agent",
+        },
+      });
+      // 没有起适配器进程挂到超时。
+      expect(Date.now() - started).toBeLessThan(5_000);
+      expect(rememberedAcpVersion("pi")).toBeUndefined();
+    });
+
+    it("starts when the CLI is new enough, and shows no modes for pi", async () => {
+      const session = await startAdapter(pi, {
+        cwd: tmpdir(),
+        env: withPi("1.5.0"),
+      });
+      sessions.push(session);
+      expect(session.modes).toBeNull();
+    });
+
+    it("does not block when the version cannot be read", async () => {
+      const session = await startAdapter(pi, {
+        cwd: tmpdir(),
+        env: withPi("pi: command banner without a version"),
+      });
+      sessions.push(session);
+      expect(session.sessionId).toMatch(/^fake-/);
+    });
   });
 
   it("resumes by the adapter's preferred method", async () => {

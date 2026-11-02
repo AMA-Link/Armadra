@@ -91,7 +91,7 @@ export const AGENT_CLI_PACKAGES = {
   claude: "@anthropic-ai/claude-code",
   codex: "@openai/codex",
   opencode: "opencode-ai",
-  pi: "@mariozechner/pi-coding-agent",
+  pi: "@earendil-works/pi-coding-agent",
   omp: "@oh-my-pi/pi-coding-agent",
   copilot: "@github/copilot",
   ama: "@armadra/agent",
@@ -659,6 +659,18 @@ export const acpPrestartRequestSchema = z.object({
  */
 export const acpAuthRequiredDetailsSchema = z.looseObject({
   authMethods: z.array(acpAuthMethodInfoSchema),
+});
+
+/**
+ * `acp_cli_outdated` (409) carries the installed and the minimum CLI version and
+ * the package to install in the error's `details`; core answers it before it
+ * starts the adapter, instead of waiting for `session/new` to time out.
+ */
+export const acpCliOutdatedDetailsSchema = z.looseObject({
+  agentId: z.string(),
+  installed: z.string(),
+  minimum: z.string(),
+  package: z.string(),
 });
 
 /**

@@ -957,6 +957,51 @@ describe("SessionView", () => {
     expect(await screen.findByText(text)).toBeTruthy();
   });
 
+  it("tells an outdated CLI apart: the versions and the package to install (#710)", async () => {
+    api.createSession.mockRejectedValueOnce(
+      new RuntimeRequestError(409, "old", "acp_cli_outdated", {
+        code: "acp_cli_outdated",
+        message: "old",
+        details: {
+          agentId: "pi",
+          installed: "0.73.1",
+          minimum: "0.81.0",
+          package: "@earendil-works/pi-coding-agent",
+        },
+      }),
+    );
+    const fresh: TerminalNodeData = {
+      kind: "terminal",
+      agent: { id: "pi", driver: "acp" },
+    };
+    render(<SessionView nodeId="n1" data={fresh} />);
+    expect(await screen.findByText("CLI 版本过旧")).toBeTruthy();
+    expect(
+      screen.getByText(
+        "已装 0.73.1，至少需要 0.81.0；请安装 @earendil-works/pi-coding-agent",
+      ),
+    ).toBeTruthy();
+  });
+
+  it("shows the agent's own words under the generic title (#710)", async () => {
+    api.createSession.mockRejectedValueOnce(
+      new RuntimeRequestError(
+        502,
+        "Could not start pi: executable not found",
+        "acp_session_failed",
+      ),
+    );
+    const fresh: TerminalNodeData = {
+      kind: "terminal",
+      agent: { id: "pi", driver: "acp" },
+    };
+    render(<SessionView nodeId="n1" data={fresh} />);
+    expect(await screen.findByText("会话没有启动")).toBeTruthy();
+    expect(
+      screen.getByText("Could not start pi: executable not found"),
+    ).toBeTruthy();
+  });
+
   describe("signing in after acp_auth_required", () => {
     const fresh: TerminalNodeData = {
       kind: "terminal",

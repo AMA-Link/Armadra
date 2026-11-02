@@ -7,10 +7,12 @@
 
 import {
   acpAuthRequiredDetailsSchema,
+  acpCliOutdatedDetailsSchema,
   type AcpAuthMethodInfo,
 } from "@armadra/shared";
 
 import { RuntimeRequestError } from "@/api/request";
+import type { Translate } from "@/app/preferences-store";
 
 const START_FAILURE_KEYS: Readonly<Record<string, string>> = {
   acp_auth_required: "acp.error.authRequired",
@@ -18,6 +20,7 @@ const START_FAILURE_KEYS: Readonly<Record<string, string>> = {
   acp_mode_unavailable: "acp.error.modeUnavailable",
   acp_mode_unsupported: "acp.error.modeUnavailable",
   acp_protocol_version: "acp.error.protocolVersion",
+  acp_cli_outdated: "acp.error.cliOutdated",
   acp_session_timeout: "acp.error.timeout",
 };
 
@@ -45,4 +48,33 @@ export function authMethodsOf(error: unknown): AcpAuthMethodInfo[] {
   return parsed.success
     ? parsed.data.authMethods.filter((method) => method.supported === true)
     : [];
+}
+
+/** 附在原因下面的原话最多留多少字。 */
+const NOTE_CHARS = 300;
+
+/**
+ * 标题之外的具体原因（#710）：
+ *   * `acp_cli_outdated`：已装版本、最低版本与应装的包；
+ *   * 通用文案的那些码（`acp_session_failed` 一类）：core 转述的 Agent 原话，
+ *     免得只剩「会话没有启动」。
+ * 有专门一句的码本身就说清了，不再附；没有可说的答 `null`。
+ */
+export function startFailureNote(error: unknown, t: Translate): string | null {
+  if (!(error instanceof RuntimeRequestError)) return null;
+  if (error.code === "acp_cli_outdated") {
+    const details = (error.body as { details?: unknown } | null | undefined)
+      ?.details;
+    const parsed = acpCliOutdatedDetailsSchema.safeParse(details);
+    return parsed.success
+      ? t("acp.error.cliOutdatedNeed", {
+          installed: parsed.data.installed,
+          minimum: parsed.data.minimum,
+          package: parsed.data.package,
+        })
+      : null;
+  }
+  if (startFailureKey(error.code) !== "acp.error.start") return null;
+  const said = error.coreMessage.trim();
+  return said === "" ? null : said.slice(0, NOTE_CHARS);
 }

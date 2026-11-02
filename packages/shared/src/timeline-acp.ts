@@ -1139,6 +1139,17 @@ const CONFIG_OPTION_LIMIT = 64;
 const CONFIG_CHOICE_LIMIT = 500;
 
 /**
+ * 选项名里重复了所属配置项的名字（「Thinking: low」在名叫「Thinking」的项里）时去掉
+ * 前缀：选择器已经写着项名，选项只需要写值。去掉后为空则保持原样。
+ */
+function withoutOwnerPrefix(choice: string, owner: string): string {
+  const prefix = `${owner}: `;
+  return choice.startsWith(prefix) && choice.length > prefix.length
+    ? choice.slice(prefix.length)
+    : choice;
+}
+
+/**
  * 会话的配置项（`session/new` 答复或 `config_option_update`）→ 头部那一份：
  * 只留 `select`（分组摊平、去重）与 `boolean`，字段截到头部 schema 的上限，认不出
  * 的项跳过。不是数组答 `null`。
@@ -1203,7 +1214,7 @@ export function configOptionsViewOf(
         const text = str(c.description);
         choices.push({
           value,
-          name: (str(c.name) ?? value).slice(0, 500),
+          name: withoutOwnerPrefix(str(c.name) ?? value, name).slice(0, 500),
           ...(text ? { description: text.slice(0, 2_000) } : {}),
         });
       }

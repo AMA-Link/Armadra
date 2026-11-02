@@ -86,6 +86,9 @@ export const acp: MessageModule = {
     "acp.error.notInstalled": "适配器没有安装",
     "acp.error.modeUnavailable": "该 Agent 没有这个权限模式",
     "acp.error.protocolVersion": "协议版本不兼容",
+    "acp.error.cliOutdated": "CLI 版本过旧",
+    "acp.error.cliOutdatedNeed":
+      "已装 {installed}，至少需要 {minimum}；请安装 {package}",
     "acp.error.log": "记录没有读到",
     "acp.error.retry": "重试",
     "acp.offline": "已断开，正在重连",
@@ -196,6 +199,9 @@ export const acp: MessageModule = {
     "acp.error.notInstalled": "Adapter is not installed",
     "acp.error.modeUnavailable": "The agent has no such permission mode",
     "acp.error.protocolVersion": "Protocol version not supported",
+    "acp.error.cliOutdated": "CLI version is too old",
+    "acp.error.cliOutdatedNeed":
+      "{installed} is installed, {minimum} or newer is needed; install {package}",
     "acp.error.log": "Could not read the log",
     "acp.error.retry": "Retry",
     "acp.offline": "Disconnected, reconnecting",

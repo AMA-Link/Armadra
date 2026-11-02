@@ -21,7 +21,7 @@ import { useCanvasStore } from "@/store/canvas-store";
 import { putLocalBlob } from "@/timeline/blobs";
 import type { TimelineViewServices } from "@/timeline/view/services";
 import { TimelineView } from "@/timeline/view/TimelineView";
-import { Alert, AlertAction, AlertTitle } from "@/ui/alert";
+import { Alert, AlertAction, AlertDescription, AlertTitle } from "@/ui/alert";
 import { Button } from "@/ui/button";
 import { Empty, EmptyHeader, EmptyTitle } from "@/ui/empty";
 import { DeferredSkeleton } from "@/loading/DeferredSkeleton";
@@ -46,7 +46,11 @@ import {
 import { visibleUsage } from "./pickers";
 import { useAcpPickers } from "./use-pickers";
 import { SignInMethods } from "./SignInMethods";
-import { authMethodsOf, startFailureKey } from "./start-failure";
+import {
+  authMethodsOf,
+  startFailureKey,
+  startFailureNote,
+} from "./start-failure";
 import { useSessionFeed } from "./use-session-feed";
 
 /**
@@ -76,9 +80,13 @@ function useAcpSession(
   queued: React.RefObject<QueuedPrompt | null>,
   enabled: boolean,
 ) {
+  const t = useT();
+  const tRef = React.useRef(t);
+  tRef.current = t;
   const [starting, setStarting] = React.useState(false);
   const [failed, setFailed] = React.useState(false);
   const [failure, setFailure] = React.useState<string | null>(null);
+  const [failureNote, setFailureNote] = React.useState<string | null>(null);
   const [authMethods, setAuthMethods] = React.useState<
     ReturnType<typeof authMethodsOf>
   >([]);
@@ -112,6 +120,7 @@ function useAcpSession(
     setStarting(true);
     setFailed(false);
     setFailure(null);
+    setFailureNote(null);
     setAuthMethods([]);
     setPhase(null);
     const first = queued.current;
@@ -151,6 +160,7 @@ function useAcpSession(
         setFailure(
           error instanceof RuntimeRequestError ? (error.code ?? null) : null,
         );
+        setFailureNote(startFailureNote(error, tRef.current));
         setAuthMethods(authMethodsOf(error));
         setFailed(true);
         setStarting(false);
@@ -169,6 +179,7 @@ function useAcpSession(
     starting,
     failed,
     failure,
+    failureNote,
     authMethods,
     phase,
     cold,
@@ -707,6 +718,11 @@ export function SessionView({
     body = (
       <Alert variant="destructive">
         <AlertTitle>{t(startFailureKey(session.failure))}</AlertTitle>
+        {session.failureNote !== null && (
+          <AlertDescription data-slot="acp-start-note">
+            {session.failureNote}
+          </AlertDescription>
+        )}
         {session.authMethods.length > 0 && data.agent && (
           <SignInMethods
             agentId={data.agent.id}

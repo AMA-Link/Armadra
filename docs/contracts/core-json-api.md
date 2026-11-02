@@ -710,7 +710,7 @@ G5-25 追加：`GET /api/usage` 与 `POST /api/usage/refresh` 里 Claude 那一�
 
 - 七家的表：`claude` 官方 `load`、`codex` 官方 `load`、`opencode` 原生 `load`、`pi` 社区 `load`、`omp` 原生 `load`、`copilot` 原生 `none`、`ama` 原生 `resume`。`resume` 是偏好：起会话时按 Agent 在 `initialize` 声明的能力协商，偏好的方法不支持就用另一个，两个都不支持就新开并如实告诉页面没有接上。
 - 权限模式在 ACP 下的落点（`session/set_mode` 的模式 id 或启动 argv）不在行上；没有落点的模式（OpenCode 的 `auto-edit` / `full-auto`，Pi 除 `default` 外的三个）不出现在会话视图里，以它起会话答 `acp_mode_unsupported`。`plan` 在 Agent 不提供对应模式 id 时拒绝启动（`acp_mode_unavailable`），不以可写模式起。
-- 起会话失败的错误码（G2-1 的路由原样答出，形状 `{ code, message }`）：`acp_not_installed`、`acp_spawn_failed`、`acp_exited`、`acp_initialize_failed`、`acp_initialize_timeout`、`acp_protocol_version`、`acp_auth_required`（Agent 要先在 CLI 里登录）、`acp_session_failed`、`acp_mode_unsupported`、`acp_mode_unavailable`；自 1.24 起还有 `acp_session_timeout`（504，§51）。消息里不带适配器的 stderr。
+- 起会话失败的错误码（G2-1 的路由原样答出，形状 `{ code, message }`）：`acp_not_installed`、`acp_spawn_failed`、`acp_exited`、`acp_initialize_failed`、`acp_initialize_timeout`、`acp_protocol_version`、`acp_auth_required`（Agent 要先在 CLI 里登录）、`acp_session_failed`、`acp_mode_unsupported`、`acp_mode_unavailable`；自 1.24 起还有 `acp_session_timeout`（504，§51）；CLI 本体低于适配器要求的最低版本时答 `acp_cli_outdated`（409），`details` 为 `{ agentId, installed, minimum, package }`，起适配器进程之前就答，不再等 `session/new` 超时（各家下限在 `@armadra/shared` 的 `ACP_CLI_FLOOR`，目前只登记 pi；问不出版本不拦）。适配器在 `session/new` 答复里报的 `modes` 不是权限模式时（`ACP_REPORTED_MODES` 为 `ignore`，目前是 pi：它把推理强度放在里面，另以 `thought_level` 配置项给出）core 丢掉，`modes` 为 `null`。消息里不带适配器的 stderr。
 - 实跑验证过的版本区间记在 `tools/release/compatibility.json` 的 `acp` 键（`{ protocolVersion: 1, adapters: { <id>: { program, verified: null | { min, max? } } } }`），不进发布说明的兼容围栏；`program` 与适配器表由测试对齐。
 - 状态来源词汇多一个 `acp`（`agent_status.state_source`）：由 core 在 ACP 驱动的会话上写入，与 `hook` / `extension` 一样算上报（`stateSourceIsReported`），客户端无法自称。
 
@@ -1924,7 +1924,7 @@ CSV 按 RFC 4180：`\r\n` 换行，首行表头 `id,time,principalId,deviceId,ac
 
 ### 26.3 `pi-acp` 的映射文件
 
-- 适配器表 `sessionId: "mapFile"` 的那一行（`pi`）写死映射文件 `~/.pi/acp/sessions.json`，形状 `{ "<ACP 会话 id>": { "sessionFile": "<Pi 会话文件绝对路径>" } }`（值也可以直接是路径）。会话文件名里的 uuid 是 Pi 的会话 id。读不到、过大（> 4 MiB）、不是这个形状、或路径不是绝对路径时退回 `opaque`。
+- 适配器表 `sessionId: "mapFile"` 的那一行（`pi`）写死映射文件 `~/.pi/pi-acp/session-map.json`，形状 `{ "version": 1, "sessions": { "<ACP 会话 id>": { "sessionFile": "<Pi 会话文件绝对路径>" } } }`（也认没有 `sessions` 外壳的扁平对象，值也可以直接是路径）。会话文件名里的 uuid 是 Pi 的会话 id。读不到、过大（> 4 MiB）、不是这个形状、或路径不是绝对路径时退回 `opaque`。
 - 会话开好时 `transcriptPath` 是映射到的 Pi 会话文件（存在时），否则是镜像。
 - 接回 ACP：手里的 id 是映射里的 ACP 会话 id 就用它，是 Pi 的会话 id 或会话文件就反查成 ACP 会话 id，查不到原样交给 `session/load`（接不回就新开）。切回终端：ACP 会话 id 映射回 Pi 的会话 id（文件名认不出时用文件路径）敲恢复行；映射里没有就敲普通启动行，`resumed: false`。
 
@@ -3619,7 +3619,7 @@ human initiator。页面不接收任何 controller 凭据；body owner/controlle
 自协议 1.22 起扩展 §39.7（§39.7 原文仍是 1.15 的行为；procedure 名与 `since` 不变，表在 §39.7 的生成块里）。实现在 `core/agent/adapter-install.ts`。
 
 - `agents.installAdapter` 入参多 `target?: "adapter" | "cli"`（缺省 `adapter`，与 1.15 相同）与 `rollback?: boolean`；`agents.adapterInstall` 入参多 `target?`。
-- 两张白名单（`@armadra/shared`）：`adapter` 只认 `ACP_ADAPTER_PACKAGES`（`claude` / `codex` / `pi` 三家适配器，不变）；`cli` 只认 `AGENT_CLI_PACKAGES`：`claude` → `@anthropic-ai/claude-code`、`codex` → `@openai/codex`、`opencode` → `opencode-ai`、`pi` → `@mariozechner/pi-coding-agent`、`omp` → `@oh-my-pi/pi-coding-agent`、`copilot` → `@github/copilot`、`ama` → `@armadra/agent`。表外（含 `custom:` 条目）答 400 `adapter_not_installable`，不起进程。命令仍固定是 `npm install --global <包>`，npm 的选取与子进程 PATH 同 §39.7。
+- 两张白名单（`@armadra/shared`）：`adapter` 只认 `ACP_ADAPTER_PACKAGES`（`claude` / `codex` / `pi` 三家适配器，不变）；`cli` 只认 `AGENT_CLI_PACKAGES`：`claude` → `@anthropic-ai/claude-code`、`codex` → `@openai/codex`、`opencode` → `opencode-ai`、`pi` → `@earendil-works/pi-coding-agent`、`omp` → `@oh-my-pi/pi-coding-agent`、`copilot` → `@github/copilot`、`ama` → `@armadra/agent`。表外（含 `custom:` 条目）答 400 `adapter_not_installable`，不起进程。命令仍固定是 `npm install --global <包>`，npm 的选取与子进程 PATH 同 §39.7。
 - 探测：`adapter` 找适配器程序，`cli` 找注册表的 `launchCmd`；没带 `reinstall` 而已在 PATH 上答 409 `adapter_already_installed`。原生 ACP 的几家（opencode / omp / copilot / ama）装 CLI 即装 ACP。
 - 任务键是 `${agentId}:${target}`：同一家同一样在装时答那一个任务；同一家另一样在装答 409 `adapter_install_busy`，不起第二个 npm。
 - 上一版本：开始前用同一个 npm 跑 `npm ls --global --depth=0 --json <包>`，读 `dependencies.<包>.version` 记为任务的 `previousVersion`；拿不到就缺席。`rollback: true` 装回 `<包>@<previousVersion>`（这一家这一样最近一个任务的值，隐含 `reinstall`）；没有 `previousVersion` 答 409 `adapter_rollback_unavailable`。

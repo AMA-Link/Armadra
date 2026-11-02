@@ -880,6 +880,29 @@ describe("头部值与提示", () => {
       },
     ]);
     expect(configOptionsViewOf(null)).toBeNull();
+    // 选项名重复了配置项的名字（pi：「Thinking: low」）：选择器已写着项名，去掉前缀；
+    // 去掉后为空或前缀不同的保持原样。
+    const prefixed = configOptionsViewOf([
+      {
+        id: "thought_level",
+        name: "Thinking",
+        category: "thought_level",
+        type: "select",
+        currentValue: "low",
+        options: [
+          { value: "off", name: "Thinking: off" },
+          { value: "low", name: "Thinking: low" },
+          { value: "x", name: "Thinking: " },
+          { value: "y", name: "Reasoning: y" },
+        ],
+      },
+    ]);
+    expect(prefixed?.[0]?.options.map((o) => o.name)).toEqual([
+      "off",
+      "low",
+      "Thinking: ",
+      "Reasoning: y",
+    ]);
     const update = (...options: unknown[]) => ({
       sessionUpdate: "config_option_update",
       configOptions: options,
