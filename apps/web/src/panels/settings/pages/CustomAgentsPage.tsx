@@ -17,6 +17,7 @@ import { SettingsGroup } from "../SettingsGroup";
 import { SettingsLoadable } from "../SettingsLoadable";
 import { SettingsPageHeader } from "../SettingsPageHeader";
 import { SettingsRow } from "../SettingsRow";
+import { AgentEnabledSwitch } from "./AgentDetailPage";
 import { SettingsTableCard } from "../SettingsTableCard";
 import { useSubpage } from "../subpage";
 import { useRuntimeSettings } from "../use-runtime-settings";
@@ -64,6 +65,8 @@ export function CustomAgentsPage() {
     () => settings.data?.agents?.custom ?? [],
     [settings.data],
   );
+  // 启用开关的默认值取决于这家在本机是否探测得到，探测结果在 Agent 清单里。
+  const detected = useAgentsQuery("local").data;
 
   if (subpage.current?.startsWith("agent:")) {
     return (
@@ -122,6 +125,9 @@ export function CustomAgentsPage() {
                     {t("settings.customAgent.edit")}
                   </span>
                 </TableHead>
+                <TableHead className="w-12">
+                  <span className="sr-only">{t("agents.row.mode")}</span>
+                </TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -161,6 +167,17 @@ export function CustomAgentsPage() {
                         {t("settings.customAgent.edit")}
                       </TooltipContent>
                     </Tooltip>
+                  </TableCell>
+                  <TableCell className="text-end">
+                    <AgentEnabledSwitch
+                      agent={{
+                        id: agent.id,
+                        label: agent.label,
+                        installed:
+                          detected?.find((entry) => entry.id === agent.id)
+                            ?.installed ?? false,
+                      }}
+                    />
                   </TableCell>
                 </TableRow>
               ))}

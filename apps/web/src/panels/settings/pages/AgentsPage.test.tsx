@@ -491,7 +491,7 @@ describe("Agent CLI 主表", () => {
     ...extra,
   });
 
-  it("一家一行：就绪也有状态胶囊，写出能用的视图，动作是三态", async () => {
+  it("一家一行：就绪也有状态胶囊，写出能用的视图，末列是启用开关", async () => {
     mock.agents.mockReset().mockResolvedValue([claude]);
     mock.integration.mockReset().mockResolvedValue(ok("claude"));
     const { container } = view(null);
@@ -501,11 +501,37 @@ describe("Agent CLI 主表", () => {
     expect(
       container.querySelector('[data-agent-state="ready"]')?.textContent,
     ).toBe(zh("settings.kpi.ready"));
+    const toggle = screen.getByRole("switch", {
+      name: `Claude Code ${zh("agents.row.mode")}`,
+    });
+    expect(toggle.getAttribute("aria-checked")).toBe("true");
+  });
+
+  it("没装的默认关，打开写「启用」留在菜单里；装了的关掉写「禁用」", async () => {
+    mock.agents.mockReset().mockResolvedValue([
+      { ...claude, installed: false },
+      { ...claude, id: "codex", label: "Codex", launchCmd: "codex" },
+    ]);
+    mock.integration.mockReset().mockResolvedValue(ok("claude"));
+    view(null);
+    const claudeSwitch = await screen.findByRole("switch", {
+      name: `Claude Code ${zh("agents.row.mode")}`,
+    });
+    const codexSwitch = screen.getByRole("switch", {
+      name: `Codex ${zh("agents.row.mode")}`,
+    });
+    expect(claudeSwitch.getAttribute("aria-checked")).toBe("false");
+    expect(codexSwitch.getAttribute("aria-checked")).toBe("true");
+
+    fireEvent.click(claudeSwitch);
+    fireEvent.click(codexSwitch);
+    const modes = usePreferencesStore.getState().agentModes;
+    expect(modes.claude).toBe("enabled");
+    expect(modes.codex).toBe("disabled");
+    // 持久化：刷新后读回同一份。
     expect(
-      screen.getByRole("combobox", {
-        name: `Claude Code ${zh("agents.row.mode")}`,
-      }),
-    ).toBeTruthy();
+      JSON.parse(window.localStorage.getItem("armadra.agentModes")!),
+    ).toEqual({ claude: "enabled", codex: "disabled" });
   });
 
   it("没装：「需安装」+「安装」；注入待更新：「需更新」+「更新」；禁用：「已禁用」", async () => {

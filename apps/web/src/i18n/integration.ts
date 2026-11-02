@@ -113,7 +113,7 @@ export const integration: MessageModule = {
     "agents.group.launch": "Launch",
     "agents.group.install": "Install",
     "agents.group.injection": "Canvas injection",
-    "agents.row.mode": "Availability",
+    "agents.row.mode": "Enabled",
     "agents.row.account": "Account",
     "agents.row.artifacts": "Hooks & skill",
     "agents.sessions.indexed": "Indexed sessions",

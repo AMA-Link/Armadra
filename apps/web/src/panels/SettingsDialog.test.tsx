@@ -579,8 +579,8 @@ describe("SettingsDialog", () => {
     expect(page().dataset.section).toBe("about");
   });
 
-  it("Agent CLI 一家一行，三态写进偏好", async () => {
-    // 注入齐全 = 就绪：动作位才是三态选择（缺技能时动作位是「更新」）。
+  it("Agent CLI 一家一行，启用开关写进偏好", async () => {
+    // 注入齐全 = 就绪。
     agentIntegration.mockResolvedValue({
       agentId: "claude",
       mode: "canvas",
@@ -591,28 +591,24 @@ describe("SettingsDialog", () => {
     });
     open();
     fireEvent.click(navItem(zh("settings.section.agents")));
-    const trigger = await screen.findByRole(
-      "combobox",
-      { name: `Claude Code ${zh("agents.row.mode")}` },
+    const name = `Claude Code ${zh("agents.row.mode")}`;
+    const toggle = await screen.findByRole(
+      "switch",
+      { name },
       { timeout: 5_000 },
     );
-    const choose = (option: string) => {
-      fireEvent.pointerDown(
-        screen.getByRole("combobox", {
-          name: `Claude Code ${zh("agents.row.mode")}`,
-        }),
-        { button: 0, ctrlKey: false, pointerType: "mouse" },
-      );
-      fireEvent.click(screen.getByRole("option", { name: option }));
-    };
-    expect(trigger).toBeTruthy();
-    choose(zh("settings.agentMode.disabled"));
+    // 已安装默认开。
+    expect(toggle.getAttribute("aria-checked")).toBe("true");
+    fireEvent.click(toggle);
     expect(usePreferencesStore.getState().agentModes.claude).toBe("disabled");
-    // 禁用时行上一枚「已禁用」，动作仍是三态，好改回来。
+    // 禁用时行上一枚「已禁用」，开关仍在，好打开。
     expect(await screen.findByText(zh("agents.state.disabled"))).toBeTruthy();
+    expect(
+      screen.getByRole("switch", { name }).getAttribute("aria-checked"),
+    ).toBe("false");
 
-    // 回到「默认」不落键：将来改默认策略时老配置跟着走。
-    choose(zh("settings.agentMode.default"));
+    // 再打开：已安装写回默认、不落键，将来改默认策略时老配置跟着走。
+    fireEvent.click(screen.getByRole("switch", { name }));
     expect(usePreferencesStore.getState().agentModes.claude).toBeUndefined();
   });
 

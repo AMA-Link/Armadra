@@ -119,10 +119,6 @@ export const modals: MessageModule = {
 
     "settings.defaultAgent": "默认 Agent", // i18n-exempt
     "settings.defaultPermission": "默认权限模式",
-    "settings.agentMode.default": "默认",
-    "settings.agentMode.enabled": "启用",
-    "settings.agentMode.disabled": "禁用",
-    "settings.agentMode.note": "「默认」跟随本机检测结果。",
     "settings.launchCommand": "自定义启动命令",
     "settings.autoTitle": "自动命名",
     "settings.autoTitle.label": "为占位标题自动生成名称",
@@ -415,10 +411,6 @@ export const modals: MessageModule = {
 
     "settings.defaultAgent": "Default agent",
     "settings.defaultPermission": "Default permission mode",
-    "settings.agentMode.default": "Default",
-    "settings.agentMode.enabled": "Enabled",
-    "settings.agentMode.disabled": "Disabled",
-    "settings.agentMode.note": "Default follows local detection.",
     "settings.launchCommand": "Custom launch command",
     "settings.autoTitle": "Automatic naming",
     "settings.autoTitle.label":
