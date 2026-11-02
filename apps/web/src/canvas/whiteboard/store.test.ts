@@ -272,3 +272,85 @@ describe("读取辅助", () => {
     expect(state().whiteboard).toEqual(emptyWhiteboard());
   });
 });
+
+describe("discardItem", () => {
+  const text = (overrides: Record<string, unknown> = {}) => ({
+    id: id(),
+    kind: "text" as const,
+    x: 0,
+    y: 0,
+    w: 120,
+    h: 24,
+    z: 0,
+    parentId: null,
+    style: {
+      color: "black" as const,
+      size: "m" as const,
+      align: "start" as const,
+    },
+    text: "",
+    ...overrides,
+  });
+
+  it("刚建出来的空文字：连同撤销栈里的「新建」一起抹掉，⌘Z 不会复活它", () => {
+    store.addItems([text({ id: "a" })]);
+    store.select(["a"]);
+    store.discardItem("wb:a");
+    expect(items()).toHaveLength(0);
+    expect(state().selectedItemIds).toEqual([]);
+    state().undo();
+    expect(items()).toHaveLength(0);
+  });
+
+  it("不动栈里更早的记录：新建之前的那一步仍然可撤", () => {
+    store.addItems([shape({ id: "s" })]);
+    store.addItems([text({ id: "a" })]);
+    store.discardItem("a");
+    expect(items().map((item) => item.id)).toEqual(["s"]);
+    state().undo();
+    expect(items()).toHaveLength(0);
+  });
+
+  it("已有内容被清空的文字：普通删除，撤销能找回", () => {
+    store.addItems([text({ id: "a", text: "你好" })]);
+    resetHistory();
+    store.discardItem("a");
+    expect(items()).toHaveLength(0);
+    state().undo();
+    expect(items()[0]).toMatchObject({ id: "a", text: "你好" });
+  });
+
+  it("栈顶不是这条的「新建」时不乱弹：按普通删除记一步，撤销能找回", () => {
+    store.addItems([text({ id: "a" })]);
+    store.addItems([text({ id: "b" })]);
+    store.discardItem("a");
+    expect(items().map((item) => item.id)).toEqual(["b"]);
+    state().undo();
+    expect(
+      items()
+        .map((item) => item.id)
+        .sort(),
+    ).toEqual(["a", "b"]);
+    state().undo();
+    state().undo();
+    expect(items()).toHaveLength(0);
+  });
+
+  it("commitItemText：刚建出来的文字，新建 + 第一次写内容是一步撤销", () => {
+    store.addItems([text({ id: "a" })]);
+    store.commitItemText("wb:a", { text: "你好" } as never);
+    expect(items()[0]).toMatchObject({ id: "a", text: "你好" });
+    state().undo();
+    expect(items()).toHaveLength(0);
+    state().redo();
+    expect(items()[0]).toMatchObject({ id: "a", text: "你好" });
+  });
+
+  it("commitItemText：已有的文字改内容照常记一步，撤销回到旧文字", () => {
+    store.addItems([text({ id: "a", text: "旧" })]);
+    resetHistory();
+    store.commitItemText("a", { text: "新" } as never);
+    state().undo();
+    expect(items()[0]).toMatchObject({ id: "a", text: "旧" });
+  });
+});
