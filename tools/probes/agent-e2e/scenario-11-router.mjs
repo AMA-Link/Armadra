@@ -25,7 +25,7 @@ export function cardReply(messages, textOf, lastToolCall) {
     );
     const ids = [
       ...listed.matchAll(
-        /(?:report|attention|handback|task-done|stalled|followup):[^\s"·]+/g,
+        /(?:report|attention|handback|task-done|stalled|followup|followup-failed):[^\s"·]+/g,
       ),
     ].map((match) => match[0]);
     return ids.length === 0
