@@ -211,16 +211,50 @@ test("a mirror serving the release's own latest.json only mirrors the check", as
   const root = join(release.work, "bucket");
   bucketTree({ ...release, root, overlay: false });
   const server = await serve(root, port);
+  const requested = [];
   try {
     const { problems } = await verifyMirror({
       base,
       publicKeyText: release.publicKeyText,
+      fetchImpl: (url, init) => {
+        requested.push(url);
+        return fetch(url, init);
+      },
     });
     assert.ok(problems.some((p) => /is not on the mirror/.test(p)));
+    // 镜像外的地址只报问题，不去取（取了就要等外网，也不是在验镜像）。
+    assert.ok(requested.length > 0);
+    assert.ok(
+      requested.every((url) => url.startsWith(`${base}/`)),
+      requested.join("\n"),
+    );
   } finally {
     server.close();
     rmSync(release.work, { recursive: true, force: true });
   }
+});
+
+test("a mirror that never answers is reported after the timeout, not waited for", async () => {
+  const signals = [];
+  const hang = (url, { signal }) => {
+    signals.push(signal);
+    return new Promise((_, reject) => {
+      signal.addEventListener("abort", () => reject(signal.reason));
+    });
+  };
+  const started = Date.now();
+  const { problems, checked } = await verifyMirror({
+    base: "https://updates.example.invalid",
+    publicKeyText: "unused",
+    fetchImpl: hang,
+    timeoutMs: 40,
+  });
+  assert.equal(problems.length, 1);
+  assert.match(problems[0], /timeout|aborted/i);
+  assert.deepEqual(checked, []);
+  assert.equal(signals.length, 1);
+  assert.ok(signals[0] instanceof AbortSignal);
+  assert.ok(Date.now() - started < 5_000);
 });
 
 test("the mirror's latest.json is signed as latest.json and offers what the release does", async () => {
