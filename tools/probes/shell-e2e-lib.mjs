@@ -450,6 +450,11 @@ async function page(h, call, listeners, sessionId, { width, height, name }) {
     h.report.shots.push(path);
     return path;
   };
+  /**
+   * 页面加载完成的等待上界。导航在负载下可以慢过 20 秒（探针常与别的作业同机跑），
+   * 一成立就返回，所以上界给宽只影响真卡住时的失败时刻。
+   */
+  const PAGE_LOADED = { timeout: 60_000, what: "页面加载完成（readyState）" };
   const navigate = async (url) => {
     changes.fresh();
     const answer = await call("Page.navigate", { url });
@@ -459,7 +464,7 @@ async function page(h, call, listeners, sessionId, { width, height, name }) {
         kind: "navigate",
         text: `${answer.errorText} ${url.replace(/#pair=\S+/g, "#pair=…")}`,
       });
-    await waitFor(`return document.readyState === "complete";`);
+    await waitFor(`return document.readyState === "complete";`, PAGE_LOADED);
     // 容器刚起时网桥一出现，Chrome 的网络变化通知会把在途请求以
     // `ERR_NETWORK_CHANGED` 掐掉；入口脚本的懒加载块（模块脚本）被掐了不会重试，
     // 页面就停在空白根节点上，既没有控制台错误也没有接口请求（R-89，#356：夜间
@@ -474,7 +479,7 @@ async function page(h, call, listeners, sessionId, { width, height, name }) {
       });
       await sleep(1_000);
       await call("Page.reload", {});
-      await waitFor(`return document.readyState === "complete";`);
+      await waitFor(`return document.readyState === "complete";`, PAGE_LOADED);
     }
   };
   /** 开屏动画盖在页面上，而且吃掉指针事件（`splash/mount.tsx`）。 */
