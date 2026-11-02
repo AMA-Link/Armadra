@@ -35,6 +35,11 @@ android {
             ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
     }
+    // adb 操作（装 APK、跑插桩）默认没有时限：设备掉线或被测进程卡住时 connectedDebugAndroidTest
+    // 会无声地一直等（夜间 #746）。给 5 分钟，到点以失败结束。
+    installation {
+        timeOutInMs = 5 * 60 * 1000
+    }
     // 发布签名只来自环境（外部服务 §5.1 的上传密钥），仓库里没有任何密钥；没配时
     // release 包不签名，只有 debug 包可装。
     signingConfigs {
