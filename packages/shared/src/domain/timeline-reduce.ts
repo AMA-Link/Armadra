@@ -516,6 +516,28 @@ export type ActivityEntry =
 export interface ActivityGroupOptions {
   /** 少于这么多个连续成员就不折叠，缺省 2。 */
   minRun?: number;
+  /**
+   * 哪些成员可以进组，缺省工具与思考都进。不可进组的工具保持独立一行（连同它的
+   * 内部调用与审批），并把前后的连续段隔开。
+   */
+  groupable?: (member: ActivityGroupMember) => boolean;
+}
+
+/** 只读类工具的 kind：读、搜、取网页、思考；它们的输出不会改东西，折起来不丢信息。 */
+const READ_ONLY_KINDS: ReadonlySet<string> = new Set([
+  "read",
+  "search",
+  "fetch",
+  "think",
+]);
+
+/**
+ * 「只读类」活动：思考，以及 read / search / fetch / think 类工具。传给
+ * {@link activityGroups} 的 `groupable`，编辑、命令、删除、移动、子代理与其他类工具
+ * 不进组，各占一行。
+ */
+export function isReadOnlyActivity(member: ActivityGroupMember): boolean {
+  return member.kind === "thought" || READ_ONLY_KINDS.has(member.toolKind);
 }
 
 export function summarizeActivity(
@@ -581,6 +603,7 @@ export function activityGroups(
   options: ActivityGroupOptions = {},
 ): ActivityEntry[] {
   const minRun = Math.max(1, options.minRun ?? 2);
+  const groupable = options.groupable ?? (() => true);
   const toolIds = new Set<string>();
   for (const item of items) {
     if (item.kind === "tool") toolIds.add(item.toolCallId);
@@ -622,13 +645,15 @@ export function activityGroups(
     run = [];
   };
   for (const item of top) {
-    if (isMember(item)) {
+    if (isMember(item) && groupable(item)) {
       const last = run[run.length - 1];
       if (last !== undefined && last.turn !== item.turn) flush();
       run.push(item);
     } else {
       flush();
-      out.push({ type: "item", item });
+      out.push(
+        isMember(item) ? entryFor(item, children) : { type: "item", item },
+      );
     }
   }
   flush();
