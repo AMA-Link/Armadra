@@ -69,6 +69,12 @@ export interface HistoryDelegate {
   canRedo(): boolean;
   beginCoalesce(): void;
   endCoalesce(): void;
+  /**
+   * 执行 `remove`（删掉 `itemId` 那条白板对象）；若这条对象刚建出来、栈顶正好
+   * 只是它的「新建」，连同删除产生的那一步一起从栈里抹掉，返回 `true`。
+   * 否则删除照常入栈、返回 `false`。
+   */
+  removeForgettingCreation(itemId: string, remove: () => void): boolean;
   /** 栈变了就调 `notify`，按钮的可用态跟着变。返回退订。 */
   subscribe(notify: () => void): () => void;
 }
@@ -298,6 +304,18 @@ export function forgetCreation(itemId: string): boolean {
   past.pop();
   notify();
   return true;
+}
+
+/**
+ * 实时板版的 `forgetCreation`：栈在代理手里，抹不掉就删不干净，所以连删除
+ * 一起交给代理做。没有代理时什么也不做并返回 `null`（调用方走本地栈）。
+ */
+export function removeForgettingCreation(
+  itemId: string,
+  remove: () => void,
+): boolean | null {
+  if (!delegate) return null;
+  return delegate.removeForgettingCreation(itemId, remove);
 }
 
 /**

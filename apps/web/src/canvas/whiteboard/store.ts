@@ -6,6 +6,7 @@ import {
   endCoalesce,
   forgetCreation,
   isCreationOnTop,
+  removeForgettingCreation,
   useCanvasStore,
   type CommitOptions,
 } from "@/store/canvas-store";
@@ -283,10 +284,15 @@ export function commitItemText(id: string, patch: Partial<Item>): void {
  * 刚建出来、还没写过任何东西的那条：连同撤销栈里的「新建」一起抹掉，
  * 画布上、文档里、历史里都像从没发生过。已有内容被清空的那条：普通删除，
  * 可以撤销回来。先结束手势再判断——手势没关时栈顶还不是那条「新建」。
+ * 实时板同理，只是栈由代理维护（`HistoryDelegate.removeForgettingCreation`）。
  */
 export function discardItem(id: string): void {
   endCoalesce();
-  const fresh = forgetCreation(fromItemId(id));
+  const bare = fromItemId(id);
+  // 实时板的栈在 `Y.UndoManager` 手里，本地栈抹不到：删除交给代理做，它会
+  // 把「新建 + 删除」两步一起弹掉。
+  if (removeForgettingCreation(bare, () => removeItems([id])) !== null) return;
+  const fresh = forgetCreation(bare);
   removeItems([id], fresh ? { history: "ignore" } : {});
 }
 
