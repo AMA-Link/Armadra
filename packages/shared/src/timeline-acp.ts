@@ -23,6 +23,7 @@ import {
   mergeStreamChunk,
   mergeToolCall,
 } from "./domain/index.js";
+import { acpMcpArguments, acpMcpToolOf } from "./acp-mcp.js";
 
 /**
  * ACP `session/update` → 时间线操作（设计 §2.3、§3）。core 的 `TimelineWriter`
@@ -794,8 +795,11 @@ function toolUpdate(
     const text = rawOutputText(body.rawOutput);
     if (text !== undefined) content = [{ type: "text", ...clipTail(text) }];
   }
-  const input =
-    body.rawInput !== undefined ? toolInputSummary(body.rawInput) : undefined;
+  const mcp = acpMcpToolOf(body) ?? existing?.mcp;
+  // MCP 调用的摘要读模型给的参数，不读 `{ server, tool, arguments }` 那层包装。
+  const rawInput =
+    mcp !== undefined ? acpMcpArguments(body, mcp) : body.rawInput;
+  const input = rawInput !== undefined ? toolInputSummary(rawInput) : undefined;
   const title = str(body.title);
 
   const tail = lastItem(turnItems(state, ctx.turn));
@@ -810,6 +814,7 @@ function toolUpdate(
       input,
       content,
       parentToolCallId: sub.parent,
+      mcp,
     },
     ctx.at,
   );

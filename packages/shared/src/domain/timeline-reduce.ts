@@ -421,6 +421,7 @@ export interface ToolPatch {
   content?: TimelineToolItem["content"] | undefined;
   permission?: TimelineToolItem["permission"] | undefined;
   parentToolCallId?: string | undefined;
+  mcp?: TimelineToolItem["mcp"] | undefined;
 }
 
 export type ToolFields = Pick<
@@ -433,6 +434,7 @@ export type ToolFields = Pick<
   | "content"
   | "permission"
   | "parentToolCallId"
+  | "mcp"
   | "startedAt"
   | "endedAt"
 >;
@@ -465,6 +467,8 @@ export function mergeToolCall(
   const input = patch.input ?? previous?.input;
   const permission = patch.permission ?? previous?.permission;
   const parent = patch.parentToolCallId ?? previous?.parentToolCallId;
+  // 来源认定一次就不变：后来的更新（Codex 的完成帧不带 `_meta`）不把它抹掉。
+  const mcp = previous?.mcp ?? patch.mcp;
   return {
     toolKind: patch.toolKind ?? previous?.toolKind ?? "other",
     title,
@@ -475,6 +479,7 @@ export function mergeToolCall(
     ...(input !== undefined ? { input } : {}),
     ...(permission !== undefined ? { permission } : {}),
     ...(parent !== undefined ? { parentToolCallId: parent } : {}),
+    ...(mcp !== undefined ? { mcp } : {}),
     ...(endedAt !== undefined ? { endedAt } : {}),
   };
 }

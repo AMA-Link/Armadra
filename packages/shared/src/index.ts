@@ -10,6 +10,7 @@ export * from "./git-integration.js";
 export * from "./agent-capabilities.js";
 export * from "./acp-cli-floor.js";
 export * from "./acp-modes.js";
+export * from "./acp-mcp.js";
 export * from "./handoff.js";
 export * from "./contract/errors.js";
 export * from "./contract/index.js";
