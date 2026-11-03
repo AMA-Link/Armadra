@@ -21,7 +21,7 @@ import { useCanvasStore } from "../store/canvas-store";
 import { initialPanels } from "../store/canvas/internal";
 import { MAX_ZOOM, MIN_ZOOM } from "../canvas/zoom";
 import { setFlow } from "../canvas/flow/flow-context";
-import { COMPACT_QUERY } from "../platform/layout";
+import { COMPACT_QUERY, PHONE_LANDSCAPE_QUERY } from "../platform/layout";
 import { Dock, TidyButton, ZoomControls } from "./Dock";
 
 installDomPolyfills();
@@ -311,15 +311,38 @@ describe("工具组与缩放百分比", () => {
   });
 });
 
-describe("手机竖屏的两行 Dock（#715）", () => {
+describe("一行 Dock：手机竖屏、横屏与桌面同序（#766）", () => {
+  /** 与桌面同序的整排；手机上一个不少，也不折进弹层。 */
+  const FULL_ROW = [
+    "锁定视图",
+    "新建",
+    "撤销",
+    "重做",
+    "一键整理",
+    "选择",
+    "手形",
+    "画笔",
+    "形状",
+    "直线",
+    "文字",
+    "引入…",
+    "评论",
+    "缩小",
+    "适应",
+    "放大",
+  ];
+
+  function mockQuery(query: string | null) {
+    const original = window.matchMedia;
+    vi.spyOn(window, "matchMedia").mockImplementation((q) => ({
+      ...original(q),
+      matches: q === query,
+    }));
+  }
+
   beforeEach(() => {
     fetchAgents.mockReset().mockResolvedValue([claude]);
     useCanvasStore.setState({ workspace, saveState: "saved" });
-    const original = window.matchMedia;
-    vi.spyOn(window, "matchMedia").mockImplementation((query) => ({
-      ...original(query),
-      matches: query === COMPACT_QUERY,
-    }));
   });
   afterEach(() => {
     vi.restoreAllMocks();
@@ -327,13 +350,7 @@ describe("手机竖屏的两行 Dock（#715）", () => {
     useCanvasStore.setState({ boardId: null });
   });
 
-  function rowLabels(row: Element): (string | null)[] {
-    return Array.from(row.querySelectorAll("button[aria-label]")).map(
-      (element) => element.getAttribute("aria-label"),
-    );
-  }
-
-  it("第一行画布动作与缩放，第二行白板工具与评论，一个不藏", () => {
+  function renderDock() {
     setFlow({} as ReactFlowInstance);
     // 评论钮只在有画板时出现。
     useCanvasStore.setState({ boardId: "board-1" });
@@ -343,10 +360,69 @@ describe("手机竖屏的两行 Dock（#715）", () => {
       </TestProviders>,
     );
     const dock = container.querySelector("[data-slot='dock']")!;
-    expect(dock.getAttribute("data-rows")).toBe("2");
-    const rows = dock.querySelectorAll("[data-slot='dock-row']");
-    expect(rows).toHaveLength(2);
-    expect(rowLabels(rows[0]!)).toEqual([
+    return { dock, scroller: dock.querySelector("[data-slot='dock-scroll']")! };
+  }
+
+  function labels(scope: Element): (string | null)[] {
+    return Array.from(scope.querySelectorAll("button[aria-label]")).map(
+      (element) => element.getAttribute("aria-label"),
+    );
+  }
+
+  it.each([
+    ["手机竖屏", COMPACT_QUERY],
+    ["手机横屏", PHONE_LANDSCAPE_QUERY],
+  ])(
+    "%s：只有一行，整排从左到右与桌面同序，没有两行也没有「…」弹层",
+    (_name, query) => {
+      mockQuery(query);
+      const { dock, scroller } = renderDock();
+      expect(dock.querySelectorAll("[data-slot='dock-scroll']")).toHaveLength(
+        1,
+      );
+      expect(dock.querySelector("[data-slot='dock-row']")).toBeNull();
+      expect(dock.hasAttribute("data-rows")).toBe(false);
+      // 每一个按钮都在这一行的滚动条里，顺序与桌面一致。
+      expect(labels(scroller)).toEqual(FULL_ROW);
+      expect(labels(dock)).toEqual(FULL_ROW);
+      expect(scroller.querySelector("[data-slot='save-dot']")).toBeTruthy();
+      expect(screen.queryByLabelText("白板工具")).toBeNull();
+      expect(dock.querySelector(".dock-tools-compact")).toBeNull();
+      // 锁定 | 编辑 | 工具 | 保存与缩放：三条分隔线，与桌面一样。
+      expect(scroller.querySelectorAll("[data-slot='separator']")).toHaveLength(
+        3,
+      );
+    },
+  );
+
+  it("一行高 --dock-h，外框不滚动，滚动条在框里面", () => {
+    mockQuery(COMPACT_QUERY);
+    const { dock, scroller } = renderDock();
+    expect(dock.classList.contains("h-[var(--dock-h)]")).toBe(true);
+    expect(dock.classList.contains("overflow-hidden")).toBe(true);
+    // 行从最左端排起：不居中，溢出只往右，左端永远滚得到。
+    expect(scroller.classList.contains("justify-center")).toBe(false);
+    expect(scroller.classList.contains("min-w-0")).toBe(true);
+  });
+
+  it("桌面：同一行，窄画布时工具组仍可折进弹层（容器查询）", () => {
+    mockQuery(null);
+    const { dock, scroller } = renderDock();
+    expect(dock.querySelector("[data-slot='dock-row']")).toBeNull();
+    expect(scroller.querySelector(".dock-tools-expanded")).toBeTruthy();
+    expect(scroller.querySelector(".dock-tools-compact")).toBeTruthy();
+  });
+
+  it("画布还没挂载、没有打开的板时也只有一行，不留空行", () => {
+    mockQuery(COMPACT_QUERY);
+    const { container } = render(
+      <TestProviders>
+        <Dock />
+      </TestProviders>,
+    );
+    const dock = container.querySelector("[data-slot='dock']")!;
+    expect(dock.querySelectorAll("[data-slot='dock-scroll']")).toHaveLength(1);
+    expect(labels(dock)).toEqual([
       "锁定视图",
       "新建",
       "撤销",
@@ -356,78 +432,45 @@ describe("手机竖屏的两行 Dock（#715）", () => {
       "适应",
       "放大",
     ]);
-    expect(rowLabels(rows[1]!)).toEqual([
-      "选择",
-      "手形",
-      "画笔",
-      "形状",
-      "直线",
-      "文字",
-      "引入…",
-      "评论",
-    ]);
-    expect(rows[0]!.querySelector("[data-slot='save-dot']")).toBeTruthy();
-    expect(screen.queryByLabelText("白板工具")).toBeNull();
   });
 
-  it("画布还没挂载、没有打开的板时不渲染第二行（#732）", () => {
-    const { container } = render(
-      <TestProviders>
-        <Dock />
-      </TestProviders>,
-    );
-    const dock = container.querySelector("[data-slot='dock']")!;
-    expect(dock.getAttribute("data-rows")).toBe("2");
-    expect(dock.querySelectorAll("[data-slot='dock-row']")).toHaveLength(1);
-  });
-
-  it("行撑到内容宽、不够宽才居中，320 宽的第一行左端能滚到（#732）", () => {
-    setFlow({} as ReactFlowInstance);
-    const { container } = render(
-      <TestProviders>
-        <Dock />
-      </TestProviders>,
-    );
-    for (const row of container.querySelectorAll("[data-slot='dock-row']")) {
-      expect(row.classList.contains("w-max")).toBe(true);
-      expect(row.classList.contains("min-w-full")).toBe(true);
-    }
-  });
-
-  it("宽 667 的矮横屏仍是手机布局，但 Dock 合成一行（#732）", () => {
-    vi.restoreAllMocks();
-    const original = window.matchMedia;
-    vi.spyOn(window, "matchMedia").mockImplementation((query) => ({
-      ...original(query),
-      matches: query === COMPACT_QUERY || query === "(max-height: 500px)",
-    }));
-    setFlow({} as ReactFlowInstance);
-    useCanvasStore.setState({ boardId: "board-1" });
-    const { container } = render(
-      <TestProviders>
-        <Dock />
-      </TestProviders>,
-    );
-    const dock = container.querySelector("[data-slot='dock']")!;
-    expect(dock.getAttribute("data-rows")).toBeNull();
-    expect(dock.querySelector("[data-slot='dock-row']")).toBeNull();
-    // 一个钮都没丢：锁定、新建、缩放、评论都在这一行里。
-    for (const label of ["锁定视图", "新建", "缩小", "适应", "放大", "评论"]) {
-      expect(screen.getByLabelText(label)).toBeTruthy();
-    }
-  });
-
-  it("桌面仍是一行", () => {
-    vi.restoreAllMocks();
-    setFlow({} as ReactFlowInstance);
-    const { container } = render(
-      <TestProviders>
-        <Dock />
-      </TestProviders>,
-    );
-    const dock = container.querySelector("[data-slot='dock']")!;
-    expect(dock.getAttribute("data-rows")).toBeNull();
-    expect(dock.querySelector("[data-slot='dock-row']")).toBeNull();
+  it("放不下时按滚动位置渐隐还有内容的一端，滚到头那一端不渐隐", () => {
+    mockQuery(COMPACT_QUERY);
+    const { scroller } = renderDock();
+    const el = scroller as HTMLElement;
+    let left = 0;
+    Object.defineProperty(el, "scrollWidth", {
+      configurable: true,
+      get: () => 620,
+    });
+    Object.defineProperty(el, "clientWidth", {
+      configurable: true,
+      get: () => 380,
+    });
+    Object.defineProperty(el, "scrollLeft", {
+      configurable: true,
+      get: () => left,
+      set: (value: number) => {
+        left = value;
+      },
+    });
+    const at = (value: number) => {
+      left = value;
+      fireEvent.scroll(el);
+      return [
+        el.hasAttribute("data-fade-start"),
+        el.hasAttribute("data-fade-end"),
+      ];
+    };
+    expect(at(0)).toEqual([false, true]);
+    expect(at(120)).toEqual([true, true]);
+    expect(at(240)).toEqual([true, false]);
+    // 放得下（横屏整排）时两端都不渐隐。
+    Object.defineProperty(el, "scrollWidth", {
+      configurable: true,
+      get: () => 380,
+    });
+    expect(at(0)).toEqual([false, false]);
   });
 });
 

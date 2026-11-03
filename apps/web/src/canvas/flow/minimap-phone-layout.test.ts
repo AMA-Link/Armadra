@@ -10,8 +10,8 @@ import { COMPACT_QUERY } from "@/platform/layout";
  *
  * Node 里没有布局，这里读样式表：手机判据（`COMPACT_QUERY`）里 `.workspace-surface`
  * 的 `--navigation-bottom` 就是收起钮（`MinimapToggle`）与缩略图的底边，它必须
- * 高过「底部导航高度 + 安全区」，并且让到 Dock 之上——竖屏 Dock 是两行（#715），
- * 高度是 `--dock-stack-h`。
+ * 高过「底部导航高度 + 安全区」，并且让到 Dock 之上——竖屏 Dock 是一行（#766，
+ * 推翻 #715 的两行），高度是 `--dock-h`。
  */
 const STYLES = fileURLToPath(new URL("../../styles/", import.meta.url));
 const read = (name: string): string =>
@@ -50,10 +50,10 @@ function px(expression: string, vars: Record<string, number>): number {
 
 describe("手机布局里的小地图收起钮", () => {
   const rule =
-    /\.workspace-surface \{ --dock-stack-h: \d+px; --navigation-bottom: (calc\([^;]+\)); \}/.exec(
+    /\.workspace-surface \{ --navigation-bottom: (calc\([^;]+\)); \}/.exec(
       compactBlock(),
     );
-  const stack = Number(/--dock-stack-h: (\d+)px/.exec(compactBlock())![1]);
+  const dock = Number(/--dock-h: (\d+)px/.exec(TOKENS)![1]);
 
   it("--navigation-bottom 写在缩略图与收起钮共同的祖先上", () => {
     expect(rule).not.toBeNull();
@@ -63,19 +63,20 @@ describe("手机布局里的小地图收起钮", () => {
     );
   });
 
-  it("两行 Dock 的高度：2 × 40 + 行距 2 + 内距 8 + 边框 2", () => {
-    expect(stack).toBe(2 * 40 + 2 + 8 + 2);
+  it("按一行 Dock 的高度让位，没有两行的 --dock-stack-h（#766）", () => {
+    expect(rule![1]).toContain("var(--dock-h)");
+    expect(CANVAS).not.toContain("--dock-stack-h");
   });
 
-  it("竖屏手机（含刘海底边）收起钮高过导航、安全区与两行 Dock", () => {
+  it("竖屏手机（含刘海底边）收起钮高过导航、安全区与一行 Dock", () => {
     const navigation = Number(/--mobile-nav-h: (\d+)px/.exec(TOKENS)![1]);
     for (const safe of [0, 34]) {
       const bottom = px(rule![1]!, {
         "--mobile-nav-h": navigation,
         "--safe-bottom": safe,
-        "--dock-stack-h": stack,
+        "--dock-h": dock,
       });
-      expect(bottom).toBeGreaterThanOrEqual(navigation + safe + stack);
+      expect(bottom).toBeGreaterThanOrEqual(navigation + safe + dock);
     }
   });
 

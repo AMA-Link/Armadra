@@ -186,7 +186,7 @@
 | 对话框                                                   | 520（表单）、420（确认）；边距 24；手机上改底部 Sheet         |                                                                                 |
 | 触屏命中区                                               | ≥44px（可用 `::after` 扩）；桌面 ≥ 24px                       | 手写 `min-h-10 / h-11` 改用 `Button size="touch"`                               |
 
-断点：手机布局只看宽度 ≤767px（手机竖屏、窄窗口），判据只有一处，`platform/layout.ts` 的 `COMPACT_QUERY`（`isCompactLayout`），样式侧用 Tailwind 变体 `compact:` 与几处同一判据的 `@media`，不再用 `md:` 区分手机与电脑。**手机横屏走电脑布局**（#715，推翻 #683 的「矮的触屏横屏也算手机」）：侧栏、右上工具簇、整排 Dock、右下缩略图与桌面一致，只按矮屏与左右安全区收紧——认它的判据是 `PHONE_LANDSCAPE_QUERY`（主指针是手指、宽 768–1023px、高 ≤500px，与手机布局互斥，`isPhoneLandscape`），只管几处默认值：侧栏与缩略图默认收起、Dock 工具组不折进弹层、`desktop:` 变体排除它（输入仍 16px，防 iOS 聚焦缩放）；不分横竖的「手机屏幕」规则（新建节点缩到装得下、打开画布的可读缩放）用 `isPhoneScreen`。宽度不到 768 的横屏（iPhone SE 一类）仍是手机布局。矮屏（高度 ≤500px）另有 `short:` 变体与 `--mobile-nav-h` 取 44px，只管竖向收紧；平板 768–1023px；桌面 ≥1024px。画布内继续用容器查询（1000 / 760 / 440 / 360）。
+断点：手机布局只看宽度 ≤767px（手机竖屏、窄窗口），判据只有一处，`platform/layout.ts` 的 `COMPACT_QUERY`（`isCompactLayout`），样式侧用 Tailwind 变体 `compact:` 与几处同一判据的 `@media`，不再用 `md:` 区分手机与电脑。**手机横屏走电脑布局**（#715，推翻 #683 的「矮的触屏横屏也算手机」）：右上工具簇、整排 Dock、右下缩略图与桌面一致，只按矮屏与左右安全区收紧——认它的判据是 `PHONE_LANDSCAPE_QUERY`（主指针是手指、宽 768–1023px、高 ≤500px，与手机布局互斥，`isPhoneLandscape` / `usePhoneLandscape`），只管几处：侧栏改用竖屏那个覆盖式抽屉、不占画布宽度（#766），侧栏与缩略图默认收起，Dock 工具组不折进弹层，`desktop:` 变体排除它（输入仍 16px，防 iOS 聚焦缩放）。左右安全区（#766）：App 根容器只让顶边，画布底色铺到屏幕左右边上；贴边的浮层（工具簇、Dock、样式条、缩略图、通知条）按 `.workspace-surface` 的 `--surface-inset-left/right`（取 `--safe-left/right`，停靠侧栏开着时左边为 0）各自让开，停靠侧栏开着时自己让左侧；不分横竖的「手机屏幕」规则（新建节点缩到装得下、打开画布的可读缩放）用 `isPhoneScreen`。宽度不到 768 的横屏（iPhone SE 一类）仍是手机布局。矮屏（高度 ≤500px）另有 `short:` 变体与 `--mobile-nav-h` 取 44px，只管竖向收紧；平板 768–1023px；桌面 ≥1024px。画布内继续用容器查询（1000 / 760 / 440 / 360）。
 
 ### §2.8 圆角
 
@@ -351,7 +351,7 @@ ui/ 生成件：`Button / Input / SelectTrigger / Textarea / InputGroup` 的 def
 | 协调者（ama）                          | 普通终端节点，头部色点 `--agent-ama`；派生成员自动连 supervises 边，组标题用 ama 色                                                                                                                                                                                                                                                                                                                                         |
 | 工作流运行                             | 运行中的节点在头部状态前多一个 `Badge secondary sm`「第 n 步」；完成的节点边框 1px `--success`                                                                                                                                                                                                                                                                                                                              |
 
-Dock 在手机竖屏上是两行（#715，`data-rows="2"`，高 92）：第一行 锁定 · 新建 · 撤销 · 重做 · 整理 · 保存点 · 缩小 · 百分比 · 放大，第二行 选择 · 手 · 笔 · 形状 · 线 · 文字 · 引入 · 评论，格距 2。与桌面那一行相比一个不少，也不折进弹层；手机横屏用桌面那一行。样式条（`.canvas-style-row`）坐在 Dock 正上方：竖屏按两行的 `--dock-stack-h`（写在 `.workspace-surface` 上）让开，桌面与横屏按一行的 `--dock-h`。
+Dock 在所有尺寸上都是一行（#766，推翻 #715 的竖屏两行），从左到右与桌面同序：锁定 · 新建 · 撤销 · 重做 · 整理 · 白板工具（选择 · 手 · 笔 · 形状 · 线 · 文字 · 引入）· 评论 · 保存点 · 缩小 · 百分比 · 放大。手机竖屏与横屏上工具组不折进弹层，格距 2；放不下时这一行在 Dock 外框里横向滚动（`data-slot="dock-scroll"`），从最左端开始、不画滚动条，还有内容的一端 24px 渐隐（`data-fade-start` / `data-fade-end`，`shell/Dock` 的 `useScrollEdges`），外框不滚也不渐隐。桌面窄画布（容器 ≤1000px）照旧把工具组折进弹层。样式条（`.canvas-style-row`）坐在 Dock 正上方，缩略图与收起钮在手机竖屏让到 Dock 之上，两者都按一行的 `--dock-h` 让开。
 
 ## §5 界面模式
 
