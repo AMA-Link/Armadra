@@ -49,7 +49,7 @@ import { usePreferencesStore } from "../app/preferences-store";
 import { useCanvasStore } from "../store/canvas-store";
 import { useNeedsStore } from "../notifications/needs-store";
 import { LeftSidebar } from "./LeftSidebar";
-import { COMPACT_QUERY } from "../platform/layout";
+import { COMPACT_QUERY, PHONE_LANDSCAPE_QUERY } from "../platform/layout";
 
 installDomPolyfills();
 const initialMatchMedia = window.matchMedia;
@@ -268,7 +268,7 @@ describe("LeftSidebar", () => {
     renderSidebar();
     const aside = screen.getByLabelText("侧栏");
     expect(aside.getAttribute("data-state")).toBe("open");
-    expect(aside.style.width).toBe("var(--sidebar-w)");
+    expect(aside.style.width).toBe("calc(var(--sidebar-w) + var(--safe-left))");
 
     act(() => useCanvasStore.getState().setPanel("sidebar", "collapsed"));
     expect(aside.getAttribute("data-state")).toBe("collapsed");
@@ -276,7 +276,7 @@ describe("LeftSidebar", () => {
     expect(aside.getAttribute("aria-hidden")).toBe("true");
 
     act(() => useCanvasStore.getState().setPanel("sidebar", "open"));
-    expect(aside.style.width).toBe("var(--sidebar-w)");
+    expect(aside.style.width).toBe("calc(var(--sidebar-w) + var(--safe-left))");
   });
 
   it("开合状态同步进偏好（重启后恢复的依据）", () => {
@@ -302,6 +302,35 @@ describe("LeftSidebar", () => {
     fireEvent.click(within(drawer).getByRole("button", { name: "收起侧栏" }));
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
     expect(useCanvasStore.getState().panels.sidebar).toBe("collapsed");
+  });
+
+  it("手机横屏（电脑布局）侧栏也是覆盖式抽屉，不占画布宽度（#766）", async () => {
+    const original = window.matchMedia;
+    vi.spyOn(window, "matchMedia").mockImplementation((query) => ({
+      ...original(query),
+      matches: query === PHONE_LANDSCAPE_QUERY,
+    }));
+    useCanvasStore.getState().setPanel("sidebar", "collapsed");
+    renderSidebar();
+    // 没有停靠的 <aside>：画布那一格永远是整屏宽。
+    expect(screen.queryByRole("complementary")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "展开侧栏" }));
+    const drawer = await screen.findByRole("dialog", { name: "侧栏" });
+    expect(screen.queryByRole("complementary")).toBeNull();
+    // 抽屉从屏幕左缘铺起，内容让开左侧刘海。
+    const content = drawer.closest("[data-slot='sheet-content']") ?? drawer;
+    expect(content.className).toContain("pl-[var(--safe-left)]");
+    fireEvent.click(within(drawer).getByRole("button", { name: "收起侧栏" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+  });
+
+  it("停靠的侧栏开着时自己让开左侧安全区，收起时不留那一截", () => {
+    renderSidebar();
+    const aside = screen.getByLabelText("侧栏");
+    expect(aside.className).toContain(
+      "data-[state=open]:pl-[var(--safe-left)]",
+    );
+    expect(aside.className).not.toMatch(/(^|\s)pl-\[var\(--safe-left\)\]/);
   });
 
   it("从手机侧栏打开设置时先收起抽屉", async () => {

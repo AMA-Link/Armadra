@@ -335,7 +335,11 @@ export function Banners() {
   return (
     <div
       data-slot="banners"
-      style={{ left, right }}
+      // 画布左右铺进安全区（#766），通知条跟工具簇、Dock 一样再让开那一截。
+      style={{
+        left: `calc(${left} + var(--surface-inset-left, 0px))`,
+        right: `calc(${right} + var(--surface-inset-right, 0px))`,
+      }}
       data-below-presence={belowPresence ? "true" : undefined}
       className={cn(
         "pointer-events-none absolute z-[var(--z-banners)] flex flex-col items-center gap-2",

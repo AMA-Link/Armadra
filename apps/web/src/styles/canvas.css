@@ -147,7 +147,7 @@
 .canvas-stage .react-flow__minimap {
   /* `<MiniMap>` 是一个 Panel，自带 15px margin；归零后 14px 才是真的 14px。 */
   margin: 0;
-  right: 14px;
+  right: calc(14px + var(--surface-inset-right, 0px));
   bottom: var(--navigation-bottom);
   left: auto;
   width: var(--minimap-w);
@@ -168,10 +168,20 @@
   /*
    * 四个角的浮层离边都是 14px：右上工具簇（上、右）、右下缩略图（右、下）、
    * 底部 Dock（下）。缩略图始终在右下角；画布不够宽时是 Dock 向左让。
-   * 顶、左、右三边的安全区由 App 根容器整体让开，底边在这里加：iPad 横屏的
-   * 主页横条与窗口缩放手柄（`--safe-bottom`，桌面与浏览器里是 0）。
+   * 顶边的安全区由 App 根容器让开，底边在这里加：iPad 横屏的主页横条与窗口
+   * 缩放手柄（`--safe-bottom`，桌面与浏览器里是 0）。
+   *
+   * 左右两边的安全区（手机横屏的刘海与圆角，#766）根容器不再让：画布底色铺到
+   * 屏幕边上，贴边的浮层（工具簇、Dock、样式条、缩略图、通知条）各自加上
+   * `--surface-inset-*` 让开。停靠的侧栏开着时画布左缘已经在侧栏右边（侧栏自己
+   * 让左侧安全区），左边不用再让——见下面那条 `:has()`。
    */
+  --surface-inset-left: var(--safe-left);
+  --surface-inset-right: var(--safe-right);
   --navigation-bottom: calc(14px + var(--safe-bottom));
+}
+.app-shell:has(> aside[data-state="open"]) > .workspace-surface {
+  --surface-inset-left: 0px;
 }
 
 /*
@@ -182,8 +192,8 @@
 .canvas-dock-row {
   position: absolute;
   bottom: var(--dock-bottom, calc(14px + var(--safe-bottom)));
-  left: 14px;
-  right: 14px;
+  left: calc(14px + var(--surface-inset-left, 0px));
+  right: calc(14px + var(--surface-inset-right, 0px));
   z-index: var(--z-dock);
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto minmax(
@@ -264,8 +274,8 @@
 @media (max-width: 767px) {
   .canvas-dock-row {
     --dock-bottom: calc(var(--mobile-nav-h) + var(--safe-bottom) + 10px);
-    left: 10px;
-    right: 10px;
+    left: calc(10px + var(--surface-inset-left, 0px));
+    right: calc(10px + var(--surface-inset-right, 0px));
     /* 手机上 Dock 要用整个宽度，缩略图改到它上方（下面那条规则）。 */
     grid-template-columns: minmax(0, 1fr) minmax(0, auto) minmax(0, 1fr);
   }
@@ -360,8 +370,8 @@
  */
 @media (max-width: 380px) {
   .canvas-dock-row {
-    left: 8px;
-    right: 8px;
+    left: calc(8px + var(--surface-inset-left, 0px));
+    right: calc(8px + var(--surface-inset-right, 0px));
   }
   .canvas-dock {
     gap: 2px;
@@ -387,8 +397,8 @@
   --style-row-bottom: calc(14px + var(--safe-bottom));
   position: absolute;
   bottom: calc(var(--style-row-bottom) + var(--dock-h) + 8px);
-  left: 14px;
-  right: 14px;
+  left: calc(14px + var(--surface-inset-left, 0px));
+  right: calc(14px + var(--surface-inset-right, 0px));
   z-index: var(--z-dock);
   display: flex;
   justify-content: center;

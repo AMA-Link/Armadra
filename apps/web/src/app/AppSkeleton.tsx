@@ -14,11 +14,11 @@ export function AppSkeleton({ hidden = false }: { hidden?: boolean }) {
     <div
       data-slot="app-skeleton"
       className={cn(
-        "flex h-full overflow-hidden bg-background pt-[var(--safe-top)] pr-[var(--safe-right)] pl-[var(--safe-left)]",
+        "flex h-full overflow-hidden bg-background pt-[var(--safe-top)]",
         hidden && "invisible",
       )}
     >
-      <aside className="material-sidebar flex h-full w-[var(--sidebar-w)] shrink-0 flex-col gap-2 border-r border-border p-2 compact:hidden">
+      <aside className="material-sidebar flex h-full w-[calc(var(--sidebar-w)+var(--safe-left))] shrink-0 flex-col gap-2 border-r border-border p-2 pl-[calc(0.5rem+var(--safe-left))] compact:hidden">
         <div className="flex h-8 items-center px-2">
           <Skeleton className="h-4 w-28" />
         </div>

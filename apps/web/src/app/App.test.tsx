@@ -178,6 +178,16 @@ describe("identity changes", () => {
  * 首屏错落入场（设计系统 §8.7）：只在开屏刚退场的那一次播。平时的首帧什么都不
  * 带；开屏放着时三块先藏好（`wait`），退场 80ms 后依次入场（`play`），播完摘掉。
  */
+describe("App 根容器的安全区（#766）", () => {
+  it("只让顶边；左右不让，画布铺进手机横屏的刘海与圆角", () => {
+    render(<App />);
+    const shell = document.querySelector<HTMLElement>(".app-shell")!;
+    expect(shell.className).toContain("pt-[var(--safe-top)]");
+    expect(shell.className).not.toContain("pl-[var(--safe-left)]");
+    expect(shell.className).not.toContain("pr-[var(--safe-right)]");
+  });
+});
+
 describe("App 首屏错落入场", () => {
   const shell = () =>
     document.querySelector<HTMLElement>(".app-shell") as HTMLElement;

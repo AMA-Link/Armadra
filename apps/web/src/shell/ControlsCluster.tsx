@@ -87,7 +87,8 @@ export function ControlsCluster() {
         }}
         className={cn(
           BAR,
-          "absolute top-[14px] right-[14px] z-[var(--z-cluster)]",
+          // 右边再让开安全区（手机横屏的刘海与圆角，#766）；开着抽屉时 `style` 接管。
+          "absolute top-[14px] right-[calc(14px+var(--surface-inset-right,0px))] z-[var(--z-cluster)]",
           // 窗口很矮时簇自己滚，不被裁掉。
           "max-h-[calc(100%-28px)] overflow-y-auto",
           "transition-[right] duration-(--dur-base) ease-(--ease-out) motion-reduce:transition-none",
